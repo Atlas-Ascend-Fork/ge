@@ -979,12 +979,6 @@ HcclResult HcomOpsKernelBuilder::SetOpRunningParamAttributes(ge::Node &node, con
 
   CHK_RET(SetOpWorkerSpaceForKnowShape(node, opMemSize));
 
-  HcclResult ret = SetOpMemAttr(node, node.GetOpDesc()->GetType(), opMemSize);
-  CHK_PRT_RET(
-      ret != HCCL_SUCCESS,
-      HCCL_ERROR("[Calc][OpRunningParam]errNo[0x%016llx] set node[%s] mem attr failed.", ret, node.GetName().c_str()),
-      HCCL_E_INTERNAL);
-
   HCCL_INFO(
       "[Calc][OpRunningParam] node[%s] calculate hccl running parameters completed. "
       "stream num:[%llu], workspace size:[%llu]bytes",
@@ -992,7 +986,7 @@ HcclResult HcomOpsKernelBuilder::SetOpRunningParamAttributes(ge::Node &node, con
   HCCL_INFO("GetAndSetTaskNum success. task num:[%llu]", taskNum);
 
   // 设置output size 大小
-  ret = SetOpOutputMemSize(node, sCollectiveType.c_str());
+  HcclResult ret = SetOpOutputMemSize(node, sCollectiveType.c_str());
   CHK_PRT_RET(
       ret != HCCL_SUCCESS,
       HCCL_ERROR("[Calc][OpRunningParam]errNo[0x%016llx] set op[%s] output size failed.", ret, sCollectiveType.c_str()),
@@ -1351,98 +1345,6 @@ HcclResult HcomOpsKernelBuilder::GetCommFromOpDesc(const ge::OpDescPtr &op, int6
     CHK_RET(HcomOpUtils::GetGroupFromOpDesc(op, sGroup));
     HCCL_INFO("%s get group[%s] success", __func__, sGroup.c_str());
   }
-  return HCCL_SUCCESS;
-}
-
-HcclResult HcomOpsKernelBuilder::SetOpMemAttr(ge::Node &node, const std::string &sCollectiveType,
-                                              const u64 &opMemSize) {
-  bool bRet = false;
-
-  // ATTENTION: 算子在IR定义时input/output同名场合（参考HcomRemoteRefRead算子）会隐式设置reference属性为TRUE,
-  //   此处只对IR定义中input/output不同名且需要复用内存的算子，进行内存复用配置。
-  //   后续有类似算子实现建议在IR定义时将input/output配置为相同name。
-  // broadcast算子因为输入/输出为同一内存Ref属性为true
-  if (sCollectiveType == HCCL_KERNEL_OP_TYPE_BROADCAST) {
-    bRet = ge::AttrUtils::SetBool(node.GetOpDesc(), ge::ATTR_NAME_REFERENCE, true);
-    CHK_PRT_RET(!bRet,
-                HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set  reference attr[%d] to "
-                           "OpDesc failed.",
-                           HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str(), true),
-                HCCL_E_PARA);
-    bRet = node.GetOpDesc()->UpdateOutputName(node.GetOpDesc()->GetAllInputName());
-    CHK_PRT_RET(!bRet,
-                HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: update output name failed.",
-                           HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str()),
-                HCCL_E_PARA);
-    HCCL_INFO("node[%s] set attr [reference]: %u", node.GetName().c_str(), true);
-
-    // 算子属性为reference时，为减少GE的内存分配，设置 output 复用 input 内存
-    for (uint32_t i = 0; i < static_cast<uint32_t>(node.GetOpDesc()->GetOutputsSize()); i++) {
-      auto outDescPtr = node.GetOpDesc()->MutableOutputDesc(i);
-      CHK_SMART_PTR_NULL(outDescPtr);
-      ge::TensorUtils::SetReuseInput(*outDescPtr, true);
-      ge::TensorUtils::SetReuseInputIndex(*outDescPtr, i);
-    }
-  } else {
-    HCCL_INFO("node[%s] set attr [reference]: skip", node.GetName().c_str());
-  }
-
-  bRet = ge::AttrUtils::SetBool(node.GetOpDesc(), ge::ATTR_NAME_IS_FIXED_ADDR_PRIOR, true);
-  CHK_PRT_RET(!bRet,
-              HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set is_fixed_addr_prior[%d] to "
-                         "OpDesc failed.",
-                         HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str(), true),
-              HCCL_E_PARA);
-  HCCL_INFO("node[%s] set attr [is_fixed_addr_prior]: %d", node.GetName().c_str(), true);
-
-  string groupListString;
-
-  std::string sGroup;
-  CHK_RET(HcomOpUtils::GetGroupFromOpDesc(node.GetOpDesc(), sGroup));
-
-  std::string socVersion;
-  if (ge::GetThreadLocalContext().GetOption(ge::SOC_VERSION, socVersion) != ge::GRAPH_SUCCESS) {
-    HCCL_ERROR("[offline][compilation] get soc version failed.");
-    return HCCL_E_INTERNAL;
-  }
-
-  bool withoutImplCompile =
-      IsOfflineCompilation() ||
-      (ge::GetThreadLocalContext().GetOption(ge::OPTION_EXEC_HCOM_GROUPLIST, groupListString) == ge::GRAPH_SUCCESS) ||
-      (ge::GetThreadLocalContext().GetOption(ge::OPTION_EXEC_HCOM_GROUPLIST_V2, groupListString) == ge::GRAPH_SUCCESS);
-
-  // 针对310p duo卡 2p场景申请内存为普通内存，不需要单独设置，其余场景需要设置申请为p2p内存
-  // 板卡推理不需要设置申请内存为p2p
-  u32 memType = 0;
-  u32 p2pMemType = RT_MEMORY_P2P_DDR;
-  bool isTsMem = false;
-  CHK_RET(HcomGetMemType(sGroup.c_str(), socVersion.c_str(), false, &memType, &isTsMem, withoutImplCompile));
-  if (memType == p2pMemType) {
-    vector<int64_t> memTypeInput(node.GetOpDesc()->GetInputsSize(), p2pMemType);
-    vector<int64_t> memTypeOutput(node.GetOpDesc()->GetOutputsSize(), p2pMemType);
-    vector<int64_t> memTypeWorkSpace(1, p2pMemType);
-    bool ret = ge::AttrUtils::SetListInt(node.GetOpDesc(), ge::ATTR_NAME_INPUT_MEM_TYPE_LIST, memTypeInput);
-    CHK_PRT_RET(!ret,
-                HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx]: Set input mem addr failed. op[%s]", HCCL_E_PARA,
-                           sCollectiveType.c_str()),
-                HCCL_E_PARA);
-
-    ret = ge::AttrUtils::SetListInt(node.GetOpDesc(), ge::ATTR_NAME_OUTPUT_MEM_TYPE_LIST, memTypeOutput);
-    CHK_PRT_RET(!ret,
-                HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx]: Set output mem addr failed. op[%s]", HCCL_E_PARA,
-                           sCollectiveType.c_str()),
-                HCCL_E_PARA);
-
-    if (opMemSize != 0) {
-      ret = ge::AttrUtils::SetListInt(node.GetOpDesc(), ge::ATTR_NAME_WORKSPACE_TYPE_LIST, memTypeWorkSpace);
-      CHK_PRT_RET(!ret,
-                  HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx]: Set workspace mem addr failed. op[%s]", HCCL_E_PARA,
-                             sCollectiveType.c_str()),
-                  HCCL_E_PARA);
-    }
-    HCCL_INFO("[Set][OpMemAttr] Set memType p2p mem type");
-  }
-
   return HCCL_SUCCESS;
 }
 
