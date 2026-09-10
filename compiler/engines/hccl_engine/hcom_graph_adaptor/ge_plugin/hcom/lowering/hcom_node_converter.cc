@@ -63,7 +63,7 @@ gert::LowerResult LoweringHcomNode(const ge::NodePtr &node, const gert::LowerInp
 }
 REGISTER_NODE_CONVERTER_PLACEMENT(HCCL_KERNEL_OP_TYPE_BROADCAST.c_str(), gert::kOnDeviceHbm, LoweringHcomNode);
 // REGISTER_NODE_CONVERTER_PLACEMENT(HCCL_KERNEL_OP_TYPE_ALLREDUCE.c_str(), gert::kOnDeviceHbm, LoweringHcomNode);
-REGISTER_NODE_CONVERTER_PLACEMENT(HCCL_KERNEL_OP_TYPE_ALLGATHER.c_str(), gert::kOnDeviceHbm, LoweringHcomNode);
+// REGISTER_NODE_CONVERTER_PLACEMENT(HCCL_KERNEL_OP_TYPE_ALLGATHER.c_str(), gert::kOnDeviceHbm, LoweringHcomNode);
 REGISTER_NODE_CONVERTER_PLACEMENT(HCCL_KERNEL_OP_TYPE_REDUCESCATTER.c_str(), gert::kOnDeviceHbm, LoweringHcomNode);
 REGISTER_NODE_CONVERTER_PLACEMENT(HCCL_KERNEL_OP_TYPE_SEND.c_str(), gert::kOnDeviceHbm, LoweringHcomNode);
 REGISTER_NODE_CONVERTER_PLACEMENT(HCCL_KERNEL_OP_TYPE_REDUCE.c_str(), gert::kOnDeviceHbm, LoweringHcomNode);
