@@ -11,7 +11,7 @@
 ## 函数原型
 
 ```python
-get_data_type() -> DataType
+get_data_type() -> DataType
 ```
 
 ## 参数说明

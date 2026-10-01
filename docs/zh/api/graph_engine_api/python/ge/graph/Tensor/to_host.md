@@ -11,7 +11,7 @@
 ## 函数原型
 
 ```python
-to_host() -> Tensor
+to_host() -> Tensor
 ```
 
 ## 参数说明

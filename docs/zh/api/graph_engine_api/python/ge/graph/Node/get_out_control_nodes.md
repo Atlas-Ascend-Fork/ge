@@ -11,7 +11,7 @@
 ## 函数原型
 
 ```python
-get_out_control_nodes() -> List[Node]
+get_out_control_nodes() -> List[Node]
 ```
 
 ## 参数说明
