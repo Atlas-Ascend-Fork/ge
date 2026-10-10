@@ -920,7 +920,11 @@ stages:
           -
             name: rename
             run: |
-              mv ${{ steps.process_checkout.outputs.path }}/ut_cov_hcce.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_hcce.tar.gz
+              if [ -f "${{ steps.process_checkout.outputs.path }}/ut_cov_hcce.tar.gz" ]; then
+                mv ${{ steps.process_checkout.outputs.path }}/ut_cov_hcce.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_hcce.tar.gz
+              else
+                echo "Coverage file not found, skipping rename"
+              fi
           -
             name: upload
             uses: obs-upload
