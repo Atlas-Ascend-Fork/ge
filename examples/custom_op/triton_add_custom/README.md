@@ -54,6 +54,14 @@
 
 在 `examples/custom_op/triton_add_custom` 目录下执行以下最短路径
 
+请先在编译 `npubin` 的环境中执行以下命令判断 Triton 编译出的 `npubin` 是否依赖 FFTS 调度特性：
+
+```bash
+python3 -c "from triton.backends.ascend.utils import is_ffts_supported, get_ascend_arch_from_env, force_disable_ffts; print(is_ffts_supported(get_ascend_arch_from_env()) and (not force_disable_ffts()))"
+```
+
+输出 `True` 表示 `npubin` 启用了 FFTS 调度特性，kernel args 的首参数需要传入 C2C 控制区地址（`ffts_addr`），此时请按 `ge/src/custom_op.cpp` 中的注释取消相关代码的注释（共 2 处，均在该文件内，通过 `aclrtGetHardwareSyncAddr` 获取地址）；输出 `False` 时保持样例默认写法即可，无需任何修改。判断逻辑与 triton-ascend 生成 launcher 时采用的一致。
+
 ### 推荐方式
 
 ```bash

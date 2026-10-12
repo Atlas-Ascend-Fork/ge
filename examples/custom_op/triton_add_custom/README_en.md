@@ -54,6 +54,14 @@ References:
 
 Execute shortest path in `examples/custom_op/triton_add_custom` directory
 
+Before running, execute the following command in the environment where the `npubin` is compiled to check whether the `npubin` compiled by Triton depends on the FFTS scheduling feature:
+
+```bash
+python3 -c "from triton.backends.ascend.utils import is_ffts_supported, get_ascend_arch_from_env, force_disable_ffts; print(is_ffts_supported(get_ascend_arch_from_env()) and (not force_disable_ffts()))"
+```
+
+If it prints `True`, the `npubin` was compiled with the FFTS scheduling feature enabled, and the first argument of kernel args must be the C2C control region address (`ffts_addr`). In this case, uncomment the relevant code following the comments in `ge/src/custom_op.cpp` (2 spots, all in that file; the address is obtained via `aclrtGetHardwareSyncAddr`). If it prints `False`, keep the sample's default layout; no modification is needed. This check uses the same logic triton-ascend applies when generating launchers.
+
 ### Recommended Method
 
 ```bash
