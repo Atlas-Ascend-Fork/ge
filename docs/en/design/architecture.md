@@ -31,6 +31,8 @@ Characteristics of offline scenarios:
 
 atc supports multiple frontend framework exported model formats, such as TensorFlow exported `.pb`, PyTorch exported `.onnx`.
 
+Serialized output shapes in TensorFlow GraphDef preserve dimensions in their original order, including dimensions whose value is 0.
+
 ### **GE Compiler (Graph Compiler)**
 
 GE Compiler is GE's core component, responsible for compiling AscendIR into binary models (model/OM) executable on Ascend devices. Its main work includes:
