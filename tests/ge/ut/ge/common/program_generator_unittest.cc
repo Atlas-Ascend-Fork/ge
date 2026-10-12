@@ -2223,7 +2223,7 @@ struct AicoreDispatchInfo {
     uint32_t engine_type;     // 引擎类型
     uint32_t block_dim_offset;// BlockDim 偏移量
     bool is_block_task_prefetch; // 是否预取 Block Task
-    uint16_t time_out;        // 超时时间
+    int16_t time_out;        // 超时时间
     uint32_t local_memory_size;  // 本地内存大小
   } launch;
   struct {                    // 构建 GertModelTaskRawInfo
@@ -2258,7 +2258,7 @@ struct AicpuDispatchInfo {
     uint32_t engine_type;     // 引擎类型
     uint32_t block_dim_offset;// BlockDim 偏移量
     bool is_block_task_prefetch; // 是否预取 Block Task
-    uint16_t time_out;        // 超时时间
+    int16_t time_out;        // 超时时间
     uint32_t local_memory_size;  // 本地内存大小
   } launch;
   int32_t session_info_offset;
@@ -2321,7 +2321,7 @@ struct KernelExDispatchInfo {
     uint8_t schedule_mode;    // 调度模式
     uint32_t block_dim_offset;// BlockDim 偏移量
     bool is_block_task_prefetch; // 是否预取 Block Task
-    uint16_t time_out;        // 超时时间
+    int16_t time_out;        // 超时时间
     uint32_t engine_type;     // aclrtEngineType 枚举值
   } launch;
   uint32_t task_type;         // 任务类型(ModelTaskType)，executor/dump 消费
@@ -2803,7 +2803,7 @@ struct LaunchKernelConfig {
   uint32_t block_dim_offset{0U};
   bool is_block_task_prefetch{false};
   uint8_t is_data_dump{0U};
-  uint16_t time_out{0U};
+  int16_t time_out{-1};
   uint32_t local_memory_size{0U};
 };
 
@@ -2827,9 +2827,11 @@ aclError AssembleLaunchConfig(LaunchKernelCfgHolder &holder, const LaunchKernelC
   holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_DYN_UBUF_SIZE;
   holder.attrs[actual_cfg_num].value.dynUBufSize = launch_config.local_memory_size;
   actual_cfg_num++;
-  holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT;
-  holder.attrs[actual_cfg_num].value.timeout = launch_config.time_out;
-  actual_cfg_num++;
+  if (launch_config.time_out >= 0) {
+    holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT;
+    holder.attrs[actual_cfg_num].value.timeout = static_cast<uint16_t>(launch_config.time_out);
+    actual_cfg_num++;
+  }
   holder.cfg.attrs = &holder.attrs[0];
   holder.cfg.numAttrs = actual_cfg_num;
   return ACL_SUCCESS;
@@ -3127,7 +3129,7 @@ const TaskDispatchInfo kOpDefs[] = {{
       .prof_ge_task_type = 0,
       .op_impl_mode = 0,
       .kernel_type = 2,
-      .launch = {0, 0, 0, false, 0, 0},
+      .launch = {0, 0, 0, false, -1, 0},
       .slot_args = {0, 4, (const GertModelArgSlotInfo[]){{sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_INPUT, 0U, 0U, 0UL, 0U, 0U, 0U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_INPUT, 0U, 8U, 0UL, 1U, 0U, 0U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_OUTPUT, 0U, 16U, 0UL, 2U, 0U, 0U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_WORKSPACE, 0U, 24U, 0UL, 0U, 0U, 0U}}},
       .fusion_op = {nullptr, 0UL, 0UL, 0UL, 0UL},
     },
@@ -3487,7 +3489,7 @@ struct LaunchKernelConfig {
   uint32_t block_dim_offset{0U};
   bool is_block_task_prefetch{false};
   uint8_t is_data_dump{0U};
-  uint16_t time_out{0U};
+  int16_t time_out{-1};
   uint32_t local_memory_size{0U};
 };
 
@@ -3511,9 +3513,11 @@ aclError AssembleLaunchConfig(LaunchKernelCfgHolder &holder, const LaunchKernelC
   holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_DYN_UBUF_SIZE;
   holder.attrs[actual_cfg_num].value.dynUBufSize = launch_config.local_memory_size;
   actual_cfg_num++;
-  holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT;
-  holder.attrs[actual_cfg_num].value.timeout = launch_config.time_out;
-  actual_cfg_num++;
+  if (launch_config.time_out >= 0) {
+    holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT;
+    holder.attrs[actual_cfg_num].value.timeout = static_cast<uint16_t>(launch_config.time_out);
+    actual_cfg_num++;
+  }
   holder.cfg.attrs = &holder.attrs[0];
   holder.cfg.numAttrs = actual_cfg_num;
   return ACL_SUCCESS;
@@ -3811,7 +3815,7 @@ const TaskDispatchInfo kOpDefs[] = {{
       .prof_ge_task_type = 0,
       .op_impl_mode = 0,
       .kernel_type = 2,
-      .launch = {0, 0, 0, false, 0, 0},
+      .launch = {0, 0, 0, false, -1, 0},
       .slot_args = {0, 4, (const GertModelArgSlotInfo[]){{sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_INPUT, 0U, 0U, 0UL, 0U, 0U, 0U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_INPUT, 0U, 8U, 0UL, 1U, 0U, 0U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_OUTPUT, 0U, 16U, 0UL, 2U, 0U, 0U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_WORKSPACE, 0U, 24U, 0UL, 0U, 0U, 0U}}},
       .fusion_op = {nullptr, 0UL, 0UL, 0UL, 0UL},
     },
@@ -4204,7 +4208,7 @@ struct LaunchKernelConfig {
   uint32_t block_dim_offset{0U};
   bool is_block_task_prefetch{false};
   uint8_t is_data_dump{0U};
-  uint16_t time_out{0U};
+  int16_t time_out{-1};
   uint32_t local_memory_size{0U};
 };
 
@@ -4228,9 +4232,11 @@ aclError AssembleLaunchConfig(LaunchKernelCfgHolder &holder, const LaunchKernelC
   holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_DYN_UBUF_SIZE;
   holder.attrs[actual_cfg_num].value.dynUBufSize = launch_config.local_memory_size;
   actual_cfg_num++;
-  holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT;
-  holder.attrs[actual_cfg_num].value.timeout = launch_config.time_out;
-  actual_cfg_num++;
+  if (launch_config.time_out >= 0) {
+    holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT;
+    holder.attrs[actual_cfg_num].value.timeout = static_cast<uint16_t>(launch_config.time_out);
+    actual_cfg_num++;
+  }
   holder.cfg.attrs = &holder.attrs[0];
   holder.cfg.numAttrs = actual_cfg_num;
   return ACL_SUCCESS;
@@ -4527,7 +4533,7 @@ const TaskDispatchInfo kOpDefs[] = {{
       .args_blob_len = 68,
       .ext_info_blob = reinterpret_cast<const uint8_t *>("\001\000\000\000\210\000\000\000\000\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\002\000\000\000\104\000\000\000\000\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\021\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\010\000\000\000\001\000\000\000\000\000\000\000\003\000\000\000\004\000\000\000\001\000\000\000\007\000\000\000\004\000\000\000\001\000\000\000"),
       .ext_info_blob_len = 285,
-      .launch = {0, 0, 0, false, 0, 0},
+      .launch = {0, 0, 0, false, -1, 0},
       .session_info_offset = 228,
       .aicpu_task_index = 0,
       .task_type = 0,
@@ -4557,7 +4563,7 @@ const TaskDispatchInfo kOpDefs[] = {{
       .args_blob_len = 68,
       .ext_info_blob = reinterpret_cast<const uint8_t *>("\001\000\000\000\210\000\000\000\000\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\002\000\000\000\104\000\000\000\000\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\021\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\010\000\000\000\001\000\000\000\000\000\000\000\003\000\000\000\004\000\000\000\001\000\000\000\007\000\000\000\004\000\000\000\001\000\000\000"),
       .ext_info_blob_len = 285,
-      .launch = {0, 0, 0, false, 0, 0},
+      .launch = {0, 0, 0, false, -1, 0},
       .session_info_offset = 228,
       .aicpu_task_index = 1,
       .task_type = 0,
@@ -4923,7 +4929,7 @@ struct LaunchKernelConfig {
   uint32_t block_dim_offset{0U};
   bool is_block_task_prefetch{false};
   uint8_t is_data_dump{0U};
-  uint16_t time_out{0U};
+  int16_t time_out{-1};
   uint32_t local_memory_size{0U};
 };
 
@@ -4947,9 +4953,11 @@ aclError AssembleLaunchConfig(LaunchKernelCfgHolder &holder, const LaunchKernelC
   holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_DYN_UBUF_SIZE;
   holder.attrs[actual_cfg_num].value.dynUBufSize = launch_config.local_memory_size;
   actual_cfg_num++;
-  holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT;
-  holder.attrs[actual_cfg_num].value.timeout = launch_config.time_out;
-  actual_cfg_num++;
+  if (launch_config.time_out >= 0) {
+    holder.attrs[actual_cfg_num].id = ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT;
+    holder.attrs[actual_cfg_num].value.timeout = static_cast<uint16_t>(launch_config.time_out);
+    actual_cfg_num++;
+  }
   holder.cfg.attrs = &holder.attrs[0];
   holder.cfg.numAttrs = actual_cfg_num;
   return ACL_SUCCESS;
@@ -5267,7 +5275,7 @@ const TaskDispatchInfo kOpDefs[] = {{
       .prof_ge_task_type = 0,
       .op_impl_mode = 0,
       .kernel_type = 2,
-      .launch = {0, 0, 0, false, 0, 0},
+      .launch = {0, 0, 0, false, -1, 0},
       .slot_args = {0, 9, (const GertModelArgSlotInfo[]){{sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_LEVEL1_DESC, 0U, 0U, 0UL, 0U, 0U, 24U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_LEVEL1_DESC, 0U, 8U, 0UL, 0U, 0U, 80U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_LEVEL1_DESC, 0U, 16U, 0UL, 0U, 0U, 136U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_SHAPE_INFO, 0U, 24U, 6UL, 0U, 0U, 0U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_INPUT, 0U, 72U, 0UL, 9U, 0U, 0U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_SHAPE_INFO, 0U, 80U, 6UL, 0U, 0U, 0U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_INPUT, 0U, 128U, 0UL, 16U, 0U, 0U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_SHAPE_INFO, 0U, 136U, 6UL, 0U, 0U, 0U}, {sizeof(GertModelArgSlotInfo), GERT_MODEL_ARG_OUTPUT, 0U, 184U, 0UL, 23U, 0U, 0U}}},
       .fusion_op = {nullptr, 0UL, 0UL, 0UL, 0UL},
     },

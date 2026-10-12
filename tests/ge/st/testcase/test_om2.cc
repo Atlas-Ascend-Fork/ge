@@ -2555,6 +2555,8 @@ TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithAicoreNode) {
   ASSERT_NE(load_and_run_buf, nullptr);
   const std::string load_and_run(reinterpret_cast<const char *>(load_and_run_buf.get()), load_and_run_size);
   EXPECT_NE(load_and_run.find("OM2_CHK_STATUS(args_table_.CopyArgsToDevice(nullptr, false));"), std::string::npos);
+  EXPECT_NE(load_and_run.find(".launch = {0, 0, 0, false, -1, 0}"), std::string::npos);
+  EXPECT_NE(load_and_run.find("if (launch_config.time_out >= 0)"), std::string::npos);
 
   size_t interface_size = 0U;
   const auto interface_buf = archive.ExtractToMem("fake_test/data/model_0/runtime/csrc/g1_internal.h", interface_size);
@@ -3377,6 +3379,12 @@ TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithTfAicpuOp) {
       "fake_test/manifest.json",
   };
   ExpectOm2ArchiveFiles(archive, expect_files);
+  size_t load_and_run_size = 0U;
+  const auto load_and_run_buf =
+      archive.ExtractToMem("fake_test/data/model_0/runtime/csrc/g1_load_and_run.cpp", load_and_run_size);
+  ASSERT_NE(load_and_run_buf, nullptr);
+  const std::string load_and_run(reinterpret_cast<const char *>(load_and_run_buf.get()), load_and_run_size);
+  EXPECT_NE(load_and_run.find(".launch = {0, 0, 0, -1, 0}"), std::string::npos);
 }
 
 void ExpectOm2SupportAndMemSize(const std::string &output_file, const ge::ModelData &model_data) {

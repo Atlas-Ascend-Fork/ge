@@ -388,7 +388,7 @@ Status KernelTaskCodeBuilder::BuildLaunchConfigSemantic(const TaskSemanticContri
   bool op_exec_never_timeout = false;
   if (AttrUtils::GetBool(context.op_desc, public_attr::OP_EXEC_NEVER_TIMEOUT, op_exec_never_timeout) &&
       op_exec_never_timeout) {
-    launch_semantic.config.time_out = op_exec_never_timeout;
+    launch_semantic.config.time_out = 0;
   }
   (void)AttrUtils::GetInt(context.op_desc, kLocalMemorySize, launch_semantic.config.local_memory_size);
   if (IsAllKernelTask(build_data_.semantic)) {
