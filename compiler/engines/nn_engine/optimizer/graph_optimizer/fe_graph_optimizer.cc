@@ -2006,6 +2006,10 @@ void FEGraphOptimizer::ConvertJson2ExtAttr(const ge::ComputeGraph &graph) const 
       for (const auto &pass_name : pass_names) {
         std::vector<std::vector<std::string>> origin_op_attrs_tmp;
         const nlohmann::json &json_value = nlohmann::json::parse(json_str);
+        if (!json_value.contains(pass_name)) {
+          FE_LOGD("Pass name [%s] is not found in origin op attrs json, skip it.", pass_name.c_str());
+          continue;
+        }
         json_value.at(pass_name).get_to(origin_op_attrs_tmp);
         origin_op_attrs_map->insert(
             std::pair<std::string, std::vector<std::vector<std::string>>>(pass_name, origin_op_attrs_tmp));

@@ -9,6 +9,7 @@
  */
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <set>
 #include "common/share_graph.h"
 #include "es_ge_test_ops.h"
 #include "graph/debug/ge_attr_define.h"
@@ -765,6 +766,56 @@ TEST_F(UtestPatternFusionPass, CanFuseSkipOnConflictStreamLabel) {
     }
   }
   EXPECT_EQ(transdata_count_after_run, 2U);
+}
+
+TEST_F(UtestPatternFusionPass, RecordOriginOpAttrAfterReplace) {
+  class TransDataToReluPass : public PatternFusionPass {
+   protected:
+    std::vector<PatternUniqPtr> Patterns() override {
+      std::vector<PatternUniqPtr> patterns;
+      patterns.emplace_back(BuildSingleTransDataPattern());
+      return patterns;
+    }
+    std::unique_ptr<Graph> Replacement(const unique_ptr<MatchResult> &match_result) override {
+      return BuildReluReplacementWithStubInfer();
+    }
+  };
+
+  putenv(const_cast<char *>("DUMP_GE_GRAPH=2"));
+  auto target_compute_graph = gert::ShareGraph::LstmpGraph();
+  auto target_graph = GraphUtilsEx::CreateGraphPtrFromComputeGraph(target_compute_graph);
+  std::set<std::string> transdata_names;
+  for (const auto &node : target_compute_graph->GetDirectNode()) {
+    if (node->GetType() == TRANSDATA) {
+      transdata_names.insert(node->GetName());
+    }
+  }
+  ASSERT_FALSE(transdata_names.empty());
+
+  CustomPassContext context;
+  context.SetPassName("TransDataToReluPass");
+  TransDataToReluPass transdata_2_relu_pass;
+  EXPECT_EQ(transdata_2_relu_pass.Run(target_graph, context), SUCCESS);
+
+  std::set<std::string> recorded_names;
+  for (const auto &node : target_compute_graph->GetDirectNode()) {
+    std::shared_ptr<std::unordered_map<std::string, std::vector<std::vector<std::string>>>> op_attrs_map = nullptr;
+    op_attrs_map = node->GetOpDesc()->TryGetExtAttr(ATTR_NAME_ORIGIN_OP_ATTRS_MAP, op_attrs_map);
+    if (node->GetType() == "Relu") {
+      ASSERT_NE(op_attrs_map, nullptr);
+      ASSERT_EQ(op_attrs_map->size(), 1U);
+      const auto iter = op_attrs_map->find("TransDataToReluPass");
+      ASSERT_NE(iter, op_attrs_map->end());
+      ASSERT_EQ(iter->second.size(), 1U);
+      ASSERT_EQ(iter->second[0].size(), 2U);
+      EXPECT_STREQ(iter->second[0][1].c_str(), TRANSDATA);
+      recorded_names.insert(iter->second[0][0]);
+    } else {
+      EXPECT_EQ(op_attrs_map, nullptr);
+    }
+  }
+  EXPECT_EQ(recorded_names, transdata_names);
+  unsetenv("DUMP_GE_GRAPH");
 }
 }  // namespace fusion
 }  // namespace ge
