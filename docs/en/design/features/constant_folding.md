@@ -233,8 +233,10 @@ This is constant folding main entry Pass, processing nodes with all inputs as co
     - **First level: Host CPU custom op** (`ComputeWithHostCpuCustomOp`)
       - Check whether current operator registered Host CPU backend custom implementation through `CustomOpFactory::IsExistOp(op_type, OpBackend::kHostCPU)`
       - Get instance through `CreateOrGetCustomOp(op_type, kHostCPU)` and call `HostCpuExecuteOp::Execute`
+      - When building the execution context (`BuildHostCpuOpContext`), the shape/format/dtype of input gert Tensors come from the actual constant Tensor description (`HostCpuInputMetadataSource::kActualTensor`), while output gert Tensors are built from the node output desc
      - **Second level: AICPU operator kernel** (`ComputeWithHostCpuKernel`)
        - `RunOpKernel` first explicitly checks the Host CPU implementation in `CustomOpFactory` at `OpRegistrationPriority::kBottom + OpEngine::kHostCpu`, and calls `HostCpuExecuteOp::Execute` if found
+         - This ordinary route uses `HostCpuInputMetadataSource::kNodeDesc`: the shape/format/dtype of input gert Tensors are overridden by the node `OpDesc` input desc, while the data address and size still come from the actual constant Tensor, that is, description and data come from separate sources, which keeps AICPU output shape validation against node descriptions working
        - If no custom implementation exists, try to get the operator Host CPU implementation through `aicpu_ascend_kernel` engine
       - Create operator instance through `OpKernelRegistry`, execute by `HostCpuEngine`
       - This level supports widest operator types, runtime loads `libconstant_folding_ops.so`
