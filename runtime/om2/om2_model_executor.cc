@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cinttypes>
 #include <cstddef>
+#include <mutex>
 #include <string>
 #include <fstream>
 #include <regex>
@@ -63,6 +64,11 @@ using RunAsyncFunc = int (*)(GertModelHandle model_handle, aclrtStream stream, c
 using UnloadFunc = int (*)(GertModelHandle model_handle, const struct GertModelUnloadConfig *config,
                            struct GertModelUnloadOutput *output);
 using RefreshFeatureMapFunc = int (*)(GertModelHandle model_handle, uintptr_t base_addr);
+using GetStreamNumFunc = uint64_t (*)();
+using GetStreamDescFunc = int32_t (*)(uint32_t *, uint64_t, void *);
+
+constexpr int32_t kOm2StreamPriorityMin = 0;
+constexpr int32_t kOm2StreamPriorityMax = 7;
 
 struct CustSharedLibInfo {
   std::string so_file;
@@ -85,6 +91,9 @@ struct RunModelInfo {
   RunFunc run_func = nullptr;
   RunAsyncFunc run_async_func = nullptr;
   RefreshFeatureMapFunc refresh_feature_map_func = nullptr;
+  GetStreamNumFunc get_stream_num_func = nullptr;
+  GetStreamDescFunc get_stream_desc_func = nullptr;
+  int32_t load_priority = 0;
 };
 
 struct ModelMetaInfo {
@@ -311,8 +320,13 @@ ge::Status FindInternalWeightBuf(const gert::GertModelData &om2_data,
                    [&internal_file_name](const std::unique_ptr<gert::GertModelDataFile> &slot) {
                      return (slot != nullptr) && (std::string(gert::GertGetStr(slot->file_name)) == internal_file_name);
                    });
-  GE_ASSERT_TRUE(data_it != constants_data.end(), "[OM2][Check] Constants data [%s] not found.",
-                 internal_file_name.c_str());
+  if (data_it == constants_data.end()) {
+    REPORT_PREDEFINED_ERR_MSG(
+        "E10059", std::vector<const char *>({"stage", "reason"}),
+        std::vector<const char *>({"LoadFromOm2ModelData", "Constants data not found in ZIP archive."}));
+    GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2][Check] Constants data [%s] not found.", internal_file_name.c_str());
+    return ACL_ERROR_GE_PARAM_INVALID;
+  }
   weight_buf = ge::ReadonlyByteBuffer(data_it->get()->data.get(), ge::ConditionalDeleter{false});
   return ge::SUCCESS;
 }
@@ -425,7 +439,7 @@ class Om2ModelExecutor::Impl {
       }
     }
 
-    GE_ASSERT_SUCCESS(FindInternalWeightBuf(om2_data, *unit.constants_config, weight_buf));
+    GE_CHK_STATUS_RET_NOLOG(FindInternalWeightBuf(om2_data, *unit.constants_config, weight_buf));
 
     return ge::SUCCESS;
   }
@@ -537,6 +551,10 @@ class Om2ModelExecutor::Impl {
     GE_ASSERT_NOTNULL(run_model_info_.run_async_func);
     run_model_info_.refresh_feature_map_func =
         reinterpret_cast<RefreshFeatureMapFunc>(mmDlsym(run_model_info_.so_handle, "GertModelRefreshFeatureMap"));
+    run_model_info_.get_stream_num_func =
+        reinterpret_cast<GetStreamNumFunc>(mmDlsym(run_model_info_.so_handle, "GertModelGetStreamNum"));
+    run_model_info_.get_stream_desc_func =
+        reinterpret_cast<GetStreamDescFunc>(mmDlsym(run_model_info_.so_handle, "GertModelGetStreamDesc"));
     return ge::SUCCESS;
   }
 
@@ -554,12 +572,15 @@ class Om2ModelExecutor::Impl {
     constants.resize(classified_items.max_index + 1U, nullptr);
     std::map<std::string, ge::FileConstantMem> user_file_const_mems;
     GE_ASSERT_SUCCESS(BuildUserFileConstMemMap(load_arg.file_constant_mems, user_file_const_mems));
-    GE_ASSERT_SUCCESS(
-        PrepareInternalConsts(weight_buf, load_arg, classified_items.internal_consts, internal_weight_size, constants));
-    GE_ASSERT_SUCCESS(PrepareCombinedConsts(load_arg.weight_path, load_arg.om_path, user_file_const_mems,
-                                            classified_items.combined_consts, constants));
-    GE_ASSERT_SUCCESS(PrepareIndividualConsts(load_arg.weight_path, load_arg.om_path, user_file_const_mems,
-                                              classified_items.individual_consts, constants));
+    GE_CHK_STATUS_RET(
+        PrepareInternalConsts(weight_buf, load_arg, classified_items.internal_consts, internal_weight_size, constants),
+        "[OM2][Call]PrepareInternalConsts failed");
+    GE_CHK_STATUS_RET(PrepareCombinedConsts(load_arg.weight_path, load_arg.om_path, user_file_const_mems,
+                                            classified_items.combined_consts, constants),
+                      "[OM2][Call]PrepareCombinedConsts failed");
+    GE_CHK_STATUS_RET(PrepareIndividualConsts(load_arg.weight_path, load_arg.om_path, user_file_const_mems,
+                                              classified_items.individual_consts, constants),
+                      "[OM2][Call]PrepareIndividualConsts failed");
     return ge::SUCCESS;
   }
 
@@ -627,8 +648,9 @@ class Om2ModelExecutor::Impl {
     }
     session_id_ = session_id;
     GE_ASSERT_TRUE(!model_data.models.empty(), "[OM2] models is empty");
-    GE_ASSERT_SUCCESS(
-        PrepareConstantsFromStruct(*model_data.models[0]->constants_config, weight_buf, load_arg, constants));
+    GE_CHK_STATUS_RET(
+        PrepareConstantsFromStruct(*model_data.models[0]->constants_config, weight_buf, load_arg, constants),
+        "[OM2][Call]PrepareConstantsFromStruct failed.");
     GE_ASSERT_SUCCESS(PrepareVariablesFromStruct(*model_data.models[0], load_arg));
 
     GE_ASSERT_SUCCESS(PrepareVarAddrs(model_data, static_cast<uint32_t>(load_arg.device_id), var_addrs));
@@ -651,6 +673,7 @@ class Om2ModelExecutor::Impl {
                                          .reuse_zero_copy = load_arg.reuse_zero_copy ? 1U : 0U};
     GE_ASSERT_SUCCESS(run_model_info_.load_func(&config, &run_model_info_.model_handle, nullptr));
     GE_ASSERT_NOTNULL(run_model_info_.model_handle);
+    run_model_info_.load_priority = load_arg.priority;
 
     return ge::GRAPH_SUCCESS;
   }
@@ -662,8 +685,9 @@ class Om2ModelExecutor::Impl {
     std::vector<void *> var_addrs;
     GE_ASSERT_SUCCESS(InitModelDumpInfo(load_arg));
     ReportModelLoadBegin();
-    GE_ASSERT_SUCCESS(
-        CreateModelFromStruct(model_data, weight_buf, kernel_bin_info, load_arg, session_id, constants, var_addrs));
+    GE_CHK_STATUS_RET(
+        CreateModelFromStruct(model_data, weight_buf, kernel_bin_info, load_arg, session_id, constants, var_addrs),
+        "[OM2][Call][CreateModelFromStruct] failed.");
     ReportModelLoadEnd();
     GE_ASSERT_SUCCESS(DispatchDumpInfo());
     weight_buf.reset(nullptr);
@@ -799,6 +823,82 @@ class Om2ModelExecutor::Impl {
     GE_ASSERT_NOTNULL(run_model_info_.refresh_feature_map_func, "[OM2][FeatureMap] Refresh interface is unavailable.");
     GE_ASSERT_NOTNULL(run_model_info_.model_handle);
     GE_ASSERT_SUCCESS(run_model_info_.refresh_feature_map_func(run_model_info_.model_handle, mem_base));
+    return ge::SUCCESS;
+  }
+
+  ge::Status QueryModelStreamDesc(GertModelStreamDesc &desc) const {
+    desc = GertModelStreamDesc();
+    desc.model_handle = run_model_info_.model_handle;
+    if ((run_model_info_.get_stream_num_func == nullptr) || (run_model_info_.get_stream_desc_func == nullptr)) {
+      return ACL_ERROR_API_NOT_SUPPORT;
+    }
+    const auto stream_num = run_model_info_.get_stream_num_func();
+    if (stream_num == 0U) {
+      return ACL_ERROR_API_NOT_SUPPORT;
+    }
+    std::vector<uint32_t> stream_flags(stream_num, 0U);
+    const auto ret = run_model_info_.get_stream_desc_func(stream_flags.data(), stream_num, &desc);
+    if (ret != 0) {
+      GELOGE(ge::FAILED, "[OM2][Stream][Priority] GertModelGetStreamDesc failed, ret=%d.", ret);
+      return ge::FAILED;
+    }
+    if (desc.stream_num == 0U) {
+      return ACL_ERROR_API_NOT_SUPPORT;
+    }
+    return ge::SUCCESS;
+  }
+
+  ge::Status SetStreamPriority(const int32_t priority) {
+    GE_ASSERT_TRUE(has_model_);
+    const std::lock_guard<std::mutex> lock(stream_attr_mutex_);
+    if ((priority < kOm2StreamPriorityMin) || (priority > kOm2StreamPriorityMax)) {
+      GELOGE(ge::PARAM_INVALID, "[OM2][Stream][Priority] Invalid priority value %d, should be in range [%d, %d].",
+             priority, kOm2StreamPriorityMin, kOm2StreamPriorityMax);
+      return ge::PARAM_INVALID;
+    }
+    GertModelStreamDesc desc;
+    const auto query_ret = QueryModelStreamDesc(desc);
+    if (query_ret != ge::SUCCESS) {
+      return query_ret;
+    }
+    for (uint64_t i = 0U; i < desc.stream_num; ++i) {
+      aclrtStreamAttrValue attr_value = {};
+      attr_value.streamPriority = priority;
+      const aclError acl_ret = aclrtSetStreamAttribute(desc.streams[i], ACL_STREAM_ATTR_PRIORITY, &attr_value);
+      if (acl_ret == ACL_ERROR_RT_FEATURE_NOT_SUPPORT) {
+        GELOGW("[OM2][Stream][Priority] aclrtSetStreamAttribute not supported, stream[%lu], ret=%d.", i, acl_ret);
+        break;
+      } else if (acl_ret != ACL_SUCCESS) {
+        GELOGE(ge::FAILED, "[OM2][Stream][Priority] aclrtSetStreamAttribute failed, stream[%lu], ret=%d.", i, acl_ret);
+        return ge::FAILED;
+      }
+    }
+    GELOGI("[OM2][Stream][Priority] Set stream priority success, model_id=%u, priority=%d, streams=%lu.", model_id_,
+           priority, desc.stream_num);
+    return ge::SUCCESS;
+  }
+
+  ge::Status GetStreamPriority(int32_t *priority) const {
+    GE_ASSERT_TRUE(has_model_);
+    GE_ASSERT_NOTNULL(priority);
+    const std::lock_guard<std::mutex> lock(stream_attr_mutex_);
+    GertModelStreamDesc desc;
+    const auto query_ret = QueryModelStreamDesc(desc);
+    if (query_ret != ge::SUCCESS) {
+      return query_ret;
+    }
+    aclrtStreamAttrValue attr_value = {};
+    const aclError acl_ret = aclrtGetStreamAttribute(desc.streams[0], ACL_STREAM_ATTR_PRIORITY, &attr_value);
+    if (acl_ret == ACL_ERROR_RT_FEATURE_NOT_SUPPORT) {
+      *priority = run_model_info_.load_priority;
+      GELOGW("[OM2][Stream][Priority] aclrtGetStreamAttribute not supported, ret=%d.", acl_ret);
+      return ge::SUCCESS;
+    }
+    if (acl_ret != ACL_SUCCESS) {
+      GELOGE(ge::FAILED, "[OM2][Stream][Priority] aclrtGetStreamAttribute failed, ret=%d.", acl_ret);
+      return ge::FAILED;
+    }
+    *priority = attr_value.streamPriority;
     return ge::SUCCESS;
   }
 
@@ -1083,7 +1183,16 @@ class Om2ModelExecutor::Impl {
     if (const_items.empty()) {
       return ge::SUCCESS;
     }
-    GE_ASSERT_TRUE(weight_buf != nullptr, "[OM2][Check] Missing internal host weight buffer.");
+    if (weight_buf == nullptr) {
+      REPORT_PREDEFINED_ERR_MSG("E10059", std::vector<const char *>({"stage", "reason"}),
+                                std::vector<const char *>({"PrepareInternalConsts",
+                                                           "Internal weight file [data/constants/constant_0] not found "
+                                                           "in OM2 package, please check whether the OM2 model file is "
+                                                           "complete or has been modified."}));
+      GELOGE(ACL_ERROR_GE_PARAM_INVALID,
+             "[OM2][Check] Missing internal host weight buffer, the internal weight file is not found in OM2 file.");
+      return ACL_ERROR_GE_PARAM_INVALID;
+    }
     const void *host_weight_base = weight_buf.get();
     void *device_weight_base = load_arg.weight_ptr;
     if (device_weight_base != nullptr) {
@@ -1166,6 +1275,7 @@ class Om2ModelExecutor::Impl {
   uint64_t step_id_ = 1U;
   aclrtStream prof_stream_ = nullptr;
   Om2ModelExecutor *owner_ = nullptr;
+  mutable std::mutex stream_attr_mutex_;
   // 当前档位维度值，由 SetDynamicSize 写入，GetCurrentShape 读取
   std::vector<uint64_t> cur_batch_size_;
   int32_t dynamic_type_ = 0;  // 0=FIXED
@@ -1212,7 +1322,8 @@ ge::Status Om2ModelExecutor::Load(const gert::GertModelData &model_data, const O
   GE_ASSERT_SUCCESS(impl_->ResolveSymbols());
   GE_ASSERT_SUCCESS(impl_->CreateDumpManager(load_arg));
   impl_->owner_ = const_cast<Om2ModelExecutor *>(this);
-  GE_ASSERT_SUCCESS(impl_->CreateAndLoadModelFromStruct(model_data, weight_buf, kernel_bin_info, load_arg, session_id));
+  GE_CHK_STATUS_RET(impl_->CreateAndLoadModelFromStruct(model_data, weight_buf, kernel_bin_info, load_arg, session_id),
+                    "[OM2][Call][CreateAndLoadModelFromStruct] failed.");
   return ge::SUCCESS;
 }
 
@@ -1319,6 +1430,14 @@ ge::Status Om2ModelExecutor::UpdateFmMemBases(const uintptr_t mem_base, const si
   return impl_->UpdateFmMemBases(mem_base, size);
 }
 
+ge::Status Om2ModelExecutor::SetStreamPriority(const int32_t priority) {
+  return impl_->SetStreamPriority(priority);
+}
+
+ge::Status Om2ModelExecutor::GetStreamPriority(int32_t *priority) const {
+  return impl_->GetStreamPriority(priority);
+}
+
 ge::Status LoadOm2DataFromFile(const std::string &model_path, ge::ModelData &model_data) {
   GELOGI("Begin to load om2 model data from file, path: [%s]", model_path.c_str());
   const std::string file_path = ge::om2::RealPath(model_path.c_str());
@@ -1337,7 +1456,8 @@ ge::Status LoadOm2DataFromFile(const std::string &model_path, ge::ModelData &mod
     const auto err_msg = mmGetErrorFormatMessage(mmGetErrorCode(), &err_buf[0], kMaxErrorStringLen);
     const std::string reason = ge::FormatErrnoReason(mmGetErrorCode(), err_msg);
     GELOGE(ACL_ERROR_GE_EXEC_MODEL_PATH_INVALID, "[Open][File]Failed, file %s, error %s", model_path.c_str(), err_msg);
-    REPORT_INNER_ERR_MSG("E19999", "Open file %s failed, reason:%s", model_path.c_str(), reason.c_str());
+    REPORT_PREDEFINED_ERR_MSG("E13001", std::vector<const char *>({"file", "errmsg"}),
+                              std::vector<const char *>({model_path.c_str(), reason.c_str()}));
     return ACL_ERROR_GE_EXEC_MODEL_PATH_INVALID;
   }
 
@@ -1695,7 +1815,8 @@ ge::Status IsOm2Model(const char *file_path, bool &is_support) {
     const auto err_msg = mmGetErrorFormatMessage(mmGetErrorCode(), &err_buf[0], kMaxErrorStringLen);
     const std::string reason = ge::FormatErrnoReason(mmGetErrorCode(), err_msg);
     GELOGE(ACL_ERROR_GE_EXEC_MODEL_PATH_INVALID, "[Open][File]Failed, file %s, error %s", file_path, err_msg);
-    REPORT_INNER_ERR_MSG("E19999", "Open file %s failed, reason:%s", file_path, reason.c_str());
+    REPORT_PREDEFINED_ERR_MSG("E13001", std::vector<const char *>({"file", "errmsg"}),
+                              std::vector<const char *>({file_path, reason.c_str()}));
     return ACL_ERROR_GE_EXEC_MODEL_PATH_INVALID;
   }
 
