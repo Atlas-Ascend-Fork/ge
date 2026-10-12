@@ -11,11 +11,9 @@
 #include "framework/runtime/dump/model_dump_manager.h"
 #include "framework/runtime/dump/dump_config.h"
 #include "framework/runtime/dump/dump_callback_manager.h"
-#include "framework/runtime/dump/profiling_callback_manager.h"
 #include "framework/runtime/dump/data_dump_impl.h"
 #include "framework/runtime/dump/exception_dump_impl.h"
 #include "framework/runtime/dump/overflow_dump_impl.h"
-#include "framework/runtime/dump/profiling_impl.h"
 #include "framework/runtime/dump/dump_op_impl.h"
 #include "common/checker.h"
 #include "framework/common/debug/ge_log.h"
@@ -26,7 +24,6 @@ Status ModelDumpManager::GlobalInit() {
   GELOGD("ModelDumpManager::GlobalInit start");
   DumpConfig::Instance().Reset();
   GE_ASSERT_SUCCESS(DumpCallbackManager::GlobalInit());
-  GE_ASSERT_SUCCESS(ProfilingCallbackManager::GlobalInit());
   return SUCCESS;
 }
 
@@ -42,7 +39,6 @@ ModelDumpManager::ModelDumpManager(uint32_t model_id) : model_id_(model_id) {
   data_dump_impl_ = std::make_unique<DataDumpImpl>();
   exception_impl_ = std::make_unique<ExceptionDumpImpl>();
   overflow_impl_ = std::make_unique<OverflowDumpImpl>();
-  profiling_impl_ = std::make_unique<ProfilingImpl>();
   dump_op_impl_ = std::make_unique<DumpOpImpl>();
 }
 
@@ -55,9 +51,6 @@ Status ModelDumpManager::SetModelDumpInfo(const ModelDumpInfo &model_info) {
   const char *model_name = (model_info.model_name != nullptr) ? model_info.model_name : "";
   GELOGD("SetModelDumpInfo: model_id=%u, model_name=%s", model_info.model_id, model_name);
   model_info_ = model_info;
-  if (profiling_impl_ != nullptr) {
-    (void)profiling_impl_->RegisterModelToProfilingRuntime(model_info_);
-  }
   exception_impl_->SetDeviceId(model_info.device_id);
 
   // 如果 Overflow 开关开启，自动注册
@@ -80,42 +73,6 @@ Status ModelDumpManager::SetModelDumpInfo(const ModelDumpInfo &model_info) {
 void ModelDumpManager::SetClearDfxCacheFlagAfterLoad(bool clear_cache) {
   GELOGI("set clear_cache %d", static_cast<int32_t>(clear_cache));
   need_clear_dfx_cache_ = clear_cache;
-}
-
-Status ModelDumpManager::ReportModelLoadBegin() const {
-  if (profiling_impl_ == nullptr) {
-    return SUCCESS;
-  }
-  return profiling_impl_->ReportModelLoadBegin(model_info_);
-}
-
-Status ModelDumpManager::ReportModelLoadEnd() const {
-  if (profiling_impl_ == nullptr) {
-    return SUCCESS;
-  }
-  return profiling_impl_->ReportModelLoadEnd(model_info_);
-}
-
-bool ModelDumpManager::IsProfilingEnabled() const {
-  return profiling_impl_ != nullptr && profiling_impl_->IsProfilingEnabled();
-}
-
-Status ModelDumpManager::ReportRunInfoPreprocess(uint64_t model_id, uint64_t step_id, aclrtStream stream) const {
-  if (profiling_impl_ == nullptr) {
-    GELOGW("[OM2][Prof] Skip ReportRunInfoPreprocess, profiling_impl is null, model_id=%u", model_id);
-    return FAILED;
-  }
-  GE_CHK_STATUS_RET(profiling_impl_->ReportRunInfoPreprocessImpl(model_id, step_id, stream));
-  return SUCCESS;
-}
-
-Status ModelDumpManager::ReportRunInfoPostprocess(uint64_t model_id, uint64_t step_id, aclrtStream stream) const {
-  if (profiling_impl_ == nullptr) {
-    GELOGW("[OM2][Prof] Skip ReportRunInfoPostprocess, profiling_impl is null, model_id=%u", model_id);
-    return FAILED;
-  }
-  GE_CHK_STATUS_RET(profiling_impl_->ReportRunInfoPostprocessImpl(model_id, step_id, stream));
-  return SUCCESS;
 }
 
 Status ModelDumpManager::IsDataDumpEnabled(const char *op_name, uint8_t *is_data_dump) const {
@@ -243,13 +200,6 @@ Status ModelDumpManager::PostprocessOm2TaskInfo(const GertModelTaskDesc &task_in
     }
   }
 
-  if (profiling_impl_ != nullptr) {
-    const Status prof_ret = profiling_impl_->SaveTaskInfo(task_info, model_info_);
-    if (prof_ret != SUCCESS) {
-      GELOGW("Save profiling task info failed, op_name=%s, ret=%u", op_name, prof_ret);
-    }
-  }
-
   return SUCCESS;
 }
 
@@ -293,9 +243,6 @@ void ModelDumpManager::Clear() {
   }
   if (overflow_impl_ != nullptr && model_info_.rt_model_handle != nullptr) {
     overflow_impl_->UnregisterForModel(model_info_.rt_model_handle);
-  }
-  if (profiling_impl_ != nullptr) {
-    (void)profiling_impl_->UnregisterModelFromProfilingRuntime(model_id_);
   }
 }
 

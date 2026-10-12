@@ -23,6 +23,7 @@
 #include "framework/runtime/dump/profiling_config.h"
 #include "framework/runtime/dump/profiling_callback_manager.h"
 #include "framework/runtime/dump/profiling_impl.h"
+#include "framework/runtime/gert_model/gert_model_executor_callbacks.h"
 #include "framework/runtime/om2_model_executor.h"
 #include "common/debug/ge_log.h"
 #include "depends/profiler/src/dump_stub.h"

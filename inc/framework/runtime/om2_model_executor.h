@@ -19,6 +19,8 @@
 #include "framework/om2/model_data/gert_model_data.h"
 #include "acl/acl_base_rt.h"
 
+struct GertModelTaskDesc;
+
 namespace gert {
 struct GertModelData;
 class RtSession;
@@ -84,6 +86,11 @@ class VISIBILITY_EXPORT Om2ModelExecutor {
   ge::Status UpdateFmMemBases(const uintptr_t mem_base, const size_t size);
   ge::Status SetStreamPriority(const int32_t priority);
   ge::Status GetStreamPriority(int32_t *priority) const;
+  // profiling 能力由 executor 直接持有（不依赖 libom2_dump.so）
+  ge::Status ReportProfilingRunInfoPreprocess(uint64_t model_id, uint64_t step_id, aclrtStream stream) const;
+  ge::Status ReportProfilingRunInfoPostprocess(uint64_t model_id, uint64_t step_id, aclrtStream stream) const;
+  void SaveProfilingTaskInfo(const GertModelTaskDesc &task_info) const;
+  ge::Status ReportModelBaseInfo(const struct GertModelBaseInfo *info);
 
  private:
   class Impl;

@@ -25,8 +25,10 @@
 #include "framework/om2/model_api/om2_model_api.h"
 #include "framework/runtime/rt_session.h"
 #include "framework/runtime/gert_model/gert_model_executor_callbacks.h"
-#include "framework/runtime/dump/model_dump_manager.h"
+#include "framework/runtime/dump/model_dump_c_api.h"
+#include "framework/runtime/dump/profiling_impl.h"
 #include "framework/common/framework_types_internal.h"
+#include "om2_dfx_loader.h"
 #include "framework/common/taskdown_common.h"
 #include "runtime/om2_model_executor.h"
 #include "common/checker.h"
@@ -382,6 +384,30 @@ GertModelLoadCallbacks CreateGertModelLoadCallbacks() {
           .release_bin_handle_from_store = ReleaseBinHandleFromStore};
 }
 
+// profiling run info 回调：由 executor 本地实现（profiling 不依赖 libom2_dump.so），
+// 经 GertModelRunCallbacks 传给模型 SO，由模型 SO 在 Run/RunAsync 前后回调。
+int32_t ReportRunInfoPreprocess(void *instance_handle, const GertModelRunReportInfo *info) {
+  if ((instance_handle == nullptr) || (info == nullptr)) {
+    return 0;
+  }
+  auto *executor = static_cast<Om2ModelExecutor *>(instance_handle);
+  void *stream_raw = (info->is_async != 0U) ? info->stream : static_cast<void *>(executor->GetOrCreateProfStream());
+  (void)executor->ReportProfilingRunInfoPreprocess(info->model_id, executor->GetStepId(),
+                                                   static_cast<aclrtStream>(stream_raw));
+  return 0;
+}
+
+int32_t ReportRunInfoPostprocess(void *instance_handle, const GertModelRunReportInfo *info) {
+  if ((instance_handle == nullptr) || (info == nullptr)) {
+    return 0;
+  }
+  auto *executor = static_cast<Om2ModelExecutor *>(instance_handle);
+  void *stream_raw = (info->is_async != 0U) ? info->stream : static_cast<void *>(executor->GetOrCreateProfStream());
+  (void)executor->ReportProfilingRunInfoPostprocess(info->model_id, executor->GetStepId(),
+                                                    static_cast<aclrtStream>(stream_raw));
+  return 0;
+}
+
 }  // namespace
 
 class Om2ModelExecutor::Impl {
@@ -697,90 +723,85 @@ class Om2ModelExecutor::Impl {
 
   ge::Status CreateDumpManager(const Om2ModelLoadArg &load_arg) {
     model_id_ = load_arg.model_id;
-    dump_manager_ =
-        std::unique_ptr<ge::dump::ModelDumpManager>(new (std::nothrow) ge::dump::ModelDumpManager(load_arg.model_id));
-    GE_ASSERT_TRUE(dump_manager_ != nullptr);
-    dump_manager_->SetClearDfxCacheFlagAfterLoad(load_arg.need_clear_dfx_cache);
+    GE_ASSERT_SUCCESS(Om2DfxApi::Instance().CreateDumpManager(load_arg.model_id, &dump_manager_handle_));
+    Om2DfxApi::Instance().SetClearDfxCacheFlag(dump_manager_handle_, load_arg.need_clear_dfx_cache ? 1U : 0U);
     return ge::SUCCESS;
   }
 
   ge::Status InitModelDumpInfo(const Om2ModelLoadArg &load_arg) {
-    GE_ASSERT_TRUE(dump_manager_ != nullptr);
-    ge::dump::ModelDumpInfo &model_dump_info = dump_manager_->GetModelDumpInfo();
-    model_dump_info.model_id = load_arg.model_id;
-    model_dump_info.model_name = run_model_info_.model_name.c_str();
-    model_dump_info.root_graph_name = run_model_info_.root_graph_name.c_str();
-    model_dump_info.device_id = static_cast<uint32_t>(load_arg.device_id);
-    // model_dump_info.rt_model_handle will be set value when callback ReportModelBaseInfo was triggered
-    model_dump_info.rt_model_handle = nullptr;
-    model_dump_info.step_id_addr = 0U;
-    model_dump_info.loop_cond_addr = 0U;
-    model_dump_info.iterations_per_loop_addr = 0U;
-    GELOGI(
-        "[OM2][Dump] Set model dump info: model_id=%u, model_name=%s, root_graph_name=%s, device_id=%u, "
-        "rt_model_handle=%p, step_id_addr=%" PRIu64 ", loop_cond_addr=%" PRIu64 ", iterations_per_loop_addr=%" PRIu64
-        ".",
-        model_dump_info.model_id, model_dump_info.model_name, model_dump_info.root_graph_name,
-        model_dump_info.device_id, model_dump_info.rt_model_handle, model_dump_info.step_id_addr,
-        model_dump_info.loop_cond_addr, model_dump_info.iterations_per_loop_addr);
-    GELOGI("[OM2][Dump] Set model dump info success, model_id=%u.", model_dump_info.model_id);
+    auto &dump_model_info = model_dump_info_;
+    dump_model_info.model_id = load_arg.model_id;
+    dump_model_info.model_name = run_model_info_.model_name.c_str();
+    dump_model_info.root_graph_name = run_model_info_.root_graph_name.c_str();
+    dump_model_info.device_id = static_cast<uint32_t>(load_arg.device_id);
+    dump_model_info.rt_model_handle = nullptr;
+    dump_model_info.step_id_addr = 0U;
+    dump_model_info.loop_cond_addr = 0U;
+    dump_model_info.iterations_per_loop_addr = 0U;
+    // rt_model_handle 等字段仅 dump 侧使用（overflow 注册），由 executor 侧 ReportModelBaseInfo 回调回填；
     return ge::SUCCESS;
   }
 
   void ReportModelLoadBegin() const {
-    if (dump_manager_ == nullptr) {
+    if (profiling_impl_ == nullptr) {
       return;
     }
-    const ge::Status ret = dump_manager_->ReportModelLoadBegin();
+    const ge::Status ret = profiling_impl_->ReportModelLoadBegin(model_dump_info_);
     if (ret != ge::SUCCESS) {
       GELOGW("[OM2][Profiling] Report model load begin failed, model_id=%u, ret=%u.", model_id_, ret);
     }
   }
 
   void ReportModelLoadEnd() const {
-    if (dump_manager_ == nullptr) {
+    if (profiling_impl_ == nullptr) {
       return;
     }
-    const ge::Status ret = dump_manager_->ReportModelLoadEnd();
+    const ge::Status ret = profiling_impl_->ReportModelLoadEnd(model_dump_info_);
     if (ret != ge::SUCCESS) {
       GELOGW("[OM2][Profiling] Report model load end failed, model_id=%u, ret=%u.", model_id_, ret);
     }
   }
 
   ge::Status DispatchDumpInfo() {
-    GE_ASSERT_TRUE(dump_manager_ != nullptr);
     GELOGI("[OM2][Dump] Dispatch dump info begin, model_id=%u, model_name=%s, root_graph_name=%s.", model_id_,
            run_model_info_.model_name.c_str(), run_model_info_.root_graph_name.c_str());
-    GE_ASSERT_SUCCESS(dump_manager_->DispatchDumpInfo());
+    GE_ASSERT_SUCCESS(Om2DfxApi::Instance().DispatchDumpInfo(dump_manager_handle_));
     GELOGI("[OM2][Dump] Dispatch dump info success, model_id=%u, model_name=%s, root_graph_name=%s.", model_id_,
            run_model_info_.model_name.c_str(), run_model_info_.root_graph_name.c_str());
     return ge::SUCCESS;
   }
 
+  // 组装 Run/RunAsync 公共的 run 配置：profiling 回调探测（executor 本地实现）+ 输入/输出/超时字段填充。
+  // run_callbacks 为出参，须由调用方持有至 run_func 调用结束（config 内部持有其指针）。
+  ge::Status BuildRunConfig(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs,
+                            uint64_t stream_sync_timeout_ms, GertModelRunCallbacks &run_callbacks,
+                            GertModelRunConfig &config) {
+    GE_ASSERT_NOTNULL(run_model_info_.model_handle);
+    if ((profiling_impl_ != nullptr) && profiling_impl_->IsProfilingEnabled()) {
+      run_callbacks.report_run_info_preprocess = &ReportRunInfoPreprocess;
+      run_callbacks.report_run_info_postprocess = &ReportRunInfoPostprocess;
+    }
+    config = GertModelRunConfig{.struct_size = sizeof(GertModelRunConfig),
+                                .input_count = inputs.size(),
+                                .input_data = inputs.data(),
+                                .output_count = outputs.size(),
+                                .output_data = outputs.data(),
+                                .stream_sync_timeout_ms = stream_sync_timeout_ms,
+                                .run_callbacks = &run_callbacks};
+    return ge::GRAPH_SUCCESS;
+  }
+
   ge::Status Run(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs) {
     GE_ASSERT_TRUE(has_model_);
     GE_ASSERT_NOTNULL(run_model_info_.run_func);
-    GE_ASSERT_NOTNULL(run_model_info_.model_handle);
     int32_t timeout = GetOm2ThreadLocalContext().StreamSyncTimeout();
     GertModelRunCallbacks run_callbacks;
-    const GertModelRunCallbacks *run_callbacks_ptr = nullptr;
-    if (dump_manager_ != nullptr && dump_manager_->IsProfilingEnabled()) {
-      run_callbacks.report_run_info_preprocess = ReportRunInfoPreprocess;
-      run_callbacks.report_run_info_postprocess = ReportRunInfoPostprocess;
-      run_callbacks_ptr = &run_callbacks;
-    }
-
-    struct GertModelRunConfig config = {.struct_size = sizeof(GertModelRunConfig),
-                                        .input_count = inputs.size(),
-                                        .input_data = inputs.data(),
-                                        .output_count = outputs.size(),
-                                        .output_data = outputs.data(),
-                                        .stream_sync_timeout_ms = static_cast<uint64_t>(timeout),
-                                        .run_callbacks = run_callbacks_ptr};
+    GertModelRunConfig config;
+    GE_ASSERT_SUCCESS(BuildRunConfig(inputs, outputs, static_cast<uint64_t>(timeout), run_callbacks, config));
     struct GertModelRunOutput output = {.struct_size = sizeof(GertModelRunOutput)};
     // 对齐 v1：执行前把当前 step（从 0 开始）刷入 dump step 设备内存，供 AICPU dump kernel 计算 step 落盘目录
-    if (dump_manager_ != nullptr) {
-      GE_ASSERT_SUCCESS(dump_manager_->UpdateStepId(step_id_ - 1U, nullptr));
+    if (dump_manager_handle_ != nullptr) {
+      GE_ASSERT_SUCCESS(Om2DfxApi::Instance().UpdateStepId(dump_manager_handle_, step_id_ - 1U, nullptr));
     }
     GE_ASSERT_SUCCESS(run_model_info_.run_func(run_model_info_.model_handle, &config, &output));
     ++step_id_;
@@ -790,26 +811,14 @@ class Om2ModelExecutor::Impl {
   ge::Status RunAsync(void *const stream, std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs) {
     GE_ASSERT_TRUE(has_model_);
     GE_ASSERT_NOTNULL(run_model_info_.run_async_func);
-    GE_ASSERT_NOTNULL(run_model_info_.model_handle);
     GertModelRunCallbacks run_callbacks;
-    const GertModelRunCallbacks *run_callbacks_ptr = nullptr;
-    if (dump_manager_ != nullptr && dump_manager_->IsProfilingEnabled()) {
-      run_callbacks.report_run_info_preprocess = ReportRunInfoPreprocess;
-      run_callbacks.report_run_info_postprocess = ReportRunInfoPostprocess;
-      run_callbacks_ptr = &run_callbacks;
-    }
-    struct GertModelRunConfig config = {.struct_size = sizeof(GertModelRunConfig),
-                                        .input_count = inputs.size(),
-                                        .input_data = inputs.data(),
-                                        .output_count = outputs.size(),
-                                        .output_data = outputs.data(),
-                                        .stream_sync_timeout_ms = 0,
-                                        .run_callbacks = run_callbacks_ptr};
+    GertModelRunConfig config;
+    GE_ASSERT_SUCCESS(BuildRunConfig(inputs, outputs, 0, run_callbacks, config));
     struct GertModelRunOutput output = {.struct_size = sizeof(GertModelRunOutput)};
     // 对齐 v1：执行前在模型流上异步刷新当前 step（从 0 开始）到 dump step 设备内存，
     // 与后续模型任务保序，供 AICPU dump kernel 计算 step 落盘目录
-    if (dump_manager_ != nullptr) {
-      GE_ASSERT_SUCCESS(dump_manager_->UpdateStepId(step_id_ - 1U, stream));
+    if (dump_manager_handle_ != nullptr) {
+      GE_ASSERT_SUCCESS(Om2DfxApi::Instance().UpdateStepId(dump_manager_handle_, step_id_ - 1U, stream));
     }
     GE_ASSERT_SUCCESS(run_model_info_.run_async_func(run_model_info_.model_handle, stream, &config, &output));
     ++step_id_;
@@ -958,9 +967,8 @@ class Om2ModelExecutor::Impl {
       GELOGD("[OM2][Get][OpDescInfo] Device id does not match, input=%u, model=%d.", device_id, device_id_);
       return ge::FAILED;
     }
-    GE_ASSERT_NOTNULL(dump_manager_);
-    return dump_manager_->GetOpDescInfo(ge::OpDescInfoId(task_id, stream_id, static_cast<int32_t>(device_id)),
-                                        op_desc_info)
+    return (Om2DfxApi::Instance().GetOpDescInfo(dump_manager_handle_, task_id, stream_id,
+                                                static_cast<int32_t>(device_id), &op_desc_info) != 0)
                ? ge::SUCCESS
                : ge::FAILED;
   }
@@ -1148,9 +1156,76 @@ class Om2ModelExecutor::Impl {
     return ge::SUCCESS;
   }
 
+  ge::Status ReportProfilingRunInfoPreprocess(uint64_t model_id, uint64_t step_id, aclrtStream stream) const {
+    if (profiling_impl_ == nullptr) {
+      GELOGW("[OM2][Prof] Skip ReportRunInfoPreprocess, profiling_impl is null, model_id=%" PRIu64 ".", model_id);
+      return ge::FAILED;
+    }
+    return profiling_impl_->ReportRunInfoPreprocessImpl(model_id, step_id, stream);
+  }
+
+  ge::Status ReportProfilingRunInfoPostprocess(uint64_t model_id, uint64_t step_id, aclrtStream stream) const {
+    if (profiling_impl_ == nullptr) {
+      GELOGW("[OM2][Prof] Skip ReportRunInfoPostprocess, profiling_impl is null, model_id=%" PRIu64 ".", model_id);
+      return ge::FAILED;
+    }
+    return profiling_impl_->ReportRunInfoPostprocessImpl(model_id, step_id, stream);
+  }
+
+  void SaveProfilingTaskInfo(const GertModelTaskDesc &task_info) const {
+    if (profiling_impl_ == nullptr) {
+      return;
+    }
+    const ge::Status ret = profiling_impl_->SaveTaskInfo(task_info, model_dump_info_);
+    if (ret != ge::SUCCESS) {
+      const char *op_name = (task_info.op_name != nullptr) ? task_info.op_name : "";
+      GELOGW("[OM2][Profiling] Save profiling task info failed, op_name=%s, ret=%u.", op_name, ret);
+    }
+  }
+
+  ge::Status ReportModelBaseInfo(const struct GertModelBaseInfo *info) {
+    if (info == nullptr) {
+      GELOGI("[OM2][Dump] Skip setting dump info, since input parameter info=nullptr.");
+      return ge::SUCCESS;
+    }
+    model_dump_info_.rt_model_handle = info->rt_model_handle;
+    if (dump_manager_handle_ == nullptr) {
+      GELOGI("[OM2][Dump] Skip setting dump info, since dump_manager_handle_=nullptr.");
+      return ge::SUCCESS;
+    }
+    GELOGI(
+        "[OM2][Dump] Set model dump info: model_id=%u, model_name=%s, root_graph_name=%s, device_id=%u, "
+        "rt_model_handle=%p, step_id_addr=%" PRIu64 ", loop_cond_addr=%" PRIu64 ", iterations_per_loop_addr=%" PRIu64
+        ".",
+        model_dump_info_.model_id, model_dump_info_.model_name, model_dump_info_.root_graph_name,
+        model_dump_info_.device_id, model_dump_info_.rt_model_handle, model_dump_info_.step_id_addr,
+        model_dump_info_.loop_cond_addr, model_dump_info_.iterations_per_loop_addr);
+    auto ret = gert::Om2DfxApi::Instance().SetModelDumpInfo(dump_manager_handle_, &model_dump_info_);
+    if (ret != ge::SUCCESS) {
+      GELOGW(
+          "[OM2][Dump] Set model dump info failed: ret=%d, model_id=%u, model_name=%s, root_graph_name=%s, "
+          "device_id=%u, "
+          "rt_model_handle=%p, step_id_addr=%" PRIu64 ", loop_cond_addr=%" PRIu64 ", iterations_per_loop_addr=%" PRIu64
+          ".",
+          ret, model_dump_info_.model_id, model_dump_info_.model_name, model_dump_info_.root_graph_name,
+          model_dump_info_.device_id, model_dump_info_.rt_model_handle, model_dump_info_.step_id_addr,
+          model_dump_info_.loop_cond_addr, model_dump_info_.iterations_per_loop_addr);
+    }
+    // profiling 仅依赖 model_id/model_name/device_id，无需回填。
+    if (profiling_impl_ != nullptr) {
+      return profiling_impl_->RegisterModelToProfilingRuntime(model_dump_info_);
+    }
+    return ge::SUCCESS;
+  }
+
   void Cleanup() {
-    if (dump_manager_ != nullptr) {
-      dump_manager_.reset();
+    if (profiling_impl_ != nullptr) {
+      (void)profiling_impl_->UnregisterModelFromProfilingRuntime(model_id_);
+      profiling_impl_.reset();
+    }
+    if (dump_manager_handle_ != nullptr) {
+      Om2DfxApi::Instance().DestroyDumpManager(dump_manager_handle_);
+      dump_manager_handle_ = nullptr;
     }
     if (prof_stream_ != nullptr) {
       (void)aclrtDestroyStream(prof_stream_);
@@ -1266,7 +1341,10 @@ class Om2ModelExecutor::Impl {
 
   RunModelInfo run_model_info_;
   ModelMetaInfo model_meta_info_;
-  std::unique_ptr<ge::dump::ModelDumpManager> dump_manager_;
+  void *dump_manager_handle_ = nullptr;
+  // profiling 实现：由 executor 直接持有，不依赖 libom2_dump.so
+  std::unique_ptr<ge::dump::ProfilingImpl> profiling_impl_ = std::make_unique<ge::dump::ProfilingImpl>();
+  ge::dump::ModelDumpInfo model_dump_info_{};
   std::vector<void *> owned_buffers_;
   uint32_t model_id_ = 0U;
   int32_t device_id_ = -1;
@@ -1404,7 +1482,7 @@ ge::Status Om2ModelExecutor::SetDynamicAippData(void *dynamic_input_addr, const 
 }
 
 void *Om2ModelExecutor::GetModelDumpManager() const {
-  return impl_->dump_manager_.get();
+  return impl_->dump_manager_handle_;
 }
 
 uint32_t Om2ModelExecutor::GetModelId() const {
@@ -1436,6 +1514,24 @@ ge::Status Om2ModelExecutor::SetStreamPriority(const int32_t priority) {
 
 ge::Status Om2ModelExecutor::GetStreamPriority(int32_t *priority) const {
   return impl_->GetStreamPriority(priority);
+}
+
+ge::Status Om2ModelExecutor::ReportProfilingRunInfoPreprocess(uint64_t model_id, uint64_t step_id,
+                                                              aclrtStream stream) const {
+  return impl_->ReportProfilingRunInfoPreprocess(model_id, step_id, stream);
+}
+
+ge::Status Om2ModelExecutor::ReportProfilingRunInfoPostprocess(uint64_t model_id, uint64_t step_id,
+                                                               aclrtStream stream) const {
+  return impl_->ReportProfilingRunInfoPostprocess(model_id, step_id, stream);
+}
+
+void Om2ModelExecutor::SaveProfilingTaskInfo(const GertModelTaskDesc &task_info) const {
+  impl_->SaveProfilingTaskInfo(task_info);
+}
+
+ge::Status Om2ModelExecutor::ReportModelBaseInfo(const struct GertModelBaseInfo *info) {
+  return impl_->ReportModelBaseInfo(info);
 }
 
 ge::Status LoadOm2DataFromFile(const std::string &model_path, ge::ModelData &model_data) {
@@ -1492,7 +1588,7 @@ std::unique_ptr<Om2ModelExecutor> LoadOm2ExecutorFromData(ge::ModelData &model_d
   }
   const uint64_t session_id = ResolveSessionId(load_arg);
   // NOTE: dump config must be parsed before model loading
-  if (ge::dump::ModelDumpManager::ParseDumpConfig() != ge::SUCCESS) {
+  if (gert::Om2DfxApi::Instance().ParseDumpConfig() != ge::SUCCESS) {
     GELOGW("ModelDumpManager::ParseDumpConfig failed, dump may not work.");
   }
   error_code = executor->Load(model_data, load_arg, session_id);

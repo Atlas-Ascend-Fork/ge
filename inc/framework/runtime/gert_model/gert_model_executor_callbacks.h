@@ -23,6 +23,32 @@ extern "C" {
 int32_t GertModelLaunchTask(void *instance_handle, GertModelTaskLaunchInfo *launch_info);
 
 /**
+ * @brief 在 OM2 算子任务 launch 前执行 DFX 预处理。
+ * @return 返回 0 表示成功, 返回其他值表示失败
+ */
+int32_t ReportDfxTaskPreprocess(uint32_t model_id, void *instance_handle, const GertModelTaskDesc *task_info,
+                                const void *extended_attrs, size_t extended_attrs_size);
+
+/**
+ * @brief 在 OM2 算子任务 launch 后保存 DFX 任务信息。
+ * @return 返回 0 表示成功, 返回其他值表示失败
+ */
+int32_t ReportDfxTaskPostprocess(uint32_t model_id, void *instance_handle, const GertModelTaskDesc *task_info,
+                                 const void *extended_attrs, size_t extended_attrs_size);
+
+/**
+ * @brief 查询指定算子是否需要 Data Dump。
+ * @return 返回 0 表示成功, 返回其他值表示失败
+ */
+int32_t IsDataDumpEnabled(uint32_t model_id, void *instance_handle, const char *op_name, uint8_t *is_data_dump);
+
+/**
+ * @brief 上报模型运行时句柄等基础信息, 由模型 SO 加载期回调。
+ * @return 返回 0 表示成功, 返回其他值表示失败
+ */
+int32_t ReportModelBaseInfo(void *instance_handle, const GertModelBaseInfo *info);
+
+/**
  * @brief 对BinHandle缓存集合加锁, 需要加解锁成对出现, 需要调用者保证锁释放
  * @return 返回 0 表示成功, 返回其他值表示失败
  */

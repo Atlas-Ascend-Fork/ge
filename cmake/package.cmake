@@ -224,7 +224,7 @@ if("ge-executor" IN_LIST BUILD_COMPONENT)
     message(STATUS "************Install ge-executor packages***************")
     install_public_packages(ge-executor)
     if(NOT MDC_COMPILE_RUNTIME)
-        install(TARGETS ge_common ge_executor_shared ge_common_base davinci_executor hybrid_executor gert custom_op_runtime om2_executor
+        install(TARGETS ge_common ge_executor_shared ge_common_base davinci_executor hybrid_executor gert custom_op_runtime om2_executor om2_dump
                 register graph lowering register_static graph_base custom_op_registry_static model_deployer
                 npu_sched_model_loader
                 data_flow_base hcom_executor
@@ -255,7 +255,7 @@ if("ge-executor" IN_LIST BUILD_COMPONENT)
     else()
        # MDC 运行态编译
         install(TARGETS ge_common ge_common_base davinci_executor hybrid_executor gert custom_op_runtime register graph graph_base custom_op_registry_static acl_cblas hcom_executor
-                        acl_mdl acl_mdl_impl acl_mdl_impl_om2 acl_op_executor acl_op_executor_impl om2_executor ge_executor_shared lowering
+                        acl_mdl acl_mdl_impl acl_mdl_impl_om2 acl_op_executor acl_op_executor_impl om2_executor om2_dump ge_executor_shared lowering
                 LIBRARY DESTINATION ${ARCH_LINUX_PATH}/lib64 COMPONENT ge-executor
                 ARCHIVE DESTINATION ${ARCH_LINUX_PATH}/lib64 COMPONENT ge-executor
         )

@@ -12,6 +12,7 @@
 #include "acl/acl_rt.h"
 #include "acl_stub.h"
 #include "acl/acl_base_rt.h"
+#include "runtime/om2/om2_dfx_loader.h"
 
 struct TestAclDataBuffer {
   TestAclDataBuffer(void *const dataIn, const uint64_t len) : data(dataIn), length(len) {}
@@ -25,13 +26,18 @@ ge::Status aclStub::Om2DumpGlobalInit() {
   return ge::SUCCESS;
 }
 
-namespace ge {
-namespace dump {
-Status ModelDumpManager::GlobalInit() {
-  return MockFunctionTest::aclStubInstance().Om2DumpGlobalInit();
+namespace gert {
+Om2DfxApi::~Om2DfxApi() {}
+
+Om2DfxApi &Om2DfxApi::Instance() {
+  static Om2DfxApi api;
+  return api;
 }
-}  // namespace dump
-}  // namespace ge
+
+int32_t Om2DfxApi::GlobalInit(void) {
+  return static_cast<int32_t>(MockFunctionTest::aclStubInstance().Om2DumpGlobalInit());
+}
+}  // namespace gert
 
 aclDataBuffer *aclStub::aclCreateDataBuffer(void *data, size_t size) {
   TestAclDataBuffer *buffer = new (std::nothrow) TestAclDataBuffer(data, size);
