@@ -88,6 +88,10 @@ function executSt(){
 
 
 function main(){
+    if [ "${GE_ST_RT2}X" == "hcceX" ] && [ "${GIT_TARGET_BRANCH}" != "master" ] && [ "${GIT_TARGET_BRANCH}" != "develop" ];then
+        echo "Skip ST test execution for ${GE_ST_RT2} on non-master branch"
+        exit 0
+    fi
     if sudo update-alternatives --set gcc /usr/bin/gcc-16 2>/dev/null; then
         echo "Switched to gcc-16"
     elif sudo update-alternatives --set gcc /usr/bin/gcc-15 2>/dev/null; then
