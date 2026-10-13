@@ -43,7 +43,7 @@ class GE_FUNC_VISIBILITY Om2PackageHelper : public ModelSaveHelper {
                        const GeRootModelPtr &ge_root_model = nullptr) override;
 
   Status BuildOm2ModelData(const GeModelPtr &ge_model, gert::GertModelData &model_data,
-                           const GeRootModelPtr &ge_root_model = nullptr);
+                           const GeRootModelPtr &ge_root_model = nullptr) const;
 
   /// @brief 确保 ge_root_model 上已挂载 GertModelData（幂等：已挂载则直接返回）。
   /// @param ge_root_model  编译产出的根模型。

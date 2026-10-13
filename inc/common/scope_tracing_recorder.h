@@ -25,12 +25,12 @@ class ScopeTracingRecorder {
   std::string msg_;
   uint64_t start_;
 };
-}  // namespace ge
 inline uint64_t CurrentTimeNanos() {
   return std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now())
       .time_since_epoch()
       .count();
 }
+}  // namespace ge
 extern "C" {
 void TracingRecordDuration(const ge::TracingModule stage, const std::vector<std::string> &msgs, const uint64_t start,
                            const uint64_t duration);
@@ -42,10 +42,10 @@ void ReportTracingRecordDuration(const ge::TracingModule stage);
   ge::ScopeTracingRecorder scope##__COUNTER__((module), std::vector<std::string>{__VA_ARGS__})
 
 // 记录代码片段耗时,START和END需要成对使用
-#define TRACING_DURATION_START(tag) const uint64_t CONCAT_(startUsec, tag) = CurrentTimeNanos()
+#define TRACING_DURATION_START(tag) const uint64_t CONCAT_(startUsec, tag) = ge::CurrentTimeNanos()
 #define TRACING_DURATION_END(stage, tag, ...)                                                      \
   do {                                                                                             \
-    const uint64_t CONCAT_(endUsec, tag) = CurrentTimeNanos();                                     \
+    const uint64_t CONCAT_(endUsec, tag) = ge::CurrentTimeNanos();                                 \
     const auto CONCAT_(duration, tag) = (CONCAT_(endUsec, tag) - CONCAT_(startUsec, tag));         \
     TracingRecordDuration((stage), std::vector<std::string>{__VA_ARGS__}, CONCAT_(startUsec, tag), \
                           CONCAT_(duration, tag));                                                 \

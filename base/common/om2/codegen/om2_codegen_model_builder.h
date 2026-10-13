@@ -61,7 +61,7 @@ class Om2CodegenModelBuilder {
   Status BuildVarInputForNode(const OpDescPtr &op_desc, const std::string &node_type,
                               std::vector<gert::GertModelDataVarMeta> &var_metas, size_t &var_index);
   Status ParseVarRootAndSize(const OpDescPtr &op_desc, const GeTensorDescPtr &output_desc, uint64_t &root,
-                             uint64_t &size);
+                             uint64_t &size) const;
   Status BuildKernelRegistry(const GeModelPtr &model, const std::vector<TaskCodeBuilderPtr> &task_builders,
                              Om2CodegenModel &codegen_model);
   Status BuildTaskSemantics(const GeModelPtr &model, const std::vector<TaskCodeBuilderPtr> &task_builders,
@@ -78,7 +78,7 @@ class Om2CodegenModelBuilder {
   Status InitStreamActive(const OpDescPtr &op_desc, std::set<uint32_t> &active_stream_indication) const;
   Status InitStreamSwitch(const OpDescPtr &op_desc, std::set<uint32_t> &active_stream_indication) const;
   std::vector<om2::MemInfo> GetAllMemoryTypeSize(const GeModelPtr &model) const;
-  static void ReportUnsupportedTask(TaskCodeBuilderPtr &task_builder, domi::TaskDef *const task_def,
+  static void ReportUnsupportedTask(TaskCodeBuilderPtr &task_builder, const domi::TaskDef *const task_def,
                                     std::unordered_map<int64_t, OpDescPtr> &op_desc_by_index, ModelTaskType task_type);
   static Status BuildKernelRegistryForAicore(Om2CodegenModel &codegen_model, const OpDescPtr &op_desc,
                                              ModelTaskType task_type);

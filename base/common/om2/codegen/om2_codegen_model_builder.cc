@@ -136,7 +136,8 @@ Status Om2CodegenModelBuilder::CollectConstInputsFromOp(const OpDescPtr &op_desc
   return SUCCESS;
 }
 
-void Om2CodegenModelBuilder::ReportUnsupportedTask(TaskCodeBuilderPtr &task_builder, domi::TaskDef *const task_def,
+void Om2CodegenModelBuilder::ReportUnsupportedTask(TaskCodeBuilderPtr &task_builder,
+                                                   const domi::TaskDef *const task_def,
                                                    std::unordered_map<int64_t, OpDescPtr> &op_desc_by_index,
                                                    ModelTaskType task_type) {
   const int64_t op_index = (task_builder == nullptr) ? kInvalidOpIndex : task_builder->ParseOpIndex(*task_def);
@@ -642,7 +643,7 @@ Status Om2CodegenModelBuilder::BuildVarInputs(const GeModelPtr &model, Om2Codege
 }
 
 Status Om2CodegenModelBuilder::ParseVarRootAndSize(const OpDescPtr &op_desc, const GeTensorDescPtr &output_desc,
-                                                   uint64_t &root, uint64_t &size) {
+                                                   uint64_t &root, uint64_t &size) const {
   int64_t inner_offset = 0;
   if (AttrUtils::GetInt(output_desc, ATTR_NAME_INNER_OFFSET, inner_offset)) {
     GE_ASSERT_TRUE(inner_offset >= 0, "[OM2] Variable %s has negative inner offset %" PRId64,

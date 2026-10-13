@@ -679,7 +679,7 @@ ge::graphStatus CustomOpInferDataTypeOnCompile(ge::ShapeInferOp *shape_infer_op,
   return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CommitCustomOpInferMetaResult(const ge::OpDescPtr &staged_op_desc, ge::OpDesc &op_desc,
+ge::graphStatus CommitCustomOpInferMetaResult(const ge::OpDescPtr &staged_op_desc, const ge::OpDesc &op_desc,
                                               ge::NodeShapeTransUtils &transformer,
                                               const ge::CustomOpInferMetaResult &infer_meta_result) {
   if (infer_meta_result.outputs.size() != staged_op_desc->GetOutputsSize()) {

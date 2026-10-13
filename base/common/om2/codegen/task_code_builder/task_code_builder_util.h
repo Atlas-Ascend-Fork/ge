@@ -19,9 +19,9 @@ namespace ge {
 
 class TaskCodeBuilderUtil {
  public:
-  static Expr *BuildTaskIoEntries(AstBuildContext &ast, const std::vector<AddrSemantic> &addrs);
-  static Expr *BuildWorkspaceAddrs(AstBuildContext &ast, const std::vector<AddrSemantic> &addrs);
-  static Expr *BuildWorkspaceSizes(AstBuildContext &ast, const std::vector<AddrSemantic> &addrs);
+  static Expr *BuildTaskIoEntries(const AstBuildContext &ast, const std::vector<AddrSemantic> &addrs);
+  static Expr *BuildWorkspaceAddrs(const AstBuildContext &ast, const std::vector<AddrSemantic> &addrs);
+  static Expr *BuildWorkspaceSizes(const AstBuildContext &ast, const std::vector<AddrSemantic> &addrs);
   static Expr *BuildL0ArgSlotEntries(AstBuildContext &ast, const std::vector<AddrSemantic> &ordered_args);
   static Status AppendReportLaunchedTaskCall(AstBuildContext &ast, std::vector<BodyItem> &items,
                                              const std::string &var_prefix, const TaskSemanticHeader &header,

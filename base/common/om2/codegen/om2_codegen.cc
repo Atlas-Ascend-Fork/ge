@@ -20,7 +20,7 @@
 
 namespace ge {
 
-Status Om2Codegen::Om2CodegenAndCompile(const ge::GeModelPtr &ge_model, gert::GertModelData &model_data,
+Status Om2Codegen::Om2CodegenAndCompile(const ge::GeModelPtr &ge_model, const gert::GertModelData &model_data,
                                         gert::GertModelDataModel &unit) const {
   auto &artifacts = unit.runtime->source_artifacts;
   auto &const_metas = unit.constants_config->consts;
