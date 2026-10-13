@@ -55,6 +55,7 @@
 #include "graph/custom_op_factory.h"
 #include "graph/custom_op_registry.h"
 #include "graph/custom_op/op_proto_ledger.h"
+#include "graph/custom_op/framework_hosted_op.h"
 #include "graph/operator_factory_impl.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 
@@ -83,6 +84,7 @@ constexpr const char *kPortableOpTypeForModelHelper = "ModelHelperPortableOpForU
 constexpr const char *kPortableOpEmptyTypeForModelHelper = "ModelHelperPortableOpEmptyForUt";
 constexpr const char *kPortableOpSerializeFailTypeForModelHelper = "ModelHelperPortableOpSerializeFailForUt";
 constexpr const char *kNonPortableOpTypeForModelHelper = "ModelHelperNonPortableOpForUt";
+constexpr const char *kFrameworkHostedOpTypeForModelHelper = "ModelHelperFrameworkHostedOpForUt";
 constexpr const char *kNullInstanceOpTypeForModelHelper = "ModelHelperNullInstanceOpForUt";
 constexpr const char *kUnregisteredPortableOpTypeForModelHelper = "ModelHelperUnregisteredPortableOpForUt";
 constexpr const char *kRegistryOnlyPortableOpTypeForModelHelper = "ModelHelperRegistryOnlyPortableOpForUt";
@@ -555,6 +557,15 @@ class ModelHelperPortableOpSerializeFailForUt : public EagerExecuteOp, public Po
 };
 
 class ModelHelperNonPortableOpForUt : public EagerExecuteOp {
+ public:
+  ge::graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
+    (void)ctx;
+    return ge::GRAPH_SUCCESS;
+  }
+};
+
+// 模拟 Python 自定义算子：实现由框架内适配器承载，实例类不在算子交付 so 中。
+class ModelHelperFrameworkHostedOpForUt : public EagerExecuteOp, public FrameworkHostedOp {
  public:
   ge::graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
     (void)ctx;
@@ -1818,6 +1829,47 @@ TEST_F(UtestModelHelper, CheckAndSetNeedSoInOMNonPortableOpSameArchShouldCollect
   // 非 PortableOp 自定义算子同样触发 so 收集：kernel 固定实现在 so 中，无需 CUSTOM_OPS 序列化数据。
   EXPECT_EQ(ge_root_model->CheckAndSetNeedSoInOM(), SUCCESS);
   EXPECT_FALSE(ge_root_model->GetCustomOpSoSet().empty());
+}
+
+TEST_F(UtestModelHelper, CheckAndSetNeedSoInOMFrameworkHostedOpShouldSkipSoCollect) {
+  RegisterCustomOpCreatorForModelHelperUt(kFrameworkHostedOpTypeForModelHelper, []() -> std::unique_ptr<BaseCustomOp> {
+    return std::make_unique<ModelHelperFrameworkHostedOpForUt>();
+  });
+  const auto ge_root_model =
+      CreateGeRootModelForModelHelperUt(kFrameworkHostedOpTypeForModelHelper, kFrameworkHostedOpTypeForModelHelper);
+  ASSERT_NE(ge_root_model, nullptr);
+  ScopedHostEnvForModelHelperUt host_env_guard("linux", GetCurArch());
+  ScopedEnvVarForModelHelperUt custom_opp_guard(kEnvNameCustom);
+  ASSERT_EQ(mmSetEnv(kEnvNameCustom, "", 1), EN_OK);
+
+  // 实现由框架内适配器承载的算子（如 Python 自定义算子）没有可交付的算子 so：
+  // dladdr 只会解析到框架库自身，一旦被打包进 OM，加载期会因框架库不导出 pull creator ABI 符号而失败。
+  EXPECT_EQ(ge_root_model->CheckAndSetNeedSoInOM(), SUCCESS);
+  EXPECT_TRUE(ge_root_model->GetCustomOpSoSet().empty());
+  EXPECT_EQ(ge_root_model->GetSoInOmFlag() & 0x1000U, 0U);
+}
+
+TEST_F(UtestModelHelper, CheckAndSetNeedSoInOMCrossModeFrameworkHostedOpShouldSkipCustomOppCollect) {
+  RegisterCustomOpCreatorForModelHelperUt(kFrameworkHostedOpTypeForModelHelper, []() -> std::unique_ptr<BaseCustomOp> {
+    return std::make_unique<ModelHelperFrameworkHostedOpForUt>();
+  });
+  const auto ge_root_model =
+      CreateGeRootModelForModelHelperUt(kFrameworkHostedOpTypeForModelHelper, kFrameworkHostedOpTypeForModelHelper);
+  ASSERT_NE(ge_root_model, nullptr);
+
+  std::string current_env_os;
+  std::string current_env_cpu;
+  std::string target_env_cpu;
+  ASSERT_TRUE(ResolveCrossModeTargetEnvForModelHelperUt(current_env_os, current_env_cpu, target_env_cpu));
+
+  ScopedHostEnvForModelHelperUt host_env_guard(current_env_os, target_env_cpu);
+  ScopedEnvVarForModelHelperUt custom_opp_guard(kEnvNameCustom);
+  ASSERT_EQ(mmSetEnv(kEnvNameCustom, "", 1), EN_OK);
+
+  // 交叉编译下同样不能因框架承载的算子去 ASCEND_CUSTOM_OPP_PATH 收集 so，
+  // 否则会把只含原型、不导出 pull creator ABI 的 proto so 误打包进 OM。
+  EXPECT_EQ(ge_root_model->CheckAndSetNeedSoInOM(), SUCCESS);
+  EXPECT_TRUE(ge_root_model->GetCustomOpSoSet().empty());
 }
 
 TEST_F(UtestModelHelper, CheckAndSetNeedSoInOMInstanceCreateFailShouldFail) {

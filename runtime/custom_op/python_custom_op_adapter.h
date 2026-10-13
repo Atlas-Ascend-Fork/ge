@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "graph/custom_op/cast.h"
+#include "graph/custom_op/framework_hosted_op.h"
 #include "graph/custom_op/infer_meta.h"
 #include "runtime/custom_op/python_custom_op_bridge_types.h"
 
@@ -71,7 +72,8 @@ class PythonCustomOpAdapter final : public EagerExecuteOp,
                                     public PortableOp,
                                     public ArgsUpdater,
                                     public CustomOpCapabilityProvider,
-                                    public CustomOpInferMetaProvider {
+                                    public CustomOpInferMetaProvider,
+                                    public FrameworkHostedOp {
  public:
   explicit PythonCustomOpAdapter(PythonCustomOpAdapterDescriptor desc);
   ~PythonCustomOpAdapter() override;
