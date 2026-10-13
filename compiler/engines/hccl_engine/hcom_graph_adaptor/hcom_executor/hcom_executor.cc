@@ -233,7 +233,7 @@ HcclResult HcomExecutor::Finalize() {
   // 清理初始化标志位
   AtomicInitClear();
   for (auto &key : MSGQUE_TYPE) {
-    parralMap_[key].shutDown = true;
+    parralMap_[key].shutDown.store(true);
     if (parralMap_[key].messageProThread != nullptr) {
       parralMap_[key].messageProThread->join();
     }
@@ -253,7 +253,7 @@ HcclResult HcomExecutor::HcomExecEnqueueOperation(HcomOperation_t opInfo, Status
 
   CHK_SMART_PTR_NULL(parralMap_[MsgQueueType::OPBASE_QUEUE].stream);
 
-  if (parralMap_[MsgQueueType::OPBASE_QUEUE].shutDown) {
+  if (parralMap_[MsgQueueType::OPBASE_QUEUE].shutDown.load()) {
     HCCL_ERROR("[HcomExec][EnqueueOperation]thread has shut down, Enqueue hcom operation fail, op type[%s]",
                opInfo.hcclType.c_str());
     return HCCL_E_INTERNAL;
@@ -428,14 +428,14 @@ HcclResult HcomExecutor::MessageProcessThreadLoop(MsgQueueType queType) {
   HcclResult rtRet = hrtSetDevice(deviceLogicId_);
   if (rtRet != HCCL_SUCCESS) {
     HCCL_ERROR("[Process][ThreadLoop]errNo[0x%016llx] set device error", HCOM_ERROR_CODE(rtRet));
-    parralMap_[queType].shutDown = true;
+    parralMap_[queType].shutDown.store(true);
     return rtRet;
   }
   HcomSetWorkflowMode(workflowMode_);
 
   HcclResult ret = HCCL_SUCCESS;
 
-  while (!parralMap_[queType].shutDown) {
+  while (!parralMap_[queType].shutDown.load()) {
     if (parralMap_[queType].messageQueue.empty()) {
       std::this_thread::sleep_for(std::chrono::microseconds(THREAD_SLEEP_DURATION_US));
       continue;
@@ -446,7 +446,7 @@ HcclResult HcomExecutor::MessageProcessThreadLoop(MsgQueueType queType) {
     if (message.GetMessageType() == ExecutorMessageType::MSG_OPBASED) {
       ret = ExecuteOperation(message.GetOperationMessage());
       HCOM_EXECUTOR_ERR_BREAK(ret, HCCL_ERROR("[Process][ThreadLoop]execute operation error, ret[%d]", ret),
-                              statusCallback, parralMap_[queType].shutDown = true);
+                              statusCallback, parralMap_[queType].shutDown.store(true));
     } else if (message.GetMessageType() == ExecutorMessageType::MSG_ALLTOALL) {
       ret = ExecuteAlltoAll(message.GetAlltoAllMessage(), message.isGatherAlltoAll_);
       if (message.isGatherAlltoAll_) {
@@ -454,21 +454,21 @@ HcclResult HcomExecutor::MessageProcessThreadLoop(MsgQueueType queType) {
         DeleteGatherAlltoAllMem(opInfo);
       }
       HCOM_EXECUTOR_ERR_BREAK(ret, HCCL_ERROR("[Process][ThreadLoop]execute AllToAll error, ret[%d]", ret),
-                              statusCallback, parralMap_[queType].shutDown = true);
+                              statusCallback, parralMap_[queType].shutDown.store(true));
     } else if (message.GetMessageType() == ExecutorMessageType::MSG_ALLTOALLVC) {
       ret = ExecuteAlltoAllVC(message.GetAlltoAllVCMessage());
       HCOM_EXECUTOR_ERR_BREAK(ret, HCCL_ERROR("[Process][ThreadLoop]execute AllToAllVC error, ret[%d]", ret),
-                              statusCallback, parralMap_[queType].shutDown = true);
+                              statusCallback, parralMap_[queType].shutDown.store(true));
     }
 
     // 每个Hcom算子需申请一个event同步
     ret = EnqueueEvent(parralMap_[queType].stream, statusCallback, queType);
     HCOM_EXECUTOR_ERR_BREAK(ret, HCCL_ERROR("[Process][ThreadLoop]enqueue event error, ret[%d]", ret), statusCallback,
-                            parralMap_[queType].shutDown = true);
+                            parralMap_[queType].shutDown.store(true));
 
     ret = hcclStreamSynchronize(parralMap_[queType].stream);
     HCOM_EXECUTOR_ERR_BREAK(ret, HCCL_ERROR("[Process][ThreadLoop]hcclStreamSynchronize error, ret[%d]", ret),
-                            statusCallback, parralMap_[queType].shutDown = true);
+                            statusCallback, parralMap_[queType].shutDown.store(true));
   }
 
   CHK_RET(hrtResetDevice(deviceLogicId_));
@@ -483,13 +483,13 @@ HcclResult HcomExecutor::CallbackNotifyThreadLoop(MsgQueueType queType) {
   HcclResult rtRet = hrtSetDevice(deviceLogicId_);
   if (rtRet != HCCL_SUCCESS) {
     HCCL_ERROR("[Callback][NotifyThreadLoop]errNo[0x%016llx] set device error", HCOM_ERROR_CODE(rtRet));
-    parralMap_[queType].shutDown = true;
+    parralMap_[queType].shutDown.store(true);
     return rtRet;
   }
   HcomSetWorkflowMode(workflowMode_);
 
   HcclResult status = HCCL_SUCCESS;
-  while (!parralMap_[queType].shutDown) {
+  while (!parralMap_[queType].shutDown.load()) {
     if (parralMap_[queType].eventQueue.empty()) {
       std::this_thread::sleep_for(std::chrono::microseconds(THREAD_SLEEP_DURATION_US));
       continue;
@@ -518,7 +518,7 @@ HcclResult HcomExecutor::CallbackNotifyThreadLoop(MsgQueueType queType) {
         status,
         HCCL_ERROR("[Callback][NotifyThreadLoop]event execute failed, event destroy ret[%d], is timeout[%d s]", ret,
                    bTimeout),
-        eventInfo.callback, parralMap_[queType].shutDown = true);
+        eventInfo.callback, parralMap_[queType].shutDown.store(true));
     // 执行成功，回调返回 SUCCESS
     eventInfo.callback(HCCL_SUCCESS);
     HCCL_RUN_INFO("[Callback][NotifyThreadLoop]hcom executor callback HCCL_SUCCESS, message type[%d]", queType);
@@ -649,7 +649,7 @@ HcclResult HcomExecutor::HcomExecEnqueueAllToAllV(HcomAllToAllVParams opInfo, St
   CHK_RET(GetComm(opInfo.group, &comm));
   CHK_RET(InitHcclComm(opInfo.group, comm));
   CHK_SMART_PTR_NULL(parralMap_[MsgQueueType::OPBASE_QUEUE].stream);
-  if (parralMap_[MsgQueueType::OPBASE_QUEUE].shutDown) {
+  if (parralMap_[MsgQueueType::OPBASE_QUEUE].shutDown.load()) {
     HCCL_ERROR("[Exec][EnqueueAlltoAll]Thread has been shut down, Enqueue AllToAll failed");
     return HCCL_E_INTERNAL;
   }
@@ -673,7 +673,7 @@ HcclResult HcomExecutor::HcomExecEnqueueAllToAllVC(HcomAllToAllVCParams opInfo, 
   CHK_RET(GetComm(opInfo.group, &comm));
   CHK_RET(InitHcclComm(opInfo.group, comm));
   CHK_SMART_PTR_NULL(parralMap_[MsgQueueType::OPBASE_QUEUE].stream);
-  if (parralMap_[MsgQueueType::OPBASE_QUEUE].shutDown) {
+  if (parralMap_[MsgQueueType::OPBASE_QUEUE].shutDown.load()) {
     HCCL_ERROR("[Exec][EnqueueAlltoAllVC]Thread has been shut down, Enqueue AllToAllVC failed");
     return HCCL_E_INTERNAL;
   }
