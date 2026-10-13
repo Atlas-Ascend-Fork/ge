@@ -70,9 +70,11 @@ Tensor *EagerOpExecutionContext::MallocOutputTensor(size_t index, const StorageS
   GE_ASSERT_NOTNULL(output_tensor);
 
   SetTensorDesc(shape, format, dtype, output_tensor);
-  const size_t tensor_size = shape.GetStorageShape().GetShapeSize() * GetSizeByDataType(dtype);
-  size_t aligned_tensor_size = tensor_size;
-  GE_ASSERT_TRUE(!ge::RoundUpOverflow(tensor_size, kMemAlignment, aligned_tensor_size));
+  // 子字节类型（如 DT_INT4）按位宽 CeilDiv 换算 packed 字节数
+  const int64_t byte_size = ge::GetSizeInBytes(shape.GetStorageShape().GetShapeSize(), dtype);
+  GE_ASSERT_TRUE(byte_size >= 0, "Get tensor size in bytes failed, dtype: %d", static_cast<int>(dtype));
+  size_t aligned_tensor_size = 0U;
+  GE_ASSERT_TRUE(!ge::RoundUpOverflow(static_cast<size_t>(byte_size), kMemAlignment, aligned_tensor_size));
   const TensorData &tensor_data = output_tensor->GetTensorData();
   // 静态场景下内存地址已赋值 不需要去Malloc
   // 注意：静态图逻辑地址可能是合法的0（偏移），不能用 GetAddr() != nullptr 判断

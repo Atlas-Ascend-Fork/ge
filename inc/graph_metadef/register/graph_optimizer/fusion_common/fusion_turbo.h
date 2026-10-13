@@ -46,7 +46,13 @@ struct WeightInfo {
     }
 
     if ((shape_size > 0) && (datatype < data_type_size.size())) {
-      total_data_size = (static_cast<size_t>(shape_size)) * data_type_size[datatype];
+      // 子字节类型（如 DT_INT4）按位宽 CeilDiv 换算 packed 字节数，否则高估导致越界写
+      if (ge::GetSizeByDataType(datatype) > ge::kDataTypeSizeBitOffset) {
+        const int64_t byte_size = ge::GetSizeInBytes(shape_size, datatype);
+        total_data_size = (byte_size > 0) ? static_cast<size_t>(byte_size) : 0U;
+      } else {
+        total_data_size = (static_cast<size_t>(shape_size)) * data_type_size[datatype];
+      }
     } else {
       total_data_size = 0;
     }

@@ -353,6 +353,7 @@ target_link_libraries(ge_common_atc
 add_executable(graph_engine_compile_test
         "${AIR_CODE_DIR}/tests/ge/st/testcase/test_main.cc"
         "${AIR_CODE_DIR}/tests/ge/st/testcase/test_file_constant.cc"
+        "${AIR_CODE_DIR}/tests/ge/st/testcase/test_sub_byte_format.cc"
         "${AIR_CODE_DIR}/tests/ge/st/testcase/test_data_slice.cc"
         "${AIR_CODE_DIR}/tests/ge/st/testcase/test_swap_pass.cc"
         "${AIR_CODE_DIR}/tests/ge/st/testcase/test_mem_layout_conflict.cc"
