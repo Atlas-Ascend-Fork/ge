@@ -146,7 +146,7 @@ uint64_t GetL0SlotSizeOrValue(const AddrSemantic &addr) {
 }
 }  // namespace
 
-Expr *TaskCodeBuilderUtil::BuildTaskIoEntries(AstBuildContext &ast, const std::vector<AddrSemantic> &addrs) {
+Expr *TaskCodeBuilderUtil::BuildTaskIoEntries(const AstBuildContext &ast, const std::vector<AddrSemantic> &addrs) {
   std::vector<Arg> entries;
   for (const auto &addr : addrs) {
     if (!addr.tensor_info.has_value()) {
@@ -159,7 +159,7 @@ Expr *TaskCodeBuilderUtil::BuildTaskIoEntries(AstBuildContext &ast, const std::v
   return ast.InitList(entries);
 }
 
-Expr *TaskCodeBuilderUtil::BuildWorkspaceAddrs(AstBuildContext &ast, const std::vector<AddrSemantic> &addrs) {
+Expr *TaskCodeBuilderUtil::BuildWorkspaceAddrs(const AstBuildContext &ast, const std::vector<AddrSemantic> &addrs) {
   std::vector<Arg> entries;
   entries.reserve(addrs.size());
   for (const auto &addr : addrs) {
@@ -168,7 +168,7 @@ Expr *TaskCodeBuilderUtil::BuildWorkspaceAddrs(AstBuildContext &ast, const std::
   return ast.InitList(entries);
 }
 
-Expr *TaskCodeBuilderUtil::BuildWorkspaceSizes(AstBuildContext &ast, const std::vector<AddrSemantic> &addrs) {
+Expr *TaskCodeBuilderUtil::BuildWorkspaceSizes(const AstBuildContext &ast, const std::vector<AddrSemantic> &addrs) {
   std::vector<Arg> entries;
   entries.reserve(addrs.size());
   for (const auto &addr : addrs) {

@@ -32,6 +32,7 @@
 #include "external/ge_common/ge_common_api_types.h"
 #include "external/graph/custom_op.h"
 #include "graph/custom_op/cast.h"
+#include "graph/custom_op/framework_hosted_op.h"
 #include "framework/common/host_cpu_fusion_attr.h"
 #include "graph/op_so_bin.h"
 #include "framework/om2/model_data/gert_model_data.h"
@@ -203,6 +204,13 @@ size_t GetEmbeddedCustomOpSoNum(const ComputeGraphPtr &root_graph) {
     }
   }
   return embedded_custom_so_num;
+}
+
+// 实现由框架内适配器承载的算子（如 Python 自定义算子）没有独立交付的算子实现 so：
+// 其实例类编译在框架库内，dladdr 会解析到框架库自身；若把它当作算子 so 打包进 OM，
+// 加载期会因框架库不导出算子 so 的 pull creator ABI 符号而整体加载失败，因此不参与 so 收集。
+bool IsFrameworkHostedCustomOp(const BaseCustomOp *custom_op) {
+  return dynamic_cast<const FrameworkHostedOp *>(custom_op) != nullptr;
 }
 }  // namespace
 Status GeRootModel::Initialize(const ComputeGraphPtr &root_graph) {
@@ -442,6 +450,10 @@ Status GeRootModel::CollectCustomOpSo(const std::set<std::string> &used_custom_o
                op_type.c_str());
         return FAILED;
       }
+    }
+    if (IsFrameworkHostedCustomOp(custom_op)) {
+      GELOGI("[CustomOp] op[%s] impl is hosted by framework adapter, no impl so to collect.", op_type.c_str());
+      continue;
     }
     has_custom_op = true;
     if (is_cross_compile) {

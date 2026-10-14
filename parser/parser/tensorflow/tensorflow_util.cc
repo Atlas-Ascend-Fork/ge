@@ -268,16 +268,11 @@ FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY domi::Status TensorFlowUtil::Tr
     // get size
     for (uint32_t j = 0U; j < ge_desc.GetShape().GetDimNum(); ++j) {
       int64_t tmp_dim = ge_desc.GetShape().GetDim(j);
-      // The shape inferred by fusedbatchnormgrad and mean calling tensorflow is not accurate.
-      // Here, special treatment is given to the two operators.
+      // The shape inferred by fusedbatchnormgrad calling tensorflow is not accurate.
+      // Here, special treatment is given to fusedbatchnormgrad.
       // Adjust shape to fit resnet50 network only.
       if ((type == ge::parser::FUSEDBATCHNORMGRAD) && (tmp_dim == 0)) {
         ge_desc.SetShape(ge::GeShape());
-        break;
-      }
-      if ((type == ge::parser::MEAN) && (tmp_dim == 0)) {
-        std::vector<int64_t> data_dim = {tmp_dim};
-        ge_desc.SetShape(ge::GeShape(data_dim));
         break;
       }
     }

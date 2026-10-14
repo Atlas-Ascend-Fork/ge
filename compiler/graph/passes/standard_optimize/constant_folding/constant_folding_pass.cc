@@ -12,6 +12,7 @@
 
 #include <memory>
 #include <new>
+#include <set>
 #include <utility>
 #include <vector>
 #include "graph_metadef/common/ge_common/util.h"
@@ -28,8 +29,10 @@
 #include "graph/ir_definitions_recover.h"
 #include "graph/op_desc.h"
 #include "graph/operator_factory.h"
+#include "graph/types.h"
 #include "graph/utils/node_utils.h"
 #include "graph/utils/constant_utils.h"
+#include "graph/utils/type_utils.h"
 #include "host_cpu_engine/host_cpu_engine.h"
 #include "api/gelib/gelib.h"
 #include "register/op_kernel_registry.h"
@@ -40,6 +43,41 @@ namespace {
 const int64_t kStartCallNum = 1;
 const int64_t kShapeCalNum = 8;
 const char *const kKernelLibName = "aicpu_ascend_kernel";
+
+// 子字节类型（如 DT_INT4）GetSizeByDataType 返回位宽编码值（kDataTypeSizeBitOffset + bits），并非真实字节数
+bool IsSubByteDtype(const DataType dtype) {
+  return GetSizeByDataType(dtype) > kDataTypeSizeBitOffset;
+}
+
+// 子字节 dtype HostCpuOp 折叠白名单：已在 Compute 中实现 packed 位级处理的算子
+// （如 QuantBiasOptimization 的 INT4 packed→int8 解包）可安全折叠，放行输入检查
+const std::set<std::string> kSubByteFoldWhiteList = {"QuantBiasOptimization"};
+
+// 子字节类型（如 DT_INT4）的数据为 packed 存储（2元素/字节），需按位读写处理；
+// HostCpuOp/自定义算子实现可能缺少位级处理导致越界写，需拦截并回落 GE 内置 kernel
+// （TransdataKernel 等已适配子字节位级转换）。
+// 覆盖 top/bottom 优先级自定义算子与 legacy HostCpuOp 全部路径；
+// 白名单内的算子已在 Compute 中实现子字节 packed 位级处理（如 QuantBiasOptimization），放行输入检查
+bool IsSubByteFoldingBlocked(const std::string &op_type, const NodePtr &node,
+                             const std::vector<ConstGeTensorPtr> &inputs) {
+  if (kSubByteFoldWhiteList.count(op_type) == 0U) {
+    for (const auto &input : inputs) {
+      if ((input != nullptr) && IsSubByteDtype(input->GetTensorDesc().GetDataType())) {
+        GELOGI("Sub-byte dtype %s folding skips HostCpuOp for op %s, fallback to built-in kernel.",
+               TypeUtils::DataTypeToSerialString(input->GetTensorDesc().GetDataType()).c_str(), op_type.c_str());
+        return true;
+      }
+    }
+  }
+  for (const auto &output_desc : node->GetOpDesc()->GetAllOutputsDesc()) {
+    if (IsSubByteDtype(output_desc.GetDataType())) {
+      GELOGI("Sub-byte dtype %s folding skips HostCpuOp for op %s, fallback to built-in kernel.",
+             TypeUtils::DataTypeToSerialString(output_desc.GetDataType()).c_str(), op_type.c_str());
+      return true;
+    }
+  }
+  return false;
+}
 const char *const kOpsFlagClose = "0";
 const char *const kPassName = "ConstantFoldingPass";
 
@@ -151,10 +189,55 @@ class HostCpuConstFoldingMemGertAllocator final : public gert::GertAllocator {
   }
 };
 
+// bottom 优先级的 ordinary 路由需保持迁移前的 NodeDef 语义: shape/format/dtype 取节点 OpDesc 的 input desc,
+// data 地址和 size 取实际常量 Tensor. Top 级 HostCPU 自定义算子仍使用实际常量 Tensor 自身的元数据.
+enum class HostCpuInputMetadataSource : uint8_t { kActualTensor = 0U, kNodeDesc = 1U };
+
+void OverrideMetadataByInputDesc(const OpDescPtr &op_desc, size_t index, gert::Tensor &input_tensor) {
+  const size_t desc_num = op_desc->GetInputsSize();
+  if (index >= desc_num) {
+    GELOGW("Input index %zu is out of the range of input descs %zu, keep the actual tensor metadata.", index, desc_num);
+    return;
+  }
+  const GeTensorDesc &declared = op_desc->GetInputDesc(static_cast<uint32_t>(index));
+  input_tensor.MutableStorageShape() = TensorTransUtils::ContructRtShapeFromGeShape(declared.GetShape());
+  input_tensor.MutableOriginShape() = TensorTransUtils::ContructRtShapeFromGeShape(
+      declared.IsOriginShapeInitialized() ? declared.GetOriginShape() : declared.GetShape());
+  input_tensor.SetStorageFormat(declared.GetFormat());
+  input_tensor.SetOriginFormat(declared.GetOriginFormat());
+  input_tensor.SetDataType(declared.GetDataType());
+  // 不修改 MutableTensorData(): data 地址、manager 和 size 必须继续来自实际常量 Tensor
+}
+
+Status ConvertIoToGertTensors(const NodePtr &node, const OpDescPtr &op_desc,
+                              const std::vector<ConstGeTensorPtr> &inputs, std::vector<gert::Tensor> &input_tensors,
+                              std::vector<gert::Tensor> &output_tensors, HostCpuInputMetadataSource metadata_source) {
+  for (size_t i = 0U; i < inputs.size(); ++i) {
+    const Status convert_ret = TensorTransUtils::GeTensor2GertTensor(*inputs[i], input_tensors[i]);
+    if (convert_ret != SUCCESS) {
+      GELOGW("Convert input[%zu] to gert tensor failed for node %s.", i, node->GetName().c_str());
+      return UNSUPPORTED;
+    }
+    if (metadata_source == HostCpuInputMetadataSource::kNodeDesc) {
+      OverrideMetadataByInputDesc(op_desc, i, input_tensors[i]);
+    }
+  }
+  const size_t output_num = op_desc->GetOutputsSize();
+  for (size_t i = 0U; i < output_num; ++i) {
+    const Status convert_ret =
+        TensorTransUtils::GeTensor2GertTensor(GeTensor(op_desc->GetOutputDesc(i)), output_tensors[i]);
+    if (convert_ret != SUCCESS) {
+      GELOGW("Convert output[%zu] to gert tensor failed for node %s.", i, node->GetName().c_str());
+      return UNSUPPORTED;
+    }
+  }
+  return SUCCESS;
+}
+
 Status BuildHostCpuOpContext(const NodePtr &node, const std::vector<ConstGeTensorPtr> &inputs,
                              std::vector<gert::Tensor> &input_tensors, std::vector<gert::Tensor> &output_tensors,
-                             HostCpuConstFoldingMemGertAllocator &allocator,
-                             gert::KernelContextHolder &context_holder) {
+                             HostCpuConstFoldingMemGertAllocator &allocator, gert::KernelContextHolder &context_holder,
+                             HostCpuInputMetadataSource metadata_source = HostCpuInputMetadataSource::kActualTensor) {
   const auto op_desc = node->GetOpDesc();
   GE_ASSERT_NOTNULL(op_desc);
   if (!ge::OperatorFactory::IsExistOp(node->GetType().c_str())) {
@@ -171,22 +254,10 @@ Status BuildHostCpuOpContext(const NodePtr &node, const std::vector<ConstGeTenso
   const size_t output_num = op_desc->GetOutputsSize();
   input_tensors.resize(input_num);
   output_tensors.resize(output_num);
-
-  for (size_t i = 0U; i < input_num; ++i) {
-    const Status convert_ret = TensorTransUtils::GeTensor2GertTensor(*inputs[i], input_tensors[i]);
-    if (convert_ret != SUCCESS) {
-      GELOGW("Convert input[%zu] to gert tensor failed for node %s.", i, node->GetName().c_str());
-      return UNSUPPORTED;
-    }
-  }
-
-  for (size_t i = 0U; i < output_num; ++i) {
-    const Status convert_ret =
-        TensorTransUtils::GeTensor2GertTensor(GeTensor(op_desc->GetOutputDesc(i)), output_tensors[i]);
-    if (convert_ret != SUCCESS) {
-      GELOGW("Convert output[%zu] to gert tensor failed for node %s.", i, node->GetName().c_str());
-      return UNSUPPORTED;
-    }
+  const Status convert_ret =
+      ConvertIoToGertTensors(node, op_desc, inputs, input_tensors, output_tensors, metadata_source);
+  if (convert_ret != SUCCESS) {
+    return convert_ret;
   }
 
   std::vector<void *> input_ptrs;
@@ -212,7 +283,8 @@ Status BuildHostCpuOpContext(const NodePtr &node, const std::vector<ConstGeTenso
 }
 
 Status ExecuteHostCpuCustomOp(const NodePtr &node, BaseCustomOp *base_custom_op,
-                              const std::vector<ConstGeTensorPtr> &inputs, std::vector<GeTensorPtr> &outputs) {
+                              const std::vector<ConstGeTensorPtr> &inputs, std::vector<GeTensorPtr> &outputs,
+                              HostCpuInputMetadataSource metadata_source = HostCpuInputMetadataSource::kActualTensor) {
   GE_ASSERT_NOTNULL(base_custom_op, "Host cpu custom op for node %s is null.", node->GetName().c_str());
   auto *host_custom_op = CustomOpCast<HostCpuExecuteOp>(base_custom_op);
   if (host_custom_op == nullptr) {
@@ -225,7 +297,7 @@ Status ExecuteHostCpuCustomOp(const NodePtr &node, BaseCustomOp *base_custom_op,
   HostCpuConstFoldingMemGertAllocator allocator;
   gert::KernelContextHolder context_holder;
   const Status build_ret =
-      BuildHostCpuOpContext(node, inputs, input_tensors, output_tensors, allocator, context_holder);
+      BuildHostCpuOpContext(node, inputs, input_tensors, output_tensors, allocator, context_holder, metadata_source);
   if (build_ret != SUCCESS) {
     GELOGW("Build HostCpu op context failed for node %s, ret:%d.", node->GetName().c_str(), build_ret);
     return UNSUPPORTED;
@@ -332,6 +404,9 @@ Status ConstantFoldingPass::ComputeWithHostCpuCustomOp(const NodePtr &node, cons
                                                        std::vector<GeTensorPtr> &outputs) {
   const std::string op_type = NodeUtils::GetNodeType(node);
   const AscendString op_type_str(op_type.c_str());
+  if (IsSubByteFoldingBlocked(op_type, node, inputs)) {
+    return UNSUPPORTED;
+  }
   if (!CustomOpFactory::IsExistOp(op_type_str, OpBackend::kHostCPU)) {
     GELOGD("Op of type %s is not supported by host cpu custom op.", op_type.c_str());
     return UNSUPPORTED;
@@ -385,6 +460,9 @@ Status ConstantFoldingPass::RunOpKernel(const NodePtr &node, const std::vector<C
                                         std::vector<GeTensorPtr> &outputs) {
   const std::string op_type = NodeUtils::GetNodeType(node);
   const AscendString op_type_str(op_type.c_str());
+  if (IsSubByteFoldingBlocked(op_type, node, inputs)) {
+    return UNSUPPORTED;
+  }
   if (CustomOpFactory::IsExistOp(op_type_str, OpBackend::kHostCPU, OpRegistrationPriority::kBottom,
                                  OpEngine::kHostCpu)) {
     GELOGD("Bottom priority host cpu op is registered. op type = %s, engine = %s.", op_type.c_str(), "HOST_CPU");
@@ -394,7 +472,7 @@ Status ConstantFoldingPass::RunOpKernel(const NodePtr &node, const std::vector<C
       GELOGW("Failed to create bottom priority host cpu op. op type = %s, engine = %s.", op_type.c_str(), "HOST_CPU");
       return UNSUPPORTED;
     }
-    return ExecuteHostCpuCustomOp(node, bottom_op, inputs, outputs);
+    return ExecuteHostCpuCustomOp(node, bottom_op, inputs, outputs, HostCpuInputMetadataSource::kNodeDesc);
   }
 
   auto kernel = OpKernelRegistry::GetInstance().CreateHostCpuOp(op_type);

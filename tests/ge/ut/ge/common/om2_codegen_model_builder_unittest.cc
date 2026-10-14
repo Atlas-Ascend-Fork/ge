@@ -1345,6 +1345,7 @@ TEST_F(Om2CodegenModelBuilderUt, BuildTaskSemantics_SimpleTasksAndStub_Ok) {
   ASSERT_TRUE(kernel_task.args_table_entry.has_value());
   EXPECT_EQ(kernel_task.launch.stream_id, 0U);
   EXPECT_EQ(kernel_task.launch.func_handle_index, 0U);
+  EXPECT_EQ(kernel_task.launch.config.time_out, -1);
   EXPECT_EQ(kernel_task.task_type, ModelTaskType::MODEL_TASK_KERNEL);
   EXPECT_TRUE(Om2CodegenUtils::IsAICoreKernel(kernel_task.kernel_type));
 
@@ -1356,6 +1357,22 @@ TEST_F(Om2CodegenModelBuilderUt, BuildTaskSemantics_SimpleTasksAndStub_Ok) {
 
   const auto *end_graph_builder = dynamic_cast<EndGraphTaskCodeBuilder *>(task_builders[3].get());
   ASSERT_NE(end_graph_builder, nullptr);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, BuildTaskSemantics_NeverTimeoutKernel_UsesZero) {
+  GeRootModelPtr ge_root_model = CreateGeRootModelWithAicoreOp();
+  ASSERT_NE(ge_root_model, nullptr);
+  const auto add_node = ge_root_model->GetRootGraph()->FindNode("add1");
+  ASSERT_NE(add_node, nullptr);
+  ASSERT_TRUE(AttrUtils::SetBool(add_node->GetOpDesc(), public_attr::OP_EXEC_NEVER_TIMEOUT, true));
+
+  Om2CodegenModel doc;
+  std::vector<TaskCodeBuilderPtr> task_builders;
+  ASSERT_EQ(BuildCodegenModel(ge_root_model, doc, &task_builders), SUCCESS);
+  ASSERT_EQ(task_builders.size(), 1U);
+  const auto *kernel_builder = dynamic_cast<KernelTaskCodeBuilder *>(task_builders[0].get());
+  ASSERT_NE(kernel_builder, nullptr);
+  EXPECT_EQ(kernel_builder->GetTaskSemantic().launch.config.time_out, 0);
 }
 
 TEST_F(Om2CodegenModelBuilderUt, BuildTaskSemantics_AicpuTaskCount_Ok) {

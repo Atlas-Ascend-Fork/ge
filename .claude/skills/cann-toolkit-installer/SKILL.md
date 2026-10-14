@@ -1,11 +1,11 @@
 ---
 name: cann-toolkit-installer
-description: 自动下载并安装华为 CANN Toolkit 开发套件。当用户需要安装、更新或重新安装 CANN Toolkit 时使用此 skill，适用于：新环境初始化、版本升级。自动获取最新构建版本，静默安装并输出详细摘要。用户可能的指令是更新toolkit，更新run包等
+description: 自动下载并安装CANN Toolkit 开发套件。当用户需要安装、更新或重新安装 CANN Toolkit 时使用此 skill，适用于：新环境初始化、版本升级。自动获取最新构建版本，静默安装并输出详细摘要。用户可能的指令是更新toolkit，更新run包等
 ---
 
 # CANN Toolkit 自动安装
 
-自动从华为镜像站下载并安装社区版 CANN Toolkit 包，包含完整的下载、验证、安装和配置流程。
+自动从华为镜像站下载并安装CANN Toolkit 包，包含完整的下载、验证、安装和配置流程。
 
 ## 快速开始
 

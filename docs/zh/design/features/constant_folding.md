@@ -230,8 +230,10 @@ REG_OPTION(OO_CONSTANT_FOLDING)
    - **第一级：Host CPU 自定义算子**（`ComputeWithHostCpuCustomOp`）
      - 通过 `CustomOpFactory::IsExistOp(op_type, OpBackend::kHostCPU)` 判断当前算子是否注册 Host CPU backend 自定义实现
      - 通过 `CreateOrGetCustomOp(op_type, kHostCPU)` 获取实例并调用 `HostCpuExecuteOp::Execute`
+     - 构造执行上下文时（`BuildHostCpuOpContext`），input gert Tensor 的 shape/format/dtype 取自实际常量 Tensor 自身描述（`HostCpuInputMetadataSource::kActualTensor`），output gert Tensor 由节点 output desc 构造
    - **第二级：AICPU 算子内核**（`ComputeWithHostCpuKernel`）
      - `RunOpKernel` 会先显式查询 `CustomOpFactory` 中 `OpRegistrationPriority::kBottom + OpEngine::kHostCpu` 的 Host CPU 实现，调用 `HostCpuExecuteOp::Execute`
+       - 该 ordinary 路由使用 `HostCpuInputMetadataSource::kNodeDesc`：input gert Tensor 的 shape/format/dtype 被节点 `OpDesc` 的 input desc 覆盖，data 地址与 size 仍来自实际常量 Tensor，即“描述与数据分源”，与 AICPU 按节点描述校验输出 shape 的行为保持一致
      - 若不存在自定义实现，尝试通过 `aicpu_ascend_kernel` 引擎获取算子的 Host CPU 实现
      - 通过 `OpKernelRegistry` 创建算子实例，由 `HostCpuEngine` 执行
      - 这一级支持最广泛的算子类型，运行时加载 `libconstant_folding_ops.so`

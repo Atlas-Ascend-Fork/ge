@@ -9,7 +9,7 @@
  */
 
 #include "acl/acl_rt.h"
-#include "framework/runtime/dump/model_dump_manager.h"
+#include "runtime/om2/om2_dfx_loader.h"
 #include "log_inner.h"
 
 namespace acl {
@@ -19,7 +19,7 @@ aclError Om2DumpInitCallbackFunc(const char *configStr, size_t len, void *userDa
   (void)len;
   (void)userData;
   ACL_LOG_INFO("start to enter Om2DumpInitCallbackFunc");
-  const ge::Status geRet = ge::dump::ModelDumpManager::GlobalInit();
+  const ge::Status geRet = gert::Om2DfxApi::Instance().GlobalInit();
   ACL_REQUIRES_CALL_GE_OK(geRet, "[Init][Om2Dump]init om2 dump failed, ge errorCode = %u", geRet);
   return ACL_SUCCESS;
 }

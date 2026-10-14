@@ -958,7 +958,7 @@ struct AicoreDispatchInfo {
     uint32_t engine_type;     // 引擎类型
     uint32_t block_dim_offset;// BlockDim 偏移量
     bool is_block_task_prefetch; // 是否预取 Block Task
-    uint16_t time_out;        // 超时时间
+    int16_t time_out;        // 超时时间
     uint32_t local_memory_size;  // 本地内存大小
   } launch;
   struct {                    // L0 信息，构建 GertModelTaskRawInfo
@@ -992,7 +992,7 @@ struct AicpuDispatchInfo {
     uint32_t engine_type;     // 引擎类型
     uint32_t block_dim_offset;// BlockDim 偏移量
     bool is_block_task_prefetch; // 是否预取 Block Task
-    uint16_t time_out;        // 超时时间
+    int16_t time_out;        // 超时时间
     uint32_t local_memory_size;  // 本地内存大小
   } launch;
   int32_t session_info_offset;
@@ -1049,7 +1049,7 @@ struct KernelExDispatchInfo {
     uint8_t schedule_mode;    // 调度模式
     uint32_t block_dim_offset;// BlockDim 偏移量
     bool is_block_task_prefetch; // 是否预取 Block Task
-    uint16_t time_out;        // 超时时间
+    int16_t time_out;        // 超时时间
     uint32_t engine_type;     // aclrtEngineType 枚举值
   } launch;
   uint32_t task_type;

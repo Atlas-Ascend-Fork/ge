@@ -33,6 +33,8 @@ GE 的逻辑结构如下所示：
 
 atc 支持多种前端框架导出的模型格式，例如 TensorFlow 导出的 `.pb`，PyTorch 导出的 `.onnx` 。
 
+TensorFlow GraphDef 中序列化的输出 shape 按原顺序保留各维度，包括值为 0 的维度。
+
 ### **GE Compiler（图编译器）**
 
 GE Compiler 是 GE 的核心组件，负责将 AscendIR 编译为可在昇腾设备上执行的二进制模型（model/OM）。其主要工作依次包括：

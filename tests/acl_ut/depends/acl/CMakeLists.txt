@@ -18,6 +18,7 @@ file(GLOB_RECURSE SRC_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
 add_library(acl_stub SHARED ${SRC_FILES})
 
 target_include_directories(acl_stub PRIVATE
+    ${BASE_DIR}
     ${BASE_DIR}/inc
     ${BASE_DIR}/inc/graph_metadef
     ${BASE_DIR}/inc/graph_metadef/external

@@ -11,130 +11,103 @@
 #include "framework/runtime/dump/model_dump_c_api.h"
 #include "framework/runtime/dump/model_dump_manager.h"
 #include "framework/common/debug/ge_log.h"
-#include "runtime/om2_model_executor.h"
-#include "acl/acl_rt.h"
 
-namespace {
-ge::dump::ModelDumpManager *GetDumpManager(void *instance_handle) {
-  if (instance_handle == nullptr) {
-    return nullptr;
-  }
-  auto *executor = static_cast<gert::Om2ModelExecutor *>(instance_handle);
-  if (executor == nullptr) {
-    return nullptr;
-  }
-  return static_cast<ge::dump::ModelDumpManager *>(executor->GetModelDumpManager());
-}
-}  // namespace
+// =============================================================================
+//  句柄式 C API 实现：供 libom2_executor.so 通过 dlopen 管理 ModelDumpManager 生命周期。
+// =============================================================================
 
-int32_t ReportDfxTaskPreprocess(uint32_t model_id, void *instance_handle, const struct GertModelTaskDesc *task_info,
-                                const void *extended_attrs, size_t extended_attrs_size) {
-  (void)model_id;
-
-  if ((extended_attrs != nullptr) || (extended_attrs_size != 0U)) {
-    GELOGW("Extended attrs are not supported in preprocess");
-  }
-
-  if ((instance_handle == nullptr) || (task_info == nullptr)) {
-    GELOGW("ModelExecutor handle or task_info is null, skip preprocess");
-    return ge::SUCCESS;
-  }
-
-  auto *manager = GetDumpManager(instance_handle);
-  if (manager == nullptr) {
-    GELOGW("ModelDumpManager is null, skip preprocess");
-    return ge::SUCCESS;
-  }
-  return static_cast<int32_t>(manager->PreprocessOm2TaskInfo(*task_info));
+void *Om2DumpManagerCreate(uint32_t model_id) {
+  auto *mgr = new (std::nothrow) ge::dump::ModelDumpManager(model_id);
+  return static_cast<void *>(mgr);
 }
 
-int32_t ReportDfxTaskPostprocess(uint32_t model_id, void *instance_handle, const struct GertModelTaskDesc *task_info,
-                                 const void *extended_attrs, size_t extended_attrs_size) {
-  (void)model_id;
-
-  if ((extended_attrs != nullptr) || (extended_attrs_size != 0U)) {
-    GELOGW("Extended attrs are not supported in postprocess");
+void Om2DumpManagerDestroy(void *handle) {
+  if (handle == nullptr) {
+    return;
   }
-
-  if ((instance_handle == nullptr) || (task_info == nullptr)) {
-    GELOGW("ModelExecutor handle or task_info is null, skip postprocess");
-    return ge::SUCCESS;
-  }
-
-  auto *manager = GetDumpManager(instance_handle);
-  if (manager == nullptr) {
-    GELOGW("ModelDumpManager is null, skip postprocess");
-    return ge::SUCCESS;
-  }
-  return static_cast<int32_t>(manager->PostprocessOm2TaskInfo(*task_info));
+  auto *mgr = static_cast<ge::dump::ModelDumpManager *>(handle);
+  delete mgr;
 }
 
-int32_t IsDataDumpEnabled(uint32_t model_id, void *instance_handle, const char *op_name, uint8_t *is_data_dump) {
-  (void)model_id;
-
-  if ((instance_handle == nullptr) || (is_data_dump == nullptr)) {
-    GELOGW("ModelExecutor handle or is_data_dump is null, skip");
-    return ge::SUCCESS;
-  }
-
-  auto *manager = GetDumpManager(instance_handle);
-  if (manager == nullptr) {
-    GELOGW("ModelDumpManager is null, skip");
-    return ge::SUCCESS;
-  }
-  return static_cast<int32_t>(manager->IsDataDumpEnabled(op_name, is_data_dump));
+int32_t Om2DumpGlobalInit(void) {
+  return static_cast<int32_t>(ge::dump::ModelDumpManager::GlobalInit());
 }
 
-int32_t ReportModelBaseInfo(void *instance_handle, const struct GertModelBaseInfo *info) {
-  if (instance_handle == nullptr) {
-    GELOGW("ModelExecutor handle is null, skip");
-    return ge::SUCCESS;
-  }
+int32_t Om2DumpManagerParseConfig(void) {
+  return static_cast<int32_t>(ge::dump::ModelDumpManager::ParseDumpConfig());
+}
 
-  if ((info == nullptr) || (info->rt_model_handle == nullptr)) {
-    GELOGW("Input parameter info or info->rt_model_handle is null, skip");
-    return ge::SUCCESS;
+void Om2DumpManagerSetClearDfxCacheFlag(void *handle, uint8_t clear_cache) {
+  auto *mgr = static_cast<ge::dump::ModelDumpManager *>(handle);
+  if (mgr == nullptr) {
+    return;
   }
+  mgr->SetClearDfxCacheFlagAfterLoad(clear_cache != 0U);
+}
 
-  auto *dump_manager = GetDumpManager(instance_handle);
-  if (dump_manager == nullptr) {
-    GELOGW("Dump manager is null, skip");
-    return ge::SUCCESS;
+int32_t Om2DumpManagerDispatchDumpInfo(void *handle) {
+  auto *mgr = static_cast<ge::dump::ModelDumpManager *>(handle);
+  if (mgr == nullptr) {
+    return static_cast<int32_t>(ge::FAILED);
   }
-  ge::dump::ModelDumpInfo &model_dump_info = dump_manager->GetModelDumpInfo();
+  return static_cast<int32_t>(mgr->DispatchDumpInfo());
+}
+
+int32_t Om2DumpManagerUpdateStepId(void *handle, uint64_t step_id, void *stream) {
+  auto *mgr = static_cast<ge::dump::ModelDumpManager *>(handle);
+  if (mgr == nullptr) {
+    return static_cast<int32_t>(ge::FAILED);
+  }
+  return static_cast<int32_t>(mgr->UpdateStepId(step_id, stream));
+}
+
+int32_t Om2DumpManagerGetOpDescInfo(void *handle, uint32_t task_id, uint32_t stream_id, int32_t device_id,
+                                    void *op_info) {
+  auto *mgr = static_cast<ge::dump::ModelDumpManager *>(handle);
+  auto *op_desc_info = static_cast<ge::OpDescInfo *>(op_info);
+  if ((mgr == nullptr) || (op_desc_info == nullptr)) {
+    return 0;
+  }
+  return mgr->GetOpDescInfo(ge::OpDescInfoId(task_id, stream_id, device_id), *op_desc_info) ? 1 : 0;
+}
+
+int32_t Om2DumpManagerPreprocessOm2TaskInfo(void *handle, const GertModelTaskDesc *task_info) {
+  auto *mgr = static_cast<ge::dump::ModelDumpManager *>(handle);
+  if ((mgr == nullptr) || (task_info == nullptr)) {
+    return static_cast<int32_t>(ge::FAILED);
+  }
+  return static_cast<int32_t>(mgr->PreprocessOm2TaskInfo(*task_info));
+}
+
+int32_t Om2DumpManagerPostprocessOm2TaskInfo(void *handle, const GertModelTaskDesc *task_info) {
+  auto *mgr = static_cast<ge::dump::ModelDumpManager *>(handle);
+  if ((mgr == nullptr) || (task_info == nullptr)) {
+    return static_cast<int32_t>(ge::FAILED);
+  }
+  return static_cast<int32_t>(mgr->PostprocessOm2TaskInfo(*task_info));
+}
+
+int32_t Om2DumpManagerIsDataDumpEnabled(void *handle, const char *op_name, uint8_t *is_data_dump) {
+  auto *mgr = static_cast<ge::dump::ModelDumpManager *>(handle);
+  if ((mgr == nullptr) || (is_data_dump == nullptr)) {
+    return static_cast<int32_t>(ge::FAILED);
+  }
+  return static_cast<int32_t>(mgr->IsDataDumpEnabled(op_name, is_data_dump));
+}
+
+int32_t Om2DumpManagerSetModelDumpInfo(void *handle, const ModelDumpInfo *info) {
+  auto *mgr = static_cast<ge::dump::ModelDumpManager *>(handle);
+  if ((mgr == nullptr) || (info == nullptr)) {
+    return static_cast<int32_t>(ge::FAILED);
+  }
+  ge::dump::ModelDumpInfo model_dump_info;
+  model_dump_info.model_id = info->model_id;
+  model_dump_info.model_name = info->model_name;
+  model_dump_info.root_graph_name = info->root_graph_name;
+  model_dump_info.device_id = info->device_id;
   model_dump_info.rt_model_handle = info->rt_model_handle;
-
-  return dump_manager->SetModelDumpInfo(model_dump_info);
-}
-
-int32_t ReportRunInfoPreprocess(void *instance_handle, const struct GertModelRunReportInfo *info) {
-  if ((instance_handle == nullptr) || (info == nullptr)) {
-    return 0;
-  }
-  auto *executor = static_cast<gert::Om2ModelExecutor *>(instance_handle);
-  auto *mgr = static_cast<ge::dump::ModelDumpManager *>(executor->GetModelDumpManager());
-  if (mgr == nullptr) {
-    return 0;
-  }
-
-  uint64_t step_id = executor->GetStepId();
-  aclrtStream stream = (info->is_async != 0U) ? info->stream : executor->GetOrCreateProfStream();
-  mgr->ReportRunInfoPreprocess(info->model_id, step_id, stream);
-  return 0;
-}
-
-int32_t ReportRunInfoPostprocess(void *instance_handle, const struct GertModelRunReportInfo *info) {
-  if ((instance_handle == nullptr) || (info == nullptr)) {
-    return 0;
-  }
-  auto *executor = static_cast<gert::Om2ModelExecutor *>(instance_handle);
-  auto *mgr = static_cast<ge::dump::ModelDumpManager *>(executor->GetModelDumpManager());
-  if (mgr == nullptr) {
-    return 0;
-  }
-
-  uint64_t step_id = executor->GetStepId();
-  aclrtStream stream = (info->is_async != 0U) ? info->stream : executor->GetOrCreateProfStream();
-  mgr->ReportRunInfoPostprocess(info->model_id, step_id, stream);
-  return 0;
+  model_dump_info.step_id_addr = info->step_id_addr;
+  model_dump_info.loop_cond_addr = info->loop_cond_addr;
+  model_dump_info.iterations_per_loop_addr = info->iterations_per_loop_addr;
+  return static_cast<int32_t>(mgr->SetModelDumpInfo(model_dump_info));
 }

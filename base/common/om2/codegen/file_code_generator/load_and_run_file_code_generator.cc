@@ -428,7 +428,7 @@ StructDecl *LoadAndRunFileCodeGenerator::BuildLaunchKernelConfig() const {
                                                ast_.Field("uint32_t", "block_dim_offset{0U}"),
                                                ast_.Field("bool", "is_block_task_prefetch{false}"),
                                                ast_.Field("uint8_t", "is_data_dump{0U}"),
-                                               ast_.Field("uint16_t", "time_out{0U}"),
+                                               ast_.Field("int16_t", "time_out{-1}"),
                                                ast_.Field("uint32_t", "local_memory_size{0U}"),
                                            });
 }
@@ -459,9 +459,11 @@ FunctionDef *LoadAndRunFileCodeGenerator::BuildAssembleLaunchConfig() const {
       ast_.Assign(attrs[actual_cfg_num].Attr("id"), "ACL_RT_LAUNCH_KERNEL_ATTR_DYN_UBUF_SIZE"),
       ast_.Assign(attrs[actual_cfg_num].Attr("value").Attr("dynUBufSize"), launch_config.Attr("local_memory_size")),
       ast_.PostInc(actual_cfg_num),
-      ast_.Assign(attrs[actual_cfg_num].Attr("id"), "ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT"),
-      ast_.Assign(attrs[actual_cfg_num].Attr("value").Attr("timeout"), launch_config.Attr("time_out")),
-      ast_.PostInc(actual_cfg_num),
+      ast_.If(launch_config.Attr("time_out") >= 0,
+              {ast_.Assign(attrs[actual_cfg_num].Attr("id"), "ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT"),
+               ast_.Assign(attrs[actual_cfg_num].Attr("value").Attr("timeout"),
+                           ast_.StaticCast("uint16_t", launch_config.Attr("time_out"))),
+               ast_.PostInc(actual_cfg_num)}),
       ast_.Assign(holder.Attr("cfg").Attr("attrs"), attrs[0].Addr()),
       ast_.Assign(holder.Attr("cfg").Attr("numAttrs"), actual_cfg_num),
   };

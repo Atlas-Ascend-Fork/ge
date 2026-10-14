@@ -8,6 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <cerrno>
+
 #include "acl_op_resource_manager.h"
 #include "awatchdog.h"
 #include "framework/runtime/gert_api.h"
@@ -91,8 +93,12 @@ aclError AclOpResourceManager::HandleMaxOpQueueConfig(const char_t *const config
 
   if (found) {
     StringUtils::Strip(maxOpNumStr, "\"");
-    // if parse failed, maxOpNum is zero
+    errno = 0;
     const int64_t maxOpNum = strtol(maxOpNumStr.c_str(), nullptr, DECIMAL);
+    if (errno != 0) {
+      ACL_LOG_INNER_ERROR("[Parse][MaxOpNum]parse max_opqueue_num [%s] failed, errno=%d.", maxOpNumStr.c_str(), errno);
+      return ACL_ERROR_INVALID_PARAM;
+    }
     ACL_LOG_INFO("max_opqueue_num is set [%ld].", maxOpNum);
     if (maxOpNum <= 0) {
       ACL_LOG_INNER_ERROR(

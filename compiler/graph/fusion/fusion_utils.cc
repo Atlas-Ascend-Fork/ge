@@ -190,6 +190,9 @@ Status FusionUtils::MarkPassNameOnReplacementNodes(const std::unique_ptr<Graph> 
     GE_ASSERT_SUCCESS(
         fe::GraphPassUtil::StoreAndUpdataOriginFusionPassName(op_desc, inner_boundary.GetNodes(), pass_name),
         "Failed to mark pass name[%s] on node[%s][%s].", pass_name.c_str(), node->GetNamePtr(), node->GetTypePtr());
+    if (!OpTypeUtils::IsDataNode(node->GetTypePtr()) && !OpTypeUtils::IsGraphOutputNode(node->GetTypePtr())) {
+      fe::GraphPassUtil::RecordOriginalOpAttrs(inner_boundary.GetNodes(), op_desc, pass_name);
+    }
   }
   return SUCCESS;
 }

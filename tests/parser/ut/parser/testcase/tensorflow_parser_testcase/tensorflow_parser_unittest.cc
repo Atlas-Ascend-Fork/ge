@@ -3258,6 +3258,32 @@ TEST_F(UtestTensorflowParser, tensorflow_TransTensorDescriptor_test) {
   EXPECT_EQ(ret, SUCCESS);
 }
 
+TEST_F(UtestTensorflowParser, tensorflow_MeanPreservesEmptyOutputShape_test) {
+  const auto make_serialized_desc = [](const std::vector<int64_t> &dims) {
+    tensorflow::AttrValue attr_value;
+    auto *desc = attr_value.mutable_list()->add_func();
+    (*desc->mutable_attr())["serialize_datatype"].set_i(tensorflow::DT_FLOAT);
+    auto *shape = (*desc->mutable_attr())["serialize_shape"].mutable_list();
+    for (const int64_t dim : dims) {
+      shape->add_i(dim);
+    }
+    return attr_value;
+  };
+
+  const auto expect_output_shape = [&make_serialized_desc](const std::vector<int64_t> &expected_shape) {
+    ParserOperator op;
+    const auto attr_value = make_serialized_desc(expected_shape);
+    const Status ret =
+        TensorFlowUtil::TransTensorDescriptor(attr_value, &op, TENSORFLOW_NORMAL_OUTPUT_TENSOR_FLAG, ge::parser::MEAN);
+    ASSERT_EQ(SUCCESS, ret);
+    ASSERT_EQ(1U, op.GetOutputTensorDesc().size());
+    EXPECT_EQ(expected_shape, op.GetOutputTensorDesc()[0].GetShape().GetDims());
+  };
+
+  expect_output_shape({0, 3});
+  expect_output_shape({2, 3});
+}
+
 TEST_F(UtestTensorflowParser, tensorflow_GraphDefOptimizeDestroyTemporaryVariable_test) {
   tensorflow::GraphDef *graph_def = nullptr;
   tensorflow::NodeDef *nodeCurrent = initNodeDef();

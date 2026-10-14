@@ -9,7 +9,7 @@
  */
 
 #include "framework/runtime/gert_model/gert_model_executor_callbacks.h"
-#include "framework/runtime/dump/model_dump_c_api.h"
+#include "om2_dfx_loader.h"
 
 #include <array>
 #include <cstddef>
@@ -25,6 +25,83 @@
 #include "graph_metadef/common/ge_common/util.h"
 #include "profiling/prof_common.h"
 #include "rt_external_stars.h"
+
+// =============================================================================
+//  DFX/Dump 回调：由 libom2_executor.so 本地实现。这些回调经 GertModelLoadCallbacks
+//  传给模型 SO 或在任务下发路径内被调用；对 ModelDumpManager 的访问统一通过
+//  Om2DfxApi 的句柄式 C API（dlopen libom2_dump.so）完成，executor 侧仅持有不透明句柄。
+// =============================================================================
+int32_t ReportDfxTaskPreprocess(uint32_t model_id, void *instance_handle, const struct GertModelTaskDesc *task_info,
+                                const void *extended_attrs, size_t extended_attrs_size) {
+  (void)model_id;
+
+  if ((extended_attrs != nullptr) || (extended_attrs_size != 0U)) {
+    GELOGW("Extended attrs are not supported in preprocess");
+  }
+
+  if ((instance_handle == nullptr) || (task_info == nullptr)) {
+    GELOGW("ModelExecutor handle or task_info is null, skip preprocess");
+    return ge::SUCCESS;
+  }
+
+  void *manager_handle = static_cast<gert::Om2ModelExecutor *>(instance_handle)->GetModelDumpManager();
+  if (manager_handle == nullptr) {
+    GELOGW("ModelDumpManager is null, skip preprocess");
+    return ge::SUCCESS;
+  }
+  return gert::Om2DfxApi::Instance().PreprocessOm2TaskInfo(manager_handle, task_info);
+}
+
+int32_t ReportDfxTaskPostprocess(uint32_t model_id, void *instance_handle, const struct GertModelTaskDesc *task_info,
+                                 const void *extended_attrs, size_t extended_attrs_size) {
+  (void)model_id;
+
+  if ((extended_attrs != nullptr) || (extended_attrs_size != 0U)) {
+    GELOGW("Extended attrs are not supported in postprocess");
+  }
+
+  if ((instance_handle == nullptr) || (task_info == nullptr)) {
+    GELOGW("ModelExecutor handle or task_info is null, skip postprocess");
+    return ge::SUCCESS;
+  }
+
+  void *manager_handle = static_cast<gert::Om2ModelExecutor *>(instance_handle)->GetModelDumpManager();
+  if (manager_handle == nullptr) {
+    GELOGW("ModelDumpManager is null, skip postprocess");
+    return ge::SUCCESS;
+  }
+  return gert::Om2DfxApi::Instance().PostprocessOm2TaskInfo(manager_handle, task_info);
+}
+
+int32_t IsDataDumpEnabled(uint32_t model_id, void *instance_handle, const char *op_name, uint8_t *is_data_dump) {
+  (void)model_id;
+
+  if ((instance_handle == nullptr) || (is_data_dump == nullptr)) {
+    GELOGW("ModelExecutor handle or is_data_dump is null, skip");
+    return ge::SUCCESS;
+  }
+
+  void *manager_handle = static_cast<gert::Om2ModelExecutor *>(instance_handle)->GetModelDumpManager();
+  if (manager_handle == nullptr) {
+    GELOGW("ModelDumpManager is null, skip");
+    return ge::SUCCESS;
+  }
+  return gert::Om2DfxApi::Instance().IsDataDumpEnabled(manager_handle, op_name, is_data_dump);
+}
+
+int32_t ReportModelBaseInfo(void *instance_handle, const struct GertModelBaseInfo *info) {
+  if (instance_handle == nullptr) {
+    GELOGW("ModelExecutor handle is null, skip");
+    return ge::SUCCESS;
+  }
+
+  if ((info == nullptr) || (info->rt_model_handle == nullptr)) {
+    GELOGW("Input parameter info or info->rt_model_handle is null, skip");
+    return ge::SUCCESS;
+  }
+
+  return static_cast<gert::Om2ModelExecutor *>(instance_handle)->ReportModelBaseInfo(info);
+}
 
 namespace {
 
@@ -152,6 +229,8 @@ int32_t ReportTaskPostprocess(void *instance_handle, GertModelTaskDesc *task_inf
   GE_RETURN_WITH_LOG_IF_ERROR(ret,
                               "[OM2] ReportDfxTaskPostprocess failed, model_id=%u, op_name=%s, op_type=%s, ret=%d.",
                               GetModelId(instance_handle), GetTaskOpName(task_info), GetTaskOpType(task_info), ret);
+  // profiling 任务信息由 executor 本地保存（profiling_impl_ 已从 ModelDumpManager 迁移至 Om2ModelExecutor）
+  static_cast<const gert::Om2ModelExecutor *>(instance_handle)->SaveProfilingTaskInfo(*task_info);
   return ge::SUCCESS;
 }
 

@@ -1545,6 +1545,7 @@ target_link_libraries(ut_libge_distinct_load_utest
     opp_registry
     om2_executor
     gert_model_data_serializer
+    om2_dump
     -Wl,-z,muldefs
     -Wl,--whole-archive
     ge_graph_dsl ge_runtime_stub

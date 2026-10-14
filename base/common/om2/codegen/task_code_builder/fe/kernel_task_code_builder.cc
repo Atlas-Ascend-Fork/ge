@@ -388,7 +388,7 @@ Status KernelTaskCodeBuilder::BuildLaunchConfigSemantic(const TaskSemanticContri
   bool op_exec_never_timeout = false;
   if (AttrUtils::GetBool(context.op_desc, public_attr::OP_EXEC_NEVER_TIMEOUT, op_exec_never_timeout) &&
       op_exec_never_timeout) {
-    launch_semantic.config.time_out = op_exec_never_timeout;
+    launch_semantic.config.time_out = 0;
   }
   (void)AttrUtils::GetInt(context.op_desc, kLocalMemorySize, launch_semantic.config.local_memory_size);
   if (IsAllKernelTask(build_data_.semantic)) {
@@ -2244,11 +2244,12 @@ Status KernelTaskCodeBuilder::AppendInputOutputAddr(size_t ir_idx, bool is_input
   std::vector<uint64_t> &addrs = is_input ? input_data_addrs_ : output_data_addrs_;
   std::vector<uint64_t> &types = is_input ? input_mem_types_ : output_mem_types_;
   const size_t cust_offset = is_input ? 0U : input_data_addrs_.size();
-  for (size_t i = 0UL; i < range_pair.second; ++i, ++begin_idx) {
+  for (size_t i = 0UL; i < range_pair.second; ++i) {
     GE_ASSERT(begin_idx < addrs.size(), "[OM2]ir_idx:[%zu], begin_index [%zu] is out of range, max_size:[%zu].", ir_idx,
               begin_idx, addrs.size());
     cust_to_relevant_offset_[begin_idx + cust_offset] = io_addrs_.size();
     AppendIoAddr(addrs[begin_idx], types[begin_idx]);
+    begin_idx++;
   }
   return SUCCESS;
 }

@@ -464,6 +464,7 @@ if (NOT BUILD_OPEN_PROJECT)
                 om2_executor
                 gert_model_data_deserializer
                 gert_model_data_serializer
+                om2_dump
                 # 开发环境某些没有下载parser目录
                 # _caffe_parser fmk_onnx_parser fmk_parser parser_common
                 EXPORT air-targets
@@ -534,7 +535,7 @@ elseif (BUILD_OPEN_PROJECT OR ENABLE_OPEN_SRC)
         if (NOT MDC_COMPILE_RUNTIME)
             add_custom_target(ge-compiler)
             add_dependencies(ge-compiler parser_common aicore_utils fusion_pass op_compile_adapter aicpu_engine_common fmk_parser ge_compiler
-                    fmk_onnx_parser opskernel ge_runner slice aicpu_const_folding llm_engine jit_exe _caffe_parser flow_graph aihac_autofusion
+                    fmk_onnx_parser opskernel ge_runner slice llm_engine jit_exe _caffe_parser flow_graph aihac_autofusion
                     dflow_runner eager_style_graph_builder_base eager_style_graph_builder_base_static gen_esb
                     aihac_symbolizer ge_python llm_datadist_python_v1 dataflow_python ge_python_pass_bridge
                     ge_python_custom_op_bridge func2graph)
@@ -550,7 +551,7 @@ elseif (BUILD_OPEN_PROJECT OR ENABLE_OPEN_SRC)
                     stub_acl_op_compiler)
 
             add_custom_target(ge-executor)
-            add_dependencies(ge-executor ge_common ge_executor_shared ge_common_base davinci_executor hybrid_executor gert custom_op_runtime om2_executor register
+            add_dependencies(ge-executor ge_common ge_executor_shared ge_common_base davinci_executor hybrid_executor gert custom_op_runtime om2_executor om2_dump register
                     graph custom_op_registry_static npu_sched_model_loader lowering register_static graph_base model_deployer
                     data_flow_base hcom_executor)
             add_dependencies(ge-executor acl_mdl acl_mdl_impl acl_mdl_impl_om2 acl_op_executor acl_op_executor_impl acl_cblas)
@@ -569,7 +570,7 @@ elseif (BUILD_OPEN_PROJECT OR ENABLE_OPEN_SRC)
             add_custom_target(ge-executor)
             add_dependencies(ge-executor ge_common ge_common_base davinci_executor hybrid_executor gert register graph
                     custom_op_registry_static graph_base acl_cblas)
-            add_dependencies(ge-executor acl_mdl acl_mdl_impl acl_mdl_impl_om2 acl_op_executor acl_op_executor_impl om2_executor ge_executor_shared hcom_executor lowering)
+            add_dependencies(ge-executor acl_mdl acl_mdl_impl acl_mdl_impl_om2 acl_op_executor acl_op_executor_impl om2_executor om2_dump ge_executor_shared hcom_executor lowering)
         endif ()
 
         add_dependencies(ge-compiler version_ge-compiler_info)

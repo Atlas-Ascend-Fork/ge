@@ -9,6 +9,7 @@
  */
 
 #include <cinttypes>
+#include <cerrno>
 #include <cstring>
 #include <unordered_map>
 
@@ -270,15 +271,31 @@ static Status ParseAippDimInfo(const std::string &info_str, ge::InputOutputDims 
     return FAILED;
   }
   dims_info.name = parts[kAippDimNameIdx];
+  errno = 0;
   dims_info.size = static_cast<uint32_t>(std::strtol(parts[kAippDimSizeIdx].c_str(), nullptr, kAippDecimalRadix));
+  if (errno != 0) {
+    GELOGW("[OM2][AIPP] Failed to parse dim size from: %s, errno=%d", parts[kAippDimSizeIdx].c_str(), errno);
+    return FAILED;
+  }
+  errno = 0;
   dims_info.dim_num = static_cast<size_t>(std::strtol(parts[kAippDimDimNumIdx].c_str(), nullptr, kAippDecimalRadix));
+  if (errno != 0) {
+    GELOGW("[OM2][AIPP] Failed to parse dim num from: %s, errno=%d", parts[kAippDimDimNumIdx].c_str(), errno);
+    return FAILED;
+  }
 
   const auto dim_strs = StringUtils::Split(parts[kAippDimShapeIdx], ',');
   for (const auto &dim_str : dim_strs) {
     if (dim_str.empty()) {
       continue;
     }
-    (void)dims_info.dims.emplace_back(std::strtol(dim_str.c_str(), nullptr, kAippDecimalRadix));
+    errno = 0;
+    const int64_t dim = std::strtol(dim_str.c_str(), nullptr, kAippDecimalRadix);
+    if (errno != 0) {
+      GELOGW("[OM2][AIPP] Failed to parse dim from: %s, errno=%d", dim_str.c_str(), errno);
+      return FAILED;
+    }
+    (void)dims_info.dims.emplace_back(dim);
   }
   return SUCCESS;
 }
@@ -920,7 +937,7 @@ Status Om2PackageHelper::BuildManifest(gert::GertModelData &model_data) {
 }
 
 Status Om2PackageHelper::BuildOm2ModelData(const GeModelPtr &ge_model, gert::GertModelData &model_data,
-                                           const GeRootModelPtr &ge_root_model) {
+                                           const GeRootModelPtr &ge_root_model) const {
   GE_ASSERT_NOTNULL(ge_model, "[OM2] ge_model is nullptr");
 
   auto &unit = *model_data.models.emplace_back(std::make_unique<gert::GertModelDataModel>());

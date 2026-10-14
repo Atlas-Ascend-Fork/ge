@@ -27,7 +27,6 @@ namespace dump {
 class DataDumpImpl;
 class ExceptionDumpImpl;
 class OverflowDumpImpl;
-class ProfilingImpl;
 class DumpOpImpl;
 
 // ============================================================
@@ -39,16 +38,7 @@ using GertModelTaskDesc = ::GertModelTaskDesc;
 // ============================================================
 //                  ModelDumpManager 内部结构体
 // ============================================================
-struct ModelDumpInfo {
-  uint32_t model_id;
-  const char *model_name;
-  const char *root_graph_name;
-  uint32_t device_id;
-  void *rt_model_handle;  // rtModel_t
-  uint64_t step_id_addr;
-  uint64_t loop_cond_addr;
-  uint64_t iterations_per_loop_addr;
-};
+using ModelDumpInfo = ::ModelDumpInfo;
 
 // ============================================================
 //                   ModelDumpManager 统一门面
@@ -80,11 +70,6 @@ class VISIBILITY_EXPORT ModelDumpManager {
     return model_info_;
   }
   void SetClearDfxCacheFlagAfterLoad(bool clear_cache);
-  Status ReportModelLoadBegin() const;
-  Status ReportModelLoadEnd() const;
-  Status ReportRunInfoPreprocess(uint64_t model_id, uint64_t step_id, aclrtStream stream) const;
-  Status ReportRunInfoPostprocess(uint64_t model_id, uint64_t step_id, aclrtStream stream) const;
-  bool IsProfilingEnabled() const;
 
   // ========================================================================
   // Task 级信息接口
@@ -123,7 +108,6 @@ class VISIBILITY_EXPORT ModelDumpManager {
   std::unique_ptr<DataDumpImpl> data_dump_impl_;
   std::unique_ptr<ExceptionDumpImpl> exception_impl_;
   std::unique_ptr<OverflowDumpImpl> overflow_impl_;
-  std::unique_ptr<ProfilingImpl> profiling_impl_;
   std::unique_ptr<DumpOpImpl> dump_op_impl_;
 };
 

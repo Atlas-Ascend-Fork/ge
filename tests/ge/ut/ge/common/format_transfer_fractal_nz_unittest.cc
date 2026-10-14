@@ -13,6 +13,7 @@
 
 #include "formats/format_transfers/format_transfer_fractal_nz.h"
 #include "formats/formats.h"
+#include "graph/types.h"
 #include "time.h"
 #include "framework/common/ge_inner_error_codes.h"
 
@@ -7527,6 +7528,503 @@ TEST_F(UtestFormatTransferNdFractNz, nd_reverse_overflow_dst_shape) {
   TransResult result;
   FormatTransferFractalNzND transfer;
   EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_SHAPE_INVALID);
+}
+
+// ----------------------- sub-byte (e.g. DT_INT4) tests -----------------------
+
+namespace {
+uint8_t MakeInt4Byte(const uint8_t lo, const uint8_t hi) {
+  return static_cast<uint8_t>((lo & 0x0FU) | static_cast<uint8_t>((hi & 0x0FU) << 4));
+}
+
+std::vector<uint8_t> MakeInt4PackedData(const size_t elem_count) {
+  std::vector<uint8_t> data((elem_count + 1U) / 2U, 0);
+  for (size_t i = 0U; i < elem_count; ++i) {
+    const auto value = static_cast<uint8_t>(i % 16U);
+    if ((i % 2U) == 0U) {
+      data[i / 2U] = MakeInt4Byte(value, data[i / 2U] >> 4);
+    } else {
+      data[i / 2U] = MakeInt4Byte(data[i / 2U] & 0x0FU, value);
+    }
+  }
+  return data;
+}
+
+uint8_t GetInt4Elem(const uint8_t *const data, const size_t elem_idx) {
+  const uint8_t byte = data[elem_idx / 2U];
+  return ((elem_idx % 2U) == 0U) ? static_cast<uint8_t>(byte & 0x0FU) : static_cast<uint8_t>(byte >> 4);
+}
+}  // namespace
+
+// ND -> NZ (sub-byte): W aligned to C0, layout check + padding
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_c0_16_success) {
+  const std::vector<uint8_t> src = MakeInt4PackedData(2U * 32U);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {2, 32},   {1, 2, 1, 16, 16}, DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  ASSERT_EQ(transfer.TransFormat(args, result), SUCCESS);
+  EXPECT_EQ(result.length, (1U * 2U * 1U * 16U * 16U) / 2U);
+  // elem(r, w) offset = (w / 16) * (1 * 16 * 16) + r * 16 + (w % 16)
+  const auto elem_at = [&result](const size_t r, const size_t w) {
+    const size_t idx = (w / 16U) * 256U + r * 16U + (w % 16U);
+    return GetInt4Elem(result.data.get(), idx);
+  };
+  EXPECT_EQ(elem_at(0, 0), 0U);
+  EXPECT_EQ(elem_at(0, 1), 1U);
+  EXPECT_EQ(elem_at(1, 0), 32U % 16U);
+  EXPECT_EQ(elem_at(1, 17), (1U * 32U + 17U) % 16U);
+  EXPECT_EQ(elem_at(0, 31), (31U) % 16U);
+  EXPECT_EQ(elem_at(3, 5), 0U);   // padding rows in column block 0
+  EXPECT_EQ(elem_at(3, 20), 0U);  // padding rows in column block 1
+}
+
+// ND -> NZ -> ND round trip keeps data
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_round_trip) {
+  const std::vector<uint8_t> src = MakeInt4PackedData(2U * 32U);
+  const Format nd_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format nz_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs to_nz{src.data(),      nd_format, nz_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                  FORMAT_RESERVED, 16,        16,        {2, 32},   {1, 2, 1, 16, 16}, DT_INT4};
+  TransResult nz_result;
+  FormatTransferFractalNz transfer;
+  ASSERT_EQ(transfer.TransFormat(to_nz, nz_result), SUCCESS);
+  TransArgs to_nd{nz_result.data.get(), nz_format, nd_format, FORMAT_FRACTAL_NZ, FORMAT_ND, FORMAT_RESERVED,
+                  FORMAT_RESERVED,      16,        16,        {1, 2, 1, 16, 16}, {2, 32},   DT_INT4};
+  TransResult nd_result;
+  FormatTransferFractalNzND reverse_transfer;
+  ASSERT_EQ(reverse_transfer.TransFormat(to_nd, nd_result), SUCCESS);
+  ASSERT_EQ(nd_result.length, src.size());
+  for (size_t i = 0U; i < src.size(); ++i) {
+    ASSERT_EQ(nd_result.data.get()[i], src[i]) << "byte " << i;
+  }
+}
+
+// ND -> NZ (sub-byte): W not aligned to C0, tail path
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_tail_w) {
+  const std::vector<uint8_t> src = MakeInt4PackedData(2U * 17U);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {2, 17},   {1, 2, 1, 16, 16}, DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  ASSERT_EQ(transfer.TransFormat(args, result), SUCCESS);
+  const auto elem_at = [&result](const size_t r, const size_t w) {
+    const size_t idx = (w / 16U) * 256U + r * 16U + (w % 16U);
+    return GetInt4Elem(result.data.get(), idx);
+  };
+  EXPECT_EQ(elem_at(0, 16), (16U) % 16U);             // first tail elem of row 0
+  EXPECT_EQ(elem_at(1, 16), (1U * 17U + 16U) % 16U);  // tail elem of row 1
+  EXPECT_EQ(elem_at(0, 17), 0U);                      // padding
+}
+
+// ND -> NZ (sub-byte): multi-times
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_multi_times) {
+  const std::vector<uint8_t> src = MakeInt4PackedData(3U * 2U * 32U);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND,  FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {3, 2, 32}, {3, 2, 1, 16, 16}, DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  ASSERT_EQ(transfer.TransFormat(args, result), SUCCESS);
+  // second times block: elem offset base = 1 * (2 * 1 * 16 * 16) = 512
+  const size_t idx = 512U + (1U * 256U) + 16U + 5U;  // times=1, w block=1, r=1, w=5
+  const size_t src_idx = 1U * (2U * 32U) + 1U * 32U + 5U;
+  EXPECT_EQ(GetInt4Elem(result.data.get(), idx), src_idx % 16U);
+}
+
+// ND -> NZ (sub-byte): W < W0, only tail loop
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_w_lt_w0) {
+  const std::vector<uint8_t> src = MakeInt4PackedData(2U * 5U);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {2, 5},    {1, 1, 16, 16},    DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  ASSERT_EQ(transfer.TransFormat(args, result), SUCCESS);
+  const auto elem_at = [&result](const size_t r, const size_t w) {
+    const size_t idx = r * 16U + w;
+    return GetInt4Elem(result.data.get(), idx);
+  };
+  EXPECT_EQ(elem_at(1, 4), (1U * 5U + 4U) % 16U);
+  EXPECT_EQ(elem_at(0, 15), 0U);  // padding
+}
+
+// ND -> NZ (sub-byte): DT_INT2 (bits=2, 4 elems per byte)
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_int2) {
+  std::vector<uint8_t> src((2U * 16U) / 4U, 0);  // [2,16] int2: 32 elems = 8 bytes
+  for (size_t i = 0U; i < 32U; ++i) {
+    const auto value = static_cast<uint8_t>(i % 4U);
+    const size_t byte = i / 4U;
+    const size_t shift = (i % 4U) * 2U;
+    src[byte] = static_cast<uint8_t>(src[byte] | (value << shift));
+  }
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {2, 16},   {1, 2, 1, 16, 16}, DT_INT2};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  ASSERT_EQ(transfer.TransFormat(args, result), SUCCESS);
+  // elem(r=1, w=15) offset = 16 + 15 = 31; src idx = 1 * 16 + 15 = 31
+  const size_t idx = 16U + 15U;
+  const size_t byte = idx / 4U;
+  const auto value = static_cast<uint8_t>((result.data.get()[byte] >> ((idx % 4U) * 2U)) & 0x3U);
+  EXPECT_EQ(value, 31U % 4U);
+}
+
+// ND -> NZ (sub-byte): C0=32 explicit variant, aligned fast path
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_c0_32_success) {
+  const std::vector<uint8_t> src = MakeInt4PackedData(2U * 32U);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 6));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {2, 32},   {1, 1, 16, 32},    DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  ASSERT_EQ(transfer.TransFormat(args, result), SUCCESS);
+  EXPECT_EQ(result.length, (1U * 1U * 16U * 32U) / 2U);
+  // elem(r, w) offset = r * 32 + w; whole row of 32 elems is byte aligned (128 elems = 64 bytes)
+  EXPECT_EQ(GetInt4Elem(result.data.get(), 32U), 32U % 16U);  // r=1, w=0
+  EXPECT_EQ(GetInt4Elem(result.data.get(), 63U), 63U % 16U);  // r=1, w=31
+}
+
+// ND -> NZ (sub-byte): 6-bit dtype rejected (only 1/2/4 bits supported)
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_float6_rejected) {
+  const std::vector<uint8_t> src(8U, 0);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND,  FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {1, 3, 17}, {1, 2, 1, 16, 16}, DT_FLOAT6_E3M2};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_DATATYPE_INVALID);
+}
+
+// ND -> NZ (sub-byte): bare FRACTAL_NZ without explicit c0 rejected (shape derivation fails first)
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_bare_nz_rejected) {
+  const std::vector<uint8_t> src(32U, 0);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 0));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, -1,         -1,         {2, 32},   {1, 2, 1, 16, 16}, DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_SHAPE_INVALID);
+}
+
+// ND -> NZ (sub-byte): dst shape smaller than 4 dims rejected
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_shape_too_small) {
+  const std::vector<uint8_t> src(32U, 0);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {2, 32},   {2, 1, 16},        DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_SHAPE_INVALID);
+}
+
+// ND -> NZ (sub-byte): negative dim in dst shape rejected
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_negative_shape) {
+  const std::vector<uint8_t> src(32U, 0);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ,  FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {2, 32},   {1, 2, 1, -16, 16}, DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_SHAPE_INVALID);
+}
+
+// ND -> NZ (sub-byte): w0 = 0 rejected (divide-by-zero guard)
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_w0_zero) {
+  const std::vector<uint8_t> src(32U, 0);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {2, 32},   {1, 2, 1, 16, 0},  DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_DATATYPE_INVALID);
+}
+
+// ND -> NZ (sub-byte): times mismatch between nd and nz rejected
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_times_mismatch) {
+  const std::vector<uint8_t> src(32U, 0);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {2, 32},   {2, 2, 1, 16, 16}, DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_SHAPE_INVALID);
+}
+
+// ND -> NZ (sub-byte): block capacity insufficient (w1 too small) rejected
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_capacity_insufficient) {
+  const std::vector<uint8_t> src(32U, 0);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  // w1 = 1 but w = 32 needs two column blocks
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {2, 32},   {1, 1, 1, 16, 16}, DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_SHAPE_INVALID);
+}
+
+// ND -> NZ (sub-byte): zero element nd falls into dst_size <= 0 branch
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_zero_elem_param_invalid) {
+  const std::vector<uint8_t> src(1U, 0);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND,  FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {0, 2, 32}, {0, 2, 1, 16, 16}, DT_INT4};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_PARAM_INVALID);
+}
+
+// NZ -> ND (sub-byte): src c0 fallback when src_c0_format invalid
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nz_to_nd_c0_fallback_success) {
+  const std::vector<uint8_t> src = MakeInt4PackedData(1U * 2U * 1U * 16U * 16U);
+  const Format src_format = static_cast<Format>(FORMAT_FRACTAL_NZ_C0_16);
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_FRACTAL_NZ_C0_16, FORMAT_ND, FORMAT_RESERVED,
+                 FORMAT_RESERVED, -1,         -1,         {1, 2, 1, 16, 16},       {2, 32},   DT_INT4};
+  TransResult result;
+  FormatTransferFractalNzND transfer;
+  ASSERT_EQ(transfer.TransFormat(args, result), SUCCESS);
+  EXPECT_EQ(result.length, (2U * 32U + 1U) / 2U);
+  // elem(r=1, w=17) src nz offset = 1 * 256 + 16 + 1 = 273; value = 49 % 16
+  EXPECT_EQ(GetInt4Elem(result.data.get(), 1U * 32U + 17U), (1U * 32U + 17U) % 16U);
+  EXPECT_EQ(GetInt4Elem(result.data.get(), 0U), 0U);
+}
+
+// NZ -> ND (sub-byte): invalid data type on reverse
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nz_to_nd_float6_rejected) {
+  const std::vector<uint8_t> src(128U, 0);
+  const Format src_format = static_cast<Format>(FORMAT_FRACTAL_NZ_C0_16);
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_FRACTAL_NZ_C0_16, FORMAT_ND, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {1, 2, 1, 16, 16},       {2, 32},   DT_FLOAT6_E3M2};
+  TransResult result;
+  FormatTransferFractalNzND transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_DATATYPE_INVALID);
+}
+
+// NZ -> ND (sub-byte): block capacity insufficient rejected
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nz_to_nd_shape_mismatch) {
+  const std::vector<uint8_t> src(128U, 0);
+  const Format src_format = static_cast<Format>(FORMAT_FRACTAL_NZ_C0_16);
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  // nd {2, 32} needs w1 = 2 column blocks, nz shape only has w1 = 1
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_FRACTAL_NZ_C0_16, FORMAT_ND, FORMAT_RESERVED,
+                 FORMAT_RESERVED, -1,         -1,         {1, 1, 1, 16, 16},       {2, 32},   DT_INT4};
+  TransResult result;
+  FormatTransferFractalNzND transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_SHAPE_INVALID);
+}
+
+// TransShape with explicit c0 variants covers GetEffectiveC0 branches
+// note: 2-dim src derives a 4-dim nz shape (times = 1 is implicit)
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_trans_shape_c0_variants) {
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  std::vector<int64_t> dst_shape;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransShape(src_format, {2, 32}, DT_INT4, static_cast<Format>(FORMAT_FRACTAL_NZ_C0_16), dst_shape),
+            SUCCESS);
+  EXPECT_EQ(dst_shape, (std::vector<int64_t>{2, 1, 16, 16}));
+  EXPECT_EQ(transfer.TransShape(src_format, {2, 32}, DT_INT4, static_cast<Format>(FORMAT_FRACTAL_NZ_C0_32), dst_shape),
+            SUCCESS);
+  EXPECT_EQ(dst_shape, (std::vector<int64_t>{1, 1, 16, 32}));
+  EXPECT_EQ(transfer.TransShape(src_format, {2, 32}, DT_INT4, static_cast<Format>(FORMAT_FRACTAL_NZ_C0_8), dst_shape),
+            SUCCESS);
+  EXPECT_EQ(dst_shape, (std::vector<int64_t>{4, 1, 16, 8}));
+}
+
+// TransShape with composed c0 bit-field format
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_trans_shape_composed_c0) {
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 6));
+  std::vector<int64_t> dst_shape;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransShape(src_format, {2, 32}, DT_INT4, dst_format, dst_shape), SUCCESS);
+  EXPECT_EQ(dst_shape, (std::vector<int64_t>{1, 1, 16, 32}));
+}
+
+// TransShape with bare nz (no c0) rejected by invalid shape
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_trans_shape_bare_nz_invalid) {
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 0));
+  std::vector<int64_t> dst_shape;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransShape(src_format, {2, 32}, DT_INT4, dst_format, dst_shape), ACL_ERROR_GE_SHAPE_INVALID);
+}
+
+// TransShape with C0_2/C0_4 variants covers remaining GetEffectiveC0 branches
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_trans_shape_c0_2_4) {
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  std::vector<int64_t> dst_shape;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransShape(src_format, {2, 32}, DT_INT4, static_cast<Format>(FORMAT_FRACTAL_NZ_C0_2), dst_shape),
+            SUCCESS);
+  EXPECT_EQ(dst_shape, (std::vector<int64_t>{16, 1, 16, 2}));
+  EXPECT_EQ(transfer.TransShape(src_format, {2, 32}, DT_INT4, static_cast<Format>(FORMAT_FRACTAL_NZ_C0_4), dst_shape),
+            SUCCESS);
+  EXPECT_EQ(dst_shape, (std::vector<int64_t>{8, 1, 16, 4}));
+}
+
+// ND -> NZ (sub-byte): unaligned c0 with 1-bit dtype rejected
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nd_to_nz_unaligned_c0_uint1) {
+  const std::vector<uint8_t> src(8U, 0);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(FORMAT_FRACTAL_NZ_C0_2);
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ_C0_2, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 2,          2,          {1, 8},    {1, 4, 16, 2},          DT_UINT1};
+  TransResult result;
+  FormatTransferFractalNz transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_DATATYPE_INVALID);
+}
+
+// NZ -> ND (sub-byte): unaligned c0 with 1-bit dtype rejected
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nz_to_nd_unaligned_c0_uint1) {
+  const std::vector<uint8_t> src(16U, 0);
+  TransArgs args{src.data(),
+                 static_cast<Format>(FORMAT_FRACTAL_NZ_C0_2),
+                 FORMAT_ND,
+                 FORMAT_FRACTAL_NZ_C0_2,
+                 FORMAT_ND,
+                 FORMAT_RESERVED,
+                 FORMAT_RESERVED,
+                 -1,
+                 -1,
+                 {1, 4, 16, 2},
+                 {1, 8},
+                 DT_UINT1};
+  TransResult result;
+  FormatTransferFractalNzND transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_DATATYPE_INVALID);
+}
+
+// NZ -> ND (sub-byte): zero element nd falls into dst_size <= 0 branch
+TEST_F(UtestFormatTransferNdFractNz, sub_byte_nz_to_nd_zero_elem_param_invalid) {
+  const std::vector<uint8_t> src(256U, 0);
+  TransArgs args{src.data(),
+                 static_cast<Format>(FORMAT_FRACTAL_NZ_C0_16),
+                 FORMAT_ND,
+                 FORMAT_FRACTAL_NZ_C0_16,
+                 FORMAT_ND,
+                 FORMAT_RESERVED,
+                 FORMAT_RESERVED,
+                 16,
+                 16,
+                 {1, 2, 1, 16, 16},
+                 {0},
+                 DT_INT4};
+  TransResult result;
+  FormatTransferFractalNzND transfer;
+  EXPECT_EQ(transfer.TransFormat(args, result), ACL_ERROR_GE_PARAM_INVALID);
+}
+
+// TransDataFormat gate: sub-byte nz(c0 explicit) -> nd via new registry entries
+TEST_F(UtestFormatTransferNdFractNz, trans_data_sub_byte_nz_c0_16_to_nd) {
+  const std::vector<uint8_t> src(256U, 0);
+  TransArgs args{src.data(), FORMAT_FRACTAL_NZ_C0_16, FORMAT_ND,       FORMAT_FRACTAL_NZ_C0_16,
+                 FORMAT_ND,  FORMAT_RESERVED,         FORMAT_RESERVED, 16,
+                 16,         {1, 2, 1, 16, 16},       {2, 32},         DT_INT4};
+  TransResult result;
+  EXPECT_EQ(TransDataFormat(args, result), SUCCESS);
+  EXPECT_EQ(result.length, (2U * 32U + 1U) / 2U);
+}
+
+// TransDataFormat gate: sub-byte nd -> nz with explicit c0 passes whole chain
+TEST_F(UtestFormatTransferNdFractNz, trans_data_sub_byte_nd_to_nz_c0_16) {
+  const std::vector<uint8_t> src = MakeInt4PackedData(2U * 32U);
+  TransArgs args{src.data(),
+                 FORMAT_ND,
+                 FORMAT_FRACTAL_NZ_C0_16,
+                 FORMAT_ND,
+                 FORMAT_FRACTAL_NZ_C0_16,
+                 FORMAT_RESERVED,
+                 FORMAT_RESERVED,
+                 16,
+                 16,
+                 {2, 32},
+                 {1, 2, 1, 16, 16},
+                 DT_INT4};
+  TransResult result;
+  EXPECT_EQ(TransDataFormat(args, result), SUCCESS);
+  EXPECT_EQ(result.length, 256U);
+}
+
+// TransDataFormat gate: sub-byte nd -> nz composed c0 bit-field format passes whole chain
+TEST_F(UtestFormatTransferNdFractNz, trans_data_sub_byte_nd_to_nz_composed_c0) {
+  const std::vector<uint8_t> src = MakeInt4PackedData(2U * 32U);
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      FORMAT_ND, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,        16,         {2, 32},   {1, 2, 1, 16, 16}, DT_INT4};
+  TransResult result;
+  EXPECT_EQ(TransDataFormat(args, result), SUCCESS);
+  EXPECT_EQ(result.length, 256U);
+}
+
+// TransDataFormat gate: sub-byte with bare nz rejected
+TEST_F(UtestFormatTransferNdFractNz, trans_data_sub_byte_bare_nz_rejected) {
+  const std::vector<uint8_t> src(32U, 0);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_ND, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 0));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_ND, FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, -1,         -1,         {2, 32},   {1, 2, 1, 16, 16}, DT_INT4};
+  TransResult result;
+  EXPECT_EQ(TransDataFormat(args, result), ACL_ERROR_GE_DATATYPE_INVALID);
+}
+
+// TransDataFormat gate: sub-byte nchw -> nz rejected (registry only has nd)
+TEST_F(UtestFormatTransferNdFractNz, trans_data_sub_byte_nchw_to_nz_rejected) {
+  const std::vector<uint8_t> src(32U, 0);
+  const Format src_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_NCHW, FORMAT_RESERVED, 5));
+  const Format dst_format = static_cast<Format>(GetFormatFromSubAndC0(FORMAT_FRACTAL_NZ, FORMAT_RESERVED, 5));
+  TransArgs args{src.data(),      src_format, dst_format, FORMAT_NCHW,   FORMAT_FRACTAL_NZ, FORMAT_RESERVED,
+                 FORMAT_RESERVED, 16,         16,         {1, 2, 2, 16}, {1, 2, 1, 16, 16}, DT_INT4};
+  TransResult result;
+  EXPECT_EQ(TransDataFormat(args, result), ACL_ERROR_GE_DATATYPE_INVALID);
+}
+
+// TransDataFormat gate: sub-byte nd -> 5hd rejected (not nz family)
+TEST_F(UtestFormatTransferNdFractNz, trans_data_sub_byte_nd_to_5hd_rejected) {
+  const std::vector<uint8_t> src(32U, 0);
+  TransArgs args{
+      src.data(), FORMAT_ND, FORMAT_NC1HWC0, FORMAT_ND,        FORMAT_NC1HWC0, FORMAT_RESERVED, FORMAT_RESERVED,
+      -1,         -1,        {1, 2, 2, 16},  {1, 1, 2, 2, 16}, DT_INT4};
+  TransResult result;
+  EXPECT_EQ(TransDataFormat(args, result), ACL_ERROR_GE_DATATYPE_INVALID);
+}
+
+// TransDataFormat: non sub-byte dtype with c0 variant registry entry still works
+TEST_F(UtestFormatTransferNdFractNz, trans_data_fp16_nd_to_nz_c0_16) {
+  std::vector<uint16_t> src(2U * 32U, 12210);
+  TransArgs args{reinterpret_cast<uint8_t *>(src.data()),
+                 FORMAT_ND,
+                 FORMAT_FRACTAL_NZ_C0_16,
+                 FORMAT_ND,
+                 FORMAT_FRACTAL_NZ_C0_16,
+                 FORMAT_RESERVED,
+                 FORMAT_RESERVED,
+                 16,
+                 16,
+                 {2, 32},
+                 {2, 1, 16, 16},
+                 DT_FLOAT16};
+  TransResult result;
+  EXPECT_EQ(TransDataFormat(args, result), SUCCESS);
+  EXPECT_EQ(result.length, 2U * 1U * 16U * 16U * sizeof(uint16_t));
 }
 }  // namespace formats
 }  // namespace ge

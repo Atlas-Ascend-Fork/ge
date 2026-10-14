@@ -96,6 +96,56 @@ REG_OP_WITH_PRIORITY(TestHostCustomFoldOp, "PriorityMaskHostFold", ge::OpBackend
 REG_OP_WITH_PRIORITY(TestHostCustomFoldFailureOp, "PriorityMaskHostFold", ge::OpBackend::kHostCPU,
                      ge::OpRegistrationPriority::kTop, ge::OpEngine::kHostCpu);
 
+// 探测 HostCPU 算子在 bottom/top 路由下实际看到的 input 元数据与数据地址
+class TestHostMetadataProbeOp final : public HostCpuExecuteOp {
+ public:
+  graphStatus Execute(gert::HostCpuOpExecutionContext *ctx) override {
+    if (ctx == nullptr) {
+      return GRAPH_FAILED;
+    }
+    auto *input = ctx->GetInputTensor(0);
+    if (input == nullptr) {
+      return GRAPH_FAILED;
+    }
+    const auto &storage_shape = input->GetShape().GetStorageShape();
+    observed_dims_.clear();
+    for (size_t i = 0U; i < storage_shape.GetDimNum(); ++i) {
+      observed_dims_.emplace_back(storage_shape.GetDim(i));
+    }
+    observed_format_ = input->GetFormat().GetStorageFormat();
+    observed_data_type_ = input->GetDataType();
+    observed_addr_ = input->GetAddr();
+    observed_size_ = input->GetSize();
+    auto *output = ctx->MallocOutputTensor(0, input->GetShape(), input->GetFormat(), input->GetDataType());
+    return (output == nullptr) ? GRAPH_FAILED : GRAPH_SUCCESS;
+  }
+
+  static std::vector<int64_t> observed_dims_;
+  static Format observed_format_;
+  static DataType observed_data_type_;
+  static const void *observed_addr_;
+  static size_t observed_size_;
+};
+
+std::vector<int64_t> TestHostMetadataProbeOp::observed_dims_;
+Format TestHostMetadataProbeOp::observed_format_ = FORMAT_RESERVED;
+DataType TestHostMetadataProbeOp::observed_data_type_ = DT_UNDEFINED;
+const void *TestHostMetadataProbeOp::observed_addr_ = nullptr;
+size_t TestHostMetadataProbeOp::observed_size_ = 0U;
+
+REG_OP(BottomMetaProbe)
+    .INPUT(x, TensorType({DT_UINT8}))
+    .OUTPUT(y, TensorType({DT_UINT8}))
+    .OP_END_FACTORY_REG(BottomMetaProbe);
+REG_OP_WITH_PRIORITY(TestHostMetadataProbeOp, "BottomMetaProbe", ge::OpBackend::kHostCPU,
+                     ge::OpRegistrationPriority::kBottom, ge::OpEngine::kHostCpu);
+
+REG_OP(TopMetaProbe)
+    .INPUT(x, TensorType({DT_UINT8}))
+    .OUTPUT(y, TensorType({DT_UINT8}))
+    .OP_END_FACTORY_REG(TopMetaProbe);
+REG_OP_BACKEND(TestHostMetadataProbeOp, "TopMetaProbe", ge::OpBackend::kHostCPU);
+
 REG_OP(IrDefinedHostFold)
     .INPUT(x1, TensorType({DT_UINT8}))
     .OPTIONAL_INPUT(bias, TensorType({DT_UINT8}))
@@ -332,10 +382,54 @@ GeTensorPtr MakeHostCpuInputTensor() {
   return input_tensor;
 }
 
+// 实际常量 Tensor 自身描述为 NHWC [2], 但数据缓冲按节点 input desc(NCHW [3]) 准备 3 字节,
+// 用于复现"实际 Tensor 描述与节点 input desc 不一致"的场景
+GeTensorPtr MakeMetadataMismatchInputTensor() {
+  auto input_tensor = MakeShared<GeTensor>();
+  if (input_tensor == nullptr) {
+    return nullptr;
+  }
+  input_tensor->MutableTensorDesc().SetShape(GeShape({2}));
+  input_tensor->MutableTensorDesc().SetOriginShape(GeShape({2}));
+  input_tensor->MutableTensorDesc().SetFormat(FORMAT_NHWC);
+  input_tensor->MutableTensorDesc().SetOriginFormat(FORMAT_NHWC);
+  input_tensor->MutableTensorDesc().SetDataType(DT_UINT8);
+  input_tensor->MutableTensorDesc().SetOriginDataType(DT_UINT8);
+  if (input_tensor->SetData(std::vector<uint8_t>{1, 2, 3}) != SUCCESS) {
+    return nullptr;
+  }
+  return input_tensor;
+}
+
 NodePtr BuildHostCpuFoldNode(const std::string &op_type) {
   auto builder = ut::GraphBuilder("test");
   auto input = builder.AddNode("input", CONSTANT, 0, 1, FORMAT_NCHW, DT_UINT8, {3});
   auto output = builder.AddNode("output", op_type, 1, 1, FORMAT_NCHW, DT_UINT8, {3});
+  builder.AddDataEdge(input, 0, output, 0);
+  return output;
+}
+
+GeTensorPtr MakeHostCpuInputTensor(DataType data_type) {
+  auto input_tensor = MakeShared<GeTensor>();
+  if (input_tensor == nullptr) {
+    return nullptr;
+  }
+  input_tensor->MutableTensorDesc().SetShape(GeShape({8}));
+  input_tensor->MutableTensorDesc().SetOriginShape(GeShape({8}));
+  input_tensor->MutableTensorDesc().SetFormat(FORMAT_NCHW);
+  input_tensor->MutableTensorDesc().SetOriginFormat(FORMAT_NCHW);
+  input_tensor->MutableTensorDesc().SetDataType(data_type);
+  input_tensor->MutableTensorDesc().SetOriginDataType(data_type);
+  if (input_tensor->SetData(std::vector<uint8_t>{1, 2, 3, 4}) != SUCCESS) {
+    return nullptr;
+  }
+  return input_tensor;
+}
+
+NodePtr BuildHostCpuFoldNode(const std::string &op_type, DataType output_dtype) {
+  auto builder = ut::GraphBuilder("test");
+  auto input = builder.AddNode("input", CONSTANT, 0, 1, FORMAT_NCHW, DT_UINT8, {3});
+  auto output = builder.AddNode("output", op_type, 1, 1, FORMAT_NCHW, output_dtype, {3});
   builder.AddDataEdge(input, 0, output, 0);
   return output;
 }
@@ -1211,6 +1305,44 @@ TEST_F(UtestGraphPassesConstantFoldingPass, bottom_priority_host_cpu_registratio
   EXPECT_EQ(TestLegacyHostCpuOp::compute_count_, 0);
 }
 
+TEST_F(UtestGraphPassesConstantFoldingPass, bottom_route_reads_input_metadata_from_node_desc) {
+  const std::string op_type = "BottomMetaProbe";
+  auto node = BuildHostCpuFoldNode(op_type);
+  ASSERT_NE(node, nullptr);
+  auto input_tensor = MakeMetadataMismatchInputTensor();
+  ASSERT_NE(input_tensor, nullptr);
+  const void *const expected_addr = input_tensor->GetData().GetData();
+  const size_t expected_size = input_tensor->GetData().GetSize();
+  std::vector<ConstGeTensorPtr> inputs{input_tensor};
+  std::vector<GeTensorPtr> outputs;
+
+  ASSERT_EQ(ConstantFoldingPass::RunOpKernel(node, inputs, outputs), SUCCESS);
+  // bottom ordinary 路由: shape/format/dtype 恢复为节点 input desc 的 NCHW [3]
+  EXPECT_EQ(TestHostMetadataProbeOp::observed_dims_, (std::vector<int64_t>{3}));
+  EXPECT_EQ(TestHostMetadataProbeOp::observed_format_, FORMAT_NCHW);
+  EXPECT_EQ(TestHostMetadataProbeOp::observed_data_type_, DT_UINT8);
+  // data 地址与 size 仍来自实际常量 Tensor, 未被重新分配或扩容
+  EXPECT_EQ(TestHostMetadataProbeOp::observed_addr_, expected_addr);
+  EXPECT_EQ(TestHostMetadataProbeOp::observed_size_, expected_size);
+  EXPECT_EQ(expected_size, 3U);
+}
+
+TEST_F(UtestGraphPassesConstantFoldingPass, top_route_keeps_actual_tensor_metadata) {
+  const std::string op_type = "TopMetaProbe";
+  auto node = BuildHostCpuFoldNode(op_type);
+  ASSERT_NE(node, nullptr);
+  auto input_tensor = MakeMetadataMismatchInputTensor();
+  ASSERT_NE(input_tensor, nullptr);
+  std::vector<ConstGeTensorPtr> inputs{input_tensor};
+  std::vector<GeTensorPtr> outputs;
+
+  ASSERT_EQ(ConstantFoldingPass::ComputeWithHostCpuCustomOp(node, inputs, outputs), SUCCESS);
+  // Top 级 HostCPU 自定义算子行为不变: 看到实际常量 Tensor 自身的 NHWC [2]
+  EXPECT_EQ(TestHostMetadataProbeOp::observed_dims_, (std::vector<int64_t>{2}));
+  EXPECT_EQ(TestHostMetadataProbeOp::observed_format_, FORMAT_NHWC);
+  EXPECT_EQ(TestHostMetadataProbeOp::observed_data_type_, DT_UINT8);
+}
+
 TEST_F(UtestGraphPassesConstantFoldingPass, priority_registry_miss_runs_legacy_kernel) {
   TestLegacyHostCpuOp::compute_count_ = 0;
   const std::string op_type = "PriorityHostFoldLegacyOnly";
@@ -1535,5 +1667,66 @@ TEST_F(UtestGraphPassesConstantFoldingPass, test_compute_with_host_cpu_custom_op
   EXPECT_EQ(TestHostCustomFoldOp::execute_count_, 1);
   EXPECT_FALSE(node->GetOpDesc()->GetIrInputs().empty());
   EXPECT_FALSE(node->GetOpDesc()->GetIrOutputs().empty());
+}
+
+// ----------------------- sub-byte folding gate tests -----------------------
+
+TEST_F(UtestGraphPassesConstantFoldingPass, sub_byte_input_blocked_for_non_whitelist_op) {
+  TestLegacyHostCpuOp::compute_count_ = 0;
+  const std::string op_type = "SubByteFoldBlocked";
+  auto node = BuildHostCpuFoldNode(op_type);
+  ASSERT_NE(node, nullptr);
+  auto input_tensor = MakeHostCpuInputTensor(DT_INT4);
+  ASSERT_NE(input_tensor, nullptr);
+  std::vector<ConstGeTensorPtr> inputs{input_tensor};
+  std::vector<GeTensorPtr> outputs;
+
+  OpKernelRegistry::GetInstance().RegisterHostCpuOp(op_type, []() -> HostCpuOp * { return new TestLegacyHostCpuOp(); });
+  EXPECT_EQ(ConstantFoldingPass::RunOpKernel(node, inputs, outputs), UNSUPPORTED);
+  EXPECT_EQ(TestLegacyHostCpuOp::compute_count_, 0);
+}
+
+TEST_F(UtestGraphPassesConstantFoldingPass, sub_byte_input_whitelist_op_proceeds) {
+  TestLegacyHostCpuOp::compute_count_ = 0;
+  const std::string op_type = "QuantBiasOptimization";
+  auto node = BuildHostCpuFoldNode(op_type);
+  ASSERT_NE(node, nullptr);
+  auto input_tensor = MakeHostCpuInputTensor(DT_INT4);
+  ASSERT_NE(input_tensor, nullptr);
+  std::vector<ConstGeTensorPtr> inputs{input_tensor};
+  std::vector<GeTensorPtr> outputs;
+
+  OpKernelRegistry::GetInstance().RegisterHostCpuOp(op_type, []() -> HostCpuOp * { return new TestLegacyHostCpuOp(); });
+  EXPECT_EQ(ConstantFoldingPass::RunOpKernel(node, inputs, outputs), SUCCESS);
+  EXPECT_EQ(TestLegacyHostCpuOp::compute_count_, 1);
+}
+
+TEST_F(UtestGraphPassesConstantFoldingPass, sub_byte_output_blocked_even_for_whitelist_op) {
+  TestLegacyHostCpuOp::compute_count_ = 0;
+  const std::string op_type = "QuantBiasOptimization";
+  auto node = BuildHostCpuFoldNode(op_type, DT_INT4);
+  ASSERT_NE(node, nullptr);
+  auto input_tensor = MakeHostCpuInputTensor();
+  ASSERT_NE(input_tensor, nullptr);
+  std::vector<ConstGeTensorPtr> inputs{input_tensor};
+  std::vector<GeTensorPtr> outputs;
+
+  OpKernelRegistry::GetInstance().RegisterHostCpuOp(op_type, []() -> HostCpuOp * { return new TestLegacyHostCpuOp(); });
+  EXPECT_EQ(ConstantFoldingPass::RunOpKernel(node, inputs, outputs), UNSUPPORTED);
+  EXPECT_EQ(TestLegacyHostCpuOp::compute_count_, 0);
+}
+
+TEST_F(UtestGraphPassesConstantFoldingPass, sub_byte_input_blocked_for_custom_op_path) {
+  TestHostCustomFoldOp::execute_count_ = 0;
+  auto node = BuildHostCpuFoldNode("IrDefinedHostFold");
+  ASSERT_NE(node, nullptr);
+  auto input_tensor = MakeHostCpuInputTensor(DT_INT4);
+  ASSERT_NE(input_tensor, nullptr);
+  std::vector<ConstGeTensorPtr> inputs{input_tensor};
+  std::vector<GeTensorPtr> outputs;
+
+  ConstantFoldingPass pass;
+  EXPECT_EQ(pass.ComputeWithHostCpuCustomOp(node, inputs, outputs), UNSUPPORTED);
+  EXPECT_EQ(TestHostCustomFoldOp::execute_count_, 0);
 }
 }  // namespace ge

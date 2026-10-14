@@ -242,6 +242,37 @@ TEST_F(UTEST_fusion_engine_fe_graph_optimizer, convert_ext_attr2json_fail) {
   Configuration::Instance(AI_CORE_NAME).env_str_param_vec_[static_cast<size_t>(ENV_STR_PARAM::DumpGeGraph)] = "";
 }
 
+TEST_F(UTEST_fusion_engine_fe_graph_optimizer, convert_json2extattr_skip_missing_pass_name) {
+  Configuration::Instance(AI_CORE_NAME).env_str_param_vec_[static_cast<size_t>(ENV_STR_PARAM::DumpGeGraph)] = "2";
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test");
+  OpDescPtr mul = std::make_shared<OpDesc>("mul", "Mul");
+  mul->AddInputDesc(ge::GeTensorDesc(ge::GeShape({4, 4}), ge::FORMAT_ND, ge::DT_DOUBLE));
+  mul->AddInputDesc(ge::GeTensorDesc(ge::GeShape({4, 4}), ge::FORMAT_ND, ge::DT_DOUBLE));
+  mul->AddOutputDesc(ge::GeTensorDesc(ge::GeShape({4, 4}), ge::FORMAT_ND, ge::DT_DOUBLE));
+  ge::AttrUtils::SetInt(mul, FE_IMPLY_TYPE, 6);
+  ge::NodePtr mul_node = graph->AddNode(mul);
+  std::shared_ptr<std::unordered_map<std::string, std::vector<std::vector<std::string>>>> op_attrs_maps_tmp =
+      std::make_shared<std::unordered_map<std::string, std::vector<std::vector<std::string>>>>();
+  op_attrs_maps_tmp->insert({"mul", {{"Mul", "Mul"}}});
+  mul_node->GetOpDesc()->SetExtAttr(ge::ATTR_NAME_ORIGIN_OP_ATTRS_MAP, op_attrs_maps_tmp);
+  auto fe_graph_optimizer_ptr = std::make_shared<FEGraphOptimizer>(ops_kernel_info_store_ptr_, AI_CORE_NAME);
+  PlatformUtils::Instance().soc_version_ = "Ascend310P3";
+  fe_graph_optimizer_ptr->ConvertExtAttr2Json(*graph, true);
+  (void)mul_node->GetOpDesc()->DelExtAttr(ge::ATTR_NAME_ORIGIN_OP_ATTRS_MAP);
+  (void)ge::AttrUtils::SetListStr(mul_node->GetOpDesc(), kPassNameAttr, {"pass_not_in_json", "mul"});
+  fe_graph_optimizer_ptr->ConvertJson2ExtAttr(*graph);
+  std::shared_ptr<std::unordered_map<std::string, std::vector<std::vector<std::string>>>> op_attrs_maps_tmp_check =
+      nullptr;
+  op_attrs_maps_tmp_check =
+      mul_node->GetOpDesc()->TryGetExtAttr(ge::ATTR_NAME_ORIGIN_OP_ATTRS_MAP, op_attrs_maps_tmp_check);
+  ASSERT_NE(op_attrs_maps_tmp_check, nullptr);
+  const auto iter = op_attrs_maps_tmp_check->find("mul");
+  ASSERT_NE(iter, op_attrs_maps_tmp_check->end());
+  EXPECT_EQ(iter->second[0][0], "name:Mul");
+  EXPECT_EQ(iter->second[0][1], "type:Mul");
+  EXPECT_EQ(op_attrs_maps_tmp_check->find("pass_not_in_json"), op_attrs_maps_tmp_check->end());
+  Configuration::Instance(AI_CORE_NAME).env_str_param_vec_[static_cast<size_t>(ENV_STR_PARAM::DumpGeGraph)] = "";
+}
 TEST_F(UTEST_fusion_engine_fe_graph_optimizer, fused_sub_graph_success) {
   auto graph = std::make_shared<ComputeGraph>("test");
   CreateTwoOpDescGraph(graph);
