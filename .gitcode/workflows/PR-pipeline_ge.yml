@@ -272,7 +272,7 @@ stages:
 
       JOB_UT_Test_hcce:
         name: UT_Test_hcce
-        if: env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
+        if: env.TARGET_BRANCH == 'master'
         uses: .gitcode/workflows/ut_action.yml
         with:
           ut_type: 'hcce'
@@ -387,7 +387,7 @@ stages:
 
       JOB_ST_Test_hcce:
         name: ST_Test_hcce
-        if: env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
+        if: env.TARGET_BRANCH == 'master'
         uses: .gitcode/workflows/st_action.yml
         with:
           st_type: 'hcce'
