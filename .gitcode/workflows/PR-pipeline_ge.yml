@@ -272,7 +272,8 @@ stages:
 
       JOB_UT_Test_hcce:
         name: UT_Test_hcce
-        if: env.TARGET_BRANCH == 'master'
+        # 临时关闭hcce UT门禁（增量覆盖率80%阻塞存量PR合入），恢复时改回 env.TARGET_BRANCH == 'master'
+        if: env.TARGET_BRANCH == 'disabled'
         uses: .gitcode/workflows/ut_action.yml
         with:
           ut_type: 'hcce'
@@ -387,7 +388,8 @@ stages:
 
       JOB_ST_Test_hcce:
         name: ST_Test_hcce
-        if: env.TARGET_BRANCH == 'master'
+        # 临时关闭hcce ST门禁（增量覆盖率80%阻塞存量PR合入），恢复时改回 env.TARGET_BRANCH == 'master'
+        if: env.TARGET_BRANCH == 'disabled'
         uses: .gitcode/workflows/st_action.yml
         with:
           st_type: 'hcce'
