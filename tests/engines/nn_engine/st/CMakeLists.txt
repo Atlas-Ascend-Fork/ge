@@ -70,7 +70,6 @@ target_include_directories(fe_st_common PUBLIC
     ${AIR_CODE_DIR}/tests/engines/nn_engine/depends
     ${AIR_CODE_DIR}/tests/engines/nn_engine/depends/ops_stub
     ${AIR_CODE_DIR}/tests/engines/nn_engine/graph_constructor
-    ${GTEST_INCLUDE}
     ${CMAKE_BINARY_DIR}/proto/fe_st
     ${FE_TEST_ROOT_PATH}
     ${AIR_CODE_DIR}/compiler/opcompiler/op_compile_adapter/source

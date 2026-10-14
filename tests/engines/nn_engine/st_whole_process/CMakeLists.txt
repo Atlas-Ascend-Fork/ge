@@ -72,7 +72,6 @@ target_include_directories(fe_st_whole_process PRIVATE
         ${AIR_CODE_DIR}/tests/engines/nn_engine/depends/ops_stub
         ${AIR_CODE_DIR}/tests/engines/nn_engine/graph_constructor
         ${ASCEND_INSTALL_PATH}/include/experiment/opat
-        ${GTEST_INCLUDE}
         ${CMAKE_BINARY_DIR}/proto/fe_st_whole_process
         ${FE_TEST_ROOT_PATH}
         )
