@@ -738,7 +738,7 @@ Status InputH2DOverlapRuntimePlan::ParseAttr(const NamedAttrs &plan_attr) {
   return SUCCESS;
 }
 
-Status InputH2DOverlapRuntimePlan::LoadInputIndexes(const GeModel *const ge_model, const uint32_t model_id) {
+Status InputH2DOverlapRuntimePlan::LoadInputIndexes(const GeModel *ge_model, uint32_t model_id) {
   *this = InputH2DOverlapRuntimePlan();
   NamedAttrs plan_attr;
   if ((ge_model == nullptr) || !AttrUtils::GetNamedAttrs(ge_model, kInputH2DOverlapPlanAttrName, plan_attr)) {
@@ -754,8 +754,8 @@ Status InputH2DOverlapRuntimePlan::LoadInputIndexes(const GeModel *const ge_mode
 }
 
 Status InputH2DOverlapRuntimePlan::ValidateParsedPlan(
-    const uint32_t model_id, const bool is_online_infer_dynamic, const bool has_no_tiling_input,
-    const RuntimeParam &runtime_param, const std::map<uint32_t, uint32_t> &stream_to_first_task_id) const {
+    uint32_t model_id, bool is_online_infer_dynamic, bool has_no_tiling_input, const RuntimeParam &runtime_param,
+    const std::map<uint32_t, uint32_t> &stream_to_first_task_id) const {
   GE_ASSERT_TRUE(!(is_online_infer_dynamic || has_no_tiling_input),
                  "[Check][InputH2DOverlap] only static shape input with tiling is supported, "
                  "dynamic:%d, no_tiling_input:%d, model_id:%u.",
@@ -771,7 +771,7 @@ Status InputH2DOverlapRuntimePlan::ValidateParsedPlan(
 }
 
 Status InputH2DOverlapRuntimePlan::ResolveInputCopyItem(
-    const uint32_t model_id, const InputH2DOverlapCopyItem &input_def,
+    uint32_t model_id, const InputH2DOverlapCopyItem &input_def,
     const std::vector<MemAllocation> &logical_mem_allocations,
     const std::map<uint32_t, MemAllocationSlice> &input_indexes_to_copy_info,
     const std::vector<uint32_t> &input_index_to_allocation_ids, InputH2DOverlapCopyItem &runtime_input) {
@@ -812,7 +812,7 @@ Status InputH2DOverlapRuntimePlan::ResolveInputCopyItem(
   return SUCCESS;
 }
 
-Status InputH2DOverlapRuntimePlan::AppendWaitPoint(const uint32_t model_id, const InputH2DOverlapWaitPoint &wait_def,
+Status InputH2DOverlapRuntimePlan::AppendWaitPoint(uint32_t model_id, const InputH2DOverlapWaitPoint &wait_def,
                                                    const domi::ModelTaskDef &model_task_def,
                                                    const RuntimeParam &runtime_param, std::set<uint32_t> &event_ids,
                                                    InputH2DOverlapCopyGroup &group) const {
@@ -844,7 +844,7 @@ Status InputH2DOverlapRuntimePlan::AppendWaitPoint(const uint32_t model_id, cons
 }
 
 Status InputH2DOverlapRuntimePlan::AppendCopyGroup(
-    const uint32_t model_id, const InputH2DOverlapCopyGroup &group_def, const domi::ModelTaskDef &model_task_def,
+    uint32_t model_id, const InputH2DOverlapCopyGroup &group_def, const domi::ModelTaskDef &model_task_def,
     const RuntimeParam &runtime_param, const std::vector<MemAllocation> &logical_mem_allocations,
     const std::map<uint32_t, MemAllocationSlice> &input_indexes_to_copy_info,
     const std::vector<uint32_t> &input_index_to_allocation_ids, std::set<uint32_t> &event_ids) {
@@ -866,7 +866,7 @@ Status InputH2DOverlapRuntimePlan::AppendCopyGroup(
 }
 
 Status InputH2DOverlapRuntimePlan::BuildRuntimePlan(
-    const uint32_t model_id, const domi::ModelTaskDef &model_task_def, const RuntimeParam &runtime_param,
+    uint32_t model_id, const domi::ModelTaskDef &model_task_def, const RuntimeParam &runtime_param,
     const std::vector<MemAllocation> &logical_mem_allocations,
     const std::map<uint32_t, MemAllocationSlice> &input_indexes_to_copy_info,
     const std::vector<uint32_t> &input_index_to_allocation_ids, InputH2DOverlapRuntimePlan &runtime_plan,
@@ -884,9 +884,9 @@ Status InputH2DOverlapRuntimePlan::BuildRuntimePlan(
   return SUCCESS;
 }
 
-Status InputH2DOverlapRuntimePlan::Init(const GeModel *const ge_model, const domi::ModelTaskDef &model_task_def,
-                                        const bool is_online_infer_dynamic, const bool has_no_tiling_input,
-                                        const uint32_t model_id, const RuntimeParam &runtime_param,
+Status InputH2DOverlapRuntimePlan::Init(const GeModel *ge_model, const domi::ModelTaskDef &model_task_def,
+                                        bool is_online_infer_dynamic, bool has_no_tiling_input, uint32_t model_id,
+                                        const RuntimeParam &runtime_param,
                                         const std::map<uint32_t, uint32_t> &stream_to_first_task_id,
                                         const std::vector<MemAllocation> &logical_mem_allocations,
                                         const std::map<uint32_t, MemAllocationSlice> &input_indexes_to_copy_info,
@@ -927,7 +927,7 @@ uint32_t InputH2DOverlapRuntimePlan::GetCopyStreamId() const {
   return copy_stream_id_;
 }
 
-bool InputH2DOverlapRuntimePlan::IsPlannedInput(const uint32_t input_index) const {
+bool InputH2DOverlapRuntimePlan::IsPlannedInput(uint32_t input_index) const {
   return enabled_ && (input_indexes_.count(input_index) > 0U);
 }
 
@@ -972,13 +972,13 @@ Status GetInputDataBufferForPlan(const uint32_t model_id, const uint32_t input_i
 }
 }  // namespace
 
-Status InputH2DOverlapRuntimePlan::Launch(const uint32_t model_id, const std::vector<aclrtStream> &stream_list,
+Status InputH2DOverlapRuntimePlan::Launch(uint32_t model_id, const std::vector<aclrtStream> &stream_list,
                                           const std::vector<aclrtEvent> &event_list,
                                           const std::vector<MemAllocation> &logical_mem_allocations,
-                                          const uint64_t *const allocation_ids_to_active_base_addr,
+                                          const uint64_t *allocation_ids_to_active_base_addr,
                                           const std::vector<gert::Tensor> &tensors,
-                                          const std::set<uint32_t> &prepared_input_indexes, const bool is_dynamic,
-                                          const bool is_dynamic_aipp, const int32_t log_level) const {
+                                          const std::set<uint32_t> &prepared_input_indexes, bool is_dynamic,
+                                          bool is_dynamic_aipp, int32_t log_level) const {
   return LaunchGroups(
       enabled_, copy_stream_id_, groups_, model_id, stream_list, event_list, logical_mem_allocations.size(),
       allocation_ids_to_active_base_addr, sync_copy_worker_.get(), prepared_input_indexes,
@@ -991,14 +991,11 @@ Status InputH2DOverlapRuntimePlan::Launch(const uint32_t model_id, const std::ve
       });
 }
 
-Status InputH2DOverlapRuntimePlan::Launch(const uint32_t model_id, const std::vector<aclrtStream> &stream_list,
-                                          const std::vector<aclrtEvent> &event_list,
-                                          const std::vector<MemAllocation> &logical_mem_allocations,
-                                          const uint64_t *const allocation_ids_to_active_base_addr,
-                                          const InputData &input_data, const std::vector<GeTensor> &tensors,
-                                          const std::set<uint32_t> &prepared_input_indexes,
-                                          const bool use_tensor_desc_placement, const bool is_dynamic,
-                                          const bool is_dynamic_aipp, const int32_t log_level) const {
+Status InputH2DOverlapRuntimePlan::Launch(
+    uint32_t model_id, const std::vector<aclrtStream> &stream_list, const std::vector<aclrtEvent> &event_list,
+    const std::vector<MemAllocation> &logical_mem_allocations, const uint64_t *allocation_ids_to_active_base_addr,
+    const InputData &input_data, const std::vector<GeTensor> &tensors, const std::set<uint32_t> &prepared_input_indexes,
+    bool use_tensor_desc_placement, bool is_dynamic, bool is_dynamic_aipp, int32_t log_level) const {
   return LaunchGroups(
       enabled_, copy_stream_id_, groups_, model_id, stream_list, event_list, logical_mem_allocations.size(),
       allocation_ids_to_active_base_addr, sync_copy_worker_.get(), prepared_input_indexes,

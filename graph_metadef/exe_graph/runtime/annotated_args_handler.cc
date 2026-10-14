@@ -20,7 +20,7 @@ namespace gert {
 AnnotatedArgsHandler::LaunchRecord::LaunchRecord(const char *const kernel_name, const void *const kernel_bin,
                                                  const size_t kernel_bin_size, const uint32_t block_dim,
                                                  const uint32_t stream_id, std::vector<uint8_t> &&args_data,
-                                                 std::vector<ge::ArgDesc> &&arg_descs, const AnnotatedLaunchToken token,
+                                                 std::vector<ge::ArgDesc> &&arg_descs, AnnotatedLaunchToken token,
                                                  std::vector<AnnotatedLaunchToken> &&dependencies)
     : kernel_name_(kernel_name),
       kernel_bin_(static_cast<const uint8_t *>(kernel_bin), static_cast<const uint8_t *>(kernel_bin) + kernel_bin_size),
@@ -147,10 +147,12 @@ void AnnotatedArgsHandler::AddLaunch(const char *const kernel_name, const void *
   (void)launch_records_.emplace_back(std::move(launch_record));
 }
 
-ge::graphStatus AnnotatedArgsHandler::AddLaunchWithDependencies(
-    const char *kernel_name, const void *kernel_bin, const size_t kernel_bin_size, const uint32_t block_dim,
-    const uint32_t stream_id, std::vector<uint8_t> &&args_data, std::vector<ge::ArgDesc> &&arg_descs,
-    const std::vector<AnnotatedLaunchToken> &predecessors, AnnotatedLaunchToken &token) {
+ge::graphStatus AnnotatedArgsHandler::AddLaunchWithDependencies(const char *kernel_name, const void *kernel_bin,
+                                                                size_t kernel_bin_size, uint32_t block_dim,
+                                                                uint32_t stream_id, std::vector<uint8_t> &&args_data,
+                                                                std::vector<ge::ArgDesc> &&arg_descs,
+                                                                const std::vector<AnnotatedLaunchToken> &predecessors,
+                                                                AnnotatedLaunchToken &token) {
   const auto invalid_token = std::numeric_limits<AnnotatedLaunchToken>::max();
   if ((launch_records_.size() >= static_cast<size_t>(invalid_token)) || (stream_id == invalid_token)) {
     GELOGE(ge::PARAM_INVALID, "[AnnotatedArgsHandler] invalid stream/token state, launch_count=%zu, stream_id=%u.",

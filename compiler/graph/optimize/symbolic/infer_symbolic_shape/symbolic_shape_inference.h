@@ -15,7 +15,6 @@
 #include "graph/ge_tensor.h"
 #include "graph/gnode.h"
 #include "graph/node.h"
-#include "graph/optimize/symbolic/symbolic_kernel_factory.h"
 #include "symbolic_shape_symbolizer.h"
 
 namespace ge {

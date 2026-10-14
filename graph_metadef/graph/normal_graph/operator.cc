@@ -1526,7 +1526,7 @@ void Operator::AttrRegister(const std::string &name, int64_t attr_value) {
   return AttrRegister(name.c_str(), attr_value);
 }
 
-void Operator::AttrRegister(const std::string &name, const vector<int64_t> &attr_value) {
+void Operator::AttrRegister(const std::string &name, const std::vector<int64_t> &attr_value) {
   return AttrRegister(name.c_str(), attr_value);
 }
 
@@ -1534,7 +1534,7 @@ void Operator::AttrRegister(const std::string &name, float32_t attr_value) {
   return AttrRegister(name.c_str(), attr_value);
 }
 
-void Operator::AttrRegister(const std::string &name, const vector<float32_t> &attr_value) {
+void Operator::AttrRegister(const std::string &name, const std::vector<float32_t> &attr_value) {
   return AttrRegister(name.c_str(), attr_value);
 }
 
@@ -1547,19 +1547,19 @@ void Operator::AttrRegister(const std::string &name, bool attr_value) {
   return AttrRegister(name.c_str(), attr_value);
 }
 
-void Operator::AttrRegister(const std::string &name, const vector<bool> &attr_value) {
+void Operator::AttrRegister(const std::string &name, const std::vector<bool> &attr_value) {
   return AttrRegister(name.c_str(), attr_value);
 }
 
-void Operator::AttrRegister(const std::string &name, const vector<vector<int64_t>> &attr_value) {
+void Operator::AttrRegister(const std::string &name, const std::vector<std::vector<int64_t>> &attr_value) {
   return AttrRegister(name.c_str(), attr_value);
 }
 
-void Operator::AttrRegister(const std::string &name, const NamedAttrs &attr_value) {
+void Operator::AttrRegister(const std::string &name, const ge::NamedAttrs &attr_value) {
   return AttrRegister(name.c_str(), attr_value);
 }
 
-void Operator::AttrRegister(const std::string &name, const vector<NamedAttrs> &attr_value) {
+void Operator::AttrRegister(const std::string &name, const std::vector<ge::NamedAttrs> &attr_value) {
   return AttrRegister(name.c_str(), attr_value);
 }
 
@@ -2637,7 +2637,7 @@ void Operator::AttrRegister(const std::string &name, const std::vector<Tensor> &
   return AttrRegister(name.c_str(), attr_value);
 }
 
-void Operator::AttrRegister(const char_t *name, const vector<Tensor> &attr_value) {
+void Operator::AttrRegister(const char_t *name, const std::vector<Tensor> &attr_value) {
   GE_CHECK_NOTNULL_JUST_RETURN(name);
   GE_CHECK_NOTNULL_JUST_RETURN(operator_impl_);
   GE_CHECK_NOTNULL_JUST_RETURN(operator_impl_->GetOpDescImpl());

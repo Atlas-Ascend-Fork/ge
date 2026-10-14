@@ -17,8 +17,7 @@
 #include "framework/common/debug/ge_log.h"
 
 namespace ge {
-DeclarativeStreamRegistry::DeclarativeStreamRegistry(const uint32_t first_stream_id)
-    : next_stream_id_(first_stream_id) {}
+DeclarativeStreamRegistry::DeclarativeStreamRegistry(uint32_t first_stream_id) : next_stream_id_(first_stream_id) {}
 
 uint32_t DeclarativeStreamRegistry::RequestAttachedStream(const AscendString &key) {
   const std::string key_string(key.GetString());
@@ -40,7 +39,7 @@ uint32_t DeclarativeStreamRegistry::RequestAttachedStream(const AscendString &ke
   return stream_id;
 }
 
-bool DeclarativeStreamRegistry::Contains(const uint32_t stream_id) const {
+bool DeclarativeStreamRegistry::Contains(uint32_t stream_id) const {
   return std::find(allocated_stream_ids_.cbegin(), allocated_stream_ids_.cend(), stream_id) !=
          allocated_stream_ids_.cend();
 }

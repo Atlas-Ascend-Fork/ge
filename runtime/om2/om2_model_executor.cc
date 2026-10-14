@@ -1596,10 +1596,9 @@ std::unique_ptr<Om2ModelExecutor> LoadOm2ExecutorFromData(ge::ModelData &model_d
   return executor;
 }
 
-std::unique_ptr<Om2ModelExecutor> LoadOm2ExecutorFromBundleData(const void *model_data, const size_t model_size,
-                                                                const size_t model_index,
-                                                                const Om2ModelLoadArg &load_arg,
-                                                                ge::Status &error_code) {
+std::unique_ptr<Om2ModelExecutor> LoadOm2ExecutorFromBundleData(const void *model_data, size_t model_size,
+                                                                size_t model_index, const Om2ModelLoadArg &load_arg,
+                                                                ge::graphStatus &error_code) {
   error_code = ge::SUCCESS;
   if ((model_data == nullptr) || (model_size == 0U)) {
     GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2][Bundle] bundle data is null or size is zero, index[%zu].", model_index);
@@ -1863,7 +1862,7 @@ ge::Status CollectBundleInfo(const void *data, const size_t size, std::vector<st
 }
 }  // namespace
 
-ge::Status GetOm2BundleInfo(const void *data, const size_t size, std::vector<std::pair<size_t, size_t>> &model_sizes,
+ge::Status GetOm2BundleInfo(const void *data, size_t size, std::vector<std::pair<size_t, size_t>> &model_sizes,
                             size_t &var_size) {
   model_sizes.clear();
   var_size = 0U;

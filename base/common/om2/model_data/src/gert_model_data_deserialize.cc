@@ -25,7 +25,6 @@
 #include "common/checker.h"
 #include "framework/common/gert_model_data_deserialize.h"
 #include "framework/common/gert_model_data_utils.h"
-#include "ge/ge_error_codes.h"
 
 namespace gert {
 namespace {
@@ -962,27 +961,27 @@ uint32_t RunDeserializeEntry(const uint8_t *data, const uint64_t data_size, Gert
 }  // namespace
 
 uint32_t DeserializeGertModelData(const uint8_t *data, uint64_t data_size, GertModelData *model_data,
-                                  const uint32_t model_index) {
+                                  uint32_t model_index) {
   return RunDeserializeEntry(data, data_size, model_data, model_index, DeserializeGertModelDataFromArchive);
 }
 
 uint32_t DeserializeGertModelMeta(const uint8_t *data, uint64_t data_size, GertModelData *model_data,
-                                  const uint32_t model_index) {
+                                  uint32_t model_index) {
   return RunDeserializeEntry(data, data_size, model_data, model_index, DeserializeGertModelMetaFromArchive);
 }
 
 uint32_t DeserializeGertConstantsConfig(const uint8_t *data, uint64_t data_size, GertModelData *model_data,
-                                        const uint32_t model_index) {
+                                        uint32_t model_index) {
   return RunDeserializeEntry(data, data_size, model_data, model_index, DeserializeGertConstantsConfigFromArchive);
 }
 
 uint32_t DeserializeGertVisualJson(const uint8_t *data, uint64_t data_size, GertModelData *model_data,
-                                   const uint32_t model_index) {
+                                   uint32_t model_index) {
   return RunDeserializeEntry(data, data_size, model_data, model_index, DeserializeGertVisualJsonFromArchive);
 }
 
 uint32_t DeserializeGertVariablesConfig(const uint8_t *data, uint64_t data_size, GertModelData *model_data,
-                                        const uint32_t model_index) {
+                                        uint32_t model_index) {
   return RunDeserializeEntry(data, data_size, model_data, model_index, DeserializeGertVariablesConfigFromArchive);
 }
 

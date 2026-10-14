@@ -11,7 +11,6 @@
 #ifndef AIR_CXX_BASE_COMMON_OM2_CODEGEN_TASK_CODE_BUILDER_TASK_CODE_BUILDER_UTIL_H_
 #define AIR_CXX_BASE_COMMON_OM2_CODEGEN_TASK_CODE_BUILDER_TASK_CODE_BUILDER_UTIL_H_
 
-#include "aprof_pub.h"
 #include "common/om2/codegen/ast/ast_build_context.h"
 #include "common/om2/codegen/om2_codegen_types.h"
 
