@@ -43,6 +43,7 @@ class HcomOpsKernelBuilder : public HCCLOpsKernelBuilder {
   HcclResult GetAivParam(const ge::Node &node, std::string &sCollectiveType, u32 &aivCoreLimit) const;
   HcclResult SetOpWorkerSpaceForKnowShape(ge::Node &node, u64 &opMemSize);
   HcclResult GetSupportedOP(std::vector<std::string> &hcclSupportOp) const override;
+  HcclResult SetOpMemAttr(ge::Node &node, const std::string &sCollectiveType, const u64 &opMemSize) override;
   HcclResult SetOpAtomicInputIndex(ge::Node &node, const std::string &sCollectiveType) override;
   HcclResult GetCountFromOpDesc(const ge::OpDescPtr &op, const std::string &sCollectiveType, HcclDataType dataType,
                                 u64 &count);
