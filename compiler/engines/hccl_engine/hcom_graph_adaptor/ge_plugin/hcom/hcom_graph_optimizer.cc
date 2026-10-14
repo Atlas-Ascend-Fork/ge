@@ -887,8 +887,8 @@ HcclResult HcomGraphOptimizer::SetOpMemAttr(ge::Node &node, const std::string &s
 
   bRet = ge::AttrUtils::SetBool(node.GetOpDesc(), ge::ATTR_NAME_IS_FIXED_ADDR_PRIOR, true);
   CHK_PRT_RET(!bRet,
-                HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set is_fixed_addr_prior[%d] to "
-                           "OpDesc failed.",
+              HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set is_fixed_addr_prior[%d] to "
+                         "OpDesc failed.",
                          HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str(), true),
               HCCL_E_PARA);
   HCCL_INFO("node[%s] set attr [is_fixed_addr_prior]: %d", node.GetName().c_str(), true);
