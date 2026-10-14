@@ -14,7 +14,7 @@
 ## 函数原型
 
 ```c++
-Status RegisterCallBackFunc(const char *key, const RunCallBack &callback)
+Status RegisterCallBackFunc(const char *key, const RunCallback &callback)
 ```
 
 ## 参数说明
@@ -22,7 +22,7 @@ Status RegisterCallBackFunc(const char *key, const RunCallBack &callback)
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | key | 输入 | 注册回调函数对应的关键字，字符串或者字符格式，表示回调函数类型，支持"Summary"、"Save"。 |
-| callback | 输入 | 回调函数返回的对应信息。详情请参见表格下方RunCallBack内容。 |
+| callback | 输入 | 回调函数返回的对应信息。详情请参见表格下方RunCallback内容。 |
 
 ```c++
 using RunCallback = std::function<Status(uint32_t graph_id, const std::map<AscendString, gert::Tensor> &params_list)>;
