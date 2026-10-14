@@ -992,7 +992,7 @@ HcclResult HcomOpsKernelBuilder::SetOpRunningParamAttributes(ge::Node &node, con
   HCCL_INFO("GetAndSetTaskNum success. task num:[%llu]", taskNum);
 
   // 设置output size 大小
-  HcclResult ret = SetOpOutputMemSize(node, sCollectiveType.c_str());
+  ret = SetOpOutputMemSize(node, sCollectiveType.c_str());
   CHK_PRT_RET(
       ret != HCCL_SUCCESS,
       HCCL_ERROR("[Calc][OpRunningParam]errNo[0x%016llx] set op[%s] output size failed.", ret, sCollectiveType.c_str()),
@@ -1365,7 +1365,7 @@ HcclResult HcomOpsKernelBuilder::SetOpMemAttr(ge::Node &node, const std::string 
   if (sCollectiveType == HCCL_KERNEL_OP_TYPE_BROADCAST) {
     bRet = ge::AttrUtils::SetBool(node.GetOpDesc(), ge::ATTR_NAME_REFERENCE, true);
     CHK_PRT_RET(!bRet,
-                HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set  reference attr[%d] to"
+                HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set  reference attr[%d] to "
                            "OpDesc failed.",
                            HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str(), true),
                 HCCL_E_PARA);
@@ -1389,7 +1389,7 @@ HcclResult HcomOpsKernelBuilder::SetOpMemAttr(ge::Node &node, const std::string 
 
   bRet = ge::AttrUtils::SetBool(node.GetOpDesc(), ge::ATTR_NAME_IS_FIXED_ADDR_PRIOR, true);
   CHK_PRT_RET(!bRet,
-              HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set is_fixed_addr_prior[%d] to"
+              HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set is_fixed_addr_prior[%d] to "
                          "OpDesc failed.",
                          HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str(), true),
               HCCL_E_PARA);
