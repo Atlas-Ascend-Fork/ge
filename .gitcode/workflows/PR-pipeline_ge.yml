@@ -655,7 +655,8 @@ stages:
               artifact-path: |
                 ${{ steps.process_checkout.outputs.path }}/ut_cov_*.tar.gz
               object-prefix: ${{ env.obs_path }}/
-        if: env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
+        # 临时关闭hcce UT Report（配套UT/ST门禁临时关闭，Test job被disable后无覆盖率产物），恢复时改回 env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
+        if: env.TARGET_BRANCH == 'disabled'
         runs-on: ['self-hosted', 'arch=x64', 'spec=small']
         container:
           image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ jobs.JOB_image.outputs.UT_Test_Report }}
@@ -950,7 +951,8 @@ stages:
               artifact-path: |
                 ${{ steps.process_checkout.outputs.path }}/st_cov_*.tar.gz
               object-prefix: ${{ env.obs_path }}/
-        if: env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
+        # 临时关闭hcce ST Report（配套UT/ST门禁临时关闭，Test job被disable后无覆盖率产物），恢复时改回 env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
+        if: env.TARGET_BRANCH == 'disabled'
         runs-on: ['self-hosted', 'arch=x64', 'spec=small']
         container:
           image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ jobs.JOB_image.outputs.ST_Test_Report }}
