@@ -53,7 +53,7 @@ class CmoAddrTaskCodeBuilder : public TaskCodeBuilder {
 
   // RenderDistHelper sub-functions
   Status RenderKernelDistributeFunc(std::vector<DeclNode *> &items) const;
-  Status RenderDispatchFunc(std::vector<DeclNode *> &items);
+  Status RenderDispatchFunc(std::vector<DeclNode *> &items) const;
   Status RenderKernelLaunch(std::vector<BodyItem> &body, const VarRef &op, const VarRef &ctx,
                             const ExprRef &dev_addr_off, const ExprRef &host_addr_off) const;
   Status RenderArgsWriteback(std::vector<BodyItem> &body, const VarRef &op, const VarRef &ctx, const VarRef &iow_addr,

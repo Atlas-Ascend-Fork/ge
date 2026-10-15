@@ -773,7 +773,7 @@ inline uint64_t SizeOfModelPartitionTable(const ModelPartitionTable &table) {
   return sizeof(ModelPartitionTable) + (sizeof(ModelPartitionMemInfo) * static_cast<uint64_t>(table.num));
 }
 // mode of activation
-typedef enum tagDomiActivationMode : uint32_t {
+enum domiActivationMode_t : uint32_t {
   DOMI_ACTIVATION_SIGMOID = 0,   // sigmoid
   DOMI_ACTIVATION_RELU,          // ReLU
   DOMI_ACTIVATION_TANH,          // tanh
@@ -789,7 +789,7 @@ typedef enum tagDomiActivationMode : uint32_t {
   DOMI_ACTIVATION_SELU,            // selu
   DOMI_ACTIVATION_LINEAR,          // linear
   DOMI_ACTIVATION_RESERVED
-} domiActivationMode_t;
+};
 
 enum class MemorySizeCalcType : uint32_t { NORMAL = 0, ALWAYS_EMPTY };
 

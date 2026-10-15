@@ -300,16 +300,17 @@ Status SymbolizeInputValueSum(const GeTensor &tensor, int32_t data_index, OpDesc
   }
   GELOGI("Symbolize value sum for node %s[%s]", op_desc->GetNamePtr(), op_desc->GetTypePtr());
   const auto dtype = tensor.GetTensorDesc().GetDataType();
-  auto value = DispatchBySymbolizeValueDtype(dtype, [&](auto tag) -> std::unique_ptr<std::vector<Expression>> {
-    using T = typename decltype(tag)::type;
-    if constexpr (std::is_void_v<T>) {
-      GELOGE(ge::PARAM_INVALID, "symbolic value generalize and compute does not support data type %s",
-             TypeUtils::DataTypeToSerialString(dtype).c_str());
-      return nullptr;
-    } else {
-      return CreateSymbolValueSum<T>(shape_env_attr, tensor, data_index);
-    }
-  });
+  auto value = DispatchBySymbolizeValueDtype(
+      dtype, [&dtype, &shape_env_attr, &tensor, &data_index](auto tag) -> std::unique_ptr<std::vector<Expression>> {
+        using T = typename decltype(tag)::type;
+        if constexpr (std::is_void_v<T>) {
+          GELOGE(ge::PARAM_INVALID, "symbolic value generalize and compute does not support data type %s",
+                 TypeUtils::DataTypeToSerialString(dtype).c_str());
+          return nullptr;
+        } else {
+          return CreateSymbolValueSum<T>(shape_env_attr, tensor, data_index);
+        }
+      });
   GE_ASSERT_NOTNULL(value);
   symbolic_desc_attr->symbolic_tensor.SetSymbolicValue(std::move(value));
   GELOGI("Symbolize value success, %s",

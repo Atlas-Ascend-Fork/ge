@@ -519,7 +519,7 @@ class Om2ModelExecutor::Impl {
   }
 
   ge::Status BuildKernelBinInfoFromStruct(const std::vector<std::unique_ptr<gert::GertModelDataFile>> &kernels,
-                                          std::vector<KernelBinInfo> &info) {
+                                          std::vector<KernelBinInfo> &info) const {
     for (const auto &k : kernels) {
       KernelBinInfo bin_info;
       bin_info.file = gert::GertGetStr(k->file_name);
@@ -632,7 +632,8 @@ class Om2ModelExecutor::Impl {
     return ge::SUCCESS;
   }
 
-  ge::Status PrepareVariablesFromStruct(const gert::GertModelDataModel &model_unit, const Om2ModelLoadArg &load_arg) {
+  ge::Status PrepareVariablesFromStruct(const gert::GertModelDataModel &model_unit,
+                                        const Om2ModelLoadArg &load_arg) const {
     const auto *variables_config = model_unit.variables_config.get();
     if ((variables_config == nullptr) || variables_config->entries.empty()) {
       return ge::SUCCESS;

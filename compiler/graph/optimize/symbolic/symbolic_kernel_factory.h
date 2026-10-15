@@ -10,8 +10,12 @@
 
 #ifndef AIR_CXX_COMPILER_GRAPH_OPTIMIZE_SYMBOLIC_SYMBOLIC_KERNEL_FACTORY_H
 #define AIR_CXX_COMPILER_GRAPH_OPTIMIZE_SYMBOLIC_SYMBOLIC_KERNEL_FACTORY_H
-#include "graph/optimize/symbolic/symbol_compute_context.h"
+#include <map>
+#include <string>
+
 #include "exe_graph/runtime/base_type.h"
+#include "ge_common/ge_common_api_types.h"
+#include "graph/optimize/symbolic/symbol_compute_context.h"
 
 namespace ge {
 using InferSymbolComputeKernelFunc = UINT32 (*)(gert::InferSymbolComputeContext *);

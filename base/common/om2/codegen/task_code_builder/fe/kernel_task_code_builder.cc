@@ -1505,7 +1505,7 @@ Status KernelTaskCodeBuilder::BuildAicpuExtInfoSemantic(const TaskSemanticContri
 }
 
 Status KernelTaskCodeBuilder::RenderDispatchAicore(const VarRef &op, const VarRef &ctx,
-                                                   std::vector<DeclNode *> &items) {
+                                                   std::vector<DeclNode *> &items) const {
   std::vector<BodyItem> body;
   auto setup = RenderDispatchSetup(op, ctx);
   body.insert(body.end(), setup.begin(), setup.end());
