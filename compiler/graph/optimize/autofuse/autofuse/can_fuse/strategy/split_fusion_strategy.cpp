@@ -193,15 +193,62 @@ bool CheckSplitReductionFusion(const NodePtr &node1, const NodePtr &node2, const
   return true;
 }
 
+// 判断node2融合子图中index对应的输入是否直接与split节点相连
+bool InputDirectlyFuseSplit(const NodePtr &node2, const int32_t input_index) {
+  ComputeGraphPtr fused_graph;
+  GE_ASSERT_SUCCESS(BackendUtils::GetNodeFusedGraph(node2, fused_graph));
+  const auto subgraph_input_nodes = fused_graph->GetInputNodes();
+  GE_ASSERT_TRUE(subgraph_input_nodes.size() > static_cast<size_t>(input_index));
+  const auto data_node = subgraph_input_nodes.at(input_index);
+  GE_ASSERT_NOTNULL(data_node);
+  const auto data_out_anchor = data_node->GetOutDataAnchor(0);
+  GE_ASSERT_NOTNULL(data_out_anchor);
+  for (const auto &peer_in_anchor : data_out_anchor->GetPeerInDataAnchorsPtr()) {
+    GE_ASSERT_NOTNULL(peer_in_anchor);
+    const auto consumer_node = peer_in_anchor->GetOwnerNode();
+    GE_ASSERT_NOTNULL(consumer_node);
+    const auto consumer_attr = BackendUtils::GetNodeAutoFuseAttr(consumer_node);
+    if ((consumer_node->GetType() == kSplitType) ||
+        ((consumer_attr != nullptr) && consumer_attr->HasFuseType(loop::FuseType::kSplit))) {
+      GELOGI("In the fused subgraph of node2 %s(%s), input %d directly links to split node %s(%s).",
+             node2->GetName().c_str(), node2->GetType().c_str(), input_index, consumer_node->GetName().c_str(),
+             consumer_node->GetType().c_str());
+      return true;
+    }
+  }
+  return false;
+}
+
 // 检查Split前向融合
 bool CheckSplitForwardFusion(const NodePtr &node1, const NodePtr &node2, const AutoFuseAttrs *attr2) {
-  if (BackendUtils::IsVertical(node1, node2) && attr2->HasFuseType(loop::FuseType::kSplit)) {
+  if (!BackendUtils::IsVertical(node1, node2) || !attr2->HasFuseType(loop::FuseType::kSplit)) {
+    return true;
+  }
+  // node2本身即为split节点，node1直接与split融合，split不支持前向融合
+  if (node2->GetType() != kFusedAscBackendType) {
     GELOGI(
         "node1 %s(%s) and node2 %s(%s) cannot fuse, the reason is [%s][node1 and node2 are vertical fuse, "
         "and node2 is split, split cannot fuse forward]",
         node1->GetName().c_str(), node1->GetType().c_str(), node2->GetName().c_str(), node2->GetType().c_str(),
         ge::NotFuseReasonCode(ge::NotFuseReason::kSplitCanNotFuseForward));
     return false;
+  }
+  // node2是融合节点且包含split，只有node1直接与node2中的split融合时才不允许前向融合
+  for (const auto &node1_out_anchor : node1->GetAllOutDataAnchorsPtr()) {
+    GE_ASSERT_NOTNULL(node1_out_anchor);
+    for (const auto &node1_peer_anchor : node1_out_anchor->GetPeerInDataAnchorsPtr()) {
+      if (node1_peer_anchor->GetOwnerNode() != node2) {
+        continue;
+      }
+      if (InputDirectlyFuseSplit(node2, node1_peer_anchor->GetIdx())) {
+        GELOGI(
+            "node1 %s(%s) and node2 %s(%s) cannot fuse, the reason is [%s][node1 and node2 are vertical fuse, "
+            "and node1 directly links to the split in node2, split cannot fuse forward]",
+            node1->GetName().c_str(), node1->GetType().c_str(), node2->GetName().c_str(), node2->GetType().c_str(),
+            ge::NotFuseReasonCode(ge::NotFuseReason::kSplitCanNotFuseForward));
+        return false;
+      }
+    }
   }
   return true;
 }

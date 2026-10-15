@@ -488,4 +488,100 @@ TEST_F(UtestFusionStrategySolverReshape, SplitStrategyCoversReshapeSqueezeChecks
   EXPECT_FALSE(run_case({2, 1, 3, 4}, {2, 3, 4}, 3));
 }
 
+/*
+ * 覆盖 CheckSplitForwardFusion 的 split 前向融合判定。
+ * node2 为 FusedAscBackend 且融合子图内包含 split：
+ *   data0 -> split(kSplit)
+ *   data1 -> pointwise(kPointwise)
+ * 仅当 node1 的输出直接连接到 node2 融合子图中的 split 输入时才不允许前向融合。
+ */
+static std::shared_ptr<ComputeGraph> BuildForwardFusionFusedGraph(const std::string &name,
+                                                                  const std::string &split_type) {
+  auto fused_graph = std::make_shared<ComputeGraph>(name);
+  auto data0 = fused_graph->AddNode(OP_CFG(kDataType)
+                                        .TensorDesc(FORMAT_ND, DT_FLOAT, {2, 1, 3, 4})
+                                        .InCnt(0)
+                                        .OutCnt(1)
+                                        .InNames({})
+                                        .OutNames({"y"})
+                                        .Build(name + "_data0"));
+  auto data1 = fused_graph->AddNode(OP_CFG(kDataType)
+                                        .TensorDesc(FORMAT_ND, DT_FLOAT, {2, 1, 3, 4})
+                                        .InCnt(0)
+                                        .OutCnt(1)
+                                        .InNames({})
+                                        .OutNames({"y"})
+                                        .Build(name + "_data1"));
+  auto split_backend = fused_graph->AddNode(OP_CFG(split_type)
+                                                .TensorDesc(FORMAT_ND, DT_FLOAT, {2, 1, 3, 4})
+                                                .InCnt(1)
+                                                .OutCnt(1)
+                                                .InNames({"x"})
+                                                .OutNames({"y"})
+                                                .Build(name + "_split"));
+  auto pointwise_backend = fused_graph->AddNode(OP_CFG(kAscBackendType)
+                                                    .TensorDesc(FORMAT_ND, DT_FLOAT, {2, 1, 3, 4})
+                                                    .InCnt(1)
+                                                    .OutCnt(1)
+                                                    .InNames({"x"})
+                                                    .OutNames({"y"})
+                                                    .Build(name + "_pointwise"));
+  EXPECT_NE(data0, nullptr);
+  EXPECT_NE(data1, nullptr);
+  EXPECT_NE(split_backend, nullptr);
+  EXPECT_NE(pointwise_backend, nullptr);
+  EXPECT_EQ(GraphUtils::AddEdge(data0->GetOutDataAnchor(0), split_backend->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(data1->GetOutDataAnchor(0), pointwise_backend->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  // 子图输入注册顺序需与 node2 的输入索引一致
+  EXPECT_NE(fused_graph->AddInputNode(data0), nullptr);
+  EXPECT_NE(fused_graph->AddInputNode(data1), nullptr);
+  GetOrCreateAutoFuseAttrs(split_backend->GetOpDescBarePtr())->SetFuseType(loop::FuseType::kSplit);
+  GetOrCreateAutoFuseAttrs(pointwise_backend->GetOpDescBarePtr())->SetFuseType(loop::FuseType::kPointwise);
+  return fused_graph;
+}
+
+static bool RunForwardFusionCase(const std::string &split_type, const std::vector<std::pair<int32_t, int32_t>> &links) {
+  auto graph = std::make_shared<ComputeGraph>("split_forward_case");
+  auto source = graph->AddNode(OP_CFG(kAscBackendType)
+                                   .TensorDesc(FORMAT_ND, DT_FLOAT, {2, 1, 3, 4})
+                                   .InCnt(1)
+                                   .OutCnt(2)
+                                   .InNames({"x"})
+                                   .OutNames({"y", "z"})
+                                   .Build("source"));
+  auto fused = graph->AddNode(OP_CFG(kFusedAscBackendType)
+                                  .TensorDesc(FORMAT_ND, DT_FLOAT, {2, 1, 3, 4})
+                                  .InCnt(2)
+                                  .OutCnt(1)
+                                  .InNames({"x", "y"})
+                                  .OutNames({"z"})
+                                  .Build("fused"));
+  EXPECT_NE(source, nullptr);
+  EXPECT_NE(fused, nullptr);
+  auto source_attr = GetOrCreateAutoFuseAttrs(source->GetOpDescBarePtr());
+  auto fused_attr = GetOrCreateAutoFuseAttrs(fused->GetOpDescBarePtr());
+  EXPECT_NE(source_attr, nullptr);
+  EXPECT_NE(fused_attr, nullptr);
+  source_attr->SetFuseType(loop::FuseType::kPointwise);
+  fused_attr->SetFuseType(loop::FuseType::kSplit);
+  fused_attr->SetFuseComputeGraph(BuildForwardFusionFusedGraph("fused_graph", split_type));
+  for (const auto &link : links) {
+    EXPECT_EQ(GraphUtils::AddEdge(source->GetOutDataAnchor(link.first), fused->GetInDataAnchor(link.second)),
+              GRAPH_SUCCESS);
+  }
+  SplitFusionStrategy strategy;
+  return strategy.CanFuse(source, fused);
+}
+
+TEST_F(UtestFusionStrategySolverReshape, SplitStrategyCoversForwardFusionChecks) {
+  // node1 直接连到 node2 融合子图中的 split 输入，不允许前向融合
+  EXPECT_FALSE(RunForwardFusionCase(kAscBackendType, {{0, 0}}));
+  // split 以原始 Split 类型存在于融合子图中，同样不允许前向融合
+  EXPECT_FALSE(RunForwardFusionCase(kSplitType, {{0, 0}}));
+  // node1 连到 node2 中非 split 的输入，允许前向融合
+  EXPECT_TRUE(RunForwardFusionCase(kAscBackendType, {{0, 1}}));
+  // 多输出场景：只要有一个输出直接连到 split 输入即不允许前向融合
+  EXPECT_FALSE(RunForwardFusionCase(kAscBackendType, {{0, 0}, {1, 1}}));
+}
+
 }  // namespace ge
