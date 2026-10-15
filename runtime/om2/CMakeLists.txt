@@ -74,6 +74,7 @@ target_link_libraries(om2_executor PRIVATE
         msprof_headers
         ge_metadef_headers
         mmpa_headers
+        gert_model_data_deserializer
         runtime_headers
         error_manager
         c_sec
@@ -148,7 +149,6 @@ target_link_libraries(om2_dump PRIVATE
         ge_metadef_headers
         adump_headers
         mmpa_headers
-        gert_model_data_deserializer
         runtime_headers
         error_manager
         c_sec
