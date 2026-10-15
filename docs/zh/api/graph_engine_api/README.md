@@ -1271,6 +1271,7 @@
     - [compile](python/ge/custom_op/compile.md)
     - [declare\_launch\_args](python/ge/custom_op/declare_launch_args.md)
     - [report\_fuse](python/ge/passes/report_fuse.md)
+    - [report\_match](python/ge/passes/report_match.md)
 
     - [AttrValueType](python/ge/AttrValueType.md)
     - [DataType](python/ge/DataType.md)
