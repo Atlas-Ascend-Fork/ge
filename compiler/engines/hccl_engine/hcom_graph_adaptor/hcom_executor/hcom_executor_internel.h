@@ -68,7 +68,7 @@ using EventInfo_t = struct TagEventInfo {
 
 using ExcutorParallelPara_t = struct ExcutorParallelPara {
   HcclRtStream stream{nullptr};
-  bool shutDown{false};
+  std::atomic<bool> shutDown{false};
   std::queue<ExecutorMessage> messageQueue;
   std::queue<EventInfo_t> eventQueue;
   std::unique_ptr<std::thread> callbackNotifyThread{nullptr};
@@ -76,7 +76,7 @@ using ExcutorParallelPara_t = struct ExcutorParallelPara {
   ExcutorParallelPara() {}
   ~ExcutorParallelPara() {
     HcclResult ret = HCCL_SUCCESS;
-    shutDown = true;
+    shutDown.store(true);
     if (messageProThread) {
       if (messageProThread->joinable()) {
         HCCL_INFO("hcom executor wait messagePro thread");
