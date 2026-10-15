@@ -1079,7 +1079,7 @@
       - [get\_matched\_nodes](python/ge/passes/MatchResult/get_matched_nodes.md)
       - [get\_captured\_tensor](python/ge/passes/MatchResult/get_captured_tensor.md)
       - [get\_pattern\_graph\_name](python/ge/passes/MatchResult/get_pattern_graph_name.md)
-      - [\_\_str\_\_](python/ge/passes/MatchResult//__str__.md)
+      - [\_\_str\_\_](python/ge/passes/MatchResult/__str__.md)
 
     - [MemBlock](python/ge/allocator/MemBlock/MemBlock.md)
       - [简介](python/ge/allocator/MemBlock/overview.md)
@@ -1134,7 +1134,7 @@
 
     - [Pattern](python/ge/passes/Pattern/Pattern.md)
       - [简介](python/ge/passes/Pattern/overview.md)
-      - [\_\_init\_\_](python/ge/passes/Pattern//__init__.md)
+      - [\_\_init\_\_](python/ge/passes/Pattern/__init__.md)
       - [capture\_tensor](python/ge/passes/Pattern/capture_tensor.md)
       - [get\_captured\_tensors](python/ge/passes/Pattern/get_captured_tensors.md)
       - [is\_valid](python/ge/passes/Pattern/is_valid.md)
@@ -1154,7 +1154,7 @@
 
     - [PatternMatcherConfigBuilder](python/ge/passes/PatternMatcherConfigBuilder/PatternMatcherConfigBuilder.md)
       - [简介](python/ge/passes/PatternMatcherConfigBuilder/overview.md)
-      - [\_\_init\_\_](python/ge/passes/PatternMatcherConfigBuilder//__init__.md)
+      - [\_\_init\_\_](python/ge/passes/PatternMatcherConfigBuilder/__init__.md)
       - [enable\_const\_value\_match](python/ge/passes/PatternMatcherConfigBuilder/enable_const_value_match.md)
       - [enable\_ir\_attr\_match](python/ge/passes/PatternMatcherConfigBuilder/enable_ir_attr_match.md)
       - [build](python/ge/passes/PatternMatcherConfigBuilder/build.md)
@@ -1167,16 +1167,16 @@
 
     - [SubgraphInput](python/ge/passes/SubgraphInput/SubgraphInput.md)
       - [简介](python/ge/passes/SubgraphInput/overview.md)
-      - [\_\_init\_\_](python/ge/passes/SubgraphInput//__init__.md)
+      - [\_\_init\_\_](python/ge/passes/SubgraphInput/__init__.md)
       - [add\_input](python/ge/passes/SubgraphInput/add_input.md)
 
     - [SubgraphOutput](python/ge/passes/SubgraphOutput/SubgraphOutput.md)
       - [简介](python/ge/passes/SubgraphOutput/overview.md)
-      - [\_\_init\_\_](python/ge/passes/SubgraphOutput//__init__.md)
+      - [\_\_init\_\_](python/ge/passes/SubgraphOutput/__init__.md)
 
     - [SubgraphBoundary](python/ge/passes/SubgraphBoundary/SubgraphBoundary.md)
       - [简介](python/ge/passes/SubgraphBoundary/overview.md)
-      - [\_\_init\_\_](python/ge/passes/SubgraphBoundary//__init__.md)
+      - [\_\_init\_\_](python/ge/passes/SubgraphBoundary/__init__.md)
       - [add\_input](python/ge/passes/SubgraphBoundary/add_input.md)
       - [add\_output](python/ge/passes/SubgraphBoundary/add_output.md)
 
