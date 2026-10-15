@@ -100,6 +100,22 @@ graphStatus InferShape4SparseToDense(gert::InferSymbolShapeContext *context) {
   return GRAPH_SUCCESS;
 }
 
+graphStatus InferShapeSparseSoftmaxCrossEntropyWithLogits(gert::InferSymbolShapeContext *context) {
+  const auto features = context->GetInputSymbolShape(0);
+  GE_UNSUPPORTED_IF_NULL(features);
+  const auto labels = context->GetInputSymbolShape(1);
+  GE_UNSUPPORTED_IF_NULL(labels);
+  auto loss = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(loss);
+  auto lback_prop = context->GetOutputSymbolShape(1);
+  GE_ASSERT_NOTNULL(lback_prop);
+  *loss = *labels;
+  *lback_prop = *features;
+  return GRAPH_SUCCESS;
+}
+
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(SparseSoftmaxCrossEntropyWithLogits)
+    .InferSymbolShape(InferShapeSparseSoftmaxCrossEntropyWithLogits);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(SparseToDense).InferSymbolShape(InferShape4SparseToDense);
 }  // namespace
 }  // namespace ge

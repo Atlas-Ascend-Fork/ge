@@ -2662,6 +2662,72 @@ TEST_F(SymbolicShapeInferenceST, InferShapeForLayerNormV4) {
   dlog_setlevel(0, 3, 0);
 }
 
+/**
+ * 测试场景：验证 LpNormV2 在真实图中的符号 shape 推导与传播。
+ * 测试输入：输入 x 的符号 shape 为 {s0, s1, s2}，p=1.0，axes={2}，keepdim=true，epsilon=1e-12。
+ * 期望输出：输出 y 的符号 shape 为 {s0, s1, 1}。
+ */
+TEST_F(SymbolicShapeInferenceST, InferShapeForLpNormV2) {
+  auto data0 = builder_->CreateInput(0, "data0");
+  data0.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
+  ASSERT_NE(data0.GetCTensorHolder(), nullptr);
+  auto s0 = ge::Symbol("s0");
+  auto s1 = ge::Symbol("s1");
+  auto kone = ge::Symbol(1);
+
+  auto lp_norm = es::LpNormV2(data0, 1.0f, std::vector<int64_t>({2}), true, 1e-12f);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(lp_norm, 0), 0);
+  auto graph = builder_->BuildAndReset();
+
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  auto node = cg->FindFirstNodeMatchType("LpNormV2");
+  ASSERT_NE(node, nullptr);
+  auto op_desc = node->GetOpDesc();
+  ASSERT_NE(op_desc, nullptr);
+  auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+
+  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s0, s1, kone}).GetDims());
+}
+
+/**
+ * 测试场景：验证 LpNormV2 负轴与 keepdim=false 边界下的符号 shape 推导与传播。
+ * 测试输入：输入 x 的符号 shape 为 {s0, s1, s2}，p=1.0，axes={-3}，keepdim=false，epsilon=1e-12。
+ * 期望输出：输出 y 的符号 shape 为 {s1, s2}。
+ */
+TEST_F(SymbolicShapeInferenceST, InferShapeForLpNormV2NegAxis) {
+  auto data0 = builder_->CreateInput(0, "data0");
+  data0.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
+  ASSERT_NE(data0.GetCTensorHolder(), nullptr);
+  auto s1 = ge::Symbol("s1");
+  auto s2 = ge::Symbol("s2");
+
+  auto lp_norm = es::LpNormV2(data0, 1.0f, std::vector<int64_t>({-3}), false, 1e-12f);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(lp_norm, 0), 0);
+  auto graph = builder_->BuildAndReset();
+
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  auto node = cg->FindFirstNodeMatchType("LpNormV2");
+  ASSERT_NE(node, nullptr);
+  auto op_desc = node->GetOpDesc();
+  ASSERT_NE(op_desc, nullptr);
+  // ES 构图会跳过取值等于默认值的可选属性(keepdim=false)，使运行时属性列表按 IR 顺序截断；
+  // 这里显式补写 keepdim 以保证属性与 IR 定义顺序对齐。
+  ASSERT_TRUE(AttrUtils::SetBool(op_desc, "keepdim", false));
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+
+  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s1, s2}).GetDims());
+}
+
 TEST_F(SymbolicShapeInferenceST, InferShapeForLayerNormXBackpropV3) {
   auto data0 = builder_->CreateInput(0, "data0");
   auto data1 = builder_->CreateInput(1, "data1");

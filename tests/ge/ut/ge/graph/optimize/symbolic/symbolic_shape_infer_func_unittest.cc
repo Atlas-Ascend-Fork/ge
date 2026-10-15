@@ -535,6 +535,26 @@ class SymbolicShapeInferFuncUT : public testing::Test {
     }                                                                                              \
   }
 
+#define RUN_LPNORMV2_TEST(input_shape, axes, keepdim, expect_output_shape, status)                 \
+  {                                                                                                \
+    InferSymbolShapeContextTestBuilder builder(op_type, op_name);                                  \
+    auto op_descPtr = builder.GetOrCreateOpDescPtr();                                              \
+    op_descPtr->AppendIrAttrName("p");                                                             \
+    AttrUtils::SetFloat(op_descPtr, "p", 2.0f);                                                    \
+    op_descPtr->AppendIrAttrName("axes");                                                          \
+    AttrUtils::SetListInt(op_descPtr, "axes", axes);                                               \
+    op_descPtr->AppendIrAttrName("keepdim");                                                       \
+    AttrUtils::SetBool(op_descPtr, "keepdim", keepdim);                                            \
+    op_descPtr->AppendIrAttrName("epsilon");                                                       \
+    AttrUtils::SetFloat(op_descPtr, "epsilon", 1e-12f);                                            \
+    auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();        \
+    ASSERT_TRUE(func.first != nullptr);                                                            \
+    ASSERT_EQ(func.first(infer_context), status);                                                  \
+    if (status == ge::GRAPH_SUCCESS) {                                                             \
+      ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_output_shape.GetDims()); \
+    }                                                                                              \
+  }
+
 #define EXPECT_RUN_UNPACK_TEST(input_shapes, attr_value, output_shapes, exp_status)                      \
   {                                                                                                      \
     InferSymbolShapeContextTestBuilder builder(op_type, op_name);                                        \
@@ -3078,6 +3098,57 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForReduceAllD) {
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForReduceAnyD) {
   TestForReduceD("reduceAnyD", "ReduceAnyD");
+}
+
+/**
+ * 测试场景：验证 LpNormV2 符号化shape推导对 axes/keepdim 属性的处理。
+ * 测试输入：输入 x 的符号 shape 为 {s0, s1, s2}（rank 3），axes/keepdim 属性取值见各用例。
+ * 期望输出：axes 指定/为空、keepdim 为 true/false 时分别得到保留秩或删除维度后的输出 shape；
+ *          axes 越界时返回 PARAM_INVALID。
+ */
+static void TestForLpNormV2(const std::string &op_name, const std::string &op_type) {
+  ShapeEnvAttr shape_env;
+  ShapeEnvGuarder guarder(&shape_env);
+  auto s0 = shape_env.CreateSymbol(2, MakeShared<InputShapeSource>(0, 0));
+  auto s1 = shape_env.CreateSymbol(4, MakeShared<InputShapeSource>(0, 1));
+  auto s2 = shape_env.CreateSymbol(5, MakeShared<InputShapeSource>(0, 2));
+
+  auto kOne = ge::Symbol(1);
+
+  auto func = GetInferFunc(op_type);
+  ASSERT_TRUE(func.first != nullptr);
+
+  // keepdim=true  {s0, s1, s2} axes={2}    -> {s0, s1, 1}
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({2}), true, gert::SymbolShape({s0, s1, kOne}),
+                    GRAPH_SUCCESS);
+
+  // keepdim=true  {s0, s1, s2} axes={-1}   -> {s0, s1, 1}
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({-1}), true,
+                    gert::SymbolShape({s0, s1, kOne}), GRAPH_SUCCESS);
+
+  // keepdim=false {s0, s1, s2} axes={2}    -> {s0, s1}
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({2}), false, gert::SymbolShape({s0, s1}),
+                    GRAPH_SUCCESS);
+
+  // keepdim=false {s0, s1, s2} axes={0, 2} -> {s1}
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({0, 2}), false, gert::SymbolShape({s1}),
+                    GRAPH_SUCCESS);
+
+  // keepdim=false {s0, s1, s2} axes={}     -> {}   (规约全部维度)
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({}), false, gert::SymbolShape(),
+                    GRAPH_SUCCESS);
+
+  // keepdim=true  {s0, s1, s2} axes={}     -> {1, 1, 1}
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({}), true,
+                    gert::SymbolShape({kOne, kOne, kOne}), GRAPH_SUCCESS);
+
+  // keepdim=true  {s0, s1, s2} axes={999}  -> PARAM_INVALID (越界)
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({999}), true,
+                    gert::SymbolShape({s0, s1, kOne}), PARAM_INVALID);
+}
+
+TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLpNormV2) {
+  TestForLpNormV2("lpNormV2", "LpNormV2");
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSelect) {
