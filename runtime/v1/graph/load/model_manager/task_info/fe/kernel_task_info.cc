@@ -32,7 +32,6 @@
 #include "adump_pub.h"
 #include "acl/acl_rt.h"
 #include "register/op_tiling/op_tiling_constants.h"
-#include "graph/utils/op_type_utils.h"
 #include "common/kernel_handles_manager/kernel_handle_utils.h"
 #include "graph/load/model_manager/kernel/kernel_register_info_builder.h"
 #include "acl/acl_rt.h"
@@ -187,9 +186,35 @@ ge::Status UpdateDfxArgsAndShapeSize(const ge::OpDescPtr &op_desc,
   return ge::SUCCESS;
 }
 
+ge::Status AppendMemCheckDfxInfo(const ge::OpDescPtr &op_desc, const int64_t tiling_data_size,
+                                 const std::vector<int64_t> &args_size_vec, std::string &dfx_info) {
+  int64_t max_size = -1;
+  if (!ge::AttrUtils::GetInt(op_desc, kMaxTilingSize, max_size) || max_size < 0) {
+    GELOGI("No max tiling size in opdesc.");
+    max_size = static_cast<int64_t>(kMaxTilingDataSize);
+  }
+
+  const auto memcheck_info_capacity = ge::RoundUp(static_cast<uint64_t>(max_size), sizeof(uintptr_t));
+  GELOGI("Get memcheck info capacity: %zu, op_name: %s", memcheck_info_capacity, op_desc->GetNamePtr());
+  const auto memcheck_data_holder = gert::TilingData::CreateCap(memcheck_info_capacity);
+  auto memcheck_data = reinterpret_cast<gert::TilingData *>(memcheck_data_holder.get());
+  int64_t memcheck_start_size = 0L;
+  GE_ASSERT_SUCCESS(GetMemCheckStartSize(op_desc, tiling_data_size, memcheck_start_size));
+  memcheck_data->SetDataSize(static_cast<size_t>(memcheck_start_size));
+
+  // append size
+  for (size_t i = 0U; i < args_size_vec.size(); i++) {
+    GELOGI("[TilingAppendDfxInfo] size idx[%zu], val[%lld]", i, args_size_vec[i]);
+  }
+  GE_ASSERT_SUCCESS(memcheck_data->Append(args_size_vec.data(), args_size_vec.size()));
+  GELOGI("Op name[%s] memcheck info size: %lld, start size: %lld", op_desc->GetNamePtr(), memcheck_data->GetDataSize(),
+         memcheck_start_size);
+  dfx_info = std::string(reinterpret_cast<ge::char_t *>(memcheck_data->GetData()), memcheck_data->GetDataSize());
+  return ge::SUCCESS;
+}
+
 ge::Status ConstructDfxInfo(const ge::OpDescPtr &op_desc, const optiling::OpRunInfoV2 &run_info,
                             const std::vector<ge::ArgDesc> &arg_descs, std::string &dfx_info) {
-  GELOGI("Start to construct dfx info for node: %s.", op_desc == nullptr ? "null" : op_desc->GetNamePtr());
   bool is_mem_check_enable = false;
   (void)ge::AttrUtils::GetBool(op_desc, optiling::kMemoryCheck, is_mem_check_enable);
   bool is_args_exception_enable = Adx::AdumpGetDumpSwitch(Adx::DumpType::ARGS_EXCEPTION);
@@ -233,28 +258,7 @@ ge::Status ConstructDfxInfo(const ge::OpDescPtr &op_desc, const optiling::OpRunI
   }
 
   if (is_mem_check_enable) {
-    int64_t max_size = -1;
-    if (!ge::AttrUtils::GetInt(op_desc, kMaxTilingSize, max_size) || max_size < 0) {
-      GELOGI("No max tiling size in opdesc.");
-      max_size = static_cast<int64_t>(kMaxTilingDataSize);
-    }
-
-    const auto memcheck_info_capacity = ge::RoundUp(static_cast<uint64_t>(max_size), sizeof(uintptr_t));
-    GELOGI("Get memcheck info capacity: %zu, op_name: %s", memcheck_info_capacity, op_desc->GetNamePtr());
-    const auto memcheck_data_holder = gert::TilingData::CreateCap(memcheck_info_capacity);
-    auto memcheck_data = reinterpret_cast<gert::TilingData *>(memcheck_data_holder.get());
-    int64_t memcheck_start_size = 0L;
-    GE_ASSERT_SUCCESS(GetMemCheckStartSize(op_desc, tiling_data_size, memcheck_start_size));
-    memcheck_data->SetDataSize(static_cast<size_t>(memcheck_start_size));
-
-    // append size
-    for (size_t i = 0U; i < args_size_vec.size(); i++) {
-      GELOGI("[TilingAppendDfxInfo] size idx[%zu], val[%lld]", i, args_size_vec[i]);
-    }
-    GE_ASSERT_SUCCESS(memcheck_data->Append(args_size_vec.data(), args_size_vec.size()));
-    GELOGI("Op name[%s] memcheck info size: %lld, start size: %lld", op_desc->GetNamePtr(),
-           memcheck_data->GetDataSize(), memcheck_start_size);
-    dfx_info = std::string(reinterpret_cast<ge::char_t *>(memcheck_data->GetData()), memcheck_data->GetDataSize());
+    GE_ASSERT_SUCCESS(AppendMemCheckDfxInfo(op_desc, tiling_data_size, args_size_vec, dfx_info));
   }
 
   if (is_args_exception_enable) {
@@ -1662,13 +1666,10 @@ Status KernelTaskInfo::CopyTilingDataIfNeeded() {
     has_tiling_ = true;
     std::string tiling_data = run_info->GetAllTilingData().str();
     if (!is_separately_clean_task_) {
-      bool skip_append_dfx_info = ge::OpTypeUtils::IsAutofuseNode(op_desc_);
-      if (!skip_append_dfx_info) {
-        std::string dfx_info;
-        GE_CHK_STATUS_RET(ConstructDfxInfo(op_desc_, *run_info, args_format_holder_.arg_descs, dfx_info),
-                          "ConstructDfxInfo failed for node: %s, skip append dfx info.", op_desc_->GetNamePtr());
-        tiling_data += dfx_info;
-      }
+      std::string dfx_info;
+      GE_CHK_STATUS_RET(ConstructDfxInfo(op_desc_, *run_info, args_format_holder_.arg_descs, dfx_info),
+                        "Append memcheck data for node: %s failed.", op_desc_->GetNamePtr());
+      tiling_data += dfx_info;
     }
     tiling_data_size_ = tiling_data.size();
     tiling_data_addr_ = davinci_model_->MallocDynamicMemory(tiling_data_size_);

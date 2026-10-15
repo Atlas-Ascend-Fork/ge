@@ -2082,6 +2082,7 @@ Status TbeInfoAssembler::AssembleAutoFuseTbeInfo(ge::Node *node, te::TbeOpInfo &
   SetSingleOpScene(node, tbe_op_info);
   SetCustCoreNum(*op, tbe_op_info);
   SetOpImplSwitch(op, tbe_op_info);
+  SetOpDebugConfig(AI_CORE_NAME, op, tbe_op_info);
   return SUCCESS;
 }
 
