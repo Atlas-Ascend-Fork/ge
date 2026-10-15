@@ -129,8 +129,12 @@ conv2d.cc:573  构造 oh / ow 表达式
       ↓
 conv2d.cc:594  SetConv2DYShape
       ↓
+输出 1 存在时，把同一份 N/C/H/W 符号维写到 y1
+      ↓
 输出 GeTensorDesc 的 SymbolicDescAttr
 ```
+
+`y` 与 `y1` 是同一份卷积几何。`y1` 已连到下游时，空的符号 shape 会被写成正式结果并传给后一个算子；因此推导阶段就要写上，不能等 lowering。`Conv2D` / `Conv2DV2` 没有输出 1，`GetOutputSymbolShape(1)` 为空，这条补写不会改变它们。未连接的 `y1` 仍然由 lowering 的 `StoreIgnoredOutput` 占位。
 
 这里的产物不仅给卷积自身使用。后续 Relu/Add/Reduce 的 lowering 读取其输入生产者 shape 时，也会沿边读到这份符号 shape。
 
