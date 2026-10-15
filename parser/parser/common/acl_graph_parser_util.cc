@@ -39,6 +39,7 @@
 #include "base/registry/opp_package_utils.h"
 #include "register/op_lib_register_impl.h"
 #include "graph/operator_factory_impl.h"
+#include "graph_metadef/common/plugin/ops_deliverables_manager.h"
 
 using google::protobuf::io::CodedInputStream;
 using google::protobuf::io::FileInputStream;
@@ -175,8 +176,8 @@ static Status CheckOutNode(ge::OpDescPtr op_desc, int32_t index) {
 }
 
 domi::Status AclGraphParserUtil::LoadOpsProtoLib() {
-  // 加载顺序遵循3.0目录结构，按op_graph->op_impl->op_proto->framework顺序加载，详细规则见PluginManager::GetOpsProtoPath注释
-  gert::OppPackageUtils::LoadAllOppPackage();
+  // 根据 OPP 清单加载 opgraph/ophost；清单不可用时回退到原有目录发现流程。
+  GE_ASSERT_GRAPH_SUCCESS(OpsDeliverablesManager::LoadOppPackages());
   GELOGI("Load Ops proto v2 success.");
   string opsproto_path;
   ge::Status ret = ge::TBEPluginLoader::GetOpsProtoPath(opsproto_path);
@@ -227,7 +228,7 @@ domi::Status AclGraphParserUtil::AclParserInitialize(const std::map<std::string,
   GE_ASSERT_GRAPH_SUCCESS(OpLibRegistry::GetInstance().PreProcessForCustomOp());
 
   // load and save custom op proto for prediction
-  (void)LoadOpsProtoLib();
+  GE_ASSERT_SUCCESS(LoadOpsProtoLib());
   SaveCustomCaffeProtoPath();
   // load custom op plugin
   TBEPluginLoader::Instance().LoadPluginSo(options);

@@ -43,6 +43,7 @@
 #include "common/dump/dump_manager.h"
 #include "common/dump/dump_callback.h"
 #include "graph/operator_factory_impl.h"
+#include "graph_metadef/common/plugin/ops_deliverables_manager.h"
 #include "common/helper/custom_op_so_loader.h"
 
 namespace {
@@ -284,8 +285,8 @@ Status GeExecutor::Initialize(const std::map<std::string, std::string> &options)
   }
 
   GE_CHK_STATUS_RET_NOLOG(OpsKernelExecutorManager::GetInstance().Initialize(options));
-  // 加载顺序遵循3.0目录结构，按op_graph->op_impl->op_proto->framework顺序加载，详细规则见PluginManager::GetOpsProtoPath注释
-  gert::OppPackageUtils::LoadAllOppPackage();
+  // 根据 OPP 清单加载 opgraph/ophost；清单不可用时回退到原有目录发现流程。
+  GE_ASSERT_GRAPH_SUCCESS(OpsDeliverablesManager::LoadOppPackages(options));
 
   // libops_host_cpu.h include all_ops.h头文件，注册了原型，需要放到开源so后面加载
   GE_CHK_STATUS_RET(HostCpuEngine::GetInstance().Initialize(path_base), "[initialize][HostCpuEngine] failed");

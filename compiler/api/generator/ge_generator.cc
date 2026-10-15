@@ -40,6 +40,7 @@
 #include "graph/manager/session_id_manager.h"
 #include "graph/manager/util/graph_rebuild_state_ctrl.h"
 #include "graph/operator_factory_impl.h"
+#include "graph_metadef/common/plugin/ops_deliverables_manager.h"
 #include "graph/opsproto_manager.h"
 #include "base/registry/opp_package_utils.h"
 #include "graph/utils/graph_utils.h"
@@ -481,8 +482,8 @@ Status GeGenerator::Initialize(const std::map<std::string, std::string> &options
     return MEMALLOC_FAILED;
   }
   GE_ASSERT_SUCCESS(ge::custom_op::LoadCustomOps());
-  // 加载顺序遵循3.0目录结构，按op_graph->op_impl->op_proto->framework顺序加载，详细规则见PluginManager::GetOpsProtoPath注释
-  gert::OppPackageUtils::LoadAllOppPackage();
+  // 根据 OPP 清单加载 opgraph/ophost；清单不可用时回退到原有目录发现流程。
+  GE_ASSERT_GRAPH_SUCCESS(OpsDeliverablesManager::LoadOppPackages(options));
   std::string opsproto_path;
   Status ret = PluginManager::GetOpsProtoPath(opsproto_path);
   if (ret != SUCCESS) {

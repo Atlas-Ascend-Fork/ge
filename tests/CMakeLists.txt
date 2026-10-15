@@ -27,6 +27,19 @@ add_subdirectory(depends/llm_datadist)
 add_subdirectory(depends/python)
 add_subdirectory(depends/aihacb_autofusion)
 add_subdirectory(depends/ascendcl)
+option(OPS_DELIVERABLES_USE_INSTALLED_GRAPH "Test production OPP loader against installed graph dependencies" OFF)
+add_library(ops_deliverables_test_support INTERFACE)
+if (OPS_DELIVERABLES_USE_INSTALLED_GRAPH)
+    # Component validation only: compile the unmodified production source, not a test replacement.
+    add_library(ops_deliverables_test_impl STATIC
+        ${GE_METADEF_DIR}/base/common/plugin/ops_deliverables_manager.cc)
+    target_link_libraries(ops_deliverables_test_impl PUBLIC ge_metadef_headers intf_llt_pub
+        "${ASCEND_INSTALL_PATH}/lib64/libgraph_base.so" metadef static_mmpa slog_stub unified_dlog opp_registry
+        "${ASCEND_INSTALL_PATH}/lib64/libplatform.so" PRIVATE json runtime_headers)
+    target_link_libraries(ops_deliverables_test_support INTERFACE ops_deliverables_test_impl)
+else()
+    target_link_libraries(ops_deliverables_test_support INTERFACE register)
+endif()
 add_subdirectory(framework)
 add_subdirectory(benchmark)
 add_subdirectory(ge)

@@ -25,6 +25,7 @@
 #include <unordered_map>
 
 #include "graph_metadef/common/plugin/plugin_manager.h"
+#include "graph_metadef/common/plugin/ops_deliverables_manager.h"
 #include "framework/common/util.h"
 #include "framework/generator/ge_generator.h"
 #include "framework/omg/omg.h"
@@ -1303,6 +1304,12 @@ void LoadCustomOpLib(bool need_load_ops_plugin) {
 
   // whether there are files in the plugin so path
   GetPluginSoFileList(plugin_path, fileList, caffe_parser_path);
+
+  const auto framework = TypeUtilsInner::FmkTypeToSerialString(static_cast<domi::FrameworkType>(FLAGS_framework));
+  std::map<std::string, std::string> options{{"ge.socVersion", FLAGS_soc_version},
+                                             {"ge.host_env_os", FLAGS_host_env_os},
+                                             {"ge.host_env_cpu", FLAGS_host_env_cpu}};
+  ge::OpsDeliverablesManager::UpdateFrameworkPluginPaths(options, framework, fileList);
 
   // sort, move "_legacy.so" to the end
   std::stable_partition(fileList.begin(), fileList.end(), ge::IsLegacySoFile);
