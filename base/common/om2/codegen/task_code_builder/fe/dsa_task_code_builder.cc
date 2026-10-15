@@ -116,7 +116,7 @@ Status DSATaskCodeBuilder::InitHbmArgsTable(TaskSemanticContributeContext &conte
   return SUCCESS;
 }
 
-void DSATaskCodeBuilder::InitBuildDataFields(const uint32_t task_type, const uint32_t prof_ge_task_type) {
+void DSATaskCodeBuilder::InitBuildDataFields(uint32_t task_type, uint32_t prof_ge_task_type) {
   const uint32_t num_inputs = static_cast<uint32_t>(input_addrs_.size());
   const uint32_t num_outputs = static_cast<uint32_t>(output_addrs_.size());
   const uint32_t ws_base = num_inputs + num_outputs;

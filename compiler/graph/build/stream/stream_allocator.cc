@@ -21,6 +21,7 @@
 #include "graph/debug/ge_attr_define.h"
 #include "graph/ge_context.h"
 #include "graph/utils/graph_utils.h"
+#include "graph/utils/node_utils.h"
 #include "graph/utils/op_type_utils.h"
 #include "graph/build/task_generator_utils.h"
 #include "api/gelib/gelib.h"
@@ -50,6 +51,18 @@ inline std::string GetEventTypeStr(ge::EventType event_type) {
     return kNotify;
   }
   return kEvent;
+}
+
+ge::NodePtr GetLabelSwitchInput(ge::NodePtr node, const ge::ComputeGraphPtr &whole_graph) {
+  // Resolve input aliases without crossing the boundary of the model being compiled.
+  while ((node->GetType() == ge::DATA) && (node->GetOwnerComputeGraph() != whole_graph)) {
+    const auto parent_input = ge::NodeUtils::GetParentInputAndAnchor(node).first;
+    if (parent_input == nullptr) {
+      break;
+    }
+    node = parent_input;
+  }
+  return node;
 }
 
 inline bool HasContinuousStreamLabel(const ge::OpDescPtr &op_desc, std::string &continuous_stream_label) {
@@ -1149,9 +1162,12 @@ Status StreamAllocator::InsertSyncEvents(const EventType insert_event_type) {
   for (const auto &cur_node : whole_graph_->GetNodes(whole_graph_->GetGraphUnknownFlag(), nullptr, ffts_filter)) {
     // Take the adjacent points, then judge whether need to insert the event
     for (const OutDataAnchorPtr &anchor : cur_node->GetAllOutDataAnchors()) {
-      for (const InDataAnchorPtr &peer_in_anchor : anchor->GetPeerInDataAnchors()) {
+      for (const auto peer_in_anchor : anchor->GetPeerInDataAnchorsPtr()) {
         NodePtr next_node = peer_in_anchor->GetOwnerNode();
-        Status status = InsertOneEventInTwoNodes(insert_event_type, cur_node, next_node);
+        // Wait for the actual condition producer, even when the subgraph Data has no stream.
+        const auto send_node =
+            (next_node->GetType() == LABELSWITCHBYINDEX) ? GetLabelSwitchInput(cur_node, whole_graph_) : cur_node;
+        Status status = InsertOneEventInTwoNodes(insert_event_type, send_node, next_node);
         if (status != SUCCESS) {
           GELOGE(status, "[Insert][One %s] In Two Nodes failed! cur node:%s", cur_node->GetName().c_str(),
                  GetEventTypeStr(insert_event_type).c_str());

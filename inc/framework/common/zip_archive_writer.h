@@ -43,7 +43,7 @@ class ZipArchiveWriter {
    * @return true on success, false if any error occurs.
    */
   bool WriteBytes(const std::string &entry_name, const void *data, const size_t data_size, const bool compress = true);
-  bool WriteFile(const std::string &entry_name, const std::string &file_path, const bool compress = true);
+  bool WriteFile(const std::string &entry_name, const std::string &src_file_path, const bool compress = true);
   bool SaveModelData(gert::GertBuffer &model, bool save_to_file);
   bool SaveModelDataToFile();
   bool IsMemFileOpened() const {

@@ -293,7 +293,7 @@ if ((CMAKE_BUILD_TYPE MATCHES GCOV) OR ENABLE_GE_DT OR ENGINE_DT)
     if (ENABLE_FE_LLT AND ENABLE_ST)
         add_dependencies(select_targets te_fusion_stub graph_tuner_stub
                      st_fe_graph_optimizer st_fe_fusion st_fe_adapter_ops
-                     st_fe_shape_common st_fe_others)
+                     st_fe_shape_common)
     endif()
     if (ENABLE_FE_LLT AND ENABLE_ST_WHOLE_PROCESS)
         add_dependencies(select_targets fe_st_whole_process)

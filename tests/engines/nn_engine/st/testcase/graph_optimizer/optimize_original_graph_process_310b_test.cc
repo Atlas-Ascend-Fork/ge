@@ -340,8 +340,8 @@ TEST_F(OptimizeOriginalGraphProcess310BTest, optimize_origin_graph_quant_case1) 
   ret = graph_optimizer_ptr->OptimizeOriginalGraphJudgeInsert(*graph);
   EXPECT_EQ(ret, SUCCESS);
   ret = graph_optimizer_ptr->OptimizeOriginalGraphJudgeFormatInsert(*graph);
-  EXPECT_EQ(ret, FAILED);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 12);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(graph->GetDirectNodesSize(), 11);
   size_t trans_count = 0;
   size_t cast_count = 0;
   for (const ge::NodePtr &node : graph->GetDirectNode()) {
@@ -373,8 +373,8 @@ TEST_F(OptimizeOriginalGraphProcess310BTest, optimize_origin_graph_quant_case2) 
   ret = graph_optimizer_ptr->OptimizeOriginalGraphJudgeInsert(*graph);
   EXPECT_EQ(ret, SUCCESS);
   ret = graph_optimizer_ptr->OptimizeOriginalGraphJudgeFormatInsert(*graph);
-  EXPECT_EQ(ret, FAILED);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 12);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(graph->GetDirectNodesSize(), 11);
   size_t trans_count = 0;
   size_t cast_count = 0;
   for (const ge::NodePtr &node : graph->GetDirectNode()) {

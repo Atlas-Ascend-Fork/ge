@@ -860,7 +860,7 @@ std::string BuildInputH2DOverlapBoundaryConfigString(const std::vector<std::pair
   return config;
 }
 
-void LogInputH2DOverlapGroups(const std::string &graph_name, const char *const mode, const size_t base_group_count,
+void LogInputH2DOverlapGroups(const std::string &graph_name, const char *mode, size_t base_group_count,
                               const std::vector<std::pair<size_t, size_t>> &planned_ranges) {
   const auto boundaries = BuildInputH2DOverlapBoundariesFromRanges(planned_ranges, base_group_count);
   const size_t sync_end = planned_ranges.empty() ? base_group_count : planned_ranges.front().first;
@@ -874,8 +874,7 @@ void LogInputH2DOverlapGroups(const std::string &graph_name, const char *const m
 }
 
 void LogInputH2DOverlapManualConfigHint(const std::string &graph_name,
-                                        const std::vector<std::pair<size_t, size_t>> &ranges,
-                                        const size_t base_group_count) {
+                                        const std::vector<std::pair<size_t, size_t>> &ranges, size_t base_group_count) {
   bool is_exact = true;
   const auto boundary_config = BuildInputH2DOverlapBoundaryConfigString(ranges, base_group_count, is_exact);
   if (boundary_config.empty()) {

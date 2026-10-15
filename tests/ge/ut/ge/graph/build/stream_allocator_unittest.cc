@@ -846,6 +846,149 @@ TEST_F(UtestStreamAllocator, InsertSyncEvents_success) {
   EXPECT_EQ(allocator.InsertSyncEvents(EventType::kEvent), SUCCESS);
 }
 
+namespace {
+// While body: Cast(stream 5) -> If/Case -> {Data(stream -1) -> LabelSwitch(stream 0)}.
+ComputeGraphPtr MakeNestedLabelSwitchGraph(const std::string &parent_type, int64_t producer_stream) {
+  ut::GraphBuilder root_builder("nested_label_switch");
+  root_builder.AddNode("while", WHILE, 1, 0)->GetOpDesc()->SetStreamId(0);
+  const auto root = root_builder.GetGraph();
+
+  ut::GraphBuilder body_builder("body");
+  const auto cond = body_builder.AddNode("cond", CAST, 0, 1);
+  const auto parent = body_builder.AddNode("branch", parent_type, 2, 0);
+  const auto other = body_builder.AddNode("other_input", DATA, 0, 1);
+  cond->GetOpDesc()->SetStreamId(producer_stream);
+  parent->GetOpDesc()->SetStreamId(producer_stream);
+  other->GetOpDesc()->SetStreamId(-1);
+  body_builder.AddDataEdge(cond, 0, parent, 0);
+  body_builder.AddDataEdge(other, 0, parent, 1);
+  const auto body = body_builder.GetGraph();
+  ut::GraphBuilder::AddPartitionedCall(root, "while", body);
+
+  ut::GraphBuilder branch_builder("branch_graph");
+  const auto data = branch_builder.AddNode("switch_index", DATA, 0, 1);
+  const auto label_switch = branch_builder.AddNode("label_switch", LABELSWITCHBYINDEX, 1, 0);
+  const auto leave = branch_builder.AddNode("leave", LABELSET, 0, 0);
+  data->GetOpDesc()->SetStreamId(-1);
+  (void)AttrUtils::SetInt(data->GetOpDesc(), ATTR_NAME_PARENT_NODE_INDEX, 0);
+  label_switch->GetOpDesc()->SetStreamId(0);
+  leave->GetOpDesc()->SetStreamId(0);
+  branch_builder.AddDataEdge(data, 0, label_switch, 0);
+  branch_builder.AddControlEdge(label_switch, leave);
+  ut::GraphBuilder::AddPartitionedCall(body, "branch", branch_builder.GetGraph());
+  (void)root->TopologicalSorting();
+  return root;
+}
+}  // namespace
+
+TEST_F(UtestStreamAllocator, InsertSyncEvents_NestedLabelSwitch_WaitsForParentCondition) {
+  for (const auto &parent_type : {IF, CASE}) {
+    const auto graph = MakeNestedLabelSwitchGraph(parent_type, 5);
+    const auto cond = graph->GetSubgraph("body")->FindNode("cond");
+    const auto branch = graph->GetSubgraph("branch_graph");
+    const auto label_switch = branch->FindNode("label_switch");
+    const auto leave = branch->FindNode("leave");
+    Graph2SubGraphInfoList subgraphs;
+    StreamAllocator allocator(graph, subgraphs);
+    ASSERT_EQ(allocator.InsertSyncEvents(EventType::kEvent), SUCCESS);
+    ASSERT_EQ(allocator.node_to_recv_events_[label_switch].size(), 1U);
+    EXPECT_EQ(allocator.node_to_send_events_[cond], allocator.node_to_recv_events_[label_switch]);
+    EXPECT_TRUE(allocator.node_to_send_events_[branch->FindNode("switch_index")].empty());
+    // A wait after the branch decision must not replace the condition-ready wait.
+    ASSERT_EQ(allocator.InsertOneEventInTwoNodes(EventType::kEvent, cond, leave), SUCCESS);
+    ASSERT_EQ(
+        allocator.OptimizeSyncEvents(EventType::kEvent, allocator.node_to_send_events_, allocator.node_to_recv_events_),
+        SUCCESS);
+    ASSERT_EQ(allocator.node_to_recv_events_[label_switch].size(), 1U);
+    EXPECT_TRUE(allocator.node_to_recv_events_[leave].empty());
+    ASSERT_EQ(allocator.GenerateSyncEventNodes(), SUCCESS);
+    const auto recv_nodes = label_switch->GetInControlNodes();
+    ASSERT_EQ(recv_nodes.size(), 1U);
+    EXPECT_EQ(recv_nodes.at(0)->GetType(), RECV);
+    EXPECT_EQ(recv_nodes.at(0)->GetOpDesc()->GetStreamId(), 0);
+    EXPECT_LT(recv_nodes.at(0)->GetOpDesc()->GetId(), label_switch->GetOpDesc()->GetId());
+    const auto send_nodes = cond->GetOutControlNodes();
+    ASSERT_EQ(send_nodes.size(), 1U);
+    EXPECT_EQ(send_nodes.at(0)->GetType(), SEND);
+    EXPECT_EQ(send_nodes.at(0)->GetOpDesc()->GetStreamId(), 5);
+    int64_t send_id = -1;
+    int64_t recv_id = -1;
+    ASSERT_TRUE(AttrUtils::GetInt(send_nodes.at(0)->GetOpDesc(), SEND_ATTR_EVENT_ID, send_id));
+    ASSERT_TRUE(AttrUtils::GetInt(recv_nodes.at(0)->GetOpDesc(), RECV_ATTR_EVENT_ID, recv_id));
+    EXPECT_EQ(send_id, recv_id);
+  }
+}
+
+TEST_F(UtestStreamAllocator, InsertSyncEvents_NestedLabelSwitch_NotifyWaitsForParentCondition) {
+  const auto graph = MakeNestedLabelSwitchGraph(IF, 5);
+  const auto cond = graph->GetSubgraph("body")->FindNode("cond");
+  const auto label_switch = graph->GetSubgraph("branch_graph")->FindNode("label_switch");
+  Graph2SubGraphInfoList subgraphs;
+  StreamAllocator allocator(graph, subgraphs);
+  ASSERT_EQ(allocator.InsertSyncNodesWithNotify(), SUCCESS);
+  ASSERT_EQ(allocator.node_to_recv_notifies_[label_switch].size(), 1U);
+  EXPECT_EQ(allocator.node_to_send_notifies_[cond], allocator.node_to_recv_notifies_[label_switch]);
+  EXPECT_EQ(allocator.notify_num_, 1U);
+  EXPECT_EQ(allocator.event_num_, 0U);
+}
+
+TEST_F(UtestStreamAllocator, InsertSyncEvents_NestedLabelSwitch_SameStreamNeedsNoEvent) {
+  const auto graph = MakeNestedLabelSwitchGraph(IF, 0);
+  Graph2SubGraphInfoList subgraphs;
+  StreamAllocator allocator(graph, subgraphs);
+  ASSERT_EQ(allocator.InsertSyncEvents(EventType::kEvent), SUCCESS);
+  EXPECT_EQ(allocator.event_num_, 0U);
+  EXPECT_TRUE(allocator.node_to_send_events_.empty());
+  EXPECT_TRUE(allocator.node_to_recv_events_.empty());
+}
+
+TEST_F(UtestStreamAllocator, InsertSyncEvents_NestedLabelSwitch_ResolvesForwardedInput) {
+  const auto graph = MakeNestedLabelSwitchGraph(IF, -1);
+  const auto cond = graph->GetSubgraph("body")->FindNode("cond");
+  cond->GetOpDesc()->SetType(DATA);
+  ASSERT_TRUE(AttrUtils::SetInt(cond->GetOpDesc(), ATTR_NAME_PARENT_NODE_INDEX, 0));
+  const auto parent = graph->FindNode("while");
+  parent->GetOpDesc()->SetType(PARTITIONEDCALL);
+  parent->GetOpDesc()->SetStreamId(5);
+  const auto producer_desc = std::make_shared<OpDesc>("producer", CAST);
+  ASSERT_EQ(producer_desc->AddOutputDesc(GeTensorDesc()), GRAPH_SUCCESS);
+  producer_desc->SetStreamId(5);
+  const auto producer = graph->AddNode(producer_desc);
+  ASSERT_EQ(GraphUtils::AddEdge(producer->GetOutDataAnchor(0), parent->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  ASSERT_EQ(graph->TopologicalSorting(), GRAPH_SUCCESS);
+  const auto label_switch = graph->GetSubgraph("branch_graph")->FindNode("label_switch");
+  Graph2SubGraphInfoList subgraphs;
+  StreamAllocator allocator(graph, subgraphs);
+  ASSERT_EQ(allocator.InsertSyncEvents(EventType::kEvent), SUCCESS);
+  ASSERT_EQ(allocator.node_to_recv_events_[label_switch].size(), 1U);
+  EXPECT_EQ(allocator.node_to_send_events_[producer], allocator.node_to_recv_events_[label_switch]);
+  EXPECT_TRUE(allocator.node_to_send_events_[cond].empty());
+}
+
+TEST_F(UtestStreamAllocator, InsertSyncEvents_LabelSwitch_DoesNotCrossCompiledGraphBoundary) {
+  ut::GraphBuilder outer_builder("outer");
+  const auto producer = outer_builder.AddNode("producer", CAST, 0, 1);
+  const auto call = outer_builder.AddNode("call", PARTITIONEDCALL, 1, 0);
+  producer->GetOpDesc()->SetStreamId(5);
+  outer_builder.AddDataEdge(producer, 0, call, 0);
+  const auto outer = outer_builder.GetGraph();
+  ut::GraphBuilder model_builder("model");
+  const auto data = model_builder.AddNode("input", DATA, 0, 1);
+  const auto label_switch = model_builder.AddNode("label_switch", LABELSWITCHBYINDEX, 1, 0);
+  data->GetOpDesc()->SetStreamId(-1);
+  label_switch->GetOpDesc()->SetStreamId(0);
+  ASSERT_TRUE(AttrUtils::SetInt(data->GetOpDesc(), ATTR_NAME_PARENT_NODE_INDEX, 0));
+  model_builder.AddDataEdge(data, 0, label_switch, 0);
+  const auto model = model_builder.GetGraph();
+  ut::GraphBuilder::AddPartitionedCall(outer, "call", model);
+  Graph2SubGraphInfoList subgraphs;
+  StreamAllocator allocator(model, subgraphs);
+  ASSERT_EQ(allocator.InsertSyncEvents(EventType::kEvent), SUCCESS);
+  EXPECT_EQ(allocator.event_num_, 0U);
+  EXPECT_TRUE(allocator.node_to_send_events_.empty());
+  EXPECT_TRUE(allocator.node_to_recv_events_.empty());
+}
+
 /**
  * Optimization scenario: one stream has multiple send events in one node,
  * and multiple nodes for recv events on another stream
