@@ -2269,6 +2269,12 @@ struct AicpuDispatchInfo {
   uint32_t kernel_type;
 };
 
+// 自定义算子 IR 原型实例化信息（描述某个 IR 输入/输出在运行时实例化的区间）
+struct CustomIrInstanceInfo {
+  uint32_t instance_start;  // 该 IR 输入/输出首个实例化的 index
+  uint32_t instance_num;    // 实例化个数（可选输入未传时为 0，动态输入为实际个数）
+};
+
 struct CustomDispatchInfo {
   const OpArgInfo *args_info;  // IO 地址解析数组
   uint32_t args_info_num;      // args_info 数组长度
@@ -2278,6 +2284,12 @@ struct CustomDispatchInfo {
   uint32_t task_type;          // 任务类型(ModelTaskType)，executor/dump 消费
   uint32_t prof_ge_task_type;  // profiling 上报任务类型(MsprofGeTaskType)
   uint64_t op_impl_mode;       // 算子实现模式(_op_impl_mode_enum 原值)，0 表示默认模式
+  uint32_t ir_inputs_num;      // IR 原型输入个数
+  const CustomIrInstanceInfo *input_instance_info;   // 各 IR 输入的实例化信息，长度 ir_inputs_num
+  uint32_t ir_outputs_num;     // IR 原型输出个数
+  const CustomIrInstanceInfo *output_instance_info;  // 各 IR 输出的实例化信息，长度 ir_outputs_num
+  const uint8_t *attrs;        // 编译期序列化的 IR 属性（RuntimeAttrsDef 布局）
+  uint32_t attrs_size;         // attrs 字节数
 };
 
 struct DsaDispatchInfo {

@@ -17,6 +17,7 @@ namespace ge {
 struct CustomBuildData {
   std::vector<OpArgDesc> ordered_args;
   KernelTaskSemantic semantic{};
+  CustomKernelSemantic custom_kernel;
 };
 
 class CustomTaskCodeBuilder : public TaskCodeBuilder {
@@ -42,6 +43,7 @@ class CustomTaskCodeBuilder : public TaskCodeBuilder {
   std::vector<BodyItem> HandleInputOutputArg(const VarRef &a, const VarRef &ctx) const;
   void AssignTaskLocalIoNames();
   void InitArgsTableEntry(const TaskSemanticContributeContext &context, const uint64_t args_size);
+  Status BuildCustomKernelIrInfo(const OpDescPtr &op_desc);
 
   // ── Member variables ──
   CustomBuildData build_data_;
