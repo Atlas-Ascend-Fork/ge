@@ -11,7 +11,7 @@
 ## 函数原型
 
 ```python
-get_format() -> Format
+get_format() -> Format
 ```
 
 ## 参数说明

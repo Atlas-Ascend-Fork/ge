@@ -11,7 +11,7 @@
 ## 函数原型
 
 ```python
-get_outputs_size() -> int
+get_outputs_size() -> int
 ```
 
 ## 参数说明

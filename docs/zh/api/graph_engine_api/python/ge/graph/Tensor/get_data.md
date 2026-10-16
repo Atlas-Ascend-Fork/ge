@@ -11,7 +11,7 @@
 ## 函数原型
 
 ```python
-get_data() -> TensorLike
+get_data() -> TensorLike
 ```
 
 ## 参数说明
