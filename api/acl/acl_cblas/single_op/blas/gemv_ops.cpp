@@ -17,16 +17,20 @@ aclError aclblasGemvEx(aclTransType transA, int m, int n, const void *alpha, con
                        int incy, aclDataType dataTypeY, aclComputeType type, aclrtStream stream) {
   ACL_PROFILING_REG(acl::AclProfType::AclblasGemvEx);
   ACL_LOG_INFO("start to execute aclblasGemvEx");
-  return aclblasGemmEx(transA, ACL_TRANS_N, ACL_TRANS_N, m, 1, n, alpha, a, lda, dataTypeA, x, incx, dataTypeX, beta, y,
-                       incy, dataTypeY, type, stream);
+  const int gemmM = (transA == ACL_TRANS_T) ? n : m;
+  const int gemmK = (transA == ACL_TRANS_T) ? m : n;
+  return aclblasGemmEx(transA, ACL_TRANS_N, ACL_TRANS_N, gemmM, 1, gemmK, alpha, a, lda, dataTypeA, x, incx, dataTypeX,
+                       beta, y, incy, dataTypeY, type, stream);
 }
 
 aclError aclblasCreateHandleForGemvEx(aclTransType transA, int m, int n, aclDataType dataTypeA, aclDataType dataTypeX,
                                       aclDataType dataTypeY, aclComputeType type, aclopHandle **handle) {
   ACL_PROFILING_REG(acl::AclProfType::AclblasCreateHandleForGemvEx);
   ACL_LOG_INFO("start to execute aclblasCreateHandleForGemvEx");
-  return aclblasCreateHandleForGemmEx(transA, ACL_TRANS_N, ACL_TRANS_N, m, 1, n, dataTypeA, dataTypeX, dataTypeY, type,
-                                      handle);
+  const int gemmM = (transA == ACL_TRANS_T) ? n : m;
+  const int gemmK = (transA == ACL_TRANS_T) ? m : n;
+  return aclblasCreateHandleForGemmEx(transA, ACL_TRANS_N, ACL_TRANS_N, gemmM, 1, gemmK, dataTypeA, dataTypeX,
+                                      dataTypeY, type, handle);
 }
 
 aclError aclblasHgemv(aclTransType transA, int m, int n, const aclFloat16 *alpha, const aclFloat16 *a, int lda,
