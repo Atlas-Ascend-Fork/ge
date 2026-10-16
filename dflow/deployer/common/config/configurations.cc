@@ -37,18 +37,17 @@ void Configurations::Finalize() {
 Status Configurations::GetWorkingDir(std::string &working_dir) const {
   if (!information_.node_config.deploy_res_path.empty()) {
     working_dir = information_.node_config.deploy_res_path;
-    GELOGI("Get working dir success, path = %s", working_dir.c_str());
-    return SUCCESS;
-  }
-
-  std::string ascend_work_path;
-  GE_ASSERT_SUCCESS(GetAscendWorkPath(ascend_work_path));
-  if (!ascend_work_path.empty()) {
-    working_dir = ascend_work_path;
   } else {
-    working_dir = GetHostDirByEnv();
+    std::string ascend_work_path;
+    GE_ASSERT_SUCCESS(GetAscendWorkPath(ascend_work_path));
+    if (!ascend_work_path.empty()) {
+      working_dir = ascend_work_path;
+    } else {
+      working_dir = GetHostDirByEnv();
+    }
+    GE_CHK_BOOL_RET_STATUS(!working_dir.empty(), ACL_ERROR_GE_PARAM_INVALID, "Env HOME doesn't exist.");
   }
-  GE_CHK_BOOL_RET_STATUS(!working_dir.empty(), ACL_ERROR_GE_PARAM_INVALID, "Env HOME doesn't exist.");
+  GE_CHK_STATUS_RET(ProcessUtils::IsValidPath(working_dir), "The working dir[%s] is not valid.", working_dir.c_str());
   GELOGI("Get working dir success, path = %s", working_dir.c_str());
   return SUCCESS;
 }
