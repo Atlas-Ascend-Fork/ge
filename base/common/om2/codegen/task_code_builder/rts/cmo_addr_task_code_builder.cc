@@ -213,7 +213,7 @@ void CmoAddrTaskCodeBuilder::RenderCustomValueWriteback(std::vector<BodyItem> &b
                                   ast_.Var("", "cv").Attr("value"))})}));
 }
 
-Status CmoAddrTaskCodeBuilder::RenderDispatchFunc(std::vector<DeclNode *> &items) {
+Status CmoAddrTaskCodeBuilder::RenderDispatchFunc(std::vector<DeclNode *> &items) const {
   std::vector<BodyItem> body;
   auto op = ast_.Var("const TaskDispatchInfo *", "op");
   auto ctx = ast_.Var("const DispatchOpContext &", "ctx");

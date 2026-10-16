@@ -535,6 +535,26 @@ class SymbolicShapeInferFuncUT : public testing::Test {
     }                                                                                              \
   }
 
+#define RUN_LPNORMV2_TEST(input_shape, axes, keepdim, expect_output_shape, status)                 \
+  {                                                                                                \
+    InferSymbolShapeContextTestBuilder builder(op_type, op_name);                                  \
+    auto op_descPtr = builder.GetOrCreateOpDescPtr();                                              \
+    op_descPtr->AppendIrAttrName("p");                                                             \
+    AttrUtils::SetFloat(op_descPtr, "p", 2.0f);                                                    \
+    op_descPtr->AppendIrAttrName("axes");                                                          \
+    AttrUtils::SetListInt(op_descPtr, "axes", axes);                                               \
+    op_descPtr->AppendIrAttrName("keepdim");                                                       \
+    AttrUtils::SetBool(op_descPtr, "keepdim", keepdim);                                            \
+    op_descPtr->AppendIrAttrName("epsilon");                                                       \
+    AttrUtils::SetFloat(op_descPtr, "epsilon", 1e-12f);                                            \
+    auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();        \
+    ASSERT_TRUE(func.first != nullptr);                                                            \
+    ASSERT_EQ(func.first(infer_context), status);                                                  \
+    if (status == ge::GRAPH_SUCCESS) {                                                             \
+      ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_output_shape.GetDims()); \
+    }                                                                                              \
+  }
+
 #define EXPECT_RUN_UNPACK_TEST(input_shapes, attr_value, output_shapes, exp_status)                      \
   {                                                                                                      \
     InferSymbolShapeContextTestBuilder builder(op_type, op_name);                                        \
@@ -3078,6 +3098,57 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForReduceAllD) {
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForReduceAnyD) {
   TestForReduceD("reduceAnyD", "ReduceAnyD");
+}
+
+/**
+ * 测试场景：验证 LpNormV2 符号化shape推导对 axes/keepdim 属性的处理。
+ * 测试输入：输入 x 的符号 shape 为 {s0, s1, s2}（rank 3），axes/keepdim 属性取值见各用例。
+ * 期望输出：axes 指定/为空、keepdim 为 true/false 时分别得到保留秩或删除维度后的输出 shape；
+ *          axes 越界时返回 PARAM_INVALID。
+ */
+static void TestForLpNormV2(const std::string &op_name, const std::string &op_type) {
+  ShapeEnvAttr shape_env;
+  ShapeEnvGuarder guarder(&shape_env);
+  auto s0 = shape_env.CreateSymbol(2, MakeShared<InputShapeSource>(0, 0));
+  auto s1 = shape_env.CreateSymbol(4, MakeShared<InputShapeSource>(0, 1));
+  auto s2 = shape_env.CreateSymbol(5, MakeShared<InputShapeSource>(0, 2));
+
+  auto kOne = ge::Symbol(1);
+
+  auto func = GetInferFunc(op_type);
+  ASSERT_TRUE(func.first != nullptr);
+
+  // keepdim=true  {s0, s1, s2} axes={2}    -> {s0, s1, 1}
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({2}), true, gert::SymbolShape({s0, s1, kOne}),
+                    GRAPH_SUCCESS);
+
+  // keepdim=true  {s0, s1, s2} axes={-1}   -> {s0, s1, 1}
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({-1}), true,
+                    gert::SymbolShape({s0, s1, kOne}), GRAPH_SUCCESS);
+
+  // keepdim=false {s0, s1, s2} axes={2}    -> {s0, s1}
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({2}), false, gert::SymbolShape({s0, s1}),
+                    GRAPH_SUCCESS);
+
+  // keepdim=false {s0, s1, s2} axes={0, 2} -> {s1}
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({0, 2}), false, gert::SymbolShape({s1}),
+                    GRAPH_SUCCESS);
+
+  // keepdim=false {s0, s1, s2} axes={}     -> {}   (规约全部维度)
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({}), false, gert::SymbolShape(),
+                    GRAPH_SUCCESS);
+
+  // keepdim=true  {s0, s1, s2} axes={}     -> {1, 1, 1}
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({}), true,
+                    gert::SymbolShape({kOne, kOne, kOne}), GRAPH_SUCCESS);
+
+  // keepdim=true  {s0, s1, s2} axes={999}  -> PARAM_INVALID (越界)
+  RUN_LPNORMV2_TEST(gert::SymbolShape({s0, s1, s2}), std::vector<int64_t>({999}), true,
+                    gert::SymbolShape({s0, s1, kOne}), PARAM_INVALID);
+}
+
+TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLpNormV2) {
+  TestForLpNormV2("lpNormV2", "LpNormV2");
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSelect) {
@@ -5956,7 +6027,8 @@ static void BuildConv2DInferContext(InferSymbolShapeContextTestBuilder &builder,
                                     const std::initializer_list<Expression> &w_values,
                                     const std::vector<int64_t> &strides_values, const std::vector<int64_t> &pads_values,
                                     const std::vector<int64_t> &dilations_values, int64_t groups = 1,
-                                    Format x_format = FORMAT_NCHW, Format w_format = FORMAT_NCHW) {
+                                    Format x_format = FORMAT_NCHW, Format w_format = FORMAT_NCHW,
+                                    size_t output_num = 1) {
   auto op_desc = builder.GetOrCreateOpDescPtr();
   op_desc->AppendIrAttrName("strides");
   op_desc->AppendIrAttrName("pads");
@@ -5971,7 +6043,7 @@ static void BuildConv2DInferContext(InferSymbolShapeContextTestBuilder &builder,
   builder
       .AppendInputSymbolTensor(gert::SymbolShape(x_values))  // input_x
       .AppendInputSymbolTensor(gert::SymbolShape(w_values))  // w
-      .OutputNum(1);
+      .OutputNum(output_num);
   op_desc->MutableInputDesc(0)->SetOriginFormat(x_format);
   op_desc->MutableInputDesc(1)->SetOriginFormat(w_format);
 }
@@ -6003,9 +6075,11 @@ static void SetExtendConv2DExtraAttrs(const ge::OpDescPtr &op_desc, const std::s
 static gert::InferSymbolShapeContext *BuildExtendConv2DInferContext(
     InferSymbolShapeContextTestBuilder &builder, const std::initializer_list<Expression> &x_values,
     const std::initializer_list<Expression> &w_values, const std::vector<int64_t> &strides,
-    const std::vector<int64_t> &pads, const std::vector<int64_t> &dilations, const std::string &pad_mode) {
+    const std::vector<int64_t> &pads, const std::vector<int64_t> &dilations, const std::string &pad_mode,
+    size_t output_num = 1) {
   builder.Destroy();
-  BuildConv2DInferContext(builder, x_values, w_values, strides, pads, dilations, 1, FORMAT_NHWC, FORMAT_HWCN);
+  BuildConv2DInferContext(builder, x_values, w_values, strides, pads, dilations, 1, FORMAT_NHWC, FORMAT_HWCN,
+                          output_num);
   SetExtendConv2DExtraAttrs(builder.GetOrCreateOpDescPtr(), pad_mode);
   return builder.Build();
 }
@@ -6561,6 +6635,55 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForExtendConv2D) {
       BuildExtendConv2DInferContext(builder, {s0, s1, s2, s3}, {s4, s5, s6, s7}, strides, pads, dilations, "AABB");
   ASSERT_EQ(func.first(infer_context), ge::PARAM_INVALID);
   builder.Destroy();
+}
+
+TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForExtendConv2DY1FeedsNextX) {
+  auto func = GetInferFunc("ExtendConv2D");
+  ASSERT_TRUE(func.first != nullptr);
+  InferSymbolShapeContextTestBuilder first_builder("ExtendConv2D", "extendConv2D0");
+  InferSymbolShapeContextTestBuilder second_builder("ExtendConv2D", "extendConv2D1");
+  ShapeEnvAttr shape_env;
+  ShapeEnvGuarder guarder(&shape_env);
+  auto s0 = shape_env.CreateSymbol(2, MakeShared<InputShapeSource>(0, 1));
+  auto s1 = shape_env.CreateSymbol(28, MakeShared<InputShapeSource>(0, 2));
+  auto s2 = shape_env.CreateSymbol(28, MakeShared<InputShapeSource>(0, 3));
+  auto s3 = shape_env.CreateSymbol(3, MakeShared<InputShapeSource>(0, 4));
+  auto s7 = shape_env.CreateSymbol(16, MakeShared<InputShapeSource>(0, 8));
+  auto s8 = shape_env.CreateSymbol(32, MakeShared<InputShapeSource>(1, 8));
+  const auto one = Symbol(1);
+  std::vector<int64_t> strides = {1, 1, 1, 1};
+  std::vector<int64_t> pads = {0, 0, 0, 0};
+  std::vector<int64_t> dilations = {1, 1, 1, 1};
+
+  auto first_context = BuildExtendConv2DInferContext(first_builder, {s0, s1, s2, s3}, {one, one, s3, s7}, strides, pads,
+                                                     dilations, "SPECIFIC", 2);
+  ASSERT_EQ(func.first(first_context), ge::GRAPH_SUCCESS);
+  auto y_shape = first_context->GetOutputSymbolShape(0);
+  auto y1_shape = first_context->GetOutputSymbolShape(1);
+  ASSERT_NE(y_shape, nullptr);
+  ASSERT_NE(y1_shape, nullptr);
+  ASSERT_EQ(y1_shape->GetDimNum(), 4U);
+  ASSERT_EQ(y1_shape->GetDims(), y_shape->GetDims());
+  ASSERT_EQ(y1_shape->GetDim(0), s0);
+  ASSERT_EQ(y1_shape->GetDim(3), s7);
+
+  auto second_context = BuildExtendConv2DInferContext(
+      second_builder, {y1_shape->GetDim(0), y1_shape->GetDim(1), y1_shape->GetDim(2), y1_shape->GetDim(3)},
+      {one, one, s7, s8}, strides, pads, dilations, "SPECIFIC", 2);
+  ASSERT_EQ(func.first(second_context), ge::GRAPH_SUCCESS);
+  auto next_x_shape = second_context->GetInputSymbolShape(0);
+  ASSERT_NE(next_x_shape, nullptr);
+  ASSERT_EQ(next_x_shape->GetDimNum(), 4U);
+  auto next_y_shape = second_context->GetOutputSymbolShape(0);
+  auto next_y1_shape = second_context->GetOutputSymbolShape(1);
+  ASSERT_NE(next_y_shape, nullptr);
+  ASSERT_NE(next_y1_shape, nullptr);
+  ASSERT_EQ(next_y_shape->GetDimNum(), 4U);
+  ASSERT_EQ(next_y1_shape->GetDims(), next_y_shape->GetDims());
+  ASSERT_EQ(next_y_shape->GetDim(0), s0);
+  ASSERT_EQ(next_y_shape->GetDim(3), s8);
+  first_builder.Destroy();
+  second_builder.Destroy();
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAddLayerNorm) {

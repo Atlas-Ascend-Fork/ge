@@ -21,6 +21,7 @@ constexpr size_t kXIdxConv2d = 0U;
 constexpr size_t kWIdxConv2d = 1U;
 // proto output index
 constexpr size_t kYIdxConv2d = 0U;
+constexpr size_t kY1IdxConv2d = 1U;
 // proto attribute index
 constexpr size_t kStridesIdxConv2d = 0U;
 constexpr size_t kPadsIdxConv2d = 1U;
@@ -481,6 +482,18 @@ ge::graphStatus SetConv2DYShape(gert::InferSymbolShapeContext *context, const Ex
   return ge::GRAPH_SUCCESS;
 }
 
+// ExtendConv2D 的 y 与 y1 是同一份卷积几何。Conv2D/Conv2DV2 没有输出 1，context 中对应指针为空。
+ge::graphStatus SetExtendConv2DY1Shape(gert::InferSymbolShapeContext *context) {
+  auto *y1_shape = context->GetOutputSymbolShape(kY1IdxConv2d);
+  if (y1_shape == nullptr) {
+    return ge::GRAPH_SUCCESS;
+  }
+  const auto *y_shape = context->GetOutputSymbolShape(kYIdxConv2d);
+  GE_ASSERT_NOTNULL(y_shape);
+  y1_shape->MutableDims() = y_shape->GetDims();
+  return ge::GRAPH_SUCCESS;
+}
+
 void InferOutputIsZeroTensor(const Conv2DInputShapes &x_shapes, const Conv2DInputShapes &w_shapes,
                              Conv2DOutputShape &y_shape) {
   // 只要输入特征图或卷积核的关键维度出现 0，输出进入 zero tensor 路径。
@@ -539,7 +552,8 @@ ge::graphStatus CheckFcKcEqualInZeroTensor(const Conv2DInputShapes &x_shapes, co
  *      4. 应用标准卷积公式推导输出尺寸：
  *         out = floor((in + pad_before + pad_after - dilation * (kernel - 1) - 1) / stride) + 1
  *      5. zero tensor分支做一致性校验，处理退化场景
- *      6. 按输入layout(NCHW/NHWC)回写输出shape
+ *      6. 按输入layout(NCHW/NHWC)回写输出shape。ExtendConv2D 的 y1 与 y 几何相同，
+ *         输出 1 存在时写入同一份符号维
  *      举例：输入x_shape=(2,3,28,28)，filter_shape=(16,3,3,3)，strides=[1,1,1,1]，padding=SAME，
  *            则y_shape=(2,16,28,28)
  */
@@ -594,6 +608,7 @@ graphStatus InferShape4Conv2D(gert::InferSymbolShapeContext *context) {
   }
   GE_ASSERT_GRAPH_SUCCESS(CheckOutputZeroTensor(y_shape));
   GE_ASSERT_GRAPH_SUCCESS(SetConv2DYShape(context, y_shape.on, y_shape.oc, y_shape.oh, y_shape.ow));
+  GE_ASSERT_GRAPH_SUCCESS(SetExtendConv2DY1Shape(context));
   return ge::GRAPH_SUCCESS;
 }
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Conv2D).InferSymbolShape(InferShape4Conv2D);

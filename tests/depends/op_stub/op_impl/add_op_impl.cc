@@ -214,6 +214,7 @@ IMPL_OP(ReduceProdD).InputsDataDependency({});
 IMPL_OP(ReduceMeanD).InputsDataDependency({});
 IMPL_OP(ReduceAllD).InputsDataDependency({});
 IMPL_OP(ReduceAnyD).InputsDataDependency({});
+IMPL_OP(LpNormV2).InputsDataDependency({});
 IMPL_OP(ReduceSum).InputsDataDependency({1});
 IMPL_OP(ReduceMax).InputsDataDependency({1});
 IMPL_OP(ReduceMin).InputsDataDependency({1});

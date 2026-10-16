@@ -175,7 +175,7 @@ class KernelTaskCodeBuilder : public TaskCodeBuilder {
                               int32_t &session_info_offset) const;
 
   // ── Dispatch helpers ──
-  Status RenderDispatchAicore(const VarRef &op, const VarRef &ctx, std::vector<DeclNode *> &items);
+  Status RenderDispatchAicore(const VarRef &op, const VarRef &ctx, std::vector<DeclNode *> &items) const;
   Status RenderDispatchAicpu(const VarRef &op, const VarRef &ctx, std::vector<DeclNode *> &items) const;
   std::vector<BodyItem> RenderDispatchSetup(const VarRef &op, const VarRef &ctx) const;
   BodyItem RenderDispatchLoop(const VarRef &op, const VarRef &ctx) const;

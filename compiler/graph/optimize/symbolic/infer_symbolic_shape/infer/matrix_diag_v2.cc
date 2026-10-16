@@ -26,6 +26,8 @@ constexpr size_t kEyeOutputIdx = 0U;
 constexpr size_t kNumRowsAttrIdx = 0U;
 constexpr size_t kNumColumnsAttrIdx = 1U;
 constexpr size_t kBatchShapeAttrIdx = 2U;
+constexpr size_t INPUT_TO_OUTPUT_DIMS_TIMES = 2UL;
+constexpr size_t EVEN = 2UL;
 
 graphStatus ValidateInputShapes(const gert::SymbolShape *diagonal_shape, const gert::SymbolShape *k_shape) {
   GE_ASSERT_TRUE(diagonal_shape->GetDimNum() >= 1,
@@ -241,8 +243,34 @@ graphStatus InferShape4Eye(gert::InferSymbolShapeContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
+graphStatus InferShape4DiagPartD(gert::InferSymbolShapeContext *context) {
+  const auto input_x_shape = context->GetInputSymbolShape(0);
+  GE_UNSUPPORTED_IF_NULL(input_x_shape);
+  const auto assist_shape = context->GetInputSymbolShape(1);
+  GE_UNSUPPORTED_IF_NULL(assist_shape);
+  GE_ASSERT_EQ(input_x_shape->GetDimNum(), assist_shape->GetDimNum());
+  for (size_t i = 0UL; i < input_x_shape->GetDims().size(); ++i) {
+    ASSERT_SYMBOL_EQ(input_x_shape->GetDim(i), assist_shape->GetDim(i));
+  }
+
+  GE_ASSERT(input_x_shape->GetDimNum() % EVEN == 0,
+            "The input dimension must be an even number,"
+            " input dim is %zu",
+            input_x_shape->GetDimNum());
+  const auto output_shape_len = input_x_shape->GetDimNum() / INPUT_TO_OUTPUT_DIMS_TIMES;
+
+  auto output_y_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(output_y_shape);
+
+  for (size_t i = 0UL; i < output_shape_len; i++) {
+    output_y_shape->AppendDim(input_x_shape->GetDim(i));
+  }
+  return GRAPH_SUCCESS;
+}
+
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MatrixDiagV2).InferSymbolShape(InferShape4MatrixDiagV2);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MatrixDiag).InferSymbolShape(InferShape4MatrixDiag);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Eye).InferSymbolShape(InferShape4Eye);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(DiagPartD).InferSymbolShape(InferShape4DiagPartD);
 }  // namespace
 }  // namespace ge

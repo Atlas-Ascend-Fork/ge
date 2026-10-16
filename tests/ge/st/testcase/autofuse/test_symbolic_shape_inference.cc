@@ -150,6 +150,67 @@ static void SetConv2DV2Attrs(const ge::OpDescPtr &conv_op_desc, const std::vecto
   ge::AttrUtils::SetBool(conv_op_desc, "enable_hf32", false);
 }
 
+// ExtendConv2D 的 pad_mode 在 round_mode 之后，属性下标是 7。y 与 y1 都是 required 输出。
+static void SetExtendConv2DIrAndAttrs(const ge::OpDescPtr &conv_op_desc) {
+  ASSERT_NE(conv_op_desc, nullptr);
+  if (conv_op_desc->GetIrAttrNames().empty()) {
+    conv_op_desc->AppendIrAttrName("strides");
+    conv_op_desc->AppendIrAttrName("pads");
+    conv_op_desc->AppendIrAttrName("dilations");
+    conv_op_desc->AppendIrAttrName("groups");
+    conv_op_desc->AppendIrAttrName("data_format");
+    conv_op_desc->AppendIrAttrName("offset_x");
+    conv_op_desc->AppendIrAttrName("round_mode");
+    conv_op_desc->AppendIrAttrName("pad_mode");
+    conv_op_desc->AppendIrAttrName("enable_hf32");
+    conv_op_desc->AppendIrAttrName("enable_relu0");
+  }
+  if (conv_op_desc->GetIrInputs().empty()) {
+    conv_op_desc->AppendIrInput("x", ge::kIrInputRequired);
+    conv_op_desc->AppendIrInput("filter", ge::kIrInputRequired);
+    conv_op_desc->AppendIrInput("bias", ge::kIrInputOptional);
+    conv_op_desc->AppendIrInput("offset_w", ge::kIrInputOptional);
+    conv_op_desc->AppendIrInput("scale0", ge::kIrInputOptional);
+  }
+  if (conv_op_desc->GetIrOutputs().empty()) {
+    conv_op_desc->AppendIrOutput("y", ge::kIrOutputRequired);
+    conv_op_desc->AppendIrOutput("y1", ge::kIrOutputRequired);
+  }
+  const std::vector<int64_t> ones = {1, 1, 1, 1};
+  const std::vector<int64_t> pads = {0, 0, 0, 0};
+  ge::AttrUtils::SetListInt(conv_op_desc, "strides", ones);
+  ge::AttrUtils::SetListInt(conv_op_desc, "pads", pads);
+  ge::AttrUtils::SetListInt(conv_op_desc, "dilations", ones);
+  ge::AttrUtils::SetInt(conv_op_desc, "groups", 1);
+  ge::AttrUtils::SetStr(conv_op_desc, "data_format", "NHWC");
+  ge::AttrUtils::SetInt(conv_op_desc, "offset_x", 0);
+  ge::AttrUtils::SetStr(conv_op_desc, "round_mode", "rint");
+  ge::AttrUtils::SetStr(conv_op_desc, "pad_mode", "SPECIFIC");
+  ge::AttrUtils::SetBool(conv_op_desc, "enable_hf32", false);
+  ge::AttrUtils::SetBool(conv_op_desc, "enable_relu0", false);
+}
+
+static void SetExtendConv2DInputDesc(const ge::OpDescPtr &conv_op_desc) {
+  ASSERT_NE(conv_op_desc, nullptr);
+  const GeShape unknown_shape({-1, -1, -1, -1});
+  auto x_desc = conv_op_desc->MutableInputDesc(0);
+  auto filter_desc = conv_op_desc->MutableInputDesc(1);
+  ASSERT_NE(x_desc, nullptr);
+  ASSERT_NE(filter_desc, nullptr);
+  x_desc->SetShape(unknown_shape);
+  x_desc->SetOriginShape(unknown_shape);
+  x_desc->SetDataType(DT_FLOAT);
+  x_desc->SetOriginDataType(DT_FLOAT);
+  x_desc->SetFormat(FORMAT_NHWC);
+  x_desc->SetOriginFormat(FORMAT_NHWC);
+  filter_desc->SetShape(unknown_shape);
+  filter_desc->SetOriginShape(unknown_shape);
+  filter_desc->SetDataType(DT_FLOAT);
+  filter_desc->SetOriginDataType(DT_FLOAT);
+  filter_desc->SetFormat(FORMAT_HWCN);
+  filter_desc->SetOriginFormat(FORMAT_HWCN);
+}
+
 static void SetDataNodeSymbolShapeAndValue(const ge::NodePtr &data_node, const gert::SymbolShape &symbol_shape) {
   ASSERT_NE(data_node, nullptr);
   auto data_op_desc = data_node->GetOpDescBarePtr();
@@ -2660,6 +2721,72 @@ TEST_F(SymbolicShapeInferenceST, InferShapeForLayerNormV4) {
   EXPECT_EQ(attr1->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s0, kone, kone}).GetDims());
   EXPECT_EQ(attr2->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s0, kone, kone}).GetDims());
   dlog_setlevel(0, 3, 0);
+}
+
+/**
+ * 测试场景：验证 LpNormV2 在真实图中的符号 shape 推导与传播。
+ * 测试输入：输入 x 的符号 shape 为 {s0, s1, s2}，p=1.0，axes={2}，keepdim=true，epsilon=1e-12。
+ * 期望输出：输出 y 的符号 shape 为 {s0, s1, 1}。
+ */
+TEST_F(SymbolicShapeInferenceST, InferShapeForLpNormV2) {
+  auto data0 = builder_->CreateInput(0, "data0");
+  data0.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
+  ASSERT_NE(data0.GetCTensorHolder(), nullptr);
+  auto s0 = ge::Symbol("s0");
+  auto s1 = ge::Symbol("s1");
+  auto kone = ge::Symbol(1);
+
+  auto lp_norm = es::LpNormV2(data0, 1.0f, std::vector<int64_t>({2}), true, 1e-12f);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(lp_norm, 0), 0);
+  auto graph = builder_->BuildAndReset();
+
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  auto node = cg->FindFirstNodeMatchType("LpNormV2");
+  ASSERT_NE(node, nullptr);
+  auto op_desc = node->GetOpDesc();
+  ASSERT_NE(op_desc, nullptr);
+  auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+
+  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s0, s1, kone}).GetDims());
+}
+
+/**
+ * 测试场景：验证 LpNormV2 负轴与 keepdim=false 边界下的符号 shape 推导与传播。
+ * 测试输入：输入 x 的符号 shape 为 {s0, s1, s2}，p=1.0，axes={-3}，keepdim=false，epsilon=1e-12。
+ * 期望输出：输出 y 的符号 shape 为 {s1, s2}。
+ */
+TEST_F(SymbolicShapeInferenceST, InferShapeForLpNormV2NegAxis) {
+  auto data0 = builder_->CreateInput(0, "data0");
+  data0.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
+  ASSERT_NE(data0.GetCTensorHolder(), nullptr);
+  auto s1 = ge::Symbol("s1");
+  auto s2 = ge::Symbol("s2");
+
+  auto lp_norm = es::LpNormV2(data0, 1.0f, std::vector<int64_t>({-3}), false, 1e-12f);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(lp_norm, 0), 0);
+  auto graph = builder_->BuildAndReset();
+
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  auto node = cg->FindFirstNodeMatchType("LpNormV2");
+  ASSERT_NE(node, nullptr);
+  auto op_desc = node->GetOpDesc();
+  ASSERT_NE(op_desc, nullptr);
+  // ES 构图会跳过取值等于默认值的可选属性(keepdim=false)，使运行时属性列表按 IR 顺序截断；
+  // 这里显式补写 keepdim 以保证属性与 IR 定义顺序对齐。
+  ASSERT_TRUE(AttrUtils::SetBool(op_desc, "keepdim", false));
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+
+  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s1, s2}).GetDims());
 }
 
 TEST_F(SymbolicShapeInferenceST, InferShapeForLayerNormXBackpropV3) {
@@ -5895,6 +6022,106 @@ TEST_F(SymbolicShapeInferenceST, test_conv2dv2_NHWC) {
   EXPECT_EQ(std::string(conv_symbol_shape.GetDim(1).Serialize().get()), "Floor((s1 - (-1 + s4)))");
   EXPECT_EQ(std::string(conv_symbol_shape.GetDim(2).Serialize().get()), "Floor((s2 - (-1 + s5)))");
   EXPECT_EQ(std::string(conv_symbol_shape.GetDim(3).Serialize().get()), "s7");
+}
+
+static ge::ComputeGraphPtr BuildExtendConv2DY1FeedGraph() {
+  auto data0 = OP_CFG("Data").InCnt(0).OutCnt(1).InNames({"x"}).OutNames({"y"}).Build("data0");
+  auto data1 = OP_CFG("Data").InCnt(0).OutCnt(1).InNames({"x"}).OutNames({"y"}).Build("data1");
+  auto data2 = OP_CFG("Data").InCnt(0).OutCnt(1).InNames({"x"}).OutNames({"y"}).Build("data2");
+  auto conv0 = OP_CFG("ExtendConv2D").InCnt(2).OutCnt(2).InNames({"x", "filter"}).OutNames({"y", "y1"}).Build("conv0");
+  auto conv1 = OP_CFG("ExtendConv2D").InCnt(2).OutCnt(2).InNames({"x", "filter"}).OutNames({"y", "y1"}).Build("conv1");
+  DEF_GRAPH(graph) {
+    CHAIN(NODE(data0)->EDGE(0, 0)->NODE(conv0));
+    CHAIN(NODE(data1)->EDGE(0, 1)->NODE(conv0));
+    CHAIN(NODE(conv0)->EDGE(1, 0)->NODE(conv1));
+    CHAIN(NODE(data2)->EDGE(0, 1)->NODE(conv1));
+    CHAIN(NODE(conv0)->EDGE(0, 0)->NODE("NetOutput0", NETOUTPUT));
+    CHAIN(NODE(conv1)->EDGE(0, 0)->NODE("NetOutput1", NETOUTPUT));
+    CHAIN(NODE(conv1)->EDGE(1, 0)->NODE("NetOutput2", NETOUTPUT));
+  };
+  auto cg = ToComputeGraph(graph);
+  cg->TopologicalSorting();
+  return cg;
+}
+
+// 裸 Symbol 没有 hint，卷积窗口检查证不出 H/W >= 1。这里按输入具体值建符号。
+static void SetExtendConv2DY1InputSymbols(const ge::ComputeGraphPtr &cg, ShapeEnvAttr *shape_env, Symbol &n,
+                                          Symbol &cout, Symbol &next_cout) {
+  ASSERT_NE(cg, nullptr);
+  ASSERT_NE(shape_env, nullptr);
+  n = shape_env->CreateSymbol(2, MakeShared<InputShapeSource>(0, 0));
+  const auto h = shape_env->CreateSymbol(28, MakeShared<InputShapeSource>(0, 1));
+  const auto w = shape_env->CreateSymbol(28, MakeShared<InputShapeSource>(0, 2));
+  const auto c = shape_env->CreateSymbol(3, MakeShared<InputShapeSource>(0, 3));
+  cout = shape_env->CreateSymbol(16, MakeShared<InputShapeSource>(1, 3));
+  next_cout = shape_env->CreateSymbol(32, MakeShared<InputShapeSource>(2, 3));
+  const auto one = Symbol(1);
+  SetDataNodeSymbolShapeAndValue(cg->FindNode("data0"), gert::SymbolShape({n, h, w, c}));
+  SetDataNodeSymbolShapeAndValue(cg->FindNode("data1"), gert::SymbolShape({one, one, c, cout}));
+  SetDataNodeSymbolShapeAndValue(cg->FindNode("data2"), gert::SymbolShape({one, one, cout, next_cout}));
+}
+
+static void ExpectSameOriginSymbolShape(const ge::GeTensorDesc &lhs_desc, const ge::GeTensorDesc &rhs_desc) {
+  const auto *lhs_attr = lhs_desc.GetAttrsGroup<SymbolicDescAttr>();
+  const auto *rhs_attr = rhs_desc.GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(lhs_attr, nullptr);
+  ASSERT_NE(rhs_attr, nullptr);
+  const auto lhs = lhs_attr->symbolic_tensor.GetOriginSymbolShape();
+  const auto rhs = rhs_attr->symbolic_tensor.GetOriginSymbolShape();
+  ASSERT_EQ(lhs.GetDimNum(), rhs.GetDimNum());
+  ASSERT_EQ(lhs.GetDimNum(), 4);
+  for (size_t i = 0UL; i < lhs.GetDimNum(); ++i) {
+    EXPECT_EQ(std::string(lhs.GetDim(i).Serialize().get()), std::string(rhs.GetDim(i).Serialize().get()));
+  }
+}
+
+static void ExpectExtendConv2DY1Chain(const ge::NodePtr &conv0_node, const ge::NodePtr &conv1_node, const Symbol &n,
+                                      const Symbol &cout, const Symbol &next_cout) {
+  ASSERT_NE(conv0_node, nullptr);
+  ASSERT_NE(conv1_node, nullptr);
+  const auto conv0_desc = conv0_node->GetOpDesc();
+  const auto conv1_desc = conv1_node->GetOpDesc();
+  ASSERT_NE(conv0_desc, nullptr);
+  ASSERT_NE(conv1_desc, nullptr);
+  ExpectSameOriginSymbolShape(conv0_desc->GetOutputDesc(0), conv0_desc->GetOutputDesc(1));
+  ExpectSameOriginSymbolShape(conv0_desc->GetOutputDesc(1), conv1_desc->GetInputDesc(0));
+  ExpectSameOriginSymbolShape(conv1_desc->GetOutputDesc(0), conv1_desc->GetOutputDesc(1));
+
+  const auto *y1_attr = conv0_desc->GetOutputDesc(1).GetAttrsGroup<SymbolicDescAttr>();
+  const auto *next_y_attr = conv1_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(y1_attr, nullptr);
+  ASSERT_NE(next_y_attr, nullptr);
+  const auto y1_shape = y1_attr->symbolic_tensor.GetOriginSymbolShape();
+  const auto next_y_shape = next_y_attr->symbolic_tensor.GetOriginSymbolShape();
+  EXPECT_EQ(y1_shape.GetDim(0), n);
+  EXPECT_EQ(y1_shape.GetDim(3), cout);
+  EXPECT_EQ(next_y_shape.GetDim(0), n);
+  EXPECT_EQ(next_y_shape.GetDim(3), next_cout);
+}
+
+TEST_F(SymbolicShapeInferenceST, test_extend_conv2d_y1_feeds_next_x) {
+  auto cg = BuildExtendConv2DY1FeedGraph();
+  ASSERT_NE(cg, nullptr);
+  auto conv0_node = cg->FindNode("conv0");
+  auto conv1_node = cg->FindNode("conv1");
+  ASSERT_NE(conv0_node, nullptr);
+  ASSERT_NE(conv1_node, nullptr);
+  SetExtendConv2DIrAndAttrs(conv0_node->GetOpDesc());
+  SetExtendConv2DIrAndAttrs(conv1_node->GetOpDesc());
+  SetExtendConv2DInputDesc(conv0_node->GetOpDesc());
+  SetExtendConv2DInputDesc(conv1_node->GetOpDesc());
+
+  auto *shape_env = cg->GetOrCreateAttrsGroup<ShapeEnvAttr>();
+  ASSERT_NE(shape_env, nullptr);
+  ShapeEnvGuarder guarder(shape_env);
+  Symbol n;
+  Symbol cout;
+  Symbol next_cout;
+  SetExtendConv2DY1InputSymbols(cg, shape_env, n, cout, next_cout);
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  ExpectExtendConv2DY1Chain(conv0_node, conv1_node, n, cout, next_cout);
 }
 
 TEST_F(SymbolicShapeInferenceST, test_conv2dv2_pad_mode_same_lower) {

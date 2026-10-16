@@ -45,11 +45,33 @@ graphStatus InferSymbolicShapeFunc(gert::InferSymbolShapeContext *context) {
   out_shape->MutableDims() = *in_tensor_val;
   return GRAPH_SUCCESS;
 }
+/**
+ * RandomStandardNormal 的符号 Shape 推导。
+ * 【算子功能】从标准正态分布采样随机值，输出张量 y。
+ * 【算子约束】shape 为 int32/int64 的 1-D 常量张量（data dependency），其值即输出各维度；dtype、seed、seed2 为属性。
+ * 【推导逻辑】读取 shape 输入的 SymbolicValue，逐元素写入输出 Shape。
+ * 【举例】shape=[2,3,4] 时，输出 y=[2,3,4]。
+ */
+graphStatus InferShape4RandomStandardNormal(gert::InferSymbolShapeContext *context) {
+  const auto shape_tensor = context->GetInputSymbolTensor(0);
+  GE_UNSUPPORTED_IF_NULL(shape_tensor);
+  const auto shape_value = shape_tensor->GetSymbolicValue();
+  GE_UNSUPPORTED_IF_NULL(shape_value);
+  const auto out_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(out_shape);
+  out_shape->MutableDims().clear();
+  for (const auto &dim : *shape_value) {
+    out_shape->MutableDims().emplace_back(dim);
+  }
+  return GRAPH_SUCCESS;
+}
 
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Assign).InferSymbolShape(InferShape4Assign);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(L2Loss).InferSymbolShape(InferShape4L2Loss);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(RandomUniform).InferSymbolShape(InferSymbolicShapeFunc);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(RandomUniformV2).InferSymbolShape(InferSymbolicShapeFunc);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(RandomStandardNormal).InferSymbolShape(InferShape4RandomStandardNormal);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(TruncatedNormal).InferSymbolShape(InferSymbolicShapeFunc);
+
 }  // namespace
 }  // namespace ge

@@ -174,5 +174,112 @@ graphStatus InferShape4GatherEles(gert::InferSymbolShapeContext *context) {
   return SUCCESS;
 }
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(GatherElements).InferSymbolShape(InferShape4GatherEles);
+
+// DynamicStitch: 根据indices将多个输入张量x拼接到输出张量的指定位置
+// 符号化shape推导逻辑：
+// 1. 输出shape第一维为所有indices中的最大值+1
+// 2. 输出shape其余维度与输入x的shape除去indices维度后的部分相同
+// 3. 验证所有输入x的shape除去indices维度后的部分一致
+graphStatus InferShapeForDynamicStitch(gert::InferSymbolShapeContext *context) {
+  GE_ASSERT_NOTNULL(context);
+  GE_UNSUPPORTED_IF_NULL(context->GetInputSymbolShape(0));
+  const auto attrs = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attrs);
+  const int32_t *attr_n = attrs->GetAttrPointer<int32_t>(0);
+  GE_ASSERT_TRUE(attr_n != nullptr && *attr_n >= 1);
+  const auto out_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(out_shape);
+  auto &out_shape_dims = out_shape->MutableDims();
+  out_shape_dims.clear();
+
+  for (int32_t i = 0U; i < *attr_n; ++i) {
+    const auto indices_shape = context->GetDynamicInputSymbolShape(0, i);
+    GE_UNSUPPORTED_IF_NULL(indices_shape);
+    const auto indices_dims = indices_shape->GetDims();
+    const auto x_shape = context->GetDynamicInputSymbolShape(1, i);
+    GE_UNSUPPORTED_IF_NULL(x_shape);
+    const auto x_dims = x_shape->GetDims();
+    GE_ASSERT_TRUE(x_dims.size() >= indices_dims.size(), "Op %s: x rank %zu is smaller than indices rank %zu.",
+                   context->GetNodeName(), x_dims.size(), indices_dims.size());
+    for (size_t j = 0U; j < indices_dims.size(); ++j) {
+      ASSERT_SYMBOL_EQ(x_dims[j], indices_dims[j]);
+    }
+    if (i == 0U) {
+      out_shape_dims.push_back(kSymbolZero);
+      out_shape_dims.insert(out_shape_dims.end(), x_dims.begin() + indices_dims.size(), x_dims.end());
+    } else {
+      for (size_t j = indices_dims.size(); j < x_dims.size(); ++j) {
+        ASSERT_SYMBOL_EQ(x_dims[j], out_shape_dims[j - indices_dims.size() + 1]);
+      }
+    }
+
+    const auto indices_tensor = context->GetDynamicInputSymbolTensor(0, i);
+    GE_UNSUPPORTED_IF_NULL(indices_tensor);
+    const auto indices_tensor_val = indices_tensor->GetSymbolicValue();
+    GE_UNSUPPORTED_IF_NULL(indices_tensor_val);
+    for (const auto &tensor : *indices_tensor_val) {
+      out_shape_dims[0] = sym::Max(out_shape_dims[0], tensor);
+    }
+  }
+
+  out_shape_dims[0] = out_shape_dims[0] + kSymbolOne;
+  return ge::GRAPH_SUCCESS;
+}
+
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(DynamicStitch).InferSymbolShape(InferShapeForDynamicStitch);
+
+/**
+ * GatherShapes算子的符号化shape推导
+ * 【算子功能】收集指定的输入dim, 作为输出
+ * 【算子约束】
+ *      1. 至少有一个输入
+ *      2. 属性axes存放要输出的shape的dim值，格式为[input_index, dim_index]，input_index要在输入个数范围内，
+ *         dim_index要在输入dim_num范围内
+ *      举例： 输入0=(3)，输入1=(1,2)，属性axes={{0, 0},{1, 1}}，输出=(3,2)
+ * 【推导逻辑】
+ *      1. 按照算子约束校验输入和axes属性
+ *      2. 属性axes的size作为输出shape
+ */
+graphStatus InferShape4GatherShapes(gert::InferSymbolShapeContext *context) {
+  auto input_shape = context->GetInputSymbolShape(0);
+  GE_UNSUPPORTED_IF_NULL(input_shape);
+  auto input_num = context->GetComputeNodeInputNum();
+  GE_ASSERT(input_num != 0U);
+
+  auto attrs = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attrs);
+  const auto *attr_axes = attrs->GetListListInt(0);
+  GE_ASSERT_NOTNULL(attr_axes);
+  auto axes_size = attr_axes->GetSize();
+  GE_ASSERT(axes_size != 0U);
+
+  for (size_t i = 0U; i < axes_size; ++i) {
+    const auto cv = attr_axes->Get(i);
+    GE_ASSERT_NOTNULL(cv);
+    GE_ASSERT_EQ(cv->GetSize(), 2U);  // [input_index, dim_index]
+    const uint64_t *data = reinterpret_cast<const uint64_t *>(cv->GetData());
+    GE_ASSERT_NOTNULL(data);
+    const auto input_index = *data;
+    GE_ASSERT(input_index < context->GetComputeNodeInputNum(),
+              "Node %s input_index[%lu] must be less than input num[%zu],"
+              " i: %zu",
+              context->GetNodeName(), input_index, context->GetComputeNodeInputNum(), i);
+    const auto dim_index = *(data + 1U);
+    auto in_shape = context->GetInputSymbolShape(input_index);
+    GE_UNSUPPORTED_IF_NULL(in_shape);
+    GE_ASSERT(dim_index < in_shape->GetDimNum(),
+              "Node %s dim_index[%lu] must be less than input shape"
+              " dim number[%zu], i: %zu",
+              context->GetNodeName(), dim_index, in_shape->GetDimNum(), i);
+  }
+
+  auto out_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(out_shape);
+  out_shape->Clear();
+  out_shape->AppendDim(Symbol(axes_size));
+  return GRAPH_SUCCESS;
+}
+
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(GatherShapes).InferSymbolShape(InferShape4GatherShapes);
 }  // namespace
 }  // namespace ge

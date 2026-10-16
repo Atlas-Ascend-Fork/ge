@@ -25,6 +25,7 @@ constexpr size_t kAddcmulInputDataIdx = 0U;
 constexpr size_t kAddcmulX1Idx = 1U;
 constexpr size_t kAddcmulX2Idx = 2U;
 constexpr size_t kAddcmulOutputIdx = 0U;
+constexpr size_t kClipByValueInputSize = 3;
 
 graphStatus InferShape4BroadcastCommon(gert::InferSymbolShapeContext *context) {
   auto in_shape1 = context->GetInputSymbolShape(0);
@@ -82,7 +83,46 @@ graphStatus InferShape4Addcmul(gert::InferSymbolShapeContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
+graphStatus InferShape4BroadcastInputThree(gert::InferSymbolShapeContext *context) {
+  std::vector<std::vector<Expression>> shapes;
+  for (size_t i = 0; i < kClipByValueInputSize; i++) {
+    auto in_shape = context->GetInputSymbolShape(i);
+    GE_UNSUPPORTED_IF_NULL(in_shape);
+    shapes.emplace_back(in_shape->GetDims());
+  }
+  std::vector<bool> need_broadcasts;
+  auto out_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(out_shape);
+  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(shapes, out_shape->MutableDims()));
+  return ge::GRAPH_SUCCESS;
+}
+
+graphStatus InferShape4MultiInput(gert::InferSymbolShapeContext *context, const size_t num) {
+  std::vector<std::vector<Expression>> shapes;
+  for (size_t i = 0; i < num; i++) {
+    auto in_shape = context->GetInputSymbolShape(i);
+    GE_UNSUPPORTED_IF_NULL(in_shape);
+    shapes.emplace_back(in_shape->GetDims());
+  }
+
+  auto out_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(out_shape);
+  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(shapes, out_shape->MutableDims()));
+  return ge::GRAPH_SUCCESS;
+}
+
+graphStatus InferShape4DynamicBroadcast(gert::InferSymbolShapeContext *context) {
+  auto attr = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attr);
+  const auto *N = attr->GetAttrPointer<int64_t>(0);
+  GE_ASSERT_NOTNULL(N);
+  auto num = static_cast<int64_t>(context->GetComputeNodeInputNum());
+  GE_ASSERT(*N == num);
+  return InferShape4MultiInput(context, static_cast<size_t>(*N));
+}
+
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Add).InferSymbolShape(InferShape4BroadcastCommon);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(AddN).InferSymbolShape(InferShape4DynamicBroadcast);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Pow).InferSymbolShape(InferShape4BroadcastCommon);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(AddV2).InferSymbolShape(InferShape4BroadcastCommon);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Mul).InferSymbolShape(InferShape4BroadcastCommon);
@@ -115,5 +155,6 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Addcmul).InferSymbolShape(InferShape4Addcmul);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Atan2).InferSymbolShape(InferShape4BroadcastCommon);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Lerp).InferSymbolShape(InferShape4Lerp);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(PRelu).InferSymbolShape(InferShape4BroadcastCommon);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ClipByValue).InferSymbolShape(InferShape4BroadcastInputThree);
 }  // namespace
 }  // namespace ge

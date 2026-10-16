@@ -18,6 +18,10 @@
 
 namespace ge {
 namespace {
+constexpr size_t kLpNormAxesAttrIdx = 1U;
+
+constexpr size_t kLpNormKeepdimAttrIdx = 2U;
+
 graphStatus InferShape4ReduceCommon(gert::InferSymbolShapeContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
@@ -78,6 +82,55 @@ graphStatus InferShape4ReduceDCommon(gert::InferSymbolShapeContext *context) {
     return SymbolicInferUtil::ReduceDimsWithKeepDims<int64_t>(in_shape, reduce_axes, axes_size, out_shape);
   }
   return SymbolicInferUtil::ReduceDimsWithoutKeepDims<int64_t>(in_shape, reduce_axes, axes_size, out_shape);
+}
+
+/**
+ * LpNormV2 算子的符号化shape推导
+ * 【算子功能】在指定维度上对输入张量计算 Lp 范数，输出规约后的张量。
+ *            输入：x(输入张量)。
+ *            输出：y(范数结果张量)。
+ * 【算子约束】
+ *      1. axes 为属性，元素需落在 [-rank, rank) 范围内，为空表示对所有维度做规约。
+ *      2. keepdim 为 true 时被规约维度保留为 1，为 false 时删除被规约维度。
+ * 【推导逻辑】
+ *      1. 读取输入 x 的符号 shape 以及 axes、keepdim 属性。
+ *      2. axes 为空时将全部维度作为规约轴。
+ *      3. keepdim 为 true 时调用 ReduceDimsWithKeepDims，被规约维度置 1，保留秩。
+ *      4. keepdim 为 false 时调用 ReduceDimsWithoutKeepDims，删除被规约维度。
+ *      举例：输入 x_shape=(2,3,4)，axes={2}，keepdim=true  → y_shape=(2,3,1)；
+ *           输入 x_shape=(2,3,4)，axes={2}，keepdim=false → y_shape=(2,3)；
+ *           输入 x_shape=(2,3,4)，axes={}，keepdim=false → y_shape=()。
+ */
+graphStatus InferShape4LpNormV2(gert::InferSymbolShapeContext *context) {
+  auto x_shape = context->GetInputSymbolShape(0);
+  GE_UNSUPPORTED_IF_NULL(x_shape);
+  auto out_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(out_shape);
+  auto attrs = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attrs);
+  const auto axes = attrs->GetListInt(kLpNormAxesAttrIdx);
+  GE_ASSERT_NOTNULL(axes);
+  const bool *keepdim = attrs->GetAttrPointer<bool>(kLpNormKeepdimAttrIdx);
+  GE_ASSERT_NOTNULL(keepdim);
+
+  const int64_t dim_num = static_cast<int64_t>(x_shape->GetDimNum());
+  std::vector<int64_t> reduce_axes;
+  if (axes->GetSize() == 0U) {
+    // axes 为空表示对所有维度做规约
+    reduce_axes.reserve(static_cast<size_t>(dim_num));
+    for (int64_t i = 0; i < dim_num; ++i) {
+      reduce_axes.emplace_back(i);
+    }
+  } else {
+    reduce_axes.reserve(axes->GetSize());
+    for (size_t i = 0U; i < axes->GetSize(); ++i) {
+      reduce_axes.emplace_back(axes->GetData()[i]);
+    }
+  }
+  if (*keepdim) {
+    return SymbolicInferUtil::ReduceDimsWithKeepDims<int64_t>(x_shape, reduce_axes, reduce_axes.size(), out_shape);
+  }
+  return SymbolicInferUtil::ReduceDimsWithoutKeepDims<int64_t>(x_shape, reduce_axes, reduce_axes.size(), out_shape);
 }
 
 graphStatus InferShape4BiasAddGrad(gert::InferSymbolShapeContext *context) {
@@ -294,7 +347,7 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ReduceProdD).InferSymbolShape(InferShape4Reduce
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ReduceMeanD).InferSymbolShape(InferShape4ReduceDCommon);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ReduceAllD).InferSymbolShape(InferShape4ReduceDCommon);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ReduceAnyD).InferSymbolShape(InferShape4ReduceDCommon);
-
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(LpNormV2).InferSymbolShape(InferShape4LpNormV2);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BiasAddGrad).InferSymbolShape(InferShape4BiasAddGrad);
 
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(LayerNormBetaGammaBackpropV2)

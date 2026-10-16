@@ -123,8 +123,12 @@ conv2d.cc:573  Construct oh / ow expressions
       ↓
 conv2d.cc:594  SetConv2DYShape
       ↓
+When output 1 exists, write the same N/C/H/W symbolic dimensions to y1
+      ↓
 SymbolicDescAttr of the output GeTensorDesc
 ```
+
+`y` and `y1` share the same convolution geometry. When `y1` is connected downstream, an empty symbolic shape is written back as a real result and passed to the next operator, so it must be filled during inference rather than deferred to lowering. `Conv2D` / `Conv2DV2` have no output 1, so `GetOutputSymbolShape(1)` is null and this fill does not change them. An unconnected `y1` is still a `StoreIgnoredOutput` placeholder in lowering.
 
 This result is not used only by the convolution itself. When lowering subsequent Relu/Add/Reduce operators reads the shape of an input producer, it also reads this symbolic shape along the edge.
 
