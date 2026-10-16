@@ -1530,6 +1530,9 @@ const std::string ATTR_NAME_ATTACHED_RESOURCE_TYPE = "_attached_resource_type";
 // skip prune
 const std::string ATTR_NAME_SKIP_PRUNE_OPTIMIZE = "_force_skip_prune";
 
+// 标记NetOutput节点由GE自动创建，语义说明见ge_attr_define.h
+const std::string ATTR_NAME_INNER_NET_OUTPUT = "_inner_net_output";
+
 // for static shape reuse operator binary
 const std::string ATTR_NAME_OP_RUN_INFO = "op_run_info";
 const std::string ATTR_NAME_ATOMIC_OP_RUN_INFO = "atomic_op_run_info";
