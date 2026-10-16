@@ -27,9 +27,9 @@
 
 ## 功能说明
 
-从内存加载om模型文件数据，由系统内部管理模型运行的内存。
+从内存加载om或.om2模型文件数据，由系统内部管理模型运行的内存。
 
-关于如何获取om模型文件，请参见《[ATC离线模型编译工具](../../../../user_guides/atc_tools/README.md)》中的“[--mode](../../../../user_guides/atc_tools/CLI_options/--mode.md)”。
+关于如何获取om或.om2模型文件，请参见《[ATC离线模型编译工具](../../../../user_guides/atc_tools/README.md)》中的“[--mode](../../../../user_guides/atc_tools/CLI_options/--mode.md)”。
 
 ## 函数原型
 

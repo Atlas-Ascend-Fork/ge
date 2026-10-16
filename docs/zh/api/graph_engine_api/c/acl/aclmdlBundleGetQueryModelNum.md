@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-根据aclmdlBundleQueryInfo查询模型中的图总数。
+根据aclmdlBundleQueryInfo查询om/om2模型中的图总数。
 
 ## 函数原型
 

@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-创建aclmdlBundleQueryInfo类型的数据，表示模型描述信息。
+创建aclmdlBundleQueryInfo类型的数据，表示om/om2模型描述信息。
 
 如需销毁aclmdlBundleQueryInfo类型的数据，请参见[aclmdlBundleDestroyQueryInfo](aclmdlBundleDestroyQueryInfo.md)。
 

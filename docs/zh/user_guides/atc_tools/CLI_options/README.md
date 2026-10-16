@@ -22,6 +22,7 @@
     - [--weight](--weight.md)
 
   - [输出选项](output_options.md)
+    - [--build\_config](--build_config.md)
     - [--check\_report](--check_report.md)
     - [--host\_env\_cpu](--host_env_cpu.md)
     - [--host\_env\_os](--host_env_os.md)

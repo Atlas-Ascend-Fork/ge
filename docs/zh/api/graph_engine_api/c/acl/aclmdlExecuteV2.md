@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-根据[aclmdlSetExecConfigOpt](aclmdlSetExecConfigOpt.md)接口所配置的属性，执行模型推理，直到返回推理结果。该接口是在[aclmdlExecute](aclmdlExecute.md)接口基础上进行了增强，支持在执行模型推理时控制一些配置参数。
+根据[aclmdlSetExecConfigOpt](aclmdlSetExecConfigOpt.md)接口所配置的属性，执行om或om2模型推理，直到返回推理结果。该接口是在[aclmdlExecute](aclmdlExecute.md)接口基础上进行了增强，支持在执行模型推理时控制一些配置参数。
 
 本接口需要配合其它接口一起使用，实现模型执行，接口调用顺序如下：
 

@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-获取指定模型的指定输入所支持的AIPP类型（动态AIPP或静态AIPP）及动态AIPP输入对应的index值。
+获取指定om或om2模型的指定输入所支持的AIPP类型（动态AIPP或静态AIPP）及动态AIPP输入对应的index值。
 
 ## 函数原型
 

@@ -92,7 +92,7 @@ ACL\_MDL\_LOAD\_TYPE\_SIZET（表示模型加载方式）的取值如下：
 
 ## ACL\_MDL\_PATH\_PTR取值说明
 
-om模型文件路径的指针，如果选择从文件加载模型，则该选项必选。关于如何获取模型文件，请参见《[ATC离线模型编译工具](../../../../user_guides/atc_tools/README.md)》中的“[--mode](../../../../user_guides/atc_tools/CLI_options/--mode.md)”。
+om/om2模型文件路径的指针，如果选择从文件加载模型，则该选项必选。关于如何获取模型文件，请参见《[ATC离线模型编译工具](../../../../user_guides/atc_tools/README.md)》中的“[--mode](../../../../user_guides/atc_tools/CLI_options/--mode.md)”。
 
 <!-- npu="IPV350" id2 -->
 IPV350上还支持后缀为exeom的模型文件，关于om或exeom模型文件的区别如下：
@@ -188,11 +188,11 @@ Device上模型所需工作内存（存放模型执行过程中的临时数据�
 
 ## ACL\_MDL\_WEIGHT\_PATH\_PTR取值说明
 
-权重文件所在目录的指针。对om模型文件大小有限制的场景下，通过本参数可实现权重文件外置功能。
+权重文件所在目录的指针。对om/om2模型文件大小有限制的场景下，通过本参数可实现权重文件外置功能。
 
 如果将ACL\_MDL\_LOAD\_TYPE\_SIZET设置为ACL\_MDL\_LOAD\_FROM\_MEM、ACL\_MDL\_LOAD\_FROM\_MEM\_WITH\_MEM或ACL\_MDL\_LOAD\_FROM\_MEM\_WITH\_Q，表示从内存加载模型数据，则支持使用ACL\_MDL\_WEIGHT\_PATH\_PTR指定权重文件目录。
 
-一般对om模型文件大小有限制或模型文件加密的场景下，需单独加载权重文件，因此需在构建模型时，将权重保存在单独的文件中。例如在使用ATC工具生成om文件时，将--external\_weight参数设置为1（1表示将原始网络中的Const/Constant节点的权重保存在单独的文件中）。
+一般对om/om2模型文件大小有限制或模型文件加密的场景下，需单独加载权重文件，因此需在构建模型时，将权重保存在单独的文件中。例如在使用ATC工具生成om/om2文件时，将--external\_weight参数设置为1（1表示将原始网络中的Const/Constant节点的权重保存在单独的文件中）。
 
 **注意：**通过ACL\_MDL\_WEIGHT\_PATH\_PTR配置权重文件所在目录的指针后，在模型加载过程中，图引擎（Graph Engine，简称GE）将自行申请一块Device内存，读取外置权重文件，并将外置权重数据拷贝至该Device内存中，模型卸载时会释放该内存。若已调用[aclmdlSetExternalWeightAddress](aclmdlSetExternalWeightAddress.md)接口配置存放外置权重的Device内存，由用户自行管理Device内存，则无需配置ACL\_MDL\_WEIGHT\_PATH\_PTR；若针对同一个模型，既配置了ACL\_MDL\_WEIGHT\_PATH\_PTR，也调用了[aclmdlSetExternalWeightAddress](aclmdlSetExternalWeightAddress.md)接口，则[aclmdlSetExternalWeightAddress](aclmdlSetExternalWeightAddress.md)接口的优先级更高。
 

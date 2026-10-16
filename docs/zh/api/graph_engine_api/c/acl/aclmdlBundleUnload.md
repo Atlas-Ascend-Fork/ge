@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-系统完成模型推理后，可调用该接口卸载通过[aclmdlBundleLoadFromFile](aclmdlBundleLoadFromFile.md)接口或[aclmdlBundleLoadFromMem](aclmdlBundleLoadFromMem.md)接口加载的模型，释放资源。
+系统完成om/om2模型推理后，可调用该接口卸载通过[aclmdlBundleLoadFromFile](aclmdlBundleLoadFromFile.md)接口或[aclmdlBundleLoadFromMem](aclmdlBundleLoadFromMem.md)接口加载的模型，释放资源。
 
 **本接口需与其它接口配合使用**，以便实现动态更新变量的目的，请参见[aclmdlBundleLoadFromFile](aclmdlBundleLoadFromFile.md)处的说明。
 
