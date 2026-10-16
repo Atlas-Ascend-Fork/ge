@@ -10,7 +10,6 @@
 
 set(SRC_LIST
     "register.cpp"
-    "${GE_METADEF_DIR}/base/common/plugin/ops_deliverables_manager.cc"
     "register_custom_pass.cpp"
     "prototype_pass_registry.cc"
     "ops_kernel_builder_registry.cc"

@@ -11,4 +11,3 @@
 add_subdirectory(stubs)
 add_subdirectory(testcase)
 add_subdirectory(hybrid_model_exec)
-add_subdirectory(testcase/ops_deliverables)

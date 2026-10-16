@@ -26,7 +26,6 @@
 #include <regex>
 
 #include "ge/ge_api_types.h"
-#include "common/plugin/ops_deliverables_manager.h"
 #include "graph_metadef/common/plugin/plugin_manager.h"
 #include "base/err_msg.h"
 #include "framework/common/debug/ge_log.h"
@@ -90,11 +89,6 @@ FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY void TBEPluginLoader::LoadPlugi
 
   // Whether there are files in the plugin so path
   GetPluginSoFileList(plugin_path, file_list, caffe_parser_path);
-  const auto framework = TypeUtilsInner::FmkTypeToSerialString(
-      options.count(FRAMEWORK_TYPE) == 0U
-          ? domi::TENSORFLOW
-          : static_cast<domi::FrameworkType>(std::strtol(options.at(FRAMEWORK_TYPE).c_str(), nullptr, 10)));
-  OpsDeliverablesManager::UpdateFrameworkPluginPaths(options, framework, file_list);
 
   //  No file
   if (file_list.empty()) {

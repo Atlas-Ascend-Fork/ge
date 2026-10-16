@@ -66,7 +66,6 @@
 #include "runtime/custom_op/custom_op_loader.h"
 #include "parser/parser/onnx/python_onnx_plugin_bridge/onnx_plugin_bridge_loader.h"
 #include "graph/operator_factory_impl.h"
-#include "graph_metadef/common/plugin/ops_deliverables_manager.h"
 #include "base/err_msg.h"
 #include "base/err_mgr.h"
 
@@ -385,9 +384,9 @@ static graphStatus CheckGlobalOptions(std::map<std::string, std::string> &global
   return GRAPH_SUCCESS;
 }
 
-static graphStatus LoadOpsProto(const std::map<std::string, std::string> &options) {
-  // 根据 OPP 清单加载 opgraph/ophost；清单不可用时回退到原有目录发现流程。
-  GE_ASSERT_GRAPH_SUCCESS(OpsDeliverablesManager::LoadOppPackages(options));
+static void LoadOpsProto() {
+  // 加载顺序遵循3.0目录结构，按op_graph->op_impl->op_proto->framework顺序加载，详细规则见PluginManager::GetOpsProtoPath注释
+  gert::OppPackageUtils::LoadAllOppPackage();
   std::string opsproto_path;
   Status ret = PluginManager::GetOpsProtoPath(opsproto_path);
   if (ret != SUCCESS) {
@@ -398,7 +397,6 @@ static graphStatus LoadOpsProto(const std::map<std::string, std::string> &option
   std::map<std::string, std::string> option_tmp;
   option_tmp.emplace(std::pair<std::string, std::string>(string("ge.opsProtoLibPath"), opsproto_path));
   (void)manager->Initialize(option_tmp);
-  return GRAPH_SUCCESS;
 }
 
 static graphStatus CheckAutoTuneMode(const std::map<std::string, std::string> &global_options) {
@@ -451,7 +449,7 @@ static graphStatus aclgrphBuildInitializeImpl(std::map<std::string, std::string>
     (void)GePythonRuntimeManager::Instance().ShutdownProcess();
   });
   GE_ASSERT_SUCCESS(ge::custom_op::LoadCustomOps());
-  GE_ASSERT_GRAPH_SUCCESS(LoadOpsProto(global_options));
+  LoadOpsProto();
   GE_ASSERT_SUCCESS(fusion::LoadPassPlugins());
 
   std::shared_ptr<ge::GELib> instance_ptr = ge::GELib::GetInstance();

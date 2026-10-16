@@ -408,7 +408,7 @@ TEST_F(UtestGeApiV2, ge_initialize_fail) {
 
   gert::GertRuntimeStub runtime_stub;
   runtime_stub.GetSlogStub().Clear();
-  dlog_setlevel(GE_MODULE_NAME, 0, 0);
+  dlog_setlevel(GE_MODULE_NAME, 2, 0);
   auto ret = GEInitializeV2(options);
   ASSERT_EQ(ret, SUCCESS);
   auto find_log = runtime_stub.GetSlogStub().FindWarnLogEndsWith(

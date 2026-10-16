@@ -19,7 +19,6 @@
 #include <string>
 
 #include "common/plugin/ge_make_unique_util.h"
-#include "common/plugin/ops_deliverables_manager.h"
 #include "graph_metadef/common/plugin/plugin_manager.h"
 #include "ge/ge_api_types.h"
 #include "framework/common/debug/ge_log.h"
@@ -189,11 +188,6 @@ void TBEPluginManager::LoadPluginSo(const std::map<std::string, std::string> &op
 
   // Whether there are files in the plugin so path
   GetOpPluginSoFileList(plugin_path, file_list, caffe_parser_path);
-  const auto framework = TypeUtilsInner::FmkTypeToSerialString(
-      options.count(FRAMEWORK_TYPE) == 0U
-          ? domi::TENSORFLOW
-          : static_cast<domi::FrameworkType>(std::strtol(options.at(FRAMEWORK_TYPE).c_str(), nullptr, kBaseIntValue)));
-  OpsDeliverablesManager::UpdateFrameworkPluginPaths(options, framework, file_list);
   // sort, move "_legacy.so" to the end
   std::stable_partition(file_list.begin(), file_list.end(), [](const std::string &file_path) {
     return file_path.size() < std::strlen(kLegacySoSuffix) ||

@@ -78,11 +78,3 @@ target_include_directories(ut_register PRIVATE
 
 add_test(NAME ut_register COMMAND ut_register --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/ut/ut_register.xml)
 set_tests_properties(ut_register PROPERTIES LABELS "ut;ge_rt;ut_register")
-
-# Focused parser tests avoid pulling unrelated runtime execution fixtures into this component test.
-add_executable(ut_ops_deliverables testcase/ops_deliverables_manager_unittest.cc)
-target_compile_options(ut_ops_deliverables PRIVATE -Wall -Wextra -Werror)
-target_link_libraries(ut_ops_deliverables PRIVATE ops_deliverables_test_support ge_metadef_headers intf_llt_pub
-    GTestShared::gtest GTestShared::gtest_main slog_stub slog_common c_sec)
-add_test(NAME ut_ops_deliverables COMMAND ut_ops_deliverables)
-set_tests_properties(ut_ops_deliverables PROPERTIES LABELS "ut;ops_deliverables")
