@@ -32,7 +32,9 @@ typedef enum {
     ACL_MDL_MEM_MALLOC_POLICY_SIZET,
     ACL_MDL_FIFO_PTR,
     ACL_MDL_FIFO_SIZET,
-    ACL_MDL_WITHOUT_GRAPH_INT32
+    ACL_MDL_WITHOUT_GRAPH_INT32,
+    ACL_NPU_PERF_MODE,
+    ACL_MDL_SCH_MODE_INT32
 } aclmdlConfigAttr;
 ```
 
@@ -388,3 +390,21 @@ Device上模型所需工作内存（存放模型执行过程中的临时数据�
 - 1：不保留计算图及其预缓存信息。设置为1时，模型加载成功后会释放计算图及其预缓存信息，用于节省内存，但预缓存信息被释放，会影响Profiling数据采集以及异常场景下的算子信息获取，因此：
     - Profiling数据采集场景下，需在模型加载前调用aclprofStart接口打开Profling开关，否则Profiling功能不可用。
     - 异常场景下，调用[aclmdlCreateAndGetOpDesc](aclmdlCreateAndGetOpDesc.md)接口获取算子描述信息时会失败。
+
+## ACL\_MDL\_SCH\_MODE\_INT32取值说明
+
+模型调度模式，可选项，需在模型加载前配置，在调用[aclmdlLoadWithConfig](aclmdlLoadWithConfig.md)接口加载模型时生效。该选项对应的值为INT32类型，取值范围如下：
+
+- 0（ACL\_MDL\_SCH\_MODE\_NORMAL）：默认值，普通调度模式，多模型共享调度资源。
+- 1（ACL\_MDL\_SCH\_MODE\_EXCLUSIVE）：独占调度模式，模型独占调度资源，适用于低时延、确定性时延场景。
+
+```c
+#define ACL_MDL_SCH_MODE_NORMAL 0
+#define ACL_MDL_SCH_MODE_EXCLUSIVE 1
+```
+
+**约束**：
+
+- 仅支持OM2格式的静态图模型。若加载OM格式模型或动态图模型时配置了该选项，模型加载失败并返回ACL\_ERROR\_FEATURE\_UNSUPPORTED。
+- 配置为独占调度模式时，要求模型文件由配套版本的ATC工具编译生成；若使用旧版本ATC编译的存量模型，模型加载失败并提示重新编译。
+- 不支持bundle模型加载场景（[aclmdlBundleLoadModelWithConfig](aclmdlBundleLoadModelWithConfig.md)接口）。

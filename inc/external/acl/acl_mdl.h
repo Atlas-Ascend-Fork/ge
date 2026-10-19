@@ -44,6 +44,10 @@ extern "C" {
 #define ACL_WORKSPACE_MEM_OPTIMIZE_DEFAULT 0
 #define ACL_WORKSPACE_MEM_OPTIMIZE_INPUTOUTPUT 1
 
+/* used for ACL_MDL_SCH_MODE_INT32 */
+#define ACL_MDL_SCH_MODE_NORMAL 0
+#define ACL_MDL_SCH_MODE_EXCLUSIVE 1
+
 // for model stream
 #define ACL_MODEL_STREAM_FLAG_HEAD 0x00000000U  // first stream
 #define ACL_MODEL_STREAM_FLAG_DEFAULT 0x7FFFFFFFU
@@ -106,6 +110,9 @@ typedef enum {
   ACL_MDL_FIFO_SIZET,
   ACL_MDL_WITHOUT_GRAPH_INT32,
   ACL_NPU_PERF_MODE,
+  ACL_MDL_SCH_MODE_INT32, /**< model schedule mode, 0(ACL_MDL_SCH_MODE_NORMAL): normal schedule,
+                               1(ACL_MDL_SCH_MODE_EXCLUSIVE): exclusive schedule,
+                               only supports om2 models, take effect before model load */
   ACL_MDL_RESERVED = 0xFFFF
 } aclmdlConfigAttr;
 

@@ -2282,7 +2282,6 @@ ge::Status IsOm2Model(const void *data, size_t size, bool &is_support) {
 ge::Status IsOm2Model(const char *file_path, bool &is_support) {
   return MockFunctionTest::aclStubInstance().IsOm2Model(file_path, is_support);
 }
-
 }  // namespace gert
 
 namespace error_message {

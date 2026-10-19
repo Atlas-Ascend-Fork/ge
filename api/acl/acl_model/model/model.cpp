@@ -1518,6 +1518,10 @@ aclError aclmdlBundleLoadModelWithConfigImpl(uint32_t bundleId, size_t index, ac
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelId);
   ACL_PROFILING_REG(acl::AclProfType::AclmdlBundleLoadModelWithConfig);
   ACL_LOG_INFO("start to execute aclmdlBundleLoadModelWithConfig, bundleId %u, index %zu", bundleId, index);
+  if (handle->attrState.find(ACL_MDL_SCH_MODE_INT32) != handle->attrState.end()) {
+    ACL_LOG_ERROR("[Check][SchMode]ACL_MDL_SCH_MODE_INT32 does not support bundle model load");
+    return ACL_ERROR_FEATURE_UNSUPPORTED;
+  }
   acl::BundleModelInfo bundleInfos;
   ACL_REQUIRES_OK(GetTargetBundleInfo(bundleId, bundleInfos));
   if (index >= bundleInfos.subModelInfos.size()) {
@@ -2264,6 +2268,10 @@ aclError aclmdlLoadWithConfigImpl(const aclmdlConfigHandle *handle, uint32_t *mo
   ACL_LOG_INFO("start to execute aclmdlLoadWithConfig");
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(handle);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelId);
+  if (handle->attrState.find(ACL_MDL_SCH_MODE_INT32) != handle->attrState.end()) {
+    ACL_LOG_ERROR("[Check][SchMode]ACL_MDL_SCH_MODE_INT32 only supports om2 model");
+    return ACL_ERROR_FEATURE_UNSUPPORTED;
+  }
   if (!acl::CheckMdlConfigHandle(handle)) {
     ACL_LOG_ERROR("[Check][ConfigHandle]model config is invalid because some params may not be set or invalid");
     return ACL_ERROR_INVALID_PARAM;

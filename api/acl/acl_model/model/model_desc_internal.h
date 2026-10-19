@@ -137,7 +137,8 @@ struct aclmdlConfigHandle {
         outputQ(nullptr),
         outputQNum(0U),
         reuseZeroCopy(0U),
-        withoutGraph(false) {}
+        withoutGraph(false),
+        schMode(0) {}
   int32_t priority;
   size_t mdlLoadType;
   std::string loadPath;
@@ -154,6 +155,7 @@ struct aclmdlConfigHandle {
   size_t reuseZeroCopy;
   std::string weightPath;
   bool withoutGraph;
+  int32_t schMode;  // ACL_MDL_SCH_MODE_INT32, 0: normal, 1: exclusive, only support om2
   std::set<aclmdlConfigAttr> attrState;
   std::vector<ge::FileConstantMem> fileConstantMem;
 };

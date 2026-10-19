@@ -187,6 +187,7 @@ class AclRuntimeStub {
   virtual aclError aclmdlRIBuildBegin(aclmdlRI *modelRI, uint32_t flag);
   virtual aclError aclmdlRIEndTask(aclmdlRI modelRI, aclrtStream stream);
   virtual aclError aclmdlRISetName(aclmdlRI modelRI, const char *name);
+  virtual aclError aclmdlRISetAttribute(aclmdlRI modelRI, aclrtModelAttr modelAttrType, void *value);
   virtual aclError aclmdlRIDebugJsonPrint(aclmdlRI modelRI, const char *path, uint32_t flags);
   virtual aclError aclrtCtxGetFloatOverflowAddr(void **overflowAddr);
   virtual aclError aclrtGetHardwareSyncAddr(void **addr);

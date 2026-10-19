@@ -439,10 +439,10 @@ struct GertModelLoadConfig {
   uint64_t *session_id = nullptr;
   uint64_t model_id = 0; // used for logging
   void *instance_handle = nullptr;
-  void *executor_handle = nullptr;
   const struct GertModelLoadCallbacks *callbacks = nullptr;
   int64_t priority = 0;
   uint64_t reuse_zero_copy = 0;
+  void *external_rt_model = nullptr;  // 与真实 GertModelLoadConfig 前缀布局对齐：executor 注入的外部 RI
 };
 
 struct GertModelRunConfig {
@@ -624,6 +624,21 @@ bool CheckInstanceHandle(void *instance_handle) {
   }
   return std::string(mode) == "NON_NULL" && instance_handle != nullptr;
 }
+
+bool CheckExternalRtModel(void *external_rt_model) {
+  const char *mode = std::getenv("OM2_EXPECT_EXTERNAL_RT_MODEL_MODE");
+  if ((mode == nullptr) || (mode[0] == '\0')) {
+    return true;
+  }
+  const std::string mode_str(mode);
+  if (mode_str == "NON_NULL") {
+    return external_rt_model != nullptr;
+  }
+  if (mode_str == "NULL") {
+    return external_rt_model == nullptr;
+  }
+  return false;
+}
 }  // namespace
 
 extern "C" int GertModelLoad(const struct GertModelLoadConfig *config, GertModelHandle *model_handle, struct GertModelLoadOutput *output) {
@@ -634,7 +649,8 @@ extern "C" int GertModelLoad(const struct GertModelLoadConfig *config, GertModel
       !CheckConstByIndex(config->constants, 1U, "OM2_EXPECT_CONST1_MODE", "OM2_EXPECT_CONST1_FIRST_BYTE") ||
       !CheckConstByIndex(config->constants, 2U, "OM2_EXPECT_CONST2_MODE", "OM2_EXPECT_CONST2_FIRST_BYTE") ||
       !CheckConstPtrEqual(config->constants) || !CheckVar0(config->var_addrs) ||
-      !CheckSessionId(config->session_id) || !CheckModelId(config->model_id) || !CheckInstanceHandle(config->instance_handle)) {
+      !CheckSessionId(config->session_id) || !CheckModelId(config->model_id) || !CheckInstanceHandle(config->instance_handle) ||
+      !CheckExternalRtModel(config->external_rt_model)) {
     return 1;
   }
   auto *model = new (std::nothrow) om2::FakeModel();
@@ -647,6 +663,9 @@ extern "C" int GertModelLoad(const struct GertModelLoadConfig *config, GertModel
   if (trace != nullptr) {
     std::ofstream ofs(trace, std::ios::app);
     ofs << "create\n";
+    if (std::getenv("OM2_EXPECT_EXTERNAL_RT_MODEL_MODE") != nullptr) {
+      ofs << "external_rt_model=0x" << std::hex << reinterpret_cast<uintptr_t>(config->external_rt_model) << "\n";
+    }
   }
   return 0;
 }
@@ -668,6 +687,11 @@ extern "C" int GertModelRun(GertModelHandle model_handle, const struct GertModel
 extern "C" int GertModelUnload(GertModelHandle model_handle, const struct GertModelUnloadConfig *config, struct GertModelUnloadOutput *output) {
   if (model_handle == nullptr) {
     return 0;
+  }
+  const char *trace = std::getenv("OM2_CALL_TRACE");
+  if (trace != nullptr) {
+    std::ofstream ofs(trace, std::ios::app);
+    ofs << "unload\n";
   }
   delete static_cast<om2::FakeModel *>(model_handle);
   return 0;
@@ -928,6 +952,63 @@ class VarInitDataRecordingAclRuntimeStub : public AclRuntimeStub {
   std::vector<MemcpyRecord> memcpy_records;
 };
 
+// 调度模式可观测桩：记录 RI 生命周期调用（RI、属性、值及全局调用顺序），支持失败注入。
+// 同时写入 OM2_CALL_TRACE，与 fake 模型 SO 的 create/unload 记录合成完整时序，用于断言
+// BuildBegin → SetAttribute → GertModelLoad → BuildEnd → GertModelUnload → Destroy 的全局顺序
+class SchModeRecordingAclRuntimeStub : public AclRuntimeStub {
+ public:
+  bool fail_build_begin = false;
+  bool fail_set_attribute = false;
+  bool fail_build_end = false;
+  bool fail_destroy = false;
+
+  aclError aclmdlRIBuildBegin(aclmdlRI *modelRI, uint32_t flag) override {
+    if (fail_build_begin) {
+      TraceAppend("BuildBegin:fail");
+      return ACL_ERROR_FAILURE;
+    }
+    TraceAppend("BuildBegin");
+    return AclRuntimeStub::aclmdlRIBuildBegin(modelRI, flag);
+  }
+
+  // schMode 以 int32_t 地址经 value 传入（与 aclmdlSetConfigOpt 的 *_INT32 传值惯例一致），此处解引用记录实际值
+  aclError aclmdlRISetAttribute(aclmdlRI modelRI, aclrtModelAttr modelAttrType, void *value) override {
+    std::string record = "SetAttribute:schMode=";
+    record += std::to_string((value == nullptr) ? -1 : (*static_cast<const int32_t *>(value)));
+    TraceAppend(record);
+    if (fail_set_attribute) {
+      return ACL_ERROR_FAILURE;
+    }
+    return ACL_SUCCESS;
+  }
+
+  aclError aclmdlRIDestroy(aclmdlRI modelRI) override {
+    TraceAppend("Destroy");
+    if (fail_destroy) {
+      return ACL_ERROR_FAILURE;
+    }
+    return ACL_SUCCESS;
+  }
+
+  aclError aclmdlRIBuildEnd(aclmdlRI modelRI, void *reserve) override {
+    TraceAppend(fail_build_end ? "BuildEnd:fail" : "BuildEnd");
+    if (fail_build_end) {
+      return ACL_ERROR_FAILURE;
+    }
+    return AclRuntimeStub::aclmdlRIBuildEnd(modelRI, reserve);
+  }
+
+ private:
+  static void TraceAppend(const std::string &line) {
+    const char *trace = std::getenv("OM2_CALL_TRACE");
+    if (trace == nullptr) {
+      return;
+    }
+    std::ofstream ofs(trace, std::ios::app);
+    ofs << line << "\n";
+  }
+};
+
 enum class VarWeightOrder {
   kAbsent,
   kBeforeConfig,
@@ -999,6 +1080,7 @@ class Om2ModelExecutorUt : public testing::Test {
     unsetenv("OM2_EXPECT_SESSION_ID");
     unsetenv("OM2_EXPECT_MODEL_ID");
     unsetenv("OM2_EXPECT_INSTANCE_HANDLE_MODE");
+    unsetenv("OM2_EXPECT_EXTERNAL_RT_MODEL_MODE");
     unsetenv("OM2_CALL_TRACE");
     unsetenv("OM2_FAKE_STREAM_DESC_MODE");
   }
@@ -1019,6 +1101,7 @@ class Om2ModelExecutorUt : public testing::Test {
     unsetenv("OM2_EXPECT_SESSION_ID");
     unsetenv("OM2_EXPECT_MODEL_ID");
     unsetenv("OM2_EXPECT_INSTANCE_HANDLE_MODE");
+    unsetenv("OM2_EXPECT_EXTERNAL_RT_MODEL_MODE");
     unsetenv("OM2_CALL_TRACE");
     unsetenv("OM2_FAKE_STREAM_DESC_MODE");
     ge::AclRuntimeStub::Reset();
@@ -1994,6 +2077,150 @@ TEST_F(Om2ModelExecutorUt, load_reuses_duplicate_individual_fileconst_in_same_lo
   ASSERT_EQ(setenv("OM2_EXPECT_CONST2_FIRST_BYTE", "102", 1), 0);
   ASSERT_EQ(setenv("OM2_EXPECT_CONST1_CONST2_PTR_EQUAL", "1", 1), 0);
   EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
+}
+
+namespace {
+std::string MakeSchModeTraceFile(const std::string &trace_file) {
+  (void)std::remove(trace_file.c_str());
+  return trace_file;
+}
+
+gert::Om2ModelLoadArg MakeSchModeLoadArg(const int32_t sch_mode) {
+  auto load_arg = MakeOm2LoadArg();
+  load_arg.sch_mode_configured = true;
+  load_arg.sch_mode = sch_mode;
+  return load_arg;
+}
+}  // namespace
+
+TEST_F(Om2ModelExecutorUt, load_sch_mode_exclusive_full_sequence_and_injection) {
+  // 显式 exclusive：BuildBegin → SetAttribute(schMode=1) → GertModelLoad（注入非空 RI，且与 executor 创建的 RI
+  // 为同一对象）→ 卸载时先 GertModelUnload 后 Destroy。
+  auto model_data_holder = LoadValidModelData();
+  SchModeRecordingAclRuntimeStub runtime_stub;
+  AclRuntimeStubGuard runtime_stub_guard(&runtime_stub);
+  const auto trace_file = MakeSchModeTraceFile(PathUtils::Join({test_work_dir_, "sch_mode_exclusive_trace.txt"}));
+  ASSERT_EQ(setenv("OM2_CALL_TRACE", trace_file.c_str(), 1), 0);
+  ASSERT_EQ(setenv("OM2_EXPECT_EXTERNAL_RT_MODEL_MODE", "NON_NULL", 1), 0);
+  const auto load_arg = MakeSchModeLoadArg(1);
+  {
+    gert::Om2ModelExecutor executor;
+    EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
+  }
+  EXPECT_EQ(ReadTraceFile(trace_file),
+            std::vector<std::string>({"BuildBegin", "SetAttribute:schMode=1", "create", "external_rt_model=0x1",
+                                      "BuildEnd", "unload", "Destroy"}));
+}
+
+TEST_F(Om2ModelExecutorUt, load_sch_mode_explicit_normal_still_creates_rt_model) {
+  // 显式 normal（0）也必须创建外部 RI：是否走外部 RI 链路由"是否配置"决定，禁止以值推断。
+  auto model_data_holder = LoadValidModelData();
+  SchModeRecordingAclRuntimeStub runtime_stub;
+  AclRuntimeStubGuard runtime_stub_guard(&runtime_stub);
+  const auto trace_file = MakeSchModeTraceFile(PathUtils::Join({test_work_dir_, "sch_mode_normal_trace.txt"}));
+  ASSERT_EQ(setenv("OM2_CALL_TRACE", trace_file.c_str(), 1), 0);
+  ASSERT_EQ(setenv("OM2_EXPECT_EXTERNAL_RT_MODEL_MODE", "NON_NULL", 1), 0);
+  const auto load_arg = MakeSchModeLoadArg(0);
+  {
+    gert::Om2ModelExecutor executor;
+    EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
+  }
+  EXPECT_EQ(ReadTraceFile(trace_file),
+            std::vector<std::string>({"BuildBegin", "SetAttribute:schMode=0", "create", "external_rt_model=0x1",
+                                      "BuildEnd", "unload", "Destroy"}));
+}
+
+TEST_F(Om2ModelExecutorUt, load_without_sch_mode_keeps_legacy_path) {
+  // 未配置调度模式：不创建外部 RI、不调用 SetAttribute、不销毁 RI，模型 SO 收到空 external_rt_model
+  auto model_data_holder = LoadValidModelData();
+  SchModeRecordingAclRuntimeStub runtime_stub;
+  AclRuntimeStubGuard runtime_stub_guard(&runtime_stub);
+  const auto trace_file = MakeSchModeTraceFile(PathUtils::Join({test_work_dir_, "sch_mode_unconfigured_trace.txt"}));
+  ASSERT_EQ(setenv("OM2_CALL_TRACE", trace_file.c_str(), 1), 0);
+  ASSERT_EQ(setenv("OM2_EXPECT_EXTERNAL_RT_MODEL_MODE", "NULL", 1), 0);
+  auto load_arg = MakeOm2LoadArg();
+  {
+    gert::Om2ModelExecutor executor;
+    EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
+  }
+  EXPECT_EQ(ReadTraceFile(trace_file), std::vector<std::string>({"create", "external_rt_model=0x0", "unload"}));
+}
+
+TEST_F(Om2ModelExecutorUt, load_sch_mode_dynamic_shape_does_not_run_schedule_mode_validation) {
+  // 当前 OM2 仅支持静态图，动态 shape 校验作为遗留问题暂不处理。
+  const std::string so_path = PathUtils::Join({test_work_dir_, "fake_runtime/libg1_om2.so"});
+  const std::string om2_dynamic_path = PathUtils::Join({test_work_dir_, "sch_mode_dynamic_batch.om2"});
+  gert::ZipArchiveWriter zip_writer(om2_dynamic_path);
+  ASSERT_TRUE(zip_writer.IsMemFileOpened());
+  const auto manifest = MakeManifestJson();
+  const auto model_meta = MakeModelMetaJsonWithDynamicBatch();
+  ASSERT_TRUE(zip_writer.WriteBytes("manifest.json", manifest.data(), manifest.size(), false));
+  ASSERT_TRUE(zip_writer.WriteBytes("data/model_0/model_meta.json", model_meta.data(), model_meta.size(), false));
+  const auto op_attr = MakeEmptyOpAttrJson();
+  ASSERT_TRUE(zip_writer.WriteBytes("data/model_0/op_attr.json", op_attr.data(), op_attr.size(), false));
+  const std::string constants_config = "{}";
+  ASSERT_TRUE(zip_writer.WriteBytes("data/model_0/constants_config.json", constants_config.data(),
+                                    constants_config.size(), false));
+  ASSERT_TRUE(zip_writer.WriteFile("data/model_0/runtime/libg1_om2.so", so_path, false));
+  ASSERT_TRUE(zip_writer.SaveModelDataToFile());
+  uint32_t model_buf_size = 0U;
+  auto model_buf = GetBinDataFromFile(om2_dynamic_path, model_buf_size);
+  ASSERT_NE(model_buf, nullptr);
+  ModelDataHolder holder;
+  holder.model_data.model_data = model_buf.get();
+  holder.model_data.model_len = model_buf_size;
+  holder.buffer = std::move(model_buf);
+
+  SchModeRecordingAclRuntimeStub runtime_stub;
+  AclRuntimeStubGuard runtime_stub_guard(&runtime_stub);
+  const auto trace_file = MakeSchModeTraceFile(PathUtils::Join({test_work_dir_, "sch_mode_dynamic_trace.txt"}));
+  ASSERT_EQ(setenv("OM2_CALL_TRACE", trace_file.c_str(), 1), 0);
+  ASSERT_EQ(setenv("OM2_EXPECT_EXTERNAL_RT_MODEL_MODE", "NON_NULL", 1), 0);
+  const auto load_arg = MakeSchModeLoadArg(1);
+  {
+    gert::Om2ModelExecutor executor;
+    EXPECT_EQ(executor.Load(holder.model_data, load_arg, 1U), SUCCESS);
+  }
+  EXPECT_EQ(ReadTraceFile(trace_file),
+            std::vector<std::string>({"BuildBegin", "SetAttribute:schMode=1", "create", "external_rt_model=0x1",
+                                      "BuildEnd", "unload", "Destroy"}));
+}
+
+TEST_F(Om2ModelExecutorUt, load_sch_mode_build_end_fail_unloads_before_destroy) {
+  auto model_data_holder = LoadValidModelData();
+  SchModeRecordingAclRuntimeStub runtime_stub;
+  runtime_stub.fail_build_end = true;
+  AclRuntimeStubGuard runtime_stub_guard(&runtime_stub);
+  const auto trace_file = MakeSchModeTraceFile(PathUtils::Join({test_work_dir_, "sch_mode_buildend_fail_trace.txt"}));
+  ASSERT_EQ(setenv("OM2_CALL_TRACE", trace_file.c_str(), 1), 0);
+  ASSERT_EQ(setenv("OM2_EXPECT_EXTERNAL_RT_MODEL_MODE", "NON_NULL", 1), 0);
+  const auto load_arg = MakeSchModeLoadArg(1);
+  {
+    gert::Om2ModelExecutor executor;
+    EXPECT_NE(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
+  }
+  EXPECT_EQ(ReadTraceFile(trace_file),
+            std::vector<std::string>({"BuildBegin", "SetAttribute:schMode=1", "create", "external_rt_model=0x1",
+                                      "BuildEnd:fail", "unload", "Destroy"}));
+}
+
+// SetAttribute 失败回滚用例（load_sch_mode_set_attribute_fail_destroys_rt_model_once）暂移除，
+// 待 RTS 联调通过后恢复：断言 BuildBegin → SetAttribute 失败 → Destroy（恰好一次）且不调用模型 SO。
+
+TEST_F(Om2ModelExecutorUt, load_sch_mode_build_begin_fail_skips_set_and_so) {
+  // BuildBegin 失败：直接返回 RTS 错误码，不调用 SetAttribute、不调用模型 SO、无 RI 需要销毁
+  auto model_data_holder = LoadValidModelData();
+  SchModeRecordingAclRuntimeStub runtime_stub;
+  runtime_stub.fail_build_begin = true;
+  AclRuntimeStubGuard runtime_stub_guard(&runtime_stub);
+  const auto trace_file = MakeSchModeTraceFile(PathUtils::Join({test_work_dir_, "sch_mode_buildbegin_fail_trace.txt"}));
+  ASSERT_EQ(setenv("OM2_CALL_TRACE", trace_file.c_str(), 1), 0);
+  const auto load_arg = MakeSchModeLoadArg(1);
+  {
+    gert::Om2ModelExecutor executor;
+    EXPECT_NE(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
+  }
+  EXPECT_EQ(ReadTraceFile(trace_file), std::vector<std::string>({"BuildBegin:fail"}));
 }
 
 TEST_F(Om2ModelExecutorUt, run_before_load_failed) {

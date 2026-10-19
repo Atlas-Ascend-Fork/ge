@@ -12,12 +12,14 @@
 
 #ifndef private
 #define private public
+// acl_mdl.h 必须先于 acl/acl.h 包含：toolkit 的 acl.h 会先包含 toolkit 版 acl_mdl.h 并置位
+// include guard，导致仓库头文件（本用例的看护对象）被遮蔽
+#include "acl/acl_mdl.h"
 #include "acl/acl.h"
 #include "acl/acl_op_compiler.h"
 #include "acl/acl_prof.h"
 #include "acl/acl_tdt.h"
 #include "acl/acl_tdt_queue.h"
-#include "acl/acl_mdl.h"
 #include "acl/ops/acl_cblas.h"
 #include "rt_external_base.h"
 #undef private
@@ -78,6 +80,9 @@ TEST_F(UTEST_ACL_compatibility_enum_check, aclmdlConfigAttr) {
 
   configAttr = (aclmdlConfigAttr)14;
   EXPECT_EQ(configAttr, ACL_MDL_WEIGHT_PATH_PTR);
+
+  configAttr = (aclmdlConfigAttr)30;
+  EXPECT_EQ(configAttr, ACL_MDL_SCH_MODE_INT32);
 }
 
 TEST_F(UTEST_ACL_compatibility_enum_check, aclmdlInputAippType) {

@@ -426,6 +426,8 @@ struct ExpectedOm2LoadArg {
   std::vector<ExpectedOm2FileConstantMem> file_constant_mems;
   bool need_clear_dfx_cache = false;
   bool reuse_zero_copy = false;
+  bool sch_mode_configured = false;
+  int32_t sch_mode = 0;
 };
 
 ExpectedOm2LoadArg g_expected_om2_load_arg;
@@ -434,7 +436,8 @@ uint32_t g_last_om2_load_model_id = 0U;
 void SetExpectedOm2LoadArg(void *work_ptr = nullptr, size_t work_size = 0U, void *weight_ptr = nullptr,
                            size_t weight_size = 0U, int32_t device_id = 0,
                            std::vector<ExpectedOm2FileConstantMem> file_constant_mems = {},
-                           bool need_clear_dfx_cache = false, bool reuse_zero_copy = false) {
+                           bool need_clear_dfx_cache = false, bool reuse_zero_copy = false,
+                           bool sch_mode_configured = false, int32_t sch_mode = 0) {
   g_expected_om2_load_arg = {device_id,
                              0U,
                              work_ptr,
@@ -443,7 +446,9 @@ void SetExpectedOm2LoadArg(void *work_ptr = nullptr, size_t work_size = 0U, void
                              weight_size,
                              std::move(file_constant_mems),
                              need_clear_dfx_cache,
-                             reuse_zero_copy};
+                             reuse_zero_copy,
+                             sch_mode_configured,
+                             sch_mode};
   g_last_om2_load_model_id = 0U;
 }
 
@@ -495,6 +500,8 @@ std::unique_ptr<gert::Om2ModelExecutor> LoadOm2ExecutorFromDataCheckLoadArg(ge::
       load_arg.weight_size != g_expected_om2_load_arg.weight_size ||
       load_arg.need_clear_dfx_cache != g_expected_om2_load_arg.need_clear_dfx_cache ||
       load_arg.reuse_zero_copy != g_expected_om2_load_arg.reuse_zero_copy ||
+      load_arg.sch_mode_configured != g_expected_om2_load_arg.sch_mode_configured ||
+      load_arg.sch_mode != g_expected_om2_load_arg.sch_mode ||
       load_arg.file_constant_mems.size() != g_expected_om2_load_arg.file_constant_mems.size()) {
     error_code = ge::GRAPH_FAILED;
     return nullptr;
@@ -1093,6 +1100,145 @@ TEST_F(UTEST_ACL_Model, aclmdlLoad_Om2GetDeviceFailed_ReturnInvalidParam) {
   ExpectAclrtGetDeviceInvalid();
   EXPECT_EQ(aclmdlLoadFromMemWithMem(om2ModelData, sizeof(om2ModelData), &modelId, nullptr, 0U, nullptr, 0U),
             ACL_ERROR_INVALID_PARAM);
+}
+
+TEST_F(UTEST_ACL_Model, aclmdlSetConfigOpt_SchMode_Ok) {
+  aclmdlConfigHandle *handle = aclmdlCreateConfigHandle();
+  ASSERT_NE(handle, nullptr);
+  int32_t schMode = ACL_MDL_SCH_MODE_NORMAL;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_SCH_MODE_INT32, &schMode, sizeof(schMode)), ACL_SUCCESS);
+  schMode = ACL_MDL_SCH_MODE_EXCLUSIVE;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_SCH_MODE_INT32, &schMode, sizeof(schMode)), ACL_SUCCESS);
+  ASSERT_EQ(aclmdlDestroyConfigHandle(handle), ACL_SUCCESS);
+}
+
+TEST_F(UTEST_ACL_Model, aclmdlSetConfigOpt_SchMode_ValueSizeInvalid) {
+  aclmdlConfigHandle *handle = aclmdlCreateConfigHandle();
+  ASSERT_NE(handle, nullptr);
+  int32_t schMode = ACL_MDL_SCH_MODE_EXCLUSIVE;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_SCH_MODE_INT32, &schMode, 0U), ACL_ERROR_INVALID_PARAM);
+  ASSERT_EQ(aclmdlDestroyConfigHandle(handle), ACL_SUCCESS);
+}
+
+TEST_F(UTEST_ACL_Model, aclmdlSetConfigOpt_SchMode_ValueInvalid) {
+  aclmdlConfigHandle *handle = aclmdlCreateConfigHandle();
+  ASSERT_NE(handle, nullptr);
+  int32_t schMode = 2;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_SCH_MODE_INT32, &schMode, sizeof(schMode)), ACL_ERROR_INVALID_PARAM);
+  schMode = -1;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_SCH_MODE_INT32, &schMode, sizeof(schMode)), ACL_ERROR_INVALID_PARAM);
+  ASSERT_EQ(aclmdlDestroyConfigHandle(handle), ACL_SUCCESS);
+}
+
+TEST_F(UTEST_ACL_Model, aclmdlLoadWithConfig_Om2_SchMode_PropagatesToLoadArg) {
+  // Verify that ACL_MDL_SCH_MODE_INT32=exclusive passes constraint check and propagates sch_mode
+  // through to Om2ModelLoadArg
+  const char *load_path = "/fake/om2_model.om2";
+  uint32_t modelId = 0U;
+
+  SetExpectedOm2LoadArg(nullptr, 0U, nullptr, 0U, 0, {}, false, false, true, 1);
+  ExpectAclrtGetDeviceOk();
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), IsOm2Model(_, _)).WillRepeatedly(Invoke(IsOm2ModelFromFile));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), IsOm2Model(_, _, _)).WillRepeatedly(Invoke(IsOm2ModelFromData));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), LoadOm2DataFromFile(_, _))
+      .WillOnce(Invoke(LoadOm2DataFromFileSuccess));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), LoadOm2ExecutorFromData(_, _, _))
+      .WillOnce(Invoke(LoadOm2ExecutorFromDataCheckLoadArg));
+
+  aclmdlConfigHandle *handle = aclmdlCreateConfigHandle();
+  ASSERT_NE(handle, nullptr);
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_PATH_PTR, &load_path, sizeof(load_path)), ACL_SUCCESS);
+  int32_t schMode = ACL_MDL_SCH_MODE_EXCLUSIVE;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_SCH_MODE_INT32, &schMode, sizeof(schMode)), ACL_SUCCESS);
+  size_t loadType = ACL_MDL_LOAD_FROM_FILE;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_LOAD_TYPE_SIZET, &loadType, sizeof(loadType)), ACL_SUCCESS);
+
+  EXPECT_EQ(aclmdlLoadWithConfig(handle, &modelId), ACL_SUCCESS);
+  EXPECT_EQ(aclmdlUnload(modelId), ACL_SUCCESS);
+  EXPECT_EQ(aclmdlDestroyConfigHandle(handle), ACL_SUCCESS);
+}
+
+TEST_F(UTEST_ACL_Model, aclmdlLoadWithConfig_Om2_SchMode_DefaultZeroInLoadArg) {
+  // Verify that without ACL_MDL_SCH_MODE_INT32, sch_mode defaults to 0 in Om2ModelLoadArg
+  const char *load_path = "/fake/om2_model.om2";
+  uint32_t modelId = 0U;
+
+  SetExpectedOm2LoadArg(nullptr, 0U, nullptr, 0U, 0, {}, false, false, false, 0);
+  ExpectAclrtGetDeviceOk();
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), IsOm2Model(_, _)).WillRepeatedly(Invoke(IsOm2ModelFromFile));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), IsOm2Model(_, _, _)).WillRepeatedly(Invoke(IsOm2ModelFromData));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), LoadOm2DataFromFile(_, _))
+      .WillOnce(Invoke(LoadOm2DataFromFileSuccess));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), LoadOm2ExecutorFromData(_, _, _))
+      .WillOnce(Invoke(LoadOm2ExecutorFromDataCheckLoadArg));
+
+  aclmdlConfigHandle *handle = aclmdlCreateConfigHandle();
+  ASSERT_NE(handle, nullptr);
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_PATH_PTR, &load_path, sizeof(load_path)), ACL_SUCCESS);
+  size_t loadType = ACL_MDL_LOAD_FROM_FILE;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_LOAD_TYPE_SIZET, &loadType, sizeof(loadType)), ACL_SUCCESS);
+
+  EXPECT_EQ(aclmdlLoadWithConfig(handle, &modelId), ACL_SUCCESS);
+  EXPECT_EQ(aclmdlUnload(modelId), ACL_SUCCESS);
+  EXPECT_EQ(aclmdlDestroyConfigHandle(handle), ACL_SUCCESS);
+}
+
+TEST_F(UTEST_ACL_Model, aclmdlLoadWithConfig_Om1Model_SchMode_FeatureUnsupported) {
+  // OM1 model with sch mode configured is rejected with ACL_ERROR_FEATURE_UNSUPPORTED before load
+  const char *load_path = "/fake/om1_model.om";
+  uint32_t modelId = 0U;
+
+  // default mock in SetUp returns IsNotOm2ModelFromFile
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), LoadOm2ExecutorFromData(_, _, _)).Times(0);
+
+  aclmdlConfigHandle *handle = aclmdlCreateConfigHandle();
+  ASSERT_NE(handle, nullptr);
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_PATH_PTR, &load_path, sizeof(load_path)), ACL_SUCCESS);
+  int32_t schMode = ACL_MDL_SCH_MODE_EXCLUSIVE;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_SCH_MODE_INT32, &schMode, sizeof(schMode)), ACL_SUCCESS);
+  size_t loadType = ACL_MDL_LOAD_FROM_FILE;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_LOAD_TYPE_SIZET, &loadType, sizeof(loadType)), ACL_SUCCESS);
+
+  EXPECT_EQ(aclmdlLoadWithConfig(handle, &modelId), ACL_ERROR_FEATURE_UNSUPPORTED);
+  EXPECT_EQ(aclmdlDestroyConfigHandle(handle), ACL_SUCCESS);
+}
+
+TEST_F(UTEST_ACL_Model, aclmdlLoadWithConfig_Om2DynamicModel_SchMode_SkipsDynamicShapeValidation) {
+  // 当前 OM2 仅支持静态图，ACL 路由不执行动态 shape 校验。
+  const char *load_path = "/fake/om2_dynamic_model.om2";
+  uint32_t modelId = 0U;
+
+  SetExpectedOm2LoadArg(nullptr, 0U, nullptr, 0U, 0, {}, false, false, true, 1);
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), IsOm2Model(_, _)).WillRepeatedly(Invoke(IsOm2ModelFromFile));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), IsOm2Model(_, _, _)).WillRepeatedly(Invoke(IsOm2ModelFromData));
+  ExpectAclrtGetDeviceOk();
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), LoadOm2DataFromFile(_, _))
+      .WillOnce(Invoke(LoadOm2DataFromFileSuccess));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), LoadOm2ExecutorFromData(_, _, _))
+      .WillOnce(Invoke(LoadOm2ExecutorFromDataCheckLoadArg));
+
+  aclmdlConfigHandle *handle = aclmdlCreateConfigHandle();
+  ASSERT_NE(handle, nullptr);
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_PATH_PTR, &load_path, sizeof(load_path)), ACL_SUCCESS);
+  int32_t schMode = ACL_MDL_SCH_MODE_EXCLUSIVE;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_SCH_MODE_INT32, &schMode, sizeof(schMode)), ACL_SUCCESS);
+  size_t loadType = ACL_MDL_LOAD_FROM_FILE;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_LOAD_TYPE_SIZET, &loadType, sizeof(loadType)), ACL_SUCCESS);
+
+  EXPECT_EQ(aclmdlLoadWithConfig(handle, &modelId), ACL_SUCCESS);
+  EXPECT_EQ(aclmdlUnload(modelId), ACL_SUCCESS);
+  EXPECT_EQ(aclmdlDestroyConfigHandle(handle), ACL_SUCCESS);
+}
+
+TEST_F(UTEST_ACL_Model, aclmdlBundleLoadModelWithConfig_SchMode_FeatureUnsupported) {
+  // bundle load with sch mode configured is rejected with ACL_ERROR_FEATURE_UNSUPPORTED
+  aclmdlConfigHandle *handle = aclmdlCreateConfigHandle();
+  ASSERT_NE(handle, nullptr);
+  int32_t schMode = ACL_MDL_SCH_MODE_EXCLUSIVE;
+  ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_SCH_MODE_INT32, &schMode, sizeof(schMode)), ACL_SUCCESS);
+  uint32_t modelId = 0U;
+  EXPECT_EQ(aclmdlBundleLoadModelWithConfig(1U, 0U, handle, &modelId), ACL_ERROR_FEATURE_UNSUPPORTED);
+  EXPECT_EQ(aclmdlDestroyConfigHandle(handle), ACL_SUCCESS);
 }
 
 TEST_F(UTEST_ACL_Model, aclmdlLoad_Om2ExecutorNull_ReturnError) {
