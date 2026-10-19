@@ -72,6 +72,7 @@
     ```
 <!-- end id11 -->
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildInitialize_config_params/operator_and_graph_compilation_res.md#id2 -->
+- [OFFLINE_MODE](../aclgrphBuildModel_config_params/basic_functions.md#offline_mode)取值为7时，仅支持静态shape场景的核数控制。
 - 配置为0不会报错，但会被当作未配置处理，不产生控核效果，如配置“整数1|0”，等同于配置“整数1|”。
 - 如果配置该参数的同时启用了算子编译缓存功能（OP\_COMPILER\_CACHE\_MODE参数配置为“enable”或者“force”，默认为“enable”），此参数仅在首次编译时生效。若您想在非首次编译时生效该参数，需要清理编译磁盘的缓存。
 

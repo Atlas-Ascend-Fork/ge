@@ -21,6 +21,9 @@
 
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildInitialize_config_params/dynamic_shape_res.md#id1 -->
 
+**使用约束：**
+[OFFLINE_MODE](../aclgrphBuildModel_config_params/basic_functions.md#offline_mode)取值为7时，不支持配置该参数。
+
 **产品支持情况：**
 
 <!-- npu="950" id2 -->

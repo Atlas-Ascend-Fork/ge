@@ -65,6 +65,9 @@ cluster\_config.json配置示例如下：
 - HcclCommConfig：HCCL通信层的全局配置信息。
   - hcclCommName：必选，全局通信组的名称或标识符。
 
+**使用约束：**
+[OFFLINE_MODE](../aclgrphBuildModel_config_params/basic_functions.md#offline_mode)取值为7时，不支持配置该参数。
+
 **产品支持情况：**
 
 <!-- npu="950" id1 -->
@@ -111,7 +114,8 @@ cluster\_config.json配置示例如下：
 
 **使用约束：**
 
-通过GE图引擎接口构建离线模型时，建议在模型构建阶段通过`ge::ir_option::DETERMINISTIC`和`ge::ir_option::DETERMINISTIC_LEVEL`设置确定性及一致性配置。通过`aclmdl`接口加载、执行离线模型时，不建议调用`aclrtSetSysParamOpt`或`aclrtCtxSetSysParamOpt`，通过`ACL_OPT_DETERMINISTIC`修改该配置，否则可能导致运行时配置与模型构建时的配置不一致，无法保证预期的确定性及一致性效果。如需调整该配置，建议重新构建离线模型。
+- 通过GE图引擎接口构建离线模型时，建议在模型构建阶段通过`ge::ir_option::DETERMINISTIC`和`ge::ir_option::DETERMINISTIC_LEVEL`设置确定性及一致性配置。通过`aclmdl`接口加载、执行离线模型时，不建议调用`aclrtSetSysParamOpt`或`aclrtCtxSetSysParamOpt`，通过`ACL_OPT_DETERMINISTIC`修改该配置，否则可能导致运行时配置与模型构建时的配置不一致，无法保证预期的确定性及一致性效果。如需调整该配置，建议重新构建离线模型。
+- [OFFLINE_MODE](../aclgrphBuildModel_config_params/basic_functions.md#offline_mode)取值为7时，不支持二进制复用以及动态shape的确定性计算。
 
 **产品支持情况：**
 
@@ -227,6 +231,9 @@ sub\_comm\_config.json文件示例如下：
 
 - hcclCommName：通信组命名，供程序调用和区分。
 
+**使用约束：**
+[OFFLINE_MODE](../aclgrphBuildModel_config_params/basic_functions.md#offline_mode)取值为7时，不支持配置该参数。
+
 **产品支持情况：**
 
 <!-- npu="950" id22 -->
@@ -332,7 +339,7 @@ sub\_comm\_config.json文件示例如下：
 
 全量芯片支持。
 
-<!-- npu="950,A3,910b,910,310p,310b" id44 -->
+<!-- npu="950,A3,910b,910,310p,310b,IPV350" id44 -->
 ## VIRTUAL\_TYPE
 
 是否支持离线模型在昇腾虚拟化实例特性生成的虚拟设备上运行。此参数实际对应的options参数为`ge.virtual_type`。
@@ -354,17 +361,18 @@ sub\_comm\_config.json文件示例如下：
 
 **使用约束：**
 
-1. 参数取值为1时，进行模型转换，则转换后离线模型参与计算的逻辑AI Core核数可能比实际aicore\_num核数大，为aicore\_num支持配置范围的最小公倍数：
+- [OFFLINE_MODE](../aclgrphBuildModel_config_params/basic_functions.md#offline_mode)取值为7时，不支持配置该参数。
+- 参数取值为1时，进行模型转换，则转换后离线模型参与计算的逻辑AI Core核数可能比实际aicore\_num核数大，为aicore\_num支持配置范围的最小公倍数：
 
     例如aicore\_num支持配置范围为\{1,2,4,8\}，参数取值为1转换后的离线模型，NPU运行核数可能为8。
 
-2. 参数取值为1时，转换后的模型，如果包括如下算子，会默认使用单核，该场景下，将会导致转换后的模型推理性能下降。
-    - DynamicRNN
-    - PadV2D
-    - SquareSumV2
-    - DynamicRNNV2
-    - DynamicRNNV3
-    - DynamicGRUV
+- 参数取值为1时，转换后的模型，如果包括如下算子，会默认使用单核，该场景下，将会导致转换后的模型推理性能下降。
+  - DynamicRNN
+  - PadV2D
+  - SquareSumV2
+  - DynamicRNNV2
+  - DynamicRNNV3
+  - DynamicGRUV
 
 **产品支持情况：**
 
