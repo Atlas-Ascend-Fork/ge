@@ -59,6 +59,7 @@
 #include "base/err_msg.h"
 #include "common/memory/tensor_trans_utils.h"
 #include "graph/operator_factory_impl.h"
+#include "graph_metadef/common/plugin/ops_deliverables_manager.h"
 
 namespace {
 constexpr int32_t kMaxStrLen = 128;
@@ -276,8 +277,8 @@ static Status GEInitializeImpl(const std::map<std::string, std::string> &options
   // 4. init OpsProto lib plugin
   GE_ASSERT_SUCCESS(ge::custom_op::LoadCustomOps());
 
-  // 加载顺序遵循3.0目录结构，按op_graph->op_impl->op_proto->framework顺序加载，详细规则见PluginManager::GetOpsProtoPath注释
-  gert::OppPackageUtils::LoadAllOppPackage();
+  // 根据 OPP 清单加载 opgraph/ophost；清单不可用时回退到原有目录发现流程。
+  GE_ASSERT_GRAPH_SUCCESS(OpsDeliverablesManager::LoadOppPackages(options));
   std::string opsproto_path;
   ret = PluginManager::GetOpsProtoPath(opsproto_path);
   if (ret != SUCCESS) {
