@@ -319,6 +319,7 @@ TEST_F(ControlTaskCodeGeneratorUt, GenerateControlTaskFiles_Ok) {
   Om2CodegenModelBuilder builder;
   ASSERT_EQ(builder.Build(ge_model, task_code_builders, codegen_model, const_metas), SUCCESS);
 
+  codegen_model.artifact_name = codegen_model.model_name;
   ProgramGenerator generator(ast, task_code_builders, std::move(codegen_model));
   Om2CodePrinter code_printer("g1");
   ASSERT_EQ(generator.GenerateProgram(code_printer), SUCCESS);

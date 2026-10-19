@@ -41,17 +41,19 @@ Status Om2Codegen::Om2CodegenAndCompile(const ge::GeModelPtr &ge_model, const ge
   Om2CodegenModelBuilder builder;
   std::vector<gert::GertModelDataConstMeta> tmp_const_metas;
   GE_ASSERT_SUCCESS(builder.Build(ge_model, task_code_builders, codegen_model, tmp_const_metas));
+  const auto artifact_name = Om2Utils::EscapeArtifactName(ge_model->GetName());
+  codegen_model.artifact_name = artifact_name;
   auto tmp_var_metas = std::move(codegen_model.var_metas);
   ProgramGenerator generator(ast, task_code_builders, std::move(codegen_model), has_custom_kernel);
 
-  Om2CodePrinter code_printer(ge_model->GetName());
+  Om2CodePrinter code_printer(artifact_name);
   GE_ASSERT_SUCCESS(generator.GenerateProgram(code_printer));
   std::vector<gert::GertModelDataFile> source_artifacts;
   code_printer.GetOutputFiles(source_artifacts);
 
   gert::GertModelDataFile so_artifact;
-  so_artifact.file_name = gert::GertMakeStr("lib" + ge_model->GetName() + "_om2.so");
-  GE_ASSERT_SUCCESS(Om2Utils::CompileGeneratedCppToSo(source_artifacts, ge_model->GetName(), so_artifact, false),
+  const Om2CompileInfo compile_info{ge_model->GetName(), artifact_name, ge_model->GetGraph()->GetGraphID()};
+  GE_ASSERT_SUCCESS(Om2Utils::CompileGeneratedCppToSo(source_artifacts, compile_info, so_artifact, false),
                     "[OM2] Failed to compile generated C++ to shared library for model %s",
                     ge_model->GetName().c_str());
   GELOGI("[OM2] Model %s has finished generating source code files and compiling to the shared library.",

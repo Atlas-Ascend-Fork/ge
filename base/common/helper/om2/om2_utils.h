@@ -11,6 +11,7 @@
 #ifndef BASE_COMMON_HELPER_OM2_OM2_UTILS
 #define BASE_COMMON_HELPER_OM2_OM2_UTILS
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -24,11 +25,18 @@ inline bool IsOm2OnlineMode() {
   return env != nullptr && std::strcmp(env, "1") == 0;
 }
 
+struct Om2CompileInfo {
+  std::string model_name;
+  std::string artifact_name;
+  uint32_t graph_id = 0U;
+};
+
 class Om2Utils {
  public:
   static Status CompileGeneratedCppToSo(const std::vector<gert::GertModelDataFile> &artifacts,
-                                        const std::string &model_name, gert::GertModelDataFile &so_artifact,
+                                        const Om2CompileInfo &compile_info, gert::GertModelDataFile &so_artifact,
                                         const bool is_release = true);
+  static std::string EscapeArtifactName(const std::string &model_name);
   static std::string NormalizeCpuArch(const std::string &cpu);
 };
 }  // namespace ge

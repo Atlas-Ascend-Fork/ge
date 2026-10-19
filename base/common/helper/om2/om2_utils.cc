@@ -9,6 +9,7 @@
  */
 
 #include "om2_utils.h"
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
@@ -86,13 +87,14 @@ Status CreateMemFdFile(const std::string &name, const std::string &data, MemFdFi
   return SUCCESS;
 }
 
-Status CreateTempFile(const std::string &name, std::string &file_path) {
-  std::string path_template = "/tmp/.om2_" + std::to_string(getpid()) + "_" + name + "_XXXXXX";
+Status CreateTempFile(const Om2CompileInfo &compile_info, std::string &file_path) {
+  std::string path_template = "/tmp/.om2_" + std::to_string(getpid()) + "_" + std::to_string(compile_info.graph_id) +
+                              "_" + std::to_string(GetCurrentTimestamp()) + "_XXXXXX";
   GE_ASSERT_SUCCESS(CheckSafePath(path_template));
   std::vector<char_t> path(path_template.begin(), path_template.end());
   path.push_back('\0');
   const int32_t fd = mkstemp(path.data());
-  GE_ASSERT_TRUE(fd >= 0, "[OM2] Failed to create temp file for %s", name.c_str());
+  GE_ASSERT_TRUE(fd >= 0, "[OM2] Failed to create temp file for %s", compile_info.model_name.c_str());
   (void)close(fd);
   file_path = path.data();
   GE_ASSERT_SUCCESS(CheckSafePath(file_path));
@@ -519,10 +521,10 @@ Status CreateCompileCppFiles(const std::vector<gert::GertModelDataFile> &artifac
   return SUCCESS;
 }
 
-Status CompileWithMemFdMakefile(const gert::GertModelDataFile &makefile_artifact,
+Status CompileWithMemFdMakefile(const Om2CompileInfo &compile_info, const gert::GertModelDataFile &makefile_artifact,
                                 const std::vector<MemFdFile> &cpp_files, const bool is_release,
                                 gert::GertModelDataFile &so_artifact, std::string &so_path, MemFdFile &makefile_file) {
-  GE_ASSERT_SUCCESS(CreateTempFile(gert::GertGetStr(so_artifact.file_name), so_path));
+  GE_ASSERT_SUCCESS(CreateTempFile(compile_info, so_path));
 
   std::string compile_makefile_data;
   GE_ASSERT_SUCCESS(BuildCompileMakefileData(makefile_artifact, so_path, cpp_files, compile_makefile_data));
@@ -552,6 +554,12 @@ Status CompileWithMemFdMakefile(const gert::GertModelDataFile &makefile_artifact
 
 }  // namespace
 
+std::string Om2Utils::EscapeArtifactName(const std::string &model_name) {
+  auto artifact_name = model_name;
+  std::replace(artifact_name.begin(), artifact_name.end(), '/', '_');
+  return artifact_name;
+}
+
 std::string Om2Utils::NormalizeCpuArch(const std::string &cpu) {
   if (cpu == "arm64") {
     return "aarch64";
@@ -560,10 +568,11 @@ std::string Om2Utils::NormalizeCpuArch(const std::string &cpu) {
 }
 
 Status Om2Utils::CompileGeneratedCppToSo(const std::vector<gert::GertModelDataFile> &artifacts,
-                                         const std::string &model_name, gert::GertModelDataFile &so_artifact,
+                                         const Om2CompileInfo &compile_info, gert::GertModelDataFile &so_artifact,
                                          const bool is_release) {
+  const auto &model_name = compile_info.model_name;
   constexpr char kModelApiName[] = "om2_model_api.h";
-  const std::string interface_name = model_name + "_internal.h";
+  const std::string interface_name = compile_info.artifact_name + "_internal.h";
   const gert::GertModelDataFile *interface_artifact = nullptr;
   GE_ASSERT_SUCCESS(FindArtifact(artifacts, interface_name, interface_artifact));
   const gert::GertModelDataFile *model_api_artifact = nullptr;
@@ -595,10 +604,10 @@ Status Om2Utils::CompileGeneratedCppToSo(const std::vector<gert::GertModelDataFi
   GE_CHK_BOOL_RET_STATUS(!cpp_files.empty(), FAILED, "[OM2] No generated cpp artifacts found for model %s",
                          model_name.c_str());
 
-  so_artifact.file_name = gert::GertMakeStr("lib" + model_name + "_om2.so");
+  so_artifact.file_name = gert::GertMakeStr("lib" + compile_info.artifact_name + "_om2.so");
   const uint64_t compile_start_us = ge::GetCurrentTimestamp();
-  GE_ASSERT_SUCCESS(
-      CompileWithMemFdMakefile(*makefile_artifact, cpp_files, is_release, so_artifact, so_path, makefile_file));
+  GE_ASSERT_SUCCESS(CompileWithMemFdMakefile(compile_info, *makefile_artifact, cpp_files, is_release, so_artifact,
+                                             so_path, makefile_file));
   GEEVENT("[OM2] Model %s so compile elapsed: %lu us", model_name.c_str(),
           ge::GetCurrentTimestamp() - compile_start_us);
   return GRAPH_SUCCESS;

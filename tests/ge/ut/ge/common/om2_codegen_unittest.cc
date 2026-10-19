@@ -1128,7 +1128,9 @@ $(TARGET): $(SRC_FILES)
 
   gert::GertModelDataFile so_artifact;
   ScopedStdoutCapture stdout_capture;
-  ASSERT_EQ(Om2Utils::CompileGeneratedCppToSo(artifacts, model_name, so_artifact, false), SUCCESS);
+  ASSERT_EQ(
+      Om2Utils::CompileGeneratedCppToSo(artifacts, Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
+      SUCCESS);
   const std::string compile_stdout = stdout_capture.Stop();
   EXPECT_EQ(std::string(gert::GertGetStr(so_artifact.file_name)), "lib" + model_name + "_om2.so");
   EXPECT_TRUE(so_artifact.data);
@@ -1191,7 +1193,9 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_MissingModelApiArtifact_Failed) {
   auto artifacts = MakeBuildConfigTestArtifacts(model_name);
   artifacts.erase(artifacts.begin());
   gert::GertModelDataFile so_artifact;
-  EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(artifacts, model_name, so_artifact, false), SUCCESS);
+  EXPECT_NE(
+      Om2Utils::CompileGeneratedCppToSo(artifacts, Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
+      SUCCESS);
 }
 
 std::string GetNativeMachine() {
@@ -1204,8 +1208,8 @@ std::string GetNativeMachine() {
 
 Status CompileBuildConfigArtifacts(const std::string &model_name) {
   gert::GertModelDataFile so_artifact;
-  const Status ret =
-      Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name), model_name, so_artifact, false);
+  const Status ret = Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name),
+                                                       Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false);
   if (ret == SUCCESS) {
     EXPECT_TRUE(so_artifact.data);
   }
@@ -1277,7 +1281,8 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_BuildConfigInvalidChar_Rejected) {
 
   const std::string model_name = "bc_invalid_char";
   gert::GertModelDataFile so_artifact;
-  EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name), model_name, so_artifact, false),
+  EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name),
+                                              Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
             SUCCESS);
   const std::string error_message = ErrorManager::GetInstance().GetErrorMessage();
   EXPECT_NE(error_message.find("E10001"), std::string::npos);
@@ -1292,7 +1297,8 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_BuildConfigNonWhitelisted_Rejected)
 
   const std::string model_name = "bc_invalid_var";
   gert::GertModelDataFile so_artifact;
-  EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name), model_name, so_artifact, false),
+  EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name),
+                                              Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
             SUCCESS);
 }
 
@@ -1304,7 +1310,8 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_BuildConfigUnbalancedQuote_Rejected
 
   const std::string model_name = "bc_invalid_quote";
   gert::GertModelDataFile so_artifact;
-  EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name), model_name, so_artifact, false),
+  EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name),
+                                              Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
             SUCCESS);
 }
 
@@ -1316,7 +1323,8 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_BuildConfigNotMakeCommand_Rejected)
 
   const std::string model_name = "bc_not_make";
   gert::GertModelDataFile so_artifact;
-  EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name), model_name, so_artifact, false),
+  EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name),
+                                              Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
             SUCCESS);
 }
 
@@ -1328,7 +1336,8 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_BuildConfigUseStubLib_Rejected) {
 
   const std::string model_name = "bc_stub_lib";
   gert::GertModelDataFile so_artifact;
-  EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name), model_name, so_artifact, false),
+  EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name),
+                                              Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
             SUCCESS);
 }
 
@@ -1365,7 +1374,8 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_BuildConfigQuotedMakePath_Ok) {
 
   const std::string model_name = "bc_quoted_make_path";
   gert::GertModelDataFile so_artifact;
-  ASSERT_EQ(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name), model_name, so_artifact, false),
+  ASSERT_EQ(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name),
+                                              Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
             SUCCESS);
   EXPECT_TRUE(so_artifact.data);
 }
@@ -1383,9 +1393,9 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_BuildConfigMakefileOptionRejected) 
     GetThreadLocalContext().SetGraphOption({{"ge.buildConfig", invalid_build_configs[i]}});
     const std::string model_name = "bc_makefile_option_" + std::to_string(i);
     gert::GertModelDataFile so_artifact;
-    EXPECT_NE(
-        Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name), model_name, so_artifact, false),
-        SUCCESS)
+    EXPECT_NE(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name),
+                                                Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
+              SUCCESS)
         << invalid_build_configs[i];
   }
 }
@@ -1479,7 +1489,8 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_HostEnvNativeArmAlias_Ok) {
 
   const std::string model_name = "host_env_arm64_alias";
   gert::GertModelDataFile so_artifact;
-  ASSERT_EQ(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name), model_name, so_artifact, false),
+  ASSERT_EQ(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name),
+                                              Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
             SUCCESS);
   EXPECT_TRUE(so_artifact.data);
 }
@@ -1508,7 +1519,8 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_HostEnvNonArmTarget_Ok) {
 
   const std::string model_name = "host_env_non_arm";
   gert::GertModelDataFile so_artifact;
-  ASSERT_EQ(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name), model_name, so_artifact, false),
+  ASSERT_EQ(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name),
+                                              Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
             SUCCESS);
   EXPECT_TRUE(so_artifact.data);
 }

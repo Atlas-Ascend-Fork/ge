@@ -302,6 +302,7 @@ struct ArgsTableSemantic {
 
 struct Om2CodegenModel {
   std::string model_name;
+  std::string artifact_name;
   RuntimeResourceSemantic runtime;
   ModelIoSemantic model_io;
   KernelRegistrySemantic kernel_registry;

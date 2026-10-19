@@ -1426,6 +1426,7 @@ ProgramGenerator CreateProgramGenerator(GeRootModelPtr &ge_root_model, bool has_
     ADD_FAILURE() << "[OM2] Failed to build om2 codegen model";
     return ProgramGenerator(ast, {}, Om2CodegenModel(), has_custom_kernel);
   }
+  codegen_model.artifact_name = codegen_model.model_name;
   return ProgramGenerator(ast, task_code_builders, std::move(codegen_model), has_custom_kernel);
 }
 
