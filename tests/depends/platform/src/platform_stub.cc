@@ -11,15 +11,21 @@
 #include <unordered_set>
 #include <cstdint>
 #include "platform_info.h"
+#include "platform_stub.h"
 
 namespace {
 constexpr const char *kInvlaidSocVersion = "invalid_version";
 constexpr const char *kInvlaidInitSocVersion = "invalid_init_version";
 bool g_pcie_through_partial_support = false;
+std::string g_npu_arch = "2201";
 }  // namespace
 
 void SetPcieThroughPartialSupport(bool supported) {
   g_pcie_through_partial_support = supported;
+}
+
+void SetPlatformNpuArch(const std::string &npu_arch) {
+  g_npu_arch = npu_arch;
 }
 
 fe::PlatformInfoManager &fe::PlatformInfoManager::Instance() {
@@ -166,7 +172,7 @@ bool fe::PlatFormInfos::GetPlatformResWithLock(const string &label, const string
   } else if (label == "version" && key == "Short_SoC_Version") {
     val = "Ascend910B";
   } else if (label == "version" && key == "NpuArch") {
-    val = "2201";
+    val = g_npu_arch;
   } else {
     val = "0";
   }

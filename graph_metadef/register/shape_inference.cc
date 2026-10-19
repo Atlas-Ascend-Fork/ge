@@ -9,6 +9,8 @@
  */
 
 #include "register/shape_inference.h"
+#include <set>
+#include <string>
 #include "exe_graph/lowering/kernel_run_context_builder.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 #include "graph/debug/ge_attr_define.h"
@@ -21,6 +23,9 @@
 #include "common/checker.h"
 #include "graph/utils/inference_rule.h"
 #include "graph/custom_op/infer_meta.h"
+#include "graph/ge_context.h"
+#include "platform/platform_info.h"
+#include "platform/soc_spec.h"
 
 namespace gert {
 namespace {
@@ -28,6 +33,39 @@ using Index = struct InputIndex {
   size_t input_index;
   size_t invalid_index_num;
 };
+
+// 走默认值填充（新流程）的 NpuArch 白名单，Ascend950（DAV_3510）及之后版本在此显式添加
+const std::set<std::string> kDefaultValueInferEnabledArch = {
+    std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510)),
+};
+
+std::string GetCurrentNpuArch() {
+  std::string soc_version;
+  (void)ge::GetContext().GetOption(ge::SOC_VERSION, soc_version);
+  fe::PlatFormInfos plat_form_infos;
+  fe::OptionalInfos optional_infos;
+  if (fe::PlatformInfoManager::GeInstance().GetPlatformInfos(soc_version, plat_form_infos, optional_infos) != 0U) {
+    GELOGW("Get platform infos failed, soc version: %s.", soc_version.c_str());
+    return "";
+  }
+  std::string npu_arch;
+  if (!plat_form_infos.GetPlatformResWithLock("version", "NpuArch", npu_arch)) {
+    GELOGW("Get NpuArch failed, soc version: %s.", soc_version.c_str());
+    return "";
+  }
+  return npu_arch;
+}
+
+// 是否走老的自动推导流程：Ascend950 之前的芯片走老流程；取不到 NpuArch 时保守走老流程
+bool NeedLegacyInfer() {
+  // 同一进程内 SoC 不会变化，NpuArch 查询结果缓存一次
+  static const std::string npu_arch = GetCurrentNpuArch();
+  if (npu_arch.empty()) {
+    return true;
+  }
+  return kDefaultValueInferEnabledArch.count(npu_arch) == 0U;
+}
+
 bool IsInputDescValid(const ge::GeTensorDesc &input_desc, size_t &invalid_index_num) {
   if (input_desc.IsValid() != ge::GRAPH_SUCCESS) {
     if (invalid_index_num < std::numeric_limits<size_t>::max()) {
@@ -709,6 +747,39 @@ ge::graphStatus CommitCustomOpInferMetaResult(const ge::OpDescPtr &staged_op_des
   }
   return ge::GRAPH_SUCCESS;
 }
+
+// 按维度动静状态强制刷新占位 range：动态维度 {0, -1}，静态维度 {dim, dim}；UNKNOWN_RANK 不处理
+void RefreshShapeRangePlaceholder(ge::GeTensorDesc &tensor_desc) {
+  const auto &shape = tensor_desc.GetShape();
+  if (shape.IsUnknownDimNum()) {
+    return;
+  }
+  std::vector<std::pair<int64_t, int64_t>> range;
+  for (size_t i = 0UL; i < shape.GetDimNum(); ++i) {
+    const int64_t dim = shape.GetDim(i);
+    if (dim == ge::UNKNOWN_DIM) {
+      (void)range.emplace_back(0, ge::UNKNOWN_DIM);
+    } else {
+      (void)range.emplace_back(dim, dim);
+    }
+  }
+  tensor_desc.SetShapeRange(range);
+  tensor_desc.SetOriginShapeRange(range);
+}
+
+// 新流程：不做 range 推导，按输出维度动静状态填充默认值 range
+// 输入 shape range 由上游传播/用户设置保证（NeedInferShapeRange 已判定动态输入必有 range），此处不处理
+ge::graphStatus InferShapeRangeWithDefaultValue(const ge::OpDescPtr &op_desc) {
+  GE_ASSERT_NOTNULL(op_desc);
+  for (size_t i = 0UL; i < op_desc->GetOutputsSize(); ++i) {
+    auto output_desc = op_desc->MutableOutputDesc(static_cast<uint32_t>(i));
+    if (output_desc == nullptr) {
+      continue;
+    }
+    RefreshShapeRangePlaceholder(*output_desc);
+  }
+  return ge::GRAPH_SUCCESS;
+}
 }  // namespace
 
 ge::graphStatus InferShapeRangeOnCompile(const ge::Operator &op, const ge::OpDescPtr &op_desc) {
@@ -728,6 +799,10 @@ ge::graphStatus InferShapeRangeOnCompile(const ge::Operator &op, const ge::OpDes
     return InferShapeRangeCustom(op, op_desc, functions->infer_shape_range);
   }
   if (functions->infer_shape != nullptr) {
+    if (!NeedLegacyInfer()) {
+      GELOGD("Op[%s], type[%s] use default value shape range.", op_desc->GetName().c_str(), op_desc->GetType().c_str());
+      return InferShapeRangeWithDefaultValue(op_desc);
+    }
     GELOGD("Cannot get infer shape range func op[%s], type[%s], will use an automatic derivation strategy.",
            op_desc->GetName().c_str(), op_desc->GetType().c_str());
     return InferShapeRangeAutomaticly(op, op_desc, functions->infer_shape);
