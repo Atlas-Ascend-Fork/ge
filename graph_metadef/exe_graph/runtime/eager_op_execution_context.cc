@@ -76,9 +76,15 @@ Tensor *EagerOpExecutionContext::MallocOutputTensor(size_t index, const StorageS
   size_t aligned_tensor_size = 0U;
   GE_ASSERT_TRUE(!ge::RoundUpOverflow(static_cast<size_t>(byte_size), kMemAlignment, aligned_tensor_size));
   const TensorData &tensor_data = output_tensor->GetTensorData();
-  // 静态场景下内存地址已赋值 不需要去Malloc
+  // 静态场景下内存地址已赋值且尺寸足够, 不需要去Malloc
   // 注意：静态图逻辑地址可能是合法的0（偏移），不能用 GetAddr() != nullptr 判断
-  if (tensor_data.GetSize() > 0) {
+  // 动态 shape 场景下本接口每轮执行都会被调用，输出 Tensor 随节点 context 跨轮驻留，
+  // 已有内存可能是上一轮按更小 shape 分配的；尺寸不足时必须重新分配，否则算子会按本轮
+  // shape 向过小的缓冲区写出界，且输出拷贝阶段会因 buffer 不足失败。
+  // 比较基准用逻辑尺寸 byte_size 而非对齐后的 aligned_tensor_size：静态图预赋值的缓冲区
+  // 按本 shape 的逻辑尺寸给出，用对齐值比较会把静态场景误判为不足而重新分配。
+  // 已知限制：TensorData::Free() 不重置 size_，调用方主动释放过该输出内存时本判据无法识别。
+  if ((tensor_data.GetSize() > 0) && (tensor_data.GetSize() >= static_cast<size_t>(byte_size))) {
     return output_tensor;
   }
   // 外部未申请输出内存, 内部申请并将内存共享给output_tensor

@@ -73,7 +73,11 @@ Tensor *HostCpuOpExecutionContext::MallocOutputTensor(size_t index, const Storag
     tensor_data.SetPlacement(kOnHost);
     return output_tensor;
   }
-  if (output_tensor->GetTensorData().GetSize() > 0U) {
+  // 动态 shape 场景下本接口每轮执行都会被调用，输出 Tensor 随节点 context 跨轮驻留，
+  // 已有内存可能是上一轮按更小 shape 分配的；尺寸不足时必须重新分配，否则算子会按本轮
+  // shape 向过小的缓冲区写出界。
+  const auto existing_size = output_tensor->GetTensorData().GetSize();
+  if ((existing_size > 0U) && (existing_size >= static_cast<size_t>(logical_size))) {
     GE_ASSERT_TRUE(output_tensor->GetPlacement() == kOnHost, "Host CPU output tensor placement must be host.");
     return output_tensor;
   }

@@ -704,6 +704,15 @@ void SetUpMinimalDavinciModel(DavinciModel &model, const OpDescPtr &op_desc) {
     in_desc->SetOriginShape(GeShape({2, 3}));
   }
 
+  // 输出描述需要与测试自定义算子实际产出的 storage shape 保持一致：MallocOutputTensor 以本轮 storage
+  // shape 的逻辑字节数（{2,1,3,16} int64 = 768B）校验预赋值 buffer 是否够用，描述里声明空 shape 会把
+  // 标量 8B 误当成容量。
+  auto out_desc = op_desc->MutableOutputDesc(0);
+  if (out_desc != nullptr) {
+    out_desc->SetShape(GeShape({2, 1, 3, 16}));
+    out_desc->SetOriginShape(GeShape({2, 3}));
+  }
+
   // Reset offsets to fit within mem_size (CreateOpDesc uses g_node_index * 64,
   // which may exceed mem_size when running after other tests)
   const size_t input_count = op_desc->GetInputsSize();
