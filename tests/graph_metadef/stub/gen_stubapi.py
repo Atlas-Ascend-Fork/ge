@@ -76,6 +76,13 @@ RETURN_STATEMENTS = {
     "std::vector<ge::DataType>&": "    return this->impl_->types;",
     "std::vector<ge::Format>&": "    return this->impl_->formats;",
     "ge::AscendString": '    return "";',
+    "bool AscendString::operator<(const AscendString &d) const": (
+        "    return (name_ == nullptr) ? (d.name_ != nullptr)"
+        " : ((d.name_ == nullptr) ? false : ((*name_) < (*(d.name_))));"
+    ),
+    "bool AscendString::operator>(const AscendString &d) const": "    return d < *this;",
+    "bool AscendString::operator<=(const AscendString &d) const": "    return !(d < *this);",
+    "bool AscendString::operator>=(const AscendString &d) const": "    return !(*this < d);",
     "ge::AscendString& OpParamDef::": "    return this->impl_->name;",
     "ge::AscendString& OpAttrDef::": "    return this->impl_->name;",
     "ge::AscendString& OpAICoreConfig::": "    return this->impl_->cfg_info[key];",
@@ -515,6 +522,9 @@ pattern_func_name = re.compile(r"([a-zA-Z0-9~_\-]+\s*|operator?.*)[(]")
 # template
 pattern_template = re.compile(r"^\s*template")
 pattern_template_end = re.compile(r">\s*$")
+# operator overloads such as operator< / operator<=: the angle brackets belong to
+# the operator name, not to a template argument list
+pattern_operator_overload = re.compile(r"\boperator\s*(?:<<|>>|<=>|<=|>=|==|!=|<|>)")
 # namespace
 pattern_namespace = re.compile(r"namespace.*{")
 # class : which can handle classA a and {not on the same line, but if found ';' after class,then don't deal with
@@ -752,6 +762,10 @@ class H2CC(object):
 
     @staticmethod
     def _remove_template_content(line):
+        # "bool operator<(const AscendString &d) const;" is a function declaration;
+        # stripping its angle brackets would make it look like a member variable
+        if pattern_operator_overload.search(line):
+            return line
         result = []
         depth = 0
         for char in line:
