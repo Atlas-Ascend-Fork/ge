@@ -58,16 +58,16 @@ std::pair<std::string, std::string> ExtractParentDirAndFileName(const std::strin
 // ===== 2. 通用 JSON 解析 =====
 ge::Status ParseTensorDescFromJson(const ge::JsonFile &json_file, gert::GertTensorDesc &desc) {
   ge::JsonFile::TryGetAndApply<std::string>(json_file, "name",
-                                            [&](const std::string &v) { desc.name = gert::GertMakeStr(v); });
+                                            [&desc](const std::string &v) { desc.name = gert::GertMakeStr(v); });
   ge::JsonFile::TryGetAndApply<std::vector<int64_t>>(json_file, "shape",
-                                                     [&](const std::vector<int64_t> &v) { desc.shape = v; });
+                                                     [&desc](const std::vector<int64_t> &v) { desc.shape = v; });
   ge::JsonFile::TryGetAndApply<int32_t>(json_file, "data_type",
-                                        [&](const int32_t &v) { desc.data_type = static_cast<ge::DataType>(v); });
+                                        [&desc](const int32_t &v) { desc.data_type = static_cast<ge::DataType>(v); });
   ge::JsonFile::TryGetAndApply<int32_t>(json_file, "format",
-                                        [&](const int32_t &v) { desc.format = static_cast<ge::Format>(v); });
-  ge::JsonFile::TryGetAndApply<size_t>(json_file, "size", [&](const size_t &v) { desc.size = v; });
+                                        [&desc](const int32_t &v) { desc.format = static_cast<ge::Format>(v); });
+  ge::JsonFile::TryGetAndApply<size_t>(json_file, "size", [&desc](const size_t &v) { desc.size = v; });
   ge::JsonFile::TryGetAndApply<std::vector<std::pair<int64_t, int64_t>>>(
-      json_file, "shape_range", [&](const std::vector<std::pair<int64_t, int64_t>> &v) { desc.shape_range = v; });
+      json_file, "shape_range", [&desc](const std::vector<std::pair<int64_t, int64_t>> &v) { desc.shape_range = v; });
   return ge::SUCCESS;
 }
 
@@ -78,7 +78,7 @@ std::vector<std::string> SplitString(const std::string &str, const char delim) {
   size_t start = 0U;
   while (start <= str.size()) {
     const auto pos = str.find(delim, start);
-    elems.emplace_back(str.substr(start, pos == std::string::npos ? str.size() - start : pos - start));
+    (void)elems.emplace_back(str.substr(start, pos == std::string::npos ? str.size() - start : pos - start));
     if (pos == std::string::npos) {
       break;
     }
@@ -103,7 +103,7 @@ ge::Status ParseAippDimInfo(const std::string &info_str, ge::InputOutputDims &di
     if (dim_str.empty()) {
       continue;
     }
-    dims_info.dims.emplace_back(std::strtol(dim_str.c_str(), nullptr, kAippDecimalRadix));
+    (void)dims_info.dims.emplace_back(std::strtol(dim_str.c_str(), nullptr, kAippDecimalRadix));
   }
   return ge::SUCCESS;
 }
@@ -186,7 +186,7 @@ std::vector<ge::InputOutputDims> ParseAippDimsFromJson(const ge::JsonFile &entry
   for (const auto &str : entry[key]) {
     ge::InputOutputDims dims;
     if (ParseAippDimInfo(str.get<std::string>(), dims) == ge::SUCCESS) {
-      result.emplace_back(std::move(dims));
+      (void)result.emplace_back(std::move(dims));
     }
   }
   return result;
@@ -246,8 +246,8 @@ ge::Status ParseAippJson(const ge::JsonFile &aipp_json,
 // ===== 4. RTVar 解析 =====
 
 ge::Status ParseTransNodeFromJson(const ge::JsonFile &json_file, RTTransNodeInfo &node_info) {
-  ge::JsonFile::TryGetAndApply<std::string>(json_file, "node_type",
-                                            [&](const std::string &v) { node_info.node_type = gert::GertMakeStr(v); });
+  ge::JsonFile::TryGetAndApply<std::string>(
+      json_file, "node_type", [&node_info](const std::string &v) { node_info.node_type = gert::GertMakeStr(v); });
   ge::JsonFile input_json;
   if (json_file.Get("input", input_json)) {
     GE_ASSERT_SUCCESS(ParseTensorDescFromJson(input_json, node_info.input));
@@ -261,7 +261,7 @@ ge::Status ParseTransNodeFromJson(const ge::JsonFile &json_file, RTTransNodeInfo
 
 ge::Status ParseCopyInfoFromJson(const ge::JsonFile &json_file, RTCopyNodeInfo &copy_info) {
   ge::JsonFile::TryGetAndApply<std::string>(
-      json_file, "src_var_name", [&](const std::string &v) { copy_info.src_var_name = gert::GertMakeStr(v); });
+      json_file, "src_var_name", [&copy_info](const std::string &v) { copy_info.src_var_name = gert::GertMakeStr(v); });
   ge::JsonFile src_tensor_desc_json;
   if (json_file.Get("src_tensor_desc", src_tensor_desc_json)) {
     GE_ASSERT_SUCCESS(ParseTensorDescFromJson(src_tensor_desc_json, copy_info.src_tensor_desc));
@@ -273,20 +273,22 @@ ge::Status ParseCopyInfoFromJson(const ge::JsonFile &json_file, RTCopyNodeInfo &
 ge::Status ParseVarEntryFromJson(const ge::JsonFile &json_file, const uint8_t *weight_data, size_t weight_data_size,
                                  RTVarEntry &entry) {
   ge::JsonFile::TryGetAndApply<std::string>(json_file, "var_name",
-                                            [&](const std::string &v) { entry.var_name = gert::GertMakeStr(v); });
+                                            [&entry](const std::string &v) { entry.var_name = gert::GertMakeStr(v); });
   ge::JsonFile::TryGetAndApply<std::string>(json_file, "file_name",
-                                            [&](const std::string &v) { entry.file_name = gert::GertMakeStr(v); });
+                                            [&entry](const std::string &v) { entry.file_name = gert::GertMakeStr(v); });
   ge::JsonFile::TryGetAndApply<std::string>(json_file, "var_key",
-                                            [&](const std::string &v) { entry.var_key = gert::GertMakeStr(v); });
+                                            [&entry](const std::string &v) { entry.var_key = gert::GertMakeStr(v); });
   ge::JsonFile::TryGetAndApply<std::string>(json_file, "op_type",
-                                            [&](const std::string &v) { entry.op_type = gert::GertMakeStr(v); });
-  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "logic_addr", [&](const uint64_t &v) { entry.logic_addr = v; });
-  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "size", [&](const uint64_t &v) { entry.size = v; });
-  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "memory_type", [&](const uint64_t &v) { entry.memory_type = v; });
+                                            [&entry](const std::string &v) { entry.op_type = gert::GertMakeStr(v); });
+  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "logic_addr",
+                                         [&entry](const uint64_t &v) { entry.logic_addr = v; });
+  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "size", [&entry](const uint64_t &v) { entry.size = v; });
+  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "memory_type",
+                                         [&entry](const uint64_t &v) { entry.memory_type = v; });
   ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "changed_graph_id",
-                                         [&](const uint64_t &v) { entry.changed_graph_id = v; });
+                                         [&entry](const uint64_t &v) { entry.changed_graph_id = v; });
   ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "allocated_graph_id",
-                                         [&](const uint64_t &v) { entry.allocated_graph_id = v; });
+                                         [&entry](const uint64_t &v) { entry.allocated_graph_id = v; });
 
   ge::JsonFile tensor_desc_json;
   if (json_file.Get("tensor_desc", tensor_desc_json)) {
@@ -298,7 +300,7 @@ ge::Status ParseVarEntryFromJson(const ge::JsonFile &json_file, const uint8_t *w
     for (const auto &node_json : trans_road_json) {
       RTTransNodeInfo node_info;
       GE_ASSERT_SUCCESS(ParseTransNodeFromJson(ge::JsonFile(node_json), node_info));
-      entry.trans_road.emplace_back(std::move(node_info));
+      (void)entry.trans_road.emplace_back(std::move(node_info));
     }
   }
 
@@ -324,13 +326,13 @@ ge::Status ParseVarEntryFromJson(const ge::JsonFile &json_file, const uint8_t *w
 }
 
 ge::Status ParseVarMetaFromJson(const ge::JsonFile &json_file, gert::GertModelDataVarMeta &meta) {
-  ge::JsonFile::TryGetAndApply<size_t>(json_file, "index", [&](const size_t &v) { meta.index = v; });
+  ge::JsonFile::TryGetAndApply<size_t>(json_file, "index", [&meta](const size_t &v) { meta.index = v; });
   ge::JsonFile::TryGetAndApply<std::string>(json_file, "var_name",
-                                            [&](const std::string &v) { meta.var_name = gert::GertMakeStr(v); });
+                                            [&meta](const std::string &v) { meta.var_name = gert::GertMakeStr(v); });
   ge::JsonFile::TryGetAndApply<std::string>(json_file, "op_type",
-                                            [&](const std::string &v) { meta.op_type = gert::GertMakeStr(v); });
+                                            [&meta](const std::string &v) { meta.op_type = gert::GertMakeStr(v); });
   ge::JsonFile::TryGetAndApply<std::string>(json_file, "op_name",
-                                            [&](const std::string &v) { meta.op_name = gert::GertMakeStr(v); });
+                                            [&meta](const std::string &v) { meta.op_name = gert::GertMakeStr(v); });
 
   ge::JsonFile tensor_desc_json;
   if (json_file.Get("tensor_desc", tensor_desc_json)) {
@@ -407,7 +409,7 @@ ge::Status DeserializeManifest(const gert::ZipArchiveReader &archive, const std:
                                GertModelData &model_data) {
   const auto full_path = archive.FindEntry(relative_path);
   if (full_path.empty()) {
-    REPORT_PREDEFINED_ERR_MSG(
+    (void)REPORT_PREDEFINED_ERR_MSG(
         "E10059", std::vector<const char *>({"stage", "reason"}),
         std::vector<const char *>({"DeserializeGertModelData", "manifest.json not found in ZIP archive."}));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2] manifest.json not found in ZIP archive.");
@@ -427,12 +429,12 @@ ge::Status DeserializeManifest(const gert::ZipArchiveReader &archive, const std:
                  "[OM2] manifest.json missing 'compatibility' field");
   ge::JsonFile::TryGetAndApply<std::string>(
       compat_json, gert::OM2_MANIFEST_KEY_COMPILER_VERSION,
-      [&](const std::string &v) { manifest.compatibility.compiler_version = gert::GertMakeStr(v); });
+      [&manifest](const std::string &v) { manifest.compatibility.compiler_version = gert::GertMakeStr(v); });
   ge::JsonFile::TryGetAndApply<std::string>(
       compat_json, gert::OM2_MANIFEST_KEY_REQUIRED_EXECUTOR_VERSION,
-      [&](const std::string &v) { manifest.compatibility.required_executor_version = gert::GertMakeStr(v); });
+      [&manifest](const std::string &v) { manifest.compatibility.required_executor_version = gert::GertMakeStr(v); });
   ge::JsonFile::TryGetAndApply<std::map<std::string, std::string>>(
-      compat_json, gert::OM2_MANIFEST_KEY_USED_FEATURES, [&](const std::map<std::string, std::string> &v) {
+      compat_json, gert::OM2_MANIFEST_KEY_USED_FEATURES, [&manifest](const std::map<std::string, std::string> &v) {
         for (const auto &[feature_name, feature_version] : v) {
           manifest.compatibility.used_features[gert::GertMakeStr(feature_name)] = gert::GertMakeStr(feature_version);
         }
@@ -440,8 +442,9 @@ ge::Status DeserializeManifest(const gert::ZipArchiveReader &archive, const std:
 
   GE_ASSERT_TRUE(json_file.Get(gert::OM2_MODEL_NUM, manifest.model_num),
                  "[OM2] manifest.json missing 'model_num' field");
-  ge::JsonFile::TryGetAndApply<std::string>(json_file, gert::OM2_ATC_COMMAND,
-                                            [&](const std::string &v) { manifest.atc_command = gert::GertMakeStr(v); });
+  ge::JsonFile::TryGetAndApply<std::string>(json_file, gert::OM2_ATC_COMMAND, [&manifest](const std::string &v) {
+    manifest.atc_command = gert::GertMakeStr(v);
+  });
 
   GELOGI("[OM2] Manifest deserialized: compiler_version=%s, required_executor_version=%s, executor_version=%s",
          gert::GertGetStr(manifest.compatibility.compiler_version),
@@ -458,7 +461,7 @@ ge::Status ParseModelMetaInputs(const ge::JsonFile &json_file, gert::GertModelDa
       GE_ASSERT_SUCCESS(ParseTensorDescFromJson(input_file, desc));
       std::vector<int64_t> max_gear_shape;
       if (input_file.Get("max_gear_shape", max_gear_shape)) {
-        model_meta.origin_input_dims.emplace_back(desc.shape);
+        (void)model_meta.origin_input_dims.emplace_back(desc.shape);
         desc.shape = max_gear_shape;
       }
       gert::GertTensorDesc desc_v2 = gert::MakeGertTensorDesc(desc);
@@ -466,8 +469,8 @@ ge::Status ParseModelMetaInputs(const ge::JsonFile &json_file, gert::GertModelDa
       if (input_file.Get("shape_aclmdlGetInputDimsV2", shape_v2)) {
         desc_v2.shape = shape_v2;
       }
-      model_meta.input_desc.emplace_back(std::move(desc));
-      model_meta.input_desc_v2.emplace_back(std::move(desc_v2));
+      (void)model_meta.input_desc.emplace_back(std::move(desc));
+      (void)model_meta.input_desc_v2.emplace_back(std::move(desc_v2));
     }
   }
   return ge::SUCCESS;
@@ -481,8 +484,8 @@ ge::Status ParseModelMetaOutputs(const ge::JsonFile &json_file, gert::GertModelD
       gert::GertTensorDesc desc;
       GE_ASSERT_SUCCESS(ParseTensorDescFromJson(output_file, desc));
       gert::GertTensorDesc desc_v2 = gert::MakeGertTensorDesc(desc);
-      model_meta.output_desc.emplace_back(std::move(desc));
-      model_meta.output_desc_v2.emplace_back(std::move(desc_v2));
+      (void)model_meta.output_desc.emplace_back(std::move(desc));
+      (void)model_meta.output_desc_v2.emplace_back(std::move(desc_v2));
     }
   }
   return ge::SUCCESS;
@@ -506,7 +509,7 @@ void ParseGearFromJson(const ge::JsonFile &gear_file, const size_t gear_idx, ger
         shape_str += ",";
         shape_str += std::to_string(dims[i].get<int64_t>());
       }
-      model_meta.dynamic_output_shape.emplace_back(gert::GertMakeStr(shape_str));
+      (void)model_meta.dynamic_output_shape.emplace_back(gert::GertMakeStr(shape_str));
     }
   }
 }
@@ -520,7 +523,7 @@ ge::Status ParseModelMetaDynamicDims(const ge::JsonFile &json_file, gert::GertMo
   std::vector<std::string> user_designate_shape_order;
   (void)dynamic_dims_file.Get("user_designate_shape_order", user_designate_shape_order);
   for (auto &s : user_designate_shape_order) {
-    model_meta.user_designate_shape_order.emplace_back(gert::GertMakeStr(s));
+    (void)model_meta.user_designate_shape_order.emplace_back(gert::GertMakeStr(s));
   }
 
   ge::JsonFile::json gears_json;
@@ -536,7 +539,7 @@ ge::Status DeserializeModelMeta(const gert::ZipArchiveReader &archive, const std
                                 gert::GertModelDataModel &unit) {
   const auto full_path = archive.FindEntry(relative_path);
   if (full_path.empty()) {
-    REPORT_PREDEFINED_ERR_MSG(
+    (void)REPORT_PREDEFINED_ERR_MSG(
         "E10059", std::vector<const char *>({"stage", "reason"}),
         std::vector<const char *>({"DeserializeGertModelData", "model_meta.json not found in ZIP archive."}));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2] model_meta.json not found in ZIP archive.");
@@ -589,7 +592,7 @@ ge::Status DeserializeCodegen(const gert::ZipArchiveReader &archive, const std::
     unit.runtime->so_artifact = std::move(artifact);
     return ge::SUCCESS;
   }
-  REPORT_PREDEFINED_ERR_MSG(
+  (void)REPORT_PREDEFINED_ERR_MSG(
       "E10059", std::vector<const char *>({"stage", "reason"}),
       std::vector<const char *>({"DeserializeGertModelData", "Compiled .so not found in ZIP archive."}));
   GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2] Compiled .so not found in ZIP archive.");
@@ -600,7 +603,7 @@ ge::Status DeserializeConstantsConfig(const gert::ZipArchiveReader &archive, con
                                       gert::GertModelDataModel &unit) {
   const auto full_path = archive.FindEntry(relative_path);
   if (full_path.empty()) {
-    REPORT_PREDEFINED_ERR_MSG(
+    (void)REPORT_PREDEFINED_ERR_MSG(
         "E10059", std::vector<const char *>({"stage", "reason"}),
         std::vector<const char *>({"DeserializeGertModelData", "constants config not found in ZIP archive."}));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2] constants config not found in ZIP archive.");
@@ -659,13 +662,14 @@ ge::Status DeserializeWeight(const gert::ZipArchiveReader &archive, const std::s
   // file_name 取 entry 基名（如 "constant_0"），与 INTERNAL 常量 meta 的 file_name 对应，供按名查找数据源
   weight_slot->file_name = gert::GertMakeStr(ExtractParentDirAndFileName(full_path).second);
   if (weight_slot->data_size != unit.constants_config->internal_weight_size) {
-    REPORT_INNER_ERR_MSG("E19999", "[OM2] constant_0 size mismatch with constants config, file size %llu, json %llu.",
-                         static_cast<unsigned long long>(weight_slot->data_size),
-                         static_cast<unsigned long long>(unit.constants_config->internal_weight_size));
+    REPORT_INNER_ERR_MSG(
+        "E19999", "[OM2] constant_0 size mismatch with constants config, file size %" PRIu64 ", json %" PRIu64 ".",
+        static_cast<uint64_t>(weight_slot->data_size),
+        static_cast<uint64_t>(unit.constants_config->internal_weight_size));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID,
-           "[OM2] constant_0 size mismatch with constants config, file size %llu, json %llu.",
-           static_cast<unsigned long long>(weight_slot->data_size),
-           static_cast<unsigned long long>(unit.constants_config->internal_weight_size));
+           "[OM2] constant_0 size mismatch with constants config, file size %" PRIu64 ", json %" PRIu64 ".",
+           static_cast<uint64_t>(weight_slot->data_size),
+           static_cast<uint64_t>(unit.constants_config->internal_weight_size));
     return ACL_ERROR_GE_PARAM_INVALID;
   }
   return ge::SUCCESS;
@@ -675,7 +679,7 @@ ge::Status DeserializeOpAttr(const gert::ZipArchiveReader &archive, const std::s
                              gert::GertModelDataModel &unit) {
   const auto full_path = archive.FindEntry(relative_path);
   if (full_path.empty()) {
-    REPORT_PREDEFINED_ERR_MSG(
+    (void)REPORT_PREDEFINED_ERR_MSG(
         "E10059", std::vector<const char *>({"stage", "reason"}),
         std::vector<const char *>({"DeserializeGertModelData", "op_attr.json not found in ZIP archive."}));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2] op_attr.json not found in ZIP archive.");
@@ -693,8 +697,9 @@ ge::Status DeserializeOpAttr(const gert::ZipArchiveReader &archive, const std::s
 // 解析 variables_config.json 中的 graph_id/global_shared_var_size/var_metas 字段，写入 unit.variables_config
 ge::Status ParseVariablesConfigJson(const ge::JsonFile &json_file, gert::GertModelDataModel &unit) {
   (void)json_file.Get("graph_id", unit.variables_config->graph_id);
-  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "global_shared_var_size",
-                                         [&](const uint64_t &v) { unit.variables_config->global_shared_var_size = v; });
+  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "global_shared_var_size", [&unit](const uint64_t &v) {
+    unit.variables_config->global_shared_var_size = v;
+  });
   ge::JsonFile::json var_metas_json;
   if (json_file.Get("var_metas", var_metas_json) && var_metas_json.is_array()) {
     for (const auto &meta_json : var_metas_json) {
@@ -850,8 +855,8 @@ ge::Status PrepareModelUnit(gert::ZipArchiveReader &archive, GertModelData &mode
 
   GE_CHK_STATUS_RET_NOLOG(DeserializeManifest(archive, gert::OM2_MANIFEST_PATH, model_data));
   const uint32_t model_num = static_cast<uint32_t>(model_data.manifest->model_num);
-  GE_ASSERT_TRUE(model_num >= 1U, "[OM2] manifest model_num must be at least 1, got %llu.",
-                 static_cast<unsigned long long>(model_data.manifest->model_num));
+  GE_ASSERT_TRUE(model_num >= 1U, "[OM2] manifest model_num must be at least 1, got %" PRIu64 ".",
+                 static_cast<uint64_t>(model_data.manifest->model_num));
   GE_ASSERT_TRUE(model_index < model_num, "[OM2] model_index %u is out of range, model_num %u.", model_index,
                  model_num);
   if (model_data.models.size() <= model_index) {

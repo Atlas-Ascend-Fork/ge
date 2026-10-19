@@ -1519,11 +1519,11 @@ Status KernelTaskCodeBuilder::RenderDispatchAicpu(const VarRef &op, const VarRef
                                                   std::vector<DeclNode *> &items) const {
   std::vector<BodyItem> body;
   auto setup = RenderAicpuDispatchSetup(op, ctx);
-  body.insert(body.end(), setup.begin(), setup.end());
+  (void)body.insert(body.end(), setup.begin(), setup.end());
   auto launch = RenderAicpuLaunchAndAssemble(op, ctx);
-  body.insert(body.end(), launch.begin(), launch.end());
+  (void)body.insert(body.end(), launch.begin(), launch.end());
   auto report = RenderAicpuLaunchAndReport(op, ctx);
-  body.insert(body.end(), report.begin(), report.end());
+  (void)body.insert(body.end(), report.begin(), report.end());
   return TaskCodeBuilderUtil::RenderDispatchFunc(ast_, "DispatchKernelAicpu", body, items);
 }
 

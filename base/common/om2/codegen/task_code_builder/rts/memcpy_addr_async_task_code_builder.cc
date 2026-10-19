@@ -198,7 +198,7 @@ Status MemcpyAddrAsyncTaskCodeBuilder::RenderDispatchFunc(std::vector<DeclNode *
   auto iow_addr = ast_.Var("std::vector<uint64_t>", "iow_addr");
   (void)body.emplace_back(ast_.VarDecl(iow_addr));
   auto resolve_loop = RenderIoAddrResolveLoop(ctx, memcpy_addr);
-  body.insert(body.end(), resolve_loop.begin(), resolve_loop.end());
+  (void)body.insert(body.end(), resolve_loop.begin(), resolve_loop.end());
 
   // -- 执行 memcpy + D2H 回传 --
   (void)body.push_back(ChkStatus(

@@ -468,8 +468,8 @@ Status BuildCompileMakefileData(const gert::GertModelDataFile &makefile_artifact
     GE_ASSERT_SUCCESS(CheckSafePath(cpp_file.fd_path));
   }
 
-  compile_makefile_data.assign(reinterpret_cast<const char *>(makefile_artifact.data.get()),
-                               makefile_artifact.data_size);
+  (void)compile_makefile_data.assign(reinterpret_cast<const char *>(makefile_artifact.data.get()),
+                                     makefile_artifact.data_size);
   GE_ASSERT_SUCCESS(ReplaceMakefileVariable(compile_makefile_data, "TARGET", so_path));
   GE_ASSERT_SUCCESS(ReplaceMakefileVariable(compile_makefile_data, "SRC_FILES", JoinFdPaths(cpp_files)));
   // 仅用于内存编译：fd 路径没有 .cpp 后缀，需要 -x c++ 显式指定语言。

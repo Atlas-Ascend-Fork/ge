@@ -399,7 +399,7 @@ void SerializeModelMetaDynamicInfo(const gert::GertModelDataModelMeta &model_met
   std::vector<std::string> user_designate_shape_order;
   user_designate_shape_order.reserve(model_meta.user_designate_shape_order.size());
   for (const auto &s : model_meta.user_designate_shape_order) {
-    user_designate_shape_order.emplace_back(gert::GertGetStr(s));
+    (void)user_designate_shape_order.emplace_back(gert::GertGetStr(s));
   }
   (void)dynamic_dims_json.Set("user_designate_shape_order", user_designate_shape_order);
 

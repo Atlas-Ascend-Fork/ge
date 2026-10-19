@@ -12,8 +12,8 @@
  * All functions are inline - no exported symbols, no SO dependency.
  */
 
-#ifndef OM2_MODEL_DATA_UTILS_H_
-#define OM2_MODEL_DATA_UTILS_H_
+#ifndef INC_FRAMEWORK_COMMON_GERT_MODEL_DATA_UTILS_H_
+#define INC_FRAMEWORK_COMMON_GERT_MODEL_DATA_UTILS_H_
 
 #include "framework/om2/model_data/gert_model_data.h"
 
@@ -33,10 +33,10 @@ inline std::unique_ptr<char[]> GertMakeStr(const char *s) {
   if (s == nullptr) {
     return nullptr;
   }
-  const auto len = std::strlen(s) + 1U;
+  const uint64_t len = std::strlen(s) + 1U;
   if (len > kMaxStrAllocSize) {
-    GELOGE(ge::FAILED, "[OM2] GertMakeStr len %zu exceeds limit %llu", len,
-           static_cast<unsigned long long>(kMaxStrAllocSize));
+    GELOGE(ge::FAILED, "[OM2] GertMakeStr len %zu exceeds limit %" PRIu64, len,
+           static_cast<uint64_t>(kMaxStrAllocSize));
     return nullptr;
   }
   auto p = std::make_unique<char[]>(len);
@@ -52,10 +52,10 @@ inline std::unique_ptr<char[]> GertMakeStr(const std::string &s) {
   if (s.empty()) {
     return nullptr;
   }
-  const auto len = s.size() + 1U;
+  const uint64_t len = s.size() + 1U;
   if (len > kMaxStrAllocSize) {
-    GELOGE(ge::FAILED, "[OM2] GertMakeStr len %zu exceeds limit %llu", len,
-           static_cast<unsigned long long>(kMaxStrAllocSize));
+    GELOGE(ge::FAILED, "[OM2] GertMakeStr len %zu exceeds limit %" PRIu64, len,
+           static_cast<uint64_t>(kMaxStrAllocSize));
     return nullptr;
   }
   auto p = std::make_unique<char[]>(len);
@@ -78,8 +78,8 @@ inline std::unique_ptr<char[]> GertMakeBytes(const void *data, uint64_t size) {
     return nullptr;
   }
   if (size > kMaxStrAllocSize) {
-    GELOGE(ge::FAILED, "[OM2] GertMakeBytes size %" PRIu64 " exceeds limit %llu", size,
-           static_cast<unsigned long long>(kMaxStrAllocSize));
+    GELOGE(ge::FAILED, "[OM2] GertMakeBytes size %" PRIu64 " exceeds limit %" PRIu64, size,
+           static_cast<uint64_t>(kMaxStrAllocSize));
     return nullptr;
   }
   auto p = std::make_unique<char[]>(static_cast<size_t>(size));
@@ -97,8 +97,8 @@ inline ge::ReadonlyByteBuffer GertMakeFileData(const void *data, const uint64_t 
     return ge::ReadonlyByteBuffer(nullptr, ge::ConditionalDeleter{false});
   }
   if (size > kMaxStrAllocSize) {
-    GELOGE(ge::FAILED, "[OM2] GertMakeFileData size %" PRIu64 " exceeds limit %llu", size,
-           static_cast<unsigned long long>(kMaxStrAllocSize));
+    GELOGE(ge::FAILED, "[OM2] GertMakeFileData size %" PRIu64 " exceeds limit %" PRIu64, size,
+           static_cast<uint64_t>(kMaxStrAllocSize));
     return ge::ReadonlyByteBuffer(nullptr, ge::ConditionalDeleter{false});
   }
   auto p = std::make_unique<uint8_t[]>(static_cast<size_t>(size));
@@ -160,12 +160,12 @@ inline std::unique_ptr<GertModelDataAippMeta> MakeGertModelDataAippMeta(const Ge
   }
   for (const auto &d : other.aipp_input_dims) {
     if (d != nullptr) {
-      meta->aipp_input_dims.emplace_back(std::make_unique<ge::InputOutputDims>(*d));
+      (void)meta->aipp_input_dims.emplace_back(std::make_unique<ge::InputOutputDims>(*d));
     }
   }
   for (const auto &d : other.aipp_output_dims) {
     if (d != nullptr) {
-      meta->aipp_output_dims.emplace_back(std::make_unique<ge::InputOutputDims>(*d));
+      (void)meta->aipp_output_dims.emplace_back(std::make_unique<ge::InputOutputDims>(*d));
     }
   }
   if (other.orig_input_info != nullptr) {
@@ -175,8 +175,8 @@ inline std::unique_ptr<GertModelDataAippMeta> MakeGertModelDataAippMeta(const Ge
 }
 
 inline std::string RTVarBuildKey(const std::string &var_name, const GertTensorDesc &desc) {
-  return var_name + std::to_string(static_cast<int>(desc.format)) + "_" +
-         std::to_string(static_cast<int>(desc.data_type));
+  return var_name + std::to_string(static_cast<int32_t>(desc.format)) + "_" +
+         std::to_string(static_cast<int32_t>(desc.data_type));
 }
 
 inline ge::Status RTVarAddEntry(std::vector<RTVarEntry> &entries, RTVarEntry entry) {
@@ -189,4 +189,4 @@ inline ge::Status RTVarAddEntry(std::vector<RTVarEntry> &entries, RTVarEntry ent
 
 }  // namespace gert
 
-#endif  // OM2_MODEL_DATA_UTILS_H_
+#endif  // INC_FRAMEWORK_COMMON_GERT_MODEL_DATA_UTILS_H_

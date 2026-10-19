@@ -623,11 +623,11 @@ Status FillModelMetaScalars(const GeModelPtr &ge_model, const ModelIoNodes &io_n
   model_meta.dynamic_type = extra_info.dynamic_type;
   const std::vector<std::string> dynamic_output_shape = extra_info.dynamic_output_shape;
   for (const auto &s : dynamic_output_shape) {
-    model_meta.dynamic_output_shape.emplace_back(gert::GertMakeStr(s));
+    (void)model_meta.dynamic_output_shape.emplace_back(gert::GertMakeStr(s));
   }
   const std::vector<std::string> user_designate_shape_order = extra_info.user_designate_shape_order;
   for (const auto &s : user_designate_shape_order) {
-    model_meta.user_designate_shape_order.emplace_back(gert::GertMakeStr(s));
+    (void)model_meta.user_designate_shape_order.emplace_back(gert::GertMakeStr(s));
   }
   return SUCCESS;
 }
@@ -691,12 +691,6 @@ Status Om2PackageHelper::RelocateExternalWeights(const std::string &output_file_
 }
 
 Status Om2PackageHelper::ExtractVisualJson(const void *model_data, size_t model_len, std::string &json_out) {
-  const auto report_extract_failed = [](const char *reason) {
-    (void)REPORT_PREDEFINED_ERR_MSG("E10059", std::vector<const char *>({"stage", "reason"}),
-                                    std::vector<const char *>({"ExtractVisualJson", reason}));
-    GELOGE(FAILED, "[OM2] ExtractVisualJson failed. Reason: %s", reason);
-  };
-
   GE_ASSERT_NOTNULL(model_data, "[OM2] model_data is nullptr");
   GE_ASSERT_TRUE(model_len > 0U, "[OM2] model_len is 0");
 
@@ -706,6 +700,11 @@ Status Om2PackageHelper::ExtractVisualJson(const void *model_data, size_t model_
   const bool visual_json_valid = (!om2_data.models.empty() && (om2_data.models[0]->debug != nullptr) &&
                                   (om2_data.models[0]->debug->visual_json != nullptr));
   if ((deserialize_ret != 0U) || !visual_json_valid) {
+    const auto report_extract_failed = [](const char *reason) {
+      (void)REPORT_PREDEFINED_ERR_MSG("E10059", std::vector<const char *>({"stage", "reason"}),
+                                      std::vector<const char *>({"ExtractVisualJson", reason}));
+      GELOGE(FAILED, "[OM2] ExtractVisualJson failed. Reason: %s", reason);
+    };
     report_extract_failed("Failed to extract visual JSON from OM2 archive.");
     return FAILED;
   }
@@ -947,7 +946,7 @@ Status Om2PackageHelper::BuildOm2ModelData(const GeModelPtr &ge_model, gert::Ger
   unit.debug = std::make_unique<gert::GertModelDataDebug>();
   // 入口统一分配目录聚合结构（多次构建追加模型时仅首次分配）
   gert::InitGertModelData(model_data);
-  model_data.constants->constants_data.emplace_back();
+  (void)model_data.constants->constants_data.emplace_back();
   model_data.manifest = std::make_unique<gert::GertModelDataManifest>();
 
   // Set model-level attrs for OM2 JSON compatibility
