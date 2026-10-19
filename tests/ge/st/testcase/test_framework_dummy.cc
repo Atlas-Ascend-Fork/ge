@@ -200,8 +200,12 @@ class FrameworkTest : public testing::Test {
  */
 TEST_F(FrameworkTest, test_framework_add) {
   DEF_GRAPH(g1) {
-    CHAIN(NODE("data1", DATA)->NODE("add", ADD));
-    CHAIN(NODE("data2", DATA)->NODE("add"));
+    auto add = OP_CFG(ADD).Build("add");
+    CHAIN(NODE("data1", DATA)->NODE(add));
+    CHAIN(NODE("data2", DATA)->NODE(add));
+    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
+    // 本用例需保留add链以校验建图后节点数
+    ADD_OUTPUT(add, 0);
   };
 
   map<AscendString, AscendString> options;
@@ -268,6 +272,9 @@ TEST_F(FrameworkTest, test_framework_add_fail) {
     CHAIN(NODE("data_2", DATA)->EDGE(0, 1)->NODE("add_1", add1));
     CHAIN(NODE("add_1", add1)->EDGE(0, 0)->NODE("add_2", add2));
     CHAIN(NODE("data_2", DATA)->EDGE(0, 1)->NODE("add_2", add2));
+    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
+    // 本用例需保留add链以校验NoTask场景建图后节点数与MEMSET清理
+    ADD_OUTPUT("add_2", 0);
   };
 
   auto graph = ToGeGraph(g1);

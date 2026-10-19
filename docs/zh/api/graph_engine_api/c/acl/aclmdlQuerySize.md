@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-根据模型文件获取模型执行时所需的权值内存大小、工作内存大小。
+根据om或om2模型文件获取模型执行时所需的权值内存大小、工作内存大小。
 
 当由用户管理内存时，为确保内存不浪费，在申请工作内存、权值内存前，需要调用本接口查询模型运行时所需工作内存、权值内存的大小。如果模型输入数据的Shape不确定，则不能调用本命接口查询内存大小，在加载模型时，就无法由用户管理内存，因此需选择由系统管理内存的模型加载接口（例如，[aclmdlLoadFromFile](aclmdlLoadFromFile.md)、[aclmdlLoadFromMem](aclmdlLoadFromMem.md)）。
 
@@ -41,7 +41,7 @@ aclError aclmdlQuerySize(const char *fileName, size_t *workSize, size_t *weightS
 
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
-| fileName | 输入 | 模型文件路径的指针，路径中包含文件名。运行程序（APP）的用户需要对该路径有访问权限。<br>此处的模型文件是om模型文件。<br>关于如何获取om文件，请参见《[ATC离线模型编译工具](../../../../user_guides/atc_tools/README.md)》中的“[--mode](../../../../user_guides/atc_tools/CLI_options/--mode.md)”。 |
+| fileName | 输入 | 模型文件路径的指针，路径中包含文件名。运行程序（APP）的用户需要对该路径有访问权限。<br>此处的模型文件是om或om2模型文件。<br>关于如何获取om或om2文件，请参见《[ATC离线模型编译工具](../../../../user_guides/atc_tools/README.md)》中的“[--mode](../../../../user_guides/atc_tools/CLI_options/--mode.md)”。 |
 | workSize | 输出 | 模型执行时所需的工作内存大小的指针，单位Byte。<br>此处的内存为Device内存，而且需要用户申请和释放。 |
 | weightSize | 输出 | 模型执行时所需权值内存大小的指针，单位Byte。<br>此处的内存为Device内存，而且需要用户申请和释放。 |
 

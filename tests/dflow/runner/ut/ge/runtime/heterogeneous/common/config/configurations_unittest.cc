@@ -86,6 +86,12 @@ TEST_F(UtConfigurations, GetWorkingDir_host_path_failed) {
   EXPECT_NE(config.GetWorkingDir(config_dir), SUCCESS);
 }
 
+TEST_F(UtConfigurations, GetWorkingDir_invalid_deploy_res_path) {
+  SetConfigEnv("RESOURCE_CONFIG_PATH", "wrong_value/server/numa_config_invalid_res_path.json");
+  EXPECT_NE(Configurations().InitInformation(), SUCCESS);
+  unsetenv("RESOURCE_CONFIG_PATH");
+}
+
 TEST_F(UtConfigurations, GetWorkingDir_Host_AscendWorkPath_success) {
   ge::char_t current_path[MMPA_MAX_PATH] = {'\0'};
   getcwd(current_path, MMPA_MAX_PATH);

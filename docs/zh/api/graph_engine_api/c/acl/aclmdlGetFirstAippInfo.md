@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-获取模型AIPP（包括静态AIPP和动态AIPP）的配置信息。获取模型中动态AIPP的信息时，只能获取[aclAippInfo](aclAippInfo.md)结构体中如下参数的值：srcFormat、srcDatatype、srcDimNum、shapeCount、outDims，其它参数值无效。
+获取om或om2模型中AIPP（包括静态AIPP和动态AIPP）的配置信息。获取模型中动态AIPP的信息时，只能获取[aclAippInfo](aclAippInfo.md)结构体中如下参数的值：srcFormat、srcDatatype、srcDimNum、shapeCount、outDims，其它参数值无效。
 
 AIPP支持的几种操作的计算方式及其计算顺序如下：抠图-\>色域转换-\>减均值/归一化-\>padding。
 

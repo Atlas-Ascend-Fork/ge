@@ -100,13 +100,18 @@ Status UdfProxyClient::PreLoadProcess(
     const auto &model_file_path = base_path + load_model_descs[i].models(0).model_path();
     const auto &saved_model_path = load_model_descs[i].models(0).saved_model_file_path();
     if (!load_model_descs[i].models(0).is_builtin_udf()) {
+      GE_CHK_STATUS_RET(ProcessUtils::IsValidPath(saved_model_path), "The saved model path[%s] is not valid.",
+                        saved_model_path.c_str());
       const std::string linked_model_name =
           "Ascend_udf_submodel_" + std::to_string(GetDeviceId()) + "_" + std::to_string(i) + ".tar.gz";
       link_cmd += "ln -sf " + saved_model_path + " " + tar_path + linked_model_name + ";";
       saved_model_paths.emplace_back(model_path + linked_model_name);
       GELOGD("Linked model model in [%s].", (tar_path + linked_model_name).c_str());
     } else {
-      local_builtin_model_paths.emplace_back(load_model_descs[i].models(0).model_path());
+      const auto &builtin_model_path = load_model_descs[i].models(0).model_path();
+      GE_CHK_STATUS_RET(ProcessUtils::IsValidPath(builtin_model_path), "The builtin model path[%s] is not valid.",
+                        builtin_model_path.c_str());
+      local_builtin_model_paths.emplace_back(builtin_model_path);
       GELOGD("Saved builtin model in [%s]", model_path.c_str());
     }
   }
@@ -141,6 +146,7 @@ Status UdfProxyClient::GenerateCmdStrSupportUnpack(const std::vector<std::string
   const auto &base_path = GetContext().base_dir;
   path_list_str = " -C " + base_path + " ";
   for (const auto &msg_path : load_model_msg_paths) {
+    GE_CHK_STATUS_RET(ProcessUtils::IsValidPath(msg_path), "The path[%s] is not valid.", msg_path.c_str());
     path_list_str += msg_path + " ";
   }
   for (const auto &builtin_path : local_builtin_model_paths) {

@@ -26,7 +26,7 @@
 
 ## 推荐配置及收益
 
-无。
+当编译环境为x86\_64、运行环境为aarch64且生成\*.om2离线模型（[--mode](--mode.md)=7）时，若需使用开发套件包内置的交叉编译工具（用于在x86\_64环境编译aarch64环境的g++源码），请配置[--host\_env\_cpu](--host_env_cpu.md)和--host\_env\_os参数；其他情况推荐使用[--build\_config](--build_config.md)配置。
 
 ## 示例
 

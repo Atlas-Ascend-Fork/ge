@@ -74,7 +74,7 @@ Status NetOutputPass::Run(ge::ComputeGraphPtr graph) {
   auto op_desc = output_node->GetOpDesc();
   GE_ASSERT_NOTNULL(op_desc);
   bool is_inner_net_output = false;
-  (void)AttrUtils::GetBool(op_desc, "_inner_net_output", is_inner_net_output);
+  (void)AttrUtils::GetBool(op_desc, ATTR_NAME_INNER_NET_OUTPUT, is_inner_net_output);
   if (is_inner_net_output) {
     GE_ASSERT_SUCCESS(SetNetOutputFormat(output_node));
     GE_ASSERT_SUCCESS(AddCtrlEdgesBetweenLeafAndNetOutput(graph, output_node));

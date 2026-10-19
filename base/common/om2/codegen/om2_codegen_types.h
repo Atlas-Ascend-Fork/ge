@@ -369,6 +369,21 @@ struct CustomValueEntry {
   uint32_t size;         // 4（uint32_t）或 8（uint64_t），编译期确定
 };
 
+// 自定义算子 IR 输入/输出的实例化信息（可选输入未传时为 0 个实例，动态输入为实际个数）
+struct CustomIrInstanceInfoSemantic {
+  uint32_t instance_start{0U};
+  uint32_t instance_num{0U};
+};
+
+// 自定义算子执行期所需的 IR 原型信息（属性、可选输入、动态输入）
+struct CustomKernelSemantic {
+  uint32_t ir_inputs_num{0U};
+  std::vector<CustomIrInstanceInfoSemantic> input_instance_infos;
+  uint32_t ir_outputs_num{0U};
+  std::vector<CustomIrInstanceInfoSemantic> output_instance_infos;
+  std::vector<uint8_t> attrs;  // 序列化的 IR 属性（RuntimeAttrsDef 布局）
+};
+
 struct TaskSemanticContributeContext {
   ModelTaskType task_type;
   const domi::TaskDef &task_def;

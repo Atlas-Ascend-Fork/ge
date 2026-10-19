@@ -3624,6 +3624,18 @@ Status GraphManager::OptimizeStage2(ge::ComputeGraphPtr &compute_graph) {
     return ret;
   }
 
+  // 引擎分配后剪枝（第3轮）：引擎归属已在OptimizeSubgraph（EnginePlacer）确定，保活判定按
+  // 引擎归属（见prune_pass.cc的kKeepAliveKernelLibs）；
+  GE_TRACE_START(PruneAfterEngineAssigned);
+  {
+    PassManager prune_pass;
+    GE_CHK_STATUS_RET(prune_pass.AddPass("OptimizeStage2::PrunePass",
+                                         new (std::nothrow) PrunePass(PrunePass::Round::kAfterEngineAssigned)),
+                      "[Add][PrunePass] after engine assigned failed");
+    GE_CHK_STATUS_RET(prune_pass.Run(compute_graph), "[Run][PrunePass] after engine assigned failed, graph:%s",
+                      compute_graph->GetName().c_str());
+  }
+
   GE_TRACE_START(RemoveIsolatedConst);
   GE_CHK_STATUS_RET(RemoveIsolatedConst(compute_graph), "Failed to remove isolated const node");
   GE_COMPILE_TRACE_TIMESTAMP_END(RemoveIsolatedConst, "OptimizeStage2::RemoveIsolatedConst");

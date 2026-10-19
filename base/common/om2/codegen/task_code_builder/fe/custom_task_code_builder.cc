@@ -14,13 +14,115 @@
 #include "common/om2/codegen/task_code_builder/task_code_builder_util.h"
 #include "opskernel/ops_kernel_info_types.h"
 #include "graph/utils/args_format_desc_utils.h"
+#include "graph/utils/op_desc_utils.h"
+#include "graph/utils/attr_utils.h"
+#include "graph/ge_tensor.h"
 #include "graph/args_format_desc.h"
+#include "base/attr/attrs_to_buffer.h"
 #include "framework/common/debug/ge_log.h"
 #include "common/checker.h"
 
 namespace ge {
 namespace {
 constexpr uint64_t kAddressLen = sizeof(uint64_t);
+
+// 与 gert::bg::AppendAttrTensor 保持一致：tensor 类型属性需要展开为 Tensor 内存布局后再序列化
+bool AppendTensorAttr(const ge::AnyValue &attr, std::vector<std::vector<uint8_t>> &attrs) {
+  auto val = attr.Get<ge::GeTensor>();
+  GE_ASSERT_NOTNULL(val);
+  const auto &tensor_desc = val->GetTensorDesc();
+  const auto shape_size = tensor_desc.GetShape().GetShapeSize();
+  GE_ASSERT_TRUE(shape_size >= 0, "Failed to append tensor attr, shape size less than 0");
+  size_t total_size = 0U;
+  const auto data_type = tensor_desc.GetDataType();
+  const size_t tensor_size = (data_type == ge::DT_STRING)
+                                 ? val->GetData().GetSize()
+                                 : static_cast<size_t>(ge::GetSizeInBytes(shape_size, data_type));
+  auto tensor_holder = gert::Tensor::CreateFollowing(data_type, tensor_size, total_size);
+  GE_ASSERT_NOTNULL(tensor_holder);
+  auto tensor = ge::PtrToPtr<uint8_t, gert::Tensor>(tensor_holder.get());
+  tensor->MutableStorageShape().SetDimNum(tensor_desc.GetShape().GetDimNum());
+  for (size_t i = 0U; i < tensor_desc.GetShape().GetDimNum(); ++i) {
+    tensor->MutableStorageShape().SetDim(i, tensor_desc.GetShape().GetDim(i));
+  }
+  tensor->MutableOriginShape().SetDimNum(tensor_desc.GetOriginShape().GetDimNum());
+  for (size_t i = 0U; i < tensor_desc.GetOriginShape().GetDimNum(); ++i) {
+    tensor->MutableOriginShape().SetDim(i, tensor_desc.GetOriginShape().GetDim(i));
+  }
+  tensor->SetOriginFormat(tensor_desc.GetOriginFormat());
+  tensor->SetStorageFormat(tensor_desc.GetFormat());
+  GE_ASSERT_TRUE(total_size >= sizeof(gert::Tensor), "total_size %zu < size of Tensor %zu", total_size,
+                 sizeof(gert::Tensor));
+  const auto copy_len = total_size - sizeof(gert::Tensor);
+  if (copy_len != 0U) {
+    GE_ASSERT_TRUE(val->GetData().size() >= copy_len, "tensor attr data size %zu < copy len %zu", val->GetData().size(),
+                   copy_len);
+    GE_ASSERT_EOK(memcpy_s(tensor->GetData<uint8_t>(), copy_len, val->GetData().GetData(), copy_len));
+  }
+  std::vector<uint8_t> buf(total_size);
+  GE_ASSERT_EOK(memcpy_s(buf.data(), total_size, tensor_holder.get(), total_size));
+  attrs.emplace_back(std::move(buf));
+  return true;
+}
+
+bool AppendAttrTensor(const ge::AnyValue &attr, std::vector<std::vector<uint8_t>> &attrs) {
+  if (attr.GetValueType() == ge::AnyValue::VT_TENSOR) {
+    return AppendTensorAttr(attr, attrs);
+  }
+  return gert::bg::AppendAttr(attr, attrs);
+}
+
+// 按 IR 原型定义的顺序序列化算子属性，得到可直接拷入 ComputeNodeInfo 属性区的 RuntimeAttrsDef 缓冲
+Status SerializeIrAttrs(const OpDescPtr &op_desc, std::vector<uint8_t> &buffer) {
+  GE_ASSERT_NOTNULL(op_desc);
+  const auto all_attrs = AttrUtils::GetAllAttrs(op_desc);
+  const auto &ir_attr_names = op_desc->GetIrAttrNames();
+  std::vector<std::vector<uint8_t>> runtime_attrs;
+  for (const auto &attr_name : ir_attr_names) {
+    const auto iter = all_attrs.find(attr_name);
+    if (iter != all_attrs.cend()) {
+      GE_ASSERT_TRUE(AppendAttrTensor(iter->second, runtime_attrs), "Append IR attr %s failed, op %s.",
+                     attr_name.c_str(), op_desc->GetNamePtr());
+      continue;
+    }
+    const auto &required_attrs = op_desc->GetRequiredAttrWithType();
+    GE_ASSERT_TRUE(required_attrs.find(attr_name) == required_attrs.cend(),
+                   "Required IR attr %s is missing for op %s(%s).", attr_name.c_str(), op_desc->GetNamePtr(),
+                   op_desc->GetTypePtr());
+    break;
+  }
+  size_t attrs_size = 0U;
+  auto attr_holder = gert::bg::CreateAttrBuffer(runtime_attrs, attrs_size);
+  GE_ASSERT_NOTNULL(attr_holder);
+  buffer.assign(attr_holder.get(), attr_holder.get() + attrs_size);
+  return SUCCESS;
+}
+
+Arg RenderIrInstanceInfoArray(AstBuildContext &ast, const std::vector<CustomIrInstanceInfoSemantic> &infos) {
+  if (infos.empty()) {
+    return Arg(nullptr);
+  }
+  std::vector<Arg> entries;
+  entries.reserve(infos.size());
+  for (const auto &info : infos) {
+    entries.push_back(ast.DesignatedInit({{"instance_start", static_cast<int64_t>(info.instance_start)},
+                                          {"instance_num", static_cast<int64_t>(info.instance_num)}},
+                                         true));
+  }
+  return Arg(ast.CCast("const CustomIrInstanceInfo[]", ast.InitList(entries, true)));
+}
+
+Arg RenderAttrsArray(AstBuildContext &ast, const std::vector<uint8_t> &attrs) {
+  if (attrs.empty()) {
+    return Arg(nullptr);
+  }
+  std::vector<Arg> elements;
+  elements.reserve(attrs.size());
+  for (const auto value : attrs) {
+    elements.push_back(Arg(value));
+  }
+  return Arg(ast.CCast("const uint8_t[]", ast.InitList(elements, true)));
+}
 }  // namespace
 
 int64_t CustomTaskCodeBuilder::ParseOpIndex(const domi::TaskDef &task_def) {
@@ -45,6 +147,7 @@ Status CustomTaskCodeBuilder::Contribute(TaskSemanticContributeContext &context)
   GE_ASSERT_SUCCESS(Om2ModelUtils::ResolveInputAddrs(context, build_data_.semantic.input_addrs));
   GE_ASSERT_SUCCESS(Om2ModelUtils::ResolveOutputAddrs(context, true, build_data_.semantic.output_addrs));
   AssignTaskLocalIoNames();
+  GE_ASSERT_SUCCESS(BuildCustomKernelIrInfo(context.op_desc));
 
   dispatch_type_ = OpDispatchType::DISPATCH_CUSTOM_KERNEL;
 
@@ -107,6 +210,12 @@ Status CustomTaskCodeBuilder::RenderOpDefTableFields(std::vector<std::pair<std::
       {"task_type", static_cast<int64_t>(build_data_.semantic.task_type)},
       {"prof_ge_task_type", static_cast<int64_t>(build_data_.semantic.prof_ge_task_type)},
       {"op_impl_mode", static_cast<int64_t>(build_data_.semantic.op_impl_mode)},
+      {"ir_inputs_num", static_cast<int64_t>(build_data_.custom_kernel.ir_inputs_num)},
+      {"input_instance_info", RenderIrInstanceInfoArray(ast_, build_data_.custom_kernel.input_instance_infos)},
+      {"ir_outputs_num", static_cast<int64_t>(build_data_.custom_kernel.ir_outputs_num)},
+      {"output_instance_info", RenderIrInstanceInfoArray(ast_, build_data_.custom_kernel.output_instance_infos)},
+      {"attrs", RenderAttrsArray(ast_, build_data_.custom_kernel.attrs)},
+      {"attrs_size", static_cast<int64_t>(build_data_.custom_kernel.attrs.size())},
   };
   auto custom_dispatch = ast_.DesignatedInit({{"custom", ast_.DesignatedInit(custom_fields)}});
   (void)fields.emplace_back("dispatch_info", custom_dispatch);
@@ -130,6 +239,60 @@ void CustomTaskCodeBuilder::AssignTaskLocalIoNames() {
       build_data_.semantic.output_addrs[i].symbol_hint = task_prefix + "_output" + std::to_string(i);
     }
   }
+}
+
+Status CustomTaskCodeBuilder::BuildCustomKernelIrInfo(const OpDescPtr &op_desc) {
+  GE_ASSERT_NOTNULL(op_desc);
+  auto &custom_kernel = build_data_.custom_kernel;
+
+  const size_t ir_inputs_num = op_desc->GetIrInputs().size();
+  const auto input_ir_map = OpDescUtils::GetInputIrIndexes2InstanceIndexesPairMap(op_desc);
+  if ((ir_inputs_num > 0U) && (!input_ir_map.empty())) {
+    custom_kernel.ir_inputs_num = static_cast<uint32_t>(ir_inputs_num);
+    custom_kernel.input_instance_infos.reserve(ir_inputs_num);
+    uint32_t instance_start = 0U;
+    for (size_t i = 0U; i < ir_inputs_num; ++i) {
+      const auto iter = input_ir_map.find(i);
+      const uint32_t instance_num = (iter != input_ir_map.cend()) ? static_cast<uint32_t>(iter->second.second) : 0U;
+      custom_kernel.input_instance_infos.push_back({instance_start, instance_num});
+      instance_start += instance_num;
+    }
+  } else {
+    // 无 IR 原型信息时回退为“一对一”映射，保证执行期仍可解析输入
+    const size_t fallback_num = build_data_.semantic.input_addrs.size();
+    custom_kernel.ir_inputs_num = static_cast<uint32_t>(fallback_num);
+    custom_kernel.input_instance_infos.reserve(fallback_num);
+    for (size_t i = 0U; i < fallback_num; ++i) {
+      custom_kernel.input_instance_infos.push_back({static_cast<uint32_t>(i), 1U});
+    }
+  }
+
+  const size_t ir_outputs_num = op_desc->GetIrOutputs().size();
+  const auto output_ir_map = OpDescUtils::GetOutputIrIndexes2InstanceIndexesPairMap(op_desc);
+  if ((ir_outputs_num > 0U) && (!output_ir_map.empty())) {
+    custom_kernel.ir_outputs_num = static_cast<uint32_t>(ir_outputs_num);
+    custom_kernel.output_instance_infos.reserve(ir_outputs_num);
+    uint32_t instance_start = 0U;
+    for (size_t i = 0U; i < ir_outputs_num; ++i) {
+      const auto iter = output_ir_map.find(i);
+      const uint32_t instance_num = (iter != output_ir_map.cend()) ? static_cast<uint32_t>(iter->second.second) : 0U;
+      custom_kernel.output_instance_infos.push_back({instance_start, instance_num});
+      instance_start += instance_num;
+    }
+  } else {
+    const size_t fallback_num = build_data_.semantic.output_addrs.size();
+    custom_kernel.ir_outputs_num = static_cast<uint32_t>(fallback_num);
+    custom_kernel.output_instance_infos.reserve(fallback_num);
+    for (size_t i = 0U; i < fallback_num; ++i) {
+      custom_kernel.output_instance_infos.push_back({static_cast<uint32_t>(i), 1U});
+    }
+  }
+
+  GE_ASSERT_SUCCESS(SerializeIrAttrs(op_desc, custom_kernel.attrs));
+  GELOGI("[OM2] Custom kernel IR info: op=%s, ir_inputs_num=%u, ir_outputs_num=%u, attrs_size=%zu",
+         header_.op_name.c_str(), custom_kernel.ir_inputs_num, custom_kernel.ir_outputs_num,
+         custom_kernel.attrs.size());
+  return SUCCESS;
 }
 
 void CustomTaskCodeBuilder::InitArgsTableEntry(const TaskSemanticContributeContext &context, const uint64_t args_size) {
@@ -213,7 +376,7 @@ std::vector<BodyItem> CustomTaskCodeBuilder::RenderDistribution(const VarRef &op
       ast_.VarDecl(
           eager_context_holder,
           ast_.Call("BuildKernelContextHolder",
-                    {op.Arrow("op_name"), op.Arrow("dispatch_info").Attr("custom").Attr("op_type"),
+                    {op.Arrow("op_name"), op.Arrow("dispatch_info").Attr("custom").Addr(),
                      ast_.Var("", "input_tensors"), ast_.Var("", "output_tensors"), allocator.Attr("get()"), stream})),
       ast_.VarDecl(eager_context,
                    ast_.ReinterpretCast("gert::EagerOpExecutionContext *", eager_context_holder.Attr("context_"))),

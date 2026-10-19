@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-获取实际可执行的模型ID。
+获取实际可执行的om/om2模型ID。
 
 **本接口需与其它接口配合使用**，以便实现动态更新变量的目的，请参见[aclmdlBundleLoadFromFile](aclmdlBundleLoadFromFile.md)处的说明。
 

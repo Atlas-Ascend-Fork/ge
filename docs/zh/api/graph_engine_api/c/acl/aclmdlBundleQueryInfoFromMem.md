@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-模型执行阶段，如果涉及动态更新变量的场景，可以调用本接口从内存中获取模型描述信息。
+om/om2模型执行阶段，如果涉及动态更新变量的场景，可以调用本接口从内存中获取模型描述信息。
 
 ## 函数原型
 
@@ -39,7 +39,7 @@ aclError aclmdlBundleQueryInfoFromMem(const void *model, size_t modelSize, aclmd
 
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
-| model | 输入 | 存放模型数据的内存地址指针。<br>此处的模型文件是基于构图接口构建出来的，调用aclgrphBundleBuildModel接口编译模型、调用aclgrphBundleSaveModel接口保存模型，再由用户自行将保存出来的om模型文件读入内存，构图接口详细描述参见[aclgrphBundleBuildModel](../../cpp/ge/aclgrphBundleBuildModel.md)。 |
+| model | 输入 | 存放模型数据的内存地址指针。<br>此处的模型文件是基于构图接口构建出来的，调用aclgrphBundleBuildModel接口编译模型、调用aclgrphBundleSaveModel接口保存模型，再由用户自行将保存出来的om/om2模型文件读入内存，构图接口详细描述参见[aclgrphBundleBuildModel](../../cpp/ge/aclgrphBundleBuildModel.md)。 |
 | modelSize | 输入 | 内存中的模型数据长度，单位Byte。 |
 | queryInfo | 输出 | 需提前调用[aclmdlBundleCreateQueryInfo](aclmdlBundleCreateQueryInfo.md)接口创建aclmdlBundleQueryInfo类型的数据。 |
 

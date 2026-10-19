@@ -5147,11 +5147,11 @@ TEST_F(UTEST_fusion_engine_op_judge_precision_mode, judge_node_by_customize_dtyp
   ret = op_format_dtype_judge_ptr_->SetFormatByJudgeResult(mat_mul_node, "tbe-custom");
   ASSERT_EQ(ret, fe::SUCCESS);
 
-  EXPECT_EQ(mat_mul_op->GetInputDesc(0).GetDataType(), DT_FLOAT);
-  EXPECT_EQ(mat_mul_op->GetInputDesc(1).GetDataType(), DT_FLOAT);
-  EXPECT_EQ(mat_mul_op->GetInputDesc(2).GetDataType(), DT_FLOAT);
+  EXPECT_EQ(mat_mul_op->GetInputDesc(0).GetDataType(), DT_FLOAT16);
+  EXPECT_EQ(mat_mul_op->GetInputDesc(1).GetDataType(), DT_FLOAT16);
+  EXPECT_EQ(mat_mul_op->GetInputDesc(2).GetDataType(), DT_FLOAT16);
   EXPECT_EQ(mat_mul_op->GetInputDesc(3).GetDataType(), DT_INT32);
-  EXPECT_EQ(mat_mul_op->GetOutputDesc(0).GetDataType(), DT_FLOAT);
+  EXPECT_EQ(mat_mul_op->GetOutputDesc(0).GetDataType(), DT_FLOAT16);
 
   OpCustomizeDtype op_cust_dtype;
   op_cust_dtype.input_dtypes = {DT_FLOAT16, DT_FLOAT16};

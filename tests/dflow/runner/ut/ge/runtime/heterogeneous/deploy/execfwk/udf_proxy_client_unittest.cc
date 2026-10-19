@@ -251,6 +251,47 @@ TEST_F(UdfProxyClientTest, LoadModelAndUnload_success) {
   system("rm -f ./ut_udf_models/test.om");
 }
 
+TEST_F(UdfProxyClientTest, LoadModelRejectInjectedSavedModelPath) {
+  MockUdfProxyClient client(0);
+  deployer::ExecutorRequest_BatchLoadModelMessage load_model_desc;
+  auto model = load_model_desc.add_models();
+  if (model == nullptr) {
+    return;
+  }
+  model->set_model_path("./ut_udf_models/test.om");
+  model->set_saved_model_file_path("./ut_udf_models/test.om; touch /tmp/udf_proxy_inject_pwned #");
+  auto *input_desc = model->mutable_model_queues_attrs()->add_input_queues_attrs();
+  input_desc->set_device_id(0);
+  input_desc->set_device_type(NPU);
+  auto *output_desc = model->mutable_model_queues_attrs()->add_output_queues_attrs();
+  output_desc->set_device_id(1);
+  output_desc->set_device_type(NPU);
+  system("rm -f /tmp/udf_proxy_inject_pwned");
+  EXPECT_EQ(client.LoadModel(load_model_desc), FAILED);
+  std::ifstream injected_file("/tmp/udf_proxy_inject_pwned");
+  EXPECT_FALSE(injected_file.good());
+  system("rm -f /tmp/udf_proxy_inject_pwned");
+}
+
+TEST_F(UdfProxyClientTest, LoadModelRejectInjectedBuiltinModelPath) {
+  MockUdfProxyClient client(0);
+  deployer::ExecutorRequest_BatchLoadModelMessage load_model_desc;
+  auto model = load_model_desc.add_models();
+  if (model == nullptr) {
+    return;
+  }
+  model->set_model_path("./ut_udf_models/test.om$(id)");
+  model->set_saved_model_file_path("xxx");
+  model->set_is_builtin_udf(true);
+  auto *input_desc = model->mutable_model_queues_attrs()->add_input_queues_attrs();
+  input_desc->set_device_id(0);
+  input_desc->set_device_type(NPU);
+  auto *output_desc = model->mutable_model_queues_attrs()->add_output_queues_attrs();
+  output_desc->set_device_id(1);
+  output_desc->set_device_type(NPU);
+  EXPECT_EQ(client.LoadModel(load_model_desc), FAILED);
+}
+
 TEST_F(UdfProxyClientTest, UnLoadModel) {
   MockUdfProxyClient client(0);
   client.model_id_to_pids_[0].emplace_back(111111111111);

@@ -1578,7 +1578,9 @@ TEST_F(GeApiTest, RunGraphAsync_RunCustomPass_AfterInferShape_Success) {
   ASSERT_TRUE(runtime_stub.GetSlogStub().FindLog(DLOG_DEBUG, kKeyStageLog) >= 0);
   ASSERT_TRUE(runtime_stub.GetSlogStub().FindLog(DLOG_DEBUG, kKeyLog1) >= 0);
   ASSERT_TRUE(runtime_stub.GetSlogStub().FindLog(DLOG_DEBUG, kKeyStageLog1) >= 0);
-  EXPECT_EQ(graph.GetAllNodes().size(), 4UL);
+  // 自定义Pass添加的Identity消费add_1输出且无输出引用，属死代码被按死链剪除（图未声明输出，
+  // GE补建inner NetOutput），Pass注册/分级/执行的校验由上方slog断言承载
+  EXPECT_EQ(graph.GetAllNodes().size(), 3UL);
   runtime_stub.GetSlogStub().Clear();
 }
 
@@ -1729,7 +1731,9 @@ TEST_F(GeApiTest, RunGraphAsync_RunCustomPass_AfterBuiltInFusion_Success) {
   ASSERT_TRUE(runtime_stub.GetSlogStub().FindLog(DLOG_DEBUG, kKeyStageLog) >= 0);
   ASSERT_TRUE(runtime_stub.GetSlogStub().FindLog(DLOG_DEBUG, kKeyLog1) >= 0);
   ASSERT_TRUE(runtime_stub.GetSlogStub().FindLog(DLOG_DEBUG, kKeyStageLog1) >= 0);
-  EXPECT_EQ(graph.GetAllNodes().size(), 4UL);
+  // 自定义Pass添加的Identity消费add_1输出且无输出引用，属死代码被按死链剪除（图未声明输出，
+  // GE补建inner NetOutput），Pass注册/分级/执行的校验由上方slog断言承载
+  EXPECT_EQ(graph.GetAllNodes().size(), 3UL);
   runtime_stub.GetSlogStub().Clear();
 }
 

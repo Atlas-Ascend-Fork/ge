@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-模型执行阶段若涉及动态更新变量的场景，从内存加载离线模型数据，由系统内部管理模型运行的内存。
+om或om2模型执行阶段若涉及动态更新变量的场景，从内存加载离线模型数据，由系统内部管理模型运行的内存。
 
 **本接口需与其它接口配合使用**，以便实现动态更新变量的目的，请参见[aclmdlBundleLoadFromFile](aclmdlBundleLoadFromFile.md)处的说明。
 
@@ -41,7 +41,7 @@ aclError aclmdlBundleLoadFromMem(const void *model,  size_t modelSize, uint32_t 
 
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
-| model | 输入 | 存放模型数据的内存地址指针。<br>此处的模型文件是基于构图接口构建出来的，调用aclgrphBundleBuildModel接口编译模型、调用aclgrphBundleSaveModel接口保存模型，再由用户自行将保存出来的om模型文件读入内存。 |
+| model | 输入 | 存放模型数据的内存地址指针。<br>此处的模型文件是基于构图接口构建出来的，调用aclgrphBundleBuildModel接口编译模型、调用aclgrphBundleSaveModel接口保存模型，再由用户自行将保存出来的om/om2模型文件读入内存。 |
 | modelSize | 输入 | 内存中的模型数据长度，单位Byte。 |
 | bundleId | 输出 | 系统成功加载模型后，返回bundleId作为后续操作时识别模型的标志。 |
 
