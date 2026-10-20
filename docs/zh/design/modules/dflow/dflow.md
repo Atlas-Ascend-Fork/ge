@@ -422,7 +422,7 @@ graph TD
         DAEMON --> DCM["DaemonClientManager<br/>(每头节点一个连接)"]
         DCM --> DDC["DeployerDaemonClient"]
         DDC -->|"fork"| SUB["sub_deployer 进程"]
-        DAEMON -.->|"gRPC"| RD
+        RD -.->|"gRPC 请求"| DAEMON
     end
 
     subgraph 子从调度节点
@@ -563,7 +563,7 @@ executor 进程加载模型后，根据模型类型和部署位置采用不同�
 - **模型的每个输入和输出都对应一个队列**，模型只与自己的输入/输出队列交互（例外：未被使用的输出以 Dummy 队列占位且不创建物理队列、多输出融合时共享同一物理队列、一对一连接复用同一队列，见下文连边类型分析）
 - **一个队列只能被一个模块出队**——模型从自己的输入队列出队，flowGW 从它负责分发的源队列出队；多个源往同一队列入队（多对一）是允许的
 - **同设备一对多分发**：当一份输出需给同设备的多个模型时，源模型只需向自己的输出队列入队一次，由 flowGW 从源队列取出后分发到每个目标模型各自的输入队列（GE 侧仅下发路由与分组配置，分发行为在 flowGW 进程内执行），同侧队列间的数据共享基于引用计数实现零拷贝
-- **根模型输入的一对多**：当图输入需分发给多个目标且目标队列均为 device 侧队列时，Feed 数据由应用直接发送给各个 device 的目标队列，不经过 host 侧 flowGW 分发
+- **根模型输入的一对多**：当图输入需分发给多个目标时，按 device 粒度处理——Feed 数据由应用直接发送到各个 device 上的队列，每个 device 只拷贝一次，不经过 host 侧 flowGW 分发；同一 device 上有多个目标时，该 device 上只创建一个源队列，由该 device 的 flowGW 将数据引用分发（零拷贝）到各目标各自的输入队列
 - **跨设备通信**：经 tag 传输，底层走 hcomm 模块（HCCL 通信；代码中相关接口以 hcom 为前缀，如 `hcom_handle`）。两端设备各分配一个 tag 组成 tag pair；同节点不同 device 间不能本地直连时同样使用 tag
 - **Host 与 Device 之间**：部署在 device 上的队列均以 client queue 形式创建，host 进程（应用头节点）可直接向其入队/出队，入队与出队均为拷贝语义（由驱动完成数据搬运），无法引用计数共享
 
@@ -579,7 +579,7 @@ executor 进程加载模型后，根据模型类型和部署位置采用不同�
 **Group 是 flowGW 内的路由分组对象**，成员为队列或 tag，彼此构成负载均衡关系；非 group 的单一队列/tag 相当于只含一个元素的 group（退化形态）。其语义分两侧：
 
 - **作为投递目的（选一投递）**：数据进入 group 时按策略只投递给其中一个成员——默认按 trans_id 轮询；配置亲和策略（见 [2.4 节](#24-多实例负载均衡)）时按 trans_id 与亲和策略生成的 route_label 分发，保证相同键值的数据到达同一成员
-- **作为数据来源（保序消费）**：消费方每次只从组内取一条消息处理，默认按 trans_id 保序；含 N-Mapping 节点或开启异常捕获的场景不缓存保序，有数据即分发
+- **作为数据来源（保序消费）**：消费方每次只从组内取一条消息处理，默认按 trans_id 保序；含 N-Mapping 节点（输入输出条数非一一映射的节点，如 batch 聚合、数据拆分，由编译期框架自动标记或用户经 `SetContainsNMappingNode` 声明，见 [4.4 节](#44-执行层异构执行器与数据对齐)）或开启异常捕获的场景不缓存保序，有数据即分发
 
 部署规划器按连接拓扑构建 group 并经配置下发，运行时由 flowGW 执行。以一对多复制分发为例，路由路径如下：
 
@@ -636,8 +636,10 @@ flowchart TD
         H["应用头节点 Feed/Fetch"]
     end
     subgraph Dev0["Device 0"]
-        Q3(["Q3"]) -->|in0| A["模型A"]
-        Q6(["Q6"]) -->|in0| B["模型B"]
+        Q1(["Q1"]) --> Q3(["Q3"])
+        Q1 --> Q6(["Q6"])
+        Q3 -->|in0| A["模型A"]
+        Q6 -->|in0| B["模型B"]
         Q2(["Q2"]) -->|in1| A
         A -->|out0| Q4(["Q4"]) --> Q7(["Q7"]) -->|in1| B
         Q4 --> Q10(["Q10"]) -->|in0| C["模型C"]
@@ -656,8 +658,7 @@ flowchart TD
         E -->|out0| DQ2(["Dummy Q"])
         E -->|out1| Q19(["Q19"])
     end
-    H --> Q3
-    H --> Q6
+    H --> Q1
     H --> Q2
     Q9 -. Fetch .-> H
     Q12 -. Fetch .-> H
@@ -698,7 +699,11 @@ flowchart TD
 
 **Dummy Q（未使用输出占位）**：模型输出未被任何下游使用时，插入 Dummy Queue 占位保持输入/输出槽位对齐，但跳过物理队列创建。如 D.out1 和 E.out0 均未使用，各分配一个 Dummy Q。根模型输入未被任何子模型消费时同样以 Dummy 队列占位。
 
-**应用侧直接广播**：根模型输入需分发给多个目标且目标队列均为 device 侧队列时，不经过 host 侧 flowGW 分发，Feed 数据由应用直接发送给各个 device 的目标队列。
+**根模型输入的一对多（应用侧按 device 直发）**：根模型输入需分发给多个目标时，不经过 host 侧 flowGW 分发，Feed 数据由应用按 device 直接入队，每个 device 只拷贝一次。同一 device 上有多个目标时，该 device 上只创建一个源队列，由该 device 的 flowGW 引用分发（零拷贝）到各目标各自的输入队列。
+
+| 连接 | 源队列 | 目的 | 说明 |
+|------|--------|------|------|
+| FlowData0 → A.in0 + B.in0 | Q1 | Q3, Q6 | 应用只入队 Q1 一次，Device 0 的 flowGW 对每个目的各分发一份引用 |
 
 ##### 多实例部署连边规划
 
@@ -858,7 +863,7 @@ sequenceDiagram
 
 **数据对齐器 DataFlowDataAligner**（`executor/data_flow_data_aligner.cc`）。正常场景下，flowGW 按 trans_id 保序对齐，模型处理顺序可保证，无需额外对齐。但在以下两类特殊场景下 trans_id 可能不连续或数据可能被丢弃，需要用户通过 `SetInputsAlignAttrs` 启用数据对齐器：
 - **开启异常处理**：通过 `FlowGraph::SetExceptionCatch(true)` 开启，异常数据可能被丢弃导致 trans_id 不连续
-- **包含 N-Mapping 节点**（通过 `FlowGraph::SetContainsNMappingNode(true)` 标记）：如 batch 聚合（多组数据合并成一组）或数据拆分（一组数据拆分成多组），导致 trans_id 不连续
+- **包含 N-Mapping 节点**（输入输出条数非一一映射的节点；用户可通过 `FlowGraph::SetContainsNMappingNode(true)` 声明，编译期 batch 属性转换与流式输入 UDF 也会由框架自动标记）：如 batch 聚合（多组数据合并成一组）或数据拆分（一组数据拆分成多组），导致 trans_id 不连续
 
 启用后，对齐器按 `(trans_id, data_label)` 维度对齐多路输出，选择缓存最少的队列优先 dequeue 以平衡消费速度，超时/超限时按策略丢弃或部分取出。
 
