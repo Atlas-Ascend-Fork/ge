@@ -31,7 +31,11 @@ namespace ge {
 /**
  * @ingroup domi_omg
  * @brief init omg context
- * @return void
+ * @param [in] input_shape input shape to be parsed
+ * @param [in] input_format input format to be parsed
+ * @param [in] net_format net format, reserved and not used
+ * @param [in] is_dynamic_input dynamic input, true or false
+ * @return Status result code
  */
 GE_FUNC_VISIBILITY domi::Status InitDomiOmgContext(const std::string &input_shape, const std::string &input_format,
                                                    const std::string &net_format, bool is_dynamic_input);
@@ -40,15 +44,14 @@ GE_FUNC_VISIBILITY domi::Status InitDomiOmgContext(const std::string &input_shap
  * @ingroup domi_omg
  * @brief generate graph based on the input model file and weight file
  * @param [out] graph graph
+ * @param [in] atc_params multiply atc params
  * @param [in] model_file path of model file
  * @param [in] weights_file path of weight file
  * @param [in] type type of the input model
  * @param [in] op_conf op mapping configuration
  * @param [in] target type of platform. If a tiny model is generated, set target to tiny
  * @param [in] run_mode run model
- * @param [in] enable_l2dynamic enable l2dynamic
  * @param [in] is_dynamic_input dynamic input, true of false
- * @param [in] atc_params multiply atc params
  * @return Status result code
  */
 GE_FUNC_VISIBILITY domi::Status ParseGraph(ge::Graph &graph, const std::map<std::string, std::string> &atc_params,
@@ -63,7 +66,7 @@ GE_FUNC_VISIBILITY domi::Status CheckParamForAirInput(ge::Graph &graph);
  * @brief generates a simplified JSON file based on the key value of the offline model file in protobuf format
  * @param [in] model_file path of offline model file
  * @param [out] json_file path of json file
- * @param [key] encrypted key
+ * @param [in] is_covert_to_json convert the offline model into a json file if true, otherwise print the model info
  * @return Status result code
  */
 GE_FUNC_VISIBILITY domi::Status ConvertOm(const char *model_file, const char *json_file, bool is_covert_to_json);
@@ -71,11 +74,10 @@ GE_FUNC_VISIBILITY domi::Status ConvertOm(const char *model_file, const char *js
 GE_FUNC_VISIBILITY domi::Status ConvertPbtxtToJson(const char *model_file, const char *json_file);
 /**
  * @ingroup domi_omg
- * @brief convert the model file in protobuf format into a JSON file.
- * @param [in] framework type of model
- * @param [in] om model_file path of offline model file
+ * @brief convert the framework model file into a JSON file.
+ * @param [in] framework type of model, only CAFFE, TENSORFLOW and ONNX are supported
+ * @param [in] model_file path of framework model file
  * @param [out] json_file path of json file
- * @param [key] encrypted key
  * @return Status result code
  */
 GE_FUNC_VISIBILITY domi::Status ConvertFwkModelToJson(const domi::FrameworkType framework, const char *model_file,
@@ -83,10 +85,9 @@ GE_FUNC_VISIBILITY domi::Status ConvertFwkModelToJson(const domi::FrameworkType 
 
 /**
  * @ingroup domi_omg
- * @brief convert the model file into a execute-om file.
- * @param [in] om model_file path of offline model file
- * @param [out] output path of execute-om file
- * @return Status result code
+ * @brief set the group_op_name attribute of the operators in model_def according to the fusion scope id
+ * @param [in,out] model_def model definition in protobuf format
+ * @return void
  */
 GE_FUNC_VISIBILITY void GetGroupName(ge::proto::ModelDef &model_def);
 
