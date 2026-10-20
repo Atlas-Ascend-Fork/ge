@@ -45,7 +45,6 @@ struct NodeConfig {
   std::string protocol;
   std::vector<int32_t> proxy_device_ids;
   std::string available_ports;
-  bool need_port_preemption = false;
   std::string auth_lib_path;
   std::string server_id;
   bool operator<(const NodeConfig &other) const {

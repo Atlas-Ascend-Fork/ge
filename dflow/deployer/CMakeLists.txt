@@ -103,7 +103,6 @@ set(HELPER_FLOW_RM_SRC_LIST
         deploy/flowrm/flow_route_manager.cc
         deploy/flowrm/flow_route_planner.cc
         deploy/flowrm/heterogeneous_exchange_deployer.cc
-        deploy/flowrm/network_manager.cc
         deploy/flowrm/tsd_client.cc
         )
 

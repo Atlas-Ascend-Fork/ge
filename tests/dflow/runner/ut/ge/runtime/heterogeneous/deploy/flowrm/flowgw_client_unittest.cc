@@ -15,13 +15,11 @@
 
 #include "macro_utils/dt_public_scope.h"
 #include "deploy/flowrm/flowgw_client.h"
-#include "deploy/flowrm/network_manager.h"
 #include "macro_utils/dt_public_unscope.h"
 
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "common/config/configurations.h"
 #include "deploy/flowrm/tsd_client.h"
-#include "common/env_path.h"
 
 namespace ge {
 namespace {
@@ -78,13 +76,6 @@ class UtFlowGwClient : public testing::Test {
   void TearDown() override {
     MmpaStub::GetInstance().Reset();
     unsetenv("RESOURCE_CONFIG_PATH");
-  }
-
-  static void SetConfigEnv(const std::string &path) {
-    std::string config_path =
-        PathUtils::Join({EnvPath().GetAirBasePath(), "tests/dflow/runner/ut/ge/runtime/data", path});
-    setenv("RESOURCE_CONFIG_PATH", config_path.c_str(), 1);
-    EXPECT_EQ(Configurations::GetInstance().InitInformation(), SUCCESS);
   }
 };
 
@@ -268,20 +259,6 @@ TEST_F(UtFlowGwClient, run_DestroyValidHandle) {
   EXPECT_EQ(ret, SUCCESS);
 }
 
-TEST_F(UtFlowGwClient, run_GetHostPort) {
-  SetConfigEnv("valid/server/numa_config.json");
-  ge::NetworkManager::GetInstance().Initialize();
-  int32_t port = -1;
-  auto ret = ge::NetworkManager::GetInstance().GetDataPanelPort(port);
-  EXPECT_EQ(ret, SUCCESS);
-}
-
-TEST_F(UtFlowGwClient, run_GetHostIp) {
-  SetConfigEnv("valid/server/numa_config.json");
-  std::string ip;
-  EXPECT_EQ(ge::NetworkManager::GetInstance().GetDataPanelIp(ip), SUCCESS);
-}
-
 TEST_F(UtFlowGwClient, run_CreateDataGwGroup) {
   FlowGwClient flowgw_client(0, 0, {0}, false);
   ExchangeEndpoint endpoint = {};
@@ -328,41 +305,11 @@ TEST_F(UtFlowGwClient, run_GrantQueue_GRANT_INVALID) {
   EXPECT_EQ(ret, FAILED);
 }
 
-TEST_F(UtFlowGwClient, run_BindMainPortError) {
-  SetConfigEnv("invalid/numa_config_error_port.json");
-  auto ret = ge::NetworkManager::GetInstance().BindMainPort();
-  EXPECT_NE(ret, SUCCESS);
-}
-
-TEST_F(UtFlowGwClient, run_BindMainPortError2) {
-  SetConfigEnv("invalid/numa_config_zero_port.json");
-  auto ret = ge::NetworkManager::GetInstance().BindMainPort();
-  EXPECT_NE(ret, SUCCESS);
-}
-
-TEST_F(UtFlowGwClient, run_init_and_finalize) {
-  EXPECT_EQ(ge::NetworkManager::GetInstance().Initialize(), SUCCESS);
-  EXPECT_EQ(ge::NetworkManager::GetInstance().Finalize(), SUCCESS);
-}
-
 TEST_F(UtFlowGwClient, run_get_data_gw_status) {
   FlowGwClient flowgw_client(0, 0, {0}, false);
   EXPECT_EQ(flowgw_client.Initialize(), SUCCESS);
   EXPECT_EQ(flowgw_client.GetSubProcStat(), ProcStatus::NORMAL);
   flowgw_client.Finalize();
-}
-
-TEST_F(UtFlowGwClient, run_bind_main_port_failed) {
-  NetworkManager manager;
-  NetworkInfo networkInfo;
-  networkInfo.available_ports = "1test~200";
-  HostInfo hostInfo;
-  hostInfo.data_panel = networkInfo;
-  DeployerConfig deployerConfig;
-  deployerConfig.host_info = hostInfo;
-  Configurations::GetInstance().information_ = deployerConfig;
-  ASSERT_EQ(manager.BindMainPort(), FAILED);
-  Configurations::GetInstance().information_ = {};
 }
 
 TEST_F(UtFlowGwClient, run_config_sched_info_to_flowgw) {
