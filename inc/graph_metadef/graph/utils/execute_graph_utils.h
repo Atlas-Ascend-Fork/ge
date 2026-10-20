@@ -91,8 +91,8 @@ class ExecuteGraphUtils {
 
   /**
    * 将node所有的输入、输出边断开，并移动到dst_graph
-   * @param dst_graph 目的Graph，
    * @param node 需要移动的Node
+   * @param dst_graph 目的Graph
    * @return 成功时，返回ge::GRAPH_SUCCESS
    */
   static graphStatus MoveNodeToGraph(FastNode *node, ExecuteGraph *dst_graph);
