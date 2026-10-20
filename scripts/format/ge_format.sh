@@ -87,9 +87,9 @@ pushd "${CURRENT_PATH}"
       find inc -type f -name "*" | grep "\.h$\|\.cc$" >> "${FMT_FILE_LIST}" || true
     elif [[ "X${mode}" == "Xchanged" ]]; then
       # --diff-filter=ACMRTUXB will ignore deleted files in commit
-      git diff --diff-filter=ACMRTUXB --name-only | grep "^inc\|^base|^compile|^executor|^runner" | grep "\.h$\|\.cc$" >> "${FMT_FILE_LIST}" || true
+      git diff HEAD --diff-filter=ACMRTUXB --name-only | grep -E "^(inc|base|compile|executor|runner)/" | grep "\.h$\|\.cc$" >> "${FMT_FILE_LIST}" || true
     else  # "X${mode}" == "Xlastcommit"
-      git diff --diff-filter=ACMRTUXB --name-only HEAD~ HEAD | grep "^inc\|^base|^compile|^executor|^runner" | grep "\.h$\|\.cc$" > "${FMT_FILE_LIST}" || true
+      git diff --diff-filter=ACMRTUXB --name-only HEAD~ HEAD | grep -E "^(inc|base|compile|executor|runner)/" | grep "\.h$\|\.cc$" > "${FMT_FILE_LIST}" || true
     fi
 
     while read line; do
