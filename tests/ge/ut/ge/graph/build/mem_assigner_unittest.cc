@@ -3744,7 +3744,7 @@ TEST_F(UtestMemoryAssignerTest, test_host_memory_type) {
   if (it != mem_offset.end()) {
     offset = it->second;
   }
-  EXPECT_EQ(offset, 68719477760);
+  EXPECT_EQ(offset, ge::kMemoryHostFeatureMapLogicBase + 1024U);
 }
 
 TEST_F(UtestMemoryAssignerTest, test_p2p_memory_type) {

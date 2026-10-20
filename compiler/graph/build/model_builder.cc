@@ -662,7 +662,13 @@ Status ModelBuilder::BuildModelDefForMem(ge::Model &model) {
   if (mem_type_to_mem_offset_.find(RT_MEMORY_HOST_SVM) != mem_type_to_mem_offset_.cend()) {
     host_svm_max_mem_offset_ = mem_type_to_mem_offset_[RT_MEMORY_HOST_SVM];
   }
-
+  const uint64_t hbm_logic_addr_end = (kGraphMemoryBuffer >> 4U) + static_cast<uint64_t>(max_mem_offset_) +
+                                      static_cast<uint64_t>(p2p_mem_offset_) + static_cast<uint64_t>(weight_offset_);
+  if (hbm_logic_addr_end > kMemoryHostFeatureMapLogicBase) {
+    GELOGW("Hbm logic addr end:%" PRIu64 " exceeds host feature map logic base:%" PRIu64
+           ", model may not run on devices with insufficient memory.",
+           hbm_logic_addr_end, kMemoryHostFeatureMapLogicBase);
+  }
   GE_CHK_BOOL_EXEC(
       ge::AttrUtils::SetInt(&model, ATTR_MODEL_SESSION_SCOPE_MEMORY_SIZE, session_scope_mem_offset),
       REPORT_INNER_ERR_MSG("E19999", "Set Attr:%s in model failed", ATTR_MODEL_SESSION_SCOPE_MEMORY_SIZE.c_str());

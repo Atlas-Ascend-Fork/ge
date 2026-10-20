@@ -570,12 +570,12 @@ TEST_F(UtestGraphVarManagerTest, test_var_manager_restore_var_mem) {
   tensor_desc.SetFormat(FORMAT_NCHW);
   TensorUtils::SetSize(tensor_desc, shape.GetShapeSize());
   desc->AddOutputDesc(tensor_desc);
-  desc->SetOutputOffset({137438953472U});
+  desc->SetOutputOffset({static_cast<int64_t>(var_manager->GetVarMemLogicBase())});
   EXPECT_EQ(var_manager->RestoreVarMem("tmp_var", desc, tensor_desc, RT_MEMORY_HBM), SUCCESS);
 
   uint8_t *var_logic{nullptr};
   EXPECT_EQ(var_manager->GetVarAddr("tmp_var", tensor_desc, var_logic), SUCCESS);
-  int64_t logic_value = 137438953472U;
+  int64_t logic_value = static_cast<int64_t>(var_manager->GetVarMemLogicBase());
   EXPECT_EQ(var_manager->GetVarMemoryAddr(reinterpret_cast<uint8_t *>(&logic_value), RT_MEMORY_HBM), nullptr);
 
   GeTensorDesc tensor_desc_nd(shape);

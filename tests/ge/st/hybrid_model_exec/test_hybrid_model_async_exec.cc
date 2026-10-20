@@ -2280,7 +2280,7 @@ TEST_F(StestHybridRt2Executor, run_graph_with_ref_fileconstant_success) {
 
   auto file_constant_desc = file_constant->GetOpDesc()->MutableOutputDesc(0);
   auto variable_desc = variable->GetOpDesc()->MutableOutputDesc(0);
-  variable->GetOpDesc()->SetOutputOffset({137438953472U});
+  variable->GetOpDesc()->SetOutputOffset({824633720832U});
 
   file_constant_desc->SetShape(GeShape(std::vector<int64_t>{}));
   file_constant_desc->SetOriginShape(GeShape(std::vector<int64_t>{}));
@@ -2342,12 +2342,12 @@ TEST_F(StestHybridRt2Executor, run_graph_with_ref_fileconstant_success) {
     wrapper->input_tensor = std::move(InputData2GertTensors(inputs));
     executor.EnqueueData(wrapper);
 
-    size_t kMaxWaitSeconds = 5U;
-    for (size_t seconds_wait = 0U; seconds_wait < kMaxWaitSeconds; seconds_wait++) {
+    size_t kMaxWaitMs = 5000U;
+    for (size_t ms_wait = 0U; ms_wait < kMaxWaitMs; ms_wait += 50U) {
       if (reached) {
         break;
       }
-      sleep(1);
+      usleep(50U * 1000U);
     }
     reached = false;
     // We run variable assign add 2.0 twice, expect result == 2.0f at first and then expect 4.0f at second time

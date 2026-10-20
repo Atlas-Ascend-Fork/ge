@@ -26,9 +26,6 @@ namespace {
 constexpr int32_t kSessionNoReuse = 1;
 constexpr uint64_t kSessionScopeMemoryMask = 0x100000000UL;
 constexpr char_t const *kWorkSpace = "workspace";
-constexpr uint64_t kMemoryVarLogicBase = 34359738368U;
-constexpr uint64_t kMemoryHostFeatureMapLogicBase = 68719476736U;
-constexpr uint64_t kMemoryVarAddressSize = kMemoryHostFeatureMapLogicBase - kMemoryVarLogicBase;
 
 uint64_t GetWorkspaceMemTypeByPriority(const bool is_p2p_memory, const bool is_l1_memory, const bool is_ub_memory,
                                        const bool session_scope_memory) {
@@ -848,7 +845,7 @@ Status ModelUtils::GetRtAddress(const RuntimeParam &param, const uintptr_t logic
     GELOGI("[OM2]The logic addr:0x%" PRIx64 " is weight address, base:0x%" PRIx64 ", size:%" PRIu64
            ", mem_type:%" PRIu64 ".",
            logic_addr, param.logic_weight_base, param.weight_size, mem_type);
-  } else if ((param.logic_var_base <= logic_addr) && (logic_addr < (param.logic_var_base + kMemoryVarAddressSize))) {
+  } else if ((param.logic_var_base <= logic_addr) && (logic_addr < (param.logic_var_base + param.var_size))) {
     mem_addr = PtrToPtr<void, uint8_t>(ValueToPtr(logic_addr));
     mem_type = kConstantMemType;
     return SUCCESS;

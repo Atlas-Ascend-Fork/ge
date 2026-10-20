@@ -1625,7 +1625,7 @@ Status VarManager::SetAllMemoryMaxValue(const std::map<std::string, std::string>
   GEEVENT("The graph_mem_max_size is %zu and the var_mem_max_size is %zu", graph_mem_max_size_, var_mem_max_size_);
 
   FMK_SIZET_ADDCHECK(graph_mem_max_size_, kGraphMemoryBuffer);
-  // set var memory logic base as a fix value 128G
+  // set var memory logic base as a fix value 768G
   // offline scenario with fileconstant may compile and execute in different soc version
   var_mem_logic_base_ = kVarMemoryLogicBase;
 

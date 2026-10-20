@@ -24,7 +24,8 @@
 #include "framework/om2/model_data/gert_model_data.h"
 #include "rt_var_resource.h"
 
-constexpr uint64_t kMemoryVarLogicBase = 137438953472U;  // 128GB
+constexpr uint64_t kMemoryVarLogicBase =
+    824633720832U;  // 768GB, keep consistent with kVarMemoryLogicBase in graph_var_manager.h
 
 namespace gert {
 

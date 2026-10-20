@@ -1111,7 +1111,7 @@ ComputeGraphPtr ShareGraph::VariableOPGraph(const string &real_node_type) {
 
   auto var = graph->FindNode("var");
   SetNoStorage(var->GetOpDesc(), FORMAT_NCHW, DT_FLOAT, {1, 2, 3, 4});
-  var->GetOpDesc()->SetOutputOffset({137438953472U});
+  var->GetOpDesc()->SetOutputOffset({824633720832U});
   ge::TensorUtils::SetSize(*var->GetOpDesc()->MutableOutputDesc(0), 512);
   auto add1 = graph->FindNode("add1");
   if (!ge::AttrUtils::SetStr(add1->GetOpDesc(), ge::ATTR_NAME_FRAMEWORK_ORIGINAL_TYPE, real_node_type)) {
@@ -6899,10 +6899,10 @@ ComputeGraphPtr ShareGraph::SimpleVariableAddGraph() {
   auto root_graph = ToComputeGraph(g);
 
   auto var1 = root_graph->FindNode("var1");
-  var1->GetOpDescBarePtr()->SetOutputOffset({137438953472});
+  var1->GetOpDescBarePtr()->SetOutputOffset({824633720832});
   TensorUtils::SetSize(*var1->GetOpDescBarePtr()->MutableOutputDesc(0), 64);
   auto var2 = root_graph->FindNode("var2");
-  var2->GetOpDescBarePtr()->SetOutputOffset({137438953572});
+  var2->GetOpDescBarePtr()->SetOutputOffset({824633720932});
   TensorUtils::SetSize(*var2->GetOpDescBarePtr()->MutableOutputDesc(0), 64);
 
   auto add = root_graph->FindNode("add");
@@ -12731,7 +12731,7 @@ ComputeGraphPtr ShareGraph::GraphDynamicAndStaticGraphWithVariables(int64_t &str
                   .Attr(ATTR_NAME_PARENT_NODE_INDEX, 0)
                   .Attr(ATTR_NAME_INDEX, 0)
                   .Build("var1");
-  var1->SetOutputOffset({137438953472});
+  var1->SetOutputOffset({824633720832});
   TensorUtils::SetSize(*var1->MutableOutputDesc(0), 64);
   ge::AttrUtils::SetStr(var1, ge::ATTR_VARIABLE_PLACEMENT, "host");
 
@@ -12764,7 +12764,7 @@ ComputeGraphPtr ShareGraph::GraphDynamicAndStaticGraphWithVariables(int64_t &str
                    .Attr(ATTR_NAME_INDEX, 1)
                    .Build("var2");
   var_2->SetStreamId(0);
-  var_2->SetOutputOffset({137438953572});
+  var_2->SetOutputOffset({824633720932});
   TensorUtils::SetSize(*var_2->MutableOutputDesc(0), 64);
 
   auto relu = OP_CFG("Relu").TensorDesc(FORMAT_NCHW, DT_FLOAT, shape).InCnt(1).OutCnt(1).Build("relu");

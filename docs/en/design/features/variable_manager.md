@@ -185,21 +185,36 @@ flowchart TD
 
 ### Variable Logic Address
 
-GE adopts logic address mechanism to decouple compile-time address from runtime physical address. Core constant definitions as follows:
+GE adopts logic address mechanism to decouple compile-time address from runtime physical address. Logic bases of different memory types are partitioned by 256 GB steps. Core constant definitions as follows:
 
 | Constant | Value | Meaning |
 |------|-----|------|
-| `kVarMemoryLogicBase` | 128 GB | Variable logic address starting base |
+| `kMemoryHostFeatureMapLogicBase` | 256 GB | Host feature map logic base, also the upper bound of HBM (fm/weight/p2p) logic range |
+| `kMemoryHostSVMFeatureMapLogicBase` | 512 GB | Host SVM feature map logic base |
+| `kVarMemoryLogicBase` | 768 GB | Variable logic address starting base (fixed value in `SetAllMemoryMaxValue`) |
+| `kMemoryVarLogicBase` | 32 GB | Default initial value of `var_mem_logic_base_` (window before initialization) |
+| `kMemoryVarAddressSize` | 224 GB (= 256 GB − 32 GB, derived) | Variable logic address window size (fallback when `var_size` is missing) |
+
+Logic address space layout:
+
+| Range | Section | Description |
+|--------|---------|-------------|
+| [2 GB, 256 GB) | HBM fm/weight/p2p | Base is `kGraphMemoryBuffer >> 4`, upper bound asserted in `BuildModelDefForMem` |
+| [256 GB, 512 GB) | Host feature map | 256 GB reserved |
+| [512 GB, 768 GB) | Host SVM feature map | 256 GB reserved |
+| [768 GB, 992 GB) | Variable | 224 GB window, runtime resolution prefers `var_size` recorded in OM |
 
 **Logic Address Role**: In OM models generated during compile phase, variables reference logic addresses (i.e., `var_mem_logic_base_ + offset`). When loading model at runtime, according to actually allocated physical memory address, through `GetVarMemoryAddr()` convert logic address to device physical address. This design enables OM models to load and execute on different devices, without need to recompile.
 
-**Offline Scenario Special Handling**: Offline compilation (atc) and runtime may execute on different SoC versions. Therefore, offline scenario fixes variable logic base to 128 GB (`kVarMemoryLogicBase`), avoiding address conflicts due to device memory layout differences.
+**Offline Scenario Special Handling**: Offline compilation (atc) and runtime may execute on different SoC versions. Therefore, offline scenario fixes variable logic base to 768 GB (`kVarMemoryLogicBase`), avoiding address conflicts due to device memory layout differences.
+
+**Layout Constraint**: `ModelBuilder::BuildModelDefForMem` asserts at compile time that the HBM logic range end (`2GB + fm + p2p + weight`) does not exceed the Host feature map logic base (256 GB), preventing the fm/weight range from intruding into fixed logic ranges of other memory types on large-HBM devices (e.g., 256 GB per card), which would cause misjudgment when `GetRtAddress` resolves memory type by address range.
 
 ```mermaid
 flowchart LR
     subgraph "Compile Phase"
         CO["Variable offset offset=0x1000"]
-        LA["Logic address = 128GB + 0x1000"]
+        LA["Logic address = 768GB + 0x1000"]
     end
     subgraph "Runtime"
         PA["Physical address = malloc returned device address"]

@@ -240,7 +240,7 @@ void GeModelBuilder::SetAttrs() {
   ge::AttrUtils::SetInt(ge_model, ge::ATTR_MODEL_EVENT_NUM, 1);
   ge::AttrUtils::SetInt(ge_model, ge::ATTR_MODEL_LABEL_NUM, 0);
   ge::AttrUtils::SetInt(ge_model, ge::MODEL_ATTR_TASK_GEN_BASE_ADDR, 0x100000000);
-  ge::AttrUtils::SetInt(ge_model, ge::ATTR_MODEL_TASK_GEN_VAR_ADDR, 137438953472);
+  ge::AttrUtils::SetInt(ge_model, ge::ATTR_MODEL_TASK_GEN_VAR_ADDR, 824633720832);
   ge::AttrUtils::SetInt(ge_model, ge::MODEL_ATTR_TASK_GEN_WEIGHT_ADDR, 0x1000000000);
   ge::AttrUtils::SetInt(ge_model, ge::ATTR_MODEL_VAR_SIZE, 5120);
 
@@ -291,7 +291,7 @@ ge::GeRootModelPtr GeModelBuilder::BuildGeRootModel() {
   ge::AttrUtils::SetInt(ge_model, ge::ATTR_MODEL_STREAM_NUM, root_model_stream_num_);
   ge::AttrUtils::SetInt(ge_model, ge::ATTR_MODEL_EVENT_NUM, root_model_event_num_);
   ge::AttrUtils::SetInt(ge_model, ge::ATTR_MODEL_VAR_SIZE, 512 * 1024 * 1024);
-  ge::AttrUtils::SetInt(ge_model, ge::ATTR_MODEL_TASK_GEN_VAR_ADDR, 137438953472);
+  ge::AttrUtils::SetInt(ge_model, ge::ATTR_MODEL_TASK_GEN_VAR_ADDR, 824633720832);
   const auto root_graph = ge_model->GetGraph();
   if (root_graph != nullptr) {
     out_model->Initialize(root_graph);

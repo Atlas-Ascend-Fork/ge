@@ -35,13 +35,13 @@ namespace ge {
 constexpr uint64_t kGraphMemoryManagerMallocMaxSize = 27917287424U;  // 26UL * 1024UL * 1024UL * 1024UL;
 constexpr uint64_t kMemoryVarManagerMallocSize = 5368709120U;        // 5UL * 1024UL * 1024UL * 1024UL;
 constexpr uint64_t kMemoryVarLogicBase = 34359738368U;               // 32UL * 1024UL * 1024UL * 1024UL;
-constexpr uint64_t kMemoryHostFeatureMapLogicBase = 68719476736U;    // 64UL * 1024UL * 1024UL * 1024UL;
+constexpr uint64_t kMemoryHostFeatureMapLogicBase = 274877906944U;   // 256UL * 1024UL * 1024UL * 1024UL;
 constexpr uint64_t kMemoryVarAddressSize = kMemoryHostFeatureMapLogicBase - kMemoryVarLogicBase;
-constexpr uint64_t kMemoryHostSVMFeatureMapLogicBase = 137438953472U;  // 128UL * 1024UL * 1024UL * 1024UL;
+constexpr uint64_t kMemoryHostSVMFeatureMapLogicBase = 549755813888U;  // 512UL * 1024UL * 1024UL * 1024UL;
 constexpr uint64_t kUseMaxMemorySize = kGraphMemoryManagerMallocMaxSize + kMemoryVarManagerMallocSize;
 constexpr uint64_t kGraphMemoryBuffer = 34359738368U;    // 32UL * 1024UL * 1024UL * 1024UL;
 constexpr uint64_t kMaxMemorySize = 274877906944U;       // 256UL * 1024UL * 1024UL * 1024UL;
-constexpr uint64_t kVarMemoryLogicBase = 137438953472U;  // 128UL * 1024UL * 1024UL * 1024UL;
+constexpr uint64_t kVarMemoryLogicBase = 824633720832U;  // 768UL * 1024UL * 1024UL * 1024UL;
 const std::string kEnvGeuseStaticMemory = "GE_USE_STATIC_MEMORY";
 constexpr uint64_t kSessionMemAlignSize = 512U;
 constexpr size_t kSessionMemAlignUnit = 2U;

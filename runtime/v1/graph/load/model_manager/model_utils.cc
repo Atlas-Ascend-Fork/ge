@@ -63,7 +63,7 @@ Status GetMaxVarMemSize(const RuntimeParam &runtime_param, uint64_t &max_var_mem
   GE_CHECK_NOTNULL(var_manager);
   max_var_mem_size = static_cast<uint64_t>(var_manager->GetVarMemSize(RT_MEMORY_HBM)) +
                      static_cast<uint64_t>(var_manager->GetVarConstPlaceHolderMemSize(RT_MEMORY_HBM));
-  max_var_mem_size = (max_var_mem_size == 0LU) ? kMemoryVarAddressSize : max_var_mem_size;
+  max_var_mem_size = (max_var_mem_size == 0LU) ? static_cast<uint64_t>(runtime_param.var_size) : max_var_mem_size;
   GELOGI("GetMaxVarMemSize max_var_mem_size = %" PRIu64 ".", max_var_mem_size);
   return SUCCESS;
 }

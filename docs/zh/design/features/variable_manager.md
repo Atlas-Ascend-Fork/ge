@@ -185,21 +185,36 @@ flowchart TD
 
 ### 变量逻辑地址
 
-GE 采用逻辑地址机制将编译期地址与运行时物理地址解耦。核心常量定义如下：
+GE 采用逻辑地址机制将编译期地址与运行时物理地址解耦。各类内存的逻辑地址基址按 256 GB 步长累加划分，核心常量定义如下：
 
 | 常量 | 值 | 含义 |
 |------|-----|------|
-| `kVarMemoryLogicBase` | 128 GB | 变量逻辑地址起始基址|
+| `kMemoryHostFeatureMapLogicBase` | 256 GB | Host feature map 逻辑基址，同时是 HBM（fm/weight/p2p）逻辑区间的上界 |
+| `kMemoryHostSVMFeatureMapLogicBase` | 512 GB | Host SVM feature map 逻辑基址 |
+| `kVarMemoryLogicBase` | 768 GB | 变量逻辑地址起始基址（`SetAllMemoryMaxValue` 固定值） |
+| `kMemoryVarLogicBase` | 32 GB | `var_mem_logic_base_` 默认初始值（初始化前窗口期） |
+| `kMemoryVarAddressSize` | 224 GB（= 256 GB − 32 GB，推导式） | 变量逻辑地址窗口宽度（`var_size` 缺失时的兜底值） |
+
+逻辑地址空间布局：
+
+| 区段 | 范围 | 说明 |
+|------|------|------|
+| HBM fm/weight/p2p | [2 GB, 256 GB) | 基址 `kGraphMemoryBuffer >> 4`，上界受 `BuildModelDefForMem` 断言约束 |
+| Host feature map | [256 GB, 512 GB) | 预留 256 GB |
+| Host SVM feature map | [512 GB, 768 GB) | 预留 256 GB |
+| Variable | [768 GB, 992 GB) | 窗口 224 GB，判定优先使用 OM 记录的 `var_size` |
 
 **逻辑地址的作用**：编译期生成的 OM 模型中，变量引用的是逻辑地址（即 `var_mem_logic_base_ + offset`）。运行时加载模型时，根据实际分配的物理内存地址，通过 `GetVarMemoryAddr()` 将逻辑地址转换为设备物理地址。这种设计使得 OM 模型可以在不同设备上加载执行，而无需重新编译。
 
-**离线场景的特殊处理**：离线编译（atc）与运行可能在不同 SoC 版本上执行。为此，离线场景将变量逻辑基址固定为 128 GB（`kVarMemoryLogicBase`），避免因设备内存布局差异导致地址冲突。
+**离线场景的特殊处理**：离线编译（atc）与运行可能在不同 SoC 版本上执行。为此，离线场景将变量逻辑基址固定为 768 GB（`kVarMemoryLogicBase`），避免因设备内存布局差异导致地址冲突。
+
+**布局约束**：`ModelBuilder::BuildModelDefForMem` 在编译期断言 HBM 逻辑区间结束地址（`2GB + fm + p2p + weight`）不超过 Host feature map 逻辑基址（256 GB），防止大 HBM 机型（如 256 GB 单卡）上 fm/weight 区间侵入其他内存类型的固定逻辑区间，导致 `GetRtAddress` 按地址区间反查内存类型时误判。
 
 ```mermaid
 flowchart LR
     subgraph "编译期"
         CO["变量偏移 offset=0x1000"]
-        LA["逻辑地址 = 128GB + 0x1000"]
+        LA["逻辑地址 = 768GB + 0x1000"]
     end
     subgraph "运行时"
         PA["物理地址 = malloc 返回的设备地址"]
