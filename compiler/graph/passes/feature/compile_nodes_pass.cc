@@ -17,6 +17,7 @@
 #include "framework/common/debug/ge_log.h"
 #include "graph/debug/ge_attr_define.h"
 #include "common/compile_profiling/ge_call_wrapper.h"
+#include "common/error_registry/error_report_util.h"
 #include "graph/op_desc.h"
 #include "base/err_msg.h"
 
@@ -136,15 +137,13 @@ graphStatus CompileNodesPass::GetSupportedKernel(const NodePtr &node, const std:
       }
     }
     for (const auto &it : unsupported_reasons) {
-      REPORT_PREDEFINED_ERR_MSG(
-          "EZ3002", std::vector<const char_t *>({"optype", "opskernel", "reason"}),
-          std::vector<const char_t *>({op_desc->GetType().c_str(), it.first.c_str(), it.second.c_str()}));
+      ReportOpsKernelUnsupportedReason(op_desc->GetName(), op_desc->GetType(), it.first, it.second);
       GELOGE(GE_GRAPH_ASSIGN_ENGINE_FAILED,
              "[Call][CheckAccuracySupport] for Op type %s of ops kernel %s is unsupported, reason:%s",
              op_desc->GetType().c_str(), it.first.c_str(), it.second.c_str());
     }
 
-    REPORT_PREDEFINED_ERR_MSG("EZ3003", std::vector<const char_t *>({"opname", "optype"}),
+    REPORT_PREDEFINED_ERR_MSG("EZ3005", std::vector<const char_t *>({"opname", "optype"}),
                               std::vector<const char_t *>({op_desc->GetName().c_str(), op_desc->GetType().c_str()}));
     GELOGE(GRAPH_FAILED, "[Check][Param] Cannot find kernel lib support node:%s, type:%s , get kernel lib failed.",
            node->GetName().c_str(), op_desc->GetType().c_str());

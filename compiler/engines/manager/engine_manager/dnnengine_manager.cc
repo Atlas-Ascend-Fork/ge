@@ -14,6 +14,7 @@
 #include <map>
 
 #include "framework/common/debug/log.h"
+#include "common/error_registry/error_report_util.h"
 #include "common/plugin/ge_make_unique_util.h"
 #include "base/err_msg.h"
 #include "framework/common/debug/ge_log.h"
@@ -43,7 +44,6 @@ const char *const kVectorEngine = "VectorEngine";
 const char *const kAIcoreEngine = "AIcoreEngine";
 const char *const kHostCpuEngineName = "DNN_VM_HOST_CPU";
 const char *const kHostCpuOpKernelLibName = "DNN_VM_HOST_CPU_OP_STORE";
-const char *const kNoSupportReason = "Dynamic shape is not supported on this chip!";
 
 const std::map<std::string, std::string> kAcceleratorToEngineName = {{"AiCore", "AIcoreEngine"},
                                                                      {"AiVector", "VectorEngine"},
@@ -402,14 +402,6 @@ std::string DNNEngineManager::GetDNNEngineName(const ge::NodePtr &node_ptr,
              op_desc->GetName().c_str());
       return it.engine;
     } else {
-      if (flag == CheckSupportFlag::kNotSupportDynamicShape) {
-        REPORT_PREDEFINED_ERR_MSG(
-            "EZ3002", std::vector<const char *>({"optype", "opskernel", "reason"}),
-            std::vector<const char *>({op_desc->GetType().c_str(), kernel_name.c_str(), kNoSupportReason}));
-        GELOGE(GE_GRAPH_ASSIGN_ENGINE_FAILED, "[Check][OpSupported]Op type %s of kernel %s is unsupported, reason: %s",
-               op_desc->GetType().c_str(), kernel_name.c_str(), kNoSupportReason);
-        return "";
-      }
       {
         std::lock_guard<std::mutex> lock(mutex_);
         checksupport_cost_[kernel_name] += GetCurrentTimestamp() - start_time;
@@ -440,9 +432,7 @@ std::string DNNEngineManager::GetDNNEngineName(const ge::NodePtr &node_ptr,
   std::string reason;
   for (const auto &it : unsupported_reasons) {
     reason += it.first + ":" + it.second + ";";
-    REPORT_PREDEFINED_ERR_MSG(
-        "EZ3002", std::vector<const char *>({"optype", "opskernel", "reason"}),
-        std::vector<const char *>({op_desc->GetType().c_str(), it.first.c_str(), it.second.c_str()}));
+    ReportOpsKernelUnsupportedReason(op_desc->GetName(), op_desc->GetType(), it.first, it.second);
     GELOGE(GE_GRAPH_ASSIGN_ENGINE_FAILED,
            "[Check][OpSupported]Op type %s of ops kernel %s "
            "is unsupported, reason : %s",
@@ -457,7 +447,7 @@ std::string DNNEngineManager::GetDNNEngineName(const ge::NodePtr &node_ptr,
     (void)Analyzer::GetInstance()->DoAnalyze(analyze_info);
   }
 
-  REPORT_PREDEFINED_ERR_MSG("EZ3003", std::vector<const char *>({"opname", "optype"}),
+  REPORT_PREDEFINED_ERR_MSG("EZ3005", std::vector<const char *>({"opname", "optype"}),
                             std::vector<const char *>({op_desc->GetName().c_str(), op_desc->GetType().c_str()}));
   GELOGE(GE_GRAPH_ASSIGN_ENGINE_FAILED,
          "[Get][DNNEngineName]Can't find any supported ops kernel "

@@ -16,6 +16,7 @@
 #include <graph/preprocess/hccl_offline_option_builder.h>
 
 #include "analyzer/analyzer.h"
+#include "common/error_registry/error_report_util.h"
 #include "common/plugin/ge_make_unique_util.h"
 #include "common/file_constant_utils/file_constant_utils.h"
 #include "graph_metadef/common/plugin/plugin_manager.h"
@@ -1529,15 +1530,13 @@ Status GeGenerator::CheckEngineTypeSupport(const NodePtr &node, OpEngineType eng
              op_engine_name.c_str(), op_desc->GetName().c_str());
       return SUCCESS;
     } else {
-      REPORT_PREDEFINED_ERR_MSG(
-          "EZ3002", std::vector<const char *>({"optype", "opskernel", "reason"}),
-          std::vector<const char *>({op_desc->GetType().c_str(), kernel_name.c_str(), unsupported_reason.c_str()}));
+      ReportOpsKernelUnsupportedReason(op_desc->GetName(), op_desc->GetType(), kernel_name, unsupported_reason);
       GELOGE(FAILED, "[Call][CheckSupported] failed, Op type %s of ops kernel %s is unsupported, reason:%s",
              op_desc->GetType().c_str(), kernel_name.c_str(), unsupported_reason.c_str());
       return FAILED;
     }
   } else {
-    REPORT_PREDEFINED_ERR_MSG("EZ3003", std::vector<const char *>({"opname", "optype"}),
+    REPORT_PREDEFINED_ERR_MSG("EZ3005", std::vector<const char *>({"opname", "optype"}),
                               std::vector<const char *>({op_desc->GetName().c_str(), op_desc->GetType().c_str()}));
     GELOGE(FAILED,
            "[Check][Param] Cannot find any supported ops kernel info store by kernel_name %s,"
