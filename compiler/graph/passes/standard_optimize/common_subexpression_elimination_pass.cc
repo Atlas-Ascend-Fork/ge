@@ -17,6 +17,7 @@
 
 #include "common/checker.h"
 #include "common/base64.h"
+#include "graph/custom_op_factory.h"
 #include "graph/utils/node_utils.h"
 #include "graph/passes/standard_optimize/constant_folding/folding_pass.h"
 #include "register/op_kernel_registry.h"
@@ -80,8 +81,11 @@ Status CollectPeerCandidateNodesWithType(
     /// To avoid delete wrong nodes(e.g. stateful nodes),
     /// only nodes have folding kernel will be considered for the CSE process
     const auto &node_type = peer_in_node->GetType();
+    const AscendString node_type_str(node_type.c_str());
     if (!OpKernelRegistry::GetInstance().IsRegistered(node_type) &&
-        (folding_pass::GetKernelByType(peer_in_node) == nullptr)) {
+        (folding_pass::GetKernelByType(peer_in_node) == nullptr) &&
+        !CustomOpFactory::IsExistOp(node_type_str, OpBackend::kHostCPU, OpRegistrationPriority::kBottom,
+                                    OpEngine::kHostCpu)) {
       continue;
     }
 

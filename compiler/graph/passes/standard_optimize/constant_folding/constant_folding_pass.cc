@@ -463,8 +463,11 @@ Status ConstantFoldingPass::RunOpKernel(const NodePtr &node, const std::vector<C
   if (IsSubByteFoldingBlocked(op_type, node, inputs)) {
     return UNSUPPORTED;
   }
+  // bottom 优先级 HostCPU 自定义算子参与常量折叠时, 需与 legacy 路径 HostCpuEngine::PrepareOutputs 保持一致的输出 dtype
+  // 白名单限制
   if (CustomOpFactory::IsExistOp(op_type_str, OpBackend::kHostCPU, OpRegistrationPriority::kBottom,
-                                 OpEngine::kHostCpu)) {
+                                 OpEngine::kHostCpu) &&
+      HostCpuEngine::IsOutputDtypeSupported(node->GetOpDesc())) {
     GELOGD("Bottom priority host cpu op is registered. op type = %s, engine = %s.", op_type.c_str(), "HOST_CPU");
     auto *bottom_op = CustomOpFactory::CreateOrGetCustomOp(op_type_str, OpBackend::kHostCPU,
                                                            OpRegistrationPriority::kBottom, OpEngine::kHostCpu);

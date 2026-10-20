@@ -37,6 +37,8 @@ class HostCpuEngine {
   static Status Run(const NodePtr &node, HostCpuOp &kernel, const std::vector<ConstGeTensorPtr> &inputs,
                     std::vector<GeTensorPtr> &outputs);
 
+  static bool IsOutputDtypeSupported(const ConstOpDescPtr &op_desc);
+
   void *GetConstantFoldingHandle() const {
     return constant_folding_handle_;
   }
