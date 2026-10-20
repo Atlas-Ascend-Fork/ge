@@ -9,7 +9,7 @@
 
 - Historical Prototype Library: Structured data and protocols for archiving operator IR prototypes across versions.
 - Structured Data: Three types of files (`index.json` / `metadata.json` / `operators.json`) and their directory organization.
-- Producer: Tool that generates structured data (currently fixed as `gen_esb --extract-history`).
+- Producer: Tool that generates structured data (currently fixed as `gen_esb --es_mode=extract_history`).
 - Consumer: Any tool that reads structured data (currently mainly `gen_esb`, can be extended to other toolchains in the future).
 - One-year Window/Compatibility Cycle: The version range that consumers select for comparison/generation based on version metadata.
 - Ops Run Package: Ops runtime package form after installation (if "run package" appears below, it refers to Ops run package).
@@ -22,7 +22,7 @@ In ES (Eager Style) graph building, to ensure backward API compatibility for C++
 
 Note:
 
-- `gen_esb` is a tool in the ES scenario: currently both the main consumer of historical prototype data and the generation tool for structured data (`--extract-history`). No new generation tools will be provided in the short term.
+- `gen_esb` is a tool in the ES scenario: currently both the main consumer of historical prototype data and the generation tool for structured data (`--es_mode=extract_history`). No new generation tools will be provided in the short term.
 - The historical prototype library protocol layer is not bound to ES: it can be reused by other consumers in the future. This document only describes the consumption and generation strategies for the ES scenario.
 
 ## 2. Module Architecture and Responsibility Division
@@ -35,7 +35,7 @@ The historical prototype library system consists of two core modules:
 2. **Consumption and Generation Tool Module (gen_esb, GE Repository, GE Component, GE Package)**:
 
 - **Consumer Role**: Responsible for reading historical data and generating C++ overloaded interfaces
-- **Producer Role**: Responsible for generating historical prototype library data (reusing `gen_esb --extract-history`)
+- **Producer Role**: Responsible for generating historical prototype library data (reusing `gen_esb --es_mode=extract_history`)
 
 ### 2.2 Historical Prototype Library Module Responsibilities
 
