@@ -112,13 +112,13 @@ class BufferFusionPattern {
   BufferFusionPattern &SetHead(const std::vector<std::string> &head_ids);
 
   /**
-   * add node desc
-   * @param desc_name
-   * @param types
-   * @param repeat_min
-   * @param repeat_max
-   * @param is_allow_series
-   * @return ref
+   * set fusion relation between two op descs, both should be added by AddOpDesc in advance
+   * @param src_desc_name source op desc name
+   * @param dst_desc_name destination op desc name
+   * @param pattern_relation relation type, RELATIVE_POSITION_CONSISTENT is registered on both descs
+   * and checked during pattern matching
+   * @return ref, if either desc name is empty or not found, a [SetRelation][Check] warning is
+   * printed and the error count is increased
    */
   BufferFusionPattern &SetRelation(const std::string &src_desc_name, const std::string &dst_desc_name,
                                    const PatternRelation pattern_relation);
