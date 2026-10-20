@@ -32,14 +32,15 @@ class DaemonService {
   void ProcessInitRequest(const std::string &peer_uri, const deployer::DeployerRequest &request,
                           deployer::DeployerResponse &response);
 
-  void ProcessDisconnectRequest(const std::string &peer_uri, const deployer::DeployerRequest &request,
-                                deployer::DeployerResponse &response);
+  void ProcessDisconnectRequest(const std::string &peer_uri, const deployer::DeployerRequest &request);
 
-  void ProcessHeartbeatRequest(const deployer::DeployerRequest &request, deployer::DeployerResponse &response);
+  void ProcessHeartbeatRequest(DeployerDaemonClient *client, const deployer::DeployerRequest &request,
+                               deployer::DeployerResponse &response);
 
-  void ProcessDeployRequest(const deployer::DeployerRequest &request, deployer::DeployerResponse &response);
+  void ProcessDeployRequest(DeployerDaemonClient *client, const deployer::DeployerRequest &request,
+                            deployer::DeployerResponse &response);
 
-  bool GetClient(int64_t client_id, DeployerDaemonClient **client, deployer::DeployerResponse &response);
+  DeployerDaemonClient *GetVerifiedClient(const std::string &peer_uri, int64_t client_id);
 
   static Status VerifyInitRequest(const std::string &peer_uri, const deployer::DeployerRequest &request,
                                   deployer::DeployerResponse &response);

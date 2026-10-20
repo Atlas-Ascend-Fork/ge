@@ -126,6 +126,26 @@ DeployerDaemonClient *DaemonClientManager::GetClient(const int64_t client_id) {
   return it->second.get();
 }
 
+Status DaemonClientManager::VerifyClientAddr(const int64_t client_id, const std::string &peer_uri) {
+  ClientAddr peer_addr;
+  GE_CHK_STATUS_RET(GetClientIpAndPort(peer_uri, peer_addr), "Failed to parse ip from peer_uri[%s].", peer_uri.c_str());
+  std::lock_guard<std::mutex> lk(mu_);
+  auto it = client_addrs_.find(client_id);
+  if (it == client_addrs_.end()) {
+    REPORT_INNER_ERR_MSG("E19999", "No recorded addr for client[%" PRId64 "].", client_id);
+    GELOGE(FAILED, "[Verify][ClientAddr]No recorded addr for client[%" PRId64 "].", client_id);
+    return FAILED;
+  }
+  if ((it->second.ip != peer_addr.ip) || (it->second.port != peer_addr.port)) {
+    REPORT_INNER_ERR_MSG("E19999", "Client addr[%s] does not match recorded addr[%s:%s], client_id = %" PRId64 ".",
+                         peer_uri.c_str(), it->second.ip.c_str(), it->second.port.c_str(), client_id);
+    GELOGE(FAILED, "[Verify][ClientAddr]Client addr[%s] does not match recorded addr[%s:%s], client_id = %" PRId64 ".",
+           peer_uri.c_str(), it->second.ip.c_str(), it->second.port.c_str(), client_id);
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
 void DaemonClientManager::GenDgwPortOffset(const int32_t dev_count, int32_t &offset) {
   std::lock_guard<std::mutex> lk(mu_);
   offset = dgw_port_offset_gen_;
