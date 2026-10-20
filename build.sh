@@ -130,10 +130,6 @@ parse_cmake_extra_args() {
         esac
     done
 
-    if [[ "$ENABLE_BUILD_DEVICE" != "ON" ]]; then
-        ENABLE_MOD_EXT=ON
-    fi
-
     if [[ -n "$USE_CXX11_ABI" ]]; then
         lower_abi=$(echo "$USE_CXX11_ABI" | tr '[:upper:]' '[:lower:]')
         if [[ "$lower_abi" == "on" || "$USE_CXX11_ABI" == "1" ]]; then
