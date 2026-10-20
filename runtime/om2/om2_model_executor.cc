@@ -96,6 +96,8 @@ struct RunModelInfo {
   GetStreamNumFunc get_stream_num_func = nullptr;
   GetStreamDescFunc get_stream_desc_func = nullptr;
   int32_t load_priority = 0;
+  // executor 所有的外部 RI（调度模式特性创建并注入模型 SO）：模型 SO 仅借用不销毁，卸载期由 executor 释放
+  aclmdlRI external_rt_model = nullptr;
 };
 
 struct ModelMetaInfo {
@@ -697,10 +699,20 @@ class Om2ModelExecutor::Impl {
                                          .instance_handle = static_cast<void *>(owner_),
                                          .callbacks = &callbacks,
                                          .priority = load_arg.priority,
-                                         .reuse_zero_copy = load_arg.reuse_zero_copy ? 1U : 0U};
+                                         .reuse_zero_copy = load_arg.reuse_zero_copy ? 1U : 0U,
+                                         .external_rt_model = run_model_info_.external_rt_model};
     GE_ASSERT_SUCCESS(run_model_info_.load_func(&config, &run_model_info_.model_handle, nullptr));
     GE_ASSERT_NOTNULL(run_model_info_.model_handle);
     run_model_info_.load_priority = load_arg.priority;
+    if (run_model_info_.external_rt_model != nullptr) {
+      const aclError build_end_ret = aclmdlRIBuildEnd(run_model_info_.external_rt_model, nullptr);
+      if (build_end_ret != ACL_SUCCESS) {
+        GELOGE(ge::FAILED, "[OM2][SchMode] aclmdlRIBuildEnd failed, ret=%d, model_id=%u.", build_end_ret,
+               load_arg.model_id);
+        Cleanup();
+        return static_cast<ge::Status>(build_end_ret);
+      }
+    }
 
     return ge::GRAPH_SUCCESS;
   }
@@ -708,6 +720,7 @@ class Om2ModelExecutor::Impl {
   ge::Status CreateAndLoadModelFromStruct(const gert::GertModelData &model_data, ge::ReadonlyByteBuffer &weight_buf,
                                           std::vector<KernelBinInfo> &kernel_bin_info, const Om2ModelLoadArg &load_arg,
                                           uint64_t session_id) {
+    GE_ASSERT_SUCCESS(PrepareExternalRtModel(load_arg));
     std::vector<void *> constants;
     std::vector<void *> var_addrs;
     GE_ASSERT_SUCCESS(InitModelDumpInfo(load_arg));
@@ -720,6 +733,40 @@ class Om2ModelExecutor::Impl {
     weight_buf.reset(nullptr);
     kernel_bin_info.clear();
     return ge::GRAPH_SUCCESS;
+  }
+
+  // 调度模式外部 RI 管理：已配置时创建/设置，未配置时零影响（不创建外部 RI，模型 SO 自建并释放）。
+  // 目标时序为 BuildBegin → SetAttribute → GertModelLoad → BuildEnd，保证属性设置早于模型 SO 的任意 BindStream，
+  // 且 BuildEnd 在模型 SO 完成流绑定和任务下发后由 executor 调用。
+  // 当前 OM2 仅支持静态图，动态 shape 校验作为遗留问题暂不处理。
+  ge::Status PrepareExternalRtModel(const Om2ModelLoadArg &load_arg) {
+    if (!load_arg.sch_mode_configured) {
+      return ge::SUCCESS;
+    }
+    aclmdlRI external_rt_model = nullptr;
+    const aclError begin_ret = aclmdlRIBuildBegin(&external_rt_model, 0U);
+    if (begin_ret != ACL_SUCCESS) {
+      GELOGE(ge::FAILED, "[OM2][SchMode] aclmdlRIBuildBegin failed, ret=%d, model_id=%u.", begin_ret,
+             load_arg.model_id);
+      return static_cast<ge::Status>(begin_ret);
+    }
+    run_model_info_.external_rt_model = external_rt_model;  // 创建成功即纳入唯一所有者管理，失败路径由 Cleanup 释放
+    int32_t sch_mode = load_arg.sch_mode;
+    const aclError set_attr_ret =
+        aclmdlRISetAttribute(run_model_info_.external_rt_model, ACL_MDL_ATTR_SCH_MODE_INT32, &sch_mode);
+    if (set_attr_ret != ACL_SUCCESS) {
+      GELOGE(ge::FAILED, "[OM2][SchMode] aclmdlRISetAttribute failed, ret=%d, sch_mode=%d.", set_attr_ret,
+             load_arg.sch_mode);
+      // SetAttribute 失败：executor 销毁已创建 RI（不调用模型 SO），置空保证 Cleanup 不重复销毁
+      (void)aclmdlRIDestroy(run_model_info_.external_rt_model);
+      run_model_info_.external_rt_model = nullptr;
+      return static_cast<ge::Status>(set_attr_ret);
+    }
+    GELOGI(
+        "[OM2][SchMode] external rt model created, sch mode setting pending RTS aclmdlRISetAttribute, "
+        "sch_mode=%d, model_id=%u.",
+        load_arg.sch_mode, load_arg.model_id);
+    return ge::SUCCESS;
   }
 
   ge::Status CreateDumpManager(const Om2ModelLoadArg &load_arg) {
@@ -1237,8 +1284,19 @@ class Om2ModelExecutor::Impl {
       if (unload_ret != ge::GRAPH_SUCCESS) {
         GELOGW("[OM2] Resource release issue for so file: %s", run_model_info_.so_file.c_str());
       }
+      run_model_info_.model_handle = nullptr;
     } else {
       GELOGI("[OM2] Unload func not found or model not created, so file: %s", run_model_info_.so_file.c_str());
+    }
+    // executor 仅注入 RI，模型 SO 不销毁；必须在 GertModelUnload 返回后释放，确保 SO 释放任务和自身资源期间 RI 仍有效。
+    // 失败仅记日志，不阻塞其余资源释放
+    if (run_model_info_.external_rt_model != nullptr) {
+      const aclError destroy_ret = aclmdlRIDestroy(run_model_info_.external_rt_model);
+      if (destroy_ret != ACL_SUCCESS) {
+        GELOGE(ge::FAILED, "[OM2][Cleanup][SchMode] aclmdlRIDestroy failed, ret=%d, model_id=%u.", destroy_ret,
+               model_id_);
+      }
+      run_model_info_.external_rt_model = nullptr;
     }
     if (run_model_info_.so_handle != nullptr) {
       if (mmDlclose(run_model_info_.so_handle) != 0) {
@@ -1937,4 +1995,5 @@ ge::Status IsOm2Model(const char *file_path, bool &is_support) {
   GE_ASSERT_SUCCESS(IsOm2Model(magic, read_len, is_support));
   return ge::SUCCESS;
 }
+
 }  // namespace gert

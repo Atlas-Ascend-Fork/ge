@@ -127,7 +127,8 @@ const std::unordered_set<aclmdlConfigAttr> kOm2SupportedLoadConfigOpts = {
     ACL_MDL_PRIORITY_INT32,  ACL_MDL_LOAD_TYPE_SIZET,     ACL_MDL_PATH_PTR,
     ACL_MDL_MEM_ADDR_PTR,    ACL_MDL_MEM_SIZET,           ACL_MDL_WEIGHT_ADDR_PTR,
     ACL_MDL_WEIGHT_SIZET,    ACL_MDL_WORKSPACE_ADDR_PTR,  ACL_MDL_WORKSPACE_SIZET,
-    ACL_MDL_WEIGHT_PATH_PTR, ACL_MDL_WITHOUT_GRAPH_INT32, ACL_MDL_WORKSPACE_MEM_OPTIMIZE};
+    ACL_MDL_WEIGHT_PATH_PTR, ACL_MDL_WITHOUT_GRAPH_INT32, ACL_MDL_WORKSPACE_MEM_OPTIMIZE,
+    ACL_MDL_SCH_MODE_INT32};
 
 aclError PrepareOm2Tensor(std::vector<gert::Tensor> &tensor, std::vector<gert::Tensor *> &vec, const size_t inputNum,
                           const aclmdlDataset *const dataset, const std::vector<gert::GertTensorDesc> &tensorDesc,
@@ -706,6 +707,9 @@ static aclError LoadFromFile(const aclmdlConfigHandle *handle, const std::vector
   gert::Om2ModelLoadArg loadArgs;
   ACL_REQUIRES_OK(ConstructOm2ModelLoadArg(nullptr, 0U, nullptr, 0U, handle->priority, loadArgs, nullptr,
                                            fileConstantMems, handle->withoutGraph, (handle->reuseZeroCopy != 0U)));
+  // 是否配置与配置值分别传递：显式 normal 也走外部 RI 路径，禁止以模式值推断
+  loadArgs.sch_mode_configured = (handle->attrState.count(ACL_MDL_SCH_MODE_INT32) != 0U);
+  loadArgs.sch_mode = handle->schMode;
   return Om2ModelLoadFromFileWithMem(handle->loadPath.c_str(), modelId, loadArgs);
 }
 
@@ -716,6 +720,9 @@ static aclError LoadFromFileWithMem(const aclmdlConfigHandle *handle,
   ACL_REQUIRES_OK(ConstructOm2ModelLoadArg(handle->workPtr, handle->workSize, handle->weightPtr, handle->weightSize,
                                            handle->priority, loadArgs, nullptr, fileConstantMems, handle->withoutGraph,
                                            (handle->reuseZeroCopy != 0U)));
+  // 是否配置与配置值分别传递：显式 normal 也走外部 RI 路径，禁止以模式值推断
+  loadArgs.sch_mode_configured = (handle->attrState.count(ACL_MDL_SCH_MODE_INT32) != 0U);
+  loadArgs.sch_mode = handle->schMode;
   return Om2ModelLoadFromFileWithMem(handle->loadPath.c_str(), modelId, loadArgs);
 }
 
@@ -726,6 +733,9 @@ static aclError LoadFromMem(const aclmdlConfigHandle *handle, const std::vector<
   gert::Om2ModelLoadArg loadArgs;
   ACL_REQUIRES_OK(ConstructOm2ModelLoadArg(nullptr, 0U, nullptr, 0U, handle->priority, loadArgs, nullptr,
                                            fileConstantMems, handle->withoutGraph, (handle->reuseZeroCopy != 0U)));
+  // 是否配置与配置值分别传递：显式 normal 也走外部 RI 路径，禁止以模式值推断
+  loadArgs.sch_mode_configured = (handle->attrState.count(ACL_MDL_SCH_MODE_INT32) != 0U);
+  loadArgs.sch_mode = handle->schMode;
   return Om2ModelLoadFromMemWithMem(handle->mdlAddr, handle->mdlSize, modelId, loadArgs, handle->weightPath.c_str());
 }
 
@@ -738,6 +748,9 @@ static aclError LoadFromMemWithMem(const aclmdlConfigHandle *handle,
   ACL_REQUIRES_OK(ConstructOm2ModelLoadArg(handle->workPtr, handle->workSize, handle->weightPtr, handle->weightSize,
                                            handle->priority, loadArgs, nullptr, fileConstantMems, handle->withoutGraph,
                                            (handle->reuseZeroCopy != 0U)));
+  // 是否配置与配置值分别传递：显式 normal 也走外部 RI 路径，禁止以模式值推断
+  loadArgs.sch_mode_configured = (handle->attrState.count(ACL_MDL_SCH_MODE_INT32) != 0U);
+  loadArgs.sch_mode = handle->schMode;
   return Om2ModelLoadFromMemWithMem(handle->mdlAddr, handle->mdlSize, modelId, loadArgs, nullptr);
 }
 
@@ -1401,6 +1414,10 @@ aclError aclmdlBundleLoadModelWithConfigImplOm2(uint32_t bundleId, size_t index,
   ACL_LOG_INFO("[OM2] start to execute aclmdlBundleLoadModelWithConfig, bundleId[%u], index[%zu]", bundleId, index);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(handle);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelId);
+  if (handle->attrState.count(ACL_MDL_SCH_MODE_INT32) != 0U) {
+    ACL_LOG_ERROR("[Check][SchMode]ACL_MDL_SCH_MODE_INT32 does not support bundle model load");
+    return ACL_ERROR_FEATURE_UNSUPPORTED;
+  }
   ACL_REQUIRES_OK(acl::CheckOm2UserLoadConfigOptValid(handle));
   acl::BundleModelInfo info;
   ACL_REQUIRES_OK(PrepareOm2BundleSubModelLoad(bundleId, index, info));

@@ -75,7 +75,7 @@ uLong MemReadFileImpl(T *mem_file, void *buf, const uLong size) {
 }
 
 template <typename T>
-long MemSeek64FileImpl(T *mem_file, const ZPOS64_T offset, const int origin) {
+long MemSeek64FileImpl(T *mem_file, const ZPOS64_T offset, const int32_t origin) {
   if (mem_file == nullptr) {
     return kMemZipError;
   }

@@ -370,7 +370,7 @@ void LogAnnotatedEventInsertStats(const std::string &graph_name,
   for (const auto &entry : node_id_2_node_tasks) {
     total_task_count += entry.second.size();
     for (const auto &task : entry.second) {
-      total_event_task_count += IsAnnotatedEventTask(task);
+      total_event_task_count += IsAnnotatedEventTask(task) ? 1U : 0U;
     }
   }
   GELOGD(

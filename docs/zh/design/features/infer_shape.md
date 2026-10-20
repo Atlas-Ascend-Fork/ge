@@ -209,7 +209,7 @@ IMPL_OP(Cast).InferShape(InferShapeForCast);
 
 ### 4.5 InferShapeRange 接口
 
-动态 Shape 场景下，除了推导精确 Shape，还需要推导 Shape 的取值范围。三类算子必须实现 InferShapeRange；一类、二类算子在满足单调性条件时可使用框架自动推导。
+动态 Shape 场景下，除了推导精确 Shape，还需要推导 Shape 的取值范围。三类算子必须实现 InferShapeRange；一类、二类算子无需实现——Ascend950 及之后版本编译期不做 range 推导，按输入/输出维度动静状态填充默认值（已知维度 `{dim, dim}`、动态维度 `{0, -1}`，UNKNOWN_RANK 不处理）；其余芯片版本沿用框架自动推导。
 
 ```cpp
 ge::graphStatus InferShapeRangeForWhere(InferShapeRangeContext *context) {

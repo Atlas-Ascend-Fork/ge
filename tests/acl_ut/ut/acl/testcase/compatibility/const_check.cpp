@@ -17,13 +17,15 @@
 
 #ifndef private
 #define private public
+// acl_mdl.h 必须先于 acl/acl.h 包含：toolkit 的 acl.h 会先包含 toolkit 版 acl_mdl.h 并置位
+// include guard，导致仓库头文件（本用例的看护对象）被遮蔽
+#include "acl/acl_mdl.h"
 #include "acl/acl.h"
 #include "acl/acl_op_compiler.h"
 #include "acl/acl_prof.h"
 #include "acl/acl_tdt.h"
 #include "acl/error_codes/ge_error_codes.h"
 #include "acl/error_codes/rt_error_codes.h"
-#include "acl/acl_mdl.h"
 #undef private
 #endif
 
@@ -64,4 +66,9 @@ TEST_F(UTEST_ACL_compatibility_const_check, acl_op) {
 TEST_F(UTEST_ACL_compatibility_const_check, model_stream_flags) {
   EXPECT_EQ(ACL_MODEL_STREAM_FLAG_HEAD, 0x00000000U);
   EXPECT_EQ(ACL_MODEL_STREAM_FLAG_DEFAULT, 0x7FFFFFFFU);
+}
+
+TEST_F(UTEST_ACL_compatibility_const_check, acl_mdl_sch_mode) {
+  EXPECT_EQ(ACL_MDL_SCH_MODE_NORMAL, 0);
+  EXPECT_EQ(ACL_MDL_SCH_MODE_EXCLUSIVE, 1);
 }

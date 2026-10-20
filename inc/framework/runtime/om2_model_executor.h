@@ -39,6 +39,9 @@ struct VISIBILITY_EXPORT Om2ModelLoadArg {
   bool reuse_zero_copy = false;
   std::string om_path;
   std::string weight_path;
+  // 调度模式：是否配置与配置值必须分别保存，禁止以模式值推断是否启用外部 RI 链路（显式 normal 也走外部 RI 路径）
+  bool sch_mode_configured = false;
+  int32_t sch_mode = 0;  // model schedule mode, 0: normal, 1: exclusive, only support om2 models
 };
 
 class VISIBILITY_EXPORT Om2ModelExecutor {
@@ -127,6 +130,7 @@ VISIBILITY_EXPORT ge::Status IsOm2Model(const void *data, size_t size, bool &is_
 VISIBILITY_EXPORT ge::Status IsOm2Model(const char *file_path, bool &is_support);
 VISIBILITY_EXPORT ge::Status GetOm2BundleInfo(const void *data, size_t size,
                                               std::vector<std::pair<size_t, size_t>> &model_sizes, size_t &var_size);
+// lightweight check whether om2 model is static graph (dynamic_type == FIXED), only reads model_meta.json
 }  // namespace gert
 
 #endif  // AIR_CXX_RUNTIME_V2_CORE_OM2_MODEL_EXECUTOR_H_

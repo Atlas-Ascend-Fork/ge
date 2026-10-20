@@ -89,6 +89,9 @@
 >
 >如果模型转换时通过该参数设置了shape的范围，使用应用工程进行模型推理时，需要在**模型执行**接口之前，调用[aclmdlSetDatasetTensorDesc](../../../c/acl/aclmdlSetDatasetTensorDesc.md)接口，用于设置真实的输入Tensor描述信息（输入shape范围）；模型执行之后，调用[aclmdlGetDatasetTensorDesc](../../../c/acl/aclmdlGetDatasetTensorDesc.md)接口获取模型动态输出的Tensor描述信息；再进一步调用[aclTensorDesc](../../../c/acl/aclTensorDesc.md)下的操作接口获取输出Tensor数据占用的内存大小、Tensor的Format信息、Tensor的维度信息等。
 
+**使用约束：**
+[OFFLINE_MODE](basic_functions.md#offline_mode)取值为7时，仅支持纯静态shape，不支持动态shape范围。
+
 **产品支持情况：**
 
 全量芯片支持。
@@ -359,6 +362,9 @@ INPUT\_SHAPE中的“-1”表示设置动态分辨率。
 <!-- end id38 -->
 
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildModel_config_params/dynamic_shape_res.md#id7 -->
+
+**使用约束：**
+[OFFLINE_MODE](basic_functions.md#offline_mode)取值为7时，不支持配置该参数。
 
 **产品支持情况：**
 

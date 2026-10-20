@@ -82,7 +82,7 @@ ge::Status SaveBinToFile(const char *const data, size_t length, const std::strin
     GELOGE(ge::FAILED, "[MEMZIP] Open file failed, path: %s", file_path.c_str());
     return ge::FAILED;
   }
-  ofs.write(data, static_cast<std::streamsize>(length));
+  (void)ofs.write(data, static_cast<std::streamsize>(length));
   ofs.close();
   if (ofs.fail()) {
     GELOGE(ge::FAILED, "[MEMZIP] Write data to file failed, path: %s", file_path.c_str());
@@ -97,7 +97,7 @@ constexpr uint32_t kMaxWriteSize = std::numeric_limits<uint32_t>::max();
 constexpr int64_t kBufSize = 16384L;        // same as UNZ_BUFSIZE
 constexpr size_t kBufVectorSize = 16384UL;  // same as UNZ_BUFSIZE
 
-int MemGrow(MemoryFile *mem_file, const uint64_t new_size) {
+int32_t MemGrow(MemoryFile *mem_file, const uint64_t new_size) {
   if (new_size <= mem_file->capacity) {
     return kMemZipOk;
   }
@@ -137,7 +137,7 @@ int MemGrow(MemoryFile *mem_file, const uint64_t new_size) {
   return kMemZipOk;
 }
 
-voidpf ZCALLBACK MemOpenFileFuncWithBuffer(voidpf opaque, const void *filename, int mode) {
+voidpf ZCALLBACK MemOpenFileFuncWithBuffer(voidpf opaque, const void *filename, int32_t mode) {
   (void)filename;
   const auto mem_file = static_cast<MemoryFile *>(opaque);
   if (mem_file == nullptr) {
@@ -216,7 +216,7 @@ ZPOS64_T ZCALLBACK MemTell64FileFunc(voidpf opaque, voidpf stream) {
   return mem_file->position;
 }
 
-long ZCALLBACK MemSeek64FileFunc(voidpf opaque, voidpf stream, ZPOS64_T offset, int origin) {
+long ZCALLBACK MemSeek64FileFunc(voidpf opaque, voidpf stream, ZPOS64_T offset, int32_t origin) {
   const auto mem_file = static_cast<MemoryFile *>(stream);
   (void)opaque;
   if (mem_file == nullptr) {
@@ -231,7 +231,7 @@ long ZCALLBACK MemSeek64FileFunc(voidpf opaque, voidpf stream, ZPOS64_T offset, 
   return ret;
 }
 
-int ZCALLBACK MemCloseFileFunc(voidpf opaque, voidpf stream) {
+int32_t ZCALLBACK MemCloseFileFunc(voidpf opaque, voidpf stream) {
   const auto mem_file = static_cast<MemoryFile *>(stream);
   (void)opaque;
   if (mem_file == nullptr) {
@@ -244,7 +244,7 @@ int ZCALLBACK MemCloseFileFunc(voidpf opaque, voidpf stream) {
   return kMemZipOk;
 }
 
-int ZCALLBACK MemErrorFileFunc(voidpf opaque, voidpf stream) {
+int32_t ZCALLBACK MemErrorFileFunc(voidpf opaque, voidpf stream) {
   const auto mem_file = static_cast<MemoryFile *>(stream);
   (void)opaque;
   if (mem_file == nullptr) {

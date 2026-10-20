@@ -186,6 +186,24 @@ TEST_F(LLMUtilsTest, TestParserOptions) {
   EXPECT_EQ(ret, ge::SUCCESS);
 }
 
+TEST_F(LLMUtilsTest, TestParserWaitTimeInfoBoundary) {
+  std::map<ge::AscendString, ge::AscendString> llm_options = {
+      {llm::LLM_OPTION_SYNC_KV_CACHE_WAIT_TIME, "2147483647"},
+  };
+  llm::DecoderWaitTimeInfo wait_time_info;
+  EXPECT_EQ(llm::LLMUtils::ParserWaitTimeInfo(llm_options, wait_time_info), ge::SUCCESS);
+  EXPECT_EQ(wait_time_info.sync_kv_wait_time, 2147483647);
+
+  wait_time_info.sync_kv_wait_time = 20;
+  llm_options[llm::LLM_OPTION_SYNC_KV_CACHE_WAIT_TIME] = "2147483648";
+  EXPECT_EQ(llm::LLMUtils::ParserWaitTimeInfo(llm_options, wait_time_info), ge::LLM_PARAM_INVALID);
+  EXPECT_EQ(wait_time_info.sync_kv_wait_time, 20);
+
+  llm_options[llm::LLM_OPTION_SYNC_KV_CACHE_WAIT_TIME] = "0";
+  EXPECT_EQ(llm::LLMUtils::ParserWaitTimeInfo(llm_options, wait_time_info), ge::LLM_PARAM_INVALID);
+  EXPECT_EQ(wait_time_info.sync_kv_wait_time, 20);
+}
+
 TEST_F(LLMUtilsTest, ParseDeployInfoInvalidClusterInfo) {
   const std::map<ge::AscendString, ge::AscendString> llm_options = {
       {llm::LLM_OPTION_ROLE, "decoder"},

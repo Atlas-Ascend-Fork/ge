@@ -26,7 +26,7 @@ namespace {
 constexpr uint32_t kMaxFileNameLength = 4096U;
 constexpr uint64_t kMaxCompressedEntriesUncompressedSize = 10ULL * 1024ULL * 1024ULL * 1024ULL;
 
-voidpf ZCALLBACK MemOpenFileFuncReadonly(voidpf opaque, const void *filename, int mode) {
+voidpf ZCALLBACK MemOpenFileFuncReadonly(voidpf opaque, const void *filename, int32_t mode) {
   (void)filename;
   (void)mode;
   const auto mem_file_readonly = static_cast<MemoryFileReadonly *>(opaque);
@@ -61,19 +61,19 @@ ZPOS64_T ZCALLBACK MemTell64FileFuncReadonly(voidpf opaque, voidpf stream) {
   return mem_file->position;
 }
 
-long ZCALLBACK MemSeek64FileFuncReadonly(voidpf opaque, voidpf stream, ZPOS64_T offset, int origin) {
+long ZCALLBACK MemSeek64FileFuncReadonly(voidpf opaque, voidpf stream, ZPOS64_T offset, int32_t origin) {
   const auto mem_file = static_cast<MemoryFileReadonly *>(stream);
   (void)opaque;
   return MemSeek64FileImpl(mem_file, offset, origin);
 }
 
-int ZCALLBACK MemCloseFileFuncReadonly(voidpf opaque, voidpf stream) {
+int32_t ZCALLBACK MemCloseFileFuncReadonly(voidpf opaque, voidpf stream) {
   (void)opaque;
   (void)stream;
   return kMemZipOk;
 }
 
-int ZCALLBACK MemErrorFileFuncReadonly(voidpf opaque, voidpf stream) {
+int32_t ZCALLBACK MemErrorFileFuncReadonly(voidpf opaque, voidpf stream) {
   const auto mem_file = static_cast<MemoryFileReadonly *>(stream);
   (void)opaque;
 
@@ -101,12 +101,12 @@ constexpr uint32_t kCdUncompressedSizeOffset = 24U;
 constexpr uint32_t kCdFileNameLenOffset = 28U;
 constexpr uint32_t kCdExtraLenOffset = 30U;
 constexpr uint32_t kCdLocalFileHeaderOffset = 42U;
-constexpr uint32_t kCdHeaderMagicNum = 0x02014b50;
+constexpr uint32_t kCdHeaderMagicNum = 0x02014b50U;
 constexpr uint16_t kCdExtraMagicNum = 0x0001;
 constexpr uint16_t kLfHeaderFixedSize = 30U;
 constexpr uint32_t kLfNameLenOffset = 26U;
 constexpr uint32_t kLfExtraLenOffset = 28U;
-constexpr uint32_t kLfHeaderMagicNum = 0x04034b50;
+constexpr uint32_t kLfHeaderMagicNum = 0x04034b50U;
 constexpr size_t kBitsPerByte = 8;
 constexpr size_t kBytesPerUint16 = sizeof(uint16_t);
 constexpr size_t kBytesPerUint32 = sizeof(uint32_t);
@@ -221,7 +221,7 @@ ZipArchiveReader::ZipArchiveReader(const uint8_t *data, const size_t length) : m
 
 ZipArchiveReader::~ZipArchiveReader() {
   if (zip_handle_ != nullptr) {
-    unzClose(zip_handle_);
+    (void)unzClose(zip_handle_);
   }
 }
 
@@ -248,8 +248,8 @@ bool ZipArchiveReader::BuildEntryCache() {
         unzGetCurrentFileInfo64(zip_handle_, &file_info, name_buff.data(), name_buff.size(), nullptr, 0, nullptr, 0);
     GE_ASSERT_TRUE(uz_ret == UNZ_OK, "Failed to get the current file information, ret = %d", uz_ret);
     GE_ASSERT_TRUE(file_info.uncompressed_size <= std::numeric_limits<size_t>::max(),
-                   "Uncompressed size of entry exceeds size_t range, size = %llu",
-                   static_cast<unsigned long long>(file_info.uncompressed_size));
+                   "Uncompressed size of entry exceeds size_t range, size = %" PRIu64,
+                   static_cast<uint64_t>(file_info.uncompressed_size));
     const std::string file_name(name_buff.data());
     if (!file_name.empty() && file_name.back() != '/') {
       if (file_info.compression_method != Z_NO_COMPRESSION) {
@@ -260,15 +260,15 @@ bool ZipArchiveReader::BuildEntryCache() {
               "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
               std::vector<const char *>({"uncompressed_size", value.c_str(), reason.c_str()}));
           GELOGE(ge::FAILED,
-                 "Total uncompressed size of compressed entries exceeds limit, current = %llu, limit = %llu",
-                 static_cast<unsigned long long>(file_info.uncompressed_size),
-                 static_cast<unsigned long long>(kMaxCompressedEntriesUncompressedSize));
+                 "Total uncompressed size of compressed entries exceeds limit, current = %" PRIu64 ", limit = %" PRIu64,
+                 static_cast<uint64_t>(file_info.uncompressed_size),
+                 static_cast<uint64_t>(kMaxCompressedEntriesUncompressedSize));
           return false;
         }
         total_uncompressed_size += file_info.uncompressed_size;
       }
       GE_ASSERT_TRUE(CacheCurrentEntry(file_name, file_info));
-      entry_names_.emplace_back(file_name);
+      (void)entry_names_.emplace_back(file_name);
     }
     uz_ret = unzGoToNextFile(zip_handle_);
   }

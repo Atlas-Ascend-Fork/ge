@@ -36,6 +36,7 @@
 #include "graph/custom_op_factory.h"
 #include "graph/custom_op/infer_meta.h"
 #include "graph/utils/transformer_utils.h"
+#include "depends/platform/src/platform_stub.h"
 
 namespace ge {
 REG_OP(Const)
@@ -150,7 +151,14 @@ std::vector<GeTensorDesc> GetOutputMeta(const OpDescPtr &op_desc) {
   return outputs;
 }
 
-class ShapeInferenceUT : public testing::Test {};
+class ShapeInferenceUT : public testing::Test {
+ public:
+  static void SetUpTestSuite() {
+    // 进程内 SoC 固定，统一按 Ascend950（NpuArch 3510）模拟，覆盖默认值填充分支
+    SetPlatformNpuArch("3510");
+  }
+};
+
 // infer from output
 REG_OP(FixIOOp_OutputIsFix)
     .INPUT(fix_input1, "T")
@@ -667,14 +675,12 @@ REG_OP(TwoOptionalInputsOp)
     ASSERT_EQ(status, GRAPH_SUCCESS);
     std::vector<std::pair<int64_t, int64_t>> shape_range;
     (void)op_desc->GetOutputDesc(2U).GetShapeRange(shape_range);
-    ASSERT_EQ(shape_range.size(), 4U);
-    for (size_t i = 0UL; i < shape_range.size(); ++i) {
-      ASSERT_EQ(shape_range[i].first, range[i].first);
-      ASSERT_EQ(shape_range[i].second, range[i].second);
-    }
+    // 默认值填充：输出动态维 {0, UNKNOWN_DIM}，静态维 {dim, dim}
+    const std::vector<std::pair<int64_t, int64_t>> expect_range = {{1, 1}, {2, 2}, {3, 3}, {0, ge::UNKNOWN_DIM}};
+    ASSERT_EQ(shape_range, expect_range);
   }
 
-  // 动态输入的input测试 动态轴-1, shape range 设值,min大于max异常场景
+  // 动态输入的input测试 动态轴-1, shape range 设值,min大于max：默认值填充不消费输入range值
   TEST_F(ShapeInferenceUT, CallInferV2Func_DynamicInput_unknow_shaperange_min_bigger_max) {
     auto operator_dynamic = op::DynamicInput3Input3Output3("test4");
     operator_dynamic.create_dynamic_input_byindex_dyn_input(2, true);
@@ -720,10 +726,12 @@ REG_OP(TwoOptionalInputsOp)
     ASSERT_EQ(op_desc->GetOutputDesc(2U).GetShape().GetDimNum(), 4);
     const auto call_infer_shape_range = OperatorFactoryImpl::GetInferShapeRangeFunc();
     status = call_infer_shape_range(operator_dynamic, op_desc);
-    ASSERT_EQ(status, ge::PARAM_INVALID);
+    ASSERT_EQ(status, GRAPH_SUCCESS);
     std::vector<std::pair<int64_t, int64_t>> shape_range;
     (void)op_desc->GetOutputDesc(2U).GetShapeRange(shape_range);
-    ASSERT_EQ(shape_range.size(), 0U);
+    // 默认值填充不消费输入 range，min 大于 max 不影响输出
+    const std::vector<std::pair<int64_t, int64_t>> expect_range = {{1, 1}, {2, 2}, {3, 3}, {0, ge::UNKNOWN_DIM}};
+    ASSERT_EQ(shape_range, expect_range);
   }
 
   // 动态输入的input测试 动态轴-1, shape range 设值, min大于max, max为-1的正常场景
@@ -937,6 +945,7 @@ REG_OP(TwoOptionalInputsOp)
     ASSERT_EQ(status, GRAPH_SUCCESS);
     std::vector<std::pair<int64_t, int64_t>> shape_range;
     (void)op_desc->GetOutputDesc(0U).GetShapeRange(shape_range);
+    // 默认芯片形态走 custom 推导：输出继承输入 range
     ASSERT_EQ(shape_range.size(), 4U);
     for (size_t i = 0UL; i < shape_range.size(); ++i) {
       ASSERT_EQ(shape_range[i].first, range[i].first);
@@ -1857,5 +1866,45 @@ REG_OP(TwoOptionalInputsOp)
 
     bool is_registered = is_registered_func(op_desc);
     EXPECT_FALSE(is_registered);
+  }
+
+  // Ascend950（NpuArch 3510）走默认值填充：动态维 {0, UNKNOWN_DIM}，静态维 {dim, dim}
+  TEST_F(ShapeInferenceUT, CallInferV2Func_PlaceholderShapeRangeOnAscend950) {
+    auto operator_dynamic = op::DynamicInput3Input3Output3("test4");
+    operator_dynamic.create_dynamic_input_byindex_dyn_input(2, true);
+    auto op_desc = OpDescUtils::GetOpDescFromOperator(operator_dynamic);
+    ASSERT_NE(op_desc, nullptr);
+    // input0/3：动态轴 -1 且带输入 range；input1/2：静态 shape
+    GeTensorDesc tensor_desc1(GeShape({1, 2, 3, -1}), Format::FORMAT_NCHW, DT_FLOAT16);
+    tensor_desc1.SetOriginShape(GeShape({1, 2, 3, -1}));
+    tensor_desc1.SetOriginDataType(DT_FLOAT16);
+    tensor_desc1.SetShapeRange({{1, 1}, {2, 2}, {3, 3}, {22, 999}});
+    op_desc->UpdateInputDesc(0, tensor_desc1);
+    op_desc->UpdateInputDesc(3, tensor_desc1);
+    op_desc->UpdateInputDesc(1, GeTensorDesc(GeShape({4, 3, 2}), Format::FORMAT_NCHW, DT_FLOAT16));
+    op_desc->UpdateInputDesc(2, GeTensorDesc(GeShape({4, 3}), Format::FORMAT_NCHW, DT_FLOAT16));
+    IMPL_OP(DynamicInput3Input3Output3).InferShape(INFER_SHAPE_FUNC).InferDataType(nullptr).InferShapeRange(nullptr);
+    gert::SpaceRegistryFaker::CreateDefaultSpaceRegistryImpl2();
+    auto space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(space_registry, nullptr);
+    auto op_impl_func = space_registry->CreateOrGetOpImpl("DynamicInput3Input3Output3");
+    op_impl_func->infer_shape = INFER_SHAPE_FUNC;
+    op_impl_func->infer_shape_range = nullptr;
+
+    const auto call_infer_shape_v2 = OperatorFactoryImpl::GetInferShapeV2Func();
+    ASSERT_NE(call_infer_shape_v2, nullptr);
+    ASSERT_EQ(call_infer_shape_v2(operator_dynamic, op_desc), GRAPH_SUCCESS);
+    const auto call_infer_shape_range = OperatorFactoryImpl::GetInferShapeRangeFunc();
+    ASSERT_EQ(call_infer_shape_range(operator_dynamic, op_desc), GRAPH_SUCCESS);
+    // 输出2 shape 为 {1,2,3,-1}，按维动静状态填充默认值
+    const std::vector<std::pair<int64_t, int64_t>> expect_range = {{1, 1}, {2, 2}, {3, 3}, {0, ge::UNKNOWN_DIM}};
+    std::vector<std::pair<int64_t, int64_t>> shape_range;
+    (void)op_desc->GetOutputDesc(2U).GetShapeRange(shape_range);
+    ASSERT_EQ(shape_range, expect_range);
+    // 输入 range 不做处理，保持上游设置的精确值
+    const std::vector<std::pair<int64_t, int64_t>> input_expect = {{1, 1}, {2, 2}, {3, 3}, {22, 999}};
+    std::vector<std::pair<int64_t, int64_t>> input_range;
+    (void)op_desc->GetInputDesc(0U).GetShapeRange(input_range);
+    ASSERT_EQ(input_range, input_expect);
   }
 }  // namespace gert

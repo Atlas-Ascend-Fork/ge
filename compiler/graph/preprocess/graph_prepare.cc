@@ -1481,15 +1481,14 @@ Status GraphPrepare::CheckRefInputNode(const NodePtr &node, const std::string &i
   bool is_block = (block_list.find(input_type) != block_list.cend());
   if (is_block) {
     REPORT_INNER_ERR_MSG("E19999",
-                         "The ref input memory of ref node %s[%s] cannot be referenced from const node,"
+                         "The ref input memory of ref node %s[%s] cannot be referenced from const node, "
                          "but node %s[%s] is const",
-                         node->GetName().c_str(), node->GetType().c_str(), node->GetOpDesc()->GetName().c_str(),
-                         node->GetType().c_str());
+                         node->GetName().c_str(), node->GetType().c_str(), input_node->GetName().c_str(),
+                         input_type.c_str());
     GELOGE(PARAM_INVALID,
            "[Check][Param] The ref input memory of ref node %s[%s] cannot be referenced from const"
            " node, but node %s[%s] is const",
-           node->GetName().c_str(), node->GetType().c_str(), node->GetOpDesc()->GetName().c_str(),
-           node->GetType().c_str());
+           node->GetName().c_str(), node->GetType().c_str(), input_node->GetName().c_str(), input_type.c_str());
     return PARAM_INVALID;
   }
 

@@ -209,7 +209,7 @@ IMPL_OP(Cast).InferShape(InferShapeForCast);
 
 ### 4.5 InferShapeRange Interface
 
-In dynamic Shape scenarios, besides inferring precise Shape, you also need to infer the Shape value range. Type 3 operators must implement InferShapeRange; Type 1 and Type 2 operators can use automatic framework inference when monotonicity conditions are satisfied.
+In dynamic Shape scenarios, besides inferring precise Shape, you also need to infer the Shape value range. Type 3 operators must implement InferShapeRange; Type 1 and Type 2 operators no longer need to implement it. Ascend950 and later versions skip range inference at compile time and fill default values according to each input/output dimension's static/dynamic state (known dimensions `{dim, dim}`, dynamic dimensions `{0, -1}`; UNKNOWN_RANK is skipped); other chip versions keep the automatic derivation flow.
 
 ```cpp
 ge::graphStatus InferShapeRangeForWhere(InferShapeRangeContext *context) {

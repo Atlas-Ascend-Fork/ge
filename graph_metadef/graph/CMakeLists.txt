@@ -438,10 +438,18 @@ add_custom_command(
     OUTPUT ${STUB_SRC_LIST}
     COMMAND echo "Generating stub files."
             && ${HI_PYTHON} ${GE_METADEF_DIR}/../tests/graph_metadef/stub/gen_stubapi.py ${CMAKE_CURRENT_BINARY_DIR} ${STUB_HEADER_LIST}
+            && ${HI_PYTHON} ${GE_METADEF_DIR}/../tests/graph_metadef/stub/check_stub_symbols.py ${CMAKE_CURRENT_BINARY_DIR}
             && echo "Generating stub files end."
 )
 
 add_custom_target(graph_stub DEPENDS ${STUB_SRC_LIST})
+
+# ascend031 下会同时使用 libgraph 桩包和 libgraph_base 编译执行样例，桩包导出该符号
+# 会 interpose 真实实现并将错误码注册表分裂为两份，故保持隔离
+set(STUB_EXTRA_SRCS "")
+if (NOT "${PRODUCT}" STREQUAL "ascend031")
+    list(APPEND STUB_EXTRA_SRCS ${AIR_CODE_DIR}/base/common/ge_api_error_codes.cc)
+endif ()
 
 #############################################################
 
@@ -449,6 +457,7 @@ add_custom_target(graph_stub DEPENDS ${STUB_SRC_LIST})
 add_library(atc_stub_graph SHARED ${STUB_SRC_LIST}
     ${CMAKE_CURRENT_SOURCE_DIR}/stub/stub_operator_factory_impl.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/stub/stub_op_proto_ledger.cc
+    ${STUB_EXTRA_SRCS}
 )
 
 add_dependencies(atc_stub_graph graph_stub)
@@ -509,7 +518,7 @@ endif ()
 
 
 ############ fwk_stub/libgraph.so ############
-add_library(fwk_stub_graph SHARED ${STUB_SRC_LIST})
+add_library(fwk_stub_graph SHARED ${STUB_SRC_LIST} ${STUB_EXTRA_SRCS})
 
 add_dependencies(fwk_stub_graph graph_stub)
 

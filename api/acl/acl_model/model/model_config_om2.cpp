@@ -98,6 +98,40 @@ aclError SetMdlLoadWithoutGraph(aclmdlConfigHandle *const handle, const void *co
   return ACL_SUCCESS;
 }
 
+aclError CheckMdlLoadSchMode(const void *const attrValue, const size_t valueSize) {
+  ACL_LOG_INFO("start to execute CheckMdlLoadSchMode.");
+  if (valueSize != sizeof(int32_t)) {
+    ACL_LOG_ERROR("[Check][ValueSize]valueSize[%zu] is invalid, it should be %zu", valueSize, sizeof(int32_t));
+    const std::string errMsg = "it should be " + std::to_string(sizeof(int32_t));
+    acl::AclErrorLogManager::ReportInputError(
+        acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
+        std::vector<const char *>({"valueSize", std::to_string(valueSize).c_str(), errMsg.c_str()}));
+    return ACL_ERROR_INVALID_PARAM;
+  }
+  const int32_t schMode = *static_cast<const int32_t *>(attrValue);
+  if ((schMode != ACL_MDL_SCH_MODE_NORMAL) && (schMode != ACL_MDL_SCH_MODE_EXCLUSIVE)) {
+    ACL_LOG_ERROR("ACL_MDL_SCH_MODE_INT32 value [%d] is invalid, it should be in [%d, %d]", schMode,
+                  ACL_MDL_SCH_MODE_NORMAL, ACL_MDL_SCH_MODE_EXCLUSIVE);
+    const std::string errMsg = acl::AclErrorLogManager::FormatStr("it should be in [%d, %d]", ACL_MDL_SCH_MODE_NORMAL,
+                                                                  ACL_MDL_SCH_MODE_EXCLUSIVE);
+    acl::AclErrorLogManager::ReportInputError(
+        acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
+        std::vector<const char *>({"ACL_MDL_SCH_MODE_INT32", std::to_string(schMode).c_str(), errMsg.c_str()}));
+    return ACL_ERROR_INVALID_PARAM;
+  }
+  ACL_LOG_INFO("successfully execute CheckMdlLoadSchMode");
+  return ACL_SUCCESS;
+}
+
+aclError SetMdlLoadSchMode(aclmdlConfigHandle *const handle, const void *const attrValue) {
+  ACL_LOG_INFO("start to execute SetMdlLoadSchMode.");
+  const int32_t schMode = *static_cast<const int32_t *>(attrValue);
+  handle->schMode = schMode;
+  (void)handle->attrState.insert(ACL_MDL_SCH_MODE_INT32);
+  ACL_LOG_INFO("successfully execute SetMdlLoadSchMode, schMode is %d", schMode);
+  return ACL_SUCCESS;
+}
+
 aclError CheckMdlLoadType(const void *const attrValue, const size_t valueSize) {
   ACL_LOG_INFO("start to execute CheckMdlLoadType.");
   if (valueSize != sizeof(size_t)) {
@@ -341,7 +375,8 @@ std::map<aclmdlConfigAttr, SetMdlConfigParamFunc> g_setMdlConfigMap = {
     {ACL_MDL_WORKSPACE_ADDR_PTR, {&CheckMdlLoadPtrAttr, &SetMdlLoadWorkPtr}},
     {ACL_MDL_WORKSPACE_MEM_OPTIMIZE, {&CheckMdlLoadReuseZeroCopy, &SetMdlLoadReuseZeroCopy}},
     {ACL_MDL_WEIGHT_PATH_PTR, {&CheckMdlLoadPtrAttrEx, &SetMdlWeightPath}},
-    {ACL_MDL_WITHOUT_GRAPH_INT32, {&CheckMdlLoadWithoutGraph, &SetMdlLoadWithoutGraph}}};
+    {ACL_MDL_WITHOUT_GRAPH_INT32, {&CheckMdlLoadWithoutGraph, &SetMdlLoadWithoutGraph}},
+    {ACL_MDL_SCH_MODE_INT32, {&CheckMdlLoadSchMode, &SetMdlLoadSchMode}}};
 
 using CheckMdlExecConfigFunc = aclError (*)(const void *const, const size_t);
 using SetMdlExecConfigFunc = aclError (*)(aclmdlExecConfigHandle *const, const void *const);
@@ -417,11 +452,12 @@ aclError aclmdlSetConfigOptImplOm2(aclmdlConfigHandle *handle, aclmdlConfigAttr 
   if (g_setMdlConfigMap.find(attr) != g_setMdlConfigMap.end()) {
     paramFunc = g_setMdlConfigMap[attr];
   } else {
-    ACL_LOG_ERROR("[Find][Attr]attr[%d] is invalid. it should be [%d, %d]", static_cast<int32_t>(attr),
-                  static_cast<int32_t>(ACL_MDL_PRIORITY_INT32), static_cast<int32_t>(ACL_MDL_WEIGHT_PATH_PTR));
-    const std::string errMsg =
-        acl::AclErrorLogManager::FormatStr("it should be [%d, %d]", static_cast<int32_t>(ACL_MDL_PRIORITY_INT32),
-                                           static_cast<int32_t>(ACL_MDL_WEIGHT_PATH_PTR));
+    ACL_LOG_ERROR("[Find][Attr]attr[%d] is invalid. it should be [%d, %d] or %d", static_cast<int32_t>(attr),
+                  static_cast<int32_t>(ACL_MDL_PRIORITY_INT32), static_cast<int32_t>(ACL_MDL_WEIGHT_PATH_PTR),
+                  static_cast<int32_t>(ACL_MDL_SCH_MODE_INT32));
+    const std::string errMsg = acl::AclErrorLogManager::FormatStr(
+        "it should be [%d, %d] or %d", static_cast<int32_t>(ACL_MDL_PRIORITY_INT32),
+        static_cast<int32_t>(ACL_MDL_WEIGHT_PATH_PTR), static_cast<int32_t>(ACL_MDL_SCH_MODE_INT32));
     acl::AclErrorLogManager::ReportInputError(
         acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
         std::vector<const char *>({"attr", std::to_string(static_cast<int32_t>(attr)).c_str(), errMsg.c_str()}));

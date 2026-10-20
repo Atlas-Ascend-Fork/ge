@@ -45,7 +45,7 @@ typedef struct tagRtKernelInfo {
 
 #define FUNC_MODE_NORMAL (0U)
 
-typedef rtSmDesc_t rtL2Ctrl_t;
+using rtL2Ctrl_t = rtSmDesc_t;
 
 #define RT_MQ_QUERY_QUES_ATTR_ENTITY_TYPE ((rtMemQueueQueryCmd_t)2)
 

@@ -166,7 +166,7 @@ Status ModelArgsManager::GenModelArgsRefreshInfosForTask(const std::vector<TaskA
         node->GetOpDesc()->GetName().c_str(), node->GetOpDesc()->GetType().c_str(), pls,
         PtrToValue(pls_to_args[pls].host_addr), pls_to_args[pls].dev_addr, info.ToString().c_str(),
         m_info.ToString().c_str());
-    const auto m_info_id = m_info.id;
+    const uint32_t m_info_id = m_info.id;
     if (info.args_format_policy == ArgsFormatPolicy::kAddrAll) {
       (void)allocation_ids_to_model_args_refresh_infos_addr_all[m_info_id].emplace_back(std::move(m_info));
     } else if (info.args_format_policy == ArgsFormatPolicy::kAddrLow32Bit) {

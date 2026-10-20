@@ -140,7 +140,7 @@ Status ProgramGenerator::GenerateResourcesSource(Om2CodePrinter &code_printer) {
     resources_items.push_back(ast_.StablePart(StablePartId::kCreateLabelListForLabelGotoEx));
   }
   auto *translation_unit = ast_.File({
-      ast_.Include(codegen_model_.model_name + "_internal.h"),
+      ast_.Include(codegen_model_.artifact_name + "_internal.h"),
       ast_.Space(),
       ast_.Namespace("om2", resources_items),
   });
@@ -152,7 +152,7 @@ Status ProgramGenerator::GenerateResourcesSource(Om2CodePrinter &code_printer) {
 Status ProgramGenerator::GenerateArgsManagerSource(Om2CodePrinter &code_printer) {
   ArgsManagerFileCodeGenerator args_manager_handler(ast_);
   auto *translation_unit = ast_.File({
-      ast_.Include(codegen_model_.model_name + "_internal.h"),
+      ast_.Include(codegen_model_.artifact_name + "_internal.h"),
       ast_.Space(),
       ast_.Namespace("om2",
                      {
@@ -187,7 +187,7 @@ Status ProgramGenerator::GenerateKernelRegSource(Om2CodePrinter &code_printer) {
       kernel_reg_handler.BuildRegisterCustAicpuKernel(),
   };
   auto *translation_unit = ast_.File({
-      ast_.Include(codegen_model_.model_name + "_internal.h"),
+      ast_.Include(codegen_model_.artifact_name + "_internal.h"),
       ast_.Namespace("om2",
                      {
                          ast_.Namespace("", anonymous_items),
@@ -210,7 +210,7 @@ Status ProgramGenerator::GenerateLoadAndRunSource(Om2CodePrinter &code_printer) 
   (void)anonymous_items.insert(anonymous_items.begin(),
                                ast_.StablePart(StablePartId::kLoadAndRunDumpHelpers, StablePartPlacement::kNamespace));
   anonymous_items.push_back(load_and_run_handler.BuildOpDefTable(codegen_model_, task_code_builder_list_));
-  std::vector<DeclNode *> body_items = {ast_.Include(codegen_model_.model_name + "_internal.h")};
+  std::vector<DeclNode *> body_items = {ast_.Include(codegen_model_.artifact_name + "_internal.h")};
   if (has_custom_kernel_) {
     (void)body_items.emplace_back(ast_.Include("graph/custom_op.h"));
     (void)body_items.emplace_back(ast_.Include("exe_graph/runtime/gert_mem_allocator.h"));
@@ -239,8 +239,8 @@ Status ProgramGenerator::GenerateLoadAndRunSource(Om2CodePrinter &code_printer) 
 }
 
 Status ProgramGenerator::GenerateMakeFile(Om2CodePrinter &code_printer) {
-  const std::string model_name = codegen_model_.model_name;
-  const std::string lib_name = model_name + "_om2";
+  const std::string &artifact_name = codegen_model_.artifact_name;
+  const std::string lib_name = artifact_name + "_om2";
   std::string cmakelists_content = R"(CANN_ROOT ?= $(ASCEND_HOME_PATH)
 USE_STUB_LIB ?= 1
 MAKEFLAGS += -j$(shell nproc)
@@ -251,9 +251,9 @@ endif
 CXX ?= c++
 
 TARGET := ../lib)" + lib_name + R"(.so
-SRC_FILES := )" + model_name + R"(_resources.cpp )" +
-                                   model_name + R"(_kernel_reg.cpp )" + model_name + R"(_load_and_run.cpp )" +
-                                   model_name + R"(_args_manager.cpp
+SRC_FILES := )" + artifact_name + R"(_resources.cpp )" +
+                                   artifact_name + R"(_kernel_reg.cpp )" + artifact_name + R"(_load_and_run.cpp )" +
+                                   artifact_name + R"(_args_manager.cpp
 
 ifndef CPPFLAGS
 CPPFLAGS := \

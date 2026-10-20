@@ -524,9 +524,9 @@ uint32_t TaskCodeBuilderUtil::ConvertToProfilingTaskType(const OpDescPtr &op_des
 
 uint32_t TaskCodeBuilderUtil::GetOpImplMode(const OpDescPtr &op_desc) {
   // 与 global_profiler.cc 的 kOpImplModeEnum/kEnableHf32 保持一致
-  const std::string kOpImplModeEnum = "_op_impl_mode_enum";
   uint32_t op_impl_mode = 0U;
   if (op_desc != nullptr) {
+    const std::string kOpImplModeEnum = "_op_impl_mode_enum";
     (void)AttrUtils::GetInt(op_desc, kOpImplModeEnum, op_impl_mode);
   }
   return op_impl_mode;

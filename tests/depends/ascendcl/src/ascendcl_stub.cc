@@ -1143,6 +1143,10 @@ aclError AclRuntimeStub::aclmdlRISetName(aclmdlRI modelRI, const char *name) {
   return ACL_SUCCESS;
 }
 
+aclError AclRuntimeStub::aclmdlRISetAttribute(aclmdlRI modelRI, aclrtModelAttr modelAttrType, void *value) {
+  return ACL_SUCCESS;
+}
+
 aclError AclRuntimeStub::aclmdlRIDebugJsonPrint(aclmdlRI modelRI, const char *path, uint32_t flags) {
   if (__FUNCTION__ == g_acl_stub_mock) {
     return ACL_ERROR_RT_INTERNAL_ERROR;
@@ -1886,6 +1890,10 @@ aclError aclmdlRIEndTask(aclmdlRI modelRI, aclrtStream stream) {
 
 aclError aclmdlRISetName(aclmdlRI modelRI, const char *name) {
   return ge::AclRuntimeStub::GetInstance()->aclmdlRISetName(modelRI, name);
+}
+
+aclError aclmdlRISetAttribute(aclmdlRI modelRI, aclrtModelAttr modelAttrType, void *value) {
+  return ge::AclRuntimeStub::GetInstance()->aclmdlRISetAttribute(modelRI, modelAttrType, value);
 }
 
 aclError aclmdlRIDebugJsonPrint(aclmdlRI modelRI, const char *path, uint32_t flags) {

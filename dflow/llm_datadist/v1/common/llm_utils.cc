@@ -57,7 +57,13 @@ ge::Status LLMUtils::ParserWaitTimeInfo(const std::map<ge::AscendString, ge::Asc
                             ge::LLM_PARAM_INVALID,
                             "sync kv wait time:%s is invalid, wait time value should be a positive integer.",
                             sync_kv_wait_time_iter->second.GetString());
-    wait_time_info.sync_kv_wait_time = std::atoi(sync_kv_wait_time_iter->second.GetString());
+    int32_t sync_kv_wait_time = 0;
+    LLM_CHK_STATUS_RET(ToNumber(sync_kv_wait_time_iter->second.GetString(), sync_kv_wait_time),
+                       "sync kv wait time:%s is out of int32 range.", sync_kv_wait_time_iter->second.GetString());
+    LLM_CHK_BOOL_RET_STATUS(sync_kv_wait_time > 0, ge::LLM_PARAM_INVALID,
+                            "sync kv wait time:%s should be greater than zero.",
+                            sync_kv_wait_time_iter->second.GetString());
+    wait_time_info.sync_kv_wait_time = sync_kv_wait_time;
   }
   return ge::SUCCESS;
 }

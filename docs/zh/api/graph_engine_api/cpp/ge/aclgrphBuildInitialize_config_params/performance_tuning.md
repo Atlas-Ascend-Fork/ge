@@ -41,6 +41,9 @@ Tiling下沉调度优化开关。此参数实际对应的options参数为`ge.til
 {ge::ir_option::TILING_SCHEDULE_OPTIMIZE, "1"}
 ```
 
+**使用约束：**
+[OFFLINE_MODE](../aclgrphBuildModel_config_params/basic_functions.md#offline_mode)取值为7时，不支持配置该参数。
+
 **产品支持情况：**
 
 <!-- npu="950" id1 -->

@@ -19,6 +19,9 @@
 {ge::ir_option::QUANT_DUMPABLE, "1"}
 ```
 
+**使用约束：**
+[OFFLINE_MODE](basic_functions.md#offline_mode)取值为7时，不支持配置该参数。
+
 **产品支持情况：**
 
 全量芯片支持。
