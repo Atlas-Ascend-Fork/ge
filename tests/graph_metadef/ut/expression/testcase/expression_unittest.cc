@@ -38,6 +38,25 @@ class UtestExpression : public testing::Test {
 using namespace ge;
 using namespace ge::sym;
 
+namespace {
+void ExpectSerializeRoundtrip(const Expression &expr, const std::string &expect_str) {
+  const auto serialized = expr.Serialize();
+  EXPECT_EQ(std::string(serialized.get()), expect_str);
+  EXPECT_EQ(Expression::Parse(serialized.get()), expr);
+}
+
+void ExpectDeserializeRoundtrip(const Expression &expr, const std::string &expect_str) {
+  const auto serialized = expr.Serialize();
+  EXPECT_EQ(std::string(serialized.get()), expect_str);
+  EXPECT_EQ(Expression::Deserialize(serialized.get()), expr);
+}
+
+void ExpectParseAndSerialize(const std::string &parse_str, const std::string &expect_str) {
+  const Expression expr = Expression::Parse(parse_str.c_str());
+  EXPECT_EQ(std::string(expr.Serialize().get()), expect_str);
+}
+}  // namespace
+
 TEST_F(UtestExpression, TestBasic) {
   auto symbol2 = Symbol(2);
   EXPECT_EQ(symbol2, 2);
@@ -73,143 +92,34 @@ TEST_F(UtestExpression, GetExprType) {
   EXPECT_NE(symbol2, 2);
 
   EXPECT_EQ(symbol1.GetExprType(), ExprType::kExprConstantInteger);
+  EXPECT_EQ(Symbol(2l).GetExprType(), ExprType::kExprConstantInteger);
+  EXPECT_EQ(Symbol(2lu).GetExprType(), ExprType::kExprConstantInteger);
+  EXPECT_EQ(Symbol(2.5).GetExprType(), ExprType::kExprConstantRealDouble);
 
-  auto symbol_uint32 = Symbol(2);
-  EXPECT_EQ(symbol_uint32.GetExprType(), ExprType::kExprConstantInteger);
+  const auto num = Symbol(2);
+  const auto den = Symbol(3);
+  EXPECT_EQ(Div(num, den).GetExprType(), ExprType::kExprConstantRation);
+  for (const auto &expr : {Mul(num, den), Add(num, den), Sub(num, den), Max(num, den), Min(num, den),
+                           Ceiling(Symbol(2.5)), Pow(num, den), Mod(num, den)}) {
+    EXPECT_EQ(expr.GetExprType(), ExprType::kExprConstantInteger);
+  }
+  EXPECT_EQ(Log(num, den).GetExprType(), ExprType::kExprOperation);
 
-  auto symbol_int64 = Symbol(2l);
-  EXPECT_EQ(symbol_int64.GetExprType(), ExprType::kExprConstantInteger);
+  const auto var_x = Symbol("a");
+  EXPECT_EQ(var_x.GetExprType(), ExprType::kExprVariable);
 
-  auto symbol_uint64 = Symbol(2lu);
-  EXPECT_EQ(symbol_uint64.GetExprType(), ExprType::kExprConstantInteger);
-
-  auto symbol_double = Symbol(2.5);
-  EXPECT_EQ(symbol_double.GetExprType(), ExprType::kExprConstantRealDouble);
-
-  auto symbol_num = Symbol(2);
-  auto symbol_den = Symbol(3);
-  auto ret = Div(symbol_num, symbol_den);
-  EXPECT_EQ(ret.GetExprType(), ExprType::kExprConstantRation);
-
-  ret = Mul(symbol_num, symbol_den);
-  EXPECT_EQ(ret.GetExprType(), ExprType::kExprConstantInteger);
-
-  ret = Add(symbol_num, symbol_den);
-  EXPECT_EQ(ret.GetExprType(), ExprType::kExprConstantInteger);
-
-  ret = Sub(symbol_num, symbol_den);
-  EXPECT_EQ(ret.GetExprType(), ExprType::kExprConstantInteger);
-
-  ret = Max(symbol_num, symbol_den);
-  EXPECT_EQ(ret.GetExprType(), ExprType::kExprConstantInteger);
-
-  ret = Min(symbol_num, symbol_den);
-  EXPECT_EQ(ret.GetExprType(), ExprType::kExprConstantInteger);
-
-  ret = Ceiling(symbol_double);
-  EXPECT_EQ(ret.GetExprType(), ExprType::kExprConstantInteger);
-
-  ret = Pow(symbol_num, symbol_den);
-  EXPECT_EQ(ret.GetExprType(), ExprType::kExprConstantInteger);
-
-  ret = Mod(symbol_num, symbol_den);
-  EXPECT_EQ(ret.GetExprType(), ExprType::kExprConstantInteger);
-
-  ret = Log(symbol_num, symbol_den);
-  EXPECT_EQ(ret.GetExprType(), ExprType::kExprOperation);
-
-  symbol2 = Symbol("a");
-  EXPECT_EQ(symbol2.GetExprType(), ExprType::kExprVariable);
-
-  auto expr3 = Add(symbol1, symbol2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-  EXPECT_NE(expr3, symbol2);
-
-  expr3 = Sub(symbol1, symbol2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-
-  expr3 = Mul(symbol1, symbol2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-
-  expr3 = Div(symbol1, symbol2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-
-  expr3 = Max(symbol1, symbol2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-
-  expr3 = Min(symbol1, symbol2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-
-  expr3 = Pow(symbol1, symbol2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-
-  expr3 = Mod(symbol1, symbol2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-
-  expr3 = Abs(symbol1);  // symbol1是常量
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprConstantInteger);
-
-  expr3 = Abs(symbol2);  // symbol2是符号
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-
-  expr3 = Log(symbol1, symbol2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-
-  expr3 = Log(symbol2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-
-  expr3 = Ceiling(symbol2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-
-  expr3 = Rational(1, 2);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprConstantRation);
-
-  auto symbol_x = Symbol("x");
-  auto symbol_2 = Symbol(2);
-  auto symbol_n = Symbol(1);
-  auto symbol = Mul(symbol_x, symbol_2);
-  expr3 = Coeff(symbol, symbol_x, symbol_n);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprConstantInteger);
-  EXPECT_EQ(expr3, 2);
-
-  // 3*x**2 + 2*x*y + 1
-  auto expr_coeff_base =
-      Add(Add(Mul(Symbol(3), Pow(Symbol("x"), Symbol(2))), Mul(Mul(Symbol(2), Symbol("x")), Symbol("y"))), Symbol(1));
-  expr3 = Coeff(expr_coeff_base, Symbol("x"), Symbol(2));
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprConstantInteger);
-  EXPECT_EQ(expr3, 3);
-
-  expr3 = Coeff(expr_coeff_base, Symbol("x"), Symbol(1));
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-  EXPECT_EQ(std::string(expr3.Serialize().get()), "(2 * y)");
-
-  // -2
-  expr3 = Neg(symbol1);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprConstantInteger);
-  ;
-  EXPECT_EQ(std::string(expr3.Serialize().get()), "-2");
-
-  // -x
-  expr3 = Neg(symbol_x);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-  EXPECT_EQ(std::string(expr3.Serialize().get()), "(-1 * x)");
-
-  // -(x + 2)
-  expr3 = Neg(Add(symbol_x, symbol1));
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-  EXPECT_EQ(std::string(expr3.Serialize().get()), "((2 + x) * -1)");
-
-  // -(2/x)
-  expr3 = Neg((symbol1 / symbol_x));
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-  EXPECT_EQ(std::string(expr3.Serialize().get()), "(-2 / (x))");
-
-  // a%b
-  expr3 = Mod(symbol1, symbol_x);
-  EXPECT_EQ(expr3.GetExprType(), ExprType::kExprOperation);
-  EXPECT_EQ(std::string(expr3.Serialize().get()), "Mod(2, x)");
+  for (const auto &expr :
+       {Add(symbol1, var_x), Sub(symbol1, var_x), Mul(symbol1, var_x), Div(symbol1, var_x), Max(symbol1, var_x),
+        Min(symbol1, var_x), Pow(symbol1, var_x), Mod(symbol1, var_x), Neg(var_x), Neg(Div(symbol1, var_x))}) {
+    EXPECT_EQ(expr.GetExprType(), ExprType::kExprOperation);
+  }
+  EXPECT_EQ(Neg(symbol1).GetExprType(), ExprType::kExprConstantInteger);
+  EXPECT_NE(Add(symbol1, var_x), var_x);
+  EXPECT_EQ(std::string(Neg(var_x).Serialize().get()), "(-1 * a)");
+  EXPECT_EQ(std::string(Neg(Add(var_x, symbol1)).Serialize().get()), "((2 + a) * -1)");
+  EXPECT_EQ(std::string(Neg(symbol1 / var_x).Serialize().get()), "(-2 / (a))");
+  EXPECT_EQ(std::string(Mod(symbol1, var_x).Serialize().get()), "Mod(2, a)");
 }
-
 TEST_F(UtestExpression, GetLogicConstExprType_Succ) {
   auto symbol_const_0 = Symbol(2);
   auto symbol_const_1 = Symbol(2);
@@ -424,82 +334,24 @@ TEST_F(UtestExpression, Parser) {
   auto var_b = Symbol("b");
   auto var_c = Symbol("c");
   auto b_div_c = Div(var_b, var_c);
-  EXPECT_EQ(std::string(b_div_c.Serialize().get()), "(b / (c))");
-  auto b_div_parser = Expression::Parse(b_div_c.Serialize().get());
-  EXPECT_EQ(b_div_c, b_div_parser);
-  auto b_max_c = Max(b_div_c, var_c);
-  EXPECT_EQ(std::string(b_max_c.Serialize().get()), "Max(c, (b / (c)))");
+  ExpectSerializeRoundtrip(b_div_c, "(b / (c))");
+  EXPECT_EQ(std::string(Max(b_div_c, var_c).Serialize().get()), "Max(c, (b / (c)))");
 
-  auto double_2_3 = Rational(2, 3);
-  EXPECT_EQ(std::string(double_2_3.Serialize().get()), "Rational(2 , 3)");
-  auto double_2_3_parser = Expression::Parse(double_2_3.Serialize().get());
-  // todo: 对于表达式2/3，当前的序列化为了给c++编译器编译，搞成了(double)(2)/(double)(3)，是一个Rational
-  //       本次修改为采用Rational(a,
-  //       b)表达的方式，来表达分子分母，当前只支持int类型的分子分母，给c++编译时，写一个Rational函数，
-  //       函数里面做double的cast转换
-  EXPECT_EQ(double_2_3_parser, double_2_3);
-
-  auto pow_3 = Pow(var_b, Symbol(3));
-  EXPECT_EQ(std::string(pow_3.Serialize().get()), "(b * b * b)");
-  auto power_parser_3 = Expression::Parse(pow_3.Serialize().get());
-  EXPECT_EQ(power_parser_3, pow_3);
-
-  auto pow_b_c = Pow(var_b, var_c);
-  EXPECT_EQ(std::string(pow_b_c.Serialize().get()), "Pow(b, c)");
-  auto power_parser_b_c = Expression::Parse(pow_b_c.Serialize().get());
-  EXPECT_EQ(power_parser_b_c, pow_b_c);
-
-  auto mod_b_c = Mod(var_b, var_c);
-  EXPECT_EQ(std::string(mod_b_c.Serialize().get()), "Mod(b, c)");
-  auto mod_parser_b_c = Expression::Parse(mod_b_c.Serialize().get());
-  EXPECT_EQ(mod_parser_b_c, mod_b_c);
-
-  auto log_b_c = Log(var_b, var_c);
-  EXPECT_EQ(std::string(log_b_c.Serialize().get()), "(Log(b) / (Log(c)))");
-  auto log_parser_b_c = Expression::Parse(log_b_c.Serialize().get());
-  EXPECT_EQ(log_parser_b_c, log_b_c);
-
-  auto sub_mul = Sub(Symbol(2), Symbol(3) * var_b);
-  EXPECT_EQ(std::string(sub_mul.Serialize().get()), "(2 - (3 * b))");
-  auto sub_mul_parser = Expression::Parse(sub_mul.Serialize().get());
-  EXPECT_EQ(sub_mul_parser, sub_mul);
-
-  auto add_mul = Add(Symbol(2), Symbol(3) * var_b);
-  EXPECT_EQ(std::string(add_mul.Serialize().get()), "((3 * b) + 2)");  // 不保证顺序
-  auto add_mul_parser = Expression::Parse(add_mul.Serialize().get());
-  EXPECT_EQ(add_mul_parser, add_mul);
-
-  auto max_max = Max(Max(var_b, var_c), Symbol("d"));
-  EXPECT_EQ(std::string(max_max.Serialize().get()), "Max(Max(b, c), d)");
-  auto max_max_parser = Expression::Parse(max_max.Serialize().get());
-  EXPECT_EQ(max_max_parser, max_max);
-
-  auto min_min = Min(Min(var_b, var_c), Symbol("d"));
-  EXPECT_EQ(std::string(min_min.Serialize().get()), "Min(Min(b, c), d)");
-  auto min_min_parser = Expression::Parse(min_min.Serialize().get());
-  EXPECT_EQ(min_min_parser, min_min);
-
+  // 对于表达式2/3，序列化采用Rational(a, b)表达分子分母，只支持int分子分母
+  ExpectSerializeRoundtrip(Rational(2, 3), "Rational(2 , 3)");
+  ExpectSerializeRoundtrip(Pow(var_b, Symbol(3)), "(b * b * b)");
+  ExpectSerializeRoundtrip(Pow(var_b, var_c), "Pow(b, c)");
+  ExpectSerializeRoundtrip(Mod(var_b, var_c), "Mod(b, c)");
+  ExpectSerializeRoundtrip(Log(var_b, var_c), "(Log(b) / (Log(c)))");
+  ExpectSerializeRoundtrip(Sub(Symbol(2), Symbol(3) * var_b), "(2 - (3 * b))");
+  ExpectSerializeRoundtrip(Add(Symbol(2), Symbol(3) * var_b), "((3 * b) + 2)");  // 不保证顺序
+  ExpectSerializeRoundtrip(Max(Max(var_b, var_c), Symbol("d")), "Max(Max(b, c), d)");
+  ExpectSerializeRoundtrip(Min(Min(var_b, var_c), Symbol("d")), "Min(Min(b, c), d)");
   // 这个地方主线的序列化不保序，按照主线处理
-  auto min_max = Min(Max(var_b, var_c), Symbol("d"));
-  EXPECT_EQ(std::string(min_max.Serialize().get()), "Min(d, Max(b, c))");
-  auto min_max_parser = Expression::Parse(min_max.Serialize().get());
-  EXPECT_EQ(min_max_parser, min_max);
-
-  auto ceil = Ceiling(var_b);
-  EXPECT_EQ(std::string(ceil.Serialize().get()), "Ceiling(b)");
-  auto ceil_parser = Expression::Parse(ceil.Serialize().get());
-  EXPECT_EQ(ceil_parser, ceil);
-
-  auto abs = Abs(var_b);
-  EXPECT_EQ(std::string(abs.Serialize().get()), "Abs(b)");
-  auto abs_parser = Expression::Parse(abs.Serialize().get());
-  EXPECT_EQ(abs_parser, abs);
-
-  auto min_5_double = Min(Max(var_b, var_c), Symbol(5.0));
-  EXPECT_EQ(std::string(min_5_double.Serialize().get()), "Min(Max(b, c), 5.0)");
-  auto min_5_double_parser = Expression::Parse(min_5_double.Serialize().get());
-  EXPECT_EQ(min_5_double_parser, min_5_double);
-
+  ExpectSerializeRoundtrip(Min(Max(var_b, var_c), Symbol("d")), "Min(d, Max(b, c))");
+  ExpectSerializeRoundtrip(Ceiling(var_b), "Ceiling(b)");
+  ExpectSerializeRoundtrip(Abs(var_b), "Abs(b)");
+  ExpectSerializeRoundtrip(Min(Max(var_b, var_c), Symbol(5.0)), "Min(Max(b, c), 5.0)");
   EXPECT_EQ(std::string(var_b.GetName().get()), "b");
 }
 
@@ -515,85 +367,26 @@ TEST_F(UtestExpression, Serialize_And_Deserialize) {
   auto var_b = Symbol("b");
   auto var_c = Symbol("c");
   auto b_div_c = Div(var_b, var_c);
-  EXPECT_EQ(std::string(b_div_c.Serialize().get()), "(b / (c))");
-  auto b_div_parser = Expression::Deserialize(b_div_c.Serialize().get());
-  EXPECT_EQ(b_div_c, b_div_parser);
-  auto b_max_c = Max(b_div_c, var_c);
-  EXPECT_EQ(std::string(b_max_c.Serialize().get()), "Max(c, (b / (c)))");
+  ExpectDeserializeRoundtrip(b_div_c, "(b / (c))");
+  EXPECT_EQ(std::string(Max(b_div_c, var_c).Serialize().get()), "Max(c, (b / (c)))");
 
-  auto double_2_3 = Rational(2, 3);
-  EXPECT_EQ(std::string(double_2_3.Serialize().get()), "Rational(2 , 3)");
-  auto double_2_3_parser = Expression::Deserialize(double_2_3.Serialize().get());
-  // todo: 对于表达式2/3，当前的序列化为了给c++编译器编译，搞成了(double)(2)/(double)(3)，是一个Rational
-  //       本次修改为采用Rational(a,
-  //       b)表达的方式，来表达分子分母，当前只支持int类型的分子分母，给c++编译时，写一个Rational函数，
-  //       函数里面做double的cast转换
-  EXPECT_EQ(double_2_3_parser, double_2_3);
-
-  auto pow_3 = Pow(var_b, Symbol(3));
-  EXPECT_EQ(std::string(pow_3.Serialize().get()), "(b * b * b)");
-  auto power_parser_3 = Expression::Deserialize(pow_3.Serialize().get());
-  EXPECT_EQ(power_parser_3, pow_3);
-
-  auto pow_b_c = Pow(var_b, var_c);
-  EXPECT_EQ(std::string(pow_b_c.Serialize().get()), "Pow(b, c)");
-  auto power_parser_b_c = Expression::Deserialize(pow_b_c.Serialize().get());
-  EXPECT_EQ(power_parser_b_c, pow_b_c);
-
-  auto mod_b_c = Mod(var_b, var_c);
-  EXPECT_EQ(std::string(mod_b_c.Serialize().get()), "Mod(b, c)");
-  auto mod_parser_b_c = Expression::Deserialize(mod_b_c.Serialize().get());
-  EXPECT_EQ(mod_parser_b_c, mod_b_c);
-
-  auto log_b_c = Log(var_b, var_c);
-  EXPECT_EQ(std::string(log_b_c.Serialize().get()), "(Log(b) / (Log(c)))");
-  auto log_parser_b_c = Expression::Deserialize(log_b_c.Serialize().get());
-  EXPECT_EQ(log_parser_b_c, log_b_c);
-
-  auto sub_mul = Sub(Symbol(2), Symbol(3) * var_b);
-  EXPECT_EQ(std::string(sub_mul.Serialize().get()), "(2 - (3 * b))");
-  auto sub_mul_parser = Expression::Deserialize(sub_mul.Serialize().get());
-  EXPECT_EQ(sub_mul_parser, sub_mul);
-
-  auto add_mul = Add(Symbol(2), Symbol(3) * var_b);
-  EXPECT_EQ(std::string(add_mul.Serialize().get()), "((3 * b) + 2)");  // 不保证顺序
-  auto add_mul_parser = Expression::Deserialize(add_mul.Serialize().get());
-  EXPECT_EQ(add_mul_parser, add_mul);
-
-  auto max_max = Max(Max(var_b, var_c), Symbol("d"));
-  EXPECT_EQ(std::string(max_max.Serialize().get()), "Max(Max(b, c), d)");
-  auto max_max_parser = Expression::Deserialize(max_max.Serialize().get());
-  EXPECT_EQ(max_max_parser, max_max);
-
-  auto min_min = Min(Min(var_b, var_c), Symbol("d"));
-  EXPECT_EQ(std::string(min_min.Serialize().get()), "Min(Min(b, c), d)");
-  auto min_min_parser = Expression::Deserialize(min_min.Serialize().get());
-  EXPECT_EQ(min_min_parser, min_min);
-
+  // 对于表达式2/3，序列化采用Rational(a, b)表达分子分母，只支持int分子分母
+  ExpectDeserializeRoundtrip(Rational(2, 3), "Rational(2 , 3)");
+  ExpectDeserializeRoundtrip(Pow(var_b, Symbol(3)), "(b * b * b)");
+  ExpectDeserializeRoundtrip(Pow(var_b, var_c), "Pow(b, c)");
+  ExpectDeserializeRoundtrip(Mod(var_b, var_c), "Mod(b, c)");
+  ExpectDeserializeRoundtrip(Log(var_b, var_c), "(Log(b) / (Log(c)))");
+  ExpectDeserializeRoundtrip(Sub(Symbol(2), Symbol(3) * var_b), "(2 - (3 * b))");
+  ExpectDeserializeRoundtrip(Add(Symbol(2), Symbol(3) * var_b), "((3 * b) + 2)");  // 不保证顺序
+  ExpectDeserializeRoundtrip(Max(Max(var_b, var_c), Symbol("d")), "Max(Max(b, c), d)");
+  ExpectDeserializeRoundtrip(Min(Min(var_b, var_c), Symbol("d")), "Min(Min(b, c), d)");
   // 这个地方主线的序列化不保序，按照主线处理
-  auto min_max = Min(Max(var_b, var_c), Symbol("d"));
-  EXPECT_EQ(std::string(min_max.Serialize().get()), "Min(d, Max(b, c))");
-  auto min_max_parser = Expression::Deserialize(min_max.Serialize().get());
-  EXPECT_EQ(min_max_parser, min_max);
-
-  auto ceil = Ceiling(var_b);
-  EXPECT_EQ(std::string(ceil.Serialize().get()), "Ceiling(b)");
-  auto ceil_parser = Expression::Deserialize(ceil.Serialize().get());
-  EXPECT_EQ(ceil_parser, ceil);
-
-  auto abs = Abs(var_b);
-  EXPECT_EQ(std::string(abs.Serialize().get()), "Abs(b)");
-  auto abs_parser = Expression::Deserialize(abs.Serialize().get());
-  EXPECT_EQ(abs_parser, abs);
-
-  auto min_5_double = Min(Max(var_b, var_c), Symbol(5.0));
-  EXPECT_EQ(std::string(min_5_double.Serialize().get()), "Min(Max(b, c), 5.0)");
-  auto min_5_double_parser = Expression::Deserialize(min_5_double.Serialize().get());
-  EXPECT_EQ(min_5_double_parser, min_5_double);
-
+  ExpectDeserializeRoundtrip(Min(Max(var_b, var_c), Symbol("d")), "Min(d, Max(b, c))");
+  ExpectDeserializeRoundtrip(Ceiling(var_b), "Ceiling(b)");
+  ExpectDeserializeRoundtrip(Abs(var_b), "Abs(b)");
+  ExpectDeserializeRoundtrip(Min(Max(var_b, var_c), Symbol(5.0)), "Min(Max(b, c), 5.0)");
   EXPECT_EQ(std::string(var_b.GetName().get()), "b");
 }
-
 // 非规范但语义良好的串（SymEngine 规范打印会重排负系数 Add 项与交换律参数）被正确
 // 接受（重解析后 Compare 语义树相等）；残留 token 的截断串与非法 token 被拒绝
 TEST_F(UtestExpression, Deserialize_Invalid) {
@@ -873,91 +666,35 @@ TEST_F(UtestExpression, CheckIsBoolean_Succ) {
 
 TEST_F(UtestExpression, GetConstValue) {
   auto var_b = Symbol("b");
-  int32_t value;
+  int32_t value = 2;
   EXPECT_EQ(var_b.GetConstValue<int32_t>(value), false);
 
-  int32_t value1 = 2;
-  auto const_1 = Symbol(value1);
-  int32_t res_value1;
-  EXPECT_EQ(const_1.GetConstValue<int32_t>(res_value1), true);
-  EXPECT_EQ(res_value1, value1);
+  auto check_const = [](const auto &const_symbol, const auto &expected) {
+    using T = std::decay_t<decltype(expected)>;
+    T res = 0;
+    EXPECT_EQ(const_symbol.template GetConstValue<T>(res), true);
+    EXPECT_EQ(res, expected);
+  };
+  check_const(Symbol(int32_t(2)), int32_t(2));
+  check_const(Symbol(uint32_t(1)), uint32_t(1));
+  check_const(Symbol(double(1.0)), double(1.0));
+  check_const(Symbol(float(1.0)), float(1.0));
+  check_const(Symbol(int64_t(1)), int64_t(1));
+  check_const(Symbol(uint64_t(1)), uint64_t(1));
 
-  uint32_t value2 = 1;
-  auto const_2 = Symbol(value2);
-  uint32_t res_value2;
-  EXPECT_EQ(const_2.GetConstValue<uint32_t>(res_value2), true);
-  EXPECT_EQ(res_value2, value2);
-
-  double value3 = 1.0;
-  auto const_3 = Symbol(value3);
-  double res_value3;
-  EXPECT_EQ(const_3.GetConstValue<double>(res_value3), true);
-  EXPECT_EQ(res_value3, value3);
-
-  float value4 = 1.0;
-  auto const_4 = Symbol(value4);
-  float res_value4;
-  EXPECT_EQ(const_4.GetConstValue<float>(res_value4), true);
-  EXPECT_EQ(res_value4, value4);
-
-  int64_t value5 = 1;
-  auto const_5 = Symbol(value5);
-  int64_t res_value5;
-  EXPECT_EQ(const_5.GetConstValue<int64_t>(res_value5), true);
-  EXPECT_EQ(res_value5, value5);
-
-  uint64_t value6 = 1;
-  auto const_6 = Symbol(value6);
-  uint64_t res_value6;
-  EXPECT_EQ(const_6.GetConstValue<uint64_t>(res_value6), true);
-  EXPECT_EQ(res_value6, value6);
-
-  // 常量 + 常量
-  auto add = sym::Add(const_6, const_6);
-  uint64_t res_value7;
-  EXPECT_EQ(add.GetConstValue<uint64_t>(res_value7), true);
-  EXPECT_EQ(res_value7, value6 + value6);
-
-  // 常量 * 常量
-  auto mul = sym::Mul(const_6, const_6);
-  uint64_t res_value8;
-  EXPECT_EQ(mul.GetConstValue<uint64_t>(res_value8), true);
-  EXPECT_EQ(res_value8, value6 * value6);
-
-  // 常量 - 常量
-  auto sub = sym::Sub(const_6, const_6);
-  uint64_t res_value9;
-  EXPECT_EQ(sub.GetConstValue<uint64_t>(res_value9), true);
-  EXPECT_EQ(res_value9, value6 - value6);
-
-  // 常量 / 常量
-  auto div = sym::Div(const_6, const_6);
-  uint64_t res_value10;
-  EXPECT_EQ(div.GetConstValue<uint64_t>(res_value10), true);
-  EXPECT_EQ(res_value10, value6 / value6);
-
-  // Max(常量, 常量)
-  auto max1 = sym::Max(const_1, const_6);
-  uint64_t res_value11;
-  EXPECT_EQ(max1.GetConstValue<uint64_t>(res_value11), true);
-  EXPECT_EQ(res_value11, std::max(static_cast<uint64_t>(value1), value6));
-
-  // 常量 + 变量
-  auto add20 = sym::Add(const_6, var_b);
-  uint64_t res_value20;
-  EXPECT_EQ(add20.GetConstValue<uint64_t>(res_value20), false);
-
-  // 常量绝对值 -> 常量
-  auto abs1 = sym::Abs(const_6);
-  uint64_t res_value21;
-  EXPECT_EQ(abs1.GetConstValue<uint64_t>(res_value21), true);
-
-  // 变量绝对值 -> 变量
-  auto abs2 = sym::Abs(var_b);
-  uint64_t res_value22;
-  EXPECT_EQ(abs2.GetConstValue<uint64_t>(res_value22), false);
+  const auto const_6 = Symbol(uint64_t(6));
+  // 有符号整型运算 -> 有符号
+  check_const(sym::Add(Symbol(uint64_t(1)), const_6), uint64_t(7));
+  check_const(sym::Sub(const_6, Symbol(uint64_t(1))), uint64_t(5));
+  check_const(sym::Mul(const_6, Symbol(uint64_t(2))), uint64_t(12));
+  check_const(sym::Div(const_6, Symbol(uint64_t(2))), uint64_t(3));
+  // uint64 常量 + 变量 -> 变量
+  uint64_t res_value20 = 0U;
+  EXPECT_EQ(sym::Add(const_6, var_b).GetConstValue<uint64_t>(res_value20), false);
+  // 常量绝对值 -> 常量；变量绝对值 -> 变量
+  EXPECT_EQ(sym::Abs(const_6).GetConstValue<uint64_t>(res_value20), true);
+  EXPECT_EQ(sym::Abs(var_b).GetConstValue<uint64_t>(res_value20), false);
 }
-
 TEST_F(UtestExpression, TestAlgin) {
   auto s0 = Symbol("s0");
   auto s1 = Symbol("s1");
@@ -1029,6 +766,29 @@ TEST_F(UtestExpression, TestAlignWithPositiveInteger_Succ) {
   SetCurShapeEnvContext(nullptr);
 }
 
+Status InferAddSymbolShapeStub(gert::InferSymbolShapeContext *context) {
+  auto input_shape0 = context->GetInputSymbolShape(0);
+  GE_ASSERT_NOTNULL(input_shape0);
+  auto input_shape1 = context->GetInputSymbolShape(1);
+  GE_ASSERT_NOTNULL(input_shape1);
+  auto output_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(output_shape);
+  for (size_t i = 0UL; i < input_shape0->GetDimNum(); i++) {
+    auto s0 = input_shape0->GetDim(i);
+    auto s1 = input_shape1->GetDim(i);
+    if (EXPECT_SYMBOL_EQ(s0, s1)) {
+      output_shape->AppendDim(s0);
+    } else if (EXPECT_SYMBOL_EQ(s0, Symbol(1))) {
+      output_shape->AppendDim(s1);
+    } else if (EXPECT_SYMBOL_EQ(s1, Symbol(1))) {
+      output_shape->AppendDim(s0);
+    } else {
+      return GRAPH_FAILED;
+    }
+  }
+  return GRAPH_SUCCESS;
+}
+
 TEST_F(UtestExpression, SymbolCheck_Old_Api_Succ) {
   auto shape_env = ShapeEnvAttr(ShapeEnvSetting());
   SetCurShapeEnvContext(&shape_env);
@@ -1087,37 +847,29 @@ TEST_F(UtestExpression, SymbolCheck_With_Simplify_Guard_Succ2) {
 TEST_F(UtestExpression, SymbolCheck_Succ) {
   auto shape_env = ShapeEnvAttr(ShapeEnvSetting());
   SetCurShapeEnvContext(&shape_env);
-  Symbol sym0 = shape_env.CreateSymbol(1, MakeShared<GraphInputShapeSourceStub>(0, 0));
-  EXPECT_EQ(sym0.IsVariableExpr(), true);
-  Symbol sym1 = shape_env.CreateSymbol(2, MakeShared<GraphInputShapeSourceStub>(0, 1));
-  EXPECT_EQ(sym1.IsVariableExpr(), true);
-  Symbol sym2 = shape_env.CreateSymbol(3, MakeShared<GraphInputShapeSourceStub>(0, 2));
-  EXPECT_EQ(sym2.IsVariableExpr(), true);
-  Symbol sym3 = shape_env.CreateSymbol(4, MakeShared<GraphInputShapeSourceStub>(0, 3));
-  EXPECT_EQ(sym3.IsVariableExpr(), true);
-  Symbol sym4 = shape_env.CreateSymbol(5, MakeShared<GraphInputShapeSourceStub>(0, 4));
-  EXPECT_EQ(sym4.IsVariableExpr(), true);
-  Symbol sym5 = shape_env.CreateSymbol(6, MakeShared<GraphInputShapeSourceStub>(0, 5));
-  EXPECT_EQ(sym5.IsVariableExpr(), true);
-  Symbol sym6 = shape_env.CreateSymbol(7, MakeShared<GraphInputShapeSourceStub>(0, 6));
-  EXPECT_EQ(sym6.IsVariableExpr(), true);
+  std::vector<Symbol> syms;
+  for (uint64_t i = 0U; i < 7U; i++) {
+    syms.emplace_back(shape_env.CreateSymbol(i + 1UL, MakeShared<GraphInputShapeSourceStub>(0, i)));
+  }
+  const auto &sym0 = syms[0];
+  const auto &sym1 = syms[1];
+  const auto &sym2 = syms[2];
+  const auto &sym3 = syms[3];
+  const auto &sym4 = syms[4];
+  const auto &sym5 = syms[5];
+  const auto &sym6 = syms[6];
+  for (const auto &sym : syms) {
+    EXPECT_EQ(sym.IsVariableExpr(), true);
+  }
 
-  bool guard_res0 = EXPECT_SYMBOL_EQ(sym0 + sym1, sym2);
-  EXPECT_EQ(guard_res0, true);
-  bool guard_res1 = EXPECT_SYMBOL_NE(sym0 * sym1, sym2);
-  EXPECT_EQ(guard_res1, true);
-  bool guard_res2 = EXPECT_SYMBOL_LT(sym3 / sym1, sym0);
-  EXPECT_EQ(guard_res2, false);
-  bool guard_res3 = EXPECT_SYMBOL_LE(sym4 - sym3, sym0);
-  EXPECT_EQ(guard_res3, true);
-  bool guard_res4 = EXPECT_SYMBOL_GT(sym::Pow(sym1, sym2), sym::Max(sym5, sym4));
-  EXPECT_EQ(guard_res4, true);
-  bool guard_res5 = EXPECT_SYMBOL_GE(sym::Min(sym1, sym2), sym::Abs(sym6));
-  EXPECT_EQ(guard_res5, false);
-  bool guard_res6 = EXPECT_SYMBOL_EQ(Symbol(2), Symbol(3));
-  EXPECT_EQ(guard_res6, false);
-  bool guard_res7 = EXPECT_SYMBOL_GT(sym::Mod(sym6, sym1), sym::Max(sym5, sym4));
-  EXPECT_EQ(guard_res7, false);
+  EXPECT_EQ(EXPECT_SYMBOL_EQ(sym0 + sym1, sym2), true);
+  EXPECT_EQ(EXPECT_SYMBOL_NE(sym0 * sym1, sym2), true);
+  EXPECT_EQ(EXPECT_SYMBOL_LT(sym3 / sym1, sym0), false);
+  EXPECT_EQ(EXPECT_SYMBOL_LE(sym4 - sym3, sym0), true);
+  EXPECT_EQ(EXPECT_SYMBOL_GT(sym::Pow(sym1, sym2), sym::Max(sym5, sym4)), true);
+  EXPECT_EQ(EXPECT_SYMBOL_GE(sym::Min(sym1, sym2), sym::Abs(sym6)), false);
+  EXPECT_EQ(EXPECT_SYMBOL_EQ(Symbol(2), Symbol(3)), false);
+  EXPECT_EQ(EXPECT_SYMBOL_GT(sym::Mod(sym6, sym1), sym::Max(sym5, sym4)), false);
   EXPECT_EQ(shape_env.HasSymbolCheckInfo(sym::Eq(sym0 + sym1, sym2)), true);
   EXPECT_EQ(shape_env.HasSymbolCheckInfo(sym::Ne(sym2, sym0 * sym1)), false);
   EXPECT_EQ(shape_env.HasSymbolCheckInfo(sym::Lt(sym3 / sym1, sym0)), false);
@@ -1129,38 +881,13 @@ TEST_F(UtestExpression, SymbolCheck_Succ) {
 
   EXPECT_EQ(SymbolicUtils::StaticCheckEq(sym2, sym0 + sym1), TriBool::kTrue);
   EXPECT_EQ(SymbolicUtils::StaticCheckNe(sym2, sym1 * sym0), TriBool::kTrue);
-  auto expr1 = sym3 / sym1;
-  EXPECT_EQ(SymbolicUtils::StaticCheckLt(expr1, sym0), TriBool::kUnknown);
+  EXPECT_EQ(SymbolicUtils::StaticCheckLt(sym3 / sym1, sym0), TriBool::kUnknown);
   EXPECT_EQ(SymbolicUtils::StaticCheckLe(sym0, sym3 / sym1), TriBool::kTrue);
   EXPECT_EQ(SymbolicUtils::StaticCheckLe((sym4 - sym3), sym0), TriBool::kTrue);
-
   EXPECT_EQ(SymbolicUtils::StaticCheckGt(sym::Pow(sym1, sym2), sym::Max(sym5, sym4)), TriBool::kTrue);
   EXPECT_EQ(SymbolicUtils::StaticCheckGe(sym::Min(sym1, sym2), sym::Abs(sym6)), TriBool::kUnknown);
   EXPECT_EQ(SymbolicUtils::StaticCheckGt(sym::Abs(sym6), sym::Min(sym1, sym2)), TriBool::kTrue);
   SetCurShapeEnvContext(nullptr);
-}
-
-Status InferAddSymbolShapeStub(gert::InferSymbolShapeContext *context) {
-  auto input_shape0 = context->GetInputSymbolShape(0);
-  GE_ASSERT_NOTNULL(input_shape0);
-  auto input_shape1 = context->GetInputSymbolShape(1);
-  GE_ASSERT_NOTNULL(input_shape1);
-  auto output_shape = context->GetOutputSymbolShape(0);
-  GE_ASSERT_NOTNULL(output_shape);
-  for (size_t i = 0UL; i < input_shape0->GetDimNum(); i++) {
-    auto s0 = input_shape0->GetDim(i);
-    auto s1 = input_shape1->GetDim(i);
-    if (EXPECT_SYMBOL_EQ(s0, s1)) {
-      output_shape->AppendDim(s0);
-    } else if (EXPECT_SYMBOL_EQ(s0, Symbol(1))) {
-      output_shape->AppendDim(s1);
-    } else if (EXPECT_SYMBOL_EQ(s1, Symbol(1))) {
-      output_shape->AppendDim(s0);
-    } else {
-      return GRAPH_FAILED;
-    }
-  }
-  return GRAPH_SUCCESS;
 }
 
 TEST_F(UtestExpression, SymbolCheckBroadCast_Succ) {
@@ -1212,53 +939,46 @@ TEST_F(UtestExpression, SymbolAssertCheck_Succ) {
   Symbol sym5 = shape_env.CreateSymbol(6, MakeShared<GraphInputShapeSourceStub>(0, 5));
   Symbol sym6 = shape_env.CreateSymbol(7, MakeShared<GraphInputShapeSourceStub>(0, 6));
 
-  bool guard_res0 = [&sym1]() -> bool {
-    ASSERT_SYMBOL_EQ(sym::Rational(4, 2), sym1);
-    return true;
-  }();
-  EXPECT_EQ(guard_res0, true);
-
-  bool guard_res0_1 = [&sym1, &sym2]() -> bool {
-    ASSERT_SYMBOL_EQ(sym2, sym1);
-    return true;
-  }();
-  EXPECT_EQ(guard_res0_1, false);
-
-  bool guard_res1 = [&sym0, &sym2]() -> bool {
-    ASSERT_SYMBOL_NE(sym::Ceiling(sym0), sym2);
-    return true;
-  }();
-  EXPECT_EQ(guard_res1, true);
-
-  bool guard_res2 = [&sym1, &sym4]() -> bool {
-    ASSERT_SYMBOL_LT(sym::Log(sym1, sym1), sym4);
-    return true;
-  }();
-  EXPECT_EQ(guard_res2, true);
-
-  bool guard_res3 = [&sym4, &sym3, &sym0]() -> bool {
-    ASSERT_SYMBOL_LE(sym4 - sym3, sym0);
-    return true;
-  }();
-  EXPECT_EQ(guard_res3, true);
-
-  bool guard_res4 = [&sym4, &sym5, &sym1, &sym2]() -> bool {
-    ASSERT_SYMBOL_GT(sym::Pow(sym1, sym2), sym::Max(sym5, sym4));
-    return true;
-  }();
-  EXPECT_EQ(guard_res4, true);
-
-  bool guard_res5 = [&sym6, &sym1, &sym2]() -> bool {
-    ASSERT_SYMBOL_GE(sym::Min(sym1, sym2), sym::Abs(sym6));
-    return true;
-  }();
-  EXPECT_EQ(guard_res5, false);
-
-  bool guard_res6 = []() -> bool {
-    ASSERT_SYMBOL_GE(Symbol(5), Symbol(2));
-    return true;
-  }();
-  EXPECT_EQ(guard_res6, true);
+  EXPECT_EQ(([&sym1]() -> bool {
+              ASSERT_SYMBOL_EQ(sym::Rational(4, 2), sym1);
+              return true;
+            }()),
+            true);
+  EXPECT_EQ(([&sym1, &sym2]() -> bool {
+              ASSERT_SYMBOL_EQ(sym2, sym1);
+              return true;
+            }()),
+            false);
+  EXPECT_EQ(([&sym0, &sym2]() -> bool {
+              ASSERT_SYMBOL_NE(sym::Ceiling(sym0), sym2);
+              return true;
+            }()),
+            true);
+  EXPECT_EQ(([&sym1, &sym4]() -> bool {
+              ASSERT_SYMBOL_LT(sym::Log(sym1, sym1), sym4);
+              return true;
+            }()),
+            true);
+  EXPECT_EQ(([&sym4, &sym3, &sym0]() -> bool {
+              ASSERT_SYMBOL_LE(sym4 - sym3, sym0);
+              return true;
+            }()),
+            true);
+  EXPECT_EQ(([&sym4, &sym5, &sym1, &sym2]() -> bool {
+              ASSERT_SYMBOL_GT(sym::Pow(sym1, sym2), sym::Max(sym5, sym4));
+              return true;
+            }()),
+            true);
+  EXPECT_EQ(([&sym6, &sym1, &sym2]() -> bool {
+              ASSERT_SYMBOL_GE(sym::Min(sym1, sym2), sym::Abs(sym6));
+              return true;
+            }()),
+            false);
+  EXPECT_EQ(([]() -> bool {
+              ASSERT_SYMBOL_GE(Symbol(5), Symbol(2));
+              return true;
+            }()),
+            true);
 
   EXPECT_EQ(shape_env.HasSymbolAssertInfo(sym::Eq(sym::Rational(4, 2), sym1)), true);
   EXPECT_EQ(shape_env.HasSymbolAssertInfo(sym::Ne(sym::Ceiling(sym0), sym2)), true);
@@ -1454,38 +1174,21 @@ TEST_F(UtestExpression, SimplifyVariable7_Succ) {
 }
 
 TEST_F(UtestExpression, TestHash) {
-  auto symbol2 = Symbol(2);
-  auto symbol2_bak = Symbol(2);
-  EXPECT_EQ(symbol2, symbol2_bak);
+  const auto check_eq_hash = [](const Expression &a, const Expression &b) {
+    EXPECT_EQ(a, b);
+    EXPECT_EQ(a.Hash(), b.Hash());
+  };
+  EXPECT_EQ(Symbol(2), Symbol(2));
 
-  auto s0 = Symbol("s0");
-  auto s0_bak = Symbol("s0");
-  auto s1 = Symbol("s1");
+  const auto s0 = Symbol("s0");
+  const auto s0_bak = Symbol("s0");
+  const auto s1 = Symbol("s1");
   EXPECT_EQ(s0.Hash(), s0_bak.Hash());
-  auto expr1 = Mul(s0, s1);
-  auto expr2 = Mul(s0_bak, s1);
-  auto expr3 = Mul(s1, s0);
-  EXPECT_EQ(expr1, expr2);
-  EXPECT_EQ(expr2, expr3);
-  EXPECT_EQ(expr1, expr3);
-  EXPECT_EQ(expr1.Hash(), expr2.Hash());
-  EXPECT_EQ(expr3.Hash(), expr1.Hash());
-  EXPECT_EQ(expr2.Hash(), expr3.Hash());
-
-  expr1 = Eq(s0, s0_bak);
-  expr2 = Eq(s0_bak, s0);
-  EXPECT_EQ(expr1, expr2);
-  EXPECT_EQ(expr2.Hash(), expr1.Hash());
-
-  expr1 = Ne(s0, s1);
-  expr2 = Ne(s1, s0);
-  EXPECT_EQ(expr1, expr2);
-  EXPECT_EQ(expr2.Hash(), expr1.Hash());
-
-  expr1 = s0 + s1 + s0;
-  expr2 = symbol2 * s0 + s1;
-  EXPECT_EQ(expr1, expr2);
-  EXPECT_EQ(expr2.Hash(), expr1.Hash());
+  check_eq_hash(Mul(s0, s1), Mul(s0_bak, s1));
+  check_eq_hash(Mul(s0_bak, s1), Mul(s1, s0));
+  check_eq_hash(Eq(s0, s0_bak), Eq(s0_bak, s0));
+  check_eq_hash(Ne(s0, s1), Ne(s1, s0));
+  check_eq_hash(s0 + s1 + s0, Symbol(2) * s0 + s1);
 }
 
 TEST_F(UtestExpression, TestExpressionUnorderdMap) {
@@ -1750,248 +1453,95 @@ TEST_F(UtestExpression, Parser_Empty) {
 TEST_F(UtestExpression, Parser_Minus) {
   auto s0 = Symbol("s0");
   auto neg_2 = Symbol(-2);
-  auto c_2 = Symbol(2);
 
-  // Add
-  auto expr = sym::Add(s0, neg_2);
-  auto expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "(-2 + s0)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-
-  expr = sym::Add(neg_2, s0);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "(-2 + s0)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-  // Sub
-  expr = sym::Sub(s0, neg_2);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "(2 + s0)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-
-  expr = sym::Sub(neg_2, s0);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "(-2 - s0)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-  // Mul
-  expr = sym::Mul(s0, neg_2);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "(-2 * s0)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-
-  expr = sym::Mul(neg_2, s0);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "(-2 * s0)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-  // Div
-  expr = sym::Div(neg_2, s0);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "(-2 / (s0))");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-
-  expr = sym::Div(s0, neg_2);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "(Rational(-1 , 2) * s0)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-  // Max
-  expr = sym::Max(s0, neg_2);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "Max(s0, -2)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-
-  expr = sym::Max(neg_2, s0);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "Max(s0, -2)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-  // Min
-  expr = sym::Min(s0, neg_2);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "Min(s0, -2)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-
-  expr = sym::Min(neg_2, s0);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "Min(s0, -2)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-  // Pow
-  expr = sym::Pow(s0, neg_2);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "Pow(s0, -2)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-
-  expr = sym::Pow(neg_2, s0);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "Pow(-2, s0)");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-  // Abs
-  expr = sym::Abs(neg_2);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "2");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-
-  expr = sym::Abs(sym::Add(neg_2, s0));
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "Abs((2 - s0))");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-  // Ceiling
-  expr = sym::Ceiling(neg_2);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "-2");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-
-  expr = sym::Ceiling(sym::Add(neg_2, s0));
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "(-2 + Ceiling(s0))");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-  // Floor
-  expr = sym::Floor(neg_2);
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "-2");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
-
-  expr = sym::Floor(sym::Add(neg_2, s0));
-  expr_str = expr.Serialize();
-  EXPECT_EQ(std::string(expr_str.get()), "(-2 + Floor(s0))");
-  EXPECT_EQ(Expression::Parse(expr_str.get()), expr);
+  ExpectSerializeRoundtrip(sym::Add(s0, neg_2), "(-2 + s0)");
+  ExpectSerializeRoundtrip(sym::Add(neg_2, s0), "(-2 + s0)");
+  ExpectSerializeRoundtrip(sym::Sub(s0, neg_2), "(2 + s0)");
+  ExpectSerializeRoundtrip(sym::Sub(neg_2, s0), "(-2 - s0)");
+  ExpectSerializeRoundtrip(sym::Mul(s0, neg_2), "(-2 * s0)");
+  ExpectSerializeRoundtrip(sym::Mul(neg_2, s0), "(-2 * s0)");
+  ExpectSerializeRoundtrip(sym::Div(neg_2, s0), "(-2 / (s0))");
+  ExpectSerializeRoundtrip(sym::Div(s0, neg_2), "(Rational(-1 , 2) * s0)");
+  ExpectSerializeRoundtrip(sym::Max(s0, neg_2), "Max(s0, -2)");
+  ExpectSerializeRoundtrip(sym::Max(neg_2, s0), "Max(s0, -2)");
+  ExpectSerializeRoundtrip(sym::Min(s0, neg_2), "Min(s0, -2)");
+  ExpectSerializeRoundtrip(sym::Min(neg_2, s0), "Min(s0, -2)");
+  ExpectSerializeRoundtrip(sym::Pow(s0, neg_2), "Pow(s0, -2)");
+  ExpectSerializeRoundtrip(sym::Pow(neg_2, s0), "Pow(-2, s0)");
+  ExpectSerializeRoundtrip(sym::Abs(neg_2), "2");
+  ExpectSerializeRoundtrip(sym::Abs(sym::Add(neg_2, s0)), "Abs((2 - s0))");
+  ExpectSerializeRoundtrip(sym::Ceiling(neg_2), "-2");
+  ExpectSerializeRoundtrip(sym::Ceiling(sym::Add(neg_2, s0)), "(-2 + Ceiling(s0))");
+  ExpectSerializeRoundtrip(sym::Floor(neg_2), "-2");
+  ExpectSerializeRoundtrip(sym::Floor(sym::Add(neg_2, s0)), "(-2 + Floor(s0))");
 }
 
 TEST_F(UtestExpression, Parser_Minus1) {
-  std::string str = "((-((8+s2)*s3)-(-1-((8+s2)*s3)-s3)-s3)*(8+s1)*(8+s2)*s3)";
-  Expression expr = Expression::Parse(str.c_str());
-  EXPECT_EQ(std::string(expr.Serialize().get()),
-            "(( - ((8 + s2) * s3) - (-1 - ((8 + s2) * s3) - s3) - s3) * (8 + s1) * (8 + s2) * s3)");
-
-  str = "-(s1 + s2)";
-  expr = Expression::Parse(str.c_str());
-  EXPECT_EQ(std::string(expr.Serialize().get()), "((s1 + s2) * -1)");
-
-  str = "1 - (s1-1)";
-  expr = Expression::Parse(str.c_str());
-  EXPECT_EQ(std::string(expr.Serialize().get()), "(1 - (-1 + s1))");
-
-  str = "-s1";
-  expr = Expression::Parse(str.c_str());
-  EXPECT_EQ(std::string(expr.Serialize().get()), "(-1 * s1)");
-
-  str = "1-s0";
-  expr = Expression::Parse(str.c_str());
-  EXPECT_EQ(std::string(expr.Serialize().get()), "(1 - s0)");
-
-  str = "-1-((8+s2)*s3)-s3";
-  expr = Expression::Parse(str.c_str());
-  EXPECT_EQ(std::string(expr.Serialize().get()), "(-1 - ((8 + s2) * s3) - s3)");
-
-  str = "(s1-1)";
-  expr = Expression::Parse(str.c_str());
-  EXPECT_EQ(std::string(expr.Serialize().get()), "(-1 + s1)");
+  ExpectParseAndSerialize("((-((8+s2)*s3)-(-1-((8+s2)*s3)-s3)-s3)*(8+s1)*(8+s2)*s3)",
+                          "(( - ((8 + s2) * s3) - (-1 - ((8 + s2) * s3) - s3) - s3) * (8 + s1) * (8 + s2) * s3)");
+  ExpectParseAndSerialize("-(s1 + s2)", "((s1 + s2) * -1)");
+  ExpectParseAndSerialize("1 - (s1-1)", "(1 - (-1 + s1))");
+  ExpectParseAndSerialize("-s1", "(-1 * s1)");
+  ExpectParseAndSerialize("1-s0", "(1 - s0)");
+  ExpectParseAndSerialize("-1-((8+s2)*s3)-s3", "(-1 - ((8 + s2) * s3) - s3)");
+  ExpectParseAndSerialize("(s1-1)", "(-1 + s1)");
 }
-
 TEST_F(UtestExpression, CanonicalizeBoolExpr_basic) {
   Expression e(nullptr);
   EXPECT_EQ(e.CanonicalizeBoolExpr().Str().get(), nullptr);
 
-  auto e0 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s0 == 1"));
-  EXPECT_EQ(e0->CanonicalizeBoolExpr()->Str(), "ExpectEq(1, s0)");
-
-  auto e1 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s0 != 1"));
-  EXPECT_EQ(e1->CanonicalizeBoolExpr()->Str(), "ExpectNe(1, s0)");
-
-  auto e2 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s0 <= 1"));
-  EXPECT_EQ(e2->CanonicalizeBoolExpr()->Str(), "ExpectLe(s0, 1)");
-
-  auto e3 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s0 >= 1"));
-  EXPECT_EQ(e3->CanonicalizeBoolExpr()->Str(), "ExpectLe(1, s0)");
-
-  auto e4 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s0 > 1"));
-  EXPECT_EQ(e4->CanonicalizeBoolExpr()->Str(), "ExpectLt(1, s0)");
-
-  auto e5 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s0 + s1"));
-  EXPECT_EQ(e5->CanonicalizeBoolExpr()->Str(), "(s0 + s1)");
-
-  auto e6 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s2 < 0"));
-  EXPECT_EQ(e6->CanonicalizeBoolExpr()->Str(), "ExpectLt(s2, 0)");
-
-  auto e7 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("0 < s2"));
-  EXPECT_EQ(e7->CanonicalizeBoolExpr()->Str(), "ExpectLt(0, s2)");
-
-  auto e8 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s2 + 1 < 0"));
-  EXPECT_EQ(e8->CanonicalizeBoolExpr()->Str(), "ExpectLt((1 + s2), 0)");
-
-  auto e9 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s2 - 1 < 0"));
-  EXPECT_EQ(e9->CanonicalizeBoolExpr()->Str(), "ExpectLt(s2, 1)");
-
-  auto e10 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("Mod(s2,2) <= 0"));
-  EXPECT_EQ(e10->CanonicalizeBoolExpr()->Str(), "ExpectLe(Mod(s2, 2), 0)");
-
-  auto e11 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("Mod(s2,2) -1 <= 0"));
-  EXPECT_EQ(e11->CanonicalizeBoolExpr()->Str(), "ExpectLe(Mod(s2, 2), 1)");
-}
-
-TEST_F(UtestExpression, CanonicalizeBoolExpr_basic_neg) {
-  auto e0 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s0 -1 == 3"));
-  EXPECT_EQ(e0->CanonicalizeBoolExpr()->Str(), "ExpectEq(4, s0)");
-
-  auto e1 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s0 -1 != 3"));
-  EXPECT_EQ(e1->CanonicalizeBoolExpr()->Str(), "ExpectNe(4, s0)");
-
-  auto e2 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s0 -1 <= 3"));
-  EXPECT_EQ(e2->CanonicalizeBoolExpr()->Str(), "ExpectLe(s0, 4)");
-
-  auto e3 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s0 -1 >= 3"));
-  EXPECT_EQ(e3->CanonicalizeBoolExpr()->Str(), "ExpectLe(4, s0)");
-
-  auto e4 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("s0 -1 > 3"));
-  EXPECT_EQ(e4->CanonicalizeBoolExpr()->Str(), "ExpectLt(4, s0)");
+  const auto canonicalize = [](const std::string &parse_str, const std::string &expect_str) {
+    const auto expr = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse(parse_str));
+    EXPECT_EQ(expr->CanonicalizeBoolExpr()->Str(), expect_str);
+  };
+  canonicalize("s0 == 1", "ExpectEq(1, s0)");
+  canonicalize("s0 != 1", "ExpectNe(1, s0)");
+  canonicalize("s0 <= 1", "ExpectLe(s0, 1)");
+  canonicalize("s0 >= 1", "ExpectLe(1, s0)");
+  canonicalize("s0 > 1", "ExpectLt(1, s0)");
+  canonicalize("s0 + s1", "(s0 + s1)");
+  canonicalize("s2 < 0", "ExpectLt(s2, 0)");
+  canonicalize("0 < s2", "ExpectLt(0, s2)");
+  canonicalize("s2 + 1 < 0", "ExpectLt((1 + s2), 0)");
+  canonicalize("s2 - 1 < 0", "ExpectLt(s2, 1)");
+  canonicalize("Mod(s2,2) <= 0", "ExpectLe(Mod(s2, 2), 0)");
+  canonicalize("Mod(s2,2) -1 <= 0", "ExpectLe(Mod(s2, 2), 1)");
+  canonicalize("s0 -1 == 3", "ExpectEq(4, s0)");
+  canonicalize("s0 -1 != 3", "ExpectNe(4, s0)");
+  canonicalize("s0 -1 <= 3", "ExpectLe(s0, 4)");
+  canonicalize("s0 -1 >= 3", "ExpectLe(4, s0)");
+  canonicalize("s0 -1 > 3", "ExpectLt(4, s0)");
 }
 
 TEST_F(UtestExpression, CanonicalizeBoolExpr) {
   Symbol r0 = Symbol("r0");
-  Symbol s1 = Symbol(1);
   Symbol s2 = Symbol(4096);
-  Symbol s3 = Symbol(41);
   Symbol x = Symbol("x");
   Symbol y = Symbol("y");
+  const auto check_sym = [](const Expression &expr, const std::string &expect_str) {
+    EXPECT_EQ(std::string(expr.CanonicalizeBoolExpr().Serialize().get()), expect_str);
+  };
+  const auto check_parse = [](const std::string &parse_str, const std::string &expect_str) {
+    const auto expr = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse(parse_str));
+    EXPECT_EQ(expr->CanonicalizeBoolExpr()->Str(), expect_str);
+  };
 
-  // x * y == 0  ---> x *y == 0
-  EXPECT_EQ(std::string(sym::Eq(Mul(x, y), Symbol(0)).CanonicalizeBoolExpr().Serialize().get()),
-            "ExpectEq((x * y), 0)");
-
+  check_sym(sym::Eq(Mul(x, y), Symbol(0)), "ExpectEq((x * y), 0)");
   // 2*x*y + 4*x == 0 ---> x*y + 2*x == 0
-  auto e = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("2*x*y+4*x==0"));
-  EXPECT_EQ(e->CanonicalizeBoolExpr()->Str(), "ExpectEq(((2 * x) + (x * y)), 0)");
-
-  // 2*x*y+4*x + 2**x==0 ---> 2*x*y+4*x + 2**x==0 (pow not support)
-  auto e1 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("2*x*y+4*x + 2**x==0"));
-  EXPECT_EQ(e1->CanonicalizeBoolExpr()->Str(), "ExpectEq(((2 * x * y) + (4 * x) + Pow(2, x)), 0)");
-
+  check_parse("2*x*y+4*x==0", "ExpectEq(((2 * x) + (x * y)), 0)");
+  // pow 不参与规范化
+  check_parse("2*x*y+4*x + 2**x==0", "ExpectEq(((2 * x * y) + (4 * x) + Pow(2, x)), 0)");
   // 2*x + 4y == 0 ---> x + 2*y == 0
-  auto e2 = ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(SymEngine::parse("2*x + 4y == 0"));
-  EXPECT_EQ(e2->CanonicalizeBoolExpr()->Str(), "ExpectEq(((2 * y) + x), 0)");
-
-  EXPECT_EQ(std::string(sym::Eq(Add(Symbol(0), Symbol(0)), Symbol(0)).CanonicalizeBoolExpr().Serialize().get()),
-            "True");
-
-  EXPECT_EQ(std::string(Mul(r0, s2).CanonicalizeBoolExpr().Serialize().get()), "(4096 * r0)");
-
-  auto expr = sym::Lt(r0, s1).CanonicalizeBoolExpr();
-  EXPECT_EQ(std::string(expr.Serialize().get()), "ExpectLt(r0, 1)");
-
-  auto expr2 = sym::Lt(r0, s2).CanonicalizeBoolExpr();
-  EXPECT_EQ(std::string(expr2.Serialize().get()), "ExpectLt(r0, 4096)");
-
-  auto expr3 = sym::Ge(r0, s2).CanonicalizeBoolExpr();
-  EXPECT_EQ(std::string(expr3.Serialize().get()), "ExpectLe(4096, r0)");
-
-  auto expr4 = sym::Eq(sym::Add(r0, s3), s2).CanonicalizeBoolExpr();
-  EXPECT_EQ(std::string(expr4.Serialize().get()), "ExpectEq(4055, r0)");
-
-  auto expr41 = sym::Eq(s2, sym::Add(r0, s3)).CanonicalizeBoolExpr();
-  EXPECT_EQ(std::string(expr41.Serialize().get()), "ExpectEq(4055, r0)");
-
-  auto expr5 = sym::Eq(sym::Add(s3, sym::Mul(r0, Symbol(2))), s2).CanonicalizeBoolExpr();
-  EXPECT_EQ(std::string(expr5.Serialize().get()), "ExpectEq((2 * r0), 4055)");
-
-  auto expr6 = sym::Eq(sym::Add(Symbol(42), sym::Mul(r0, Symbol(2))), Symbol(4096)).CanonicalizeBoolExpr();
-  EXPECT_EQ(std::string(expr6.Serialize().get()), "ExpectEq(2027, r0)");
+  check_parse("2*x + 4y == 0", "ExpectEq(((2 * y) + x), 0)");
+  check_sym(sym::Eq(Add(Symbol(0), Symbol(0)), Symbol(0)), "True");
+  check_sym(Mul(r0, s2), "(4096 * r0)");
+  check_sym(sym::Lt(r0, Symbol(1)), "ExpectLt(r0, 1)");
+  check_sym(sym::Lt(r0, s2), "ExpectLt(r0, 4096)");
+  check_sym(sym::Ge(r0, s2), "ExpectLe(4096, r0)");
+  check_sym(sym::Eq(sym::Add(r0, Symbol(41)), s2), "ExpectEq(4055, r0)");
+  check_sym(sym::Eq(s2, sym::Add(r0, Symbol(41))), "ExpectEq(4055, r0)");
+  check_sym(sym::Eq(sym::Add(Symbol(41), sym::Mul(r0, Symbol(2))), s2), "ExpectEq((2 * r0), 4055)");
+  check_sym(sym::Eq(sym::Add(Symbol(42), sym::Mul(r0, Symbol(2))), Symbol(4096)), "ExpectEq(2027, r0)");
 }
 
 TEST_F(UtestExpression, EvaluateAsBoolBasic) {
@@ -2063,54 +1613,38 @@ TEST_F(UtestExpression, LogicalTest) {
   auto s2 = Symbol("s2");
   auto s3 = Symbol("s3");
 
+  const auto serialize_str = [](const Expression &expr) { return std::string(expr.Serialize().get()); };
+
   // 非布尔表达式测试
   EXPECT_EQ(LogicalAnd({s0}).Serialize().get(), nullptr);
   EXPECT_EQ(LogicalOr({s0}).Serialize().get(), nullptr);
 
   // 基础用例测试
-  auto expr1 = LogicalAnd({Eq(s0, s1), Eq(s2, s3)});
-  EXPECT_EQ(std::string(expr1.Serialize().get()), "LogicAnd(ExpectEq(s0, s1), ExpectEq(s2, s3))");
-
-  auto expr2 = LogicalOr({Eq(s0, s1), Eq(s2, s3)});
-  EXPECT_EQ(std::string(expr2.Serialize().get()), "LogicOr(ExpectEq(s0, s1), ExpectEq(s2, s3))");
+  const auto expr1 = LogicalAnd({Eq(s0, s1), Eq(s2, s3)});
+  EXPECT_EQ(serialize_str(expr1), "LogicAnd(ExpectEq(s0, s1), ExpectEq(s2, s3))");
+  const auto expr2 = LogicalOr({Eq(s0, s1), Eq(s2, s3)});
+  EXPECT_EQ(serialize_str(expr2), "LogicOr(ExpectEq(s0, s1), ExpectEq(s2, s3))");
 
   // 解析测试
-  auto expr3 = ExpressionImpl::Parse("LogicAnd(ExpectEq(s0, s1), ExpectEq(s2, s3))");
-  EXPECT_EQ(expr3->Str(), expr1.Serialize().get());
-  auto expr3_1 = ExpressionImpl::Parse("LogicOr(ExpectEq(s0, s1), ExpectEq(s2, s3))");
-  EXPECT_EQ(expr3_1->Str(), expr2.Serialize().get());
+  EXPECT_EQ(ExpressionImpl::Parse("LogicAnd(ExpectEq(s0, s1), ExpectEq(s2, s3))")->Str(), expr1.Serialize().get());
+  EXPECT_EQ(ExpressionImpl::Parse("LogicOr(ExpectEq(s0, s1), ExpectEq(s2, s3))")->Str(), expr2.Serialize().get());
+  // 变参解析下单参 LogicAnd/LogicOr 合法，解析结果与单元素构造版折叠一致
+  EXPECT_EQ(ExpressionImpl::Parse("LogicAnd(ExpectEq(s0, s1))")->Str(), "ExpectEq(s0, s1)");
+  EXPECT_EQ(ExpressionImpl::Parse("LogicOr(ExpectEq(s0, s1))")->Str(), "ExpectEq(s0, s1)");
 
-  auto expr3_2 = ExpressionImpl::Parse("LogicAnd(ExpectEq(s0, s1))");
-  EXPECT_EQ(expr3_2.get(), nullptr);
-  auto expr3_3 = ExpressionImpl::Parse("LogicOr(ExpectEq(s0, s1))");
-  EXPECT_EQ(expr3_3.get(), nullptr);
+  EXPECT_EQ(serialize_str(sym::LogicalAnd({})), "True");
+  EXPECT_EQ(serialize_str(sym::LogicalOr({})), "False");
+  EXPECT_EQ(serialize_str(LogicalAnd({Eq(s0, s1)})), "ExpectEq(s0, s1)");
+  EXPECT_EQ(serialize_str(LogicalOr({Eq(s0, s1)})), "ExpectEq(s0, s1)");
+  EXPECT_EQ(serialize_str(LogicalOr({Eq(Symbol(1), Symbol(1))})), "True");
+  EXPECT_EQ(serialize_str(LogicalOr({Eq(Symbol(1), Symbol(1)), Eq(s0, s1)})), "True");
+  EXPECT_EQ(serialize_str(LogicalAnd({Eq(Symbol(1), Symbol(1)), Eq(s0, s1)})), "ExpectEq(s0, s1)");
+  EXPECT_EQ(serialize_str(LogicalAnd({Eq(Symbol(1), Symbol(0)), Eq(s0, s1)})), "False");
 
-  auto expr4 = sym::LogicalAnd({});
-  EXPECT_EQ(std::string(expr4.Serialize().get()), "True");
-
-  auto expr5 = sym::LogicalOr({});
-  EXPECT_EQ(std::string(expr5.Serialize().get()), "False");
-
-  auto expr6 = LogicalAnd({Eq(s0, s1)});
-  EXPECT_EQ(std::string(expr6.Serialize().get()), "ExpectEq(s0, s1)");
-
-  auto expr7 = LogicalOr({Eq(s0, s1)});
-  EXPECT_EQ(std::string(expr7.Serialize().get()), "ExpectEq(s0, s1)");
-
-  auto expr8 = LogicalOr({Eq(Symbol(1), Symbol(1))});
-  EXPECT_EQ(std::string(expr8.Serialize().get()), "True");
-
-  auto expr9 = LogicalOr({Eq(Symbol(1), Symbol(1)), Eq(s0, s1)});
-  EXPECT_EQ(std::string(expr9.Serialize().get()), "True");
-
-  auto expr10 = LogicalAnd({Eq(Symbol(1), Symbol(1)), Eq(s0, s1)});
-  EXPECT_EQ(std::string(expr10.Serialize().get()), "ExpectEq(s0, s1)");
-
-  auto expr11 = LogicalAnd({Eq(Symbol(1), Symbol(0)), Eq(s0, s1)});
-  EXPECT_EQ(std::string(expr11.Serialize().get()), "False");
-
-  // 添加到shape env测试
+  // 添加到shape env测试：expr1/expr2 引用 s0~s3 四个符号，须全部注册 hint 源，
+  // 否则 EvaluateExpr 存在无法替换的自由符号，GetHint 依赖 SymEngine 布局不稳定
   auto s = ShapeEnvAttr();
+  s.CreateSymbol(0, MakeShared<GraphInputShapeSourceStub>(0, 0));
   s.CreateSymbol(1, MakeShared<GraphInputShapeSourceStub>(0, 1));
   s.CreateSymbol(2, MakeShared<GraphInputShapeSourceStub>(0, 2));
   s.CreateSymbol(3, MakeShared<GraphInputShapeSourceStub>(0, 3));
@@ -2123,7 +1657,6 @@ TEST_F(UtestExpression, LogicalTest) {
   EXPECT_TRUE(SymbolicUtils::StaticCheckGt(expr1, expr2) == TriBool::kUnknown);
   EXPECT_TRUE(SymbolicUtils::StaticCheckEq(expr1, expr1) == TriBool::kTrue);
 }
-
 TEST_F(UtestExpression, LogicalTestConst) {
   EXPECT_TRUE(EXPECT_SYMBOL_AND());
   EXPECT_FALSE(EXPECT_SYMBOL_OR());
@@ -2136,30 +1669,23 @@ TEST_F(UtestExpression, LogicalTestConst) {
 }
 
 TEST_F(UtestExpression, LogicalOrTestGuard) {
-  auto s0 = Symbol("s0");
-  auto s1 = Symbol("s1");
-  auto s2 = Symbol("s2");
-  auto s3 = Symbol("s3");
-  auto s4 = Symbol("s4");
-  auto s5 = Symbol("s5");
+  const auto s0 = Symbol("s0");
+  const auto s1 = Symbol("s1");
+  const auto s2 = Symbol("s2");
+  const auto s3 = Symbol("s3");
+  const auto s4 = Symbol("s4");
+  const auto s5 = Symbol("s5");
 
   auto s = ShapeEnvAttr();
   SetCurShapeEnvContext(&s);
-  s.CreateSymbol(1, MakeShared<GraphInputShapeSourceStub>(0, 1));
-  s.CreateSymbol(2, MakeShared<GraphInputShapeSourceStub>(0, 2));
-  s.CreateSymbol(3, MakeShared<GraphInputShapeSourceStub>(0, 3));
-  s.CreateSymbol(4, MakeShared<GraphInputShapeSourceStub>(0, 4));
-  s.CreateSymbol(5, MakeShared<GraphInputShapeSourceStub>(0, 5));
-  s.CreateSymbol(6, MakeShared<GraphInputShapeSourceStub>(0, 6));
+  for (uint64_t i = 1U; i <= 6U; i++) {
+    s.CreateSymbol(i, MakeShared<GraphInputShapeSourceStub>(0, i));
+  }
 
-  auto ret = EXPECT_SYMBOL_OR(Ge(s0, s1), Le(s2, s3), Eq(s4, s5));
-  EXPECT_EQ(ret, true);
-  ret = EXPECT_SYMBOL_OR(Ge(s0, s1), Le(s3, s2), Eq(s5, s4));
-  EXPECT_EQ(ret, false);
-  ret = EXPECT_SYMBOL_AND(Ge(s0, s1), Le(s2, s3), Eq(s4, s5));
-  EXPECT_EQ(ret, false);
-  ret = EXPECT_SYMBOL_AND(Ge(s1, s0), Gt(s3, s2), Gt(s5, s4));
-  EXPECT_EQ(ret, true);
+  EXPECT_EQ(EXPECT_SYMBOL_OR(Ge(s0, s1), Le(s2, s3), Eq(s4, s5)), true);
+  EXPECT_EQ(EXPECT_SYMBOL_OR(Ge(s0, s1), Le(s3, s2), Eq(s5, s4)), false);
+  EXPECT_EQ(EXPECT_SYMBOL_AND(Ge(s0, s1), Le(s2, s3), Eq(s4, s5)), false);
+  EXPECT_EQ(EXPECT_SYMBOL_AND(Ge(s1, s0), Gt(s3, s2), Gt(s5, s4)), true);
 
   const std::set<std::string> expect_guard = {"LogicOr(ExpectEq(s4, s5), ExpectLe(s1, s0), ExpectLe(s2, s3))",
                                               "LogicAnd(ExpectLt(s0, s1), ExpectLt(s2, s3), ExpectNe(s4, s5))",
@@ -2168,6 +1694,25 @@ TEST_F(UtestExpression, LogicalOrTestGuard) {
   for (auto &iter : s.GetAllSymbolCheckInfos()) {
     EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
   }
+}
+
+TEST_F(UtestExpression, ParseNaryLogicalAndOr) {
+  // 形状 guard 会把多个条件合成为变参 LogicAnd/LogicOr（见 symbol_checker.h），解析端必须支持 N 参
+  const char *nary_and = "LogicAnd(ExpectNe(-1, s101), ExpectNe(-1, s401), ExpectNe(0, s401))";
+  auto nary_and_expr = Expression::Parse(nary_and);
+  EXPECT_NE(nary_and_expr.impl_, nullptr);
+  EXPECT_EQ(std::string(nary_and_expr.Serialize().get()), nary_and);
+
+  const char *nary_or = "LogicOr(ExpectEq(s6, s7), ExpectLt(s0, s1), ExpectLt(s3, s2), ExpectNe(s4, s5))";
+  auto nary_or_expr = Expression::Parse(nary_or);
+  EXPECT_NE(nary_or_expr.impl_, nullptr);
+  EXPECT_EQ(std::string(nary_or_expr.Serialize().get()), nary_or);
+
+  // Max/Min 打印端同为变参（DefaultMaxPrinter/DefaultMinPrinter），解析端按从左折叠处理
+  auto nary_max_expr = Expression::Parse("Max(s0, s1, s2)");
+  EXPECT_NE(nary_max_expr.impl_, nullptr);
+  auto nary_min_expr = Expression::Parse("Min(s0, s1, s2)");
+  EXPECT_NE(nary_min_expr.impl_, nullptr);
 }
 
 TEST_F(UtestExpression, SimplifyWithShapeEnv) {
@@ -2211,39 +1756,30 @@ TEST_F(UtestExpression, ExpandSimplifyTest) {
 
 TEST_F(UtestExpression, StaticCheckTest) {
   SetCurShapeEnvContext(nullptr);
-  auto s0 = Symbol("s0");
   auto s1 = Symbol("s1");
   auto c0 = Symbol(0);
   auto c1 = Symbol(1);
   auto c2 = Symbol(2);
-
-  // s0 + 1
-  auto expr1 = s0 + c1;
-  // s0 + 2 - (s0 + 1) = 1
-  auto expr2 = s0 + c2 - expr1;
+  // expr2 = s0 + 2 - (s0 + 1) = 1
+  const auto expr2 = Symbol("s0") + c2 - (Symbol("s0") + c1);
   EXPECT_NE(expr2, c1);
-  // ==
+  // ==/!=/</<=/>/>= 对常量比较可判定，含自由符号 s1 无法判定
   EXPECT_EQ(SymbolicUtils::StaticCheckEq(expr2, c1), TriBool::kTrue);
   EXPECT_EQ(SymbolicUtils::StaticCheckEq(expr2, c2), TriBool::kFalse);
   EXPECT_EQ(SymbolicUtils::StaticCheckEq(expr2, s1), TriBool::kUnknown);
-  // !=
   EXPECT_EQ(SymbolicUtils::StaticCheckNe(expr2, c2), TriBool::kTrue);
   EXPECT_EQ(SymbolicUtils::StaticCheckNe(expr2, c1), TriBool::kFalse);
   EXPECT_EQ(SymbolicUtils::StaticCheckNe(expr2, s1), TriBool::kUnknown);
-  // <
   EXPECT_EQ(SymbolicUtils::StaticCheckLt(expr2, c2), TriBool::kTrue);
   EXPECT_EQ(SymbolicUtils::StaticCheckLt(expr2, c1), TriBool::kFalse);
   EXPECT_EQ(SymbolicUtils::StaticCheckLt(expr2, s1), TriBool::kUnknown);
-  // <=
   EXPECT_EQ(SymbolicUtils::StaticCheckLe(expr2, c2), TriBool::kTrue);
   EXPECT_EQ(SymbolicUtils::StaticCheckLe(expr2, c1), TriBool::kTrue);
   EXPECT_EQ(SymbolicUtils::StaticCheckLe(expr2, c0), TriBool::kFalse);
   EXPECT_EQ(SymbolicUtils::StaticCheckLe(expr2, s1), TriBool::kUnknown);
-  // >
   EXPECT_EQ(SymbolicUtils::StaticCheckGt(expr2, c0), TriBool::kTrue);
   EXPECT_EQ(SymbolicUtils::StaticCheckGt(expr2, c2), TriBool::kFalse);
   EXPECT_EQ(SymbolicUtils::StaticCheckGt(expr2, s1), TriBool::kUnknown);
-  // >=
   EXPECT_EQ(SymbolicUtils::StaticCheckGe(expr2, c1), TriBool::kTrue);
   EXPECT_EQ(SymbolicUtils::StaticCheckGe(expr2, c0), TriBool::kTrue);
   EXPECT_EQ(SymbolicUtils::StaticCheckGe(expr2, c2), TriBool::kFalse);
