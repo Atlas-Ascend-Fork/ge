@@ -11,7 +11,7 @@ This Sample aims to guide users on how to customize ES API <br>
 
 ## Expected Results
 
-Generate pbtxt format dump graph in the project build directory
+The script generates the pbtxt-format dump graph in the current working directory.
 
 ## Implementation Steps
 
