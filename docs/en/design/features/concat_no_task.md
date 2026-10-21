@@ -301,9 +301,39 @@ if (ge::AttrUtils::GetBool(op_desc, ATTR_NAME_NOTASK, attr_notask) && attr_notas
 
 This ensures no_task nodes are not considered as part of continuous computation nodes in stream, not affecting first and last operator marking.
 
-### 4.6 Runtime Processing
+### 4.6 Kernel Binary (.o) Save Skip
 
-#### 4.6.1 RT1 (Davinci Model)
+Operators marked with `_no_task` generate no Task, and the runtime does not register their kernel binaries either, so their `.o` is redundant data. However, the Concat/Pack notask marking happens after operator compilation (end of OptimizeStage2), when the `.o` has already been attached to the OpDesc (`_tbe_kernel_buffer`). Without handling, it would be saved into the TBE_KERNELS partition of the OM.
+
+`ModelBuilder::SaveNormalTBEKernel` (model_builder.cc) applies a **node-granularity** filter before saving:
+
+```cpp
+if (NOTASK && _output_reuse_input) {
+    return SUCCESS;  // Skip adding .o to TBEKernelStore and skip setting _kernelname
+}
+```
+
+The filter condition requires both attributes simultaneously, because `_no_task` is a flag shared by multiple features:
+
+| `_no_task` setter | Has `_output_reuse_input` | Computation eliminated | Filter effect |
+|------------------|--------------------------|------------------------|---------------|
+| Concat/Pack notask (marked after compilation, carries .o) | Yes | Yes (output reuses input address) | Skip .o saving |
+| SuperKernel Plus non-first nodes (computation executed via fused kernel) | No | No | Not matched, behavior unchanged |
+| aclnn fallback (execution via aclnn at runtime) | No | No | Not matched |
+| GeLocal unknown shape nodes | No | Not TBE, no .o | No-op |
+
+`_output_reuse_input` (output directly reuses input memory) is the characteristic attribute of "computation eliminated" virtual operators, set atomically in pairs with `_no_task` by notask-type passes (`SetNotaskAttr`). The dual-attribute combination precisely hits the redundant .o scenario.
+
+Side effects and safety:
+
+- `_kernelname` no longer set: on load side, `LoadTBEKernelBinToOpDesc` silently skips when lookup by name fails, no error reported
+- `DelNodeRepeatSaveAttr` unconditionally clears `_tbe_kernel_buffer`, no bin residue in MODEL_DEF
+- RT1 `IsTbeTask` / RT2 `IsVirtualOp` both skip kernel registration based on `_no_task`, missing `.o` has no impact
+- When an existing OM is reloaded and re-saved (om→om passthrough), the TBE_KERNELS partition is preserved as-is, passthrough semantics unchanged
+
+### 4.7 Runtime Processing
+
+#### 4.7.1 RT1 (Davinci Model)
 
 In `TbeKernelHandle::NeedInit`:
 
@@ -316,7 +346,7 @@ if (get_attr_no_task_flag && attr_no_task) {
 }
 ```
 
-#### 4.6.2 RT2 (V2 Engine)
+#### 4.7.2 RT2 (V2 Engine)
 
 In `aicore_node_converter.cc` `IsVirtualOp`:
 

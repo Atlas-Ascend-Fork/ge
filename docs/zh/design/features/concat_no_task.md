@@ -300,9 +300,39 @@ if (ge::AttrUtils::GetBool(op_desc, ATTR_NAME_NOTASK, attr_notask) && attr_notas
 
 这确保 no_task 节点不会被视为流中连续计算节点的一部分，不会影响首尾算子的标记。
 
-### 4.6 运行时处理
+### 4.6 Kernel 二进制（.o）保存跳过
 
-#### 4.6.1 RT1 (Davinci Model)
+标记了 `_no_task` 的算子不生成 Task、运行时也不注册其 kernel 二进制，其 `.o` 属于冗余数据。但 Concat/Pack notask 的标记发生在算子编译之后（OptimizeStage2 末尾），此时 `.o` 已挂在 OpDesc（`_tbe_kernel_buffer`）上，若不处理会被保存进 OM 的 TBE_KERNELS 分区。
+
+`ModelBuilder::SaveNormalTBEKernel`（model_builder.cc）在保存前进行**节点粒度**过滤：
+
+```cpp
+if (NOTASK && _output_reuse_input) {
+    return SUCCESS;  // 跳过 .o 入 TBEKernelStore 及 _kernelname 设置
+}
+```
+
+过滤条件必须同时满足两个属性，原因是 `_no_task` 是多类特性共用的标记：
+
+| `_no_task` 设置方 | `_output_reuse_input` | 计算是否被消除 | 过滤效果 |
+|------------------|----------------------|--------------|---------|
+| Concat/Pack notask（编译后标记，携带 .o） | 有 | 是（输出复用输入地址） | 跳过 .o 保存 |
+| SuperKernel Plus 非首节点 | 无（计算经融合 kernel 执行） | 否 | 不命中，行为不变 |
+| aclnn fallback（运行时走 aclnn 执行） | 无 | 否 | 不命中 |
+| GeLocal 未知 shape 节点 | 无 | 非 TBE，无 .o | 空转 |
+
+`_output_reuse_input`（输出直接复用输入内存）是"计算被消除"虚拟算子的特征属性，与 `_no_task` 由 notask 类 pass 成对原子设置（`SetNotaskAttr`），双属性组合精准命中冗余 .o 场景。
+
+连带效果与安全性：
+
+- `_kernelname` 不再设置：加载侧 `LoadTBEKernelBinToOpDesc` 按 name 查找失败时静默跳过，不报错
+- `DelNodeRepeatSaveAttr` 无条件清除 `_tbe_kernel_buffer`，MODEL_DEF 无 bin 残留
+- RT1 `IsTbeTask` / RT2 `IsVirtualOp` 均基于 `_no_task` 跳过 kernel 注册，`.o` 缺失无影响
+- 已有 OM 重新加载再保存（om→om 透传）时 TBE_KERNELS 分区原样保留，透传语义不变
+
+### 4.7 运行时处理
+
+#### 4.7.1 RT1 (Davinci Model)
 
 在 `TbeKernelHandle::NeedInit` 中：
 
@@ -315,7 +345,7 @@ if (get_attr_no_task_flag && attr_no_task) {
 }
 ```
 
-#### 4.6.2 RT2 (V2 Engine)
+#### 4.7.2 RT2 (V2 Engine)
 
 在 `aicore_node_converter.cc` 的 `IsVirtualOp` 中：
 

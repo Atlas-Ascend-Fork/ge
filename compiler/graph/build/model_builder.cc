@@ -1033,6 +1033,19 @@ Status ModelBuilder::AddTBEKernelToStore(const OpDescPtr &op_desc, const TBEKern
 }
 
 Status ModelBuilder::SaveNormalTBEKernel(const OpDescPtr &op_desc) {
+  // _no_task 是多类特性共用的标记，仅凭它无法确认 kernel 二进制运行时不再被使用：
+  // Concat/Pack notask 计算被消除(.o 冗余)，而 SuperKernel Plus 非首节点的计算仍经融合
+  // kernel 执行、aclnn fallback 运行时走 aclnn 执行。
+  // _output_reuse_input(输出直接复用输入内存)是"计算被消除"虚拟算子的特征属性，
+  // 与 _no_task 由 notask 类 pass 成对设置；双属性组合才跳过 .o 保存，避免误删其他场景的 kernel。
+  bool attr_no_task = false;
+  bool attr_output_reuse_input = false;
+  if (AttrUtils::GetBool(op_desc, ATTR_NAME_NOTASK, attr_no_task) && attr_no_task &&
+      AttrUtils::GetBool(op_desc, ATTR_NAME_OUTPUT_REUSE_INPUT, attr_output_reuse_input) && attr_output_reuse_input) {
+    GELOGI("Node[name:%s, type:%s] is no task and output reuse input, skip saving tbe kernel.", op_desc->GetNamePtr(),
+           op_desc->GetTypePtr());
+    return SUCCESS;
+  }
   TBEKernelPtr tbe_kernel = op_desc->TryGetExtAttr(OP_EXTATTR_NAME_TBE_KERNEL, TBEKernelPtr());
   if (tbe_kernel == nullptr) {
     tbe_kernel = CreateOpTBEKernel(op_desc, "");
