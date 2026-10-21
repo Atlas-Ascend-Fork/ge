@@ -513,7 +513,9 @@ bool FEOpsKernelInfoStore::CheckAccuracySupported(const ge::NodePtr &node, std::
   FE_LOGD("Node[%s, %s] begin CheckAccuracySupported.", op_desc_ptr->GetNamePtr(), op_desc_ptr->GetTypePtr());
   bool ret = CheckSupportedBase(node, un_supported_reason, CheckSupportMode::ACCURACY_MODE, real_query);
   if (!VerifyCastC0Format(op_desc_ptr)) {
-    un_supported_reason = "Cast op does not support current c0 format.";
+    un_supported_reason =
+        "When the C0 format is configured for the Cast operator, the size of the input data type must match that of "
+        "the output data type.";
     return false;
   }
   return ret;
