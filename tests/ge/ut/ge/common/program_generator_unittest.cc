@@ -803,7 +803,7 @@ void ConfigureVariableRange(const GeRootModelPtr &ge_root_model, const int64_t r
   var_desc->SetOutputOffset({root});
   (void)ge_model->GetGraph()->AddNode(var_desc);
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_VAR_SIZE, 4096);
-  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_TASK_GEN_VAR_ADDR, kMemoryVarLogicBase);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_TASK_GEN_VAR_ADDR, kVarMemoryLogicBase);
 }
 
 GeRootModelPtr CreateGeRootModelWithMemcpyAddrAsync() {
@@ -5634,11 +5634,11 @@ TEST_F(ProgramGeneratorUt, GenerateAicoreLaunchUsesUnifiedCallbackInfo) {
 TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_RawVariableRangesUseRelativeOffsets) {
   GeRootModelPtr memcpy_model = CreateGeRootModelWithMemcpyAsync();
   ASSERT_NE(memcpy_model, nullptr);
-  ConfigureVariableRange(memcpy_model, static_cast<int64_t>(kMemoryVarLogicBase + 256U), 2048);
+  ConfigureVariableRange(memcpy_model, static_cast<int64_t>(kVarMemoryLogicBase + 256U), 2048);
   auto memcpy_ge_model = memcpy_model->GetSubgraphInstanceNameToModel().begin()->second;
   auto *memcpy_task =
       memcpy_ge_model->GetModelTaskDefPtr()->mutable_task(memcpy_ge_model->GetModelTaskDefPtr()->task_size() - 1);
-  memcpy_task->mutable_memcpy_async()->set_src(kMemoryVarLogicBase + 263U);
+  memcpy_task->mutable_memcpy_async()->set_src(kVarMemoryLogicBase + 263U);
   memcpy_task->mutable_memcpy_async()->set_dst_max(std::numeric_limits<uint64_t>::max());
   memcpy_task->mutable_memcpy_async()->set_count(std::numeric_limits<uint64_t>::max());
   auto memcpy_generator = CreateProgramGenerator(memcpy_model);
@@ -5649,11 +5649,11 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_RawVariableRangesUseRelative
 
   GeRootModelPtr memcpy_addr_model = CreateGeRootModelWithMemcpyAddrAsync();
   ASSERT_NE(memcpy_addr_model, nullptr);
-  ConfigureVariableRange(memcpy_addr_model, static_cast<int64_t>(kMemoryVarLogicBase + 512U), 64);
+  ConfigureVariableRange(memcpy_addr_model, static_cast<int64_t>(kVarMemoryLogicBase + 512U), 64);
   auto memcpy_addr_ge_model = memcpy_addr_model->GetSubgraphInstanceNameToModel().begin()->second;
   auto *memcpy_addr_task = memcpy_addr_ge_model->GetModelTaskDefPtr()->mutable_task(
       memcpy_addr_ge_model->GetModelTaskDefPtr()->task_size() - 1);
-  memcpy_addr_task->mutable_memcpy_async()->set_dst(kMemoryVarLogicBase + 521U);
+  memcpy_addr_task->mutable_memcpy_async()->set_dst(kVarMemoryLogicBase + 521U);
   memcpy_addr_task->mutable_memcpy_async()->set_dst_max(std::numeric_limits<uint64_t>::max());
   memcpy_addr_task->mutable_memcpy_async()->set_count(std::numeric_limits<uint64_t>::max());
   auto memcpy_addr_generator = CreateProgramGenerator(memcpy_addr_model);
@@ -5664,12 +5664,12 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_RawVariableRangesUseRelative
 
   GeRootModelPtr cmo_model = CreateGeRootModelWithCmoTask(1U, 3U);
   ASSERT_NE(cmo_model, nullptr);
-  ConfigureVariableRange(cmo_model, static_cast<int64_t>(kMemoryVarLogicBase + 768U), 64);
+  ConfigureVariableRange(cmo_model, static_cast<int64_t>(kVarMemoryLogicBase + 768U), 64);
   auto cmo_ge_model = cmo_model->GetSubgraphInstanceNameToModel().begin()->second;
   auto *cmo_task =
       cmo_ge_model->GetModelTaskDefPtr()->mutable_task(cmo_ge_model->GetModelTaskDefPtr()->task_size() - 1);
   auto *cmo = cmo_task->mutable_cmo_task();
-  cmo->set_source_addr(kMemoryVarLogicBase + 779U);
+  cmo->set_source_addr(kVarMemoryLogicBase + 779U);
   cmo->set_num_inner(std::numeric_limits<uint32_t>::max());
   cmo->set_num_outer(std::numeric_limits<uint32_t>::max());
   cmo->set_length_inner(std::numeric_limits<uint32_t>::max());
@@ -5765,10 +5765,10 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSourceForMemcpyAsync_Ok) {
 TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_MemcpyVariableOffsetDoesNotCollideWithModelIo) {
   GeRootModelPtr ge_root_model = CreateGeRootModelWithMemcpyAsync();
   ASSERT_NE(ge_root_model, nullptr);
-  ConfigureVariableRange(ge_root_model, static_cast<int64_t>(kMemoryVarLogicBase + 256U), 2048);
+  ConfigureVariableRange(ge_root_model, static_cast<int64_t>(kVarMemoryLogicBase + 256U), 2048);
   const auto ge_model = ge_root_model->GetSubgraphInstanceNameToModel().begin()->second;
   auto *memcpy_task = ge_model->GetModelTaskDefPtr()->mutable_task(ge_model->GetModelTaskDefPtr()->task_size() - 1);
-  memcpy_task->mutable_memcpy_async()->set_src(kMemoryVarLogicBase + 256U + 1024U);
+  memcpy_task->mutable_memcpy_async()->set_src(kVarMemoryLogicBase + 256U + 1024U);
 
   auto generator = CreateProgramGenerator(ge_root_model);
   std::map<GeneratedFileIndex, std::string> outputs;
@@ -5872,10 +5872,10 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSourceForCmoAddrTask_Ok) {
 TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_CmoAddrInnerVariableUsesRelativeOffset) {
   GeRootModelPtr ge_root_model = CreateGeRootModelWithCmoAddrTask(false);
   ASSERT_NE(ge_root_model, nullptr);
-  ConfigureVariableRange(ge_root_model, static_cast<int64_t>(kMemoryVarLogicBase + 256U), 64);
+  ConfigureVariableRange(ge_root_model, static_cast<int64_t>(kVarMemoryLogicBase + 256U), 64);
   const auto ge_model = ge_root_model->GetSubgraphInstanceNameToModel().begin()->second;
   auto *cmo_addr_task = ge_model->GetModelTaskDefPtr()->mutable_task(ge_model->GetModelTaskDefPtr()->task_size() - 1);
-  cmo_addr_task->mutable_cmo_addr_task()->set_src(kMemoryVarLogicBase + 257U);
+  cmo_addr_task->mutable_cmo_addr_task()->set_src(kVarMemoryLogicBase + 257U);
 
   auto generator = CreateProgramGenerator(ge_root_model);
   std::map<GeneratedFileIndex, std::string> outputs;
@@ -6420,8 +6420,8 @@ TEST_F(ProgramGeneratorUt, GetRtAddress_InvalidAddr_ReturnsParamInvalid) {
 TEST_F(ProgramGeneratorUt, GetRtAddress_InConstantRange_SetsConstTensor) {
   GetRtAddressTestContext ctx;
   ctx.runtime.var_size = 1024U;
-  ctx.runtime.logic_var_base = kMemoryVarLogicBase;
-  const uintptr_t logic_addr = kMemoryVarLogicBase + 256U;
+  ctx.runtime.logic_var_base = kVarMemoryLogicBase;
+  const uintptr_t logic_addr = kVarMemoryLogicBase + 256U;
   const int64_t addr_key = static_cast<int64_t>(logic_addr);
   ctx.fileconst_output_offset_to_varname[addr_key] = "const_256";
   AddrSemantic addr_node;
@@ -6434,8 +6434,8 @@ TEST_F(ProgramGeneratorUt, GetRtAddress_InConstantRange_SetsConstTensor) {
 TEST_F(ProgramGeneratorUt, GetRtAddress_FileConstantPrecedesVariableRange) {
   GetRtAddressTestContext ctx;
   ctx.runtime.var_size = 1024U;
-  ctx.runtime.logic_var_base = kMemoryVarLogicBase;
-  const uintptr_t root = kMemoryVarLogicBase + 256U;
+  ctx.runtime.logic_var_base = kVarMemoryLogicBase;
+  const uintptr_t root = kVarMemoryLogicBase + 256U;
   ctx.fileconst_output_offset_to_varname[static_cast<int64_t>(root)] = "const_3";
   ctx.var_addr_ranges[root] = VarAddrInfo{16U, 0U, "var_0"};
 
@@ -7485,8 +7485,8 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_ContainsProfilingPatterns) {
 TEST_F(ProgramGeneratorUt, GetRtAddress_VariableHalfOpenRangeUsesRelativeOffsets) {
   GetRtAddressTestContext ctx;
   ctx.runtime.var_size = 1024U;
-  ctx.runtime.logic_var_base = kMemoryVarLogicBase;
-  const uintptr_t root = kMemoryVarLogicBase + 256U;
+  ctx.runtime.logic_var_base = kVarMemoryLogicBase;
+  const uintptr_t root = kVarMemoryLogicBase + 256U;
   ctx.var_addr_ranges[root] = VarAddrInfo{16U, 3U, "var_3"};
 
   const std::vector<std::pair<uintptr_t, int64_t>> matches{{root, 0}, {root + 1U, 1}, {root + 15U, 15}};
@@ -7504,8 +7504,8 @@ TEST_F(ProgramGeneratorUt, GetRtAddress_VariableHalfOpenRangeUsesRelativeOffsets
 TEST_F(ProgramGeneratorUt, GetRtAddress_InnerVariableAddressUsesRelativeOffset) {
   GetRtAddressTestContext ctx;
   ctx.runtime.var_size = 1024U;
-  ctx.runtime.logic_var_base = kMemoryVarLogicBase;
-  const uintptr_t root = kMemoryVarLogicBase + 256U;
+  ctx.runtime.logic_var_base = kVarMemoryLogicBase;
+  const uintptr_t root = kVarMemoryLogicBase + 256U;
   ctx.var_addr_ranges[root] = VarAddrInfo{16U, 3U, "var_3"};
 
   AddrSemantic exact_addr;
@@ -7522,8 +7522,8 @@ TEST_F(ProgramGeneratorUt, GetRtAddress_InnerVariableAddressUsesRelativeOffset) 
 TEST_F(ProgramGeneratorUt, GetRtAddress_VariableRangeEndAndGapDoNotMatch) {
   GetRtAddressTestContext ctx;
   ctx.runtime.var_size = 1024U;
-  ctx.runtime.logic_var_base = kMemoryVarLogicBase;
-  const uintptr_t root = kMemoryVarLogicBase + 256U;
+  ctx.runtime.logic_var_base = kVarMemoryLogicBase;
+  const uintptr_t root = kVarMemoryLogicBase + 256U;
   ctx.var_addr_ranges[root] = VarAddrInfo{16U, 0U, "var_0"};
   ctx.var_addr_ranges[root + 32U] = VarAddrInfo{16U, 1U, "var_1"};
 
@@ -7537,8 +7537,8 @@ TEST_F(ProgramGeneratorUt, GetRtAddress_VariableRangeEndAndGapDoNotMatch) {
 TEST_F(ProgramGeneratorUt, GetRtAddress_AdjacentVariableRangeRootMatchesNextVariable) {
   GetRtAddressTestContext ctx;
   ctx.runtime.var_size = 1024U;
-  ctx.runtime.logic_var_base = kMemoryVarLogicBase;
-  const uintptr_t root = kMemoryVarLogicBase + 256U;
+  ctx.runtime.logic_var_base = kVarMemoryLogicBase;
+  const uintptr_t root = kVarMemoryLogicBase + 256U;
   ctx.var_addr_ranges[root] = VarAddrInfo{16U, 0U, "var_0"};
   ctx.var_addr_ranges[root + 16U] = VarAddrInfo{32U, 1U, "var_1"};
 
@@ -7554,8 +7554,8 @@ TEST_F(ProgramGeneratorUt, GetRtAddress_AdjacentVariableRangeRootMatchesNextVari
 TEST_F(ProgramGeneratorUt, GetRtAddress_SameRootRangeUsesLastRegisteredMetadata) {
   GetRtAddressTestContext ctx;
   ctx.runtime.var_size = 1024U;
-  ctx.runtime.logic_var_base = kMemoryVarLogicBase;
-  const uintptr_t root = kMemoryVarLogicBase + 256U;
+  ctx.runtime.logic_var_base = kVarMemoryLogicBase;
+  const uintptr_t root = kVarMemoryLogicBase + 256U;
   ctx.var_addr_ranges[root] = VarAddrInfo{16U, 0U, "var_0"};
   ctx.var_addr_ranges[root] = VarAddrInfo{16U, 1U, "var_1"};
 
@@ -7822,8 +7822,8 @@ TEST_F(ProgramGeneratorUt, Om2ModelUtils_ArgsSizeAlign8_Success) {
 TEST_F(ProgramGeneratorUt, GetRtAddress_InVarRangeNotInFileConstMap_ReturnsParamInvalid) {
   GetRtAddressTestContext ctx;
   ctx.runtime.var_size = 1024U;
-  ctx.runtime.logic_var_base = kMemoryVarLogicBase;
-  const uintptr_t logic_addr = kMemoryVarLogicBase + 256U;
+  ctx.runtime.logic_var_base = kVarMemoryLogicBase;
+  const uintptr_t logic_addr = kVarMemoryLogicBase + 256U;
   AddrSemantic addr_node;
   EXPECT_EQ(Om2ModelUtils::GetRtAddress(*ctx.context, logic_addr, addr_node, true, 0U), PARAM_INVALID);
 }

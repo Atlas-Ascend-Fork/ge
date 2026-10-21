@@ -84,17 +84,42 @@ bool IsInputDescValid(const ge::GeTensorDesc &input_desc, size_t &invalid_index_
   return true;
 }
 
-bool IsSupportInfer(const ge::OpDescPtr &op_desc) {
-  size_t idx = 0;
+bool IsSupportInfer(const NodePtr &node) {
+  const auto op_desc = node->GetOpDesc();
   if (!op_desc->GetSubgraphInstanceNames().empty()) {
     GELOGW("Subgraph is not supported Currently.");
     return false;
   }
-  for (const auto &td : op_desc->GetAllInputsDesc()) {
-    idx += 1;
+  // 按真实输入 index 遍历：GetAllInputsDesc 会过滤无效 desc(如悬空可选输入)，过滤后
+  // 的列表序号与 anchor index 错位，悬空/连接性判定会查错 anchor
+  const auto input_num = op_desc->GetAllInputsSize();
+  for (size_t i = 0U; i < input_num; ++i) {
+    const auto in_anchor = node->GetInDataAnchor(static_cast<uint32_t>(i));
+    if (in_anchor == nullptr || in_anchor->GetPeerOutAnchor() == nullptr) {
+      GELOGD("Node %s[%s] input[%zu] is optional without feed, skip format check.", op_desc->GetNamePtr(),
+             op_desc->GetTypePtr(), i);
+      continue;
+    }
+    const auto input_desc_ptr = op_desc->MutableInputDesc(static_cast<uint32_t>(i));
+    if (input_desc_ptr == nullptr) {
+      continue;
+    }
+    const auto &td = *input_desc_ptr;
     if (td.GetOriginFormat() != td.GetFormat()) {
-      GELOGI("symbolic infer shape unsupported: name %s[%s], idx = %u, origin format [%d] is not equal to format[%d].",
-             op_desc->GetNamePtr(), op_desc->GetTypePtr(), idx, td.GetOriginFormat(), td.GetFormat());
+      // Symbolize 会把 desc 物理 dims 迁移到符号属性(物理 dims 清空为 rank=0)，直接用物理
+      // shape 判 rank 在符号化后恒为 <=1；rank 优先取符号 shape，无符号属性时回退物理 shape
+      const auto symbolic_attr = td.GetAttrsGroup<SymbolicDescAttr>();
+      size_t rank = td.GetOriginShape().GetDims().size();
+      if (symbolic_attr != nullptr && !symbolic_attr->symbolic_tensor.GetOriginSymbolShape().GetDims().empty()) {
+        rank = symbolic_attr->symbolic_tensor.GetOriginSymbolShape().GetDims().size();
+      }
+      if (rank <= 1U) {
+        GELOGD("Node %s[%s] input[%zu] origin format [%d] is not equal to format [%d], but shape rank <= 1, skip.",
+               op_desc->GetNamePtr(), op_desc->GetTypePtr(), i, td.GetOriginFormat(), td.GetFormat());
+        continue;
+      }
+      GELOGI("symbolic infer shape unsupported: name %s[%s], idx = %zu, origin format [%d] is not equal to format[%d].",
+             op_desc->GetNamePtr(), op_desc->GetTypePtr(), i, td.GetOriginFormat(), td.GetFormat());
       return false;
     }
   }
@@ -584,7 +609,7 @@ Status InferOneNode(NodePtr &node) {
     return ge::SUCCESS;
   }
 
-  if (!IsSupportInfer(op_desc)) {
+  if (!IsSupportInfer(node)) {
     GELOGW("op %s[%s] Check support infer symbol shape failed.", node->GetNamePtr(), node->GetTypePtr());
     return ge::UNSUPPORTED;
   }

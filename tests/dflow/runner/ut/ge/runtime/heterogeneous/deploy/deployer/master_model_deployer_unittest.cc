@@ -16,7 +16,6 @@
 #include "macro_utils/dt_public_scope.h"
 #include "deploy/deployer/master_model_deployer.h"
 #include "deploy/deployer/deployer_service_impl.h"
-#include "deploy/flowrm/network_manager.h"
 #include "deploy/resource/resource_manager.h"
 #include "deploy/model_send/flow_model_sender.h"
 #include "dflow/base/exec_runtime/execution_runtime.h"
@@ -421,10 +420,8 @@ TEST_F(MasterModelDeployerTest, TestCopyOneWeightToTransfer) {
 }
 
 TEST_F(MasterModelDeployerTest, TestInitFlowGwInfoSuccess) {
-  uint32_t old_port = NetworkManager::GetInstance().main_port_;
   MasterModelDeployer model_deployer;
   ASSERT_EQ(model_deployer.InitFlowGwInfo(), SUCCESS);
-  NetworkManager::GetInstance().main_port_ = old_port;
 }
 
 /**

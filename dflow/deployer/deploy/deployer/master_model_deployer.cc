@@ -15,7 +15,6 @@
 #include "common/compile_profiling/ge_call_wrapper.h"
 #include "common/thread_pool/thread_pool.h"
 #include "deploy/deployer/heterogeneous_model_deployer.h"
-#include "deploy/flowrm/network_manager.h"
 #include "deploy/flowrm/heterogeneous_exchange_deployer.h"
 #include "deploy/resource/resource_manager.h"
 #include "deploy/resource/heterogeneous_deploy_planner.h"
@@ -135,7 +134,6 @@ MasterModelDeployer::MasterModelDeployer() : mu_(), abnormal_status_handler_(mu_
 
 Status MasterModelDeployer::Initialize(const std::map<std::string, std::string> &options) {
   (void)options;
-  GE_CHK_STATUS_RET(NetworkManager::GetInstance().Initialize(), "Failed to init NetworkManager");
   GE_CHK_STATUS_RET(DeviceMaintenanceMasterCfg::InitGlobalMaintenanceConfigs());
   const auto &node = Configurations::GetInstance().GetLocalNode();
   GE_CHK_STATUS_RET(DeployerAuthentication::GetInstance().Initialize(node.auth_lib_path, true),
@@ -241,8 +239,7 @@ Status MasterModelDeployer::CreateRankTable(HcomRankTable &rank_table) {
   rank_table.status = "completed";
   rank_table.version = "1.1";
 
-  std::string master_ip;
-  GE_CHK_STATUS_RET_NOLOG(NetworkManager::GetInstance().GetDataPanelIp(master_ip));
+  const std::string &master_ip = Configurations::GetInstance().GetHostInformation().host_info.data_panel.ipaddr;
 
   const pid_t pid = getpid();
   const std::string collective_id = master_ip + "-" + std::to_string(pid) + "-" + std::to_string(rank_table_order);

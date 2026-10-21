@@ -421,31 +421,31 @@ void BuildSampleGraph(ComputeGraphPtr &graph, uint32_t &mem_offset) {
     ASSERT_NE(var1, nullptr);
     var1->GetOpDescBarePtr()->UpdateOutputDesc(0, output_desc);
     ge::TensorUtils::SetSize(*var1->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    var1->GetOpDescBarePtr()->SetOutputOffset({137438953472U});
+    var1->GetOpDescBarePtr()->SetOutputOffset({824633720832U});
 
     const auto &var2 = graph->FindNode("var2");
     ASSERT_NE(var2, nullptr);
     var2->GetOpDescBarePtr()->UpdateOutputDesc(0, output_desc);
     ge::TensorUtils::SetSize(*var2->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    var2->GetOpDescBarePtr()->SetOutputOffset({137438956472U});
+    var2->GetOpDescBarePtr()->SetOutputOffset({824633723832U});
 
     const auto &_cst_string = graph->FindNode("_cst_string");
     ASSERT_NE(_cst_string, nullptr);
     _cst_string->GetOpDescBarePtr()->UpdateOutputDesc(0, output_desc);
     ge::TensorUtils::SetSize(*_cst_string->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    _cst_string->GetOpDescBarePtr()->SetOutputOffset({137438959472U});
+    _cst_string->GetOpDescBarePtr()->SetOutputOffset({824633726832U});
 
     const auto &const_f = graph->FindNode("Less/StreamSwitch_Const_f");
     ASSERT_NE(const_f, nullptr);
     const_f->GetOpDescBarePtr()->UpdateOutputDesc(0, output_desc);
     ge::TensorUtils::SetSize(*const_f->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    const_f->GetOpDescBarePtr()->SetOutputOffset({137438962472U});
+    const_f->GetOpDescBarePtr()->SetOutputOffset({824633729832U});
 
     const auto &const_t = graph->FindNode("Less/StreamSwitch_Const_t");
     ASSERT_NE(var2, nullptr);
     const_t->GetOpDescBarePtr()->UpdateOutputDesc(0, output_desc);
     ge::TensorUtils::SetSize(*const_t->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    const_t->GetOpDescBarePtr()->SetOutputOffset({137438965472U});
+    const_t->GetOpDescBarePtr()->SetOutputOffset({824633732832U});
   }
   SetUnknownOpKernel(graph, mem_offset, true);
   {
@@ -1583,6 +1583,7 @@ TEST_F(GeExecutorTest, sample_davinci_model_invalid_input) {
 
 TEST_F(GeExecutorTest, sample_davinci_model_dynamic_memory) {
   dlog_setlevel(-1, 0, 1);
+  // slow_test_limit = 3000, 全生命周期综合用例(8次模型加载+profiling), CI环境固有耗时约2.2~2.5s
   {
     auto mock_runtime = std::make_shared<MockMemRuntime>();
     ge::RuntimeStub::SetInstance(mock_runtime);
@@ -1739,15 +1740,15 @@ TEST_F(GeExecutorTest, sample_davinci_model_dynamic_memory) {
     ASSERT_NE(var1, nullptr);
     ASSERT_NE(var2, nullptr);
     ge::TensorUtils::SetSize(*var1->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    var1->GetOpDescBarePtr()->SetOutputOffset({137438953472U});
+    var1->GetOpDescBarePtr()->SetOutputOffset({824633720832U});
     ge::TensorUtils::SetSize(*var2->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    var2->GetOpDescBarePtr()->SetOutputOffset({137438954472U});
+    var2->GetOpDescBarePtr()->SetOutputOffset({824633721832U});
     ge::TensorUtils::SetSize(*var3->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    var3->GetOpDescBarePtr()->SetOutputOffset({137438954472U});
+    var3->GetOpDescBarePtr()->SetOutputOffset({824633721832U});
     ge::TensorUtils::SetSize(*var4->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    var4->GetOpDescBarePtr()->SetOutputOffset({137438954472U});
+    var4->GetOpDescBarePtr()->SetOutputOffset({824633721832U});
     ge::TensorUtils::SetSize(*var5->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    var5->GetOpDescBarePtr()->SetOutputOffset({137438954472U});
+    var5->GetOpDescBarePtr()->SetOutputOffset({824633721832U});
 
     // Test LoadModelOffline
     ModelHelper model_helper;
@@ -1965,9 +1966,9 @@ TEST_F(GeExecutorTest, FileConstant_UserSetDeviceMem) {
     ASSERT_NE(var1, nullptr);
     ASSERT_NE(var2, nullptr);
     ge::TensorUtils::SetSize(*var1->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    var1->GetOpDescBarePtr()->SetOutputOffset({137438953472U});
+    var1->GetOpDescBarePtr()->SetOutputOffset({824633720832U});
     ge::TensorUtils::SetSize(*var2->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    var2->GetOpDescBarePtr()->SetOutputOffset({137438954472U});
+    var2->GetOpDescBarePtr()->SetOutputOffset({824633721832U});
 
     // Test LoadModelOffline
     {
@@ -2058,9 +2059,9 @@ TEST_F(GeExecutorTest, FileConstant_OneThreadLoadTwoOm) {
     ASSERT_NE(var1, nullptr);
     ASSERT_NE(var2, nullptr);
     ge::TensorUtils::SetSize(*var1->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    var1->GetOpDescBarePtr()->SetOutputOffset({137438953472U});
+    var1->GetOpDescBarePtr()->SetOutputOffset({824633720832U});
     ge::TensorUtils::SetSize(*var2->GetOpDescBarePtr()->MutableOutputDesc(0), 512);
-    var2->GetOpDescBarePtr()->SetOutputOffset({137438954472U});
+    var2->GetOpDescBarePtr()->SetOutputOffset({824633721832U});
 
     // Test LoadModelOffline
     {

@@ -40,7 +40,7 @@ function parse_args(){
     if [ $# -lt 1 ]; then
         clean_relative_dir "build"
         clean_relative_dir "output"
-        exit 1
+        exit 0
     fi
 
     eval set -- "$parsed_args"

@@ -18,7 +18,7 @@ This protocol does not focus on:
 
 - **IR Prototype**: Operator's input/output/attribute/subgraph definition information at the IR layer.
 - **Historical Prototype Data (Structured Data)**: The collection of data files after IR prototype extraction and serialization.
-- **Producer**: Tool that generates structured data. Currently fixed as `gen_esb --extract-history` in the short term.
+- **Producer**: Tool that generates structured data. Currently fixed as `gen_esb --es_mode=extract_history` in the short term.
 - **Consumer**: Any tool/process that reads structured data. Currently the main consumer is `gen_esb` (for ES API generation), can be extended to other toolchains in the future.
 - **Ops Run Package**: Ops runtime package form after installation, historical prototype library data is published with it.
 - **Compatibility Window**: The version range that consumers select based on version metadata (e.g., release dates) for comparison/generation (e.g., "one-year window").
@@ -91,7 +91,7 @@ Example see [Appendix A](#appendix-a-json-minimum-example).
 ## 5. Generation and Publication (Currently Fixed by gen_esb)
 
 In the short term, to reduce system complexity:
-- **Producer**: Still reuses `gen_esb`, extracts IR prototypes from "current version prototype .so" through `--extract-history` and outputs structured data.
+- **Producer**: Still reuses `gen_esb`, extracts IR prototypes from "current version prototype .so" through `--es_mode=extract_history` and outputs structured data.
 
 ### 5.1 Data Flow for Building Ops Package (Generation and Packaging Publication)
 
@@ -112,7 +112,7 @@ Simplified data flow diagram:
 Generation mode (example):
 
 ```bash
-gen_esb --extract-history --output-dir <out> --release-version <ver>
+gen_esb --es_mode=extract_history --output-dir <out> --release-version <ver>
 ```
 
 Publication principles:

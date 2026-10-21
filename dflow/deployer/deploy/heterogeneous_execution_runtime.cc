@@ -10,7 +10,6 @@
 
 #include "deploy/heterogeneous_execution_runtime.h"
 #include "common/data_flow/queue/heterogeneous_exchange_service.h"
-#include "deploy/flowrm/network_manager.h"
 #include "deploy/flowrm/tsd_client.h"
 #include "common/mem_grp/memory_group_manager.h"
 #include "common/subprocess/subprocess_manager.h"
@@ -63,7 +62,6 @@ Status HeterogeneousExecutionRuntime::Finalize() {
   GELOGD("Heterogeneous execution runtime finalize begin.");
   GE_CHK_STATUS(model_deployer_.Finalize());
   GE_CHK_STATUS(HeterogeneousExchangeService::GetInstance().Finalize());
-  GE_CHK_STATUS(NetworkManager::GetInstance().Finalize());
   SubprocessManager::GetInstance().Finalize();
   Configurations::GetInstance().Finalize();
   TsdClient::GetInstance().Finalize();
@@ -81,7 +79,6 @@ ExchangeService &HeterogeneousExecutionRuntime::GetExchangeService() {
 
 void HeterogeneousExecutionRuntime::RollbackInit() const {
   SubprocessManager::GetInstance().Finalize();
-  GE_CHK_STATUS(NetworkManager::GetInstance().Finalize());
 }
 
 const std::string &HeterogeneousExecutionRuntime::GetCompileHostResourceType() const {

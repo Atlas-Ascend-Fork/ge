@@ -1582,16 +1582,16 @@ TEST_F(UtestDavinciModel, Init_variable_op) {
   OpDescPtr var1 = CreateOpDesc("var1", VARIABLE);
   var1->AddInputDesc(tensor);
   var1->AddOutputDesc(tensor);
-  var1->SetInputOffset({1024 + kMemoryVarLogicBase});
-  var1->SetOutputOffset({1024 + kMemoryVarLogicBase});
+  var1->SetInputOffset({1024 + kVarMemoryLogicBase});
+  var1->SetOutputOffset({1024 + kVarMemoryLogicBase});
   AttrUtils::SetBool(var1, VAR_ATTR_VAR_IS_BROADCAST, true);
   graph->AddNode(var1);
 
   OpDescPtr var2 = CreateOpDesc(NODE_NAME_GLOBAL_STEP, VARIABLE);
   var2->AddInputDesc(tensor);
   var2->AddOutputDesc(tensor);
-  var2->SetInputOffset({1024 + kMemoryVarLogicBase});
-  var2->SetOutputOffset({1024 + kMemoryVarLogicBase});
+  var2->SetInputOffset({1024 + kVarMemoryLogicBase});
+  var2->SetOutputOffset({1024 + kVarMemoryLogicBase});
   graph->AddNode(var2);
 
   EXPECT_EQ(model.InitNodes(graph), SUCCESS);
@@ -10205,7 +10205,7 @@ TEST_F(UtestDavinciModel, davinci_dump_by_original_name) {
   {
     const auto &node = graph->FindNode("_var_0");
     const auto &op_desc = node->GetOpDesc();
-    op_desc->SetInputOffset({1024 + kMemoryVarLogicBase});
+    op_desc->SetInputOffset({1024 + kVarMemoryLogicBase});
     AttrUtils::SetBool(op_desc, VAR_ATTR_VAR_IS_BROADCAST, true);
     VarManager::Instance(graph->GetSessionID())->SetAllocatedGraphId(op_desc->GetName(), graph->GetGraphID());
   }

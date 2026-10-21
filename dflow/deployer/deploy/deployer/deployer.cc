@@ -15,7 +15,6 @@
 #include "common/config/device_debug_config.h"
 #include "common/subprocess/subprocess_manager.h"
 #include "deploy/deployer/deployer_service_impl.h"
-#include "deploy/flowrm/network_manager.h"
 #include "deploy/resource/deployer_port_distributor.h"
 #include "deploy/deployer/deployer_authentication.h"
 #include "common/compile_profiling/ge_call_wrapper.h"
@@ -116,13 +115,9 @@ Status LocalDeployer::Initialize() {
     device_info.SetOsId(device_config.os_id);
     device_info.SetAvailablePorts(node_config.available_ports);
     int32_t port = -1;
-    if (device_config.device_type == CPU && node_config.need_port_preemption) {
-      GE_CHK_STATUS_RET(NetworkManager::GetInstance().GetDataPanelPort(port), "Failed to allocate port");
-    } else {
-      GE_CHK_STATUS_RET(
-          DeployerPortDistributor::GetInstance().AllocatePort(node_config.ipaddr, node_config.available_ports, port),
-          "Failed to allocate port");
-    }
+    GE_CHK_STATUS_RET(
+        DeployerPortDistributor::GetInstance().AllocatePort(node_config.ipaddr, node_config.available_ports, port),
+        "Failed to allocate port");
     device_info.SetDgwPort(port);
     device_info.SetHostIp(node_config.ipaddr);
     device_info.SetNodePort(node_config.port);

@@ -822,10 +822,10 @@ class GraphUtils {
    */
   static bool IsRefFromInput(const OutDataAnchorPtr &out_data_anchor, int32_t &reuse_in_index);
   /**
-   * 判断当前`out_data_anchor`是否引用RefData的输出
+   * 判断当前`out_data_anchor`是否引用了RefData或InnerData节点的输出
    * @param out_data_anchor
-   * @param ref_data 复用的RefData节点
-   * @param 如果存在复用关系，返回true, 否则返回false
+   * @param refed_node 出参，被引用的RefData或InnerData节点
+   * @param is_ref_from_other 出参，如果存在引用关系，值为true, 否则为false
    * @return status
    */
   static graphStatus CheckIsRefFromOther(const OutDataAnchorPtr &out_data_anchor, NodePtr &refed_node,
@@ -914,8 +914,8 @@ class GraphUtils {
 
   /**
    * 将node所有的输入、输出边断开，并移动到dst_graph
-   * @param dst_graph 目的Graph，
    * @param node 需要移动的Node
+   * @param dst_graph 目的Graph
    * @return 成功时，返回ge::GRAPH_SUCCESS
    */
   static graphStatus MoveNodeToGraph(const NodePtr &node, ComputeGraph &dst_graph);

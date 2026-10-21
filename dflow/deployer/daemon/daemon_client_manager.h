@@ -82,6 +82,15 @@ class DaemonClientManager {
    */
   DeployerDaemonClient *GetClient(const int64_t client_id);
 
+  /*
+   *  @ingroup ge
+   *  @brief   verify that the request peer addr matches the addr recorded at init
+   *  @param   [in]  client_id  the client id allocated at init
+   *  @param   [in]  peer_uri   the peer uri of the current request
+   *  @return  SUCCESS or FAILED
+   */
+  Status VerifyClientAddr(const int64_t client_id, const std::string &peer_uri);
+
   Status RecordClientInfo(const int64_t client_id, const std::string &peer_uri);
 
   Status DeleteClientInfo(const int64_t client_id);

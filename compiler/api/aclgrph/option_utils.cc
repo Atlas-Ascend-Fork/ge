@@ -1126,7 +1126,7 @@ Status ParseHintInputShape(std::vector<GeShape> &option_shape) {
   GELOGI("Option %s is set, value: %s.", INPUT_HINT_SHAPE, input_option.c_str());
   std::vector<std::pair<int64_t, GeShape>> parse_shape;
   GE_ASSERT_SUCCESS(ParseIndexedListOption<GeShape>(
-      "ge.inputHintShape", input_option, parse_shape,
+      "input_hint_shape", input_option, parse_shape,
       [](const std::string &s, GeShape &shape) { return ConstructShapeFromStr(s, shape); }));
 
   int64_t max_index = 0L;
@@ -1150,7 +1150,7 @@ Status ParseHintInputValue(std::map<int64_t, std::vector<int64_t>> &option_value
   GELOGI("option %s is set, value: %s.", kHintInputValue, input_option.c_str());
   std::vector<std::pair<int64_t, std::vector<int64_t>>> parse_values;
   GE_ASSERT_SUCCESS(ParseIndexedListOption<std::vector<int64_t>>(
-      "ge.inputHintValue", input_option, parse_values,
+      "input_hint_value", input_option, parse_values,
       [](const std::string &s, std::vector<int64_t> &values) { return ConstructValueListFromStr(s, values); }));
   for (auto &item : parse_values) {
     option_value[item.first] = std::move(item.second);

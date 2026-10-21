@@ -1314,14 +1314,25 @@ const std::string ge_error_code = R"(
       }
     },
     {
-      "errClass": "GE Errors",
-      "errTitle": "Inner_Error",
-      "ErrCode": "E19999",
-      "ErrMessage": "Unknown error occurred. Please check the log.",
-      "Arglist": "",
+      "errClass": "Public Operator Errors",
+      "errTitle": "Not_Supported_Operator",
+      "ErrCode": "EZ3004",
+      "ErrMessage": "The operator information library %s does not support the operator %s (operator type: %s). Cause: %s.",
+      "Arglist": "opskernel,opname,optype,reason",
       "suggestion": {
-        "Possible Cause": "System terminated abnormally without valid error messages.",
-        "Solution": "In this scenario, collect the logs generated when the fault occurs and locate the fault based on the logs."
+        "Possible Cause": "N/A",
+        "Solution": "1. If a built-in operator is used, upgrade to the CANN operator package that supports this specification. 2. If a custom operator is used, register and use the custom operator with the required specification."
+      }
+    },
+    {
+      "errClass": "Public Operator Errors",
+      "errTitle": "Not_Supported_Operator",
+      "ErrCode": "EZ3005",
+      "ErrMessage": "No operator information library that supports operator %s (operator type: %s) can be found.",
+      "Arglist": "opname,optype",
+      "suggestion": {
+        "Possible Cause": "The operator is not supported by the system. Therefore, no hit is found in any operator information library.",
+        "Solution": "1. If a built-in operator is used, upgrade to the CANN operator package that supports this operator. 2. If a custom operator is used, develop and register the operator."
       }
     },
     {

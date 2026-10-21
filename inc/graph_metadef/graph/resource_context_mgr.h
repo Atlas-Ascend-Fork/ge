@@ -47,8 +47,7 @@ class GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY ResourceContextMgr {
   /**
    * Given resource_key , mgr find node reiled on this reousrce.
    * @param resource_key
-   * @param read_nodes
-   * @return status
+   * @return nodes relied on this resource, which can be modified
    */
   OrderedNodeSet &MutableNodesReliedOnResource(const std::string &resource_key);
   /**

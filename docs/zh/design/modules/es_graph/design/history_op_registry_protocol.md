@@ -18,7 +18,7 @@
 
 - **IR 原型**：算子在 IR 层的输入/输出/属性/子图等定义信息。
 - **历史原型数据（结构化数据）**：将 IR 原型提取并序列化后的数据文件集合。
-- **生产者（Producer）**：生成结构化数据的工具。短期内固定为 `gen_esb --extract-history`。
+- **生产者（Producer）**：生成结构化数据的工具。短期内固定为 `gen_esb --es_mode=extract_history`。
 - **消费者（Consumer）**：读取结构化数据的任意工具/流程。当前主要消费者是 `gen_esb`（用于 ES API 生成），未来可扩展到其他工具链。
 - **Ops run 包**：Ops 安装后的运行包形态，历史原型库数据随其发布。
 - **兼容窗口**：消费者基于版本元信息（例如发布日期）选择需要纳入对比/生成的版本范围（例如“一年窗口”）。
@@ -91,7 +91,7 @@
 ## 5. 生成与发布（当前固定由 gen_esb 负责）
 
 短期内，为了降低系统复杂度：
-- **生产者**：仍复用 `gen_esb`，通过 `--extract-history` 从“当前版本原型 .so”提取 IR 原型并输出结构化数据。
+- **生产者**：仍复用 `gen_esb`，通过 `--es_mode=extract_history` 从“当前版本原型 .so”提取 IR 原型并输出结构化数据。
 
 ### 5.1 构建 Ops 包的数据流（生成与打包发布）
 
@@ -112,7 +112,7 @@
 生成模式（示例）：
 
 ```bash
-gen_esb --extract-history --output-dir <out> --release-version <ver>
+gen_esb --es_mode=extract_history --output-dir <out> --release-version <ver>
 ```
 
 发布原则：

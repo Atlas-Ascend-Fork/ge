@@ -14,7 +14,6 @@
 #include "deploy/flowrm/flow_route_planner.h"
 #include "common/data_flow/route/rank_table_builder.h"
 #include "deploy/resource/resource_manager.h"
-#include "deploy/flowrm/network_manager.h"
 
 namespace ge {
 void HeterogeneousStubEnv::SetupAIServerEnv() {
@@ -59,7 +58,6 @@ void HeterogeneousStubEnv::ClearEnv() {
   DeviceDebugConfig::global_configs_ = nlohmann::json{};
   DeployContext::LocalContext().GetRankTableBuilder().ip_rank_map_.clear();
   Configurations::GetInstance().information_ = DeployerConfig{};
-  NetworkManager::GetInstance().main_port_ = 0;
   unsetenv("RESOURCE_CONFIG_PATH");
 }
 }  // namespace ge

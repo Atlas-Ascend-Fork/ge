@@ -45,4 +45,11 @@ TEST_F(UtestErrorRegistry, ReportInnerErrMsg) {
   EXPECT_EQ(error_message::ReportPredefinedErrMsg("E16666", {"value", "parameter", "reason"}, {"1", "2", "le 0"}), -1);
   EXPECT_EQ(error_message::ReportPredefinedErrMsg("E17777", {"value", "parameter", "reason"}, {"1", "2", "le 0"}), 0);
 }
+
+TEST_F(UtestErrorRegistry, InnerErrCodeNotDependOnRegistry) {
+  // 注册表整体仍然有效
+  EXPECT_EQ(error_message::ReportPredefinedErrMsg("E10001", {"value", "parameter", "reason"}, {"1", "2", "le 0"}), 0);
+  // E19999 走内部错误码路径，不需要注册也能上报成功
+  EXPECT_EQ(error_message::ReportInnerErrMsg(__FILE__, __FUNCTION__, __LINE__, "E19999", "inner error %d", 1), 0);
+}
 }  // namespace ge

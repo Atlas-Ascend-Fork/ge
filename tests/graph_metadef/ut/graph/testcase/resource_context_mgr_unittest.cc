@@ -82,4 +82,19 @@ TEST_F(ResourceInferenceContextMgrTest, TestRegsiterDuplicateNodeReliedOnResourc
   auto read_nodes = resource_context_mgr.MutableNodesReliedOnResource(resource_key);
   ASSERT_EQ(read_nodes.size(), 1);
 }
+
+TEST_F(ResourceInferenceContextMgrTest, TestMutableNodesReliedOnResourceReturnMutableRef) {
+  string resource_key = "123";
+  auto builder = ut::GraphBuilder("g");
+
+  auto read_node = builder.AddNode("stackpop", "stackPop", 1, 1);
+  ResourceContextMgr resource_context_mgr;
+  resource_context_mgr.RegisterNodeReliedOnResource(resource_key, read_node);
+
+  // the return value is a mutable reference of the nodes held by mgr, not a copy
+  OrderedNodeSet &read_nodes = resource_context_mgr.MutableNodesReliedOnResource(resource_key);
+  ASSERT_EQ(read_nodes.size(), 1);
+  read_nodes.clear();
+  ASSERT_TRUE(resource_context_mgr.MutableNodesReliedOnResource(resource_key).empty());
+}
 }  // namespace ge

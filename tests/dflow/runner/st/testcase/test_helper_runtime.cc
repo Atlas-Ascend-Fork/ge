@@ -37,7 +37,6 @@
 #include "common/data_flow/queue/heterogeneous_exchange_service.h"
 #include "common/subprocess/subprocess_manager.h"
 #include "deploy/flowrm/flowgw_client.h"
-#include "deploy/flowrm/network_manager.h"
 #include "deploy/model_send/flow_model_sender.h"
 #include "deploy/model_recv/flow_model_receiver.h"
 #include "deploy/resource/resource_manager.h"
@@ -949,7 +948,6 @@ class ExecutionRuntimeHeterogeneousMock4 : public ExecutionRuntime {
   Status Finalize() override {
     GE_CHK_STATUS(model_deployer_.Finalize());
     GE_CHK_STATUS(HeterogeneousExchangeService::GetInstance().Finalize());
-    GE_CHK_STATUS(NetworkManager::GetInstance().Finalize());
     SubprocessManager::GetInstance().Finalize();
     Configurations::GetInstance().Finalize();
     return 0;

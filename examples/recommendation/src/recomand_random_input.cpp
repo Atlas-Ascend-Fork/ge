@@ -220,8 +220,11 @@ inline bool ParseArgs(Args &args, int argc, char **argv) {
         return true;
       case 'r':
         try {
-          args.runs = std::stoi(optarg);
-          if (args.runs <= 0) throw std::invalid_argument("runs <= 0");
+          size_t parsed_size = 0U;
+          args.runs = std::stoi(optarg, &parsed_size);
+          if (parsed_size != std::string(optarg).size() || args.runs <= 0) {
+            throw std::invalid_argument("invalid runs");
+          }
         } catch (...) {
           std::cerr << "ERROR: invalid --runs value: " << optarg << std::endl;
           return false;
@@ -230,8 +233,11 @@ inline bool ParseArgs(Args &args, int argc, char **argv) {
 
       case 'b':
         try {
-          args.batchSize = std::stoi(optarg);
-          if (args.batchSize <= 0) throw std::invalid_argument("batchSize <= 0");
+          size_t parsed_size = 0U;
+          args.batchSize = std::stoi(optarg, &parsed_size);
+          if (parsed_size != std::string(optarg).size() || args.batchSize <= 0) {
+            throw std::invalid_argument("invalid batchSize");
+          }
         } catch (...) {
           std::cerr << "ERROR: invalid --batchSize value: " << optarg << std::endl;
           return false;
@@ -240,8 +246,11 @@ inline bool ParseArgs(Args &args, int argc, char **argv) {
 
       case 'm':
         try {
-          args.multiInstanceNum = std::stoi(optarg);
-          if (args.multiInstanceNum <= 0) throw std::invalid_argument("multiInstanceNum <= 0");
+          size_t parsed_size = 0U;
+          args.multiInstanceNum = std::stoi(optarg, &parsed_size);
+          if (parsed_size != std::string(optarg).size() || args.multiInstanceNum <= 0) {
+            throw std::invalid_argument("invalid multiInstanceNum");
+          }
         } catch (...) {
           std::cerr << "ERROR: invalid --multiInstanceNum value: " << optarg << std::endl;
           return false;

@@ -564,7 +564,7 @@ Status Om2ModelUtils::GetRtAddress(const TaskSemanticContributeContext &context,
     max_var_mem_size = static_cast<uint64_t>(var_manager->GetVarMemSize(RT_MEMORY_HBM)) +
                        static_cast<uint64_t>(var_manager->GetVarConstPlaceHolderMemSize(RT_MEMORY_HBM));
   }
-  max_var_mem_size = (max_var_mem_size == 0LU) ? kMemoryVarAddressSize : max_var_mem_size;
+  max_var_mem_size = (max_var_mem_size == 0LU) ? context.runtime->var_size : max_var_mem_size;
   const bool is_check_var_manager =
       (var_manager != nullptr && var_manager->GetVarConstPlaceHolderMemSize(RT_MEMORY_HBM) > 0) ||
       (context.runtime->var_size > 0U);

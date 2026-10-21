@@ -391,6 +391,7 @@ TEST_F(UtestGraph, IsRefFromRefData_ReturnTrue) {
   bool is_ref_from_other = false;
   EXPECT_EQ(GraphUtils::CheckIsRefFromOther(out_data_anchor, node, is_ref_from_other), GRAPH_SUCCESS);
   EXPECT_TRUE(is_ref_from_other);
+  EXPECT_EQ(node, ref_data);
 }
 
 TEST_F(UtestGraph, RefDataInSubgraph_IsRefFromInnerData_ReturnTrue) {
@@ -422,6 +423,7 @@ TEST_F(UtestGraph, RefDataInSubgraph_IsRefFromInnerData_ReturnTrue) {
   bool is_ref_from_other = false;
   EXPECT_EQ(GraphUtils::CheckIsRefFromOther(out_data_anchor, node, is_ref_from_other), GRAPH_SUCCESS);
   EXPECT_TRUE(is_ref_from_other);
+  EXPECT_EQ(node, sub_data);
 }
 
 TEST_F(UtestGraph, RefDataInSubgraph_IsRefFromInnerData_PeerInCtrolNotData_InvalidGraph_ReturnFalse) {

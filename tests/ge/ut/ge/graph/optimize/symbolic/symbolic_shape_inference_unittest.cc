@@ -913,6 +913,170 @@ TEST_F(SymbolicShapeInferenceUT, test_stridedslicev2_infershape_no_optional_inpu
   ASSERT_EQ(RunSymbolInferenceTest(cg, expect_node_vec, input_vec), SUCCESS);
 }
 
+TEST_F(SymbolicShapeInferenceUT, test_stridedslicev2_dangling_optional_input_with_format_mismatch) {
+  const auto data0 = EsCreateGraphInputWithDetails(graph_, 0, "data_0", nullptr, C_DataType::C_DT_FLOAT,
+                                                   C_Format::C_FORMAT_ND, nullptr, 0);
+
+  // begin
+  std::vector<int64_t> data1_value = {0, 1, 2, 3};
+  auto data1 = EsCreateVectorInt64(graph_, data1_value.data(), data1_value.size());
+  // end
+  std::vector<int64_t> data2_value = {5, 5, 5, 5};
+  auto data2 = EsCreateVectorInt64(graph_, data2_value.data(), data2_value.size());
+
+  auto strided_slice = EsStridedSliceV2(data0, data1, data2, nullptr, nullptr, static_cast<int64_t>(0b0010),
+                                        static_cast<int64_t>(0b0010), static_cast<int64_t>(0b0100),
+                                        static_cast<int64_t>(0b1101), static_cast<int64_t>(0b0111));
+  ASSERT_EQ(EsSetGraphOutput(strided_slice, 0), 0);
+
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  // 跳过hostcompute
+  DataInfo di = {ge::FORMAT_ND, DT_INT64, {-1, -1, -1, -1, -1}};
+  SetNoStorage(cg, "data_0", di, 0);
+
+  // 悬空可选输入（axes/strides）的 desc 存在 OriginFormat != Format 时，不应阻断符号推导。
+  // nullptr 构造的悬空输入 desc 槽位为空，需先补建 desc；rank 取 2 确保只有"悬空跳过"路径生效
+  // （非 rank<=1 跳过路径）。Symbolize 阶段会从图输入刷新并传播 desc，注入须在其之后。
+  const auto slice_node = cg->FindFirstNodeMatchType(STRIDEDSLICEV2);
+  ASSERT_NE(slice_node, nullptr);
+  const auto slice_op_desc = slice_node->GetOpDesc();
+  ASSERT_GE(slice_op_desc->GetAllInputsSize(), 5U);
+  for (size_t i = 3U; i < slice_op_desc->GetAllInputsSize(); i++) {
+    ASSERT_EQ(slice_node->GetInDataAnchor(static_cast<uint32_t>(i))->GetPeerOutAnchor(), nullptr);
+  }
+
+  std::vector<ge::GeTensor> input_vec;
+  std::vector<int64_t> dims_vec0 = {5, 6, 7, 8, 9};
+  ge::Shape shape0({dims_vec0});
+  ge::TensorDesc td0{shape0, ge::FORMAT_ND, DT_INT64};
+  td0.SetOriginShape(shape0);
+  ge::Tensor tensor0{td0};
+  input_vec.emplace_back(ge::TensorAdapter::AsGeTensor(tensor0));
+
+  ASSERT_EQ(SymbolicShapeSymbolizer::Symbolize(cg, input_vec), ge::SUCCESS);
+  for (size_t i = 3U; i < slice_op_desc->GetAllInputsSize(); i++) {
+    ge::GeTensorDesc dangling_desc(ge::GeShape({1, 1}), FORMAT_ND, DT_INT64);
+    dangling_desc.SetOriginFormat(FORMAT_NCHW);
+    ASSERT_EQ(slice_op_desc->UpdateInputDesc(static_cast<uint32_t>(i), dangling_desc), GRAPH_SUCCESS);
+  }
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+
+  const std::vector<Expression> expect_output_shape = {Symbol(1),    Symbol("s1"), Symbol("s2"),
+                                                       Symbol("s3"), Symbol(1),    Symbol("s4")};
+  ExpectNodeInfo expect_node(STRIDEDSLICEV2, expect_output_shape, {}, {}, {});
+  std::vector<ExpectNodeInfo> expect_node_vec;
+  expect_node_vec.push_back(expect_node);
+  ASSERT_EQ(
+      expect_node.ExpectShapeCheck(
+          slice_op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.GetOriginSymbolShape()),
+      true);
+}
+
+TEST_F(SymbolicShapeInferenceUT, test_infer_skip_connected_1d_input_with_format_mismatch) {
+  const auto data0 = EsCreateGraphInputWithDetails(graph_, 0, "data_0", nullptr, C_DataType::C_DT_FLOAT,
+                                                   C_Format::C_FORMAT_ND, nullptr, 0);
+
+  // begin
+  std::vector<int64_t> data1_value = {0, 1, 2, 3};
+  auto data1 = EsCreateVectorInt64(graph_, data1_value.data(), data1_value.size());
+  // end
+  std::vector<int64_t> data2_value = {5, 5, 5, 5};
+  auto data2 = EsCreateVectorInt64(graph_, data2_value.data(), data2_value.size());
+
+  auto strided_slice = EsStridedSliceV2(data0, data1, data2, nullptr, nullptr, static_cast<int64_t>(0b0010),
+                                        static_cast<int64_t>(0b0010), static_cast<int64_t>(0b0100),
+                                        static_cast<int64_t>(0b1101), static_cast<int64_t>(0b0111));
+  ASSERT_EQ(EsSetGraphOutput(strided_slice, 0), 0);
+
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  // 跳过hostcompute
+  DataInfo di = {ge::FORMAT_ND, DT_INT64, {-1, -1, -1, -1, -1}};
+  SetNoStorage(cg, "data_0", di, 0);
+
+  // 已连接的一维输入（begin）的 desc 存在 OriginFormat != Format 时，format 仅剩标签语义，不应阻断
+  // 符号推导。Symbolize 阶段会从图输入刷新并传播 desc，注入须在其之后
+  const auto slice_node = cg->FindFirstNodeMatchType(STRIDEDSLICEV2);
+  ASSERT_NE(slice_node, nullptr);
+  const auto slice_op_desc = slice_node->GetOpDesc();
+  ASSERT_NE(slice_node->GetInDataAnchor(1)->GetPeerOutAnchor(), nullptr);
+  ASSERT_LE(slice_op_desc->GetInputDesc(1).GetOriginShape().GetDims().size(), 1U);
+  ASSERT_LE(slice_op_desc->GetInputDesc(1).GetShape().GetDims().size(), 1U);
+
+  std::vector<ge::GeTensor> input_vec;
+  std::vector<int64_t> dims_vec0 = {5, 6, 7, 8, 9};
+  ge::Shape shape0({dims_vec0});
+  ge::TensorDesc td0{shape0, ge::FORMAT_ND, DT_INT64};
+  td0.SetOriginShape(shape0);
+  ge::Tensor tensor0{td0};
+  input_vec.emplace_back(ge::TensorAdapter::AsGeTensor(tensor0));
+
+  ASSERT_EQ(SymbolicShapeSymbolizer::Symbolize(cg, input_vec), ge::SUCCESS);
+  slice_op_desc->MutableInputDesc(1)->SetFormat(FORMAT_ND);
+  slice_op_desc->MutableInputDesc(1)->SetOriginFormat(FORMAT_NCHW);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+
+  const std::vector<Expression> expect_output_shape = {Symbol(1),    Symbol("s1"), Symbol("s2"),
+                                                       Symbol("s3"), Symbol(1),    Symbol("s4")};
+  ExpectNodeInfo expect_node(STRIDEDSLICEV2, expect_output_shape, {}, {}, {});
+  ASSERT_EQ(
+      expect_node.ExpectShapeCheck(
+          slice_op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.GetOriginSymbolShape()),
+      true);
+}
+
+TEST_F(SymbolicShapeInferenceUT, test_infer_reject_connected_input_with_format_mismatch) {
+  const auto data0 = EsCreateGraphInputWithDetails(graph_, 0, "data_0", nullptr, C_DataType::C_DT_FLOAT,
+                                                   C_Format::C_FORMAT_ND, nullptr, 0);
+
+  // begin
+  std::vector<int64_t> data1_value = {0, 1, 2, 3};
+  auto data1 = EsCreateVectorInt64(graph_, data1_value.data(), data1_value.size());
+  // end
+  std::vector<int64_t> data2_value = {5, 5, 5, 5};
+  auto data2 = EsCreateVectorInt64(graph_, data2_value.data(), data2_value.size());
+
+  auto strided_slice = EsStridedSliceV2(data0, data1, data2, nullptr, nullptr, static_cast<int64_t>(0b0010),
+                                        static_cast<int64_t>(0b0010), static_cast<int64_t>(0b0100),
+                                        static_cast<int64_t>(0b1101), static_cast<int64_t>(0b0111));
+  ASSERT_EQ(EsSetGraphOutput(strided_slice, 0), 0);
+
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  // 跳过hostcompute
+  DataInfo di = {ge::FORMAT_ND, DT_INT64, {-1, -1, -1, -1, -1}};
+  SetNoStorage(cg, "data_0", di, 0);
+
+  // 已连接输入（x）的 desc 存在 OriginFormat != Format 时，仍应整算子拒绝符号推导。
+  // Symbolize 阶段会从图输入刷新并传播 desc，格式不一致须在其之后注入才能保留到 IsSupportInfer
+  const auto slice_node = cg->FindFirstNodeMatchType(STRIDEDSLICEV2);
+  ASSERT_NE(slice_node, nullptr);
+  const auto slice_op_desc = slice_node->GetOpDesc();
+  ASSERT_NE(slice_node->GetInDataAnchor(0)->GetPeerOutAnchor(), nullptr);
+
+  std::vector<ge::GeTensor> input_vec;
+  std::vector<int64_t> dims_vec0 = {5, 6, 7, 8, 9};
+  ge::Shape shape0({dims_vec0});
+  ge::TensorDesc td0{shape0, ge::FORMAT_ND, DT_INT64};
+  td0.SetOriginShape(shape0);
+  ge::Tensor tensor0{td0};
+  input_vec.emplace_back(ge::TensorAdapter::AsGeTensor(tensor0));
+
+  ASSERT_EQ(SymbolicShapeSymbolizer::Symbolize(cg, input_vec), ge::SUCCESS);
+  slice_op_desc->MutableInputDesc(0)->SetFormat(FORMAT_ND);
+  slice_op_desc->MutableInputDesc(0)->SetOriginFormat(FORMAT_NCHW);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  const auto attr = slice_op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  EXPECT_EQ(attr, nullptr);
+}
+
 TEST_F(SymbolicShapeInferenceUT, test_stridedslicev2_infershape_with_negative) {
   const auto data0 = EsCreateGraphInputWithDetails(graph_, 0, "data_0", nullptr, C_DataType::C_DT_FLOAT,
                                                    C_Format::C_FORMAT_ND, nullptr, 0);

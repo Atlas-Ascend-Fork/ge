@@ -535,7 +535,7 @@ Status JitExecutor::ProcessAndExecuteGraphAsync(UserGraphExecution &task, const 
   GE_ASSERT_SUCCESS(GetOrCompileGuardedExecutionPoint(task, compile_inputs, ep, stream, execution_info));
   GELOGD("ExecuteGraphWithStreamAsync GEP[ins_id:%u] of EP[%ld] USER_GRAPH[%u].", execution_info.instance_id,
          execution_info.gep->GetOwnerEp()->GetId(), task.user_graph_id);
-  GE_ASSERT_RT_OK(aclrtSetDevice(device_id_));
+  GE_ASSERT_RT_OK(SetDeviceCached(device_id_));
 
   if (need_malloc_output) {
     GE_ASSERT_SUCCESS(MallocOutputsForStatic(execution_info.instance_id, execution_info.gep, outputs));

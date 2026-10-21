@@ -246,7 +246,7 @@ TEST_F(DaemonServiceUnittest, TestInitAndDisconnectRequest) {
   *request.mutable_init_request() = init_request_;
   daemon_service.ProcessInitRequest("xxx:10.216.56.15:8080", request, response);
   request.set_client_id(0);
-  daemon_service.ProcessDisconnectRequest("xxx:10.216.56.15:8080", request, response);
+  daemon_service.ProcessDisconnectRequest("xxx:10.216.56.15:8080", request);
 }
 
 TEST_F(DaemonServiceUnittest, TestDeployRequest) {
@@ -258,12 +258,71 @@ TEST_F(DaemonServiceUnittest, TestDeployRequest) {
   std::map<std::string, std::string> deployer_envs = {};
   ASSERT_EQ(client->Initialize(deployer_envs), SUCCESS);
   daemon_service.client_manager_->clients_[1] = std::move(client);
+  ASSERT_EQ(daemon_service.client_manager_->RecordClientInfo(1, "xxx:10.216.56.15:8080"), SUCCESS);
   deployer::DeployerRequest request;
   request.set_client_id(1);
   request.set_type(deployer::kLoadModel);
   deployer::DeployerResponse response;
   daemon_service.Process("xxx:10.216.56.15:8080", request, response);
   ASSERT_EQ(response.error_code(), SUCCESS);
+  daemon_service.Finalize();
+}
+
+TEST_F(DaemonServiceUnittest, TestDeployRequestWithMismatchedAddr) {
+  SubprocessManager::GetInstance().executable_paths_["deployer_daemon"] = "deployer_daemon";
+  DaemonService daemon_service;
+  SetNumaConfigEnv("valid/server/numa_config2.json");
+  EXPECT_EQ(daemon_service.Initialize(), SUCCESS);
+  auto client = std::make_unique<DeployerDaemonClient>(1);
+  std::map<std::string, std::string> deployer_envs = {};
+  ASSERT_EQ(client->Initialize(deployer_envs), SUCCESS);
+  daemon_service.client_manager_->clients_[1] = std::move(client);
+  ASSERT_EQ(daemon_service.client_manager_->RecordClientInfo(1, "xxx:10.216.56.15:8080"), SUCCESS);
+  deployer::DeployerRequest request;
+  request.set_client_id(1);
+  request.set_type(deployer::kLoadModel);
+  deployer::DeployerResponse response;
+  daemon_service.Process("xxx:10.216.56.15:9090", request, response);
+  ASSERT_NE(response.error_code(), SUCCESS);
+  daemon_service.Process("xxx:10.216.56.16:8080", request, response);
+  ASSERT_NE(response.error_code(), SUCCESS);
+  daemon_service.Finalize();
+}
+
+TEST_F(DaemonServiceUnittest, TestHeartbeatRequestWithMismatchedAddr) {
+  SubprocessManager::GetInstance().executable_paths_["deployer_daemon"] = "deployer_daemon";
+  DaemonService daemon_service;
+  SetNumaConfigEnv("valid/server/numa_config2.json");
+  EXPECT_EQ(daemon_service.Initialize(), SUCCESS);
+  deployer::DeployerRequest request;
+  deployer::DeployerResponse response;
+  deployer::InitRequest init_request_;
+  request.set_client_id(0);
+  *request.mutable_init_request() = init_request_;
+  daemon_service.ProcessInitRequest("xxx:10.216.56.15:8080", request, response);
+  request.set_type(deployer::kHeartbeat);
+  daemon_service.Process("xxx:10.216.56.15:9090", request, response);
+  ASSERT_NE(response.error_code(), SUCCESS);
+  daemon_service.Finalize();
+}
+
+TEST_F(DaemonServiceUnittest, TestDisconnectRequestWithMismatchedAddr) {
+  SubprocessManager::GetInstance().executable_paths_["deployer_daemon"] = "deployer_daemon";
+  DaemonService daemon_service;
+  SetNumaConfigEnv("valid/server/numa_config2.json");
+  EXPECT_EQ(daemon_service.Initialize(), SUCCESS);
+  deployer::DeployerRequest request;
+  deployer::DeployerResponse response;
+  deployer::InitRequest init_request_;
+  *request.mutable_init_request() = init_request_;
+  daemon_service.ProcessInitRequest("xxx:10.216.56.15:8080", request, response);
+  request.set_type(deployer::kDisconnect);
+  request.set_client_id(0);
+  daemon_service.Process("xxx:10.216.56.150:8080", request, response);
+  ASSERT_NE(response.error_code(), SUCCESS);
+  deployer::DeployerResponse ok_response;
+  daemon_service.Process("xxx:10.216.56.15:8080", request, ok_response);
+  ASSERT_EQ(ok_response.error_code(), SUCCESS);
   daemon_service.Finalize();
 }
 
