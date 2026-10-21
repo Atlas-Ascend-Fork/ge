@@ -251,7 +251,7 @@ std::string GetPlatformSocVersion() {
 std::map<std::string, std::string> MakeVariables(const std::map<std::string, std::string> &options) {
   const char *root = std::getenv("ASCEND_OPP_PATH");
   std::map<std::string, std::string> variables{{"ASCEND_OPP_PATH", root == nullptr ? "" : root}};
-  // uname获取操作系统和架构
+  // Shared libraries run on the compiler host, not the model's target execution environment.
   struct utsname system_info{};
   if (uname(&system_info) == 0) {
     std::string os = system_info.sysname;
@@ -259,18 +259,15 @@ std::map<std::string, std::string> MakeVariables(const std::map<std::string, std
     variables["os"] = os;
     variables["arch"] = system_info.machine;
   }
-  for (const auto &key : std::map<std::string, std::string>{
-           {"socversion", "ge.socVersion"}, {"os", "ge.host_env_os"}, {"arch", "ge.host_env_cpu"}}) {
-    std::string value;
-    const auto found = options.find(key.second);
-    if (found != options.end()) {
-      value = found->second;
-    } else {
-      (void)GetThreadLocalContext().GetOption(key.second, value);
-    }
-    if (IsSafeVariable(value)) {
-      variables[key.first] = value;
-    }
+  std::string soc_version;
+  const auto found = options.find("ge.socVersion");
+  if (found != options.end()) {
+    soc_version = found->second;
+  } else {
+    (void)GetThreadLocalContext().GetOption("ge.socVersion", soc_version);
+  }
+  if (IsSafeVariable(soc_version)) {
+    variables["socversion"] = soc_version;
   }
   if (variables.find("socversion") == variables.end()) {
     const auto soc_version = GetPlatformSocVersion();

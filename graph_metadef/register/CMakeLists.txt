@@ -327,7 +327,10 @@ add_custom_command(
 add_custom_target(register_stub DEPENDS ${STUB_SRC_LIST})
 
 ############ stub/libregister.so ############
-add_library(stub_register SHARED ${STUB_SRC_LIST})
+add_library(stub_register SHARED
+    ${STUB_SRC_LIST}
+    stub/stub_ops_deliverables_manager.cc
+)
 
 add_dependencies(stub_register metadef_protos register_stub)
 
