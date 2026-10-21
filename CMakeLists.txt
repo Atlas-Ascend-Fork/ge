@@ -254,7 +254,7 @@ add_subdirectory(compiler)
 add_subdirectory(parser)
 add_subdirectory(dflow)
 
-if(BUILD_COMPONENT)
+if (BUILD_OPEN_PROJECT OR ENABLE_OPEN_SRC)
     add_subdirectory(api/acl/acl_model)
     add_subdirectory(api/acl/acl_op_executor)
     add_subdirectory(api/acl/acl_cblas)
