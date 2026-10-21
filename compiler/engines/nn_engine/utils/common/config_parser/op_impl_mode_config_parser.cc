@@ -28,7 +28,6 @@ constexpr char const *kByNodeName = "[ByNodeName]";
 constexpr char const *kByOpType = "[ByOpType]";
 constexpr char const *kConfigFileSuffix = ".ini";
 constexpr char const *kOpImplModeRelativePath = "built-in/op_impl/ai_core/tbe/impl_mode/";
-constexpr char const *kAllowHF32NewRelativePath = "built-in/op_impl/ai_core/config/allow_hf32/";
 constexpr char const *kAllowHF32NewFilePrefix = "ops_allow_hf32_";
 constexpr char const *kOpSelectImplModeDefaultValue = "high_performance";
 constexpr char const *kAllowHF32AllTrueForAtc = "true";
@@ -328,13 +327,13 @@ Status OpImplModeConfigParser::InitOpPrecisionModeByImplMode(const std::string &
   return SUCCESS;
 }
 
-// ----- allow_hf32 新方案：扫描新目录 ops_allow_hf32_*.ini -----
+// ----- allow_hf32 新方案：扫描 impl_mode 目录下 ops_allow_hf32_*.ini -----
 
 bool OpImplModeConfigParser::HasNewAllowHF32Files() const {
-  std::string dir_path = ascend_opp_path_ + kAllowHF32NewRelativePath;
+  std::string dir_path = ascend_opp_path_ + kOpImplModeRelativePath;
   DIR *dir = opendir(dir_path.c_str());
   if (dir == nullptr) {
-    FE_LOGD("[AllowHF32] New config directory [%s] does not exist.", dir_path.c_str());
+    FE_LOGD("[AllowHF32] Config directory [%s] does not exist.", dir_path.c_str());
     return false;
   }
   bool found = false;
@@ -352,22 +351,11 @@ bool OpImplModeConfigParser::HasNewAllowHF32Files() const {
   return found;
 }
 
-Status OpImplModeConfigParser::InitAllowHF32Mode(const std::string &allow_hf32) {
-  if (HasNewAllowHF32Files()) {
-    FE_LOGI("[Init][AllowHF32] Found new %s*.ini files, ignoring legacy allow_hf32_matmul_*.ini.",
-            kAllowHF32NewFilePrefix);
-    return InitAllowHF32NewFiles(allow_hf32);
-  }
-  FE_LOGI("[Init][AllowHF32] No new %s*.ini files, fallback to legacy allow_hf32_matmul_*.ini.",
-          kAllowHF32NewFilePrefix);
-  return InitAllowHF32LegacyFiles(allow_hf32);
-}
-
 Status OpImplModeConfigParser::InitAllowHF32NewFiles(const std::string &allow_hf32) {
-  std::string dir_path = ascend_opp_path_ + kAllowHF32NewRelativePath;
+  std::string dir_path = ascend_opp_path_ + kOpImplModeRelativePath;
   DIR *dir = opendir(dir_path.c_str());
   if (dir == nullptr) {
-    FE_LOGI("[AllowHF32] New config directory [%s] does not exist, no allow_hf32 ops configured.", dir_path.c_str());
+    FE_LOGI("[AllowHF32] Config directory [%s] does not exist, no allow_hf32 ops configured.", dir_path.c_str());
     return SUCCESS;
   }
 
@@ -448,26 +436,12 @@ Status OpImplModeConfigParser::ParseAllowHF32IniFile(const std::string &file_pat
 
 Status OpImplModeConfigParser::ParseAllowHF32IniFileContent(const std::string &file_path, std::ifstream &ifs) {
   std::string line;
-  bool in_by_op_type = false;
   while (std::getline(ifs, line)) {
     if (line.empty() || line.find('#') == 0) {
       continue;
     }
     size_t pos_of_equal = line.find('=');
     if (pos_of_equal == std::string::npos) {
-      std::string line_tmp = StringUtils::Trim(line);
-      if (line_tmp == kByOpType) {
-        in_by_op_type = true;
-      } else if (line_tmp == kByNodeName) {
-        REPORT_FE_ERROR(
-            "[GraphOpt][ParseAllowHF32Ini] File [%s] contains [ByNodeName], which is not supported in allow_hf32 ini. "
-            "Only [ByOpType] is allowed.",
-            file_path.c_str());
-        return FAILED;
-      }
-      continue;
-    }
-    if (!in_by_op_type) {
       continue;
     }
     std::string op_type = line.substr(0, pos_of_equal);
@@ -486,14 +460,12 @@ Status OpImplModeConfigParser::ParseAllowHF32IniFileContent(const std::string &f
           kAllowHF32ModeValue_EnableFP32);
       return FAILED;
     }
-    auto result = op_type_select_impl_mode_map_.insert(std::make_pair(op_type, value));
-    if (!result.second && result.first->second != value) {
-      REPORT_FE_ERROR(
-          "[GraphOpt][ParseAllowHF32Ini] Duplicate OpType [%s] in allow_hf32 ini with different values. "
-          "File: [%s], existing value: [%s], new value: [%s].",
-          op_type.c_str(), file_path.c_str(), result.first->second.c_str(), value.c_str());
-      return FAILED;
+    auto iter = op_type_select_impl_mode_map_.find(op_type);
+    if (iter != op_type_select_impl_mode_map_.end()) {
+      FE_LOGW("[AllowHF32] File [%s]: duplicate op_type [%s], the value [%s] will be overwritten by [%s].",
+              file_path.c_str(), op_type.c_str(), iter->second.c_str(), value.c_str());
     }
+    op_type_select_impl_mode_map_[op_type] = value;
   }
   return SUCCESS;
 }
