@@ -22,7 +22,7 @@ NUM_ELEMENTS = 1024
 TILE_SIZE = 1024
 
 
-@pypto.jit(new_ir=False)
+@pypto.jit
 def pypto_add_kernel(
     x: pypto.Tensor([NUM_ELEMENTS], pypto.DT_FP32),
     y: pypto.Tensor([NUM_ELEMENTS], pypto.DT_FP32),
