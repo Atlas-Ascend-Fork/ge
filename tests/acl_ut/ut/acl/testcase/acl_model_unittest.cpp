@@ -1033,6 +1033,56 @@ TEST_F(UTEST_ACL_Model, aclmdlLoadWithConfig_Ok_LoadOm2ModelAllLoadTypes) {
   check_load_with_config(ACL_MDL_LOAD_FROM_MEM_WITH_MEM, false, true);
 }
 
+TEST_F(UTEST_ACL_Model, aclmdlLoadWithConfig_Om2_FromMemWithMem_WeightPath_PropagatesToModelData) {
+  uint8_t om2ModelData[sizeof(ge::ModelFileHeader)] = {0x50, 0x4B, 0x03, 0x04};
+  void *mdl_addr = static_cast<void *>(om2ModelData);
+  size_t mdl_size = sizeof(om2ModelData);
+  void *work_ptr = reinterpret_cast<void *>(0x10);
+  size_t work_size = 1024U;
+  void *weight_ptr = reinterpret_cast<void *>(0x20);
+  size_t weight_size = 2048U;
+  size_t load_type = ACL_MDL_LOAD_FROM_MEM_WITH_MEM;
+
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), IsOm2Model(_, _, _)).WillRepeatedly(Invoke(IsOm2ModelFromData));
+  ExpectAclrtGetDeviceOk();
+
+  auto run_load = [&](const char *weight_path, bool expect_empty) {
+    aclmdlConfigHandle *handle = aclmdlCreateConfigHandle();
+    ASSERT_NE(handle, nullptr);
+    ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_MEM_ADDR_PTR, &mdl_addr, sizeof(mdl_addr)), ACL_SUCCESS);
+    ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_MEM_SIZET, &mdl_size, sizeof(mdl_size)), ACL_SUCCESS);
+    ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_LOAD_TYPE_SIZET, &load_type, sizeof(load_type)), ACL_SUCCESS);
+    ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_WORKSPACE_ADDR_PTR, &work_ptr, sizeof(work_ptr)), ACL_SUCCESS);
+    ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_WORKSPACE_SIZET, &work_size, sizeof(work_size)), ACL_SUCCESS);
+    ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_WEIGHT_ADDR_PTR, &weight_ptr, sizeof(weight_ptr)), ACL_SUCCESS);
+    ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_WEIGHT_SIZET, &weight_size, sizeof(weight_size)), ACL_SUCCESS);
+    if (weight_path != nullptr) {
+      ASSERT_EQ(aclmdlSetConfigOpt(handle, ACL_MDL_WEIGHT_PATH_PTR, &weight_path, sizeof(weight_path)), ACL_SUCCESS);
+    }
+    SetExpectedOm2LoadArg(work_ptr, work_size, weight_ptr, weight_size);
+    EXPECT_CALL(MockFunctionTest::aclStubInstance(), LoadOm2ExecutorFromData(_, _, _))
+        .WillOnce(Invoke([weight_path, expect_empty](ge::ModelData &model_data, const gert::Om2ModelLoadArg &load_arg,
+                                                     ge::graphStatus &error_code) {
+          if (expect_empty) {
+            EXPECT_TRUE(model_data.weight_path.empty());
+          } else {
+            EXPECT_EQ(model_data.weight_path, weight_path);
+          }
+          g_last_om2_load_model_id = load_arg.model_id;
+          error_code = ge::GRAPH_SUCCESS;
+          return std::unique_ptr<gert::Om2ModelExecutor>(new (std::nothrow) gert::Om2ModelExecutor);
+        }));
+    uint32_t model_id = 0U;
+    EXPECT_EQ(aclmdlLoadWithConfig(handle, &model_id), ACL_SUCCESS);
+    EXPECT_EQ(model_id, g_last_om2_load_model_id);
+    EXPECT_EQ(aclmdlUnload(model_id), ACL_SUCCESS);
+    EXPECT_EQ(aclmdlDestroyConfigHandle(handle), ACL_SUCCESS);
+  };
+
+  run_load("/fake/weight_dir", false);
+  run_load(nullptr, true);
+}
+
 TEST_F(UTEST_ACL_Model, aclmdlLoadWithConfig_Om2_ReuseZeroCopy_PropagatesToLoadArg) {
   // Verify that ACL_MDL_WORKSPACE_MEM_OPTIMIZE=1 propagates reuseZeroCopy through to Om2ModelLoadArg
   const char *load_path = "/fake/om2_model.om2";
