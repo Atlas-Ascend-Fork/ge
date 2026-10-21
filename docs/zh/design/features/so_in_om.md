@@ -125,6 +125,13 @@ GenerateOfflineModel()
                           └── SaveCustomOpsPartition()         ← 自定义算子分区 (model_helper.cc)
 ```
 
+`SaveSoStoreModelPartitionInfo()` 与 `SaveCustomOpsPartition()` 由保存模式门控：静态 shape 为 `is_offline_ || has_embedded_custom_so`，动态 shape 为 `is_offline_ || has_asc_node || has_embedded_custom_so`。因此存在两条产出 OM 的路径：
+
+| 路径 | 入口 | 保存模式 | SO 打包时机 |
+|------|------|----------|-------------|
+| atc 命令 | `GenerateOfflineModel()` | `is_offline_ = true` | 编译末尾一次性写入 |
+| ACL 接口 | `aclgrphBuildModel()` → `GenerateOnlineModel()`；`aclgrphSaveModel()` → `RestoreCustomOpRegistryForRepack()` + `ModelHelper::PackSoToModelData()` | 在线导出 `is_offline_ = false`，落盘重打包置 `true` | 在线导出不写 SO，落盘重打包阶段补写 |
+
 ### 3.2 检测阶段：CheckAndSetNeedSoInOM
 
 在打包之前，系统需要判断模型是否需要打包 SO，以及需要打包哪些类型的 SO。
@@ -159,7 +166,9 @@ GenerateOfflineModel()
 
 **触发条件**：图中存在当前 `GeRootModel` 持有的 `CustomOpRegistry` 能识别的自定义算子（不要求实现 `PortableOp` 接口，但排除实现由框架承载的算子，见下方例外）。
 
-**说明**：SO 打包资格与 `PortableOp` 能力解耦。凡图中使用的已注册自定义算子，其实现 SO 均会收集打包。`PortableOp` 仅决定该算子是否额外携带 `CUSTOM_OPS` 分区序列化数据，两者为正交维度；PortableOp 与非 PortableOp 算子可混合使用。`GraphManager::PreRun()` 在 `BuildModel()` 返回后会把编译期进程级全局 `CustomOpRegistry` 显式绑定到当前 `GeRootModel`。后续自定义算子 SO 收集和 `CUSTOM_OPS` 分区序列化均通过 `ge_root_model->GetCustomOpRegistry()` 访问自定义算子，保存流程不再直接访问 `CustomOpFactory`。已有 OM 重新打包时如果模型未携带 custom op registry，则仅跳过 custom op 分区处理，不回退到进程级全局 registry。
+**说明**：SO 打包资格与 `PortableOp` 能力解耦。凡图中使用的已注册自定义算子，其实现 SO 均会收集打包。`PortableOp` 仅决定该算子是否额外携带 `CUSTOM_OPS` 分区序列化数据，两者为正交维度；PortableOp 与非 PortableOp 算子可混合使用。编译期（atc 与 ACL 共用）由 `GraphBuilder::Build()` 把进程级全局 `CustomOpRegistry` 绑定到当前 `GeRootModel`，即编译期的“模型级 registry”就是全局 registry。后续自定义算子 SO 收集和 `CUSTOM_OPS` 分区序列化均通过 `ge_root_model->GetCustomOpRegistry()` 访问自定义算子，保存流程不再直接访问 `CustomOpFactory`。
+
+本文所称“已有 OM 重新打包”专指 `aclgrphSaveModel()` / `aclgrphBundleSaveModel()` 对 `aclgrphBuildModel()`（或 `GeSession::GetCompiledModel()`）产出的内存 OM 缓冲区做的落盘重打包；GE 不提供读取磁盘 .om 文件再写回的接口。模型保存与运行时加载都不回退到进程级全局 registry：模型未携带 custom op registry 时仅跳过 custom op 分区处理。**唯一例外**在 compiler 层的重打包入口（`compiler/api/aclgrph/ge_ir_build.cc` 的 `RestoreCustomOpRegistryForRepack()`）：这两个接口的入参 `ModelBufferData` 只能同进程传递，必然来自本进程的在线编译，因此当模型未携带 `kCustomOp` 类型 SO 时，把 registry 恢复为编译期使用的进程级全局 registry——等价于 atc 在编译末尾收集 SO；模型已自带 `kCustomOp` SO 时保持模型级 registry。`ModelHelper` 与运行时加载路径不受影响。
 
 **例外：实现由框架承载的算子（`FrameworkHostedOp`）**：Python 自定义算子的实例是框架库 `libcustom_op_runtime.so` 中的 `PythonCustomOpAdapter`，其实现体是 `ASCEND_CUSTOM_OPP_PATH` 下的 Python 源码加上 GE 安装目录下的 bridge 产物，并不存在可独立交付的算子实现 so。这类算子继承标记接口 `FrameworkHostedOp`（`inc/graph_metadef/graph/custom_op/framework_hosted_op.h`），`CollectCustomOpSo()` 识别后直接跳过：既不参与同架构下基于 `dladdr` 的路径收集，也不置位 `has_custom_op`，因此交叉编译下不会因它去 `ASCEND_CUSTOM_OPP_PATH` 收集 so（否则会误打包只含算子原型、不导出 pull creator ABI 的 proto so）。若不跳过，`dladdr` 会解析到框架库自身并被打进 SO_BINS；而加载期 `CustomOpRegistryBuilder` 需要从每个 kCustomOp so 中 dlsym `GetRegisteredCustomOpCreatorAbiVersion` / `GetRegisteredCustomOpCreatorNum` / `GetRegisteredCustomOpCreators` 三个符号（只有静态链接 `custom_op_registry_static` 的算子 so 才导出，产品版 libgraph.so 以 hidden 可见性编译），必然报 `pull creator ABI symbols are incomplete` 并导致整个 OM 加载失败。Python compile 类算子的离线执行不受该跳过影响：compile 回调在编译期已把 kernel 固化进 OM，执行期不需要自定义算子实例。
 
