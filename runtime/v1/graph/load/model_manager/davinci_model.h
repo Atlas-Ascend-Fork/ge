@@ -172,6 +172,7 @@ class DavinciModel {
   void DestroyStream();
 
   void DestroyResources();
+  void DestroyRtResources();
 
   /// @ingroup ge
   /// @brief apply model to model_def_

@@ -451,6 +451,9 @@ Status InnerSession::ExecuteGraphWithStreamAsync(uint32_t graph_id, const aclrtS
            session_id_, graph_id, stream, inputs.size(), outputs.size());
   }
   GE_ASSERT_NOTNULL(user_graphs_manager_);
+  // 与 RunGraph/RunGraphWithStreamAsync 等入口一致：先刷新调用线程的上下文，
+  // 否则在该线程执行的自定义算子经 GetOption 读不到本 session 的选项（空或旧快照）
+  UpdateGlobalSessionContext();
   const Status res = user_graphs_manager_->ExecuteGraphWithStreamAsync(graph_id, stream, inputs, outputs, session_id_);
   if (res != SUCCESS) {
     GELOGE(res,
