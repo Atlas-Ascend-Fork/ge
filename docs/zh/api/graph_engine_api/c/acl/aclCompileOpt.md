@@ -18,7 +18,7 @@ typedef enum {
     ACL_OP_DETERMINISTIC,         // 是否开启确定性计算
     ACL_CUSTOMIZE_DTYPES,         // 模型编译时自定义某个或某些算子的计算精度
     ACL_OP_PRECISION_MODE,        // 指定算子内部处理时的精度模式，支持指定一个算子或多个算子。
-    ACL_ALLOW_HF32,               // hf32是AI处理器推出的专门用于算子内部计算的精度类型，当前版本不支持
+    ACL_ALLOW_HF32,               // hf32是AI处理器推出的专门用于算子内部计算的精度类型
     ACL_PRECISION_MODE_V2,        // 网络模型的算子精度模式，相比ACL_PRECISION_MODE选项，ACL_PRECISION_MODE_V2是新版本中新增的，精度模式更多，同时原有精度模式选项值语义更清晰，便于理解
     ACL_OP_DEBUG_OPTION           // 当前仅支持配置为oom，表示开启Global Memory访问越界检测
 } aclCompileOpt;
@@ -366,7 +366,7 @@ nodename3=support_of_bound_index
 
 ## ACL\_ALLOW\_HF32取值说明
 
-算子内部计算时是否允许HF32类型替换FP32类型，true允许，false不允许，当前版本该配置仅针对Conv类算子与Matmul类算子生效。默认针对Conv类算子，启用FP32转换为HF32；默认针对Matmul类算子，关闭FP32转换为HF32。**预留参数，当前版本暂不支持**。
+算子内部计算时是否允许HF32类型替换FP32类型，true允许，false不允许，当前版本该配置仅针对Conv类算子与Matmul类算子生效。默认针对Conv类算子，启用FP32转换为HF32；默认针对Matmul类算子，关闭FP32转换为HF32。
 
 HF32是AI处理器推出的专门用于算子内部计算的单精度浮点类型，与其他常用数据类型的比较如下图所示。HF32与FP32支持相同的数值范围，但尾数位精度（11位）却接近FP16（10位）。通过降低精度让HF32单精度数据类型代替原有的FP32单精度数据类型，可大大降低数据所占空间大小，实现性能的提升。
 
