@@ -1475,6 +1475,7 @@ Status GenerateProgramFiles(ProgramGenerator &generator, std::map<GeneratedFileI
 std::string GetExpectedArgsManagerSource() {
   return R"(#line 1 "g1_args_manager.cpp"
 #include "g1_internal.h"
+#include "securec.h"
 
 namespace om2 {
 aclError Om2ArgsTable::Init() {
@@ -1615,7 +1616,6 @@ CPPFLAGS := \
   -I$(CANN_ROOT)/pkg_inc \
   -I$(CANN_ROOT)/pkg_inc/base \
   -I$(CANN_ROOT)/pkg_inc/runtime \
-  -I$(CANN_ROOT)/pkg_inc/profiling \
   -I$(CURDIR)/include
 endif
 
@@ -1698,6 +1698,7 @@ aclError Om2Model::InitResources(int32_t priority, uint64_t reuse_zero_copy, con
   } else {
     OM2_CHK_STATUS(aclmdlRIBuildBegin(&model_handle_, 0));
   }
+  OM2_CHK_STATUS(aclmdlRISetName(model_handle_, "g1"));
 
   // 2. 获取overflow地址
   OM2_CHK_STATUS(aclrtCtxGetFloatOverflowAddr(&overflow_addr_));
@@ -1795,13 +1796,7 @@ TEST_F(ProgramGeneratorUt, GenerateInterfaceHeader_Ok) {
   auto generator = CreateProgramGenerator(ge_root_model);
   std::map<GeneratedFileIndex, std::string> outputs;
   ASSERT_EQ(GenerateProgramFiles(generator, outputs), SUCCESS);
-  const std::string expected = R"(#include <iostream>
-#include <cstddef>
-#include <ctime>
-#include <chrono>
-#include <fstream>
-#include <iomanip>
-#include <sstream>
+  const std::string expected = R"(#include <cstddef>
 #include <vector>
 #include <map>
 #include <unordered_map>
@@ -1809,17 +1804,14 @@ TEST_F(ProgramGeneratorUt, GenerateInterfaceHeader_Ok) {
 #include <cstdint>
 #include <type_traits>
 #include <array>
-#include "securec.h"
 #include "acl/acl.h"
 #include "acl/acl_base.h"
 #include "exe_graph/runtime/runtime_tensor.h"
 #include "rt_external.h"
 #include "dlog_pub.h"
-#include "profiling/prof_common.h"
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <cinttypes>
-#include "mmpa/mmpa_api.h"
 #include "om2_model_api.h"
 
 // OM2 Logging Macros
@@ -2473,7 +2465,6 @@ class Om2Model {
     bool is_external_events_;
     std::vector<aclrtLabel> label_list_;
     bool is_external_labels_;
-    std::vector<aclrtLabel> label_used_;
     std::map<uint32_t, aclrtLabelList> label_switch_label_list_;
     std::map<uint32_t, std::pair<void *, uint32_t>> label_goto_args_;
     std::map<uint32_t, aclrtLabelList> label_goto_ex_label_list_;
@@ -2523,6 +2514,9 @@ TEST_F(ProgramGeneratorUt, GenerateKernelRegSource_Ok) {
 
   const std::string kernel_reg_expected = R"OM2(#line 1 "g1_kernel_reg.cpp"
 #include "g1_internal.h"
+#include <chrono>
+#include <fstream>
+#include "securec.h"
 namespace om2 {
 namespace {
 constexpr uint32_t kMaxJsonFileLen = 512U;
@@ -2719,6 +2713,8 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_Ok) {
 
   const std::string expected = R"(#line 1 "g1_load_and_run.cpp"
 #include "g1_internal.h"
+#include "mmpa/mmpa_api.h"
+#include "securec.h"
 
 namespace om2 {
 namespace {
@@ -3405,6 +3401,8 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource2_Ok) {
 
   const std::string expected = R"(#line 1 "g1_load_and_run.cpp"
 #include "g1_internal.h"
+#include "mmpa/mmpa_api.h"
+#include "securec.h"
 
 namespace om2 {
 namespace {
@@ -4124,6 +4122,8 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSourceForAicpu_Ok) {
 
   const std::string expected = R"(#line 1 "g1_load_and_run.cpp"
 #include "g1_internal.h"
+#include "mmpa/mmpa_api.h"
+#include "securec.h"
 
 namespace om2 {
 namespace {
@@ -4845,6 +4845,8 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSourceForDynamicIo_Ok) {
 
   const std::string expected = R"(#line 1 "g1_load_and_run.cpp"
 #include "g1_internal.h"
+#include "mmpa/mmpa_api.h"
+#include "securec.h"
 
 namespace om2 {
 namespace {
@@ -7436,9 +7438,12 @@ TEST_F(ProgramGeneratorUt, GenerateHeaders_ContainsProfilingTypes) {
   const auto &model_api_header = outputs[GeneratedFileIndex::kModelApiHeaderFile];
   const auto &internal_header = outputs[GeneratedFileIndex::kInterfaceHeaderFile];
 
-  // profiling/prof_common.h 和 mmpa/mmpa_api.h 属于内部实现依赖。
-  EXPECT_NE(internal_header.find("#include \"profiling/prof_common.h\""), std::string::npos);
-  EXPECT_NE(internal_header.find("#include \"mmpa/mmpa_api.h\""), std::string::npos);
+  // profiling/prof_common.h 与 mmpa/mmpa_api.h 均不被生成代码使用：前者无符号引用，后者仅被 load_and_run.cpp
+  // 使用（mmGetTid）。
+  EXPECT_EQ(internal_header.find("#include \"profiling/prof_common.h\""), std::string::npos);
+  EXPECT_EQ(internal_header.find("#include \"mmpa/mmpa_api.h\""), std::string::npos);
+  const auto &load_and_run_source = outputs[GeneratedFileIndex::kLoadingAndRunningFile];
+  EXPECT_NE(load_and_run_source.find("#include \"mmpa/mmpa_api.h\""), std::string::npos);
   // GertModelRunCallbacks 和 GertModelRunReportInfo 结构体应该存在
   EXPECT_NE(model_api_header.find("struct GertModelRunCallbacks"), std::string::npos);
   EXPECT_NE(model_api_header.find("struct GertModelRunReportInfo"), std::string::npos);

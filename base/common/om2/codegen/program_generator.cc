@@ -61,13 +61,7 @@ Status ProgramGenerator::GenerateModelApiHeader(Om2CodePrinter &code_printer) co
 
 std::vector<DeclNode *> ProgramGenerator::BuildInterfaceHeaderIncludes() const {
   return {
-      ast_.Include("iostream", IncludeDecl::Kind::kAngle),
       ast_.Include("cstddef", IncludeDecl::Kind::kAngle),
-      ast_.Include("ctime", IncludeDecl::Kind::kAngle),
-      ast_.Include("chrono", IncludeDecl::Kind::kAngle),
-      ast_.Include("fstream", IncludeDecl::Kind::kAngle),
-      ast_.Include("iomanip", IncludeDecl::Kind::kAngle),
-      ast_.Include("sstream", IncludeDecl::Kind::kAngle),
       ast_.Include("vector", IncludeDecl::Kind::kAngle),
       ast_.Include("map", IncludeDecl::Kind::kAngle),
       ast_.Include("unordered_map", IncludeDecl::Kind::kAngle),
@@ -75,17 +69,14 @@ std::vector<DeclNode *> ProgramGenerator::BuildInterfaceHeaderIncludes() const {
       ast_.Include("cstdint", IncludeDecl::Kind::kAngle),
       ast_.Include("type_traits", IncludeDecl::Kind::kAngle),
       ast_.Include("array", IncludeDecl::Kind::kAngle),
-      ast_.Include("securec.h"),
       ast_.Include("acl/acl.h"),
       ast_.Include("acl/acl_base.h"),
       ast_.Include("exe_graph/runtime/runtime_tensor.h"),
       ast_.Include("rt_external.h"),
       ast_.Include("dlog_pub.h", IncludeDecl::Kind::kQuote),
-      ast_.Include("profiling/prof_common.h"),
       ast_.Include("sys/syscall.h", IncludeDecl::Kind::kAngle),
       ast_.Include("unistd.h", IncludeDecl::Kind::kAngle),
       ast_.Include("cinttypes", IncludeDecl::Kind::kAngle),
-      ast_.Include("mmpa/mmpa_api.h"),
   };
 }
 
@@ -153,6 +144,7 @@ Status ProgramGenerator::GenerateArgsManagerSource(Om2CodePrinter &code_printer)
   ArgsManagerFileCodeGenerator args_manager_handler(ast_);
   auto *translation_unit = ast_.File({
       ast_.Include(codegen_model_.artifact_name + "_internal.h"),
+      ast_.Include("securec.h"),
       ast_.Space(),
       ast_.Namespace("om2",
                      {
@@ -188,6 +180,9 @@ Status ProgramGenerator::GenerateKernelRegSource(Om2CodePrinter &code_printer) {
   };
   auto *translation_unit = ast_.File({
       ast_.Include(codegen_model_.artifact_name + "_internal.h"),
+      ast_.Include("chrono", IncludeDecl::Kind::kAngle),
+      ast_.Include("fstream", IncludeDecl::Kind::kAngle),
+      ast_.Include("securec.h"),
       ast_.Namespace("om2",
                      {
                          ast_.Namespace("", anonymous_items),
@@ -210,7 +205,8 @@ Status ProgramGenerator::GenerateLoadAndRunSource(Om2CodePrinter &code_printer) 
   (void)anonymous_items.insert(anonymous_items.begin(),
                                ast_.StablePart(StablePartId::kLoadAndRunDumpHelpers, StablePartPlacement::kNamespace));
   anonymous_items.push_back(load_and_run_handler.BuildOpDefTable(codegen_model_, task_code_builder_list_));
-  std::vector<DeclNode *> body_items = {ast_.Include(codegen_model_.artifact_name + "_internal.h")};
+  std::vector<DeclNode *> body_items = {ast_.Include(codegen_model_.artifact_name + "_internal.h"),
+                                        ast_.Include("mmpa/mmpa_api.h"), ast_.Include("securec.h")};
   if (has_custom_kernel_) {
     (void)body_items.emplace_back(ast_.Include("graph/custom_op.h"));
     (void)body_items.emplace_back(ast_.Include("exe_graph/runtime/gert_mem_allocator.h"));
@@ -261,7 +257,6 @@ CPPFLAGS := \
   -I$(CANN_ROOT)/pkg_inc \
   -I$(CANN_ROOT)/pkg_inc/base \
   -I$(CANN_ROOT)/pkg_inc/runtime \
-  -I$(CANN_ROOT)/pkg_inc/profiling \
   -I$(CURDIR)/include
 endif
 

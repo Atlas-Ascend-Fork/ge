@@ -124,10 +124,33 @@ void SetAtomicWorkspaceInfo(const OpDescPtr &op_desc, const std::string &op_name
   EXPECT_TRUE(AttrUtils::SetNamedAttrs(op_desc, EXT_ATTR_ATOMIC_WORKSPACE_INFO, workspaces));
 }
 
+void AppendAddrSemantics(std::vector<AddrSemantic> &addrs, const size_t num, const AddrValueKind kind) {
+  for (size_t i = 0U; i < num; ++i) {
+    AddrSemantic addr;
+    addr.kind = kind;
+    addrs.push_back(addr);
+  }
+}
+
 TaskSemanticContributeContext MakeContext(const domi::TaskDef &task_def, const OpDescPtr &op_desc,
-                                          ModelTaskType task_type = ModelTaskType::MODEL_TASK_KERNEL) {
-  return TaskSemanticContributeContext{task_type, task_def, 0,       op_desc, nullptr, nullptr, nullptr, nullptr,
-                                       nullptr,   nullptr,  nullptr, nullptr, nullptr, nullptr, nullptr};
+                                          ModelTaskType task_type = ModelTaskType::MODEL_TASK_KERNEL,
+                                          uint64_t *next_args_table_index = nullptr,
+                                          uint64_t *next_host_args_offset = nullptr) {
+  return TaskSemanticContributeContext{task_type,
+                                       task_def,
+                                       0,
+                                       op_desc,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       next_args_table_index,
+                                       next_host_args_offset,
+                                       nullptr};
 }
 
 template <typename T>
@@ -2640,6 +2663,51 @@ TEST_F(Om2CodegenModelBuilderUt, KernelTaskCodeBuilder_CopyTiling_CoverBranches)
   EXPECT_NE(builder.CopyTilingDataIfNeeded(MakeContext(sync_task_def, op_desc, ModelTaskType::MODEL_TASK_ALL_KERNEL),
                                            args_format_holder),
             SUCCESS);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, KernelTaskCodeBuilder_BuildOrderedArgsWithoutFormat_SeparatelyClean_Filter) {
+  AstContext ast_ctx;
+  AstBuildContext ast(ast_ctx);
+  KernelTaskCodeBuilder builder(ast);
+  auto op_desc = MakeKernelOpDesc("atomic_op", "Add", 2U, 3U);
+  op_desc->SetWorkspace(std::vector<int64_t>({0, 1}));
+  op_desc->SetWorkspaceBytes(std::vector<int64_t>({64, 64}));
+  SetAtomicOutputIndices(op_desc, {1});
+  SetAtomicWorkspaceInfo(op_desc, op_desc->GetName(), {0});
+  auto &semantic = builder.build_data_.semantic;
+  AppendAddrSemantics(semantic.input_addrs, 2U, AddrValueKind::kInputInstance);
+  AppendAddrSemantics(semantic.output_addrs, 3U, AddrValueKind::kOutputInstance);
+  AppendAddrSemantics(semantic.workspace_addrs, 2U, AddrValueKind::kWorkspace);
+
+  uint64_t next_args_table_index = 0U;
+  uint64_t next_host_args_offset = 0U;
+  domi::TaskDef task_def;
+  auto context =
+      MakeContext(task_def, op_desc, ModelTaskType::MODEL_TASK_KERNEL, &next_args_table_index, &next_host_args_offset);
+
+  builder.is_separately_clean_task_ = true;
+  ASSERT_EQ(builder.BuildOrderedArgValuesWithoutArgsFormat(context), SUCCESS);
+  // 单独清理场景：input 全过滤，output 只保留 atomic output[1]，workspace 只保留 atomic workspace[0]
+  const auto &ordered_args = semantic.ordered_arg_values;
+  ASSERT_EQ(ordered_args.size(), 2U);
+  EXPECT_EQ(ordered_args[0].kind, AddrValueKind::kOutputInstance);
+  EXPECT_EQ(ordered_args[1].kind, AddrValueKind::kWorkspace);
+  ASSERT_TRUE(semantic.args_table_entry.has_value());
+  EXPECT_EQ(semantic.args_table_entry->args_size, 2U * kAddressLen);
+
+  // 非单独清理场景保持全量组装，回归保护
+  KernelTaskCodeBuilder normal_builder(ast);
+  auto &normal_semantic = normal_builder.build_data_.semantic;
+  normal_semantic.input_addrs = semantic.input_addrs;
+  normal_semantic.output_addrs = semantic.output_addrs;
+  normal_semantic.workspace_addrs = semantic.workspace_addrs;
+  normal_builder.is_separately_clean_task_ = false;
+  uint64_t next_args_table_index_normal = 0U;
+  uint64_t next_host_args_offset_normal = 0U;
+  auto normal_context = MakeContext(task_def, op_desc, ModelTaskType::MODEL_TASK_KERNEL, &next_args_table_index_normal,
+                                    &next_host_args_offset_normal);
+  ASSERT_EQ(normal_builder.BuildOrderedArgValuesWithoutArgsFormat(normal_context), SUCCESS);
+  ASSERT_EQ(normal_semantic.ordered_arg_values.size(), 7U);  // 2 input + 3 output + 2 workspace
 }
 
 }  // namespace ge

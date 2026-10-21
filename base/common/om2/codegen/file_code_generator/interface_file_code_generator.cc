@@ -218,10 +218,6 @@ void InterfaceFileCodeGenerator::DealParamForOm2ModelClass(std::vector<DeclNode 
   items.push_back(ast_.Field("bool", "is_external_events_"));
   items.push_back(ast_.Field("std::vector<aclrtLabel>", "label_list_"));
   items.push_back(ast_.Field("bool", "is_external_labels_"));
-  if (runtime.label_num > 0U) {
-    items.push_back(ast_.Field("aclrtLabelList", "aclrt_label_list_"));
-  }
-  items.push_back(ast_.Field("std::vector<aclrtLabel>", "label_used_"));
   items.push_back(ast_.Field("std::map<uint32_t, aclrtLabelList>", "label_switch_label_list_"));
   items.push_back(ast_.Field("std::map<uint32_t, std::pair<void *, uint32_t>>", "label_goto_args_"));
   items.push_back(ast_.Field("std::map<uint32_t, aclrtLabelList>", "label_goto_ex_label_list_"));
@@ -234,7 +230,6 @@ void InterfaceFileCodeGenerator::DealParamForOm2ModelClass(std::vector<DeclNode 
     items.push_back(ast_.DeclareMethod("CreateLabelListForLabelGotoEx",
                                        {ast_.Var("uint32_t", "op_index"), ast_.Var("uint32_t", "label_index")},
                                        "aclError"));
-    items.push_back(ast_.Field("std::vector<void *>", "label_goto_ex_index_values_"));
   }
 }
 
