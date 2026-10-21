@@ -36,7 +36,7 @@ if(BUILD_PKG_COMPONENT
             -o ${CMAKE_CURRENT_BINARY_DIR}/UpdateModelParam_dav_2201.o
         COMMAND ${CCEC_PATH}/ld.lld -m aicorelinux -Ttext=0 ${CMAKE_CURRENT_BINARY_DIR}/UpdateModelParam_dav_2201.o
             -static -o ${CMAKE_CURRENT_BINARY_DIR}/UpdateModelParam_dav_2201.o
-        DEPENDS kernel_tiling_headers
+        DEPENDS asc_kernel_headers kernel_tiling_headers
         COMMAND_EXPAND_LISTS VERBATIM
     )
 
