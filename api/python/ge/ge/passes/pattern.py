@@ -136,7 +136,10 @@ def pattern(method: Callable[..., object]) -> Callable[..., object]:
 
 
 def _has_decorated_pattern_methods(cls: Type[object]) -> bool:
-    return bool(_get_decorated_pattern_methods(cls))
+    return any(
+        callable(method) and getattr(method, _PATTERN_METHOD_MARK, False)
+        for method in cls.__dict__.values()
+    )
 
 
 def _adapt_decorated_pattern_methods(cls: Type[object]) -> Callable[..., object]:
@@ -282,11 +285,16 @@ def _has_required_keyword_only_args(method: Callable[..., object]) -> bool:
 
 
 def _get_decorated_pattern_methods(cls: Type[object]) -> List[Callable[..., object]]:
-    return [
-        method
-        for method in cls.__dict__.values()
-        if callable(method) and getattr(method, _PATTERN_METHOD_MARK, False)
-    ]
+    methods = []
+    seen_names = set()
+    for base in cls.__mro__:
+        for name, method in base.__dict__.items():
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+            if callable(method) and getattr(method, _PATTERN_METHOD_MARK, False):
+                methods.append(method)
+    return methods
 
 
 def _default_graph_name(instance: object, suffix: str) -> str:
