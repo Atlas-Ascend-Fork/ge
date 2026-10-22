@@ -78,6 +78,8 @@ def _normalize_dims(dims: Optional[List[int]], arg_name: str) -> List[int]:
         return []
     if not isinstance(dims, list) or not all(isinstance(dim, int) for dim in dims):
         raise TypeError(f"{arg_name} must be a list of integers")
+    if any(not -(1 << 63) <= dim < (1 << 63) for dim in dims):
+        raise ValueError(f"{arg_name} dimensions must fit in signed int64")
     return list(dims)
 
 
@@ -119,7 +121,9 @@ class TensorDesc:
         dims = _normalize_dims(shape, "shape")
         dims_num = len(dims)
         dims_arr = (ctypes.c_int64 * dims_num)(*dims) if dims_num > 0 else None
-        self._handle = graph_lib.GeApiWrapper_TensorDesc_Create(dims_arr, dims_num, format, data_type)
+        self._handle = graph_lib.GeApiWrapper_TensorDesc_Create(
+            dims_arr, dims_num, format, data_type
+        )
         if not self._handle:
             raise RuntimeError("Failed to create TensorDesc")
 
@@ -217,7 +221,9 @@ class TensorDesc:
         Raises:
             RuntimeError: If origin shape retrieval fails.
         """
-        return self._get_shape(graph_lib.GeApiWrapper_TensorDesc_GetOriginShape, "origin shape")
+        return self._get_shape(
+            graph_lib.GeApiWrapper_TensorDesc_GetOriginShape, "origin shape"
+        )
 
     def set_origin_shape(self, shape: List[int]) -> "TensorDesc":
         """Set the original shape.
@@ -232,7 +238,9 @@ class TensorDesc:
             TypeError: If shape is not a list of integers.
             RuntimeError: If setting origin shape fails.
         """
-        self._set_dims(graph_lib.GeApiWrapper_TensorDesc_SetOriginShape, shape, "origin shape")
+        self._set_dims(
+            graph_lib.GeApiWrapper_TensorDesc_SetOriginShape, shape, "origin shape"
+        )
         return self
 
     def get_format(self) -> Format:
