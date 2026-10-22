@@ -2541,6 +2541,45 @@ TEST_F(SymbolicShapeComputeST, test_expanddims_host_compute2) {
   EXPECT_EQ(*attr->symbolic_tensor.GetSymbolicValue(), expect_symbolic_value);
 }
 
+//
+// ┌────────┐  (0,0)   ┌──────────┐ (0,0)    ┌─────────────┐
+// │ const_1│ ───────> │ExpandDims│ ───────> │ Node_Output │
+// └────────┘          └──────────┘          └─────────────┘
+//                       ^
+//                       |
+// ┌────────┐  (0,1)     |
+// │const_0 │ ———————————
+// └────────┘
+TEST_F(SymbolicShapeComputeST, test_expanddims_host_compute_negative_axis) {
+  auto const0 = builder_->CreateScalar(static_cast<int32_t>(-1));
+
+  std::vector<int32_t> const1_data = {1, 2, 3, 4, 5, 6};
+  std::vector<int64_t> const1_dim = {2, 3};
+  auto const1 = builder_->CreateConst(const1_data, const1_dim);
+
+  auto expand_dims = es::ExpandDims(const1, const0);
+
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(expand_dims, 0), 0);
+
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  auto expanddims_node = cg->FindFirstNodeMatchType(EXPANDDIMS);
+  ASSERT_NE(expanddims_node, nullptr);
+  auto op_desc = expanddims_node->GetOpDesc();
+  op_desc->MutableInputDesc(1)->SetDataType(DT_INT32);
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  // 负axis相对输出rank(输入rank+1)计数，-1 表示在末尾插入新维度
+  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({Symbol(2), Symbol(3), Symbol(1)}));
+  std::vector<Expression> expect_symbolic_value = {Symbol(1), Symbol(2), Symbol(3), Symbol(4), Symbol(5), Symbol(6)};
+  EXPECT_NE(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(*attr->symbolic_tensor.GetSymbolicValue(), expect_symbolic_value);
+}
+
 //                         ┌────────┐  (0,1)
 //                         │const_1 │ ──────────────
 //                         └────────┘               |

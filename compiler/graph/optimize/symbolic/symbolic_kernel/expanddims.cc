@@ -82,16 +82,10 @@ static graphStatus ExpandDimsSymbolicKernelCompute(gert::InferSymbolComputeConte
 
   auto input_shape = context->GetInputSymbolShape(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_shape);
-  // 如果axis为负数修正axis
+  // 如果axis为负数修正axis，负axis相对输出rank（输入rank + 1）计数，与numpy/算子语义一致
   auto input_shape_num = static_cast<int64_t>(input_shape->GetDimNum());
   if (axis_value < 0) {
-    if (input_shape_num == 0) {
-      // input是一个标量，如果axis为负只能为-1，修正后为0
-      GE_ASSERT_EQ(axis_value, -1);
-      axis_value = 0;
-    } else {
-      axis_value += input_shape_num;
-    }
+    axis_value += input_shape_num + 1;
   }
   GE_ASSERT_TRUE(axis_value >= 0 && axis_value <= input_shape_num, "axis_value=%lld, input_shape_num=%lld", axis_value,
                  input_shape_num);
