@@ -419,7 +419,10 @@ Status KernelExTaskInfo::Distribute() {
   launch_kernel_param.launch_config.is_data_dump = is_data_dump_;
   GE_ASSERT_SUCCESS(KernelHandleUtils::LaunchKernel(func_handle_, launch_kernel_param));
   GE_CHECK_NOTNULL(davinci_model_);
-  GE_CHK_ACL_RET(aclrtGetThreadLastTaskId(&task_id_));
+  // aclrtStreamGetId 保留不改：新接口的 streamId 出参是线程最近一次任务所在流的 id，
+  // 与本处需要的指定执行流（stream_）id 语义不同，不可用 acl_stream_id 替代，保持运行行为不变
+  uint32_t acl_stream_id = 0U;
+  GE_CHK_ACL_RET(aclrtGetThreadLastTaskIdAndStreamId(&task_id_, &acl_stream_id));
   GE_CHK_ACL_RET(aclrtStreamGetId(stream_, reinterpret_cast<int32_t *>(&stream_id_)));
 
   GELOGI("KernelExTaskInfo %s Distribute Success. task id: %u, stream id: %u, stream: %p.", op_desc_->GetNamePtr(),

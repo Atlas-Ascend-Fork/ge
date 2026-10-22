@@ -404,7 +404,10 @@ Status AicpuNodeTaskBase::CheckOverflow(TaskContext &context) const {
     // AICPU is responsible for dump itself. This code is only reserved code for future solution.
     if (rt_ret == ACL_ERROR_RT_OVER_FLOW) {
       context.SetOverFlow(true);
-      (void)aclrtGetThreadLastTaskId(context.MutableTaskId());
+      // aclrtStreamGetId 保留不改：新接口的 streamId 出参是线程最近一次任务所在流的 id，
+      // 与本处需要的指定执行流（context.GetStream()）id 语义不同，不可用 acl_stream_id 替代，保持运行行为不变
+      uint32_t acl_stream_id = 0U;
+      (void)aclrtGetThreadLastTaskIdAndStreamId(context.MutableTaskId(), &acl_stream_id);
       (void)aclrtStreamGetId(context.GetStream(), reinterpret_cast<int32_t *>(context.MutableStreamId()));
       GELOGW("TaskBase Dynamic shape op %s is over flow", context.GetNodeName());
       return SUCCESS;
@@ -1329,7 +1332,10 @@ Status AicpuNodeTask::CheckOverflow(TaskContext &context) const {
     // AICPU is responsible for dump itself. This code is only reserved code for future solution.
     if (rt_ret == ACL_ERROR_RT_OVER_FLOW) {
       context.SetOverFlow(true);
-      (void)aclrtGetThreadLastTaskId(context.MutableTaskId());
+      // aclrtStreamGetId 保留不改：新接口的 streamId 出参是线程最近一次任务所在流的 id，
+      // 与本处需要的指定执行流（context.GetStream()）id 语义不同，不可用 acl_stream_id 替代，保持运行行为不变
+      uint32_t acl_stream_id = 0U;
+      (void)aclrtGetThreadLastTaskIdAndStreamId(context.MutableTaskId(), &acl_stream_id);
       (void)aclrtStreamGetId(context.GetStream(), reinterpret_cast<int32_t *>(context.MutableStreamId()));
       GELOGW("Dynamic shape op %s is over flow", context.GetNodeName());
       return SUCCESS;
