@@ -136,6 +136,8 @@ def _create_list_getter(c_type, getter_func, free_func, expected_type):
             raise RuntimeError("Failed to get list value")
 
         try:
+            if expected_type == AttrValueType.VT_LIST_DATA_TYPE:
+                return [DataType(c_array[i]) for i in range(size.value)]
             return [c_array[i] for i in range(size.value)]
         finally:
             free_func(c_array)
