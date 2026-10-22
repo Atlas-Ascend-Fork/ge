@@ -3452,7 +3452,10 @@ HcclResult HcomOpsKernelInfoStore::GetHcclUnfoldStream(const std::string &group,
       HCCL_INFO("[GetHcclUnfoldStream] Create new thread for ctx:%s", ctxName.c_str());
       ThreadHandle unfoldThread;
       ctxSize = sizeof(ThreadHandle);
-      CHK_RET(HcclThreadAcquire(comm, CommEngine::COMM_ENGINE_CPU, 1, 1, &unfoldThread));
+      // 展开线程走专用线程接口（按useType在通信域内缓存复用）
+      CHK_RET(HcclDedicatedThreadAcquire(comm, HCCL_DED_THREAD_TYPE_AICPU_LAUNCH, 1, &unfoldThread));
+      HCCL_INFO("[GetHcclUnfoldStream] HcclDedicatedThreadAcquire success, ctx[%s], unfoldThread[%lu]", ctxName.c_str(),
+                unfoldThread);
       CHK_RET(HcclEngineCtxCreate(comm, ctxName.c_str(), CommEngine::COMM_ENGINE_CPU_TS, ctxSize, &ctx));
       HCCL_DEBUG("[GetHcclUnfoldStream] HcclEngineCtxCreate tag[%s], UnfoldThread[%lu]", ctxName.c_str(), unfoldThread);
       ThreadHandle *threadPtr = reinterpret_cast<ThreadHandle *>(ctx);
