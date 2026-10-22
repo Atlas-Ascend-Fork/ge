@@ -3586,4 +3586,202 @@ TEST_F(UtestModelHelper, LoadCustomOpRegistryConcurrentModelsShareGlobalFactoryS
   OpProtoLedger::ResetForFinalize();
 }
 
+namespace {
+constexpr char kRepackPortableOpTypeForUt[] = "ModelHelperRepackPortableOpUt";
+constexpr uint16_t kCustomOpSoInOmBitForUt = 0x1000U;
+
+// 静态 shape 根模型：自定义算子节点直接挂在被序列化的根图上，
+// 保证在线导出 -> 落盘重打包后仍能被 CheckAndSetCustomOpSo 识别
+static GeRootModelPtr ConstructRepackCustomOpRootModelForUt(const std::string &op_type) {
+  auto graph = std::make_shared<ComputeGraph>("graph");
+  auto ge_root_model = std::make_shared<GeRootModel>();
+  if (ge_root_model->Initialize(graph) != SUCCESS) {
+    return nullptr;
+  }
+  ge_root_model->SetCustomOpRegistry(CustomOpFactory::GetGlobalRegistryPtr());
+  if (AddNodeWithOpTypeForModelHelperUt(graph, "custom_node", op_type) == nullptr) {
+    return nullptr;
+  }
+  auto ge_model = std::make_shared<GeModel>();
+  ge_model->SetGraph(graph);
+  ge_root_model->subgraph_instance_name_to_model_["graph"] = ge_model;
+  (void)AttrUtils::SetStr(ge_model, ATTR_MODEL_HOST_ENV_OS, "linux");
+  (void)AttrUtils::SetStr(ge_model, ATTR_MODEL_HOST_ENV_CPU, GetCurArch());
+  FillModelTaskDef(ge_model);
+  return ge_root_model;
+}
+
+static bool GetPartitionFromModelBufferForUt(const ModelBufferData &model_buffer, const ModelPartitionType type,
+                                             ModelPartition &partition) {
+  ModelData model_data;
+  model_data.model_data = model_buffer.data.get();
+  model_data.model_len = model_buffer.length;
+  OmFileLoadHelper load_helper;
+  if (load_helper.Init(model_data) != SUCCESS) {
+    return false;
+  }
+  // GetModelPartition 对 SO_BINS/CUSTOM_OPS 等白名单类型即使未命中也返回 SUCCESS，需以 data/size 判定分区是否存在
+  if (load_helper.GetModelPartition(type, partition, 0U) != SUCCESS) {
+    return false;
+  }
+  return (partition.data != nullptr) && (partition.size > 0U);
+}
+
+static bool FindCustomOpSoNameInPartitionForUt(const ModelPartition &partition, std::string &so_name) {
+  OpSoStore op_so_store;
+  if (!op_so_store.Load(partition.data, partition.size)) {
+    return false;
+  }
+  for (const auto &so_bin : op_so_store.GetSoBin()) {
+    if ((so_bin != nullptr) && (so_bin->GetSoBinType() == SoBinType::kCustomOp)) {
+      so_name = so_bin->GetSoName();
+      return true;
+    }
+  }
+  return false;
+}
+
+static std::string GetSoFileNameForUt(const std::string &so_path) {
+  const auto pos = so_path.find_last_of('/');
+  return (pos == std::string::npos) ? so_path : so_path.substr(pos + 1U);
+}
+}  // namespace
+
+// 定义在 compiler/api/aclgrph/ge_ir_build.cc（libge_compiler.so）：落盘重打包前恢复编译期 registry
+extern void RestoreCustomOpRegistryForRepack(const GeRootModelPtr &root_model);
+
+// 在线导出（aclgrphBuildModel 语义）不写 SO_BINS；离线导出（atc 语义）直接写 SO_BINS
+TEST_F(UtestModelHelper, SaveToOmRootModelOnlineShouldSkipCustomOpSoBin) {
+  RegisterCustomOpCreatorForModelHelperUt(kRepackPortableOpTypeForUt, []() -> std::unique_ptr<BaseCustomOp> {
+    return std::make_unique<ModelHelperPortableOpForUt>();
+  });
+  std::string current_env_os;
+  std::string current_env_cpu;
+  std::string target_env_cpu;
+  ASSERT_TRUE(ResolveCrossModeTargetEnvForModelHelperUt(current_env_os, current_env_cpu, target_env_cpu));
+  ScopedHostEnvForModelHelperUt host_env_guard(current_env_os, target_env_cpu);
+  ScopedEnvVarForModelHelperUt custom_opp_guard(kEnvNameCustom);
+  std::string opp_path = __FILE__;
+  opp_path = opp_path.substr(0, opp_path.rfind("/") + 1);
+  const std::string custom_opp_path = opp_path + "custom_opp_repack_online_ut";
+  ScopedTmpDirCleanerForModelHelperUt opp_dir_guard(custom_opp_path);
+  CrossModeCustomOppPathsForModelHelperUt so_paths;
+  ASSERT_TRUE(PrepareCrossModeCustomOppForModelHelperUt(custom_opp_path, current_env_os, current_env_cpu,
+                                                        target_env_cpu, so_paths));
+  mmSetEnv(kEnvNameCustom, custom_opp_path.c_str(), 1);
+  const std::string expected_so_name = GetSoFileNameForUt(so_paths.target_graph_so_path);
+
+  const auto online_root_model = ConstructRepackCustomOpRootModelForUt(kRepackPortableOpTypeForUt);
+  ASSERT_NE(online_root_model, nullptr);
+  ASSERT_EQ(online_root_model->CheckAndSetNeedSoInOM(), SUCCESS);
+  ASSERT_NE(online_root_model->GetSoInOmFlag() & kCustomOpSoInOmBitForUt, 0U);
+
+  ModelBufferData online_model;
+  ModelHelper online_helper;
+  online_helper.SetSaveMode(false);
+  online_helper.save_to_file_ = false;
+  ASSERT_EQ(online_helper.SaveToOmRootModel(online_root_model, "repack_online_ut.om", online_model, false), SUCCESS);
+  ModelPartition online_so_partition;
+  EXPECT_FALSE(GetPartitionFromModelBufferForUt(online_model, ModelPartitionType::SO_BINS, online_so_partition));
+
+  const auto offline_root_model = ConstructRepackCustomOpRootModelForUt(kRepackPortableOpTypeForUt);
+  ASSERT_NE(offline_root_model, nullptr);
+  ASSERT_EQ(offline_root_model->CheckAndSetNeedSoInOM(), SUCCESS);
+  ModelBufferData offline_model;
+  ModelHelper offline_helper;
+  offline_helper.save_to_file_ = false;
+  ASSERT_EQ(offline_helper.SaveToOmRootModel(offline_root_model, "repack_offline_ut.om", offline_model, false),
+            SUCCESS);
+  ModelPartition offline_so_partition;
+  ASSERT_TRUE(GetPartitionFromModelBufferForUt(offline_model, ModelPartitionType::SO_BINS, offline_so_partition));
+  std::string offline_so_name;
+  EXPECT_TRUE(FindCustomOpSoNameInPartitionForUt(offline_so_partition, offline_so_name));
+  EXPECT_EQ(offline_so_name, expected_so_name);
+}
+
+// aclgrphSaveModel 语义：恢复编译期 registry 后，落盘重打包补写 SO_BINS 与 CUSTOM_OPS
+TEST_F(UtestModelHelper, PackSoToModelDataShouldBackfillCustomOpSoAfterRegistryRestore) {
+  RegisterCustomOpCreatorForModelHelperUt(kRepackPortableOpTypeForUt, []() -> std::unique_ptr<BaseCustomOp> {
+    return std::make_unique<ModelHelperPortableOpForUt>();
+  });
+  std::string current_env_os;
+  std::string current_env_cpu;
+  std::string target_env_cpu;
+  ASSERT_TRUE(ResolveCrossModeTargetEnvForModelHelperUt(current_env_os, current_env_cpu, target_env_cpu));
+  ScopedHostEnvForModelHelperUt host_env_guard(current_env_os, target_env_cpu);
+  ScopedEnvVarForModelHelperUt custom_opp_guard(kEnvNameCustom);
+  std::string opp_path = __FILE__;
+  opp_path = opp_path.substr(0, opp_path.rfind("/") + 1);
+  const std::string custom_opp_path = opp_path + "custom_opp_repack_backfill_ut";
+  ScopedTmpDirCleanerForModelHelperUt opp_dir_guard(custom_opp_path);
+  CrossModeCustomOppPathsForModelHelperUt so_paths;
+  ASSERT_TRUE(PrepareCrossModeCustomOppForModelHelperUt(custom_opp_path, current_env_os, current_env_cpu,
+                                                        target_env_cpu, so_paths));
+  mmSetEnv(kEnvNameCustom, custom_opp_path.c_str(), 1);
+  const std::string expected_so_name = GetSoFileNameForUt(so_paths.target_graph_so_path);
+
+  const auto ge_root_model = ConstructRepackCustomOpRootModelForUt(kRepackPortableOpTypeForUt);
+  ASSERT_NE(ge_root_model, nullptr);
+  ASSERT_EQ(ge_root_model->CheckAndSetNeedSoInOM(), SUCCESS);
+
+  const std::string output_file = "repack_backfill_ut.om";
+  ModelBufferData online_model;
+  ModelHelper online_helper;
+  online_helper.SetSaveMode(false);
+  online_helper.save_to_file_ = false;
+  ASSERT_EQ(online_helper.SaveToOmRootModel(ge_root_model, output_file, online_model, false), SUCCESS);
+
+  ModelData model_data;
+  model_data.model_data = online_model.data.get();
+  model_data.model_len = online_model.length;
+  ModelHelper repack_helper;
+  repack_helper.SetRepackSoFlag(true);
+  ASSERT_EQ(repack_helper.LoadRootModel(model_data), SUCCESS);
+  ASSERT_NE(repack_helper.root_model_, nullptr);
+  RestoreCustomOpRegistryForRepack(repack_helper.root_model_);
+
+  ModelBufferData repacked_model;
+  ASSERT_EQ(repack_helper.PackSoToModelData(model_data, output_file, repacked_model, false), SUCCESS);
+
+  ModelPartition so_partition;
+  ASSERT_TRUE(GetPartitionFromModelBufferForUt(repacked_model, ModelPartitionType::SO_BINS, so_partition));
+  std::string repacked_so_name;
+  EXPECT_TRUE(FindCustomOpSoNameInPartitionForUt(so_partition, repacked_so_name));
+  EXPECT_EQ(repacked_so_name, expected_so_name);
+
+  ModelPartition custom_ops_partition;
+  EXPECT_TRUE(GetPartitionFromModelBufferForUt(repacked_model, ModelPartitionType::CUSTOM_OPS, custom_ops_partition));
+  EXPECT_GT(custom_ops_partition.size, 0U);
+}
+
+// 模型已自带自定义算子 so：保持模型级 registry，不回退全局 registry
+TEST_F(UtestModelHelper, RestoreCustomOpRegistryForRepackShouldKeepModelRegistryWhenCustomOpSoExists) {
+  const auto ge_root_model = ConstructRepackCustomOpRootModelForUt(kRepackPortableOpTypeForUt);
+  ASSERT_NE(ge_root_model, nullptr);
+  std::vector<char_t> so_data = {static_cast<char_t>(0x7F), static_cast<char_t>('E'), static_cast<char_t>('L'),
+                                 static_cast<char_t>('F'),  static_cast<char_t>(2),   static_cast<char_t>(1),
+                                 static_cast<char_t>(1),    static_cast<char_t>(0)};
+  const auto so_bin = BuildCustomOpSoBinForModelHelperUt("librepack_existing_ut.so", "vendor_ut", so_data);
+  ASSERT_NE(so_bin, nullptr);
+  std::vector<uint8_t> so_payload;
+  ASSERT_TRUE(BuildSoBinsPayloadForModelHelperUt({so_bin}, so_payload));
+  ASSERT_TRUE(ge_root_model->LoadSoBinData(so_payload.data(), so_payload.size()));
+
+  const auto model_registry = std::make_shared<CustomOpRegistry>();
+  ge_root_model->SetCustomOpRegistry(model_registry);
+  RestoreCustomOpRegistryForRepack(ge_root_model);
+  EXPECT_EQ(ge_root_model->GetCustomOpRegistry(), model_registry);
+}
+
+// 在线导出产物不带自定义算子 so：重打包前恢复为编译期使用的进程级全局 registry
+TEST_F(UtestModelHelper, RestoreCustomOpRegistryForRepackShouldUseGlobalRegistryWhenNoCustomOpSo) {
+  const auto ge_root_model = ConstructRepackCustomOpRootModelForUt(kRepackPortableOpTypeForUt);
+  ASSERT_NE(ge_root_model, nullptr);
+  const auto model_registry = std::make_shared<CustomOpRegistry>();
+  ge_root_model->SetCustomOpRegistry(model_registry);
+  RestoreCustomOpRegistryForRepack(ge_root_model);
+  EXPECT_EQ(ge_root_model->GetCustomOpRegistry(), CustomOpFactory::GetGlobalRegistryPtr());
+  RestoreCustomOpRegistryForRepack(nullptr);
+}
+
 }  // namespace ge

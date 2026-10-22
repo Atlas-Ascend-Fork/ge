@@ -52,6 +52,7 @@
 #include "nlohmann/json.hpp"
 #include "graph/ge_local_context.h"
 #include "graph/ge_global_options.h"
+#include "graph/ge_context.h"
 #include "common/memory/tensor_trans_utils.h"
 using namespace std;
 
@@ -2091,6 +2092,25 @@ TEST_F(UtestGeApi, ExecuteGraphWithStreamAsyncInitialized) {
   vector<gert::Tensor> outputs;
   EXPECT_NE(session.ExecuteGraphWithStreamAsync(10, nullptr, inputs, outputs), SUCCESS);
 
+  EXPECT_EQ(GEFinalize(), SUCCESS);
+}
+
+TEST_F(UtestGeApi, ExecuteGraphWithStreamAsyncRefreshesThreadLocalContext) {
+  std::map<std::string, std::string> options;
+  EXPECT_EQ(GEInitialize(options), SUCCESS);
+  Session session(options);
+
+  // 模拟"执行线程此前从未刷过上下文"：清掉线程本地 session id
+  ge::GetContext().SetSessionId(0U);
+  ASSERT_EQ(ge::GetContext().SessionId(), 0U);
+
+  vector<gert::Tensor> inputs;
+  vector<gert::Tensor> outputs;
+  // 图不存在会返回失败，但入口应先刷新调用线程的上下文（与 RunGraph 等入口一致）
+  (void)session.ExecuteGraphWithStreamAsync(10, nullptr, inputs, outputs);
+  EXPECT_NE(ge::GetContext().SessionId(), 0U);
+
+  ge::GetContext().SetSessionId(0U);
   EXPECT_EQ(GEFinalize(), SUCCESS);
 }
 

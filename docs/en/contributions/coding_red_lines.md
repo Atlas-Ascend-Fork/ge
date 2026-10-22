@@ -202,3 +202,41 @@ ExecutorManager::~ExecutorManager() = default;  // Destructor executors_ already
 | Has Finalize and upper layer calls | Finalize actively cleans up, destructor defensive empty operation |
 | runtime calls aclrt* | libascendcl.so compile link, unload order guaranteed |
 | Same .so static registration | Same compilation unit, no cross-.so risk |
+
+### 18. Memory/Resource Release Interface Must Match the Allocation Interface
+
+When releasing memory or resources, the release interface paired with the allocation interface must be used. Releasing across interfaces is prohibited, otherwise it will cause memory leak, invalid free (bad free), or even process crash.
+
+Typical pairs that must be used together: `malloc`↔`free`, `new`↔`delete`, `new[]`↔`delete[]`, `mmMalloc`↔`mmFree`, `rtMalloc`↔`rtFree`, `rtMallocHost`↔`rtFreeHost`, `aclrtMalloc`↔`aclrtFree`, `aclrtMallocHost`↔`aclrtFreeHost`.
+
+> **Supplementary Note**:
+> - Interfaces in the same family must not be mixed either: device and host memory allocation/release must correspond one-to-one (e.g., memory allocated by `aclrtMallocHost` must not be released by `aclrtFree`; `new[]` must be released by `delete[]`).
+> - Memory allocated through GE memory management (`MemManager`, or the **external allocator** registered by `ge_api_v2.cc`) must be released by the corresponding allocator's release interface. Using low-level interfaces such as `aclrtFree` directly is prohibited, otherwise the upper memory pool accounting will be broken, causing memory leak or double free.
+> - Memory managed by containers/smart pointers (`std::vector`, `std::unique_ptr`, etc.) must not be released manually.
+> - If memory release is undertaken by another component, the releaser must be clarified at that interface (see GE Framework Rule 13).
+
+### 19. Prohibit Storing Data Pointers of Containers/Temporary Objects, Prohibit Dereferencing Null or Dangling Pointers
+
+> Note: "dereference" below means **accessing the object a pointer points to**, i.e., `*p`, `p->member`, `p[i]` (equivalent to `*(p + i)`), and also includes handing the pointer to an interface that reads or writes the memory it points to.
+
+After storing the **internal data pointer of a container** such as `std::string::c_str()/data()`, `std::vector::data()`, or the address of an element in `std::map`, the pointer becomes invalid once the container reallocates, inserts, assigns, moves, or is destructed (including leaving scope). Continuing to use it is a dangling pointer with undefined behavior (may read random data, overwrite others' memory, or crash).
+
+> **Supplementary Note**:
+> - Use **value semantics** when content must be kept: store `std::string` by value, copy the `std::vector` (or hold it by `shared_ptr`); do not keep `data()`/`c_str()` pointers.
+> - Returning pointers or references to local objects or local container elements is prohibited.
+> - Null pointers: check for null before dereferencing; pointers passed in from outside or across components must be validated (see GE Framework Rule 13 on lifecycle constraints of passed resources).
+> - Pointers handed to asynchronous interfaces (`rtMemcpyAsync`/`aclrtMemcpyAsync`, etc.) must still be valid when the task is actually scheduled and executed (see GE Framework Rules 10 and 12).
+> - Typical counterexamples: storing `std::string::c_str()` into a member or struct and using it across functions; continuing to use the raw pointer from `unique_ptr::get()` after the object is destroyed; using a cached element address after the container has reallocated.
+
+**Common False Positives**:
+
+| Scenario | Reason |
+|----------|--------|
+| Storing `c_str()`/`data()` of a **static/global constant** `std::string` (including a function-local `static const std::string`) | The object has static storage duration and lives for the whole program; it will not reallocate or be destructed, so the pointer stays valid |
+| Storing a **string literal** pointer (e.g., `const char* p = "abc";`, `static const char kName[] = "x";`) | Literals have static storage duration and remain valid for the entire program |
+| Using the raw pointer from a smart pointer's `get()` within the **object's lifetime** (same scope, not `reset`/`release`d) | The object is still alive, so the pointer is valid |
+| Using a container's data pointer only within the **same expression or a synchronous call** where the container is not modified (e.g., `f(v.data(), v.size())`, `rtMemcpy`) | No reallocation or destruction happens, so the pointer is valid at that point |
+
+> Note:
+> - A **local `const` variable is not exempt** — e.g., `const std::string s = "..."; s.c_str()` becomes invalid when the scope ends.
+> - The validity of a **static/global constant (including string literals) is conditioned on the SO that contains it remaining loaded**: once that SO is dynamically unloaded (`dlclose`, etc.), its static storage is reclaimed and previously stored pointers become dangling. When passing such pointers across SOs or keeping them long-term, the SO must stay loaded for the entire usage period (see GE Framework Rules 13 and 17).

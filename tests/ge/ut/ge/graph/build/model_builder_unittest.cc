@@ -2220,6 +2220,53 @@ TEST_F(UtestModelBuilderTest, SaveDataToModelReusesSameKernelNameWithSameBin) {
   EXPECT_EQ(ge_model.GetTBEKernelStore().DataSize(), expected_size);
 }
 
+TEST_F(UtestModelBuilderTest, SaveDataToModelSkipsTbeKernelForNoTaskOutputReuseNode) {
+  auto graph = std::make_shared<ComputeGraph>("notask_tbe_kernel_graph");
+  auto normal_op = std::make_shared<OpDesc>("normal_op", RELU);
+  auto notask_op = std::make_shared<OpDesc>("notask_op", "ConcatD");
+  auto notask_only_op = std::make_shared<OpDesc>("notask_only_op", RELU);
+  auto reuse_only_op = std::make_shared<OpDesc>("reuse_only_op", RELU);
+  auto notask_ext_op = std::make_shared<OpDesc>("notask_ext_op", "ConcatD");
+  for (const auto &op_desc : {normal_op, notask_op, notask_only_op, reuse_only_op, notask_ext_op}) {
+    ASSERT_NE(graph->AddNode(op_desc), nullptr);
+  }
+
+  const Buffer kernel_buffer(4U, 0x1U);
+  SetTbeKernelAttrs(normal_op, "normal_kernel", kernel_buffer);
+  SetTbeKernelAttrs(notask_op, "notask_kernel", kernel_buffer);
+  SetTbeKernelAttrs(notask_only_op, "notask_only_kernel", kernel_buffer);
+  SetTbeKernelAttrs(reuse_only_op, "reuse_only_kernel", kernel_buffer);
+  ASSERT_TRUE(AttrUtils::SetBool(notask_op, ATTR_NAME_NOTASK, true));
+  ASSERT_TRUE(AttrUtils::SetBool(notask_op, ATTR_NAME_OUTPUT_REUSE_INPUT, true));
+  ASSERT_TRUE(AttrUtils::SetBool(notask_only_op, ATTR_NAME_NOTASK, true));
+  ASSERT_TRUE(AttrUtils::SetBool(reuse_only_op, ATTR_NAME_OUTPUT_REUSE_INPUT, true));
+  ASSERT_TRUE(AttrUtils::SetBool(notask_ext_op, ATTR_NAME_NOTASK, true));
+  ASSERT_TRUE(AttrUtils::SetBool(notask_ext_op, ATTR_NAME_OUTPUT_REUSE_INPUT, true));
+  const auto ext_kernel = std::make_shared<OpKernelBin>("notask_ext_kernel", std::vector<char>{0x1, 0x1});
+  ASSERT_TRUE(notask_ext_op->SetExtAttr(OP_EXTATTR_NAME_TBE_KERNEL, ext_kernel));
+
+  Graph2SubGraphInfoList subgraphs;
+  std::map<std::string, int> stream_max_parallel_num;
+  ge::ModelBuilder builder(0, graph, subgraphs, stream_max_parallel_num, false);
+  ge::Model model;
+  ge::GeModel ge_model;
+  SetDummyModelTaskDef(model);
+
+  ASSERT_EQ(builder.SaveDataToModel(model, ge_model), SUCCESS);
+  EXPECT_NE(ge_model.GetTBEKernelStore().FindKernel("normal_kernel"), nullptr);
+  EXPECT_NE(ge_model.GetTBEKernelStore().FindKernel("notask_only_kernel"), nullptr);
+  EXPECT_NE(ge_model.GetTBEKernelStore().FindKernel("reuse_only_kernel"), nullptr);
+  EXPECT_EQ(ge_model.GetTBEKernelStore().FindKernel("notask_kernel"), nullptr);
+  EXPECT_EQ(ge_model.GetTBEKernelStore().FindKernel("notask_ext_kernel"), nullptr);
+  EXPECT_EQ(ge_model.tbe_kernel_store_.kernels_.size(), 3U);
+
+  std::string kernel_name;
+  EXPECT_TRUE(AttrUtils::GetStr(normal_op, "_kernelname", kernel_name));
+  EXPECT_EQ(kernel_name, "normal_kernel");
+  EXPECT_FALSE(AttrUtils::GetStr(notask_op, "_kernelname", kernel_name));
+  EXPECT_EQ(notask_op->TryGetExtAttr(OP_EXTATTR_NAME_TBE_KERNEL, TBEKernelPtr()), nullptr);
+}
+
 TEST_F(UtestModelBuilderTest, CompileSingleOp) {
   Graph2SubGraphInfoList subgraphs;
   std::map<std::string, int> stream_max_parallel_num;

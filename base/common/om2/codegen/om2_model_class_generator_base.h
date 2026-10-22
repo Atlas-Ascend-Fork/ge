@@ -30,7 +30,6 @@ class Om2ModelClassGeneratorBase : public CodeGeneratorBase {
   VarRef notify_list_;
   VarRef event_list_;
   VarRef label_list_;
-  VarRef aclrt_label_list_;
   VarRef total_dev_mem_ptr_;
   VarRef owns_total_dev_mem_;
   VarRef is_stream_list_bind_;
@@ -43,7 +42,6 @@ class Om2ModelClassGeneratorBase : public CodeGeneratorBase {
   VarRef kernel_id_;
   VarRef dev_ext_info_mem_ptrs_;
   VarRef label_switch_label_list_;
-  VarRef label_goto_ex_index_values_;
   VarRef label_goto_args_;
   VarRef label_goto_ex_label_list_;
   VarRef mem_event_id_mem_map_;

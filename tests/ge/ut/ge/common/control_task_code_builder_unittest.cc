@@ -351,13 +351,7 @@ TEST_F(ControlTaskCodeGeneratorUt, GenerateControlTaskFiles_Ok) {
   EXPECT_NE(load_file.find("if (mem_type == RT_MEMORY_TS)"), std::string::npos);
   EXPECT_NE(load_file.find("OM2_CHK_STATUS(aclrtMemcpy"), std::string::npos);
 
-  [[maybe_unused]] const std::string expected_header = R"(#include <iostream>
-#include <cstddef>
-#include <ctime>
-#include <chrono>
-#include <fstream>
-#include <iomanip>
-#include <sstream>
+  [[maybe_unused]] const std::string expected_header = R"(#include <cstddef>
 #include <vector>
 #include <map>
 #include <unordered_map>
@@ -365,17 +359,14 @@ TEST_F(ControlTaskCodeGeneratorUt, GenerateControlTaskFiles_Ok) {
 #include <cstdint>
 #include <type_traits>
 #include <array>
-#include "securec.h"
 #include "acl/acl.h"
 #include "acl/acl_base.h"
 #include "exe_graph/runtime/runtime_tensor.h"
 #include "rt_external.h"
 #include "dlog_pub.h"
-#include "profiling/prof_common.h"
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <cinttypes>
-#include "mmpa/mmpa_api.h"
 
 // OM2 Logging Macros
 #define OM2_MODULE_NAME static_cast<int32_t>(GE)
@@ -1177,14 +1168,11 @@ class Om2Model {
     std::vector<aclrtNotify> notify_list_;
     std::vector<aclrtEvent> event_list_;
     std::vector<aclrtLabel> label_list_;
-    aclrtLabelList aclrt_label_list_;
-    std::vector<aclrtLabel> label_used_;
     std::map<uint32_t, aclrtLabelList> label_switch_label_list_;
     std::map<uint32_t, std::pair<void *, uint32_t>> label_goto_args_;
     std::map<uint32_t, aclrtLabelList> label_goto_ex_label_list_;
     aclError CreateLabelListForLabelSwitch(uint32_t op_index, std::vector<uint32_t> label_list_indexs);
     aclError CreateLabelListForLabelGotoEx(uint32_t op_index, uint32_t label_index);
-    std::vector<void *> label_goto_ex_index_values_;
     void *total_dev_mem_ptr_;
     bool is_stream_list_bind_;
     std::unordered_map<std::string, BinDataInfo> bin_info_map_;
@@ -1253,6 +1241,7 @@ aclError Om2Model::InitResources(const GertModelExternalResources &external_reso
   } else {
     OM2_CHK_STATUS(aclmdlRIBuildBegin(&model_handle_, 0));
   }
+  OM2_CHK_STATUS(aclmdlRISetName(model_handle_, "g1"));
 
   // 2. 获取overflow地址
   OM2_CHK_STATUS(aclrtCtxGetFloatOverflowAddr(&overflow_addr_));
@@ -1369,9 +1358,6 @@ aclError Om2Model::ReleaseResources() {
       OM2_CHK_STATUS(aclrtDestroyLabelList(label.second));
     }
   }
-  for (auto &label_goto_ex_index_value : label_goto_ex_index_values_) {
-    OM2_CHK_STATUS(aclrtFree(label_goto_ex_index_value));
-  }
   for (auto &label_goto_arg : label_goto_args_) {
     void *arg_addr = label_goto_arg.second.first;
     if (arg_addr != nullptr) {
@@ -1403,11 +1389,11 @@ aclError Om2Model::CreateLabelListForLabelSwitch(uint32_t op_index, std::vector<
 {
   label_switch_label_list_[op_index] = nullptr;
   uint32_t label_used_size = label_list_indexs.size();
-  label_used_.resize(label_used_size, nullptr);
+  std::vector<aclrtLabel> label_used(label_used_size, nullptr);
   for (uint32_t i = 0; i < label_used_size; i++) {
-    label_used_[i] = label_list_[label_list_indexs[i]];
+    label_used[i] = label_list_[label_list_indexs[i]];
   }
-  OM2_CHK_STATUS(aclrtCreateLabelList(label_used_.data(), label_used_.size(), &(label_switch_label_list_[op_index])));
+  OM2_CHK_STATUS(aclrtCreateLabelList(label_used.data(), label_used.size(), &(label_switch_label_list_[op_index])));
   return ACL_SUCCESS;
 }
 
@@ -1418,9 +1404,9 @@ aclError Om2Model::CreateLabelListForLabelGotoEx(uint32_t op_index, uint32_t lab
   if (it != label_goto_args_.cend()) {
     label_goto_ex_label_list_[op_index] = it->second.first;
   } else {
-    label_used_.resize(1, nullptr);
-    label_used_[0] = label_list_[static_cast<size_t>(label_index)];
-    OM2_CHK_STATUS(aclrtCreateLabelList(label_used_.data(), label_used_.size(), &(label_goto_ex_label_list_[op_index])));
+    std::vector<aclrtLabel> label_used(1, nullptr);
+    label_used[0] = label_list_[static_cast<size_t>(label_index)];
+    OM2_CHK_STATUS(aclrtCreateLabelList(label_used.data(), label_used.size(), &(label_goto_ex_label_list_[op_index])));
     label_goto_args_[label_index] = {label_goto_ex_label_list_[op_index], static_cast<uint32_t>(sizeof(rtLabelDevInfo))};
   }
   return ACL_SUCCESS;

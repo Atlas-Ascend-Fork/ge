@@ -1088,6 +1088,21 @@ void HybridModelRtV2Executor::InitHostInputFlags(const ge::ComputeGraphPtr &root
   }
 }
 
+namespace {
+// ge.hardwareInfo：会话初始化写入的硬件信息（AIV 核数上限等取自此串），全局头中暂无同名常量
+constexpr char_t const *kHardwareInfoOption = "ge.hardwareInfo";
+
+// 从初始化线程的上下文读取指定选项并加入透传白名单；复用 ParserContextOption 的读取与告警语义，
+// 空值视为未配置、不放入
+void AddOptionFromThreadLocal(const std::string &option_name, std::map<std::string, std::string> &options) {
+  std::string option_value;
+  HybridModelExecutor::ParserContextOption(option_name, option_value);
+  if (!option_value.empty()) {
+    options[option_name] = option_value;
+  }
+}
+}  // namespace
+
 Status HybridModelRtV2Executor::InitCtx() {
   GE_ASSERT_SUCCESS(run_ctx_.Init(model_));
   if (run_ctx_.host_exec_flag_ && gert::GlobalDumper::GetInstance()->IsEnable(gert::DumpType::kDataDump) != 0UL) {
@@ -1097,11 +1112,12 @@ Status HybridModelRtV2Executor::InitCtx() {
 
   context_.ge_context = &ge_context_;
   std::map<std::string, std::string> options;
-  std::string static_memory_policy;
-  HybridModelExecutor::ParserContextOption(STATIC_MEMORY_POLICY, static_memory_policy);
-  if (!static_memory_policy.empty()) {
-    options.insert(std::make_pair(STATIC_MEMORY_POLICY, static_memory_policy));
-  }
+  // 异步执行线程会把 ge_context_ 整体装载为自身的 thread-local
+  // （hybrid_model_async_executor.cc 中 GetThreadLocalContext() = *ge_context），
+  // 因此自定义算子在该线程要读取的选项必须在此显式透传（白名单，空值视为未配置）。
+  AddOptionFromThreadLocal(STATIC_MEMORY_POLICY, options);
+  AddOptionFromThreadLocal(ATOMIC_CLEAN_POLICY, options);
+  AddOptionFromThreadLocal(kHardwareInfoOption, options);
   ge_context_.SetGlobalOption(options);
   return ge::SUCCESS;
 }

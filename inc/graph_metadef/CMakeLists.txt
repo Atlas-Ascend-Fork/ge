@@ -39,6 +39,7 @@ if(NOT TARGET ge_metadef_headers)
         $<BUILD_INTERFACE:${GE_METADEF_INC_DIR}/graph/utils>
         $<BUILD_INTERFACE:${GE_METADEF_INC_DIR}/register>
         $<BUILD_INTERFACE:${AIR_CODE_DIR}/inc>
+        $<BUILD_INTERFACE:${AIR_CODE_DIR}/pkg_inc>
         $<BUILD_INTERFACE:${GE_METADEF_DIR}>
         $<BUILD_INTERFACE:${GE_METADEF_DIR}/third_party/transformer>
         $<BUILD_INTERFACE:${GE_METADEF_DIR}/third_party/transformer/inc>

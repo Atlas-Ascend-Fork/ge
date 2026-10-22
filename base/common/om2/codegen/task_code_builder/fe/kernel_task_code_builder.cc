@@ -210,6 +210,22 @@ Status KernelTaskCodeBuilder::AppendOrderedArgValueForCommon(const AddrSemantic 
   return SUCCESS;
 }
 
+void KernelTaskCodeBuilder::GetAtomicWorkspaceAddrs(const OpDescPtr &op_desc,
+                                                    const std::vector<AddrSemantic> &workspace_addrs,
+                                                    std::vector<AddrSemantic> &atomic_workspace_addrs) const {
+  GeAttrValue::NAMED_ATTRS workspaces;
+  if (AttrUtils::GetNamedAttrs(op_desc, EXT_ATTR_ATOMIC_WORKSPACE_INFO, workspaces)) {
+    std::vector<int64_t> value;
+    const std::string &op_name = op_desc->GetName();
+    (void)AttrUtils::GetListInt(workspaces, op_name, value);
+    for (const int64_t index : value) {
+      if ((index >= 0) && (static_cast<size_t>(index) < workspace_addrs.size())) {
+        atomic_workspace_addrs.push_back(workspace_addrs[static_cast<size_t>(index)]);
+      }
+    }
+  }
+}
+
 void KernelTaskCodeBuilder::AppendOrderedArg(const AddrSemantic &semantic) {
   AppendOrderedArgValue(semantic);
   current_args_offset_ += GetOrderedArgByteSize(semantic);
@@ -429,7 +445,8 @@ Status KernelTaskCodeBuilder::CopyTilingDataIfNeeded(const TaskSemanticContribut
   std::shared_ptr<optiling::utils::OpRunInfo> default_tiling = nullptr;
   std::shared_ptr<optiling::utils::OpRunInfo> run_info = nullptr;
   if (is_separately_clean_task_) {
-    // 预埋，走不进去
+    // 单独清理场景，取 atomic op para（FE 已写入 ATTR_NAME_ATOMIC_OP_RUN_INFO），
+    // 与 OM1 KernelTaskInfo::CopyTilingDataIfNeeded 行为保持一致
     run_info = context.op_desc->TryGetExtAttr(ge::ATTR_NAME_ATOMIC_OP_RUN_INFO, default_tiling);
   } else {
     run_info = context.op_desc->TryGetExtAttr(ge::ATTR_NAME_OP_RUN_INFO, default_tiling);
@@ -1410,23 +1427,47 @@ Status KernelTaskCodeBuilder::BuildOrderedArgValuesForAicore(const TaskSemanticC
 Status KernelTaskCodeBuilder::BuildOrderedArgValuesWithoutArgsFormat(const TaskSemanticContributeContext &context) {
   uint32_t args_addr_num = 0U;
   uint64_t addr_offset = *context.next_host_args_offset;
-  for (const auto &input_addr : build_data_.semantic.input_addrs) {
-    GE_ASSERT_SUCCESS(AppendOrderedArgValueForCommon(input_addr, addr_offset));
-    addr_offset += kAddressLen;
-    args_addr_num++;
-  }
-  for (const auto &output_addr : build_data_.semantic.output_addrs) {
-    if (!IsMaterializedOutput(output_addr)) {
-      continue;
+  if (!is_separately_clean_task_) {
+    for (const auto &input_addr : build_data_.semantic.input_addrs) {
+      GE_ASSERT_SUCCESS(AppendOrderedArgValueForCommon(input_addr, addr_offset));
+      addr_offset += kAddressLen;
+      args_addr_num++;
     }
-    GE_ASSERT_SUCCESS(AppendOrderedArgValueForCommon(output_addr, addr_offset));
-    addr_offset += kAddressLen;
-    args_addr_num++;
+    for (const auto &output_addr : build_data_.semantic.output_addrs) {
+      if (!IsMaterializedOutput(output_addr)) {
+        continue;
+      }
+      GE_ASSERT_SUCCESS(AppendOrderedArgValueForCommon(output_addr, addr_offset));
+      addr_offset += kAddressLen;
+      args_addr_num++;
+    }
+  } else {
+    std::vector<int64_t> atomic_output_index;
+    (void)AttrUtils::GetListInt(context.op_desc, ATOMIC_ATTR_OUTPUT_INDEX, atomic_output_index);
+    for (const int64_t output_index : atomic_output_index) {
+      if ((output_index >= 0) && (static_cast<size_t>(output_index) < build_data_.semantic.output_addrs.size())) {
+        const auto &output_addr = build_data_.semantic.output_addrs[static_cast<size_t>(output_index)];
+        GE_ASSERT_SUCCESS(AppendOrderedArgValueForCommon(output_addr, addr_offset));
+        addr_offset += kAddressLen;
+        args_addr_num++;
+      }
+    }
   }
-  for (const auto &workspace_addr : build_data_.semantic.workspace_addrs) {
-    GE_ASSERT_SUCCESS(AppendOrderedArgValueForCommon(workspace_addr, addr_offset));
-    addr_offset += kAddressLen;
-    args_addr_num++;
+
+  if (!is_separately_clean_task_) {
+    for (const auto &workspace_addr : build_data_.semantic.workspace_addrs) {
+      GE_ASSERT_SUCCESS(AppendOrderedArgValueForCommon(workspace_addr, addr_offset));
+      addr_offset += kAddressLen;
+      args_addr_num++;
+    }
+  } else {
+    std::vector<AddrSemantic> atomic_workspace_addrs;
+    GetAtomicWorkspaceAddrs(context.op_desc, build_data_.semantic.workspace_addrs, atomic_workspace_addrs);
+    for (const auto &workspace_addr : atomic_workspace_addrs) {
+      GE_ASSERT_SUCCESS(AppendOrderedArgValueForCommon(workspace_addr, addr_offset));
+      addr_offset += kAddressLen;
+      args_addr_num++;
+    }
   }
   if (has_tiling_) {
     AddrSemantic tiling_semantic;

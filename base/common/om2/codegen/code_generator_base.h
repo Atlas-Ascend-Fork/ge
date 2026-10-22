@@ -65,6 +65,9 @@ class CodeGeneratorBase {
   ExprRef AclmdlRIBuildBegin(Arg model_handle, Arg priority) const {
     return ast_.Call("aclmdlRIBuildBegin", {model_handle, priority});
   }
+  ExprRef AclmdlRISetName(Arg model_handle, Arg name) const {
+    return ast_.Call("aclmdlRISetName", {model_handle, name});
+  }
   ExprRef AclmdlRIBuildEnd(Arg model_handle, Arg stream) const {
     return ast_.Call("aclmdlRIBuildEnd", {model_handle, stream});
   }

@@ -185,6 +185,7 @@ add_executable(ut_fe_fusion
     ${CMAKE_CURRENT_LIST_DIR}/testcase/main_common.cc
     # fusion_manager (9 files)
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_configuration.cc
+    ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_configuration_2.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_platform_utils.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_fusion_graph_merge_util.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_fusion_manager.cc

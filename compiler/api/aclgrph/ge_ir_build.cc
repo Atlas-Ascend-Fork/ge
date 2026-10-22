@@ -34,6 +34,7 @@
 #include "framework/generator/ge_generator.h"
 #include "framework/omg/omg_inner_types.h"
 #include "graph/compute_graph.h"
+#include "graph/custom_op_factory.h"
 #include "graph/ge_global_options.h"
 #include "graph/ge_tensor.h"
 #include "graph/opsproto_manager.h"
@@ -1662,6 +1663,25 @@ graphStatus aclgrphConvertToWeightRefreshableGraphs(const ge::Graph &origin_grap
   return builder.SplitForVariableInferGraph(compute_graph, const_names_tmp, weight_refreshable_graphs);
 }
 
+// aclgrphSaveModel/aclgrphBundleSaveModel 的入参只能来自同进程的在线编译产物
+// （aclgrphBuildModel / GeSession::GetCompiledModel），在线导出不写 SO_BINS，自定义算子 so 只能在落盘
+// 重打包阶段补写。编译期（atc 与 ACL 共用 GraphBuilder::Build）GeRootModel 持有的就是进程级全局
+// CustomOpRegistry，这里恢复的正是同一个对象，等价于 atc 在编译末尾收集 so；模型已自带自定义算子 so 时
+// 说明 OM 里已有 SO_BINS，保持模型级 registry，不回退。
+void RestoreCustomOpRegistryForRepack(const GeRootModelPtr &root_model) {
+  if (root_model == nullptr) {
+    return;
+  }
+  for (const auto &so_bin : root_model->GetAllSoBin()) {
+    if ((so_bin != nullptr) && (so_bin->GetSoBinType() == SoBinType::kCustomOp)) {
+      GELOGD("[CUSTOM OP] model already carries custom op so, keep the model level registry.");
+      return;
+    }
+  }
+  root_model->SetCustomOpRegistry(CustomOpFactory::GetGlobalRegistryPtr());
+  GELOGI("[CUSTOM OP] repack restores the compile-time custom op registry.");
+}
+
 static graphStatus aclgrphSaveModelImpl(const std::string &output_file, const ModelBufferData &model) {
   ModelData model_data;
   model_data.model_data = model.data.get();
@@ -1683,6 +1703,7 @@ static graphStatus aclgrphSaveModelImpl(const std::string &output_file, const Mo
   } else {
     model_helper.SetRepackSoFlag(true);
     GE_ASSERT_SUCCESS(model_helper.LoadRootModel(model_data), "Load root model failed.");
+    RestoreCustomOpRegistryForRepack(model_helper.GetGeRootModel());
     ModelBufferData model_buffer;
     return model_helper.PackSoToModelData(model_data, output_file + ".om", model_buffer);
   }
@@ -1756,6 +1777,7 @@ graphStatus aclgrphBundleSaveModelImpl(const std::string &output_file, const Mod
       GE_ASSERT_SUCCESS(
           VerifyVarOffset(root_model->GetRootGraph(), var_name_to_verify_info),
           "Variable validation failed. Please ensure that the variables have been compiled under the same session.");
+      RestoreCustomOpRegistryForRepack(root_model);
       model_helper.GetGeRootModel()->GetRootGraph();
       GELOGD("Load root model successfully.");
       ModelBufferData cur_buf;

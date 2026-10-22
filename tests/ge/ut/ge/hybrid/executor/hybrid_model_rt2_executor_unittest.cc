@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <chrono>
+#include <thread>
 #include "acl/acl_rt.h"
 #include "macro_utils/dt_public_scope.h"
 #include "faker/space_registry_faker.h"
@@ -415,6 +417,103 @@ void HybridRt2ExecutorRunImpl() {
     sleep(1);
   }
   executor.Stop();
+}
+
+// 构造 SimpleFoo 图的 GeRootModel（RT2 执行路径可用）
+auto BuildSimpleFooRootModel() {
+  auto graph = ShareGraph::SimpleFooGraph();
+  for (auto &node : graph->GetAllNodes()) {
+    if (node->GetType() == "Foo") {
+      MockLessImportantNodeKernel(node);
+    }
+  }
+  auto netoutput = graph->FindFirstNodeMatchType(ge::NETOUTPUT);
+  netoutput->GetOpDesc()->SetSrcName({"foo"});
+  netoutput->GetOpDesc()->SetSrcIndex({0});
+  graph->TopologicalSorting();
+  GeModelBuilder builder(graph);
+  return builder.BuildGeRootModel();
+}
+
+// 异步执行线程内的探针：OnComputeDone 由 RunInternal 调用，运行在 HybridModelAsyncExecutor 的 std::async 线程
+class ThreadLocalOptionProbeListener : public ModelListener {
+ public:
+  Status OnComputeDone(uint32_t model_id, uint32_t data_index, uint32_t result_code,
+                       std::vector<gert::Tensor> &outputs) override {
+    (void)model_id;
+    (void)data_index;
+    (void)result_code;
+    (void)outputs;
+    read_ok = (ge::GetContext().GetOption(ge::ATOMIC_CLEAN_POLICY, atomic_clean_policy) == ge::GRAPH_SUCCESS) &&
+              (ge::GetContext().GetOption(kHardwareInfoKey, hardware_info) == ge::GRAPH_SUCCESS);
+    done = true;
+    return SUCCESS;
+  }
+  static constexpr char_t const *kHardwareInfoKey = "ge.hardwareInfo";
+  bool done = false;
+  bool read_ok = false;
+  std::string atomic_clean_policy;
+  std::string hardware_info;
+};
+
+// 触发一次异步执行并等待 listener 回调（回调运行在 HybridModelAsyncExecutor 的 std::async 线程）
+void RunAsyncOnceAndWait(HybridModelAsyncExecutor &executor,
+                         const std::shared_ptr<ThreadLocalOptionProbeListener> &probe) {
+  ASSERT_EQ(executor.Start(probe), SUCCESS);
+  auto *executor_rt_v2 = reinterpret_cast<HybridModelRtV2Executor *>(executor.executor_.get());
+  InputData inputs;
+  inputs.blobs.resize(executor_rt_v2->num_inputs_);
+  inputs.shapes.resize(executor_rt_v2->num_inputs_);
+  auto data = std::make_shared<RunArgs>();
+  data->input_tensor = std::move(InputData2GertTensors(inputs));
+  executor.EnqueueData(data);
+  // 细粒度轮询等待回调：避免粗粒度 sleep 把用例耗时抬到秒级，触发 CI 的 check_slow_tests（上限仍为 5s）
+  constexpr size_t kMaxPollTimes = 500U;
+  constexpr auto kPollInterval = std::chrono::milliseconds(10);
+  for (size_t i = 0U; (i < kMaxPollTimes) && (!probe->done); ++i) {
+    std::this_thread::sleep_for(kPollInterval);
+  }
+  executor.Stop();
+}
+
+TEST_F(UtestHybridRt2Executor, async_execution_reads_whitelisted_options) {
+  const std::string kHardwareInfoValue = "ai_core_cnt:20;vector_core_cnt:40;";
+  const std::string kAtomicCleanPolicyValue = "1";
+  // 模拟 session/graph 选项在装载线程上已写好
+  const auto saved_globals = ge::GetThreadLocalContext().GetAllGlobalOptions();
+  auto globals = saved_globals;
+  globals[ThreadLocalOptionProbeListener::kHardwareInfoKey] = kHardwareInfoValue;
+  globals[ge::ATOMIC_CLEAN_POLICY] = kAtomicCleanPolicyValue;
+  ge::GetThreadLocalContext().SetGlobalOption(globals);
+
+  auto ge_root_model = BuildSimpleFooRootModel();
+  HybridModel hybrid_model(ge_root_model);
+  hybrid_model.root_graph_item_.reset(new GraphItem);
+  hybrid_model.root_graph_ = ge_root_model->GetRootGraph();
+  ASSERT_EQ(hybrid_model.Init(), SUCCESS);
+  ASSERT_TRUE(hybrid_model.execute_by_rt_v2_);
+
+  HybridModelAsyncExecutor executor(&hybrid_model);
+  ASSERT_EQ(executor.Init(), SUCCESS);
+  // ① InitCtx 是否把白名单选项透传进执行器私有 ge_context_
+  ASSERT_NE(executor.GeContext(), nullptr);
+  ASSERT_NE(executor.GeContext()->ge_context, nullptr);
+  ge::GEThreadLocalContext snapshot = *(executor.GeContext()->ge_context);
+  std::string value;
+  EXPECT_EQ(snapshot.GetOption(ThreadLocalOptionProbeListener::kHardwareInfoKey, value), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(value, kHardwareInfoValue);
+  EXPECT_EQ(snapshot.GetOption(ge::ATOMIC_CLEAN_POLICY, value), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(value, kAtomicCleanPolicyValue);
+
+  // ② 异步执行线程内（listener 回调）能否读到
+  auto probe = std::make_shared<ThreadLocalOptionProbeListener>();
+  RunAsyncOnceAndWait(executor, probe);
+  EXPECT_TRUE(probe->done);
+  EXPECT_TRUE(probe->read_ok);
+  EXPECT_EQ(probe->hardware_info, kHardwareInfoValue);
+  EXPECT_EQ(probe->atomic_clean_policy, kAtomicCleanPolicyValue);
+
+  ge::GetThreadLocalContext().SetGlobalOption(saved_globals);
 }
 
 TEST_F(UtestHybridRt2Executor, InitHostInputFlagsCollectsHostModelInput) {

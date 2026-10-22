@@ -48,8 +48,7 @@ class OpImplModeConfigParser : public BaseConfigParser {
   Status GetOpPrecisonModeStrFromConfigFile(const std::string &file_path);
   bool CheckConfigImplType(const std::string &impl_mode) const;
 
-  // allow_hf32 新方案：扫描新目录下的 ops_allow_hf32_*.ini
-  Status InitAllowHF32Mode(const std::string &allow_hf32);
+  // allow_hf32 新方案：扫描 impl_mode 目录下的 ops_allow_hf32_*.ini
   Status InitAllowHF32NewFiles(const std::string &allow_hf32);
   Status InitAllowHF32LegacyFiles(const std::string &allow_hf32);
   Status ParseAllowHF32IniFile(const std::string &file_path);

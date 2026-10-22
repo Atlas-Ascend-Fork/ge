@@ -423,6 +423,57 @@ DavinciModel::~DavinciModel() noexcept {
   }
 }
 
+void DavinciModel::DestroyRtResources() {
+  // check rt ctx is exist. rt api call will cause error log when ctx does not exist
+  aclrtContext current_ctx = nullptr;
+  if (aclrtGetCurrentContext(&current_ctx) != ACL_SUCCESS) {
+    return;
+  }
+  for (size_t i = 0U; i < label_list_.size(); ++i) {
+    if (label_list_[i] != nullptr) {
+      GE_LOGW_IF(aclrtDestroyLabel(label_list_[i]) != ACL_SUCCESS, "Destroy label failed, index: %zu.", i);
+    }
+  }
+
+  for (size_t i = 0U; i < notify_list_.size(); ++i) {
+    GE_LOGW_IF(aclrtDestroyNotify(notify_list_[i]) != ACL_SUCCESS, "Destroy notify failed, index: %zu", i);
+  }
+
+  for (size_t i = 0U; i < event_list_.size(); ++i) {
+    GE_LOGW_IF(aclrtDestroyEvent(event_list_[i]) != ACL_SUCCESS, "Destroy event failed, index: %zu", i);
+  }
+
+  for (size_t i = 0U; i < hccl_group_ordered_event_list_.size(); ++i) {
+    GE_LOGW_IF(aclrtDestroyEvent(hccl_group_ordered_event_list_[i]) != ACL_SUCCESS,
+               "Destroy hccl group ordered event failed, index: %zu", i);
+  }
+
+  for (const auto &it : stream_2_event_) {
+    GE_LOGW_IF(aclrtDestroyEvent(it.second) != ACL_SUCCESS, "Destroy event failed");
+  }
+
+  ReleaseTask();
+
+  FreeWeightsMem();
+
+  FreeFileConstantMem();
+
+  FreeFeatureMapMem();
+
+  FreeExMem();
+
+  FreeDynamicWorkspaceMemory();
+
+  OpDebugUnRegister();
+
+  l1_fusion_addr_ = nullptr;
+
+  if (rt_model_handle_ != nullptr) {
+    GE_CHK_RT(aclmdlRIDestroy(rt_model_handle_));
+    rt_model_handle_ = nullptr;
+  }
+}
+
 void DavinciModel::DestroyResources() {
   GELOGD("Npu model: %u start to destroy resources.", model_id_);
   GE_CHK_STATUS(ModelRunStop());
@@ -440,53 +491,7 @@ void DavinciModel::DestroyResources() {
 
   op_list_.clear();
   operator_list_.clear();
-  // check rt ctx is exist. rt api call will cause error log when ctx does not exist
-  aclrtContext current_ctx = nullptr;
-  if (aclrtGetCurrentContext(&current_ctx) == ACL_SUCCESS) {
-    for (size_t i = 0U; i < label_list_.size(); ++i) {
-      if (label_list_[i] != nullptr) {
-        GE_LOGW_IF(aclrtDestroyLabel(label_list_[i]) != ACL_SUCCESS, "Destroy label failed, index: %zu.", i);
-      }
-    }
-
-    for (size_t i = 0U; i < notify_list_.size(); ++i) {
-      GE_LOGW_IF(aclrtDestroyNotify(notify_list_[i]) != ACL_SUCCESS, "Destroy notify failed, index: %zu", i);
-    }
-
-    for (size_t i = 0U; i < event_list_.size(); ++i) {
-      GE_LOGW_IF(aclrtDestroyEvent(event_list_[i]) != ACL_SUCCESS, "Destroy event failed, index: %zu", i);
-    }
-
-    for (size_t i = 0U; i < hccl_group_ordered_event_list_.size(); ++i) {
-      GE_LOGW_IF(aclrtDestroyEvent(hccl_group_ordered_event_list_[i]) != ACL_SUCCESS,
-                 "Destroy hccl group ordered event failed, index: %zu", i);
-    }
-
-    for (const auto &it : stream_2_event_) {
-      GE_LOGW_IF(aclrtDestroyEvent(it.second) != ACL_SUCCESS, "Destroy event failed");
-    }
-
-    ReleaseTask();
-
-    FreeWeightsMem();
-
-    FreeFileConstantMem();
-
-    FreeFeatureMapMem();
-
-    FreeExMem();
-
-    FreeDynamicWorkspaceMemory();
-
-    OpDebugUnRegister();
-
-    l1_fusion_addr_ = nullptr;
-
-    if (rt_model_handle_ != nullptr) {
-      GE_CHK_RT(aclmdlRIDestroy(rt_model_handle_));
-      rt_model_handle_ = nullptr;
-    }
-  }
+  DestroyRtResources();
   model_kernel_handles_manager_.ClearAllHandle();
   bin_kernel_handle_.CleanTbeHandle();
   aicpu_resources_.ReleaseResources();

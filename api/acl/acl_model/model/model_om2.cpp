@@ -751,7 +751,7 @@ static aclError LoadFromMemWithMem(const aclmdlConfigHandle *handle,
   // 是否配置与配置值分别传递：显式 normal 也走外部 RI 路径，禁止以模式值推断
   loadArgs.sch_mode_configured = (handle->attrState.count(ACL_MDL_SCH_MODE_INT32) != 0U);
   loadArgs.sch_mode = handle->schMode;
-  return Om2ModelLoadFromMemWithMem(handle->mdlAddr, handle->mdlSize, modelId, loadArgs, nullptr);
+  return Om2ModelLoadFromMemWithMem(handle->mdlAddr, handle->mdlSize, modelId, loadArgs, handle->weightPath.c_str());
 }
 
 }  // namespace acl

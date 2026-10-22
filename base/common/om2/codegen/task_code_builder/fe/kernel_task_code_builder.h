@@ -141,6 +141,8 @@ class KernelTaskCodeBuilder : public TaskCodeBuilder {
   size_t GetExtraArgsSize(const OpDescPtr &op_desc, const ccKernelType kernel_type,
                           const ArgsFormatInfo &args_format_holder) const;
   std::vector<size_t> BuildMaterializedOutputIndices(const KernelTaskSemantic &kernel_semantic) const;
+  void GetAtomicWorkspaceAddrs(const OpDescPtr &op_desc, const std::vector<AddrSemantic> &workspace_addrs,
+                               std::vector<AddrSemantic> &atomic_workspace_addrs) const;
 
   // ── Tiling & DFX ──
   Status CopyTilingDataIfNeeded(const TaskSemanticContributeContext &context, const ArgsFormatInfo &args_format_holder);

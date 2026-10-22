@@ -634,10 +634,25 @@ bool SubOpsStore::CheckAllTensorsParamType(const ge::NodePtr &node, bool is_inpu
 
 void SubOpsStore::LogAllFormatAndDtype(const SupportedFormatAndDtype &info, const string &tensor_name,
                                        std::ostringstream &reason_oss, string &reason) const {
-  auto all_data_type = StringUtils::IntegerVecToString(info.support_data_types_map.at(tensor_name));
-  auto all_formats = StringUtils::IntegerVecToString(info.suppport_formats_map.at(tensor_name));
-  reason_oss << "All supported data type and format of tensor " << tensor_name << " is: "
-             << "Data Type: " << all_data_type << "Format:" << all_formats;
+  const vector<ge::DataType> &support_data_types = info.support_data_types_map.at(tensor_name);
+  const vector<ge::Format> &support_formats = info.suppport_formats_map.at(tensor_name);
+  string all_data_types;
+  for (size_t i = 0; i < support_data_types.size(); ++i) {
+    if (i != 0) {
+      all_data_types += ", ";
+    }
+    all_data_types += ge::TypeUtils::DataTypeToSerialString(support_data_types[i]);
+  }
+  string all_formats;
+  for (size_t i = 0; i < support_formats.size(); ++i) {
+    if (i != 0) {
+      all_formats += ", ";
+    }
+    all_formats += ge::TypeUtils::FormatToSerialString(support_formats[i]);
+  }
+  reason_oss << "All supported combinations of data types and formats for the tensor " << tensor_name
+             << " (one-to-one sequential mapping): data types " << all_data_types << " and formats " << all_formats
+             << ".";
   reason = reason_oss.str();
 }
 
@@ -670,7 +685,7 @@ bool SubOpsStore::CheckFormatAndDtypeNormalMode(const ge::NodePtr &node, const s
 
     if (!CheckDtypeSupported(node, tensor_desc, tensor_kernel, iter_types_map->second, info)) {
       string dtype = ge::TypeUtils::DataTypeToSerialString(tensor_desc->GetDataType());
-      reason_oss << "data type " << dtype << " of " << in_or_out << " [" << name << "] is not supported. ";
+      reason_oss << "The data type " << dtype << " of the " << in_or_out << " " << name << " is not supported. ";
 
       FE_LOGD("[ChkSpt][FEChk][ChkTensor][Node %s, type %s] %s %s's data type [%s] is not supported by ops kernel.",
               op_desc.GetName().c_str(), op_desc.GetType().c_str(), in_or_out.c_str(), tensor_name.c_str(),
@@ -689,7 +704,7 @@ bool SubOpsStore::CheckFormatAndDtypeNormalMode(const ge::NodePtr &node, const s
 
   if (!CheckFormatSupported(node, tensor_desc, tensor_kernel, iter_formats_map->second)) {
     string format = FormatToStr(tensor_desc->GetOriginFormat());
-    reason_oss << "origin format " << format << " of " << in_or_out << " [" << name << "] is not supported. ";
+    reason_oss << "The origin format " << format << " of the " << in_or_out << " " << name << " is not supported. ";
 
     FE_LOGD("[ChkSpt][FEChk][ChkTensor][Node %s, type %s] %s %s's origin format [%s] is not supported by ops kernel.",
             op_desc.GetName().c_str(), op_desc.GetType().c_str(), in_or_out.c_str(), tensor_name.c_str(),
@@ -880,11 +895,54 @@ bool SubOpsStore::CheckSingleTensorSupportedAccurateMode(const ge::NodePtr &node
     return false;
   }
 
-  check_flag = !CheckAccuracyDtypeSupported(tensor_desc, type_index, tensor_info_ptr,
-                                            info.support_data_types_map.at(unique_name)) ||
-               !CheckAccuracyFormatSupported(tensor_desc, type_index, tensor_info_ptr,
-                                             info.suppport_formats_map.at(unique_name)) ||
-               !VerifyFormatC0Val(op_desc_ptr, tensor_desc);
+  const vector<ge::DataType> &support_data_types = info.support_data_types_map.at(unique_name);
+  const vector<ge::Format> &support_formats = info.suppport_formats_map.at(unique_name);
+  bool is_dtype_accuracy_supported =
+      CheckAccuracyDtypeSupported(tensor_desc, type_index, tensor_info_ptr, support_data_types);
+  bool is_format_accuracy_supported =
+      CheckAccuracyFormatSupported(tensor_desc, type_index, tensor_info_ptr, support_formats);
+  bool is_c0_valid = VerifyFormatC0Val(op_desc_ptr, tensor_desc);
+  check_flag = !is_dtype_accuracy_supported || !is_format_accuracy_supported || !is_c0_valid;
+  if (check_flag) {
+    if (!is_dtype_accuracy_supported) {
+      reason_oss << "A data type mismatch occurs for the " << input_or_output << " " << index
+                 << ". The current value is " << ge::TypeUtils::DataTypeToSerialString(tensor_desc->GetDataType())
+                 << ", while the expected value is ";
+      if (support_data_types.size() < type_index + 1) {
+        reason_oss << "none";
+      } else {
+        reason_oss << ge::TypeUtils::DataTypeToSerialString(support_data_types[type_index]);
+      }
+      reason_oss << ".";
+    }
+    if (!is_format_accuracy_supported) {
+      if (reason_oss.tellp() > 0) {
+        reason_oss << " ";
+      }
+      ge::Format desc_format = static_cast<ge::Format>(ge::GetPrimaryFormat(tensor_desc->GetFormat()));
+      reason_oss << "A format mismatch occurs for the " << input_or_output << " " << index << ". The current value is "
+                 << ge::TypeUtils::FormatToSerialString(desc_format) << ", while the expected value is ";
+      if (support_formats.size() < type_index + 1) {
+        reason_oss << "none";
+      } else {
+        reason_oss << ge::TypeUtils::FormatToSerialString(support_formats[type_index]);
+      }
+      reason_oss << ".";
+    }
+    if (!is_c0_valid) {
+      if (reason_oss.tellp() > 0) {
+        reason_oss << " ";
+      }
+      ge::Format format = tensor_desc->GetFormat();
+      int64_t current_c0_val = ge::GetC0Value(static_cast<int32_t>(format));
+      int64_t c0_val = transformer::TransferShapeUtils::GetC0ByDtype(tensor_desc->GetDataType());
+      reason_oss << "A mismatch of the C0 format occurs for the " << input_or_output << " " << index
+                 << " of the Cast operator. The C0 value of the data type "
+                 << ge::TypeUtils::DataTypeToSerialString(tensor_desc->GetDataType()) << " should be " << c0_val
+                 << ", but the actual value is " << current_c0_val << ".";
+    }
+    info.reason = reason_oss.str();
+  }
   return true;
 }
 
@@ -921,6 +979,10 @@ bool SubOpsStore::CheckAllTensorsSupportedAccurateMode(const ge::NodePtr &node, 
     return false;
   }
 
+  if (info.support_data_types_map.empty() || info.support_data_types_map.cbegin()->second.empty()) {
+    info.reason = "The supported data types of op " + op_desc_ptr->GetName() + " in op information library are empty.";
+    return false;
+  }
   uint32_t type_size = static_cast<uint32_t>(info.support_data_types_map.cbegin()->second.size());
   for (uint32_t type_index = 0; type_index < type_size; type_index++) {
     bool need_continue = false;
@@ -943,7 +1005,6 @@ bool SubOpsStore::CheckAllTensorsSupportedAccurateMode(const ge::NodePtr &node, 
     }
     return true;
   }
-  info.reason = "The format and dtype is not precisely equivalent to format and dtype in op information library.";
   return false;
 }
 

@@ -106,6 +106,7 @@ MethodDef *ResourcesFileCodeGenerator::BuildInitResourcesMethod(
               {ast_.Assign(model_handle_, external_resources.Attr("external_rt_model")),
                ast_.Assign(is_external_rt_model_, true)},
               {ChkStatus(AclmdlRIBuildBegin(model_handle_.Addr(), 0))}),
+      ChkStatus(AclmdlRISetName(model_handle_, ast_.Str(codegen_model.model_name))),
       ast_.BlankLine(),
       ast_.Comment("2. 获取overflow地址"),
       ChkStatus(AclrtCtxGetFloatOverflowAddr(overflow_addr_.Addr())),
@@ -364,11 +365,6 @@ void ResourcesFileCodeGenerator::BuildReleaseResourcesMethodForControlTask(std::
         }));
   }
   if (runtime.has_label_goto) {
-    auto label_goto_ex_index_value = ast_.Var("auto &", "label_goto_ex_index_value");
-    (void)body.emplace_back(ast_.RangeFor(label_goto_ex_index_value, label_goto_ex_index_values_,
-                                          {
-                                              ChkStatus(AclrtFree(label_goto_ex_index_value)),
-                                          }));
     auto label_goto_arg = ast_.Var("auto &", "label_goto_arg");
     auto arg_addr = ast_.Var("void *", "arg_addr");
     (void)body.emplace_back(
