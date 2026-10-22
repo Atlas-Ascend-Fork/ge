@@ -61,8 +61,60 @@ class TensorHolder:
         """Prevent direct instantiation of TensorHolder objects."""
         raise RuntimeError("TensorHolder objects should not be created directly")
 
+    def __add__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
+        """Support + operator."""
+        return self.add(other)
+
+    def __sub__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
+        """Support - operator."""
+        return self.sub(other)
+
+    def __mul__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
+        """Support * operator."""
+        return self.mul(other)
+
+    def __truediv__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
+        """Support / operator."""
+        return self.div(other)
+
+    def __radd__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
+        """Support right addition operator."""
+        return self.add(other)
+
+    def __rsub__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
+        """Support right subtraction operator."""
+        other = convert_to_tensor_holder(other, self._builder)
+        return other.sub(self)
+
+    def __rmul__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
+        """Support right multiplication operator."""
+        return self.mul(other)
+
+    def __rtruediv__(
+        self, other: Union["TensorHolder", "TensorLike"]
+    ) -> "TensorHolder":
+        """Support right division operator."""
+        other = convert_to_tensor_holder(other, self._builder)
+        return other.div(self)
+
+    @property
+    def name(self) -> str:
+        """Get node name.
+
+        Returns:
+            Producer node name.
+        """
+        return self._get_node_snapshot().name
+
+    @property
+    def _as_parameter_(self) -> EsCTensorHolderPtr:
+        """Provide the borrowed tensor pointer for ctypes argument conversion."""
+        return self._handle
+
     @classmethod
-    def _create_from(cls, handle: EsCTensorHolderPtr, owner_builder: "GraphBuilder") -> "TensorHolder":
+    def _create_from(
+        cls, handle: EsCTensorHolderPtr, owner_builder: "GraphBuilder"
+    ) -> "TensorHolder":
         """Create TensorHolder object from C++ pointer. (internal use only by e.g GraphBuilder.create_input(),
          do not use this method directly)
 
@@ -86,38 +138,6 @@ class TensorHolder:
         instance._builder = owner_builder
 
         return instance
-
-    def _check_usable(self, operation: str) -> None:
-        """Check if tensor holder is usable.
-
-        Args:
-            operation: Operation name.
-        """
-        self._builder._check_usable(operation)
-
-    def _validate_operation(self, other: "TensorHolder", op_name: str) -> None:
-        """Validate operation between two tensor holders.
-
-        Args:
-            other: Another TensorHolder object.
-            op_name: Operation name.
-        """
-        if self._builder is not other._builder:
-            raise ValueError(
-                f"Cannot perform {op_name}: tensors from different GraphBuilders "
-                f"('{self._builder.name}' vs '{other._builder.name}')"
-            )
-        other._check_usable(op_name)
-        self._check_usable(op_name)
-
-    @property
-    def name(self) -> str:
-        """Get node name.
-
-        Returns:
-            Producer node name.
-        """
-        return self._get_node_snapshot().name
 
     def set_data_type(self, data_type: DataType) -> "TensorHolder":
         """Set tensor data type.
@@ -193,63 +213,6 @@ class TensorHolder:
 
         return self
 
-    def _get_math_operator_lib(self):
-        """Get library containing math operators (Add/Sub/Mul/Div).
-
-        Tries libes_math.so first, falls back to default library if unavailable.
-
-        Returns:
-            ctypes library object containing EsAdd/EsSub/EsMul/EsDiv.
-
-        Raises:
-            RuntimeError: If neither library is available.
-        """
-        try:
-            return get_generated_lib()
-        except RuntimeError:
-            try:
-                return get_generated_lib(MATH_LIB_NAME)
-            except RuntimeError as exc:
-                raise RuntimeError(
-                    f"Math operators (Add/Sub/Mul/Div) not available: neither {MATH_LIB_NAME} "
-                    f"nor {DEFAULT_GENERATED_LIB_NAME} could be loaded. Please ensure at least one is accessible."
-                ) from exc
-
-    # Operator overloading support
-    def __add__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
-        """Support + operator."""
-        return self.add(other)
-
-    def __sub__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
-        """Support - operator."""
-        return self.sub(other)
-
-    def __mul__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
-        """Support * operator."""
-        return self.mul(other)
-
-    def __truediv__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
-        """Support / operator."""
-        return self.div(other)
-
-    def __radd__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
-        """Support right addition operator."""
-        return self.add(other)
-
-    def __rsub__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
-        """Support right subtraction operator."""
-        other = convert_to_tensor_holder(other, self._builder)
-        return other.sub(self)
-
-    def __rmul__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
-        """Support right multiplication operator."""
-        return self.mul(other)
-
-    def __rtruediv__(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
-        """Support right division operator."""
-        other = convert_to_tensor_holder(other, self._builder)
-        return other.div(self)
-
     def add(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
         """Add two tensors.
 
@@ -272,7 +235,9 @@ class TensorHolder:
         if not result_handle:
             raise RuntimeError("Failed to create add operation")
 
-        return self._builder._apply_scope_infos_to_node(TensorHolder._create_from(result_handle, self._builder))
+        return self._builder.apply_scope_infos_to_node(
+            TensorHolder._create_from(result_handle, self._builder)
+        )
 
     def sub(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
         """Subtract two tensors.
@@ -296,7 +261,9 @@ class TensorHolder:
         if not result_handle:
             raise RuntimeError("Failed to create sub operation")
 
-        return self._builder._apply_scope_infos_to_node(TensorHolder._create_from(result_handle, self._builder))
+        return self._builder.apply_scope_infos_to_node(
+            TensorHolder._create_from(result_handle, self._builder)
+        )
 
     def mul(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
         """Multiply two tensors.
@@ -320,7 +287,9 @@ class TensorHolder:
         if not result_handle:
             raise RuntimeError("Failed to create mul operation")
 
-        return self._builder._apply_scope_infos_to_node(TensorHolder._create_from(result_handle, self._builder))
+        return self._builder.apply_scope_infos_to_node(
+            TensorHolder._create_from(result_handle, self._builder)
+        )
 
     def div(self, other: Union["TensorHolder", "TensorLike"]) -> "TensorHolder":
         """Divide two tensors.
@@ -344,10 +313,57 @@ class TensorHolder:
         if not result_handle:
             raise RuntimeError("Failed to create div operation")
 
-        return self._builder._apply_scope_infos_to_node(TensorHolder._create_from(result_handle, self._builder))
+        return self._builder.apply_scope_infos_to_node(
+            TensorHolder._create_from(result_handle, self._builder)
+        )
 
     def get_owner_builder(self):
         return self._builder
+
+    def _check_usable(self, operation: str) -> None:
+        """Check if tensor holder is usable.
+
+        Args:
+            operation: Operation name.
+        """
+        self._builder._check_usable(operation)
+
+    def _validate_operation(self, other: "TensorHolder", op_name: str) -> None:
+        """Validate operation between two tensor holders.
+
+        Args:
+            other: Another TensorHolder object.
+            op_name: Operation name.
+        """
+        if self._builder is not other._builder:
+            raise ValueError(
+                f"Cannot perform {op_name}: tensors from different GraphBuilders "
+                f"('{self._builder.name}' vs '{other._builder.name}')"
+            )
+        other._check_usable(op_name)
+        self._check_usable(op_name)
+
+    def _get_math_operator_lib(self):
+        """Get library containing math operators (Add/Sub/Mul/Div).
+
+        Tries libes_math.so first, falls back to default library if unavailable.
+
+        Returns:
+            ctypes library object containing EsAdd/EsSub/EsMul/EsDiv.
+
+        Raises:
+            RuntimeError: If neither library is available.
+        """
+        try:
+            return get_generated_lib()
+        except RuntimeError:
+            try:
+                return get_generated_lib(MATH_LIB_NAME)
+            except RuntimeError as exc:
+                raise RuntimeError(
+                    f"Math operators (Add/Sub/Mul/Div) not available: neither {MATH_LIB_NAME} "
+                    f"nor {DEFAULT_GENERATED_LIB_NAME} could be loaded. Please ensure at least one is accessible."
+                ) from exc
 
     def _get_node_snapshot(self) -> "Node":
         """Get a snapshot of the producer node of this tensor. (internal use by internal api)
