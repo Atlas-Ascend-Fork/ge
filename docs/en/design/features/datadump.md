@@ -9,7 +9,7 @@
 The Dump module writes operator input/output tensor data, overflow information, and exception context to disk during model execution. You use this data for accuracy tuning, problem diagnosis, and performance analysis. The module boundaries include:
 
 - **Functional scope**: The module supports synchronous/asynchronous dump, overflow detection dump, and exception dump. It covers static shape and dynamic shape graphs. The module supports single operator, single stream, multi-stream, and multi-thread scenarios.
-- **Interactive components**: The module interacts with GE execution engine, memory management, stream management, HCCL, RTS (Runtime System), ACL interfaces, GE options, and environment variables.
+- **Interactive components**: The module interacts with GE execution engine, memory management, stream management, HCCL, RTS (Runtime System), ACL interfaces, and GE options.
 - **Excluded scope**: The module does not handle data parsing (offline tools handle this). The module does not interfere with normal model execution logic.
 
 #### Architecture Layering
@@ -48,7 +48,7 @@ The Dump module uses a layered design. You can see the execution flow below:
 
 2. **Dynamic adaptability**: You can enable or disable dump functionality at runtime. Constraint conditions can refresh in real-time. This avoids restart or graph reconstruction.
 
-3. **Entry consistency**: Environment variables, GE options, and ACL interfaces must behave consistently when enabled. You must explicitly define mutual influences.
+3. **Entry consistency**: GE options and ACL interfaces must behave consistently when enabled. You must explicitly define mutual influences.
 
 4. **Performance preservation**: Enabling dump should not cause significant execution performance degradation (especially in RT2.0 multi-stream multi-thread scenarios). You must not add unnecessary memory allocations or synchronization operations in hot paths.
 
@@ -159,29 +159,22 @@ Static graphs and dynamic graphs handle HCCL differently:
 
 #### Enable Methods
 
-Dump supports three enable methods:
+Dump supports two enable methods:
 
-1. **Environment variables**:
-   - `DUMP_GE_PATH`: dump output path
-   - `DUMP_GE_MODE`: dump mode (input/output/all)
-   - `DUMP_GE_LAYER`: specifies operator list needing dump
-
-2. **GE Option**:
+1. **GE Option**:
    - Set dump-related options through `ge::SetGlobalOption`
 
-3. **ACL interface**:
-   - `aclmdlSetDumpConfig`: dynamically sets dump configuration
-   - Supports runtime dynamic switch
+2. **ACL interface**:
+   - `aclmdlSetDump`: dynamically sets dump configuration
 
 #### Priority Rules
 
 ```text
-acl interface > Environment variable > GE Option
+ACL interface > GE Option
 ```
 
-- If ACL interface explicitly sets dump configuration, ignore GE options and environment variables
-- When multiple entries provide configuration simultaneously, use "non-empty override" strategy - later-loaded configuration overrides only explicitly set items, unset items retain previous values
-- If environment variables and GE options configure simultaneously and conflict (for example, different dump paths), print ERROR log and select higher priority entry configuration
+- If the ACL interface has set dump configuration, `DumpManager::GetDumpProperties` returns the ACL-set configuration (`infer_dump_properties_map_`) first, then the option-set configuration (`dump_properties_map_`)
+- If both the ACL interface and GE options configure dump simultaneously, the ACL configuration is used and a WARNING log is printed ("Set dump by options and acl simultaneously, will use the acl setting.")
 
 ---
 
@@ -291,7 +284,7 @@ In static graphs, HCCL operators are specially handled. You cannot determine the
 
 #### Logging Specifications
 
-- **Entry logging**: When calling any dump interface (such as `aclmdlSetDumpConfig`), print INFO log containing call stack and parameter summary. Keyword is `dumper`
+- **Entry logging**: When calling any dump interface (such as `aclmdlSetDump`), print INFO log containing call stack and parameter summary. Keyword is `dumper`
 - **State change logging**: For dump switch state changes, configuration refreshes, circular buffer creation/destruction and other events, print INFO log
 - **Error grading**:
   - User configuration errors (such as unwritable path) → WARNING, prompt correct configuration method

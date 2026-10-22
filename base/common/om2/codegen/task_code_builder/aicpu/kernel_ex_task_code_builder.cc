@@ -301,7 +301,7 @@ FunctionDef *KernelExTaskCodeBuilder::RenderAssembleTfAicpuExSessionIdInfo() con
       "aclError",
       {ast_.Assign(tf_ai_cpu_ex_info.Arrow("sessionID"), ast_.Deref(session_id)), ast_.VarDecl(tmp_args),
        tmp_args.Resize(op_kernel_size), ast_.VarDecl(iow_addrs),
-       ChkStatus(MemcpyS(tmp_args.Data() + ast_.Sizeof("uint32_t") * 1, ast_.Sizeof("uint64_t"), session_id,
+       ChkStatus(MemcpyS(tmp_args.Data() + ast_.Sizeof("uint32_t") * 2, ast_.Sizeof("uint64_t"), session_id,
                          ast_.Sizeof("uint64_t"))),
        ast_.VarDecl(device_id, 0), ChkStatus(ast_.Call("aclrtGetDevice", {device_id.Addr()})),
        ast_.VarDecl(device_base, nullptr),

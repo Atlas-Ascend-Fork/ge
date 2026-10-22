@@ -9,7 +9,7 @@
 Dump模块负责在模型执行过程中将算子输入/输出张量数据、溢出信息、异常上下文等关键数据落盘，用于精度调优、问题定位和性能分析。其边界包括：
 
 - **功能范围**：支持同步/异步dump、溢出检测dump、异常dump；覆盖静态shape和动态shape图；支持单算子、单流、多流、多线程场景。
-- **交互组件**：与GE执行引擎、内存管理、流管理、HCCL、RTS（Runtime System）、acl接口、GE Option、环境变量等存在耦合。
+- **交互组件**：与GE执行引擎、内存管理、流管理、HCCL、RTS（Runtime System）、acl接口、GE Option等存在耦合。
 - **不负责范围**：不负责数据解析（由离线工具完成）；不干预模型正常执行逻辑。
 
 #### 架构分层
@@ -48,7 +48,7 @@ Dump模块采用分层设计，按执行流程分为：
 
 2. **动态适配性**：支持运行时动态开关dump功能，约束条件可实时刷新，避免重启或重构图。
 
-3. **入口一致性**：环境变量、GE Option、acl接口三种开启方式必须行为一致，相互影响需显式定义。
+3. **入口一致性**：GE Option、acl接口两种开启方式必须行为一致，相互影响需显式定义。
 
 4. **性能无损**：dump开启时不应导致执行性能显著劣化（尤其RT2.0多流多线程场景），禁止在热路径增加非必要内存分配或同步操作。
 
@@ -159,29 +159,22 @@ LaunchDumpOp()
 
 #### 开启方式
 
-Dump支持三种开启方式：
+Dump支持两种开启方式：
 
-1. **环境变量**：
-   - `DUMP_GE_PATH`：dump输出路径
-   - `DUMP_GE_MODE`：dump模式（input/output/all）
-   - `DUMP_GE_LAYER`：指定需要dump的算子列表
-
-2. **GE Option**：
+1. **GE Option**：
    - 通过`ge::SetGlobalOption`设置dump相关选项
 
-3. **ACL接口**：
-   - `aclmdlSetDumpConfig`：动态设置dump配置
-   - 支持运行时动态开关
+2. **ACL接口**：
+   - `aclmdlSetDump`：动态设置dump配置
 
 #### 优先级规则
 
 ```text
-acl接口 > 环境变量 > GE Option
+acl接口 > GE Option
 ```
 
-- 若acl接口显式设置了dump配置，则忽略GE Option和环境变量
-- 当多个入口同时提供配置时，采用"非空覆盖"策略——后加载的配置仅覆盖已显式设置的项，未设置的项保留之前的值
-- 若环境变量和GE Option同时配置且内容冲突（例如dump路径不同），打印ERROR日志并选择高优先级入口的配置
+- 若acl接口已设置dump配置，`DumpManager::GetDumpProperties`优先返回acl设置的配置（`infer_dump_properties_map_`），其次返回Option设置的配置（`dump_properties_map_`）
+- 若acl接口与GE Option同时配置dump，使用acl配置，并打印WARNING日志（"Set dump by options and acl simultaneously, will use the acl setting."）
 
 ---
 
@@ -291,7 +284,7 @@ RT2.0（也叫Davinci 2.0）引入了动态shape、多流、多线程执行模�
 
 #### 日志规范
 
-- **入口日志**：调用任何dump接口（如`aclmdlSetDumpConfig`）时，打印包含调用栈、参数摘要的INFO日志，关键字为`dumper`
+- **入口日志**：调用任何dump接口（如`aclmdlSetDump`）时，打印包含调用栈、参数摘要的INFO日志，关键字为`dumper`
 - **状态变更日志**：dump开关状态变化、配置刷新、环形缓冲区创建/销毁等事件，打印INFO日志
 - **错误分级**：
   - 用户配置错误（如路径不可写）→ WARNING，提示正确配置方法

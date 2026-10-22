@@ -6847,6 +6847,14 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSourceForKernelExTask_Ok) {
                 "TfAicpuKernelTaskDistribute(iow_addrs, nullptr, device_base, op_kernel_size, func_handle, block_dim, "
                 "stream, config, ctx.launch_func, ctx.instance_handle, &task_info)"),
             std::string::npos);
+  // sessionID 必须写入 STR_FWK_OP_KERNEL.fwkKernelBase.fwk_kernel.sessionID（偏移 sizeof(uint32_t)*2），
+  // 若写偏移 sizeof(uint32_t)*1 会踩坏 fwk_kernel.opType，导致 AICPU 侧建 session 失败
+  EXPECT_NE(load_run_code.find("memcpy_s((tmp_args.data() + (sizeof(uint32_t) * 2)), sizeof(uint64_t), session_id, "
+                               "sizeof(uint64_t))"),
+            std::string::npos);
+  EXPECT_EQ(load_run_code.find("memcpy_s((tmp_args.data() + (sizeof(uint32_t) * 1)), sizeof(uint64_t), session_id, "
+                               "sizeof(uint64_t))"),
+            std::string::npos);
   EXPECT_EQ(load_run_code.find("GetIsDataDump("), std::string::npos);
   const auto helper_pos = load_run_code.find("aclError TfAicpuKernelTaskDistribute");
   const auto helper_end = load_run_code.find("aclError AssembleTfAicpuExSessionIdInfo", helper_pos);
