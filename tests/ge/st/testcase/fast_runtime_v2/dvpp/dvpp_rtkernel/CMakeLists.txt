@@ -55,4 +55,9 @@ target_link_libraries(st_dvpp_runtime2_test PRIVATE
 
 include(CTest)
 enable_testing()
-add_test(NAME test COMMAND st_dvpp_runtime2_test)
+add_test(NAME st_dvpp_runtime2_test COMMAND st_dvpp_runtime2_test --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/st_dvpp_runtime2_test.xml)
+set_tests_properties(st_dvpp_runtime2_test PROPERTIES
+        LABELS "st;st_rt2;st_dvpp_runtime2_test"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        RUN_SERIAL TRUE
+        TIMEOUT 7200)

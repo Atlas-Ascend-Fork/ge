@@ -61,13 +61,13 @@ Developers can download the source code of this repository through the following
 
 - bash >= 5.1.16
 
-- ccache/asan/autoconf/automake/libtool/gperf/lcov/libasan/patch/perl/graph-easy (graph-easy and lcov are optional)
+- gcc/g++ (satisfying GCC >= 7.3.x)/ccache/asan/autoconf/automake/libtool/gperf/lcov/libasan/patch/perl/graph-easy (graph-easy and lcov are optional)
 
   ```bash
   # Ubuntu operating system installation command example as follows, other operating system dependencies may have some differences, please install yourself.
   # asan taking gcc 7.5.0 version as example, libasan4 is installed, for other versions please install corresponding version asan.
   sudo apt-get update
-  sudo apt-get install cmake ccache bash lcov libasan4 autoconf automake libtool gperf libgraph-easy-perl patch perl
+  sudo apt-get install cmake ccache bash lcov libasan4 autoconf automake libtool gperf libgraph-easy-perl patch perl g++
   ```
 
 - Install other Python dependencies

@@ -516,8 +516,14 @@ run_llt_with_cov()
     if [ "X$ENABLE_ST" = "Xon" ]
     then
       echo "---------------- Begin to run tefusion st ----------------"
-      cd "${BASEPATH}/../"
-      ./$AIRDIR/build/tests/engines/te_fusion/st/tefusion_st
+      ctest --verbose -L '^st$' -L '^st_tefusion$' \
+            --test-dir ${BASEPATH}/build/tests/engines/te_fusion/st \
+            --output-log ${BASEPATH}/build/tests/engines/te_fusion/st/ctest_tefusion_st.log \
+            --no-tests=error
+      if [[ "$?" -ne 0 ]]; then
+          echo "!!! TEFUSION ST FAILED, PLEASE CHECK YOUR CHANGES !!!"
+          exit 1
+      fi
       echo "---------------- Finish tefusion st ----------------"
       if [ "X$ENABLE_LLT_COV" = "Xon" ]
       then
@@ -553,8 +559,14 @@ run_llt_with_cov()
     if [ "X$ENABLE_ST" = "Xon" ]
     then
       echo "---------------- Begin to run ffts st ----------------"
-      cd "${BASEPATH}/../"
-      ./$AIRDIR/build/tests/engines/ffts_engine/st/ffts_st
+      ctest --verbose -L '^st$' -L '^st_ffts$' \
+            --test-dir ${BASEPATH}/build/tests/engines/ffts_engine/st \
+            --output-log ${BASEPATH}/build/tests/engines/ffts_engine/st/ctest_ffts_st.log \
+            --no-tests=error
+      if [[ "$?" -ne 0 ]]; then
+          echo "!!! FFTS ST FAILED, PLEASE CHECK YOUR CHANGES !!!"
+          exit 1
+      fi
       echo "---------------- Finish the ffts st ----------------"
       if [ "X$ENABLE_LLT_COV" = "Xon" ]
       then
@@ -650,10 +662,14 @@ run_llt_with_cov()
     then
       echo "---------------- Begin to run aicpu st ----------------"
       unset ASCEND_OPP_PATH
-      cd "${BASEPATH}/build/tests/engines/cpueng/st/"
-      ./host_engine_stest
-      ./cpu_engine_stest
-      ./tf_engine_stest
+      ctest --verbose -L '^st$' -L '^st_aicpu$' \
+            --test-dir ${BASEPATH}/build/tests/engines/cpueng/st \
+            --output-log ${BASEPATH}/build/tests/engines/cpueng/st/ctest_aicpu_st.log \
+            --no-tests=error
+      if [[ "$?" -ne 0 ]]; then
+          echo "!!! AICPU ST FAILED, PLEASE CHECK YOUR CHANGES !!!"
+          exit 1
+      fi
       export ASCEND_OPP_PATH=$ASCEND_CUSTOM_PATH/opp
       echo "---------------- Finish run aicpu st ----------------"
       if [ "X$ENABLE_LLT_COV" = "Xon" ]
@@ -702,8 +718,14 @@ run_llt_with_cov()
     then
       echo "---------------- Begin to run dvpp st ----------------"
       unset ASCEND_OPP_PATH
-      cd "${BASEPATH}/build/tests/engines/dvppeng/ut/"
-      ./dvpp_engine_utest
+      ctest --verbose -L '^st$' -L '^st_dvpp$' \
+            --test-dir ${BASEPATH}/build/tests/engines/dvppeng/ut \
+            --output-log ${BASEPATH}/build/tests/engines/dvppeng/ut/ctest_dvpp_st.log \
+            --no-tests=error
+      if [[ "$?" -ne 0 ]]; then
+          echo "!!! DVPP ST FAILED, PLEASE CHECK YOUR CHANGES !!!"
+          exit 1
+      fi
       export ASCEND_OPP_PATH=$ASCEND_CUSTOM_PATH/opp
       echo "---------------- Finish run dvpp st ------------------"
       if [ "X$ENABLE_LLT_COV" = "Xon" ]

@@ -85,3 +85,12 @@ target_link_libraries(st_parser PRIVATE
     ascendcl_stub
     -lgcov
 )
+
+include(CTest)
+enable_testing()
+add_test(NAME st_parser COMMAND st_parser --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/st_parser.xml)
+set_tests_properties(st_parser PROPERTIES
+        LABELS "st;st_parser;st_parser"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        RUN_SERIAL TRUE
+        TIMEOUT 7200)

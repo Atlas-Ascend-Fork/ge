@@ -614,10 +614,11 @@ if [[ "X$ENABLE_GE_ST" = "Xon" ]] || [[ "X$ENABLE_GE_COMMON_ST" = "Xon" ]] || [[
     if [[ "X$ENABLE_GE_ST" = "Xon" ]];then
       cp ${BUILD_PATH}/compiler/plugin/nnengine/*engine*.so ${BUILD_PATH}/compiler/plugin/opskernel/
       echo "Run tests with leaks check"
-      RUN_TEST_CASE="${BUILD_PATH}/tests/ge/st/testcase/graph_engine_test --gtest_output=xml:${report_dir}/st/graph_engine_test.xml" && ${RUN_TEST_CASE}
+      ctest --verbose -j ${THREAD_NUM} -L '^st$' -L '^st_ge$' --test-dir ${BUILD_PATH} --no-tests=error \
+            --output-log ${BUILD_PATH}/ctest_st_ge.log
       if [[ "$?" -ne 0 ]]; then
         echo "!!! ST FAILED, PLEASE CHECK YOUR CHANGES !!!"
-        echo -e "\033[31m${RUN_TEST_CASE}\033[0m"
+        echo -e "\033[31mcheck log: ${BUILD_PATH}/ctest_st_ge.log\033[0m"
         exit 1;
       fi
       rm -rf ${BUILD_PATH}/compiler/plugin/opskernel
@@ -630,10 +631,11 @@ if [[ "X$ENABLE_GE_ST" = "Xon" ]] || [[ "X$ENABLE_GE_COMMON_ST" = "Xon" ]] || [[
       mk_dir ${BUILD_PATH}/compiler/plugin/opskernel/
       cp ${BUILD_PATH}/compiler/plugin/nnengine/*engine*.so ${BUILD_PATH}/compiler/plugin/opskernel/
       echo "Run tests with leaks check"
-      RUN_TEST_CASE="${BUILD_PATH}/tests/ge/st/testcase/ge_common_atc --gtest_output=xml:${report_dir}/st/ge_common_atc.xml" && ${RUN_TEST_CASE}
+      ctest --verbose -j ${THREAD_NUM} -L '^st$' -L '^st_ge_common_atc$' --test-dir ${BUILD_PATH} --no-tests=error \
+            --output-log ${BUILD_PATH}/ctest_st_ge_common_atc.log
       if [[ "$?" -ne 0 ]]; then
         echo "!!! ST FAILED, PLEASE CHECK YOUR CHANGES !!!"
-        echo -e "\033[31m${RUN_TEST_CASE}\033[0m"
+        echo -e "\033[31mcheck log: ${BUILD_PATH}/ctest_st_ge_common_atc.log\033[0m"
         exit 1;
       fi
       rm -rf ${BUILD_PATH}/compiler/plugin/opskernel
@@ -667,12 +669,11 @@ if [[ "X$ENABLE_GE_ST" = "Xon" ]] || [[ "X$ENABLE_GE_COMMON_ST" = "Xon" ]] || [[
       echo "Run tests with leaks check"
       export LD_PRELOAD=${USE_ASAN}
       export ASAN_OPTIONS=detect_container_overflow=0
-      RUN_TEST_CASE="${BUILD_PATH}/tests/ge/st/hybrid_model_exec/hybrid_model_async_exec_test --gtest_output=xml:${report_dir}/st/hybrid_model_async_exec_test.xml" && ${RUN_TEST_CASE} &&
-      RUN_TEST_CASE="${BUILD_PATH}/tests/ge/st/testcase/fast_runtime_v2/st_fast_runtime2_test --gtest_output=xml:${report_dir}/st/st_fast_runtime2_test.xml" && ${RUN_TEST_CASE} &&
-      RUN_TEST_CASE="${BUILD_PATH}/tests/ge/st/testcase/fast_runtime_v2/dvpp/dvpp_rtkernel/st_dvpp_runtime2_test --gtest_output=xml:${report_dir}/st/st_dvpp_runtime2_test.xml" && ${RUN_TEST_CASE}
+      ctest --verbose -j ${THREAD_NUM} -L '^st$' -L '^st_rt2$' --test-dir ${BUILD_PATH} --no-tests=error \
+            --output-log ${BUILD_PATH}/ctest_st_rt2.log
       if [[ "$?" -ne 0 ]]; then
           echo "!!! ST FAILED, PLEASE CHECK YOUR CHANGES !!!"
-          echo -e "\033[31m${RUN_TEST_CASE}\033[0m"
+          echo -e "\033[31mcheck log: ${BUILD_PATH}/ctest_st_rt2.log\033[0m"
           exit 1;
       fi
       unset LD_PRELOAD
@@ -685,10 +686,11 @@ if [[ "X$ENABLE_GE_ST" = "Xon" ]] || [[ "X$ENABLE_GE_COMMON_ST" = "Xon" ]] || [[
       find ${BUILD_PATH}/compiler/engines -type f -name "*engine*.so" -print0 2>/dev/null | xargs -0 -r -I {} cp -rf {} ${BUILD_PATH}/compiler/plugin/nnengine
       find ${BUILD_PATH}/compiler/plugin/nnengine -type f -name "*engine*.so" -print0 2>/dev/null | xargs -0 -r -I {} cp -rf {} ${BUILD_PATH}/compiler/plugin/opskernel/
       echo "Run OM2 tests with leaks check"
-      RUN_TEST_CASE="${BUILD_PATH}/tests/ge/st/testcase/st_om2_test --gtest_output=xml:${report_dir}/st/st_om2_test.xml" && ${RUN_TEST_CASE}
+      ctest --verbose -j ${THREAD_NUM} -L '^st$' -L '^st_om2$' --test-dir ${BUILD_PATH} --no-tests=error \
+            --output-log ${BUILD_PATH}/ctest_st_om2.log
       if [[ "$?" -ne 0 ]]; then
           echo "!!! OM2 ST FAILED, PLEASE CHECK YOUR CHANGES !!!"
-          echo -e "\033[31m${RUN_TEST_CASE}\033[0m"
+          echo -e "\033[31mcheck log: ${BUILD_PATH}/ctest_st_om2.log\033[0m"
           exit 1;
       fi
       COV_DIRS+=("${BUILD_PATH}/graph_metadef")
@@ -714,14 +716,13 @@ if [[ "X$ENABLE_GE_ST" = "Xon" ]] || [[ "X$ENABLE_GE_COMMON_ST" = "Xon" ]] || [[
 
     if [[ "X$ENABLE_PARSER_ST" = "Xon" ]]; then
       echo "---------------- Parser ST Run Start ----------------"
-      cp ${BUILD_PATH}/tests/parser/st/st_parser ${OUTPUT_PATH}
       export LD_PRELOAD=${USE_ASAN}
       export ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0
-      RUN_TEST_CASE="${OUTPUT_PATH}/st_parser --gtest_output=xml:${report_dir}/st/st_parser.xml" && ${RUN_TEST_CASE} &&
-      RUN_TEST_CASE="${BUILD_PATH}/tests/ge/st/testcase/graph_engine_compile_test --gtest_output=xml:${report_dir}/st/graph_engine_compile_test.xml" && ${RUN_TEST_CASE}
+      ctest --verbose -j ${THREAD_NUM} -L '^st$' -L '^st_parser$' --test-dir ${BUILD_PATH} --no-tests=error \
+            --output-log ${BUILD_PATH}/ctest_st_parser.log
       if [[ "$?" -ne 0 ]]; then
         echo "!!! ST FAILED, PLEASE CHECK YOUR CHANGES !!!"
-        echo -e "\033[31m${RUN_TEST_CASE}\033[0m"
+        echo -e "\033[31mcheck log: ${BUILD_PATH}/ctest_st_parser.log\033[0m"
         exit 1
       fi
       unset LD_PRELOAD
