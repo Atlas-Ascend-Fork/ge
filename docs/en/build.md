@@ -176,7 +176,7 @@ After compilation is complete, users can perform developer testing.
   # UT/ST testing will stub some dependent .so files, need to clear LD_LIBRARY_PATH and ASCEND_OPP_PATH environment variables to avoid interference from CANN/Ascend environment already installed on host machine
   unset LD_LIBRARY_PATH
   unset ASCEND_OPP_PATH
-  ./tests/ge/ut/ge/ut_libge_multiparts_utest # You can view included individual cases through --gtest_list_tests, and execute individual cases through --gtest_filter parameter
+  ./build_ut/tests/ge/ut/ge/ut_libge_multiparts_utest # You can view included individual cases through --gtest_list_tests, and execute individual cases through --gtest_filter parameter
   ```
 
 - Clean build artifacts:
