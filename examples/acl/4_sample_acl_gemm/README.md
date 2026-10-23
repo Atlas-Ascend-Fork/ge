@@ -35,6 +35,9 @@ C = α·A·B + β·C
 ## 快速开始
 
 ```bash
+# 按实际芯片设置 SOC_VERSION（可用 npu-smi info 查询芯片型号；未设置时默认 Ascend910B3，
+# 与本机芯片不匹配会导致运行阶段 atc 失败，如 FEOpsKernelInfoStore Initialize failed）
+export SOC_VERSION=Ascend910B3
 bash scripts/build.sh && bash scripts/run.sh
 ```
 

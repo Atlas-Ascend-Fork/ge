@@ -35,6 +35,9 @@ C = α·A·B + β·C
 ## Quick Start
 
 ```bash
+# Set SOC_VERSION to match your chip (query it via npu-smi info; defaults to Ascend910B3 if unset.
+# A mismatch makes atc fail at run stage, e.g. FEOpsKernelInfoStore Initialize failed)
+export SOC_VERSION=Ascend910B3
 bash scripts/build.sh && bash scripts/run.sh
 ```
 

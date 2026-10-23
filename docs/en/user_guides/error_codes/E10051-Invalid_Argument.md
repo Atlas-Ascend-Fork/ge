@@ -5,13 +5,13 @@
 The following is error format. The meanings of the placeholders %s in sequence are: parameter value, length.
 
 ```text
-Value %s for parameter --job_id exceeds the allowed maximum length %s.
+Value %s for parameter job_id exceeds the allowed maximum length %s.
 ```
 
 Error example:
 
 ```text
-Value 200 for parameter --job_id exceeds the allowed maximum length 128.
+Value 200 for parameter job_id exceeds the allowed maximum length 128.
 ```
 
 ## Solution

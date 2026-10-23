@@ -147,3 +147,13 @@ target_link_libraries(ffts_st PRIVATE
         unified_dlog
         ascendalog
         mmpa)
+
+include(CTest)
+enable_testing()
+get_filename_component(FFTS_ST_WORKDIR "${CMAKE_BINARY_DIR}/../.." ABSOLUTE)
+add_test(NAME ffts_st COMMAND ffts_st --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/ffts_st.xml)
+set_tests_properties(ffts_st PROPERTIES
+        LABELS "st;st_ffts;ffts_st"
+        WORKING_DIRECTORY "${FFTS_ST_WORKDIR}"
+        RUN_SERIAL TRUE
+        TIMEOUT 7200)

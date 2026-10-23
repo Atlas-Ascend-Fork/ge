@@ -37,4 +37,9 @@ target_link_libraries(hybrid_model_async_exec_test PUBLIC
 
 include(CTest)
 enable_testing()
-add_test(NAME test COMMAND hybrid_model_async_exec_test)
+add_test(NAME st_hybrid_model_async_exec_test COMMAND hybrid_model_async_exec_test --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/hybrid_model_async_exec_test.xml)
+set_tests_properties(st_hybrid_model_async_exec_test PROPERTIES
+        LABELS "st;st_rt2;st_hybrid_model_async_exec_test"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        RUN_SERIAL TRUE
+        TIMEOUT 7200)

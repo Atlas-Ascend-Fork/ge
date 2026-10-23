@@ -139,3 +139,13 @@ target_link_libraries(tefusion_st PRIVATE
         intf_llt_pub
         ge_common_base
         ascendcl_stub)
+
+include(CTest)
+enable_testing()
+get_filename_component(TEFUSION_ST_WORKDIR "${CMAKE_BINARY_DIR}/../.." ABSOLUTE)
+add_test(NAME tefusion_st COMMAND tefusion_st --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/tefusion_st.xml)
+set_tests_properties(tefusion_st PROPERTIES
+        LABELS "st;st_tefusion;tefusion_st"
+        WORKING_DIRECTORY "${TEFUSION_ST_WORKDIR}"
+        RUN_SERIAL TRUE
+        TIMEOUT 7200)

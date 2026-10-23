@@ -39,27 +39,16 @@ def _cache_with_type_check(expected_type: AttrValueType):
 
     def decorator(method: Callable[..., Any]) -> Callable[..., Any]:
         def _wrapped(self, *args, **kwargs):
-            # 检查是否有缓存且类型匹配
-            if self._cached_value is not None and self._value_type is not None and self._value_type == expected_type:
-                return self._cached_value
-
-            # 没有缓存或类型不匹配，调用原方法获取值
-            try:
-                result = method(self, *args, **kwargs)
-                # 设置缓存和类型
-                self._cached_value = result
-                self._value_type = expected_type
-                return result
-            except Exception:
-                # 如果获取失败，不设置缓存
-                raise
+            return self.get_or_cache(method, expected_type, args, kwargs)
 
         return _wrapped
 
     return decorator
 
 
-def _validate_list_input(values: List[Any], expected_type: Type, type_name: str) -> None:
+def _validate_list_input(
+    values: List[Any], expected_type: Type, type_name: str
+) -> None:
     """Validate list input parameters.
 
     Args:
@@ -147,6 +136,8 @@ def _create_list_getter(c_type, getter_func, free_func, expected_type):
             raise RuntimeError("Failed to get list value")
 
         try:
+            if expected_type == AttrValueType.VT_LIST_DATA_TYPE:
+                return [DataType(c_array[i]) for i in range(size.value)]
             return [c_array[i] for i in range(size.value)]
         finally:
             free_func(c_array)
@@ -228,7 +219,9 @@ class _AttrValue:
             AttrDataType enum value.
         """
         if self._value_type is None:
-            self._value_type = AttrValueType(graph_lib.GeApiWrapper_AttrValue_GetValueType(self._av_ptr))
+            self._value_type = AttrValueType(
+                graph_lib.GeApiWrapper_AttrValue_GetValueType(self._av_ptr)
+            )
         return self._value_type
 
     def get_value_type(self) -> AttrValueType:
@@ -294,14 +287,16 @@ class _AttrValue:
             self.set_list_float(value)
         elif isinstance(value, list) and all(isinstance(v, bool) for v in value):
             self.set_list_bool(value)
-        elif isinstance(value, list) and all(isinstance(v, int) for v in value):
-            self.set_list_int(value)
         elif isinstance(value, list) and all(isinstance(v, DataType) for v in value):
             self.set_list_data_type(value)
+        elif isinstance(value, list) and all(isinstance(v, int) for v in value):
+            self.set_list_int(value)
         elif isinstance(value, list) and all(isinstance(v, str) for v in value):
             self.set_list_string(value)
         else:
-            raise ValueError(f"Unsupported attribute type: {type(value)} for value: {value}")
+            raise ValueError(
+                f"Unsupported attribute type: {type(value)} for value: {value}"
+            )
 
     # String operations
     @_clear_cache_on_success
@@ -353,7 +348,9 @@ class _AttrValue:
         if not isinstance(value, (int, float)):
             raise TypeError("Value must be a number")
 
-        return graph_lib.GeApiWrapper_AttrValue_SetFloat(self._av_ptr, ctypes.c_float(float(value)))
+        return graph_lib.GeApiWrapper_AttrValue_SetFloat(
+            self._av_ptr, ctypes.c_float(float(value))
+        )
 
     @_cache_with_type_check(AttrValueType.VT_FLOAT)
     def get_float(self) -> float:
@@ -366,7 +363,9 @@ class _AttrValue:
             RuntimeError: If value is not a float or retrieval fails.
         """
         value = ctypes.c_float()
-        ret = graph_lib.GeApiWrapper_AttrValue_GetFloat(self._av_ptr, ctypes.byref(value))
+        ret = graph_lib.GeApiWrapper_AttrValue_GetFloat(
+            self._av_ptr, ctypes.byref(value)
+        )
         if ret != 0:
             raise RuntimeError("Failed to get float value")
         return value.value
@@ -385,7 +384,9 @@ class _AttrValue:
         if not isinstance(value, bool):
             raise TypeError("Value must be a boolean")
 
-        return graph_lib.GeApiWrapper_AttrValue_SetBool(self._av_ptr, ctypes.c_bool(value))
+        return graph_lib.GeApiWrapper_AttrValue_SetBool(
+            self._av_ptr, ctypes.c_bool(value)
+        )
 
     @_cache_with_type_check(AttrValueType.VT_BOOL)
     def get_bool(self) -> bool:
@@ -398,7 +399,9 @@ class _AttrValue:
             RuntimeError: If value is not a bool or retrieval fails.
         """
         value = ctypes.c_bool()
-        ret = graph_lib.GeApiWrapper_AttrValue_GetBool(self._av_ptr, ctypes.byref(value))
+        ret = graph_lib.GeApiWrapper_AttrValue_GetBool(
+            self._av_ptr, ctypes.byref(value)
+        )
         if ret != 0:
             raise RuntimeError("Failed to get bool value")
         return value.value
@@ -417,7 +420,9 @@ class _AttrValue:
         if not isinstance(value, int):
             raise TypeError("Value must be an integer")
 
-        return graph_lib.GeApiWrapper_AttrValue_SetInt(self._av_ptr, ctypes.c_int64(value))
+        return graph_lib.GeApiWrapper_AttrValue_SetInt(
+            self._av_ptr, ctypes.c_int64(value)
+        )
 
     @_cache_with_type_check(AttrValueType.VT_INT)
     def get_int(self) -> int:
@@ -449,7 +454,9 @@ class _AttrValue:
         if not isinstance(value, DataType):
             raise TypeError("Value must be a DataType")
 
-        return graph_lib.GeApiWrapper_AttrValue_SetDataType(self._av_ptr, ctypes.c_int(value.value))
+        return graph_lib.GeApiWrapper_AttrValue_SetDataType(
+            self._av_ptr, ctypes.c_int(value.value)
+        )
 
     @_cache_with_type_check(AttrValueType.VT_DATA_TYPE)
     def get_data_type(self) -> DataType:
@@ -462,7 +469,9 @@ class _AttrValue:
             RuntimeError: If value is not a DataType or retrieval fails.
         """
         value = ctypes.c_int()
-        ret = graph_lib.GeApiWrapper_AttrValue_GetDataType(self._av_ptr, ctypes.byref(value))
+        ret = graph_lib.GeApiWrapper_AttrValue_GetDataType(
+            self._av_ptr, ctypes.byref(value)
+        )
         if ret != 0:
             raise RuntimeError("Failed to get DataType value")
         return DataType(value.value)
@@ -501,7 +510,9 @@ class _AttrValue:
         AttrValueType.VT_LIST_FLOAT,
     )
 
-    set_list_int = _create_list_setter(ctypes.c_int64, graph_lib.GeApiWrapper_AttrValue_SetListInt, int, "integers")
+    set_list_int = _create_list_setter(
+        ctypes.c_int64, graph_lib.GeApiWrapper_AttrValue_SetListInt, int, "integers"
+    )
 
     get_list_int = _create_list_getter(
         ctypes.c_int64,
@@ -510,7 +521,9 @@ class _AttrValue:
         AttrValueType.VT_LIST_INT,
     )
 
-    set_list_bool = _create_list_setter(ctypes.c_bool, graph_lib.GeApiWrapper_AttrValue_SetListBool, bool, "booleans")
+    set_list_bool = _create_list_setter(
+        ctypes.c_bool, graph_lib.GeApiWrapper_AttrValue_SetListBool, bool, "booleans"
+    )
 
     get_list_bool = _create_list_getter(
         ctypes.c_bool,
@@ -547,7 +560,9 @@ class _AttrValue:
         _validate_list_input(values, str, "strings")
 
         arr = (ctypes.c_char_p * len(values))(*[v.encode("utf-8") for v in values])
-        return graph_lib.GeApiWrapper_AttrValue_SetListString(self._av_ptr, arr, len(values))
+        return graph_lib.GeApiWrapper_AttrValue_SetListString(
+            self._av_ptr, arr, len(values)
+        )
 
     @_cache_with_type_check(AttrValueType.VT_LIST_STRING)
     def get_list_string(self) -> List[str]:
@@ -560,12 +575,16 @@ class _AttrValue:
             RuntimeError: If value is not a list of strings or retrieval fails.
         """
         size = ctypes.c_int64()
-        c_array = graph_lib.GeApiWrapper_AttrValue_GetListString(self._av_ptr, ctypes.byref(size))
+        c_array = graph_lib.GeApiWrapper_AttrValue_GetListString(
+            self._av_ptr, ctypes.byref(size)
+        )
         if not c_array:
             raise RuntimeError("Failed to get list_string value")
 
         try:
-            return [ctypes.string_at(c_array[i]).decode("utf-8") for i in range(size.value)]
+            return [
+                ctypes.string_at(c_array[i]).decode("utf-8") for i in range(size.value)
+            ]
         finally:
             graph_lib.GeApiWrapper_FreeListString(c_array)
 
@@ -594,7 +613,9 @@ class _AttrValue:
             elif value_type == AttrValueType.VT_LIST_INT:
                 return f"AttrValue(type: {type_name}, value: {self.get_list_int()})"
             elif value_type == AttrValueType.VT_LIST_DATA_TYPE:
-                return f"AttrValue(type: {type_name}, value: {self.get_list_data_type()})"
+                return (
+                    f"AttrValue(type: {type_name}, value: {self.get_list_data_type()})"
+                )
             elif value_type == AttrValueType.VT_LIST_STRING:
                 return f"AttrValue(type: {type_name}, value: {self.get_list_string()})"
             else:
@@ -605,3 +626,20 @@ class _AttrValue:
     def __repr__(self) -> str:
         """Detailed string representation of AttrValue."""
         return self.__str__()
+
+    def get_or_cache(self, method, expected_type, args, kwargs):
+        """Return a typed cached value, or store a successful getter result."""
+        # 检查是否有缓存且类型匹配
+        if (
+            self._cached_value is not None
+            and self._value_type is not None
+            and self._value_type == expected_type
+        ):
+            return self._cached_value
+
+        # 没有缓存或类型不匹配，调用原方法获取值
+        result = method(self, *args, **kwargs)
+        # 设置缓存和类型；getter 异常自然传播，不更新缓存
+        self._cached_value = result
+        self._value_type = expected_type
+        return result

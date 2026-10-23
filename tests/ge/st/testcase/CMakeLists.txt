@@ -545,4 +545,27 @@ endif()
 
 include(CTest)
 enable_testing()
-add_test(NAME test COMMAND graph_engine_test ge_common_atc)
+add_test(NAME st_graph_engine_test COMMAND graph_engine_test --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/graph_engine_test.xml)
+set_tests_properties(st_graph_engine_test PROPERTIES
+        LABELS "st;st_ge;st_graph_engine_test"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        RUN_SERIAL TRUE
+        TIMEOUT 7200)
+add_test(NAME st_ge_common_atc COMMAND ge_common_atc --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/ge_common_atc.xml)
+set_tests_properties(st_ge_common_atc PROPERTIES
+        LABELS "st;st_ge_common_atc;st_ge_common_atc"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        RUN_SERIAL TRUE
+        TIMEOUT 7200)
+add_test(NAME st_om2_test COMMAND st_om2_test --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/st_om2_test.xml)
+set_tests_properties(st_om2_test PROPERTIES
+        LABELS "st;st_om2;st_om2_test"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        RUN_SERIAL TRUE
+        TIMEOUT 7200)
+add_test(NAME st_graph_engine_compile_test COMMAND graph_engine_compile_test --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/graph_engine_compile_test.xml)
+set_tests_properties(st_graph_engine_compile_test PROPERTIES
+        LABELS "st;st_parser;st_graph_engine_compile_test"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        RUN_SERIAL TRUE
+        TIMEOUT 7200)

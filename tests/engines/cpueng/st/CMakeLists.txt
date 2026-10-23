@@ -387,3 +387,13 @@ target_link_libraries(host_engine_stest PRIVATE
     ascendalog
     mmpa
 )
+
+include(CTest)
+enable_testing()
+foreach(aicpu_stest host_engine_stest cpu_engine_stest tf_engine_stest)
+    add_test(NAME ${aicpu_stest} COMMAND ${aicpu_stest} --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/${aicpu_stest}.xml)
+    set_tests_properties(${aicpu_stest} PROPERTIES
+            LABELS "st;st_aicpu;${aicpu_stest}"
+            RUN_SERIAL TRUE
+            TIMEOUT 7200)
+endforeach()

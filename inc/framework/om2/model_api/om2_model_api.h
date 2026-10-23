@@ -123,7 +123,7 @@ struct GertModelBaseInfo {
 using ReportModelBaseInfoFunc = int32_t (*)(void *instance_handle, const GertModelBaseInfo *info);
 
 enum GertModelTaskLaunchType : uint64_t {
-  ACL_RT_LAUNCH_KERNEL_V2 = 0,         // 通过 aclrtLaunchKernelWithConfigV2 下发。
+  ACL_RT_LAUNCH_KERNEL_V2 = 0,         // 通过 aclrtLaunchKernelV2 下发。
   RT_STARS_TASK_LAUNCH_WITH_FLAG = 1,  // 通过 rtStarsTaskLaunchWithFlag 下发。
   ACL_RT_LAUNCH_CUSTOM_KERNEL = 2,     // 通过 自定义算子的回调函数 下发。
 };

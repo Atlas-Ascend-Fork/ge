@@ -22,7 +22,10 @@ cd model && atc --model=qwen.onnx --output=qwen --framework=5 \
   --input_shape='input_ids:1,512;past_key_0.key:1,2,512,64;past_key_0.value:1,2,512,64;past_key_1.key:1,2,512,64;past_key_1.value:1,2,512,64;past_key_2.key:1,2,512,64;past_key_2.value:1,2,512,64;past_key_3.key:1,2,512,64;past_key_3.value:1,2,512,64;past_key_4.key:1,2,512,64;past_key_4.value:1,2,512,64;past_key_5.key:1,2,512,64;past_key_5.value:1,2,512,64;past_key_6.key:1,2,512,64;past_key_6.value:1,2,512,64;past_key_7.key:1,2,512,64;past_key_7.value:1,2,512,64;past_key_8.key:1,2,512,64;past_key_8.value:1,2,512,64;past_key_9.key:1,2,512,64;past_key_9.value:1,2,512,64;past_key_10.key:1,2,512,64;past_key_10.value:1,2,512,64;past_key_11.key:1,2,512,64;past_key_11.value:1,2,512,64;past_key_12.key:1,2,512,64;past_key_12.value:1,2,512,64;past_key_13.key:1,2,512,64;past_key_13.value:1,2,512,64;past_key_14.key:1,2,512,64;past_key_14.value:1,2,512,64;past_key_15.key:1,2,512,64;past_key_15.value:1,2,512,64;past_key_16.key:1,2,512,64;past_key_16.value:1,2,512,64;past_key_17.key:1,2,512,64;past_key_17.value:1,2,512,64;past_key_18.key:1,2,512,64;past_key_18.value:1,2,512,64;past_key_19.key:1,2,512,64;past_key_19.value:1,2,512,64;past_key_20.key:1,2,512,64;past_key_20.value:1,2,512,64;past_key_21.key:1,2,512,64;past_key_21.value:1,2,512,64;past_key_22.key:1,2,512,64;past_key_22.value:1,2,512,64;past_key_23.key:1,2,512,64;past_key_23.value:1,2,512,64' \
   --log=error && cd ..
 
-# 3. 编译运行
+# 3. 若 atc 产物带架构后缀（如 qwen_linux_aarch64.om），重命名为 qwen.om（已生成 qwen.om 时无副作用）
+[ -f model/qwen.om ] || mv model/qwen_linux_*.om model/qwen.om
+
+# 4. 编译运行
 bash scripts/build.sh && bash scripts/run.sh
 ```
 

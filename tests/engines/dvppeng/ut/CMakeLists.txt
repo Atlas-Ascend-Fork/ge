@@ -122,3 +122,11 @@ target_link_libraries(dvpp_engine_utest PRIVATE
     -lpthread
     -lgcov
 )
+
+include(CTest)
+enable_testing()
+add_test(NAME dvpp_engine_st COMMAND dvpp_engine_utest --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/dvpp_engine_st.xml)
+set_tests_properties(dvpp_engine_st PROPERTIES
+        LABELS "st;st_dvpp;dvpp_engine_st"
+        RUN_SERIAL TRUE
+        TIMEOUT 7200)
