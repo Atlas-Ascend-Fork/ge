@@ -20,12 +20,15 @@ namespace gert {
 AnnotatedArgsHandler::LaunchRecord::LaunchRecord(const char *const kernel_name, const void *const kernel_bin,
                                                  const size_t kernel_bin_size, const uint32_t block_dim,
                                                  const uint32_t stream_id, std::vector<uint8_t> &&args_data,
-                                                 std::vector<ge::ArgDesc> &&arg_descs, AnnotatedLaunchToken token,
+                                                 std::vector<ge::ArgDesc> &&arg_descs,
+                                                 std::vector<std::vector<uint8_t>> &&custom_data_blobs,
+                                                 AnnotatedLaunchToken token,
                                                  std::vector<AnnotatedLaunchToken> &&dependencies)
     : kernel_name_(kernel_name),
       kernel_bin_(static_cast<const uint8_t *>(kernel_bin), static_cast<const uint8_t *>(kernel_bin) + kernel_bin_size),
       args_data_(std::move(args_data)),
       arg_descs_(std::move(arg_descs)),
+      custom_data_blobs_(std::move(custom_data_blobs)),
       block_dim_(block_dim),
       stream_id_(stream_id),
       token_(token),
@@ -72,6 +75,17 @@ const ge::ArgDesc *AnnotatedArgsHandler::LaunchRecord::GetArgDescs() const {
 
 size_t AnnotatedArgsHandler::LaunchRecord::GetArgDescCount() const {
   return arg_descs_.size();
+}
+
+size_t AnnotatedArgsHandler::LaunchRecord::GetCustomDataBlobCount() const {
+  return custom_data_blobs_.size();
+}
+
+const std::vector<uint8_t> *AnnotatedArgsHandler::LaunchRecord::GetCustomDataBlob(const size_t index) const {
+  if (index >= custom_data_blobs_.size()) {
+    return nullptr;
+  }
+  return &custom_data_blobs_[index];
 }
 
 uint32_t AnnotatedArgsHandler::LaunchRecord::GetBlockDim() const {
@@ -141,9 +155,11 @@ const std::vector<uint32_t> &AnnotatedArgsHandler::GetAttachedStreamIds() const 
 
 void AnnotatedArgsHandler::AddLaunch(const char *const kernel_name, const void *const kernel_bin,
                                      const size_t kernel_bin_size, const uint32_t block_dim, const uint32_t stream_id,
-                                     std::vector<uint8_t> &&args_data, std::vector<ge::ArgDesc> &&arg_descs) {
+                                     std::vector<uint8_t> &&args_data, std::vector<ge::ArgDesc> &&arg_descs,
+                                     std::vector<std::vector<uint8_t>> &&custom_data_blobs) {
   LaunchRecord launch_record(kernel_name, kernel_bin, kernel_bin_size, block_dim, stream_id, std::move(args_data),
-                             std::move(arg_descs), std::numeric_limits<AnnotatedLaunchToken>::max(), {});
+                             std::move(arg_descs), std::move(custom_data_blobs),
+                             std::numeric_limits<AnnotatedLaunchToken>::max(), {});
   (void)launch_records_.emplace_back(std::move(launch_record));
 }
 
@@ -151,6 +167,7 @@ ge::graphStatus AnnotatedArgsHandler::AddLaunchWithDependencies(const char *kern
                                                                 size_t kernel_bin_size, uint32_t block_dim,
                                                                 uint32_t stream_id, std::vector<uint8_t> &&args_data,
                                                                 std::vector<ge::ArgDesc> &&arg_descs,
+                                                                std::vector<std::vector<uint8_t>> &&custom_data_blobs,
                                                                 const std::vector<AnnotatedLaunchToken> &predecessors,
                                                                 AnnotatedLaunchToken &token) {
   const auto invalid_token = std::numeric_limits<AnnotatedLaunchToken>::max();
@@ -175,7 +192,8 @@ ge::graphStatus AnnotatedArgsHandler::AddLaunchWithDependencies(const char *kern
     }
   }
   LaunchRecord launch_record(kernel_name, kernel_bin, kernel_bin_size, block_dim, stream_id, std::move(args_data),
-                             std::move(arg_descs), new_token, std::vector<AnnotatedLaunchToken>(predecessors));
+                             std::move(arg_descs), std::move(custom_data_blobs), new_token,
+                             std::vector<AnnotatedLaunchToken>(predecessors));
   (void)launch_records_.emplace_back(std::move(launch_record));
   token = new_token;
   return ge::GRAPH_SUCCESS;

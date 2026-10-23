@@ -28,6 +28,9 @@ struct AnnotatedKernelArgsImpl {
   ge::graphStatus status = ge::GRAPH_SUCCESS;
   std::vector<uint8_t> args;
   std::vector<ge::ArgDesc> arg_descs;
+  // 通过 AppendArg(CustomDataBlock) 追加的变长数据字节，按追加顺序排列；
+  // arg_descs 中 CUSTOM_DATA_BLOCK 项的 ir_idx 即为该 blob 在本向量中的下标
+  std::vector<std::vector<uint8_t>> custom_data_blobs;
 };
 
 inline ge::graphStatus ExtractArgsData(const AnnotatedKernelArgsImpl *const args_impl, std::vector<uint8_t> &args_data,
@@ -42,6 +45,15 @@ inline ge::graphStatus ExtractArgsData(const AnnotatedKernelArgsImpl *const args
                  args_impl->arg_descs.size());
   args_data = args_impl->args;
   arg_descs = args_impl->arg_descs;
+  return ge::GRAPH_SUCCESS;
+}
+
+inline ge::graphStatus ExtractArgsData(const AnnotatedKernelArgsImpl *const args_impl, std::vector<uint8_t> &args_data,
+                                       std::vector<ge::ArgDesc> &arg_descs,
+                                       std::vector<std::vector<uint8_t>> &custom_data_blobs) {
+  GE_ASSERT_NOTNULL(args_impl);
+  GE_ASSERT_SUCCESS(ExtractArgsData(args_impl, args_data, arg_descs));
+  custom_data_blobs = args_impl->custom_data_blobs;
   return ge::GRAPH_SUCCESS;
 }
 }  // namespace internal

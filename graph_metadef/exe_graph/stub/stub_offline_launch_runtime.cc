@@ -30,6 +30,7 @@ constexpr int32_t kCustomValueWidthBit64 = -1;
 struct StubAnnotatedKernelArgsImpl {
   std::vector<uint8_t> args;
   std::vector<ge::ArgDesc> arg_descs;
+  std::vector<std::vector<uint8_t>> custom_data_blobs;
   ge::graphStatus status = ge::GRAPH_SUCCESS;
 };
 
@@ -139,6 +140,11 @@ ge::graphStatus AnnotatedKernelArgs::AppendArg(uint64_t value) {
   return impl->status;
 }
 
+ge::graphStatus AnnotatedKernelArgs::AppendArg(const CustomDataBlock &data) {
+  (void)data;
+  return ge::GRAPH_FAILED;
+}
+
 ge::graphStatus AnnotatedKernelArgs::ExtractArgsData(std::vector<uint8_t> &args_data,
                                                      std::vector<ge::ArgDesc> &arg_descs) const {
   const auto *const impl = static_cast<const StubAnnotatedKernelArgsImpl *>(impl_);
@@ -198,32 +204,8 @@ uint32_t AnnotatedArgsContext::RequestAttachedStream(const ge::AscendString &key
 
 ge::graphStatus AnnotatedArgsContext::AddLaunch(const AnnotatedKernelLaunchInfo &launch_info,
                                                 AnnotatedKernelArgs &&args) {
-  std::vector<uint8_t> args_data;
-  std::vector<ge::ArgDesc> arg_descs;
-  if ((launch_info.kernel_name == nullptr) || (launch_info.kernel_name[0] == '\0') ||
-      (launch_info.kernel_bin == nullptr) || (launch_info.kernel_bin_size == 0U) || (launch_info.block_dim == 0U) ||
-      (args.ExtractArgsData(args_data, arg_descs) != ge::GRAPH_SUCCESS)) {
-    return ge::GRAPH_FAILED;
-  }
-  const auto additional_output_start = GetAdditionalOutputStartIndex();
-  if (additional_output_start < 0) {
-    return ge::GRAPH_SUCCESS;
-  }
-  const int64_t handler_index = additional_output_start + static_cast<int64_t>(AdditionalOutputIndex::kArgsHandler);
-  auto *handler_chain = GetOutput(handler_index);
-  if (handler_chain == nullptr) {
-    return ge::GRAPH_SUCCESS;
-  }
-  auto *args_handler = handler_chain->GetValue<ArgsHandler *>();
-  if (args_handler != nullptr) {
-    auto *annotated_args_handler = dynamic_cast<AnnotatedArgsHandler *>(args_handler);
-    if (annotated_args_handler == nullptr) {
-      return ge::GRAPH_FAILED;
-    }
-    annotated_args_handler->AddLaunch(launch_info.kernel_name, launch_info.kernel_bin, launch_info.kernel_bin_size,
-                                      launch_info.block_dim, launch_info.stream_id, std::move(args_data),
-                                      std::move(arg_descs));
-  }
+  (void)launch_info;
+  (void)args;
   return ge::GRAPH_SUCCESS;
 }
 

@@ -18,5 +18,6 @@
 | **序列化** | 框架内嵌（FE 引擎自动序列化） | 用户自定义（`PortableOp::Serialize/Deserialize`） |
 | **地址刷新** | 框架内嵌（DavinciModel 自动处理） | 用户自定义（`ArgsUpdater::UpdateHostArgs()`） |
 | **kernel 语言** | Ascend C / TBE（框架编译） | 任意（用户自行编译或 RTC） |
+| **SuperKernel 融合** | 可（仅 AscendC 算子且编译产物声明支持融合；TBE/TIK 算子不支持） | 不支持（任务类型为 `MODEL_TASK_CUSTOM_KERNEL`） |
 
 **两者互补而非替代**：V1 适合标准 AICore 算子（框架全托管，开发量小），V2 适合非标准 kernel（用户全控制，灵活性高）。

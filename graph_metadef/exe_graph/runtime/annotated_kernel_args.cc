@@ -12,6 +12,7 @@
 
 #include <limits>
 #include <new>
+#include <utility>
 #include <securec.h>
 
 #include "annotated_kernel_args_impl.h"
@@ -123,6 +124,71 @@ ge::graphStatus AnnotatedKernelArgs::AppendArg(uint64_t value) {
     return impl->status;
   }
   AppendSlot(value, *impl);
+  return impl->status;
+}
+
+ge::graphStatus AnnotatedKernelArgs::AppendArg(const CustomDataBlock &data) {
+  auto *impl = static_cast<internal::AnnotatedKernelArgsImpl *>(impl_);
+  if (impl == nullptr) {
+    GELOGE(ge::GRAPH_FAILED, "Append custom data failed, kernel args has been moved.");
+    return ge::GRAPH_FAILED;
+  }
+  if (impl->status != ge::GRAPH_SUCCESS) {
+    return impl->status;
+  }
+  if (data.size == 0UL) {
+    impl->status = ge::GRAPH_FAILED;
+    GELOGE(impl->status, "Append custom data failed, data size must be greater than zero.");
+    return impl->status;
+  }
+  if (data.data == nullptr) {
+    impl->status = ge::GRAPH_FAILED;
+    GELOGE(impl->status, "Append custom data failed, data is null while size is %zu.", data.size);
+    return impl->status;
+  }
+  // reserved 是未来扩展的占位字段，当前必须全 0：后续版本启用该字段后，非 0 的历史脏值会被误判为显式语义
+  for (size_t i = 0U; i < sizeof(data.reserved); ++i) {
+    if (data.reserved[i] != 0U) {
+      impl->status = ge::GRAPH_FAILED;
+      GELOGE(impl->status, "Append custom data failed, reserved must be all zero but reserved[%zu] is %u.", i,
+             static_cast<uint32_t>(data.reserved[i]));
+      return impl->status;
+    }
+  }
+  if (impl->custom_data_blobs.size() >= static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    impl->status = ge::INTERNAL_ERROR;
+    GELOGE(impl->status, "Append custom data failed, blob count %zu overflows int32.", impl->custom_data_blobs.size());
+    return impl->status;
+  }
+  if (impl->args.size() > (std::numeric_limits<size_t>::max() - internal::kKernelArgSlotSize)) {
+    impl->status = ge::INTERNAL_ERROR;
+    GELOGE(impl->status, "Append custom data failed, args size %zu overflows.", impl->args.size());
+    return impl->status;
+  }
+  // 先完成可能抛 bad_alloc 的字节拷贝，避免失败时已改动 args/arg_descs 而破坏 8 字节槽不变式
+  const auto *const begin = static_cast<const uint8_t *>(data.data);
+  std::vector<uint8_t> blob(begin, begin + data.size);
+
+  const auto size = static_cast<uint64_t>(data.size);
+  ge::ArgDesc arg_desc = {
+      ge::AddrType::CUSTOM_DATA_BLOCK, static_cast<int32_t>(impl->custom_data_blobs.size()), false, {0}};
+  // reserved 位于 ArgDesc 偏移 9，非 8 字节对齐，禁止直接解引用
+  if (memcpy_s(arg_desc.reserved, sizeof(arg_desc.reserved), &size, sizeof(size)) != EOK) {
+    impl->status = ge::GRAPH_FAILED;
+    GELOGE(impl->status, "Append custom data failed, write size %zu into reserved failed.", data.size);
+    return impl->status;
+  }
+
+  const auto args_size_before = impl->args.size();
+  impl->arg_descs.emplace_back(arg_desc);
+  // 编译期先占一个值为 0 的 8 字节槽，运行期由 CustomTaskInfo 填入真实 device 地址
+  AppendSlot(0UL, *impl);
+  if (impl->status != ge::GRAPH_SUCCESS) {
+    impl->arg_descs.pop_back();
+    impl->args.resize(args_size_before);
+    return impl->status;
+  }
+  impl->custom_data_blobs.emplace_back(std::move(blob));
   return impl->status;
 }
 

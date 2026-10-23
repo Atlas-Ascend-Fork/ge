@@ -18,5 +18,6 @@ This directory contains documentation for two mechanisms for integrating custom 
 | **Serialization** | Framework embedded (FE engine automatically serializes) | User-defined (`PortableOp::Serialize/Deserialize`) |
 | **Address Refresh** | Framework embedded (DavinciModel automatically handles) | User-defined (`ArgsUpdater::UpdateHostArgs()`) |
 | **kernel Language** | Ascend C / TBE (framework compiles) | Arbitrary (user compiles or RTC) |
+| **SuperKernel Fusion** | Supported (AscendC operators whose compile artifacts declare fusion support; TBE/TIK operators are not supported) | Not supported (task type is `MODEL_TASK_CUSTOM_KERNEL`) |
 
 **Both are complementary rather than replacements**: V1 is suitable for standard AICore operators (framework fully managed, less development effort), V2 is suitable for non-standard kernels (user fully controlled, high flexibility).

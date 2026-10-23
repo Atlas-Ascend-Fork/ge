@@ -46,6 +46,11 @@ class AnnotatedArgsHandler : public ArgsHandler {
     size_t GetArgsSize() const;
     const ge::ArgDesc *GetArgDescs() const;
     size_t GetArgDescCount() const;
+    // 变长自定义数据的个数，与 arg_descs 中 AddrType::CUSTOM_DATA_BLOCK 项的个数相等
+    size_t GetCustomDataBlobCount() const;
+    // 返回第 index 个变长自定义数据的字节，index 越界时返回 nullptr。
+    // 返回指针仅在本 LaunchRecord 存活且未被修改期间有效。
+    const std::vector<uint8_t> *GetCustomDataBlob(size_t index) const;
     uint32_t GetBlockDim() const;
     uint32_t GetStreamId() const;
     AnnotatedLaunchToken GetToken() const;
@@ -55,13 +60,14 @@ class AnnotatedArgsHandler : public ArgsHandler {
    private:
     LaunchRecord(const char *const kernel_name, const void *const kernel_bin, const size_t kernel_bin_size,
                  const uint32_t block_dim, const uint32_t stream_id, std::vector<uint8_t> &&args_data,
-                 std::vector<ge::ArgDesc> &&arg_descs, AnnotatedLaunchToken token,
-                 std::vector<AnnotatedLaunchToken> &&dependencies);
+                 std::vector<ge::ArgDesc> &&arg_descs, std::vector<std::vector<uint8_t>> &&custom_data_blobs,
+                 AnnotatedLaunchToken token, std::vector<AnnotatedLaunchToken> &&dependencies);
 
     std::string kernel_name_;
     std::vector<uint8_t> kernel_bin_;
     std::vector<uint8_t> args_data_;
     std::vector<ge::ArgDesc> arg_descs_;
+    std::vector<std::vector<uint8_t>> custom_data_blobs_;
     uint32_t block_dim_;
     uint32_t stream_id_;
     AnnotatedLaunchToken token_;
@@ -89,10 +95,11 @@ class AnnotatedArgsHandler : public ArgsHandler {
  private:
   void AddLaunch(const char *const kernel_name, const void *const kernel_bin, const size_t kernel_bin_size,
                  const uint32_t block_dim, const uint32_t stream_id, std::vector<uint8_t> &&args_data,
-                 std::vector<ge::ArgDesc> &&arg_descs);
+                 std::vector<ge::ArgDesc> &&arg_descs, std::vector<std::vector<uint8_t>> &&custom_data_blobs);
   ge::graphStatus AddLaunchWithDependencies(const char *kernel_name, const void *kernel_bin, size_t kernel_bin_size,
                                             uint32_t block_dim, uint32_t stream_id, std::vector<uint8_t> &&args_data,
                                             std::vector<ge::ArgDesc> &&arg_descs,
+                                            std::vector<std::vector<uint8_t>> &&custom_data_blobs,
                                             const std::vector<AnnotatedLaunchToken> &predecessors,
                                             AnnotatedLaunchToken &token);
 

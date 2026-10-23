@@ -370,6 +370,8 @@
       - [简介](cpp/gert/CtInferShapeRangeContext/overview.md)
       - [GetInferenceContext](cpp/gert/CtInferShapeRangeContext/GetInferenceContext.md)
 
+    - [CustomDataBlock](cpp/gert/CustomDataBlock.md)
+
     - [CustomPassContext](cpp/ge/CustomPassContext/CustomPassContext.md)
       - [简介](cpp/ge/CustomPassContext/overview.md)
       - [CustomPassContext构造函数和析构函数](cpp/ge/CustomPassContext/CustomPassContext_constructor_and_destructor.md)

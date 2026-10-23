@@ -52,6 +52,8 @@ SuperKernel是一种基于二进制层面的算子融合技术，区别于传统
 
 标定范围内若存在不可融合的算子，会生成第一段SuperKernel，同时自动跳过该算子进行第二段的SuperKernel融合，因此标定范围不代表最终的融合结果。
 
+不可融合算子的典型情形包括：TBE/TIK算子、SIMT算子，以及通过`custom_op.h`（BaseCustomOp）机制开发的自定义算子。此类算子被跳过只影响融合收益，不影响模型正确性。
+
 ## 融合范围标定示例
 
 通过调用[aclskScopeBegin](../../api/graph_engine_api/c/super_kernel/aclskScopeBegin.md)和[aclskScopeEnd](../../api/graph_engine_api/c/super_kernel/aclskScopeEnd.md)接口，用户若传入有效scopeName可以框定算子融合进SuperKernel，若传入nullptr可以框定算子不融合。该功能只在开启SuperKernel优化时有实际效果。如下代码演示了如何在NPU上利用SuperKernel技术实现一个简单的加法算子。

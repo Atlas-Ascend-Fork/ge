@@ -11,6 +11,7 @@
 #include "graph/args_format_desc.h"
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <map>
 #include <sstream>
 #include "common/checker.h"
@@ -28,6 +29,11 @@ constexpr size_t kMaxWorkspaceNum = 16UL;
 constexpr int32_t kDecimalCarry = 10;
 constexpr int32_t kAsciiZero = 48;
 constexpr int32_t kDigitFormatCnt = 1;
+constexpr int32_t kCustomDataFormatCnt = 2;
+// custom_data_block 的 blob 字节大小与 KernelDef.kernel_ext_info_size（uint32）量纲一致，超上界即拒绝
+constexpr uint64_t kCustomDataMaxSize = std::numeric_limits<uint32_t>::max();
+constexpr char kCustomDataPattern[] = "custom_data_block";
+constexpr char kCustomDataUnit[] = "bytes";
 constexpr int32_t kAmbiguousIrIdx = -1;
 
 using ParseFunc =
@@ -556,6 +562,60 @@ static void CustomValueSerializer(std::stringstream &ss, const std::string &patt
   ss << *reinterpret_cast<const uint64_t *>(arg_desc.reserved);
 }
 
+// 变长自定义数据的 pattern 形如 {custom_data_block<idx>.<size>bytes}，size 编码进 pattern 本身，
+// 由本 parser 解析后写入 ArgDesc.reserved（ArrayLikeSerializer 不携带 reserved，故必须使用专用 parser）。
+// 注意：op_desc 在 ArgsFormatDescUtils::Parse 路径下必为 nullptr，禁止对其做非空断言。
+static graphStatus CustomDataParser(const OpDescPtr &op_desc, const std::string &pattern_str, const AddrType type,
+                                    std::vector<ArgDesc> &arg_descs) {
+  (void)op_desc;
+  int32_t ir_idx = 0;
+  uint64_t size = 0UL;
+  if (sscanf_s(pattern_str.c_str(), "custom_data_block%d.%lubytes", &ir_idx, &size) != kCustomDataFormatCnt) {
+    GELOGE(GRAPH_PARAM_INVALID, "Unsupported custom data format: [%s]", pattern_str.c_str());
+    return GRAPH_PARAM_INVALID;
+  }
+  // sscanf_s 不校验剩余字符，重构规范形式后精确比对，拒绝形如 custom_data_block0.1024bytesxyz 的尾部多余字符
+  const std::string canonical =
+      std::string(kCustomDataPattern) + std::to_string(ir_idx) + "." + std::to_string(size) + kCustomDataUnit;
+  if (pattern_str != canonical) {
+    GELOGE(GRAPH_PARAM_INVALID, "Custom data format [%s] is not canonical, expect [%s].", pattern_str.c_str(),
+           canonical.c_str());
+    return GRAPH_PARAM_INVALID;
+  }
+  if ((ir_idx < 0) || (size == 0UL) || (size > kCustomDataMaxSize)) {
+    GELOGE(GRAPH_PARAM_INVALID, "Custom data format [%s] is out of range, max size is %lu.", pattern_str.c_str(),
+           static_cast<unsigned long>(kCustomDataMaxSize));
+    return GRAPH_PARAM_INVALID;
+  }
+  // blob 字节按 desc 顺序裸拼接在 kernel_ext_info 中，序号是格式的一部分；
+  // 与运行期 CustomTaskInfo::LoadCustomDataBlobs 保持一致，解析期即拒绝非连续序号
+  int32_t expected_idx = 0;
+  for (const auto &desc : arg_descs) {
+    if (desc.addr_type == AddrType::CUSTOM_DATA_BLOCK) {
+      ++expected_idx;
+    }
+  }
+  if (ir_idx != expected_idx) {
+    GELOGE(GRAPH_PARAM_INVALID, "Custom data index [%d] is not continuous, expect [%d] for format [%s].", ir_idx,
+           expected_idx, pattern_str.c_str());
+    return GRAPH_PARAM_INVALID;
+  }
+  ArgDesc arg = {type, ir_idx, false, {0}};
+  // reserved 位于 ArgDesc 偏移 9，非 8 字节对齐，禁止直接解引用
+  if (memcpy_s(arg.reserved, sizeof(arg.reserved), &size, sizeof(size)) != EOK) {
+    GELOGE(GRAPH_FAILED, "Custom data format [%s] write size into reserved failed.", pattern_str.c_str());
+    return GRAPH_FAILED;
+  }
+  arg_descs.emplace_back(arg);
+  return GRAPH_SUCCESS;
+}
+
+static void CustomDataSerializer(std::stringstream &ss, const std::string &pattern, const ArgDesc &arg_desc) {
+  uint64_t size = 0UL;
+  (void)memcpy_s(&size, sizeof(size), arg_desc.reserved, sizeof(size));
+  ss << pattern << arg_desc.ir_idx << "." << size << kCustomDataUnit;
+}
+
 static graphStatus VariableWidthCalcSize(const OpDescPtr &, const ArgDesc &arg_desc, size_t &size) {
   GE_ASSERT(arg_desc.addr_type == AddrType::PLACEHOLDER || arg_desc.addr_type == AddrType::CUSTOM_VALUE);
   auto width = static_cast<ArgsFormatWidth>(arg_desc.ir_idx);
@@ -604,6 +664,13 @@ static const std::map<std::string, PatternHandler, PatternCmp> kSkPatternToHandl
 };
 
 static graphStatus ConvertArgDescNormal2Sk(const ArgDesc &normal_arg_desc, int32_t op_id, ArgDesc &sk_arg_desc) {
+  // CUSTOM_DATA_BLOCK 的 blob 字节大小存于 reserved，而 sk 子描述符的 reserved 已被 sub_idx/folded 语义占用，
+  // 往返必然丢失 size；且 SknSerializer 被包成 void 类型的 std::function，其内部断言的错误码会被丢弃、
+  // 只留下畸形的 {skn<id>} 残串。故在转换入口即拒绝，保证编译期明确失败而非静默降级。
+  if (normal_arg_desc.addr_type == AddrType::CUSTOM_DATA_BLOCK) {
+    GELOGE(GRAPH_FAILED, "Addr type CUSTOM_DATA_BLOCK is not supported in super kernel arg format, op_id[%d].", op_id);
+    return GRAPH_FAILED;
+  }
   SkArgDesc sk_arg_desc_tmp{};
   sk_arg_desc_tmp.addr_type = AddrType::SUPER_KERNEL_SUB_NODE;
   sk_arg_desc_tmp.ir_idx = op_id;
@@ -760,6 +827,7 @@ static const std::map<std::string, PatternHandler, PatternCmp> kPatternToHandler
     {"i_instance", {InputInstanceParser, InputInstanceCalcSize, ArrayLikeSerializer, ge::AddrType::INPUT_INSTANCE}},
     {"o_instance", {OutputInstanceParser, OutputInstanceCalcSize, ArrayLikeSerializer, ge::AddrType::OUTPUT_INSTANCE}},
     {"event_addr", {EventAddrParser, DefaultCalcSize, EventAddrSerializer, ge::AddrType::EVENT_ADDR}},
+    {"custom_data_block", {CustomDataParser, DefaultCalcSize, CustomDataSerializer, ge::AddrType::CUSTOM_DATA_BLOCK}},
     {"skn", {SknParser, SknCalcSize, SknSerializer, ge::AddrType::SUPER_KERNEL_SUB_NODE}},
 };
 

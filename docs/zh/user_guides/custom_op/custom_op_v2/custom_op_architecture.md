@@ -615,6 +615,7 @@ ONNX 解析插件通过 `REGISTER_CUSTOM_OP` 注册，dlopen 时自动收集到 
 | 动态 Shape 静态子图 | 适用 | 静态子图走 V1 `DavinciModelKernel` 路径，自定义算子通过 `CustomTaskInfo::Distribute()` 执行，与纯静态 shape 场景一致。 |
 | 离线场景（atc 编译） | 适用 | 阶段 3 覆盖。ATC 编译时回调 Compile + Serialize，OM 加载时回调 Deserialize + Execute。 |
 | 在线场景（框架适配） | 适用 | PyTorch/TorchAir 和 TensorFlow 通过各自 Adapter 映射为 GE 自定义算子节点，走统一编译执行流程。 |
+| SuperKernel 融合 | 不适用 | 本机制生成 `MODEL_TASK_CUSTOM_KERNEL`；SuperKernel 任务构建仅处理 `ACL_RT_MODEL_TASK_KERNEL`/`ACL_RT_MODEL_TASK_ALL_KERNEL`，且 custom engine 不会为算子写入 `supportSuperKernel`，因此不参与融合。 |
 
 ---
 

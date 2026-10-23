@@ -38,6 +38,7 @@ enum class AddrType {
   OUTPUT_INSTANCE,
   SUPER_KERNEL_SUB_NODE,
   EVENT_ADDR,
+  CUSTOM_DATA_BLOCK,
   MAX  // the end, add new value before MAX.
 };
 
@@ -56,6 +57,8 @@ enum class TilingContextSubType {
 // 对ffts尾块非尾块地址，idx=0表示非尾块，idx=1表示尾块
 // 对于hidden input，支持多个，idx表示索引，从0开始，reserved字段表示类型（uint32）
 // 对于custom value，reserved字段表示需要透传的值（uint64），其他字段无意义
+// 对于custom data，idx表示自定义算子自定义数据在本次launch内的序号（从0递增），reserved字段表示数据字节大小（uint64），
+// folded恒为false；args中仅占一个8字节槽位，槽值为该数据的device地址
 // 对于其他类型, idx和fold暂时没有意义
 struct ArgDesc {
   AddrType addr_type;

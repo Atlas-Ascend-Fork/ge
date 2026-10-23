@@ -19,6 +19,7 @@
 ge::graphStatus AppendArg(const InputAddr &addr)
 ge::graphStatus AppendArg(const OutputAddr &addr)
 ge::graphStatus AppendArg(const WorkspaceAddr &addr)
+ge::graphStatus AppendArg(const CustomDataBlock &data)
 ge::graphStatus AppendArg(uint64_t value)
 ```
 
@@ -29,13 +30,14 @@ ge::graphStatus AppendArg(uint64_t value)
 | `AppendArg(const InputAddr &)` | `addr` | 输入 | 逻辑输入地址描述符。详见[`InputAddr`](../InputAddr.md)。 |
 | `AppendArg(const OutputAddr &)` | `addr` | 输入 | 逻辑输出地址描述符。详见[`OutputAddr`](../OutputAddr.md)。 |
 | `AppendArg(const WorkspaceAddr &)` | `addr` | 输入 | 逻辑workspace地址描述符。详见[`WorkspaceAddr`](../WorkspaceAddr.md)。 |
+| `AppendArg(const CustomDataBlock &)` | `data` | 输入 | 变长自定义数据描述符。详见[`CustomDataBlock`](../CustomDataBlock.md)。数据在追加时被深拷贝，args中仅占一个8-byte槽位，槽值为该数据的device地址。数据长度不随args下发，kernel侧获取长度方式详见`CustomDataBlock`的约束说明。 |
 | `AppendArg(uint64_t)` | `value` | 输入 | 直接写入kernel args的64-bit标量值，并生成自定义值描述。 |
 
 ## 返回值说明
 
 | 参数名 | 类型 | 说明 |
 | --- | --- | --- |
-| - | `ge::graphStatus` | `GRAPH_SUCCESS(0)`：追加成功；其他值：对象无效、IR index超出范围或内部参数存储失败。 |
+| - | `ge::graphStatus` | `GRAPH_SUCCESS(0)`：追加成功；其他值：对象无效、IR index超出范围、`CustomDataBlock` 的 `reserved` 非0或内部参数存储失败。 |
 
 ## 约束说明
 
@@ -51,13 +53,15 @@ if ((input == nullptr) || (output == nullptr) || (workspace.addr == nullptr)) {
   return ge::GRAPH_FAILED;
 }
 
+MyTiling tiling{static_cast<uint32_t>(sizeof(MyTiling)), 8U};  // MyTiling为host侧与device侧共用的结构体定义
 gert::AnnotatedKernelArgs args;
 if (args.AppendArg(gert::InputAddr{0U, input->GetAddr()}) != ge::GRAPH_SUCCESS ||
     args.AppendArg(gert::OutputAddr{0U, output->GetAddr()}) != ge::GRAPH_SUCCESS ||
     args.AppendArg(gert::WorkspaceAddr{workspace.index, workspace.addr}) != ge::GRAPH_SUCCESS ||
+    args.AppendArg(gert::CustomDataBlock{&tiling, sizeof(tiling)}) != ge::GRAPH_SUCCESS ||
     args.AppendArg(uint64_t{1U}) != ge::GRAPH_SUCCESS) {
   return ge::GRAPH_FAILED;
 }
-// args按上述顺序占用4个参数。
+// args按上述顺序占用5个参数，其中第4个参数为tiling数据的device地址。
 return ctx.AddLaunch(launch_info, std::move(args));
 ```
