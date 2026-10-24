@@ -93,6 +93,8 @@ void RegisterTransposeAndReduceOps() {
   RegisterOpCreatorV2("Unsqueeze", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Squeeze", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("SoftmaxV2", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("LayerNorm", {"x", "gamma", "beta"}, ge::kIrInputRequired, {"y", "mean", "variance"},
+                      kIrOutputRequired, {});
   RegisterOpCreatorV2("BatchMatMulV2", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("SoftmaxStub", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Slice", {"x1", "x2", "x3"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
