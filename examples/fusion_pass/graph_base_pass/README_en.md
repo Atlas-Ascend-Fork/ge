@@ -12,6 +12,7 @@ This directory provides examples for implementing custom fusion passes by inheri
 | MMOE network MatMul fusion (Pack+BatchMatMulV2+Split) custom pass example | [README](4_mmoe_bmm_split_pass/cpp/README_en.md) |
 | MMOE network first-layer MatMul fusion (Concat+MatMul+SplitV) custom pass example | [README](5_mmoe_matmul_pass/cpp/README_en.md) |
 | Custom pass example for Data+Transpose fusion (NCHW→NHWC) and ExtendConv2D+Transpose fusion | [README](6_transpose_fusion_pass/cpp/README.md) |
+| Custom pass example for Conv2D/Conv2DV2+Concat zero-copy marking (Concat without task) | [README](7_conv_concat_notask_pass/README_en.md) |
 
 ## Development Guide
 

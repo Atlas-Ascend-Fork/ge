@@ -12,6 +12,7 @@
 | MMOE网络MatMul融合（Pack+BatchMatMulV2+Split）自定义pass样例 | [README](4_mmoe_bmm_split_pass/cpp/README.md)                  |
 | MMOE网络首层MatMul融合（Concat+MatMul+SplitV）自定义pass样例 | [README](5_mmoe_matmul_pass/cpp/README.md)                     |
 | Data+Transpose融合（NCHW→NHWC）及ExtendConv2D+Transpose融合的自定义pass样例   | [README](6_transpose_fusion_pass/cpp/README.md)   |
+| Conv2D+Concat零拷贝标记（Concat不生成Task）的自定义pass样例   | [README](7_conv_concat_notask_pass/README.md)   |
 
 ## 开发指南
 
