@@ -368,8 +368,8 @@ PYTHON_GE_WHL="${sourcedir}/${pkg_arch_name}-linux/lib64/ge_py-0.0.1-py3-none-an
 PYTHON_GE_WHL_DIR="${sourcedir}/${pkg_arch_name}-linux/lib64"
 
 custom_install() {
-    if [ -z "$common_parse_dir/share/info/ge-compiler" ]; then
-        log "ERROR" "ERR_NO:0x0001;ERR_DES:ge-compiler directory is empty"
+    if [ ! -d "$common_parse_dir/share/info/ge-compiler" ]; then
+        log "ERROR" "ERR_NO:0x0001;ERR_DES:path $common_parse_dir/share/info/ge-compiler is not exist."
         exit 1
     fi
 

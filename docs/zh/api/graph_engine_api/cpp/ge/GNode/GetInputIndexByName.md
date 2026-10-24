@@ -24,7 +24,7 @@ graphStatus GetInputIndexByName(const AscendString &name, int32_t &index)
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | name | 输入 | 算子的端口名。对于动态输入，需要传入端口名和编号。 |
-| index | 输出 | 算子的输入端口号。 |
+| index | 输出 | 算子的输入端口号。若端口名不存在，调用仍返回 `GRAPH_SUCCESS`，此参数为 `-1`。 |
 
 ## 返回值说明
 

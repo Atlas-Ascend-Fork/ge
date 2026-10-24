@@ -28,7 +28,7 @@ Usage: $0 [OPTIONS]
 默认行为:
   当未指定目标时，默认构建并dump图
 EOF
-    exit 0
+    exit "${1:-0}"
 }
 
 # 默认目标
@@ -48,8 +48,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "未知选项: $1" >&2
-            usage
-            exit 1
+            usage 1
             ;;
     esac
 done
