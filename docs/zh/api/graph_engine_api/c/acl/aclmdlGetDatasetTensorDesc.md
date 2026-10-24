@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-如果模型输入或输出的Shape是动态的，模型在模型执行之后可以调用本接口从aclmdlDataset类型的数据（该类型用于描述模型推理时的输入数据、输出数据）中获取指定的输入或者输出的Tensor描述信息。
+如果om/om2模型输入或输出的Shape是动态的，模型在模型执行之后可以调用本接口从aclmdlDataset类型的数据（该类型用于描述模型推理时的输入数据、输出数据）中获取指定的输入或者输出的Tensor描述信息。
 
 **典型场景举例**：如果模型输入Shape是动态的，在模型执行之前调[aclmdlSetDatasetTensorDesc](aclmdlSetDatasetTensorDesc.md)设置该输入的tensor描述信息，在模型执行之后，调用aclmdlGetDatasetTensorDesc接口获取模型动态输出的Tensor描述信息。
 

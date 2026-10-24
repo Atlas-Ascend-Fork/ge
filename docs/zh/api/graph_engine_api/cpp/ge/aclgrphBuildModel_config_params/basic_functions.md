@@ -100,7 +100,7 @@ aipp_op {
 
 ## OFFLINE\_MODE
 
-离线模型格式。
+离线模型格式。此参数实际对应的options参数为`ge.offlineMode`。
 
 **参数取值：**
 
