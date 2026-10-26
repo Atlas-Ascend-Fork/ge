@@ -12,6 +12,7 @@
         <file value="libnpu_sched_model_loader.so" file_type="shared"/>
         <file value="libgraph_base.so" file_type="shared"/>
         <file value="libhcom_executor.so" file_type="shared"/>
+        <file value="libhcom_graph_adaptor.so" file_type="shared"/>
         <file value="liblowering.so" file_type="shared"/>
         <file value="libge_executor.so" file_type="shared"/>
         <file value="libge_common_base.so" file_type="shared"/>
