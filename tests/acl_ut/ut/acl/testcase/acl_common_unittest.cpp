@@ -67,6 +67,8 @@ TEST_F(UTEST_ACL_Common, jsonParserUtilsTest) {
   nlohmann::json js;
   auto ret = JsonParser::ParseJson("{", js);
   EXPECT_EQ(ret, ACL_ERROR_INVALID_PARAM);
+  ret = JsonParser::ParseJson(nullptr, js);
+  EXPECT_EQ(ret, ACL_ERROR_INVALID_PARAM);
   ret = JsonParser::ParseJson("{}", js);
   EXPECT_EQ(ret, ACL_RT_SUCCESS);
   std::string strJsonCtx;
@@ -74,6 +76,9 @@ TEST_F(UTEST_ACL_Common, jsonParserUtilsTest) {
   bool found = false;
   ret = JsonParser::GetJsonCtxByKeyFromBuffer("{", strJsonCtx, subStrKey, found);
   EXPECT_EQ(ret, ACL_ERROR_INVALID_PARAM);
+  ret = JsonParser::GetJsonCtxByKeyFromBuffer(nullptr, strJsonCtx, subStrKey, found);
+  EXPECT_EQ(ret, ACL_ERROR_INVALID_PARAM);
+  EXPECT_EQ(found, false);
   ret = JsonParser::GetJsonCtxByKeyFromBuffer("{\"key\":\"value\"}", strJsonCtx, subStrKey, found);
   EXPECT_EQ(ret, ACL_RT_SUCCESS);
   EXPECT_EQ(found, true);

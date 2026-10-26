@@ -17,6 +17,10 @@
 
 namespace acl {
 aclError JsonParser::ParseJson(const char_t *const buffer, nlohmann::json &js) {
+  if (buffer == nullptr) {
+    ACL_LOG_INNER_ERROR("[Check][JsonFile]json buffer must not be null.");
+    return ACL_ERROR_INVALID_PARAM;
+  }
   try {
     js = nlohmann::json::parse(std::string(buffer));
   } catch (const nlohmann::json::exception &e) {
