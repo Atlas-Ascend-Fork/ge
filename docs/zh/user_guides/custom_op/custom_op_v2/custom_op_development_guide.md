@@ -150,6 +150,7 @@ export ASCEND_CUSTOM_OPP_PATH="$(pwd)/build:$ASCEND_CUSTOM_OPP_PATH"
 | 在线编译 + 在线执行 | `EagerExecuteOp` + `CompilableOp` + `ShapeInferOp`(可选) | 构图 → Compile → 执行 | — |
 | 离线 OM 模型下沉 | `EagerExecuteOp` + `CompilableOp` + `ShapeInferOp` + `PortableOp` | AIR → ATC → OM → ACL | [compilable_add_custom](../../../../../examples/custom_op/compilable_add_custom/README.md) |
 | 数据依赖 shape | `EagerExecuteOp` + `ShapeInferOp` | 构图 → 执行 + shape buffer 回写 | [data_dependent_shape_custom](../../../../../examples/custom_op/data_dependent_shape_custom/README.md) |
+| 值依赖 shape | `EagerExecuteOp` + `ShapeInferOp` | 构图 → 运行期 InferShape 重推 + 输出 shape 预填 | [value_dependent_shape_custom](../../../../../examples/custom_op/value_dependent_shape_custom/README.md) |
 
 > 说明：未实现 `PortableOp` 的算子同样可用于生成离线 OM（实现 SO 会随模型打包）。但是其 kernel bin 等数据不会随 OM 保存和恢复，需自行管理。
 
@@ -214,6 +215,28 @@ Execute    → 按上界分配输出 + 分配 shape buffer
 - shape buffer 格式：`[ndim, d0, d1, ...]`（uint64_t 数组）
 
 > 完整代码参见 [`examples/custom_op/data_dependent_shape_custom/`](../../../../../examples/custom_op/data_dependent_shape_custom/README.md)。
+
+### 4.6 场景 E：值依赖 shape（值依赖算子）
+
+输出 shape 依赖某个输入 tensor 的值（如 Concat 类算子依赖轴值、Reshape 类算子依赖 shape 输入的 value），而非数据计算结果。与三类算子的本质区别：值在 kernel 下发前即可确定，输出可按精确 shape 申请内存，无需 shape buffer 回传。
+
+值依赖输入经 `InputsDataDependency` 声明后，动态执行链路（RT2）lowering 时框架自动为其生成 host 副本（执行图内插入 D2H 拷贝节点），并在算子执行前串联运行期 InferShape 节点读值重推 shape、将结果预填进输出 tensor（`ExecuteCustomOpWithInferShape` 变体）：
+
+```
+编译期 InferShape → 值可得（Const 输入）时推导精确 shape
+                  → 值不可得（Data 输入）时保秩全 unknown（-1）
+运行期 InferShape 节点 → 读框架物化的 host 副本值重推精确 shape → 预填输出 tensor
+Execute → 取预填 shape → 校验与输入 shape 一致 → 按精确 shape 分配输出
+        → launch kernel → 返回（全程无需算子侧 D2H / stream sync / 执行后回读）
+```
+
+**关键点：**
+- 值依赖输入须先经 `InputsDataDependency` 声明：InferShape 才能取到其值，框架也才会为其物化 host 副本；动态输入场景下取值须按 IR 索引（`GetRequiredInputTensor`），不能用扁平索引
+- Execute 无需（也不应）自行 D2H 读值：数据依赖输入的 device→host 拷贝由框架在执行图内完成，输出 shape 已预填，拷贝布局等参数可由输出/输入 shape 推得；kernel 计算若确需值本身（如生产 ConcatV2 的轴值），由 kernel 从 device 侧输入读取
+- 与三类算子不同：按精确 shape 调用 `MallocOutputTensor`，无需按上界申请、无需 shape buffer、无需执行后同步
+- 若值依赖输入为编译期常量，编译期即推导精确 shape（退化为静态 shape）
+
+> 完整代码参见 [`examples/custom_op/value_dependent_shape_custom/`](../../../../../examples/custom_op/value_dependent_shape_custom/README.md)（以 ConcatV2 为载体，实现与生产算子 ops-math ConcatV2 对齐）。
 
 ---
 

@@ -144,6 +144,7 @@ export ASCEND_CUSTOM_OPP_PATH="$(pwd)/build:$ASCEND_CUSTOM_OPP_PATH"
 | Online compilation + Online execution | `EagerExecuteOp` + `CompilableOp` + `ShapeInferOp`(optional) | Graph building → Compile → Execution | — |
 | Offline OM model sink | `EagerExecuteOp` + `CompilableOp` + `ShapeInferOp` + `PortableOp` | AIR → ATC → OM → ACL | [compilable_add_custom](../../../../../examples/custom_op/compilable_add_custom/README.md) |
 | Data dependent shape | `EagerExecuteOp` + `ShapeInferOp` | Graph building → Execution + shape buffer writeback | [data_dependent_shape_custom](../../../../../examples/custom_op/data_dependent_shape_custom/README.md) |
+| Value dependent shape | `EagerExecuteOp` + `ShapeInferOp` | Graph building → runtime InferShape re-inference + output shape pre-fill | [value_dependent_shape_custom](../../../../../examples/custom_op/value_dependent_shape_custom/README.md) |
 
 > Note: Operators that do not implement `PortableOp` can also be used to generate offline OM (implementation SO is packaged with the model). However, their kernel binary and other data are not saved or restored with OM, need self-management.
 
@@ -208,6 +209,28 @@ Execute    → Allocate output by upper bound + allocate shape buffer
 - Shape buffer format: `[ndim, d0, d1, ...]` (uint64_t array)
 
 > Complete code see [`examples/custom_op/data_dependent_shape_custom/`](../../../../../examples/custom_op/data_dependent_shape_custom/README.md).
+
+### 4.6 Scenario E: Value Dependent Shape (Value Dependent Operator)
+
+Output shape depends on the value of an input tensor (like Concat operators depending on the axis value, or Reshape operators depending on the value of the shape input), rather than the result of data computation. Essential difference from type-3 operators: the value can be determined before kernel launch, so output can be allocated with exact shape, no shape buffer writeback needed.
+
+Once the value-dependent input is declared via `InputsDataDependency`, the dynamic execution pipeline (RT2) automatically materializes a host copy for it during lowering (D2H copy nodes inserted into the execution graph), chains a runtime InferShape node before the operator executes to re-infer the shape from the host value, and pre-fills the result into the output tensor (`ExecuteCustomOpWithInferShape` variant):
+
+```
+Compile-time InferShape → Derive exact shape when value available (Const input)
+                         → Degrade to rank-preserving unknown (-1) when value unavailable (Data input)
+Runtime InferShape node  → Re-infer exact shape from the framework-materialized host copy → pre-fill output tensor
+Execute → Take the pre-filled shape → validate consistency with input shapes → allocate output with exact shape
+        → launch kernel → return (no operator-side D2H / stream sync / post-execution readback throughout)
+```
+
+**Key Points:**
+- The value-dependent input must be declared via `InputsDataDependency` first: only then can InferShape fetch its value, and only then will the framework materialize the host copy; under dynamic inputs, fetch by IR index (`GetRequiredInputTensor`), not the flat index
+- Execute does not need (and should not) perform its own D2H value read: the device-to-host copy of data-dependent inputs is done by the framework inside the execution graph, the output shape is already pre-filled, and parameters such as the copy layout can be derived from the output/input shapes; if the kernel truly needs the value itself (like the axis value of the production ConcatV2), the kernel reads it from the device-side input
+- Different from type-3 operators: call `MallocOutputTensor` with exact shape, no upper bound allocation, no shape buffer, no post-execution synchronization
+- If the value-dependent input is a compile-time constant, the exact shape is derived at compile time (degenerates to static shape)
+
+> Complete code see [`examples/custom_op/value_dependent_shape_custom/`](../../../../../examples/custom_op/value_dependent_shape_custom/README.md) (based on ConcatV2, aligned with the production operator ops-math ConcatV2).
 
 ---
 
