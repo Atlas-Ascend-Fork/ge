@@ -460,12 +460,13 @@ Status OpImplModeConfigParser::ParseAllowHF32IniFileContent(const std::string &f
           kAllowHF32ModeValue_EnableFP32);
       return FAILED;
     }
-    auto iter = op_type_select_impl_mode_map_.find(op_type);
-    if (iter != op_type_select_impl_mode_map_.end()) {
-      FE_LOGW("[AllowHF32] File [%s]: duplicate op_type [%s], the value [%s] will be overwritten by [%s].",
-              file_path.c_str(), op_type.c_str(), iter->second.c_str(), value.c_str());
+    auto result = op_type_select_impl_mode_map_.insert(std::make_pair(op_type, value));
+    if (!result.second && result.first->second != value) {
+      FE_LOGW(
+          "[GraphOpt][ParseAllowHF32Ini] File [%s]: duplicate op_type [%s], the value [%s] cannot be overridden by "
+          "[%s].",
+          file_path.c_str(), op_type.c_str(), result.first->second.c_str(), value.c_str());
     }
-    op_type_select_impl_mode_map_[op_type] = value;
   }
   return SUCCESS;
 }
