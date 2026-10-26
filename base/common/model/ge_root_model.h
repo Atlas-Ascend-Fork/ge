@@ -233,7 +233,7 @@ class GeRootModel : public std::enable_shared_from_this<GeRootModel> {
 
   ComputeGraphPtr root_graph_ = nullptr;
   std::map<std::string, GeModelPtr> subgraph_instance_name_to_model_;
-  // In multithread online secenario, same graph can owns different davinci_model for for concurrency
+  // In multithread online scenario, same graph can own different davinci_model for concurrency
   std::vector<uint32_t> model_ids_;
   std::mutex model_ids_mutex_;
   bool is_specific_stream_ = false;

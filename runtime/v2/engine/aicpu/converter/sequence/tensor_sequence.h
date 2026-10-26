@@ -71,7 +71,7 @@ class TensorSeq {
     return tensors_.size();
   }
 
-  // Suitable for for range loop
+  // Suitable for range loop
   const_iterator begin() const noexcept {
     return tensors_.cbegin();
   }
