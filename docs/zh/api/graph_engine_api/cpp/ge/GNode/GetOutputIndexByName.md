@@ -24,7 +24,7 @@ graphStatus GetOutputIndexByName(const AscendString &name, int32_t &index)
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | name | 输入 | 算子的端口名。 |
-| index | 输出 | 算子的输出端口号。 |
+| index | 输出 | 算子的输出端口号。若端口名不存在，调用仍返回 `GRAPH_SUCCESS`，此参数为 `-1`。 |
 
 ## 返回值说明
 

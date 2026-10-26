@@ -1239,6 +1239,8 @@ def collect_header_files(inc_file):
         "graph_metadef/",
         # add include dirs
     ]
+    pattern = r"/cann[0-9\.\-]{0,10}/include/(.*)$"
+    match = re.search(pattern, inc_file)
     for inc_dir in inc_dirs:
         if inc_file.find(inc_dir) != -1:
             include_str = '#include "{}"\n'.format(
@@ -1247,10 +1249,9 @@ def collect_header_files(inc_file):
             shared_includes_content.append(include_str)
             break
     else:
-        logging.error("please check inc_dirs")
+        if not match:
+            logging.error("please check inc_dirs")
 
-    pattern = r"/cann[0-9\.\-]{0,10}/include/(.*)$"
-    match = re.search(pattern, inc_file)
     if match:
         captured_path = match.group(1)
         include_str = '#include "{}"\n'.format(captured_path)

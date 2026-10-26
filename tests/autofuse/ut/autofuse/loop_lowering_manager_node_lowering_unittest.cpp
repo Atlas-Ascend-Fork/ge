@@ -1334,6 +1334,100 @@ TEST_F(LoopNodeLoweringUT, LoweringBroadcastTo) {
             "tmp2 = ops.Store(\"BroadcastTo_0:0\", tmp1)\n");
 }
 
+TEST_F(LoopNodeLoweringUT, LoweringLayerNormStaticYOnly) {
+  const auto origin = autofuse::AutoFuseConfig::LoweringConfig().experimental_lowering_reduce;
+  GE_MAKE_GUARD(
+      config, [origin]() { autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = origin; });
+  autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = true;
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "x", nullptr);
+    auto gamma = es_graph_->CreateInput(1, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(2, "beta", nullptr);
+    x.SetSymbolShape({"2", "3", "4"});
+    gamma.SetSymbolShape({"3", "4"});
+    beta.SetSymbolShape({"3", "4"});
+    auto layer_norm = es::LayerNorm(x, gamma, beta, -2, -2, 0.001F);
+    layer_norm.y.SetSymbolShape({"2", "3", "4"});
+    layer_norm.mean.SetSymbolShape({"2", "1", "1"});
+    layer_norm.variance.SetSymbolShape({"2", "1", "1"});
+    es_graph_->SetOutput(layer_norm.y, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto layer_norm = cg->FindNode("LayerNorm_0");
+  ASSERT_NE(layer_norm, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  auto y_kernel = loop::GetKernelBox(layer_norm->GetOutDataAnchor(0));
+  ASSERT_FALSE(y_kernel.IsExternKernel());
+  EXPECT_TRUE(y_kernel.IsReduction());
+  const auto readable = y_kernel.Readable();
+  EXPECT_NE(readable.find("ops.Mean"), string::npos);
+  EXPECT_NE(readable.find("ops.Sum"), string::npos);
+  EXPECT_NE(readable.find("ops.Rsqrt"), string::npos);
+  EXPECT_NE(readable.find("ops.Load(\"gamma:0\")"), string::npos);
+  EXPECT_NE(readable.find("ops.Load(\"beta:0\")"), string::npos);
+
+  EXPECT_FALSE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(1)).IsExternKernel());
+  EXPECT_FALSE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(2)).IsExternKernel());
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringLayerNormWithStatisticsConsumerFallback) {
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "x", nullptr);
+    auto gamma = es_graph_->CreateInput(1, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(2, "beta", nullptr);
+    x.SetSymbolShape({"2", "3", "4"});
+    gamma.SetSymbolShape({"3", "4"});
+    beta.SetSymbolShape({"3", "4"});
+    auto layer_norm = es::LayerNorm(x, gamma, beta, 1, 1, 0.001F);
+    layer_norm.y.SetSymbolShape({"2", "3", "4"});
+    layer_norm.mean.SetSymbolShape({"2", "1", "1"});
+    layer_norm.variance.SetSymbolShape({"2", "1", "1"});
+    auto abs = es::Abs(layer_norm.mean);
+    abs.SetSymbolShape({"2", "1", "1"});
+    es_graph_->SetOutput(layer_norm.y, 0);
+    es_graph_->SetOutput(abs, 1);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto layer_norm = cg->FindNode("LayerNorm_0");
+  ASSERT_NE(layer_norm, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(0)).IsExternKernel());
+  EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(1)).IsExternKernel());
+  EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(2)).IsExternKernel());
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringLayerNormDynamicShapeFallback) {
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "x", nullptr);
+    auto gamma = es_graph_->CreateInput(1, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(2, "beta", nullptr);
+    x.SetSymbolShape({"s0", "3", "4"});
+    gamma.SetSymbolShape({"3", "4"});
+    beta.SetSymbolShape({"3", "4"});
+    auto layer_norm = es::LayerNorm(x, gamma, beta, 1, 1, 0.001F);
+    layer_norm.y.SetSymbolShape({"s0", "3", "4"});
+    layer_norm.mean.SetSymbolShape({"s0", "1", "1"});
+    layer_norm.variance.SetSymbolShape({"s0", "1", "1"});
+    es_graph_->SetOutput(layer_norm.y, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto layer_norm = cg->FindNode("LayerNorm_0");
+  ASSERT_NE(layer_norm, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(0)).IsExternKernel());
+  EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(1)).IsExternKernel());
+  EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(2)).IsExternKernel());
+}
+
 TEST_F(LoopNodeLoweringUT, LoweringLayerNormBetaGammaBackpropV2Neg) {
   [this]() {
     auto dy = es_graph_->CreateInput(0, "dy", nullptr);

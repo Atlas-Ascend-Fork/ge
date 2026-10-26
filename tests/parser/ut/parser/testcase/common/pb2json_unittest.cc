@@ -439,6 +439,30 @@ TEST_F(UtestPb2Json, OneField2Json_float_field) {
   EXPECT_TRUE(json.find("alpha") != json.end());
 }
 
+TEST_F(UtestPb2Json, OneField2Json_float_precision_round_trip) {
+  ::domi::ConvolutionOpParams msg;
+  msg.set_alpha(1.5957691F);
+
+  std::set<std::string> black_fields;
+  Json json;
+  Pb2Json::Message2Json(msg, black_fields, json, false, 0);
+  ASSERT_TRUE(json.find("alpha") != json.end());
+  ASSERT_TRUE(json["alpha"].is_string());
+  EXPECT_FLOAT_EQ(std::stof(json["alpha"].get<std::string>()), 1.5957691F);
+}
+
+TEST_F(UtestPb2Json, OneField2Json_double_field_not_dropped) {
+  ::domi::BatchNormOpParams msg;
+  msg.set_epsilon(1e-5);
+
+  std::set<std::string> black_fields;
+  Json json;
+  Pb2Json::Message2Json(msg, black_fields, json, false, 0);
+  ASSERT_TRUE(json.find("epsilon") != json.end());
+  ASSERT_TRUE(json["epsilon"].is_number());
+  EXPECT_DOUBLE_EQ(json["epsilon"].get<double>(), 1e-5);
+}
+
 TEST_F(UtestPb2Json, OneField2Json_int32_field) {
   ::domi::ConvolutionOpParams msg;
   msg.set_mode(2);

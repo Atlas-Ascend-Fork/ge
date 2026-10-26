@@ -1142,3 +1142,117 @@ TEST_F(UtestGraphPassesPrunePass, engine_assigned_round_inner_graph_prune_only) 
   const auto ctrl_in_cnt = merge_res->GetOutControlAnchor()->GetPeerAnchors().size();
   EXPECT_EQ(ctrl_in_cnt, 1UL);
 }
+
+// ===== 回归复现：ID0004_Transformer_tensorflow_INT8_batch_1 上板挂死 =====
+// 现象：ModelExecute后循环体流仅执行到task 11即停，SyncTask无限重试
+// "No logic report: stream_id=1, task_id=13"，3分钟后ReportTimeoutProc超时。
+// 编译期根因在本用例复现：常量折叠吃掉Enter的帧内数据消费者、EnterPass清掉遗留控制边后，
+// 帧入口Enter零出边成纯死节点（对图出口不可达）；ENTER被放入类型保活白名单后，第1/2轮
+// (kStandard)PrunePass将其误判保活并【新造】Enter→NetOutput控制边（实测Node_Output新增
+// 16条read_XX/Enter:-1入边）。该边经流分配并入循环体流激活门（实测LoopCond_Enter_
+// StreamActive输入35→51），死Enter无帧内消费者、不参与逐迭代再激活，第二迭代起激活
+// 计数永不满足→循环体饿死挂死。
+// 期望（v1行为）：死帧入口随死链整链剪除（含其Const输入），图出口不出现Enter的新造控制边。
+TEST_F(UtestGraphPassesPrunePass, dead_frame_enter_with_all_dead_consumers_pruned) {
+  auto graph_builder = ut::GraphBuilder("dead_frame_enter");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto const_w = graph_builder.AddNode("const_w", CONSTANT, 0, 1);
+  auto enter_dead = graph_builder.AddNode("enter_dead", ENTER, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(const_w, 0, enter_dead, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 死帧入口整链剪除（含其Const输入），不保活
+  EXPECT_EQ(graph->FindNode("enter_dead"), nullptr);
+  EXPECT_EQ(graph->FindNode("const_w"), nullptr);
+  // 挂死前置条件：图出口不得出现来自Enter的新造控制边
+  for (const auto &node : out_0->GetInControlNodes()) {
+    EXPECT_NE(node->GetName(), "enter_dead");
+  }
+}
+
+// ============ 回归修复：副作用算子控制边保护 & Enter 保活边界 ============
+
+// 回归背景：搜参策略打印用例（ge!5313 回归），NetOutputPass 给无数据消费者的 PrintV2 补的
+// 控制边被当空闲误连剪除，打印链（StringFormat→PrintV2）整链不可达被删，运行期打印丢失。
+// 副作用算子（打印/断言/摘要）的控制边承载真实执行语义，不可剪；同图纯计算空闲死链照常剪除
+TEST_F(UtestGraphPassesPrunePass, side_effect_op_ctrl_edge_on_netoutput_preserved) {
+  auto graph_builder = ut::GraphBuilder("side_effect_print");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto string_format = graph_builder.AddNode("string_format", "StringFormat", 1, 1);
+  auto print_v2 = graph_builder.AddNode("print_v2", "PrintV2", 1, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, string_format, 0);
+  graph_builder.AddDataEdge(string_format, 0, print_v2, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  // 模拟NetOutputPass全连叶子：副作用叶子print_v2与纯计算死叶子dead_1均带控制边
+  EXPECT_EQ(GraphUtils::AddEdge(print_v2->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(dead_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 副作用打印链整链保留：控制边不剪，链上节点经可达性保活（打印语义不丢）
+  auto print_res = graph->FindNode("print_v2");
+  ASSERT_NE(print_res, nullptr);
+  EXPECT_TRUE(print_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  EXPECT_NE(graph->FindNode("string_format"), nullptr);
+  // 纯计算空闲死链照常剪除（PR收益不受影响）
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+}
+
+// 回归背景：ID0004_Transformer INT8 batch1（ge!5313 回归），常量折叠致 16 个仅余控制边的
+// read Enter 悬空，Enter 在保活名单中被救援并补控制边到 NetOutput，悬空帧入口随 OM 下发，
+// 运行期 task-sink 无限等待挂死（ReportTimeoutProc）。Enter/RefEnter 不在保活名单：消费者
+// 全死即为死代码，不可达时照常剪除；流控骨架（Switch）仍在名单中，不可达时救援保活
+TEST_F(UtestGraphPassesPrunePass, ctrl_only_enter_with_dead_consumer_pruned_and_skeleton_kept) {
+  auto graph_builder = ut::GraphBuilder("enter_boundary");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto const_w = graph_builder.AddNode("const_w", CONSTANT, 0, 1);
+  auto enter_1 = graph_builder.AddNode("enter_1", ENTER, 1, 1);
+  auto refenter_1 = graph_builder.AddNode("refenter_1", REFENTER, 1, 1);
+  auto switch_1 = graph_builder.AddNode("switch_1", SWITCH, 1, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(const_w, 0, enter_1, 0);
+  graph_builder.AddDataEdge(const_w, 0, refenter_1, 0);
+  graph_builder.AddDataEdge(data_1, 0, switch_1, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 消费者全死而悬空的 Enter/RefEnter 照常剪除，不再救援保活（回退到旧行为）
+  EXPECT_EQ(graph->FindNode("enter_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("refenter_1"), nullptr);
+  // 流控骨架仍在名单：不可达时救援保活并补控制边
+  auto switch_res = graph->FindNode("switch_1");
+  ASSERT_NE(switch_res, nullptr);
+  EXPECT_TRUE(switch_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  // 纯计算死链照常剪除
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+}

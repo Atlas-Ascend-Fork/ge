@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-动态AIPP场景下，根据模型支持的batch size创建aclmdlAIPP类型的数据，用于存放动态AIPP的参数。
+动态AIPP场景下，根据om/om2模型支持的batch size创建aclmdlAIPP类型的数据，用于存放动态AIPP的参数。
 
 如需销毁aclmdlAIPP类型的数据，请参见[aclmdlDestroyAIPP](aclmdlDestroyAIPP.md)。
 

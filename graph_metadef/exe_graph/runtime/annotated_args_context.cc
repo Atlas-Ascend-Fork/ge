@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "annotated_args_handler.h"
+#include "annotated_kernel_args_impl.h"
 #include "common/checker.h"
 #include "exe_graph/runtime/gert_mem_allocator.h"
 #include "exe_graph/runtime/gert_mem_block.h"
@@ -100,7 +101,11 @@ ge::graphStatus AnnotatedArgsContext::AddLaunch(const AnnotatedKernelLaunchInfo 
 
   std::vector<uint8_t> args_data;
   std::vector<ge::ArgDesc> arg_descs;
-  GE_ASSERT_SUCCESS(args.ExtractArgsData(args_data, arg_descs));
+  std::vector<std::vector<uint8_t>> custom_data_blobs;
+  // AnnotatedArgsContext 为 AnnotatedKernelArgs 的 friend，此处经内部自由函数取出 args 与变长数据字节，
+  // 避免在随包发布的 external 头上新增公开重载
+  GE_ASSERT_SUCCESS(internal::ExtractArgsData(static_cast<const internal::AnnotatedKernelArgsImpl *>(args.impl_),
+                                              args_data, arg_descs, custom_data_blobs));
 
   const auto additional_output_start = GetAdditionalOutputStartIndex();
   GE_ASSERT_TRUE(additional_output_start >= 0);
@@ -113,7 +118,7 @@ ge::graphStatus AnnotatedArgsContext::AddLaunch(const AnnotatedKernelLaunchInfo 
   GE_ASSERT_NOTNULL(annotated_args_handler);
   annotated_args_handler->AddLaunch(launch_info.kernel_name, launch_info.kernel_bin, launch_info.kernel_bin_size,
                                     launch_info.block_dim, launch_info.stream_id, std::move(args_data),
-                                    std::move(arg_descs));
+                                    std::move(arg_descs), std::move(custom_data_blobs));
   return ge::GRAPH_SUCCESS;
 }
 
@@ -131,7 +136,9 @@ AnnotatedLaunchToken AnnotatedArgsContext::AddLaunch(const AnnotatedKernelLaunch
   }
   std::vector<uint8_t> args_data;
   std::vector<ge::ArgDesc> arg_descs;
-  if (args.ExtractArgsData(args_data, arg_descs) != ge::GRAPH_SUCCESS) {
+  std::vector<std::vector<uint8_t>> custom_data_blobs;
+  if (internal::ExtractArgsData(static_cast<const internal::AnnotatedKernelArgsImpl *>(args.impl_), args_data,
+                                arg_descs, custom_data_blobs) != ge::GRAPH_SUCCESS) {
     GELOGE(ge::GRAPH_FAILED, "[AnnotatedArgsContext] failed to extract annotated launch arguments.");
     return kInvalidToken;
   }
@@ -156,7 +163,7 @@ AnnotatedLaunchToken AnnotatedArgsContext::AddLaunch(const AnnotatedKernelLaunch
   AnnotatedLaunchToken token = kInvalidToken;
   if (annotated_args_handler->AddLaunchWithDependencies(
           launch_info.kernel_name, launch_info.kernel_bin, launch_info.kernel_bin_size, launch_info.block_dim,
-          launch_info.stream_id, std::move(args_data), std::move(arg_descs), predecessors,
+          launch_info.stream_id, std::move(args_data), std::move(arg_descs), std::move(custom_data_blobs), predecessors,
           token) != ge::GRAPH_SUCCESS) {
     return kInvalidToken;
   }

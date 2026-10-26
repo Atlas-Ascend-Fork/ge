@@ -137,7 +137,9 @@ def finalize() -> None:
 
 class TimeBatch(dwrapper.TimeBatch):
     @utils.assert_args_type(time_window=int, batch_dim=int, drop_remainder=bool)
-    def __init__(self, time_window: int = 0, batch_dim: int = -1, drop_remainder: bool = False) -> None:
+    def __init__(
+        self, time_window: int = 0, batch_dim: int = -1, drop_remainder: bool = False
+    ) -> None:
         super().__init__()
         self.time_window: int = time_window
         self.batch_dim: int = batch_dim
@@ -207,7 +209,14 @@ class TensorDesc(object):
         self._shape = list(shape)
 
     def __str__(self):
-        return "TensorDesc(" + "dtype=" + str(self._dtype) + ", shape=" + str(self._shape) + ")"
+        return (
+            "TensorDesc("
+            + "dtype="
+            + str(self._dtype)
+            + ", shape="
+            + str(self._shape)
+            + ")"
+        )
 
     def __repr__(self):
         return self.__str__()
@@ -232,7 +241,9 @@ class Tensor(BaseData):
         elif isinstance(data, flowfunc_wrapper.Tensor):
             self._impl = data
             self._tensor_desc = None
-        elif isinstance(data, dwrapper.FlowMsg) or isinstance(data, flowfunc_wrapper.FlowMsg):
+        elif isinstance(data, dwrapper.FlowMsg) or isinstance(
+            data, flowfunc_wrapper.FlowMsg
+        ):
             self._flow_msg = data
             self._impl = data.get_tensor()
             self._tensor_desc = TensorDesc(
@@ -246,7 +257,9 @@ class Tensor(BaseData):
                     self._impl = data._impl.clone()
                     return
                 else:
-                    copy = True if data._tensor_desc._dtype == df_dt.DT_STRING else False
+                    copy = (
+                        True if data._tensor_desc._dtype == df_dt.DT_STRING else False
+                    )
                     data = data.numpy(copy)
             elif not isinstance(data, np.ndarray):
                 # Use the shape and data type inference function of numpy
@@ -259,7 +272,9 @@ class Tensor(BaseData):
                         f"The shape of argument data is {data.shape}, but the argument tensor_desc is {tensor_desc}.",
                         dwrapper.SHAPE_INVALID,
                     )
-                tensor_desc_dtype = df_dt._dflow_dtype_to_np_dtype.get(tensor_desc._dtype, None)
+                tensor_desc_dtype = df_dt._dflow_dtype_to_np_dtype.get(
+                    tensor_desc._dtype, None
+                )
                 if not tensor_desc_dtype:
                     raise utils.DfException(
                         f"The dtype of argument tensor_desc is  {tensor_desc._dtype} which is not supported.",
@@ -274,10 +289,15 @@ class Tensor(BaseData):
                     try:
                         data = np.asarray(data, tensor_desc_dtype)
                     except BaseException as e:
-                        raise ValueError(f"Failed to convert type {data.dtype} to type {tensor_desc._dtype}.") from e
+                        raise ValueError(
+                            f"Failed to convert type {data.dtype} to type {tensor_desc._dtype}."
+                        ) from e
 
             else:
-                if data.dtype not in _support_np_dtype and not self._is_origin_dtype_str(data.dtype):
+                if (
+                    data.dtype not in _support_np_dtype
+                    and not self._is_origin_dtype_str(data.dtype)
+                ):
                     raise utils.DfException(
                         f"The dtype of data is {data.dtype}, should be in {_support_np_dtype}",
                         dwrapper.DATATYPE_INVALID,
@@ -296,12 +316,26 @@ class Tensor(BaseData):
                 if self._is_origin_dtype_str(data.dtype):
                     self._tensor_desc = TensorDesc(df_dt.DT_STRING, data.shape)
                 else:
-                    self._tensor_desc = TensorDesc(df_dt._np_dtype_to_dflow_dtype.get(data.dtype, None), data.shape)
+                    self._tensor_desc = TensorDesc(
+                        df_dt._np_dtype_to_dflow_dtype.get(data.dtype, None), data.shape
+                    )
 
     def __str__(self):
         if self._is_inner_dtype_str():
-            return "Tensor(" + str(self.numpy(True)) + ", tensor_desc=" + str(self._tensor_desc) + ")"
-        return "Tensor(" + str(self.numpy()) + ", tensor_desc=" + str(self._tensor_desc) + ")"
+            return (
+                "Tensor("
+                + str(self.numpy(True))
+                + ", tensor_desc="
+                + str(self._tensor_desc)
+                + ")"
+            )
+        return (
+            "Tensor("
+            + str(self.numpy())
+            + ", tensor_desc="
+            + str(self._tensor_desc)
+            + ")"
+        )
 
     def __repr__(self):
         return self.__str__()
@@ -358,7 +392,10 @@ class Tensor(BaseData):
         return np.issubdtype(dtype, np.str_) or np.issubdtype(dtype, np.bytes_)
 
     def _is_inner_dtype_str(self):
-        return self._tensor_desc is not None and self._tensor_desc._dtype == df_dt.DT_STRING
+        return (
+            self._tensor_desc is not None
+            and self._tensor_desc._dtype == df_dt.DT_STRING
+        )
 
     def _convert_str_dtype_to_wrapper_tensor(self, data):
         # change to ascii encode
@@ -370,13 +407,17 @@ class Tensor(BaseData):
 
     def _str_numpy(self) -> np.ndarray:
         try:
-            ret = np.array(self._impl.get_string_tensor()).reshape(self._impl.get_shape())
+            ret = np.array(self._impl.get_string_tensor()).reshape(
+                self._impl.get_shape()
+            )
         except BaseException as e:
             raise utils.DfException(e.__str__())
         return ret
 
 
-def alloc_tensor(shape: Union[List[int], Tuple[int]], dtype, align: Optional[int] = 64) -> Tensor:
+def alloc_tensor(
+    shape: Union[List[int], Tuple[int]], dtype, align: Optional[int] = 64
+) -> Tensor:
     if isinstance(dtype, df_dt.DType):
         dtype = dtype.dtype
     elif dtype in _support_np_dtype:
@@ -384,7 +425,9 @@ def alloc_tensor(shape: Union[List[int], Tuple[int]], dtype, align: Optional[int
     else:
         raise TypeError(f"The dtype of data is {dtype} is invalid.")
     if utils.get_running_in_udf():
-        return Tensor(flowfunc_wrapper.FlowBufferFactory.alloc_tensor(shape, dtype, align))
+        return Tensor(
+            flowfunc_wrapper.FlowBufferFactory.alloc_tensor(shape, dtype, align)
+        )
     else:
         return Tensor(dwrapper.FlowBufferFactory.alloc_tensor_msg(shape, dtype, align))
 
@@ -441,7 +484,9 @@ class FlowGraphProcessPoint(object):
         with name_scope(name, "FlowGraphProcessPoint") as name:
             self.name = name
 
-        ret = dwrapper.load_flow_graph_pp(self.flow_graph._impl, self.compile_config_path, self.name)
+        ret = dwrapper.load_flow_graph_pp(
+            self.flow_graph._impl, self.compile_config_path, self.name
+        )
         if len(ret) != 2:
             raise utils.DfException(
                 "Failed to load flow graph pp, for details about the error information, see the ascend log.",
@@ -474,7 +519,9 @@ class FuncProcessPoint(object):
             register_params = FlowFuncRegister.get_flow_func(module_name, class_name)
             if register_params is None:
                 raise utils.DfException(
-                    "flow func {} is not decorator by flow_func_annotation".format(py_def),
+                    "flow func {} is not decorator by flow_func_annotation".format(
+                        py_def
+                    ),
                     flowfunc_wrapper.FLOW_FUNC_FAILED,
                 )
             ws_dir = ""
@@ -488,7 +535,9 @@ class FuncProcessPoint(object):
                 func_param.append(func + ":" + register_params[func].replace(",", ":"))
             funcs_param = ",".join(func_param)
 
-            flow_func_infos = FlowFuncRegister.get_flow_func_infos(module_name, class_name)
+            flow_func_infos = FlowFuncRegister.get_flow_func_infos(
+                module_name, class_name
+            )
             func_ws_creator = FuncWsCreator(
                 funcs_param=funcs_param,
                 clz_name=class_name,
@@ -496,7 +545,9 @@ class FuncProcessPoint(object):
                 flow_func_infos=flow_func_infos,
             )
             func_ws_creator.generate()
-            func_ws_creator.copy_py_src_file(os.path.abspath(sys.modules[module_name].__file__))
+            func_ws_creator.copy_py_src_file(
+                os.path.abspath(sys.modules[module_name].__file__)
+            )
             self.compile_config_path = func_ws_creator.get_config_file()
         else:
             self.compile_config_path = compile_config_path
@@ -525,16 +576,19 @@ class FuncProcessPoint(object):
     ) -> None:
         if isinstance(attr_value, df_dt.DType):
             self._impl.set_init_param(attr_name, attr_value.dtype)
-        elif isinstance(attr_value, List) and len(attr_value) > 0 and isinstance(attr_value[0], df_dt.DType):
+        elif (
+            isinstance(attr_value, List)
+            and len(attr_value) > 0
+            and isinstance(attr_value[0], df_dt.DType)
+        ):
             self._impl.set_init_param(attr_name, [value.dtype for value in attr_value])
         else:
             self._impl.set_init_param(attr_name, attr_value)
 
-    def add_invoked_closure(self, graph_key: str, graph_pp: GraphProcessPoint) -> None:
-        self._impl.add_invoked_closure(graph_key, graph_pp._impl)
-
-    def add_invoked_closure(self, graph_key: str, flow_graph_pp: FlowGraphProcessPoint) -> None:
-        self._impl.add_invoked_closure(graph_key, flow_graph_pp._impl)
+    def add_invoked_closure(
+        self, graph_key: str, pp: Union[GraphProcessPoint, FlowGraphProcessPoint]
+    ) -> None:
+        self._impl.add_invoked_closure(graph_key, pp._impl)
 
 
 class FlowData(object):
@@ -545,9 +599,13 @@ class FlowData(object):
         name: Optional[str] = None,
     ) -> None:
         if data_cls != Tensor:
-            raise utils.DfException(f"Argument data_cls must be equal to Tensor, but got {data_cls}")
-        if schema and type(schema) != TensorDesc:
-            raise utils.DfException(f"Argument schema type must be TensorDesc, but got {type(schema)}")
+            raise utils.DfException(
+                f"Argument data_cls must be equal to Tensor, but got {data_cls}"
+            )
+        if schema and type(schema) is not TensorDesc:
+            raise utils.DfException(
+                f"Argument schema type must be TensorDesc, but got {type(schema)}"
+            )
         self._data_cls = data_cls
         self._schema = schema
         with name_scope(name, "FlowData") as name:
@@ -556,7 +614,9 @@ class FlowData(object):
 
 
 class FlowNode(object):
-    def __init__(self, input_num: int, output_num: int, name: Optional[str] = None) -> None:
+    def __init__(
+        self, input_num: int, output_num: int, name: Optional[str] = None
+    ) -> None:
         self.input_num = input_num
         self.output_num = output_num
         with name_scope(name, "FlowNode", "FlowNode") as name:
@@ -568,9 +628,13 @@ class FlowNode(object):
         self._output_anchors = [None] * output_num
         self.alias = None
 
-    def __call__(self, *inputs: Union[FlowData, "FlowOutput"]) -> Union["FlowOutput", Tuple["FlowOutput", ...]]:
+    def __call__(
+        self, *inputs: Union[FlowData, "FlowOutput"]
+    ) -> Union["FlowOutput", Tuple["FlowOutput", ...]]:
         if len(inputs) != self.input_num:
-            raise utils.DfException(f"Flow node need {self.input_num} input, but got {len(inputs)} input")
+            raise utils.DfException(
+                f"Flow node need {self.input_num} input, but got {len(inputs)} input"
+            )
         for idx, arg in enumerate(inputs):
             self._input_anchors[idx] = arg
             if isinstance(arg, FlowData):
@@ -584,7 +648,9 @@ class FlowNode(object):
                     )
                 self._impl.set_input(idx, arg.node._impl, arg.index)
             else:
-                raise utils.DfException(f"Argument:{type(arg)} inputs must be {Union[FlowData, FlowOutput]}")
+                raise utils.DfException(
+                    f"Argument:{type(arg)} inputs must be {Union[FlowData, FlowOutput]}"
+                )
 
         if self.output_num == 0:
             return None
@@ -597,11 +663,17 @@ class FlowNode(object):
                 self._output_anchors[i] = FlowOutput(self, i)
             return tuple(self._output_anchors)
 
-    @utils.assert_args_type(pp=Union[GraphProcessPoint, FuncProcessPoint, FlowGraphProcessPoint])
-    def add_process_point(self, pp: Union[GraphProcessPoint, FuncProcessPoint, FlowGraphProcessPoint]) -> None:
+    @utils.assert_args_type(
+        pp=Union[GraphProcessPoint, FuncProcessPoint, FlowGraphProcessPoint]
+    )
+    def add_process_point(
+        self, pp: Union[GraphProcessPoint, FuncProcessPoint, FlowGraphProcessPoint]
+    ) -> None:
         self._impl.add_pp(pp._impl)
 
-    @utils.assert_args_type(pp=Union[GraphProcessPoint, FuncProcessPoint, FlowGraphProcessPoint])
+    @utils.assert_args_type(
+        pp=Union[GraphProcessPoint, FuncProcessPoint, FlowGraphProcessPoint]
+    )
     def map_input(
         self,
         node_input_index: int,
@@ -610,12 +682,16 @@ class FlowNode(object):
         input_attrs: Optional[List[Union[TimeBatch, CountBatch]]] = None,
     ) -> None:
         if node_input_index >= self.input_num:
-            raise utils.DfException(f"The arg node_input_index should in [0,{self.input_num})")
+            raise utils.DfException(
+                f"The arg node_input_index should in [0,{self.input_num})"
+            )
         input_attrs = input_attrs or []
         attrs = self._convert_input_attrs(input_attrs)
         self._impl.map_input(node_input_index, pp._impl, pp_input_index, attrs)
 
-    @utils.assert_args_type(pp=Union[GraphProcessPoint, FuncProcessPoint, FlowGraphProcessPoint])
+    @utils.assert_args_type(
+        pp=Union[GraphProcessPoint, FuncProcessPoint, FlowGraphProcessPoint]
+    )
     def map_output(
         self,
         node_output_index: int,
@@ -623,7 +699,9 @@ class FlowNode(object):
         pp_output_index: int,
     ) -> None:
         if node_output_index >= self.output_num:
-            raise utils.DfException(f"The arg node_output_index should in [0,{self.output_num})")
+            raise utils.DfException(
+                f"The arg node_output_index should in [0,{self.output_num})"
+            )
         self._impl.map_output(node_output_index, pp._impl, pp_output_index)
 
     def set_balance_scatter(self) -> None:
@@ -647,8 +725,12 @@ class FlowNode(object):
     def _convert_input_attrs(self, input_attrs):
         ret_attrs = []
         for input_attr in input_attrs:
-            if not (isinstance(input_attr, TimeBatch) or isinstance(input_attr, CountBatch)):
-                raise utils.DfException("Argument input_attrs must be List[Union[TimeBatch, CountBatch]]")
+            if not (
+                isinstance(input_attr, TimeBatch) or isinstance(input_attr, CountBatch)
+            ):
+                raise utils.DfException(
+                    "Argument input_attrs must be List[Union[TimeBatch, CountBatch]]"
+                )
             attr = dwrapper.DataFlowInputAttr()
             attr.attr_type = input_attr._attr_type
             attr.attr_value = input_attr
@@ -659,7 +741,9 @@ class FlowNode(object):
         self, *inputs: Union[FlowData, "FlowOutput"], input_indexes, output_indexes
     ) -> Union["FlowOutput", Tuple["FlowOutput", ...]]:
         if len(inputs) != len(input_indexes):
-            raise utils.DfException(f"Flow node func need {len(input_indexes)} input, but got {len(inputs)} input")
+            raise utils.DfException(
+                f"Flow node func need {len(input_indexes)} input, but got {len(inputs)} input"
+            )
         for idx, arg in enumerate(inputs):
             input_idx = input_indexes[idx]
             self._input_anchors[input_idx] = arg
@@ -674,7 +758,9 @@ class FlowNode(object):
                     )
                 self._impl.set_input(input_idx, arg.node._impl, arg.index)
             else:
-                raise utils.DfException(f"Argument inputs must be {Union[FlowData, FlowOutput]}")
+                raise utils.DfException(
+                    f"Argument inputs must be {Union[FlowData, FlowOutput]}"
+                )
 
         if len(output_indexes) == 0:
             return None
@@ -774,8 +860,13 @@ class FlowInfo(object):
     @staticmethod
     def _check_params_for_user_data(size: int, offset: int) -> bool:
         if size == 0:
-            raise utils.DfException(f"The size is 0 or empty. It should in (0, {FlowInfo.MAX_USER_DATA_SIZE}]")
-        if offset >= FlowInfo.MAX_USER_DATA_SIZE or FlowInfo.MAX_USER_DATA_SIZE - offset < size:
+            raise utils.DfException(
+                f"The size is 0 or empty. It should in (0, {FlowInfo.MAX_USER_DATA_SIZE}]"
+            )
+        if (
+            offset >= FlowInfo.MAX_USER_DATA_SIZE
+            or FlowInfo.MAX_USER_DATA_SIZE - offset < size
+        ):
             raise utils.DfException(
                 f"Offset {offset} add userData size {size} can not be greater than {FlowInfo.MAX_USER_DATA_SIZE}."
             )
@@ -784,7 +875,11 @@ class FlowInfo(object):
     def set_user_data(self, user_data: bytearray, offset: int = 0):
         if self._check_params_for_user_data(len(user_data), offset):
             self._user_data[offset : offset + len(user_data)] = user_data
-            self._data_size = len(user_data) + offset if self._data_size <= len(user_data) + offset else self._data_size
+            self._data_size = (
+                len(user_data) + offset
+                if self._data_size <= len(user_data) + offset
+                else self._data_size
+            )
 
     def get_user_data(self, size: int = 0, offset: int = 0) -> bytearray:
         if self._check_params_for_user_data(size, offset):
@@ -830,7 +925,10 @@ class FlowGraph(object):
         self._impl.set_graphpp_builder_async(self._graphpp_builder_async)
         self._impl.set_inputs([input_data._impl for input_data in self._input_datas])
         self._impl.set_outputs(
-            [(node_2_indexes[0]._impl, node_2_indexes[1]) for node_2_indexes in self._out_nodes_idxes.values()]
+            [
+                (node_2_indexes[0]._impl, node_2_indexes[1])
+                for node_2_indexes in self._out_nodes_idxes.values()
+            ]
         )
 
         # gen graph id
@@ -846,7 +944,9 @@ class FlowGraph(object):
     def _add_graph(self):
         if self._impl is not None:
             # add graph to session
-            result = _global_context.session.add_flow_graph(self._graph_id, self._impl, self._graph_options)
+            result = _global_context.session.add_flow_graph(
+                self._graph_id, self._impl, self._graph_options
+            )
             if result.ret_code != 0:
                 raise utils.DfException(result.error_msg, result.ret_code)
             log.info(
@@ -976,7 +1076,9 @@ class FlowGraph(object):
         serialized_data = None
         if isinstance(feed_data, Tensor):
             if input_data._schema and (feed_data._tensor_desc != input_data._schema):
-                raise utils.DfException(f"The desc of the tensor is different from that of the data:{input_data.name}.")
+                raise utils.DfException(
+                    f"The desc of the tensor is different from that of the data:{input_data.name}."
+                )
             else:
                 if feed_data._flow_msg is not None:
                     # from df.alloc_tensor
@@ -1012,10 +1114,14 @@ class FlowGraph(object):
         ):
             log.error("invalid flow msg type:%d", int(flow_msg.get_msg_type()))
             return dwrapper.PARAM_INVALID
-        if int(flow_msg.get_msg_type()) >= MSG_TYPE_USER_DEFINE_START and not msg_type_register.registered(
+        if int(
+            flow_msg.get_msg_type()
+        ) >= MSG_TYPE_USER_DEFINE_START and not msg_type_register.registered(
             flow_msg.get_msg_type()
         ):
-            log.error("user flow msg type:%d is not registered", int(flow_msg.get_msg_type()))
+            log.error(
+                "user flow msg type:%d is not registered", int(flow_msg.get_msg_type())
+            )
             return dwrapper.PARAM_INVALID
         return 0
 
@@ -1036,7 +1142,9 @@ class FlowGraph(object):
         if self._impl is not None:
             self._impl.set_contains_n_mapping_node(contains_n_mapping_node)
         else:
-            raise utils.DfException("can not call set_contains_n_mapping_node after feed data")
+            raise utils.DfException(
+                "can not call set_contains_n_mapping_node after feed data"
+            )
 
     def set_inputs_align_attrs(
         self,
@@ -1046,12 +1154,20 @@ class FlowGraph(object):
     ):
         if self._impl is not None:
             if align_max_cache_num < 0 or align_max_cache_num > 1024:
-                raise utils.DfException(f"align_max_cache_num={align_max_cache_num} is out of range [0, 1024]")
+                raise utils.DfException(
+                    f"align_max_cache_num={align_max_cache_num} is out of range [0, 1024]"
+                )
             if align_timeout < -1 or align_timeout == 0 or align_timeout > 600 * 1000:
-                raise utils.DfException(f"align_timeout={align_timeout} must be -1 or in range(0, 600 * 1000]")
-            self._impl.set_inputs_align_attrs(align_max_cache_num, align_timeout, dropout_when_not_align)
+                raise utils.DfException(
+                    f"align_timeout={align_timeout} must be -1 or in range(0, 600 * 1000]"
+                )
+            self._impl.set_inputs_align_attrs(
+                align_max_cache_num, align_timeout, dropout_when_not_align
+            )
         else:
-            raise utils.DfException("can not call set_inputs_align_attrs after feed data")
+            raise utils.DfException(
+                "can not call set_inputs_align_attrs after feed data"
+            )
 
     def set_exception_catch(self, enable_exception_catch: bool = False):
         if self._impl is not None:
@@ -1074,7 +1190,9 @@ class FlowGraph(object):
                 df_flow_info.flow_flags = flow_info.flow_flags
                 df_flow_info.transaction_id = flow_info.transaction_id
                 if flow_info.data_size != 0:
-                    df_flow_info.set_user_data(flow_info.user_data, flow_info.data_size, 0)
+                    df_flow_info.set_user_data(
+                        flow_info.user_data, flow_info.data_size, 0
+                    )
             else:
                 log.error(f"Argument flow_info must be {FlowInfo}")
                 return dwrapper.PARAM_INVALID
@@ -1083,7 +1201,10 @@ class FlowGraph(object):
         indexes = []
         inputs = []
         if not feed_dict:
-            if df_flow_info.flow_flags & FlowFlag.DATA_FLOW_FLAG_EOS != FlowFlag.DATA_FLOW_FLAG_EOS:
+            if (
+                df_flow_info.flow_flags & FlowFlag.DATA_FLOW_FLAG_EOS
+                != FlowFlag.DATA_FLOW_FLAG_EOS
+            ):
                 log.error(
                     f"feed_dict is empty but flow_flags={df_flow_info.flow_flags} "
                     f"is not with eos flag={FlowFlag.DATA_FLOW_FLAG_EOS}"
@@ -1091,7 +1212,9 @@ class FlowGraph(object):
                 return dwrapper.PARAM_INVALID
 
             log.info("Feed eos empty data.")
-            result = _global_context.session.feed_data(self._graph_id, indexes, inputs, df_flow_info, timeout)
+            result = _global_context.session.feed_data(
+                self._graph_id, indexes, inputs, df_flow_info, timeout
+            )
             if result.ret_code != 0:
                 log.error("failed to feed data, error msg = %s", result.error_msg)
             return result.ret_code
@@ -1099,13 +1222,19 @@ class FlowGraph(object):
         for i, input_data in enumerate(self._input_datas):
             if input_data not in feed_dict:
                 if not partial_inputs:
-                    log.error(f"Missing input {input_data.name} in feed_dict {[key.name for key in feed_dict.keys()]}")
+                    log.error(
+                        f"Missing input {input_data.name} in feed_dict {[key.name for key in feed_dict.keys()]}"
+                    )
                     return dwrapper.PARAM_INVALID
                 else:
                     continue
 
             try:
-                inputs.append(self._convert_feed_data_to_tensor(input_data, feed_dict[input_data])._impl)
+                inputs.append(
+                    self._convert_feed_data_to_tensor(
+                        input_data, feed_dict[input_data]
+                    )._impl
+                )
                 indexes.append(i)
             except utils.DfException as e:
                 log.error("failed to convert data to tensor, error msg = %s", e.message)
@@ -1118,7 +1247,9 @@ class FlowGraph(object):
             )
             return dwrapper.PARAM_INVALID
 
-        result = _global_context.session.feed_data(self._graph_id, indexes, inputs, df_flow_info, timeout)
+        result = _global_context.session.feed_data(
+            self._graph_id, indexes, inputs, df_flow_info, timeout
+        )
         return result.ret_code
 
     def fetch_data(
@@ -1134,10 +1265,14 @@ class FlowGraph(object):
             convert_idx = []
             for idx in indexes:
                 if idx > (len(self._output_idx_mapping) - 1):
-                    log.error(f"The value of indexes should in [0, {len(self._output_idx_mapping)}).")
+                    log.error(
+                        f"The value of indexes should in [0, {len(self._output_idx_mapping)})."
+                    )
                     return (outputs, flow_info, dwrapper.PARAM_INVALID)
                 convert_idx.append(self._output_idx_mapping[idx])
-            ret = _global_context.session.fetch_data(self._graph_id, convert_idx, timeout, flow_info.user_data)
+            ret = _global_context.session.fetch_data(
+                self._graph_id, convert_idx, timeout, flow_info.user_data
+            )
         if len(ret) != 3:
             raise utils.DfException(
                 "Failed to fetch data. Return result length must be 3. "
@@ -1171,18 +1306,24 @@ class FlowGraph(object):
         for i, input_data in enumerate(self._input_datas):
             if input_data not in feed_dict:
                 if not partial_inputs:
-                    log.error(f"Missing input {input_data.name} in feed_dict {[key.name for key in feed_dict.keys()]}")
+                    log.error(
+                        f"Missing input {input_data.name} in feed_dict {[key.name for key in feed_dict.keys()]}"
+                    )
                     return dwrapper.PARAM_INVALID
                 else:
                     continue
 
             try:
-                convert_ret = self._convert_object_to_flow_msg(input_data, feed_dict[input_data])
+                convert_ret = self._convert_object_to_flow_msg(
+                    input_data, feed_dict[input_data]
+                )
                 inputs.append(convert_ret[0])
                 serialized_inputs.append(convert_ret[1])
                 indexes.append(i)
             except utils.DfException as e:
-                log.error("failed to convert data to flow msg, error msg = %s", e.message)
+                log.error(
+                    "failed to convert data to flow msg, error msg = %s", e.message
+                )
                 return e.error_code
 
         if not inputs:
@@ -1192,22 +1333,31 @@ class FlowGraph(object):
             )
             return dwrapper.PARAM_INVALID
 
-        result = _global_context.session.feed_flow_msg(self._graph_id, indexes, inputs, timeout)
+        result = _global_context.session.feed_flow_msg(
+            self._graph_id, indexes, inputs, timeout
+        )
         return result.ret_code
 
-    def fetch(self, indexes: Optional[List[int]] = None, timeout: Optional[int] = -1) -> Tuple[List[Any], int]:
-        flow_info = FlowInfo()
+    def fetch(
+        self, indexes: Optional[List[int]] = None, timeout: Optional[int] = -1
+    ) -> Tuple[List[Any], int]:
         outputs = []
         if indexes is None:
-            ret = _global_context.session.fetch_flow_msg(self._graph_id, self._output_idx_mapping, timeout)
+            ret = _global_context.session.fetch_flow_msg(
+                self._graph_id, self._output_idx_mapping, timeout
+            )
         else:
             convert_idx = []
             for idx in indexes:
                 if idx > (len(self._output_idx_mapping) - 1):
-                    log.error(f"The value of indexes should in [0, {len(self._output_idx_mapping)}).")
+                    log.error(
+                        f"The value of indexes should in [0, {len(self._output_idx_mapping)})."
+                    )
                     return (outputs, dwrapper.PARAM_INVALID)
                 convert_idx.append(self._output_idx_mapping[idx])
-            ret = _global_context.session.fetch_flow_msg(self._graph_id, convert_idx, timeout)
+            ret = _global_context.session.fetch_flow_msg(
+                self._graph_id, convert_idx, timeout
+            )
         if len(ret) != 2:
             raise utils.DfException(
                 "Failed to fetch flow msg. Return result length must be 2. "

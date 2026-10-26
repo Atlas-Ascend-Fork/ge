@@ -30,6 +30,217 @@ ge::OpDescPtr MakeOpDesc() {
   return op_desc;
 }
 
+constexpr uint32_t kCustomDataStreamId = 3U;
+
+std::vector<uint8_t> MakeBlob(const uint8_t seed, const size_t size) {
+  std::vector<uint8_t> blob(size);
+  for (size_t i = 0UL; i < size; ++i) {
+    blob[i] = static_cast<uint8_t>((seed + i) % 251U);
+  }
+  return blob;
+}
+
+// 校验 CUSTOM_DATA_BLOCK 的 desc 与 blob 一一对应：ir_idx 即 blob 下标、reserved 即字节大小，
+// 且 args 仍满足「1 个 desc = 1 个 8 字节槽」不变式
+void ExpectCustomDataDescsMatchBlobs(const AnnotatedArgsHandler::LaunchRecord *const launch,
+                                     const std::vector<std::vector<uint8_t>> &expected,
+                                     const std::vector<size_t> &sizes) {
+  ASSERT_EQ(launch->GetArgDescCount(), expected.size() + 2U);
+  const auto *const descs = launch->GetArgDescs();
+  ASSERT_NE(descs, nullptr);
+  for (size_t i = 0UL; i < expected.size(); ++i) {
+    const auto &desc = descs[i + 1U];
+    EXPECT_EQ(desc.addr_type, ge::AddrType::CUSTOM_DATA_BLOCK) << "desc index " << i;
+    EXPECT_EQ(desc.ir_idx, static_cast<int32_t>(i)) << "desc index " << i;
+    uint64_t size = 0UL;
+    (void)memcpy_s(&size, sizeof(size), desc.reserved, sizeof(size));
+    EXPECT_EQ(size, sizes[i]) << "desc index " << i;
+  }
+  EXPECT_EQ(launch->GetArgsSize(), (expected.size() + 2U) * sizeof(uint64_t));
+}
+
+// 变长数据字节只能通过 AddLaunch 落入 LaunchRecord 后读取（AnnotatedKernelArgs 不再对外提供
+// 输出 blob 的公开接口），故 blob 内容类断言集中在本文件，走真实数据流
+TEST(AnnotatedArgsContextUT, RecordsCustomDataBlobsThroughAddLaunch) {
+  AllocatorFaker allocator;
+  allocator.SetStreamId(kCustomDataStreamId);
+  Tensor input_tensor({{2, 2}, {2, 2}}, {ge::FORMAT_ND, ge::FORMAT_ND, {}}, kOnDeviceHbm, ge::DT_FLOAT16,
+                      reinterpret_cast<void *>(0x1000U));
+  Tensor output_tensor({{2, 2}, {2, 2}}, {ge::FORMAT_ND, ge::FORMAT_ND, {}}, kOnDeviceHbm, ge::DT_FLOAT16,
+                       reinterpret_cast<void *>(0x2000U));
+  std::vector<GertMemBlock *> workspace_mems;
+  AnnotatedArgsHandler args_handler;
+  auto holder = KernelRunContextBuilder()
+                    .Inputs({&input_tensor, &allocator})
+                    .Outputs({&output_tensor, &workspace_mems, static_cast<ArgsHandler *>(&args_handler)})
+                    .Build(MakeOpDesc());
+  auto *context = reinterpret_cast<AnnotatedArgsContext *>(holder.GetKernelContext());
+  ASSERT_NE(context, nullptr);
+
+  // 含 0x00 字节、非对齐长度与 >4KB，且与输入/输出/标量参数混排
+  const std::vector<size_t> sizes = {1U, 3U, 4095U, 4097U};
+  std::vector<std::vector<uint8_t>> expected;
+  AnnotatedKernelArgs args(InputAddr{0U, input_tensor.GetAddr()});
+  for (const auto size : sizes) {
+    auto blob = MakeBlob(static_cast<uint8_t>(size), size);
+    blob[size / 2U] = 0U;  // 掺入 0x00，确保不按 C 字符串语义处理
+    ASSERT_EQ(args.AppendArg(CustomDataBlock{blob.data(), blob.size()}), ge::GRAPH_SUCCESS);
+    expected.emplace_back(std::move(blob));
+  }
+  ASSERT_EQ(args.AppendArg(OutputAddr{0U, output_tensor.GetAddr()}), ge::GRAPH_SUCCESS);
+
+  uint8_t bin[] = {0x11U};
+  ASSERT_EQ(
+      context->AddLaunch(AnnotatedKernelLaunchInfo{"custom_data_kernel", bin, sizeof(bin), 1U, kCustomDataStreamId},
+                         std::move(args)),
+      ge::GRAPH_SUCCESS);
+
+  ASSERT_EQ(args_handler.GetLaunchCount(), 1U);
+  const auto *launch = args_handler.GetLaunch(0U);
+  ASSERT_NE(launch, nullptr);
+  ASSERT_EQ(launch->GetCustomDataBlobCount(), expected.size());
+  for (size_t i = 0UL; i < expected.size(); ++i) {
+    const auto *const blob = launch->GetCustomDataBlob(i);
+    ASSERT_NE(blob, nullptr) << "blob index " << i;
+    EXPECT_EQ(*blob, expected[i]) << "blob index " << i;
+    EXPECT_EQ(blob->size(), sizes[i]) << "blob index " << i;
+  }
+  EXPECT_EQ(launch->GetCustomDataBlob(expected.size()), nullptr);
+
+  ExpectCustomDataDescsMatchBlobs(launch, expected, sizes);
+}
+
+TEST(AnnotatedArgsContextUT, CustomDataBlobIsDeepCopiedBeforeAddLaunch) {
+  AllocatorFaker allocator;
+  allocator.SetStreamId(kCustomDataStreamId);
+  Tensor input_tensor({{2, 2}, {2, 2}}, {ge::FORMAT_ND, ge::FORMAT_ND, {}}, kOnDeviceHbm, ge::DT_FLOAT16,
+                      reinterpret_cast<void *>(0x1000U));
+  Tensor output_tensor({{2, 2}, {2, 2}}, {ge::FORMAT_ND, ge::FORMAT_ND, {}}, kOnDeviceHbm, ge::DT_FLOAT16,
+                       reinterpret_cast<void *>(0x2000U));
+  std::vector<GertMemBlock *> workspace_mems;
+  AnnotatedArgsHandler args_handler;
+  auto holder = KernelRunContextBuilder()
+                    .Inputs({&input_tensor, &allocator})
+                    .Outputs({&output_tensor, &workspace_mems, static_cast<ArgsHandler *>(&args_handler)})
+                    .Build(MakeOpDesc());
+  auto *context = reinterpret_cast<AnnotatedArgsContext *>(holder.GetKernelContext());
+  ASSERT_NE(context, nullptr);
+
+  auto source = MakeBlob(1U, 64U);
+  const auto snapshot = source;
+  AnnotatedKernelArgs args;
+  ASSERT_EQ(args.AppendArg(CustomDataBlock{source.data(), source.size()}), ge::GRAPH_SUCCESS);
+  // 追加后立即改写并释放调用方缓冲区，AddLaunch 后内容应不受影响
+  for (auto &byte : source) {
+    byte = 0xA5U;
+  }
+  source.clear();
+  source.shrink_to_fit();
+
+  uint8_t bin[] = {0x11U};
+  ASSERT_EQ(context->AddLaunch(AnnotatedKernelLaunchInfo{"deep_copy_kernel", bin, sizeof(bin), 1U, kCustomDataStreamId},
+                               std::move(args)),
+            ge::GRAPH_SUCCESS);
+  const auto *launch = args_handler.GetLaunch(0U);
+  ASSERT_NE(launch, nullptr);
+  ASSERT_EQ(launch->GetCustomDataBlobCount(), 1U);
+  const auto *const blob = launch->GetCustomDataBlob(0U);
+  ASSERT_NE(blob, nullptr);
+  EXPECT_EQ(*blob, snapshot);
+}
+
+TEST(AnnotatedArgsContextUT, CustomDataBlobsSurviveBuilderCopyAndMove) {
+  AllocatorFaker allocator;
+  allocator.SetStreamId(kCustomDataStreamId);
+  Tensor input_tensor({{2, 2}, {2, 2}}, {ge::FORMAT_ND, ge::FORMAT_ND, {}}, kOnDeviceHbm, ge::DT_FLOAT16,
+                      reinterpret_cast<void *>(0x1000U));
+  Tensor output_tensor({{2, 2}, {2, 2}}, {ge::FORMAT_ND, ge::FORMAT_ND, {}}, kOnDeviceHbm, ge::DT_FLOAT16,
+                       reinterpret_cast<void *>(0x2000U));
+  std::vector<GertMemBlock *> workspace_mems;
+  AnnotatedArgsHandler args_handler;
+  auto holder = KernelRunContextBuilder()
+                    .Inputs({&input_tensor, &allocator})
+                    .Outputs({&output_tensor, &workspace_mems, static_cast<ArgsHandler *>(&args_handler)})
+                    .Build(MakeOpDesc());
+  auto *context = reinterpret_cast<AnnotatedArgsContext *>(holder.GetKernelContext());
+  ASSERT_NE(context, nullptr);
+
+  const auto first = MakeBlob(2U, 16U);
+  const auto second = MakeBlob(3U, 24U);
+  AnnotatedKernelArgs source;
+  ASSERT_EQ(source.AppendArg(CustomDataBlock{first.data(), first.size()}), ge::GRAPH_SUCCESS);
+  AnnotatedKernelArgs copied(source);
+  ASSERT_EQ(copied.AppendArg(CustomDataBlock{second.data(), second.size()}), ge::GRAPH_SUCCESS);
+  AnnotatedKernelArgs moved(std::move(copied));
+
+  uint8_t bin[] = {0x11U};
+  // 移动后的 builder 提交：两个 blob 均应完整转移
+  ASSERT_EQ(context->AddLaunch(AnnotatedKernelLaunchInfo{"moved_kernel", bin, sizeof(bin), 1U, kCustomDataStreamId},
+                               std::move(moved)),
+            ge::GRAPH_SUCCESS);
+  // 拷贝赋值得到的 builder 提交：仅保留源 builder 的一个 blob
+  AnnotatedKernelArgs copy_assigned;
+  copy_assigned = source;
+  ASSERT_EQ(context->AddLaunch(AnnotatedKernelLaunchInfo{"copied_kernel", bin, sizeof(bin), 1U, kCustomDataStreamId},
+                               std::move(copy_assigned)),
+            ge::GRAPH_SUCCESS);
+
+  ASSERT_EQ(args_handler.GetLaunchCount(), 2U);
+  const auto *moved_launch = args_handler.GetLaunch(0U);
+  const auto *copied_launch = args_handler.GetLaunch(1U);
+  ASSERT_NE(moved_launch, nullptr);
+  ASSERT_NE(copied_launch, nullptr);
+  ASSERT_EQ(moved_launch->GetCustomDataBlobCount(), 2U);
+  ASSERT_NE(moved_launch->GetCustomDataBlob(0U), nullptr);
+  ASSERT_NE(moved_launch->GetCustomDataBlob(1U), nullptr);
+  EXPECT_EQ(*moved_launch->GetCustomDataBlob(0U), first);
+  EXPECT_EQ(*moved_launch->GetCustomDataBlob(1U), second);
+  ASSERT_EQ(copied_launch->GetCustomDataBlobCount(), 1U);
+  ASSERT_NE(copied_launch->GetCustomDataBlob(0U), nullptr);
+  EXPECT_EQ(*copied_launch->GetCustomDataBlob(0U), first);
+}
+
+// 同一 kernel 名以不同 blob 多次 AddLaunch：各 LaunchRecord 的 blob 必须正确对应、无串数据
+TEST(AnnotatedArgsContextUT, MultipleLaunchesKeepCustomDataBlobsSeparated) {
+  AllocatorFaker allocator;
+  allocator.SetStreamId(kCustomDataStreamId);
+  Tensor input_tensor({{2, 2}, {2, 2}}, {ge::FORMAT_ND, ge::FORMAT_ND, {}}, kOnDeviceHbm, ge::DT_FLOAT16,
+                      reinterpret_cast<void *>(0x1000U));
+  Tensor output_tensor({{2, 2}, {2, 2}}, {ge::FORMAT_ND, ge::FORMAT_ND, {}}, kOnDeviceHbm, ge::DT_FLOAT16,
+                       reinterpret_cast<void *>(0x2000U));
+  std::vector<GertMemBlock *> workspace_mems;
+  AnnotatedArgsHandler args_handler;
+  auto holder = KernelRunContextBuilder()
+                    .Inputs({&input_tensor, &allocator})
+                    .Outputs({&output_tensor, &workspace_mems, static_cast<ArgsHandler *>(&args_handler)})
+                    .Build(MakeOpDesc());
+  auto *context = reinterpret_cast<AnnotatedArgsContext *>(holder.GetKernelContext());
+  ASSERT_NE(context, nullptr);
+
+  const auto first = MakeBlob(4U, 5U);
+  const auto second = MakeBlob(5U, 9U);
+  uint8_t bin[] = {0x11U};
+  const AnnotatedKernelLaunchInfo launch_info{"same_kernel", bin, sizeof(bin), 1U, kCustomDataStreamId};
+  ASSERT_EQ(context->AddLaunch(launch_info, AnnotatedKernelArgs(CustomDataBlock{first.data(), first.size()})),
+            ge::GRAPH_SUCCESS);
+  ASSERT_EQ(context->AddLaunch(launch_info, AnnotatedKernelArgs(CustomDataBlock{second.data(), second.size()})),
+            ge::GRAPH_SUCCESS);
+
+  ASSERT_EQ(args_handler.GetLaunchCount(), 2U);
+  const auto *first_launch = args_handler.GetLaunch(0U);
+  const auto *second_launch = args_handler.GetLaunch(1U);
+  ASSERT_NE(first_launch, nullptr);
+  ASSERT_NE(second_launch, nullptr);
+  EXPECT_STREQ(first_launch->GetKernelName(), "same_kernel");
+  EXPECT_STREQ(second_launch->GetKernelName(), "same_kernel");
+  ASSERT_EQ(first_launch->GetCustomDataBlobCount(), 1U);
+  ASSERT_EQ(second_launch->GetCustomDataBlobCount(), 1U);
+  ASSERT_NE(first_launch->GetCustomDataBlob(0U), nullptr);
+  ASSERT_NE(second_launch->GetCustomDataBlob(0U), nullptr);
+  EXPECT_EQ(*first_launch->GetCustomDataBlob(0U), first);
+  EXPECT_EQ(*second_launch->GetCustomDataBlob(0U), second);
+}
+
 TEST(AnnotatedArgsContextUT, AllocatesWorkspaceAndRecordsLaunchTask) {
   AllocatorFaker allocator;
   uint32_t stream_id = 3U;

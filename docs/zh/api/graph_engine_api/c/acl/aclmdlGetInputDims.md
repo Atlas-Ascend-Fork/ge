@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-根据模型描述信息获取模型的输入tensor的维度信息。
+根据om/om2模型描述信息获取模型的输入tensor的维度信息。
 
 如果模型中含有静态AIPP配置信息，您可以根据实际需要选择[aclmdlGetInputDims](aclmdlGetInputDims.md)接口或[aclmdlGetInputDimsV2](aclmdlGetInputDimsV2.md)接口查询维度信息，两者的区别在于：
 

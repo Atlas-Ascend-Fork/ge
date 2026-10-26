@@ -1,6 +1,6 @@
 # 简介
 
-`gert::AnnotatedKernelArgs`是声明式kernel launch参数构建器。调用方按kernel参数布局依次追加逻辑输入地址、逻辑输出地址、逻辑workspace地址和`uint64_t`标量，再将对象以右值传给[`gert::AnnotatedArgsContext::AddLaunch`](../AnnotatedArgsContext/AddLaunch.md)。该接口仅用于[`ge::AnnotatedArgsOp::DeclareLaunchArgs`](../../ge/AnnotatedArgsOp/DeclareLaunchArgs.md)编译期回调构造静态图的launch参数。
+`gert::AnnotatedKernelArgs`是声明式kernel launch参数构建器。调用方按kernel参数布局依次追加逻辑输入地址、逻辑输出地址、逻辑workspace地址、变长自定义数据和`uint64_t`标量，再将对象以右值传给[`gert::AnnotatedArgsContext::AddLaunch`](../AnnotatedArgsContext/AddLaunch.md)。该接口仅用于[`ge::AnnotatedArgsOp::DeclareLaunchArgs`](../../ge/AnnotatedArgsOp/DeclareLaunchArgs.md)编译期回调构造静态图的launch参数。
 
 ## 需要包含的头文件
 
@@ -24,6 +24,7 @@ AnnotatedKernelArgs &operator=(AnnotatedKernelArgs &&other) noexcept
 ge::graphStatus AppendArg(const InputAddr &addr)
 ge::graphStatus AppendArg(const OutputAddr &addr)
 ge::graphStatus AppendArg(const WorkspaceAddr &addr)
+ge::graphStatus AppendArg(const CustomDataBlock &data)
 ge::graphStatus AppendArg(uint64_t value)
 ge::graphStatus ExtractArgsData(std::vector<uint8_t> &args_data,
                                 std::vector<ge::ArgDesc> &arg_descs) const
@@ -34,6 +35,7 @@ ge::graphStatus ExtractArgsData(std::vector<uint8_t> &args_data,
 - [`InputAddr`](../InputAddr.md)
 - [`OutputAddr`](../OutputAddr.md)
 - [`WorkspaceAddr`](../WorkspaceAddr.md)
+- [`CustomDataBlock`](../CustomDataBlock.md)
 - [`AnnotatedArgsContext`](../AnnotatedArgsContext/overview.md)
 - [`AnnotatedKernelLaunchInfo`](../AnnotatedKernelLaunchInfo.md)
 

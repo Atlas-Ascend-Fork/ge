@@ -23,6 +23,7 @@
 #include "common/model/ge_model.h"
 #include "common/model/ge_root_model.h"
 #include "common/op_so_store/op_so_store_utils.h"
+#include "common/opskernel/ops_kernel_info_types.h"
 #include "graph_metadef/common/plugin/plugin_manager.h"
 #include "framework/omg/version.h"
 #include "graph/debug/ge_attr_define.h"
@@ -273,6 +274,14 @@ class KernelArgInfoWithShapeInfo {
 
 ge::Status ParseArgsFormat(const std::string &args_format,
                            std::vector<KernelArgInfoWithShapeInfo> &arg_infos_with_shape_info) {
+  // custom_data_block 含 '.'，下面的 regex 不匹配，若不显式拒绝会被静默跳过并产出可错跑的 .omc
+  if (args_format.find("custom_data_block") != std::string::npos) {
+    GELOGE(ge::FAILED, "[Mobile] args format [%s] contains unsupported CUSTOM_DATA_BLOCK.", args_format.c_str());
+    const std::string reason = "Variable length custom data args is not supported for mobile OMC.";
+    REPORT_PREDEFINED_ERR_MSG("E10055", std::vector<const char_t *>({"reason"}),
+                              std::vector<const char_t *>({reason.c_str()}));
+    return ge::FAILED;
+  }
   std::regex pattern("\\{[a-z0-9_\\*]+\\}");
   std::smatch sm;
   auto s_start = args_format.cbegin();

@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-从内存获取该模型的模型描述信息。
+从内存获取该om/om2模型的模型描述信息。
 
 通过本接口获取到的模型描述信息，无法应用于[aclmdlGetOpAttr](aclmdlGetOpAttr.md)、[aclmdlGetCurOutputDims](aclmdlGetCurOutputDims.md)接口。
 

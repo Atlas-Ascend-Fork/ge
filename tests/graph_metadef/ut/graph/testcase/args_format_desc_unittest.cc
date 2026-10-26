@@ -1060,4 +1060,190 @@ TEST_F(UtestArgsFormatDesc, ConvertSkToNormalNonSkType) {
   EXPECT_EQ(sub_op_id, INT32_MAX);
 }
 
+static uint64_t ReadReservedU64(const ArgDesc &arg_desc) {
+  uint64_t value = 0UL;
+  (void)memcpy_s(&value, sizeof(value), arg_desc.reserved, sizeof(value));
+  return value;
+}
+
+static ArgDesc MakeCustomDataDesc(const int32_t ir_idx, const uint64_t size) {
+  ArgDesc arg_desc = {AddrType::CUSTOM_DATA_BLOCK, ir_idx, false, {0}};
+  (void)memcpy_s(arg_desc.reserved, sizeof(arg_desc.reserved), &size, sizeof(size));
+  return arg_desc;
+}
+
+// 序列化形式必须为 {custom_data_block<idx>.<size>bytes}；Parse 后必须直接断言 reserved 数值，
+// 因为 round-trip 字符串比对不足以发现 size 丢失
+TEST_F(UtestArgsFormatDesc, custom_data_serialize_and_parse) {
+  const std::vector<ArgDesc> descs = {MakeCustomDataDesc(0, 1024UL), MakeCustomDataDesc(1, 7UL)};
+  const auto serialized = ArgsFormatDesc::Serialize(descs);
+  EXPECT_EQ(serialized, "{custom_data_block0.1024bytes}{custom_data_block1.7bytes}");
+
+  auto op_desc = std::make_shared<OpDesc>("tmp_op", "CustomDataOp");
+  std::vector<ArgDesc> parsed;
+  ASSERT_EQ(ArgsFormatDesc::Parse(op_desc, serialized, parsed), GRAPH_SUCCESS);
+  ASSERT_EQ(parsed.size(), 2UL);
+  for (size_t i = 0UL; i < parsed.size(); ++i) {
+    EXPECT_EQ(parsed[i].addr_type, AddrType::CUSTOM_DATA_BLOCK);
+    EXPECT_EQ(parsed[i].ir_idx, static_cast<int32_t>(i));
+    EXPECT_FALSE(parsed[i].folded);
+  }
+  // 关键断言：reserved 数值等于原 blob size，而非 0
+  EXPECT_EQ(ReadReservedU64(parsed[0]), 1024UL);
+  EXPECT_EQ(ReadReservedU64(parsed[1]), 7UL);
+  // round-trip 作为辅助断言
+  EXPECT_EQ(ArgsFormatDesc::Serialize(parsed), serialized);
+}
+
+// 8 字节槽不变式：CUSTOM_DATA_BLOCK 仍占一个 8B 槽（复用 DefaultCalcSize）
+TEST_F(UtestArgsFormatDesc, custom_data_get_arg_size_is_eight) {
+  auto op_desc = std::make_shared<OpDesc>("tmp_op", "CustomDataOp");
+  std::vector<ArgDesc> descs;
+  ASSERT_EQ(ArgsFormatDescUtils::Parse("{custom_data_block0.4095bytes}{custom_data_block1.4096bytes}", descs),
+            GRAPH_SUCCESS);
+  ASSERT_EQ(descs.size(), 2UL);
+  for (const auto &arg_desc : descs) {
+    size_t arg_size = 0UL;
+    EXPECT_EQ(ArgsFormatDesc::GetArgSize(op_desc, arg_desc, arg_size), GRAPH_SUCCESS);
+    EXPECT_EQ(arg_size, 8UL);
+  }
+}
+
+// 编译期物化路径的真实入参形态：op_desc == nullptr 且 easy_mode == true
+// （ArgsFormatDescUtils::Parse 硬编码该组合），不得崩溃且三字段全部正确
+TEST_F(UtestArgsFormatDesc, custom_data_parse_with_null_op_desc) {
+  std::vector<ArgDesc> descs;
+  ASSERT_EQ(ArgsFormatDescUtils::Parse("{custom_data_block0.1024bytes}{custom_data_block1.1bytes}", descs),
+            GRAPH_SUCCESS);
+  ASSERT_EQ(descs.size(), 2UL);
+  EXPECT_EQ(descs[0].addr_type, AddrType::CUSTOM_DATA_BLOCK);
+  EXPECT_EQ(descs[0].ir_idx, 0);
+  EXPECT_FALSE(descs[0].folded);
+  EXPECT_EQ(ReadReservedU64(descs[0]), 1024UL);
+  EXPECT_EQ(descs[1].ir_idx, 1);
+  EXPECT_EQ(ReadReservedU64(descs[1]), 1UL);
+}
+
+// 编译期（nullptr + easy_mode）与运行期（非空 + non-easy）解析结果必须逐项相等，
+// 即 CUSTOM_DATA_BLOCK 未被误纳入 kNeedEasyParserTypes
+TEST_F(UtestArgsFormatDesc, custom_data_compile_and_runtime_parse_consistency) {
+  const std::string args_format = "{custom_data_block0.1024bytes}{custom_data_block1.7bytes}{#42}{ffts_addr}";
+  std::vector<ArgDesc> compile_time_descs;
+  ASSERT_EQ(ArgsFormatDescUtils::Parse(args_format, compile_time_descs), GRAPH_SUCCESS);
+
+  auto op_desc = std::make_shared<OpDesc>("tmp_op", "CustomDataOp");
+  std::vector<ArgDesc> runtime_descs;
+  ASSERT_EQ(ArgsFormatDesc::Parse(op_desc, args_format, runtime_descs, false), GRAPH_SUCCESS);
+
+  ASSERT_EQ(compile_time_descs.size(), runtime_descs.size());
+  for (size_t i = 0UL; i < compile_time_descs.size(); ++i) {
+    EXPECT_EQ(compile_time_descs[i].addr_type, runtime_descs[i].addr_type);
+    EXPECT_EQ(compile_time_descs[i].ir_idx, runtime_descs[i].ir_idx);
+    EXPECT_EQ(compile_time_descs[i].folded, runtime_descs[i].folded);
+    EXPECT_EQ(ReadReservedU64(compile_time_descs[i]), ReadReservedU64(runtime_descs[i]));
+  }
+  EXPECT_EQ(ReadReservedU64(runtime_descs[0]), 1024UL);
+  EXPECT_EQ(ReadReservedU64(runtime_descs[1]), 7UL);
+}
+
+// CUSTOM_DATA_BLOCK 与既有类型混合时，顺序保持且既有类型行为不变
+TEST_F(UtestArgsFormatDesc, custom_data_mixed_with_existing_types) {
+  const std::vector<ArgDesc> descs = {{AddrType::FFTS_ADDR, -1, false, {0}},
+                                      MakeCustomDataDesc(0, 16UL),
+                                      {AddrType::TILING, -1, false, {0}},
+                                      MakeCustomDataDesc(1, 4294967295UL)};
+  const auto serialized = ArgsFormatDesc::Serialize(descs);
+  EXPECT_EQ(serialized, "{ffts_addr}{custom_data_block0.16bytes}{t}{custom_data_block1.4294967295bytes}");
+
+  std::vector<ArgDesc> parsed;
+  ASSERT_EQ(ArgsFormatDescUtils::Parse(serialized, parsed), GRAPH_SUCCESS);
+  ASSERT_EQ(parsed.size(), 4UL);
+  EXPECT_EQ(parsed[0].addr_type, AddrType::FFTS_ADDR);
+  EXPECT_EQ(parsed[1].addr_type, AddrType::CUSTOM_DATA_BLOCK);
+  EXPECT_EQ(ReadReservedU64(parsed[1]), 16UL);
+  EXPECT_EQ(parsed[2].addr_type, AddrType::TILING);
+  EXPECT_EQ(parsed[3].addr_type, AddrType::CUSTOM_DATA_BLOCK);
+  // uint32 上界值必须被接受（与 kernel_ext_info_size 量纲一致）
+  EXPECT_EQ(ReadReservedU64(parsed[3]), 4294967295UL);
+}
+
+// 非法 pattern 必须明确报错，不得静默产出无长度的 CUSTOM_DATA_BLOCK 描述符
+TEST_F(UtestArgsFormatDesc, custom_data_invalid_pattern) {
+  const std::vector<std::string> invalid_formats = {
+      "{custom_data_block}",                             // 缺 idx 与 size
+      "{custom_data_block0}",                            // 缺 size
+      "{custom_data_block0.1024}",                       // 缺 bytes 后缀
+      "{custom_data_block0.0bytes}",                     // size 为 0
+      "{custom_data_block-1.1024bytes}",                 // idx 为负
+      "{custom_data_block0.xbytes}",                     // size 非数字
+      "{custom_data_block0.1024bytesxyz}",               // 尾部多余字符
+      "{custom_data_block0.1024Bytes}",                  // 后缀大小写不符
+      "{custom_data_block0.4294967296bytes}",            // size 超 uint32 上界
+      "{custom_data_block0.18446744073709551616bytes}",  // size 溢出 uint64
+  };
+  for (const auto &args_format : invalid_formats) {
+    std::vector<ArgDesc> descs;
+    EXPECT_NE(ArgsFormatDescUtils::Parse(args_format, descs), GRAPH_SUCCESS) << "format: " << args_format;
+    EXPECT_TRUE(descs.empty()) << "format: " << args_format;
+  }
+}
+
+// 序号必须 0 基连续递增：首个非 0、跳跃、乱序、重复均拒绝
+TEST_F(UtestArgsFormatDesc, custom_data_rejects_non_continuous_index) {
+  const std::vector<std::string> invalid_formats = {
+      "{custom_data_block1.1bytes}",                             // 首个不是 0
+      "{custom_data_block0.1bytes}{custom_data_block2.1bytes}",  // 跳跃
+      "{custom_data_block1.1bytes}{custom_data_block0.1bytes}",  // 乱序
+      "{custom_data_block0.1bytes}{custom_data_block0.1bytes}",  // 重复
+  };
+  for (const auto &args_format : invalid_formats) {
+    std::vector<ArgDesc> descs;
+    EXPECT_NE(ArgsFormatDescUtils::Parse(args_format, descs), GRAPH_SUCCESS) << "format: " << args_format;
+  }
+}
+
+// 连续性统计只计 CUSTOM_DATA_BLOCK desc，与其它类型 desc 混排时序号仍从 0 递增
+TEST_F(UtestArgsFormatDesc, custom_data_index_counts_only_custom_data_descs) {
+  std::vector<ArgDesc> descs;
+  ASSERT_EQ(ArgsFormatDescUtils::Parse("{custom_data_block0.1bytes}{ffts_addr}{custom_data_block1.2bytes}", descs),
+            GRAPH_SUCCESS);
+  ASSERT_EQ(descs.size(), 3UL);
+  EXPECT_EQ(descs[0].addr_type, AddrType::CUSTOM_DATA_BLOCK);
+  EXPECT_EQ(descs[0].ir_idx, 0);
+  EXPECT_EQ(descs[1].addr_type, AddrType::FFTS_ADDR);
+  EXPECT_EQ(descs[2].addr_type, AddrType::CUSTOM_DATA_BLOCK);
+  EXPECT_EQ(descs[2].ir_idx, 1);
+  EXPECT_EQ(ReadReservedU64(descs[2]), 2UL);
+}
+
+// custom_data_block 未注册进 kSkPatternToHandler，super kernel 两条路径均必须明确失败而非静默降级
+TEST_F(UtestArgsFormatDesc, custom_data_rejected_in_super_kernel) {
+  auto sub_graph = BuildNormalGraph("test");
+  auto op_desc = std::make_shared<OpDesc>("sk", "SuperKernel");
+  ASSERT_NE(sub_graph, nullptr);
+  ASSERT_NE(op_desc, nullptr);
+  op_desc->SetExtAttr("_sk_sub_graph", sub_graph);
+  auto sk_node = std::shared_ptr<Node>(new (std::nothrow) Node(op_desc, nullptr));
+  ASSERT_NE(sk_node, nullptr);
+  (void)sk_node->Init();
+  NodePtr sub_node;
+  for (const auto &node : sub_graph->GetDirectNode()) {
+    if (node->GetOpDesc()->GetId() == 1) {
+      sub_node = node;
+      break;
+    }
+  }
+  ASSERT_NE(sub_node, nullptr);
+
+  // 生成侧：ConvertArgDescNormal2Sk 在入口显式拒绝，错误码经 GE_ASSERT_GRAPH_SUCCESS 上传
+  std::string sk_arg_format;
+  EXPECT_NE(
+      ArgsFormatDesc::ConvertToSuperKernelArgFormat(sk_node, sub_node, "{custom_data_block0.1024bytes}", sk_arg_format),
+      GRAPH_SUCCESS);
+
+  // 解析侧：畸形 {skn...custom_data_block...} 串在 kSkPatternToHandler 中无匹配，明确报错
+  std::vector<ArgDesc> descs;
+  EXPECT_NE(ArgsFormatDesc::Parse(op_desc, "{skn1custom_data_block0.1024bytes}", descs, false), GRAPH_SUCCESS);
+}
+
 }  // namespace ge

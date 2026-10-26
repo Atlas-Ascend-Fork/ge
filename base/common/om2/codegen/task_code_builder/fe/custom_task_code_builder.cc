@@ -160,6 +160,13 @@ Status CustomTaskCodeBuilder::Contribute(TaskSemanticContributeContext &context)
   // calc args size
   size_t args_size = 0U;
   for (const auto &arg_desc : arg_descs) {
+    // 变长自定义数据的字节存于 kernel_ext_info，需在加载期分配 device 内存并上传，OM2 出图路径
+    // 无对应能力。注册 pattern 后 ArgsFormatDesc::Parse 必然成功，若不在此显式拒绝，args_size 会累加
+    // CUSTOM_DATA_BLOCK 的 8 字节而 ordered_args 仅由 input/output/workspace 构成，导致静默生成含未初始化槽的 args
+    GE_ASSERT_TRUE(arg_desc.addr_type != AddrType::CUSTOM_DATA_BLOCK,
+                   "[OM2] Custom op %s(%s) uses variable-length custom data, which is not supported in the OM2 "
+                   "codegen path.",
+                   context.op_desc->GetNamePtr(), context.op_desc->GetTypePtr());
     (void)ArgsFormatDesc::GetArgSize(context.op_desc, arg_desc, args_size);
   }
   InitArgsTableEntry(context, args_size);

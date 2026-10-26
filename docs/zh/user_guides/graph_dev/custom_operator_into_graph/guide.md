@@ -27,6 +27,7 @@
 - 不提供kernel本身的实现能力（kernel仍需用Ascend C/Triton等自行开发）。
 - 不改变GE已有算子的注册与调度机制，仅提供自定义算子的接入通道。
 - 具体接口、API 名称随CANN/GE版本演进，需要以目标版本为准。
+- 本机制（BaseCustomOp）生成的自定义 kernel 任务类型为`MODEL_TASK_CUSTOM_KERNEL`，不参与SuperKernel融合；需要SuperKernel收益的场景请使用AscendC算子实现。
 
 ## 与GE Ascend IR算子的区别
 

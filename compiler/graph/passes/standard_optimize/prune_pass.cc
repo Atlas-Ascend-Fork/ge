@@ -72,28 +72,14 @@ bool IsKeepAliveOpTypePrefix(const std::string &type) {
 
 // 保活节点：变量/Assign、集合通信（kKeepAliveOpTypePrefixes）、控制流骨架、含子图节点。
 // 新增副作用算子应打 _force_skip_prune 标记，避免扩充本名单。
-const std::unordered_set<std::string> kKeepAliveOpTypes = {VARHANDLEOP,
-                                                           GETNEXT,
-                                                           ENTER,
-                                                           REFENTER,
-                                                           NEXTITERATION,
-                                                           REFNEXTITERATION,
-                                                           SWITCH,
-                                                           REFSWITCH,
-                                                           SWITCHN,
-                                                           MERGE,
-                                                           REFMERGE,
-                                                           IF,
-                                                           _IF,
-                                                           STATELESSIF,
-                                                           WHILE,
-                                                           _WHILE,
-                                                           STATELESSWHILE,
-                                                           CASE,
-                                                           STATELESSCASE,
-                                                           FOR,
-                                                           PARTITIONEDCALL,
-                                                           STATEFULPARTITIONEDCALL};
+const std::unordered_set<std::string> kKeepAliveOpTypes = {
+    VARHANDLEOP, GETNEXT,       NEXTITERATION, REFNEXTITERATION, SWITCH,
+    REFSWITCH,   SWITCHN,       MERGE,         REFMERGE,         IF,
+    _IF,         STATELESSIF,   WHILE,         _WHILE,           STATELESSWHILE,
+    CASE,        STATELESSCASE, FOR,           PARTITIONEDCALL,  STATEFULPARTITIONEDCALL};
+
+// 副作用算子：打印/断言/摘要的执行本身产生外部可见效果，其到图出口的控制边承载真实执行不可当空闲误连剪除。
+const std::unordered_set<std::string> kSideEffectOpTypes = {"Print", "PrintV2", "PrintV3", "Assert", "Summary"};
 
 // 引擎分配后保活判定：框架/流控/主机/集合通信引擎节点不可剪；计算引擎（AI Core/Vector/AI CPU等）可剪。
 const std::set<std::string> kKeepAliveKernelLibs = {kEngineNameGeLocal, kEngineNameRts, kEngineNameHccl};
@@ -247,6 +233,9 @@ bool IsIdleNodeOnNetOutput(const NodePtr &node, const std::unordered_set<NodePtr
   }
   if (OpTypeUtils::IsDataNode(node->GetType()) || IsKeepAliveNode(node)) {
     return false;  // Data序号绑定由处置环节兜底；保活节点的控制边承载真实执行语义
+  }
+  if (kSideEffectOpTypes.count(node->GetType()) > 0UL) {
+    return false;  // 副作用算子（打印/断言/摘要）的控制边是其执行保证，不可当误连剪除
   }
   if (protected_nodes.count(node) != 0UL) {
     return false;  // 用户target/显式跳过剪枝节点的控制边表达真实执行意图

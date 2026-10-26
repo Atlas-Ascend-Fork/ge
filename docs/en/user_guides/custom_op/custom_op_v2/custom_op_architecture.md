@@ -601,6 +601,7 @@ ONNX parser plugin registers through `REGISTER_CUSTOM_OP`, auto collects to `OpR
 | Dynamic Shape Static Subgraph | Applicable | Static subgraph goes V1 `DavinciModelKernel` path, custom operators execute through `CustomTaskInfo::Distribute()`, consistent with pure static shape scenario. |
 | Offline Scenario (atc compile) | Applicable | Stage 3 coverage. ATC compilation callbacks Compile + Serialize, OM load callbacks Deserialize + Execute. |
 | Online Scenario (Framework Adaptation) | Applicable | PyTorch/TorchAir and TensorFlow map to GE custom operator nodes through respective Adapter, go unified compile execute flow. |
+| SuperKernel Fusion | Not applicable | This mechanism generates `MODEL_TASK_CUSTOM_KERNEL`; SuperKernel task building only handles `ACL_RT_MODEL_TASK_KERNEL`/`ACL_RT_MODEL_TASK_ALL_KERNEL`, and the custom engine never sets `supportSuperKernel` on operators, so they do not participate in fusion. |
 
 ---
 

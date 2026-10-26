@@ -195,8 +195,8 @@ GE_PY_RUNTIME_NATIVE_NAME="ge-py-runtime-native"
 GE_PY_CUSTOM_OP_BRIDGE_NAME="ge-py-custom-op-bridge"
 
 custom_uninstall() {
-    if [ -z "$common_parse_dir/share/info/ge-compiler" ]; then
-        log "ERROR" "ERR_NO:0x0001;ERR_DES:ge-compiler directory is empty"
+    if [ ! -d "$common_parse_dir/share/info/ge-compiler" ]; then
+        log "ERROR" "ERR_NO:0x0001;ERR_DES:path $common_parse_dir/share/info/ge-compiler is not exist."
         exit 1
     fi
 

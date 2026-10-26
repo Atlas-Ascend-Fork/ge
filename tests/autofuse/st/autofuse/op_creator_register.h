@@ -61,13 +61,15 @@ static void RegisterVecInputTypeOpCreatorV2(const std::string &op_type, const st
   (void)ge::OperatorFactoryImpl::RegisterOperatorCreator(op_type, op_creator_v2);
 }
 
-void RegisterAllOpCreator() {
+void RegisterStubAndReduceOps() {
   RegisterOpCreatorV2("ZeroLikeStub", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("AbsRepeat5", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("DynamicQuantStub", {"x"}, ge::kIrInputRequired, {"y1", "y2"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("DynamicQuant", {"x"}, ge::kIrInputRequired, {"y1", "y2"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("ReduceSum", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+}
 
+void RegisterElementwiseAndConcatOps() {
   RegisterOpCreatorV2("Abs", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Add", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("AddV2", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
@@ -81,13 +83,17 @@ void RegisterAllOpCreator() {
   RegisterOpCreatorV2("SquaredDifferenceStub", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("ConcatD", {"x"}, ge::kIrInputDynamic, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Concat", {"x"}, ge::kIrInputDynamic, {"y"}, kIrOutputRequired, {});
+}
 
+void RegisterTransposeAndReduceOps() {
   RegisterOpCreatorV2("IsNan", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Cast", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("LogicalAnd", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Unsqueeze", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Squeeze", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("SoftmaxV2", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("LayerNorm", {"x", "gamma", "beta"}, ge::kIrInputRequired, {"y", "mean", "variance"},
+                      kIrOutputRequired, {});
   RegisterOpCreatorV2("BatchMatMulV2", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("SoftmaxStub", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Slice", {"x1", "x2", "x3"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
@@ -110,6 +116,9 @@ void RegisterAllOpCreator() {
   RegisterOpCreatorV2("BiasGrad", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Tile", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("TileD", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+}
+
+void RegisterTrainingAndOptOps() {
   RegisterOpCreatorV2("Square", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("SquareSumV1", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("L2Loss", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
@@ -139,6 +148,9 @@ void RegisterAllOpCreator() {
   RegisterOpCreatorV2("BroadcastTo", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Reshape", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("ClipByValue", {"x1", "x2", "x3"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+}
+
+void RegisterUnaryAndBinaryOps() {
   RegisterOpCreatorV2("ZerosLike", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("BiasAddGrad", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Log", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
@@ -174,6 +186,9 @@ void RegisterAllOpCreator() {
   RegisterOpCreatorV2("ReduceMinD", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("ReduceProdD", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Axpy", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+}
+
+void RegisterMatMulAndBatchMatMulOps() {
   RegisterVecInputTypeOpCreatorV2("MatMul", {"x1", "x2", "bias"},
                                   {ge::kIrInputRequired, ge::kIrInputRequired, ge::kIrInputOptional}, {"y"},
                                   kIrOutputRequired, {"transpose_x1", "transpose_x2"});
@@ -196,10 +211,23 @@ void RegisterAllOpCreator() {
       "BatchMatMulV3", {"x1", "x2", "bias", "offset_w"},
       {ge::kIrInputRequired, ge::kIrInputRequired, ge::kIrInputOptional, ge::kIrInputOptional}, {"y"},
       kIrOutputRequired, {"adj_x1", "adj_x2"});
+}
+
+void RegisterConv2DAndBNOps() {
   RegisterVecInputTypeOpCreatorV2(
       "BNInferenceD", {"x1", "x2", "x3", "x4", "x5"},
       {ge::kIrInputRequired, ge::kIrInputRequired, ge::kIrInputRequired, ge::kIrInputOptional, ge::kIrInputOptional},
       {"y"}, kIrOutputRequired, {"momentum", "epsilon", "use_global_stats", "mode"});
+}
+
+void RegisterAllOpCreator() {
+  RegisterStubAndReduceOps();
+  RegisterElementwiseAndConcatOps();
+  RegisterTransposeAndReduceOps();
+  RegisterTrainingAndOptOps();
+  RegisterUnaryAndBinaryOps();
+  RegisterMatMulAndBatchMatMulOps();
+  RegisterConv2DAndBNOps();
 }
 }  // namespace
 }  // namespace ge

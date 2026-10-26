@@ -285,7 +285,15 @@ TEST_F(UtestArgsFormatDescUtils, test_debug_log) {
 
 TEST_F(UtestArgsFormatDescUtils, AddrTypeValue) {
   // 增加新的枚举值，需要 l0 exception dump 适配
-  EXPECT_EQ(static_cast<int>(AddrType::MAX), static_cast<int>(AddrType::EVENT_ADDR) + 1);
+  // CUSTOM_DATA_BLOCK 已逐项确认无需适配：
+  // 1) CustomTaskInfo::UpdateDumpInfos 按 GetArgSize 步进（CUSTOM_DATA_BLOCK 复用 DefaultCalcSize 返回 8），
+  //    且只对 INPUT_INSTANCE/OUTPUT_INSTANCE 特殊处理，CUSTOM_DATA_BLOCK 自动跳过；
+  // 2) 消费 AddrType 的 tiling_dfx.cc / tiling_memcheck.cc 仅由 FE（kernel_task_info、fusion_task_info）
+  //    与 v2（bg_tiling、common_kernel_impl/tiling*）路径触达，custom_task_info.cc 对其零引用，
+  //    而 CUSTOM_DATA_BLOCK 仅由 custom op 的 AnnotatedArgs 路径产生，故不可能流入；
+  // 3) super kernel 路径已在 ConvertArgDescNormal2Sk 入口显式拒绝 CUSTOM_DATA_BLOCK，
+  //    且 kSkPatternToHandler 未注册该 pattern。
+  EXPECT_EQ(static_cast<int>(AddrType::MAX), static_cast<int>(AddrType::CUSTOM_DATA_BLOCK) + 1);
   EXPECT_EQ(static_cast<int>(TilingContextSubType::MAX), static_cast<int>(TilingContextSubType::BLOCK_DIM) + 1);
 }
 }  // namespace ge

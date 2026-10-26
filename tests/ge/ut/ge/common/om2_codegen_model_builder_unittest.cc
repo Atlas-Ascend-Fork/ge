@@ -40,6 +40,7 @@
 #include "ge_runtime_stub/include/common/share_graph.h"
 #include "ge_runtime_stub/include/faker/aicore_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/aicpu_taskdef_faker.h"
+#include "ge_runtime_stub/include/faker/custom_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/ge_model_builder.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/utils/attr_utils.h"
@@ -1089,6 +1090,50 @@ Status BuildCodegenModelWithTaskGenerators(const GeRootModelPtr &ge_root_model,
   Om2CodegenModelBuilder builder;
   std::vector<gert::GertModelDataConstMeta> const_metas;
   return builder.Build(ge_model, task_builders, doc, const_metas);
+}
+
+// 构造带一个 MODEL_TASK_CUSTOM_KERNEL 任务的模型，args_format 可指定，
+// 用于验证 OM2 出图路径对 AddrType::CUSTOM_DATA_BLOCK 的显式拒绝
+GeRootModelPtr CreateGeRootModelWithCustomOpArgsFormat(const std::string &args_format) {
+  auto graph = gert::ShareGraph::BuildCustomOpGraph();
+  if (graph == nullptr) {
+    return nullptr;
+  }
+  gert::GeModelBuilder builder(graph);
+  auto ge_root_model =
+      builder.AddTaskDef("custom_op", gert::CustomTaskDefFaker("custom_op_stub").ArgsFormat(args_format))
+          .FakeTbeBin({"custom_op"})
+          .BuildGeRootModel();
+  if (ge_root_model == nullptr) {
+    return nullptr;
+  }
+  auto &compute_graph = ge_root_model->GetRootGraph();
+  compute_graph->SetGraphUnknownFlag(false);
+  for (const auto &node : compute_graph->GetDirectNode()) {
+    auto op_desc = node->GetOpDesc();
+    if (op_desc == nullptr) {
+      return nullptr;
+    }
+    if (op_desc->GetType() == DATA) {
+      op_desc->SetOutputOffset({1024});
+    } else if (op_desc->GetType() == NETOUTPUT) {
+      op_desc->SetInputOffset({3072});
+    } else {
+      op_desc->SetInputOffset(std::vector<int64_t>(op_desc->GetInputsSize(), 1024));
+      op_desc->SetOutputOffset(std::vector<int64_t>(op_desc->GetOutputsSize(), 1024));
+    }
+  }
+  const auto &subgraph_models = ge_root_model->GetSubgraphInstanceNameToModel();
+  if (subgraph_models.empty()) {
+    return nullptr;
+  }
+  const auto ge_model = subgraph_models.begin()->second;
+  std::vector<uint8_t> weights_value(512, 1U);
+  ge_model->SetWeight(Buffer::CopyFrom(weights_value.data(), weights_value.size()));
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 2048);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, weights_value.size());
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
+  return ge_root_model;
 }
 
 }  // namespace
@@ -2708,6 +2753,24 @@ TEST_F(Om2CodegenModelBuilderUt, KernelTaskCodeBuilder_BuildOrderedArgsWithoutFo
                                     &next_host_args_offset_normal);
   ASSERT_EQ(normal_builder.BuildOrderedArgValuesWithoutArgsFormat(normal_context), SUCCESS);
   ASSERT_EQ(normal_semantic.ordered_arg_values.size(), 7U);  // 2 input + 3 output + 2 workspace
+}
+// 对照组：不含 CUSTOM_DATA_BLOCK 的 custom task 必须成功，以证明下一个用例的失败归因于新增校验而非脚手架本身
+TEST_F(Om2CodegenModelBuilderUt, BuildTaskSemantics_CustomTaskWithoutCustomDataOk) {
+  auto ge_root_model = CreateGeRootModelWithCustomOpArgsFormat("{i_instance0*}{i_instance1*}{o_instance0*}");
+  ASSERT_NE(ge_root_model, nullptr);
+  Om2CodegenModel doc;
+  EXPECT_EQ(BuildCodegenModel(ge_root_model, doc), SUCCESS);
+}
+
+// OM2 出图路径必须显式拒绝 CUSTOM_DATA_BLOCK：注册 pattern 后 ArgsFormatDesc::Parse 必然成功，
+// 若不显式检测则 args_size 会累加 CUSTOM_DATA_BLOCK 的 8 字节而 ordered_args 仅由 input/output/workspace
+// 构成，静默生成含未初始化槽的 args（运行期可能空指针）
+TEST_F(Om2CodegenModelBuilderUt, BuildTaskSemantics_CustomTaskRejectsCustomData) {
+  auto ge_root_model =
+      CreateGeRootModelWithCustomOpArgsFormat("{i_instance0*}{custom_data_block0.16bytes}{o_instance0*}");
+  ASSERT_NE(ge_root_model, nullptr);
+  Om2CodegenModel doc;
+  EXPECT_NE(BuildCodegenModel(ge_root_model, doc), SUCCESS);
 }
 
 }  // namespace ge

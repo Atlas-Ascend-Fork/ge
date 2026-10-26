@@ -174,7 +174,7 @@ bash scripts/check_env.sh
   # 测试UT/ST会对部分依赖so进行打桩处理，需要清除LD_LIBRARY_PATH和ASCEND_OPP_PATH环境变量，避免宿主机已安装的 CANN/Ascend 环境干扰测试
   unset LD_LIBRARY_PATH
   unset ASCEND_OPP_PATH
-  ./tests/ge/ut/ge/ut_libge_multiparts_utest # 可以通过 --gtest_list_tests 查看包含的单用例，并通过 --gtest_filter 参数执行单用例
+  ./build_ut/tests/ge/ut/ge/ut_libge_multiparts_utest # 可以通过 --gtest_list_tests 查看包含的单用例，并通过 --gtest_filter 参数执行单用例
   ```
 
 - 清理产物：

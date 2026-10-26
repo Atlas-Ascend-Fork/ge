@@ -324,8 +324,8 @@ clear_kernel_cache_dir() {
 
 
 custom_install() {
-    if [ -z "$common_parse_dir/share/info/dflow-executor" ]; then
-        log "ERROR" "ERR_NO:0x0001;ERR_DES:dflow-executor directory is empty"
+    if [ ! -d "$common_parse_dir/share/info/dflow-executor" ]; then
+        log "ERROR" "ERR_NO:0x0001;ERR_DES:path $common_parse_dir/share/info/dflow-executor is not exist."
         exit 1
     fi
 

@@ -705,6 +705,57 @@ TEST_F(UtestMobileModelHelper, SaveToOmModelWithEmptyOutputFile) {
   EXPECT_EQ(model_save_helper.SaveToOmModel(model_root, "", model, ge_root_model), ge::FAILED);
 }
 
+namespace {
+// 变长自定义数据的 mobile 权威兜底：负例必须失败且不产生半成品 .omc，正例（CUSTOM_KERNEL 任务但
+// args_format 不含 CUSTOM_DATA_BLOCK）不被误伤。两个用例均直接改写 ModelTaskDef，模拟
+// 编译期检查因命中 kAnnotatedArgsTaskPlan 缓存被绕过后、携带 CUSTOM_DATA_BLOCK 的 task 到达保存路径的形态
+bool FileExistsForTest(const std::string &file_path) {
+  std::ifstream file(file_path.c_str());
+  return file.is_open();
+}
+
+void SetTaskAsCustomKernelWithArgsFormat(const GeRootModelPtr &ge_root_model, const std::string &args_format) {
+  auto &name_to_ge_model = ge_root_model->GetSubgraphInstanceNameToModel();
+  auto &model_root = name_to_ge_model.begin()->second;
+  const auto model_task = model_root->GetModelTaskDefPtr();
+  ASSERT_NE(model_task, nullptr);
+  ASSERT_GT(model_task->task_size(), 0);
+  auto *task = model_task->mutable_task(0);
+  task->set_type(static_cast<uint32_t>(ge::ModelTaskType::MODEL_TASK_CUSTOM_KERNEL));
+  task->mutable_kernel()->mutable_context()->set_args_format(args_format);
+}
+}  // namespace
+
+TEST_F(UtestMobileModelHelper, SaveToOmModelWithCustomDataArgsRejected) {
+  std::string output_file = "mobile_model_custom_data.om";
+  ModelBufferData model;
+  MobileModelHelper model_save_helper;
+  GeRootModelPtr ge_root_model = GenGeRootModel();
+  SetTaskAsCustomKernelWithArgsFormat(ge_root_model, "{custom_data_block0.32bytes}");
+  // GE_ASSERT_SUCCESS 会经错误管理器返回具体错误码（如 0x50100001），不能断言等于裸的 ge::FAILED
+  EXPECT_NE(model_save_helper.SaveToOmModel(ge_root_model->GetSubgraphInstanceNameToModel().begin()->second,
+                                            output_file, model, ge_root_model),
+            ge::SUCCESS);
+  // 权威兜底必须发生在文件写出之前，不产生半成品 .omc
+  EXPECT_FALSE(FileExistsForTest(output_file + "c"));
+  system(("rm -rf " + output_file + "c").c_str());
+}
+
+TEST_F(UtestMobileModelHelper, SaveToOmModelWithCustomKernelTaskWithoutCustomData) {
+  std::string output_file = "mobile_model_no_custom_data.om";
+  ModelBufferData model;
+  MobileModelHelper model_save_helper;
+  GeRootModelPtr ge_root_model = GenGeRootModel();
+  // 同为 CUSTOM_KERNEL 任务，但 args_format 不含 CUSTOM_DATA_BLOCK，不应被兜底误伤
+  SetTaskAsCustomKernelWithArgsFormat(ge_root_model, "{i_desc0}{o_desc0}");
+  EXPECT_EQ(model_save_helper.SaveToOmModel(ge_root_model->GetSubgraphInstanceNameToModel().begin()->second,
+                                            output_file, model, ge_root_model),
+            ge::SUCCESS);
+  // 正例确实会产出 .omc，作为负例中「不产生半成品 .omc」断言的对照
+  EXPECT_TRUE(FileExistsForTest(output_file + "c"));
+  system(("rm -rf " + output_file + "c").c_str());
+}
+
 TEST_F(UtestMobileModelHelper, SaveToOmRootModelWithEmptySubgraphModels) {
   std::string output_file = "mobile_model_empty_sub.om";
   ModelBufferData model;

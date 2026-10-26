@@ -179,8 +179,8 @@ custom_uninstall() {
         log "DEBUG" "dflow-executor delete link file $common_parse_dir/lib64/stub/linux/aarch64/libflow_func.so."
         rm -f $common_parse_dir/lib64/stub/linux/aarch64/libflow_func.so
     fi
-    if [ -z "$common_parse_dir/share/info/dflow-executor" ]; then
-        log "ERROR" "ERR_NO:0x0001;ERR_DES:dflow-executor directory is empty"
+    if [ ! -d "$common_parse_dir/share/info/dflow-executor" ]; then
+        log "ERROR" "ERR_NO:0x0001;ERR_DES:path $common_parse_dir/share/info/dflow-executor is not exist."
         exit 1
     fi
 

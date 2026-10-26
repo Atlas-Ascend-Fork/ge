@@ -34,5 +34,7 @@
   - [支持量化的层及约束](references/quantization_layers_constraints.md)
   - [量化简易配置文件](references/quantization_simple_config.md)
   - [开启AI CPU Cast算子自动插入特性](references/enable_ai_cpu_cast_auto_insert.md)
+  - [OM2模型介绍](references/om2.md)
+  - [om2模型内部结构](references/internal_structure_of_om2_model.md)
 
 - [FAQ<a name="sub_menu"></a>](FAQ/README.md)

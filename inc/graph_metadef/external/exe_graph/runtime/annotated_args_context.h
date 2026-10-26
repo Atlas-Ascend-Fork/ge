@@ -59,6 +59,23 @@ struct WorkspaceAddr {
 };
 
 /**
+ * 变长自定义数据描述符，用于 AnnotatedKernelArgs 追加只读变长数据（典型如 tiling 数据、
+ * 常量查找表、描述符数组）。
+ *
+ * 数据本体随模型下发，并在模型加载期一次性上传至 device；args 中仅占一个 8 字节槽位，
+ * 槽值为该数据的 device 地址，kernel 侧以指针形式接收（与 AscendC 既有 tiling 惯例一致）。
+ * 数据长度不经 args 传递，需由数据布局自描述或另加一个 AppendArg(uint64_t) 长度槽。
+ * @since 9.3.0(2026-10)
+ */
+struct CustomDataBlock {
+  const void *data;  ///< 数据起始地址（host），追加时深拷贝，返回后调用方内存可立即修改或释放
+  size_t size;       ///< 数据长度，单位为字节，必须大于 0
+  // 二进制兼容保留字段，增加字段时对应缩减本数组长度以保证 sizeof(CustomDataBlock) 不变；
+  // 当前版本必须全部置 0
+  uint8_t reserved[8] = {0U};
+};
+
+/**
  * Kernel launch 信息描述符，用于 AnnotatedArgsContext::AddLaunch 指定 kernel 元信息。
  * @since 9.2.0(2026-07)
  */
@@ -85,7 +102,7 @@ class AnnotatedKernelArgs {
 
   /**
    * 变参构造函数，按参数顺序依次追加所有参数。
-   * 每个参数类型须为 InputAddr、OutputAddr、WorkspaceAddr 或 uint64_t。
+   * 每个参数类型须为 InputAddr、OutputAddr、WorkspaceAddr、CustomDataBlock 或 uint64_t。
    * @tparam Arg   第一个参数类型
    * @tparam Args  剩余参数类型包
    * @param arg    第一个参数
@@ -168,6 +185,14 @@ class AnnotatedKernelArgs {
   ge::graphStatus AppendArg(uint64_t value);
 
   /**
+   * 追加一个变长自定义数据参数。
+   * @param data 变长自定义数据描述符，size 必须大于 0，且 size 大于 0 时 data 不得为空，reserved 必须全部为 0
+   * @return GRAPH_SUCCESS 表示追加成功，否则返回错误码；一旦失败，后续 ExtractArgsData 也会失败
+   * @since 9.3.0(2026-10)
+   */
+  ge::graphStatus AppendArg(const CustomDataBlock &data);
+
+  /**
    * 提取 kernel launch 参数数据。
    * @param args_data  输出 kernel args 字节数据
    * @param arg_descs  输出 kernel args 描述
@@ -177,6 +202,8 @@ class AnnotatedKernelArgs {
   ge::graphStatus ExtractArgsData(std::vector<uint8_t> &args_data, std::vector<ge::ArgDesc> &arg_descs) const;
 
  private:
+  friend class AnnotatedArgsContext;
+
   void AppendAll() {}
 
   template <typename Arg, typename... Args>

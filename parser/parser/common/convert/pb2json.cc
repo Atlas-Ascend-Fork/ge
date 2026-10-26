@@ -28,6 +28,7 @@ using std::string;
 namespace ge {
 namespace {
 const int kSignificantDigits = 10;
+const int kFloatStrBufLen = 32;
 const int kMaxParseDepth = 20;
 const int NO_COMPRESS = 0;
 const int USE_OM_COMPRESS = 1;
@@ -125,13 +126,18 @@ void Pb2Json::OneField2Json(const ProtobufMsg &message, const ProtobufFieldDescr
       break;
 
     case ProtobufFieldDescriptor::TYPE_FLOAT:
-      char str[kSignificantDigits];
-      if (sprintf_s(str, kSignificantDigits, "%g", reflection->GetFloat(message, field)) != -1) {
+      char str[kFloatStrBufLen];
+      // 9 significant digits are the minimum to guarantee float32 round-trip; "%g" truncated to 6 digits.
+      if (sprintf_s(str, kFloatStrBufLen, "%.9g", reflection->GetFloat(message, field)) != -1) {
         json[field->name()] = str;
       } else {
         json[field->name()] = reflection->GetFloat(message, field);
       }
 
+      break;
+
+    case ProtobufFieldDescriptor::TYPE_DOUBLE:
+      json[field->name()] = reflection->GetDouble(message, field);
       break;
 
     case ProtobufFieldDescriptor::TYPE_STRING:
@@ -220,6 +226,10 @@ void Pb2Json::RepeatedMessage2Json(const ProtobufMsg &message, const ProtobufFie
 
       case ProtobufFieldDescriptor::TYPE_FLOAT:
         tmp_json = reflection->GetRepeatedFloat(message, field, i);
+        break;
+
+      case ProtobufFieldDescriptor::TYPE_DOUBLE:
+        tmp_json = reflection->GetRepeatedDouble(message, field, i);
         break;
 
       case ProtobufFieldDescriptor::TYPE_STRING:

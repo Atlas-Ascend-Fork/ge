@@ -413,6 +413,9 @@ Status MaterializeAnnotatedTaskKernelArgs(const OpDescPtr &op_desc, const RunCon
         GE_ASSERT_SUCCESS(ResolveWorkspacePlanAddr(op_desc, context, arg_descs[i].ir_idx, addr));
         break;
       case AddrType::CUSTOM_VALUE:
+      // blob 内容已固化在 task_template 的 kernel_ext_info 中，物化阶段无需重填，
+      // 其 8 字节槽保持编译期的 0 占位，真实 device 地址由运行期 CustomTaskInfo 填入
+      case AddrType::CUSTOM_DATA_BLOCK:
         continue;
       default:
         GELOGE(INTERNAL_ERROR, "Custom op %s(%s) planned arg[%zu] type %d is not materializable.",
@@ -494,6 +497,35 @@ Status CheckAnnotatedArgsTaskPlan(const OpDescPtr &op_desc, const gert::Annotate
   return SUCCESS;
 }
 
+bool LaunchRecordHasCustomData(const gert::AnnotatedArgsHandler::LaunchRecord &launch) {
+  const auto *const arg_descs = launch.GetArgDescs();
+  if (arg_descs == nullptr) {
+    return false;
+  }
+  const auto count = launch.GetArgDescCount();
+  for (size_t i = 0U; i < count; ++i) {
+    if (arg_descs[i].addr_type == AddrType::CUSTOM_DATA_BLOCK) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// mobile OMC 的 .omc 由端侧 NPUCL 运行时加载执行，该链路不具备 device 内存分配与 H2D 拷贝能力，
+// 且 mobile proto 的 KernelDef 无 kernel_ext_info 字段，故本特性「加载期上传 blob」的代码在端侧
+// 根本不会被执行，必须在编译期明确拒绝而非静默产出不可执行的 .omc
+Status CheckMobileModeSupportsCustomData(const OpDescPtr &op_desc, const gert::AnnotatedArgsHandler &args_handler) {
+  for (size_t i = 0U; i < args_handler.GetLaunchCount(); ++i) {
+    const auto *const launch = args_handler.GetLaunch(i);
+    GE_ASSERT_NOTNULL(launch);
+    GE_ASSERT_TRUE(!LaunchRecordHasCustomData(*launch),
+                   "Custom op %s(%s) launch[%zu] uses variable-length custom data, which is not supported in "
+                   "mobile OMC scenario.",
+                   op_desc->GetNamePtr(), op_desc->GetTypePtr(), i);
+  }
+  return SUCCESS;
+}
+
 Status CheckAnnotatedArgsTaskPlanForMode(const OpDescPtr &op_desc, const gert::AnnotatedArgsHandler &args_handler,
                                          const uint32_t stream_id, const OfflineLaunchGenMode mode,
                                          const DeclarativeStreamRegistryPtr &registry) {
@@ -513,6 +545,9 @@ Status CheckAnnotatedArgsTaskPlanForMode(const OpDescPtr &op_desc, const gert::A
            "Custom op mobile OMC does not support annotated dependencies or attached streams, op_name:%s",
            op_desc->GetNamePtr());
     return INTERNAL_ERROR;
+  }
+  if (mode == OfflineLaunchGenMode::kMobileLegacySingleTask) {
+    GE_ASSERT_SUCCESS(CheckMobileModeSupportsCustomData(op_desc, args_handler));
   }
   return SUCCESS;
 }
@@ -589,6 +624,70 @@ Status SetKernelBinAttrs(const char *const kernel_name, const uint8_t *const ker
   return SUCCESS;
 }
 
+// 将各 blob 按 CUSTOM_DATA_BLOCK desc 出现顺序裸拼接写入 kernel_ext_info（无头部、无对齐填充），
+// 并成对设置 kernel_ext_info_size。各 blob 大小不另存于 kernel_ext_info，而是编码进 args_format
+// 的 pattern（{custom_data_block<idx>.<size>bytes}），运行期据此切分。
+Status FillCustomDataExtInfo(const OpDescPtr &op_desc, const gert::AnnotatedArgsHandler::LaunchRecord &launch_task,
+                             const std::vector<ArgDesc> &arg_descs, domi::KernelDef *const kernel_def) {
+  GE_ASSERT_NOTNULL(kernel_def);
+  const auto blob_count = launch_task.GetCustomDataBlobCount();
+  size_t custom_data_desc_count = 0UL;
+  uint64_t total_size = 0UL;
+  for (const auto &arg_desc : arg_descs) {
+    if (arg_desc.addr_type != AddrType::CUSTOM_DATA_BLOCK) {
+      continue;
+    }
+    ++custom_data_desc_count;
+    GE_ASSERT_TRUE((arg_desc.ir_idx >= 0) && (static_cast<size_t>(arg_desc.ir_idx) < blob_count),
+                   "Custom op %s(%s) custom data blob index %d is out of range [0, %zu).", op_desc->GetNamePtr(),
+                   op_desc->GetTypePtr(), arg_desc.ir_idx, blob_count);
+    const auto *const blob = launch_task.GetCustomDataBlob(static_cast<size_t>(arg_desc.ir_idx));
+    GE_ASSERT_NOTNULL(blob, "Custom op %s(%s) custom data blob[%d] is missing.", op_desc->GetNamePtr(),
+                      op_desc->GetTypePtr(), arg_desc.ir_idx);
+    uint64_t blob_size = 0UL;
+    GE_ASSERT_EOK(memcpy_s(&blob_size, sizeof(blob_size), arg_desc.reserved, sizeof(blob_size)));
+    GE_ASSERT_TRUE(blob->size() == blob_size,
+                   "Custom op %s(%s) custom data blob[%d] size %zu does not match args_format size %" PRIu64 ".",
+                   op_desc->GetNamePtr(), op_desc->GetTypePtr(), arg_desc.ir_idx, blob->size(), blob_size);
+    GE_ASSERT_TRUE(blob_size <= (std::numeric_limits<uint64_t>::max() - total_size),
+                   "Custom op %s(%s) custom data total size overflow.", op_desc->GetNamePtr(), op_desc->GetTypePtr());
+    total_size += blob_size;
+  }
+  if (total_size == 0UL) {
+    // 未使用变长自定义数据时不写 kernel_ext_info，OM 内容与改动前逐字节一致
+    return SUCCESS;
+  }
+  GE_ASSERT_TRUE(custom_data_desc_count == blob_count,
+                 "Custom op %s(%s) custom data desc count %zu does not match blob count %zu.", op_desc->GetNamePtr(),
+                 op_desc->GetTypePtr(), custom_data_desc_count, blob_count);
+  GE_ASSERT_TRUE(total_size <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+                 "Custom op %s(%s) custom data total size %" PRIu64 " exceeds uint32 max.", op_desc->GetNamePtr(),
+                 op_desc->GetTypePtr(), total_size);
+
+  std::string ext_info;
+  ext_info.reserve(total_size);
+  for (const auto &arg_desc : arg_descs) {
+    if (arg_desc.addr_type != AddrType::CUSTOM_DATA_BLOCK) {
+      continue;
+    }
+    const auto *const blob = launch_task.GetCustomDataBlob(static_cast<size_t>(arg_desc.ir_idx));
+    ext_info.append(reinterpret_cast<const char *>(blob->data()), blob->size());
+  }
+  // 三重交叉校验：Σ(args_format 编码的 size) == kernel_ext_info.size() == kernel_ext_info_size
+  GE_ASSERT_TRUE(ext_info.size() == total_size,
+                 "Custom op %s(%s) custom data ext info size %zu does not match args_format total size %" PRIu64 ".",
+                 op_desc->GetNamePtr(), op_desc->GetTypePtr(), ext_info.size(), total_size);
+  kernel_def->set_kernel_ext_info(ext_info);
+  kernel_def->set_kernel_ext_info_size(static_cast<uint32_t>(ext_info.size()));
+  GE_ASSERT_TRUE(kernel_def->kernel_ext_info().size() == kernel_def->kernel_ext_info_size(),
+                 "Custom op %s(%s) custom data ext info size %zu does not match ext info size field %u.",
+                 op_desc->GetNamePtr(), op_desc->GetTypePtr(), kernel_def->kernel_ext_info().size(),
+                 kernel_def->kernel_ext_info_size());
+  GELOGI("Custom op %s(%s) filled %zu custom data blobs, total %zu bytes.", op_desc->GetNamePtr(),
+         op_desc->GetTypePtr(), blob_count, ext_info.size());
+  return SUCCESS;
+}
+
 Status FillKernelTask(const Node &node, const gert::AnnotatedArgsHandler::LaunchRecord &launch_task,
                       const std::string &kernel_attr_prefix, domi::TaskDef &task_def) {
   const auto op_desc = node.GetOpDesc();
@@ -633,6 +732,7 @@ Status FillKernelTask(const Node &node, const gert::AnnotatedArgsHandler::Launch
   kernel_context->set_args_format(ArgsFormatDescUtils::Serialize(arg_desc_vec));
   kernel_context->set_args_count(static_cast<uint32_t>(slot_count));
   GE_ASSERT_SUCCESS(SetArgsOffset(slot_count, kernel_context));
+  GE_ASSERT_SUCCESS(FillCustomDataExtInfo(op_desc, launch_task, arg_desc_vec, kernel_def));
   GE_ASSERT_SUCCESS(SetKernelBinAttrs(kernel_name, kernel_bin_data, kernel_bin_size, op_desc, kernel_attr_prefix));
   return SUCCESS;
 }
@@ -747,6 +847,8 @@ Status CacheAnnotatedArgsTaskPlan(const OpDescPtr &op_desc, const std::vector<do
 Status GenerateMobileAnnotatedArgsTask(const Node &node, const OpDescPtr &op_desc,
                                        const gert::AnnotatedArgsHandler &args_handler, const size_t task_start,
                                        std::vector<domi::TaskDef> &tasks) {
+  // 防御性检查：命中 kAnnotatedArgsTaskPlan 缓存时不经过 CheckAnnotatedArgsTaskPlanForMode
+  GE_ASSERT_SUCCESS(CheckMobileModeSupportsCustomData(op_desc, args_handler));
   domi::TaskDef task_def = {};
   const auto *launch = args_handler.GetLaunch(0U);
   GE_ASSERT_NOTNULL(launch);

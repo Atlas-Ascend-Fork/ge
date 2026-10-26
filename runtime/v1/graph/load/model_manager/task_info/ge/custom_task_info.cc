@@ -53,6 +53,14 @@ constexpr uint32_t kAddressLen = static_cast<uint32_t>(sizeof(uint64_t));
 constexpr size_t kCustomOpArgsReserved = 16UL;
 constexpr size_t kCustomOpArgsFieldSize = sizeof(void *);
 constexpr const char_t *kDefaultCustomKernelMagic = "RT_DEV_BINARY_MAGIC_ELF_AIVEC";
+// CustomDataBlock 在 device 缓冲内的对齐粒度。取 512B 与 DavinciModel::MallocDynamicMemory 的分配粒度
+// （kAlignSize = 512）保持一致，使「一次分配 + 一次 H2D」后每个 blob 的 device 地址对齐语义与
+// 「逐 blob 独立分配」完全相同。
+constexpr size_t kCustomDataAlignSize = 512UL;
+
+inline size_t AlignUpCustomDataSize(const size_t size) {
+  return ((size + kCustomDataAlignSize - 1UL) / kCustomDataAlignSize) * kCustomDataAlignSize;
+}
 
 bool IsInputDescValid(const ge::GeTensorDesc &input_desc, size_t &invalid_index_num) {
   if (input_desc.IsValid() != ge::GRAPH_SUCCESS) {
@@ -459,6 +467,8 @@ Status CustomTaskInfo::Init(const domi::TaskDef &task_def, DavinciModel *const d
 
   if (args_refresh_strategy_ == ArgsRefreshStrategy::kAnnotatedArgs) {
     args_ = ValueToPtr(args[static_cast<size_t>(args_placement_)].dev_addr);
+    // 必须在 AssembleIoByArgsFormat 之前完成上传，后者需要 blob 的 device 地址
+    GE_ASSERT_SUCCESS(LoadCustomDataBlobs(task_def));
     GE_ASSERT_SUCCESS(AssembleIoByArgsFormat());
     ArgsIoAddrsUpdater::OpInfo op_info{op_desc_->GetName(), op_desc_->GetType()};
     GE_ASSERT_SUCCESS(
@@ -648,11 +658,98 @@ Status CustomTaskInfo::AppendWorkspaceAddr(int32_t ir_idx) {
   return SUCCESS;
 }
 
+Status CustomTaskInfo::LoadCustomDataBlobs(const domi::TaskDef &task_def) {
+  const auto &arg_descs = args_format_holder_.arg_descs;
+  const auto &ext_info = task_def.kernel().kernel_ext_info();
+  const auto ext_info_size_field = task_def.kernel().kernel_ext_info_size();
+  uint64_t total_size = 0UL;
+  size_t buffer_size = 0UL;
+  size_t custom_data_count = 0UL;
+  size_t src_offset = 0UL;
+  for (const auto &arg_desc : arg_descs) {
+    if (arg_desc.addr_type != AddrType::CUSTOM_DATA_BLOCK) {
+      continue;
+    }
+    // 序号/尺寸/区间校验全部放在分配 device 内存之前，保证非法输入不会先消耗 device 资源。
+    // 编译期 parser 因 op_desc 可能为 nullptr 而无法校验序号上界，故运行期必须补此校验
+    GE_ASSERT_TRUE(arg_desc.ir_idx == static_cast<int32_t>(custom_data_count),
+                   "[CUSTOM OP] custom data blob index %d does not match expected %zu for op %s(%s).", arg_desc.ir_idx,
+                   custom_data_count, op_desc_->GetNamePtr(), op_desc_->GetTypePtr());
+    uint64_t blob_size = 0UL;
+    // reserved 位于 ArgDesc 偏移 9，非 8 字节对齐，禁止直接解引用
+    GE_ASSERT_EOK(memcpy_s(&blob_size, sizeof(blob_size), arg_desc.reserved, sizeof(blob_size)));
+    GE_ASSERT_TRUE((blob_size > 0UL) && ((src_offset + blob_size) <= ext_info.size()),
+                   "[CUSTOM OP] custom data blob[%zu] size %" PRIu64
+                   " exceeds kernel_ext_info range [%zu, %zu) for op "
+                   "%s(%s).",
+                   custom_data_count, blob_size, src_offset, ext_info.size(), op_desc_->GetNamePtr(),
+                   op_desc_->GetTypePtr());
+    ++custom_data_count;
+    GE_ASSERT_TRUE(blob_size <= (std::numeric_limits<uint64_t>::max() - total_size),
+                   "[CUSTOM OP] custom data total size overflow for op %s(%s)", op_desc_->GetNamePtr(),
+                   op_desc_->GetTypePtr());
+    total_size += blob_size;
+    const size_t aligned_size = AlignUpCustomDataSize(static_cast<size_t>(blob_size));
+    GE_ASSERT_TRUE(aligned_size <= (std::numeric_limits<size_t>::max() - buffer_size),
+                   "[CUSTOM OP] custom data buffer size overflow for op %s(%s)", op_desc_->GetNamePtr(),
+                   op_desc_->GetTypePtr());
+    buffer_size += aligned_size;
+    src_offset += blob_size;
+  }
+  if (custom_data_count == 0UL) {
+    return SUCCESS;
+  }
+  // 三重交叉校验：Σ(args_format 编码的 size) == kernel_ext_info.size() == kernel_ext_info_size
+  GE_ASSERT_TRUE((total_size == ext_info.size()) && (ext_info.size() == ext_info_size_field),
+                 "[CUSTOM OP] custom data size mismatch for op %s(%s), args_format total %" PRIu64
+                 ", kernel_ext_info %zu, kernel_ext_info_size %u.",
+                 op_desc_->GetNamePtr(), op_desc_->GetTypePtr(), total_size, ext_info.size(), ext_info_size_field);
+
+  // 一次性分配 device 缓冲并一次 H2D 拷完（逐 blob 分配 + 逐 blob H2D 会产生 N 次往返）。
+  // 每个 blob 在缓冲内按 kCustomDataAlignSize 对齐，故其 device 地址与「逐 blob 独立分配」时的对齐保证相同。
+  void *const device_base = davinci_model_->MallocDynamicMemory(buffer_size);
+  GE_ASSERT_TRUE(device_base != nullptr, "[CUSTOM OP] malloc %zu bytes for %zu custom data blobs of op %s(%s) failed.",
+                 buffer_size, custom_data_count, op_desc_->GetNamePtr(), op_desc_->GetTypePtr());
+
+  // host 侧组包：缓冲零初始化，使各 blob 之间的 padding 区为 0，不会残留相邻数据
+  std::vector<uint8_t> host_buffer(buffer_size, 0U);
+  std::vector<size_t> device_offsets;
+  device_offsets.reserve(custom_data_count);
+  size_t copy_src = 0UL;
+  size_t copy_dst = 0UL;
+  for (const auto &arg_desc : arg_descs) {
+    if (arg_desc.addr_type != AddrType::CUSTOM_DATA_BLOCK) {
+      continue;
+    }
+    uint64_t blob_size = 0UL;
+    GE_ASSERT_EOK(memcpy_s(&blob_size, sizeof(blob_size), arg_desc.reserved, sizeof(blob_size)));
+    copy_dst = AlignUpCustomDataSize(copy_dst);
+    GE_ASSERT_EOK(memcpy_s(host_buffer.data() + copy_dst, buffer_size - copy_dst, ext_info.data() + copy_src,
+                           static_cast<size_t>(blob_size)));
+    device_offsets.push_back(copy_dst);
+    copy_src += blob_size;
+    copy_dst += static_cast<size_t>(blob_size);
+  }
+  GE_ASSERT_TRUE((device_offsets.size() == custom_data_count) && (copy_src == ext_info.size()),
+                 "[CUSTOM OP] loaded %zu custom data blobs of %zu with %zu of %zu bytes consumed for op %s(%s).",
+                 device_offsets.size(), custom_data_count, copy_src, ext_info.size(), op_desc_->GetNamePtr(),
+                 op_desc_->GetTypePtr());
+
+  GE_ASSERT_RT_OK(aclrtMemcpy(device_base, buffer_size, host_buffer.data(), buffer_size, ACL_MEMCPY_HOST_TO_DEVICE));
+  for (const auto offset : device_offsets) {
+    custom_data_addrs_.push_back(static_cast<uint8_t *>(device_base) + offset);
+  }
+  GELOGI("[CUSTOM OP] loaded %zu custom data blobs, total %" PRIu64 " bytes (device buffer %zu bytes), for op %s(%s).",
+         custom_data_count, total_size, buffer_size, op_desc_->GetNamePtr(), op_desc_->GetTypePtr());
+  return SUCCESS;
+}
+
 Status CustomTaskInfo::AssembleIoByArgsFormat() {
   GE_ASSERT_SUCCESS(ValidateIoWorkspaceAddrAndMemTypeSizes());
   const auto &arg_descs = args_format_holder_.arg_descs;
   io_addrs_.reserve(arg_descs.size());
   io_addr_mem_types_.reserve(arg_descs.size());
+  size_t custom_data_index = 0UL;
   for (const auto &arg_format : arg_descs) {
     switch (arg_format.addr_type) {
       case AddrType::INPUT_INSTANCE: {
@@ -675,6 +772,15 @@ Status CustomTaskInfo::AssembleIoByArgsFormat() {
       }
       case AddrType::CUSTOM_VALUE: {
         AppendIoAddr(*reinterpret_cast<const uint64_t *>(arg_format.reserved), kAbsoluteMemType);
+        break;
+      }
+      case AddrType::CUSTOM_DATA_BLOCK: {
+        // blob 仍占一个 8 字节 io_addrs 条目，以 kAbsoluteMemType 参与刷新，值恒定不变
+        GE_ASSERT_TRUE(custom_data_index < custom_data_addrs_.size(),
+                       "[CUSTOM OP] custom data blob[%zu] device addr is missing for op %s(%s), loaded %zu.",
+                       custom_data_index, op_desc_->GetNamePtr(), op_desc_->GetTypePtr(), custom_data_addrs_.size());
+        AppendIoAddr(reinterpret_cast<uint64_t>(custom_data_addrs_[custom_data_index]), kAbsoluteMemType);
+        ++custom_data_index;
         break;
       }
       case AddrType::PLACEHOLDER: {

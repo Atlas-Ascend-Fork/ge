@@ -11,6 +11,7 @@
 #include "common/convert/message2operator.h"
 
 #include <fstream>
+#include <string>
 #include <gtest/gtest.h>
 
 #include "proto/onnx/ge_onnx.pb.h"
@@ -262,5 +263,43 @@ TEST_F(UtestMessage2Operator, message_to_operator_onnx_attr_ints_not_affected) {
   ASSERT_EQ(json["attribute"].size(), 1U);
   EXPECT_EQ(json["attribute"][0]["ints"], Json::array({1, 0, 2}));
   EXPECT_FALSE(json["attribute"][0].contains("i"));
+}
+
+TEST_F(UtestMessage2Operator, message_to_operator_onnx_attr_tensor_double_data_round_trip) {
+  ge::onnx::NodeProto input_node;
+  ge::onnx::AttributeProto *attribute = input_node.add_attribute();
+  attribute->set_name("value");
+  attribute->set_type(onnx::AttributeProto::TENSOR);
+  ge::onnx::TensorProto *tensor = attribute->mutable_t();
+  tensor->set_data_type(11);
+  tensor->add_dims(1);
+  tensor->add_double_data(1.234567890123);
+  tensor->add_double_data(-1.23456789012345e200);
+  ge::Operator op_src("cos", "ConstantOfShape");
+  auto ret = Message2Operator::ParseOperatorAttrs(&input_node, 1, op_src);
+  EXPECT_EQ(ret, SUCCESS);
+  const Json json = GetOnnxAttributeJson(op_src);
+  ASSERT_EQ(json["attribute"].size(), 1U);
+  const Json &double_data = json["attribute"][0]["t"]["double_data"];
+  ASSERT_EQ(double_data.size(), 2U);
+  EXPECT_TRUE(double_data[0].is_number());
+  EXPECT_EQ(double_data[0].get<double>(), 1.234567890123);
+  EXPECT_EQ(double_data[1].get<double>(), -1.23456789012345e200);
+}
+
+TEST_F(UtestMessage2Operator, message_to_operator_onnx_attr_float_precision_round_trip) {
+  ge::onnx::NodeProto input_node;
+  ge::onnx::AttributeProto *attribute = input_node.add_attribute();
+  attribute->set_name("alpha");
+  attribute->set_type(onnx::AttributeProto::FLOAT);
+  attribute->set_f(1.5957691F);
+  ge::Operator op_src("hs", "HardSigmoid");
+  auto ret = Message2Operator::ParseOperatorAttrs(&input_node, 1, op_src);
+  EXPECT_EQ(ret, SUCCESS);
+  const Json json = GetOnnxAttributeJson(op_src);
+  ASSERT_EQ(json["attribute"].size(), 1U);
+  const Json &f_json = json["attribute"][0]["f"];
+  ASSERT_TRUE(f_json.is_string());
+  EXPECT_FLOAT_EQ(std::stof(f_json.get<std::string>()), 1.5957691F);
 }
 }  // namespace ge

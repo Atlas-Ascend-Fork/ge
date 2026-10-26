@@ -109,6 +109,9 @@ class CustomTaskInfo : public TaskInfo {
   Status InitArgsIoAddrsUpdater();
 
   Status AssembleIoByArgsFormat();
+  // 加载期一次性将 TaskDef.kernel.kernel_ext_info 中的变长自定义数据上传至 device，
+  // 必须在 AssembleIoByArgsFormat 之前调用（后者需要这些 device 地址）
+  Status LoadCustomDataBlobs(const domi::TaskDef &task_def);
   size_t GetArgsSizeByFormat() const;
   void AppendIoAddr(const uint64_t addr, const uint64_t addr_type);
   Status ValidateIoWorkspaceAddrAndMemTypeSizes() const;
@@ -161,6 +164,9 @@ class CustomTaskInfo : public TaskInfo {
   void *args_ = nullptr;
   std::vector<uint64_t> io_addrs_;
   std::vector<uint64_t> io_addr_mem_types_;
+  // 变长自定义数据的 device 地址，按 args_format 中 CUSTOM_DATA_BLOCK 描述符的出现顺序排列。
+  // 内存为 model 级生命周期，由 DavinciModel::FreeDynamicWorkspaceMemory 统一回收，此处不单独释放
+  std::vector<void *> custom_data_addrs_;
   // io_addr_offset_ is 0 because custom op args buffer contains only io addrs (no tiling/header prefix)
   size_t io_addr_offset_ = 0UL;
 };
