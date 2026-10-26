@@ -82,6 +82,7 @@ class GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY NamedAttrs : public AttrHol
   AttrStore attrs_;
   std::string name_;
 
+  friend class AttrValue;
   friend class GeAttrValueImp;
 };
 

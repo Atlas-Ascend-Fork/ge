@@ -331,6 +331,8 @@
       - [AttrValue构造函数和析构函数](cpp/ge/AttrValue/AttrValue_constructor_and_destructor.md)
       - [CreateFrom](cpp/ge/AttrValue/CreateFrom.md)
       - [GetAttrValue](cpp/ge/AttrValue/GetAttrValue.md)
+      - [GetNamedAttrValue](cpp/ge/AttrValue/GetNamedAttrValue.md)
+      - [GetNamedAttrNames](cpp/ge/AttrValue/GetNamedAttrNames.md)
       - [GetValue](cpp/ge/AttrValue/GetValue.md)
       - [GetValueType](cpp/ge/AttrValue/GetValueType.md)
       - [SetAttrValue](cpp/ge/AttrValue/SetAttrValue.md)

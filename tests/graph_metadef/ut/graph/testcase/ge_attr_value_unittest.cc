@@ -901,4 +901,83 @@ TEST_F(UtestGeAttrValue, IncCov_GetAllAttrsStrEmptyMap) {
                 static_cast<const std::map<std::string, AnyValue> &>(std::map<std::string, AnyValue>{})),
             "");
 }
+
+TEST_F(UtestGeAttrValue, GetNamedAttrValueReadsScalarsAndNestedCollection) {
+  NamedAttrs nested;
+  ASSERT_TRUE(AttrUtils::SetListInt(nested, "dims", std::vector<int64_t>{1, 2}));
+  NamedAttrs config;
+  ASSERT_TRUE(AttrUtils::SetInt(config, "mode", int64_t{3}));
+  ASSERT_TRUE(AttrUtils::SetBool(config, "enabled", true));
+  ASSERT_TRUE(AttrUtils::SetNamedAttrs(config, "nested", nested));
+  AttrValue value;
+  ASSERT_EQ(value.impl->MutableAnyValue().SetValue(config), GRAPH_SUCCESS);
+  EXPECT_EQ(value.GetValueType(), AttrValue::AT_NAMED_ATTRS);
+  AttrValue field;
+  ASSERT_EQ(value.GetNamedAttrValue(AscendString("mode"), field), GRAPH_SUCCESS);
+  int64_t mode = 0;
+  ASSERT_EQ(field.GetAttrValue(mode), GRAPH_SUCCESS);
+  EXPECT_EQ(mode, 3);
+  ASSERT_EQ(field.SetAttrValue(int64_t{9}), GRAPH_SUCCESS);
+  ASSERT_EQ(value.GetNamedAttrValue(AscendString("mode"), field), GRAPH_SUCCESS);
+  ASSERT_EQ(field.GetAttrValue(mode), GRAPH_SUCCESS);
+  EXPECT_EQ(mode, 3);
+
+  ASSERT_EQ(value.GetNamedAttrValue(AscendString("enabled"), field), GRAPH_SUCCESS);
+  bool enabled = false;
+  ASSERT_EQ(field.GetAttrValue(enabled), GRAPH_SUCCESS);
+  EXPECT_TRUE(enabled);
+  ASSERT_EQ(value.GetNamedAttrValue(AscendString("nested"), field), GRAPH_SUCCESS);
+  EXPECT_EQ(field.GetValueType(), AttrValue::AT_NAMED_ATTRS);
+  ASSERT_EQ(field.GetNamedAttrValue(AscendString("dims"), field), GRAPH_SUCCESS);
+  EXPECT_EQ(field.GetValueType(), AttrValue::AT_LIST_INT);
+  std::vector<int64_t> dims;
+  ASSERT_EQ(field.GetAttrValue(dims), GRAPH_SUCCESS);
+  EXPECT_EQ(dims, (std::vector<int64_t>{1, 2}));
+}
+
+TEST_F(UtestGeAttrValue, GetNamedAttrValueUpdatesSharedOutputAndHandlesAliasing) {
+  AttrValue source;
+  NamedAttrs config;
+  ASSERT_TRUE(AttrUtils::SetInt(config, "mode", int64_t{3}));
+  ASSERT_EQ(source.impl->MutableAnyValue().SetValue(config), GRAPH_SUCCESS);
+  AttrValue output;
+  ASSERT_EQ(output.SetAttrValue(int64_t{7}), GRAPH_SUCCESS);
+  const AttrValue alias = output;
+  ASSERT_EQ(source.GetNamedAttrValue(AscendString("mode"), output), GRAPH_SUCCESS);
+  int64_t result = 0;
+  ASSERT_EQ(alias.GetAttrValue(result), GRAPH_SUCCESS);
+  EXPECT_EQ(result, 3);
+  ASSERT_EQ(output.GetAttrValue(result), GRAPH_SUCCESS);
+  EXPECT_EQ(result, 3);
+
+  const AttrValue source_alias = source;
+  AttrValue shared_output = source;
+  ASSERT_EQ(source.GetNamedAttrValue(AscendString("mode"), shared_output), GRAPH_SUCCESS);
+  ASSERT_EQ(source.GetAttrValue(result), GRAPH_SUCCESS);
+  EXPECT_EQ(result, 3);
+
+  ASSERT_EQ(source.impl->MutableAnyValue().SetValue(config), GRAPH_SUCCESS);
+  ASSERT_EQ(source.GetNamedAttrValue(AscendString("mode"), source), GRAPH_SUCCESS);
+  ASSERT_EQ(source.GetAttrValue(result), GRAPH_SUCCESS);
+  EXPECT_EQ(result, 3);
+  ASSERT_EQ(source_alias.GetAttrValue(result), GRAPH_SUCCESS);
+  EXPECT_EQ(result, 3);
+}
+
+TEST_F(UtestGeAttrValue, GetNamedAttrNamesReplacesOutputInSortedOrder) {
+  NamedAttrs config;
+  ASSERT_TRUE(AttrUtils::SetInt(config, "z", int64_t{1}));
+  ASSERT_TRUE(AttrUtils::SetInt(config, "a", int64_t{2}));
+  AttrValue source;
+  ASSERT_EQ(source.impl->MutableAnyValue().SetValue(config), GRAPH_SUCCESS);
+  std::vector<AscendString> names{AscendString("old")};
+  ASSERT_EQ(source.GetNamedAttrNames(names), GRAPH_SUCCESS);
+  ASSERT_EQ(names.size(), 2U);
+  EXPECT_STREQ(names[0].GetString(), "a");
+  EXPECT_STREQ(names[1].GetString(), "z");
+
+  ASSERT_EQ(source.impl->MutableAnyValue().SetValue(NamedAttrs()), GRAPH_SUCCESS);
+  ASSERT_EQ(source.GetNamedAttrNames(names), GRAPH_SUCCESS);
+  EXPECT_TRUE(names.empty());
+}
 }  // namespace ge
