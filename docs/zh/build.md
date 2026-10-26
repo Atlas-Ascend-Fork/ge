@@ -9,10 +9,13 @@
 安装完CANN包后，需验证环境是否正常。
 
 ```bash
-# 查看CANN Toolkit的version字段提供的版本信息（默认路径安装），<arch>表示CPU架构（aarch64或x86_64）。WebIDE场景下，请将/usr/local替换为/home/developer。
-cat /usr/local/Ascend/cann/<arch>-linux/ascend_toolkit_install.info
+# 查看CANN Toolkit的version字段提供的版本信息（默认路径安装），<version>表示CANN版本号（如9.3.0），<arch>表示CPU架构（aarch64或x86_64）。WebIDE场景下，请将/usr/local替换为/home/developer。
+# 说明：CANN 9.x及以上组合包默认安装在/usr/local/Ascend/cann-<version>/目录下；若环境中存在/usr/local/Ascend/cann软链接，也可直接使用cann路径查看。
+cat /usr/local/Ascend/cann-<version>/<arch>-linux/ascend_toolkit_install.info
 # 查看CANN ops的version字段提供的版本信息（默认路径安装），<opsname>表示待查询的ops子包的名称，请用户根据实际安装路径替换。WebIDE场景下，请将/usr/local替换为/home/developer。
-cat /usr/local/Ascend/cann/<arch>-linux/ascend_ops_install.info
+cat /usr/local/Ascend/cann-<version>/<arch>-linux/ascend_ops_install.info
+# 若不确定实际安装路径（如cat无输出或提示文件不存在），可先执行如下命令定位info文件，再查看对应文件内容
+find /usr/local/Ascend -name ascend_toolkit_install.info
 ```
 
 ## 3. 环境变量配置

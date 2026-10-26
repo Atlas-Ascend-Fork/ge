@@ -9,10 +9,13 @@ Before source code compilation, please complete basic environment setup first. F
 After installing CANN package, you need to verify whether the environment is normal.
 
 ```bash
-# View version information provided by CANN Toolkit's version field (default path installation), <arch> represents CPU architecture (aarch64 or x86_64). In WebIDE scenario, please replace /usr/local with /home/developer.
-cat /usr/local/Ascend/cann/<arch>-linux/ascend_toolkit_install.info
+# View version information provided by CANN Toolkit's version field (default path installation), <version> represents the CANN version (e.g. 9.3.0), <arch> represents CPU architecture (aarch64 or x86_64). In WebIDE scenario, please replace /usr/local with /home/developer.
+# Note: CANN 9.x and later combined packages are installed under /usr/local/Ascend/cann-<version>/ by default. If a /usr/local/Ascend/cann soft link exists, the cann path also works.
+cat /usr/local/Ascend/cann-<version>/<arch>-linux/ascend_toolkit_install.info
 # View version information provided by CANN ops' version field (default path installation), <opsname> represents the name of the ops sub-package to be queried, please replace according to actual installation path. In WebIDE scenario, please replace /usr/local with /home/developer.
-cat /usr/local/Ascend/cann/<arch>-linux/ascend_ops_install.info
+cat /usr/local/Ascend/cann-<version>/<arch>-linux/ascend_ops_install.info
+# If the actual installation path is unknown (e.g. cat prints nothing or reports no such file), locate the info file first, then view it
+find /usr/local/Ascend -name ascend_toolkit_install.info
 ```
 
 ## 3. Environment Variable Configuration
