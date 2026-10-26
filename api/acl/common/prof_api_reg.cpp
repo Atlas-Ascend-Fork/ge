@@ -130,10 +130,18 @@ static aclError RemoveDeviceList(const uint32_t *const deviceIdList, const uint3
 static aclError ProfInnerStart(const MsprofCommandHandle *const profilerConfig) {
   ACL_LOG_INFO("start to execute ProfInnerStart");
   if (!g_profRun) {
-    RegisterProfType();
+    const auto regRet = RegisterProfType();
+    if (regRet != ACL_SUCCESS) {
+      ACL_LOG_INNER_ERROR("[Register][ProfType]failed to register profiling type info, ret = %d", regRet);
+      return regRet;
+    }
     g_profRun = true;
   }
-  (void)AddDeviceList(profilerConfig->devIdList, profilerConfig->devNums);
+  const auto devRet = AddDeviceList(profilerConfig->devIdList, profilerConfig->devNums);
+  if (devRet != ACL_SUCCESS) {
+    ACL_LOG_INNER_ERROR("[Add][DeviceList]failed to add device list, ret = %d", devRet);
+    return devRet;
+  }
   ACL_LOG_INFO("successfully execute ProfInnerStart");
   return ACL_SUCCESS;
 }

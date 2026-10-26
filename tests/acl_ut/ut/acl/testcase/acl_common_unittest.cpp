@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <vector>
 #include "common/common_inner.h"
 #include "common/log_inner.h"
 #include "common/acl_json_parser.h"
@@ -8,6 +9,8 @@
 using namespace testing;
 using namespace std;
 using namespace acl;
+
+std::vector<ProfCommandHandle> &GetProfCtrlHandles();
 
 class UTEST_ACL_Common : public testing::Test {
  protected:
@@ -106,6 +109,58 @@ TEST_F(UTEST_ACL_Common, AclProfilingReporter) {
   acl::AclProfilingReporter reporter1(acl::AclProfType::AclmdlExecute);
   EXPECT_EQ(reporter1.aclApi_, acl::AclProfType::AclmdlExecute);
   reporter1.~AclProfilingReporter();
+}
+
+namespace {
+constexpr uint64_t UT_PROF_SWITCH_ACL_API = 0x0001U;
+constexpr uint32_t UT_START_PROFILING = 1U;
+constexpr uint32_t UT_STOP_PROFILING = 2U;
+
+MsprofCommandHandle MakeProfSwitchConfig(uint32_t type) {
+  MsprofCommandHandle config{};
+  config.profSwitch = UT_PROF_SWITCH_ACL_API;
+  config.type = type;
+  config.devNums = 1U;
+  config.devIdList[0] = 0U;
+  return config;
+}
+}  // namespace
+
+TEST_F(UTEST_ACL_Common, ProfInnerStartRegisterTypeFailed) {
+  const auto &handles = GetProfCtrlHandles();
+  ASSERT_FALSE(handles.empty());
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), MsprofRegTypeInfo(_, _, _))
+      .WillOnce(Return(MSPROF_ERROR_NONE))
+      .WillRepeatedly(Return(-1));
+  auto config = MakeProfSwitchConfig(UT_START_PROFILING);
+  for (const auto &handle : handles) {
+    EXPECT_EQ(handle(PROF_CTRL_SWITCH, &config, sizeof(MsprofCommandHandle)), ACL_ERROR_PROFILING_FAILURE);
+  }
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), MsprofSysCycleTime()).Times(0);
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), MsprofReportApi(_, _)).Times(0);
+  {
+    acl::AclProfilingReporter reporter(acl::AclProfType::AclopExecute);
+  }
+}
+
+TEST_F(UTEST_ACL_Common, ProfInnerStartSuccessReportAndStop) {
+  const auto &handles = GetProfCtrlHandles();
+  ASSERT_FALSE(handles.empty());
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), MsprofRegTypeInfo(_, _, _))
+      .WillRepeatedly(Return(MSPROF_ERROR_NONE));
+  auto startConfig = MakeProfSwitchConfig(UT_START_PROFILING);
+  for (const auto &handle : handles) {
+    EXPECT_EQ(handle(PROF_CTRL_SWITCH, &startConfig, sizeof(MsprofCommandHandle)), ACL_SUCCESS);
+  }
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), MsprofSysCycleTime()).WillRepeatedly(Return(1UL));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), MsprofReportApi(_, _)).Times(1).WillOnce(Return(MSPROF_ERROR_NONE));
+  {
+    acl::AclProfilingReporter reporter(acl::AclProfType::AclopExecute);
+  }
+  auto stopConfig = MakeProfSwitchConfig(UT_STOP_PROFILING);
+  for (const auto &handle : handles) {
+    EXPECT_EQ(handle(PROF_CTRL_SWITCH, &stopConfig, sizeof(MsprofCommandHandle)), ACL_SUCCESS);
+  }
 }
 
 TEST_F(UTEST_ACL_Common, FormatStr_failed_1100bytes) {

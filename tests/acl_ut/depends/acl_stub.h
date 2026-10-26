@@ -253,6 +253,8 @@ class aclStub {
   virtual int32_t MsprofFinalize();
   virtual int32_t MsprofInit(uint32_t aclDataType, void *data, uint32_t dataLen);
   virtual int32_t MsprofRegTypeInfo(uint16_t level, uint32_t typeId, const char *typeName);
+  virtual uint64_t MsprofSysCycleTime();
+  virtual int32_t MsprofReportApi(uint32_t agingFlag, const void *api);
   // adx function
   virtual int AdxDataDumpServerInit();
   virtual int AdxDataDumpServerUnInit();
@@ -537,6 +539,8 @@ class MockFunctionTest : public aclStub {
   MOCK_METHOD0(MsprofFinalize, int32_t());
   MOCK_METHOD3(MsprofInit, int32_t(uint32_t aclDataType, void *data, uint32_t dataLen));
   MOCK_METHOD3(MsprofRegTypeInfo, int32_t(uint16_t level, uint32_t typeId, const char *typeName));
+  MOCK_METHOD0(MsprofSysCycleTime, uint64_t());
+  MOCK_METHOD2(MsprofReportApi, int32_t(uint32_t agingFlag, const void *api));
 
   // adx function stub
   MOCK_METHOD0(AdxDataDumpServerInit, int());
