@@ -29,6 +29,8 @@ graphStatus GetAttrValue(std::vector<Tensor> &attr_value) const
 graphStatus GetAttrValue(std::vector<std::vector<int64_t>> &attr_value) const
 graphStatus GetAttrValue(std::vector<ge::DataType> &attr_value) const
 graphStatus GetAttrValue(ge::DataType &attr_value) const
+graphStatus GetNamedAttrValue(const AscendString &attr_name, AttrValue &attr_value) const
+graphStatus GetNamedAttrNames(std::vector<AscendString> &attr_names) const
 template<typename T, typename DT>
 graphStatus GetValue(DT &val) const
 graphStatus GetValue(AscendString &val)

@@ -12,6 +12,7 @@
 | `host_cpu_add_custom` | HostCpu Add 样例（常量折叠 + 运行时 host 调度） | GE 在线执行 | C++、Python | C++ 直接编译 / Python `register_op_impl` 回调 | 不涉及 | [README](./host_cpu_add_custom/README.md) |
 | `python_compilable_add_custom` | Python 算子在在线图编译和 ATC 离线编译阶段生成 kernel，并验证在线执行与 OM 执行 | GE 在线执行 + ATC 离线编译 | Python + Ascend C | Python compile 回调中调用 BiSheng | 支持 OM 脱离 Python 插件执行 | [README](./python_compilable_add_custom/README.md) |
 | `data_dependent_shape_custom` | 数据依赖 shape 算子             | GE | Ascend C | CMake编译       | 不涉及 | [README](data_dependent_shape_custom/README.md) |
+| `value_dependent_shape_custom` | 值依赖 shape 算子     | GE | Ascend C | CMake编译       | 不涉及 | [README](value_dependent_shape_custom/README.md) |
 | `args_refresh_add_custom` | ArgsUpdater 地址刷新 + MallocReadOnlyDevArgs + 性能对比 | GE 在线执行 | Ascend C | RTC 运行时编译 | 在线地址刷新性能对比 | [README](./args_refresh_add_custom/cpp/README.md) |
 | `annotated_args_refresh_add_custom` | AnnotatedArgsOp 声明式地址刷新在线场景性能对比+离线场景 | GE 在线执行 + ATC 离线编译 | Ascend C | RTC 运行时编译 | 支持在线性能对比和 OM 模型下沉 | [README](./annotated_args_refresh_add_custom/README.md) |
 | `pypto_add_custom` | PyPTO 算子通过 Python 自定义算子入图执行 | GE 在线执行（RT2 动态执行） | PyPTO | JIT 主线程预热编译 + 进程内缓存 | 不涉及 | [README](./pypto_add_custom/README.md) |

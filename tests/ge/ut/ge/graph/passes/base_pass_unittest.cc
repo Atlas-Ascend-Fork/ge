@@ -230,8 +230,8 @@ class UtestTestPass : public BaseNodePass {
   std::map<std::string, std::unordered_set<std::string>> names_to_add_resume_;
   std::unordered_set<std::string> names_to_add_resume_onleaked_;
 
-  bool dead_loop_;
-  unsigned int run_times_;
+  bool dead_loop_ = false;
+  unsigned int run_times_ = 0;
 };
 REG_PASS_OPTION("UtestTestPass").LEVELS(OoLevel::kO3);
 class TestDelPass : public BaseNodePass {
@@ -380,7 +380,7 @@ void CheckIterOrder(UtestTestPass *pass, std::vector<std::unordered_set<std::str
   size_t layer_index = 0;
   for (const auto &node : pass->GetIterNodes()) {
     layer_nodes.insert(node->GetName());
-    EXPECT_LT(layer_index, nodes_layers.size());
+    ASSERT_LT(layer_index, nodes_layers.size());
     if (layer_nodes == nodes_layers[layer_index]) {
       layer_index++;
       layer_nodes.clear();

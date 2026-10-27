@@ -39,6 +39,9 @@
 #include "operator_reg.h"
 #include "graph/custom_op_factory.h"
 #include "graph/custom_op.h"
+#include "graph/attr_value.h"
+#include "graph/ge_attr_value.h"
+#include "graph/utils/attr_utils.h"
 
 using namespace gert;
 namespace ge {
@@ -1735,6 +1738,88 @@ TEST_F(GeApiTest, RunGraphAsync_RunCustomPass_AfterBuiltInFusion_Success) {
   // GE补建inner NetOutput），Pass注册/分级/执行的校验由上方slog断言承载
   EXPECT_EQ(graph.GetAllNodes().size(), 3UL);
   runtime_stub.GetSlogStub().Clear();
+}
+
+namespace {
+void CheckNamedAttrs(const GNode &node) {
+  AttrValue config;
+  EXPECT_EQ(node.GetAttr("named_attrs_config", config), GRAPH_SUCCESS);
+  EXPECT_EQ(config.GetValueType(), AttrValue::AT_NAMED_ATTRS);
+  std::vector<AscendString> names{"old"};
+  EXPECT_EQ(config.GetNamedAttrNames(names), GRAPH_SUCCESS);
+  EXPECT_EQ(names, (std::vector<AscendString>{"empty", "mode", "nested"}));
+  AttrValue field;
+  EXPECT_EQ(config.GetNamedAttrValue("nested", field), GRAPH_SUCCESS);
+  EXPECT_EQ(field.GetValueType(), AttrValue::AT_NAMED_ATTRS);
+  EXPECT_EQ(field.GetNamedAttrValue("dims", field), GRAPH_SUCCESS);
+  std::vector<int64_t> dims;
+  EXPECT_EQ(field.GetAttrValue(dims), GRAPH_SUCCESS);
+  EXPECT_EQ(dims, (std::vector<int64_t>{1, 3, 224, 224}));
+  EXPECT_EQ(config.GetNamedAttrValue("empty", field), GRAPH_SUCCESS);
+  EXPECT_EQ(field.GetNamedAttrNames(names), GRAPH_SUCCESS);
+  EXPECT_TRUE(names.empty());
+  EXPECT_EQ(config.GetNamedAttrValue("mode", field), GRAPH_SUCCESS);
+  EXPECT_EQ(config.GetNamedAttrValue(AscendString(), field), GRAPH_PARAM_INVALID);
+  EXPECT_NE(config.GetNamedAttrValue("missing", field), GRAPH_SUCCESS);
+  int64_t mode = 0;
+  EXPECT_EQ(field.GetAttrValue(mode), GRAPH_SUCCESS);
+  EXPECT_EQ(mode, 3);
+  names = {"old"};
+  EXPECT_NE(field.GetNamedAttrNames(names), GRAPH_SUCCESS);
+  EXPECT_EQ(names, (std::vector<AscendString>{"old"}));
+  EXPECT_NE(field.GetNamedAttrValue("mode", config), GRAPH_SUCCESS);
+  EXPECT_EQ(config.GetValueType(), AttrValue::AT_NAMED_ATTRS);
+}
+}  // namespace
+
+/**
+ * 用例描述：自定义 Pass 通过公开接口查询节点的 NamedAttrs 属性。
+ * 预置条件：named_attrs_query_add 节点携带整型、嵌套集合和空集合属性，使用现有运行时桩。
+ * 测试步骤：构图时设置属性，运行图，在形状推导前的 Pass 中枚举并读取子属性。
+ * 预期结果：Pass 实际完成属性查询，名称、类型和数值正确，非法查询失败且保留出参。
+ */
+TEST_F(GeApiTest, RunGraph_CustomPass_QueryNamedAttrs) {
+  auto named_attrs_checked = std::make_shared<bool>(false);
+  auto query_named_attrs = [named_attrs_checked](ge::GraphPtr &graph, CustomPassContext &context) -> Status {
+    for (const auto &n : graph->GetDirectNode()) {
+      AscendString name;
+      EXPECT_EQ(n.GetName(name), GRAPH_SUCCESS);
+      if (name != "named_attrs_query_add") {
+        continue;
+      }
+      CheckNamedAttrs(n);
+      *named_attrs_checked = true;
+    }
+    return SUCCESS;
+  };
+  REGISTER_CUSTOM_PASS("TestCustomPassQueryNamedAttrs")
+      .CustomPassFn(query_named_attrs)
+      .Stage(CustomPassStage::kBeforeInferShape);
+  GertRuntimeStub runtime_stub;
+  NamedAttrs nested;
+  ASSERT_TRUE(AttrUtils::SetListInt(nested, "dims", std::vector<int64_t>{1, 3, 224, 224}));
+  NamedAttrs config;
+  ASSERT_TRUE(AttrUtils::SetInt(config, "mode", int64_t{3}));
+  ASSERT_TRUE(AttrUtils::SetNamedAttrs(config, "nested", nested));
+  ASSERT_TRUE(AttrUtils::SetNamedAttrs(config, "empty", NamedAttrs()));
+  auto add1 = OP_CFG(ADD).TensorDesc(FORMAT_NCHW, DT_FLOAT, {1, 1, 224, 224}).Attr("named_attrs_config", config);
+  auto data1 = OP_CFG(DATA).TensorDesc(FORMAT_NCHW, DT_FLOAT, {1, 1, 224, 224});
+  auto data2 = OP_CFG(DATA).TensorDesc(FORMAT_NCHW, DT_FLOAT, {1, 1, 224, 224});
+  DEF_GRAPH(g1) {
+    CHAIN(NODE("data_1", data1)->EDGE(0, 0)->NODE("named_attrs_query_add", add1));
+    CHAIN(NODE("data_2", data2)->EDGE(0, 1)->NODE("named_attrs_query_add", add1));
+  };
+  auto graph = ToGeGraph(g1);
+  {
+    std::map<AscendString, AscendString> options;
+    Session session(options);
+    EXPECT_EQ(session.AddGraph(1, graph, options), SUCCESS);
+    std::vector<ge::Tensor> inputs, outputs;
+    // 属性查询在编译阶段完成；无真实算子 kernel，后续执行允许失败。
+    (void)session.RunGraph(1, inputs, outputs);
+    EXPECT_TRUE(*named_attrs_checked);
+  }
+  ReInitGe();
 }
 
 TEST_F(GeApiTest, RunGraph_GraphMaxParallelModelNum_Success) {

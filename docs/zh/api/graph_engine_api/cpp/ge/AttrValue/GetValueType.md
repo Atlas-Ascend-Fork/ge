@@ -43,6 +43,7 @@ AttrType GetValueType() const
 | `AT_LIST_TENSOR` | `std::vector<Tensor>` |
 | `AT_LIST_LIST_INT` | `std::vector<std::vector<int64_t>>` |
 | `AT_LIST_DATA_TYPE` | `std::vector<ge::DataType>` |
+| `AT_NAMED_ATTRS` | `ge::NamedAttrs` |
 
 ## 约束说明
 

@@ -11,25 +11,18 @@
 #include "aprof_pub.h"
 #include "acl_stub.h"
 #include "runtime/subscriber/global_profiler.h"
+#include <vector>
 
-namespace {
-constexpr uint64_t ACL_PROF_ACL_API = 0x0001U;
-constexpr uint32_t START_PROFILING = 1U;
-constexpr uint32_t STOP_PROFILING = 2U;
-
-uint32_t g_deviceIds[64] = {0, 1, 2};
-}  // namespace
+std::vector<ProfCommandHandle> &GetProfCtrlHandles() {
+  static std::vector<ProfCommandHandle> profCtrlHandles;
+  return profCtrlHandles;
+}
 
 int32_t MsprofRegisterCallback(uint32_t moduleId, ProfCommandHandle handle) {
-  MsprofCommandHandle profilerConfig;
-  profilerConfig.profSwitch = ACL_PROF_ACL_API;
-  profilerConfig.type = START_PROFILING;
-  profilerConfig.devNums = 3;
-  memcpy(profilerConfig.devIdList, g_deviceIds, profilerConfig.devNums * sizeof(uint32_t));
-  handle(PROF_CTRL_SWITCH, &profilerConfig, sizeof(MsprofCommandHandle));
-  profilerConfig.type = STOP_PROFILING;
-  handle(PROF_CTRL_SWITCH, &profilerConfig, sizeof(MsprofCommandHandle));
-  return 1;
+  if (handle != nullptr) {
+    GetProfCtrlHandles().push_back(handle);
+  }
+  return MSPROF_ERROR_NONE;
 }
 
 int32_t ProfAclCfgToSampleCfg(const std::string &aclCfg, std::string &sampleCfg) {
@@ -48,6 +41,14 @@ int32_t aclStub::MsprofRegTypeInfo(uint16_t level, uint32_t typeId, const char *
   return 0;
 }
 
+uint64_t aclStub::MsprofSysCycleTime() {
+  return 0;
+}
+
+int32_t aclStub::MsprofReportApi(uint32_t agingFlag, const void *api) {
+  return 0;
+}
+
 int32_t MsprofFinalize() {
   return MockFunctionTest::aclStubInstance().MsprofFinalize();
 }
@@ -57,7 +58,7 @@ int32_t MsprofInit(uint32_t aclDataType, void *data, uint32_t dataLen) {
 }
 
 int32_t MsprofReportApi(uint32_t agingFlag, const MsprofApi *api) {
-  return 0;
+  return MockFunctionTest::aclStubInstance().MsprofReportApi(agingFlag, static_cast<const void *>(api));
 }
 
 int32_t MsprofRegTypeInfo(uint16_t level, uint32_t typeId, const char *typeName) {
@@ -65,7 +66,7 @@ int32_t MsprofRegTypeInfo(uint16_t level, uint32_t typeId, const char *typeName)
 }
 
 uint64_t MsprofSysCycleTime() {
-  return 0;
+  return MockFunctionTest::aclStubInstance().MsprofSysCycleTime();
 }
 
 int32_t MsprofReportEvent(uint32_t agingFlag, const MsprofEvent *event) {

@@ -302,6 +302,12 @@ int32_t LaunchCustKernelDumpTask(void *instance_handle, GertModelTaskLaunchInfo 
                               GetModelId(instance_handle), GetTaskOpName(launch_info->task_info),
                               GetTaskOpType(launch_info->task_info));
 
+  // 对齐 LaunchKernelV2Task/LaunchDsaTask：记录下发起始时间。
+  // ProfilingImpl::ReportLaunchInfo 依赖该时间戳上报 launch api（itemId 为 op name 哈希），
+  // msprof 据此把设备侧内核任务关联回图上的算子；自定义算子的设备任务是按内核函数名（如 add_custom）
+  // 上报的，若缺少该 launch api，则 op_summary 中会按内核名展示且输入输出 shape/data type/format 丢失。
+  launch_info->task_info->launch_begin = MsprofSysCycleTime();
+
   GE_RETURN_WITH_LOG_IF_ERROR(
       kernel_params.func_launch_custom_kernel(kernel_params.eager_op, kernel_params.eager_op_context),
       "[OM2] execute custom kernel failed, model_id=%u, op_name=%s, op_type=%s.", GetModelId(instance_handle),

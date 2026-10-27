@@ -53,6 +53,7 @@ class GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY AttrValue {
     AT_LIST_TENSOR,
     AT_LIST_LIST_INT,
     AT_LIST_DATA_TYPE,
+    AT_NAMED_ATTRS,
   };
 
   AttrValue();
@@ -104,6 +105,8 @@ class GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY AttrValue {
   graphStatus GetAttrValue(std::vector<ge::DataType> &attr_value) const;
   graphStatus SetAttrValue(const ge::DataType &attr_value) const;
   graphStatus GetAttrValue(ge::DataType &attr_value) const;
+  graphStatus GetNamedAttrValue(const AscendString &attr_name, AttrValue &attr_value) const;
+  graphStatus GetNamedAttrNames(std::vector<AscendString> &attr_names) const;
 
   std::shared_ptr<AttrValueImpl> impl;
 

@@ -72,9 +72,42 @@ AttrValue::AttrType AttrValue::GetValueType() const {
       return AT_LIST_LIST_INT;
     case AnyValue::VT_LIST_DATA_TYPE:
       return AT_LIST_DATA_TYPE;
+    case AnyValue::VT_NAMED_ATTRS:
+      return AT_NAMED_ATTRS;
     default:
       return AT_NONE;
   }
+}
+
+graphStatus AttrValue::GetNamedAttrValue(const AscendString &attr_name, AttrValue &attr_value) const {
+  const char_t *const attr_name_str = attr_name.GetString();
+  if ((attr_name_str == nullptr) || (attr_name_str[0] == '\0')) {
+    GELOGE(GRAPH_PARAM_INVALID, "[Check][Param] GetNamedAttrValue: attribute key is empty.");
+    return GRAPH_PARAM_INVALID;
+  }
+  GE_ASSERT_NOTNULL(impl);
+  GE_ASSERT_NOTNULL(attr_value.impl);
+  const auto *const named_attrs = impl->geAttrValue_.Get<NamedAttrs>();
+  GE_ASSERT_NOTNULL(named_attrs);
+
+  AnyValue result;
+  GE_ASSERT_GRAPH_SUCCESS(named_attrs->GetAttr(attr_name_str, result));
+  attr_value.impl->geAttrValue_ = std::move(result);
+  return GRAPH_SUCCESS;
+}
+
+graphStatus AttrValue::GetNamedAttrNames(std::vector<AscendString> &attr_names) const {
+  GE_ASSERT_NOTNULL(impl);
+  const auto *const named_attrs = impl->geAttrValue_.Get<NamedAttrs>();
+  GE_ASSERT_NOTNULL(named_attrs);
+
+  const auto stored_attr_names = named_attrs->GetAttrMap().GetAllAttrNames();
+  attr_names.clear();
+  attr_names.reserve(stored_attr_names.size());
+  for (const auto &name : stored_attr_names) {
+    attr_names.emplace_back(name.c_str());
+  }
+  return GRAPH_SUCCESS;
 }
 
 ATTR_VALUE_SET_GET_IMP(AttrValue::STR)

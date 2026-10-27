@@ -7,7 +7,7 @@
 ## 头文件/库文件
 
 - 头文件：\#include <graph/attr\_value.h\>
-- 库文件：libgraph\_base.so
+- 库文件：libgraph.so
 
 ## 功能说明
 
