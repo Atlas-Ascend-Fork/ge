@@ -96,7 +96,10 @@ graph TB
 
     subgraph "GE Infrastructure Layer (This Document Describes)"
         INFRA["BaseCustomOp + EagerExecuteOp + ShapeInferOp<br/>+ CompilableOp + PortableOp + ArgsUpdater<br/>REG_OP / REG_AUTO_MAPPING_OP / OPP Package"]
-    end**Layer Responsibilities:**
+    end
+```
+
+**Layer Responsibilities:**
 
 | Layer | Responsibility | Maintainer |
 |------|------|--------|
@@ -484,7 +487,9 @@ sequenceDiagram
 
     Exec->>Op: dynamic_cast → Execute(ctx)
     Op-->>Exec: GRAPH_SUCCESS
-```### 5.4 Serialization/Deserialization Flow
+```
+
+### 5.4 Serialization/Deserialization Flow
 
 ```mermaid
 sequenceDiagram
