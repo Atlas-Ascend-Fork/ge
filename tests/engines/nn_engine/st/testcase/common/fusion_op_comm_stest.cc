@@ -261,7 +261,7 @@ TEST_F(UTEST_fusion_op_comm, ffts_plus_to_json) {
   slice_info.cut_type.emplace_back(opCut);
   std::string str;
   GetSliceJsonInfoStr(slice_info, str);
-  EXPECT_EQ(true, true);
+  EXPECT_NE(str, "");
 }
 
 TEST_F(UTEST_fusion_op_comm, ffts_plus_json_parse) {

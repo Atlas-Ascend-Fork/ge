@@ -2057,7 +2057,6 @@ TEST_F(UtestGraphPreproces, graph_prepare_set_graph_normalized) {
   ge::GraphPrepare graph_prepare;
   graph_prepare.SetGraphNormalized(true);
   graph_prepare.SetGraphNormalized(false);
-  EXPECT_EQ(SUCCESS, SUCCESS);
 }
 
 TEST_F(UtestGraphPreproces, graph_prepare_update_variable_formats_no_var) {

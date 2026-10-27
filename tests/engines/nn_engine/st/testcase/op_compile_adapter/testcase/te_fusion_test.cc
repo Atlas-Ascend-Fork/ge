@@ -155,7 +155,6 @@ TEST(TEST_TEFUSION_ST, QueryOpPattern) {
   te::fusion::HandleManager::Instance().TE_PyList_Size = PyList_Size_1_Stub;
   res = QueryOpPattern(opPatternVec);
   EXPECT_EQ(res, true);
-  EXPECT_EQ(opPatternVec, opPatternVec);
   te::fusion::HandleManager::Instance().TE_PyList_Size = PyList_Size_Stub;
 }
 
