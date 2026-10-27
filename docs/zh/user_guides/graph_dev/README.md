@@ -23,7 +23,7 @@
   <!-- npu="950,A3,910b" id6 -->
   - [AutoFuse自动融合<a name="sub_menu"></a>](autofuse/README.md)
   <!-- end id6 -->
-  <!-- npu="A3" id2 -->
+  <!-- npu="950,A3,910b" id2 -->
   - [SuperKernel融合范围标定](superkernel_fusion_scope.md)
   <!-- end id2 -->
   - [更多特性<a name="sub_menu"></a>](more_features/README.md)
