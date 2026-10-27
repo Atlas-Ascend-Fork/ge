@@ -76,7 +76,7 @@ checkopts() {
   fi
 
   # Process the options
-  parsed_args=$(getopt -a -o hsucj:hv -l help,st,ut,cov,verbose,ascend_install_path:,ascend_3rd_lib_path:,module: -- "$@") || {
+  parsed_args=$(getopt -a -o hsucj:hvm: -l help,st,ut,cov,verbose,ascend_install_path:,ascend_3rd_lib_path:,module: -- "$@") || {
     usage
     exit 1
   }
@@ -414,7 +414,7 @@ main() {
 
   build_ascgen-dev || { echo "ascgen-dev build failed."; exit 1; }
 
-  METADEF_SOS=$(find ${BUILD_PATH}/graph_metadef -name *.so)
+  METADEF_SOS=$(find ${BUILD_PATH}/graph_metadef -name "*.so")
   for METADEF_SO in ${METADEF_SOS}
   do
     cp -rf ${METADEF_SO} ${METADEF_LIB_PATH}
