@@ -645,7 +645,7 @@ install_run() {
         unchattr_files
         chmod_start
         new_echo "INFO" "install ${dflow_executor_install_path_param} ${dflow_executor_install_type}"
-        log "INFO" "install ${dflow_executor_install_path_paramm} ${dflow_executor_install_type}"
+        log "INFO" "install ${dflow_executor_install_path_param} ${dflow_executor_install_type}"
         bash "${curpath}/run_dflow-executor_install.sh" "install" "${dflow_executor_input_install_path}" "${dflow_executor_install_type}" \
             "${is_quiet}" "${pylocal}" "${input_setenv}" "${docker_root}" "${in_install_for_all}" "$pkg_version_dir"
         if [ $? -eq 0 ]; then
