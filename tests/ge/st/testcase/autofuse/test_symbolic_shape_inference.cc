@@ -126,6 +126,10 @@ static void SetConvInputFormats(const ge::OpDescPtr &conv_op_desc, const ge::For
   conv_op_desc->MutableInputDesc(0)->SetOriginFormat(x_format);
   conv_op_desc->MutableInputDesc(1)->SetFormat(w_format);
   conv_op_desc->MutableInputDesc(1)->SetOriginFormat(w_format);
+  if (conv_op_desc->MutableOutputDesc(0) != nullptr) {
+    conv_op_desc->MutableOutputDesc(0)->SetFormat(x_format);
+    conv_op_desc->MutableOutputDesc(0)->SetOriginFormat(x_format);
+  }
 }
 
 static void SetConv2DV2Attrs(const ge::OpDescPtr &conv_op_desc, const std::vector<int64_t> &strides,
@@ -190,7 +194,9 @@ static void SetExtendConv2DIrAndAttrs(const ge::OpDescPtr &conv_op_desc) {
   ge::AttrUtils::SetBool(conv_op_desc, "enable_relu0", false);
 }
 
-static void SetExtendConv2DInputDesc(const ge::OpDescPtr &conv_op_desc) {
+static void SetExtendConv2DInputDesc(const ge::OpDescPtr &conv_op_desc, const ge::Format x_format = ge::FORMAT_NHWC,
+                                     const ge::Format y_format = ge::FORMAT_NHWC,
+                                     const ge::Format y1_format = ge::FORMAT_NHWC) {
   ASSERT_NE(conv_op_desc, nullptr);
   const GeShape unknown_shape({-1, -1, -1, -1});
   auto x_desc = conv_op_desc->MutableInputDesc(0);
@@ -201,14 +207,24 @@ static void SetExtendConv2DInputDesc(const ge::OpDescPtr &conv_op_desc) {
   x_desc->SetOriginShape(unknown_shape);
   x_desc->SetDataType(DT_FLOAT);
   x_desc->SetOriginDataType(DT_FLOAT);
-  x_desc->SetFormat(FORMAT_NHWC);
-  x_desc->SetOriginFormat(FORMAT_NHWC);
+  x_desc->SetFormat(x_format);
+  x_desc->SetOriginFormat(x_format);
   filter_desc->SetShape(unknown_shape);
   filter_desc->SetOriginShape(unknown_shape);
   filter_desc->SetDataType(DT_FLOAT);
   filter_desc->SetOriginDataType(DT_FLOAT);
   filter_desc->SetFormat(FORMAT_HWCN);
   filter_desc->SetOriginFormat(FORMAT_HWCN);
+  auto y_desc = conv_op_desc->MutableOutputDesc(0);
+  ASSERT_NE(y_desc, nullptr);
+  y_desc->SetFormat(y_format);
+  y_desc->SetOriginFormat(y_format);
+  if (conv_op_desc->GetOutputsSize() > 1U) {
+    auto y1_desc = conv_op_desc->MutableOutputDesc(1);
+    ASSERT_NE(y1_desc, nullptr);
+    y1_desc->SetFormat(y1_format);
+    y1_desc->SetOriginFormat(y1_format);
+  }
 }
 
 static void SetDataNodeSymbolShapeAndValue(const ge::NodePtr &data_node, const gert::SymbolShape &symbol_shape) {
@@ -5984,6 +6000,66 @@ TEST_F(SymbolicShapeInferenceST, test_conv2d_NCHW) {
   CheckConv2DNchwInferResult(conv_op_desc, shape_env_attr);
 }
 
+// x 为 NCHW，y 的 origin format 改为 NHWC，符号维按 y 排成 [N, H, W, Cout]。
+TEST_F(SymbolicShapeInferenceST, test_conv2d_nchw_input_nhwc_output) {
+  auto data0 = builder_->CreateInput(0, "data0");
+  ASSERT_NE(data0.GetCTensorHolder(), nullptr);
+  auto data1 = builder_->CreateInput(1, "data1");
+  ASSERT_NE(data1.GetCTensorHolder(), nullptr);
+  std::vector<int64_t> strides = {1, 1, 1, 1};
+  std::vector<int64_t> pads = {0, 0, 0, 0};
+  std::vector<int64_t> dilations = {1, 1, 1, 1};
+  auto conv2d = es::Conv2D(data0, data1, nullptr, nullptr, strides, pads, dilations, 1, "NCHW", 0);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(conv2d, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SetupDataNodeTensorDesc(cg->FindNode("data0"), 0, DT_FLOAT, FORMAT_NCHW);
+  SetupDataNodeTensorDesc(cg->FindNode("data1"), 1, DT_FLOAT, FORMAT_NCHW);
+  std::vector<ge::GeTensor> input_vec;
+  input_vec.emplace_back(MakeInputTensor({2, 3, 28, 28}, ge::FORMAT_NCHW, DT_FLOAT));
+  input_vec.emplace_back(MakeInputTensor({16, 3, 3, 3}, ge::FORMAT_NCHW, DT_FLOAT));
+  auto conv_node = cg->FindFirstNodeMatchType("Conv2D");
+  ASSERT_NE(conv_node, nullptr);
+  auto conv_op_desc = conv_node->GetOpDesc();
+  SetConvInputFormats(conv_op_desc, FORMAT_NCHW, FORMAT_NCHW);
+  conv_op_desc->MutableOutputDesc(0)->SetOriginFormat(FORMAT_NHWC);
+  conv_op_desc->MutableOutputDesc(0)->SetFormat(FORMAT_NHWC);
+  ASSERT_EQ(SymbolicShapeSymbolizer::Symbolize(cg, input_vec), ge::SUCCESS);
+  ASSERT_EQ(SymbolicShapeInference().Infer(cg), ge::SUCCESS);
+  ExpectConv2DShapeEquals(conv_op_desc, {"s0", "Floor((s2 - (-1 + s6)))", "Floor((s3 - (-1 + s7)))", "s4"});
+}
+
+// x 为 NHWC、filter 为 NCHW [Cout, Cin, kh, kw]，y 为 NCHW。符号维按 y 排成 [N, Cout, H, W]。
+TEST_F(SymbolicShapeInferenceST, test_conv2d_nhwc_input_nchw_output) {
+  auto data0 = builder_->CreateInput(0, "data0");
+  ASSERT_NE(data0.GetCTensorHolder(), nullptr);
+  auto data1 = builder_->CreateInput(1, "data1");
+  ASSERT_NE(data1.GetCTensorHolder(), nullptr);
+  std::vector<int64_t> strides = {1, 1, 1, 1};
+  std::vector<int64_t> pads = {0, 0, 0, 0};
+  std::vector<int64_t> dilations = {1, 1, 1, 1};
+  auto conv2d = es::Conv2D(data0, data1, nullptr, nullptr, strides, pads, dilations, 1, "NHWC", 0);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(conv2d, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SetupDataNodeTensorDesc(cg->FindNode("data0"), 0, DT_FLOAT, FORMAT_NHWC);
+  SetupDataNodeTensorDesc(cg->FindNode("data1"), 1, DT_FLOAT, FORMAT_NCHW);
+  std::vector<ge::GeTensor> input_vec;
+  input_vec.emplace_back(MakeInputTensor({2, 28, 28, 3}, ge::FORMAT_NHWC, DT_FLOAT));
+  input_vec.emplace_back(MakeInputTensor({16, 3, 3, 3}, ge::FORMAT_NCHW, DT_FLOAT));
+  auto conv_node = cg->FindFirstNodeMatchType("Conv2D");
+  ASSERT_NE(conv_node, nullptr);
+  auto conv_op_desc = conv_node->GetOpDesc();
+  SetConvInputFormats(conv_op_desc, FORMAT_NHWC, FORMAT_NCHW);
+  conv_op_desc->MutableOutputDesc(0)->SetOriginFormat(FORMAT_NCHW);
+  conv_op_desc->MutableOutputDesc(0)->SetFormat(FORMAT_NCHW);
+  ASSERT_EQ(SymbolicShapeSymbolizer::Symbolize(cg, input_vec), ge::SUCCESS);
+  ASSERT_EQ(SymbolicShapeInference().Infer(cg), ge::SUCCESS);
+  ExpectConv2DShapeEquals(conv_op_desc, {"s0", "s4", "Floor((s1 - (-1 + s6)))", "Floor((s2 - (-1 + s7)))"});
+}
+
 TEST_F(SymbolicShapeInferenceST, test_conv2dv2_NHWC) {
   auto data0 = builder_->CreateInput(0, "data0");
   ASSERT_NE(data0.GetCTensorHolder(), nullptr);
@@ -6099,6 +6175,32 @@ static void ExpectExtendConv2DY1Chain(const ge::NodePtr &conv0_node, const ge::N
   EXPECT_EQ(next_y_shape.GetDim(3), next_cout);
 }
 
+static void ExpectOriginSymbolDim(const ge::GeTensorDesc &desc, const size_t dim, const Symbol &expected) {
+  const auto *attr = desc.GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  const auto shape = attr->symbolic_tensor.GetOriginSymbolShape();
+  ASSERT_GT(shape.GetDimNum(), dim);
+  EXPECT_EQ(shape.GetDim(dim), expected);
+}
+
+static void PrepareExtendConv2DLayoutGraph(const ge::Format conv0_x, const ge::Format conv0_y,
+                                           const ge::Format conv0_y1, const ge::Format conv1_x,
+                                           const ge::Format conv1_y, const ge::Format conv1_y1, ge::ComputeGraphPtr &cg,
+                                           ge::NodePtr &conv0, ge::NodePtr &conv1, ShapeEnvAttr *&shape_env) {
+  cg = BuildExtendConv2DY1FeedGraph();
+  ASSERT_NE(cg, nullptr);
+  conv0 = cg->FindNode("conv0");
+  conv1 = cg->FindNode("conv1");
+  ASSERT_NE(conv0, nullptr);
+  ASSERT_NE(conv1, nullptr);
+  SetExtendConv2DIrAndAttrs(conv0->GetOpDesc());
+  SetExtendConv2DIrAndAttrs(conv1->GetOpDesc());
+  SetExtendConv2DInputDesc(conv0->GetOpDesc(), conv0_x, conv0_y, conv0_y1);
+  SetExtendConv2DInputDesc(conv1->GetOpDesc(), conv1_x, conv1_y, conv1_y1);
+  shape_env = cg->GetOrCreateAttrsGroup<ShapeEnvAttr>();
+  ASSERT_NE(shape_env, nullptr);
+}
+
 TEST_F(SymbolicShapeInferenceST, test_extend_conv2d_y1_feeds_next_x) {
   auto cg = BuildExtendConv2DY1FeedGraph();
   ASSERT_NE(cg, nullptr);
@@ -6122,6 +6224,62 @@ TEST_F(SymbolicShapeInferenceST, test_extend_conv2d_y1_feeds_next_x) {
   SymbolicShapeInference ssi;
   ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
   ExpectExtendConv2DY1Chain(conv0_node, conv1_node, n, cout, next_cout);
+}
+
+// x 为 NHWC，y 与 y1 都是 NCHW。后一个卷积的 x 接的是 NCHW 的 y1。
+TEST_F(SymbolicShapeInferenceST, test_extend_conv2d_x_nhwc_outputs_nchw) {
+  ge::ComputeGraphPtr cg;
+  ge::NodePtr conv0;
+  ge::NodePtr conv1;
+  ShapeEnvAttr *shape_env = nullptr;
+  PrepareExtendConv2DLayoutGraph(FORMAT_NHWC, FORMAT_NCHW, FORMAT_NCHW, FORMAT_NCHW, FORMAT_NCHW, FORMAT_NCHW, cg,
+                                 conv0, conv1, shape_env);
+  ShapeEnvGuarder guarder(shape_env);
+  Symbol n;
+  Symbol cout;
+  Symbol next_cout;
+  SetExtendConv2DY1InputSymbols(cg, shape_env, n, cout, next_cout);
+  ASSERT_EQ(SymbolicShapeInference().Infer(cg), ge::SUCCESS);
+  ExpectOriginSymbolDim(conv0->GetOpDesc()->GetOutputDesc(0), 0, n);
+  ExpectOriginSymbolDim(conv0->GetOpDesc()->GetOutputDesc(0), 1, cout);
+  ExpectOriginSymbolDim(conv0->GetOpDesc()->GetOutputDesc(1), 1, cout);
+  ExpectOriginSymbolDim(conv1->GetOpDesc()->GetOutputDesc(0), 1, next_cout);
+  ExpectOriginSymbolDim(conv1->GetOpDesc()->GetOutputDesc(1), 1, next_cout);
+}
+
+// y 与 y1 的 origin format 不同，维序分别跟着各自的 format。
+TEST_F(SymbolicShapeInferenceST, test_extend_conv2d_y_and_y1_formats_differ) {
+  ge::ComputeGraphPtr cg;
+  ge::NodePtr conv0;
+  ge::NodePtr conv1;
+  ShapeEnvAttr *shape_env = nullptr;
+  PrepareExtendConv2DLayoutGraph(FORMAT_NHWC, FORMAT_NCHW, FORMAT_NHWC, FORMAT_NHWC, FORMAT_NHWC, FORMAT_NCHW, cg,
+                                 conv0, conv1, shape_env);
+  ShapeEnvGuarder guarder(shape_env);
+  Symbol n;
+  Symbol cout;
+  Symbol next_cout;
+  SetExtendConv2DY1InputSymbols(cg, shape_env, n, cout, next_cout);
+  ASSERT_EQ(SymbolicShapeInference().Infer(cg), ge::SUCCESS);
+  ExpectOriginSymbolDim(conv0->GetOpDesc()->GetOutputDesc(0), 1, cout);
+  ExpectOriginSymbolDim(conv0->GetOpDesc()->GetOutputDesc(1), 3, cout);
+  ExpectOriginSymbolDim(conv1->GetOpDesc()->GetOutputDesc(0), 3, next_cout);
+  ExpectOriginSymbolDim(conv1->GetOpDesc()->GetOutputDesc(1), 1, next_cout);
+}
+
+TEST_F(SymbolicShapeInferenceST, test_extend_conv2d_unsupported_y1_format) {
+  ge::ComputeGraphPtr cg;
+  ge::NodePtr conv0;
+  ge::NodePtr conv1;
+  ShapeEnvAttr *shape_env = nullptr;
+  PrepareExtendConv2DLayoutGraph(FORMAT_NHWC, FORMAT_NHWC, FORMAT_HWCN, FORMAT_NHWC, FORMAT_NHWC, FORMAT_NHWC, cg,
+                                 conv0, conv1, shape_env);
+  ShapeEnvGuarder guarder(shape_env);
+  Symbol n;
+  Symbol cout;
+  Symbol next_cout;
+  SetExtendConv2DY1InputSymbols(cg, shape_env, n, cout, next_cout);
+  ASSERT_EQ(SymbolicShapeInference().Infer(cg), ge::PARAM_INVALID);
 }
 
 TEST_F(SymbolicShapeInferenceST, test_conv2dv2_pad_mode_same_lower) {
