@@ -65,6 +65,10 @@ class TensorTransUtils {
   // gert::Tensor -> GeTensor
   // gert_tensor会增加引用计数，ge_tensor会设置deleter，各自析构时触发引用计数减一，减到零就释放内存
   static Status GertTensor2GeTensor(const gert::Tensor &gert_tensor, GeTensor &ge_tensor);
+  // 保留 original_desc 中 gert 未承载的属性
+  // 仅更新 gert 提供的 shape、origin shape、dtype、format、origin format、placement，数据共享规则同上。
+  static Status GertTensor2GeTensor(const gert::Tensor &gert_tensor, const GeTensorDesc &original_desc,
+                                    GeTensor &ge_tensor);
   static Status GertTensors2GeTensors(const std::vector<gert::Tensor> &gert_tensors, std::vector<GeTensor> &ge_tensors);
 
   // gert::Tensor -> Tensor

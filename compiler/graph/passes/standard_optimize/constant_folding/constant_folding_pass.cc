@@ -312,10 +312,11 @@ Status ExecuteHostCpuCustomOp(const NodePtr &node, BaseCustomOp *base_custom_op,
 
   outputs.clear();
   outputs.reserve(output_tensors.size());
-  for (const auto &output_tensor : output_tensors) {
+  for (size_t i = 0U; i < output_tensors.size(); ++i) {
     GeTensorPtr output = MakeShared<GeTensor>();
     GE_ASSERT_NOTNULL(output);
-    const Status convert_ret = TensorTransUtils::GertTensor2GeTensor(output_tensor, *output);
+    const Status convert_ret =
+        TensorTransUtils::GertTensor2GeTensor(output_tensors[i], node->GetOpDesc()->GetOutputDesc(i), *output);
     if (convert_ret != SUCCESS) {
       GELOGW("Convert output to ge tensor failed for node %s.", node->GetName().c_str());
       return UNSUPPORTED;

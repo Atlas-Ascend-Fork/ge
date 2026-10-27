@@ -159,6 +159,31 @@ REG_OP(BottomHostFold)
     .OUTPUT(y, TensorType({DT_UINT8}))
     .OP_END_FACTORY_REG(BottomHostFold);
 
+class TestHostMultiFoldOp : public TestHostCustomFoldOp {
+ public:
+  graphStatus Execute(gert::HostCpuOpExecutionContext *ctx) override {
+    const auto ret = TestHostCustomFoldOp::Execute(ctx);
+    if (ret != GRAPH_SUCCESS) {
+      return ret;
+    }
+    auto *input = ctx->GetInputTensor(0);
+    auto *output = ctx->MallocOutputTensor(1, input->GetShape(), input->GetFormat(), input->GetDataType());
+    if (output == nullptr) {
+      return GRAPH_FAILED;
+    }
+    return memcpy_s(output->GetAddr(), output->GetSize(), input->GetAddr(), input->GetSize()) == EOK ? GRAPH_SUCCESS
+                                                                                                     : GRAPH_FAILED;
+  }
+};
+
+REG_OP(BottomHostMultiFold)
+    .INPUT(x, TensorType({DT_UINT8}))
+    .OUTPUT(y0, TensorType({DT_UINT8}))
+    .OUTPUT(y1, TensorType({DT_UINT8}))
+    .OP_END_FACTORY_REG(BottomHostMultiFold);
+REG_OP_WITH_PRIORITY(TestHostMultiFoldOp, "BottomHostMultiFold", ge::OpBackend::kHostCPU,
+                     ge::OpRegistrationPriority::kBottom, ge::OpEngine::kHostCpu);
+
 REG_OP(HostCustomFold)
     .INPUT(x, TensorType({DT_UINT8}))
     .OUTPUT(y, TensorType({DT_UINT8}))
@@ -1234,6 +1259,48 @@ TEST_F(UtestGraphPassesConstantFoldingPass, bottom_priority_host_cpu_op_runs_bef
   EXPECT_EQ(outputs[0]->GetData().GetData()[0], 1U);
 }
 
+TEST_F(UtestGraphPassesConstantFoldingPass, bottom_route_merges_output_descriptors) {
+  auto builder = ut::GraphBuilder("test");
+  auto node = builder.AddNode("output", "BottomHostMultiFold", 1, 2, FORMAT_NCHW, DT_UINT8, {3});
+  ASSERT_NE(node, nullptr);
+  node->GetOpDesc()->MutableInputDesc(0)->SetOriginShape(GeShape({1, 3}));
+  node->GetOpDesc()->MutableInputDesc(0)->SetOriginFormat(FORMAT_NHWC);
+  for (size_t i = 0U; i < 2U; ++i) {
+    GeTensorDesc declared(GeShape({-1}), FORMAT_NHWC, DT_INT32);
+    declared.SetOriginShape(GeShape({-1, -1}));
+    declared.SetOriginFormat(FORMAT_NCHW);
+    declared.SetOriginDataType(DT_FLOAT);
+    declared.SetName(std::to_string(i));
+    ASSERT_EQ(declared.SetShapeRange({{1, 8}}), GRAPH_SUCCESS);
+    ASSERT_EQ(declared.SetOriginShapeRange({{1, 1}, {1, 8}}), GRAPH_SUCCESS);
+    ASSERT_EQ(node->GetOpDesc()->UpdateOutputDesc(i, declared), GRAPH_SUCCESS);
+  }
+  auto input = MakeHostCpuInputTensor();
+  ASSERT_NE(input, nullptr);
+  std::vector<GeTensorPtr> outputs;
+  ASSERT_EQ(ConstantFoldingPass::RunOpKernel(node, {input}, outputs), SUCCESS);
+  ASSERT_EQ(outputs.size(), 2U);
+  for (size_t i = 0U; i < outputs.size(); ++i) {
+    const auto &desc = outputs[i]->GetTensorDesc();
+    EXPECT_EQ(desc.GetName(), std::to_string(i));
+    EXPECT_EQ(desc.GetShape().GetDims(), (std::vector<int64_t>{3}));
+    EXPECT_EQ(desc.GetOriginShape().GetDims(), (std::vector<int64_t>{1, 3}));
+    EXPECT_EQ(desc.GetDataType(), DT_UINT8);
+    EXPECT_EQ(desc.GetOriginDataType(), DT_FLOAT);
+    EXPECT_EQ(desc.GetFormat(), FORMAT_NCHW);
+    EXPECT_EQ(desc.GetOriginFormat(), FORMAT_NHWC);
+    EXPECT_EQ(desc.GetPlacement(), kPlacementHost);
+    std::vector<std::pair<int64_t, int64_t>> range;
+    ASSERT_EQ(desc.GetShapeRange(range), GRAPH_SUCCESS);
+    EXPECT_EQ(range, (std::vector<std::pair<int64_t, int64_t>>{{1, 8}}));
+    range.clear();
+    ASSERT_EQ(desc.GetOriginShapeRange(range), GRAPH_SUCCESS);
+    EXPECT_EQ(range, (std::vector<std::pair<int64_t, int64_t>>{{1, 1}, {1, 8}}));
+    ASSERT_EQ(outputs[i]->GetData().GetSize(), 3U);
+    EXPECT_EQ(memcmp(outputs[i]->GetData().GetData(), input->GetData().GetData(), 3U), 0);
+  }
+}
+
 TEST_F(UtestGraphPassesConstantFoldingPass, bottom_priority_host_cpu_op_failure_does_not_retry_legacy_kernel) {
   TestLegacyHostCpuOp::compute_count_ = 0;
   const std::string op_type = "BottomHostFoldFailure";
@@ -1331,16 +1398,38 @@ TEST_F(UtestGraphPassesConstantFoldingPass, top_route_keeps_actual_tensor_metada
   const std::string op_type = "TopMetaProbe";
   auto node = BuildHostCpuFoldNode(op_type);
   ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->GetOpDesc()->MutableOutputDesc(0)->SetShapeRange({{1, 3}}), GRAPH_SUCCESS);
+  node->GetOpDesc()->MutableOutputDesc(0)->SetOriginShape(GeShape({-1}));
+  ASSERT_EQ(node->GetOpDesc()->MutableOutputDesc(0)->SetOriginShapeRange({{1, 4}}), GRAPH_SUCCESS);
+  ASSERT_EQ(node->GetOpDesc()->MutableOutputDesc(0)->SetValueRange({{1, 3}}), GRAPH_SUCCESS);
+  node->GetOpDesc()->MutableOutputDesc(0)->SetOriginDataType(DT_FLOAT);
+  ASSERT_TRUE(AttrUtils::SetStr(*node->GetOpDesc()->MutableOutputDesc(0), "folding_metadata", "preserved"));
   auto input_tensor = MakeMetadataMismatchInputTensor();
   ASSERT_NE(input_tensor, nullptr);
   std::vector<ConstGeTensorPtr> inputs{input_tensor};
   std::vector<GeTensorPtr> outputs;
 
   ASSERT_EQ(ConstantFoldingPass::ComputeWithHostCpuCustomOp(node, inputs, outputs), SUCCESS);
-  // Top 级 HostCPU 自定义算子行为不变: 看到实际常量 Tensor 自身的 NHWC [2]
+  // Top 路径的输入仍取实际常量 Tensor 自身的 NHWC [2]，输出保留原 GE 描述符属性。
   EXPECT_EQ(TestHostMetadataProbeOp::observed_dims_, (std::vector<int64_t>{2}));
   EXPECT_EQ(TestHostMetadataProbeOp::observed_format_, FORMAT_NHWC);
   EXPECT_EQ(TestHostMetadataProbeOp::observed_data_type_, DT_UINT8);
+  ASSERT_EQ(outputs.size(), 1U);
+  EXPECT_EQ(outputs[0]->GetTensorDesc().GetOriginDataType(), DT_FLOAT);
+  EXPECT_EQ(outputs[0]->GetTensorDesc().GetDataType(), DT_UINT8);
+  EXPECT_EQ(outputs[0]->GetTensorDesc().GetOriginFormat(), FORMAT_NHWC);
+  std::vector<std::pair<int64_t, int64_t>> range;
+  ASSERT_EQ(outputs[0]->GetTensorDesc().GetShapeRange(range), GRAPH_SUCCESS);
+  EXPECT_EQ(range, (std::vector<std::pair<int64_t, int64_t>>{{1, 3}}));
+  range.clear();
+  ASSERT_EQ(outputs[0]->GetTensorDesc().GetOriginShapeRange(range), GRAPH_SUCCESS);
+  EXPECT_EQ(range, (std::vector<std::pair<int64_t, int64_t>>{{1, 4}}));
+  range.clear();
+  ASSERT_EQ(outputs[0]->GetTensorDesc().GetValueRange(range), GRAPH_SUCCESS);
+  EXPECT_EQ(range, (std::vector<std::pair<int64_t, int64_t>>{{1, 3}}));
+  std::string metadata;
+  ASSERT_TRUE(AttrUtils::GetStr(outputs[0]->GetTensorDesc(), "folding_metadata", metadata));
+  EXPECT_EQ(metadata, "preserved");
 }
 
 TEST_F(UtestGraphPassesConstantFoldingPass, priority_registry_miss_runs_legacy_kernel) {
