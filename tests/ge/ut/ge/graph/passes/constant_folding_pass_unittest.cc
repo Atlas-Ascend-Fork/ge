@@ -434,31 +434,6 @@ NodePtr BuildHostCpuFoldNode(const std::string &op_type) {
   return output;
 }
 
-GeTensorPtr MakeHostCpuInputTensor(DataType data_type) {
-  auto input_tensor = MakeShared<GeTensor>();
-  if (input_tensor == nullptr) {
-    return nullptr;
-  }
-  input_tensor->MutableTensorDesc().SetShape(GeShape({8}));
-  input_tensor->MutableTensorDesc().SetOriginShape(GeShape({8}));
-  input_tensor->MutableTensorDesc().SetFormat(FORMAT_NCHW);
-  input_tensor->MutableTensorDesc().SetOriginFormat(FORMAT_NCHW);
-  input_tensor->MutableTensorDesc().SetDataType(data_type);
-  input_tensor->MutableTensorDesc().SetOriginDataType(data_type);
-  if (input_tensor->SetData(std::vector<uint8_t>{1, 2, 3, 4}) != SUCCESS) {
-    return nullptr;
-  }
-  return input_tensor;
-}
-
-NodePtr BuildHostCpuFoldNode(const std::string &op_type, DataType output_dtype) {
-  auto builder = ut::GraphBuilder("test");
-  auto input = builder.AddNode("input", CONSTANT, 0, 1, FORMAT_NCHW, DT_UINT8, {3});
-  auto output = builder.AddNode("output", op_type, 1, 1, FORMAT_NCHW, output_dtype, {3});
-  builder.AddDataEdge(input, 0, output, 0);
-  return output;
-}
-
 /**
  *     netoutput1
  *        |
@@ -1756,66 +1731,5 @@ TEST_F(UtestGraphPassesConstantFoldingPass, test_compute_with_host_cpu_custom_op
   EXPECT_EQ(TestHostCustomFoldOp::execute_count_, 1);
   EXPECT_FALSE(node->GetOpDesc()->GetIrInputs().empty());
   EXPECT_FALSE(node->GetOpDesc()->GetIrOutputs().empty());
-}
-
-// ----------------------- sub-byte folding gate tests -----------------------
-
-TEST_F(UtestGraphPassesConstantFoldingPass, sub_byte_input_blocked_for_non_whitelist_op) {
-  TestLegacyHostCpuOp::compute_count_ = 0;
-  const std::string op_type = "SubByteFoldBlocked";
-  auto node = BuildHostCpuFoldNode(op_type);
-  ASSERT_NE(node, nullptr);
-  auto input_tensor = MakeHostCpuInputTensor(DT_INT4);
-  ASSERT_NE(input_tensor, nullptr);
-  std::vector<ConstGeTensorPtr> inputs{input_tensor};
-  std::vector<GeTensorPtr> outputs;
-
-  OpKernelRegistry::GetInstance().RegisterHostCpuOp(op_type, []() -> HostCpuOp * { return new TestLegacyHostCpuOp(); });
-  EXPECT_EQ(ConstantFoldingPass::RunOpKernel(node, inputs, outputs), UNSUPPORTED);
-  EXPECT_EQ(TestLegacyHostCpuOp::compute_count_, 0);
-}
-
-TEST_F(UtestGraphPassesConstantFoldingPass, sub_byte_input_whitelist_op_proceeds) {
-  TestLegacyHostCpuOp::compute_count_ = 0;
-  const std::string op_type = "QuantBiasOptimization";
-  auto node = BuildHostCpuFoldNode(op_type);
-  ASSERT_NE(node, nullptr);
-  auto input_tensor = MakeHostCpuInputTensor(DT_INT4);
-  ASSERT_NE(input_tensor, nullptr);
-  std::vector<ConstGeTensorPtr> inputs{input_tensor};
-  std::vector<GeTensorPtr> outputs;
-
-  OpKernelRegistry::GetInstance().RegisterHostCpuOp(op_type, []() -> HostCpuOp * { return new TestLegacyHostCpuOp(); });
-  EXPECT_EQ(ConstantFoldingPass::RunOpKernel(node, inputs, outputs), SUCCESS);
-  EXPECT_EQ(TestLegacyHostCpuOp::compute_count_, 1);
-}
-
-TEST_F(UtestGraphPassesConstantFoldingPass, sub_byte_output_blocked_even_for_whitelist_op) {
-  TestLegacyHostCpuOp::compute_count_ = 0;
-  const std::string op_type = "QuantBiasOptimization";
-  auto node = BuildHostCpuFoldNode(op_type, DT_INT4);
-  ASSERT_NE(node, nullptr);
-  auto input_tensor = MakeHostCpuInputTensor();
-  ASSERT_NE(input_tensor, nullptr);
-  std::vector<ConstGeTensorPtr> inputs{input_tensor};
-  std::vector<GeTensorPtr> outputs;
-
-  OpKernelRegistry::GetInstance().RegisterHostCpuOp(op_type, []() -> HostCpuOp * { return new TestLegacyHostCpuOp(); });
-  EXPECT_EQ(ConstantFoldingPass::RunOpKernel(node, inputs, outputs), UNSUPPORTED);
-  EXPECT_EQ(TestLegacyHostCpuOp::compute_count_, 0);
-}
-
-TEST_F(UtestGraphPassesConstantFoldingPass, sub_byte_input_blocked_for_custom_op_path) {
-  TestHostCustomFoldOp::execute_count_ = 0;
-  auto node = BuildHostCpuFoldNode("IrDefinedHostFold");
-  ASSERT_NE(node, nullptr);
-  auto input_tensor = MakeHostCpuInputTensor(DT_INT4);
-  ASSERT_NE(input_tensor, nullptr);
-  std::vector<ConstGeTensorPtr> inputs{input_tensor};
-  std::vector<GeTensorPtr> outputs;
-
-  ConstantFoldingPass pass;
-  EXPECT_EQ(pass.ComputeWithHostCpuCustomOp(node, inputs, outputs), UNSUPPORTED);
-  EXPECT_EQ(TestHostCustomFoldOp::execute_count_, 0);
 }
 }  // namespace ge

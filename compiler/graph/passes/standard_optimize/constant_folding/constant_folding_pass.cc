@@ -12,7 +12,6 @@
 
 #include <memory>
 #include <new>
-#include <set>
 #include <utility>
 #include <vector>
 #include "graph_metadef/common/ge_common/util.h"
@@ -29,10 +28,8 @@
 #include "graph/ir_definitions_recover.h"
 #include "graph/op_desc.h"
 #include "graph/operator_factory.h"
-#include "graph/types.h"
 #include "graph/utils/node_utils.h"
 #include "graph/utils/constant_utils.h"
-#include "graph/utils/type_utils.h"
 #include "host_cpu_engine/host_cpu_engine.h"
 #include "api/gelib/gelib.h"
 #include "register/op_kernel_registry.h"
@@ -43,41 +40,6 @@ namespace {
 const int64_t kStartCallNum = 1;
 const int64_t kShapeCalNum = 8;
 const char *const kKernelLibName = "aicpu_ascend_kernel";
-
-// 子字节类型（如 DT_INT4）GetSizeByDataType 返回位宽编码值（kDataTypeSizeBitOffset + bits），并非真实字节数
-bool IsSubByteDtype(const DataType dtype) {
-  return GetSizeByDataType(dtype) > kDataTypeSizeBitOffset;
-}
-
-// 子字节 dtype HostCpuOp 折叠白名单：已在 Compute 中实现 packed 位级处理的算子
-// （如 QuantBiasOptimization 的 INT4 packed→int8 解包）可安全折叠，放行输入检查
-const std::set<std::string> kSubByteFoldWhiteList = {"QuantBiasOptimization"};
-
-// 子字节类型（如 DT_INT4）的数据为 packed 存储（2元素/字节），需按位读写处理；
-// HostCpuOp/自定义算子实现可能缺少位级处理导致越界写，需拦截并回落 GE 内置 kernel
-// （TransdataKernel 等已适配子字节位级转换）。
-// 覆盖 top/bottom 优先级自定义算子与 legacy HostCpuOp 全部路径；
-// 白名单内的算子已在 Compute 中实现子字节 packed 位级处理（如 QuantBiasOptimization），放行输入检查
-bool IsSubByteFoldingBlocked(const std::string &op_type, const NodePtr &node,
-                             const std::vector<ConstGeTensorPtr> &inputs) {
-  if (kSubByteFoldWhiteList.count(op_type) == 0U) {
-    for (const auto &input : inputs) {
-      if ((input != nullptr) && IsSubByteDtype(input->GetTensorDesc().GetDataType())) {
-        GELOGI("Sub-byte dtype %s folding skips HostCpuOp for op %s, fallback to built-in kernel.",
-               TypeUtils::DataTypeToSerialString(input->GetTensorDesc().GetDataType()).c_str(), op_type.c_str());
-        return true;
-      }
-    }
-  }
-  for (const auto &output_desc : node->GetOpDesc()->GetAllOutputsDesc()) {
-    if (IsSubByteDtype(output_desc.GetDataType())) {
-      GELOGI("Sub-byte dtype %s folding skips HostCpuOp for op %s, fallback to built-in kernel.",
-             TypeUtils::DataTypeToSerialString(output_desc.GetDataType()).c_str(), op_type.c_str());
-      return true;
-    }
-  }
-  return false;
-}
 const char *const kOpsFlagClose = "0";
 const char *const kPassName = "ConstantFoldingPass";
 
@@ -405,9 +367,6 @@ Status ConstantFoldingPass::ComputeWithHostCpuCustomOp(const NodePtr &node, cons
                                                        std::vector<GeTensorPtr> &outputs) {
   const std::string op_type = NodeUtils::GetNodeType(node);
   const AscendString op_type_str(op_type.c_str());
-  if (IsSubByteFoldingBlocked(op_type, node, inputs)) {
-    return UNSUPPORTED;
-  }
   if (!CustomOpFactory::IsExistOp(op_type_str, OpBackend::kHostCPU)) {
     GELOGD("Op of type %s is not supported by host cpu custom op.", op_type.c_str());
     return UNSUPPORTED;
@@ -461,11 +420,6 @@ Status ConstantFoldingPass::RunOpKernel(const NodePtr &node, const std::vector<C
                                         std::vector<GeTensorPtr> &outputs) {
   const std::string op_type = NodeUtils::GetNodeType(node);
   const AscendString op_type_str(op_type.c_str());
-  if (IsSubByteFoldingBlocked(op_type, node, inputs)) {
-    return UNSUPPORTED;
-  }
-  // bottom 优先级 HostCPU 自定义算子参与常量折叠时, 需与 legacy 路径 HostCpuEngine::PrepareOutputs 保持一致的输出 dtype
-  // 白名单限制
   if (CustomOpFactory::IsExistOp(op_type_str, OpBackend::kHostCPU, OpRegistrationPriority::kBottom,
                                  OpEngine::kHostCpu) &&
       HostCpuEngine::IsOutputDtypeSupported(node->GetOpDesc())) {
