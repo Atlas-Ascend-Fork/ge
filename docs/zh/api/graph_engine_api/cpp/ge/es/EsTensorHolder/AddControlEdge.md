@@ -43,5 +43,5 @@ Status AddControlEdge(const std::vector<EsTensorHolder> &ctrl_ins) const
   auto tensor1 = builder->CreateInput(1);
   auto tensor2 = builder->CreateInput(2);
   std::vector<EsTensorHolder> ctrl_ins = {tensor1, tensor2};
-  （void）tensor0.AddControlEdge(ctrl_ins); // tensor0的生产节点使用tensor1和tensor2的生产节点作为控制输入
+  (void)tensor0.AddControlEdge(ctrl_ins); // tensor0的生产节点使用tensor1和tensor2的生产节点作为控制输入
 ```
