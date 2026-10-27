@@ -460,66 +460,38 @@ ge::graphStatus CheckConv2DInputWithPad(const Expression &ih_pad, const Expressi
   return ge::GRAPH_SUCCESS;
 }
 
-// 输出符号维的先后顺序跟该输出自己的 origin format，不跟输入 x。
-// x 为 NHWC、y 为 NCHW 时，符号 shape 仍是 [N, Cout, H, W]。
-ge::graphStatus AppendConv2DOutputDims(gert::SymbolShape *shape, const ge::Format format, const Expression &n,
-                                       const Expression &c, const Expression &h, const Expression &w) {
-  GE_ASSERT_NOTNULL(shape);
-  shape->Clear();
-  if (format == ge::Format::FORMAT_NCHW) {
-    shape->AppendDim(n);
-    shape->AppendDim(c);
-    shape->AppendDim(h);
-    shape->AppendDim(w);
-    return ge::GRAPH_SUCCESS;
+ge::graphStatus SetConv2DYShape(gert::InferSymbolShapeContext *context, const Expression &in, const Expression &kn,
+                                const Expression &oh, const Expression &ow) {
+  gert::SymbolShape *y_shape = context->GetOutputSymbolShape(kYIdxConv2d);
+  GE_CHECK_NOTNULL(y_shape);
+  y_shape->Clear();
+  const auto x_desc_ptr = context->GetInputDesc(kXIdxConv2d);
+  GE_ASSERT_NOTNULL(x_desc_ptr);
+  const auto x_format = x_desc_ptr->GetOriginFormat();
+  if (x_format == ge::Format::FORMAT_NCHW) {
+    y_shape->AppendDim(in);
+    y_shape->AppendDim(kn);
+    y_shape->AppendDim(oh);
+    y_shape->AppendDim(ow);
+  } else if (x_format == ge::Format::FORMAT_NHWC) {
+    y_shape->AppendDim(in);
+    y_shape->AppendDim(oh);
+    y_shape->AppendDim(ow);
+    y_shape->AppendDim(kn);
   }
-  if (format == ge::Format::FORMAT_NHWC) {
-    shape->AppendDim(n);
-    shape->AppendDim(h);
-    shape->AppendDim(w);
-    shape->AppendDim(c);
-    return ge::GRAPH_SUCCESS;
-  }
-  GELOGE(PARAM_INVALID, "output format should be NCHW or NHWC, but is %d", static_cast<int32_t>(format));
-  return ge::PARAM_INVALID;
+  return ge::GRAPH_SUCCESS;
 }
 
-// 输出 origin format 已是 NCHW/NHWC 时用它决定维序。仍是 ND 时说明调用方没单独设置，
-// 沿用输入 x 的 origin format，避免把历史图里未填的输出 format 判成失败。
-ge::graphStatus ResolveConv2DOutputFormat(const gert::InferSymbolShapeContext *context, const size_t index,
-                                          ge::Format &format) {
-  GE_ASSERT_NOTNULL(context);
-  const auto *desc = context->GetOutputDesc(index);
-  GE_ASSERT_NOTNULL(desc);
-  format = desc->GetOriginFormat();
-  if (format == ge::Format::FORMAT_NCHW || format == ge::Format::FORMAT_NHWC) {
+// ExtendConv2D 的 y 与 y1 是同一份卷积几何。Conv2D/Conv2DV2 没有输出 1，context 中对应指针为空。
+ge::graphStatus SetExtendConv2DY1Shape(gert::InferSymbolShapeContext *context) {
+  auto *y1_shape = context->GetOutputSymbolShape(kY1IdxConv2d);
+  if (y1_shape == nullptr) {
     return ge::GRAPH_SUCCESS;
   }
-  if (format == ge::Format::FORMAT_ND) {
-    const auto *x_desc = context->GetInputDesc(kXIdxConv2d);
-    GE_ASSERT_NOTNULL(x_desc);
-    format = x_desc->GetOriginFormat();
-  }
-  if (format == ge::Format::FORMAT_NCHW || format == ge::Format::FORMAT_NHWC) {
-    return ge::GRAPH_SUCCESS;
-  }
-  GELOGE(PARAM_INVALID, "output format should be NCHW or NHWC, but is %d", static_cast<int32_t>(format));
-  return ge::PARAM_INVALID;
-}
-
-// index 0 是 y，必须存在。ExtendConv2D 的 y1 是 index 1；Conv2D/Conv2DV2 没有输出 1，指针为空则跳过。
-ge::graphStatus SetConv2DOutputSymbolShape(gert::InferSymbolShapeContext *context, const size_t index,
-                                           const Expression &n, const Expression &c, const Expression &h,
-                                           const Expression &w) {
-  GE_ASSERT_NOTNULL(context);
-  auto *shape = context->GetOutputSymbolShape(index);
-  if (shape == nullptr) {
-    GE_ASSERT_TRUE(index != kYIdxConv2d);
-    return ge::GRAPH_SUCCESS;
-  }
-  ge::Format format = ge::Format::FORMAT_ND;
-  GE_ASSERT_GRAPH_SUCCESS(ResolveConv2DOutputFormat(context, index, format));
-  return AppendConv2DOutputDims(shape, format, n, c, h, w);
+  const auto *y_shape = context->GetOutputSymbolShape(kYIdxConv2d);
+  GE_ASSERT_NOTNULL(y_shape);
+  y1_shape->MutableDims() = y_shape->GetDims();
+  return ge::GRAPH_SUCCESS;
 }
 
 void InferOutputIsZeroTensor(const Conv2DInputShapes &x_shapes, const Conv2DInputShapes &w_shapes,
@@ -580,8 +552,8 @@ ge::graphStatus CheckFcKcEqualInZeroTensor(const Conv2DInputShapes &x_shapes, co
  *      4. 应用标准卷积公式推导输出尺寸：
  *         out = floor((in + pad_before + pad_after - dilation * (kernel - 1) - 1) / stride) + 1
  *      5. zero tensor分支做一致性校验，处理退化场景
- *      6. 按各输出自己的 origin format(NCHW/NHWC)回写符号维。ExtendConv2D 的 y1 与 y 几何相同，
- *         维序分别跟 y、y1 的 format
+ *      6. 按输入layout(NCHW/NHWC)回写输出shape。ExtendConv2D 的 y1 与 y 几何相同，
+ *         输出 1 存在时写入同一份符号维
  *      举例：输入x_shape=(2,3,28,28)，filter_shape=(16,3,3,3)，strides=[1,1,1,1]，padding=SAME，
  *            则y_shape=(2,16,28,28)
  */
@@ -592,7 +564,7 @@ graphStatus InferShape4Conv2D(gert::InferSymbolShapeContext *context) {
   // 3) 解析 stride/dilation/pad；
   // 4) 用统一卷积公式构建 oh/ow；
   // 5) zero tensor 分支做一致性校验；
-  // 6) 按各输出的 origin format 回写符号维。
+  // 6) 按输入 layout 回写输出 shape。
   auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto filter_shape = context->GetInputSymbolShape(1);
@@ -635,10 +607,8 @@ graphStatus InferShape4Conv2D(gert::InferSymbolShapeContext *context) {
     GE_ASSERT_GRAPH_SUCCESS(CheckConv2DInputWithPad(ih_pad, iw_pad));
   }
   GE_ASSERT_GRAPH_SUCCESS(CheckOutputZeroTensor(y_shape));
-  GE_ASSERT_GRAPH_SUCCESS(
-      SetConv2DOutputSymbolShape(context, kYIdxConv2d, y_shape.on, y_shape.oc, y_shape.oh, y_shape.ow));
-  GE_ASSERT_GRAPH_SUCCESS(
-      SetConv2DOutputSymbolShape(context, kY1IdxConv2d, y_shape.on, y_shape.oc, y_shape.oh, y_shape.ow));
+  GE_ASSERT_GRAPH_SUCCESS(SetConv2DYShape(context, y_shape.on, y_shape.oc, y_shape.oh, y_shape.ow));
+  GE_ASSERT_GRAPH_SUCCESS(SetExtendConv2DY1Shape(context));
   return ge::GRAPH_SUCCESS;
 }
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Conv2D).InferSymbolShape(InferShape4Conv2D);

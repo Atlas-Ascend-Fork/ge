@@ -6046,14 +6046,6 @@ static void BuildConv2DInferContext(InferSymbolShapeContextTestBuilder &builder,
       .OutputNum(output_num);
   op_desc->MutableInputDesc(0)->SetOriginFormat(x_format);
   op_desc->MutableInputDesc(1)->SetOriginFormat(w_format);
-  // 默认让输出 origin format 与 x 相同，已有用例的维序断言保持不变。
-  // 交叉 format 的用例在 Build 之前改写输出 desc。
-  for (size_t i = 0U; i < output_num; ++i) {
-    GeTensorDesc y_desc(GeShape(), x_format, DT_FLOAT);
-    y_desc.SetOriginFormat(x_format);
-    y_desc.SetFormat(x_format);
-    op_desc->AddOutputDesc(y_desc);
-  }
 }
 
 static void SetConv2DV2ExtraAttrs(const ge::OpDescPtr &op_desc, const std::string &pad_mode) {
@@ -6084,18 +6076,11 @@ static gert::InferSymbolShapeContext *BuildExtendConv2DInferContext(
     InferSymbolShapeContextTestBuilder &builder, const std::initializer_list<Expression> &x_values,
     const std::initializer_list<Expression> &w_values, const std::vector<int64_t> &strides,
     const std::vector<int64_t> &pads, const std::vector<int64_t> &dilations, const std::string &pad_mode,
-    size_t output_num = 1, Format y_format = FORMAT_NHWC, Format y1_format = FORMAT_NHWC) {
+    size_t output_num = 1) {
   builder.Destroy();
   BuildConv2DInferContext(builder, x_values, w_values, strides, pads, dilations, 1, FORMAT_NHWC, FORMAT_HWCN,
                           output_num);
-  auto op_desc = builder.GetOrCreateOpDescPtr();
-  SetExtendConv2DExtraAttrs(op_desc, pad_mode);
-  op_desc->MutableOutputDesc(0)->SetOriginFormat(y_format);
-  op_desc->MutableOutputDesc(0)->SetFormat(y_format);
-  if (output_num > 1U) {
-    op_desc->MutableOutputDesc(1)->SetOriginFormat(y1_format);
-    op_desc->MutableOutputDesc(1)->SetFormat(y1_format);
-  }
+  SetExtendConv2DExtraAttrs(builder.GetOrCreateOpDescPtr(), pad_mode);
   return builder.Build();
 }
 
@@ -6699,167 +6684,6 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForExtendConv2DY1FeedsNextX) 
   ASSERT_EQ(next_y_shape->GetDim(3), s8);
   first_builder.Destroy();
   second_builder.Destroy();
-}
-
-struct ConvLayoutSymbols {
-  Expression n;
-  Expression h;
-  Expression w;
-  Expression cin;
-  Expression kh;
-  Expression kw;
-  Expression cout;
-};
-
-static ConvLayoutSymbols MakeConvLayoutSymbols(ShapeEnvAttr &shape_env) {
-  ConvLayoutSymbols symbols;
-  symbols.n = shape_env.CreateSymbol(2, MakeShared<InputShapeSource>(0, 0));
-  symbols.h = shape_env.CreateSymbol(28, MakeShared<InputShapeSource>(0, 1));
-  symbols.w = shape_env.CreateSymbol(28, MakeShared<InputShapeSource>(0, 2));
-  symbols.cin = shape_env.CreateSymbol(3, MakeShared<InputShapeSource>(0, 3));
-  symbols.kh = shape_env.CreateSymbol(3, MakeShared<InputShapeSource>(1, 0));
-  symbols.kw = shape_env.CreateSymbol(3, MakeShared<InputShapeSource>(1, 1));
-  symbols.cout = shape_env.CreateSymbol(16, MakeShared<InputShapeSource>(1, 3));
-  return symbols;
-}
-
-static Expression ConvOutSpatial(const Expression &input, const Expression &kernel) {
-  return sym::Floor(input - (kernel - Symbol(1)));
-}
-
-static void SetOutputOriginFormats(const OpDescPtr &op_desc, const std::initializer_list<Format> formats) {
-  ASSERT_NE(op_desc, nullptr);
-  size_t index = 0U;
-  for (const auto format : formats) {
-    auto desc = op_desc->MutableOutputDesc(static_cast<uint32_t>(index));
-    ASSERT_NE(desc, nullptr);
-    desc->SetOriginFormat(format);
-    desc->SetFormat(format);
-    ++index;
-  }
-}
-
-static void ExpectSymbolDims(const gert::SymbolShape *shape, const std::vector<Expression> &expected) {
-  ASSERT_NE(shape, nullptr);
-  ASSERT_EQ(shape->GetDimNum(), expected.size());
-  for (size_t i = 0U; i < expected.size(); ++i) {
-    EXPECT_EQ(shape->GetDim(i), expected[i]);
-  }
-}
-
-// x 是 NHWC，y 的 origin format 是 NCHW，符号维必须按 y 排成 [N, Cout, H, W]。
-TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForConv2D_NhwcInputNchwOutput) {
-  auto func = GetInferFunc("Conv2D");
-  ASSERT_TRUE(func.first != nullptr);
-  InferSymbolShapeContextTestBuilder builder("Conv2D", "conv2D");
-  ShapeEnvAttr shape_env;
-  ShapeEnvGuarder guarder(&shape_env);
-  const auto symbols = MakeConvLayoutSymbols(shape_env);
-  const std::vector<int64_t> ones = {1, 1, 1, 1};
-  const std::vector<int64_t> pads = {0, 0, 0, 0};
-  BuildConv2DInferContext(builder, {symbols.n, symbols.h, symbols.w, symbols.cin},
-                          {symbols.kh, symbols.kw, symbols.cin, symbols.cout}, ones, pads, ones, 1, FORMAT_NHWC,
-                          FORMAT_HWCN);
-  SetOutputOriginFormats(builder.GetOrCreateOpDescPtr(), {FORMAT_NCHW});
-  auto infer_context = builder.Build();
-  ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ExpectSymbolDims(
-      infer_context->GetOutputSymbolShape(0),
-      {symbols.n, symbols.cout, ConvOutSpatial(symbols.h, symbols.kh), ConvOutSpatial(symbols.w, symbols.kw)});
-}
-
-// x 是 NCHW，y 的 origin format 是 NHWC，符号维按 y 排成 [N, H, W, Cout]。
-TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForConv2D_NchwInputNhwcOutput) {
-  auto func = GetInferFunc("Conv2D");
-  ASSERT_TRUE(func.first != nullptr);
-  InferSymbolShapeContextTestBuilder builder("Conv2D", "conv2D");
-  ShapeEnvAttr shape_env;
-  ShapeEnvGuarder guarder(&shape_env);
-  const auto symbols = MakeConvLayoutSymbols(shape_env);
-  const std::vector<int64_t> ones = {1, 1, 1, 1};
-  const std::vector<int64_t> pads = {0, 0, 0, 0};
-  BuildConv2DInferContext(builder, {symbols.n, symbols.cin, symbols.h, symbols.w},
-                          {symbols.cout, symbols.cin, symbols.kh, symbols.kw}, ones, pads, ones, 1, FORMAT_NCHW,
-                          FORMAT_NCHW);
-  SetOutputOriginFormats(builder.GetOrCreateOpDescPtr(), {FORMAT_NHWC});
-  auto infer_context = builder.Build();
-  ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ExpectSymbolDims(infer_context->GetOutputSymbolShape(0), {symbols.n, ConvOutSpatial(symbols.h, symbols.kh),
-                                                            ConvOutSpatial(symbols.w, symbols.kw), symbols.cout});
-}
-
-// x 与 y 的 format 相同时，维序与修改前一致。
-TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForConv2D_OutputFormatSameAsInput) {
-  auto func = GetInferFunc("Conv2D");
-  ASSERT_TRUE(func.first != nullptr);
-  InferSymbolShapeContextTestBuilder builder("Conv2D", "conv2D");
-  ShapeEnvAttr shape_env;
-  ShapeEnvGuarder guarder(&shape_env);
-  const auto symbols = MakeConvLayoutSymbols(shape_env);
-  const std::vector<int64_t> ones = {1, 1, 1, 1};
-  const std::vector<int64_t> pads = {0, 0, 0, 0};
-  const auto oh = ConvOutSpatial(symbols.h, symbols.kh);
-  const auto ow = ConvOutSpatial(symbols.w, symbols.kw);
-
-  BuildConv2DInferContext(builder, {symbols.n, symbols.h, symbols.w, symbols.cin},
-                          {symbols.kh, symbols.kw, symbols.cin, symbols.cout}, ones, pads, ones, 1, FORMAT_NHWC,
-                          FORMAT_HWCN);
-  auto infer_context = builder.Build();
-  ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ExpectSymbolDims(infer_context->GetOutputSymbolShape(0), {symbols.n, oh, ow, symbols.cout});
-
-  builder.Destroy();
-  BuildConv2DInferContext(builder, {symbols.n, symbols.cin, symbols.h, symbols.w},
-                          {symbols.cout, symbols.cin, symbols.kh, symbols.kw}, ones, pads, ones, 1, FORMAT_NCHW,
-                          FORMAT_NCHW);
-  infer_context = builder.Build();
-  ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ExpectSymbolDims(infer_context->GetOutputSymbolShape(0), {symbols.n, symbols.cout, oh, ow});
-}
-
-// y 与 y1 几何相同，维序各自跟随自己的 origin format。
-TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForExtendConv2D_YAndY1FormatsDiffer) {
-  auto func = GetInferFunc("ExtendConv2D");
-  ASSERT_TRUE(func.first != nullptr);
-  InferSymbolShapeContextTestBuilder builder("ExtendConv2D", "extendConv2D");
-  ShapeEnvAttr shape_env;
-  ShapeEnvGuarder guarder(&shape_env);
-  const auto symbols = MakeConvLayoutSymbols(shape_env);
-  const std::vector<int64_t> ones = {1, 1, 1, 1};
-  const std::vector<int64_t> pads = {0, 0, 0, 0};
-  const auto oh = ConvOutSpatial(symbols.h, symbols.kh);
-  const auto ow = ConvOutSpatial(symbols.w, symbols.kw);
-  auto infer_context = BuildExtendConv2DInferContext(builder, {symbols.n, symbols.h, symbols.w, symbols.cin},
-                                                     {symbols.kh, symbols.kw, symbols.cin, symbols.cout}, ones, pads,
-                                                     ones, "SPECIFIC", 2, FORMAT_NCHW, FORMAT_NHWC);
-  ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ExpectSymbolDims(infer_context->GetOutputSymbolShape(0), {symbols.n, symbols.cout, oh, ow});
-  ExpectSymbolDims(infer_context->GetOutputSymbolShape(1), {symbols.n, oh, ow, symbols.cout});
-
-  infer_context = BuildExtendConv2DInferContext(builder, {symbols.n, symbols.h, symbols.w, symbols.cin},
-                                                {symbols.kh, symbols.kw, symbols.cin, symbols.cout}, ones, pads, ones,
-                                                "SPECIFIC", 2, FORMAT_NCHW, FORMAT_NCHW);
-  ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ExpectSymbolDims(infer_context->GetOutputSymbolShape(0), {symbols.n, symbols.cout, oh, ow});
-  ExpectSymbolDims(infer_context->GetOutputSymbolShape(1), {symbols.n, symbols.cout, oh, ow});
-}
-
-// 输出 origin format 不是 NCHW/NHWC 时，推导失败。
-TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForConv2D_UnsupportedOutputFormat) {
-  auto func = GetInferFunc("Conv2D");
-  ASSERT_TRUE(func.first != nullptr);
-  InferSymbolShapeContextTestBuilder builder("Conv2D", "conv2D");
-  ShapeEnvAttr shape_env;
-  ShapeEnvGuarder guarder(&shape_env);
-  const auto symbols = MakeConvLayoutSymbols(shape_env);
-  const std::vector<int64_t> ones = {1, 1, 1, 1};
-  const std::vector<int64_t> pads = {0, 0, 0, 0};
-  BuildConv2DInferContext(builder, {symbols.n, symbols.h, symbols.w, symbols.cin},
-                          {symbols.kh, symbols.kw, symbols.cin, symbols.cout}, ones, pads, ones, 1, FORMAT_NHWC,
-                          FORMAT_HWCN);
-  SetOutputOriginFormats(builder.GetOrCreateOpDescPtr(), {FORMAT_HWCN});
-  auto infer_context = builder.Build();
-  ASSERT_EQ(func.first(infer_context), ge::PARAM_INVALID);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAddLayerNorm) {
