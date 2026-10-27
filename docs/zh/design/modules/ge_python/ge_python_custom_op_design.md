@@ -177,6 +177,11 @@ GE 初始化 / PreRun
 `@register_kernel`。被装饰的 `execute` 支持普通实例方法、`staticmethod` 和 `classmethod`，组合时
 `register_kernel` 必须位于最外层。
 
+继承 kernel 时沿 Python 方法解析顺序（MRO）查找可见的 `execute`。已注册但没有 kernel 且未声明
+`execute` 的基类不阻断后续查找；显式声明不可调用的 `execute`（如 `None`）会遮蔽更远基类的
+实现并停止继承。继承已注册 kernel 时保留其 backend，未装饰的普通 `execute` 默认使用 device；
+本类的 backend 声明优先。
+
 ```python
 # schema-bound 形式，参数顺序与 canonical IR 一致
 def execute(self, x, optional_y, dynamic_z, *, alpha, axes) -> None:

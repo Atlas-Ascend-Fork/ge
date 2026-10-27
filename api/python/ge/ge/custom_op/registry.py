@@ -191,15 +191,17 @@ def _validate_kernel_descriptor(descriptor: object) -> None:
 def _get_inherited_kernel_bindings(cls: Type[Any]) -> Dict[OpBackend, KernelBinding]:
     for base in cls.__mro__[1:]:
         descriptor = base.__dict__.get(_OP_IMPL_DESCRIPTOR_ATTR)
-        if descriptor is not None:
+        if descriptor is not None and descriptor.kernel_bindings:
             return dict(descriptor.kernel_bindings)
-        inherited_execute = base.__dict__.get("execute")
-        if _unwrap_kernel_descriptor(inherited_execute) is not None:
-            return {
-                OpBackend.DEVICE: KernelBinding.from_descriptor(
-                    OpBackend.DEVICE, inherited_execute
-                )
-            }
+        if "execute" in base.__dict__:
+            inherited_execute = base.__dict__["execute"]
+            if _unwrap_kernel_descriptor(inherited_execute) is not None:
+                return {
+                    OpBackend.DEVICE: KernelBinding.from_descriptor(
+                        OpBackend.DEVICE, inherited_execute
+                    )
+                }
+            return {}
     return {}
 
 
