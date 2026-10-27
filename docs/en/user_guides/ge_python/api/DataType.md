@@ -20,7 +20,7 @@ DataType is an enumeration class inheriting from IntEnum, used to define all ele
 ## Enumeration Value List
 
 | Enumeration Name | Value | Description |
-| | :----- | :--- | :--- |
+| :----- | :--- | :--- |
 | DT_FLOAT | 0 | Single-precision floating-point (float32) |
 | DT_FLOAT16 | 1 | Half-precision floating-point (float16) |
 | DT_INT8 | 2 | 8-bit signed integer |
