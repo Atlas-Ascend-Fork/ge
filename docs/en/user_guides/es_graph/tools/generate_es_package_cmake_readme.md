@@ -447,7 +447,7 @@ add_es_library(
 - **gen_esb**: This is internal es api code generation binary tool, integrated in run package, can view usage via `gen_esb --help`
 - **OPP_PROTO_TARGET**: Must exist
 - **Python3**: >= 3.7 (only needed for `add_es_library_and_whl`)
-- **Python Packages**: setuptools, wheel (only needed for `add_es_library_and_whl`), recommend using setuptools==59.6.0、wheel==0.37.1 compatible version or higher version
+- **Python Packages**: setuptools, wheel (only needed for `add_es_library_and_whl`), recommend using setuptools==59.6.0, wheel==0.37.1 compatible version or higher version
 
 ## Common Questions
 

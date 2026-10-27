@@ -214,7 +214,7 @@ No parameters.
 
 | Parameter Name | Type | Required | Default Value | Description |
 | :----- | :--- | :------: | :----- | :--- |
-| format | DumpFormat | No | DumpFormat.kReadable | Export file format, valid values: DumpFormat.kOnnx、DumpFormat.kTxt、DumpFormat.kReadable. |
+| format | DumpFormat | No | DumpFormat.kReadable | Export file format, valid values: DumpFormat.kOnnx, DumpFormat.kTxt, DumpFormat.kReadable. |
 | suffix | str | No | "" | Filename suffix, appended to end of generated filename. For example, when suffix is "xxxx", filename format is `ge_<format>_00000_<graph_name>_0_xxxx.<ext>`. |
 
 DumpFormat enum value description:
@@ -229,7 +229,7 @@ DumpFormat enum value description:
 
 | Parameter Name | Type | Required | Default Value | Description |
 | :----- | :--- | :------: | :----- | :--- |
-| format | DumpFormat | No | DumpFormat.kReadable | Export string format, valid values: DumpFormat.kOnnx、DumpFormat.kTxt、DumpFormat.kReadable. |
+| format | DumpFormat | No | DumpFormat.kReadable | Export string format, valid values: DumpFormat.kOnnx, DumpFormat.kTxt, DumpFormat.kReadable. |
 
 ### `save_to_air`
 
@@ -326,7 +326,7 @@ No parameters.
 
 ## Constraint Description
 
-- **Ownership Model**: Graph objects have two ownership states. By default, Python side manages C++ resource lifecycle. When Graph is passed as subgraph parameter to operator (like If、While、Case), ownership automatically transfers to C++ side to avoid double free issues.
+- **Ownership Model**: Graph objects have two ownership states. By default, Python side manages C++ resource lifecycle. When Graph is passed as subgraph parameter to operator (like If, While, Case), ownership automatically transfers to C++ side to avoid double free issues.
 - **No Copy**: Graph class does not support copy operations (both shallow copy and deep copy are not supported), calling `copy` or `deepcopy` will throw RuntimeError.
 - **Subgraph Name Uniqueness**: When calling `add_subgraph` to add subgraph, subgraph name must be unique in parent graph. If name already exists, operation will fail and throw exception.
 - **Edge Port Index**: When calling `remove_edge` to remove control edge, both `src_port_index` and `dst_port_index` should be set to -1. When removing data edge, port index must match the actual connected port.

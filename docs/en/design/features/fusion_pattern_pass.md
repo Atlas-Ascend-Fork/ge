@@ -199,7 +199,7 @@ Python `@pattern` writing will automatically capture visited external inputs and
 
 Typical uses:
 
-- Check dtype、shape、format in `MeetRequirements`.
+- Check dtype, shape, format in `MeetRequirements`.
 - Read original node attributes in `Replacement`, write to new node.
 - Print hit location, convenient for confirming match results.
 
@@ -421,7 +421,7 @@ Answer these questions before writing pass:
 - Is what to handle "a subgraph segment" or "single operator"?
 - If subgraph segment, are all external inputs of pattern declared?
 - Are all outputs still used by outside after replacement declared?
-- Is topology matching sufficient, or need to check dtype、shape、attributes or Const values in `MeetRequirements`?
+- Is topology matching sufficient, or need to check dtype, shape, attributes or Const values in `MeetRequirements`?
 - Is replacement input order consistent with pattern boundaries?
 - Is registration stage appropriate? If running after InferShape, has replacement handled shape derivation?
 - Does the pass have precision risk or performance regression? Should it declare `PassSwitch::kOff` to disable by default?
