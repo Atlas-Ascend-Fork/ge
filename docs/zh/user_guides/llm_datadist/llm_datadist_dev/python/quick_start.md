@@ -55,7 +55,7 @@
 
 ## 完整样例参考
 
-本示例是以transformers的LLAMA模型为样例，主要展示PD分离前后的脚本变化点，提供如何从非分离脚本改为PD分离脚本的一个参考，PD分离脚本示例请单击[Gitee](https://gitee.com/ascend/torchair/tree/master#version_match)，根据版本配套表下载对应版本的sample包，从“npu\_tuned\_model/llm/llama/benchmark/pd\_separate”目录中获取样例。样例中将全量模型和增量模型进行分离，部署到不同集群节点上执行。
+本示例是以transformers的LLAMA模型为样例，主要展示PD分离前后的脚本变化点，提供如何从非分离脚本改为PD分离脚本的一个参考，PD分离脚本示例请单击[Gitcode](https://gitcode.com/Ascend/torchair/blob/master/COMPATIBILITY.md#%E8%AF%A6%E7%BB%86%E9%85%8D%E5%A5%97%E8%A1%A8)，根据版本配套表下载对应版本的sample包，从“npu\_tuned\_model/llm/llama/benchmark/pd\_separate”目录中获取样例。样例中将全量模型和增量模型进行分离，部署到不同集群节点上执行。
 
 如上分离脚本在整个推理流程中是如何被服务层调度的，请参考如下步骤。
 
