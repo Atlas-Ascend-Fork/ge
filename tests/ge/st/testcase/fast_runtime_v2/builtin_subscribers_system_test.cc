@@ -507,6 +507,7 @@ class BuiltinSubscribersST : public bg::BgTest {
     SetUnknownOpKernelForNoTiling(graph->GetAllNodes());
     GeModelBuilder builder(graph);
     AiCpuCCTaskDefFaker aicpu_task_def_faker;
+    aicpu_task_def_faker.SetKernelType(static_cast<uint32_t>(ge::ccKernelType::AI_CPU));
     auto ge_root_model = builder.AddTaskDef("Add", aicpu_task_def_faker.SetNeedMemcpy(true)).BuildGeRootModel();
 
     bg::ValueHolder::PopGraphFrame();  // 不需要BgTest自带的Frame

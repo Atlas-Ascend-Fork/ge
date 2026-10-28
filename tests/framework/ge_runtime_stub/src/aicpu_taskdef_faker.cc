@@ -45,7 +45,7 @@ void SetTfKernelDef(domi::KernelExDef *kernel_ex_def) {
   kernel_ex_def->set_task_info_size(task_info.size());
 }
 
-void SetCCKernelDef(domi::KernelDef *kernel_def, bool is_memcpy_task) {
+void SetCCKernelDef(domi::KernelDef *kernel_def, bool is_memcpy_task, uint32_t kernel_type) {
   AicpuTaskStruct args;
   args.head.length = sizeof(args);
   if (is_memcpy_task) {
@@ -55,7 +55,9 @@ void SetCCKernelDef(domi::KernelDef *kernel_def, bool is_memcpy_task) {
   }
 
   domi::KernelContext *context = kernel_def->mutable_context();
-  context->set_kernel_type(7);  // cust aicpu
+  context->set_kernel_type(kernel_type);
+  kernel_def->set_so_name("libcust_aicpu_kernels.so");
+  kernel_def->set_kernel_name(is_memcpy_task ? "RunCpuKernelMemCpy" : "RunCpuKernel");
   kernel_def->set_args(reinterpret_cast<const char *>(&args), args.head.length);
   kernel_def->set_args_size(args.head.length);
 
@@ -94,6 +96,11 @@ AiCpuCCTaskDefFaker &AiCpuCCTaskDefFaker::SetNeedMemcpy(bool need_memcpy) {
   return *this;
 }
 
+AiCpuCCTaskDefFaker &AiCpuCCTaskDefFaker::SetKernelType(const uint32_t kernel_type) {
+  kernel_type_ = kernel_type;
+  return *this;
+}
+
 vector<domi::TaskDef> AiCpuCCTaskDefFaker::CreateTaskDef(uint64_t op_index) {
   AddTask({kCCAicpu, kCC_AiCpu, 0});
   if (need_memcpy_) {
@@ -102,10 +109,10 @@ vector<domi::TaskDef> AiCpuCCTaskDefFaker::CreateTaskDef(uint64_t op_index) {
 
   auto task_def = TaskDefFaker::CreateTaskDef(op_index);
   domi::KernelDef *kernel_def = task_def[0].mutable_kernel();
-  SetCCKernelDef(kernel_def);
+  SetCCKernelDef(kernel_def, false, kernel_type_);
   if (need_memcpy_) {
     domi::KernelDef *kernel_def = task_def[1].mutable_kernel();
-    SetCCKernelDef(kernel_def, true);
+    SetCCKernelDef(kernel_def, true, kernel_type_);
   }
   return task_def;
 }

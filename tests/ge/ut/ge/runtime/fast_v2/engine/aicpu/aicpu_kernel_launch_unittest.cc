@@ -9,6 +9,7 @@
  */
 
 #include <vector>
+#include <map>
 #include <gtest/gtest.h>
 #include <kernel/memory/mem_block.h>
 #include "stub/gert_runtime_stub.h"
@@ -16,6 +17,7 @@
 #include "register/kernel_registry.h"
 #include "aicpu_engine_struct.h"
 #include "engine/aicpu/kernel/aicpu_args_handler.h"
+#include "engine/aicpu/kernel/aicpu_bin_handler.h"
 #include "engine/aicpu/kernel/aicpu_ext_info_handle.h"
 #include "engine/aicpu/kernel/aicpu_resource_manager.h"
 #include "graph/op_desc.h"
@@ -38,6 +40,147 @@ struct AicpuTaskStruct {
   aicpu::AicpuParamHead head;
   uint64_t io_addrp[6];
 } __attribute__((packed));
+
+class TaskIdAclStub : public AclRuntimeStubImpl {
+ public:
+  aclError aclrtGetThreadLastTaskIdAndStreamId(uint32_t *task_id, uint32_t *stream_id) override {
+    ++query_count;
+    *task_id = 0x1234ABCDU;
+    *stream_id = 37U;
+    return result;
+  }
+
+  aclError result = ACL_SUCCESS;
+  uint32_t query_count = 0U;
+};
+
+class CpuFuncAclStub : public AclRuntimeStubImpl {
+ public:
+  aclError aclrtGetCurrentContext(aclrtContext *context) override {
+    *context = current_context;
+    return ACL_SUCCESS;
+  }
+
+  aclError aclrtBinaryLoadFromData(const void *data, size_t length, const aclrtBinaryLoadOptions *options,
+                                   aclrtBinHandle *bin_handle) override {
+    (void)data;
+    (void)length;
+    (void)options;
+    *bin_handle = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(current_context) + 0x2000UL);
+    return ACL_SUCCESS;
+  }
+
+  aclError aclrtRegisterCpuFunc(const aclrtBinHandle handle, const char *func_name, const char *kernel_name,
+                                aclrtFuncHandle *func_handle) override {
+    calls.emplace_back("Register");
+    if (register_result != ACL_SUCCESS) {
+      return register_result;
+    }
+    // Runtime deduplicates by kernel_name, even when func_name differs.
+    const auto result = registered_funcs[handle].emplace(kernel_name, func_name);
+    *func_handle = &result.first->second;
+    last_func_handle = *func_handle;
+    device_ready = true;
+    return ACL_SUCCESS;
+  }
+
+  aclError aclrtLaunchKernelWithHostArgs(aclrtFuncHandle func_handle, uint32_t, aclrtStream, aclrtLaunchKernelCfg *,
+                                         void *, size_t, aclrtPlaceHolderInfo *, size_t) override {
+    EXPECT_TRUE(device_ready);
+    EXPECT_EQ(func_handle, last_func_handle);
+    EXPECT_FALSE(calls.empty());
+    if (!calls.empty()) {
+      EXPECT_EQ(calls.back(), "Register");
+    }
+    calls.emplace_back("Launch");
+    if (!device_ready || func_handle == nullptr || func_handle != last_func_handle) {
+      return ACL_ERROR_FAILURE;
+    }
+    launched_funcs.push_back(*reinterpret_cast<std::string *>(func_handle));
+    device_ready = false;
+    return ACL_SUCCESS;
+  }
+
+  aclError aclrtBinaryUnLoad(aclrtBinHandle bin_handle) override {
+    (void)bin_handle;
+    return ACL_SUCCESS;
+  }
+
+  aclrtContext current_context = reinterpret_cast<void *>(1UL);
+  std::map<aclrtBinHandle, std::map<std::string, std::string>> registered_funcs;
+  std::vector<std::string> calls;
+  std::vector<std::string> launched_funcs;
+  aclError register_result = ACL_SUCCESS;
+  aclrtFuncHandle last_func_handle = nullptr;
+  bool device_ready = false;
+};
+
+class CpuFallbackRuntimeStub : public RuntimeStubImpl {
+ public:
+  rtError_t rtAicpuKernelLaunchExWithArgs(uint32_t, const char *, uint32_t, const rtAicpuArgsEx_t *, rtSmDesc_t *,
+                                          rtStream_t, uint32_t) override {
+    ++launch_count;
+    return RT_ERROR_NONE;
+  }
+
+  uint32_t launch_count = 0U;
+};
+
+std::shared_ptr<KernelRunContextHolder> BuildCustBinHandle(KernelRegistry &registry, const ge::OpDescPtr &op_desc,
+                                                           const uint32_t kernel_type, std::string &so_name,
+                                                           std::string &op_type) {
+  auto context_owner = std::make_shared<KernelRunContextHolder>(BuildKernelRunContext(4, 2));
+  auto &context = *context_owner;
+  context.value_holder[0].Set(op_desc.get(), nullptr);
+  context.value_holder[1].Set(op_type.data(), nullptr);
+  context.value_holder[2].Set(reinterpret_cast<void *>(kernel_type), nullptr);
+  context.value_holder[3].Set(so_name.data(), nullptr);
+  const auto funcs = registry.FindKernelFuncs("BuildCCArgsBinHandle");
+  EXPECT_EQ(funcs->outputs_creator(nullptr, context), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(funcs->run_func(context), ge::GRAPH_SUCCESS);
+  auto kernel_context = context.GetContext<KernelContext>();
+  const auto bin_handle = kernel_context->GetOutputPointer<rtBinHandle>(0U);
+  const auto lease = kernel_context->GetOutputPointer<CustAicpuBinLease>(1U);
+  EXPECT_NE(bin_handle, nullptr);
+  if (bin_handle != nullptr) {
+    EXPECT_NE(*bin_handle, nullptr);
+  }
+  EXPECT_NE(lease, nullptr);
+  return context_owner;
+}
+
+void ReleaseCustBinHandle(KernelRegistry &registry, const std::shared_ptr<KernelRunContextHolder> &owner) {
+  auto context = BuildKernelRunContext(1, 0);
+  context.value_holder[0].Set(owner->GetContext<KernelContext>()->GetOutputPointer<CustAicpuBinLease>(1U), nullptr);
+  EXPECT_EQ(registry.FindKernelFuncs("ReleaseCustAicpuBinHandle")->run_func(context), ge::GRAPH_SUCCESS);
+}
+
+ge::graphStatus LaunchCustCCKernel(KernelRegistry &registry, rtBinHandle *bin_handle, std::string &function_name,
+                                   std::string &node_type) {
+  AicpuCCArgsHandler args_handler("temp", 1, false);
+  AicpuTaskStruct args = {};
+  args.head.length = sizeof(args);
+  args.head.ioAddrNum = 1U;
+  const std::string arg_data(reinterpret_cast<char *>(&args), sizeof(args));
+  EXPECT_EQ(args_handler.BuildCCArgs(arg_data, function_name, "libcust_cpu_kernels.so", 0U), ge::GRAPH_SUCCESS);
+  auto context = BuildKernelRunContext(8, 0);
+  context.value_holder[0].Set(&args_handler, nullptr);
+  context.value_holder[1].Set(nullptr, nullptr);
+  context.value_holder[2].Set(reinterpret_cast<void *>(1U), nullptr);
+  const auto kernel_type = static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU);
+  context.value_holder[3].Set(reinterpret_cast<void *>(kernel_type), nullptr);
+  context.value_holder[5].Set(*bin_handle, nullptr);
+  context.value_holder[6].Set(function_name.data(), nullptr);
+  context.value_holder[7].Set(node_type.data(), nullptr);
+  return registry.FindKernelFuncs("AicpuLaunchCCKernel")->run_func(context);
+}
+
+ge::OpDescPtr MakeCustOpDesc() {
+  auto op_desc = std::make_shared<ge::OpDesc>("fourth_aicpu_op", "Add");
+  auto bin = std::make_shared<ge::OpKernelBin>("fourth_aicpu_op", std::vector<char>(1U, 'a'));
+  op_desc->SetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL, bin);
+  return op_desc;
+}
 }  // namespace
 
 class AicpuKernelLaunchUT : public testing::Test {
@@ -82,6 +225,34 @@ TEST_F(AicpuKernelLaunchUT, test_run_launch_tf_kernel) {
 
   auto ret = registry.FindKernelFuncs("AicpuLaunchTfKernel")->trace_printer(run_context2);
   EXPECT_FALSE(ret.empty());
+}
+
+TEST_F(AicpuKernelLaunchUT, LaunchTraceUsesThreadLastTaskAndStreamIds) {
+  auto acl_stub = std::make_unique<TaskIdAclStub>();
+  auto *task_id_stub = acl_stub.get();
+  GertRuntimeStub runtime_stub(std::make_unique<RuntimeStubImpl>(), true, std::move(acl_stub));
+  AicpuTfArgsHandler args_handler("temp", 0, false);
+  ASSERT_EQ(args_handler.BuildTfArgs("111", "222", 20, 0, 0), ge::GRAPH_SUCCESS);
+  auto run_context = BuildKernelRunContext(4, 0);
+  run_context.value_holder[0].Set(&args_handler, nullptr);
+  run_context.value_holder[1].Set(nullptr, nullptr);
+  run_context.value_holder[2].Set(reinterpret_cast<void *>(1UL), nullptr);
+  run_context.value_holder[3].Set(nullptr, nullptr);
+
+  for (const auto *kernel_name : {"AicpuLaunchTfKernel", "AicpuLaunchCCKernel"}) {
+    const auto *funcs = registry.FindKernelFuncs(kernel_name);
+    ASSERT_NE(funcs, nullptr);
+    task_id_stub->result = ACL_SUCCESS;
+    auto msgs = funcs->trace_printer(run_context);
+    ASSERT_FALSE(msgs.empty());
+    EXPECT_EQ(msgs.back(), "stream_id=37, task_id=43981, flip_num=4660, flip_task_id=305441741");
+
+    task_id_stub->result = ACL_ERROR_FAILURE;
+    msgs = funcs->trace_printer(run_context);
+    ASSERT_FALSE(msgs.empty());
+    EXPECT_TRUE(msgs.back().empty());
+  }
+  EXPECT_EQ(task_id_stub->query_count, 4U);
 }
 
 TEST_F(AicpuKernelLaunchUT, test_FillLaunchArgs) {
@@ -246,14 +417,15 @@ TEST_F(AicpuKernelLaunchUT, test_run_launch_cc_kernel_with_block) {
   rtStream_t stream = nullptr;
   uint32_t kernel_type = 6;
 
-  auto run_context2 = BuildKernelRunContext(7, 0);
+  auto run_context2 = BuildKernelRunContext(8, 0);
   run_context2.value_holder[0].Set(&args_handler, nullptr);
   run_context2.value_holder[1].Set(stream, nullptr);
   run_context2.value_holder[2].Set(reinterpret_cast<void *>(1), nullptr);
   run_context2.value_holder[3].Set(reinterpret_cast<void *>(kernel_type), nullptr);
   run_context2.value_holder[5].Set(&bin_handle, nullptr);
+  run_context2.value_holder[6].Set(nullptr, nullptr);
   std::string node_type = "test_aicpu";
-  run_context2.value_holder[6].Set(const_cast<char *>(node_type.c_str()), nullptr);
+  run_context2.value_holder[7].Set(const_cast<char *>(node_type.c_str()), nullptr);
   ASSERT_EQ(registry.FindKernelFuncs("AicpuLaunchCCKernel")->run_func(run_context2), ge::GRAPH_SUCCESS);
   auto ret = registry.FindKernelFuncs("AicpuLaunchCCKernel")->trace_printer(run_context2);
   EXPECT_FALSE(ret.empty());
@@ -268,18 +440,6 @@ TEST_F(AicpuKernelLaunchUT, test_alloc_hostcpu_output_memory) {
   ASSERT_EQ(registry.FindKernelFuncs("AllocHostCpuOutputMemory")->outputs_creator(nullptr, run_context),
             ge::GRAPH_SUCCESS);
   ASSERT_EQ(registry.FindKernelFuncs("AllocHostCpuOutputMemory")->run_func(run_context), ge::GRAPH_SUCCESS);
-}
-
-TEST_F(AicpuKernelLaunchUT, test_launch_cust_aicpu_kernel) {
-  auto run_context = BuildKernelRunContext(2, 1);
-  std::string key = "cust_aicpu";
-  const char cust_bin[] = "aicpu_cust_bin";
-  std::vector<char> buffer(cust_bin, cust_bin + strlen(cust_bin));
-  CustAICPUKernelPtr aicpu_kernel_ptr = std::make_shared<ge::OpKernelBin>(key, move(buffer));
-  std::string cust_so_name = "libcust_aicpu_kernels.so";
-  run_context.value_holder[0].Set(aicpu_kernel_ptr.get(), nullptr);
-  run_context.value_holder[1].Set(cust_so_name.data(), nullptr);
-  ASSERT_EQ(registry.FindKernelFuncs("LaunchAicpuCustKernel")->run_func(run_context), ge::GRAPH_SUCCESS);
 }
 
 TEST_F(AicpuKernelLaunchUT, test_creat_event) {
@@ -316,14 +476,15 @@ TEST_F(AicpuKernelLaunchUT, test_run_new_launch_cc_kernel) {
   rtStream_t stream = nullptr;
   uint32_t kernel_type = 6;
 
-  auto run_context2 = BuildKernelRunContext(7, 0);
+  auto run_context2 = BuildKernelRunContext(8, 0);
   run_context2.value_holder[0].Set(&args_handler, nullptr);
   run_context2.value_holder[1].Set(stream, nullptr);
   run_context2.value_holder[2].Set(reinterpret_cast<void *>(1), nullptr);
   run_context2.value_holder[3].Set(reinterpret_cast<void *>(kernel_type), nullptr);
   run_context2.value_holder[5].Set(&bin_handle, nullptr);
+  run_context2.value_holder[6].Set(nullptr, nullptr);
   std::string node_type = "test_aicpu";
-  run_context2.value_holder[6].Set(const_cast<char *>(node_type.c_str()), nullptr);
+  run_context2.value_holder[7].Set(const_cast<char *>(node_type.c_str()), nullptr);
   ASSERT_EQ(registry.FindKernelFuncs("AicpuLaunchCCKernel")->run_func(run_context2), ge::GRAPH_SUCCESS);
   auto ret = registry.FindKernelFuncs("AicpuLaunchCCKernel")->trace_printer(run_context2);
   EXPECT_FALSE(ret.empty());
@@ -439,32 +600,144 @@ TEST_F(AicpuKernelLaunchUT, test_expand_optional_input_addrs_use_output_num_as_t
   EXPECT_EQ(output2->GetSize(), 0U);
 }
 
-TEST_F(AicpuKernelLaunchUT, test_build_cc_function_handle) {
+TEST_F(AicpuKernelLaunchUT, test_build_cc_bin_handle_without_custom_lease) {
   std::string node_type = "test_cc_aicpu";
-  auto run_context = BuildKernelRunContext(2, 1);
+  auto run_context = BuildKernelRunContext(4, 2);
   ge::OpDescPtr op_desc = std::make_shared<ge::OpDesc>(node_type, node_type);
   (void)ge::AttrUtils::SetBool(op_desc, "_cust_aicpu_flag", false);
   (void)ge::AttrUtils::SetStr(op_desc, "ops_json_path", "/test.json");
   run_context.value_holder[0].Set(op_desc.get(), nullptr);
   run_context.value_holder[1].Set(const_cast<char *>(node_type.c_str()), nullptr);
+  const auto kernel_type = static_cast<uint32_t>(ge::ccKernelType::AI_CPU);
+  run_context.value_holder[2].Set(reinterpret_cast<void *>(kernel_type), nullptr);
+  std::string so_name = "libcpu_kernels.so";
+  run_context.value_holder[3].Set(so_name.data(), nullptr);
 
   ASSERT_EQ(registry.FindKernelFuncs("BuildCCArgsBinHandle")->run_func(run_context), ge::GRAPH_SUCCESS);
+  const auto context = run_context.GetContext<KernelContext>();
+  ASSERT_NE(context->GetOutputPointer<rtBinHandle>(0U), nullptr);
+  EXPECT_NE(*context->GetOutputPointer<rtBinHandle>(0U), nullptr);
+  EXPECT_EQ(context->GetOutputPointer<CustAicpuBinLease>(1U), nullptr);
+  ASSERT_TRUE(ge::AttrUtils::SetStr(op_desc, "ops_json_path", ""));
+  ASSERT_EQ(registry.FindKernelFuncs("BuildCCArgsBinHandle")->run_func(run_context), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(*context->GetOutputPointer<rtBinHandle>(0U), nullptr);
 }
 
-TEST_F(AicpuKernelLaunchUT, test_build_cust_cc_function_handle) {
+TEST_F(AicpuKernelLaunchUT, test_build_cust_cc_bin_handle_without_function_registration) {
+  auto acl_stub = std::make_unique<CpuFuncAclStub>();
+  auto *const acl_stub_ptr = acl_stub.get();
+  GertRuntimeStub runtime_stub(std::make_unique<RuntimeStubImpl>(), true, std::move(acl_stub));
   std::string node_type = "test_cc_aicpu";
   vector<char> buffer(1, 'a');
   ge::OpKernelBinPtr bin = std::make_shared<ge::OpKernelBin>("op", std::move(buffer));
-  auto run_context = BuildKernelRunContext(2, 1);
+  auto run_context = BuildKernelRunContext(4, 2);
   ge::OpDescPtr op_desc = std::make_shared<ge::OpDesc>(node_type, node_type);
   (void)ge::AttrUtils::SetBool(op_desc, "_cust_aicpu_flag", true);
-  (void)ge::AttrUtils::SetStr(op_desc, "funcName", "RunCpuKernel");
-  (void)ge::AttrUtils::SetStr(op_desc, "kernelSo", "libtest_cust.so");
-  (void)ge::AttrUtils::SetStr(op_desc, "kernelSo", "libtest_cust.so");
   op_desc->SetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL, bin);
   run_context.value_holder[0].Set(op_desc.get(), nullptr);
   run_context.value_holder[1].Set(const_cast<char *>(node_type.c_str()), nullptr);
+  const auto kernel_type = static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU);
+  run_context.value_holder[2].Set(reinterpret_cast<void *>(kernel_type), nullptr);
+  std::string so_name = "libtest_cust.so";
+  run_context.value_holder[3].Set(so_name.data(), nullptr);
 
+  ASSERT_EQ(registry.FindKernelFuncs("BuildCCArgsBinHandle")->outputs_creator(nullptr, run_context), ge::GRAPH_SUCCESS);
   ASSERT_EQ(registry.FindKernelFuncs("BuildCCArgsBinHandle")->run_func(run_context), ge::GRAPH_SUCCESS);
+  auto kernel_context = run_context.GetContext<KernelContext>();
+  auto bin_handle = kernel_context->GetOutputPointer<rtBinHandle>(0U);
+  auto lease = kernel_context->GetOutputPointer<CustAicpuBinLease>(1U);
+  ASSERT_NE(bin_handle, nullptr);
+  ASSERT_NE(*bin_handle, nullptr);
+  ASSERT_NE(lease, nullptr);
+  EXPECT_TRUE(acl_stub_ptr->calls.empty());
+  EXPECT_TRUE(acl_stub_ptr->registered_funcs.empty());
+
+  auto release_context = BuildKernelRunContext(1, 0);
+  release_context.value_holder[0].Set(lease, nullptr);
+  ASSERT_EQ(registry.FindKernelFuncs("ReleaseCustAicpuBinHandle")->run_func(release_context), ge::GRAPH_SUCCESS);
+}
+
+TEST_F(AicpuKernelLaunchUT, test_launch_cust_cc_functions_with_different_op_types_in_both_orders) {
+  auto acl_stub = std::make_unique<CpuFuncAclStub>();
+  auto *const acl_stub_ptr = acl_stub.get();
+  GertRuntimeStub runtime_stub(std::make_unique<RuntimeStubImpl>(), true, std::move(acl_stub));
+  const auto op_desc = MakeCustOpDesc();
+  const auto kernel_type = static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU);
+  std::string so_name = "libfourth_aicpu.so";
+
+  std::vector<std::string> op_types = {"Add", "MemCopy"};
+  std::vector<std::string> func_names = {"RunCpuKernel", "RunCpuKernelMemCpy"};
+  for (uintptr_t order = 0U; order < 2U; ++order) {
+    acl_stub_ptr->current_context = reinterpret_cast<void *>(order + 1U);
+    auto main_owner = BuildCustBinHandle(registry, op_desc, kernel_type, so_name, op_types[0]);
+    auto memcpy_owner = BuildCustBinHandle(registry, op_desc, kernel_type, so_name, op_types[1]);
+    auto main_bin = main_owner->GetContext<KernelContext>()->GetOutputPointer<rtBinHandle>(0U);
+    auto memcpy_bin = memcpy_owner->GetContext<KernelContext>()->GetOutputPointer<rtBinHandle>(0U);
+    ASSERT_NE(main_bin, nullptr);
+    ASSERT_NE(memcpy_bin, nullptr);
+    ASSERT_EQ(*main_bin, *memcpy_bin);
+    for (size_t i = 0U; i < 2U; ++i) {
+      const auto index = (i + order) % 2U;
+      ASSERT_EQ(LaunchCustCCKernel(registry, index == 0U ? main_bin : memcpy_bin, func_names[index], op_types[index]),
+                ge::GRAPH_SUCCESS);
+      ASSERT_EQ(acl_stub_ptr->launched_funcs.size(), order * 2U + i + 1U);
+      EXPECT_EQ(acl_stub_ptr->launched_funcs.back(), func_names[index]);
+    }
+    const auto &registered = acl_stub_ptr->registered_funcs.at(*main_bin);
+    EXPECT_EQ(registered.size(), 2U);
+    EXPECT_EQ(registered.at("Add"), func_names[0]);
+    EXPECT_EQ(registered.at("MemCopy"), func_names[1]);
+    EXPECT_NE(&registered.at("Add"), &registered.at("MemCopy"));
+    ReleaseCustBinHandle(registry, main_owner);
+    ReleaseCustBinHandle(registry, memcpy_owner);
+  }
+  EXPECT_EQ(acl_stub_ptr->calls, (std::vector<std::string>{"Register", "Launch", "Register", "Launch", "Register",
+                                                           "Launch", "Register", "Launch"}));
+}
+
+TEST_F(AicpuKernelLaunchUT, test_launch_cust_cc_registers_each_time_after_readiness_invalidated) {
+  auto acl_stub = std::make_unique<CpuFuncAclStub>();
+  auto *const acl_stub_ptr = acl_stub.get();
+  GertRuntimeStub runtime_stub(std::make_unique<RuntimeStubImpl>(), true, std::move(acl_stub));
+  const auto op_desc = MakeCustOpDesc();
+  const auto kernel_type = static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU);
+  std::string so_name = "libfourth_aicpu.so";
+  std::string node_type = "Add";
+  std::string function_name = "RunCpuKernel";
+  auto owner = BuildCustBinHandle(registry, op_desc, kernel_type, so_name, node_type);
+  EXPECT_TRUE(acl_stub_ptr->calls.empty());
+  auto bin_handle = owner->GetContext<KernelContext>()->GetOutputPointer<rtBinHandle>(0U);
+  for (size_t i = 0U; i < 2U; ++i) {
+    acl_stub_ptr->device_ready = false;
+    ASSERT_EQ(LaunchCustCCKernel(registry, bin_handle, function_name, node_type), ge::GRAPH_SUCCESS);
+  }
+  EXPECT_EQ(acl_stub_ptr->calls, (std::vector<std::string>{"Register", "Launch", "Register", "Launch"}));
+  EXPECT_EQ(acl_stub_ptr->launched_funcs, (std::vector<std::string>{function_name, function_name}));
+  EXPECT_EQ(acl_stub_ptr->registered_funcs.at(*bin_handle).size(), 1U);
+  ReleaseCustBinHandle(registry, owner);
+}
+
+TEST_F(AicpuKernelLaunchUT, test_launch_cust_cc_registration_failure_suppresses_launch_without_fallback) {
+  auto acl_stub = std::make_unique<CpuFuncAclStub>();
+  auto *const acl_stub_ptr = acl_stub.get();
+  auto rt_stub = std::make_unique<CpuFallbackRuntimeStub>();
+  auto *const rt_stub_ptr = rt_stub.get();
+  GertRuntimeStub runtime_stub(std::move(rt_stub), true, std::move(acl_stub));
+  const auto op_desc = MakeCustOpDesc();
+  const auto kernel_type = static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU);
+  std::string so_name = "libfourth_aicpu.so";
+  std::string node_type = "Add";
+  std::string function_name = "RunCpuKernel";
+  auto owner = BuildCustBinHandle(registry, op_desc, kernel_type, so_name, node_type);
+  EXPECT_TRUE(acl_stub_ptr->calls.empty());
+  acl_stub_ptr->register_result = ACL_ERROR_FAILURE;
+  auto bin_handle = owner->GetContext<KernelContext>()->GetOutputPointer<rtBinHandle>(0U);
+  EXPECT_NE(LaunchCustCCKernel(registry, bin_handle, function_name, node_type), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(acl_stub_ptr->calls, (std::vector<std::string>{"Register"}));
+  EXPECT_TRUE(acl_stub_ptr->launched_funcs.empty());
+  EXPECT_TRUE(acl_stub_ptr->registered_funcs.empty());
+  EXPECT_FALSE(acl_stub_ptr->device_ready);
+  EXPECT_EQ(rt_stub_ptr->launch_count, 0U);
+  ReleaseCustBinHandle(registry, owner);
 }
 }  // namespace gert

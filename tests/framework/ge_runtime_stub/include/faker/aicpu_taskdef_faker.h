@@ -15,7 +15,7 @@
 namespace gert {
 
 void SetTfKernelDef(domi::KernelExDef *kernel_ex_def);
-void SetCCKernelDef(domi::KernelDef *kernel_def, bool is_memcpy_task = false);
+void SetCCKernelDef(domi::KernelDef *kernel_def, bool is_memcpy_task = false, uint32_t kernel_type = 6U);
 
 struct AiCpuTfTaskDefFaker : public TaskDefFaker {
  public:
@@ -30,13 +30,16 @@ struct AiCpuTfTaskDefFaker : public TaskDefFaker {
 
 struct AiCpuCCTaskDefFaker : public TaskDefFaker {
  public:
+  explicit AiCpuCCTaskDefFaker(uint32_t kernel_type = 6U) : need_memcpy_(false), kernel_type_(kernel_type) {}
   AiCpuCCTaskDefFaker &SetNeedMemcpy(bool need_memcpy);
+  AiCpuCCTaskDefFaker &SetKernelType(uint32_t kernel_type);
 
  private:
   vector<domi::TaskDef> CreateTaskDef(uint64_t op_index = 0) override;
   std::unique_ptr<TaskDefFaker> Clone() const override;
 
   bool need_memcpy_;
+  uint32_t kernel_type_;
 };
 }  // namespace gert
 

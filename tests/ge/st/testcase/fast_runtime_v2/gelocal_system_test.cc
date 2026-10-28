@@ -196,6 +196,7 @@ TEST_F(GeLocalTest, MultiBatchShapesOK) {
   compute_graph->TopologicalSorting();
   GeModelBuilder builder(compute_graph);
   AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  aicpu_task_def_faker.SetKernelType(static_cast<uint32_t>(ge::ccKernelType::HOST_CPU));
   auto ge_root_model = builder.AddTaskDef("MapIndex", aicpu_task_def_faker).BuildGeRootModel();
 
   bg::ValueHolder::PopGraphFrame();  // 不需要BgTest自带的Frame

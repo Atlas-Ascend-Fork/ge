@@ -62,12 +62,20 @@ TEST_F(BinHandlerUt, LoadAndGetBinHandleSuccess) {
   vector<char> buffer(1, 'a');
   ge::OpKernelBinPtr bin = std::make_shared<ge::OpKernelBin>("op", std::move(buffer));
   rtBinHandle handle = nullptr;
-  auto ret = CustBinHandlerManager::Instance().LoadAndGetBinHandle(so_name, bin, handle);
+  void *resource_token = nullptr;
+  auto ret = CustBinHandlerManager::Instance().LoadAndGetBinHandle(so_name, bin, handle, resource_token);
   EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
-  ret = CustBinHandlerManager::Instance().LoadAndGetBinHandle("test2.so", bin, handle);
+  rtBinHandle handle2 = nullptr;
+  void *resource_token2 = nullptr;
+  ret = CustBinHandlerManager::Instance().LoadAndGetBinHandle("test2.so", bin, handle2, resource_token2);
   EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
-  ret = CustBinHandlerManager::Instance().LoadAndGetBinHandle("test2.so", bin, handle);
+  rtBinHandle reused_handle = nullptr;
+  void *reused_resource_token = nullptr;
+  ret = CustBinHandlerManager::Instance().LoadAndGetBinHandle("test2.so", bin, reused_handle, reused_resource_token);
   EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
+  EXPECT_EQ(CustBinHandlerManager::Instance().ReleaseBinHandle(resource_token), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(CustBinHandlerManager::Instance().ReleaseBinHandle(resource_token2), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(CustBinHandlerManager::Instance().ReleaseBinHandle(reused_resource_token), ge::GRAPH_SUCCESS);
 }
 
 TEST_F(BinHandlerUt, LoadAndGetBinHandleFailed) {
@@ -75,20 +83,7 @@ TEST_F(BinHandlerUt, LoadAndGetBinHandleFailed) {
   vector<char> buffer(1, 'a');
   ge::OpKernelBinPtr bin = std::make_shared<ge::OpKernelBin>("op", std::move(buffer));
   rtBinHandle handle = nullptr;
-  auto ret = CustBinHandlerManager::Instance().LoadAndGetBinHandle(so_name, bin, handle);
-  EXPECT_EQ(ret, ge::FAILED);
-}
-
-TEST_F(BinHandlerUt, GetBinHandleSuccess) {
-  const std::string so_name = "test.so";
-  rtBinHandle handle = nullptr;
-  auto ret = CustBinHandlerManager::Instance().GetBinHandle(so_name, handle);
-  EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
-}
-
-TEST_F(BinHandlerUt, GetBinHandleFailByEmptySoName) {
-  const std::string so_name = "";
-  rtBinHandle handle = nullptr;
-  auto ret = CustBinHandlerManager::Instance().GetBinHandle(so_name, handle);
+  void *resource_token = nullptr;
+  auto ret = CustBinHandlerManager::Instance().LoadAndGetBinHandle(so_name, bin, handle, resource_token);
   EXPECT_EQ(ret, ge::FAILED);
 }

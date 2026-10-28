@@ -49,7 +49,6 @@ class AicpuResourceManager {
                              const GertTensorData *handle_data);
   ge::graphStatus PopTensor(const std::string &op_name, const rtStream_t stream, const GertTensorData *handle_data);
   void ClearTensors();
-  ge::graphStatus HasLoadedCustAicpuSo(const std::string &so_name, bool &loaded);
 
  private:
   ge::graphStatus CheckOrCreateHandle(const std::string &op_name, const rtStream_t stream,
@@ -64,8 +63,6 @@ class AicpuResourceManager {
 
   std::map<uint64_t, std::deque<GertTensorData>> tensors_;
   std::map<std::string, uint64_t> handles_;
-  std::mutex cust_aicpu_so_mutex_;
-  std::map<uintptr_t, std::string> cust_aicpu_context_so_;
 };
 }  // namespace gert
 #endif  // AIR_CXX_RUNTIME_V2_KERNEL_LAUNCH_KERNEL_AICPU_AICPU_RESOURCE_MANAGER_H_

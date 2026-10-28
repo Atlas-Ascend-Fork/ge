@@ -115,6 +115,7 @@ ge::graphStatus ReadInModelTaskDefs(const ge::ComputeGraphPtr &graph, const ge::
   if (model->GetModelTaskDefPtr() == nullptr) {
     return ge::GRAPH_SUCCESS;
   }
+  GE_ASSERT_SUCCESS(model->GetCustAICPUKernelStore().BuildKernelSoToOpNameMap(graph));
   const auto &tasks = model->GetModelTaskDefPtr()->task();
   for (int32_t i = 0; i < tasks.size(); ++i) {
     const domi::TaskDef &task_def = tasks[i];

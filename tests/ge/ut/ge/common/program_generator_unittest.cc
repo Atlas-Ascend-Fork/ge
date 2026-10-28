@@ -6660,11 +6660,32 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSourceForAicoreWithoutArgsFormat_Ok
   EXPECT_NE(load_run.find("overflow_addr_"), std::string::npos);
 }
 
+void SetCustAicpuTaskArgs(const GeModelPtr &ge_model) {
+  auto *model_task_def = ge_model->GetModelTaskDefPtr().get();
+  if (model_task_def != nullptr) {
+    for (int32_t i = 0; i < model_task_def->task_size(); ++i) {
+      auto *task_def = model_task_def->mutable_task(i);
+      if ((task_def != nullptr) && task_def->has_kernel()) {
+        // kernel_type=7 is CUST_AI_CPU, do NOT override to 6 (AI_CPU)
+        auto ext_info = GetFakeExtInfo();
+        auto kernel_def = task_def->mutable_kernel();
+        AicpuTaskArgs args = {};
+        args.head.length = sizeof(args);
+        args.head.ioAddrNum = 3;
+        kernel_def->set_args(reinterpret_cast<const char *>(&args), args.head.length);
+        kernel_def->set_args_size(args.head.length);
+        kernel_def->set_kernel_ext_info(ext_info.c_str(), ext_info.size());
+        kernel_def->set_kernel_ext_info_size(ext_info.size());
+      }
+    }
+  }
+}
+
 GeRootModelPtr CreateGeRootModelWithCustAicpuOp() {
   auto graph = gert::ShareGraph::Aicpu4thGraph();
   graph->TopologicalSorting();
   gert::GeModelBuilder builder(graph);
-  gert::AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  gert::AiCpuCCTaskDefFaker aicpu_task_def_faker(static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU));
   auto ge_root_model = builder.AddTaskDef("add1", aicpu_task_def_faker.SetNeedMemcpy(false))
                            .AddTaskDef("add2", aicpu_task_def_faker.SetNeedMemcpy(false))
                            .BuildGeRootModel();
@@ -6687,24 +6708,7 @@ GeRootModelPtr CreateGeRootModelWithCustAicpuOp() {
   }
 
   const auto ge_model = ge_root_model->GetSubgraphInstanceNameToModel().begin()->second;
-  auto *model_task_def = ge_model->GetModelTaskDefPtr().get();
-  if (model_task_def != nullptr) {
-    for (int32_t i = 0; i < model_task_def->task_size(); ++i) {
-      auto *task_def = model_task_def->mutable_task(i);
-      if ((task_def != nullptr) && task_def->has_kernel()) {
-        // kernel_type=7 is CUST_AI_CPU, do NOT override to 6 (AI_CPU)
-        auto ext_info = GetFakeExtInfo();
-        auto kernel_def = task_def->mutable_kernel();
-        AicpuTaskArgs args = {};
-        args.head.length = sizeof(args);
-        args.head.ioAddrNum = 3;
-        kernel_def->set_args(reinterpret_cast<const char *>(&args), args.head.length);
-        kernel_def->set_args_size(args.head.length);
-        kernel_def->set_kernel_ext_info(ext_info.c_str(), ext_info.size());
-        kernel_def->set_kernel_ext_info_size(ext_info.size());
-      }
-    }
-  }
+  SetCustAicpuTaskArgs(ge_model);
 
   // Set CUST_AICPU kernel binary on op_desc extended attributes
   for (const auto &node : compute_graph->GetDirectNode()) {
@@ -6726,6 +6730,36 @@ GeRootModelPtr CreateGeRootModelWithCustAicpuOp() {
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
 
   return ge_root_model;
+}
+
+void CheckCustAicpuLoadAndRunSource(const std::string &load_and_run) {
+  // std::cout << "=== load_and_run content ===" << std::endl << load_and_run << std::endl << "=== end ===" <<
+  // std::endl;
+  EXPECT_NE(load_and_run.find("DispatchKernel"), std::string::npos);
+  EXPECT_NE(load_and_run.find("ResolveOpAddr"), std::string::npos);
+  EXPECT_NE(load_and_run.find("AssembleAicpuExtInfo"), std::string::npos);
+  EXPECT_NE(load_and_run.find("AssembleAicpuArgs"), std::string::npos);
+  EXPECT_NE(load_and_run.find("LaunchKernelCfgHolder"), std::string::npos);
+  EXPECT_NE(load_and_run.find("AicpuKernelTaskDistribute"), std::string::npos);
+  EXPECT_NE(load_and_run.find("AicpuKernelTaskDistribute: Start to execute launch callback."), std::string::npos);
+  EXPECT_NE(load_and_run.find("AicpuKernelTaskDistribute: Start to execute aclrtLaunchKernelV2 directly."),
+            std::string::npos);
+  EXPECT_EQ(load_and_run.find("OM2_CHK_NOTNULL(launch_info->launch_params)"), std::string::npos);
+  EXPECT_EQ(load_and_run.find("launch_info->launch_type != ACL_RT_LAUNCH_KERNEL_V2"), std::string::npos);
+  EXPECT_EQ(load_and_run.find("GetIsDataDump("), std::string::npos);
+  const auto aicpu_dispatch_begin = load_and_run.find("aclError DispatchKernelAicpu");
+  ASSERT_NE(aicpu_dispatch_begin, std::string::npos);
+  const auto aicpu_dispatch_end = load_and_run.find("aclError DispatchKernel(", aicpu_dispatch_begin);
+  ASSERT_NE(aicpu_dispatch_end, std::string::npos);
+  const auto aicpu_dispatch = load_and_run.substr(aicpu_dispatch_begin, aicpu_dispatch_end - aicpu_dispatch_begin);
+  EXPECT_NE(aicpu_dispatch.find("GertModelLaunchKernelV2Params aicpu_launch_kernel_v2_params = {};"),
+            std::string::npos);
+  EXPECT_NE(aicpu_dispatch.find(
+                "aicpu_launch_kernel_v2_params.func_handle = ctx.func_handles[op->dispatch_info.aicpu.func_idx];"),
+            std::string::npos);
+  EXPECT_NE(aicpu_dispatch.find("aicpu_launch_params.launch_kernel_v2_params = aicpu_launch_kernel_v2_params;"),
+            std::string::npos);
+  EXPECT_NE(aicpu_dispatch.find("aicpu_launch_info.launch_type = ACL_RT_LAUNCH_KERNEL_V2;"), std::string::npos);
 }
 
 TEST_F(ProgramGeneratorUt, GenerateKernelRegistryForCustAicpu_Ok) {
@@ -6769,37 +6803,11 @@ TEST_F(ProgramGeneratorUt, GenerateKernelRegistryForCustAicpu_Ok) {
   const std::string cust_aicpu_file_name = std::to_string(cust_aicpu_hash_id) + "_CustAicpuKernel.o";
   const std::string expected_reg_call =
       "OM2_CHK_STATUS(RegisterCustAicpuKernel(bin_ids_[0], bin_handles_[0], func_handles_[0], {\"" + cust_aicpu_bin_id +
-      "\", \"" + cust_aicpu_file_name + "\", \"Add\", \"name\"}, bin_info_map_, callbacks_));";
+      "\", \"" + cust_aicpu_file_name + "\", \"Add\", \"RunCpuKernel\"}, bin_info_map_, callbacks_));";
   EXPECT_NE(kernel_reg.find(expected_reg_call), std::string::npos);
 
   const auto &load_and_run = outputs[GeneratedFileIndex::kLoadingAndRunningFile];
-  // std::cout << "=== load_and_run content ===" << std::endl << load_and_run << std::endl << "=== end ===" <<
-  // std::endl;
-  EXPECT_NE(load_and_run.find("DispatchKernel"), std::string::npos);
-  EXPECT_NE(load_and_run.find("ResolveOpAddr"), std::string::npos);
-  EXPECT_NE(load_and_run.find("AssembleAicpuExtInfo"), std::string::npos);
-  EXPECT_NE(load_and_run.find("AssembleAicpuArgs"), std::string::npos);
-  EXPECT_NE(load_and_run.find("LaunchKernelCfgHolder"), std::string::npos);
-  EXPECT_NE(load_and_run.find("AicpuKernelTaskDistribute"), std::string::npos);
-  EXPECT_NE(load_and_run.find("AicpuKernelTaskDistribute: Start to execute launch callback."), std::string::npos);
-  EXPECT_NE(load_and_run.find("AicpuKernelTaskDistribute: Start to execute aclrtLaunchKernelV2 directly."),
-            std::string::npos);
-  EXPECT_EQ(load_and_run.find("OM2_CHK_NOTNULL(launch_info->launch_params)"), std::string::npos);
-  EXPECT_EQ(load_and_run.find("launch_info->launch_type != ACL_RT_LAUNCH_KERNEL_V2"), std::string::npos);
-  EXPECT_EQ(load_and_run.find("GetIsDataDump("), std::string::npos);
-  const auto aicpu_dispatch_begin = load_and_run.find("aclError DispatchKernelAicpu");
-  ASSERT_NE(aicpu_dispatch_begin, std::string::npos);
-  const auto aicpu_dispatch_end = load_and_run.find("aclError DispatchKernel(", aicpu_dispatch_begin);
-  ASSERT_NE(aicpu_dispatch_end, std::string::npos);
-  const auto aicpu_dispatch = load_and_run.substr(aicpu_dispatch_begin, aicpu_dispatch_end - aicpu_dispatch_begin);
-  EXPECT_NE(aicpu_dispatch.find("GertModelLaunchKernelV2Params aicpu_launch_kernel_v2_params = {};"),
-            std::string::npos);
-  EXPECT_NE(aicpu_dispatch.find(
-                "aicpu_launch_kernel_v2_params.func_handle = ctx.func_handles[op->dispatch_info.aicpu.func_idx];"),
-            std::string::npos);
-  EXPECT_NE(aicpu_dispatch.find("aicpu_launch_params.launch_kernel_v2_params = aicpu_launch_kernel_v2_params;"),
-            std::string::npos);
-  EXPECT_NE(aicpu_dispatch.find("aicpu_launch_info.launch_type = ACL_RT_LAUNCH_KERNEL_V2;"), std::string::npos);
+  ASSERT_NO_FATAL_FAILURE(CheckCustAicpuLoadAndRunSource(load_and_run));
 }
 
 TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSourceForKernelExTask_Ok) {

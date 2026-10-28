@@ -1387,13 +1387,13 @@ TEST_F(Om2CodegenModelBuilderUt, BuildKernelRegistry_Aicpu_Ok) {
   ASSERT_EQ(doc.kernel_registry.binaries.size(), 1U);
   EXPECT_EQ(doc.runtime.kernel_bin_num, 1U);
   ASSERT_EQ(doc.kernel_registry.func_handle_indices.size(), 1U);
-  EXPECT_EQ(doc.kernel_registry.func_handle_indices.at("Addname"), 0U);
+  EXPECT_EQ(doc.kernel_registry.func_handle_indices.at("AddRunCpuKernel"), 0U);
 
   const auto &binary0 = doc.kernel_registry.binaries[0];
   EXPECT_EQ(binary0.kind, KernelBinaryKind::kAicpu);
-  EXPECT_EQ(binary0.kernel_name, "name");
+  EXPECT_EQ(binary0.kernel_name, "RunCpuKernel");
   EXPECT_EQ(binary0.op_type, "Add");
-  EXPECT_EQ(binary0.so_name, "");
+  EXPECT_EQ(binary0.so_name, "libcust_aicpu_kernels.so");
   EXPECT_EQ(binary0.op_kernel_lib, "AICPUKernel");
   EXPECT_EQ(binary0.func_handle_index, 0U);
 }

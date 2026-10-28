@@ -59,6 +59,7 @@
 #include "ge_runtime_stub/include/faker/ge_model_builder.h"
 #include "ge_runtime_stub/include/faker/aicore_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/aicpu_taskdef_faker.h"
+#include "framework/common/taskdown_common.h"
 #include "ge_runtime_stub/include/faker/custom_taskdef_faker.h"
 
 #include "graph/custom_op_factory.h"
@@ -685,7 +686,7 @@ GeRootModelPtr CreateGeRootModelWithAicpuOp() {
 }
 
 GeRootModelPtr CreateGeRootModelWithCustAicpuOp() {
-  gert::AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  gert::AiCpuCCTaskDefFaker aicpu_task_def_faker(static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU));
   auto ge_root_model = BuildAicpuRootModel(aicpu_task_def_faker);
   auto &compute_graph = ge_root_model->GetRootGraph();
   if (SetDefaultStaticOffsets(compute_graph, false) != SUCCESS) {

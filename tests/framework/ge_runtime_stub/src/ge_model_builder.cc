@@ -19,6 +19,7 @@
 #include "common/host_resource_center/host_resource_center.h"
 #include "common/env_path.h"
 #include "common/ge_common/scope_guard.h"
+#include "framework/common/taskdown_common.h"
 
 namespace gert {
 namespace {
@@ -338,7 +339,10 @@ GeModelBuilder &GeModelBuilder::AddDefaultTasks() {
       faker = std::make_shared<AiCoreTaskDefFaker>();
       FakeTbeBin({node->GetType().c_str()});
     } else if (kernel_lib == ge::kEngineNameAiCpu) {
-      faker = std::make_shared<AiCpuCCTaskDefFaker>();
+      const bool is_custom =
+          node->GetOpDesc()->TryGetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL, ge::OpKernelBinPtr()) != nullptr;
+      const auto kernel_type = is_custom ? ge::ccKernelType::CUST_AI_CPU : ge::ccKernelType::AI_CPU;
+      faker = std::make_shared<AiCpuCCTaskDefFaker>(static_cast<uint32_t>(kernel_type));
     } else if (kernel_lib == ge::kEngineNameAiCpuTf) {
       faker = std::make_shared<AiCpuTfTaskDefFaker>();
     } else {

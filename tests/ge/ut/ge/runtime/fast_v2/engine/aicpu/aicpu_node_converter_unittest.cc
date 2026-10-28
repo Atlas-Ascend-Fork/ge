@@ -8,8 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "engine/aicpu/converter/aicpu_node_converter.h"
+#include "engine/aicpu/converter/aicpu_callback.h"
 
 #include <gtest/gtest.h>
+#include <map>
 
 #include "ge_graph_dsl/graph_dsl.h"
 #include "engine/gelocal/inputs_converter.h"
@@ -33,6 +35,7 @@
 #include "graph/utils/graph_dump_utils.h"
 #include "aicpu/kernel/aicpu_bin_handler.h"
 #include "aicpu/kernel/aicpu_resource_manager.h"
+#include "aicpu/graph_builder/bg_aicpu_arg.h"
 
 using namespace ge;
 namespace gert {
@@ -150,8 +153,121 @@ void TestAicpuConvert(std::string node_type, LowerResult &add_ret) {
   ASSERT_EQ(add_ret.order_holders.size(), 2);
 }
 
+void CheckCustAicpuLaunchFunctions(ge::ExecuteGraph *execute_graph) {
+  const auto launches = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(execute_graph, "AicpuLaunchCCKernel");
+  ASSERT_EQ(launches.size(), 2U);
+  std::map<std::string, std::string> register_functions;
+  for (const auto launch : launches) {
+    ASSERT_NE(launch, nullptr);
+    ASSERT_EQ(launch->GetDataInNum(), 8U);
+    const auto op_type_edge = launch->GetInDataEdgeByIndex(7U);
+    const auto function_edge = launch->GetInDataEdgeByIndex(6U);
+    ASSERT_NE(op_type_edge, nullptr);
+    ASSERT_NE(function_edge, nullptr);
+    ASSERT_NE(op_type_edge->src, nullptr);
+    ASSERT_NE(function_edge->src, nullptr);
+    EXPECT_EQ(op_type_edge->src->GetType(), "Const");
+    EXPECT_EQ(function_edge->src->GetType(), "Const");
+    ge::Buffer op_type;
+    ge::Buffer function_name;
+    ASSERT_TRUE(ge::AttrUtils::GetZeroCopyBytes(op_type_edge->src->GetOpDescBarePtr(), "value", op_type));
+    ASSERT_TRUE(ge::AttrUtils::GetZeroCopyBytes(function_edge->src->GetOpDescBarePtr(), "value", function_name));
+    register_functions.emplace(reinterpret_cast<const char *>(op_type.GetData()),
+                               reinterpret_cast<const char *>(function_name.GetData()));
+  }
+  const std::map<std::string, std::string> expected_functions = {{"Add", "RunCpuKernel"},
+                                                                 {"MemCopy", "RunCpuKernelMemCpy"}};
+  EXPECT_EQ(register_functions, expected_functions);
+}
+
+void CheckCustAicpuResourceGraphs(ge::ExecuteGraph *execute_graph) {
+  ASSERT_NE(execute_graph, nullptr);
+  auto root_graph = execute_graph->GetParentGraphBarePtr();
+  ASSERT_NE(root_graph, nullptr);
+  auto init_node = ge::ExecuteGraphUtils::FindFirstNodeMatchType(root_graph, "Init");
+  auto deinit_node = ge::ExecuteGraphUtils::FindFirstNodeMatchType(root_graph, "DeInit");
+  ASSERT_NE(init_node, nullptr);
+  ASSERT_NE(deinit_node, nullptr);
+  auto init_graph = ge::FastNodeUtils::GetSubgraphFromNode(init_node, 0U);
+  auto deinit_graph = ge::FastNodeUtils::GetSubgraphFromNode(deinit_node, 0U);
+  ASSERT_NE(init_graph, nullptr);
+  ASSERT_NE(deinit_graph, nullptr);
+  const auto build_bin_handles = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(init_graph, "BuildCCArgsBinHandle");
+  ASSERT_EQ(build_bin_handles.size(), 2U);
+  for (const auto build_bin_handle : build_bin_handles) {
+    ASSERT_NE(build_bin_handle, nullptr);
+    EXPECT_EQ(build_bin_handle->GetDataInNum(), 4U);
+    EXPECT_EQ(build_bin_handle->GetOpDescBarePtr()->GetOutputsSize(), 2U);
+  }
+  ASSERT_NO_FATAL_FAILURE(CheckCustAicpuLaunchFunctions(execute_graph));
+  EXPECT_EQ(ge::ExecuteGraphUtils::FindFirstNodeMatchType(init_graph, "LaunchAicpuCustKernel"), nullptr);
+  const auto release_bins =
+      ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(deinit_graph, "ReleaseCustAicpuBinHandle");
+  ASSERT_EQ(release_bins.size(), 2U);
+  for (const auto release_bin : release_bins) {
+    ASSERT_NE(release_bin, nullptr);
+    EXPECT_EQ(release_bin->GetDataInNum(), 1U);
+    const auto release_inputs = release_bin->GetInDataNodes();
+    ASSERT_EQ(release_inputs.size(), 1U);
+    EXPECT_EQ(release_inputs[0]->GetType(), "InnerData");
+  }
+  EXPECT_EQ(ge::ExecuteGraphUtils::FindFirstNodeMatchType(deinit_graph, "ClearAicpuCustKernel"), nullptr);
+}
+
 graphStatus StubHostKernel(KernelContext *context) {
   return GRAPH_SUCCESS;
+}
+
+void CheckCustomBinaryOwners(ge::ExecuteGraph *init_graph, const std::map<std::string, std::string> &expected_owners) {
+  const auto handles = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(init_graph, "BuildCCArgsBinHandle");
+  ASSERT_EQ(handles.size(), expected_owners.size());
+  std::map<std::string, std::string> actual_owners;
+  for (const auto handle : handles) {
+    EXPECT_EQ(handle->GetDataInNum(), 4U);
+    EXPECT_EQ(handle->GetOpDescBarePtr()->GetOutputsSize(), 2U);
+    const auto owner_edge = handle->GetInDataEdgeByIndex(0U);
+    const auto so_edge = handle->GetInDataEdgeByIndex(3U);
+    ASSERT_NE(owner_edge, nullptr);
+    ASSERT_NE(so_edge, nullptr);
+    ge::Buffer owner_value;
+    ge::Buffer so_value;
+    ASSERT_TRUE(ge::AttrUtils::GetZeroCopyBytes(owner_edge->src->GetOpDescBarePtr(), "value", owner_value));
+    ASSERT_TRUE(ge::AttrUtils::GetZeroCopyBytes(so_edge->src->GetOpDescBarePtr(), "value", so_value));
+    ASSERT_EQ(owner_value.GetSize(), sizeof(ge::OpDesc));
+    const auto owner = reinterpret_cast<const ge::OpDesc *>(owner_value.GetData());
+    actual_owners.emplace(reinterpret_cast<const char *>(so_value.GetData()), owner->GetName());
+  }
+  EXPECT_EQ(actual_owners, expected_owners);
+}
+
+void LowerCustomFourthWithMemcpySo(const ge::ComputeGraphPtr &graph, bool matching_memcpy_so, LowerResult &result) {
+  const auto node = graph->FindNode("add1");
+  const auto op_desc = node->GetOpDesc();
+  op_desc->SetOpKernelLibName(ge::kEngineNameAiCpu.c_str());
+  op_desc->SetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL,
+                      std::make_shared<ge::OpKernelBin>("add1", std::vector<char>(1U, 'a')));
+  ASSERT_TRUE(ge::AttrUtils::SetStr(op_desc, "kernelSo", "libnode.so"));
+  ASSERT_TRUE(ge::AttrUtils::SetInt(op_desc, ge::ATTR_NAME_UNKNOWN_SHAPE_TYPE, ge::DEPEND_COMPUTE));
+  ASSERT_TRUE(ge::AttrUtils::SetBool(op_desc, ge::ATTR_NAME_FORCE_UNKNOWN_SHAPE, true));
+  AiCpuCCTaskDefFaker task(static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU));
+  auto root_model = GeModelBuilder(graph).BuildGeRootModel();
+  auto global_data = GlobalDataFaker(root_model).AddTaskDef("Add", task.SetNeedMemcpy(true)).Build();
+  const auto compiled = global_data.FindCompiledResult(node);
+  ASSERT_NE(compiled, nullptr);
+  auto tasks = *compiled;
+  ASSERT_EQ(tasks.task_defs.size(), 2U);
+  if (!matching_memcpy_so) {
+    tasks.task_defs.back().mutable_kernel()->set_so_name("libmemcpy.so");
+  }
+  global_data.AddCompiledResult(node, std::move(tasks));
+  bg::LowerConstDataNode(global_data);
+  LowerInput data_input = {{}, {}, &global_data};
+  const auto data1 = LoweringDataNode(graph->FindNode("data1"), data_input);
+  const auto data2 = LoweringDataNode(graph->FindNode("data2"), data_input);
+  ASSERT_TRUE(data1.result.IsSuccess());
+  ASSERT_TRUE(data2.result.IsSuccess());
+  result = LoweringAiCpuNode(
+      node, {{data1.out_shapes[0], data2.out_shapes[0]}, {data1.out_addrs[0], data2.out_addrs[0]}, &global_data});
 }
 }  // namespace
 
@@ -251,6 +367,8 @@ TEST_F(AicpuNodeConverterUT, TestAicpCCInitNode) {
   ASSERT_NE(rts_args, nullptr);
   ASSERT_NE(build_cc_args, nullptr);
   ASSERT_NE(build_ext, nullptr);
+  EXPECT_EQ(rts_args->GetDataInNum(), 4U);
+  EXPECT_EQ(rts_args->GetOpDescBarePtr()->GetOutputsSize(), 2U);
 }
 
 TEST_F(AicpuNodeConverterUT, ConvertAicpuCCNodeWithMiddleOptionalInputInsertExpandNode) {
@@ -309,14 +427,13 @@ TEST_F(AicpuNodeConverterUT, ConvertAicpuCCNodeWithMiddleOptionalInputInsertExpa
 }
 
 TEST_F(AicpuNodeConverterUT, ConvertAicpuCCNodeWithWorkSpaceInfo) {
-  const std::string so_name = "libcust_add.so";
+  const std::string so_name = "libcust_aicpu_kernels.so";
   vector<char> buffer(1, 'a');
   ge::OpKernelBinPtr bin = std::make_shared<ge::OpKernelBin>("op", std::move(buffer));
-  rtBinHandle handle = nullptr;
-  CustBinHandlerManager::Instance().LoadAndGetBinHandle(so_name, bin, handle);
 
   auto graph = ShareGraph::BuildSingleNodeGraph();
   auto add_op_desc = graph->FindNode("add1")->GetOpDesc();
+  add_op_desc->SetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL, bin);
   AttrUtils::SetInt(add_op_desc, ge::ATTR_NAME_UNKNOWN_SHAPE_TYPE, 4);
   add_op_desc->SetOpKernelLibName(ge::kEngineNameAiCpu.c_str());
   ge::AttrUtils::SetInt(add_op_desc, "workspaceSize", 1024);
@@ -324,8 +441,8 @@ TEST_F(AicpuNodeConverterUT, ConvertAicpuCCNodeWithWorkSpaceInfo) {
   mem_type.push_back(ge::AicpuWorkSpaceType::CUST_LOG);
   ge::AttrUtils::SetListInt(add_op_desc, ge::TVM_ATTR_NAME_WORKSPACE_TYPE, mem_type);
   ge::AttrUtils::SetBool(add_op_desc, "_cust_aicpu_flag", true);
-  ge::AttrUtils::SetStr(add_op_desc, "kernelSo", "libcust_add.so");
-  AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  ge::AttrUtils::SetStr(add_op_desc, "kernelSo", so_name);
+  AiCpuCCTaskDefFaker aicpu_task_def_faker(static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU));
   auto root_model = GeModelBuilder(graph).BuildGeRootModel();
   auto global_data = GlobalDataFaker(root_model).AddTaskDef("Add", aicpu_task_def_faker.SetNeedMemcpy(true)).Build();
   bg::LowerConstDataNode(global_data);
@@ -351,7 +468,83 @@ TEST_F(AicpuNodeConverterUT, ConvertAicpuCCNodeWithWorkSpaceInfo) {
       bg::ValueHolder::PopGraphFrame(ConvertDevMemValueHoldersToValueHolders(add_ret.out_addrs), add_ret.order_holders)
           ->GetExecuteGraph();
   ASSERT_NE(execute_graph, nullptr);
+  CheckCustAicpuResourceGraphs(execute_graph.get());
   DumpGraph(execute_graph.get(), "GeneralCCAiCpuExe");
+}
+
+TEST_F(AicpuNodeConverterUT, CustomBinaryMissingBinaryDefersValidationToInit) {
+  auto graph = ShareGraph::BuildSingleNodeGraph();
+  domi::KernelDef kernel_def;
+  kernel_def.mutable_context()->set_kernel_type(static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU));
+  kernel_def.set_kernel_name("RunCpuKernel");
+  kernel_def.set_so_name("libshared.so");
+  const auto handles = bg::BuildCCArgsBinHandle(graph->FindNode("add1"), kernel_def);
+  ASSERT_NE(handles.bin_handle, nullptr);
+  // Lowering builds the registration graph; Init validates the binary on the original OpDesc.
+  CheckCustomBinaryOwners(init_frame_->GetExecuteGraph().get(), {{"libshared.so", "add1"}});
+}
+
+TEST_F(AicpuNodeConverterUT, FourthTypeMemcpyMissingCompileResultPropagatesFailureForTfAndCc) {
+  auto graph = ShareGraph::BuildSingleNodeGraph();
+  const auto node = graph->FindNode("add1");
+  ASSERT_TRUE(ge::AttrUtils::SetInt(node->GetOpDesc(), ge::ATTR_NAME_UNKNOWN_SHAPE_TYPE, ge::DEPEND_COMPUTE));
+  ASSERT_TRUE(ge::AttrUtils::SetBool(node->GetOpDesc(), ge::ATTR_NAME_FORCE_UNKNOWN_SHAPE, true));
+  LoweringGlobalData global_data;
+  NodeOutput outputs;
+  for (const auto &engine : {ge::kEngineNameAiCpuTf, ge::kEngineNameAiCpu}) {
+    node->GetOpDesc()->SetOpKernelLibName(engine.c_str());
+    auto ordered = bg::ValueHolder::CreateVoid<bg::ValueHolder>("TestMainLaunch", {});
+    EXPECT_NE(AicpuCallback(node, nullptr, ordered, global_data, outputs), ge::GRAPH_SUCCESS);
+  }
+}
+
+TEST_F(AicpuNodeConverterUT, CustomMainAndMemcpyUseOriginalNodeDespiteMatchingPeerSo) {
+  auto graph = ShareGraph::BuildSingleNodeGraph();
+  auto peer = graph->FindNode("data1")->GetOpDesc();
+  peer->SetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL,
+                   std::make_shared<ge::OpKernelBin>("data1", std::vector<char>(1U, 'b')));
+  ASSERT_TRUE(ge::AttrUtils::SetStr(peer, "kernelSo", "libmemcpy.so"));
+  LowerResult result;
+  LowerCustomFourthWithMemcpySo(graph, false, result);
+  ASSERT_TRUE(result.result.IsSuccess());
+  const auto main_graph = bg::ValueHolder::GetCurrentFrame()->GetExecuteGraph().get();
+  EXPECT_EQ(ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(main_graph, "AicpuLaunchCCKernel").size(), 2U);
+  CheckCustomBinaryOwners(init_frame_->GetExecuteGraph().get(),
+                          {{"libcust_aicpu_kernels.so", "add1"}, {"libmemcpy.so", "add1"}});
+}
+
+TEST_F(AicpuNodeConverterUT, CustomMemcpyMatchingBinaryLowersBothTasksSuccessfully) {
+  auto graph = ShareGraph::BuildSingleNodeGraph();
+  LowerResult result;
+  LowerCustomFourthWithMemcpySo(graph, true, result);
+  ASSERT_TRUE(result.result.IsSuccess());
+  const auto main_graph = bg::ValueHolder::GetCurrentFrame()->GetExecuteGraph().get();
+  EXPECT_EQ(ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(main_graph, "AicpuLaunchCCKernel").size(), 2U);
+  const auto syncs = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(main_graph, "SyncStream");
+  ASSERT_EQ(syncs.size(), 2U);
+  for (const auto sync : syncs) {
+    EXPECT_EQ(FastNodeTopoChecker(sync).InChecker().CtrlFromByType("AicpuLaunchCCKernel").Result(), "success");
+  }
+  const auto prepare = ge::ExecuteGraphUtils::FindFirstNodeMatchType(main_graph, "PrepareCopyInputs");
+  ASSERT_NE(prepare, nullptr);
+  EXPECT_EQ(FastNodeTopoChecker(prepare).OutChecker().CtrlToByType("AicpuLaunchCCKernel").Result(), "success");
+  const auto builds =
+      ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(init_frame_->GetExecuteGraph().get(), "BuildCCArgsBinHandle");
+  EXPECT_EQ(builds.size(), 2U);
+}
+
+TEST_F(AicpuNodeConverterUT, CustomBinaryWithoutKernelSoPreservesDirectBinding) {
+  auto graph = ShareGraph::BuildSingleNodeGraph();
+  auto node = graph->FindNode("add1");
+  node->GetOpDesc()->SetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL,
+                                std::make_shared<ge::OpKernelBin>("add1", std::vector<char>(1U, 'a')));
+  domi::KernelDef kernel_def;
+  kernel_def.mutable_context()->set_kernel_type(static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU));
+  kernel_def.set_kernel_name("RunCpuKernel");
+  kernel_def.set_so_name("liba.so");
+  const auto handles = bg::BuildCCArgsBinHandle(node, kernel_def);
+  ASSERT_NE(handles.bin_handle, nullptr);
+  CheckCustomBinaryOwners(init_frame_->GetExecuteGraph().get(), {{"liba.so", "add1"}});
 }
 
 TEST_F(AicpuNodeConverterUT, ConvertHostcpuCCNodeWithSmallShape) {

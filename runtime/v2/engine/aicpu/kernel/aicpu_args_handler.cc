@@ -39,7 +39,7 @@ namespace gert {
 namespace {
 constexpr size_t kMaxTotalHostLen = 128U;
 
-enum class CommonBinArgsInfo { kOpDesc, kNodeType };
+enum class CommonBinArgsInfo { kOpDesc, kNodeType, kKernelType, kSoName };
 
 enum class CommonArgsInfo {
   kIoNum,
@@ -64,9 +64,6 @@ enum class CCArgsInfo {
 enum class TfArgsInfo { kTaskData = static_cast<int32_t>(CommonArgsInfo::kNum), kTaskSize, kSessionId, kStepId };
 
 const std::string kAttrJsonPath = "ops_json_path";
-const std::string kAttrCustAicpuFlag = "_cust_aicpu_flag";
-const std::string kAttrFuncName = "funcName";
-const std::string kAttrSoName = "kernelSo";
 }  // namespace
 
 AicpuArgsHandler::~AicpuArgsHandler() {
@@ -363,13 +360,21 @@ REGISTER_KERNEL(BuildTfArgs).RunFunc(BuildTfArgs).OutputsCreator(CreateOutputsFo
 ge::graphStatus BuildCCArgsBinHandle(KernelContext *context) {
   auto op_desc = context->GetInputValue<ge::OpDesc *>(static_cast<size_t>(CommonBinArgsInfo::kOpDesc));
   auto node_type = context->GetInputValue<char_t *>(static_cast<size_t>(CommonBinArgsInfo::kNodeType));
+  auto kernel_type = context->GetInputValue<ccKernelType>(static_cast<size_t>(CommonBinArgsInfo::kKernelType));
+  auto so_name = context->GetInputValue<char_t *>(static_cast<size_t>(CommonBinArgsInfo::kSoName));
   auto bin_handle = context->GetOutputPointer<rtBinHandle>(0U);
   GE_ASSERT_NOTNULL(op_desc);
   GE_ASSERT_NOTNULL(node_type);
+  GE_ASSERT_NOTNULL(so_name);
   GE_ASSERT_NOTNULL(bin_handle);
-  bool custom_flag = false;
-  (void)ge::AttrUtils::GetBool(op_desc, kAttrCustAicpuFlag, custom_flag);
-  if (!custom_flag) {
+  *bin_handle = nullptr;
+  if (kernel_type == ccKernelType::CUST_AI_CPU) {
+    auto lease = context->GetOutputPointer<CustAicpuBinLease>(1U);
+    GE_ASSERT_NOTNULL(lease);
+    const auto kernel_bin = op_desc->TryGetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL, ge::OpKernelBinPtr());
+    GE_ASSERT_NOTNULL(kernel_bin);
+    GE_ASSERT_SUCCESS(lease->Acquire(so_name, kernel_bin, *bin_handle));
+  } else {
     std::string json_path;
     (void)ge::AttrUtils::GetStr(op_desc, kAttrJsonPath, json_path);
     if (json_path == "") {
@@ -384,7 +389,22 @@ ge::graphStatus BuildCCArgsBinHandle(KernelContext *context) {
   }
   return ge::GRAPH_SUCCESS;
 }
-REGISTER_KERNEL(BuildCCArgsBinHandle).RunFunc(BuildCCArgsBinHandle);
+ge::graphStatus CreateCCArgsBinLease(const ge::FastNode *, KernelContext *context) {
+  auto output = context->GetOutput(1U);
+  GE_ASSERT_NOTNULL(output);
+  auto lease = ge::MakeUnique<CustAicpuBinLease>();
+  GE_ASSERT_NOTNULL(lease);
+  output->SetWithDefaultDeleter<CustAicpuBinLease>(lease.release());
+  return ge::GRAPH_SUCCESS;
+}
+REGISTER_KERNEL(BuildCCArgsBinHandle).RunFunc(BuildCCArgsBinHandle).OutputsCreator(CreateCCArgsBinLease);
+
+ge::graphStatus ReleaseCustAicpuBinHandle(KernelContext *context) {
+  auto lease = context->MutableInputPointer<CustAicpuBinLease>(0U);
+  GE_ASSERT_NOTNULL(lease);
+  return lease->Reset();
+}
+REGISTER_KERNEL(ReleaseCustAicpuBinHandle).RunFunc(ReleaseCustAicpuBinHandle);
 
 ge::graphStatus BuildTfArgsBinHandle(KernelContext *context) {
   auto op_desc = context->GetInputValue<ge::OpDesc *>(static_cast<size_t>(CommonBinArgsInfo::kOpDesc));
