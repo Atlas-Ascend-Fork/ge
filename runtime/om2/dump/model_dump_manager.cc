@@ -138,7 +138,11 @@ Status ModelDumpManager::PreprocessOm2TaskInfo(const GertModelTaskDesc &task_inf
   // dump custom op input
   if (need_dump_input && need_save_to_data_dump && type == ModelTaskType::MODEL_TASK_CUSTOM_KERNEL) {
     auto &dump_op = dump_op_impl_->GetInputDumpOp(task_info.op_name);
-    GE_CHK_STATUS_RET(data_dump_impl_->BuildOpMappingBasicInfo(model_info_, dump_op->GetOpMappingInfo()));
+    if (dump_op->IsProtoVer()) {
+      GE_CHK_STATUS_RET(data_dump_impl_->BuildOpMappingBasicInfo(model_info_, dump_op->GetOpMappingInfo()));
+    } else {
+      GE_CHK_STATUS_RET(data_dump_impl_->BuildDumpTransportBasicInfo(model_info_, dump_op->GetDumpTransportInfo()));
+    }
     GE_CHK_STATUS_RET(dump_op->BuildTaskInputs(task_info));
     GE_CHK_STATUS_RET(dump_op->ExecutorDumpOp(task_info.op_name, task_info.stream));
 
@@ -174,7 +178,11 @@ Status ModelDumpManager::PostprocessOm2TaskInfo(const GertModelTaskDesc &task_in
   // dump custom op output
   if (need_dump_output && need_save_to_data_dump && type == ModelTaskType::MODEL_TASK_CUSTOM_KERNEL) {
     auto &dump_op = dump_op_impl_->GetOutputDumpOp(task_info.op_name);
-    GE_CHK_STATUS_RET(data_dump_impl_->BuildOpMappingBasicInfo(model_info_, dump_op->GetOpMappingInfo()));
+    if (dump_op->IsProtoVer()) {
+      GE_CHK_STATUS_RET(data_dump_impl_->BuildOpMappingBasicInfo(model_info_, dump_op->GetOpMappingInfo()));
+    } else {
+      GE_CHK_STATUS_RET(data_dump_impl_->BuildDumpTransportBasicInfo(model_info_, dump_op->GetDumpTransportInfo()));
+    }
     GE_CHK_STATUS_RET(dump_op->BuildTaskOutputs(task_info));
     GE_CHK_STATUS_RET(dump_op->ExecutorDumpOp(task_info.op_name, task_info.stream));
 
@@ -212,10 +220,13 @@ Status ModelDumpManager::DispatchDumpInfo() {
     return SUCCESS;
   }
 
-  // Data dump 或 Overflow dump：构建 OpMapping Proto 并下发到 AICPU
+  // Data dump 或 Overflow dump：按 OM2_DUMP_DATA_VERSION 构建 protobuf OpMapping 或 DumpTransport TLV 并下发到 AICPU
   // Overflow dump 虽然走 Adump 路径写入数据，但仍需下发 Opdebug 算子的信息给 AICPU
   if (DumpConfig::Instance().IsDataDumpEnabled() || DumpConfig::Instance().IsOverflowDumpEnabled()) {
-    return data_dump_impl_->BuildAndLoadOpMappingInfo(model_info_);
+    if (data_dump_impl_->IsProtoVer()) {
+      return data_dump_impl_->BuildAndLoadOpMappingInfo(model_info_);
+    }
+    return data_dump_impl_->BuildAndLoadDumpTransportInfo(model_info_);
   }
 
   return SUCCESS;

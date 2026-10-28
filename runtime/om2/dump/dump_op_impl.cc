@@ -9,12 +9,13 @@
  */
 
 #include "framework/runtime/dump/dump_op_impl.h"
+#include "framework/runtime/dump/dump_config.h"
 #include "framework/common/debug/ge_log.h"
 #include "common/plugin/datatype_util.h"
 #include "rt_external.h"
 #include "acl/acl_rt.h"
 #include "aicpu_task_struct.h"
-#include "proto/op_mapping.pb.h"
+#include <array>
 
 namespace ge {
 namespace dump {
@@ -32,6 +33,8 @@ aclError DumpAclrtMalloc(void **ptr, size_t size) {
 }
 }  // namespace
 
+DumpOp::DumpOp() : dump_data_version_(GetDumpDataVersionFromEnv()) {}
+
 DumpOp::~DumpOp() {
   if (proto_dev_mem_ != nullptr) {
     (void)aclrtFree(proto_dev_mem_);
@@ -43,22 +46,51 @@ DumpOp::~DumpOp() {
     (void)aclrtFree(proto_size_dev_mem_);
     proto_size_dev_mem_ = nullptr;
   }
+
+  if (payload_dev_mem_ != nullptr) {
+    (void)aclrtFree(payload_dev_mem_);
+    payload_dev_mem_ = nullptr;
+  }
+  payload_dev_mem_capacity_ = 0U;
+
+  if (payload_size_dev_mem_ != nullptr) {
+    (void)aclrtFree(payload_size_dev_mem_);
+    payload_size_dev_mem_ = nullptr;
+  }
 }
 
 Status DumpOp::ExecutorDumpOp(const std::string &op_name, aclrtStream stream) {
-  std::string proto_msg;
-  const size_t proto_size = op_mapping_info_.ByteSizeLong();
-  const bool ret = op_mapping_info_.SerializeToString(&proto_msg);
-  if ((!ret) || (proto_size == 0U)) {
-    GELOGE(ACL_ERROR_GE_INTERNAL_ERROR, "[Serialize][Protobuf]Failed, proto_size is %zu", proto_size);
-    REPORT_INNER_ERR_MSG("E19999", "[Serialize][Protobuf]Failed, proto_size is %zu", proto_size);
-    return ACL_ERROR_GE_INTERNAL_ERROR;
+  if (IsProtoVer()) {
+    std::string proto_msg;
+    const size_t proto_size = op_mapping_info_.ByteSizeLong();
+    const bool ret = op_mapping_info_.SerializeToString(&proto_msg);
+    if ((!ret) || (proto_size == 0U)) {
+      GELOGE(ACL_ERROR_GE_INTERNAL_ERROR, "[Serialize][Protobuf]Failed, proto_size is %zu", proto_size);
+      REPORT_INNER_ERR_MSG("E19999", "[Serialize][Protobuf]Failed, proto_size is %zu", proto_size);
+      return ACL_ERROR_GE_INTERNAL_ERROR;
+    }
+
+    const Status status = ProtoMallocAndMemcpy(proto_size, proto_msg);
+    if (status != SUCCESS) {
+      return status;
+    }
+  } else {
+    std::vector<uint8_t> payload;
+    const auto encode_status = dump_transport_info_.Serialize(payload);
+    if (encode_status != DumpTransStatus::kOk) {
+      GELOGE(ACL_ERROR_GE_INTERNAL_ERROR, "Serialize dump payload failed, op=%s, version=%u, status=%u.",
+             op_name.c_str(), dump_transport_info_.GetVersion(), static_cast<uint32_t>(encode_status));
+      return ACL_ERROR_GE_INTERNAL_ERROR;
+    }
+
+    const Status status = PayloadMallocAndMemcpy(payload);
+    if (status != SUCCESS) {
+      return status;
+    }
   }
 
-  const Status status = ProtoMallocAndMemcpy(proto_size, proto_msg);
-  if (status != SUCCESS) {
-    return status;
-  }
+  void *data_dev_mem = IsProtoVer() ? proto_dev_mem_ : payload_dev_mem_;
+  void *size_dev_mem = IsProtoVer() ? proto_size_dev_mem_ : payload_size_dev_mem_;
 
   constexpr uint32_t io_addr_num = 2U;
   constexpr uint32_t args_size =
@@ -70,10 +102,10 @@ Status DumpOp::ExecutorDumpOp(const std::string &op_name, aclrtStream stream) {
   param_head.length = args_size;
   param_head.ioAddrNum = io_addr_num;
   *(static_cast<uint64_t *>(static_cast<void *>(&args[args_pos]))) =
-      static_cast<uint64_t>(reinterpret_cast<uintptr_t>(proto_dev_mem_));
+      static_cast<uint64_t>(reinterpret_cast<uintptr_t>(data_dev_mem));
   args_pos += sizeof(uint64_t);
   *(reinterpret_cast<uint64_t *>(static_cast<void *>(&args[args_pos]))) =
-      static_cast<uint64_t>(reinterpret_cast<uintptr_t>(proto_size_dev_mem_));
+      static_cast<uint64_t>(reinterpret_cast<uintptr_t>(size_dev_mem));
   rtArgsEx_t args_for_launch = {};
   args_for_launch.args = &args[0U];
   args_for_launch.isNoNeedH2DCopy = 0U;
@@ -86,6 +118,44 @@ Status DumpOp::ExecutorDumpOp(const std::string &op_name, aclrtStream stream) {
     return RT_ERROR_TO_GE_STATUS(rt_ret);
   }
   GELOGI("Kernel launch dump op %s success", op_name.c_str());
+  return SUCCESS;
+}
+
+Status DumpOp::PayloadMallocAndMemcpy(const std::vector<uint8_t> &payload) {
+  const size_t payload_size = payload.size();
+  size_t payload_capacity = payload_size;
+
+  GE_FREE_RT_LOG(payload_dev_mem_);
+  payload_dev_mem_capacity_ = 0U;
+  aclError rt_ret = DumpAclrtMalloc(&payload_dev_mem_, payload_capacity);
+  if (rt_ret != ACL_SUCCESS) {
+    GELOGE(RT_ERROR_TO_GE_STATUS(rt_ret), "[Call][aclrtMalloc]Failed, ret: %d", rt_ret);
+    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMalloc failed, ret: %d", rt_ret);
+    return RT_ERROR_TO_GE_STATUS(rt_ret);
+  }
+  payload_dev_mem_capacity_ = payload_capacity;
+
+  rt_ret =
+      aclrtMemcpy(payload_dev_mem_, payload_dev_mem_capacity_, payload.data(), payload_size, ACL_MEMCPY_HOST_TO_DEVICE);
+  if (rt_ret != ACL_SUCCESS) {
+    GELOGE(RT_ERROR_TO_GE_STATUS(rt_ret), "[Call][aclrtMemcpy]Failed, ret: %d", rt_ret);
+    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMemcpy failed, ret: %d", rt_ret);
+    return RT_ERROR_TO_GE_STATUS(rt_ret);
+  }
+
+  GE_FREE_RT_LOG(payload_size_dev_mem_);
+  rt_ret = DumpAclrtMalloc(&payload_size_dev_mem_, sizeof(size_t));
+  if (rt_ret != ACL_SUCCESS) {
+    GELOGE(RT_ERROR_TO_GE_STATUS(rt_ret), "[Call][aclrtMalloc]Failed, ret: %d", rt_ret);
+    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMalloc failed, ret: %d", rt_ret);
+    return RT_ERROR_TO_GE_STATUS(rt_ret);
+  }
+  rt_ret = aclrtMemcpy(payload_size_dev_mem_, sizeof(size_t), &payload_size, sizeof(size_t), ACL_MEMCPY_HOST_TO_DEVICE);
+  if (rt_ret != ACL_SUCCESS) {
+    GELOGE(RT_ERROR_TO_GE_STATUS(rt_ret), "[Call][aclrtMemcpy]Failed, ret %d", rt_ret);
+    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMemcpy failed, ret %d", rt_ret);
+    return RT_ERROR_TO_GE_STATUS(rt_ret);
+  }
   return SUCCESS;
 }
 
@@ -127,7 +197,47 @@ Status DumpOp::ProtoMallocAndMemcpy(const size_t proto_size, const std::string &
 }
 
 Status DumpOp::BuildTaskInputs(const GertModelTaskDesc &task_desc) {
-  toolkit::aicpu::dump::Task *task = op_mapping_info_.add_task();
+  if (IsProtoVer()) {
+    toolkit::aicpu::dump::Task *task = op_mapping_info_.add_task();
+    GE_CHECK_NOTNULL(task);
+    aclError rt_ret = SetTaskBasicInfo(task_desc, task);
+    if (rt_ret != ACL_SUCCESS) {
+      GELOGE(RT_ERROR_TO_GE_STATUS(rt_ret), "[Call][SetTaskBasicInfo]Failed, ret: %d", rt_ret);
+      return RT_ERROR_TO_GE_STATUS(rt_ret);
+    }
+
+    if (task_desc.inputs == nullptr) {
+      return SUCCESS;
+    }
+
+    for (uint32_t i = 0U; i < task_desc.input_num; ++i) {
+      toolkit::aicpu::dump::Input *input_tensor = task->add_input();
+      const auto &entry = task_desc.inputs[i];
+      if (entry.tensor == nullptr) {
+        GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io tensor is null, index=%u.", i);
+        return PARAM_INVALID;
+      }
+      const auto &tensor = *entry.tensor;
+
+      // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
+      uint64_t device_address = reinterpret_cast<uint64_t>(tensor.GetAddr());
+      auto addr_type = toolkit::aicpu::dump::AddressType::TRADITIONAL_ADDR;
+
+      GELOGD("BuildTaskInputs: task_id=%u, input[%u], device_address=0x%lx, size=%lu", task_desc.task_id, i,
+             device_address, tensor.GetSize());
+      input_tensor->set_data_type(DataTypeUtil::GetIrDataType(tensor.GetDataType()));
+      input_tensor->set_format(tensor.GetStorageFormat());
+      input_tensor->set_address(device_address);
+      input_tensor->set_size(tensor.GetSize());
+      input_tensor->set_addr_type(addr_type);
+      for (uint32_t dim = 0U; dim < tensor.GetStorageShape().GetDimNum(); ++dim) {
+        input_tensor->mutable_shape()->add_dim(tensor.GetStorageShape().GetDim(dim));
+      }
+    }
+    return SUCCESS;
+  }
+
+  DumpTransTaskInfo *task = &dump_transport_info_.AddTask();
   GE_CHECK_NOTNULL(task);
   aclError rt_ret = SetTaskBasicInfo(task_desc, task);
   if (rt_ret != ACL_SUCCESS) {
@@ -140,7 +250,7 @@ Status DumpOp::BuildTaskInputs(const GertModelTaskDesc &task_desc) {
   }
 
   for (uint32_t i = 0U; i < task_desc.input_num; ++i) {
-    toolkit::aicpu::dump::Input *input_tensor = task->add_input();
+    DumpTransInputInfo *input_tensor = &task->AddInput();
     const auto &entry = task_desc.inputs[i];
     if (entry.tensor == nullptr) {
       GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io tensor is null, index=%u.", i);
@@ -150,25 +260,67 @@ Status DumpOp::BuildTaskInputs(const GertModelTaskDesc &task_desc) {
 
     // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
     uint64_t device_address = reinterpret_cast<uint64_t>(tensor.GetAddr());
-    auto addr_type = toolkit::aicpu::dump::AddressType::TRADITIONAL_ADDR;
+    auto addr_type = DumpTransAddressType::kTraditional;
 
     GELOGD("BuildTaskInputs: task_id=%u, input[%zu], device_address=0x%lx, size=%lu", task_desc.task_id, i,
            device_address, tensor.GetSize());
-    input_tensor->set_data_type(DataTypeUtil::GetIrDataType(tensor.GetDataType()));
-    input_tensor->set_format(tensor.GetStorageFormat());
-    input_tensor->set_address(device_address);
-    input_tensor->set_size(tensor.GetSize());
-    input_tensor->set_addr_type(addr_type);
-    for (auto i = 0U; i < tensor.GetStorageShape().GetDimNum(); ++i) {
-      input_tensor->mutable_shape()->add_dim(tensor.GetStorageShape().GetDim(i));
+    input_tensor->SetDataType(DataTypeUtil::GetIrDataType(tensor.GetDataType()));
+    input_tensor->SetFormat(tensor.GetStorageFormat());
+    input_tensor->SetAddress(device_address);
+    input_tensor->SetSize(tensor.GetSize());
+    input_tensor->SetAddrType(addr_type);
+    std::vector<uint64_t> shape;
+    for (size_t dim = 0U; dim < tensor.GetStorageShape().GetDimNum(); ++dim) {
+      shape.push_back(static_cast<uint64_t>(tensor.GetStorageShape().GetDim(dim)));
     }
+    input_tensor->SetShape(shape);
   }
 
   return SUCCESS;
 }
 
 Status DumpOp::BuildTaskOutputs(const GertModelTaskDesc &task_desc) {
-  toolkit::aicpu::dump::Task *task = op_mapping_info_.add_task();
+  if (IsProtoVer()) {
+    toolkit::aicpu::dump::Task *task = op_mapping_info_.add_task();
+    GE_CHECK_NOTNULL(task);
+    aclError rt_ret = SetTaskBasicInfo(task_desc, task);
+    if (rt_ret != ACL_SUCCESS) {
+      GELOGE(RT_ERROR_TO_GE_STATUS(rt_ret), "[Call][SetTaskBasicInfo]Failed, ret: %d", rt_ret);
+      return RT_ERROR_TO_GE_STATUS(rt_ret);
+    }
+
+    if (task_desc.outputs == nullptr) {
+      return SUCCESS;
+    }
+
+    for (uint32_t i = 0U; i < task_desc.output_num; ++i) {
+      toolkit::aicpu::dump::Output *output_tensor = task->add_output();
+      const auto &entry = task_desc.outputs[i];
+      if (entry.tensor == nullptr) {
+        GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io tensor is null, index=%u.", i);
+        return PARAM_INVALID;
+      }
+      const auto &tensor = *entry.tensor;
+
+      // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
+      uint64_t device_address = reinterpret_cast<uint64_t>(tensor.GetAddr());
+      auto addr_type = toolkit::aicpu::dump::AddressType::TRADITIONAL_ADDR;
+
+      GELOGD("BuildTaskOutputs: task_id=%u, output[%u], device_address=0x%lx, size=%lu", task_desc.task_id, i,
+             device_address, tensor.GetSize());
+      output_tensor->set_data_type(DataTypeUtil::GetIrDataType(tensor.GetDataType()));
+      output_tensor->set_format(tensor.GetStorageFormat());
+      output_tensor->set_address(device_address);
+      output_tensor->set_size(tensor.GetSize());
+      output_tensor->set_addr_type(addr_type);
+      for (uint32_t dim = 0U; dim < tensor.GetStorageShape().GetDimNum(); ++dim) {
+        output_tensor->mutable_shape()->add_dim(tensor.GetStorageShape().GetDim(dim));
+      }
+    }
+    return SUCCESS;
+  }
+
+  DumpTransTaskInfo *task = &dump_transport_info_.AddTask();
   GE_CHECK_NOTNULL(task);
   aclError rt_ret = SetTaskBasicInfo(task_desc, task);
   if (rt_ret != ACL_SUCCESS) {
@@ -181,7 +333,7 @@ Status DumpOp::BuildTaskOutputs(const GertModelTaskDesc &task_desc) {
   }
 
   for (uint32_t i = 0U; i < task_desc.output_num; ++i) {
-    toolkit::aicpu::dump::Output *output_tensor = task->add_output();
+    DumpTransOutputInfo *output_tensor = &task->AddOutput();
     const auto &entry = task_desc.outputs[i];
     if (entry.tensor == nullptr) {
       GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io tensor is null, index=%u.", i);
@@ -191,18 +343,20 @@ Status DumpOp::BuildTaskOutputs(const GertModelTaskDesc &task_desc) {
 
     // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
     uint64_t device_address = reinterpret_cast<uint64_t>(tensor.GetAddr());
-    auto addr_type = toolkit::aicpu::dump::AddressType::TRADITIONAL_ADDR;
+    auto addr_type = DumpTransAddressType::kTraditional;
 
     GELOGD("BuildTaskOutputs: task_id=%u, input[%zu], device_address=0x%lx, size=%lu", task_desc.task_id, i,
            device_address, tensor.GetSize());
-    output_tensor->set_data_type(DataTypeUtil::GetIrDataType(tensor.GetDataType()));
-    output_tensor->set_format(tensor.GetStorageFormat());
-    output_tensor->set_address(device_address);
-    output_tensor->set_size(tensor.GetSize());
-    output_tensor->set_addr_type(addr_type);
-    for (auto i = 0U; i < tensor.GetStorageShape().GetDimNum(); ++i) {
-      output_tensor->mutable_shape()->add_dim(tensor.GetStorageShape().GetDim(i));
+    output_tensor->SetDataType(DataTypeUtil::GetIrDataType(tensor.GetDataType()));
+    output_tensor->SetFormat(tensor.GetStorageFormat());
+    output_tensor->SetAddress(device_address);
+    output_tensor->SetSize(tensor.GetSize());
+    output_tensor->SetAddrType(addr_type);
+    std::vector<uint64_t> shape;
+    for (size_t dim = 0U; dim < tensor.GetStorageShape().GetDimNum(); ++dim) {
+      shape.push_back(static_cast<uint64_t>(tensor.GetStorageShape().GetDim(dim)));
     }
+    output_tensor->SetShape(shape);
   }
 
   return SUCCESS;
@@ -224,6 +378,21 @@ Status DumpOp::SetTaskBasicInfo(const GertModelTaskDesc &task_desc, toolkit::aic
     op->set_op_name(op_name);
     op->set_op_type(op_type);
   }
+  return SUCCESS;
+}
+
+Status DumpOp::SetTaskBasicInfo(const GertModelTaskDesc &task_desc, DumpTransTaskInfo *task) {
+  const char *op_name = (task_desc.op_name != nullptr) ? task_desc.op_name : "";
+  const char *op_type = (task_desc.op_type != nullptr) ? task_desc.op_type : "";
+  GELOGD("SetTaskBasicInfo: op_name=%s, task_id=%u, stream_id=%u", op_name, task_desc.task_id, task_desc.stream_id);
+  GE_CHECK_NOTNULL(task);
+  task->SetTaskId(static_cast<uint32_t>(task_desc.task_id));
+  task->SetStreamId(static_cast<uint32_t>(task_desc.stream_id));
+  task->SetContextId(static_cast<uint32_t>(task_desc.context_id));
+  task->SetThreadId(static_cast<uint32_t>(task_desc.thread_id));
+
+  task->SetOpName(op_name);
+  task->SetOpType(op_type);
   return SUCCESS;
 }
 }  // namespace dump
