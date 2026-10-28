@@ -11,7 +11,7 @@
 
 ## 函数功能
 
-给FlowNode映射输出，表示将pp的第pp\_output\_index个输出给到FlowNode的第node\_output\_index个输出，返回映射好的FlowNode节点。
+给FlowNode映射输出，表示将pp的第pp\_output\_index个输出给到FlowNode的第node\_output\_index个输出。
 
 可选调方法，不调用会默认按顺序去映射FlowNode和pp的输出。
 
