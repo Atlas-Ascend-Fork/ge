@@ -49,6 +49,7 @@ Python文件，而导出器和执行器依赖PyTorch、NumPy或ACL，不应作�
 | PyTorch | 导出ONNX模型（`torch.onnx.export`） | 2.7~2.8，两个版本均已实测 |
 | onnx | `torch.onnx.export`导出过程内部使用 | 1.21.0已实测 |
 | NumPy | 构造输入与结果比对 | 无特殊要求 |
+| pybind11 | fallback编译（无匹配原生产物时现场编译） | >=2.13.6,<3.0.0，仅在fallback时需要 |
 
 `acl`Python接口由CANN toolkit自带，无需单独安装。其余依赖安装命令：
 
@@ -56,10 +57,12 @@ Python文件，而导出器和执行器依赖PyTorch、NumPy或ACL，不应作�
 pip3 install torch numpy onnx
 ```
 
-已在如下环境完成端到端验证（导出、ATC编译、ACL执行、结果比对全部通过）：
+ONNX插件正式支持Python 3.9~3.14（cp39~cp314），其余支持版本已完成基础功能验证；已在如下环境完成端到端验证（导出、ATC编译、ACL执行、结果比对全部通过）：
 
-- Python 3.12。临时要求：run包编译时使用的Python版本，需要与执行本样例的Python版本保持一致
+- Python 3.12
 - onnx 1.21.0
+
+ONNX插件的原生产物按Python版本区分，随CANN包以独立wheel（`ge_py_onnx_plugin_bridge`）交付：安装CANN包时自动匹配当前`python3`解释器版本。若执行ATC的Python版本没有匹配的产物，会自动进入fallback编译流程，使用当前Python解释器现场编译，无需重新安装CANN包。fallback编译需要当前Python环境中已安装`pybind11`（版本要求`>=2.13.6,<3.0.0`，安装命令：`python3 -m pip install "pybind11>=2.13.6,<3.0.0"`），并具备可用的C++编译器和Python开发头文件。仅当现场编译也不可用时，ATC才会报错并列出当前可用的产物版本与建议安装的wheel名。
 
 ### 3.3、一键运行
 

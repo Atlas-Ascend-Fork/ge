@@ -18,7 +18,6 @@ setup(
     description="GraphEngine python api",
     packages=find_namespace_packages(include=["ge", "ge.*"]),
     include_package_data=True,
-    package_data={"ge.onnx_plugin": ["python_onnx_plugin_artifacts/*/*"]},
     entry_points={
         "ge.es.plugins": [],
     },

@@ -205,7 +205,8 @@ ge_compiler_clean_python_artifacts() {
     for _artifact_root in \
         "${_pythonlocalpath}/ge/passes/python_pass_artifacts" \
         "${_pythonlocalpath}/ge/runtime/python_runtime_artifacts" \
-        "${_pythonlocalpath}/ge/custom_op/python_custom_op_artifacts"; do
+        "${_pythonlocalpath}/ge/custom_op/python_custom_op_artifacts" \
+        "${_pythonlocalpath}/ge/onnx_plugin/python_onnx_plugin_artifacts"; do
         chmod u+w "$(dirname "${_artifact_root}")" 2> /dev/null
         chmod u+w -R "${_artifact_root}" 2> /dev/null
         rm -fr "${_artifact_root}" 2> /dev/null
@@ -283,9 +284,11 @@ ge_compiler_install_ge_package() {
     local _available_pass_tags
     local _available_runtime_tags
     local _available_custom_op_tags
+    local _available_onnx_plugin_tags
     local _bridge_wheel
     local _runtime_wheel
     local _custom_op_wheel
+    local _onnx_plugin_wheel
     local _native_wheels=()
     log "INFO" "install Python main wheel and matching native wheels in ${_ge_package}"
     if ! ge_compiler_has_python_installer; then
@@ -301,7 +304,8 @@ ge_compiler_install_ge_package() {
     _available_pass_tags=$(ge_compiler_list_native_python_tags "${_wheel_dir}" "ge_py_pass_bridge")
     _available_runtime_tags=$(ge_compiler_list_native_python_tags "${_wheel_dir}" "ge_py_runtime_native")
     _available_custom_op_tags=$(ge_compiler_list_native_python_tags "${_wheel_dir}" "ge_py_custom_op_bridge")
-    log "INFO" "python package installer: $(ge_compiler_get_python_info); expected native tag: ${_python_tag:-unknown}; available native wheel tags: pass[${_available_pass_tags}], runtime[${_available_runtime_tags}], custom_op[${_available_custom_op_tags}]."
+    _available_onnx_plugin_tags=$(ge_compiler_list_native_python_tags "${_wheel_dir}" "ge_py_onnx_plugin_bridge")
+    log "INFO" "python package installer: $(ge_compiler_get_python_info); expected native tag: ${_python_tag:-unknown}; available native wheel tags: pass[${_available_pass_tags}], runtime[${_available_runtime_tags}], custom_op[${_available_custom_op_tags}], onnx_plugin[${_available_onnx_plugin_tags}]."
     if [ -z "${_python_tag}" ]; then
         log "WARNING" "can not detect python tag, install ${_ge_package} only."
         ge_compiler_install_package "${_ge_package}" "${_pythonlocalpath}"
@@ -310,6 +314,7 @@ ge_compiler_install_ge_package() {
     _bridge_wheel=$(ge_compiler_find_native_wheel "${_wheel_dir}" "ge_py_pass_bridge" "${_python_tag}" || true)
     _runtime_wheel=$(ge_compiler_find_native_wheel "${_wheel_dir}" "ge_py_runtime_native" "${_python_tag}" || true)
     _custom_op_wheel=$(ge_compiler_find_native_wheel "${_wheel_dir}" "ge_py_custom_op_bridge" "${_python_tag}" || true)
+    _onnx_plugin_wheel=$(ge_compiler_find_native_wheel "${_wheel_dir}" "ge_py_onnx_plugin_bridge" "${_python_tag}" || true)
     if [ -n "${_bridge_wheel}" ]; then
         _native_wheels+=("${_bridge_wheel}")
     else
@@ -325,13 +330,18 @@ ge_compiler_install_ge_package() {
     else
         log "WARNING" "can not find matching custom-op native wheel for ${_python_tag}; use Python fallback."
     fi
+    if [ -n "${_onnx_plugin_wheel}" ]; then
+        _native_wheels+=("${_onnx_plugin_wheel}")
+    else
+        log "WARNING" "can not find matching onnx-plugin native wheel for ${_python_tag}; use Python fallback."
+    fi
     if [ ${#_native_wheels[@]} -eq 0 ]; then
         log "WARNING" "can not find any matching native wheel for ${_python_tag} in ${_wheel_dir}. Install ${_ge_package} only."
         ge_compiler_install_package "${_ge_package}" "${_pythonlocalpath}"
         return 0
     fi
 
-    log "INFO" "selected native wheels: pass[${_bridge_wheel:-none}], runtime[${_runtime_wheel:-none}], custom_op[${_custom_op_wheel:-none}]"
+    log "INFO" "selected native wheels: pass[${_bridge_wheel:-none}], runtime[${_runtime_wheel:-none}], custom_op[${_custom_op_wheel:-none}], onnx_plugin[${_onnx_plugin_wheel:-none}]"
 
     if [ "$pylocal" = "y" ]; then
         ge_compiler_run_pip install --disable-pip-version-check --upgrade --no-index --no-deps \
@@ -359,6 +369,8 @@ ge_compiler_install_ge_package() {
         "ge/runtime/python_runtime_artifacts" "_ge_runtime_native.so"
     ge_compiler_fix_python_native_artifacts "${_pythonlocalpath}" "${_custom_op_wheel}" "custom-op" \
         "ge/custom_op/python_custom_op_artifacts" "libge_python_custom_op_bridge.so" "_ge_custom_op_native.so"
+    ge_compiler_fix_python_native_artifacts "${_pythonlocalpath}" "${_onnx_plugin_wheel}" "onnx-plugin" \
+        "ge/onnx_plugin/python_onnx_plugin_artifacts" "libge_python_onnx_plugin_bridge.so" "_ge_onnx_plugin_native.so"
 }
 
 WHL_INSTALL_DIR_PATH="${common_parse_dir}/python/site-packages"

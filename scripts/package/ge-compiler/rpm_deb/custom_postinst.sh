@@ -33,10 +33,12 @@ if [ -f "${WHL_GE_PY}" ]; then
     bridge_whl=$(ls "${WHL_BRIDGE_DIR}/ge_py_pass_bridge-*-${py_tag}-${py_tag}-*.whl" 2>/dev/null | head -1)
     runtime_whl=$(ls "${WHL_BRIDGE_DIR}/ge_py_runtime_native-*-${py_tag}-${py_tag}-*.whl" 2>/dev/null | head -1)
     custom_op_whl=$(ls "${WHL_BRIDGE_DIR}/ge_py_custom_op_bridge-*-${py_tag}-${py_tag}-*.whl" 2>/dev/null | head -1)
+    onnx_plugin_whl=$(ls "${WHL_BRIDGE_DIR}/ge_py_onnx_plugin_bridge-*-${py_tag}-${py_tag}-*.whl" 2>/dev/null | head -1)
     native_wheels=()
     [ -n "${bridge_whl}" ] && native_wheels+=("${bridge_whl}")
     [ -n "${runtime_whl}" ] && native_wheels+=("${runtime_whl}")
     [ -n "${custom_op_whl}" ] && native_wheels+=("${custom_op_whl}")
+    [ -n "${onnx_plugin_whl}" ] && native_wheels+=("${onnx_plugin_whl}")
     if [ ${#native_wheels[@]} -ne 0 ]; then
         echo "[ge-compiler] installing ${WHL_GE_PY} with matching native wheels: ${native_wheels[*]}"
         run_pip install --disable-pip-version-check --upgrade --no-index --no-deps --force-reinstall -t "${WHL_INSTALL_DIR_PATH}" "${WHL_GE_PY}" "${native_wheels[@]}" || \

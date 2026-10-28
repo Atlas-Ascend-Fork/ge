@@ -2,13 +2,24 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for the specific language governing permissions and limitations under the License.
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
 set(_ge_onnx_plugin_native_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/module.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/onnx_node_binding.cc
 )
+
+set(_ge_onnx_plugin_native_headers
+        ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/binding_common.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/onnx_plugin_bindings.h
+)
+
+set(GE_PYTHON_ONNX_PLUGIN_NATIVE_SOURCES ${_ge_onnx_plugin_native_sources} PARENT_SCOPE)
+set(GE_PYTHON_ONNX_PLUGIN_NATIVE_HEADERS ${_ge_onnx_plugin_native_headers} PARENT_SCOPE)
 
 add_library(_ge_onnx_plugin_native MODULE ${_ge_onnx_plugin_native_sources})
 target_include_directories(_ge_onnx_plugin_native PRIVATE

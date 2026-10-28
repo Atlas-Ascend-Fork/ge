@@ -51,7 +51,10 @@ struct PythonOnnxPluginBridgeApi {
   void (*reset_bridge_state)();
 };
 
-constexpr uint32_t kPythonOnnxPluginBridgeAbiVersion = 1U;
+// ABI 2: register_plugins takes a host-side registrar since the bridge
+// dependency slimming refactor; loaders built against ABI 1 must reject
+// these artifacts via the manifest bridge_abi check.
+constexpr uint32_t kPythonOnnxPluginBridgeAbiVersion = 2U;
 constexpr const char *kPythonOnnxPluginBridgeGetApiSymbol = "GeGetPythonOnnxPluginBridgeApi";
 
 }  // namespace onnx_plugin_bridge

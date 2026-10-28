@@ -55,6 +55,7 @@ debug logging (see Section 3.6) to locate the offending file.
 | PyTorch | Export the ONNX model (`torch.onnx.export`) | 2.7 - 2.8, both versions verified |
 | onnx | Used internally by the `torch.onnx.export` export process | 1.21.0 verified |
 | NumPy | Input construction and result comparison | No special requirement |
+| pybind11 | Fallback compilation (on-site build when no matching native artifact exists) | >=2.13.6,<3.0.0; needed only for fallback |
 
 The `acl` Python API is bundled with the CANN toolkit and needs no separate
 installation. Install the other dependencies with:
@@ -63,12 +64,27 @@ installation. Install the other dependencies with:
 pip3 install torch numpy onnx
 ```
 
-Verified end to end (export, ATC compilation, ACL execution, and result
+The ONNX plugin officially supports Python 3.9-3.14 (cp39-cp314), and the
+other supported versions have passed basic functional verification. It has
+been verified end to end (export, ATC compilation, ACL execution, and result
 comparison all passed) on:
 
-- Python 3.12. Temporary requirement: the Python version used to build the run
-  package must match the Python version used to run this sample.
+- Python 3.12
 - onnx 1.21.0
+
+The native artifacts of the ONNX plugin are built per Python version and
+delivered with the CANN package as a standalone wheel
+(`ge_py_onnx_plugin_bridge`): the CANN installer automatically selects the
+wheel matching the current `python3` interpreter. If no artifact matches the
+Python version running ATC, the plugin automatically enters the fallback
+compilation flow and builds the artifact on site with the current Python
+interpreter; reinstalling the CANN package is not required. Fallback
+compilation requires `pybind11` in the current Python environment (version
+`>=2.13.6,<3.0.0`; install with
+`python3 -m pip install "pybind11>=2.13.6,<3.0.0"`), a C++ compiler, and the
+Python development headers. ATC reports an error listing the available artifact
+versions and the suggested wheel name only when on-site compilation is also
+unavailable.
 
 ### 3.3 One-Shot Run
 

@@ -1346,7 +1346,11 @@ target_link_libraries(ut_onnx_plugin_bridge_utest
     -ldl
 )
 
-# Install ge_py wheel for onnx plugin bridge test
+# Install ge_py wheel for onnx plugin bridge test.
+# The runtime native wheel is required because the custom-op bridge test imports
+# ge.custom_op._bridge, whose import chain hard-depends on ge.runtime._native;
+# the prebuilt artifact is the only option there because the ctest environment
+# disables fallback codegen (ASCEND_HOME_PATH) for the onnx no-artifact case.
 set(ONNX_PLUGIN_PY_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/onnx_plugin_py_install)
 
 add_custom_command(
@@ -1355,13 +1359,16 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E make_directory ${ONNX_PLUGIN_PY_INSTALL_DIR}
     COMMAND ${HI_PYTHON} -m pip install --target ${ONNX_PLUGIN_PY_INSTALL_DIR}
             ${CMAKE_BINARY_DIR}/api/python/ge/ge_py-0.0.1-py3-none-any.whl
+            ${GE_PYTHON_ONNX_PLUGIN_NATIVE_WHEEL}
+            ${GE_PYTHON_RUNTIME_NATIVE_WHEEL}
             --force-reinstall
     COMMAND ${HI_PYTHON} -m pip install --target ${ONNX_PLUGIN_PY_INSTALL_DIR}
             ${CMAKE_BINARY_DIR}/tests/ge/ut/ge/graph/eager_style_graph_builder/graph_construction_test/output/whl/es_ut_test-1.0.0-py3-none-any.whl --force-reinstall
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:eager_style_graph_builder_base> ${ONNX_PLUGIN_PY_INSTALL_DIR}/ge/_capi/
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/tests/ge/ut/ge/graph/eager_style_graph_builder/graph_construction_test/output/lib64/libes_ut_test.so ${ONNX_PLUGIN_PY_INSTALL_DIR}/ge/_capi/
     COMMAND ${CMAKE_COMMAND} -E touch ${ONNX_PLUGIN_PY_INSTALL_DIR}/.installed
-    DEPENDS ge_python_main_wheel eager_style_graph_builder_base es_ut_test
+    DEPENDS ge_python_main_wheel ge_python_onnx_plugin_native_wheel ge_python_runtime_native_wheel
+            eager_style_graph_builder_base es_ut_test
     COMMENT "Installing ge-py wheel for onnx_plugin_bridge_utest"
 )
 
@@ -1374,7 +1381,7 @@ add_test(NAME ut_onnx_plugin_bridge_utest COMMAND ut_onnx_plugin_bridge_utest
     --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/ut/ut_onnx_plugin_bridge_utest.xml)
 set_tests_properties(ut_onnx_plugin_bridge_utest PROPERTIES
     LABELS "ut;ge_common;ut_onnx_plugin_bridge_utest"
-    ENVIRONMENT "PYTHONPATH=${ONNX_PLUGIN_PY_INSTALL_DIR};ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0:exitcode=0"
+    ENVIRONMENT "PYTHONPATH=${ONNX_PLUGIN_PY_INSTALL_DIR};ASCEND_HOME_PATH=/__ut_no_cann_root__;ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0:exitcode=0"
 )
 
 # libge_label_maker_utest

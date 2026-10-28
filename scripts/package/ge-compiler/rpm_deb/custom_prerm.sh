@@ -16,7 +16,7 @@ WHL_INSTALL_DIR_PATH="${sourcedir}/python/site-packages"
 export PYTHONPATH="${WHL_INSTALL_DIR_PATH}"
 export PIP_BREAK_SYSTEM_PACKAGES=1
 
-for pkg in ge-py-pass-bridge ge-py-runtime-native ge-py-custom-op-bridge dataflow llm_datadist_v1 ge_py; do
+for pkg in ge-py-pass-bridge ge-py-runtime-native ge-py-custom-op-bridge ge-py-onnx-plugin-bridge dataflow llm_datadist_v1 ge_py; do
     pip3 uninstall -y "${pkg}" >/dev/null 2>&1 || true
 done
 
@@ -24,10 +24,12 @@ rm -fr "${WHL_INSTALL_DIR_PATH}/llm_datadist_v1" "${WHL_INSTALL_DIR_PATH}/datafl
 rm -fr "${WHL_INSTALL_DIR_PATH}/ge/passes/python_pass_artifacts" 2>/dev/null
 rm -fr "${WHL_INSTALL_DIR_PATH}/ge/runtime/python_runtime_artifacts" 2>/dev/null
 rm -fr "${WHL_INSTALL_DIR_PATH}/ge/custom_op/python_custom_op_artifacts" 2>/dev/null
+rm -fr "${WHL_INSTALL_DIR_PATH}/ge/onnx_plugin/python_onnx_plugin_artifacts" 2>/dev/null
 rm -f "${WHL_INSTALL_DIR_PATH}/ge/passes/_ge_pass_native.so" 2>/dev/null
 rm -fr "${WHL_INSTALL_DIR_PATH}/ge_py_pass_bridge-"*.dist-info 2>/dev/null
 rm -fr "${WHL_INSTALL_DIR_PATH}/ge_py_runtime_native-"*.dist-info 2>/dev/null
 rm -fr "${WHL_INSTALL_DIR_PATH}/ge_py_custom_op_bridge-"*.dist-info 2>/dev/null
+rm -fr "${WHL_INSTALL_DIR_PATH}/ge_py_onnx_plugin_bridge-"*.dist-info 2>/dev/null
 
 stub_libs="
 libacl_op_compiler.so
