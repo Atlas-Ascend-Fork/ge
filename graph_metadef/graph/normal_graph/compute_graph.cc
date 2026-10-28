@@ -1732,7 +1732,7 @@ graphStatus ComputeGraphImpl::CreateNetOutputNode(ge::OpDescPtr &net_output_desc
   GE_ASSERT_NOTNULL(net_output_desc, "New OpDesc failed");
   (void)AttrUtils::SetListStr(net_output_desc, ATTR_NAME_DATA_DUMP_ORIGIN_OP_NAMES,
                               std::move(std::vector<std::string>()));
-  (void)AttrUtils::SetBool(net_output_desc, ATTR_NAME_INNER_NET_OUTPUT, true);
+  (void)AttrUtils::SetBool(net_output_desc, "_inner_net_output", true);
   return GRAPH_SUCCESS;
 }
 

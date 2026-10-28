@@ -11868,12 +11868,6 @@ ComputeGraphPtr ShareGraph::BuildVarConnectToSplit() {
   (void)ge::AttrUtils::SetBool(split_node->GetOpDesc(), ATTR_NAME_NOPADDING_CONTINUOUS_OUTPUT, true);
   (void)ge::AttrUtils::SetBool(split_node->GetOpDesc(), ATTR_NAME_OUTPUT_REUSE_INPUT, true);
   (void)ge::AttrUtils::SetInt(split_node->GetOpDesc(), ge::ATTR_NAME_REUSE_INPUT_ON_DIM_INDEX, 0);
-  // 本图计算链仅经控制边挂NetOutput（无数据输出声明），PrunePass会按保活误连剪除死链；
-  // 本用例组需保留add链与split链以校验NoPadding连续输出内存语义，显式打跳过剪枝标记
-  for (const char *name : {"add_1", "split", "add_2"}) {
-    auto node = graph->FindNode(name);
-    (void)ge::AttrUtils::SetBool(node->GetOpDesc(), ATTR_NAME_SKIP_PRUNE_OPTIMIZE, true);
-  }
   // 如果不设置，会被设置为动态shape图
   AttrUtils::SetBool(graph, ATTR_NAME_NO_NEED_DYNAMIC_SHAPE_PARTITION, true);
   for (auto &node : graph->GetAllNodes()) {
