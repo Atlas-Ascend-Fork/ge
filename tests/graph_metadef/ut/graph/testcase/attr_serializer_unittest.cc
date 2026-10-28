@@ -255,6 +255,47 @@ TEST_F(AttrSerializerUt, DataTypeAttr) {
   ASSERT_EQ(res, dt);
 }
 
+TEST_F(AttrSerializerUt, DataTypeAttrUsesProtoEnumMapping) {
+  const std::vector<DataType> ge_types = {DT_BOOL, DT_DOUBLE, DT_FLOAT, DT_UNDEFINED};
+  const std::vector<proto::DataType> proto_types = {proto::DT_BOOL, proto::DT_DOUBLE, proto::DT_FLOAT,
+                                                    proto::DT_UNDEFINED};
+  DataTypeSerializer serializer;
+  for (size_t idx = 0; idx < ge_types.size(); ++idx) {
+    AnyValue value;
+    ASSERT_EQ(value.SetValue(ge_types[idx]), GRAPH_SUCCESS);
+    proto::AttrDef def;
+    ASSERT_EQ(serializer.Serialize(value, def), GRAPH_SUCCESS);
+    EXPECT_EQ(def.dt(), proto_types[idx]);
+
+    AnyValue restored;
+    ASSERT_EQ(serializer.Deserialize(def, restored), GRAPH_SUCCESS);
+    DataType restored_type;
+    ASSERT_EQ(restored.GetValue(restored_type), GRAPH_SUCCESS);
+    EXPECT_EQ(restored_type, ge_types[idx]);
+  }
+}
+
+TEST_F(AttrSerializerUt, ListDataTypeAttrUsesProtoEnumMapping) {
+  const std::vector<DataType> ge_types = {DT_BOOL, DT_DOUBLE, DT_FLOAT, DT_UNDEFINED};
+  const std::vector<proto::DataType> proto_types = {proto::DT_BOOL, proto::DT_DOUBLE, proto::DT_FLOAT,
+                                                    proto::DT_UNDEFINED};
+  AnyValue value;
+  ASSERT_EQ(value.SetValue(ge_types), GRAPH_SUCCESS);
+  ListValueSerializer serializer;
+  proto::AttrDef def;
+  ASSERT_EQ(serializer.Serialize(value, def), GRAPH_SUCCESS);
+  ASSERT_EQ(def.list().dt_size(), static_cast<int>(proto_types.size()));
+  for (size_t idx = 0; idx < proto_types.size(); ++idx) {
+    EXPECT_EQ(def.list().dt(static_cast<int>(idx)), proto_types[idx]);
+  }
+
+  AnyValue restored;
+  ASSERT_EQ(serializer.Deserialize(def, restored), GRAPH_SUCCESS);
+  std::vector<DataType> restored_types;
+  ASSERT_EQ(restored.GetValue(restored_types), GRAPH_SUCCESS);
+  EXPECT_EQ(restored_types, ge_types);
+}
+
 TEST_F(AttrSerializerUt, NamedAttr) {
   REG_GEIR_SERIALIZER(named_attr_serializer, NamedAttrsSerializer, GetTypeId<ge::NamedAttrs>(), proto::AttrDef::kFunc);
   REG_GEIR_SERIALIZER(tesnor_serializer, TensorSerializer, GetTypeId<GeTensor>(), proto::AttrDef::kT);

@@ -312,6 +312,8 @@ ModelDef
 
 属性序列化采用**类型分发**模式：`AttrSerializerRegistry` 注册了每种属性类型（int、float、string、tensor、graph 等）的序列化器。每种类型有独立的 Serializer 类（如 IntSerializer、FloatSerializer、TensorSerializer），实现 `Serialize(AnyValue → AttrDef)` 和 `Deserialize(AttrDef → AnyValue)` 方法。
 
+GE 与 Proto 的 `DataType` 枚举序号不一致，属性序列化和反序列化必须使用显式映射，不能直接转换枚举值。
+
 这种设计支持扩展——新的属性类型只需注册新的序列化器，不需要修改序列化框架。
 
 ## 8. 图工具类
