@@ -394,7 +394,7 @@ static graphStatus LoadOpsProto(const std::map<std::string, std::string> &option
   if (ret != SUCCESS) {
     GELOGW("Unsuccessful to get ops proto path!");
   }
-  GELOGI("Get opsproto path is %s", opsproto_path.c_str());
+  GELOGI("Get opsproto path is %s", opsproto_path.empty() ? "empty" : opsproto_path.c_str());
   OpsProtoManager *manager = OpsProtoManager::Instance();
   std::map<std::string, std::string> option_tmp;
   option_tmp.emplace(std::pair<std::string, std::string>(string("ge.opsProtoLibPath"), opsproto_path));

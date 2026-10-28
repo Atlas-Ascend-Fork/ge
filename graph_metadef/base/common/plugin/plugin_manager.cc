@@ -269,7 +269,8 @@ void PluginManager::GetPluginPathFromCustomOppPath(const std::string &sub_path, 
       GELOGI("custom_path '%s' is invalid, which is skipped.", custom_path.c_str());
     }
   }
-  GELOGI("Run GetPluginPathFromCustomOppPath finished, current plugin_path is %s.", plugin_path.c_str());
+  GELOGI("Run GetPluginPathFromCustomOppPath finished, current plugin_path is %s.",
+         plugin_path.empty() ? "empty" : plugin_path.c_str());
 }
 
 Status PluginManager::GetOppPluginPathOld(const std::string &opp_path, const std::string &path_fmt,
@@ -621,7 +622,8 @@ Status PluginManager::GetOpsProtoPath(std::string &opsproto_path) {
   } else {
     GetPluginPathFromCustomOppPath("op_proto/", opsproto_path);
     ret = GetOppPluginPathNew(opp_path, "%s/op_proto/", opsproto_path, "op_proto/custom/");
-    GELOGI("Opp plugin path structure is new version! opsproto_path:%s", opsproto_path.c_str());
+    GELOGI("Opp plugin path structure is new version! opsproto_path is %s",
+           opsproto_path.empty() ? "empty" : opsproto_path.c_str());
     return ret;
   }
 }
@@ -1261,7 +1263,7 @@ Status PluginManager::GetOpMasterDeviceSoPath(std::string &op_master_device_path
   if (!opp_kernel_path.empty()) {
     op_master_device_path = opp_kernel_path + kBuiltIn + kOpMasterDeviceLib + ":" + op_master_device_path;
   }
-  GELOGI("Get op master device so path is %s", op_master_device_path.c_str());
+  GELOGI("Get op master device so path is %s", op_master_device_path.empty() ? "empty" : op_master_device_path.c_str());
   return SUCCESS;
 }
 

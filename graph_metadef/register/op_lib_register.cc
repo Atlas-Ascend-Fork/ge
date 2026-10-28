@@ -77,7 +77,7 @@ const char_t *OpLibRegistry::InitAndGetCustomOpLibPath() {
   if (!is_init_) {
     GE_ASSERT_GRAPH_SUCCESS(PreProcessForCustomOp());
   }
-  GELOGI("get op lib path is %s", op_lib_paths_.c_str());
+  GELOGI("get op lib path is %s", op_lib_paths_.empty() ? "empty" : op_lib_paths_.c_str());
   return op_lib_paths_.c_str();
 }
 
@@ -151,8 +151,8 @@ graphStatus OpLibRegistry::GetAllCustomOpApiSoPaths(const std::string &custom_op
   PluginManager::GetCurEnvPackageOsAndCpuType(host_os, host_cpu);
   if (host_os.empty() || host_cpu.empty()) {
     GELOGW(
-        "Failed to get current environment os or cpu type, fallback to compile-time os/cpu. host_os: %s, "
-        "host_cpu: %s.",
+        "Failed to get current environment os or cpu type, fallback to compile-time os/cpu. host_os: [%s], "
+        "host_cpu: [%s].",
         host_os.c_str(), host_cpu.c_str());
     FallbackHostEnvByCompileTime(host_os, host_cpu);
   }
@@ -204,7 +204,7 @@ graphStatus OpLibRegistry::CallInitFunc(const std::string &custom_opp_path,
     GELOGI("begin to call %s init func", vendor_func.first.c_str());
     AscendString tmp_dir("");
     GE_ASSERT_GRAPH_SUCCESS(vendor_func.second(tmp_dir));
-    GELOGI("end to call %s init func, tmp_dir is %s", vendor_func.first.c_str(), tmp_dir.GetString());
+    GELOGI("end to call %s init func, tmp_dir is [%s]", vendor_func.first.c_str(), tmp_dir.GetString());
     op_lib_paths_ += (std::string(tmp_dir.GetString()) + ":");
   }
   if (custom_opp_path.empty()) {  // ignore the end :
@@ -216,7 +216,8 @@ graphStatus OpLibRegistry::CallInitFunc(const std::string &custom_opp_path,
   if (SetMetadefPluginCustomOpLibPathForC != nullptr) {
     SetMetadefPluginCustomOpLibPathForC(op_lib_paths_.c_str());
   }
-  GELOGI("CallInitFunc %zu successfully, op_lib_paths_ is %s", vendor_funcs_.size(), op_lib_paths_.c_str());
+  GELOGI("CallInitFunc %zu successfully, op_lib_paths_ is %s", vendor_funcs_.size(),
+         op_lib_paths_.empty() ? "empty" : op_lib_paths_.c_str());
   return GRAPH_SUCCESS;
 }
 

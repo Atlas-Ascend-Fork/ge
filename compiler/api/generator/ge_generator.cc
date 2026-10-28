@@ -490,7 +490,7 @@ Status GeGenerator::Initialize(const std::map<std::string, std::string> &options
   if (ret != SUCCESS) {
     GELOGW("Failed to get ops proto path!");
   }
-  GELOGI("Get opsproto path is %s", opsproto_path.c_str());
+  GELOGI("Get opsproto path is %s", opsproto_path.empty() ? "empty" : opsproto_path.c_str());
   OpsProtoManager *manager = OpsProtoManager::Instance();
   GE_CHECK_NOTNULL(manager);
   std::map<std::string, std::string> option_tmp;

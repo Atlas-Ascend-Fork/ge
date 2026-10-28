@@ -257,7 +257,7 @@ static void InitOpsProtoManager() {
   if (ret != SUCCESS) {
     GELOGW("Failed to get ops proto path!");
   }
-  GELOGI("Get opsproto path is %s", opsproto_path.c_str());
+  GELOGI("Get opsproto path is [%s]", opsproto_path.c_str());
   std::map<std::string, std::string> option_tmp;
   (void)option_tmp.emplace(std::pair<std::string, std::string>(std::string("ge.opsProtoLibPath"), opsproto_path));
   (void)OpsProtoManager::Instance()->Initialize(option_tmp);
