@@ -272,6 +272,7 @@
       - [UnregisterExternalAllocator](cpp/ge/GeSession/UnregisterExternalAllocator.md)
 
   - [SuperKernel接口](c/super_kernel/superkernel_interface.md)
+    - [aclskOptimize](c/super_kernel/aclskOptimize.md)
     - [aclskScopeBegin](c/super_kernel/aclskScopeBegin.md)
     - [aclskScopeEnd](c/super_kernel/aclskScopeEnd.md)
 
