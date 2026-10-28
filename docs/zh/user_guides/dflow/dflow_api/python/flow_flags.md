@@ -37,7 +37,7 @@ flow\_flags属性。
 ```python
 import dataflow as df
 graph = df.FlowGraph(...)
-flowinfo = FlowInfo(...)
+flowinfo = df.FlowInfo(...)
 flowinfo.flow_flags = df.FlowFlag.DATA_FLOW_FLAG_EOS | df.FlowFlag.DATA_FLOW_FLAG_SEG
 print(flowinfo.flow_flags)
 ```

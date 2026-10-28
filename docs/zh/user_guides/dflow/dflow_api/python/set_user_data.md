@@ -36,7 +36,7 @@ set_user_data(self, user_data: bytearray, offset: int = 0)
 
 ```python
 import dataflow as df
-flow_info = FlowInfo(...)
+flow_info = df.FlowInfo(...)
 user_data_str = "UserData123"
 user_data_array = bytearray(user_data_str, 'utf-8')
 flow_info.set_user_data(user_data_array)

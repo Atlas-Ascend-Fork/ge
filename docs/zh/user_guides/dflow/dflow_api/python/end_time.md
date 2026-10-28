@@ -37,7 +37,7 @@ end\_time属性。
 ```python
 import dataflow as df
 graph = df.FlowGraph(...)
-flowinfo = FlowInfo(...)
+flowinfo = df.FlowInfo(...)
 flowinfo.end_time = 200
 print(flowinfo.end_time)
 ```

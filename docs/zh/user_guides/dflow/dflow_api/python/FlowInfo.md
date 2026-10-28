@@ -39,7 +39,7 @@ FlowInfo(start_time=0, end_time=0, flow_flags=0, transaction_id=0)
 ```python
 import dataflow as df
 graph = df.FlowGraph(...)
-flow_info = FlowInfo(...)
+flow_info = df.FlowInfo(...)
 graph.feed_data(...,flow_info)
 ```
 
