@@ -428,6 +428,8 @@ SKIP_METHODS = [
     "CallInitFunc",
     "UpdateFormatImpl",
     "CreateOrGetCustomOpLocked",
+    "ScanCommonCapabilityLocked",
+    "FindCreatorsForCapabilityLocked",
     "AppendProtoClaims",
     "CallInferFuncV1",
     "CallInferFuncV2",

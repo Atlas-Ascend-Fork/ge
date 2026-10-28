@@ -31,6 +31,7 @@
 #include <set>
 #include <vector>
 #include "framework/runtime/args_handler.h"
+#include "framework/runtime/eager_execution_context_info.h"
 
 namespace ge {
 struct CustomArgsFormatInfo {
@@ -88,6 +89,11 @@ class CustomTaskInfo : public TaskInfo {
   }
 
  private:
+  void UpdateContextInfo();
+
+  Status DistributeAnnotatedArgs();
+  Status DistributeEagerOp();
+
   Status InsertDumpOp(const std::string &dump_mode);
   Status UpdateCustomDumpAddrs(const std::vector<uint64_t> &input_addrs_value,
                                const std::vector<uint64_t> &output_addrs_value);
@@ -146,6 +152,7 @@ class CustomTaskInfo : public TaskInfo {
   ArgsUpdater *args_update_op_ = nullptr;
   ArgsRefreshStrategy args_refresh_strategy_ = ArgsRefreshStrategy::kNone;
   bool is_args_refreshable_ = false;
+  gert::EagerExecutionContextInfo context_info_;
   size_t input_count_ = 0;
   size_t output_count_ = 0;
   std::unique_ptr<gert::ArgsHandler> args_handler_;

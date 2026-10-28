@@ -11,6 +11,9 @@
 #include "exe_graph/runtime/eager_op_execution_context.h"
 #include "exe_graph/runtime/kernel_args.h"
 #include "framework/runtime/args_handler.h"
+#include "framework/runtime/attached_stream_provider.h"
+#include "framework/runtime/eager_execution_context_info.h"
+#include "graph/ge_context.h"
 #include "graph/utils/op_desc_utils.h"
 #include "exe_graph/runtime/gert_mem_allocator.h"
 #include "common/checker.h"
@@ -149,22 +152,48 @@ const KernelArgs *EagerOpExecutionContext::MallocReadOnlyDevArgs(void *host_args
   return handler->MallocReadOnlyDevArgs(host_args, args_size);
 }
 
-rtStream EagerOpExecutionContext::RequestAttachedStream(const ge::AscendString &key) {
+bool EagerOpExecutionContext::GetContextValue(ContextParam key, uint64_t &value) const {
+  const auto additional_output_start = GetAdditionalOutputStartIndex();
+  if (additional_output_start < 0) {
+    return false;
+  }
+
+  const auto *chain = GetOutput(static_cast<size_t>(additional_output_start) +
+                                static_cast<size_t>(AdditionalOutputIndex::kContextInfo));
+  if (chain == nullptr) {
+    return false;
+  }
+  const auto *context_info = chain->GetValue<EagerExecutionContextInfo *>();
+  if (context_info == nullptr) {
+    return false;
+  }
+  return context_info->GetContextValue(key, value);
+}
+
+bool EagerOpExecutionContext::GetOption(const ge::AscendString &option_key, ge::AscendString &option_value) const {
+  std::string option_str;
+  const auto ret = ge::GetContext().GetOption(option_key.GetString(), option_str);
+  option_value = ge::AscendString(option_str.c_str());
+  return ret == ge::GRAPH_SUCCESS;
+}
+
+rtStream EagerOpExecutionContext::RequestAttachedStream(const ge::AscendString &key, uint32_t flags) {
   const auto additional_output_start = GetAdditionalOutputStartIndex();
   GE_ASSERT_TRUE(additional_output_start >= 0);
 
+  // 与GetContextValue同路径：统一从上下文伴生对象取"框架注入的上下文能力"
   const auto *chain = GetOutput(static_cast<size_t>(additional_output_start) +
-                                static_cast<size_t>(AdditionalOutputIndex::kArgsHandler));
+                                static_cast<size_t>(AdditionalOutputIndex::kContextInfo));
   GE_ASSERT_NOTNULL(chain);
-  auto *handler = chain->GetValue<ArgsHandler *>();
-  GE_ASSERT_NOTNULL(handler);
+  auto *context_info = chain->GetValue<EagerExecutionContextInfo *>();
+  GE_ASSERT_NOTNULL(context_info);
 
-  // handler 未注入 provider 属正常降级场景（如声明式算子），静默返回 nullptr
-  auto *provider = handler->GetAttachedStreamProvider();
+  // 未装入provider属正常降级场景（如声明式算子），静默返回nullptr
+  auto *provider = context_info->GetAttachedStreamProvider();
   if (provider == nullptr) {
     return nullptr;
   }
-  return provider->RequestAttachedStream(key);
+  return provider->RequestAttachedStream(key, flags);
 }
 
 }  // namespace gert

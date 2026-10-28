@@ -15,7 +15,7 @@ The sample operator (`EagerAttachedStreamAddOp`) performs the following verifica
 
 | # | Verification Item | Pass Condition |
 |---|-------------------|----------------|
-| ① | Request an attached stream by key | `RequestAttachedStream("eager_aux")` returns non-nullptr |
+| ① | Request an attached stream by key | `RequestAttachedStream("eager_aux", 0U)` returns non-nullptr |
 | ② | Kernel launch on the attached stream | `aclrtLaunchKernelV2(..., attached stream)` succeeds |
 | ③ | Replay precision | z = x + y is correct in all rounds of model replay |
 
@@ -29,7 +29,7 @@ Session::AddGraph
   └─ Model loading (DoTaskSink)
       └─ CustomTaskInfo::Distribute
           └─ EagerExecuteOp::Execute (called once)
-              ├─ ctx->RequestAttachedStream("eager_aux")     → returns the framework-managed physical attached stream
+              ├─ ctx->RequestAttachedStream("eager_aux", 0U)  → returns the framework-managed physical attached stream
               └─ aclrtLaunchKernelV2(..., attached stream)    → kernel launched on the attached stream
 Session::ExecuteGraphWithStreamAsync
   └─ Model replay (tasks on the attached stream are executed repeatedly)

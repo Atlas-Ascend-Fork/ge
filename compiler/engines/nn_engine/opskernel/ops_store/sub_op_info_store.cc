@@ -191,8 +191,12 @@ Status SubOpInfoStore::LoadOpJsonFile(const std::string &json_file_path) {
 
 Status SubOpInfoStore::ConstructOpKernelInfo(const std::string &engine_name) {
   OpKernelInfoConstructor op_kernel_info_constructor;
+  const auto custom_op_registry = ge::CustomOpFactory::GetGlobalRegistryPtr();
   for (auto &op : op_content_map_) {
-    if (ge::CustomOpFactory::IsExistOp(ge::AscendString(op.first.c_str()), ge::OpBackend::kDevice)) {
+    // 以承载口径（与自定义store认领口径一致）判断是否跳过内置op_kernel_info构造：
+    // 覆盖 kTop+kCustom 与 kHccl任意优先级；非自定义引擎注册的算子既不跳过构造、也由自定义store不认领，避免"无归属"。
+    if ((custom_op_registry != nullptr) &&
+        custom_op_registry->IsCustomOpToBeCollected(ge::AscendString(op.first.c_str()))) {
       FE_LOGD("Op[%s] is ge_custom_op, skip construct op_kernel_info.", op.first.c_str());
       continue;
     }

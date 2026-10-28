@@ -32,7 +32,7 @@ class AttachedStreamCollection final : public gert::AttachedStreamProvider {
     stream_flags_ = stream_flags;
   }
 
-  gert::rtStream RequestAttachedStream(const AscendString &key) override;
+  gert::rtStream RequestAttachedStream(const AscendString &key, uint32_t flags) override;
   void UnbindAndDestroy();
 
  private:

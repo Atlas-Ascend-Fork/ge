@@ -77,17 +77,20 @@ bool IsGelocalOp(const OpDescPtr &op_desc) {
 }
 
 bool IsDeviceCustomOp(const OpDescPtr &op_desc) {
+  // 认领语义：kDevice backend任一优先级、任一引擎有注册即视为device自定义算子（kHccl形态的kBottom注册同样命中）
   return CustomOpFactory::IsExistOp(AscendString(op_desc->GetTypePtr()), OpBackend::kDevice);
 }
 
 bool IsHostCpuCustomOp(const OpDescPtr &op_desc) {
-  return CustomOpFactory::IsExistOp(AscendString(op_desc->GetTypePtr()), OpBackend::kHostCPU);
+  return CustomOpFactory::IsExistOp(AscendString(op_desc->GetTypePtr()), OpBackend::kHostCPU,
+                                    OpRegistrationPriority::kTop, OpEngine::kCustom);
 }
 
 bool IsCustomOpExecOnHostCpu(const OpDescPtr &op_desc) {
   if ((op_desc == nullptr) || (op_desc->GetOpEngineName() != kEngineNameCustom) ||
       (op_desc->GetOpKernelLibName() != kCustomOpKernelLibName) ||
-      !CustomOpFactory::IsExistOp(AscendString(op_desc->GetTypePtr()), OpBackend::kHostCPU)) {
+      !CustomOpFactory::IsExistOp(AscendString(op_desc->GetTypePtr()), OpBackend::kHostCPU,
+                                  OpRegistrationPriority::kTop, OpEngine::kCustom)) {
     return false;
   }
   std::string lowering_func;

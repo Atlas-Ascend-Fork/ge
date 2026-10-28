@@ -773,11 +773,16 @@ Status Om2PackageHelper::ReadCustomOpSoToBuffer(
 
 Status Om2PackageHelper::CollectUsedCustomOpTypes(const GeRootModelPtr &ge_root_model,
                                                   std::set<std::string> &used_custom_op_types) {
+  // 注：收集按承载口径（含 kBottom + kHccl），而 OM2 加载期稳定部分代码当前仍按单参
+  // CreateOrGetCustomOp（kTop + kCustom）解析，暂不识别 kBottom + kHccl 注册项。
+  // 该组合（kBottom + kHccl 且实现 PortableOp）的 OM2 加载适配由后续独立需求承担。
   if (ge_root_model->GetRootGraph() != nullptr) {
     const auto &root_graph = ge_root_model->GetRootGraph();
+    const auto custom_op_registry = CustomOpFactory::GetGlobalRegistryPtr();
     for (const auto &node : root_graph->GetAllNodes()) {
       const std::string op_type = node->GetType();
-      if (CustomOpFactory::IsExistOp(AscendString(op_type.c_str()))) {
+      const AscendString ascend_op_type(op_type.c_str());
+      if ((custom_op_registry != nullptr) && custom_op_registry->IsCustomOpToBeCollected(ascend_op_type)) {
         (void)used_custom_op_types.insert(op_type);
       }
     }
@@ -794,12 +799,14 @@ Status Om2PackageHelper::CollectUsedCustomOpTypes(const GeRootModelPtr &ge_root_
       continue;
     }
     const auto &graph = ge_model->GetGraph();
+    const auto custom_op_registry = CustomOpFactory::GetGlobalRegistryPtr();
     if (graph == ge_root_model->GetRootGraph()) {
       continue;
     }
     for (const auto &node : graph->GetAllNodes()) {
       const std::string op_type = node->GetType();
-      if (CustomOpFactory::IsExistOp(AscendString(op_type.c_str()))) {
+      const AscendString ascend_op_type(op_type.c_str());
+      if ((custom_op_registry != nullptr) && custom_op_registry->IsCustomOpToBeCollected(ascend_op_type)) {
         (void)used_custom_op_types.insert(op_type);
       }
     }

@@ -559,8 +559,11 @@ struct AnnotatedArgsCapture {
 };
 
 Status GetAnnotatedArgsOp(const OpDescPtr &op_desc, AnnotatedArgsOp *&annotated_args_op) {
-  auto *const base_custom_op =
-      CustomOpFactory::CreateOrGetCustomOp(AscendString(op_desc->GetTypePtr()), OpBackend::kDevice);
+  const AscendString op_type(op_desc->GetTypePtr());
+  // 需先解析注册引擎再按优先级回退取实例；双参版本固定kTop+kCustom，kBottom兜底注册（如HcclOp）会查不到
+  OpEngine op_engine = OpEngine::kCustom;
+  (void)CustomOpFactory::GetOpEngine(op_type, OpBackend::kDevice, op_engine);
+  auto *const base_custom_op = CustomOpFactory::CreateOrGetCustomOp(op_type, OpBackend::kDevice, op_engine);
   GE_ASSERT_NOTNULL(base_custom_op, "Create custom op failed, op_name:%s, op_type:%s", op_desc->GetNamePtr(),
                     op_desc->GetTypePtr());
   annotated_args_op = CustomOpCast<AnnotatedArgsOp>(base_custom_op);

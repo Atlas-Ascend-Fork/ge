@@ -63,7 +63,8 @@ const int64_t kOverflowDefaultValue = -1;
 bool IsCustomOpExecOnHostCpu(const OpDescPtr &op_desc) {
   if ((op_desc == nullptr) || (op_desc->GetOpEngineName() != kEngineNameCustom) ||
       (op_desc->GetOpKernelLibName() != kCustomOpKernelLibName) ||
-      !CustomOpFactory::IsExistOp(AscendString(op_desc->GetTypePtr()), OpBackend::kHostCPU)) {
+      !CustomOpFactory::IsExistOp(AscendString(op_desc->GetTypePtr()), OpBackend::kHostCPU,
+                                  OpRegistrationPriority::kTop, OpEngine::kCustom)) {
     return false;
   }
   std::string lowering_func;

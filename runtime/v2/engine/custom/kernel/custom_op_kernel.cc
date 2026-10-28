@@ -25,6 +25,7 @@
 #include "core/executor/multi_thread_topological/executor/schedule/producer/producers/kernel_tags/critical_section_config.h"
 #include "runtime/v2/engine/custom/kernel/eager_args_handler.h"
 #include "runtime/v2/engine/custom/kernel/rt2_attached_stream_collection.h"
+#include "framework/runtime/eager_execution_context_info.h"
 
 namespace gert {
 namespace kernel {
@@ -33,6 +34,9 @@ namespace {
 enum class CustomOpInput {
   kFunc = static_cast<uint32_t>(EagerOpExecutionContext::AdditionalInputIndex::kNum),
   kAttachedStreamProvider,
+  kRootGraphId,
+  kNodeId,
+  kVectorCoreNum,
   kEnd
 };
 enum class HostCustomOpInput {
@@ -92,7 +96,11 @@ ge::graphStatus FindCustomOpFunc(KernelContext *context) {
   GE_ASSERT_NOTNULL(node_type, "Failed to find custom op func, node type is nullptr");
   auto custom_op_registry = context->GetInputValue<ge::CustomOpRegistry *>(1);
   GE_ASSERT_NOTNULL(custom_op_registry, "Failed to find custom op func, custom op registry is nullptr.");
-  ge::BaseCustomOp *custom_op_ptr = custom_op_registry->CreateOrGetCustomOp(node_type, ge::OpBackend::kDevice);
+  // kHccl引擎注册的算子（如HcclOp）需先解析注册引擎再取实例；双参版本固定kCustom会查不到
+  ge::OpEngine op_engine = ge::OpEngine::kCustom;
+  (void)custom_op_registry->GetOpEngine(node_type, ge::OpBackend::kDevice, op_engine);
+  ge::BaseCustomOp *custom_op_ptr =
+      custom_op_registry->CreateOrGetCustomOp(node_type, ge::OpBackend::kDevice, op_engine);
   GE_ASSERT_NOTNULL(custom_op_ptr, "Failed to find custom op func for op type %s in custom op registry.", node_type);
   auto chain = context->GetOutput(0);
   GE_ASSERT_NOTNULL(chain);
@@ -174,6 +182,32 @@ static ge::graphStatus CreateCustomOpOutputs(const ge::FastNode *node, KernelCon
   GE_ASSERT_NOTNULL(args_output);
   args_output->SetWithDefaultDeleter(static_cast<ArgsHandler *>(args_handler.release()));
 
+  // 上下文伴生信息：V2动态链路非静态下沉路径、不使能地址刷新；
+  // 根图graph id / node id / vector core数量由lowering注入，按附加输入槽读取
+  auto context_info = ge::MakeUnique<EagerExecutionContextInfo>();
+  GE_ASSERT_NOTNULL(context_info);
+  const size_t additional_input_start = extended_kernel_context->GetComputeNodeInputNum();
+  // 取值约定：graph id恒有效（0合法）；node id / vector core数量用sentinel表示未设置（见lowering注入）
+  const auto *root_graph_id =
+      context->GetInputPointer<uint32_t>(additional_input_start + static_cast<size_t>(CustomOpInput::kRootGraphId));
+  if (root_graph_id != nullptr) {
+    context_info->SetGraphId(*root_graph_id);
+  }
+  const auto *node_id =
+      context->GetInputPointer<int64_t>(additional_input_start + static_cast<size_t>(CustomOpInput::kNodeId));
+  if ((node_id != nullptr) && (*node_id >= 0)) {
+    context_info->SetNodeId(static_cast<uint64_t>(*node_id));
+  }
+  const auto *vector_core_num =
+      context->GetInputPointer<int64_t>(additional_input_start + static_cast<size_t>(CustomOpInput::kVectorCoreNum));
+  if ((vector_core_num != nullptr) && (*vector_core_num >= 0)) {
+    context_info->SetVectorCoreNum(static_cast<uint64_t>(*vector_core_num));
+  }
+  auto *context_info_output = context->GetOutput(
+      node_output_num + static_cast<size_t>(EagerOpExecutionContext::AdditionalOutputIndex::kContextInfo));
+  GE_ASSERT_NOTNULL(context_info_output);
+  context_info_output->SetWithDefaultDeleter(context_info.release());
+
   return ge::GRAPH_SUCCESS;
 }
 
@@ -206,10 +240,18 @@ static ge::graphStatus ExecuteCustomOpImpl(KernelContext *context) {
     GE_ASSERT_NOTNULL(allocator);
     auto stream_id = allocator->GetStreamId();
     args_handler->Initialize(allocator, stream_id);
-    // 辅流容器由 Init 图创建；取不到时为 nullptr，此时 RequestAttachedStream 按既有语义降级返回 nullptr
+    // 辅流容器由Init图创建、此处才就绪；装入上下文伴生对象，供RequestAttachedStream查询
+    // （取不到时为nullptr，RequestAttachedStream按既有语义降级返回nullptr）
     auto *attached_streams = context->GetInputValue<Rt2AttachedStreamCollection *>(
         node_input_num + static_cast<size_t>(CustomOpInput::kAttachedStreamProvider));
-    args_handler->SetAttachedStreamProvider(attached_streams);
+    auto *context_info_chain = context->GetOutput(
+        node_output_num + static_cast<size_t>(EagerOpExecutionContext::AdditionalOutputIndex::kContextInfo));
+    if (context_info_chain != nullptr) {
+      auto *context_info = context_info_chain->GetValue<EagerExecutionContextInfo *>();
+      if (context_info != nullptr) {
+        context_info->SetAttachedStreamProvider(attached_streams);
+      }
+    }
     GELOGD("EagerArgsHandler initialized in RunFunc with allocator %p, attached stream provider %p", allocator,
            attached_streams);
   }

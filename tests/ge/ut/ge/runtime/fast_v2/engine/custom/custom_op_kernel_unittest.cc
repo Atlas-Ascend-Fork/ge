@@ -43,6 +43,7 @@
 #include "exe_graph/runtime/storage_shape.h"
 #include "exe_graph/runtime/gert_tensor_data.h"
 #include "framework/runtime/args_handler.h"
+#include "framework/runtime/eager_execution_context_info.h"
 #include "kernel/common_kernel_impl/infer_shape.h"
 #include "graph_metadef/depends/faker/allocator_faker.h"
 
@@ -146,10 +147,10 @@ class TestAttachedStreamCustomOp : public EagerExecuteOp {
     const size_t idx =
         (g_attached_execute_count < kAttachedStreamRoundNum) ? g_attached_execute_count : kAttachedStreamRoundNum - 1U;
     ++g_attached_execute_count;
-    g_attached_aux[idx] = ctx->RequestAttachedStream("ut_aux");
-    g_attached_reuse[idx] = ctx->RequestAttachedStream("ut_aux");
-    g_attached_other[idx] = ctx->RequestAttachedStream("ut_other");
-    g_attached_empty_key[idx] = ctx->RequestAttachedStream("");
+    g_attached_aux[idx] = ctx->RequestAttachedStream("ut_aux", 0U);
+    g_attached_reuse[idx] = ctx->RequestAttachedStream("ut_aux", 0U);
+    g_attached_other[idx] = ctx->RequestAttachedStream("ut_other", 0U);
+    g_attached_empty_key[idx] = ctx->RequestAttachedStream("", 0U);
     return SUCCESS;
   }
 };
@@ -853,6 +854,92 @@ TEST_F(CustomNodeKernelUT, execute_host_cpu_custom_op_rejects_non_host_capabilit
   auto funcs = KernelRegistry::GetInstance().FindKernelFuncs("ExecuteHostCustomOp");
   ASSERT_NE(funcs, nullptr);
   EXPECT_NE(funcs->run_func(context), ge::GRAPH_SUCCESS);
+}
+namespace {
+gert::EagerExecutionContextInfo *BuildOutputsContextInfo(KernelRunContextHolder &run_context,
+                                                         const size_t node_output_num) {
+  auto *context = run_context.GetContext<KernelContext>();
+  auto funcs = KernelRegistry::GetInstance().FindKernelFuncs("ExecuteCustomOp");
+  if ((context == nullptr) || (funcs == nullptr) || (funcs->outputs_creator == nullptr) ||
+      (funcs->outputs_creator(nullptr, context) != ge::GRAPH_SUCCESS)) {
+    return nullptr;
+  }
+  auto *info_chain = context->GetOutput(
+      node_output_num + static_cast<size_t>(EagerOpExecutionContext::AdditionalOutputIndex::kContextInfo));
+  return (info_chain == nullptr) ? nullptr : info_chain->GetValue<gert::EagerExecutionContextInfo *>();
+}
+}  // namespace
+
+// 验证CreateCustomOpOutputs在kContextInfo槽创建默认伴生对象（V2动态路径flag全false）
+TEST_F(CustomNodeKernelUT, create_custom_op_outputs_context_info_defaults) {
+  const size_t node_output_num = 1U;
+  const size_t kernel_output_num =
+      node_output_num + static_cast<size_t>(EagerOpExecutionContext::AdditionalOutputIndex::kNum);
+  auto run_context = KernelRunContextFaker()
+                         .KernelIONum(0U, kernel_output_num)
+                         .NodeIoNum(0U, node_output_num)
+                         .NodeOutputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                         .Build();
+  auto *context_info = BuildOutputsContextInfo(run_context, node_output_num);
+  ASSERT_NE(context_info, nullptr);
+  // V2动态链路非静态下沉路径、不使能地址刷新（统一取值语义：0/1）
+  uint64_t value = 0UL;
+  ASSERT_TRUE(context_info->GetContextValue(gert::ContextParam::kStaticModel, value));
+  EXPECT_EQ(value, 0UL);
+  ASSERT_TRUE(context_info->GetContextValue(gert::ContextParam::kAddressRefreshEnabled, value));
+  EXPECT_EQ(value, 0UL);
+}
+
+// 根图graph id / node id / vector core数量由lowering按节点注入为kernel输入，outputs_creator读取后写入伴生对象
+TEST_F(CustomNodeKernelUT, create_custom_op_outputs_reads_injected_context_values) {
+  const size_t node_output_num = 1U;
+  const size_t kernel_output_num =
+      node_output_num + static_cast<size_t>(EagerOpExecutionContext::AdditionalOutputIndex::kNum);
+  // 附加输入槽序：0 allocator、1 stream、2 func、3 attached stream provider、4根图graph id、5 node id、6 vector core
+  // 数量faker的Inputs以void* 为“值”入参（同executor_dumper_unittest中stream的传法）， 与lowering下发的const
+  // 输入在读侧等价（kernel按对应类型取值）
+  constexpr uintptr_t kRootGraphIdValue = 7U;
+  constexpr uintptr_t kNodeIdValue = 11U;
+  constexpr uintptr_t kVectorCoreNumValue = 24U;
+  auto run_context =
+      KernelRunContextFaker()
+          .KernelIONum(7U, kernel_output_num)
+          .NodeIoNum(0U, node_output_num)
+          .NodeOutputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+          .Inputs({nullptr, nullptr, nullptr, nullptr, reinterpret_cast<void *>(kRootGraphIdValue),
+                   reinterpret_cast<void *>(kNodeIdValue), reinterpret_cast<void *>(kVectorCoreNumValue)})
+          .Build();
+  auto *context_info = BuildOutputsContextInfo(run_context, node_output_num);
+  ASSERT_NE(context_info, nullptr);
+  uint64_t value = 0UL;
+  ASSERT_TRUE(context_info->GetContextValue(gert::ContextParam::kGraphId, value));
+  EXPECT_EQ(value, static_cast<uint64_t>(kRootGraphIdValue));
+  ASSERT_TRUE(context_info->GetContextValue(gert::ContextParam::kNodeId, value));
+  EXPECT_EQ(value, static_cast<uint64_t>(kNodeIdValue));
+  ASSERT_TRUE(context_info->GetContextValue(gert::ContextParam::kVectorCoreNum, value));
+  EXPECT_EQ(value, static_cast<uint64_t>(kVectorCoreNumValue));
+}
+
+// node id / vector core数量以sentinel(-1) 表示未设置：查询失败且不写出
+TEST_F(CustomNodeKernelUT, create_custom_op_outputs_ignores_unset_context_values) {
+  const size_t node_output_num = 1U;
+  const size_t kernel_output_num =
+      node_output_num + static_cast<size_t>(EagerOpExecutionContext::AdditionalOutputIndex::kNum);
+  constexpr uintptr_t kUnsetSentinel = static_cast<uintptr_t>(-1);  // 等价lowering侧int64_t(-1)
+  auto run_context = KernelRunContextFaker()
+                         .KernelIONum(7U, kernel_output_num)
+                         .NodeIoNum(0U, node_output_num)
+                         .NodeOutputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                         .Inputs({nullptr, nullptr, nullptr, nullptr, reinterpret_cast<void *>(3U),
+                                  reinterpret_cast<void *>(kUnsetSentinel), reinterpret_cast<void *>(kUnsetSentinel)})
+                         .Build();
+  auto *context_info = BuildOutputsContextInfo(run_context, node_output_num);
+  ASSERT_NE(context_info, nullptr);
+  uint64_t value = 0UL;
+  ASSERT_TRUE(context_info->GetContextValue(gert::ContextParam::kGraphId, value));
+  EXPECT_EQ(value, 3UL);
+  EXPECT_FALSE(context_info->GetContextValue(gert::ContextParam::kNodeId, value));
+  EXPECT_FALSE(context_info->GetContextValue(gert::ContextParam::kVectorCoreNum, value));
 }
 }  // namespace kernel
 }  // namespace gert

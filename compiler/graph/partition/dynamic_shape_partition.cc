@@ -57,7 +57,8 @@ constexpr char_t const *kOffline = "offline";
 bool IsCustomOpExecOnHostCpu(const ge::OpDescPtr &op_desc) {
   if ((op_desc == nullptr) || (op_desc->GetOpEngineName() != ge::kEngineNameCustom) ||
       (op_desc->GetOpKernelLibName() != ge::kCustomOpKernelLibName) ||
-      !ge::CustomOpFactory::IsExistOp(ge::AscendString(op_desc->GetTypePtr()), ge::OpBackend::kHostCPU)) {
+      !ge::CustomOpFactory::IsExistOp(ge::AscendString(op_desc->GetTypePtr()), ge::OpBackend::kHostCPU,
+                                      ge::OpRegistrationPriority::kTop, ge::OpEngine::kCustom)) {
     return false;
   }
   const std::string *lowering_func_ptr = ge::AttrUtils::GetStr(op_desc, ge::kAttrLowingFunc);
