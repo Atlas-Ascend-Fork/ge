@@ -22,7 +22,7 @@ __DEF_EQUALS(Edge) {
 __DEF_COMP(Edge) {
   if (src_ < rhs.src_) return true;
   if ((src_ == rhs.src_) && (dst_ < rhs.dst_)) return true;
-  if ((src_ == rhs.src_) && (dst_ < rhs.dst_) && (type_ < rhs.type_)) return true;
+  if ((src_ == rhs.src_) && (dst_ == rhs.dst_) && (type_ < rhs.type_)) return true;
   return false;
 }
 
