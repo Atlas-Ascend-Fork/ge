@@ -14,7 +14,7 @@
 
 #### 前提条件
 
-参见[启用AutoFuse](autofuse_enable.md#GE路径启用AutoFuse)完成环境搭建、TensorFlow和TF Adapter插件安装、环境变量设置，并启动自动融合功能。
+参见[启用AutoFuse](autofuse_enable.md#ge路径启用autofuse)完成环境搭建、TensorFlow和TF Adapter插件安装、环境变量设置，并启动自动融合功能。
 
 #### 示例代码
 
