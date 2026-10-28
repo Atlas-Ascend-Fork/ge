@@ -9,7 +9,7 @@
  */
 
 #ifndef H600DEDD4_D5B9_4803_AF48_262B2C4FBA94d
-#define H600DEDD4_D5B9_4803_AF48_262B2C4FBA94c
+#define H600DEDD4_D5B9_4803_AF48_262B2C4FBA94d
 
 #include "easy_graph/infra/singleton.h"
 #include "ge_graph_dsl/ge.h"
