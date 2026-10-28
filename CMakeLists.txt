@@ -47,6 +47,14 @@ else()
     option(BUILD_PKG_COMPONENT "Build pkg in normal mode" FALSE)
 endif()
 
+# host 侧 AICORE kernel 构建能力（如 UpdateModelParam_dav_2201.o、switch_by_index.o，由 host 侧 ccec 编译，非 device 交叉编译）：
+# 仅在使能 ENABLE_MOD_EXT 的裁剪形态下不编译，其余场景（单仓/联编）均编译交付
+if(ENABLE_MOD_EXT)
+    set(BUILD_HOST_AICORE_KERNEL FALSE)
+else()
+    set(BUILD_HOST_AICORE_KERNEL TRUE)
+endif()
+
 if (NOT DEFINED CMAKE_MODULE_PATH OR NOT DEFINED CMAKE_PREFIX_PATH)
     # In a developer environment, neither CMAKE_MODULE_PATH nor CMAKE_PREFIX_PATH is set.
     if (NOT DEFINED ASCEND_INSTALL_PATH OR NOT DEFINED CANN_3RD_LIB_PATH)
@@ -557,7 +565,7 @@ elseif (BUILD_OPEN_PROJECT OR ENABLE_OPEN_SRC)
             add_dependencies(ge-executor acl_mdl acl_mdl_impl acl_mdl_impl_om2 acl_op_executor acl_op_executor_impl acl_cblas)
             add_dependencies(ge-executor ge_common_stub stub_lowering atc_stub_graph gert_stub hybrid_executor_stub stub_register stub_acl_mdl
                     stub_acl_cblas stub_acl_op_executor)
-            if(ENABLE_BUILD_DEVICE) # 交叉编译
+            if(BUILD_HOST_AICORE_KERNEL)
                 add_dependencies(ge-executor runtime_update_model_param_dav_2201)
                 add_dependencies(ge-compiler switch_by_index)
             endif()

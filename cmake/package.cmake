@@ -138,7 +138,7 @@ if("ge-compiler" IN_LIST BUILD_COMPONENT)
         install(FILES ${CMAKE_CURRENT_BINARY_DIR}/dflow/pydflow/dataflow-0.0.1-py3-none-any.whl
                 DESTINATION ${ARCH_LINUX_PATH}/lib64 COMPONENT ge-compiler
         )
-        if(ENABLE_BUILD_DEVICE)
+        if(BUILD_HOST_AICORE_KERNEL)
             install(FILES ${CMAKE_CURRENT_BINARY_DIR}/compiler/engines/rts_engine/switch_by_index.o
                     DESTINATION fwkacllib/lib64 COMPONENT ge-compiler
             )
@@ -249,7 +249,7 @@ if("ge-executor" IN_LIST BUILD_COMPONENT)
                 LIBRARY DESTINATION ${ARCH_LINUX_PATH}/devlib/minios/aarch64 COMPONENT ge-executor
                 ARCHIVE DESTINATION ${ARCH_LINUX_PATH}/devlib/minios/aarch64 COMPONENT ge-executor
         )
-        if(ENABLE_BUILD_DEVICE)
+        if(BUILD_HOST_AICORE_KERNEL)
             install(FILES ${CMAKE_CURRENT_BINARY_DIR}/runtime/ops/update_model_param/dav_2201/UpdateModelParam_dav_2201.o
                     DESTINATION ${INSTALL_LIBRARY_DIR} COMPONENT ge-executor
             )

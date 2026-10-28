@@ -233,7 +233,7 @@ add_custom_command(OUTPUT ${SWITCH_BY_INDEX_OBJ}
     ${SWITCH_BY_INDEX_OBJ}
     )
 
-if(ENABLE_BUILD_DEVICE)
+if(BUILD_HOST_AICORE_KERNEL)
     install(FILES ${SWITCH_BY_INDEX_OBJ}
         DESTINATION fwkacllib/lib64 COMPONENT ge-compiler
         ${INSTALL_OPTIONAL}

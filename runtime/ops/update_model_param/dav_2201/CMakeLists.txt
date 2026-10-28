@@ -17,7 +17,7 @@ set_source_files_properties(
 
 if(BUILD_PKG_COMPONENT
     AND "ge-executor" IN_LIST BUILD_COMPONENT
-    AND ENABLE_BUILD_DEVICE)
+    AND BUILD_HOST_AICORE_KERNEL)
     set(CCEC_PATH ${ASCEND_INSTALL_PATH}/tools/ccec_compiler/bin)
     find_cann_package(asc_devkit MODULE REQUIRED)
 
