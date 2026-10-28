@@ -24,6 +24,8 @@ void BindPatternMatcherConfig(py::module_ &m);
 void BindGraphHandleHelpers(py::module_ &m);
 void BindGraphRewriter(py::module_ &m);
 void BindGraphFuseInspector(py::module_ &m);
+void BindStreamPassContext(py::module_ &m);
+void BindGeLog(py::module_ &m);
 
 }  // namespace python_pass_native
 }  // namespace ge

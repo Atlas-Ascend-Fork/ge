@@ -19,6 +19,7 @@
 #include "ge/fusion/pass/decompose_pass.h"
 #include "ge/fusion/pass/fusion_base_pass.h"
 #include "ge/fusion/pass/pattern_fusion_pass.h"
+#include "register/register_custom_pass.h"
 #include "pass_registry.h"
 
 namespace ge {
@@ -64,6 +65,24 @@ struct PythonFusionPassCallbacks {
       default:
         return false;
     }
+  }
+};
+
+// Resource-planning passes deliberately use a separate callback table.
+// Passing a resource-plan descriptor through PythonFusionPassCallbacks would
+// make its IsValid() contract ambiguous and could route it into the fusion
+// executor.  The C ABI uses CustomPassContext as the common transport; each
+// native handler performs the checked down-cast to its concrete context.
+using PythonResourcePlanPassRunFn = Status (*)(const void *holder, const ConstGraphPtr &graph,
+                                               CustomPassContext &pass_context);
+
+struct PythonResourcePlanPassCallbacks {
+  PythonFusionBasePassHolderCreateFn create{nullptr};
+  PythonFusionBasePassHolderDestroyFn destroy{nullptr};
+  PythonResourcePlanPassRunFn run_resource_plan{nullptr};
+
+  bool IsValid() const {
+    return (create != nullptr) && (destroy != nullptr) && (run_resource_plan != nullptr);
   }
 };
 
@@ -147,6 +166,13 @@ class PythonDecomposePassAdapter : public DecomposePassV2 {
  private:
   std::unique_ptr<PythonPassHolder> holder_;
 };
+
+Status RunPythonResourcePlanPass(const std::string &descriptor_key, const ConstGraphPtr &graph,
+                                 CustomPassContext &pass_context);
+
+bool RegisterPythonResourcePlanPass(const PythonPassDescriptor &pass_desc,
+                                    const PythonResourcePlanPassCallbacks &callbacks);
+void ClearPythonResourcePlanRuntimeRegistry();
 
 FusionBasePass *CreatePythonPassAdapter();
 bool RegisterPythonPass(const PythonPassDescriptor &pass_desc, const PythonFusionPassCallbacks &callbacks);

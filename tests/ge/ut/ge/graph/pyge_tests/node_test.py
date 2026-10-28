@@ -23,10 +23,9 @@ import pytest
 
 # 需要添加 ge 到 Python 路径，否则会报错
 try:
-    from ge._capi.pyes_graph_builder_wrapper import is_generated_lib_available
-    from ge.es.graph_builder import GraphBuilder, TensorHolder
+    from ge.es.graph_builder import GraphBuilder
     from ge.es.ut_test import Add
-    from ge.graph import Graph, Node, Shape, Tensor, TensorDesc
+    from ge.graph import Node, Tensor, TensorDesc
     from ge.graph.types import DataType, Format
 except ImportError as e:
     pytest.skip(f"无法导入 ge 模块: {e}", allow_module_level=True)
@@ -86,7 +85,9 @@ class TestNode:
     @staticmethod
     def test_get_and_update_input_desc(graph):
         """测试获取和更新输入 TensorDesc"""
-        net_output = next(node for node in graph.get_all_nodes() if node.type == "NetOutput")
+        net_output = next(
+            node for node in graph.get_all_nodes() if node.type == "NetOutput"
+        )
         desc = net_output.get_input_desc(0)
         assert isinstance(desc, TensorDesc)
         shape = desc.get_shape()
@@ -169,6 +170,56 @@ class TestNode:
         assert isinstance(node_type, str)
         assert len(node_type) > 0  # 节点类型不应为空
 
+    def test_subgraph_instance_query_without_subgraphs(self, node):
+        assert node._has_subgraph_instances() is False
+
+    def test_subgraph_instance_query_custom_call(self, builder):
+        from es_ut_test import phony_If
+
+        subgraphs = []
+        for name in ("then_graph", "else_graph"):
+            sub_builder = GraphBuilder(name)
+            sub_builder.set_graph_output(sub_builder.create_const_int64(1), 0)
+            subgraphs.append(sub_builder.build_and_reset())
+        outputs = phony_If(builder.create_input(0), [1, 2], 1, *subgraphs)
+        builder.set_graph_output(outputs[0], 0)
+        graph = builder.build_and_reset()
+        call_node = next(
+            node for node in graph.get_direct_nodes() if node.type == "phony_If"
+        )
+
+        assert call_node._has_subgraph_instances() is True
+        # The OpDesc instance names still protect the call after graph detachment.
+        graph.remove_subgraph("then_graph")
+        graph.remove_subgraph("else_graph")
+        assert graph.get_all_subgraphs() == []
+        assert call_node._has_subgraph_instances() is True
+
+    def test_subgraph_instance_query_failure(self, node, monkeypatch):
+        from ge._capi.pygraph_wrapper import graph_lib
+
+        monkeypatch.setattr(
+            graph_lib, "GeApiWrapper_GNode_HasSubgraphInstances", lambda *_: 1
+        )
+        with pytest.raises(
+            RuntimeError, match="Failed to query Node subgraph instances"
+        ):
+            node._has_subgraph_instances()
+
+    def test_subgraph_instance_query_invalid_native_arguments(self, node):
+        from ge._capi.pygraph_wrapper import graph_lib
+
+        has_instances = ctypes.c_bool()
+        assert (
+            graph_lib.GeApiWrapper_GNode_HasSubgraphInstances(
+                None, ctypes.byref(has_instances)
+            )
+            != 0
+        )
+        assert (
+            graph_lib.GeApiWrapper_GNode_HasSubgraphInstances(node._handle, None) != 0
+        )
+
     def test_get_in_control_nodes(self, node):
         """测试获取输入控制节点"""
         control_nodes = node.get_in_control_nodes()
@@ -196,7 +247,9 @@ class TestNode:
 
     def test_get_out_data_nodes_and_port_indexes(self, node_first):
         """测试获取输出数据节点和端口索引"""
-        out_data_nodes_and_port_indexes = node_first.get_out_data_nodes_and_port_indexes(0)
+        out_data_nodes_and_port_indexes = (
+            node_first.get_out_data_nodes_and_port_indexes(0)
+        )
         assert isinstance(out_data_nodes_and_port_indexes, List)
         out_node, port_index = out_data_nodes_and_port_indexes[0]
         assert isinstance(port_index, int)
@@ -207,9 +260,11 @@ class TestNode:
     def test_get_out_data_nodes_and_port_indexes_error(self, node_first):
         handle = node_first._handle
         try:
-            with pytest.raises(RuntimeError, match="Failed to get output data node for index 0"):
+            with pytest.raises(
+                RuntimeError, match="Failed to get output data node for index 0"
+            ):
                 node_first._handle = ctypes.c_void_p(None)
-                out_data_nodes_and_port_indexes = node_first.get_out_data_nodes_and_port_indexes(0)
+                node_first.get_out_data_nodes_and_port_indexes(0)
         finally:
             node_first._handle = handle
 
@@ -229,7 +284,9 @@ class TestNode:
 
     def test_get_tensor_attr_for_const_value(self, graph):
         """测试获取 Const.value Tensor 属性"""
-        const_node = next(node for node in graph.get_all_nodes() if node.type == "Const")
+        const_node = next(
+            node for node in graph.get_all_nodes() if node.type == "Const"
+        )
         const_value = const_node.get_attr("value")
         assert isinstance(const_value, Tensor)
         assert const_value.data_type == DataType.DT_FLOAT
@@ -385,3 +442,12 @@ class TestNode:
     def test_has_attr_invalid(self, node):
         with pytest.raises(TypeError, match="attr_name must be a string"):
             node.has_attr(True)
+
+    def test_has_attr_quiet(self, node):
+        node.set_attr("test_attr", "test_value")
+        assert node._has_attr_quiet("test_attr") is True
+        assert node._has_attr_quiet("missing_attr") is False
+
+    def test_has_attr_quiet_invalid(self, node):
+        with pytest.raises(TypeError, match="attr_name must be a string"):
+            node._has_attr_quiet(True)

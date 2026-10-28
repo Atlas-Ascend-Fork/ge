@@ -29,6 +29,25 @@ except ImportError as exc:
 Graph = graph_module.Graph
 
 
+def _user_descriptors(descriptors):
+    """Keep legacy assertions focused on env-loaded fusion passes."""
+
+    def kind_of(item):
+        if isinstance(item, dict):
+            return item.get("kind")
+        return getattr(item, "kind", None)
+
+    return [item for item in descriptors if kind_of(item) != "stream"]
+
+
+def _user_modules(modules):
+    return [
+        module
+        for module in modules
+        if module.__name__ != bootstrap.BUILTIN_STREAM_PASS_MODULE
+    ]
+
+
 def _write_python_pass_module(dir_path: Path, module_name: str, pass_name: str) -> Path:
     file_path = dir_path / f"{module_name}.py"
     file_path.write_text(
@@ -68,8 +87,10 @@ def test_load_pass_plugins_from_env_file(tmp_path, monkeypatch):
 
     modules = bootstrap.load_pass_plugins()
 
-    assert len(modules) == 1
-    assert [item.pass_name for item in passes.get_registered_passes()] == ["EnvFilePass"]
+    assert len(_user_modules(modules)) == 1
+    assert [
+        item.pass_name for item in _user_descriptors(passes.get_registered_passes())
+    ] == ["EnvFilePass"]
 
 
 def test_load_pass_plugins_from_env_directory(tmp_path, monkeypatch):
@@ -79,8 +100,10 @@ def test_load_pass_plugins_from_env_directory(tmp_path, monkeypatch):
 
     modules = bootstrap.load_pass_plugins()
 
-    assert len(modules) == 2
-    assert sorted(item.pass_name for item in passes.get_registered_passes()) == [
+    assert len(_user_modules(modules)) == 2
+    assert sorted(
+        item.pass_name for item in _user_descriptors(passes.get_registered_passes())
+    ) == [
         "EnvDirPassA",
         "EnvDirPassB",
     ]
@@ -92,8 +115,9 @@ def test_bridge_create_run_destroy_holder_from_env(tmp_path, monkeypatch):
 
     descriptors = bridge.load_and_get_pass_descriptors()
 
-    assert len(descriptors) == 1
-    descriptor_key = descriptors[0]["descriptor_key"]
+    user_descriptors = _user_descriptors(descriptors)
+    assert len(user_descriptors) == 1
+    descriptor_key = user_descriptors[0]["descriptor_key"]
     first_instance_id = "BridgePass#1"
     second_instance_id = "BridgePass#2"
 
@@ -102,8 +126,19 @@ def test_bridge_create_run_destroy_holder_from_env(tmp_path, monkeypatch):
 
     first_graph = Graph("g1")
     second_graph = Graph("g2")
-    assert bridge.run_fusion_base_pass(first_instance_id, graph=first_graph, context=None) == 1
-    assert bridge.run_fusion_base_pass(first_instance_id, graph=first_graph, context=None) == 2
-    assert bridge.run_fusion_base_pass(second_instance_id, graph=second_graph, context=None) == 1
+    assert (
+        bridge.run_fusion_base_pass(first_instance_id, graph=first_graph, context=None)
+        == 1
+    )
+    assert (
+        bridge.run_fusion_base_pass(first_instance_id, graph=first_graph, context=None)
+        == 2
+    )
+    assert (
+        bridge.run_fusion_base_pass(
+            second_instance_id, graph=second_graph, context=None
+        )
+        == 1
+    )
     assert bridge.destroy_pass_holder(first_instance_id)
     assert bridge.destroy_pass_holder(second_instance_id)

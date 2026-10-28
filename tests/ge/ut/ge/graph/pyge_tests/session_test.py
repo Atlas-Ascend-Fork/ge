@@ -16,13 +16,16 @@ Session 功能测试 - 使用 pytest 框架
 测试 session.py 中的 Session 类的各种功能
 """
 
+import subprocess
+import sys
+
 import pytest
 
 # 添加 ge 到 Python 路径
 try:
     from ge.allocator import Allocator, MemBlock
     from ge.error import GeError
-    from ge.es.graph_builder import GraphBuilder
+    from ge.es.graph_builder import GraphBuilder  # noqa: F401 - verify ES is available
     from ge.ge_global import GeApi
     from ge.graph import Graph, Tensor
     from ge.graph.types import DataType, Format
@@ -117,7 +120,9 @@ class TestSession:
     def test_run_graph_invaild_graph_id():
         session = Session()
         graph_id = "test"
-        tensor = Tensor([1, 2, 3, 4, 5], None, DataType.DT_INT8, Format.FORMAT_ND, [1, 2, 3])
+        tensor = Tensor(
+            [1, 2, 3, 4, 5], None, DataType.DT_INT8, Format.FORMAT_ND, [1, 2, 3]
+        )
         inputs = [tensor]
         with pytest.raises(TypeError, match="Graph_id must be an integer"):
             session.run_graph(graph_id, inputs)
@@ -128,7 +133,9 @@ class TestSession:
         graph_id = 0
         tensor = 0
         inputs = [tensor]
-        with pytest.raises(TypeError, match="All elements in inputs must be the type of Tensor"):
+        with pytest.raises(
+            TypeError, match="All elements in inputs must be the type of Tensor"
+        ):
             session.run_graph(graph_id, inputs)
 
     @staticmethod
@@ -156,8 +163,10 @@ class TestSession:
     @staticmethod
     def test_run_graph_with_stream_async_invalid_inputs():
         session = Session()
-        tensor = Tensor([1], None, DataType.DT_INT32, Format.FORMAT_ND, [])
-        with pytest.raises(TypeError, match="All elements in inputs must be the type of Tensor"):
+        _tensor = Tensor([1], None, DataType.DT_INT32, Format.FORMAT_ND, [])
+        with pytest.raises(
+            TypeError, match="All elements in inputs must be the type of Tensor"
+        ):
             session.run_graph_with_stream_async(0, 1, [0])
 
     @staticmethod
@@ -240,7 +249,9 @@ class TestSession:
         session._handle = 1
         session._owns_handle = False
         session._default_allocator_streams = {0x1234}
-        session_module._stream_to_default_allocator_owner[0x1234] = session_module.weakref.ref(session)
+        session_module._stream_to_default_allocator_owner[0x1234] = (
+            session_module.weakref.ref(session)
+        )
 
         session.register_external_allocator(0x1234, _StubAllocator())
 
@@ -264,5 +275,41 @@ class TestSession:
     def test_ge_init():
         ge_api = GeApi()
         config = {"ge.exec.deviceId": "2", "ge.graphRunMode": "0"}
-        ret = ge_api.ge_initialize(config)
-        assert ret == 0
+        try:
+            ret = ge_api.ge_initialize(config)
+            assert ret == 0
+        finally:
+            assert ge_api.ge_finalize() == 0
+
+    @staticmethod
+    def test_python_exit_with_initialized_ge():
+        """Native bridge references must not crash after the host finalizes Python."""
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-u",
+                    "-c",
+                    "import faulthandler; "
+                    "faulthandler.enable(); "
+                    "faulthandler.dump_traceback_later(15, repeat=True); "
+                    "print('before importing GeApi', flush=True); "
+                    "from ge.ge_global import GeApi; "
+                    "print('before initializing GE', flush=True); "
+                    "assert GeApi().ge_initialize({'ge.exec.deviceId': '2', 'ge.graphRunMode': '0'}) == 0; "
+                    "print('GE initialized; exiting without finalize', flush=True)",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired as exc:
+            output = exc.stdout or ""
+            if isinstance(output, bytes):
+                output = output.decode("utf-8", errors="replace")
+            pytest.fail(
+                f"GE exit subprocess timed out after {exc.timeout}s.\n{output}",
+                pytrace=False,
+            )
+        assert result.returncode == 0, result.stdout

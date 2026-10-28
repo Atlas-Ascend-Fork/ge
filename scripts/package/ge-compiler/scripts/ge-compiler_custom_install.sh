@@ -138,6 +138,17 @@ ge_compiler_get_python_tag() {
     echo "${_tag}"
 }
 
+ge_compiler_get_python_wheel_tags() {
+    # 只在 python3 自带 pip、也就是它确实是安装器时给出 ABI/平台，
+    # 否则解释器与 ge_compiler_get_python_tag 用的 pip3 可能不是同一个，宁可退回通配。
+    if command -v python3 >/dev/null 2>&1 && python3 -m pip --version >/dev/null 2>&1; then
+        python3 -c 'import sysconfig
+parts = (sysconfig.get_config_var("SOABI") or "").split("-")
+print("cp" + parts[1] if len(parts) > 1 and parts[0] == "cpython" else "")
+print(sysconfig.get_platform().replace("-", "_").replace(".", "_"))' 2>/dev/null
+    fi
+}
+
 ge_compiler_get_python_info() {
     local _pip_info
     local _python_pip_info
@@ -166,7 +177,7 @@ ge_compiler_list_native_python_tags() {
     for _wheel in "${_wheel_dir}"/${_prefix}-*.whl; do
         [ -f "${_wheel}" ] || continue
         _base=$(basename "${_wheel}")
-        _tag=$(echo "${_base}" | sed -n "s/^${_prefix}-[^-]*-\\(cp[0-9][0-9]*\\)-\\1-.*/\\1/p")
+        _tag=$(echo "${_base}" | sed -n "s/^${_prefix}-[^-]*-\\(cp[0-9][0-9]*\\)-[^-]*-.*/\\1/p")
         if [ -n "${_tag}" ]; then
             case " ${_tags} " in
                 *" ${_tag} "*) ;;
@@ -185,9 +196,12 @@ ge_compiler_find_native_wheel() {
     local _wheel_dir="$1"
     local _prefix="$2"
     local _python_tag="$3"
+    # ABI tag 在 3.7 上是 cp37m，与 Python tag 不同；取不到时退回通配。
+    local _abi_tag="${4:-*}"
+    local _platform_tag="${5:-*}"
     local _wheel
     [ -n "${_python_tag}" ] || return 1
-    for _wheel in "${_wheel_dir}"/${_prefix}-*-"${_python_tag}"-"${_python_tag}"-*.whl; do
+    for _wheel in "${_wheel_dir}"/${_prefix}-*-"${_python_tag}"-${_abi_tag}-${_platform_tag}.whl; do
         if [ -f "${_wheel}" ]; then
             echo "${_wheel}"
             return 0
@@ -280,6 +294,9 @@ ge_compiler_install_ge_package() {
     local _wheel_dir="$2"
     local _pythonlocalpath="$3"
     local _python_tag
+    local _python_wheel_tags
+    local _python_abi_tag
+    local _python_platform_tag
     local _available_pass_tags
     local _available_runtime_tags
     local _available_custom_op_tags
@@ -298,18 +315,24 @@ ge_compiler_install_ge_package() {
     fi
     ge_compiler_clean_python_artifacts "${_pythonlocalpath}"
     _python_tag=$(ge_compiler_get_python_tag)
+    _python_wheel_tags=$(ge_compiler_get_python_wheel_tags)
+    _python_abi_tag=$(echo "${_python_wheel_tags}" | sed -n '1p')
+    _python_platform_tag=$(echo "${_python_wheel_tags}" | sed -n '2p')
     _available_pass_tags=$(ge_compiler_list_native_python_tags "${_wheel_dir}" "ge_py_pass_bridge")
     _available_runtime_tags=$(ge_compiler_list_native_python_tags "${_wheel_dir}" "ge_py_runtime_native")
     _available_custom_op_tags=$(ge_compiler_list_native_python_tags "${_wheel_dir}" "ge_py_custom_op_bridge")
-    log "INFO" "python package installer: $(ge_compiler_get_python_info); expected native tag: ${_python_tag:-unknown}; available native wheel tags: pass[${_available_pass_tags}], runtime[${_available_runtime_tags}], custom_op[${_available_custom_op_tags}]."
+    log "INFO" "python package installer: $(ge_compiler_get_python_info); expected native tag: ${_python_tag:-unknown}-${_python_abi_tag:-any}-${_python_platform_tag:-any}; available native wheel tags: pass[${_available_pass_tags}], runtime[${_available_runtime_tags}], custom_op[${_available_custom_op_tags}]."
     if [ -z "${_python_tag}" ]; then
         log "WARNING" "can not detect python tag, install ${_ge_package} only."
         ge_compiler_install_package "${_ge_package}" "${_pythonlocalpath}"
         return 0
     fi
-    _bridge_wheel=$(ge_compiler_find_native_wheel "${_wheel_dir}" "ge_py_pass_bridge" "${_python_tag}" || true)
-    _runtime_wheel=$(ge_compiler_find_native_wheel "${_wheel_dir}" "ge_py_runtime_native" "${_python_tag}" || true)
-    _custom_op_wheel=$(ge_compiler_find_native_wheel "${_wheel_dir}" "ge_py_custom_op_bridge" "${_python_tag}" || true)
+    _bridge_wheel=$(ge_compiler_find_native_wheel "${_wheel_dir}" "ge_py_pass_bridge" "${_python_tag}" \
+        "${_python_abi_tag}" "${_python_platform_tag}" || true)
+    _runtime_wheel=$(ge_compiler_find_native_wheel "${_wheel_dir}" "ge_py_runtime_native" "${_python_tag}" \
+        "${_python_abi_tag}" "${_python_platform_tag}" || true)
+    _custom_op_wheel=$(ge_compiler_find_native_wheel "${_wheel_dir}" "ge_py_custom_op_bridge" "${_python_tag}" \
+        "${_python_abi_tag}" "${_python_platform_tag}" || true)
     if [ -n "${_bridge_wheel}" ]; then
         _native_wheels+=("${_bridge_wheel}")
     else
@@ -326,7 +349,7 @@ ge_compiler_install_ge_package() {
         log "WARNING" "can not find matching custom-op native wheel for ${_python_tag}; use Python fallback."
     fi
     if [ ${#_native_wheels[@]} -eq 0 ]; then
-        log "WARNING" "can not find any matching native wheel for ${_python_tag} in ${_wheel_dir}. Install ${_ge_package} only."
+        log "WARNING" "can not find any matching native wheel for ${_python_tag}-${_python_abi_tag:-any}-${_python_platform_tag:-any} in ${_wheel_dir}. Install ${_ge_package} only."
         ge_compiler_install_package "${_ge_package}" "${_pythonlocalpath}"
         return 0
     fi
@@ -368,7 +391,7 @@ PYTHON_GE_WHL="${sourcedir}/${pkg_arch_name}-linux/lib64/ge_py-0.0.1-py3-none-an
 PYTHON_GE_WHL_DIR="${sourcedir}/${pkg_arch_name}-linux/lib64"
 
 custom_install() {
-    if [ ! -d "$common_parse_dir/share/info/ge-compiler" ]; then
+    if [ -z "${common_parse_dir}" ] || [ ! -d "${common_parse_dir}/share/info/ge-compiler" ]; then
         log "ERROR" "ERR_NO:0x0001;ERR_DES:path $common_parse_dir/share/info/ge-compiler is not exist."
         exit 1
     fi

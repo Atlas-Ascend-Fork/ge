@@ -197,6 +197,8 @@ void GeApiWrapper_GNode_DestroyGNode(const ge::GNode *node);
 ge::graphStatus GeApiWrapper_GNode_GetInDataNodesAndPortIndexes(const ge::GNode *node, int32_t in_index,
                                                                 ge::GNode **in_node, int32_t *index);
 const char *GeApiWrapper_GNode_GetType(const ge::GNode *node);
+uintptr_t GeApiWrapper_GNode_GetIdentity(const ge::GNode *node);
+ge::graphStatus GeApiWrapper_GNode_HasSubgraphInstances(const ge::GNode *node, bool *has_instances);
 ge::GNode **GeApiWrapper_GNode_GetInControlNodes(const ge::GNode *node, size_t *node_num);
 size_t GeApiWrapper_GNode_GetInputsSize(const ge::GNode *node);
 ge::graphStatus GeApiWrapper_GNode_SetAttr(ge::GNode *node, const char *key, const void *attr_value);
@@ -205,6 +207,7 @@ ge::graphStatus GeApiWrapper_GNode_GetOutputAttr(const ge::GNode *node, const ch
 void GeApiWrapper_GNode_FreeGNodeArray(ge::GNode **nodes);
 const char *GeApiWrapper_GNode_GetName(const ge::GNode *node);
 bool GeApiWrapper_GNode_HasAttr(ge::GNode *node, const char *attr_name);
+bool GeApiWrapper_GNode_HasAttrQuiet(const ge::GNode *node, const char *attr_name);
 size_t GeApiWrapper_GNode_GetOutputsSize(const ge::GNode *node);
 ge::graphStatus GeApiWrapper_GNode_GetOutDataNodesAndPortIndexes(const ge::GNode *node, int32_t out_index,
                                                                  ge::GNode **&out_node, int32_t *&index, int *size);

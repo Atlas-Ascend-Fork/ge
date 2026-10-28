@@ -56,28 +56,6 @@ class Node:
         """Deep copy is not supported."""
         raise RuntimeError("Node does not support deepcopy")
 
-    @classmethod
-    def _create_from(cls, node_handle: ctypes.c_void_p, owns_handle: bool = True) -> "Node":
-        """Create Node object from C++ handle.(internal use only by e.g Graph.get_all_nodes()
-        or TensorHolder._get_node_snapshot(), do not use this method directly)
-
-        Args:
-            node_handle: C++ GNode object handle.
-            owns_handle: Whether to own the handle.
-
-        Returns:
-            Node object.
-
-        Raises:
-            ValueError: If node_handle is None.
-        """
-        if not node_handle:
-            raise ValueError("Node handle cannot be None")
-        instance = cls.__new__(cls)
-        instance._handle = node_handle
-        instance._owns_handle = owns_handle
-        return instance
-
     @property
     def name(self) -> str:
         """Get node name.
@@ -116,6 +94,54 @@ class Node:
         finally:
             graph_lib.GeApiWrapper_FreeString(c_str)
 
+    @classmethod
+    def _create_from(
+        cls, node_handle: ctypes.c_void_p, owns_handle: bool = True
+    ) -> "Node":
+        """Create Node object from C++ handle.(internal use only by e.g Graph.get_all_nodes()
+        or TensorHolder._get_node_snapshot(), do not use this method directly)
+
+        Args:
+            node_handle: C++ GNode object handle.
+            owns_handle: Whether to own the handle.
+
+        Returns:
+            Node object.
+
+        Raises:
+            ValueError: If node_handle is None.
+        """
+        if not node_handle:
+            raise ValueError("Node handle cannot be None")
+        instance = cls.__new__(cls)
+        instance._handle = node_handle
+        instance._owns_handle = owns_handle
+        return instance
+
+    def get_native_identity(self) -> int:
+        """Return the stable graph-engine identity for this node.
+
+        Python ``Node`` wrappers are copied when graph edge queries cross the
+        C API boundary, so the wrapper handle itself is not a reliable node
+        identity.  This value is the address of the underlying graph-engine
+        ``Node`` and is intended for internal graph-consistency checks.
+        """
+        return int(graph_lib.GeApiWrapper_GNode_GetIdentity(self._handle))
+
+    def _has_subgraph_instances(self) -> bool:
+        """Return whether the operator descriptor carries subgraph instance metadata.
+
+        Raises:
+            RuntimeError: If the subgraph instance query fails.
+        """
+        has_instances = ctypes.c_bool()
+        ret = graph_lib.GeApiWrapper_GNode_HasSubgraphInstances(
+            self._handle, ctypes.byref(has_instances)
+        )
+        if ret != 0:  # GRAPH_SUCCESS
+            raise RuntimeError("Failed to query Node subgraph instances")
+        return has_instances.value
+
     def get_in_control_nodes(self) -> List["Node"]:
         """Get input control nodes.
 
@@ -123,7 +149,9 @@ class Node:
             List of input control Node objects.
         """
         node_num = ctypes.c_size_t()
-        nodes = graph_lib.GeApiWrapper_GNode_GetInControlNodes(self._handle, ctypes.byref(node_num))
+        nodes = graph_lib.GeApiWrapper_GNode_GetInControlNodes(
+            self._handle, ctypes.byref(node_num)
+        )
         if not nodes:
             return []
 
@@ -159,7 +187,9 @@ class Node:
 
         return Node._create_from(in_node), index.value
 
-    def get_out_data_nodes_and_port_indexes(self, out_index: int) -> List[Tuple["Node", int]]:
+    def get_out_data_nodes_and_port_indexes(
+        self, out_index: int
+    ) -> List[Tuple["Node", int]]:
         """Get output data nodes and port indexes.
 
         Args:
@@ -187,7 +217,10 @@ class Node:
         if ret != 0:  # GRAPH_SUCCESS
             raise RuntimeError(f"Failed to get output data node for index {out_index}")
         try:
-            return [(Node._create_from(out_nodes[i]), out_indexes[i]) for i in range(size.value)]
+            return [
+                (Node._create_from(out_nodes[i]), out_indexes[i])
+                for i in range(size.value)
+            ]
         finally:
             graph_lib.GeApiWrapper_GNode_FreeGNodeArray(out_nodes)
             graph_lib.GeApiWrapper_GNode_FreeIntArray(out_indexes)
@@ -211,7 +244,7 @@ class Node:
         attr_value = _AttrValue()
         key_bytes = key.encode("utf-8")
 
-        ret = graph_lib.GeApiWrapper_GNode_GetAttr(self._handle, key_bytes, attr_value._av_ptr)
+        ret = graph_lib.GeApiWrapper_GNode_GetAttr(self._handle, key_bytes, attr_value)
         if ret != 0:  # GRAPH_SUCCESS
             raise RuntimeError(f"Failed to get attribute '{key}' from Node")
 
@@ -234,7 +267,7 @@ class Node:
         key_bytes = key.encode("utf-8")
         attr_value = _AttrValue()
         attr_value.set_value(value)
-        ret = graph_lib.GeApiWrapper_GNode_SetAttr(self._handle, key_bytes, attr_value._av_ptr)
+        ret = graph_lib.GeApiWrapper_GNode_SetAttr(self._handle, key_bytes, attr_value)
         if ret != 0:  # GRAPH_SUCCESS
             raise RuntimeError(f"Failed to set attribute '{key}' on Node {self.name}")
 
@@ -267,7 +300,9 @@ class Node:
             attr_value._av_ptr,
         )
         if ret != 0:  # GRAPH_SUCCESS
-            raise RuntimeError(f"Failed to get Node {self.name} input attribute '{attr_name}' for index {input_index}")
+            raise RuntimeError(
+                f"Failed to get Node {self.name} input attribute '{attr_name}' for index {input_index}"
+            )
 
         return attr_value.get_value()
 
@@ -298,7 +333,9 @@ class Node:
             attr_value._av_ptr,
         )
         if ret != 0:  # GRAPH_SUCCESS
-            raise RuntimeError(f"Failed to set Node {self.name} input attribute '{attr_name}' for index {input_index}")
+            raise RuntimeError(
+                f"Failed to set Node {self.name} input attribute '{attr_name}' for index {input_index}"
+            )
 
     def get_output_attr(self, attr_name: str, output_index: int) -> Any:
         """Get output attribute.
@@ -373,7 +410,9 @@ class Node:
             List of output control Node objects.
         """
         node_num = ctypes.c_size_t()
-        nodes = graph_lib.GeApiWrapper_GNode_GetOutControlNodes(self._handle, ctypes.byref(node_num))
+        nodes = graph_lib.GeApiWrapper_GNode_GetOutControlNodes(
+            self._handle, ctypes.byref(node_num)
+        )
         if not nodes:
             return []
 
@@ -425,7 +464,9 @@ class Node:
         if not isinstance(index, int):
             raise TypeError("Input index must be an integer")
 
-        desc_handle = graph_lib.GeApiWrapper_GNode_GetInputDesc(self._handle, ctypes.c_int32(index))
+        desc_handle = graph_lib.GeApiWrapper_GNode_GetInputDesc(
+            self._handle, ctypes.c_int32(index)
+        )
         if not desc_handle:
             raise RuntimeError(f"Failed to get input desc for index {index}")
         return TensorDesc._create_from(desc_handle)
@@ -442,7 +483,9 @@ class Node:
         if not isinstance(tensor_desc, TensorDesc):
             raise TypeError("tensor_desc must be a TensorDesc")
 
-        ret = graph_lib.GeApiWrapper_GNode_UpdateInputDesc(self._handle, ctypes.c_int32(index), tensor_desc._handle)
+        ret = graph_lib.GeApiWrapper_GNode_UpdateInputDesc(
+            self._handle, ctypes.c_int32(index), tensor_desc
+        )
         if ret != 0:
             raise RuntimeError(f"Failed to update input desc for index {index}")
 
@@ -458,7 +501,9 @@ class Node:
         if not isinstance(index, int):
             raise TypeError("Output index must be an integer")
 
-        desc_handle = graph_lib.GeApiWrapper_GNode_GetOutputDesc(self._handle, ctypes.c_int32(index))
+        desc_handle = graph_lib.GeApiWrapper_GNode_GetOutputDesc(
+            self._handle, ctypes.c_int32(index)
+        )
         if not desc_handle:
             raise RuntimeError(f"Failed to get output desc for index {index}")
         return TensorDesc._create_from(desc_handle)
@@ -475,6 +520,21 @@ class Node:
         if not isinstance(tensor_desc, TensorDesc):
             raise TypeError("tensor_desc must be a TensorDesc")
 
-        ret = graph_lib.GeApiWrapper_GNode_UpdateOutputDesc(self._handle, ctypes.c_int32(index), tensor_desc._handle)
+        ret = graph_lib.GeApiWrapper_GNode_UpdateOutputDesc(
+            self._handle, ctypes.c_int32(index), tensor_desc
+        )
         if ret != 0:
             raise RuntimeError(f"Failed to update output desc for index {index}")
+
+    def _has_attr_quiet(self, attr_name: str) -> bool:
+        """Like :meth:`has_attr`, but an absent attribute is not logged.
+
+        ``has_attr`` goes through ``GNode::HasAttr``, which logs a warning for
+        every missing attribute.  Internal callers that probe optional
+        attributes on every node use this query instead.
+        """
+        if not isinstance(attr_name, str):
+            raise TypeError("attr_name must be a string")
+
+        attr_name_bytes = attr_name.encode("utf-8")
+        return graph_lib.GeApiWrapper_GNode_HasAttrQuiet(self._handle, attr_name_bytes)

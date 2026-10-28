@@ -10,14 +10,32 @@ set -e
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+if [ -z "${INSTALL_PATH:-}" ]; then
+    echo "================ ge-compiler rpm/deb prerm skipped: INSTALL_PATH is empty ================"
+    exit 0
+fi
+
 sourcedir="${INSTALL_PATH}"
 # WHL_INSTALL_DIR_PATH=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))" 2>/dev/null)
 WHL_INSTALL_DIR_PATH="${sourcedir}/python/site-packages"
 export PYTHONPATH="${WHL_INSTALL_DIR_PATH}"
 export PIP_BREAK_SYSTEM_PACKAGES=1
 
+uninstall_local_package() {
+    local package_name="$1"
+    local distribution_name="${package_name//-/_}"
+    # Restrict the package-manager operation to this CANN site-packages
+    # root.  Falling back to the global pip database could remove a package
+    # owned by another CANN installation or by the user.
+    if [ ! -d "${WHL_INSTALL_DIR_PATH}/${package_name}" ] &&
+        ! compgen -G "${WHL_INSTALL_DIR_PATH}/${distribution_name}-*.dist-info" >/dev/null 2>&1; then
+        return 0
+    fi
+    pip3 uninstall -y "${package_name}" >/dev/null 2>&1 || true
+}
+
 for pkg in ge-py-pass-bridge ge-py-runtime-native ge-py-custom-op-bridge dataflow llm_datadist_v1 ge_py; do
-    pip3 uninstall -y "${pkg}" >/dev/null 2>&1 || true
+    uninstall_local_package "${pkg}"
 done
 
 rm -fr "${WHL_INSTALL_DIR_PATH}/llm_datadist_v1" "${WHL_INSTALL_DIR_PATH}/dataflow" "${WHL_INSTALL_DIR_PATH}/ge_py" 2>/dev/null
