@@ -59,7 +59,11 @@ bool GetAutoMultistreamModeFromGraph(const GraphPtr &graph, std::string &multi_s
   return true;
 }
 
-bool ShouldSkipMiniDagStreamPass(const GraphPtr &graph) {
+bool ShouldSkipMiniDagStreamPass(const PassRegistrationData &reg_data, const GraphPtr &graph) {
+  if (reg_data.GetPassName() != kMiniDagStreamPass) {
+    return false;
+  }
+
   std::string multi_stream_mode;
   const bool from_graph = GetAutoMultistreamModeFromGraph(graph, multi_stream_mode);
   if ((!from_graph) &&
@@ -74,10 +78,6 @@ bool ShouldSkipMiniDagStreamPass(const GraphPtr &graph) {
     GELOGI("MiniDAGStreamPass skipped for auto multistream parallel mode %s.", multi_stream_mode.c_str());
   }
   return should_skip;
-}
-
-bool ShouldSkipMiniDagStreamPass(const PassRegistrationData &reg_data, const GraphPtr &graph) {
-  return (reg_data.GetPassName() == kMiniDagStreamPass) && ShouldSkipMiniDagStreamPass(graph);
 }
 
 Status RunAllocateStreamPass(const PassRegistrationData &reg_data, const GraphPtr &graph,
@@ -206,9 +206,7 @@ CustomPassFunc PassRegistrationData::GetCustomPassFn() const {
 }
 
 CustomAllocateStreamPassFunc PassRegistrationData::GetCustomAllocateStreamPass() const {
-  if (impl_ == nullptr) {
-    return nullptr;
-  }
+  GE_ASSERT_NOTNULL(impl_);
   return impl_->allocate_stream_pass_;
 }
 
@@ -288,8 +286,6 @@ StreamPassContext::StreamPassContext(int64_t current_max_stream_id) {
   }
 }
 
-StreamPassContext::~StreamPassContext() = default;
-
 graphStatus StreamPassContext::SetStreamId(const GNode &node, int64_t stream_id) {
   GE_ASSERT_NOTNULL(impl_);
   return impl_->SetStreamId(node, stream_id);
@@ -327,80 +323,9 @@ void CustomPassHelper::Insert(const PassRegistrationData &reg_data) {
   (void)registration_datas_.emplace_back(reg_data);
 }
 
-bool CustomPassHelper::RegisterPythonResourcePlanPass(const PassRegistrationData &reg_data) {
-  const auto pass_name = reg_data.GetPassName();
-  const auto stage = reg_data.GetStage();
-  if (pass_name.empty() || stage >= CustomPassStage::kInvalid || reg_data.GetCustomAllocateStreamPass() == nullptr) {
-    GELOGW("Reject malformed Python resource-plan registration: name[%s], stage[%u].", pass_name.c_str(),
-           static_cast<uint32_t>(stage));
-    return false;
-  }
-
-  std::unique_lock<std::shared_mutex> lock(mutex_);
-  const std::pair<std::string, CustomPassStage> key{pass_name, stage};
-
-  for (const auto &item : registration_datas_) {
-    if (item.GetPassName() == pass_name && item.GetStage() == stage) {
-      GELOGW("Reject duplicate custom resource-plan registration: name[%s], stage[%u].", pass_name.c_str(),
-             static_cast<uint32_t>(stage));
-      return false;
-    }
-  }
-  if (python_resource_plan_passes_.find(key) != python_resource_plan_passes_.cend()) {
-    return false;
-  }
-  const auto registration_index = registration_datas_.size();
-  registration_datas_.emplace_back(reg_data);
-  python_resource_plan_passes_.emplace(key);
-  python_resource_plan_pass_indices_.emplace(registration_index);
-  return true;
-}
-
-void CustomPassHelper::ClearPythonResourcePlanPasses() {
-  std::unique_lock<std::shared_mutex> lock(mutex_);
-  if (python_resource_plan_pass_indices_.empty()) {
-    python_resource_plan_passes_.clear();
-    return;
-  }
-
-  for (auto iter = python_resource_plan_pass_indices_.rbegin(); iter != python_resource_plan_pass_indices_.rend();
-       ++iter) {
-    if (*iter < registration_datas_.size()) {
-      registration_datas_.erase(registration_datas_.begin() + static_cast<std::ptrdiff_t>(*iter));
-    }
-  }
-  python_resource_plan_pass_indices_.clear();
-  python_resource_plan_passes_.clear();
-}
-
 Status CustomPassHelper::Load() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
   GELOGD("[Load][CustomPassLibs] Start to load custom pass libs");
-  const size_t initial_handle_count = handles_.size();
-  const size_t initial_registration_count = registration_datas_.size();
-  const auto initial_python_resource_plan_passes = python_resource_plan_passes_;
-  const auto initial_python_resource_plan_pass_indices = python_resource_plan_pass_indices_;
-
-  const auto rollback = [this, initial_handle_count, initial_registration_count, initial_python_resource_plan_passes,
-                         initial_python_resource_plan_pass_indices]() {
-    if (registration_datas_.size() > initial_registration_count) {
-      registration_datas_.erase(registration_datas_.begin() + static_cast<std::ptrdiff_t>(initial_registration_count),
-                                registration_datas_.end());
-    }
-    python_resource_plan_passes_ = initial_python_resource_plan_passes;
-    python_resource_plan_pass_indices_ = initial_python_resource_plan_pass_indices;
-    Status rollback_status = SUCCESS;
-    for (size_t index = handles_.size(); index > initial_handle_count; --index) {
-      auto *handle = handles_[index - 1U];
-      if ((handle != nullptr) && (dlclose(handle) != 0)) {
-        GELOGE(FAILED, "[Load][CustomPassLibs] Failed to rollback custom pass lib: %s", dlerror());
-        rollback_status = FAILED;
-      }
-    }
-    handles_.resize(initial_handle_count);
-    return rollback_status;
-  };
-
   std::string opp_path;
   GE_ASSERT_SUCCESS(ge::PluginManager::GetOppPath(opp_path));
   std::string vendors_path = opp_path + "/vendors";
@@ -422,7 +347,6 @@ Status CustomPassHelper::Load() {
       (void)REPORT_PREDEFINED_ERR_MSG("E13029", std::vector<const char_t *>({"passlibname", "reason"}),
                                       std::vector<const char_t *>({so_file.c_str(), error}));
       GELOGE(ge::FAILED, "Failed to load %s: %s", so_file.c_str(), error);
-      (void)rollback();
       return ge::FAILED;
     }
     (void)handles_.emplace_back(handle);
@@ -433,49 +357,25 @@ Status CustomPassHelper::Load() {
 
 Status CustomPassHelper::Unload() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
-  python_resource_plan_passes_.clear();
-  python_resource_plan_pass_indices_.clear();
   registration_datas_.clear();
-  Status unload_status = ge::SUCCESS;
   for (auto &handle : handles_) {
     if (handle != nullptr && dlclose(handle) != 0) {
       GELOGE(ge::FAILED, "[Unload][CustomPassLibs] Failed to unload custom pass lib: %s", dlerror());
-      unload_status = ge::FAILED;
-      continue;
+      return ge::FAILED;
     }
     GELOGI("Unload custom pass lib success");
   }
   handles_.clear();
-  return unload_status;
+  return ge::SUCCESS;
 }
 
 Status CustomPassHelper::Run(GraphPtr &graph, CustomPassContext &custom_pass_context, const CustomPassStage stage,
                              const std::map<std::string, bool> &pass_name_to_switches) const {
   std::shared_lock<std::shared_mutex> lock(mutex_);
-  std::vector<const PassRegistrationData *> items;
-  items.reserve(registration_datas_.size());
-  for (const auto &item : registration_datas_) {
-    if (item.GetStage() == stage) {
-      items.emplace_back(&item);
+  for (auto &item : registration_datas_) {
+    if (item.GetStage() != stage) {
+      continue;
     }
-  }
-  if (stage == CustomPassStage::kAfterAssignLogicStream) {
-    std::sort(items.begin(), items.end(), [](const PassRegistrationData *lhs, const PassRegistrationData *rhs) {
-      return lhs->GetPassName() < rhs->GetPassName();
-    });
-    const bool has_mini_dag = std::any_of(items.cbegin(), items.cend(), [](const PassRegistrationData *item) {
-      return item->GetPassName() == kMiniDagStreamPass;
-    });
-    if ((!has_mini_dag) && (!ShouldSkipMiniDagStreamPass(graph))) {
-      GELOGE(FAILED,
-             "ge.autoMultistreamParallelMode requires the built-in %s, but it is not registered. The Python pass "
-             "bridge may have failed to load during initialization, see the earlier warning in the log.",
-             kMiniDagStreamPass);
-      return FAILED;
-    }
-  }
-  for (const auto *item_ptr : items) {
-    const auto &item = *item_ptr;
     if (!PassOptionUtils::IsPassEnable(pass_name_to_switches, item.GetPassName(), item.GetDefaultSwitch())) {
       GELOGI("[CustomPass][SKIP] Pass [%s] is disabled.", item.GetPassName().c_str());
       continue;

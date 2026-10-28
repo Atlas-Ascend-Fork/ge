@@ -22,14 +22,11 @@ import shutil
 import subprocess
 import sys
 import textwrap
-import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from build_python_native_wheel import validate_artifact_manifest
-
-SUPPORTED_TAGS = ("cp37", "cp38", "cp39", "cp310", "cp311", "cp312", "cp313", "cp314")
+SUPPORTED_TAGS = ("cp39", "cp310", "cp311", "cp312", "cp313", "cp314")
 
 
 _REQUIRED_NATIVE_KEYS = ("target", "target_dir", "sources", "artifact")
@@ -69,7 +66,6 @@ class TargetBuildInfo:
 @dataclass
 class PythonBuildInfo:
     tag: str
-    abi_tag: str
     executable: str
     version: str
     include_dir: Path
@@ -249,20 +245,12 @@ except Exception:
 
 version = sysconfig.get_config_var("VERSION") or f"{sys.version_info.major}.{sys.version_info.minor}"
 lib_version = version + ("m" if sys.version_info[:2] <= (3, 7) else "") if version else ""
-soabi_parts = (sysconfig.get_config_var("SOABI") or "").split("-")
-abi_tag = "cp" + soabi_parts[1] if len(soabi_parts) > 1 and soabi_parts[0] == "cpython" else ""
-libdir = sysconfig.get_config_var("LIBDIR") or ""
-multiarch = sysconfig.get_config_var("MULTIARCH") or ""
 libdirs = []
 for item in [
     os.path.join(sys.prefix, "lib"),
     os.path.join(sys.exec_prefix, "lib"),
     os.path.abspath(os.path.join(os.path.dirname(sys.executable), "..", "lib")),
-    libdir,
-    # Debian/Ubuntu report LIBDIR as /usr/lib and keep libpython under LIBDIR/<multiarch>;
-    # LIBPL holds the config directory copy.
-    os.path.join(libdir, multiarch) if libdir and multiarch else "",
-    sysconfig.get_config_var("LIBPL") or "",
+    sysconfig.get_config_var("LIBDIR") or "",
 ]:
     if item and item not in libdirs:
         libdirs.append(item)
@@ -286,7 +274,6 @@ matches = [
 shared = next((item for item in matches if ".so" in os.path.basename(item)), "")
 print(json.dumps({
     "version": sys.version.split()[0],
-    "abi_tag": abi_tag,
     "include": sysconfig.get_path("include") or sysconfig.get_config_var("INCLUDEPY") or "",
     "library": shared or (matches[0] if matches else ""),
     "pybind_include": pybind_include,
@@ -316,7 +303,6 @@ def _python_build_info_from_output(
         pybind_include = None
     return PythonBuildInfo(
         tag=tag,
-        abi_tag=info.get("abi_tag") or tag,
         executable=info.get("executable", python),
         version=info.get("version", ""),
         include_dir=include_dir,
@@ -841,10 +827,7 @@ def _build_native_artifacts(
     return artifact_dir
 
 
-def _build_wheel(
-    args: argparse.Namespace, python_info: PythonBuildInfo, artifact_dir: Path
-) -> Path:
-    tag = python_info.tag
+def _build_wheel(args: argparse.Namespace, tag: str, artifact_dir: Path) -> Path:
     script = Path(__file__).resolve().with_name("build_python_native_wheel.py")
     command = [
         sys.executable,
@@ -855,8 +838,6 @@ def _build_wheel(
         os.fspath(artifact_dir),
         "--python-tag",
         tag,
-        "--abi-tag",
-        python_info.abi_tag,
         "--platform-tag",
         args.platform_tag,
         "--wheel-platform",
@@ -869,7 +850,7 @@ def _build_wheel(
         raise RuntimeError(f"Build native wheel failed for {tag}:\n{completed.stdout}")
     wheels = sorted(
         args.dist_dir.glob(
-            f"{_component(args)['wheel']['dist_name']}-*-{tag}-{python_info.abi_tag}-*.whl"
+            f"{_component(args)['wheel']['dist_name']}-*-{tag}-{tag}-*.whl"
         )
     )
     if not wheels:
@@ -884,17 +865,6 @@ def _copy_current_wheel(args: argparse.Namespace, tag: str) -> Optional[Path]:
         or not args.current_wheel.is_file()
     ):
         return None
-    config = _component(args)
-    wheel_config = config["wheel"]
-    artifact_root = (
-        f"{wheel_config['package'].replace('.', '/')}/{wheel_config['artifact_root']}/"
-        f"{tag}-{args.platform_tag}"
-    )
-    with zipfile.ZipFile(args.current_wheel) as archive:
-        manifest = json.loads(archive.read(f"{artifact_root}/manifest.json"))
-        validate_artifact_manifest(manifest, config, tag, args.platform_tag)
-        for filename in manifest["artifacts"].values():
-            archive.getinfo(f"{artifact_root}/{filename}")
     args.dist_dir.mkdir(parents=True, exist_ok=True)
     target = args.dist_dir / args.current_wheel.name
     shutil.copy2(args.current_wheel, target)
@@ -935,7 +905,7 @@ def _build_one(
     artifact_dir = _build_native_artifacts(args, python_info, is_current_tag)
     if artifact_dir is None:
         return []
-    return [_build_wheel(args, python_info, artifact_dir)]
+    return [_build_wheel(args, tag, artifact_dir)]
 
 
 def parse_args() -> argparse.Namespace:

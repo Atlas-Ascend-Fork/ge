@@ -31,7 +31,6 @@
 #include "pybind11/embed.h"
 #include "pybind11/stl.h"
 #include "common/ge_common/debug/ge_log.h"
-#include "common/python_runtime/ge_python_runtime_manager.h"
 #include "graph/ascend_string.h"
 #include "python_pass_adapter.h"
 
@@ -46,21 +45,6 @@ constexpr const char *kBridgeModuleName = "ge.passes._bridge";
 constexpr const char *kPassNativeModuleName = "ge.passes._ge_pass_native";
 constexpr const char *kPassModuleName = "ge.passes";
 constexpr const char *kPassKindFusionBase = "fusion_base";
-constexpr const char *kPassKindStream = "stream";
-
-class PythonGILStateGuard {
- public:
-  PythonGILStateGuard() : state_(PyGILState_Ensure()) {}
-  ~PythonGILStateGuard() {
-    PyGILState_Release(state_);
-  }
-
-  PythonGILStateGuard(const PythonGILStateGuard &) = delete;
-  PythonGILStateGuard &operator=(const PythonGILStateGuard &) = delete;
-
- private:
-  PyGILState_STATE state_;
-};
 constexpr const char *kEnvPythonPassPath = "ASCEND_GE_PY_PASS_PATH";
 
 struct PythonBridgeHolder {
@@ -94,10 +78,6 @@ bool ParsePythonPassKind(const std::string &kind_name, PythonPassKind &kind) {
     kind = PythonPassKind::kDecompose;
     return true;
   }
-  if (kind_name == kPassKindStream) {
-    kind = PythonPassKind::kStream;
-    return true;
-  }
   return false;
 }
 
@@ -106,19 +86,6 @@ class PythonFusionPassPybindBridge {
   static PythonFusionPassPybindBridge &GetInstance() {
     static PythonFusionPassPybindBridge instance;
     return instance;
-  }
-
-  ~PythonFusionPassPybindBridge() {
-    if (Py_IsInitialized() == 0) {
-      // The host may finalize Python before shared-library static destructors run.
-      // These references belong to the expired interpreter and cannot be decref'd.
-      (void)bridge_module_.release();
-      (void)pass_native_module_.release();
-      return;
-    }
-    PythonGILStateGuard gil_state;
-    bridge_module_ = py::object();
-    pass_native_module_ = py::object();
   }
 
   Status SetArtifactConfig(const PythonFusionPassBridgeArtifactConfig *config) {
@@ -142,7 +109,7 @@ class PythonFusionPassPybindBridge {
       GELOGE(prepare_ret, "Prepare python pybind bridge failed.");
       return prepare_ret;
     }
-    PythonGILStateGuard gil_state;
+    py::gil_scoped_acquire gil;
     py::object descriptors_obj;
     try {
       descriptors_obj = bridge_module_.attr("load_and_get_pass_descriptors")();
@@ -151,39 +118,22 @@ class PythonFusionPassPybindBridge {
       return FAILED;
     }
 
-    try {
-      const py::list descriptor_list = descriptors_obj.cast<py::list>();
-      for (const auto &item : descriptor_list) {
-        PythonPassDescriptor pass_desc;
-        const auto parse_ret = ParseDescriptor(item.cast<py::dict>(), pass_desc);
-        if (parse_ret != SUCCESS) {
-          GELOGE(parse_ret, "Parse python pass descriptor failed.");
-          return parse_ret;
-        }
-        if (pass_desc.kind == PythonPassKind::kStream) {
-          const auto callbacks = GetResourcePlanCallbacks();
-          if ((registrar.register_resource_plan_pass == nullptr) ||
-              (!registrar.register_resource_plan_pass(&pass_desc, &callbacks))) {
-            GELOGE(FAILED, "Register python resource-plan pass[%s] failed.", pass_desc.pass_name.c_str());
-            return FAILED;
-          }
-        } else {
-          const auto callbacks = GetCallbacks(pass_desc.kind);
-          if ((registrar.register_pass == nullptr) || (!registrar.register_pass(&pass_desc, &callbacks))) {
-            GELOGE(FAILED, "Register python pass[%s] failed.", pass_desc.pass_name.c_str());
-            return FAILED;
-          }
-        }
-        GELOGI("Python pass[%s] is registered from pybind bridge.", pass_desc.pass_name.c_str());
+    const py::list descriptor_list = descriptors_obj.cast<py::list>();
+    for (const auto &item : descriptor_list) {
+      PythonPassDescriptor pass_desc;
+      const auto parse_ret = ParseDescriptor(item.cast<py::dict>(), pass_desc);
+      if (parse_ret != SUCCESS) {
+        GELOGE(parse_ret, "Parse python pass descriptor failed.");
+        return parse_ret;
       }
-      return SUCCESS;
-    } catch (const py::error_already_set &err) {
-      GELOGE(FAILED, "Decode python pass descriptors failed: %s", err.what());
-      return FAILED;
-    } catch (const std::exception &err) {
-      GELOGE(FAILED, "Decode python pass descriptors failed: %s", err.what());
-      return FAILED;
+      const auto callbacks = GetCallbacks(pass_desc.kind);
+      if ((registrar.register_pass == nullptr) || (!registrar.register_pass(&pass_desc, &callbacks))) {
+        GELOGE(FAILED, "Register python pass[%s] failed.", pass_desc.pass_name.c_str());
+        return FAILED;
+      }
+      GELOGI("Python pass[%s] is registered from pybind bridge.", pass_desc.pass_name.c_str());
     }
+    return SUCCESS;
   }
 
   void ResetBridgeState() {
@@ -192,7 +142,7 @@ class PythonFusionPassPybindBridge {
       GELOGI("Skip resetting python pybind bridge state because interpreter is not initialized.");
       return;
     }
-    PythonGILStateGuard gil_state;
+    py::gil_scoped_acquire gil;
     GELOGI("Resetting python pybind bridge state with existing interpreter.");
     ResetBridgeStateUnlocked();
   }
@@ -202,7 +152,7 @@ class PythonFusionPassPybindBridge {
     GELOGI("Shutting down python pybind bridge, owns_interpreter[%d], py_initialized[%d].", owns_interpreter_ ? 1 : 0,
            Py_IsInitialized() != 0 ? 1 : 0);
     if (Py_IsInitialized() != 0) {
-      PythonGILStateGuard gil_state;
+      py::gil_scoped_acquire gil;
       ResetBridgeStateUnlocked();
     }
     if (owns_interpreter_ && (Py_IsInitialized() != 0)) {
@@ -222,7 +172,7 @@ class PythonFusionPassPybindBridge {
       GELOGW("Prepare python bridge failed when creating holder.");
       return nullptr;
     }
-    PythonGILStateGuard gil_state;
+    py::gil_scoped_acquire gil;
     const std::string instance_id = BuildInstanceId(pass_desc.descriptor_key);
     try {
       const bool created =
@@ -245,7 +195,7 @@ class PythonFusionPassPybindBridge {
       return;
     }
     if (Py_IsInitialized() != 0) {
-      PythonGILStateGuard gil_state;
+      py::gil_scoped_acquire gil;
       try {
         EnsureBridgeModuleUnlocked();
         (void)bridge_module_.attr("destroy_pass_holder")(holder->instance_id);
@@ -267,7 +217,7 @@ class PythonFusionPassPybindBridge {
       GELOGE(prepare_ret, "Prepare python bridge failed.");
       return prepare_ret;
     }
-    PythonGILStateGuard gil_state;
+    py::gil_scoped_acquire gil;
     try {
       py::object result = bridge_module_.attr("run_fusion_base_pass")(holder->instance_id, BuildPythonGraph(graph),
                                                                       BuildPythonPassContext(pass_context));
@@ -276,50 +226,6 @@ class PythonFusionPassPybindBridge {
       pass_context.SetErrorMessage(AscendString(err.what()));
       GELOGE(FAILED, "Run python pass failed, descriptor key[%s], instance id[%s]: %s", holder->descriptor_key.c_str(),
              holder->instance_id.c_str(), err.what());
-      return FAILED;
-    }
-  }
-
-  Status RunResourcePlan(const PythonBridgeHolder *holder, const ConstGraphPtr &graph,
-                         CustomPassContext &pass_context) {
-    if (holder == nullptr) {
-      pass_context.SetErrorMessage("python resource-plan bridge holder is null");
-      return FAILED;
-    }
-    if (graph == nullptr) {
-      pass_context.SetErrorMessage("python resource-plan bridge graph is null");
-      return FAILED;
-    }
-    const auto prepare_ret = EnsureBridgeReady();
-    if (prepare_ret != SUCCESS) {
-      pass_context.SetErrorMessage("python resource-plan bridge is not ready");
-      GELOGE(prepare_ret, "Prepare python resource-plan bridge failed.");
-      return prepare_ret;
-    }
-    PythonGILStateGuard gil_state;
-    try {
-      py::object result = bridge_module_.attr("run_resource_plan_pass")(holder->instance_id, BuildPythonGraph(graph),
-                                                                        BuildPythonResourcePlanContext(pass_context));
-      const auto status = TranslateRunResult(result, pass_context);
-      return status;
-    } catch (const py::error_already_set &err) {
-      pass_context.SetErrorMessage(AscendString(err.what()));
-      GELOGE(FAILED, "Run python resource-plan pass failed, descriptor key[%s], instance id[%s]: %s",
-             holder->descriptor_key.c_str(), holder->instance_id.c_str(), err.what());
-      return FAILED;
-    } catch (const std::exception &err) {
-      pass_context.SetErrorMessage(AscendString(err.what()));
-      GELOGE(FAILED, "Run python resource-plan pass failed, descriptor key[%s], instance id[%s]: %s",
-             holder->descriptor_key.c_str(), holder->instance_id.c_str(), err.what());
-      return FAILED;
-    } catch (...) {
-      if (PyErr_Occurred() != nullptr) {
-        PyErr_Clear();
-      }
-      pass_context.SetErrorMessage("unknown exception while running python resource-plan pass");
-      GELOGE(FAILED,
-             "Run python resource-plan pass failed with an unknown exception, descriptor key[%s], instance id[%s].",
-             holder->descriptor_key.c_str(), holder->instance_id.c_str());
       return FAILED;
     }
   }
@@ -336,11 +242,8 @@ class PythonFusionPassPybindBridge {
         return FAILED;
       }
     }
-    PythonGILStateGuard gil_state;
+    py::gil_scoped_acquire gil;
     try {
-      // Raw Py_Finalize leaves pybind's shared type registry behind. Clear it
-      // with the interpreter so another bridge can attach after GEInitialize.
-      GePythonRuntimeManager::Instance().SetInterpreterFinalizer(&py::finalize_interpreter);
       SyncProcessEnvToPythonUnlocked();
       EnsureBridgeModuleUnlocked();
     } catch (const py::error_already_set &err) {
@@ -358,7 +261,8 @@ class PythonFusionPassPybindBridge {
       GELOGI("Reusing cached python bridge module.");
       return;
     }
-    pass_native_module_ = LoadPassNativeModuleUnlocked();
+    py::object pass_native_module = LoadPassNativeModuleUnlocked();
+    (void)pass_native_module;
     bridge_module_ = py::module_::import(kBridgeModuleName);
     GELOGI("Imported python bridge modules [%s] and [%s].", kPassNativeModuleName, kBridgeModuleName);
   }
@@ -404,7 +308,6 @@ class PythonFusionPassPybindBridge {
       GELOGW("Reset python pybind bridge state failed: %s", err.what());
     }
     bridge_module_ = py::object();
-    pass_native_module_ = py::object();
     try {
       (void)py::module_::import("gc").attr("collect")();
     } catch (const py::error_already_set &err) {
@@ -478,32 +381,8 @@ class PythonFusionPassPybindBridge {
     return graph_type.attr("_create_from")(graph_handle, py::bool_(false), graph_owner);
   }
 
-  static py::object BuildPythonGraph(const ConstGraphPtr &graph) {
-    if (graph == nullptr) {
-      return py::none();
-    }
-    py::module_ ctypes_module = py::module_::import("ctypes");
-    py::module_ graph_module = py::module_::import("ge.graph");
-    py::object graph_type = graph_module.attr("Graph");
-    py::object graph_handle = ctypes_module.attr("c_void_p")(py::int_(reinterpret_cast<uintptr_t>(graph.get())));
-    py::capsule graph_owner(new (std::nothrow) ConstGraphPtr(graph),
-                            [](void *ptr) { delete static_cast<ConstGraphPtr *>(ptr); });
-    return graph_type.attr("_create_from")(graph_handle, py::bool_(false), graph_owner);
-  }
-
   static py::object BuildPythonPassContext(CustomPassContext &pass_context) {
     return py::cast(&pass_context, py::return_value_policy::reference);
-  }
-
-  static py::object BuildPythonResourcePlanContext(CustomPassContext &pass_context) {
-    // Keep the common C ABI typed as CustomPassContext, but expose the actual
-    // concrete context to Python.  pybind cannot infer a down-cast when the
-    // static argument type is the base class; explicitly casting the stream
-    // subtype is what makes ``isinstance(context, StreamPassContext)`` true.
-    if (auto *stream_context = dynamic_cast<StreamPassContext *>(&pass_context); stream_context != nullptr) {
-      return py::cast(stream_context, py::return_value_policy::reference);
-    }
-    return BuildPythonPassContext(pass_context);
   }
 
   static Status TranslateRunResult(const py::object &result, CustomPassContext &pass_context) {
@@ -524,8 +403,11 @@ class PythonFusionPassPybindBridge {
   }
 
   static void SetCommonCallbacks(PythonFusionPassCallbacks &callbacks) {
-    callbacks.create = [](const PythonPassDescriptor *pass_desc) {
-      return (pass_desc == nullptr) ? nullptr : PythonFusionPassPybindBridge::GetInstance().CreateHolder(*pass_desc);
+    callbacks.create = [](const PythonPassDescriptor *pass_desc) -> void * {
+      if (pass_desc == nullptr) {
+        return nullptr;
+      }
+      return PythonFusionPassPybindBridge::GetInstance().CreateHolder(*pass_desc);
     };
     callbacks.destroy = [](void *holder) {
       PythonFusionPassPybindBridge::GetInstance().DestroyHolder(static_cast<PythonBridgeHolder *>(holder));
@@ -593,22 +475,6 @@ class PythonFusionPassPybindBridge {
     return callbacks;
   }
 
-  static PythonResourcePlanPassCallbacks GetResourcePlanCallbacks() {
-    PythonResourcePlanPassCallbacks callbacks;
-    callbacks.create = [](const PythonPassDescriptor *pass_desc) {
-      return (pass_desc == nullptr) ? nullptr : PythonFusionPassPybindBridge::GetInstance().CreateHolder(*pass_desc);
-    };
-    callbacks.destroy = [](void *holder) {
-      PythonFusionPassPybindBridge::GetInstance().DestroyHolder(static_cast<PythonBridgeHolder *>(holder));
-    };
-    callbacks.run_resource_plan = [](const void *holder, const ConstGraphPtr &graph,
-                                     CustomPassContext &pass_context) -> Status {
-      return PythonFusionPassPybindBridge::GetInstance().RunResourcePlan(
-          static_cast<const PythonBridgeHolder *>(holder), graph, pass_context);
-    };
-    return callbacks;
-  }
-
   Status GetPatternMatcherConfig(const PythonBridgeHolder *holder, void **matcher_config) {
     if ((matcher_config == nullptr) || (holder == nullptr)) {
       return FAILED;
@@ -619,7 +485,7 @@ class PythonFusionPassPybindBridge {
       GELOGE(prepare_ret, "Prepare python bridge failed for GetPatternMatcherConfig.");
       return prepare_ret;
     }
-    PythonGILStateGuard gil_state;
+    py::gil_scoped_acquire gil;
     try {
       py::object result = bridge_module_.attr("get_pattern_matcher_config")(holder->instance_id);
       if (result.is_none()) {
@@ -649,7 +515,7 @@ class PythonFusionPassPybindBridge {
       GELOGE(prepare_ret, "Prepare python bridge failed for GetPatterns.");
       return prepare_ret;
     }
-    PythonGILStateGuard gil_state;
+    py::gil_scoped_acquire gil;
     try {
       py::list pattern_list = bridge_module_.attr("get_pass_patterns")(holder->instance_id);
       GELOGI("Python pattern fusion pass instance[%s] returned [%zu] patterns.", holder->instance_id.c_str(),
@@ -681,7 +547,7 @@ class PythonFusionPassPybindBridge {
       GELOGW("Prepare python bridge failed for MeetRequirements.");
       return false;
     }
-    PythonGILStateGuard gil_state;
+    py::gil_scoped_acquire gil;
     try {
       py::object result = bridge_module_.attr("call_meet_requirements")(
           holder->instance_id, py::int_(reinterpret_cast<uintptr_t>(match_result.get())),
@@ -703,7 +569,7 @@ class PythonFusionPassPybindBridge {
       GELOGE(prepare_ret, "Prepare python bridge failed for Replacement.");
       return prepare_ret;
     }
-    PythonGILStateGuard gil_state;
+    py::gil_scoped_acquire gil;
     try {
       py::object result = bridge_module_.attr("call_replacement")(
           holder->instance_id, py::int_(reinterpret_cast<uintptr_t>(match_result.get())),
@@ -737,7 +603,7 @@ class PythonFusionPassPybindBridge {
       GELOGW("Prepare python bridge failed for decompose MeetRequirements.");
       return false;
     }
-    PythonGILStateGuard gil_state;
+    py::gil_scoped_acquire gil;
     try {
       py::object result = bridge_module_.attr("call_decompose_meet_requirements")(
           holder->instance_id, py::int_(reinterpret_cast<uintptr_t>(&matched_node)),
@@ -760,7 +626,7 @@ class PythonFusionPassPybindBridge {
       GELOGE(prepare_ret, "Prepare python bridge failed for decompose Replacement.");
       return prepare_ret;
     }
-    PythonGILStateGuard gil_state;
+    py::gil_scoped_acquire gil;
     try {
       py::object result = bridge_module_.attr("call_decompose_replacement")(
           holder->instance_id, py::int_(reinterpret_cast<uintptr_t>(&matched_node)),
@@ -788,7 +654,6 @@ class PythonFusionPassPybindBridge {
   std::mutex mutex_;
   std::atomic<uint64_t> instance_seq_{0U};
   py::object bridge_module_;
-  py::object pass_native_module_;
   std::string artifact_root_;
   std::string native_module_path_;
   bool owns_interpreter_{false};

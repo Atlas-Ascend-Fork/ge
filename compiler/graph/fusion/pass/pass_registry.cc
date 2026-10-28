@@ -86,16 +86,6 @@ bool PassRegistry::RegisterPythonPass(const PythonPassDescriptor &pass_desc,
     return false;
   }
 
-  // Resource-plan passes have a different execution contract (a borrowed
-  // Graph plus kind-specific context) and must never enter the fusion
-  // executor. Reject both the explicit stream kind and the resource-plan
-  // stage here so a malformed bridge descriptor cannot silently take the
-  // wrong path.
-  if ((pass_desc.kind == PythonPassKind::kStream) || (pass_desc.stage == CustomPassStage::kAfterAssignLogicStream)) {
-    GELOGW("Reject Python resource-plan pass[%s] from fusion registry.", pass_desc.pass_name.c_str());
-    return false;
-  }
-
   if (descriptor_key_2_python_pass_descs_.find(pass_desc.descriptor_key) !=
       descriptor_key_2_python_pass_descs_.cend()) {
     GELOGI("Python pass descriptor key [%s] has already registered.", pass_desc.descriptor_key.c_str());

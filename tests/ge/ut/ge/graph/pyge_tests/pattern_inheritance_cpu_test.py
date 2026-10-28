@@ -95,7 +95,6 @@ def pattern_api(tensor_api, monkeypatch):
     for name in (
         "MatchResult",
         "PassContext",
-        "StreamPassContext",
         "PatternMatcherConfig",
         "PatternMatcherConfigBuilder",
         "SubgraphBoundary",

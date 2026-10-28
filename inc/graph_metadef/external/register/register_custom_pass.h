@@ -231,7 +231,7 @@ class StreamPassContext : public CustomPassContext {
   /**
    * @since 8.5.0(2025-12)
    */
-  ~StreamPassContext() override;
+  ~StreamPassContext() override = default;
 
   /**
    * 为指定节点设置流ID

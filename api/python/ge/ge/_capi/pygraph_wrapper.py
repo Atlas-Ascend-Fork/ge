@@ -287,15 +287,6 @@ graph_lib.GeApiWrapper_GNode_GetName.argtypes = [c_void_p]
 graph_lib.GeApiWrapper_GNode_GetType.restype = c_char_ptr
 graph_lib.GeApiWrapper_GNode_GetType.argtypes = [c_void_p]
 
-graph_lib.GeApiWrapper_GNode_GetIdentity.restype = c_size_t
-graph_lib.GeApiWrapper_GNode_GetIdentity.argtypes = [c_void_p]
-
-graph_lib.GeApiWrapper_GNode_HasSubgraphInstances.restype = c_int
-graph_lib.GeApiWrapper_GNode_HasSubgraphInstances.argtypes = [
-    c_void_p,
-    ctypes.POINTER(c_bool),
-]
-
 # 节点关系
 graph_lib.GeApiWrapper_GNode_GetInControlNodes.restype = ctypes.POINTER(c_void_p)
 graph_lib.GeApiWrapper_GNode_GetInControlNodes.argtypes = [
@@ -334,9 +325,6 @@ graph_lib.GeApiWrapper_GNode_GetOutputsSize.argtypes = [c_void_p]
 
 graph_lib.GeApiWrapper_GNode_HasAttr.restype = c_bool
 graph_lib.GeApiWrapper_GNode_HasAttr.argtypes = [c_void_p, c_char_p]
-
-graph_lib.GeApiWrapper_GNode_HasAttrQuiet.restype = c_bool
-graph_lib.GeApiWrapper_GNode_HasAttrQuiet.argtypes = [c_void_p, c_char_p]
 
 # 属性操作
 graph_lib.GeApiWrapper_GNode_GetAttr.restype = c_int

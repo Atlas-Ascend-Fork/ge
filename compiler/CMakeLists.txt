@@ -116,6 +116,15 @@ set(COMPILER_SRC_LIST
     "graph/build/stream/stream_info.cc"
     "graph/build/stream/dynamic_stream_allocator.cc"
     "graph/build/stream/stream_utils.cc"
+    "graph/build/dag/dag_node.cc"
+    "graph/build/dag/dag_edge.cc"
+    "graph/build/dag/dag_graph.cc"
+    "graph/build/dag/dag_stream_allocator.cc"
+    "graph/build/dag/dag_stream_merger.cc"
+    "graph/build/dag/dag_weighted_stream_merger.cc"
+    "graph/build/dag/dag_profiling_parser.cc"
+    "graph/build/stream/dag_adapter.cc"
+    "graph/build/stream/dag_stream_allocator_pass.cc"
     "graph/build/memory/binary_block_mem_assigner.cc"
     "graph/build/memory/continuous_mem.cc"
     "graph/build/memory/block_mem_assigner.cc"
@@ -178,7 +187,6 @@ set(COMPILER_SRC_LIST
     "graph/fusion/pass/python_pass_bridge_loader.cc"
     "graph/fusion/pass/python_decompose_pass_adapter.cc"
     "graph/fusion/pass/python_pattern_fusion_pass_adapter.cc"
-    "graph/fusion/pass/python_stream_pass_adapter.cc"
     "graph/fuzz_compile/fuzz_compile_bin_selector.cc"
     "graph/label/case_op_label_maker.cc"
     "graph/label/if_op_label_maker.cc"
@@ -495,7 +503,6 @@ add_dependencies(ge_python_pass_bridge
 )
 
 target_compile_definitions(ge_python_pass_bridge PRIVATE
-    PYBIND11_SIMPLE_GIL_MANAGEMENT
     PROTOBUF_INLINE_NOT_IN_HEADERS=0
     google=ascend_private
     $<$<STREQUAL:${ENABLE_TEST},True>:FUNC_VISIBILITY>

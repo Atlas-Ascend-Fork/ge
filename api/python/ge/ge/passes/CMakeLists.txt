@@ -18,13 +18,10 @@ set(_ge_pass_native_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/graph_handle_binding.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/graph_rewriter_binding.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/graph_fuse_inspector_binding.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/stream_pass_context_binding.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/ge_log_binding.cc
 )
 
 set(_ge_pass_native_headers
         ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/binding_common.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/binding_log.h
         ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/binding_utils.h
         ${CMAKE_CURRENT_SOURCE_DIR}/native_bindings/pass_bindings.h
 )
@@ -44,7 +41,6 @@ target_include_directories(_ge_pass_native PRIVATE
 
 target_link_libraries(_ge_pass_native PRIVATE
         $<BUILD_INTERFACE:ge_intf_pub>
-        $<BUILD_INTERFACE:ge_metadef_headers>
         $<BUILD_INTERFACE:slog_headers>
         $<BUILD_INTERFACE:mmpa_headers>
         $<BUILD_INTERFACE:pybind_options>
@@ -59,7 +55,6 @@ set_target_properties(_ge_pass_native
 )
 
 target_compile_definitions(_ge_pass_native PRIVATE
-        PYBIND11_SIMPLE_GIL_MANAGEMENT
         PYBIND11_NO_ASSERT_GIL_HELD_INCREF_DECREF
 )
 

@@ -21,9 +21,6 @@ if TYPE_CHECKING:
 __all__: list[str] = [
     "MatchResult",
     "PassContext",
-    "StreamPassContext",
-    "emit_ge_log",
-    "GE_LOG_SOURCE_SUPPORTED",
     "Pattern",
     "PatternMatcherConfig",
     "PatternMatcherConfigBuilder",
@@ -36,19 +33,6 @@ __all__: list[str] = [
     "report_match",
     "infer_shape",
 ]
-
-
-GE_LOG_SOURCE_SUPPORTED: bool
-
-
-def emit_ge_log(
-    level: int, message: str, filename: str = "", lineno: int = 0, funcname: str = ""
-) -> None:
-    """Forward a log record with its Python source location to native GE dlog.
-
-    Two-argument callers remain supported and use ``[python:0] tid log:``.
-    """
-    ...
 
 
 def can_fuse(nodes: typing.Iterable[Node]) -> tuple[bool, str]:
@@ -131,33 +115,6 @@ class PassContext:
         """
         ...
 
-
-class StreamPassContext(PassContext):
-    """Context supplied to a stream pass.
-
-    This is a non-owning reference to the compiler-owned context.  It is only
-    valid during the synchronous stream-pass callback and must not be cached
-    or used asynchronously.
-
-    The graph argument to the stream-specific methods is a ``ge.graph.Graph``
-    and ``node_index`` is an index into that graph's direct-node list.
-    """
-
-    def set_stream_id(self, graph: Graph, node_index: int, stream_id: int) -> None:
-        """Set one node's stream id after the stream has been reserved."""
-        ...
-
-    def get_stream_id(self, graph: Graph, node_index: int) -> int:
-        """Return one node's current stream id (``-1`` when unset)."""
-        ...
-
-    def allocate_next_stream_id(self) -> int:
-        """Reserve and return the next stream id."""
-        ...
-
-    def get_curr_max_stream_id(self) -> int:
-        """Return the largest stream id reserved by this context."""
-        ...
 
 class PatternMatcherConfig:
     """

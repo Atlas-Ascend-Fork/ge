@@ -391,10 +391,6 @@ rtError_t RuntimeStub::rtMbufFree(rtMbufPtr_t mbuf) {
 rtError_t RuntimeStub::rtGetSocSpec(const char *label, const char *key, char *value, const uint32_t maxLen) {
   if ((strcmp(label, "version") == 0) && (strcmp(key, "NpuArch") == 0)) {
     (void)strcpy_s(value, maxLen, "2201");
-  } else if ((strcmp(label, "SoCInfo") == 0) && (strcmp(key, "ai_core_cnt") == 0)) {
-    (void)strcpy_s(value, maxLen, "24");
-  } else if ((strcmp(label, "SoCInfo") == 0) && (strcmp(key, "vector_core_cnt") == 0)) {
-    (void)strcpy_s(value, maxLen, "48");
   }
   return RT_ERROR_NONE;
 }

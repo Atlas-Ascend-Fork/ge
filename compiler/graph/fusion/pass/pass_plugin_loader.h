@@ -16,8 +16,6 @@
 namespace ge {
 namespace fusion {
 Status LoadPassPlugins();
-// Called before stream-pass dispatch, within an active LoadPassPlugins lifetime.
-Status EnsurePythonPassesLoaded();
 Status UnloadPassPlugins();
 }  // namespace fusion
 }  // namespace ge

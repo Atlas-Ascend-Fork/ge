@@ -15,7 +15,6 @@
 import argparse
 import base64
 import gzip
-import io
 import json
 import shlex
 import shutil
@@ -48,20 +47,6 @@ def _split_encoded_content(encoded_content: str) -> str:
     return "\n".join(f'        "{chunk}"' for chunk in chunks)
 
 
-def _gzip_compress_deterministic(content: bytes) -> bytes:
-    # gzip.compress(mtime=...) requires Python 3.8+; build the same
-    # deterministic output on 3.7 via GzipFile (and pin the OS byte that
-    # gzip.compress writes on Linux so both paths match byte for byte).
-    buffer = io.BytesIO()
-    with gzip.GzipFile(
-        fileobj=buffer, mode="wb", compresslevel=9, mtime=0
-    ) as compressor:
-        compressor.write(content)
-    data = bytearray(buffer.getvalue())
-    data[9] = 3
-    return bytes(data)
-
-
 def _build_resource_module(resources: Dict[str, bytes]) -> str:
     lines = [
         "#!/usr/bin/env python3",
@@ -85,9 +70,9 @@ def _build_resource_module(resources: Dict[str, bytes]) -> str:
         "_RESOURCES = {",
     ]
     for rel_path, content in sorted(resources.items()):
-        encoded_content = base64.b64encode(
-            _gzip_compress_deterministic(content)
-        ).decode("ascii")
+        encoded_content = base64.b64encode(gzip.compress(content, mtime=0)).decode(
+            "ascii"
+        )
         lines.append(f"    {rel_path!r}: (")
         lines.append(_split_encoded_content(encoded_content))
         lines.append("    ),")
@@ -405,9 +390,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--abi-key", default="bridge_abi")
     parser.add_argument("--abi", "--bridge-abi", dest="abi", type=int, required=True)
     parser.add_argument(
-        "--link-python", dest="link_python", action="store_true", default=True
+        "--link-python", action=argparse.BooleanOptionalAction, default=True
     )
-    parser.add_argument("--no-link-python", dest="link_python", action="store_false")
     parser.add_argument("--bridge-target", default="ge_python_pass_bridge")
     parser.add_argument(
         "--no-bridge-target", dest="bridge_target", action="store_const", const=""
@@ -419,7 +403,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--native-output", default="_ge_pass_native.so")
     parser.add_argument("--bridge-source", type=Path, nargs="*", default=[])
     parser.add_argument("--bridge-header", type=Path, nargs="*", default=[])
-    parser.add_argument("--bridge-runtime-header", type=Path, nargs="*", default=[])
     parser.add_argument("--bridge-tree-header", type=Path, nargs="*", default=[])
     parser.add_argument("--bridge-graph-header", type=Path, nargs="*", default=[])
     parser.add_argument("--bridge-utils-header", type=Path, nargs="*", default=[])
@@ -440,9 +423,6 @@ def main() -> None:
     resources = dict(
         _collect_files(args.bridge_source, "src/bridge")
         + _collect_files(args.bridge_header, "include/bridge")
-        + _collect_files(
-            args.bridge_runtime_header, "include/bridge", "common/python_runtime"
-        )
         + _collect_files(args.bridge_tree_header, "include/bridge", "runtime/custom_op")
         + _collect_files(args.bridge_graph_header, "include/bridge", "graph/custom_op")
         + _collect_files(args.bridge_utils_header, "include/bridge", "graph/utils")

@@ -12,14 +12,13 @@
 
 """Bridge-facing Python runtime helpers for GE passes."""
 
-from __future__ import annotations
-
-import logging
 import sys
 import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, cast
+from typing import Dict, List, Optional, cast
+
+from ge.graph import Graph, Node
 
 from ._native import (
     borrow_match_result,
@@ -33,24 +32,18 @@ from .base import (
     PassContext,
     PatternFusionPass,
     PatternMatcherConfig,
-    ResourcePlanPass,
     StatusLike,
-    StreamPass,
-    StreamPassContext,
 )
 from .bootstrap import get_registered_passes, load_pass_plugins
 from .pattern import ensure_pattern
-from .registry import _RESOURCE_PLAN_SPECS, get_registered_pass_by_descriptor_key
-
-if TYPE_CHECKING:
-    from ge.graph import Graph
+from .registry import get_registered_pass_by_descriptor_key
 
 
 @dataclass
 class _PassHolder:
     descriptor_key: str
     instance_id: str
-    instance: FusionBasePass | ResourcePlanPass
+    instance: FusionBasePass
 
 
 _HOLDER_LOCK = threading.RLock()
@@ -59,22 +52,7 @@ _PASS_HOLDERS: Dict[str, _PassHolder] = {}
 
 def load_and_get_pass_descriptors() -> list:
     load_pass_plugins()
-    # Fusion/decompose registration keeps its historical order.  Stream
-    # callbacks, however, have a deterministic pass-name order independent of
-    # plugin discovery/decorator order (the native bridge routes this suffix
-    # through the dedicated registrar).
-    descriptors = get_registered_passes()
-    stream_descriptors = sorted(
-        (item for item in descriptors if item.get("kind") in _RESOURCE_PLAN_SPECS),
-        key=lambda item: item.get("pass_name", ""),
-    )
-    stream_iter = iter(stream_descriptors)
-    ordered = []
-    for item in descriptors:
-        ordered.append(
-            next(stream_iter) if item.get("kind") in _RESOURCE_PLAN_SPECS else item
-        )
-    return ordered
+    return get_registered_passes()
 
 
 def _get_holder(instance_id: str) -> _PassHolder:
@@ -86,10 +64,7 @@ def _get_holder(instance_id: str) -> _PassHolder:
 
 
 def _get_fusion_base_pass(instance_id: str) -> FusionBasePass:
-    instance = _get_holder(instance_id).instance
-    if not isinstance(instance, FusionBasePass):
-        raise TypeError(f"python pass holder is not FusionBasePass: {instance_id}")
-    return instance
+    return _get_holder(instance_id).instance
 
 
 def _get_pattern_fusion_pass(instance_id: str) -> PatternFusionPass:
@@ -103,32 +78,6 @@ def _get_decompose_pass(instance_id: str) -> DecomposePass:
     instance = _get_holder(instance_id).instance
     if not isinstance(instance, DecomposePass):
         raise TypeError(f"python pass holder is not DecomposePass: {instance_id}")
-    return instance
-
-
-def _get_resource_plan_pass(
-    instance_id: str, descriptor_kind: Optional[str] = None
-) -> ResourcePlanPass:
-    """Return a holder instance after validating its descriptor kind.
-
-    The descriptor kind, rather than the Python class name or execution stage,
-    is the native routing contract.  Keeping this check at the bridge boundary
-    prevents a future resource-plan handler from accidentally invoking a
-    stream pass with the wrong context.
-    """
-
-    holder = _get_holder(instance_id)
-    descriptor = get_registered_pass_by_descriptor_key(holder.descriptor_key)
-    if descriptor is None:
-        raise KeyError(f"python pass descriptor_key not found: {holder.descriptor_key}")
-    if descriptor_kind is not None and descriptor.kind != descriptor_kind:
-        raise TypeError(
-            f"python resource plan kind mismatch: expected {descriptor_kind}, "
-            f"got {descriptor.kind}"
-        )
-    instance = holder.instance
-    if not isinstance(instance, ResourcePlanPass):
-        raise TypeError(f"python pass holder is not ResourcePlanPass: {instance_id}")
     return instance
 
 
@@ -161,60 +110,7 @@ def run_fusion_base_pass(
     return pass_instance.run(graph, cast(PassContext, context))
 
 
-def run_resource_plan_pass(
-    instance_id: str, graph: Graph, context: object
-) -> StatusLike:
-    """Invoke a kind-routed resource planning pass.
-
-    ``graph`` is the borrowed public ``ge.graph.Graph`` wrapper.  No snapshot
-    or private graph view is created here.  The stream handler currently
-    requires ``StreamPassContext``; future handlers can add their own
-    kind-specific context check without changing this entry point.
-    """
-
-    try:
-        descriptor = get_registered_pass_by_descriptor_key(
-            _get_holder(instance_id).descriptor_key
-        )
-        if descriptor is None:
-            raise KeyError(
-                f"python pass descriptor_key not found for holder: {instance_id}"
-            )
-        pass_instance = _get_resource_plan_pass(instance_id, descriptor.kind)
-        from ge.graph import Graph as GraphType
-
-        if not isinstance(graph, GraphType):
-            raise TypeError(
-                f"resource plan graph must be a ge.graph.Graph, got {type(graph).__name__}"
-            )
-        if descriptor.kind == "stream":
-            if not isinstance(pass_instance, StreamPass):
-                raise TypeError("stream resource plan pass must be a StreamPass")
-            # Exact type, not a duck check.  An unregistered pybind derived
-            # class comes back as a plain PassContext, and a future kind's
-            # context may well carry the same method names; both must be
-            # rejected here rather than reaching the pass.
-            if not isinstance(context, StreamPassContext):
-                raise TypeError(
-                    "stream resource plan context must be a StreamPassContext, "
-                    f"got {type(context).__name__}"
-                )
-        return pass_instance.run(graph, context)
-    except Exception as exc:
-        setter = getattr(context, "set_error_message", None)
-        if callable(setter):
-            try:
-                setter(str(exc))
-            except Exception:
-                logging.getLogger(__name__).exception(
-                    "Failed to record resource-plan pass error: %s", exc
-                )
-        raise
-
-
 def _release_replacement_graph(replacement: Graph, pass_name: str) -> int:
-    from ge.graph import Graph
-
     if not isinstance(replacement, Graph):
         raise TypeError(f"{pass_name}.replacement must return ge.graph.Graph")
     return release_graph(replacement)
@@ -277,7 +173,7 @@ def call_decompose_meet_requirements(
     instance_id: str, node_handle: int, context: Optional[PassContext] = None
 ) -> bool:
     pass_instance = _get_decompose_pass(instance_id)
-    node = borrow_node(node_handle)
+    node = cast(Node, borrow_node(node_handle))
     return bool(pass_instance.meet_requirements(node, context))
 
 
@@ -285,7 +181,7 @@ def call_decompose_replacement(
     instance_id: str, node_handle: int, context: Optional[PassContext] = None
 ) -> int:
     pass_instance = _get_decompose_pass(instance_id)
-    node = borrow_node(node_handle)
+    node = cast(Node, borrow_node(node_handle))
     replacement = pass_instance.replacement(node, context)
     return _release_replacement_graph(replacement, "DecomposePass")
 

@@ -29,18 +29,6 @@ except ImportError as exc:
 Graph = graph_module.Graph
 
 
-def _user_descriptors(descriptors):
-    """Exclude the built-in MiniDAG stream descriptor from legacy checks."""
-
-    return [item for item in descriptors if item.get("kind") != "stream"]
-
-
-def _user_registered_descriptors(descriptors):
-    """Exclude the built-in MiniDAG stream descriptor from registry checks."""
-
-    return [item for item in descriptors if item.kind != "stream"]
-
-
 def _write_decompose_pass_module(
     dir_path: Path, module_name: str, pass_name: str
 ) -> Path:
@@ -196,13 +184,13 @@ def test_register_decompose_pass_exposes_op_types(tmp_path, monkeypatch):
     )
     monkeypatch.setenv(bootstrap.ENV_PY_PASS_PATH, str(module_path))
 
-    descriptors = _user_descriptors(bridge.load_and_get_pass_descriptors())
+    descriptors = bridge.load_and_get_pass_descriptors()
 
     assert len(descriptors) == 1
     assert descriptors[0]["kind"] == "decompose"
     assert descriptors[0]["op_types"] == ["Add"]
 
-    descriptor = _user_registered_descriptors(passes.get_registered_passes())[0]
+    descriptor = passes.get_registered_passes()[0]
     assert descriptor.op_types == ["Add"]
     assert descriptor.cls.op_types == ["Add"]
 
@@ -213,7 +201,7 @@ def test_bridge_decompose_protocol_functions(tmp_path, monkeypatch):
     )
     monkeypatch.setenv(bootstrap.ENV_PY_PASS_PATH, str(module_path))
 
-    descriptors = _user_descriptors(bridge.load_and_get_pass_descriptors())
+    descriptors = bridge.load_and_get_pass_descriptors()
 
     assert len(descriptors) == 1
     descriptor_key = descriptors[0]["descriptor_key"]
@@ -243,7 +231,7 @@ def test_bridge_decompose_protocol_forwards_context_without_runtime_inspection(
     )
     monkeypatch.setenv(bootstrap.ENV_PY_PASS_PATH, str(module_path))
 
-    descriptors = _user_descriptors(bridge.load_and_get_pass_descriptors())
+    descriptors = bridge.load_and_get_pass_descriptors()
     descriptor_key = descriptors[0]["descriptor_key"]
     instance_id = "ContextDecomposePass#1"
     assert bridge.create_pass_holder(instance_id, descriptor_key)
@@ -279,7 +267,7 @@ def test_bridge_decompose_replacement_rejects_none(tmp_path, monkeypatch):
     )
     monkeypatch.setenv(bootstrap.ENV_PY_PASS_PATH, str(module_path))
 
-    descriptors = _user_descriptors(bridge.load_and_get_pass_descriptors())
+    descriptors = bridge.load_and_get_pass_descriptors()
 
     assert len(descriptors) == 1
     descriptor_key = descriptors[0]["descriptor_key"]

@@ -8,8 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <cstdlib>
-#include <string>
 #include <gtest/gtest.h>
 #include "ge/ge_api.h"
 #include "ge_graph_dsl/assert/check_utils.h"
@@ -46,16 +44,6 @@ int main(int argc, char **argv) {
   // Init running dir env
   DirEnv::GetInstance().InitDir();
 
-#ifdef ST_FUSION_PASS_PY_INSTALL_DIR
-  // Built-in passes are loaded by GEInitialize, before any test fixture runs.
-  const char *old_python_path = std::getenv("PYTHONPATH");
-  const std::string python_path = std::string(ST_FUSION_PASS_PY_INSTALL_DIR) +
-                                  ((old_python_path == nullptr) ? "" : ":" + std::string(old_python_path));
-  if (setenv("PYTHONPATH", python_path.c_str(), 1) != 0) {
-    return 1;
-  }
-#endif
-
   ReInitGe();
 
   EG_NS::GraphEasyExecutor executor;
@@ -69,10 +57,5 @@ int main(int argc, char **argv) {
   testing::InitGoogleTest(&argc, argv);
   int ret = RUN_ALL_TESTS();
   gert::DestroyVersionInfo();
-  // 用例只调用 GELib::Initialize，LoadPassPlugins 的引用计数在进程里始终不归零，
-  // Python pass bridge 的进程级 shutdown 就不会执行。这样 bridge 持有的 Python
-  // 模块对象会在静态单例析构时在没有 GIL 的情况下释放，进程被终止，退出码不为 0。
-  // 放在所有用例执行完之后统一释放，不影响任何用例。
-  (void)GEFinalize();
   return ret;
 }

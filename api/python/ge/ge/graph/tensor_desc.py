@@ -145,11 +145,6 @@ class TensorDesc:
         return f"TensorDesc(shape={self.get_shape()}, format={self.get_format()}, data_type={self.get_data_type()})"
 
     @property
-    def _as_parameter_(self):
-        """Borrow the native pointer for ctypes calls; ownership stays here."""
-        return self._handle
-
-    @property
     def shape(self) -> Shape:
         return self.get_shape()
 

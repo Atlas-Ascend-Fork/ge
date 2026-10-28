@@ -240,8 +240,6 @@ flowchart LR
 
 `ge.autoMultistreamParallelMode` 用于开启自动多流并行模式。静态 Shape 场景下，该选项保持既有开启语义，流分配在常规逻辑流分配后运行 DAG Stream Pass：先将 GE Graph 转换为 MiniDAG，结合节点依赖关系、设备资源和可选 profiling 代价信息执行分流策略，再将新的 stream_id 写回 GE Graph。该模式面向静态图中更细粒度的节点级并行机会，用户手工设置 StreamLabel依旧保持串行。
 
-MiniDAG 写回时，`DAGAdapter.write_back()` 保留 NetOutput、RTS 标签节点和带子图实例的调用节点的原流号，保证调用节点与其控制标签同流，外层 While 每轮都能激活内层控制流；子图内普通计算节点仍参与自动分流。判断依据是子图实例元数据（`OpDesc::GetSubgraphInstanceNames()`）而非算子类型白名单，自定义子图调用同样受保护。该规则同样适用于动态 Shape 模型中独立编译的静态子图，不改变图结构、OM 格式和执行器接口。
-
 `cv` 是 auto multi-stream 的特殊模式，流分配公共逻辑会将其识别为 CV 分流模式，相关 Pass 只在匹配该模式时生效。DAG 模式必须显式配置为 `LoadBalance:N` 或 `MainStream:N`，其中 `N` 为 `[1, 64]` 范围内的整数；裸 `LoadBalance` 不再默认使用 8 条流，属于非法配置。
 
 #### 4.1.3 附着流分配

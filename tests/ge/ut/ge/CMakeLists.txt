@@ -522,6 +522,16 @@ set(MULTI_PARTS_TEST_FILES
     "graph/build/label_allocator_unittest.cc"
     "graph/build/run_context_unittest.cc"
     "graph/build/model_cache_unittest.cc"
+    "graph/build/dag/dag_test.cc"
+    "graph/build/dag/dag_log_test.cc"
+    "graph/build/dag/dag_adapter_test.cc"
+    "graph/build/dag/dag_stream_allocator_pass_ut_test.cc"
+    "graph/build/dag/dag_stream_allocator_test.cc"
+    "graph/build/dag/dag_stream_divide_test.cc"
+    "graph/build/dag/dag_stream_merger_test.cc"
+    "graph/build/dag/dag_weighted_stream_merger_test.cc"
+    "graph/build/dag/dag_weighted_stream_merger_whitebox_test.cc"
+    "graph/build/dag/dag_profiling_parser_test.cc"
     "graph/execute/graph_execute_unittest.cc"
     "graph/execute/model_executor_unittest.cc"
     "graph/preprocess/graph_preprocess_unittest.cc"
@@ -1365,85 +1375,6 @@ add_test(NAME ut_onnx_plugin_bridge_utest COMMAND ut_onnx_plugin_bridge_utest
 set_tests_properties(ut_onnx_plugin_bridge_utest PROPERTIES
     LABELS "ut;ge_common;ut_onnx_plugin_bridge_utest"
     ENVIRONMENT "PYTHONPATH=${ONNX_PLUGIN_PY_INSTALL_DIR};ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0:exitcode=0"
-)
-
-
-# Keep a focused binary/CTest entry for the Python stream adapter contract so
-# its fixture's helper cleanup cannot affect the unrelated fusion-pass tests.
-add_executable(ut_python_stream_pass_adapter_utest
-    ${COMMON_TEST_FILES}
-    "fusion/pass/python_stream_pass_adapter_unittest.cc"
-)
-
-add_dependencies(ut_python_stream_pass_adapter_utest
-    mdat
-    ge_python_pass_bridge
-    install_ge_py_for_fusion_pass_ut
-)
-
-target_compile_options(ut_python_stream_pass_adapter_utest PRIVATE ${AIR_COMMON_COMPILE_OPTION}
-    -Werror=format
-    -Wno-deprecated-declarations
-    -Wall -Wfloat-equal -Werror
-    -Wno-subobject-linkage
-)
-
-target_include_directories(ut_python_stream_pass_adapter_utest PRIVATE
-    ${AIR_CODE_DIR}/tests/framework/ge_runtime_stub/include
-    ${ASCEND_INSTALL_PATH}/include
-    ${ASCGEN_DIR}/inc
-)
-
-target_compile_definitions(ut_python_stream_pass_adapter_utest PRIVATE
-    google=ascend_private
-    AIR_CODE_DIR="${AIR_CODE_DIR}"
-    $<$<STREQUAL:${ENABLE_OPEN_SRC},True>:ONLY_COMPILE_OPEN_SRC>
-)
-
-target_link_options(ut_python_stream_pass_adapter_utest PRIVATE
-    -Wl,--disable-new-dtags
-    -Wl,-rpath,${CMAKE_CURRENT_LIST_DIR}
-    -Wl,-rpath,${CMAKE_BINARY_DIR}/compiler
-    -rdynamic
-    -Wl,-Bsymbolic
-)
-
-target_link_libraries(ut_python_stream_pass_adapter_utest
-    intf_llt_pub
-    ge_metadef_headers
-    ascendcl_stub
-    ascend_hal_stub
-    ${AIR_COMMON_LINK_OPTION}
-    ge_compiler
-    gert
-    register
-    graph
-    graph_base
-    unified_dlog
-    -Wl,-z,muldefs
-    -Wl,--whole-archive
-    ge_runtime_stub
-    rt2_registry_static
-    -Wl,--no-whole-archive
-    ge_running_env
-    ${COMMON_SHARED_LIBRARIES}
-    GTestShared::gtest
-    GTestShared::gtest_main
-    GTestShared::gmock_main
-    -lrt
-    -ldl
-    -Wl,--no-as-needed
-    es_ge_test
-    GTestShared::gmock
-    -Wl,--as-needed
-)
-
-add_test(NAME ut_python_stream_pass_adapter_utest
-    COMMAND ut_python_stream_pass_adapter_utest
-            --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/ut/ut_python_stream_pass_adapter_utest.xml)
-set_tests_properties(ut_python_stream_pass_adapter_utest PROPERTIES
-    LABELS "ut;ge_common;ut_python_stream_pass_adapter_utest"
-    ENVIRONMENT "PYTHONPATH=${FUSION_PASS_PY_INSTALL_DIR}"
 )
 
 # libge_label_maker_utest

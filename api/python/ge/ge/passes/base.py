@@ -26,7 +26,6 @@ from ._native import (  # noqa: F401
     SubgraphInput,
     SubgraphOutput,
     SubgraphRewriter,
-    StreamPassContext,
 )
 from ._native import infer_shape as _infer_shape
 
@@ -61,7 +60,6 @@ class PassStage(str, Enum):
 
     BEFORE_INFER_SHAPE = "BeforeInferShape"
     AFTER_INFER_SHAPE = "AfterInferShape"
-    AFTER_ASSIGN_LOGIC_STREAM = "AfterAssignLogicStream"
     AFTER_BUILTIN_FUSION_PASS = "AfterBuiltinFusionPass"
     AFTER_ORIGIN_GRAPH_OPTIMIZE = "AfterOriginGraphOptimize"
 
@@ -71,38 +69,6 @@ class FusionBasePass:
 
     def run(self, graph: Graph, context: PassContext) -> StatusLike:
         raise NotImplementedError("FusionBasePass.run must be implemented")
-
-
-class ResourcePlanPass:
-    """Minimal contract shared by resource-planning passes.
-
-    Resource planning passes receive a borrowed :class:`ge.graph.Graph` and a
-    kind-specific context from the native bridge.  They must not mutate graph
-    structure or attributes; resource assignments are written through the
-    context supplied by the corresponding handler.  ``run`` is synchronous
-    and its arguments must not be retained after it returns.
-    """
-
-    def run(self, graph: Graph, context: object) -> StatusLike:
-        raise NotImplementedError("ResourcePlanPass.run must be implemented")
-
-
-class StreamPass(ResourcePlanPass):
-    """Base contract for Python stream-allocation passes.
-
-    Stream passes run at :attr:`PassStage.AFTER_ASSIGN_LOGIC_STREAM`.  The
-    graph argument is a :class:`ge.graph.Graph`.  Graph structure changes are
-    intentionally not part of this API.  Unlike fusion passes, stream passes
-    are not implicitly applied to subgraphs -- a pass that needs subgraph
-    handling should iterate ``graph.get_all_subgraphs()`` itself.  The graph
-    and context are borrowed references valid only during the synchronous
-    ``run`` call; do not cache them or use them from an asynchronous task.
-    ``StreamPassContext`` stream-id methods take this same ``Graph`` and use
-    its direct-node order for ``node_index``.
-    """
-
-    def run(self, graph: Graph, context: StreamPassContext) -> StatusLike:
-        raise NotImplementedError("StreamPass.run must be implemented")
 
 
 class PatternFusionPass(FusionBasePass):

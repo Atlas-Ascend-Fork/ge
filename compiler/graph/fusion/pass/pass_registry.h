@@ -16,12 +16,7 @@
 #include "ge/fusion/pass/fusion_pass_reg.h"
 namespace ge {
 namespace fusion {
-enum class PythonPassKind : uint32_t {
-  kFusionBase = 0U,
-  kPatternFusion = 1U,
-  kDecompose = 2U,
-  kStream = 3U,
-};
+enum class PythonPassKind : uint32_t { kFusionBase = 0U, kPatternFusion = 1U, kDecompose = 2U };
 
 struct PythonPassCreateContext {
   // Python pass 目前仍复用 FusionPassRegistrationData 的无参 CreatePassFn。

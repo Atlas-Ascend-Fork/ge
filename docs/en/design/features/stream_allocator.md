@@ -238,8 +238,6 @@ flowchart LR
 
 `ge.autoMultistreamParallelMode` enables automatic multi-stream parallel mode. In Static Shape scenarios, the option retains its existing enable semantics, and stream allocation runs DAG Stream Pass after regular logical stream allocation: it first converts GE Graph to MiniDAG, executes the allocation strategy with node dependencies, device resources and optional profiling cost information, then writes the new stream_id back to GE Graph. This mode targets finer-grained node-level parallel opportunities in static graphs, while user-configured StreamLabel remains serial.
 
-During writeback, `DAGAdapter.write_back()` preserves the original stream IDs of NetOutput nodes, RTS label nodes, and calls with subgraph instances, keeping each call on the same stream as its control labels so the enclosing While activates the inner control stream on every iteration. Ordinary computation inside subgraphs still participates in stream allocation. The guard uses subgraph instance metadata (`OpDesc::GetSubgraphInstanceNames()`) instead of an operator-type whitelist, so custom subgraph calls are protected too. The same rule applies to static subgraphs compiled separately within Dynamic Shape models and does not change graph structure, OM format, or executor interfaces.
-
 `cv` is a special auto multi-stream mode. Common stream allocation logic recognizes it as CV allocation mode, and related Passes only take effect when this mode matches. DAG modes must use explicit `LoadBalance:N` or `MainStream:N`, where `N` is an integer in `[1, 64]`. Bare `LoadBalance` no longer defaults to eight streams and is invalid.
 
 #### 4.1.3 Attached Stream Allocation

@@ -57,8 +57,7 @@ def format_missing_artifact_error(
     discovered_text = (
         ", ".join(discovered_artifacts) if discovered_artifacts else "none"
     )
-    # The wheel ABI tag differs from the Python tag before 3.8 (cp37 -> cp37m).
-    expected_wheel = f"{spec.dist_name}-*-{python_tag}-*-*.whl"
+    expected_wheel = f"{spec.dist_name}-*-{python_tag}-{python_tag}-*.whl"
     load_error_text = "; ".join(load_errors) if load_errors else "none"
     return (
         f"Failed to load {spec.component_display} native artifact for runtime "

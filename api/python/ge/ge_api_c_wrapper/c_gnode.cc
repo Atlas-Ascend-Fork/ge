@@ -47,26 +47,6 @@ const char *GeApiWrapper_GNode_GetType(const GNode *node) {
   return AscendStringToChar(type);
 }
 
-uintptr_t GeApiWrapper_GNode_GetIdentity(const GNode *node) {
-  GE_ASSERT_NOTNULL(node);
-  // The C wrapper allocates a fresh GNode value for every query.  Compare the
-  // underlying graph-engine Node instead of the wrapper object's address so
-  // that direct-node and edge queries refer to the same identity.
-  const auto node_ptr = NodeAdapter::GNode2Node(*node);
-  return node_ptr == nullptr ? 0U : reinterpret_cast<uintptr_t>(node_ptr.get());
-}
-
-graphStatus GeApiWrapper_GNode_HasSubgraphInstances(const GNode *node, bool *has_instances) {
-  GE_ASSERT_NOTNULL(node);
-  GE_ASSERT_NOTNULL(has_instances);
-  const auto node_ptr = NodeAdapter::GNode2Node(*node);
-  GE_ASSERT_NOTNULL(node_ptr);
-  const auto *const op_desc = node_ptr->GetOpDescBarePtr();
-  GE_ASSERT_NOTNULL(op_desc);
-  *has_instances = !op_desc->GetSubgraphInstanceNames().empty();
-  return GRAPH_SUCCESS;
-}
-
 GNode **GeApiWrapper_GNode_GetInControlNodes(const GNode *node, size_t *node_num) {
   GE_ASSERT_NOTNULL(node);
   GE_ASSERT_NOTNULL(node_num);
@@ -211,19 +191,6 @@ bool GeApiWrapper_GNode_HasAttr(GNode *node, const char *attr_name) {
   GE_ASSERT_NOTNULL(node);
   AscendString name(attr_name);
   return node->HasAttr(name);
-}
-
-bool GeApiWrapper_GNode_HasAttrQuiet(const GNode *node, const char *attr_name) {
-  GE_ASSERT_NOTNULL(node);
-  // GNode::HasAttr logs a warning for every absent attribute.  Probing an
-  // optional attribute is a normal query, so ask the OpDesc directly.
-  const auto node_ptr = NodeAdapter::GNode2Node(*node);
-  const auto *const op_desc = (node_ptr == nullptr) ? nullptr : node_ptr->GetOpDescBarePtr();
-  if (op_desc == nullptr) {
-    GELOGE(GRAPH_FAILED, "[Check][Param] HasAttrQuiet: node or op desc is invalid.");
-    return false;
-  }
-  return op_desc->HasAttr(attr_name);
 }
 
 TensorDesc *GeApiWrapper_GNode_GetInputDesc(const GNode *node, const int32_t index) {

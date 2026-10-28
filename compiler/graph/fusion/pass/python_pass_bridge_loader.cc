@@ -22,7 +22,6 @@
 #include "ge/ge_api_types.h"
 #include "framework/common/debug/ge_log.h"
 #include "graph_metadef/graph/utils/file_utils.h"
-#include "register/custom_pass_helper.h"
 #include "pass_registry.h"
 #include "python_pass_adapter.h"
 #include "python_pass_bridge_loader_helper.h"
@@ -69,8 +68,7 @@ bridge_loader::BridgeLoadDependencies BuildBridgeLoadDependencies() {
       &artifact::ResolveLoadedPythonRuntimeKey,
       kPythonFusionPassBridgeGetApiSymbol,
       kPythonFusionPassBridgeAbiVersion,
-      // Python types and the runtime finalizer can retain bridge function pointers.
-      RTLD_NOW | RTLD_GLOBAL | RTLD_NODELETE,
+      RTLD_NOW | RTLD_GLOBAL,
   };
 }
 
@@ -79,14 +77,6 @@ bool RegisterPythonPassFromBridge(const PythonPassDescriptor *pass_desc, const P
     return false;
   }
   return RegisterPythonPass(*pass_desc, *callbacks);
-}
-
-bool RegisterPythonResourcePlanPassFromBridge(const PythonPassDescriptor *pass_desc,
-                                              const PythonResourcePlanPassCallbacks *callbacks) {
-  if ((pass_desc == nullptr) || (callbacks == nullptr)) {
-    return false;
-  }
-  return RegisterPythonResourcePlanPass(*pass_desc, *callbacks);
 }
 
 class PythonFusionPassBridgeLoader {
@@ -104,7 +94,6 @@ class PythonFusionPassBridgeLoader {
     }
     static constexpr PythonFusionPassRegistrar kRegistrar = {
         &RegisterPythonPassFromBridge,
-        &RegisterPythonResourcePlanPassFromBridge,
     };
     GELOGI("Register python passes with bridge library[%s].", loaded_path_.c_str());
     return api_->register_passes(&kRegistrar);
@@ -116,8 +105,6 @@ class PythonFusionPassBridgeLoader {
     if ((api_ != nullptr) && (api_->reset_bridge_state != nullptr)) {
       api_->reset_bridge_state();
     }
-    CustomPassHelper::Instance().ClearPythonResourcePlanPasses();
-    ClearPythonResourcePlanRuntimeRegistry();
     // 这里只清理本轮 Python pass 注册态与 C++ runtime 状态，
     // 不接管进程级 Python 解释器生命周期，也不热卸载 bridge so。
     ClearPythonPassRuntimeRegistry();

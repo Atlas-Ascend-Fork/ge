@@ -197,19 +197,7 @@ def test_arithmetic_result_preserves_scopes_and_restores_context(
     graph_native = sys.modules["ge._capi.pygraph_wrapper"].graph_lib
     graph_native.GeApiWrapper_AttrValue_Create.return_value = 600
     graph_native.GeApiWrapper_AttrValue_SetInt.return_value = True
-    # Exercise ctypes conversion rather than comparing the Python argument
-    # captured by Mock: attribute wrappers may expose _as_parameter_.
-    received_attributes = []
-    signature = ctypes.CFUNCTYPE(
-        ctypes.c_uint32, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p
-    )
-
-    @signature
-    def set_attr(node, name, value_pointer):
-        received_attributes.append((node, name, value_pointer))
-        return 0
-
-    graph_native.GeApiWrapper_GNode_SetAttr = set_attr
+    graph_native.GeApiWrapper_GNode_SetAttr.return_value = 0
     has_attrs = scope in ("attributes", "both")
     has_controls = scope in ("controls", "both")
 
@@ -229,10 +217,16 @@ def test_arithmetic_result_preserves_scopes_and_restores_context(
     assert result._as_parameter_.value == 200
     assert result.get_owner_builder() is builder
     if has_attrs:
-        assert received_attributes == [(500, b"scope_tag", 600)]
+        node, name, value_pointer = (
+            graph_native.GeApiWrapper_GNode_SetAttr.call_args.args
+        )
+        assert node.value == 500
+        assert name == b"scope_tag"
+        assert value_pointer == 600
         assert graph_native.GeApiWrapper_AttrValue_SetInt.call_args.args[1].value == 7
+        graph_native.GeApiWrapper_GNode_SetAttr.assert_called_once()
     else:
-        assert received_attributes == []
+        graph_native.GeApiWrapper_GNode_SetAttr.assert_not_called()
     if has_controls:
         destination, sources, count = native.EsAddControlEdge.call_args.args
         assert destination is result._as_parameter_
@@ -244,5 +238,5 @@ def test_arithmetic_result_preserves_scopes_and_restores_context(
 
     # A second operation outside the scopes must inherit neither attribute nor edge.
     invoke()
-    assert len(received_attributes) == int(has_attrs)
+    assert graph_native.GeApiWrapper_GNode_SetAttr.call_count == int(has_attrs)
     assert native.EsAddControlEdge.call_count == int(has_controls)

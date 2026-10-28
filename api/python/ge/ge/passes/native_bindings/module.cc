@@ -20,7 +20,5 @@ PYBIND11_MODULE(_ge_pass_native, m) {
   python_pass_native::BindGraphHandleHelpers(m);
   python_pass_native::BindGraphRewriter(m);
   python_pass_native::BindGraphFuseInspector(m);
-  python_pass_native::BindStreamPassContext(m);
-  python_pass_native::BindGeLog(m);
 }
 }  // namespace ge

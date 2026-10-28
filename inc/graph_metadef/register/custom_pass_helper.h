@@ -25,17 +25,6 @@ class CustomPassHelper {
 
   void Insert(const PassRegistrationData &reg_data);
 
-  // Register a compiler-owned Python resource-plan pass.  Unlike Insert(),
-  // this method is safe to call while the plugin loader is not holding the
-  // helper lock (the bridge registration path is concurrent with other init
-  // users).  It returns false for duplicate pass_name/stage pairs or
-  // malformed registrations.
-  bool RegisterPythonResourcePlanPass(const PassRegistrationData &reg_data);
-
-  // Remove only Python resource-plan registrations.  C++ custom pass
-  // registrations and their dlopen handles are intentionally left untouched.
-  void ClearPythonResourcePlanPasses();
-
   Status Load();
 
   Status Unload();
@@ -60,8 +49,6 @@ class CustomPassHelper {
   mutable std::shared_mutex mutex_;
   std::vector<PassRegistrationData> registration_datas_;
   std::vector<void *> handles_;
-  std::set<std::pair<std::string, CustomPassStage>> python_resource_plan_passes_;
-  std::set<size_t> python_resource_plan_pass_indices_;
 };
 }  // namespace ge
 

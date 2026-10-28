@@ -17,9 +17,6 @@ from __future__ import annotations
 __all__ = [
     "MatchResult",
     "PassContext",
-    "StreamPassContext",
-    "emit_ge_log",
-    "GE_LOG_SOURCE_SUPPORTED",
     "Pattern",
     "PatternMatcherConfig",
     "PatternMatcherConfigBuilder",
@@ -45,12 +42,6 @@ _native = ensure_native_module(SPEC)
 
 MatchResult = _native.MatchResult
 PassContext = _native.PassContext
-# Stream bindings are part of the ABI-v2 native artifact.  Do not fabricate
-# Python placeholders for an older/missing artifact: loading a pass that uses
-# these bindings must fail loudly and preserve the native ABI contract.
-StreamPassContext = _native.StreamPassContext
-emit_ge_log = _native.emit_ge_log
-GE_LOG_SOURCE_SUPPORTED = getattr(_native, "GE_LOG_SOURCE_SUPPORTED", False)
 Pattern = _native.Pattern
 PatternMatcherConfig = _native.PatternMatcherConfig
 PatternMatcherConfigBuilder = _native.PatternMatcherConfigBuilder

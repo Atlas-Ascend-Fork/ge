@@ -40,7 +40,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 STEP_TAG = "[GE_MS_TUNE][STEP]"
 MODE_ENV = "GE_AUTO_MULTISTREAM_PARALLEL_MODE"
 PASSWORD_ENV = "GE_MS_TARGET_PASSWORD"
-STRATEGIES = ("LoadBalance", "MainStream", "cv")
+STRATEGIES = ("LoadBalance", "MainStream", "WeightedLoadBalance", "cv")
 BASELINE_CONFIG = "default"
 MAX_STREAMS = 64
 # 判定 OM 是否为本轮新产出时允许的时间误差（秒）：

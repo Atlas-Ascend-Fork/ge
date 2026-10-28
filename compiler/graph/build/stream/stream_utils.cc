@@ -22,9 +22,7 @@
 #include "api/gelib/gelib.h"
 #include "register/register_custom_pass.h"
 #include "register/custom_pass_context_impl.h"
-#include "register/core_num_utils.h"
 #include "graph/fusion/fusion_utils.h"
-#include "graph/fusion/pass/pass_plugin_loader.h"
 
 namespace {
 constexpr const ge::char_t *const kTrueStr = "true";
@@ -713,31 +711,6 @@ Status StreamUtils::TransUserStreamLabel(const ComputeGraphPtr &root_graph) {
 }
 
 Status StreamUtils::RunCustomStreamPass(const ComputeGraphPtr &root_graph, int64_t &next_stream_id) {
-  GE_ASSERT_NOTNULL(root_graph);
-  // In a dynamic-shape model this entry can receive a separately compiled
-  // known-shape subgraph. Python Graph has no parent lookup, so expose the
-  // model options persisted by GraphManager on the actual root before callbacks.
-  const auto model_root = GraphUtils::FindRootGraph(root_graph);
-  GE_ASSERT_NOTNULL(model_root);
-  if (model_root != root_graph) {
-    for (const auto &option_name : {AICORE_NUM, kVectorCoreNum}) {
-      std::string core_num;
-      if (AttrUtils::GetStr(model_root, option_name, core_num) && !core_num.empty()) {
-        GE_ASSERT_TRUE(AttrUtils::SetStr(root_graph, option_name, core_num));
-      } else {
-        (void)root_graph->DelAttr(option_name);
-      }
-    }
-  }
-  std::string multi_stream_mode;
-  bool from_graph = false;
-  (void)GetAutoMultistreamParallelMode(root_graph, multi_stream_mode, from_graph);
-  AutoMultistreamConfig config;
-  GE_ASSERT_SUCCESS(ParseAutoMultistreamParallelMode(multi_stream_mode, config, from_graph));
-  if (config.IsDagMode()) {
-    // Register before CustomPassHelper::Run takes its shared registry lock.
-    GE_ASSERT_SUCCESS(fusion::EnsurePythonPassesLoaded(), "Load Python passes required by DAG multistream failed.");
-  }
   auto graph = GraphUtilsEx::CreateGraphPtrFromComputeGraph(root_graph);
   const int64_t orgin_max_stream_id = next_stream_id - 1;
   StreamPassContext context(orgin_max_stream_id);

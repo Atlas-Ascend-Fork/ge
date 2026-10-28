@@ -9,8 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 add_library(runtime_stub SHARED src/runtime_stub.cc)
-# Dynamic Runtime consumers (including Python ctypes) must reuse the linked stub.
-set_target_properties(runtime_stub PROPERTIES OUTPUT_NAME runtime)
 target_compile_options(runtime_stub PRIVATE -g)
 target_include_directories(runtime_stub PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src

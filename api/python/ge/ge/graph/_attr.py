@@ -39,7 +39,7 @@ def _cache_with_type_check(expected_type: AttrValueType):
 
     def decorator(method: Callable[..., Any]) -> Callable[..., Any]:
         def _wrapped(self, *args, **kwargs):
-            return self.get_cached_value(expected_type, method, *args, **kwargs)
+            return self.get_or_cache(method, expected_type, args, kwargs)
 
         return _wrapped
 
@@ -183,50 +183,6 @@ class _AttrValue:
         """Deep copy is not supported."""
         raise RuntimeError("AttrValue does not support deepcopy")
 
-    def __str__(self) -> str:
-        """String representation of AttrValue."""
-        try:
-            value_type = self.get_value_type()
-            type_name = self._type_name(value_type)
-
-            if value_type == AttrValueType.VT_STRING:
-                return f"AttrValue(type: {type_name}, value: '{self.get_string()}')"
-            elif value_type == AttrValueType.VT_FLOAT:
-                return f"AttrValue(type: {type_name}, value: {self.get_float()})"
-            elif value_type == AttrValueType.VT_BOOL:
-                return f"AttrValue(type: {type_name}, value: {self.get_bool()})"
-            elif value_type == AttrValueType.VT_INT:
-                return f"AttrValue(type: {type_name}, value: {self.get_int()})"
-            elif value_type == AttrValueType.VT_DATA_TYPE:
-                return f"AttrValue(type: {type_name}, value: {self.get_data_type()})"
-            elif value_type == AttrValueType.VT_TENSOR:
-                return f"AttrValue(type: {type_name}, value: {self.get_tensor()})"
-            elif value_type == AttrValueType.VT_LIST_FLOAT:
-                return f"AttrValue(type: {type_name}, value: {self.get_list_float()})"
-            elif value_type == AttrValueType.VT_LIST_BOOL:
-                return f"AttrValue(type: {type_name}, value: {self.get_list_bool()})"
-            elif value_type == AttrValueType.VT_LIST_INT:
-                return f"AttrValue(type: {type_name}, value: {self.get_list_int()})"
-            elif value_type == AttrValueType.VT_LIST_DATA_TYPE:
-                return (
-                    f"AttrValue(type: {type_name}, value: {self.get_list_data_type()})"
-                )
-            elif value_type == AttrValueType.VT_LIST_STRING:
-                return f"AttrValue(type: {type_name}, value: {self.get_list_string()})"
-            else:
-                return f"AttrValue(type: {type_name}, value: <unknown>)"
-        except Exception:
-            return "AttrValue(<error reading value>)"
-
-    def __repr__(self) -> str:
-        """Detailed string representation of AttrValue."""
-        return self.__str__()
-
-    @property
-    def _as_parameter_(self):
-        """Borrow the native pointer for ctypes calls; ownership stays here."""
-        return self._av_ptr
-
     def _clear_cache(self) -> None:
         """Clear cached value and type."""
         self._cached_value = None
@@ -275,19 +231,6 @@ class _AttrValue:
             AttrDataType enum value.
         """
         return self.value_type
-
-    def get_cached_value(self, expected_type, getter, *args, **kwargs) -> Any:
-        """Return a matching cached value, caching only successful reads."""
-        if (
-            self._cached_value is not None
-            and self._value_type is not None
-            and self._value_type == expected_type
-        ):
-            return self._cached_value
-        result = getter(self, *args, **kwargs)
-        self._cached_value = result
-        self._value_type = expected_type
-        return result
 
     def get_value(self) -> Any:
         """Get the current value.
@@ -644,3 +587,59 @@ class _AttrValue:
             ]
         finally:
             graph_lib.GeApiWrapper_FreeListString(c_array)
+
+    def __str__(self) -> str:
+        """String representation of AttrValue."""
+        try:
+            value_type = self.get_value_type()
+            type_name = self._type_name(value_type)
+
+            if value_type == AttrValueType.VT_STRING:
+                return f"AttrValue(type: {type_name}, value: '{self.get_string()}')"
+            elif value_type == AttrValueType.VT_FLOAT:
+                return f"AttrValue(type: {type_name}, value: {self.get_float()})"
+            elif value_type == AttrValueType.VT_BOOL:
+                return f"AttrValue(type: {type_name}, value: {self.get_bool()})"
+            elif value_type == AttrValueType.VT_INT:
+                return f"AttrValue(type: {type_name}, value: {self.get_int()})"
+            elif value_type == AttrValueType.VT_DATA_TYPE:
+                return f"AttrValue(type: {type_name}, value: {self.get_data_type()})"
+            elif value_type == AttrValueType.VT_TENSOR:
+                return f"AttrValue(type: {type_name}, value: {self.get_tensor()})"
+            elif value_type == AttrValueType.VT_LIST_FLOAT:
+                return f"AttrValue(type: {type_name}, value: {self.get_list_float()})"
+            elif value_type == AttrValueType.VT_LIST_BOOL:
+                return f"AttrValue(type: {type_name}, value: {self.get_list_bool()})"
+            elif value_type == AttrValueType.VT_LIST_INT:
+                return f"AttrValue(type: {type_name}, value: {self.get_list_int()})"
+            elif value_type == AttrValueType.VT_LIST_DATA_TYPE:
+                return (
+                    f"AttrValue(type: {type_name}, value: {self.get_list_data_type()})"
+                )
+            elif value_type == AttrValueType.VT_LIST_STRING:
+                return f"AttrValue(type: {type_name}, value: {self.get_list_string()})"
+            else:
+                return f"AttrValue(type: {type_name}, value: <unknown>)"
+        except Exception:
+            return "AttrValue(<error reading value>)"
+
+    def __repr__(self) -> str:
+        """Detailed string representation of AttrValue."""
+        return self.__str__()
+
+    def get_or_cache(self, method, expected_type, args, kwargs):
+        """Return a typed cached value, or store a successful getter result."""
+        # 检查是否有缓存且类型匹配
+        if (
+            self._cached_value is not None
+            and self._value_type is not None
+            and self._value_type == expected_type
+        ):
+            return self._cached_value
+
+        # 没有缓存或类型不匹配，调用原方法获取值
+        result = method(self, *args, **kwargs)
+        # 设置缓存和类型；getter 异常自然传播，不更新缓存
+        self._cached_value = result
+        self._value_type = expected_type
+        return result
