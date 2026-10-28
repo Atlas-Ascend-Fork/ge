@@ -344,5 +344,5 @@ TEST_F(UTEST_fusion_op_comm, ffts_plus_to_json) {
   slice_info.output_tensor_slice.emplace_back(dim_2);
   std::string str;
   GetSliceJsonInfoStr(slice_info, str);
-  EXPECT_EQ(true, true);
+  EXPECT_NE(str, "");
 }

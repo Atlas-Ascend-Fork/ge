@@ -26,7 +26,7 @@ After calling `build_and_reset`, `GraphBuilder` enters built state, cannot creat
 Input type enumeration, used to specify graph input node type.
 
 | Enumeration Value | Description |
-| | :--- | :--- |
+| :--- | :--- |
 | DATA | Normal data input |
 | REF_DATA | Reference data input |
 | AIPP_DATA | AIPP (AI Pre-Processing) data input |
@@ -39,7 +39,7 @@ Input type enumeration, used to specify graph input node type.
 GraphBuilder class used to build computation graphs, does not support copy and deep copy.
 
 | Method/Attribute | Description |
-| | :--- | :--- |
+| :--- | :--- |
 | name (property) | Gets graph builder name, returns str |
 | create_input | Creates graph input tensor |
 | create_inputs | Batch creates graph input tensors |
@@ -248,13 +248,13 @@ def build_and_reset(self, outputs: Optional[List[TensorHolder]] = None) -> Graph
 ### \_\_init\_\_
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | name | Optional[str] | No | Graph name. Default is None, when name is "graph" |
 
 ### create_input
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | index | int | Yes | Input index, representing the sequence number of this input in the graph |
 | name | Optional[str] | No | Input name. Default is None, when name is "input_{index}" |
 | type_str | Optional[InputType] | No | Input type, default is InputType.DATA |
@@ -265,88 +265,88 @@ def build_and_reset(self, outputs: Optional[List[TensorHolder]] = None) -> Graph
 ### create_inputs
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | num | int | Yes | Number of inputs to create, must be positive integer |
 | start_index | int | No | Starting index, default is 0. Graph input node indices should start from 0 and increment continuously |
 
 ### create_const_int64 / create_const_uint64 / create_const_int32 / create_const_uint32
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | value | Union[int, List[int]] | Yes | Single integer or integer list. If list, element count must match shape dimension product |
 | shape | Optional[List[int]] | No | Shape dimensions. If None: single integer creates scalar (shape=[]), list creates 1-D tensor (shape=[len(value)]). If specified, dimension product must equal list element count |
 
 ### create_const_float
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | value | Union[float, List[float]] | Yes | Single floating-point number or floating-point number list. If list, element count must match shape dimension product |
 | shape | Optional[List[int]] | No | Shape dimensions. Rules same as other create_const_* methods |
 
 ### create_vector_int64
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | value | List[int] | Yes | Integer list, generates 1-D int64 tensor with shape [len(value)] |
 
 ### create_scalar_int64 / create_scalar_int32 / create_scalar_float / create_scalar_uint64 / create_scalar_uint32
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | value | int or float | Yes | Scalar value. uint64 requires non-negative integer, uint32 requires value in [0, 2^32-1] range |
 
 ### create_variable
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | index | int | Yes | Variable index |
 | name | str | Yes | Variable name |
 
 ### set_graph_output
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | tensor | TensorHolder | Yes | Tensor object to set as output |
 | output_index | int | Yes | Output index |
 
 ### set_graph_attr_int64 / set_tensor_attr_int64 / set_node_attr_int64
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | attr_name (or tensor + attr_name) | str (TensorHolder + str) | Yes | Attribute name (when setting tensor/node attribute, also need to pass corresponding TensorHolder) |
 | value | int | Yes | int64 attribute value |
 
 ### set_graph_attr_string / set_tensor_attr_string / set_node_attr_string
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | attr_name (or tensor + attr_name) | str (TensorHolder + str) | Yes | Attribute name (when setting tensor/node attribute, also need to pass corresponding TensorHolder) |
 | value | str | Yes | String attribute value |
 
 ### set_graph_attr_bool / set_tensor_attr_bool / set_node_attr_bool
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | attr_name (or tensor + attr_name) | str (TensorHolder + str) | Yes | Attribute name (when setting tensor/node attribute, also need to pass corresponding TensorHolder) |
 | value | bool | Yes | Boolean attribute value |
 
 ### add_control_dependency
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | dst_tensor | TensorHolder | Yes | Target tensor, will add control dependency node |
 | src_tensors | List[TensorHolder] | Yes | Source tensor list, control dependency source nodes |
 
 ### build_and_reset
 
 | Parameter | Type | Required | Description |
-| | :--- | :--- | :---: | :--- |
+| :--- | :--- | :---: | :--- |
 | outputs | Optional[List[TensorHolder]] | No | Output tensor list. If passed, automatically sets output in order before building (indices start from 0). Default is None, uses previously set output |
 
 ## Return Value Description
 
 | Method | Return Type | Description |
-| | :--- | :--- | :--- |
+| :--- | :--- | :--- |
 | name (property) | str | Graph builder name |
 | create_input | TensorHolder | Tensor object representing input |
 | create_inputs | List[TensorHolder] | Input tensor object list, all elements are DataType.DT_FLOAT, Format.FORMAT_ND, shape=[] |

@@ -15,7 +15,6 @@
 #include <climits>
 
 #include "framework/common/framework_types_internal.h"
-#include "graph/types.h"
 #include "graph/utils/op_desc_utils.h"
 #include "graph/utils/tensor_utils.h"
 #include "graph/utils/type_utils.h"
@@ -178,6 +177,12 @@ bool KernelUtils::CheckSizeForTransOp(const ge::ConstGeTensorPtr &const_weight_p
     return false;
   }
 
+  uint32_t length = 1U;
+  if (!TypeUtils::GetDataTypeLength(data_type, length)) {
+    GELOGE(PARAM_INVALID, "Input datatype %d is not supported.", data_type);
+    return false;
+  }
+
   GELOGI("Const real value Size:%zu, op_desc Shape Size:%ld, data_type:%s.", data_size, cal_size,
          TypeUtils::DataTypeToSerialString(data_type).c_str());
   if (shape_size != 0) {
@@ -194,9 +199,7 @@ bool KernelUtils::CheckSizeForTransOp(const ge::ConstGeTensorPtr &const_weight_p
     }
   } else {
     // Scalar tensor, has only one element in tensor
-    // 子字节类型（如 DT_INT4）按位宽 CeilDiv 得到单元素 packed 字节数
-    const int64_t expect_scalar_size = ge::GetSizeInBytes(1, data_type);
-    if ((expect_scalar_size <= 0) || (data_size != static_cast<size_t>(expect_scalar_size))) {
+    if ((length != 0U) && ((data_size / static_cast<size_t>(length)) != 1U)) {
       GELOGW("Const input data size is not equal with tensor desc shape");
       return false;
     }

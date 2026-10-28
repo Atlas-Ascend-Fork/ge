@@ -172,16 +172,6 @@ set(SRC_BASE_LIST
     "common/host_resource_center/tiling_resource_manager.cc"
     "common/host_resource_center/weight_manager.cc"
     "common/option_register.cc"
-    "common/helper/mobile_model_helper.cc"
-    "common/helper/mobile/compatible_info_v2.cc"
-    "common/helper/mobile/compiled_model.cc"
-    "common/helper/mobile/compiled_target_saver.cc"
-    "common/helper/mobile/compiled_target.cc"
-    "common/helper/mobile/kernelbin_info.cc"
-    "common/helper/mobile/large_memory_ops.cc"
-    "common/helper/mobile/model_buffer_helper.cc"
-    "common/helper/mobile/model_file_saver.cc"
-    "common/helper/mobile/model.cc"
     "common/error_registry/error_registry.cc"
     "common/ge_api_error_codes.cc"
     "common/atrace/atracing_reporter.cpp"
@@ -189,6 +179,25 @@ set(SRC_BASE_LIST
     "common/atrace/tracing_recorder.cpp"
     "common/atrace/tracing_recorder_manager.cpp"
 )
+
+# mobile om 转换器(omc): 仅 Kirin mobile soc 场景使用的离线转换能力。
+# ascend031 设备形态不链 crypto_static(embed 立方体 libcrypto.a 为硬浮点 ABI, 与软浮点 so 冲突);
+# 闭源 legacy 形态(BUILD_OPEN_PROJECT/ENABLE_OPEN_SRC 均关)不引入 openssl 三方件。
+if ((NOT "${PRODUCT}" STREQUAL "ascend031") AND (BUILD_OPEN_PROJECT OR ENABLE_OPEN_SRC))
+    set(ENABLE_OMC_MOBILE ON)
+    list(APPEND SRC_BASE_LIST
+        "common/helper/mobile_model_helper.cc"
+        "common/helper/mobile/compatible_info_v2.cc"
+        "common/helper/mobile/compiled_model.cc"
+        "common/helper/mobile/compiled_target_saver.cc"
+        "common/helper/mobile/compiled_target.cc"
+        "common/helper/mobile/kernelbin_info.cc"
+        "common/helper/mobile/large_memory_ops.cc"
+        "common/helper/mobile/model_buffer_helper.cc"
+        "common/helper/mobile/model_file_saver.cc"
+        "common/helper/mobile/model.cc"
+    )
+endif ()
 
 if (NOT ENABLE_D AND NOT ENABLE_ACL)
 ############ libge_common.so ############
@@ -339,6 +348,7 @@ target_link_libraries(ge_common_base
         json
         $<$<NOT:$<STREQUAL:${TARGET_SYSTEM_NAME},Android>>:-lrt>
         -ldl
+        $<$<BOOL:${ENABLE_OMC_MOBILE}>:crypto_static>
         ${AIR_COMMON_LINK_OPTION}
     PUBLIC
         air_headers
@@ -532,6 +542,7 @@ target_link_libraries(ge_common_base
         json
         -lrt
         -ldl
+        $<$<BOOL:${ENABLE_OMC_MOBILE}>:crypto_static>
         ${AIR_COMMON_LINK_OPTION}
     PUBLIC
         air_headers

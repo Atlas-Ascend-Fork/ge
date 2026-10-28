@@ -47,6 +47,12 @@ ge::mobile::proto::DataType ConvertToMobileDataType(const ge::proto::DataType da
   return it->second;
 }
 
+const static std::map<ge::proto::DataType, int64_t> SELF_DEFINE_DATA_TYPE_MAP = {
+    {ge::proto::DataType::DT_INT4, 22},
+};
+
+const static char *const KEY_DATA_TYPE_SELF_DEFINED = "__tensor_desc_data_type__";
+
 ge::mobile::proto::AttrDef_ListValue::ListValueType ConvertToMobileListValueType(
     const ge::proto::AttrDef_ListValue::ListValueType list_value_type) {
   using AttrDefListValue = ge::proto::AttrDef_ListValue;
@@ -69,7 +75,7 @@ ge::mobile::proto::AttrDef_ListValue::ListValueType ConvertToMobileListValueType
   };
   auto it = m.find(list_value_type);
   if (it == m.end()) {
-    GELOGE(ge::FAILED, "[Mobile] list_value_type %zu is not supported", list_value_type);
+    GELOGW("[Mobile] list_value_type %zu is not supported", list_value_type);
     return MobileAttrDefListValue::VT_LIST_NONE;
   }
   return it->second;
@@ -81,7 +87,10 @@ ge::Status ConvertToMobileTensorDescriptor(const ge::proto::TensorDescriptor &td
                                            ge::mobile::proto::TensorDescriptor *mobile_td) {
   mobile_td->set_name(td.name());
   mobile_td->set_dtype(ConvertToMobileDataType(td.dtype()));
-  if (td.shape().dim().size() > 0) {
+  auto self_define_it = SELF_DEFINE_DATA_TYPE_MAP.find(td.dtype());
+  if (self_define_it != SELF_DEFINE_DATA_TYPE_MAP.end()) {
+    GELOGD("[Mobile] dtype %d is self defined, data type is carried by attr.", static_cast<int32_t>(td.dtype()));
+  } else if (td.shape().dim().size() > 0) {
     GE_ASSERT_TRUE(mobile_td->dtype() != ge::mobile::proto::DataType::DT_UNDEFINED, "[Mobile] dtype is not supported.");
   } else {
     GELOGD("[Mobile] desc shape is null, should not check dtype.");
@@ -109,6 +118,15 @@ ge::Status ConvertToMobileTensorDescriptor(const ge::proto::TensorDescriptor &td
                    "[Mobile] convert to mobile attr def failed.");
     (void)mobile_td->mutable_attr()->insert({attr.first, mobile_attr_def});
   }
+
+  if (self_define_it != SELF_DEFINE_DATA_TYPE_MAP.end()) {
+    ge::mobile::proto::AttrDef self_define_attr;
+    self_define_attr.set_i(self_define_it->second);
+    GELOGI("[Mobile] set self define data type, ge dtype: %d, value: %" PRId64 "", static_cast<int32_t>(td.dtype()),
+           self_define_it->second);
+    (void)mobile_td->mutable_attr()->insert({KEY_DATA_TYPE_SELF_DEFINED, self_define_attr});
+  }
+
   return ge::SUCCESS;
 }
 

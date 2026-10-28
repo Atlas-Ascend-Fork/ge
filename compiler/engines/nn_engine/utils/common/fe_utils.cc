@@ -160,8 +160,7 @@ int GetDataTypeBits(const ge::DataType data_type) {
   if (data_type_size <= 0) {
     return data_type_size;
   }
-  // 子字节类型（如 DT_INT4）GetSizeByDataType 返回位宽编码值（kDataTypeSizeBitOffset + bits）
-  if (data_type_size > ge::kDataTypeSizeBitOffset) {
+  if (data_type > ge::kDataTypeSizeBitOffset) {
     return data_type_size - ge::kDataTypeSizeBitOffset;
   }
   return data_type_size * ge::kBitNumOfOneByte;

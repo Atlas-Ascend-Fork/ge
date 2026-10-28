@@ -15,22 +15,20 @@
 1. 包含的头文件。
 
     ```c++
-    # 必选头文件
-    #include "ops_proto_legacy.h"
-    # 可选头文件
     #include "ops_proto_math.h"
     #include "ops_proto_cv.h"
     #include "ops_proto_nn.h"
     #include "ops_proto_transformer.h"
+    #include "ops_proto_legacy.h"
     ```
 
     - 对于内置算子，定义内置算子类型，可使用内置算子类型相关的接口，头文件所在路径为`${INSTALL_DIR}/opp/built-in/op_graph/inc/`。
 
-        开发时必须包含ops_proto_legacy.h头文件。此外，请根据具体算子按需包含对应的可选头文件。例如，若使用SoftmaxV2算子，则需额外包含 ops_proto_nn.h。
+        开发时请按需包含对应算子的头文件并包含legacy头文件，例如，若使用SoftmaxV2算子，需同时包含ops_proto_nn.h和ops_proto_legacy.h。注意：legacy头文件不推荐使用，仅为兼容部分待废弃的算子而保留，和其他头文件一起包含时，需要最后包含。
 
         ```c++
-        #include "ops_proto_legacy.h"
         #include "ops_proto_nn.h"
+        #include "ops_proto_legacy.h"
         ```
 
     - 对于自定义算子，需要包括自定义算子的原型定义头文件，头文件所在路径为`${INSTALL_DIR}/opp/vendors/<vendor_name>/op_proto/inc`。

@@ -64,9 +64,13 @@ class _PassRegistry:
     def register(self, descriptor: PassDescriptor) -> PassDescriptor:
         with self._lock:
             if descriptor.descriptor_key in self._descriptor_key_to_desc:
-                raise ValueError(f"python pass descriptor_key already exists: {descriptor.descriptor_key}")
+                raise ValueError(
+                    f"python pass descriptor_key already exists: {descriptor.descriptor_key}"
+                )
             if descriptor.pass_name in self._pass_name_to_desc:
-                raise ValueError(f"python pass name already exists: {descriptor.pass_name}")
+                raise ValueError(
+                    f"python pass name already exists: {descriptor.pass_name}"
+                )
             self._descriptor_key_to_desc[descriptor.descriptor_key] = descriptor
             self._pass_name_to_desc[descriptor.pass_name] = descriptor
         return descriptor
@@ -89,7 +93,9 @@ def _build_descriptor_key(module_name: str, class_name: str, pass_name: str) -> 
 
 def _normalize_decompose_op_types(op_types: Iterable[str]) -> List[str]:
     if isinstance(op_types, (str, bytes)) or not isinstance(op_types, IterableABC):
-        raise TypeError("register_decompose_pass op_types must be an iterable of strings")
+        raise TypeError(
+            "register_decompose_pass op_types must be an iterable of strings"
+        )
 
     normalized_op_types = list(op_types)
     if not normalized_op_types:
@@ -97,7 +103,9 @@ def _normalize_decompose_op_types(op_types: Iterable[str]) -> List[str]:
 
     for op_type in normalized_op_types:
         if not isinstance(op_type, str) or not op_type:
-            raise TypeError("register_decompose_pass op_types must contain non-empty strings")
+            raise TypeError(
+                "register_decompose_pass op_types must contain non-empty strings"
+            )
     return normalized_op_types
 
 
@@ -126,7 +134,9 @@ def _register_pass_class(
     return cls
 
 
-def register_fusion_pass(*, name: str, stage: PassStage, kind: Optional[str] = None) -> callable:
+def register_fusion_pass(
+    *, name: str, stage: PassStage, kind: Optional[str] = None
+) -> callable:
     """Decorator for FusionBasePass and PatternFusionPass."""
 
     def decorator(cls: Type[FusionBasePass]) -> Type[FusionBasePass]:
@@ -134,13 +144,19 @@ def register_fusion_pass(*, name: str, stage: PassStage, kind: Optional[str] = N
             raise TypeError("register_fusion_pass expects a FusionBasePass subclass")
         pass_kind = kind
         if pass_kind is None:
-            pass_kind = PASS_KIND_PATTERN_FUSION if issubclass(cls, PatternFusionPass) else PASS_KIND_FUSION_BASE
+            pass_kind = (
+                PASS_KIND_PATTERN_FUSION
+                if issubclass(cls, PatternFusionPass)
+                else PASS_KIND_FUSION_BASE
+            )
         return _register_pass_class(cls, kind=pass_kind, name=name, stage=stage)
 
     return decorator
 
 
-def register_decompose_pass(*, name: str, stage: PassStage, op_types: Iterable[str]) -> callable:
+def register_decompose_pass(
+    *, name: str, stage: PassStage, op_types: Iterable[str]
+) -> callable:
     """Decorator for DecomposePass."""
 
     normalized_op_types = _normalize_decompose_op_types(op_types)

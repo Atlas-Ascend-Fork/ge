@@ -63,7 +63,7 @@ Since physical stream carried task quantity is limited, need to calculate task q
    - **Constraint**: For dynamic gear scenario, when adding StreamLabel need add gear information to distinguish
 
 2. **Event Continuity Guarantee**:
-   - Stream allocation internal insert event scenarios mainly include: adjacent different logic stream nodes、stream splitting nodes、main-sub stream、attached stream and main stream
+   - Stream allocation internal insert event scenarios mainly include: adjacent different logic stream nodes, stream splitting nodes, main-sub stream, attached stream and main stream
    - **Constraint**: After insert or delete event need consider event id continuity, rts will validate event id. So operate event must uniformly use member Nodes2SyncInfos, stream allocation phase will refresh events in Nodes2SyncInfos, ensure continuity
 
 3. **Stream Splitting Trigger Condition**:
@@ -87,9 +87,9 @@ Since physical stream carried task quantity is limited, need to calculate task q
 The default is single-stream. Multi-stream allocation is entered only when `ENABLE_DYNAMIC_SHAPE_MULTI_STREAM=1`, and then streams are allocated according to the following rules:
 
 1. **Stream Allocation Strategy**:
-   - AssignEnginesOwningStream: Allocate stream according to engine, one engine corresponds one stream_id, limited to AIcoreEngine、VectorEngine、DNN_HCCL、DSAEngine
-   - AssignAicpuCanParallel: If ac_parallel_enable is true, then judge whether aicpu and aicore can parallel, if can parallel then allocate separate stream for aicpu (only when input node has no task、only has NoTask input、cannot reuse predecessor subgraph)
-   - AssignIndependentAicpuNode: Allocate separate stream for independent aicpu node (such as DROPOUTGENMASK、GETNEXT etc.)
+   - AssignEnginesOwningStream: Allocate stream according to engine, one engine corresponds one stream_id, limited to AIcoreEngine, VectorEngine, DNN_HCCL, DSAEngine
+   - AssignAicpuCanParallel: If ac_parallel_enable is true, then judge whether aicpu and aicore can parallel, if can parallel then allocate separate stream for aicpu (only when input node has no task, only has NoTask input, cannot reuse predecessor subgraph)
+   - AssignIndependentAicpuNode: Allocate separate stream for independent aicpu node (such as DROPOUTGENMASK, GETNEXT etc.)
    - AssignWithReuse: Judge whether has reusable subgraph for engine subgraphs not yet allocated stream (both forward and backward can reuse)
    - AssignRemainSubgraphNeedAssignStream: Allocate stream for remaining subgraphs not assigned stream
    - ReassignStreamByStreamLabel: Nodes with stream_label allocated to new stream, same stream_label allocated to same stream (different engines can be allocated to same stream through stream_label)

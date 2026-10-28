@@ -53,6 +53,14 @@ class CompiledModel {
     weights_list_.push_back(weight_buffer);
   }
 
+  inline void SetSharedWeightSize(uint64_t size) {
+    shared_weight_size_ = size;
+  }
+
+  inline void SetWeightPartitionEnabled(bool enabled) {
+    weight_partition_enabled_ = enabled;
+  }
+
   inline void SetCompiledTargets(const std::vector<ge::CompiledTargetPtr> &compiled_targets) {
     compiled_targets_ = compiled_targets;
   }
@@ -67,6 +75,11 @@ class CompiledModel {
  private:
   ge::GeModelPtr ge_model_;
   std::vector<ge::BaseBuffer> weights_list_;
+  uint64_t shared_weight_size_ = 0UL;
+  // 权重分区是否生效: 只要执行过共享权重重排即为 true(共享段至少含一个权重);
+  // 权重全为共享时非共享段为空(shared_weight_size_ 为 0), 不能以偏移是否大于 0 判定分区,
+  // 否则共享分区会被静默丢弃
+  bool weight_partition_enabled_ = false;
   std::vector<ge::CompiledTargetPtr> compiled_targets_;
   ge::mobile::proto::ModelDef mobile_model_def_;
   std::vector<std::vector<uint8_t>> compiled_targets_buffer_;

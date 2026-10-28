@@ -58,7 +58,7 @@ def __init__(self, addr: int, size: int)
 **Parameter Description**:
 
 | Parameter | Type | Required/Optional | Description |
-| | :----- | :--- | :-------- | :--- |
+| :----- | :--- | :-------- | :--- |
 | addr | int | Required | Device memory address. |
 | size | int | Required | Memory size, in bytes. |
 
@@ -78,7 +78,7 @@ def addr(self) -> int
 **Return Value Description**:
 
 | Return Type | Description |
-| | :--------- | :--- |
+| :--------- | :--- |
 | int | Device memory address. |
 
 #### size (property)
@@ -95,7 +95,7 @@ def size(self) -> int
 **Return Value Description**:
 
 | Return Type | Description |
-| | :--------- | :--- |
+| :--------- | :--- |
 | int | Memory size, in bytes. |
 
 ### Allocator Class
@@ -112,13 +112,13 @@ def malloc(self, size: int) -> MemBlock
 **Parameter Description**:
 
 | Parameter | Type | Required/Optional | Description |
-| | :----- | :--- | :-------- | :--- |
+| :----- | :--- | :-------- | :--- |
 | size | int | Required | Size of memory to be allocated, in bytes. |
 
 **Return Value Description**:
 
 | Return Type | Description |
-| | :--------- | :--- |
+| :--------- | :--- |
 | MemBlock | Allocated memory block object, containing valid device memory address. |
 
 **Constraint Description**:
@@ -137,7 +137,7 @@ def free(self, block: MemBlock) -> None
 **Parameter Description**:
 
 | Parameter | Type | Required/Optional | Description |
-| | :----- | :--- | :-------- | :--- |
+| :----- | :--- | :-------- | :--- |
 | block | MemBlock | Required | Memory block object to be released, should be a MemBlock instance previously returned by malloc. |
 
 **Return Value Description**: No return value.

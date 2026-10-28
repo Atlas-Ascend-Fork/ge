@@ -3,13 +3,13 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- Ascend 950PR&950DT系列产品：不支持
+- Ascend 950PR&950DT系列产品：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - Atlas A3系列产品：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- Atlas A2系列产品：不支持
+- Atlas A2系列产品：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
 - Atlas 200I/500 A2推理产品：不支持
@@ -31,7 +31,7 @@
 
 ## 功能说明
 
-标记Super Kernel作用域的结束位置。调用该接口后，会在指定Stream上下发scope\_begin kernel及placeholder kernel，用于标识一组需要融合执行的算子操作的起始边界。
+标记Super Kernel作用域的起始位置。调用该接口后，会在指定Stream上下发scope\_begin kernel及placeholder kernel，用于标识一组需要融合执行的算子操作的起始边界。
 
 ## 函数原型
 
@@ -48,9 +48,7 @@ aclError aclskScopeBegin(const char* scopeName, aclrtStream stream)
 
 ## 返回值说明
 
-返回0表示成功，返回其他值表示失败。
-
-返回ACL\_ERROR\_INVALID\_PARAM表示参数无效（scopeName为空字符串数组，或长度超过255个字符）。
+返回ACL_SUCCESS表示调用成功，返回其他值表示调用失败。
 
 ## 约束说明
 

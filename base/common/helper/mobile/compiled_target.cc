@@ -194,9 +194,12 @@ void CompiledTarget::UpdateGraphOpTaskSize(ge::mobile::proto::ModelDef &mobile_m
 
 ge::Status CompiledTarget::UpdateModelModelTaskDef(ge::mobile::proto::ModelDef &mobile_model_def) const {
   // save subgraph data and netoutput
+  const std::string compute_subgraph_prefix = "ge_default/SubGraph_";
   for (const auto &g : mobile_model_def.graph()) {
     GELOGI("[Mobile] subgraph name: %s", g.name().c_str());
-    if (g.name() != "ge_default/SubGraph_0") {
+    // subgraph name may carry a weight hash suffix (e.g. ge_default/SubGraph_<sha256>),
+    // so match by prefix instead of the legacy fixed name "ge_default/SubGraph_0".
+    if (g.name().compare(0, compute_subgraph_prefix.size(), compute_subgraph_prefix) != 0) {
       continue;
     }
     GELOGI("[Mobile] use subgraph name: %s, update model task op.", g.name().c_str());

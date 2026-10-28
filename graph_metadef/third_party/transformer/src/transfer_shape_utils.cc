@@ -1274,9 +1274,7 @@ bool TransferShapeUtils::GetNdToNzAlignedShape(const AlignShapeInfo &align_shape
     (void)aligned_shape.SetDim(i, 1);
   }
   int64_t m0 = GetM0ByDtype(align_shape_info.data_type);
-  // 统一 C0 解析口径：primary 枚举 C0 变体（如 FRACTAL_NZ_C0_16/C0_32）、组合位域、dtype 回退，
-  // 与格式转换侧（GetEffectiveC0）保持一致
-  const int64_t c0 = GetC0Value(align_shape_info.data_type, align_shape_info.dst_format);
+  int64_t c0 = GetC0ByDtype(align_shape_info.data_type);
   (void)aligned_shape.SetDim(target_index, m0);
   (void)aligned_shape.SetDim(target_index + 1, c0);
   return true;

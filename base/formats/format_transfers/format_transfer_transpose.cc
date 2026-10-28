@@ -88,12 +88,6 @@ bool IsTransposeArgValid(const uint8_t *const src, const std::vector<int64_t> &s
                          TypeUtils::DataTypeToSerialString(src_data_type).c_str());
     return false;
   }
-  // 子字节类型（如 DT_INT4）GetSizeByDataType 返回位宽编码值，逐元素字节拷贝不适用
-  if (GetSizeByDataType(src_data_type) > kDataTypeSizeBitOffset) {
-    GELOGE(ACL_ERROR_GE_DATATYPE_INVALID, "[Trans][Param]Failed, the sub-byte data type %s is not supported",
-           TypeUtils::DataTypeToSerialString(src_data_type).c_str());
-    return false;
-  }
   return IsShapeArgValid(src_shape, perm_arg);
 }
 

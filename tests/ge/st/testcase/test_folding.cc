@@ -14,7 +14,6 @@
 #include <graph/operator_reg.h>
 #include <ge_running_env/fake_op.h>
 #include <ge_running_env/ge_running_env_faker.h>
-#include <ge_running_env/tensor_utils.h>
 
 #include "ge/ge_api.h"
 #include "graph/debug/ge_attr_define.h"
@@ -155,8 +154,7 @@ class ConstantFoldingTest : public testing::Test {
         .Install(FakeOp(SQUEEZEV3).InfoStoreAndBuilder("DNN_VM_GE_LOCAL_OP_STORE").InferShape(StubInferFunction))
         .Install(FakeOp(ClipByValue).InfoStoreAndBuilder("DNN_VM_GE_LOCAL_OP_STORE").InferShape(StubInferFunction))
         .Install(FakeOp(CAST).InfoStoreAndBuilder("DNN_VM_GE_LOCAL_OP_STORE").InferShape(StubInferFunction))
-        .Install(FakeOp("FakeWhere").InfoStoreAndBuilder("DNN_VM_GE_LOCAL_OP_STORE").InferShape(StubInferFunction))
-        .Install(FakeOp(TRANSDATA).InfoStoreAndBuilder("DNN_VM_GE_LOCAL_OP_STORE").InferShape(StubInferFunction));
+        .Install(FakeOp("FakeWhere").InfoStoreAndBuilder("DNN_VM_GE_LOCAL_OP_STORE").InferShape(StubInferFunction));
   }
   void TearDown() {
     std::cout << "End constant folding st" << std::endl;
@@ -812,27 +810,4 @@ TEST_F(ConstantFoldingTest, HostCpuCustomOpConstantFoldingCopiesTensor) {
     EXPECT_EQ(folded_node, nullptr);
   };
   CustomOpFactory::RemoveCustomOps({op_type});
-}
-
-// INT4 constant weight folded via TransData (ND -> FRACTAL_NZ_C0_16),
-// covering the sub-byte (packed) format transfer chain in ST.
-TEST_F(ConstantFoldingTest, test_int4_transdata_folding) {
-  Graph graph;
-  {
-    auto weight = GenerateTensor(DT_INT4, {2, 32});
-    auto transdata = OP_CFG(TRANSDATA).TensorDesc(FORMAT_FRACTAL_NZ_C0_16, DT_INT4, {1, 2, 1, 16, 16});
-    auto netoutput = OP_CFG(NETOUTPUT).TensorDesc(FORMAT_FRACTAL_NZ_C0_16, DT_INT4, {1, 2, 1, 16, 16});
-    auto constant = OP_CFG(CONSTANT).Weight(weight).TensorDesc(FORMAT_ND, DT_INT4, {2, 32});
-    DEF_GRAPH(g1) {
-      CHAIN(NODE("int4_const", constant)->EDGE(0, 0)->NODE("int4_transdata", transdata));
-      CHAIN(NODE("int4_transdata", transdata)->EDGE(0, 0)->NODE("netoutput", netoutput));
-    };
-    graph = ToGeGraph(g1);
-  }
-  map<AscendString, AscendString> options;
-  Session session(options);
-  session.AddGraph(1, graph, options);
-  std::vector<InputTensorInfo> inputs;
-  auto ret = session.BuildGraph(1, inputs);
-  EXPECT_EQ(ret, SUCCESS);
 }

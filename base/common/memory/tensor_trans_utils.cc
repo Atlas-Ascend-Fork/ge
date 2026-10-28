@@ -394,6 +394,21 @@ Status TensorTransUtils::GertTensor2GeTensor(const gert::Tensor &gert_tensor, Ge
   return SUCCESS;
 }
 
+Status TensorTransUtils::GertTensor2GeTensor(const gert::Tensor &gert_tensor, const GeTensorDesc &original_desc,
+                                             GeTensor &ge_tensor) {
+  GeTensorDesc merged(original_desc);
+  GE_CHK_STATUS_RET_NOLOG(GertTensor2GeTensor(gert_tensor, ge_tensor));
+  const auto &actual = ge_tensor.GetTensorDesc();
+  merged.SetShape(actual.GetShape());
+  merged.SetOriginShape(actual.GetOriginShape());
+  merged.SetDataType(actual.GetDataType());
+  merged.SetFormat(actual.GetFormat());
+  merged.SetOriginFormat(actual.GetOriginFormat());
+  merged.SetPlacement(actual.GetPlacement());
+  ge_tensor.SetTensorDesc(merged);
+  return SUCCESS;
+}
+
 Status TensorTransUtils::GertTensors2GeTensors(const std::vector<gert::Tensor> &gert_tensors,
                                                std::vector<GeTensor> &ge_tensors) {
   GE_ASSERT_TRUE(ge_tensors.empty());

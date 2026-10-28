@@ -23,10 +23,9 @@ import pytest
 
 # 需要添加 ge 到 Python 路径，否则会报错
 try:
-    from ge._capi.pyes_graph_builder_wrapper import is_generated_lib_available
-    from ge.es.graph_builder import GraphBuilder, TensorHolder
+    from ge.es.graph_builder import GraphBuilder
     from ge.es.ut_test import Add
-    from ge.graph import Graph, Node, Shape, Tensor, TensorDesc
+    from ge.graph import Node, Tensor, TensorDesc
     from ge.graph.types import DataType, Format
 except ImportError as e:
     pytest.skip(f"无法导入 ge 模块: {e}", allow_module_level=True)
@@ -86,7 +85,9 @@ class TestNode:
     @staticmethod
     def test_get_and_update_input_desc(graph):
         """测试获取和更新输入 TensorDesc"""
-        net_output = next(node for node in graph.get_all_nodes() if node.type == "NetOutput")
+        net_output = next(
+            node for node in graph.get_all_nodes() if node.type == "NetOutput"
+        )
         desc = net_output.get_input_desc(0)
         assert isinstance(desc, TensorDesc)
         shape = desc.get_shape()
@@ -196,7 +197,9 @@ class TestNode:
 
     def test_get_out_data_nodes_and_port_indexes(self, node_first):
         """测试获取输出数据节点和端口索引"""
-        out_data_nodes_and_port_indexes = node_first.get_out_data_nodes_and_port_indexes(0)
+        out_data_nodes_and_port_indexes = (
+            node_first.get_out_data_nodes_and_port_indexes(0)
+        )
         assert isinstance(out_data_nodes_and_port_indexes, List)
         out_node, port_index = out_data_nodes_and_port_indexes[0]
         assert isinstance(port_index, int)
@@ -207,9 +210,11 @@ class TestNode:
     def test_get_out_data_nodes_and_port_indexes_error(self, node_first):
         handle = node_first._handle
         try:
-            with pytest.raises(RuntimeError, match="Failed to get output data node for index 0"):
+            with pytest.raises(
+                RuntimeError, match="Failed to get output data node for index 0"
+            ):
                 node_first._handle = ctypes.c_void_p(None)
-                out_data_nodes_and_port_indexes = node_first.get_out_data_nodes_and_port_indexes(0)
+                node_first.get_out_data_nodes_and_port_indexes(0)
         finally:
             node_first._handle = handle
 
@@ -229,7 +234,9 @@ class TestNode:
 
     def test_get_tensor_attr_for_const_value(self, graph):
         """测试获取 Const.value Tensor 属性"""
-        const_node = next(node for node in graph.get_all_nodes() if node.type == "Const")
+        const_node = next(
+            node for node in graph.get_all_nodes() if node.type == "Const"
+        )
         const_value = const_node.get_attr("value")
         assert isinstance(const_value, Tensor)
         assert const_value.data_type == DataType.DT_FLOAT

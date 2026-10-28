@@ -177,6 +177,12 @@ defaults to device. Multiple backends require every same-named `execute` to use 
 `execute` can be an ordinary instance method, a `staticmethod`, or a `classmethod`; when combined,
 `register_kernel` must be the outermost decorator.
 
+Kernel inheritance follows the Python method resolution order (MRO) to find the visible `execute`.
+A registered base with neither a kernel nor an `execute` declaration does not stop the search.
+An explicit non-callable `execute`, such as `None`, hides implementations in more distant bases and
+stops inheritance. Inherited registered kernels retain their backend; an undecorated ordinary
+`execute` defaults to device. Backend declarations in the current class take precedence.
+
 ```python
 # Schema-bound form; parameter order follows canonical IR
 def execute(self, x, optional_y, dynamic_z, *, alpha, axes) -> None:

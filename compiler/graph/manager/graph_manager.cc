@@ -3800,7 +3800,8 @@ Status GraphManager::ProcessSubGraphWithMultiThreads(GraphManager *graph_manager
     graph_manager->UpdateLocalOmgContext(root_graph_id);
     ComputeGraphPtr compute_graph_tmp = sub_graph_info_ptr->GetSubGraph();
     GE_CHECK_NOTNULL(compute_graph_tmp);
-    const std::string &engine_name = sub_graph_info_ptr->GetEngineName();
+    const std::string engine_name =
+        sub_graph_info_ptr->GetEngineName().empty() ? "unknown" : sub_graph_info_ptr->GetEngineName();
     GELOGD("ProcessSubGraphWithMultiThreads start, graph name is %s, engine_name is %s, thread id is %" PRIu64 "",
            compute_graph_tmp->GetName().c_str(), engine_name.c_str(), pthread_self());
     GE_DUMP(compute_graph_tmp, engine_name + "_OptimizeSubGraphBefore");

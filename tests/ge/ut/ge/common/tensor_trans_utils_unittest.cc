@@ -15,6 +15,7 @@
 #include "../../../graph_metadef/depends/checker/tensor_check_utils.h"
 #include "ge/ge_api_error_codes.h"
 #include "graph_metadef/graph/utils/tensor_adapter.h"
+#include "graph/utils/attr_utils.h"
 #include "runtime/gert_api.h"
 namespace ge {
 namespace {
@@ -106,6 +107,50 @@ TEST_F(UtestTensorTransUtils, GertTensors2GeTensors) {
   }
   ge_tensors.clear();
   gert_tensors.clear();
+}
+
+TEST_F(UtestTensorTransUtils, GertTensor2GeTensor_PreservesOriginalDescriptor) {
+  GeTensorDesc original(GeShape({-1}), FORMAT_NHWC, DT_FLOAT16);
+  original.SetOriginShape(GeShape({-1, -1}));
+  original.SetOriginFormat(FORMAT_NHWC);
+  original.SetOriginDataType(DT_FLOAT16);
+  ASSERT_EQ(original.SetShapeRange({{1, 8}}), GRAPH_SUCCESS);
+  ASSERT_EQ(original.SetOriginShapeRange({{1, 1}, {1, 8}}), GRAPH_SUCCESS);
+  ASSERT_TRUE(AttrUtils::SetInt(original, "preserved_attribute", 7));
+  GeTensor output;
+  {
+    gert::Tensor source;
+    TensorCheckUtils::ConstructGertTensor(source, {3}, DT_INT32, FORMAT_NCHW, gert::kOnHost);
+    source.MutableOriginShape() = {1, 3};
+    source.SetOriginFormat(FORMAT_ND);
+    GeTensor legacy_output;
+    ASSERT_EQ(TensorTransUtils::GertTensor2GeTensor(source, legacy_output), SUCCESS);
+    EXPECT_EQ(legacy_output.GetTensorDesc().GetOriginDataType(), DT_INT32);
+    std::vector<std::pair<int64_t, int64_t>> legacy_range;
+    ASSERT_EQ(legacy_output.GetTensorDesc().GetShapeRange(legacy_range), GRAPH_SUCCESS);
+    EXPECT_TRUE(legacy_range.empty());
+    ASSERT_EQ(TensorTransUtils::GertTensor2GeTensor(source, original, output), SUCCESS);
+    EXPECT_EQ(output.GetData().GetData(), source.GetAddr());
+  }
+  const auto &desc = output.GetTensorDesc();
+  EXPECT_EQ(desc.GetShape().GetDims(), (std::vector<int64_t>{3}));
+  EXPECT_EQ(desc.GetOriginShape().GetDims(), (std::vector<int64_t>{1, 3}));
+  EXPECT_EQ(desc.GetDataType(), DT_INT32);
+  EXPECT_EQ(desc.GetOriginDataType(), DT_FLOAT16);
+  EXPECT_EQ(desc.GetFormat(), FORMAT_NCHW);
+  EXPECT_EQ(desc.GetOriginFormat(), FORMAT_ND);
+  EXPECT_EQ(desc.GetPlacement(), kPlacementHost);
+  std::vector<std::pair<int64_t, int64_t>> range;
+  ASSERT_EQ(desc.GetShapeRange(range), GRAPH_SUCCESS);
+  EXPECT_EQ(range, (std::vector<std::pair<int64_t, int64_t>>{{1, 8}}));
+  range.clear();
+  ASSERT_EQ(desc.GetOriginShapeRange(range), GRAPH_SUCCESS);
+  EXPECT_EQ(range, (std::vector<std::pair<int64_t, int64_t>>{{1, 1}, {1, 8}}));
+  int64_t attribute = 0;
+  ASSERT_TRUE(AttrUtils::GetInt(desc, "preserved_attribute", attribute));
+  EXPECT_EQ(attribute, 7);
+  ASSERT_EQ(output.GetData().GetSize(), 3U * sizeof(int32_t));
+  EXPECT_EQ(reinterpret_cast<const int32_t *>(output.GetData().GetData())[2], 2);
 }
 
 TEST_F(UtestTensorTransUtils, GertTensors2Tensors) {

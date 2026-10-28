@@ -19,7 +19,6 @@
 #include "framework/common/op/ge_op_utils.h"
 #include "framework/common/debug/ge_log.h"
 #include "graph/debug/ge_attr_define.h"
-#include "graph/types.h"
 #include "host_kernels/kernel_utils.h"
 #include "graph/utils/type_utils.h"
 #include "host_kernels/kernel_factory.h"
@@ -79,12 +78,6 @@ Status PackKernel::ValidateKernelParams(const ge::OpDescPtr &op_desc_ptr,
     return PARAM_INVALID;
   }
   data_type_ = op_desc_ptr->GetInputDesc(0).GetDataType();
-  // 子字节类型（如 DT_INT4）的 Pack 需要位级打包，逐元素字节拷贝逻辑不适用，安全跳过折叠
-  if (GetSizeByDataType(data_type_) > kDataTypeSizeBitOffset) {
-    GELOGI("Pack kernel skips sub-byte data type %s, ignore folding.",
-           TypeUtils::DataTypeToSerialString(data_type_).c_str());
-    return NOT_CHANGED;
-  }
   GeShape shape = op_desc_ptr->GetInputDesc(0).GetShape();
   if (axis_ < 0 || axis_ > (static_cast<int64_t>(shape.GetDimNum()) + 1)) {
     GELOGW("Axis is %ld ,which is out of range [0,R+1].", axis_);

@@ -176,7 +176,7 @@ TEST_F(OpDefUT, ListParamTest1) {
   for (uint32_t i = 0; i < 4; ++i) {
     EXPECT_EQ(inputs[0].GetDataTypes()[i], ge::DT_FLOAT16);
   }
-  for (uint32_t i = 8; i < 8; ++i) {
+  for (uint32_t i = 4; i < 8; ++i) {
     EXPECT_EQ(inputs[0].GetDataTypes()[i], ge::DT_FLOAT);
   }
   std::vector<OpParamDef> outputs = opDef.GetMergeOutputs(aicConfig);

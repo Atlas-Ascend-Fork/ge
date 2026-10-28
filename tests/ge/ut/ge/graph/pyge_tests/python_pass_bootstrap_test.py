@@ -69,7 +69,9 @@ def test_load_pass_plugins_from_env_file(tmp_path, monkeypatch):
     modules = bootstrap.load_pass_plugins()
 
     assert len(modules) == 1
-    assert [item.pass_name for item in passes.get_registered_passes()] == ["EnvFilePass"]
+    assert [item.pass_name for item in passes.get_registered_passes()] == [
+        "EnvFilePass"
+    ]
 
 
 def test_load_pass_plugins_from_env_directory(tmp_path, monkeypatch):
@@ -102,8 +104,19 @@ def test_bridge_create_run_destroy_holder_from_env(tmp_path, monkeypatch):
 
     first_graph = Graph("g1")
     second_graph = Graph("g2")
-    assert bridge.run_fusion_base_pass(first_instance_id, graph=first_graph, context=None) == 1
-    assert bridge.run_fusion_base_pass(first_instance_id, graph=first_graph, context=None) == 2
-    assert bridge.run_fusion_base_pass(second_instance_id, graph=second_graph, context=None) == 1
+    assert (
+        bridge.run_fusion_base_pass(first_instance_id, graph=first_graph, context=None)
+        == 1
+    )
+    assert (
+        bridge.run_fusion_base_pass(first_instance_id, graph=first_graph, context=None)
+        == 2
+    )
+    assert (
+        bridge.run_fusion_base_pass(
+            second_instance_id, graph=second_graph, context=None
+        )
+        == 1
+    )
     assert bridge.destroy_pass_holder(first_instance_id)
     assert bridge.destroy_pass_holder(second_instance_id)

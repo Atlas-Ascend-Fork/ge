@@ -11,6 +11,7 @@ import os
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 
 tf.enable_resource_variables()
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +23,9 @@ RTOL = 0.001
 
 
 def main(unused_argv):
-    custom_op_lib = tf.load_op_library(os.path.join("./outputs/libcustom_ops.so"))  # 加载自定义算子库
+    custom_op_lib = tf.load_op_library(
+        os.path.join("./outputs/libcustom_ops.so")
+    )  # 加载自定义算子库
     # 定义输入数据
     shape_params = (8, 2048)
     dtype_params = np.float32
