@@ -375,6 +375,12 @@ class PythonCustomOpPybindBridge {
     }
     py::gil_scoped_acquire gil;
     try {
+      // 临时跳过未注册原型的校验，后续补充python注册原型支持指定输出name，注册自定义实现需注册原型并恢复校验逻辑。
+      if (!ge::OperatorFactory::IsExistOp(op_type.c_str())) {
+        GELOGI("Skip python custom op impl schema validation because custom op proto is not registered, op type[%s].",
+               op_type.c_str());
+        return true;
+      }
       const auto ir_meta = CollectPythonCustomOpIrMeta(op_type);
       if (ir_meta == nullptr) {
         GELOGE(FAILED, "Validate python custom op impl failed because canonical IR is missing, op type[%s].",

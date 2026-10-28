@@ -98,6 +98,8 @@ V1 functions include:
 
 ### 2.4 Design Constraints
 
+> Temporary workaround: skip implementation registration schema validation when the prototype is absent; once Python prototypes support explicit output names, restore prototype registration before implementation validation.
+
 - The AscendIR graph structure, op proto format, and OM file format are not changed.
 - Python runtime or pybind dependencies are not directly introduced in `graph_metadef/register`.
 - Python entry failures affect loading only when Python custom op entries actually exist. The loading is skipped when no Python file or package is present.

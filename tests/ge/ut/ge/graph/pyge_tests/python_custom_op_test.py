@@ -503,31 +503,32 @@ def test_bridge_rejects_execute_without_return_annotation():
         )
 
 
-def test_bridge_rejects_execute_without_canonical_ir():
+def test_bridge_skips_execute_validation_without_canonical_ir():
     @custom_op.register_op_impl(op_type="RegistrationWithoutIrCustom")
     class RegistrationWithoutIrCustom:
         def execute(self) -> None:
             pass
 
-    with pytest.raises(RuntimeError, match="canonical IR not found"):
+    assert (
         bridge.validate_op_impl_descriptor(
             _get_descriptor_key("RegistrationWithoutIrCustom"), None
         )
+        is True
+    )
 
 
-def test_bridge_requires_canonical_ir_to_validate_schema_execute():
+def test_bridge_skips_schema_execute_validation_without_canonical_ir():
     @custom_op.register_op_impl(op_type="MissingRegistrationSchemaCustom")
     class MissingRegistrationSchemaCustom:
         def execute(self, x) -> None:
             pass
 
-    with pytest.raises(
-        RuntimeError,
-        match="canonical IR not found for schema-bound execute",
-    ):
+    assert (
         bridge.validate_op_impl_descriptor(
             _get_descriptor_key("MissingRegistrationSchemaCustom"), None
         )
+        is True
+    )
 
 
 def test_register_op_impl_rejects_duplicate_op_type():

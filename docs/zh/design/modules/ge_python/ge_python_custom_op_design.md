@@ -98,6 +98,8 @@ V1 功能包括：
 
 ### 2.4 设计约束
 
+> 临时方案：原型未注册时跳过实现注册阶段的 schema 校验；后续补齐 Python 原型指定输出名称的能力后，恢复先注册原型再校验实现的流程。
+
 - 不改变 AscendIR 图结构、op proto 格式和 OM 文件格式。
 - 不在 `graph_metadef/register` 中直接引入 Python runtime 或 pybind 依赖。
 - Python 入口失败只在实际存在 Python custom op 入口时影响加载；没有 Python 文件/包时直接跳过。

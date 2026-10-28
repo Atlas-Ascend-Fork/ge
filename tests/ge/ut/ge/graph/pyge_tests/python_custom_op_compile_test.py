@@ -417,15 +417,14 @@ def test_call_compile_rejects_missing_schema_and_non_none_result():
     assert ctx.invalidated is True
 
 
-def test_compile_descriptor_validation_requires_schema():
+def test_compile_descriptor_validation_skips_missing_schema():
     @custom_op.register_op_impl(op_type="OfflineCompileOnly")
     class OfflineCompileOnly:
         def compile(self, first, *, alpha) -> None:
             pass
 
     descriptor_key = _get_descriptor_key("OfflineCompileOnly")
-    with pytest.raises(RuntimeError, match="canonical IR not found.*compile"):
-        bridge.validate_op_impl_descriptor(descriptor_key, None)
+    assert bridge.validate_op_impl_descriptor(descriptor_key, None) is True
 
     @custom_op.register_op_impl(op_type="NonNoneCompile")
     class NonNoneCompile:
