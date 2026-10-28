@@ -195,7 +195,7 @@ cd /root/workspace/cann-open/graph-autofusion
 source /usr/local/Ascend/ascend-toolkit/latest/bin/setenv.bash
 # 旧 build/ 若 cmake 缓存仍是 cann-9.1.0，先清掉
 rm -rf build
-sh build.sh --pkg -j 3
+bash build.sh --pkg -j 3
 # 把生成的 cann-graph-autofusion_*.run 装到 toolkit
 ```
 
