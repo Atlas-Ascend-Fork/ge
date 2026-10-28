@@ -43,6 +43,13 @@ class PatternFusionBeforeAutoFuseUT : public testing::Test {
   }
 };
 
+static void SetOutputSymbolicShape(const NodePtr &node) {
+  node->GetOpDesc()
+      ->MutableOutputDesc(0)
+      ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
+      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+}
+
 REG_OP(ConcatV2D)
     .DYNAMIC_INPUT(x, TensorType::BasicType())
     .OUTPUT(y, TensorType::BasicType())
@@ -215,12 +222,24 @@ REG_OP(ConcatV2D)
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
       ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+  SetOutputSymbolicShape(node_switch1);
+  SetOutputSymbolicShape(node_switch2);
+  SetOutputSymbolicShape(node_switch3);
+  SetOutputSymbolicShape(node_switch4);
+  SetOutputSymbolicShape(node_cast1);
+  SetOutputSymbolicShape(node_cast2);
+  SetOutputSymbolicShape(node_cast3);
+  SetOutputSymbolicShape(node_cast4);
+  SetOutputSymbolicShape(ConcatNode1_1);
+  SetOutputSymbolicShape(ConcatNode1_2);
   graph->TopologicalSorting();
   FlattenConcatPass multiConcatFusionPro;
   ge::autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_concat = false;
   EXPECT_EQ(multiConcatFusionPro.Run(graph), ge::GRAPH_SUCCESS);
   ge::autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_concat = true;
   auto result = multiConcatFusionPro.Run(graph);
+  EXPECT_EQ(graph->FindNode("Fusion_ConcatNode2_1"), nullptr);
+  EXPECT_NE(graph->FindNode("Fusion_ConcatNode3_1"), nullptr);
 
   for (auto &node : graph->GetDirectNode()) {
     // if ((node->GetType() == CONCATV2) || (node->GetType() == CONCATV2D)) {
@@ -988,9 +1007,21 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_env_not_enabled) {
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
       ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+  SetOutputSymbolicShape(node_switch1);
+  SetOutputSymbolicShape(node_switch2);
+  SetOutputSymbolicShape(node_switch3);
+  SetOutputSymbolicShape(node_switch4);
+  SetOutputSymbolicShape(node_cast1);
+  SetOutputSymbolicShape(node_cast2);
+  SetOutputSymbolicShape(node_cast3);
+  SetOutputSymbolicShape(node_cast4);
+  SetOutputSymbolicShape(ConcatNode1_1);
+  SetOutputSymbolicShape(ConcatNode1_2);
   graph->TopologicalSorting();
   FlattenConcatPass multiConcatFusionPro;
   EXPECT_EQ(multiConcatFusionPro.Run(graph), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(graph->FindNode("Fusion_ConcatNode2_1"), nullptr);
+  EXPECT_NE(graph->FindNode("Fusion_ConcatNode3_1"), nullptr);
 }
 
 TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_2) {
@@ -1160,9 +1191,20 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_2) {
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
       ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+  SetOutputSymbolicShape(node_switch1);
+  SetOutputSymbolicShape(node_switch2);
+  SetOutputSymbolicShape(node_switch3);
+  SetOutputSymbolicShape(node_switch4);
+  SetOutputSymbolicShape(node_cast1);
+  SetOutputSymbolicShape(node_cast2);
+  SetOutputSymbolicShape(node_cast3);
+  SetOutputSymbolicShape(node_cast4);
+  SetOutputSymbolicShape(ConcatNode1_1);
+  SetOutputSymbolicShape(ConcatNode1_2);
   graph->TopologicalSorting();
   FlattenConcatPass multiConcatFusionPro;
   auto result = multiConcatFusionPro.Run(graph);
+  EXPECT_NE(graph->FindNode("Fusion_ConcatNode3_1"), nullptr);
 
   for (auto &node : graph->GetDirectNode()) {
     // if ((node->GetType() == CONCATV2) || (node->GetType() == CONCATV2D)) {
@@ -1340,6 +1382,16 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_3) {
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
       ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+  SetOutputSymbolicShape(node_switch1);
+  SetOutputSymbolicShape(node_switch2);
+  SetOutputSymbolicShape(node_switch3);
+  SetOutputSymbolicShape(node_switch4);
+  SetOutputSymbolicShape(node_cast1);
+  SetOutputSymbolicShape(node_cast2);
+  SetOutputSymbolicShape(node_cast3);
+  SetOutputSymbolicShape(node_cast4);
+  SetOutputSymbolicShape(ConcatNode1_1);
+  SetOutputSymbolicShape(ConcatNode1_2);
   graph->TopologicalSorting();
 
   PatternFusion multiconcatFusionpattern;
@@ -1568,9 +1620,20 @@ REG_OP(ConcatV2)
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
       ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+  SetOutputSymbolicShape(node_switch1);
+  SetOutputSymbolicShape(node_switch2);
+  SetOutputSymbolicShape(node_switch3);
+  SetOutputSymbolicShape(node_switch4);
+  SetOutputSymbolicShape(node_cast1);
+  SetOutputSymbolicShape(node_cast2);
+  SetOutputSymbolicShape(node_cast3);
+  SetOutputSymbolicShape(node_cast4);
+  SetOutputSymbolicShape(ConcatNode1_1);
+  SetOutputSymbolicShape(ConcatNode1_2);
   graph->TopologicalSorting();
   FlattenConcatPass multiConcatFusionPro;
   auto result = multiConcatFusionPro.Run(graph);
+  EXPECT_NE(graph->FindNode("Fusion_ConcatNode3_1"), nullptr);
 
   for (auto &node : graph->GetDirectNode()) {
     // if ((node->GetType() == CONCATV2) || (node->GetType() == CONCATV2D)) {
@@ -1999,9 +2062,20 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_6) {
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
       ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+  SetOutputSymbolicShape(node_switch1);
+  SetOutputSymbolicShape(node_switch2);
+  SetOutputSymbolicShape(node_switch3);
+  SetOutputSymbolicShape(node_switch4);
+  SetOutputSymbolicShape(node_cast1);
+  SetOutputSymbolicShape(node_cast2);
+  SetOutputSymbolicShape(node_cast3);
+  SetOutputSymbolicShape(node_cast4);
+  SetOutputSymbolicShape(ConcatNode1_1);
+  SetOutputSymbolicShape(ConcatNode1_2);
   graph->TopologicalSorting();
   FlattenConcatPass multiConcatFusionPro;
   auto result = multiConcatFusionPro.Run(graph);
+  EXPECT_NE(graph->FindNode("Fusion_ConcatNode3_1"), nullptr);
 
   for (auto &node : graph->GetDirectNode()) {
     // if ((node->GetType() == CONCATV2) || (node->GetType() == CONCATV2D)) {
@@ -2079,5 +2153,173 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_7) {
   for (auto &node : graph->GetDirectNode()) {
     printf("Graph_multisliceConcat_CountFusionOutAnchor:split_out_name is %s start;\n", node->GetName().c_str());
   }
+}
+TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_InputNoSymShape) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test1");
+  OpDescPtr op_desc_switch1 = std::make_shared<OpDesc>("switch1", "switch");
+  OpDescPtr op_desc_switch2 = std::make_shared<OpDesc>("switch2", "switch");
+  OpDescPtr op_desc_cast1 = std::make_shared<OpDesc>("cast1", "Relu");
+  OpDescPtr op_desc_cast2 = std::make_shared<OpDesc>("cast2", "Relu");
+
+  vector<int64_t> dim_a = {128, 32};
+  GeShape shape_a(dim_a);
+  GeTensorDesc tensor_desc_a(shape_a);
+  tensor_desc_a.SetFormat(FORMAT_ND);
+  tensor_desc_a.SetOriginFormat(FORMAT_ND);
+  tensor_desc_a.SetDataType(DT_FLOAT16);
+  tensor_desc_a.SetOriginDataType(DT_FLOAT16);
+
+  vector<int64_t> dim_b = {128, 16};
+  GeShape shape_b(dim_b);
+  GeTensorDesc tensor_desc_b(shape_b);
+  tensor_desc_b.SetFormat(FORMAT_ND);
+  tensor_desc_b.SetOriginFormat(FORMAT_ND);
+  tensor_desc_a.SetDataType(DT_FLOAT16);
+  tensor_desc_b.SetOriginDataType(DT_FLOAT16);
+
+  op_desc_switch1->AddOutputDesc(tensor_desc_b);
+  op_desc_switch2->AddOutputDesc(tensor_desc_b);
+  op_desc_cast1->AddOutputDesc(tensor_desc_b);
+  op_desc_cast2->AddOutputDesc(tensor_desc_b);
+
+  op_desc_cast1->AddInputDesc(tensor_desc_b);
+  op_desc_cast2->AddInputDesc(tensor_desc_b);
+
+  NodePtr node_switch1 = graph->AddNode(op_desc_switch1);
+  NodePtr node_switch2 = graph->AddNode(op_desc_switch2);
+  NodePtr node_cast1 = graph->AddNode(op_desc_cast1);
+  NodePtr node_cast2 = graph->AddNode(op_desc_cast2);
+
+  std::string concatNodeName = "ConcatNode1_1";
+  op::ConcatV2D op(concatNodeName.c_str());
+  op.BreakConnect();
+  op.create_dynamic_input_x(2);
+  op.set_attr_concat_dim(1);
+  op.set_attr_N(2);
+  auto op_desc_concat = ge::OpDescUtils::GetOpDescFromOperator(op);
+  NodePtr ConcatNode1_1 = graph->AddNode(op_desc_concat);
+
+  std::string concatNodeName1 = "ConcatNode2_1";
+  ge::op::ConcatV2D op1(concatNodeName1.c_str());
+  op1.BreakConnect();
+  op1.create_dynamic_input_x(3);
+  op1.set_attr_concat_dim(1);
+  op1.set_attr_N(3);
+  auto op_desc_concat1 = ge::OpDescUtils::GetOpDescFromOperator(op1);
+  NodePtr ConcatNode2_1 = graph->AddNode(op_desc_concat1);
+
+  GraphUtils::AddEdge(node_switch1->GetOutDataAnchor(0), ConcatNode1_1->GetInDataAnchor(0));
+  GraphUtils::AddEdge(node_switch2->GetOutDataAnchor(0), ConcatNode1_1->GetInDataAnchor(1));
+
+  GraphUtils::AddEdge(node_cast1->GetOutDataAnchor(0), ConcatNode2_1->GetInDataAnchor(0));
+  GraphUtils::AddEdge(ConcatNode1_1->GetOutDataAnchor(0), ConcatNode2_1->GetInDataAnchor(1));
+  GraphUtils::AddEdge(node_cast2->GetOutDataAnchor(0), ConcatNode2_1->GetInDataAnchor(2));
+
+  ConcatNode1_1->GetOpDesc()->UpdateInputDesc(0, node_switch1->GetOpDesc()->GetOutputDesc(0));
+  ConcatNode1_1->GetOpDesc()->UpdateInputDesc(1, node_switch2->GetOpDesc()->GetOutputDesc(0));
+  ConcatNode1_1->GetOpDesc()->UpdateOutputDesc(0, tensor_desc_a);
+  SetOutputSymbolicShape(ConcatNode1_1);
+
+  ConcatNode2_1->GetOpDesc()->UpdateInputDesc(0, node_cast1->GetOpDesc()->GetOutputDesc(0));
+  ConcatNode2_1->GetOpDesc()->UpdateInputDesc(1, ConcatNode1_1->GetOpDesc()->GetOutputDesc(0));
+  ConcatNode2_1->GetOpDesc()->UpdateInputDesc(2, node_cast2->GetOpDesc()->GetOutputDesc(0));
+  ConcatNode2_1->GetOpDesc()->UpdateOutputDesc(0, tensor_desc_a);
+  SetOutputSymbolicShape(ConcatNode2_1);
+
+  SetOutputSymbolicShape(node_switch1);
+  SetOutputSymbolicShape(node_switch2);
+
+  graph->TopologicalSorting();
+  FlattenConcatPass multiConcatFusionPro;
+  auto result = multiConcatFusionPro.Run(graph);
+  EXPECT_EQ(result, ge::GRAPH_SUCCESS);
+  EXPECT_EQ(graph->FindNode("Fusion_ConcatNode2_1"), nullptr);
+  EXPECT_NE(graph->FindNode("ConcatNode1_1"), nullptr);
+  EXPECT_NE(graph->FindNode("ConcatNode2_1"), nullptr);
+}
+
+TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_AllInputSymShape) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test1");
+  OpDescPtr op_desc_switch1 = std::make_shared<OpDesc>("switch1", "switch");
+  OpDescPtr op_desc_switch2 = std::make_shared<OpDesc>("switch2", "switch");
+  OpDescPtr op_desc_cast1 = std::make_shared<OpDesc>("cast1", "Relu");
+  OpDescPtr op_desc_cast2 = std::make_shared<OpDesc>("cast2", "Relu");
+
+  vector<int64_t> dim_a = {128, 32};
+  GeShape shape_a(dim_a);
+  GeTensorDesc tensor_desc_a(shape_a);
+  tensor_desc_a.SetFormat(FORMAT_ND);
+  tensor_desc_a.SetOriginFormat(FORMAT_ND);
+  tensor_desc_a.SetDataType(DT_FLOAT16);
+  tensor_desc_a.SetOriginDataType(DT_FLOAT16);
+
+  vector<int64_t> dim_b = {128, 16};
+  GeShape shape_b(dim_b);
+  GeTensorDesc tensor_desc_b(shape_b);
+  tensor_desc_b.SetFormat(FORMAT_ND);
+  tensor_desc_b.SetOriginFormat(FORMAT_ND);
+  tensor_desc_a.SetDataType(DT_FLOAT16);
+  tensor_desc_b.SetOriginDataType(DT_FLOAT16);
+
+  op_desc_switch1->AddOutputDesc(tensor_desc_b);
+  op_desc_switch2->AddOutputDesc(tensor_desc_b);
+  op_desc_cast1->AddOutputDesc(tensor_desc_b);
+  op_desc_cast2->AddOutputDesc(tensor_desc_b);
+
+  op_desc_cast1->AddInputDesc(tensor_desc_b);
+  op_desc_cast2->AddInputDesc(tensor_desc_b);
+
+  NodePtr node_switch1 = graph->AddNode(op_desc_switch1);
+  NodePtr node_switch2 = graph->AddNode(op_desc_switch2);
+  NodePtr node_cast1 = graph->AddNode(op_desc_cast1);
+  NodePtr node_cast2 = graph->AddNode(op_desc_cast2);
+
+  std::string concatNodeName = "ConcatNode1_1";
+  op::ConcatV2D op(concatNodeName.c_str());
+  op.BreakConnect();
+  op.create_dynamic_input_x(2);
+  op.set_attr_concat_dim(1);
+  op.set_attr_N(2);
+  auto op_desc_concat = ge::OpDescUtils::GetOpDescFromOperator(op);
+  NodePtr ConcatNode1_1 = graph->AddNode(op_desc_concat);
+
+  std::string concatNodeName1 = "ConcatNode2_1";
+  ge::op::ConcatV2D op1(concatNodeName1.c_str());
+  op1.BreakConnect();
+  op1.create_dynamic_input_x(3);
+  op1.set_attr_concat_dim(1);
+  op1.set_attr_N(3);
+  auto op_desc_concat1 = ge::OpDescUtils::GetOpDescFromOperator(op1);
+  NodePtr ConcatNode2_1 = graph->AddNode(op_desc_concat1);
+
+  GraphUtils::AddEdge(node_switch1->GetOutDataAnchor(0), ConcatNode1_1->GetInDataAnchor(0));
+  GraphUtils::AddEdge(node_switch2->GetOutDataAnchor(0), ConcatNode1_1->GetInDataAnchor(1));
+
+  GraphUtils::AddEdge(node_cast1->GetOutDataAnchor(0), ConcatNode2_1->GetInDataAnchor(0));
+  GraphUtils::AddEdge(ConcatNode1_1->GetOutDataAnchor(0), ConcatNode2_1->GetInDataAnchor(1));
+  GraphUtils::AddEdge(node_cast2->GetOutDataAnchor(0), ConcatNode2_1->GetInDataAnchor(2));
+
+  ConcatNode1_1->GetOpDesc()->UpdateInputDesc(0, node_switch1->GetOpDesc()->GetOutputDesc(0));
+  ConcatNode1_1->GetOpDesc()->UpdateInputDesc(1, node_switch2->GetOpDesc()->GetOutputDesc(0));
+  ConcatNode1_1->GetOpDesc()->UpdateOutputDesc(0, tensor_desc_a);
+  SetOutputSymbolicShape(ConcatNode1_1);
+
+  ConcatNode2_1->GetOpDesc()->UpdateInputDesc(0, node_cast1->GetOpDesc()->GetOutputDesc(0));
+  ConcatNode2_1->GetOpDesc()->UpdateInputDesc(1, ConcatNode1_1->GetOpDesc()->GetOutputDesc(0));
+  ConcatNode2_1->GetOpDesc()->UpdateInputDesc(2, node_cast2->GetOpDesc()->GetOutputDesc(0));
+  ConcatNode2_1->GetOpDesc()->UpdateOutputDesc(0, tensor_desc_a);
+  SetOutputSymbolicShape(ConcatNode2_1);
+
+  SetOutputSymbolicShape(node_switch1);
+  SetOutputSymbolicShape(node_switch2);
+  SetOutputSymbolicShape(node_cast1);
+  SetOutputSymbolicShape(node_cast2);
+
+  graph->TopologicalSorting();
+  FlattenConcatPass multiConcatFusionPro;
+  auto result = multiConcatFusionPro.Run(graph);
+  EXPECT_EQ(result, ge::GRAPH_SUCCESS);
+  EXPECT_NE(graph->FindNode("Fusion_ConcatNode2_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("ConcatNode1_1"), nullptr);
 }
 }  // namespace ge
