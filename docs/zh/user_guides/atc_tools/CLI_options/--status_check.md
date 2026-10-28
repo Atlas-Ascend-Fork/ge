@@ -26,10 +26,6 @@
 - Atlas训练系列产品：支持
 <!-- end id7 -->
 
-<!-- npu="IPV350" id1 -->
-- IPV350：支持
-<!-- end id1 -->
-
 <!-- @ref: ge/res/docs/zh/user_guides/atc_tools/CLI_options/--status_check_res.md#id1 -->
 
 ## 功能说明
@@ -61,4 +57,4 @@ atc --status_check=1 ...
 
 ## 使用约束
 
-使用[--status\_check](--status_check.md)参数只是在模型编译后生成的算子\*.cce文件中加入了溢出检测逻辑，如果想查看具体哪些算子有溢出，则需要配合模型推理过程中提供的**aclInit**接口，在该接口入参的JSON配置文件中打开“dump\_debug”开关，接口详细说明请参见《[Runtime运行时API](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md)》中的“初始化和去初始化 \> aclInit”章节。
+使用[--status\_check](--status_check.md)参数只是在模型编译后生成的算子\*.cce文件中加入了溢出检测逻辑，如果想查看具体哪些算子有溢出，则需要配合模型推理过程中提供的**aclInit**接口，在该接口入参的JSON配置文件中打开“dump\_debug”开关，接口详细说明请参见《[Runtime运行时API](https://gitcode.com/cann/runtime/blob/9.3.0-beta.1/docs/zh/api_ref/README.md)》中的“初始化和去初始化 \> aclInit”章节。

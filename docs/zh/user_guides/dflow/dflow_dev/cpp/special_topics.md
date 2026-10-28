@@ -26,7 +26,7 @@
 
 #### 环境准备
 
-- 进行UDF开发前，需要完成驱动固件及开发套件包Ascend-cann-toolkit的安装，详细操作请参见《[CANN软件安装](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)》。
+- 进行UDF开发前，需要完成驱动固件及开发套件包Ascend-cann-toolkit的安装，详细操作请参见《[CANN软件安装](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/930beta1/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)》。
 - 配置环境变量CANN软件包安装路径ASCEND\_INSTALL\_PATH，UDF编译时根据该环境变量寻找依赖的头文件和so，如果不设置，默认该环境变量取值为“/usr/local/Ascend”。配置示例如下。
 
     ```shell
@@ -41,7 +41,7 @@ UDF工程分成如下几类，请根据使用场景进行创建。
 - 通过调用NN实现自定义功能：该场景下，用户需要的功能可以通过已有的NN功能承载，用户通过UDF调用NN功能即可。
 - 通过调用第三方依赖库实现自定义功能：该场景下，用户需要的功能在第三方依赖库中已存在，用户通过UDF调用第三方依赖库中相关功能即可。
 
-您可以直接下载[工程样例](https://gitcode.com/cann/ge/tree/master/examples/dflow/udf_workspace)，并基于此进行开发。如下UDF工程目录示例包括了三种场景，请根据使用场景下载对应的样例，基于如下规则在对应目录下进行UDF交付件的开发。
+您可以直接下载[工程样例](https://gitcode.com/cann/ge/tree/9.3.0-beta.1/examples/dflow/udf_workspace)，并基于此进行开发。如下UDF工程目录示例包括了三种场景，请根据使用场景下载对应的样例，基于如下规则在对应目录下进行UDF交付件的开发。
 
 ```cpp
 ├── 01_udf_add

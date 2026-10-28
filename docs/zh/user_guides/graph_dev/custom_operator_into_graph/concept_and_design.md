@@ -86,10 +86,10 @@ export ASCEND_CUSTOM_OPP_PATH="<custom_opp_root>:$ASCEND_CUSTOM_OPP_PATH"
 
 | 场景 | 说明 | 接口组合 | 典型链路 | 参考样例 |
 | --- | --- | --- | --- | --- |
-| 场景1：动态图在线执行 | kernel预编译好，Execute直接launch | EagerExecuteOp+ShapeInferOp（可选） | 构图 → 直接执行 | [ascendc_add_custom](https://gitcode.com/cann/ge/blob/master/examples/custom_op/ascendc_add_custom/README.md) |
+| 场景1：动态图在线执行 | kernel预编译好，Execute直接launch | EagerExecuteOp+ShapeInferOp（可选） | 构图 → 直接执行 | [ascendc_add_custom](https://gitcode.com/cann/ge/blob/9.3.0-beta.1/examples/custom_op/ascendc_add_custom/README.md) |
 | 场景2：在线编译+在线执行 | 图编译期RTC编译kernel | EagerExecuteOp+CompilableOp+ShapeInferOp(可选) | 构图 → Compile → 执行 | - |
-| 场景3：离线OM模型下沉 | 编译产物序列化进OM，加载后恢复 | EagerExecuteOp+CompilableOp+ShapeInferOp+PortableOp | AIR → ATC → OM → ACL | [compilable_add_custom](https://gitcode.com/cann/ge/blob/master/examples/custom_op/compilable_add_custom/README.md) |
-| 场景4：数据依赖shape | 输出shape 依赖运行期数据，回写shape buffer | EagerExecuteOp+ShapeInferOp | 构图 → 执行+shape buffer回写 | [data_dependent_shape_custom](https://gitcode.com/cann/ge/blob/master/examples/custom_op/data_dependent_shape_custom/README.md) |
+| 场景3：离线OM模型下沉 | 编译产物序列化进OM，加载后恢复 | EagerExecuteOp+CompilableOp+ShapeInferOp+PortableOp | AIR → ATC → OM → ACL | [compilable_add_custom](https://gitcode.com/cann/ge/blob/9.3.0-beta.1/examples/custom_op/compilable_add_custom/README.md) |
+| 场景4：数据依赖shape | 输出shape 依赖运行期数据，回写shape buffer | EagerExecuteOp+ShapeInferOp | 构图 → 执行+shape buffer回写 | [data_dependent_shape_custom](https://gitcode.com/cann/ge/blob/9.3.0-beta.1/examples/custom_op/data_dependent_shape_custom/README.md) |
 
 - **场景1：动态图在线执行**
 

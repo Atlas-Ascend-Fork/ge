@@ -43,7 +43,7 @@
 - **错误码范围**：运行时错误码形如161xxx（参数/环境类）、507xxx（aicore 超时类）等。错误码格式为 \[错误码\]\[模块\]\[子模块\]\[错误原因\]，定位时先查“该错误码属于哪个阶段”。
 - **编译期日志**：RTC编译失败时，日志中应包含kernel源码编译错误详情。
 
-完整错误码说明请参见《[故障处理](https://gitcode.com/cann/docs/blob/master/docs/zh/troubleshooting/00_troubleshooting.md)》。
+完整错误码说明请参见《[故障处理](https://gitcode.com/cann/docs/blob/9.3.0-beta.1/docs/zh/troubleshooting/00_troubleshooting.md)》。
 
 ## 如何进一步定位
 

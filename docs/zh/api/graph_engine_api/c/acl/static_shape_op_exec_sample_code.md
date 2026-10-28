@@ -55,7 +55,7 @@
 
 以下是单算子加载、执行关键步骤的代码示例，不能直接拷贝编译运行，仅供参考。调用接口后，需增加异常处理的分支，并记录报错日志、提示日志，此处不一一列举。
 
-您可以单击[aclop\_invocation](https://gitcode.com/cann/asc-devkit/tree/master/examples/02_features/00_framework_launch/aclop_invocation)获取样例。
+您可以单击[aclop\_invocation](https://gitcode.com/cann/asc-devkit/blob/9.3.0-beta.1/examples/01_simd_cpp_api/02_features/99_acl_based/01_acl_invocation/aclop_invocation/README.md)获取样例。
 
 ```c++
 // 1.初始化

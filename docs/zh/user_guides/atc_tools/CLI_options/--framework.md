@@ -20,10 +20,6 @@ Atlas A3系列产品**不支持Caffe**框架：Caffe框架在该产品形态已�
 Atlas A2系列产品**不支持Caffe**框架：Caffe框架在该产品形态已不演进，不保证功能可用。
 <!-- end id3 -->
 
-<!-- npu="IPV350" id4 -->
-IPV350：**不支持Caffe**框架：Caffe框架在该产品形态已不演进，不保证功能可用。
-<!-- end id4 -->
-
 <!-- @ref: ge/res/docs/zh/user_guides/atc_tools/CLI_options/--framework_res.md#id1 -->
 
 ## 关联参数

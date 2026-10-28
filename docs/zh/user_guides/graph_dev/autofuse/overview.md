@@ -68,7 +68,7 @@ AutoFuse作为上层GE或Inductor的后端，是自动融合编译的核心。�
 
 ### 编译与运行
 
-AutoFuse生成的Host和Device源码由[毕昇编译器](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/compiler/BishengCompiler/atlas_bisheng_10_0001.html)进一步编译为Host侧共享库和Device侧Kernel二进制。运行时，上层框架根据实际输入准备Tiling参数并启动融合Kernel，**Runtime**负责设备资源管理、Kernel下发和执行。对于原本由多个Kernel完成的算子链，融合后通常可减少Kernel启动次数和中间Tensor的全局内存读写，从而降低数据搬运和调度开销，提升昇腾AI处理器的硬件资源利用率和模型执行性能。
+AutoFuse生成的Host和Device源码由[毕昇编译器](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/930beta1/compiler/BishengCompiler/atlas_bisheng_10_0001.html)进一步编译为Host侧共享库和Device侧Kernel二进制。运行时，上层框架根据实际输入准备Tiling参数并启动融合Kernel，**Runtime**负责设备资源管理、Kernel下发和执行。对于原本由多个Kernel完成的算子链，融合后通常可减少Kernel启动次数和中间Tensor的全局内存读写，从而降低数据搬运和调度开销，提升昇腾AI处理器的硬件资源利用率和模型执行性能。
 
 ## 关键技术方案
 

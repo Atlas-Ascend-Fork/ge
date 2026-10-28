@@ -82,10 +82,6 @@
 
 <!-- @ref: ge/res/docs/zh/user_guides/atc_tools/CLI_options/--precision_mode_v2_res.md#id1 -->
 
-<!-- npu="IPV350" id9 -->
-- **IPV350不支持bfloat16、hif8类型，对应选项也不支持。**
-<!-- end id9 -->
-
 <!-- npu="950,A3,910b,310b" id8 -->
 - **bfloat16数据类型仅支持以下产品型号**：
 
@@ -112,7 +108,7 @@
     Ascend 950PR&950DT系列产品
 
 <!-- end id5 -->
-- 该参数默认为性能优先，后续推理时可能会导致精度溢出问题。如果推理时出现精度问题，可以参见《[应用开发](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md)》中的“模型推理 \> 精度/性能优化 \> 模型推理精度提升建议”进行定位。
+- 该参数默认为性能优先，后续推理时可能会导致精度溢出问题。如果推理时出现精度问题，可以参见《[应用开发](https://gitcode.com/cann/docs/blob/9.3.0-beta.1/docs/zh/app-dev/c/00_acl_cpp_dev.md)》中的“模型推理 \> 精度/性能优化 \> 模型推理精度提升建议”进行定位。
 - 如果用户聚焦精度问题，可以修改为其他取值，比如**origin。**
 
 ## 推荐配置及收益
@@ -131,4 +127,4 @@ atc --precision_mode_v2=fp16 ...
 
 混合精度场景下，如果版本升级后出现推理性能下降，建议使用AOE工具重新进行调优，调优完成后，通过[--op\_bank\_path](--op_bank_path.md)参数加载算子调优后自定义知识库的路径，然后重新进行模型转换。
 
-算子调优详情请参见《[AOE调优工具](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/devaids/aoe/auxiliarydevtool_aoe_0001.html)》。
+算子调优详情请参见《[AOE调优工具](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/930beta1/devaids/aoe/auxiliarydevtool_aoe_0001.html)》。

@@ -4,7 +4,7 @@
 
 支持的产品型号：Atlas A2系列产品和Atlas A3系列产品。
 
-已经安装CANN软件，详细操作请参见《[CANN软件安装](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)》。
+已经安装CANN软件，详细操作请参见《[CANN软件安装](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/930beta1/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)》。
 
 > [!NOTE]说明
 >AI Server场景下，安装节点应采用容器/虚拟机隔离，容器/虚拟机的生命周期与业务进程/租户保持一致。容器/虚拟机生命周期结束时要清理持久化数据，避免对下一个业务进程/租户的影响。
@@ -27,7 +27,7 @@
     export ASCEND_SLOG_PRINT_TO_STDOUT=1 #是否开启日志打印。1表示开启日志打印。
     ```
 
-    具体说明请参考《[环境变量参考](https://gitcode.com/cann/docs/blob/master/docs/zh/env-vars/README.md)》。
+    具体说明请参考《[环境变量参考](https://gitcode.com/cann/docs/blob/9.3.0-beta.1/docs/zh/env-vars/README.md)》。
 
 上述环境变量只在当前窗口生效，用户可以将上述命令写入\~/.bashrc文件，使其永久生效，方法如下：
 

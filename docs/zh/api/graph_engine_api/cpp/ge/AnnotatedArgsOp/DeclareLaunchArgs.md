@@ -35,9 +35,6 @@ virtual graphStatus DeclareLaunchArgs(gert::AnnotatedArgsContext &ctx) = 0
 
 - 回调成功返回前，必须至少在主流上下发一个任务。
 - 调用方必须检查每次`AddLaunch`的返回值：两参数原型返回非`GRAPH_SUCCESS`、带`predecessors`参数的重载返回UINT32\_MAX均表示失败，应立即返回失败状态，使本接口返回失败。
-<!-- npu="x90,9030" id1 -->
-- 端侧场景：只允许调用一次`AddLaunch`。
-<!-- end id1 -->
 
 ## 调用示例
 

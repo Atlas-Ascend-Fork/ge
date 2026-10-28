@@ -8,7 +8,7 @@
 PyTorch调用 → FX图 → TorchAir converter → GE图 → GE回调Execute → launch Ascend C kernel
 ```
 
-完整样例代码请参见[ascendc\_add\_custom](https://gitcode.com/cann/ge/blob/master/examples/custom_op/ascendc_add_custom/README.md)。
+完整样例代码请参见[ascendc\_add\_custom](https://gitcode.com/cann/ge/blob/9.3.0-beta.1/examples/custom_op/ascendc_add_custom/README.md)。
 
 1. 获取示例
 

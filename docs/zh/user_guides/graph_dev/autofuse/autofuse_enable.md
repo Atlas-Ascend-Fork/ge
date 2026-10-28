@@ -15,9 +15,9 @@
 
 | 依赖项                        | 要求                                                         |
 | :---------------------------- | :----------------------------------------------------------- |
-| 硬件与基础软件                | 准备搭载昇腾AI处理器的硬件环境，并安装匹配的驱动固件和CANN软件包。安装步骤请参见《[CANN软件安装](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)》。 |
-| TensorFlow和TF Adapter插件 | 参见[配套版本](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/latest/releasenote/releasenote_01.html)选择与CANN匹配的版本。<br>**前端框架为TensorFlow时，需要安装该依赖项。** |
-| PyTorch和TorchNPU插件      | 参见[配套版本](https://www.hiascend.com/document/detail/zh/Pytorch/latest/releasenote/docs/zh/release_notes/release_notes.md)选择与CANN匹配的版本。<br> **PyTorch模型经TorchAir编译后进入GE路径时，需要安装该依赖项。** |
+| 硬件与基础软件                | 准备搭载昇腾AI处理器的硬件环境，并安装匹配的驱动固件和CANN软件包。安装步骤请参见《[CANN软件安装](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/930beta1/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)》。 |
+| TensorFlow和TF Adapter插件 | 参见[配套版本](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/930beta1/releasenote/releasenote_01.html)选择与CANN匹配的版本。<br>**前端框架为TensorFlow时，需要安装该依赖项。** |
+| PyTorch和TorchNPU插件      | 参见[配套版本](https://www.hiascend.com/document/detail/zh/Pytorch/930beta1/releasenote/docs/zh/release_notes/release_notes.md)选择与CANN匹配的版本。<br> **PyTorch模型经TorchAir编译后进入GE路径时，需要安装该依赖项。** |
 | TorchAir                      | 使用与PyTorch/TorchNPU配套的版本，安装及源码编译要求请参见[TorchAir 官方仓库](https://gitcode.com/Ascend/torchair)。<br>**PyTorch模型经TorchAir编译后进入GE路径时，需要安装该依赖项。** |
 | GCC                           | 9.5.0及以上，建议9.5.0。                                   |
 | CMake                         | 3.20.0及以上，建议3.20.0。                                 |
@@ -52,8 +52,8 @@ export AUTOFUSE_FLAGS="--enable_autofuse=true"
 
 | 依赖项                   | 要求                                                         |
 | :----------------------- | :----------------------------------------------------------- |
-| 硬件与基础软件           | 准备搭载昇腾AI处理器的硬件环境，并安装匹配的驱动固件和CANN软件包。安装步骤请参见《[CANN软件安装](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)》。 |
-| PyTorch和TorchNPU插件 | 参见[配套版本](https://www.hiascend.com/document/detail/zh/Pytorch/latest/releasenote/docs/zh/release_notes/release_notes.md)选择与CANN匹配的版本。 |
+| 硬件与基础软件           | 准备搭载昇腾AI处理器的硬件环境，并安装匹配的驱动固件和CANN软件包。安装步骤请参见《[CANN软件安装](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/930beta1/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)》。 |
+| PyTorch和TorchNPU插件 | 参见[配套版本](https://www.hiascend.com/document/detail/zh/Pytorch/930beta1/releasenote/docs/zh/release_notes/release_notes.md)选择与CANN匹配的版本。 |
 | GCC                      | 9.5.0及以上，建议9.5.0。                                   |
 | CMake                    | 3.20.0及以上，建议3.20.0。                                 |
 

@@ -20,9 +20,6 @@
 <!-- npu="910" id2 -->
 - Atlas训练系列产品：支持
 <!-- end id2 -->
-<!-- npu="IPV350" id1 -->
-- IPV350：不支持
-<!-- end id1 -->
 
 <!-- @ref: ge/res/docs/zh/user_guides/atc_tools/CLI_options/--mdl_bank_path_res.md#id1 -->
 
@@ -30,7 +27,7 @@
 
 加载子图调优后自定义知识库的路径。
 
-子图调优详情请参见《[AOE调优工具](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/devaids/aoe/auxiliarydevtool_aoe_0001.html)》。
+子图调优详情请参见《[AOE调优工具](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/930beta1/devaids/aoe/auxiliarydevtool_aoe_0001.html)》。
 
 ## 关联参数
 

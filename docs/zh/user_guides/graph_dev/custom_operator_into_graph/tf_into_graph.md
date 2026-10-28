@@ -1,6 +1,6 @@
 # TensorFlow入图
 
-TensorFlow场景与PyTorch场景的主要区别在于：Adapter可从TF op\_def自动生成GE算子原型，开发者无需手写REG\_OP。两侧交付件简要示意图如下所示，TensorFlow场景样例可参考[Triton入图](../appendix/triton_into_graph.md)或[triton\_add\_custom](https://gitcode.com/cann/ge/tree/master/examples/custom_op/triton_add_custom)。
+TensorFlow场景与PyTorch场景的主要区别在于：Adapter可从TF op\_def自动生成GE算子原型，开发者无需手写REG\_OP。两侧交付件简要示意图如下所示，TensorFlow场景样例可参考[Triton入图](../appendix/triton_into_graph.md)或[triton\_add\_custom](https://gitcode.com/cann/ge/tree/9.3.0-beta.1/examples/custom_op/triton_add_custom)。
 
 ![](../figures/tf_into_graph.png)
 

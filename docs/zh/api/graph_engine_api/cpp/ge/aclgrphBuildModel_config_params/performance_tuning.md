@@ -14,10 +14,14 @@
 
 - high\_precision：表示高精度。
 - high\_performance：表示高性能。
-<!-- npu="A3,910b" id1 -->
+<!-- npu="950,A3,910b" id1 -->
 - enable\_float\_32\_execution：算子内部处理时使用FP32数据类型功能，该场景下FP32数据类型不会自动转换为HF32数据类型；若使用HF32计算，精度损失超过预期时，可启用该配置，指定部分算子内部计算时使用FP32，保持精度。
 
     **该选项仅支持以下产品类型：**
+
+    <!-- npu="950" id16 -->
+    Ascend 950PR&950DT系列产品
+    <!-- end id16 -->
 
     <!-- npu="A3" id2 -->
     Atlas A3系列产品
@@ -29,10 +33,23 @@
 
 <!-- end id1 -->
 
-<!-- npu="A3,910b" id4 -->
+<!-- npu="950,A3,910b" id4 -->
 - enable\_hi\_float\_32\_execution：算子内部处理时使用HF32数据类型功能，启用此配置后，FP32数据类型自动转换为HF32数据类型；该机制可以降低数据所占空间大小，实现性能提升。
 
-    **当前版本该选项暂不支持。**
+    **该选项仅支持以下产品类型：**
+
+    <!-- npu="950" id13 -->
+    Ascend 950PR&950DT系列产品
+    <!-- end id13 -->
+
+    <!-- npu="A3" id14 -->
+    Atlas A3系列产品
+    <!-- end id14 -->
+
+    <!-- npu="910b" id15 -->
+    Atlas A2系列产品
+    <!-- end id15 -->
+
 <!-- end id4 -->
 
 - support\_out\_of\_bound\_index：表示对gather、scatter和segment类算子的indices输入进行越界校验，校验会降低算子的执行性能。
@@ -72,7 +89,7 @@ nodename4=support_out_of_bound_index
 
 全量芯片支持。
 
-<!-- npu="950,A3,910b,910,310p,310b,IPV350" id6 -->
+<!-- npu="950,A3,910b,910,310p,310b" id6 -->
 ## TILING\_SCHEDULE\_OPTIMIZE
 
 Tiling下沉调度优化开关。此参数实际对应的options参数为`ge.tiling_schedule_optimize`。
@@ -117,7 +134,4 @@ Tiling下沉调度优化开关。此参数实际对应的options参数为`ge.til
 <!-- npu="910" id12 -->
 - Atlas训练系列产品：不支持
 <!-- end id12 -->
-<!-- npu="IPV350" id13 -->
-- IPV350：不支持
-<!-- end id13 -->
 <!-- end id6 -->

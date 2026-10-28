@@ -1,69 +1,5 @@
 # 试验参数
 
-<!-- npu="950,A3,910b" id1 -->
-## ALLOW\_HF32
-
-**该参数预留，当前版本暂不支持**。
-
-是否启用HF32自动代替float32数据类型的功能，当前版本该参数仅针对Conv类算子与Matmul类算子生效。此参数实际对应的options参数为`ge.exec.allow_hf32`。
-
-HF32是昇腾推出的专门用于算子内部计算的单精度浮点类型，与其他常用数据类型的比较如下图所示。可见，HF32与float32支持相同的数值范围，但尾数位精度（11位）却接近FP16（10位）。通过降低精度让HF32单精度数据类型代替原有的float32单精度数据类型，可大大降低数据所占空间大小，实现性能的提升。
-
-![图示](../../../figures/hf32.png)
-
-**参数取值：**
-
-- true：针对Conv类算子与Matmul类算子，开启FP32数据类型自动转换为HF32数据类型的功能。
-
-    具体涉及哪些算子，请参见CANN软件安装后文件存储路径的opp/built-in/op\_impl/ai\_core/tbe/impl\_mode/allow\_hf32\_matmul\_**t**\_conv\_**t**.ini，该文件不支持用户修改。
-
-- false：针对Conv类算子与Matmul类算子，关闭FP32数据类型自动转换为HF32数据类型的功能。
-
-    具体涉及哪些算子，请参见CANN软件安装后文件存储路径的opp/built-in/op\_impl/ai\_core/tbe/impl\_mode/allow\_hf32\_matmul\_**f**\_conv\_**f**.ini，该文件不支持用户修改。
-
-**参数默认值：**
-针对Conv类算子，默认开启FP32到HF32的转换；针对Matmul类算子，默认关闭该转换功能。
-
-**使用约束**：
-
-- 针对同一个算子，如果通过OP\_PRECISION\_MODE参数配置了enable\_hi\_float\_32\_execution或enable\_float\_32\_execution，该场景下不建议再与ALLOW\_HF32参数同时使用，若同时使用，则优先级如下：
-
-    OP\_PRECISION\_MODE（ByNodeName，按节点名称设置精度模式） \> ALLOW\_HF32 \> OP\_PRECISION\_MODE（ByOpType，按算子类型设置精度模式）。
-
-- 由于ALLOW\_HF32是使用HF32自动代替float32，要想该参数生效，必须保证被涉及算子的输入或者输出类型为float32。由于PRECISION\_MODE\_V2参数默认值为fp16，原始网络模型中算子类型为float32时会被强制转为float16类型，该场景下使用ALLOW\_HF32参数不生效，建议修改PRECISION\_MODE\_V2参数值为**origin**（PRECISION\_MODE参数默认值为force\_fp16，建议修改为**must\_keep\_origin\_dtype**或者**force\_fp32**）。
-
-**配置示例：**
-
-```c++
-{ge::ir_option::ALLOW_HF32, "true"}
-```
-
-**产品支持情况：**
-
-<!-- npu="950" id2 -->
-- Ascend 950PR&950DT系列产品：支持
-<!-- end id2 -->
-<!-- npu="A3" id3 -->
-- Atlas A3系列产品：支持
-<!-- end id3 -->
-<!-- npu="910b" id4 -->
-- Atlas A2系列产品：支持
-<!-- end id4 -->
-<!-- npu="310b" id5 -->
-- Atlas 200I/500 A2推理产品：不支持
-<!-- end id5 -->
-<!-- npu="310p" id6 -->
-- Atlas推理系列产品：不支持
-<!-- end id6 -->
-<!-- npu="910" id7 -->
-- Atlas训练系列产品：不支持
-<!-- end id7 -->
-<!-- npu="IPV350" id8 -->
-- IPV350：不支持
-<!-- end id8 -->
-
-<!-- end id1 -->
-
 ## DETERMINISTIC\_LEVEL
 
 **该参数为调试参数，暂不支持应用于生产环境，后续版本会作为正式特性更新发布。**
@@ -114,9 +50,6 @@ HF32是昇腾推出的专门用于算子内部计算的单精度浮点类型，�
 <!-- npu="910" id20 -->
 - Atlas训练系列产品：支持
 <!-- end id20 -->
-<!-- npu="IPV350" id21 -->
-- IPV350：不支持
-<!-- end id21 -->
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildInitialize_config_params/experimental_parameters_res.md#id1 -->
 
 ## OO\_CONSTANT\_FOLDING

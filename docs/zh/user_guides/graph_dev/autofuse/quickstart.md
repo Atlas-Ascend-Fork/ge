@@ -134,7 +134,7 @@ profiling/
 
 两种场景应使用相同的输入数据、执行次数和Profiling配置，比较相同计算范围内的执行时间，并区分首次图编译开销与预热后的稳定执行时间。对于输入、输出搬运占比较高的算子，还可进一步关注Profiling中的`aiv_mte2_time`和`aiv_mte3_time`。
 
-详细的Profiling性能分析工具使用方法，请参见《[性能调优工具](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/devaids/Profiling/docs/zh/profiling/overview.md)》。
+详细的Profiling性能分析工具使用方法，请参见《[性能调优工具](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/930beta1/devaids/Profiling/docs/zh/profiling/overview.md)》。
 
 ### TorchAir场景
 
@@ -285,7 +285,7 @@ profiling/
 
 两种场景应使用相同的输入、执行次数和Profiling配置，比较相同计算范围内的执行时间，并区分首次图编译开销与预热后的稳定执行时间。对于输入、输出搬运占比较高的算子，还可进一步关注Profiling中的`aiv_mte2_time` 和`aiv_mte3_time`。
 
-详细的Profiling性能分析工具使用方法，请参见《[性能调优工具](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/devaids/Profiling/docs/zh/profiling/overview.md)》。
+详细的Profiling性能分析工具使用方法，请参见《[性能调优工具](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/930beta1/devaids/Profiling/docs/zh/profiling/overview.md)》。
 
 ### ATC场景
 
@@ -306,7 +306,7 @@ profiling/
 
     关于ATC工具详细使用方法请参见《[ATC离线模型编译工具](../../atc_tools/README.md)》。
 
-    关于acl接口推理详细说明请参见《[应用开发](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md)》中的“模型推理”。
+    关于acl接口推理详细说明请参见《[应用开发](https://gitcode.com/cann/docs/blob/9.3.0-beta.1/docs/zh/app-dev/c/00_acl_cpp_dev.md)》中的“模型推理”。
 
 ## Inductor路径实现自动融合
 
@@ -422,4 +422,4 @@ profiling/
 
 两种场景应使用相同的输入、执行次数和Profiling配置，比较相同计算范围内的执行时间，并区分首次编译开销与预热后的稳定执行时间。对于输入、输出搬运占比较高的算子，还可进一步关注Profiling中的`aiv_mte2_time`和`aiv_mte3_time`。
 
-详细的Profiling性能分析工具使用方法，请参见《[性能调优工具](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/devaids/Profiling/docs/zh/profiling/overview.md)》。
+详细的Profiling性能分析工具使用方法，请参见《[性能调优工具](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/930beta1/devaids/Profiling/docs/zh/profiling/overview.md)》。

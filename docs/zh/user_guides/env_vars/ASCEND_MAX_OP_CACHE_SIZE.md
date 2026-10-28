@@ -36,7 +36,7 @@ export ASCEND_MAX_OP_CACHE_SIZE=500
 - 图开发场景下，可通过配置参数[ge.op\_compiler\_cache\_dir](../../api/graph_engine_api/cpp/ge/options_params/operator_and_graph_compilation.md#geop_compiler_cache_dir)设置。
 - ATC离线模型转换场景下，可通过参数[--op\_compiler\_cache\_dir](../atc_tools/CLI_options/--op_compiler_cache_dir.md)设置。
 <!-- npu="950,A3,910b,910" id1 -->
-- PyTorch框架场景下，可通过环境变量“ACL\_OP\_COMPILER\_CACHE\_DIR”设置，关于“ACL\_OP\_COMPILER\_CACHE\_DIR”的介绍可参见《[TorchNPU环境变量](https://www.hiascend.com/document/detail/zh/Pytorch/latest/apiref/ENV/docs/zh/environment_variable_reference/env_variable_list.md)》。
+- PyTorch框架场景下，可通过环境变量“ACL\_OP\_COMPILER\_CACHE\_DIR”设置，关于“ACL\_OP\_COMPILER\_CACHE\_DIR”的介绍可参见《[TorchNPU环境变量](https://www.hiascend.com/document/detail/zh/Pytorch/930beta1/apiref/ENV/docs/zh/environment_variable_reference/env_variable_list.md)》。
 <!-- end id1 -->
 <!-- npu="950,A3,910b,910,310p" id2 -->
 - TensorFlow框架场景下，可通过配置参数“op\_compiler\_cache\_dir”设置。

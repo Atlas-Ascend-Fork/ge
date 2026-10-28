@@ -84,7 +84,7 @@ namespace ge{
 
 >[!NOTE]说明
 >
->DT\_FLOAT，DT\_UINT8_等数据类型对应关系请参见《[基础数据结构和接口](https://gitcode.com/cann/metadef/blob/master/docs/zh/api/README.md)》\>"ge命名空间\>DataType"。
+>DT\_FLOAT，DT\_UINT8_等数据类型对应关系请参见《[基础数据结构和接口](https://gitcode.com/cann/metadef/blob/9.3.0-beta.1/docs/zh/api/README.md)》\>"ge命名空间\>DataType"。
 
 ## 如何获取算子原型
 
