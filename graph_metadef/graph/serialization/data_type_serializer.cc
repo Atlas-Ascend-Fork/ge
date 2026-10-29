@@ -12,7 +12,6 @@
 #include "proto/ge_ir.pb.h"
 #include "framework/common/debug/ge_log.h"
 #include "graph/types.h"
-#include "utils/serialization_util.h"
 
 namespace ge {
 graphStatus DataTypeSerializer::Serialize(const AnyValue &av, proto::AttrDef &def) {
@@ -22,16 +21,12 @@ graphStatus DataTypeSerializer::Serialize(const AnyValue &av, proto::AttrDef &de
     GELOGE(FAILED, "Failed to get datatype attr.");
     return GRAPH_FAILED;
   }
-  proto::DataType proto_type;
-  SerializationUtil::GeDataTypeToProto(value, proto_type);
-  def.set_dt(proto_type);
+  def.set_dt(static_cast<proto::DataType>(value));
   return GRAPH_SUCCESS;
 }
 
 graphStatus DataTypeSerializer::Deserialize(const proto::AttrDef &def, AnyValue &av) {
-  DataType value;
-  SerializationUtil::ProtoDataTypeToGe(static_cast<proto::DataType>(def.dt()), value);
-  return av.SetValue(value);
+  return av.SetValue(static_cast<DataType>(def.dt()));
 }
 
 REG_GEIR_SERIALIZER(data_type_serializer, DataTypeSerializer, GetTypeId<ge::DataType>(), proto::AttrDef::kDt);

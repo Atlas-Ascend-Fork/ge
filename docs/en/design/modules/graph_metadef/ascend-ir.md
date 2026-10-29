@@ -319,8 +319,6 @@ This design balances serialization efficiency and rebuild efficiency. For GE's t
 
 Attribute serialization adopts **type dispatch** pattern: `AttrSerializerRegistry` registers serializer for each attribute type (int, float, string, tensor, graph etc.). Each type has independent Serializer class (like IntSerializer, FloatSerializer, TensorSerializer), implementing `Serialize(AnyValue → AttrDef)` and `Deserialize(AttrDef → AnyValue)` methods.
 
-The ordinal values of the GE and Proto `DataType` enums differ; attribute serialization and deserialization must use explicit mapping rather than direct enum conversion.
-
 This design supports extension — new attribute types only need to register new serializers, without modifying the serialization framework.
 
 ## 8. Graph Utility Classes

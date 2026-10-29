@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 compiler/graph/optimize/autofuse/ascir/generator/v1/ascir_builtin_ops_v1.cpp
 compiler/graph/optimize/autofuse/ascir/generator/ascir_builtin_ops_v1.cpp
 compiler/graph/optimize/autofuse/ascir/generator/v2/ascir_builtin_ops_v2.cpp
@@ -39,3 +49,5 @@ parser/parser/tensorflow/tensorflow_parser.cc
 graph_metadef/register/register.cpp
 graph_metadef/third_party/transformer/src/transfer_shape_utils.cc
 graph_metadef/third_party/transformer/src/expand_dimension.cc
+graph_metadef/graph/serialization/data_type_serializer.cc
+graph_metadef/graph/serialization/list_value_serializer.cc
