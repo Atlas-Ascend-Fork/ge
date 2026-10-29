@@ -14,15 +14,14 @@
 #include "omg/omg_inner_types.h"
 
 #include "macro_utils/dt_public_scope.h"
-#include "graph/passes/feature/net_output_pass.h"
 #include "graph/passes/standard_optimize/prune_pass.h"
 
 #include "anchor.h"
 #include "common/debug/log.h"
 #include "common/debug/memory_dumper.h"
 #include "common/framework_types_internal.h"
-#include "common/ge_common/ge_types.h"
 #include "framework/common/ge_inner_error_codes.h"
+#include "framework/common/ge_types.h"
 #include "graph/attr_value.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/utils/op_desc_utils_ex.h"
@@ -95,9 +94,9 @@ TEST_F(UtestGraphPassesPrunePass, has_net_out_put_node_with_only_one_path) {
   ge::NodePtr netoutput_node = graph->AddNode(net_output_op);
 
   ge::OpDescPtr reverse_op1 = std::make_shared<ge::OpDesc>();
-  ge::OpDescUtilsEx::SetType(reverse_op, REVERSE);
-  reverse_op->SetName("Reverse1");
-  reverse_op->AddOutputDesc(ge::GeTensorDesc());
+  ge::OpDescUtilsEx::SetType(reverse_op1, REVERSE);
+  reverse_op1->SetName("Reverse1");
+  reverse_op1->AddOutputDesc(ge::GeTensorDesc());
   ge::NodePtr reverse_node1 = graph->AddNode(reverse_op1);
 
   ge::GraphUtils::AddEdge(reverse_node->GetOutDataAnchor(0), floor_node->GetInDataAnchor(0));
@@ -526,748 +525,734 @@ TEST_F(UtestGraphPassesPrunePass, empty_graph_no_nodes) {
   EXPECT_EQ(graph->GetDirectNode().size(), 0);
 }
 
-TEST_F(UtestGraphPassesPrunePass, standard_prune_preserves_completion_edge) {
-  ut::GraphBuilder builder("standard");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto dead = builder.AddNode("dead", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  builder.AddDataEdge(data, 0, dead, 0);
-  builder.AddControlEdge(dead, output);
-  auto graph = builder.GetGraph();
+// inner NetOutput（GE自建，用户未指定输出）：NetOutputPass为保活/保序给所有叶子一刀切补了
+// 控制边。PrunePass扩展：沿inner NetOutput控制入边识别空闲节点（纯计算死叶子），剪除其
+// 误连的保活边后死链变回不可达，由既有BFS+处置逻辑整链剪除；保活节点（Assign）的控制边
+// 保留，其自身及输入经该边天然可达，无需救援
+TEST_F(UtestGraphPassesPrunePass, inner_netoutput_prune_dead_chain_by_remove_idle_ctrl_edge) {
+  auto graph_builder = ut::GraphBuilder("inner");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto dead_2 = graph_builder.AddNode("dead_2", FLOOR, 1, 1);
+  auto var_1 = graph_builder.AddNode("var_1", VARIABLE, 0, 1);
+  auto assign_1 = graph_builder.AddNode("assign_1", ASSIGN, 2, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  graph_builder.AddDataEdge(dead_1, 0, dead_2, 0);
+  graph_builder.AddDataEdge(var_1, 0, assign_1, 0);
+  graph_builder.AddDataEdge(data_1, 0, assign_1, 1);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  // 模拟NetOutputPass全连叶子后的真实图状态：普通死叶子dead_2与副作用叶子assign_1都带控制边
+  EXPECT_EQ(GraphUtils::AddEdge(dead_2->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(assign_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
 
-  ASSERT_EQ(PrunePass().Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
-  EXPECT_TRUE(dead->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 空闲节点dead_2的误连控制边被剪除，死链dead_1/dead_2整链不可达被删
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("dead_2"), nullptr);
+  // Assign的控制边承载保活语义不删除，其自身经该边可达，输入var_1随之可达
+  auto assign_res = graph->FindNode("assign_1");
+  ASSERT_NE(assign_res, nullptr);
+  EXPECT_TRUE(assign_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  EXPECT_NE(graph->FindNode("var_1"), nullptr);
 }
 
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_removes_chain_and_restores_keep_alive_completion) {
-  ut::GraphBuilder builder("dead_chain");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto live = builder.AddNode("live", RELU, 1, 1);
-  auto weight = builder.AddNode("weight", DATA, 0, 1);
-  auto keep = builder.AddNode("keep", "HcomAllReduce", 1, 1);
-  auto dead1 = builder.AddNode("dead1", MUL, 2, 1);
-  auto dead2 = builder.AddNode("dead2", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 1, 0);
-  keep->GetOpDesc()->SetOpEngineName("DNN_HCCL");
-  keep->GetOpDesc()->SetOpKernelLibName("different_hccl_kernel_library");
-  builder.AddDataEdge(data, 0, live, 0);
-  builder.AddDataEdge(live, 0, output, 0);
-  builder.AddDataEdge(live, 0, dead1, 0);
-  builder.AddDataEdge(weight, 0, keep, 0);
-  builder.AddDataEdge(keep, 0, dead1, 1);
-  builder.AddDataEdge(dead1, 0, dead2, 0);
-  builder.AddControlEdge(dead2, output);
-  auto graph = builder.GetGraph();
-  PrunePass pass(PrunePass::Stage::kAfterEngineAssigned);
+// inner NetOutput图中，副作用节点（Assign）的输出消费者是死代码：死链叶子（NetOutputPass
+// 所连控制边）被剪除后Assign不可达，须救援保活并补控制边；其输入Variable同样保活补边
+TEST_F(UtestGraphPassesPrunePass, inner_netoutput_keep_alive_assign_with_dead_output) {
+  auto graph_builder = ut::GraphBuilder("inner_assign");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto var_1 = graph_builder.AddNode("var_1", VARIABLE, 0, 1);
+  auto assign_1 = graph_builder.AddNode("assign_1", ASSIGN, 2, 1);
+  auto dead_out = graph_builder.AddNode("dead_out", FLOOR, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(var_1, 0, assign_1, 0);
+  graph_builder.AddDataEdge(data_1, 0, assign_1, 1);
+  graph_builder.AddDataEdge(assign_1, 0, dead_out, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  // 死链叶子dead_out被NetOutputPass连了控制边（assign_1非叶子不连）
+  EXPECT_EQ(GraphUtils::AddEdge(dead_out->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
 
-  ASSERT_EQ(pass.Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 5U);
-  EXPECT_EQ(graph->FindNode("dead1"), nullptr);
-  EXPECT_EQ(graph->FindNode("dead2"), nullptr);
-  EXPECT_TRUE(live->GetOutDataAnchor(0)->IsLinkedWith(output->GetInDataAnchor(0)));
-  EXPECT_FALSE(live->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  EXPECT_TRUE(keep->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  EXPECT_TRUE(weight->GetOutDataAnchor(0)->IsLinkedWith(keep->GetInDataAnchor(0)));
-  EXPECT_EQ(output->GetInControlNodesSize(), 1U);
-  ASSERT_EQ(pass.Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 5U);
-  EXPECT_EQ(output->GetInControlNodesSize(), 1U);
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // Assign的输出死链（含其误连控制边）被剪掉，Assign/var_1救援保活并补控制边保证执行
+  EXPECT_EQ(graph->FindNode("dead_out"), nullptr);
+  auto assign_res = graph->FindNode("assign_1");
+  EXPECT_NE(assign_res, nullptr);
+  auto var_res = graph->FindNode("var_1");
+  EXPECT_NE(var_res, nullptr);
+  const auto control_nodes = out_0->GetInControlNodes();
+  EXPECT_EQ(control_nodes.size(), 2U);
+  for (const auto &node : control_nodes) {
+    const bool is_state_node = (node->GetName() == "assign_1") || (node->GetName() == "var_1");
+    EXPECT_TRUE(is_state_node);
+  }
 }
 
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_restores_each_original_output) {
-  ut::GraphBuilder builder("multiple_outputs");
-  auto shared = builder.AddNode("shared", "HcomAllReduce", 0, 1);
-  auto keep1 = builder.AddNode("keep1", "HcomAllReduce", 0, 1);
-  auto keep2 = builder.AddNode("keep2", "HcomAllReduce", 0, 1);
-  auto dead1 = builder.AddNode("dead1", MUL, 2, 1);
-  auto dead2 = builder.AddNode("dead2", MUL, 2, 1);
-  auto output1 = builder.AddNode("output1", NETOUTPUT, 0, 0);
-  auto output2 = builder.AddNode("output2", NETOUTPUT, 0, 0);
-  shared->GetOpDesc()->SetOpEngineName("DNN_HCCL");
-  keep1->GetOpDesc()->SetOpEngineName("DNN_HCCL");
-  keep2->GetOpDesc()->SetOpEngineName("DNN_HCCL");
-  builder.AddDataEdge(shared, 0, dead1, 1);
-  builder.AddDataEdge(shared, 0, dead2, 1);
-  builder.AddDataEdge(keep1, 0, dead1, 0);
-  builder.AddDataEdge(keep2, 0, dead2, 0);
-  builder.AddControlEdge(dead1, output1);
-  builder.AddControlEdge(dead2, output2);
-  auto graph = builder.GetGraph();
+// inner NetOutput图中，保活叶子（Assign）的控制边保留时，其Const/Variable输入经该边
+// 天然可达一并保留，输入闭包保活不介入、不补多余控制边；无关死链仍被剪除
+TEST_F(UtestGraphPassesPrunePass, inner_netoutput_keep_alive_leaf_ctrl_edge_preserved) {
+  auto graph_builder = ut::GraphBuilder("inner_leaf");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto var_1 = graph_builder.AddNode("var_1", VARIABLE, 0, 1);
+  auto const_1 = graph_builder.AddNode("const_1", CONSTANT, 0, 1);
+  auto assign_1 = graph_builder.AddNode("assign_1", ASSIGN, 2, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  graph_builder.AddDataEdge(var_1, 0, assign_1, 0);
+  graph_builder.AddDataEdge(const_1, 0, assign_1, 1);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  // 模拟NetOutputPass全连叶子：死叶子dead_1与副作用叶子assign_1都带控制边
+  EXPECT_EQ(GraphUtils::AddEdge(dead_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(assign_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
 
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 5U);
-  EXPECT_TRUE(shared->GetOutControlAnchor()->IsLinkedWith(output1->GetInControlAnchor()));
-  EXPECT_TRUE(shared->GetOutControlAnchor()->IsLinkedWith(output2->GetInControlAnchor()));
-  EXPECT_TRUE(keep1->GetOutControlAnchor()->IsLinkedWith(output1->GetInControlAnchor()));
-  EXPECT_FALSE(keep1->GetOutControlAnchor()->IsLinkedWith(output2->GetInControlAnchor()));
-  EXPECT_TRUE(keep2->GetOutControlAnchor()->IsLinkedWith(output2->GetInControlAnchor()));
-  EXPECT_FALSE(keep2->GetOutControlAnchor()->IsLinkedWith(output1->GetInControlAnchor()));
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 无关死链仍被剪除
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  // Assign控制边保留、天然可达，其输入var_1/const_1随之可达保留，输入不悬空且无多余补边
+  auto assign_res = graph->FindNode("assign_1");
+  ASSERT_NE(assign_res, nullptr);
+  EXPECT_EQ(assign_res->GetInDataNodes().size(), 2U);
+  EXPECT_NE(graph->FindNode("var_1"), nullptr);
+  EXPECT_NE(graph->FindNode("const_1"), nullptr);
+  EXPECT_FALSE(const_1->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
 }
 
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_keeps_completion_when_source_is_already_live) {
-  ut::GraphBuilder builder("live_source");
-  auto source = builder.AddNode("source", RELU, 0, 1);
-  auto output1 = builder.AddNode("output1", NETOUTPUT, 0, 0);
-  auto output2 = builder.AddNode("output2", NETOUTPUT, 1, 0);
-  builder.AddControlEdge(source, output1);
-  builder.AddDataEdge(source, 0, output2, 0);
-  auto graph = builder.GetGraph();
+// inner NetOutput图中，保活节点（如NetOutputPass之后才产生的悬挂Assign）没有到NetOutput的
+// 控制边而不可达时：救援保活补控制边，其输入闭包（Const等非保活前驱）一并保活不补边，
+// 避免Assign输入悬空（AssignRemovePass报peer anchor is nullptr）
+TEST_F(UtestGraphPassesPrunePass, inner_netoutput_keep_alive_input_closure_without_ctrl_edge) {
+  auto graph_builder = ut::GraphBuilder("inner_closure");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto var_1 = graph_builder.AddNode("var_1", VARIABLE, 0, 1);
+  auto const_1 = graph_builder.AddNode("const_1", CONSTANT, 0, 1);
+  auto assign_1 = graph_builder.AddNode("assign_1", ASSIGN, 2, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  graph_builder.AddDataEdge(var_1, 0, assign_1, 0);
+  graph_builder.AddDataEdge(const_1, 0, assign_1, 1);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  // 死叶子dead_1带NetOutputPass控制边；assign_1悬挂无控制边（模拟迟到产生的保活叶子）
+  EXPECT_EQ(GraphUtils::AddEdge(dead_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
 
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
-  EXPECT_TRUE(source->GetOutControlAnchor()->IsLinkedWith(output1->GetInControlAnchor()));
-  EXPECT_TRUE(source->GetOutDataAnchor(0)->IsLinkedWith(output2->GetInDataAnchor(0)));
-}
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
 
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_removes_control_only_computation_without_attribute) {
-  ut::GraphBuilder builder("completion_only");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto compute = builder.AddNode("compute", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  builder.AddDataEdge(data, 0, compute, 0);
-  builder.AddControlEdge(compute, output);
-  auto graph = builder.GetGraph();
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
-  EXPECT_EQ(graph->FindNode("compute"), nullptr);
-  EXPECT_EQ(data->GetOutDataAnchor(0)->GetPeerAnchorsSize(), 0U);
-  EXPECT_TRUE(data->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-}
-
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_keeps_independent_keep_alive_input_closure) {
-  ut::GraphBuilder builder("independent_keep_alive");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto input = builder.AddNode("input", RELU, 1, 1);
-  auto keep = builder.AddNode("keep", "KeptByEngine", 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  keep->GetOpDesc()->SetOpEngineName("DNN_VM_RTS");
-  keep->GetOpDesc()->SetOpKernelLibName("another_rts_library");
-  builder.AddDataEdge(data, 0, input, 0);
-  builder.AddDataEdge(input, 0, keep, 0);
-  auto graph = builder.GetGraph();
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 4U);
-  EXPECT_NE(graph->FindNode("input"), nullptr);
-  EXPECT_TRUE(input->GetOutDataAnchor(0)->IsLinkedWith(keep->GetInDataAnchor(0)));
-  EXPECT_EQ(output->GetInControlNodesSize(), 0U);
-}
-
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_does_not_delete_protected_constant_with_dead_consumer) {
-  ut::GraphBuilder builder("protected_constant");
-  auto constant = builder.AddNode("constant", CONSTANT, 0, 1);
-  auto dead = builder.AddNode("dead", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  ASSERT_TRUE(AttrUtils::SetBool(constant->GetOpDesc(), ATTR_NAME_SKIP_PRUNE_OPTIMIZE, true));
-  builder.AddDataEdge(constant, 0, dead, 0);
-  auto graph = builder.GetGraph();
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
-  EXPECT_EQ(graph->FindNode("constant"), constant);
-  EXPECT_EQ(graph->FindNode("dead"), nullptr);
-  EXPECT_EQ(constant->GetOutDataAnchor(0)->GetPeerAnchorsSize(), 0U);
-  EXPECT_EQ(output->GetInControlNodesSize(), 0U);
-}
-
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_shared_constant_live_consumer) {
-  ut::GraphBuilder builder("shared_constant");
-  auto constant = builder.AddNode("constant", CONSTANT, 0, 1);
-  auto live = builder.AddNode("live", RELU, 1, 1);
-  auto dead = builder.AddNode("dead", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 1, 0);
-  builder.AddDataEdge(constant, 0, live, 0);
-  builder.AddDataEdge(constant, 0, dead, 0);
-  builder.AddDataEdge(live, 0, output, 0);
-  builder.AddControlEdge(dead, output);
-  auto graph = builder.GetGraph();
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
-  EXPECT_EQ(graph->FindNode("dead"), nullptr);
-  EXPECT_TRUE(constant->GetOutDataAnchor(0)->IsLinkedWith(live->GetInDataAnchor(0)));
-  EXPECT_TRUE(live->GetOutDataAnchor(0)->IsLinkedWith(output->GetInDataAnchor(0)));
-}
-
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_explicit_target_and_skip_and_reference) {
-  ut::GraphBuilder builder("protected_sources");
-  auto target = builder.AddNode("target", RELU, 0, 1);
-  auto skip = builder.AddNode("skip", RELU, 0, 1);
-  auto reference = builder.AddNode("reference", RELU, 0, 1);
-  auto print = builder.AddNode("print", "Print", 0, 0);
-  auto print_v2 = builder.AddNode("print_v2", "PrintV2", 0, 0);
-  auto assertion = builder.AddNode("assertion", "Assert", 0, 0);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  builder.AddControlEdge(target, output);
-  builder.AddControlEdge(skip, output);
-  builder.AddControlEdge(reference, output);
-  builder.AddControlEdge(print, output);
-  builder.AddControlEdge(print_v2, output);
-  builder.AddControlEdge(assertion, output);
-  ASSERT_TRUE(AttrUtils::SetBool(skip->GetOpDesc(), ATTR_NAME_SKIP_PRUNE_OPTIMIZE, true));
-  ASSERT_TRUE(AttrUtils::SetBool(reference->GetOpDesc(), ATTR_NAME_REFERENCE, true));
-  auto graph = builder.GetGraph();
-  graph->SetGraphTargetNodesInfo({target});
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 7U);
-  EXPECT_EQ(output->GetInControlNodesSize(), 6U);
-}
-
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_subgraph_call_and_inner_target_completion) {
-  ut::GraphBuilder builder("parent");
-  auto call = builder.AddNode("call", "CustomCall", 0, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  builder.AddControlEdge(call, output);
-  auto graph = builder.GetGraph();
-  ut::GraphBuilder sub_builder("body");
-  auto compute = sub_builder.AddNode("compute", RELU, 0, 1);
-  auto inner_output = sub_builder.AddNode("inner_output", NETOUTPUT, 0, 0);
-  sub_builder.AddControlEdge(compute, inner_output);
-  auto subgraph = sub_builder.GetGraph();
-  subgraph->SetGraphTargetNodesInfo({compute});
-  ut::GraphBuilder::AddPartitionedCall(graph, "call", subgraph);
-  PrunePass pass(PrunePass::Stage::kAfterEngineAssigned);
-  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &pass}};
-
-  ASSERT_EQ(PassManager::Run(graph, passes), SUCCESS);
-  EXPECT_EQ(graph->FindNode("call"), call);
-  EXPECT_EQ(graph->GetSubgraph("body"), subgraph);
-  EXPECT_TRUE(call->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  EXPECT_EQ(subgraph->FindNode("compute"), compute);
-  EXPECT_TRUE(compute->GetOutControlAnchor()->IsLinkedWith(inner_output->GetInControlAnchor()));
-}
-
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_tracks_mixed_input_dependency) {
-  ut::GraphBuilder builder("mixed_live_input");
-  auto producer = builder.AddNode("producer", RELU, 0, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  auto graph = builder.GetGraph();
-  ASSERT_EQ(GraphUtils::AddEdge(producer->GetOutDataAnchor(0), output->GetInControlAnchor()), GRAPH_SUCCESS);
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
-  EXPECT_EQ(graph->FindNode("producer"), producer);
-  EXPECT_TRUE(producer->GetOutDataAnchor(0)->IsLinkedWith(output->GetInControlAnchor()));
-}
-
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_restores_boundary_through_mixed_input) {
-  ut::GraphBuilder builder("mixed_dead_input");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto dead = builder.AddNode("dead", RELU, 0, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  builder.AddControlEdge(dead, output);
-  auto graph = builder.GetGraph();
-  ASSERT_EQ(GraphUtils::AddEdge(data->GetOutDataAnchor(0), dead->GetInControlAnchor()), GRAPH_SUCCESS);
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
-  EXPECT_EQ(graph->FindNode("dead"), nullptr);
-  EXPECT_TRUE(data->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  EXPECT_EQ(data->GetOutDataAnchor(0)->GetPeerAnchorsSize(), 0U);
-}
-
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_cleans_unreachable_nodes_without_candidates) {
-  ut::GraphBuilder builder("unreachable");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto dead1 = builder.AddNode("dead1", RELU, 1, 1);
-  auto dead2 = builder.AddNode("dead2", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  builder.AddDataEdge(data, 0, dead1, 0);
-  builder.AddDataEdge(dead1, 0, dead2, 0);
-  auto graph = builder.GetGraph();
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
-  EXPECT_EQ(graph->FindNode("data"), data);
-  EXPECT_EQ(graph->FindNode("dead1"), nullptr);
-  EXPECT_EQ(graph->FindNode("dead2"), nullptr);
-  EXPECT_EQ(output->GetInControlNodesSize(), 0U);
-}
-
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_does_nothing_without_netoutput) {
-  ut::GraphBuilder builder("no_output");
-  auto compute = builder.AddNode("compute", RELU, 0, 1);
-  auto graph = builder.GetGraph();
-  PrunePass pass(PrunePass::Stage::kAfterEngineAssigned);
-
-  ASSERT_EQ(pass.Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 1U);
-  EXPECT_EQ(graph->FindNode("compute"), compute);
-  auto empty = std::make_shared<ComputeGraph>("empty");
-  EXPECT_EQ(pass.Run(empty), SUCCESS);
-  EXPECT_EQ(pass.Run(nullptr), GE_GRAPH_ISNULL);
-}
-
-// 无执行标签时不因 Enter 类型跳过剪枝，自动删除冗余分支并恢复引擎保活节点的完成依赖。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_restores_engine_completion_without_execution_label) {
-  ut::GraphBuilder builder("legacy_control_flow");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto enter = builder.AddNode("enter", ENTER, 1, 1);
-  auto compute = builder.AddNode("compute", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  enter->GetOpDesc()->SetOpEngineName("DNN_VM_RTS");
-  builder.AddDataEdge(data, 0, enter, 0);
-  builder.AddDataEdge(enter, 0, compute, 0);
-  builder.AddControlEdge(compute, output);
-  auto graph = builder.GetGraph();
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
-  EXPECT_EQ(graph->FindNode("compute"), nullptr);
-  EXPECT_EQ(graph->FindNode("enter"), enter);
-  EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(enter->GetInDataAnchor(0)));
-  EXPECT_TRUE(enter->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  EXPECT_EQ(output->GetInControlAnchor()->GetPeerAnchorsSize(), 1U);
-}
-
-// 不依赖出口连边或执行标签，传统控制流节点及其输入链仍由分配后的引擎保活。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_keeps_legacy_control_flow_by_assigned_engine) {
-  const std::vector<std::pair<std::string, std::vector<std::string>>> engine_types = {
-      {"DNN_VM_RTS", {ENTER, REFENTER, EXIT, REFEXIT, NEXTITERATION, REFNEXTITERATION, LOOPCOND}},
-      {"DNN_VM_RTS_FFTS_PLUS", {ENTER, REFENTER, EXIT, REFEXIT, NEXTITERATION, REFNEXTITERATION, LOOPCOND}},
-      {"DNN_VM_GE_LOCAL", {SWITCH, REFSWITCH, MERGE, REFMERGE, CONTROLTRIGGER}}};
-  for (const auto &engine : engine_types) {
-    for (const auto &type : engine.second) {
-      SCOPED_TRACE(engine.first + ":" + type);
-      ut::GraphBuilder builder("legacy_engine_keep_alive");
-      auto data = builder.AddNode("data", DATA, 0, 1);
-      auto producer = builder.AddNode("producer", RELU, 1, 1);
-      auto control = builder.AddNode("control", type, 1, 1);
-      auto dead = builder.AddNode("dead", RELU, 1, 1);
-      builder.AddNode("output", NETOUTPUT, 0, 0);
-      control->GetOpDesc()->SetOpEngineName(engine.first);
-      builder.AddDataEdge(data, 0, producer, 0);
-      builder.AddDataEdge(producer, 0, control, 0);
-      builder.AddDataEdge(data, 0, dead, 0);
-      auto graph = builder.GetGraph();
-
-      ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-      EXPECT_EQ(graph->GetDirectNodesSize(), 4U);
-      EXPECT_EQ(graph->FindNode("control"), control);
-      EXPECT_EQ(graph->FindNode("producer"), producer);
-      EXPECT_EQ(graph->FindNode("dead"), nullptr);
-      EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(producer->GetInDataAnchor(0)));
-      EXPECT_TRUE(producer->GetOutDataAnchor(0)->IsLinkedWith(control->GetInDataAnchor(0)));
+  // 无关死链仍被剪除
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  // 保活节点Assign救援保活，输入闭包（var_1/const_1）一并保留，输入不悬空
+  auto assign_res = graph->FindNode("assign_1");
+  ASSERT_NE(assign_res, nullptr);
+  EXPECT_EQ(assign_res->GetInDataNodes().size(), 2U);
+  EXPECT_NE(graph->FindNode("var_1"), nullptr);
+  EXPECT_NE(graph->FindNode("const_1"), nullptr);
+  // 保活节点补控制边保序；闭包节点const_1不补控制边
+  for (const std::string &name : {"assign_1", "var_1"}) {
+    bool found = false;
+    for (const auto &node : out_0->GetInControlNodes()) {
+      found = found || (node->GetName() == name);
     }
+    EXPECT_TRUE(found);
+  }
+  EXPECT_FALSE(const_1->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+}
+
+// 非inner NetOutput（用户自建）与inner图统一剪枝语义：空闲节点的控制边按保活误连剪除，
+// 死链重新不可达被删；不可达的保活节点（变量/Assign类）救援保活并补控制边，不区分图类型
+TEST_F(UtestGraphPassesPrunePass, non_inner_netoutput_idle_ctrl_edge_removed_and_keep_alive_rescued) {
+  auto graph_builder = ut::GraphBuilder("root");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto var_1 = graph_builder.AddNode("var_1", VARIABLE, 0, 1);
+  auto assign_1 = graph_builder.AddNode("assign_1", ASSIGN, 2, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(var_1, 0, assign_1, 0);
+  graph_builder.AddDataEdge(data_1, 0, assign_1, 1);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  // 用户自建NetOutput上空闲节点的控制边同为保活误连：剪除后死链重新不可达
+  EXPECT_EQ(GraphUtils::AddEdge(dead_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 空闲控制边剪除，死链dead_1不可达被删；不可达的assign_1/var_1保活救援不区分inner
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  auto assign_res = graph->FindNode("assign_1");
+  ASSERT_NE(assign_res, nullptr);
+  EXPECT_TRUE(assign_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  EXPECT_NE(graph->FindNode("var_1"), nullptr);
+}
+
+// inner NetOutput图中，用户SetTargets指定的执行目标经控制边挂到NetOutput上
+// （AddCtrlEdgeForTargets），表达真实执行意图：即使目标本身是纯计算节点，其控制边
+// 也不能当空闲边剪除；目标及其输入保留，无关死链仍被剪除
+TEST_F(UtestGraphPassesPrunePass, inner_netoutput_user_target_ctrl_edge_preserved) {
+  auto graph_builder = ut::GraphBuilder("inner_target");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto const_1 = graph_builder.AddNode("const_1", CONSTANT, 0, 1);
+  auto target_1 = graph_builder.AddNode("target_1", FLOOR, 1, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(const_1, 0, target_1, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  // 模拟CreateOrUpdateNetoutput的AddCtrlEdgeForTargets，以及NetOutputPass给死叶子连的保活边
+  EXPECT_EQ(GraphUtils::AddEdge(target_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(dead_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+
+  auto graph = graph_builder.GetGraph();
+  std::vector<NodePtr> target_nodes = {target_1};
+  EXPECT_EQ(graph->SetGraphTargetNodesInfo(target_nodes), GRAPH_SUCCESS);
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 用户target控制边保留，target及其输入闭包（const_1）保留；无关死链仍被剪除
+  auto target_res = graph->FindNode("target_1");
+  ASSERT_NE(target_res, nullptr);
+  EXPECT_TRUE(target_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  EXPECT_NE(graph->FindNode("const_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+}
+
+// inner NetOutput图中，同一空闲叶子到NetOutput存在多条平行控制边（LinkTo不查重）：
+// 须循环删至删空，残留边会让BFS仍回溯到该节点，死链一条都剪不掉
+TEST_F(UtestGraphPassesPrunePass, inner_netoutput_prune_idle_node_with_parallel_ctrl_edges) {
+  auto graph_builder = ut::GraphBuilder("inner_parallel");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto dead_2 = graph_builder.AddNode("dead_2", FLOOR, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  graph_builder.AddDataEdge(dead_1, 0, dead_2, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  // 同一死叶子dead_2到NetOutput连两条平行控制边（模拟NetOutputPass重复连边）
+  EXPECT_EQ(GraphUtils::AddEdge(dead_2->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(dead_2->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 平行边全部剪除，死链dead_1/dead_2整链不可达被删
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("dead_2"), nullptr);
+}
+
+// inner NetOutput图中，原型无输入无输出的纯副作用算子（如NPUClearFloatStatusV2）没有任何
+// 数据依赖可达性：不可达时须救援保活并补控制边保证执行，误删会丢失副作用
+TEST_F(UtestGraphPassesPrunePass, inner_netoutput_keep_alive_no_input_output_op) {
+  auto graph_builder = ut::GraphBuilder("inner_no_io");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto clear_status = graph_builder.AddNode("clear_status", NPUCLEARFLOATSTATUSV2, 0, 0);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  EXPECT_EQ(GraphUtils::AddEdge(dead_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 无关死链仍被剪除
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  // 0输入0输出的副作用算子救援保活并补控制边
+  auto clear_res = graph->FindNode("clear_status");
+  ASSERT_NE(clear_res, nullptr);
+  EXPECT_TRUE(clear_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+}
+
+// ============ 引擎感知保活判定（OptimizeStage2::PrunePass，引擎分配后第3轮剪枝）============
+// 引擎已分配时：保护引擎（ge local/RTS/HostCPU/HCCL）上的节点不可剪，救援保活补控制边；
+// 计算引擎上的死链照常整链剪除。引擎未分配时（第1/2轮时点）：判定退化为类型白名单，行为不变
+
+// 引擎分配后：Stage1_3控制流降级产生的RTS骨架形态（StreamMerge/Enter，类型白名单不覆盖）落在
+// RTS引擎上，不可达时须救援保活并补控制边，不能当死代码剪除；同图AI Core引擎上的纯计算死链
+// 照常整链剪除——引擎判定只保护框架/调度/通信归属，不保护计算引擎
+TEST_F(UtestGraphPassesPrunePass, engine_assigned_rts_skeleton_keep_alive_and_ai_core_dead_chain_pruned) {
+  auto graph_builder = ut::GraphBuilder("engine_rts");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto stream_merge = graph_builder.AddNode("stream_merge", STREAMMERGE, 2, 1);
+  auto enter_1 = graph_builder.AddNode("enter_1", ENTER, 1, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto dead_2 = graph_builder.AddNode("dead_2", FLOOR, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, stream_merge, 0);
+  graph_builder.AddDataEdge(data_1, 0, stream_merge, 1);
+  graph_builder.AddDataEdge(data_1, 0, enter_1, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  graph_builder.AddDataEdge(dead_1, 0, dead_2, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+
+  auto graph = graph_builder.GetGraph();
+  // 模拟EnginePlacer分配结果：流控骨架节点归RTS引擎，死链计算节点归AI Core引擎
+  stream_merge->GetOpDesc()->SetOpKernelLibName(kEngineNameRts);
+  enter_1->GetOpDesc()->SetOpKernelLibName(kEngineNameRts);
+  dead_1->GetOpDesc()->SetOpKernelLibName(kEngineNameAiCore);
+  dead_2->GetOpDesc()->SetOpKernelLibName(kEngineNameAiCore);
+
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // AI Core计算引擎上的死链整链剪除
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("dead_2"), nullptr);
+  // RTS骨架形态救援保活并补控制边，流控结构不被破坏
+  auto merge_res = graph->FindNode("stream_merge");
+  ASSERT_NE(merge_res, nullptr);
+  EXPECT_TRUE(merge_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  auto enter_res = graph->FindNode("enter_1");
+  ASSERT_NE(enter_res, nullptr);
+  EXPECT_TRUE(enter_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+}
+
+// 引擎未分配（第1/2轮剪枝时点）：GetOpKernelLibName为空，引擎判定不生效，行为与既有剪枝
+// 完全一致——StreamMerge等降级后形态不在类型白名单中，不可达时照常剪除（该形态实际只在
+// 第2轮之后出现；反向断言证明既有两轮行为不被引擎感知改动改变）
+TEST_F(UtestGraphPassesPrunePass, engine_unassigned_behavior_same_as_legacy) {
+  auto graph_builder = ut::GraphBuilder("engine_unassigned");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto stream_merge = graph_builder.AddNode("stream_merge", STREAMMERGE, 2, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, stream_merge, 0);
+  graph_builder.AddDataEdge(data_1, 0, stream_merge, 1);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 不设引擎信息：全部不可达节点按既有类型白名单语义剪除（v1行为，不变）
+  EXPECT_EQ(graph->FindNode("stream_merge"), nullptr);
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+}
+
+// 保护引擎保守性：ge local引擎上的纯计算节点（Reshape）不可达时同样保活救援——引擎判定
+// 的方向只能更保守（宁可少剪、不可错删），ge local承载图结构/输入占位语义，无法按类型
+// 区分单个节点是否可剪（文档化保守取舍）
+TEST_F(UtestGraphPassesPrunePass, engine_assigned_ge_local_dead_chain_kept_for_conservatism) {
+  auto graph_builder = ut::GraphBuilder("engine_gelocal");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto reshape_dead = graph_builder.AddNode("reshape_dead", RESHAPE, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, reshape_dead, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+
+  auto graph = graph_builder.GetGraph();
+  reshape_dead->GetOpDesc()->SetOpKernelLibName(kEngineNameGeLocal);
+
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // ge local保护引擎上的死链保守保活并补控制边（不设引擎信息时该节点本会被剪除）
+  auto reshape_res = graph->FindNode("reshape_dead");
+  ASSERT_NE(reshape_res, nullptr);
+  EXPECT_TRUE(reshape_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+}
+
+// inner NetOutput图中，保活节点（Variable）输出数据边上的格式转换链（Cast等TransOp）承载
+// 变量格式转换语义（后续VariableOpPass融合进变量trans road并按末端格式注册变量地址），即使
+// 转换叶子空闲（控制边被拆、不可达）也须保活并补控制边；非转换类死链仍正常剪除。
+// 回归背景：ST用例VariableAccSt.test_cast_fusion_with_data_copy_ok曾因Cast被剪导致变量
+// 地址注册缺失（GetVarAddr失败）
+TEST_F(UtestGraphPassesPrunePass, inner_netoutput_keep_alive_node_trans_closure_preserved) {
+  auto graph_builder = ut::GraphBuilder("inner_trans");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto var_1 = graph_builder.AddNode("var_1", VARIABLE, 0, 1);
+  auto cast_1 = graph_builder.AddNode("cast_1", CAST, 1, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto dead_2 = graph_builder.AddNode("dead_2", FLOOR, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(var_1, 0, cast_1, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  graph_builder.AddDataEdge(dead_1, 0, dead_2, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  // 模拟NetOutputPass全连叶子：转换叶子cast_1与普通死叶子dead_2均带控制边
+  EXPECT_EQ(GraphUtils::AddEdge(cast_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(dead_2->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 变量输出上的Cast承载变量格式转换语义，保活并补控制边保证执行序（融合前占位）
+  auto cast_res = graph->FindNode("cast_1");
+  ASSERT_NE(cast_res, nullptr);
+  EXPECT_TRUE(cast_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  EXPECT_NE(graph->FindNode("var_1"), nullptr);
+  // 非转换类死链仍整链剪除，不受转换链保活影响
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("dead_2"), nullptr);
+}
+
+// inner NetOutput图中，多输入转换算子（Reshape：idx0数据输入+idx1 shape参数输入）被保活时，
+// 其参数输入生产者不可删除——否则保留的Reshape输入悬空，融合未发生场景（unknown shape/
+// 多格式不一致/var-ref非法等VariableOpPass拒绝融合）下图结构不完整，算子编译失败。
+// 参数输入生产链保留到keep_closure（不补控制边，执行序由到Reshape的数据依赖保证）
+TEST_F(UtestGraphPassesPrunePass, inner_netoutput_multi_input_trans_op_param_input_kept) {
+  auto graph_builder = ut::GraphBuilder("inner_trans_multi_input");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto var_1 = graph_builder.AddNode("var_1", VARIABLE, 0, 1);
+  auto reshape_1 = graph_builder.AddNode("reshape_1", RESHAPE, 2, 1);
+  auto const_1 = graph_builder.AddNode("const_1", CONSTANT, 0, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto dead_2 = graph_builder.AddNode("dead_2", FLOOR, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(var_1, 0, reshape_1, 0);
+  graph_builder.AddDataEdge(const_1, 0, reshape_1, 1);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  graph_builder.AddDataEdge(dead_1, 0, dead_2, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  // 模拟NetOutputPass全连叶子：转换叶子reshape_1与普通死叶子dead_2均带控制边
+  EXPECT_EQ(GraphUtils::AddEdge(reshape_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(dead_2->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // Reshape保活并补控制边，其shape参数输入Const一并保留（数据边完整，不补控制边）
+  auto reshape_res = graph->FindNode("reshape_1");
+  ASSERT_NE(reshape_res, nullptr);
+  EXPECT_TRUE(reshape_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  auto const_res = graph->FindNode("const_1");
+  ASSERT_NE(const_res, nullptr);
+  EXPECT_TRUE(const_res->GetOutDataAnchor(0)->IsLinkedWith(reshape_res->GetInDataAnchor(1)));
+  EXPECT_FALSE(const_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  EXPECT_NE(graph->FindNode("var_1"), nullptr);
+  // 无关死链仍整链剪除
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("dead_2"), nullptr);
+}
+
+// 多输入转换算子的参数输入为计算链（非直接Const）时，须沿入边反向完整收集生产链：
+// Reshape.shape由FLOOR计算产生、FLOOR输入来自Const，两级生产节点均保留，均不补控制边
+TEST_F(UtestGraphPassesPrunePass, inner_netoutput_multi_input_trans_op_param_chain_kept) {
+  auto graph_builder = ut::GraphBuilder("inner_trans_param_chain");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto var_1 = graph_builder.AddNode("var_1", VARIABLE, 0, 1);
+  auto reshape_1 = graph_builder.AddNode("reshape_1", RESHAPE, 2, 1);
+  auto shape_mid = graph_builder.AddNode("shape_mid", FLOOR, 1, 1);
+  auto const_1 = graph_builder.AddNode("const_1", CONSTANT, 0, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto dead_2 = graph_builder.AddNode("dead_2", FLOOR, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(var_1, 0, reshape_1, 0);
+  graph_builder.AddDataEdge(shape_mid, 0, reshape_1, 1);
+  graph_builder.AddDataEdge(const_1, 0, shape_mid, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  graph_builder.AddDataEdge(dead_1, 0, dead_2, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  EXPECT_EQ(GraphUtils::AddEdge(reshape_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(dead_2->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // Reshape保活补边；shape生产链shape_mid/const_1整链保留，数据边完整，均不补控制边
+  auto reshape_res = graph->FindNode("reshape_1");
+  ASSERT_NE(reshape_res, nullptr);
+  EXPECT_TRUE(reshape_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  auto mid_res = graph->FindNode("shape_mid");
+  ASSERT_NE(mid_res, nullptr);
+  EXPECT_TRUE(mid_res->GetOutDataAnchor(0)->IsLinkedWith(reshape_res->GetInDataAnchor(1)));
+  EXPECT_FALSE(mid_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  auto const_res = graph->FindNode("const_1");
+  ASSERT_NE(const_res, nullptr);
+  EXPECT_TRUE(const_res->GetOutDataAnchor(0)->IsLinkedWith(mid_res->GetInDataAnchor(0)));
+  EXPECT_FALSE(const_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  EXPECT_NE(graph->FindNode("var_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("dead_2"), nullptr);
+}
+
+// 引擎分配后轮次（Round::kAfterEngineAssigned，OptimizeStage2第3轮）对非inner NetOutput图
+// （用户显式指定输出）同样生效：计算引擎（AI Core）上的不可达死链剪除；流控骨架（RTS引擎）
+// 原地保留不补控制边——Stage1_3控制流降级产生的骨架从出口回溯不可达，属流水线中间产物而非
+// 用户死代码，须保活。
+// 回归背景：ST用例FrameworkTest.test_framework_v1_control_flow曾因第3轮无保活直接剪除降级后的
+// iteration/StreamSwitch骨架导致HandleMergeInput回查next_node为空、建图失败
+TEST_F(UtestGraphPassesPrunePass, engine_assigned_round_non_inner_graph_prune_only) {
+  auto graph_builder = ut::GraphBuilder("engine_round_non_inner");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  auto stream_merge = graph_builder.AddNode("stream_merge", STREAMMERGE, 2, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, stream_merge, 0);
+  graph_builder.AddDataEdge(data_1, 0, stream_merge, 1);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  // 用户显式输出：不设ATTR_NAME_INNER_NET_OUTPUT
+
+  auto graph = graph_builder.GetGraph();
+  // 模拟EnginePlacer分配结果：流控骨架归RTS引擎，死链计算节点归AI Core引擎
+  stream_merge->GetOpDesc()->SetOpKernelLibName(kEngineNameRts);
+  dead_1->GetOpDesc()->SetOpKernelLibName(kEngineNameAiCore);
+
+  // 引擎分配后轮次：非inner图AI Core死链剪除，降级骨架（RTS）原地保留且不补控制边
+  PrunePass engine_round(PrunePass::Round::kAfterEngineAssigned);
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &engine_round}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  auto merge_res = graph->FindNode("stream_merge");
+  ASSERT_NE(merge_res, nullptr);
+  EXPECT_EQ(merge_res->GetOutControlAnchor()->GetPeerAnchors().size(), 0UL);
+
+  // 对照：标准轮次（第1/2轮语义）同样救援保活，但补控制边保证执行序（与第3轮
+  // prune-only原地保留不补边的差别）
+  PrunePass standard_round;
+  passes = {{"PrunePass", &standard_round}};
+  status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+  auto merge_after = graph->FindNode("stream_merge");
+  ASSERT_NE(merge_after, nullptr);
+  EXPECT_TRUE(merge_after->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+}
+
+// 引擎分配后轮次（第3轮）对inner图的prune-only语义：受保护节点（流控骨架等）原地保留且
+// 不补任何控制边——降级骨架依赖循环/标签语义执行，向图出口补控制边会制造虚假依赖，破坏
+// hybrid执行器的数据流调度（V1 Loop死锁）；仅删除非保护引擎上的死链。
+// 回归背景：ST用例DynamicGraphTest.BasicV1LoopDynamicExecSucc曾因第3轮给NextIteration/
+// StreamSwitch/StreamActive补控制边到NetOutput导致执行Await超时
+TEST_F(UtestGraphPassesPrunePass, engine_assigned_round_inner_graph_prune_only) {
+  auto graph_builder = ut::GraphBuilder("engine_round_inner");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  auto stream_merge = graph_builder.AddNode("stream_merge", STREAMMERGE, 2, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto dead_2 = graph_builder.AddNode("dead_2", FLOOR, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, stream_merge, 0);
+  graph_builder.AddDataEdge(data_1, 0, stream_merge, 1);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  graph_builder.AddDataEdge(dead_1, 0, dead_2, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  // 模拟NetOutputPass全连叶子：死链叶子dead_2与降级骨架叶子stream_merge均带控制边
+  EXPECT_EQ(GraphUtils::AddEdge(dead_2->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(stream_merge->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+
+  auto graph = graph_builder.GetGraph();
+  // 模拟EnginePlacer分配结果：流控骨架归RTS引擎，死链计算节点归AI Core引擎
+  stream_merge->GetOpDesc()->SetOpKernelLibName(kEngineNameRts);
+  dead_1->GetOpDesc()->SetOpKernelLibName(kEngineNameAiCore);
+  dead_2->GetOpDesc()->SetOpKernelLibName(kEngineNameAiCore);
+
+  PrunePass engine_round(PrunePass::Round::kAfterEngineAssigned);
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &engine_round}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // AI Core死链整链剪除（含误连控制边拆除）
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("dead_2"), nullptr);
+  // RTS骨架原地保留，不新增到出口的控制边（原有控制边保留，不重复连）
+  auto merge_res = graph->FindNode("stream_merge");
+  ASSERT_NE(merge_res, nullptr);
+  EXPECT_TRUE(merge_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  const auto ctrl_in_cnt = merge_res->GetOutControlAnchor()->GetPeerAnchors().size();
+  EXPECT_EQ(ctrl_in_cnt, 1UL);
+}
+
+// ===== 回归复现：ID0004_Transformer_tensorflow_INT8_batch_1 上板挂死 =====
+// 现象：ModelExecute后循环体流仅执行到task 11即停，SyncTask无限重试
+// "No logic report: stream_id=1, task_id=13"，3分钟后ReportTimeoutProc超时。
+// 编译期根因在本用例复现：常量折叠吃掉Enter的帧内数据消费者、EnterPass清掉遗留控制边后，
+// 帧入口Enter零出边成纯死节点（对图出口不可达）；ENTER被放入类型保活白名单后，第1/2轮
+// (kStandard)PrunePass将其误判保活并【新造】Enter→NetOutput控制边（实测Node_Output新增
+// 16条read_XX/Enter:-1入边）。该边经流分配并入循环体流激活门（实测LoopCond_Enter_
+// StreamActive输入35→51），死Enter无帧内消费者、不参与逐迭代再激活，第二迭代起激活
+// 计数永不满足→循环体饿死挂死。
+// 期望（v1行为）：死帧入口随死链整链剪除（含其Const输入），图出口不出现Enter的新造控制边。
+TEST_F(UtestGraphPassesPrunePass, dead_frame_enter_with_all_dead_consumers_pruned) {
+  auto graph_builder = ut::GraphBuilder("dead_frame_enter");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto const_w = graph_builder.AddNode("const_w", CONSTANT, 0, 1);
+  auto enter_dead = graph_builder.AddNode("enter_dead", ENTER, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(const_w, 0, enter_dead, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 死帧入口整链剪除（含其Const输入），不保活
+  EXPECT_EQ(graph->FindNode("enter_dead"), nullptr);
+  EXPECT_EQ(graph->FindNode("const_w"), nullptr);
+  // 挂死前置条件：图出口不得出现来自Enter的新造控制边
+  for (const auto &node : out_0->GetInControlNodes()) {
+    EXPECT_NE(node->GetName(), "enter_dead");
   }
 }
 
-// SwitchN 按显式 target 保留，类型本身不再阻止自动删除下游冗余分支。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_restores_explicit_switch_n_target_completion) {
-  ut::GraphBuilder builder("switch_n_target_completion");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto pred = builder.AddNode("pred", DATA, 0, 1);
-  auto producer = builder.AddNode("producer", RELU, 1, 1);
-  auto control = builder.AddNode("control", SWITCHN, 2, 2);
-  auto compute = builder.AddNode("compute", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  builder.AddDataEdge(data, 0, producer, 0);
-  builder.AddDataEdge(producer, 0, control, 0);
-  builder.AddDataEdge(pred, 0, control, 1);
-  builder.AddDataEdge(control, 0, compute, 0);
-  builder.AddControlEdge(compute, output);
-  auto graph = builder.GetGraph();
-  graph->SetGraphTargetNodesInfo({control});
+// ============ 回归修复：副作用算子控制边保护 & Enter 保活边界 ============
 
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 5U);
-  EXPECT_EQ(graph->FindNode("control"), control);
-  EXPECT_EQ(graph->FindNode("producer"), producer);
-  EXPECT_EQ(graph->FindNode("compute"), nullptr);
-  EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(producer->GetInDataAnchor(0)));
-  EXPECT_TRUE(producer->GetOutDataAnchor(0)->IsLinkedWith(control->GetInDataAnchor(0)));
-  EXPECT_TRUE(pred->GetOutDataAnchor(0)->IsLinkedWith(control->GetInDataAnchor(1)));
-  EXPECT_EQ(control->GetOutDataAnchor(0)->GetPeerAnchorsSize(), 0U);
-  EXPECT_TRUE(control->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  EXPECT_EQ(output->GetInControlAnchor()->GetPeerAnchorsSize(), 1U);
+// 回归背景：搜参策略打印用例（ge!5313 回归），NetOutputPass 给无数据消费者的 PrintV2 补的
+// 控制边被当空闲误连剪除，打印链（StringFormat→PrintV2）整链不可达被删，运行期打印丢失。
+// 副作用算子（打印/断言/摘要）的控制边承载真实执行语义，不可剪；同图纯计算空闲死链照常剪除
+TEST_F(UtestGraphPassesPrunePass, side_effect_op_ctrl_edge_on_netoutput_preserved) {
+  auto graph_builder = ut::GraphBuilder("side_effect_print");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto string_format = graph_builder.AddNode("string_format", "StringFormat", 1, 1);
+  auto print_v2 = graph_builder.AddNode("print_v2", "PrintV2", 1, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(data_1, 0, string_format, 0);
+  graph_builder.AddDataEdge(string_format, 0, print_v2, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
+  // 模拟NetOutputPass全连叶子：副作用叶子print_v2与纯计算死叶子dead_1均带控制边
+  EXPECT_EQ(GraphUtils::AddEdge(print_v2->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(dead_1->GetOutControlAnchor(), out_0->GetInControlAnchor()), GRAPH_SUCCESS);
+
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
+
+  // 副作用打印链整链保留：控制边不剪，链上节点经可达性保活（打印语义不丢）
+  auto print_res = graph->FindNode("print_v2");
+  ASSERT_NE(print_res, nullptr);
+  EXPECT_TRUE(print_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  EXPECT_NE(graph->FindNode("string_format"), nullptr);
+  // 纯计算空闲死链照常剪除（PR收益不受影响）
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
 }
 
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_legacy_kernel_library_keep_alive) {
-  ut::GraphBuilder builder("legacy_kernel_library");
-  auto keep = builder.AddNode("keep", "KeptByKernelLibrary", 0, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  keep->GetOpDesc()->SetOpKernelLibName(kEngineNameGeLocal);
-  builder.AddControlEdge(keep, output);
-  auto graph = builder.GetGraph();
+// 回归背景：ID0004_Transformer INT8 batch1（ge!5313 回归），常量折叠致 16 个仅余控制边的
+// read Enter 悬空，Enter 在保活名单中被救援并补控制边到 NetOutput，悬空帧入口随 OM 下发，
+// 运行期 task-sink 无限等待挂死（ReportTimeoutProc）。Enter/RefEnter 不在保活名单：消费者
+// 全死即为死代码，不可达时照常剪除；流控骨架（Switch）仍在名单中，不可达时救援保活
+TEST_F(UtestGraphPassesPrunePass, ctrl_only_enter_with_dead_consumer_pruned_and_skeleton_kept) {
+  auto graph_builder = ut::GraphBuilder("enter_boundary");
+  auto data_1 = graph_builder.AddNode("data_1", DATA, 0, 1);
+  auto floor = graph_builder.AddNode("floor", FLOOR, 1, 1);
+  auto const_w = graph_builder.AddNode("const_w", CONSTANT, 0, 1);
+  auto enter_1 = graph_builder.AddNode("enter_1", ENTER, 1, 1);
+  auto refenter_1 = graph_builder.AddNode("refenter_1", REFENTER, 1, 1);
+  auto switch_1 = graph_builder.AddNode("switch_1", SWITCH, 1, 1);
+  auto dead_1 = graph_builder.AddNode("dead_1", REVERSE, 1, 1);
+  auto out_0 = graph_builder.AddNode("out", NETOUTPUT, 1, 1);
+  graph_builder.AddDataEdge(data_1, 0, floor, 0);
+  graph_builder.AddDataEdge(floor, 0, out_0, 0);
+  graph_builder.AddDataEdge(const_w, 0, enter_1, 0);
+  graph_builder.AddDataEdge(const_w, 0, refenter_1, 0);
+  graph_builder.AddDataEdge(data_1, 0, switch_1, 0);
+  graph_builder.AddDataEdge(data_1, 0, dead_1, 0);
+  AttrUtils::SetBool(out_0->GetOpDesc(), ATTR_NAME_INNER_NET_OUTPUT, true);
 
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
-  EXPECT_TRUE(keep->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-}
+  auto graph = graph_builder.GetGraph();
+  PrunePass prune_pass;
+  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &prune_pass}};
+  Status status = PassManager::Run(graph, passes);
+  EXPECT_EQ(ge::SUCCESS, status);
 
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_only_ignores_ordinary_control_anchor_pair) {
-  ut::GraphBuilder builder("parallel_mixed_completion");
-  auto source = builder.AddNode("source", RELU, 0, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  builder.AddControlEdge(source, output);
-  builder.AddControlEdge(source, output);
-  auto graph = builder.GetGraph();
-  ASSERT_EQ(GraphUtils::AddEdge(source->GetOutDataAnchor(0), output->GetInControlAnchor()), GRAPH_SUCCESS);
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
-  EXPECT_TRUE(source->GetOutDataAnchor(0)->IsLinkedWith(output->GetInControlAnchor()));
-  EXPECT_FALSE(source->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-}
-
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_deduplicates_shared_boundary_for_one_output) {
-  ut::GraphBuilder builder("shared_boundary");
-  auto keep = builder.AddNode("keep", "KeptByEngine", 0, 1);
-  auto dead1 = builder.AddNode("dead1", RELU, 1, 1);
-  auto dead2 = builder.AddNode("dead2", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  keep->GetOpDesc()->SetOpEngineName("DNN_VM_GE_LOCAL");
-  builder.AddDataEdge(keep, 0, dead1, 0);
-  builder.AddDataEdge(keep, 0, dead2, 0);
-  builder.AddControlEdge(dead1, output);
-  builder.AddControlEdge(dead2, output);
-  auto graph = builder.GetGraph();
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
-  EXPECT_EQ(graph->FindNode("dead1"), nullptr);
-  EXPECT_EQ(graph->FindNode("dead2"), nullptr);
-  EXPECT_TRUE(keep->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  EXPECT_EQ(output->GetInControlAnchor()->GetPeerAnchorsSize(), 1U);
-}
-
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_completion_in_labeled_execution_frame) {
-  for (const auto &attribute : {ATTR_NAME_STREAM_LABEL, ATTR_NAME_BATCH_LABEL}) {
-    SCOPED_TRACE(attribute);
-    ut::GraphBuilder builder("execution_label");
-    auto data = builder.AddNode("data", DATA, 0, 1);
-    auto compute = builder.AddNode("compute", RELU, 1, 1);
-    auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-    builder.AddDataEdge(data, 0, compute, 0);
-    builder.AddControlEdge(compute, output);
-    auto graph = builder.GetGraph();
-    ASSERT_TRUE(AttrUtils::SetStr(compute->GetOpDesc(), attribute, "active_branch"));
-
-    ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-    EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
-    EXPECT_TRUE(compute->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  }
-}
-
-// 图中个别节点带执行标签时，无标签的候选分支照常剪枝；带标签节点仅按保活规则保留自身。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_still_prunes_unlabeled_candidates_in_labeled_graph) {
-  ut::GraphBuilder builder("labeled_graph_prunes_candidate");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto labeled = builder.AddNode("labeled", RELU, 1, 1);
-  auto compute = builder.AddNode("compute", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  builder.AddDataEdge(data, 0, labeled, 0);
-  builder.AddDataEdge(labeled, 0, compute, 0);
-  builder.AddControlEdge(compute, output);
-  auto graph = builder.GetGraph();
-  ASSERT_TRUE(AttrUtils::SetStr(labeled->GetOpDesc(), ATTR_NAME_STREAM_LABEL, "active_stream"));
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
-  EXPECT_EQ(graph->FindNode("compute"), nullptr);
-  EXPECT_EQ(graph->FindNode("labeled"), labeled);
-  EXPECT_TRUE(labeled->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  EXPECT_EQ(output->GetInControlAnchor()->GetPeerAnchorsSize(), 1U);
-}
-
-// 历史候选属性无论类型或内容如何，都不影响自动剪枝。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_does_not_depend_on_legacy_candidate_attribute) {
-  for (const bool invalid_type : {false, true}) {
-    SCOPED_TRACE(invalid_type);
-    ut::GraphBuilder builder("legacy_permission");
-    auto source = builder.AddNode("source", RELU, 0, 1);
-    auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-    builder.AddControlEdge(source, output);
-    auto graph = builder.GetGraph();
-    if (invalid_type) {
-      ASSERT_TRUE(AttrUtils::SetBool(output->GetOpDesc(), "_prunable_control_inputs", true));
-    } else {
-      ASSERT_TRUE(AttrUtils::SetListStr(output->GetOpDesc(), "_prunable_control_inputs", {"expired_source"}));
-    }
-
-    ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-    EXPECT_EQ(graph->GetDirectNodesSize(), 1U);
-    EXPECT_EQ(graph->FindNode("source"), nullptr);
-    EXPECT_EQ(output->GetInControlAnchor()->GetPeerAnchorsSize(), 0U);
-  }
-}
-
-// 算子类型不在白名单中时，分别验证引擎名和算子库名能够独立保活。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_keeps_engine_and_kernel_identities_independently) {
-  const std::vector<std::pair<std::string, std::string>> identities = {{"DNN_HCCL", "unlisted_kernel"},
-                                                                       {"DNN_VM_RTS_FFTS_PLUS", "unlisted_kernel"},
-                                                                       {"unlisted_engine", kEngineNameHccl},
-                                                                       {"unlisted_engine", kEngineNameRts}};
-  for (const auto &identity : identities) {
-    SCOPED_TRACE(identity.first + ":" + identity.second);
-    ut::GraphBuilder builder("keep_alive_identity");
-    auto data = builder.AddNode("data", DATA, 0, 1);
-    auto producer = builder.AddNode("producer", RELU, 1, 1);
-    auto keep = builder.AddNode("keep", "OpaqueEngineOp", 1, 1);
-    auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-    keep->GetOpDesc()->SetOpEngineName(identity.first);
-    keep->GetOpDesc()->SetOpKernelLibName(identity.second);
-    builder.AddDataEdge(data, 0, producer, 0);
-    builder.AddDataEdge(producer, 0, keep, 0);
-    builder.AddControlEdge(keep, output);
-    auto graph = builder.GetGraph();
-
-    ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-    EXPECT_EQ(graph->GetDirectNodesSize(), 4U);
-    EXPECT_EQ(graph->FindNode("keep"), keep);
-    EXPECT_EQ(graph->FindNode("producer"), producer);
-    EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(producer->GetInDataAnchor(0)));
-    EXPECT_TRUE(producer->GetOutDataAnchor(0)->IsLinkedWith(keep->GetInDataAnchor(0)));
-    EXPECT_TRUE(keep->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  }
-}
-
-// Horovod 在 GE 和图元数据中存在两组明确类型名，不依赖字符串前缀判断通信语义。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_horovod_types_without_engine_match) {
-  const std::vector<std::string> types = {
-      "HorovodAllreduce",     "HorovodAllgather",     "HorovodBroadcast",     "HorovodWait",
-      "hvdCallbackAllreduce", "hvdCallbackAllgather", "hvdCallbackBroadcast", "hvdWait"};
-  for (const auto &type : types) {
-    SCOPED_TRACE(type);
-    ut::GraphBuilder builder("horovod_type");
-    auto data = builder.AddNode("data", DATA, 0, 1);
-    auto producer = builder.AddNode("producer", RELU, 1, 1);
-    auto communication = builder.AddNode("communication", type, 1, 1);
-    auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-    communication->GetOpDesc()->SetOpEngineName("unlisted_engine");
-    communication->GetOpDesc()->SetOpKernelLibName("unlisted_kernel");
-    builder.AddDataEdge(data, 0, producer, 0);
-    builder.AddDataEdge(producer, 0, communication, 0);
-    builder.AddControlEdge(communication, output);
-    auto graph = builder.GetGraph();
-
-    ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-    EXPECT_EQ(graph->GetDirectNodesSize(), 4U);
-    EXPECT_EQ(graph->FindNode("communication"), communication);
-    EXPECT_EQ(graph->FindNode("producer"), producer);
-    EXPECT_TRUE(producer->GetOutDataAnchor(0)->IsLinkedWith(communication->GetInDataAnchor(0)));
-    EXPECT_TRUE(communication->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  }
-}
-
-// 名称相似不能证明通信语义，带通信前缀但不在明确类型表中的普通死节点仍可裁剪。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_does_not_keep_nodes_by_communication_prefix) {
-  for (const auto &type : {"HcomPureOp", "hvdPureOp", "HorovodPureOp", "Hco", "hv", "hcomAllReduce", "HvdAllreduce",
-                           "CustomHcomAllReduce", "CustomhvdAllreduce"}) {
-    SCOPED_TRACE(type);
-    ut::GraphBuilder builder("non_communication_prefix");
-    auto data = builder.AddNode("data", DATA, 0, 1);
-    auto dead = builder.AddNode("dead", type, 1, 1);
-    auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-    builder.AddDataEdge(data, 0, dead, 0);
-    builder.AddControlEdge(dead, output);
-    auto graph = builder.GetGraph();
-
-    ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-    EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
-    EXPECT_EQ(graph->FindNode("dead"), nullptr);
-    EXPECT_EQ(data->GetOutDataAnchor(0)->GetPeerAnchorsSize(), 0U);
-    EXPECT_TRUE(data->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-    EXPECT_EQ(output->GetInControlAnchor()->GetPeerAnchorsSize(), 1U);
-  }
-}
-
-// 数据获取会推进队列或迭代状态，即使张量结果无消费者也保留其完成依赖。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_getnext_variants) {
-  for (const auto &type : {GETNEXT, DYNAMICGETNEXT, DYNAMICGETNEXTV2}) {
-    SCOPED_TRACE(type);
-    ut::GraphBuilder builder("getnext_variants");
-    auto getnext = builder.AddNode("getnext", type, 0, 1);
-    auto dead = builder.AddNode("dead", RELU, 1, 1);
-    auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-    getnext->GetOpDesc()->SetOpEngineName("DNN_VM_AICPU");
-    builder.AddDataEdge(getnext, 0, dead, 0);
-    builder.AddControlEdge(getnext, output);
-    auto graph = builder.GetGraph();
-
-    ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-    EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
-    EXPECT_EQ(graph->FindNode("getnext"), getnext);
-    EXPECT_EQ(graph->FindNode("dead"), nullptr);
-    EXPECT_EQ(getnext->GetOutDataAnchor(0)->GetPeerAnchorsSize(), 0U);
-    EXPECT_TRUE(getnext->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  }
-}
-
-// PrintV3 在 TF 引擎映射为 Print，输出未被使用也不能删除打印及其输入计算。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_print_v3_input_closure) {
-  ut::GraphBuilder builder("print_v3_input_closure");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto producer = builder.AddNode("producer", RELU, 1, 1);
-  auto print = builder.AddNode("print", "PrintV3", 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  print->GetOpDesc()->SetOpEngineName("DNN_VM_AICPU");
-  builder.AddDataEdge(data, 0, producer, 0);
-  builder.AddDataEdge(producer, 0, print, 0);
-  builder.AddControlEdge(print, output);
-  auto graph = builder.GetGraph();
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 4U);
-  EXPECT_EQ(graph->FindNode("print"), print);
-  EXPECT_EQ(graph->FindNode("producer"), producer);
-  EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(producer->GetInDataAnchor(0)));
-  EXPECT_TRUE(producer->GetOutDataAnchor(0)->IsLinkedWith(print->GetInDataAnchor(0)));
-  EXPECT_TRUE(print->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-}
-
-// 边界节点虽非白名单，但被另一出口需要，删除死链时仍须恢复它到原出口的完成依赖。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_restores_non_whitelist_boundary_to_original_output) {
-  ut::GraphBuilder builder("live_boundary_across_outputs");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto shared = builder.AddNode("shared", RELU, 1, 1);
-  auto dead = builder.AddNode("dead", RELU, 1, 1);
-  auto output1 = builder.AddNode("output1", NETOUTPUT, 0, 0);
-  auto output2 = builder.AddNode("output2", NETOUTPUT, 1, 0);
-  builder.AddDataEdge(data, 0, shared, 0);
-  builder.AddDataEdge(shared, 0, dead, 0);
-  builder.AddDataEdge(shared, 0, output2, 0);
-  builder.AddControlEdge(dead, output1);
-  auto graph = builder.GetGraph();
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 4U);
-  EXPECT_EQ(graph->FindNode("dead"), nullptr);
-  EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(shared->GetInDataAnchor(0)));
-  EXPECT_TRUE(shared->GetOutDataAnchor(0)->IsLinkedWith(output2->GetInDataAnchor(0)));
-  EXPECT_TRUE(shared->GetOutControlAnchor()->IsLinkedWith(output1->GetInControlAnchor()));
-  EXPECT_FALSE(shared->GetOutControlAnchor()->IsLinkedWith(output2->GetInControlAnchor()));
-  EXPECT_FALSE(data->GetOutControlAnchor()->IsLinkedWith(output1->GetInControlAnchor()));
-}
-
-// 全图 V-H 清理也包含候选控制边上游之外的独立死链，不将原始叶子自动当作保留根。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_removes_dead_branch_outside_candidate_source_ancestors) {
-  ut::GraphBuilder builder("global_dead_nodes");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto live = builder.AddNode("live", RELU, 1, 1);
-  auto marked = builder.AddNode("marked", RELU, 1, 1);
-  auto orphan = builder.AddNode("orphan", RELU, 1, 1);
-  auto leaf = builder.AddNode("leaf", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 1, 0);
-  builder.AddDataEdge(data, 0, live, 0);
-  builder.AddDataEdge(live, 0, output, 0);
-  builder.AddDataEdge(live, 0, marked, 0);
-  builder.AddControlEdge(marked, output);
-  builder.AddDataEdge(data, 0, orphan, 0);
-  builder.AddDataEdge(orphan, 0, leaf, 0);
-  auto graph = builder.GetGraph();
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
-  for (const auto &name : {"marked", "orphan", "leaf"}) {
-    EXPECT_EQ(graph->FindNode(name), nullptr);
-  }
-  EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(live->GetInDataAnchor(0)));
-  EXPECT_TRUE(live->GetOutDataAnchor(0)->IsLinkedWith(output->GetInDataAnchor(0)));
-  EXPECT_EQ(output->GetInControlAnchor()->GetPeerAnchorsSize(), 0U);
-}
-
-// 混合锚点边必须继续参与输出的保留闭包，不作为自动剪枝候选。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_mixed_output_dependencies) {
-  for (const bool data_to_control : {false, true}) {
-    SCOPED_TRACE(data_to_control);
-    ut::GraphBuilder builder("marked_mixed_output");
-    auto data = builder.AddNode("data", DATA, 0, 1);
-    auto producer = builder.AddNode("producer", RELU, 1, 1);
-    auto output = builder.AddNode("output", NETOUTPUT, data_to_control ? 0 : 1, 0);
-    builder.AddDataEdge(data, 0, producer, 0);
-    auto graph = builder.GetGraph();
-    const AnchorPtr source =
-        data_to_control ? AnchorPtr(producer->GetOutDataAnchor(0)) : AnchorPtr(producer->GetOutControlAnchor());
-    const AnchorPtr target =
-        data_to_control ? AnchorPtr(output->GetInControlAnchor()) : AnchorPtr(output->GetInDataAnchor(0));
-    if (data_to_control) {
-      ASSERT_EQ(GraphUtils::AddEdge(producer->GetOutDataAnchor(0), output->GetInControlAnchor()), GRAPH_SUCCESS);
-    } else {
-      ASSERT_EQ(GraphUtils::AddEdge(producer->GetOutControlAnchor(), output->GetInDataAnchor(0)), GRAPH_SUCCESS);
-    }
-
-    ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-    EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
-    EXPECT_EQ(graph->FindNode("producer"), producer);
-    EXPECT_TRUE(source->IsLinkedWith(target));
-    EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(producer->GetInDataAnchor(0)));
-  }
-}
-
-// 已有模型数据输出时，只移除同源的冗余控制边，不改变输出端口或生产者。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_data_output_with_parallel_control) {
-  ut::GraphBuilder builder("parallel_data_output");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto producer = builder.AddNode("producer", RELU, 1, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 1, 0);
-  builder.AddDataEdge(data, 0, producer, 0);
-  builder.AddDataEdge(producer, 0, output, 0);
-  builder.AddControlEdge(producer, output);
-  auto graph = builder.GetGraph();
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
-  EXPECT_TRUE(producer->GetOutDataAnchor(0)->IsLinkedWith(output->GetInDataAnchor(0)));
-  EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(producer->GetInDataAnchor(0)));
-  EXPECT_EQ(output->GetAllInDataAnchorsSize(), 1U);
-  EXPECT_EQ(output->GetInControlAnchor()->GetPeerAnchorsSize(), 0U);
-}
-
-// 子图单独计算 H 和边界补边，子图 Data 的完成依赖不得错误连到父图出口。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_keeps_subgraph_replacements_in_their_owner_graph) {
-  ut::GraphBuilder builder("parent_with_prunable_body");
-  auto call = builder.AddNode("call", "CustomCall", 0, 1);
-  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
-  builder.AddControlEdge(call, output);
-  auto graph = builder.GetGraph();
-  ut::GraphBuilder sub_builder("prunable_body");
-  auto inner_data = sub_builder.AddNode("inner_data", DATA, 0, 1);
-  auto dead = sub_builder.AddNode("dead", RELU, 1, 1);
-  auto inner_output = sub_builder.AddNode("inner_output", NETOUTPUT, 0, 0);
-  sub_builder.AddDataEdge(inner_data, 0, dead, 0);
-  sub_builder.AddControlEdge(dead, inner_output);
-  auto subgraph = sub_builder.GetGraph();
-  ut::GraphBuilder::AddPartitionedCall(graph, "call", subgraph);
-  PrunePass pass(PrunePass::Stage::kAfterEngineAssigned);
-  std::vector<std::pair<string, GraphPass *>> passes = {{"PrunePass", &pass}};
-
-  ASSERT_EQ(PassManager::Run(graph, passes), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
-  EXPECT_EQ(subgraph->GetDirectNodesSize(), 2U);
-  EXPECT_EQ(subgraph->FindNode("dead"), nullptr);
-  EXPECT_TRUE(call->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  EXPECT_TRUE(inner_data->GetOutControlAnchor()->IsLinkedWith(inner_output->GetInControlAnchor()));
-  EXPECT_FALSE(inner_data->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-  EXPECT_EQ(inner_data->GetOwnerComputeGraph(), subgraph);
-}
-
-// NetOutputPass 自动补上的叶子完成边无需额外打标，即可触发冗余链剪枝。
-TEST_F(UtestGraphPassesPrunePass, after_engine_prune_removes_leaf_completion_added_by_netoutput_pass) {
-  ut::GraphBuilder builder("automatic_leaf_completion");
-  auto data = builder.AddNode("data", DATA, 0, 1);
-  auto live = builder.AddNode("live", RELU, 1, 1);
-  auto dead1 = builder.AddNode("dead1", RELU, 1, 1);
-  auto dead2 = builder.AddNode("dead2", RELU, 1, 1);
-  builder.AddDataEdge(data, 0, live, 0);
-  builder.AddDataEdge(live, 0, dead1, 0);
-  builder.AddDataEdge(dead1, 0, dead2, 0);
-  auto graph = builder.GetGraph();
-  graph->SetGraphOutNodesInfo({{live, 0}});
-
-  ASSERT_EQ(NetOutputPass().Run(graph), SUCCESS);
-  const auto output = graph->FindFirstNodeMatchType(NETOUTPUT);
-  ASSERT_NE(output, nullptr);
-  ASSERT_TRUE(dead2->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
-
-  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
-  EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
-  EXPECT_EQ(graph->FindNode("dead1"), nullptr);
-  EXPECT_EQ(graph->FindNode("dead2"), nullptr);
-  EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(live->GetInDataAnchor(0)));
-  EXPECT_TRUE(live->GetOutDataAnchor(0)->IsLinkedWith(output->GetInDataAnchor(0)));
-  EXPECT_EQ(output->GetInControlAnchor()->GetPeerAnchorsSize(), 0U);
+  // 消费者全死而悬空的 Enter/RefEnter 照常剪除，不再救援保活（回退到旧行为）
+  EXPECT_EQ(graph->FindNode("enter_1"), nullptr);
+  EXPECT_EQ(graph->FindNode("refenter_1"), nullptr);
+  // 流控骨架仍在名单：不可达时救援保活并补控制边
+  auto switch_res = graph->FindNode("switch_1");
+  ASSERT_NE(switch_res, nullptr);
+  EXPECT_TRUE(switch_res->GetOutControlAnchor()->IsLinkedWith(out_0->GetInControlAnchor()));
+  // 纯计算死链照常剪除
+  EXPECT_EQ(graph->FindNode("dead_1"), nullptr);
 }

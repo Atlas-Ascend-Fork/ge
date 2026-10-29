@@ -1805,8 +1805,9 @@ TEST_F(TensorMoveTest, Add_InnerIdentity1) {
     CHAIN(NODE("data2", DATA)->EDGE(0, 1)->NODE(assign));
     CHAIN(NODE("data1")->EDGE(0, 0)->NODE("add2", ADD)->EDGE(0, 1)->NODE("add3"));
     CHAIN(NODE("data1")->EDGE(0, 1)->NODE("add2"));
-    // 显式输出 add3，保留 CSE 和内置 Identity 校验所需的计算链。
-    CHAIN(NODE("add3")->NODE(NODE_NAME_NET_OUTPUT, NETOUTPUT));
+    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
+    // 本用例需保留add链以校验公共子表达式消除与内置Identity插入
+    CHAIN(NODE("add3")->NODE("net_output", NETOUTPUT));
   };
 
   auto graph = ToGeGraph(g1);

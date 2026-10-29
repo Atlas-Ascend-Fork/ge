@@ -97,7 +97,9 @@ Graph BuildCmoGraph() {
   auto cmo = root_graph->FindNode("cmo1");
   GE_ASSERT_TRUE(cmo != nullptr);
   AttrUtils::SetInt(cmo->GetOpDesc(), "max_size", 10);
-
+  // cmo1仅经控制边挂NetOutput（无数据输出声明），PrunePass会按保活误连剪除死链；
+  // 本用例组需保留cmo1以校验带stream label节点的切流结果，显式打跳过剪枝标记
+  AttrUtils::SetBool(cmo->GetOpDesc(), ATTR_NAME_SKIP_PRUNE_OPTIMIZE, true);
   cmo->GetOpDesc()->SetOpKernelLibName("RTSLib");
   cmo->GetOpDesc()->SetOpEngineName("DNN_VM_RTS");
   return graph;
@@ -468,10 +470,16 @@ Graph BuildGraphWithStreamLabelAndIneffectiveMultiStream() {
 
 Graph BuildGraphWithBigSqeNum() {
   DEF_GRAPH(g1) {
-    auto relu = OP_CFG(RELU).Attr(ATTR_NAME_NODE_SQE_NUM, 1023);
-    CHAIN(NODE("Data", DATA)->NODE("relu1", RELU)->NODE("relu2", RELU)->NODE("relu3", relu));
-    // 显式输出被测 ReLU 链，保留 SQE 数量触发的物理流拆分场景。
-    CHAIN(NODE("relu3")->NODE(NODE_NAME_NET_OUTPUT, NETOUTPUT));
+    auto relu3 = OP_CFG(RELU)
+                     .InCnt(1)
+                     .OutCnt(1)
+                     .TensorDesc(FORMAT_NCHW, DT_FLOAT, {8, 3, 24, 1})
+                     .Attr(ATTR_NAME_NODE_SQE_NUM, 1023)
+                     .Build("relu3");
+    CHAIN(NODE("Data", DATA)->NODE("relu1", RELU)->NODE("relu2", RELU)->NODE(relu3));
+    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
+    // 本用例需保留relu链以校验按SQE_NUM的切流结果
+    ADD_OUTPUT(relu3, 0);
   };
 
   return ToGeGraph(g1);
