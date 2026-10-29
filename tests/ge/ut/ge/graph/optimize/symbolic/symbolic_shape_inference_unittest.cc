@@ -40,6 +40,7 @@
 #include "common/share_graph.h"
 #include "api/aclgrph/option_utils.h"
 #include "common/context/local_context.h"
+#include "stub/gert_runtime_stub.h"
 
 namespace ge {
 bool EnableSliceSchedule() {  // 桩函数
@@ -1810,6 +1811,44 @@ TEST_F(SymbolicShapeInferenceUT, InferShapeForReShapeConstWithGuard) {
   std::vector<ExpectNodeInfo> expect_node_vec;
   expect_node_vec.push_back(expect_node);
   ASSERT_EQ(RunSymbolInferenceTest(cg, expect_node_vec, input_vec), SUCCESS);
+}
+
+// DT_FLOAT 常量作为 Reshape 的 shape 输入：常量类型与整数维度不匹配属可预期的外部输入形态，
+// kernel 应降级回退传统推导，不得在 GetConstValue/GetHint 内部触发类型断言打 ERROR。
+TEST_F(SymbolicShapeInferenceUT, InferShapeForReshapeFloatConstDegradeWithoutError) {
+  gert::GertRuntimeStub runtime_stub;
+  runtime_stub.GetSlogStub().SetLevel(DLOG_WARN);
+  auto data0 = EsCreateGraphInputWithDetails(graph_, 0, "data0", nullptr, C_DataType::C_DT_FLOAT, C_Format::C_FORMAT_ND,
+                                             nullptr, 0);
+  ASSERT_NE(data0, nullptr);
+  std::vector<float> shape_value{8.0F};
+  std::vector<int64_t> shape_dims{1};
+  auto const_0 = EsCreateConstFloat(graph_, shape_value.data(), shape_dims.data(), 1);
+  ASSERT_NE(const_0, nullptr);
+  auto reshape0 = EsReshape(data0, const_0, 0, -1);
+  ASSERT_EQ(EsSetGraphOutput(reshape0, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  DataInfo di = {ge::FORMAT_ND, DT_FLOAT16, {-1, -1, -1, -1}};
+  ASSERT_EQ(SetNoStorage(cg, "data0", di, 0), SUCCESS);
+  ASSERT_EQ(cg->TopologicalSorting(), GRAPH_SUCCESS);
+  auto reshape_node = cg->FindFirstNodeMatchType("Reshape");
+  ASSERT_NE(reshape_node, nullptr);
+  auto reshape_op_desc = reshape_node->GetOpDesc();
+  ASSERT_NE(reshape_op_desc, nullptr);
+  ASSERT_NE(reshape_op_desc->MutableInputDesc(1), nullptr);
+  reshape_op_desc->MutableInputDesc(1)->SetDataType(DT_FLOAT);
+
+  std::vector<ge::GeTensor> input_vec;
+  ge::Shape shape0({2, 2, 3, 2});
+  ge::TensorDesc td0{shape0, ge::FORMAT_ND, DT_FLOAT16};
+  td0.SetOriginShape(shape0);
+  ge::Tensor tensor0{td0};
+  input_vec.emplace_back(ge::TensorAdapter::AsGeTensor(tensor0));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, {}, input_vec), SUCCESS);
+  EXPECT_TRUE(runtime_stub.GetSlogStub().GetLogs(DLOG_ERROR).empty());
+  EXPECT_GE(runtime_stub.GetSlogStub().FindLogRegex(DLOG_WARN, "Reshape symbolic compute unsupported: const shape"), 0);
 }
 
 /**

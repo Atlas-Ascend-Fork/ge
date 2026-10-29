@@ -38,7 +38,10 @@ constexpr int64_t kMaxSymbolizeValueElemNum = 200;
 
 class SymbolicInferUtil {
  public:
-  static graphStatus GetConstInt(const gert::SymbolTensor *tensor, DataType dt, int64_t &value);
+  // 非断言版常量整数取值：仅当表达式确为整数常量时成功，否则返回 UNSUPPORTED 由调用方降级。
+  // 符号化会把外部构造的 DT_FLOAT 常量等转为 RealDouble/Rational，直接调用 GetConstValue
+  // 会触发底层 Integer 类型断言并打 ERROR，消费外部常量数据时统一经此接口取值。
+  static graphStatus TryGetConstInt(const Expression &expr, int64_t &value);
 
   template <typename T1, typename T2>
   static bool IsDimValid(const T1 shape_size, const T2 dim_value) {

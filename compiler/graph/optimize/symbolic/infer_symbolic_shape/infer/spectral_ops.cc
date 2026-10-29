@@ -41,11 +41,17 @@ graphStatus InferShape4RFFT(gert::InferSymbolShapeContext *context) {
   const auto last_dim = input_shape->GetDimNum() - 1;
   const auto fft_len = fft_length_value->at(0);
   int64_t const_len = 0;
-  if (fft_len.GetConstValue<int64_t>(const_len) && const_len == 0) {
-    y_shape->MutableDims()[last_dim] = kSymbolZero;
-  } else {
-    y_shape->MutableDims()[last_dim] = sym::Floor(fft_len / kSymbolTwo) + kSymbolOne;
+  if (SymbolicInferUtil::TryGetConstInt(fft_len, const_len) == GRAPH_SUCCESS) {
+    if (const_len == 0) {
+      y_shape->MutableDims()[last_dim] = kSymbolZero;
+      return ge::GRAPH_SUCCESS;
+    }
+  } else if (fft_len.IsConstExpr()) {
+    GELOGW("Symbol Infer unsupported, RFFT fft_length is not an integer const, node %s[%s].", context->GetNodeName(),
+           context->GetNodeType());
+    return UNSUPPORTED;
   }
+  y_shape->MutableDims()[last_dim] = sym::Floor(fft_len / kSymbolTwo) + kSymbolOne;
   return ge::GRAPH_SUCCESS;
 }
 

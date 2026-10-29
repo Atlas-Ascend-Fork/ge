@@ -27,27 +27,18 @@ constexpr size_t kDataIndex = 0U;
 constexpr size_t kShapeIndex = 1U;
 constexpr size_t kShapeInputOutputSize = 1U;
 
-bool GetShapeValue(const Expression &expr, DataType dtype, int64_t &value) {
-  if (dtype == DT_INT32) {
-    int32_t value32 = 0;
-    if (!expr.GetConstValue(value32)) {
-      return false;
-    }
-    value = value32;
-    return true;
-  }
-  if (dtype == DT_INT64) {
-    return expr.GetConstValue(value);
-  }
-  return false;
-}
-
 // 常量维度直接取值；非常量维度按 hint（运行时真实数据）取值并标记 is_hint_value，
 // 供调用方对 hint 判定结果登记 guard。hint 不可得返回 UNSUPPORTED 由调用方回退。
-graphStatus GetShapeValueWithHint(const Expression &expr, DataType dtype, int64_t &value, bool &is_hint_value) {
+graphStatus GetShapeValueWithHint(const Expression &expr, int64_t &value, bool &is_hint_value) {
   is_hint_value = false;
-  if (GetShapeValue(expr, dtype, value)) {
-    return GRAPH_SUCCESS;
+  if (expr.IsConstExpr()) {
+    // 常量维度直接取值；非整数常量（如 DT_FLOAT 常量）属可预期的外部输入形态，
+    // 降级回退传统推导，避免 GetConstValue 内部 Integer 类型断言打 ERROR。
+    if (SymbolicInferUtil::TryGetConstInt(expr, value) == GRAPH_SUCCESS) {
+      return GRAPH_SUCCESS;
+    }
+    GELOGW("Reshape symbolic compute unsupported: const shape %s is not integral.", expr.Serialize().get());
+    return UNSUPPORTED;
   }
   if (!expr.GetHint(value)) {
     return UNSUPPORTED;
@@ -79,9 +70,7 @@ graphStatus FinalizeReshapeDims(const gert::InferSymbolComputeContext *context, 
 graphStatus BuildReshapeDims(gert::InferSymbolComputeContext *context, const gert::SymbolTensor *shape_tensor,
                              std::vector<Expression> &dims) {
   const auto values = shape_tensor->GetSymbolicValue();
-  const auto desc = context->GetInputDesc(kShapeIndex);
   GE_UNSUPPORTED_IF_NULL(values);
-  GE_UNSUPPORTED_IF_NULL(desc);
   if (values->empty()) {
     GELOGW("Reshape symbolic compute unsupported: shape symbolic value is empty, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
@@ -94,7 +83,7 @@ graphStatus BuildReshapeDims(gert::InferSymbolComputeContext *context, const ger
     int64_t dim = 0L;
     bool is_hint_value = false;
     const auto &dim_expr = values->at(i);
-    const auto ret = GetShapeValueWithHint(dim_expr, desc->GetDataType(), dim, is_hint_value);
+    const graphStatus ret = GetShapeValueWithHint(dim_expr, dim, is_hint_value);
     if (ret != GRAPH_SUCCESS) {
       // hint 不可得的维度不再乘进 known 做符号除法（Rational 分数表达式在 symengine
       // 的 subs/replace 上存在缺陷），直接回退由上层走传统推导

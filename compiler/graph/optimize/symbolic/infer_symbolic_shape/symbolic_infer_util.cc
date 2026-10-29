@@ -118,24 +118,13 @@ bool SymbolicInferUtil::NeedSymbolizeValueDataNode(const Node *data_node) {
   return declared || (has_value_kernel && IsValueRelayEligibleDataNode(data_node));
 }
 
-graphStatus SymbolicInferUtil::GetConstInt(const gert::SymbolTensor *tensor, DataType dt, int64_t &value) {
-  const auto &expr = tensor->GetSymbolicValue()->at(0);
-  if (!expr.IsConstExpr()) {
-    GELOGW("Symbol Infer unsupported, value is not const expression: %s", expr.Serialize().get());
+graphStatus SymbolicInferUtil::TryGetConstInt(const Expression &expr, int64_t &value) {
+  if (expr.GetExprType() != ExprType::kExprConstantInteger) {
     return UNSUPPORTED;
   }
-  if (dt == DT_INT32) {
-    int32_t tmp_value = 0;
-    GE_ASSERT_TRUE(expr.GetConstValue<int32_t>(tmp_value), "const value is not int32");
-    value = static_cast<int64_t>(tmp_value);
-  } else if (dt == DT_INT64) {
-    GE_ASSERT_TRUE(expr.GetConstValue<int64_t>(value), "const value is not int64");
-  } else {
-    GELOGE(PARAM_INVALID, "dt must in [int32, int64]");
-    return ge::PARAM_INVALID;
-  }
-  return ge::GRAPH_SUCCESS;
+  return expr.GetConstValue(value) ? GRAPH_SUCCESS : UNSUPPORTED;
 }
+
 Status SymbolicInferUtil::Broadcast(const std::vector<std::vector<Expression>> &shapes,
                                     std::vector<Expression> &b_shape) {
   if (shapes.empty()) {

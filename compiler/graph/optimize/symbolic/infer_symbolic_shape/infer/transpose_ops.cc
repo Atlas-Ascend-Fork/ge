@@ -13,6 +13,7 @@
 #include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
+#include "graph/utils/type_utils.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
 namespace ge {
@@ -32,14 +33,13 @@ graphStatus TransposeInferCommon(gert::InferSymbolShapeContext *context, const g
   size_t input_dim_size = in_shape->GetDimNum();
   if (inserted_by_fe == 0) {
     for (auto &expr : exprs) {
-      if (!expr.IsConstExpr()) {
-        GELOGW("Symbol Infer unsupported, perm value is not const expression: %s, node %s[%s]", expr.Serialize().get(),
+      int64_t perm_value = 0;
+      if (SymbolicInferUtil::TryGetConstInt(expr, perm_value) != GRAPH_SUCCESS) {
+        GELOGW("Symbol Infer unsupported, perm value is not an integer const: %s, node %s[%s]", expr.Serialize().get(),
                context->GetNodeName(), context->GetNodeType());
         return UNSUPPORTED;
       }
-      T perm_v;
-      GE_ASSERT_TRUE(expr.GetConstValue<T>(perm_v), "perm const value is invalid, node %s[%s]", context->GetNodeName(),
-                     context->GetNodeType());
+      T perm_v = static_cast<T>(perm_value);
       perm_v = perm_v >= 0 ? perm_v : perm_v + input_dim_size;
       GE_ASSERT_TRUE(perm_v >= 0 && static_cast<size_t>(perm_v) < input_dim_size, "perm_v is out of range, node %s[%s]",
                      context->GetNodeName(), context->GetNodeType());
@@ -87,7 +87,9 @@ graphStatus InferShape4Transpose(gert::InferSymbolShapeContext *context) {
   if (dt == DT_INT32) {
     return TransposeInferCommon<int32_t>(context, in_shape, perm_tensor_exprs, out_shape);
   }
-  return ge::PARAM_INVALID;
+  GELOGW("Symbol Infer unsupported, perm dtype must in [int32, int64], actual dt %s, node %s[%s].",
+         TypeUtils::DataTypeToSerialString(dt).c_str(), context->GetNodeName(), context->GetNodeType());
+  return UNSUPPORTED;
 }
 
 constexpr size_t kMatmulDimNum = 2U;

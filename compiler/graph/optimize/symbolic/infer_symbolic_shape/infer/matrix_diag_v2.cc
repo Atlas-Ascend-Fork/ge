@@ -45,14 +45,24 @@ graphStatus ExtractDiagIndices(const std::vector<Expression> *k_value, int32_t &
 
   GE_ASSERT_TRUE(num_elements >= kSingleDiagIndexNum && num_elements <= kMaxDiagIndexNum,
                  "[InferSymbolShape4MatrixDiagV2] input[k] must be scalar or a vector with one or two elements");
-  GE_ASSERT_TRUE(k_value->at(0).GetConstValue<int32_t>(lower_diag_index),
-                 "[InferSymbolShape4MatrixDiagV2] k_value[0] must be a scalar");
+  int64_t lower_value = 0;
+  if (SymbolicInferUtil::TryGetConstInt(k_value->at(0), lower_value) != GRAPH_SUCCESS) {
+    GELOGW("Symbol Infer unsupported, MatrixDiagV2 k_value[0] is not an integer const: %s",
+           k_value->at(0).Serialize().get());
+    return UNSUPPORTED;
+  }
+  lower_diag_index = static_cast<int32_t>(lower_value);
 
   if (num_elements == kSingleDiagIndexNum) {
     upper_diag_index = lower_diag_index;
   } else {
-    GE_ASSERT_TRUE(k_value->at(1).GetConstValue<int32_t>(upper_diag_index),
-                   "[InferSymbolShape4MatrixDiagV2] k_value[1] must be a scalar");
+    int64_t upper_value = 0;
+    if (SymbolicInferUtil::TryGetConstInt(k_value->at(1), upper_value) != GRAPH_SUCCESS) {
+      GELOGW("Symbol Infer unsupported, MatrixDiagV2 k_value[1] is not an integer const: %s",
+             k_value->at(1).Serialize().get());
+      return UNSUPPORTED;
+    }
+    upper_diag_index = static_cast<int32_t>(upper_value);
   }
 
   GE_ASSERT_TRUE(lower_diag_index <= upper_diag_index,
@@ -169,7 +179,12 @@ graphStatus InferShape4MatrixDiagV2(gert::InferSymbolShapeContext *context) {
 
   int32_t lower_diag_index = 0;
   int32_t upper_diag_index = 0;
-  GE_ASSERT_GRAPH_SUCCESS(ExtractDiagIndices(k_value, lower_diag_index, upper_diag_index));
+  const graphStatus extract_ret = ExtractDiagIndices(k_value, lower_diag_index, upper_diag_index);
+  if (extract_ret != GRAPH_SUCCESS) {
+    GELOGW("Symbol Infer unsupported, MatrixDiagV2 k is not an integer const, node %s[%s].", context->GetNodeName(),
+           context->GetNodeType());
+    return extract_ret;
+  }
 
   auto diagonal_dims = diagonal_shape->GetDims();
   size_t diagonal_rank = diagonal_shape->GetDimNum();

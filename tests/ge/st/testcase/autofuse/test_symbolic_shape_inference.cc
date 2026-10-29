@@ -1465,7 +1465,7 @@ TEST_F(SymbolicShapeInferenceST, test_concat_dim_failed) {
   auto concat_node = cg->FindFirstNodeMatchType("Concat");
   ASSERT_NE(concat_node, nullptr);
   SymbolicShapeInference ssi;
-  ASSERT_EQ(ssi.Infer(cg), ge::PARAM_INVALID);
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
 }
 
 REG_OP(SplitD)
@@ -8588,6 +8588,49 @@ TEST_F(SymbolicShapeInferenceST, InferSymbolicShapeForSparseToDenseUnSupport) {
   ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
 }
 
+TEST_F(SymbolicShapeInferenceST, InferSymbolicShapeForSparseToDenseUnsupportedDtype) {
+  auto indices = builder_->CreateInput(0, "indices");
+  indices.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1"}));
+  ASSERT_NE(indices.GetCTensorHolder(), nullptr);
+
+  auto output_shape = builder_->CreateInput(1, "output_shape");
+  output_shape.SetOriginSymbolShape(std::vector<const char *>({"2"}));
+  ASSERT_NE(output_shape.GetCTensorHolder(), nullptr);
+  auto output_shape_node = NodeAdapter::GNode2Node(*output_shape.GetProducer());
+  auto ptr = std::make_unique<std::vector<ge::Expression>>();
+  ASSERT_NE(ptr, nullptr);
+  ptr->emplace_back(Symbol(1));
+  ptr->emplace_back(Symbol(2));
+  auto output_desc = output_shape_node->GetOpDesc()->MutableOutputDesc(0);
+  ASSERT_NE(output_desc, nullptr);
+  output_desc->GetAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetSymbolicValue(std::move(ptr));
+  output_desc->SetDataType(DT_INT16);
+
+  auto values = builder_->CreateInput(2, "values");
+  values.SetOriginSymbolShape(std::vector<const char *>({"2"}));
+  ASSERT_NE(values.GetCTensorHolder(), nullptr);
+
+  auto default_value = builder_->CreateInput(3, "default_value");
+  default_value.SetOriginSymbolShape(std::vector<const char *>({}));
+  ASSERT_NE(default_value.GetCTensorHolder(), nullptr);
+
+  auto sparseToDense = es::SparseToDense(indices, output_shape, values, default_value, true);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(sparseToDense, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+
+  auto sparseToDense_node = NodeAdapter::GNode2Node(*sparseToDense.GetProducer());
+  ASSERT_NE(sparseToDense_node, nullptr);
+  auto op_desc = sparseToDense_node->GetOpDesc();
+  ASSERT_NE(op_desc, nullptr);
+  op_desc->MutableInputDesc(0)->SetDataType(DT_INT32);
+  op_desc->MutableInputDesc(1)->SetDataType(DT_INT16);
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+}
+
 TEST_F(SymbolicShapeInferenceST, InferSymbolicShapeForDiagPartDSuccess) {
   auto x = builder_->CreateInput(0, "x");
   auto assist = builder_->CreateInput(1, "assist");
@@ -9072,7 +9115,7 @@ TEST_F(SymbolicShapeInferenceST, InferShapeForUnsortedSegmentMinFail_num_segment
   ASSERT_NE(op_desc, nullptr);
   op_desc->MutableInputDesc(2)->SetDataType(DT_INT16);
   SymbolicShapeInference ssi;
-  ASSERT_NE(ssi.Infer(cg), ge::SUCCESS);
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
 }
 
 TEST_F(SymbolicShapeInferenceST, InferShapeForSparseSoftmaxCrossEntropyWithLogits) {
@@ -9686,7 +9729,7 @@ TEST_F(SymbolicShapeInferenceST, InferShapeForTranspose) {
   {
     op_desc->MutableInputDesc(1)->SetDataType(DT_INT16);
     SymbolicShapeInference ssi;
-    ASSERT_NE(ssi.Infer(cg), ge::SUCCESS);
+    ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
   }
 }
 
@@ -11899,6 +11942,195 @@ TEST_F(SymbolicShapeInferenceST, InferShapeForApplyRotaryPosEmb) {
             gert::SymbolShape({Symbol("s0"), Symbol("s1"), Symbol("s2"), Symbol(8)}));
   EXPECT_EQ(key_attr->symbolic_tensor.GetOriginSymbolShape(),
             gert::SymbolShape({Symbol("s0"), Symbol("s3"), Symbol("s2"), Symbol(8)}));
+}
+
+TEST_F(SymbolicShapeInferenceST, InferShapeForArgMaxV2FloatDimDegrade) {
+  auto x = builder_->CreateInput(0, "x");
+  x.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
+  ASSERT_NE(x.GetCTensorHolder(), nullptr);
+  auto dimension = builder_->CreateScalar(static_cast<float>(1.0f));
+  auto argmax = es::ArgMaxV2(x, dimension);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(argmax, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  auto argmax_node = cg->FindFirstNodeMatchType("ArgMaxV2");
+  ASSERT_NE(argmax_node, nullptr);
+  argmax_node->GetOpDesc()->SetOpInferDepends({"dimension"});
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), GRAPH_SUCCESS);
+}
+
+TEST_F(SymbolicShapeInferenceST, InferShapeForAsStridedFloatSizeDegrade) {
+  auto x = builder_->CreateInput(0, "x");
+  x.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
+  ASSERT_NE(x.GetCTensorHolder(), nullptr);
+  auto size = builder_->CreateConst(std::vector<float>{2.0f, 3.0f, 4.0f}, std::vector<int64_t>{3});
+  auto stride = builder_->CreateConst(std::vector<int32_t>{12, 4, 1}, std::vector<int64_t>{3});
+  auto storage_offset = builder_->CreateConst(std::vector<int32_t>{0}, std::vector<int64_t>{1});
+  auto as_strided = es::AsStrided(x, size, stride, storage_offset);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(as_strided, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  auto as_strided_node = cg->FindFirstNodeMatchType("AsStrided");
+  ASSERT_NE(as_strided_node, nullptr);
+  as_strided_node->GetOpDesc()->SetOpInferDepends({"size", "stride", "storage_offset"});
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), GRAPH_SUCCESS);
+}
+
+TEST_F(SymbolicShapeInferenceST, InferShapeForGatherV2FloatAxisDegrade) {
+  auto data0 = builder_->CreateInput(0, "data0");
+  data0.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2", "s3"}));
+  ASSERT_NE(data0.GetCTensorHolder(), nullptr);
+  std::vector<int64_t> const_data = {2, 3};
+  auto indices = builder_->CreateVector(const_data);
+  auto axis = builder_->CreateScalar(static_cast<float>(-1.0f));
+  auto gatherv2 = es::GatherV2(data0, indices, axis, 0, true, true);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(gatherv2, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), GRAPH_SUCCESS);
+}
+
+TEST_F(SymbolicShapeInferenceST, InferShapeForMatrixDiagV2FloatKDegrade) {
+  auto diagonal = builder_->CreateInput(0, "diagonal");
+  diagonal.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1"}));
+  auto k = builder_->CreateScalar(static_cast<float>(1.0f));
+  auto num_rows = builder_->CreateScalar(static_cast<int32_t>(-1));
+  auto num_cols = builder_->CreateScalar(static_cast<int32_t>(-1));
+  auto padding_value = builder_->CreateScalar(static_cast<float>(0.0f));
+  auto matrix_diag_v2 = es::MatrixDiagV2(diagonal, k, num_rows, num_cols, padding_value);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(matrix_diag_v2, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+}
+
+TEST_F(SymbolicShapeInferenceST, InferShapeForMatrixDiagV2FloatKVectorDegrade) {
+  auto diagonal = builder_->CreateInput(0, "diagonal");
+  diagonal.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1"}));
+  auto k = builder_->CreateConst(std::vector<float>{0.0f, 1.0f}, std::vector<int64_t>{2});
+  auto num_rows = builder_->CreateScalar(static_cast<int32_t>(-1));
+  auto num_cols = builder_->CreateScalar(static_cast<int32_t>(-1));
+  auto padding_value = builder_->CreateScalar(static_cast<float>(0.0f));
+  auto matrix_diag_v2 = es::MatrixDiagV2(diagonal, k, num_rows, num_cols, padding_value);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(matrix_diag_v2, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+}
+
+TEST_F(SymbolicShapeInferenceST, InferShapeForMatrixDiagV2MixedKDegrade) {
+  auto diagonal = builder_->CreateInput(0, "diagonal");
+  diagonal.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1"}));
+  auto k = builder_->CreateInput(1, "k");
+  k.SetOriginSymbolShape(std::vector<const char *>({"2"}));
+  ASSERT_NE(k.GetCTensorHolder(), nullptr);
+  auto k_node = NodeAdapter::GNode2Node(*k.GetProducer());
+  ASSERT_NE(k_node, nullptr);
+  auto k_output_desc = k_node->GetOpDesc()->MutableOutputDesc(0);
+  ASSERT_NE(k_output_desc, nullptr);
+  auto ptr = std::make_unique<std::vector<ge::Expression>>();
+  ASSERT_NE(ptr, nullptr);
+  ptr->emplace_back(Symbol(0));
+  ptr->emplace_back(Symbol(1.1));
+  k_output_desc->GetAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetSymbolicValue(std::move(ptr));
+  k_output_desc->SetDataType(DT_INT32);
+
+  auto num_rows = builder_->CreateScalar(static_cast<int32_t>(-1));
+  auto num_cols = builder_->CreateScalar(static_cast<int32_t>(-1));
+  auto padding_value = builder_->CreateScalar(static_cast<float>(0.0f));
+  auto matrix_diag_v2 = es::MatrixDiagV2(diagonal, k, num_rows, num_cols, padding_value);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(matrix_diag_v2, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+}
+
+TEST_F(SymbolicShapeInferenceST, InferShapeForRFFTZeroLength) {
+  auto input = builder_->CreateInput(0, "input");
+  input.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1"}));
+  ASSERT_NE(input.GetCTensorHolder(), nullptr);
+  auto fft_length = builder_->CreateConst(std::vector<int32_t>{0}, std::vector<int64_t>{1});
+  auto rfft = es::RFFT(input, fft_length);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(rfft, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  auto node = cg->FindFirstNodeMatchType("RFFT");
+  ASSERT_NE(node, nullptr);
+  auto attr = node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({Symbol("s0"), Symbol(0)}));
+}
+
+TEST_F(SymbolicShapeInferenceST, InferShapeForRFFTFloatLengthDegrade) {
+  auto input = builder_->CreateInput(0, "input");
+  input.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1"}));
+  ASSERT_NE(input.GetCTensorHolder(), nullptr);
+  auto fft_length = builder_->CreateConst(std::vector<float>{10.0f}, std::vector<int64_t>{1});
+  auto rfft = es::RFFT(input, fft_length);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(rfft, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+}
+
+TEST_F(SymbolicShapeInferenceST, InferShapeForTransposeFloatPermDegrade) {
+  auto data0 = builder_->CreateInput(0, "data0");
+  data0.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
+  ASSERT_NE(data0.GetCTensorHolder(), nullptr);
+  auto perm = builder_->CreateConst(std::vector<float>{1.0f, 0.0f, 2.0f}, std::vector<int64_t>{3});
+  auto transpose = es::Transpose(data0, perm);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(transpose, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  auto node = cg->FindFirstNodeMatchType("Transpose");
+  ASSERT_NE(node, nullptr);
+  auto op_desc = node->GetOpDesc();
+  ASSERT_NE(op_desc, nullptr);
+  op_desc->MutableInputDesc(1)->SetDataType(DT_INT32);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), GRAPH_SUCCESS);
+
+  op_desc->MutableInputDesc(1)->SetDataType(DT_FLOAT);
+  SymbolicShapeInference ssi2;
+  ASSERT_EQ(ssi2.Infer(cg), GRAPH_SUCCESS);
+}
+
+TEST_F(SymbolicShapeInferenceST, InferShapeForUnsortedSegmentMinFloatNumSegmentsDegrade) {
+  auto data0 = builder_->CreateInput(0, "data0");
+  data0.SetOriginSymbolShape(std::vector<const char *>({"s2", "s1", "s0"}));
+  auto data1 = builder_->CreateInput(1, "data1");
+  data1.SetOriginSymbolShape(std::vector<const char *>({"s2"}));
+  ASSERT_NE(data0.GetCTensorHolder(), nullptr);
+  ASSERT_NE(data1.GetCTensorHolder(), nullptr);
+  auto num_segments = builder_->CreateConst(std::vector<float>{3.0f}, std::vector<int64_t>{1});
+  auto unsortedsegmentmin = es::UnsortedSegmentMin(data0, data1, num_segments);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(unsortedsegmentmin, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), GRAPH_SUCCESS);
 }
 
 }  // namespace ge

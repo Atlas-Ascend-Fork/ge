@@ -397,7 +397,7 @@ void ConcatV2Test(const std::string &op_type) {
   input_shapes = {SymbolShape()};
   output_shapes = {SymbolShape()};
   dim_value = {Symbol(1.1)};
-  RUN_CONCATV2_TEST(input_shapes, dim_value, output_shapes, PARAM_INVALID);
+  RUN_CONCATV2_TEST(input_shapes, dim_value, output_shapes, UNSUPPORTED);
 
   input_shapes = {SymbolShape()};
   output_shapes = {SymbolShape()};
@@ -4901,8 +4901,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeTestCommon) {
   int64_t value = 0;
   gert::SymbolTensor tensor;
   tensor.MutableSymbolicValue()->push_back(ge::Symbol(1));
-  EXPECT_EQ(ge::SymbolicInferUtil::GetConstInt(&tensor, DT_INT64, value), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(ge::SymbolicInferUtil::GetConstInt(&tensor, DT_INT16, value), ge::PARAM_INVALID);
+  EXPECT_EQ(ge::SymbolicInferUtil::TryGetConstInt(tensor.GetSymbolicValue()->at(0), value), ge::GRAPH_SUCCESS);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMatmulV2) {
@@ -7379,7 +7378,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSparseToDense) {
                       .AppendInputSymbolTensor(x2_shape, true, &symbol_value)
                       .OutputNum(1)
                       .Build();
-  ASSERT_EQ(func.first(infer_context), ge::PARAM_INVALID);
+  ASSERT_EQ(func.first(infer_context), ge::UNSUPPORTED);
 
   // 常量不为int
   builder.Destroy();
@@ -9337,6 +9336,151 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForPadV2) {
   auto expect_shape = gert::SymbolShape(
       {s0 + ge::Symbol(1) + ge::Symbol(2), s1 + ge::Symbol(2) + ge::Symbol(1), s2 + ge::Symbol(3) + ge::Symbol(3)});
   ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+}
+
+TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForArgMaxV2NonIntegerDim) {
+  const auto func = GetInferFunc("ArgMaxV2");
+  ASSERT_NE(func.first, nullptr);
+  ShapeEnvAttr shape_env;
+  ShapeEnvGuarder guarder(&shape_env);
+  const auto b = shape_env.CreateSymbol(2, MakeShared<InputShapeSource>(0, 0));
+  const auto s = shape_env.CreateSymbol(4, MakeShared<InputShapeSource>(0, 1));
+  const auto x_shape = gert::SymbolShape({b, s});
+  const std::vector<Expression> dimension_value = {Symbol(1.1)};
+
+  InferSymbolShapeContextTestBuilder builder("ArgMaxV2", "arg_max_v2_non_integer_dim");
+  auto op_desc = builder.GetOrCreateOpDescPtr();
+  op_desc->AddInputDesc("x", GeTensorDesc());
+  op_desc->AddInputDesc("dimension", GeTensorDesc(GeShape(), FORMAT_ND, DT_INT64));
+  op_desc->AppendIrAttrName("dtype");
+  ge::AttrUtils::SetInt(op_desc, "dtype", DT_INT64);
+  auto infer_context = builder.AppendInputSymbolTensor(x_shape)
+                           .AppendInputSymbolTensor(gert::SymbolShape({}), true, &dimension_value)
+                           .OutputNum(1)
+                           .Build();
+  ASSERT_EQ(func.first(infer_context), ge::UNSUPPORTED);
+}
+
+TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAsStridedNonIntegerSize) {
+  const auto func = GetInferFunc("AsStrided");
+  ASSERT_NE(func.first, nullptr);
+  const std::vector<Expression> size_value = {Symbol(1.1), Symbol(3), Symbol(4)};
+  const std::vector<Expression> stride_value = {Symbol(12), Symbol(4), Symbol(1)};
+  const std::vector<Expression> offset_value = {Symbol(0)};
+  InferSymbolShapeContextTestBuilder builder("AsStrided", "as_strided_non_integer_size");
+  auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({Symbol(2), Symbol(3), Symbol(4)}))
+                           .AppendInputSymbolTensor(gert::SymbolShape({Symbol(3)}), true, &size_value)
+                           .AppendInputSymbolTensor(gert::SymbolShape({Symbol(3)}), true, &stride_value)
+                           .AppendInputSymbolTensor(gert::SymbolShape({Symbol(1)}), true, &offset_value)
+                           .OutputNum(1)
+                           .Build();
+  ASSERT_EQ(func.first(infer_context), ge::UNSUPPORTED);
+}
+
+TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTransposeNonIntegerPerm) {
+  auto func = GetInferFunc("Transpose");
+  ASSERT_NE(func.first, nullptr);
+  ShapeEnvAttr shape_env;
+  ShapeEnvGuarder guarder(&shape_env);
+  auto s0 = shape_env.CreateSymbol(4, MakeShared<InputShapeSource>(0, 1));
+  auto s1 = shape_env.CreateSymbol(2, MakeShared<InputShapeSource>(0, 2));
+  auto s2 = shape_env.CreateSymbol(5, MakeShared<InputShapeSource>(0, 3));
+  InferSymbolShapeContextTestBuilder builder("Transpose", "transpose_non_integer_perm");
+  auto op_desc = builder.GetOrCreateOpDescPtr();
+  op_desc->AppendIrAttrName("_inserted_by_fe");
+  AttrUtils::SetInt(op_desc, "_inserted_by_fe", 0);
+  op_desc->AddInputDesc(GeTensorDesc());
+  op_desc->AddInputDesc(GeTensorDesc(GeShape(), FORMAT_ND, DT_INT32));
+  std::vector<Expression> symbol_value = {Symbol(1.1), Symbol(0), Symbol(2)};
+  auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({s0, s1, s2}))
+                           .AppendInputSymbolTensor(gert::SymbolShape(), true, &symbol_value)
+                           .OutputNum(1)
+                           .Build();
+  ASSERT_EQ(func.first(infer_context), ge::UNSUPPORTED);
+}
+
+TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTransposeUnsupportedDtype) {
+  auto func = GetInferFunc("Transpose");
+  ASSERT_NE(func.first, nullptr);
+  ShapeEnvAttr shape_env;
+  ShapeEnvGuarder guarder(&shape_env);
+  auto s0 = shape_env.CreateSymbol(4, MakeShared<InputShapeSource>(0, 1));
+  auto s1 = shape_env.CreateSymbol(2, MakeShared<InputShapeSource>(0, 2));
+  auto s2 = shape_env.CreateSymbol(5, MakeShared<InputShapeSource>(0, 3));
+  InferSymbolShapeContextTestBuilder builder("Transpose", "transpose_unsupported_dtype");
+  auto op_desc = builder.GetOrCreateOpDescPtr();
+  op_desc->AppendIrAttrName("_inserted_by_fe");
+  AttrUtils::SetInt(op_desc, "_inserted_by_fe", 0);
+  op_desc->AddInputDesc(GeTensorDesc());
+  op_desc->AddInputDesc(GeTensorDesc(GeShape(), FORMAT_ND, DT_INT16));
+  std::vector<Expression> symbol_value = {Symbol(1), Symbol(0), Symbol(2)};
+  auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({s0, s1, s2}))
+                           .AppendInputSymbolTensor(gert::SymbolShape(), true, &symbol_value)
+                           .OutputNum(1)
+                           .Build();
+  ASSERT_EQ(func.first(infer_context), ge::UNSUPPORTED);
+}
+
+TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRFFTZeroLength) {
+  const auto func = GetInferFunc("RFFT");
+  ASSERT_NE(func.first, nullptr);
+  ShapeEnvAttr shape_env;
+  ShapeEnvGuarder guarder(&shape_env);
+  const auto b = shape_env.CreateSymbol(2, MakeShared<InputShapeSource>(0, 0));
+  const auto n = shape_env.CreateSymbol(8, MakeShared<InputShapeSource>(0, 1));
+  const auto input_shape = gert::SymbolShape({b, n});
+  const std::vector<Expression> fft_length = {Symbol(0)};
+  InferSymbolShapeContextTestBuilder builder("RFFT", "rfft_zero_length");
+  auto infer_context = builder.AppendInputSymbolTensor(input_shape)
+                           .AppendInputSymbolTensor(gert::SymbolShape({Symbol(1)}), true, &fft_length)
+                           .OutputNum(1)
+                           .Build();
+  ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, Symbol(0)}).GetDims());
+}
+
+TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRFFTNonIntegerLength) {
+  const auto func = GetInferFunc("RFFT");
+  ASSERT_NE(func.first, nullptr);
+  ShapeEnvAttr shape_env;
+  ShapeEnvGuarder guarder(&shape_env);
+  const auto b = shape_env.CreateSymbol(2, MakeShared<InputShapeSource>(0, 0));
+  const auto n = shape_env.CreateSymbol(8, MakeShared<InputShapeSource>(0, 1));
+  const std::vector<Expression> fft_length = {Symbol(1.1)};
+  InferSymbolShapeContextTestBuilder builder("RFFT", "rfft_non_integer_length");
+  auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({b, n}))
+                           .AppendInputSymbolTensor(gert::SymbolShape({Symbol(1)}), true, &fft_length)
+                           .OutputNum(1)
+                           .Build();
+  ASSERT_EQ(func.first(infer_context), ge::UNSUPPORTED);
+}
+
+TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormV4NonIntegerNormShapeDim) {
+  ShapeEnvAttr shape_env;
+  ShapeEnvGuarder guarder(&shape_env);
+  auto s0 = shape_env.CreateSymbol(2, MakeShared<InputShapeSource>(0, 0));
+  auto s1 = shape_env.CreateSymbol(4, MakeShared<InputShapeSource>(0, 1));
+  auto s2 = shape_env.CreateSymbol(6, MakeShared<InputShapeSource>(0, 2));
+  InferSymbolShapeContextTestBuilder builder("LayerNormV4", "layernormv4_non_integer_norm_dim");
+  auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({s0, s1, s2}))
+                           .AppendInputSymbolTensor(gert::SymbolShape({Symbol(1.1)}))
+                           .OutputNum(3)
+                           .Build();
+  auto func = GetInferFunc("LayerNormV4");
+  ASSERT_NE(func.first, nullptr);
+  ASSERT_EQ(func.first(infer_context), ge::UNSUPPORTED);
+}
+
+TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMatrixDiagV2NonIntegerK) {
+  ShapeEnvAttr shape_env;
+  ShapeEnvGuarder guarder(&shape_env);
+  auto batch = shape_env.CreateSymbol(4, MakeShared<InputShapeSource>(0, 0));
+  auto diag_len = shape_env.CreateSymbol(8, MakeShared<InputShapeSource>(0, 1));
+  const auto diagonal_shape = gert::SymbolShape({batch, diag_len});
+  RunMatrixDiagV2InferSymbolShapeTest(diagonal_shape, {Symbol(1.1)}, nullptr, nullptr, gert::SymbolShape(),
+                                      ge::UNSUPPORTED);
+  RunMatrixDiagV2InferSymbolShapeTest(diagonal_shape, {Symbol(0), Symbol(1.1)}, nullptr, nullptr, gert::SymbolShape(),
+                                      ge::UNSUPPORTED);
 }
 
 }  // namespace ge

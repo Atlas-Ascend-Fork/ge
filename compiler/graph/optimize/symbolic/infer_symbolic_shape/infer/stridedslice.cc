@@ -454,7 +454,10 @@ Status HandleBeginEndMask(const StridedSliceAttr &strided_slice_attr, const std:
       continue;
     }
     int64_t strides_value = 0L;
-    GE_ASSERT_TRUE(index_input.strides_indexes[i].GetConstValue(strides_value));
+    if (SymbolicInferUtil::TryGetConstInt(index_input.strides_indexes[i], strides_value) != GRAPH_SUCCESS) {
+      GELOGW("StridedSlice symbolic infer unsupported: stride is not an integer constant.");
+      return UNSUPPORTED;
+    }
     if ((static_cast<uint64_t>(strided_slice_attr.begin_mask) & (1ULL << mask_pos)) > 0) {
       index_input.start_indexes[i] = (strides_value > 0) ? Symbol(0) : input_dims[i] - Symbol(1);
     }
@@ -484,7 +487,10 @@ Status CalcOutputShape(const int64_t shrink_axis_mask, const std::pair<int64_t, 
       continue;
     }
     int64_t stride_value = 0L;
-    GE_ASSERT_TRUE(index_input.strides_indexes[i].GetConstValue(stride_value));
+    if (SymbolicInferUtil::TryGetConstInt(index_input.strides_indexes[i], stride_value) != GRAPH_SUCCESS) {
+      GELOGW("StridedSlice symbolic infer unsupported: stride is not an integer constant.");
+      return UNSUPPORTED;
+    }
     GE_ASSERT_TRUE(stride_value != 0L);
     Expression result_dim;
     if (stride_value > 0L) {
@@ -554,11 +560,17 @@ graphStatus GetValueFromSymbolValue(const gert::InferSymbolShapeContext *context
     return UNSUPPORTED;
   }
   for (const auto &symbol : *symbols) {
+    if (!symbol.IsConstExpr()) {
+      dims.emplace_back(symbol);
+      continue;
+    }
     int64_t dim = 0L;
-    bool is_const = symbol.GetConstValue(dim);
-    dims.emplace_back(is_const ? Symbol(dim) : symbol);
-    GELOGD("GetValueFromSymbolValue: is_const=%d val=%s node=%s[%s]", is_const, dims.back().Serialize().get(),
-           context->GetNodeName(), context->GetNodeType());
+    if (SymbolicInferUtil::TryGetConstInt(symbol, dim) != GRAPH_SUCCESS) {
+      GELOGW("StridedSlice symbolic infer unsupported: const index is not integer, node %s[%s].",
+             context->GetNodeName(), context->GetNodeType());
+      return UNSUPPORTED;
+    }
+    dims.emplace_back(Symbol(dim));
   }
   return SUCCESS;
 }
@@ -838,7 +850,11 @@ Expression CalculateEndValue(const Expression &end_input, const Expression &cur_
 Status ResolveV3IndexValue(const Expression &index, const Expression &cur_axis_input_size, const bool negative_step,
                            const bool is_begin, Expression &value) {
   int64_t index_const = 0L;
-  if (!index.GetConstValue(index_const)) {
+  if (SymbolicInferUtil::TryGetConstInt(index, index_const) != GRAPH_SUCCESS) {
+    if (index.IsConstExpr()) {
+      GELOGW("StridedSliceV3 symbolic index const is not integral, fall back.");
+      return UNSUPPORTED;
+    }
     bool hint = false;
     GE_ASSERT_TRUE(ge::sym::Lt(index, kSymbolZero).GetHint(hint),
                    "StridedSliceV3 symbolic index hint is unavailable, index=%s.", index.Serialize().get());
