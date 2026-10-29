@@ -477,13 +477,14 @@ class Om2ModelExecutor::Impl {
       return ge::SUCCESS;
     }
     // The generated pbody receives only work_ptr, so executor must validate the user-provided buffer size first.
-    const size_t required_work_size = load_arg.reuse_zero_copy
-                                          ? (model_meta_info_.work_size - model_meta_info_.zero_copy_size)
-                                          : model_meta_info_.work_size;
+    // 与 OM1（DavinciModel::InitFeatureMapAndP2PMem）口径对齐：零拷贝区仅承载执行期地址刷新的输入输出，
+    // 不会被实际访问，固定按 work_size - zero_copy_size 校验，不随 reuse_zero_copy 模式变化。
+    const size_t required_work_size = model_meta_info_.work_size - model_meta_info_.zero_copy_size;
     if (load_arg.work_size < required_work_size) {
       GELOGE(ACL_ERROR_GE_PARAM_INVALID,
-             "[OM2][Check] External workspace size[%zu] is smaller than required size[%zu].", load_arg.work_size,
-             required_work_size);
+             "[OM2][Check] External workspace size[%zu] is smaller than required size[%zu]. work_size[%zu], "
+             "zero_copy_size[%zu].",
+             load_arg.work_size, required_work_size, model_meta_info_.work_size, model_meta_info_.zero_copy_size);
       return ACL_ERROR_GE_PARAM_INVALID;
     }
     return ge::SUCCESS;
