@@ -28,6 +28,7 @@
 #include "common/om2/codegen/ast/ast_context.h"
 #include "common/om2/codegen/task_code_builder/fe/fusion_end_task_code_builder.h"
 #include "common/om2/codegen/task_code_builder/fe/fusion_start_task_code_builder.h"
+#include "common/om2/codegen/task_code_builder/hccl/hccl_task_code_builder.h"
 #define private public
 #define protected public
 #include "common/om2/codegen/task_code_builder/fe/kernel_task_code_builder.h"
@@ -41,6 +42,7 @@
 #include "ge_runtime_stub/include/faker/aicore_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/aicpu_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/custom_taskdef_faker.h"
+#include "ge_runtime_stub/include/faker/hccl_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/ge_model_builder.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/utils/attr_utils.h"
@@ -239,6 +241,49 @@ GeRootModelPtr CreateGeRootModelWithAicoreOp() {
 
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 2048);
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, weight_size);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
+  return ge_root_model;
+}
+
+// data -> hcom_gather -> NetOutput：单通信算子直连图（输入/输出均直连 HCCL）
+GeRootModelPtr CreateGeRootModelWithHcclOnlyOp() {
+  auto graph = gert::ShareGraph::BuildSingleHcclNodeGraph(HCOMALLGATHER, {{4, 4}, {4, 4}, {4, 4}},
+                                                          {{4, 4}, {4, 4}, {4, 4}}, {{4, 4}, {4, 4}, {4, 4}});
+  graph->TopologicalSorting();
+  gert::GeModelBuilder builder(graph);
+  auto ge_root_model = builder.AddTaskDef("hcom_reduce", gert::HcclTaskDefFaker()).BuildGeRootModel();
+  if (ge_root_model == nullptr) {
+    return nullptr;
+  }
+  auto &compute_graph = ge_root_model->GetRootGraph();
+  compute_graph->SetGraphUnknownFlag(false);
+  for (const auto &node : compute_graph->GetDirectNode()) {
+    auto op_desc = node->GetOpDesc();
+    if (op_desc == nullptr) {
+      return nullptr;
+    }
+    if (op_desc->GetType() == DATA) {
+      op_desc->SetOutputOffset({1024});
+    } else if (op_desc->GetType() == NETOUTPUT) {
+      op_desc->SetInputOffset({3072});
+    } else {
+      op_desc->SetInputOffset(std::vector<int64_t>(op_desc->GetInputsSize(), 1024));
+      op_desc->SetOutputOffset(std::vector<int64_t>(op_desc->GetOutputsSize(), 1024));
+      op_desc->SetWorkspaceBytes(std::vector<int64_t>(1, 64));
+      op_desc->SetWorkspace(std::vector<int64_t>(1, 0));
+    }
+  }
+  const auto ge_model = ge_root_model->GetSubgraphInstanceNameToModel().begin()->second;
+  const auto model_task_def = ge_model->GetModelTaskDefPtr();
+  if (model_task_def != nullptr) {
+    for (int i = 0; i < model_task_def->task_size(); ++i) {
+      auto *task_def = model_task_def->mutable_task(i);
+      task_def->set_type(static_cast<uint32_t>(ModelTaskType::MODEL_TASK_HCCL));
+      task_def->mutable_kernel_hccl()->set_hccl_type(HCOMALLGATHER);
+    }
+  }
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 4096);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, 0);
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
   return ge_root_model;
 }
@@ -1227,6 +1272,26 @@ TEST_F(Om2CodegenModelBuilderUt, BuildModelIoSemantic_Aicore_Ok) {
   EXPECT_EQ(doc.model_io.entries[2].update_host_args_index, 0U);
   EXPECT_FALSE(doc.model_io.entries[2].is_input);
   EXPECT_TRUE(doc.model_io.entries[2].is_addr_refreshable);
+}
+
+// 直连通信算子的模型输入/输出走拷贝模式（need_refresh=0 直址 + 数据在固定地址），
+// HCCL 任务 need_refresh 仅计 FeatureMap 刷新
+TEST_F(Om2CodegenModelBuilderUt, BuildModelIoSemantic_HcclDirectIo_UsesCopyMode) {
+  GeRootModelPtr ge_root_model = CreateGeRootModelWithHcclOnlyOp();
+  ASSERT_NE(ge_root_model, nullptr);
+  Om2CodegenModel doc;
+  std::vector<TaskCodeBuilderPtr> task_builders;
+  ASSERT_EQ(BuildCodegenModel(ge_root_model, doc, &task_builders), SUCCESS);
+
+  ASSERT_EQ(doc.model_io.entries.size(), 2U);
+  EXPECT_TRUE(doc.model_io.entries[0U].is_input);
+  EXPECT_FALSE(doc.model_io.entries[0U].is_addr_refreshable);
+  EXPECT_FALSE(doc.model_io.entries[1U].is_input);
+  EXPECT_FALSE(doc.model_io.entries[1U].is_addr_refreshable);
+
+  auto *hccl_builder = FindTaskBuilder<HcclTaskCodeBuilder>(task_builders);
+  ASSERT_NE(hccl_builder, nullptr);
+  EXPECT_EQ(hccl_builder->build_data_.need_refresh, 0U);
 }
 
 TEST_F(Om2CodegenModelBuilderUt, BuildModelIoSemantic_WithoutDataAttrIndex_Ok) {
@@ -2773,4 +2838,76 @@ TEST_F(Om2CodegenModelBuilderUt, BuildTaskSemantics_CustomTaskRejectsCustomData)
   EXPECT_NE(BuildCodegenModel(ge_root_model, doc), SUCCESS);
 }
 
+TEST_F(Om2CodegenModelBuilderUt, CreateTaskCodeBuilders_HcclTask_OnlineModeOk) {
+  constexpr char kEnableRuntimeOm2[] = "ENABLE_RUNTIME_OM2";
+  GeRootModelPtr ge_root_model = CreateGeRootModelWithAicoreOp();
+  ASSERT_NE(ge_root_model, nullptr);
+  const auto &name_to_model = ge_root_model->GetSubgraphInstanceNameToModel();
+  ASSERT_FALSE(name_to_model.empty());
+  const auto ge_model = name_to_model.begin()->second;
+  ASSERT_NE(ge_model, nullptr);
+  ASSERT_NE(ge_model->GetModelTaskDefPtr(), nullptr);
+  auto task_def = ge_model->GetModelTaskDefPtr()->mutable_task(0);
+  ASSERT_NE(task_def, nullptr);
+  task_def->set_type(static_cast<uint32_t>(ModelTaskType::MODEL_TASK_HCCL));
+
+  ASSERT_EQ(setenv(kEnableRuntimeOm2, "1", 1), 0);
+  std::vector<TaskCodeBuilderPtr> task_builders;
+  Om2CodegenModel doc;
+  EXPECT_EQ(
+      Om2CodegenModelBuilder::CreateTaskCodeBuilders(ge_model, GetOm2CodegenModelBuilderUtAst(), task_builders, doc),
+      SUCCESS);
+  EXPECT_EQ(doc.runtime.has_hccl, true);
+  EXPECT_EQ(task_builders.size(), 1U);
+  EXPECT_NE(task_builders[0U], nullptr);
+  ASSERT_EQ(unsetenv(kEnableRuntimeOm2), 0);
+
+  std::vector<TaskCodeBuilderPtr> offline_builders;
+  Om2CodegenModel offline_doc;
+  EXPECT_EQ(Om2CodegenModelBuilder::CreateTaskCodeBuilders(ge_model, GetOm2CodegenModelBuilderUtAst(), offline_builders,
+                                                           offline_doc),
+            SUCCESS);
+  EXPECT_EQ(offline_doc.runtime.has_hccl, true);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, CreateTaskCodeBuilders_HcclFollowStreamCounts_MaxPerStream) {
+  auto graph = gert::ShareGraph::BuildTwoHcclNodeGraph("HcomAllReduce");
+  ASSERT_NE(graph, nullptr);
+  graph->TopologicalSorting();
+  (void)AttrUtils::SetInt(graph->FindNode("hcom_reduce")->GetOpDesc(), "used_stream_num", 2);
+  (void)AttrUtils::SetInt(graph->FindNode("add1")->GetOpDesc(), "used_stream_num", 3);
+  gert::GeModelBuilder builder(graph);
+  auto ge_root_model = builder.AddTaskDef("hcom_reduce", gert::HcclTaskDefFaker()).BuildGeRootModel();
+  ASSERT_NE(ge_root_model, nullptr);
+  const auto &name_to_model = ge_root_model->GetSubgraphInstanceNameToModel();
+  ASSERT_FALSE(name_to_model.empty());
+  const auto ge_model = name_to_model.begin()->second;
+  ASSERT_NE(ge_model, nullptr);
+  const auto model_task_def = ge_model->GetModelTaskDefPtr();
+  ASSERT_NE(model_task_def, nullptr);
+  ASSERT_GE(model_task_def->task_size(), 1);
+  EXPECT_EQ(model_task_def->task(0).type(), static_cast<uint32_t>(ModelTaskType::MODEL_TASK_HCCL));
+
+  const int64_t add1_op_id = graph->FindNode("add1")->GetOpDesc()->GetId();
+  const int64_t data1_op_id = graph->FindNode("data1")->GetOpDesc()->GetId();
+  const auto append_hccl_task = [model_task_def](uint32_t stream_id, int64_t op_index) {
+    auto *task_def = model_task_def->add_task();
+    task_def->set_type(static_cast<uint32_t>(ModelTaskType::MODEL_TASK_HCCL));
+    task_def->set_stream_id(stream_id);
+    task_def->mutable_kernel_hccl()->set_op_index(op_index);
+  };
+  append_hccl_task(0U, add1_op_id);
+  append_hccl_task(1U, add1_op_id);
+  append_hccl_task(2U, data1_op_id);
+
+  std::vector<TaskCodeBuilderPtr> task_builders;
+  Om2CodegenModel doc;
+  EXPECT_EQ(
+      Om2CodegenModelBuilder::CreateTaskCodeBuilders(ge_model, GetOm2CodegenModelBuilderUtAst(), task_builders, doc),
+      SUCCESS);
+  EXPECT_EQ(doc.runtime.has_hccl, true);
+  const std::map<uint32_t, uint32_t> expected_counts = {{0U, 3U}, {1U, 3U}};
+  EXPECT_EQ(doc.runtime.hccl_follow_stream_counts, expected_counts);
+  EXPECT_EQ(doc.runtime.hccl_follow_stream_counts.count(2U), 0U);
+}
 }  // namespace ge

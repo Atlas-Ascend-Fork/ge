@@ -150,8 +150,6 @@ const std::unordered_set<std::string> kOm2UnsuppotedFlag = {"input_hint_shape",
                                                             "enable_compress_weight",
                                                             "enable_attr_compression",
                                                             "h2d_overlapped_with_compute",
-                                                            "cluster_config",
-                                                            "hccl_sub_comm_config",
                                                             "input_shape_range",
                                                             "static_model_ops_lower_limit"};
 

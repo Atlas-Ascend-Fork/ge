@@ -91,25 +91,27 @@ Status ProgramGenerator::GenerateInterfaceHeader(Om2CodePrinter &code_printer) {
   file_items.push_back(ast_.StablePart(StablePartId::kInterfacePointerHelpers));
   file_items.push_back(ast_.StablePart(StablePartId::kInterfaceInternalTypes));
   file_items.insert(file_items.end(), rt_forward_decls.begin(), rt_forward_decls.end());
-  file_items.push_back(ast_.Namespace(
-      "om2",
-      {
-          ast_.Field("constexpr int32_t", "INPUT_NUM", static_cast<int32_t>(codegen_model_.model_io.input_count)),
-          ast_.Field("constexpr int32_t", "OUTPUT_NUM", static_cast<int32_t>(codegen_model_.model_io.output_count)),
-          ast_.Field("constexpr size_t", "kModelWorkSize", ast_.ULong(codegen_model_.runtime.total_mem_size)),
-          ast_.Field("constexpr size_t", "kModelZeroCopySize", ast_.ULong(codegen_model_.runtime.zero_copy_size)),
-          interface_handler.BuildAclrtMallocFunction(),
-          interface_handler.BuildBinDataInfoStruct(),
-          interface_handler.BuildAicpuParamHeadStruct(),
-          interface_handler.BuildAicpuSessionInfoStruct(),
-          interface_handler.BuildArgsInfoStruct(),
-          interface_handler.BuildTfAiCpuExInfoStruct(),
-          interface_handler.BuildArgsRefreshInfoStruct(),
-          ast_.StablePart(StablePartId::kScopeGuard, StablePartPlacement::kNamespace),
-          interface_handler.BuildOm2ArgsTableClass(),
-          ast_.StablePart(StablePartId::kOpDefStructs, StablePartPlacement::kNamespace),
-          interface_handler.BuildOm2ModelClass(codegen_model_),
-      }));
+  std::vector<DeclNode *> om2_items = {
+      ast_.Field("constexpr int32_t", "INPUT_NUM", static_cast<int32_t>(codegen_model_.model_io.input_count)),
+      ast_.Field("constexpr int32_t", "OUTPUT_NUM", static_cast<int32_t>(codegen_model_.model_io.output_count)),
+      ast_.Field("constexpr size_t", "kModelWorkSize", ast_.ULong(codegen_model_.runtime.total_mem_size)),
+      ast_.Field("constexpr size_t", "kModelZeroCopySize", ast_.ULong(codegen_model_.runtime.zero_copy_size)),
+      interface_handler.BuildAclrtMallocFunction(),
+      interface_handler.BuildBinDataInfoStruct(),
+      interface_handler.BuildAicpuParamHeadStruct(),
+      interface_handler.BuildAicpuSessionInfoStruct(),
+      interface_handler.BuildArgsInfoStruct(),
+      interface_handler.BuildTfAiCpuExInfoStruct(),
+      interface_handler.BuildArgsRefreshInfoStruct(),
+      ast_.StablePart(StablePartId::kScopeGuard, StablePartPlacement::kNamespace),
+      interface_handler.BuildOm2ArgsTableClass(),
+      ast_.StablePart(StablePartId::kOpDefStructs, StablePartPlacement::kNamespace),
+  };
+  if (!codegen_model_.runtime.hccl_follow_stream_counts.empty()) {
+    om2_items.push_back(interface_handler.BuildHcclFollowStreamCountMap(codegen_model_));
+  }
+  om2_items.push_back(interface_handler.BuildOm2ModelClass(codegen_model_));
+  file_items.push_back(ast_.Namespace("om2", om2_items));
   auto *translation_unit = ast_.File(file_items);
   GE_ASSERT_SUCCESS(EmitFile(GeneratedFileIndex::kInterfaceHeaderFile, translation_unit, code_printer));
   return SUCCESS;

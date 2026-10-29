@@ -86,6 +86,7 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | query_bin_handle_from_store | QueryBinHandleFromStoreFunc | Queries a cached handle by bin_id; see 3.4 |
 | save_bin_handle_to_store | SaveBinHandleToStoreFunc | Saves a handle to the cache; see 3.5 |
 | release_bin_handle_from_store | ReleaseBinHandleFromStoreFunc | Releases a cached handle; see 3.6 |
+| hccl_load_task | HcclLoadTaskFunc | Launches an HCCL communication task (HCOM/HVD); see 3.8 |
 
 - **Parameter structure GertModelLoadOutput**:
 
@@ -380,6 +381,7 @@ int32_t (*GertModelLaunchFunc)(void *instance_handle, GertModelTaskLaunchInfo *l
 | ACL_RT_LAUNCH_KERNEL_V2 | 0 | Launch through `aclrtLaunchKernelV2` |
 | RT_STARS_TASK_LAUNCH_WITH_FLAG | 1 | Launch through `rtStarsTaskLaunchWithFlag` |
 | ACL_RT_LAUNCH_CUSTOM_KERNEL | 2 | Launch through a custom operator callback |
+| ACL_RT_LAUNCH_HCCL | 3 | Launch through the HCCL adaptation layer on the Executor side (static offline communication task) |
 
 - **Parameter structure GertModelTaskLaunchParams**: Has no `struct_size` of its own; `launch_type` determines which member to read. Each member structure has its own `struct_size`.
 
@@ -388,6 +390,7 @@ int32_t (*GertModelLaunchFunc)(void *instance_handle, GertModelTaskLaunchInfo *l
 | launch_kernel_v2_params | GertModelLaunchKernelV2Params | Used when `launch_type` is `ACL_RT_LAUNCH_KERNEL_V2` |
 | launch_stars_task_params | GertModelLaunchStarsTaskWithFlagParams | Used when `launch_type` is `RT_STARS_TASK_LAUNCH_WITH_FLAG` |
 | launch_custom_kernel_params | GertModelLaunchCustomKernelParams | Used when `launch_type` is `ACL_RT_LAUNCH_CUSTOM_KERNEL` |
+| launch_hccl_params | GertModelLaunchHcclParams | Used when `launch_type` is `ACL_RT_LAUNCH_HCCL` |
 
 **GertModelLaunchKernelV2Params**:
 
@@ -422,6 +425,14 @@ int32_t (*GertModelLaunchFunc)(void *instance_handle, GertModelTaskLaunchInfo *l
 | func_launch_custom_kernel | uint32_t (*)(void *, void *) | Custom operator launch callback |
 | eager_op | void * | Custom operator object |
 | eager_op_context | void * | Custom operator execution arguments |
+
+**GertModelLaunchHcclParams**:
+
+| Field | Type | Description |
+|------|------|------|
+| struct_size | uint64_t | Byte range of the structure provided for this call, usually the `sizeof` of the corresponding structure |
+| func_load_hccl | HcclLoadTaskFunc | HCCL task launch function; takes the host `hccl_load_task` callback injected by the Executor; see 3.8 |
+| task_params | const HcclTaskParams * | Flattened HCCL task parameters; fields are described in 3.8 |
 
 - **Parameter structure GertModelTaskDesc**: DFX information for an individual operator task, used by the Executor for L0 exception dumps and profiling reports.
 
@@ -603,6 +614,79 @@ int32_t (*ReportModelRunFunc)(void *instance_handle, const GertModelRunReportInf
 | is_async | uint64_t | Whether execution is asynchronous; `0` means synchronous, nonzero means asynchronous |
 
 - **Return value**: `0` indicates success; a nonzero value indicates callback failure. Current generated code ignores the return values of these two callbacks: it neither aborts execution nor logs an error at the call site based on them. If failure logging is needed, the callback implementation must handle it.
+
+#### 3.8 hccl_load_task (HcclLoadTaskFunc)
+
+- **Functionality**: Launch channel for HCCL communication tasks (HCOM/HVD/HVDWAIT) in static offline models. During model loading, while `GertModelLoad` sinks tasks, the model SO assembles the compile-time-fixed communication parameters into `HcclTaskParams` and passes them through this callback to the HCCL adaptation layer on the Executor side, which runs `PrepareTaskAsync` + `LoadTask` and registers the task handle. On model unload, the Executor uniformly unregisters the tasks (calling `UnloadTask` and releasing handles) before invoking `GertModelUnload`; this does not go through a model SO callback. For runtime launching, the function pointer is passed via `GertModelLaunchHcclParams::func_load_hccl`; see the union members in 3.2.
+- **Version requirement**: A model containing HCCL communication operators requires `callbacks->struct_size` to cover the `hccl_load_task` field (that is, not less than `offsetof(GertModelLoadCallbacks, hccl_load_task) + sizeof(HcclLoadTaskFunc)`); otherwise `GertModelLoad` fails immediately with a prompt to upgrade the Executor. This callback is mandatory for models containing HCCL operators and fails when null.
+- **Function prototype**:
+
+```c
+int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params);
+```
+
+- **Parameters**:
+
+| Parameter | Type | Input/Output | Description |
+|------|------|----------|------|
+| instance_handle | void * | Input | Passed back unchanged from `GertModelLoadConfig::instance_handle`; the callback implementation uses it to locate the executor instance |
+| params | const HcclTaskParams * | Input | Flattened communication task parameters filled by the model SO; fields are listed below |
+
+- **Parameter structure HcclTaskParams**:
+
+| Field | Type | Description |
+|------|------|------|
+| struct_size | uint64_t | Byte range of the structure provided for this call; initialize to `sizeof(HcclTaskParams)` before calling |
+| hccl_type | const char * | Communication operator type string (KernelHcclDef.hccl_type); must not be null |
+| private_def | const void * | HCCL private definition (compile-time static bytes) |
+| private_def_len | uint32_t | Private definition length in bytes |
+| abi_pad_1 | uint32_t | ABI padding |
+| main_stream | void * | Main stream handle |
+| input_addrs | void *const * | Input address array (resolved at recording time) |
+| input_num | uint32_t | Number of input addresses |
+| abi_pad_2 | uint32_t | ABI padding |
+| output_addrs | void *const * | Output address array (resolved at recording time) |
+| output_num | uint32_t | Number of output addresses |
+| abi_pad_3 | uint32_t | ABI padding |
+| workspace_addr | void * | Workspace address; may be null |
+| workspace_size | uint64_t | Workspace size in bytes |
+| hccl_data_type | int32_t | HCCL data type enum value (converted at compile time) |
+| hccl_reduce_op | int32_t | HCCL reduction type enum value (converted at compile time) |
+| count | uint64_t | Number of communication elements |
+| root_id | int32_t | Broadcast/Gather/Reduce root rank |
+| abi_pad_4 | uint32_t | ABI padding |
+| follow_streams | void *const * | Follow stream handle array (pre-created by InitResources per main stream) |
+| follow_stream_num | uint32_t | Number of follow streams |
+| abi_pad_5 | uint32_t | ABI padding |
+| attached_streams | void *const * | Attached stream handle array; may be null |
+| attached_stream_num | uint32_t | Number of attached streams |
+| need_refresh | uint8_t | Whether address-refresh mode is enabled (indirect args slot addressing); `0` no, nonzero yes |
+| abi_pad_6 | uint8_t[3] | ABI padding |
+| args_base | void * | Args base address (indirect addressing mode when need_refresh is set); may be null |
+| abi_pad_7 | uint32_t | ABI padding |
+| abi_pad_8 | uint32_t | ABI padding (explicit tail alignment) |
+| hvd_metas | const HcclHorovodMeta * | Non-null = HVD multi-info mode (one meta per input); null for HCOM |
+| hvd_wait | uint8_t | HVDWAIT marker: only one info entry (records hccl_type only, no I/O); `0` no, nonzero yes |
+| is_collective | uint8_t | Caches communication task extension info after LoadTask succeeds (aclrtCacheLastTaskExtendInfo) |
+| abi_pad_9 | uint8_t[6] | ABI padding |
+| input_zero_copy_flags | const int32_t * | Per-input zero-copy flags (slot-based; length = input_num); may be null |
+| output_zero_copy_flags | const int32_t * | Per-output zero-copy flags (length = output_num); may be null |
+| overflow_addr | void * | Overflow detection address (non-null when the op contains GLOBALWORKSPACE_TYPE, L3) |
+
+- **Parameter structure HcclHorovodMeta (per-input HVD metadata)**:
+
+| Field | Type | Description |
+|------|------|------|
+| struct_size | uint64_t | Byte range of the structure provided for this call; initialize to `sizeof(HcclHorovodMeta)` before calling |
+| input_name | const char * | TF tensor name (op_desc->GetInputNameByIndex) for callback interworking |
+| dims | const int64_t * | Dimension array of this input (static bytes inside the SO) |
+| dims_num | uint32_t | Number of dimensions |
+| abi_pad_1 | uint32_t | ABI padding |
+| hccl_data_type | int32_t | HCCL data type enum value of this input (converted at compile time, per input) |
+| abi_pad_2 | uint32_t | ABI padding |
+| count | uint64_t | Number of communication elements of this input (resolved at compile time per the GetHorovodCount rule) |
+
+- **Return value**: `0` indicates success; a nonzero value indicates that HCCL task launching failed, in which case `GertModelLoad` on the model SO side aborts and returns the error.
 
 ## Part II: OM2 Model Data
 

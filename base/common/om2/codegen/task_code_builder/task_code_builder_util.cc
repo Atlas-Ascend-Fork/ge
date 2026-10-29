@@ -11,10 +11,13 @@
 #include "common/om2/codegen/task_code_builder/task_code_builder_util.h"
 
 #include <iomanip>
+#include <set>
 #include <sstream>
+#include <string>
 
 #include "common/ge_common/ge_types.h"
 #include "common/om2/codegen/om2_codegen_utils.h"
+#include "framework/common/framework_types_internal.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/utils/op_desc_utils.h"
 
@@ -353,15 +356,29 @@ Arg TaskCodeBuilderUtil::BuildCustomValueDataField(AstBuildContext &ast, const O
       true);
 }
 
+std::string TaskCodeBuilderUtil::EscapeToOctalString(const std::vector<uint8_t> &bytes) {
+  std::ostringstream oss;
+  for (const uint8_t byte : bytes) {
+    oss << "\\" << std::oct << std::setw(kWidthPerChar) << std::setfill('0') << static_cast<int32_t>(byte);
+  }
+  return oss.str();
+}
+
+ArgsTableEntrySemantic *TaskCodeBuilderUtil::InitArgsTableEntry(const TaskSemanticContributeContext &context,
+                                                                std::optional<ArgsTableEntrySemantic> &entry_storage,
+                                                                const uint64_t args_size) {
+  (void)entry_storage.emplace();
+  entry_storage->table_index = *context.next_args_table_index;
+  entry_storage->args_size = args_size;
+  entry_storage->host_offset = *context.next_host_args_offset;
+  return &(*entry_storage);
+}
+
 Arg TaskCodeBuilderUtil::BuildTilingDataField(AstBuildContext &ast, const OpArgDesc &arg_desc) {
   Arg raw_data_arg(nullptr);
   uint32_t raw_data_len = 0U;
   if (!arg_desc.raw_data.empty()) {
-    std::ostringstream oss;
-    for (const uint8_t byte : arg_desc.raw_data) {
-      oss << "\\" << std::oct << std::setw(kWidthPerChar) << std::setfill('0') << static_cast<int32_t>(byte);
-    }
-    raw_data_arg = ast.ReinterpretCast("const uint8_t *", Arg::StringLiteral(oss.str()));
+    raw_data_arg = ast.ReinterpretCast("const uint8_t *", Arg::StringLiteral(EscapeToOctalString(arg_desc.raw_data)));
     raw_data_len = static_cast<uint32_t>(arg_desc.raw_data.size());
   }
   return ast.DesignatedInit(
@@ -568,6 +585,59 @@ uint32_t TaskCodeBuilderUtil::GetProfilingBlockDim(const OpDescPtr &op_desc, con
     return kTilingSinkBlockDim;
   }
   return block_dim;
+}
+
+bool TaskCodeBuilderUtil::IsCollectiveCommType(const std::string &op_type) {
+  static const std::set<std::string> kCollectiveCommTypes = {HCOMALLREDUCE,
+                                                             HCOMALLGATHER,
+                                                             HCOMALLGATHERV,
+                                                             HCOMBROADCAST,
+                                                             HCOMREDUCESCATTER,
+                                                             HCOMREDUCESCATTERV,
+                                                             HCOMREDUCE,
+                                                             HCOMALLTOALL,
+                                                             HCOMALLTOALLV,
+                                                             HCOMALLTOALLVC,
+                                                             HCOMGATHERALLTOALLV,
+                                                             HCOMGATHER,
+                                                             HVDCALLBACKALLREDUCE,
+                                                             HVDCALLBACKALLGATHER,
+                                                             HVDCALLBACKBROADCAST,
+                                                             "MatMulAllReduce",
+                                                             "GroupedMatMulAllReduce",
+                                                             "MatMulAllReduceAddRmsNorm",
+                                                             "AllGatherMatmul",
+                                                             "AllGatherMatmulV2",
+                                                             "AlltoAllAllGatherBatchMatMul",
+                                                             "AlltoAllMatmul",
+                                                             "AlltoAllvGroupedMatMul",
+                                                             "AlltoAllvQuantGroupedMatMul",
+                                                             "AttentionToFFN",
+                                                             "BatchMatMulReduceScatterAlltoAll",
+                                                             "DistributeBarrier",
+                                                             "FFNToAttention",
+                                                             "GroupedMatMulAlltoAllv",
+                                                             "InplaceMatmulAllReduceAddRmsNorm",
+                                                             "MatmulAllReduce",
+                                                             "MatmulAllReduceAddRmsNorm",
+                                                             "MatmulAlltoAll",
+                                                             "MatmulReduceScatter",
+                                                             "MatmulReduceScatterV2",
+                                                             "MoeDistributeCombine",
+                                                             "MoeDistributeCombineAddRmsNorm",
+                                                             "MoeDistributeCombineSetup",
+                                                             "MoeDistributeCombineTeardown",
+                                                             "MoeDistributeCombineV2",
+                                                             "MoeDistributeCombineV3",
+                                                             "MoeDistributeDispatch",
+                                                             "MoeDistributeDispatchSetup",
+                                                             "MoeDistributeDispatchTeardown",
+                                                             "MoeDistributeDispatchV2",
+                                                             "MoeDistributeDispatchV3",
+                                                             "QuantAllReduce",
+                                                             "QuantGroupedMatMulAlltoAllv",
+                                                             "QuantReduceScatter"};
+  return kCollectiveCommTypes.find(op_type) != kCollectiveCommTypes.end();
 }
 
 }  // namespace ge

@@ -435,6 +435,7 @@ set(BASE_COMMON_TEST_FILES
     "common/program_generator_unittest.cc"
     "common/om2_var_resource_builder_unittest.cc"
     "om2/codegen/stream_switch_task_code_builder_unittest.cc"
+    "om2/codegen/hccl_task_code_builder_unittest.cc"
 )
 
 set(OM2_COMPATIBILITY_TEST_FILES

@@ -19,6 +19,8 @@
 #include "ge_runtime_stub/include/faker/ge_model_builder.h"
 #include "ge_runtime_stub/include/faker/aicore_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/aicpu_taskdef_faker.h"
+#include "ge_runtime_stub/include/faker/hccl_taskdef_faker.h"
+#include "framework/common/framework_types_internal.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/utils/tensor_utils.h"
 #include "rt_external.h"
@@ -1404,6 +1406,51 @@ GeRootModelPtr CreateGeRootModelWithNoTaskConcatOutputReuseDimOne() {
   return ge_root_model;
 }
 
+// data -> hcom_gather -> NetOutput：单通信算子直连图（输入/输出均直连 HCCL）
+GeRootModelPtr CreateGeRootModelWithHcclOnlyOp() {
+  auto graph = gert::ShareGraph::BuildSingleHcclNodeGraph(HCOMALLGATHER, {{4, 4}, {4, 4}, {4, 4}},
+                                                          {{4, 4}, {4, 4}, {4, 4}}, {{4, 4}, {4, 4}, {4, 4}});
+  graph->TopologicalSorting();
+  gert::GeModelBuilder builder(graph);
+  auto ge_root_model = builder.AddTaskDef("hcom_reduce", gert::HcclTaskDefFaker()).BuildGeRootModel();
+  if (ge_root_model == nullptr) {
+    return nullptr;
+  }
+  auto &compute_graph = ge_root_model->GetRootGraph();
+  compute_graph->SetGraphUnknownFlag(false);
+  for (const auto &node : compute_graph->GetDirectNode()) {
+    auto op_desc = node->GetOpDesc();
+    if (op_desc == nullptr) {
+      return nullptr;
+    }
+    if (op_desc->GetType() == DATA) {
+      op_desc->SetOutputOffset({1024});
+      TensorUtils::SetSize(*op_desc->MutableOutputDesc(0U), 64);
+    } else if (op_desc->GetType() == NETOUTPUT) {
+      op_desc->SetInputOffset({3072});
+      TensorUtils::SetSize(*op_desc->MutableInputDesc(0U), 64);
+    } else {
+      op_desc->SetInputOffset(std::vector<int64_t>(op_desc->GetInputsSize(), 1024));
+      op_desc->SetOutputOffset(std::vector<int64_t>(op_desc->GetOutputsSize(), 1024));
+      op_desc->SetWorkspaceBytes(std::vector<int64_t>(1, 64));
+      op_desc->SetWorkspace(std::vector<int64_t>(1, 0));
+    }
+  }
+  const auto ge_model = ge_root_model->GetSubgraphInstanceNameToModel().begin()->second;
+  const auto model_task_def = ge_model->GetModelTaskDefPtr();
+  if (model_task_def != nullptr) {
+    for (int i = 0; i < model_task_def->task_size(); ++i) {
+      auto *task_def = model_task_def->mutable_task(i);
+      task_def->set_type(static_cast<uint32_t>(ModelTaskType::MODEL_TASK_HCCL));
+      task_def->mutable_kernel_hccl()->set_hccl_type(HCOMALLGATHER);
+    }
+  }
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 4096);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, 0);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
+  return ge_root_model;
+}
+
 ProgramGenerator CreateProgramGenerator(GeRootModelPtr &ge_root_model, bool has_custom_kernel = false) {
   static AstContext ast_ctx;
   static AstBuildContext ast(ast_ctx);
@@ -2143,6 +2190,7 @@ enum OpDispatchType : uint32_t {
     DISPATCH_DSA = 19,
     DISPATCH_KERNEL_EX = 20,
     DISPATCH_CUSTOM_KERNEL = 21,
+    DISPATCH_HCCL = 22,
     DISPATCH_TYPE_COUNT
 };
 
@@ -2378,6 +2426,42 @@ struct CmoAddrDispatchInfo {
   const CustomValueEntry *custom_values;
 };
 
+struct HcclDispatchInfo {
+  const OpArgInfo *args_info;          // IO/workspace 地址解析数组（input→output→workspace 顺序）
+  uint32_t args_info_num;              // args_info 数组长度
+  uint32_t input_num;                  // 输入数量
+  uint32_t output_num;                 // 输出数量
+  uint32_t stream_id;                  // 主流逻辑 id
+  uint32_t args_table_idx;             // args table 条目（IO 指针槽位）
+  uint8_t need_refresh;                 // args 槽位间接寻址使能（Init 布局遍按 IO 可刷新性置位）
+  const char *op_type;                 // 算子类型字符串（dump 任务信息上报）
+  uint32_t task_type;                  // 任务类型枚举值（dump 任务信息上报）
+  const int32_t *input_zero_copy_flags;   // 每输入零拷贝标志（Init 布局遍按 proto flag 槽位化；空时 nullptr）
+  const int32_t *output_zero_copy_flags;  // 每输出零拷贝标志（空时 nullptr）
+  uint8_t is_collective;               // 通信任务扩展信息缓存（LoadTask 后 aclrtCacheLastTaskExtendInfo）
+  uint8_t has_global_workspace;        // op 含 GLOBALWORKSPACE_TYPE attr
+  struct {                             // 通信参数（编译期条件固化）
+    const char *hccl_type;             // 通信算子类型字符串
+    const uint8_t *private_def;        // HCCL 私有定义（编译期静态字节）
+    uint32_t private_def_len;
+    int32_t root_id;                   // Broadcast/Gather/Reduce root rank（编译期条件解析）
+    int32_t hccl_data_type;            // HCCL 数据类型枚举数值（编译期转换）
+    int32_t hccl_reduce_op;            // HCCL 归约类型枚举数值（编译期转换）
+    uint64_t count;                    // 通信元素数（编译期按 hccl_type 四分支解析）
+    uint64_t workspace_size;           // workspace 字节数（HCCL 声明的工作区需求）
+  } comm;
+  struct {                             // 流配置（follow 从流 + attached 从流）
+    int32_t used_stream_num;           // follow 从流需求（仅 HCOM 类算子生成从流段）
+    const int32_t *attached_stream_ids; // attached 从流逻辑 id 数组
+    uint32_t attached_stream_num;
+  } streams;
+  struct {                             // HVD（Horovod）多 info（每输入一条 meta）
+    const HcclHorovodMeta *metas;      // 非空 = HVD 每输入一条 meta；HCOM/Wait 为 nullptr
+    uint32_t meta_num;                 // meta 条数（= 输入数；HCOM/Wait 为 0）
+    uint8_t is_wait;                   // HVDWAIT：仅 1 条 info（只记 hccl_type）
+  } hvd;
+};
+
 struct TaskDispatchInfo {
   OpDispatchType dispatch_type;   // 分发类型，决定走哪个 case 分支
   const char *op_name;            // 算子名称，用于日志和 Report 上报
@@ -2404,6 +2488,7 @@ struct TaskDispatchInfo {
     struct { const OpArgInfo *args_info;          // input 地址解析
              uint64_t op_idx; uint32_t branch_max; uint32_t stream_id; } label_switch;
     struct { uint32_t stream_id; rtBarrierTaskInfo_t info; } barrier;
+    HcclDispatchInfo hccl;
   } dispatch_info;
 };
 
@@ -2433,6 +2518,8 @@ struct DispatchOpContext {
   std::vector<void *> &dev_ext_info_mem_ptrs; // AICPU 扩展信息设备内存指针列表
   uint64_t *kernel_id;        // AICPU Kernel ID 计数器
   GertModelLaunchFunc launch_func; // 任务 launch 回调
+  HcclLoadTaskFunc hccl_load_task; // HCCL 任务下发回调（Load 期注入，nullptr 表示宿主服务不可用）
+  std::map<uint32_t, std::vector<void *>> &main_follow_stream_mapping; // HCCL follow 从流池（InitResources 按主流预填充，f 段直取）
 };
 
 
@@ -2468,6 +2555,7 @@ class Om2Model {
     std::map<uint32_t, aclrtLabelList> label_switch_label_list_;
     std::map<uint32_t, std::pair<void *, uint32_t>> label_goto_args_;
     std::map<uint32_t, aclrtLabelList> label_goto_ex_label_list_;
+    std::map<uint32_t, std::vector<void *>> main_follow_stream_mapping_;
     void *total_dev_mem_ptr_;
     bool owns_total_dev_mem_ = false;
     bool is_stream_list_bind_;
@@ -3160,7 +3248,11 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if ((callbacks != nullptr) && (callbacks->launch_func != nullptr)) {
     launch_func = callbacks->launch_func;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func};
+  HcclLoadTaskFunc hccl_load_task = nullptr;
+  if (callbacks != nullptr) {
+    hccl_load_task = callbacks->hccl_load_task;
+  }
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));
@@ -3848,7 +3940,11 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if ((callbacks != nullptr) && (callbacks->launch_func != nullptr)) {
     launch_func = callbacks->launch_func;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func};
+  HcclLoadTaskFunc hccl_load_task = nullptr;
+  if (callbacks != nullptr) {
+    hccl_load_task = callbacks->hccl_load_task;
+  }
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));
@@ -4091,6 +4187,28 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_ConstInputTensor_Ok) {
   EXPECT_NE(source.find("kOpDefs"), std::string::npos);
   EXPECT_NE(source.find("DispatchOp"), std::string::npos);
   EXPECT_NE(source.find("BuildTensor"), std::string::npos);
+}
+
+// 直连通信算子图：模型输入/输出走拷贝模式（need_refresh=0 直址 + 数据在固定地址）
+TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_HcclDirectIo_CopyMode_Ok) {
+  GeRootModelPtr ge_root_model = CreateGeRootModelWithHcclOnlyOp();
+  ASSERT_NE(ge_root_model, nullptr);
+  auto generator = CreateProgramGenerator(ge_root_model);
+  std::map<GeneratedFileIndex, std::string> outputs;
+  ASSERT_EQ(GenerateProgramFiles(generator, outputs), SUCCESS);
+
+  const auto &load_run = outputs[GeneratedFileIndex::kLoadingAndRunningFile];
+  EXPECT_NE(load_run.find("DispatchHccl"), std::string::npos);
+  // 拷贝模式：D2D 拷入固定区 + 拷出
+  EXPECT_NE(load_run.find("dev_input0_ptr"), std::string::npos);
+  EXPECT_NE(load_run.find("dev_output0_ptr"), std::string::npos);
+  EXPECT_NE(load_run.find("ACL_MEMCPY_DEVICE_TO_DEVICE"), std::string::npos);
+  // 输入/输出不再走地址刷新；拷贝越界防护生成
+  EXPECT_EQ(load_run.find("UpdateHostArgs"), std::string::npos);
+  EXPECT_NE(load_run.find("exceeds model input size"), std::string::npos);
+  EXPECT_NE(load_run.find("exceeds model output size"), std::string::npos);
+  // need_refresh 烘焙为 0（FeatureMap 刷新默认关闭）
+  EXPECT_NE(load_run.find(".need_refresh = 0"), std::string::npos);
 }
 
 TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_AicpuEmptyShape_Ok) {
@@ -4602,7 +4720,11 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if ((callbacks != nullptr) && (callbacks->launch_func != nullptr)) {
     launch_func = callbacks->launch_func;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func};
+  HcclLoadTaskFunc hccl_load_task = nullptr;
+  if (callbacks != nullptr) {
+    hccl_load_task = callbacks->hccl_load_task;
+  }
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));
@@ -5312,7 +5434,11 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if ((callbacks != nullptr) && (callbacks->launch_func != nullptr)) {
     launch_func = callbacks->launch_func;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func};
+  HcclLoadTaskFunc hccl_load_task = nullptr;
+  if (callbacks != nullptr) {
+    hccl_load_task = callbacks->hccl_load_task;
+  }
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));

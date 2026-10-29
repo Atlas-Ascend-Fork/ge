@@ -86,6 +86,7 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | query_bin_handle_from_store | QueryBinHandleFromStoreFunc | 按 bin_id 查询缓存句柄，见 3.4 |
 | save_bin_handle_to_store | SaveBinHandleToStoreFunc | 将句柄写入缓存，见 3.5 |
 | release_bin_handle_from_store | ReleaseBinHandleFromStoreFunc | 释放缓存句柄，见 3.6 |
+| hccl_load_task | HcclLoadTaskFunc | 下发 HCCL 通信任务（HCOM/HVD），见 3.8 |
 
 - **参数结构体 GertModelLoadOutput**：
 
@@ -380,6 +381,7 @@ int32_t (*GertModelLaunchFunc)(void *instance_handle, GertModelTaskLaunchInfo *l
 | ACL_RT_LAUNCH_KERNEL_V2 | 0 | 通过 `aclrtLaunchKernelV2` 下发 |
 | RT_STARS_TASK_LAUNCH_WITH_FLAG | 1 | 通过 `rtStarsTaskLaunchWithFlag` 下发 |
 | ACL_RT_LAUNCH_CUSTOM_KERNEL | 2 | 通过自定义算子的回调函数下发 |
+| ACL_RT_LAUNCH_HCCL | 3 | 通过 Executor 侧 HCCL 适配层下发（静态离线通信任务） |
 
 - **参数结构体 GertModelTaskLaunchParams**：本身无 `struct_size`，由 `launch_type` 决定读取哪个成员；各成员结构体独立携带 `struct_size`。
 
@@ -388,6 +390,7 @@ int32_t (*GertModelLaunchFunc)(void *instance_handle, GertModelTaskLaunchInfo *l
 | launch_kernel_v2_params | GertModelLaunchKernelV2Params | `launch_type` 为 `ACL_RT_LAUNCH_KERNEL_V2` 时使用 |
 | launch_stars_task_params | GertModelLaunchStarsTaskWithFlagParams | `launch_type` 为 `RT_STARS_TASK_LAUNCH_WITH_FLAG` 时使用 |
 | launch_custom_kernel_params | GertModelLaunchCustomKernelParams | `launch_type` 为 `ACL_RT_LAUNCH_CUSTOM_KERNEL` 时使用 |
+| launch_hccl_params | GertModelLaunchHcclParams | `launch_type` 为 `ACL_RT_LAUNCH_HCCL` 时使用 |
 
 **GertModelLaunchKernelV2Params**：
 
@@ -422,6 +425,14 @@ int32_t (*GertModelLaunchFunc)(void *instance_handle, GertModelTaskLaunchInfo *l
 | func_launch_custom_kernel | uint32_t (*)(void *, void *) | 自定义算子下发回调函数 |
 | eager_op | void * | 自定义算子对象 |
 | eager_op_context | void * | 自定义算子执行入参 |
+
+**GertModelLaunchHcclParams**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| struct_size | uint64_t | 本次提供的结构体字节范围，通常取对应结构体的 `sizeof` |
+| func_load_hccl | HcclLoadTaskFunc | HCCL 任务下发函数，取 Executor 注入的宿主 `hccl_load_task` 回调，见 3.8 |
+| task_params | const HcclTaskParams * | 扁平化 HCCL 任务参数，字段见 3.8 |
 
 - **参数结构体 GertModelTaskDesc**：单个算子任务的 DFX 信息，Executor 侧用于 L0 异常 dump 与 profiling 上报。
 
@@ -603,6 +614,79 @@ int32_t (*ReportModelRunFunc)(void *instance_handle, const GertModelRunReportInf
 | is_async | uint64_t | 是否异步执行，`0` 同步、非 `0` 异步 |
 
 - **返回值说明**：`0` 表示成功；非 `0` 表示回调失败。当前生成代码忽略这两个回调的返回值，不因返回值中止执行，也不在调用处据此记录错误；如需记录失败，由回调实现自行处理。
+
+#### 3.8 hccl_load_task（HcclLoadTaskFunc）
+
+- **功能说明**：静态离线模型的 HCCL 通信任务（HCOM/HVD/HVDWAIT）下发通道。模型加载期，pbody 在 `GertModelLoad` 的任务下沉过程中，将编译期固化的通信参数组装为 `HcclTaskParams`，经本回调交由 Executor 侧 HCCL 适配层执行 `PrepareTaskAsync` + `LoadTask` 并登记任务句柄；模型卸载时由 Executor 在调用 `GertModelUnload` 前统一反注册（`UnloadTask` 并释放句柄），不经模型 SO 回调。运行期下发场景下，本函数指针经 `GertModelLaunchHcclParams::func_load_hccl` 传递，见 3.2 联合体成员。
+- **版本要求**：含 HCCL 通信算子的模型要求 `callbacks->struct_size` 覆盖 `hccl_load_task` 字段（即不小于 `offsetof(GertModelLoadCallbacks, hccl_load_task) + sizeof(HcclLoadTaskFunc)`），否则 `GertModelLoad` 直接失败并提示升级 Executor；本回调对含 HCCL 算子的模型为必选，为空时同样失败。
+- **函数原型**：
+
+```c
+int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params);
+```
+
+- **参数说明**：
+
+| 参数 | 类型 | 输入/输出 | 说明 |
+|------|------|----------|------|
+| instance_handle | void * | 输入 | `GertModelLoadConfig::instance_handle` 原样回传，回调实现据此定位执行器实例 |
+| params | const HcclTaskParams * | 输入 | 扁平化通信任务参数，pbody 填写，字段见下表 |
+
+- **参数结构体 HcclTaskParams**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| struct_size | uint64_t | 本次提供的结构体字节范围，调用前初始化为 `sizeof(HcclTaskParams)` |
+| hccl_type | const char * | 通信算子类型字符串（KernelHcclDef.hccl_type），不允许为空 |
+| private_def | const void * | HCCL 私有定义（编译期静态字节） |
+| private_def_len | uint32_t | 私有定义长度，单位为字节 |
+| abi_pad_1 | uint32_t | ABI 填充 |
+| main_stream | void * | 主流句柄 |
+| input_addrs | void *const * | 输入地址数组（录制期解析） |
+| input_num | uint32_t | 输入地址数量 |
+| abi_pad_2 | uint32_t | ABI 填充 |
+| output_addrs | void *const * | 输出地址数组（录制期解析） |
+| output_num | uint32_t | 输出地址数量 |
+| abi_pad_3 | uint32_t | ABI 填充 |
+| workspace_addr | void * | workspace 地址，可为空 |
+| workspace_size | uint64_t | workspace 字节数 |
+| hccl_data_type | int32_t | HCCL 数据类型枚举数值（编译期转换） |
+| hccl_reduce_op | int32_t | HCCL 归约类型枚举数值（编译期转换） |
+| count | uint64_t | 通信元素数 |
+| root_id | int32_t | Broadcast/Gather/Reduce root rank |
+| abi_pad_4 | uint32_t | ABI 填充 |
+| follow_streams | void *const * | follow 从流句柄数组（InitResources 按主流预创建） |
+| follow_stream_num | uint32_t | follow 从流数量 |
+| abi_pad_5 | uint32_t | ABI 填充 |
+| attached_streams | void *const * | attached 从流句柄数组，可为空 |
+| attached_stream_num | uint32_t | attached 从流数量 |
+| need_refresh | uint8_t | 是否地址刷新模式（args 槽位间接寻址），`0` 否、非 `0` 是 |
+| abi_pad_6 | uint8_t[3] | ABI 填充 |
+| args_base | void * | args 基址（need_refresh 间接寻址模式），可为空 |
+| abi_pad_7 | uint32_t | ABI 填充 |
+| abi_pad_8 | uint32_t | ABI 填充（尾部显式对齐） |
+| hvd_metas | const HcclHorovodMeta * | 非空 = HVD 多 info 模式（每输入一条 meta）；HCOM 为空 |
+| hvd_wait | uint8_t | HVDWAIT 标记：仅 1 条 info（只记 hccl_type，无 IO），`0` 否、非 `0` 是 |
+| is_collective | uint8_t | LoadTask 成功后缓存通信任务扩展信息（aclrtCacheLastTaskExtendInfo） |
+| abi_pad_9 | uint8_t[6] | ABI 填充 |
+| input_zero_copy_flags | const int32_t * | 每输入零拷贝标志（槽位化；长度 = input_num），可为空 |
+| output_zero_copy_flags | const int32_t * | 每输出零拷贝标志（长度 = output_num），可为空 |
+| overflow_addr | void * | 溢出检测地址（op 含 GLOBALWORKSPACE_TYPE 时非空，L3） |
+
+- **参数结构体 HcclHorovodMeta（HVD 单输入元数据）**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| struct_size | uint64_t | 本次提供的结构体字节范围，调用前初始化为 `sizeof(HcclHorovodMeta)` |
+| input_name | const char * | TF tensor 名（op_desc->GetInputNameByIndex），回调对接用 |
+| dims | const int64_t * | 该输入维度数组（SO 内静态字节） |
+| dims_num | uint32_t | 维度个数 |
+| abi_pad_1 | uint32_t | ABI 填充 |
+| hccl_data_type | int32_t | 该输入 HCCL 数据类型枚举数值（编译期转换，每输入独立） |
+| abi_pad_2 | uint32_t | ABI 填充 |
+| count | uint64_t | 该输入通信元素数（编译期按 GetHorovodCount 规则解析） |
+
+- **返回值说明**：`0` 表示成功；非 `0` 表示 HCCL 任务下发失败，pbody 侧 `GertModelLoad` 中止并返回错误。
 
 ## 第二部分：OM2 模型数据
 

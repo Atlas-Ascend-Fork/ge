@@ -13,8 +13,10 @@
 #include "common/om2/codegen/ast/ast_build_context.h"
 #include "common/om2/codegen/ast/ast_nodes.h"
 #include "common/om2/codegen/file_code_generator/args_manager_file_code_generator.h"
+#include "common/om2/codegen/file_code_generator/interface_file_code_generator.h"
 #define private public
 #include "common/om2/codegen/file_code_generator/load_and_run_file_code_generator.h"
+#include "common/om2/codegen/file_code_generator/resources_file_code_generator.h"
 #undef private
 #include "common/om2/codegen/emitter/stable_parts/stable_part_provider.h"
 #include "common/om2/codegen/task_code_builder/task_code_builder_util.h"
@@ -29,6 +31,7 @@
 #include "framework/common/gert_model_data_utils.h"
 #include "framework/om2/model_api/om2_model_api.h"
 #include "framework/common/taskdown_common.h"
+#include "framework/common/framework_types_internal.h"
 
 #include <gtest/gtest.h>
 
@@ -3073,5 +3076,83 @@ TEST_F(Om2CodegenUt, LoadAndRunFileCodeGenerator_PhaseModelExecute_CoverBranches
   const auto sync_output = EmitBodyItems(ast, sync_body);
   ExpectContainsAll(sync_output, {"OM2_CHK_STATUS(args_table_.CopyArgsToDevice(nullptr, false));\n",
                                   "OM2_CHK_STATUS(aclmdlRIExecute(model_handle_, stream_sync_timeout));\n"});
+}
+
+TEST_F(Om2CodegenUt, InterfaceFileCodeGenerator_HcclFollowStreamCountMap) {
+  AstContext ctx;
+  AstBuildContext ast(ctx);
+  InterfaceFileCodeGenerator generator(ast);
+  Om2CodegenModel model;
+  model.runtime.hccl_follow_stream_counts = {{2U, 3U}, {5U, 2U}};
+
+  const auto *decl = generator.BuildHcclFollowStreamCountMap(model);
+  ASSERT_NE(decl, nullptr);
+  const auto output = EmitNode(*decl);
+  ExpectContainsAll(output, {"static const std::map<uint32_t, uint32_t> main_stream_id_to_follow_stream_count",
+                             "{2U, 3U}", "{5U, 2U}"});
+}
+
+TEST_F(Om2CodegenUt, ResourcesFileCodeGenerator_HcclFollowStreamResources) {
+  AstContext ctx;
+  AstBuildContext ast(ctx);
+  ResourcesFileCodeGenerator generator(ast);
+  auto priority = ast.Var("int32_t", "priority");
+  RuntimeResourceSemantic runtime;
+  runtime.hccl_follow_stream_counts = {{2U, 3U}, {5U, 2U}};
+
+  std::vector<BodyItem> body;
+  generator.BuildInitHcclFollowStreamResources(body, runtime, priority);
+  ASSERT_FALSE(body.empty());
+  const auto output = EmitBodyItems(ast, body);
+  ExpectContainsAll(output, {"for (const auto &main_stream_to_count : main_stream_id_to_follow_stream_count)",
+                             "auto &follows = main_follow_stream_mapping_[main_stream_to_count.first];",
+                             "follows.resize(main_stream_to_count.second);",
+                             "for (uint32_t i = 0U; (i < main_stream_to_count.second); i++)",
+                             "((RT_STREAM_PERSISTENT | RT_STREAM_FORCE_COPY) | RT_STREAM_OVERFLOW)",
+                             "rtStreamCreateWithFlags(&follows[i], priority, flag)",
+                             "aclmdlRIBindStream(model_handle_, follows[i], ACL_MODEL_STREAM_FLAG_DEFAULT)",
+                             "model_id=%u, InitResources: created %u hccl follow streams for main stream %u"});
+
+  std::vector<BodyItem> empty_body;
+  RuntimeResourceSemantic empty_runtime;
+  generator.BuildInitHcclFollowStreamResources(empty_body, empty_runtime, priority);
+  EXPECT_TRUE(empty_body.empty());
+}
+
+TEST_F(Om2CodegenUt, TaskCodeBuilderUtil_IsCollectiveCommType_Categories) {
+  const std::vector<std::string> collective_types = {HCOMALLREDUCE,
+                                                     HCOMALLGATHER,
+                                                     HCOMALLGATHERV,
+                                                     HCOMBROADCAST,
+                                                     HCOMREDUCESCATTER,
+                                                     HCOMREDUCESCATTERV,
+                                                     HCOMREDUCE,
+                                                     HCOMALLTOALL,
+                                                     HCOMALLTOALLV,
+                                                     HCOMALLTOALLVC,
+                                                     HCOMGATHERALLTOALLV,
+                                                     HCOMGATHER,
+                                                     HVDCALLBACKALLREDUCE,
+                                                     HVDCALLBACKALLGATHER,
+                                                     HVDCALLBACKBROADCAST,
+                                                     "MatMulAllReduce",
+                                                     "GroupedMatMulAllReduce",
+                                                     "MatMulAllReduceAddRmsNorm",
+                                                     "AllGatherMatmul",
+                                                     "MatmulReduceScatter",
+                                                     "MoeDistributeDispatch",
+                                                     "MoeDistributeCombine",
+                                                     "DistributeBarrier",
+                                                     "AttentionToFFN",
+                                                     "QuantReduceScatter"};
+  for (const auto &op_type : collective_types) {
+    EXPECT_TRUE(TaskCodeBuilderUtil::IsCollectiveCommType(op_type)) << op_type;
+  }
+
+  const std::vector<std::string> non_collective_types = {HCOMRECEIVE, HVDWAIT,         "Add",
+                                                         "",          "hcomallreduce", "MatmulAllReduce "};
+  for (const auto &op_type : non_collective_types) {
+    EXPECT_FALSE(TaskCodeBuilderUtil::IsCollectiveCommType(op_type)) << op_type;
+  }
 }
 }  // namespace ge

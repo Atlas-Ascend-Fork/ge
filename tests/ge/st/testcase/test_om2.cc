@@ -61,6 +61,7 @@
 #include "ge_runtime_stub/include/faker/aicpu_taskdef_faker.h"
 #include "framework/common/taskdown_common.h"
 #include "ge_runtime_stub/include/faker/custom_taskdef_faker.h"
+#include "ge_runtime_stub/include/faker/hccl_taskdef_faker.h"
 
 #include "graph/custom_op_factory.h"
 #include "graph/custom_op.h"
@@ -2469,6 +2470,90 @@ static GeRootModelPtr PrepareStreamDescOm2(const std::string &output_file) {
   return ge_root_model;
 }
 
+static bool SetHcclOpAttrs(const ComputeGraphPtr &compute_graph, bool is_hvd) {
+  const auto hcom_node = compute_graph->FindNode("hcom_reduce");
+  if (hcom_node == nullptr) {
+    return false;
+  }
+  const auto hcom_op_desc = hcom_node->GetOpDesc();
+  for (size_t i = 0U; i < hcom_op_desc->GetInputsSize(); ++i) {
+    TensorUtils::SetSize(*hcom_op_desc->MutableInputDesc(static_cast<uint32_t>(i)), 16);
+  }
+  (void)AttrUtils::SetInt(hcom_op_desc, "used_stream_num", 2);
+  if (is_hvd) {
+    constexpr int64_t kHorovodReduceSum = 1;
+    (void)AttrUtils::SetInt(hcom_op_desc, ATTR_HOROVOD_ATTR_REDUCE_TYPE, kHorovodReduceSum);
+  } else {
+    (void)AttrUtils::SetStr(hcom_op_desc, HCOM_ATTR_REDUCE_TYPE, "sum");
+  }
+  return true;
+}
+
+static GeRootModelPtr BuildHcclGeRootModel(const std::string &node_type, bool is_hvd) {
+  auto graph = gert::ShareGraph::BuildSingleHcclNodeGraph(node_type, {{2, 2}, {2, 2}, {2, 2}}, {{2, 2}, {2, 2}, {2, 2}},
+                                                          {{2, 2}, {2, 2}, {2, 2}});
+  graph->SetName("g1");
+  graph->TopologicalSorting();
+  gert::GeModelBuilder builder(graph);
+  auto ge_root_model = builder.AddTaskDef("hcom_reduce", gert::HcclTaskDefFaker()).BuildGeRootModel();
+  if (ge_root_model == nullptr) {
+    return nullptr;
+  }
+  auto &compute_graph = ge_root_model->GetRootGraph();
+  if ((SetDefaultStaticOffsets(compute_graph, false) != SUCCESS) || !SetHcclOpAttrs(compute_graph, is_hvd)) {
+    return nullptr;
+  }
+  const auto name_to_model = ge_root_model->GetSubgraphInstanceNameToModel();
+  if (name_to_model.empty()) {
+    return nullptr;
+  }
+  const auto ge_model = name_to_model.begin()->second;
+  if ((ge_model == nullptr) || (ge_model->GetModelTaskDefPtr() == nullptr) ||
+      (ge_model->GetModelTaskDefPtr()->task_size() < 1)) {
+    return nullptr;
+  }
+  SetDefaultModelWeightsAndAttrs(ge_model);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
+  auto task_def = ge_model->GetModelTaskDefPtr()->mutable_task(0);
+  task_def->mutable_kernel_hccl()->set_hccl_type(node_type);
+  task_def->set_private_def(std::string("\x01\x02\x03", 3U));
+  return ge_root_model;
+}
+
+static GeRootModelPtr PrepareHcclNodeOm2(const std::string &output_file) {
+  const auto ge_root_model = BuildHcclGeRootModel("HcomAllReduce", false);
+  if (ge_root_model == nullptr) {
+    return nullptr;
+  }
+  Om2PackageHelper om2_packager;
+  ModelBufferData model_data;
+  EXPECT_EQ(om2_packager.SaveToOmRootModel(ge_root_model, output_file, model_data, false), SUCCESS);
+  return ge_root_model;
+}
+
+static GeRootModelPtr PrepareHvdNodeOm2(const std::string &output_file) {
+  const auto ge_root_model = BuildHcclGeRootModel("HorovodAllreduce", true);
+  if (ge_root_model == nullptr) {
+    return nullptr;
+  }
+  Om2PackageHelper om2_packager;
+  ModelBufferData model_data;
+  EXPECT_EQ(om2_packager.SaveToOmRootModel(ge_root_model, output_file, model_data, false), SUCCESS);
+  return ge_root_model;
+}
+
+static GeRootModelPtr PrepareHcclOnlineOm2(const std::string &output_file) {
+  const ScopedEnvVar om2_env("ENABLE_RUNTIME_OM2", "1");
+  const auto ge_root_model = BuildHcclGeRootModel("HcomAllReduce", false);
+  if (ge_root_model == nullptr) {
+    return nullptr;
+  }
+  Om2PackageHelper om2_packager;
+  ModelBufferData model_data;
+  EXPECT_EQ(om2_packager.SaveToOmRootModel(ge_root_model, output_file, model_data, false), SUCCESS);
+  return ge_root_model;
+}
+
 void Om2St::SetUpTestSuite() {
   setenv("ASCEND_WORK_PATH", SuiteWorkDir().c_str(), 1);
   const auto ascend_install_path = EnvPath().GetAscendInstallPath();
@@ -2502,6 +2587,9 @@ void Om2St::SetUpTestSuite() {
   PrepareSuiteOm2("placeholder_test", "placeholder_test.om2", PreparePlaceholderTestOm2);
   PrepareSuiteOm2("mixed_var_test", "mixed_var_test.om2", PrepareMixedVarTestOm2);
   PrepareSuiteOm2("no_var_test", "no_var_test.om2", PrepareNoVarTestOm2);
+  PrepareSuiteOm2("hccl_node", "fake_test.om2", PrepareHcclNodeOm2);
+  PrepareSuiteOm2("hccl_hvd", "fake_test.om2", PrepareHvdNodeOm2);
+  PrepareSuiteOm2("hccl_online", "fake_test.om2", PrepareHcclOnlineOm2);
   // 变量产物已序列化落盘，预构建期设置的 VarManager 会话状态不再需要，统一销毁
   VarManagerPool::Instance().Destroy();
   GELOGI("Om2St::SetUpTestSuite: %zu om2 artifacts pre-built in %s", SuiteOm2Files().size(), SuiteWorkDir().c_str());
@@ -2567,6 +2655,148 @@ TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithAicoreNode) {
 
   const JsonFile visual_json = ExtractVisualJson(archive, kZipFileBaseName);
   ExpectVisualJsonMatchesGraph(visual_json, ge_root_model->GetRootGraph());
+}
+
+/**
+ * 用例描述：含 HCOM 通信算子（HcomAllReduce）的静态图离线转换为 OM2 模型，生成代码含 HCCL 从流配置/下发段且编译通过
+ * 预置条件：
+ *   1. ShareGraph::BuildSingleHcclNodeGraph(HcomAllReduce) + HcclTaskDefFaker 生成 MODEL_TASK_HCCL 任务，
+ *      后置设置 used_stream_num=2 / HCOM_ATTR_REDUCE_TYPE=sum 并改写 task hccl_type/private_def
+ * 测试步骤：
+ *   1. Om2PackageHelper::SaveToOmRootModel 转换打包为 .om2
+ *   2. 解包检查 g1_internal.h / g1_resources.cpp / g1_load_and_run.cpp / manifest.json 与编译产物
+ * 预期结果：
+ *   1. 归档含 libg1_om2.so 编译产物（生成代码编译通过）
+ *   2. g1_internal.h 含从流数常量 map {{0U, 2U}}，不含 HcclHorovodMeta 镜像结构，含 hvd.metas 全局类型引用
+ *   3. g1_resources.cpp 含从流通用循环、RT_STREAM_OVERFLOW 与创建日志
+ *   4. g1_load_and_run.cpp 含 DispatchHccl 入口/参数 DEBUG 日志、宿主服务调用与执行器版本自检
+ *   5. manifest.json 的 used_features 含 hccl_communication
+ */
+TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithHcclNode) {
+  // slow_test_limit = 3000
+  // so 编译耗时较大
+  const auto &output_file = SuiteOm2File("hccl_node");
+  uint32_t model_buf_size = 0;
+  const auto model_buf = GetBinDataFromFile(output_file, model_buf_size);
+  gert::ZipArchiveReader archive(reinterpret_cast<const uint8_t *>(model_buf.get()), model_buf_size);
+  ASSERT_TRUE(archive.IsGood());
+
+  const auto file_names = archive.ListFiles();
+  EXPECT_NE(std::find(file_names.begin(), file_names.end(), kZipFileBaseName + "/data/model_0/runtime/libg1_om2.so"),
+            file_names.end());
+
+  size_t internal_size = 0U;
+  const auto internal_buf =
+      archive.ExtractToMem(kZipFileBaseName + "/data/model_0/runtime/csrc/g1_internal.h", internal_size);
+  ASSERT_NE(internal_buf, nullptr);
+  const std::string internal_header(reinterpret_cast<const char *>(internal_buf.get()), internal_size);
+  EXPECT_NE(internal_header.find("main_stream_id_to_follow_stream_count = {{0U, 2U}}"), std::string::npos);
+  EXPECT_EQ(internal_header.find("struct HcclHorovodMeta"), std::string::npos);
+  EXPECT_NE(internal_header.find("const HcclHorovodMeta *metas;"), std::string::npos);
+
+  size_t resources_size = 0U;
+  const auto resources_buf =
+      archive.ExtractToMem(kZipFileBaseName + "/data/model_0/runtime/csrc/g1_resources.cpp", resources_size);
+  ASSERT_NE(resources_buf, nullptr);
+  const std::string resources(reinterpret_cast<const char *>(resources_buf.get()), resources_size);
+  EXPECT_NE(resources.find("for (const auto &main_stream_to_count : main_stream_id_to_follow_stream_count)"),
+            std::string::npos);
+  EXPECT_NE(resources.find("RT_STREAM_OVERFLOW"), std::string::npos);
+  EXPECT_NE(resources.find("created %u hccl follow streams for main stream %u"), std::string::npos);
+
+  size_t load_and_run_size = 0U;
+  const auto load_and_run_buf =
+      archive.ExtractToMem(kZipFileBaseName + "/data/model_0/runtime/csrc/g1_load_and_run.cpp", load_and_run_size);
+  ASSERT_NE(load_and_run_buf, nullptr);
+  const std::string load_and_run(reinterpret_cast<const char *>(load_and_run_buf.get()), load_and_run_size);
+  EXPECT_NE(load_and_run.find("DispatchHccl op=%s, stream_id=%u"), std::string::npos);
+  EXPECT_NE(load_and_run.find("hccl params: type=%s, count=%llu"), std::string::npos);
+  EXPECT_NE(load_and_run.find("hccl_load_task(ctx.instance_handle, &params)"), std::string::npos);
+  EXPECT_NE(load_and_run.find("current executor version is too low"), std::string::npos);
+
+  size_t manifest_size = 0U;
+  const auto manifest_buf = archive.ExtractToMem(kZipFileBaseName + "/manifest.json", manifest_size);
+  ASSERT_NE(manifest_buf, nullptr);
+  const std::string manifest(reinterpret_cast<const char *>(manifest_buf.get()), manifest_size);
+  EXPECT_NE(manifest.find("hccl_communication"), std::string::npos);
+}
+
+/**
+ * 用例描述：含 HVD（Horovod）通信算子（HorovodAllreduce）的静态图离线转换，验证 HVD 元数据数组统一使用全局
+ *          HcclHorovodMeta 类型且生成代码编译通过（回归镜像结构删除后的类型解析）
+ * 预置条件：
+ *   1. ShareGraph::BuildSingleHcclNodeGraph(HorovodAllreduce) + HcclTaskDefFaker，
+ *      后置设置 used_stream_num=2 / ATTR_HOROVOD_ATTR_REDUCE_TYPE=HOROVOD_REDUCE_SUM(1) / 输入 TensorSize=16
+ * 测试步骤：
+ *   1. Om2PackageHelper::SaveToOmRootModel 转换打包为 .om2
+ *   2. 解包检查生成代码 HVD 元数据数组与接口头结构定义
+ * 预期结果：
+ *   1. 归档含 libg1_om2.so 编译产物（HVD 路径生成代码编译通过）
+ *   2. g1_load_and_run.cpp 含 (const HcclHorovodMeta[]){ / sizeof(HcclHorovodMeta) / params.hvd_metas 赋值 /
+ *      表项 is_collective = 1
+ *   3. g1_internal.h 不含 om2 命名空间下的 HcclHorovodMeta 镜像结构
+ */
+TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithHvdNode) {
+  // slow_test_limit = 3000
+  // so 编译耗时较大
+  const auto &output_file = SuiteOm2File("hccl_hvd");
+  uint32_t model_buf_size = 0;
+  const auto model_buf = GetBinDataFromFile(output_file, model_buf_size);
+  gert::ZipArchiveReader archive(reinterpret_cast<const uint8_t *>(model_buf.get()), model_buf_size);
+  ASSERT_TRUE(archive.IsGood());
+
+  const auto file_names = archive.ListFiles();
+  EXPECT_NE(std::find(file_names.begin(), file_names.end(), kZipFileBaseName + "/data/model_0/runtime/libg1_om2.so"),
+            file_names.end());
+
+  size_t internal_size = 0U;
+  const auto internal_buf =
+      archive.ExtractToMem(kZipFileBaseName + "/data/model_0/runtime/csrc/g1_internal.h", internal_size);
+  ASSERT_NE(internal_buf, nullptr);
+  const std::string internal_header(reinterpret_cast<const char *>(internal_buf.get()), internal_size);
+  EXPECT_EQ(internal_header.find("struct HcclHorovodMeta"), std::string::npos);
+
+  size_t load_and_run_size = 0U;
+  const auto load_and_run_buf =
+      archive.ExtractToMem(kZipFileBaseName + "/data/model_0/runtime/csrc/g1_load_and_run.cpp", load_and_run_size);
+  ASSERT_NE(load_and_run_buf, nullptr);
+  const std::string load_and_run(reinterpret_cast<const char *>(load_and_run_buf.get()), load_and_run_size);
+  EXPECT_NE(load_and_run.find("(const HcclHorovodMeta[])"), std::string::npos);
+  EXPECT_NE(load_and_run.find("sizeof(HcclHorovodMeta)"), std::string::npos);
+  EXPECT_NE(load_and_run.find("params.hvd_metas = "), std::string::npos);
+  EXPECT_NE(load_and_run.find(".is_collective = 1"), std::string::npos);
+}
+
+/**
+ * 用例描述：在线 session 模式（ENABLE_RUNTIME_OM2=1）下 HCCL 任务不再拦截，转换打包成功
+ * 预置条件：
+ *   1. 与 HcomAllReduce 离线用例同构图与任务，预构建期设置 ENABLE_RUNTIME_OM2=1
+ * 测试步骤：
+ *   1. Om2PackageHelper::SaveToOmRootModel 在在线模式下转换打包为 .om2
+ *   2. 解包检查生成代码与编译产物
+ * 预期结果：
+ *   1. 转换成功，归档含 libg1_om2.so 编译产物
+ *   2. g1_load_and_run.cpp 含 DispatchHccl 下发段
+ */
+TEST_F(Om2St, ConvertOm2Model_Ok_HcclOnlineSessionMode) {
+  // slow_test_limit = 3000
+  // so 编译耗时较大
+  const auto &output_file = SuiteOm2File("hccl_online");
+  uint32_t model_buf_size = 0;
+  const auto model_buf = GetBinDataFromFile(output_file, model_buf_size);
+  gert::ZipArchiveReader archive(reinterpret_cast<const uint8_t *>(model_buf.get()), model_buf_size);
+  ASSERT_TRUE(archive.IsGood());
+
+  const auto file_names = archive.ListFiles();
+  EXPECT_NE(std::find(file_names.begin(), file_names.end(), kZipFileBaseName + "/data/model_0/runtime/libg1_om2.so"),
+            file_names.end());
+
+  size_t load_and_run_size = 0U;
+  const auto load_and_run_buf =
+      archive.ExtractToMem(kZipFileBaseName + "/data/model_0/runtime/csrc/g1_load_and_run.cpp", load_and_run_size);
+  ASSERT_NE(load_and_run_buf, nullptr);
+  const std::string load_and_run(reinterpret_cast<const char *>(load_and_run_buf.get()), load_and_run_size);
+  EXPECT_NE(load_and_run.find("DispatchHccl"), std::string::npos);
 }
 
 TEST_F(Om2St, ConvertOm2Model_Ok_ConvertGeneratedOm2ToJson) {

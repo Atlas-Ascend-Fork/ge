@@ -25,6 +25,7 @@ class InterfaceFileCodeGenerator : public CodeGeneratorBase {
   StructDecl *BuildTfAiCpuExInfoStruct();
   StructDecl *BuildArgsInfoStruct();
   StructDecl *BuildArgsRefreshInfoStruct() const;
+  DeclNode *BuildHcclFollowStreamCountMap(const Om2CodegenModel &codegen_model) const;
   FunctionDef *BuildAclrtMallocFunction() const;
   ClassDecl *BuildOm2ArgsTableClass();
   ClassDecl *BuildOm2ModelClass(const Om2CodegenModel &codegen_model);

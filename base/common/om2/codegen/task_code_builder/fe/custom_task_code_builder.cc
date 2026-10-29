@@ -303,11 +303,8 @@ Status CustomTaskCodeBuilder::BuildCustomKernelIrInfo(const OpDescPtr &op_desc) 
 }
 
 void CustomTaskCodeBuilder::InitArgsTableEntry(const TaskSemanticContributeContext &context, const uint64_t args_size) {
-  (void)build_data_.semantic.args_table_entry.emplace();
-  build_data_.semantic.args_table_entry->table_index = *context.next_args_table_index;
-  build_data_.semantic.args_table_entry->args_size = args_size;
-  build_data_.semantic.args_table_entry->host_offset = *context.next_host_args_offset;
-  args_table_entry_ = &(*build_data_.semantic.args_table_entry);
+  args_table_entry_ =
+      TaskCodeBuilderUtil::InitArgsTableEntry(context, build_data_.semantic.args_table_entry, args_size);
 }
 
 Status CustomTaskCodeBuilder::RenderDispatchCustomKernel(const VarRef &op, const VarRef &ctx,

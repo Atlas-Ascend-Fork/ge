@@ -27,6 +27,7 @@
 #include "framework/runtime/om2_model_executor.h"
 #include "common/debug/ge_log.h"
 #include "depends/profiler/src/dump_stub.h"
+#include "depends/runtime/src/runtime_stub.h"
 #include "aprof_pub.h"
 #include "depends/profiler/src/profiling_test_util.h"
 
@@ -554,6 +555,91 @@ TEST_F(ModelDumpManagerTest, PostprocessOm2TaskInfoExceptionDumpEnabledTest) {
   EXPECT_EQ(ret, SUCCESS);
 }
 
+// HCCL 任务 output dump 须走 DumpOp 通道（hccl_load_task 后插 output dump op），不落通用 SaveTask；
+// 通过 launch 失败注入判别分支命中（DumpOp 分支透传失败）
+TEST_F(ModelDumpManagerTest, PostprocessOm2TaskInfoHcclGoesThroughDumpOpTest) {
+  const char *kHcclDumpConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_mode": "output",
+          "dump_list": [
+              {
+                  "model_name": "test_model"
+              }
+          ]
+      }
+  })";
+  ASSERT_EQ(DumpConfig::Instance().ParseAndValidate(kHcclDumpConfig, static_cast<int32_t>(strlen(kHcclDumpConfig))),
+            SUCCESS);
+  DumpConfig::Instance().SetDataDumpEnabled(true);
+
+  ModelDumpManager manager(1);
+  ModelDumpInfo model_info{};
+  model_info.model_id = 1U;
+  model_info.model_name = "test_model";
+  manager.SetModelDumpInfo(model_info);
+
+  gert::Tensor output_tensor{};
+  output_tensor.SetSize(64U);
+  GertModelTaskIoEntry outputs[1] = {};
+  outputs[0U].tensor = &output_tensor;
+  outputs[0U].offset = 8U;
+  GertModelTaskDesc info{};
+  info.op_name = "hccl_allreduce";
+  info.op_type = "HcomAllReduce";
+  info.task_type = static_cast<uint64_t>(ModelTaskType::MODEL_TASK_HCCL);
+  info.task_id = 1U;
+  info.stream_id = 1U;
+  info.outputs = outputs;
+  info.output_num = 1U;
+
+  g_runtime_stub_mock = "rtCpuKernelLaunchWithFlag";
+  EXPECT_NE(manager.PostprocessOm2TaskInfo(info), SUCCESS);
+  g_runtime_stub_mock.clear();
+  EXPECT_EQ(manager.PostprocessOm2TaskInfo(info), SUCCESS);
+}
+
+// HCCL 任务 input dump 在 Preprocess 内走 DumpOp（hccl_load_task 前插 input dump op）
+TEST_F(ModelDumpManagerTest, PreprocessOm2TaskInfoHcclGoesThroughDumpOpTest) {
+  const char *kHcclDumpConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_mode": "input",
+          "dump_list": [
+              {
+                  "model_name": "test_model"
+              }
+          ]
+      }
+  })";
+  ASSERT_EQ(DumpConfig::Instance().ParseAndValidate(kHcclDumpConfig, static_cast<int32_t>(strlen(kHcclDumpConfig))),
+            SUCCESS);
+  DumpConfig::Instance().SetDataDumpEnabled(true);
+
+  ModelDumpManager manager(1);
+  ModelDumpInfo model_info{};
+  model_info.model_id = 1U;
+  model_info.model_name = "test_model";
+  manager.SetModelDumpInfo(model_info);
+
+  gert::Tensor input_tensor{};
+  input_tensor.SetSize(32U);
+  GertModelTaskIoEntry inputs[1] = {};
+  inputs[0U].tensor = &input_tensor;
+  GertModelTaskDesc info{};
+  info.op_name = "hccl_allreduce";
+  info.op_type = "HcomAllReduce";
+  info.task_type = static_cast<uint64_t>(ModelTaskType::MODEL_TASK_HCCL);
+  info.stream_id = 1U;
+  info.inputs = inputs;
+  info.input_num = 1U;
+
+  g_runtime_stub_mock = "rtCpuKernelLaunchWithFlag";
+  EXPECT_NE(manager.PreprocessOm2TaskInfo(info), SUCCESS);
+  g_runtime_stub_mock.clear();
+  EXPECT_EQ(manager.PreprocessOm2TaskInfo(info), SUCCESS);
+}
+
 TEST_F(ModelDumpManagerTest, IsDataDumpEnabledTest) {
   ModelDumpManager manager(1);
   uint8_t is_data_dump = 1U;
@@ -846,7 +932,7 @@ TEST(DataDumpImplTest, UpdateStepIdAfterBuildCopiesStepTest) {
   ASSERT_EQ(impl.BuildOpMappingBasicInfo(model_info, op_mapping_info), SUCCESS);
   ASSERT_NE(impl.step_id_dev_addr_, nullptr);
 
-  // 每次执行前刷新当前 step（对齐 v1 iterator_count_ 从 0 开始），验证 step 值被正确传递
+  // 每次执行前刷新当前 step（从 0 开始），验证 step 值被正确传递
   EXPECT_EQ(impl.UpdateStepId(0U, nullptr), SUCCESS);
   EXPECT_EQ(impl.step_id_host_val_, 0U);
   EXPECT_EQ(impl.UpdateStepId(42U, nullptr), SUCCESS);
@@ -866,7 +952,7 @@ TEST(OverflowDumpImplTest, IsOpDebugEnabledDefaultTest) {
   EXPECT_FALSE(impl.IsOpDebugEnabled());
 }
 
-// 对齐 v1(data_dumper.cc)：dump proto 的 data_type 写 IR(proto) 枚举而非 ge::DataType 原值，
+// dump proto 的 data_type 写 IR(proto) 枚举而非 ge::DataType 原值，
 // 两套枚举数值错位（DT_FLOAT: ge=0/proto=1, DT_BOOL: ge=12/proto=11），直接写 ge 枚举会导致
 // AICPU dump 解析侧 dtype 错位
 TEST(DumpOpProtoDtypeTest, BuildTaskInputsOutputsWriteIrDtype) {
@@ -1312,7 +1398,7 @@ TEST_F(ProfilingImplTest, SaveTaskInfo_InvalidTaskType_ReturnsSuccess) {
   EXPECT_EQ(ret, SUCCESS);
 }
 
-// 对齐 OM1：每次 dispatch 均上报算子基础/张量信息与 launch 耗时，不区分是否首次
+// 每次 dispatch 均上报算子基础/张量信息与 launch 耗时，不区分是否首次
 TEST_F(ProfilingImplTest, SaveTaskInfo_EveryDispatch_ReportsOpInfo) {
   ProfilingOptions options;
   options.task_time_enabled = true;
@@ -1363,7 +1449,7 @@ TEST_F(ProfilingImplTest, SaveTaskInfo_EveryDispatch_ReportsOpInfo) {
 }
 
 // 算子基础/张量信息以 unaging(agingFlag=0) 上报：msprof 分析侧按落盘文件模式判定 Op State(unaging=静态算子)，
-// OM2 需与 OM1 静态图一致
+// 需与静态图语义一致
 TEST_F(ProfilingImplTest, SaveTaskInfo_OpInfoReportedUnaging) {
   ProfilingOptions options;
   options.task_time_enabled = true;
@@ -1437,7 +1523,7 @@ TEST_F(ProfilingImplTest, SaveTaskInfo_DifferentOps_BothReported) {
   EXPECT_EQ(compact_count, 2U);
 }
 
-// 对齐 OM1 BuildNodeBasicInfo：HF32 模式(_op_impl_mode_enum == 0x40)算子上报 opFlag=1，供 HF32 Eligible 解析
+// HF32 模式(_op_impl_mode_enum == 0x40)算子上报 opFlag=1，供 HF32 Eligible 解析
 TEST_F(ProfilingImplTest, SaveTaskInfo_Hf32Mode_ReportsOpFlag) {
   ProfilingOptions options;
   options.task_time_enabled = true;
@@ -1503,7 +1589,7 @@ TEST_F(ProfilingImplTest, SaveTaskInfo_LegacyStructSize_SkipsReport) {
   EXPECT_EQ(compact_count, 0U);
 }
 
-// 非默认非 HF32 的实现模式值：opFlag 仍为 0，与 OM1 的 (mode == 0x40) 判别一致
+// 非默认非 HF32 的实现模式值：opFlag 仍为 0，与 (mode == 0x40) 判别一致
 TEST_F(ProfilingImplTest, SaveTaskInfo_DefaultImplMode_OpFlagZero) {
   ProfilingOptions options;
   options.task_time_enabled = true;

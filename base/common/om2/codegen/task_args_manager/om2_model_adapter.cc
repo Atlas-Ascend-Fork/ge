@@ -74,6 +74,13 @@ Status ModelAdapter::Init(const GeModelPtr &ge_model) {
   GE_CHK_BOOL_RET_STATUS(compute_graph != nullptr, INTERNAL_ERROR, "[OM2] compute_graph is nullptr.");
   version_ = ge_model_->GetVersion();
   name_ = ge_model_->GetName();
+  // FM 刷新模式由 ge.featureBaseRefreshable 决定（默认关闭），
+  // 与 graph_manager 读取同一 option；关闭时 FeatureMap 地址视为固定，无需槽位间接寻址
+  std::string refreshable = "0";
+  (void)GetContext().GetOption(OPTION_FEATURE_BASE_REFRESHABLE, refreshable);
+  feature_base_refreshable_ = (refreshable == "1");
+  GELOGI("[OM2] feature_base_refreshable=%d, model_name=%s.", static_cast<int32_t>(feature_base_refreshable_),
+         name_.c_str());
   runtime_param_.graph_id = compute_graph->GetGraphID();
   runtime_param_.graph_name = compute_graph->GetName();
   GE_ASSERT_SUCCESS(ModelUtils::InitRuntimeParams(ge_model_, runtime_param_));

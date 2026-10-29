@@ -251,6 +251,7 @@ target_link_libraries(ge_common
         ge_intf_pub
         msprof_headers
         runtime_headers
+        $<$<TARGET_EXISTS:hccl_headers>:hccl_headers>
         $<$<TARGET_EXISTS:aicpu_headers>:aicpu_headers>
         $<$<TARGET_EXISTS:datagw_headers>:datagw_headers>
         static_mmpa

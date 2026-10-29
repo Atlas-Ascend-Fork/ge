@@ -126,6 +126,7 @@ enum GertModelTaskLaunchType : uint64_t {
   ACL_RT_LAUNCH_KERNEL_V2 = 0,         // 通过 aclrtLaunchKernelV2 下发。
   RT_STARS_TASK_LAUNCH_WITH_FLAG = 1,  // 通过 rtStarsTaskLaunchWithFlag 下发。
   ACL_RT_LAUNCH_CUSTOM_KERNEL = 2,     // 通过 自定义算子的回调函数 下发。
+  ACL_RT_LAUNCH_HCCL = 3,              // 通过 Executor 侧 HCCL 适配层下发（静态离线通信任务）。
 };
 
 /**
@@ -167,12 +168,84 @@ struct GertModelLaunchCustomKernelParams {
 };
 
 /**
+ * @brief HVD（Horovod）通信算子每输入元数据。
+ */
+struct HcclHorovodMeta {
+  uint64_t struct_size = sizeof(HcclHorovodMeta);  // 布局变化时更新。
+  const char *input_name = nullptr;  // 输入，TF tensor 名（op_desc->GetInputNameByIndex(i)，回调对接用）。
+  const int64_t *dims = nullptr;     // 输入，该输入维度数组（SO 内静态字节）。
+  uint32_t dims_num = 0U;            // 输入，维度个数。
+  uint32_t abi_pad_1 = 0U;           // ABI 填充。
+  int32_t hccl_data_type = 0;        // 输入，该输入 HCCL 数据类型枚举数值（编译期转换，每输入独立）。
+  uint32_t abi_pad_2 = 0U;           // ABI 填充。
+  uint64_t count = 0U;               // 输入，该输入通信元素数（编译期按 GetHorovodCount 规则）。
+};
+
+/**
+ * @brief HCCL 通信任务扁平参数。
+ */
+struct HcclTaskParams {
+  uint64_t struct_size = sizeof(HcclTaskParams);  // 布局变化时更新。
+  const char *hccl_type = nullptr;                // 输入，通信算子类型字符串（KernelHcclDef.hccl_type）。
+  const void *private_def = nullptr;              // 输入，HCCL 私有定义（编译期静态字节）。
+  uint32_t private_def_len = 0U;                  // 输入，私有定义长度，单位为字节。
+  uint32_t abi_pad_1 = 0U;                        // ABI 填充。
+  void *main_stream = nullptr;                    // 输入，主流句柄。
+  void *const *input_addrs = nullptr;             // 输入，输入地址数组（录制期解析）。
+  uint32_t input_num = 0U;                        // 输入，输入地址数量。
+  uint32_t abi_pad_2 = 0U;                        // ABI 填充。
+  void *const *output_addrs = nullptr;            // 输入，输出地址数组（录制期解析）。
+  uint32_t output_num = 0U;                       // 输入，输出地址数量。
+  uint32_t abi_pad_3 = 0U;                        // ABI 填充。
+  void *workspace_addr = nullptr;                 // 输入，workspace 地址，可为空。
+  uint64_t workspace_size = 0U;                   // 输入，workspace 字节数。
+  int32_t hccl_data_type = 0;                     // 输入，HCCL 数据类型枚举数值（编译期转换）。
+  int32_t hccl_reduce_op = 0;                     // 输入，HCCL 归约类型枚举数值（编译期转换）。
+  uint64_t count = 0U;                            // 输入，通信元素数。
+  int32_t root_id = 0;                            // 输入，Broadcast/Gather/Reduce root rank。
+  uint32_t abi_pad_4 = 0U;                        // ABI 填充。
+  void *const *follow_streams = nullptr;          // 输入，follow 从流句柄数组（InitResources 按主流预创建）。
+  uint32_t follow_stream_num = 0U;                // 输入，follow 从流数量。
+  uint32_t abi_pad_5 = 0U;                        // ABI 填充。
+  void *const *attached_streams = nullptr;        // 输入，attached 从流句柄数组，可为空。
+  uint32_t attached_stream_num = 0U;              // 输入，attached 从流数量。
+  uint8_t need_refresh = 0U;                      // 输入，是否地址刷新模式（args 槽位间接寻址）。
+  uint8_t abi_pad_6[3] = {0U};                    // ABI 填充。
+  void *args_base = nullptr;                      // 输入，args 基址（need_refresh 间接寻址模式，可为空）。
+  uint32_t abi_pad_7 = 0U;                        // ABI 填充。
+  uint32_t abi_pad_8 = 0U;                        // ABI 填充（尾部显式对齐）。
+  // ---- HVD / 零拷贝 / 溢出扩展（尾部追加，多 info/零拷贝/溢出协议）----
+  const HcclHorovodMeta *hvd_metas = nullptr;  // 输入，非空 = HVD 多 info 模式（每输入一条 meta）；HCOM 为 nullptr。
+  uint8_t hvd_wait = 0U;                       // 输入，HVDWAIT：仅 1 条 info（只记 hccl_type，无 IO）。
+  uint8_t is_collective = 0U;   // 输入，LoadTask 成功后缓存通信任务扩展信息（aclrtCacheLastTaskExtendInfo）。
+  uint8_t abi_pad_9[6] = {0U};  // ABI 填充。
+  const int32_t *input_zero_copy_flags = nullptr;   // 输入，每输入零拷贝标志（槽位化；长度 = input_num）。
+  const int32_t *output_zero_copy_flags = nullptr;  // 输入，每输出零拷贝标志（长度 = output_num）。
+  void *overflow_addr = nullptr;                    // 输入，溢出检测地址（op 含 GLOBALWORKSPACE_TYPE 时非空，L3）。
+};
+
+/**
+ * @brief Executor 提供给模型 SO 的 HCCL 插件宿主服务函数。
+ */
+using HcclLoadTaskFunc = int32_t (*)(void *instance_handle, const HcclTaskParams *params);
+
+/**
+ * @brief HCCL 通信任务下发参数。
+ */
+struct GertModelLaunchHcclParams {
+  uint64_t struct_size = sizeof(GertModelLaunchHcclParams);  // 布局变化时更新。
+  HcclLoadTaskFunc func_load_hccl = nullptr;                 // 输入，任务下发函数（宿主 hccl_load_task）。
+  const HcclTaskParams *task_params = nullptr;               // 输入，扁平任务参数。
+};
+
+/**
  * @brief 任务下发参数联合体，根据 GertModelTaskLaunchInfo::launch_type 选择成员。
  */
 union GertModelTaskLaunchParams {
   GertModelLaunchKernelV2Params launch_kernel_v2_params;
   GertModelLaunchStarsTaskWithFlagParams launch_stars_task_params;
   GertModelLaunchCustomKernelParams launch_custom_kernel_params;
+  GertModelLaunchHcclParams launch_hccl_params;
 };
 
 /**
@@ -204,6 +277,7 @@ struct GertModelLoadCallbacks {
   QueryBinHandleFromStoreFunc query_bin_handle_from_store = nullptr;      // 查询缓存。
   SaveBinHandleToStoreFunc save_bin_handle_to_store = nullptr;            // 写入缓存。
   ReleaseBinHandleFromStoreFunc release_bin_handle_from_store = nullptr;  // 释放缓存。
+  HcclLoadTaskFunc hccl_load_task = nullptr;  // 下发 HCCL 任务（store 获取内化 + Prepare+LoadTask）。
 };
 
 using ReportModelRunFunc = int32_t (*)(void *instance_handle, const struct GertModelRunReportInfo *info);

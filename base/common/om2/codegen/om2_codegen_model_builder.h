@@ -25,6 +25,8 @@ struct InputModelIoItem {
   uint32_t index{0U};
   int64_t memory_offset{0};
   size_t visit_order{0U};
+  bool is_addr_refreshable{true};
+  int64_t memory_size{0};
 };
 
 struct OutputModelIoItem {
@@ -32,6 +34,7 @@ struct OutputModelIoItem {
   int64_t memory_offset{0};
   int64_t addr_offset{0};
   bool is_addr_refreshable{true};
+  int64_t memory_size{0};
 };
 
 class Om2CodegenModelBuilder {

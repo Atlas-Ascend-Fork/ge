@@ -15,15 +15,18 @@
 #include <limits>
 #include <map>
 #include <unordered_map>
+#include <set>
 
 #include "common/file_constant_utils/file_constant_utils.h"
 #include "common/ge_common/string_util.h"
 #include "framework/om2/model_data/om2_package_contants.h"
 #include "framework/common/gert_model_data_utils.h"
 #include "common/om2/codegen/om2_codegen_utils.h"
+#include "common/helper/om2/om2_utils.h"
 #include "common/om2/codegen/om2_model_utils.h"
 #include "graph/debug/ge_attr_define.h"
 #include "common/om2/codegen/task_code_builder/task_code_builder.h"
+#include "common/om2/codegen/task_args_manager/om2_task_args_refresh_type_classifier.h"
 #include "graph/utils/op_type_utils.h"
 #include "graph/utils/tensor_utils.h"
 #include "framework/common/framework_types_internal.h"
@@ -31,6 +34,12 @@
 #include "common/op_tiling/op_tiling_rt2.h"
 
 namespace ge {
+namespace {
+bool IsSendRecvOpType(const std::string &op_type) {
+  return (op_type == "SendMem") || (op_type == "RecvMem") || (op_type == SEND) || (op_type == RECV) ||
+         (op_type == SENDNOTIFY) || (op_type == RECVNOTIFY);
+}
+}  // namespace
 namespace {
 constexpr uint32_t kTrueBranchStreamCount = 1U;
 const std::string kTfSessionTask = "TfSessionTask";
@@ -46,6 +55,79 @@ Node *GetPeerNode(const Node &netoutput_node, size_t input_index) {
     return nullptr;
   }
   return peer_out_anchor->GetOwnerNodeBarePtr();
+}
+
+// 节点类型是否为 HCOM/HVD 通信算子
+bool IsHcclOpType(const std::string &node_type) {
+  return Om2CodegenUtils::IsHcomOpType(node_type) || Om2CodegenUtils::IsHorovodOpType(node_type);
+}
+
+// 输入侧：沿 consumer 方向穿 Identity-like（IDENTITY/MEMCPYASYNC）透传链，终点是否为通信算子
+bool FindHcclByConsumers(const Node &node, std::set<const Node *> &visited) {
+  if (visited.count(&node) > 0U) {
+    return false;
+  }
+  (void)visited.insert(&node);
+  for (const auto *out_anchor : node.GetAllOutDataAnchorsPtr()) {
+    if (out_anchor == nullptr) {
+      continue;
+    }
+    for (const auto *peer_anchor : out_anchor->GetPeerInDataAnchorsPtr()) {
+      if (peer_anchor == nullptr) {
+        continue;
+      }
+      const Node *peer_node = peer_anchor->GetOwnerNodeBarePtr();
+      if (peer_node == nullptr) {
+        continue;
+      }
+      if (IsHcclOpType(peer_node->GetType()) ||
+          (om2::TaskArgsRefreshTypeClassifier::IsIdentityLikeType(peer_node->GetType()) &&
+           FindHcclByConsumers(*peer_node, visited))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// 输出侧：沿 producer 方向穿 Identity-like 透传链回溯，是否源自通信算子
+bool FindHcclByProducers(const Node &node, std::set<const Node *> &visited) {
+  if (visited.count(&node) > 0U) {
+    return false;
+  }
+  (void)visited.insert(&node);
+  if (IsHcclOpType(node.GetType())) {
+    return true;
+  }
+  if (!om2::TaskArgsRefreshTypeClassifier::IsIdentityLikeType(node.GetType())) {
+    return false;
+  }
+  for (const auto *in_anchor : node.GetAllInDataAnchorsPtr()) {
+    if (in_anchor == nullptr) {
+      continue;
+    }
+    const auto peer_out_anchor = in_anchor->GetPeerOutAnchor();
+    if (peer_out_anchor == nullptr) {
+      continue;
+    }
+    const Node *peer_node = peer_out_anchor->GetOwnerNodeBarePtr();
+    if ((peer_node != nullptr) && FindHcclByProducers(*peer_node, visited)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Data 节点输出是否（经 Identity-like 链）直达通信算子：是则该模型输入走拷贝模式
+bool OutputFeedsHcclOp(const Node &data_node) {
+  std::set<const Node *> visited;
+  return FindHcclByConsumers(data_node, visited);
+}
+
+// NetOutput 输入的生产者是否（经 Identity-like 链）源自通信算子：是则该模型输出走拷贝模式
+bool InputFedByHcclOp(const Node &producer) {
+  std::set<const Node *> visited;
+  return FindHcclByProducers(producer, visited);
 }
 
 bool CompareInputModelIoItem(const InputModelIoItem &lhs, const InputModelIoItem &rhs) {
@@ -193,12 +275,29 @@ Status Om2CodegenModelBuilder::CreateTaskCodeBuilders(const GeModelPtr &model, A
     }
     GE_ASSERT_NOTNULL(task_builder, "Failed to create task code builder from type %d, task index %zu", task_def->type(),
                       i);
+    if (task_type == ModelTaskType::MODEL_TASK_HCCL) {
+      codegen_model.runtime.has_hccl = true;
+      int64_t used_stream_num = 0;
+      const auto op_desc_it = op_desc_by_index.find(task_def->kernel_hccl().op_index());
+      if (op_desc_it != op_desc_by_index.end()) {
+        (void)AttrUtils::GetInt(op_desc_it->second, "used_stream_num", used_stream_num);
+      }
+      if (used_stream_num > 0) {
+        auto &count = codegen_model.runtime.hccl_follow_stream_counts[task_def->stream_id()];
+        if (static_cast<uint32_t>(used_stream_num) > count) {
+          count = static_cast<uint32_t>(used_stream_num);
+        }
+      }
+    }
     if (task_type == ModelTaskType::MODEL_TASK_STREAM_LABEL_SWITCH_BY_INDEX) {
       codegen_model.runtime.has_label_switch = true;
     }
     if (task_type == ModelTaskType::MODEL_TASK_STREAM_LABEL_GOTO) {
       codegen_model.runtime.has_label_goto = true;
     }
+  }
+  for (const auto &[stream_id, follow_count] : codegen_model.runtime.hccl_follow_stream_counts) {
+    GELOGI("[OM2] hccl follow streams aggregated, main_stream_id=%u, count=%u", stream_id, follow_count);
   }
   return SUCCESS;
 }
@@ -384,10 +483,38 @@ Status Om2CodegenModelBuilder::UpdateStreamFlag(const GeModelPtr &model, Om2Code
     }
   }
 
+  std::set<uint32_t> hcom_streams;
+  for (const auto &node : compute_graph->GetAllNodes()) {
+    const auto &op_desc = node->GetOpDesc();
+    GE_CHECK_NOTNULL(op_desc);
+    if (op_desc->GetOpKernelLibName() != kEngineNameHccl) {
+      continue;
+    }
+    hcom_streams.insert(static_cast<uint32_t>(op_desc->GetStreamId()));
+    for (const auto attached_stream_id : op_desc->GetAttachedStreamIds()) {
+      if (attached_stream_id >= 0) {
+        hcom_streams.insert(static_cast<uint32_t>(attached_stream_id));
+      }
+    }
+  }
+  for (const auto &node : compute_graph->GetAllNodes()) {
+    const auto &op_desc = node->GetOpDesc();
+    GE_CHECK_NOTNULL(op_desc);
+    const auto stream_id = static_cast<uint32_t>(op_desc->GetStreamId());
+    if ((hcom_streams.count(stream_id) == 0U) || (op_desc->GetOpKernelLibName() == kEngineNameHccl) ||
+        (IsSendRecvOpType(op_desc->GetType()))) {
+      continue;
+    }
+    (void)hcom_streams.erase(stream_id);
+  }
+
   for (uint32_t i = 0U; i < codegen_model.runtime.stream_num; ++i) {
     if (huge_streams.count(static_cast<int32_t>(i)) > 0U) {
       GELOGI("[OM2]Stream %u is huge stream.", i);
       codegen_model.runtime.stream_flag_values[i] = "RT_STREAM_PERSISTENT|RT_STREAM_HUGE";
+    }
+    if (hcom_streams.count(i) > 0U) {
+      codegen_model.runtime.stream_flag_values[i] += "|RT_STREAM_FORCE_COPY";
     }
     if (active_stream_indication.count(i) > 0U) {
       codegen_model.runtime.bind_flag_values[i] = "RT_INVALID_FLAG";
@@ -453,15 +580,16 @@ Status Om2CodegenModelBuilder::BuildModelIo(const GeModelPtr &model, Om2CodegenM
   std::stable_sort(input_items.begin(), input_items.end(), &CompareInputModelIoItem);
   uint32_t update_host_args_index = 0U;
   for (const auto &item : input_items) {
-    codegen_model.model_io.entries.push_back(
-        ModelIoEntry{item.index, item.memory_offset, update_host_args_index, true, true, 0});
+    codegen_model.model_io.entries.push_back(ModelIoEntry{item.index, item.memory_offset, update_host_args_index, true,
+                                                          item.is_addr_refreshable, 0, item.memory_size});
     ++update_host_args_index;
   }
   uint32_t max_output_index = 0U;
   uint32_t out_update_host_args_index = 0U;
   for (const auto &item : output_items) {
     codegen_model.model_io.entries.push_back(ModelIoEntry{item.index, item.memory_offset, out_update_host_args_index,
-                                                          false, item.is_addr_refreshable, item.addr_offset});
+                                                          false, item.is_addr_refreshable, item.addr_offset,
+                                                          item.memory_size});
     ++update_host_args_index;
     ++out_update_host_args_index;
     max_output_index = std::max(max_output_index, item.index);
@@ -488,7 +616,14 @@ Status Om2CodegenModelBuilder::CollectModelIoItems(Om2CodegenModel &codegen_mode
       const auto output_offsets = op_desc->GetOutputOffset();
       GE_ASSERT_TRUE(!output_offsets.empty(), "[OM2] Data node output offset is empty, node=%s",
                      node->GetName().c_str());
-      input_items.push_back(InputModelIoItem{index, output_offsets[0], input_visit_order});
+      int64_t memory_size = 0;
+      const auto output_desc = op_desc->GetOutputDescPtr(0U);
+      if (output_desc != nullptr) {
+        (void)TensorUtils::GetSize(*output_desc, memory_size);
+      }
+      // 直连通信算子的模型输入走拷贝模式（need_refresh=0 直址语义要求数据在固定地址）
+      input_items.push_back(
+          InputModelIoItem{index, output_offsets[0], input_visit_order, !OutputFeedsHcclOp(*node), memory_size});
       (void)codegen_model.model_io.io_offsets.emplace(output_offsets[0]);
       ++input_visit_order;
       continue;
@@ -525,7 +660,12 @@ Status Om2CodegenModelBuilder::CollectNetOutputIoItems(const Node &node, const O
     Node *peer_node = GetPeerNode(node, i);
     OpDescPtr peer_op_desc = (peer_node != nullptr) ? peer_node->GetOpDesc() : nullptr;
 
-    output_items.push_back(OutputModelIoItem{model_output_index, base_output_offset, 0, true});
+    int64_t memory_size = 0;
+    (void)TensorUtils::GetSize(*tensor_desc, memory_size);
+    // 直连通信算子的模型输出走拷贝模式（HCCL 直址写固定区后拷出）
+    const bool is_addr_refreshable = (peer_node == nullptr) || !InputFedByHcclOp(*peer_node);
+    output_items.push_back(
+        OutputModelIoItem{model_output_index, base_output_offset, 0, is_addr_refreshable, memory_size});
     (void)io_offsets.emplace(base_output_offset);
   }
   return SUCCESS;

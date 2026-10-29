@@ -1316,7 +1316,7 @@ TEST_F(Om2PackageHelperUt, BuildManifest_NullRootModel) {
   gert::InitGertModelData(model_data);
   model_data.manifest = std::make_unique<gert::GertModelDataManifest>();
   model_data.models.emplace_back(std::make_unique<gert::GertModelDataModel>());
-  ASSERT_EQ(om2_packager.BuildManifest(model_data), SUCCESS);
+  ASSERT_EQ(om2_packager.BuildManifest(model_data, nullptr), SUCCESS);
 
   EXPECT_EQ(model_data.manifest->model_num, 1U);
   EXPECT_EQ(std::string(gert::GertGetStr(model_data.manifest->compatibility.compiler_version)),

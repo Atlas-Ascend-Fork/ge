@@ -163,13 +163,19 @@ bool IsCustomKernelTask(const GertModelTaskDesc &task_info) {
   return task_type == ge::ModelTaskType::MODEL_TASK_CUSTOM_KERNEL;
 }
 
+bool IsHcclTask(const GertModelTaskDesc &task_info) {
+  const auto task_type = static_cast<ge::ModelTaskType>(task_info.task_type);
+  return task_type == ge::ModelTaskType::MODEL_TASK_HCCL;
+}
+
 int32_t ReportTaskPreprocess(void *instance_handle, GertModelTaskDesc *task_info) {
   const auto kernel_type = static_cast<ge::ccKernelType>(task_info->kernel_type);
   if (instance_handle == nullptr) {
     GELOGW("[OM2] ModelExecutor handle is null, skip preprocess.");
     return ge::SUCCESS;
   }
-  if (!(IsAicoreTask(*task_info) || IsCustomKernelTask(*task_info) || (kernel_type == ge::ccKernelType::AI_CPU_KFC))) {
+  if (!(IsAicoreTask(*task_info) || IsCustomKernelTask(*task_info) || IsHcclTask(*task_info) ||
+        (kernel_type == ge::ccKernelType::AI_CPU_KFC))) {
     GELOGI(
         "[OM2] Current task does not require preprocess, model_id=%u, op_name=%s, op_type=%s, task_type=%u, "
         "kernel_type=%llu.",
@@ -229,6 +235,10 @@ int32_t ReportTaskPostprocess(void *instance_handle, GertModelTaskDesc *task_inf
   GE_RETURN_WITH_LOG_IF_ERROR(ret,
                               "[OM2] ReportDfxTaskPostprocess failed, model_id=%u, op_name=%s, op_type=%s, ret=%d.",
                               GetModelId(instance_handle), GetTaskOpName(task_info), GetTaskOpType(task_info), ret);
+  // coredump 定位辅助：区分 dump 侧（PostprocessOm2TaskInfo 内）与 profiling 侧崩溃
+  GELOGI("[OM2][Dump][Post] ReportDfxTaskPostprocess done, model_id=%u, op_name=%s, ret=%d.",
+         GetModelId(instance_handle), GetTaskOpName(task_info), ret);
+  GELOGI("[OM2][Dump][Post] begin SaveProfilingTaskInfo, op_name=%s.", GetTaskOpName(task_info));
   // profiling 任务信息由 executor 本地保存（profiling_impl_ 已从 ModelDumpManager 迁移至 Om2ModelExecutor）
   static_cast<const gert::Om2ModelExecutor *>(instance_handle)->SaveProfilingTaskInfo(*task_info);
   return ge::SUCCESS;
@@ -321,6 +331,34 @@ int32_t LaunchCustKernelDumpTask(void *instance_handle, GertModelTaskLaunchInfo 
   return ge::SUCCESS;
 }
 
+int32_t LaunchHcclDumpTask(void *instance_handle, GertModelTaskLaunchInfo *launch_info) {
+  GE_ASSERT_NOTNULL(launch_info, "[OM2] launch_info is nullptr, model_id=%u.", GetModelId(instance_handle));
+  GE_ASSERT_NOTNULL(launch_info->task_info, "[OM2] task_info is nullptr, model_id=%u.", GetModelId(instance_handle));
+  GE_ASSERT_NOTNULL(launch_info->launch_params, "[OM2] launch_params is nullptr, model_id=%u.",
+                    GetModelId(instance_handle));
+  auto &hccl_params = launch_info->launch_params->launch_hccl_params;
+  GE_ASSERT_NOTNULL(hccl_params.func_load_hccl, "[OM2] func_load_hccl is nullptr, model_id=%u.",
+                    GetModelId(instance_handle));
+  GE_ASSERT_NOTNULL(hccl_params.task_params, "[OM2] task_params is nullptr, model_id=%u.", GetModelId(instance_handle));
+
+  GE_RETURN_WITH_LOG_IF_ERROR(ReportTaskPreprocess(instance_handle, launch_info->task_info),
+                              "[OM2] preprocess failed, model_id=%u, op_name=%s, op_type=%s.",
+                              GetModelId(instance_handle), GetTaskOpName(launch_info->task_info),
+                              GetTaskOpType(launch_info->task_info));
+
+  GE_RETURN_WITH_LOG_IF_ERROR(hccl_params.func_load_hccl(instance_handle, hccl_params.task_params),
+                              "[OM2] execute hccl task failed, model_id=%u, op_name=%s, op_type=%s.",
+                              GetModelId(instance_handle), GetTaskOpName(launch_info->task_info),
+                              GetTaskOpType(launch_info->task_info));
+
+  GE_RETURN_WITH_LOG_IF_ERROR(ReportTaskPostprocess(instance_handle, launch_info->task_info),
+                              "[OM2] postprocess failed, model_id=%u, op_name=%s, op_type=%s.",
+                              GetModelId(instance_handle), GetTaskOpName(launch_info->task_info),
+                              GetTaskOpType(launch_info->task_info));
+
+  return ge::SUCCESS;
+}
+
 }  // namespace
 
 extern "C" int32_t GertModelLaunchTask(void *instance_handle, GertModelTaskLaunchInfo *launch_info) {
@@ -332,6 +370,8 @@ extern "C" int32_t GertModelLaunchTask(void *instance_handle, GertModelTaskLaunc
       return LaunchDsaTask(instance_handle, launch_info);
     case ACL_RT_LAUNCH_CUSTOM_KERNEL:
       return LaunchCustKernelDumpTask(instance_handle, launch_info);
+    case ACL_RT_LAUNCH_HCCL:
+      return LaunchHcclDumpTask(instance_handle, launch_info);
     default:
       GELOGE(ge::UNSUPPORTED, "[OM2] Unsupported launch type=%u, model_id=%u, op_name=%s, op_type=%s.",
              static_cast<uint32_t>(launch_info->launch_type), GetModelId(instance_handle),

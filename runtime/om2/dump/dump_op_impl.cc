@@ -258,7 +258,7 @@ Status DumpOp::BuildTaskInputs(const GertModelTaskDesc &task_desc) {
     }
     const auto &tensor = *entry.tensor;
 
-    // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
+    // 直接写 args + offset 地址给 AICPU，不解引用
     uint64_t device_address = reinterpret_cast<uint64_t>(tensor.GetAddr());
     auto addr_type = DumpTransAddressType::kTraditional;
 
@@ -341,7 +341,7 @@ Status DumpOp::BuildTaskOutputs(const GertModelTaskDesc &task_desc) {
     }
     const auto &tensor = *entry.tensor;
 
-    // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
+    // 直接写 args + offset 地址给 AICPU，不解引用
     uint64_t device_address = reinterpret_cast<uint64_t>(tensor.GetAddr());
     auto addr_type = DumpTransAddressType::kTraditional;
 

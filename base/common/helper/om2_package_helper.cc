@@ -19,6 +19,7 @@
 #include "framework/common/helper/model_save_helper_factory.h"
 #include "common/file_constant_utils/file_constant_utils.h"
 #include "common/ge_common/ge_types.h"
+#include "common/opskernel/ops_kernel_info_types.h"
 #include "framework/common/gert_model_data_serialize.h"
 #include "framework/common/gert_model_data_deserialize.h"
 #include "framework/om2/model_data/om2_package_contants.h"
@@ -932,12 +933,25 @@ Status Om2PackageHelper::BuildDebugInfo(const GeModelPtr &ge_model, gert::GertMo
   return SUCCESS;
 }
 
-Status Om2PackageHelper::BuildManifest(gert::GertModelData &model_data) {
+Status Om2PackageHelper::BuildManifest(gert::GertModelData &model_data, const GeModelPtr &ge_model) {
   GELOGI("[OM2] Begin to build manifest");
   gert::GertModelDataManifest &manifest = *model_data.manifest;
   manifest.compatibility.compiler_version = gert::GertMakeStr(gert::GERT_EXECUTOR_VERSION);
   manifest.model_num = static_cast<uint64_t>(model_data.models.size());
   manifest.atc_command = gert::GertMakeStr(domi::GetContext().atc_cmdline);
+  if (ge_model != nullptr) {
+    const auto &model_task_def = ge_model->GetModelTaskDefPtr();
+    if (model_task_def != nullptr) {
+      for (int32_t i = 0; i < model_task_def->task_size(); ++i) {
+        if (static_cast<ModelTaskType>(model_task_def->task(i).type()) == ModelTaskType::MODEL_TASK_HCCL) {
+          (void)manifest.compatibility.used_features.emplace(gert::GertMakeStr("hccl_communication"),
+                                                             gert::GertMakeStr("1.0"));
+          GELOGI("[OM2] Manifest used_features registered: hccl_communication");
+          break;
+        }
+      }
+    }
+  }
   GELOGI("[OM2] Successfully built manifest");
   return SUCCESS;
 }
@@ -988,7 +1002,7 @@ Status Om2PackageHelper::BuildOm2ModelData(const GeModelPtr &ge_model, gert::Ger
                                                unit.variables_config->entries));
   }
   GE_ASSERT_SUCCESS(BuildDebugInfo(ge_model, unit));
-  GE_ASSERT_SUCCESS(BuildManifest(model_data));
+  GE_ASSERT_SUCCESS(BuildManifest(model_data, ge_model));
 
   GELOGI("[OM2] Successfully built GertModelData");
   return SUCCESS;
