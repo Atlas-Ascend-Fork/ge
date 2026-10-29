@@ -2,7 +2,7 @@
 
 ## 功能描述<a name="section5991635456363"></a>
 
-本样例为 Conv2D/Conv2DV2/ExtendConv2D 与 Concat 零拷贝标记的自定义 pass 样例，识别 Conv2D/Conv2DV2/ExtendConv2D+Concat 结构后，通过给节点设置属性的方式将 Concat 标记为虚拟算子（不生成 Task、输出复用输入内存），并描述各 conv 输出在 Concat 输出连续内存中的排布信息。
+本样例为 Conv2D/Conv2DV2/ExtendConv2D 与 Concat 零拷贝标记的自定义 pass 样例，识别 Conv2D/Conv2DV2/ExtendConv2D+Concat 结构后，通过给节点设置属性的方式将 Concat 标记为虚拟算子（不生成 Task、输出复用输入内存），并描述各 conv 输出在 Concat 输出连续内存中的排布信息。pass 通过 GetAllNodes 遍历图内所有节点（含子图节点）。
 
 识别的固定 pattern：
 
@@ -29,7 +29,8 @@
 匹配条件：
 
 - ConcatD/ConcatV2D 的所有输入均来自不同的 Conv2D/Conv2DV2/ExtendConv2D 节点，且对应 conv 输出仅被该 Concat 消费；
-- 每个 conv 输出张量字节数（C 轴及后续维度连续排布的大小）为 32B 的整数倍，保证各输入在 concat 连续内存中的起始地址 32B 对齐（与 GE 内置 `CheckPhonyConcatInputIs32Align` 约束一致）；
+- 每个 conv 输出 format 为 NCHW 或 NHWC，且 C 维度 32 字节对齐（C 维度大小 = C 轴大小 × dtype 大小，为 32B 的整数倍；NCHW 中 C 轴为 dim 1，NHWC 中 C 轴为最内层 dim 3），保证各输入在 concat 连续内存中的起始地址 32B 对齐（强于 GE 内置 `CheckPhonyConcatInputIs32Align` 的张量大小 32B 对齐约束）；
+- concat 的拼接轴（concat_dim）与 conv 输出的 C 轴对应，支持负索引（从最后一维起算）：NCHW 为 dim 1 或 -3，NHWC 为 dim 3 或 -1；
 - 输入输出 shape 为静态 shape，数据类型为常见定长类型。
 
 > 说明：本样例仅演示属性设置方式，未覆盖 GE 内置 Concat no-task 优化的完整校验链（如 32 字节对齐、前驱节点类型、级联 continuous input 等）。实际使用时需结合内存校验确保各 conv 输出地址满足连续性要求，否则可能导致运行结果错误。
@@ -40,12 +41,16 @@
 ├── src
 │   ├──conv_concat_notask_pass.cpp  // pass实现文件
 ├── CMakeLists.txt                  // 编译脚本
+├── data
+│   ├── gen_onnx.py                 // ONNX 模型生成脚本（Conv2D+Concat 结构）
+│   └── run_atc.sh                  // ATC 转换脚本（带 DUMP_GE_GRAPH）
 ```
 
 ## 环境要求<a name="section383335652346"></a>
 
 - 编译器：GCC >= 7.3.x
-- 已完成[相关环境准备](../../../../docs/zh/build.md)。
+- 使用python及其依赖库版本：python>=3.9、onnx
+- 已完成[相关环境准备](../../../../../docs/zh/build.md)。
 
 ## 程序编译<a name="section6645633456813"></a>
 
@@ -102,15 +107,21 @@
 
 2. 使用ATC离线推理。
 
-    - 设置环境变量，dump出编译过程中的模型图：
+    - 在**data**目录执行模型生成脚本，生成包含 Conv2D+Concat 结构的 ONNX 模型：
+
+      **python3 gen_onnx.py**
+
+      执行结束后，在**data**目录下生成**model.onnx**模型文件。
+
+    - 执行ATC命令，其中soc_version根据实际模型运行环境填写（本pass仅在mc62版本芯片上生效，即soc_version以MC62开头）：
+
+      **atc --model=./model.onnx --framework=5 --soc_version=xxx --output=./model**
+
+      或直接使用**data**目录下的基础运行脚本（脚本内部已设置DUMP_GE_GRAPH等环境变量并执行ATC转换）：
 
       ```
-      export DUMP_GE_GRAPH=1
+      bash run_atc.sh MC62
       ```
-
-    - 使用包含 Conv2D+Concat 结构的模型执行ATC命令，其中soc_version根据实际模型运行环境填写：
-
-      **atc --model=./model.pb --framework=3 --soc_version=xxx --output=./model**
 
     - 检查执行结果：
 
@@ -118,6 +129,14 @@
 
         ```
         ConvConcatNotaskPass begin.
+        ConvConcatNotaskPass end.
+        ```
+
+      - 本pass在入口处校验芯片版本，仅mc62版本芯片执行后续标记流程；其他芯片pass直接跳过，日志中不会出现属性标记相关内容，仅打印如下：
+
+        ```
+        ConvConcatNotaskPass begin.
+        Soc version is not MC62, skip.
         ConvConcatNotaskPass end.
         ```
 

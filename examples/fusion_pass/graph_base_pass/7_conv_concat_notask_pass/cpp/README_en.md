@@ -2,7 +2,7 @@
 
 ## Description
 
-This sample demonstrates a custom pass that marks the Conv2D/Conv2DV2/ExtendConv2D+Concat pattern for zero-copy optimization. After the Conv2D/Conv2DV2/ExtendConv2D+Concat structure is identified, the Concat node is marked as a virtual operator (no hardware task generated, output reusing input memory) by setting attributes, and the layout information of each conv output in the continuous output memory of Concat is described.
+This sample demonstrates a custom pass that marks the Conv2D/Conv2DV2/ExtendConv2D+Concat pattern for zero-copy optimization. After the Conv2D/Conv2DV2/ExtendConv2D+Concat structure is identified, the Concat node is marked as a virtual operator (no hardware task generated, output reusing input memory) by setting attributes, and the layout information of each conv output in the continuous output memory of Concat is described. The pass traverses all nodes in the graph (including subgraph nodes) via GetAllNodes.
 
 The matched fixed pattern:
 
@@ -29,7 +29,8 @@ Attributes set by this pass:
 Matching conditions:
 
 - All inputs of ConcatD/ConcatV2D come from different Conv2D/Conv2DV2/ExtendConv2D nodes, and each conv output is consumed only by this Concat;
-- The byte size of each conv output (laid out continuously along the C axis and the following dims) is a multiple of 32 bytes, ensuring that the start address of each input in the continuous output memory of the concat is 32B aligned (consistent with the built-in GE check `CheckPhonyConcatInputIs32Align`);
+- The format of each conv output is NCHW or NHWC, and the C dim is 32-byte aligned (the C dim size = the C axis size × the dtype size, which is a multiple of 32 bytes; in NCHW the C axis is dim 1, and in NHWC the C axis is the innermost dim 3), ensuring that the start address of each input in the continuous output memory of the concat is 32B aligned (stronger than the tensor-size 32B alignment check of the built-in GE `CheckPhonyConcatInputIs32Align`);
+- The concat dim of the Concat corresponds to the C axis of the conv outputs, negative indices (counting from the last dim) are supported: dim 1 or -3 for NCHW, dim 3 or -1 for NHWC;
 - Input and output shapes are static, and data types are common fixed-length types.
 
 > Note: This sample only demonstrates how to set attributes, and does not cover the complete check chain of the built-in GE Concat no-task optimization (such as 32-byte alignment, predecessor node types, cascaded continuous input, etc.). In actual use, memory checks are required to ensure that the output addresses of each conv satisfy the continuity requirement; otherwise, runtime errors may occur.
@@ -40,12 +41,16 @@ Matching conditions:
 ├── src
 │   ├──conv_concat_notask_pass.cpp  // pass implementation file
 ├── CMakeLists.txt                  // build script
+├── data
+│   ├── gen_onnx.py                 // ONNX model generation script (Conv2D+Concat structure)
+│   └── run_atc.sh                  // ATC conversion script (with DUMP_GE_GRAPH)
 ```
 
 ## Requirements
 
 - Compiler: GCC >= 7.3.x
-- The [environment preparation](../../../../docs/zh/build.md) has been completed.
+- Python and dependencies: python>=3.9, onnx
+- The [environment preparation](../../../../../docs/zh/build.md) has been completed.
 
 ## Build
 
@@ -94,15 +99,21 @@ Assume that the CANN package is installed in INSTALL_PATH, for example, `/home/H
 
 2. Use ATC offline inference.
 
-    - Set the environment variable to dump the model graph during compilation:
+    - Run the model generation script in the **data** directory to generate an ONNX model containing the Conv2D+Concat structure:
+
+      **python3 gen_onnx.py**
+
+      After the command is executed, the **model.onnx** model file is generated in the **data** directory.
+
+    - Run the ATC command. Fill in soc_version according to the actual running environment (this pass takes effect only on mc62 chips, that is, soc_version starts with MC62):
+
+      **atc --model=./model.onnx --framework=5 --soc_version=xxx --output=./model**
+
+      Alternatively, directly use the basic run script in the **data** directory (the script internally sets environment variables such as DUMP_GE_GRAPH and performs the ATC conversion):
 
       ```
-      export DUMP_GE_GRAPH=1
+      bash run_atc.sh MC62
       ```
-
-    - Run the ATC command with a model containing the Conv2D+Concat structure. Fill in soc_version according to the actual running environment:
-
-      **atc --model=./model.pb --framework=3 --soc_version=xxx --output=./model**
 
     - Check the result:
 
@@ -110,6 +121,14 @@ Assume that the CANN package is installed in INSTALL_PATH, for example, `/home/H
 
         ```
         ConvConcatNotaskPass begin.
+        ConvConcatNotaskPass end.
+        ```
+
+      - This pass checks the chip version at the entry. Only mc62 chips execute the subsequent marking process; on other chips the pass is skipped directly, no attribute marking content appears in the logs, and only the following is printed:
+
+        ```
+        ConvConcatNotaskPass begin.
+        Soc version is not MC62, skip.
         ConvConcatNotaskPass end.
         ```
 
