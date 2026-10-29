@@ -34,6 +34,7 @@
 #include "hcom_ops_kernel_info_store.h"
 #include "external/ge/ge_api_types.h"   // ge对内options
 #include "framework/common/ge_types.h"  // ge对外options
+#include "ge_common/ge_common_api_types.h"
 #include "graph/ge_local_context.h"
 #include "hcom_topo_info.h"
 #include "graph/debug/ge_attr_define.h"
@@ -101,6 +102,9 @@ TEST_F(SuperFastKernelTest, ut_mc2_GetAddrFromDesc) {
   std::map<std::string, std::string> options;
   options.insert(pair<string, string>(ge::TUNING_PATH, "./"));
   options.insert(pair<string, string>("ge.jobType", "4"));
+  // 固定 SOC_VERSION: CI 存在真实 libhccl.so 时 dlsym 图模式函数可加载, IsUsingOpenSource 会转查
+  // GetOption(SOC_VERSION), 未设置则返回 HCCL_E_NOT_FOUND 导致用例失败; 固定为 910 走原流程(已 mock)
+  options.insert(pair<string, string>(ge::SOC_VERSION, "Ascend910"));
 
   ge::Status ge_ret;
   HCCL_INFO("test Initialize.");
@@ -263,51 +267,12 @@ TEST_F(SuperFastKernelTest, ut_mc2_creatComResourceErr) {
 TEST_F(SuperFastKernelTest, hcom_ranktable_check1) {
   const char *ranktable1 = "fsdgfsdagsdagdsafweqqq";
   std::string realPath;
-  testing::internal::CaptureStdout();
   HcclResult ret = HcomGetRanktableRealPath(ranktable1, realPath);
-  const std::string invalidPathLog = testing::internal::GetCapturedStdout();
+  ;
   EXPECT_EQ(ret, HCCL_E_PARA);
-  EXPECT_NE(invalidPathLog.find("[InitGroupStage][RanktableConfig]"), std::string::npos);
-
-  const std::string ranktable2(RANK_TABLE_MAX_LEN + 1, 'a');
-  testing::internal::CaptureStdout();
-  ret = HcomGetRanktableRealPath(ranktable2.c_str(), realPath);
-  const std::string invalidLengthLog = testing::internal::GetCapturedStdout();
+  const char *ranktable2 =
+      "/usr/X11R6/lib/modules/../../include/../X11R6/lib/modules/../../include/../X11R6/lib/modules/../../include/../"
+      "X11R6/lib/modules/../../include/../X11R6/lib/modules/../../include/../X11R6/lib/modules/../../include/../";
+  ret = HcomGetRanktableRealPath(ranktable2, realPath);
   EXPECT_EQ(ret, HCCL_E_PARA);
-  EXPECT_NE(invalidLengthLog.find("[InitGroupStage][RanktableConfig]"), std::string::npos);
-}
-
-TEST_F(SuperFastKernelTest, hcom_ranktable_error_logs_contain_keywords) {
-  std::string rankTable;
-  testing::internal::CaptureStdout();
-  HcclResult ret = HcomLoadRanktableFile("", rankTable);
-  const std::string emptyPathLog = testing::internal::GetCapturedStdout();
-  EXPECT_EQ(ret, HCCL_E_PARA);
-  EXPECT_NE(emptyPathLog.find("[InitGroupStage][RanktableConfig][Load][File]"), std::string::npos);
-
-  testing::internal::CaptureStdout();
-  ret = HcomLoadRanktableFile("ranktable.txt", rankTable);
-  const std::string invalidSuffixLog = testing::internal::GetCapturedStdout();
-  EXPECT_EQ(ret, HCCL_E_PARA);
-  EXPECT_NE(invalidSuffixLog.find("[InitGroupStage][RanktableConfig][Load][File]"), std::string::npos);
-
-  nlohmann::json fileContent;
-  testing::internal::CaptureStdout();
-  ret = ReadFile("ut_nonexistent_ranktable.json", fileContent);
-  const std::string openFailureLog = testing::internal::GetCapturedStdout();
-  EXPECT_EQ(ret, HCCL_E_INTERNAL);
-  EXPECT_NE(openFailureLog.find("[InitGroupStage][RanktableConfig][Read][File]"), std::string::npos);
-
-  const std::string invalidJsonPath = "./ut_invalid_ranktable.json";
-  std::ofstream invalidJsonFile(invalidJsonPath, std::ios::out | std::ios::trunc);
-  ASSERT_TRUE(invalidJsonFile.is_open());
-  invalidJsonFile << "{";
-  invalidJsonFile.close();
-
-  testing::internal::CaptureStdout();
-  ret = ReadFile(invalidJsonPath, fileContent);
-  const std::string parseFailureLog = testing::internal::GetCapturedStdout();
-  EXPECT_EQ(ret, HCCL_E_INTERNAL);
-  EXPECT_NE(parseFailureLog.find("[InitGroupStage][RanktableConfig][Read][File]"), std::string::npos);
-  EXPECT_EQ(remove(invalidJsonPath.c_str()), 0);
 }

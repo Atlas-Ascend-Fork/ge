@@ -1620,3 +1620,21 @@ TEST_F(HcomExecutorTest, Ut_ExecuteAlltoAll) {
   result = hccl::HcomExecutor::GetInstance().ExecuteAlltoAllVC(opInfo1);
   EXPECT_EQ(result, HCCL_SUCCESS);
 }
+
+namespace hccl {
+HcclResult HcomRegRemoteAccessMem(const MemRegisterAddr *addrList, u32 count);
+}  // namespace hccl
+
+/*
+ * HcomRegRemoteAccessMem 为不支持接口，直接调用断言固定返回 HCCL_E_NOT_SUPPORT
+ */
+TEST_F(HcomExecutorTest, ut_HcomRegRemoteAccessMem_When_CallDirectly_Expect_ReturnNotSupport) {
+  testing::internal::CaptureStdout();
+  HcclResult ret = hccl::HcomRegRemoteAccessMem(nullptr, 0);
+  const std::string logOutput = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(ret, HCCL_E_NOT_SUPPORT);
+  // 子串兼容两代文案: "is not supported." / "is not support."
+  EXPECT_NE(logOutput.find("is not support"), std::string::npos);
+
+  GlobalMockObject::verify();
+}

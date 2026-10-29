@@ -505,3 +505,47 @@ TEST_F(GradientSplitTuneTest, GetTopoInfoFromFile) {
   GetTopoInfoFromFile(toposInfo);
   GlobalMockObject::verify();
 }
+
+/*
+ * GetAndCheckTBETime 为 static 函数，通过公开入口 GetBPTimeFromProfiling 构造非法调优数据触发其错误分支
+ */
+TEST_F(GradientSplitTuneTest, ut_GetAndCheckTBETime_When_LoopNumInvalid_Expect_ReturnParaError) {
+  // 仅 3 轮迭代数据（row <= invalidLoopNum=3），触发 Invalid Loop Num 错误分支
+  vector<vector<struct ProfilingMetric>> taskProfilingList(
+      3, vector<struct ProfilingMetric>(1, {"tune", "trace_node_name", "TensorRedirect", 0, 1}));
+  std::vector<struct BPTimeInfo> bpTimeInfo;
+
+  TuneResult_t ret = GetBPTimeFromProfiling(taskProfilingList, bpTimeInfo);
+  EXPECT_EQ(ret, TUNE_E_PARA);
+
+  GlobalMockObject::verify();
+}
+
+TEST_F(GradientSplitTuneTest, ut_GetAndCheckTBETime_When_OpNameNotSame_Expect_ReturnParaError) {
+  // 4 轮迭代数据（row > 3），第 3 轮 opName 与其他轮不同，触发 opName 不一致错误分支
+  vector<vector<struct ProfilingMetric>> taskProfilingList(
+      4, vector<struct ProfilingMetric>(1, {"tune", "trace_node_name", "TensorRedirect", 0, 1}));
+  taskProfilingList[2][0].opName = "another_trace_node_name";
+  std::vector<struct BPTimeInfo> bpTimeInfo;
+
+  TuneResult_t ret = GetBPTimeFromProfiling(taskProfilingList, bpTimeInfo);
+  EXPECT_EQ(ret, TUNE_E_PARA);
+
+  GlobalMockObject::verify();
+}
+
+TEST_F(GradientSplitTuneTest, ut_GetAndCheckTBETime_When_TaskTimeOrderInvalid_Expect_ReturnParaError) {
+  // 第 2 列 taskStartTime 早于第 1 列 taskEndTime，触发 GetTBETime 时序校验失败错误分支
+  vector<vector<struct ProfilingMetric>> taskProfilingList(
+      4, vector<struct ProfilingMetric>(2, {"tune", "trace_node_name", "TensorRedirect", 0, 100}));
+  for (uint32_t i = 0; i < taskProfilingList.size(); i++) {
+    taskProfilingList[i][1].taskStartTime = 50;
+    taskProfilingList[i][1].taskEndTime = 150;
+  }
+  std::vector<struct BPTimeInfo> bpTimeInfo;
+
+  TuneResult_t ret = GetBPTimeFromProfiling(taskProfilingList, bpTimeInfo);
+  EXPECT_EQ(ret, TUNE_E_PARA);
+
+  GlobalMockObject::verify();
+}
