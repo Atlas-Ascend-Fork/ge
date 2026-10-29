@@ -17,6 +17,7 @@
 #include "common/op_hcom_comm.h"
 #include "hccl/hcom.h"
 #include "graph/utils/node_utils.h"
+#include "graph/utils/op_desc_utils.h"
 #include "graph/utils/tensor_utils.h"
 #include "graph/utils/tensor_utils_ex.h"
 #include "graph/debug/ge_attr_define.h"
@@ -471,6 +472,9 @@ HcclResult HcomGraphOptimizer::SetUnknownShapeAttr(ge::ComputeGraph &graph, bool
 
   if (!uknownShapeGraph && optionFeatureBaseRefreshable_ == 0) {
     HCCL_DEBUG("graph[%s] is known shape", graph.GetName().c_str());
+    // 静态shape图：V类算子的counts输入若编译期不是常量（值运行时才可知），无法固化进下沉任务，
+    // 需标记FORCE_UNKNOWN_SHAPE退出下沉，由GE按单算子模式调用、运行时读取真实值
+    CHK_RET(MarkForceUnknownForDynamicCounts(graph));
     return HCCL_SUCCESS;
   }
   /* 遍历原图所有算子 */
@@ -585,6 +589,50 @@ HcclResult HcomGraphOptimizer::SetUnknownShapeAttr(ge::ComputeGraph &graph, bool
     }
   }
 
+  return HCCL_SUCCESS;
+}
+
+// ReduceScatterV算子的counts类输入索引：recv_count=1, send_counts=2（与hccl侧vInputVec pass的索引定义一致）
+static constexpr u32 REDUCESCATTERV_COUNTS_INPUT_IDX[] = {1U, 2U};
+
+static bool IsReduceScatterVCountsConst(const ge::NodePtr &nodePtr) {
+  const auto op = ge::OpDescUtils::CreateOperatorFromNode(nodePtr);
+  for (const auto idx : REDUCESCATTERV_COUNTS_INPUT_IDX) {
+    if (ge::OpDescUtils::GetInputConstData(op, idx) == nullptr) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// 静态shape图场景下，V类算子的counts值若运行时才能确定（输入不是Const），
+// 下沉任务无法固化counts，标记FORCE_UNKNOWN_SHAPE退出下沉，由GE按单算子模式调用
+HcclResult HcomGraphOptimizer::MarkForceUnknownForDynamicCounts(ge::ComputeGraph &graph) {
+  for (auto nodePtr : graph.GetAllNodes()) {
+    ge::OpDescPtr opDescPtr = nullptr;
+    if (!TryGetOpDesc(nodePtr, opDescPtr)) {
+      continue;
+    }
+    if (opDescPtr->GetType() != HCCL_KERNEL_OP_TYPE_REDUCESCATTERV) {
+      continue;
+    }
+    // 零数据输入是合法场景：无通信需求，不强制走单算子模式
+    const auto inputDescPtr = opDescPtr->GetInputDescPtr(0U);
+    if ((inputDescPtr != nullptr) && (inputDescPtr->GetShape().GetShapeSize() == 0)) {
+      continue;
+    }
+    if (IsReduceScatterVCountsConst(nodePtr)) {
+      continue;
+    }
+    HCCL_WARNING(
+        "[Mark][ForceUnknown]graph[%s]: node[%s] op type[%s] counts input is not const in known-shape "
+        "graph, set force unknown shape to run in single-op mode.",
+        graph.GetName().c_str(), nodePtr->GetName().c_str(), opDescPtr->GetType().c_str());
+    CHK_PRT_RET(!ge::AttrUtils::SetBool(opDescPtr, ge::ATTR_NAME_FORCE_UNKNOWN_SHAPE, true),
+                HCCL_ERROR("[Mark][ForceUnknown]graph[%s]: node[%s] op type[%s] set force unknown shape failed.",
+                           graph.GetName().c_str(), nodePtr->GetName().c_str(), opDescPtr->GetType().c_str()),
+                HCCL_E_PARA);
+  }
   return HCCL_SUCCESS;
 }
 
@@ -971,6 +1019,17 @@ HcclResult HcomGraphOptimizer::CalcOpRunningParam(ge::Node &node, bool uknownSha
               HCCL_E_PARA);
   if (unknownShapeNode) {
     HCCL_INFO("node:%s is unknown shape, does not need to Calc Op Running Param", node.GetName().c_str());
+    HcomSetWorkflowMode(lastWorkflowMode);
+    return HCCL_SUCCESS;
+  }
+
+  // counts值编译期不可知的V类算子已被标记FORCE_UNKNOWN_SHAPE走单算子模式，
+  // 无需进行下沉流程的资源计算，避免按空counts算出0任务导致算子空跑
+  bool forceUnknown = false;
+  (void)ge::AttrUtils::GetBool(node.GetOpDesc(), ge::ATTR_NAME_FORCE_UNKNOWN_SHAPE, forceUnknown);
+  if (forceUnknown) {
+    HCCL_INFO("[Calc][OpRunningParam]node[%s] is marked force unknown shape, does not need to calc op running param.",
+              node.GetName().c_str());
     HcomSetWorkflowMode(lastWorkflowMode);
     return HCCL_SUCCESS;
   }
