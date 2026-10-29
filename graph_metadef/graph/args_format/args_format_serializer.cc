@@ -61,7 +61,9 @@ ArgDescType TransToArgDescType(AddrType addr_type) {
 
 HiddenInputsType TransToHiddenInputType(HiddenInputSubType hidden_sub_type) {
   static const std::unordered_map<HiddenInputSubType, HiddenInputsType> hidden_sub_types = {
-      {HiddenInputSubType::kHcom, HiddenInputsType::HCOM}, {HiddenInputSubType::kEnd, HiddenInputsType::MAX}};
+      {HiddenInputSubType::kHcom, HiddenInputsType::HCOM},
+      {HiddenInputSubType::kHcclSuperKernel, HiddenInputsType::HCCLSUPERKERNEL},
+      {HiddenInputSubType::kEnd, HiddenInputsType::MAX}};
   auto iter = hidden_sub_types.find(hidden_sub_type);
   if (iter != hidden_sub_types.end()) {
     return iter->second;
@@ -70,7 +72,9 @@ HiddenInputsType TransToHiddenInputType(HiddenInputSubType hidden_sub_type) {
 }
 HiddenInputSubType TransToHiddenInputSubType(HiddenInputsType hidden_type) {
   static const std::unordered_map<HiddenInputsType, HiddenInputSubType> hidden_input_types = {
-      {HiddenInputsType::HCOM, HiddenInputSubType::kHcom}, {HiddenInputsType::MAX, HiddenInputSubType::kEnd}};
+      {HiddenInputsType::HCOM, HiddenInputSubType::kHcom},
+      {HiddenInputsType::HCCLSUPERKERNEL, HiddenInputSubType::kHcclSuperKernel},
+      {HiddenInputsType::MAX, HiddenInputSubType::kEnd}};
   auto iter = hidden_input_types.find(hidden_type);
   if (iter != hidden_input_types.end()) {
     return iter->second;

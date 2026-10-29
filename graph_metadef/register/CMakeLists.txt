@@ -82,6 +82,7 @@ set(SRC_LIST
     "core_num_utils.cc"
     "kernel_launch_info.cc"
     "kernel_launch_info_impl.cc"
+    "task_def_builder.cc"
     "${GE_METADEF_DIR}/exe_graph/lowering/kernel_run_context_builder.cc"
     "${GE_METADEF_DIR}/exe_graph/lowering/bg_kernel_context_extend.cc"
     "${GE_METADEF_DIR}/exe_graph/lowering/buffer_pool.cc"

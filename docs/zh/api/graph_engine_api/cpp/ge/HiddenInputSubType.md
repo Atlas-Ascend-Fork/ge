@@ -5,6 +5,7 @@ ArgDescInfo隐藏输入地址的类型，头文件位于CANN软件安装后文�
 ```c++
 enum class HiddenInputSubType {
   kHcom, // 用于通信的hiddenInput，MC2算子使用
+  kHcclSuperKernel, // HCCL superkernel隐藏输入，Hcom集合通信算子superkernel融合任务使用
   kEnd
 };
 ```

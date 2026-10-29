@@ -292,6 +292,7 @@ if("ge-executor" IN_LIST BUILD_COMPONENT)
             ${CMAKE_CURRENT_SOURCE_DIR}/inc/graph_metadef/external/exe_graph/runtime/resource_usage_context.h
             ${CMAKE_CURRENT_SOURCE_DIR}/inc/graph_metadef/external/exe_graph/runtime/update_args_context.h
             ${CMAKE_CURRENT_SOURCE_DIR}/inc/graph_metadef/external/exe_graph/runtime/kernel_args.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/inc/graph_metadef/external/exe_graph/runtime/task_def_builder.h
             DESTINATION ${ARCH_LINUX_PATH}/include/exe_graph/runtime COMPONENT ge-executor
     )
     set(EXTERNAL_GRAPH_FILES
