@@ -174,6 +174,31 @@ TEST_F(UtestGePythonRuntimeManager, FinalizeOwnedInterpreterSkipsWhenNotInitiali
   EXPECT_EQ(g_py_finalize_count, 0);
 }
 
+TEST_F(UtestGePythonRuntimeManager, OwnedInterpreterUsesFinalizerAfterRestoringThreadState) {
+  auto &manager = GePythonRuntimeManager::Instance();
+  ASSERT_EQ(manager.EnsureReady(), SUCCESS);
+  manager.SetInterpreterFinalizer([]() {
+    EXPECT_EQ(g_py_eval_restore_thread_count, 1);
+    FakePyFinalize();
+  });
+  EXPECT_EQ(manager.ShutdownProcess(), SUCCESS);
+  EXPECT_EQ(g_py_finalize_count, 1);
+
+  // A later interpreter must not inherit the preceding finalizer.
+  ASSERT_EQ(manager.EnsureReady(), SUCCESS);
+  EXPECT_EQ(manager.ShutdownProcess(), SUCCESS);
+  EXPECT_EQ(g_py_finalize_count, 2);
+}
+
+TEST_F(UtestGePythonRuntimeManager, ExternalInterpreterDoesNotUseRegisteredFinalizer) {
+  g_py_initialized = 1;
+  auto &manager = GePythonRuntimeManager::Instance();
+  ASSERT_EQ(manager.EnsureReady(), SUCCESS);
+  manager.SetInterpreterFinalizer([]() { FAIL() << "The host owns this interpreter"; });
+  EXPECT_EQ(manager.ShutdownProcess(), SUCCESS);
+  EXPECT_EQ(g_py_initialized, 1);
+}
+
 TEST_F(UtestGePythonRuntimeManager, ShutdownProcessWhenNotReady) {
   auto &manager = GePythonRuntimeManager::Instance();
   EXPECT_EQ(manager.ShutdownProcess(), SUCCESS);

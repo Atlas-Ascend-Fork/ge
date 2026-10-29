@@ -85,7 +85,12 @@ class CustomPassContextImpl {
   graphStatus GetOptionValue(const AscendString &option_key, AscendString &option_value) const {
     std::string option_value_str;
     const auto ret = GetContext().GetOption(option_key.GetString(), option_value_str);
-    option_value = AscendString(option_value_str.c_str());
+    if (ret == GRAPH_SUCCESS) {
+      option_value = AscendString(option_value_str.c_str());
+      return ret;
+    }
+
+    option_value = AscendString("");
     return ret;
   }
 

@@ -41,6 +41,31 @@ def _load_component_config(config_path: Path) -> dict:
     return config
 
 
+def validate_artifact_manifest(
+    manifest: dict, config: dict, python_tag: str, platform_tag: str
+) -> None:
+    """Reject artifacts from a different interpreter, platform or bridge interface."""
+    abi = config["abi"]
+    expected = {
+        "python_tag": python_tag,
+        "platform": platform_tag,
+        abi["key"]: abi["value"],
+    }
+    for key, value in expected.items():
+        if manifest.get(key) != value:
+            raise RuntimeError(
+                f"Native artifact {key} mismatch: expected {value!r}, "
+                f"got {manifest.get(key)!r}; rebuild the native artifacts with this GE version"
+            )
+    expected_artifacts = {"native": config["native"]["artifact"]}
+    if config.get("bridge") is not None:
+        expected_artifacts["bridge"] = config["bridge"]["artifact"]
+    if manifest.get("artifacts") != expected_artifacts:
+        raise RuntimeError(
+            "Native artifact manifest does not match the component outputs"
+        )
+
+
 def _copy_artifact_files(artifact_dir: Path, artifact_root: Path) -> None:
     for file_path in sorted(artifact_dir.rglob("*")):
         if file_path.is_file():
@@ -73,7 +98,8 @@ class NativeBdistWheel(bdist_wheel):
         python_tag, abi_tag, wheel_platform = super().get_tag()
         forced_tag = os.environ.get("GE_PY_NATIVE_WHEEL_PYTHON_TAG")
         if forced_tag:
-            return forced_tag, forced_tag, wheel_platform
+            forced_abi_tag = os.environ.get("GE_PY_NATIVE_WHEEL_ABI_TAG") or forced_tag
+            return forced_tag, forced_abi_tag, wheel_platform
         return python_tag, abi_tag, wheel_platform
 
 
@@ -95,10 +121,15 @@ setup(
 
 
 def _run_bdist_wheel(
-    project_dir: Path, output_dir: Path, python_tag: str, wheel_platform: str
+    project_dir: Path,
+    output_dir: Path,
+    python_tag: str,
+    abi_tag: str,
+    wheel_platform: str,
 ) -> None:
     env = os.environ.copy()
     env["GE_PY_NATIVE_WHEEL_PYTHON_TAG"] = python_tag
+    env["GE_PY_NATIVE_WHEEL_ABI_TAG"] = abi_tag
     command = [
         sys.executable,
         "setup.py",
@@ -117,6 +148,11 @@ def build_wheel(args: argparse.Namespace) -> Path:
     config = args.component_config
     wheel_config = config["wheel"]
     artifact_dir = Path(args.artifact_dir).resolve()
+    manifest = json.loads((artifact_dir / "manifest.json").read_text(encoding="utf-8"))
+    validate_artifact_manifest(manifest, config, args.python_tag, args.platform_tag)
+    for filename in manifest["artifacts"].values():
+        if not (artifact_dir / filename).is_file():
+            raise RuntimeError(f"Missing native artifact: {artifact_dir / filename}")
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -135,14 +171,17 @@ def build_wheel(args: argparse.Namespace) -> Path:
     artifact_root.mkdir(parents=True, exist_ok=True)
     _copy_artifact_files(artifact_dir, artifact_root)
     _write_setup_py(project_dir, args.version, config)
+    abi_tag = args.abi_tag or args.python_tag
     try:
-        _run_bdist_wheel(project_dir, output_dir, args.python_tag, args.wheel_platform)
+        _run_bdist_wheel(
+            project_dir, output_dir, args.python_tag, abi_tag, args.wheel_platform
+        )
     finally:
         shutil.rmtree(project_dir, ignore_errors=True)
 
     wheel_name = (
         f"{wheel_config['dist_name']}-{args.version}-{args.python_tag}-"
-        f"{args.python_tag}-{args.wheel_platform}.whl"
+        f"{abi_tag}-{args.wheel_platform}.whl"
     )
     wheel_path = output_dir / wheel_name
     if not wheel_path.is_file():
@@ -155,6 +194,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--component-config", type=Path, required=True)
     parser.add_argument("--artifact-dir", required=True)
     parser.add_argument("--python-tag", required=True)
+    parser.add_argument(
+        "--abi-tag",
+        default="",
+        help="ABI tag of the target interpreter, for example cp37m. Defaults to the Python tag.",
+    )
     parser.add_argument("--platform-tag", required=True)
     parser.add_argument("--wheel-platform", required=True)
     parser.add_argument("--version", default="0.0.1")

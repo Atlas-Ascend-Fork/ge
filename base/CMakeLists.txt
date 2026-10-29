@@ -264,6 +264,8 @@ target_link_libraries(ge_common
         platform
         -Wl,--as-needed
         json
+        # Internal archives are embedded here, not dependencies of installed Python bridges.
+        gert_model_data_serializer
         minizip_static
         gert_model_data_serializer
         $<$<NOT:$<STREQUAL:${TARGET_SYSTEM_NAME},Android>>:-lrt>

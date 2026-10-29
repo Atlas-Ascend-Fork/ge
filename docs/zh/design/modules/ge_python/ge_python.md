@@ -1,8 +1,8 @@
-# GE-PY Python 模块类关系文档
+# GE-PY Python模块类关系文档
 
 ## 概述
 
-GE-PY 是 GraphEngine 的 Python 接口模块，提供了 Pythonic 的图相关接口。为用户提供了便捷的图构建和操作、编译执行、Pass 扩展和自定义算子扩展等功能。该模块对外头文件位于 `api/python/ge/ge/` 目录下。
+GE-PY是GraphEngine的Python接口模块，提供了Pythonic的图相关接口。为用户提供了便捷的图构建和操作、编译执行、Pass扩展和自定义算子扩展等功能。该模块对外头文件位于`api/python/ge/ge/`目录下。
 
 ## 目录结构
 
@@ -18,7 +18,7 @@ GE-PY 是 GraphEngine 的 Python 接口模块，提供了 Pythonic 的图相关�
 ├── _attr.py         # 内部属性值类定义
 └── _numeric.py      # 内部数值转换类定义
 ```
-注：下划线开头的为 Python 风格下的对内模块
+注：下划线开头的为Python风格下的对内模块
 
 #### graph核心类关系图
 
@@ -86,7 +86,7 @@ graph TB
 
 #### 类详细说明
 
-##### 1. Graph 类
+##### 1. Graph类
 
 **文件位置**: `graph.py`
 
@@ -117,27 +117,27 @@ graph TB
 - `_name` - 图名称
 
 **关系**:
-- 通过 `graph_lib` 调用底层C API
-- 管理多个 `Node` 对象
+- 通过`graph_lib`调用底层C API
+- 管理多个`Node`对象
 
-##### 2. Node 类
+##### 2. Node类
 
 **文件位置**: `node.py`
 
 **功能**: 图节点操作接口类
 
 **主要方法**:
-- `get_attr(key)` - 获取节点属性（可返回 string / number / list / `Tensor` 等 Python 值）
+- `get_attr(key)` - 获取节点属性（可返回string / number / list / `Tensor`等Python值）
 - `set_attr(key, value)` - 设置节点属性
 - `get_in_data_nodes_and_port_indexes(in_index)` - 获取输入节点和端口
 - `get_out_data_nodes_and_port_indexes(out_index)` - 获取输出节点和端口
 - `get_inputs_size()` - 获取输入数量
 - `get_outputs_size()` - 获取输出数量
 - `has_attr(key)` - 是否含有节点属性
-- `get_input_desc(index)` - 获取第 `index` 个输入的 `TensorDesc`
-- `update_input_desc(index, tensor_desc)` - 更新第 `index` 个输入的 `TensorDesc`
-- `get_output_desc(index)` - 获取第 `index` 个输出的 `TensorDesc`
-- `update_output_desc(index, tensor_desc)` - 更新第 `index` 个输出的 `TensorDesc`
+- `get_input_desc(index)` - 获取第`index`个输入的`TensorDesc`
+- `update_input_desc(index, tensor_desc)` - 更新第`index`个输入的`TensorDesc`
+- `get_output_desc(index)` - 获取第`index`个输出的`TensorDesc`
+- `update_output_desc(index, tensor_desc)` - 更新第`index`个输出的`TensorDesc`
 
 **属性**：
 
@@ -147,37 +147,37 @@ graph TB
 - `type` - 节点类型（只读属性）
 
 **关系**:
-- 通过 `graph_lib` 调用底层C API
-- 与 `Graph` 对象关联
+- 通过`graph_lib`调用底层C API
+- 与`Graph`对象关联
 
-##### 3. DataType 枚举
+##### 3. DataType枚举
 
 **文件位置**: `types.py`
 
 **功能**: 定义支持的数据类型
 
 **关系**:
-- 与 C++ 中的 `ge::DataType` 对应
-- 在 `Graph` 和 `Node` 操作中使用
+- 与C++ 中的`ge::DataType`对应
+- 在`Graph`和`Node`操作中使用
 
-##### 4. Format 枚举
+##### 4. Format枚举
 
 **文件位置**: `types.py`
 
 **功能**: 定义张量格式
 
 **关系**:
-- 与 C++ 中的 `ge::Format` 对应
+- 与C++ 中的`ge::Format`对应
 - 用于张量形状和格式描述
 
-##### 5. Placement 枚举
+##### 5. Placement枚举
 
 **文件位置**: `types.py`
 
-**功能**: 定义 Tensor 数据的存储位置
+**功能**: 定义Tensor数据的存储位置
 
 **关系**:
-- 与 C++ 中的 `ge::Placement` 对应
+- 与C++ 中的`ge::Placement`对应
 - 用于描述数据存放的存储位置
 
 #### 依赖关系
@@ -189,7 +189,7 @@ graph TB
 - **外部依赖**:
   - ctypes库
 
-##### 6. Tensor 类
+##### 6. Tensor类
 
 **文件位置**: `tensor.py`
 
@@ -204,30 +204,30 @@ graph TB
 - `get_shape()` - 获取形状
 - `get_data()` - 获取数据
 - `get_placement()` - 获取数据所在存储位置
-- `to_device()` - 将当前 Tensor 从 Host 移动到 Device
-- `to_host()` - 将当前 Tensor 从 Device 移动到 Host
+- `to_device()` - 将当前Tensor从Host移动到Device
+- `to_host()` - 将当前Tensor从Device移动到Host
 
 **属性**：
 - `_handle` - 底层C节点对象的句柄
 - `_owns_handle` - 是否拥有句柄的所有权
 - `_owner` - 句柄所有者
 **关系**:
-- 通过 `graph_lib` 和 `esb_lib` 调用底层C API
-- 与 `Session` 对象关联
+- 通过`graph_lib`和`esb_lib`调用底层C API
+- 与`Session`对象关联
 
-##### 7. TensorDesc 类
+##### 7. TensorDesc类
 
 **文件位置**: `tensor_desc.py`
 
-**功能**: 张量元信息描述类，用于描述 shape、format、data type 以及 origin shape/origin format。
+**功能**: 张量元信息描述类，用于描述shape、format、data type以及origin shape/origin format。
 
 **主要方法**:
-- `__init__(shape=None, format=Format.FORMAT_ND, data_type=DataType.DT_FLOAT)` - 创建 TensorDesc；`shape=None` 表示标量
-- `get_shape()` / `set_shape(shape)` - 获取或设置 shape
-- `get_origin_shape()` / `set_origin_shape(shape)` - 获取或设置 origin shape
-- `get_format()` / `set_format(format)` - 获取或设置 format
-- `get_origin_format()` / `set_origin_format(format)` - 获取或设置 origin format
-- `get_data_type()` / `set_data_type(data_type)` - 获取或设置 data type
+- `__init__(shape=None, format=Format.FORMAT_ND, data_type=DataType.DT_FLOAT)` - 创建TensorDesc；`shape=None`表示标量
+- `get_shape()` / `set_shape(shape)` - 获取或设置shape
+- `get_origin_shape()` / `set_origin_shape(shape)` - 获取或设置origin shape
+- `get_format()` / `set_format(format)` - 获取或设置format
+- `get_origin_format()` / `set_origin_format(format)` - 获取或设置origin format
+- `get_data_type()` / `set_data_type(data_type)` - 获取或设置data type
 
 **属性**:
 - `shape` - 张量形状
@@ -237,23 +237,23 @@ graph TB
 - `data_type` - 张量数据类型
 
 **关系**:
-- 通过 `graph_lib` 调用底层 C API
-- 与 `Tensor` 和 `Node` 对象关联
+- 通过`graph_lib`调用底层C API
+- 与`Tensor`和`Node`对象关联
 
-##### 8. Shape 类
+##### 8. Shape类
 
 **文件位置**: `tensor_desc.py`
 
-**功能**: 张量形状类，继承自 Python `list`，保持普通列表的比较、遍历和索引行为，同时提供形状相关辅助方法。
+**功能**: 张量形状类，继承自Python `list`，保持普通列表的比较、遍历和索引行为，同时提供形状相关辅助方法。
 
 **主要方法**:
-- `get_shape_size()` - 获取形状元素总数；空 shape 返回 `0`，包含未知维度 `-1` 或 `-2` 时返回 `-1`
+- `get_shape_size()` - 获取形状元素总数；空shape返回`0`，包含未知维度`-1`或`-2`时返回`-1`
 - `is_unknown_shape()` - 判断是否包含未知维度
 
 **关系**:
 - 用于描述张量形状
 
-### utils 模块
+### utils模块
 
 #### 目录结构
 ```
@@ -265,20 +265,20 @@ graph TB
 
 #### 类详细说明
 
-##### 1. GeUtils 类
+##### 1. GeUtils类
 
 **文件位置**: `utils/ge_utils.py`
 
-**功能**: GE 公共工具接口，面向 `Graph` / `Node` 对象提供 Shape 推导与节点 AICore 支持性校验能力。
+**功能**: GE公共工具接口，面向`Graph` / `Node`对象提供Shape推导与节点AICore支持性校验能力。
 
 **主要方法**:
-- `infer_shape(graph, input_shapes)` - 给定输入 shape, 对传入的 graph 做全图 shape 推导；本接口只做shape推导，不对图做任何其他优化（如常量折叠、死边消除等）
-- `check_node_support_on_aicore(node)` - 校验指定 node 是否支持在 AICore 上执行
+- `infer_shape(graph, input_shapes)` - 给定输入shape, 对传入的graph做全图shape推导；本接口只做shape推导，不对图做任何其他优化（如常量折叠、死边消除等）
+- `check_node_support_on_aicore(node)` - 校验指定node是否支持在AICore上执行
 
 **关系**:
-- 通过 `ge_utils_lib` 调用底层 C API
+- 通过`ge_utils_lib`调用底层C API
 
-### allocator 模块
+### allocator模块
 
 #### 目录结构
 ```
@@ -289,28 +289,28 @@ allocator/
 
 #### 类详细说明
 
-##### 1. MemBlock 类
+##### 1. MemBlock类
 
 **文件位置**: `allocator.py`
 
-**功能**: 描述由 allocator 管理的一段 Device 内存。
+**功能**: 描述由allocator管理的一段Device内存。
 
 **主要属性**:
-- `addr` - Device 侧地址
+- `addr` - Device侧地址
 - `size` - 内存大小（字节）
 
-##### 2. Allocator 类
+##### 2. Allocator类
 
 **文件位置**: `allocator.py`
 
 **功能**: 内存分配器抽象基类
 
 **主要方法**:
-- `malloc(size)` - 申请一段 Device 内存，返回 `MemBlock`
-- `free(block)` - 释放 `malloc()` 返回的 `MemBlock`
+- `malloc(size)` - 申请一段Device内存，返回`MemBlock`
+- `free(block)` - 释放`malloc()`返回的`MemBlock`
 
 **关系**:
-- 由 `Session.register_external_allocator()` 注册到指定 stream，在 `Session.run_graph_with_stream_async()` 时使用该 allocator
+- 由`Session.register_external_allocator()`注册到指定stream，在`Session.run_graph_with_stream_async()`时使用该allocator
 
 ### ge_global模块
 #### 目录结构
@@ -320,17 +320,17 @@ allocator/
 └── geapi.py              # GeApi接口文件
 ```
 #### 类详细说明
-##### 1. Geapi 类
+##### 1. Geapi类
 **文件位置**: `geapi.py`
 
-**功能**：提供 GE 初始化和析构
+**功能**：提供GE初始化和析构
 
 **主要方法**:
 - `ge_initialize(config)` - GE初始化
 - `ge_finalize()` - GE析构
 
   **关系**:
-- 通过 `geapi_lib` 调用底层C API
+- 通过`geapi_lib`调用底层C API
 
 **使用示例**:
 ```python
@@ -352,7 +352,7 @@ ge_api.ge_finalize()
 └── offline_compile.py    # 离线图编译接口文件
 ```
 #### 接口说明
-##### 1. offline_compile 模块
+##### 1. offline_compile模块
 **文件位置**: `offline_compile.py`
 
 **功能**：离线图编译接口
@@ -367,11 +367,11 @@ ge_api.ge_finalize()
 
 **辅助类型**:
 - `ModelBuffer` - 内存缓冲区中的序列化模型数据，持有底层C模型对象的句柄
-- `GraphWithOptions` - bundle 编译时的图和编译选项对
+- `GraphWithOptions` - bundle编译时的图和编译选项对
 
 **关系**:
-- 通过 `offline_compile_lib` 调用底层C API
-- 输入依赖 `Graph` 对象
+- 通过`offline_compile_lib`调用底层C API
+- 输入依赖`Graph`对象
 
 **使用示例**:
 ```python
@@ -390,7 +390,7 @@ save_model("sample", model)
 build_finalize()
 ```
 
-### Session 模块
+### Session模块
 
 #### 目录结构
 ```
@@ -399,7 +399,7 @@ build_finalize()
 └── session.py            # session接口文件
 ```
 #### 类详细说明
-##### 1. Session 类
+##### 1. Session类
 
 **文件位置**: `session.py`
 
@@ -410,16 +410,16 @@ build_finalize()
 - `add_graph(graph_id, add_graph, options)` - 添加图
 - `remove_graph(graph_id)` - 移除图
 - `run_graph(graph_id, inputs)` - 运行图
-- `register_external_allocator(stream, allocator)` - 为指定 stream 注册外置 allocator
-- `unregister_external_allocator(stream)` - 注销指定 stream 的外置 allocator
-- `run_graph_with_stream_async(graph_id, stream, inputs)` - 在指定 stream 上异步执行图
+- `register_external_allocator(stream, allocator)` - 为指定stream注册外置allocator
+- `unregister_external_allocator(stream)` - 注销指定stream的外置allocator
+- `run_graph_with_stream_async(graph_id, stream, inputs)` - 在指定stream上异步执行图
 
 **属性**：
 - `_handle` - 底层C节点对象的句柄
 - `_owns_handle` - 是否拥有句柄的所有权
 
   **关系**:
-- 通过 `session_lib` 调用底层C API
+- 通过`session_lib`调用底层C API
   **使用示例**:
 ```python
 from ge.session import Session
@@ -450,7 +450,7 @@ GeApi.ge_finalize()
 ```
 
 
-### passes 模块
+### passes模块
 
 #### 目录结构
 ```
@@ -464,12 +464,12 @@ GeApi.ge_finalize()
 ├── fallback_runtime.py # 组件 fallback 入口(无匹配预编译 artifact 时现场编译 so)
 └── _bridge.py       # Bridge 运行时辅助（Pass 实例管理，供 C++ bridge .so 回调）
 ```
-注：下划线开头的为 Python 风格下的对内模块
-注：`PassContext`、`MatchResult`、`Pattern`、`PatternMatcherConfig` 等对象由 `_ge_pass_native.so` 提供 native-backed 实现，`base.py` / `pattern.py` 负责对外导出与少量 Python 辅助封装。
+注：下划线开头的为Python风格下的对内模块
+注：`PassContext`、`MatchResult`、`Pattern`、`PatternMatcherConfig`等对象由`_ge_pass_native.so`提供native-backed实现，`base.py` / `pattern.py`负责对外导出与少量Python辅助封装。
 
-#### 运行时 native artifact 选择
+#### 运行时native artifact选择
 
-`_ge_pass_native.so` 与 `libge_python_pass_bridge.so` 作为同一套 artifact set 成套发布，目录固定为：
+`_ge_pass_native.so`与`libge_python_pass_bridge.so`作为同一套artifact set成套发布，目录固定为：
 
 ```text
 ge/passes/python_pass_artifacts/<python_tag>-<platform>/manifest.json
@@ -477,35 +477,35 @@ ge/passes/python_pass_artifacts/<python_tag>-<platform>/_ge_pass_native.so
 ge/passes/python_pass_artifacts/<python_tag>-<platform>/libge_python_pass_bridge.so
 ```
 
-主 wheel 保持一份纯 Python 接口，不再内置当前 Python 的默认 native artifact set。native 子 wheel 按 `cp39` 到 `cp314` 的 Python minor 版本矩阵分别承载预制 artifact set。native 子 wheel 通过标准 `bdist_wheel` 生成。仓内提供矩阵 builder 入口用于自动嗅探 PATH 中可用的 Python minor 版本并分别构建；如果某个 Python 可执行文件存在但开发头文件或 libpython 不完整，builder 会跳过该版本并继续构建其他可用版本。
-run 包可携带多个 `ge_py_pass_bridge` native 子 wheel，但安装脚本只应安装与当前执行安装脚本的 Python 解释器兼容的一个子 wheel；推荐使用 `pip install --no-index --find-links <ge-compiler/lib64> <ge_py wheel> ge-py-pass-bridge`，由 pip 按 wheel tag 自动选择。运行时选择顺序为：
+主wheel保持一份纯Python接口，不再内置当前Python的默认native artifact set。native子wheel按`cp37`到`cp314`的Python minor版本矩阵分别承载预制artifact set。native子wheel通过标准`bdist_wheel`生成。仓内提供矩阵builder入口用于自动嗅探PATH中可用的Python minor版本并分别构建；如果某个Python可执行文件存在但开发头文件或libpython不完整，builder会跳过该版本并继续构建其他可用版本。
+run包可携带多个`ge_py_pass_bridge` native子wheel，但安装脚本只应安装与当前执行安装脚本的Python解释器兼容的一个子wheel；推荐使用`pip install --no-index --find-links <ge-compiler/lib64> <ge_py wheel> ge-py-pass-bridge`，由pip按wheel tag自动选择。运行时选择顺序为：
 
-1. 与当前进程 Python tag、平台 tag、bridge ABI 匹配的预制 artifact。
-2. runtime fallback codegen 新生成到 `ge/passes/python_pass_artifacts/<python_tag>-<platform>/`，且与当前进程 Python tag、平台 tag、bridge ABI 匹配的 artifact。
+1. 与当前进程Python tag、平台tag、bridge ABI匹配的预制artifact。
+2. runtime fallback codegen新生成到`ge/passes/python_pass_artifacts/<python_tag>-<platform>/`，且与当前进程Python tag、平台tag、bridge ABI匹配的artifact。
 
 #### 类详细说明
 
-##### 1. PassStage 枚举
+##### 1. PassStage枚举
 
 **文件位置**: `base.py`
 
-**功能**: 定义 Pass 执行阶段
+**功能**: 定义Pass执行阶段
 
 **枚举值**:
-- `BEFORE_INFER_SHAPE` - 在 InferShape 之前执行
-- `AFTER_INFER_SHAPE` - 在 InferShape 之后执行
-- `AFTER_BUILTIN_FUSION_PASS` - 在内置融合 Pass 之后执行
+- `BEFORE_INFER_SHAPE` - 在InferShape之前执行
+- `AFTER_INFER_SHAPE` - 在InferShape之后执行
+- `AFTER_BUILTIN_FUSION_PASS` - 在内置融合Pass之后执行
 - `AFTER_ORIGIN_GRAPH_OPTIMIZE` - 在原始图优化之后执行
 
 ##### 2. PassContext native-backed wrapper
 
 **文件位置**: `base.py`
 
-**功能**: Python 侧的 Pass 上下文视图
+**功能**: Python侧的Pass上下文视图
 
 **主要方法**:
-- `get_pass_name()` - 获取 Pass 名称
-- `set_pass_name(pass_name)` - 设置 Pass 名称
+- `get_pass_name()` - 获取Pass名称
+- `set_pass_name(pass_name)` - 设置Pass名称
 - `get_option_value(option_key)` - 获取编译选项
 - `get_error_message()` - 获取错误信息
 - `set_error_message(error_message)` - 设置错误信息
@@ -518,67 +518,67 @@ run 包可携带多个 `ge_py_pass_bridge` native 子 wheel，但安装脚本只
 
 **主要方法**:
 - `get_matched_nodes()` - 获取当前匹配命中的节点列表
-- `get_captured_tensor(capture_index)` - 获取指定 capture 的 `NodeIo`
-- `get_pattern_graph_name()` - 获取 pattern graph 名称
+- `get_captured_tensor(capture_index)` - 获取指定capture的`NodeIo`
+- `get_pattern_graph_name()` - 获取pattern graph名称
 - `__str__()` - 返回可读字符串表示
 
 ##### 4. SubgraphRewriter native-backed wrappers
 
 **文件位置**: `graph_rewriter_binding.cc`
 
-**功能**: Python 侧的子图边界描述与子图替换接口，用于支持 graph base 类 pass 的“子图替换”能力。
+**功能**: Python侧的子图边界描述与子图替换接口，用于支持graph base类pass的“子图替换”能力。
 
 **主要类/方法**:
-- `SubgraphInput` - 描述一个 subgraph 输入（一个输入可对应多个边界上的 node input）
-  - `SubgraphInput() / SubgraphInput([(node, out_index), ...])` - 构造 subgraph 输入
-  - `add_input(node, out_index)` - 追加一个输入锚点（`node` 为 `ge.graph.Node`，`out_index` 为其输出 index）
-- `SubgraphOutput` - 描述一个 subgraph 输出
-  - `SubgraphOutput() / SubgraphOutput(node, out_index)` - 构造 subgraph 输出
+- `SubgraphInput` - 描述一个subgraph输入（一个输入可对应多个边界上的node input）
+  - `SubgraphInput() / SubgraphInput([(node, out_index), ...])` - 构造subgraph输入
+  - `add_input(node, out_index)` - 追加一个输入锚点（`node`为`ge.graph.Node`，`out_index`为其输出index）
+- `SubgraphOutput` - 描述一个subgraph输出
+  - `SubgraphOutput() / SubgraphOutput(node, out_index)` - 构造subgraph输出
   - `set_output(node, out_index)` - 设置输出锚点
 - `SubgraphBoundary` - 描述待替换子图的输入/输出边界
-  - `add_input(index, input)` - 绑定第 `index` 个 boundary input 到 `SubgraphInput`
-  - `add_output(index, output)` - 绑定第 `index` 个 boundary output 到 `SubgraphOutput`
+  - `add_input(index, input)` - 绑定第`index`个boundary input到`SubgraphInput`
+  - `add_output(index, output)` - 绑定第`index`个boundary output到`SubgraphOutput`
 - `SubgraphRewriter.replace(boundary, replacement)` - 执行子图替换
   - `boundary`：`SubgraphBoundary`
-  - `replacement`：`ge.graph.Graph`（replacement 图会在 C++ 侧拷贝并完成重连）
-- `SubgraphRewriter.replace(boundary, replacement, context=context)` - 自动执行可融合检查、子图替换和融合结果上报；成功返回 `None`，失败抛出 `RuntimeError`
+  - `replacement`：`ge.graph.Graph`（replacement图会在C++ 侧拷贝并完成重连）
+- `SubgraphRewriter.replace(boundary, replacement, context=context)` - 自动执行可融合检查、子图替换和融合结果上报；成功返回`None`，失败抛出`RuntimeError`
 
 ##### 5. Pattern / NodeIo / PatternMatcherConfig
 
 **文件位置**: `pattern.py`、`base.py`
 
 **功能**:
-- `Pattern` - native-backed pattern wrapper，负责持有 pattern graph 与 capture 信息
-- `NodeIo` - Python 侧描述节点输出位置的轻量 helper
-- `PatternMatcherConfig` / `PatternMatcherConfigBuilder` - 模式匹配配置对象与 builder
+- `Pattern` - native-backed pattern wrapper，负责持有pattern graph与capture信息
+- `NodeIo` - Python侧描述节点输出位置的轻量helper
+- `PatternMatcherConfig` / `PatternMatcherConfigBuilder` - 模式匹配配置对象与builder
 
 **主要接口**:
-- `Pattern(graph)` - 从 `ge.graph.Graph` 构造 pattern
-- `Pattern.capture_tensor(source, index=0)` - 记录 capture tensor
-- `Pattern.get_captured_tensors()` - 获取 capture 列表
-- `create_pattern(graph)` - 显式构造 `Pattern`
+- `Pattern(graph)` - 从`ge.graph.Graph`构造pattern
+- `Pattern.capture_tensor(source, index=0)` - 记录capture tensor
+- `Pattern.get_captured_tensors()` - 获取capture列表
+- `create_pattern(graph)` - 显式构造`Pattern`
 - `PatternMatcherConfigBuilder.enable_const_value_match()` - 打开常量值匹配
-- `PatternMatcherConfigBuilder.enable_ir_attr_match()` - 打开 IR 属性匹配
+- `PatternMatcherConfigBuilder.enable_ir_attr_match()` - 打开IR属性匹配
 - `PatternMatcherConfigBuilder.build()` - 生成配置对象
 
 ##### GraphFuseInspector native helper
 
 **文件位置**: `graph_fuse_inspector_binding.cc`、`fuse_inspector.py`
 
-**功能**: 为 graph base 类 pass 提供改图前的融合可行性检查和改图后的融合结果上报。
+**功能**: 为graph base类pass提供改图前的融合可行性检查和改图后的融合结果上报。
 
 **主要接口**:
-- `can_fuse(nodes: Iterable[Node]) -> FuseCheckResult` - 检查节点集合融合成单节点后是否满足 stream label 和无环约束
+- `can_fuse(nodes: Iterable[Node]) -> FuseCheckResult` - 检查节点集合融合成单节点后是否满足stream label和无环约束
 - `report_fuse(nodes_before, nodes_after, context) -> None` - 在自定义改图完成后、旧节点删除前上报融合结果
 - `FuseCheckResult.ok` - 是否可融合
 - `FuseCheckResult.reason` - 不可融合原因；可融合时为空字符串
 
-native binding 将 Python `Node` iterable 转换为 `std::vector<GNode>`，调用
-`GraphFuseInspectorUtils::CanFuse`，再由 `fuse_inspector.py` 将 native 返回的 `(bool, str)` 包装为不可变
+native binding将Python `Node` iterable转换为`std::vector<GNode>`，调用
+`GraphFuseInspectorUtils::CanFuse`，再由`fuse_inspector.py`将native返回的`(bool, str)`包装为不可变
 dataclass。
-业务不可融合返回 `FuseCheckResult(False, reason)`；输入类型错误或 Node handle 失效时抛出 Python 异常。
-`report_fuse` 无需适配返回值，由 `fuse_inspector.py` 直接重导出 native 实现；失败时设置 context 错误信息并
-抛出 `RuntimeError`，其中空 `nodes_after` 表示只删除旧节点。
+业务不可融合返回`FuseCheckResult(False, reason)`；输入类型错误或Node handle失效时抛出Python异常。
+`report_fuse`无需适配返回值，由`fuse_inspector.py`直接重导出native实现；失败时设置context错误信息并
+抛出`RuntimeError`，其中空`nodes_after`表示只删除旧节点。
 
 ##### InferShape native helper
 
@@ -591,92 +591,92 @@ dataclass。
 
 native binding根据`source`类型调用`InferShapeUtil`的对应重载，先将source的边界输入描述同步到replacement graph的Data节点，再执行全图推导，原地更新图中算子的输出描述。本接口不读取或校验当前PassStage，在任意阶段调用时都会立即执行推导。`MatchResult`仅在当前Pass回调期间有效。推导失败时抛出`RuntimeError`，异常信息中包含replacement graph名称、source类型，以及可获取时的source名称。
 
-##### 6. FusionBasePass 类
+##### 6. FusionBasePass类
 
 **文件位置**: `base.py`
 
-**功能**: 基础融合 Pass 基类，直接操作图结构
+**功能**: 基础融合Pass基类，直接操作图结构
 
 **主要方法**:
-- `run(graph, context)` - 执行 Pass，接收图对象和 `PassContext`，返回 `None` / `bool` / `int` 状态值
+- `run(graph, context)` - 执行Pass，接收图对象和`PassContext`，返回`None` / `bool` / `int`状态值
 
 **关系**:
-- `PatternFusionPass` 和 `DecomposePass` 的父类
-- 通过 `register_fusion_pass` 装饰器注册到全局 Pass 注册中心
+- `PatternFusionPass`和`DecomposePass`的父类
+- 通过`register_fusion_pass`装饰器注册到全局Pass注册中心
 
-##### 7. PatternFusionPass 类
+##### 7. PatternFusionPass类
 
 **文件位置**: `base.py`
 
-**功能**: 基于模式匹配的融合 Pass 基类
+**功能**: 基于模式匹配的融合Pass基类
 
 **主要方法**:
 - `patterns()` - 定义匹配模式，返回模式列表
-- `meet_requirements(match_result)` - 判断匹配结果是否满足融合条件，默认返回 True
-- `replacement(match_result)` - 根据匹配结果生成替换子图，必须返回 `Graph`
+- `meet_requirements(match_result)` - 判断匹配结果是否满足融合条件，默认返回True
+- `replacement(match_result)` - 根据匹配结果生成替换子图，必须返回`Graph`
 
 **可选构造参数**:
-- `matcher_config` - `PatternMatcherConfig`，用于控制常量值匹配、IR 属性匹配等 matcher 选项
+- `matcher_config` - `PatternMatcherConfig`，用于控制常量值匹配、IR属性匹配等matcher选项
 
 **设计约束**:
-- **不支持用户自定义 `run()` 方法**：`PatternFusionPass` 复用 C++ 的 `Run()` 实现来执行标准的 pattern-match-replacement 流程。Python 侧只需实现 `patterns()`、`meet_requirements()` 和 `replacement()` 三个 hook 即可。
-- **若子类覆写 `run()` 会在类定义阶段直接抛出 `TypeError`**：避免用户误以为 `run()` 会在 `PatternFusionPass` 路径中被调用。
-- **不支持在 `replacement()` 中返回 `None` 表示跳过**：若希望放弃当前匹配，需在 `meet_requirements()` 中返回 `False`。
-- **需要完全自定义 `run()` 逻辑的场景**：请直接使用 `FusionBasePass` 基类。
+- **不支持用户自定义`run()`方法**：`PatternFusionPass`复用C++ 的`Run()`实现来执行标准的pattern-match-replacement流程。Python侧只需实现`patterns()`、`meet_requirements()`和`replacement()`三个hook即可。
+- **若子类覆写`run()`会在类定义阶段直接抛出`TypeError`**：避免用户误以为`run()`会在`PatternFusionPass`路径中被调用。
+- **不支持在`replacement()`中返回`None`表示跳过**：若希望放弃当前匹配，需在`meet_requirements()`中返回`False`。
+- **需要完全自定义`run()`逻辑的场景**：请直接使用`FusionBasePass`基类。
 
 **关系**:
-- 继承自 `FusionBasePass`
-- 通过 `register_fusion_pass` 装饰器注册
+- 继承自`FusionBasePass`
+- 通过`register_fusion_pass`装饰器注册
 
-##### 8. DecomposePass 类
+##### 8. DecomposePass类
 
 **文件位置**: `base.py`
 
-**功能**: 算子分解 Pass 基类
+**功能**: 算子分解Pass基类
 
 **类属性**:
 - `op_types` - 需要分解的算子类型列表
 
 **主要方法**:
-- `meet_requirements(node)` - 判断节点是否满足分解条件，默认返回 True
-- `replacement(node)` - 将节点分解为多个子节点，必须返回 `Graph`
+- `meet_requirements(node)` - 判断节点是否满足分解条件，默认返回True
+- `replacement(node)` - 将节点分解为多个子节点，必须返回`Graph`
 
 **设计约束**:
-- **不支持用户自定义 `run()` 方法**：`DecomposePass` 复用 C++ 的 `Run()` 实现来执行标准的 node-filter-replacement 流程。Python 侧只需实现 `meet_requirements()` 和 `replacement()` 两个 hook 即可。
-- **若子类覆写 `run()` 会在类定义阶段直接抛出 `TypeError`**：避免用户误以为 `run()` 会在 `DecomposePass` 路径中被调用。
-- **不支持在 `replacement()` 中返回 `None` 表示跳过**：若希望放弃当前节点，需在 `meet_requirements()` 中返回 `False`。
-- **`op_types` 由 `register_decompose_pass(..., op_types=[...])` 声明并固化到 descriptor**：Python 基类不再自行维护另一套构造参数。
+- **不支持用户自定义`run()`方法**：`DecomposePass`复用C++ 的`Run()`实现来执行标准的node-filter-replacement流程。Python侧只需实现`meet_requirements()`和`replacement()`两个hook即可。
+- **若子类覆写`run()`会在类定义阶段直接抛出`TypeError`**：避免用户误以为`run()`会在`DecomposePass`路径中被调用。
+- **不支持在`replacement()`中返回`None`表示跳过**：若希望放弃当前节点，需在`meet_requirements()`中返回`False`。
+- **`op_types`由`register_decompose_pass(..., op_types=[...])`声明并固化到descriptor**：Python基类不再自行维护另一套构造参数。
 
 **关系**:
-- 继承自 `FusionBasePass`
-- 通过 `register_decompose_pass` 装饰器注册
+- 继承自`FusionBasePass`
+- 通过`register_decompose_pass`装饰器注册
 
-##### 9. PassDescriptor 数据类
+##### 9. PassDescriptor数据类
 
 **文件位置**: `registry.py`
 
-**功能**: 规范化的 Python Pass 描述符
+**功能**: 规范化的Python Pass描述符
 
 **属性**:
 - `descriptor_key` - 描述符唯一键（格式：`模块名:类名:Pass名`）
-- `pass_name` - Pass 名称
+- `pass_name` - Pass名称
 - `module_name` - 所属模块名
 - `class_name` - 类名
 - `stage` - 执行阶段（PassStage）
-- `kind` - Pass 类型（`fusion_base`、`pattern_fusion`、`decompose`）
-- `cls` - Pass 类引用
+- `kind` - Pass类型（`fusion_base`、`pattern_fusion`、`decompose`）
+- `cls` - Pass类引用
 - `op_types` - 关联的算子类型列表
 
 #### 注册与发现
 
 **装饰器**:
-- `register_fusion_pass(name, stage, kind=None)` - 注册 FusionBasePass 或 PatternFusionPass
-- `register_decompose_pass(name, stage, op_types)` - 注册 DecomposePass
+- `register_fusion_pass(name, stage, kind=None)` - 注册FusionBasePass或PatternFusionPass
+- `register_decompose_pass(name, stage, op_types)` - 注册DecomposePass
 
 **发现机制**:
-- 通过环境变量 `ASCEND_GE_PY_PASS_PATH` 指定 Pass 文件或目录路径
-- `bootstrap.py` 负责扫描路径并动态加载 Python 模块
-- 支持单个 `.py` 文件和包含 `__init__.py` 的 Python 包
+- 通过环境变量`ASCEND_GE_PY_PASS_PATH`指定Pass文件或目录路径
+- `bootstrap.py`负责扫描路径并动态加载Python模块
+- 支持单个`.py`文件和包含`__init__.py`的Python包
 
 **使用示例**:
 ```python
@@ -716,14 +716,14 @@ class MyDecomposePass(DecomposePass):
         pass
 ```
 
-加载自定义 Pass：
+加载自定义Pass：
 ```bash
 export ASCEND_GE_PY_PASS_PATH=/path/to/my_pass.py:/path/to/pass_dir/
 ```
 
-更多设计细节请参考 [Python Pass 设计文档](ge_python_pass_design.md)。
+更多设计细节请参考[Python Pass 设计文档](ge_python_pass_design.md)。
 
-### custom_op 模块
+### custom_op模块
 
 #### 目录结构
 ```
@@ -740,16 +740,16 @@ custom_op/
 ├── _ge_custom_op_native.pyi # native module 类型桩
 └── native_bindings/         # _ge_custom_op_native.so 的 pybind11 绑定实现
 ```
-注：下划线开头的为 Python 风格下的对内模块。
-注：`EagerOpExecutionContext`、`OpCompileContext`、`CompilePlatformInfo` 和 `AnnotatedArgsContext` 由 `_ge_custom_op_native.so` 提供 native-backed 实现；执行期、编译期或 `infer_meta` 回调中返回、接收的 `Tensor`、`TensorDesc`、`StorageShape`、`StorageFormat`、`Shape`、`TensorPlacement` 等运行时数据结构由 `ge.runtime` 模块提供。
+注：下划线开头的为Python风格下的对内模块。
+注：`EagerOpExecutionContext`、`OpCompileContext`、`CompilePlatformInfo`和`AnnotatedArgsContext`由`_ge_custom_op_native.so`提供native-backed实现；执行期、编译期或`infer_meta`回调中返回、接收的`Tensor`、`TensorDesc`、`StorageShape`、`StorageFormat`、`Shape`、`TensorPlacement`等运行时数据结构由`ge.runtime`模块提供。
 
 #### 模块定位
 
-Python 自定义算子的长期目标是支持用户使用 Python 描述自定义算子原型，并实现自定义算子的各类能力。当前通过反射实现类上的可调用 `execute`、`compile` 和 `declare_launch_args` 方法，分别识别执行能力、图编译能力和静态图声明式地址刷新能力，不要求用户类继承任何能力基类。执行入口统一按照 canonical IR 输入、属性顺序绑定，执行上下文通过 `get_execute_ctx()` 在回调内访问；`compile` 和 `declare_launch_args` 按 canonical IR 绑定输入、输出和属性。Python 原型通过 `register_op` 注册到 `OperatorFactory` 后，编译期和 RT2 动态 Shape 路径会调用同一 Python `infer_meta` 回调：编译期回写输出 shape、dtype 和 origin dtype，RT2 运行期只回写输出 shape。
+Python自定义算子的长期目标是支持用户使用Python描述自定义算子原型，并实现自定义算子的各类能力。当前通过反射实现类上的可调用`execute`、`compile`和`declare_launch_args`方法，分别识别执行能力、图编译能力和静态图声明式地址刷新能力，不要求用户类继承任何能力基类。执行入口统一按照canonical IR输入、属性顺序绑定，执行上下文通过`get_execute_ctx()`在回调内访问；`compile`和`declare_launch_args`按canonical IR绑定输入、输出和属性。Python原型通过`register_op`注册到`OperatorFactory`后，编译期和RT2动态Shape路径会调用同一Python `infer_meta`回调：编译期回写输出shape、dtype和origin dtype，RT2运行期只回写输出shape。
 
-#### 运行时 native artifact 选择
+#### 运行时native artifact选择
 
-`_ge_custom_op_native.so` 与 `libge_python_custom_op_bridge.so` 作为同一套 artifact set 成套发布，目录固定为：
+`_ge_custom_op_native.so`与`libge_python_custom_op_bridge.so`作为同一套artifact set成套发布，目录固定为：
 
 ```text
 ge/custom_op/python_custom_op_artifacts/<python_tag>-<platform>/manifest.json
@@ -765,37 +765,37 @@ ge/custom_op/python_custom_op_artifacts/<python_tag>-<platform>/libge_python_cus
 
 **文件位置**: `_native.py`、`_ge_custom_op_native.pyi`
 
-**功能**: Python 侧的自定义算子执行上下文视图。
+**功能**: Python侧的自定义算子执行上下文视图。
 
 **主要方法**:
-- `malloc_output_tensor(index, shape, format, dtype)` - 为某个输出 tensor 申请 device 内存，并初始化输出 tensor 的基本信息
+- `malloc_output_tensor(index, shape, format, dtype)` - 为某个输出tensor申请device内存，并初始化输出tensor的基本信息
 - `make_output_ref_input(output_index, input_index)` - 指定某输出的内存地址引用自某个输入
-- `malloc_workspace(size)` - 分配 workspace 内存，placement 为 device，返回地址整数
-- `get_output_tensor(index)` - 获取 index 指定的输出 `Tensor`
+- `malloc_workspace(size)` - 分配workspace内存，placement为device，返回地址整数
+- `get_output_tensor(index)` - 获取index指定的输出`Tensor`
 - `get_stream()` - 获取所属执行流地址整数
 
 ##### 2. RuntimeAttrs native-backed wrapper
 
 **文件位置**: `native_bindings/runtime_attrs_binding.h`
 
-**功能**: 桥接层内部的运行时属性 borrowed view，不通过 `ge.custom_op` 对外导出。schema-bound 调用由 bridge 根据 canonical IR 属性类型选择对应的 typed reader，将属性物化为 Python 值后传给回调。
+**功能**: 桥接层内部的运行时属性borrowed view，不通过`ge.custom_op`对外导出。schema-bound调用由bridge根据canonical IR属性类型选择对应的typed reader，将属性物化为Python值后传给回调。
 
 **主要方法**:
 - 标量：`get_int`、`get_float`、`get_bool`、`get_str`、`get_data_type`、`get_tensor`
 - 列表：`get_list_int`、`get_list_float`、`get_list_bool`、`get_list_str`、`get_list_data_type`、`get_list_list_int`
 - `get_attr_num()` - 获取运行时属性数量
 
-##### 3. get_execute_ctx 函数
+##### 3. get_execute_ctx函数
 
 **文件位置**: `context.py`
 
-**功能**: 获取当前 schema-bound `execute` 回调的 `EagerOpExecutionContext`。在回调外或回调结束后调用会抛出 `RuntimeError`。
+**功能**: 获取当前schema-bound `execute`回调的`EagerOpExecutionContext`。在回调外或回调结束后调用会抛出`RuntimeError`。
 
-##### 4. AnnotatedArgsContext 与声明式 kernel 参数
+##### 4. AnnotatedArgsContext与声明式kernel参数
 
 **文件位置**: `_native.py`、`_ge_custom_op_native.pyi`
 
-`declare_launch_args` 是静态图编译期 callback。它通过 `get_declare_launch_args_ctx()` 取得当前 `AnnotatedArgsContext`，再用 `create_kernel_args()` 和 `add_launch()` 声明 kernel。
+`declare_launch_args`是静态图编译期callback。它通过`get_declare_launch_args_ctx()`取得当前`AnnotatedArgsContext`，再用`create_kernel_args()`和`add_launch()`声明kernel。
 
 ```python
 @register_op_impl(op_type="AnnotatedAddCustom")
@@ -817,13 +817,13 @@ class AnnotatedAddCustom:
         )
 ```
 
-方法参数按 IR schema 绑定：inputs 在前、outputs 次之、attrs 作为 keyword-only 参数。required input/output 使用 `Tensor`，optional input 使用 `Optional[Tensor]`，dynamic input/output 使用 `List[Tensor]`。返回注解和返回值都必须为 `None`。
+方法参数按IR schema绑定：inputs在前、outputs次之、attrs作为keyword-only参数。required input/output使用`Tensor`，optional input使用`Optional[Tensor]`，dynamic input/output使用`List[Tensor]`。返回注解和返回值都必须为`None`。
 
-`append_input(instance_index, tensor)` 和 `append_output(instance_index, tensor)` 的 index 是当前计算节点输入、输出的实例平铺 index。对于动态输入或输出，同一 IR 槽位展开出的多个 tensor 实例分别占用连续 index。`AnnotatedArgsContext`、Tensor、workspace 和 `AnnotatedKernelArgs` 在 callback 结束后失效；`add_launch` 会消费 builder。
+`append_input(instance_index, tensor)`和`append_output(instance_index, tensor)`的index是当前计算节点输入、输出的实例平铺index。对于动态输入或输出，同一IR槽位展开出的多个tensor实例分别占用连续index。`AnnotatedArgsContext`、Tensor、workspace和`AnnotatedKernelArgs`在callback结束后失效；`add_launch`会消费builder。
 
-同一 AnnotatedArgs task-plan 生命周期只调用一次 `declare_launch_args`，并缓存本次声明形成的 task plan；后续生成阶段只根据当前 `RunContext` 物化缓存的 task plan，不再回调 Python。新的 task-plan 生命周期会重新调用声明方法。每次回调中的 borrowed object 只能在该次回调内使用，不得跨回调复用。编译期把最终选择的刷新方式保存到 `_custom_task_args_mode`，模型加载时以该属性为第一事实来源；没有该属性的旧 OM 保留 registry 查询和 `args_format` 兼容兜底。模型执行路径不调用 Python。
+同一AnnotatedArgs task-plan生命周期只调用一次`declare_launch_args`，并缓存本次声明形成的task plan；后续生成阶段只根据当前`RunContext`物化缓存的task plan，不再回调Python。新的task-plan生命周期会重新调用声明方法。每次回调中的borrowed object只能在该次回调内使用，不得跨回调复用。编译期把最终选择的刷新方式保存到`_custom_task_args_mode`，模型加载时以该属性为第一事实来源；没有该属性的旧OM保留registry查询和`args_format`兼容兜底。模型执行路径不调用Python。
 
-##### 5. Python Compile 与编译上下文
+##### 5. Python Compile与编译上下文
 
 **文件位置**: `context.py`、`_native.py`、`_ge_custom_op_native.pyi`
 
@@ -831,11 +831,11 @@ class AnnotatedAddCustom:
 
 `OpCompileContext`、`CompilePlatformInfo`、输入输出`Tensor`和属性视图都是当前回调内有效的借用对象，回调返回或抛出异常后失效。编译回调不在模型加载和执行阶段调用，Python实现、实例状态和kernel binary不写入OM。
 
-##### 6. OpImplDescriptor 数据类
+##### 6. OpImplDescriptor数据类
 
 **文件位置**: `registry.py`
 
-**功能**: 规范化的 Python 自定义算子实现描述符。
+**功能**: 规范化的Python自定义算子实现描述符。
 
 **属性**:
 
@@ -843,28 +843,28 @@ class AnnotatedAddCustom:
 - `op_type` - 自定义算子类型
 - `module_name` - 所属模块名
 - `class_name` - 类名
-- `interfaces` - 能力接口列表，可包含 `"eager_execute"`、`"compilable"` 和 `"annotated_args"`
-- `cls` - Python 实现类引用
+- `interfaces` - 能力接口列表，可包含`"eager_execute"`、`"compilable"`和`"annotated_args"`
+- `cls` - Python实现类引用
 
 #### 注册与发现
 
 **装饰器**:
-- `register_op(op_type, mutates_args=())` - 根据被装饰函数的类型标注声明并收集 Python 自定义算子原型；被装饰函数同时作为 `infer_meta` 回调，返回输出 `TensorDesc`
-- `register_op_impl(op_type)` - 注册 Python 实现类，并反射其可调用方法生成能力列表；`execute` 对应 `eager_execute`，`compile` 对应 `compilable`，`declare_launch_args` 对应 `annotated_args`
+- `register_op(op_type, mutates_args=())` - 根据被装饰函数的类型标注声明并收集Python自定义算子原型；被装饰函数同时作为`infer_meta`回调，返回输出`TensorDesc`
+- `register_op_impl(op_type)` - 注册Python实现类，并反射其可调用方法生成能力列表；`execute`对应`eager_execute`，`compile`对应`compilable`，`declare_launch_args`对应`annotated_args`
 
 **发现机制**:
 
-- 复用环境变量 `ASCEND_CUSTOM_OPP_PATH` 指定 Python custom op 文件或目录路径
-- `bootstrap.py` 负责扫描路径并动态加载 Python 模块
-- 支持单个 `.py` 文件、普通目录下的 `.py` 文件和包含 `__init__.py` 的 Python 包
+- 复用环境变量`ASCEND_CUSTOM_OPP_PATH`指定Python custom op文件或目录路径
+- `bootstrap.py`负责扫描路径并动态加载Python模块
+- 支持单个`.py`文件、普通目录下的`.py`文件和包含`__init__.py`的Python包
 
 **原型注册**:
 
-- `register_op` 收集 required/optional/dynamic input、12 类 attr、required/dynamic output 和 `mutates_args`
-- bridge 在同一加载事务中先注册 Python proto creator、收集生效的 canonical IR，再注册 impl runtime entry 和 Adapter creator
-- 支持 Python proto-only、Python proto + impl、C++ proto + Python impl；缺少 canonical IR 的 Python impl 注册失败
-- Python 原型可以覆盖同名内置原型；与已加载的同名 C++/Python 自定义算子冲突时注册失败
-- 批次失败按 Adapter creator、impl runtime entry、proto creator 的逆序回滚；卸载只清理当前 loader 持有的对象
+- `register_op`收集required/optional/dynamic input、12类attr、required/dynamic output和`mutates_args`
+- bridge在同一加载事务中先注册Python proto creator、收集生效的canonical IR，再注册impl runtime entry和Adapter creator
+- 支持Python proto-only、Python proto + impl、C++ proto + Python impl；缺少canonical IR的Python impl注册失败
+- Python原型可以覆盖同名内置原型；与已加载的同名C++/Python自定义算子冲突时注册失败
+- 批次失败按Adapter creator、impl runtime entry、proto creator的逆序回滚；卸载只清理当前loader持有的对象
 
 **使用示例**:
 ```python
@@ -879,19 +879,19 @@ class AddPythonCustomOp:
         ...
 ```
 
-加载 Python 自定义算子：
+加载Python自定义算子：
 ```bash
 export ASCEND_CUSTOM_OPP_PATH=/path/to/my_custom_op.py:/path/to/custom_op_dir/
 ```
 
-更多设计细节请参考 [Python 自定义算子设计文档](ge_python_custom_op_design.md)。
+更多设计细节请参考[Python 自定义算子设计文档](ge_python_custom_op_design.md)。
 
-## ES 模块
+## ES模块
 
 ES (Eager-Style) 模块提供了函数式风格的图构建接口，详细文档请参考：[ES-PY Python 模块文档](../../../user_guides/es_graph/api/es_python.md)
 
 ## 使用示例
 
-参考 [使用es的python api构图sample](../../../../../examples/es/transformer/python/src/make_transformer_graph.py)
+参考[使用es的python api构图sample](../../../../../examples/es/transformer/python/src/make_transformer_graph.py)
 
-更多示例请参考 [examples/es](../../../../../examples/es) 目录下的 Python 用例。
+更多示例请参考[examples/es](../../../../../examples/es)目录下的Python用例。

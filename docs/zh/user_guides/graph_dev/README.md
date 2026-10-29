@@ -26,6 +26,7 @@
   <!-- npu="950,A3,910b" id2 -->
   - [SuperKernel融合范围标定](superkernel_fusion_scope.md)
   <!-- end id2 -->
+  - [自动多流并行](auto_multistream.md)
   - [更多特性<a name="sub_menu"></a>](more_features/README.md)
 <!-- npu="950,A3,910b" id5 -->
 - [最佳实践<a name="sub_menu"></a>](best_practices/README.md)

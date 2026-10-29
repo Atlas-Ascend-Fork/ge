@@ -10,9 +10,11 @@
 
 #include "pass_plugin_loader.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <mutex>
 
+#include "common/checker.h"
 #include "framework/common/debug/ge_log.h"
 #include "register/custom_pass_helper.h"
 #include "python_pass_pybind_bridge.h"
@@ -22,7 +24,7 @@ namespace fusion {
 namespace {
 constexpr const char *kEnvPythonPassPath = "ASCEND_GE_PY_PASS_PATH";
 
-bool NeedLoadPythonPasses() {
+bool IsUserPythonPassPathSet() {
   const char *env_value = std::getenv(kEnvPythonPassPath);
   return (env_value != nullptr) && (env_value[0] != '\0');
 }
@@ -37,28 +39,52 @@ class PassPluginLoader {
   Status Load() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (active_users_ == 0U) {
+      // A previous final Unload may have shut the bridge down.  Loading a new
+      // generation must be allowed to register the built-in descriptors
+      // again.
+      shutdown_done_ = false;
       if (!cpp_pass_loaded_) {
         const auto ret = CustomPassHelper::Instance().Load();
         if (ret != SUCCESS) {
           GELOGE(ret, "Load C++ custom pass plugins failed.");
+          // CustomPassHelper may have opened a prefix of the plugin list
+          // before reporting an error.  Roll that prefix back so the next
+          // Load() starts from a clean generation.
+          const auto cleanup_ret = CustomPassHelper::Instance().Unload();
+          if (cleanup_ret != SUCCESS) {
+            GELOGW("Cleanup after loading C++ custom pass plugins failed, status[%u].",
+                   static_cast<uint32_t>(cleanup_ret));
+          }
+          cpp_pass_loaded_ = false;
           return ret;
         }
         cpp_pass_loaded_ = true;
       }
-      if ((!python_pass_loaded_) && NeedLoadPythonPasses()) {
-        const auto ret = RegisterPythonPassesFromPlugin();
+      if (IsUserPythonPassPathSet()) {
+        const auto ret = LoadPythonPassesLocked();
         if (ret != SUCCESS) {
           GELOGE(ret, "Load Python fusion pass plugins failed.");
-          (void)CustomPassHelper::Instance().Unload();
+          // Python registrations have been rolled back; also undo C++ loading
+          // because this initialization attempt did not acquire a user.
+          const auto cleanup_ret = CustomPassHelper::Instance().Unload();
+          if (cleanup_ret != SUCCESS) {
+            GELOGW("Cleanup after loading Python fusion pass plugins failed, status[%u].",
+                   static_cast<uint32_t>(cleanup_ret));
+          }
           cpp_pass_loaded_ = false;
           return ret;
         }
-        python_pass_loaded_ = true;
       }
     }
     active_users_++;
     GELOGD("LoadPassPlugins active_users_=%zu", active_users_);
     return SUCCESS;
+  }
+
+  Status EnsurePythonPassesLoaded() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    GE_ASSERT_TRUE(active_users_ > 0U);
+    return LoadPythonPassesLocked();
   }
 
   Status Unload() {
@@ -88,6 +114,20 @@ class PassPluginLoader {
   }
 
  private:
+  Status LoadPythonPassesLocked() {
+    if (python_pass_loaded_) {
+      return SUCCESS;
+    }
+    const auto ret = RegisterPythonPassesFromPlugin();
+    if (ret != SUCCESS) {
+      // Discard partial registrations so a later first-use attempt can retry.
+      UnloadPythonPasses();
+      return ret;
+    }
+    python_pass_loaded_ = true;
+    return SUCCESS;
+  }
+
   std::mutex mutex_;
   size_t active_users_{0U};
   bool cpp_pass_loaded_{false};
@@ -102,6 +142,10 @@ Status LoadPassPlugins() {
 
 Status UnloadPassPlugins() {
   return PassPluginLoader::GetInstance().Unload();
+}
+
+Status EnsurePythonPassesLoaded() {
+  return PassPluginLoader::GetInstance().EnsurePythonPassesLoaded();
 }
 }  // namespace fusion
 }  // namespace ge

@@ -23,6 +23,8 @@ class GePythonRuntimeManager {
 
   Status EnsureReady();
   Status ShutdownProcess();
+  // The callback must remain loaded until ShutdownProcess completes.
+  void SetInterpreterFinalizer(void (*finalizer)());
 
  private:
   GePythonRuntimeManager() = default;
@@ -38,6 +40,7 @@ class GePythonRuntimeManager {
   bool manager_is_owner_{false};
   void *libpython_handle_{nullptr};
   void *py_thread_state_{nullptr};
+  void (*interpreter_finalizer_)(){nullptr};
 };
 
 }  // namespace ge

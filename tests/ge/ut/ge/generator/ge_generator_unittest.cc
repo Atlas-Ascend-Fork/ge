@@ -287,6 +287,36 @@ TEST_F(UtestGeGenerator, test_generate_online_model) {
   EXPECT_NE(generator.GenerateOfflineModel(graph, name, inputs), SUCCESS);
 }
 
+// This UT process has no usable Python pass bridge.
+TEST_F(UtestGeGenerator, PassPluginsLoadWithoutPythonBridgeWhenNoUserPluginPath) {
+  const char *env_name = "ASCEND_GE_PY_PASS_PATH";
+  const char *old_value = std::getenv(env_name);
+  const std::string backup = (old_value == nullptr) ? "" : old_value;
+  (void)unsetenv(env_name);
+  EXPECT_EQ(fusion::LoadPassPlugins(), SUCCESS);
+  EXPECT_EQ(fusion::UnloadPassPlugins(), SUCCESS);
+  if (old_value != nullptr) {
+    (void)setenv(env_name, backup.c_str(), 1);
+  }
+}
+
+TEST_F(UtestGeGenerator, PassPluginsLoadFailsWithoutPythonBridgeWhenUserPluginPathSet) {
+  const char *env_name = "ASCEND_GE_PY_PASS_PATH";
+  const char *old_value = std::getenv(env_name);
+  const std::string backup = (old_value == nullptr) ? "" : old_value;
+  (void)setenv(env_name, "/tmp", 1);
+  const auto ret = fusion::LoadPassPlugins();
+  if (ret == SUCCESS) {
+    (void)fusion::UnloadPassPlugins();
+  }
+  EXPECT_NE(ret, SUCCESS);
+  if (old_value != nullptr) {
+    (void)setenv(env_name, backup.c_str(), 1);
+  } else {
+    (void)unsetenv(env_name);
+  }
+}
+
 TEST_F(UtestGeGenerator, InitializeFailedReleasesPassPluginsImmediately) {
   ASSERT_EQ(fusion::LoadPassPlugins(), SUCCESS);
   PassRegistrationData pass_reg_data("CountCustomPassRun");

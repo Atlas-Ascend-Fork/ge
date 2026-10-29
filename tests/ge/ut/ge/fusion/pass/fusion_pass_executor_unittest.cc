@@ -64,6 +64,23 @@ std::string GetCodeDir() {
 
 constexpr const char *kEnvPythonPassPath = "ASCEND_GE_PY_PASS_PATH";
 constexpr const char *kPythonPassArtifactsRelativePath = "passes/python_pass_artifacts";
+constexpr const char *kConfiguredNativeBridgeModule =
+    "def load_and_get_pass_descriptors():\n"
+    "    return [{\n"
+    "        'descriptor_key': 'ut.configured:ConfiguredNativePass:ConfiguredNativePass',\n"
+    "        'pass_name': 'ConfiguredNativePass',\n"
+    "        'module_name': 'ut.configured',\n"
+    "        'class_name': 'ConfiguredNativePass',\n"
+    "        'stage': 'BeforeInferShape',\n"
+    "        'kind': 'fusion_base',\n"
+    "        'op_types': [],\n"
+    "    }]\n"
+    "\n"
+    "def clear_pass_holders():\n"
+    "    pass\n"
+    "\n"
+    "def clear_loaded_pass_modules():\n"
+    "    pass\n";
 
 class PythonPassProcessShutdownEnvironment final : public ::testing::Environment {
  public:
@@ -738,6 +755,15 @@ bool RecordPythonPassFromDirectBridge(const PythonPassDescriptor *pass_desc,
   return true;
 }
 
+bool RecordPythonResourcePlanPassFromDirectBridge(const PythonPassDescriptor *pass_desc,
+                                                  const PythonResourcePlanPassCallbacks *callbacks) {
+  if ((pass_desc == nullptr) || (callbacks == nullptr)) {
+    return false;
+  }
+  ++g_direct_bridge_registered_count;
+  return true;
+}
+
 void *CreatePatternFusionPassHolderForUt(const PythonPassDescriptor *pass_desc) {
   ++g_pattern_fusion_runtime_snapshot.create_count;
   if (pass_desc == nullptr) {
@@ -844,6 +870,17 @@ Status RunPythonFusionBasePassHolderForUt(const void *holder, GraphPtr &graph, C
 using namespace ge::es;
 class UtestFusionPassExecutor : public testing::Test {
  public:
+  static void TearDownTestSuite() {
+#ifndef ST_FUSION_PASS_PY_INSTALL_DIR
+    // Direct bridge API tests also initialize Python without LoadPassPlugins.
+    // Release that interpreter before LeakSanitizer checks the test process.
+    const auto *api = LoadBridgeApiForUt();
+    if ((api != nullptr) && (api->shutdown_bridge != nullptr)) {
+      api->shutdown_bridge();
+    }
+#endif
+  }
+
   void SetUp() override {
     const auto no_op_infer = [](Operator &) { return GRAPH_SUCCESS; };
     data_infer_registered_ = OperatorFactoryImpl::RegisterInferShapeFunc("Data", no_op_infer) == GRAPH_SUCCESS;
@@ -1564,7 +1601,9 @@ TEST_F(UtestFusionPassExecutor, PythonPassBridgeLoader_SkipsBrokenPrebuiltCandid
                 "  \"platform\": \"" +
                 platform_tag +
                 "\",\n"
-                "  \"bridge_abi\": 1,\n"
+                "  \"bridge_abi\": " +
+                std::to_string(kPythonFusionPassBridgeAbiVersion) +
+                ",\n"
                 "  \"artifacts\": {\n"
                 "    \"bridge\": \"libge_python_pass_bridge.so\",\n"
                 "    \"native\": \"_ge_pass_native.so\"\n"
@@ -1608,7 +1647,8 @@ TEST_F(UtestFusionPassExecutor, PythonPassBridgeCApi_ConfiguredNativeModulePathF
   api->reset_bridge_state();
   ForgetNativeModuleForUt();
 
-  PythonFusionPassRegistrar registrar = {&RecordPythonPassFromDirectBridge};
+  PythonFusionPassRegistrar registrar = {&RecordPythonPassFromDirectBridge,
+                                         &RecordPythonResourcePlanPassFromDirectBridge};
   ScopedTempDir temp_dir;
   const auto invalid_spec_path = temp_dir.FilePath("native_without_so_suffix");
   PythonFusionPassBridgeArtifactConfig invalid_spec_config = {nullptr, invalid_spec_path.c_str()};
@@ -1677,7 +1717,8 @@ TEST_F(UtestFusionPassExecutor, PythonPassPybindBridge_InterpreterInitialization
   ASSERT_EQ(api->set_artifact_config(&config), SUCCESS);
   api->reset_bridge_state();
 
-  PythonFusionPassRegistrar registrar = {&RecordPythonPassFromDirectBridge};
+  PythonFusionPassRegistrar registrar = {&RecordPythonPassFromDirectBridge,
+                                         &RecordPythonResourcePlanPassFromDirectBridge};
   ASSERT_EQ(api->register_passes(&registrar), SUCCESS);
   ASSERT_NE(QueryRealPyIsInitializedForUt(), 0);
   api->reset_bridge_state();
@@ -1703,23 +1744,7 @@ TEST_F(UtestFusionPassExecutor, PythonPassBridgeCApi_LoadsConfiguredNativeModule
   WriteFile(temp_dir.CreateFilePath("ge/passes/__init__.py"), "");
   const auto native_module_path = temp_dir.CreateFilePath("ge/passes/fake_native.py");
   WriteFile(native_module_path, "configured_native_loaded = True\n");
-  WriteFile(temp_dir.CreateFilePath("ge/passes/_bridge.py"),
-            "def load_and_get_pass_descriptors():\n"
-            "    return [{\n"
-            "        'descriptor_key': 'ut.configured:ConfiguredNativePass:ConfiguredNativePass',\n"
-            "        'pass_name': 'ConfiguredNativePass',\n"
-            "        'module_name': 'ut.configured',\n"
-            "        'class_name': 'ConfiguredNativePass',\n"
-            "        'stage': 'BeforeInferShape',\n"
-            "        'kind': 'fusion_base',\n"
-            "        'op_types': [],\n"
-            "    }]\n"
-            "\n"
-            "def clear_pass_holders():\n"
-            "    pass\n"
-            "\n"
-            "def clear_loaded_pass_modules():\n"
-            "    pass\n");
+  WriteFile(temp_dir.CreateFilePath("ge/passes/_bridge.py"), kConfiguredNativeBridgeModule);
 
   const auto *api = LoadBridgeApiForUt();
   ASSERT_NE(api, nullptr);
@@ -1735,7 +1760,8 @@ TEST_F(UtestFusionPassExecutor, PythonPassBridgeCApi_LoadsConfiguredNativeModule
 
   PythonFusionPassBridgeArtifactConfig config = {nullptr, native_module_path.c_str()};
   ASSERT_EQ(api->set_artifact_config(&config), SUCCESS);
-  PythonFusionPassRegistrar registrar = {&RecordPythonPassFromDirectBridge};
+  PythonFusionPassRegistrar registrar = {&RecordPythonPassFromDirectBridge,
+                                         &RecordPythonResourcePlanPassFromDirectBridge};
   g_direct_bridge_registered_count = 0;
   ASSERT_EQ(api->register_passes(&registrar), SUCCESS);
   EXPECT_GT(g_direct_bridge_registered_count, 0);
@@ -2390,7 +2416,7 @@ TEST_F(UtestFusionPassExecutor, PythonPassBridgeCApi_RegisterPassesWithoutPython
   if (api == nullptr) {
     GTEST_SKIP() << "Bridge API not available";
   }
-  PythonFusionPassRegistrar registrar;
+  PythonFusionPassRegistrar registrar{};
   registrar.register_pass = [](const PythonPassDescriptor *, const PythonFusionPassCallbacks *) -> bool {
     return false;
   };

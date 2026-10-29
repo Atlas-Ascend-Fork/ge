@@ -18,9 +18,12 @@ namespace ge {
 namespace fusion {
 struct PythonPassDescriptor;
 struct PythonFusionPassCallbacks;
+struct PythonResourcePlanPassCallbacks;
 
 struct PythonFusionPassRegistrar {
   bool (*register_pass)(const PythonPassDescriptor *pass_desc, const PythonFusionPassCallbacks *callbacks);
+  bool (*register_resource_plan_pass)(const PythonPassDescriptor *pass_desc,
+                                      const PythonResourcePlanPassCallbacks *callbacks);
 };
 
 struct PythonFusionPassBridgeArtifactConfig {
@@ -36,7 +39,9 @@ struct PythonFusionPassBridgeApi {
   void (*shutdown_bridge)();
 };
 
-constexpr uint32_t kPythonFusionPassBridgeAbiVersion = 1U;
+// ABI 2 adds the unified resource-plan registrar callback.  Keep this value
+// in sync with the Python artifact manifest and fallback build metadata.
+constexpr uint32_t kPythonFusionPassBridgeAbiVersion = 2U;
 constexpr const char *kPythonFusionPassBridgeGetApiSymbol = "GeGetPythonFusionPassBridgeApi";
 }  // namespace fusion
 }  // namespace ge

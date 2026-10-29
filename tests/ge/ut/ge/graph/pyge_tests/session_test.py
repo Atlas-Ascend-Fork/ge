@@ -16,6 +16,9 @@ Session 功能测试 - 使用 pytest 框架
 测试 session.py 中的 Session 类的各种功能
 """
 
+import subprocess
+import sys
+
 import pytest
 
 # 添加 ge 到 Python 路径
@@ -272,5 +275,41 @@ class TestSession:
     def test_ge_init():
         ge_api = GeApi()
         config = {"ge.exec.deviceId": "2", "ge.graphRunMode": "0"}
-        ret = ge_api.ge_initialize(config)
-        assert ret == 0
+        try:
+            ret = ge_api.ge_initialize(config)
+            assert ret == 0
+        finally:
+            assert ge_api.ge_finalize() == 0
+
+    @staticmethod
+    def test_python_exit_with_initialized_ge():
+        """Native bridge references must not crash after the host finalizes Python."""
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-u",
+                    "-c",
+                    "import faulthandler; "
+                    "faulthandler.enable(); "
+                    "faulthandler.dump_traceback_later(15, repeat=True); "
+                    "print('before importing GeApi', flush=True); "
+                    "from ge.ge_global import GeApi; "
+                    "print('before initializing GE', flush=True); "
+                    "assert GeApi().ge_initialize({'ge.exec.deviceId': '2', 'ge.graphRunMode': '0'}) == 0; "
+                    "print('GE initialized; exiting without finalize', flush=True)",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired as exc:
+            output = exc.stdout or ""
+            if isinstance(output, bytes):
+                output = output.decode("utf-8", errors="replace")
+            pytest.fail(
+                f"GE exit subprocess timed out after {exc.timeout}s.\n{output}",
+                pytrace=False,
+            )
+        assert result.returncode == 0, result.stdout

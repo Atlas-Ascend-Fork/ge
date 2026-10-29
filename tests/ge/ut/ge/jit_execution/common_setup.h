@@ -198,6 +198,10 @@ class FakeAiCoreOpsKernelBuilder : public FakeOpsKernelBuilder {
   Status GenerateTask(const Node &node, RunContext &context, std::vector<domi::TaskDef> &tasks) override {
     std::cout << "generate task for node " << node.GetName() << std::endl;
     auto op_desc = node.GetOpDesc();
+    // Fusion can create nodes after the fake optimizer attached compile results.
+    if (!op_desc->HasAttr("_kernel_bin_id")) {
+      JitShareGraph::AddCompileResult(std::const_pointer_cast<Node>(node.shared_from_this()), false, "{}");
+    }
     op_desc->SetOpKernelLibName("AIcoreEngine");
     (void)ge::AttrUtils::SetInt(op_desc, "op_para_size", 2048);
 

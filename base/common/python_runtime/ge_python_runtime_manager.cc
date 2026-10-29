@@ -70,6 +70,13 @@ Status GePythonRuntimeManager::EnsureReady() {
   return EnsureReadyLocked();
 }
 
+void GePythonRuntimeManager::SetInterpreterFinalizer(void (*finalizer)()) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (manager_is_owner_) {
+    interpreter_finalizer_ = finalizer;
+  }
+}
+
 void GePythonRuntimeManager::ReleaseInitThreadGilLocked() {
   if (g_python_api.py_gil_state_check() != 0) {
     py_thread_state_ = g_python_api.py_eval_save_thread();
@@ -86,6 +93,7 @@ void GePythonRuntimeManager::ResetStateLocked() {
   py_thread_state_ = nullptr;
   ready_ = false;
   manager_is_owner_ = false;
+  interpreter_finalizer_ = nullptr;
 }
 
 Status GePythonRuntimeManager::FinalizeOwnedInterpreterLocked() {
@@ -104,7 +112,11 @@ Status GePythonRuntimeManager::FinalizeOwnedInterpreterLocked() {
     py_thread_state_ = nullptr;
     GELOGI("[GePythonRuntime] Restored init thread state before finalize.");
   }
-  g_python_api.py_finalize();
+  if (interpreter_finalizer_ != nullptr) {
+    interpreter_finalizer_();
+  } else {
+    g_python_api.py_finalize();
+  }
   ResetStateLocked();
   GELOGI("[GePythonRuntime] Finalize owned interpreter done.");
   return SUCCESS;
