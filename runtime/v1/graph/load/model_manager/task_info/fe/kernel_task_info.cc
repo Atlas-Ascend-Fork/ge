@@ -975,7 +975,7 @@ Status KernelTaskInfo::ParseArgsFormat(uint32_t op_index, DavinciModel *const da
                        instance_idx, input_descs.size());
         AppendShapeDesc(*input_descs.at(instance_idx), shape_info);
       }
-      shape_info[0UL] = static_cast<int64_t>(shape_info.size() * sizeof(uintptr_t));
+      shape_info[0UL] = static_cast<int64_t>(shape_info.size() * sizeof(int64_t));
       args_format_holder_.level1_addr_cnt += ir_range.second + shape_info.size();
       args_format_holder_.shape_infos.push_back(shape_info);
     } else if (arg_format.addr_type == AddrType::OUTPUT_DESC) {
@@ -989,7 +989,7 @@ Status KernelTaskInfo::ParseArgsFormat(uint32_t op_index, DavinciModel *const da
         GE_ASSERT_NOTNULL(output_desc);
         AppendShapeDesc(*output_desc, shape_info);
       }
-      shape_info[0UL] = static_cast<int64_t>(shape_info.size() * sizeof(uintptr_t));
+      shape_info[0UL] = static_cast<int64_t>(shape_info.size() * sizeof(int64_t));
       args_format_holder_.level1_addr_cnt += ir_range.second + shape_info.size();
       args_format_holder_.shape_infos.push_back(shape_info);
     } else if (arg_format.addr_type == AddrType::TILING_CONTEXT &&
