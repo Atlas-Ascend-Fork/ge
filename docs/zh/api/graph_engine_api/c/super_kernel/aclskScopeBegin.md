@@ -28,7 +28,7 @@
 
 ## 功能说明
 
-标记Super Kernel作用域的结束位置。调用该接口后，会在指定Stream上下发scope\_begin kernel及placeholder kernel，用于标识一组需要融合执行的算子操作的起始边界。
+标记Super Kernel作用域的起始位置。调用该接口后，会在指定Stream上下发scope\_begin kernel及placeholder kernel，用于标识一组需要融合执行的算子操作的起始边界。
 
 ## 函数原型
 

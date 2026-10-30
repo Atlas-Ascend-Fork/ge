@@ -39,6 +39,54 @@ OpType::Relu:InputDtype:float16,int8,OutputDtype:float16,int8
 
 **生效级别**：session
 
+## ge.exec.allow\_hf32
+
+是否启用HF32自动代替float32数据类型的功能，当前版本该参数仅针对Conv类算子与Matmul类算子生效。
+
+HF32是昇腾推出的专门用于算子内部计算的单精度浮点类型，与其他常用数据类型的比较如下图所示。可见，HF32与float32支持相同的数值范围，但尾数位精度（11位）却接近FP16（10位）。通过降低精度让HF32单精度数据类型代替原有的float32单精度数据类型，可大大降低数据所占空间大小，实现性能的提升。
+
+![图示](../../../figures/hf32.png)
+
+**参数取值：**
+
+- true：针对Conv类算子与Matmul类算子，开启FP32数据类型自动转换为HF32数据类型的功能。
+
+    具体涉及哪些算子，请参见CANN软件安装后文件存储路径的opp/built-in/op\_impl/ai\_core/tbe/impl\_mode/allow\_hf32\_matmul\_**t**\_conv\_**t**.ini，该文件不支持用户修改。
+
+- false：针对Conv类算子与Matmul类算子，关闭FP32数据类型自动转换为HF32数据类型的功能。
+
+    具体涉及哪些算子，请参见CANN软件安装后文件存储路径的opp/built-in/op\_impl/ai\_core/tbe/impl\_mode/allow\_hf32\_matmul\_**f**\_conv\_**f**.ini，该文件不支持用户修改。
+
+**参数默认值**：针对Conv类算子，默认开启FP32到HF32的转换；针对Matmul类算子，默认关闭该转换功能。
+
+**使用约束**：
+
+<!-- npu="950,A3,910b" id17 -->
+- 该参数仅支持如下产品：
+
+    Ascend 950PR&950DT系列产品
+
+    Atlas A3系列产品
+
+    Atlas A2系列产品
+<!-- end id17 -->
+
+- 针对同一个算子，如果通过`ge.exec.op_precision_mode`参数配置了enable\_hi\_float\_32\_execution或enable\_float\_32\_execution，该场景下不建议再与`ge.exec.allow_hf32`参数同时使用，若同时使用，则优先级如下：
+
+    `ge.exec.op_precision_mode`\(ByNodeName，按节点名称设置精度模式\) \> `ge.exec.allow_hf32` \> `ge.exec.op_precision_mode`\(ByOpType，按算子类型设置精度模式\)。
+
+- 由于`ge.exec.allow_hf32`是使用HF32自动代替float32，要想该参数生效，必须保证被涉及算子的输入或者输出类型为float32。在线推理场景由于`ge.exec.precision_mode_v2`参数默认值为fp16，原始网络模型中算子类型为float32时会被强制转为float16类型，该场景下使用`ge.exec.allow_hf32`参数不生效，建议修改`ge.exec.precision_mode_v2`参数值为**origin**（`ge.exec.precision_mode`参数默认值为force\_fp16，建议修改为**must\_keep\_origin\_dtype**或者**force\_fp32**）。
+
+**配置示例：**
+
+```c++
+{"ge.exec.allow_hf32", "true"};
+```
+
+**必选/可选**：可选
+
+**生效级别**：全局/session/graph
+
 ## ge.exec.modify\_mixlist
 
 混合精度场景下，通过此参数指定混合精度黑白灰名单的路径以及文件名，自行指定哪些算子允许降精度，哪些算子不允许降精度。配置为路径以及文件名，文件为JSON格式。

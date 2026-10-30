@@ -1,0 +1,112 @@
+# When compiling with the bazel build tool, the system prompts "An error occurred during the fetch of repository 'io\_bazel\_rules\_docker'", and the compilation fails.
+
+<!-- md-trans-meta sourceCommit=84719ef8084affb0771904e2525c615132365471 translatedAt=2026-10-27T14:16:14.797Z pushedAt=2026-10-28T08:03:27.143Z nl=2 -->
+
+## Problem Description
+
+When compiling with the **bazel build --config=monolithic //tensorflow/compiler/aot:xlacompilebazel build** command, the system prompts "ERROR: An error occurred during the fetch of repository 'io\_bazel\_rules\_docker'". After checking the server, the network connection is available, but the following error message is still reported:
+
+```console
+ERROR: An error occurred during the fetch of repository 'io_bazel_rules_docker':
+   java.io.IOException: Error downloading [https://github.com/bazelbuild/rules_docker/releases/download/v0.14.3/rules_docker-v0.14.3.tar.gz] to /home/test/.cache/bazel/_bazel_test/abd37aaac8a380ca5a3f13938322fcb2/external/io_bazel_rules_docker/rules_docker-v0.14.3.tar.gz: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+ERROR: no such package '@io_bazel_rules_docker//repositories': java.io.IOException: Error downloading [https://github.com/bazelbuild/rules_docker/releases/download/v0.14.3/rules_docker-v0.14.3.tar.gz] to /home/test/.cache/bazel/_bazel_test/abd37aaac8a380ca5a3f13938322fcb2/external/io_bazel_rules_docker/rules_docker-v0.14.3.tar.gz: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+INFO: Elapsed time: 24.586s
+INFO: 0 processes.
+FAILED: Build did NOT complete successfully (0 packages loaded)
+```
+
+## Solution
+
+If the issue of failing to download the compressed package persists even when the network is connected, refer to the following method to resolve it:
+
+1. Download the attachment from the following link to the local machine, and then upload it to any path on the Linux server, for example, to the $HOME/bazel\_tools path.
+
+    ```text
+    https://github.com/bazelbuild/rules_docker/releases/download/v0.14.3/rules_docker-v0.14.3.tar.gz
+    https://github.com/bazelbuild/bazel-skylib/releases/download/0.8.0/bazel-skylib.0.8.0.tar.gz
+    https://github.com/bazelbuild/rules_swift/releases/download/0.11.1/rules_swift.0.11.1.tar.gz
+    https://github.com/llvm-mirror/llvm/archive/7a7e03f906aada0cf4b749b51213fe5784eeff84.tar.gz
+    ```
+
+    The absolute path of the preceding files on the Linux server is:
+
+    ```text
+    /home/test/bazel_tools/rules_docker-v0.14.3.tar.gz
+    /home/test/bazel_tools/bazel-skylib.0.8.0.tar.gz
+    /home/test/bazel_tools/rules_swift.0.11.1.tar.gz
+    /home/test/bazel_tools/llvm-7a7e03f906aada0cf4b749b51213fe5784eeff84.tar.gz
+    ```
+
+2. Modify the download links in the files related to the bazel build tool:
+    1. Change to the tensorflow-1.15.0 directory, run the **vi WORKSPACE** command to open WORKSPACE, and modify the download links in this file to the absolute paths on the Linux server:
+
+        ```bazel
+        bazel_toolchains_repositories()
+        http_archive(
+            name = "io_bazel_rules_docker",
+            sha256 = "6287241e033d247e9da5ff705dd6ef526bac39ae82f3d17de1b69f8cb313f9cd",
+            strip_prefix = "rules_docker-0.14.3",
+            urls = ["file:///home/test/bazel_tools/rules_docker-v0.14.3.tar.gz"],
+        )
+
+        load(
+            "@io_bazel_rules_docker//repositories:repositories.bzl",
+            container_repositories = "repositories",
+        )
+        container_repositories()
+
+        load("//third_party/toolchains/preconfig/generate:workspace.bzl",
+             "remote_config_workspace")
+        remote_config_workspace()
+
+        # Apple and Swift rules.
+        http_archive(
+            name = "build_bazel_rules_apple",
+            sha256 = "6efdde60c91724a2be7f89b0c0a64f01138a45e63ba5add2dca2645d981d23a1",
+            urls = ["https://github.com/bazelbuild/rules_apple/releases/download/0.17.2/rules_apple.0.17.2.tar.gz"],
+        )  # https://github.com/bazelbuild/rules_apple/releases
+        http_archive(
+            name = "build_bazel_rules_swift",
+            sha256 = "96a86afcbdab215f8363e65a10cf023b752e90b23abf02272c4fc668fcb70311",
+            urls = ["file:///home/test/bazel_tools/rules_swift.0.11.1.tar.gz"],
+        )  # https://github.com/bazelbuild/rules_swift/releases
+        ```
+
+        Save the file and exit.
+
+    2. Modify the link corresponding to llvm in the **workspace.bzl** file under the tensorflow-1.15.0/tensorflow path:
+
+        ```bazel
+            # TODO(phawkins): currently, this rule uses an unofficial LLVM mirror.
+            # Switch to an official source of snapshots if/when possible.
+            tf_http_archive(
+                name = "llvm",
+                build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
+                sha256 = "599b89411df88b9e2be40b019e7ab0f7c9c10dd5ab1c948cd22e678cc8f8f352",
+                strip_prefix = "llvm-7a7e03f906aada0cf4b749b51213fe5784eeff84",
+                urls = [
+                    "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/7a7e03f906aada0cf4b749b51213fe5784eeff84.tar.gz",
+                    "file:///home/test/bazel_tools/llvm-7a7e03f906aada0cf4b749b51213fe5784eeff84.tar.gz",
+                ],
+            )
+        ```
+
+    3. After the modification is complete, change back to the tensorflow-1.15.0 directory and run the following command to compile the **xlacompile** tool:
+
+        ```bash
+        bazel build --config=monolithic //tensorflow/compiler/aot:xlacompile
+        ```
+
+        If "ERROR: An error occurred during the fetch of repository 'bazel\_skylib':" is reported, proceed to the next step to continue modifying the files related to bazel\_skylib.
+
+    4. Modify the related links in the **.cache directory**:
+
+        Change to the $HOME directory and run the **grep -r  bazel-skylib.0.8.0  .cache/** command to check which file in the **.cache** directory references the URL of **bazel-skylib.0.8.0.tar.gz**. Based on the returned information, navigate to the directory where the file that references this URL is located, for example, .cache/bazel/\_bazel\__test_/_abd37aaac8a380ca5a3f13938322fcb2_/external/io\_bazel\_rules\_closure/closure/**repositories.bzl** (this path is only an example; use the actual path generated after your compilation).
+
+        Open the file and change the URL in it to:
+
+        ```text
+        file:///home/test/bazel_tools/bazel-skylib.0.8.0.tar.gz
+        ```
+
+        Save the file and exit.

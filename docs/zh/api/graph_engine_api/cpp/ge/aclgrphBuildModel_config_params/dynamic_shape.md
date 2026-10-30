@@ -147,24 +147,24 @@ INPUT\_SHAPE中的“-1”表示设置动态batch。
 
 **产品支持情况：**
 
-<!-- npu="950" id1 -->
+<!-- npu="950" id23 -->
 - Ascend 950PR&950DT系列产品：支持
-<!-- end id1 -->
+<!-- end id23 -->
 <!-- npu="A3" id2 -->
 - Atlas A3系列产品：支持
 <!-- end id2 -->
-<!-- npu="910b" id3 -->
+<!-- npu="910b" id37 -->
 - Atlas A2系列产品：支持
-<!-- end id3 -->
-<!-- npu="310b" id4 -->
+<!-- end id37 -->
+<!-- npu="310b" id45 -->
 - Atlas 200I/500 A2推理产品：支持
-<!-- end id4 -->
-<!-- npu="310p" id5 -->
+<!-- end id45 -->
+<!-- npu="310p" id49 -->
 - Atlas推理系列产品：支持
-<!-- end id5 -->
-<!-- npu="910" id6 -->
+<!-- end id49 -->
+<!-- npu="910" id50 -->
 - Atlas训练系列产品：支持
-<!-- end id6 -->
+<!-- end id50 -->
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildModel_config_params/dynamic_shape_res.md#id2 -->
 
 ## DYNAMIC\_IMAGE\_SIZE

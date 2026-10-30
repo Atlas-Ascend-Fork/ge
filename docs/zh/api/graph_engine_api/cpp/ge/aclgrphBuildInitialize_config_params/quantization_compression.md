@@ -1,6 +1,6 @@
 # 量化压缩
 
-<!-- npu="310p,310b" id8 -->
+<!-- npu="950,A3,910b,910,310p,310b" id8 -->
 ## COMPRESSION\_OPTIMIZE\_CONF
 
 压缩优化功能配置文件路径以及文件名，通过该参数开启配置文件中指定的压缩优化特性，从而提升网络性能。例如：/home/test/compression\_optimize.cfg。此参数实际对应的options参数为`ge.compressionOptimizeConf`。
