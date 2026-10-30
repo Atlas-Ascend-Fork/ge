@@ -592,12 +592,16 @@ HcclResult HcomGraphOptimizer::SetUnknownShapeAttr(ge::ComputeGraph &graph, bool
   return HCCL_SUCCESS;
 }
 
-// ReduceScatterV算子的counts类输入索引：recv_count=1, send_counts=2（与hccl侧vInputVec pass的索引定义一致）
-static constexpr u32 REDUCESCATTERV_COUNTS_INPUT_IDX[] = {1U, 2U};
+// V类算子的counts类必选输入索引表（与hccl侧vInputVec pass的必选const检查索引一致；
+// RSV索引3的displacements为可选输入，运行时可按counts前缀和推导，不检查；A2AV四个输入全必选）
+static const std::map<std::string, std::vector<u32>> V_OP_COUNTS_INPUT_IDX = {
+    {HCCL_KERNEL_OP_TYPE_REDUCESCATTERV, {1U, 2U}},         // recv_count, send_counts
+    {HCCL_KERNEL_OP_TYPE_ALLTOALLV, {1U, 2U, 3U, 4U}},      // send_counts, send_displs, recv_counts, recv_displs
+};
 
-static bool IsReduceScatterVCountsConst(const ge::NodePtr &nodePtr) {
+static bool IsCountsInputConst(const ge::NodePtr &nodePtr, const std::vector<u32> &idxList) {
   const auto op = ge::OpDescUtils::CreateOperatorFromNode(nodePtr);
-  for (const auto idx : REDUCESCATTERV_COUNTS_INPUT_IDX) {
+  for (const auto idx : idxList) {
     if (ge::OpDescUtils::GetInputConstData(op, idx) == nullptr) {
       return false;
     }
@@ -613,7 +617,8 @@ HcclResult HcomGraphOptimizer::MarkForceUnknownForDynamicCounts(ge::ComputeGraph
     if (!TryGetOpDesc(nodePtr, opDescPtr)) {
       continue;
     }
-    if (opDescPtr->GetType() != HCCL_KERNEL_OP_TYPE_REDUCESCATTERV) {
+    const auto countsIdxIter = V_OP_COUNTS_INPUT_IDX.find(opDescPtr->GetType());
+    if (countsIdxIter == V_OP_COUNTS_INPUT_IDX.end()) {
       continue;
     }
     // 零数据输入是合法场景：无通信需求，不强制走单算子模式
@@ -621,7 +626,7 @@ HcclResult HcomGraphOptimizer::MarkForceUnknownForDynamicCounts(ge::ComputeGraph
     if ((inputDescPtr != nullptr) && (inputDescPtr->GetShape().GetShapeSize() == 0)) {
       continue;
     }
-    if (IsReduceScatterVCountsConst(nodePtr)) {
+    if (IsCountsInputConst(nodePtr, countsIdxIter->second)) {
       continue;
     }
     HCCL_WARNING(
