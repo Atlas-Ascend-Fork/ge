@@ -35,9 +35,9 @@ echo "ASCEND_OPP_PATH:${ASCEND_OPP_PATH}"
 # print usage message
 usage() {
   echo "Usage:"
-  echo "sh run_test.sh [-u | --ut] [-s | --st]"
-  echo "               [-c | --cov] [-j<N>] [-h | --help] [-v | --verbose]"
-  echo "               [--cann_3rd_lib_path=<PATH>]"
+  echo "bash run_test.sh [-u | --ut] [-s | --st]"
+  echo "                 [-c | --cov] [-j<N>] [-h | --help] [-v | --verbose]"
+  echo "                 [--cann_3rd_lib_path=<PATH>]"
   echo ""
   echo "Options:"
   echo "    -u, --ut       Build all ut"

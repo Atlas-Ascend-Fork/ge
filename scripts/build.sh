@@ -47,7 +47,7 @@ echo "AIR_CODE_DIR=${AIR_CODE_DIR}"
 usage()
 {
   echo "Usage:"
-  echo "sh build.sh [-h] [-n] [-a] [-k] [-e] [-f] [-c] [-p] [-v] [-g] [r] [-o] [-j[n]]"
+  echo "bash build.sh [-h] [-n] [-a] [-k] [-e] [-f] [-c] [-p] [-v] [-g] [r] [-o] [-j[n]]"
   echo ""
   echo "Options:"
   echo "    -h Print usage"

@@ -10,7 +10,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 # Usage:
-#    Command: sh ge_compile.sh
+#    Command: bash ge_compile.sh
 #    Environment: WORKSPACE, task_name, GIT_TARGET_BRANCH, REPOSITORY_NAME, GIT_PR_NUMBER
 
 ########

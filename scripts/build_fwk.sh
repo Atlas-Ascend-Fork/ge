@@ -35,7 +35,7 @@ source ${BASEPATH}/scripts/support_multiple_versions_of_lcov.sh
 usage()
 {
   echo "Usage:"
-  echo "sh build_fwk.sh [-a] [-j[n]] [-h] [-v] [-s] [-b] [-t] [-u] [-c] [-M]"
+  echo "bash build_fwk.sh [-a] [-j[n]] [-h] [-v] [-s] [-b] [-t] [-u] [-c] [-M]"
   echo ""
   echo "Options:"
   echo "    -h Print usage"
