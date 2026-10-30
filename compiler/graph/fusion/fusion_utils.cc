@@ -103,6 +103,13 @@ std::vector<NodePtr> ToNodePtrs(const std::vector<GNode> &nodes) {
 // 公共实现：过滤无效节点后做局部 BFS 判环。
 // matched_nodes 需已确保非空且均为有效节点（非 nullptr 且有 owner_graph）。
 static bool WillCauseCycleIfFuseImpl(const std::vector<NodePtr> &matched_nodes) {
+  // 单节点集合特判：SubgraphRewriter 的替换流程（RelinkSubgraphIO 一比一重连数据边、
+  // InheritExecutionOrder 迁移控制边）保持融合集合的边界边不变，单节点替换不可能产生
+  // 原图不存在的新环；从外部后继绕回自身的路径属于图中已存在的合法环（如 TF 扁平化
+  // 控制流的回边），不应因此拒绝融合。
+  if (matched_nodes.size() == 1U) {
+    return false;
+  }
   // 把 matched_nodes 集合 S 融成一个节点是否会成环，等价于：从 S 的某个"外部后继"出发，
   // 沿有向边（数据+控制后继）正向能否回到 S。能回到即成环。无状态局部 BFS，O(V+E)，
   // 不依赖任何缓存/连通矩阵，多线程各判各的，天然并发安全。

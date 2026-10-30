@@ -155,6 +155,39 @@ TEST_F(UtestFusionUtils, WillCauseCycleIfFuse_GraphWithControlEdgeCycle_ReturnTr
   EXPECT_TRUE(FusionUtils::WillCauseCycleIfFuse(match_result));
 }
 
+// 单节点集合位于图中已存在的合法回边环（如 TF 扁平化控制流回边）上时，
+// 融合不会新增环，不应误判为"融合后会成环"。
+TEST_F(UtestFusionUtils, WillCauseCycleIfFuse_SingleNodeOnLegalCycle_ReturnFalse) {
+  using namespace ge::es;
+
+  auto graph_builder = EsGraphBuilder("single_node_on_legal_cycle");
+  auto esb_graph = graph_builder.GetCGraphBuilder();
+  auto data = EsCreateGraphInput(esb_graph, 0);
+  auto relu = EsRelu(data);
+  auto abs = EsAbs(relu);
+  esb_graph->SetGraphOutput(abs, 0);
+  // 绕回 relu 自身的合法回边：relu -> abs --ctrl--> relu
+  GraphUtils::AddEdge(NodeAdapter::GNode2Node(abs->GetProducer())->GetOutControlAnchor(),
+                      NodeAdapter::GNode2Node(relu->GetProducer())->GetInControlAnchor());
+  auto graph = std::make_shared<Graph>(*graph_builder.BuildAndReset());
+
+  const auto relu_node = NodeAdapter::GNode2Node(relu->GetProducer());
+  ASSERT_NE(relu_node, nullptr);
+  EXPECT_FALSE(FusionUtils::WillCauseCycleIfFuse({relu_node}));
+
+  auto pattern_builder = EsGraphBuilder("pattern");
+  auto pattern_esb = pattern_builder.GetCGraphBuilder();
+  auto p_data = EsCreateGraphInput(pattern_esb, 0);
+  auto p_relu = EsRelu(p_data);
+  pattern_esb->SetGraphOutput(p_relu, 0);
+
+  auto pattern = std::make_unique<Pattern>(std::move(*pattern_builder.BuildAndReset()));
+  PatternMatcher matcher(std::move(pattern), graph);
+  auto match_result = matcher.MatchNext();
+  ASSERT_NE(match_result, nullptr);
+  EXPECT_FALSE(FusionUtils::WillCauseCycleIfFuse(match_result));
+}
+
 TEST_F(UtestFusionUtils, ParseFusionSwitch_NonExistentFile_ReturnsEmpty) {
   GetThreadLocalContext().SetGlobalOption({{FUSION_SWITCH_FILE, "/nonexistent/path/fusion_switch.json"}});
   auto result = FusionUtils::ParseFusionSwitch();
