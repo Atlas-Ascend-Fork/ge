@@ -46,6 +46,7 @@ generate_cann_protobuf(ge PROTO_SRCS PROTO_HDRS ${PROTO_LIST})
 ################################################################################
 # build graph_engine_test
 add_executable(graph_engine_test
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_runtime_dynamic_load.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_static_graph_profiling.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_fm_memory_refresh.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_custom_op.cc"
@@ -103,9 +104,6 @@ add_executable(graph_engine_test
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_pack_notask_pass.cc"
     "${AIR_CODE_DIR}/tests/graph_metadef/ut/register/testcase/op_def_factory_unittest.cc"
     "${AIR_CODE_DIR}/tests/graph_metadef/depends/faker/plugin_manager_stub.cc"
-    "${AIR_CODE_DIR}/tests/ge/st/testcase/graph/build/dag/dag_adapter_integration_test.cc"
-    "${AIR_CODE_DIR}/tests/ge/st/testcase/graph/build/dag/dag_stream_allocator_pass_test.cc"
-    "${AIR_CODE_DIR}/tests/ge/st/testcase/graph/build/dag/dag_weighted_stream_merger_public_st_test.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/graph/ir/named_io_node_builder_test.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_multi_stream_tuning_step_recorder.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_declarative_custom_op_attached_stream.cc"
@@ -397,6 +395,8 @@ add_executable(graph_engine_compile_test
 # 安装 ge_py wheel 到 ST 测试专用目录（用于 fusion_pass_executor_unittest）
 set(ST_FUSION_PASS_PY_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/st_fusion_pass_py_install)
 set(ST_FUSION_PASS_PY_NATIVE_FIXUP_SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/st_fusion_pass_py_native_fixup.cmake)
+# GE ST covers adapter and synchronization behavior; graph-autofusion tests the planning algorithm.
+set(ST_MULTISTREAM_STUB ${AIR_CODE_DIR}/tests/ge/ut/ge/graph/pyge_tests/_fake_multistream.py)
 
 file(WRITE ${ST_FUSION_PASS_PY_NATIVE_FIXUP_SCRIPT} [=[
 function(ge_python_pass_artifacts_complete result)
@@ -445,6 +445,7 @@ add_custom_command(
     COMMAND ${HI_PYTHON} -m pip install --target ${ST_FUSION_PASS_PY_INSTALL_DIR}
             ${CMAKE_BINARY_DIR}/api/python/ge/ge_py-0.0.1-py3-none-any.whl
             ${GE_PYTHON_PASS_NATIVE_WHEEL}
+            ${GE_PYTHON_ONNX_PLUGIN_NATIVE_WHEEL}
             --force-reinstall
     COMMAND ${CMAKE_COMMAND}
             -DINSTALL_DIR=${ST_FUSION_PASS_PY_INSTALL_DIR}
@@ -455,8 +456,13 @@ add_custom_command(
             ${CMAKE_BINARY_DIR}/tests/ge/ut/ge/graph/eager_style_graph_builder/graph_construction_test/output/whl/es_ut_test-1.0.0-py3-none-any.whl --force-reinstall
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:eager_style_graph_builder_base> ${ST_FUSION_PASS_PY_INSTALL_DIR}/ge/_capi/
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/tests/ge/ut/ge/graph/eager_style_graph_builder/graph_construction_test/output/lib64/libes_ut_test.so ${ST_FUSION_PASS_PY_INSTALL_DIR}/ge/_capi/
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ST_MULTISTREAM_STUB}
+            ${ST_FUSION_PASS_PY_INSTALL_DIR}/multistream.py
     COMMAND ${CMAKE_COMMAND} -E touch ${ST_FUSION_PASS_PY_INSTALL_DIR}/.installed
-    DEPENDS ge_python_main_wheel ge_python_native_wheel eager_style_graph_builder_base es_ut_test
+    DEPENDS ge_python_main_wheel ge_python_native_wheel ge_python_onnx_plugin_native_wheel eager_style_graph_builder_base es_ut_test
+            ${CMAKE_BINARY_DIR}/api/python/ge/ge_py-0.0.1-py3-none-any.whl
+            ${GE_PYTHON_PASS_NATIVE_WHEEL}
+            ${ST_MULTISTREAM_STUB}
     COMMENT "Installing ge-py wheel for graph_engine_compile_test"
 )
 
@@ -528,19 +534,6 @@ target_link_libraries(graph_engine_compile_test
 add_subdirectory(fast_runtime_v2)
 add_subdirectory(fast_runtime_v2/dvpp/dvpp_rtkernel)
 add_subdirectory(autofuse)
-
-# ge_common 经 PUBLIC gert_model_data_serializer 传播构建目录静态库（连带其 PUBLIC 的
-# minizip/z），污染 ge_python_custom_op_bridge 的 link.txt；gen_fallback_resources 将其重写为
-# -l 后 CANN lib64 无此库，导致运行期 Python fallback codegen 链接失败。bridge 所需符号已
-# 内含于 libge_common.so，从接口中剔除该静态库（ge_common 自身链接不受影响，符号仍打入 .so）。
-if(TARGET ge_common)
-    get_target_property(_ge_common_iface ge_common INTERFACE_LINK_LIBRARIES)
-    if(_ge_common_iface)
-        list(REMOVE_ITEM _ge_common_iface gert_model_data_serializer)
-        set_target_properties(ge_common PROPERTIES INTERFACE_LINK_LIBRARIES "${_ge_common_iface}")
-    endif()
-    unset(_ge_common_iface)
-endif()
 
 include(CTest)
 enable_testing()

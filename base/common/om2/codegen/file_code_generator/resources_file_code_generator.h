@@ -30,6 +30,8 @@ class ResourcesFileCodeGenerator : public Om2ModelClassGeneratorBase {
  private:
   void BuildInitStreamResources(std::vector<BodyItem> &body, const RuntimeResourceSemantic &runtime,
                                 const VarRef &external_resources, const VarRef &priority);
+  void BuildInitHcclFollowStreamResources(std::vector<BodyItem> &body, const RuntimeResourceSemantic &runtime,
+                                          const VarRef &priority);
   void BuildInitNotifyResources(std::vector<BodyItem> &body, const RuntimeResourceSemantic &runtime,
                                 const VarRef &external_resources);
   void BuildInitEventResources(std::vector<BodyItem> &body, const RuntimeResourceSemantic &runtime,
@@ -37,6 +39,7 @@ class ResourcesFileCodeGenerator : public Om2ModelClassGeneratorBase {
   void BuildInitLabelResources(std::vector<BodyItem> &body, const RuntimeResourceSemantic &runtime,
                                const VarRef &external_resources);
   void BuildInitSessionScopeMemory(std::vector<BodyItem> &body, const RuntimeResourceSemantic &runtime);
+  void BuildReleaseResourcesMethodForHccl(std::vector<BodyItem> &body);
   void BuildReleaseResourcesMethodForControlTask(std::vector<BodyItem> &body, const RuntimeResourceSemantic &runtime);
 };
 }  // namespace ge

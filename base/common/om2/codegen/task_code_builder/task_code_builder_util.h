@@ -46,12 +46,21 @@ class TaskCodeBuilderUtil {
   static Arg BuildWorkspaceDataField(AstBuildContext &ast, const OpArgDesc &arg_desc);
   static Arg BuildCustomValueDataField(AstBuildContext &ast, const OpArgDesc &arg_desc);
   static Arg BuildTilingDataField(AstBuildContext &ast, const OpArgDesc &arg_desc);
+
+  // 将字节序列渲染为八进制转义字符串字面量内容（每字节 "\ooo" 3 位），供 private_def / tiling raw_data 等复用
+  static std::string EscapeToOctalString(const std::vector<uint8_t> &bytes);
+
+  // 登记 args table 条目（序号/尺寸/host 偏移）并填充语义存储，返回条目指针，供各 task builder 复用
+  static ArgsTableEntrySemantic *InitArgsTableEntry(const TaskSemanticContributeContext &context,
+                                                    std::optional<ArgsTableEntrySemantic> &entry_storage,
+                                                    uint64_t args_size);
   // OpArgInfo 的 addr 字段填充：需要地址的参数取 OpArgDesc 实际值，其余填充默认值（全 0）
   static Arg RenderArgAddrField(AstBuildContext &ast, const OpArgDesc &arg_desc);
   // OpArgInfo 的 data 字段填充：有对应数据的参数按类型查表构建实际值，其余填充默认值（custom_value = 0）
   static Arg RenderArgDataField(AstBuildContext &ast, const OpArgDesc &arg_desc);
   // 将 AddrSemantic 转换为 OpArgDesc（RAW_ADDR 类型）
   static OpArgDesc ConvertAddrDesc(const AddrSemantic &addr);
+  static bool IsCollectiveCommType(const std::string &op_type);
 
   // 完整镜像 davinci_model.cc:GetProfilingTaskType() 的判别逻辑，
   // 将 ModelTaskType + op 属性 + kernel_type 转换为 profiling task type 对应的 uint32_t 值

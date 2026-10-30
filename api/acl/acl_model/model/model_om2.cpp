@@ -2419,6 +2419,9 @@ const char *aclmdlGetTensorRealNameImplOm2(const aclmdlDesc *modelDesc, const ch
 }
 
 aclError aclRecoverAllHcclTasksImplOm2(int32_t deviceId) {
-  (void)deviceId;
+  ACL_LOG_WARN(
+      "[OM2][Recover] OM2 static offline model does not support aclRecoverAllHcclTasks, deviceId[%d]. "
+      "Please reload the model after device reset.",
+      deviceId);
   return ACL_SUCCESS;
 }

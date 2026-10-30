@@ -56,8 +56,8 @@ Status DataDumpImpl::SaveTask(const GertModelTaskDesc &task_info, ModelTaskType 
   dump_info.op_type = op_type;
   dump_info.is_raw_address = task_info.is_raw_address;
 
-  const auto copy_io_entries = [](const GertModelTaskIoEntry *entries, const uint32_t entry_num,
-                                  std::vector<InnerTensorInfo> &inner_tensors) -> Status {
+  const auto copy_io_entries = [&op_name](const GertModelTaskIoEntry *entries, const uint32_t entry_num,
+                                          std::vector<InnerTensorInfo> &inner_tensors) -> Status {
     if ((entry_num > 0U) && (entries == nullptr)) {
       GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io entries is null, entry_num=%u.", entry_num);
       return PARAM_INVALID;
@@ -74,7 +74,7 @@ Status DataDumpImpl::SaveTask(const GertModelTaskDesc &task_info, ModelTaskType 
       inner_tensor.offset = entry.offset;
       inner_tensor.device_address = PtrToValue(tensor.GetAddr());
       inner_tensor.size = tensor.GetSize();
-      // 对齐 v1(data_dumper.cc)：dump proto 的 data_type 写 IR(proto) 枚举，与 ge::DataType 数值错位
+      // dump proto 的 data_type 写 IR(proto) 枚举，与 ge::DataType 数值错位
       inner_tensor.data_type = DataTypeUtil::GetIrDataType(tensor.GetDataType());
       inner_tensor.format = tensor.GetStorageFormat();
       if (tensor.GetStorageShape().GetDimNum() > 0U) {
@@ -219,7 +219,7 @@ Status DataDumpImpl::UpdateStepId(uint64_t step_id, rtStream_t stream) {
     return SUCCESS;
   }
 
-  // 对齐 v1 DavinciModel::UpdateStepInfoWithStream：每次执行前把当前 step 刷到设备内存，
+  // 每次执行前把当前 step 刷到设备内存，
   // AICPU dump kernel 解引用 step_id_addr 计算 step 落盘目录
   step_id_host_val_ = step_id;
   aclError ret = ACL_SUCCESS;
@@ -278,7 +278,7 @@ void DataDumpImpl::BuildTaskInputs(const InnerDumpInfo &dump_info, toolkit::aicp
     toolkit::aicpu::dump::Input *input_tensor = task.add_input();
     const auto &tensor = dump_info.inputs[i];
 
-    // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
+    // 直接写 args + offset 地址给 AICPU，不解引用
     uint64_t device_address = tensor.device_address;
     auto addr_type = toolkit::aicpu::dump::AddressType::TRADITIONAL_ADDR;
     if (dump_info.is_raw_address) {
@@ -318,7 +318,7 @@ void DataDumpImpl::BuildTaskOutputs(const InnerDumpInfo &dump_info, toolkit::aic
     toolkit::aicpu::dump::Output *output_tensor = task.add_output();
     const auto &tensor = dump_info.outputs[i];
 
-    // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
+    // 直接写 args + offset 地址给 AICPU，不解引用
     uint64_t device_address = tensor.device_address;
     auto addr_type = toolkit::aicpu::dump::AddressType::TRADITIONAL_ADDR;
     if (dump_info.is_raw_address) {

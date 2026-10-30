@@ -168,27 +168,6 @@ void AicpuResourceManager::ClearTensors() {
   }
 }
 
-ge::graphStatus AicpuResourceManager::HasLoadedCustAicpuSo(const std::string &so_name, bool &loaded) {
-  // get current context
-  aclrtContext rt_current_ctx = nullptr;
-  GE_CHK_ACL_RET(aclrtGetCurrentContext(&rt_current_ctx));
-
-  // use current context as resource key
-  const std::lock_guard<std::mutex> lk(cust_aicpu_so_mutex_);
-
-  const uintptr_t resource_id =
-      static_cast<uintptr_t>(static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rt_current_ctx)));
-  if (cust_aicpu_context_so_.find(resource_id) == cust_aicpu_context_so_.end()) {
-    cust_aicpu_context_so_[resource_id] = so_name;
-    loaded = false;
-    GELOGI("New added aicpu so name %s, resource id %lu.", so_name.c_str(), resource_id);
-    return ge::GRAPH_SUCCESS;
-  }
-  GELOGI("Had added so name %s, resource id %lu has been loaded.", so_name.c_str(), resource_id);
-  loaded = true;
-  return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus EnsureCreateTfSession(KernelContext *context) {
   auto session_id = context->GetInputPointer<uint64_t>(0UL);
   GE_ASSERT_NOTNULL(session_id);

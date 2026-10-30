@@ -88,6 +88,18 @@ bool GetConcatNodeConcatDim(const NodePtr &concat_node, int64_t &node_concat_dim
   return true;
 }
 
+bool CanGetInputsBufferShape(const NodePtr &concat_node) {
+  for (const auto &in_anchor : concat_node->GetAllInDataAnchors()) {
+    std::vector<Expression> dims;
+    if (loop::GetBufferShape(in_anchor, dims) != GRAPH_SUCCESS) {
+      GELOGW("Failed to get buffer shape of input %d of concat %s, do not flatten concat", in_anchor->GetIdx(),
+             concat_node->GetNamePtr());
+      return false;
+    }
+  }
+  return true;
+}
+
 uint32_t PeerOutNodeFuseParaCal(const NodePtr &concat_node, const NodePtr &peer_out_node, int64_t original_concatdim,
                                 uint32_t &concat_node_flag, std::vector<uint32_t> &concat_node_flagvec) {
   (void)concat_node;
@@ -99,7 +111,8 @@ uint32_t PeerOutNodeFuseParaCal(const NodePtr &concat_node, const NodePtr &peer_
     auto concat_dim_can_get_flag = GetConcatNodeConcatDim(peer_out_node, concat_dimvalue);
     GELOGD("fuse concat node info:original concat dim is %d, fuse concat dim is %d", original_concatdim,
            concat_dimvalue);
-    if ((original_concatdim != concat_dimvalue) || (nodeout_anchorsize != 1) || (concat_dim_can_get_flag != true)) {
+    if ((original_concatdim != concat_dimvalue) || (nodeout_anchorsize != 1) || (concat_dim_can_get_flag != true) ||
+        (!CanGetInputsBufferShape(peer_out_node))) {
       concat_node_flag = static_cast<uint32_t>(0);
       peerout_node_concatnum = static_cast<uint32_t>(1);
     } else {
@@ -210,6 +223,9 @@ Status ConcatNodeCombine(const ComputeGraphPtr &graph, NodePtr &concat_node) {
   std::vector<NodePtr> cycle_nodes_lists;
 
   if (!GetConcatNodeConcatDim(concat_node, original_concatdim)) {
+    return GRAPH_SUCCESS;
+  }
+  if (!CanGetInputsBufferShape(concat_node)) {
     return GRAPH_SUCCESS;
   }
 

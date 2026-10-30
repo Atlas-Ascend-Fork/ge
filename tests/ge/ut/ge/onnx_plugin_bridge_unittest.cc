@@ -463,6 +463,9 @@ TEST(OnnxPythonPluginBridge, LoadThroughCommonLoader) {
   }
 
   // 目录含 python 插件入口但无匹配桥接产物：失败并上报可定位详情。
+  // 桥接支持 fallback codegen 现场编译兜底：ctest 层通过 ENVIRONMENT 将
+  // ASCEND_HOME_PATH 指向不存在路径禁用兜底（C++ 侧 setenv 对 Python os.environ
+  // 启动快照无效，必须在进程启动前注入），构造"预置与兜底均不可用"场景。
   ScopedTempTree entry_dir;
   entry_dir.WriteFile("plugin_entry.py", "");
   ASSERT_EQ(setenv("ASCEND_CUSTOM_OPP_PATH", entry_dir.Root().c_str(), 1), 0);

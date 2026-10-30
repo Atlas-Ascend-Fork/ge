@@ -359,8 +359,10 @@ Status OpImplModeConfigParser::InitAllowHF32NewFiles(const std::string &allow_hf
     return SUCCESS;
   }
 
-  bool explicit_true = (allow_hf32 == kAllowHF32AllTrue || allow_hf32 == kAllowHF32AllTrueForAtc);
-  bool explicit_false = (allow_hf32 == kAllowHF32AllFalse || allow_hf32 == kAllowHF32AllFalseForAtc);
+  bool explicit_true = (allow_hf32 == kAllowHF32AllTrue || allow_hf32 == kAllowHF32MatmulTConvT ||
+                        allow_hf32 == kAllowHF32AllTrueForAtc);
+  bool explicit_false = (allow_hf32 == kAllowHF32AllFalse || allow_hf32 == kAllowHF32MatmulFConvF ||
+                         allow_hf32 == kAllowHF32AllFalseForAtc);
   bool explicit_override = (explicit_true || explicit_false);
   std::string override_value = explicit_true ? kAllowHF32DefaultForTrue : kAllowHF32DefaultForFalse;
 
@@ -380,17 +382,16 @@ Status OpImplModeConfigParser::InitAllowHF32NewFiles(const std::string &allow_hf
   }
   closedir(dir);
 
-  if (!any_file_found) {
-    FE_LOGI("[AllowHF32] No %s*.ini files found in [%s].", kAllowHF32NewFilePrefix, dir_path.c_str());
-    return SUCCESS;
-  }
-
   if (explicit_override) {
     for (auto &pair : op_type_select_impl_mode_map_) {
       pair.second = override_value;
       FE_LOGD("[AllowHF32] Explicit %s: override OpType[%s] to %s.", allow_hf32.c_str(), pair.first.c_str(),
               override_value.c_str());
     }
+  }
+
+  if (!any_file_found) {
+    FE_LOGW("[AllowHF32] No %s*.ini files found in [%s].", kAllowHF32NewFilePrefix, dir_path.c_str());
   }
   return SUCCESS;
 }

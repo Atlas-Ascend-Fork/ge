@@ -37,7 +37,6 @@
 #include "kernel/memory/host_mem_allocator.h"
 #include "core/utils/rt2_tensor_utils.h"
 #include "exe_graph/runtime/gert_tensor_data.h"
-#include "graph/load/model_manager/model_manager.h"
 #include "aicpu_bin_handler.h"
 #include "kernel/common_kernel_impl/infer_shape.h"
 
@@ -51,8 +50,6 @@ constexpr size_t kTensorListStreamIdx = 0;
 constexpr size_t kTensorListPushBackDataIdx = 2;
 constexpr size_t kTensorListPushBackOutputHandleIdx = 3;
 constexpr size_t kTensorListPopBackInputHandleIdx = 1;
-
-using CustAICPUKernelPtr = std::shared_ptr<ge::OpKernelBin>;
 
 enum class AllocHostCpuOutputMemoryInputs { kSize, kAllocator };
 
@@ -88,7 +85,7 @@ void PrintStreamIdAndTaskId(const KernelContext *context, std::vector<std::strin
   std::stringstream ss;
   uint32_t stream_id = 0U;
   uint32_t flip_task_id = 0U;
-  if (rtGetTaskIdAndStreamID(&flip_task_id, &stream_id) == RT_ERROR_NONE) {
+  if (aclrtGetThreadLastTaskIdAndStreamId(&flip_task_id, &stream_id) == ACL_SUCCESS) {
     const uint32_t task_id = flip_task_id & 0xFFFF;  // lower 16bits
     const uint32_t flip_num = flip_task_id >> 16U;   // high 16bits
     ss << "stream_id=" << stream_id << ", task_id=" << task_id << ", flip_num=" << flip_num
@@ -306,6 +303,7 @@ ge::graphStatus AicpuLaunchCCKernelWithNewInterface(const KernelContext *context
   auto stream = context->GetInputValue<rtStream_t>(static_cast<size_t>(AicpuLaunchCommon::kStream));
   auto block_dim = context->GetInputValue<uint32_t>(static_cast<size_t>(AicpuCCLaunch::kBlockDim));
   auto bin_handle = context->GetInputPointer<aclrtBinHandle>(static_cast<size_t>(AicpuCCLaunch::kBinHandler));
+  auto kernel_type = context->GetInputValue<ccKernelType>(static_cast<size_t>(AicpuCCLaunch::kKernelType));
   std::vector<aclrtPlaceHolderInfo> placeHolder_info;
   for (auto &kernel_info : args_handler->GetKernelOffset()) {
     placeHolder_info.emplace_back(aclrtPlaceHolderInfo({kernel_info.addrOffset, kernel_info.dataOffset}));
@@ -323,7 +321,15 @@ ge::graphStatus AicpuLaunchCCKernelWithNewInterface(const KernelContext *context
   aclrtLaunchKernelAttr launch_attr = {};
   aclrtLaunchKernelCfg cfg = {&launch_attr, 0UL};
   aclrtFuncHandle func_handle = nullptr;
-  GE_ASSERT_SUCCESS(aclrtBinaryGetFunction(*bin_handle, node_type, &func_handle));
+  GE_ASSERT_NOTNULL(bin_handle);
+  GE_ASSERT_NOTNULL(*bin_handle);
+  if (kernel_type == ccKernelType::CUST_AI_CPU) {
+    auto function_name = context->GetInputValue<char_t *>(static_cast<size_t>(AicpuCCLaunch::kFunctionName));
+    GE_ASSERT_NOTNULL(function_name);
+    GE_ASSERT_SUCCESS(aclrtRegisterCpuFunc(*bin_handle, function_name, node_type, &func_handle));
+  } else {
+    GE_ASSERT_SUCCESS(aclrtBinaryGetFunction(*bin_handle, node_type, &func_handle));
+  }
   GE_ASSERT_NOTNULL(func_handle);
   GE_ASSERT_RT_OK(aclrtLaunchKernelWithHostArgs(func_handle, block_dim, stream, &cfg, args_handler->GetArgsEx().args,
                                                 args_handler->GetArgsEx().argsSize, placeHolder_info.data(),
@@ -343,12 +349,9 @@ ge::graphStatus AicpuLaunchCCKernel(KernelContext *context) {
   uint32_t flag = RT_KERNEL_DEFAULT;
   uint32_t rt_kernel_type = static_cast<uint32_t>(rtKernelType_t::KERNEL_TYPE_AICPU);
   const auto &op_name = args_handler->GetNodeName();
-  if ((kernel_type == ccKernelType::CUST_AI_CPU) || (!OpJsonBinHandler::IsSupportBinHandle()) ||
-      (*bin_handle == nullptr)) {
-    if (kernel_type == ccKernelType::CUST_AI_CPU) {
-      flag |= static_cast<uint32_t>(RT_KERNEL_CUSTOM_AICPU);
-      rt_kernel_type = static_cast<uint32_t>(rtKernelType_t::KERNEL_TYPE_AICPU_CUSTOM);
-    }
+  if (kernel_type == ccKernelType::CUST_AI_CPU) {
+    GE_ASSERT_SUCCESS(AicpuLaunchCCKernelWithNewInterface(context));
+  } else if ((!OpJsonBinHandler::IsSupportBinHandle()) || (*bin_handle == nullptr)) {
     GELOGI("launch cc kernel %s with compatible, kernel_type is %u.", op_name.c_str(), kernel_type);
     const auto &arg_ex = args_handler->GetArgsEx();
     GE_ASSERT_RT_OK(
@@ -363,32 +366,6 @@ REGISTER_KERNEL(AicpuLaunchCCKernel)
     .RunFunc(AicpuLaunchCCKernel)
     .TracePrinter(PrintCCLaunchArgs)
     .ConcurrentCriticalSectionKey(kKernelLaunch);
-
-struct SharedPtrNoDeleter {
-  void operator()(ge::OpKernelBin *) {}
-};
-
-ge::graphStatus LaunchAicpuCustKernel(KernelContext *context) {
-  GE_ASSERT_NOTNULL(context);
-  const auto aicpu_kernel_holder = context->GetInputValue<ge::OpKernelBin *>(0U);
-  GE_ASSERT_NOTNULL(aicpu_kernel_holder);
-  const CustAICPUKernelPtr aicpu_kernel(aicpu_kernel_holder, SharedPtrNoDeleter());
-  GE_ASSERT_NOTNULL(aicpu_kernel);
-  auto so_name = context->GetInputValue<char *>(static_cast<size_t>(1));
-  bool loaded = false;
-  ge::ModelManager::GetInstance().LoadCustAicpuSo(aicpu_kernel, so_name, loaded);
-  GELOGI("launch aicpu cust kernel loaded=%d.", loaded);
-  ge::ModelManager::GetInstance().LaunchCustAicpuSo();
-  return SUCCESS;
-}
-REGISTER_KERNEL(LaunchAicpuCustKernel).RunFunc(LaunchAicpuCustKernel);
-
-ge::graphStatus ClearAicpuCustKernel(KernelContext *context) {
-  GE_ASSERT_NOTNULL(context);
-  ge::ModelManager::GetInstance().ClearAicpuSo();
-  return SUCCESS;
-}
-REGISTER_KERNEL(ClearAicpuCustKernel).RunFunc(ClearAicpuCustKernel);
 
 ge::graphStatus AicpuHostCompute(KernelContext *context) {
   auto args_handler = context->GetInputPointer<AicpuArgsHandler>(0U);

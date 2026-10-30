@@ -11,7 +11,7 @@
 
 ## 函数功能
 
-添加FuncProcessPoint调用的GraphProcessPoint或FlowGraphProcessPoint，返回添加好的FuncProcessPoint。
+添加FuncProcessPoint调用的GraphProcessPoint或FlowGraphProcessPoint。
 
 ## 函数原型
 

@@ -23,8 +23,8 @@ import pytest
 # 添加 ge 到 Python 路径
 try:
     from ge.graph import Graph
-    from ge.graph._attr import _AttrValue as AttrValue
-    from ge.graph.types import AttrValueType, DataType
+    from ge.graph._attr import _AttrValue as AttrValue  # noqa: F401
+    from ge.graph.types import AttrValueType, DataType  # noqa: F401
 except ImportError as e:
     pytest.skip(f"无法导入 ge 模块: {e}", allow_module_level=True)
 
@@ -111,7 +111,9 @@ class TestGraph:
     def test_graph_create_from_borrowed_handle(self, graph):
         """测试从 borrowed handle 创建 Graph 视图"""
         owner = object()
-        borrowed_graph = Graph._create_from(graph._handle, owns_handle=False, owner=owner)
+        borrowed_graph = Graph._create_from(
+            graph._handle, owns_handle=False, owner=owner
+        )
 
         assert borrowed_graph.name == "test_graph"
         assert borrowed_graph._owns_handle is False
@@ -326,7 +328,9 @@ class TestGraph:
         """测试存成AIR时错误情况"""
         handle = graph_with_data._handle
         try:
-            with pytest.raises(RuntimeError, match="Failed to save graph to AIR format"):
+            with pytest.raises(
+                RuntimeError, match="Failed to save graph to AIR format"
+            ):
                 graph_with_data._handle = ctypes.c_void_p(None)
                 graph_with_data.save_to_air("")
         finally:
@@ -341,7 +345,9 @@ class TestGraph:
         """测试加载AIR时错误情况"""
         handle = graph_with_data._handle
         try:
-            with pytest.raises(RuntimeError, match="Failed to load graph from AIR format"):
+            with pytest.raises(
+                RuntimeError, match="Failed to load graph from AIR format"
+            ):
                 graph_with_data._handle = ctypes.c_void_p(None)
                 graph_with_data.load_from_air("")
         finally:
@@ -396,7 +402,7 @@ class TestGraph:
             node = graph_with_data.get_all_nodes()[-1]
             graph_with_data.add_control_edge(1, node)
 
-    def test_add_data_edge_invalid_dst_node(self, graph_with_data):
+    def test_add_control_edge_invalid_dst_node(self, graph_with_data):
         with pytest.raises(TypeError, match="dst_node must be a Node"):
             node = graph_with_data.get_all_nodes()[-1]
             graph_with_data.add_control_edge(node, 1)

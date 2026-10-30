@@ -1474,6 +1474,38 @@ class Om2ModelExecutorUt : public testing::Test {
     return holder;
   }
 
+  // work_size=2048、zero_copy_size=1024 的模型，用于外部工作内存校验口径测试
+  static ModelDataHolder LoadValidZeroCopyModelData() {
+    PrepareOm2File();
+    gert::GertBuffer model_buf;
+    const std::string om2_mem_path = PathUtils::Join({test_work_dir_, "zero_copy_model.om2"});
+    const std::string runtime_dir = PathUtils::Join({test_work_dir_, "fake_runtime"});
+    const std::string so_path = PathUtils::Join({runtime_dir, "libg1_om2.so"});
+
+    gert::ZipArchiveWriter zip_writer(om2_mem_path);
+    EXPECT_TRUE(zip_writer.IsMemFileOpened());
+    const auto manifest = MakeManifestJson();
+    const auto model_meta = MakeModelMetaJsonWithZeroCopySize();
+    EXPECT_TRUE(zip_writer.WriteBytes("manifest.json", manifest.data(), manifest.size(), false));
+    EXPECT_TRUE(zip_writer.WriteBytes("data/model_0/model_meta.json", model_meta.data(), model_meta.size(), false));
+    const auto op_attr = MakeEmptyOpAttrJson();
+    EXPECT_TRUE(zip_writer.WriteBytes("data/model_0/op_attr.json", op_attr.data(), op_attr.size(), false));
+    const std::string constants_config = "{}";
+    EXPECT_TRUE(zip_writer.WriteBytes("data/model_0/constants_config.json", constants_config.data(),
+                                      constants_config.size(), false));
+    EXPECT_TRUE(WriteFileToZip(zip_writer, "data/model_0/runtime/libg1_om2.so", so_path, false));
+    EXPECT_TRUE(zip_writer.SaveModelData(model_buf, false));
+    EXPECT_NE(model_buf.data, nullptr);
+    EXPECT_GT(model_buf.length, 0U);
+
+    ModelDataHolder holder;
+    holder.model_data.model_data = model_buf.data.get();
+    holder.model_data.model_len = model_buf.length;
+    holder.model_data.om_path = om2_mem_path;
+    holder.shared_buffer = model_buf.data;
+    return holder;
+  }
+
   static ModelDataHolder LoadValidFileConstModelData() {
     PrepareFileConstOm2File();
     uint32_t model_buf_size = 0U;
@@ -1960,6 +1992,26 @@ TEST_F(Om2ModelExecutorUt, load_failed_when_external_work_size_is_insufficient) 
   auto load_arg = MakeOm2LoadArg();
   load_arg.work_ptr = reinterpret_cast<void *>(0x12345);
   load_arg.work_size = 1024U;
+  EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), ACL_ERROR_GE_PARAM_INVALID);
+}
+
+// 与 OM1 口径对齐：不配置 ACL_MDL_WORKSPACE_MEM_OPTIMIZE（reuse_zero_copy=false）时，
+// 校验基准也固定为 work_size - zero_copy_size，无需全额 work_size
+TEST_F(Om2ModelExecutorUt, load_ok_without_reuse_zero_copy_when_work_size_covers_deducted_size) {
+  auto model_data_holder = LoadValidZeroCopyModelData();
+  gert::Om2ModelExecutor executor;
+  auto load_arg = MakeOm2LoadArg();
+  load_arg.work_ptr = reinterpret_cast<void *>(0x12345);
+  load_arg.work_size = 1024U;  // == work_size(2048) - zero_copy_size(1024)
+  EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
+}
+
+TEST_F(Om2ModelExecutorUt, load_failed_when_external_work_size_below_deducted_size) {
+  auto model_data_holder = LoadValidZeroCopyModelData();
+  gert::Om2ModelExecutor executor;
+  auto load_arg = MakeOm2LoadArg();
+  load_arg.work_ptr = reinterpret_cast<void *>(0x12345);
+  load_arg.work_size = 1023U;  // < work_size(2048) - zero_copy_size(1024)
   EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), ACL_ERROR_GE_PARAM_INVALID);
 }
 

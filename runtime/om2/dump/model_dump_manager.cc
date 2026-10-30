@@ -85,8 +85,7 @@ Status ModelDumpManager::IsDataDumpEnabled(const char *op_name, uint8_t *is_data
   const char *model_name = (model_info_.model_name != nullptr) ? model_info_.model_name : "";
   const char *root_graph_name = (model_info_.root_graph_name != nullptr) ? model_info_.root_graph_name : "";
 
-  // 对齐 v1 KernelTaskInfo.is_data_dump_ 的判断逻辑：
-  // is_data_dump_ 是纯 data dump 相关的，只判断：
+  // is_data_dump 是纯 data dump 相关的，只判断：
   // 1. data dump 开关已启用
   // 2. 算子在 dump layer/list 配置中
   // data dump 是否生效需要同时满足全局开关和当前模型/op 命中 dump_list，避免 model_name 不匹配时误 dump。
@@ -135,8 +134,10 @@ Status ModelDumpManager::PreprocessOm2TaskInfo(const GertModelTaskDesc &task_inf
          need_save_to_data_dump, need_dump_input);
 
   ModelTaskType type = static_cast<ModelTaskType>(task_info.task_type);
-  // dump custom op input
-  if (need_dump_input && need_save_to_data_dump && type == ModelTaskType::MODEL_TASK_CUSTOM_KERNEL) {
+  // dump custom/hccl op input（HCCL 通信任务无常规 kernel args，走 DumpOp
+  // 通道：hccl_load_task 前插 input dump op）
+  if (need_dump_input && need_save_to_data_dump &&
+      ((type == ModelTaskType::MODEL_TASK_CUSTOM_KERNEL) || (type == ModelTaskType::MODEL_TASK_HCCL))) {
     auto &dump_op = dump_op_impl_->GetInputDumpOp(task_info.op_name);
     GE_CHK_STATUS_RET(data_dump_impl_->BuildOpMappingBasicInfo(model_info_, dump_op->GetOpMappingInfo()));
     GE_CHK_STATUS_RET(dump_op->BuildTaskInputs(task_info));
@@ -171,8 +172,9 @@ Status ModelDumpManager::PostprocessOm2TaskInfo(const GertModelTaskDesc &task_in
 
   // task_type 类型转换
   ModelTaskType type = static_cast<ModelTaskType>(task_info.task_type);
-  // dump custom op output
-  if (need_dump_output && need_save_to_data_dump && type == ModelTaskType::MODEL_TASK_CUSTOM_KERNEL) {
+  // dump custom/hccl op output（hccl_load_task 后插 output dump op）
+  if (need_dump_output && need_save_to_data_dump &&
+      ((type == ModelTaskType::MODEL_TASK_CUSTOM_KERNEL) || (type == ModelTaskType::MODEL_TASK_HCCL))) {
     auto &dump_op = dump_op_impl_->GetOutputDumpOp(task_info.op_name);
     GE_CHK_STATUS_RET(data_dump_impl_->BuildOpMappingBasicInfo(model_info_, dump_op->GetOpMappingInfo()));
     GE_CHK_STATUS_RET(dump_op->BuildTaskOutputs(task_info));
@@ -181,9 +183,10 @@ Status ModelDumpManager::PostprocessOm2TaskInfo(const GertModelTaskDesc &task_in
     return SUCCESS;
   }
 
-  // Data Dump / Overflow Dump：保存 Task 信息到 AICPU
+  // Data Dump / Overflow Dump：保存 Task 信息到 AICPU（HCCL 的 input/output dump 已走 DumpOp 通道，跳过通用
+  // SaveTask 避免重复下发；溢出任务信息另经各 task_info/日志通道保留）
   // Overflow dump 需要保存算子的输入输出信息用于问题定位
-  if (need_save_to_data_dump) {
+  if (need_save_to_data_dump && (type != ModelTaskType::MODEL_TASK_HCCL)) {
     Status ret = data_dump_impl_->SaveTask(task_info, type, task_info.stream, overflow_impl_->IsOpDebugEnabled());
     if (ret != SUCCESS) {
       GELOGE(ret, "Save task dump info failed, op_name=%s", op_name);

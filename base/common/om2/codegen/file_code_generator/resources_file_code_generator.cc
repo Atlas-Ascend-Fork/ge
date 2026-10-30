@@ -115,6 +115,7 @@ MethodDef *ResourcesFileCodeGenerator::BuildInitResourcesMethod(
   };
   const auto &runtime = codegen_model.runtime;
   BuildInitStreamResources(body, runtime, external_resources, priority);
+  BuildInitHcclFollowStreamResources(body, runtime, priority);
   BuildInitNotifyResources(body, runtime, external_resources);
   BuildInitEventResources(body, runtime, external_resources);
   BuildInitLabelResources(body, runtime, external_resources);
@@ -172,6 +173,34 @@ void ResourcesFileCodeGenerator::BuildInitStreamResources(std::vector<BodyItem> 
     (void)body.emplace_back(ChkStatus(AclmdlRIBindStream(model_handle_, stream_list_[i], bind_flag)));
   }
   (void)body.emplace_back(ast_.Assign(is_stream_list_bind_, true));
+}
+
+void ResourcesFileCodeGenerator::BuildInitHcclFollowStreamResources(std::vector<BodyItem> &body,
+                                                                    const RuntimeResourceSemantic &runtime,
+                                                                    const VarRef &priority) {
+  if (runtime.hccl_follow_stream_counts.empty()) {
+    return;
+  }
+  auto main_stream_to_count = ast_.Var("const auto &", "main_stream_to_count");
+  auto follows = ast_.Var("auto &", "follows");
+  auto i = ast_.Var("uint32_t", "i");
+  auto flag = ast_.Var("uint32_t", "flag");
+  (void)body.emplace_back(ast_.RangeFor(
+      main_stream_to_count, ast_.Var("", "main_stream_id_to_follow_stream_count"),
+      {
+          ast_.VarDecl(follows, main_follow_stream_mapping_[main_stream_to_count.Attr("first")]),
+          follows.Resize(main_stream_to_count.Attr("second")),
+          ast_.For(ast_.VarDecl(i, ast_.UInt(0U)), i < main_stream_to_count.Attr("second"), ast_.PostInc(i),
+                   {
+                       ast_.VarDecl(flag, ast_.Var("", "RT_STREAM_PERSISTENT") | ast_.Var("", "RT_STREAM_FORCE_COPY") |
+                                              ast_.Var("", "RT_STREAM_OVERFLOW")),
+                       ChkRt(RtStreamCreateWithFlags(follows[i].Addr(), priority, flag)),
+                       ChkStatus(AclmdlRIBindStream(model_handle_, follows[i], "ACL_MODEL_STREAM_FLAG_DEFAULT")),
+                   }),
+          ast_.Call("OM2_LOGI",
+                    {ast_.Str("model_id=%u, InitResources: created %u hccl follow streams for main stream %u"),
+                     model_id_, main_stream_to_count.Attr("second"), main_stream_to_count.Attr("first")}),
+      }));
 }
 
 void ResourcesFileCodeGenerator::BuildInitNotifyResources(std::vector<BodyItem> &body,
@@ -273,6 +302,9 @@ MethodDef *ResourcesFileCodeGenerator::BuildReleaseResourcesMethod(const Om2Code
   std::vector<BodyItem> body;
   (void)body.emplace_back(ast_.Call("OM2_LOGI", {ast_.Str("ReleaseResources begin")}));
   const auto &runtime = codegen_model.runtime;
+  if (runtime.has_hccl) {
+    BuildReleaseResourcesMethodForHccl(body);
+  }
   if (runtime.label_num > 0U) {
     auto label = ast_.Var("auto", "label");
     (void)body.emplace_back(ast_.If(!is_external_labels_,
@@ -352,6 +384,15 @@ MethodDef *ResourcesFileCodeGenerator::BuildReleaseResourcesMethod(const Om2Code
   (void)body.emplace_back(ast_.Call("OM2_LOGI", {ast_.Str("ReleaseResources done")}));
   (void)body.emplace_back(ast_.Return("ACL_SUCCESS"));
   return ast_.DefineMethod("Om2Model", "ReleaseResources", {}, "aclError", body);
+}
+
+void ResourcesFileCodeGenerator::BuildReleaseResourcesMethodForHccl(std::vector<BodyItem> &body) {
+  auto follow_kv = ast_.Var("auto &", "follow_kv");
+  auto hccl_stream = ast_.Var("void *", "hccl_stream");
+  (void)body.emplace_back(ast_.RangeFor(
+      follow_kv, main_follow_stream_mapping_,
+      {ast_.RangeFor(hccl_stream, follow_kv.Attr("second"), {ChkStatus(AclrtDestroyStream(hccl_stream))})}));
+  (void)body.emplace_back(main_follow_stream_mapping_.Clear());
 }
 
 void ResourcesFileCodeGenerator::BuildReleaseResourcesMethodForControlTask(std::vector<BodyItem> &body,

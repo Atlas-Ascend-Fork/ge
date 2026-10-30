@@ -110,32 +110,31 @@ whl_uninstall_package() {
     local _module="$1"
     local _module_apth="$2"
     local _module_dist_name="${_module//-/_}"
-    if [ ! -d "${WHL_INSTALL_DIR_PATH}/${_module}" ] &&
-        ! ls "${WHL_INSTALL_DIR_PATH}/${_module_dist_name}-"*.dist-info >/dev/null 2>&1; then
-        pip3 show "${_module}" > /dev/null 2>&1
-        if [ $? -ne 0 ]; then
-            log "WARNING" "${_module} is not exist."
-        else
-            pip3 uninstall -y "${_module}" 1> /dev/null
-            local ret=$?
-            if [ $ret -ne 0 ]; then
-                log "WARNING" "uninstall ${_module} failed, error code: $ret."
-                exit 1
-            else
-                log "INFO" "${_module} uninstalled successfully!"
-            fi
-        fi
+    local pip_command=(pip3)
+    if command -v python3 >/dev/null 2>&1 && python3 -m pip --version >/dev/null 2>&1; then
+        pip_command=(python3 -m pip)
+    fi
+
+    # Keep each package lookup independent when local and default installs coexist.
+    local PYTHONPATH=""
+    local PIP_BREAK_SYSTEM_PACKAGES=1
+    export PYTHONPATH PIP_BREAK_SYSTEM_PACKAGES
+    if [ -d "${WHL_INSTALL_DIR_PATH}/${_module}" ] ||
+        ls "${WHL_INSTALL_DIR_PATH}/${_module_dist_name}-"*.dist-info >/dev/null 2>&1; then
+        PYTHONPATH="${_module_apth}"
     else
-        export PYTHONPATH="${_module_apth}"
-        export PIP_BREAK_SYSTEM_PACKAGES=1  # 强制卸载系统包
-        pip3 uninstall -y "${_module}" > /dev/null 2>&1
-        local ret=$?
-        if [ $ret -ne 0 ]; then
-            log "WARNING" "uninstall ${_module} failed, error code: $ret."
-            exit 1
-        else
-            log "INFO" "${_module} uninstalled successfully!"
-        fi
+        # Only uninstall packages present in this CANN site-packages directory.
+        log "WARNING" "${_module} is not installed in ${WHL_INSTALL_DIR_PATH}; skip."
+        return 0
+    fi
+
+    "${pip_command[@]}" uninstall -y "${_module}" > /dev/null 2>&1
+    local ret=$?
+    if [ $ret -ne 0 ]; then
+        log "WARNING" "uninstall ${_module} failed, error code: $ret."
+        exit 1
+    else
+        log "INFO" "${_module} uninstalled successfully!"
     fi
 }
 
@@ -184,6 +183,7 @@ remove_ge_py_pass_bridge_wheels(){
   rm -f "${wheel_dir}/ge_py_pass_bridge-"*.whl 2> /dev/null
   rm -f "${wheel_dir}/ge_py_runtime_native-"*.whl 2> /dev/null
   rm -f "${wheel_dir}/ge_py_custom_op_bridge-"*.whl 2> /dev/null
+  rm -f "${wheel_dir}/ge_py_onnx_plugin_bridge-"*.whl 2> /dev/null
 }
 
 WHL_INSTALL_DIR_PATH="${common_parse_dir}/python/site-packages"
@@ -193,9 +193,10 @@ GE_PY_NAME="ge_py"
 GE_PY_PASS_BRIDGE_NAME="ge-py-pass-bridge"
 GE_PY_RUNTIME_NATIVE_NAME="ge-py-runtime-native"
 GE_PY_CUSTOM_OP_BRIDGE_NAME="ge-py-custom-op-bridge"
+GE_PY_ONNX_PLUGIN_BRIDGE_NAME="ge-py-onnx-plugin-bridge"
 
 custom_uninstall() {
-    if [ ! -d "$common_parse_dir/share/info/ge-compiler" ]; then
+    if [ -z "${common_parse_dir}" ] || [ ! -d "${common_parse_dir}/share/info/ge-compiler" ]; then
         log "ERROR" "ERR_NO:0x0001;ERR_DES:path $common_parse_dir/share/info/ge-compiler is not exist."
         exit 1
     fi
@@ -203,20 +204,22 @@ custom_uninstall() {
     if [ "$hetero_arch" != "y" ]; then
         chmod +w -R "$curpath" 2> /dev/null
         chmod +w -R "${WHL_INSTALL_DIR_PATH}/llm_datadist_v1" 2> /dev/null
-        chmod +w -R "${WHL_INSTALL_DIR_PATH}/llm_datadist_v1-*.dist-info" 2> /dev/null
+        chmod +w -R "${WHL_INSTALL_DIR_PATH}"/llm_datadist_v1-*.dist-info 2> /dev/null
         chmod +w -R "${WHL_INSTALL_DIR_PATH}/dataflow" 2> /dev/null
-        chmod +w -R "${WHL_INSTALL_DIR_PATH}/dataflow-*.dist-info" 2> /dev/null
+        chmod +w -R "${WHL_INSTALL_DIR_PATH}"/dataflow-*.dist-info 2> /dev/null
         chmod +w -R "${WHL_INSTALL_DIR_PATH}/ge" 2> /dev/null
         chmod +w -R "${WHL_INSTALL_DIR_PATH}/ge_py" 2> /dev/null
-        chmod +w -R "${WHL_INSTALL_DIR_PATH}/ge_py-*.dist-info" 2> /dev/null
-        chmod +w -R "${WHL_INSTALL_DIR_PATH}/ge_py_pass_bridge-*.dist-info" 2> /dev/null
-        chmod +w -R "${WHL_INSTALL_DIR_PATH}/ge_py_runtime_native-*.dist-info" 2> /dev/null
-        chmod +w -R "${WHL_INSTALL_DIR_PATH}/ge_py_custom_op_bridge-*.dist-info" 2> /dev/null
+        chmod +w -R "${WHL_INSTALL_DIR_PATH}"/ge_py-*.dist-info 2> /dev/null
+        chmod +w -R "${WHL_INSTALL_DIR_PATH}"/ge_py_pass_bridge-*.dist-info 2> /dev/null
+        chmod +w -R "${WHL_INSTALL_DIR_PATH}"/ge_py_runtime_native-*.dist-info 2> /dev/null
+        chmod +w -R "${WHL_INSTALL_DIR_PATH}"/ge_py_custom_op_bridge-*.dist-info 2> /dev/null
+        chmod +w -R "${WHL_INSTALL_DIR_PATH}"/ge_py_onnx_plugin_bridge-*.dist-info 2> /dev/null
 
         log "INFO" "uninstall ge-compiler tool begin..."
         whl_uninstall_package "${GE_PY_PASS_BRIDGE_NAME}" "${WHL_INSTALL_DIR_PATH}"
         whl_uninstall_package "${GE_PY_RUNTIME_NATIVE_NAME}" "${WHL_INSTALL_DIR_PATH}"
         whl_uninstall_package "${GE_PY_CUSTOM_OP_BRIDGE_NAME}" "${WHL_INSTALL_DIR_PATH}"
+        whl_uninstall_package "${GE_PY_ONNX_PLUGIN_BRIDGE_NAME}" "${WHL_INSTALL_DIR_PATH}"
         whl_uninstall_package "${DATAFLOW_NAME}" "${WHL_INSTALL_DIR_PATH}"
         whl_uninstall_package "${LLM_DATADIST_NAME}" "${WHL_INSTALL_DIR_PATH}"
         whl_uninstall_package "${GE_PY_NAME}" "${WHL_INSTALL_DIR_PATH}"
@@ -228,10 +231,12 @@ custom_uninstall() {
         rm -fr "${WHL_INSTALL_DIR_PATH}/ge/passes/python_pass_artifacts" 2> /dev/null
         rm -fr "${WHL_INSTALL_DIR_PATH}/ge/runtime/python_runtime_artifacts" 2> /dev/null
         rm -fr "${WHL_INSTALL_DIR_PATH}/ge/custom_op/python_custom_op_artifacts" 2> /dev/null
+        rm -fr "${WHL_INSTALL_DIR_PATH}/ge/onnx_plugin/python_onnx_plugin_artifacts" 2> /dev/null
         rm -f "${WHL_INSTALL_DIR_PATH}/ge/passes/_ge_pass_native.so" 2> /dev/null
         rm -fr "${WHL_INSTALL_DIR_PATH}/ge_py_pass_bridge-"*.dist-info 2> /dev/null
         rm -fr "${WHL_INSTALL_DIR_PATH}/ge_py_runtime_native-"*.dist-info 2> /dev/null
         rm -fr "${WHL_INSTALL_DIR_PATH}/ge_py_custom_op_bridge-"*.dist-info 2> /dev/null
+        rm -fr "${WHL_INSTALL_DIR_PATH}/ge_py_onnx_plugin_bridge-"*.dist-info 2> /dev/null
         remove_ge_py_pass_bridge_wheels
 
         log "INFO" "ge-compiler tool uninstalled successfully!"

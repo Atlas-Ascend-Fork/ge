@@ -59,7 +59,7 @@ inline bool IsAicpuOutputUnknownShape(const ge::NodePtr &node) {
 
 RtsArgs BuildTfArgsBinHandle(const ge::NodePtr node);
 
-RtsArgs BuildCCArgsBinHandle(const ge::NodePtr node);
+RtsArgs BuildCCArgsBinHandle(const ge::NodePtr node, const domi::KernelDef &kernel_def);
 }  // namespace bg
 }  // namespace gert
 #endif  // AIR_CXX_RUNTIME_V2_GRAPH_BUILDER_BG_AICPU_ARG_H_

@@ -27,6 +27,7 @@
 #include "check/memory_allocation_checker.h"
 #include "check/executor_statistician.h"
 #include "graph/debug/ge_attr_define.h"
+#include "framework/common/taskdown_common.h"
 
 namespace gert {
 namespace {
@@ -38,6 +39,30 @@ const char *const AddStubName = "AddStubBin";
 const char *const MulStubName = "MulStubBin";
 const int64_t kExpansion = 10;
 const int64_t kDecrease = 5;
+
+void PrepareCustomBinaryFixture(const ge::GeRootModelPtr &root_model) {
+  constexpr const char *so_name = "libpriority_custom.so";
+  for (const auto &node : root_model->GetRootGraph()->GetAllNodes()) {
+    const auto op_desc = node->GetOpDesc();
+    if (op_desc->GetOpKernelLibName() == ge::kEngineNameAiCpu) {
+      op_desc->SetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL,
+                          std::make_shared<ge::OpKernelBin>(so_name, std::vector<char>(4U, 'a')));
+      ge::AttrUtils::SetStr(op_desc, "kernelSo", so_name);
+    }
+  }
+  for (const auto &entry : root_model->GetSubgraphInstanceNameToModel()) {
+    const auto tasks = entry.second->GetModelTaskDefPtr();
+    ASSERT_NE(tasks, nullptr);
+    for (auto &task : *tasks->mutable_task()) {
+      if (task.has_kernel() &&
+          task.kernel().context().kernel_type() == static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU) &&
+          task.kernel().so_name().empty()) {
+        task.mutable_kernel()->set_so_name(so_name);
+      }
+    }
+  }
+}
+
 struct ExeGraph2Model {
   ge::ExecuteGraphPtr exe_graph;
   ge::GeRootModelPtr root_model;
@@ -472,7 +497,8 @@ TEST_F(PriorityExecutionST, LoadFromOm_Check_Priority_With_DavinciModelExecute_s
   case_dir = case_dir.substr(0, idx);
   std::string om_path = case_dir + "/../../st_run_data/origin_model/dynamic_and_static_graph_without_unfold.om";
   ge::ModelData model_data;
-  ge::ModelParserBase::LoadFromFile(om_path.c_str(), -1, model_data);
+  ASSERT_EQ(ge::ModelParserBase::LoadFromFile(om_path.c_str(), -1, model_data), ge::SUCCESS);
+  std::unique_ptr<ge::char_t[]> model_data_owner(static_cast<ge::char_t *>(model_data.model_data));
   ge::ModelHelper model_helper;
   auto ret = model_helper.LoadRootModel(model_data);
   ASSERT_EQ(ret, ge::SUCCESS);
@@ -480,16 +506,7 @@ TEST_F(PriorityExecutionST, LoadFromOm_Check_Priority_With_DavinciModelExecute_s
   ASSERT_NE(ge_root_model, nullptr);
   auto root_graph = ge_root_model->GetRootGraph();
 
-  for (auto node : root_graph->GetAllNodes()) {
-    if (node->GetName() == "add") {
-      auto op_desc = node->GetOpDesc();
-      // cust aicpu kernel
-      const char kernel_bin[] = "test";
-      vector<char> buffer(kernel_bin, kernel_bin + strlen(kernel_bin));
-      ge::OpKernelBinPtr kernel_bin_ptr = std::make_shared<ge::OpKernelBin>("add", std::move(buffer));
-      op_desc->SetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL, kernel_bin_ptr);
-    }
-  }
+  PrepareCustomBinaryFixture(ge_root_model);
 
   ge::NodePtr unknown_op_node = root_graph->FindNode("unknown_op");
   ASSERT_NE(unknown_op_node, nullptr);
@@ -521,7 +538,5 @@ TEST_F(PriorityExecutionST, LoadFromOm_Check_Priority_With_DavinciModelExecute_s
   executor->UnLoad();
   aclrtDestroyStream(stream);
   gert::DestroyVersionInfo();
-  delete[] static_cast<ge::char_t *>(model_data.model_data);
-  model_data.model_data = nullptr;
 }
 }  // namespace gert

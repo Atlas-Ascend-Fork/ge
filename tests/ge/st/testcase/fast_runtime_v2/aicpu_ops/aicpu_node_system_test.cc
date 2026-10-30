@@ -166,6 +166,7 @@ TEST_F(AicpuE2ESt, SingleNodeAiCpuCC_ExecuteSuccess) {
   ge::AttrUtils::SetStr(add_desc, "ops_json_path", "aicpu_kernel.json");
   graph->FindNode("add1")->GetOpDesc()->SetOpKernelLibName(ge::kEngineNameAiCpu.c_str());
   AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  aicpu_task_def_faker.SetKernelType(static_cast<uint32_t>(ge::ccKernelType::AI_CPU));
   CheckAndExecute(graph, aicpu_task_def_faker);
 
   RuntimeStub::UnInstall(nullptr);
@@ -238,6 +239,7 @@ TEST_F(AicpuE2ESt, ThirdAicpuOpHostCpuEngine_ExecuteSuccess) {
   graph->FindNode("nonzero")->GetOpDesc()->SetOpKernelLibName(ge::kEngineNameHostCpu.c_str());
   AttrUtils::SetInt(graph->FindNode("nonzero")->GetOpDesc(), ge::ATTR_NAME_UNKNOWN_SHAPE_TYPE, DEPEND_SHAPE_RANGE);
   AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  aicpu_task_def_faker.SetKernelType(static_cast<uint32_t>(ge::ccKernelType::HOST_CPU));
   CheckAndExecute3rdOp(graph, aicpu_task_def_faker);
 }
 
@@ -252,6 +254,7 @@ TEST_F(AicpuE2ESt, AicpuOpHostCpuEngine_RefSmallShape_ExecuteSuccess) {
   refnode_desc->SetOpKernelLibName(ge::kEngineNameHostCpu.c_str());
 
   AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  aicpu_task_def_faker.SetKernelType(static_cast<uint32_t>(ge::ccKernelType::HOST_CPU));
   CheckAndExecute(graph, aicpu_task_def_faker);
 }
 }  // namespace gert

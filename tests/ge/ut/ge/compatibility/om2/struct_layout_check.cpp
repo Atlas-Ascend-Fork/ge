@@ -177,6 +177,103 @@ TEST(Om2AbiStructCompatibility, LaunchParamsLayoutIsFrozen) {
                                  sizeof(GertModelLaunchStarsTaskWithFlagParams::abi_pad_2));
 }
 
+TEST(Om2AbiStructCompatibility, HcclTaskParamsLayoutIsFrozen) {
+  // HCCL 扁平参数（全基本类型，生成代码组装 → 宿主函数消费），abi_pad 显式填充无隐式空洞
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, struct_size, uint64_t, 0U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, hccl_type, const char *, 8U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, private_def, const void *, 16U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, private_def_len, uint32_t, 24U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, abi_pad_1, uint32_t, 28U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, main_stream, void *, 32U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, input_addrs, void *const *, 40U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, input_num, uint32_t, 48U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, abi_pad_2, uint32_t, 52U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, output_addrs, void *const *, 56U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, output_num, uint32_t, 64U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, abi_pad_3, uint32_t, 68U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, workspace_addr, void *, 72U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, workspace_size, uint64_t, 80U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, hccl_data_type, int32_t, 88U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, hccl_reduce_op, int32_t, 92U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, count, uint64_t, 96U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, root_id, int32_t, 104U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, abi_pad_4, uint32_t, 108U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, follow_streams, void *const *, 112U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, follow_stream_num, uint32_t, 120U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, abi_pad_5, uint32_t, 124U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, attached_streams, void *const *, 128U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, attached_stream_num, uint32_t, 136U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, need_refresh, uint8_t, 140U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, abi_pad_6, uint8_t[3], 141U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, args_base, void *, 144U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, abi_pad_7, uint32_t, 152U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, abi_pad_8, uint32_t, 156U);
+}
+
+TEST(Om2AbiStructCompatibility, HcclTaskParamsTailExtensionLayoutIsFrozen) {
+  // HVD/零拷贝/溢出扩展（尾部追加，HCOM 路径零感知）
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, hvd_metas, const HcclHorovodMeta *, 160U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, hvd_wait, uint8_t, 168U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, is_collective, uint8_t, 169U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, abi_pad_9, uint8_t[6], 170U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, input_zero_copy_flags, const int32_t *, 176U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, output_zero_copy_flags, const int32_t *, 184U);
+  EXPECT_MEMBER_LAYOUT(HcclTaskParams, overflow_addr, void *, 192U);
+  EXPECT_STRUCT_LAYOUT(HcclTaskParams, 200U, 8U);
+  EXPECT_NO_IMPLICIT_PADDING(
+      HcclTaskParams,
+      sizeof(HcclTaskParams::struct_size) + sizeof(HcclTaskParams::hccl_type) + sizeof(HcclTaskParams::private_def) +
+          sizeof(HcclTaskParams::private_def_len) + sizeof(HcclTaskParams::abi_pad_1) +
+          sizeof(HcclTaskParams::main_stream) + sizeof(HcclTaskParams::input_addrs) +
+          sizeof(HcclTaskParams::input_num) + sizeof(HcclTaskParams::abi_pad_2) + sizeof(HcclTaskParams::output_addrs) +
+          sizeof(HcclTaskParams::output_num) + sizeof(HcclTaskParams::abi_pad_3) +
+          sizeof(HcclTaskParams::workspace_addr) + sizeof(HcclTaskParams::workspace_size) +
+          sizeof(HcclTaskParams::hccl_data_type) + sizeof(HcclTaskParams::hccl_reduce_op) +
+          sizeof(HcclTaskParams::count) + sizeof(HcclTaskParams::root_id) + sizeof(HcclTaskParams::abi_pad_4) +
+          sizeof(HcclTaskParams::follow_streams) + sizeof(HcclTaskParams::follow_stream_num) +
+          sizeof(HcclTaskParams::abi_pad_5) + sizeof(HcclTaskParams::attached_streams) +
+          sizeof(HcclTaskParams::attached_stream_num) + sizeof(HcclTaskParams::need_refresh) +
+          sizeof(HcclTaskParams::abi_pad_6) + sizeof(HcclTaskParams::args_base) + sizeof(HcclTaskParams::abi_pad_7) +
+          sizeof(HcclTaskParams::abi_pad_8) + sizeof(HcclTaskParams::hvd_metas) + sizeof(HcclTaskParams::hvd_wait) +
+          sizeof(HcclTaskParams::is_collective) + sizeof(HcclTaskParams::abi_pad_9) +
+          sizeof(HcclTaskParams::input_zero_copy_flags) + sizeof(HcclTaskParams::output_zero_copy_flags) +
+          sizeof(HcclTaskParams::overflow_addr));
+  EXPECT_EQ(sizeof(HcclTaskParams), HcclTaskParams{}.struct_size);
+}
+
+TEST(Om2AbiStructCompatibility, HcclHorovodMetaLayoutIsFrozen) {
+  // HVD 每输入元数据（SO 内静态烘焙数组元素，宿主按每输入组一条 GETaskKernelHcclInfo）
+  EXPECT_MEMBER_LAYOUT(HcclHorovodMeta, struct_size, uint64_t, 0U);
+  EXPECT_MEMBER_LAYOUT(HcclHorovodMeta, input_name, const char *, 8U);
+  EXPECT_MEMBER_LAYOUT(HcclHorovodMeta, dims, const int64_t *, 16U);
+  EXPECT_MEMBER_LAYOUT(HcclHorovodMeta, dims_num, uint32_t, 24U);
+  EXPECT_MEMBER_LAYOUT(HcclHorovodMeta, abi_pad_1, uint32_t, 28U);
+  EXPECT_MEMBER_LAYOUT(HcclHorovodMeta, hccl_data_type, int32_t, 32U);
+  EXPECT_MEMBER_LAYOUT(HcclHorovodMeta, abi_pad_2, uint32_t, 36U);
+  EXPECT_MEMBER_LAYOUT(HcclHorovodMeta, count, uint64_t, 40U);
+  EXPECT_STRUCT_LAYOUT(HcclHorovodMeta, 48U, 8U);
+  EXPECT_NO_IMPLICIT_PADDING(HcclHorovodMeta,
+                             sizeof(HcclHorovodMeta::struct_size) + sizeof(HcclHorovodMeta::input_name) +
+                                 sizeof(HcclHorovodMeta::dims) + sizeof(HcclHorovodMeta::dims_num) +
+                                 sizeof(HcclHorovodMeta::abi_pad_1) + sizeof(HcclHorovodMeta::hccl_data_type) +
+                                 sizeof(HcclHorovodMeta::abi_pad_2) + sizeof(HcclHorovodMeta::count));
+  EXPECT_EQ(sizeof(HcclHorovodMeta), HcclHorovodMeta{}.struct_size);
+}
+
+TEST(Om2AbiStructCompatibility, HcclParamsLayoutIsFrozen) {
+  // HCCL 通信下发参数：两段式（对齐 GertModelLaunchCustomKernelParams 形态），
+  // func_load_hccl 为 executor 宿主 hccl_load_task（生成代码经 DispatchOpContext 的 hccl_load_task 字段填入；
+  // instance_handle 首参绑定 executor 实例状态，GETaskInfo 句柄由 executor 持有）
+  EXPECT_MEMBER_LAYOUT(GertModelLaunchHcclParams, struct_size, uint64_t, 0U);
+  EXPECT_MEMBER_LAYOUT(GertModelLaunchHcclParams, func_load_hccl, HcclLoadTaskFunc, 8U);
+  EXPECT_MEMBER_LAYOUT(GertModelLaunchHcclParams, task_params, const HcclTaskParams *, 16U);
+  EXPECT_STRUCT_LAYOUT(GertModelLaunchHcclParams, 24U, 8U);
+  EXPECT_NO_IMPLICIT_PADDING(GertModelLaunchHcclParams, sizeof(GertModelLaunchHcclParams::struct_size) +
+                                                            sizeof(GertModelLaunchHcclParams::func_load_hccl) +
+                                                            sizeof(GertModelLaunchHcclParams::task_params));
+  EXPECT_EQ(sizeof(GertModelLaunchHcclParams), GertModelLaunchHcclParams{}.struct_size);
+}
+
 TEST(Om2AbiStructCompatibility, TaskLaunchInfoLayoutIsFrozen) {
   EXPECT_STRUCT_LAYOUT(GertModelTaskLaunchInfo, 32U, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelTaskLaunchInfo, struct_size, uint64_t, 0U);
@@ -190,7 +287,7 @@ TEST(Om2AbiStructCompatibility, TaskLaunchInfoLayoutIsFrozen) {
 }
 
 TEST(Om2AbiStructCompatibility, CallbackAndRunInfoLayoutsAreFrozen) {
-  EXPECT_STRUCT_LAYOUT(GertModelLoadCallbacks, 64U, 8U);
+  EXPECT_STRUCT_LAYOUT(GertModelLoadCallbacks, 72U, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, struct_size, uint64_t, 0U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, report_model_base_info, ReportModelBaseInfoFunc, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, launch_func, GertModelLaunchFunc, 16U);
@@ -199,6 +296,8 @@ TEST(Om2AbiStructCompatibility, CallbackAndRunInfoLayoutsAreFrozen) {
   EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, query_bin_handle_from_store, QueryBinHandleFromStoreFunc, 40U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, save_bin_handle_to_store, SaveBinHandleToStoreFunc, 48U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, release_bin_handle_from_store, ReleaseBinHandleFromStoreFunc, 56U);
+  // HCCL 宿主服务：尾部追加（前缀 7 字段偏移冻结）
+  EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, hccl_load_task, HcclLoadTaskFunc, 64U);
   EXPECT_NO_IMPLICIT_PADDING(GertModelLoadCallbacks, sizeof(GertModelLoadCallbacks::struct_size) +
                                                          sizeof(GertModelLoadCallbacks::report_model_base_info) +
                                                          sizeof(GertModelLoadCallbacks::launch_func) +
@@ -206,7 +305,8 @@ TEST(Om2AbiStructCompatibility, CallbackAndRunInfoLayoutsAreFrozen) {
                                                          sizeof(GertModelLoadCallbacks::unlock_bin_handle_store) +
                                                          sizeof(GertModelLoadCallbacks::query_bin_handle_from_store) +
                                                          sizeof(GertModelLoadCallbacks::save_bin_handle_to_store) +
-                                                         sizeof(GertModelLoadCallbacks::release_bin_handle_from_store));
+                                                         sizeof(GertModelLoadCallbacks::release_bin_handle_from_store) +
+                                                         sizeof(GertModelLoadCallbacks::hccl_load_task));
 
   EXPECT_STRUCT_LAYOUT(GertModelRunReportInfo, 32U, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelRunReportInfo, struct_size, uint64_t, 0U);

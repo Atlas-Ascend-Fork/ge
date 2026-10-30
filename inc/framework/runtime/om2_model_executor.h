@@ -94,6 +94,8 @@ class VISIBILITY_EXPORT Om2ModelExecutor {
   ge::Status ReportProfilingRunInfoPostprocess(uint64_t model_id, uint64_t step_id, aclrtStream stream) const;
   void SaveProfilingTaskInfo(const GertModelTaskDesc &task_info) const;
   ge::Status ReportModelBaseInfo(const struct GertModelBaseInfo *info);
+  void RecordHcclLoadedTask(void *task);
+  std::vector<void *> TakeHcclLoadedTasks();
 
  private:
   class Impl;

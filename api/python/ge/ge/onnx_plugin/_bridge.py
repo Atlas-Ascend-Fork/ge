@@ -62,15 +62,13 @@ def call_parse_operator(origin_type: str, source_handle, target_handle) -> None:
     if descriptor is None:
         raise KeyError(f"python ONNX Plugin is not registered: {origin_type}")
 
-    with (
-        create_operator(source_handle, read_only=True) as source,
-        create_operator(target_handle) as target,
-    ):
-        result = descriptor.parser_operator(source, target)
-        if result is not None:
-            raise _InvalidParseNodeReturn(
-                "ONNX Plugin parse_operator callback must return None"
-            )
+    with create_operator(source_handle, read_only=True) as source:
+        with create_operator(target_handle) as target:
+            result = descriptor.parser_operator(source, target)
+            if result is not None:
+                raise _InvalidParseNodeReturn(
+                    "ONNX Plugin parse_operator callback must return None"
+                )
 
 
 def call_decompose(origin_type: str, source_handle) -> Graph:

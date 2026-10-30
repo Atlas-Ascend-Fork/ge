@@ -25,6 +25,12 @@ execute_process(
          OUTPUT_VARIABLE GE_PYTHON_ARTIFACT_PYTHON_VERSION
          OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+# The wheel ABI tag differs from the Python tag before 3.8, for example cp37 uses the cp37m ABI.
+execute_process(
+         COMMAND ${HI_PYTHON} -c "import sys, sysconfig; parts = (sysconfig.get_config_var('SOABI') or '').split('-'); print('cp' + parts[1] if len(parts) > 1 and parts[0] == 'cpython' else f'cp{sys.version_info.major}{sys.version_info.minor}')"
+         OUTPUT_VARIABLE GE_PYTHON_ARTIFACT_ABI_TAG
+         OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 string(TOLOWER "${CMAKE_SYSTEM_NAME}" GE_PYTHON_ARTIFACT_SYSTEM_NAME)
 set(GE_PYTHON_ARTIFACT_PLATFORM_TAG "${GE_PYTHON_ARTIFACT_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 string(REPLACE "-" "_" GE_PYTHON_WHEEL_PLATFORM "${GE_PYTHON_ARTIFACT_PLATFORM_TAG}")
@@ -37,10 +43,12 @@ set(GE_PYTHON_RUNTIME_ARTIFACT_DIR
         ${CMAKE_CURRENT_BINARY_DIR}/runtime_native_artifacts/${GE_PYTHON_ARTIFACT_SET_NAME})
 set(GE_PYTHON_CUSTOM_OP_ARTIFACT_DIR
         ${CMAKE_CURRENT_BINARY_DIR}/custom_op_native_artifacts/${GE_PYTHON_ARTIFACT_SET_NAME})
-set(GE_PYTHON_PASS_BRIDGE_ABI_VERSION 1)
+set(GE_PYTHON_ONNX_PLUGIN_ARTIFACT_DIR
+        ${CMAKE_CURRENT_BINARY_DIR}/onnx_plugin_native_artifacts/${GE_PYTHON_ARTIFACT_SET_NAME})
+set(GE_PYTHON_PASS_BRIDGE_ABI_VERSION 2)
 set(GE_PYTHON_RUNTIME_NATIVE_ABI_VERSION 1)
 set(GE_PYTHON_CUSTOM_OP_BRIDGE_ABI_VERSION 2)
-set(GE_PYTHON_ONNX_PLUGIN_BRIDGE_ABI_VERSION 1)
+set(GE_PYTHON_ONNX_PLUGIN_BRIDGE_ABI_VERSION 2)
 set(GE_PYTHON_PASS_ARTIFACT_MANIFEST ${CMAKE_CURRENT_BINARY_DIR}/python_pass_artifact_manifest.json)
 set(GE_PYTHON_RUNTIME_ARTIFACT_MANIFEST ${CMAKE_CURRENT_BINARY_DIR}/python_runtime_artifact_manifest.json)
 set(GE_PYTHON_CUSTOM_OP_ARTIFACT_MANIFEST ${CMAKE_CURRENT_BINARY_DIR}/python_custom_op_artifact_manifest.json)
@@ -48,18 +56,24 @@ set(GE_PYTHON_ONNX_PLUGIN_ARTIFACT_MANIFEST ${CMAKE_CURRENT_BINARY_DIR}/python_o
 set(GE_PYTHON_PASS_NATIVE_BUILD_CONFIG ${CMAKE_CURRENT_BINARY_DIR}/python_pass_native_build_config.json)
 set(GE_PYTHON_RUNTIME_NATIVE_BUILD_CONFIG ${CMAKE_CURRENT_BINARY_DIR}/python_runtime_native_build_config.json)
 set(GE_PYTHON_CUSTOM_OP_NATIVE_BUILD_CONFIG ${CMAKE_CURRENT_BINARY_DIR}/python_custom_op_native_build_config.json)
+set(GE_PYTHON_ONNX_PLUGIN_NATIVE_BUILD_CONFIG ${CMAKE_CURRENT_BINARY_DIR}/python_onnx_plugin_native_build_config.json)
 set(GE_PYTHON_PASS_NATIVE_WHEEL
-        ${CMAKE_CURRENT_BINARY_DIR}/ge_py_pass_bridge-0.0.1-${GE_PYTHON_ARTIFACT_PYTHON_TAG}-${GE_PYTHON_ARTIFACT_PYTHON_TAG}-${GE_PYTHON_WHEEL_PLATFORM}.whl)
+        ${CMAKE_CURRENT_BINARY_DIR}/ge_py_pass_bridge-0.0.1-${GE_PYTHON_ARTIFACT_PYTHON_TAG}-${GE_PYTHON_ARTIFACT_ABI_TAG}-${GE_PYTHON_WHEEL_PLATFORM}.whl)
 set(GE_PYTHON_PASS_NATIVE_WHEEL ${GE_PYTHON_PASS_NATIVE_WHEEL} CACHE INTERNAL "GE python pass native artifact wheel")
 set(GE_PYTHON_RUNTIME_NATIVE_WHEEL
-        ${CMAKE_CURRENT_BINARY_DIR}/ge_py_runtime_native-0.0.1-${GE_PYTHON_ARTIFACT_PYTHON_TAG}-${GE_PYTHON_ARTIFACT_PYTHON_TAG}-${GE_PYTHON_WHEEL_PLATFORM}.whl)
+        ${CMAKE_CURRENT_BINARY_DIR}/ge_py_runtime_native-0.0.1-${GE_PYTHON_ARTIFACT_PYTHON_TAG}-${GE_PYTHON_ARTIFACT_ABI_TAG}-${GE_PYTHON_WHEEL_PLATFORM}.whl)
 set(GE_PYTHON_RUNTIME_NATIVE_WHEEL ${GE_PYTHON_RUNTIME_NATIVE_WHEEL} CACHE INTERNAL "GE python runtime native artifact wheel")
 set(GE_PYTHON_CUSTOM_OP_NATIVE_WHEEL
-        ${CMAKE_CURRENT_BINARY_DIR}/ge_py_custom_op_bridge-0.0.1-${GE_PYTHON_ARTIFACT_PYTHON_TAG}-${GE_PYTHON_ARTIFACT_PYTHON_TAG}-${GE_PYTHON_WHEEL_PLATFORM}.whl)
+        ${CMAKE_CURRENT_BINARY_DIR}/ge_py_custom_op_bridge-0.0.1-${GE_PYTHON_ARTIFACT_PYTHON_TAG}-${GE_PYTHON_ARTIFACT_ABI_TAG}-${GE_PYTHON_WHEEL_PLATFORM}.whl)
 set(GE_PYTHON_CUSTOM_OP_NATIVE_WHEEL ${GE_PYTHON_CUSTOM_OP_NATIVE_WHEEL} CACHE INTERNAL "GE python custom-op native artifact wheel")
+set(GE_PYTHON_ONNX_PLUGIN_NATIVE_WHEEL
+        ${CMAKE_CURRENT_BINARY_DIR}/ge_py_onnx_plugin_bridge-0.0.1-${GE_PYTHON_ARTIFACT_PYTHON_TAG}-${GE_PYTHON_ARTIFACT_ABI_TAG}-${GE_PYTHON_WHEEL_PLATFORM}.whl)
+set(GE_PYTHON_ONNX_PLUGIN_NATIVE_WHEEL ${GE_PYTHON_ONNX_PLUGIN_NATIVE_WHEEL} CACHE INTERNAL "GE python onnx-plugin native artifact wheel")
 set(GE_PYTHON_PASS_NATIVE_MATRIX_DIST_DIR ${CMAKE_CURRENT_BINARY_DIR}/native_wheel_matrix_dist)
 set(GE_PYTHON_RUNTIME_NATIVE_MATRIX_DIST_DIR ${CMAKE_CURRENT_BINARY_DIR}/runtime_native_wheel_matrix_dist)
 set(GE_PYTHON_CUSTOM_OP_NATIVE_MATRIX_DIST_DIR ${CMAKE_CURRENT_BINARY_DIR}/custom_op_native_wheel_matrix_dist)
+set(GE_PYTHON_ONNX_PLUGIN_NATIVE_MATRIX_DIST_DIR ${CMAKE_CURRENT_BINARY_DIR}/onnx_plugin_native_wheel_matrix_dist)
+set(GE_PYTHON_ONNX_PLUGIN_PROTO_GENERATED_HEADER ${CMAKE_BINARY_DIR}/proto/parser_protos/proto/onnx/ge_onnx.pb.h)
 set(GE_PYTHON_PASS_BUILD_METADATA_DIR ${PROJECT_BINARY_DIR})
 set(GE_PYTHON_PASS_MATRIX_COMPILER_ARGS "--cxx-compiler" "${CMAKE_CXX_COMPILER}")
 if (CMAKE_CXX_COMPILER_LAUNCHER)
@@ -131,6 +145,14 @@ file(WRITE ${GE_PYTHON_ONNX_PLUGIN_ARTIFACT_MANIFEST}
         "  \"python_version\": \"${GE_PYTHON_ARTIFACT_PYTHON_VERSION}\",\n"
         "  \"platform\": \"${GE_PYTHON_ARTIFACT_PLATFORM_TAG}\",\n"
         "  \"bridge_abi\": ${GE_PYTHON_ONNX_PLUGIN_BRIDGE_ABI_VERSION},\n"
+        "  \"build_python\": {\n"
+        "    \"executable\": \"${HI_PYTHON}\",\n"
+        "    \"version\": \"${GE_PYTHON_ARTIFACT_PYTHON_VERSION}\",\n"
+        "    \"include\": \"${HI_PYTHON_INC}\",\n"
+        "    \"libpython\": \"${HI_PYTHON_EMBED_LIBRARIES}\",\n"
+        "    \"pybind11_include\": \"${pybind11_INCLUDE_DIR}\",\n"
+        "    \"link_python\": true\n"
+        "  },\n"
         "  \"artifacts\": {\n"
         "    \"bridge\": \"libge_python_onnx_plugin_bridge.so\",\n"
         "    \"native\": \"_ge_onnx_plugin_native.so\"\n"
@@ -158,6 +180,13 @@ set(GE_PYTHON_CUSTOM_OP_FALLBACK_CODEGEN_SOURCES_PY
         ${GE_PYTHON_CUSTOM_OP_FALLBACK_CODEGEN_DIR}/_sources.py)
 set(GE_PYTHON_CUSTOM_OP_FALLBACK_CODEGEN_INIT_PY
         ${GE_PYTHON_CUSTOM_OP_FALLBACK_CODEGEN_DIR}/__init__.py)
+set(GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/python_onnx_plugin_fallback_codegen)
+set(GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_CONFIG
+        ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_DIR}/build_config.json)
+set(GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_SOURCES_PY
+        ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_DIR}/_sources.py)
+set(GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_INIT_PY
+        ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_DIR}/__init__.py)
 set(GE_PYTHON_PASS_BRIDGE_SOURCES
         ${AIR_CODE_DIR}/compiler/graph/fusion/pass/python_pass_pybind_bridge.cc)
 set(GE_PYTHON_PASS_BRIDGE_HEADERS
@@ -165,6 +194,8 @@ set(GE_PYTHON_PASS_BRIDGE_HEADERS
         ${AIR_CODE_DIR}/compiler/graph/fusion/pass/python_pass_adapter.h
         ${AIR_CODE_DIR}/compiler/graph/fusion/pass/pass_registry.h
         ${AIR_CODE_DIR}/compiler/graph/fusion/pass/python_pass_bridge_c_api.h)
+set(GE_PYTHON_PASS_BRIDGE_RUNTIME_HEADERS
+        ${AIR_CODE_DIR}/base/common/python_runtime/ge_python_runtime_manager.h)
 set(GE_PYTHON_CUSTOM_OP_BRIDGE_SOURCES
         ${AIR_CODE_DIR}/runtime/custom_op/python_custom_op_bridge_descriptors.cc
         ${AIR_CODE_DIR}/runtime/custom_op/python_custom_op_pybind_bridge.cc)
@@ -182,6 +213,10 @@ set(GE_PYTHON_CUSTOM_OP_BRIDGE_FRAMEWORK_HEADERS
 set(GE_PYTHON_CUSTOM_OP_RUNTIME_NATIVE_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/ge/runtime/native_bindings/binding_common.h
         ${CMAKE_CURRENT_SOURCE_DIR}/ge/runtime/native_bindings/runtime_type_wrappers.h)
+set(GE_PYTHON_ONNX_PLUGIN_BRIDGE_SOURCES
+        ${AIR_CODE_DIR}/parser/parser/onnx/python_onnx_plugin_bridge/onnx_plugin_bridge.cc)
+set(GE_PYTHON_ONNX_PLUGIN_BRIDGE_HEADERS
+        ${AIR_CODE_DIR}/parser/parser/onnx/python_onnx_plugin_bridge/onnx_plugin_bridge_c_api.h)
 
 function(ge_python_native_build_json_array output)
     set(_json "")
@@ -287,12 +322,30 @@ ge_python_write_native_build_config(${GE_PYTHON_CUSTOM_OP_NATIVE_BUILD_CONFIG}
         NATIVE_TARGET_DIR api/python/ge/ge/custom_op
         NATIVE_ARTIFACT _ge_custom_op_native.so
         NATIVE_SOURCES ${GE_PYTHON_CUSTOM_OP_NATIVE_SOURCES})
+ge_python_write_native_build_config(${GE_PYTHON_ONNX_PLUGIN_NATIVE_BUILD_CONFIG}
+        COMPONENT onnx_plugin
+        PACKAGE_NAME ge-py-onnx-plugin-bridge
+        DIST_NAME ge_py_onnx_plugin_bridge
+        PACKAGE ge.onnx_plugin
+        ARTIFACT_ROOT python_onnx_plugin_artifacts
+        ABI_KEY bridge_abi
+        ABI ${GE_PYTHON_ONNX_PLUGIN_BRIDGE_ABI_VERSION}
+        LINK_PYTHON
+        BRIDGE_TARGET ge_python_onnx_plugin_bridge
+        BRIDGE_TARGET_DIR parser/parser/onnx
+        BRIDGE_ARTIFACT libge_python_onnx_plugin_bridge.so
+        BRIDGE_SOURCES ${GE_PYTHON_ONNX_PLUGIN_BRIDGE_SOURCES}
+        NATIVE_TARGET _ge_onnx_plugin_native
+        NATIVE_TARGET_DIR api/python/ge/ge/onnx_plugin
+        NATIVE_ARTIFACT _ge_onnx_plugin_native.so
+        NATIVE_SOURCES ${GE_PYTHON_ONNX_PLUGIN_NATIVE_SOURCES})
 
 add_custom_target(ge_python ALL)
 add_custom_target(ge_python_main_wheel DEPENDS ${GE_PYTHON_MAIN_WHEEL})
 add_custom_target(ge_python_native_wheel DEPENDS ${GE_PYTHON_PASS_NATIVE_WHEEL})
 add_custom_target(ge_python_runtime_native_wheel DEPENDS ${GE_PYTHON_RUNTIME_NATIVE_WHEEL})
 add_custom_target(ge_python_custom_op_native_wheel DEPENDS ${GE_PYTHON_CUSTOM_OP_NATIVE_WHEEL})
+add_custom_target(ge_python_onnx_plugin_native_wheel DEPENDS ${GE_PYTHON_ONNX_PLUGIN_NATIVE_WHEEL})
 add_custom_target(ge_python_pass_native_wheel_matrix
          COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/python_pass_native_build/build_python_native_matrix.py
             --component-config ${GE_PYTHON_PASS_NATIVE_BUILD_CONFIG}
@@ -335,6 +388,20 @@ add_custom_target(ge_python_custom_op_native_wheel_matrix
             ${GE_PYTHON_PASS_MATRIX_COMPILER_ARGS}
          COMMENT "Build GE python custom-op native wheels for all supported Python versions found in PATH"
 )
+add_custom_target(ge_python_onnx_plugin_native_wheel_matrix
+         COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/python_pass_native_build/build_python_native_matrix.py
+            --component-config ${GE_PYTHON_ONNX_PLUGIN_NATIVE_BUILD_CONFIG}
+            --source-dir ${AIR_CODE_DIR}
+            --build-dir ${GE_PYTHON_PASS_BUILD_METADATA_DIR}
+            --work-dir ${CMAKE_CURRENT_BINARY_DIR}/onnx_plugin_native_wheel_matrix_build
+            --dist-dir ${GE_PYTHON_ONNX_PLUGIN_NATIVE_MATRIX_DIST_DIR}
+            --platform-tag ${GE_PYTHON_ARTIFACT_PLATFORM_TAG}
+            --wheel-platform ${GE_PYTHON_WHEEL_PLATFORM}
+            --current-tag ${GE_PYTHON_ARTIFACT_PYTHON_TAG}
+            --current-wheel ${GE_PYTHON_ONNX_PLUGIN_NATIVE_WHEEL}
+            ${GE_PYTHON_PASS_MATRIX_COMPILER_ARGS}
+         COMMENT "Build GE python onnx-plugin native wheels for all supported Python versions found in PATH"
+)
 add_custom_target(ge_python_pass_fallback_codegen
         DEPENDS ${GE_PYTHON_PASS_FALLBACK_CODEGEN_CONFIG}
                 ${GE_PYTHON_PASS_FALLBACK_CODEGEN_SOURCES_PY}
@@ -347,13 +414,20 @@ add_custom_target(ge_python_custom_op_fallback_codegen
         DEPENDS ${GE_PYTHON_CUSTOM_OP_FALLBACK_CODEGEN_CONFIG}
                 ${GE_PYTHON_CUSTOM_OP_FALLBACK_CODEGEN_SOURCES_PY}
                 ${GE_PYTHON_CUSTOM_OP_FALLBACK_CODEGEN_INIT_PY})
+add_custom_target(ge_python_onnx_plugin_fallback_codegen
+        DEPENDS ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_CONFIG}
+                ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_SOURCES_PY}
+                ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_INIT_PY})
 add_dependencies(ge_python_main_wheel ge_python_pass_fallback_codegen
-        ge_python_runtime_fallback_codegen ge_python_custom_op_fallback_codegen)
+        ge_python_runtime_fallback_codegen ge_python_custom_op_fallback_codegen
+        ge_python_onnx_plugin_fallback_codegen)
 add_dependencies(ge_python_pass_native_wheel_matrix ge_python_native_wheel)
 add_dependencies(ge_python_runtime_native_wheel_matrix ge_python_runtime_native_wheel)
 add_dependencies(ge_python_custom_op_native_wheel_matrix ge_python_custom_op_native_wheel)
+add_dependencies(ge_python_onnx_plugin_native_wheel_matrix ge_python_onnx_plugin_native_wheel)
 add_dependencies(ge_python ge_python_main_wheel ge_python_pass_native_wheel_matrix
-        ge_python_runtime_native_wheel_matrix ge_python_custom_op_native_wheel_matrix)
+        ge_python_runtime_native_wheel_matrix ge_python_custom_op_native_wheel_matrix
+        ge_python_onnx_plugin_native_wheel_matrix)
 add_custom_command(
          OUTPUT ${GE_PYTHON_PASS_FALLBACK_CODEGEN_CONFIG}
                 ${GE_PYTHON_PASS_FALLBACK_CODEGEN_SOURCES_PY}
@@ -365,12 +439,19 @@ add_custom_command(
             --bridge-abi ${GE_PYTHON_PASS_BRIDGE_ABI_VERSION}
             --bridge-source ${GE_PYTHON_PASS_BRIDGE_SOURCES}
             --bridge-header ${GE_PYTHON_PASS_BRIDGE_HEADERS}
+            --bridge-runtime-header ${GE_PYTHON_PASS_BRIDGE_RUNTIME_HEADERS}
             --native-source ${GE_PYTHON_PASS_NATIVE_SOURCES}
             --native-header ${GE_PYTHON_PASS_NATIVE_HEADERS}
          DEPENDS ${GE_PYTHON_PASS_BRIDGE_SOURCES}
                  ${GE_PYTHON_PASS_BRIDGE_HEADERS}
+                 ${GE_PYTHON_PASS_BRIDGE_RUNTIME_HEADERS}
                  ${GE_PYTHON_PASS_NATIVE_SOURCES}
                  ${GE_PYTHON_PASS_NATIVE_HEADERS}
+                 ${GE_PYTHON_PASS_NATIVE_BUILD_CONFIG}
+                 ${GE_PYTHON_PASS_BUILD_METADATA_DIR}/compiler/CMakeFiles/ge_python_pass_bridge.dir/link.txt
+                 ${GE_PYTHON_PASS_BUILD_METADATA_DIR}/compiler/CMakeFiles/ge_python_pass_bridge.dir/flags.make
+                 ${GE_PYTHON_PASS_BUILD_METADATA_DIR}/api/python/ge/ge/passes/CMakeFiles/_ge_pass_native.dir/link.txt
+                 ${GE_PYTHON_PASS_BUILD_METADATA_DIR}/api/python/ge/ge/passes/CMakeFiles/_ge_pass_native.dir/flags.make
                  ${CMAKE_CURRENT_SOURCE_DIR}/python_pass_native_build/gen_fallback_resources.py
          COMMAND_EXPAND_LISTS
          COMMENT "Generate GE python pass fallback codegen resources"
@@ -395,6 +476,9 @@ add_custom_command(
             --native-header ${GE_PYTHON_RUNTIME_NATIVE_HEADERS}
          DEPENDS ${GE_PYTHON_RUNTIME_NATIVE_SOURCES}
                  ${GE_PYTHON_RUNTIME_NATIVE_HEADERS}
+                 ${GE_PYTHON_RUNTIME_NATIVE_BUILD_CONFIG}
+                 ${GE_PYTHON_PASS_BUILD_METADATA_DIR}/api/python/ge/ge/runtime/CMakeFiles/_ge_runtime_native.dir/link.txt
+                 ${GE_PYTHON_PASS_BUILD_METADATA_DIR}/api/python/ge/ge/runtime/CMakeFiles/_ge_runtime_native.dir/flags.make
                  ${CMAKE_CURRENT_SOURCE_DIR}/python_pass_native_build/gen_fallback_resources.py
          COMMAND_EXPAND_LISTS
          COMMENT "Generate GE python runtime fallback codegen resources"
@@ -432,9 +516,50 @@ add_custom_command(
                  ${GE_PYTHON_CUSTOM_OP_NATIVE_SOURCES}
                  ${GE_PYTHON_CUSTOM_OP_NATIVE_HEADERS}
                  ${GE_PYTHON_CUSTOM_OP_RUNTIME_NATIVE_HEADERS}
+                 ${GE_PYTHON_CUSTOM_OP_NATIVE_BUILD_CONFIG}
+                 ${GE_PYTHON_PASS_BUILD_METADATA_DIR}/runtime/custom_op/CMakeFiles/ge_python_custom_op_bridge.dir/link.txt
+                 ${GE_PYTHON_PASS_BUILD_METADATA_DIR}/runtime/custom_op/CMakeFiles/ge_python_custom_op_bridge.dir/flags.make
+                 ${GE_PYTHON_PASS_BUILD_METADATA_DIR}/api/python/ge/ge/custom_op/CMakeFiles/_ge_custom_op_native.dir/link.txt
+                 ${GE_PYTHON_PASS_BUILD_METADATA_DIR}/api/python/ge/ge/custom_op/CMakeFiles/_ge_custom_op_native.dir/flags.make
                  ${CMAKE_CURRENT_SOURCE_DIR}/python_pass_native_build/gen_fallback_resources.py
          COMMAND_EXPAND_LISTS
          COMMENT "Generate GE python custom-op fallback codegen resources"
+)
+add_custom_command(
+         OUTPUT ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_CONFIG}
+                ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_SOURCES_PY}
+                ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_INIT_PY}
+         COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/python_pass_native_build/gen_fallback_resources.py
+            --component onnx_plugin
+            --abi-key bridge_abi
+            --abi ${GE_PYTHON_ONNX_PLUGIN_BRIDGE_ABI_VERSION}
+            --bridge-target ge_python_onnx_plugin_bridge
+            --bridge-target-dir parser/parser/onnx
+            --bridge-output libge_python_onnx_plugin_bridge.so
+            --native-target _ge_onnx_plugin_native
+            --native-target-dir api/python/ge/ge/onnx_plugin
+            --native-output _ge_onnx_plugin_native.so
+            --output-dir ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_DIR}
+            --build-dir ${GE_PYTHON_PASS_BUILD_METADATA_DIR}
+            --cann-root ${ASCEND_INSTALL_PATH}
+            --bridge-source ${GE_PYTHON_ONNX_PLUGIN_BRIDGE_SOURCES}
+            --bridge-header ${GE_PYTHON_ONNX_PLUGIN_BRIDGE_HEADERS}
+            --bridge-debug-header ${AIR_CODE_DIR}/inc/graph_metadef/graph/debug/ge_attr_define.h
+            --bridge-metadef-header ${AIR_CODE_DIR}/inc/graph_metadef/graph/compiler_options.h
+            --proto-generated-header ${GE_PYTHON_ONNX_PLUGIN_PROTO_GENERATED_HEADER}
+            --native-source ${GE_PYTHON_ONNX_PLUGIN_NATIVE_SOURCES}
+            --native-header ${GE_PYTHON_ONNX_PLUGIN_NATIVE_HEADERS}
+         DEPENDS parser_protos
+                 ${GE_PYTHON_ONNX_PLUGIN_BRIDGE_SOURCES}
+                 ${GE_PYTHON_ONNX_PLUGIN_BRIDGE_HEADERS}
+                 ${AIR_CODE_DIR}/inc/graph_metadef/graph/debug/ge_attr_define.h
+                 ${AIR_CODE_DIR}/inc/graph_metadef/graph/compiler_options.h
+                 ${GE_PYTHON_ONNX_PLUGIN_PROTO_GENERATED_HEADER}
+                 ${GE_PYTHON_ONNX_PLUGIN_NATIVE_SOURCES}
+                 ${GE_PYTHON_ONNX_PLUGIN_NATIVE_HEADERS}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/python_pass_native_build/gen_fallback_resources.py
+         COMMAND_EXPAND_LISTS
+         COMMENT "Generate GE python onnx-plugin fallback codegen resources"
 )
 add_custom_command(
          OUTPUT ${GE_PYTHON_MAIN_WHEEL}
@@ -456,13 +581,12 @@ add_custom_command(
          && ${CMAKE_COMMAND} -E remove ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/onnx_plugin/CMakeLists.txt
          && ${CMAKE_COMMAND} -E remove_directory ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/onnx_plugin/native_bindings
          && ${CMAKE_COMMAND} -E remove ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/onnx_plugin/_ge_onnx_plugin_native.so
-         && mkdir -p ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/onnx_plugin/python_onnx_plugin_artifacts/${GE_PYTHON_ARTIFACT_SET_NAME}
-         && cp ${GE_PYTHON_ONNX_PLUGIN_ARTIFACT_MANIFEST} ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/onnx_plugin/python_onnx_plugin_artifacts/${GE_PYTHON_ARTIFACT_SET_NAME}/manifest.json
-         && cp $<TARGET_FILE:ge_python_onnx_plugin_bridge> ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/onnx_plugin/python_onnx_plugin_artifacts/${GE_PYTHON_ARTIFACT_SET_NAME}/libge_python_onnx_plugin_bridge.so
-         && cp $<TARGET_FILE:_ge_onnx_plugin_native> ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/onnx_plugin/python_onnx_plugin_artifacts/${GE_PYTHON_ARTIFACT_SET_NAME}/_ge_onnx_plugin_native.so
+         && ${CMAKE_COMMAND} -E remove_directory ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/onnx_plugin/python_onnx_plugin_artifacts
+         && ${CMAKE_COMMAND} -E remove_directory ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/onnx_plugin/fallback_codegen
          && ${CMAKE_COMMAND} -E copy_directory ${GE_PYTHON_PASS_FALLBACK_CODEGEN_DIR} ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/passes/fallback_codegen
          && ${CMAKE_COMMAND} -E copy_directory ${GE_PYTHON_RUNTIME_FALLBACK_CODEGEN_DIR} ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/runtime/fallback_codegen
          && ${CMAKE_COMMAND} -E copy_directory ${GE_PYTHON_CUSTOM_OP_FALLBACK_CODEGEN_DIR} ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/custom_op/fallback_codegen
+         && ${CMAKE_COMMAND} -E copy_directory ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_DIR} ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/onnx_plugin/fallback_codegen
          && find ${GE_PYTHON_MAIN_WHEEL_DIR}/ge -name __pycache__ -type d -exec rm -rf {} +
          && cp $<TARGET_FILE:graph_wrapper> ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/_capi/
          && cp $<TARGET_FILE:ge_runtime_wrapper> ${GE_PYTHON_MAIN_WHEEL_DIR}/ge/_capi/
@@ -474,16 +598,14 @@ add_custom_command(
          && cp -f dist/ge_py-0.0.1-py3-none-any.whl ${GE_PYTHON_MAIN_WHEEL}
          && echo "Build ge-py wheel package end"
          DEPENDS eager_style_graph_builder_base ge_api_c_wrapper graph_wrapper
-                 _ge_onnx_plugin_native
-                 ge_python_onnx_plugin_bridge
                  ${GE_API_C_WRAPPER}
                  ${GE_PYTHON_RUNTIME_ARTIFACT_MANIFEST}
                  ${GE_PYTHON_CUSTOM_OP_ARTIFACT_MANIFEST}
-                 ${GE_PYTHON_ONNX_PLUGIN_ARTIFACT_MANIFEST}
                  ${GE_PYTHON_PASS_FALLBACK_CODEGEN_CONFIG}
                  ${GE_PYTHON_RUNTIME_FALLBACK_CODEGEN_CONFIG}
                  ${GE_PYTHON_CUSTOM_OP_FALLBACK_CODEGEN_CONFIG}
- )
+                 ${GE_PYTHON_ONNX_PLUGIN_FALLBACK_CODEGEN_CONFIG}
+  )
 add_custom_command(
          OUTPUT ${GE_PYTHON_PASS_NATIVE_WHEEL}
          COMMAND echo "Start to build ge-py-pass-bridge native wheel package"
@@ -497,6 +619,7 @@ add_custom_command(
             --component-config ${GE_PYTHON_PASS_NATIVE_BUILD_CONFIG}
             --artifact-dir ${GE_PYTHON_PASS_ARTIFACT_DIR}
             --python-tag ${GE_PYTHON_ARTIFACT_PYTHON_TAG}
+            --abi-tag ${GE_PYTHON_ARTIFACT_ABI_TAG}
             --platform-tag ${GE_PYTHON_ARTIFACT_PLATFORM_TAG}
             --wheel-platform ${GE_PYTHON_WHEEL_PLATFORM}
             --output-dir ${CMAKE_CURRENT_BINARY_DIR}
@@ -516,6 +639,7 @@ add_custom_command(
             --component-config ${GE_PYTHON_RUNTIME_NATIVE_BUILD_CONFIG}
             --artifact-dir ${GE_PYTHON_RUNTIME_ARTIFACT_DIR}
             --python-tag ${GE_PYTHON_ARTIFACT_PYTHON_TAG}
+            --abi-tag ${GE_PYTHON_ARTIFACT_ABI_TAG}
             --platform-tag ${GE_PYTHON_ARTIFACT_PLATFORM_TAG}
             --wheel-platform ${GE_PYTHON_WHEEL_PLATFORM}
             --output-dir ${CMAKE_CURRENT_BINARY_DIR}
@@ -536,14 +660,37 @@ add_custom_command(
             --component-config ${GE_PYTHON_CUSTOM_OP_NATIVE_BUILD_CONFIG}
             --artifact-dir ${GE_PYTHON_CUSTOM_OP_ARTIFACT_DIR}
             --python-tag ${GE_PYTHON_ARTIFACT_PYTHON_TAG}
+            --abi-tag ${GE_PYTHON_ARTIFACT_ABI_TAG}
             --platform-tag ${GE_PYTHON_ARTIFACT_PLATFORM_TAG}
             --wheel-platform ${GE_PYTHON_WHEEL_PLATFORM}
             --output-dir ${CMAKE_CURRENT_BINARY_DIR}
          && echo "Build ge-py-custom-op-bridge wheel package end"
-         DEPENDS _ge_custom_op_native ge_python_custom_op_bridge
-                 ${GE_PYTHON_CUSTOM_OP_ARTIFACT_MANIFEST}
+          DEPENDS _ge_custom_op_native ge_python_custom_op_bridge
+                  ${GE_PYTHON_CUSTOM_OP_ARTIFACT_MANIFEST}
+                  ${CMAKE_CURRENT_SOURCE_DIR}/python_pass_native_build/build_python_native_wheel.py
+  )
+add_custom_command(
+         OUTPUT ${GE_PYTHON_ONNX_PLUGIN_NATIVE_WHEEL}
+         COMMAND echo "Start to build ge-py-onnx-plugin-bridge wheel package"
+         && echo "Build ${GE_PYTHON_ARTIFACT_PYTHON_TAG} native artifacts with python[${HI_PYTHON}], version[${GE_PYTHON_ARTIFACT_PYTHON_VERSION}], include[${HI_PYTHON_INC}], libpython[${HI_PYTHON_EMBED_LIBRARIES}], pybind11[${pybind11_INCLUDE_DIR}], link_python[yes], rpath_python[no]"
+         && rm -rf ${GE_PYTHON_ONNX_PLUGIN_ARTIFACT_DIR}
+         && mkdir -p ${GE_PYTHON_ONNX_PLUGIN_ARTIFACT_DIR}
+         && cp ${GE_PYTHON_ONNX_PLUGIN_ARTIFACT_MANIFEST} ${GE_PYTHON_ONNX_PLUGIN_ARTIFACT_DIR}/manifest.json
+         && cp $<TARGET_FILE:ge_python_onnx_plugin_bridge> ${GE_PYTHON_ONNX_PLUGIN_ARTIFACT_DIR}/libge_python_onnx_plugin_bridge.so
+         && cp $<TARGET_FILE:_ge_onnx_plugin_native> ${GE_PYTHON_ONNX_PLUGIN_ARTIFACT_DIR}/_ge_onnx_plugin_native.so
+         && ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/python_pass_native_build/build_python_native_wheel.py
+            --component-config ${GE_PYTHON_ONNX_PLUGIN_NATIVE_BUILD_CONFIG}
+            --artifact-dir ${GE_PYTHON_ONNX_PLUGIN_ARTIFACT_DIR}
+            --python-tag ${GE_PYTHON_ARTIFACT_PYTHON_TAG}
+            --abi-tag ${GE_PYTHON_ARTIFACT_ABI_TAG}
+            --platform-tag ${GE_PYTHON_ARTIFACT_PLATFORM_TAG}
+            --wheel-platform ${GE_PYTHON_WHEEL_PLATFORM}
+            --output-dir ${CMAKE_CURRENT_BINARY_DIR}
+         && echo "Build ge-py-onnx-plugin-bridge wheel package end"
+         DEPENDS _ge_onnx_plugin_native ge_python_onnx_plugin_bridge
+                 ${GE_PYTHON_ONNX_PLUGIN_ARTIFACT_MANIFEST}
                  ${CMAKE_CURRENT_SOURCE_DIR}/python_pass_native_build/build_python_native_wheel.py
- )
+  )
 install(FILES ${GE_PYTHON_MAIN_WHEEL} ${INSTALL_OPTIONAL}
         DESTINATION ${INSTALL_LIBRARY_DIR}
 )
@@ -561,4 +708,9 @@ install(DIRECTORY ${GE_PYTHON_CUSTOM_OP_NATIVE_MATRIX_DIST_DIR}/ ${INSTALL_OPTIO
         DESTINATION ${INSTALL_LIBRARY_DIR}
         FILES_MATCHING PATTERN "ge_py_custom_op_bridge-*.whl"
         PATTERN "_build_ge_py_custom_op_bridge_*" EXCLUDE
+)
+install(DIRECTORY ${GE_PYTHON_ONNX_PLUGIN_NATIVE_MATRIX_DIST_DIR}/ ${INSTALL_OPTIONAL}
+        DESTINATION ${INSTALL_LIBRARY_DIR}
+        FILES_MATCHING PATTERN "ge_py_onnx_plugin_bridge-*.whl"
+        PATTERN "_build_ge_py_onnx_plugin_bridge_*" EXCLUDE
 )

@@ -15,12 +15,17 @@
 import argparse
 import base64
 import gzip
+import io
 import json
+import re
 import shlex
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+
+_PROTO_DEPS_SUBDIR = "include/proto_deps"
+_PROTO_INCLUDE_PATTERN = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.MULTILINE)
 
 
 def _collect_files(
@@ -47,6 +52,20 @@ def _split_encoded_content(encoded_content: str) -> str:
     return "\n".join(f'        "{chunk}"' for chunk in chunks)
 
 
+def _gzip_compress_deterministic(content: bytes) -> bytes:
+    # gzip.compress(mtime=...) requires Python 3.8+; build the same
+    # deterministic output on 3.7 via GzipFile (and pin the OS byte that
+    # gzip.compress writes on Linux so both paths match byte for byte).
+    buffer = io.BytesIO()
+    with gzip.GzipFile(
+        fileobj=buffer, mode="wb", compresslevel=9, mtime=0
+    ) as compressor:
+        compressor.write(content)
+    data = bytearray(buffer.getvalue())
+    data[9] = 3
+    return bytes(data)
+
+
 def _build_resource_module(resources: Dict[str, bytes]) -> str:
     lines = [
         "#!/usr/bin/env python3",
@@ -70,9 +89,9 @@ def _build_resource_module(resources: Dict[str, bytes]) -> str:
         "_RESOURCES = {",
     ]
     for rel_path, content in sorted(resources.items()):
-        encoded_content = base64.b64encode(gzip.compress(content, mtime=0)).decode(
-            "ascii"
-        )
+        encoded_content = base64.b64encode(
+            _gzip_compress_deterministic(content)
+        ).decode("ascii")
         lines.append(f"    {rel_path!r}: (")
         lines.append(_split_encoded_content(encoded_content))
         lines.append("    ),")
@@ -136,7 +155,31 @@ def _map_include_path(include_path: str, cann_root: Path) -> Optional[str]:
     return None
 
 
-def _rewrite_include_args(include_args: Sequence[str], cann_root: Path) -> List[str]:
+def _is_protobuf_include_dir(path: Path) -> bool:
+    return (path / "google" / "protobuf" / "port_def.inc").is_file()
+
+
+def _collect_proto_include_dir(
+    include_path: str, proto_include_dirs: Optional[List[Path]]
+) -> bool:
+    if proto_include_dirs is None:
+        return False
+    raw_path = Path(include_path)
+    if not raw_path.is_absolute():
+        return False
+    path = _normalized(raw_path)
+    if not _is_protobuf_include_dir(path):
+        return False
+    if path not in proto_include_dirs:
+        proto_include_dirs.append(path)
+    return True
+
+
+def _rewrite_include_args(
+    include_args: Sequence[str],
+    cann_root: Path,
+    proto_include_dirs: Optional[List[Path]] = None,
+) -> List[str]:
     rewritten: List[str] = []
     index = 0
     while index < len(include_args):
@@ -144,12 +187,18 @@ def _rewrite_include_args(include_args: Sequence[str], cann_root: Path) -> List[
         if arg in ("-I", "-isystem", "-iquote"):
             if index + 1 >= len(include_args):
                 break
+            if _collect_proto_include_dir(include_args[index + 1], proto_include_dirs):
+                index += 2
+                continue
             mapped = _map_include_path(include_args[index + 1], cann_root)
             if mapped is not None:
                 rewritten.extend([arg, mapped])
             index += 2
             continue
         if arg.startswith("-I") and len(arg) > 2:
+            if _collect_proto_include_dir(arg[2:], proto_include_dirs):
+                index += 1
+                continue
             mapped = _map_include_path(arg[2:], cann_root)
             if mapped is not None:
                 rewritten.extend(["-I", mapped])
@@ -241,6 +290,12 @@ def _rewrite_library_arg(
     if library_info is None:
         return None
     library_name, library_path = library_info
+    if ".a" in library_path.name:
+        # Static archives exist only on the build host and are never shipped in
+        # component packages, so they can never resolve in the fallback codegen
+        # runtime. Drop them; a genuine symbol dependency would surface as an
+        # explicit undefined-reference error at link time.
+        return []
     if (
         cann_lib_dir / library_path.name
     ).exists() or "/tests/depends/" not in library_path.as_posix():
@@ -315,7 +370,10 @@ class _FallbackTargetSpec:
 
 
 def _load_target_config(
-    build_dir: Path, cann_root: Path, spec: _FallbackTargetSpec
+    build_dir: Path,
+    cann_root: Path,
+    spec: _FallbackTargetSpec,
+    proto_include_dirs: Optional[List[Path]] = None,
 ) -> dict:
     target_dir = (
         build_dir / spec.relative_dir / "CMakeFiles" / f"{spec.target_name}.dir"
@@ -332,7 +390,9 @@ def _load_target_config(
         "-I",
         f"@FALLBACK_ROOT@/{spec.local_include_dir}",
     ] + _rewrite_include_args(
-        _read_make_variable(flags_make, "CXX_INCLUDES"), cann_root
+        _read_make_variable(flags_make, "CXX_INCLUDES"),
+        cann_root,
+        proto_include_dirs,
     )
     cxx_flags = _read_make_variable(flags_make, "CXX_FLAGS")
     link_args = _rewrite_link_args(
@@ -349,9 +409,44 @@ def _load_target_config(
     }
 
 
-def _build_config(args: argparse.Namespace) -> dict:
+def _collect_proto_closure(
+    generated_headers: Sequence[Path],
+    proto_include_dirs: Sequence[Path],
+) -> List[Tuple[str, bytes]]:
+    resources: List[Tuple[str, bytes]] = []
+    seen = set()
+    pending: List[Tuple[str, Path]] = [
+        (f"proto/onnx/{header.resolve().name}", header.resolve())
+        for header in generated_headers
+    ]
+    while pending:
+        rel_path, path = pending.pop(0)
+        if path in seen:
+            continue
+        seen.add(path)
+        content = path.read_bytes()
+        resources.append((f"{_PROTO_DEPS_SUBDIR}/{rel_path}", content))
+        text = content.decode("utf-8", errors="ignore")
+        for name in _PROTO_INCLUDE_PATTERN.findall(text):
+            candidate = next(
+                (
+                    directory / name
+                    for directory in proto_include_dirs
+                    if (directory / name).is_file()
+                ),
+                None,
+            )
+            if candidate is not None:
+                pending.append((name, candidate))
+    return resources
+
+
+def _build_config(args: argparse.Namespace) -> Tuple[dict, List[Path]]:
     build_dir = args.build_dir
     cann_root = args.cann_root
+    proto_include_dirs: Optional[List[Path]] = (
+        [] if args.proto_generated_header else None
+    )
     targets = {}
     if args.bridge_target:
         targets["bridge"] = _load_target_config(
@@ -363,6 +458,7 @@ def _build_config(args: argparse.Namespace) -> dict:
                 args.bridge_output,
                 "include/bridge",
             ),
+            proto_include_dirs,
         )
     targets["native"] = _load_target_config(
         build_dir,
@@ -373,12 +469,23 @@ def _build_config(args: argparse.Namespace) -> dict:
             args.native_output,
             "include/native",
         ),
+        proto_include_dirs,
     )
+    if proto_include_dirs:
+        for target_config in targets.values():
+            target_config["cxx_includes"].extend(
+                [
+                    "-I",
+                    f"@FALLBACK_ROOT@/{_PROTO_DEPS_SUBDIR}",
+                    "-I",
+                    f"@FALLBACK_ROOT@/{_PROTO_DEPS_SUBDIR}/proto/onnx",
+                ]
+            )
     return {
         args.abi_key: args.abi,
         "link_python": args.link_python,
         "targets": targets,
-    }
+    }, (proto_include_dirs or [])
 
 
 def parse_args() -> argparse.Namespace:
@@ -390,8 +497,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--abi-key", default="bridge_abi")
     parser.add_argument("--abi", "--bridge-abi", dest="abi", type=int, required=True)
     parser.add_argument(
-        "--link-python", action=argparse.BooleanOptionalAction, default=True
+        "--link-python", dest="link_python", action="store_true", default=True
     )
+    parser.add_argument("--no-link-python", dest="link_python", action="store_false")
     parser.add_argument("--bridge-target", default="ge_python_pass_bridge")
     parser.add_argument(
         "--no-bridge-target", dest="bridge_target", action="store_const", const=""
@@ -403,13 +511,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--native-output", default="_ge_pass_native.so")
     parser.add_argument("--bridge-source", type=Path, nargs="*", default=[])
     parser.add_argument("--bridge-header", type=Path, nargs="*", default=[])
+    parser.add_argument("--bridge-runtime-header", type=Path, nargs="*", default=[])
     parser.add_argument("--bridge-tree-header", type=Path, nargs="*", default=[])
     parser.add_argument("--bridge-graph-header", type=Path, nargs="*", default=[])
+    parser.add_argument("--bridge-debug-header", type=Path, nargs="*", default=[])
     parser.add_argument("--bridge-utils-header", type=Path, nargs="*", default=[])
     parser.add_argument("--bridge-framework-header", type=Path, nargs="*", default=[])
     parser.add_argument("--native-source", type=Path, nargs="+", required=True)
     parser.add_argument("--native-header", type=Path, nargs="+", required=True)
     parser.add_argument("--native-tree-header", type=Path, nargs="*", default=[])
+    parser.add_argument(
+        "--proto-generated-header",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="Generated protobuf headers (e.g. ge_onnx.pb.h) to embed with their "
+        "transitive protobuf header closure under include/proto_deps.",
+    )
+    parser.add_argument("--bridge-metadef-header", type=Path, nargs="*", default=[])
     return parser.parse_args()
 
 
@@ -420,11 +539,17 @@ def main() -> None:
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True)
 
+    config, proto_include_dirs = _build_config(args)
     resources = dict(
         _collect_files(args.bridge_source, "src/bridge")
         + _collect_files(args.bridge_header, "include/bridge")
+        + _collect_files(
+            args.bridge_runtime_header, "include/bridge", "common/python_runtime"
+        )
         + _collect_files(args.bridge_tree_header, "include/bridge", "runtime/custom_op")
         + _collect_files(args.bridge_graph_header, "include/bridge", "graph/custom_op")
+        + _collect_files(args.bridge_debug_header, "include/bridge", "graph/debug")
+        + _collect_files(args.bridge_metadef_header, "include/bridge", "graph")
         + _collect_files(args.bridge_utils_header, "include/bridge", "graph/utils")
         + _collect_files(
             args.bridge_framework_header, "include/bridge", "framework/common"
@@ -435,8 +560,10 @@ def main() -> None:
             args.native_tree_header, "include/native", "runtime/native_bindings"
         )
     )
-
-    config = _build_config(args)
+    if args.proto_generated_header:
+        resources.update(
+            _collect_proto_closure(args.proto_generated_header, proto_include_dirs)
+        )
     config_bytes = json.dumps(
         config, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")

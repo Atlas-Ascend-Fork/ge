@@ -43,6 +43,7 @@
 #include "file_const_loader.h"
 #include "om2_external_weight_manager.h"
 #include "om2_file_utils.h"
+#include "om2_hccl_host_services.h"
 #include "om2_malloc_helper.h"
 #include "om2_rt_var_manager.h"
 #include "framework/common/gert_model_data_deserialize.h"
@@ -383,7 +384,8 @@ GertModelLoadCallbacks CreateGertModelLoadCallbacks() {
           .unlock_bin_handle_store = UnlockBinHandleStore,
           .query_bin_handle_from_store = QueryBinHandleFromStore,
           .save_bin_handle_to_store = SaveBinHandleToStore,
-          .release_bin_handle_from_store = ReleaseBinHandleFromStore};
+          .release_bin_handle_from_store = ReleaseBinHandleFromStore,
+          .hccl_load_task = gert::HcclHostLoadTask};
 }
 
 // profiling run info 回调：由 executor 本地实现（profiling 不依赖 libom2_dump.so），
@@ -477,13 +479,14 @@ class Om2ModelExecutor::Impl {
       return ge::SUCCESS;
     }
     // The generated pbody receives only work_ptr, so executor must validate the user-provided buffer size first.
-    const size_t required_work_size = load_arg.reuse_zero_copy
-                                          ? (model_meta_info_.work_size - model_meta_info_.zero_copy_size)
-                                          : model_meta_info_.work_size;
+    // 与 OM1（DavinciModel::InitFeatureMapAndP2PMem）口径对齐：零拷贝区仅承载执行期地址刷新的输入输出，
+    // 不会被实际访问，固定按 work_size - zero_copy_size 校验，不随 reuse_zero_copy 模式变化。
+    const size_t required_work_size = model_meta_info_.work_size - model_meta_info_.zero_copy_size;
     if (load_arg.work_size < required_work_size) {
       GELOGE(ACL_ERROR_GE_PARAM_INVALID,
-             "[OM2][Check] External workspace size[%zu] is smaller than required size[%zu].", load_arg.work_size,
-             required_work_size);
+             "[OM2][Check] External workspace size[%zu] is smaller than required size[%zu]. work_size[%zu], "
+             "zero_copy_size[%zu].",
+             load_arg.work_size, required_work_size, model_meta_info_.work_size, model_meta_info_.zero_copy_size);
       return ACL_ERROR_GE_PARAM_INVALID;
     }
     return ge::SUCCESS;
@@ -847,7 +850,7 @@ class Om2ModelExecutor::Impl {
     GertModelRunConfig config;
     GE_ASSERT_SUCCESS(BuildRunConfig(inputs, outputs, static_cast<uint64_t>(timeout), run_callbacks, config));
     struct GertModelRunOutput output = {.struct_size = sizeof(GertModelRunOutput)};
-    // 对齐 v1：执行前把当前 step（从 0 开始）刷入 dump step 设备内存，供 AICPU dump kernel 计算 step 落盘目录
+    // 执行前把当前 step（从 0 开始）刷入 dump step 设备内存，供 AICPU dump kernel 计算 step 落盘目录
     if (dump_manager_handle_ != nullptr) {
       GE_ASSERT_SUCCESS(Om2DfxApi::Instance().UpdateStepId(dump_manager_handle_, step_id_ - 1U, nullptr));
     }
@@ -863,7 +866,7 @@ class Om2ModelExecutor::Impl {
     GertModelRunConfig config;
     GE_ASSERT_SUCCESS(BuildRunConfig(inputs, outputs, 0, run_callbacks, config));
     struct GertModelRunOutput output = {.struct_size = sizeof(GertModelRunOutput)};
-    // 对齐 v1：执行前在模型流上异步刷新当前 step（从 0 开始）到 dump step 设备内存，
+    // 执行前在模型流上异步刷新当前 step（从 0 开始）到 dump step 设备内存，
     // 与后续模型任务保序，供 AICPU dump kernel 计算 step 落盘目录
     if (dump_manager_handle_ != nullptr) {
       GE_ASSERT_SUCCESS(Om2DfxApi::Instance().UpdateStepId(dump_manager_handle_, step_id_ - 1U, stream));
@@ -1279,6 +1282,11 @@ class Om2ModelExecutor::Impl {
       (void)aclrtDestroyStream(prof_stream_);
       prof_stream_ = nullptr;
     }
+    // 模型卸载前先反注册 HCCL 任务（UnloadTask + 释放句柄），此时模型 SO 的流资源仍有效；
+    // HcclHostUnloadTask 内部取走即清空，重复调用安全
+    if (owner_ != nullptr) {
+      (void)gert::HcclHostUnloadTask(static_cast<void *>(owner_));
+    }
     if (run_model_info_.unload_func != nullptr && run_model_info_.model_handle != nullptr) {
       const auto unload_ret = run_model_info_.unload_func(run_model_info_.model_handle, nullptr, nullptr);
       if (unload_ret != ge::GRAPH_SUCCESS) {
@@ -1417,6 +1425,8 @@ class Om2ModelExecutor::Impl {
   std::vector<uint64_t> cur_batch_size_;
   int32_t dynamic_type_ = 0;  // 0=FIXED
   std::vector<std::unique_ptr<gert::GertModelDataAippMeta>> aipp_infos_;
+  // HCCL 任务句柄（GETaskInfo）实例状态：宿主服务 hccl_load_task 登记 / Cleanup 卸载模型前取回反注册
+  std::vector<void *> hccl_loaded_tasks_;
 };
 
 Om2ModelExecutor::Om2ModelExecutor() : impl_(std::make_unique<Impl>()) {}
@@ -1591,6 +1601,14 @@ void Om2ModelExecutor::SaveProfilingTaskInfo(const GertModelTaskDesc &task_info)
 
 ge::Status Om2ModelExecutor::ReportModelBaseInfo(const struct GertModelBaseInfo *info) {
   return impl_->ReportModelBaseInfo(info);
+}
+
+void Om2ModelExecutor::RecordHcclLoadedTask(void *task) {
+  impl_->hccl_loaded_tasks_.push_back(task);
+}
+
+std::vector<void *> Om2ModelExecutor::TakeHcclLoadedTasks() {
+  return std::exchange(impl_->hccl_loaded_tasks_, {});
 }
 
 ge::Status LoadOm2DataFromFile(const std::string &model_path, ge::ModelData &model_data) {

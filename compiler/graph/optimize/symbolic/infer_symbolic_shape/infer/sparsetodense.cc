@@ -69,8 +69,9 @@ graphStatus InferShape4SparseToDense(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_NOTNULL(shape_desc);
   auto dt = shape_desc->GetDataType();
   if (dt != DT_INT32 && dt != DT_INT64) {
-    GELOGE(PARAM_INVALID, "DataType must in [int32, int64], node %s", context->GetNodeName());
-    return PARAM_INVALID;
+    GELOGW("Symbol Infer unsupported, output_shape dtype must in [int32, int64], node %s[%s].", context->GetNodeName(),
+           context->GetNodeType());
+    return UNSUPPORTED;
   }
 
   int64_t dim_num = -2;

@@ -53,6 +53,7 @@ class Om2ModelClassGeneratorBase : public CodeGeneratorBase {
   VarRef is_external_notifies_;
   VarRef is_external_events_;
   VarRef is_external_labels_;
+  VarRef main_follow_stream_mapping_;
 };
 }  // namespace ge
 

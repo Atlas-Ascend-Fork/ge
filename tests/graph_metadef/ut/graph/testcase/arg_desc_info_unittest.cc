@@ -204,6 +204,45 @@ TEST_F(TestArgDescInfo, ArgDescInfoWithInstanceSerialize) {
             "{#2}{#0}{hi.hcom0*}{hi.hcom1*}{i_instance0*}{i_instance1*}{o_instance0*}{o_instance1*}{ws*}{t}");
 }
 
+// 验证kHcclSuperKernel隐藏输入的序列化：token位于布局最前，逐字符命中运行时旧值2
+TEST_F(TestArgDescInfo, HiddenInputHcclSuperKernelSerialize) {
+  std::vector<ArgDescInfo> args_desc;
+  args_desc.emplace_back(ArgDescInfo::CreateHiddenInput(HiddenInputSubType::kHcclSuperKernel));
+  args_desc.emplace_back(ArgDescInfo(ArgDescType::kIrInput, 0));
+  args_desc.emplace_back(ArgDescInfo(ArgDescType::kIrOutput, 0));
+  auto args_format_str = ArgsFormatSerializer::Serialize(args_desc);
+  EXPECT_EQ(std::string(args_format_str.GetString()), "{hi.hcclsk0*}{i0*}{o0*}");
+}
+
+// 验证kHcclSuperKernel隐藏输入的round-trip：Serialize后Deserialize回原类型
+TEST_F(TestArgDescInfo, HiddenInputHcclSuperKernelRoundTrip) {
+  std::vector<ArgDescInfo> args_desc;
+  args_desc.emplace_back(ArgDescInfo(ArgDescType::kIrInput, 0));
+  args_desc.emplace_back(ArgDescInfo(ArgDescType::kIrOutput, 0));
+  args_desc.insert(args_desc.begin(), ArgDescInfo::CreateHiddenInput(HiddenInputSubType::kHcclSuperKernel));
+  auto args_format_str = ArgsFormatSerializer::Serialize(args_desc);
+  auto parsed = ArgsFormatSerializer::Deserialize(args_format_str);
+  ASSERT_EQ(parsed.size(), 3U);
+  EXPECT_EQ(parsed[0].GetType(), ArgDescType::kHiddenInput);
+  EXPECT_EQ(parsed[0].GetHiddenInputSubType(), HiddenInputSubType::kHcclSuperKernel);
+  EXPECT_EQ(parsed[0].GetIrIndex(), -1);
+  EXPECT_EQ(parsed[0].IsFolded(), false);
+  EXPECT_EQ(parsed[1].GetType(), ArgDescType::kIrInput);
+  EXPECT_EQ(parsed[1].GetIrIndex(), 0);
+  EXPECT_EQ(parsed[2].GetType(), ArgDescType::kIrOutput);
+  EXPECT_EQ(parsed[2].GetIrIndex(), 0);
+}
+
+// 验证kEnd隐藏输入缺映射时的降级行为：Serialize方向查不到映射返回MAX，
+// 公共层HiddenInputSerializer无MAX分支，token内容被丢弃、仅剩空壳{}（空token无法Parse，round-trip失败）
+TEST_F(TestArgDescInfo, HiddenInputMissingMappingFallback) {
+  std::vector<ArgDescInfo> args_desc;
+  args_desc.emplace_back(ArgDescInfo::CreateHiddenInput(HiddenInputSubType::kEnd));
+  args_desc.emplace_back(ArgDescInfo(ArgDescType::kIrInput, 0));
+  auto args_format_str = ArgsFormatSerializer::Serialize(args_desc);
+  EXPECT_EQ(std::string(args_format_str.GetString()), "{}{i0*}");
+}
+
 // 验证ArgDescInfo的拷贝赋值函数
 TEST_F(TestArgDescInfo, ArgDescInfoCopyAssignFunc) {
   ArgDescInfo args_desc_1(ArgDescType::kIrInput, 0, true);

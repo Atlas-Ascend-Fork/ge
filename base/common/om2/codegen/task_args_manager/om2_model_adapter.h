@@ -144,7 +144,8 @@ class ModelAdapter {
   std::map<int64_t, std::shared_ptr<Operator>> operator_list_;
   std::map<uint32_t, bool> output_data_to_slice_flag_;
   RuntimeParam runtime_param_;
-  bool feature_base_refreshable_ = true;
+  // FM 刷新模式由 ge.featureBaseRefreshable 决定（默认关闭，Init 时读取 option）
+  bool feature_base_refreshable_ = false;
   bool is_getnext_sink_dynamic_ = false;
   std::vector<std::string> dynamic_output_shape_info_;
   std::vector<std::vector<uint64_t>> input_addrs_list_;

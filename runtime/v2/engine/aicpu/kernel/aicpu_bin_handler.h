@@ -55,6 +55,7 @@ class OpDataBinHandler {
   }
 
   ge::graphStatus LoadBinary(const std::string &so_name, const ge::OpKernelBinPtr &kernel_bin);
+  ge::graphStatus UnloadBinary();
   inline rtBinHandle GetBinHandle() const {
     std::shared_lock lock(bin_mutex_);
     return bin_handle_;
@@ -77,12 +78,26 @@ class AicpuJsonBinHandler : public OpJsonBinHandler {
 
 using OpDataBinHandlerPtr = std::shared_ptr<OpDataBinHandler>;
 
+class CustAicpuBinLease {
+ public:
+  CustAicpuBinLease() = default;
+  ~CustAicpuBinLease();
+  CustAicpuBinLease(const CustAicpuBinLease &) = delete;
+  CustAicpuBinLease &operator=(const CustAicpuBinLease &) = delete;
+  ge::graphStatus Acquire(const std::string &so_name, const ge::OpKernelBinPtr &kernel_bin, rtBinHandle &handle);
+  ge::graphStatus Reset();
+
+ private:
+  void *owner_context_ = nullptr;
+  void *resource_token_ = nullptr;
+};
+
 class CustBinHandlerManager {
  public:
   static CustBinHandlerManager &Instance();
   ge::graphStatus LoadAndGetBinHandle(const std::string &so_name, const ge::OpKernelBinPtr &kernel_bin,
-                                      rtBinHandle &handle);
-  ge::graphStatus GetBinHandle(const std::string &so_name, rtBinHandle &handle);
+                                      rtBinHandle &handle, void *&resource_token);
+  ge::graphStatus ReleaseBinHandle(void *resource_token);
 
  private:
   CustBinHandlerManager() = default;
@@ -93,14 +108,13 @@ class CustBinHandlerManager {
   CustBinHandlerManager &operator=(CustBinHandlerManager &&) = delete;
   CustBinHandlerManager(CustBinHandlerManager &&) = delete;
 
-  ge::OpKernelBinPtr GetKernelBin(const std::string &so_name);
-  bool GetCustAicpuBinFromFile(const std::string &so_name, ge::OpKernelBinPtr &kernel_bin);
-  std::string GetCustSoFolderPath() const;
-
   mutable std::recursive_mutex mutex_{};
+  struct BinResource {
+    OpDataBinHandlerPtr bin_handler;
+    size_t ref_count = 0U;
+  };
   // {ctx, {so_name, bin_handler}}
-  std::unordered_map<uintptr_t, std::unordered_map<std::string, OpDataBinHandlerPtr>> bin_manager_ = {};
-  std::unordered_map<std::string, ge::OpKernelBinPtr> kernel_manager_ = {};
+  std::unordered_map<uintptr_t, std::unordered_map<std::string, BinResource>> bin_manager_ = {};
 };
 }  // namespace gert
 

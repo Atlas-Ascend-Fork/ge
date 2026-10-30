@@ -372,19 +372,18 @@ def test_call_declare_launch_args_does_not_validate_signature_at_runtime(
     assert ctx.invalidated is True
 
 
-def test_validate_op_impl_descriptor_requires_canonical_ir_for_declare():
+def test_validate_op_impl_descriptor_skips_missing_canonical_ir_for_declare():
     @custom_op.register_op_impl(op_type="MissingRegistrationDlaSchemaCustom")
     class MissingRegistrationDlaSchemaCustom:
         def declare_launch_args(self, x: Tensor) -> None:
             pass
 
-    with pytest.raises(
-        RuntimeError,
-        match="canonical IR not found for schema-bound declare_launch_args",
-    ):
+    assert (
         bridge.validate_op_impl_descriptor(
             _get_descriptor_key("MissingRegistrationDlaSchemaCustom"), None
         )
+        is True
+    )
 
 
 def test_call_declare_launch_args_rejects_missing_schema_and_non_none_result():

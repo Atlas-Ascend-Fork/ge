@@ -15,7 +15,7 @@ The sample operator (`EagerAttachedStreamAddOp`) performs the following verifica
 
 | # | Verification Item | Pass Condition |
 |---|-------------------|----------------|
-| ① | Request an attached stream by key | `RequestAttachedStream("eager_aux")` returns non-nullptr |
+| ① | Request an attached stream by key | `RequestAttachedStream("eager_aux")` returns a non-null pointer |
 | ② | Kernel launch on the attached stream | `aclrtLaunchKernelV2(..., attached stream)` succeeds |
 | ③ | Replay precision | z = x + y is correct in all rounds of model replay |
 

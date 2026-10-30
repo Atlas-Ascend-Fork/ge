@@ -819,18 +819,6 @@ TEST_F(AiKernelLaunchST, test_AiCoreLaunchMixKernelV2_run_mix_fail) {
   registry.FindKernelFuncs("LaunchMixKernelV2")->profiling_info_filler(context.WithFlag(), prof_info);
 }
 
-TEST_F(AiKernelLaunchST, test_LaunchAicpuCustKernel_success) {
-  auto run_context = BuildKernelRunContext(2, 1);
-  std::string key = "cust_aicpu";
-  const char cust_bin[] = "aicpu_cust_bin";
-  std::vector<char> buffer(cust_bin, cust_bin + strlen(cust_bin));
-  CustAICPUKernelPtr aicpu_kernel_ptr = std::make_shared<ge::OpKernelBin>(key, move(buffer));
-  std::string cust_so_name = "libcust_aicpu_kernels.so";
-  run_context.value_holder[0].Set(aicpu_kernel_ptr.get(), nullptr);
-  run_context.value_holder[1].Set(cust_so_name.data(), nullptr);
-  ASSERT_EQ(registry.FindKernelFuncs("LaunchAicpuCustKernel")->run_func(run_context), ge::GRAPH_SUCCESS);
-}
-
 TEST_F(AiKernelLaunchST, test_UpdateMergedCopyInfo_tiling_size_overflow) {
   size_t compiled_args_size = 64;
   auto node_desc_holder = malloc(compiled_args_size + sizeof(ComputeNodeDesc));

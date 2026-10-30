@@ -26,7 +26,9 @@ from ge._internal.artifact_utils import (
     load_module_from_path,
 )
 
-BRIDGE_ABI_VERSION = 1
+# ABI 2 adds the independent stream-pass registrar and stream graph/context
+# callback surface.  Keep this in lockstep with the C bridge API.
+BRIDGE_ABI_VERSION = 2
 NATIVE_MODULE_NAME = "ge.passes._ge_pass_native"
 
 

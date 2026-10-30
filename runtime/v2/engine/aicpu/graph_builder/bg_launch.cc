@@ -10,12 +10,10 @@
 
 #include "bg_launch.h"
 #include "bg_ext_info.h"
-#include <mutex>
 #include "framework/common/taskdown_common.h"
 #include "register/kernel_registry.h"
 #include "common/debug/ge_log.h"
 #include "common/omg_util/omg_util.h"
-#include "graph/load/model_manager/model_manager.h"
 #include "graph_builder/bg_memory.h"
 #include "graph_builder/value_holder_generator.h"
 #include "engine/aicpu/converter/aicpu_callback.h"
@@ -26,7 +24,6 @@
 namespace gert {
 namespace bg {
 namespace {
-std::mutex cust_op_mutex;
 const char *const kSmallShapeHostcpu = "SmallShapeHostcpu";
 
 using CustAICPUKernelPtr = std::shared_ptr<ge::OpKernelBin>;
@@ -133,30 +130,9 @@ ValueHolderPtr AicpuTfLaunchKernel(const ValueHolderPtr &args_handler, const Val
 ValueHolderPtr AicpuCCLaunchKernel(const ValueHolderPtr &args_handler, const ValueHolderPtr &stream,
                                    const ValueHolderPtr &block_dim, const domi::KernelDef &kernel_def,
                                    const ge::OpDescPtr &op_desc, const ValueHolderPtr &ext_info_handler,
-                                   const ValueHolderPtr &bin_handle, const ge::NodePtr node) {
+                                   const RtsArgs &rts_args, const ge::NodePtr node,
+                                   const std::string &register_op_type) {
   const uint32_t kernel_type = kernel_def.context().kernel_type();
-  // for cust aicpu task
-  if (static_cast<ge::ccKernelType>(kernel_type) == ge::ccKernelType::CUST_AI_CPU) {
-    const std::lock_guard<std::mutex> lk(cust_op_mutex);
-    bool has_so_loaded = false;
-    const auto &so_name = kernel_def.so_name();
-    AicpuResourceManager::GetInstance().HasLoadedCustAicpuSo(so_name, has_so_loaded);
-    if (!has_so_loaded) {
-      GELOGI("aicpu cc launch kernel in, op name %s, so name %s", op_desc->GetName().c_str(), so_name.c_str());
-      auto launch_cust = FrameSelector::OnInitRoot([&so_name, &op_desc]() -> std::vector<ValueHolderPtr> {
-        auto so_name_holder = bg::ValueHolder::CreateConst(so_name.c_str(), so_name.size() + 1, true);
-        const CustAICPUKernelPtr aicpu_kernel_ptr =
-            op_desc->TryGetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL, CustAICPUKernelPtr());
-        ge::OpKernelBin *aicpu_kernel = aicpu_kernel_ptr.get();
-        GE_ASSERT_NOTNULL(aicpu_kernel);
-        auto aicpu_kernel_holder = bg::ValueHolder::CreateConst(&aicpu_kernel, sizeof(uintptr_t));
-        auto launch_cust_local =
-            bg::ValueHolder::CreateSingleDataOutput("LaunchAicpuCustKernel", {aicpu_kernel_holder, so_name_holder});
-        bg::ValueHolder::CreateVoidGuarder("ClearAicpuCustKernel", launch_cust_local, {});
-        return {launch_cust_local};
-      });
-    }
-  }
   (void)op_desc;
   std::vector<ValueHolderPtr> inputs;
   inputs.emplace_back(args_handler);
@@ -165,8 +141,11 @@ ValueHolderPtr AicpuCCLaunchKernel(const ValueHolderPtr &args_handler, const Val
   inputs.emplace_back(ValueHolder::CreateConst(&kernel_type, sizeof(kernel_type)));
   // This is for GE dump log
   inputs.emplace_back(ext_info_handler);
-  inputs.emplace_back(bin_handle);
-  const auto &node_type = node->GetType();
+  inputs.emplace_back(rts_args.bin_handle);
+  const auto &function_name = kernel_def.kernel_name();
+  inputs.emplace_back(ValueHolder::CreateConst(function_name.c_str(), function_name.size() + 1U, true));
+  const auto &node_type =
+      static_cast<ge::ccKernelType>(kernel_type) == ge::ccKernelType::CUST_AI_CPU ? register_op_type : node->GetType();
   inputs.emplace_back(ValueHolder::CreateConst(node_type.c_str(), node_type.size() + 1U, true));
   auto launch_cc = ValueHolder::CreateSingleDataOutput("AicpuLaunchCCKernel", inputs);
   return launch_cc;

@@ -152,6 +152,7 @@ The default is single-stream. Multi-stream allocation is entered only when `ENAB
    - Event ID must be continuous, uniformly managed through Nodes2SyncInfos
    - StreamLabel in dynamic gear scenarios needs gear information
    - Nodes with `ATTR_NAME_RTS_LABEL_NODE` attribute must be allocated on the default stream (root graph main stream 0, or the stream where the subgraph's parent node resides), and cannot follow the subgraph's stream_id. This constraint is executed in NodeStreamUpdatePass to ensure control flow label nodes (such as LabelSet, LabelGotoEx, LabelSwitchByIndex, etc.) execute on the same stream as their parent node, avoiding cross-stream control flow semantic errors
+   - MiniDAG writeback must preserve the original stream IDs of calls with subgraph instances (the same stream as their RTS labels). Otherwise the enclosing subgraph activation omits the nested control stream and later loop iterations stall. The guard in `DAGAdapter.write_back()` is based on subgraph instance metadata, never an operator-type whitelist; ordinary computation inside subgraphs may still move to new streams.
 
 2. **Dynamic Shape Constraints**:
    - When multi-stream is enabled, ac_parallel_enable value can only be "0", "1" or empty

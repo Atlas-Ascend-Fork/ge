@@ -95,19 +95,14 @@ graphStatus InferShape4GatherV2(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(indies_shape);
   const auto axes_tensor = context->GetInputSymbolTensor(axes_idx);
   GE_UNSUPPORTED_IF_NULL(axes_tensor);
-  if (axes_tensor->GetSymbolicValue() == nullptr) {
-    GELOGW("Symbol Infer unsupported, get symbolic value is nullptr, node %s[%s]", context->GetNodeName(),
+  const auto axes_value = axes_tensor->GetSymbolicValue();
+  GE_UNSUPPORTED_IF_NULL(axes_value);
+  GE_ASSERT_EQ(axes_value->size(), 1UL);
+  int64_t axis = 0;
+  if (SymbolicInferUtil::TryGetConstInt(axes_value->at(0), axis) != GRAPH_SUCCESS) {
+    GELOGW("Symbol Infer unsupported, axis is not an integer const, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
-  }
-  const auto axes_size = static_cast<int32_t>(axes_tensor->GetSymbolicValue()->size());
-  GE_ASSERT_EQ(axes_size, 1);
-  int64_t axis = 0;
-  const auto axes_desc = context->GetInputDesc(axes_idx);
-  GE_ASSERT_NOTNULL(axes_desc);
-  const auto status = SymbolicInferUtil::GetConstInt(axes_tensor, axes_desc->GetDataType(), axis);
-  if (status != GRAPH_SUCCESS) {
-    return status;
   }
   const GatherInfo gather_info = {axis, 0};
   return GatherCommonInfer(context, in_shape, indies_shape, gather_info);

@@ -42,7 +42,8 @@ ValueHolderPtr AicpuTfLaunchKernel(const ValueHolderPtr &args_handler, const Val
 ValueHolderPtr AicpuCCLaunchKernel(const ValueHolderPtr &args_handler, const ValueHolderPtr &stream,
                                    const ValueHolderPtr &block_dim, const domi::KernelDef &kernel_def,
                                    const ge::OpDescPtr &op_desc, const ValueHolderPtr &ext_info_handler,
-                                   const ValueHolderPtr &bin_handle, const ge::NodePtr node);
+                                   const RtsArgs &rts_args, const ge::NodePtr node,
+                                   const std::string &register_op_type);
 ValueHolderPtr AicpuHostComputeByCpuKernel(const ge::NodePtr &node, const AicpuArgs &args, const IoInfo &io_info,
                                            const std::vector<ValueHolderPtr> &origin_input_shapes,
                                            const ValueHolderPtr &expanded_input_shapes_holder,

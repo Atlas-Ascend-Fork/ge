@@ -11,7 +11,7 @@
 
 ## 函数功能
 
-给FlowNode映射输入，表示将FlowNode的第node\_input\_index个输入给到ProcessPoint的第pp\_input\_index个输入，并且给ProcessPoint的该输入设置上attr里的所有属性，返回映射好的FlowNode节点。该函数可选，不被调用时会默认按顺序去映射FlowNode和ProcessPoint的输入。
+给FlowNode映射输入，表示将FlowNode的第node\_input\_index个输入给到ProcessPoint的第pp\_input\_index个输入，并且给ProcessPoint的该输入设置上attr里的所有属性。该函数可选，不被调用时会默认按顺序去映射FlowNode和ProcessPoint的输入。
 
 ## 函数原型
 

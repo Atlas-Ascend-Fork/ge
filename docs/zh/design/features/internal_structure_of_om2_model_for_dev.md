@@ -60,7 +60,7 @@ OM2 为 ZIP 归档。以下路径均相对包内根前缀 `<base_name>/`：在�
 |-----------|------|------|------|
 | `name` | string | 是 | 模型名称，对应内存成员 `model_name`；`Om2ModelExecutor::Impl::InitModelDumpInfo` 用于填充 dump/profiling 模型信息，不是输入输出 Tensor 名称查询的来源 |
 | `work_size` | integer | 是 | uint64 语义的工作内存字节数；`aclmdlQuerySize`、`aclmdlQuerySizeFromMem`、默认模式的 `aclmdlQueryWorkspaceSize` / `aclmdlQueryWorkspaceSizeFromMem` 返回此值，`aclmdlBundleGetSize` 返回对应子模型的此值；加载时 `CheckExternalWorkSize` 用于外部工作内存校验 |
-| `zero_copy_size` | integer | 是 | int64 语义的输入输出内存优化可扣减字节数；`aclmdlQueryWorkspaceSize` / `aclmdlQueryWorkspaceSizeFromMem` 在 `ACL_WORKSPACE_MEM_OPTIMIZE_INPUTOUTPUT` 模式返回 `work_size - zero_copy_size`；加载时 `CheckExternalWorkSize` 按相同规则校验 |
+| `zero_copy_size` | integer | 是 | int64 语义的输入输出内存优化可扣减字节数；`aclmdlQueryWorkspaceSize` / `aclmdlQueryWorkspaceSizeFromMem` 在 `ACL_WORKSPACE_MEM_OPTIMIZE_INPUTOUTPUT` 模式返回 `work_size - zero_copy_size`；加载时 `CheckExternalWorkSize` 固定按 `work_size - zero_copy_size` 校验外部工作内存 |
 | `inputs` | `array<object>` | 是 | 输入 Tensor 描述数组；经 `aclmdlGetDesc` 或 `aclmdlGetDescFromFile` / `aclmdlGetDescFromMem` 填入描述对象，供 `aclmdlGetNumInputs` 及各输入查询接口使用；执行时也用于检查输入数量 |
 | `outputs` | `array<object>` | 是 | 输出 Tensor 描述数组；经模型描述获取接口填入描述对象，供 `aclmdlGetNumOutputs` 及各输出查询接口使用；执行时也用于检查输出数量 |
 | `inputs[].name` / `outputs[].name` | string | 是 | Tensor 名称；分别供 `aclmdlGetInputNameByIndex` / `aclmdlGetOutputNameByIndex`、`aclmdlGetInputIndexByName` / `aclmdlGetOutputIndexByName` 使用，也用于 `aclmdlGetTensorRealName`；动态分档输入名还用于 `aclmdlSetInputDynamicDims` 匹配原始 shape |

@@ -59,7 +59,7 @@ function clear_libs()
 
 function download_runs()
 {
-    source scripts/update/deps_config.sh
+    source "${PROJECT_HOME}/scripts/update/deps_config.sh"
     echo "begin to download .run file ........."
     clear_libs
     mkdir -p ./ ${DOWNLOAD_PATH}
@@ -72,7 +72,7 @@ function download_runs()
 
 function download_runs_from_community()
 {
-    source scripts/update/deps_config_community.sh
+    source "${PROJECT_HOME}/scripts/update/deps_config_community.sh"
     echo "begin to download .run file from community........."
     clear_libs
     mkdir -p ./ ${DOWNLOAD_PATH}
@@ -85,7 +85,7 @@ function download_runs_from_community()
 
 function install_deps()
 {
-    source scripts/update/deps_config.sh
+    source "${PROJECT_HOME}/scripts/update/deps_config.sh"
     mkdir -p ./ ${DOWNLOAD_PATH}
     pushd "${DOWNLOAD_PATH}" >/dev/null
         cd ${DOWNLOAD_PATH}
@@ -96,7 +96,7 @@ function install_deps()
 
 function install_deps_community()
 {
-    source scripts/update/deps_config_community.sh
+    source "${PROJECT_HOME}/scripts/update/deps_config_community.sh"
     mkdir -p ./ ${DOWNLOAD_PATH}
     pushd "${DOWNLOAD_PATH}" >/dev/null
         cd ${DOWNLOAD_PATH}

@@ -198,7 +198,7 @@ bash scripts/check_env.sh
   本地验证完成后，可执行如下命令安装编译生成的`GE`软件包，执行安装命令时，请确保安装用户对软件包具有可执行权限。
 
   ```shell
-  ./cann-<component>_<version>_<arch>.run --full --install-path=${install_path}
+  ./build_out/cann-<component>_<version>_<arch>.run --full --install-path=${install_path}
   ```
 
   > [!CAUTION]注意
@@ -219,7 +219,7 @@ bash scripts/check_env.sh
   若您想卸载安装的`cann-<component>_<version>_<arch>.run`软件包，可执行如下命令。
 
   ```shell
-  ./cann-<component>_<version>_<arch>.run --uninstall --install-path=${install_path}
+  ./build_out/cann-<component>_<version>_<arch>.run --uninstall --install-path=${install_path}
   ```
 
   执行时需要将上述命令中的软件包名称替换为实际的自定义`cann-<component>_<version>`软件包名称。

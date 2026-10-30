@@ -33,6 +33,12 @@ Pattern = passes.Pattern
 PatternMatcherConfigBuilder = passes.PatternMatcherConfigBuilder
 
 
+def _user_descriptors(descriptors):
+    """Exclude the built-in MiniDAG stream descriptor from legacy checks."""
+
+    return [item for item in descriptors if item.get("kind") != "stream"]
+
+
 def _write_pattern_pass_source(
     dir_path: Path, module_name: str, pass_name: str, hooks: str
 ) -> Path:
@@ -175,7 +181,7 @@ def test_bridge_get_pattern_matcher_config_returns_native_handle(tmp_path, monke
     )
     monkeypatch.setenv(bootstrap.ENV_PY_PASS_PATH, str(module_path))
 
-    descriptors = bridge.load_and_get_pass_descriptors()
+    descriptors = _user_descriptors(bridge.load_and_get_pass_descriptors())
     assert len(descriptors) == 1
 
     instance_id = "BridgePatternConfigPass#1"
@@ -419,7 +425,7 @@ def test_bridge_pattern_protocol_functions(tmp_path, monkeypatch):
     )
     monkeypatch.setenv(bootstrap.ENV_PY_PASS_PATH, str(module_path))
 
-    descriptors = bridge.load_and_get_pass_descriptors()
+    descriptors = _user_descriptors(bridge.load_and_get_pass_descriptors())
 
     assert len(descriptors) == 1
     descriptor_key = descriptors[0]["descriptor_key"]
@@ -472,7 +478,7 @@ def test_bridge_pattern_protocol_forwards_context_without_runtime_inspection(
     )
     monkeypatch.setenv(bootstrap.ENV_PY_PASS_PATH, str(module_path))
 
-    descriptors = bridge.load_and_get_pass_descriptors()
+    descriptors = _user_descriptors(bridge.load_and_get_pass_descriptors())
     descriptor_key = descriptors[0]["descriptor_key"]
     instance_id = "ContextPatternPass#1"
     assert bridge.create_pass_holder(instance_id, descriptor_key)
@@ -505,7 +511,7 @@ def test_bridge_pattern_replacement_rejects_none(tmp_path, monkeypatch):
     )
     monkeypatch.setenv(bootstrap.ENV_PY_PASS_PATH, str(module_path))
 
-    descriptors = bridge.load_and_get_pass_descriptors()
+    descriptors = _user_descriptors(bridge.load_and_get_pass_descriptors())
 
     assert len(descriptors) == 1
     descriptor_key = descriptors[0]["descriptor_key"]

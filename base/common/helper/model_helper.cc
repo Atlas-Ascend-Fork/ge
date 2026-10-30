@@ -571,7 +571,7 @@ Status ModelHelper::SaveSpaceRegistrySoBin(const GeRootModelPtr &ge_root_model, 
   (void)GetThreadLocalContext().GetOption("ge.host_env_os", host_env_os);
   (void)GetThreadLocalContext().GetOption("ge.host_env_cpu", host_env_cpu);
 
-  GELOGI("get host env cpu:%s, os:%s", host_env_cpu.c_str(), host_env_os.c_str());
+  GELOGI("get host env cpu:[%s], os:[%s]", host_env_cpu.c_str(), host_env_os.c_str());
   if (host_env_os.empty() || host_env_cpu.empty()) {
     GELOGW("[SaveSoStoreModelPartitionInfo] get cpu or os info empty!!");
     return SUCCESS;

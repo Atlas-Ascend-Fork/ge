@@ -71,6 +71,14 @@ void ExecutorRun(ModelV2Executor *executor) {
   ASSERT_EQ(executor->UnLoad(), ge::GRAPH_SUCCESS);
   aclrtDestroyStream(rt_stream);
 }
+AiCpuCCTaskDefFaker CreateCustAicpuTaskDefFaker() {
+  return AiCpuCCTaskDefFaker(static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU));
+}
+void SetCustAicpuKernel(const ge::OpDescPtr &op_desc) {
+  std::vector<char> buffer(1U, 'a');
+  op_desc->SetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL,
+                      std::make_shared<ge::OpKernelBin>("libcust_aicpu_kernels.so", std::move(buffer)));
+}
 }  // namespace
 class ExecutorDumperUT : public bg::BgTest {
  protected:
@@ -605,26 +613,29 @@ TEST_F(ExecutorDumperUT, ExceptionDump_Ok_PrepareExceptionDump) {
   ge::diagnoseSwitch::DisableDumper();
 }
 
-TEST_F(ExecutorDumperUT, ExceptionDump_Ok_CUST_AICPU) {
-  const auto SetUnknownOpKernelForNoTiling = [](const ge::ComputeGraph::Vistor<ge::NodePtr> &all_nodes) {
-    for (const auto &node : all_nodes) {
-      const auto op_desc = node->GetOpDesc();
-      auto type = op_desc->GetType();
-      if (op_desc->GetType() == ge::ADD) {
-        op_desc->SetOpKernelLibName("aicpu_ascend_kernel");
-        op_desc->SetWorkspace(vector<int64_t>{32});
-        std::vector<int64_t> tvm_workspace_memory_type = {ge::AicpuWorkSpaceType::CUST_LOG};
-        ge::AttrUtils::SetListInt(op_desc, ge::ATTR_NAME_AICPU_WORKSPACE_TYPE, tvm_workspace_memory_type);
-        op_desc->SetWorkspaceBytes(vector<int64_t>{32});
-      }
+namespace {
+void SetCustAicpuWorkspaceForNoTiling(const ge::ComputeGraph::Vistor<ge::NodePtr> &all_nodes) {
+  for (const auto &node : all_nodes) {
+    const auto op_desc = node->GetOpDesc();
+    if (op_desc->GetType() == ge::ADD) {
+      SetCustAicpuKernel(op_desc);
+      op_desc->SetOpKernelLibName("aicpu_ascend_kernel");
+      op_desc->SetWorkspace(vector<int64_t>{32});
+      std::vector<int64_t> tvm_workspace_memory_type = {ge::AicpuWorkSpaceType::CUST_LOG};
+      ge::AttrUtils::SetListInt(op_desc, ge::ATTR_NAME_AICPU_WORKSPACE_TYPE, tvm_workspace_memory_type);
+      op_desc->SetWorkspaceBytes(vector<int64_t>{32});
     }
-  };
+  }
+}
+}  // namespace
+
+TEST_F(ExecutorDumperUT, ExceptionDump_Ok_CUST_AICPU) {
   ge::diagnoseSwitch::EnableExceptionDump();
   auto graph = ShareGraph::BuildSingleNodeGraph();
   graph->TopologicalSorting();
-  SetUnknownOpKernelForNoTiling(graph->GetDirectNode());
+  SetCustAicpuWorkspaceForNoTiling(graph->GetDirectNode());
   GeModelBuilder builder(graph);
-  AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  auto aicpu_task_def_faker = CreateCustAicpuTaskDefFaker();
   auto ge_root_model = builder.AddTaskDef("Add", aicpu_task_def_faker.SetNeedMemcpy(true)).BuildGeRootModel();
 
   auto exe_graph = ModelConverter().ConvertGeModelToExecuteGraph(ge_root_model);
@@ -664,26 +675,13 @@ TEST_F(ExecutorDumperUT, ExceptionDump_Ok_CUST_AICPU) {
 }
 
 TEST_F(ExecutorDumperUT, ExceptionDump_HOSTADDR_CUST_AICPU) {
-  const auto SetUnknownOpKernelForNoTiling = [](const ge::ComputeGraph::Vistor<ge::NodePtr> &all_nodes) {
-    for (const auto &node : all_nodes) {
-      const auto op_desc = node->GetOpDesc();
-      auto type = op_desc->GetType();
-      if (op_desc->GetType() == ge::ADD) {
-        op_desc->SetOpKernelLibName("aicpu_ascend_kernel");
-        op_desc->SetWorkspace(vector<int64_t>{32});
-        std::vector<int64_t> tvm_workspace_memory_type = {ge::AicpuWorkSpaceType::CUST_LOG};
-        ge::AttrUtils::SetListInt(op_desc, ge::ATTR_NAME_AICPU_WORKSPACE_TYPE, tvm_workspace_memory_type);
-        op_desc->SetWorkspaceBytes(vector<int64_t>{32});
-      }
-    }
-  };
   SpaceRegistryFaker::UpdateOpImplToDefaultSpaceRegistry();
   ge::diagnoseSwitch::EnableExceptionDump();
   auto graph = ShareGraph::BuildSingleNodeGraph();
   graph->TopologicalSorting();
-  SetUnknownOpKernelForNoTiling(graph->GetDirectNode());
+  SetCustAicpuWorkspaceForNoTiling(graph->GetDirectNode());
   GeModelBuilder builder(graph);
-  AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  auto aicpu_task_def_faker = CreateCustAicpuTaskDefFaker();
   auto ge_root_model = builder.AddTaskDef("Add", aicpu_task_def_faker.SetNeedMemcpy(true)).BuildGeRootModel();
 
   auto exe_graph = ModelConverter().ConvertGeModelToExecuteGraph(ge_root_model);

@@ -77,7 +77,7 @@ class GE_FUNC_VISIBILITY Om2PackageHelper : public ModelSaveHelper {
   static Status BuildConstantsData(const GeModelPtr &ge_model, gert::GertModelDataModel &unit,
                                    std::unique_ptr<gert::GertModelDataFile> &weight_slot, const size_t model_index);
   static Status BuildDebugInfo(const GeModelPtr &ge_model, gert::GertModelDataModel &unit);
-  static Status BuildManifest(gert::GertModelData &model_data);
+  static Status BuildManifest(gert::GertModelData &model_data, const GeModelPtr &ge_model);
   static Status CollectUsedCustomOpTypes(const GeRootModelPtr &ge_root_model,
                                          std::set<std::string> &used_custom_op_types);
   static Status BuildCustomKernelBinaries(const GeRootModelPtr &ge_root_model, gert::GertModelData &model_data);

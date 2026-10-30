@@ -142,6 +142,30 @@ NodeOutput UpdateOutputShapeAndAddr(const ge::NodePtr &node, const LowerInput &l
   }
   return node_output;
 }
+
+void AppendTensorListResourceOp(const LowerInput &lower_input, const NodeOutput &node_output,
+                                const bg::ValueHolderPtr &launch_holder,
+                                std::vector<bg::ValueHolderPtr> &ordered_holders) {
+  std::vector<bg::ValueHolderPtr> inputs;
+  inputs.emplace_back(lower_input.global_data->GetStream());
+  inputs.insert(inputs.cend(), lower_input.input_addrs.cbegin(), lower_input.input_addrs.cend());
+  inputs.insert(inputs.cend(), node_output.addrs.cbegin(), node_output.addrs.cend());
+  auto resource_op = bg::ValueHolder::CreateSingleDataOutput("TensorListOp", inputs);
+  bg::ValueHolder::AddDependency(launch_holder, resource_op);
+  ordered_holders.emplace_back(resource_op);
+}
+
+size_t GetAicpuCCInputCount(const ge::NodePtr &node) {
+  auto in_num = node->GetInDataNodesAndAnchors().size();
+  bool optional_input_placeholder = false;
+  (void)ge::AttrUtils::GetBool(node->GetOpDescBarePtr(), bg::kOptionalInputPlaceholder, optional_input_placeholder);
+  if (optional_input_placeholder) {
+    in_num = node->GetOpDescBarePtr()->GetAllInputsSize();
+    GELOGI("Op %s type %s: all input size is %zu, all input data anchors size is %zu.", node->GetName().c_str(),
+           ge::NodeUtils::GetNodeType(node).c_str(), in_num, node->GetInDataNodesAndAnchors().size());
+  }
+  return in_num;
+}
 }  // namespace
 
 LowerResult LoweringAiCpuTfNode(const ge::NodePtr &node, const LowerInput &lower_input) {
@@ -176,16 +200,11 @@ LowerResult LoweringAiCpuTfNode(const ge::NodePtr &node, const LowerInput &lower
 
   std::vector<bg::ValueHolderPtr> ordered_holders;
   ordered_holders.emplace_back(launch_holder);
-  AicpuCallback(node, aicpu_args.ext_info_handler, launch_holder, *(lower_input.global_data), node_output);
+  LOWER_REQUIRE_GRAPH_SUCCESS(
+      AicpuCallback(node, aicpu_args.ext_info_handler, launch_holder, *(lower_input.global_data), node_output));
   ordered_holders.emplace_back(launch_holder);
   if (kResourceOp.count(node->GetType()) > 0U) {
-    std::vector<bg::ValueHolderPtr> inputs;
-    inputs.emplace_back(lower_input.global_data->GetStream());
-    inputs.insert(inputs.cend(), lower_input.input_addrs.cbegin(), lower_input.input_addrs.cend());
-    inputs.insert(inputs.cend(), node_output.addrs.cbegin(), node_output.addrs.cend());
-    auto resource_op = bg::ValueHolder::CreateSingleDataOutput("TensorListOp", inputs);
-    bg::ValueHolder::AddDependency(launch_holder, resource_op);
-    ordered_holders.emplace_back(resource_op);
+    AppendTensorListResourceOp(lower_input, node_output, launch_holder, ordered_holders);
   }
   std::vector<bg::DevMemValueHolderPtr> out_addrs;
   for (const auto &addrs : node_output.addrs) {
@@ -207,18 +226,11 @@ LowerResult LoweringAiCpuCCNode(const ge::NodePtr &node, const LowerInput &lower
   auto session_id = bg::GetSessionId(*lower_input.global_data);
 
   // gen function handle
-  auto rts_args = bg::BuildCCArgsBinHandle(node);
+  auto rts_args = bg::BuildCCArgsBinHandle(node, kernel_def);
+  LOWER_REQUIRE_NOTNULL(rts_args.bin_handle);
 
   // alloc args
-  auto in_num = node->GetInDataNodesAndAnchors().size();
-  bool optional_input_placeholder = false;
-  (void)ge::AttrUtils::GetBool(node->GetOpDescBarePtr(), bg::kOptionalInputPlaceholder, optional_input_placeholder);
-  if (optional_input_placeholder) {
-    in_num = node->GetOpDescBarePtr()->GetAllInputsSize();
-    GELOGI("Op %s type %s: all input size is %zu, all input data anchors size is %zu.", node->GetName().c_str(),
-           ge::NodeUtils::GetNodeType(node).c_str(), in_num, node->GetInDataNodesAndAnchors().size());
-  }
-  auto io_num = in_num + node->GetAllOutDataAnchorsSize();
+  auto io_num = GetAicpuCCInputCount(node) + node->GetAllOutDataAnchorsSize();
   auto aicpu_args = bg::BuildCCAicpuArg(node, kernel_def, io_num, session_id, false);
 
   // get output shape & addr, update ext_info & io_addr
@@ -229,7 +241,7 @@ LowerResult LoweringAiCpuCCNode(const ge::NodePtr &node, const LowerInput &lower
   // launch
   auto block_dim = bg::CalcBlockDim(op_desc, lower_input.input_shapes);
   auto launch_holder = bg::AicpuCCLaunchKernel(aicpu_args.args_handler, stream, block_dim, kernel_def, op_desc,
-                                               aicpu_args.ext_info_handler, rts_args.bin_handle, node);
+                                               aicpu_args.ext_info_handler, rts_args, node, node->GetType());
 
   bg::ValueHolder::AddDependency(update_holder, launch_holder);
   SetReleaseAfter(lower_input.input_addrs, launch_holder);
@@ -239,7 +251,8 @@ LowerResult LoweringAiCpuCCNode(const ge::NodePtr &node, const LowerInput &lower
   }
 
   auto cc_launch_holder = launch_holder;
-  AicpuCallback(node, aicpu_args.ext_info_handler, launch_holder, *(lower_input.global_data), node_output);
+  LOWER_REQUIRE_GRAPH_SUCCESS(
+      AicpuCallback(node, aicpu_args.ext_info_handler, launch_holder, *(lower_input.global_data), node_output));
   std::vector<bg::DevMemValueHolderPtr> out_addrs;
   for (const auto &addrs : node_output.addrs) {
     out_addrs.emplace_back(std::dynamic_pointer_cast<bg::DevMemValueHolder>(addrs));

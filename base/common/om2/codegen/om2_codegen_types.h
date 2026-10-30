@@ -75,6 +75,8 @@ struct RuntimeResourceSemantic {
   std::map<uint64_t, om2::MemInfo> memory_infos;
   bool has_label_switch{false};
   bool has_label_goto{false};
+  bool has_hccl{false};
+  std::map<uint32_t, uint32_t> hccl_follow_stream_counts;
   std::vector<std::string> stream_flag_values;
   std::vector<std::string> bind_flag_values;
 };
@@ -86,6 +88,7 @@ struct ModelIoEntry {
   bool is_input{true};
   bool is_addr_refreshable{true};
   int64_t addr_offset{0};
+  int64_t memory_size{0};  // 拷贝模式下的 ModelIo 区大小（拷贝越界防护）
 };
 
 struct ModelIoSemantic {
@@ -195,6 +198,7 @@ struct OpDispatchType {
     DISPATCH_DSA = 19,
     DISPATCH_KERNEL_EX = 20,
     DISPATCH_CUSTOM_KERNEL = 21,
+    DISPATCH_HCCL = 22,
   };
 
   static std::string ToString() {
@@ -208,7 +212,8 @@ struct OpDispatchType {
                                    "DISPATCH_BARRIER",       "DISPATCH_CMO",
                                    "DISPATCH_MEMCPY_ASYNC",  "DISPATCH_MEMCPY_ADDR_ASYNC",
                                    "DISPATCH_CMO_ADDR",      "DISPATCH_DSA",
-                                   "DISPATCH_KERNEL_EX",     "DISPATCH_CUSTOM_KERNEL"};
+                                   "DISPATCH_KERNEL_EX",     "DISPATCH_CUSTOM_KERNEL",
+                                   "DISPATCH_HCCL"};
     std::string code = "enum OpDispatchType : uint32_t {\n";
     for (uint32_t i = 0U; i < sizeof(kNames) / sizeof(kNames[0]); i++) {
       code += "    " + std::string(kNames[i]) + " = " + std::to_string(i) + ",\n";

@@ -298,8 +298,11 @@ graphStatus InferShape4LayerNormV4(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_TRUE(norm_shape_shape->GetDimNum() <= 1, "Shape of norm_shape should be 1 dimensions!");
   int64_t norm_shape_len = norm_shape_shape->IsScalar() ? 1 : 0;
   if (!norm_shape_shape->IsScalar()) {
-    GE_ASSERT_TRUE(norm_shape_shape->GetDim(0).GetConstValue<int64_t>(norm_shape_len),
-                   "norm_shape_len must be a constant value");
+    if (SymbolicInferUtil::TryGetConstInt(norm_shape_shape->GetDim(0), norm_shape_len) != GRAPH_SUCCESS) {
+      GELOGW("Symbol Infer unsupported, norm_shape_len is not an integer const, node %s[%s].", context->GetNodeName(),
+             context->GetNodeType());
+      return UNSUPPORTED;
+    }
   }
 
   GE_ASSERT_TRUE(real_dim_num >= norm_shape_len, "norm_shape_len(%ld) must be <= xshape rank(%ld)", norm_shape_len,

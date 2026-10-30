@@ -21,6 +21,7 @@ enum class AicpuCCLaunch {
   kKernelType,
   kExternHandle,
   kBinHandler,
+  kFunctionName,
   kNodeType
 };
 

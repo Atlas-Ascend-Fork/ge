@@ -161,7 +161,9 @@ pattern_template_end = re.compile(r">\s*$")
 # namespace
 pattern_namespace = re.compile(r"namespace.*{")
 # class : which can handle classA a and {not on the same line, but if found ';' after class,then don't deal with
-pattern_class = re.compile(r"^[\s]*(class|struct)\s+(%s\s+)?([a-zA-Z0-9_\-]+<?)(?!.*;)" % GE_ATTR)
+pattern_class = re.compile(
+    r"^[\s]*(class|struct)\s+(%s\s+)?([a-zA-Z0-9_\-]+<?)(?!.*;)" % GE_ATTR
+)
 # {}
 pattern_start = re.compile("{")
 pattern_end = re.compile("}")
@@ -215,7 +217,9 @@ class H2CC(object):
             return_type = all_items[start]
         if return_type.startswith(("std::map", "std::set", "std::vector")):
             return_type = "std::map"
-        if return_type.endswith("*") or (len(all_items) > start + 1 and all_items[start + 1].startswith("*")):
+        if return_type.endswith("*") or (
+            len(all_items) > start + 1 and all_items[start + 1].startswith("*")
+        ):
             return_type = "Ptr"
         if len(all_items) > start + 1 and all_items[start + 1].startswith("&"):
             return_type += "&"
@@ -231,19 +235,25 @@ class H2CC(object):
 
     def just_skip(self):
         # skip blank line or comment
-        if pattern_blank_line.search(self.input_content[self.line_index]) or pattern_comment.search(
+        if pattern_blank_line.search(
+            self.input_content[self.line_index]
+        ) or pattern_comment.search(
             self.input_content[self.line_index]
         ):  # /n or comment using //
             self.line_index += 1
-        if pattern_comment_2_start.search(self.input_content[self.line_index]):  # comment using /*
-            while not pattern_comment_2_end.search(self.input_content[self.line_index]):  # */
+        if pattern_comment_2_start.search(
+            self.input_content[self.line_index]
+        ):  # comment using /*
+            while not pattern_comment_2_end.search(
+                self.input_content[self.line_index]
+            ):  # */
                 self.line_index += 1
             self.line_index += 1
         # skip define
         if pattern_define.search(self.input_content[self.line_index]):
-            while pattern_blank_line.search(self.input_content[self.line_index]) or pattern_define_return.search(
+            while pattern_blank_line.search(
                 self.input_content[self.line_index]
-            ):
+            ) or pattern_define_return.search(self.input_content[self.line_index]):
                 self.line_index += 1
             self.line_index += 1
 
@@ -291,7 +301,9 @@ class H2CC(object):
             line = self.input_content[self.line_index]
             match_class = pattern_class.search(line)
             match_start = pattern_start.search(line)
-            handle_class_result = self.handle_class(template_string, line, match_start, match_class)
+            handle_class_result = self.handle_class(
+                template_string, line, match_start, match_class
+            )
             if handle_class_result == "continue":
                 continue
 
@@ -352,7 +364,9 @@ class H2CC(object):
             if space_match:
                 line2 = re.sub("^" + space_match.group(1), "", line2)
             line += line2
-            while self.line_index < len(self.input_content) and (not re.search("[)]", line2)):
+            while self.line_index < len(self.input_content) and (
+                not re.search("[)]", line2)
+            ):
                 self.line_index += 1
                 line2 = self.input_content[self.line_index]
                 line2 = re.sub("^" + space_match.group(1), "", line2)
@@ -497,11 +511,15 @@ class H2CC(object):
             template_string = re.sub(r"\s*=.*,", ",", template_string)
             template_string = re.sub(r"\s*=.*", "", template_string)
         if self.stack_template[-1] != "":
-            if not (re.search(r"<\s*>", stack_template[-1])):
-                template_line = re.sub(r"^\s*template", "template", stack_template[-1])
+            if not (re.search(r"<\s*>", self.stack_template[-1])):
+                template_line = re.sub(
+                    r"^\s*template", "template", self.stack_template[-1]
+                )
                 if not (re.search(r"<.*>", self.stack_class[-1])):
                     # for x we get like template<class T, typename U> -> <T,U>
-                    x = re.sub(r"template\s*<", "<", template_line)  # remove template -> <class T, typename U>
+                    x = re.sub(
+                        r"template\s*<", "<", template_line
+                    )  # remove template -> <class T, typename U>
                     x = re.sub(r"\n", "", x)
                     x = re.sub(r"\s*=.*,", ",", x)
                     x = re.sub(r"\s*=.*\>", ">", x)
@@ -519,9 +537,13 @@ class H2CC(object):
         logging.info("x[%s]\nline[%s]", x, line)
         # if the function is long, void ABC::foo()
         # breaks into two lines void ABC::\n foo()
-        temp_line = pattern_func_name.sub(self.stack_class[-1] + x + "::" + r"\1(", line, count=1)
+        temp_line = pattern_func_name.sub(
+            self.stack_class[-1] + x + "::" + r"\1(", line, count=1
+        )
         if len(temp_line) > max_code_len_per_line:
-            line = pattern_func_name.sub(self.stack_class[-1] + x + "::\n" + r"\1(", line, count=1)
+            line = pattern_func_name.sub(
+                self.stack_class[-1] + x + "::\n" + r"\1(", line, count=1
+            )
         else:
             line = temp_line
         logging.info("line[%s]", line)
@@ -584,7 +606,9 @@ def collect_header_files(path):
             shared_includes_content.append(include_str)
     # for acl error code
     shared_includes_content.append("#include <iostream>\n")
-    shared_includes_content.append("const int ACL_ERROR_COMPILING_STUB_MODE = 100039;\n")
+    shared_includes_content.append(
+        "const int ACL_ERROR_COMPILING_STUB_MODE = 100039;\n"
+    )
     return header_files, shared_includes_content
 
 

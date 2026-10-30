@@ -112,8 +112,11 @@ graphStatus InferShape4ArgMaxV2(gert::InferSymbolShapeContext *context) {
   }
 
   int64_t dimension = 0;
-  GE_ASSERT_TRUE(dimension_value->at(0).GetConstValue<int64_t>(dimension),
-                 "ArgMaxV2 dimension must be an int32 or int64 constant");
+  if (SymbolicInferUtil::TryGetConstInt(dimension_value->at(0), dimension) != GRAPH_SUCCESS) {
+    GELOGW("Symbol Infer unsupported, ArgMaxV2 dimension is not an integer const, node %s[%s].", context->GetNodeName(),
+           context->GetNodeType());
+    return UNSUPPORTED;
+  }
   return SymbolicInferUtil::ReduceDimsWithoutKeepDims<int64_t>(x_shape, {dimension}, 1U, y_shape);
 }
 

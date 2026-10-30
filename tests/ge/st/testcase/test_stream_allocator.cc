@@ -10,10 +10,17 @@
 
 #include <common/multi_stream_share_graph.h>
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <set>
 #include <register/register_custom_pass.h>
+#include "register/optimization_option_registry.h"
 
 #include "ge/ge_api.h"
 #include "graph/debug/ge_attr_define.h"
+#include "graph/ge_global_options.h"
+#include "graph/build/label_allocator.h"
+#include "graph/build/stream/graph_stream_allocator.h"
+#include "graph/build/stream/stream_utils.h"
 #include "graph/operator_reg.h"
 #include "framework/common/framework_types_internal.h"
 #include "graph/utils/op_desc_utils.h"
@@ -32,7 +39,6 @@
 #include "base/err_mgr.h"
 #include "common/opskernel/ops_kernel_info_types.h"
 #include "framework/common/scope_guard.h"
-#include "graph/build/stream/dag_stream_allocator_pass.h"
 #include "faker/magic_ops.h"
 #include "stub/gert_runtime_stub.h"
 
@@ -949,6 +955,178 @@ Graph BuildContinueStreamGraph() {
   };
   return ToGeGraph(g1);
 }
+
+ComputeGraphPtr BuildNestedStreamGraph(const std::string &name, const std::string &type, int32_t inputs) {
+  auto data = OP_CFG(DATA)
+                  .InCnt(1)
+                  .OutCnt(1)
+                  .TensorDesc(FORMAT_ND, DT_INT32, {})
+                  .Attr(ATTR_NAME_INDEX, 0)
+                  .Attr(ATTR_NAME_PARENT_NODE_INDEX, 0);
+  auto op = OP_CFG(type).InCnt(inputs).OutCnt(1).TensorDesc(FORMAT_ND, DT_INT32, {});
+  auto output = OP_CFG(NETOUTPUT).InCnt(1).OutCnt(0).TensorDesc(FORMAT_ND, DT_INT32, {});
+  DEF_GRAPH(g) {
+    CHAIN(NODE(name + "/data", data)->EDGE(0, 0)->NODE(name + "/op", op)->NODE(name + "/output", output));
+    if (inputs == 2) {
+      CHAIN(NODE(name + "/data", data)->EDGE(0, 1)->NODE(name + "/op", op));
+    }
+  };
+  auto graph = ToComputeGraph(g);
+  graph->SetName(name);
+  return graph;
+}
+
+void AttachNestedStreamGraph(const ComputeGraphPtr &root, const NodePtr &parent, const ComputeGraphPtr &subgraph) {
+  auto desc = parent->GetOpDesc();
+  const auto index = desc->GetSubgraphInstanceNames().size();
+  ASSERT_EQ(desc->AddSubgraphName(subgraph->GetName()), GRAPH_SUCCESS);
+  ASSERT_EQ(desc->SetSubgraphInstanceName(index, subgraph->GetName()), GRAPH_SUCCESS);
+  subgraph->SetParentNode(parent);
+  subgraph->SetParentGraph(parent->GetOwnerComputeGraph());
+  ASSERT_EQ(root->AddSubgraph(subgraph), GRAPH_SUCCESS);
+}
+
+void BuildNestedCallSubgraphs(const ComputeGraphPtr &root, const std::string &type) {
+  const auto outer = root->FindNode("root/op");
+  const auto cond = BuildNestedStreamGraph("cond", ADD, 2);
+  const bool has_predicate = (type == IF) || (type == CASE);
+  const auto body = BuildNestedStreamGraph("body", type, has_predicate ? 2 : 1);
+  AttachNestedStreamGraph(root, outer, cond);
+  AttachNestedStreamGraph(root, outer, body);
+  const auto inner = body->FindNode("body/op");
+  const auto branch0 = BuildNestedStreamGraph("branch0", ADD, 2);
+  AttachNestedStreamGraph(root, inner, branch0);
+  if (type != PARTITIONEDCALL) {
+    AttachNestedStreamGraph(root, inner, BuildNestedStreamGraph("branch1", ADD, 2));
+  }
+  if (has_predicate) {
+    for (const auto &graph : root->GetAllSubgraphs()) {
+      if (graph->GetParentNode() == inner) {
+        ASSERT_TRUE(
+            AttrUtils::SetInt(graph->FindFirstNodeMatchType(DATA)->GetOpDesc(), ATTR_NAME_PARENT_NODE_INDEX, 1));
+      }
+    }
+  }
+  ASSERT_EQ(LabelAllocator(root).AssignFunctionalLabels(), SUCCESS);
+}
+
+void AssignNestedCallLogicalStreams(const ComputeGraphPtr &root) {
+  const auto outer = root->FindNode("root/op");
+  const auto inner = root->GetSubgraph("body")->FindNode("body/op");
+  outer->GetOpDesc()->SetStreamId(0);
+  inner->GetOpDesc()->SetStreamId(1);
+  for (const auto &graph : root->GetAllSubgraphs()) {
+    const auto parent_stream = graph->GetParentNode()->GetOpDesc()->GetStreamId();
+    for (const auto &node : graph->GetDirectNode()) {
+      if (node == inner) {
+        continue;
+      }
+      const auto desc = node->GetOpDesc();
+      desc->SetStreamId((node->GetType() == DATA) ? INVALID_STREAM_ID : parent_stream);
+      if (node->GetType() == ADD) {
+        desc->SetStreamId(parent_stream + 2);
+      }
+    }
+  }
+  ASSERT_EQ(root->TopologicalSorting(), GRAPH_SUCCESS);
+}
+
+void CheckNestedCallControlStreams(const ComputeGraphPtr &root, const NodePtr &inner) {
+  EXPECT_EQ(inner->GetOpDesc()->GetStreamId(), 1);
+  size_t inner_control_count = 0U;
+  for (const auto &graph : root->GetAllSubgraphs()) {
+    if (graph->GetParentNode() != inner) {
+      continue;
+    }
+    for (const auto &node : graph->GetDirectNode()) {
+      if (node->GetOpDesc()->HasAttr(ATTR_NAME_RTS_LABEL_NODE)) {
+        EXPECT_EQ(node->GetOpDesc()->GetStreamId(), inner->GetOpDesc()->GetStreamId());
+        ++inner_control_count;
+      }
+    }
+  }
+  EXPECT_GT(inner_control_count, 0U);
+}
+
+void CheckNestedCallActivation(const ComputeGraphPtr &root, const ComputeGraphPtr &branch0,
+                               const int64_t branch_compute_stream) {
+  const auto body_active = root->GetSubgraph("body")->FindNode("root/op/EnterStreamActive");
+  ASSERT_NE(body_active, nullptr);
+  std::vector<int64_t> active_streams;
+  ASSERT_TRUE(AttrUtils::GetListInt(body_active->GetOpDesc(), ATTR_NAME_ACTIVE_STREAM_LIST, active_streams));
+  EXPECT_NE(std::find(active_streams.begin(), active_streams.end(), 1), active_streams.end());
+  bool branch_compute_activated = false;
+  for (const auto &node : root->GetAllNodes()) {
+    if (node->GetType() != STREAMACTIVE) {
+      continue;
+    }
+    active_streams.clear();
+    ASSERT_TRUE(AttrUtils::GetListInt(node->GetOpDesc(), ATTR_NAME_ACTIVE_STREAM_LIST, active_streams));
+    EXPECT_EQ(std::find(active_streams.begin(), active_streams.end(), node->GetOpDesc()->GetStreamId()),
+              active_streams.end());
+    if (node->GetOwnerComputeGraph() == branch0) {
+      branch_compute_activated =
+          std::find(active_streams.begin(), active_streams.end(), branch_compute_stream) != active_streams.end();
+    }
+  }
+  EXPECT_TRUE(branch_compute_activated);
+}
+
+void CheckInputEventDependency(const NodePtr &source, const NodePtr &destination) {
+  ASSERT_NE(source, nullptr);
+  ASSERT_NE(destination, nullptr);
+  ASSERT_NE(source->GetOpDesc()->GetStreamId(), destination->GetOpDesc()->GetStreamId());
+  std::set<int64_t> send_events;
+  for (const auto &node : source->GetOutControlNodes()) {
+    if (node->GetType() == SEND) {
+      int64_t event_id = -1;
+      ASSERT_TRUE(AttrUtils::GetInt(node->GetOpDesc(), SEND_ATTR_EVENT_ID, event_id));
+      EXPECT_EQ(node->GetOpDesc()->GetStreamId(), source->GetOpDesc()->GetStreamId());
+      send_events.insert(event_id);
+    }
+  }
+  bool matched_event = false;
+  for (const auto &node : destination->GetInControlNodes()) {
+    if (node->GetType() == RECV) {
+      int64_t event_id = -1;
+      ASSERT_TRUE(AttrUtils::GetInt(node->GetOpDesc(), RECV_ATTR_EVENT_ID, event_id));
+      EXPECT_EQ(node->GetOpDesc()->GetStreamId(), destination->GetOpDesc()->GetStreamId());
+      matched_event = matched_event || (send_events.count(event_id) != 0U);
+    }
+  }
+  EXPECT_TRUE(matched_event) << source->GetName() << " -> " << destination->GetName();
+}
+
+void CheckPythonMiniDAGSubgraphStreams(const ComputeGraphPtr &graph) {
+  ASSERT_EQ(graph->GetAllSubgraphs().size(), 1U);
+  const auto subgraph = graph->GetAllSubgraphs().at(0);
+  ASSERT_NE(subgraph, nullptr);
+  const auto call = subgraph->GetParentNode();
+  const auto stream_active = subgraph->FindFirstNodeMatchType(STREAMACTIVE);
+  ASSERT_NE(call, nullptr);
+  ASSERT_NE(stream_active, nullptr);
+  EXPECT_EQ(call->GetOpDesc()->GetStreamId(), stream_active->GetOpDesc()->GetStreamId());
+  // The call waits before entering the control stream; a second wait at StreamActive is redundant.
+  const auto input = graph->FindNode("relu1");
+  ASSERT_NO_FATAL_FAILURE(CheckInputEventDependency(input, call));
+  ASSERT_NO_FATAL_FAILURE(CheckInputEventDependency(input, subgraph->FindFirstNodeMatchType(RELU)));
+
+  std::vector<int64_t> active_streams;
+  ASSERT_TRUE(AttrUtils::GetListInt(stream_active->GetOpDesc(), ATTR_NAME_ACTIVE_STREAM_LIST, active_streams));
+  const std::set<int64_t> activated_streams(active_streams.begin(), active_streams.end());
+  EXPECT_EQ(activated_streams.count(stream_active->GetOpDesc()->GetStreamId()), 0U);
+  size_t compute_nodes = 0U;
+  for (const auto &node : subgraph->GetDirectNode()) {
+    if (node->GetType() == RELU) {
+      const auto stream_id = node->GetOpDesc()->GetStreamId();
+      EXPECT_GE(stream_id, 0);
+      EXPECT_EQ(activated_streams.count(stream_id), 1U);
+      ++compute_nodes;
+    }
+  }
+  EXPECT_EQ(compute_nodes, 2U);
+}
+
 void MockGenerateTask() {
   auto aicore_func = [](const ge::Node &node, RunContext &context, std::vector<domi::TaskDef> &tasks) -> Status {
     if (node.GetType() == CONSTANT) {
@@ -1046,33 +1224,91 @@ class STEST_stream_allocator : public testing::Test {
   }
 };
 
+class PythonNestedControlStreamPassTest : public STEST_stream_allocator,
+                                          public testing::WithParamInterface<std::string> {};
+
 /**
- * 用例描述：MiniDAG流分配支持子图，验证子图内节点获得流ID且子图边界event同步正确
- * 预置条件：
- *   1. 构造包含PartitionedCall节点和子图的计算图
- *   2. 子图内包含多个Relu节点
- *   3. 根图中DATA和PartitionedCall之间加入RELU节点，确保有有效流ID触发event插入
- * 测试步骤：
- *   1. 设置ge.autoMultistreamParallelMode=LoadBalance:8
- *   2. 通过Session编译图
- *   3. 检查子图内节点是否获得流ID
- *   4. 检查子图边界是否正确插入event同步
- * 预期结果：
- *   1. 子图内Relu节点获得有效流ID
- *   2. 编译成功，子图边界event同步正确
+ * 用例描述：While 内嵌子图调用经过 Python 自动多流后，其控制流每轮仍被 While 激活。
+ * 预置条件：使用 fake 引擎；构造 If、Case、While 或 PartitionedCall 的实际子图，
+ *           LabelAllocator 生成控制节点，预置逻辑分流阶段的流号（外层 0，内层 1）。
+ * 测试步骤：刷新优化选项并确认 MainStream:4 生效，通过 RunCustomStreamPass 执行分流，再插入同步节点。
+ * 预期结果：内层调用与 RTS 控制节点保持原流 1，外层每轮激活此流；子图计算分配到新流，
+ *           由内层 StreamActive 激活，任何 StreamActive 均不激活自身流，且生成同步 event。
  */
-TEST_F(STEST_stream_allocator, MiniDAGStreamPass_WithSubgraph) {
-  REGISTER_CUSTOM_PASS("MiniDAGStreamPass")
-      .CustomAllocateStreamPassFn([](const ge::ConstGraphPtr &graph, ge::StreamPassContext &context) -> ge::Status {
-        return ge::RunMiniDAGStreamPass(graph, context);
-      })
-      .Stage(ge::CustomPassStage::kAfterAssignLogicStream);
+TEST_P(PythonNestedControlStreamPassTest, NestedCallRemainsActivatedAfterMiniDAG) {
+  const auto old_context = GetThreadLocalContext();
+  GE_MAKE_GUARD(restore_options, [&]() { GetThreadLocalContext() = old_context; });
+  GetThreadLocalContext().SetGraphOption({{"ge.autoMultistreamParallelMode", "MainStream:4"}});
+  // Optimization options take precedence over graph options and may be left by earlier tests.
+  ASSERT_EQ(GetThreadLocalContext().GetOo().Initialize(GetThreadLocalContext().GetAllOptions(),
+                                                       OptionRegistry::GetInstance().GetRegisteredOptTable()),
+            GRAPH_SUCCESS);
+  std::string multi_stream_mode;
+  ASSERT_EQ(GetThreadLocalContext().GetOption("ge.autoMultistreamParallelMode", multi_stream_mode), GRAPH_SUCCESS);
+  ASSERT_EQ(multi_stream_mode, "MainStream:4");
+
+  const auto root = BuildNestedStreamGraph("root", WHILE, 1);
+  ASSERT_NO_FATAL_FAILURE(BuildNestedCallSubgraphs(root, GetParam()));
+  ASSERT_NO_FATAL_FAILURE(AssignNestedCallLogicalStreams(root));
+  int64_t next_stream_id = 5;
+  ASSERT_EQ(StreamUtils::RunCustomStreamPass(root, next_stream_id), SUCCESS);
+  ASSERT_NO_FATAL_FAILURE(CheckNestedCallControlStreams(root, root->GetSubgraph("body")->FindNode("body/op")));
+  const auto branch0 = root->GetSubgraph("branch0");
+  const auto branch_compute_stream = branch0->FindNode("branch0/op")->GetOpDesc()->GetStreamId();
+  EXPECT_GT(branch_compute_stream, 4);
+
+  const Graph2SubGraphInfoList subgraphs;
+  StreamAllocator allocator(root, subgraphs);
+  allocator.ExtendLogicalStreamNum(next_stream_id);
+  int64_t stream_num = 0;
+  int64_t event_num = 0;
+  int64_t notify_num = 0;
+  ASSERT_EQ(allocator.InsertSyncNodesByLogicStream(stream_num, event_num, notify_num), SUCCESS);
+  ASSERT_NO_FATAL_FAILURE(CheckNestedCallActivation(root, branch0, branch_compute_stream));
+  EXPECT_GT(event_num, 0);
+}
+
+INSTANTIATE_TEST_SUITE_P(WhileBody, PythonNestedControlStreamPassTest,
+                         testing::Values(std::string(IF), std::string(CASE), std::string(WHILE),
+                                         std::string(PARTITIONEDCALL)));
+
+/**
+ * 用例描述：纯 Python MiniDAG 流分配支持子图，验证 Python pass 被 GE 编译链路调用，
+ *            且子图边界 event 同步正确
+ * 预置条件：
+ *   1. 内置 Python MiniDAGStreamPass 已由 bootstrap 自动注册
+ *   2. 构造包含 PartitionedCall 节点和子图的计算图，子图内包含多个 Relu 节点
+ * 测试步骤：
+ *   1. 设置 ge.autoMultistreamParallelMode=LoadBalance:8
+ *   2. 通过 Session 编译图
+ *   3. 检查子图内节点是否获得流 ID
+ *   4. 检查调用节点与 StreamActive 同流、输入 event 配对和子图计算流激活关系
+ * 预期结果：
+ *   1. 子图内 Relu 节点获得有效流 ID
+ *   2. 调用节点与 StreamActive 保持同流，输入至调用节点及子图计算的 event 配对正确
+ *   3. StreamActive 激活两个 Relu 所在流，不激活自身流；允许优化重复的等待
+ */
+TEST_F(STEST_stream_allocator, PythonMiniDAGStreamPass_WithSubgraph) {
+  const auto old_context = GetThreadLocalContext();
+  map<string, string> old_global_options;
+  {
+    const std::lock_guard<std::mutex> lock(GetGlobalOptionsMutex());
+    old_global_options = GetMutableGlobalOptions();
+  }
+  GE_MAKE_GUARD(restore_options, [&]() {
+    (void)ge::GELib::Initialize(old_global_options);
+    {
+      const std::lock_guard<std::mutex> lock(GetGlobalOptionsMutex());
+      GetMutableGlobalOptions() = old_global_options;
+    }
+    GetThreadLocalContext() = old_context;
+  });
   DEF_GRAPH(sub) {
     CHAIN(NODE("sub_relu1", RELU)->NODE("sub_relu2", RELU)->NODE("sub_output", NETOUTPUT));
   };
 
   DEF_GRAPH(root) {
-    CHAIN(NODE("const", CONSTANT)->NODE("relu1", RELU)->NODE("pc", PARTITIONEDCALL, sub)->NODE("output", NETOUTPUT));
+    CHAIN(NODE("data", DATA)->NODE("relu1", RELU)->NODE("pc", PARTITIONEDCALL, sub)->NODE("output", NETOUTPUT));
   };
 
   auto graph = ToGeGraph(root);
@@ -1080,61 +1316,18 @@ TEST_F(STEST_stream_allocator, MiniDAGStreamPass_WithSubgraph) {
   options["ge.enableSingleStream"] = "false";
   GetThreadLocalContext().SetGlobalOption(options);
   ASSERT_EQ(ge::GELib::Initialize(options), SUCCESS);
+
   Session session(options);
   auto ret = session.AddGraph(0, graph, options);
-  EXPECT_EQ(ret, SUCCESS);
+  ASSERT_EQ(ret, SUCCESS);
 
   std::vector<InputTensorInfo> inputs;
   ret = session.BuildGraph(0, inputs);
-  EXPECT_EQ(ret, SUCCESS);
+  ASSERT_EQ(ret, SUCCESS);
 
   CHECK_GRAPH(PreRunAfterBuild) {
-    ASSERT_EQ(graph->GetAllSubgraphs().size(), 1);
-    auto subgraph = graph->GetAllSubgraphs().at(0);
-    ASSERT_NE(subgraph, nullptr);
-
-    bool sub_has_stream = false;
-    for (const auto &node : subgraph->GetAllNodes()) {
-      auto op_desc = node->GetOpDesc();
-      if (op_desc == nullptr) {
-        continue;
-      }
-      std::string type = op_desc->GetType();
-      if (type != "Data" && type != "NetOutput") {
-        auto stream_id = op_desc->GetStreamId();
-        if (stream_id >= 0) {
-          sub_has_stream = true;
-        }
-      }
-    }
-    EXPECT_TRUE(sub_has_stream);
-
-    auto relu1 = graph->FindNode("relu1");
-    ASSERT_NE(relu1, nullptr);
-    bool has_send = false;
-    for (const auto &out_node : relu1->GetOutControlNodes()) {
-      if (out_node != nullptr && out_node->GetType() == SEND) {
-        has_send = true;
-        break;
-      }
-    }
-    EXPECT_TRUE(has_send);
-
-    auto stream_active = subgraph->FindFirstNodeMatchType(STREAMACTIVE);
-    ASSERT_NE(stream_active, nullptr);
-    bool has_recv = false;
-    for (const auto &in_node : stream_active->GetInControlNodes()) {
-      if (in_node != nullptr && in_node->GetType() == RECV) {
-        has_recv = true;
-        break;
-      }
-    }
-    EXPECT_TRUE(has_recv);
+    CheckPythonMiniDAGSubgraphStreams(graph);
   };
-  options = {{"ge.autoMultistreamParallelMode", ""}};
-  options["ge.enableSingleStream"] = "false";
-  GetThreadLocalContext().SetGlobalOption(options);
-  ASSERT_EQ(ge::GELib::Initialize(options), SUCCESS);
 }
 
 TEST_F(STEST_stream_allocator, link_genmask_nodes) {

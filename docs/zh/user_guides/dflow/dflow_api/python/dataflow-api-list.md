@@ -11,8 +11,8 @@
 | [dataflow.FlowData](dataflow-FlowData.md) | DataFlow Graph中的数据节点，每个FlowData对应一个输入。 |
 | [FlowNode](FlowNode.md) | DataFlow Graph中的计算节点。 |
 | [add_process_point](add_process_point.md) | 给FlowNode添加映射的pp，当前一个FlowNode仅能添加一个pp，添加后会默认将FlowNode的输入输出和pp的输入输出按顺序进行映射。 |
-| [map_input](map_input.md) | 给FlowNode映射输入，表示将FlowNode的第node_input_index个输入给到ProcessPoint的第pp_input_index个输入，并且给ProcessPoint的该输入设置上attr里的所有属性，返回映射好的FlowNode节点。该函数可选，不被调用时会默认按顺序去映射FlowNode和ProcessPoint的输入。 |
-| [map_output](map_output.md) | 给FlowNode映射输出，表示将pp的第pp_output_index个输出给到FlowNode的第node_output_index个输出，返回映射好的FlowNode节点。 |
+| [map_input](map_input.md) | 给FlowNode映射输入，表示将FlowNode的第node_input_index个输入给到ProcessPoint的第pp_input_index个输入，并且给ProcessPoint的该输入设置上attr里的所有属性。该函数可选，不被调用时会默认按顺序去映射FlowNode和ProcessPoint的输入。 |
+| [map_output](map_output.md) | 给FlowNode映射输出，表示将pp的第pp_output_index个输出给到FlowNode的第node_output_index个输出。 |
 | [set_attr](set_attr.md) | 设置FlowNode的属性。 |
 | [**call**](__call__.md) | 调用FlowNode进行计算。 |
 | [set_balance_scatter](set_balance_scatter.md) | 设置节点balance scatter属性，具有balance scatter属性的UDF可以使用balance options设置负载均衡输出。 |
@@ -27,7 +27,7 @@
 | [dataflow.Framework](dataflow-Framework.md) | 设置原始网络模型的框架类型。 |
 | [FuncProcessPoint](FuncProcessPoint.md) | FuncProcessPoint的构造函数，返回一个FuncProcessPoint对象。 |
 | [set_init_param](set_init_param.md) | 设置FuncProcessPoint的初始化参数。 |
-| [add_invoked_closure](add_invoked_closure.md) | 添加FuncProcessPoint调用的GraphProcessPoint或者FlowGraphProcessPoint，返回添加好的FuncProcessPoint。 |
+| [add_invoked_closure](add_invoked_closure.md) | 添加FuncProcessPoint调用的GraphProcessPoint或者FlowGraphProcessPoint。 |
 | [GraphProcessPoint](GraphProcessPoint.md) | GraphProcessPoint构造函数，返回一个GraphProcessPoint对象。 |
 | [fnode](fnode.md) | 根据当前的GraphProcessPoint生成一个FlowNode，返回一个FlowNode对象。 |
 | [dataflow.FlowGraphProcessPoint](dataflow-FlowGraphProcessPoint.md) | GraphProcessPoint构造函数，返回一个GraphProcessPoint对象。 |

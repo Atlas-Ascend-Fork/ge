@@ -34,9 +34,12 @@ using Index = struct InputIndex {
   size_t invalid_index_num;
 };
 
-// 走默认值填充（新流程）的 NpuArch 白名单，Ascend950（DAV_3510）及之后版本在此显式添加
-const std::set<std::string> kDefaultValueInferEnabledArch = {
-    std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510)),
+// 默认值填充的 NpuArch 黑名单：命中时保留老的自动推导流程。
+const std::set<std::string> kLegacyValueInferEnableArch = {
+    std::to_string(static_cast<uint32_t>(NpuArch::DAV_1001)), std::to_string(static_cast<uint32_t>(NpuArch::DAV_2002)),
+    std::to_string(static_cast<uint32_t>(NpuArch::DAV_2102)), std::to_string(static_cast<uint32_t>(NpuArch::DAV_2201)),
+    std::to_string(static_cast<uint32_t>(NpuArch::DAV_3002)), std::to_string(static_cast<uint32_t>(NpuArch::DAV_3004)),
+    std::to_string(static_cast<uint32_t>(NpuArch::DAV_3102)), std::to_string(static_cast<uint32_t>(NpuArch::DAV_3505)),
 };
 
 std::string GetCurrentNpuArch() {
@@ -63,7 +66,7 @@ bool NeedLegacyInfer() {
   if (npu_arch.empty()) {
     return true;
   }
-  return kDefaultValueInferEnabledArch.count(npu_arch) == 0U;
+  return kLegacyValueInferEnableArch.count(npu_arch) != 0U;
 }
 
 bool IsInputDescValid(const ge::GeTensorDesc &input_desc, size_t &invalid_index_num) {

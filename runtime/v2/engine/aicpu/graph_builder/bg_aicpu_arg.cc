@@ -23,13 +23,16 @@
 #include "graph_builder/bg_rt_session.h"
 #include "engine/aicpu/kernel/block_op_utils.h"
 #include "framework/common/ge_types.h"
+#include "framework/common/framework_types_internal.h"
+#include "framework/common/taskdown_common.h"
 #include "engine/node_converter_utils.h"
 
 namespace gert {
 namespace bg {
 namespace {
 constexpr size_t kArgSize = 2U;
-constexpr size_t kArgHandleSize = 1U;
+constexpr size_t kCCArgHandleSize = 2U;
+constexpr size_t kTfArgHandleSize = 1U;
 
 bool NeedDeviceExt(const ge::NodePtr node) {
   int32_t unknown_shape_type_val = 0;
@@ -284,30 +287,38 @@ std::vector<ValueHolderPtr> GetMemAllocShape(const ge::NodePtr &node, const std:
   return InferStorageShape(node, input_shapes, global_data);
 }
 
-std::vector<ValueHolderPtr> BuildCCArgsFunctionHandleImpl(const ge::NodePtr node) {
+std::vector<ValueHolderPtr> BuildCCArgsBinHandleImpl(const ge::NodePtr node, const domi::KernelDef &kernel_def) {
   std::vector<ValueHolderPtr> inputs;
 
-  const ge::OpDescPtr op_desc = node->GetOpDesc();
+  const auto kernel_type = kernel_def.context().kernel_type();
+  const auto &so_name = kernel_def.so_name();
+  const auto op_desc = node->GetOpDesc();
+  GE_ASSERT_NOTNULL(op_desc);
   inputs.emplace_back(ValueHolder::CreateConst(op_desc.get(), sizeof(ge::OpDesc), false));
 
   const auto &node_type = node->GetType();
   inputs.emplace_back(ValueHolder::CreateConst(node_type.c_str(), node_type.size() + 1U, true));
+  inputs.emplace_back(ValueHolder::CreateConst(&kernel_type, sizeof(kernel_type)));
+  inputs.emplace_back(ValueHolder::CreateConst(so_name.c_str(), so_name.size() + 1U, true));
 
-  auto bin_handle = ValueHolder::CreateSingleDataOutput("BuildCCArgsBinHandle", inputs);
-  return std::vector<ValueHolderPtr>({bin_handle});
+  auto handles = ValueHolder::CreateDataOutput("BuildCCArgsBinHandle", inputs, kCCArgHandleSize);
+  if (static_cast<ge::ccKernelType>(kernel_type) == ge::ccKernelType::CUST_AI_CPU) {
+    ValueHolder::CreateVoidGuarder("ReleaseCustAicpuBinHandle", handles[1], {});
+  }
+  return handles;
 }
 
-RtsArgs BuildCCArgsBinHandle(const ge::NodePtr node) {
+RtsArgs BuildCCArgsBinHandle(const ge::NodePtr node, const domi::KernelDef &kernel_def) {
   auto res = FrameSelector::OnInitRoot(
-      [&node]() -> std::vector<ValueHolderPtr> { return BuildCCArgsFunctionHandleImpl(node); });
-  if (res.size() >= kArgHandleSize) {
+      [&node, &kernel_def]() -> std::vector<ValueHolderPtr> { return BuildCCArgsBinHandleImpl(node, kernel_def); });
+  if (res.size() >= kCCArgHandleSize) {
     return {res[0]};
   } else {
     return {nullptr};
   }
 }
 
-std::vector<ValueHolderPtr> BuildTfArgsFunctionHandleImpl(const ge::NodePtr node) {
+std::vector<ValueHolderPtr> BuildTfArgsBinHandleImpl(const ge::NodePtr node) {
   std::vector<ValueHolderPtr> inputs;
 
   const ge::OpDescPtr op_desc = node->GetOpDesc();
@@ -321,9 +332,9 @@ std::vector<ValueHolderPtr> BuildTfArgsFunctionHandleImpl(const ge::NodePtr node
 }
 
 RtsArgs BuildTfArgsBinHandle(const ge::NodePtr node) {
-  auto res = FrameSelector::OnInitRoot(
-      [&node]() -> std::vector<ValueHolderPtr> { return BuildTfArgsFunctionHandleImpl(node); });
-  if (res.size() >= kArgHandleSize) {
+  auto res =
+      FrameSelector::OnInitRoot([&node]() -> std::vector<ValueHolderPtr> { return BuildTfArgsBinHandleImpl(node); });
+  if (res.size() >= kTfArgHandleSize) {
     return {res[0]};
   } else {
     return {nullptr};

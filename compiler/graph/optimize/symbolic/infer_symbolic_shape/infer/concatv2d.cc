@@ -108,11 +108,13 @@ graphStatus GetConcatDimValue(const gert::InferSymbolShapeContext *context, size
            context->GetNodeType());
     return UNSUPPORTED;
   }
-  GE_ASSERT_EQ(static_cast<int32_t>(concat_dim_value->size()), 1);
-  auto dim_desc = context->GetInputDesc(dim_index);
-  GE_ASSERT_NOTNULL(dim_desc);
-  auto dt = dim_desc->GetDataType();
-  return SymbolicInferUtil::GetConstInt(concat_dim_tensor, dt, concat_dim);
+  GE_ASSERT_EQ(concat_dim_value->size(), 1UL);
+  if (SymbolicInferUtil::TryGetConstInt(concat_dim_value->at(0), concat_dim) != GRAPH_SUCCESS) {
+    GELOGW("Symbol Infer unsupported, concat dim is not an integer const, node %s[%s].", context->GetNodeName(),
+           context->GetNodeType());
+    return UNSUPPORTED;
+  }
+  return GRAPH_SUCCESS;
 }
 
 graphStatus InferShape4ConcatV2D(gert::InferSymbolShapeContext *context) {

@@ -18,11 +18,13 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include "base/err_msg.h"
 #include "common/python_runtime/ge_python_runtime_manager.h"
 #include "common/python_runtime/python_artifact_utils.h"
 #include "common/python_runtime/python_bridge_loader_utils.h"
+#include "common/python_runtime/python_fallback_codegen_helper.h"
 #include "common/ge_common/debug/ge_log.h"
 #include "graph/def_types.h"
 #include "graph_metadef/graph/utils/file_utils.h"
@@ -103,6 +105,7 @@ std::string TrimBlank(const std::string &value) {
 
 namespace artifact = ::ge::python_artifact;
 namespace bridge_loader = ::ge::python_bridge_loader;
+namespace fallback_codegen = ::ge::python_fallback_codegen;
 namespace onnx_bridge = ::ge::onnx_plugin_bridge;
 
 std::string GetLoaderLibraryPath() {
@@ -204,10 +207,39 @@ class OnnxPluginBridgeLoader {
 
     const auto runtime_key = artifact::ResolveLoadedPythonRuntimeKey();
     const auto loader_library_path = GetLoaderLibraryPath();
-    const auto dependencies = BuildBridgeLoadDependencies();
+    if (TryLoadPrebuiltBridge(runtime_key, loader_library_path) || TryLoadFallbackBridge(runtime_key)) {
+      return SUCCESS;
+    }
+    ReportIncompatibleArtifacts(runtime_key, loader_library_path);
+    return FAILED;
+  }
+
+  bool TryLoadPrebuiltBridge(const artifact::PythonRuntimeKey &runtime_key, const std::string &loader_library_path) {
     const auto candidates = artifact::BuildPrebuiltBridgeLibraryCandidates(
         runtime_key, loader_library_path, kOnnxPluginArtifactsRelativePath,
         onnx_bridge::kPythonOnnxPluginBridgeAbiVersion);
+    return TryLoadBridgeCandidates(runtime_key, candidates);
+  }
+
+  bool TryLoadFallbackBridge(const artifact::PythonRuntimeKey &runtime_key) {
+    std::string gen_artifact_root;
+    if (!fallback_codegen::RunFallbackCodegenForModule(
+            runtime_key, fallback_codegen::BuildFallbackCodegenDependencies(), "ge.onnx_plugin.fallback_runtime",
+            "run_fallback_codegen", gen_artifact_root)) {
+      return false;
+    }
+    const auto candidate = artifact::LoadBridgeCandidateFromArtifactRoot(
+        gen_artifact_root, runtime_key, onnx_bridge::kPythonOnnxPluginBridgeAbiVersion);
+    if (candidate.bridge_path.empty()) {
+      GELOGE(FAILED, "ONNX Python plugin fallback generated an invalid artifact root[%s].", gen_artifact_root.c_str());
+      return false;
+    }
+    return TryLoadBridgeCandidates(runtime_key, {candidate});
+  }
+
+  bool TryLoadBridgeCandidates(const artifact::PythonRuntimeKey &runtime_key,
+                               const std::vector<artifact::BridgeLibraryCandidate> &candidates) {
+    const auto dependencies = BuildBridgeLoadDependencies();
     for (const auto &candidate : candidates) {
       bridge_loader::LoadedBridgeCandidate<onnx_bridge::PythonOnnxPluginBridgeApi> loaded_bridge;
       const auto status = bridge_loader::TryLoadBridgeCandidate<onnx_bridge::PythonOnnxPluginBridgeApi,
@@ -220,10 +252,9 @@ class OnnxPluginBridgeLoader {
       }
       api_ = loaded_bridge.api;
       GELOGI("Load ONNX Python plugin bridge from [%s] success.", loaded_bridge.real_path.c_str());
-      return SUCCESS;
+      return true;
     }
-    ReportIncompatibleArtifacts(runtime_key, loader_library_path);
-    return FAILED;
+    return false;
   }
 
   static std::string CollectAvailableArtifactSummary(const std::string &loader_library_path) {
@@ -250,15 +281,18 @@ class OnnxPluginBridgeLoader {
     REPORT_INNER_ERR_MSG(
         "E19999",
         "No compatible ONNX Python plugin bridge artifact found for runtime[%s], available artifacts[%s], "
-        "loader[%s], PYTHONPATH[%s]. The python interpreter resolved by the process must match a prebuilt "
-        "artifact under <ge package>/onnx_plugin/python_onnx_plugin_artifacts; align the python3 version with "
-        "the artifact python tag or install the matching ge python package. If Python ONNX plugins are not "
-        "used, remove python plugin entries from ASCEND_CUSTOM_OPP_PATH to skip this bridge.",
+        "loader[%s], PYTHONPATH[%s]. Fallback codegen was also attempted and failed; check that pybind11 "
+        "(>=2.13.6,<3.0.0), Python development headers, libpython, and a C++ compiler are available for this "
+        "runtime. If fallback cannot be used, align the python3 version with the artifact python tag or install "
+        "the matching ge python package, for example 'ge_py_onnx_plugin_bridge-*-%s-%s-*.whl'. If Python ONNX "
+        "plugins are not used, remove python plugin entries from ASCEND_CUSTOM_OPP_PATH to skip this bridge.",
         runtime_key.ToString().c_str(), available_artifacts.empty() ? "none" : available_artifacts.c_str(),
-        loader_library_path.c_str(), python_path == nullptr ? "" : python_path);
+        loader_library_path.c_str(), python_path == nullptr ? "" : python_path, runtime_key.python_tag.c_str(),
+        runtime_key.python_tag.c_str());
     GELOGE(FAILED,
            "No compatible ONNX Python plugin bridge artifact found for runtime[%s], available artifacts[%s], "
-           "loader[%s], PYTHONPATH[%s].",
+           "loader[%s], PYTHONPATH[%s]. Fallback codegen was also attempted and failed; check pybind11 "
+           "(>=2.13.6,<3.0.0), Python development headers, libpython, and the C++ compiler.",
            runtime_key.ToString().c_str(), available_artifacts.empty() ? "none" : available_artifacts.c_str(),
            loader_library_path.c_str(), python_path == nullptr ? "" : python_path);
   }

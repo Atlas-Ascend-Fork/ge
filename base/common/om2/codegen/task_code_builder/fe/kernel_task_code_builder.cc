@@ -1140,11 +1140,8 @@ size_t KernelTaskCodeBuilder::GetExtraArgsSize(const OpDescPtr &op_desc, const c
 }
 
 void KernelTaskCodeBuilder::InitArgsTableEntry(const TaskSemanticContributeContext &context, const uint32_t args_size) {
-  (void)build_data_.semantic.args_table_entry.emplace();
-  build_data_.semantic.args_table_entry->table_index = *context.next_args_table_index;
-  build_data_.semantic.args_table_entry->args_size = args_size;
-  build_data_.semantic.args_table_entry->host_offset = *context.next_host_args_offset;
-  args_table_entry_ = &(*build_data_.semantic.args_table_entry);
+  args_table_entry_ =
+      TaskCodeBuilderUtil::InitArgsTableEntry(context, build_data_.semantic.args_table_entry, args_size);
 }
 
 std::vector<size_t> KernelTaskCodeBuilder::BuildMaterializedOutputIndices(

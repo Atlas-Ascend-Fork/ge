@@ -152,15 +152,14 @@ def validate_op_impl_descriptor(
     if descriptor is None:
         raise KeyError(f"python op impl descriptor_key not found: {descriptor_key}")
 
+    if ir_meta is None:
+        return True
+
     if (
         descriptor.kernel_bindings
         or INTERFACE_EAGER_EXECUTE in descriptor.interfaces
         or INTERFACE_HOST_CPU_EXECUTE in descriptor.interfaces
     ):
-        if ir_meta is None:
-            raise RuntimeError(
-                f"canonical IR not found for schema-bound execute: {descriptor.op_type}"
-            )
         if descriptor.kernel_bindings:
             for backend, binding in descriptor.kernel_bindings.items():
                 _validate_kernel_binding(descriptor, backend, binding, ir_meta)
@@ -169,16 +168,10 @@ def validate_op_impl_descriptor(
             _validate_args_signature(method, ir_meta, descriptor, method_name="execute")
 
     if INTERFACE_COMPILABLE in descriptor.interfaces:
-        if ir_meta is None:
-            raise RuntimeError("canonical IR not found for schema-bound compile")
         method = _get_callback_for_signature(descriptor.cls, "compile")
         _validate_args_signature(method, ir_meta, descriptor, method_name="compile")
 
     if INTERFACE_ANNOTATED_ARGS in descriptor.interfaces:
-        if ir_meta is None:
-            raise RuntimeError(
-                "canonical IR not found for schema-bound declare_launch_args"
-            )
         method = _get_callback_for_signature(descriptor.cls, "declare_launch_args")
         _validate_args_signature(
             method, ir_meta, descriptor, method_name="declare_launch_args"

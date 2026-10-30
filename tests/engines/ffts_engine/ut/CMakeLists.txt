@@ -101,7 +101,6 @@ add_executable(ffts_ut
         ${CMAKE_CURRENT_LIST_DIR}/testcase/common/ffts_configuration_utest.cc
         ${CMAKE_CURRENT_LIST_DIR}/testcase/engine/engine_manager_unittest.cc
         ${CMAKE_CURRENT_LIST_DIR}/testcase/engine/fftsplus_engine_unittest.cc
-        ${CMAKE_CURRENT_LIST_DIR}/testcase/main.cc
         ${CMAKE_CURRENT_LIST_DIR}/testcase/param_calculator/ffts_param_calculator_unittest.cc
         )
 

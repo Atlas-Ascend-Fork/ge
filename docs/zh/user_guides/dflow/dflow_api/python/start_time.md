@@ -37,7 +37,7 @@ start\_time属性。
 ```python
 import dataflow as df
 graph = df.FlowGraph(...)
-flowinfo = FlowInfo(...)
+flowinfo = df.FlowInfo(...)
 flowinfo.start_time = 100
 print(flowinfo.start_time)
 ```

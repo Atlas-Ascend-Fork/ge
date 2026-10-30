@@ -33,7 +33,8 @@ enum class ArgDescType {
 };
 
 enum class HiddenInputSubType {
-  kHcom,  // 用于通信的hiddenInput，mc2算子使用
+  kHcom = 0,             // 用于通信的hiddenInput，mc2算子使用
+  kHcclSuperKernel = 1,  // HCCL superkernel 隐藏输入
   kEnd
 };
 

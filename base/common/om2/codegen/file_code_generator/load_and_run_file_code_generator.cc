@@ -50,6 +50,7 @@ const std::map<std::string, std::vector<OpDispatchType::Value>> &GetDispatchFunc
       {"DispatchDsa", {OpDispatchType::DISPATCH_DSA}},
       {"DispatchKernelEx", {OpDispatchType::DISPATCH_KERNEL_EX}},
       {"DispatchCustomKernel", {OpDispatchType::DISPATCH_CUSTOM_KERNEL}},
+      {"DispatchHccl", {OpDispatchType::DISPATCH_HCCL}},
   };
   return kMap;
 }
@@ -105,6 +106,18 @@ Status LoadAndRunFileCodeGenerator::BuildLoadBody(std::vector<BodyItem> &body, c
   }
   body.push_back(dev_ext_info_mem_ptrs_.Resize(codegen_model.aicpu_task_count));
   auto launch_func = ast_.Var("GertModelLaunchFunc", "launch_func");
+  auto hccl_load_task = ast_.Var("HcclLoadTaskFunc", "hccl_load_task");
+  auto param_callbacks = ast_.Var("", "callbacks");
+
+  if (codegen_model.runtime.has_hccl) {
+    body.push_back(ast_.If(
+        (param_callbacks == "nullptr") ||
+            (param_callbacks.Arrow("struct_size") <
+             ast_.Var("", "offsetof(GertModelLoadCallbacks, hccl_load_task) + sizeof(HcclLoadTaskFunc)")),
+        {ast_.Call("OM2_LOGE", {ast_.Str("current executor version is too low to support the communication feature "
+                                         "(hccl_communication), please upgrade the executor and reload the model.")}),
+         ast_.Return("ACL_ERROR_FAILURE")}));
+  }
 
   // 公共 DispatchOpContext 初始化列表（for 循环版和展开版共享）
   auto ctx_init_list = ast_.InitList({total_dev_mem_ptr_,
@@ -129,16 +142,20 @@ Status LoadAndRunFileCodeGenerator::BuildLoadBody(std::vector<BodyItem> &body, c
                                       session_id_,
                                       dev_ext_info_mem_ptrs_,
                                       kernel_id_.Addr(),
-                                      launch_func});
+                                      launch_func,
+                                      hccl_load_task,
+                                      main_follow_stream_mapping_});
 
   auto ctx_var = ast_.Var("DispatchOpContext", "ctx");
   auto loop_var = ast_.Var("uint32_t", "_op_idx");
   auto kOpDefs = ast_.Var("const TaskDispatchInfo", "kOpDefs");
 
-  auto param_callbacks = ast_.Var("", "callbacks");
   body.push_back(ast_.VarDecl(launch_func, nullptr));
   body.push_back(ast_.If((param_callbacks != "nullptr" && param_callbacks.Arrow("launch_func") != "nullptr"),
                          {ast_.Assign(launch_func, param_callbacks.Arrow("launch_func"))}));
+  body.push_back(ast_.VarDecl(hccl_load_task, nullptr));
+  body.push_back(
+      ast_.If(param_callbacks != "nullptr", {ast_.Assign(hccl_load_task, param_callbacks.Arrow("hccl_load_task"))}));
   body.push_back(ast_.VarDecl(ctx_var, ctx_init_list));
 
   // 执行 ReportModelBaseInfo 回调
@@ -149,13 +166,13 @@ Status LoadAndRunFileCodeGenerator::BuildLoadBody(std::vector<BodyItem> &body, c
                ChkStatus(ast_.Call("callbacks->report_model_base_info",
                                    {ctx_var.Attr("instance_handle"), ast_.Var("", "cfg").Addr()}))}));
 
-  // 方案 A：for 循环分发（优先使用）
+  // for 循环分发（优先使用）
   std::vector<BodyItem> dispatch_loop_items;
   dispatch_loop_items.push_back(
       ast_.For(ast_.VarDecl(loop_var, ast_.UInt(0)), loop_var < (ast_.Sizeof(kOpDefs) / ast_.Sizeof(kOpDefs[0])),
                ast_.PostInc(loop_var), {ChkStatus(ast_.Call("DispatchOp", {kOpDefs[loop_var].Addr(), ctx_var}))}));
 
-  // 方案 B：逐 task 展开（维测用）
+  // 逐 task 展开（维测用）
   std::vector<BodyItem> dispatch_expanded_items;
   uint32_t op_idx = 0;
   for (const auto &task_code_builder : task_code_builders) {
@@ -166,7 +183,7 @@ Status LoadAndRunFileCodeGenerator::BuildLoadBody(std::vector<BodyItem> &body, c
     op_idx++;
   }
 
-  // then: 方案 A（for 循环分发，优先使用），else: 方案 B（逐 task 展开，维测用）
+  // then: for 循环分发（优先使用），else: 逐 task 展开（维测用）
   body.push_back(ast_.If(ast_.UInt(1), dispatch_loop_items, dispatch_expanded_items, true));
 
   body.push_back(ast_.If(!is_external_rt_model_, {ChkStatus(AclmdlRIBuildEnd(model_handle_, nullptr))}, {}, false));
@@ -343,6 +360,15 @@ void LoadAndRunFileCodeGenerator::BuildRunBodyProcessInputsAndAddrRefresh(std::v
       const std::string addr_var_name = "dev_input" + std::to_string(entry.index) + "_ptr";
       auto dev_addr = ast_.Var("auto", addr_var_name);
       body.push_back(ast_.VarDecl(dev_addr, GetAddr(ast_.Var("void *", "total_dev_mem_ptr_"), entry.memory_offset)));
+      // 拷贝越界防护：用户输入 tensor 不得超出模型输入区
+      if (entry.memory_size > 0) {
+        body.push_back(ast_.If(
+            tensor.Arrow("GetSize")() > ast_.UInt(static_cast<uint64_t>(entry.memory_size)),
+            {ast_.Call("OM2_LOGE", {ast_.Str("input tensor size %zu exceeds model input size %lu, index=%u"),
+                                    tensor.Arrow("GetSize")(), ast_.UInt(static_cast<uint64_t>(entry.memory_size)),
+                                    ast_.UInt(entry.index)}),
+             ast_.Return("ACL_ERROR_FAILURE")}));
+      }
       if (is_async) {
         body.push_back(
             ChkStatus(AclrtMemcpyAsync(dev_addr, tensor.Arrow("GetSize")(), tensor.Arrow("GetAddr")(),
@@ -367,6 +393,15 @@ void LoadAndRunFileCodeGenerator::BuildRunBodyCopyOutputs(std::vector<BodyItem> 
     auto tensor = ast_.Var("auto", tensor_var_name);
     auto dev_addr = ast_.Var("auto", addr_var_name);
     body.push_back(ast_.VarDecl(dev_addr, GetAddr(ast_.Var("void *", "total_dev_mem_ptr_"), entry.memory_offset)));
+    // 拷贝越界防护：用户输出 tensor 不得超出模型输出区（避免超读相邻模型内存）
+    if (entry.memory_size > 0) {
+      body.push_back(
+          ast_.If(tensor.Arrow("GetSize")() > ast_.UInt(static_cast<uint64_t>(entry.memory_size)),
+                  {ast_.Call("OM2_LOGE", {ast_.Str("output tensor size %zu exceeds model output size %lu, index=%u"),
+                                          tensor.Arrow("GetSize")(),
+                                          ast_.UInt(static_cast<uint64_t>(entry.memory_size)), ast_.UInt(entry.index)}),
+                   ast_.Return("ACL_ERROR_FAILURE")}));
+    }
     if (is_async) {
       body.push_back(ChkStatus(AclrtMemcpyAsync(tensor.Arrow("GetAddr")(), tensor.Arrow("GetSize")(), dev_addr,
                                                 tensor.Arrow("GetSize")(), "ACL_MEMCPY_DEVICE_TO_DEVICE", exe_stream)));

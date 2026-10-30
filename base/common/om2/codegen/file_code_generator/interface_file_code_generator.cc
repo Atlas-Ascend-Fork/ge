@@ -71,6 +71,16 @@ StructDecl *InterfaceFileCodeGenerator::BuildArgsRefreshInfoStruct() const {
                                         });
 }
 
+DeclNode *InterfaceFileCodeGenerator::BuildHcclFollowStreamCountMap(const Om2CodegenModel &codegen_model) const {
+  std::vector<Arg> pairs;
+  pairs.reserve(codegen_model.runtime.hccl_follow_stream_counts.size());
+  for (const auto &[stream_id, follow_count] : codegen_model.runtime.hccl_follow_stream_counts) {
+    pairs.push_back(ast_.InitList({ast_.UInt(stream_id), ast_.UInt(follow_count)}));
+  }
+  return ast_.Field("static const std::map<uint32_t, uint32_t>", "main_stream_id_to_follow_stream_count",
+                    ast_.InitList(pairs));
+}
+
 FunctionDef *InterfaceFileCodeGenerator::BuildAclrtMallocFunction() const {
   auto ptr = ast_.Var("void **", "ptr");
   auto size = ast_.Var("size_t", "size");
@@ -221,6 +231,7 @@ void InterfaceFileCodeGenerator::DealParamForOm2ModelClass(std::vector<DeclNode 
   items.push_back(ast_.Field("std::map<uint32_t, aclrtLabelList>", "label_switch_label_list_"));
   items.push_back(ast_.Field("std::map<uint32_t, std::pair<void *, uint32_t>>", "label_goto_args_"));
   items.push_back(ast_.Field("std::map<uint32_t, aclrtLabelList>", "label_goto_ex_label_list_"));
+  items.push_back(ast_.Field("std::map<uint32_t, std::vector<void *>>", "main_follow_stream_mapping_"));
   if (runtime.has_label_switch) {
     items.push_back(ast_.DeclareMethod(
         "CreateLabelListForLabelSwitch",

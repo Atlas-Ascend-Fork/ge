@@ -130,10 +130,15 @@ if("ge-compiler" IN_LIST BUILD_COMPONENT)
             FILES_MATCHING PATTERN "ge_py_custom_op_bridge-*.whl"
             PATTERN "_build_ge_py_custom_op_bridge_*" EXCLUDE
         )
+        install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/api/python/ge/onnx_plugin_native_wheel_matrix_dist/
+            DESTINATION ${ARCH_LINUX_PATH}/lib64 COMPONENT ge-compiler
+            FILES_MATCHING PATTERN "ge_py_onnx_plugin_bridge-*.whl"
+            PATTERN "_build_ge_py_onnx_plugin_bridge_*" EXCLUDE
+        )
         install(FILES ${CMAKE_CURRENT_BINARY_DIR}/dflow/pydflow/dataflow-0.0.1-py3-none-any.whl
                 DESTINATION ${ARCH_LINUX_PATH}/lib64 COMPONENT ge-compiler
         )
-        if(ENABLE_BUILD_DEVICE)
+        if(BUILD_HOST_AICORE_KERNEL)
             install(FILES ${CMAKE_CURRENT_BINARY_DIR}/compiler/engines/rts_engine/switch_by_index.o
                     DESTINATION fwkacllib/lib64 COMPONENT ge-compiler
             )
@@ -244,7 +249,7 @@ if("ge-executor" IN_LIST BUILD_COMPONENT)
                 LIBRARY DESTINATION ${ARCH_LINUX_PATH}/devlib/minios/aarch64 COMPONENT ge-executor
                 ARCHIVE DESTINATION ${ARCH_LINUX_PATH}/devlib/minios/aarch64 COMPONENT ge-executor
         )
-        if(ENABLE_BUILD_DEVICE)
+        if(BUILD_HOST_AICORE_KERNEL)
             install(FILES ${CMAKE_CURRENT_BINARY_DIR}/runtime/ops/update_model_param/dav_2201/UpdateModelParam_dav_2201.o
                     DESTINATION ${INSTALL_LIBRARY_DIR} COMPONENT ge-executor
             )
@@ -287,6 +292,7 @@ if("ge-executor" IN_LIST BUILD_COMPONENT)
             ${CMAKE_CURRENT_SOURCE_DIR}/inc/graph_metadef/external/exe_graph/runtime/resource_usage_context.h
             ${CMAKE_CURRENT_SOURCE_DIR}/inc/graph_metadef/external/exe_graph/runtime/update_args_context.h
             ${CMAKE_CURRENT_SOURCE_DIR}/inc/graph_metadef/external/exe_graph/runtime/kernel_args.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/inc/graph_metadef/external/exe_graph/runtime/task_def_builder.h
             DESTINATION ${ARCH_LINUX_PATH}/include/exe_graph/runtime COMPONENT ge-executor
     )
     set(EXTERNAL_GRAPH_FILES

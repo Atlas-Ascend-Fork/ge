@@ -79,7 +79,6 @@ add_executable(ffts_st
         ${CMAKE_CURRENT_LIST_DIR}/../stub/slog_stub.cc
         ${CMAKE_CURRENT_LIST_DIR}/../stub/runtime_stub.cc
         ${CMAKE_CURRENT_LIST_DIR}/testcase/engine/engine_manager_stest.cc
-        ${CMAKE_CURRENT_LIST_DIR}/testcase/main.cc
         ${CMAKE_CURRENT_LIST_DIR}/testcase/task_builder/aic_aiv_task_builder_stest.cc
         ${CMAKE_CURRENT_LIST_DIR}/testcase/task_builder/aicpu_auto_task_builder_stest.cc
         ${CMAKE_CURRENT_LIST_DIR}/testcase/task_builder/data_context_stest.cc

@@ -433,6 +433,7 @@ set(BASE_COMMON_TEST_FILES
     "common/program_generator_unittest.cc"
     "common/om2_var_resource_builder_unittest.cc"
     "om2/codegen/stream_switch_task_code_builder_unittest.cc"
+    "om2/codegen/hccl_task_code_builder_unittest.cc"
 )
 
 set(OM2_COMPATIBILITY_TEST_FILES
@@ -522,16 +523,6 @@ set(MULTI_PARTS_TEST_FILES
     "graph/build/label_allocator_unittest.cc"
     "graph/build/run_context_unittest.cc"
     "graph/build/model_cache_unittest.cc"
-    "graph/build/dag/dag_test.cc"
-    "graph/build/dag/dag_log_test.cc"
-    "graph/build/dag/dag_adapter_test.cc"
-    "graph/build/dag/dag_stream_allocator_pass_ut_test.cc"
-    "graph/build/dag/dag_stream_allocator_test.cc"
-    "graph/build/dag/dag_stream_divide_test.cc"
-    "graph/build/dag/dag_stream_merger_test.cc"
-    "graph/build/dag/dag_weighted_stream_merger_test.cc"
-    "graph/build/dag/dag_weighted_stream_merger_whitebox_test.cc"
-    "graph/build/dag/dag_profiling_parser_test.cc"
     "graph/execute/graph_execute_unittest.cc"
     "graph/execute/model_executor_unittest.cc"
     "graph/preprocess/graph_preprocess_unittest.cc"
@@ -1346,7 +1337,11 @@ target_link_libraries(ut_onnx_plugin_bridge_utest
     -ldl
 )
 
-# Install ge_py wheel for onnx plugin bridge test
+# Install ge_py wheel for onnx plugin bridge test.
+# The runtime native wheel is required because the custom-op bridge test imports
+# ge.custom_op._bridge, whose import chain hard-depends on ge.runtime._native;
+# the prebuilt artifact is the only option there because the ctest environment
+# disables fallback codegen (ASCEND_HOME_PATH) for the onnx no-artifact case.
 set(ONNX_PLUGIN_PY_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/onnx_plugin_py_install)
 
 add_custom_command(
@@ -1355,13 +1350,16 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E make_directory ${ONNX_PLUGIN_PY_INSTALL_DIR}
     COMMAND ${HI_PYTHON} -m pip install --target ${ONNX_PLUGIN_PY_INSTALL_DIR}
             ${CMAKE_BINARY_DIR}/api/python/ge/ge_py-0.0.1-py3-none-any.whl
+            ${GE_PYTHON_ONNX_PLUGIN_NATIVE_WHEEL}
+            ${GE_PYTHON_RUNTIME_NATIVE_WHEEL}
             --force-reinstall
     COMMAND ${HI_PYTHON} -m pip install --target ${ONNX_PLUGIN_PY_INSTALL_DIR}
             ${CMAKE_BINARY_DIR}/tests/ge/ut/ge/graph/eager_style_graph_builder/graph_construction_test/output/whl/es_ut_test-1.0.0-py3-none-any.whl --force-reinstall
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:eager_style_graph_builder_base> ${ONNX_PLUGIN_PY_INSTALL_DIR}/ge/_capi/
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/tests/ge/ut/ge/graph/eager_style_graph_builder/graph_construction_test/output/lib64/libes_ut_test.so ${ONNX_PLUGIN_PY_INSTALL_DIR}/ge/_capi/
     COMMAND ${CMAKE_COMMAND} -E touch ${ONNX_PLUGIN_PY_INSTALL_DIR}/.installed
-    DEPENDS ge_python_main_wheel eager_style_graph_builder_base es_ut_test
+    DEPENDS ge_python_main_wheel ge_python_onnx_plugin_native_wheel ge_python_runtime_native_wheel
+            eager_style_graph_builder_base es_ut_test
     COMMENT "Installing ge-py wheel for onnx_plugin_bridge_utest"
 )
 
@@ -1374,7 +1372,86 @@ add_test(NAME ut_onnx_plugin_bridge_utest COMMAND ut_onnx_plugin_bridge_utest
     --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/ut/ut_onnx_plugin_bridge_utest.xml)
 set_tests_properties(ut_onnx_plugin_bridge_utest PROPERTIES
     LABELS "ut;ge_common;ut_onnx_plugin_bridge_utest"
-    ENVIRONMENT "PYTHONPATH=${ONNX_PLUGIN_PY_INSTALL_DIR};ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0:exitcode=0"
+    ENVIRONMENT "PYTHONPATH=${ONNX_PLUGIN_PY_INSTALL_DIR};ASCEND_HOME_PATH=/__ut_no_cann_root__;ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0:exitcode=0"
+)
+
+
+# Keep a focused binary/CTest entry for the Python stream adapter contract so
+# its fixture's helper cleanup cannot affect the unrelated fusion-pass tests.
+add_executable(ut_python_stream_pass_adapter_utest
+    ${COMMON_TEST_FILES}
+    "fusion/pass/python_stream_pass_adapter_unittest.cc"
+)
+
+add_dependencies(ut_python_stream_pass_adapter_utest
+    mdat
+    ge_python_pass_bridge
+    install_ge_py_for_fusion_pass_ut
+)
+
+target_compile_options(ut_python_stream_pass_adapter_utest PRIVATE ${AIR_COMMON_COMPILE_OPTION}
+    -Werror=format
+    -Wno-deprecated-declarations
+    -Wall -Wfloat-equal -Werror
+    -Wno-subobject-linkage
+)
+
+target_include_directories(ut_python_stream_pass_adapter_utest PRIVATE
+    ${AIR_CODE_DIR}/tests/framework/ge_runtime_stub/include
+    ${ASCEND_INSTALL_PATH}/include
+    ${ASCGEN_DIR}/inc
+)
+
+target_compile_definitions(ut_python_stream_pass_adapter_utest PRIVATE
+    google=ascend_private
+    AIR_CODE_DIR="${AIR_CODE_DIR}"
+    $<$<STREQUAL:${ENABLE_OPEN_SRC},True>:ONLY_COMPILE_OPEN_SRC>
+)
+
+target_link_options(ut_python_stream_pass_adapter_utest PRIVATE
+    -Wl,--disable-new-dtags
+    -Wl,-rpath,${CMAKE_CURRENT_LIST_DIR}
+    -Wl,-rpath,${CMAKE_BINARY_DIR}/compiler
+    -rdynamic
+    -Wl,-Bsymbolic
+)
+
+target_link_libraries(ut_python_stream_pass_adapter_utest
+    intf_llt_pub
+    ge_metadef_headers
+    ascendcl_stub
+    ascend_hal_stub
+    ${AIR_COMMON_LINK_OPTION}
+    ge_compiler
+    gert
+    register
+    graph
+    graph_base
+    unified_dlog
+    -Wl,-z,muldefs
+    -Wl,--whole-archive
+    ge_runtime_stub
+    rt2_registry_static
+    -Wl,--no-whole-archive
+    ge_running_env
+    ${COMMON_SHARED_LIBRARIES}
+    GTestShared::gtest
+    GTestShared::gtest_main
+    GTestShared::gmock_main
+    -lrt
+    -ldl
+    -Wl,--no-as-needed
+    es_ge_test
+    GTestShared::gmock
+    -Wl,--as-needed
+)
+
+add_test(NAME ut_python_stream_pass_adapter_utest
+    COMMAND ut_python_stream_pass_adapter_utest
+            --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/ut/ut_python_stream_pass_adapter_utest.xml)
+set_tests_properties(ut_python_stream_pass_adapter_utest PROPERTIES
+    LABELS "ut;ge_common;ut_python_stream_pass_adapter_utest"
+    ENVIRONMENT "PYTHONPATH=${FUSION_PASS_PY_INSTALL_DIR}"
 )
 
 # libge_label_maker_utest

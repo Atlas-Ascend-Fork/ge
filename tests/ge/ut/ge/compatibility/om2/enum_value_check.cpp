@@ -44,10 +44,14 @@ TEST(Om2AbiEnumCompatibility, GertModelArgKindValuesAreFrozen) {
 TEST(Om2AbiEnumCompatibility, GertModelTaskLaunchTypeValuesAreFrozen) {
   static_assert(std::is_same<std::underlying_type<GertModelTaskLaunchType>::type, uint64_t>::value,
                 "GertModelTaskLaunchType underlying type changed");
-  static_assert(ACL_RT_LAUNCH_KERNEL_V2 == 0U && RT_STARS_TASK_LAUNCH_WITH_FLAG == 1U,
+  // HCCL 通信下发类型：尾部追加（既有值 0/1/2 冻结，HCCL=3 只增不改）
+  static_assert(ACL_RT_LAUNCH_KERNEL_V2 == 0U && RT_STARS_TASK_LAUNCH_WITH_FLAG == 1U &&
+                    ACL_RT_LAUNCH_CUSTOM_KERNEL == 2U && ACL_RT_LAUNCH_HCCL == 3U,
                 "GertModelTaskLaunchType value changed");
   EXPECT_EQ(ACL_RT_LAUNCH_KERNEL_V2, 0U);
   EXPECT_EQ(RT_STARS_TASK_LAUNCH_WITH_FLAG, 1U);
+  EXPECT_EQ(ACL_RT_LAUNCH_CUSTOM_KERNEL, 2U);
+  EXPECT_EQ(ACL_RT_LAUNCH_HCCL, 3U);
 }
 
 }  // namespace

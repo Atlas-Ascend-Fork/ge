@@ -14,32 +14,10 @@
 #include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
-#include "graph/utils/type_utils.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
 namespace ge {
 namespace {
-graphStatus GetConstInt(const Expression &expr, DataType dt, int64_t &value) {
-  if (dt == DT_INT32) {
-    int32_t tmp_value = 0;
-    if (expr.GetConstValue<int32_t>(tmp_value) == false) {
-      return UNSUPPORTED;
-    }
-    value = static_cast<int64_t>(tmp_value);
-  } else if (dt == DT_INT64) {
-    if (expr.GetConstValue<int64_t>(value) == false) {
-      return UNSUPPORTED;
-    }
-  } else {
-    // pass创建的算子shape输入可能是int32/int64之外的dtype，属不支持形态而非非法图，
-    // 降级UNSUPPORTED由上层回退传统推导，不打挂整个符号推导
-    GELOGW("Symbol Infer unsupported, dt must in [int32, int64], actual dt %s.",
-           TypeUtils::DataTypeToSerialString(dt).c_str());
-    return UNSUPPORTED;
-  }
-  return ge::GRAPH_SUCCESS;
-}
-
 // Reshape 尺寸约束收尾：无未知维度(-1)时登记总量一致 guard；有未知维度时按 hint
 // 整除性求解（见 ResolveIntegralDim）并回填该维度
 graphStatus FinalizeReshapeSize(const gert::InferSymbolShapeContext *context, const gert::SymbolShape *in_shape,
@@ -62,7 +40,7 @@ graphStatus FinalizeReshapeSize(const gert::InferSymbolShapeContext *context, co
 }
 
 graphStatus ReshapeInferCommon(const gert::InferSymbolShapeContext *context, const gert::SymbolShape *in_shape,
-                               gert::SymbolShape *out_shape, const gert::SymbolTensor *shape_tensor, DataType dt) {
+                               gert::SymbolShape *out_shape, const gert::SymbolTensor *shape_tensor) {
   auto reshape_dim_num = shape_tensor->GetSymbolicValue()->size();
   size_t unknown_dim_idx = std::numeric_limits<size_t>::max();
   // expr可能是常量或者符号
@@ -73,8 +51,8 @@ graphStatus ReshapeInferCommon(const gert::InferSymbolShapeContext *context, con
     int64_t dim = -2;
     bool has_dim_value = false;
     if (dim_expr.IsConstExpr()) {
-      // 常量维度取值失败(非常量类型或非法dtype)统一降级UNSUPPORTED，由上层回退传统推导
-      const auto ret = GetConstInt(dim_expr, dt, dim);
+      // 常量维度取值失败(非整数常量)统一降级UNSUPPORTED，由上层回退传统推导
+      const graphStatus ret = SymbolicInferUtil::TryGetConstInt(dim_expr, dim);
       if (ret != ge::GRAPH_SUCCESS) {
         GELOGW("Symbol Infer unsupported, get dim at index[%zu] failed, node %s[%s]", i, context->GetNodeName(),
                context->GetNodeType());
@@ -144,10 +122,7 @@ graphStatus InferShape4Reshape(gert::InferSymbolShapeContext *context) {
            context->GetNodeType());
     return UNSUPPORTED;
   }
-  auto shape_desc = context->GetInputDesc(1);
-  GE_ASSERT_NOTNULL(shape_desc);
-  auto dt = shape_desc->GetDataType();
-  return ReshapeInferCommon(context, in_shape, out_shape, shape_tensor, dt);
+  return ReshapeInferCommon(context, in_shape, out_shape, shape_tensor);
 }
 
 /**
@@ -168,7 +143,11 @@ graphStatus InferShape4AsStrided(gert::InferSymbolShapeContext *context) {
   out_shape->MutableDims().clear();
   for (const auto &dim : *size_value) {
     int64_t dim_value = 0;
-    GE_ASSERT_TRUE(dim.GetConstValue<int64_t>(dim_value), "AsStrided size must be an int32 or int64 constant");
+    if (SymbolicInferUtil::TryGetConstInt(dim, dim_value) != GRAPH_SUCCESS) {
+      GELOGW("Symbol Infer unsupported, AsStrided size is not an integer const, node %s[%s].", context->GetNodeName(),
+             context->GetNodeType());
+      return UNSUPPORTED;
+    }
     GE_ASSERT_TRUE(dim_value >= 0, "AsStrided size must be non-negative, actual value[%ld]", dim_value);
     out_shape->AppendDim(Symbol(dim_value));
   }

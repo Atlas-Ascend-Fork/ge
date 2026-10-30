@@ -74,11 +74,17 @@ def _resolve_pybind_include() -> Optional[Path]:
 
 def _resolve_libpython_dirs() -> List[Path]:
     libdirs: List[Path] = []
+    libdir = sysconfig.get_config_var("LIBDIR") or ""
+    multiarch = sysconfig.get_config_var("MULTIARCH") or ""
     for item in [
         Path(sys.prefix) / "lib",
         Path(sys.exec_prefix) / "lib",
         Path(sys.executable).resolve().parent.parent / "lib",
-        sysconfig.get_config_var("LIBDIR") or "",
+        libdir,
+        # Debian/Ubuntu report LIBDIR as /usr/lib and keep libpython under
+        # LIBDIR/<multiarch>; LIBPL holds the config directory copy.
+        os.path.join(libdir, multiarch) if libdir and multiarch else "",
+        sysconfig.get_config_var("LIBPL") or "",
     ]:
         path = Path(item)
         if item and path not in libdirs:

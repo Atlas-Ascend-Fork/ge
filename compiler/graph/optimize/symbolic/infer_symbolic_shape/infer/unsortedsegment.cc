@@ -50,13 +50,11 @@ graphStatus InferShape4UnsortedSegment(gert::InferSymbolShapeContext *context) {
   const auto num_segments_value = num_segments_tensor->GetSymbolicValue();
   GE_UNSUPPORTED_IF_NULL(num_segments_value);
   GE_ASSERT_EQ(num_segments_value->size(), 1UL);
-  const auto dim_desc = context->GetInputDesc(INPUT_NUM_SEGMENTS_IDX);
-  GE_ASSERT_NOTNULL(dim_desc);
-  const auto dt = dim_desc->GetDataType();
   int64_t num_segments = 0L;
-  const auto status = SymbolicInferUtil::GetConstInt(num_segments_tensor, dt, num_segments);
-  if (status != GRAPH_SUCCESS) {
-    return status;
+  if (SymbolicInferUtil::TryGetConstInt(num_segments_value->at(0), num_segments) != GRAPH_SUCCESS) {
+    GELOGW("Symbol Infer unsupported, num_segments is not an integer const, node %s[%s].", context->GetNodeName(),
+           context->GetNodeType());
+    return UNSUPPORTED;
   }
   return UnsortedSegmentInferShapeImpl(num_segments, x_shape, segment_ids_shape, output_shape);
 }

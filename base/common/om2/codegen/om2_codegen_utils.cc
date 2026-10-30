@@ -16,8 +16,8 @@
 #include "graph/utils/op_type_utils.h"
 #include "graph/op_desc.h"
 #include "graph/debug/ge_attr_define.h"
+#include "framework/common/framework_types_internal.h"
 #include "framework/common/taskdown_common.h"
-#include "graph/debug/ge_op_types.h"
 
 namespace ge {
 namespace {
@@ -45,6 +45,7 @@ const std::unordered_set<ModelTaskType> kSupportedTaskTypes = {
     ModelTaskType::MODEL_TASK_CMO_ADDR,
     ModelTaskType::MODEL_TASK_BARRIER,
     ModelTaskType::MODEL_TASK_CUSTOM_KERNEL,
+    ModelTaskType::MODEL_TASK_HCCL,
 };
 }  // namespace
 std::string Om2CodegenUtils::GetKernelNameWithExtension(const std::string &kernel_name) {
@@ -115,6 +116,19 @@ bool Om2CodegenUtils::IsAICoreKernel(const ge::ccKernelType kernel_type) {
 bool Om2CodegenUtils::IsUnsupportedNodeType(const std::string &type) {
   return ((type == VARIABLE) || (type == CONSTANTOP) || (type == CONSTPLACEHOLDER) || (type == QUEUE_DATA) ||
           (type == REFDATA) || (type == QUEUE_DATA) || (type == "SuperKernel"));
+}
+
+bool Om2CodegenUtils::IsHcomOpType(const std::string &op_type) {
+  return (op_type == HCOMALLREDUCE) || (op_type == HCOMALLGATHER) || (op_type == HCOMBROADCAST) ||
+         (op_type == HCOMSEND) || (op_type == HCOMRECEIVE) || (op_type == HCOMREDUCESCATTER) ||
+         (op_type == HCOMREDUCE) || (op_type == HCOMALLTOALLV) || (op_type == HCOMALLTOALLVC) ||
+         (op_type == HCOMALLTOALL) || (op_type == HCOMGATHER) || (op_type == HCOMALLGATHERV) ||
+         (op_type == HCOMREDUCESCATTERV);
+}
+
+bool Om2CodegenUtils::IsHorovodOpType(const std::string &op_type) {
+  return (op_type == HVDCALLBACKALLREDUCE) || (op_type == HVDCALLBACKALLGATHER) || (op_type == HVDCALLBACKBROADCAST) ||
+         (op_type == HVDWAIT);
 }
 
 bool Om2CodegenUtils::IsNeedAtomicCleanTask(const OpDescPtr &op_desc) {

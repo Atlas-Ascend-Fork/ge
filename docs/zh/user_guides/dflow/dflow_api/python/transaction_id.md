@@ -37,7 +37,7 @@ transaction\_id的属性。
 ```python
 import dataflow as df
 graph = df.FlowGraph(...)
-flowinfo = FlowInfo(...)
+flowinfo = df.FlowInfo(...)
 flowinfo.transaction_id = 10
 print(flowinfo.transaction_id)
 ```

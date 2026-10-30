@@ -16,6 +16,8 @@
 #include "faker/ge_model_builder.h"
 #include "faker/kernel_run_context_facker.h"
 #include "faker/aicore_taskdef_faker.h"
+#include "faker/aicpu_taskdef_faker.h"
+#include "framework/common/taskdown_common.h"
 #include "faker/space_registry_faker.h"
 #include "graph/debug/ge_attr_define.h"
 #include "lowering/exe_graph_attrs.h"
@@ -25,6 +27,7 @@
 #include "exe_graph/lowering/lowering_global_data.h"
 #include "graph/custom_op_registry.h"
 #include "graph/ge_global_options.h"
+#include "graph/op_kernel_bin.h"
 
 using namespace ge;
 namespace gert {
@@ -174,6 +177,37 @@ TEST_F(ModelConverterUT, ConvertShouldFailWhenRootModelHasNoCustomOpRegistry) {
   EXPECT_EQ(model_converter.ConvertGeModelToExecuteGraph(ge_root_model), nullptr);
 
   gert::DestroyVersionInfo();
+}
+
+TEST_F(ModelConverterUT, ConvertRestoresSharedCustAicpuKernelFromLaterOwnerBeforeLowering) {
+  auto graph = ShareGraph::ThirdAicpuOpGraph();
+  ASSERT_EQ(graph->TopologicalSorting(), ge::GRAPH_SUCCESS);
+  const auto owner = graph->FindNode("nonzero")->GetOpDesc();
+  const auto consumer = graph->FindNode("add1")->GetOpDesc();
+  owner->SetOpKernelLibName(ge::kEngineNameAiCpu.c_str());
+  consumer->SetOpKernelLibName(ge::kEngineNameAiCpu.c_str());
+  ASSERT_TRUE(ge::AttrUtils::SetStr(owner, "kernelSo", "libcust_aicpu_kernels.so"));
+  ASSERT_TRUE(ge::AttrUtils::SetStr(consumer, "kernelSo", "libcust_aicpu_kernels.so"));
+  AiCpuCCTaskDefFaker task(static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU));
+  auto root_model = GeModelBuilder(graph)
+                        .AddTaskDef("Add", task.SetNeedMemcpy(true))
+                        .AddTaskDef("NonZero", task.SetNeedMemcpy(true))
+                        .BuildGeRootModel();
+  ASSERT_EQ(root_model->GetFlattenGraph(), nullptr);
+  const auto model = root_model->GetSubgraphInstanceNameToModel().at(graph->GetName());
+  auto &store = model->GetCustAICPUKernelStore();
+  const auto binary = std::make_shared<ge::OpKernelBin>(owner->GetName(), std::vector<char>(64, '\0'));
+  store.AddCustAICPUKernel(binary);
+  ASSERT_EQ(store.FindKernel(consumer->GetName()), nullptr);
+  ASSERT_EQ(owner->TryGetExtAttr<ge::OpKernelBinPtr>(ge::OP_EXTATTR_CUSTAICPU_KERNEL, nullptr), nullptr);
+  ASSERT_EQ(consumer->TryGetExtAttr<ge::OpKernelBinPtr>(ge::OP_EXTATTR_CUSTAICPU_KERNEL, nullptr), nullptr);
+  gert::CreateVersionInfo();
+  bg::ValueHolder::PopGraphFrame();
+  auto exe_graph = ModelConverter().ConvertGeModelToExecuteGraph(root_model);
+  gert::DestroyVersionInfo();
+  EXPECT_EQ(owner->TryGetExtAttr<ge::OpKernelBinPtr>(ge::OP_EXTATTR_CUSTAICPU_KERNEL, nullptr), binary);
+  EXPECT_EQ(consumer->TryGetExtAttr<ge::OpKernelBinPtr>(ge::OP_EXTATTR_CUSTAICPU_KERNEL, nullptr), binary);
+  ASSERT_NE(exe_graph, nullptr);
 }
 
 TEST_F(ModelConverterUT, LoweringGlobalDataKeepsCustomOpRegistryAfterRootModelRelease) {

@@ -15,12 +15,17 @@ This feature, together with [GE Pass Python-ization](ge_python_pass_design.md) a
 
 | Dependency | Version | Description |
 | ---- | ---- | ---- |
-| Python | 3.12 | Temporary requirement: the Python version used when compiling the run package must be consistent with the Python version used to execute the plugin (that is, the interpreter used by the ATC compilation process) |
+| Python | 3.9-3.14 (cp39-cp314, officially supported) | Native artifacts are delivered per Python version (see Section 8.1); the build matrix covers cp39-cp314, and the sample has been verified end to end on Python 3.12 |
 | onnx | 1.21.0 | Consistent with the tested scope of the [sample](../../../../../examples/onnx_plugin/README_en.md); the onnx package is used only in the PyTorch ONNX export flow (`torch.onnx.export`); the GE parser does not depend on this package |
+| pybind11 | >=2.13.6,<3.0.0 | Used only by fallback codegen; required for on-site compilation of the bridge/native when no matching native artifact exists |
 
-The Python version constraint comes from the bridge artifact matching mechanism: the manifest (`manifest.json`) of the bridge library and native module in the run package records the `python_tag` (such as `cp312`), platform, and bridge ABI version; at runtime, the version is read from the Python symbols loaded in the current process and the `python_tag` is computed, and only artifacts matching the current interpreter tag are loaded. When no matching artifact is found, compilation fails with `No compatible ONNX Python plugin bridge artifact found for runtime ...`; the error is surfaced to the ATC console and contains the current interpreter runtime key, the list of available artifacts (python tag, platform, bridge ABI, and artifact path), and remediation guidance on aligning the Python version or installing the matching `ge` Python package. The implementation is in `base/common/python_runtime/python_artifact_utils.h` and `parser/parser/onnx/python_onnx_plugin_bridge/onnx_plugin_bridge_loader.cc`.
+Python version support adopts the same "main wheel + per-version native sub-wheel + fallback codegen + automatic selection at installation" model as the Python pass, runtime, and custom-op components:
 
-Therefore, when the run package is compiled with Python 3.12, the ATC compilation must also be executed with Python 3.12. Do not mix different Python versions before the constraint is lifted.
+- **Build and delivery**: the `ge_py_onnx_plugin_bridge` native wheel is produced per Python version by the matrix build (`ge_python_onnx_plugin_native_wheel_matrix` in `api/python/ge/CMakeLists.txt`), with official support for cp39-cp314, and delivered with the CANN package; the `ge_py` main wheel carries only Python code and fallback codegen resources.
+- **Installation selection**: the CANN installation script selects the native wheel matching the current `python3` interpreter version (`ge-compiler_custom_install.sh`); when no wheel matches, that native wheel is skipped and the fallback codegen resources carried by the main wheel take over.
+- **Runtime matching**: the bridge library and native module record the `python_tag` (such as `cp312`), platform, and bridge ABI version (currently 2; artifacts are version-paired with the loader, and artifacts with a mismatched ABI are rejected explicitly) in the manifest (`manifest.json`); at runtime, the version is read from the Python symbols loaded in the current process and the `python_tag` is computed, and only artifacts matching the current interpreter tag are loaded. When no matching artifact is found, `ge.onnx_plugin.fallback_runtime.run_fallback_codegen()` is invoked first to build the artifact on site with the current Python interpreter; only when both prebuilt artifacts and fallback codegen are unavailable does compilation fail with `No compatible ONNX Python plugin bridge artifact found for runtime ...`; the error is surfaced to the ATC console via E19999 and contains the current interpreter runtime key, the list of available artifacts (python tag, platform, bridge ABI, and artifact path), and fallback troubleshooting and version alignment guidance. The implementation is in `base/common/python_runtime/python_artifact_utils.h` and `parser/parser/onnx/python_onnx_plugin_bridge/onnx_plugin_bridge_loader.cc`.
+
+Therefore, the Python version executing the ATC compilation does not need to match the build-time Python version: when no matching artifact exists in the package, it is built on site automatically, and reinstalling the CANN package is not required. Fallback compilation requires `pybind11` (>=2.13.6,<3.0.0), a C++ compiler, the Python development headers, and libpython in the current Python environment; if these conditions are not met, switch the interpreter to one of the available versions listed in the error message, or install the matching `ge` Python package.
 
 ## 3. Overall Architecture
 
@@ -45,7 +50,7 @@ graph LR
 ### 3.2 Compile-time Runtime Flow
 
 1. The user sets `ASCEND_CUSTOM_OPP_PATH` to the plugin directory and executes ATC to compile the ONNX model;
-2. ONNX parser initialization: the bridge library `libge_python_onnx_plugin_bridge.so` is matched by runtime key (`python_tag` + platform + bridge ABI) and loaded, and the Python runtime is prepared, only when a loadable Python plugin entry exists in the environment variable paths (a `.py` file, or a single-level non-underscore `.py` file / a sub-directory containing `__init__.py` under a directory); when the environment variable is not set, or points to a C++-only custom operator directory (containing only so/ini deliverables, without any Python plugin entry), no bridge code is loaded and the behavior is identical to not using this feature. `ASCEND_CUSTOM_OPP_PATH` is also the standard delivery variable for C++ custom operators, so environments delivering only C++ operators must not be blocked by this feature;
+2. ONNX parser initialization: only when a loadable Python plugin entry exists in the environment variable paths (a `.py` file, or a single-level non-underscore `.py` file / a sub-directory containing `__init__.py` under a directory), the prebuilt bridge library `libge_python_onnx_plugin_bridge.so` is matched by runtime key (`python_tag` + platform + bridge ABI) and loaded, and the Python runtime is prepared; when no prebuilt bridge matches or loading fails, `ge.onnx_plugin.fallback_runtime.run_fallback_codegen()` builds the artifact on site with the current Python interpreter and loads it, and only when both fail does it report `No compatible ONNX Python plugin bridge artifact found` (E19999). When the environment variable is not set, or points to a C++-only custom operator directory (containing only so/ini deliverables, without any Python plugin entry), no bridge code is loaded and the behavior is identical to not using this feature. `ASCEND_CUSTOM_OPP_PATH` is also the standard delivery variable for C++ custom operators, so environments delivering only C++ operators must not be blocked by this feature;
 3. The bridge layer enters the Python interpreter, imports `ge.onnx_plugin._bridge`, and calls `load_and_get_onnx_plugin_descriptors()`: plugin files are scanned and imported one by one, and the `onnx_plugin()` calls in the plugin code write descriptors into the Python process-level registry;
 4. The descriptor list is passed back to the C++ side, and each origin type generates one `domi::OpRegistrationData` registration (`FrameworkType` is ONNX, `OriginOpType` is `domain::opset::source`), hooked to the parameter parsing or decomposition entry according to callback types;
 5. When parsing each ONNX node, a non-built-in operator constructs the origin type as `<domain>::<opset>::<op_type>` to look up registrations; on a hit, the corresponding Python callback is invoked through the bridge layer;
@@ -61,6 +66,9 @@ api/python/ge/ge/onnx_plugin/        // Python public package
 ├── bootstrap.py                     // Plugin scanning and loading entry (reads ASCEND_CUSTOM_OPP_PATH)
 ├── _bridge.py                       // C++ bridge call entry: load plugins, dispatch the three callbacks
 ├── _native.py                       // Loads the native module, provides OnnxNode
+├── _artifact_utils.py               // Native artifact discovery and manifest validation (python_tag/platform/bridge ABI)
+├── fallback_runtime.py              // Fallback entry: on-site compilation through the shared engine when no matching artifact exists
+├── fallback_codegen/                // Build-time generated fallback compilation resources (shipped in the main wheel)
 └── native_bindings/                 // pybind11 bindings of OnnxNode (read-only view over NodeProto)
 
 parser/parser/onnx/python_onnx_plugin_bridge/    // C++ bridge layer
@@ -70,7 +78,7 @@ parser/parser/onnx/python_onnx_plugin_bridge/    // C++ bridge layer
 └── onnx_plugin_bridge_registrar.cc  // Register descriptors into the ONNX parser operator registry
 ```
 
-The bridge library and native module are produced at build time and organized under `python_tag-platform` directories in the run package at `ge/onnx_plugin/python_onnx_plugin_artifacts/`; they do not exist in the source tree.
+The bridge library and native module are produced at build time and organized under `python_tag-platform` directories in the run package at `ge/onnx_plugin/python_onnx_plugin_artifacts/`; artifacts generated by fallback on-site compilation are written to the same directory. `fallback_codegen/` is generated by `gen_fallback_resources.py` at build time and shipped in the main wheel.
 
 ## 5. Interface Description
 
@@ -178,3 +186,80 @@ At compilation, set the plugin file directory to `ASCEND_CUSTOM_OPP_PATH`:
 export ASCEND_CUSTOM_OPP_PATH="$(pwd)/plugin:${ASCEND_CUSTOM_OPP_PATH:-}"
 atc --model=model.onnx --framework=5 --output=output/model --soc_version=<soc_version>
 ```
+
+## 8. Compatibility Check
+
+### 8.1 Python Version Release and Fallback Compatibility Strategy
+
+The version release of the ONNX plugin is consistent with the Python pass, runtime, and custom-op components, adopting the "main wheel + per-version native sub-wheel + runtime fallback + automatic selection at installation + multi-version build pipeline" model.
+
+The main wheel carries only pure Python code and fallback codegen resources; each Python minor version generates its own `ge_py_onnx_plugin_bridge` native wheel. Loading follows the order of "matching prebuilt artifact first, then on-site compilation with the current Python runtime on a miss", and an error is reported only when both prebuilt artifacts and fallback are unavailable.
+
+#### 8.1.1 Python Version Matrix
+
+The officially supported Python tags are:
+
+- `cp39`
+- `cp310`
+- `cp311`
+- `cp312`
+- `cp313`
+- `cp314`
+
+The `ge_python_onnx_plugin_native_wheel_matrix` target invokes `python_pass_native_build/build_python_native_matrix.py`, automatically detects `python3.9` to `python3.14` available in PATH/Conda, and rebuilds each version by reusing the compile/link metadata of the parent build. A version whose development headers or libpython are incomplete is allowed to be skipped while other available versions continue to be generated; the build result records the Python tags actually generated and skipped. `ge_python_onnx_plugin_native_wheel` is a single-version development target that produces only the artifact set and native wheel for the current `HI_PYTHON`.
+
+#### 8.1.2 Wheel Split and Component Ownership
+
+The release artifacts include:
+
+```text
+ge_py-<version>-py3-none-any.whl
+ge_py_onnx_plugin_bridge-<version>-cpXY-<platform>.whl
+```
+
+Among them:
+
+- The `ge_py` main wheel carries only the Python API, registry, bootstrap, loader, the shared `ge/_internal` layer, and fallback codegen resources; it no longer embeds `python_onnx_plugin_artifacts`.
+- `ge_py_onnx_plugin_bridge` carries only `libge_python_onnx_plugin_bridge.so` and `_ge_onnx_plugin_native.so`, with the package name `ge-py-onnx-plugin-bridge`.
+- The bridge and native module belong to the same artifact set and must use the same Python tag, platform, and `bridge_abi`; the current bridge ABI is 2, and artifacts with a mismatched ABI are rejected explicitly by manifest validation.
+- The installation script selects the native wheel matching the current `python3` interpreter; when no wheel matches, that wheel is skipped and the fallback resources in the main wheel take over, without requiring a CANN reinstall.
+
+#### 8.1.3 Artifact Directories
+
+Precompiled and fallback-compiled artifacts are both written to:
+
+```text
+ge/onnx_plugin/python_onnx_plugin_artifacts/<python_tag>-<platform>/
+├── manifest.json
+├── libge_python_onnx_plugin_bridge.so
+└── _ge_onnx_plugin_native.so
+```
+
+The fallback resources in the main wheel are located in `ge/onnx_plugin/fallback_codegen/`, generated by `gen_fallback_resources.py` at build time, and contain the bridge/native sources, headers, proto closure, and `build_config.json`. The manifest records `python_tag`, `python_version`, `platform`, `bridge_abi`, `build_python`, and `artifacts`; before loading, the JSON structure, artifact file existence, `python_tag`, platform, and ABI are validated.
+
+#### 8.1.4 Fallback Responsibilities and Invocation Order
+
+1. Python side: `ge.onnx_plugin._native` calls `ensure_native_module(SPEC)` in `ge/_internal/native_loader.py`; the loading order is `sys.modules` cache -> matching prebuilt artifact -> on-site compilation -> aggregated diagnostics.
+2. C++ side: `EnsureLoaded()` in `onnx_plugin_bridge_loader.cc` first calls `TryLoadPrebuiltBridge()` and then `TryLoadFallbackBridge()` on failure; fallback invokes `run_fallback_codegen()` through the module name `ge.onnx_plugin.fallback_runtime`. It runs in-process when Python symbols are already loaded; otherwise, it invokes the current Python through a subprocess.
+3. The shared compilation engine is located in `ge/_internal/fallback_runtime.py` and is responsible for parsing `build_config.json`, materializing fallback resources, invoking `CXX`/`c++`, and atomically publishing the artifacts and manifest.
+4. Fallback requires the current Python environment to satisfy: `pybind11` (>=2.13.6,<3.0.0) is installed; the Python development headers and libpython are available; a C++ compiler is available; and the CANN `include`/`lib64`/`pkg_inc` directories can be resolved (after sourcing `set_env.sh` or within the run package directory structure). If any condition is not met, compilation fails and the specific reasons are aggregated in the diagnostics.
+5. Fallback generates only its own artifact set and does not modify other component directories; on failure, it cleans up the temporary working directory and retains existing prebuilt artifacts.
+
+#### 8.1.5 Runtime Selection and Compatibility Validation
+
+- Both the Python side and the C++ side use the actual Python runtime key of the current process as the selection basis, and do not substitute the outer launcher Python version for the current process version.
+- The ONNX plugin selects artifacts by Python tag, platform, and `bridge_abi`; artifacts with an incomplete manifest, missing files, or a mismatched ABI are not considered candidates.
+- The bridge is loaded only when a loadable Python plugin entry exists in `ASCEND_CUSTOM_OPP_PATH`; C++-only custom operator directories are not affected.
+- When no matching prebuilt artifact exists, fallback is attempted first; only when fallback is also unavailable does E19999 report the runtime key, available artifacts, loader/PYTHONPATH, and the suggested wheel name, and prompt checking `pybind11` (>=2.13.6,<3.0.0), the Python development headers, and the C++ compiler.
+- Another CPython minor version is not brought up in the same process; after the bridge is loaded, the current process Python version is validated again.
+
+#### 8.1.6 Version Compatibility Test Requirements
+
+At least the following must be verified under every available Python tag:
+
+- Offline installation and pip auto-selection of the main wheel and the `ge_py_onnx_plugin_bridge` native wheel;
+- `import ge.onnx_plugin` and loading of the `OnnxNode` native type;
+- ATC compilation, ACL execution, and result comparison with the sample plugins;
+- On-site fallback compilation and loading after clearing prebuilt artifacts;
+- Error diagnostics for mismatched Python tag, platform, or `bridge_abi`, and for unavailable fallback;
+- C++-only custom operator directories (without Python plugin entries) do not trigger bridge loading.

@@ -73,7 +73,6 @@
 #include "ge_running_env/fake_op.h"
 #include "utils/mock_ops_kernel_builder.h"
 #include "common/share_graph.h"
-#include "tests/ge/st/stubs/utils/synchronizer.h"
 #include "graph/passes/memory_conflict/hccl_memcpy_pass.h"
 #include "array.h"
 #include "framework/ge_runtime_stub/include/common/compliant_share_graph.h"
@@ -6927,9 +6926,7 @@ TEST_F(GraphCompilerTest, VarConnectNoPaddingContinuousOutputNode_RunSuccess) {
   inputs.emplace_back(input_tensor_2);
 
   runtime_stub.Clear();
-  Synchronizer sync;
   EXPECT_EQ(SUCCESS, session.RunGraphWithStreamAsync(graph_id, nullptr, inputs, outputs));
-  sync.WaitFor(5);
   runtime_stub.Clear();
   CHECK_GRAPH(PreRunAfterBuild) {
     auto split_node = graph->FindNode("split");
@@ -6984,9 +6981,7 @@ TEST_F(GraphCompilerTest, VariableUse1GHugePage_Success) {
   inputs.emplace_back(input_tensor_2);
 
   runtime_stub.Clear();
-  Synchronizer sync;
   EXPECT_EQ(SUCCESS, session.RunGraphWithStreamAsync(graph_id, nullptr, inputs, outputs));
-  sync.WaitFor(5);
   runtime_stub.Clear();
   CHECK_GRAPH(PreRunAfterBuild) {
     auto split_node = graph->FindNode("split");

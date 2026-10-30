@@ -200,7 +200,7 @@ After compilation is complete, users can perform developer testing.
   After local verification is complete, you can execute the following command to install the compiled `GE` software package. When executing the installation command, please ensure the installation user has executable permission for the software package.
 
   ```shell
-  ./cann-<component>_<version>_<arch>.run --full --install-path=${install_path}
+  ./build_out/cann-<component>_<version>_<arch>.run --full --install-path=${install_path}
   ```
 
   > [!CAUTION]CAUTION
@@ -221,7 +221,7 @@ After compilation is complete, users can perform developer testing.
   If you want to uninstall the installed `cann-<component>_<version>_<arch>.run` software package, you can execute the following command.
 
   ```shell
-  ./cann-<component>_<version>_<arch>.run --uninstall --install-path=${install_path}
+  ./build_out/cann-<component>_<version>_<arch>.run --uninstall --install-path=${install_path}
   ```
 
   When executing, you need to replace the software package name in the above command with the actual custom `cann-<component>_<version>` software package name.

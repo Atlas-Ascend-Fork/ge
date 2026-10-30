@@ -161,6 +161,40 @@ const std::string AddStubName = "AddStubBin";
 const std::string MulStubName = "MulStubBin";
 const std::string ReduceSumStubName = "ReduceSumStubBin";
 
+AiCpuCCTaskDefFaker CreateHostCpuTaskDefFaker() {
+  AiCpuCCTaskDefFaker faker;
+  faker.SetKernelType(static_cast<uint32_t>(ge::ccKernelType::HOST_CPU));
+  return faker;
+}
+
+std::pair<ge::ExecuteGraphPtr, GeRootModelPtr> BuildHostCpuDataFlowModel() {
+  char_t opp_path[MMPA_MAX_PATH] = "./";
+  mmSetEnv("ASCEND_OPP_PATH", &opp_path[0U], MMPA_MAX_PATH);
+  ge::MmpaStub::GetInstance().SetImpl(std::make_shared<HostcpuMockMmpa>());
+  auto graph = ShareGraph::BuildHostCpuDataFlowGraph();
+  graph->FindNode("add1")->GetOpDesc()->SetOpKernelLibName(ge::kEngineNameHostCpu.c_str());
+  graph->TopologicalSorting();
+  AiCpuCCTaskDefFaker aicpu_task_def_faker = CreateHostCpuTaskDefFaker();
+  auto ge_root_model = GeModelBuilder(graph)
+                           .AddTaskDef("Add", aicpu_task_def_faker)
+                           .AddTaskDef("SequenceStub", aicpu_task_def_faker)
+                           .BuildGeRootModel();
+  bg::ValueHolder::PopGraphFrame();  // 不需要BgTest自带的Frame
+  auto exe_graph = ModelConverter().ConvertGeModelToExecuteGraph(ge_root_model);
+  EXPECT_NE(exe_graph, nullptr);
+  EXPECT_EQ(3, exe_graph->GetDirectNodesSize());
+  ge::DumpGraph(exe_graph.get(), "E2EAddGraph");
+  auto ensure_node = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(exe_graph.get(), "EnsureTensorAtOutMemory");
+  auto clear_node = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(exe_graph.get(), "ClearTestStepContainer");
+  EXPECT_EQ(ensure_node.size(), 1U);
+  EXPECT_EQ(clear_node.size(), 1U);
+  if ((ensure_node.size() != 1U) || (clear_node.size() != 1U)) {
+    return {nullptr, nullptr};
+  }
+  EXPECT_TRUE(FastNodeTopoChecker(ensure_node.at(0)).BeforeInTopoOrder(clear_node.at(0)));
+  return {exe_graph, ge_root_model};
+}
+
 TEST_F(GraphExecutorWithKernelUnitTest, SingleNodeReshape_LoadUnloadSuccess) {
   auto graph = ShareGraph::BuildReshapeGraph();
   GertRuntimeStub runtime_stub;
@@ -907,6 +941,7 @@ TEST_F(GraphExecutorWithKernelUnitTest, SingleNodeAiCpuCC_ExecuteSuccess) {
   graph->TopologicalSorting();
   GeModelBuilder builder(graph);
   AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  aicpu_task_def_faker.SetKernelType(static_cast<uint32_t>(ge::ccKernelType::AI_CPU));
   auto ge_root_model = builder.AddTaskDef("Add", aicpu_task_def_faker.SetNeedMemcpy(true)).BuildGeRootModel();
 
   bg::ValueHolder::PopGraphFrame();  // 不需要BgTest自带的Frame
@@ -943,6 +978,7 @@ TEST_F(GraphExecutorWithKernelUnitTest, SingleNodeHostAiCpu_ExecuteSuccess) {
   graph->TopologicalSorting();
   GeModelBuilder builder(graph);
   AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  aicpu_task_def_faker.SetKernelType(static_cast<uint32_t>(ge::ccKernelType::HOST_CPU));
   auto ge_root_model = builder.AddTaskDef("Add", aicpu_task_def_faker).BuildGeRootModel();
 
   bg::ValueHolder::PopGraphFrame();  // 不需要BgTest自带的Frame
@@ -989,6 +1025,7 @@ TEST_F(GraphExecutorWithKernelUnitTest, SingleNodeHostKernel_ExecuteSuccess) {
   graph->TopologicalSorting();
   GeModelBuilder builder(graph);
   AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  aicpu_task_def_faker.SetKernelType(static_cast<uint32_t>(ge::ccKernelType::HOST_CPU));
   auto ge_root_model = builder.AddTaskDef("Add", aicpu_task_def_faker).BuildGeRootModel();
 
   bg::ValueHolder::PopGraphFrame();  // 不需要BgTest自带的Frame
@@ -1051,6 +1088,7 @@ TEST_F(GraphExecutorWithKernelUnitTest, SingleStringNodeAiCpu_ExecuteSuccess) {
   graph->TopologicalSorting();
   GeModelBuilder builder(graph);
   AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  aicpu_task_def_faker.SetKernelType(static_cast<uint32_t>(ge::ccKernelType::HOST_CPU));
   auto ge_root_model = builder.AddTaskDef("Add", aicpu_task_def_faker).BuildGeRootModel();
 
   bg::ValueHolder::PopGraphFrame();  // 不需要BgTest自带的Frame
@@ -1317,32 +1355,24 @@ TEST_F(GraphExecutorWithKernelUnitTest, ThirdAicpuOp_ExecuteSuccess) {
   aclrtDestroyStream(stream);
 }
 
+void CheckDataFlowStepCountsAndUnload(ModelV2Executor *model_executor, uint32_t model_exec_count) {
+  std::vector<std::string> stat_exec_nodes_count = GetStatExecNodesCount();
+  // ClearTestStepContainer execute once when main graph execute
+  EXPECT_EQ(std::count(stat_exec_nodes_count.begin(), stat_exec_nodes_count.end(), "ClearTestStepContainer"),
+            model_exec_count);
+  EXPECT_EQ(std::count(stat_exec_nodes_count.begin(), stat_exec_nodes_count.end(), "CreateTestStepContainer"), 1);
+  EXPECT_EQ(std::count(stat_exec_nodes_count.begin(), stat_exec_nodes_count.end(), "DestroyTestStepContainer"), 0);
+  ASSERT_EQ(model_executor->UnLoad(), ge::GRAPH_SUCCESS);
+  stat_exec_nodes_count = GetStatExecNodesCount();
+  // DestroyTestStepContainer execute once for each model
+  EXPECT_EQ(std::count(stat_exec_nodes_count.begin(), stat_exec_nodes_count.end(), "DestroyTestStepContainer"), 1);
+  stat_exec_nodes_count.clear();
+}
+
 TEST_F(GraphExecutorWithKernelUnitTest, DataFlowOnMainRootLast_ExecuteSuccess) {
-  char_t opp_path[MMPA_MAX_PATH] = "./";
-  mmSetEnv("ASCEND_OPP_PATH", &opp_path[0U], MMPA_MAX_PATH);
-  ge::MmpaStub::GetInstance().SetImpl(std::make_shared<HostcpuMockMmpa>());
-
-  auto graph = ShareGraph::BuildHostCpuDataFlowGraph();
-  graph->FindNode("add1")->GetOpDesc()->SetOpKernelLibName(ge::kEngineNameHostCpu.c_str());
-  graph->TopologicalSorting();
-  GeModelBuilder builder(graph);
-  AiCpuCCTaskDefFaker aicpu_task_def_faker;
-  auto ge_root_model = builder.AddTaskDef("Add", aicpu_task_def_faker)
-                           .AddTaskDef("SequenceStub", aicpu_task_def_faker)
-                           .BuildGeRootModel();
-
-  bg::ValueHolder::PopGraphFrame();  // 不需要BgTest自带的Frame
-  auto exe_graph = ModelConverter().ConvertGeModelToExecuteGraph(ge_root_model);
+  auto [exe_graph, ge_root_model] = BuildHostCpuDataFlowModel();
   ASSERT_NE(exe_graph, nullptr);
-  ASSERT_EQ(3, exe_graph->GetDirectNodesSize());
-  ge::DumpGraph(exe_graph.get(), "E2EAddGraph");
-
-  // check the topo order is correct
-  auto ensure_node = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(exe_graph.get(), "EnsureTensorAtOutMemory");
-  ASSERT_EQ(ensure_node.size(), 1U);
-  auto clear_node = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(exe_graph.get(), "ClearTestStepContainer");
-  ASSERT_EQ(clear_node.size(), 1U);
-  EXPECT_TRUE(FastNodeTopoChecker(ensure_node.at(0)).BeforeInTopoOrder(clear_node.at(0)));
+  ASSERT_NE(ge_root_model, nullptr);
 
   auto model_executor = ModelV2Executor::Create(exe_graph, ge_root_model);
   ASSERT_NE(model_executor, nullptr);
@@ -1382,17 +1412,7 @@ TEST_F(GraphExecutorWithKernelUnitTest, DataFlowOnMainRootLast_ExecuteSuccess) {
             ge::GRAPH_SUCCESS);
   model_exec_count++;
   EXPECT_EQ(ess->GetExecuteCountByNodeTypeAndKernelType("SequenceStub", "SequenceStub"), model_exec_count * 2);
-  std::vector<std::string> stat_exec_nodes_count = GetStatExecNodesCount();
-  // ClearTestStepContainer execute once when main graph execute
-  EXPECT_EQ(std::count(stat_exec_nodes_count.begin(), stat_exec_nodes_count.end(), "ClearTestStepContainer"),
-            model_exec_count);
-  EXPECT_EQ(std::count(stat_exec_nodes_count.begin(), stat_exec_nodes_count.end(), "CreateTestStepContainer"), 1);
-  EXPECT_EQ(std::count(stat_exec_nodes_count.begin(), stat_exec_nodes_count.end(), "DestroyTestStepContainer"), 0);
-  ASSERT_EQ(model_executor->UnLoad(), ge::GRAPH_SUCCESS);
-  stat_exec_nodes_count = GetStatExecNodesCount();
-  // DestroyTestStepContainer execute once for each model
-  EXPECT_EQ(std::count(stat_exec_nodes_count.begin(), stat_exec_nodes_count.end(), "DestroyTestStepContainer"), 1);
-  stat_exec_nodes_count.clear();
+  ASSERT_NO_FATAL_FAILURE(CheckDataFlowStepCountsAndUnload(model_executor.get(), model_exec_count));
   aclrtDestroyStream(stream);
   mem_block->Free();
   FreeDataFlowMemory();

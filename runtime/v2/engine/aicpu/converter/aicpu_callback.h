@@ -28,7 +28,8 @@ void SetReleaseAfter(const std::vector<bg::ValueHolderPtr> &addrs, const bg::Val
 NodeOutput GetOutputShapeAndAddr(const ge::NodePtr &node, const std::vector<bg::ValueHolderPtr> &input_shapes,
                                  const std::vector<bg::DevMemValueHolderPtr> &input_addrs,
                                  LoweringGlobalData &global_data);
-void AicpuCallback(const ge::NodePtr &node, const bg::ValueHolderPtr &ext_info, bg::ValueHolderPtr &launch_holder,
-                   LoweringGlobalData &global_data, NodeOutput &node_output);
+ge::graphStatus AicpuCallback(const ge::NodePtr &node, const bg::ValueHolderPtr &ext_info,
+                              bg::ValueHolderPtr &launch_holder, LoweringGlobalData &global_data,
+                              NodeOutput &node_output);
 }  // namespace gert
 #endif  // AIR_CXX_RUNTIME_V2_NODE_CONVERTER_AICPU_CALLBACK_H_

@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <cstdlib>
 
 #include "macro_utils/dt_public_scope.h"
 #include "common/plugin/ge_make_unique_util.h"
@@ -21,6 +22,7 @@
 #include "graph/utils/graph_utils_ex.h"
 #include "graph/load/graph_loader.h"
 #include "graph/load/model_manager/model_manager.h"
+#include "graph_metadef/common/plugin/plugin_manager.h"
 #include "macro_utils/dt_public_unscope.h"
 
 #include "rt_external_base.h"
@@ -42,6 +44,8 @@
 #include "graph/attr_value.h"
 #include "graph/ge_attr_value.h"
 #include "graph/utils/attr_utils.h"
+#include "common/checker.h"
+#include "register/op_lib_register_impl.h"
 
 using namespace gert;
 namespace ge {
@@ -2234,5 +2238,53 @@ TEST_F(GeApiTest, SessionApis_GraphNotExist_ReportE10062) {
   EXPECT_NE(err_msg.find("99999"), std::string::npos);
 
   ReInitGe();
+}
+
+/**
+ * 用例描述：自定义算子库路径支持空配置，注册的初始化回调只执行一次且日志字段完整。
+ * 预置条件：清空 ASCEND_CUSTOM_OPP_PATH，使用独立注册表并接管日志。
+ * 测试步骤：先查询未注册回调的路径，再注册回调并连续查询两次路径。
+ * 预期结果：空配置返回空路径；回调路径正确且仅初始化一次；空路径和回调目录日志明确。
+ */
+TEST_F(GeApiTest, CustomOpLibPath_EmptyAndInitializedOnce) {
+  GertRuntimeStub runtime_stub;
+  runtime_stub.GetSlogStub().SetLevelDebug();
+  const char *old_env = std::getenv("ASCEND_CUSTOM_OPP_PATH");
+  const bool had_env = old_env != nullptr;
+  const std::string old_env_value = had_env ? old_env : "";
+  const auto old_plugin_path = PluginManager::custom_op_lib_path_;
+  GE_MAKE_GUARD(restore_custom_op_path, [&]() {
+    if (had_env) {
+      (void)setenv("ASCEND_CUSTOM_OPP_PATH", old_env_value.c_str(), 1);
+    } else {
+      (void)unsetenv("ASCEND_CUSTOM_OPP_PATH");
+    }
+    PluginManager::SetCustomOpLibPath(old_plugin_path);
+  });
+  ASSERT_EQ(unsetenv("ASCEND_CUSTOM_OPP_PATH"), 0);
+
+  OpLibRegistry empty_registry;
+  EXPECT_STREQ(empty_registry.InitAndGetCustomOpLibPath(), "");
+  EXPECT_TRUE(PluginManager::custom_op_lib_path_.empty());
+  EXPECT_GE(runtime_stub.GetSlogStub().FindLog(DLOG_INFO, "get op lib path is empty"), 0);
+
+  static uint32_t init_count = 0;
+  init_count = 0;
+  OpLibRegisterImpl vendor;
+  vendor.SetVendorName("custom_op_lib_st");
+  vendor.SetInitFunc([](AscendString &path) -> uint32_t {
+    ++init_count;
+    path = AscendString("/tmp/ge_custom_op_lib_st");
+    return GRAPH_SUCCESS;
+  });
+  OpLibRegistry registry;
+  registry.RegisterInitFunc(vendor);
+  EXPECT_STREQ(registry.InitAndGetCustomOpLibPath(), "/tmp/ge_custom_op_lib_st");
+  EXPECT_STREQ(registry.InitAndGetCustomOpLibPath(), "/tmp/ge_custom_op_lib_st");
+  EXPECT_EQ(init_count, 1U);
+  EXPECT_EQ(PluginManager::custom_op_lib_path_, "/tmp/ge_custom_op_lib_st");
+  EXPECT_GE(runtime_stub.GetSlogStub().FindLog(
+                DLOG_INFO, "end to call custom_op_lib_st init func, tmp_dir is [/tmp/ge_custom_op_lib_st]"),
+            0);
 }
 }  // namespace ge

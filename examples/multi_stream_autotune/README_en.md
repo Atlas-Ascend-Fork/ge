@@ -3,7 +3,7 @@
 [中文](README.md)
 
 GE auto multi-stream offers several stream allocation strategies (`LoadBalance`, `MainStream`,
-`WeightedLoadBalance`, `cv`). The best strategy and stream count depend on the graph structure and
+`cv`). The best strategy and stream count depend on the graph structure and
 the chip, so the only reliable way to pick one is to measure.
 
 This sample provides a minimal tuning loop: **an environment variable carries the candidate
@@ -169,7 +169,7 @@ python3 ge_ms_autotune.py --run-command "..." \
 | `--compile-command` | required (offline) | OM build command; the output path use `{om_prefix}` |
 | `--target` | required (offline) | Path to the target machine JSON, see [Offline mode](#offline-mode-target-machine) |
 | `--om-dir` | `<current-run-dir>/om` | offline: where OMs and build logs are stored |
-| `--strategies` | `LoadBalance,MainStream` | Candidate strategies: `LoadBalance`, `MainStream`, `WeightedLoadBalance`, `cv` |
+| `--strategies` | `LoadBalance,MainStream` | Candidate strategies: `LoadBalance`, `MainStream`, `cv`; both base DAG strategies use weighted load balancing when valid profiling samples match nodes participating in ordinary merging, otherwise the requested strategy is kept; weighted load balancing has no separate strategy option |
 | `--streams` | `2,4,8` | Candidate stream counts in `[1,64]`; the `cv` strategy takes no stream count |
 | `--configs` | empty | Explicit candidate list (for example `default,LoadBalance:4`); overrides the two matrix options above |
 | `--repeat` | `3` | Runs per candidate; use at least 3 for a real comparison |

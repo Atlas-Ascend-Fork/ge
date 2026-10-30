@@ -66,25 +66,28 @@ TEST_F(AicpuExtInfoSt, test_get_workspace_info) {
   ASSERT_EQ(workspace_info, nullptr);
 }
 
-TEST_F(AicpuExtInfoSt, Success) {
-  const std::string so_name = "libcust_add.so";
+void ConfigureCustAicpuWorkspaceGraph(const ge::ComputeGraphPtr &graph) {
+  const std::string so_name = "libcust_aicpu_kernels.so";
   vector<char> buffer(1, 'a');
   ge::OpKernelBinPtr bin = std::make_shared<ge::OpKernelBin>("op", std::move(buffer));
-  rtBinHandle handle = nullptr;
-  CustBinHandlerManager::Instance().LoadAndGetBinHandle(so_name, bin, handle);
 
-  auto graph = ShareGraph::BuildSingleNodeGraph();
   auto add_desc = graph->FindNode("add1")->GetOpDesc();
+  add_desc->SetExtAttr(ge::OP_EXTATTR_CUSTAICPU_KERNEL, bin);
   add_desc->SetOpKernelLibName(ge::kEngineNameAiCpu.c_str());
-  ge::AttrUtils::SetInt(add_desc, "workspaceSize", 1024);
+  add_desc->SetWorkspaceBytes({1024});
   std::vector<uint32_t> mem_type;
   mem_type.push_back(ge::AicpuWorkSpaceType::CUST_LOG);
   ge::AttrUtils::SetListInt(add_desc, ge::ATTR_NAME_AICPU_WORKSPACE_TYPE, mem_type);
   ge::AttrUtils::SetBool(add_desc, "_cust_aicpu_flag", true);
   ge::AttrUtils::SetStr(add_desc, "kernelSo", so_name);
   graph->TopologicalSorting();
+}
+
+TEST_F(AicpuExtInfoSt, Success) {
+  auto graph = ShareGraph::BuildSingleNodeGraph();
+  ConfigureCustAicpuWorkspaceGraph(graph);
   GeModelBuilder builder(graph);
-  AiCpuCCTaskDefFaker aicpu_task_def_faker;
+  AiCpuCCTaskDefFaker aicpu_task_def_faker(static_cast<uint32_t>(ge::ccKernelType::CUST_AI_CPU));
   auto ge_root_model = builder.AddTaskDef("Add", aicpu_task_def_faker).BuildGeRootModel();
 
   bg::ValueHolder::PopGraphFrame();  // 不需要BgTest自带的Frame

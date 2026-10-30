@@ -45,5 +45,6 @@ Om2ModelClassGeneratorBase::Om2ModelClassGeneratorBase(AstBuildContext &ast)
       is_external_streams_(ast_.Var("bool", "is_external_streams_")),
       is_external_notifies_(ast_.Var("bool", "is_external_notifies_")),
       is_external_events_(ast_.Var("bool", "is_external_events_")),
-      is_external_labels_(ast_.Var("bool", "is_external_labels_")) {}
+      is_external_labels_(ast_.Var("bool", "is_external_labels_")),
+      main_follow_stream_mapping_(ast_.Var("std::map<uint32_t, std::vector<void *>>", "main_follow_stream_mapping_")) {}
 }  // namespace ge

@@ -15,7 +15,7 @@
 
 | # | 验证项 | 通过条件 |
 |---|--------|---------|
-| ① | 按 key 申请辅流 | `RequestAttachedStream("eager_aux")` 返回非 nullptr |
+| ① | 按 key 申请辅流 | `RequestAttachedStream("eager_aux")` 返回非空指针 |
 | ② | 辅流 kernel 下发 | `aclrtLaunchKernelV2(..., 辅流)` 成功 |
 | ③ | 重放精度 | 模型重放多轮后 z = x + y 全部正确 |
 
