@@ -652,12 +652,6 @@ aclError AclRuntimeStub::aclrtMallocHostWithCfg(void **hostPtr, size_t size, acl
   return aclrtMallocHost(hostPtr, size);
 }
 
-// OM2 codegen 生成的模型 SO 会用 aclrtMallocAlign32 申请扩展信息内存；主机内存模拟 Device 时
-// 32 字节对齐无实际意义，直接复用 aclrtMalloc，以保证测试侧的内存记账/失败注入行为一致
-aclError AclRuntimeStub::aclrtMallocAlign32(void **devPtr, size_t size, aclrtMemMallocPolicy policy) {
-  return aclrtMalloc(devPtr, size, policy);
-}
-
 aclError AclRuntimeStub::aclrtMemset(void *devPtr, size_t maxCount, int32_t value, size_t count) {
   if (maxCount == 321) {
     return ACL_ERROR_RT_INTERNAL_ERROR;
@@ -1603,13 +1597,6 @@ aclError aclrtMallocWithCfg(void **devPtr, size_t size, aclrtMemMallocPolicy pol
     return -1;
   }
   return ge::AclRuntimeStub::GetInstance()->aclrtMallocWithCfg(devPtr, size, policy, cfg);
-}
-
-aclError aclrtMallocAlign32(void **devPtr, size_t size, aclrtMemMallocPolicy policy) {
-  if (std::string(__FUNCTION__) == g_runtime_stub_mock) {
-    return -1;
-  }
-  return ge::AclRuntimeStub::GetInstance()->aclrtMallocAlign32(devPtr, size, policy);
 }
 
 aclError aclrtMallocHost(void **hostPtr, size_t size) {

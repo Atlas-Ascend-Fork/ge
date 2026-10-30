@@ -12,7 +12,6 @@
 #define GE_FRAMEWORK_RUNTIME_DUMP_DUMP_CONFIG_H_
 
 #include <cstdint>
-#include <cstdlib>
 #include <string>
 #include <unordered_set>
 #include <mutex>
@@ -80,19 +79,6 @@ const std::string GE_DUMP_STEP_DEFAULT = "";
 const std::string GE_DUMP_DATA_DEFAULT = "tensor";
 const std::string GE_DUMP_LEVEL_DEFAULT = "all";
 const std::string GE_DUMP_SCENE_DEFAULT = "";
-
-// dump 载荷格式版本环境变量：0=protobuf（默认），1=TLV
-const std::string GE_DUMP_DATA_VERSION_ENV = "OM2_DUMP_DATA_VERSION";
-constexpr uint32_t GE_DUMP_DATA_VERSION_PROTO = 0U;
-constexpr uint32_t GE_DUMP_DATA_VERSION_TLV = 1U;
-
-inline uint32_t GetDumpDataVersionFromEnv() {
-  const char *env_value = std::getenv(GE_DUMP_DATA_VERSION_ENV.c_str());
-  if ((env_value != nullptr) && (std::string(env_value) == std::to_string(GE_DUMP_DATA_VERSION_TLV))) {
-    return GE_DUMP_DATA_VERSION_TLV;
-  }
-  return GE_DUMP_DATA_VERSION_PROTO;
-}
 
 class DumpConfig {
  public:
