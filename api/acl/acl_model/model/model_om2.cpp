@@ -1856,6 +1856,11 @@ aclError aclmdlSetInputDynamicDimsImplOm2(uint32_t modelId, aclmdlDataset *datas
     ACL_LOG_INNER_ERROR("[Check][dimCount] dimCount is zero, modelId[%u]", modelId);
     return ACL_ERROR_INVALID_PARAM;
   }
+  if (dims->dimCount > static_cast<size_t>(ACL_MAX_DIM_CNT)) {
+    ACL_LOG_INNER_ERROR("[Check][dimCount] dimCount[%zu] is larger than max[%d], modelId[%u]", dims->dimCount,
+                        ACL_MAX_DIM_CNT, modelId);
+    return ACL_ERROR_INVALID_PARAM;
+  }
 
   auto &rm = acl::AclResourceManagerOm2::GetInstance();
   auto executor = rm.GetOm2Executor(modelId);

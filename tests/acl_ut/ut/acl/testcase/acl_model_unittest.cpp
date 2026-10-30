@@ -1854,6 +1854,10 @@ TEST_F(UTEST_ACL_Model, aclmdlSetInputDynamicDims01) {
   ret = aclmdlSetInputDynamicDims(1, dataset, 0, dims);
   EXPECT_EQ(ret, ACL_ERROR_INVALID_PARAM);
 
+  dims[0].dimCount = static_cast<size_t>(ACL_MAX_DIM_CNT) + 1U;
+  ret = aclmdlSetInputDynamicDims(1, dataset, 0, dims);
+  EXPECT_EQ(ret, ACL_ERROR_INVALID_PARAM);
+
   aclDestroyDataBuffer(buffer);
   aclDestroyDataBuffer(buffer2);
   aclmdlDestroyDataset(dataset);
@@ -7255,6 +7259,33 @@ TEST_F(UTEST_ACL_Model, aclmdlSetInputDynamicDims_Om2_WithZeroDimCount_ReturnsIn
 
   aclmdlIODims dims = {};
   dims.dimCount = 0;  // Zero dim count
+
+  aclError ret = aclmdlSetInputDynamicDims(om2_model_id, dataset, 0, &dims);
+  EXPECT_EQ(ret, ACL_ERROR_INVALID_PARAM);
+
+  aclDestroyDataBuffer(buffer);
+  aclrtFree(devPtr);
+  aclmdlDestroyDataset(dataset);
+  acl::AclResourceManagerOm2::GetInstance().DeleteOm2Executor(om2_model_id);
+}
+
+TEST_F(UTEST_ACL_Model, aclmdlSetInputDynamicDims_Om2_WithExcessiveDimCount_ReturnsInvalidParam) {
+  uint32_t om2_model_id = std::numeric_limits<uint32_t>::max() / 2U + 303U;
+
+  auto om2_executor = std::unique_ptr<gert::Om2ModelExecutor>(new (std::nothrow) gert::Om2ModelExecutor);
+  ASSERT_NE(om2_executor, nullptr);
+  acl::AclResourceManagerOm2::GetInstance().AddOm2Executor(om2_model_id, std::move(om2_executor));
+
+  aclmdlDataset *dataset = aclmdlCreateDataset();
+  EXPECT_NE(dataset, nullptr);
+
+  void *devPtr = nullptr;
+  aclrtMalloc(&devPtr, 4 * sizeof(int64_t), ACL_MEM_MALLOC_HUGE_FIRST);
+  aclDataBuffer *buffer = aclCreateDataBuffer(devPtr, 4 * sizeof(int64_t));
+  aclmdlAddDatasetBuffer(dataset, buffer);
+
+  aclmdlIODims dims = {};
+  dims.dimCount = static_cast<size_t>(ACL_MAX_DIM_CNT) + 1U;  // Exceeds max dim count
 
   aclError ret = aclmdlSetInputDynamicDims(om2_model_id, dataset, 0, &dims);
   EXPECT_EQ(ret, ACL_ERROR_INVALID_PARAM);
