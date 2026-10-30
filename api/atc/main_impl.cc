@@ -804,6 +804,7 @@ class GFlagUtils {
       return false;
     }
     if ((FLAGS_mode != static_cast<int32_t>(RunMode::GEN_OM_MODEL)) &&
+        (FLAGS_mode != static_cast<int32_t>(RunMode::GEN_MOBILE_OM_MODEL)) &&
         (FLAGS_mode != static_cast<int32_t>(RunMode::GEN_EXE_OM_FOR_NANO)) &&
         (FLAGS_mode != static_cast<int32_t>(RunMode::ONLY_PRE_CHECK))) {
       return true;  // 其他情况不校验framework取值是否默认值-1
@@ -872,6 +873,7 @@ class GFlagUtils {
 
   static Status CheckFlags() {
     const bool is_mode_om = ((FLAGS_mode == static_cast<int32_t>(RunMode::GEN_OM_MODEL)) ||
+                             (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_MOBILE_OM_MODEL)) ||
                              (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_EXE_OM_FOR_NANO)) ||
                              (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_OM2_MODEL)));
 
@@ -1605,6 +1607,7 @@ static Status GenerateOfflineModel(GeGenerator &ge_generator, Graph graph, std::
   std::map<int32_t, OfflineModelFormat> flags_mode_map = {
       {GEN_EXE_OM_FOR_NANO, OfflineModelFormat::OM_FORMAT_NANO},
       {GEN_OM2_MODEL, OfflineModelFormat::OM_FORMAT_OM2},
+      {GEN_MOBILE_OM_MODEL, OfflineModelFormat::OM_FORMAT_MOBILE},
   };
 
   if (flags_mode_map.find(FLAGS_mode) != flags_mode_map.end()) {
@@ -1728,6 +1731,10 @@ Status GenerateModel(std::map<std::string, std::string> &options, const std::str
 }
 
 static void SetEnvForSingleOp(std::map<std::string, std::string> &options) {
+  // Carry ge.offlineMode=40 for mobile offline builds.
+  if (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_MOBILE_OM_MODEL)) {
+    options.emplace(ge::ir_option::OFFLINE_MODE, std::to_string(FLAGS_mode));
+  }
   std::string flag_on = "1";
   std::string flag_off = "0";
   options.emplace(STREAM_NUM, "1");  // single op only use one stream
@@ -1799,7 +1806,8 @@ Status CheckSingleOpOptions() {
   return SUCCESS;
 }
 
-Status BuildSingleOpModels(GeGenerator &generator, std::vector<SingleOpBuildParam> &build_params) {
+Status BuildSingleOpModels(GeGenerator &generator, std::vector<SingleOpBuildParam> &build_params,
+                           OfflineModelFormat om_format) {
   Status ret = SUCCESS;
   int32_t index = 0;
   for (auto &param : build_params) {
@@ -1808,7 +1816,8 @@ Status BuildSingleOpModels(GeGenerator &generator, std::vector<SingleOpBuildPara
       output_path = FLAGS_output + "/";
     }
     output_path += param.file_name;
-    ret = generator.BuildSingleOpModel(param.op_desc, param.inputs, param.outputs, output_path, param.compile_flag);
+    ret = generator.BuildSingleOpModel(param.op_desc, param.inputs, param.outputs, output_path, param.compile_flag,
+                                       om_format);
     if (ret != SUCCESS) {
       DOMI_LOGE("Compile op failed. ge ret = %u, op index = %d", ret, index);
       ret = FAILED;
@@ -1820,7 +1829,7 @@ Status BuildSingleOpModels(GeGenerator &generator, std::vector<SingleOpBuildPara
   return ret;
 }
 
-Status GenerateSingleOp(const std::string &json_file_path) {
+Status GenerateSingleOp(const std::string &json_file_path, OfflineModelFormat om_format) {
   GE_ASSERT_SUCCESS(CheckSingleOpOptions());
   std::map<std::string, std::string> options;
   // need to be changed when ge.ini plan is done
@@ -1851,7 +1860,7 @@ Status GenerateSingleOp(const std::string &json_file_path) {
     return FAILED;
   }
 
-  ret = BuildSingleOpModels(generator, build_params);
+  ret = BuildSingleOpModels(generator, build_params, om_format);
   (void)generator.Finalize();
   (void)GELib::GetInstance()->Finalize();
   return ret;
@@ -1878,6 +1887,11 @@ static Status AppendOptimizationOptions(std::map<std::string, std::string> &opti
 }
 
 void SetAtcBasicOptions(std::map<std::string, std::string> &options) {
+  // Carry ge.offlineMode=40 for mobile offline builds.
+  if (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_MOBILE_OM_MODEL)) {
+    options.insert(
+        std::pair<std::string, std::string>(std::string(ge::ir_option::OFFLINE_MODE), std::to_string(FLAGS_mode)));
+  }
   options.insert(std::pair<std::string, std::string>(std::string(OPTION_GRAPH_RUN_MODE), "0"));
   options.insert(std::pair<std::string, std::string>(std::string(FRAMEWORK_TYPE), std::to_string(FLAGS_framework)));
   options.insert(std::pair<std::string, std::string>(std::string(STREAM_NUM), std::to_string(1)));
@@ -2193,7 +2207,8 @@ long GetMemInfo(const std::string &key) {
 
 Status CheckAndRunSingleOp() {
   if ((FLAGS_display_model_info == "1") || (FLAGS_framework != -1) || (!FLAGS_insert_op_conf.empty()) ||
-      (FLAGS_mode != static_cast<int32_t>(RunMode::GEN_OM_MODEL))) {
+      ((FLAGS_mode != static_cast<int32_t>(RunMode::GEN_OM_MODEL)) &&
+       (FLAGS_mode != static_cast<int32_t>(RunMode::GEN_MOBILE_OM_MODEL)))) {
     std::string reason(
         "When --singleop is specified, --display_model_info=1, --framework, --insert_op_conf, "
         "and --mode values other than 0 are not supported.");
@@ -2202,7 +2217,10 @@ Status CheckAndRunSingleOp() {
     GELOGE(FAILED, "[Check][Parameter]%s", reason.c_str());
     return FAILED;
   }
-  return GenerateSingleOp(FLAGS_singleop);
+  const auto om_format = (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_MOBILE_OM_MODEL))
+                             ? OfflineModelFormat::OM_FORMAT_MOBILE
+                             : OfflineModelFormat::OM_FORMAT_DEFAULT;
+  return GenerateSingleOp(FLAGS_singleop, om_format);
 }
 
 int32_t OutputErrMessageToStdout() {
@@ -2228,6 +2246,7 @@ Status CheckRet(Status ret) {
       {RunMode::MODEL_TO_EXE_OM, "ATC convert model to execute-om "},
       {RunMode::GEN_EXE_OM_FOR_NANO, "ATC generate execute-om for nano "},
       {RunMode::GEN_OM2_MODEL, "ATC generate OM2 model "},
+      {RunMode::GEN_MOBILE_OM_MODEL, "ATC generate mobile offline model "},
   };
   string info = "";
   if (flags_mode_info_map.find(FLAGS_mode) != flags_mode_info_map.end()) {
@@ -2312,7 +2331,8 @@ bool IsGenerateOmMode() {
          (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_EXE_OM)) ||
          (FLAGS_mode == static_cast<int32_t>(RunMode::ONLY_PRE_CHECK)) ||
          (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_EXE_OM_FOR_NANO)) ||
-         (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_OM2_MODEL));
+         (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_OM2_MODEL)) ||
+         (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_MOBILE_OM_MODEL));
 }
 
 Status ReportInvalidRunMode() {
@@ -2325,6 +2345,12 @@ Status ReportInvalidRunMode() {
 Status RunAtcByMode(const std::map<std::string, std::string> &raw_options) {
   // 备份并清空注册信息map
   OperatorFactoryImpl::BackupAndClearRegInfoOnce();
+  if (FLAGS_soc_version.find("Kirin") == 0U) {
+    // Kirin only runs mobile offline models; keep other modes (convert/precheck/display) as-is.
+    if (FLAGS_mode == static_cast<int32_t>(RunMode::GEN_OM_MODEL)) {
+      FLAGS_mode = static_cast<int32_t>(RunMode::GEN_MOBILE_OM_MODEL);
+    }
+  }
   if (!FLAGS_singleop.empty()) {
     return CheckAndRunSingleOp();
   }

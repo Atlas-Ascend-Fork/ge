@@ -696,7 +696,8 @@ class UtestCustomOpsKernelInfoStore : public testing::Test {
     graph_options_ = GetThreadLocalContext().GetAllGraphOptions();
     session_options_ = GetThreadLocalContext().GetAllSessionOptions();
     global_options_ = GetThreadLocalContext().GetAllGlobalOptions();
-    GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, "KirinX90"}});
+    // Mirror the real build flow: Kirin builds carry ge.offlineMode=40.
+    GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, "KirinX90"}, {ge::ir_option::OFFLINE_MODE, "40"}});
   }
 
   void TearDown() override {
@@ -1558,6 +1559,28 @@ TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskOnMobileSocRejectsUpdateCallba
   EXPECT_EQ(g_both_refresh_interfaces_declare_count.load(), 0U);
 }
 
+// Mobile detection is driven by ge.offlineMode, not soc_version.
+TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskMobileModeFollowsOfflineModeNotSoc) {
+  const std::string kTestOpType = "TestMultipleLaunchesCustomOp_OfflineModeDecoupling";
+  auto creator = []() -> std::unique_ptr<BaseCustomOp> {
+    return std::make_unique<MockAnnotatedArgsWithMultipleLaunchesCustomOp>();
+  };
+  ASSERT_EQ(CustomOpFactory::RegisterCustomOpCreator(AscendString(kTestOpType.c_str()), creator), GRAPH_SUCCESS);
+
+  // Non-Kirin soc with offlineMode=40: mobile constraints apply.
+  GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, "Ascend910B"}, {ge::ir_option::OFFLINE_MODE, "40"}});
+  ExpectGenerateTaskFailedWithStatus(kTestOpType, INTERNAL_ERROR);
+
+  // Kirin soc with offlineMode=0: standard multi-task generation.
+  GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, "KirinX90"}, {ge::ir_option::OFFLINE_MODE, "0"}});
+  ComputeGraphPtr graph;
+  auto node = BuildStaticCustomNode(kTestOpType, graph);
+  ASSERT_NE(node, nullptr);
+  std::vector<domi::TaskDef> tasks;
+  EXPECT_EQ(GenerateTaskForNode(node, tasks), SUCCESS);
+  EXPECT_EQ(tasks.size(), 2U);
+}
+
 TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskOnMobileSocRejectsDefaultStrategy) {
   const std::string kTestOpType = "TestUnregisteredCustomOp_MobileDefaultStrategy_BuilderTest";
   EXPECT_EQ(CustomOpFactory::GetArgsRefreshStrategy(AscendString(kTestOpType.c_str())), ArgsRefreshStrategy::kNone);
@@ -2070,14 +2093,15 @@ TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskOnUnknownGraphDoesNotValidateE
 
 TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskOnUnknownGraphUsesBasicTaskForAnnotatedEagerOp) {
   const std::vector<std::pair<std::string, std::string>> cases = {
-      {"KirinX90", "TestUnknownGraphAnnotatedEagerOp_Mobile"},
-      {"Ascend910B", "TestUnknownGraphAnnotatedEagerOp_NonMobile"},
+      {"40", "TestUnknownGraphAnnotatedEagerOp_Mobile"},
+      {"0", "TestUnknownGraphAnnotatedEagerOp_NonMobile"},
   };
 
   for (const auto &test_case : cases) {
-    const std::string &soc_version = test_case.first;
+    const std::string &offline_mode = test_case.first;
     const std::string &op_type = test_case.second;
-    GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, soc_version}});
+    GetThreadLocalContext().SetGraphOption(
+        {{ge::SOC_VERSION, "KirinX90"}, {ge::ir_option::OFFLINE_MODE, offline_mode}});
     g_annotated_eager_declare_count.store(0U);
     auto creator = []() -> std::unique_ptr<BaseCustomOp> {
       return std::make_unique<MockAnnotatedArgsAndEagerCustomOp>();
@@ -2092,9 +2116,9 @@ TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskOnUnknownGraphUsesBasicTaskFor
     owner_graph->SetGraphUnknownFlag(true);
 
     std::vector<domi::TaskDef> tasks;
-    EXPECT_EQ(GenerateTaskForNode(node, tasks), SUCCESS) << "soc_version=" << soc_version;
-    EXPECT_EQ(g_annotated_eager_declare_count.load(), 0U) << "soc_version=" << soc_version;
-    EXPECT_EQ(tasks.size(), 1U) << "soc_version=" << soc_version;
+    EXPECT_EQ(GenerateTaskForNode(node, tasks), SUCCESS) << "offline_mode=" << offline_mode;
+    EXPECT_EQ(g_annotated_eager_declare_count.load(), 0U) << "offline_mode=" << offline_mode;
+    EXPECT_EQ(tasks.size(), 1U) << "offline_mode=" << offline_mode;
     if (tasks.size() != 1U) {
       continue;
     }

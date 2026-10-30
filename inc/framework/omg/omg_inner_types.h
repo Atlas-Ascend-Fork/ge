@@ -35,6 +35,7 @@ enum RunMode {
   GEN_EXE_OM = 10,           // generate exe-om file
   MODEL_TO_EXE_OM = 20,      // convert om to exe-om file
   GEN_EXE_OM_FOR_NANO = 30,  // convert om to exe-om file for nano
+  GEN_MOBILE_OM_MODEL = 40,  // generate mobile offline model file
 };
 
 struct OmgContext {

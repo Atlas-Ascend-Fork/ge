@@ -89,7 +89,8 @@ class UtestCustomOpsKernelInfoStoreCustomData : public testing::Test {
     graph_options_ = GetThreadLocalContext().GetAllGraphOptions();
     session_options_ = GetThreadLocalContext().GetAllSessionOptions();
     global_options_ = GetThreadLocalContext().GetAllGlobalOptions();
-    GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, "KirinX90"}});
+    // Mirror the real build flow: Kirin builds carry ge.offlineMode=40.
+    GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, "KirinX90"}, {ge::ir_option::OFFLINE_MODE, "40"}});
   }
 
   void TearDown() override {

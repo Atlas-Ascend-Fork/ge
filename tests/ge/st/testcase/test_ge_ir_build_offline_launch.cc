@@ -138,6 +138,13 @@ std::map<AscendString, AscendString> MakeAnnotatedArgsMobileInitOptionsForSt() {
   return init_options;
 }
 
+std::map<AscendString, AscendString> MakeAnnotatedArgsMobileBuildOptionsForSt() {
+  std::map<AscendString, AscendString> build_options;
+  build_options.emplace(ge::ir_option::INPUT_FORMAT, "ND");
+  build_options.emplace(ge::ir_option::OFFLINE_MODE, "40");
+  return build_options;
+}
+
 OpDescPtr MakeAnnotatedArgsContextOpDescForSt() {
   auto op_desc = std::make_shared<OpDesc>("annotated_args_context_st", "AnnotatedArgsContextSt");
   const GeTensorDesc tensor_desc(GeShape({2, 2}), FORMAT_ND, DT_FLOAT16);
@@ -678,8 +685,7 @@ TEST_F(GeIrBuildAnnotatedArgsTest, AnnotatedArgsMobileBuildDoesNotWriteCustomOps
   ScopedRealCustomOpsKernelBuilderForSt custom_builder_guard;
 
   auto graph = BuildAnnotatedArgsMobileGraphForSt();
-  std::map<AscendString, AscendString> build_options;
-  build_options.emplace(ge::ir_option::INPUT_FORMAT, "ND");
+  auto build_options = MakeAnnotatedArgsMobileBuildOptionsForSt();
   ModelBufferData model_buffer_data{};
   EXPECT_EQ(aclgrphBuildModel(graph, build_options, model_buffer_data), SUCCESS);
   aclgrphBuildFinalize();
@@ -721,8 +727,7 @@ TEST_F(GeIrBuildAnnotatedArgsTest, AnnotatedArgsMobileBuildSupportsWorkspaceProb
   ScopedRealCustomOpsKernelBuilderForSt custom_builder_guard;
 
   auto graph = BuildAnnotatedArgsMobileGraphForSt(kAnnotatedArgsWorkspaceOpType);
-  std::map<AscendString, AscendString> build_options;
-  build_options.emplace(ge::ir_option::INPUT_FORMAT, "ND");
+  auto build_options = MakeAnnotatedArgsMobileBuildOptionsForSt();
   ModelBufferData model_buffer_data{};
   EXPECT_EQ(aclgrphBuildModel(graph, build_options, model_buffer_data), SUCCESS);
   EXPECT_EQ(g_annotated_args_workspace_declare_count.load(std::memory_order_relaxed), 1U);
@@ -757,8 +762,7 @@ TEST_F(GeIrBuildAnnotatedArgsTest, AnnotatedArgsMobileBuildFailsForInvalidLaunch
     ScopedRealCustomOpsKernelBuilderForSt custom_builder_guard;
 
     auto graph = BuildAnnotatedArgsMobileGraphForSt(invalid_case.op_type);
-    std::map<AscendString, AscendString> build_options;
-    build_options.emplace(ge::ir_option::INPUT_FORMAT, "ND");
+    auto build_options = MakeAnnotatedArgsMobileBuildOptionsForSt();
     ModelBufferData model_buffer_data{};
     EXPECT_NE(aclgrphBuildModel(graph, build_options, model_buffer_data), SUCCESS);
     EXPECT_EQ(model_buffer_data.data, nullptr);
@@ -782,8 +786,7 @@ TEST_F(GeIrBuildAnnotatedArgsTest, AnnotatedArgsMobileBuildExercisesAnnotatedArg
   ScopedRealCustomOpsKernelBuilderForSt custom_builder_guard;
 
   auto graph = BuildAnnotatedArgsMobileGraphForSt(kAnnotatedArgsCopyMoveOpType);
-  std::map<AscendString, AscendString> build_options;
-  build_options.emplace(ge::ir_option::INPUT_FORMAT, "ND");
+  auto build_options = MakeAnnotatedArgsMobileBuildOptionsForSt();
   ModelBufferData model_buffer_data{};
   EXPECT_EQ(aclgrphBuildModel(graph, build_options, model_buffer_data), SUCCESS);
   aclgrphBuildFinalize();
@@ -803,8 +806,7 @@ TEST_F(GeIrBuildAnnotatedArgsTest, AnnotatedArgsMobileBuildFailsWhenDeclareLaunc
   ScopedRealCustomOpsKernelBuilderForSt custom_builder_guard;
 
   auto graph = BuildAnnotatedArgsMobileGraphForSt(kAnnotatedArgsDeclareFailOpType);
-  std::map<AscendString, AscendString> build_options;
-  build_options.emplace(ge::ir_option::INPUT_FORMAT, "ND");
+  auto build_options = MakeAnnotatedArgsMobileBuildOptionsForSt();
   ModelBufferData model_buffer_data{};
   EXPECT_NE(aclgrphBuildModel(graph, build_options, model_buffer_data), SUCCESS);
   EXPECT_EQ(model_buffer_data.data, nullptr);

@@ -65,10 +65,6 @@ constexpr const char_t *kCustomLaunchPrefix = "_custom_launch_";
 constexpr const char_t *kDefaultCustomKernelMagic = "RT_DEV_BINARY_MAGIC_ELF_AIVEC";
 constexpr size_t kWorkspaceAlignment = 512U;
 
-bool IsMobileSocVersion(const std::string &soc_version) {
-  return (soc_version == "KirinX90") || (soc_version == "Kirin9030");
-}
-
 void GetStorageShape(const GeTensorDesc &tensor_desc, gert::StorageShape &storage_shape) {
   const auto &storage_dims = tensor_desc.GetShape().GetDims();
   for (const auto &dim : storage_dims) {
@@ -1059,7 +1055,10 @@ Status CustomOpsKernelBuilder::GenerateTask(const Node &node, RunContext &contex
   GE_ASSERT_NOTNULL(owner_graph, "Owner graph of custom op %s(%s) is null.", node.GetNamePtr(), node.GetTypePtr());
   ArgsRefreshStrategy args_refresh_strategy = ArgsRefreshStrategy::kNone;
   if (!owner_graph->GetGraphUnknownFlag()) {
-    const bool is_mobile_omc = IsMobileSocVersion(soc_version);
+    // Mobile offline build is identified by ge.offlineMode, not soc_version.
+    std::string offline_mode;
+    (void)ge::GetContext().GetOption(ge::ir_option::OFFLINE_MODE, offline_mode);
+    const bool is_mobile_omc = (offline_mode == std::to_string(static_cast<int32_t>(RunMode::GEN_MOBILE_OM_MODEL)));
     args_refresh_strategy = CustomOpFactory::GetArgsRefreshStrategy(AscendString(op_desc->GetTypePtr()));
     if (args_refresh_strategy == ArgsRefreshStrategy::kAnnotatedArgs) {
       // 端侧场景下的自定义算子只支持单任务的 AnnotatedArgsOp 生成方式，非端侧场景下的自定义算子支持多任务的
