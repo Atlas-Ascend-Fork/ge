@@ -3930,14 +3930,13 @@ ComputeGraphPtr MemConflictShareGraph::BuildNoPaddingContinuousInAndNoPaddingCon
  *    phony_concat2
  */
 ComputeGraphPtr MemConflictShareGraph::BuildNoPaddingContinuousInAndNoPaddingContinuousInCrossGraph() {
-  const auto c = OP_CFG(RELU).InCnt(2).OutCnt(1).Build("c");
   DEF_GRAPH(g1) {
     CHAIN(NODE("a", RELU)->EDGE(0, 1)->NODE("phony_concat1", PHONYCONCAT));
     CHAIN(NODE("b", RELU)->EDGE(0, 0)->NODE("phony_concat1", PHONYCONCAT));
     CHAIN(NODE("a", RELU)->EDGE(0, 0)->NODE("phony_concat2", PHONYCONCAT));
     CHAIN(NODE("b", RELU)->EDGE(0, 1)->NODE("phony_concat2", PHONYCONCAT));
-    CHAIN(NODE("phony_concat1", PHONYCONCAT)->NODE(c));
-    CHAIN(NODE("phony_concat2", PHONYCONCAT)->NODE(c));
+    CHAIN(NODE("phony_concat1", PHONYCONCAT)->NODE("c", RELU));
+    CHAIN(NODE("phony_concat2", PHONYCONCAT)->NODE("c", RELU));
   };
   auto graph = ToComputeGraph(g1);
 
@@ -3952,9 +3951,6 @@ ComputeGraphPtr MemConflictShareGraph::BuildNoPaddingContinuousInAndNoPaddingCon
 
   SetNoPaddingContinuousInput(graph, "phony_concat1");
   SetNoPaddingContinuousInput(graph, "phony_concat2");
-  // 显式声明图输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-  // 本图需完整保留以校验 MemLayout 冲突插入行为
-  (void)graph->AddOutputNodeByIndex(graph->FindNode("c"), 0);
   // 如果不设置，会被设置为动态shape图
   AttrUtils::SetBool(graph, ATTR_NAME_NO_NEED_DYNAMIC_SHAPE_PARTITION, true);
   return graph;
@@ -4185,22 +4181,16 @@ ComputeGraphPtr MemConflictShareGraph::BuildNoPaddingContinuousOutAndNormalOutGr
  *       swt1地址不可刷新，hcom1 hcom2 特殊内存类型P2P
  */
 ComputeGraphPtr MemConflictShareGraph::BuildNotSupportRefreshInputAndOtherConflictTypeGraph() {
-  const auto swt = OP_CFG(LABELSWITCHBYINDEX).InCnt(3).OutCnt(1).Build("swt");
-  const auto hcom2 = OP_CFG(HCOMBROADCAST).InCnt(1).OutCnt(1).Build("hcom2");
   DEF_GRAPH(g1) {
-    CHAIN(NODE("op1", RELU)->EDGE(0, 0)->NODE(swt));
-    CHAIN(NODE("hcom1", HCOMBROADCAST)->EDGE(0, 1)->NODE(swt));
-    CHAIN(NODE("op2", RELU)->EDGE(0, 2)->NODE(swt));
-    CHAIN(NODE("op2", RELU)->EDGE(0, 0)->NODE(hcom2));
+    CHAIN(NODE("op1", RELU)->EDGE(0, 0)->NODE("swt", LABELSWITCHBYINDEX));
+    CHAIN(NODE("hcom1", HCOMBROADCAST)->EDGE(0, 1)->NODE("swt", LABELSWITCHBYINDEX));
+    CHAIN(NODE("op2", RELU)->EDGE(0, 2)->NODE("swt", LABELSWITCHBYINDEX));
+    CHAIN(NODE("op2", RELU)->EDGE(0, 0)->NODE("hcom2", HCOMBROADCAST));
   };
   auto graph = ToComputeGraph(g1);
 
   SetRtsSpecialTypeInput(graph, "hcom2", RT_MEMORY_P2P_DDR);
   SetRtsSpecialTypeOutput(graph, "hcom1", RT_MEMORY_P2P_DDR);
-  // 显式声明图输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-  // 本图需完整保留以校验 MemLayout 冲突插入行为
-  (void)graph->AddOutputNodeByIndex(graph->FindNode("swt"), 0);
-  (void)graph->AddOutputNodeByIndex(graph->FindNode("hcom2"), 0);
   // 如果不设置，会被设置为动态shape图
   AttrUtils::SetBool(graph, ATTR_NAME_NO_NEED_DYNAMIC_SHAPE_PARTITION, true);
   return graph;
@@ -4333,19 +4323,13 @@ ComputeGraphPtr MemConflictShareGraph::BuildRtsSpecialInAndRtsSpecialInByRefGrap
  *   (p2p in)       (RT_MEMORY_TS input)
  */
 ComputeGraphPtr MemConflictShareGraph::BuildRtsSpecialInAndOtherTypeGraph() {
-  const auto hcom = OP_CFG(HCOMBROADCAST).InCnt(1).OutCnt(1).Build("hcom");
-  const auto memcpy_async = OP_CFG(MEMCPYASYNC).InCnt(1).OutCnt(1).Build("rtMemCpyAsync");
   DEF_GRAPH(g1) {
-    CHAIN(NODE("op1", RELU)->EDGE(0, 0)->NODE(hcom));
-    CHAIN(NODE("op1", RELU)->EDGE(0, 0)->NODE(memcpy_async));
+    CHAIN(NODE("op1", RELU)->EDGE(0, 0)->NODE("hcom", HCOMBROADCAST));
+    CHAIN(NODE("op1", RELU)->EDGE(0, 0)->NODE("rtMemCpyAsync", MEMCPYASYNC));
   };
   auto graph = ToComputeGraph(g1);
   SetRtsSpecialTypeInput(graph, "hcom", RT_MEMORY_P2P_DDR);
   SetRtsSpecialTypeInput(graph, "rtMemCpyAsync", RT_MEMORY_TS);
-  // 显式声明图输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-  // 本图需完整保留以校验 MemLayout 冲突插入行为
-  (void)graph->AddOutputNodeByIndex(graph->FindNode("hcom"), 0);
-  (void)graph->AddOutputNodeByIndex(graph->FindNode("rtMemCpyAsync"), 0);
   // 如果不设置，会被设置为动态shape图
   AttrUtils::SetBool(graph, ATTR_NAME_NO_NEED_DYNAMIC_SHAPE_PARTITION, true);
   return graph;
