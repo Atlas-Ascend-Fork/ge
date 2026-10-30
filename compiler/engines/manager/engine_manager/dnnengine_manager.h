@@ -82,6 +82,13 @@ class DNNEngineManager {
  private:
   DNNEngineManager();
   ~DNNEngineManager();
+  // 候选引擎CheckSupported后的循环控制：kContinue继续遍历 / kBreakLoop跳出候选循环 / kFatal直接失败
+  enum class EngineCheckStatus { kContinue, kBreakLoop, kFatal };
+  // 对单个候选引擎执行CheckSupported并落盘命中结果；返回命中引擎名（空表示未命中）
+  std::string ApplyEngineCheckSupport(const ge::NodePtr &node_ptr, const OpDescPtr &op_desc, const OpInfo &op_info,
+                                      OpInfo &matched_op_info, std::map<std::string, std::string> &unsupported_reasons,
+                                      EngineCheckStatus &status);
+  void RecordCheckSupportCost(const std::string &kernel_name, uint64_t start_time);
   Status Initialize(const std::map<std::string, std::string> &options);
   Status Finalize();
   Status ReadJsonFile(const std::string &file_path, JsonHandle handle);

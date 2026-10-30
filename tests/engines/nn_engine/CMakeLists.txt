@@ -13,6 +13,16 @@ if (ENABLE_LLT_COV)
     set(CMAKE_CXX_FLAGS "${COVERAGE_COMPILER_FLAGS}")
 endif()
 
+# 同仓构建时优先链接源码树内构建的 libgraph.so/libgraph_base.so，避免测试链到安装包中不含最新符号的旧库。
+# find_module 遇到已存在的 TARGET 会直接复用，因此在此预定义 *_pkg 别名即可覆盖安装包路径。
+# graph 直接依赖 graph_base，两者必须同源，否则运行期会因同名库混用出现行为不一致。
+if (TARGET graph AND NOT TARGET graph_pkg)
+    add_library(graph_pkg ALIAS graph)
+endif()
+if (TARGET graph_base AND NOT TARGET graph_base_pkg)
+    add_library(graph_base_pkg ALIAS graph_base)
+endif()
+
 if (NOT DEFINED ASCEND_INSTALL_PATH)
     message("Find graph in fix path /usr/local/Ascend/cann/lib64")
     find_module(graph_pkg libgraph.so /usr/local/Ascend/cann/lib64)

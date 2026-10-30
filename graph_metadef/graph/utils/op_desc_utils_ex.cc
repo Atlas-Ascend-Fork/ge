@@ -196,7 +196,7 @@ graphStatus OpDescUtilsEx::CallInferFunc(const OpDescPtr &op_desc, Operator &op)
         "proceeds only if has_io is true and either has_ir or has_infer_func is true",
         op_desc->GetNamePtr(), op_desc->GetTypePtr(), has_io, is_exist_op, has_infer_func);
     ret = GRAPH_PARAM_INVALID;
-  } else if (CustomOpFactory::IsExistOp(op_desc->GetTypePtr())) {
+  } else if (CustomOpFactory::IsExistOp(op_desc->GetTypePtr(), OpRegistrationPriority::kTop, OpEngine::kCustom)) {
     ret = InferCustomOpShape(op_desc, op);
   } else {
     // priority of use infer func v1

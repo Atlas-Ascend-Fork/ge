@@ -260,6 +260,9 @@ graphStatus Execute(gert::EagerOpExecutionContext *ctx) override;
 | `ctx->GetStream()` | 获取执行流 |
 | `ctx->GetOutputTensor(index)` | 获取已分配的输出 Tensor |
 | `ctx->MakeOutputRefInput(out_idx, in_idx)` | 输出引用输入地址（零拷贝） |
+| `ctx->RequestAttachedStream(key, flags)` | 按key申请框架托管的辅流（无特殊标志时flags填0） |
+| `ctx->GetContextValue(key, value)` | 查询运行期交互参数（静态图标志、地址刷新、根图id、节点id、vector core数量） |
+| `ctx->GetOption(key, value)` | 获取运行期选项（全局/会话/图三级合并语义） |
 
 **典型流程：**
 

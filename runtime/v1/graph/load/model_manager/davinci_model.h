@@ -1013,6 +1013,9 @@ class DavinciModel {
 
   uint32_t GetStreamFlagById(uint32_t stream_id) const;
 
+  // 根图graph id（恒为根图，不受子图影响）
+  uint32_t GetRootGraphId() const;
+
   bool IsStaticAddrFixed() const {
     return is_static_model_addr_fixed_;
   }
@@ -1653,7 +1656,6 @@ class DavinciModel {
   std::unordered_set<std::string> hccl_group_id_set_;
   std::vector<aclrtEvent> hccl_group_ordered_event_list_;
   std::vector<aclrtStream> hccl_group_ordered_stream_list_;  // 流资源为hccl管理
-
   std::mutex hccl_task_stream_set_mutex_;
   std::unordered_set<uint64_t> hccl_task_stream_set_;  // hccl task所在的流
   std::map<uint64_t, std::vector<size_t>> stream_to_task_index_list_;

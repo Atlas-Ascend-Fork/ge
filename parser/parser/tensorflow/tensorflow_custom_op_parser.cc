@@ -467,7 +467,9 @@ Status TensorFlowCustomOpParser::RegisteredTfaOps() {
   registered_set.reserve(all_registered_ops.size());
   for (const auto &op : all_registered_ops) {
     const char *p = op.GetString();
-    if (p != nullptr) {
+    // 与 ParseProto 的 custom_nodes_map 口径保持一致：仅显式 (kTop, kCustom) 注册项参与 TF 注册。
+    // GetAllRegisteredOps 为认领口径（含 kBottom 及其它引擎），不能直接作为 TF 注册依据。
+    if ((p != nullptr) && ge::CustomOpFactory::IsExistOp(op, ge::OpRegistrationPriority::kTop, ge::OpEngine::kCustom)) {
       registered_set.emplace(p);
     }
   }

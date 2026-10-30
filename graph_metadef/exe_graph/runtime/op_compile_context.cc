@@ -81,4 +81,10 @@ ge::graphStatus OpCompileContext::GetPlatformInfos(fe::PlatFormInfos &platform_i
       fe::PlatformInfoManager::GeInstance().GetPlatformInfoWithOutSocVersion(platform_info, optional_infos);
   return res;
 }
+
+bool OpCompileContext::GetContextValue(const ContextParam key, uint64_t &value) const {
+  (void)key;
+  (void)value;
+  return false;
+}
 }  // namespace gert

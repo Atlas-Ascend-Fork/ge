@@ -30,6 +30,24 @@ struct KernelArgs {
   KernelArgs() : args_data(nullptr), args_size(0U), reserved{}, placement(ge::kPlacementHost), placement_reserved_{} {}
 };
 
+/**
+ * GE与自定义算子之间的上下文交互参数。
+ * 统一按数值取值语义暴露（布尔参数取值为0/1）；数值类参数按需扩展，
+ * 新增参数只需增加枚举值，不改变接口签名。
+ *
+ * 不同上下文支持的参数子集不同，未设置的参数查询返回false（不写出value）。
+ */
+enum class ContextParam : uint32_t {
+  kStaticModel = 0,            // 是否运行于静态图（含动态shape的静态子图），取值0/1
+  kAddressRefreshEnabled = 1,  // 地址是否需要刷新，取值0/1
+  kGraphId = 2,                // 根图graph id（恒为根图，不受子图影响）
+  kNodeId = 3,                 // 算子节点在图内的id（图内唯一）
+  kVectorCoreNum = 4,          // 算子节点可用的vector core数量
+  kAiCoreNum = 5,              // 算子节点可用的AI core数量
+  kAiCpuNum = 6,               // 算子节点可用的AICPU核数量
+  kNum,                        // 枚举数量哨兵，必须保持在最后；后续新增枚举值只能插在本项之前
+};
+
 }  // namespace gert
 
 #endif  // METADEF_INC_EXE_GRAPH_RUNTIME_KERNEL_ARGS_H_

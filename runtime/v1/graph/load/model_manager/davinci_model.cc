@@ -1245,6 +1245,11 @@ Status DavinciModel::Init(const ModelParam &param, void *outer_fm_mem) {
   // inference will use default graph_id 0;
   runtime_param_.graph_id = compute_graph->GetGraphID();
   runtime_param_.graph_name = compute_graph->GetName();
+  // 根图graph id：顶层模型（非known node）自身即为根图；子图模型的根图id由子图路径
+  // （KnownNodeExecutor / RT2 known subgraph）经SetRootGraphId提前注入，此处不覆盖
+  if (!known_node_) {
+    runtime_param_.root_graph_id = runtime_param_.graph_id;
+  }
 
   GetStageTimestampStart(kInitMdlMem);
   GELOGI("Known node:%d, refreshable:%d, model_id:%u, graph_id:%u, graph_name:%s.", static_cast<int32_t>(known_node_),
@@ -9620,6 +9625,10 @@ Status DavinciModel::MallocPhysicalMemory() {
 
 uint32_t DavinciModel::GetGraphId() const {
   return known_node_ ? runtime_param_.root_graph_id : runtime_param_.graph_id;
+}
+
+uint32_t DavinciModel::GetRootGraphId() const {
+  return runtime_param_.root_graph_id;
 }
 
 std::string DavinciModel::GetWeightsMemId() const {

@@ -84,6 +84,8 @@ const std::string kTaskTypeFftsPlus = "FFTS_PLUS";
 const std::string kEngineNameVectorCore = "VectorEngine";
 
 const std::string kEngineNameHccl = "ops_kernel_info_hccl";
+// HCCL引擎（DNNEngine）注册名，HCCL自定义算子需落到该引擎以复用独立流等流分配特性
+constexpr const char_t *const kEngineNameDnnHccl = "DNN_HCCL";
 const std::string kEngineNameRts = "DNN_VM_RTS_OP_STORE";
 const std::string kEngineNameHostCpu = "DNN_VM_HOST_CPU_OP_STORE";
 const std::string kEngineNameGeLocal = "DNN_VM_GE_LOCAL_OP_STORE";

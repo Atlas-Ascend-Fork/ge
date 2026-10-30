@@ -20,6 +20,8 @@
 
 ```c++
 rtStream RequestAttachedStream(const ge::AscendString &key)
+// 指定 RTS 流创建标志
+rtStream RequestAttachedStream(const ge::AscendString &key, uint32_t flags)
 ```
 
 ## 参数说明
@@ -27,6 +29,7 @@ rtStream RequestAttachedStream(const ge::AscendString &key)
 | 参数名 | 输入/输出 | 描述 |
 | --- | --- | --- |
 | key | 输入 | 辅流复用 key。不能为空字符串，为空时返回nullptr。 |
+| flags | 输入 | 流创建标志，按位组合的原值（如`RT_STREAM_PERSISTENT`、`RT_STREAM_FORCE_COPY`）。仅首次创建辅流时生效，复用命中时忽略；不需要特殊标志时填0，按框架默认创建参数建流。 |
 
 ## 返回值说明
 
@@ -46,13 +49,14 @@ rtStream RequestAttachedStream(const ge::AscendString &key)
 
 ```c++
 ge::graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
-  // 按 key 申请框架托管的辅流
-  gert::rtStream aux_stream = ctx->RequestAttachedStream("eager_aux");
+  // 按key申请框架托管的辅流，并指定流创建标志
+  gert::rtStream aux_stream = ctx->RequestAttachedStream("eager_aux",
+                                                         RT_STREAM_PERSISTENT | RT_STREAM_FORCE_COPY);
   if (aux_stream == nullptr) {
     return ge::GRAPH_FAILED;
   }
-  // 同 key 再次申请：同一模型实例内返回同一句柄
-  gert::rtStream reuse_stream = ctx->RequestAttachedStream("eager_aux");
+  // 同key再次申请：同一模型实例内返回同一句柄（此时flags被忽略）
+  gert::rtStream reuse_stream = ctx->RequestAttachedStream("eager_aux", 0U);
   if (reuse_stream != aux_stream) {
     return ge::GRAPH_FAILED;
   }

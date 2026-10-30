@@ -24,7 +24,7 @@ bool AttachedStreamCollection::IsValidKey(const AscendString &key) const {
   return true;
 }
 
-gert::rtStream AttachedStreamCollection::RequestAttachedStream(const AscendString &key) {
+gert::rtStream AttachedStreamCollection::RequestAttachedStream(const AscendString &key, uint32_t flags) {
   if (!IsValidKey(key) || model_ == nullptr) {
     if (model_ == nullptr) {
       GELOGE(PARAM_INVALID, "Cannot request eager attached stream without rt model.");
@@ -34,11 +34,11 @@ gert::rtStream AttachedStreamCollection::RequestAttachedStream(const AscendStrin
   const std::string value(key.GetString());
   const auto found = streams_.find(value);
   if (found != streams_.end()) {
-    return found->second;
+    return found->second;  // 复用命中：flags仅影响新建，此处忽略
   }
 
   rtStream_t stream = nullptr;
-  if (rtStreamCreateWithFlags(&stream, priority_, stream_flags_) != RT_ERROR_NONE) {
+  if (rtStreamCreateWithFlags(&stream, priority_, stream_flags_ | flags) != RT_ERROR_NONE) {
     GELOGE(FAILED, "Failed to create eager attached stream, key=%s.", value.c_str());
     return nullptr;
   }

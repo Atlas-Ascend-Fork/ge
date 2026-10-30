@@ -254,6 +254,9 @@ graphStatus Execute(gert::EagerOpExecutionContext *ctx) override;
 | `ctx->GetStream()` | Get execution stream |
 | `ctx->GetOutputTensor(index)` | Get already allocated output Tensor |
 | `ctx->MakeOutputRefInput(out_idx, in_idx)` | Output references input address (zero-copy) |
+| `ctx->RequestAttachedStream(key, flags)` | Request framework-managed attached stream by key (fill flags with 0 when no special flags needed) |
+| `ctx->GetContextValue(key, value)` | Query runtime interaction parameters (static graph flag, address refresh, root graph id, node id, vector core count) |
+| `ctx->GetOption(key, value)` | Get runtime options (global/session/graph three-level merge semantics) |
 
 **Typical Flow:**
 

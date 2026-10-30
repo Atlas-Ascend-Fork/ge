@@ -37,7 +37,7 @@ class Rt2AttachedStreamCollection final : public AttachedStreamProvider {
   Rt2AttachedStreamCollection(const Rt2AttachedStreamCollection &) = delete;
   Rt2AttachedStreamCollection &operator=(const Rt2AttachedStreamCollection &) = delete;
 
-  rtStream RequestAttachedStream(const ge::AscendString &key) override;
+  rtStream RequestAttachedStream(const ge::AscendString &key, uint32_t flags) override;
 
   /// 同步并销毁全部辅流；幂等。生产路径仅由析构函数调用，公开是为便于单测直接校验销毁时序
   void Destroy();

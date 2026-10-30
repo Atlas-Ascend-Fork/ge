@@ -11,6 +11,7 @@
 #ifndef CANN_GRAPH_ENGINE_OP_COMPILE_CONTEXT_H
 #define CANN_GRAPH_ENGINE_OP_COMPILE_CONTEXT_H
 
+#include "exe_graph/runtime/kernel_args.h"
 #include "exe_graph/runtime/extended_kernel_context.h"
 #include "graph/tensor.h"
 #include "platform/platform_infos_def.h"
@@ -85,6 +86,20 @@ class OpCompileContext : public ExtendedKernelContext {
    * @return 状态码
    */
   ge::graphStatus GetPlatformInfos(fe::PlatFormInfos &platform_info, fe::OptionalInfos &optional_infos) const;
+
+  /**
+   * 查询GE与自定义算子之间的编译期上下文参数取值。
+   * 与运行期接口同为数值取值语义；编译期不可确定的参数（如地址刷新使能）返回false。
+   * @param key 交互参数
+   * @param value 输出取值
+   * @return 成功返回true；key未定义、参数未设置或当前上下文不可用时返回false（不写出value）
+   */
+  bool GetContextValue(ContextParam key, uint64_t &value) const;
+
+  enum class AdditionalOutputIndex : uint32_t {
+    kContextInfo = 0,  // 编译期上下文伴生信息
+    kNum,              // 枚举数量哨兵，必须保持在最后；后续新增槽位只能插在本项之前
+  };
 };
 
 }  // namespace gert

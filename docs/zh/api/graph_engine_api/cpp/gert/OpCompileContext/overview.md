@@ -17,4 +17,5 @@ const Tensor *GetOptionalInputTensor(size_t ir_index) const
 const Tensor *GetDynamicInputTensor(size_t ir_index, size_t relative_index) const
 ge::graphStatus GetOption(const ge::AscendString &option_key, ge::AscendString &option) const
 ge::graphStatus GetPlatformInfos(fe::PlatFormInfos &platform_info, fe::OptionalInfos& optional_infos) const
+bool GetContextValue(ContextParam key, uint64_t &value) const
 ```

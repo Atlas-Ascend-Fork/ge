@@ -367,7 +367,7 @@ Status ConstantFoldingPass::ComputeWithHostCpuCustomOp(const NodePtr &node, cons
                                                        std::vector<GeTensorPtr> &outputs) {
   const std::string op_type = NodeUtils::GetNodeType(node);
   const AscendString op_type_str(op_type.c_str());
-  if (!CustomOpFactory::IsExistOp(op_type_str, OpBackend::kHostCPU)) {
+  if (!CustomOpFactory::IsExistOp(op_type_str, OpBackend::kHostCPU, OpRegistrationPriority::kTop, OpEngine::kCustom)) {
     GELOGD("Op of type %s is not supported by host cpu custom op.", op_type.c_str());
     return UNSUPPORTED;
   }

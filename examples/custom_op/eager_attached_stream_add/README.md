@@ -15,7 +15,7 @@
 
 | # | 验证项 | 通过条件 |
 |---|--------|---------|
-| ① | 按 key 申请辅流 | `RequestAttachedStream("eager_aux")` 返回非空指针 |
+| ① | 按key申请辅流 | `RequestAttachedStream("eager_aux", 0U)`返回非nullptr |
 | ② | 辅流 kernel 下发 | `aclrtLaunchKernelV2(..., 辅流)` 成功 |
 | ③ | 重放精度 | 模型重放多轮后 z = x + y 全部正确 |
 
@@ -29,7 +29,7 @@ Session::AddGraph
   └─ 模型加载（DoTaskSink）
       └─ CustomTaskInfo::Distribute
           └─ EagerExecuteOp::Execute（调用一次）
-              ├─ ctx->RequestAttachedStream("eager_aux")     → 返回框架托管的物理辅流
+              ├─ ctx->RequestAttachedStream("eager_aux", 0U)  → 返回框架托管的物理辅流
               └─ aclrtLaunchKernelV2(..., 辅流)               → kernel 下发到辅流
 Session::ExecuteGraphWithStreamAsync
   └─ 模型重放（辅流上的 task 重复执行）
