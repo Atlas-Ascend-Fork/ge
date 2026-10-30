@@ -18,7 +18,6 @@
 #include <vector>
 
 #include "common/helper/custom_op_registry_builder.h"
-#include "graph/custom_op_registry.h"
 #include "common/helper/custom_op_so_loader.h"
 #include "common/model/ge_root_model.h"
 #include "external/graph/custom_op.h"
@@ -37,7 +36,7 @@ Status ValidateCustomOpNodeDeserialized(const NodePtr &node, const CustomOpRegis
 
   const std::string op_type = node->GetType();
   const AscendString ascend_op_type(op_type.c_str());
-  if (!registry->IsCustomOpToBeCollected(ascend_op_type)) {
+  if (!registry->HasCreator(ascend_op_type)) {
     GELOGD("[CUSTOM OP] op %s is not found in registry.", op_type.c_str());
     return SUCCESS;
   }
@@ -87,8 +86,7 @@ Status CollectCustomOpTypesFromGraph(const ComputeGraphPtr &graph, const CustomO
   GE_ASSERT_NOTNULL(registry);
   for (const auto &node : graph->GetAllNodes()) {
     const std::string op_type = node->GetType();
-    const AscendString ascend_op_type(op_type.c_str());
-    if (registry->IsCustomOpToBeCollected(ascend_op_type)) {
+    if (registry->HasCreator(AscendString(op_type.c_str()))) {
       (void)used_custom_op_types.insert(op_type);
     }
   }

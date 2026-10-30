@@ -7085,18 +7085,6 @@ TEST_F(UtestDavinciModel, NnExecute_LaunchKfcEvent_Ok) {
   dlog_setlevel(GE_MODULE_NAME, DLOG_ERROR, 0);
 }
 
-TEST_F(UtestDavinciModel, Init_RootGraphIdForStaticModel) {
-  // 顶层静态图模型自身即根图：root_graph_id不应依赖外部注入（子图路径才会注入）
-  GeModelPtr ge_model = ConstructGeModel(4096);
-  constexpr uint32_t kStaticGraphId = 9U;
-  ge_model->GetGraph()->SetGraphID(kStaticGraphId);
-
-  DavinciModel model(0, nullptr);
-  model.Assign(ge_model);
-  EXPECT_EQ(model.Init(), SUCCESS);
-  EXPECT_EQ(model.GetRootGraphId(), kStaticGraphId);
-}
-
 TEST_F(UtestDavinciModel, NnExecute_FmMemoryRefreshOk) {
   GeModelPtr ge_model = ConstructGeModel(2560);
   DavinciModel model(0, nullptr);

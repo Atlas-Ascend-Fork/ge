@@ -301,27 +301,6 @@ BaseCustomOp *CustomOpRegistry::CreateOrGetCustomOp(const AscendString &op_type,
   return CreateOrGetCustomOp(op_type, backend, OpRegistrationPriority::kTop, OpEngine::kCustom);
 }
 
-BaseCustomOp *CustomOpRegistry::CreateOrGetCustomOp(const AscendString &op_type, OpBackend backend, OpEngine engine) {
-  const std::lock_guard<std::mutex> lock(mu_);
-  const auto it = creators_.find(op_type);
-  if (it == creators_.cend()) {
-    GELOGW("[CUSTOM OP] get custom operator creator failed for %s.", op_type.GetString());
-    return nullptr;
-  }
-  // 优先级从高到低查找（kTop -> kBottom），按首个命中注册项的优先级创建实例
-  for (const auto &priority_creator : it->second) {
-    const auto engine_it = priority_creator.second.find(engine);
-    if ((engine_it == priority_creator.second.cend()) ||
-        (engine_it->second.find(backend) == engine_it->second.cend())) {
-      continue;
-    }
-    return CreateOrGetCustomOpLocked(op_type, backend, priority_creator.first, engine);
-  }
-  GELOGW("[CUSTOM OP] get custom operator creator failed for %s:%s:%s.", op_type.GetString(), OpEngineToString(engine),
-         OpBackendToString(backend));
-  return nullptr;
-}
-
 BaseCustomOp *CustomOpRegistry::CreateOrGetCustomOp(const AscendString &op_type, OpBackend backend,
                                                     OpRegistrationPriority priority, OpEngine engine) {
   const std::lock_guard<std::mutex> lock(mu_);
@@ -411,16 +390,36 @@ BaseCustomOp *CustomOpRegistry::CreateOrGetCustomOpLocked(const AscendString &op
   return nullptr;
 }
 
-BaseCustomOp *CustomOpRegistry::ScanCommonCapabilityLocked(const AscendString &op_type, CustomOpCapability capability,
-                                                           OpRegistrationPriority priority,
-                                                           const EngineCreatorMap &engine_creators,
-                                                           bool &has_provider) {
-  has_provider = false;
+BaseCustomOp *CustomOpRegistry::GetCustomOpCommonCapability(const AscendString &op_type,
+                                                            CustomOpCapability capability) {
+  return GetCustomOpCommonCapability(op_type, capability, OpRegistrationPriority::kTop);
+}
+
+BaseCustomOp *CustomOpRegistry::GetCustomOpCommonCapability(const AscendString &op_type, CustomOpCapability capability,
+                                                            OpRegistrationPriority priority) {
+  if (!IsCommonCapability(capability)) {
+    GELOGE(GRAPH_FAILED, "[CUSTOM OP] capability %u for %s is not a common capability.",
+           static_cast<uint32_t>(capability), op_type.GetString());
+    return nullptr;
+  }
+  const std::lock_guard<std::mutex> lock(mu_);
+  const auto op_creator_it = creators_.find(op_type);
+  if (op_creator_it == creators_.cend()) {
+    GELOGW("[CUSTOM OP] get custom operator creator failed for %s.", op_type.GetString());
+    return nullptr;
+  }
+  const auto priority_creator_it = op_creator_it->second.find(priority);
+  if (priority_creator_it == op_creator_it->second.cend()) {
+    GELOGW("[CUSTOM OP] get custom operator creator failed for %s:%s.", op_type.GetString(),
+           OpPriorityToString(priority));
+    return nullptr;
+  }
+
   // 公共能力是 priority 级唯一 provider：同 priority 下相同实现类共享实例，不同实现类都提供该能力时冲突。
   BaseCustomOp *matched_op = nullptr;
   const OpEngine *matched_engine = nullptr;
   const OpBackend *matched_backend = nullptr;
-  for (const auto &engine_creator : engine_creators) {
+  for (const auto &engine_creator : priority_creator_it->second) {
     for (const auto &backend_creator : engine_creator.second) {
       const auto backend = backend_creator.first;
       auto *const custom_op = CreateOrGetCustomOpLocked(op_type, backend, priority, engine_creator.first);
@@ -438,74 +437,15 @@ BaseCustomOp *CustomOpRegistry::ScanCommonCapabilityLocked(const AscendString &o
                "[CUSTOM OP] capability %u for %s must have a unique provider, but found in both %s:%s and %s:%s.",
                static_cast<uint32_t>(capability), op_type.GetString(), OpEngineToString(*matched_engine),
                OpBackendToString(*matched_backend), OpEngineToString(engine_creator.first), OpBackendToString(backend));
-        has_provider = true;
         return nullptr;
       }
     }
   }
-  has_provider = (matched_op != nullptr);
-  return matched_op;
-}
-
-const CustomOpRegistry::PriorityCreatorMap *CustomOpRegistry::FindCreatorsForCapabilityLocked(
-    const AscendString &op_type, CustomOpCapability capability) const {
-  if (!IsCommonCapability(capability)) {
-    GELOGE(GRAPH_FAILED, "[CUSTOM OP] capability %u for %s is not a common capability.",
-           static_cast<uint32_t>(capability), op_type.GetString());
-    return nullptr;
-  }
-  const auto op_creator_it = creators_.find(op_type);
-  if (op_creator_it == creators_.cend()) {
-    GELOGW("[CUSTOM OP] get custom operator creator failed for %s.", op_type.GetString());
-    return nullptr;
-  }
-  return &op_creator_it->second;
-}
-
-BaseCustomOp *CustomOpRegistry::GetCustomOpCommonCapability(const AscendString &op_type,
-                                                            CustomOpCapability capability) {
-  const std::lock_guard<std::mutex> lock(mu_);
-  const auto *priority_creators = FindCreatorsForCapabilityLocked(op_type, capability);
-  if (priority_creators == nullptr) {
-    return nullptr;
-  }
-  // 优先级从高到低逐级回退：高优先级存在provider（含冲突报错）即终止，无provider才看低优先级
-  for (const auto &priority_creator : *priority_creators) {
-    bool has_provider = false;
-    auto *const custom_op =
-        ScanCommonCapabilityLocked(op_type, capability, priority_creator.first, priority_creator.second, has_provider);
-    if (has_provider) {
-      return custom_op;
-    }
-  }
-  GELOGI("[CUSTOM OP] capability %u for %s is not implemented.", static_cast<uint32_t>(capability),
-         op_type.GetString());
-  return nullptr;
-}
-
-BaseCustomOp *CustomOpRegistry::GetCustomOpCommonCapability(const AscendString &op_type, CustomOpCapability capability,
-                                                            OpRegistrationPriority priority) {
-  const std::lock_guard<std::mutex> lock(mu_);
-  const auto *priority_creators = FindCreatorsForCapabilityLocked(op_type, capability);
-  if (priority_creators == nullptr) {
-    return nullptr;
-  }
-  const auto priority_creator_it = priority_creators->find(priority);
-  if (priority_creator_it == priority_creators->cend()) {
-    GELOGW("[CUSTOM OP] get custom operator creator failed for %s:%s.", op_type.GetString(),
-           OpPriorityToString(priority));
-    return nullptr;
-  }
-
-  bool has_provider = false;
-  auto *const custom_op =
-      ScanCommonCapabilityLocked(op_type, capability, priority, priority_creator_it->second, has_provider);
-  if (!has_provider) {
+  if (matched_op == nullptr) {
     GELOGI("[CUSTOM OP] capability %u for %s is not implemented.", static_cast<uint32_t>(capability),
            op_type.GetString());
-    return nullptr;
   }
-  return custom_op;
+  return matched_op;
 }
 
 BaseCustomOp *CustomOpRegistry::GetAnyCustomOpInstance(const AscendString &op_type) {
@@ -564,11 +504,7 @@ void CustomOpRegistry::RemoveCustomOps(const std::vector<AscendString> &op_types
 }
 
 ArgsRefreshStrategy CustomOpRegistry::GetArgsRefreshStrategy(const AscendString &op_type) {
-  OpEngine engine = OpEngine::kCustom;
-  if (!GetOpEngine(op_type, OpBackend::kDevice, engine)) {
-    return ArgsRefreshStrategy::kNone;
-  }
-  const auto *custom_op = CreateOrGetCustomOp(op_type, OpBackend::kDevice, engine);
+  const auto *custom_op = CreateOrGetCustomOp(op_type, OpBackend::kDevice);
   if (custom_op == nullptr) {
     return ArgsRefreshStrategy::kNone;
   }
@@ -587,96 +523,23 @@ bool CustomOpRegistry::IsAddressRefreshable(const AscendString &op_type) {
 
 bool CustomOpRegistry::HasCreator(const AscendString &op_type) const {
   const std::lock_guard<std::mutex> lock(mu_);
-  const auto it = creators_.find(op_type);
-  return (it != creators_.cend()) && (!it->second.empty());
-}
-
-bool CustomOpRegistry::HasCreator(const AscendString &op_type, OpBackend backend) const {
-  const std::lock_guard<std::mutex> lock(mu_);
-  const auto it = creators_.find(op_type);
-  if (it == creators_.cend()) {
-    return false;
-  }
-  for (const auto &priority_creator : it->second) {
-    for (const auto &engine_creator : priority_creator.second) {
-      if (engine_creator.second.find(backend) != engine_creator.second.cend()) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-bool CustomOpRegistry::HasCreator(const AscendString &op_type, OpRegistrationPriority priority) const {
-  const std::lock_guard<std::mutex> lock(mu_);
   const auto creator_iter = creators_.find(op_type);
   if (creator_iter == creators_.cend()) {
     return false;
   }
-  const auto priority_iter = creator_iter->second.find(priority);
+  const auto priority_iter = creator_iter->second.find(OpRegistrationPriority::kTop);
   if (priority_iter == creator_iter->second.cend()) {
     return false;
   }
-  for (const auto &engine_creator : priority_iter->second) {
-    if (!engine_creator.second.empty()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool CustomOpRegistry::HasCreator(const AscendString &op_type, OpRegistrationPriority priority, OpEngine engine) const {
-  const std::lock_guard<std::mutex> lock(mu_);
-  const auto it = creators_.find(op_type);
-  if (it == creators_.cend()) {
-    return false;
-  }
-  const auto priority_iter = it->second.find(priority);
-  if (priority_iter == it->second.cend()) {
-    return false;
-  }
-  const auto engine_iter = priority_iter->second.find(engine);
+  const auto engine_iter = priority_iter->second.find(OpEngine::kCustom);
   if (engine_iter == priority_iter->second.cend()) {
     return false;
   }
   return !engine_iter->second.empty();
 }
 
-bool CustomOpRegistry::HasCreator(const AscendString &op_type, OpBackend backend,
-                                  OpRegistrationPriority priority) const {
-  const std::lock_guard<std::mutex> lock(mu_);
-  const auto it = creators_.find(op_type);
-  if (it == creators_.cend()) {
-    return false;
-  }
-  const auto priority_iter = it->second.find(priority);
-  if (priority_iter == it->second.cend()) {
-    return false;
-  }
-  for (const auto &engine_creator : priority_iter->second) {
-    if (engine_creator.second.find(backend) != engine_creator.second.cend()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool CustomOpRegistry::GetOpEngine(const AscendString &op_type, OpBackend backend, OpEngine &engine) const {
-  const std::lock_guard<std::mutex> lock(mu_);
-  const auto it = creators_.find(op_type);
-  if (it == creators_.cend()) {
-    return false;
-  }
-  // 优先级从高到低查找（kTop -> kBottom），同一优先级内命中任一引擎即返回
-  for (const auto &priority_creator : it->second) {
-    for (const auto &engine_creator : priority_creator.second) {
-      if (engine_creator.second.find(backend) != engine_creator.second.cend()) {
-        engine = engine_creator.first;
-        return true;
-      }
-    }
-  }
-  return false;
+bool CustomOpRegistry::HasCreator(const AscendString &op_type, OpBackend backend) const {
+  return HasCreator(op_type, backend, OpRegistrationPriority::kTop, OpEngine::kCustom);
 }
 
 bool CustomOpRegistry::HasCreator(const AscendString &op_type, OpBackend backend, OpRegistrationPriority priority,
@@ -697,38 +560,32 @@ bool CustomOpRegistry::HasCreator(const AscendString &op_type, OpBackend backend
   return engine_iter->second.find(backend) != engine_iter->second.cend();
 }
 
-// 维护提示：白名单口径（新增需要打包/承载的注册形态时，必须在此登记，并同步更新对应UT）
-bool CustomOpRegistry::IsCustomOpToBeCollected(const AscendString &op_type) const {
-  // 按引擎维度匹配，与 custom store 认领口径（custom_ops_kernel_info_store）保持一致：
-  // kCustom 引擎仅 kTop；映射引擎（kHccl→DNN_HCCL）任意优先级（kTop 显式注册与 kBottom 兜底注册均可能被认领）
-  return HasCreator(op_type, OpRegistrationPriority::kTop, OpEngine::kCustom) ||
-         HasCreator(op_type, OpRegistrationPriority::kTop, OpEngine::kHccl) ||
-         HasCreator(op_type, OpRegistrationPriority::kBottom, OpEngine::kHccl);
-}
-
 bool CustomOpRegistry::HasCustomOp(const AscendString &op_type) const {
   const std::lock_guard<std::mutex> lock(mu_);
   const auto custom_op_it = custom_ops_.find(op_type);
   if (custom_op_it == custom_ops_.cend()) {
     return false;
   }
-  // 实例口径：任意优先级（kTop/kBottom）下存在实例即返回true。
-  // kBottom兜底注册的算子经双参GetCustomOpCommonCapability反序列化后实例落在kBottom，不能被漏判
-  for (const auto &priority_instance : custom_op_it->second) {
-    for (const auto &engine_instance : priority_instance.second) {
-      if (!engine_instance.second.empty()) {
-        return true;
-      }
-    }
+  const auto priority_iter = custom_op_it->second.find(OpRegistrationPriority::kTop);
+  if (priority_iter == custom_op_it->second.cend()) {
+    return false;
   }
-  return false;
+  const auto engine_iter = priority_iter->second.find(OpEngine::kCustom);
+  if (engine_iter == priority_iter->second.cend()) {
+    return false;
+  }
+  return !engine_iter->second.empty();
 }
 
 graphStatus CustomOpRegistry::GetAllRegisteredOps(std::vector<AscendString> &all_registered_ops) const {
   const std::lock_guard<std::mutex> lock(mu_);
-  // 认领清单语义：任意优先级（kTop/kBottom）下存在注册即纳入；注册仅在插入creator时创建层级，不会残留空map
   for (const auto &op_creator : creators_) {
-    if (!op_creator.second.empty()) {
+    const auto priority_iter = op_creator.second.find(OpRegistrationPriority::kTop);
+    if (priority_iter == op_creator.second.cend()) {
+      continue;
+    }
+    const auto engine_iter = priority_iter->second.find(OpEngine::kCustom);
+    if (engine_iter != priority_iter->second.cend() && !engine_iter->second.empty()) {
       all_registered_ops.push_back(op_creator.first);
     }
   }

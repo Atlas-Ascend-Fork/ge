@@ -477,12 +477,6 @@ nn_engine/
 - 直接在 `OpsKernelManager::Initialize()` 中创建，不从 SO 文件加载
 - `CustomOpsKernelInfoStore` 维护自定义算子的 OpInfo 映射
 
-**注册优先级与可见性语义**：自定义算子按`(op_type, priority, engine, backend)`四维注册，priority分`kTop`/`kBottom`两级（`kBottom`为兜底注册，如HCCL集合通信自定义算子采用`kBottom + kHccl`形态，同名算子存在`kTop`注册时让位）。查询链路分两族：
-
-- **认领族**（全优先级kTop→kBottom回退，命名不含优先级）：`GetAllRegisteredOps`/`HasCreator`/`IsExistOp`（不带优先级形参，默认覆盖全部优先级；认领清单，op_info_map认领、`CheckSupported`/`IsDeviceCustomOp`引擎判定、实例解析与能力回退均按此口径，仅`kBottom`兜底注册的算子同样纳入认领清单与引擎判定））、三参`CreateOrGetCustomOp(op_type, backend, engine)`（实例解析，V1 Distribute / V2 FindCustomOpFunc / AnnotatedArgs / ResourceUsageReporter等调用点）、双参`GetCustomOpCommonCapability`（能力逐级回退，高优先级有provider或冲突即终止）。`kHccl`引擎注册的算子经映射表路由到`DNN_HCCL`引擎（复用独立流等流分配特性），kernel lib仍为custom store。
-- **OM加载校验口径**（`ValidateCustomOpsDeserialized` → `ValidateCustomOpNodeDeserialized`）：① 入口用承载口径（只校验由自定义算子链路承载的算子）；② "已实例化"判据为**任意优先级**的实例（仅`kBottom`兜底注册的算子反序列化后实例落在`kBottom`，必须能识别；且②**必须先于③**判定——③的能力查询会创建实例）；③ 仅`PortableOp`存在反序列化义务。因此仅`kBottom + kHccl`注册的**PortableOp**若被模型使用而其`CUSTOM_OPS`数据未被消费，会在加载期**显式失败**（改前为免检静默放过）；非`PortableOp`（eager/ArgsUpdater形态）结果不变。
-- **守卫族**（带优先级形参，如`HasCreator(op_type, kTop)`/`IsExistOp(op_type, backend, kTop)`）：防重注册守卫、防冲突校验、host-cpu认领；`HasCustomOp`（实例口径，任意优先级）。**打包/收集口径**=`改前口径（kTop + kCustom，任意backend）`∪`本次支持形态（kBottom + kHccl）`；框架内置`(kBottom, OpEngine::kHostCpu, kHostCPU)`常量折叠通道不在此口径内、不收集（其实现由CANN安装目录的常量折叠库在编译期装载，不属于OM自包含的用户so打包范畴）。查询约定：**带优先级形参的按该优先级过滤，不带优先级的默认覆盖全部优先级**。`kBottom + kHostCPU`的常量折叠显式覆盖通道（`constant_folding_pass`四参显式查询）不受影响。
-
 #### 4.5.9 HostCpuEngine（base 层基础实现）
 
 **目录**：`base/host_cpu_engine/`

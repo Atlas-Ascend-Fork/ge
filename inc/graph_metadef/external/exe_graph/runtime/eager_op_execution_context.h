@@ -20,20 +20,6 @@
 namespace gert {
 using rtStream = void *;
 
-/**
- * GE与自定义算子之间的运行期交互参数。
- * 统一按数值取值语义暴露（布尔参数取值为0/1）；数值类参数按需扩展，
- * 新增参数只需增加枚举值，不改变接口签名。
- */
-enum class ContextParam : uint32_t {
-  kStaticModel = 0,            // 是否运行于静态图（含动态shape的静态子图），取值0/1
-  kAddressRefreshEnabled = 1,  // 地址是否需要刷新，取值0/1
-  kGraphId = 2,                // 根图graph id（恒为根图，不受子图影响）
-  kNodeId = 3,                 // 算子节点在图内的id（图内唯一）
-  kVectorCoreNum = 4,          // 算子节点可用的vector core数量
-  kNum,                        // 预留
-};
-
 class EagerOpExecutionContext : public ExtendedKernelContext {
  public:
   /**
@@ -140,33 +126,13 @@ class EagerOpExecutionContext : public ExtendedKernelContext {
   /**
    * 按 key 获取 eager 自定义算子使用的辅流。
    * @param key 辅流复用 key
-   * @param flags RTS流创建标志原值（如RT_STREAM_PERSISTENT | RT_STREAM_FORCE_COPY，可组合），
-   *              由算子自行传入，GE直接透传给辅流创建；仅新建时生效，复用命中时忽略。
-   *              不需要特殊标志时填0，按框架默认创建参数建流
    * @return 托管的辅流句柄；不支持或参数无效时返回 nullptr
    */
-  rtStream RequestAttachedStream(const ge::AscendString &key, uint32_t flags);
-
-  /**
-   * 查询GE与自定义算子之间的运行期交互参数取值。
-   * 各参数的语义见ContextParam；布尔参数的取值为0/1，数值参数为对应数值。
-   * @param key 交互参数
-   * @param value 输出取值
-   * @return 成功返回true；key未定义或当前上下文不可用时返回false（不写出value）
-   */
-  bool GetContextValue(ContextParam key, uint64_t &value) const;
-
-  /**
-   * 获取运行期选项（全局/会话/图三级合并语义）。
-   * @param option_key 选项key
-   * @param option_value 输出选项值
-   * @return 成功返回true，失败或未配置返回false
-   */
-  bool GetOption(const ge::AscendString &option_key, ge::AscendString &option_value) const;
+  rtStream RequestAttachedStream(const ge::AscendString &key);
 
   enum class AdditionalInputIndex : uint32_t { kDeviceAllocator = 0, kStream, kNum };
 
-  enum class AdditionalOutputIndex : uint32_t { kWorkSpace = 0, kArgsHandler, kContextInfo, kNum };
+  enum class AdditionalOutputIndex : uint32_t { kWorkSpace = 0, kArgsHandler, kNum };
 
  protected:
   int64_t GetAdditionalInputStartIndex() const {

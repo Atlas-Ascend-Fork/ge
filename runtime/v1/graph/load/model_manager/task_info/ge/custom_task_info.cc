@@ -30,10 +30,6 @@
 #include "graph/manager/graph_var_manager.h"
 #include "graph/utils/args_format_desc_utils.h"
 #include "graph/utils/math_util.h"
-#include "graph/utils/attr_utils.h"
-#include "register/core_num_utils.h"
-
-#include <cstdint>
 #include "graph/args_format_desc.h"
 #include "framework/common/debug/ge_log.h"
 #include "graph/utils/op_desc_utils.h"
@@ -461,7 +457,6 @@ Status CustomTaskInfo::Init(const domi::TaskDef &task_def, DavinciModel *const d
       "Workspace IOW address size[%zu] does not match parsed workspace size[%zu].",
       iow_addrs.workspace_logic_addrs.size(), workspace_addrs_.size());
   UpdateIoAndWorkspaceAddrs(iow_addrs);
-  UpdateContextInfo();
   GE_ASSERT_SUCCESS(ValidateIoWorkspaceAddrAndMemTypeSizes());
   stream_id_ = task_def.stream_id();
   GE_ASSERT_TRUE((args[static_cast<size_t>(args_placement_)].dev_addr != 0U),
@@ -548,22 +543,26 @@ Status CustomTaskInfo::ConstructCustomKernelContextInputsOutputs(const ge::OpDes
   return ConstructOutputTensorHolders(op_desc, output_data_addrs_, outputs);
 }
 
-Status CustomTaskInfo::DistributeAnnotatedArgs() {
-  GE_CHK_STATUS_RET(InsertDumpOp(kDumpInput), "Insert custom input dump op failed, node: %s", op_desc_->GetNamePtr());
-  GE_ASSERT_SUCCESS(DistributeAnnotatedArgsFromTaskDef());
-  GE_CHK_STATUS_RET(InsertDumpOp(kDumpOutput), "Insert custom output dump op failed, node: %s", op_desc_->GetNamePtr());
-  return SUCCESS;
-}
+Status CustomTaskInfo::Distribute() {
+  GE_ASSERT_NOTNULL(op_desc_);
+  GELOGI("CustomTaskInfo Distribute Start, op: %s", op_desc_->GetName().c_str());
+  const TaskProfGuarder prof_guarder(this);
 
-Status CustomTaskInfo::DistributeEagerOp() {
   AscendString op_type(op_desc_->GetType().c_str());
+  GE_ASSERT_NOTNULL(davinci_model_);
+
+  if (args_refresh_strategy_ == ArgsRefreshStrategy::kAnnotatedArgs) {
+    GE_CHK_STATUS_RET(InsertDumpOp(kDumpInput), "Insert custom input dump op failed, node: %s", op_desc_->GetNamePtr());
+    GE_ASSERT_SUCCESS(DistributeAnnotatedArgsFromTaskDef());
+    GE_CHK_STATUS_RET(InsertDumpOp(kDumpOutput), "Insert custom output dump op failed, node: %s",
+                      op_desc_->GetNamePtr());
+    return SUCCESS;
+  }
+
   const auto &custom_op_registry = davinci_model_->GetCustomOpRegistry();
   GE_ASSERT_NOTNULL(custom_op_registry, "[CUSTOM OP] custom op registry is nullptr for op %s.",
                     op_desc_->GetName().c_str());
-  // kHccl引擎注册的算子（如HcclOp）需先解析注册引擎再取实例；双参版本固定kCustom会查不到
-  OpEngine op_engine = OpEngine::kCustom;
-  (void)custom_op_registry->GetOpEngine(op_type, ge::OpBackend::kDevice, op_engine);
-  BaseCustomOp *custom_op_ptr = custom_op_registry->CreateOrGetCustomOp(op_type, ge::OpBackend::kDevice, op_engine);
+  BaseCustomOp *custom_op_ptr = custom_op_registry->CreateOrGetCustomOp(op_type, ge::OpBackend::kDevice);
   GE_ASSERT_NOTNULL(custom_op_ptr, "[CUSTOM OP] custom op %s is not found in registry.", op_desc_->GetType().c_str());
 
   args_update_op_ = CustomOpCast<ArgsUpdater>(custom_op_ptr);
@@ -575,12 +574,10 @@ Status CustomTaskInfo::DistributeEagerOp() {
 
   auto sink_args_handler = ge::ComGraphMakeUnique<SinkOpArgsHandler>(this);
   GE_ASSERT_NOTNULL(sink_args_handler);
-  // 辅流提供者由框架装入上下文伴生对象（与kContextInfo槽同源），算子经
-  // ctx->RequestAttachedStream查询；与GetContextValue共用同一路径
-  context_info_.SetAttachedStreamProvider(davinci_model_->GetAttachedStreamProvider());
+  sink_args_handler->SetAttachedStreamProvider(davinci_model_->GetAttachedStreamProvider());
   args_handler_ = std::move(sink_args_handler);
   std::vector<void *> additional_inputs = {sink_only_allocator_.get(), stream_};
-  std::vector<void *> additional_outputs = {&ws_vec_, args_handler_.get(), &context_info_};
+  std::vector<void *> additional_outputs = {&ws_vec_, args_handler_.get()};
 
   eager_context_holder_ = gert::KernelRunContextBuilder()
                               .Inputs(GetHoldersRawPtr(inputs_holder_))
@@ -606,18 +603,6 @@ Status CustomTaskInfo::DistributeEagerOp() {
   GELOGI("CustomTaskInfo Distribute Success, node: %s, stream_id: %u, stream: %p, task_id: %u",
          op_desc_->GetName().c_str(), stream_id_, stream_, task_id_);
   return SUCCESS;
-}
-
-Status CustomTaskInfo::Distribute() {
-  GE_ASSERT_NOTNULL(op_desc_);
-  GELOGI("CustomTaskInfo Distribute Start, op: %s", op_desc_->GetName().c_str());
-  const TaskProfGuarder prof_guarder(this);
-  GE_ASSERT_NOTNULL(davinci_model_);
-
-  if (args_refresh_strategy_ == ArgsRefreshStrategy::kAnnotatedArgs) {
-    return DistributeAnnotatedArgs();
-  }
-  return DistributeEagerOp();
 }
 
 size_t CustomTaskInfo::GetArgsSizeByFormat() const {
@@ -1095,48 +1080,6 @@ Status CustomTaskInfo::UpdateDumpInfos(void *const host_args, const size_t host_
     davinci_model_->UpdateOpIOAddrs(task_id_, stream_id_, exception_dump_io_addrs_);
   }
   return SUCCESS;
-}
-
-void CustomTaskInfo::UpdateContextInfo() {
-  // CustomTaskInfo仅由V1 DavinciModel下沉路径创建，覆盖静态图与动态shape静态子图
-  context_info_.SetStaticModel(true);
-  if (davinci_model_ == nullptr) {
-    context_info_.SetAddressRefreshEnabled(false);
-    return;
-  }
-  // 所属图id统一取根图（与RT2动态路径口径一致；静态图与动态shape静态子图同值）
-  context_info_.SetGraphId(davinci_model_->GetRootGraphId());
-  if (op_desc_ != nullptr) {
-    // node id：算子节点在图内的id（图内唯一）
-    if (op_desc_->GetId() >= 0) {
-      context_info_.SetNodeId(static_cast<uint64_t>(op_desc_->GetId()));
-    }
-    // vector core数量：_op_vectorcore_num字符串属性，解析与校验统一走CoreNumUtils
-    // （严格十进制 + 范围校验）；属性缺失、空串或非法时视为未设置（由utils上报）
-    std::string vector_core_num_str;
-    int32_t vector_core_num = 0;
-    if (ge::AttrUtils::GetStr(op_desc_, ge::kVectorCoreNumOp, vector_core_num_str) && (!vector_core_num_str.empty()) &&
-        (ge::CoreNumUtils::ParseAndValidateCoreNum(ge::kVectorCoreNumOp, vector_core_num_str, 0, INT32_MAX,
-                                                   vector_core_num) == ge::GRAPH_SUCCESS)) {
-      context_info_.SetVectorCoreNum(static_cast<uint64_t>(vector_core_num));
-    }
-  }
-  const auto has_refreshable_mem = [](const std::vector<uint64_t> &mem_types) {
-    for (const auto mem_type : mem_types) {
-      if (ModelUtils::IsSuppoprtAddrRefreshable(mem_type)) {
-        return true;
-      }
-    }
-    return false;
-  };
-  // 与HcclTaskInfo::IsFeatureBaseRefreshable等价：地址未固定 && feature base可刷新 && I/O含可刷新内存
-  const bool addr_refresh_enabled = (!davinci_model_->IsStaticAddrFixed()) &&
-                                    davinci_model_->IsFeatureBaseRefreshable() &&
-                                    (has_refreshable_mem(input_mem_types_) || has_refreshable_mem(output_mem_types_) ||
-                                     has_refreshable_mem(workspace_mem_types_));
-  context_info_.SetAddressRefreshEnabled(addr_refresh_enabled);
-  GELOGI("CustomTaskInfo address refresh enabled: %d, node: %s.", static_cast<int32_t>(addr_refresh_enabled),
-         op_desc_ != nullptr ? op_desc_->GetNamePtr() : "");
 }
 
 Status CustomTaskInfo::InitArgsIoAddrsUpdater() {

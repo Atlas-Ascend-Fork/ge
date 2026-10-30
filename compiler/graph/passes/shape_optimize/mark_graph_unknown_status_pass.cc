@@ -24,8 +24,7 @@ const char *const kHostCpuEngineName = "DNN_VM_HOST_CPU";
 bool IsCustomOpExecOnHostCpu(const OpDescPtr &op_desc) {
   if ((op_desc == nullptr) || (op_desc->GetOpEngineName() != kEngineNameCustom) ||
       (op_desc->GetOpKernelLibName() != kCustomOpKernelLibName) ||
-      !CustomOpFactory::IsExistOp(AscendString(op_desc->GetTypePtr()), OpBackend::kHostCPU,
-                                  OpRegistrationPriority::kTop, OpEngine::kCustom)) {
+      !CustomOpFactory::IsExistOp(AscendString(op_desc->GetTypePtr()), OpBackend::kHostCPU)) {
     return false;
   }
   const std::string *lowering_func = AttrUtils::GetStr(op_desc, kAttrLowingFunc);

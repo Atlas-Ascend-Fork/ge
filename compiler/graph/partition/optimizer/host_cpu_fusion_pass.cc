@@ -875,7 +875,7 @@ Status PrepareFusionCustomOpArtifacts(const ComputeGraphPtr &root_graph,
       artifacts.inserted_so_keys.emplace_back(so_key);
     }
     const AscendString op_type(prepared.codegen.register_name.c_str());
-    if (!registry->HasCreator(op_type, OpBackend::kHostCPU, OpRegistrationPriority::kTop, OpEngine::kCustom)) {
+    if (!registry->HasCreator(op_type, OpBackend::kHostCPU)) {
       bins_to_load.emplace_back(so_bin);
       artifacts.registered_op_types.emplace_back(op_type);
     }

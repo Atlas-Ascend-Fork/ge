@@ -398,7 +398,6 @@
 
     - [EagerOpExecutionContext](cpp/gert/EagerOpExecutionContext/EagerOpExecutionContext.md)
       - [简介](cpp/gert/EagerOpExecutionContext/overview.md)
-      - [ContextParam](cpp/gert/EagerOpExecutionContext/ContextParam.md)
       - [GetStream](cpp/gert/EagerOpExecutionContext/GetStream.md)
       - [GetInputTensor](cpp/gert/EagerOpExecutionContext/GetInputTensor.md)
       - [GetRequiredInputTensor](cpp/gert/EagerOpExecutionContext/GetRequiredInputTensor.md)
@@ -410,8 +409,6 @@
       - [GetOutputTensor](cpp/gert/EagerOpExecutionContext/GetOutputTensor.md)
       - [MallocReadOnlyDevArgs](cpp/gert/EagerOpExecutionContext/MallocReadOnlyDevArgs.md)
       - [RequestAttachedStream](cpp/gert/EagerOpExecutionContext/RequestAttachedStream.md)
-      - [GetContextValue](cpp/gert/EagerOpExecutionContext/GetContextValue.md)
-      - [GetOption](cpp/gert/EagerOpExecutionContext/GetOption.md)
 
     - [HostCpuExecuteOp](cpp/ge/HostCpuExecuteOp/HostCpuExecuteOp.md)
       - [简介](cpp/ge/HostCpuExecuteOp/overview.md)

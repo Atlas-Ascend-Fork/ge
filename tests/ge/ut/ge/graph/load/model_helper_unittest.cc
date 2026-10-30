@@ -1481,50 +1481,6 @@ TEST_F(UtestModelHelper, LoadCustomOpRegistryShouldFailAndReleaseLeaseWhenPullSy
   CustomOpSoLoader::GetInstance().Cleanup();
 }
 
-TEST_F(UtestModelHelper, CollectUsedCustomOpTypesIncludesBottomOnlyRegisteredOp) {
-  // kHccl兜底注册（kBottom）的device自定义算子也须被打包收集：守卫口径查不到，收集口径须命中
-  const std::string bottom_only_op_type = "ModelHelperBottomOnlyHcclOpForUt";
-  auto registry = CustomOpFactory::GetGlobalRegistryPtr();
-  ASSERT_NE(registry, nullptr);
-  const auto register_ret = registry->RegisterCreator(
-      AscendString(bottom_only_op_type.c_str()), OpBackend::kDevice, OpRegistrationPriority::kBottom, OpEngine::kHccl,
-      []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<ModelHelperPortableOpForUt>(); });
-  EXPECT_TRUE((register_ret == GRAPH_SUCCESS) || (register_ret == GRAPH_FAILED));
-  // 守卫口径（显式kTop）不可见；收集口径（device任意优先级）可见
-  EXPECT_FALSE(CustomOpFactory::IsExistOp(AscendString(bottom_only_op_type.c_str()), OpRegistrationPriority::kTop));
-  ASSERT_TRUE(CustomOpFactory::IsExistOp(AscendString(bottom_only_op_type.c_str())));
-
-  const auto ge_root_model = CreateGeRootModelForModelHelperUt(bottom_only_op_type, "");
-  ASSERT_NE(ge_root_model, nullptr);
-  ModelHelper model_helper;
-  std::set<std::string> used_custom_op_types;
-  ASSERT_EQ(model_helper.CollectUsedCustomOpTypes(ge_root_model, used_custom_op_types), SUCCESS);
-  EXPECT_EQ(used_custom_op_types.count(bottom_only_op_type), 1U);
-}
-
-TEST_F(UtestModelHelper, ValidateCustomOpsDeserializedSucceedsForBottomRegisteredPortableOpWithInstance) {
-  // kBottom兜底注册（kHccl）的PortableOp：实例由双参GetCustomOpCommonCapability创建、落在kBottom，
-  // 实例口径须按任意优先级识别，否则已反序列化的算子会被误判为"未反序列化"
-  const std::string bottom_op_type = "ModelHelperBottomOnlyValidateHcclOpForUt";
-  auto registry = std::make_shared<CustomOpRegistry>();
-  ASSERT_EQ(
-      registry->RegisterCreator(
-          AscendString(bottom_op_type.c_str()), OpBackend::kDevice, OpRegistrationPriority::kBottom, OpEngine::kHccl,
-          []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<ModelHelperPortableOpForUt>(); }),
-      GRAPH_SUCCESS);
-
-  const auto ge_root_model = CreateGeRootModelForModelHelperUt(bottom_op_type, "");
-  ASSERT_NE(ge_root_model, nullptr);
-  ModelHelper model_helper;
-  // 尚未实例化：PortableOp存在反序列化义务但未完成 → 校验失败
-  EXPECT_NE(model_helper.ValidateCustomOpsDeserialized(ge_root_model, registry), SUCCESS);
-  // 实例化（等价于双参GetCustomOpCommonCapability完成反序列化）后校验通过
-  ASSERT_NE(registry->CreateOrGetCustomOp(AscendString(bottom_op_type.c_str()), OpBackend::kDevice, OpEngine::kHccl),
-            nullptr);
-  EXPECT_TRUE(registry->HasCustomOp(AscendString(bottom_op_type.c_str())));
-  EXPECT_EQ(model_helper.ValidateCustomOpsDeserialized(ge_root_model, registry), SUCCESS);
-}
-
 TEST_F(UtestModelHelper, ValidateCustomOpsDeserializedFailsWhenUsedCreatorHasNoInstance) {
   const auto ge_root_model = CreateGeRootModelForModelHelperUt(kRegistryOnlyPortableOpTypeForModelHelper, "");
   ASSERT_NE(ge_root_model, nullptr);

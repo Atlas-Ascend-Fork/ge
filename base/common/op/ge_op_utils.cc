@@ -333,16 +333,7 @@ Status OpUtils::GetShapeDataFromConstTensor(const ConstGeTensorPtr &tensor, cons
   return SUCCESS;
 }
 bool OpUtils::IsHcomNodeNotSupportAddrRefresh(const OpDescPtr &op_desc) {
-  // 内置HCCL算子：kernel lib为ops_kernel_info_hccl
-  if (op_desc->GetOpKernelLibName() == ge::kEngineNameHccl) {
-    return true;
-  }
-  // HCCL自定义算子：仅对custom store认领的算子按DNN_HCCL引擎判定，
-  // 避免非自定义算子误命中引擎名
-  if (op_desc->GetOpKernelLibName() == ge::kCustomOpKernelLibName) {
-    return op_desc->GetOpEngineName() == ge::kEngineNameDnnHccl;
-  }
-  return false;
+  return op_desc->GetOpKernelLibName() == ge::kEngineNameHccl;
 }
 
 Status OpUtils::GetConstantStrMemSize(const OpDescPtr &op_desc, int64_t &mem_size) {

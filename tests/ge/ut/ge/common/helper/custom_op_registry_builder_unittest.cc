@@ -294,8 +294,8 @@ TEST_F(UtestCustomOpRegistryBuilder, add_creators_from_so_handles_registers_v2_b
   EXPECT_EQ(SUCCESS,
             CustomOpRegistryBuilder::AddCreatorsFromSoHandles(so_handles, registry, ResolveFakeSymbolsWithCommonV2));
 
-  EXPECT_TRUE(registry->HasCreator(kBuilderOpA, OpBackend::kDevice, OpRegistrationPriority::kTop));
-  EXPECT_TRUE(registry->HasCreator(kBuilderOpA, OpBackend::kHostCPU, OpRegistrationPriority::kTop));
+  EXPECT_TRUE(registry->HasCreator(kBuilderOpA, OpBackend::kDevice));
+  EXPECT_TRUE(registry->HasCreator(kBuilderOpA, OpBackend::kHostCPU));
   EXPECT_NE(nullptr, dynamic_cast<BuilderTestOpA *>(registry->CreateOrGetCustomOp(kBuilderOpA, OpBackend::kDevice)));
   EXPECT_NE(nullptr,
             dynamic_cast<BuilderHostTestOp *>(registry->CreateOrGetCustomOp(kBuilderOpA, OpBackend::kHostCPU)));

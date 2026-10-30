@@ -17,7 +17,7 @@
 #include "graph/ascend_string.h"
 
 namespace gert {
-rtStream Rt2AttachedStreamCollection::RequestAttachedStream(const ge::AscendString &key, uint32_t flags) {
+rtStream Rt2AttachedStreamCollection::RequestAttachedStream(const ge::AscendString &key) {
   // 用 GetString 判空而不用 GetLength：stub 版 libgraph.so 的 GetLength 恒返回 0
   const char *const key_str = key.GetString();
   if ((key_str == nullptr) || (key_str[0] == '\0')) {
@@ -26,10 +26,10 @@ rtStream Rt2AttachedStreamCollection::RequestAttachedStream(const ge::AscendStri
   }
   const auto found = streams_.find(std::string_view(key_str));
   if (found != streams_.end()) {
-    return found->second;  // 复用命中：flags仅影响新建，此处忽略
+    return found->second;
   }
   rtStream_t stream = nullptr;
-  if (rtStreamCreateWithFlags(&stream, RT_STREAM_PRIORITY_DEFAULT, RT_STREAM_DEFAULT | flags) != RT_ERROR_NONE) {
+  if (rtStreamCreateWithFlags(&stream, RT_STREAM_PRIORITY_DEFAULT, RT_STREAM_DEFAULT) != RT_ERROR_NONE) {
     GELOGE(ge::FAILED, "Failed to create eager attached stream, key=%s.", key_str);
     return nullptr;
   }

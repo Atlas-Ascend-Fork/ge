@@ -80,11 +80,6 @@ target_link_directories(fe_ut_common PUBLIC
     ${ASCEND_INSTALL_PATH}/lib64
     ${ASCEND_INSTALL_PATH}/devlib
 )
-# 链接源码树内构建的 libgraph.so 时，构建树 RPATH 必须优先于 LD_LIBRARY_PATH，
-# 否则运行期仍会加载安装包中不含新增符号的旧库（--disable-new-dtags 使 RPATH 生效）。
-target_link_options(fe_ut_common PUBLIC
-    -Wl,--disable-new-dtags
-)
 target_link_libraries(fe_ut_common PUBLIC
     $<$<STREQUAL:${ENABLE_ASAN},true>:-fsanitize=address>
     air_headers

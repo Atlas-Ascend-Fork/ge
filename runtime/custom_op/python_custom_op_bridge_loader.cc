@@ -333,8 +333,7 @@ class PythonCustomOpBridgeLoader {
              desc.impl_descriptor_key.c_str());
       return false;
     }
-    if (CustomOpFactory::IsExistOp(AscendString(desc.op_type.c_str()), OpRegistrationPriority::kTop,
-                                   OpEngine::kCustom)) {
+    if (CustomOpFactory::IsExistOp(AscendString(desc.op_type.c_str()))) {
       GELOGE(FAILED,
              "[Check][PythonCustomOpAdapter]Op type[%s] conflicts, existing source[CustomOpFactory creator], "
              "current source[Python impl descriptor key:%s].",
@@ -418,7 +417,7 @@ class PythonCustomOpBridgeLoader {
       if (registered_op_type_to_adapter_.find(op_type) != registered_op_type_to_adapter_.cend()) {
         continue;
       }
-      if (CustomOpFactory::IsExistOp(AscendString(op_type.c_str()), OpRegistrationPriority::kTop, OpEngine::kCustom)) {
+      if (CustomOpFactory::IsExistOp(AscendString(op_type.c_str()))) {
         GELOGE(FAILED, "Python custom op conflict, op type[%s], existing source[CustomOpFactory creator].",
                op_type.c_str());
         return FAILED;

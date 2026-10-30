@@ -466,8 +466,7 @@ bool IsSamePythonCustomOpProto(const PythonCustomOpProto &lhs, const PythonCusto
 }
 
 graphStatus RegisterPythonCustomOpProto(const PythonCustomOpProto &proto) {
-  if (CustomOpFactory::IsExistOp(AscendString(proto.op_type.c_str()), OpRegistrationPriority::kTop,
-                                 OpEngine::kCustom)) {
+  if (CustomOpFactory::IsExistOp(AscendString(proto.op_type.c_str()))) {
     GELOGE(GRAPH_FAILED,
            "Python custom op proto conflict, op type[%s], existing source[CustomOpFactory creator], "
            "current source[Python descriptor key:%s].",

@@ -46,10 +46,6 @@ BaseCustomOp *CustomOpFactory::CreateOrGetCustomOp(const AscendString &op_type, 
   return GetGlobalRegistry().CreateOrGetCustomOp(op_type, backend);
 }
 
-BaseCustomOp *CustomOpFactory::CreateOrGetCustomOp(const AscendString &op_type, OpBackend backend, OpEngine engine) {
-  return GetGlobalRegistry().CreateOrGetCustomOp(op_type, backend, engine);
-}
-
 BaseCustomOp *CustomOpFactory::CreateOrGetCustomOp(const AscendString &op_type) {
   return CreateOrGetCustomOp(op_type, OpBackend::kDevice);
 }
@@ -75,21 +71,9 @@ bool CustomOpFactory::IsExistOp(const AscendString &op_type, OpBackend backend) 
   return GetGlobalRegistry().HasCreator(op_type, backend);
 }
 
-bool CustomOpFactory::IsExistOp(const AscendString &op_type, OpRegistrationPriority priority, OpEngine engine) {
-  return GetGlobalRegistry().HasCreator(op_type, priority, engine);
-}
-
 bool CustomOpFactory::IsExistOp(const AscendString &op_type, OpBackend backend, OpRegistrationPriority priority,
                                 OpEngine engine) {
   return GetGlobalRegistry().HasCreator(op_type, backend, priority, engine);
-}
-
-bool CustomOpFactory::IsExistOp(const AscendString &op_type, OpRegistrationPriority priority) {
-  return GetGlobalRegistry().HasCreator(op_type, priority);
-}
-
-bool CustomOpFactory::IsExistOp(const AscendString &op_type, OpBackend backend, OpRegistrationPriority priority) {
-  return GetGlobalRegistry().HasCreator(op_type, backend, priority);
 }
 
 bool CustomOpFactory::IsAddressRefreshable(const AscendString &op_type) {
@@ -98,10 +82,6 @@ bool CustomOpFactory::IsAddressRefreshable(const AscendString &op_type) {
 
 ArgsRefreshStrategy CustomOpFactory::GetArgsRefreshStrategy(const AscendString &op_type) {
   return GetGlobalRegistry().GetArgsRefreshStrategy(op_type);
-}
-
-bool CustomOpFactory::GetOpEngine(const AscendString &op_type, OpBackend backend, OpEngine &engine) {
-  return GetGlobalRegistry().GetOpEngine(op_type, backend, engine);
 }
 
 graphStatus CustomOpFactory::LoadCustomOpsPartition(const uint8_t *data, size_t len) {

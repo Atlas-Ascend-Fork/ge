@@ -78,7 +78,7 @@ TEST(DavinciModelAttachedStreamTest, UnbindAndDestroyAttachedStreamsIsIdempotent
   // UT 目标以 -fno-access-control 编译，可直接初始化私有成员
   model.attached_stream_collection_.Initialize(reinterpret_cast<rtModel_t>(0x55U), RT_STREAM_PRIORITY_DEFAULT,
                                                RT_STREAM_DEFAULT);
-  ASSERT_NE(model.GetAttachedStreamProvider()->RequestAttachedStream(AscendString("eager_aux"), 0U), nullptr);
+  ASSERT_NE(model.GetAttachedStreamProvider()->RequestAttachedStream(AscendString("eager_aux")), nullptr);
   ASSERT_EQ(runtime->create_count_, 1);
 
   model.UnbindAndDestroyAttachedStreams();
@@ -112,7 +112,7 @@ TEST(DavinciModelAttachedStreamTest, DestructorSkipsAttachedStreamCleanupWhenCon
     DavinciModel model(0, nullptr);
     model.attached_stream_collection_.Initialize(reinterpret_cast<rtModel_t>(0x55U), RT_STREAM_PRIORITY_DEFAULT,
                                                  RT_STREAM_DEFAULT);
-    ASSERT_NE(model.GetAttachedStreamProvider()->RequestAttachedStream(AscendString("eager_aux"), 0U), nullptr);
+    ASSERT_NE(model.GetAttachedStreamProvider()->RequestAttachedStream(AscendString("eager_aux")), nullptr);
     ASSERT_EQ(runtime->create_count_, 1);
   }
   EXPECT_TRUE(acl->events.empty());

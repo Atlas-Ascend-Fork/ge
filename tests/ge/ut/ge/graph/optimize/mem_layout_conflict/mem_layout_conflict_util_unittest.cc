@@ -9,15 +9,9 @@
  */
 
 #include <gtest/gtest.h>
-#include <map>
-#include <string>
 #include "common/mem_conflict_share_graph.h"
 #include "graph/compute_graph.h"
 #include "compiler/graph/optimize/mem_layout_conflict_optimize/mem_layout_conflict_util.h"
-#include "common/ge_common/ge_types.h"
-#include "external/graph/custom_op.h"
-#include "graph/custom_op_registry.h"
-#include "graph/ge_context.h"
 
 namespace ge {
 class UtestMemLayoutConflictUtil : public testing::Test {
@@ -355,70 +349,5 @@ TEST_F(UtestMemLayoutConflictUtil, GetRealInputs_Success) {
 
   auto in_nodes = MemLayoutConflictUtil::GetAllRealInPeer(hcombroadcast);
   ASSERT_EQ(in_nodes.size(), 1U);
-}
-
-namespace {
-// kHccl引擎注册且带ArgsUpdater能力（对齐HcclOp注册形态）
-class TestMemLayoutHcclUpdaterOp final : public ArgsUpdater {
- public:
-  graphStatus UpdateHostArgs(gert::UpdateArgsContext *ctx) override {
-    (void)ctx;
-    return GRAPH_SUCCESS;
-  }
-};
-// kHccl引擎注册但未提供args刷新能力（非ArgsUpdater、非AnnotatedArgsOp）
-class TestMemLayoutHcclPlainOp final : public BaseCustomOp {};
-}  // namespace
-
-REG_OP_WITH_PRIORITY(TestMemLayoutHcclUpdaterOp, "MemLayoutHcclUpdaterOp", OpBackend::kDevice,
-                     OpRegistrationPriority::kBottom, OpEngine::kHccl);
-REG_OP_WITH_PRIORITY(TestMemLayoutHcclPlainOp, "MemLayoutHcclPlainOp", OpBackend::kDevice,
-                     OpRegistrationPriority::kBottom, OpEngine::kHccl);
-
-namespace {
-NodePtr BuildHcclEngineNode(const ComputeGraphPtr &graph, const std::string &op_type, const std::string &kernel_lib) {
-  auto op_desc = std::make_shared<OpDesc>("hccl_node", op_type);
-  op_desc->SetOpKernelLibName(kernel_lib);
-  op_desc->SetOpEngineName(kEngineNameDnnHccl);
-  return graph->AddNode(op_desc);
-}
-
-std::map<std::string, std::string> SetFeatureBaseRefreshable(const std::string &value) {
-  const auto saved = ge::GetThreadLocalContext().GetAllGlobalOptions();
-  auto globals = saved;
-  globals[OPTION_FEATURE_BASE_REFRESHABLE] = value;
-  ge::GetThreadLocalContext().SetGlobalOption(globals);
-  return saved;
-}
-
-bool QueryAddressRefreshable(const std::string &graph_name, const std::string &op_type, const std::string &kernel_lib,
-                             const bool graph_refreshable) {
-  std::map<std::string, std::string> saved;
-  if (graph_refreshable) {
-    saved = SetFeatureBaseRefreshable("1");
-  }
-  auto graph = std::make_shared<ComputeGraph>(graph_name);
-  const auto node = BuildHcclEngineNode(graph, op_type, kernel_lib);
-  const bool refreshable = (node != nullptr) && MemLayoutConflictUtil::IsAddressRefreshable(node);
-  if (graph_refreshable) {
-    ge::GetThreadLocalContext().SetGlobalOption(saved);
-  }
-  return refreshable;
-}
-}  // namespace
-
-// 地址刷新口径回归（断言留在用例主体，避免lambda内断言/静态检查告警）：
-// ①kHccl自定义算子未提供args刷新能力+图级刷新开启 → 不可刷新（否则内存排布刷新地址后task
-// args（kNone）不更新，按旧地址执行） ②kHccl自定义算子带ArgsUpdater+图级刷新开启 → 可刷新（task args由回调更新）
-// ③kHccl自定义算子+图级刷新关闭 → 不可刷新（由图级feature map刷新开关判定，即使带ArgsUpdater）
-// ④内置HCCL算子（ops_kernel_info_hccl）+图级刷新开启 → 可刷新（HcclTaskInfo自管刷新，无需args刷新能力）
-TEST_F(UtestMemLayoutConflictUtil, IsAddressRefreshableHcclAndBuiltInCases) {
-  EXPECT_FALSE(
-      QueryAddressRefreshable("hccl_plain_refresh_graph", "MemLayoutHcclPlainOp", kCustomOpKernelLibName, true));
-  EXPECT_TRUE(
-      QueryAddressRefreshable("hccl_updater_refresh_graph", "MemLayoutHcclUpdaterOp", kCustomOpKernelLibName, true));
-  EXPECT_FALSE(
-      QueryAddressRefreshable("hccl_no_refresh_graph", "MemLayoutHcclUpdaterOp", kCustomOpKernelLibName, false));
-  EXPECT_TRUE(QueryAddressRefreshable("builtin_hccl_refresh_graph", "HcomAllReduce", kEngineNameHccl, true));
 }
 }  // namespace ge

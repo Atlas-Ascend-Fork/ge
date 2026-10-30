@@ -20,8 +20,7 @@ class AttachedStreamProvider {
  public:
   virtual ~AttachedStreamProvider() = default;
 
-  // flags：RTS流创建标志原值（由算子传入，GE直接透传给流创建），仅新建时生效，复用命中时忽略
-  virtual rtStream RequestAttachedStream(const ge::AscendString &key, uint32_t flags) = 0;
+  virtual rtStream RequestAttachedStream(const ge::AscendString &key) = 0;
 };
 }  // namespace gert
 

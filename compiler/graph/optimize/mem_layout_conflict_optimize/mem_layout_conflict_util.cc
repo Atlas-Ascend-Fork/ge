@@ -402,10 +402,6 @@ bool MemLayoutConflictUtil::IsAddressRefreshable(const NodePtr &node) {
     return false;
   }
   // 后续支持地址刷新特性的时候需要调整判断逻辑
-  // HCOM类节点（内置HCCL算子、kHccl引擎注册的自定义算子）在图级feature map刷新开启时放行，
-  // 由HCOM链路刷新地址。但kHccl引擎的自定义算子运行期走CustomTaskInfo，须注册ArgsUpdater
-  // 或AnnotatedArgsOp才能在地址刷新后更新task args，故仍需查询其注册能力；
-  // 内置HCCL算子走HcclTaskInfo自管刷新，无custom kernel lib，不受下方查询影响。
   if (node->GetOpDesc()->GetOpKernelLibName() == ge::kCustomOpKernelLibName) {
     AscendString op_type(node->GetOpDesc()->GetType().c_str());
     if (!CustomOpFactory::IsAddressRefreshable(op_type)) {

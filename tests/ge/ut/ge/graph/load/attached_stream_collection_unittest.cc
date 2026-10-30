@@ -74,8 +74,8 @@ class AclForAttachedStreamTest final : public AclRuntimeStub {
 
 TEST(AttachedStreamCollectionTest, RejectsEmptyKeysBeforeRuntimeCall) {
   AttachedStreamCollection collection(nullptr, RT_STREAM_PRIORITY_DEFAULT, RT_STREAM_DEFAULT);
-  EXPECT_EQ(collection.RequestAttachedStream(AscendString(), 0U), nullptr);
-  EXPECT_EQ(collection.RequestAttachedStream(AscendString(""), 0U), nullptr);
+  EXPECT_EQ(collection.RequestAttachedStream(AscendString()), nullptr);
+  EXPECT_EQ(collection.RequestAttachedStream(AscendString("")), nullptr);
 }
 
 TEST(AttachedStreamCollectionTest, AcceptsFrameworkReservedPrefixKey) {
@@ -87,7 +87,7 @@ TEST(AttachedStreamCollectionTest, AcceptsFrameworkReservedPrefixKey) {
   AttachedStreamCollection collection(reinterpret_cast<rtModel_t>(0x55U), RT_STREAM_PRIORITY_DEFAULT,
                                       RT_STREAM_DEFAULT);
   // CANN-FMK- 前缀保留给 HCCL 等框架组件，属 API 文档软约束，代码不拦截
-  EXPECT_NE(collection.RequestAttachedStream(AscendString("CANN-FMK-hccl"), 0U), nullptr);
+  EXPECT_NE(collection.RequestAttachedStream(AscendString("CANN-FMK-hccl")), nullptr);
   EXPECT_EQ(runtime->create_count_, 1);
 
   collection.UnbindAndDestroy();
@@ -103,8 +103,8 @@ TEST(AttachedStreamCollectionTest, ReusesKeyAndCleansUpAfterUnbind) {
 
   AttachedStreamCollection collection(reinterpret_cast<rtModel_t>(0x55U), RT_STREAM_PRIORITY_DEFAULT,
                                       RT_STREAM_DEFAULT);
-  const auto first = collection.RequestAttachedStream(AscendString("shared"), 0U);
-  const auto second = collection.RequestAttachedStream(AscendString("shared"), 0U);
+  const auto first = collection.RequestAttachedStream(AscendString("shared"));
+  const auto second = collection.RequestAttachedStream(AscendString("shared"));
   ASSERT_NE(first, nullptr);
   EXPECT_EQ(first, second);
   EXPECT_EQ(runtime->create_count_, 1);
@@ -130,7 +130,7 @@ TEST(AttachedStreamCollectionTest, ReusesKeyAndCleansUpAfterUnbind) {
 
 TEST(AttachedStreamCollectionTest, MissingModelReturnsNullOnValidKey) {
   AttachedStreamCollection collection(nullptr, RT_STREAM_PRIORITY_DEFAULT, RT_STREAM_DEFAULT);
-  EXPECT_EQ(collection.RequestAttachedStream(AscendString("eager_aux"), 0U), nullptr);
+  EXPECT_EQ(collection.RequestAttachedStream(AscendString("eager_aux")), nullptr);
 }
 
 TEST(AttachedStreamCollectionTest, BindFailureRollsBackTemporaryStream) {
@@ -142,7 +142,7 @@ TEST(AttachedStreamCollectionTest, BindFailureRollsBackTemporaryStream) {
 
   AttachedStreamCollection collection(reinterpret_cast<rtModel_t>(0x55U), RT_STREAM_PRIORITY_DEFAULT,
                                       RT_STREAM_DEFAULT);
-  EXPECT_EQ(collection.RequestAttachedStream(AscendString("rollback"), 0U), nullptr);
+  EXPECT_EQ(collection.RequestAttachedStream(AscendString("rollback")), nullptr);
   EXPECT_EQ(runtime->create_count_, 1);
   // 回滚路径销毁的是刚建好、未下发任何任务的流，不需要同步
   EXPECT_TRUE(acl->synced_streams.empty());
@@ -162,7 +162,7 @@ TEST(AttachedStreamCollectionTest, SyncFailureStillUnbindsAndDestroys) {
 
   AttachedStreamCollection collection(reinterpret_cast<rtModel_t>(0x55U), RT_STREAM_PRIORITY_DEFAULT,
                                       RT_STREAM_DEFAULT);
-  ASSERT_NE(collection.RequestAttachedStream(AscendString("sync_fail"), 0U), nullptr);
+  ASSERT_NE(collection.RequestAttachedStream(AscendString("sync_fail")), nullptr);
 
   collection.UnbindAndDestroy();
   ASSERT_EQ(acl->events.size(), 4U);
@@ -182,7 +182,7 @@ TEST(AttachedStreamCollectionTest, CreateFailureReturnsNullptrWithoutBindOrDestr
 
   AttachedStreamCollection collection(reinterpret_cast<rtModel_t>(0x55U), RT_STREAM_PRIORITY_DEFAULT,
                                       RT_STREAM_DEFAULT);
-  EXPECT_EQ(collection.RequestAttachedStream(AscendString("create_fail"), 0U), nullptr);
+  EXPECT_EQ(collection.RequestAttachedStream(AscendString("create_fail")), nullptr);
   EXPECT_EQ(runtime->create_count_, 1);
   EXPECT_EQ(acl->bound_streams.size(), 0U);
   EXPECT_EQ(acl->unbound_streams.size(), 0U);
@@ -199,15 +199,15 @@ TEST(AttachedStreamCollectionTest, DistinctKeysGetDistinctStreams) {
 
   AttachedStreamCollection collection(reinterpret_cast<rtModel_t>(0x55U), RT_STREAM_PRIORITY_DEFAULT,
                                       RT_STREAM_DEFAULT);
-  const auto first = collection.RequestAttachedStream(AscendString("key_a"), 0U);
-  const auto second = collection.RequestAttachedStream(AscendString("key_b"), 0U);
+  const auto first = collection.RequestAttachedStream(AscendString("key_a"));
+  const auto second = collection.RequestAttachedStream(AscendString("key_b"));
   ASSERT_NE(first, nullptr);
   ASSERT_NE(second, nullptr);
   EXPECT_NE(first, second);
   EXPECT_EQ(runtime->create_count_, 2);
   ASSERT_EQ(acl->bound_streams.size(), 2U);
   // 已存在的 key 复用同一条流，不重复建流
-  EXPECT_EQ(collection.RequestAttachedStream(AscendString("key_a"), 0U), first);
+  EXPECT_EQ(collection.RequestAttachedStream(AscendString("key_a")), first);
   EXPECT_EQ(runtime->create_count_, 2);
 
   collection.UnbindAndDestroy();
