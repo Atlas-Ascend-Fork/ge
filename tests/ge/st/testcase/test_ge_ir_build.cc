@@ -2019,9 +2019,6 @@ void BuildAndCheckSimpleConstCastGraph(bool use_const, DataType dtype) {
   auto cast_0 = OP_CFG(CAST).InCnt(1).OutCnt(1).TensorDesc(FORMAT_NCHW, DT_FLOAT, shape).Build("cast_1");
   DEF_GRAPH(g1) {
     CHAIN(NODE(const_0)->NODE(cast_0));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留 const/cast 链以校验 FP8/FP4 数据类型在编译流程中的保真
-    ADD_OUTPUT(cast_0, 0);
   };
   auto graph = ToGeGraph(g1);
 

@@ -400,14 +400,6 @@ TEST_F(TransopFusionOptimizeTest, IfTwoSubgraphs_NotFuse) {
   const auto if_sub_graph = compute_graph->GetSubgraph("if_sub");
   ASSERT_NE(if_sub_graph, nullptr);
 
-  // if_sub内transdata链仅经控制边挂子图NetOutput（无数据输出声明），PrunePass会按保活误连
-  // 剪除死链；本用例需保留该链以校验跨If边界的TransData不融合，显式打跳过剪枝标记
-  for (const char *name : {"if_transdata", "if_relu"}) {
-    const auto node = if_sub_graph->FindNode(name);
-    ASSERT_NE(node, nullptr);
-    AttrUtils::SetBool(node->GetOpDesc(), ATTR_NAME_SKIP_PRUNE_OPTIMIZE, true);
-  }
-
   compute_graph->TopologicalSorting();
 
   NetoutputParentIndexes indexes{{"if_sub_netoutput", {0}}, {"then_sub_netoutput", {0}}};

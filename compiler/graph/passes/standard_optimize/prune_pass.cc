@@ -11,21 +11,286 @@
 #include "graph/passes/standard_optimize/prune_pass.h"
 #include <deque>
 #include <set>
+#include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "common/ge_common/ge_types.h"
+#include "common/op/transop_util.h"
 #include "framework/common/debug/log.h"
 #include "framework/common/framework_types_internal.h"
 #include "framework/common/debug/ge_log.h"
 #include "framework/common/ge_inner_error_codes.h"
-#include "framework/common/ge_types.h"
-#include "graph/debug/ge_attr_define.h"
-#include "graph/utils/attr_utils.h"
+#include "graph/utils/graph_utils.h"
 #include "graph/utils/node_utils.h"
 #include "graph/utils/op_type_utils.h"
-#include "common/op/transop_util.h"
 
 namespace ge {
 namespace {
+using NodeSet = std::unordered_set<NodePtr>;
+// 候选仅包含普通控制边；每个节点只有一对控制锚点，可按目标节点记录候选源节点。
+using PruneSources = std::unordered_map<NodePtr, NodeSet>;
+
+struct PruneGraphInfo {
+  // 当前 ComputeGraph 的直接节点全集 V，不包含子图内部节点。
+  std::vector<NodePtr> nodes;
+  // 当前图的全部 NetOutput，分别用于恢复各出口的完成依赖。
+  std::vector<NodePtr> outputs;
+  // 反向依赖遍历的起点：全部 NetOutput 与保活节点。
+  std::vector<NodePtr> roots;
+  // 显式 target 及命中保护规则的节点，其上游依赖另行遍历得到保留闭包 H。
+  NodeSet keep_alive;
+};
+
+struct PruneEdgeChanges {
+  std::vector<std::pair<NodePtr, NodePtr>> add_edges;
+  std::vector<std::pair<NodePtr, NodePtr>> remove_edges;
+};
+
+// 引擎规则保护调度和通信行为；GE Local 仍按现有结构保护策略整体保留。
+const std::unordered_set<std::string> kKeepAliveEngines = {"DNN_VM_GE_LOCAL", "DNN_VM_RTS", "DNN_VM_RTS_FFTS_PLUS",
+                                                           "DNN_HCCL"};
+// 兼容已有算子库身份判定，不将算子库名当作引擎名。
+const std::unordered_set<std::string> kKeepAliveKernelLibs = {kEngineNameGeLocal, kEngineNameRts, kEngineNameHccl,
+                                                              kEngineNameAiCpuTf};
+// Hcom 算子由 HCCL 引擎规则保留；Horovod 同时兼容 GE 和图元数据中的两组类型名。
+// 数据获取、打印和断言可能由 AICPU 执行，需要独立保护其状态更新和诊断行为。
+const std::unordered_set<std::string> kKeepAliveOpTypes = {HVDCALLBACKALLREDUCE,
+                                                           HVDCALLBACKALLGATHER,
+                                                           HVDCALLBACKBROADCAST,
+                                                           HVDWAIT,
+                                                           "hvdCallbackAllreduce",
+                                                           "hvdCallbackAllgather",
+                                                           "hvdCallbackBroadcast",
+                                                           "hvdWait",
+                                                           GETNEXT,
+                                                           DYNAMICGETNEXT,
+                                                           DYNAMICGETNEXTV2,
+                                                           "Print",
+                                                           "PrintV2",
+                                                           "PrintV3",
+                                                           ASSERT};
+
+// StreamLabel 参与分流及流激活关联，BatchLabel 标识分档子图，二者可能携带拓扑之外的调度语义。
+// 此处将这两类非空属性统称为执行标签，仅用于保活判断，不做完整控制流分析。
+bool HasExecutionLabel(const NodePtr &node) {
+  std::string label;
+  if (AttrUtils::GetStr(node->GetOpDesc(), ATTR_NAME_STREAM_LABEL, label) && !label.empty()) {
+    return true;
+  }
+  return AttrUtils::GetStr(node->GetOpDesc(), ATTR_NAME_BATCH_LABEL, label) && !label.empty();
+}
+
+bool IsKeepAliveNode(const NodePtr &node) {
+  const auto *op_desc = node->GetOpDescBarePtr();
+  const auto &type = node->GetType();
+  bool skip_prune = false;
+  bool is_ref = false;
+  (void)AttrUtils::GetBool(op_desc, ATTR_NAME_SKIP_PRUNE_OPTIMIZE, skip_prune);
+  (void)AttrUtils::GetBool(op_desc, ATTR_NAME_REFERENCE, is_ref);
+
+  if (skip_prune || is_ref || !op_desc->GetSubgraphInstanceNames().empty() || HasExecutionLabel(node)) {
+    return true;
+  }
+
+  if ((kKeepAliveEngines.count(op_desc->GetOpEngineName()) != 0U) ||
+      (kKeepAliveKernelLibs.count(op_desc->GetOpKernelLibName()) != 0U)) {
+    return true;
+  }
+
+  return OpTypeUtils::IsDataNode(type) || OpTypeUtils::IsVariableNode(type) || OpTypeUtils::IsAssignLikeNode(type) ||
+         TransOpUtil::IsTransOp(node) || (kKeepAliveOpTypes.count(type) != 0U);
+}
+
+// 枚举完整输入依赖，仅跳过候选控制边。
+std::vector<NodePtr> GetPruneInputs(const NodePtr &node, const PruneSources &ignored) {
+  std::vector<NodePtr> inputs;
+  const auto sources = ignored.find(node);
+  const auto *in_control = node->GetInControlAnchor().get();
+  for (const auto *anchor : node->GetAllInAnchorsPtr()) {
+    for (const auto *peer : anchor->GetPeerAnchorsPtr()) {
+      const auto source = peer->GetOwnerNode();
+      // 必须精确匹配控制锚点对，同一源节点的 OutData -> InControl 等混合依赖不能一起忽略。
+      if ((sources != ignored.end()) && (anchor == in_control) && (peer == source->GetOutControlAnchor().get()) &&
+          (sources->second.count(source) != 0U)) {
+        continue;
+      }
+      inputs.push_back(source);
+    }
+  }
+  return inputs;
+}
+
+// 反向遍历输入依赖，记录停止节点但不继续向上遍历。
+NodeSet CollectPruneAncestors(const std::vector<NodePtr> &roots, const PruneSources &ignored, const NodeSet &stop) {
+  NodeSet seen;
+  std::deque<NodePtr> queue(roots.cbegin(), roots.cend());
+  while (!queue.empty()) {
+    const auto node = queue.front();
+    queue.pop_front();
+    if (!seen.insert(node).second || (stop.count(node) != 0U)) {
+      continue;
+    }
+    for (const auto &input : GetPruneInputs(node, ignored)) {
+      queue.push_back(input);
+    }
+  }
+  return seen;
+}
+
+// 收集当前图的节点、出口及保活根。
+Status CollectPruneGraphInfo(const ComputeGraphPtr &graph, PruneGraphInfo &info) {
+  for (const auto &target : graph->GetGraphTargetNodesInfo()) {
+    if (target != nullptr) {
+      info.keep_alive.insert(target);
+    }
+  }
+  for (const auto &node : graph->GetDirectNode()) {
+    GE_CHECK_NOTNULL(node->GetOpDesc());
+    info.nodes.push_back(node);
+    if (node->GetType() == NETOUTPUT) {
+      info.outputs.push_back(node);
+      info.roots.push_back(node);
+    } else if (IsKeepAliveNode(node) || (info.keep_alive.count(node) != 0U)) {
+      info.keep_alive.insert(node);
+      info.roots.push_back(node);
+    }
+  }
+  return SUCCESS;
+}
+
+// 按原出口自动收集非保活源节点的普通控制边。
+void CollectPrunableControlInputs(const PruneGraphInfo &info, PruneSources &ignored) {
+  for (const auto &output : info.outputs) {
+    for (const auto *anchor : output->GetInControlAnchor()->GetPeerOutControlAnchorsPtr()) {
+      const auto source = anchor->GetOwnerNode();
+      if (info.keep_alive.count(source) == 0U) {
+        ignored[output].insert(source);
+        GELOGD("[PrunePass] candidate control edge [%s] -> [%s] after engine assignment.", source->GetNamePtr(),
+               output->GetNamePtr());
+      }
+    }
+  }
+}
+
+// 从全部节点中找出不属于保留集合 H 的节点，得到删除集合 D。
+NodeSet CollectDeadPruneNodes(const std::vector<NodePtr> &nodes, const NodeSet &seen) {
+  NodeSet dead;
+  for (const auto &node : nodes) {
+    if (seen.count(node) == 0U) {
+      dead.insert(node);
+    }
+  }
+  return dead;
+}
+
+// 各原出口独立回溯保留边界，规划补边和删边，此时不修改图。
+PruneEdgeChanges PlanPruneEdgeChanges(const PruneGraphInfo &info, const PruneSources &ignored, const NodeSet &seen) {
+  PruneEdgeChanges changes;
+  for (const auto &output : info.outputs) {
+    const auto entry = ignored.find(output);
+    if (entry == ignored.end()) {
+      continue;
+    }
+    std::vector<NodePtr> sources(entry->second.cbegin(), entry->second.cend());
+    const auto ancestors = CollectPruneAncestors(sources, ignored, seen);
+    const auto inputs = GetPruneInputs(output, ignored);
+    const NodeSet direct_inputs(inputs.cbegin(), inputs.cend());
+    for (const auto &node : info.nodes) {
+      if ((node == output) || (seen.count(node) == 0U) || (ancestors.count(node) == 0U) ||
+          (direct_inputs.count(node) != 0U)) {
+        continue;
+      }
+      if (entry->second.count(node) == 0U) {
+        changes.add_edges.emplace_back(node, output);
+      }
+    }
+    for (const auto &node : info.nodes) {
+      // 候选源已在 H 时保留其原完成边；若另有直接依赖，则只移除冗余控制边。
+      if ((entry->second.count(node) != 0U) && ((seen.count(node) == 0U) || (direct_inputs.count(node) != 0U))) {
+        changes.remove_edges.emplace_back(node, output);
+      }
+    }
+  }
+  return changes;
+}
+
+// 先恢复必要的完成依赖，再移除可剪控制边。
+Status ApplyPruneEdgeChanges(const PruneEdgeChanges &changes) {
+  for (const auto &edge : changes.add_edges) {
+    GE_CHK_GRAPH_STATUS_RET(GraphUtils::AddEdge(edge.first->GetOutControlAnchor(), edge.second->GetInControlAnchor()),
+                            "Failed to restore completion from %s to %s.", edge.first->GetNamePtr(),
+                            edge.second->GetNamePtr());
+    GELOGD("[PrunePass] restored completion control edge [%s] -> [%s].", edge.first->GetNamePtr(),
+           edge.second->GetNamePtr());
+  }
+  for (const auto &edge : changes.remove_edges) {
+    const auto source_anchor = edge.first->GetOutControlAnchor();
+    const auto output_anchor = edge.second->GetInControlAnchor();
+    while (source_anchor->IsLinkedWith(output_anchor)) {
+      GE_CHK_GRAPH_STATUS_RET(GraphUtils::RemoveEdge(source_anchor, output_anchor),
+                              "Failed to remove prunable completion from %s to %s.", edge.first->GetNamePtr(),
+                              edge.second->GetNamePtr());
+    }
+    GELOGD("[PrunePass] removed candidate control edge [%s] -> [%s].", edge.first->GetNamePtr(),
+           edge.second->GetNamePtr());
+  }
+  return SUCCESS;
+}
+
+// 先统一断边再批量移除，不旁路重连，也不连带删除保留集合中的常量输入。
+Status RemoveDeadPruneNodes(const ComputeGraphPtr &graph, const std::vector<NodePtr> &nodes, const NodeSet &dead) {
+  for (const auto &node : nodes) {
+    if (dead.count(node) != 0U) {
+      NodeUtils::UnlinkAll(*node);
+      GELOGI(
+          "[PrunePass] remove graph node [%s] after engine assignment, graph [%s], type [%s], engine [%s], "
+          "kernel_lib [%s].",
+          node->GetNamePtr(), graph->GetName().c_str(), node->GetTypePtr(),
+          node->GetOpDescBarePtr()->GetOpEngineName().c_str(), node->GetOpDescBarePtr()->GetOpKernelLibName().c_str());
+    }
+  }
+  GE_CHK_GRAPH_STATUS_RET(GraphUtils::RemoveNodesWithoutRelink(graph, dead),
+                          "Failed to remove unreachable nodes after engine assignment.");
+  return SUCCESS;
+}
+
+Status PruneAfterEngineAssigned(const ComputeGraphPtr &graph) {
+  PruneGraphInfo info;
+  // 收集 nodes（全部节点）、outputs（出口）、keep_alive（保活节点）和 roots（出口与保活节点）。
+  GE_CHK_STATUS_RET(CollectPruneGraphInfo(graph, info));
+  if (info.outputs.empty()) {
+    GELOGD("[PrunePass] skip graph [%s] after engine assignment: no NetOutput.", graph->GetName().c_str());
+    return SUCCESS;
+  }
+
+  PruneSources ignored;
+  // 按出口自动记录候选控制边的源节点 ignored，此时不删边。
+  CollectPrunableControlInputs(info, ignored);
+
+  // 从 roots 反向遍历全部输入依赖，忽略 ignored 中的控制边，得到保留集合 H（seen）。
+  const auto seen = CollectPruneAncestors(info.roots, ignored, {});
+
+  // 计算删除集合 D（dead）= 全部节点 nodes - 保留集合 H，此时不删除节点。
+  const auto dead = CollectDeadPruneNodes(info.nodes, seen);
+
+  // 各出口分别从候选源反向回溯，遇到 H 停止，规划保留边界到原出口的补边和候选控制边的删边。
+  const auto changes = PlanPruneEdgeChanges(info, ignored, seen);
+  GELOGI(
+      "[PrunePass] prune plan for graph [%s] after engine assignment: nodes=%zu, outputs=%zu, keep_alive=%zu, "
+      "retained=%zu, dead=%zu, add_edges=%zu, remove_edges=%zu.",
+      graph->GetName().c_str(), info.nodes.size(), info.outputs.size(), info.keep_alive.size(), seen.size(),
+      dead.size(), changes.add_edges.size(), changes.remove_edges.size());
+
+  // 按计划先补充必要的完成控制边，再移除待删控制边，此时仍不删除节点。
+  GE_CHK_STATUS_RET(ApplyPruneEdgeChanges(changes));
+
+  // 统一断开 dead 中节点的全部连边，再批量移除节点，避免旁路重连和连带删除保留节点。
+  GE_CHK_STATUS_RET(RemoveDeadPruneNodes(graph, info.nodes, dead));
+
+  return SUCCESS;
+}
+
 bool IsTargetRefNode(const NodePtr &node) {
   GE_CHECK_NOTNULL(node);
   bool is_ref = false;
@@ -37,10 +302,20 @@ bool IsTargetRefNode(const NodePtr &node) {
   }
   return false;
 }
-
-// 收集全量节点、图出口（NETOUTPUT/target ref）及显式跳过剪枝的节点
-Status CollectPruneNodes(const ComputeGraphPtr &graph, std::unordered_set<NodePtr> &nodes,
-                         std::vector<NodePtr> &out_nodes, std::vector<NodePtr> &force_skip_nodes) {
+}  // namespace
+Status PrunePass::Run(ge::ComputeGraphPtr graph) {
+  if (graph == nullptr) {
+    REPORT_INNER_ERR_MSG("E19999", "Param graph is nullptr, check invalid");
+    GELOGE(GE_GRAPH_ISNULL, "[Check][Param] input compute graph is NULL.");
+    return GE_GRAPH_ISNULL;
+  }
+  GELOGD("PrunePass Start, graph is [%s]", graph->GetName().c_str());
+  if (stage_ == Stage::kAfterEngineAssigned) {
+    return PruneAfterEngineAssigned(graph);
+  }
+  std::vector<NodePtr> out_nodes;
+  std::vector<NodePtr> force_skip_nodes;
+  std::unordered_set<NodePtr> nodes;
   for (NodePtr &node_ptr : graph->GetDirectNode()) {
     GE_CHECK_NOTNULL(node_ptr->GetOpDesc());
     nodes.insert(node_ptr);
@@ -55,160 +330,14 @@ Status CollectPruneNodes(const ComputeGraphPtr &graph, std::unordered_set<NodePt
       GELOGI("[PrunePass] Node [%s] skip to prune", node_ptr->GetNamePtr());
     }
   }
-  return ge::SUCCESS;
-}
-
-// HCCL 算子类型前缀集合
-const std::set<std::string> kKeepAliveOpTypePrefixes = {"Hcom", "hvd"};
-
-bool IsKeepAliveOpTypePrefix(const std::string &type) {
-  for (const auto &prefix : kKeepAliveOpTypePrefixes) {
-    if (type.rfind(prefix, 0U) == 0U) {
-      return true;
-    }
+  if (out_nodes.empty()) {
+    GELOGW("graph [%s] does not contain NETOUTPUT type node,no return value. Do nothing!", graph->GetName().c_str());
+    return ge::SUCCESS;
   }
-  return false;
-}
+  out_nodes.insert(out_nodes.cend(), force_skip_nodes.cbegin(), force_skip_nodes.cend());
 
-// 保活节点：变量/Assign、集合通信（kKeepAliveOpTypePrefixes）、控制流骨架、含子图节点。
-// 新增副作用算子应打 _force_skip_prune 标记，避免扩充本名单。
-const std::unordered_set<std::string> kKeepAliveOpTypes = {
-    VARHANDLEOP, GETNEXT,       NEXTITERATION, REFNEXTITERATION, SWITCH,
-    REFSWITCH,   SWITCHN,       MERGE,         REFMERGE,         IF,
-    _IF,         STATELESSIF,   WHILE,         _WHILE,           STATELESSWHILE,
-    CASE,        STATELESSCASE, FOR,           PARTITIONEDCALL,  STATEFULPARTITIONEDCALL};
-
-// 副作用算子：打印/断言/摘要的执行本身产生外部可见效果，其到图出口的控制边承载真实执行不可当空闲误连剪除。
-const std::unordered_set<std::string> kSideEffectOpTypes = {"Print", "PrintV2", "PrintV3", "Assert", "Summary"};
-
-// 引擎分配后保活判定：框架/流控/主机/集合通信引擎节点不可剪；计算引擎（AI Core/Vector/AI CPU等）可剪。
-const std::set<std::string> kKeepAliveKernelLibs = {kEngineNameGeLocal, kEngineNameRts, kEngineNameHccl};
-
-bool IsProtectedEngineNode(const OpDescPtr &op_desc) {
-  if (op_desc == nullptr) {
-    return false;
-  }
-  const std::string kernel_lib_name = op_desc->GetOpKernelLibName();
-  if (kernel_lib_name.empty()) {
-    return false;  // 引擎未分配：维持既有类型白名单判定
-  }
-  return kKeepAliveKernelLibs.count(kernel_lib_name) > 0UL;
-}
-
-bool IsKeepAliveNode(const NodePtr &node) {
-  if ((node == nullptr) || (node->GetOpDesc() == nullptr)) {
-    return false;
-  }
-  const std::string &type = node->GetType();
-  if (OpTypeUtils::IsVariableNode(type) || OpTypeUtils::IsAssignLikeNode(type) ||
-      (kKeepAliveOpTypes.count(type) > 0UL) || IsKeepAliveOpTypePrefix(type)) {
-    return true;
-  }
-  const auto &op_desc = node->GetOpDesc();
-  // 无输入无输出算子（如 NPUClearFloatStatusV2）仅副作用存在，须保活
-  if ((op_desc->GetAllInputsSize() == 0UL) && (op_desc->GetOutputsSize() == 0UL)) {
-    return true;
-  }
-  bool is_ref = false;
-  (void)AttrUtils::GetBool(op_desc, ATTR_NAME_REFERENCE, is_ref);
-  return is_ref || IsProtectedEngineNode(op_desc);
-}
-
-// 补控制边到图出口保证执行序；先去重避免重复边
-Status AddCtrlEdgeToOutNode(const NodePtr &node, const NodePtr &out_node) {
-  if (node->GetOutControlAnchor()->IsLinkedWith(out_node->GetInControlAnchor())) {
-    return SUCCESS;
-  }
-  const auto ret = GraphUtils::AddEdge(node->GetOutControlAnchor(), out_node->GetInControlAnchor());
-  if (ret != ge::SUCCESS) {
-    REPORT_INNER_ERR_MSG("E19999", "Add control edge between op:%s(%s) and op:%s(%s) failed", node->GetName().c_str(),
-                         node->GetType().c_str(), out_node->GetName().c_str(), out_node->GetType().c_str());
-    GELOGE(INTERNAL_ERROR, "Failed to add control edge between op %s(%s) and out node %s(%s).", node->GetName().c_str(),
-           node->GetType().c_str(), out_node->GetName().c_str(), out_node->GetType().c_str());
-    return INTERNAL_ERROR;
-  }
-  GELOGD("[PrunePass] add extra control edge between node[%s(%s)] and out node[%s(%s)]!", node->GetName().c_str(),
-         node->GetType().c_str(), out_node->GetName().c_str(), out_node->GetType().c_str());
-  return SUCCESS;
-}
-
-// 保活节点不可达时，沿入边反向收集输入闭包一并保活（不补控制边）
-void CollectKeepAliveClosure(const std::unordered_set<NodePtr> &all_nodes,
-                             const std::unordered_set<NodePtr> &nodes_seen, std::unordered_set<NodePtr> &keep_closure) {
-  for (const auto &node_ptr : all_nodes) {
-    if ((nodes_seen.count(node_ptr) != 0UL) || (keep_closure.count(node_ptr) != 0UL) || !IsKeepAliveNode(node_ptr)) {
-      continue;
-    }
-    GELOGD("[PrunePass] keep input closure of keep-alive node [%s]!", node_ptr->GetNamePtr());
-    std::deque<NodePtr> queue;
-    queue.push_back(node_ptr);
-    while (!queue.empty()) {
-      NodePtr node = queue.front();
-      queue.pop_front();
-      for (auto &in_node : node->GetInAllNodes()) {
-        if ((nodes_seen.count(in_node) == 0UL) && keep_closure.insert(in_node).second) {
-          queue.push_back(in_node);
-        }
-      }
-    }
-  }
-}
-
-// 多输入转换算子（Reshape/Transpose等）的参数输入（shape/axes/perm，序号>=1）生产链
-// 一并收入 keep_closure，避免保留的转换算子输入悬空。已保留/保活/已见节点跳过；
-// VariableOpPass 融合后的残留链由后续轮次回收。
-void CollectTransOpInputClosure(const NodePtr &trans_node, const std::unordered_set<NodePtr> &nodes_seen,
-                                const std::unordered_set<NodePtr> &trans_closure,
-                                std::unordered_set<NodePtr> &keep_closure) {
-  std::deque<NodePtr> queue;
-  queue.push_back(trans_node);
-  while (!queue.empty()) {
-    NodePtr node = queue.front();
-    queue.pop_front();
-    for (auto &in_node : node->GetInAllNodes()) {
-      if ((nodes_seen.count(in_node) != 0UL) || (trans_closure.count(in_node) != 0UL) ||
-          (keep_closure.count(in_node) != 0UL) || IsKeepAliveNode(in_node)) {
-        continue;
-      }
-      keep_closure.insert(in_node);
-      queue.push_back(in_node);
-    }
-  }
-}
-
-// 变量节点的输出转换链（Cast/TransData等）承载格式语义，VariableOpPass依赖其注册地址，
-// 须一并保活并补控制边；非变量保活节点不在此列。多输入转换算子的参数输入链收入keep_closure。
-void CollectKeepAliveTransClosure(const std::unordered_set<NodePtr> &all_nodes,
-                                  const std::unordered_set<NodePtr> &nodes_seen,
-                                  std::unordered_set<NodePtr> &trans_closure,
-                                  std::unordered_set<NodePtr> &keep_closure) {
-  for (const auto &node_ptr : all_nodes) {
-    if ((nodes_seen.count(node_ptr) != 0UL) || (trans_closure.count(node_ptr) != 0UL) || !IsKeepAliveNode(node_ptr) ||
-        !OpTypeUtils::IsVariableNode(node_ptr->GetType())) {
-      continue;
-    }
-    std::deque<NodePtr> queue;
-    queue.push_back(node_ptr);
-    while (!queue.empty()) {
-      NodePtr node = queue.front();
-      queue.pop_front();
-      for (auto &out_node : node->GetOutDataNodes()) {
-        if ((nodes_seen.count(out_node) != 0UL) || !TransOpUtil::IsTransOp(out_node) ||
-            (trans_closure.count(out_node) != 0UL)) {
-          continue;
-        }
-        GELOGD("[PrunePass] keep trans closure of keep-alive node [%s]!", out_node->GetNamePtr());
-        trans_closure.insert(out_node);
-        queue.push_back(out_node);
-        CollectTransOpInputClosure(out_node, nodes_seen, trans_closure, keep_closure);
-      }
-    }
-  }
-}
-
-// 从图出口沿所有入边反向BFS标记可达节点
-Status CollectSeenNodes(const std::vector<NodePtr> &out_nodes, std::unordered_set<NodePtr> &nodes_seen) {
-  for (const NodePtr &node_ptr : out_nodes) {
+  std::unordered_set<NodePtr> nodes_seen;
+  for (NodePtr &node_ptr : out_nodes) {
     std::deque<NodePtr> queue;
     queue.push_back(node_ptr);
     nodes_seen.insert(node_ptr);
@@ -223,108 +352,23 @@ Status CollectSeenNodes(const std::vector<NodePtr> &out_nodes, std::unordered_se
       }
     }
   }
-  return ge::SUCCESS;
-}
 
-// 空闲节点：纯计算无副作用，其到 NetOutput 的控制边视为误连，删除后死链重新不可达
-bool IsIdleNodeOnNetOutput(const NodePtr &node, const std::unordered_set<NodePtr> &protected_nodes) {
-  if ((node == nullptr) || (node->GetOpDesc() == nullptr)) {
-    return false;
-  }
-  if (OpTypeUtils::IsDataNode(node->GetType()) || IsKeepAliveNode(node)) {
-    return false;  // Data序号绑定由处置环节兜底；保活节点的控制边承载真实执行语义
-  }
-  if (kSideEffectOpTypes.count(node->GetType()) > 0UL) {
-    return false;  // 副作用算子（打印/断言/摘要）的控制边是其执行保证，不可当误连剪除
-  }
-  if (protected_nodes.count(node) != 0UL) {
-    return false;  // 用户target/显式跳过剪枝节点的控制边表达真实执行意图
-  }
-  return true;
-}
-
-// 剪除 NetOutput 控制入边上空闲节点的误连边；真实语义的控制边保留
-Status RemoveIdleCtrlEdgesOnNetOutput(const ComputeGraphPtr &graph, const std::vector<NodePtr> &out_nodes,
-                                      const std::vector<NodePtr> &force_skip_nodes) {
-  // 控制边不可删的保护集合：用户target与显式跳过剪枝节点
-  std::unordered_set<NodePtr> protected_nodes(force_skip_nodes.cbegin(), force_skip_nodes.cend());
-  for (const auto &target_node : graph->GetGraphTargetNodesInfo()) {
-    if (target_node != nullptr) {
-      protected_nodes.insert(target_node);
-    }
-  }
-  for (const auto &out_node : out_nodes) {
-    if ((out_node->GetType() != NETOUTPUT) || (out_node->GetInControlAnchor() == nullptr)) {
-      continue;
-    }
-    // 先去重收集控制源节点，避免遍历中修改连接关系；循环删至删空
-    std::vector<NodePtr> ctrl_in_nodes;
-    std::unordered_set<NodePtr> collected_nodes;
-    for (const auto *peer_anchor : out_node->GetInControlAnchor()->GetPeerOutControlAnchorsPtr()) {
-      const auto src_node = (peer_anchor == nullptr) ? nullptr : peer_anchor->GetOwnerNode();
-      if ((src_node != nullptr) && collected_nodes.insert(src_node).second) {
-        ctrl_in_nodes.push_back(src_node);
-      }
-    }
-    for (const auto &src_node : ctrl_in_nodes) {
-      if (!IsIdleNodeOnNetOutput(src_node, protected_nodes)) {
-        continue;
-      }
-      while (src_node->GetOutControlAnchor()->IsLinkedWith(out_node->GetInControlAnchor())) {
-        const auto ret = GraphUtils::RemoveEdge(src_node->GetOutControlAnchor(), out_node->GetInControlAnchor());
-        if (ret != GRAPH_SUCCESS) {
-          REPORT_INNER_ERR_MSG("E19999", "Remove ctrl edge between op:%s(%s) and op:%s(%s) failed",
-                               src_node->GetName().c_str(), src_node->GetType().c_str(), out_node->GetName().c_str(),
-                               out_node->GetType().c_str());
-          GELOGE(INTERNAL_ERROR, "Failed to remove control edge between op %s(%s) and NetOutput %s(%s).",
-                 src_node->GetName().c_str(), src_node->GetType().c_str(), out_node->GetName().c_str(),
-                 out_node->GetType().c_str());
-          return INTERNAL_ERROR;
-        }
-        GELOGD("[PrunePass] remove idle ctrl edge between node[%s(%s)] and NetOutput[%s(%s)]!",
-               src_node->GetName().c_str(), src_node->GetType().c_str(), out_node->GetName().c_str(),
-               out_node->GetType().c_str());
-      }
-    }
-  }
-  return SUCCESS;
-}
-
-// 处置不可达节点：Data/保活/闭包/转换链节点保留（rescue_with_ctrl_edge 时补控制边），
-// 其余删除。第3轮 prune-only 不补边，避免破坏 hybrid 执行器数据流调度（V1 Loop 死锁）。
-Status DisposeUnreachableNodes(const ComputeGraphPtr &graph, const std::unordered_set<NodePtr> &nodes,
-                               const std::unordered_set<NodePtr> &nodes_seen,
-                               const std::unordered_set<NodePtr> &keep_closure,
-                               const std::unordered_set<NodePtr> &trans_closure, const std::vector<NodePtr> &out_nodes,
-                               const bool rescue_with_ctrl_edge) {
-  for (const auto &node_ptr : nodes) {
+  for (auto &node_ptr : nodes) {
     if (nodes_seen.count(node_ptr) != 0) {
       continue;
     }
     if (OpTypeUtils::IsDataNode(node_ptr->GetType())) {
-      if (rescue_with_ctrl_edge) {
-        GE_CHK_STATUS_RET(AddCtrlEdgeToOutNode(node_ptr, out_nodes[0]),
-                          "Failed to add control edge between DATA node and out node.");
+      Status status = ge::GraphUtils::AddEdge(node_ptr->GetOutControlAnchor(), out_nodes[0]->GetInControlAnchor());
+      if (status != ge::SUCCESS) {
+        REPORT_INNER_ERR_MSG("E19999", "Add control edge between op:%s(%s) and op:%s(%s) failed",
+                             node_ptr->GetName().c_str(), node_ptr->GetType().c_str(), out_nodes[0]->GetName().c_str(),
+                             out_nodes[0]->GetType().c_str());
+        GELOGE(INTERNAL_ERROR, "[add][ControlEdge] failed between DATA node[%s] and NETOUTPUT node[%s]!",
+               node_ptr->GetName().c_str(), out_nodes[0]->GetName().c_str());
+        return INTERNAL_ERROR;
       }
-      continue;
-    }
-    // 保活节点因消费者全死而不可达时，救援并补控制边
-    if (IsKeepAliveNode(node_ptr)) {
-      if (rescue_with_ctrl_edge) {
-        GE_CHK_STATUS_RET(AddCtrlEdgeToOutNode(node_ptr, out_nodes[0]),
-                          "Failed to add control edge between keep-alive node and out node.");
-      }
-      continue;
-    }
-    if (keep_closure.count(node_ptr) != 0UL) {
-      continue;
-    }
-    // 转换链闭包节点保留并补控制边
-    if (trans_closure.count(node_ptr) != 0UL) {
-      if (rescue_with_ctrl_edge) {
-        GE_CHK_STATUS_RET(AddCtrlEdgeToOutNode(node_ptr, out_nodes[0]),
-                          "Failed to add control edge between trans closure node and out node.");
-      }
+      GELOGI("[PrunePass] add extra control edge between DATA node[%s] and NETOUTPUT node[%s]!",
+             node_ptr->GetName().c_str(), out_nodes[0]->GetName().c_str());
       continue;
     }
     // Remove subgraphs on the node before remove it in graph.
@@ -333,46 +377,6 @@ Status DisposeUnreachableNodes(const ComputeGraphPtr &graph, const std::unordere
     (void)graph->RemoveNode(node_ptr);
     GELOGI("[PrunePass] remove graph node [%s]!", node_ptr->GetOpDesc()->GetName().c_str());
   }
-  return ge::SUCCESS;
-}
-}  // namespace
-Status PrunePass::Run(ge::ComputeGraphPtr graph) {
-  if (graph == nullptr) {
-    REPORT_INNER_ERR_MSG("E19999", "Param graph is nullptr, check invalid");
-    GELOGE(GE_GRAPH_ISNULL, "[Check][Param] input compute graph is NULL.");
-    return GE_GRAPH_ISNULL;
-  }
-  GELOGD("PrunePass Start, graph is [%s]", graph->GetName().c_str());
-  std::vector<NodePtr> out_nodes;
-  std::vector<NodePtr> force_skip_nodes;
-  std::unordered_set<NodePtr> nodes;
-  GE_CHK_STATUS_RET(CollectPruneNodes(graph, nodes, out_nodes, force_skip_nodes),
-                    "Failed to collect prune nodes from graph %s.", graph->GetName().c_str());
-  if (out_nodes.empty()) {
-    GELOGW("graph [%s] does not contain NETOUTPUT type node,no return value. Do nothing!", graph->GetName().c_str());
-    return ge::SUCCESS;
-  }
-  out_nodes.insert(out_nodes.cend(), force_skip_nodes.cbegin(), force_skip_nodes.cend());
-
-  // 先剪除 NetOutput 上空闲节点的误连控制边
-  GE_CHK_STATUS_RET(RemoveIdleCtrlEdgesOnNetOutput(graph, out_nodes, force_skip_nodes),
-                    "Failed to remove idle control edges on NetOutput, graph %s.", graph->GetName().c_str());
-
-  std::unordered_set<NodePtr> nodes_seen;
-  GE_CHK_STATUS_RET(CollectSeenNodes(out_nodes, nodes_seen), "Failed to collect seen nodes from out nodes, graph %s.",
-                    graph->GetName().c_str());
-
-  // 不可达保活节点的输入闭包须一并保活，否则其输入悬空
-  std::unordered_set<NodePtr> keep_closure;
-  CollectKeepAliveClosure(nodes, nodes_seen, keep_closure);
-
-  // 不可达变量节点的输出转换链及参数输入链一并保活
-  std::unordered_set<NodePtr> trans_closure;
-  CollectKeepAliveTransClosure(nodes, nodes_seen, trans_closure, keep_closure);
-
-  GE_CHK_STATUS_RET(DisposeUnreachableNodes(graph, nodes, nodes_seen, keep_closure, trans_closure, out_nodes,
-                                            round_ == Round::kStandard),
-                    "Failed to dispose unreachable nodes, graph %s.", graph->GetName().c_str());
   return ge::SUCCESS;
 }
 

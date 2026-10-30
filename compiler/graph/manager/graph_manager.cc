@@ -3591,6 +3591,8 @@ Status GraphManager::OptimizeStage2(ge::ComputeGraphPtr &compute_graph) {
                                                    LinkGenMaskNodesPass(options_.stream_max_parallel_num)));
   GE_CHK_STATUS_RET(after_merge_passes.AddPass("OptimizeStage2::HcclContinuousMemcpyPass",
                                                new (std::nothrow) HcclContinuousMemcpyPass));
+  GE_CHK_STATUS_RET(after_merge_passes.AddPass("OptimizeStage2::PrunePass",
+                                               new (std::nothrow) PrunePass(PrunePass::Stage::kAfterEngineAssigned)));
   GE_TRACE_START(after_merge_passes);
   auto ret = after_merge_passes.Run(compute_graph);
   GE_COMPILE_TRACE_TIMESTAMP_END(after_merge_passes, "OptimizeStage2::AfterMergePasses");
@@ -3622,18 +3624,6 @@ Status GraphManager::OptimizeStage2(ge::ComputeGraphPtr &compute_graph) {
   if (ret != SUCCESS) {
     GELOGE(ret, "[Run][GEPasses] optimize for OptimizeAfterMergeSubGraph failed, ret:%d.", ret);
     return ret;
-  }
-
-  // 引擎分配后剪枝（第3轮）：引擎归属已在OptimizeSubgraph（EnginePlacer）确定，保活判定按
-  // 引擎归属（见prune_pass.cc的kKeepAliveKernelLibs）；
-  GE_TRACE_START(PruneAfterEngineAssigned);
-  {
-    PassManager prune_pass;
-    GE_CHK_STATUS_RET(prune_pass.AddPass("OptimizeStage2::PrunePass",
-                                         new (std::nothrow) PrunePass(PrunePass::Round::kAfterEngineAssigned)),
-                      "[Add][PrunePass] after engine assigned failed");
-    GE_CHK_STATUS_RET(prune_pass.Run(compute_graph), "[Run][PrunePass] after engine assigned failed, graph:%s",
-                      compute_graph->GetName().c_str());
   }
 
   GE_TRACE_START(RemoveIsolatedConst);

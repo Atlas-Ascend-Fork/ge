@@ -16,15 +16,13 @@
 namespace ge {
 class PrunePass : public GraphPass {
  public:
-  // kStandard：第1/2轮剪枝（PrepareOptimize/OptimizeStage1_3），剪死链并补控制边保活；
-  // kAfterEngineAssigned：第3轮剪枝（OptimizeStage2，引擎分配后），prune-only：按引擎归属
-  // 保活，受保护节点原地保留不补控制边
-  enum class Round { kStandard, kAfterEngineAssigned };
-  explicit PrunePass(const Round round = Round::kStandard) : round_(round) {}
+  enum class Stage { kStandard, kAfterEngineAssigned };
+
+  explicit PrunePass(const Stage stage = Stage::kStandard) : stage_(stage) {}
   Status Run(ge::ComputeGraphPtr graph) override;
 
  private:
-  Round round_;
+  Stage stage_;
 };
 }  // namespace ge
 #endif  // GE_GRAPH_PASSES_PRUNE_PASS_H_

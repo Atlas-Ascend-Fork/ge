@@ -1565,15 +1565,14 @@ TEST_F(GraphCompilerTest, test_build_no_tiling_fail) {
     CHAIN(NODE("data_2", data2)->EDGE(0, 1)->NODE("add_1", add1));
     CHAIN(NODE("add_1", add1)->EDGE(0, 0)->NODE("add_2", add2));
     CHAIN(NODE("data_2", data2)->EDGE(0, 1)->NODE("add_2", add2));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留add链以校验no tiling属性
-    ADD_OUTPUT("add_2", 0);
   };
 
   auto graph = ToGeGraph(g1);
   auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
   auto node = compute_graph->FindNode("add_1");
   node->GetOpDesc()->MutableOutputDesc(0)->SetShapeRange({{1, 1}, {1, -1}, {224, 224}, {224, 224}});
+  // 将被测 Add 链声明为模型数据输出，确保实际校验 no-tiling 属性。
+  ASSERT_EQ(compute_graph->SetGraphOutNodesInfo({{compute_graph->FindNode("add_2"), 0}}), GRAPH_SUCCESS);
 
   map<AscendString, AscendString> options;
   Session session(options);
@@ -1624,11 +1623,11 @@ TEST_F(GraphCompilerTest, test_build_no_tiling) {
     CHAIN(NODE("add_1", add1)->EDGE(0, 0)->NODE("add_2", add2));
     CHAIN(NODE("data_2", data2)->EDGE(0, 1)->NODE("add_2", add2));
     CHAIN(NODE("add_2", add2)->EDGE(0, 0)->NODE("Print", print));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留add链以校验no tiling属性
-    ADD_OUTPUT("add_2", 0);
   };
   auto graph = ToGeGraph(g1);
+  auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
+  // Print 会在预处理阶段删除，显式输出被测 no-tiling 计算链。
+  ASSERT_EQ(compute_graph->SetGraphOutNodesInfo({{compute_graph->FindNode("add_2"), 0}}), GRAPH_SUCCESS);
   map<AscendString, AscendString> options;
   Session session(options);
   session.AddGraph(1, graph, options);
@@ -1708,9 +1707,6 @@ TEST_F(GraphCompilerTest, test_build_with_null_output) {
     CHAIN(NODE("c_2", customop2)->EDGE(1, 0)->NODE("add_3", add3));
     CHAIN(NODE("data_4", data4)->EDGE(0, 1)->NODE("add_3", add3));
     CHAIN(NODE("add_3", add3)->EDGE(0, 0)->NODE("Print", print));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留计算链以校验null output属性
-    ADD_OUTPUT("add_3", 0);
   };
   auto graph = ToGeGraph(g1);
 
@@ -1734,6 +1730,8 @@ TEST_F(GraphCompilerTest, test_build_with_null_output) {
   c_2_node->GetOpDesc()->AppendIrOutput("v", IrOutputType::kIrOutputRequired);
   c_2_node->GetOpDesc()->MutableAllInputName() = {{"x", 0}, {"y", 1}};
   c_2_node->GetOpDesc()->MutableAllOutputName() = {{"u", 0}, {"v", 1}};
+  // Print 删除后仍显式输出自定义算子链，才能校验可空输出标记。
+  ASSERT_EQ(root_graph->SetGraphOutNodesInfo({{root_graph->FindNode("add_3"), 0}}), GRAPH_SUCCESS);
 
   map<AscendString, AscendString> options;
   Session session(options);
@@ -1849,8 +1847,6 @@ TEST_F(GraphCompilerTest, test_build_super_kernel_strict_check) {
   auto add2 = OP_CFG(ADD).TensorDesc(FORMAT_NCHW, DT_FLOAT, {1, 1, 224, 224});
 
   auto relu = OP_CFG(RELU)
-                  .InCnt(1)
-                  .OutCnt(1)
                   .TensorDesc(FORMAT_NCHW, DT_FLOAT, {1, 1, 224, 224})
                   .Attr("supportSuperKernel", 1)
                   .Attr("_super_kernel_scope", "scope1");
@@ -1863,9 +1859,8 @@ TEST_F(GraphCompilerTest, test_build_super_kernel_strict_check) {
     CHAIN(NODE("add_1", add1)->EDGE(0, 0)->NODE("add_2", add2));
     CHAIN(NODE("data_2", data2)->EDGE(0, 1)->NODE("add_2", add2));
     CHAIN(NODE("add_2", add2)->EDGE(0, 0)->NODE("relu", relu));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留super kernel链以触发严格scope校验
-    ADD_OUTPUT("relu", 0);
+    // 显式输出 scope 所在计算链，避免负向校验因整链被剪除而跳过。
+    CHAIN(NODE("relu")->NODE(NODE_NAME_NET_OUTPUT, NETOUTPUT));
   };
   auto graph = ToGeGraph(g1);
   auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
@@ -2321,9 +2316,6 @@ TEST_F(GraphCompilerTest, test_partiton_stable_topo) {
     CHAIN(NODE("relu3")->EDGE(0, 1)->NODE("add1"));
     CHAIN(NODE("relu9")->EDGE(0, 1)->NODE("add2"));
     CHAIN(NODE("variable1", variable1)->EDGE(0, 0)->NODE("ref_data", ref_data)->EDGE(0, 1)->NODE("add4"));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留全部计算链以校验稳定拓扑分区结果
-    ADD_OUTPUT("add4", 0);
   };
   auto graph = ToGeGraph(g1);
   auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
@@ -2332,6 +2324,8 @@ TEST_F(GraphCompilerTest, test_partiton_stable_topo) {
   auto op_desc = node_tmp->GetOpDesc();
   (void)ge::AttrUtils::SetInt(op_desc, ATTR_INPUT_MEMORY_TYPE, RT_MEMORY_HBM);
 
+  // 声明末端 Add 为模型数据输出，保留稳定拓扑用例需要校验的各条分支。
+  ASSERT_EQ(compute_graph->SetGraphOutNodesInfo({{compute_graph->FindNode("add4"), 0}}), GRAPH_SUCCESS);
   compute_graph->TopologicalSorting();
   for (const auto &node : compute_graph->GetDirectNode()) {
     if (node->GetType() == "Data") {
@@ -2444,9 +2438,6 @@ TEST_F(GraphCompilerTest, test_build_no_tiling_01) {
     CHAIN(NODE("constant2", constant2)->EDGE(0, 1)->NODE("add2", add2));
     CHAIN(NODE("add1", add1)->EDGE(0, 0)->NODE("merge", merge));
     CHAIN(NODE("add2", add2)->EDGE(0, 1)->NODE("merge", merge));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留Switch/Merge链以校验动静态分类
-    ADD_OUTPUT("merge", 0);
   };
 
   auto graph = ToGeGraph(g1);
@@ -2513,9 +2504,6 @@ TEST_F(GraphCompilerTest, test_build_no_tiling_02) {
     CHAIN(NODE("constant2", constant2)->EDGE(0, 1)->NODE("add2", add2));
     CHAIN(NODE("add1", add1)->EDGE(0, 0)->NODE("merge", merge));
     CHAIN(NODE("add2", add2)->EDGE(0, 1)->NODE("merge", merge));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留Switch/Merge链以校验动静态分类
-    ADD_OUTPUT("merge", 0);
   };
 
   auto graph = ToGeGraph(g1);
@@ -3419,9 +3407,6 @@ TEST_F(GraphCompilerTest, test_data_flow_process) {
     CHAIN(NODE("stack1", stack)->EDGE(0, 0)->NODE("stackpop1", stackpop1));
     CHAIN(NODE("add_4", add_4)->EDGE(0, 1)->NODE("stackpush1", stackpush1));
     CHAIN(NODE("stackpop1", stackpop1)->EDGE(0, 1)->NODE("add_6", add_6));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留Stack数据流链以触发预期的BuildGraph失败校验
-    ADD_OUTPUT("add_6", 0);
   };
   auto graph = ToGeGraph(g1);
   auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
@@ -6358,7 +6343,6 @@ TEST_F(GraphCompilerTest, test_link_allreduce_to_output) {
     auto allreduce1 = OP_CFG(HCOMALLREDUCE).Attr(ATTR_NAME_HCCL_FUSED_FLAG, true).Build("allreduce1");
     auto allreduce2 = OP_CFG(HCOMALLREDUCE).Attr(ATTR_NAME_HCCL_FUSED_FLAG, true).Build("allreduce2");
     auto allreduce3 = OP_CFG(HCOMALLREDUCE).Attr(ATTR_NAME_HCCL_FUSED_FLAG, true).Build("allreduce3");
-    auto merge1 = OP_CFG(MERGE).Build("merge1");
     CHAIN(NODE("data1", DATA)->NODE(allreduce1)->NODE("relu1", RELU)->NODE(allreduce2)->NODE("relu3", RELU));
     CHAIN(NODE("data1")
               ->NODE(allreduce2)
@@ -6368,12 +6352,9 @@ TEST_F(GraphCompilerTest, test_link_allreduce_to_output) {
               ->EDGE(0, 0)
               ->NODE("relu4", RELU)
               ->EDGE(0, 0)
-              ->NODE(merge1));
-    CHAIN(NODE(data2)->EDGE(0, 1)->NODE("switch1")->EDGE(1, 0)->NODE("relu5", RELU)->EDGE(0, 1)->NODE(merge1));
+              ->NODE("merge1", MERGE));
+    CHAIN(NODE(data2)->EDGE(0, 1)->NODE("switch1")->EDGE(1, 0)->NODE("relu5", RELU)->EDGE(0, 1)->NODE("merge1"));
     CTRL_CHAIN(NODE(allreduce1)->NODE(allreduce2));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留Switch/Merge链以校验tailing优化下allreduce到输出的控制边
-    ADD_OUTPUT(merge1, 0);
   };
 
   auto graph = ToGeGraph(root_graph);
@@ -6416,13 +6397,12 @@ TEST_F(GraphCompilerTest, test_link_allreduce_to_output_no_switch) {
     auto allreduce1 = OP_CFG(HCOMALLREDUCE).Attr(ATTR_NAME_HCCL_FUSED_FLAG, true).Build("allreduce1");
     auto allreduce2 = OP_CFG(HCOMALLREDUCE).Attr(ATTR_NAME_HCCL_FUSED_FLAG, true).Build("allreduce2");
     auto allreduce3 = OP_CFG(HCOMALLREDUCE).Attr(ATTR_NAME_HCCL_FUSED_FLAG, true).Build("allreduce3");
-    auto relu3 = OP_CFG(RELU).InCnt(1).OutCnt(1).TensorDesc(FORMAT_ND, DT_FLOAT, {8, 3, 24, 1}).Build("relu3");
-    CHAIN(NODE("data1", DATA)->NODE(allreduce1)->NODE("relu1", RELU)->NODE(allreduce2)->NODE(relu3));
+    CHAIN(NODE("data1", DATA)->NODE(allreduce1)->NODE("relu1", RELU)->NODE(allreduce2)->NODE("relu3", RELU));
     CHAIN(NODE("data1")->NODE(allreduce2)->NODE("relu2", RELU));
     CTRL_CHAIN(NODE(allreduce1)->NODE(allreduce2));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留allreduce链以校验无switch场景不补allreduce到输出的控制边
-    ADD_OUTPUT(relu3, 0);
+    // 显式输出通信后的计算结果，单独校验无 Switch 时的尾部优化连边。
+    CHAIN(NODE("relu2")->EDGE(0, 0)->NODE(NODE_NAME_NET_OUTPUT, NETOUTPUT));
+    CHAIN(NODE("relu3")->EDGE(0, 1)->NODE(NODE_NAME_NET_OUTPUT));
   };
 
   auto graph = ToGeGraph(root_graph);
@@ -6454,20 +6434,10 @@ TEST_F(GraphCompilerTest, test_keep_reshape_when_output_require_input_continuous
   ge_env.InstallDefault().Install(
       FakeOp(GATHERSHAPES).InfoStoreAndBuilder("DNN_VM_GE_LOCAL_OP_STORE").InferShape(StubInferFunction));
   DEF_GRAPH(root_graph) {
-    auto gathershape = OP_CFG(GATHERSHAPES)
-                           .InCnt(2)
-                           .OutCnt(1)
-                           // 声明输出后节点带desc会进入潜在折叠Compute，GatherShapes需axes属性；
-                           // 本用例聚焦Reshape保留行为，跳过折叠保持原语义
-                           .Attr(ATTR_NAME_DO_NOT_CONSTANT_FOLDING, true)
-                           .Build("gathershape");
     CHAIN(NODE("data1", DATA)->EDGE(0, 0)->NODE("reshape", RESHAPE));
     CHAIN(NODE("data2", DATA)->EDGE(0, 1)->NODE("reshape", RESHAPE));
-    CHAIN(NODE("reshape", RESHAPE)->EDGE(0, 0)->NODE(gathershape));
-    CHAIN(NODE("data3", DATA)->EDGE(0, 1)->NODE(gathershape));
-    // 显式声明输出：无输出声明的图GE会补建inner NetOutput并把无输出引用的计算链按死链剪除，
-    // 本用例需保留reshape链以校验输出要求输入连续时Reshape的保留行为
-    ADD_OUTPUT(gathershape, 0);
+    CHAIN(NODE("reshape", RESHAPE)->EDGE(0, 0)->NODE("gathershape", GATHERSHAPES));
+    CHAIN(NODE("data3", DATA)->EDGE(0, 1)->NODE("gathershape", GATHERSHAPES));
   };
 
   DUMP_GRAPH_WHEN("PreRunAfterOptimize1")
@@ -6733,10 +6703,12 @@ TEST_F(GraphCompilerTest, test_build_with_after_qos) {
  *        \   / |   \
  *         add  add add
  *           \  |  /
- *            cast
+ *            addn
  */
 TEST_F(GraphCompilerTest, test_build_with_atomic_node_merged) {
+  GeRunningEnvFaker ge_env;
   auto graph_optimizer = MockGraphOptimizer(kGraphOptimizerOption::kMockSameMemSetAttrs);
+  ge_env.Install(FakeOp(ADDN).InfoStoreAndBuilder(kAIcoreEngine).InferShape(StubInferFunction));
   DEF_GRAPH(ge_graph) {
     auto data0 = OP_CFG(DATA).InCnt(1).OutCnt(1).TensorDesc(FORMAT_ND, DT_INT32, {16});
     auto data1 = OP_CFG(DATA).InCnt(1).OutCnt(1).TensorDesc(FORMAT_ND, DT_INT32, {16});
@@ -6744,7 +6716,8 @@ TEST_F(GraphCompilerTest, test_build_with_atomic_node_merged) {
     auto node1 = OP_CFG(ADD).InCnt(2).OutCnt(1).TensorDesc(FORMAT_ND, DT_INT32, {16});
     auto node2 = OP_CFG(ADD).InCnt(2).OutCnt(1).TensorDesc(FORMAT_ND, DT_INT32, {16});
     auto node3 = OP_CFG(ADD).InCnt(2).OutCnt(1).TensorDesc(FORMAT_ND, DT_INT32, {16});
-    auto cast = OP_CFG(CAST).InCnt(2).OutCnt(1).TensorDesc(FORMAT_ND, DT_INT32, {16});
+    // 用真实消费三路结果的 AddN 保留内部 Add，避免多模型输出影响 atomic 清零合并。
+    auto addn = OP_CFG(ADDN).InCnt(3).OutCnt(1).TensorDesc(FORMAT_ND, DT_INT32, {16});
 
     auto net_output = OP_CFG(NETOUTPUT).InCnt(1).OutCnt(1).TensorDesc(FORMAT_ND, DT_INT32, {16});
 
@@ -6754,21 +6727,13 @@ TEST_F(GraphCompilerTest, test_build_with_atomic_node_merged) {
     CHAIN(NODE("data1", data1)->NODE("add2", node2));
     CHAIN(NODE("data0", data0)->NODE("add3", node3));
     CHAIN(NODE("data1", data1)->NODE("add3", node3));
-    CHAIN(NODE("add1", node1)->NODE("cast", cast));
-    CHAIN(NODE("add2", node2)->NODE("cast", cast));
-    CHAIN(NODE("add3", node3)->NODE("cast", cast));
-    CHAIN(NODE("cast", cast)->NODE(NODE_NAME_NET_OUTPUT, net_output));
+    CHAIN(NODE("add1", node1)->NODE("addn", addn));
+    CHAIN(NODE("add2", node2)->NODE("addn", addn));
+    CHAIN(NODE("add3", node3)->NODE("addn", addn));
+    CHAIN(NODE("addn", addn)->NODE(NODE_NAME_NET_OUTPUT, net_output));
   };
   auto graph = ToGeGraph(ge_graph);
   auto graph1 = ToComputeGraph(ge_graph);
-  // add2/add3仅作为cast的多余输入存在（cast只用输入0），TransOp融合后以控制边挂NetOutput保依赖，
-  // 会被PrunePass按误连剪除；本用例需保留三个atomic Add以校验memset合并，显式打跳过剪枝标记
-  auto root_graph = GraphUtilsEx::GetComputeGraph(graph);
-  for (const char_t *name : {"add2", "add3"}) {
-    auto node = root_graph->FindNode(name);
-    ASSERT_NE(node, nullptr);
-    AttrUtils::SetBool(node->GetOpDesc(), ATTR_NAME_SKIP_PRUNE_OPTIMIZE, true);
-  }
   map<AscendString, AscendString> options;
   Session session(options);
   session.AddGraph(1, graph, options);
@@ -6905,6 +6870,10 @@ TEST_F(GraphCompilerTest, VarConnectNoPaddingContinuousOutputNode_RunSuccess) {
   Session session(options);
 
   auto compute_graph = gert::ShareGraph::BuildVarConnectToSplit();
+  // 显式输出 Add 分支，保留 Split 以校验输出连续内存和变量消费链上的 Identity。
+  ASSERT_EQ(compute_graph->SetGraphOutNodesInfo(
+                {{compute_graph->FindNode("add_1"), 0}, {compute_graph->FindNode("add_2"), 0}}),
+            GRAPH_SUCCESS);
   auto graph = GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);
 
   uint32_t graph_id = 1;
@@ -6924,6 +6893,14 @@ TEST_F(GraphCompilerTest, VarConnectNoPaddingContinuousOutputNode_RunSuccess) {
   ge::Tensor input_tensor_2{desc_2};
   input_tensor_2.SetData(reinterpret_cast<uint8_t *>(input_data_2.data()), input_data_2.size() * sizeof(int32_t));
   inputs.emplace_back(input_tensor_2);
+
+  TensorDesc output_desc(Shape({1, 2, 3, 4}), FORMAT_NCHW, DT_INT32);
+  std::vector<int32_t> output_data(1 * 2 * 3 * 4, 0);
+  for (size_t i = 0U; i < 2U; ++i) {
+    ge::Tensor output_tensor{output_desc};
+    output_tensor.SetData(reinterpret_cast<uint8_t *>(output_data.data()), output_data.size() * sizeof(int32_t));
+    outputs.emplace_back(output_tensor);
+  }
 
   runtime_stub.Clear();
   EXPECT_EQ(SUCCESS, session.RunGraphWithStreamAsync(graph_id, nullptr, inputs, outputs));
@@ -6960,6 +6937,10 @@ TEST_F(GraphCompilerTest, VariableUse1GHugePage_Success) {
   Session session(options);
 
   auto compute_graph = gert::ShareGraph::BuildVarConnectToSplit();
+  // 显式输出变量消费链，保留 Split 连续内存检查的原始覆盖范围。
+  ASSERT_EQ(compute_graph->SetGraphOutNodesInfo(
+                {{compute_graph->FindNode("add_1"), 0}, {compute_graph->FindNode("add_2"), 0}}),
+            GRAPH_SUCCESS);
   auto graph = GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);
 
   uint32_t graph_id = 1;
@@ -6979,6 +6960,14 @@ TEST_F(GraphCompilerTest, VariableUse1GHugePage_Success) {
   ge::Tensor input_tensor_2{desc_2};
   input_tensor_2.SetData(reinterpret_cast<uint8_t *>(input_data_2.data()), input_data_2.size() * sizeof(int32_t));
   inputs.emplace_back(input_tensor_2);
+
+  TensorDesc output_desc(Shape({1, 2, 3, 4}), FORMAT_NCHW, DT_INT32);
+  std::vector<int32_t> output_data(1 * 2 * 3 * 4, 0);
+  for (size_t i = 0U; i < 2U; ++i) {
+    ge::Tensor output_tensor{output_desc};
+    output_tensor.SetData(reinterpret_cast<uint8_t *>(output_data.data()), output_data.size() * sizeof(int32_t));
+    outputs.emplace_back(output_tensor);
+  }
 
   runtime_stub.Clear();
   EXPECT_EQ(SUCCESS, session.RunGraphWithStreamAsync(graph_id, nullptr, inputs, outputs));
