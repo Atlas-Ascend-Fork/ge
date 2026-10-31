@@ -2328,4 +2328,19 @@ TEST_F(UTestFusionTurbo, IncCov_MultiInOne) {
   ASSERT_NE(new_node, nullptr);
   EXPECT_EQ(new_node->GetName(), "merged");
 }
+
+// 子字节 dtype（如 DT_INT4）的 WeightInfo::CalcTotalDataSize 须按位宽 CeilDiv 换算 packed 字节数，
+// 使用 dtype 字节表（INT4 为 1）会高估 2 倍，导致按 total_data_size 拷贝时越界读
+TEST_F(UTestFusionTurbo, weight_info_total_data_size_sub_byte) {
+  uint8_t data_buf[256] = {0U};
+  // 64 个 int4 元素 packed 为 32 字节
+  WeightInfo w_int4 = {ge::GeShape({1, 64}), ge::DT_INT4, ge::FORMAT_ND, data_buf};
+  EXPECT_EQ(w_int4.total_data_size, 32U);
+  // 奇数个元素向上取整：65 * 4bit = 260bit -> 33 字节
+  WeightInfo w_int4_odd = {ge::GeShape({1, 65}), ge::DT_INT4, ge::FORMAT_ND, data_buf};
+  EXPECT_EQ(w_int4_odd.total_data_size, 33U);
+  // 常规 dtype 行为保持：按字节表计算
+  WeightInfo w_float = {ge::GeShape({1, 64}), ge::DT_FLOAT, ge::FORMAT_ND, data_buf};
+  EXPECT_EQ(w_float.total_data_size, 256U);
+}
 }  // namespace fe

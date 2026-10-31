@@ -108,3 +108,32 @@ TEST_F(UtestGraphPassesFoldingKernelkernelUtils, CheckSizeForTransOpSizeMismatch
   bool ret = KernelUtils::CheckSizeForTransOp(tensor_0, op_desc_ptr);
   EXPECT_EQ(false, ret);
 }
+
+// 子字节标量（如 DT_INT4）按位宽 CeilDiv 得到单元素 packed 字节数，1 个元素占 1 字节
+TEST_F(UtestGraphPassesFoldingKernelkernelUtils, CheckSizeForTransOpScalarSubByte) {
+  vector<uint8_t> data_vec_0 = {0x5A};
+  GeTensorDesc tensor_desc_0(GeShape(), FORMAT_NCHW, DT_INT4);
+  ConstGeTensorPtr tensor_0 =
+      std::make_shared<GeTensor>(tensor_desc_0, (uint8_t *)data_vec_0.data(), data_vec_0.size());
+
+  OpDescPtr op_desc_ptr = std::make_shared<OpDesc>("TransOp", "TransOp");
+  GeTensorDesc input_desc(GeShape(), FORMAT_NCHW, DT_INT4);
+  op_desc_ptr->AddInputDesc(input_desc);
+
+  bool ret = KernelUtils::CheckSizeForTransOp(tensor_0, op_desc_ptr);
+  EXPECT_EQ(true, ret);
+}
+
+TEST_F(UtestGraphPassesFoldingKernelkernelUtils, CheckSizeForTransOpScalarSizeMismatch) {
+  vector<uint8_t> data_vec_0 = {0x11, 0x22, 0x33};
+  GeTensorDesc tensor_desc_0(GeShape(), FORMAT_NCHW, DT_FLOAT16);
+  ConstGeTensorPtr tensor_0 =
+      std::make_shared<GeTensor>(tensor_desc_0, (uint8_t *)data_vec_0.data(), data_vec_0.size());
+
+  OpDescPtr op_desc_ptr = std::make_shared<OpDesc>("TransOp", "TransOp");
+  GeTensorDesc input_desc(GeShape(), FORMAT_NCHW, DT_FLOAT16);
+  op_desc_ptr->AddInputDesc(input_desc);
+
+  bool ret = KernelUtils::CheckSizeForTransOp(tensor_0, op_desc_ptr);
+  EXPECT_EQ(false, ret);
+}
