@@ -295,6 +295,59 @@ TEST_F(UtestExpression, DoubleNotSerializeAndDeserialize_Succ) {
   EXPECT_EQ(expr_parser, expr);
 }
 
+// RealDouble 常量以科学计数法打印(如 float32 的 1e-8 为 9.99999993922529e-09)，
+// 需保证扫描/解析侧能识别 e 指数，使序列化-反序列化往返闭环
+TEST_F(UtestExpression, ScientificNotationSerializeAndDeserialize_Succ) {
+  auto s52 = Symbol("s52");
+  auto expr = Add(Symbol(9.99999993922529e-09), s52);
+  const std::string expr_str = std::string(expr.Serialize().get());
+  EXPECT_EQ(expr_str, "(9.99999993922529e-09 + s52)");
+  auto expr_parser = Expression::Deserialize(expr_str.c_str());
+  EXPECT_EQ(expr_parser.IsValid(), true);
+  EXPECT_EQ(expr_parser, expr);
+}
+
+// 无小数点的科学计数法(如 2e-3)不能走整型解析分支被截断，必须识别为浮点
+TEST_F(UtestExpression, ParseScientificNotationNumber_Succ) {
+  auto expr = Expression::Parse("2e-3");
+  EXPECT_EQ(expr.IsValid(), true);
+  EXPECT_EQ(expr, Symbol(2e-3));
+  auto expr_upper = Expression::Parse("2E3");
+  EXPECT_EQ(expr_upper.IsValid(), true);
+  EXPECT_EQ(expr_upper, Symbol(2e3));
+}
+
+// 正指数显式带 '+' (如 1e+20)：覆盖 scanner 指数前瞻的 '+' 符号分支
+TEST_F(UtestExpression, ParseScientificNotationPositiveExponent_Succ) {
+  auto expr = Expression::Parse("1e+20");
+  EXPECT_EQ(expr.IsValid(), true);
+  EXPECT_EQ(expr, Symbol(1e20));
+  auto expr_upper = Expression::Parse("1E+16");
+  EXPECT_EQ(expr_upper.IsValid(), true);
+  EXPECT_EQ(expr_upper, Symbol(1e16));
+}
+
+// 正指数大常量(float32 大数值)经 RealDouble 打印为 e+ 形态，需保证序列化-反序列化往返
+TEST_F(UtestExpression, ScientificNotationPositiveExponentRoundtrip_Succ) {
+  auto s0 = Symbol("s0");
+  auto expr = Add(Symbol(1e+20), s0);
+  const std::string expr_str = std::string(expr.Serialize().get());
+  EXPECT_NE(expr_str.find("e+"), std::string::npos);
+  auto expr_parser = Expression::Deserialize(expr_str.c_str());
+  EXPECT_EQ(expr_parser.IsValid(), true);
+  EXPECT_EQ(expr_parser, expr);
+}
+
+// 指数位数不固定：单位数负指数 e-9 也需识别(打印侧为 e-09)，字符串 (9.99999993922529e-9 + s52) 可解析
+TEST_F(UtestExpression, ParseScientificNotationSingleDigitExponent_Succ) {
+  const char *expr_str = "(9.99999993922529e-9 + s52)";
+  auto expr = Expression::Parse(expr_str);
+  EXPECT_EQ(expr.IsValid(), true);
+  EXPECT_EQ(expr, Add(Symbol(9.99999993922529e-9), Symbol("s52")));
+  auto deser = Expression::Deserialize(expr_str);
+  EXPECT_EQ(deser.IsValid(), true);
+}
+
 TEST_F(UtestExpression, NotEqualSerializeAndDeserialize_Succ) {
   auto s0 = Symbol("s0");
   auto s1 = Symbol("s1");

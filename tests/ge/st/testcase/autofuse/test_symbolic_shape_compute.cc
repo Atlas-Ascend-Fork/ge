@@ -29,6 +29,7 @@
 #include "graph/optimize/symbolic/symbolic_kernel_factory.h"
 #include "attribute_group/attr_group_shape_env.h"
 #include "attribute_group/attr_group_symbolic_desc.h"
+#include "proto/ge_ir.pb.h"
 #include "stub/gert_runtime_stub.h"
 
 namespace ge {
@@ -5147,6 +5148,80 @@ TEST_F(SymbolicShapeComputeST, test_realdiv_symbolic_kernel_integer_floor) {
   const auto result_value = attr->symbolic_tensor.GetSymbolicValue();
   ASSERT_NE(result_value, nullptr);
   EXPECT_EQ(*result_value, (std::vector<Expression>{Symbol(4), Symbol(2), Symbol(2)}));
+}
+
+/**
+ * 用例描述：含浮点常量的符号值打印为科学计数法(如 9.99999993922529e-09)，经 SymbolicDescAttr 序列化到
+ *          proto 再反序列化应成功且值一致，覆盖表达式解析对 e 指数的支持
+ * 预置条件：
+ *   1. Data(DT_INT32)->Cast(DT_FLOAT)->Add，Add 另一输入为 Const(DT_FLOAT, 1e-8)
+ *   2. 提供 data0 的 host 真值，触发输入值符号化，使 Add 的符号值为 float 常量 + 符号
+ * 测试步骤：
+ *   1. 构造上述图，执行 Symbolize + Infer 生成符号值
+ *   2. 读取 Add 输出符号值字符串，确认含科学计数法
+ *   3. 通过 SymbolicDescAttr 序列化到 proto 后再反序列化
+ * 预期结果：
+ *   1. Add 输出符号值为形如 (9.99999993922529e-09 + sN) 的科学计数法表达式
+ *   2. 反序列化成功且符号值与原始一致
+ */
+TEST_F(SymbolicShapeComputeST, AddSymbolicValueWithFloatConstSerializeRoundtrip) {
+  auto data0 = builder_->CreateInput(0, "data0");
+  ASSERT_NE(data0.GetCTensorHolder(), nullptr);
+  // float32 常量 1e-8 的精确值为 9.99999993922529e-09，RealDouble 会以科学计数法打印
+  auto const_scalar = builder_->CreateScalar(static_cast<float>(1e-8f));
+  ASSERT_NE(const_scalar.GetCTensorHolder(), nullptr);
+  auto cast = es::Cast(data0, DT_FLOAT);
+  auto add = es::Add(cast, const_scalar);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(add, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+
+  auto data_node = cg->FindNode("data0");
+  ASSERT_NE(data_node, nullptr);
+  auto data_op_desc = data_node->GetOpDesc();
+  ge::AttrUtils::SetInt(data_op_desc, "index", 0);
+  data_op_desc->MutableInputDesc(0)->SetShape(GeShape({1, 1}));
+  data_op_desc->MutableInputDesc(0)->SetOriginShape(GeShape({1, 1}));
+  data_op_desc->MutableInputDesc(0)->SetDataType(DT_INT32);
+  data_op_desc->MutableOutputDesc(0)->SetShape(GeShape({1, 1}));
+  data_op_desc->MutableOutputDesc(0)->SetOriginShape(GeShape({1, 1}));
+  data_op_desc->MutableOutputDesc(0)->SetDataType(DT_INT32);
+
+  // Cast 的入参/出参 dtype 需显式设置为 int32->float，否则默认 float->float 不受支持导致值不推导
+  auto cast_node = cg->FindFirstNodeMatchType("Cast");
+  ASSERT_NE(cast_node, nullptr);
+  auto cast_op_desc = cast_node->GetOpDesc();
+  cast_op_desc->MutableInputDesc(0)->SetDataType(DT_INT32);
+  cast_op_desc->MutableInputDesc(0)->SetOriginDataType(DT_INT32);
+  cast_op_desc->MutableOutputDesc(0)->SetDataType(DT_FLOAT);
+  cast_op_desc->MutableOutputDesc(0)->SetShape(GeShape({1, 1}));
+  cast_op_desc->MutableOutputDesc(0)->SetOriginShape(GeShape({1, 1}));
+
+  std::vector<int32_t> data_val = {7};
+  GeTensor tensor0(GeTensorDesc(GeShape({1, 1}), FORMAT_ND, DT_INT32));
+  tensor0.SetData(reinterpret_cast<uint8_t *>(data_val.data()), data_val.size() * sizeof(int32_t));
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(SymbolicShapeSymbolizer::Symbolize(cg, {tensor0}), ge::SUCCESS);
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+
+  auto add_node = cg->FindFirstNodeMatchType("Add");
+  ASSERT_NE(add_node, nullptr);
+  auto attr = add_node->GetOpDesc()->MutableOutputDesc(0)->GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  const auto symbol_value = attr->symbolic_tensor.GetSymbolicValue();
+  ASSERT_NE(symbol_value, nullptr);
+  ASSERT_EQ(symbol_value->size(), 1U);
+  const std::string value_str = symbol_value->at(0).Serialize().get();
+  EXPECT_NE(value_str.find("9.99999993922529e-09"), std::string::npos);
+
+  proto::AttrGroupDef attr_group_def;
+  ASSERT_EQ(attr->Serialize(attr_group_def), GRAPH_SUCCESS);
+  SymbolicDescAttr restored;
+  ASSERT_EQ(restored.Deserialize(attr_group_def, nullptr), GRAPH_SUCCESS);
+  ASSERT_NE(restored.symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(*restored.symbolic_tensor.GetSymbolicValue(), *symbol_value);
 }
 
 }  // namespace ge
