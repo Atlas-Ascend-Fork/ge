@@ -95,7 +95,10 @@ Status FusionPassExecutor::RunPassesWithLegacyCustom(const ComputeGraphPtr &comp
   if (pass_name_to_switches_.empty()) {
     pass_name_to_switches_ = FusionUtils::ParseFusionSwitch();
   }
-  GE_ASSERT_SUCCESS(CustomPassHelper::Instance().Run(graph, context, stage, pass_name_to_switches_),
+  // REGISTER_CUSTOM_PASS注册的自定义pass与REG_FUSION_PASS共用同一份FE解析的priority快照，
+  // stage内按数值升序执行，无条目注册序兜底（每次调用读快照，避免FE晚于executor初始化时读到旧值）
+  const auto priority_map = ge::fusion::FusionPriorityCache::GetInstance().GetGraphFusionPriorityMap();
+  GE_ASSERT_SUCCESS(CustomPassHelper::Instance().Run(graph, context, stage, pass_name_to_switches_, priority_map),
                     "Run custom pass for graph [%s] failed.", compute_graph->GetName().c_str());
   GE_ASSERT_SUCCESS(RunPasses(compute_graph, stage));
   return SUCCESS;

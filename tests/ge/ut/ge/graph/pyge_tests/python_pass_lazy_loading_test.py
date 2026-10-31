@@ -74,7 +74,8 @@ class CustomPassHelper {
   static CustomPassHelper &Instance() { static CustomPassHelper helper; return helper; }
   Status Load() { return SUCCESS; }
   Status Unload() { return SUCCESS; }
-  Status Run(std::shared_ptr<TestGraph> &, StreamPassContext &, int, const std::map<std::string, bool> &) {
+  Status Run(std::shared_ptr<TestGraph> &, StreamPassContext &, int, const std::map<std::string, bool> &,
+             const std::map<std::string, int32_t> & = {}) {
     ++executions;
     return SUCCESS;
   }
@@ -184,6 +185,10 @@ class StreamPassContext {
 };
 namespace fusion {
 struct FusionUtils { static std::map<std::string, bool> ParseFusionSwitch() { return {}; } };
+struct FusionPriorityCache {
+  static FusionPriorityCache &GetInstance() { static FusionPriorityCache instance; return instance; }
+  std::map<std::string, int32_t> GetGraphFusionPriorityMap() const { return {}; }
+};
 }
 Status ReportInvalidAutoMultistreamMode(const std::string &, const std::string &) { return GRAPH_FAILED; }
 Status ConvertToInt32(const std::string &s, int32_t &out) {

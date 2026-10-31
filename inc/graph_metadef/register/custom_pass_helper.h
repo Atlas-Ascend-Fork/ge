@@ -41,17 +41,21 @@ class CustomPassHelper {
   Status Unload();
 
   /**
-   * 执行指定阶段的自定义pass，支持开关过滤
+   * 执行指定阶段的自定义pass，支持开关过滤与priority排序
    * @param graph 目标图
    * @param custom_pass_context 上下文
    * @param stage 执行阶段，默认为kBeforeInferShape
    * @param pass_name_to_switches 开关配置（来自fusion_switch_file JSON解析），默认为空
+   * @param pass_name_to_priorities priority配置（pass名->优先级，来自FusionPriorityCache）：
+   *                                有条目的pass按数值升序执行，无条目的pass排在有条目之后（保持注册序），
+   *                                默认为空
    * @return Status
-   * @since 9.3.0(2026-09)
+   * @since 9.3.0(2026-11)
    */
   Status Run(GraphPtr &graph, CustomPassContext &custom_pass_context,
              const CustomPassStage stage = CustomPassStage::kBeforeInferShape,
-             const std::map<std::string, bool> &pass_name_to_switches = {}) const;
+             const std::map<std::string, bool> &pass_name_to_switches = {},
+             const std::map<std::string, int32_t> &pass_name_to_priorities = {}) const;
 
   ~CustomPassHelper() = default;
 
