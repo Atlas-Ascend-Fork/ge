@@ -597,8 +597,8 @@ HcclResult HcomGraphOptimizer::SetUnknownShapeAttr(ge::ComputeGraph &graph, bool
 //  RSV/AGV的displs为可选输入，未连接时校验会误伤合法图）
 static const std::map<std::string, std::vector<u32>> V_OP_COUNTS_INPUT_IDX = {
     {HCCL_KERNEL_OP_TYPE_REDUCESCATTERV, {1U, 2U}},  // recv_count, send_counts
-    {HCCL_KERNEL_OP_TYPE_ALLGATHERV, {1U, 2U}},     // send_count, recv_counts
-    {HCCL_KERNEL_OP_TYPE_ALLTOALLV, {1U, 3U}},      // send_counts, recv_counts
+    {HCCL_KERNEL_OP_TYPE_ALLGATHERV, {1U, 2U}},      // send_count, recv_counts
+    {HCCL_KERNEL_OP_TYPE_ALLTOALLV, {1U, 3U}},       // send_counts, recv_counts
 };
 
 static bool IsCountsInputConst(const ge::NodePtr &nodePtr, const std::vector<u32> &idxList) {
