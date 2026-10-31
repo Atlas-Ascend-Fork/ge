@@ -592,11 +592,13 @@ HcclResult HcomGraphOptimizer::SetUnknownShapeAttr(ge::ComputeGraph &graph, bool
   return HCCL_SUCCESS;
 }
 
-// V类算子的counts类必选输入索引表（与hccl侧vInputVec pass的必选const检查索引一致；
-// RSV索引3的displacements为可选输入，运行时可按counts前缀和推导，不检查；A2AV四个输入全必选）
+// V类算子的counts类输入索引表：仅检查counts（数量）输入的const性，displacements（偏移）类输入不检查
+// （counts非const即无法固化通信计划需退单算子，由单算子路径运行时读取真实值或按counts推导displs；
+//  RSV/AGV的displs为可选输入，未连接时校验会误伤合法图）
 static const std::map<std::string, std::vector<u32>> V_OP_COUNTS_INPUT_IDX = {
-    {HCCL_KERNEL_OP_TYPE_REDUCESCATTERV, {1U, 2U}},         // recv_count, send_counts
-    {HCCL_KERNEL_OP_TYPE_ALLTOALLV, {1U, 2U, 3U, 4U}},      // send_counts, send_displs, recv_counts, recv_displs
+    {HCCL_KERNEL_OP_TYPE_REDUCESCATTERV, {1U, 2U}},  // recv_count, send_counts
+    {HCCL_KERNEL_OP_TYPE_ALLGATHERV, {1U, 2U}},     // send_count, recv_counts
+    {HCCL_KERNEL_OP_TYPE_ALLTOALLV, {1U, 3U}},      // send_counts, recv_counts
 };
 
 static bool IsCountsInputConst(const ge::NodePtr &nodePtr, const std::vector<u32> &idxList) {
