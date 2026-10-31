@@ -771,9 +771,23 @@ void RefreshShapeRangePlaceholder(ge::GeTensorDesc &tensor_desc) {
 }
 
 // 新流程：不做 range 推导，按输出维度动静状态填充默认值 range
-// 输入 shape range 由上游传播/用户设置保证（NeedInferShapeRange 已判定动态输入必有 range），此处不处理
+// 默认填充前检查输入范围，失败时不修改输出描述符
 ge::graphStatus InferShapeRangeWithDefaultValue(const ge::OpDescPtr &op_desc) {
   GE_ASSERT_NOTNULL(op_desc);
+  for (size_t i = 0UL; i < op_desc->GetAllInputsSize(); ++i) {
+    const auto &input = op_desc->GetInputDesc(static_cast<uint32_t>(i));
+    if (input.IsValid() != ge::GRAPH_SUCCESS || input.GetShape().IsUnknownDimNum()) {
+      continue;
+    }
+    std::vector<std::pair<int64_t, int64_t>> range;
+    GE_CHK_STATUS_RET(input.GetShapeRange(range), "Get input shape range failed, op[%s], input[%zu].",
+                      op_desc->GetNamePtr(), i);
+    for (const auto &bounds : range) {
+      GE_CHK_BOOL_RET_STATUS(bounds.first >= 0 && (bounds.second == ge::UNKNOWN_DIM || bounds.second >= bounds.first),
+                             ge::GRAPH_FAILED, "Invalid input range, op[%s], input[%zu], min[%ld], max[%ld].",
+                             op_desc->GetNamePtr(), i, bounds.first, bounds.second);
+    }
+  }
   for (size_t i = 0UL; i < op_desc->GetOutputsSize(); ++i) {
     auto output_desc = op_desc->MutableOutputDesc(static_cast<uint32_t>(i));
     if (output_desc == nullptr) {
