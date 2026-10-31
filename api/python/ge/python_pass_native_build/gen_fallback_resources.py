@@ -53,9 +53,6 @@ def _split_encoded_content(encoded_content: str) -> str:
 
 
 def _gzip_compress_deterministic(content: bytes) -> bytes:
-    # gzip.compress(mtime=...) requires Python 3.8+; build the same
-    # deterministic output on 3.7 via GzipFile (and pin the OS byte that
-    # gzip.compress writes on Linux so both paths match byte for byte).
     buffer = io.BytesIO()
     with gzip.GzipFile(
         fileobj=buffer, mode="wb", compresslevel=9, mtime=0

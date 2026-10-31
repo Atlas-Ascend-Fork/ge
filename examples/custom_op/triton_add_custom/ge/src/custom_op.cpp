@@ -113,11 +113,6 @@ class AddCustom : public EagerExecuteOp {
     // [2,3,4],Shape2=[4],这种就不支持
     // 启用 ffts_addr 时，取消下面整段代码的注释（通过 aclrtGetHardwareSyncAddr 获取
     // C2C 控制区地址，该接口在已包含的 acl/acl_rt.h 中声明，GE 下发任务时也用该接口获取此地址）：
-    // void *ffts_addr = nullptr;
-    // if (aclrtGetHardwareSyncAddr(&ffts_addr) != ACL_ERROR_NONE) {
-    //   std::cerr << __FILE__ << ":" << __LINE__ << " get ffts addr failed" << std::endl;
-    //   return GRAPH_FAILED;
-    // }
     struct __attribute__((packed)) {
       // 注意：是否需要 ffts_addr 取决于 npubin 编译时是否启用 FFTS 调度特性，而非特定设备型号。
       // 判断方法：在编译 npubin 的环境中执行（需要已安装 triton-ascend，即生成 npubin 的前提条件）：
@@ -130,7 +125,6 @@ class AddCustom : public EagerExecuteOp {
       //   - 输出 False 则保持样例默认写法即可，无需任何修改。
       // 该判断逻辑与 triton-ascend 生成 launcher 时采用的一致
       // （https://gitcode.com/Ascend/triton-ascend/blob/main/third_party/ascend/backend/utils.py）。
-      // void *ffts_addr __attribute__((aligned(8)));
       void *sync_block_lock __attribute__((aligned(8)));
       void *workspace_addr __attribute__((aligned(8)));
       const void *arg0 __attribute__((aligned(8)));
@@ -141,7 +135,6 @@ class AddCustom : public EagerExecuteOp {
       int32_t grid_y __attribute__((aligned(4)));
       int32_t grid_z __attribute__((aligned(4)));
     } args = {
-        // ffts_addr,
         nullptr, nullptr, input_x->GetAddr(), input_y->GetAddr(), z_addr, static_cast<int32_t>(n_elements), grid_x,
         grid_y,  grid_z,
     };
