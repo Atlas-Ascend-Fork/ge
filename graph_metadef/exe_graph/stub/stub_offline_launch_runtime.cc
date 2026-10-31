@@ -188,6 +188,19 @@ const KernelArgs *EagerOpExecutionContext::MallocReadOnlyDevArgs(void *host_args
   return nullptr;
 }
 
+bool EagerOpExecutionContext::GetContextValue(ContextParam key, uint64_t &value) const {
+  (void)key;
+  (void)value;
+  return false;
+}
+
+ge::graphStatus EagerOpExecutionContext::GetOption(const ge::AscendString &option_key,
+                                                   ge::AscendString &option_value) const {
+  (void)option_key;
+  (void)option_value;
+  return ge::GRAPH_FAILED;
+}
+
 WorkspaceAddr AnnotatedArgsContext::MallocWorkSpace(size_t size) {
   (void)size;
   return WorkspaceAddr{0U, nullptr};

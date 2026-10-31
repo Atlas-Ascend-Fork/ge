@@ -24,7 +24,6 @@ class LLMStatusCode(Enum):
     LLM_WAIT_PROCESS_TIMEOUT = llm_wrapper.kLLMWaitProcessTimeOut
     LLM_KV_CACHE_NOT_EXIST = llm_wrapper.kLLMKVCacheNotExist
     LLM_REPEAT_REQUEST = llm_wrapper.kLLMRepeatRequest
-    LLM_REQUEST_ALREADY_COMPLETED = llm_wrapper.kLLMRequestAlreadyCompleted
     LLM_ENGINE_FINALIZED = llm_wrapper.kLLMEngineFinalized
     LLM_NOT_YET_LINK = llm_wrapper.kLLMNotYetLink
     LLM_ALREADY_LINK = llm_wrapper.kAlreadyLink
@@ -36,9 +35,6 @@ class LLMStatusCode(Enum):
     LLM_DEVICE_OUT_OF_MEMORY = llm_wrapper.kDeviceOutOfMemory
     LLM_PREFIX_ALREADY_EXIST = llm_wrapper.kPrefixAlreadyExist
     LLM_PREFIX_NOT_EXIST = llm_wrapper.kPrefixNotExist
-    LLM_SEQ_LENOVERLIMIT = llm_wrapper.kLLMSeqLenOverLimit
-    LLM_NO_FREE_BLOCK = llm_wrapper.kLLMNoFreeBlock
-    LLM_BLOCKS_OUT_OF_MEMORY = llm_wrapper.kLLMBlocksOutOfMemory
     LLM_EXIST_LINK = llm_wrapper.kLLMExistLink
     LLM_FEATURE_NOT_ENABLED = llm_wrapper.kLLMFeatureNotEnabled
     LLM_TIMEOUT = llm_wrapper.kLLMTimeout
@@ -71,7 +67,6 @@ _code_2_status = {
     llm_wrapper.kLLMWaitProcessTimeOut: LLMStatusCode.LLM_WAIT_PROCESS_TIMEOUT,
     llm_wrapper.kLLMKVCacheNotExist: LLMStatusCode.LLM_KV_CACHE_NOT_EXIST,
     llm_wrapper.kLLMRepeatRequest: LLMStatusCode.LLM_REPEAT_REQUEST,
-    llm_wrapper.kLLMRequestAlreadyCompleted: LLMStatusCode.LLM_REQUEST_ALREADY_COMPLETED,
     llm_wrapper.kLLMEngineFinalized: LLMStatusCode.LLM_ENGINE_FINALIZED,
     llm_wrapper.kLLMNotYetLink: LLMStatusCode.LLM_NOT_YET_LINK,
     llm_wrapper.kAlreadyLink: LLMStatusCode.LLM_ALREADY_LINK,
@@ -83,9 +78,6 @@ _code_2_status = {
     llm_wrapper.kDeviceOutOfMemory: LLMStatusCode.LLM_DEVICE_OUT_OF_MEMORY,
     llm_wrapper.kPrefixAlreadyExist: LLMStatusCode.LLM_PREFIX_ALREADY_EXIST,
     llm_wrapper.kPrefixNotExist: LLMStatusCode.LLM_PREFIX_NOT_EXIST,
-    llm_wrapper.kLLMSeqLenOverLimit: LLMStatusCode.LLM_SEQ_LENOVERLIMIT,
-    llm_wrapper.kLLMNoFreeBlock: LLMStatusCode.LLM_NO_FREE_BLOCK,
-    llm_wrapper.kLLMBlocksOutOfMemory: LLMStatusCode.LLM_BLOCKS_OUT_OF_MEMORY,
     llm_wrapper.kLLMExistLink: LLMStatusCode.LLM_EXIST_LINK,
     llm_wrapper.kLLMFeatureNotEnabled: LLMStatusCode.LLM_FEATURE_NOT_ENABLED,
     llm_wrapper.kLLMTimeout: LLMStatusCode.LLM_TIMEOUT,
@@ -119,7 +111,9 @@ class Status:
 
 
 def code_2_status(status) -> LLMStatusCode:
-    return _code_2_status[status] if status in _code_2_status else LLMStatusCode.LLM_FAILED
+    return (
+        _code_2_status[status] if status in _code_2_status else LLMStatusCode.LLM_FAILED
+    )
 
 
 def handle_llm_status(status, func_name, other_info):
@@ -130,14 +124,18 @@ def handle_llm_status(status, func_name, other_info):
         )
 
 
-def raise_if_false(pred, fmt, *args, status_code=LLMStatusCode.LLM_PARAM_INVALID, **kwargs):
+def raise_if_false(
+    pred, fmt, *args, status_code=LLMStatusCode.LLM_PARAM_INVALID, **kwargs
+):
     if not pred:
         error_msg = fmt.format(*args, **kwargs)
         log.error(error_msg)
         raise LLMException(error_msg, status_code=status_code)
 
 
-def raise_if_true(pred, fmt, *args, status_code=LLMStatusCode.LLM_PARAM_INVALID, **kwargs):
+def raise_if_true(
+    pred, fmt, *args, status_code=LLMStatusCode.LLM_PARAM_INVALID, **kwargs
+):
     if pred:
         error_msg = fmt.format(*args, **kwargs)
         log.error(error_msg)

@@ -135,7 +135,7 @@ Status ValidateAndCollectCreator(const std::string &op_type, const OpBackend bac
   }
 
   const auto op_key = std::make_pair(op_type, backend);
-  if (registry->HasCreator(AscendString(op_type.c_str()), backend) ||
+  if (registry->HasCreator(AscendString(op_type.c_str()), backend, OpRegistrationPriority::kTop, OpEngine::kCustom) ||
       (pending_op_keys.find(op_key) != pending_op_keys.end())) {
     GELOGE(FAILED, "[CUSTOM OP] duplicate custom op creator for %s backend %u in model registry.", op_type.c_str(),
            static_cast<uint32_t>(backend));

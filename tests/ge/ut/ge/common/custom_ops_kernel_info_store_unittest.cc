@@ -696,7 +696,8 @@ class UtestCustomOpsKernelInfoStore : public testing::Test {
     graph_options_ = GetThreadLocalContext().GetAllGraphOptions();
     session_options_ = GetThreadLocalContext().GetAllSessionOptions();
     global_options_ = GetThreadLocalContext().GetAllGlobalOptions();
-    GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, "KirinX90"}});
+    // Mirror the real build flow: Kirin builds carry ge.offlineMode=40.
+    GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, "KirinX90"}, {ge::ir_option::OFFLINE_MODE, "40"}});
   }
 
   void TearDown() override {
@@ -1558,6 +1559,28 @@ TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskOnMobileSocRejectsUpdateCallba
   EXPECT_EQ(g_both_refresh_interfaces_declare_count.load(), 0U);
 }
 
+// Mobile detection is driven by ge.offlineMode, not soc_version.
+TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskMobileModeFollowsOfflineModeNotSoc) {
+  const std::string kTestOpType = "TestMultipleLaunchesCustomOp_OfflineModeDecoupling";
+  auto creator = []() -> std::unique_ptr<BaseCustomOp> {
+    return std::make_unique<MockAnnotatedArgsWithMultipleLaunchesCustomOp>();
+  };
+  ASSERT_EQ(CustomOpFactory::RegisterCustomOpCreator(AscendString(kTestOpType.c_str()), creator), GRAPH_SUCCESS);
+
+  // Non-Kirin soc with offlineMode=40: mobile constraints apply.
+  GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, "Ascend910B"}, {ge::ir_option::OFFLINE_MODE, "40"}});
+  ExpectGenerateTaskFailedWithStatus(kTestOpType, INTERNAL_ERROR);
+
+  // Kirin soc with offlineMode=0: standard multi-task generation.
+  GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, "KirinX90"}, {ge::ir_option::OFFLINE_MODE, "0"}});
+  ComputeGraphPtr graph;
+  auto node = BuildStaticCustomNode(kTestOpType, graph);
+  ASSERT_NE(node, nullptr);
+  std::vector<domi::TaskDef> tasks;
+  EXPECT_EQ(GenerateTaskForNode(node, tasks), SUCCESS);
+  EXPECT_EQ(tasks.size(), 2U);
+}
+
 TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskOnMobileSocRejectsDefaultStrategy) {
   const std::string kTestOpType = "TestUnregisteredCustomOp_MobileDefaultStrategy_BuilderTest";
   EXPECT_EQ(CustomOpFactory::GetArgsRefreshStrategy(AscendString(kTestOpType.c_str())), ArgsRefreshStrategy::kNone);
@@ -2070,14 +2093,15 @@ TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskOnUnknownGraphDoesNotValidateE
 
 TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskOnUnknownGraphUsesBasicTaskForAnnotatedEagerOp) {
   const std::vector<std::pair<std::string, std::string>> cases = {
-      {"KirinX90", "TestUnknownGraphAnnotatedEagerOp_Mobile"},
-      {"Ascend910B", "TestUnknownGraphAnnotatedEagerOp_NonMobile"},
+      {"40", "TestUnknownGraphAnnotatedEagerOp_Mobile"},
+      {"0", "TestUnknownGraphAnnotatedEagerOp_NonMobile"},
   };
 
   for (const auto &test_case : cases) {
-    const std::string &soc_version = test_case.first;
+    const std::string &offline_mode = test_case.first;
     const std::string &op_type = test_case.second;
-    GetThreadLocalContext().SetGraphOption({{ge::SOC_VERSION, soc_version}});
+    GetThreadLocalContext().SetGraphOption(
+        {{ge::SOC_VERSION, "KirinX90"}, {ge::ir_option::OFFLINE_MODE, offline_mode}});
     g_annotated_eager_declare_count.store(0U);
     auto creator = []() -> std::unique_ptr<BaseCustomOp> {
       return std::make_unique<MockAnnotatedArgsAndEagerCustomOp>();
@@ -2092,9 +2116,9 @@ TEST_F(UtestCustomOpsKernelInfoStore, GenerateTaskOnUnknownGraphUsesBasicTaskFor
     owner_graph->SetGraphUnknownFlag(true);
 
     std::vector<domi::TaskDef> tasks;
-    EXPECT_EQ(GenerateTaskForNode(node, tasks), SUCCESS) << "soc_version=" << soc_version;
-    EXPECT_EQ(g_annotated_eager_declare_count.load(), 0U) << "soc_version=" << soc_version;
-    EXPECT_EQ(tasks.size(), 1U) << "soc_version=" << soc_version;
+    EXPECT_EQ(GenerateTaskForNode(node, tasks), SUCCESS) << "offline_mode=" << offline_mode;
+    EXPECT_EQ(g_annotated_eager_declare_count.load(), 0U) << "offline_mode=" << offline_mode;
+    EXPECT_EQ(tasks.size(), 1U) << "offline_mode=" << offline_mode;
     if (tasks.size() != 1U) {
       continue;
     }
@@ -2175,6 +2199,82 @@ TEST_F(UtestCustomOpsKernelInfoStore, CustomOpsKernelBuilderInitializeAndFinaliz
   std::map<std::string, std::string> options;
   EXPECT_EQ(builder.Initialize(options), SUCCESS);
   EXPECT_EQ(builder.Finalize(), SUCCESS);
+}
+TEST_F(UtestCustomOpsKernelInfoStore, RefreshRoutesHcclEngineOpToDnnHccl) {
+  const std::string kHcclOpType = "TestHcclEngineRoutingOp_StoreTest";
+  CustomOpsKernelInfoStore store;
+  std::map<std::string, std::string> options;
+  EXPECT_EQ(store.Initialize(options), SUCCESS);
+
+  auto creator = []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<MockCustomOp>(); };
+  // kBottom兜底注册（对齐HcclOp注册形态）：GetAllRegisteredOps按认领语义纳入，引擎解析不受优先级影响
+  EXPECT_EQ(CustomOpFactory::RegisterCustomOpCreator(AscendString(kHcclOpType.c_str()), OpBackend::kDevice,
+                                                     OpRegistrationPriority::kBottom, OpEngine::kHccl, creator),
+            GRAPH_SUCCESS);
+  EXPECT_EQ(store.Refresh(), SUCCESS);
+
+  std::map<std::string, OpInfo> infos;
+  store.GetAllOpsKernelInfo(infos);
+  ASSERT_NE(infos.count(kHcclOpType), 0U);
+  // kHccl注册的自定义算子路由到DNN_HCCL引擎（与内置集合通信算子一致，复用独立流等流分配特性）
+  EXPECT_EQ(infos[kHcclOpType].engine, kEngineNameDnnHccl);
+  // kernel lib仍为custom store，由自定义算子编译/执行链路处理
+  EXPECT_EQ(infos[kHcclOpType].opKernelLib, kCustomOpKernelLibName);
+}
+
+TEST_F(UtestCustomOpsKernelInfoStore, RefreshKeepsNonHcclOpOnCustomEngine) {
+  const std::string kPlainOpType = "TestPlainEngineRoutingOp_StoreTest";
+  CustomOpsKernelInfoStore store;
+  std::map<std::string, std::string> options;
+  EXPECT_EQ(store.Initialize(options), SUCCESS);
+
+  auto creator = []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<MockCustomOp>(); };
+  EXPECT_EQ(CustomOpFactory::RegisterCustomOpCreator(AscendString(kPlainOpType.c_str()), creator), GRAPH_SUCCESS);
+  EXPECT_EQ(store.Refresh(), SUCCESS);
+
+  std::map<std::string, OpInfo> infos;
+  store.GetAllOpsKernelInfo(infos);
+  ASSERT_NE(infos.count(kPlainOpType), 0U);
+  EXPECT_EQ(infos[kPlainOpType].engine, kEngineNameCustom);
+  EXPECT_EQ(infos[kPlainOpType].opKernelLib, kCustomOpKernelLibName);
+}
+
+// 回归：非自定义引擎（且不在映射表内）注册的算子不得被自定义store认领，
+// 否则会被错误路由到自定义算子kernel lib（曾导致ge_running_env_test环境隔离断言失败）
+TEST_F(UtestCustomOpsKernelInfoStore, RefreshSkipsOpRegisteredWithForeignEngine) {
+  const std::string kForeignEngineOpType = "TestForeignEngineOp_StoreTest";
+  CustomOpsKernelInfoStore store;
+  std::map<std::string, std::string> options;
+  EXPECT_EQ(store.Initialize(options), SUCCESS);
+
+  auto creator = []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<MockCustomOp>(); };
+  EXPECT_EQ(CustomOpFactory::RegisterCustomOpCreator(AscendString(kForeignEngineOpType.c_str()), OpBackend::kDevice,
+                                                     OpRegistrationPriority::kTop, OpEngine::kAiCore, creator),
+            GRAPH_SUCCESS);
+  EXPECT_EQ(store.Refresh(), SUCCESS);
+
+  std::map<std::string, OpInfo> infos;
+  store.GetAllOpsKernelInfo(infos);
+  EXPECT_EQ(infos.count(kForeignEngineOpType), 0U);
+}
+
+// 边界：kBottom + kCustom引擎的注册不认领——2参CreateOrGetCustomOp固定 (kTop, kCustom)，
+// 认领了也无法实例化；kBottom兜底仅对映射表内引擎（如kHccl）生效
+TEST_F(UtestCustomOpsKernelInfoStore, RefreshSkipsBottomPriorityCustomEngineOp) {
+  const std::string kBottomCustomOpType = "TestBottomCustomEngineOp_StoreTest";
+  CustomOpsKernelInfoStore store;
+  std::map<std::string, std::string> options;
+  EXPECT_EQ(store.Initialize(options), SUCCESS);
+
+  auto creator = []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<MockCustomOp>(); };
+  EXPECT_EQ(CustomOpFactory::RegisterCustomOpCreator(AscendString(kBottomCustomOpType.c_str()), OpBackend::kDevice,
+                                                     OpRegistrationPriority::kBottom, OpEngine::kCustom, creator),
+            GRAPH_SUCCESS);
+  EXPECT_EQ(store.Refresh(), SUCCESS);
+
+  std::map<std::string, OpInfo> infos;
+  store.GetAllOpsKernelInfo(infos);
+  EXPECT_EQ(infos.count(kBottomCustomOpType), 0U);
 }
 }  // namespace custom
 }  // namespace ge

@@ -29,7 +29,7 @@ CMAKE_TOOLCHAIN_PREFIX="${BASEPATH}/../cmake/toolchain"
 # print usage message
 usage() {
   echo "Usage:"
-  echo "  sh build.sh [-h | --help] [-v | --verbose] [-j<N>]"
+  echo "bash build.sh [-h | --help] [-v | --verbose] [-j<N>]"
   echo "              [--ge_compiler] [--ge_executor]  [--dflow]"
   echo "              [--build-type=<TYPE>]"
   echo "              [--output_path=<PATH>] [--cann_3rd_lib_path=<PATH>]"

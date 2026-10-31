@@ -194,7 +194,10 @@ ge::Status GetResourceUsageReporter(const ge::OpDescPtr &op_desc, ge::ResourceUs
   if (ge::CustomOpFactory::GetArgsRefreshStrategy(op_type) == ge::ArgsRefreshStrategy::kAnnotatedArgs) {
     return ge::SUCCESS;
   }
-  auto *const base_custom_op = ge::CustomOpFactory::CreateOrGetCustomOp(op_type, ge::OpBackend::kDevice);
+  // 需先解析注册引擎再按优先级回退取实例；双参版本固定kTop+kCustom，kBottom兜底注册（如HcclOp）会查不到
+  ge::OpEngine op_engine = ge::OpEngine::kCustom;
+  (void)ge::CustomOpFactory::GetOpEngine(op_type, ge::OpBackend::kDevice, op_engine);
+  auto *const base_custom_op = ge::CustomOpFactory::CreateOrGetCustomOp(op_type, ge::OpBackend::kDevice, op_engine);
   if (base_custom_op == nullptr) {
     return ge::SUCCESS;
   }

@@ -146,7 +146,11 @@ ge::Status CompileCustomOpSerially(const std::vector<CompileTask *> *tasks) {
 ge::Status AppendCompileTaskIfNeeded(const ge::NodePtr &node, std::vector<CompileTask> &compile_tasks) {
   const auto op_type = node->GetType();
   const ge::AscendString op_type_ascend(op_type.c_str());
-  if (!ge::CustomOpFactory::IsExistOp(op_type_ascend)) {
+  // 承载口径 = 改前口径（kTop + kCustom）∪ 本次支持形态（kBottom + kHccl）：
+  // 仅kBottom兜底注册的算子（如kHccl形态）也需参与自定义算子编译任务收集
+  const auto custom_op_registry = ge::CustomOpFactory::GetGlobalRegistryPtr();
+  GE_ASSERT_NOTNULL(custom_op_registry);
+  if (!custom_op_registry->IsCustomOpToBeCollected(op_type_ascend)) {
     return ge::SUCCESS;
   }
   GELOGI("during optimize whole graph, %s is custom op", op_type_ascend.GetString());

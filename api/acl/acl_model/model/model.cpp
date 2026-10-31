@@ -1951,6 +1951,16 @@ aclError aclmdlSetInputDynamicDimsImpl(uint32_t modelId, aclmdlDataset *dataset,
                                               std::vector<const char *>({"dimCount", "0", errMsg.c_str()}));
     return ACL_ERROR_INVALID_PARAM;
   }
+  if (dims->dimCount > static_cast<size_t>(ACL_MAX_DIM_CNT)) {
+    ACL_LOG_ERROR("[Check][dimCount]dimCount[%zu] is invalid, can't be larger than %d.", dims->dimCount,
+                  ACL_MAX_DIM_CNT);
+    const std::string errMsg =
+        acl::AclErrorLogManager::FormatStr("dimCount[%zu] can't be larger than %d", dims->dimCount, ACL_MAX_DIM_CNT);
+    acl::AclErrorLogManager::ReportInputError(
+        acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
+        std::vector<const char *>({"dimCount", std::to_string(dims->dimCount).c_str(), errMsg.c_str()}));
+    return ACL_ERROR_INVALID_PARAM;
+  }
 
   ACL_LOG_INFO("start to execute aclmdlSetInputDynamicDims, modelId[%u], index[%zu], dimCount[%zu]", modelId, index,
                dims->dimCount);

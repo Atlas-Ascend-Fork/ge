@@ -24,7 +24,11 @@
 #include "graph/utils/inference_rule.h"
 #include "exe_graph/lowering/data_dependent_interpreter.h"
 #include "graph/utils/attr_utils.h"
+#include "graph/utils/graph_utils.h"
 #include "graph/utils/op_desc_utils.h"
+#include "register/core_num_utils.h"
+
+#include <cstdint>
 
 namespace gert {
 namespace {
@@ -132,6 +136,23 @@ ge::graphStatus BuildInputTensors(const ge::NodePtr &node, const LowerInput &low
                  lower_input.input_shapes.size(), input_tensor_holders.size());
   return ge::SUCCESS;
 }
+
+// 解析算子 _op_vectorcore_num字符串属性；缺失或非法返回 -1（sentinel：未设置）。
+// 解析与校验统一走CoreNumUtils（严格十进制 + 范围校验，与bg_platform.cc同属性同口径）；
+// 非法值由utils上报，此处仅按未设置处理
+int64_t GetVectorCoreNumFromOpDesc(const ge::OpDescPtr &op_desc) {
+  std::string vector_core_num_str;
+  if ((op_desc == nullptr) || (!ge::AttrUtils::GetStr(op_desc, ge::kVectorCoreNumOp, vector_core_num_str)) ||
+      vector_core_num_str.empty()) {
+    return -1;
+  }
+  int32_t vector_core_num = 0;
+  if (ge::CoreNumUtils::ParseAndValidateCoreNum(ge::kVectorCoreNumOp, vector_core_num_str, 0, INT32_MAX,
+                                                vector_core_num) != ge::GRAPH_SUCCESS) {
+    return -1;
+  }
+  return static_cast<int64_t>(vector_core_num);
+}
 }  // namespace
 
 LowerResult LoweringCustomNode(const ge::NodePtr &node, const LowerInput &lower_input) {
@@ -152,6 +173,23 @@ LowerResult LoweringCustomNode(const ge::NodePtr &node, const LowerInput &lower_
   const auto attached_stream_provider = bg::GetAttachedStreamProvider(*lower_input.global_data);
   LOWER_REQUIRE_NOTNULL(attached_stream_provider);
   input_holders.emplace_back(attached_stream_provider);
+  // 根图graph id / node id / vector core数量：随执行节点输入下发（按节点，非按类型），
+  // 运行期由ExecuteCustomOp的outputs_creator读取并写入执行上下文伴生对象；
+  // node id与vector core数量用sentinel(-1) 表示未设置，须与CustomOpInput枚举顺序一致。
+  const auto owner_graph = node->GetOwnerComputeGraph();
+  const auto root_graph = (owner_graph == nullptr) ? nullptr : ge::GraphUtils::FindRootGraph(owner_graph);
+  const uint32_t root_graph_id = (root_graph == nullptr) ? 0U : root_graph->GetGraphID();
+  const int64_t node_id = node->GetOpDesc()->GetId();
+  const int64_t vector_core_num = GetVectorCoreNumFromOpDesc(node->GetOpDesc());
+  auto root_graph_id_holder = bg::ValueHolder::CreateConst(&root_graph_id, sizeof(root_graph_id));
+  LOWER_REQUIRE_NOTNULL(root_graph_id_holder);
+  auto node_id_holder = bg::ValueHolder::CreateConst(&node_id, sizeof(node_id));
+  LOWER_REQUIRE_NOTNULL(node_id_holder);
+  auto vector_core_num_holder = bg::ValueHolder::CreateConst(&vector_core_num, sizeof(vector_core_num));
+  LOWER_REQUIRE_NOTNULL(vector_core_num_holder);
+  input_holders.emplace_back(root_graph_id_holder);
+  input_holders.emplace_back(node_id_holder);
+  input_holders.emplace_back(vector_core_num_holder);
   // Check inference_rule
   const auto op_desc = node->GetOpDesc();
   LOWER_REQUIRE_NOTNULL(op_desc);

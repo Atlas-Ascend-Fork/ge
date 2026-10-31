@@ -79,16 +79,16 @@ class Rt2AttachedStreamCollectionTest : public testing::Test {
 
 TEST_F(Rt2AttachedStreamCollectionTest, RejectsEmptyKeyWithoutRuntimeCall) {
   Rt2AttachedStreamCollection collection;
-  EXPECT_EQ(collection.RequestAttachedStream(ge::AscendString()), nullptr);
-  EXPECT_EQ(collection.RequestAttachedStream(ge::AscendString("")), nullptr);
+  EXPECT_EQ(collection.RequestAttachedStream(ge::AscendString(), 0U), nullptr);
+  EXPECT_EQ(collection.RequestAttachedStream(ge::AscendString(""), 0U), nullptr);
   EXPECT_EQ(runtime_->create_count_, 0);
 }
 
 TEST_F(Rt2AttachedStreamCollectionTest, ReusesSameKeyAndIsolatesDistinctKeys) {
   Rt2AttachedStreamCollection collection;
-  const auto first = collection.RequestAttachedStream(ge::AscendString("rt2_aux"));
-  const auto reuse = collection.RequestAttachedStream(ge::AscendString("rt2_aux"));
-  const auto other = collection.RequestAttachedStream(ge::AscendString("rt2_other"));
+  const auto first = collection.RequestAttachedStream(ge::AscendString("rt2_aux"), 0U);
+  const auto reuse = collection.RequestAttachedStream(ge::AscendString("rt2_aux"), 0U);
+  const auto other = collection.RequestAttachedStream(ge::AscendString("rt2_other"), 0U);
   ASSERT_NE(first, nullptr);
   EXPECT_EQ(reuse, first);
   ASSERT_NE(other, nullptr);
@@ -99,14 +99,14 @@ TEST_F(Rt2AttachedStreamCollectionTest, ReusesSameKeyAndIsolatesDistinctKeys) {
 TEST_F(Rt2AttachedStreamCollectionTest, AcceptsFrameworkReservedPrefixKey) {
   Rt2AttachedStreamCollection collection;
   // CANN-FMK- 前缀保留给 HCCL 等框架组件，属 API 文档软约束，代码不拦截
-  EXPECT_NE(collection.RequestAttachedStream(ge::AscendString("CANN-FMK-hccl")), nullptr);
+  EXPECT_NE(collection.RequestAttachedStream(ge::AscendString("CANN-FMK-hccl"), 0U), nullptr);
   EXPECT_EQ(runtime_->create_count_, 1);
 }
 
 TEST_F(Rt2AttachedStreamCollectionTest, CreateFailureReturnsNullptrWithoutDestroy) {
   runtime_->create_fail = true;
   Rt2AttachedStreamCollection collection;
-  EXPECT_EQ(collection.RequestAttachedStream(ge::AscendString("rt2_aux")), nullptr);
+  EXPECT_EQ(collection.RequestAttachedStream(ge::AscendString("rt2_aux"), 0U), nullptr);
   EXPECT_EQ(runtime_->create_count_, 1);
   EXPECT_TRUE(acl_->destroyed_streams.empty());
 }
@@ -114,18 +114,19 @@ TEST_F(Rt2AttachedStreamCollectionTest, CreateFailureReturnsNullptrWithoutDestro
 TEST_F(Rt2AttachedStreamCollectionTest, HasNoStreamNumLimit) {
   Rt2AttachedStreamCollection collection;
   for (size_t i = 0U; i < kLargeStreamNum; ++i) {
-    ASSERT_NE(collection.RequestAttachedStream(ge::AscendString(("rt2_key_" + std::to_string(i)).c_str())), nullptr);
+    ASSERT_NE(collection.RequestAttachedStream(ge::AscendString(("rt2_key_" + std::to_string(i)).c_str()), 0U),
+              nullptr);
   }
   EXPECT_EQ(static_cast<size_t>(runtime_->create_count_), kLargeStreamNum);
   // 数量不受限后，复用与隔离语义仍须成立
-  EXPECT_EQ(collection.RequestAttachedStream(ge::AscendString("rt2_key_0")),
-            collection.RequestAttachedStream(ge::AscendString("rt2_key_0")));
+  EXPECT_EQ(collection.RequestAttachedStream(ge::AscendString("rt2_key_0"), 0U),
+            collection.RequestAttachedStream(ge::AscendString("rt2_key_0"), 0U));
   EXPECT_EQ(static_cast<size_t>(runtime_->create_count_), kLargeStreamNum);
 }
 
 TEST_F(Rt2AttachedStreamCollectionTest, DestroySyncsBeforeDestroyAndIsIdempotent) {
   Rt2AttachedStreamCollection collection;
-  const auto first = collection.RequestAttachedStream(ge::AscendString("rt2_aux"));
+  const auto first = collection.RequestAttachedStream(ge::AscendString("rt2_aux"), 0U);
   ASSERT_NE(first, nullptr);
 
   collection.Destroy();
@@ -142,12 +143,12 @@ TEST_F(Rt2AttachedStreamCollectionTest, DestroySyncsBeforeDestroyAndIsIdempotent
 
 TEST_F(Rt2AttachedStreamCollectionTest, RecreatesStreamAfterDestroy) {
   Rt2AttachedStreamCollection collection;
-  const auto first = collection.RequestAttachedStream(ge::AscendString("rt2_aux"));
+  const auto first = collection.RequestAttachedStream(ge::AscendString("rt2_aux"), 0U);
   ASSERT_NE(first, nullptr);
   collection.Destroy();
 
   // 防御性契约：Destroy 后对象仍可继续使用（生产路径 Destroy 只由析构调用，不会走到这里）
-  const auto second = collection.RequestAttachedStream(ge::AscendString("rt2_aux"));
+  const auto second = collection.RequestAttachedStream(ge::AscendString("rt2_aux"), 0U);
   ASSERT_NE(second, nullptr);
   EXPECT_NE(second, first);
   EXPECT_EQ(runtime_->create_count_, 2);

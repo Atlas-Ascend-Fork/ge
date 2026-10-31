@@ -178,6 +178,29 @@ TEST_F(UtestGraphFuseInspectorUtils, CanFuseSuccessOnValidNodes) {
   EXPECT_TRUE(GraphFuseInspectorUtils::CanFuse(ToGNodes(before_nodes), failed_reason));
 }
 
+// 单节点集合位于图中已存在的合法回边环（如 TF 扁平化控制流回边）上时，
+// 替换前后边界边保持不变，不会新增环，CanFuse 应放行。
+TEST_F(UtestGraphFuseInspectorUtils, CanFuseSuccessOnSingleNodeOnPreexistingCycle) {
+  ut::GraphBuilder builder("single_node_cycle_graph");
+  const auto data = builder.AddNode("data", "Data", 0, 1);
+  const auto relu = builder.AddNode("relu", "Relu", 1, 1);
+  const auto abs = builder.AddNode("abs", "Abs", 1, 1);
+  const auto netoutput = builder.AddNode("netoutput", "NetOutput", 1, 0);
+
+  builder.AddDataEdge(data, 0, relu, 0);
+  builder.AddDataEdge(relu, 0, abs, 0);
+  builder.AddDataEdge(abs, 0, netoutput, 0);
+  // 绕回 relu 自身的合法回边：relu -> abs --ctrl--> relu
+  builder.AddControlEdge(abs, relu);
+  const auto graph = builder.GetGraph();
+  ASSERT_NE(graph, nullptr);
+
+  const auto relu_node = graph->FindNode("relu");
+  ASSERT_NE(relu_node, nullptr);
+  AscendString failed_reason;
+  EXPECT_TRUE(GraphFuseInspectorUtils::CanFuse(ToGNodes({relu_node}), failed_reason));
+}
+
 TEST_F(UtestGraphFuseInspectorUtils, ReportFuseFailedWhenNodesBeforeFuseEmpty) {
   CustomPassContext ctx;
   ctx.SetPassName("ut_pass");

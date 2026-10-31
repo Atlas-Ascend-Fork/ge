@@ -11,7 +11,6 @@
 #include "framework/generator/ge_generator.h"
 
 #include <atomic>
-#include <set>
 #include <cstdlib>
 #include <graph/preprocess/hccl_offline_option_builder.h>
 
@@ -106,20 +105,6 @@ bool IsOptional(const ge::GeTensorDesc &tensor_desc) {
   return tensor_desc.GetFormat() == ge::FORMAT_RESERVED && tensor_desc.GetDataType() == ge::DT_UNDEFINED;
 }
 
-bool IsMobile() {
-  const std::set<std::string> mobile_soc_version_list = {
-      "KirinX90",
-      "Kirin9030",
-  };
-  std::string soc_version;
-  (void)ge::GetContext().GetOption(ge::SOC_VERSION, soc_version);
-  GELOGI("[Mobile] SOC_VERSION: %s.", soc_version.c_str());
-  if (mobile_soc_version_list.find(soc_version) == mobile_soc_version_list.end()) {
-    return false;
-  }
-  GELOGI("[Mobile] SOC_VERSION: %s is mobile.", soc_version.c_str());
-  return true;
-}
 }  // namespace
 
 namespace ge {
@@ -551,14 +536,9 @@ Status GeGenerator::GenerateOfflineModel(const Graph &graph, const std::string &
   return GenerateModel(graph, file_name_prefix, inputs, model, true, om_format);
 }
 
-Status GeGenerator::GenerateOnlineModel(const Graph &graph, const std::vector<GeTensor> &inputs,
-                                        ModelBufferData &model) {
-  return GenerateModel(graph, "online", inputs, model, false);
-}
-
-Status GeGenerator::GenerateOnlineOm2Model(const Graph &graph, const std::vector<GeTensor> &inputs,
-                                           ModelBufferData &model) {
-  return GenerateModel(graph, "online", inputs, model, false, OfflineModelFormat::OM_FORMAT_OM2);
+Status GeGenerator::GenerateOnlineModel(const Graph &graph, const std::vector<GeTensor> &inputs, ModelBufferData &model,
+                                        OfflineModelFormat om_format) {
+  return GenerateModel(graph, "online", inputs, model, false, om_format);
 }
 
 Status GeGenerator::GenerateOnlineGertModelData(const Graph &graph, const std::vector<GeTensor> &inputs,
@@ -1132,7 +1112,8 @@ Status GeGenerator::CreateGeneralizedBuildAttrs(
 Status GeGenerator::BuildSingleOp(OpDescPtr &op_desc, const std::vector<GeTensor> &inputs,
                                   const std::vector<GeTensor> &outputs, const std::string &model_file_name,
                                   OpEngineType engine_type, ModelBufferData &model_buff, ComputeGraphPtr &comp_graph,
-                                  bool is_offline, int32_t compile_flag, GraphStage graph_stage) {
+                                  bool is_offline, int32_t compile_flag, GraphStage graph_stage,
+                                  OfflineModelFormat om_format) {
   // 0. Save original attributes.
   const OpDescPtr op_desc_tmp = OpDescUtils::CloneOpDesc(op_desc);
   GE_CHECK_NOTNULL(op_desc_tmp);
@@ -1238,7 +1219,7 @@ Status GeGenerator::BuildSingleOp(OpDescPtr &op_desc, const std::vector<GeTensor
         impl_->SaveParams(ge_model, op_desc_tmp->GetType(), op_attrs, inputs_dynamic, outputs_dynamic));
   }
   GELOGI("Start save GeModel to Model buffer");
-  GE_CHK_STATUS_RET_NOLOG(impl_->SaveRootModel(model_file_name, ge_root_model, model_buff));
+  GE_CHK_STATUS_RET_NOLOG(impl_->SaveRootModel(model_file_name, ge_root_model, model_buff, om_format));
   return SUCCESS;
 }
 
@@ -1343,13 +1324,13 @@ Status GeGenerator::ResetTensorDesc(const size_t index, const GeShape &data_shap
  */
 Status GeGenerator::BuildSingleOpModel(OpDescPtr &op_desc, const std::vector<GeTensor> &inputs,
                                        const std::vector<GeTensor> &outputs, const std::string &model_file_name,
-                                       int32_t compile_flag) {
+                                       int32_t compile_flag, OfflineModelFormat om_format) {
   GELOGI("Start to build single op offline model, input size: %zu, output size: %zu", inputs.size(), outputs.size());
   ModelBufferData model_buff;
   ComputeGraphPtr compute_graph = nullptr;
   OpEngineType engine_type = ENGINE_SYS;
   Status status = BuildSingleOp(op_desc, inputs, outputs, model_file_name, engine_type, model_buff, compute_graph, true,
-                                compile_flag);
+                                compile_flag, GraphStage::GRAPH_STAGE_RESERVED, om_format);
   GELOGI("Finish build single offline model, status: %u", status);
   return status;
 }
@@ -1625,10 +1606,6 @@ Status GeGenerator::Impl::SaveRootModel(const std::string &file_name_prefix, con
   GE_ASSERT_SUCCESS(ge_root_model->CheckAndSetNeedSoInOM(), "Check so in om failed, model id:%u.",
                     ge_root_model->GetModelId());
   SetHostEnvOsCpuInfo(ge_root_model, *(model_root.get()));
-  if (IsMobile()) {
-    GELOGI("[Mobile] set om_format to OM_FORMAT_MOBILE.");
-    om_format = OfflineModelFormat::OM_FORMAT_MOBILE;
-  }
   const auto model_save_helper = ModelSaveHelperFactory::Instance().Create(om_format);
   GE_CHECK_NOTNULL(model_save_helper);
   model_save_helper->SetSaveMode(is_offline_);

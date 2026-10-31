@@ -248,6 +248,26 @@ TEST_F(UtestMain, MainImplTest_singleop) {
   EXPECT_EQ(ret, -1);
 }
 
+TEST_F(UtestMain, MainImplTest_singleop_mobile_mode) {
+  domi::GetContext().run_mode = RunMode::ONLY_PRE_CHECK;
+  std::string singleop_arg = AtcFileFactory::Generatefile1("--singleop=", "add_int.json");
+  std::string output_arg = AtcFileFactory::Generatefile1("--output=", "./");
+  char *argv[] = {"atc", const_cast<char *>(singleop_arg.c_str()), const_cast<char *>(output_arg.c_str()),
+                  "--soc_version=KirinX90"};
+  // The remaining single-op build flow is not stubbed in UT. Verify default mode is remapped to 40 for Kirin
+  // and passes single-op dispatch without global context.
+  EXPECT_EQ(main_impl(sizeof(argv) / sizeof(argv[0]), argv), -1);
+  EXPECT_EQ(FLAGS_mode, static_cast<int32_t>(RunMode::GEN_MOBILE_OM_MODEL));
+  EXPECT_EQ(domi::GetContext().run_mode, RunMode::ONLY_PRE_CHECK);
+}
+
+TEST_F(UtestMain, MainImplTest_kirin_keeps_non_build_mode) {
+  char *argv[] = {"atc", "--mode=6", "--soc_version=KirinX90"};
+  // Kirin only remaps build modes (0/40) to mobile; convert/precheck/display modes keep user intent.
+  EXPECT_NE(main_impl(sizeof(argv) / sizeof(argv[0]), argv), 0);
+  EXPECT_EQ(FLAGS_mode, static_cast<int32_t>(RunMode::DISPLAY_OM_INFO));
+}
+
 TEST_F(UtestMain, MainImplTest_singleop_allow_hf32) {
   std::string singleop_arg = AtcFileFactory::Generatefile1("--singleop=", "add_int.json");
   std::string output_arg = AtcFileFactory::Generatefile1("--output=", "./");
@@ -300,6 +320,24 @@ TEST_F(UtestMain, MainImplTest_generate_om_model_tf) {
   EXPECT_NE(ret, 0);
   EXPECT_TRUE(flgs::GetUserOptions().find("allow_hf32") != flgs::GetUserOptions().end());
   AtcFileFactory::RemoveFile(AtcFileFactory::Generatefile1("", "tmp.om").c_str());
+}
+
+TEST_F(UtestMain, MainImplTest_generate_mobile_om_model) {
+  domi::GetContext().run_mode = RunMode::ONLY_PRE_CHECK;
+  std::string om_arg = AtcFileFactory::Generatefile1("--model=", "add.pb");
+  std::string output_arg = AtcFileFactory::Generatefile1("--output=", "tmp_mobile");
+  char *argv[] = {"atc",
+                  "--framework=3",
+                  const_cast<char *>(om_arg.c_str()),
+                  const_cast<char *>(output_arg.c_str()),
+                  "--soc_version=KirinX90",
+                  "--input_format=NCHW",
+                  "--host_env_os=linux",
+                  "--host_env_cpu=x86_64"};
+  // The compilation environment is incomplete in UT. Verify mobile mode passes dispatch and reaches graph parsing.
+  EXPECT_NE(main_impl(sizeof(argv) / sizeof(argv[0]), argv), 0);
+  EXPECT_EQ(domi::GetContext().run_mode, RunMode::GEN_MOBILE_OM_MODEL);
+  AtcFileFactory::RemoveFile(AtcFileFactory::Generatefile1("", "tmp_mobile.omc").c_str());
 }
 
 TEST_F(UtestMain, MainImplTest_global_options) {

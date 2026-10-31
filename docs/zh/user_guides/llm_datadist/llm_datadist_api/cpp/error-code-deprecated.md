@@ -9,7 +9,6 @@ namespace ge {
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_WAIT_PROC_TIMEOUT, 1);
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_KV_CACHE_NOT_EXIST, 2);
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_REPEAT_REQUEST, 3);
-GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_REQUEST_ALREADY_COMPLETED, 4);
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_PARAM_INVALID, 5);
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_ENGINE_FINALIZED, 6);
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_NOT_YET_LINK, 7);
@@ -22,9 +21,6 @@ GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_PROCESSING_LINK, 13);
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_DEVICE_OUT_OF_MEMORY, 14);
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_PREFIX_ALREADY_EXIST, 15);
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_PREFIX_NOT_EXIST, 16);
-GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_SEQ_LEN_OVER_LIMIT, 17);
-GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_NO_FREE_BLOCK, 18);
-GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_BLOCKS_OUT_OF_MEMORY, 19);
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_CACHE_INCOMPATIBLE, 20);
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_CACHE_KEY_ALREADY_EXIST, 21);
 GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_COPY_CACHE_FAILED, 22);
@@ -42,7 +38,6 @@ GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_FEATURE_NOT_ENABLED, 25);
 | 1343270913 | request wait to be processed timeout! | - 等待组batch超时。<br>  - 超时时间内未得到调度。 | 是 | 1. 上层调用complete进行处理。<br>  2. 上层控制负载。 |
 | 1343270914 | KV does not exist! | 增量从全量侧获取KV，但是KV不存在。 | 是 | 1. 检查clusterid与req_id是否正确。<br>  2. 检查是否是Prompt超时，确认是否KV已经被释放。<br>  3. 检查是否存在重复拉取。 |
 | 1343270915 | repeat request! | 单次迭代中，多次调用同一个req_id。 | 是 | 检查是否存在重复调用。 |
-| 1343270916 | request already complete! | 调度到的时候，上层已经发送了complete。 | 是 | 排查是否调用了未经处理的token的complete操作。 |
 | 1343270917 | Parameter's invalid! | 无效参数，包含LLM & GE的参数校验，需要通过日志确认具体原因，一般在调测阶段发生。 | 是 | 基于日志排查错误原因。 |
 | 1343270918 | llm engine finalized! | 调度到的时候，上层已经发送了Finalize。 | 否 | 上层调用时候排查是否退出前未完成所有请求的处理。 |
 | 1343270919 | decoder cluster is not linked with prompt! | Decode未与Prompt建联。 | 是 | 上层排查Decode与Prompt建联情况。 |
@@ -55,6 +50,3 @@ GE_ERRORNO_DEFINE(0b01, 0b01, 0b000, 8, 11, LLM_FEATURE_NOT_ENABLED, 25);
 | 1343270926 | device out of memory! | 全量KV Cache内存不足。 | 是 | 增量拉完kv，再调用LLMReqComplete结束请求。 |
 | 1343270927 | Prefix has already existed. | 公共前缀已经存在。 | 是 | 不用重复下发相同公共前缀的请求。 |
 | 1343270928 | Prefix does not exist. | 公共前缀不存在。 | 是 | 下发前，重新生成公共前缀。 |
-| 1343270929 | Sequence length exceeds limit. | PagedAttention场景下句子长度超过了block空间大小。 | 是 | 排查API传入参数，请求句子长度不能超过block_num*block_size。 |
-| 1343270930 | No free block. | 系统不存在free block。 | 是 | 上层可选择重计算或者释放已有的请求。 |
-| 1343270931 | Block is out of memory. | 预申请Blocks内存不足。 | 是 | 需额外检查数据面mbuf内存总大小配置是否合理。 |

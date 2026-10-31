@@ -9,6 +9,7 @@
  */
 
 #include "common/model/ge_root_model.h"
+#include "graph/custom_op_registry.h"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -168,7 +169,8 @@ Status CollectCustomOpTypesFromGraph(const ComputeGraphPtr &graph, const CustomO
   GE_ASSERT_NOTNULL(custom_op_registry);
   for (const auto &node : graph->GetAllNodes()) {
     const auto &op_type = node->GetType();
-    if (custom_op_registry->HasCreator(AscendString(op_type.c_str()))) {
+    const AscendString ascend_op_type(op_type.c_str());
+    if (custom_op_registry->IsCustomOpToBeCollected(ascend_op_type)) {
       (void)used_custom_op_types.insert(op_type);
     }
   }

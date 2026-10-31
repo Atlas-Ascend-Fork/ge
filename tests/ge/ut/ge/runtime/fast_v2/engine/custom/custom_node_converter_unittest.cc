@@ -22,6 +22,7 @@
 #include "graph/custom_op.h"
 #include "graph/custom_op_registry.h"
 #include "register/op_impl_registry.h"
+#include "register/core_num_utils.h"
 #include "faker/space_registry_faker.h"
 
 namespace gert {
@@ -49,6 +50,25 @@ void LowerDataNodes(const ge::ComputeGraphPtr &graph, const LoweringGlobalData &
     graph->FindNode(name)->GetOpDesc()->SetExtAttr(
         "_lowering_result", gert::PlacedLoweringResult(graph->FindNode(name), std::move(data_ret)));
   }
+}
+
+// 读取ExecuteCustomOp第index个数据输入（Const节点）的int64取值
+bool ReadInjectedInt64Input(ExecuteGraph *const exe_graph, const int32_t index, int64_t &value) {
+  auto *node = ge::ExecuteGraphUtils::FindFirstNodeMatchType(exe_graph, "ExecuteCustomOp");
+  if (node == nullptr) {
+    return false;
+  }
+  auto *edge = node->GetInDataEdgeByIndex(index);
+  if ((edge == nullptr) || (edge->src == nullptr)) {
+    return false;
+  }
+  ge::Buffer buffer;
+  if ((!ge::AttrUtils::GetZeroCopyBytes(edge->src->GetOpDescPtr(), "value", buffer)) ||
+      (buffer.GetSize() != sizeof(int64_t))) {
+    return false;
+  }
+  value = *reinterpret_cast<const int64_t *>(buffer.GetData());
+  return true;
 }
 }  // namespace
 
@@ -112,7 +132,7 @@ TEST_F(CustomNodeConverterUT, custom_op_convert_test) {
   auto exe_graph = frame->GetExecuteGraph().get();
   ASSERT_NE(exe_graph, nullptr);
   ASSERT_EQ(ExeGraphSummaryChecker(exe_graph).StrictAllNodeTypes({{"Data", 5},
-                                                                  {"Const", 8},
+                                                                  {"Const", 11},
                                                                   {"BuildRefTensor", 3},
                                                                   {"CalcTensorSizeFromStorage", 3},
                                                                   {"ExecuteCustomOp", 1},
@@ -125,11 +145,64 @@ TEST_F(CustomNodeConverterUT, custom_op_convert_test) {
                                                                   {"MakeSureTensorAtDevice", 3},
                                                                   {"SplitDataTensor", 4}}),
             "success");
-  // 输入顺序：3 个 tensor + allocator + stream + custom_op_func + attached_stream_provider，
+  // 输入顺序：3个tensor + allocator + stream + custom_op_func + attached_stream_provider
+  //   + 根图graph id + node id + vector core数量，
   // 与 CustomOpInput 枚举保持一致，新增附加输入必须插在 func 之后
   const auto *execute_node = ge::ExecuteGraphUtils::FindFirstNodeMatchType(exe_graph, "ExecuteCustomOp");
   ASSERT_NE(execute_node, nullptr);
-  ASSERT_EQ(execute_node->GetDataInNum(), 7);
+  ASSERT_EQ(execute_node->GetDataInNum(), 10);
+}
+
+TEST_F(CustomNodeConverterUT, custom_op_convert_injects_vector_core_num) {
+  // 槽序固定：3 tensor + allocator + stream + func + attached provider + root graph id + node id
+  //            + vector core数量，故vector core数量位于index 9
+  constexpr int32_t kVectorCoreInputIndex = 9;
+  auto graph = ShareGraph::BuildCustomOpGraph();
+  (void)ge::AttrUtils::SetStr(graph->FindNode("custom_op")->GetOpDesc(), ge::kVectorCoreNumOp, "24");
+  auto root_model = GeModelBuilder(graph).BuildGeRootModel();
+  auto global_data = GlobalDataFaker(root_model).Build();
+  global_data.SetExternalAllocator(nullptr, ExecuteGraphType::kInit);
+  global_data.SetExternalAllocator(nullptr, ExecuteGraphType::kMain);
+  bg::LowerConstDataNode(global_data);
+  std::vector<bg::ValueHolderPtr> shapes;
+  std::vector<bg::DevMemValueHolderPtr> addrs;
+  LowerDataNodes(graph, global_data, shapes, addrs);
+  LowerInput add_input = {shapes, addrs, &global_data};
+  auto ret = LoweringCustomNode(graph->FindNode("custom_op"), add_input);
+  ASSERT_TRUE(ret.result.IsSuccess());
+  auto frame = bg::ValueHolder::PopGraphFrame();
+  ASSERT_NE(frame, nullptr);
+
+  auto *execute_node = ge::ExecuteGraphUtils::FindFirstNodeMatchType(frame->GetExecuteGraph().get(), "ExecuteCustomOp");
+  ASSERT_NE(execute_node, nullptr);
+  ASSERT_EQ(execute_node->GetDataInNum(), 10);
+  int64_t value = 0;
+  ASSERT_TRUE(ReadInjectedInt64Input(frame->GetExecuteGraph().get(), kVectorCoreInputIndex, value));
+  EXPECT_EQ(value, 24);
+}
+
+TEST_F(CustomNodeConverterUT, custom_op_convert_injects_vector_core_num_sentinel_when_invalid) {
+  // 首字符非数字 → 视为未设置，注入sentinel(-1)
+  constexpr int32_t kVectorCoreInputIndex = 9;
+  auto graph = ShareGraph::BuildCustomOpGraph();
+  (void)ge::AttrUtils::SetStr(graph->FindNode("custom_op")->GetOpDesc(), ge::kVectorCoreNumOp, "abc");
+  auto root_model = GeModelBuilder(graph).BuildGeRootModel();
+  auto global_data = GlobalDataFaker(root_model).Build();
+  global_data.SetExternalAllocator(nullptr, ExecuteGraphType::kInit);
+  global_data.SetExternalAllocator(nullptr, ExecuteGraphType::kMain);
+  bg::LowerConstDataNode(global_data);
+  std::vector<bg::ValueHolderPtr> shapes;
+  std::vector<bg::DevMemValueHolderPtr> addrs;
+  LowerDataNodes(graph, global_data, shapes, addrs);
+  LowerInput add_input = {shapes, addrs, &global_data};
+  auto ret = LoweringCustomNode(graph->FindNode("custom_op"), add_input);
+  ASSERT_TRUE(ret.result.IsSuccess());
+  auto frame = bg::ValueHolder::PopGraphFrame();
+  ASSERT_NE(frame, nullptr);
+
+  int64_t value = 0;
+  ASSERT_TRUE(ReadInjectedInt64Input(frame->GetExecuteGraph().get(), kVectorCoreInputIndex, value));
+  EXPECT_EQ(value, -1);
 }
 
 TEST_F(CustomNodeConverterUT, host_cpu_custom_op_convert_test) {

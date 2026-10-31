@@ -44,7 +44,7 @@ BUILD_PATH="${BASEPATH}/${BUILD_RELATIVE_PATH}/"
 usage()
 {
   echo "Usage:"
-  echo "sh build_executor_c.sh [-j[n]] [-h] [-v] [-s] [-u] [-c]"
+  echo "bash build_executor_c.sh [-j[n]] [-h] [-v] [-s] [-u] [-c]"
   echo ""
   echo "Options:"
   echo "    -h Print usage"

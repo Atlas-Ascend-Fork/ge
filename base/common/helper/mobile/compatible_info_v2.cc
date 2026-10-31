@@ -19,13 +19,17 @@ namespace {
 
 enum class Platform : uint32_t {
   PLATFORM_KIRINX90 = 10,
+  PLATFORM_KIRIN9020 = 15,
   PLATFORM_KIRIN9030 = 16,
+  PLATFORM_KIRIN9050 = 18,
 };
 
 uint32_t GetPlatform() {
   const std::map<std::string, uint32_t> soc_version_to_platform_map = {
       {"KirinX90", static_cast<uint32_t>(Platform::PLATFORM_KIRINX90)},
+      {"Kirin9020", static_cast<uint32_t>(Platform::PLATFORM_KIRIN9020)},
       {"Kirin9030", static_cast<uint32_t>(Platform::PLATFORM_KIRIN9030)},
+      {"Kirin9050", static_cast<uint32_t>(Platform::PLATFORM_KIRIN9050)},
   };
   std::string soc_version;
   (void)ge::GetContext().GetOption(ge::SOC_VERSION, soc_version);

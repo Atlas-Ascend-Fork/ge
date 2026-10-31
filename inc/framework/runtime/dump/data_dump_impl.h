@@ -19,7 +19,11 @@
 #include "framework/runtime/dump/model_dump_manager.h"
 #include "common/opskernel/ops_kernel_info_types.h"
 #include "rt_external_base.h"
+
+// protobuf版本头文件
 #include "proto/op_mapping.pb.h"
+// TLV格式的头文件
+#include "framework/runtime/dump/dump_transport_info.h"
 
 namespace ge {
 namespace dump {
@@ -31,8 +35,6 @@ class DataDumpImpl {
 
   Status SaveTask(const GertModelTaskDesc &task_info, ModelTaskType task_type, rtStream_t stream, bool is_op_debug);
 
-  Status BuildAndLoadOpMappingInfo(const ModelDumpInfo &model_info);
-
   // 每次模型执行前刷新当前 step 到设备内存，AICPU dump kernel 解引用 step_id_addr 计算 step 落盘目录
   Status UpdateStepId(uint64_t step_id, rtStream_t stream);
 
@@ -41,8 +43,16 @@ class DataDumpImpl {
   // Overflow dump 相关信息
   void SetOpDebugInfo(uint32_t task_id, uint32_t stream_id, void *debug_addr);
 
+  Status BuildAndLoadOpMappingInfo(const ModelDumpInfo &model_info);
   Status BuildOpMappingBasicInfo(const ModelDumpInfo &model_info,
                                  toolkit::aicpu::dump::OpMappingInfo &dump_op_mapping_info);
+
+  Status BuildAndLoadDumpTransportInfo(const ModelDumpInfo &model_info);
+  Status BuildDumpTransportBasicInfo(const ModelDumpInfo &model_info, DumpTransportInfo &dump_transport_info);
+
+  bool IsProtoVer() const {
+    return data_dump_version_ == 0U;
+  }
 
  private:
   struct InnerTensorInfo {
@@ -73,27 +83,35 @@ class DataDumpImpl {
     std::vector<uint64_t> workspace_sizes;
   };
 
+  // protobuf 构造modelinfo、taskinfo相关接口
   Status ExecuteLoadDumpInfo(const toolkit::aicpu::dump::OpMappingInfo &op_mapping_info);
-
   Status BuildTaskList(toolkit::aicpu::dump::OpMappingInfo &op_mapping_info) const;
-
   void BuildTaskInputs(const InnerDumpInfo &dump_info, toolkit::aicpu::dump::Task &task) const;
-
   void BuildTaskOutputs(const InnerDumpInfo &dump_info, toolkit::aicpu::dump::Task &task) const;
-
   void BuildTaskWorkspaces(const InnerDumpInfo &dump_info, toolkit::aicpu::dump::Task &task) const;
-
   void BuildOpDebugTask(toolkit::aicpu::dump::OpMappingInfo &op_mapping_info) const;
-
-  std::vector<InnerDumpInfo> task_list_;
   toolkit::aicpu::dump::OpMappingInfo op_mapping_info_;
   toolkit::aicpu::dump::OpMappingInfo op_mapping_base_info_;
   bool op_mapping_base_info_initialized_ = false;
+
+  // TLV 构造modelinfo、taskinfo相关接口
+  Status ExecuteLoadDumpInfo(const std::vector<uint8_t> &payload);
+  Status BuildTaskList(DumpTransportInfo &dump_transport_info) const;
+  void BuildTaskInputs(const InnerDumpInfo &dump_info, DumpTransTaskInfo &task) const;
+  void BuildTaskOutputs(const InnerDumpInfo &dump_info, DumpTransTaskInfo &task) const;
+  void BuildTaskWorkspaces(const InnerDumpInfo &dump_info, DumpTransTaskInfo &task) const;
+  void BuildOpDebugTask(DumpTransportInfo &dump_transport_info) const;
+  DumpTransportInfo dump_transport_info_;
+  DumpTransportInfo dump_transport_base_info_;
+  bool dump_transport_base_info_initialized_ = false;
+
+  std::vector<InnerDumpInfo> task_list_;
   void *dev_mem_load_ = nullptr;
   void *step_id_dev_addr_ = nullptr;
   // 异步拷贝 step_id 时的主机侧源地址（ACL_MEMCPY_HOST_TO_BUF_TO_DEVICE 需保证源内存在拷贝期间有效）
   uint64_t step_id_host_val_ = 0U;
   bool load_flag_ = false;
+  uint32_t data_dump_version_ = 0;  // 0代表protobuf格式 1代表TLV格式
 
   // Overflow dump 相关成员
   bool is_op_debug_ = false;

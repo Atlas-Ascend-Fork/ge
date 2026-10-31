@@ -90,7 +90,8 @@ const std::string kOffline = "offline";
 const std::string kOfflineModeOption = "ge.offlineMode";
 constexpr int32_t kOfflineModeOm = 0;
 constexpr int32_t kOfflineModeOm2 = 7;
-const std::unordered_set<std::string> kSupportedOfflineMode = {"0", "7"};
+constexpr int32_t kOfflineModeMobile = 40;
+const std::unordered_set<std::string> kSupportedOfflineMode = {"0", "7", "40"};
 constexpr size_t kZipMagicSize = 4U;
 const uint8_t kZipLocalFileHeaderMagic[kZipMagicSize] = {0x50U, 0x4BU, 0x03U, 0x04U};
 const std::set<std::string> kOm2UnsupportedOptions = {ge::ir_option::OP_NAME_MAP,
@@ -169,7 +170,7 @@ graphStatus ParseOfflineMode(const std::map<std::string, std::string> &options, 
            iter->second.c_str());
     return GRAPH_PARAM_INVALID;
   }
-  if ((offline_mode != kOfflineModeOm) && (offline_mode != kOfflineModeOm2)) {
+  if ((offline_mode != kOfflineModeOm) && (offline_mode != kOfflineModeOm2) && (offline_mode != kOfflineModeMobile)) {
     GELOGE(GRAPH_PARAM_INVALID, "[Check][Param]Option[%s] value[%s] is not supported.", kOfflineModeOption.c_str(),
            iter->second.c_str());
     return GRAPH_PARAM_INVALID;
@@ -179,6 +180,13 @@ graphStatus ParseOfflineMode(const std::map<std::string, std::string> &options, 
 
 bool IsOm2BuildMode(const int32_t offline_mode) {
   return offline_mode == kOfflineModeOm2;
+}
+
+OfflineModelFormat GetOfflineModelFormat(const int32_t offline_mode) {
+  const static std::map<int32_t, OfflineModelFormat> offline_mode_to_format_map = {
+      {kOfflineModeOm2, OfflineModelFormat::OM_FORMAT_OM2}, {kOfflineModeMobile, OfflineModelFormat::OM_FORMAT_MOBILE}};
+  const auto it = offline_mode_to_format_map.find(offline_mode);
+  return (it == offline_mode_to_format_map.cend()) ? OfflineModelFormat::OM_FORMAT_DEFAULT : it->second;
 }
 
 graphStatus ReportOm2UnsupportedOption(const std::string &option, const std::string &value) {
@@ -1146,8 +1154,7 @@ graphStatus Impl::BuildModel(const Graph &graph, const std::map<std::string, std
   }
 
   // build IR model
-  ret = IsOm2BuildMode(offline_mode) ? generator_.GenerateOnlineOm2Model(graph, inputs, model)
-                                     : generator_.GenerateOnlineModel(graph, inputs, model);
+  ret = generator_.GenerateOnlineModel(graph, inputs, model, GetOfflineModelFormat(offline_mode));
   if (ret != GRAPH_SUCCESS) {
     GELOGE(ret, "[Generate][OnlineModel] failed!");
     return ret;

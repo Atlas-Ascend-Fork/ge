@@ -29,7 +29,7 @@ export DISABLE_COMPILATION_WERROR=ON
 # print usage message
 usage() {
   echo "Usage:"
-  echo "sh run_autofuse_test.sh [-s | --st] [-u | --ut] [-j<N>] [-c | --cov]"
+  echo "bash run_autofuse_test.sh [-s | --st] [-u | --ut] [-j<N>] [-c | --cov]"
   echo "               [--ascend_install_path=<PATH>]"
   echo "               [--ascend_3rd_lib_path=<PATH>]"
   echo ""

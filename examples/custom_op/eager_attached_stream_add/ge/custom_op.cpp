@@ -63,7 +63,7 @@ namespace ge {
  * Execute 在 V1 下沉阶段（模型加载）调用一次，之后模型重放不再进入 Execute。
  *
  * 辅流使用链路：
- *   ctx->RequestAttachedStream(key) → 返回框架托管的物理辅流
+ *   ctx->RequestAttachedStream(key, 0U) → 返回框架托管的物理辅流（flags填0即默认建流）
  *   → aclrtLaunchKernelV2(..., 辅流) → kernel 任务下沉到辅流
  */
 class EagerAttachedStreamAddOp : public EagerExecuteOp, public ShapeInferOp {
@@ -88,8 +88,8 @@ class EagerAttachedStreamAddOp : public EagerExecuteOp, public ShapeInferOp {
       return GRAPH_FAILED;
     }
 
-    // 按 key 申请框架托管的辅流，后续 kernel 下发到该辅流而非主流
-    const gert::rtStream aux_stream = ctx->RequestAttachedStream(kAuxStreamKey);
+    // 按key申请框架托管的辅流，后续kernel下发到该辅流而非主流（无特殊流标志时flags填0）
+    const gert::rtStream aux_stream = ctx->RequestAttachedStream(kAuxStreamKey, 0U);
     if (aux_stream == nullptr) {
       LOG_ERROR("RequestAttachedStream(\"", kAuxStreamKey, "\") returned nullptr");
       return GRAPH_FAILED;

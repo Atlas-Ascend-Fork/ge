@@ -31,12 +31,8 @@ set_source_files_properties(${OM2_FORMAT_SRCS} PROPERTIES
         COMPILE_FLAGS "-fvisibility=hidden"
 )
 
+# AIPP still includes codegen types containing task.pb.h; OM2 Dump supports both protobuf and TLV payload formats.
 add_dependencies(om2_executor graphengine_protos)
-
-target_compile_definitions(om2_executor PRIVATE
-        google=ascend_private
-        PROTOBUF_INLINE_NOT_IN_HEADERS=0
-)
 
 target_compile_definitions(om2_executor PRIVATE
         PROTOBUF_INLINE_NOT_IN_HEADERS=0

@@ -35,9 +35,12 @@ class FusionUtils {
 
   // 判断把 match_result 命中的节点集合融合成一个节点是否会成环。
   // 实现为从融合集合的外部后继做正向遍历看能否绕回集合，无状态、无缓存，多线程并发安全。
+  // 单节点集合视为不会成环：替换流程一比一保持边界边，绕回自身的路径是图中已存在的环
+  // （如 TF 扁平化控制流的合法回边），并非融合新增的环。
   static bool WillCauseCycleIfFuse(const std::unique_ptr<MatchResult> &match_result);
 
   // 重载：直接接收节点集合，判断融合后是否成环。
+  // 单节点集合视为不会成环，理由同上。
   static bool WillCauseCycleIfFuse(const std::vector<NodePtr> &nodes);
 
   static void RecordFusionStatistic(const uint64_t session_id, const std::string graph_id, const std::string pass_name,

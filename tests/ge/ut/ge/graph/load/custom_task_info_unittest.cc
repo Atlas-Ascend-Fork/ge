@@ -15,6 +15,7 @@
 #include "common/model/ge_model.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/load/model_manager/task_info/ge/custom_task_info.h"
+#include "graph/load/model_manager/memory_app_type_classifier.h"
 #include "graph/load/model_manager/task_info/rts/event_record_task_info.h"
 #include "graph/load/model_manager/task_info/rts/event_wait_task_info.h"
 #include "graph/load/model_manager/davinci_model.h"
@@ -187,6 +188,19 @@ class UtestCustomTaskInfo : public testing::Test {
     task_info.stream_ = stream;
     task_info.input_data_addrs_ = {0x1000};
     task_info.output_data_addrs_ = {0x2000};
+  }
+
+  bool QueryAddrRefreshEnabled(const bool feature_refreshable, const bool addr_fixed, const MemoryAppType mem_type) {
+    CustomTaskInfo task_info;
+    DavinciModel model(0, nullptr);
+    InitBasicTaskInfo(task_info, model);
+    model.SetFeatureBaseRefreshable(feature_refreshable);
+    model.is_static_model_addr_fixed_ = addr_fixed;
+    task_info.input_mem_types_ = {static_cast<uint64_t>(mem_type)};
+    task_info.UpdateContextInfo();
+    uint64_t value = 1UL;
+    EXPECT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kAddressRefreshEnabled, value));
+    return value != 0UL;
   }
 
   void EnableDump(DavinciModel &model, const std::string &mode = "all") {
@@ -703,7 +717,6 @@ void SetUpMinimalDavinciModel(DavinciModel &model, const OpDescPtr &op_desc) {
     in_desc->SetShape(GeShape({2, 3}));
     in_desc->SetOriginShape(GeShape({2, 3}));
   }
-
   // 输出描述需要与测试自定义算子实际产出的 storage shape 保持一致：MallocOutputTensor 以本轮 storage
   // shape 的逻辑字节数（{2,1,3,16} int64 = 768B）校验预赋值 buffer 是否够用，描述里声明空 shape 会把
   // 标量 8B 误当成容量。
@@ -2303,4 +2316,106 @@ TEST_F(UtestCustomTaskInfoE2E, Distribute_WithExplicitNonTensorKindBase_D2HOnlyF
   model.runtime_param_.mem_base = 0U;
 }
 
+TEST_F(UtestCustomTaskInfo, UpdateContextInfo_SetsStaticModelFlag) {
+  CustomTaskInfo task_info;
+  DavinciModel model(0, nullptr);
+  InitBasicTaskInfo(task_info, model);
+
+  task_info.UpdateContextInfo();
+  // CustomTaskInfo仅由V1 DavinciModel下沉路径创建，覆盖静态图与动态shape静态子图
+  uint64_t value = 0UL;
+  ASSERT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kStaticModel, value));
+  EXPECT_EQ(value, 1UL);
+  // 所属图id已写入（统一取根图口径，0亦为合法值）
+  uint64_t graph_id = 0xFFFFUL;
+  ASSERT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kGraphId, graph_id));
+  EXPECT_EQ(graph_id, model.GetRootGraphId());
+  // node id取自算子OpDesc（图内唯一，0亦为合法值）
+  uint64_t node_id = 0xFFFFUL;
+  ASSERT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kNodeId, node_id));
+  EXPECT_EQ(node_id, static_cast<uint64_t>(task_info.op_desc_->GetId()));
+  // _op_vectorcore_num属性缺失 → 未设置（查询失败）
+  uint64_t vector_core_num = 0xFFFFUL;
+  EXPECT_FALSE(task_info.context_info_.GetContextValue(gert::ContextParam::kVectorCoreNum, vector_core_num));
+}
+
+TEST_F(UtestCustomTaskInfo, UpdateContextInfo_SetsVectorCoreNumWhenAttrPresent) {
+  CustomTaskInfo task_info;
+  DavinciModel model(0, nullptr);
+  InitBasicTaskInfo(task_info, model);
+  ASSERT_NE(task_info.op_desc_, nullptr);
+  ASSERT_TRUE(ge::AttrUtils::SetStr(task_info.op_desc_, "_op_vectorcore_num", "24"));
+
+  task_info.UpdateContextInfo();
+  uint64_t vector_core_num = 0UL;
+  ASSERT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kVectorCoreNum, vector_core_num));
+  EXPECT_EQ(vector_core_num, 24UL);
+}
+
+TEST_F(UtestCustomTaskInfo, UpdateContextInfo_IgnoresInvalidVectorCoreNumAttr) {
+  CustomTaskInfo task_info;
+  DavinciModel model(0, nullptr);
+  InitBasicTaskInfo(task_info, model);
+  ASSERT_NE(task_info.op_desc_, nullptr);
+  // "abc" 首字符非数字：视为未设置（透传语义下不做范围等额外校验）
+  ASSERT_TRUE(ge::AttrUtils::SetStr(task_info.op_desc_, "_op_vectorcore_num", "abc"));
+
+  task_info.UpdateContextInfo();
+  uint64_t vector_core_num = 0UL;
+  EXPECT_FALSE(task_info.context_info_.GetContextValue(gert::ContextParam::kVectorCoreNum, vector_core_num));
+}
+
+TEST_F(UtestCustomTaskInfo, UpdateContextInfo_GraphIdUnsetWithoutModel) {
+  CustomTaskInfo task_info;
+  task_info.UpdateContextInfo();
+  // 无模型时未写入graph id：查询失败（与取值为0可区分）
+  uint64_t graph_id = 0UL;
+  EXPECT_FALSE(task_info.context_info_.GetContextValue(gert::ContextParam::kGraphId, graph_id));
+}
+
+TEST_F(UtestCustomTaskInfo, UpdateContextInfo_AddrRefreshCases) {
+  // 三条件（地址未固定 && feature base可刷新 && I/O含可刷新内存）全部满足才开启；统一取值语义：0/1
+  EXPECT_FALSE(QueryAddrRefreshEnabled(false, false, MemoryAppType::kMemoryTypeFeatureMap));
+  EXPECT_TRUE(QueryAddrRefreshEnabled(true, false, MemoryAppType::kMemoryTypeFeatureMap));
+  // 与HcclTaskInfo::IsFeatureBaseRefreshable同口径：地址被强制固定时关闭刷新
+  EXPECT_FALSE(QueryAddrRefreshEnabled(true, true, MemoryAppType::kMemoryTypeFeatureMap));
+  // I/O全为不可刷新内存类型时关闭刷新
+  EXPECT_FALSE(QueryAddrRefreshEnabled(true, false, MemoryAppType::kMemoryTypeFix));
+}
+// 回归：kHccl引擎kBottom兜底注册的算子（HcclOp形态）在Distribute阶段可查到并执行。
+// 修复前查找路径硬编码kTop，kBottom注册查不到导致分发失败。
+TEST_F(UtestCustomTaskInfoE2E, Distribute_FindsHcclEngineRegisteredOp) {
+  std::string op_type = GenerateUniqueOpType();
+  TestArgsUpdaterCustomOp *op_instance = nullptr;
+  CustomOpFactory::RegisterCustomOpCreator(op_type.c_str(), OpBackend::kDevice, OpRegistrationPriority::kBottom,
+                                           OpEngine::kHccl, [&op_instance]() -> std::unique_ptr<BaseCustomOp> {
+                                             auto op = std::make_unique<TestArgsUpdaterCustomOp>();
+                                             op_instance = op.get();
+                                             return op;
+                                           });
+
+  DavinciModel model(0, nullptr);
+  const auto op_desc = CreateOpDesc(op_type, op_type, 1, 1);
+  SetUpMinimalDavinciModel(model, op_desc);
+
+  domi::TaskDef task_def;
+  FillAnnotatedArgsTaskDef(task_def, op_desc->GetId(), BuildInputOutputCustomArgDescs(), {0ULL, 0x40ULL, 0x1234ULL});
+
+  CustomTaskInfo task_info;
+  TaskRunParam task_run_param;
+  EXPECT_EQ(task_info.ParseTaskRunParam(task_def, &model, task_run_param), SUCCESS);
+
+  PisToArgs args;
+  args[static_cast<size_t>(ArgsPlacement::kArgsPlacementHbm)].dev_addr = 0xDEADBEEFULL;
+  IowAddrs iow_addrs;
+  EXPECT_EQ(task_info.Init(task_def, &model, args, {}, iow_addrs), SUCCESS);
+  // kHccl引擎kBottom注册的算子经GetOpEngine解析引擎后按三参优先级回退查找，Distribute不再失败
+  EXPECT_EQ(task_info.Distribute(), SUCCESS);
+
+  ASSERT_NE(op_instance, nullptr);
+  EXPECT_TRUE(op_instance->execute_called_);
+  EXPECT_TRUE(task_info.NeedReserveArgsTable());
+
+  model.runtime_param_.mem_base = 0U;
+}
 }  // namespace ge

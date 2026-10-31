@@ -53,9 +53,8 @@ class GE_FUNC_VISIBILITY GeGenerator {
                               const std::vector<GeTensor> &inputs = std::vector<GeTensor>(),
                               OfflineModelFormat om_format = OfflineModelFormat::OM_FORMAT_DEFAULT);
 
-  Status GenerateOnlineModel(const Graph &graph, const std::vector<GeTensor> &inputs, ge::ModelBufferData &model);
-
-  Status GenerateOnlineOm2Model(const Graph &graph, const std::vector<GeTensor> &inputs, ge::ModelBufferData &model);
+  Status GenerateOnlineModel(const Graph &graph, const std::vector<GeTensor> &inputs, ge::ModelBufferData &model,
+                             OfflineModelFormat om_format = OfflineModelFormat::OM_FORMAT_DEFAULT);
 
   // Build an OM2 root model without serializing it to a standalone ZIP archive.
   // The caller owns the returned root model and must keep it alive while the
@@ -77,7 +76,8 @@ class GE_FUNC_VISIBILITY GeGenerator {
   ///
   Status BuildSingleOpModel(OpDescPtr &op_desc, const std::vector<GeTensor> &inputs,
                             const std::vector<GeTensor> &outputs, const std::string &model_file_name,
-                            int32_t compile_flag = 0);
+                            int32_t compile_flag = 0,
+                            OfflineModelFormat om_format = OfflineModelFormat::OM_FORMAT_DEFAULT);
   ///
   /// @ingroup ge
   /// @brief: Build single Op into model buff.
@@ -127,7 +127,8 @@ class GE_FUNC_VISIBILITY GeGenerator {
   Status BuildSingleOp(OpDescPtr &op_desc, const std::vector<GeTensor> &inputs, const std::vector<GeTensor> &outputs,
                        const std::string &model_file_name, OpEngineType engine_type, ModelBufferData &model_buff,
                        ComputeGraphPtr &comp_graph, bool is_offline = true, int32_t compile_flag = 0,
-                       GraphStage graph_stage = GraphStage::GRAPH_STAGE_RESERVED);
+                       GraphStage graph_stage = GraphStage::GRAPH_STAGE_RESERVED,
+                       OfflineModelFormat om_format = OfflineModelFormat::OM_FORMAT_DEFAULT);
   static Status CheckEngineTypeSupport(const NodePtr &node, OpEngineType engine_type);
   static void RemoveConst(const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs);
   static Status CheckForSingleOp(const OpDescPtr &op_desc, const std::vector<GeTensor> &inputs,

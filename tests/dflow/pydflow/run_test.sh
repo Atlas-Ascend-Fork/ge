@@ -28,9 +28,9 @@ fi
 # print usage message
 usage() {
   echo "Usage:"
-  echo "sh run_test.sh [-u | --ut] [-s | --st]"
-  echo "               [-h | --help]"
-  echo "               [--ascend_install_path=<PATH>]"
+  echo "bash run_test.sh [-u | --ut] [-s | --st]"
+  echo "                 [-h | --help]"
+  echo "                 [--ascend_install_path=<PATH>]"
   echo ""
   echo "Options:"
   echo "    -u, --ut       Build ut"

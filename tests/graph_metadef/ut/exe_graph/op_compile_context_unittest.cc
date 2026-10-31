@@ -563,4 +563,18 @@ TEST_F(OpCompileContextUT, GetPlatformInfosVerifyOptionalInfos) {
   optional_infos.SetSocVersion("Ascend910B");
   optional_infos.SetAICoreNum(32);
 }
+
+TEST_F(OpCompileContextUT, GetContextValueWithoutCompanionInfo) {
+  ge::OpDescPtr op_desc = std::make_shared<ge::OpDesc>("ctx_no_info_node", "CtxNoInfoOp");
+  op_desc->AddOutputDesc("y", ge::GeTensorDesc());
+  std::vector<void *> outputs = {nullptr};
+  ge::graphStatus ret = ge::GRAPH_FAILED;
+  auto holder = KernelRunContextBuilder().Outputs(outputs).Build(op_desc, ret);
+  ASSERT_EQ(ret, ge::GRAPH_SUCCESS);
+  auto *context = reinterpret_cast<OpCompileContext *>(holder.GetKernelContext());
+  ASSERT_NE(context, nullptr);
+
+  uint64_t value = 0UL;
+  EXPECT_FALSE(context->GetContextValue(ContextParam::kGraphId, value));
+}
 }  // namespace gert

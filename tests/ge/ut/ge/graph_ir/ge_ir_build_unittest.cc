@@ -1875,6 +1875,16 @@ TEST(UtestIrBuild, aclgrphSaveModelOm2ExternalWeightRelocateTest) {
   system(("rm -rf " + work_dir).c_str());
 }
 
+TEST(UtestIrBuild, aclgrphBuildModelOfflineModeMobileValidTest) {
+  Graph graph = BuildIrGraph1();
+  ModelBufferData model{};
+  const std::map<std::string, std::string> build_options = {{ge::ir_option::OFFLINE_MODE, "40"}};
+
+  EXPECT_NE(ge::aclgrphBuildModel(graph, build_options, model), ge::PARAM_INVALID);
+  EXPECT_EQ(model.data, nullptr);
+  EXPECT_EQ(model.length, 0U);
+}
+
 TEST(UtestIrBuild, aclgrphBundleSaveModelOm2BufferTest) {
   constexpr size_t kZipBufferLen = 8U;
   auto buffer = std::unique_ptr<uint8_t[]>(new uint8_t[kZipBufferLen]{0x50, 0x4B, 0x03, 0x04, 0, 0, 0, 0});
