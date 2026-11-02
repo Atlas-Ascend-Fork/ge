@@ -209,6 +209,17 @@ ge::Status HcomOpsKernelBuilder::CalcOpRunningParam(ge::Node &node) {
     return ge::SUCCESS;
   }
 
+  // counts值编译期不可知的V类算子已被标记FORCE_UNKNOWN_SHAPE走单算子模式，
+  // 跳过下沉流程的资源计算（GetNodeUnknownShapeStatus不读该属性，无法在上面的检查中拦截）
+  bool forceUnknown = false;
+  (void)ge::AttrUtils::GetBool(node.GetOpDesc(), ge::ATTR_NAME_FORCE_UNKNOWN_SHAPE, forceUnknown);
+  if (forceUnknown) {
+    HCCL_INFO("[Calc][OpRunningParam]node[%s] is marked force unknown shape, does not need to calc op running param.",
+              node.GetName().c_str());
+    HcomSetWorkflowMode(lastWorkflowMode);
+    return ge::SUCCESS;
+  }
+
   HcclResult ret;
   std::string superKernel;
   ret = GetSuperKernelFromDesc(node.GetOpDesc(), superKernel);
@@ -562,6 +573,17 @@ ge::Status HcomOpsKernelBuilder::GenerateTask([[maybe_unused]] const ge::Node &n
   CHK_PRT_RET(!node.GetOpDesc(),
               HCCL_ERROR("[Generate][Task]errNo[0x%016llx] opDesc is null.", HCOM_ERROR_CODE(HCCL_E_PTR)),
               ge::INTERNAL_ERROR);
+
+  // counts值编译期不可知的V类算子已被标记FORCE_UNKNOWN_SHAPE走单算子模式，
+  // 不生成下沉任务（GetNodeUnknownShapeStatus不读该属性，无法在上面的检查中拦截）
+  bool forceUnknown = false;
+  (void)ge::AttrUtils::GetBool(node.GetOpDesc(), ge::ATTR_NAME_FORCE_UNKNOWN_SHAPE, forceUnknown);
+  if (forceUnknown) {
+    HCCL_INFO("[Generate][Task]node[%s] is marked force unknown shape, does not need to generate task.",
+              node.GetName().c_str());
+    return HCCL_SUCCESS;
+  }
+
   std::string sCollectiveType = node.GetOpDesc()->GetType();
   HcclResult ret = CheckSupportedOP(sCollectiveType);
   CHK_PRT_RET(ret != HCCL_SUCCESS,
