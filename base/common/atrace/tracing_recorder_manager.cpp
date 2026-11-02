@@ -40,8 +40,10 @@ Status TracingRecorderManager::Report(const TracingModule module) const {
 }
 
 void TracingRecorderManager::InitTracingRecorder() {
-  for (int32_t i = 0; i < (static_cast<int32_t>(TracingModule::kTracingModuleEnd) - 1); ++i) {
-    tracing_recorders_.emplace_back(std::move(std::make_unique<TracingRecorder>(static_cast<TracingModule>(i))));
+  constexpr auto recorders_size = static_cast<size_t>(TracingModule::kTracingModuleEnd);
+  tracing_recorders_.reserve(recorders_size);
+  for (size_t i = 0; i < recorders_size; ++i) {
+    tracing_recorders_.emplace_back(std::make_unique<TracingRecorder>(static_cast<TracingModule>(i)));
   }
   GELOGI("Init tracing record success, size[%zu].", tracing_recorders_.size());
 }
@@ -51,8 +53,8 @@ TracingRecorderManager::TracingRecorderManager() {
 }
 
 TracingRecorder *TracingRecorderManager::GetTracingRecorder(TracingModule module) const {
-  GE_ASSERT_TRUE(static_cast<size_t>(module) <= tracing_recorders_.size(), "Module [%zu] should be less than %zu",
+  GE_ASSERT_TRUE(static_cast<size_t>(module) < tracing_recorders_.size(), "Module [%zu] should be less than %zu",
                  static_cast<size_t>(module), tracing_recorders_.size());
-  return tracing_recorders_[static_cast<int32_t>(module)].get();
+  return tracing_recorders_[static_cast<size_t>(module)].get();
 }
 }  // namespace ge
