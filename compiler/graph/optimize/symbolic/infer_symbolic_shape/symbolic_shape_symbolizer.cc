@@ -89,6 +89,13 @@ bool IsSupportedSymbolizeValueDtype(const ge::DataType dtype) {
   return kGeDType2CppDtype.find(dtype) != kGeDType2CppDtype.end();
 }
 
+// 值符号化可用的元素数：origin shape已初始化时优先按其计算(与shape符号化保持一致)，
+// 标量(rank为0)实际有1个元素，GetShapeSize()对空dims返回0，需要单独修正
+int64_t GetSymbolizeValueShapeSize(const GeTensorDesc &tensor_desc) {
+  const auto &shape = tensor_desc.IsOriginShapeInitialized() ? tensor_desc.GetOriginShape() : tensor_desc.GetShape();
+  return shape.IsScalar() ? 1 : shape.GetShapeSize();
+}
+
 // dtype标签，用于把「按 dtype 分发」的 switch 收敛到一处
 template <typename T>
 struct ValueDtypeTag {
@@ -181,7 +188,7 @@ bool SupportSymbolizeValue(const GeTensor &ge_tensor, const char *node_name) {
     return false;
   }
   // 元素数超限的tensor不做值符号化(防D2H与host输入契约开销), SUM求和路径同样受此准入防护
-  const int64_t shape_size = tensor_desc.GetShape().GetShapeSize();
+  const int64_t shape_size = GetSymbolizeValueShapeSize(tensor_desc);
   if (shape_size < 0 || shape_size > kMaxSymbolizeValueElemNum) {
     GELOGI("node %s shape size %lld is invalid or exceeds value symbolize limit %lld, skip.", node_name, shape_size,
            kMaxSymbolizeValueElemNum);
@@ -227,7 +234,7 @@ struct ValueSymbolizeContext {
 std::vector<Expression> SymbolizeValueFromData(const GeTensor &tensor, int32_t data_index,
                                                ShapeEnvAttr *shape_env_attr) {
   const auto dtype = tensor.GetTensorDesc().GetDataType();
-  const int64_t shape_size = tensor.GetTensorDesc().GetShape().GetShapeSize();
+  const int64_t shape_size = GetSymbolizeValueShapeSize(tensor.GetTensorDesc());
   return DispatchBySymbolizeValueDtype(dtype, [&](auto tag) -> std::vector<Expression> {
     using T = typename decltype(tag)::type;
     if constexpr (std::is_void_v<T>) {
@@ -243,7 +250,7 @@ std::vector<Expression> SymbolizeValueFromData(const GeTensor &tensor, int32_t d
 std::vector<Expression> SymbolizeValueFromHint(const GeTensor &tensor, int32_t data_index,
                                                const std::vector<int64_t> &hint_values, ShapeEnvAttr *shape_env_attr) {
   const auto &tensor_desc = tensor.GetTensorDesc();
-  const int64_t shape_size = tensor_desc.GetShape().GetShapeSize();
+  const int64_t shape_size = GetSymbolizeValueShapeSize(tensor_desc);
   if (!IsSupportedSymbolizeValueDtype(tensor_desc.GetDataType()) || shape_size < 0 ||
       hint_values.size() > static_cast<size_t>(shape_size)) {
     GELOGW("hint elem num %zu exceeds shape elem num %lld, data_index %d, dtype %s, skip symbolize.",

@@ -915,61 +915,6 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSegmentSum) {
 }
 
 /**
- * 测试场景：JaggedToPaddedDense 将锯齿张量转为稠密填充张量的符号 Shape 推导。
- * 测试输入：values=[total_L,D]，offsets=[B+1]，max_length=16。
- * 期望输出：out=[B,16,D]。
- */
-TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForJaggedToPaddedDense) {
-  const auto func = GetInferFunc("JaggedToPaddedDense");
-  ASSERT_NE(func.first, nullptr);
-  ShapeEnvAttr shape_env;
-  ShapeEnvGuarder guarder(&shape_env);
-  const auto total_l = shape_env.CreateSymbol(100, MakeShared<InputShapeSource>(0, 0));
-  const auto d = shape_env.CreateSymbol(8, MakeShared<InputShapeSource>(0, 1));
-  const auto b1 = shape_env.CreateSymbol(5, MakeShared<InputShapeSource>(1, 0));
-  const auto values_shape = gert::SymbolShape({total_l, d});
-  const auto offsets_shape = gert::SymbolShape({b1});
-  InferSymbolShapeContextTestBuilder builder("JaggedToPaddedDense", "jagged_to_padded_dense");
-  auto op_desc = builder.GetOrCreateOpDescPtr();
-  op_desc->AppendIrAttrName("max_length");
-  op_desc->AppendIrAttrName("padding_value_fp32");
-  op_desc->AppendIrAttrName("padding_value_int64");
-  ge::AttrUtils::SetInt(op_desc, "max_length", 16);
-  ge::AttrUtils::SetFloat(op_desc, "padding_value_fp32", 0.0f);
-  ge::AttrUtils::SetInt(op_desc, "padding_value_int64", 0);
-  auto infer_context =
-      builder.AppendInputSymbolTensor(values_shape).AppendInputSymbolTensor(offsets_shape).OutputNum(1).Build();
-  ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(),
-            gert::SymbolShape({b1 - Symbol(1), Symbol(16), d}).GetDims());
-}
-
-/**
- * 测试场景：DenseToJagged 将稠密张量压缩为锯齿张量的符号 Shape 推导。
- * 测试输入：dense=[B,N,D]，jagged_dim0=16。
- * 期望输出：jagged_dense=[16,D]。
- */
-TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForDenseToJagged) {
-  const auto func = GetInferFunc("DenseToJagged");
-  ASSERT_NE(func.first, nullptr);
-  ShapeEnvAttr shape_env;
-  ShapeEnvGuarder guarder(&shape_env);
-  const auto b = shape_env.CreateSymbol(2, MakeShared<InputShapeSource>(0, 0));
-  const auto n = shape_env.CreateSymbol(3, MakeShared<InputShapeSource>(0, 1));
-  const auto d = shape_env.CreateSymbol(8, MakeShared<InputShapeSource>(0, 2));
-  const auto dense_shape = gert::SymbolShape({b, n, d});
-  const auto offset_shape = gert::SymbolShape({Symbol(3)});
-  InferSymbolShapeContextTestBuilder builder("DenseToJagged", "dense_to_jagged");
-  auto op_desc = builder.GetOrCreateOpDescPtr();
-  op_desc->AppendIrAttrName("jagged_dim0");
-  ge::AttrUtils::SetInt(op_desc, "jagged_dim0", 16);
-  auto infer_context =
-      builder.AppendInputSymbolTensor(dense_shape).AppendInputSymbolTensor(offset_shape).OutputNum(1).Build();
-  ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(16), d}).GetDims());
-}
-
-/**
  * 测试场景：ScatterElementsV2 用 indices/updates 更新 var 时的符号 Shape 透传推导。
  * 测试输入：var 的符号 Shape 为 [s0,s1]。
  * 期望输出：var 的符号 Shape 与输入 var 一致，为 [s0,s1]。

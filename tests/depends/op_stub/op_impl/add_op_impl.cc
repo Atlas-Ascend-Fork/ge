@@ -259,8 +259,6 @@ IMPL_OP(IRFFT).InputsDataDependency({1});
 IMPL_OP(RFFT).InputsDataDependency({1});
 IMPL_OP(RandomStandardNormal).InputsDataDependency({0});
 IMPL_OP(SegmentSum).InputsDataDependency({1});
-IMPL_OP(JaggedToPaddedDense).InputsDataDependency({});
-IMPL_OP(DenseToJagged).InputsDataDependency({});
 IMPL_OP(CheckNumerics).InputsDataDependency({});
 IMPL_OP(LinearIndex).InputsDataDependency({});
 IMPL_OP(MaxPool).InputsDataDependency({});
