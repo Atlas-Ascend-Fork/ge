@@ -175,6 +175,23 @@ TEST(Om2AbiStructCompatibility, LaunchParamsLayoutIsFrozen) {
                                  sizeof(GertModelLaunchStarsTaskWithFlagParams::stream) +
                                  sizeof(GertModelLaunchStarsTaskWithFlagParams::flag) +
                                  sizeof(GertModelLaunchStarsTaskWithFlagParams::abi_pad_2));
+
+  EXPECT_STRUCT_LAYOUT(GertModelLaunchCustomKernelParams, 32U, 8U);
+  EXPECT_MEMBER_LAYOUT(GertModelLaunchCustomKernelParams, struct_size, uint64_t, 0U);
+  EXPECT_MEMBER_LAYOUT(GertModelLaunchCustomKernelParams, func_launch_custom_kernel, uint32_t (*)(void *, void *), 8U);
+  EXPECT_MEMBER_LAYOUT(GertModelLaunchCustomKernelParams, eager_op, void *, 16U);
+  EXPECT_MEMBER_LAYOUT(GertModelLaunchCustomKernelParams, eager_op_context, void *, 24U);
+  EXPECT_NO_IMPLICIT_PADDING(GertModelLaunchCustomKernelParams,
+                             sizeof(GertModelLaunchCustomKernelParams::struct_size) +
+                                 sizeof(GertModelLaunchCustomKernelParams::func_launch_custom_kernel) +
+                                 sizeof(GertModelLaunchCustomKernelParams::eager_op) +
+                                 sizeof(GertModelLaunchCustomKernelParams::eager_op_context));
+
+  EXPECT_STRUCT_LAYOUT(GertModelTaskLaunchParams, 56U, 8U);
+  EXPECT_MEMBER_LAYOUT(GertModelTaskLaunchParams, launch_kernel_v2_params, GertModelLaunchKernelV2Params, 0U);
+  EXPECT_MEMBER_LAYOUT(GertModelTaskLaunchParams, launch_stars_task_params, GertModelLaunchStarsTaskWithFlagParams, 0U);
+  EXPECT_MEMBER_LAYOUT(GertModelTaskLaunchParams, launch_custom_kernel_params, GertModelLaunchCustomKernelParams, 0U);
+  EXPECT_MEMBER_LAYOUT(GertModelTaskLaunchParams, launch_hccl_params, GertModelLaunchHcclParams, 0U);
 }
 
 TEST(Om2AbiStructCompatibility, HcclTaskParamsLayoutIsFrozen) {
