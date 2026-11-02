@@ -209,6 +209,17 @@ ge::Status HcomOpsKernelBuilder::CalcOpRunningParam(ge::Node &node) {
     return ge::SUCCESS;
   }
 
+  // counts值编译期不可知的V类算子已被标记FORCE_UNKNOWN_SHAPE走单算子模式，
+  // 跳过下沉流程的资源计算（GetNodeUnknownShapeStatus不读该属性，无法在上面的检查中拦截）
+  bool forceUnknown = false;
+  (void)ge::AttrUtils::GetBool(node.GetOpDesc(), ge::ATTR_NAME_FORCE_UNKNOWN_SHAPE, forceUnknown);
+  if (forceUnknown) {
+    HCCL_INFO("[Calc][OpRunningParam]node[%s] is marked force unknown shape, does not need to calc op running param.",
+              node.GetName().c_str());
+    HcomSetWorkflowMode(lastWorkflowMode);
+    return ge::SUCCESS;
+  }
+
   HcclResult ret;
   std::string superKernel;
   ret = GetSuperKernelFromDesc(node.GetOpDesc(), superKernel);
@@ -273,7 +284,7 @@ HcclResult HcomOpsKernelBuilder::CheckSuperKernelEligibility(ge::Node &node, con
   // 步骤2：检查算子类型是否支持
   sCollectiveType = opDescPtr->GetType();
   if (CheckSupportedOP(sCollectiveType) != HCCL_SUCCESS) {
-    HCCL_WARNING("op type[%s] not support super kernel", sCollectiveType.c_str());
+    HCCL_WARNING("op type[%s] does not support super kernel", sCollectiveType.c_str());
     return HCCL_SUCCESS;
   }
 
@@ -298,7 +309,7 @@ HcclResult HcomOpsKernelBuilder::CheckSuperKernelEligibility(ge::Node &node, con
   opType = GetOpType(sCollectiveType);
   bool isSupportOP = AivSuperKernelMap.find(opType) != AivSuperKernelMap.end();
   if (!isSupportOP || optionFeatureBaseRefreshable_ == 1) {
-    HCCL_WARNING("super kernel not support opType[%d] optionFeatureBaseRefreshable_[%d]", opType,
+    HCCL_WARNING("super kernel does not support opType[%d] optionFeatureBaseRefreshable_[%d]", opType,
                  optionFeatureBaseRefreshable_);
     opDescPtr->DelAttr("_super_kernel_scope");
     return HCCL_SUCCESS;
@@ -426,6 +437,11 @@ HcclResult HcomOpsKernelBuilder::SetSuperKernelBlockDim(const ge::OpDescPtr &opD
 
   // 设置block维度属性
   ge::AttrUtils::SetInt(opDescPtr, "hcom_block_dim", blockDim);
+  // V2 kernel设备(950/960)才设置全核同步调度属性
+  if (DeviceCapability::Instance().SupportsV2Kernel()) {
+    ge::AttrUtils::SetInt(opDescPtr, "_soft_sync_schedule_mode", 1U);
+    HCCL_INFO("[HcomOpsKernelBuilder][%s] V2 kernel device, set soft sync schedule mode to 1.", __func__);
+  }
   HCCL_INFO("[HcomOpsKernelBuilder][%s] rankSize[%u] aivCoreLimit[%u] blockDim[%u]", __func__, rankSize, aivCoreLimit,
             blockDim);
   return HCCL_SUCCESS;
@@ -517,7 +533,7 @@ HcclResult HcomOpsKernelBuilder::GetNeedMapRankFromDesc(const ge::OpDescPtr &op,
   if (ge::AttrUtils::HasAttr(op, ge::ATTR_NAME_NEED_MAP_RANK_ID)) {
     if (ge::AttrUtils::GetBool(op, ge::ATTR_NAME_NEED_MAP_RANK_ID, needMapRank) == false) {
       HCCL_ERROR(
-          "[Get][needMapRank]errNo[0x%016llx]: get need map rank failed. get \"need map rank\" from"
+          "[Get][needMapRank]errNo[0x%016llx]: get need map rank failed. get \"need map rank\" from "
           "opDesc failed",
           HCOM_ERROR_CODE(HCCL_E_PARA));
       return HCCL_E_PARA;
@@ -532,7 +548,7 @@ HcclResult HcomOpsKernelBuilder::GetSuperKernelFromDesc(const ge::OpDescPtr &op,
   if (ge::AttrUtils::HasAttr(op, "_super_kernel_scope")) {
     if (ge::AttrUtils::GetStr(op, "_super_kernel_scope", superKernel) == false) {
       HCCL_ERROR(
-          "[Get][superKernel]errNo[0x%016llx]: get superKernel failed. get \"superKernel\" from"
+          "[Get][superKernel]errNo[0x%016llx]: get superKernel failed. get \"superKernel\" from "
           "opDesc failed",
           HCOM_ERROR_CODE(HCCL_E_PARA));
       return HCCL_E_PARA;
@@ -557,6 +573,17 @@ ge::Status HcomOpsKernelBuilder::GenerateTask([[maybe_unused]] const ge::Node &n
   CHK_PRT_RET(!node.GetOpDesc(),
               HCCL_ERROR("[Generate][Task]errNo[0x%016llx] opDesc is null.", HCOM_ERROR_CODE(HCCL_E_PTR)),
               ge::INTERNAL_ERROR);
+
+  // counts值编译期不可知的V类算子已被标记FORCE_UNKNOWN_SHAPE走单算子模式，
+  // 不生成下沉任务（GetNodeUnknownShapeStatus不读该属性，无法在上面的检查中拦截）
+  bool forceUnknown = false;
+  (void)ge::AttrUtils::GetBool(node.GetOpDesc(), ge::ATTR_NAME_FORCE_UNKNOWN_SHAPE, forceUnknown);
+  if (forceUnknown) {
+    HCCL_INFO("[Generate][Task]node[%s] is marked force unknown shape, does not need to generate task.",
+              node.GetName().c_str());
+    return HCCL_SUCCESS;
+  }
+
   std::string sCollectiveType = node.GetOpDesc()->GetType();
   HcclResult ret = CheckSupportedOP(sCollectiveType);
   CHK_PRT_RET(ret != HCCL_SUCCESS,
@@ -568,7 +595,7 @@ ge::Status HcomOpsKernelBuilder::GenerateTask([[maybe_unused]] const ge::Node &n
   HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
   std::string nodeName = node.GetOpDesc()->GetName();
   CHK_PRT_RET(nodeName.empty(),
-              HCCL_ERROR("[Generate][Task]errNo[0x%016llx] op[%s] get tag name failed. node name"
+              HCCL_ERROR("[Generate][Task]errNo[0x%016llx] op[%s] get tag name failed. node name "
                          "is empty.",
                          HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str()),
               ge::INTERNAL_ERROR);
@@ -1191,7 +1218,7 @@ HcclResult HcomOpsKernelBuilder::GetCrackParamsInfo([[maybe_unused]] const ge::N
           tensorSizeTemp, tensorSize[i]);
     } else {
       HCCL_ERROR(
-          "[HcomOpsKernelBuilder][GetCrackParamsInfo]The value of tensorSizeTemp[%lld B] obtained through"
+          "[HcomOpsKernelBuilder][GetCrackParamsInfo]The value of tensorSizeTemp[%lld B] obtained through "
           "the GE interface is less than that of tensorSize[%lld B]",
           tensorSizeTemp, tensorSize[i]);
       return HCCL_E_PARA;
@@ -1360,7 +1387,7 @@ HcclResult HcomOpsKernelBuilder::SetOpMemAttr(ge::Node &node, const std::string 
   if (sCollectiveType == HCCL_KERNEL_OP_TYPE_BROADCAST) {
     bRet = ge::AttrUtils::SetBool(node.GetOpDesc(), ge::ATTR_NAME_REFERENCE, true);
     CHK_PRT_RET(!bRet,
-                HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set  reference attr[%d] to"
+                HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set  reference attr[%d] to "
                            "OpDesc failed.",
                            HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str(), true),
                 HCCL_E_PARA);
@@ -1384,7 +1411,7 @@ HcclResult HcomOpsKernelBuilder::SetOpMemAttr(ge::Node &node, const std::string 
 
   bRet = ge::AttrUtils::SetBool(node.GetOpDesc(), ge::ATTR_NAME_IS_FIXED_ADDR_PRIOR, true);
   CHK_PRT_RET(!bRet,
-              HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set is_fixed_addr_prior[%d] to"
+              HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set is_fixed_addr_prior[%d] to "
                          "OpDesc failed.",
                          HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str(), true),
               HCCL_E_PARA);
@@ -1520,7 +1547,7 @@ HcclResult HcomOpsKernelBuilder::GetCountFromOpDesc(const ge::OpDescPtr &op, con
         const u32 alignSize = 512;  // 以512 Byte 对齐
         int64_t inputSize = 0;
         CHK_PRT_RET((ge::GRAPH_SUCCESS != ge::TensorUtils::GetSize(*op->GetInputDescPtr(i), inputSize)),
-                    HCCL_ERROR("[Get][Count]errNo[0x%016llx] get workspace bytes failed. get size from TensorDesc"
+                    HCCL_ERROR("[Get][Count]errNo[0x%016llx] get workspace bytes failed. get size from TensorDesc "
                                "failed, op : %s"
                                ", input index : %llu",
                                HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str(), i),
@@ -1601,7 +1628,7 @@ HcclResult HcomOpsKernelBuilder::GetOriginalGraphShapeTypeFromDesc(const ge::OpD
   if (ge::AttrUtils::HasAttr(op, ORIGINAL_GRAPH_SHAPE_TYPE)) {
     if (ge::AttrUtils::GetInt(op, ORIGINAL_GRAPH_SHAPE_TYPE, shapeType) == false) {
       HCCL_ERROR(
-          "[Get][OriginalGraphShapeType]errNo[0x%016llx]: get shapeType failed. get \"shapeType\" from"
+          "[Get][OriginalGraphShapeType]errNo[0x%016llx]: get shapeType failed. get \"shapeType\" from "
           "opDesc failed",
           HCOM_ERROR_CODE(HCCL_E_PARA));
       return HCCL_E_PARA;
@@ -1621,7 +1648,7 @@ HcclResult HcomOpsKernelBuilder::GetDestRankFromDesc(const ge::OpDescPtr &op, u3
     if (ge::AttrUtils::HasAttr(op, "dest_rank")) {
       if (ge::AttrUtils::GetInt(op, "dest_rank", destRank) == false) {
         HCCL_ERROR(
-            "[Get][DestRank]errNo[0x%016llx] op[%s]: get dest rank failed. get \"dest_rank\" from"
+            "[Get][DestRank]errNo[0x%016llx] op[%s]: get dest rank failed. get \"dest_rank\" from "
             "opDesc failed",
             HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str());
         return HCCL_E_PARA;

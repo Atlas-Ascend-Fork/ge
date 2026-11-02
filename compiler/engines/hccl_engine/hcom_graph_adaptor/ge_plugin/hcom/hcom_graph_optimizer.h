@@ -60,6 +60,7 @@ class HcomGraphOptimizer : public ge::GraphOptimizer {
   HcclResult HcomOptimizeOriginalGraph(ge::ComputeGraph &graph, bool &uknownShapeGraph);
   HcclResult OriginalGraphShapeTypeCfg(ge::ComputeGraph &graph, bool &uknownShapeGraph);
   HcclResult SetUnknownShapeAttr(ge::ComputeGraph &graph, bool uknownShapeGraph);
+  HcclResult MarkForceUnknownForDynamicCounts(ge::ComputeGraph &graph);
   HcclResult UpdateFusionTensorSizeLimit(bool unknownShape, u64 &fusionTensorSize);
 
  private:

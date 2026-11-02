@@ -19,20 +19,20 @@ function executSt(){
     # Build ge
     cd ${WORKSPACE}/tests || exit
     echo "Run ST testcase of graphengine."
+    TEST_LOG_FILE="${WORKSPACE}/st_test_output.log"
     if [ "${GE_ST_RT2}X" == "ge_commonX" ];then
         if [ "${GIT_TARGET_BRANCH}" = "8.5.0" ];then
-            LOG_DO bash run_test.sh --st=ge_common --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20
+            LOG_DO_TEE "${TEST_LOG_FILE}" bash run_test.sh --st=ge_common --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20
         else
-            LOG_DO bash run_test.sh -c --st=ge_common --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20 -f ${WORKSPACE}/pr_filelist.txt
+            LOG_DO_TEE "${TEST_LOG_FILE}" bash run_test.sh -c --st=ge_common --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20 -f ${WORKSPACE}/pr_filelist.txt
         fi
         ret=$?
     else
-        echo 0 &> ${CODE_PATH}/st_ge_${GE_ST_RT2}.txt
         if [ "${GE_ST_RT2}X" == "dflowX" ] || [ "${GE_ST_RT2}X" == "pythonX" ] || [ "${GE_ST_RT2}X" == "heteroX" ];then
             if [ "${GIT_TARGET_BRANCH}" = "8.5.0" ];then
-                LOG_DO bash run_test.sh --st=${GE_ST_RT2} -c --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20
+                LOG_DO_TEE "${TEST_LOG_FILE}" bash run_test.sh --st=${GE_ST_RT2} -c --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20
             else
-                LOG_DO bash run_test.sh -c --st=${GE_ST_RT2} -c --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20 -f ${WORKSPACE}/pr_filelist.txt
+                LOG_DO_TEE "${TEST_LOG_FILE}" bash run_test.sh -c --st=${GE_ST_RT2} -c --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20 -f ${WORKSPACE}/pr_filelist.txt
             fi
             ret=$?
         else
@@ -41,17 +41,17 @@ function executSt(){
                     echo "Skip ST test execution for ${GE_ST_RT2} on non-master branch"
                     exit 0
                 else
-                    LOG_DO bash run_test.sh --st=${GE_ST_RT2} --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20
+                    LOG_DO_TEE "${TEST_LOG_FILE}" bash run_test.sh --st=${GE_ST_RT2} --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20
                 fi
             elif [ "${GIT_TARGET_BRANCH}" = "9.0.0" ];then
                 if [ "${GE_ST_RT2}X" == "autofuse_e2eX" ] || [ "${GE_ST_RT2}X" == "feX" ] || [ "${GE_ST_RT2}X" == "tefusionX" ];then
                     echo "Skip ST test execution for ${GE_ST_RT2} on non-master branch"
                     exit 0
                 else
-                    LOG_DO bash run_test.sh -c --st=${GE_ST_RT2} --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20
+                    LOG_DO_TEE "${TEST_LOG_FILE}" bash run_test.sh -c --st=${GE_ST_RT2} --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20
                 fi
             else
-                LOG_DO bash run_test.sh -c --st=${GE_ST_RT2} --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20 -f ${WORKSPACE}/pr_filelist.txt
+                LOG_DO_TEE "${TEST_LOG_FILE}" bash run_test.sh -c --st=${GE_ST_RT2} --cann_3rd_lib_path="${ASCEND_3RD_LIB_PATH}" -j20 -f ${WORKSPACE}/pr_filelist.txt
             fi
             ret=$?
         fi
@@ -62,7 +62,9 @@ function executSt(){
     else
        DP_ASSERT_EQUAL "$ret" "0" "Run ST testcase" "true"
     fi
+    /usr/local/ccache/bin/ccache -s
     cd ${WORKSPACE}
+    check_slow_tests "${TEST_LOG_FILE}" 1000 "${WORKSPACE}" || ret=1
     coverage_info=$(find ${WORKSPACE} -name "coverage.info" | head -n1)
     if  [ "${GE_ST_RT2}X" == "pythonX" ];then
         if [ "${GIT_TARGET_BRANCH}" != "master" ] && [ "${GIT_TARGET_BRANCH}" != "develop" ]; then
@@ -74,18 +76,28 @@ function executSt(){
             echo "ut_type=graphengine" >> "${ATOMGIT_OUTPUT}"
         fi
     else
-        lcov --list ${coverage_info}
-        mv ${coverage_info} coverage_st_${GE_ST_RT2}.info
+        if [ -n "${coverage_info}" ] && [ -f "${coverage_info}" ]; then
+            lcov --list ${coverage_info}
+            mv ${coverage_info} coverage_st_${GE_ST_RT2}.info
+        else
+            echo "WARN: coverage.info not found, skipping lcov report"
+        fi
     fi
+    exit $ret
 }
 
 
 function main(){
-    if [ "${GIT_TARGET_BRANCH}" == "master" ] || [ "${GIT_TARGET_BRANCH}" == "develop" ]; then
-        sudo update-alternatives --set gcc /usr/bin/gcc-15
-        sudo update-alternatives --set lcov /opt/lcov-2.3.2/bin/lcov
-    else
-        sudo update-alternatives --set gcc /usr/bin/gcc-14
+    if [ "${GE_ST_RT2}X" == "hcceX" ] && [ "${GIT_TARGET_BRANCH}" != "master" ] && [ "${GIT_TARGET_BRANCH}" != "develop" ];then
+        echo "Skip ST test execution for ${GE_ST_RT2} on non-master branch"
+        exit 0
+    fi
+    if sudo update-alternatives --set gcc /usr/bin/gcc-16 2>/dev/null; then
+        echo "Switched to gcc-16"
+    elif sudo update-alternatives --set gcc /usr/bin/gcc-15 2>/dev/null; then
+        echo "Switched to gcc-15"
+    elif sudo update-alternatives --set gcc /usr/bin/gcc-14 2>/dev/null; then
+        echo "gcc-16/15 not available, fell back to gcc-14"
     fi
     if gcc --version | head -n1 | grep -q "15\."; then
         rm -rf /home/jenkins/opensource/lib_cache
@@ -104,6 +116,10 @@ function main(){
         gcc --version
         rm -rf /home/jenkins/opensource/lib_cache
         ln -s /home/jenkins/opensource/ubuntu20/lib_cache /home/jenkins/opensource/lib_cache
+    fi
+    if [ "${GIT_TARGET_BRANCH}" == "master" ] || [ "${GIT_TARGET_BRANCH}" == "develop" ]; then
+        sudo update-alternatives --set lcov /opt/lcov-2.3.2/bin/lcov
+        lcov --version
     fi
     source /home/jenkins/Ascend/cann/bin/setenv.bash
     pip3 install --user cloudpickle || { echo "Failed to install cloudpickle"; exit 1; }

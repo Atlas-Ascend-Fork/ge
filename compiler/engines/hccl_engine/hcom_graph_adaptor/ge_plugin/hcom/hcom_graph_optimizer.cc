@@ -17,6 +17,7 @@
 #include "common/op_hcom_comm.h"
 #include "hccl/hcom.h"
 #include "graph/utils/node_utils.h"
+#include "graph/utils/op_desc_utils.h"
 #include "graph/utils/tensor_utils.h"
 #include "graph/utils/tensor_utils_ex.h"
 #include "graph/debug/ge_attr_define.h"
@@ -66,7 +67,7 @@ HcclResult HcomGraphOptimizer::HcomGraphOptimizeInitialize(const map<std::string
     HCCL_INFO("Initialize: FUSION_TENSOR_SIZE[%llu]Byte is set.", fusionTensorSizeLimit_);
   } else {
     fusionTensorSizeLimit_ = 524288000;  // 默认融合tensor大小限制 524288000 = 500 * 1024 * 1024 = 500MB
-    HCCL_INFO("Initialize: FUSION_TENSOR_SIZE is unsetted, default[%llu]Byte.", fusionTensorSizeLimit_);
+    HCCL_INFO("Initialize: FUSION_TENSOR_SIZE is unset, default[%llu]Byte.", fusionTensorSizeLimit_);
   }
 
   auto iterMultiMode = options.find(ge::HCOM_MULTI_MODE);
@@ -83,7 +84,7 @@ HcclResult HcomGraphOptimizer::HcomGraphOptimizeInitialize(const map<std::string
     HCCL_INFO("Initialize: HCOM_MULTI_MODE is %d.", hcomMultiMode_);
   } else {
     hcomMultiMode_ = 0;
-    HCCL_INFO("Initialize: HCOM_MULTI_MODE is unsetted, default[%d].", hcomMultiMode_);
+    HCCL_INFO("Initialize: HCOM_MULTI_MODE is unset, default[%d].", hcomMultiMode_);
   }
 
   return HCCL_SUCCESS;
@@ -158,7 +159,7 @@ HcclResult HcomGraphOptimizer::HcomOptimizeOriginalGraph(ge::ComputeGraph &graph
   u64 fusionTensorSize = fusionTensorSizeLimit_;
   ret = UpdateFusionTensorSizeLimit(uknownShapeGraph, fusionTensorSize);
   CHK_PRT_RET(ret != HCCL_SUCCESS,
-              HCCL_ERROR("[Optimize][OriginalGraph]graph[%s]: UpdateFusionTensorSizeLimit graph"
+              HCCL_ERROR("[Optimize][OriginalGraph]graph[%s]: UpdateFusionTensorSizeLimit graph "
                          "failed. ret[%d]",
                          graph.GetName().c_str(), ret),
               HCCL_E_PARA);
@@ -466,11 +467,14 @@ HcclResult HcomGraphOptimizer::SetUnknownShapeAttr(ge::ComputeGraph &graph, bool
     HCCL_INFO("Initialize: OPTION_FEATURE_BASE_REFRESHABLE is %d.", optionFeatureBaseRefreshable_);
   } else {
     optionFeatureBaseRefreshable_ = 0;
-    HCCL_INFO("Initialize: OPTION_FEATURE_BASE_REFRESHABLE is unsetted, default[%d].", optionFeatureBaseRefreshable_);
+    HCCL_INFO("Initialize: OPTION_FEATURE_BASE_REFRESHABLE is unset, default[%d].", optionFeatureBaseRefreshable_);
   }
 
   if (!uknownShapeGraph && optionFeatureBaseRefreshable_ == 0) {
     HCCL_DEBUG("graph[%s] is known shape", graph.GetName().c_str());
+    // 静态shape图：V类算子的counts输入若编译期不是常量（值运行时才可知），无法固化进下沉任务，
+    // 需标记FORCE_UNKNOWN_SHAPE退出下沉，由GE按单算子模式调用、运行时读取真实值
+    CHK_RET(MarkForceUnknownForDynamicCounts(graph));
     return HCCL_SUCCESS;
   }
   /* 遍历原图所有算子 */
@@ -588,6 +592,57 @@ HcclResult HcomGraphOptimizer::SetUnknownShapeAttr(ge::ComputeGraph &graph, bool
   return HCCL_SUCCESS;
 }
 
+// V类算子的counts类输入索引表：仅检查counts（数量）输入的const性，displacements（偏移）类输入不检查
+// （counts非const即无法固化通信计划需退单算子，由单算子路径运行时读取真实值或按counts推导displs；
+//  RSV/AGV的displs为可选输入，未连接时校验会误伤合法图）
+static const std::map<std::string, std::vector<u32>> V_OP_COUNTS_INPUT_IDX = {
+    {HCCL_KERNEL_OP_TYPE_REDUCESCATTERV, {1U, 2U}},  // recv_count, send_counts
+    {HCCL_KERNEL_OP_TYPE_ALLGATHERV, {1U, 2U}},      // send_count, recv_counts
+    {HCCL_KERNEL_OP_TYPE_ALLTOALLV, {1U, 3U}},       // send_counts, recv_counts
+};
+
+static bool IsCountsInputConst(const ge::NodePtr &nodePtr, const std::vector<u32> &idxList) {
+  const auto op = ge::OpDescUtils::CreateOperatorFromNode(nodePtr);
+  for (const auto idx : idxList) {
+    if (ge::OpDescUtils::GetInputConstData(op, idx) == nullptr) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// 静态shape图场景下，V类算子的counts值若运行时才能确定（输入不是Const），
+// 下沉任务无法固化counts，标记FORCE_UNKNOWN_SHAPE退出下沉，由GE按单算子模式调用
+HcclResult HcomGraphOptimizer::MarkForceUnknownForDynamicCounts(ge::ComputeGraph &graph) {
+  for (auto nodePtr : graph.GetAllNodes()) {
+    ge::OpDescPtr opDescPtr = nullptr;
+    if (!TryGetOpDesc(nodePtr, opDescPtr)) {
+      continue;
+    }
+    const auto countsIdxIter = V_OP_COUNTS_INPUT_IDX.find(opDescPtr->GetType());
+    if (countsIdxIter == V_OP_COUNTS_INPUT_IDX.end()) {
+      continue;
+    }
+    // 零数据输入是合法场景：无通信需求，不强制走单算子模式
+    const auto inputDescPtr = opDescPtr->GetInputDescPtr(0U);
+    if ((inputDescPtr != nullptr) && (inputDescPtr->GetShape().GetShapeSize() == 0)) {
+      continue;
+    }
+    if (IsCountsInputConst(nodePtr, countsIdxIter->second)) {
+      continue;
+    }
+    HCCL_WARNING(
+        "[Mark][ForceUnknown]graph[%s]: node[%s] op type[%s] counts input is not const in known-shape "
+        "graph, set force unknown shape to run in single-op mode.",
+        graph.GetName().c_str(), nodePtr->GetName().c_str(), opDescPtr->GetType().c_str());
+    CHK_PRT_RET(!ge::AttrUtils::SetBool(opDescPtr, ge::ATTR_NAME_FORCE_UNKNOWN_SHAPE, true),
+                HCCL_ERROR("[Mark][ForceUnknown]graph[%s]: node[%s] op type[%s] set force unknown shape failed.",
+                           graph.GetName().c_str(), nodePtr->GetName().c_str(), opDescPtr->GetType().c_str()),
+                HCCL_E_PARA);
+  }
+  return HCCL_SUCCESS;
+}
+
 HcclResult HcomGraphOptimizer::SetHcomOpFormat(ge::OpDescPtr &opDescPtr) {
   CHK_SMART_PTR_NULL(opDescPtr);
   bool bRet = false;
@@ -652,7 +707,7 @@ HcclResult HcomGraphOptimizer::HcomGetAccuracyCountFromOpDesc(const ge::OpDescPt
 
   // Receive 算子不支持获取count
   if (sCollectiveType == HCCL_KERNEL_OP_TYPE_RECEIVE) {
-    HCCL_WARNING("[%s][Get][Count] op[%s] get count failed. receive op not support get count.", __func__,
+    HCCL_WARNING("[%s][Get][Count] op[%s] get count failed. receive op does not support get count.", __func__,
                  sCollectiveType.c_str());
     return HCCL_SUCCESS;
   }
@@ -677,7 +732,7 @@ HcclResult HcomGraphOptimizer::MemOutputForOpDesc(const ge::OpDescPtr &op, const
   // 获取内存大小
   bool bErr = (ge::GRAPH_SUCCESS != ge::TensorUtils::CalcTensorMemSize(outputShape, format, dataType, memSize));
   CHK_PRT_RET(bErr,
-              HCCL_ERROR("[Set][OpOutputMemSize]In get output mem size, error outputSize because no"
+              HCCL_ERROR("[Set][OpOutputMemSize]In get output mem size, error outputSize because no "
                          "know shape, Format[%d], dataType[%d], outputSize[%lld], index[%u]",
                          format, dataType, memSize, i),
               HCCL_E_PARA);
@@ -789,13 +844,13 @@ HcclResult HcomGraphOptimizer::GetCountFromOpDesc(const ge::OpDescPtr &op, const
         const u32 alignSize = 512;  // 以512 Byte 对齐
         int64_t inputSize = 0;
         CHK_PRT_RET((ge::GRAPH_SUCCESS != ge::TensorUtils::GetSize(*op->GetInputDescPtr(i), inputSize)),
-                    HCCL_ERROR("[Get][Count]errNo[0x%016llx] get workspace bytes failed. get size from TensorDesc"
+                    HCCL_ERROR("[Get][Count]errNo[0x%016llx] get workspace bytes failed. get size from TensorDesc "
                                "failed, op : %s"
                                ", input index : %llu",
                                HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str(), i),
                     HCCL_E_PARA);
         CHK_PRT_RET((static_cast<u64>(inputSize) > INVALID_U64 - alignSize),
-                    HCCL_ERROR("[Get][Count]op[%s] input"
+                    HCCL_ERROR("[Get][Count]op[%s] input "
                                "size[%llu] is overflow.",
                                sCollectiveType.c_str(), static_cast<u64>(inputSize)),
                     HCCL_E_PARA);
@@ -863,7 +918,7 @@ HcclResult HcomGraphOptimizer::SetOpMemAttr(ge::Node &node, const std::string &s
   if (sCollectiveType == HCCL_KERNEL_OP_TYPE_BROADCAST) {
     bRet = ge::AttrUtils::SetBool(node.GetOpDesc(), ge::ATTR_NAME_REFERENCE, true);
     CHK_PRT_RET(!bRet,
-                HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set  reference attr[%d] to OpDesc"
+                HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set  reference attr[%d] to OpDesc "
                            "failed.",
                            HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str(), true),
                 HCCL_E_PARA);
@@ -884,6 +939,14 @@ HcclResult HcomGraphOptimizer::SetOpMemAttr(ge::Node &node, const std::string &s
   } else {
     HCCL_INFO("node[%s] set attr [reference]: skip", node.GetName().c_str());
   }
+
+  bRet = ge::AttrUtils::SetBool(node.GetOpDesc(), ge::ATTR_NAME_IS_FIXED_ADDR_PRIOR, true);
+  CHK_PRT_RET(!bRet,
+              HCCL_ERROR("[Set][OpMemAttr]errNo[0x%016llx] op[%s]: set is_fixed_addr_prior[%d] to "
+                         "OpDesc failed.",
+                         HCOM_ERROR_CODE(HCCL_E_PARA), sCollectiveType.c_str(), true),
+              HCCL_E_PARA);
+  HCCL_INFO("node[%s] set attr [is_fixed_addr_prior]: %d", node.GetName().c_str(), true);
 
   string groupListString;
 
@@ -963,6 +1026,17 @@ HcclResult HcomGraphOptimizer::CalcOpRunningParam(ge::Node &node, bool uknownSha
               HCCL_E_PARA);
   if (unknownShapeNode) {
     HCCL_INFO("node:%s is unknown shape, does not need to Calc Op Running Param", node.GetName().c_str());
+    HcomSetWorkflowMode(lastWorkflowMode);
+    return HCCL_SUCCESS;
+  }
+
+  // counts值编译期不可知的V类算子已被标记FORCE_UNKNOWN_SHAPE走单算子模式，
+  // 无需进行下沉流程的资源计算，避免按空counts算出0任务导致算子空跑
+  bool forceUnknown = false;
+  (void)ge::AttrUtils::GetBool(node.GetOpDesc(), ge::ATTR_NAME_FORCE_UNKNOWN_SHAPE, forceUnknown);
+  if (forceUnknown) {
+    HCCL_INFO("[Calc][OpRunningParam]node[%s] is marked force unknown shape, does not need to calc op running param.",
+              node.GetName().c_str());
     HcomSetWorkflowMode(lastWorkflowMode);
     return HCCL_SUCCESS;
   }
@@ -1178,7 +1252,7 @@ HcclResult HcomGraphOptimizer::GetOriginalGraphShapeTypeFromDesc(const ge::OpDes
   if (ge::AttrUtils::HasAttr(op, ORIGINAL_GRAPH_SHAPE_TYPE)) {
     if (ge::AttrUtils::GetInt(op, ORIGINAL_GRAPH_SHAPE_TYPE, shapeType) == false) {
       HCCL_ERROR(
-          "[Get][OriginalGraphShapeType]errNo[0x%016llx]: get shapeType failed. get \"shapeType\" from"
+          "[Get][OriginalGraphShapeType]errNo[0x%016llx]: get shapeType failed. get \"shapeType\" from "
           "opDesc failed",
           HCOM_ERROR_CODE(HCCL_E_PARA));
       return HCCL_E_PARA;

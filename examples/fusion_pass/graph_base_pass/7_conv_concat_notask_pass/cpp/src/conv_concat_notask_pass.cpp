@@ -35,6 +35,11 @@ constexpr const char *kOpTypeExtendConv2D = "ExtendConv2D";
 constexpr const char *kOpTypeConcatD = "ConcatD";
 constexpr const char *kOpTypeConcatV2D = "ConcatV2D";
 
+// 编译选项key：芯片版本，与 ge_common_api_types.h 中 ge::SOC_VERSION 保持一致
+constexpr const char *kOptionSocVersion = "ge.socVersion";
+// mc62版本芯片的soc version前缀
+constexpr const char *kMc62SocVersionPrefix = "MC62";
+
 // 各conv输出张量大小需满足32B对齐，保证其在concat连续内存中的起始地址32B对齐
 constexpr int64_t kBytesAligned = 32;
 
@@ -42,6 +47,9 @@ constexpr int64_t kBytesAligned = 32;
 constexpr int64_t kBytes16 = 2;
 constexpr int64_t kBytes32 = 4;
 constexpr int64_t kBytes64 = 8;
+
+// C 轴对应的序号
+constexpr int64_t kCNhwcIndex = 3;
 
 bool IsConv2DNode(const GNode &node) {
   AscendString node_type;
@@ -62,6 +70,21 @@ bool IsConcatNode(const GNode &node) {
 bool IsNoTaskNode(const GNode &node) {
   bool no_task = false;
   return node.GetAttr(kAttrNameNoTask, no_task) == GRAPH_SUCCESS && no_task;
+}
+
+// 芯片版本校验：从编译选项中获取soc version，仅mc62版本芯片返回true
+bool IsMc62SocVersion(const CustomPassContext &custom_context) {
+  AscendString soc_version;
+  if (custom_context.GetOptionValue(kOptionSocVersion, soc_version) != GRAPH_SUCCESS) {
+    cout << "Failed to get soc version from options, skip." << endl;
+    return false;
+  }
+  const char *soc_version_str = soc_version.GetString();
+  if (soc_version_str == nullptr || string(soc_version_str).rfind(kMc62SocVersionPrefix, 0) != 0) {
+    cout << "Soc version is not MC62, skip." << endl;
+    return false;
+  }
+  return true;
 }
 
 // 数据类型对应的字节大小，不支持的类型返回0
@@ -103,6 +126,39 @@ int64_t GetTensorBytes(const TensorDesc &tensor_desc) {
     element_cnt *= dim;
   }
   return element_cnt * type_size;
+}
+
+// 获取C轴的维度索引，仅支持NCHW（C轴为dim 1）/NHWC（C轴为最内层dim 3）格式，其他格式返回false
+bool GetCAxisIndex(Format format, int64_t &c_axis_index) {
+  if (format == FORMAT_NCHW) {
+    c_axis_index = 1;
+    return true;
+  }
+  if (format == FORMAT_NHWC) {
+    c_axis_index = kCNhwcIndex;
+    return true;
+  }
+  return false;
+}
+
+// 计算conv输出C维度大小字节数（C轴大小×dtype大小），仅支持NCHW/NHWC格式：
+// 1. NCHW：C轴为dim 1
+// 2. NHWC：C轴为最内层dim 3
+// 格式非NCHW/NHWC、维度数不符合、C轴维度非正值（动态shape）或数据类型不支持时返回-1
+int64_t GetCAxisAlignBytes(const TensorDesc &tensor_desc) {
+  const int64_t type_size = GetDataTypeSize(tensor_desc.GetDataType());
+  if (type_size == 0) {
+    return -1;
+  }
+  int64_t c_axis_index;
+  if (!GetCAxisIndex(tensor_desc.GetFormat(), c_axis_index)) {
+    return -1;
+  }
+  auto dims = tensor_desc.GetShape().GetDims();
+  if (dims.size() <= static_cast<size_t>(c_axis_index) || dims[c_axis_index] <= 0) {
+    return -1;
+  }
+  return dims[c_axis_index] * type_size;
 }
 
 // 参考 GE 内置 StridedWriteOptimizer::GetRealConcatDim：
@@ -148,18 +204,39 @@ bool MatchConvConcatPattern(const GNode &concat_node, vector<pair<GNodePtr, int3
   return !conv_inputs.empty();
 }
 
-// 对齐校验：每个conv输出在C轴及后续维度上连续排布，其张量字节数需为32B的整数倍。
-// conv输出在concat连续内存中按序排布，各输入起始地址等于前序输入大小之和，
-// 因此每个conv输出大小32B对齐是各输入起始地址32B对齐的充分条件
-// （与GE内置CheckPhonyConcatInputIs32Align的32B对齐约束一致）
-bool IsConvOutputBytesAligned(const vector<pair<GNodePtr, int32_t>> &conv_inputs) {
+// 对齐校验：conv输出format需为NCHW或NHWC，且C维度大小（C轴大小×dtype大小，含义见GetCAxisAlignBytes说明）
+// 为32B的整数倍。conv输出张量字节数为C维度大小的整数倍（N×H×W×C×d），conv输出在concat连续内存中按序排布，
+// 各输入起始地址等于前序各输入字节数之和，因此C维度大小32B对齐可保证各输入起始地址32B对齐
+// （强于GE内置CheckPhonyConcatInputIs32Align的张量大小32B对齐约束）
+bool IsConvOutputCAxisAligned(const vector<pair<GNodePtr, int32_t>> &conv_inputs) {
   for (const auto &[conv_node, out_port] : conv_inputs) {
     TensorDesc conv_out_desc;
     if (conv_node->GetOutputDesc(out_port, conv_out_desc) != GRAPH_SUCCESS) {
       return false;
     }
-    int64_t conv_out_bytes = GetTensorBytes(conv_out_desc);
-    if (conv_out_bytes <= 0 || conv_out_bytes % kBytesAligned != 0) {
+    int64_t c_axis_align_bytes = GetCAxisAlignBytes(conv_out_desc);
+    if (c_axis_align_bytes <= 0 || c_axis_align_bytes % kBytesAligned != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// 校验concat_dim与conv输出的C轴对应：所有conv输入的C轴索引需与concat_dim一致。
+// concat_dim支持负索引（从最后一维起算，-1为最后一维）：NCHW格式C轴为dim 1（负索引为-3），
+// NHWC格式C轴为最内层dim 3（负索引为-1）
+bool IsConcatDimOnCAxis(const vector<pair<GNodePtr, int32_t>> &conv_inputs, int64_t concat_dim) {
+  for (const auto &[conv_node, out_port] : conv_inputs) {
+    TensorDesc conv_out_desc;
+    if (conv_node->GetOutputDesc(out_port, conv_out_desc) != GRAPH_SUCCESS) {
+      return false;
+    }
+    int64_t c_axis_index;
+    if (!GetCAxisIndex(conv_out_desc.GetFormat(), c_axis_index)) {
+      return false;
+    }
+    const int64_t dim_cnt = static_cast<int64_t>(conv_out_desc.GetShape().GetDims().size());
+    if (concat_dim != c_axis_index && concat_dim != c_axis_index - dim_cnt) {
       return false;
     }
   }
@@ -225,15 +302,21 @@ graphStatus SetAttrsForConvs(const GNode &concat_node, const vector<pair<GNodePt
 // |o>        ConcatD
 // |o>------------------------------------------------------------
 // 识别说明：本例识别上图中Conv2D/Conv2DV2/ExtendConv2D与ConcatD/ConcatV2D组成的结构，通过属性标记实现Concat零拷贝优化：
-// 1. 给Concat设置 _no_task/_output_reuse_input/_no_padding_continuous_input/_reuse_input_on_dim_index 属性，
+// 1. 通过GetAllNodes遍历图内所有节点（含子图节点），与内置pass逐图优化的行为对齐；
+// 2. 给Concat设置 _no_task/_output_reuse_input/_no_padding_continuous_input/_reuse_input_on_dim_index 属性，
 //    内存分配时Concat输出不单独分配内存，运行时不生成硬件Task；
-// 2. 给每个Conv2D设置 _output_offset_list_for_continuous/total_shape/valid_shape 私有属性，
+// 3. 给每个Conv2D设置 _output_offset_list_for_continuous/total_shape/valid_shape 私有属性，
 //    描述其输出在Concat输出连续内存中的字节偏移及完整/有效shape信息。
-// 注意：仅针对静态shape、conv输出独占消费、conv输出大小32B对齐的简单场景，
-// 实际使用时需结合内存校验确保地址连续性。
+// 注意：仅针对静态shape、conv输出独占消费、conv输出为NCHW/NHWC格式且C维度大小32B对齐、
+// concat轴与conv输出C轴对应的简单场景，实际使用时需结合内存校验确保地址连续性。
 graphStatus ConvConcatNotaskPass(GraphPtr &graph, CustomPassContext &custom_context) {
   cout << "ConvConcatNotaskPass begin." << endl;
-  for (auto &node : graph->GetDirectNode()) {
+  // 0. 芯片版本校验：仅mc62版本芯片执行本pass，其他芯片直接跳过
+  if (!IsMc62SocVersion(custom_context)) {
+    cout << "ConvConcatNotaskPass end." << endl;
+    return GRAPH_SUCCESS;
+  }
+  for (auto &node : graph->GetAllNodes()) {
     if (!IsConcatNode(node) || IsNoTaskNode(node)) {
       continue;
     }
@@ -243,9 +326,9 @@ graphStatus ConvConcatNotaskPass(GraphPtr &graph, CustomPassContext &custom_cont
       cout << "Node is not a conv2d + concat pattern, skip." << endl;
       continue;
     }
-    // 2. 校验各conv输出大小满足32B对齐（concat连续内存中各输入起始地址对齐的前提）
-    if (!IsConvOutputBytesAligned(conv_inputs)) {
-      cout << "Conv2d output bytes are not 32B aligned, skip." << endl;
+    // 2. 校验conv输出为NCHW/NHWC格式且C维度大小满足32B对齐（concat连续内存中各输入起始地址对齐的前提）
+    if (!IsConvOutputCAxisAligned(conv_inputs)) {
+      cout << "Conv2d output format is not supported or C dim size is not 32B aligned, skip." << endl;
       continue;
     }
     // 3. 计算真实的concat轴
@@ -254,12 +337,17 @@ graphStatus ConvConcatNotaskPass(GraphPtr &graph, CustomPassContext &custom_cont
       cout << "Node shape does not match concat pattern, skip." << endl;
       continue;
     }
-    // 4. 设置Conv2d私有属性（先设置conv侧属性，失败时保证concat未被误标记）
+    // 4. 校验concat_dim与conv输出的C轴对应（NCHW为dim 1或-3，NHWC为dim 3或-1）
+    if (!IsConcatDimOnCAxis(conv_inputs, concat_dim)) {
+      cout << "Concat dim does not match the C axis of conv output, skip." << endl;
+      continue;
+    }
+    // 5. 设置Conv2d私有属性（先设置conv侧属性，失败时保证concat未被误标记）
     if (SetAttrsForConvs(node, conv_inputs) != GRAPH_SUCCESS) {
       custom_context.SetErrorMessage("Set attrs of conv2d nodes failed.");
       return FAILED;
     }
-    // 5. 设置Concat属性
+    // 6. 设置Concat属性
     if (SetAttrsForConcat(node, concat_dim) != GRAPH_SUCCESS) {
       custom_context.SetErrorMessage("Set attrs of concat node failed.");
       return FAILED;

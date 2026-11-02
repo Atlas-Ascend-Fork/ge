@@ -7,7 +7,7 @@
 ## 函数原型
 
 ```python
-ge_finalize() -> int
+ge_finalize() -> int
 ```
 
 ## 参数说明

@@ -21,6 +21,7 @@ set(hccl_engine_src_file
     ${AIR_CODE_DIR}/compiler/engines/hccl_engine/hcom_graph_adaptor/ge_plugin/hcom_plugin.cc
     ${AIR_CODE_DIR}/compiler/engines/hccl_engine/hcom_graph_adaptor/ge_plugin/plugin_manager.cc
     ${AIR_CODE_DIR}/compiler/engines/hccl_engine/hcom_graph_adaptor/ge_plugin/common/hcom_op_utils.cc
+    ${AIR_CODE_DIR}/compiler/engines/hccl_engine/hcom_graph_adaptor/ge_plugin/common/device_capability.cc
     ${AIR_CODE_DIR}/compiler/engines/hccl_engine/hcom_graph_adaptor/ge_plugin/common/op_fusion_base.cc
     ${AIR_CODE_DIR}/compiler/engines/hccl_engine/hcom_graph_adaptor/ge_plugin/common/ops_kernel_info_store_base.cc
     ${AIR_CODE_DIR}/compiler/engines/hccl_engine/hcom_graph_adaptor/ge_plugin/common/ops_kernel_builder_base.cc
@@ -141,8 +142,6 @@ set(src_path
     ${ASCEND_INSTALL_PATH}/include/slog/toolchain
     ${CMAKE_BINARY_DIR}/proto/hcce
     ${CMAKE_CURRENT_SOURCE_DIR}/../stub
-    ${AIR_CODE_DIR}/tests/engines/hccl_engine/third_party/mockcpp/mockcpp-2.7/3rdparty
-    ${AIR_CODE_DIR}/tests/engines/hccl_engine/third_party/mockcpp/mockcpp-2.7/include
 
     ${CMAKE_BINARY_DIR}/proto/metadef_protos
 )
@@ -182,15 +181,13 @@ target_link_directories(hccl_engine_stest PRIVATE
 
 find_library(REGISTER_LIB NAMES libregister.so PATH_SUFFIXES lib64)
 
-find_library(LIBRARY_MOCKCPP libmockcpp.a ${AIR_CODE_DIR}/tests/engines/hccl_engine/third_party/mockcpp/mockcpp-2.7/build)
-
 target_link_libraries(hcce_st_llt PRIVATE
     intf_llt_pub
     runtime
     msprof_headers
     -Wl,--as-needed
     GTestShared::gtest GTestShared::gtest_main GTestShared::gmock
-    ${LIBRARY_MOCKCPP}
+    mockcpp
     error_manager
     hcomm
  	${REGISTER_LIB}
@@ -215,7 +212,7 @@ target_link_libraries(hccl_engine_stest PRIVATE
     msprof_headers
     -Wl,--as-needed
     GTestShared::gtest GTestShared::gtest_main GTestShared::gmock
-    ${LIBRARY_MOCKCPP}
+    mockcpp
     error_manager
     graph
     graph_base

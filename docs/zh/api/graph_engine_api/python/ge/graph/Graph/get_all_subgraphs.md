@@ -11,7 +11,7 @@
 ## 函数原型
 
 ```python
-get_all_subgraphs() -> List[Graph]
+get_all_subgraphs() -> List[Graph]
 ```
 
 ## 参数说明

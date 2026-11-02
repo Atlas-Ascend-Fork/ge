@@ -11,7 +11,7 @@
 ## 函数原型
 
 ```python
-list_plugins() -> List[str]
+list_plugins() -> List[str]
 ```
 
 ## 参数说明

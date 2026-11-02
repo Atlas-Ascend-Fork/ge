@@ -26,6 +26,9 @@ HcclResult CommGetInstTopoTypeByNetLayer(HcclComm comm, uint32_t netLayer, uint3
 }
 
 HcclResult HcomGetGroupNameByOpBase(s64 opBaseHcom, char **groupname) {
+  // 不写 groupname 会让调用方对 nullptr 构造 std::string 导致 SEGV
+  static char dummyGroupName[] = "hccl_world_group";
+  *groupname = dummyGroupName;
   return HCCL_SUCCESS;
 }
 
@@ -141,6 +144,13 @@ HcclResult GenerateCclOpTag(const std::string &opType, const int64_t &hcomComm, 
 }
 
 HcclResult HcomGetInitStatus(bool *initiated) {
+  // 必须写输出参数：真实库语义是回读库内初始化标志。不写时调用方读到栈野值，
+  // 行为依赖环境（本机恰为非0走"已初始化"捷径，CI为0走完整路径）：
+  // 完整路径会GetOption(RANK_TABLE)落stub默认分支返回"0x<地址>"，十进制解析失败导致
+  // HcomInitialize返回HCCL_E_PARA。UT无真实rank table，恒返回已初始化以走捷径
+  if (initiated != nullptr) {
+    *initiated = true;
+  }
   return HCCL_SUCCESS;
 }
 
@@ -358,12 +368,8 @@ aclError aclrtSynchronizeStream(aclrtStream stream) {
 }
 
 aclError aclrtCreateStream(aclrtStream *stream) {
-  aclrtCreateStreamWithConfig(stream, 0, 0);
-  return ACL_SUCCESS;
-}
-
-aclError aclrtCreateStreamWithConfig(aclrtStream *stream, uint32_t priority, uint32_t flag) {
-  return aclrtCreateStream(stream);
+  // aclrtCreateStreamWithConfig 由 llt_hccl_stub.cc 提供实现, 此处不可重复定义
+  return aclrtCreateStreamWithConfig(stream, 0, 0);
 }
 
 HcclResult HcomSetGlobalWorkSpace(const char *group, void **globalWorkSpaceAddr, u32 len) {

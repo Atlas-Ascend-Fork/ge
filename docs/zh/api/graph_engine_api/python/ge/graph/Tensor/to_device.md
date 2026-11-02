@@ -11,7 +11,7 @@
 ## 函数原型
 
 ```python
-to_device() -> Tensor
+to_device() -> Tensor
 ```
 
 ## 参数说明

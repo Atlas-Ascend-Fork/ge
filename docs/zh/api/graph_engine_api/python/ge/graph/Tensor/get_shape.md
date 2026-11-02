@@ -11,7 +11,7 @@
 ## 函数原型
 
 ```python
-get_shape() -> List[int]
+get_shape() -> List[int]
 ```
 
 ## 参数说明

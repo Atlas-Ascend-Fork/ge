@@ -11,7 +11,7 @@
 ## 函数原型
 
 ```python
-get_direct_nodes() -> List[Node]
+get_direct_nodes() -> List[Node]
 ```
 
 ## 参数说明
