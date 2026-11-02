@@ -824,6 +824,117 @@ TEST_F(LoopApiUT, StoreMatmulInputOverflowWithCubeWithOutMatmulEnv) {
   EXPECT_TRUE(kernel_box.IsExternKernel());
 }
 
+TEST_F(LoopApiUT, StoreMatmulDynamicShapeUsesCubeLowering) {
+  [this]() {
+    auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+    data0.SetSymbolShape({"s_m", "s_k"});
+    auto data1 = es_graph_->CreateInput(1, "data1", nullptr);
+    data1.SetSymbolShape({"s_k", "s_n"});
+    auto mm = es::MatMul(data0, data1);
+    mm.SetSymbolShape({"s_m", "s_n"});
+    es_graph_->SetOutput(mm, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto mm = cg->FindNode("MatMul_0");
+  ASSERT_NE(mm, nullptr);
+
+  AutoFuseConfig::MutableLoweringConfig().experimental_lowering_matmul = true;
+  std::vector<ge::InDataAnchorPtr> inputs = {mm->GetInDataAnchor(0), mm->GetInDataAnchor(1)};
+  MatMulAttr matmul_attr;
+  auto kernel_box = loop::StoreMatMul(mm->GetOutDataAnchor(0), inputs, matmul_attr);
+
+  EXPECT_FALSE(kernel_box.IsExternKernel());
+}
+
+TEST_F(LoopApiUT, StoreMatmulDynamicShapeWithMismatchedKFallsBack) {
+  [this]() {
+    auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+    data0.SetSymbolShape({"s_m", "s_k0"});
+    auto data1 = es_graph_->CreateInput(1, "data1", nullptr);
+    data1.SetSymbolShape({"s_k1", "s_n"});
+    auto mm = es::MatMul(data0, data1);
+    mm.SetSymbolShape({"s_m", "s_n"});
+    es_graph_->SetOutput(mm, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto mm = cg->FindNode("MatMul_0");
+  ASSERT_NE(mm, nullptr);
+
+  AutoFuseConfig::MutableLoweringConfig().experimental_lowering_matmul = true;
+  std::vector<ge::InDataAnchorPtr> inputs = {mm->GetInDataAnchor(0), mm->GetInDataAnchor(1)};
+  MatMulAttr matmul_attr;
+  auto kernel_box = loop::StoreMatMul(mm->GetOutDataAnchor(0), inputs, matmul_attr);
+
+  EXPECT_TRUE(kernel_box.IsExternKernel());
+}
+
+TEST_F(LoopApiUT, StoreBatchMatmulDynamicShapeUsesCubeLowering) {
+  [this]() {
+    auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+    data0.SetSymbolShape({"s_batch", "s_m", "s_k"});
+    auto data1 = es_graph_->CreateInput(1, "data1", nullptr);
+    data1.SetSymbolShape({"s_batch", "s_k", "s_n"});
+    auto mm = es::BatchMatMul(data0, data1);
+    mm.SetSymbolShape({"s_batch", "s_m", "s_n"});
+    es_graph_->SetOutput(mm, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto mm = cg->FindNode("BatchMatMul_0");
+  ASSERT_NE(mm, nullptr);
+
+  AutoFuseConfig::MutableLoweringConfig().experimental_lowering_matmul = true;
+  std::vector<ge::InDataAnchorPtr> inputs = {mm->GetInDataAnchor(0), mm->GetInDataAnchor(1)};
+  MatMulAttr matmul_attr;
+  matmul_attr.is_batch = true;
+  auto kernel_box = loop::StoreMatMul(mm->GetOutDataAnchor(0), inputs, matmul_attr);
+
+  EXPECT_FALSE(kernel_box.IsExternKernel());
+}
+
+TEST_F(LoopApiUT, StoreBatchMatmulUnsupportedDynamicShapesFallBack) {
+  struct ShapeCase {
+    std::vector<const char *> x1;
+    std::vector<const char *> x2;
+    std::vector<const char *> y;
+  };
+  const std::vector<ShapeCase> shape_cases = {
+      // Batch broadcasting remains outside the dynamic Cube path.
+      {{"1", "s_m", "s_k"}, {"s_batch", "s_k", "s_n"}, {"s_batch", "s_m", "s_n"}},
+      // Equal input batch products do not imply matching batch axes.
+      {{"s_batch", "1", "s_m", "s_k"}, {"1", "s_batch", "s_k", "s_n"}, {"s_batch", "s_batch", "s_m", "s_n"}},
+      // K dimensions must be provably equal.
+      {{"s_batch", "s_m", "s_k0"}, {"s_batch", "s_k1", "s_n"}, {"s_batch", "s_m", "s_n"}},
+  };
+  AutoFuseConfig::MutableLoweringConfig().experimental_lowering_matmul = true;
+  for (size_t i = 0U; i < shape_cases.size(); ++i) {
+    SCOPED_TRACE(i);
+    const auto &shape = shape_cases[i];
+    es::Graph builder("dynamic_bmm_fallback");
+    auto data0 = builder.CreateInput(0, "data0", nullptr);
+    auto data1 = builder.CreateInput(1, "data1", nullptr);
+    data0.SetSymbolShape(shape.x1);
+    data1.SetSymbolShape(shape.x2);
+    auto output = es::BatchMatMul(data0, data1);
+    output.SetSymbolShape(shape.y);
+    ASSERT_EQ(builder.SetOutput(output, 0), SUCCESS);
+    const auto graph = builder.Build();
+    const auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+    const auto mm = cg->FindNode("BatchMatMul_0");
+    ASSERT_NE(mm, nullptr);
+    const std::vector<ge::InDataAnchorPtr> inputs = {mm->GetInDataAnchor(0), mm->GetInDataAnchor(1)};
+    MatMulAttr matmul_attr;
+    matmul_attr.is_batch = true;
+    const auto kernel_box = loop::StoreMatMul(mm->GetOutDataAnchor(0), inputs, matmul_attr);
+    EXPECT_TRUE(kernel_box.IsExternKernel());
+  }
+}
+
 TEST_F(LoopApiUT, StoreMatmulInputOverflow) {
   [this]() {
     auto data0 = es_graph_->CreateInput(0, "data0", nullptr);

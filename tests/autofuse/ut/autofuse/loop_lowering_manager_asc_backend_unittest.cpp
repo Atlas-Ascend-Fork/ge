@@ -2767,6 +2767,34 @@ tmp6 = ascir.Output(Output_0, [tmp5])
 )");
 }
 
+TEST_F(LoopLoweringToAscBackendUT, LoweringDynamicMatmulRankOneBias) {
+  auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+  auto data1 = es_graph_->CreateInput(1, "data1", nullptr);
+  auto bias = es_graph_->CreateInput(2, "bias", nullptr);
+  data0.SetSymbolShape({"s_m", "s_k"});
+  data1.SetSymbolShape({"s_k", "s_n"});
+  bias.SetSymbolShape({"s_n"});
+  auto mm = es::MatMul(data0, data1, bias);
+  mm.SetSymbolShape({"s_m", "s_n"});
+  es_graph_->SetOutput(mm, 0);
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  AutoFuseConfig::MutableLoweringConfig().experimental_lowering_matmul = true;
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  ASSERT_EQ(LoweringManager::FusedLoopToAscBackendOp(cg), GRAPH_SUCCESS);
+
+  auto asc_node = cg->FindFirstNodeMatchType("AscBackend");
+  ASSERT_NE(asc_node, nullptr);
+  auto fused_attrs = asc_node->GetOpDesc()->GetAttrsGroup<AutoFuseAttrs>();
+  ASSERT_NE(fused_attrs, nullptr);
+  ASSERT_NE(fused_attrs->GetAscGraph(), nullptr);
+  EXPECT_EQ(fused_attrs->GetFuseType(), loop::FuseType::kCube);
+  const auto readable = ReadableAscGraph(*fused_attrs->GetAscGraph());
+  EXPECT_NE(readable.find("ascir.MatMulBias("), std::string::npos);
+  EXPECT_NE(readable.find("repeats = [1, s_n]"), std::string::npos);
+}
+
 TEST_F(LoopLoweringToAscBackendUT, LoweringMatmulBias) {
   [this]() {
     auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
