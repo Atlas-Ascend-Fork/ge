@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -82,12 +83,42 @@ const char *kWatcherSceneConfig = R"({
     }
 })";
 
+const char *kWatcherNodesConfig = R"({
+    "dump": {
+        "dump_scene": "watcher",
+        "dump_path": "/tmp/watcher_dump",
+        "dump_mode": "output",
+        "dump_level": "op",
+        "dump_list": [
+            {
+                "watcher_nodes": ["add2"],
+                "layer": ["add1"]
+            }
+        ]
+    }
+})";
+
 const char *kLiteExceptionConfig = R"({
     "dump": {
         "dump_scene": "lite_exception",
         "dump_path": "/tmp/lite_exception_dump"
     }
 })";
+
+// 单下标黑名单查询：生产代码统一走批量接口，测试内部复用批量接口做单点断言
+bool IsInputBlacklisted(const std::string &model_name, const std::string &root_graph_name, const std::string &op_name,
+                        const std::string &op_type, uint32_t index) {
+  std::set<uint32_t> indices;
+  DumpConfig::Instance().GetInputBlacklistIndices(model_name, root_graph_name, op_name, op_type, index + 1U, indices);
+  return indices.count(index) != 0U;
+}
+
+bool IsOutputBlacklisted(const std::string &model_name, const std::string &root_graph_name, const std::string &op_name,
+                         const std::string &op_type, uint32_t index) {
+  std::set<uint32_t> indices;
+  DumpConfig::Instance().GetOutputBlacklistIndices(model_name, root_graph_name, op_name, op_type, index + 1U, indices);
+  return indices.count(index) != 0U;
+}
 
 }  // namespace
 
@@ -217,13 +248,95 @@ TEST_F(DumpConfigTest, SetGetMethodsTest) {
   EXPECT_EQ(DumpConfig::Instance().GetDumpStep(), "1-10");
 }
 
-// 测试 Watcher 场景配置
+// 测试 Watcher 场景配置：watcher 走 data dump 链路，不是 exception dump
 TEST_F(DumpConfigTest, ParseWatcherSceneConfigTest) {
   Status ret =
       DumpConfig::Instance().ParseAndValidate(kWatcherSceneConfig, static_cast<int32_t>(strlen(kWatcherSceneConfig)));
   EXPECT_EQ(ret, SUCCESS);
-  EXPECT_TRUE(DumpConfig::Instance().IsExceptionDumpEnabled());
+  EXPECT_TRUE(DumpConfig::Instance().IsDataDumpEnabled());
+  EXPECT_FALSE(DumpConfig::Instance().IsExceptionDumpEnabled());
+  EXPECT_TRUE(DumpConfig::Instance().IsWatcherDumpEnabled());
   EXPECT_EQ(DumpConfig::Instance().GetDumpScene(), "watcher");
+  // 未配置 watcher_nodes 时不产生 watcher/layer 匹配
+  EXPECT_FALSE(DumpConfig::Instance().IsWatcherNode("model", "root_graph", "add2"));
+  EXPECT_FALSE(DumpConfig::Instance().IsLayerOpOnWatcherMode("model", "root_graph", "add1"));
+}
+
+// 测试 watcher_nodes 匹配：仅 watcher 节点需要 dump，layer 算子只被记录
+TEST_F(DumpConfigTest, WatcherNodesMatchTest) {
+  ASSERT_EQ(
+      DumpConfig::Instance().ParseAndValidate(kWatcherNodesConfig, static_cast<int32_t>(strlen(kWatcherNodesConfig))),
+      SUCCESS);
+  ASSERT_TRUE(DumpConfig::Instance().IsDataDumpEnabled());
+  ASSERT_FALSE(DumpConfig::Instance().IsExceptionDumpEnabled());
+
+  // 只有 watcher 节点参与 data dump，layer 配置在 watcher 模式下不产生 dump（对齐 v1 OpNeedDump）
+  EXPECT_TRUE(DumpConfig::Instance().IsWatcherNode("model", "root_graph", "add2"));
+  EXPECT_FALSE(DumpConfig::Instance().IsWatcherNode("model", "root_graph", "add1"));
+  EXPECT_TRUE(DumpConfig::Instance().IsOpNeedDump("model", "root_graph", "add2"));
+  EXPECT_FALSE(DumpConfig::Instance().IsOpNeedDump("model", "root_graph", "add1"));
+  EXPECT_FALSE(DumpConfig::Instance().IsOpNeedDump("model", "root_graph", "other_op"));
+
+  // layer 算子（显式配置）需要打上 data dump 标志用于生成 <layerOp>_To_<watcherNode>
+  EXPECT_TRUE(DumpConfig::Instance().IsLayerOpOnWatcherMode("model", "root_graph", "add1"));
+  EXPECT_FALSE(DumpConfig::Instance().IsLayerOpOnWatcherMode("model", "root_graph", "add2"));
+  EXPECT_FALSE(DumpConfig::Instance().IsLayerOpOnWatcherMode("model", "root_graph", "other_op"));
+}
+
+// 测试 watcher 模式下未配置 layer 时，所有算子都作为 layer 算子被记录（对齐 v1 DUMP_LAYER_OP_MODEL 为空）
+TEST_F(DumpConfigTest, WatcherGlobalLayerEmptyRecordsAllOpsTest) {
+  const char *kWatcherWithoutLayer = R"({
+      "dump": {
+          "dump_scene": "watcher",
+          "dump_path": "/tmp/watcher_dump",
+          "dump_list": [
+              {"watcher_nodes": ["add2"]}
+          ]
+      }
+  })";
+  ASSERT_EQ(
+      DumpConfig::Instance().ParseAndValidate(kWatcherWithoutLayer, static_cast<int32_t>(strlen(kWatcherWithoutLayer))),
+      SUCCESS);
+
+  EXPECT_TRUE(DumpConfig::Instance().IsLayerOpOnWatcherMode("model", "root_graph", "any_op"));
+  EXPECT_TRUE(DumpConfig::Instance().IsLayerOpOnWatcherMode("model", "root_graph", "add2"));
+  // 非 watcher 配置（无 watcher_nodes）不属于 layer 记录范围
+  DumpConfig::Instance().Reset();
+  const char *kOnlyLayer = R"({
+      "dump": {"dump_path": "/tmp/dump_test", "dump_list": [{"layer": ["op1"]}]}})";
+  ASSERT_EQ(DumpConfig::Instance().ParseAndValidate(kOnlyLayer, static_cast<int32_t>(strlen(kOnlyLayer))), SUCCESS);
+  EXPECT_FALSE(DumpConfig::Instance().IsLayerOpOnWatcherMode("model", "root_graph", "op1"));
+}
+
+// 测试 watcher 场景的非法配置：dump_mode 非 output、与 dump_debug 互斥
+TEST_F(DumpConfigTest, WatcherSceneInvalidConfigTest) {
+  const char *kWatcherInputMode = R"({
+      "dump": {
+          "dump_scene": "watcher",
+          "dump_path": "/tmp/watcher_dump",
+          "dump_mode": "input",
+          "dump_list": [{"watcher_nodes": ["add2"]}]
+      }
+  })";
+  EXPECT_EQ(DumpConfig::Instance().ParseAndValidate(kWatcherInputMode, static_cast<int32_t>(strlen(kWatcherInputMode))),
+            FAILED);
+
+  const char *kWatcherWithDebug = R"({
+      "dump": {
+          "dump_scene": "watcher",
+          "dump_path": "/tmp/watcher_dump",
+          "dump_debug": "on",
+          "dump_list": [{"watcher_nodes": ["add2"]}]
+      }
+  })";
+  EXPECT_EQ(DumpConfig::Instance().ParseAndValidate(kWatcherWithDebug, static_cast<int32_t>(strlen(kWatcherWithDebug))),
+            FAILED);
+
+  const char *kWatcherWithoutPath = R"({
+      "dump": {"dump_scene": "watcher", "dump_list": [{"watcher_nodes": ["add2"]}]}})";
+  EXPECT_EQ(
+      DumpConfig::Instance().ParseAndValidate(kWatcherWithoutPath, static_cast<int32_t>(strlen(kWatcherWithoutPath))),
+      FAILED);
 }
 
 // 测试 Lite Exception 场景配置
@@ -307,6 +420,309 @@ TEST_F(DumpConfigTest, IsOpNeedDumpByGlobalLayerTest) {
   EXPECT_TRUE(DumpConfig::Instance().IsOpNeedDump("model1", "root_graph1", "layer1"));
   EXPECT_TRUE(DumpConfig::Instance().IsOpNeedDump("model2", "root_graph2", "layer1"));
   EXPECT_FALSE(DumpConfig::Instance().IsOpNeedDump("model1", "root_graph1", "layer2"));
+}
+
+// 测试 optype_blacklist 解析与查询
+TEST_F(DumpConfigTest, OpTypeBlacklistQueryTest) {
+  const char *kOpTypeBlacklistConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_mode": "all",
+          "dump_level": "op",
+          "dump_list": [
+              {
+                  "model_name": "test_model",
+                  "optype_blacklist": [
+                      {"name": "conv", "pos": ["input0", "input1", "output2"]}
+                  ]
+              }
+          ]
+      }
+  })";
+  ASSERT_EQ(DumpConfig::Instance().ParseAndValidate(kOpTypeBlacklistConfig,
+                                                    static_cast<int32_t>(strlen(kOpTypeBlacklistConfig))),
+            SUCCESS);
+
+  // 命中 optype_blacklist：conv 类型的 input0/input1 与 output2
+  EXPECT_TRUE(IsInputBlacklisted("test_model", "root_graph", "conv1", "conv", 0U));
+  EXPECT_TRUE(IsInputBlacklisted("test_model", "root_graph", "conv2", "conv", 1U));
+  EXPECT_TRUE(IsOutputBlacklisted("test_model", "root_graph", "conv3", "conv", 2U));
+  // 未命中：index 不在黑名单 / op_type 不匹配 / 模型不匹配
+  EXPECT_FALSE(IsInputBlacklisted("test_model", "root_graph", "conv1", "conv", 2U));
+  EXPECT_FALSE(IsInputBlacklisted("test_model", "root_graph", "relu1", "relu", 0U));
+  EXPECT_FALSE(IsInputBlacklisted("other_model", "root_graph", "conv1", "conv", 0U));
+}
+
+// 测试批量黑名单查询一次返回所有命中下标（供 dump 热路径避免逐 IO 加锁）
+TEST_F(DumpConfigTest, BlacklistBatchIndicesTest) {
+  const char *kBatchConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_level": "op",
+          "dump_list": [
+              {
+                  "model_name": "test_model",
+                  "optype_blacklist": [{"name": "conv", "pos": ["input0", "input1", "output2"]}]
+              }
+          ]
+      }
+  })";
+  ASSERT_EQ(DumpConfig::Instance().ParseAndValidate(kBatchConfig, static_cast<int32_t>(strlen(kBatchConfig))), SUCCESS);
+
+  std::set<uint32_t> input_indices;
+  DumpConfig::Instance().GetInputBlacklistIndices("test_model", "root_graph", "conv1", "conv", 3U, input_indices);
+  EXPECT_EQ(input_indices, (std::set<uint32_t>{0U, 1U}));
+
+  std::set<uint32_t> output_indices;
+  DumpConfig::Instance().GetOutputBlacklistIndices("test_model", "root_graph", "conv1", "conv", 3U, output_indices);
+  EXPECT_EQ(output_indices, (std::set<uint32_t>{2U}));
+
+  // 模型不匹配时批量结果为空
+  std::set<uint32_t> no_indices;
+  DumpConfig::Instance().GetInputBlacklistIndices("other_model", "root_graph", "conv1", "conv", 3U, no_indices);
+  EXPECT_TRUE(no_indices.empty());
+}
+
+// 测试 opname_blacklist 解析与查询
+TEST_F(DumpConfigTest, OpNameBlacklistQueryTest) {
+  const char *kOpNameBlacklistConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_mode": "all",
+          "dump_level": "op",
+          "dump_list": [
+              {
+                  "model_name": "test_model",
+                  "opname_blacklist": [
+                      {"name": "conv1", "pos": ["output0"]}
+                  ]
+              }
+          ]
+      }
+  })";
+  ASSERT_EQ(DumpConfig::Instance().ParseAndValidate(kOpNameBlacklistConfig,
+                                                    static_cast<int32_t>(strlen(kOpNameBlacklistConfig))),
+            SUCCESS);
+
+  // 按算子名命中黑名单
+  EXPECT_TRUE(IsOutputBlacklisted("test_model", "root_graph", "conv1", "conv", 0U));
+  // 算子名不匹配 / index 不匹配（input 与 output 独立）
+  EXPECT_FALSE(IsOutputBlacklisted("test_model", "root_graph", "conv2", "conv", 0U));
+  EXPECT_FALSE(IsInputBlacklisted("test_model", "root_graph", "conv1", "conv", 0U));
+}
+
+// 测试全局黑名单（model_name 为空对所有模型生效）与非法 pos 忽略
+TEST_F(DumpConfigTest, BlacklistGlobalConfigAndInvalidPosTest) {
+  const char *kGlobalBlacklistConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_list": [
+              {
+                  "opname_blacklist": [
+                      {"name": "conv1", "pos": ["input0", "invalid", "output99"]}
+                  ]
+              }
+          ]
+      }
+  })";
+  ASSERT_EQ(DumpConfig::Instance().ParseAndValidate(kGlobalBlacklistConfig,
+                                                    static_cast<int32_t>(strlen(kGlobalBlacklistConfig))),
+            SUCCESS);
+
+  // 全局黑名单（model_name 为空）对任意模型生效
+  EXPECT_TRUE(IsInputBlacklisted("any_model", "rg", "conv1", "conv", 0U));
+  EXPECT_TRUE(IsOutputBlacklisted("any_model", "rg", "conv1", "conv", 99U));
+  // 非法 pos "invalid" 被忽略，不产生匹配
+  EXPECT_FALSE(IsInputBlacklisted("any_model", "rg", "conv1", "conv", 1U));
+}
+
+// 测试 opname_range 解析与范围获取
+TEST_F(DumpConfigTest, OpNameRangeGetRangesTest) {
+  const char *kOpNameRangeConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_mode": "output",
+          "dump_level": "op",
+          "dump_list": [
+              {
+                  "model_name": "test_model",
+                  "opname_range": [{"begin": "conv1", "end": "relu1"}]
+              }
+          ]
+      }
+  })";
+  ASSERT_EQ(
+      DumpConfig::Instance().ParseAndValidate(kOpNameRangeConfig, static_cast<int32_t>(strlen(kOpNameRangeConfig))),
+      SUCCESS);
+
+  auto ranges = DumpConfig::Instance().GetOpDumpRanges("test_model", "root_graph");
+  ASSERT_EQ(ranges.size(), 1U);
+  EXPECT_EQ(ranges[0].first, "conv1");
+  EXPECT_EQ(ranges[0].second, "relu1");
+  // 其他模型无 range
+  EXPECT_TRUE(DumpConfig::Instance().GetOpDumpRanges("other_model", "rg").empty());
+  // 配置了 opname_range 时，IsOpNeedDump 不再按空 layer 全量 dump
+  EXPECT_FALSE(DumpConfig::Instance().IsOpNeedDump("test_model", "root_graph", "conv1"));
+}
+
+// 测试同名模型多个 opname_range 条目：对齐 v1 DumpProperties::SetOpDumpRange 的 last-wins 语义
+TEST_F(DumpConfigTest, OpNameRangeDuplicateModelLastWinsTest) {
+  const char *kDuplicateConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_mode": "output",
+          "dump_level": "op",
+          "dump_list": [
+              {"model_name": "test_model", "opname_range": [{"begin": "conv1", "end": "relu1"}]},
+              {"model_name": "test_model", "opname_range": [{"begin": "conv2", "end": "relu2"}]},
+              {"model_name": "root_graph", "opname_range": [{"begin": "conv3", "end": "relu3"}]}
+          ]
+      }
+  })";
+  ASSERT_EQ(DumpConfig::Instance().ParseAndValidate(kDuplicateConfig, static_cast<int32_t>(strlen(kDuplicateConfig))),
+            SUCCESS);
+
+  // 同名 test_model 取最后一个条目；且 model_name 匹配优先于 root_graph_name
+  auto ranges = DumpConfig::Instance().GetOpDumpRanges("test_model", "root_graph");
+  ASSERT_EQ(ranges.size(), 1U);
+  EXPECT_EQ(ranges[0].first, "conv2");
+  EXPECT_EQ(ranges[0].second, "relu2");
+
+  // model_name 不匹配时回退到 root_graph_name 条目
+  auto fallback = DumpConfig::Instance().GetOpDumpRanges("unknown_model", "root_graph");
+  ASSERT_EQ(fallback.size(), 1U);
+  EXPECT_EQ(fallback[0].first, "conv3");
+  EXPECT_EQ(fallback[0].second, "relu3");
+}
+
+// 测试 opname_range 配置校验失败场景
+TEST_F(DumpConfigTest, OpNameRangeInvalidConfigTest) {
+  // dump_level 非 op
+  const char *kLevelErrConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_level": "kernel",
+          "dump_list": [
+              {"model_name": "test_model", "opname_range": [{"begin": "a", "end": "b"}]}
+          ]
+      }
+  })";
+  EXPECT_NE(DumpConfig::Instance().ParseAndValidate(kLevelErrConfig, static_cast<int32_t>(strlen(kLevelErrConfig))),
+            SUCCESS);
+
+  DumpConfig::Instance().Reset();
+  // model_name 为空
+  const char *kModelErrConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_level": "op",
+          "dump_list": [
+              {"opname_range": [{"begin": "a", "end": "b"}]}
+          ]
+      }
+  })";
+  EXPECT_NE(DumpConfig::Instance().ParseAndValidate(kModelErrConfig, static_cast<int32_t>(strlen(kModelErrConfig))),
+            SUCCESS);
+
+  DumpConfig::Instance().Reset();
+  // begin/end 不完整
+  const char *kRangeErrConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_level": "op",
+          "dump_list": [
+              {"model_name": "test_model", "opname_range": [{"begin": "a"}]}
+          ]
+      }
+  })";
+  EXPECT_NE(DumpConfig::Instance().ParseAndValidate(kRangeErrConfig, static_cast<int32_t>(strlen(kRangeErrConfig))),
+            SUCCESS);
+}
+
+// 测试 opname_range 字段类型非法时不抛未捕获异常（dump_scene 场景下 IsValidDumpConfig 不校验 dump_list，需解析期兜底）
+TEST_F(DumpConfigTest, OpNameRangeNonStringFieldIgnoredTest) {
+  const char *kNonStringRangeConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_mode": "output",
+          "dump_scene": "watcher",
+          "dump_list": [
+              {"model_name": "test_model", "opname_range": [{"begin": 123, "end": "relu1"}]}
+          ]
+      }
+  })";
+  Status ret = FAILED;
+  EXPECT_NO_THROW(ret = DumpConfig::Instance().ParseAndValidate(kNonStringRangeConfig,
+                                                                static_cast<int32_t>(strlen(kNonStringRangeConfig))));
+  EXPECT_EQ(ret, SUCCESS);
+  // 类型非法的 range 条目被忽略，不会进入 opname_range 列表
+  EXPECT_TRUE(DumpConfig::Instance().GetOpDumpRanges("test_model", "root_graph").empty());
+}
+
+// 测试 data dump 开关推导与 V1 对齐
+TEST_F(DumpConfigTest, DataDumpSwitchDerivedByLevelTest) {
+  // dump_level=kernel：即使配置了 dump_list，也不开启 data dump（v1 由 level 推导 dump_status=off）
+  const char *kKernelLevelConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_level": "kernel",
+          "dump_list": [{"model_name": "test_model"}]
+      }
+  })";
+  ASSERT_EQ(
+      DumpConfig::Instance().ParseAndValidate(kKernelLevelConfig, static_cast<int32_t>(strlen(kKernelLevelConfig))),
+      SUCCESS);
+  EXPECT_FALSE(DumpConfig::Instance().IsDataDumpEnabled());
+  EXPECT_EQ(DumpConfig::Instance().GetDumpStatus(), GE_DUMP_STATUS_OFF);
+
+  DumpConfig::Instance().Reset();
+  // dump_debug=on 且配了 dump_list：只开溢出检测，不开 data dump
+  const char *kDebugWithListConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/debug_dump",
+          "dump_debug": "on",
+          "dump_list": [{"model_name": "test_model"}]
+      }
+  })";
+  ASSERT_EQ(
+      DumpConfig::Instance().ParseAndValidate(kDebugWithListConfig, static_cast<int32_t>(strlen(kDebugWithListConfig))),
+      SUCCESS);
+  EXPECT_TRUE(DumpConfig::Instance().IsOverflowDumpEnabled());
+  EXPECT_FALSE(DumpConfig::Instance().IsDataDumpEnabled());
+
+  DumpConfig::Instance().Reset();
+  // 异常场景：只开 exception dump，不叠加 data dump（对齐 v1 IsDataDumpOpen）
+  ASSERT_EQ(
+      DumpConfig::Instance().ParseAndValidate(kExceptionDumpConfig, static_cast<int32_t>(strlen(kExceptionDumpConfig))),
+      SUCCESS);
+  EXPECT_TRUE(DumpConfig::Instance().IsExceptionDumpEnabled());
+  EXPECT_FALSE(DumpConfig::Instance().IsDataDumpEnabled());
+}
+
+// 测试 dump_stats 校验对齐 V1：不能为空，且必须与 dump_data=stats 配合
+TEST_F(DumpConfigTest, DumpStatsValidationTest) {
+  const char *kStatsEmptyConfig = R"({
+      "dump": {"dump_path": "/tmp/dump_test", "dump_data": "stats", "dump_stats": []}})";
+  EXPECT_NE(DumpConfig::Instance().ParseAndValidate(kStatsEmptyConfig, static_cast<int32_t>(strlen(kStatsEmptyConfig))),
+            SUCCESS);
+
+  DumpConfig::Instance().Reset();
+  // dump_data 缺省为 tensor，此时不允许开启 dump_stats
+  const char *kStatsWithTensorConfig = R"({
+      "dump": {"dump_path": "/tmp/dump_test", "dump_stats": ["op_sum"]}})";
+  EXPECT_NE(DumpConfig::Instance().ParseAndValidate(kStatsWithTensorConfig,
+                                                    static_cast<int32_t>(strlen(kStatsWithTensorConfig))),
+            SUCCESS);
+
+  DumpConfig::Instance().Reset();
+  const char *kStatsOkConfig = R"({
+      "dump": {"dump_path": "/tmp/dump_test", "dump_data": "stats", "dump_stats": ["op_sum"]}})";
+  ASSERT_EQ(DumpConfig::Instance().ParseAndValidate(kStatsOkConfig, static_cast<int32_t>(strlen(kStatsOkConfig))),
+            SUCCESS);
+  EXPECT_EQ(DumpConfig::Instance().GetDumpData(), "stats");
+  EXPECT_EQ(DumpConfig::Instance().GetDumpStats().size(), 1U);
+  // dump_level 缺省 all -> data dump 开启
+  EXPECT_TRUE(DumpConfig::Instance().IsDataDumpEnabled());
 }
 
 // DumpCallbackManager 测试类
@@ -654,6 +1070,44 @@ TEST_F(ModelDumpManagerTest, IsDataDumpEnabledTest) {
   EXPECT_EQ(is_data_dump, 1U);
 }
 
+// 测试 watcher 场景：watcher 节点与被记录的 layer 算子都要打上 data dump 标志，其余算子不打
+TEST_F(ModelDumpManagerTest, IsDataDumpEnabledOnWatcherModeTest) {
+  ASSERT_EQ(
+      DumpConfig::Instance().ParseAndValidate(kWatcherNodesConfig, static_cast<int32_t>(strlen(kWatcherNodesConfig))),
+      SUCCESS);
+
+  ModelDumpManager manager(1);
+  ModelDumpInfo model_info{};
+  model_info.model_id = 1;
+  model_info.model_name = "test_model";
+  model_info.root_graph_name = "root_graph";
+  ASSERT_EQ(manager.SetModelDumpInfo(model_info), SUCCESS);
+
+  uint8_t is_data_dump = 0U;
+  // watcher 节点自身需要 dump
+  ASSERT_EQ(manager.IsDataDumpEnabled("add2", &is_data_dump), SUCCESS);
+  EXPECT_EQ(is_data_dump, 1U);
+  // layer 算子不落自身数据，但需要 dump 标志触发 <layerOp>_To_<watcherNode>
+  ASSERT_EQ(manager.IsDataDumpEnabled("add1", &is_data_dump), SUCCESS);
+  EXPECT_EQ(is_data_dump, 1U);
+  // 既不是 watcher 节点也不在 layer 列表中的算子不 dump
+  ASSERT_EQ(manager.IsDataDumpEnabled("other_op", &is_data_dump), SUCCESS);
+  EXPECT_EQ(is_data_dump, 0U);
+
+  // layer 算子走记录路径，watcher 节点走 task 保存路径，均返回 SUCCESS
+  GertModelTaskDesc layer_task{};
+  layer_task.op_name = "add1";
+  layer_task.task_id = 2U;
+  layer_task.stream_id = 47U;
+  ASSERT_EQ(manager.PostprocessOm2TaskInfo(layer_task), SUCCESS);
+
+  GertModelTaskDesc watcher_task{};
+  watcher_task.op_name = "add2";
+  watcher_task.task_id = 5U;
+  watcher_task.stream_id = 47U;
+  ASSERT_EQ(manager.PostprocessOm2TaskInfo(watcher_task), SUCCESS);
+}
+
 // 测试 DispatchDumpInfo
 TEST_F(ModelDumpManagerTest, DispatchDumpInfoTest) {
   ModelDumpManager manager(1);
@@ -699,6 +1153,146 @@ TEST_F(ModelDumpManagerTest, UpdateStepIdTest) {
 
   // 同步路径刷新 step 应成功
   EXPECT_EQ(manager.UpdateStepId(7U, nullptr), SUCCESS);
+}
+
+// 测试 opname_range 状态机：按 task 下发顺序推进，命中 [begin, end] 的算子需要 dump
+TEST_F(ModelDumpManagerTest, OpNameRangeFsmNeedDataDumpTest) {
+  const char *kOpNameRangeConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_mode": "output",
+          "dump_level": "op",
+          "dump_list": [
+              {"model_name": "test_model", "opname_range": [{"begin": "conv1", "end": "relu1"}]}
+          ]
+      }
+  })";
+  ASSERT_EQ(
+      DumpConfig::Instance().ParseAndValidate(kOpNameRangeConfig, static_cast<int32_t>(strlen(kOpNameRangeConfig))),
+      SUCCESS);
+  ASSERT_TRUE(DumpConfig::Instance().IsDataDumpEnabled());
+
+  ModelDumpManager manager(1);
+  ModelDumpInfo model_info{};
+  model_info.model_id = 1;
+  model_info.model_name = "test_model";
+  ASSERT_EQ(manager.SetModelDumpInfo(model_info), SUCCESS);
+
+  // 按 task 下发顺序推进状态机，非自定义算子走 task_raw_info == nullptr 提前返回
+  GertModelTaskDesc before{};
+  before.op_name = "input_data";
+  ASSERT_EQ(manager.PreprocessOm2TaskInfo(before), SUCCESS);
+  EXPECT_FALSE(manager.NeedDataDump(before));
+
+  GertModelTaskDesc begin{};
+  begin.op_name = "conv1";
+  ASSERT_EQ(manager.PreprocessOm2TaskInfo(begin), SUCCESS);
+  EXPECT_TRUE(manager.NeedDataDump(begin));
+
+  GertModelTaskDesc middle{};
+  middle.op_name = "bn1";
+  ASSERT_EQ(manager.PreprocessOm2TaskInfo(middle), SUCCESS);
+  EXPECT_TRUE(manager.NeedDataDump(middle));
+
+  GertModelTaskDesc end{};
+  end.op_name = "relu1";
+  ASSERT_EQ(manager.PreprocessOm2TaskInfo(end), SUCCESS);
+  EXPECT_TRUE(manager.NeedDataDump(end));
+
+  GertModelTaskDesc after{};
+  after.op_name = "softmax";
+  ASSERT_EQ(manager.PreprocessOm2TaskInfo(after), SUCCESS);
+  EXPECT_FALSE(manager.NeedDataDump(after));
+}
+
+// 测试 opname_range 状态机去重不依赖 task 描述符地址：复用同一对象推进不同算子
+TEST_F(ModelDumpManagerTest, OpNameRangeFsmReusedDescriptorAdvancesTest) {
+  const char *kOpNameRangeConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_mode": "output",
+          "dump_level": "op",
+          "dump_list": [
+              {"model_name": "test_model", "opname_range": [{"begin": "conv1", "end": "relu1"}]}
+          ]
+      }
+  })";
+  ASSERT_EQ(
+      DumpConfig::Instance().ParseAndValidate(kOpNameRangeConfig, static_cast<int32_t>(strlen(kOpNameRangeConfig))),
+      SUCCESS);
+
+  ModelDumpManager manager(1);
+  ModelDumpInfo model_info{};
+  model_info.model_id = 1;
+  model_info.model_name = "test_model";
+  ASSERT_EQ(manager.SetModelDumpInfo(model_info), SUCCESS);
+
+  // 始终复用同一个 task 描述符对象（地址不变），仅改变 op_name，模拟调用方复用描述符缓冲区
+  GertModelTaskDesc task{};
+  task.stream_id = 1U;
+  task.op_name = "conv1";
+  ASSERT_EQ(manager.PreprocessOm2TaskInfo(task), SUCCESS);
+  EXPECT_TRUE(manager.NeedDataDump(task));
+
+  task.op_name = "bn1";
+  ASSERT_EQ(manager.PreprocessOm2TaskInfo(task), SUCCESS);
+  EXPECT_TRUE(manager.NeedDataDump(task));
+
+  task.op_name = "relu1";
+  ASSERT_EQ(manager.PreprocessOm2TaskInfo(task), SUCCESS);
+  EXPECT_TRUE(manager.NeedDataDump(task));
+
+  task.op_name = "softmax";
+  ASSERT_EQ(manager.PreprocessOm2TaskInfo(task), SUCCESS);
+  EXPECT_FALSE(manager.NeedDataDump(task));
+}
+
+// 测试无 Preprocess 回调的 task（如 DSA）在 launch 前查询 IsDataDumpEnabled 时，
+// 能按当前状态预演本 task 的转移，不早于状态迁移导致漏置 dump 标志。
+TEST_F(ModelDumpManagerTest, IsDataDumpEnabledPredictsPendingRangeTransitionTest) {
+  const char *kOpNameRangeConfig = R"({
+      "dump": {
+          "dump_path": "/tmp/dump_test",
+          "dump_mode": "output",
+          "dump_level": "op",
+          "dump_list": [
+              {"model_name": "test_model", "opname_range": [{"begin": "conv1", "end": "relu1"}]}
+          ]
+      }
+  })";
+  ASSERT_EQ(
+      DumpConfig::Instance().ParseAndValidate(kOpNameRangeConfig, static_cast<int32_t>(strlen(kOpNameRangeConfig))),
+      SUCCESS);
+
+  ModelDumpManager manager(1);
+  ModelDumpInfo model_info{};
+  model_info.model_id = 1;
+  model_info.model_name = "test_model";
+  ASSERT_EQ(manager.SetModelDumpInfo(model_info), SUCCESS);
+
+  uint8_t is_data_dump = 0U;
+  GertModelTaskDesc task{};
+  task.stream_id = 1U;
+
+  // 模拟 DSA：仅有 Postprocess，launch 前的 IsDataDumpEnabled 查询早于本 task 的状态迁移
+  task.op_name = "conv1";
+  ASSERT_EQ(manager.IsDataDumpEnabled(task.op_name, &is_data_dump), SUCCESS);
+  EXPECT_EQ(is_data_dump, 1U);  // begin 算子应命中
+  ASSERT_EQ(manager.PostprocessOm2TaskInfo(task), SUCCESS);
+
+  task.op_name = "bn1";
+  ASSERT_EQ(manager.IsDataDumpEnabled(task.op_name, &is_data_dump), SUCCESS);
+  EXPECT_EQ(is_data_dump, 1U);  // 区间内算子应命中
+  ASSERT_EQ(manager.PostprocessOm2TaskInfo(task), SUCCESS);
+
+  task.op_name = "relu1";
+  ASSERT_EQ(manager.IsDataDumpEnabled(task.op_name, &is_data_dump), SUCCESS);
+  EXPECT_EQ(is_data_dump, 1U);  // end 算子应命中
+  ASSERT_EQ(manager.PostprocessOm2TaskInfo(task), SUCCESS);
+
+  task.op_name = "softmax";
+  ASSERT_EQ(manager.IsDataDumpEnabled(task.op_name, &is_data_dump), SUCCESS);
+  EXPECT_EQ(is_data_dump, 0U);  // 区间外算子不命中
 }
 
 // ExceptionDumpImpl 测试
@@ -968,7 +1562,7 @@ TEST(DumpOpProtoDtypeTest, BuildTaskInputsOutputsWriteIrDtype) {
   task_desc.op_type = "CustomOp";
   task_desc.inputs = inputs;
   task_desc.input_num = 1U;
-  ASSERT_EQ(dump_op.BuildTaskInputs(task_desc), SUCCESS);
+  ASSERT_EQ(dump_op.BuildTaskInputs(task_desc, "", ""), SUCCESS);
   const auto &input_task = dump_op.GetOpMappingInfo().task(0);
   ASSERT_EQ(input_task.input_size(), 1);
   EXPECT_EQ(input_task.input(0).data_type(), 1);  // proto DT_FLOAT
@@ -984,7 +1578,7 @@ TEST(DumpOpProtoDtypeTest, BuildTaskInputsOutputsWriteIrDtype) {
   output_desc.op_type = "CustomOp";
   output_desc.outputs = outputs;
   output_desc.output_num = 1U;
-  ASSERT_EQ(output_op.BuildTaskOutputs(output_desc), SUCCESS);
+  ASSERT_EQ(output_op.BuildTaskOutputs(output_desc, "", ""), SUCCESS);
   const auto &output_task = output_op.GetOpMappingInfo().task(0);
   ASSERT_EQ(output_task.output_size(), 1);
   EXPECT_EQ(output_task.output(0).data_type(), 11);  // proto DT_BOOL
@@ -1003,7 +1597,7 @@ TEST(DumpOpProtoDtypeTest, BuildTaskInputsUnknownDtypeMapsToUndefined) {
   task_desc.op_type = "CustomOp";
   task_desc.inputs = inputs;
   task_desc.input_num = 1U;
-  ASSERT_EQ(dump_op.BuildTaskInputs(task_desc), SUCCESS);
+  ASSERT_EQ(dump_op.BuildTaskInputs(task_desc, "", ""), SUCCESS);
   const auto &task = dump_op.GetOpMappingInfo().task(0);
   ASSERT_EQ(task.input_size(), 1);
   EXPECT_EQ(task.input(0).data_type(), 0);  // proto DT_UNDEFINED

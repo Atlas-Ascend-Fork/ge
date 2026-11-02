@@ -13,8 +13,10 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include "framework/common/ge_types.h"
 #include "framework/common/ge_visibility.h"
+#include "framework/runtime/dump/dump_op_range_state.h"
 #include "framework/runtime/dump/model_dump_c_api.h"
 #include "rt_external_base.h"
 
@@ -101,9 +103,17 @@ class VISIBILITY_EXPORT ModelDumpManager {
   void Clear();
 
  private:
+  // 按算子判定的纯 data dump 条件（全局 data dump 开关 && 算子命中 dump_list/opname_range），
+  // 与 overflow 全局开关解耦，供 custom op 张量落盘等需区分"算子命中 data dump"与"仅 overflow 使能"的场景使用。
+  bool IsTaskNeedDataDump(const GertModelTaskDesc &task_info) const;
+
   uint32_t model_id_;
   ModelDumpInfo model_info_{};
   bool need_clear_dfx_cache_{false};
+
+  // opname_range 状态机（对齐 v1 DavinciModel::ResetDumpFsmState/SetDumpFsmState，
+  // 每个模型持有一份，命中 [begin, end] 范围的 op 记入 dump_op_in_range_）
+  std::unique_ptr<DumpOpRangeState> dump_op_range_state_;
 
   std::unique_ptr<DataDumpImpl> data_dump_impl_;
   std::unique_ptr<ExceptionDumpImpl> exception_impl_;

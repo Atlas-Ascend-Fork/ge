@@ -9,6 +9,7 @@
  */
 
 #include <cinttypes>
+#include <set>
 #include "framework/runtime/dump/data_dump_impl.h"
 #include "framework/runtime/dump/dump_config.h"
 #include "framework/common/debug/ge_log.h"
@@ -25,6 +26,8 @@ constexpr uint32_t kAicpuLoadFlag = 1U;
 constexpr uint32_t kAddrLength = static_cast<uint32_t>(sizeof(void *));
 constexpr uint64_t kOpDebugShape = 2048U;
 constexpr uint64_t kOpDebugSize = 2048U;
+// 对齐 v1：dump origin attr 缺省时 original_output_index 取 -1（未知）
+constexpr int32_t kUnknownDumpOriginIndex = -1;
 const std::string OP_DEBUG_NAME = "Node_OpDebug";
 const std::string OP_DEBUG_TYPE = "Opdebug";
 
@@ -127,14 +130,8 @@ DataDumpImpl::~DataDumpImpl() {
   Clear();
 }
 
-Status DataDumpImpl::SaveTask(const GertModelTaskDesc &task_info, ModelTaskType task_type, rtStream_t stream,
-                              bool is_op_debug) {
-  const char *op_name = (task_info.op_name != nullptr) ? task_info.op_name : "";
-  const char *op_type = (task_info.op_type != nullptr) ? task_info.op_type : "";
-  GELOGD("SaveTask: op_name=%s, task_id=%u, stream_id=%u, is_op_debug=%d", op_name, task_info.task_id,
-         task_info.stream_id, is_op_debug);
-
-  InnerDumpInfo dump_info = {};
+void DataDumpImpl::InitDumpInfo(const GertModelTaskDesc &task_info, ModelTaskType task_type, rtStream_t stream,
+                                bool is_op_debug, InnerDumpInfo &dump_info) const {
   dump_info.task_id = static_cast<uint32_t>(task_info.task_id);
   dump_info.stream_id = static_cast<uint32_t>(task_info.stream_id);
   dump_info.context_id = static_cast<uint32_t>(task_info.context_id);
@@ -144,52 +141,56 @@ Status DataDumpImpl::SaveTask(const GertModelTaskDesc &task_info, ModelTaskType 
   dump_info.is_op_debug = is_op_debug;
   dump_info.args_base = task_info.args_base;
   dump_info.args_size = task_info.args_size;
-  dump_info.op_name = op_name;
-  dump_info.op_type = op_type;
+  dump_info.op_name = (task_info.op_name != nullptr) ? task_info.op_name : "";
+  dump_info.op_type = (task_info.op_type != nullptr) ? task_info.op_type : "";
   dump_info.is_raw_address = task_info.is_raw_address;
+}
 
-  const auto copy_io_entries = [&op_name](const GertModelTaskIoEntry *entries, const uint32_t entry_num,
-                                          std::vector<InnerTensorInfo> &inner_tensors) -> Status {
-    if ((entry_num > 0U) && (entries == nullptr)) {
-      GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io entries is null, entry_num=%u.", entry_num);
+Status DataDumpImpl::CopyTaskIoEntries(const GertModelTaskIoEntry *entries, uint32_t entry_num,
+                                       std::vector<InnerTensorInfo> &inner_tensors) const {
+  if ((entry_num > 0U) && (entries == nullptr)) {
+    GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io entries is null, entry_num=%u.", entry_num);
+    return PARAM_INVALID;
+  }
+  inner_tensors.reserve(entry_num);
+  for (uint32_t i = 0U; i < entry_num; ++i) {
+    const auto &entry = entries[i];
+    if (entry.tensor == nullptr) {
+      GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io tensor is null, index=%u.", i);
       return PARAM_INVALID;
     }
-    inner_tensors.reserve(entry_num);
-    for (uint32_t i = 0U; i < entry_num; ++i) {
-      const auto &entry = entries[i];
-      if (entry.tensor == nullptr) {
-        GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io tensor is null, index=%u.", i);
-        return PARAM_INVALID;
+    const auto &tensor = *entry.tensor;
+    InnerTensorInfo inner_tensor{};
+    inner_tensor.offset = entry.offset;
+    inner_tensor.device_address = PtrToValue(tensor.GetAddr());
+    inner_tensor.size = tensor.GetSize();
+    // 对齐 v1(data_dumper.cc)：dump proto 的 data_type 写 IR(proto) 枚举，与 ge::DataType 数值错位
+    inner_tensor.data_type = DataTypeUtil::GetIrDataType(tensor.GetDataType());
+    inner_tensor.format = tensor.GetStorageFormat();
+    // 对齐 v1 GenerateOutput/GenerateInput 的 origin 字段：origin shape/format 直接取；
+    // gert::Tensor 未提供 origin dtype，v1 该字段写 ge::DataType 原值，此处同样退化为当前 dtype 原值
+    inner_tensor.origin_data_type = static_cast<int32_t>(tensor.GetDataType());
+    inner_tensor.origin_format = tensor.GetOriginFormat();
+    if (tensor.GetStorageShape().GetDimNum() > 0U) {
+      inner_tensor.shape_dims.clear();
+      inner_tensor.shape_dims.reserve(tensor.GetStorageShape().GetDimNum());
+      for (auto i = 0U; i < tensor.GetStorageShape().GetDimNum(); ++i) {
+        inner_tensor.shape_dims.push_back(tensor.GetStorageShape().GetDim(i));
       }
-      const auto &tensor = *entry.tensor;
-      InnerTensorInfo inner_tensor{};
-      inner_tensor.offset = entry.offset;
-      inner_tensor.device_address = PtrToValue(tensor.GetAddr());
-      inner_tensor.size = tensor.GetSize();
-      // dump proto 的 data_type 写 IR(proto) 枚举，与 ge::DataType 数值错位
-      inner_tensor.data_type = DataTypeUtil::GetIrDataType(tensor.GetDataType());
-      inner_tensor.format = tensor.GetStorageFormat();
-      if (tensor.GetStorageShape().GetDimNum() > 0U) {
-        inner_tensor.shape_dims.clear();
-        inner_tensor.shape_dims.reserve(tensor.GetStorageShape().GetDimNum());
-        for (auto i = 0U; i < tensor.GetStorageShape().GetDimNum(); ++i) {
-          inner_tensor.shape_dims.push_back(tensor.GetStorageShape().GetDim(i));
-        }
-      }
-      inner_tensors.push_back(inner_tensor);
     }
-    return SUCCESS;
-  };
-
-  Status ret = copy_io_entries(task_info.inputs, task_info.input_num, dump_info.inputs);
-  if (ret != SUCCESS) {
-    return ret;
+    if (tensor.GetOriginShape().GetDimNum() > 0U) {
+      inner_tensor.origin_shape_dims.clear();
+      inner_tensor.origin_shape_dims.reserve(tensor.GetOriginShape().GetDimNum());
+      for (auto i = 0U; i < tensor.GetOriginShape().GetDimNum(); ++i) {
+        inner_tensor.origin_shape_dims.push_back(tensor.GetOriginShape().GetDim(i));
+      }
+    }
+    inner_tensors.push_back(inner_tensor);
   }
-  ret = copy_io_entries(task_info.outputs, task_info.output_num, dump_info.outputs);
-  if (ret != SUCCESS) {
-    return ret;
-  }
+  return SUCCESS;
+}
 
+Status DataDumpImpl::CopyTaskWorkspaces(const GertModelTaskDesc &task_info, InnerDumpInfo &dump_info) const {
   if ((task_info.workspace_num > 0U) &&
       ((task_info.workspace_addrs == nullptr) || (task_info.workspace_sizes == nullptr))) {
     GELOGE(PARAM_INVALID, "[Check][Param] OM2 task workspace info is null, workspace_num=%u.", task_info.workspace_num);
@@ -199,9 +200,38 @@ Status DataDumpImpl::SaveTask(const GertModelTaskDesc &task_info, ModelTaskType 
     dump_info.workspace_addrs.push_back(task_info.workspace_addrs[i]);
     dump_info.workspace_sizes.push_back(task_info.workspace_sizes[i]);
   }
+  return SUCCESS;
+}
+
+Status DataDumpImpl::SaveTask(const GertModelTaskDesc &task_info, ModelTaskType task_type, rtStream_t stream,
+                              bool is_op_debug) {
+  const char *op_name = (task_info.op_name != nullptr) ? task_info.op_name : "";
+  GELOGD("SaveTask: op_name=%s, task_id=%u, stream_id=%u, is_op_debug=%d", op_name, task_info.task_id,
+         task_info.stream_id, is_op_debug);
+
+  InnerDumpInfo dump_info = {};
+  InitDumpInfo(task_info, task_type, stream, is_op_debug, dump_info);
+
+  Status ret = CopyTaskIoEntries(task_info.inputs, task_info.input_num, dump_info.inputs);
+  if (ret != SUCCESS) {
+    return ret;
+  }
+  ret = CopyTaskIoEntries(task_info.outputs, task_info.output_num, dump_info.outputs);
+  if (ret != SUCCESS) {
+    return ret;
+  }
+  ret = CopyTaskWorkspaces(task_info, dump_info);
+  if (ret != SUCCESS) {
+    return ret;
+  }
 
   task_list_.push_back(dump_info);
   return SUCCESS;
+}
+
+void DataDumpImpl::SaveLayerOpInfo(uint32_t task_id, uint32_t stream_id, const std::string &op_name) {
+  layer_op_list_.push_back({task_id, stream_id, op_name});
+  GELOGD("SaveLayerOpInfo for watcher mode: op_name=%s, task_id=%u, stream_id=%u", op_name.c_str(), task_id, stream_id);
 }
 
 Status DataDumpImpl::ExecuteLoadDumpInfo(const toolkit::aicpu::dump::OpMappingInfo &op_mapping_info) {
@@ -288,12 +318,14 @@ Status DataDumpImpl::ExecuteLoadDumpInfo(const std::vector<uint8_t> &payload) {
 
 Status DataDumpImpl::BuildOpMappingBasicInfo(const ModelDumpInfo &model_info,
                                              toolkit::aicpu::dump::OpMappingInfo &dump_op_mapping_info) {
+  model_name_ = (model_info.model_name != nullptr) ? model_info.model_name : "";
+  root_graph_name_ = (model_info.root_graph_name != nullptr) ? model_info.root_graph_name : "";
   if (op_mapping_base_info_initialized_) {
     dump_op_mapping_info = op_mapping_base_info_;
     return ge::SUCCESS;
   }
   auto &op_mapping_info = op_mapping_base_info_;
-  const char *model_name = (model_info.model_name != nullptr) ? model_info.model_name : "";
+  const char *model_name = model_name_.c_str();
   op_mapping_info.set_dump_path(DumpConfig::Instance().GetDumpPath() + std::to_string(model_info.device_id) + "/");
   op_mapping_info.set_model_name(model_name);
   op_mapping_info.set_model_id(model_info.model_id);
@@ -346,12 +378,14 @@ Status DataDumpImpl::BuildOpMappingBasicInfo(const ModelDumpInfo &model_info,
 }
 
 Status DataDumpImpl::BuildDumpTransportBasicInfo(const ModelDumpInfo &model_info, DumpTransportInfo &result) {
+  model_name_ = (model_info.model_name != nullptr) ? model_info.model_name : "";
+  root_graph_name_ = (model_info.root_graph_name != nullptr) ? model_info.root_graph_name : "";
   if (dump_transport_base_info_initialized_) {
     result = dump_transport_base_info_;
     return ge::SUCCESS;
   }
   auto &dump_transport_info = dump_transport_base_info_.MutableModel();
-  const char *model_name = (model_info.model_name != nullptr) ? model_info.model_name : "";
+  const char *model_name = model_name_.c_str();
   dump_transport_info.SetDumpPath(DumpConfig::Instance().GetDumpPath() + std::to_string(model_info.device_id) + "/");
   dump_transport_info.SetModelName(model_name);
   dump_transport_info.SetModelId(model_info.model_id);
@@ -450,8 +484,27 @@ Status DataDumpImpl::BuildTaskList(toolkit::aicpu::dump::OpMappingInfo &op_mappi
     BuildTaskInputs(dump_info, *task);
     BuildTaskOutputs(dump_info, *task);
     BuildTaskWorkspaces(dump_info, *task);
+    BuildWatcherLayerTasks(dump_info, *task, op_mapping_info);
   }
   return SUCCESS;
+}
+
+void DataDumpImpl::BuildWatcherLayerTasks(const InnerDumpInfo &dump_info, const toolkit::aicpu::dump::Task &task,
+                                          toolkit::aicpu::dump::OpMappingInfo &op_mapping_info) const {
+  if (layer_op_list_.empty() ||
+      !DumpConfig::Instance().IsWatcherNode(model_name_, root_graph_name_, dump_info.op_name)) {
+    return;
+  }
+
+  for (const auto &layer_op : layer_op_list_) {
+    toolkit::aicpu::dump::Task task_watcher = task;
+    task_watcher.set_task_id(layer_op.task_id);
+    task_watcher.set_stream_id(layer_op.stream_id);
+    const std::string watcher_op_name = layer_op.op_name + "_To_" + dump_info.op_name;
+    GELOGI("WatcherOpName %s stream_id %u task_id %u.", watcher_op_name.c_str(), layer_op.stream_id, layer_op.task_id);
+    task_watcher.mutable_op()->set_op_name(watcher_op_name);
+    op_mapping_info.mutable_task()->Add(std::move(task_watcher));
+  }
 }
 
 void DataDumpImpl::BuildTaskInputs(const InnerDumpInfo &dump_info, toolkit::aicpu::dump::Task &task) const {
@@ -464,7 +517,15 @@ void DataDumpImpl::BuildTaskInputs(const InnerDumpInfo &dump_info, toolkit::aicp
     return;
   }
 
+  std::set<uint32_t> input_blacklist;
+  DumpConfig::Instance().GetInputBlacklistIndices(model_name_, root_graph_name_, dump_info.op_name, dump_info.op_type,
+                                                  static_cast<uint32_t>(dump_info.inputs.size()), input_blacklist);
   for (size_t i = 0; i < dump_info.inputs.size(); ++i) {
+    if (input_blacklist.count(static_cast<uint32_t>(i)) != 0U) {
+      GELOGI("[OM2 Dump] Node %s input[%zu] is in blacklist for model %s, skip to dump this input.",
+             dump_info.op_name.c_str(), i, model_name_.c_str());
+      continue;
+    }
     toolkit::aicpu::dump::Input *input_tensor = task.add_input();
     const auto &tensor = dump_info.inputs[i];
 
@@ -491,6 +552,10 @@ void DataDumpImpl::BuildTaskInputs(const InnerDumpInfo &dump_info, toolkit::aicp
     for (const auto dim : tensor.shape_dims) {
       input_tensor->mutable_shape()->add_dim(static_cast<uint64_t>(dim));
     }
+    // 对齐 v1 GenerateInput 的 origin_shape
+    for (const auto dim : tensor.origin_shape_dims) {
+      input_tensor->mutable_origin_shape()->add_dim(static_cast<uint64_t>(dim));
+    }
   }
 }
 
@@ -504,7 +569,15 @@ void DataDumpImpl::BuildTaskOutputs(const InnerDumpInfo &dump_info, toolkit::aic
     return;
   }
 
+  std::set<uint32_t> output_blacklist;
+  DumpConfig::Instance().GetOutputBlacklistIndices(model_name_, root_graph_name_, dump_info.op_name, dump_info.op_type,
+                                                   static_cast<uint32_t>(dump_info.outputs.size()), output_blacklist);
   for (size_t i = 0; i < dump_info.outputs.size(); ++i) {
+    if (output_blacklist.count(static_cast<uint32_t>(i)) != 0U) {
+      GELOGI("[OM2 Dump] Node %s output[%zu] is in blacklist for model %s, skip to dump this output.",
+             dump_info.op_name.c_str(), i, model_name_.c_str());
+      continue;
+    }
     toolkit::aicpu::dump::Output *output_tensor = task.add_output();
     const auto &tensor = dump_info.outputs[i];
 
@@ -531,6 +604,15 @@ void DataDumpImpl::BuildTaskOutputs(const InnerDumpInfo &dump_info, toolkit::aic
     for (const auto dim : tensor.shape_dims) {
       output_tensor->mutable_shape()->add_dim(static_cast<uint64_t>(dim));
     }
+    // 对齐 v1 GenerateOutput：origin_shape / original_output_format / original_output_data_type
+    for (const auto dim : tensor.origin_shape_dims) {
+      output_tensor->mutable_origin_shape()->add_dim(static_cast<uint64_t>(dim));
+    }
+    output_tensor->set_original_output_format(tensor.origin_format);
+    output_tensor->set_original_output_data_type(tensor.origin_data_type);
+    // OM2 任务描述未透传编译期写入张量的 dump origin attr，原始节点名/输出端口号无法获知，
+    // 取 -1 表示未知（对齐 v1 attr 缺省时的取值）
+    output_tensor->set_original_output_index(kUnknownDumpOriginIndex);
   }
 }
 
@@ -568,8 +650,29 @@ Status DataDumpImpl::BuildTaskList(DumpTransportInfo &dump_transport_info) const
     BuildTaskInputs(dump_info, *task);
     BuildTaskOutputs(dump_info, *task);
     BuildTaskWorkspaces(dump_info, *task);
+    BuildWatcherLayerTasks(dump_info, *task, dump_transport_info);
   }
   return SUCCESS;
+}
+
+void DataDumpImpl::BuildWatcherLayerTasks(const InnerDumpInfo &dump_info, const DumpTransTaskInfo &task,
+                                          DumpTransportInfo &dump_transport_info) const {
+  if (layer_op_list_.empty() ||
+      !DumpConfig::Instance().IsWatcherNode(model_name_, root_graph_name_, dump_info.op_name)) {
+    return;
+  }
+
+  // AddTask() 可能触发 tasks_ 扩容，导致入参 task 引用的 vector 元素失效；先拷贝一份基准 task
+  const DumpTransTaskInfo base_task = task;
+  for (const auto &layer_op : layer_op_list_) {
+    DumpTransTaskInfo task_watcher = base_task;
+    task_watcher.SetTaskId(layer_op.task_id);
+    task_watcher.SetStreamId(layer_op.stream_id);
+    const std::string watcher_op_name = layer_op.op_name + "_To_" + dump_info.op_name;
+    GELOGI("WatcherOpName %s stream_id %u task_id %u.", watcher_op_name.c_str(), layer_op.stream_id, layer_op.task_id);
+    task_watcher.SetOpName(watcher_op_name);
+    dump_transport_info.AddTask() = std::move(task_watcher);
+  }
 }
 
 void DataDumpImpl::BuildTaskInputs(const InnerDumpInfo &dump_info, DumpTransTaskInfo &task) const {
@@ -582,7 +685,15 @@ void DataDumpImpl::BuildTaskInputs(const InnerDumpInfo &dump_info, DumpTransTask
     return;
   }
 
+  std::set<uint32_t> input_blacklist;
+  DumpConfig::Instance().GetInputBlacklistIndices(model_name_, root_graph_name_, dump_info.op_name, dump_info.op_type,
+                                                  static_cast<uint32_t>(dump_info.inputs.size()), input_blacklist);
   for (size_t i = 0; i < dump_info.inputs.size(); ++i) {
+    if (input_blacklist.count(static_cast<uint32_t>(i)) != 0U) {
+      GELOGI("[OM2 Dump] Node %s input[%zu] is in blacklist for model %s, skip to dump this input.",
+             dump_info.op_name.c_str(), i, model_name_.c_str());
+      continue;
+    }
     DumpTransInputInfo *input_tensor = &task.AddInput();
     const auto &tensor = dump_info.inputs[i];
 
@@ -607,6 +718,8 @@ void DataDumpImpl::BuildTaskInputs(const InnerDumpInfo &dump_info, DumpTransTask
     input_tensor->SetSize(tensor.size);
     input_tensor->SetAddrType(addr_type);
     input_tensor->SetShape(std::vector<uint64_t>(tensor.shape_dims.begin(), tensor.shape_dims.end()));
+    input_tensor->SetOriginShape(
+        std::vector<uint64_t>(tensor.origin_shape_dims.begin(), tensor.origin_shape_dims.end()));
   }
 }
 
@@ -620,7 +733,15 @@ void DataDumpImpl::BuildTaskOutputs(const InnerDumpInfo &dump_info, DumpTransTas
     return;
   }
 
+  std::set<uint32_t> output_blacklist;
+  DumpConfig::Instance().GetOutputBlacklistIndices(model_name_, root_graph_name_, dump_info.op_name, dump_info.op_type,
+                                                   static_cast<uint32_t>(dump_info.outputs.size()), output_blacklist);
   for (size_t i = 0; i < dump_info.outputs.size(); ++i) {
+    if (output_blacklist.count(static_cast<uint32_t>(i)) != 0U) {
+      GELOGI("[OM2 Dump] Node %s output[%zu] is in blacklist for model %s, skip to dump this output.",
+             dump_info.op_name.c_str(), i, model_name_.c_str());
+      continue;
+    }
     DumpTransOutputInfo *output_tensor = &task.AddOutput();
     const auto &tensor = dump_info.outputs[i];
 
@@ -645,6 +766,11 @@ void DataDumpImpl::BuildTaskOutputs(const InnerDumpInfo &dump_info, DumpTransTas
     output_tensor->SetSize(tensor.size);
     output_tensor->SetAddrType(addr_type);
     output_tensor->SetShape(std::vector<uint64_t>(tensor.shape_dims.begin(), tensor.shape_dims.end()));
+    output_tensor->SetOriginShape(
+        std::vector<uint64_t>(tensor.origin_shape_dims.begin(), tensor.origin_shape_dims.end()));
+    output_tensor->SetOriginalOutputFormat(tensor.origin_format);
+    output_tensor->SetOriginalOutputDataType(tensor.origin_data_type);
+    output_tensor->SetOriginalOutputIndex(kUnknownDumpOriginIndex);
   }
 }
 
@@ -890,6 +1016,7 @@ void DataDumpImpl::Clear() {
     step_id_dev_addr_ = nullptr;
   }
   task_list_.clear();
+  layer_op_list_.clear();
   op_mapping_info_.Clear();
   op_mapping_base_info_.Clear();
   op_mapping_base_info_initialized_ = false;

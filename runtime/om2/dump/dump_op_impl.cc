@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <set>
 #include "framework/runtime/dump/dump_op_impl.h"
 #include "framework/runtime/dump/dump_config.h"
 #include "framework/common/debug/ge_log.h"
@@ -199,7 +200,8 @@ Status DumpOp::ProtoMallocAndMemcpy(const size_t proto_size, const std::string &
   return SUCCESS;
 }
 
-Status DumpOp::BuildTaskInputs(const GertModelTaskDesc &task_desc) {
+Status DumpOp::BuildTaskInputs(const GertModelTaskDesc &task_desc, const std::string &model_name,
+                               const std::string &root_graph_name) {
   if (IsProtoVer()) {
     toolkit::aicpu::dump::Task *task = op_mapping_info_.add_task();
     GE_CHECK_NOTNULL(task);
@@ -208,7 +210,7 @@ Status DumpOp::BuildTaskInputs(const GertModelTaskDesc &task_desc) {
       GELOGE(RT_ERROR_TO_GE_STATUS(rt_ret), "[Call][SetTaskBasicInfo]Failed, ret: %d", rt_ret);
       return RT_ERROR_TO_GE_STATUS(rt_ret);
     }
-    return FillProtoInputTensors(task, task_desc);
+    return FillProtoInputTensors(task, task_desc, model_name, root_graph_name);
   }
 
   DumpTransTaskInfo *task = &dump_transport_info_.AddTask();
@@ -218,20 +220,31 @@ Status DumpOp::BuildTaskInputs(const GertModelTaskDesc &task_desc) {
     GELOGE(RT_ERROR_TO_GE_STATUS(rt_ret), "[Call][SetTaskBasicInfo]Failed, ret: %d", rt_ret);
     return RT_ERROR_TO_GE_STATUS(rt_ret);
   }
-  return FillTlvInputTensors(task, task_desc);
+  return FillTlvInputTensors(task, task_desc, model_name, root_graph_name);
 }
 
-Status DumpOp::FillProtoInputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc) {
+Status DumpOp::FillProtoInputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc,
+                                     const std::string &model_name, const std::string &root_graph_name) {
   if (task_desc.inputs == nullptr) {
     return SUCCESS;
   }
+  const char *op_name = (task_desc.op_name != nullptr) ? task_desc.op_name : "";
+  const char *op_type = (task_desc.op_type != nullptr) ? task_desc.op_type : "";
+  std::set<uint32_t> input_blacklist;
+  DumpConfig::Instance().GetInputBlacklistIndices(model_name, root_graph_name, op_name, op_type,
+                                                  static_cast<uint32_t>(task_desc.input_num), input_blacklist);
   for (uint32_t i = 0U; i < task_desc.input_num; ++i) {
-    toolkit::aicpu::dump::Input *input_tensor = task->add_input();
+    if (input_blacklist.count(i) != 0U) {
+      GELOGI("[OM2 Dump] Node %s input[%u] is in blacklist for model %s, skip to dump this input.", op_name, i,
+             model_name.c_str());
+      continue;
+    }
     const auto &entry = task_desc.inputs[i];
     if (entry.tensor == nullptr) {
       GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io tensor is null, index=%u.", i);
       return PARAM_INVALID;
     }
+    toolkit::aicpu::dump::Input *input_tensor = task->add_input();
     const auto &tensor = *entry.tensor;
 
     // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
@@ -248,21 +261,36 @@ Status DumpOp::FillProtoInputTensors(toolkit::aicpu::dump::Task *task, const Ger
     for (uint32_t dim = 0U; dim < tensor.GetStorageShape().GetDimNum(); ++dim) {
       input_tensor->mutable_shape()->add_dim(tensor.GetStorageShape().GetDim(dim));
     }
+    // 对齐 v1 DumpOp::DumpInput 的 origin_shape
+    for (uint32_t dim = 0U; dim < tensor.GetOriginShape().GetDimNum(); ++dim) {
+      input_tensor->mutable_origin_shape()->add_dim(tensor.GetOriginShape().GetDim(dim));
+    }
   }
   return SUCCESS;
 }
 
-Status DumpOp::FillTlvInputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc) {
+Status DumpOp::FillTlvInputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc,
+                                   const std::string &model_name, const std::string &root_graph_name) {
   if (task_desc.inputs == nullptr) {
     return SUCCESS;
   }
+  const char *op_name = (task_desc.op_name != nullptr) ? task_desc.op_name : "";
+  const char *op_type = (task_desc.op_type != nullptr) ? task_desc.op_type : "";
+  std::set<uint32_t> input_blacklist;
+  DumpConfig::Instance().GetInputBlacklistIndices(model_name, root_graph_name, op_name, op_type,
+                                                  static_cast<uint32_t>(task_desc.input_num), input_blacklist);
   for (uint32_t i = 0U; i < task_desc.input_num; ++i) {
-    DumpTransInputInfo *input_tensor = &task->AddInput();
+    if (input_blacklist.count(i) != 0U) {
+      GELOGI("[OM2 Dump] Node %s input[%u] is in blacklist for model %s, skip to dump this input.", op_name, i,
+             model_name.c_str());
+      continue;
+    }
     const auto &entry = task_desc.inputs[i];
     if (entry.tensor == nullptr) {
       GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io tensor is null, index=%u.", i);
       return PARAM_INVALID;
     }
+    DumpTransInputInfo *input_tensor = &task->AddInput();
     const auto &tensor = *entry.tensor;
 
     // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
@@ -277,15 +305,22 @@ Status DumpOp::FillTlvInputTensors(DumpTransTaskInfo *task, const GertModelTaskD
     input_tensor->SetSize(tensor.GetSize());
     input_tensor->SetAddrType(addr_type);
     std::vector<uint64_t> shape;
+    std::vector<uint64_t> origin_shape;
     for (size_t dim = 0U; dim < tensor.GetStorageShape().GetDimNum(); ++dim) {
       shape.push_back(static_cast<uint64_t>(tensor.GetStorageShape().GetDim(dim)));
     }
+    for (size_t dim = 0U; dim < tensor.GetOriginShape().GetDimNum(); ++dim) {
+      origin_shape.push_back(static_cast<uint64_t>(tensor.GetOriginShape().GetDim(dim)));
+    }
     input_tensor->SetShape(shape);
+    // 对齐 v1 DumpOp::DumpInput 的 origin_shape
+    input_tensor->SetOriginShape(origin_shape);
   }
   return SUCCESS;
 }
 
-Status DumpOp::BuildTaskOutputs(const GertModelTaskDesc &task_desc) {
+Status DumpOp::BuildTaskOutputs(const GertModelTaskDesc &task_desc, const std::string &model_name,
+                                const std::string &root_graph_name) {
   if (IsProtoVer()) {
     toolkit::aicpu::dump::Task *task = op_mapping_info_.add_task();
     GE_CHECK_NOTNULL(task);
@@ -294,7 +329,7 @@ Status DumpOp::BuildTaskOutputs(const GertModelTaskDesc &task_desc) {
       GELOGE(RT_ERROR_TO_GE_STATUS(rt_ret), "[Call][SetTaskBasicInfo]Failed, ret: %d", rt_ret);
       return RT_ERROR_TO_GE_STATUS(rt_ret);
     }
-    return FillProtoOutputTensors(task, task_desc);
+    return FillProtoOutputTensors(task, task_desc, model_name, root_graph_name);
   }
 
   DumpTransTaskInfo *task = &dump_transport_info_.AddTask();
@@ -304,20 +339,31 @@ Status DumpOp::BuildTaskOutputs(const GertModelTaskDesc &task_desc) {
     GELOGE(RT_ERROR_TO_GE_STATUS(rt_ret), "[Call][SetTaskBasicInfo]Failed, ret: %d", rt_ret);
     return RT_ERROR_TO_GE_STATUS(rt_ret);
   }
-  return FillTlvOutputTensors(task, task_desc);
+  return FillTlvOutputTensors(task, task_desc, model_name, root_graph_name);
 }
 
-Status DumpOp::FillProtoOutputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc) {
+Status DumpOp::FillProtoOutputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc,
+                                      const std::string &model_name, const std::string &root_graph_name) {
   if (task_desc.outputs == nullptr) {
     return SUCCESS;
   }
+  const char *op_name = (task_desc.op_name != nullptr) ? task_desc.op_name : "";
+  const char *op_type = (task_desc.op_type != nullptr) ? task_desc.op_type : "";
+  std::set<uint32_t> output_blacklist;
+  DumpConfig::Instance().GetOutputBlacklistIndices(model_name, root_graph_name, op_name, op_type,
+                                                   static_cast<uint32_t>(task_desc.output_num), output_blacklist);
   for (uint32_t i = 0U; i < task_desc.output_num; ++i) {
-    toolkit::aicpu::dump::Output *output_tensor = task->add_output();
+    if (output_blacklist.count(i) != 0U) {
+      GELOGI("[OM2 Dump] Node %s output[%u] is in blacklist for model %s, skip to dump this output.", op_name, i,
+             model_name.c_str());
+      continue;
+    }
     const auto &entry = task_desc.outputs[i];
     if (entry.tensor == nullptr) {
       GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io tensor is null, index=%u.", i);
       return PARAM_INVALID;
     }
+    toolkit::aicpu::dump::Output *output_tensor = task->add_output();
     const auto &tensor = *entry.tensor;
 
     // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
@@ -334,21 +380,36 @@ Status DumpOp::FillProtoOutputTensors(toolkit::aicpu::dump::Task *task, const Ge
     for (uint32_t dim = 0U; dim < tensor.GetStorageShape().GetDimNum(); ++dim) {
       output_tensor->mutable_shape()->add_dim(tensor.GetStorageShape().GetDim(dim));
     }
+    // 对齐 v1 DumpOp::DumpOutput 的 origin_shape
+    for (uint32_t dim = 0U; dim < tensor.GetOriginShape().GetDimNum(); ++dim) {
+      output_tensor->mutable_origin_shape()->add_dim(tensor.GetOriginShape().GetDim(dim));
+    }
   }
   return SUCCESS;
 }
 
-Status DumpOp::FillTlvOutputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc) {
+Status DumpOp::FillTlvOutputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc,
+                                    const std::string &model_name, const std::string &root_graph_name) {
   if (task_desc.outputs == nullptr) {
     return SUCCESS;
   }
+  const char *op_name = (task_desc.op_name != nullptr) ? task_desc.op_name : "";
+  const char *op_type = (task_desc.op_type != nullptr) ? task_desc.op_type : "";
+  std::set<uint32_t> output_blacklist;
+  DumpConfig::Instance().GetOutputBlacklistIndices(model_name, root_graph_name, op_name, op_type,
+                                                   static_cast<uint32_t>(task_desc.output_num), output_blacklist);
   for (uint32_t i = 0U; i < task_desc.output_num; ++i) {
-    DumpTransOutputInfo *output_tensor = &task->AddOutput();
+    if (output_blacklist.count(i) != 0U) {
+      GELOGI("[OM2 Dump] Node %s output[%u] is in blacklist for model %s, skip to dump this output.", op_name, i,
+             model_name.c_str());
+      continue;
+    }
     const auto &entry = task_desc.outputs[i];
     if (entry.tensor == nullptr) {
       GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io tensor is null, index=%u.", i);
       return PARAM_INVALID;
     }
+    DumpTransOutputInfo *output_tensor = &task->AddOutput();
     const auto &tensor = *entry.tensor;
 
     // 对齐 v1：直接写 args + offset 地址给 AICPU，不解引用
@@ -363,10 +424,16 @@ Status DumpOp::FillTlvOutputTensors(DumpTransTaskInfo *task, const GertModelTask
     output_tensor->SetSize(tensor.GetSize());
     output_tensor->SetAddrType(addr_type);
     std::vector<uint64_t> shape;
+    std::vector<uint64_t> origin_shape;
     for (size_t dim = 0U; dim < tensor.GetStorageShape().GetDimNum(); ++dim) {
       shape.push_back(static_cast<uint64_t>(tensor.GetStorageShape().GetDim(dim)));
     }
+    for (size_t dim = 0U; dim < tensor.GetOriginShape().GetDimNum(); ++dim) {
+      origin_shape.push_back(static_cast<uint64_t>(tensor.GetOriginShape().GetDim(dim)));
+    }
     output_tensor->SetShape(shape);
+    // 对齐 v1 DumpOp::DumpOutput 的 origin_shape
+    output_tensor->SetOriginShape(origin_shape);
   }
   return SUCCESS;
 }
