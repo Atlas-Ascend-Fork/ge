@@ -583,4 +583,172 @@ TEST_F(UtestRegisterPass, StreamPass_DefaultOn_NoConfig_PassExecuted) {
   EXPECT_EQ(ret, SUCCESS);
   EXPECT_TRUE(pass_called);
 }
+
+TEST_F(UtestRegisterPass, CustomPassHelperRunWithPriorities_OrderAsc) {
+  std::vector<std::string> run_order;
+  auto make_pass = [&run_order](const std::string &name) {
+    CustomPassFunc fn = [&run_order, name](ge::GraphPtr &, CustomPassContext &) -> Status {
+      run_order.emplace_back(name);
+      return SUCCESS;
+    };
+    PassRegistrationData pass_data(name);
+    pass_data.CustomPassFn(fn).Stage(CustomPassStage::kAfterInferShape);
+    return pass_data;
+  };
+  // 注册序刻意与priority序相反：Zed、Mid、Alf
+  CustomPassHelper::Instance().Unload();
+  CustomPassHelper::Instance().Insert(make_pass("PrioZedPass"));
+  CustomPassHelper::Instance().Insert(make_pass("PrioMidPass"));
+  CustomPassHelper::Instance().Insert(make_pass("PrioAlfPass"));
+
+  auto graph = std::make_shared<Graph>("test2");
+  auto custom_pass_context = CustomPassContext();
+  std::map<std::string, bool> pass_switches;
+  std::map<std::string, int32_t> priorities = {{"PrioZedPass", 1002}, {"PrioMidPass", 1001}, {"PrioAlfPass", 1000}};
+
+  auto ret = CustomPassHelper::Instance().Run(graph, custom_pass_context, CustomPassStage::kAfterInferShape,
+                                              pass_switches, priorities);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(run_order, (std::vector<std::string>{"PrioAlfPass", "PrioMidPass", "PrioZedPass"}));
+}
+
+TEST_F(UtestRegisterPass, CustomPassHelperRunWithPriorities_NoEntry_RegistrationOrderFallback) {
+  std::vector<std::string> run_order;
+  auto make_pass = [&run_order](const std::string &name) {
+    CustomPassFunc fn = [&run_order, name](ge::GraphPtr &, CustomPassContext &) -> Status {
+      run_order.emplace_back(name);
+      return SUCCESS;
+    };
+    PassRegistrationData pass_data(name);
+    pass_data.CustomPassFn(fn).Stage(CustomPassStage::kAfterInferShape);
+    return pass_data;
+  };
+  CustomPassHelper::Instance().Unload();
+  CustomPassHelper::Instance().Insert(make_pass("PrioZedPass"));
+  CustomPassHelper::Instance().Insert(make_pass("PrioMidPass"));
+  CustomPassHelper::Instance().Insert(make_pass("PrioAlfPass"));
+
+  auto graph = std::make_shared<Graph>("test2");
+  auto custom_pass_context = CustomPassContext();
+  std::map<std::string, bool> pass_switches;
+  std::map<std::string, int32_t> empty_priorities;
+
+  auto ret = CustomPassHelper::Instance().Run(graph, custom_pass_context, CustomPassStage::kAfterInferShape,
+                                              pass_switches, empty_priorities);
+  EXPECT_EQ(ret, SUCCESS);
+  // 无priority条目时保持注册序（dlopen序），与历史行为一致
+  EXPECT_EQ(run_order, (std::vector<std::string>{"PrioZedPass", "PrioMidPass", "PrioAlfPass"}));
+}
+
+TEST_F(UtestRegisterPass, CustomPassHelperRunWithPriorities_Mixed_EntryFirstThenRegistrationOrder) {
+  std::vector<std::string> run_order;
+  auto make_pass = [&run_order](const std::string &name) {
+    CustomPassFunc fn = [&run_order, name](ge::GraphPtr &, CustomPassContext &) -> Status {
+      run_order.emplace_back(name);
+      return SUCCESS;
+    };
+    PassRegistrationData pass_data(name);
+    pass_data.CustomPassFn(fn).Stage(CustomPassStage::kAfterInferShape);
+    return pass_data;
+  };
+  CustomPassHelper::Instance().Unload();
+  CustomPassHelper::Instance().Insert(make_pass("PrioZedPass"));
+  CustomPassHelper::Instance().Insert(make_pass("PrioMidPass"));
+  CustomPassHelper::Instance().Insert(make_pass("PrioAlfPass"));
+
+  auto graph = std::make_shared<Graph>("test2");
+  auto custom_pass_context = CustomPassContext();
+  std::map<std::string, bool> pass_switches;
+  std::map<std::string, int32_t> priorities = {{"PrioMidPass", 1000}};
+
+  auto ret = CustomPassHelper::Instance().Run(graph, custom_pass_context, CustomPassStage::kAfterInferShape,
+                                              pass_switches, priorities);
+  EXPECT_EQ(ret, SUCCESS);
+  // 有条目的pass在前，无条目的保持注册序排在其后
+  EXPECT_EQ(run_order, (std::vector<std::string>{"PrioMidPass", "PrioZedPass", "PrioAlfPass"}));
+}
+
+TEST_F(UtestRegisterPass, CustomPassHelperRunWithPriorities_SameValue_RegistrationOrderStable) {
+  std::vector<std::string> run_order;
+  auto make_pass = [&run_order](const std::string &name) {
+    CustomPassFunc fn = [&run_order, name](ge::GraphPtr &, CustomPassContext &) -> Status {
+      run_order.emplace_back(name);
+      return SUCCESS;
+    };
+    PassRegistrationData pass_data(name);
+    pass_data.CustomPassFn(fn).Stage(CustomPassStage::kAfterInferShape);
+    return pass_data;
+  };
+  CustomPassHelper::Instance().Unload();
+  CustomPassHelper::Instance().Insert(make_pass("PrioZedPass"));
+  CustomPassHelper::Instance().Insert(make_pass("PrioMidPass"));
+  CustomPassHelper::Instance().Insert(make_pass("PrioAlfPass"));
+
+  auto graph = std::make_shared<Graph>("test2");
+  auto custom_pass_context = CustomPassContext();
+  std::map<std::string, bool> pass_switches;
+  std::map<std::string, int32_t> priorities = {{"PrioZedPass", 1000}, {"PrioMidPass", 1000}, {"PrioAlfPass", 1000}};
+
+  auto ret = CustomPassHelper::Instance().Run(graph, custom_pass_context, CustomPassStage::kAfterInferShape,
+                                              pass_switches, priorities);
+  EXPECT_EQ(ret, SUCCESS);
+  // 同值priority时stable_sort保持注册序
+  EXPECT_EQ(run_order, (std::vector<std::string>{"PrioZedPass", "PrioMidPass", "PrioAlfPass"}));
+}
+
+TEST_F(UtestRegisterPass, StreamPass_WithPriorities_OrderAsc) {
+  std::vector<std::string> run_order;
+  auto make_stream_pass = [&run_order](const std::string &name) {
+    CustomAllocateStreamPassFunc alloc_fn = [&run_order, name](const ConstGraphPtr &, StreamPassContext &) -> Status {
+      run_order.emplace_back(name);
+      return SUCCESS;
+    };
+    PassRegistrationData pass_data(name);
+    pass_data.CustomAllocateStreamPassFn(alloc_fn);
+    return pass_data;
+  };
+  CustomPassHelper::Instance().Unload();
+  CustomPassHelper::Instance().Insert(make_stream_pass("StreamPrioZedPass"));
+  CustomPassHelper::Instance().Insert(make_stream_pass("StreamPrioAlfPass"));
+
+  auto graph = std::make_shared<Graph>("test_stream_priority");
+  ASSERT_EQ(graph->SetValid(), GRAPH_SUCCESS);
+  StreamPassContext stream_ctx(0);
+  std::map<std::string, bool> empty_switches;
+  std::map<std::string, int32_t> priorities = {{"StreamPrioZedPass", 1000}, {"StreamPrioAlfPass", 999}};
+
+  auto ret = CustomPassHelper::Instance().Run(graph, stream_ctx, CustomPassStage::kAfterAssignLogicStream,
+                                              empty_switches, priorities);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(run_order, (std::vector<std::string>{"StreamPrioAlfPass", "StreamPrioZedPass"}));
+}
+
+TEST_F(UtestRegisterPass, StreamPass_NoPriorityEntry_NameOrderFallback) {
+  std::vector<std::string> run_order;
+  auto make_stream_pass = [&run_order](const std::string &name) {
+    CustomAllocateStreamPassFunc alloc_fn = [&run_order, name](const ConstGraphPtr &, StreamPassContext &) -> Status {
+      run_order.emplace_back(name);
+      return SUCCESS;
+    };
+    PassRegistrationData pass_data(name);
+    pass_data.CustomAllocateStreamPassFn(alloc_fn);
+    return pass_data;
+  };
+  // 注册序刻意与名字序相反：Zed 先注册、Alf 后注册
+  CustomPassHelper::Instance().Unload();
+  CustomPassHelper::Instance().Insert(make_stream_pass("StreamPrioZedPass"));
+  CustomPassHelper::Instance().Insert(make_stream_pass("StreamPrioAlfPass"));
+
+  auto graph = std::make_shared<Graph>("test_stream_name_order");
+  ASSERT_EQ(graph->SetValid(), GRAPH_SUCCESS);
+  StreamPassContext stream_ctx(0);
+  std::map<std::string, bool> empty_switches;
+  std::map<std::string, int32_t> empty_priorities;
+
+  auto ret = CustomPassHelper::Instance().Run(graph, stream_ctx, CustomPassStage::kAfterAssignLogicStream,
+                                              empty_switches, empty_priorities);
+  EXPECT_EQ(ret, SUCCESS);
+  // 流分配stage无priority条目时按pass名字序兜底（保持多流组件化的确定性语义，与注册序无关）
+  EXPECT_EQ(run_order, (std::vector<std::string>{"StreamPrioAlfPass", "StreamPrioZedPass"}));
+}
 }  // namespace ge

@@ -159,6 +159,9 @@ function status() {
     echo "${ip_port} no response."
     return 1
   fi
+  if [[ "${curl_ret}" != "0" ]]; then
+    return 1
+  fi
 }
 
 if [[ -n "$2" ]]

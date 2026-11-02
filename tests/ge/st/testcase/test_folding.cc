@@ -14,6 +14,7 @@
 #include <graph/operator_reg.h>
 #include <ge_running_env/fake_op.h>
 #include <ge_running_env/ge_running_env_faker.h>
+#include <ge_running_env/tensor_utils.h>
 
 #include "ge/ge_api.h"
 #include "graph/debug/ge_attr_define.h"
@@ -810,4 +811,58 @@ TEST_F(ConstantFoldingTest, HostCpuCustomOpConstantFoldingCopiesTensor) {
     EXPECT_EQ(folded_node, nullptr);
   };
   CustomOpFactory::RemoveCustomOps({op_type});
+}
+
+namespace {
+// 手工补齐折叠目标节点的输入/输出 desc（DSL 默认生成的 desc 为 ND/DT_FLOAT 标量）
+void PatchTransDataDescToInt4(const ComputeGraphPtr &compute_graph) {
+  const auto node_ptr = compute_graph->FindNode("int4_transdata");
+  ASSERT_NE(node_ptr, nullptr);
+  const auto &op_desc_ptr = node_ptr->GetOpDesc();
+  auto input_desc = op_desc_ptr->MutableInputDesc(0);
+  ASSERT_NE(input_desc, nullptr);
+  input_desc->SetFormat(FORMAT_ND);
+  input_desc->SetShape(GeShape({2, 32}));
+  input_desc->SetDataType(DT_INT4);
+  auto output_desc = op_desc_ptr->MutableOutputDesc(0);
+  ASSERT_NE(output_desc, nullptr);
+  output_desc->SetFormat(FORMAT_FRACTAL_NZ_C0_16);
+  output_desc->SetShape(GeShape({1, 2, 1, 16, 16}));
+  output_desc->SetDataType(DT_INT4);
+}
+}  // namespace
+
+/**
+ * 用例描述：INT4 常量权重经 TransData(ND -> FRACTAL_NZ_C0_16) 的常量折叠，GE 内置
+ *           transdata kernel 对该格式组合不支持（子字节 ND<->NZ 显式 C0 转换不由 GE 实现），
+ *           折叠返回 NOT_CHANGED，节点保留（该场景由 aicpu 侧支持）
+ * 预置条件：
+ *   1. FakeOp 安装 TransData 到 GE_LOCAL store
+ *   2. 构造 INT4 const -> TransData -> NetOutput 图，手工补齐 TransData 输入/输出 desc
+ * 测试步骤：
+ *   1. GraphOptimizeUtility::ConstantFolding 对 TransData 节点执行折叠
+ * 预期结果：
+ *   1. 折叠返回 NOT_CHANGED
+ *   2. 图中节点数量不变（TransData 及其输入 const 均未被删除）
+ */
+TEST_F(ConstantFoldingTest, test_int4_transdata_folding_not_changed) {
+  auto weight = GenerateTensor(DT_INT4, {2, 32});
+  auto constant = OP_CFG(CONSTANT).Weight(weight).TensorDesc(FORMAT_ND, DT_INT4, {2, 32});
+  auto transdata = OP_CFG(TRANSDATA);
+  auto netoutput = OP_CFG(NETOUTPUT);
+  DEF_GRAPH(g1) {
+    CHAIN(NODE("int4_const", constant)->EDGE(0, 0)->NODE("int4_transdata", transdata));
+    CHAIN(NODE("int4_transdata", transdata)->EDGE(0, 0)->NODE("netoutput", netoutput));
+  };
+  auto graph = ToGeGraph(g1);
+  auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
+  PatchTransDataDescToInt4(compute_graph);
+  const size_t node_num_before = compute_graph->GetAllNodesSize();
+
+  GraphOptimizeUtility graph_optimize_utility;
+  auto transdata_node = compute_graph->FindNode("int4_transdata");
+  auto ret = graph_optimize_utility.ConstantFolding(transdata_node);
+  EXPECT_EQ(ret, NOT_CHANGED);
+  EXPECT_EQ(compute_graph->GetAllNodesSize(), node_num_before);
+  EXPECT_NE(compute_graph->FindNode("int4_transdata"), nullptr);
 }

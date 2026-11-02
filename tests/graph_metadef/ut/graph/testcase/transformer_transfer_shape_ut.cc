@@ -1173,4 +1173,25 @@ TEST_F(TransformerTransferShapeUT, get_aligned_shape_and_transfer_dim_13) {
 //   gert::Shape shape_2 = {3, 4, 5, 6};
 //   shape_transfer_ext.TransferShape(ge::FORMAT_ND, ge::FORMAT_ND, DT_INT8, shape_1, shape_2, op_value);
 // }
+
+// ND->NZ 对齐 shape 的 C0 须按 dst_format 的显式 C0 变体（GetC0Value）取值，与 TransferShape
+// 主路径口径一致；子字节 dtype（如 DT_INT4）不能回退到 dtype 平台表值（如 64），
+// 否则对齐 shape 与真实转换 shape 的 C0 不一致。裸 FRACTAL_NZ 仍回退 dtype 平台表，行为保持
+TEST_F(TransformerTransferShapeUT, get_aligned_shape_nd_to_nz_explicit_c0) {
+  EXPECT_TRUE(transformer::TransferShapeUtils::InitPlatformInfo(nullptr));
+  const int64_t reshape_type_mask = 0;
+  auto run_aligned_shape = [&reshape_type_mask](const ge::Format dst_format, const ge::DataType data_type,
+                                                const gert::Shape &src_shape, const gert::Shape &expect_shape) {
+    transformer::AlignShapeInfo align_shape_info = {ge::FORMAT_ND, dst_format, src_shape, data_type, reshape_type_mask};
+    gert::Shape aligned_shape;
+    const bool ret = transformer::TransferShapeUtils::GetAlignedShape(align_shape_info, aligned_shape);
+    EXPECT_EQ(ret, true);
+    EXPECT_EQ(aligned_shape, expect_shape);
+  };
+  // 子字节 dtype + 显式 C0 变体：C0 取格式枚举值
+  run_aligned_shape(ge::FORMAT_FRACTAL_NZ_C0_16, ge::DT_INT4, gert::Shape({1, 18, 134}), gert::Shape({1, 16, 16}));
+  run_aligned_shape(ge::FORMAT_FRACTAL_NZ_C0_32, ge::DT_INT4, gert::Shape({1, 18, 134}), gert::Shape({1, 16, 32}));
+  // 裸 FRACTAL_NZ：回退 dtype 平台表（INT4 为 64），行为保持
+  run_aligned_shape(ge::FORMAT_FRACTAL_NZ, ge::DT_INT4, gert::Shape({1, 18, 134}), gert::Shape({1, 16, 64}));
+}
 }  // namespace transformer

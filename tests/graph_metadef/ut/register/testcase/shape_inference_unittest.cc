@@ -680,7 +680,7 @@ REG_OP(TwoOptionalInputsOp)
     ASSERT_EQ(shape_range, expect_range);
   }
 
-  // 动态输入的input测试 动态轴-1, shape range 设值,min大于max：默认值填充不消费输入range值
+  // 动态输入的input测试 动态轴-1, shape range 设值,min大于max：默认值填充前返回失败
   TEST_F(ShapeInferenceUT, CallInferV2Func_DynamicInput_unknow_shaperange_min_bigger_max) {
     auto operator_dynamic = op::DynamicInput3Input3Output3("test4");
     operator_dynamic.create_dynamic_input_byindex_dyn_input(2, true);
@@ -726,12 +726,10 @@ REG_OP(TwoOptionalInputsOp)
     ASSERT_EQ(op_desc->GetOutputDesc(2U).GetShape().GetDimNum(), 4);
     const auto call_infer_shape_range = OperatorFactoryImpl::GetInferShapeRangeFunc();
     status = call_infer_shape_range(operator_dynamic, op_desc);
-    ASSERT_EQ(status, GRAPH_SUCCESS);
+    ASSERT_EQ(status, GRAPH_FAILED);
     std::vector<std::pair<int64_t, int64_t>> shape_range;
     (void)op_desc->GetOutputDesc(2U).GetShapeRange(shape_range);
-    // 默认值填充不消费输入 range，min 大于 max 不影响输出
-    const std::vector<std::pair<int64_t, int64_t>> expect_range = {{1, 1}, {2, 2}, {3, 3}, {0, ge::UNKNOWN_DIM}};
-    ASSERT_EQ(shape_range, expect_range);
+    ASSERT_TRUE(shape_range.empty());
   }
 
   // 动态输入的input测试 动态轴-1, shape range 设值, min大于max, max为-1的正常场景
@@ -1906,5 +1904,46 @@ REG_OP(TwoOptionalInputsOp)
     std::vector<std::pair<int64_t, int64_t>> input_range;
     (void)op_desc->GetInputDesc(0U).GetShapeRange(input_range);
     ASSERT_EQ(input_range, input_expect);
+  }
+
+  TEST_F(ShapeInferenceUT, DefaultShapeRangeChecksInputBounds) {
+    struct Case {
+      int64_t dim;
+      std::pair<int64_t, int64_t> bounds;
+      graphStatus expected;
+    };
+    const std::vector<Case> cases = {
+        {-1, {1, 512}, GRAPH_SUCCESS}, {-1, {8, 8}, GRAPH_SUCCESS},   {-1, {0, 0}, GRAPH_SUCCESS},
+        {-1, {0, 512}, GRAPH_SUCCESS}, {-1, {0, -1}, GRAPH_SUCCESS},  {-1, {1, -1}, GRAPH_SUCCESS},
+        {-1, {65, -1}, GRAPH_SUCCESS}, {-1, {8, 2}, GRAPH_FAILED},    {-1, {-2, 512}, GRAPH_FAILED},
+        {-1, {-1, -1}, GRAPH_FAILED},  {-1, {1, -2}, GRAPH_FAILED},   {-1, {-3, -2}, GRAPH_FAILED},
+        {-1, {-2, -2}, GRAPH_FAILED},  {-2, {-2, -2}, GRAPH_SUCCESS},
+    };
+    for (const auto &test : cases) {
+      SCOPED_TRACE(test.dim);
+      SCOPED_TRACE(test.bounds.first);
+      SCOPED_TRACE(test.bounds.second);
+      auto op = op::TestIsInferShapeV2Registered("default_range_validation");
+      auto desc = OpDescUtils::GetOpDescFromOperator(op);
+      ASSERT_NE(desc, nullptr);
+      GeTensorDesc input(GeShape({test.dim}), FORMAT_ND, DT_FLOAT);
+      input.SetOriginShape(input.GetShape());
+      ASSERT_EQ(input.SetShapeRange({test.bounds}), GRAPH_SUCCESS);
+      ASSERT_EQ(desc->UpdateInputDesc(0U, input), GRAPH_SUCCESS);
+      GeTensorDesc output(GeShape({-1}), FORMAT_ND, DT_FLOAT);
+      ASSERT_EQ(output.SetShapeRange({{3, 7}}), GRAPH_SUCCESS);
+      ASSERT_EQ(desc->UpdateOutputDesc(0U, output), GRAPH_SUCCESS);
+      gert::SpaceRegistryFaker::CreateDefaultSpaceRegistryImpl2();
+      auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+      ASSERT_NE(registry, nullptr);
+      auto functions = registry->CreateOrGetOpImpl("TestIsInferShapeV2Registered");
+      functions->infer_shape = [](InferShapeContext *) -> graphStatus { return GRAPH_SUCCESS; };
+      functions->infer_shape_range = nullptr;
+      EXPECT_EQ(InferShapeRangeOnCompile(op, desc), test.expected);
+      std::vector<std::pair<int64_t, int64_t>> range;
+      ASSERT_EQ(desc->GetOutputDesc(0U).GetShapeRange(range), GRAPH_SUCCESS);
+      EXPECT_EQ(range, (test.expected == GRAPH_SUCCESS ? std::vector<std::pair<int64_t, int64_t>>{{0, -1}}
+                                                       : std::vector<std::pair<int64_t, int64_t>>{{3, 7}}));
+    }
   }
 }  // namespace gert

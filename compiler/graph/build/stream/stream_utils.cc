@@ -25,6 +25,7 @@
 #include "register/core_num_utils.h"
 #include "graph/fusion/fusion_utils.h"
 #include "graph/fusion/pass/pass_plugin_loader.h"
+#include "graph/fusion/pass/fusion_priority_cache.h"
 
 namespace {
 constexpr const ge::char_t *const kTrueStr = "true";
@@ -743,10 +744,13 @@ Status StreamUtils::RunCustomStreamPass(const ComputeGraphPtr &root_graph, int64
   StreamPassContext context(orgin_max_stream_id);
   GE_TRACE_START(RunCustomStreamPass);
   auto pass_name_to_switches = fusion::FusionUtils::ParseFusionSwitch();
-  GE_ASSERT_SUCCESS(
-      CustomPassHelper::Instance().Run(graph, context, CustomPassStage::kAfterAssignLogicStream, pass_name_to_switches),
-      "Run allocate stream pass for graph [%s] failed, reason: %s.", root_graph->GetName().c_str(),
-      context.GetErrorMessage().GetString());
+  // 自定义流分配pass与普通自定义pass共用同一份FE解析的priority快照，stage内按数值升序执行，
+  // 无条目注册序兜底；流分配阶段改图约束不受执行顺序影响（DAG连续化统一在所有自定义pass之后）
+  const auto pass_name_to_priorities = fusion::FusionPriorityCache::GetInstance().GetGraphFusionPriorityMap();
+  GE_ASSERT_SUCCESS(CustomPassHelper::Instance().Run(graph, context, CustomPassStage::kAfterAssignLogicStream,
+                                                     pass_name_to_switches, pass_name_to_priorities),
+                    "Run allocate stream pass for graph [%s] failed, reason: %s.", root_graph->GetName().c_str(),
+                    context.GetErrorMessage().GetString());
   GE_COMPILE_TRACE_TIMESTAMP_END(RunCustomStreamPass, "RunCustomPass_AfterAssignLogicStream");
   const int64_t new_stream_num = context.GetCurrMaxStreamId() - orgin_max_stream_id;
   GE_ASSERT_TRUE(new_stream_num >= 0);

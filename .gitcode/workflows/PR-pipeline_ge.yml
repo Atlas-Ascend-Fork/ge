@@ -66,6 +66,8 @@ stages:
         with:
           precommit_image_version: ${{ jobs.JOB_image.outputs.precommit }}
           codecheck_image_version: ${{ jobs.JOB_image.outputs.codecheck }}
+          # Om2DocCheck 需要 clang 做 AST 符号提取, 故复用 X86 编译镜像
+          doccheck_image_version: ${{ jobs.JOB_image.outputs.Compile_X86_compiler }}
 
       # ==================== X86 Compile ====================
       JOB_x86_compiler_ubuntu24:

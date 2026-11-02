@@ -9,6 +9,9 @@ on:
       codecheck_image_version:
         required: true
         type: string
+      doccheck_image_version:
+        required: true
+        type: string
 
 
 jobs:
@@ -85,6 +88,68 @@ jobs:
     runs-on: ['self-hosted', 'arch=x64', 'spec=small']
     container:
       image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.codecheck_image_version }}
+
+  JOB_Om2UTCheck:
+    name: CodeCheck_Om2UTCheck
+    steps:
+      -
+        name: Checkout
+        identifier: process_checkout
+        uses: checkout
+        with:
+          ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+      -
+        name: download
+        uses: obs-download
+        with:
+          endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
+          bucket: "ascend-ci"
+          access-key: ${{ secrets.AK }}
+          secret-key: ${{ secrets.SK }}
+          key: |
+            ${{ env.obs_path }}/om2_ut_check.py
+            ${{ env.obs_path }}/om2_symbol_coverage.py
+          path: ${{ steps.process_checkout.outputs.path }}
+      -
+        name: Om2UTCheck
+        run: |
+          cd ${{ steps.process_checkout.outputs.path }}
+          python3 om2_ut_check.py --repo-root .
+    if: "${{ default() }}"
+    runs-on: ['self-hosted', 'arch=x64', 'spec=small']
+    container:
+      image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.doccheck_image_version }}
+
+  JOB_Om2DocCheck:
+    name: CodeCheck_Om2DocCheck
+    steps:
+      -
+        name: Checkout
+        identifier: process_checkout
+        uses: checkout
+        with:
+          ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+      -
+        name: download
+        uses: obs-download
+        with:
+          endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
+          bucket: "ascend-ci"
+          access-key: ${{ secrets.AK }}
+          secret-key: ${{ secrets.SK }}
+          key: |
+            ${{ env.obs_path }}/om2_doc_check.py
+            ${{ env.obs_path }}/om2_symbol_coverage.py
+          path: ${{ steps.process_checkout.outputs.path }}
+      -
+        name: Om2DocCheck
+        run: |
+          cd ${{ steps.process_checkout.outputs.path }}
+          python3 om2_doc_check.py --repo-root .
+    if: "${{ default() }}"
+    runs-on: ['self-hosted', 'arch=x64', 'spec=small']
+    container:
+      image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.doccheck_image_version }}
 
   JOB_SCA:
     name: SCA

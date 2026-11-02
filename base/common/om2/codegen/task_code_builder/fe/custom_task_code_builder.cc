@@ -376,7 +376,7 @@ std::vector<BodyItem> CustomTaskCodeBuilder::RenderDistribution(const VarRef &op
   return {
       ast_.BlankLine(),
       ast_.Comment("construct EagerOpExecutionContext"),
-      ast_.VarDecl(allocator, ast_.Call("std::make_shared<AllocatorFaker>", {})),
+      ast_.VarDecl(allocator, ast_.Call("std::make_shared<SinkOnlyAllocator>", {ctx.Attr("dev_dynamic_mem_ptrs")})),
       ast_.VarDecl(
           eager_context_holder,
           ast_.Call("BuildKernelContextHolder",

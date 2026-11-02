@@ -5002,5 +5002,15 @@ TEST_F(UtestFormatTranspose, null_src_transpose) {
   TransResult result;
   EXPECT_EQ(Transpose(nullptr, {2, 2}, DT_FLOAT16, {1, 0}, result), ACL_ERROR_GE_PARAM_INVALID);
 }
+
+// 子字节类型（如 DT_INT4）GetSizeByDataType 返回位宽编码值（kDataTypeSizeBitOffset + bits），
+// 逐元素字节拷贝逻辑不适用，参数校验需直接拒绝
+TEST_F(UtestFormatTranspose, sub_byte_rejected) {
+  uint8_t data[4] = {1, 2, 3, 4};
+  TransResult result;
+  EXPECT_EQ(TransposeWithShapeCheck(data, std::vector<int64_t>({2, 2}), std::vector<int64_t>({2, 2}), DT_INT4,
+                                    std::vector<int64_t>({1, 0}), result),
+            ACL_ERROR_GE_PARAM_INVALID);
+}
 }  // namespace formats
 }  // namespace ge

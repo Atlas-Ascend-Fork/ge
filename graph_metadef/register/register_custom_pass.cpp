@@ -10,6 +10,11 @@
 
 #include "register/register_custom_pass.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <utility>
+#include <vector>
+
 #include "common/checker.h"
 
 #include "register/custom_pass_helper.h"
@@ -450,36 +455,49 @@ Status CustomPassHelper::Unload() {
 }
 
 Status CustomPassHelper::Run(GraphPtr &graph, CustomPassContext &custom_pass_context, const CustomPassStage stage,
-                             const std::map<std::string, bool> &pass_name_to_switches) const {
+                             const std::map<std::string, bool> &pass_name_to_switches,
+                             const std::map<std::string, int32_t> &pass_name_to_priorities) const {
   std::shared_lock<std::shared_mutex> lock(mutex_);
-  std::vector<const PassRegistrationData *> items;
-  items.reserve(registration_datas_.size());
+  // 按FE解析的op_base Priority配置（进程级缓存快照，由编译层调用方传入）排序：
+  // 有条目按数值升序，无条目视为最末。同值（含无条目）时兜底：流分配stage按pass名字序
+  // （保持多流组件化的确定性语义），其余stage保持注册序（dlopen序，与历史行为一致）
+  constexpr int32_t kNoEntryPriority = INT32_MAX;
+  bool has_mini_dag = false;
+  std::vector<std::pair<int32_t, const PassRegistrationData *>> keyed_pass_regs;
+  keyed_pass_regs.reserve(registration_datas_.size());
   for (const auto &item : registration_datas_) {
-    if (item.GetStage() == stage) {
-      items.emplace_back(&item);
+    if (item.GetStage() != stage) {
+      continue;
     }
-  }
-  if (stage == CustomPassStage::kAfterAssignLogicStream) {
-    std::sort(items.begin(), items.end(), [](const PassRegistrationData *lhs, const PassRegistrationData *rhs) {
-      return lhs->GetPassName() < rhs->GetPassName();
-    });
-    const bool has_mini_dag = std::any_of(items.cbegin(), items.cend(), [](const PassRegistrationData *item) {
-      return item->GetPassName() == kMiniDagStreamPass;
-    });
-    if ((!has_mini_dag) && (!ShouldSkipMiniDagStreamPass(graph))) {
-      GELOGE(FAILED,
-             "ge.autoMultistreamParallelMode requires the built-in %s, but it is not registered. The Python pass "
-             "bridge may have failed to load during initialization, see the earlier warning in the log.",
-             kMiniDagStreamPass);
-      return FAILED;
-    }
-  }
-  for (const auto *item_ptr : items) {
-    const auto &item = *item_ptr;
+    has_mini_dag = has_mini_dag || (item.GetPassName() == kMiniDagStreamPass);
     if (!PassOptionUtils::IsPassEnable(pass_name_to_switches, item.GetPassName(), item.GetDefaultSwitch())) {
       GELOGI("[CustomPass][SKIP] Pass [%s] is disabled.", item.GetPassName().c_str());
       continue;
     }
+    const auto iter = pass_name_to_priorities.find(item.GetPassName());
+    const int32_t priority = (iter != pass_name_to_priorities.end()) ? iter->second : kNoEntryPriority;
+    (void)keyed_pass_regs.emplace_back(priority, &item);
+  }
+  // MiniDAG校验基于注册集合（不受开关过滤影响）：auto multistream模式需要但内置pass未注册时显式报错
+  if ((stage == CustomPassStage::kAfterAssignLogicStream) && (!has_mini_dag) && (!ShouldSkipMiniDagStreamPass(graph))) {
+    GELOGE(FAILED,
+           "ge.autoMultistreamParallelMode requires the built-in %s, but it is not registered. The Python pass "
+           "bridge may have failed to load during initialization, see the earlier warning in the log.",
+           kMiniDagStreamPass);
+    return FAILED;
+  }
+  std::stable_sort(keyed_pass_regs.begin(), keyed_pass_regs.end(),
+                   [stage](const std::pair<int32_t, const PassRegistrationData *> &lhs,
+                           const std::pair<int32_t, const PassRegistrationData *> &rhs) {
+                     if (lhs.first != rhs.first) {
+                       return lhs.first < rhs.first;
+                     }
+                     return (stage == CustomPassStage::kAfterAssignLogicStream) &&
+                            (lhs.second->GetPassName() < rhs.second->GetPassName());
+                   });
+  for (const auto &keyed_reg : keyed_pass_regs) {
+    const auto &item = *(keyed_reg.second);
+    GELOGD("[CustomPass][ADD] %s, priority: %d", item.GetPassName().c_str(), keyed_reg.first);
     GELOGD("Starting custom pass [%s] in stage [%s]!", item.GetPassName().c_str(),
            CustomPassStageToString(stage).c_str());
     if (stage == CustomPassStage::kAfterAssignLogicStream) {

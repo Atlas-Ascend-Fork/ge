@@ -20,6 +20,7 @@
 #include "ge_runtime_stub/include/faker/aicore_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/aicpu_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/hccl_taskdef_faker.h"
+#include "ge_runtime_stub/include/faker/custom_taskdef_faker.h"
 #include "framework/common/framework_types_internal.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/utils/tensor_utils.h"
@@ -8045,15 +8046,62 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_WithCustomKernel_Ok) {
   // om2 匿名命名空间内应包含 kCustomTaskHelpers 提供的自定义内核辅助代码
   EXPECT_NE(load_run.find("class CustKernelContextHolder"), std::string::npos);
   EXPECT_NE(load_run.find("CustKernelContextHolder BuildKernelContextHolder"), std::string::npos);
-  EXPECT_NE(load_run.find("class AllocatorFaker : public gert::GertAllocator"), std::string::npos);
+  EXPECT_NE(load_run.find("class SinkOnlyAllocator : public gert::GertAllocator"), std::string::npos);
+  EXPECT_NE(load_run.find("aclError MallocDeviceMemory("), std::string::npos);
   EXPECT_NE(load_run.find("uint32_t LaunchEagerExecuteOp("), std::string::npos);
   EXPECT_NE(load_run.find("aclError DeserializeCustKernelBinaries("), std::string::npos);
+
+  // workspace 容器必须是 CustKernelContextHolder 的成员（对齐 OM v1 CustomTaskInfo::ws_vec_），
+  // 不能是 BuildKernelContextHolder 的栈局部变量，否则函数返回后 context 里留下悬垂指针
+  EXPECT_NE(load_run.find("std::unique_ptr<std::vector<gert::GertMemBlock *>> ws_vec_holder_;"), std::string::npos);
+  EXPECT_NE(load_run.find("holder_outputs.emplace_back(holder.ws_vec_holder_.get(), nullptr)"), std::string::npos);
+  EXPECT_EQ(load_run.find("std::vector<void *> ws_vec;"), std::string::npos);
 
   // Load 方法中应调用 DeserializeCustKernelBinaries 反序列化自定义内核二进制
   EXPECT_NE(load_run.find("DeserializeCustKernelBinaries(bin_info_map_)"), std::string::npos);
 
   // ge 命名空间应在 om2 命名空间之前生成
   EXPECT_LT(load_run.find("namespace ge {"), load_run.find("namespace om2 {"));
+}
+
+// 校验 OM2 自定义算子分发使用可实际分配设备内存的 SinkOnlyAllocator，
+// 且分配结果登记到模型级 dev_dynamic_mem_ptrs_ 供 ReleaseResources 统一释放
+TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_CustomKernelAllocator_Ok) {
+  auto graph = gert::ShareGraph::BuildCustomOpGraph();
+  ASSERT_NE(graph, nullptr);
+  gert::GeModelBuilder builder(graph);
+  auto ge_root_model = builder.AddTaskDef("custom_op", gert::CustomTaskDefFaker("custom_op_stub"))
+                           .FakeTbeBin({"custom_op"})
+                           .BuildGeRootModel();
+  ASSERT_NE(ge_root_model, nullptr);
+  auto &compute_graph = ge_root_model->GetRootGraph();
+  compute_graph->SetGraphUnknownFlag(false);
+  for (const auto &node : compute_graph->GetDirectNode()) {
+    auto op_desc = node->GetOpDesc();
+    ASSERT_NE(op_desc, nullptr);
+    if (op_desc->GetType() == DATA) {
+      op_desc->SetOutputOffset({1024});
+    } else if (op_desc->GetType() == NETOUTPUT) {
+      op_desc->SetInputOffset({3072});
+    } else {
+      op_desc->SetInputOffset(std::vector<int64_t>(op_desc->GetInputsSize(), 1024));
+      op_desc->SetOutputOffset(std::vector<int64_t>(op_desc->GetOutputsSize(), 1024));
+    }
+  }
+  const auto ge_model = ge_root_model->GetSubgraphInstanceNameToModel().begin()->second;
+  ASSERT_NE(ge_model, nullptr);
+  std::vector<uint64_t> weights_value(64, 1024);
+  const size_t weight_size = weights_value.size() * sizeof(uint64_t);
+  ge_model->SetWeight(Buffer::CopyFrom(reinterpret_cast<uint8_t *>(weights_value.data()), weight_size));
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 2048);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, weight_size);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
+
+  auto generator = CreateProgramGenerator(ge_root_model, true);
+  std::map<GeneratedFileIndex, std::string> outputs;
+  ASSERT_EQ(GenerateProgramFiles(generator, outputs), SUCCESS);
+  const auto &load_run = outputs[GeneratedFileIndex::kLoadingAndRunningFile];
+  EXPECT_NE(load_run.find("std::make_shared<SinkOnlyAllocator>(ctx.dev_dynamic_mem_ptrs)"), std::string::npos);
 }
 
 // 校验 has_custom_kernel 默认为 false 时，不生成自定义算子内核相关代码
