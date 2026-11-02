@@ -8,7 +8,7 @@ This section describes several typical business scenarios for building and runni
 
 |Scenario|Description|
 |--|--|
-|[Building a Graph into an Offline Model](#building-a-graph-into-an-offline-model)|**Builds a graph and saves it as an om offline model.** The built offline model is loaded through the model loading API and then used for inference through the model execution API. For details, see the "Model Inference" section in [Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/app-dev/c/00_acl_cpp_dev.md).|
+|[Building a Graph into an Offline Model](#building-a-graph-into-an-offline-model)|**Builds a graph and saves it as an om offline model.** The built offline model is loaded through the model loading API and then used for inference through the model execution API. For details, see the "Model Inference" section in [Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/app-dev/c/00_acl_cpp_dev.md).|
 |[Building and Running a Graph](#building-and-running-a-graph)|After a graph is built, **directly build and run the graph**, and load the graph object using the AddGraph API. When running the graph, the following two cases apply depending on the API called:<br>- Run the graph synchronously: After loading, use RunGraph to run the graph synchronously and **obtain the execution result of the graph**.<br>- Run the graph asynchronously: After loading, use RunGraphWithStreamAsync to run the graph asynchronously and **obtain the execution result of the graph**.|
 
 Note:

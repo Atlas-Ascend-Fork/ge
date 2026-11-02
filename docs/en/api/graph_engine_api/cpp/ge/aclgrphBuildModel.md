@@ -50,4 +50,4 @@ graphStatus aclgrphBuildModel(const ge::Graph &graph, const std::map<AscendStrin
 
     For subsequent inference, use the API that loads the model **from memory**, such as aclmdlLoadFromMem, and then use the aclmdlExecute API to perform inference.
 
-    For details about how to use the APIs, see the "Model Inference" section in *[Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/app-dev/c/00_acl_cpp_dev.md)*.
+    For details about how to use the APIs, see the "Model Inference" section in *[Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/app-dev/c/00_acl_cpp_dev.md)*.

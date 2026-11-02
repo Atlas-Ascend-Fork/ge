@@ -1246,7 +1246,7 @@
     - [PassStage](python/ge/passes/PassStage.md)
     - [Placement](python/ge/Placement.md)
     - [Exception Types](python/ge/exception_types.md)
-  - [Model Management and Single-Operator APIs<a name="sub_menu"></a>](https://gitcode.com/cann/runtime/blob/9.2.0/python/docs/zh/api_ref/ge/README.md)
+  - [Model Management and Single-Operator APIs<a name="sub_menu"></a>](https://gitcode.com/cann/runtime/blob/9.2.0/python/docs/en/api_ref/ge/README.md)
 
 - [C APIs](c/c_language_interface.md)
   - [Graph Basic Data Structures and APIs](c/graph_base_structure/graph_basic_data_structure_and_interface.md)

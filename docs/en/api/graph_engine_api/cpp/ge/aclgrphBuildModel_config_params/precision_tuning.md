@@ -147,7 +147,7 @@ Replace $\{INSTALL\_DIR\} in the preceding path with the file storage path after
     Ascend 950PR&950DT products
 <!-- end id3 -->
 
-- This parameter defaults to performance-first, which may cause precision overflow during subsequent inference. If precision issues occur during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in [Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
+- This parameter defaults to performance-first, which may cause precision overflow during subsequent inference. If precision issues occur during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in [Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
 - If you focus on precision issues, you can change it to another value, such as **must\_keep\_origin\_dtype.**
 
 **Configuration example:**
@@ -261,7 +261,7 @@ Replace $\{INSTALL\_DIR\} in the preceding path with the file storage path after
   Ascend 950PR&950DT products
 <!-- end id8 -->
 
-- This parameter defaults to performance-first, which may cause precision overflow during subsequent inference. If precision issues occur during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in [Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
+- This parameter defaults to performance-first, which may cause precision overflow during subsequent inference. If precision issues occur during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in [Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
 - If you focus on precision issues, you can change it to another value, such as **origin.**
 
 **Configuration example:**

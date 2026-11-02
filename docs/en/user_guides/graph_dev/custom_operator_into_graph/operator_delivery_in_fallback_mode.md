@@ -12,7 +12,7 @@ The sinking scheduling mode is generally applicable to static-shape models. Beca
 
 The Host scheduling mode is generally applicable to dynamic-shape models. Because the shapes of the input tensors are uncertain, the input shape and other information of the next operator can be determined only after the shape derivation of the previous operator is completed. Therefore, the entire model cannot be executed in a sinking manner, and each operator Kernel usually needs to be delivered to the Device one by one for execution.
 
-Delivering operators based on fallback is a type of Host scheduling mode. Users can execute operators on the Host side through fallback functions, for example, by directly calling the aclnnXX single-operator API to execute operators. Users only need to call the Ascend C [EnableFallBack](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/zh/api/README.md) API during operator development to automatically generate a fallback function for GE to call back. The main task of the fallback function is to convert the inputs, outputs, and attributes of GE into the parameter format required by the aclnnXX single-operator API, and then call the aclnnXX API to execute the operator.
+Delivering operators based on fallback is a type of Host scheduling mode. Users can execute operators on the Host side through fallback functions, for example, by directly calling the aclnnXX single-operator API to execute operators. Users only need to call the Ascend C [EnableFallBack](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/en/api/README.md) API during operator development to automatically generate a fallback function for GE to call back. The main task of the fallback function is to convert the inputs, outputs, and attributes of GE into the parameter format required by the aclnnXX single-operator API, and then call the aclnnXX API to execute the operator.
 
 **Figure 1** Comparison between common host scheduling and fallback delivery
 ![Illustration](../figures/compare.png "Comparison between common host scheduling and fallback delivery")
@@ -66,7 +66,7 @@ Users do not need to manually implement the fallback function. During operator p
     OP_ADD(CustomOp);
     ```
 
-    The current fallback function supports two call modes: support\_aclnn and aclnn\_only. They can be configured through the `aclnnSupport.value` parameter of the `ExtendCfgInfo` API. For details, see [Ascend C API](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/zh/api/README.md).
+    The current fallback function supports two call modes: support\_aclnn and aclnn\_only. They can be configured through the `aclnnSupport.value` parameter of the `ExtendCfgInfo` API. For details, see [Ascend C API](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/en/api/README.md).
 
     - support\_aclnn: In this mode, the operator is executed through model sinking in static shape scenarios, while in dynamic shape scenarios the fallback function is called on the Host side to deliver the operator. This mode is used by default if `EnableFallBack` is called.
     - aclnn\_only: In this mode, the operator is delivered in fallback mode in both static and dynamic shape scenarios. This mode is not recommended and will be deprecated in later versions.

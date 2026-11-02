@@ -39,4 +39,4 @@ build_model(graph: Graph, build_options: Optional[dict] = None) -> ModelBuffer
   - To save the model in the memory buffer as an offline model file xx.om, call the **save\_model** API to serialize and save the offline model to a file. For subsequent inference, use the API that loads the model **from a file**, such as **aclmdlLoadFromFile**, and then use the **aclmdlExecute** API to perform inference.
   - If the offline model is stored in the memory buffer: for subsequent inference, use the API that loads the model **from memory**, such as **aclmdlLoadFromMem**, and then use the **aclmdlExecute** API to perform inference.
 
-For details about the APIs, see [Model Management](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/app-dev/c/00_acl_cpp_dev.md).
+For details about the APIs, see [Model Management](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/app-dev/c/00_acl_cpp_dev.md).

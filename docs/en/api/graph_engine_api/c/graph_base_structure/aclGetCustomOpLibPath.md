@@ -30,7 +30,7 @@ None
 
 Returns the path of the custom operator library. Multiple paths are separated by colons and are already arranged in the order of operator priority set by the user, with higher-priority paths placed earlier.
 
-For details about setting the priority of custom operators, see the "Programming Guide \> Appendix \> Engineering Operator Development \> Operator Dynamic Library Compilation" section in *[Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/zh/guide/index.md)*.
+For details about setting the priority of custom operators, see the "Programming Guide \> Appendix \> Engineering Operator Development \> Operator Dynamic Library Compilation" section in *[Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/en/guide/index.md)*.
 
 ## Constraints
 

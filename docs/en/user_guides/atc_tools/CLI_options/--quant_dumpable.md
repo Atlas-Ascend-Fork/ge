@@ -10,7 +10,7 @@ Supported on all chips.
 
 Whether to collect dump data of quantization operators.
 
-When performing precision locating by referring to the "Model Inference \> Precision/Performance Optimization \> Model Inference Precision Improvement Suggestions" section in *[Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/app-dev/c/00_acl_cpp_dev.md)*, if there is a model quantized by AMCT, when the model is converted into an om offline model, the graph compilation process may optimize the inputs and outputs of quantization operators, thereby affecting the export of dump data of quantization operators. For example, for two quantized convolution computations, the intermediate output is optimized into the int8 quantized output.
+When performing precision locating by referring to the "Model Inference \> Precision/Performance Optimization \> Model Inference Precision Improvement Suggestions" section in *[Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/app-dev/c/00_acl_cpp_dev.md)*, if there is a model quantized by AMCT, when the model is converted into an om offline model, the graph compilation process may optimize the inputs and outputs of quantization operators, thereby affecting the export of dump data of quantization operators. For example, for two quantized convolution computations, the intermediate output is optimized into the int8 quantized output.
 
 To address this issue, the --quant\_dumpable parameter is introduced. After this parameter is configured, the inputs and outputs of quantization operators are not fused, and a transdata operator is inserted to restore the format of the original model, so that the dump data of quantization operators can be collected.
 

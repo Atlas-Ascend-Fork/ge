@@ -86,7 +86,7 @@ Then execute the environment variables in different paths to switch between oper
 
             - In the atc model conversion command, set the [--log](../CLI_options/--log.md) parameter (it cannot be set to null).
 
-            For more information about logs, see *[Log Reference](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/log_ref/README.md)*.
+            For more information about logs, see *[Log Reference](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/log_ref/README.md)*.
         <!-- end id2 -->
 
         - **Log redirection**:

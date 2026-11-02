@@ -4,7 +4,7 @@
 
 ## Overview
 
-Ascend C IR (hereinafter referred to as AscIR) is a set of IRs defined based on the Ascend C language, dedicated to the backend work of the automatic fusion software stack. IRs in AscIR correspond to the [Ascend C APIs](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/zh/api/README.md). The type of AscIR is used to distinguish the corresponding Ascend C API; the input, output, and attribute in the AscIR definition are mapped to various parameters of the Ascend C APIs.
+Ascend C IR (hereinafter referred to as AscIR) is a set of IRs defined based on the Ascend C language, dedicated to the backend work of the automatic fusion software stack. IRs in AscIR correspond to the [Ascend C APIs](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/en/api/README.md). The type of AscIR is used to distinguish the corresponding Ascend C API; the input, output, and attribute in the AscIR definition are mapped to various parameters of the Ascend C APIs.
 
 As learned from [Fusion Principles](../autofuse/overview.md), if the fusion scope is expressed by a FusedGraph, the FusedGraph contains at least one AscBackend node. One AscBackend node corresponds to one AscGraph, and one AscGraph contains multiple AscIR nodes. AscIR and AscGraph are described separately below.
 

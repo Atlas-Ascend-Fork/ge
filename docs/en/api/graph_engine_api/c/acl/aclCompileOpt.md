@@ -372,7 +372,7 @@ Whether HF32 is allowed to replace FP32 in internal operator computation. true a
 
 HF32 is a single-precision floating-point type launched by the AI processor specifically for internal operator computation. The following figure compares HF32 with other common data types. HF32 supports the same value range as FP32, but its mantissa precision (11 bits) is close to that of FP16 (10 bits). By reducing precision, HF32 single-precision data type replaces the original FP32 single-precision data type, which greatly reduces the space occupied by data and improves performance.
 
-![](figures/en-us_image_0000002550155921.png)
+![](figures/hf32.png)
 
 ## ACL\_PRECISION\_MODE\_V2 Value Description
 

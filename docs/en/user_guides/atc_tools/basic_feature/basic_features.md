@@ -38,7 +38,7 @@ This section uses the ResNet50 network model of the TensorFlow framework as an e
 
 For details about the parameters, see [Parameter Description](../CLI_options/README.md). If the following information is displayed, the conversion is successful.
 <!-- npu="950,A3,910b,910,310p,310b" id2 -->
-If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
+If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
 
 <!-- end id2 -->
 ```console
@@ -126,7 +126,7 @@ The following conversion example uses the ResNet50 network model of the TensorFl
 
     For details about the parameters and their usage, see [Parameter Description](../CLI_options/README.md). If the following information is displayed, the model conversion is successful.
     <!-- npu="950,A3,910b,910,310p,310b" id3 -->
-    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
+    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
     <!-- end id3 -->
 
     ```console
@@ -167,7 +167,7 @@ This section uses the ResNet50 network model of the TensorFlow framework as an e
 
     For details about the parameters, see [Parameter Description](../CLI_options/README.md). If the following information is displayed, the model conversion is successful.
     <!-- npu="950,A3,910b,910,310p,310b" id4 -->
-    If model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
+    If model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
     <!-- end id4 -->
 
     ```console
@@ -210,7 +210,7 @@ This section uses the ResNet50 network model of the TensorFlow framework as an e
 
     For details about the parameters, see [Parameter Description](../CLI_options/README.md). If the following information is displayed, the model conversion is successful.
     <!-- npu="950,A3,910b,910,310p,310b" id5 -->
-    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
+    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
     <!-- end id5 -->
 
     ```console

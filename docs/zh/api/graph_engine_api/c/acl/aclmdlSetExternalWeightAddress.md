@@ -28,7 +28,7 @@
 
 模型加载过程中，计算图中的每一个FileConstant节点会保存对应外置权重文件的路径（例如/xx/../weight\_hasid1），图引擎（ Graph Engine ，简称GE）根据路径中的文件名（例如weight\_hasid1）检索用户是否配置了外置权重的Device内存。若已配置，则直接使用该Device内存地址；否则，GE将自行申请一块Device内存，并读取外置权重文件，并将外置权重数据拷贝至该Device内存中，模型卸载时会释放该内存。
 
-![](figures/Device-Context-Stream之间的关系.png)
+![](figures/external_weight_files.png)
 
 **本接口需要与以下其它接口配合**，实现模型加载功能：
 

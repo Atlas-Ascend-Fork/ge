@@ -21,7 +21,7 @@ This section provides the detailed steps for converting a single-operator descri
 4. If the following information is displayed, the model conversion is successful.
 
     <!-- npu="950,A3,910b,910,310p,310b" id1 -->
-    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/troubleshooting/00_troubleshooting.md)*\> "Error Code Reference" for auxiliary location.
+    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/troubleshooting/00_troubleshooting.md)*\> "Error Code Reference" for auxiliary location.
     <!-- end id1 -->
 
     ```textconsole

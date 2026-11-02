@@ -15,7 +15,7 @@ This chapter uses model conversion under each framework as an example to demonst
 > - If the development environment architecture is Arm (aarch64) and model conversion takes a long time, see [Model Conversion Takes a Long Time When the Development Environment Architecture Is Arm (aarch64)](../FAQ/arm_aarch64_conversion_slow.md) for a solution.
 >   <!-- end id1 -->
 > - If you set the network model precision parameter [--precision\_mode](../CLI_options/--precision_mode.md) or [--precision\_mode\_v2](../CLI_options/--precision_mode_v2.md) during model conversion:
->   - Both parameters default to performance-first, which may cause precision overflow during subsequent inference. If precision issues occur during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in [*Application Development*](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
+>   - Both parameters default to performance-first, which may cause precision overflow during subsequent inference. If precision issues occur during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in [*Application Development*](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
 >   - If you focus on precision issues, you can change them to other values, for example, set --precision\_mode to must\_keep\_origin\_dtype or set --precision\_mode\_v2 to origin.
 
 ## Converting a TensorFlow Network Model from an Open-Source Framework into an Offline Model
@@ -45,7 +45,7 @@ This chapter uses model conversion under each framework as an example to demonst
 
     After the command is successfully executed, you can view the offline model (for example, tf\_resnet50.om) in the path specified by the --output parameter.
     <!-- npu="950,A3,910b,910,310p,310b" id2 -->
-    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
+    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
     <!-- end id2 -->
 
 ## Converting an ONNX Network Model into an Offline Model
@@ -75,7 +75,7 @@ This chapter uses model conversion under each framework as an example to demonst
 
     After the command is successfully executed, you can view the offline model (for example, onnx\_resnet50.om) in the path specified by the --output parameter.
     <!-- npu="950,A3,910b,910,310p,310b" id3 -->
-    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
+    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
     <!-- end id3 -->
 
 ## Converting a Caffe Network Model of an Open Source Framework into an Offline Model
@@ -109,7 +109,7 @@ This chapter uses model conversion under each framework as an example to demonst
 
     After the command is successfully executed, you can view the offline model (for example, caffe\_resnet50.om) in the path specified by the --output parameter.
     <!-- npu="950,A3,910b,910,310p,310b" id4 -->
-    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
+    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
     <!-- end id4 -->
 
 ## Converting a Model File in \*.air Format into an Offline Model
@@ -139,5 +139,5 @@ This chapter uses model conversion under each framework as an example to demonst
 
     After the command is successfully executed, you can view the offline model (for example, _resnet50_\_air.om) in the path specified by the --output parameter.
     <!-- npu="950,A3,910b,910,310p,310b" id5 -->
-    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
+    If the model conversion fails, see *[Fault Handling](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/troubleshooting/00_troubleshooting.md)*\>"Error Code Reference" for auxiliary location.
     <!-- end id5 -->

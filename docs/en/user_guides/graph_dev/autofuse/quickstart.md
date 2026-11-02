@@ -308,7 +308,7 @@ This scenario supports only static shapes. To enable automatic fusion in offline
 
     For details about how to use the ATC tool, see [Ascend Tensor Compiler (ATC)](../../atc_tools/README.md).
 
-    For details about inference using the acl APIs, see *Model Inference* in [Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/app-dev/c/00_acl_cpp_dev.md)*.
+    For details about inference using the acl APIs, see *Model Inference* in [Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/app-dev/c/00_acl_cpp_dev.md)*.
 
 ## Inductor Path Enabling Automatic Fusion
 

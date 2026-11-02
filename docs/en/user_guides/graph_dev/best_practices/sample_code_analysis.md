@@ -20,7 +20,7 @@ The main execution process of the sample code and the APIs involved are as follo
 
 ![Figure 2 Illustration](../figures/single_thread_14.png)
 
-1. Call the "Initialization and Deinitialization \> aclInit" API in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/api_ref/README.md) to initialize acl, and call the "Device Management \> aclrtSetDevice" API in **Runtime APIs** to specify the Device to run on.
+1. Call the "Initialization and Deinitialization \> aclInit" API in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/api_ref/README.md) to initialize acl, and call the "Device Management \> aclrtSetDevice" API in **Runtime APIs** to specify the Device to run on.
 2. Construct a ModelInference instance and initialize the feature switches: enable the batch H2D feature, configure the AICore core control policy, and use multi-instance parallelism.
 3. Initialize ModelInference:
     1. Call the [Session](../../../api/graph_engine_api/cpp/ge/Session/Session.md) to create a Session class object and apply for Session resources. Configure the ge.aicoreNum parameter in the options of the Session.

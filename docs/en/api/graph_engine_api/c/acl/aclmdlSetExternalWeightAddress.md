@@ -30,7 +30,7 @@ Configures the Device memory for storing external weights. The caller must copy 
 
 During model loading, each FileConstant node in the compute graph stores the path of the corresponding external weight file (for example, /xx/../weight\_hasid1). The Graph Engine (GE) checks, based on the file name in the path (for example, weight\_hasid1), whether you have configured Device memory for the external weights. If configured, GE directly uses the Device memory address; otherwise, GE allocates a block of Device memory, reads the external weight file, and copies the external weight data to the Device memory. This memory is released when the model is unloaded.
 
-![](figures/Device-Context-Stream-relationship.png)
+![](figures/external_weight_files.png)
 
 **This API must be used together with the following APIs** to implement model loading:
 

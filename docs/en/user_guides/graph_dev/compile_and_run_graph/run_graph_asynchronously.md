@@ -13,9 +13,9 @@ After the graph is built, if you want to **compile and asynchronously run the gr
 ![Illustration](../figures/feature_intro_4.png)
 
 1. Call [GEInitializeV2](../../../api/graph_engine_api/cpp/ge/GeSession/GEInitializeV2.md) to perform system initialization (which can also be called before the graph is built) and request system resources.
-2. Call the "Initialization and Deinitialization \> aclInit" API in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/api_ref/README.md) to initialize acl.
+2. Call the "Initialization and Deinitialization \> aclInit" API in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/api_ref/README.md) to initialize acl.
 3. Call the [Session](../../../api/graph_engine_api/cpp/ge/GeSession/GESession.md) to create a Session class object and request Session resources.
-4. Call the **Device Management** \> **aclrtSetDevice** API in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/api_ref/README.md) to specify the device to run on, call **aclrtCreateStream** to create a stream, and then call the **Memory Management** \> **aclrtMallocHost/aclrtMalloc** API in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/api_ref/README.md) to request host and device memory respectively.
+4. Call the **Device Management** \> **aclrtSetDevice** API in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/api_ref/README.md) to specify the device to run on, call **aclrtCreateStream** to create a stream, and then call the **Memory Management** \> **aclrtMallocHost/aclrtMalloc** API in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/api_ref/README.md) to request host and device memory respectively.
 5. Call [AddGraph](../../../api/graph_engine_api/cpp/ge/GeSession/AddGraph.md) to add the defined graph to the Session class object.
 6. (Optional) Call [CompileGraph](../../../api/graph_engine_api/cpp/ge/GeSession/CompileGraph.md) to complete graph compilation.
 7. (Optional) Call [LoadGraph](../../../api/graph_engine_api/cpp/ge/GeSession/LoadGraph.md) (in the asynchronous Graph execution scenario) to load the graph model onto the stream created in the preceding step.
@@ -212,10 +212,10 @@ The main APIs involved are as follows:
 ![Illustration](../figures/single_thread.png)
 
 1. Call [GEInitializeV2](../../../api/graph_engine_api/cpp/ge/GeSession/GEInitializeV2.md) to perform system initialization (which can also be called before graph construction) and request system resources.
-2. Call the **Initialization and Deinitialization** \> **aclInit** API in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/api_ref/README.md) to initialize acl.
+2. Call the **Initialization and Deinitialization** \> **aclInit** API in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/api_ref/README.md) to initialize acl.
 3. Call the [Session](../../../api/graph_engine_api/cpp/ge/GeSession/GESession.md) to create multiple Session class objects and request Session resources. Pass a different ge.session\_device\_id to each Session to run the model on different devices.
 4. Create multiple threads, each receiving a different Session. The following uses one thread as an example to describe the simple process:
-    1. Call "Device Management \> aclrtSetDevice" in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/api_ref/README.md) to specify the device to run on, call "aclrtCreateStream" to create a stream, and then call "Memory Management \> aclrtMalloc" in *[Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/api_ref/README.md)* to request device memory.
+    1. Call "Device Management \> aclrtSetDevice" in [Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/api_ref/README.md) to specify the device to run on, call "aclrtCreateStream" to create a stream, and then call "Memory Management \> aclrtMalloc" in *[Runtime APIs](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/api_ref/README.md)* to request device memory.
     2. Call [AddGraph](../../../api/graph_engine_api/cpp/ge/GeSession/AddGraph.md) to add the defined graph to the Session class object.
     3. Call [CompileGraph](../../../api/graph_engine_api/cpp/ge/GeSession/CompileGraph.md) to complete graph compilation.
     4. Call [LoadGraph](../../../api/graph_engine_api/cpp/ge/GeSession/LoadGraph.md) (for the asynchronous execution graph scenario) to load the graph model onto the stream created earlier.

@@ -23,7 +23,7 @@ export IGNORE_INFER_ERROR=1
 
 This environment variable is not recommended. It is intended only for scenarios where the deliverables for integrating user-defined operators into a graph are missing and a compilation error occurs, and you want to quickly restore the use case.
 
-If the deliverables for integrating custom operators into a graph are missing (for example, the InferDataType implementation is absent), compilation failures or precision issues may occur. You are advised to complete them by referring to the "Programming Guide \> Appendix \> Integrating Operators into a Graph (GE Graph) Development" section in the *[Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/zh/guide/index.md)* manual.
+If the deliverables for integrating custom operators into a graph are missing (for example, the InferDataType implementation is absent), compilation failures or precision issues may occur. You are advised to complete them by referring to the "Programming Guide \> Appendix \> Integrating Operators into a Graph (GE Graph) Development" section in the *[Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/en/guide/index.md)* manual.
 
 ## Applicable Products
 

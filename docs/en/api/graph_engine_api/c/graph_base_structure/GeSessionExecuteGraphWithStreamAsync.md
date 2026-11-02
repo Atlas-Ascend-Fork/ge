@@ -49,4 +49,4 @@ ge::Status GeSessionExecuteGraphWithStreamAsync(ge::Session &session, uint32_t g
 - Before calling this API, create a Stream by calling the **aclrtCreateStream** API provided by acl.
 - Before obtaining the output execution result, call the **aclrtSynchronizeStream** API to ensure that the tasks on the Stream have been executed.
 
-For details about the API, see "Stream Management" in *[Runtime API](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/api_ref/README.md)*.
+For details about the API, see "Stream Management" in *[Runtime API](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/api_ref/README.md)*.

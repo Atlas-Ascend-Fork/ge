@@ -39,7 +39,7 @@ REGISTER_CUSTOM_PASS("pass_name").CustomPassFn(CustomPassFunc).Stage(CustomPassS
 >
 > If you need to replace an operator with one that provides other functions during graph modification, but the operator is not supported by CANN, you can customize the operator in the following ways:
 >
-> Customize the operator through Ascend C. For details, see [Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/zh/guide/index.md).
+> Customize the operator through Ascend C. For details, see [Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/en/guide/index.md).
 >
 > Customize the operator through TBE. For details, see *TBE & AI CPU Operator Development*.
 >

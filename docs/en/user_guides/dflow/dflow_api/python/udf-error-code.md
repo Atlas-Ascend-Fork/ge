@@ -2,7 +2,7 @@
 
 <!-- md-trans-meta sourceCommit=41b60725da446bdf6e1a8c41b6b576f1fa8bd5f5 translatedAt=2026-10-29T07:39:37.748Z pushedAt=2026-10-29T07:54:39.035Z nl=2 -->
 
-For details about the logs involved in the error codes, see *[Log Reference](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/log_ref/README.md)*.
+For details about the logs involved in the error codes, see *[Log Reference](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/log_ref/README.md)*.
 
 ## flowfunc
 

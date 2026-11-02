@@ -27,7 +27,7 @@ Before calling this API, you must first call [CompileGraph](./CompileGraph.md). 
 
 Usage 1 is recommended: After an om offline model is generated, the CANN software package version numbers used to call the **GetCompiledModel** API and the **aclmdlLoadFromFile** API **may be inconsistent**. However, if Usage 2 is used, because the serialized model data **ModelBufferData** in the memory buffer does not guarantee version compatibility, the CANN software package version numbers used to call the **GetCompiledModel** API and the **aclmdlLoadFromMem** API must be **consistent**; otherwise, undefined behavior may occur.
 
-For details about the APIs, see the "Model Inference" section in [Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/app-dev/c/00_acl_cpp_dev.md).
+For details about the APIs, see the "Model Inference" section in [Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/app-dev/c/00_acl_cpp_dev.md).
 
 ## Prototype
 

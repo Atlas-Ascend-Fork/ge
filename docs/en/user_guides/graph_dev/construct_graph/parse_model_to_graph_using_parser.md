@@ -36,7 +36,7 @@ The Parser layer currently provides users with the capabilities of custom OpPars
 
 - Custom OpParser:
 
-  If users need to directly map operators in the original framework to Ascend C operators or TBE operators already implemented in CANN, they can directly adapt third-party frameworks. For details, see the "Programming Guide \> Appendix \> AI Framework Operator Adaptation" section in [Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/zh/guide/index.md), or the "Operator Development Process \> Operator Adaptation" section in *[TBE & AI CPU Operator Development](https://hiascend.com/document/redirect/CannCommunityOpdevWizard)*, and select one of the implemented operators.
+  If users need to directly map operators in the original framework to Ascend C operators or TBE operators already implemented in CANN, they can directly adapt third-party frameworks. For details, see the "Programming Guide \> Appendix \> AI Framework Operator Adaptation" section in [Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/en/guide/index.md), or the "Operator Development Process \> Operator Adaptation" section in *[TBE & AI CPU Operator Development](https://hiascend.com/document/redirect/CannCommunityOpdevWizard)*, and select one of the implemented operators.
 
 - Custom TensorFlow Scope fusion rules: A neural network computation graph built based on TensorFlow usually consists of a large number of small operators. To achieve high-performance computation, it is often necessary to fuse the small operators in subgraphs so that the fused large operators can fully utilize hardware acceleration resources. For details, see *TensorFlow Parser Scope Fusion Rule Development*.
 

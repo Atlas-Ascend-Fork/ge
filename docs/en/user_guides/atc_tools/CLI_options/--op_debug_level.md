@@ -79,6 +79,6 @@ atc --op_debug_level=1 ...
 
 - In addition to the method of setting the [--debug\_dir](--debug_dir.md) parameter, you can also configure the environment variable ASCEND\_WORK\_PATH to specify the storage path of the debug files generated during operator build. The priority of these methods is as follows: configuration parameter “[--debug\_dir](--debug_dir.md)”\> > environment variable ASCEND\_WORK\_PATH > \> default storage path.
 
-    For details about ASCEND\_WORK\_PATH, see [*Environment Variable Reference*](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/env-vars/README.md).
+    For details about ASCEND\_WORK\_PATH, see [*Environment Variable Reference*](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/env-vars/README.md).
 
 - This parameter takes precedence over the value of **tbe\_debug\_level** in the operator build API (the build API of TBE DSL or the BuildCCE API of TBE TIK).

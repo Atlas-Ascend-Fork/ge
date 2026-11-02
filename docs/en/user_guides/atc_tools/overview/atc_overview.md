@@ -20,7 +20,7 @@ Where:
 - Open-source framework network model scenario:
     1. The network model from an open-source framework is parsed by Parser and converted into an intermediate IR Graph.
     2. After a series of operations such as graph preparation, graph splitting, graph optimization, and graph compilation, the intermediate IR is converted into an offline model adapted to AI processors (here, "graph" refers to the network model topology).
-    3. The converted offline model is uploaded to the board environment. The model file is loaded through the **model loading API**, and then the **model execution API** is called to implement inference. For the detailed flow, see the "Model Inference" section in *[Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/app-dev/c/00_acl_cpp_dev.md)*.
+    3. The converted offline model is uploaded to the board environment. The model file is loaded through the **model loading API**, and then the **model execution API** is called to implement inference. For the detailed flow, see the "Model Inference" section in *[Application Development](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/app-dev/c/00_acl_cpp_dev.md)*.
 
 - Single-operator description file scenario:
 
@@ -142,7 +142,7 @@ Operators in a network model are classified into AI Core operators and AI CPU op
 
 In the model conversion interaction flows of AI Core operators and AI CPU operators, although both involve stages such as graph preparation, graph splitting, graph optimization, and graph compilation, the internal modules involved in the interaction differ because their computing units are different. See the following figures.
 
-For details about operator types and basic concepts, see *[Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/zh/guide/index.md)* or *[TBE & AI CPU Operator Development](https://hiascend.com/document/redirect/CannCommunityOpdevWizard)* (choose either supported method). If the network model you use contains custom operators, develop and deploy the custom operators by referring to the preceding manuals first. During model conversion, the custom operator library is searched first to match the operators in the model file. If the matching fails, the built-in operator library is searched.
+For details about operator types and basic concepts, see *[Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/en/guide/index.md)* or *[TBE & AI CPU Operator Development](https://hiascend.com/document/redirect/CannCommunityOpdevWizard)* (choose either supported method). If the network model you use contains custom operators, develop and deploy the custom operators by referring to the preceding manuals first. During model conversion, the custom operator library is searched first to match the operators in the model file. If the matching fails, the built-in operator library is searched.
 
 During model conversion, if compilation fails because an AI CPU operator does not support a certain data type, you can enable the Cast operator auto-insertion feature to quickly convert the input to a data type supported by the operator, thereby quickly bringing up the network. For the detailed flow, see [Enabling the AI CPU Cast Operator Auto-Insertion Feature](../references/enable_ai_cpu_cast_auto_insert.md).
 

@@ -45,7 +45,7 @@
 - **Error code ranges**: Runtime error codes take forms such as 161xxx (parameter/environment class) and 507xxx (aicore timeout class). The error code format is \[ error code \]\[ module \]\[ submodule \]\[ error cause \]. When locating an issue, first determine which stage the error code belongs to.
 - **Compile-time logs**: When RTC compilation fails, the logs should contain detailed kernel source code compilation errors.
 
-For the complete error code descriptions, see [Troubleshooting](https://gitcode.com/cann/docs/blob/9.2.0/docs/zh/troubleshooting/00_troubleshooting.md).
+For the complete error code descriptions, see [Troubleshooting](https://gitcode.com/cann/docs/blob/9.2.0/docs/en/troubleshooting/00_troubleshooting.md).
 
 ## How to Further Locate the Issue
 

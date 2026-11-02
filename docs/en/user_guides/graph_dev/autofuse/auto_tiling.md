@@ -17,7 +17,7 @@ The execution logic of the kernel is expressed in AscIR. Auto Tiling extracts ke
 
     Auto Tiling must ensure that the local buffer usage of each level is within the range allowed by the hardware. For example, the sum of the sizes of the TQue/TBuf requested by the kernel and temporary buffer cannot exceed the UB size limit of the hardware. AscIR expresses the location of each tensor on the GM/UB and the reuse relationships between tensors. Based on the information, Auto Tiling symbolizes the constraints of the local buffer at each level.
 
-    For details about TQue and TBuf, see [Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/zh/guide/index.md).
+    For details about TQue and TBuf, see [Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/9.2.0/docs/en/guide/index.md).
 
 2. Time consumption formula modeling
 

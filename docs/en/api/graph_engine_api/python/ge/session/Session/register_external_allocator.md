@@ -30,4 +30,4 @@ None
 - If registration fails, **RuntimeError** is raised.
 - For the same stream, if this API is called multiple times, the last registration takes effect.
 - For different streams, if the same **Allocator** is used, concurrent execution across multiple streams is not allowed. Before executing the next **Stream**, stream synchronization must be performed on the previous **Stream**.
-- Before releasing the memory in the **Allocator** back to the operating system, call the “[acl.rt.synchronize\_stream](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/api_ref/README.md)” API to perform stream synchronization to ensure that the tasks in the **Stream** have completed execution.
+- Before releasing the memory in the **Allocator** back to the operating system, call the “[acl.rt.synchronize\_stream](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/api_ref/README.md)” API to perform stream synchronization to ensure that the tasks in the **Stream** have completed execution.

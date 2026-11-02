@@ -5,7 +5,7 @@
 **单算子模型执行是指基于图IR（Intermediate Representation）执行算子**，先使用昇腾张量编译器（Ascend Tensor Compiler，简称ATC）将Ascend IR定义的单算子描述文件编译成算子om模型文件，再调用acl接口加载算子模型（例如[aclopSetModelDir](aclopSetModelDir.md)接口），最后调用acl接口执行算子（例如[aclopExecuteV2](aclopExecuteV2.md)接口）。
 
 **图 1**  单算子模型执行接口调用流程
-![](figures/单算子模型执行接口调用流程.png "单算子模型执行接口调用流程")
+![](figures/single_operator_model_API_calling_process.png "单算子模型执行接口调用流程")
 
 关键接口的说明如下（其中aclrt开头的接口是Runtime组件提供的接口）：
 

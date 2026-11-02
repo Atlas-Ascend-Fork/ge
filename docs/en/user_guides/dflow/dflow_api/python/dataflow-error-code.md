@@ -14,4 +14,4 @@ The DataFlow error codes and their meanings are as follows.
 | FAILED=0xFFFFFFFF | Internal error in the C++ layer | Troubleshoot the issue based on the logs, or contact an engineer for handling (after obtaining the logs, click [Support](https://www.hiascend.com/support) to contact technical support). |
 | SUCCESS=0 | Execution succeeded | - |
 
-For details about the logs involved in the error codes, see *[Log Reference](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/log_ref/README.md)*.
+For details about the logs involved in the error codes, see *[Log Reference](https://gitcode.com/cann/runtime/blob/9.2.0/docs/en/log_ref/README.md)*.
