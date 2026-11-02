@@ -135,9 +135,9 @@ TEST_F(LLMUtilsTest, TestLlmUitls) {
   EXPECT_TRUE(llm::LLMUtils::CheckMultiplyOverflowInt64(a, b));
 
   // test CeilDiv
-  int32_t c = 1;
-  int32_t d = 1;
-  int32_t e = llm::LLMUtils::CeilDiv(c, d);
+  int64_t c = 1;
+  int64_t d = 1;
+  int64_t e = llm::LLMUtils::CeilDiv(c, d);
   EXPECT_TRUE((e > 0));
 
   // test GetDataTypeLength
@@ -163,6 +163,23 @@ TEST_F(LLMUtilsTest, TestLlmUitls) {
   const std::string str3 = "1";
   ret = llm::ConvertToInt64(str3, val);
   EXPECT_EQ(ret, ge::SUCCESS);
+}
+
+TEST_F(LLMUtilsTest, TestGetSizeInBytesForLargeLowBitTypes) {
+  const int64_t kUInt1BitCount = (1LL << 31);
+  const int64_t kInt4BitCount = kUInt1BitCount / 4;
+  const int64_t kExpectedMemSize = (1LL << 28);
+  int64_t mem_size = -1;
+
+  EXPECT_EQ(llm::LLMUtils::GetSizeInBytes(kUInt1BitCount - 1, ge::DT_UINT1, mem_size), ge::SUCCESS);
+  EXPECT_EQ(mem_size, kExpectedMemSize);
+  EXPECT_EQ(llm::LLMUtils::GetSizeInBytes(kUInt1BitCount, ge::DT_UINT1, mem_size), ge::SUCCESS);
+  EXPECT_EQ(mem_size, kExpectedMemSize);
+
+  EXPECT_EQ(llm::LLMUtils::GetSizeInBytes(kInt4BitCount - 1, ge::DT_INT4, mem_size), ge::SUCCESS);
+  EXPECT_EQ(mem_size, kExpectedMemSize);
+  EXPECT_EQ(llm::LLMUtils::GetSizeInBytes(kInt4BitCount, ge::DT_INT4, mem_size), ge::SUCCESS);
+  EXPECT_EQ(mem_size, kExpectedMemSize);
 }
 
 TEST_F(LLMUtilsTest, TestParserOptions) {
