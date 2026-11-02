@@ -42,15 +42,28 @@ bool NeedKeepGeneratedTasks(const OpDescPtr &op_desc) {
 void RefreshTaskDefStreamId(bool has_attached_stream, int64_t logical_stream_id, int64_t real_stream_id,
                             std::vector<domi::TaskDef> &task_defs) {
   if (has_attached_stream) {
-    for (auto &task_def : task_defs) {
-      auto task_def_origin_stream_id = static_cast<int64_t>(task_def.stream_id());
+    for (size_t i = 0U; i < task_defs.size(); ++i) {
+      auto &task_def = task_defs[i];
+      const auto task_def_origin_stream_id = static_cast<int64_t>(task_def.stream_id());
       if ((task_def_origin_stream_id == logical_stream_id) && (task_def_origin_stream_id != real_stream_id)) {
         task_def.set_stream_id(static_cast<uint32_t>(real_stream_id));
+        GELOGD(
+            "[refresh-stream] has_attached_stream: true, logical:%ld, real:%ld, "
+            "task[%zu]: origin stream:%ld -> new stream:%u.",
+            logical_stream_id, real_stream_id, i, task_def_origin_stream_id, task_def.stream_id());
       }
     }
   } else {
-    for (auto &task_def : task_defs) {
-      task_def.set_stream_id(static_cast<uint32_t>(real_stream_id));
+    for (size_t i = 0U; i < task_defs.size(); ++i) {
+      auto &task_def = task_defs[i];
+      const auto task_def_origin_stream_id = static_cast<int64_t>(task_def.stream_id());
+      if (task_def_origin_stream_id != real_stream_id) {
+        task_def.set_stream_id(static_cast<uint32_t>(real_stream_id));
+        GELOGD(
+            "[refresh-stream] has_attached_stream: false, logical:%ld, real:%ld, "
+            "task[%zu]: origin stream:%ld -> new stream:%u.",
+            logical_stream_id, real_stream_id, i, task_def_origin_stream_id, task_def.stream_id());
+      }
     }
   }
 }

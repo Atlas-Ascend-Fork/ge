@@ -1353,6 +1353,8 @@ Status ModelBuilder::FinalizeDeclarativeAttachedStreams() {
     GE_ASSERT_TRUE(max_stream_id < std::numeric_limits<uint32_t>::max(), "Max stream id %u exceeds uint32_t max value.",
                    max_stream_id);
     const int64_t required_stream_num = static_cast<int64_t>(max_stream_id) + 1L;
+    GELOGI("[AnnotatedArgs][finalize] extend logical stream num: max_stream_id:%u, required:%ld, stream_num:%ld->%ld.",
+           max_stream_id, required_stream_num, stream_num_, std::max(stream_num_, required_stream_num));
     stream_num_ = std::max(stream_num_, required_stream_num);
     stream_allocator_.ExtendLogicalStreamNum(required_stream_num);
   }
