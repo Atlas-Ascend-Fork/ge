@@ -89,6 +89,11 @@ bool IsKeepAliveNode(const NodePtr &node) {
   (void)AttrUtils::GetBool(op_desc, ATTR_NAME_SKIP_PRUNE_OPTIMIZE, skip_prune);
   (void)AttrUtils::GetBool(op_desc, ATTR_NAME_REFERENCE, is_ref);
 
+  // 无数据输出端口的算子可能通过句柄修改资源，不能按输出可达性判为死节点。
+  if (op_desc->GetOutputsSize() == 0U) {
+    return true;
+  }
+
   if (skip_prune || is_ref || !op_desc->GetSubgraphInstanceNames().empty() || HasExecutionLabel(node)) {
     return true;
   }

@@ -1025,6 +1025,28 @@ TEST_F(UtestGraphPassesPrunePass, after_engine_prune_keeps_engine_and_kernel_ide
   }
 }
 
+// AI Core 算子库本身不保活普通死节点，删除计算链后仍恢复输入的完成依赖。
+TEST_F(UtestGraphPassesPrunePass, after_engine_prune_removes_aicore_dead_nodes) {
+  ut::GraphBuilder builder("aicore_dead_nodes");
+  auto data = builder.AddNode("data", DATA, 0, 1);
+  auto producer = builder.AddNode("producer", RELU, 1, 1);
+  auto dead = builder.AddNode("dead", RELU, 1, 1);
+  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
+  dead->GetOpDesc()->SetOpEngineName("DNN_VM_AICORE");
+  dead->GetOpDesc()->SetOpKernelLibName(kEngineNameAiCore);
+  builder.AddDataEdge(data, 0, producer, 0);
+  builder.AddDataEdge(producer, 0, dead, 0);
+  builder.AddControlEdge(dead, output);
+  auto graph = builder.GetGraph();
+
+  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
+  EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
+  EXPECT_EQ(graph->FindNode("producer"), nullptr);
+  EXPECT_EQ(graph->FindNode("dead"), nullptr);
+  EXPECT_TRUE(data->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
+  EXPECT_EQ(output->GetInControlAnchor()->GetPeerAnchorsSize(), 1U);
+}
+
 // Horovod 在 GE 和图元数据中存在两组明确类型名，不依赖字符串前缀判断通信语义。
 TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_horovod_types_without_engine_match) {
   const std::vector<std::string> types = {
@@ -1117,6 +1139,73 @@ TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_print_v3_input_cl
   EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(producer->GetInDataAnchor(0)));
   EXPECT_TRUE(producer->GetOutDataAnchor(0)->IsLinkedWith(print->GetInDataAnchor(0)));
   EXPECT_TRUE(print->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
+}
+
+// 无输出端口的资源算子及其输入闭包不依赖类型名、引擎或算子库保活。
+TEST_F(UtestGraphPassesPrunePass, after_engine_prune_preserves_outputless_ops_and_input_closure) {
+  for (const auto &type : {"InitEmbeddingHashTable", "CustomResourceInit"}) {
+    SCOPED_TRACE(type);
+    ut::GraphBuilder builder("outputless_resource_init");
+    auto data = builder.AddNode("data", DATA, 0, 1);
+    auto producer = builder.AddNode("producer", RELU, 1, 1);
+    auto init = builder.AddNode("init", type, 1, 0);
+    auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
+    init->GetOpDesc()->SetOpEngineName("DNN_VM_AICPU");
+    init->GetOpDesc()->SetOpKernelLibName(kEngineNameAiCpu);
+    builder.AddDataEdge(data, 0, producer, 0);
+    builder.AddDataEdge(producer, 0, init, 0);
+    builder.AddControlEdge(init, output);
+    auto graph = builder.GetGraph();
+
+    ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
+    EXPECT_EQ(graph->GetDirectNodesSize(), 4U);
+    EXPECT_EQ(graph->FindNode("init"), init);
+    EXPECT_EQ(graph->FindNode("producer"), producer);
+    EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(producer->GetInDataAnchor(0)));
+    EXPECT_TRUE(producer->GetOutDataAnchor(0)->IsLinkedWith(init->GetInDataAnchor(0)));
+    EXPECT_TRUE(init->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
+  }
+}
+
+// 删除无输出算子下游的无用计算时，保留资源操作并恢复其完成依赖。
+TEST_F(UtestGraphPassesPrunePass, after_engine_prune_restores_outputless_op_completion) {
+  ut::GraphBuilder builder("outputless_completion_boundary");
+  auto data = builder.AddNode("data", DATA, 0, 1);
+  auto init = builder.AddNode("init", "CustomResourceInit", 1, 0);
+  auto dead = builder.AddNode("dead", RELU, 1, 1);
+  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
+  builder.AddDataEdge(data, 0, init, 0);
+  builder.AddDataEdge(data, 0, dead, 0);
+  builder.AddControlEdge(init, dead);
+  builder.AddControlEdge(dead, output);
+  auto graph = builder.GetGraph();
+
+  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
+  EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
+  EXPECT_EQ(graph->FindNode("init"), init);
+  EXPECT_EQ(graph->FindNode("dead"), nullptr);
+  EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(init->GetInDataAnchor(0)));
+  EXPECT_TRUE(init->GetOutControlAnchor()->IsLinkedWith(output->GetInControlAnchor()));
+}
+
+// 无输出端口节点即使没有完成边也保活；存在输出端口但无消费者的节点仍可删除。
+TEST_F(UtestGraphPassesPrunePass, after_engine_prune_distinguishes_outputless_ops_from_unused_outputs) {
+  ut::GraphBuilder builder("outputless_and_unused_outputs");
+  auto data = builder.AddNode("data", DATA, 0, 1);
+  auto init = builder.AddNode("init", "CustomResourceInit", 1, 0);
+  auto dead = builder.AddNode("dead", "CustomResourceInit", 1, 1);
+  auto output = builder.AddNode("output", NETOUTPUT, 0, 0);
+  builder.AddDataEdge(data, 0, init, 0);
+  builder.AddDataEdge(data, 0, dead, 0);
+  builder.AddControlEdge(dead, output);
+  auto graph = builder.GetGraph();
+
+  ASSERT_EQ(PrunePass(PrunePass::Stage::kAfterEngineAssigned).Run(graph), SUCCESS);
+  EXPECT_EQ(graph->GetDirectNodesSize(), 3U);
+  EXPECT_EQ(graph->FindNode("init"), init);
+  EXPECT_EQ(graph->FindNode("dead"), nullptr);
+  EXPECT_TRUE(data->GetOutDataAnchor(0)->IsLinkedWith(init->GetInDataAnchor(0)));
+  EXPECT_EQ(init->GetOutControlAnchor()->GetPeerAnchorsSize(), 0U);
 }
 
 // 边界节点虽非白名单，但被另一出口需要，删除死链时仍须恢复它到原出口的完成依赖。
