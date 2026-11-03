@@ -19,8 +19,6 @@
 ## 函数原型
 
 ```c++
-rtStream RequestAttachedStream(const ge::AscendString &key)
-// 指定 RTS 流创建标志
 rtStream RequestAttachedStream(const ge::AscendString &key, uint32_t flags)
 ```
 

@@ -99,8 +99,8 @@ TEST(EagerOpExecutionContextTest, RequestAttachedStreamForwardsViaContextInfoSlo
   EXPECT_EQ(context->RequestAttachedStream(ge::AscendString("fwd_key"), flags), provider.stream);
   EXPECT_EQ(provider.last_flags, flags);
   provider.last_flags = 0xFFFFFFFFU;
-  EXPECT_EQ(context->RequestAttachedStream(ge::AscendString("legacy_key")), provider.stream);
-  EXPECT_EQ(provider.last_key, "legacy_key");
+  EXPECT_EQ(context->RequestAttachedStream(ge::AscendString("zero_flag_key"), 0U), provider.stream);
+  EXPECT_EQ(provider.last_key, "zero_flag_key");
   EXPECT_EQ(provider.last_flags, 0U);
 }
 
