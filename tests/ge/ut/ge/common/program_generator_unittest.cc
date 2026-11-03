@@ -2816,9 +2816,11 @@ gert::Tensor BuildTensor(void *device_address, uint64_t size, int32_t data_type,
     (void)storage_shape.MutableOriginShape().AppendDim(dim);
   }
   gert::StorageFormat storage_format(static_cast<ge::Format>(format), static_cast<ge::Format>(format), {});
-  gert::Tensor tensor(storage_shape, storage_format, gert::kOnDeviceHbm, static_cast<ge::DataType>(data_type),
-                      reinterpret_cast<gert::TensorAddress>(device_address));
-  tensor.SetSize(size);
+  // 不使用带地址的 Tensor 构造：其内联实现引用 ge::GetSizeInBytes（仅宿主 libgraph_base.so
+  // 提供，独立加载场景无提供者），改为 3 参构造 + SetData 显式设置地址/大小
+  gert::Tensor tensor(storage_shape, storage_format, static_cast<ge::DataType>(data_type));
+  tensor.SetData(gert::TensorData(reinterpret_cast<gert::TensorAddress>(device_address), nullptr,
+                                  static_cast<size_t>(size), gert::kOnDeviceHbm));
 
   return tensor;
 }
@@ -3508,9 +3510,11 @@ gert::Tensor BuildTensor(void *device_address, uint64_t size, int32_t data_type,
     (void)storage_shape.MutableOriginShape().AppendDim(dim);
   }
   gert::StorageFormat storage_format(static_cast<ge::Format>(format), static_cast<ge::Format>(format), {});
-  gert::Tensor tensor(storage_shape, storage_format, gert::kOnDeviceHbm, static_cast<ge::DataType>(data_type),
-                      reinterpret_cast<gert::TensorAddress>(device_address));
-  tensor.SetSize(size);
+  // 不使用带地址的 Tensor 构造：其内联实现引用 ge::GetSizeInBytes（仅宿主 libgraph_base.so
+  // 提供，独立加载场景无提供者），改为 3 参构造 + SetData 显式设置地址/大小
+  gert::Tensor tensor(storage_shape, storage_format, static_cast<ge::DataType>(data_type));
+  tensor.SetData(gert::TensorData(reinterpret_cast<gert::TensorAddress>(device_address), nullptr,
+                                  static_cast<size_t>(size), gert::kOnDeviceHbm));
 
   return tensor;
 }
@@ -4255,9 +4259,11 @@ gert::Tensor BuildTensor(void *device_address, uint64_t size, int32_t data_type,
     (void)storage_shape.MutableOriginShape().AppendDim(dim);
   }
   gert::StorageFormat storage_format(static_cast<ge::Format>(format), static_cast<ge::Format>(format), {});
-  gert::Tensor tensor(storage_shape, storage_format, gert::kOnDeviceHbm, static_cast<ge::DataType>(data_type),
-                      reinterpret_cast<gert::TensorAddress>(device_address));
-  tensor.SetSize(size);
+  // 不使用带地址的 Tensor 构造：其内联实现引用 ge::GetSizeInBytes（仅宿主 libgraph_base.so
+  // 提供，独立加载场景无提供者），改为 3 参构造 + SetData 显式设置地址/大小
+  gert::Tensor tensor(storage_shape, storage_format, static_cast<ge::DataType>(data_type));
+  tensor.SetData(gert::TensorData(reinterpret_cast<gert::TensorAddress>(device_address), nullptr,
+                                  static_cast<size_t>(size), gert::kOnDeviceHbm));
 
   return tensor;
 }
@@ -4982,9 +4988,11 @@ gert::Tensor BuildTensor(void *device_address, uint64_t size, int32_t data_type,
     (void)storage_shape.MutableOriginShape().AppendDim(dim);
   }
   gert::StorageFormat storage_format(static_cast<ge::Format>(format), static_cast<ge::Format>(format), {});
-  gert::Tensor tensor(storage_shape, storage_format, gert::kOnDeviceHbm, static_cast<ge::DataType>(data_type),
-                      reinterpret_cast<gert::TensorAddress>(device_address));
-  tensor.SetSize(size);
+  // 不使用带地址的 Tensor 构造：其内联实现引用 ge::GetSizeInBytes（仅宿主 libgraph_base.so
+  // 提供，独立加载场景无提供者），改为 3 参构造 + SetData 显式设置地址/大小
+  gert::Tensor tensor(storage_shape, storage_format, static_cast<ge::DataType>(data_type));
+  tensor.SetData(gert::TensorData(reinterpret_cast<gert::TensorAddress>(device_address), nullptr,
+                                  static_cast<size_t>(size), gert::kOnDeviceHbm));
 
   return tensor;
 }
