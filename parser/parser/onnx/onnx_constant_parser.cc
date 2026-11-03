@@ -31,7 +31,51 @@ using namespace ge::parser;
 namespace ge {
 namespace {
 const char *kConstant = "Const";
+const char *const kAttrNameValueFloat = "value_float";
+const char *const kAttrNameValueFloats = "value_floats";
+const char *const kAttrNameValueInt = "value_int";
+const char *const kAttrNameValueInts = "value_ints";
+const char *const kAttrNameValueString = "value_string";
+const char *const kAttrNameValueStrings = "value_strings";
+const char *const kAttrNameSparseValue = "sparse_value";
+
+// ONNX Constant(opset >= 12) accepts scalar/list attributes besides "value".
+// Convert them into an equivalent TensorProto so the following conversion path stays unchanged.
+Status BuildTensorProtoFromValueAttr(const ge::onnx::AttributeProto &attr, ge::onnx::TensorProto &tensor_proto) {
+  const std::string attr_name = attr.name();
+  if (attr_name == kAttrNameValueFloat) {
+    tensor_proto.set_data_type(OnnxDataType::FLOAT);
+    tensor_proto.add_float_data(attr.f());
+  } else if (attr_name == kAttrNameValueFloats) {
+    tensor_proto.set_data_type(OnnxDataType::FLOAT);
+    tensor_proto.add_dims(attr.floats_size());
+    for (int32_t i = 0; i < attr.floats_size(); ++i) {
+      tensor_proto.add_float_data(attr.floats(i));
+    }
+  } else if (attr_name == kAttrNameValueInt) {
+    tensor_proto.set_data_type(OnnxDataType::INT64);
+    tensor_proto.add_int64_data(attr.i());
+  } else if (attr_name == kAttrNameValueInts) {
+    tensor_proto.set_data_type(OnnxDataType::INT64);
+    tensor_proto.add_dims(attr.ints_size());
+    for (int32_t i = 0; i < attr.ints_size(); ++i) {
+      tensor_proto.add_int64_data(attr.ints(i));
+    }
+  } else if (attr_name == kAttrNameValueString) {
+    tensor_proto.set_data_type(OnnxDataType::STRING);
+    tensor_proto.add_string_data(attr.s());
+  } else if (attr_name == kAttrNameValueStrings) {
+    tensor_proto.set_data_type(OnnxDataType::STRING);
+    tensor_proto.add_dims(attr.strings_size());
+    for (int32_t i = 0; i < attr.strings_size(); ++i) {
+      tensor_proto.add_string_data(attr.strings(i));
+    }
+  } else {
+    return FAILED;
+  }
+  return SUCCESS;
 }
+}  // namespace
 Status OnnxConstantParser::ParseConvertData(const ge::onnx::TensorProto &tensor_proto, ge::Tensor &tensor, int count) {
   int64_t data_type = tensor_proto.data_type();
   if (ge::OnnxUtil::ConvertOnnxDataType(data_type) == ge::DataType::DT_UNDEFINED) {
@@ -217,25 +261,43 @@ Status OnnxConstantParser::ParseConstFromInput(const ge::onnx::NodeProto *op_src
   GE_CHECK_NOTNULL(op_src);
   const NodeProto *node = PtrToPtr<const ge::onnx::NodeProto, const NodeProto>(op_src);
 
-  // Get const Tensor from node
+  // Get const Tensor from node. ONNX Constant supports exactly one of:
+  // value / value_float / value_floats / value_int / value_ints / value_string / value_strings.
   Tensor tensor;
-  for (auto it : node->attribute()) {
-    if (it.name() != ge::kAttrNameValue) {
+  bool has_value = false;
+  for (const auto &it : node->attribute()) {
+    ge::onnx::TensorProto tensor_proto;
+    if (it.name() == ge::kAttrNameValue) {
+      tensor_proto = it.t();
+    } else if (it.name() == kAttrNameSparseValue) {
+      REPORT_INNER_ERR_MSG("E19999", "node %s: attribute %s is not supported.", node->name().c_str(),
+                           kAttrNameSparseValue);
+      GELOGE(domi::PARAM_INVALID, "[Check][Param] node %s: attribute %s is not supported.", node->name().c_str(),
+             kAttrNameSparseValue);
+      return FAILED;
+    } else if (BuildTensorProtoFromValueAttr(it, tensor_proto) != SUCCESS) {
       continue;
     }
-    const ::ge::onnx::TensorProto it_tensor = it.t();
-    if (ParseConvertDataType(it_tensor, tensor) != SUCCESS) {
+
+    if (ParseConvertDataType(tensor_proto, tensor) != SUCCESS) {
       GELOGE(FAILED, "[Check][Param] Convert ge tensor data type failed, attribute name is %s.", it.name().c_str());
       return FAILED;
     }
 
-    if (ParseConvertTensor(it_tensor, tensor) != SUCCESS) {
+    if (ParseConvertTensor(tensor_proto, tensor) != SUCCESS) {
       GELOGE(FAILED, "[Check][Param] Convert ge tensor shape and format failed, attribute name is %s.",
              it.name().c_str());
       return FAILED;
     }
+    has_value = true;
+    break;
   }
 
+  if (!has_value) {
+    // Keep the historical behavior for malformed nodes that carry no value attribute at all
+    // (some hand-written test models rely on it): set an empty tensor and continue.
+    GELOGW("node %s has no value attribute, set an empty tensor.", node->name().c_str());
+  }
   op_def.SetAttr(ge::kAttrNameValue, tensor);
   return SUCCESS;
 }

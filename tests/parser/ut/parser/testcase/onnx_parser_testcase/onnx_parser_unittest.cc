@@ -680,6 +680,153 @@ TEST_F(UtestOnnxParser, OnnxConstantParser_ParseConvertDataType_test) {
   EXPECT_EQ(ret, SUCCESS);
 }
 
+TEST_F(UtestOnnxParser, OnnxConstantParser_ParseValueFloatAndFloats_test) {
+  OnnxConstantParser constant_parser;
+
+  ge::onnx::NodeProto node;
+  node.set_name("const_value_float");
+  node.set_op_type("Constant");
+  ge::onnx::AttributeProto *attribute = node.add_attribute();
+  attribute->set_name("value_float");
+  attribute->set_type(ge::onnx::AttributeProto::FLOAT);
+  attribute->set_f(1.5F);
+
+  ge::Operator op("const_value_float", "Const");
+  EXPECT_EQ(constant_parser.ParseParams(&node, op), SUCCESS);
+  ge::Tensor tensor;
+  ASSERT_EQ(op.GetAttr("value", tensor), GRAPH_SUCCESS);
+  EXPECT_EQ(tensor.GetTensorDesc().GetDataType(), DT_FLOAT);
+  EXPECT_TRUE(tensor.GetTensorDesc().GetShape().GetDims().empty());
+  const float *scalar_data = reinterpret_cast<const float *>(tensor.GetData());
+  ASSERT_NE(scalar_data, nullptr);
+  EXPECT_FLOAT_EQ(scalar_data[0], 1.5F);
+
+  ge::onnx::NodeProto node_list;
+  node_list.set_name("const_value_floats");
+  node_list.set_op_type("Constant");
+  ge::onnx::AttributeProto *list_attribute = node_list.add_attribute();
+  list_attribute->set_name("value_floats");
+  list_attribute->set_type(ge::onnx::AttributeProto::FLOATS);
+  list_attribute->add_floats(1.0F);
+  list_attribute->add_floats(2.0F);
+
+  ge::Operator op_list("const_value_floats", "Const");
+  EXPECT_EQ(constant_parser.ParseParams(&node_list, op_list), SUCCESS);
+  ge::Tensor list_tensor;
+  ASSERT_EQ(op_list.GetAttr("value", list_tensor), GRAPH_SUCCESS);
+  EXPECT_EQ(list_tensor.GetTensorDesc().GetDataType(), DT_FLOAT);
+  const std::vector<int64_t> dims = list_tensor.GetTensorDesc().GetShape().GetDims();
+  ASSERT_EQ(dims.size(), 1U);
+  EXPECT_EQ(dims[0], 2);
+  const float *list_data = reinterpret_cast<const float *>(list_tensor.GetData());
+  ASSERT_NE(list_data, nullptr);
+  EXPECT_FLOAT_EQ(list_data[0], 1.0F);
+  EXPECT_FLOAT_EQ(list_data[1], 2.0F);
+}
+
+TEST_F(UtestOnnxParser, OnnxConstantParser_ParseValueIntAndInts_test) {
+  OnnxConstantParser constant_parser;
+
+  ge::onnx::NodeProto node;
+  node.set_name("const_value_int");
+  node.set_op_type("Constant");
+  ge::onnx::AttributeProto *attribute = node.add_attribute();
+  attribute->set_name("value_int");
+  attribute->set_type(ge::onnx::AttributeProto::INT);
+  attribute->set_i(-3);
+
+  ge::Operator op("const_value_int", "Const");
+  EXPECT_EQ(constant_parser.ParseParams(&node, op), SUCCESS);
+  ge::Tensor tensor;
+  ASSERT_EQ(op.GetAttr("value", tensor), GRAPH_SUCCESS);
+  EXPECT_EQ(tensor.GetTensorDesc().GetDataType(), DT_INT64);
+  EXPECT_TRUE(tensor.GetTensorDesc().GetShape().GetDims().empty());
+  const int64_t *scalar_data = reinterpret_cast<const int64_t *>(tensor.GetData());
+  ASSERT_NE(scalar_data, nullptr);
+  EXPECT_EQ(scalar_data[0], -3);
+
+  ge::onnx::NodeProto node_list;
+  node_list.set_name("const_value_ints");
+  node_list.set_op_type("Constant");
+  ge::onnx::AttributeProto *list_attribute = node_list.add_attribute();
+  list_attribute->set_name("value_ints");
+  list_attribute->set_type(ge::onnx::AttributeProto::INTS);
+  list_attribute->add_ints(3);
+  list_attribute->add_ints(4);
+  list_attribute->add_ints(5);
+
+  ge::Operator op_list("const_value_ints", "Const");
+  EXPECT_EQ(constant_parser.ParseParams(&node_list, op_list), SUCCESS);
+  ge::Tensor list_tensor;
+  ASSERT_EQ(op_list.GetAttr("value", list_tensor), GRAPH_SUCCESS);
+  EXPECT_EQ(list_tensor.GetTensorDesc().GetDataType(), DT_INT64);
+  const std::vector<int64_t> dims = list_tensor.GetTensorDesc().GetShape().GetDims();
+  ASSERT_EQ(dims.size(), 1U);
+  EXPECT_EQ(dims[0], 3);
+  const int64_t *list_data = reinterpret_cast<const int64_t *>(list_tensor.GetData());
+  ASSERT_NE(list_data, nullptr);
+  EXPECT_EQ(list_data[0], 3);
+  EXPECT_EQ(list_data[1], 4);
+  EXPECT_EQ(list_data[2], 5);
+}
+
+TEST_F(UtestOnnxParser, OnnxConstantParser_ParseValueStringAndStrings_test) {
+  OnnxConstantParser constant_parser;
+
+  ge::onnx::NodeProto node;
+  node.set_name("const_value_string");
+  node.set_op_type("Constant");
+  ge::onnx::AttributeProto *attribute = node.add_attribute();
+  attribute->set_name("value_string");
+  attribute->set_type(ge::onnx::AttributeProto::STRING);
+  attribute->set_s("scalar");
+
+  ge::Operator op("const_value_string", "Const");
+  EXPECT_EQ(constant_parser.ParseParams(&node, op), SUCCESS);
+  ge::Tensor tensor;
+  ASSERT_EQ(op.GetAttr("value", tensor), GRAPH_SUCCESS);
+  EXPECT_EQ(tensor.GetTensorDesc().GetDataType(), DT_STRING);
+  EXPECT_TRUE(tensor.GetTensorDesc().GetShape().GetDims().empty());
+
+  ge::onnx::NodeProto node_list;
+  node_list.set_name("const_value_strings");
+  node_list.set_op_type("Constant");
+  ge::onnx::AttributeProto *list_attribute = node_list.add_attribute();
+  list_attribute->set_name("value_strings");
+  list_attribute->set_type(ge::onnx::AttributeProto::STRINGS);
+  list_attribute->add_strings("first");
+  list_attribute->add_strings("second");
+
+  ge::Operator op_list("const_value_strings", "Const");
+  EXPECT_EQ(constant_parser.ParseParams(&node_list, op_list), SUCCESS);
+  ge::Tensor list_tensor;
+  ASSERT_EQ(op_list.GetAttr("value", list_tensor), GRAPH_SUCCESS);
+  EXPECT_EQ(list_tensor.GetTensorDesc().GetDataType(), DT_STRING);
+  const std::vector<int64_t> dims = list_tensor.GetTensorDesc().GetShape().GetDims();
+  ASSERT_EQ(dims.size(), 1U);
+  EXPECT_EQ(dims[0], 2);
+}
+
+TEST_F(UtestOnnxParser, OnnxConstantParser_ParseInvalidValueAttr_test) {
+  OnnxConstantParser constant_parser;
+
+  // Malformed node without any value attribute keeps the historical "empty tensor" behavior.
+  ge::onnx::NodeProto empty_node;
+  empty_node.set_name("const_empty");
+  empty_node.set_op_type("Constant");
+  ge::Operator empty_op("const_empty", "Const");
+  EXPECT_EQ(constant_parser.ParseParams(&empty_node, empty_op), SUCCESS);
+
+  ge::onnx::NodeProto sparse_node;
+  sparse_node.set_name("const_sparse");
+  sparse_node.set_op_type("Constant");
+  ge::onnx::AttributeProto *sparse_attribute = sparse_node.add_attribute();
+  sparse_attribute->set_name("sparse_value");
+  sparse_attribute->set_type(ge::onnx::AttributeProto::SPARSE_TENSOR);
+  ge::Operator sparse_op("const_sparse", "Const");
+  EXPECT_EQ(constant_parser.ParseParams(&sparse_node, sparse_op), FAILED);
+}
+
 TEST_F(UtestOnnxParser, FileConstantGetTensorProto) {
   OnnxFileConstantParser parser;
   ge::onnx::NodeProto input_node;
