@@ -465,6 +465,7 @@ GeApi.ge_finalize()
 └── _bridge.py       # Bridge 运行时辅助（Pass 实例管理，供 C++ bridge .so 回调）
 ```
 注：下划线开头的为Python风格下的对内模块
+
 注：`PassContext`、`MatchResult`、`Pattern`、`PatternMatcherConfig`等对象由`_ge_pass_native.so`提供native-backed实现，`base.py` / `pattern.py`负责对外导出与少量Python辅助封装。
 
 #### 运行时native artifact选择
@@ -573,12 +574,7 @@ run包可携带多个`ge_py_pass_bridge` native子wheel，但安装脚本只应�
 - `FuseCheckResult.ok` - 是否可融合
 - `FuseCheckResult.reason` - 不可融合原因；可融合时为空字符串
 
-native binding将Python `Node` iterable转换为`std::vector<GNode>`，调用
-`GraphFuseInspectorUtils::CanFuse`，再由`fuse_inspector.py`将native返回的`(bool, str)`包装为不可变
-dataclass。
-业务不可融合返回`FuseCheckResult(False, reason)`；输入类型错误或Node handle失效时抛出Python异常。
-`report_fuse`无需适配返回值，由`fuse_inspector.py`直接重导出native实现；失败时设置context错误信息并
-抛出`RuntimeError`，其中空`nodes_after`表示只删除旧节点。
+native binding将Python `Node` iterable转换为`std::vector<GNode>`，调用`GraphFuseInspectorUtils::CanFuse`，再由`fuse_inspector.py`将native返回的`(bool, str)`包装为不可变dataclass。业务不可融合返回`FuseCheckResult(False, reason)`；输入类型错误或Node handle失效时抛出Python异常。`report_fuse`无需适配返回值，由`fuse_inspector.py`直接重导出native实现；失败时设置context错误信息并抛出`RuntimeError`，其中空`nodes_after`表示只删除旧节点。
 
 ##### InferShape native helper
 
@@ -741,6 +737,7 @@ custom_op/
 └── native_bindings/         # _ge_custom_op_native.so 的 pybind11 绑定实现
 ```
 注：下划线开头的为Python风格下的对内模块。
+
 注：`EagerOpExecutionContext`、`OpCompileContext`、`CompilePlatformInfo`和`AnnotatedArgsContext`由`_ge_custom_op_native.so`提供native-backed实现；执行期、编译期或`infer_meta`回调中返回、接收的`Tensor`、`TensorDesc`、`StorageShape`、`StorageFormat`、`Shape`、`TensorPlacement`等运行时数据结构由`ge.runtime`模块提供。
 
 #### 模块定位
@@ -757,7 +754,7 @@ ge/custom_op/python_custom_op_artifacts/<python_tag>-<platform>/_ge_custom_op_na
 ge/custom_op/python_custom_op_artifacts/<python_tag>-<platform>/libge_python_custom_op_bridge.so
 ```
 
-运行时根据当前进程中已加载的 Python 解释器版本、平台 tag 和 bridge ABI 选择匹配 artifact。正式发布按 `cp39`、`cp310`、`cp311`、`cp312`、`cp313` 和 `cp314` 提供独立 native 子 wheel，主 `ge_py` wheel 只包含纯 Python 代码。`ge.runtime` 的 runtime native 由独立 runtime wheel 承载并单独按 `native_abi` 选择；custom-op wheel 只承载 custom-op bridge/native，二者 ABI 独立维护；ONNX 插件 wheel（`ge_py_onnx_plugin_bridge`）只承载 ONNX 插件 bridge/native，按 `bridge_abi` 选择，artifact 目录为 `ge/onnx_plugin/python_onnx_plugin_artifacts/`。四者的加载决策（预置 artifact → fallback 逐级尝试、失败原因聚合诊断）统一由 `ge/_internal/native_loader.py` 实现，C++ pass/custom-op/ONNX 插件 bridge 的 Python 进程内/子进程 fallback 执行统一由 `base/common/python_runtime/python_fallback_codegen_helper.h` 提供；均只接受通过 manifest 校验（Python tag、平台 tag、ABI）的 artifact；未命中预编译产物时，runtime 先负责自身 fallback，custom-op、ONNX 插件再按需生成自身 artifact set。ONNX 插件的加载细节见 [ONNX 插件 Python 化设计文档](onnx_plugin_design.md)。
+运行时根据当前进程中已加载的 Python 解释器版本、平台 tag 和 bridge ABI 选择匹配 artifact。正式发布按 `cp39`、`cp310`、`cp311`、`cp312`、`cp313` 和 `cp314` 提供独立 native 子 wheel，主 `ge_py` wheel 只包含纯 Python 代码。`ge.runtime` 的 runtime native 由独立 runtime wheel 承载并单独按 `native_abi` 选择；custom-op wheel 只承载 custom-op bridge/native，三者 ABI 独立维护；ONNX 插件 wheel（`ge_py_onnx_plugin_bridge`）只承载 ONNX 插件 bridge/native，按 `bridge_abi` 选择，artifact 目录为 `ge/onnx_plugin/python_onnx_plugin_artifacts/`。pass、runtime、custom-op、ONNX 插件四者的加载决策（预置 artifact → fallback 逐级尝试、失败原因聚合诊断）统一由 `ge/_internal/native_loader.py` 实现，C++ pass/custom-op/ONNX 插件 bridge 的 Python 进程内/子进程 fallback 执行统一由 `base/common/python_runtime/python_fallback_codegen_helper.h` 提供；均只接受通过 manifest 校验（Python tag、平台 tag、ABI）的 artifact；未命中预编译产物时，runtime 先负责自身 fallback，custom-op、ONNX 插件再按需生成自身 artifact set。ONNX 插件的加载细节见 [ONNX 插件 Python 化设计文档](onnx_plugin_design.md)。
 
 #### 类详细说明
 

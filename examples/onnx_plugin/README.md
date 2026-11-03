@@ -2,8 +2,7 @@
 
 ## 1、功能描述
 
-本样例演示完整链路：PyTorch自定义算子导出ONNX模型，GE通过`onnx_plugin`注册Python解析插件，
-将ONNX模型中的自定义算子接入GE图，再由ATC编译为OM模型，最后使用ACL Python接口加载执行并校验结果。
+本样例演示完整链路：PyTorch自定义算子导出ONNX模型，GE通过`onnx_plugin`注册Python解析插件，将ONNX模型中的自定义算子接入GE图，再由ATC编译为OM模型，最后使用ACL Python接口加载执行并校验结果。
 
 样例包含两个插件，一次运行覆盖全部三种回调：
 
@@ -26,10 +25,7 @@ onnx_plugin/
 └── run.sh                          // 导出、编译、执行一键脚本
 ```
 
-`plugin/`目录与其他脚本分开是有意的：GE会扫描`ASCEND_CUSTOM_OPP_PATH`指向目录下的一层
-Python文件，而导出器和执行器依赖PyTorch、NumPy或ACL，不应作为插件在ATC初始化时加载。
-注意：目录内**任一**Python文件加载失败（如语法错误）都会中断整个编译，定位具体文件
-需开启debug日志（见3.6节）。
+`plugin/`目录与其他脚本分开是有意的：GE会扫描`ASCEND_CUSTOM_OPP_PATH`指向目录下的一层Python文件，而导出器和执行器依赖PyTorch、NumPy或ACL，不应作为插件在ATC初始化时加载。注意：目录内任一Python文件加载失败（如语法错误）都会中断整个编译，定位具体文件需开启debug日志（见3.6节）。
 
 ## 3、使用方法
 
@@ -49,20 +45,16 @@ Python文件，而导出器和执行器依赖PyTorch、NumPy或ACL，不应作�
 | PyTorch | 导出ONNX模型（`torch.onnx.export`） | 2.7~2.8，两个版本均已实测 |
 | onnx | `torch.onnx.export`导出过程内部使用 | 1.21.0已实测 |
 | NumPy | 构造输入与结果比对 | 无特殊要求 |
-| pybind11 | fallback编译（无匹配原生产物时现场编译） | >=2.13.6,<3.0.0，仅在fallback时需要 |
+| pybind11 | fallback编译（无匹配原生产物时现场编译） | >=2.13.6，仅在fallback时需要 |
 
-`acl`Python接口由CANN toolkit自带，无需单独安装。其余依赖安装命令：
+`acl`Python接口由CANN toolkit自带，无需单独安装。
 
-```bash
-pip3 install torch numpy onnx
-```
-
-ONNX插件正式支持Python 3.9~3.14（cp39~cp314），其余支持版本已完成基础功能验证；已在如下环境完成端到端验证（导出、ATC编译、ACL执行、结果比对全部通过）：
+ONNX插件正式支持Python 3.9~3.14（cp39~cp314）；已在如下环境完成端到端验证（导出、ATC编译、ACL执行、结果比对全部通过）：
 
 - Python 3.12
 - onnx 1.21.0
 
-ONNX插件的原生产物按Python版本区分，随CANN包以独立wheel（`ge_py_onnx_plugin_bridge`）交付：安装CANN包时自动匹配当前`python3`解释器版本。若执行ATC的Python版本没有匹配的产物，会自动进入fallback编译流程，使用当前Python解释器现场编译，无需重新安装CANN包。fallback编译需要当前Python环境中已安装`pybind11`（版本要求`>=2.13.6,<3.0.0`，安装命令：`python3 -m pip install "pybind11>=2.13.6,<3.0.0"`），并具备可用的C++编译器和Python开发头文件。仅当现场编译也不可用时，ATC才会报错并列出当前可用的产物版本与建议安装的wheel名。
+ONNX插件的原生产物按Python版本区分，随CANN包以独立wheel（`ge_py_onnx_plugin_bridge`）交付：安装CANN包时自动匹配当前`python3`解释器版本。若执行ATC的Python版本没有匹配的产物，会自动进入fallback编译流程，使用当前Python解释器现场编译，无需重新安装CANN包。fallback编译需要当前Python环境中已安装`pybind11`（版本要求`>=2.13.6`，安装命令：`python3 -m pip install "pybind11>=2.13.6"`），并具备可用的C++编译器和Python开发头文件。仅当现场编译也不可用时，ATC才会报错并列出当前可用的产物版本与建议安装的wheel名。
 
 ### 3.3、一键运行
 
@@ -90,8 +82,7 @@ SOC_VERSION=Ascend910_9362 bash run.sh
 
 ### 3.4、分步运行
 
-需要分别观察导出、编译或执行结果时，可按以下步骤手动运行。
-注意：`output/`目录不会自动创建（一键脚本`run.sh`会自动创建），分步运行时需先手动创建：
+需要分别观察导出、编译或执行结果时，可按以下步骤手动运行。注意：`output/`目录不会自动创建（一键脚本`run.sh`会自动创建），分步运行时需先手动创建：
 
 ```bash
 # 0. 创建输出目录（分步运行必须；run.sh会自动创建）
@@ -128,8 +119,7 @@ Output (MyElu, mapped to Elu by parse_operator):
 
 ### 3.6、验证算子结果
 
-GE支持图dump，编译后图文件保存在`graph_dump/pid_*/`目录（目录名因运行环境而异），
-其中`ge_onnx_*.pbtxt`为ONNX格式的图文件，打开即可查看各编译阶段的图结构：
+GE支持图dump，编译后图文件保存在`graph_dump/pid_*/`目录（目录名因运行环境而异），其中`ge_onnx_*.pbtxt`为ONNX格式的图文件，打开即可查看各编译阶段的图结构：
 
 ```bash
 export ASCEND_CUSTOM_OPP_PATH="$(pwd)/plugin:${ASCEND_CUSTOM_OPP_PATH:-}"
@@ -143,21 +133,12 @@ DUMP_GE_GRAPH=3 DUMP_GRAPH_PATH="$(pwd)/graph_dump" atc \
 
 两个插件的接入结果可在pbtxt图文件中确认：
 
-- ThresholdedRelu：分解后的图中为Threshold和Mul节点，Threshold节点携带`/ThresholdedRelu`
-  原始类型标记，可追溯分解来源；
+- ThresholdedRelu：分解后的图中为Threshold和Mul节点，Threshold节点携带`/ThresholdedRelu`原始类型标记，可追溯分解来源；
 - MyElu：一对一映射，图中为Elu节点，`alpha`属性已转写。
 
-如需查看编译过程日志，在上述atc命令中增加`--log=info`或更高日志级别参数，并在执行前设置打屏环境变量
-`export ASCEND_SLOG_PRINT_TO_STDOUT=1`，详见[atc --log参数说明](../../docs/zh/user_guides/atc_tools/CLI_options/--log.md)。
-插件回调抛出Python异常或插件文件加载失败时，默认报错（E19999）中会包含Python侧的错误信息
-（异常类型、错误语句、插件文件与行号）；如需完整编译日志，再配合上述日志级别查看。
+如需查看编译过程日志，在上述atc命令中增加`--log=info`或更高日志级别参数，并在执行前设置打屏环境变量`export ASCEND_SLOG_PRINT_TO_STDOUT=1`，详见[atc --log参数说明](../../docs/zh/user_guides/atc_tools/CLI_options/--log.md)。插件回调抛出Python异常或插件文件加载失败时，默认报错（E19999）中会包含Python侧的错误信息（异常类型、错误语句、插件文件与行号）；如需完整编译日志，再配合上述日志级别查看。
 
-算子未命中注册时，报"未注册插件/解析器"类错误（预检查阶段E13010、解析阶段E16002），其后跟随
-一条E19999诊断说明差在哪：所在域存在版本冲突时，诊断直接点名两侧来源与版本号（如
-`custom_opsets ('ai.onnx': 3) conflicts with opset_version (13)`），并给出修复建议（删除导出侧
-`custom_opsets`中`ai.onnx`的条目，或将其对齐为已注册的版本号）；无冲突时提示检查插件声明的
-`domain`/`opsets`是否覆盖该origin、`ASCEND_CUSTOM_OPP_PATH`能否发现插件文件。解析开始时若
-检测到同域多版本冲突，还会先打一条WARNING指明冲突与生效版本。
+算子未命中注册时，报"未注册插件/解析器"类错误（预检查阶段E13010、解析阶段E16002），其后跟随一条E19999诊断说明差在哪：所在域存在版本冲突时，诊断直接点名两侧来源与版本号（如`custom_opsets ('ai.onnx': 3) conflicts with opset_version (13)`），并给出修复建议（删除导出侧`custom_opsets`中`ai.onnx`的条目，或将其对齐为已注册的版本号）；无冲突时提示检查插件声明的`domain`/`opsets`是否覆盖该origin、`ASCEND_CUSTOM_OPP_PATH`能否发现插件文件。解析开始时若检测到同域多版本冲突，还会先打一条WARNING指明冲突与生效版本。
 
 **模型导出侧与插件侧的对接约定**（声明不匹配时按上述诊断排查）：
 
@@ -181,21 +162,15 @@ DUMP_GE_GRAPH=3 DUMP_GRAPH_PATH="$(pwd)/graph_dump" atc \
 | `parse_operator` | 整体解析属性（少数情况，见4.2） | `my_elu_plugin.py` |
 | `decompose` | 用已有算子拼子图替换原节点 | `thresholded_relu_plugin.py` |
 
-同一个origin type（`domain::opset::source`）只能注册一个插件，即同一`source`（同`domain`）下
-不同插件的`opsets`不能重叠（例如`opsets=(1,)`与`opsets=(1,2)`同时存在会被拒绝）——
-冲突会在编译开始时报错退出。
+同一个origin type（`domain::opset::source`）只能注册一个插件，即同一`source`（同`domain`）下不同插件的`opsets`不能重叠（例如`opsets=(1,)`与`opsets=(1,2)`同时存在会被拒绝）——冲突会在编译开始时报错退出。
 
-插件声明的`domain`与`opsets`必须与模型导出侧的声明一致：对抄symbolic里的域与`custom_opsets`
-里的版本（自定义域版本惯例恒为`1`）。自定义算子应使用自定义域：`ai.onnx`标准域的版本由
-`opset_version`自动登记，为其填写`custom_opsets`会使版本声明互相覆盖、连累官方算子解析。
-完整对接约定与报错排查见3.6节。
+插件声明的`domain`与`opsets`必须与模型导出侧的声明一致：对抄symbolic里的域与`custom_opsets`里的版本（自定义域版本惯例恒为`1`）。自定义算子应使用自定义域：`ai.onnx`标准域的版本由`opset_version`自动登记，为其填写`custom_opsets`会使版本声明互相覆盖、连累官方算子解析。完整对接约定与报错排查见3.6节。
 
 ### 4.1、parse_node：按名字取属性
 
 优先推荐使用`parse_node`。回调收到`node`和`target`两个对象：
 
-- `node`：ONNX节点。属性用`node.attrs["属性名"]`按名取，取到的直接是Python值。属性类型由
-  torch导出时的后缀决定：
+- `node`：ONNX节点。属性用`node.attrs["属性名"]`按名取，取到的直接是Python值。属性类型由torch导出时的后缀决定：
 
   | torch导出写法 | node.attrs取到 |
   | ------------- | -------------- |
@@ -206,48 +181,28 @@ DUMP_GE_GRAPH=3 DUMP_GRAPH_PATH="$(pwd)/graph_dump" atc \
 
 - `target`：目标算子。用`target.set_attr("属性名", 值)`把属性写进去。
 
-支持的属性类型：int、float、string和同类列表。节点上带tensor、子图属性时`node.attrs`会
-直接报错，只能改用`parse_operator`（见4.2）。
+支持的属性类型：int、float、string和同类列表。节点上带tensor、子图属性时`node.attrs`会直接报错，只能改用`parse_operator`（见4.2）。
 
-输入输出注册：目标算子的输入输出个数固定时不用注册；个数不固定时必须逐个注册，用
-`register_input`、`register_output`、`register_optional_input`、`register_dynamic_input`、
-`register_dynamic_output`。
+输入输出注册：目标算子的输入输出个数固定时不用注册；个数不固定时必须逐个注册，用`register_input`、`register_output`、`register_optional_input`、`register_dynamic_input`、`register_dynamic_output`。
 
-先弄清"连线"是什么：ONNX模型是一张数据流转图，节点不直接持有数据，只写数据名——
-自己的输入叫什么、自己的输出叫什么。例如模型里有两个节点：
+先弄清"连线"是什么：ONNX模型是一张数据流转图，节点不直接持有数据，只写数据名——自己的输入叫什么、自己的输出叫什么。例如模型里有两个节点：
 
 ```text
 节点1（卷积）：  input=["图片", "卷积核"]    output="卷积结果"
 节点2（加偏置）： input=["卷积结果", "偏置"]  output="输出"
 ```
 
-节点2的第一个输入写的"卷积结果"只是个名字，真正算出它的是节点1。连线就是GE读完
-所有节点后做的牵线动作：拿着每个节点的输入名，找到产出该数据的节点，把前者的输出
-和后者的输入接起来——全部接好后数据才能在节点间流动。
+节点2的第一个输入写的"卷积结果"只是个名字，真正算出它的是节点1。连线就是GE读完所有节点后做的牵线动作：拿着每个节点的输入名，找到产出该数据的节点，把前者的输出和后者的输入接起来——全部接好后数据才能在节点间流动。
 
 两种输入注册方法的区别（输出没有可选的注册方法）：
 
-- `register_input`：注册必需输入。意思是：模型里每个使用该算子的节点，这个位置上都会有
-  数据连过来，ONNX模型本身就按此约定导出；
-- `register_optional_input`：注册可选输入。意思是：这个位置连不连数据，由模型里每个节点
-  自己决定。某个节点没连时，这个输入上就是没有数据——框架不会自动填任何值，没连代表
-  什么由目标算子自己定义。例如ThresholdV2的`value`是可选输入，没连时该算子按0处理，
-  这是ThresholdV2自己的规则，不是框架替它填了0。同一算子在A节点连了、B节点没连完全
-  合法，没连的节点在连线时只打一条告警，不报错。
+- `register_input`：注册必需输入。意思是：模型里每个使用该算子的节点，这个位置上都会有数据连过来，ONNX模型本身就按此约定导出；
+- `register_optional_input`：注册可选输入。意思是：这个位置连不连数据，由模型里每个节点自己决定。某个节点没连时，这个输入上就是没有数据——框架不会自动填任何值，没连代表什么由目标算子自己定义。例如ThresholdV2的`value`是可选输入，没连时该算子按0处理，这是ThresholdV2自己的规则，不是框架替它填了0。同一算子在A节点连了、B节点没连完全合法，没连的节点在连线时只打一条告警，不报错。
 
-连线不看名字配对，只按位置对号：每种ONNX算子在标准里规定了输入清单和顺序（例如
-Conv依次是X、W、B，B可选），模型里节点照此顺序填数据名——"第`i`个输入"就是节点输入
-清单里的第`i`项（上例中"卷积结果"是第0个）。GE把节点第`i`个输入，接到目标算子第`i`个
-输入上；目标算子这边的顺序，输入个数固定的算子是算子定义里写死的，需要注册的算子就是
-注册的顺序（第一个注册的就是第0个）。因此注册输入时有两条硬性要求：
+连线不看名字配对，只按位置对号：每种ONNX算子在标准里规定了输入清单和顺序（例如Conv依次是X、W、B，B可选），模型里节点照此顺序填数据名——"第`i`个输入"就是节点输入清单里的第`i`项（上例中"卷积结果"是第0个）。GE把节点第`i`个输入，接到目标算子第`i`个输入上；目标算子这边的顺序，输入个数固定的算子是算子定义里写死的，需要注册的算子就是注册的顺序（第一个注册的就是第0个）。因此注册输入时有两条硬性要求：
 
-- 位置要占满：按ONNX算子的输入顺序，每个位置都注册（必需的用`register_input`，可选的
-  用`register_optional_input`）。不能只注册自己预计会被用到的位置——只要有节点可能在
-  第`k`个位置连数据，第`k`个输入就必须注册，否则连线时报错
-  `E19999: Resolve operator IO name failed`；
-- 顺序要对：注册顺序必须与ONNX算子的输入顺序一致。反例：算子输入顺序是X、W、可选的
-  B，插件却先注册了B——那么模型里X的数据会流进B这个输入，编译不报错，到shape推导
-  或执行阶段才被发现。
+- 位置要占满：按ONNX算子的输入顺序，每个位置都注册（必需的用`register_input`，可选的用`register_optional_input`）。不能只注册自己预计会被用到的位置——只要有节点可能在第`k`个位置连数据，第`k`个输入就必须注册，否则连线时报错`E19999: Resolve operator IO name failed`；
+- 顺序要对：注册顺序必须与ONNX算子的输入顺序一致。反例：算子输入顺序是X、W、可选的B，插件却先注册了B——那么模型里X的数据会流进B这个输入，编译不报错，到shape推导或执行阶段才被发现。
 
 用例：`plugin/thresholded_relu_plugin.py`——取`alpha`写入目标算子，并注册输入输出。
 
@@ -255,19 +210,12 @@ Conv依次是X、W、B，B可选），模型里节点照此顺序填数据名—
 
 以下情况使用`parse_operator`：
 
-1. 节点带tensor、子图属性——`parse_node`的attrs读到会报错（见4.1），`parse_operator`
-   拿到的JSON里全部都有；
+1. 节点带tensor、子图属性——`parse_node`的attrs读到会报错（见4.1），`parse_operator`拿到的JSON里全部都有；
 2. 需要一次拿到节点上的全部属性做整体转写，不逐个预知属性名。
 
 回调收到`source`和`target`两个算子：
 
-- `source`：ONNX节点转成的算子（只读）。节点上的全部属性被打包成一个JSON串，存放在
-  source名为`attribute`的属性里，用`source.get_attr("attribute")`取出（source上还带有
-  节点名、算子类型等框架填充的信息，解析节点属性读`attribute`就足够）。JSON串的结构：
-  最外层只有`attribute`一个键，值是一个数组——节点上有几个属性，数组里就有几个对象；
-  每个对象描述节点上的一个属性，里面有`name`（属性名）、`type`（类型码）和存放值的
-  键，值放在哪个键由属性类型决定（`type`就是ONNX官方对属性类型的编号：1=float、
-  2=int、3=string、4=tensor、5=子图、6=float列表、7=int列表、8=string列表）：
+- `source`：ONNX节点转成的算子（只读）。节点上的全部属性被打包成一个JSON串，存放在source名为`attribute`的属性里，用`source.get_attr("attribute")`取出（source上还带有节点名、算子类型等框架填充的信息，解析节点属性读`attribute`就足够）。JSON串的结构：最外层只有`attribute`一个键，值是一个数组——节点上有几个属性，数组里就有几个对象；每个对象描述节点上的一个属性，里面有`name`（属性名）、`type`（类型码）和存放值的键，值放在哪个键由属性类型决定（`type`就是ONNX官方对属性类型的编号：1=float、2=int、3=string、4=tensor、5=子图、6=float列表、7=int列表、8=string列表）：
 
 ```json
 {
@@ -282,30 +230,19 @@ Conv依次是X、W、B，B可选），模型里节点照此顺序填数据名—
 }
 ```
 
-  标量属性中`f`的值是字符串形式（`%g`格式化，约6位有效数字），取用时转成数值；`i`和`s`
-  分别是数字和字符串。列表属性（`floats`/`ints`/`strings`）直接是JSON
-  数组；tensor（`t`）与子图（`g`）属性则是完整的结构体字典——
-  tensor属性指属性值本身是一个张量，例如Constant算子的`value`属性；子图属性指属性值
-  本身是一个子图，例如控制流算子If的`then_branch`/`else_branch`、Loop的`body`属性，
-  一般不需要逐字段解析它们的值。
+  标量属性中`f`的值是字符串形式（`%g`格式化，约6位有效数字），取用时转成数值；`i`和`s`分别是数字和字符串。列表属性（`floats`/`ints`/`strings`）直接是JSON数组；tensor（`t`）与子图（`g`）属性则是完整的结构体字典——tensor属性指属性值本身是一个张量，例如Constant算子的`value`属性；子图属性指属性值本身是一个子图，例如控制流算子If的`then_branch`/`else_branch`、Loop的`body`属性，一般不需要逐字段解析它们的值。
 
 - `target`：目标算子，同样用`set_attr`写入。
 
-用例：`plugin/my_elu_plugin.py`——从JSON里取出`alpha`转给Elu。这个用例只有一个float属性，
-用`parse_node`同样能实现，这里用它演示JSON的读法。
+用例：`plugin/my_elu_plugin.py`——从JSON里取出`alpha`转给Elu。这个用例只有一个float属性，用`parse_node`同样能实现，这里用它演示JSON的读法。
 
-`attribute`各取值字段的完整说明（含tensor、子图等复合类型的形态）参见
-[parse_operator接口文档](../../docs/zh/api/graph_engine_api/python/ge/onnx_plugin/OnnxPlugin/parse_operator.md)。
+`attribute`各取值字段的完整说明（含tensor、子图等复合类型的形态）参见[parse_operator接口文档](../../docs/zh/api/graph_engine_api/python/ge/onnx_plugin/OnnxPlugin/parse_operator.md)。
 
 ### 4.3、decompose：用已有算子拼子图替换原节点
 
-GE没有现成算子时用`decompose`。回调收到`source`（参数解析产出的算子，读到的属性即
-`parse_node`或`parse_operator`写入的值），返回一段用已有算子拼成的子图，GE会把原节点
-替换成这段子图，因此不用写设备kernel。
+GE没有现成算子时用`decompose`。回调收到`source`（参数解析产出的算子，读到的属性即`parse_node`或`parse_operator`写入的值），返回一段用已有算子拼成的子图，GE会把原节点替换成这段子图，因此不用写设备kernel。
 
-拼子图用的是GE的ES构图API：`GraphBuilder`负责建图（创建输入、设置输出、构建），已有算子
-（Threshold、Mul、SplitD等）是直接调用的函数。可用算子清单与参数说明见
-[ES Python API文档](../../docs/zh/user_guides/es_graph/api/es_python.md)。
+拼子图用的是GE的ES构图API：`GraphBuilder`负责建图（创建输入、设置输出、构建），已有算子（Threshold、Mul、SplitD等）是直接调用的函数。可用算子清单与参数说明见[ES Python API文档](../../docs/zh/user_guides/es_graph/api/es_python.md)。
 
 写`decompose`时注意：
 

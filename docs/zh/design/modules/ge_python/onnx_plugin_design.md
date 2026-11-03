@@ -4,12 +4,12 @@
 
 ONNX 插件 Python 化是 `ge` Python 包提供的 ONNX 自定义算子解析插件扩展能力：插件是一个 Python 文件，声明 ONNX 原始算子到 GE 目标算子的映射，并通过回调完成解析。插件在 ATC 编译 ONNX 模型的解析阶段被加载执行，不改变 ATC 的使用方式。
 
-GE 通过 ONNX 解析器直接读取模型文件的 protobuf 内容完成图解析。模型中出现的自定义算子（导出方自定义、GE 未内置）默认无法接入，此前需要按 C++ 插件方式开发解析代码（对应 C++ 的 `ParseParamsFn`、`ParseParamsByOperatorFn`、`ParseOpToGraphFn` 注册方式，参见自定义算子开发指南的 [ONNX 入图](../../../user_guides/custom_op/custom_op_v2/custom_op_development_guide.md#64-onnx-入图) 章节）。Python 化之后，接入一个自定义算子只需编写一个 `.py` 文件，插件回调做两类事：
+GE 通过 ONNX 解析器直接读取模型文件的 protobuf 内容完成图解析。模型中出现的自定义算子（导出方自定义、GE 未内置）默认无法接入，此前需要按 C++ 插件方式开发解析代码（对应 C++ 的 `ParseParamsFn`、`ParseParamsByOperatorFn`、`ParseOpToGraphFn` 注册方式，参见自定义算子开发指南的 [ONNX 入图](../../../user_guides/custom_op/custom_op_v2/custom_op_development_guide.md#64-onnx-入图)章节）。Python 化之后，接入一个自定义算子只需编写一个 `.py` 文件，插件回调做两类事：
 
 1. **参数解析**：把 ONNX 节点上的属性转写到 GE 算子上，使用 `parse_node` 或 `parse_operator` 回调；
 2. **算子分解**：GE 没有现成算子时，用已有算子拼出子图替换原节点，使用 `decompose` 回调，无需编写设备 kernel。
 
-本特性与 [GE Pass Python 化](ge_python_pass_design.md)、[自定义算子 Python 化](ge_python_custom_op_design.md) 同属 `ge` Python 包的三类插件扩展，加载与发现共用同一套机制（`ASCEND_CUSTOM_OPP_PATH` 环境变量），详见 [GE-PY Python 模块类关系文档](ge_python.md)。C++ ONNX 插件机制仍然可用，同一 origin type（见第 6.2 节）只能由一个插件提供。本特性全量芯片支持。
+本特性与 [GE Pass Python 化](ge_python_pass_design.md)、[自定义算子 Python 化](ge_python_custom_op_design.md)同属 `ge` Python 包的三类插件扩展，加载与发现共用同一套机制（`ASCEND_CUSTOM_OPP_PATH` 环境变量），详见 [GE-PY Python 模块类关系文档](ge_python.md)。C++ ONNX 插件机制仍然可用，同一 origin type（见第 6.2 节）只能由一个插件提供。本特性全量芯片支持。
 
 ## 2. 版本约束
 
@@ -17,7 +17,7 @@ GE 通过 ONNX 解析器直接读取模型文件的 protobuf 内容完成图解�
 | ---- | ---- | ---- |
 | Python | 3.9~3.14（cp39–cp314，正式支持） | 原生产物按 Python 版本区分交付（见第 8.1 节）；构建矩阵覆盖 cp39–cp314，样例在 Python 3.12 完成端到端验证 |
 | onnx | 1.21.0 | 与[样例](../../../../../examples/onnx_plugin/README.md)实测口径一致；onnx 包仅在 PyTorch 导出 ONNX 模型（`torch.onnx.export`）链路使用，GE 解析器不依赖该包 |
-| pybind11 | >=2.13.6,<3.0.0 | 仅 fallback codegen 时使用；无匹配原生产物时现场编译 bridge/native 需要 |
+| pybind11 | >=2.13.6 | 仅 fallback codegen 时使用；无匹配原生产物时现场编译 bridge/native 需要 |
 
 Python 版本支持采用与 Python pass、runtime、custom-op 相同的"主 wheel + Python 版本 native 子 wheel + fallback codegen + 安装时自动选择"模式：
 
@@ -25,7 +25,7 @@ Python 版本支持采用与 Python pass、runtime、custom-op 相同的"主 whe
 - **安装选择**：CANN 包安装脚本按当前 `python3` 解释器版本选择匹配的 native wheel（`ge-compiler_custom_install.sh`）；未命中时跳过该 native wheel，由主 wheel 携带的 fallback codegen 资源兜底。
 - **运行匹配**：桥接库与 native 模块按产物清单（`manifest.json`）记录 `python_tag`（如 `cp312`）、平台与 bridge ABI 版本（当前为 2，产物与 loader 版本配套，ABI 不匹配的产物会被显式拒绝）；运行时从当前进程加载的 Python 符号读取版本号并计算 `python_tag`，仅加载与当前解释器标签一致的产物。没有匹配产物时，优先调用 `ge.onnx_plugin.fallback_runtime.run_fallback_codegen()` 使用当前 Python 解释器现场编译；仅当预置产物与 fallback codegen 均不可用时，编译失败并报错 `No compatible ONNX Python plugin bridge artifact found for runtime ...`，报错经 E19999 透出到 ATC 控制台，包含当前解释器的 runtime key、可用产物清单（python tag、平台、bridge ABI 与产物路径）以及 fallback 失败排查与版本对齐建议。相关实现位于 `base/common/python_runtime/python_artifact_utils.h` 与 `parser/parser/onnx/python_onnx_plugin_bridge/onnx_plugin_bridge_loader.cc`。
 
-因此，执行 ATC 编译的 Python 版本无需与构建期 Python 版本一致：包内无匹配产物时会自动现场编译，无需重新安装 CANN 包。fallback 编译需要当前 Python 环境已安装 `pybind11`（>=2.13.6,<3.0.0），并具备 C++ 编译器、Python 开发头文件和 libpython；这些条件不满足时，可按报错中列出的可用版本切换解释器，或安装匹配的 `ge` Python 包。
+因此，执行 ATC 编译的 Python 版本无需与构建期 Python 版本一致：包内无匹配产物时会自动现场编译，无需重新安装 CANN 包。fallback 编译需要当前 Python 环境已安装 `pybind11`（>=2.13.6），并具备 C++ 编译器、Python 开发头文件和 libpython；这些条件不满足时，可按报错中列出的可用版本切换解释器，或安装匹配的 `ge` Python 包。
 
 ## 3. 整体架构
 
@@ -118,7 +118,7 @@ onnx_plugin(*, source: str, domain: str, opsets: Collection[int], target: str) -
 | 属性 | 含义 |
 | ---- | ---- |
 | `name` | 节点名 |
-| `origin_type` | 节点的 `op_type`（不含 domain 与 opset 前缀） |
+| `origin_type` | 节点的完整 origin type（`domain::opset::op_type`，如 `ai.onnx::11::Elu`） |
 | `inputs` / `outputs` | 节点的输入、输出数据名元组 |
 | `attrs` | 属性字典（只读映射），仅支持 `int`、`float`、`str` 及同类列表 |
 
@@ -242,7 +242,7 @@ ge/onnx_plugin/python_onnx_plugin_artifacts/<python_tag>-<platform>/
 1. Python 侧：`ge.onnx_plugin._native` 调用 `ge/_internal/native_loader.py` 的 `ensure_native_module(SPEC)`；加载顺序为 `sys.modules` 缓存 → 匹配的预置 artifact → 现场编译 → 聚合诊断。
 2. C++ 侧：`onnx_plugin_bridge_loader.cc` 的 `EnsureLoaded()` 先 `TryLoadPrebuiltBridge()`，失败后 `TryLoadFallbackBridge()`；fallback 通过模块名 `ge.onnx_plugin.fallback_runtime` 调用 `run_fallback_codegen()`。Python 符号已加载时进程内执行，否则通过 subprocess 调用当前 Python。
 3. 共享编译引擎位于 `ge/_internal/fallback_runtime.py`，负责解析 `build_config.json`、物化 fallback 资源、调用 `CXX`/`c++` 编译并原子发布产物与 manifest。
-4. fallback 需要当前 Python 环境满足：已安装 `pybind11`（>=2.13.6,<3.0.0）；Python 开发头文件与 libpython 可用；C++ 编译器可用；CANN `include`/`lib64`/`pkg_inc` 可解析（已 source `set_env.sh` 或处于 run 包目录结构）。任一条件不满足时，编译失败并在诊断中聚合具体原因。
+4. fallback 需要当前 Python 环境满足：已安装 `pybind11`（>=2.13.6）；Python 开发头文件与 libpython 可用；C++ 编译器可用；CANN `include`/`lib64`/`pkg_inc` 可解析（已 source `set_env.sh` 或处于 run 包目录结构）。任一条件不满足时，编译失败并在诊断中聚合具体原因。
 5. fallback 只生成自身 artifact set，不修改其他组件目录；生成失败时清理临时工作目录，保留已有预置产物。
 
 #### 8.1.5 运行时选择和兼容校验
@@ -250,7 +250,7 @@ ge/onnx_plugin/python_onnx_plugin_artifacts/<python_tag>-<platform>/
 - Python 侧与 C++ 侧均以当前进程实际 Python runtime key 为选择依据，不使用外层 launcher 的 Python 版本替代当前进程版本。
 - ONNX 插件按 Python tag、平台与 `bridge_abi` 选择 artifact；manifest 不完整、产物缺失或 ABI 不匹配的 artifact 不会进入候选。
 - 仅当 `ASCEND_CUSTOM_OPP_PATH` 中存在可加载的 Python 插件入口时才触发桥接加载；纯 C++ 自定义算子目录不受影响。
-- 无匹配预置产物时先 fallback；仅当 fallback 也不可用时，E19999 报错列出 runtime key、可用产物清单、loader/PYTHONPATH 与建议 wheel 名，并提示检查 `pybind11`（>=2.13.6,<3.0.0）、Python 开发头文件和 C++ 编译器。
+- 无匹配预置产物时先 fallback；仅当 fallback 也不可用时，E19999 报错列出 runtime key、可用产物清单、loader/PYTHONPATH 与建议 wheel 名，并提示检查 `pybind11`（>=2.13.6）、Python 开发头文件和 C++ 编译器。
 - 同一进程内不拉起另一套 CPython minor version；bridge 加载后对当前进程 Python 版本做一致性校验。
 
 #### 8.1.6 版本兼容测试要求
