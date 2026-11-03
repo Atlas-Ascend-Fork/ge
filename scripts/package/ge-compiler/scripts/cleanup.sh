@@ -11,4 +11,11 @@
 
 set -e
 
-rm -rf $(pwd)
+target_dir="$(pwd -P)"
+
+if [ -z "${target_dir}" ] || [ "${target_dir}" = "/" ]; then
+    echo "cleanup.sh: refuse to remove '${target_dir}'" >&2
+    exit 1
+fi
+
+rm -rf -- "${target_dir}"
