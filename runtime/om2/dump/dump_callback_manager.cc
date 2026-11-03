@@ -131,9 +131,10 @@ Status DumpCallbackManager::HandleEnableDump(const char *dumpData, int32_t size)
     return SUCCESS;
   }
 
-  // 场景分流处理
+  // 场景分流处理：watcher 属于正常数据 dump 场景（对齐 v1 geDumpSceneExceptions 不含 watcher），
+  // 只有异常场景才走 exception dump 分支
   const std::string &dumpScene = dumpConfig.GetDumpScene();
-  if (!dumpScene.empty()) {
+  if (!dumpScene.empty() && (dumpScene != GE_DUMP_SCENE_WATCHER)) {
     return HandleDumpExceptionConfig();
   }
 

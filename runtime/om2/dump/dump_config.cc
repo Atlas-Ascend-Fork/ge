@@ -11,7 +11,11 @@
 #include "framework/runtime/dump/dump_config.h"
 #include "framework/common/debug/ge_log.h"
 #include "framework/common/debug/log.h"
+#include "base/err_msg.h"
+#include <cctype>
+#include <cstdlib>
 #include <ctime>
+#include <limits>
 
 namespace ge {
 namespace dump {
@@ -31,6 +35,38 @@ std::string GetCurrentTimeStr() {
   char buffer[kTimeBufferLen + 1] = {};
   (void)std::strftime(buffer, static_cast<size_t>(kTimeBufferLen), "%Y%m%d%H%M%S", ptm);
   return std::string(buffer);
+}
+
+// 解析黑名单 pos 字段（格式 inputN/outputN），对齐 v1 DumpManager::IsValidFormat/ExtractNumber 的语义
+bool ParseBlacklistPos(const std::string &pos, bool &is_input, uint32_t &index) {
+  const std::string kInputPrefix = "input";
+  const std::string kOutputPrefix = "output";
+  size_t num_begin = 0U;
+  if (pos.rfind(kInputPrefix, 0U) == 0U) {
+    is_input = true;
+    num_begin = kInputPrefix.size();
+  } else if (pos.rfind(kOutputPrefix, 0U) == 0U) {
+    is_input = false;
+    num_begin = kOutputPrefix.size();
+  } else {
+    return false;
+  }
+
+  if (num_begin >= pos.size()) {
+    return false;
+  }
+  for (size_t i = num_begin; i < pos.size(); ++i) {
+    if (std::isdigit(static_cast<unsigned char>(pos[i])) == 0) {
+      return false;
+    }
+  }
+
+  const unsigned long value = std::strtoul(pos.c_str() + num_begin, nullptr, DECIMAL);
+  if (value > static_cast<unsigned long>(std::numeric_limits<uint32_t>::max())) {
+    return false;
+  }
+  index = static_cast<uint32_t>(value);
+  return true;
 }
 }  // namespace
 
@@ -136,6 +172,8 @@ void DumpConfig::Reset() {
   dump_stats_.clear();
   dump_scene_.clear();
   model_dump_config_list_.clear();
+  optype_blacklist_map_.clear();
+  opname_blacklist_map_.clear();
   op_debug_mode_ = 0U;
 }
 
@@ -192,10 +230,13 @@ bool DumpConfig::NeedDump() const {
 // 规则2：model_name 为空时，对齐 OM1 的 DUMP_LAYER_OP_MODEL，表示全局 layer 配置，不绑定具体模型
 // 规则3：非全局 layer 配置时，只有 model_name 或 root_graph_name 命中当前模型，layer 才生效
 // 规则4：模型不匹配时，即使 layer 命中当前 op，也不允许 dump
-// 规则5：模型匹配且 layer/watcher_nodes 为空时，表示 dump 该模型所有 op
+// 规则5：模型匹配且 layer/watcher_nodes/opname_range 为空时，表示 dump 该模型所有 op
+//        （对齐 v1 DumpProperties::IsNeedDump：配置了 opname_range 时不再按空 layer 全量 dump）
 // 规则6：模型匹配且 layer 非空时，只 dump layer 中显式配置的 op
-// 规则7：watcher_nodes 模型匹配后按 watcher node 名精确匹配
+// 规则7：watcher 模式（配置了 watcher_nodes）下，只 dump watcher 节点，其余算子仅作为 layer 算子被记录
+//        （对齐 v1 DavinciModel::OpNeedDump：watcher 使能时返回 false，由 OpNeedDumpOnWatcherModel 决定 dump）
 // 规则8：所有 dump_list 项均未匹配当前模型/op 时，不 dump
+// 注意：opname_range 的命中判断由 ModelDumpManager 的状态机完成，不在本函数内处理
 bool DumpConfig::IsOpNeedDump(const std::string &model_name, const std::string &root_graph_name,
                               const std::string &op_name) const {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -204,27 +245,83 @@ bool DumpConfig::IsOpNeedDump(const std::string &model_name, const std::string &
   }
 
   for (const auto &model_config : model_dump_config_list_) {
-    const bool is_global_layer_config = model_config.model_name.empty();
-    const bool is_model_matched = is_global_layer_config || (model_config.model_name == model_name) ||
-                                  (model_config.model_name == root_graph_name);
-    if (!is_model_matched) {
+    if (!IsModelConfigMatched(model_config, model_name, root_graph_name)) {
       continue;
     }
 
-    if (model_config.layers.empty() && model_config.watcher_nodes.empty()) {
+    if (!model_config.watcher_nodes.empty()) {
+      if (std::find(model_config.watcher_nodes.begin(), model_config.watcher_nodes.end(), op_name) !=
+          model_config.watcher_nodes.end()) {
+        return true;
+      }
+      continue;
+    }
+
+    if (model_config.layers.empty() && model_config.dump_op_ranges.empty()) {
       return true;
     }
 
     if (std::find(model_config.layers.begin(), model_config.layers.end(), op_name) != model_config.layers.end()) {
       return true;
     }
+  }
 
+  return false;
+}
+
+bool DumpConfig::IsModelConfigMatched(const ModelDumpConfig &model_config, const std::string &model_name,
+                                      const std::string &root_graph_name) {
+  return model_config.model_name.empty() || (model_config.model_name == model_name) ||
+         (model_config.model_name == root_graph_name);
+}
+
+bool DumpConfig::IsWatcherDumpEnabled() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return dump_scene_ == GE_DUMP_SCENE_WATCHER;
+}
+
+// 对齐 v1 DumpProperties::IsWatcherNode：watcher_nodes 命中即为 watcher 节点
+bool DumpConfig::IsWatcherNode(const std::string &model_name, const std::string &root_graph_name,
+                               const std::string &op_name) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  for (const auto &model_config : model_dump_config_list_) {
+    if (!IsModelConfigMatched(model_config, model_name, root_graph_name)) {
+      continue;
+    }
     if (std::find(model_config.watcher_nodes.begin(), model_config.watcher_nodes.end(), op_name) !=
         model_config.watcher_nodes.end()) {
       return true;
     }
   }
+  return false;
+}
 
+// 对齐 v1 DumpProperties::IsLayerOpOnWatcherMode 方法
+// 1. 必须配置了 watcher_nodes（DUMP_WATCHER_MODEL）
+// 2. 必须存在全局 layer 配置（model_name 为空，对应 DUMP_LAYER_OP_MODEL），layer 为空表示所有算子
+bool DumpConfig::IsLayerOpOnWatcherMode(const std::string &model_name, const std::string &root_graph_name,
+                                        const std::string &op_name) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  bool watcher_enabled = false;
+  for (const auto &model_config : model_dump_config_list_) {
+    if (!model_config.watcher_nodes.empty() && IsModelConfigMatched(model_config, model_name, root_graph_name)) {
+      watcher_enabled = true;
+      break;
+    }
+  }
+  if (!watcher_enabled) {
+    return false;
+  }
+
+  for (const auto &model_config : model_dump_config_list_) {
+    if (!model_config.model_name.empty()) {
+      continue;
+    }
+    if (model_config.layers.empty() ||
+        (std::find(model_config.layers.begin(), model_config.layers.end(), op_name) != model_config.layers.end())) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -386,38 +483,6 @@ void DumpConfig::CheckUnsupportedConfigs(const nlohmann::json &jsDumpConfig) {
   if (jsDumpConfig.contains(GE_DUMP_OP_SWITCH)) {
     GELOGW("[OM2 Dump] dump_op_switch is not supported in OM2 dump mode, configuration will be ignored");
   }
-  if (jsDumpConfig.contains(GE_DUMP_LIST)) {
-    const auto &dumpList = jsDumpConfig[GE_DUMP_LIST];
-    if (dumpList.is_array() && !dumpList.empty()) {
-      for (const auto &modelJson : dumpList) {
-        if (modelJson.contains(GE_DUMP_OPTYPE_BLACKLIST)) {
-          GELOGW(
-              "[OM2 Dump] optype_blacklist in dump_list is not supported in OM2 dump mode, configuration will be "
-              "ignored");
-        }
-        if (modelJson.contains(GE_DUMP_OPNAME_BLACKLIST)) {
-          GELOGW(
-              "[OM2 Dump] opname_blacklist in dump_list is not supported in OM2 dump mode, configuration will be "
-              "ignored");
-        }
-        if (modelJson.contains(GE_DUMP_OPNAME_RANGE)) {
-          GELOGW(
-              "[OM2 Dump] opname_range in dump_list is not supported in OM2 dump mode, configuration will be ignored");
-        }
-        if (modelJson.contains(GE_DUMP_WATCHER_NODES)) {
-          GELOGW(
-              "[OM2 Dump] watcher_nodes in dump_list is not supported in OM2 dump mode, configuration will be "
-              "ignored");
-        }
-      }
-    }
-  }
-  if (jsDumpConfig.contains(GE_DUMP_SCENE)) {
-    const auto &dumpScene = jsDumpConfig[GE_DUMP_SCENE].get<std::string>();
-    if (dumpScene == GE_DUMP_SCENE_WATCHER) {
-      GELOGW("[OM2 Dump] dump_scene watcher is not supported in OM2 dump mode, configuration will be  ignored");
-    }
-  }
 }
 
 bool DumpConfig::CheckDumpSceneSwitch(const nlohmann::json &jsDumpConfig, std::string &dumpScene) {
@@ -435,6 +500,44 @@ bool DumpConfig::CheckDumpSceneSwitch(const nlohmann::json &jsDumpConfig, std::s
     GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpConfig]dump_scene value[%s] is invalid", dumpScene.c_str());
     return false;
   }
+
+  // 对齐 v1 DumpConfigValidator::CheckDumpSceneSwitch：watcher 是正常数据 dump 场景，
+  // 与 dump_debug / dump_op_switch 互斥，且 dump_mode 只支持 output
+  if (dumpScene == GE_DUMP_SCENE_WATCHER) {
+    if (GetConfigWithDefault(jsDumpConfig, GE_DUMP_DEBUG, GE_DUMP_DEBUG_DEFAULT) == GE_DUMP_STATUS_ON) {
+      GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpScene]dump_scene is %s when dump_debug is on is unsupported.",
+             dumpScene.c_str());
+      REPORT_PREDEFINED_ERR_MSG(
+          "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
+          std::vector<const char *>({dumpScene.c_str(), "dump_scene", "dump_scene watcher conflicts with dump_debug"}));
+      return false;
+    }
+    if (GetConfigWithDefault(jsDumpConfig, GE_DUMP_OP_SWITCH, GE_DUMP_OP_SWITCH_DEFAULT) == GE_DUMP_STATUS_ON) {
+      GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpScene]dump_scene is %s when dump_op_switch is on is unsupported.",
+             dumpScene.c_str());
+      REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"value", "parameter", "reason"}),
+                                std::vector<const char *>({dumpScene.c_str(), "dump_scene",
+                                                           "dump_scene watcher conflicts with dump_op_switch"}));
+      return false;
+    }
+    if (GetConfigWithDefault(jsDumpConfig, GE_DUMP_MODE, GE_DUMP_MODE_DEFAULT) != GE_DUMP_MODE_OUTPUT) {
+      GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpScene]dump_mode only supports output when dump_scene is %s.",
+             dumpScene.c_str());
+      REPORT_PREDEFINED_ERR_MSG(
+          "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
+          std::vector<const char *>({dumpScene.c_str(), "dump_mode", "dump_mode only supports output for watcher"}));
+      return false;
+    }
+    // watcher 依赖 dump_path 落盘目录，缺失时无法产出 dump 文件（对齐 v1 对 dump_path 的必填要求）
+    if (GetConfigWithDefault(jsDumpConfig, GE_DUMP_PATH, "").empty()) {
+      GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpScene]dump_path is required when dump_scene is %s.",
+             dumpScene.c_str());
+      return false;
+    }
+    if (!jsDumpConfig.contains(GE_DUMP_LIST)) {
+      GELOGW("[OM2 Dump] dump_scene is %s without dump_list.watcher_nodes, no watcher node to dump", dumpScene.c_str());
+    }
+  }
   GELOGD("dump_scene value[%s] is valid", dumpScene.c_str());
   return true;
 }
@@ -449,9 +552,75 @@ bool DumpConfig::CheckDumpStep(const nlohmann::json &jsDumpConfig) {
   return true;
 }
 
+// 对齐 v1 DumpConfigValidator::CheckDumpOpNameRange 方法
+// 配置了 opname_range 时，dump_level 只支持 op，model_name 不能为空，range 的 begin/end 不能为空
 bool DumpConfig::CheckDumplist(const nlohmann::json &jsDumpConfig, const std::string &dumpLevel) {
-  (void)jsDumpConfig;
-  (void)dumpLevel;
+  if (!jsDumpConfig.contains(GE_DUMP_LIST) || !jsDumpConfig[GE_DUMP_LIST].is_array()) {
+    return true;
+  }
+
+  for (const auto &model_json : jsDumpConfig[GE_DUMP_LIST]) {
+    if (!model_json.contains(GE_DUMP_OPNAME_RANGE) || !model_json[GE_DUMP_OPNAME_RANGE].is_array() ||
+        model_json[GE_DUMP_OPNAME_RANGE].empty()) {
+      continue;
+    }
+    if (!CheckDumpOpnameRange(model_json, dumpLevel)) {
+      return false;
+    }
+  }
+
+  GELOGI("successfully execute CheckDumplist.");
+  return true;
+}
+
+bool DumpConfig::CheckDumpOpnameRange(const nlohmann::json &model_json, const std::string &dumpLevel) {
+  if (dumpLevel != GE_DUMP_LEVEL_OP) {
+    GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
+           "[Check][DumpOpNameRange]dump level only support op when op name range is enable.");
+    REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"value", "parameter", "reason"}),
+                              std::vector<const char *>({dumpLevel.c_str(), "dump_level",
+                                                         "dump level only support op when op name range is enable."}));
+    return false;
+  }
+
+  std::string model_name;
+  if (model_json.contains(GE_DUMP_MODEL_NAME) && model_json[GE_DUMP_MODEL_NAME].is_string()) {
+    model_name = model_json[GE_DUMP_MODEL_NAME].get<std::string>();
+  }
+  if (model_name.empty()) {
+    GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
+           "[Check][DumpOpNameRange]model name cannot be empty when op name range is "
+           "enable.");
+    REPORT_PREDEFINED_ERR_MSG(
+        "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
+        std::vector<const char *>({"NULL", "model_name", "model name cannot be empty when op name range is enable."}));
+    return false;
+  }
+
+  return CheckDumpOpnameRangeItems(model_json[GE_DUMP_OPNAME_RANGE]);
+}
+
+bool DumpConfig::CheckDumpOpnameRangeItems(const nlohmann::json &rangeArray) {
+  for (const auto &range_json : rangeArray) {
+    std::string begin;
+    std::string end;
+    if (range_json.contains(GE_DUMP_OPNAME_RANGE_BEGIN) && range_json[GE_DUMP_OPNAME_RANGE_BEGIN].is_string()) {
+      begin = range_json[GE_DUMP_OPNAME_RANGE_BEGIN].get<std::string>();
+    }
+    if (range_json.contains(GE_DUMP_OPNAME_RANGE_END) && range_json[GE_DUMP_OPNAME_RANGE_END].is_string()) {
+      end = range_json[GE_DUMP_OPNAME_RANGE_END].get<std::string>();
+    }
+    if (begin.empty() || end.empty()) {
+      GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
+             "[Check][DumpOpNameRange]op name range is incomplete, "
+             "op name range begin[%s] end[%s].",
+             begin.c_str(), end.c_str());
+      REPORT_PREDEFINED_ERR_MSG(
+          "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
+          std::vector<const char *>({begin.c_str(), "opname_range", "op name range is incomplete."}));
+      return false;
+    }
+  }
   return true;
 }
 
@@ -480,7 +649,31 @@ bool DumpConfig::DumpDebugCheck(const nlohmann::json &jsDumpConfig) {
 }
 
 bool DumpConfig::DumpStatsCheck(const nlohmann::json &jsDumpConfig) {
-  (void)jsDumpConfig;
+  // 对齐 v1 DumpConfigValidator::DumpStatsCheck
+  if (!jsDumpConfig.contains(GE_DUMP_STATS)) {
+    return true;
+  }
+
+  std::vector<std::string> dump_stats;
+  if (jsDumpConfig[GE_DUMP_STATS].is_array()) {
+    ParseStringArray(jsDumpConfig[GE_DUMP_STATS], dump_stats);
+  }
+  if (dump_stats.empty()) {
+    GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpStats]dump_stats exists but is empty.");
+    REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"value", "parameter", "reason"}),
+                              std::vector<const char *>({"NULL", "dump_stats", "dump_stats exists but is empty."}));
+    return false;
+  }
+
+  // OM2 不使用 dump_stats 列表内容，仅对齐 v1 的配置约束：stats 需与 dump_data=stats 配合使用
+  if (GetConfigWithDefault(jsDumpConfig, GE_DUMP_DATA, GE_DUMP_DATA_DEFAULT) != "stats") {
+    GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpStats]nonsupport to enable dump_stats when dump_data is tensor.");
+    REPORT_PREDEFINED_ERR_MSG(
+        "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
+        std::vector<const char *>({GetConfigWithDefault(jsDumpConfig, GE_DUMP_DATA, GE_DUMP_DATA_DEFAULT).c_str(),
+                                   "dump_data", "nonsupport to enable dump_stats when dump_data is tensor."}));
+    return false;
+  }
   return true;
 }
 
@@ -505,21 +698,33 @@ Status DumpConfig::ParseDumpConfigFromJson(const nlohmann::json &dumpJson) {
     dump_path_ += GetCurrentTimeStr() + "/";
   }
 
-  // 根据配置设置开关：
-  // data_dump_enabled_ 对应 v1 IsDumpOpen()，只由 dump_status:on 或 dump_list 控制
-  // overflow dump (dump_debug: on) 即使配置了 dump_path，也不开启 data_dump
-  if ((dump_status_ == GE_DUMP_STATUS_ON) || !model_dump_config_list_.empty()) {
-    data_dump_enabled_ = true;
-    GELOGI("Data dump enabled, dump_status: %s, model config count: %zu", dump_status_.c_str(),
-           model_dump_config_list_.size());
-  }
+  // 根据配置设置开关（顺序对齐 v1：先解析场景，再按 dump_debug 覆盖 dump_status，最后推导 data dump）：
+  // 1. 异常场景只开 exception dump；watcher 属正常数据 dump 场景
+  // 2. dump_debug: on 只开 overflow dump，并强制关闭 data dump（对齐 v1 HandleDumpDebugConfig）
+  // 3. data dump 只由 dump_status 决定（dump_status 已由 dump_level 推导，见 ParseBasicConfigurations），
+  //    对齐 v1 DumpManager::IsDataDumpOpen，不再以 dump_list 非空兜底
   if (!dump_scene_.empty()) {
-    exception_dump_enabled_ = true;
-    GELOGI("Exception dump enabled, dump_scene: %s", dump_scene_.c_str());
+    // dump_scene=watcher 对齐 v1：watcher 属于正常数据 dump 场景，走 data dump 链路，
+    // 只有异常场景（lite_exception/aic_err_*）才开启 exception dump
+    if (dump_scene_ == GE_DUMP_SCENE_WATCHER) {
+      GELOGI("Watcher dump configured, dump_path: %s", dump_path_.c_str());
+    } else {
+      exception_dump_enabled_ = true;
+      GELOGI("Exception dump enabled, dump_scene: %s", dump_scene_.c_str());
+    }
   }
   if (dump_debug_ == GE_DUMP_STATUS_ON) {
+    dump_status_ = GE_DUMP_STATUS_OFF;
     overflow_dump_enabled_ = true;
     GELOGI("Overflow dump enabled, dump_path: %s", dump_path_.c_str());
+  }
+  if ((dump_status_ == GE_DUMP_STATUS_ON) && !exception_dump_enabled_) {
+    data_dump_enabled_ = true;
+    GELOGI("Data dump enabled, dump_status: %s, dump_level: %s, model config count: %zu", dump_status_.c_str(),
+           dump_level_.c_str(), model_dump_config_list_.size());
+  } else {
+    GELOGI("Data dump not enabled, dump_status: %s, dump_level: %s, dump_scene: %s, dump_debug: %s",
+           dump_status_.c_str(), dump_level_.c_str(), dump_scene_.c_str(), dump_debug_.c_str());
   }
 
   GELOGI("Parse dump config from json successfully, dump_mode: %s, dump_level: %s, dump_step: %s", dump_mode_.c_str(),
@@ -538,12 +743,15 @@ void DumpConfig::ParseBasicConfigurations(const nlohmann::json &dumpJson) {
   dump_level_ = GetConfigWithDefault(dumpJson, GE_DUMP_LEVEL, GE_DUMP_LEVEL_DEFAULT);
   dump_scene_ = GetConfigWithDefault(dumpJson, GE_DUMP_SCENE, GE_DUMP_SCENE_DEFAULT);
 
-  // 对齐 v1 DumpManager::SetDumpDebugConf：dump_debug=on 时启用全部溢出检测，
-  // 同时将 dump_status 强制置为 off（对齐 v1 HandleDumpDebugConfig 行为），
-  // 避免 dump_debug 场景下误触发 data dump。
+  // 对齐 v1 DumpConfigValidator::ParseComplexConfigs：acl 配置里 dump_status 由 dump_level 推导
+  // （op/all -> on，kernel -> off），显式配置的 dump_status 不生效
+  dump_status_ = ((dump_level_ == GE_DUMP_LEVEL_OP) || (dump_level_ == GE_DUMP_LEVEL_ALL)) ? GE_DUMP_STATUS_ON
+                                                                                           : GE_DUMP_STATUS_OFF;
+
+  // 对齐 v1 DumpManager::SetDumpDebugConf：dump_debug=on 时启用全部溢出检测；
+  // dump_status 的强制关闭统一放在开关推导处（ParseDumpConfigFromJson），避免两处重复
   if (dump_debug_ == GE_DUMP_STATUS_ON) {
     op_debug_mode_ = kAllOverflow;
-    dump_status_ = GE_DUMP_STATUS_OFF;
   } else {
     op_debug_mode_ = 0U;
   }
@@ -556,6 +764,8 @@ void DumpConfig::ParseComplexConfigs(const nlohmann::json &dumpJson) {
 
   if (dumpJson.contains(GE_DUMP_LIST) && dumpJson[GE_DUMP_LIST].is_array()) {
     ParseModelDumpConfigList(dumpJson[GE_DUMP_LIST], model_dump_config_list_);
+    // 预构建黑名单索引，供 dump 时按下标快速过滤（调用方已持有 mutex_）
+    ExtractBlacklists();
   }
 }
 
@@ -593,50 +803,55 @@ bool DumpConfig::ParseModelDumpConfig(const nlohmann::json &modelJson, ModelDump
     modelConfig.model_name = modelJson[GE_DUMP_MODEL_NAME].get<std::string>();
   }
 
-  if (modelJson.contains(GE_DUMP_LAYER) && modelJson[GE_DUMP_LAYER].is_array()) {
-    modelConfig.layers.clear();
-    for (const auto &layer : modelJson[GE_DUMP_LAYER]) {
-      modelConfig.layers.push_back(layer.get<std::string>());
-    }
-  }
-
-  if (modelJson.contains(GE_DUMP_WATCHER_NODES) && modelJson[GE_DUMP_WATCHER_NODES].is_array()) {
-    modelConfig.watcher_nodes.clear();
-    for (const auto &node : modelJson[GE_DUMP_WATCHER_NODES]) {
-      modelConfig.watcher_nodes.push_back(node.get<std::string>());
-    }
-  }
-
-  if (modelJson.contains(GE_DUMP_OPTYPE_BLACKLIST) && modelJson[GE_DUMP_OPTYPE_BLACKLIST].is_array()) {
-    modelConfig.optype_blacklist.clear();
-    for (const auto &blacklistJson : modelJson[GE_DUMP_OPTYPE_BLACKLIST]) {
-      DumpBlacklist blacklist;
-      ParseBlacklist(blacklistJson, blacklist);
-      modelConfig.optype_blacklist.push_back(blacklist);
-    }
-  }
-
-  if (modelJson.contains(GE_DUMP_OPNAME_BLACKLIST) && modelJson[GE_DUMP_OPNAME_BLACKLIST].is_array()) {
-    modelConfig.opname_blacklist.clear();
-    for (const auto &blacklistJson : modelJson[GE_DUMP_OPNAME_BLACKLIST]) {
-      DumpBlacklist blacklist;
-      ParseBlacklist(blacklistJson, blacklist);
-      modelConfig.opname_blacklist.push_back(blacklist);
-    }
-  }
-
-  if (modelJson.contains(GE_DUMP_OPNAME_RANGE) && modelJson[GE_DUMP_OPNAME_RANGE].is_array()) {
-    modelConfig.dump_op_ranges.clear();
-    for (const auto &rangeJson : modelJson[GE_DUMP_OPNAME_RANGE]) {
-      if (rangeJson.contains(GE_DUMP_OPNAME_RANGE_BEGIN) && rangeJson.contains(GE_DUMP_OPNAME_RANGE_END)) {
-        std::string begin = rangeJson[GE_DUMP_OPNAME_RANGE_BEGIN].get<std::string>();
-        std::string end = rangeJson[GE_DUMP_OPNAME_RANGE_END].get<std::string>();
-        modelConfig.dump_op_ranges.emplace_back(begin, end);
-      }
-    }
-  }
+  ParseStringArrayField(modelJson, GE_DUMP_LAYER, modelConfig.layers);
+  ParseStringArrayField(modelJson, GE_DUMP_WATCHER_NODES, modelConfig.watcher_nodes);
+  ParseBlacklistArrayField(modelJson, GE_DUMP_OPTYPE_BLACKLIST, modelConfig.optype_blacklist);
+  ParseBlacklistArrayField(modelJson, GE_DUMP_OPNAME_BLACKLIST, modelConfig.opname_blacklist);
+  ParseOpnameRangeField(modelJson, modelConfig);
 
   return true;
+}
+
+void DumpConfig::ParseStringArrayField(const nlohmann::json &modelJson, const std::string &key,
+                                       std::vector<std::string> &output) {
+  if (modelJson.contains(key) && modelJson[key].is_array()) {
+    ParseStringArray(modelJson[key], output);
+  }
+}
+
+void DumpConfig::ParseBlacklistArrayField(const nlohmann::json &modelJson, const std::string &key,
+                                          std::vector<DumpBlacklist> &output) {
+  if (!modelJson.contains(key) || !modelJson[key].is_array()) {
+    return;
+  }
+  output.clear();
+  for (const auto &blacklistJson : modelJson[key]) {
+    DumpBlacklist blacklist;
+    ParseBlacklist(blacklistJson, blacklist);
+    output.push_back(blacklist);
+  }
+}
+
+bool DumpConfig::IsValidOpnameRangeItem(const nlohmann::json &rangeJson) {
+  return rangeJson.contains(GE_DUMP_OPNAME_RANGE_BEGIN) && rangeJson[GE_DUMP_OPNAME_RANGE_BEGIN].is_string() &&
+         rangeJson.contains(GE_DUMP_OPNAME_RANGE_END) && rangeJson[GE_DUMP_OPNAME_RANGE_END].is_string();
+}
+
+void DumpConfig::ParseOpnameRangeField(const nlohmann::json &modelJson, ModelDumpConfig &modelConfig) {
+  if (!modelJson.contains(GE_DUMP_OPNAME_RANGE) || !modelJson[GE_DUMP_OPNAME_RANGE].is_array()) {
+    return;
+  }
+  modelConfig.dump_op_ranges.clear();
+  for (const auto &rangeJson : modelJson[GE_DUMP_OPNAME_RANGE]) {
+    // 显式校验 begin/end 均为字符串，避免非字符串字段在 get<std::string>() 时抛未捕获异常
+    // （dump_scene 等场景下 IsValidDumpConfig 不校验 dump_list，此处在解析期兜底）
+    if (!IsValidOpnameRangeItem(rangeJson)) {
+      GELOGW("[OM2 Dump] opname_range begin/end is missing or not string, ignore this range item.");
+      continue;
+    }
+    modelConfig.dump_op_ranges.emplace_back(rangeJson[GE_DUMP_OPNAME_RANGE_BEGIN].get<std::string>(),
+                                            rangeJson[GE_DUMP_OPNAME_RANGE_END].get<std::string>());
+  }
 }
 
 bool DumpConfig::CheckDumpModelConfig(const nlohmann::json &modelJson) {
@@ -655,6 +870,126 @@ void DumpConfig::ParseBlacklist(const nlohmann::json &blacklistJson, DumpBlackli
       blacklist.pos.push_back(pos.get<std::string>());
     }
   }
+}
+
+// 对齐 v1 DumpManager::ExtractBlacklist：把 pos 字符串解析为 input/output 下标集合
+void DumpConfig::ExtractBlacklist(const std::vector<DumpBlacklist> &blacklists,
+                                  std::map<std::string, OpIndexBlacklist> &op_blacklist) {
+  for (const auto &blacklist : blacklists) {
+    // 同名黑名单的多个条目合并到同一集合：直接取 map 槽位引用就地累加，省去临时集合与二次 range-insert 合并
+    OpIndexBlacklist &indices = op_blacklist[blacklist.name];
+    for (const auto &pos : blacklist.pos) {
+      bool is_input = false;
+      uint32_t index = 0U;
+      if (!ParseBlacklistPos(pos, is_input, index)) {
+        GELOGW("[OM2 Dump] blacklist pos %s is invalid, ignore.", pos.c_str());
+        continue;
+      }
+      if (is_input) {
+        (void)indices.input_indices.insert(index);
+      } else {
+        (void)indices.output_indices.insert(index);
+      }
+    }
+  }
+}
+
+void DumpConfig::ExtractBlacklists() {
+  optype_blacklist_map_.clear();
+  opname_blacklist_map_.clear();
+  for (const auto &model_config : model_dump_config_list_) {
+    if (!model_config.optype_blacklist.empty()) {
+      ExtractBlacklist(model_config.optype_blacklist, optype_blacklist_map_[model_config.model_name]);
+    }
+    if (!model_config.opname_blacklist.empty()) {
+      ExtractBlacklist(model_config.opname_blacklist, opname_blacklist_map_[model_config.model_name]);
+    }
+  }
+}
+
+bool DumpConfig::IsInIndexBlacklist(const ModelIndexBlacklistMap &blacklist_map, const std::string &model_name,
+                                    const std::string &root_graph_name, const std::string &op_key, uint32_t index,
+                                    bool is_input) {
+  // 对齐 v1 DataDumper：依次按 model_name、root_graph_name、全局配置（model_name 为空）匹配
+  const std::string match_keys[] = {model_name, root_graph_name, std::string()};
+  for (const auto &match_key : match_keys) {
+    const auto model_it = blacklist_map.find(match_key);
+    if (model_it == blacklist_map.end()) {
+      continue;
+    }
+    const auto op_it = model_it->second.find(op_key);
+    if (op_it == model_it->second.end()) {
+      continue;
+    }
+    const auto &indices = is_input ? op_it->second.input_indices : op_it->second.output_indices;
+    if (indices.count(index) > 0U) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void DumpConfig::GetInputBlacklistIndices(const std::string &model_name, const std::string &root_graph_name,
+                                          const std::string &op_name, const std::string &op_type, uint32_t io_num,
+                                          std::set<uint32_t> &indices) const {
+  indices.clear();
+  std::lock_guard<std::mutex> lock(mutex_);
+  for (uint32_t index = 0U; index < io_num; ++index) {
+    if (IsInIndexBlacklist(opname_blacklist_map_, model_name, root_graph_name, op_name, index, true)) {
+      GELOGI("[Dumper] Node name %s, Node type: %s, input index %u is in opname-blacklist, skip to dump this input.",
+             op_name.c_str(), op_type.c_str(), index);
+      (void)indices.insert(index);
+      continue;
+    }
+    if (IsInIndexBlacklist(optype_blacklist_map_, model_name, root_graph_name, op_type, index, true)) {
+      GELOGI("[Dumper] Node name %s, Node type: %s, input index %u is in optype-blacklist, skip to dump this input.",
+             op_name.c_str(), op_type.c_str(), index);
+      (void)indices.insert(index);
+    }
+  }
+}
+
+void DumpConfig::GetOutputBlacklistIndices(const std::string &model_name, const std::string &root_graph_name,
+                                           const std::string &op_name, const std::string &op_type, uint32_t io_num,
+                                           std::set<uint32_t> &indices) const {
+  indices.clear();
+  std::lock_guard<std::mutex> lock(mutex_);
+  for (uint32_t index = 0U; index < io_num; ++index) {
+    if (IsInIndexBlacklist(opname_blacklist_map_, model_name, root_graph_name, op_name, index, false)) {
+      GELOGI("[Dumper] Node name %s, Node type: %s, output index %u is in opname-blacklist, skip to dump this output.",
+             op_name.c_str(), op_type.c_str(), index);
+      (void)indices.insert(index);
+      continue;
+    }
+    if (IsInIndexBlacklist(optype_blacklist_map_, model_name, root_graph_name, op_type, index, false)) {
+      GELOGI("[Dumper] Node name %s, Node type: %s, output index %u is in optype-blacklist, skip to dump this output.",
+             op_name.c_str(), op_type.c_str(), index);
+      (void)indices.insert(index);
+    }
+  }
+}
+
+std::vector<std::pair<std::string, std::string>> DumpConfig::GetOpDumpRanges(const std::string &model_name,
+                                                                             const std::string &root_graph_name) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  std::vector<std::pair<std::string, std::string>> ranges;
+  // 对齐 v1 DumpProperties::GetDumpOpRangeModelName 的匹配优先级：优先精确模型名，其次 root graph 名；
+  // 同名条目对齐 v1 DumpProperties::SetOpDumpRange 的 clear+assign 语义，后写覆盖先写（last-wins）。
+  const std::string match_keys[] = {model_name, root_graph_name};
+  for (const auto &match_key : match_keys) {
+    if (match_key.empty()) {
+      continue;
+    }
+    for (const auto &model_config : model_dump_config_list_) {
+      if ((model_config.model_name == match_key) && !model_config.dump_op_ranges.empty()) {
+        ranges = model_config.dump_op_ranges;
+      }
+    }
+    if (!ranges.empty()) {
+      return ranges;
+    }
+  }
+  return ranges;
 }
 
 std::vector<std::string> DumpConfig::Split(const std::string &str, const char_t *const delimiter) {

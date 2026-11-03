@@ -517,6 +517,10 @@ Status StreamAllocator::ExpandAnnotatedArgsNodeEvents(const OpDescPtr &op_desc, 
     waits[kernel_positions[dep.successor_launch_index]].emplace_back(
         MakeAnnotatedEventTask(ModelTaskType::MODEL_TASK_EVENT_WAIT,
                                tasks[kernel_positions[dep.successor_launch_index]].stream_id(), event_id, op_index));
+    GELOGI("[AnnotatedArgs][insert] op:%s, dep %u->%u: record_stream:%u, wait_stream:%u, event_id:%u.",
+           op_desc->GetNamePtr(), dep.predecessor_launch_index, dep.successor_launch_index,
+           tasks[kernel_positions[dep.predecessor_launch_index]].stream_id(),
+           tasks[kernel_positions[dep.successor_launch_index]].stream_id(), event_id);
     annotated_event_infos_[event_id] = {op_desc->GetId(), dep.predecessor_launch_index, dep.successor_launch_index};
   }
   MergeAnnotatedEventTasks(tasks, records, waits, plan.dependencies.size());
@@ -540,6 +544,14 @@ Status StreamAllocator::ReconcileAnnotatedArgsEventTasks(
   std::map<uint32_t, uint32_t> remap;
   uint32_t next_id = 0U;
   GE_ASSERT_SUCCESS(BuildAnnotatedEventRemap(pairs, event_num, remap, next_id));
+  size_t pruned_count = 0U;
+  for (const auto &entry : remap) {
+    if (entry.second == std::numeric_limits<uint32_t>::max()) {
+      ++pruned_count;
+    }
+  }
+  GELOGI("[AnnotatedArgs][reconcile] pairs:%zu, kept:%zu, pruned:%zu, event_num:%ld->%u.", pairs.size(),
+         pairs.size() - pruned_count, pruned_count, event_num, next_id);
   ApplyAnnotatedEventRemap(node_id_2_node_tasks, remap);
   annotated_event_infos_.clear();
   event_num_ = next_id;

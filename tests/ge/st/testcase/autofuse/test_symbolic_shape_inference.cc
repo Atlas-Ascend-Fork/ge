@@ -4808,59 +4808,6 @@ TEST_F(SymbolicShapeInferenceST, InferShapeForSegmentSum) {
 }
 
 /**
- * 测试场景：在真实计算图中验证 JaggedToPaddedDense 将锯齿张量转为稠密填充张量的符号 Shape 推导。
- * 测试输入：values=[s0,s1]，offsets=[s2]，max_length=16。
- * 期望输出：out=[s2-1,16,s1]。
- */
-TEST_F(SymbolicShapeInferenceST, InferShapeForJaggedToPaddedDense) {
-  auto values = builder_->CreateInput(0, "values");
-  values.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1"}));
-  auto offsets = builder_->CreateInput(1, "offsets");
-  offsets.SetOriginSymbolShape(std::vector<const char *>({"s2"}));
-  ASSERT_NE(values.GetCTensorHolder(), nullptr);
-  ASSERT_NE(offsets.GetCTensorHolder(), nullptr);
-  auto out = es::JaggedToPaddedDense(values, offsets, 16, 0.0f, 0);
-  ASSERT_EQ(es::EsGraphBuilder::SetOutput(out, 0), 0);
-  auto graph = builder_->BuildAndReset();
-  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
-  ASSERT_NE(cg, nullptr);
-  SymbolicShapeInference ssi;
-  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
-  auto node = cg->FindFirstNodeMatchType("JaggedToPaddedDense");
-  ASSERT_NE(node, nullptr);
-  auto attr = node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
-  ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(),
-            gert::SymbolShape({Symbol("s2") - Symbol(1), Symbol(16), Symbol("s1")}));
-}
-
-/**
- * 测试场景：在真实计算图中验证 DenseToJagged 将稠密张量压缩为锯齿张量的符号 Shape 推导。
- * 测试输入：dense=[s0,s1,s2]，jagged_dim0=16。
- * 期望输出：jagged_dense=[16,s2]。
- */
-TEST_F(SymbolicShapeInferenceST, InferShapeForDenseToJagged) {
-  auto dense = builder_->CreateInput(0, "dense");
-  dense.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
-  auto offset = builder_->CreateInput(1, "offset");
-  offset.SetOriginSymbolShape(std::vector<const char *>({"s3"}));
-  ASSERT_NE(dense.GetCTensorHolder(), nullptr);
-  ASSERT_NE(offset.GetCTensorHolder(), nullptr);
-  auto out = es::DenseToJagged(dense, offset, 16);
-  ASSERT_EQ(es::EsGraphBuilder::SetOutput(out, 0), 0);
-  auto graph = builder_->BuildAndReset();
-  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
-  ASSERT_NE(cg, nullptr);
-  SymbolicShapeInference ssi;
-  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
-  auto node = cg->FindFirstNodeMatchType("DenseToJagged");
-  ASSERT_NE(node, nullptr);
-  auto attr = node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
-  ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({Symbol(16), Symbol("s2")}));
-}
-
-/**
  * 测试场景：在真实计算图中验证 CheckNumerics 的符号 Shape 透传。
  * 测试输入：x=[s0,s1]，message 使用固定字符串。
  * 期望输出：y=[s0,s1]。

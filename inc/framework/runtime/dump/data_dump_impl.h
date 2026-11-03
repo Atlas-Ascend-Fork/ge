@@ -35,6 +35,10 @@ class DataDumpImpl {
 
   Status SaveTask(const GertModelTaskDesc &task_info, ModelTaskType task_type, rtStream_t stream, bool is_op_debug);
 
+  // watcher 场景：记录非 watcher 算子的 task_id/stream_id/op_name（对齐 v1
+  // DataDumper::SaveLayerOpInfoOnWatcherMode），用于给 watcher 节点生成 <layerOp>_To_<watcherNode> 的 dump task
+  void SaveLayerOpInfo(uint32_t task_id, uint32_t stream_id, const std::string &op_name);
+
   // 每次模型执行前刷新当前 step 到设备内存，AICPU dump kernel 解引用 step_id_addr 计算 step 落盘目录
   Status UpdateStepId(uint64_t step_id, rtStream_t stream);
 
@@ -61,7 +65,11 @@ class DataDumpImpl {
     uint64_t size;
     int32_t data_type;
     int32_t format;
+    // 对齐 v1 GenerateOutput/GenerateInput：原始格式/原始 dtype/proto 侧 origin_shape
+    int32_t origin_format;
+    int32_t origin_data_type;
     std::vector<int64_t> shape_dims;
+    std::vector<int64_t> origin_shape_dims;
   };
 
   struct InnerDumpInfo {
@@ -85,11 +93,26 @@ class DataDumpImpl {
 
   // protobuf 构造modelinfo、taskinfo相关接口
   Status ExecuteLoadDumpInfo(const toolkit::aicpu::dump::OpMappingInfo &op_mapping_info);
+
+  void InitDumpInfo(const GertModelTaskDesc &task_info, ModelTaskType task_type, rtStream_t stream, bool is_op_debug,
+                    InnerDumpInfo &dump_info) const;
+
+  Status CopyTaskIoEntries(const GertModelTaskIoEntry *entries, uint32_t entry_num,
+                           std::vector<InnerTensorInfo> &inner_tensors) const;
+
+  Status CopyTaskWorkspaces(const GertModelTaskDesc &task_info, InnerDumpInfo &dump_info) const;
+
   Status BuildTaskList(toolkit::aicpu::dump::OpMappingInfo &op_mapping_info) const;
   void BuildTaskInputs(const InnerDumpInfo &dump_info, toolkit::aicpu::dump::Task &task) const;
   void BuildTaskOutputs(const InnerDumpInfo &dump_info, toolkit::aicpu::dump::Task &task) const;
   void BuildTaskWorkspaces(const InnerDumpInfo &dump_info, toolkit::aicpu::dump::Task &task) const;
   void BuildOpDebugTask(toolkit::aicpu::dump::OpMappingInfo &op_mapping_info) const;
+
+  // 对齐 v1 DataDumper::BuildTaskInfoForDumpOutput：watcher 节点的 dump task 额外复制一份给每个被记录的
+  // layer 算子，task_id/stream_id 换成 layer 算子的，op 名改为 "<layerOpName>_To_<watcherNode>"
+  void BuildWatcherLayerTasks(const InnerDumpInfo &dump_info, const toolkit::aicpu::dump::Task &task,
+                              toolkit::aicpu::dump::OpMappingInfo &op_mapping_info) const;
+
   toolkit::aicpu::dump::OpMappingInfo op_mapping_info_;
   toolkit::aicpu::dump::OpMappingInfo op_mapping_base_info_;
   bool op_mapping_base_info_initialized_ = false;
@@ -101,11 +124,24 @@ class DataDumpImpl {
   void BuildTaskOutputs(const InnerDumpInfo &dump_info, DumpTransTaskInfo &task) const;
   void BuildTaskWorkspaces(const InnerDumpInfo &dump_info, DumpTransTaskInfo &task) const;
   void BuildOpDebugTask(DumpTransportInfo &dump_transport_info) const;
+  // TLV 版本的 watcher _To_ task 生成，语义与 protobuf 版本一致
+  void BuildWatcherLayerTasks(const InnerDumpInfo &dump_info, const DumpTransTaskInfo &task,
+                              DumpTransportInfo &dump_transport_info) const;
   DumpTransportInfo dump_transport_info_;
   DumpTransportInfo dump_transport_base_info_;
   bool dump_transport_base_info_initialized_ = false;
 
   std::vector<InnerDumpInfo> task_list_;
+  // watcher 模式下记录的非 watcher 算子（仅用于生成 _To_ task，不落自身数据）
+  struct InnerLayerOpInfo {
+    uint32_t task_id;
+    uint32_t stream_id;
+    std::string op_name;
+  };
+  std::vector<InnerLayerOpInfo> layer_op_list_;
+  // 当前模型信息，用于黑名单（optype_blacklist / opname_blacklist）过滤
+  std::string model_name_;
+  std::string root_graph_name_;
   void *dev_mem_load_ = nullptr;
   void *step_id_dev_addr_ = nullptr;
   // 异步拷贝 step_id 时的主机侧源地址（ACL_MEMCPY_HOST_TO_BUF_TO_DEVICE 需保证源内存在拷贝期间有效）

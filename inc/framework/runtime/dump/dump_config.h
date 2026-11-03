@@ -13,9 +13,12 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <map>
+#include <set>
 #include <string>
 #include <unordered_set>
 #include <mutex>
+#include <utility>
 #include <vector>
 #include "common/ge_common/ge_types.h"
 #include "nlohmann/json.hpp"
@@ -144,6 +147,30 @@ class DumpConfig {
   bool IsOpNeedDump(const std::string &model_name, const std::string &root_graph_name,
                     const std::string &op_name) const;
 
+  // watcher 场景查询（对齐 v1 DumpProperties 的 DUMP_WATCHER_MODEL / DUMP_LAYER_OP_MODEL 语义）：
+  // dump_scene=watcher 走 data dump 链路，不是异常 dump 场景
+  bool IsWatcherDumpEnabled() const;
+  // 是否为 watcher 节点
+  bool IsWatcherNode(const std::string &model_name, const std::string &root_graph_name,
+                     const std::string &op_name) const;
+  // 是否为 watcher 模式下的 layer 算子（非 watcher 节点，仅记录 task/stream 用于生成 <layerOp>_To_<watcherNode>）
+  bool IsLayerOpOnWatcherMode(const std::string &model_name, const std::string &root_graph_name,
+                              const std::string &op_name) const;
+
+  // 批量化黑名单查询：一次加锁计算 [0, io_num) 内被 opname/optype 黑名单命中的下标，
+  // 供 dump 热路径按 task 批量查询，避免按 IO 逐次加锁。
+  void GetInputBlacklistIndices(const std::string &model_name, const std::string &root_graph_name,
+                                const std::string &op_name, const std::string &op_type, uint32_t io_num,
+                                std::set<uint32_t> &indices) const;
+  void GetOutputBlacklistIndices(const std::string &model_name, const std::string &root_graph_name,
+                                 const std::string &op_name, const std::string &op_type, uint32_t io_num,
+                                 std::set<uint32_t> &indices) const;
+
+  // 获取指定模型配置的 opname_range（对齐 v1 DumpProperties::SetOpDumpRange 的模型匹配规则），
+  // 优先精确匹配 model_name，其次匹配 root_graph_name；同名条目对齐 v1 的 clear+assign 语义，后写覆盖先写。
+  std::vector<std::pair<std::string, std::string>> GetOpDumpRanges(const std::string &model_name,
+                                                                   const std::string &root_graph_name) const;
+
  private:
   DumpConfig() = default;
   ~DumpConfig() = default;
@@ -156,6 +183,8 @@ class DumpConfig {
   static bool CheckDumpPath(const nlohmann::json &jsDumpConfig);
   static bool CheckDumpStep(const nlohmann::json &jsDumpConfig);
   static bool CheckDumplist(const nlohmann::json &jsDumpConfig, const std::string &dumpLevel);
+  static bool CheckDumpOpnameRange(const nlohmann::json &model_json, const std::string &dumpLevel);
+  static bool CheckDumpOpnameRangeItems(const nlohmann::json &rangeArray);
   static bool CheckDumpOpSwitch(const std::string &dumpOpSwitch);
   static bool CheckIpAddress(const DumpConfig &config);
   static bool ValidateIpAddress(const std::string &ipAddress);
@@ -178,10 +207,38 @@ class DumpConfig {
   static bool ParseModelDumpConfig(const nlohmann::json &modelJson, ModelDumpConfig &modelConfig);
   static void ParseBlacklist(const nlohmann::json &blacklistJson, DumpBlacklist &blacklist);
   static void ParseStringArray(const nlohmann::json &jsonArray, std::vector<std::string> &output);
+  // 解析 dump_list 条目中可选的字符串数组字段：字段不存在或非数组时保持输出为空
+  static void ParseStringArrayField(const nlohmann::json &modelJson, const std::string &key,
+                                    std::vector<std::string> &output);
+  // 解析 dump_list 条目中可选的黑名单数组字段：字段不存在或非数组时保持输出为空
+  static void ParseBlacklistArrayField(const nlohmann::json &modelJson, const std::string &key,
+                                       std::vector<DumpBlacklist> &output);
+  // 解析 dump_list 条目中的 opname_range 字段，逐项校验 begin/end 均为字符串
+  static void ParseOpnameRangeField(const nlohmann::json &modelJson, ModelDumpConfig &modelConfig);
+  static bool IsValidOpnameRangeItem(const nlohmann::json &rangeJson);
   static void ParseModelDumpConfigList(const nlohmann::json &jsonArray, std::vector<ModelDumpConfig> &output);
   static std::string GetConfigWithDefault(const nlohmann::json &json, const std::string &key,
                                           const std::string &defaultValue);
   static std::vector<std::string> Split(const std::string &str, const char_t *const delimiter);
+
+  // 黑名单解析与查询辅助（对齐 v1 DumpManager::ExtractBlacklist，pos 格式为 inputN/outputN）
+  struct OpIndexBlacklist {
+    std::set<uint32_t> input_indices;
+    std::set<uint32_t> output_indices;
+  };
+  // <model_name, <op_name/op_type, 黑名单下标集合>>，model_name 为空表示全局配置
+  using ModelIndexBlacklistMap = std::map<std::string, std::map<std::string, OpIndexBlacklist>>;
+
+  // dump_list 条目是否匹配当前模型：model_name 为空表示全局配置，否则匹配 model_name 或 root_graph_name
+  static bool IsModelConfigMatched(const ModelDumpConfig &model_config, const std::string &model_name,
+                                   const std::string &root_graph_name);
+
+  void ExtractBlacklists();
+  static void ExtractBlacklist(const std::vector<DumpBlacklist> &blacklists,
+                               std::map<std::string, OpIndexBlacklist> &op_blacklist);
+  static bool IsInIndexBlacklist(const ModelIndexBlacklistMap &blacklist_map, const std::string &model_name,
+                                 const std::string &root_graph_name, const std::string &op_key, uint32_t index,
+                                 bool is_input);
 
   mutable std::mutex mutex_;
 
@@ -204,6 +261,9 @@ class DumpConfig {
   std::vector<std::string> dump_stats_;
   std::string dump_scene_;  // 对应原始 dump_exception
   std::vector<ModelDumpConfig> model_dump_config_list_;
+  // dump_list 解析后预构建的黑名单索引（避免 dump 时反复解析 pos 字符串）
+  ModelIndexBlacklistMap optype_blacklist_map_;
+  ModelIndexBlacklistMap opname_blacklist_map_;
 };
 
 }  // namespace dump

@@ -314,6 +314,7 @@ class Om2DumpWireTest : public Test {
     tensor.SetSize(128U);
     tensor.SetDataType(DT_FLOAT);
     tensor.SetStorageFormat(FORMAT_ND);
+    tensor.SetOriginFormat(FORMAT_ND);
     tensor.MutableStorageShape().AppendDim(2);
     tensor.MutableStorageShape().AppendDim(-1);
     tensor.MutableOriginShape().AppendDim(999);
@@ -390,12 +391,21 @@ class Om2DumpWireTest : public Test {
     EXPECT_EQ(info.GetDataType(), DataTypeUtil::GetIrDataType(DT_FLOAT));
     EXPECT_EQ(info.GetFormat(), FORMAT_ND);
     EXPECT_EQ(info.GetShape(), (std::vector<uint64_t>{2U, UINT64_MAX}));
-    // OriginShape/Offset 未 Set 不上线：Get* 返回默认空集合/0
-    EXPECT_TRUE(info.GetOriginShape().empty());
+    // 对齐 v1：生产者恒下发 origin_shape（fixture 的 tensor OriginShape={999}）；Offset 未 Set 不上线
+    EXPECT_EQ(info.GetOriginShape(), (std::vector<uint64_t>{999U}));
     EXPECT_EQ(info.GetOffset(), 0U);
   }
   void CheckOutputDefaults(const DumpTransOutputInfo &info) {
-    // 普通任务的 Output：生产者未 Set Original* 字段（implicit），不上线：解码后 Get* 返回类型默认值
+    // 普通任务的 Output：对齐 v1 恒下发 original_output_index=-1（非默认值上线）；
+    // original_output_format 取 ge 原格式 FORMAT_ND；data_type 取 ge 原值 DT_FLOAT=0（implicit 默认值不上线）
+    EXPECT_EQ(info.GetOriginalName(), "");
+    EXPECT_EQ(info.GetOriginalOutputIndex(), -1);
+    EXPECT_EQ(info.GetOriginalOutputDataType(), 0);
+    EXPECT_EQ(info.GetOriginalOutputFormat(), FORMAT_ND);
+    EXPECT_EQ(info.GetDimRangeCount(), 0U);
+  }
+  void CheckCustomOutputDefaults(const DumpTransOutputInfo &info) {
+    // DumpOp（自定义算子）不下发 Original* 字段：解码后 Get* 返回类型默认值
     EXPECT_EQ(info.GetOriginalName(), "");
     EXPECT_EQ(info.GetOriginalOutputIndex(), 0);
     EXPECT_EQ(info.GetOriginalOutputDataType(), 0);
@@ -512,6 +522,57 @@ TEST_F(Om2DumpWireTest, ModelDump_ShouldReleaseAndReuseDeviceMem_WhenRebuildAndC
   Decode(runtime->models.back(), decoded);
 }
 
+// 场景：watcher + TLV。watcher 节点生成自身 task，并为每个已记录 layer 生成 <layer>_To_<watcher> task；
+// layer 数量超过 vector 初始容量，验证 BuildWatcherLayerTasks 在 AddTask 触发扩容后仍能拿到有效的基准 task
+TEST_F(Om2DumpWireTest, ModelDump_ShouldBuildAllWatcherLayerTasks_WhenLayerCountGrows) {
+  const std::string config = R"({"dump":{"dump_scene":"watcher","dump_path":"/tmp/om2_wire","dump_mode":"output",)"
+                             R"("dump_list":[{"model_name":"test_model","watcher_nodes":["add2"]}]}})";
+  ASSERT_EQ(DumpConfig::Instance().ParseAndValidate(config.c_str(), config.size()), SUCCESS);
+
+  GertModelTaskDesc watcher_task = task;
+  watcher_task.op_name = "add2";
+  watcher_task.op_type = "Add";
+  watcher_task.task_id = 100U;
+  watcher_task.stream_id = 101U;
+
+  constexpr uint32_t kLayerCount = 8U;
+  DataDumpImpl impl;
+  ASSERT_EQ(impl.SaveTask(watcher_task, ModelTaskType::MODEL_TASK_KERNEL, nullptr, false), SUCCESS);
+  for (uint32_t i = 0U; i < kLayerCount; ++i) {
+    impl.SaveLayerOpInfo(200U + i, 300U + i, "layer" + std::to_string(i));
+  }
+  ASSERT_EQ(impl.BuildAndLoadDumpTransportInfo(model), SUCCESS);
+  ASSERT_EQ(runtime->models.size(), 1U);
+
+  const auto &submission = runtime->models.back();
+  DumpTransportInfo decoded;
+  ASSERT_EQ(decoded.Deserialize(submission.bytes.data(), submission.bytes.size()), DumpTransStatus::kOk);
+  ASSERT_EQ(decoded.GetTaskCount(), 1U + kLayerCount);
+
+  const DumpTransTaskInfo *read = nullptr;
+  ASSERT_EQ(decoded.GetTask(0U, read), DumpTransStatus::kOk);
+  ASSERT_NE(read, nullptr);
+  EXPECT_EQ(read->GetTaskId(), 100U);
+  EXPECT_EQ(read->GetStreamId(), 101U);
+  EXPECT_EQ(read->GetOpName(), "add2");
+  EXPECT_EQ(read->GetOpType(), "Add");
+
+  for (uint32_t i = 0U; i < kLayerCount; ++i) {
+    ASSERT_EQ(decoded.GetTask(1U + i, read), DumpTransStatus::kOk);
+    ASSERT_NE(read, nullptr);
+    EXPECT_EQ(read->GetTaskId(), 200U + i);
+    EXPECT_EQ(read->GetStreamId(), 300U + i);
+    EXPECT_EQ(read->GetOpName(), "layer" + std::to_string(i) + "_To_add2");
+    EXPECT_EQ(read->GetOpType(), "Add");
+    ASSERT_EQ(read->GetOutputCount(), 1U);
+    const DumpTransOutputInfo *io = nullptr;
+    ASSERT_EQ(read->GetOutput(0U, io), DumpTransStatus::kOk);
+    ASSERT_NE(io, nullptr);
+    CheckTensor(*io, kDevOutputAddr, DumpTransAddressType::kTraditional);
+    CheckOutputDefaults(*io);
+  }
+}
+
 // 场景：custom 算子在三种 dump_mode 下经前/后处理下发，前处理只发输入、后处理只发输出，校验参数头与两个设备指针
 TEST_F(Om2DumpWireTest, CustomDump_ShouldSubmitIoAndOwnDeviceMem_WhenPrePostPerMode) {
   for (const std::string mode : {"input", "output", "all"}) {
@@ -549,7 +610,7 @@ TEST_F(Om2DumpWireTest, CustomDump_ShouldSubmitIoAndOwnDeviceMem_WhenPrePostPerM
           const DumpTransOutputInfo *io = nullptr;
           ASSERT_EQ(read->GetOutput(0, io), DumpTransStatus::kOk);
           CheckTensor(*io, kDevTensorAddr, DumpTransAddressType::kTraditional);
-          CheckOutputDefaults(*io);
+          CheckCustomOutputDefaults(*io);
         }
       }
       const auto releases = memory->releases;
@@ -708,7 +769,7 @@ TEST_F(Om2DumpWireTest, CustomDump_ShouldRetainBothBuffers_WhenKernelLaunchFails
     DataDumpImpl impl;
     DumpOp op;
     ASSERT_EQ(impl.BuildDumpTransportBasicInfo(model, op.GetDumpTransportInfo()), SUCCESS);
-    ASSERT_EQ(op.BuildTaskInputs(task), SUCCESS);
+    ASSERT_EQ(op.BuildTaskInputs(task, "", ""), SUCCESS);
     runtime->launch_result = static_cast<rtError_t>(1);
     EXPECT_NE(op.ExecutorDumpOp("layer1", nullptr), SUCCESS);
     ASSERT_EQ(runtime->custom.size(), 1U);

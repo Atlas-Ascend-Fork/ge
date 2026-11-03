@@ -97,7 +97,10 @@ uint32_t GetThreadNum() {
 void RefreshStreamId(const OpDescPtr &op_desc, const size_t start_index, std::vector<domi::TaskDef> &task_defs) {
   // 拥有附属stream_id的算子当前会生成多个task_defs, stream_id和附属stream_id作为op_desc上不同
   // 的字段会设置到其生成的不同的task_def的stream_id字段中，因此跳过RefreshStreamId的操作
-  if (op_desc->HasValidAttachedStreamId() || op_desc->GetType() == "SuperKernel") {
+  // 声明式辅流（AnnotatedArgsOp）同理：每次 launch 的 stream_id 已在 GenerateTask 内逐条写好，
+  // 而其附着流要到 FinalizeDeclarativeAttachedStreams（GetTaskInfo 之后）才登记到 op_desc 上，
+  // 因此这里必须用 keep 标记兜底，否则 multi-launch 的流号会被统一压平到节点主流
+  if (op_desc->HasValidAttachedStreamId() || NeedKeepGeneratedTasks(op_desc) || (op_desc->GetType() == "SuperKernel")) {
     GELOGI("Node {%s %s} keep origin stream info, task size %zu.", op_desc->GetNamePtr(), op_desc->GetTypePtr(),
            task_defs.size());
     return;

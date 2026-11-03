@@ -331,7 +331,7 @@ Status ParseRawCompileOptions(const nlohmann::json &raw_json, std::map<std::stri
         "E10032", std::vector<const char *>({"file_name", "reason"}),
         std::vector<const char *>(
             {FLAGS_raw_ge_options.c_str(),
-             "The options JSON file must contain an object under the key (key=compile options)."}));
+             "The options JSON file must contain an object under the key (key=compile options)"}));
     return FAILED;
   }
 

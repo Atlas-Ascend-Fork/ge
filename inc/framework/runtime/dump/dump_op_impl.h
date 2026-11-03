@@ -30,8 +30,10 @@ class DumpOp {
   DumpOp();
   ~DumpOp();
   Status ExecutorDumpOp(const std::string &op_name, aclrtStream stream);
-  Status BuildTaskInputs(const GertModelTaskDesc &task_desc);
-  Status BuildTaskOutputs(const GertModelTaskDesc &task_desc);
+  Status BuildTaskInputs(const GertModelTaskDesc &task_desc, const std::string &model_name,
+                         const std::string &root_graph_name);
+  Status BuildTaskOutputs(const GertModelTaskDesc &task_desc, const std::string &model_name,
+                          const std::string &root_graph_name);
   static Status SetTaskBasicInfo(const GertModelTaskDesc &task_desc, toolkit::aicpu::dump::Task *task);
   toolkit::aicpu::dump::OpMappingInfo &GetOpMappingInfo() {
     return op_mapping_info_;
@@ -49,10 +51,14 @@ class DumpOp {
   Status ProtoMallocAndMemcpy(const size_t proto_size, const std::string &proto_msg);
   Status SubmitSerializedPayload(const std::string &op_name);
   Status LaunchDumpKernel(const std::string &op_name, aclrtStream stream);
-  Status FillProtoInputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc);
-  Status FillProtoOutputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc);
-  Status FillTlvInputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc);
-  Status FillTlvOutputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc);
+  Status FillProtoInputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc,
+                               const std::string &model_name, const std::string &root_graph_name);
+  Status FillProtoOutputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc,
+                                const std::string &model_name, const std::string &root_graph_name);
+  Status FillTlvInputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc, const std::string &model_name,
+                             const std::string &root_graph_name);
+  Status FillTlvOutputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc,
+                              const std::string &model_name, const std::string &root_graph_name);
 
   uint32_t dump_data_version_ = 0;  // 0代表protobuf格式 1代表TLV格式
 

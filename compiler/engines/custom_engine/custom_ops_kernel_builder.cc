@@ -923,6 +923,9 @@ Status EmitAnnotatedArgsLaunchTasks(const Node &node, const OpDescPtr &op_desc, 
     const auto *launch = capture.args_handler.GetLaunch(i);
     GE_ASSERT_NOTNULL(launch);
     GE_ASSERT_SUCCESS(FillKernelTask(node, *launch, prefix, task_def));
+    GELOGI("[AnnotatedArgs][emit] op:%s, launch[%zu]: declared_stream:%u, task_stream:%u, deps:%zu, kernel:%s.",
+           op_desc->GetNamePtr(), i, launch->GetStreamId(), task_def.stream_id(), launch->GetDependencyCount(),
+           launch->GetKernelName());
     tasks.emplace_back(std::move(task_def));
   }
   GE_ASSERT_TRUE(AttrUtils::SetListStr(op_desc, ATTR_NAME_KERNEL_NAMES_PREFIX, prefixes),
