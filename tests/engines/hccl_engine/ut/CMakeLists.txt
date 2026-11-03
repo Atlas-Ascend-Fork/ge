@@ -93,6 +93,7 @@ set(hccl_engine_src_test_file
     ${CMAKE_CURRENT_SOURCE_DIR}/ut_hcom_op_utils.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ut_hccl_kernel_info.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ut_superFastKernel.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/ut_hcom_fusion.cc
     ${hcce_ut_llt_stub}
 )
 
@@ -171,6 +172,7 @@ target_link_options(hccl_engine_utest PRIVATE
     -Wl,-rpath,${ASCEND_COMPILER_DIR}
     -Wl,-rpath,${AIR_CODE_DIR}/build/graph_metadef/register
     -Wl,-rpath,${AIR_CODE_DIR}/build/graph_metadef/graph
+    -Wl,-rpath,${CANN_3RD_LIB_PATH}/lib_cache/gtest_shared/lib64
 )
 
 target_link_directories(hcce_ut_llt PRIVATE

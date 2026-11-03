@@ -273,6 +273,52 @@ HcclResult HcomMc2AiCpuStreamAllocAndGet(const char *group, u32 streamMode, rtSt
   return HCCL_SUCCESS;
 }
 
+HcclResult HcclThreadAcquire(HcclComm comm, CommEngine engine, uint32_t threadNum, uint32_t notifyNumPerThread,
+                             ThreadHandle *threads) {
+  if (threads != nullptr) {
+    *threads = static_cast<ThreadHandle>(1);
+  }
+  return HCCL_SUCCESS;
+}
+
+HcclResult HcclDedicatedThreadAcquire(HcclComm comm, decltype(HCCL_DED_THREAD_TYPE_AICPU_LAUNCH) useType,
+                                      uint32_t threadNum, ThreadHandle *threads) {
+  if (threads != nullptr) {
+    *threads = static_cast<ThreadHandle>(1);
+  }
+  return HCCL_SUCCESS;
+}
+
+HcclResult HcclEngineCtxGet(HcclComm comm, const char *ctxName, CommEngine engine, void **ctx, uint64_t *ctxSize) {
+  // 桩语义: ctx 已存在, 返回静态存储, 避免调用方对空指针解引用
+  static ThreadHandle dummyThreadHandle = static_cast<ThreadHandle>(1);
+  if (ctx != nullptr) {
+    *ctx = &dummyThreadHandle;
+  }
+  if (ctxSize != nullptr) {
+    *ctxSize = sizeof(ThreadHandle);
+  }
+  return HCCL_SUCCESS;
+}
+
+HcclResult HcclEngineCtxCreate(HcclComm comm, const char *ctxName, CommEngine engine, uint64_t ctxSize, void **ctx) {
+  static ThreadHandle dummyThreadHandle = static_cast<ThreadHandle>(1);
+  if (ctx != nullptr) {
+    *ctx = &dummyThreadHandle;
+  }
+  return HCCL_SUCCESS;
+}
+
+HcclResult HcclThreadResGetInfo(HcclComm comm, ThreadHandle thread, ThreadResType resType, uint32_t infoLen,
+                                void **info) {
+  // 写非空 stream, 避免调用方按空流跳过注册分支
+  static void *dummyStream = nullptr;
+  if ((info != nullptr) && (infoLen >= sizeof(void *))) {
+    *info = &dummyStream;
+  }
+  return HCCL_SUCCESS;
+}
+
 HcclResult HcomSetAivCoreLimit(const char *group, u32 aivCoreLimit) {
   return HCCL_SUCCESS;
 }

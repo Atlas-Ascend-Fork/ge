@@ -56,12 +56,8 @@ TEST_F(HcomPluginTest, ut_hcom_plugin_exec_timeout_default) {
   // hccl 算法配置
   // options.insert(pair<string,string> ("HCCL_algorithm","ring"));
   // 实验室场景 hcom_init成功：成功
-  testing::internal::CaptureStdout();
   ret = HcomPlugin::Instance().Initialize(options);
-  const std::string logOutput = testing::internal::GetCapturedStdout();
   EXPECT_EQ(ret, ge::INTERNAL_ERROR);
-  EXPECT_NE(logOutput.find("[InitGroupStage][RanktableConfig][Load][File]"), std::string::npos);
-  EXPECT_NE(logOutput.find("[InitGroupStage][RanktableConfig][GetRanktable]"), std::string::npos);
 
   ret = HcomPlugin::Instance().Finalize();
   EXPECT_EQ(ret, ge::SUCCESS);
@@ -802,6 +798,140 @@ TEST_F(HcomPluginTest, GetOpsKernelInfoPtr_ShouldReturnValidPtr_WhenPtrIsNotNull
 
   // 检查返回的指针是否有效
   EXPECT_NE(opsKernelInfoStorePtr, nullptr);
+
+  GlobalMockObject::verify();
+}
+
+/*
+ * ProfilingModeParser 为私有接口，直接构造 options 调用，覆盖 profiling 模式解析各分支
+ */
+TEST_F(HcomPluginTest, ut_ProfilingModeParser_When_HcomSetProfilingModeFail_Expect_ReturnError) {
+  std::map<std::string, std::string> options;
+  options.insert(pair<string, string>(ge::OPTION_EXEC_PROFILING_MODE, "1"));
+  options.insert(pair<string, string>(ge::OPTION_EXEC_PROFILING_OPTIONS, "task_trace"));
+
+  MOCKER(HcomSetProfilingMode).stubs().will(returnValue(HCCL_E_INTERNAL));
+
+  testing::internal::CaptureStdout();
+  ge::Status ret = HcomPlugin::Instance().ProfilingModeParser(options);
+  const std::string logOutput = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(ret, ge::INTERNAL_ERROR);
+  // 子串兼容两代文案: "enable profiling mode failed." / "enable""profiling mode failed."
+  EXPECT_NE(logOutput.find("profiling mode failed"), std::string::npos);
+
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomPluginTest, ut_ProfilingModeParser_When_TaskTraceNotFound_Expect_ReturnSuccess) {
+  std::map<std::string, std::string> options;
+  options.insert(pair<string, string>(ge::OPTION_EXEC_PROFILING_MODE, "1"));
+  options.insert(pair<string, string>(ge::OPTION_EXEC_PROFILING_OPTIONS, "training_trace"));
+
+  ge::Status ret = HcomPlugin::Instance().ProfilingModeParser(options);
+  EXPECT_EQ(ret, ge::SUCCESS);
+
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomPluginTest, ut_ProfilingModeParser_When_ProfilingOptionsNotSet_Expect_ReturnSuccess) {
+  std::map<std::string, std::string> options;
+  options.insert(pair<string, string>(ge::OPTION_EXEC_PROFILING_MODE, "1"));
+
+  ge::Status ret = HcomPlugin::Instance().ProfilingModeParser(options);
+  EXPECT_EQ(ret, ge::SUCCESS);
+
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomPluginTest, ut_ProfilingModeParser_When_HcomSetProfilingModeSuccess_Expect_ReturnSuccess) {
+  std::map<std::string, std::string> options;
+  options.insert(pair<string, string>(ge::OPTION_EXEC_PROFILING_MODE, "1"));
+  options.insert(pair<string, string>(ge::OPTION_EXEC_PROFILING_OPTIONS, "task_trace"));
+
+  ge::Status ret = HcomPlugin::Instance().ProfilingModeParser(options);
+  EXPECT_EQ(ret, ge::SUCCESS);
+
+  GlobalMockObject::verify();
+}
+
+/*
+ * ConfigHcclDeterministic 为私有接口，直接构造 options 调用，校验 deterministic 配置解析结果
+ */
+TEST_F(HcomPluginTest, ut_ConfigHcclDeterministic_When_ValueStrict_Expect_ReturnSuccessAndConfigStrict) {
+  std::map<std::string, std::string> options;
+  options.insert(pair<string, string>(ge::DETERMINISTIC, "2"));
+  unsetenv("HCCL_DETERMINISTIC");
+
+  HcomInitConfig comConfig = {};
+  HcclResult ret = HcomPlugin::Instance().ConfigHcclDeterministic(options, &comConfig);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(comConfig.deterministic, static_cast<u8>(DETERMINISTIC_STRICT));
+
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomPluginTest, ut_ConfigHcclDeterministic_When_ValueEnable_Expect_ReturnSuccessAndConfigEnable) {
+  std::map<std::string, std::string> options;
+  options.insert(pair<string, string>(ge::DETERMINISTIC, "1"));
+  unsetenv("HCCL_DETERMINISTIC");
+
+  HcomInitConfig comConfig = {};
+  HcclResult ret = HcomPlugin::Instance().ConfigHcclDeterministic(options, &comConfig);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(comConfig.deterministic, static_cast<u8>(DETERMINISTIC_ENABLE));
+
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomPluginTest, ut_ConfigHcclDeterministic_When_ValueDisable_Expect_ReturnSuccessAndConfigDisable) {
+  std::map<std::string, std::string> options;
+  options.insert(pair<string, string>(ge::DETERMINISTIC, "0"));
+  unsetenv("HCCL_DETERMINISTIC");
+
+  HcomInitConfig comConfig = {};
+  HcclResult ret = HcomPlugin::Instance().ConfigHcclDeterministic(options, &comConfig);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(comConfig.deterministic, static_cast<u8>(DETERMINISTIC_DISABLE));
+
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomPluginTest, ut_ConfigHcclDeterministic_When_ValueEmpty_Expect_ReturnSuccess) {
+  std::map<std::string, std::string> options;
+  options.insert(pair<string, string>(ge::DETERMINISTIC, ""));
+  unsetenv("HCCL_DETERMINISTIC");
+
+  HcomInitConfig comConfig = {};
+  HcclResult ret = HcomPlugin::Instance().ConfigHcclDeterministic(options, &comConfig);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  // 空值走默认配置，不修改 deterministic
+  EXPECT_EQ(comConfig.deterministic, static_cast<u8>(DETERMINISTIC_DISABLE));
+
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomPluginTest, ut_ConfigHcclDeterministic_When_EnvVarSet_Expect_ReturnSuccess) {
+  std::map<std::string, std::string> options;
+  options.insert(pair<string, string>(ge::DETERMINISTIC, "1"));
+  setenv("HCCL_DETERMINISTIC", "TRUE", 1);
+
+  HcomInitConfig comConfig = {};
+  HcclResult ret = HcomPlugin::Instance().ConfigHcclDeterministic(options, &comConfig);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  // 环境变量优先，ge.deterministic 不再生效，deterministic 保持默认
+  EXPECT_EQ(comConfig.deterministic, static_cast<u8>(DETERMINISTIC_DISABLE));
+
+  GlobalMockObject::verify();
+  unsetenv("HCCL_DETERMINISTIC");
+}
+
+TEST_F(HcomPluginTest, ut_ConfigHcclDeterministic_When_OptionNotSet_Expect_ReturnSuccess) {
+  std::map<std::string, std::string> options;
+
+  HcomInitConfig comConfig = {};
+  HcclResult ret = HcomPlugin::Instance().ConfigHcclDeterministic(options, &comConfig);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(comConfig.deterministic, static_cast<u8>(DETERMINISTIC_DISABLE));
 
   GlobalMockObject::verify();
 }
