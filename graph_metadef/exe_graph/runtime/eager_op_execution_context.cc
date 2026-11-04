@@ -178,10 +178,6 @@ ge::graphStatus EagerOpExecutionContext::GetOption(const ge::AscendString &optio
   return ret;
 }
 
-rtStream EagerOpExecutionContext::RequestAttachedStream(const ge::AscendString &key) {
-  return RequestAttachedStream(key, 0U);
-}
-
 rtStream EagerOpExecutionContext::RequestAttachedStream(const ge::AscendString &key, uint32_t flags) {
   const auto additional_output_start = GetAdditionalOutputStartIndex();
   GE_ASSERT_TRUE(additional_output_start >= 0);

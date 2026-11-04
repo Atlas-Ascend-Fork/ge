@@ -51,7 +51,8 @@ class MyEagerOp : public ge::EagerExecuteOp, public ge::ResourceUsageReporter {
     }
     // 运行期按 key 申请辅流（key 与 DeclareResourceUsage 申报一致）
     gert::rtStream aux_stream =
-        ctx->RequestAttachedStream(ge::AscendString(MakeKey(input->GetShape().GetStorageShape().GetDim(0U)).c_str()));
+        ctx->RequestAttachedStream(ge::AscendString(MakeKey(input->GetShape().GetStorageShape().GetDim(0U)).c_str()),
+                                   0U);
     if (aux_stream == nullptr) {
       return ge::GRAPH_FAILED;
     }

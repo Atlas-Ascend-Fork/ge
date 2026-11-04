@@ -217,7 +217,9 @@ class CacheDesc(object):
         if self._size == -1:
             self._size = llm_wrapper.calc_tensor_size(self.shape, self._data_type.value)
             if self._size < 0:
-                raise LLMException(f"Failed to calc tensor size, shape = {self.shape}, data_type = {self.data_type}")
+                raise LLMException(
+                    f"Failed to calc tensor size, shape = {self.shape}, data_type = {self.data_type}"
+                )
         return self._size
 
     @property
@@ -264,10 +266,18 @@ class BlocksCacheKey(object):
         valid_keys = ["prompt_cluster_id", "cluster_id", "model_id"]
         for k in kwargs.keys():
             raise_if_false(k in valid_keys, "Unsupported param:{}", k)
-        self._cluster_id = kwargs["cluster_id"] if "cluster_id" in kwargs else kwargs["prompt_cluster_id"]
-        self._cluster_id_key = "cluster_id" if "cluster_id" in kwargs else "prompt_cluster_id"
+        self._cluster_id = (
+            kwargs["cluster_id"]
+            if "cluster_id" in kwargs
+            else kwargs["prompt_cluster_id"]
+        )
+        self._cluster_id_key = (
+            "cluster_id" if "cluster_id" in kwargs else "prompt_cluster_id"
+        )
         self._model_id = kwargs["model_id"] if "model_id" in kwargs else 0
-        check_isinstance("cluster_id", self._cluster_id, int, extra_fmt="The first param ")
+        check_isinstance(
+            "cluster_id", self._cluster_id, int, extra_fmt="The first param "
+        )
         check_isinstance("model_id", self._model_id, int, extra_fmt="The second param ")
 
     @property
@@ -326,7 +336,7 @@ class CacheKey(object):
             "prompt_cluster_id" in kwargs or "cluster_id" in kwargs,
             "Param prompt_cluster_id or cluster_id is required",
         )
-        raise_if_false("req_id" in kwargs or "req_id" in kwargs, "Param req_id is required")
+        raise_if_false("req_id" in kwargs, "Param req_id is required")
         valid_keys = [
             "prompt_cluster_id",
             "cluster_id",
@@ -336,7 +346,11 @@ class CacheKey(object):
         ]
         for k in kwargs.keys():
             raise_if_false(k in valid_keys, "Unsupported param:{}", k)
-        self._cluster_id = kwargs["cluster_id"] if "cluster_id" in kwargs else kwargs["prompt_cluster_id"]
+        self._cluster_id = (
+            kwargs["cluster_id"]
+            if "cluster_id" in kwargs
+            else kwargs["prompt_cluster_id"]
+        )
         self._req_id = kwargs["req_id"]
         self._model_id = kwargs["model_id"] if "model_id" in kwargs else 0
         self._prefix_id = kwargs["prefix_id"] if "prefix_id" in kwargs else _INVALID_ID
@@ -439,7 +453,11 @@ class KvCache(object):
 
     def __del__(self):
         # 保底释放kv cache, 但更推荐主动通过调用kv_cache_manager.deallocate_cache来释放kv cache，而不应该遗留到此处自动释放
-        if self._valid and self._kv_cache_manager is not None and self._kv_cache_manager.is_initialized():
+        if (
+            self._valid
+            and self._kv_cache_manager is not None
+            and self._kv_cache_manager.is_initialized()
+        ):
             log.info("auto deallocate kv cache: %s", self.cache_id)
             self._kv_cache_manager.deallocate_cache(self)
 
@@ -462,9 +480,13 @@ class KvCache(object):
         return self.__str__()
 
     @classmethod
-    def create_cpu_cache(cls, cache_desc: CacheDesc, addrs: Union[List[int], List[List[int]]]):
+    def create_cpu_cache(
+        cls, cache_desc: CacheDesc, addrs: Union[List[int], List[List[int]]]
+    ):
         check_isinstance("cache_desc", cache_desc, CacheDesc)
-        raise_if_false(cache_desc.placement == Placement.HOST, "cache_desc placement must be HOST")
+        raise_if_false(
+            cache_desc.placement == Placement.HOST, "cache_desc placement must be HOST"
+        )
         check_isinstance("addrs", addrs, list)
         raise_if_false(len(addrs) > 0, "addrs length should be bigger than zero.")
         last_type = type(addrs[0])
@@ -482,17 +504,19 @@ class KvCache(object):
                 "the type of the internal element of addrs should be consistent.",
             )
             last_type = type(addr)
-        if last_type == int:
+        if last_type is int:
             raise_if_false(
                 cache_desc.num_tensors == len(addrs),
                 f"cache_desc num_tensors:{cache_desc.num_tensors} should be equal to size of addrs:{len(addrs)}",
             )
-        return cls(-1, cache_desc, [addrs] if last_type == int else addrs, None)
+        return cls(-1, cache_desc, [addrs] if last_type is int else addrs, None)
 
 
 class LayerSynchronizer(ABC):
     @abstractmethod
-    def synchronize_layer(self, layer_index: int, timeout_in_millis: Optional[int]) -> bool:
+    def synchronize_layer(
+        self, layer_index: int, timeout_in_millis: Optional[int]
+    ) -> bool:
         """
         阻塞等待指定层计算完成
 
@@ -538,7 +562,8 @@ class TransferWithCacheKeyConfig:
         check_layer_range("dst_layer_range", dst_layer_range, allow_none=False)
         self._dst_layer_range = dst_layer_range
         raise_if_false(
-            (src_layer_range.stop - src_layer_range.start) == (dst_layer_range.stop - src_layer_range.start),
+            (src_layer_range.stop - src_layer_range.start)
+            == (dst_layer_range.stop - src_layer_range.start),
             "src_layer_range size shoulde be equal to dst_layer_range size",
         )
         check_uint32("src_batch_index", src_batch_index)
@@ -693,7 +718,9 @@ class CacheTask:
             timeout = timeout_in_millis / 1000
         return self._transfer_async_task.get(timeout)
 
-    def get_results(self, timeout_in_millis: Optional[int] = None) -> List[LLMStatusCode]:
+    def get_results(
+        self, timeout_in_millis: Optional[int] = None
+    ) -> List[LLMStatusCode]:
         timeout = None
         if timeout_in_millis is not None:
             check_uint32("timeout_in_millis", timeout_in_millis)

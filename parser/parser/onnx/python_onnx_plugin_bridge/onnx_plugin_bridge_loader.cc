@@ -282,7 +282,7 @@ class OnnxPluginBridgeLoader {
         "E19999",
         "No compatible ONNX Python plugin bridge artifact found for runtime[%s], available artifacts[%s], "
         "loader[%s], PYTHONPATH[%s]. Fallback codegen was also attempted and failed; check that pybind11 "
-        "(>=2.13.6,<3.0.0), Python development headers, libpython, and a C++ compiler are available for this "
+        "(>=2.13.6), Python development headers, libpython, and a C++ compiler are available for this "
         "runtime. If fallback cannot be used, align the python3 version with the artifact python tag or install "
         "the matching ge python package, for example 'ge_py_onnx_plugin_bridge-*-%s-%s-*.whl'. If Python ONNX "
         "plugins are not used, remove python plugin entries from ASCEND_CUSTOM_OPP_PATH to skip this bridge.",
@@ -292,7 +292,7 @@ class OnnxPluginBridgeLoader {
     GELOGE(FAILED,
            "No compatible ONNX Python plugin bridge artifact found for runtime[%s], available artifacts[%s], "
            "loader[%s], PYTHONPATH[%s]. Fallback codegen was also attempted and failed; check pybind11 "
-           "(>=2.13.6,<3.0.0), Python development headers, libpython, and the C++ compiler.",
+           "(>=2.13.6), Python development headers, libpython, and the C++ compiler.",
            runtime_key.ToString().c_str(), available_artifacts.empty() ? "none" : available_artifacts.c_str(),
            loader_library_path.c_str(), python_path == nullptr ? "" : python_path);
   }

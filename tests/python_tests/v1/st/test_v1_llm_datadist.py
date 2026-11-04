@@ -216,10 +216,11 @@ class LlmEngineV2St(unittest.TestCase):
         engine = LLMDataDist(LLMRole.MIX, 0)
         options = {"ge.exec.deviceId": "0"}
         engine.init(options)
-        try:
+        with self.assertRaises(LLMException) as context:
             engine.switch_role(LLMRole.DECODER)
-        except LLMException as e:
-            self.assertEqual(e.status_code, LLMStatusCode.LLM_FEATURE_NOT_ENABLED)
+        self.assertEqual(
+            context.exception.status_code, LLMStatusCode.LLM_FEATURE_NOT_ENABLED
+        )
 
     def test_switch_role_failed_identical_role(self):
         engine = LLMDataDist(LLMRole.MIX, 0)
@@ -329,15 +330,11 @@ class LlmEngineV2St(unittest.TestCase):
         kv_cache_manager = llm_datadist.kv_cache_manager
         cache_desc = CacheDesc(1, [2, 8], DataType.DT_FLOAT16)
         kv_cache = kv_cache_manager.allocate_blocks_cache(cache_desc)
-        try:
+        with self.assertRaisesRegex(TypeError, "only support"):
             kv_cache_manager.copy_blocks(kv_cache, {0: "1"})
-        except Exception as ex:
-            self.assertEqual("only support" in ex.__str__(), True)
         print("copy_blocks validate2")
-        try:
+        with self.assertRaisesRegex(TypeError, "inner type only support"):
             kv_cache_manager.copy_blocks(kv_cache, {0: ["1"]})
-        except Exception as ex:
-            self.assertEqual("inner type only support" in ex.__str__(), True)
 
         llm_datadist.finalize()
 

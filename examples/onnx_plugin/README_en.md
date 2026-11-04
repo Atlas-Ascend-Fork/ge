@@ -33,7 +33,7 @@ onnx_plugin/
 The `plugin/` directory is intentionally separate from the other scripts: GE scans
 one level of Python files under `ASCEND_CUSTOM_OPP_PATH`, while the exporter and
 runner depend on PyTorch, NumPy, or ACL and must not be loaded as plugins during
-ATC initialization. Note that if **any** Python file in the directory fails to
+ATC initialization. Note that if any Python file in the directory fails to
 load (for example, due to a syntax error), the entire compilation is aborted; use
 debug logging (see Section 3.6) to locate the offending file.
 
@@ -55,18 +55,13 @@ debug logging (see Section 3.6) to locate the offending file.
 | PyTorch | Export the ONNX model (`torch.onnx.export`) | 2.7 - 2.8, both versions verified |
 | onnx | Used internally by the `torch.onnx.export` export process | 1.21.0 verified |
 | NumPy | Input construction and result comparison | No special requirement |
-| pybind11 | Fallback compilation (on-site build when no matching native artifact exists) | >=2.13.6,<3.0.0; needed only for fallback |
+| pybind11 | Fallback compilation (on-site build when no matching native artifact exists) | >=2.13.6; needed only for fallback |
 
 The `acl` Python API is bundled with the CANN toolkit and needs no separate
-installation. Install the other dependencies with:
+installation.
 
-```bash
-pip3 install torch numpy onnx
-```
-
-The ONNX plugin officially supports Python 3.9-3.14 (cp39-cp314), and the
-other supported versions have passed basic functional verification. It has
-been verified end to end (export, ATC compilation, ACL execution, and result
+The ONNX plugin officially supports Python 3.9-3.14 (cp39-cp314). It has been
+verified end to end (export, ATC compilation, ACL execution, and result
 comparison all passed) on:
 
 - Python 3.12
@@ -80,11 +75,10 @@ Python version running ATC, the plugin automatically enters the fallback
 compilation flow and builds the artifact on site with the current Python
 interpreter; reinstalling the CANN package is not required. Fallback
 compilation requires `pybind11` in the current Python environment (version
-`>=2.13.6,<3.0.0`; install with
-`python3 -m pip install "pybind11>=2.13.6,<3.0.0"`), a C++ compiler, and the
-Python development headers. ATC reports an error listing the available artifact
-versions and the suggested wheel name only when on-site compilation is also
-unavailable.
+`>=2.13.6`; install with `python3 -m pip install "pybind11>=2.13.6"`), a C++
+compiler, and the Python development headers. ATC reports an error listing the
+available artifact versions and the suggested wheel name only when on-site
+compilation is also unavailable.
 
 ### 3.3 One-Shot Run
 

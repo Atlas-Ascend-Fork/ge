@@ -48,7 +48,7 @@ PASS_COUNT=0
 #
 # requirements.txt:
 #   numpy
-#   pybind11>=2.13.6,<3.0.0
+#   pybind11>=2.13.6
 #   jinja2
 #   setuptools>=59.0.1
 #   wheel>=0.37.1
@@ -573,7 +573,7 @@ fi
 # ==================== 9. Python 包 (requirements.txt) ====================
 # requirements.txt:
 #   numpy
-#   pybind11>=2.13.6,<3.0.0
+#   pybind11>=2.13.6
 #   jinja2
 #   setuptools>=59.0.1
 #   wheel>=0.37.1
@@ -642,7 +642,7 @@ if [ -n "$PYTHON_CMD" ]; then
     }
 
     # --- 有版本要求的包 ---
-    check_py_pkg_ver "pybind11"   "pybind11"   "$REQUIRED_PYBIND11_MIN"   "3.0.0"
+    check_py_pkg_ver "pybind11"   "pybind11"   "$REQUIRED_PYBIND11_MIN"   ""
     check_py_pkg_ver "setuptools" "setuptools"  "$REQUIRED_SETUPTOOLS_MIN" ""
     check_py_pkg_ver "wheel"      "wheel"       "$REQUIRED_WHEEL_MIN"      ""
 

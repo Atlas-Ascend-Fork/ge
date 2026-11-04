@@ -892,8 +892,14 @@ TEST_F(Om2CodegenUt, LoadAndRunDumpHelpers_EmitInAnonymousNamespace_Ok) {
                   "namespace {\n",
                   "gert::Tensor BuildTensor(void *device_address, uint64_t size, int32_t data_type, int32_t format,\n",
                   "const int64_t *shape_dims, uint64_t shape_dims_num) {\n",
+                  "gert::Tensor tensor(storage_shape, storage_format, static_cast<ge::DataType>(data_type));\n",
+                  "tensor.SetData(gert::TensorData(reinterpret_cast<gert::TensorAddress>(device_address), nullptr,\n",
+                  "static_cast<size_t>(size), gert::kOnDeviceHbm));\n",
               });
   EXPECT_EQ(output.find("GetIsDataDump("), std::string::npos);
+  // 生成代码不得引用 ge::GetSizeInBytes：其仅由宿主 libgraph_base.so 提供，
+  // 独立加载场景（如 libacl_mdl_impl.so 打桩）下无提供者，会导致 dlopen 失败
+  EXPECT_EQ(output.find("ge::GetSizeInBytes("), std::string::npos);
 }
 
 TEST_F(Om2CodegenUt, BuildL0ArgSlotEntries_EmitsTensorWorkspaceAndIgnoredKinds) {

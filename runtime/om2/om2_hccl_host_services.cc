@@ -33,6 +33,23 @@ using HcclPluginGetStoresFunc =
 const char *const kHcclExecutorLibName = "libhcom_executor.so";
 const char *const kHcclKernelInfoStoreName = "ops_kernel_info_hccl";
 
+// 本文件局部冗余定义（取值与 base/common/types.cc 的 ge::HCOM* 一致，修改需同步）：
+// 避免独立加载场景（进程无 libge_common_base.so）下引用其符号导致未定义；
+// 不使用 REGISTER_OPTYPE_DEFINE 以避免注册副作用。
+const char_t *HCOMALLREDUCE = "HcomAllReduce";
+const char_t *HCOMREDUCESCATTER = "HcomReduceScatter";
+const char_t *HCOMREDUCESCATTERV = "HcomReduceScatterV";
+const char_t *HCOMREDUCE = "HcomReduce";
+const char_t *HCOMALLGATHER = "HcomAllGather";
+const char_t *HCOMALLGATHERV = "HcomAllGatherV";
+const char_t *HCOMALLTOALL = "HcomAllToAll";
+const char_t *HCOMALLTOALLV = "HcomAllToAllV";
+const char_t *HCOMALLTOALLVC = "HcomAllToAllVC";
+const char_t *HCOMGATHER = "HcomGather";
+const char_t *HCOMRECEIVE = "HcomReceive";
+const char_t *HVDCALLBACKALLREDUCE = "HorovodAllreduce";
+const char_t *HVDCALLBACKALLGATHER = "HorovodAllgather";
+
 // 进程级插件缓存
 std::mutex g_hccl_store_mu;
 void *g_hccl_so_handle = nullptr;                                                 // libhcom_executor.so
@@ -72,16 +89,14 @@ ge::OpsKernelInfoStore *GetHcclStore() {
 }
 
 bool IsHcclReduceOp(const std::string &hccl_type) {
-  return (hccl_type == ge::HCOMALLREDUCE) || (hccl_type == ge::HCOMREDUCESCATTER) ||
-         (hccl_type == ge::HCOMREDUCESCATTERV) || (hccl_type == ge::HVDCALLBACKALLREDUCE) ||
-         (hccl_type == ge::HCOMREDUCE);
+  return (hccl_type == HCOMALLREDUCE) || (hccl_type == HCOMREDUCESCATTER) || (hccl_type == HCOMREDUCESCATTERV) ||
+         (hccl_type == HVDCALLBACKALLREDUCE) || (hccl_type == HCOMREDUCE);
 }
 
 bool IsHcclUpdateOutputAddr(const std::string &hccl_type) {
-  return (hccl_type == ge::HCOMALLGATHER) || (hccl_type == ge::HCOMRECEIVE) ||
-         (hccl_type == ge::HVDCALLBACKALLGATHER) || (hccl_type == ge::HCOMALLTOALLV) ||
-         (hccl_type == ge::HCOMALLTOALLVC) || (hccl_type == ge::HCOMALLTOALL) || (hccl_type == ge::HCOMALLGATHERV) ||
-         (hccl_type == ge::HCOMGATHER);
+  return (hccl_type == HCOMALLGATHER) || (hccl_type == HCOMRECEIVE) || (hccl_type == HVDCALLBACKALLGATHER) ||
+         (hccl_type == HCOMALLTOALLV) || (hccl_type == HCOMALLTOALLVC) || (hccl_type == HCOMALLTOALL) ||
+         (hccl_type == HCOMALLGATHERV) || (hccl_type == HCOMGATHER);
 }
 
 void AssembleGETaskInfo(ge::GETaskInfo &ge_task, const HcclTaskParams &params, ge::OpsKernelInfoStore *store) {
