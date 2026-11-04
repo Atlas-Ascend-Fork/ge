@@ -619,6 +619,30 @@ int32_t GetMockRtGetDeviceWay() {
   return rtGetDevice_is_mock_new_way;
 }
 
+// rtModelGetHcclStream 桩返回的外部 hccl 单算子流，用例可经 SetRtHcclStreamStub 注入
+static std::vector<rtStream_t> g_rt_hccl_streams_stub;
+void SetRtHcclStreamStub(const rtStream_t *streams, uint32_t num_streams) {
+  g_rt_hccl_streams_stub.clear();
+  if (streams != nullptr) {
+    g_rt_hccl_streams_stub.assign(streams, streams + num_streams);
+  }
+}
+
+// 临时桩：对应 davinci_model.cc 中 rtModelGetHcclStream 的临时声明，待 RTS 正式接口落地后删除。
+// streams 为空时仅回填数量；num_streams 入参为容量、出参为实际数量（参考 aclmdlRIGetStreams）。
+rtError_t rtModelGetHcclStream(rtModel_t model, rtStream_t *streams, uint32_t *num_streams) {
+  (void)model;
+  const uint32_t num = static_cast<uint32_t>(g_rt_hccl_streams_stub.size());
+  if (streams != nullptr) {
+    const uint32_t capacity = *num_streams;
+    for (uint32_t i = 0U; (i < num) && (i < capacity); ++i) {
+      streams[i] = g_rt_hccl_streams_stub[i];
+    }
+  }
+  *num_streams = num;
+  return RT_ERROR_NONE;
+}
+
 #define EVENT_LENTH 10
 #define NOTIFY_LENTH 10
 

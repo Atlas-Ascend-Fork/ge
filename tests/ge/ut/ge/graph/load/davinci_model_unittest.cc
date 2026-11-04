@@ -7097,6 +7097,24 @@ TEST_F(UtestDavinciModel, Init_RootGraphIdForStaticModel) {
   EXPECT_EQ(model.GetRootGraphId(), kStaticGraphId);
 }
 
+TEST_F(UtestDavinciModel, Init_AppendExternalHcclStreams) {
+  // 算子侧经 rtStreamAddToModel 绑定到本模型的外部 hccl 单算子流，加载期应取回并入保序列表
+  rtStream_t ext_streams[] = {(void *)0x100, (void *)0x200, (void *)0x300};
+  SetRtHcclStreamStub(ext_streams, 3U);
+
+  DavinciModel model(0, nullptr);
+  model.Assign(ConstructGeModel(4096));
+  EXPECT_EQ(model.Init(), SUCCESS);
+  EXPECT_EQ(model.hccl_group_ordered_stream_list_.size(), 3U);
+  EXPECT_EQ(model.hccl_group_ordered_event_list_.size(), 3U);
+  const auto &ordered = model.hccl_group_ordered_stream_list_;
+  EXPECT_TRUE(std::find(ordered.begin(), ordered.end(), (void *)0x100) != ordered.end());
+  EXPECT_TRUE(std::find(ordered.begin(), ordered.end(), (void *)0x200) != ordered.end());
+  EXPECT_TRUE(std::find(ordered.begin(), ordered.end(), (void *)0x300) != ordered.end());
+
+  SetRtHcclStreamStub(nullptr, 0U);
+}
+
 TEST_F(UtestDavinciModel, NnExecute_FmMemoryRefreshOk) {
   GeModelPtr ge_model = ConstructGeModel(2560);
   DavinciModel model(0, nullptr);

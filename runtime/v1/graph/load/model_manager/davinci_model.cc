@@ -58,6 +58,7 @@
 #include "hcom/hcom_topo_info.h"
 #include "common/memory/tensor_trans_utils.h"
 #include "rt_external_stream.h"
+#include "rt_external_model.h"
 #include "rt_external_kernel.h"
 #include "platform/soc_spec.h"
 #include "common/kernel_handles_manager/kernel_handle_utils.h"
@@ -837,6 +838,8 @@ Status DavinciModel::CreateHcclGroupOrderedEvent() {
     }
   }
 
+  GE_ASSERT_SUCCESS(AppendExternalHcclStreams());
+
   uint32_t i = 0U;
   while (i < hccl_group_ordered_stream_list_.size()) {
     aclrtEvent rt_event = nullptr;
@@ -848,6 +851,26 @@ Status DavinciModel::CreateHcclGroupOrderedEvent() {
     GELOGI("hccl group ordered stream id:%d, stream:%p", stream_id, hccl_group_ordered_stream_list_[i]);
     ++i;
   }
+  return SUCCESS;
+}
+
+Status DavinciModel::AppendExternalHcclStreams() {
+  // 取回算子经 rtModelAddHcclStream 绑定到本模型的外部 hccl 单算子流（无注册时返回0条）
+  uint32_t stream_num = 0U;
+  // 首轮传空数组仅查询数量，再按实际数量取回
+  GE_CHK_RT_RET(rtModelGetHcclStream(rt_model_handle_, nullptr, &stream_num));
+  if (stream_num == 0U) {
+    return SUCCESS;
+  }
+  std::vector<rtStream_t> streams(static_cast<size_t>(stream_num), nullptr);
+  // numStreams 入参为数组容量、出参为实际数量；接口内部校验容量，不足时返回错误（由GE_CHK_RT_RET判定并返回）
+  GE_CHK_RT_RET(rtModelGetHcclStream(rt_model_handle_, streams.data(), &stream_num));
+  for (uint32_t i = 0U; i < stream_num; ++i) {
+    GE_ASSERT_NOTNULL(streams[i]);
+    hccl_group_ordered_stream_list_.emplace_back(static_cast<aclrtStream>(streams[i]));
+  }
+  GELOGI("model[%u] append %u external hccl stream(s) to ordered list, total:%zu.", model_id_, stream_num,
+         hccl_group_ordered_stream_list_.size());
   return SUCCESS;
 }
 

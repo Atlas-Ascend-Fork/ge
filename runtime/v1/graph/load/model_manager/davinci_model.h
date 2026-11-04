@@ -1458,6 +1458,9 @@ class DavinciModel {
 
   Status CreateHcclGroupOrderedEvent();
 
+  // 加载期取回算子经 rtStreamAddToModel 绑定到本模型的外部 hccl 单算子流，并入保序列表
+  Status AppendExternalHcclStreams();
+
   Status DoTaskSink();
 
   void CreateOutput(const size_t index, const OpDescPtr &op_desc, InputOutputDescInfo &output,
