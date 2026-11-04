@@ -137,8 +137,10 @@ Status ValidateAndCollectCreator(const std::string &op_type, const OpBackend bac
   const auto op_key = std::make_pair(op_type, backend);
   if (registry->HasCreator(AscendString(op_type.c_str()), backend, OpRegistrationPriority::kTop, OpEngine::kCustom) ||
       (pending_op_keys.find(op_key) != pending_op_keys.end())) {
-    GELOGE(FAILED, "[CUSTOM OP] duplicate custom op creator for %s backend %u in model registry.", op_type.c_str(),
-           static_cast<uint32_t>(backend));
+    // backend 已通过 IsValidOpBackend 校验，此处只会是 kDevice 或 kHostCPU
+    const char *const backend_str = (backend == OpBackend::kDevice) ? "device" : "host_cpu";
+    GELOGE(FAILED, "[CUSTOM OP] duplicate custom op creator for %s backend %s in model registry.", op_type.c_str(),
+           backend_str);
     return FAILED;
   }
 
