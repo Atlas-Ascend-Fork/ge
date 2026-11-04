@@ -29,7 +29,7 @@
 #include <type_traits>
 #include <tuple>
 
-// Defined at ascir_builtin_ops_v1.cpp:46
+// Defined at ascir_builtin_ops_v1.cpp:55
 namespace af {
 namespace ascir_op {
 struct Data : public Operator {
@@ -75,9 +75,23 @@ struct Data : public Operator {
       return FAILED;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32,
-                                                             DT_UINT8, DT_INT16,   DT_UINT16, DT_UINT32,
-                                                             DT_INT64, DT_UINT64,  DT_BF16};
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T.end());
     return SUCCESS;
   };
@@ -106,7 +120,7 @@ struct Data : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:57
+// Defined at ascir_builtin_ops_v1.cpp:66
 namespace af {
 namespace ascir_op {
 struct VectorFunc : public Operator {
@@ -163,8 +177,18 @@ struct VectorFunc : public Operator {
                                  DT_UINT16, DT_UINT32,    DT_INT64,      DT_UINT64, DT_DOUBLE,   DT_BOOL,
                                  DT_STRING, DT_COMPLEX64, DT_COMPLEX128, DT_QINT8,  DT_QINT16,   DT_QINT32,
                                  DT_QUINT8, DT_QUINT16,   DT_RESOURCE,   DT_BF16,   DT_COMPLEX32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16,   DT_INT8,       DT_INT32,  DT_UINT8,    DT_INT16,
+                                 DT_UINT16, DT_UINT32,    DT_INT64,      DT_UINT64, DT_DOUBLE,   DT_BOOL,
+                                 DT_STRING, DT_COMPLEX64, DT_COMPLEX128, DT_QINT8,  DT_QINT16,   DT_QINT32,
+                                 DT_QUINT8, DT_QUINT16,   DT_RESOURCE,   DT_BF16,   DT_COMPLEX32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16,   DT_INT8,       DT_INT32,  DT_UINT8,    DT_INT16,
+                                 DT_UINT16, DT_UINT32,    DT_INT64,      DT_UINT64, DT_DOUBLE,   DT_BOOL,
+                                 DT_STRING, DT_COMPLEX64, DT_COMPLEX128, DT_QINT8,  DT_QINT16,   DT_QINT32,
+                                 DT_QUINT8, DT_QUINT16,   DT_RESOURCE,   DT_BF16,   DT_COMPLEX32};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -210,7 +234,7 @@ struct VectorFunc : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:64
+// Defined at ascir_builtin_ops_v1.cpp:73
 namespace af {
 namespace ascir_op {
 struct Scalar : public Operator {
@@ -278,9 +302,23 @@ struct Scalar : public Operator {
       return FAILED;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32,
-                                                             DT_UINT8, DT_INT16,   DT_UINT16, DT_UINT32,
-                                                             DT_INT64, DT_UINT64,  DT_BF16};
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T.end());
     return SUCCESS;
   };
@@ -312,7 +350,7 @@ struct Scalar : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:76
+// Defined at ascir_builtin_ops_v1.cpp:85
 namespace af {
 namespace ascir_op {
 struct ScalarData : public Operator {
@@ -366,13 +404,27 @@ struct ScalarData : public Operator {
     if (expect_output_dtypes.empty()) {
       GELOGW(
           "Output ir_index [0] has multi result {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, "
-          "DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64, DT_BF16}, cannot infer.");
+          "DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64}, cannot infer.");
       return FAILED;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32,
-                                                             DT_UINT8, DT_INT16,   DT_UINT16, DT_UINT32,
-                                                             DT_INT64, DT_UINT64,  DT_BF16};
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T.end());
     return SUCCESS;
   };
@@ -387,7 +439,7 @@ struct ScalarData : public Operator {
 
     GELOGW(
         "Output ir_index [0] has multi result {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, "
-        "DT_UINT32, DT_INT64, DT_UINT64, DT_BF16}, cannot infer.");
+        "DT_UINT32, DT_INT64, DT_UINT64}, cannot infer.");
     return FAILED;
   };
 
@@ -404,7 +456,7 @@ struct ScalarData : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:87
+// Defined at ascir_builtin_ops_v1.cpp:96
 namespace af {
 namespace ascir_op {
 struct IndexExpr : public Operator {
@@ -412,12 +464,12 @@ struct IndexExpr : public Operator {
   af::AscNodeAttr &attr;
   struct AscIndexExprIrAttrDef : public af::AscIrAttrDefBase {
     ~AscIndexExprIrAttrDef() override = default;
-    graphStatus GetExpr(int64_t &expr) const {
+    graphStatus GetExpr(Expression &expr) const {
       auto attr_value = attr_store_.GetAnyValue("expr");
       GE_WARN_ASSERT(attr_value != nullptr);
       return attr_value->GetValue(expr);
     }
-    graphStatus SetExpr(int64_t expr) {
+    graphStatus SetExpr(Expression expr) {
       auto attr_value = attr_store_.GetOrCreateAnyValue("expr");
       GE_ASSERT_NOTNULL(attr_value);
       return attr_value->SetValue(expr);
@@ -462,8 +514,19 @@ struct IndexExpr : public Operator {
       return FAILED;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
-                                                             DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_INT64};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T.end());
     return SUCCESS;
   };
@@ -495,7 +558,7 @@ struct IndexExpr : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:98
+// Defined at ascir_builtin_ops_v1.cpp:107
 namespace af {
 namespace ascir_op {
 struct Output : public Operator {
@@ -543,12 +606,18 @@ struct Output : public Operator {
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -589,7 +658,7 @@ struct Output : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:108
+// Defined at ascir_builtin_ops_v1.cpp:117
 namespace af {
 namespace ascir_op {
 struct Workspace : public Operator {
@@ -619,12 +688,18 @@ struct Workspace : public Operator {
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -660,7 +735,7 @@ struct Workspace : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:117
+// Defined at ascir_builtin_ops_v1.cpp:126
 namespace af {
 namespace ascir_op {
 struct Load : public Operator {
@@ -708,12 +783,18 @@ struct Load : public Operator {
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_BF16};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -754,7 +835,7 @@ struct Load : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:127
+// Defined at ascir_builtin_ops_v1.cpp:136
 namespace af {
 namespace ascir_op {
 struct Store : public Operator {
@@ -802,12 +883,18 @@ struct Store : public Operator {
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_BF16};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -848,7 +935,7 @@ struct Store : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:138
+// Defined at ascir_builtin_ops_v1.cpp:146
 namespace af {
 namespace ascir_op {
 struct Broadcast : public Operator {
@@ -875,15 +962,21 @@ struct Broadcast : public Operator {
     std::set<ge::DataType> support_dtypes_of_sym_T;
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
-                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_UINT64};
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
-                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
-                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -919,7 +1012,7 @@ struct Broadcast : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:147
+// Defined at ascir_builtin_ops_v1.cpp:155
 namespace af {
 namespace ascir_op {
 struct RemovePad : public Operator {
@@ -950,8 +1043,12 @@ struct RemovePad : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -987,7 +1084,7 @@ struct RemovePad : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:156
+// Defined at ascir_builtin_ops_v1.cpp:164
 namespace af {
 namespace ascir_op {
 struct Pad : public Operator {
@@ -1017,8 +1114,12 @@ struct Pad : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1054,7 +1155,7 @@ struct Pad : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:165
+// Defined at ascir_builtin_ops_v1.cpp:173
 namespace af {
 namespace ascir_op {
 struct Nop : public Operator {
@@ -1087,8 +1188,14 @@ struct Nop : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_UINT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_UINT64};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1124,7 +1231,7 @@ struct Nop : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:189
+// Defined at ascir_builtin_ops_v1.cpp:197
 namespace af {
 namespace ascir_op {
 struct Cast : public Operator {
@@ -1163,29 +1270,53 @@ struct Cast : public Operator {
     } else if (npu_arch == "3510") {
       results = {{DT_FLOAT, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BOOL, DT_BF16}},
                  {DT_FLOAT16, {DT_FLOAT, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64}},
-                 {DT_INT8, {DT_FLOAT, DT_FLOAT16, DT_UINT8, DT_INT16}},
-                 {DT_INT32, {DT_FLOAT, DT_FLOAT16, DT_INT16, DT_UINT32, DT_INT64}},
+                 {DT_INT8, {DT_FLOAT, DT_FLOAT16, DT_UINT8, DT_INT16, DT_BOOL}},
+                 {DT_INT32, {DT_FLOAT, DT_FLOAT16, DT_INT16, DT_UINT32, DT_INT64, DT_BOOL}},
                  {DT_UINT8, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64}},
-                 {DT_INT16, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_UINT16}},
+                 {DT_INT16, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_UINT16, DT_BOOL}},
                  {DT_UINT16, {DT_INT16}},
                  {DT_UINT32, {DT_INT32}},
-                 {DT_INT64, {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_UINT64}},
+                 {DT_INT64, {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_UINT64, DT_BOOL, DT_BF16}},
                  {DT_UINT64, {DT_INT64}},
                  {DT_BF16, {DT_FLOAT, DT_INT32}}};
     } else if (npu_arch == "5102") {
       results = {{DT_FLOAT, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BOOL, DT_BF16}},
                  {DT_FLOAT16, {DT_FLOAT, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64}},
-                 {DT_INT8, {DT_FLOAT, DT_FLOAT16, DT_UINT8, DT_INT16}},
-                 {DT_INT32, {DT_FLOAT, DT_FLOAT16, DT_INT16, DT_UINT32, DT_INT64}},
+                 {DT_INT8, {DT_FLOAT, DT_FLOAT16, DT_UINT8, DT_INT16, DT_BOOL}},
+                 {DT_INT32, {DT_FLOAT, DT_FLOAT16, DT_INT16, DT_UINT32, DT_INT64, DT_BOOL}},
                  {DT_UINT8, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64}},
-                 {DT_INT16, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_UINT16}},
+                 {DT_INT16, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_UINT16, DT_BOOL}},
                  {DT_UINT16, {DT_INT16}},
                  {DT_UINT32, {DT_INT32}},
-                 {DT_INT64, {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_UINT64}},
+                 {DT_INT64, {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_UINT64, DT_BOOL, DT_BF16}},
+                 {DT_UINT64, {DT_INT64}},
+                 {DT_BF16, {DT_FLOAT, DT_INT32}}};
+    } else if (npu_arch == "9201") {
+      results = {{DT_FLOAT, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BOOL, DT_BF16}},
+                 {DT_FLOAT16, {DT_FLOAT, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64}},
+                 {DT_INT8, {DT_FLOAT, DT_FLOAT16, DT_UINT8, DT_INT16, DT_BOOL}},
+                 {DT_INT32, {DT_FLOAT, DT_FLOAT16, DT_INT16, DT_UINT32, DT_INT64, DT_BOOL}},
+                 {DT_UINT8, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_INT16, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_UINT16, DT_BOOL}},
+                 {DT_UINT16, {DT_INT16}},
+                 {DT_UINT32, {DT_INT32}},
+                 {DT_INT64, {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_UINT64, DT_BOOL, DT_BF16}},
+                 {DT_UINT64, {DT_INT64}},
+                 {DT_BF16, {DT_FLOAT, DT_INT32}}};
+    } else if (npu_arch == "9202") {
+      results = {{DT_FLOAT, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BOOL, DT_BF16}},
+                 {DT_FLOAT16, {DT_FLOAT, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64}},
+                 {DT_INT8, {DT_FLOAT, DT_FLOAT16, DT_UINT8, DT_INT16, DT_BOOL}},
+                 {DT_INT32, {DT_FLOAT, DT_FLOAT16, DT_INT16, DT_UINT32, DT_INT64, DT_BOOL}},
+                 {DT_UINT8, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_INT16, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_UINT16, DT_BOOL}},
+                 {DT_UINT16, {DT_INT16}},
+                 {DT_UINT32, {DT_INT32}},
+                 {DT_INT64, {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_UINT64, DT_BOOL, DT_BF16}},
                  {DT_UINT64, {DT_INT64}},
                  {DT_BF16, {DT_FLOAT, DT_INT32}}};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
 
@@ -1195,7 +1326,7 @@ struct Cast : public Operator {
     if (expect_output_dtypes.empty()) {
       GE_WARN_ASSERT(iter->second.size() == 1U);
       expect_output_dtypes.push_back(*(iter->second.begin()));
-      return ge::SUCCESS;
+      return af::SUCCESS;
     }
     // 输出外部指定，生成校验的代码
     GE_WARN_ASSERT(iter->second.find(expect_output_dtypes[0]) != iter->second.end());
@@ -1221,7 +1352,7 @@ struct Cast : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:197
+// Defined at ascir_builtin_ops_v1.cpp:205
 namespace af {
 namespace ascir_op {
 struct Abs : public Operator {
@@ -1251,8 +1382,12 @@ struct Abs : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1288,7 +1423,7 @@ struct Abs : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:205
+// Defined at ascir_builtin_ops_v1.cpp:213
 namespace af {
 namespace ascir_op {
 struct Exp : public Operator {
@@ -1318,8 +1453,12 @@ struct Exp : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1355,7 +1494,7 @@ struct Exp : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:213
+// Defined at ascir_builtin_ops_v1.cpp:221
 namespace af {
 namespace ascir_op {
 struct Ln : public Operator {
@@ -1385,8 +1524,12 @@ struct Ln : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1422,7 +1565,7 @@ struct Ln : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:221
+// Defined at ascir_builtin_ops_v1.cpp:229
 namespace af {
 namespace ascir_op {
 struct ArgMax : public Operator {
@@ -1450,18 +1593,23 @@ struct ArgMax : public Operator {
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_INT32};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_INT64);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_INT64);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_U = {DT_INT64};
+    std::set<ge::DataType> support_dtypes_of_sym_U;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_U = {DT_INT64};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_U.find(expect_output_dtypes[0]) != support_dtypes_of_sym_U.end());
     return SUCCESS;
   };
@@ -1474,7 +1622,9 @@ struct ArgMax : public Operator {
 
     // 校验同sym的输入的dtype是否一致
 
-    expect_output_dtypes.push_back(DT_INT64);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_INT64);
+    }
     return SUCCESS;
   };
 
@@ -1487,7 +1637,7 @@ struct ArgMax : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:230
+// Defined at ascir_builtin_ops_v1.cpp:238
 namespace af {
 namespace ascir_op {
 struct ArgMaxMultiRPhase1 : public Operator {
@@ -1518,7 +1668,7 @@ struct ArgMaxMultiRPhase1 : public Operator {
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_INT32};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1526,12 +1676,17 @@ struct ArgMaxMultiRPhase1 : public Operator {
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
       expect_output_dtypes.push_back(input_dtypes[0]);
-      expect_output_dtypes.push_back(DT_INT64);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_INT64);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
     GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
-    static std::set<ge::DataType> support_dtypes_of_sym_U = {DT_INT64};
+    std::set<ge::DataType> support_dtypes_of_sym_U;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_U = {DT_INT64};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_U.find(expect_output_dtypes[1]) != support_dtypes_of_sym_U.end());
     return SUCCESS;
   };
@@ -1545,7 +1700,9 @@ struct ArgMaxMultiRPhase1 : public Operator {
     // 校验同sym的输入的dtype是否一致
 
     expect_output_dtypes.push_back(input_dtypes[0]);
-    expect_output_dtypes.push_back(DT_INT64);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_INT64);
+    }
     return SUCCESS;
   };
 
@@ -1560,7 +1717,7 @@ struct ArgMaxMultiRPhase1 : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:240
+// Defined at ascir_builtin_ops_v1.cpp:248
 namespace af {
 namespace ascir_op {
 struct ArgMaxMultiRPhase2 : public Operator {
@@ -1590,7 +1747,7 @@ struct ArgMaxMultiRPhase2 : public Operator {
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_INT32};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1598,7 +1755,7 @@ struct ArgMaxMultiRPhase2 : public Operator {
     if (npu_arch == "2201") {
       support_dtypes_of_sym_U = {DT_INT64};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_U.find(input_dtypes[1]) != support_dtypes_of_sym_U.end());
@@ -1635,7 +1792,7 @@ struct ArgMaxMultiRPhase2 : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:249
+// Defined at ascir_builtin_ops_v1.cpp:257
 namespace af {
 namespace ascir_op {
 struct Sqrt : public Operator {
@@ -1665,8 +1822,12 @@ struct Sqrt : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1702,7 +1863,7 @@ struct Sqrt : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:257
+// Defined at ascir_builtin_ops_v1.cpp:265
 namespace af {
 namespace ascir_op {
 struct Rsqrt : public Operator {
@@ -1733,8 +1894,12 @@ struct Rsqrt : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1770,7 +1935,7 @@ struct Rsqrt : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:265
+// Defined at ascir_builtin_ops_v1.cpp:273
 namespace af {
 namespace ascir_op {
 struct Reciprocal : public Operator {
@@ -1798,11 +1963,15 @@ struct Reciprocal : public Operator {
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1838,7 +2007,7 @@ struct Reciprocal : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:273
+// Defined at ascir_builtin_ops_v1.cpp:281
 namespace af {
 namespace ascir_op {
 struct Erf : public Operator {
@@ -1868,8 +2037,12 @@ struct Erf : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1905,7 +2078,7 @@ struct Erf : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:282
+// Defined at ascir_builtin_ops_v1.cpp:290
 namespace af {
 namespace ascir_op {
 struct Sign : public Operator {
@@ -1935,8 +2108,12 @@ struct Sign : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -1972,7 +2149,7 @@ struct Sign : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:290
+// Defined at ascir_builtin_ops_v1.cpp:298
 namespace af {
 namespace ascir_op {
 struct Tanh : public Operator {
@@ -2002,8 +2179,12 @@ struct Tanh : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -2039,7 +2220,7 @@ struct Tanh : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:298
+// Defined at ascir_builtin_ops_v1.cpp:306
 namespace af {
 namespace ascir_op {
 struct Isnan : public Operator {
@@ -2070,19 +2251,44 @@ struct Isnan : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_UINT8);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -2095,7 +2301,17 @@ struct Isnan : public Operator {
 
     // 校验同sym的输入的dtype是否一致
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_UINT8);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -2108,7 +2324,7 @@ struct Isnan : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:306
+// Defined at ascir_builtin_ops_v1.cpp:314
 namespace af {
 namespace ascir_op {
 struct IsFinite : public Operator {
@@ -2139,19 +2355,44 @@ struct IsFinite : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_UINT8);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -2164,7 +2405,17 @@ struct IsFinite : public Operator {
 
     // 校验同sym的输入的dtype是否一致
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_UINT8);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -2177,7 +2428,7 @@ struct IsFinite : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:314
+// Defined at ascir_builtin_ops_v1.cpp:322
 namespace af {
 namespace ascir_op {
 struct IsInf : public Operator {
@@ -2208,19 +2459,44 @@ struct IsInf : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_UINT8);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -2233,7 +2509,17 @@ struct IsInf : public Operator {
 
     // 校验同sym的输入的dtype是否一致
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_UINT8);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -2246,7 +2532,7 @@ struct IsInf : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:322
+// Defined at ascir_builtin_ops_v1.cpp:330
 namespace af {
 namespace ascir_op {
 struct Relu : public Operator {
@@ -2276,8 +2562,12 @@ struct Relu : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -2313,7 +2603,7 @@ struct Relu : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:330
+// Defined at ascir_builtin_ops_v1.cpp:338
 namespace af {
 namespace ascir_op {
 struct Neg : public Operator {
@@ -2343,8 +2633,12 @@ struct Neg : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -2380,7 +2674,7 @@ struct Neg : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:342
+// Defined at ascir_builtin_ops_v1.cpp:350
 namespace af {
 namespace ascir_op {
 struct LogicalNot : public Operator {
@@ -2413,13 +2707,21 @@ struct LogicalNot : public Operator {
     } else if (npu_arch == "3510") {
       results = {{DT_FLOAT, {DT_UINT8}}, {DT_FLOAT16, {DT_UINT8}}, {DT_INT8, {DT_UINT8}},   {DT_INT32, {DT_UINT8}},
                  {DT_UINT8, {DT_UINT8}}, {DT_INT16, {DT_UINT8}},   {DT_UINT16, {DT_UINT8}}, {DT_UINT32, {DT_UINT8}},
-                 {DT_INT64, {DT_UINT8}}, {DT_UINT64, {DT_UINT8}},  {DT_BF16, {DT_UINT8}}};
+                 {DT_INT64, {DT_UINT8}}, {DT_UINT64, {DT_UINT8}},  {DT_BOOL, {DT_BOOL}},    {DT_BF16, {DT_UINT8}}};
     } else if (npu_arch == "5102") {
       results = {{DT_FLOAT, {DT_UINT8}}, {DT_FLOAT16, {DT_UINT8}}, {DT_INT8, {DT_UINT8}},   {DT_INT32, {DT_UINT8}},
                  {DT_UINT8, {DT_UINT8}}, {DT_INT16, {DT_UINT8}},   {DT_UINT16, {DT_UINT8}}, {DT_UINT32, {DT_UINT8}},
-                 {DT_INT64, {DT_UINT8}}, {DT_UINT64, {DT_UINT8}},  {DT_BF16, {DT_UINT8}}};
+                 {DT_INT64, {DT_UINT8}}, {DT_UINT64, {DT_UINT8}},  {DT_BOOL, {DT_BOOL}},    {DT_BF16, {DT_UINT8}}};
+    } else if (npu_arch == "9201") {
+      results = {{DT_FLOAT, {DT_UINT8}}, {DT_FLOAT16, {DT_UINT8}}, {DT_INT8, {DT_UINT8}},   {DT_INT32, {DT_UINT8}},
+                 {DT_UINT8, {DT_UINT8}}, {DT_INT16, {DT_UINT8}},   {DT_UINT16, {DT_UINT8}}, {DT_UINT32, {DT_UINT8}},
+                 {DT_INT64, {DT_UINT8}}, {DT_UINT64, {DT_UINT8}},  {DT_BOOL, {DT_BOOL}},    {DT_BF16, {DT_UINT8}}};
+    } else if (npu_arch == "9202") {
+      results = {{DT_FLOAT, {DT_UINT8}}, {DT_FLOAT16, {DT_UINT8}}, {DT_INT8, {DT_UINT8}},   {DT_INT32, {DT_UINT8}},
+                 {DT_UINT8, {DT_UINT8}}, {DT_INT16, {DT_UINT8}},   {DT_UINT16, {DT_UINT8}}, {DT_UINT32, {DT_UINT8}},
+                 {DT_INT64, {DT_UINT8}}, {DT_UINT64, {DT_UINT8}},  {DT_BOOL, {DT_BOOL}},    {DT_BF16, {DT_UINT8}}};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
 
@@ -2429,7 +2731,7 @@ struct LogicalNot : public Operator {
     if (expect_output_dtypes.empty()) {
       GE_WARN_ASSERT(iter->second.size() == 1U);
       expect_output_dtypes.push_back(*(iter->second.begin()));
-      return ge::SUCCESS;
+      return af::SUCCESS;
     }
     // 输出外部指定，生成校验的代码
     GE_WARN_ASSERT(iter->second.find(expect_output_dtypes[0]) != iter->second.end());
@@ -2455,7 +2757,7 @@ struct LogicalNot : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:350
+// Defined at ascir_builtin_ops_v1.cpp:358
 namespace af {
 namespace ascir_op {
 struct Max : public Operator {
@@ -2485,8 +2787,12 @@ struct Max : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -2522,7 +2828,7 @@ struct Max : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:358
+// Defined at ascir_builtin_ops_v1.cpp:366
 namespace af {
 namespace ascir_op {
 struct Sum : public Operator {
@@ -2552,8 +2858,12 @@ struct Sum : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -2589,7 +2899,7 @@ struct Sum : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:366
+// Defined at ascir_builtin_ops_v1.cpp:374
 namespace af {
 namespace ascir_op {
 struct Min : public Operator {
@@ -2619,8 +2929,12 @@ struct Min : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -2656,7 +2970,7 @@ struct Min : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:374
+// Defined at ascir_builtin_ops_v1.cpp:382
 namespace af {
 namespace ascir_op {
 struct Mean : public Operator {
@@ -2686,8 +3000,12 @@ struct Mean : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -2723,7 +3041,7 @@ struct Mean : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:382
+// Defined at ascir_builtin_ops_v1.cpp:390
 namespace af {
 namespace ascir_op {
 struct Prod : public Operator {
@@ -2753,8 +3071,12 @@ struct Prod : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -2790,7 +3112,7 @@ struct Prod : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:390
+// Defined at ascir_builtin_ops_v1.cpp:398
 namespace af {
 namespace ascir_op {
 struct Sigmoid : public Operator {
@@ -2821,8 +3143,12 @@ struct Sigmoid : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -2858,7 +3184,7 @@ struct Sigmoid : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:398
+// Defined at ascir_builtin_ops_v1.cpp:406
 namespace af {
 namespace ascir_op {
 struct Any : public Operator {
@@ -2888,8 +3214,12 @@ struct Any : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -2925,7 +3255,7 @@ struct Any : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:406
+// Defined at ascir_builtin_ops_v1.cpp:414
 namespace af {
 namespace ascir_op {
 struct All : public Operator {
@@ -2955,8 +3285,12 @@ struct All : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -2992,7 +3326,7 @@ struct All : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:414
+// Defined at ascir_builtin_ops_v1.cpp:422
 namespace af {
 namespace ascir_op {
 struct Add : public Operator {
@@ -3028,8 +3362,14 @@ struct Add : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -3066,7 +3406,7 @@ struct Add : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:423
+// Defined at ascir_builtin_ops_v1.cpp:431
 namespace af {
 namespace ascir_op {
 struct Sub : public Operator {
@@ -3102,8 +3442,14 @@ struct Sub : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -3140,7 +3486,7 @@ struct Sub : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:432
+// Defined at ascir_builtin_ops_v1.cpp:440
 namespace af {
 namespace ascir_op {
 struct Div : public Operator {
@@ -3174,8 +3520,12 @@ struct Div : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -3212,7 +3562,7 @@ struct Div : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:441
+// Defined at ascir_builtin_ops_v1.cpp:449
 namespace af {
 namespace ascir_op {
 struct Mul : public Operator {
@@ -3243,13 +3593,19 @@ struct Mul : public Operator {
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8,
-                                 DT_INT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8, DT_INT16,
+                                 DT_UINT32, DT_INT64,   DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8,
-                                 DT_INT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8, DT_INT16,
+                                 DT_UINT32, DT_INT64,   DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8, DT_INT16,
+                                 DT_UINT32, DT_INT64,   DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8, DT_INT16,
+                                 DT_UINT32, DT_INT64,   DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -3286,7 +3642,7 @@ struct Mul : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:450
+// Defined at ascir_builtin_ops_v1.cpp:458
 namespace af {
 namespace ascir_op {
 struct Minimum : public Operator {
@@ -3322,8 +3678,14 @@ struct Minimum : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -3360,7 +3722,7 @@ struct Minimum : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:459
+// Defined at ascir_builtin_ops_v1.cpp:467
 namespace af {
 namespace ascir_op {
 struct Maximum : public Operator {
@@ -3396,8 +3758,14 @@ struct Maximum : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -3434,7 +3802,7 @@ struct Maximum : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:473
+// Defined at ascir_builtin_ops_v1.cpp:481
 namespace af {
 namespace ascir_op {
 struct TrueDiv : public Operator {
@@ -3467,8 +3835,12 @@ struct TrueDiv : public Operator {
       results = {{DT_FLOAT, {DT_FLOAT}}, {DT_FLOAT16, {DT_FLOAT16}}, {DT_BF16, {DT_BF16}}};
     } else if (npu_arch == "5102") {
       results = {{DT_FLOAT, {DT_FLOAT}}, {DT_FLOAT16, {DT_FLOAT16}}, {DT_BF16, {DT_BF16}}};
+    } else if (npu_arch == "9201") {
+      results = {{DT_FLOAT, {DT_FLOAT}}, {DT_FLOAT16, {DT_FLOAT16}}, {DT_BF16, {DT_BF16}}};
+    } else if (npu_arch == "9202") {
+      results = {{DT_FLOAT, {DT_FLOAT}}, {DT_FLOAT16, {DT_FLOAT16}}, {DT_BF16, {DT_BF16}}};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
 
@@ -3478,7 +3850,7 @@ struct TrueDiv : public Operator {
     if (expect_output_dtypes.empty()) {
       GE_WARN_ASSERT(iter->second.size() == 1U);
       expect_output_dtypes.push_back(*(iter->second.begin()));
-      return ge::SUCCESS;
+      return af::SUCCESS;
     }
     // 输出外部指定，生成校验的代码
     GE_WARN_ASSERT(iter->second.find(expect_output_dtypes[0]) != iter->second.end());
@@ -3504,7 +3876,7 @@ struct TrueDiv : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:482
+// Defined at ascir_builtin_ops_v1.cpp:490
 namespace af {
 namespace ascir_op {
 struct Remainder : public Operator {
@@ -3538,8 +3910,12 @@ struct Remainder : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -3576,7 +3952,7 @@ struct Remainder : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:491
+// Defined at ascir_builtin_ops_v1.cpp:499
 namespace af {
 namespace ascir_op {
 struct LogicalOr : public Operator {
@@ -3608,23 +3984,50 @@ struct LogicalOr : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT16};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_UINT8);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -3638,7 +4041,17 @@ struct LogicalOr : public Operator {
     // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_UINT8);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -3651,7 +4064,7 @@ struct LogicalOr : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:502
+// Defined at ascir_builtin_ops_v1.cpp:510
 namespace af {
 namespace ascir_op {
 struct LogicalAnd : public Operator {
@@ -3683,23 +4096,50 @@ struct LogicalAnd : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT16};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_UINT8);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -3713,7 +4153,17 @@ struct LogicalAnd : public Operator {
     // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_UINT8);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -3726,7 +4176,7 @@ struct LogicalAnd : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:512
+// Defined at ascir_builtin_ops_v1.cpp:520
 namespace af {
 namespace ascir_op {
 struct Pow : public Operator {
@@ -3762,8 +4212,14 @@ struct Pow : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -3800,7 +4256,7 @@ struct Pow : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:521
+// Defined at ascir_builtin_ops_v1.cpp:529
 namespace af {
 namespace ascir_op {
 struct ClipByValue : public Operator {
@@ -3839,8 +4295,14 @@ struct ClipByValue : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -3879,7 +4341,7 @@ struct ClipByValue : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:532
+// Defined at ascir_builtin_ops_v1.cpp:540
 namespace af {
 namespace ascir_op {
 struct Ge : public Operator {
@@ -3911,23 +4373,50 @@ struct Ge : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT64};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_UINT8);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -3941,7 +4430,17 @@ struct Ge : public Operator {
     // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_UINT8);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -3954,7 +4453,7 @@ struct Ge : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:542
+// Defined at ascir_builtin_ops_v1.cpp:550
 namespace af {
 namespace ascir_op {
 struct Eq : public Operator {
@@ -3986,23 +4485,50 @@ struct Eq : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT64};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_UINT8);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -4016,7 +4542,17 @@ struct Eq : public Operator {
     // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_UINT8);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -4029,7 +4565,7 @@ struct Eq : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:552
+// Defined at ascir_builtin_ops_v1.cpp:560
 namespace af {
 namespace ascir_op {
 struct Ne : public Operator {
@@ -4061,23 +4597,50 @@ struct Ne : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT64};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_UINT8);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -4091,7 +4654,17 @@ struct Ne : public Operator {
     // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_UINT8);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -4104,7 +4677,7 @@ struct Ne : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:562
+// Defined at ascir_builtin_ops_v1.cpp:570
 namespace af {
 namespace ascir_op {
 struct Gt : public Operator {
@@ -4136,23 +4709,50 @@ struct Gt : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT64};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_UINT8);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -4166,7 +4766,17 @@ struct Gt : public Operator {
     // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_UINT8);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -4179,7 +4789,7 @@ struct Gt : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:572
+// Defined at ascir_builtin_ops_v1.cpp:580
 namespace af {
 namespace ascir_op {
 struct Le : public Operator {
@@ -4211,23 +4821,50 @@ struct Le : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT64};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_UINT8);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -4241,7 +4878,17 @@ struct Le : public Operator {
     // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_UINT8);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -4254,7 +4901,7 @@ struct Le : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:582
+// Defined at ascir_builtin_ops_v1.cpp:590
 namespace af {
 namespace ascir_op {
 struct Lt : public Operator {
@@ -4286,23 +4933,50 @@ struct Lt : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_UINT8);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -4316,7 +4990,17 @@ struct Lt : public Operator {
     // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_UINT8);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -4329,7 +5013,7 @@ struct Lt : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:592
+// Defined at ascir_builtin_ops_v1.cpp:600
 namespace af {
 namespace ascir_op {
 struct Concat : public Operator {
@@ -4359,12 +5043,18 @@ struct Concat : public Operator {
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_UINT64, DT_BF16};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -4400,7 +5090,7 @@ struct Concat : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:601
+// Defined at ascir_builtin_ops_v1.cpp:609
 namespace af {
 namespace ascir_op {
 struct Select : public Operator {
@@ -4432,11 +5122,15 @@ struct Select : public Operator {
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T1 = {DT_UINT8};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T1 = {DT_UINT8};
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T1 = {DT_UINT8};
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -4448,8 +5142,12 @@ struct Select : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_INT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_INT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_INT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_INT64};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[1]) != support_dtypes_of_sym_T2.end());
@@ -4486,7 +5184,7 @@ struct Select : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:612
+// Defined at ascir_builtin_ops_v1.cpp:620
 namespace af {
 namespace ascir_op {
 struct Where : public Operator {
@@ -4518,11 +5216,15 @@ struct Where : public Operator {
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T1 = {DT_UINT8};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T1 = {DT_UINT8};
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T1 = {DT_UINT8};
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -4536,8 +5238,14 @@ struct Where : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[1]) != support_dtypes_of_sym_T2.end());
@@ -4574,7 +5282,7 @@ struct Where : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:623
+// Defined at ascir_builtin_ops_v1.cpp:631
 namespace af {
 namespace ascir_op {
 struct MaskedFill : public Operator {
@@ -4609,8 +5317,12 @@ struct MaskedFill : public Operator {
       support_dtypes_of_sym_T1 = {DT_UINT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_UINT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_UINT8};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_UINT8};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[1]) != support_dtypes_of_sym_T1.end());
@@ -4622,8 +5334,12 @@ struct MaskedFill : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[0]) != support_dtypes_of_sym_T2.end());
@@ -4661,7 +5377,7 @@ struct MaskedFill : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:635
+// Defined at ascir_builtin_ops_v1.cpp:643
 namespace af {
 namespace ascir_op {
 struct Ub2ub : public Operator {
@@ -4695,8 +5411,14 @@ struct Ub2ub : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -4732,7 +5454,7 @@ struct Ub2ub : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:641
+// Defined at ascir_builtin_ops_v1.cpp:649
 namespace af {
 namespace ascir_op {
 struct LeakyRelu : public Operator {
@@ -4781,8 +5503,12 @@ struct LeakyRelu : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -4823,7 +5549,7 @@ struct LeakyRelu : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:651
+// Defined at ascir_builtin_ops_v1.cpp:659
 namespace af {
 namespace ascir_op {
 struct BitwiseAnd : public Operator {
@@ -4854,11 +5580,19 @@ struct BitwiseAnd : public Operator {
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T = {DT_INT32, DT_UINT8, DT_INT16, DT_UINT16};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -4895,7 +5629,7 @@ struct BitwiseAnd : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:660
+// Defined at ascir_builtin_ops_v1.cpp:668
 namespace af {
 namespace ascir_op {
 struct Gather : public Operator {
@@ -4957,8 +5691,12 @@ struct Gather : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -4969,8 +5707,12 @@ struct Gather : public Operator {
       support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[1]) != support_dtypes_of_sym_T2.end());
@@ -5012,7 +5754,7 @@ struct Gather : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:673
+// Defined at ascir_builtin_ops_v1.cpp:681
 namespace af {
 namespace ascir_op {
 struct Transpose : public Operator {
@@ -5040,11 +5782,19 @@ struct Transpose : public Operator {
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64,   DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64,   DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64,   DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64,   DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -5080,7 +5830,7 @@ struct Transpose : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:682
+// Defined at ascir_builtin_ops_v1.cpp:690
 namespace af {
 namespace ascir_op {
 struct FlashSoftmax : public Operator {
@@ -5153,7 +5903,7 @@ struct FlashSoftmax : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:691
+// Defined at ascir_builtin_ops_v1.cpp:699
 namespace af {
 namespace ascir_op {
 struct FloorDiv : public Operator {
@@ -5189,8 +5939,14 @@ struct FloorDiv : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -5227,7 +5983,7 @@ struct FloorDiv : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:700
+// Defined at ascir_builtin_ops_v1.cpp:708
 namespace af {
 namespace ascir_op {
 struct Gelu : public Operator {
@@ -5257,8 +6013,12 @@ struct Gelu : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -5294,7 +6054,7 @@ struct Gelu : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:708
+// Defined at ascir_builtin_ops_v1.cpp:716
 namespace af {
 namespace ascir_op {
 struct Axpy : public Operator {
@@ -5347,8 +6107,12 @@ struct Axpy : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -5391,7 +6155,7 @@ struct Axpy : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:717
+// Defined at ascir_builtin_ops_v1.cpp:725
 namespace af {
 namespace ascir_op {
 struct MatMul : public Operator {
@@ -5484,8 +6248,12 @@ struct MatMul : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -5496,7 +6264,18 @@ struct MatMul : public Operator {
       return FAILED;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -5529,7 +6308,7 @@ struct MatMul : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:732
+// Defined at ascir_builtin_ops_v1.cpp:740
 namespace af {
 namespace ascir_op {
 struct MatMulBias : public Operator {
@@ -5625,8 +6404,12 @@ struct MatMulBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -5637,8 +6420,12 @@ struct MatMulBias : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[2]) != support_dtypes_of_sym_T2.end());
@@ -5682,7 +6469,7 @@ struct MatMulBias : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:748
+// Defined at ascir_builtin_ops_v1.cpp:756
 namespace af {
 namespace ascir_op {
 struct MatMulOffset : public Operator {
@@ -5778,8 +6565,12 @@ struct MatMulOffset : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -5790,8 +6581,12 @@ struct MatMulOffset : public Operator {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T3.find(input_dtypes[2]) != support_dtypes_of_sym_T3.end());
@@ -5802,7 +6597,18 @@ struct MatMulOffset : public Operator {
       return FAILED;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -5836,7 +6642,7 @@ struct MatMulOffset : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:765
+// Defined at ascir_builtin_ops_v1.cpp:773
 namespace af {
 namespace ascir_op {
 struct MatMulOffsetBias : public Operator {
@@ -5935,8 +6741,12 @@ struct MatMulOffsetBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -5947,8 +6757,12 @@ struct MatMulOffsetBias : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[2]) != support_dtypes_of_sym_T2.end());
@@ -5959,8 +6773,12 @@ struct MatMulOffsetBias : public Operator {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T3.find(input_dtypes[3]) != support_dtypes_of_sym_T3.end());
@@ -6005,7 +6823,7 @@ struct MatMulOffsetBias : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:783
+// Defined at ascir_builtin_ops_v1.cpp:791
 namespace af {
 namespace ascir_op {
 struct BatchMatMul : public Operator {
@@ -6098,8 +6916,12 @@ struct BatchMatMul : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -6110,7 +6932,18 @@ struct BatchMatMul : public Operator {
       return FAILED;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -6143,7 +6976,7 @@ struct BatchMatMul : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:798
+// Defined at ascir_builtin_ops_v1.cpp:806
 namespace af {
 namespace ascir_op {
 struct BatchMatMulBias : public Operator {
@@ -6239,8 +7072,12 @@ struct BatchMatMulBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -6251,8 +7088,12 @@ struct BatchMatMulBias : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[2]) != support_dtypes_of_sym_T2.end());
@@ -6296,7 +7137,7 @@ struct BatchMatMulBias : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:814
+// Defined at ascir_builtin_ops_v1.cpp:822
 namespace af {
 namespace ascir_op {
 struct BatchMatMulOffset : public Operator {
@@ -6392,8 +7233,12 @@ struct BatchMatMulOffset : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -6404,8 +7249,12 @@ struct BatchMatMulOffset : public Operator {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T3.find(input_dtypes[2]) != support_dtypes_of_sym_T3.end());
@@ -6416,7 +7265,18 @@ struct BatchMatMulOffset : public Operator {
       return FAILED;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -6450,7 +7310,7 @@ struct BatchMatMulOffset : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:831
+// Defined at ascir_builtin_ops_v1.cpp:839
 namespace af {
 namespace ascir_op {
 struct BatchMatMulOffsetBias : public Operator {
@@ -6549,8 +7409,12 @@ struct BatchMatMulOffsetBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -6561,8 +7425,12 @@ struct BatchMatMulOffsetBias : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[2]) != support_dtypes_of_sym_T2.end());
@@ -6573,8 +7441,12 @@ struct BatchMatMulOffsetBias : public Operator {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T3.find(input_dtypes[3]) != support_dtypes_of_sym_T3.end());
@@ -6619,7 +7491,7 @@ struct BatchMatMulOffsetBias : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:849
+// Defined at ascir_builtin_ops_v1.cpp:857
 namespace af {
 namespace ascir_op {
 struct Conv2D : public Operator {
@@ -6666,16 +7538,6 @@ struct Conv2D : public Operator {
       auto attr_value = attr_store_.GetOrCreateAnyValue("groups");
       GE_ASSERT_NOTNULL(attr_value);
       return attr_value->SetValue(groups);
-    }
-    graphStatus GetHas_relu(int64_t &has_relu) const {
-      auto attr_value = attr_store_.GetAnyValue("has_relu");
-      GE_WARN_ASSERT(attr_value != nullptr);
-      return attr_value->GetValue(has_relu);
-    }
-    graphStatus SetHas_relu(int64_t has_relu) {
-      auto attr_value = attr_store_.GetOrCreateAnyValue("has_relu");
-      GE_ASSERT_NOTNULL(attr_value);
-      return attr_value->SetValue(has_relu);
     }
     graphStatus GetPad_mode(std::string &pad_mode) const {
       auto attr_value = attr_store_.GetAnyValue("pad_mode");
@@ -6757,24 +7619,49 @@ struct Conv2D : public Operator {
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      GELOGW("Output ir_index [0] has multi result {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8}, cannot infer.");
-      return FAILED;
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      }
+      return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -6788,8 +7675,18 @@ struct Conv2D : public Operator {
     // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    GELOGW("Output ir_index [0] has multi result {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8}, cannot infer.");
-    return FAILED;
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    }
+    return SUCCESS;
   };
 
   inline Conv2D &operator=(const Conv2D &) = delete;
@@ -6807,7 +7704,7 @@ struct Conv2D : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:868
+// Defined at ascir_builtin_ops_v1.cpp:875
 namespace af {
 namespace ascir_op {
 struct Conv2DBias : public Operator {
@@ -6854,16 +7751,6 @@ struct Conv2DBias : public Operator {
       auto attr_value = attr_store_.GetOrCreateAnyValue("groups");
       GE_ASSERT_NOTNULL(attr_value);
       return attr_value->SetValue(groups);
-    }
-    graphStatus GetHas_relu(int64_t &has_relu) const {
-      auto attr_value = attr_store_.GetAnyValue("has_relu");
-      GE_WARN_ASSERT(attr_value != nullptr);
-      return attr_value->GetValue(has_relu);
-    }
-    graphStatus SetHas_relu(int64_t has_relu) {
-      auto attr_value = attr_store_.GetOrCreateAnyValue("has_relu");
-      GE_ASSERT_NOTNULL(attr_value);
-      return attr_value->SetValue(has_relu);
     }
     graphStatus GetPad_mode(std::string &pad_mode) const {
       auto attr_value = attr_store_.GetAnyValue("pad_mode");
@@ -6948,25 +7835,33 @@ struct Conv2DBias : public Operator {
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
     std::set<ge::DataType> support_dtypes_of_sym_T2;
     if (npu_arch == "2201") {
-      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[2]) != support_dtypes_of_sym_T2.end());
@@ -7010,7 +7905,7 @@ struct Conv2DBias : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:888
+// Defined at ascir_builtin_ops_v1.cpp:894
 namespace af {
 namespace ascir_op {
 struct Conv2DOffset : public Operator {
@@ -7057,16 +7952,6 @@ struct Conv2DOffset : public Operator {
       auto attr_value = attr_store_.GetOrCreateAnyValue("groups");
       GE_ASSERT_NOTNULL(attr_value);
       return attr_value->SetValue(groups);
-    }
-    graphStatus GetHas_relu(int64_t &has_relu) const {
-      auto attr_value = attr_store_.GetAnyValue("has_relu");
-      GE_WARN_ASSERT(attr_value != nullptr);
-      return attr_value->GetValue(has_relu);
-    }
-    graphStatus SetHas_relu(int64_t has_relu) {
-      auto attr_value = attr_store_.GetOrCreateAnyValue("has_relu");
-      GE_ASSERT_NOTNULL(attr_value);
-      return attr_value->SetValue(has_relu);
     }
     graphStatus GetPad_mode(std::string &pad_mode) const {
       auto attr_value = attr_store_.GetAnyValue("pad_mode");
@@ -7151,13 +8036,17 @@ struct Conv2DOffset : public Operator {
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -7168,19 +8057,44 @@ struct Conv2DOffset : public Operator {
       support_dtypes_of_sym_T3 = {DT_INT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T3 = {DT_INT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T3 = {DT_INT8};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T3.find(input_dtypes[2]) != support_dtypes_of_sym_T3.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      GELOGW("Output ir_index [0] has multi result {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8}, cannot infer.");
-      return FAILED;
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      }
+      return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -7194,8 +8108,18 @@ struct Conv2DOffset : public Operator {
     // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    GELOGW("Output ir_index [0] has multi result {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8}, cannot infer.");
-    return FAILED;
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    }
+    return SUCCESS;
   };
 
   inline Conv2DOffset &operator=(const Conv2DOffset &) = delete;
@@ -7214,7 +8138,7 @@ struct Conv2DOffset : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:909
+// Defined at ascir_builtin_ops_v1.cpp:914
 namespace af {
 namespace ascir_op {
 struct Conv2DOffsetBias : public Operator {
@@ -7261,16 +8185,6 @@ struct Conv2DOffsetBias : public Operator {
       auto attr_value = attr_store_.GetOrCreateAnyValue("groups");
       GE_ASSERT_NOTNULL(attr_value);
       return attr_value->SetValue(groups);
-    }
-    graphStatus GetHas_relu(int64_t &has_relu) const {
-      auto attr_value = attr_store_.GetAnyValue("has_relu");
-      GE_WARN_ASSERT(attr_value != nullptr);
-      return attr_value->GetValue(has_relu);
-    }
-    graphStatus SetHas_relu(int64_t has_relu) {
-      auto attr_value = attr_store_.GetOrCreateAnyValue("has_relu");
-      GE_ASSERT_NOTNULL(attr_value);
-      return attr_value->SetValue(has_relu);
     }
     graphStatus GetPad_mode(std::string &pad_mode) const {
       auto attr_value = attr_store_.GetAnyValue("pad_mode");
@@ -7358,25 +8272,33 @@ struct Conv2DOffsetBias : public Operator {
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
     std::set<ge::DataType> support_dtypes_of_sym_T2;
     if (npu_arch == "2201") {
-      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[2]) != support_dtypes_of_sym_T2.end());
@@ -7387,8 +8309,12 @@ struct Conv2DOffsetBias : public Operator {
       support_dtypes_of_sym_T3 = {DT_INT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T3 = {DT_INT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T3 = {DT_INT8};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T3.find(input_dtypes[3]) != support_dtypes_of_sym_T3.end());
@@ -7433,54 +8359,124 @@ struct Conv2DOffsetBias : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:927
+// Defined at ascir_builtin_ops_v1.cpp:935
 namespace af {
 namespace ascir_op {
-namespace detail {
-struct ExtendConv2DIrAttrDefBase : public Conv2D::AscConv2DIrAttrDef {
-  ~ExtendConv2DIrAttrDefBase() override = default;
-  graphStatus GetRound_mode(std::string &round_mode) const {
-    auto attr_value = attr_store_.GetAnyValue("round_mode");
-    GE_WARN_ASSERT(attr_value != nullptr);
-    return attr_value->GetValue(round_mode);
-  }
-  graphStatus SetRound_mode(const std::string &round_mode) {
-    auto attr_value = attr_store_.GetOrCreateAnyValue("round_mode");
-    GE_ASSERT_NOTNULL(attr_value);
-    return attr_value->SetValue(round_mode);
-  }
-  graphStatus GetOffset_x(bool &offset_x) const {
-    auto attr_value = attr_store_.GetAnyValue("offset_x");
-    GE_WARN_ASSERT(attr_value != nullptr);
-    return attr_value->GetValue(offset_x);
-  }
-  graphStatus GetEnable_relu0(bool &enable_relu0) const {
-    auto attr_value = attr_store_.GetAnyValue("enable_relu0");
-    GE_WARN_ASSERT(attr_value != nullptr);
-    return attr_value->GetValue(enable_relu0);
-  }
-  graphStatus SetEnable_relu0(const bool enable_relu0) {
-    auto attr_value = attr_store_.GetOrCreateAnyValue("enable_relu0");
-    GE_ASSERT_NOTNULL(attr_value);
-    return attr_value->SetValue(enable_relu0);
-  }
-  graphStatus GetNullptr_inputs_index(std::vector<int64_t> &nullptr_inputs_index) const {
-    auto attr_value = attr_store_.GetAnyValue("nullptr_inputs_index");
-    GE_WARN_ASSERT(attr_value != nullptr);
-    return attr_value->GetValue(nullptr_inputs_index);
-  }
-  graphStatus SetNullptr_inputs_index(const std::vector<int64_t> &nullptr_inputs_index) {
-    auto attr_value = attr_store_.GetOrCreateAnyValue("nullptr_inputs_index");
-    GE_ASSERT_NOTNULL(attr_value);
-    return attr_value->SetValue(nullptr_inputs_index);
-  }
-};
-}  // namespace detail
 struct ExtendConv2D : public Operator {
   static constexpr const char *Type = "ExtendConv2D";
   af::AscNodeAttr &attr;
-  struct AscExtendConv2DIrAttrDef : public detail::ExtendConv2DIrAttrDefBase {
+  struct AscExtendConv2DIrAttrDef : public af::AscIrAttrDefBase {
     ~AscExtendConv2DIrAttrDef() override = default;
+    graphStatus GetStrides(std::vector<int64_t> &strides) const {
+      auto attr_value = attr_store_.GetAnyValue("strides");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(strides);
+    }
+    graphStatus SetStrides(std::vector<int64_t> strides) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("strides");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(strides);
+    }
+    graphStatus GetPads(std::vector<int64_t> &pads) const {
+      auto attr_value = attr_store_.GetAnyValue("pads");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(pads);
+    }
+    graphStatus SetPads(std::vector<int64_t> pads) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("pads");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(pads);
+    }
+    graphStatus GetDilations(std::vector<int64_t> &dilations) const {
+      auto attr_value = attr_store_.GetAnyValue("dilations");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(dilations);
+    }
+    graphStatus SetDilations(std::vector<int64_t> dilations) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("dilations");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(dilations);
+    }
+    graphStatus GetGroups(int64_t &groups) const {
+      auto attr_value = attr_store_.GetAnyValue("groups");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(groups);
+    }
+    graphStatus SetGroups(int64_t groups) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("groups");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(groups);
+    }
+    graphStatus GetPad_mode(std::string &pad_mode) const {
+      auto attr_value = attr_store_.GetAnyValue("pad_mode");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(pad_mode);
+    }
+    graphStatus SetPad_mode(std::string pad_mode) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("pad_mode");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(pad_mode);
+    }
+    graphStatus GetData_format(std::string &data_format) const {
+      auto attr_value = attr_store_.GetAnyValue("data_format");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(data_format);
+    }
+    graphStatus SetData_format(std::string data_format) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("data_format");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(data_format);
+    }
+    graphStatus GetOffset_x(int64_t &offset_x) const {
+      auto attr_value = attr_store_.GetAnyValue("offset_x");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(offset_x);
+    }
+    graphStatus SetOffset_x(int64_t offset_x) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("offset_x");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(offset_x);
+    }
+    graphStatus GetRound_mode(std::string &round_mode) const {
+      auto attr_value = attr_store_.GetAnyValue("round_mode");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(round_mode);
+    }
+    graphStatus SetRound_mode(std::string round_mode) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("round_mode");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(round_mode);
+    }
+    graphStatus GetEnable_hf32(bool &enable_hf32) const {
+      auto attr_value = attr_store_.GetAnyValue("enable_hf32");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(enable_hf32);
+    }
+    graphStatus SetEnable_hf32(bool enable_hf32) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("enable_hf32");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(enable_hf32);
+    }
+    graphStatus GetFixed_shift_value(int64_t &fixed_shift_value) const {
+      auto attr_value = attr_store_.GetAnyValue("fixed_shift_value");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(fixed_shift_value);
+    }
+    graphStatus SetFixed_shift_value(int64_t fixed_shift_value) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("fixed_shift_value");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(fixed_shift_value);
+    }
+    graphStatus GetEnable_relu0(bool &enable_relu0) const {
+      auto attr_value = attr_store_.GetAnyValue("enable_relu0");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(enable_relu0);
+    }
+    graphStatus SetEnable_relu0(bool enable_relu0) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("enable_relu0");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(enable_relu0);
+    }
   };
   AscExtendConv2DIrAttrDef &ir_attr;
   af::AscOpInput<0> x;
@@ -7503,9 +8499,11 @@ struct ExtendConv2D : public Operator {
   inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
                                      std::vector<DataType> &expect_output_dtypes,
                                      [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
     GE_ASSERT_EQ(input_dtypes.size(), 2U);
     GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
 
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
@@ -7514,34 +8512,72 @@ struct ExtendConv2D : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
+    // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_FLOAT16);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      }
       return SUCCESS;
     }
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    // 输出外部指定，生成校验的代码
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
   inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
                                                 std::vector<DataType> &expect_output_dtypes,
                                                 [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
     GE_ASSERT_EQ(input_dtypes.size(), 2U);
     GE_ASSERT_TRUE(expect_output_dtypes.empty());
 
+    // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_FLOAT16);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    }
     return SUCCESS;
   };
 
   inline ExtendConv2D &operator=(const ExtendConv2D &) = delete;
-  inline ExtendConv2D &operator=(ExtendConv2D &&) = delete;
   inline ExtendConv2D(ExtendConv2D &&) = delete;
   inline ExtendConv2D(const ExtendConv2D &other)
       : af::Operator(other),
@@ -7556,14 +8592,124 @@ struct ExtendConv2D : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:948
+// Defined at ascir_builtin_ops_v1.cpp:955
 namespace af {
 namespace ascir_op {
 struct ExtendConv2DBias : public Operator {
   static constexpr const char *Type = "ExtendConv2DBias";
   af::AscNodeAttr &attr;
-  struct AscExtendConv2DBiasIrAttrDef : public detail::ExtendConv2DIrAttrDefBase {
+  struct AscExtendConv2DBiasIrAttrDef : public af::AscIrAttrDefBase {
     ~AscExtendConv2DBiasIrAttrDef() override = default;
+    graphStatus GetStrides(std::vector<int64_t> &strides) const {
+      auto attr_value = attr_store_.GetAnyValue("strides");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(strides);
+    }
+    graphStatus SetStrides(std::vector<int64_t> strides) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("strides");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(strides);
+    }
+    graphStatus GetPads(std::vector<int64_t> &pads) const {
+      auto attr_value = attr_store_.GetAnyValue("pads");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(pads);
+    }
+    graphStatus SetPads(std::vector<int64_t> pads) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("pads");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(pads);
+    }
+    graphStatus GetDilations(std::vector<int64_t> &dilations) const {
+      auto attr_value = attr_store_.GetAnyValue("dilations");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(dilations);
+    }
+    graphStatus SetDilations(std::vector<int64_t> dilations) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("dilations");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(dilations);
+    }
+    graphStatus GetGroups(int64_t &groups) const {
+      auto attr_value = attr_store_.GetAnyValue("groups");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(groups);
+    }
+    graphStatus SetGroups(int64_t groups) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("groups");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(groups);
+    }
+    graphStatus GetPad_mode(std::string &pad_mode) const {
+      auto attr_value = attr_store_.GetAnyValue("pad_mode");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(pad_mode);
+    }
+    graphStatus SetPad_mode(std::string pad_mode) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("pad_mode");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(pad_mode);
+    }
+    graphStatus GetData_format(std::string &data_format) const {
+      auto attr_value = attr_store_.GetAnyValue("data_format");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(data_format);
+    }
+    graphStatus SetData_format(std::string data_format) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("data_format");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(data_format);
+    }
+    graphStatus GetOffset_x(int64_t &offset_x) const {
+      auto attr_value = attr_store_.GetAnyValue("offset_x");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(offset_x);
+    }
+    graphStatus SetOffset_x(int64_t offset_x) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("offset_x");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(offset_x);
+    }
+    graphStatus GetRound_mode(std::string &round_mode) const {
+      auto attr_value = attr_store_.GetAnyValue("round_mode");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(round_mode);
+    }
+    graphStatus SetRound_mode(std::string round_mode) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("round_mode");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(round_mode);
+    }
+    graphStatus GetEnable_hf32(bool &enable_hf32) const {
+      auto attr_value = attr_store_.GetAnyValue("enable_hf32");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(enable_hf32);
+    }
+    graphStatus SetEnable_hf32(bool enable_hf32) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("enable_hf32");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(enable_hf32);
+    }
+    graphStatus GetFixed_shift_value(int64_t &fixed_shift_value) const {
+      auto attr_value = attr_store_.GetAnyValue("fixed_shift_value");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(fixed_shift_value);
+    }
+    graphStatus SetFixed_shift_value(int64_t fixed_shift_value) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("fixed_shift_value");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(fixed_shift_value);
+    }
+    graphStatus GetEnable_relu0(bool &enable_relu0) const {
+      auto attr_value = attr_store_.GetAnyValue("enable_relu0");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(enable_relu0);
+    }
+    graphStatus SetEnable_relu0(bool enable_relu0) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("enable_relu0");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(enable_relu0);
+    }
   };
   AscExtendConv2DBiasIrAttrDef &ir_attr;
   af::AscOpInput<0> x;
@@ -7589,9 +8735,11 @@ struct ExtendConv2DBias : public Operator {
   inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
                                      std::vector<DataType> &expect_output_dtypes,
                                      [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
     GE_ASSERT_EQ(input_dtypes.size(), 3U);
     GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
 
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
@@ -7600,8 +8748,12 @@ struct ExtendConv2DBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -7612,34 +8764,72 @@ struct ExtendConv2DBias : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[2]) != support_dtypes_of_sym_T2.end());
 
+    // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_FLOAT16);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      }
       return SUCCESS;
     }
-    static std::set<ge::DataType> support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    // 输出外部指定，生成校验的代码
+    std::set<ge::DataType> support_dtypes_of_sym_T3;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T3.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T3.end());
     return SUCCESS;
   };
   inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
                                                 std::vector<DataType> &expect_output_dtypes,
                                                 [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
     GE_ASSERT_EQ(input_dtypes.size(), 3U);
     GE_ASSERT_TRUE(expect_output_dtypes.empty());
 
+    // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_FLOAT16);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    }
     return SUCCESS;
   };
 
   inline ExtendConv2DBias &operator=(const ExtendConv2DBias &) = delete;
-  inline ExtendConv2DBias &operator=(ExtendConv2DBias &&) = delete;
   inline ExtendConv2DBias(ExtendConv2DBias &&) = delete;
   inline ExtendConv2DBias(const ExtendConv2DBias &other)
       : af::Operator(other),
@@ -7655,14 +8845,124 @@ struct ExtendConv2DBias : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:971
+// Defined at ascir_builtin_ops_v1.cpp:977
 namespace af {
 namespace ascir_op {
 struct ExtendConv2DScale : public Operator {
   static constexpr const char *Type = "ExtendConv2DScale";
   af::AscNodeAttr &attr;
-  struct AscExtendConv2DScaleIrAttrDef : public detail::ExtendConv2DIrAttrDefBase {
+  struct AscExtendConv2DScaleIrAttrDef : public af::AscIrAttrDefBase {
     ~AscExtendConv2DScaleIrAttrDef() override = default;
+    graphStatus GetStrides(std::vector<int64_t> &strides) const {
+      auto attr_value = attr_store_.GetAnyValue("strides");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(strides);
+    }
+    graphStatus SetStrides(std::vector<int64_t> strides) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("strides");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(strides);
+    }
+    graphStatus GetPads(std::vector<int64_t> &pads) const {
+      auto attr_value = attr_store_.GetAnyValue("pads");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(pads);
+    }
+    graphStatus SetPads(std::vector<int64_t> pads) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("pads");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(pads);
+    }
+    graphStatus GetDilations(std::vector<int64_t> &dilations) const {
+      auto attr_value = attr_store_.GetAnyValue("dilations");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(dilations);
+    }
+    graphStatus SetDilations(std::vector<int64_t> dilations) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("dilations");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(dilations);
+    }
+    graphStatus GetGroups(int64_t &groups) const {
+      auto attr_value = attr_store_.GetAnyValue("groups");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(groups);
+    }
+    graphStatus SetGroups(int64_t groups) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("groups");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(groups);
+    }
+    graphStatus GetPad_mode(std::string &pad_mode) const {
+      auto attr_value = attr_store_.GetAnyValue("pad_mode");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(pad_mode);
+    }
+    graphStatus SetPad_mode(std::string pad_mode) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("pad_mode");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(pad_mode);
+    }
+    graphStatus GetData_format(std::string &data_format) const {
+      auto attr_value = attr_store_.GetAnyValue("data_format");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(data_format);
+    }
+    graphStatus SetData_format(std::string data_format) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("data_format");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(data_format);
+    }
+    graphStatus GetOffset_x(int64_t &offset_x) const {
+      auto attr_value = attr_store_.GetAnyValue("offset_x");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(offset_x);
+    }
+    graphStatus SetOffset_x(int64_t offset_x) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("offset_x");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(offset_x);
+    }
+    graphStatus GetRound_mode(std::string &round_mode) const {
+      auto attr_value = attr_store_.GetAnyValue("round_mode");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(round_mode);
+    }
+    graphStatus SetRound_mode(std::string round_mode) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("round_mode");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(round_mode);
+    }
+    graphStatus GetEnable_hf32(bool &enable_hf32) const {
+      auto attr_value = attr_store_.GetAnyValue("enable_hf32");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(enable_hf32);
+    }
+    graphStatus SetEnable_hf32(bool enable_hf32) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("enable_hf32");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(enable_hf32);
+    }
+    graphStatus GetFixed_shift_value(int64_t &fixed_shift_value) const {
+      auto attr_value = attr_store_.GetAnyValue("fixed_shift_value");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(fixed_shift_value);
+    }
+    graphStatus SetFixed_shift_value(int64_t fixed_shift_value) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("fixed_shift_value");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(fixed_shift_value);
+    }
+    graphStatus GetEnable_relu0(bool &enable_relu0) const {
+      auto attr_value = attr_store_.GetAnyValue("enable_relu0");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(enable_relu0);
+    }
+    graphStatus SetEnable_relu0(bool enable_relu0) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("enable_relu0");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(enable_relu0);
+    }
   };
   AscExtendConv2DScaleIrAttrDef &ir_attr;
   af::AscOpInput<0> x;
@@ -7688,9 +8988,11 @@ struct ExtendConv2DScale : public Operator {
   inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
                                      std::vector<DataType> &expect_output_dtypes,
                                      [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
     GE_ASSERT_EQ(input_dtypes.size(), 3U);
     GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
 
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
@@ -7699,8 +9001,12 @@ struct ExtendConv2DScale : public Operator {
       support_dtypes_of_sym_T1 = {DT_INT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_INT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_INT8};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_INT8};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -7711,34 +9017,72 @@ struct ExtendConv2DScale : public Operator {
       support_dtypes_of_sym_T3 = {DT_UINT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T3 = {DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_UINT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T3 = {DT_UINT64};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T3.find(input_dtypes[2]) != support_dtypes_of_sym_T3.end());
 
+    // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_FLOAT16);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      }
       return SUCCESS;
     }
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    // 输出外部指定，生成校验的代码
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
   inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
                                                 std::vector<DataType> &expect_output_dtypes,
                                                 [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
     GE_ASSERT_EQ(input_dtypes.size(), 3U);
     GE_ASSERT_TRUE(expect_output_dtypes.empty());
 
+    // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_FLOAT16);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    }
     return SUCCESS;
   };
 
   inline ExtendConv2DScale &operator=(const ExtendConv2DScale &) = delete;
-  inline ExtendConv2DScale &operator=(ExtendConv2DScale &&) = delete;
   inline ExtendConv2DScale(ExtendConv2DScale &&) = delete;
   inline ExtendConv2DScale(const ExtendConv2DScale &other)
       : af::Operator(other),
@@ -7754,14 +9098,124 @@ struct ExtendConv2DScale : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:994
+// Defined at ascir_builtin_ops_v1.cpp:999
 namespace af {
 namespace ascir_op {
 struct ExtendConv2DBiasScale : public Operator {
   static constexpr const char *Type = "ExtendConv2DBiasScale";
   af::AscNodeAttr &attr;
-  struct AscExtendConv2DBiasScaleIrAttrDef : public detail::ExtendConv2DIrAttrDefBase {
+  struct AscExtendConv2DBiasScaleIrAttrDef : public af::AscIrAttrDefBase {
     ~AscExtendConv2DBiasScaleIrAttrDef() override = default;
+    graphStatus GetStrides(std::vector<int64_t> &strides) const {
+      auto attr_value = attr_store_.GetAnyValue("strides");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(strides);
+    }
+    graphStatus SetStrides(std::vector<int64_t> strides) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("strides");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(strides);
+    }
+    graphStatus GetPads(std::vector<int64_t> &pads) const {
+      auto attr_value = attr_store_.GetAnyValue("pads");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(pads);
+    }
+    graphStatus SetPads(std::vector<int64_t> pads) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("pads");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(pads);
+    }
+    graphStatus GetDilations(std::vector<int64_t> &dilations) const {
+      auto attr_value = attr_store_.GetAnyValue("dilations");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(dilations);
+    }
+    graphStatus SetDilations(std::vector<int64_t> dilations) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("dilations");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(dilations);
+    }
+    graphStatus GetGroups(int64_t &groups) const {
+      auto attr_value = attr_store_.GetAnyValue("groups");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(groups);
+    }
+    graphStatus SetGroups(int64_t groups) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("groups");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(groups);
+    }
+    graphStatus GetPad_mode(std::string &pad_mode) const {
+      auto attr_value = attr_store_.GetAnyValue("pad_mode");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(pad_mode);
+    }
+    graphStatus SetPad_mode(std::string pad_mode) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("pad_mode");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(pad_mode);
+    }
+    graphStatus GetData_format(std::string &data_format) const {
+      auto attr_value = attr_store_.GetAnyValue("data_format");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(data_format);
+    }
+    graphStatus SetData_format(std::string data_format) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("data_format");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(data_format);
+    }
+    graphStatus GetOffset_x(int64_t &offset_x) const {
+      auto attr_value = attr_store_.GetAnyValue("offset_x");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(offset_x);
+    }
+    graphStatus SetOffset_x(int64_t offset_x) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("offset_x");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(offset_x);
+    }
+    graphStatus GetRound_mode(std::string &round_mode) const {
+      auto attr_value = attr_store_.GetAnyValue("round_mode");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(round_mode);
+    }
+    graphStatus SetRound_mode(std::string round_mode) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("round_mode");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(round_mode);
+    }
+    graphStatus GetEnable_hf32(bool &enable_hf32) const {
+      auto attr_value = attr_store_.GetAnyValue("enable_hf32");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(enable_hf32);
+    }
+    graphStatus SetEnable_hf32(bool enable_hf32) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("enable_hf32");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(enable_hf32);
+    }
+    graphStatus GetFixed_shift_value(int64_t &fixed_shift_value) const {
+      auto attr_value = attr_store_.GetAnyValue("fixed_shift_value");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(fixed_shift_value);
+    }
+    graphStatus SetFixed_shift_value(int64_t fixed_shift_value) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("fixed_shift_value");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(fixed_shift_value);
+    }
+    graphStatus GetEnable_relu0(bool &enable_relu0) const {
+      auto attr_value = attr_store_.GetAnyValue("enable_relu0");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(enable_relu0);
+    }
+    graphStatus SetEnable_relu0(bool enable_relu0) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("enable_relu0");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(enable_relu0);
+    }
   };
   AscExtendConv2DBiasScaleIrAttrDef &ir_attr;
   af::AscOpInput<0> x;
@@ -7790,9 +9244,11 @@ struct ExtendConv2DBiasScale : public Operator {
   inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
                                      std::vector<DataType> &expect_output_dtypes,
                                      [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
     GE_ASSERT_EQ(input_dtypes.size(), 4U);
     GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
 
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
@@ -7801,8 +9257,12 @@ struct ExtendConv2DBiasScale : public Operator {
       support_dtypes_of_sym_T1 = {DT_INT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_INT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_INT8};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_INT8};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
@@ -7813,8 +9273,12 @@ struct ExtendConv2DBiasScale : public Operator {
       support_dtypes_of_sym_T2 = {DT_INT32};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_INT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[2]) != support_dtypes_of_sym_T2.end());
@@ -7825,34 +9289,72 @@ struct ExtendConv2DBiasScale : public Operator {
       support_dtypes_of_sym_T4 = {DT_UINT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T4 = {DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T4 = {DT_UINT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T4 = {DT_UINT64};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T4.find(input_dtypes[3]) != support_dtypes_of_sym_T4.end());
 
+    // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_FLOAT16);
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_FLOAT16);
+      }
       return SUCCESS;
     }
-    static std::set<ge::DataType> support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    // 输出外部指定，生成校验的代码
+    std::set<ge::DataType> support_dtypes_of_sym_T3;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T3 = {DT_FLOAT16};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T3.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T3.end());
     return SUCCESS;
   };
   inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
                                                 std::vector<DataType> &expect_output_dtypes,
                                                 [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
     GE_ASSERT_EQ(input_dtypes.size(), 4U);
     GE_ASSERT_TRUE(expect_output_dtypes.empty());
 
+    // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_FLOAT16);
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_FLOAT16);
+    }
     return SUCCESS;
   };
 
   inline ExtendConv2DBiasScale &operator=(const ExtendConv2DBiasScale &) = delete;
-  inline ExtendConv2DBiasScale &operator=(ExtendConv2DBiasScale &&) = delete;
   inline ExtendConv2DBiasScale(ExtendConv2DBiasScale &&) = delete;
   inline ExtendConv2DBiasScale(const ExtendConv2DBiasScale &other)
       : af::Operator(other),
@@ -7869,7 +9371,7 @@ struct ExtendConv2DBiasScale : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v1.cpp:931
+// Defined at ascir_builtin_ops_v1.cpp:1024
 namespace af {
 namespace ascir_op {
 struct Split : public Operator {
@@ -7929,8 +9431,16 @@ struct Split : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32,  DT_UINT8,   DT_INT16,     DT_UINT16,
                                  DT_UINT32, DT_INT64,   DT_UINT64, DT_DOUBLE, DT_BOOL,    DT_COMPLEX64, DT_COMPLEX128,
                                  DT_QINT8,  DT_QINT16,  DT_QINT32, DT_QUINT8, DT_QUINT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32,  DT_UINT8,   DT_INT16,     DT_UINT16,
+                                 DT_UINT32, DT_INT64,   DT_UINT64, DT_DOUBLE, DT_BOOL,    DT_COMPLEX64, DT_COMPLEX128,
+                                 DT_QINT8,  DT_QINT16,  DT_QINT32, DT_QUINT8, DT_QUINT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32,  DT_UINT8,   DT_INT16,     DT_UINT16,
+                                 DT_UINT32, DT_INT64,   DT_UINT64, DT_DOUBLE, DT_BOOL,    DT_COMPLEX64, DT_COMPLEX128,
+                                 DT_QINT8,  DT_QINT16,  DT_QINT32, DT_QUINT8, DT_QUINT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -7973,6 +9483,123 @@ struct Split : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
+// Defined at ascir_builtin_ops_v1.cpp:1027
+namespace af {
+namespace ascir_op {
+struct Unsupported : public Operator {
+  static constexpr const char *Type = "Unsupported";
+  af::AscNodeAttr &attr;
+  struct AscUnsupportedIrAttrDef : public af::AscIrAttrDefBase {
+    ~AscUnsupportedIrAttrDef() override = default;
+    graphStatus GetError_msg(std::string &error_msg) const {
+      auto attr_value = attr_store_.GetAnyValue("error_msg");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(error_msg);
+    }
+    graphStatus SetError_msg(std::string error_msg) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("error_msg");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(error_msg);
+    }
+  };
+  AscUnsupportedIrAttrDef &ir_attr;
+  af::AscOpOutput y;
+  inline Unsupported(const char *name, af::AscGraph &graph)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscUnsupportedIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscUnsupportedIrAttrDef &>(*(attr.ir_attr))),
+        y(this, 0) {
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(11);
+    graph.AddNode(*this);
+  }
+  inline Unsupported(const char *name)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscUnsupportedIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscUnsupportedIrAttrDef &>(*(attr.ir_attr))),
+        y(this, 0) {
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(11);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 0U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      if (npu_arch == "2201") {
+        expect_output_dtypes.push_back(DT_FLOAT);
+      } else if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_FLOAT);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_FLOAT);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_FLOAT);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_FLOAT);
+      }
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "2201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T.end());
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 0U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    if (npu_arch == "2201") {
+      expect_output_dtypes.push_back(DT_FLOAT);
+    } else if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_FLOAT);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_FLOAT);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_FLOAT);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_FLOAT);
+    }
+    return SUCCESS;
+  };
+
+  inline Unsupported &operator=(const Unsupported &) = delete;
+  inline Unsupported(Unsupported &&) = delete;
+  inline Unsupported(const Unsupported &other)
+      : af::Operator(other),
+        attr(other.attr),
+        ir_attr(dynamic_cast<AscUnsupportedIrAttrDef &>(*(attr.ir_attr))),
+        y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
 // Defined at ascir_builtin_ops_v2.cpp:55
 namespace af {
 namespace ascir_op {
@@ -8004,8 +9631,14 @@ struct Square : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_UINT8,  DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_UINT8,  DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_UINT8,  DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8073,8 +9706,16 @@ struct RoundToInt : public Operator {
       results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
                  {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
                  {DT_BF16, {DT_INT32}}};
+    } else if (npu_arch == "9201") {
+      results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
+                 {DT_BF16, {DT_INT32}}};
+    } else if (npu_arch == "9202") {
+      results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
+                 {DT_BF16, {DT_INT32}}};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
 
@@ -8084,7 +9725,7 @@ struct RoundToInt : public Operator {
     if (expect_output_dtypes.empty()) {
       GE_WARN_ASSERT(iter->second.size() == 1U);
       expect_output_dtypes.push_back(*(iter->second.begin()));
-      return ge::SUCCESS;
+      return af::SUCCESS;
     }
     // 输出外部指定，生成校验的代码
     GE_WARN_ASSERT(iter->second.find(expect_output_dtypes[0]) != iter->second.end());
@@ -8142,8 +9783,16 @@ struct TruncToInt : public Operator {
       results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
                  {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
                  {DT_BF16, {DT_INT32}}};
+    } else if (npu_arch == "9201") {
+      results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
+                 {DT_BF16, {DT_INT32}}};
+    } else if (npu_arch == "9202") {
+      results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
+                 {DT_BF16, {DT_INT32}}};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
 
@@ -8153,7 +9802,7 @@ struct TruncToInt : public Operator {
     if (expect_output_dtypes.empty()) {
       GE_WARN_ASSERT(iter->second.size() == 1U);
       expect_output_dtypes.push_back(*(iter->second.begin()));
-      return ge::SUCCESS;
+      return af::SUCCESS;
     }
     // 输出外部指定，生成校验的代码
     GE_WARN_ASSERT(iter->second.find(expect_output_dtypes[0]) != iter->second.end());
@@ -8211,8 +9860,12 @@ struct Xor : public Operator {
       support_dtypes_of_sym_T = {DT_UINT8, DT_INT16, DT_UINT16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_UINT8, DT_INT16, DT_UINT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_UINT8, DT_INT16, DT_UINT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_UINT8, DT_INT16, DT_UINT16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8278,8 +9931,12 @@ struct Trunc : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8343,8 +10000,12 @@ struct Tan : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8412,8 +10073,12 @@ struct TruncDiv : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8478,8 +10143,12 @@ struct Sinh : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8544,8 +10213,12 @@ struct ModifiedBesselI0 : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8610,8 +10283,12 @@ struct ModifiedBesselI1 : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8676,8 +10353,12 @@ struct ModifiedBesselK0 : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8742,8 +10423,12 @@ struct ModifiedBesselK1 : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8782,6 +10467,2415 @@ struct ModifiedBesselK1 : public Operator {
 // Defined at ascir_builtin_ops_v2.cpp:171
 namespace af {
 namespace ascir_op {
+struct I0 : public Operator {
+  static constexpr const char *Type = "I0";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline I0(const char *name) : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline I0 &operator=(const I0 &) = delete;
+  inline I0(I0 &&) = delete;
+  inline I0(const I0 &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:179
+namespace af {
+namespace ascir_op {
+struct I0e : public Operator {
+  static constexpr const char *Type = "I0e";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline I0e(const char *name) : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline I0e &operator=(const I0e &) = delete;
+  inline I0e(I0e &&) = delete;
+  inline I0e(const I0e &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:187
+namespace af {
+namespace ascir_op {
+struct I1e : public Operator {
+  static constexpr const char *Type = "I1e";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline I1e(const char *name) : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline I1e &operator=(const I1e &) = delete;
+  inline I1e(I1e &&) = delete;
+  inline I1e(const I1e &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:195
+namespace af {
+namespace ascir_op {
+struct BesselJ0 : public Operator {
+  static constexpr const char *Type = "BesselJ0";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline BesselJ0(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline BesselJ0 &operator=(const BesselJ0 &) = delete;
+  inline BesselJ0(BesselJ0 &&) = delete;
+  inline BesselJ0(const BesselJ0 &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:203
+namespace af {
+namespace ascir_op {
+struct BesselJ1 : public Operator {
+  static constexpr const char *Type = "BesselJ1";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline BesselJ1(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline BesselJ1 &operator=(const BesselJ1 &) = delete;
+  inline BesselJ1(BesselJ1 &&) = delete;
+  inline BesselJ1(const BesselJ1 &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:211
+namespace af {
+namespace ascir_op {
+struct BesselY0 : public Operator {
+  static constexpr const char *Type = "BesselY0";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline BesselY0(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline BesselY0 &operator=(const BesselY0 &) = delete;
+  inline BesselY0(BesselY0 &&) = delete;
+  inline BesselY0(const BesselY0 &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:219
+namespace af {
+namespace ascir_op {
+struct BesselY1 : public Operator {
+  static constexpr const char *Type = "BesselY1";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline BesselY1(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline BesselY1 &operator=(const BesselY1 &) = delete;
+  inline BesselY1(BesselY1 &&) = delete;
+  inline BesselY1(const BesselY1 &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:227
+namespace af {
+namespace ascir_op {
+struct ScaledModifiedBesselK0 : public Operator {
+  static constexpr const char *Type = "ScaledModifiedBesselK0";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline ScaledModifiedBesselK0(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline ScaledModifiedBesselK0 &operator=(const ScaledModifiedBesselK0 &) = delete;
+  inline ScaledModifiedBesselK0(ScaledModifiedBesselK0 &&) = delete;
+  inline ScaledModifiedBesselK0(const ScaledModifiedBesselK0 &other)
+      : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:235
+namespace af {
+namespace ascir_op {
+struct ScaledModifiedBesselK1 : public Operator {
+  static constexpr const char *Type = "ScaledModifiedBesselK1";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline ScaledModifiedBesselK1(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline ScaledModifiedBesselK1 &operator=(const ScaledModifiedBesselK1 &) = delete;
+  inline ScaledModifiedBesselK1(ScaledModifiedBesselK1 &&) = delete;
+  inline ScaledModifiedBesselK1(const ScaledModifiedBesselK1 &other)
+      : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:243
+namespace af {
+namespace ascir_op {
+struct SphericalBesselJ0 : public Operator {
+  static constexpr const char *Type = "SphericalBesselJ0";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline SphericalBesselJ0(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline SphericalBesselJ0 &operator=(const SphericalBesselJ0 &) = delete;
+  inline SphericalBesselJ0(SphericalBesselJ0 &&) = delete;
+  inline SphericalBesselJ0(const SphericalBesselJ0 &other)
+      : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:251
+namespace af {
+namespace ascir_op {
+struct Ndtr : public Operator {
+  static constexpr const char *Type = "Ndtr";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline Ndtr(const char *name) : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline Ndtr &operator=(const Ndtr &) = delete;
+  inline Ndtr(Ndtr &&) = delete;
+  inline Ndtr(const Ndtr &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:259
+namespace af {
+namespace ascir_op {
+struct Ndtri : public Operator {
+  static constexpr const char *Type = "Ndtri";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline Ndtri(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline Ndtri &operator=(const Ndtri &) = delete;
+  inline Ndtri(Ndtri &&) = delete;
+  inline Ndtri(const Ndtri &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:267
+namespace af {
+namespace ascir_op {
+struct LogNdtr : public Operator {
+  static constexpr const char *Type = "LogNdtr";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline LogNdtr(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline LogNdtr &operator=(const LogNdtr &) = delete;
+  inline LogNdtr(LogNdtr &&) = delete;
+  inline LogNdtr(const LogNdtr &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:275
+namespace af {
+namespace ascir_op {
+struct NextAfter : public Operator {
+  static constexpr const char *Type = "NextAfter";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x1;
+  af::AscOpInput<1> x2;
+  af::AscOpOutput y;
+  inline NextAfter(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x1(this), x2(this), y(this, 0) {
+    this->InputRegister("x1");
+    this->InputRegister("x2");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+    GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline NextAfter &operator=(const NextAfter &) = delete;
+  inline NextAfter(NextAfter &&) = delete;
+  inline NextAfter(const NextAfter &other) : af::Operator(other), attr(other.attr), x1(this), x2(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:284
+namespace af {
+namespace ascir_op {
+struct PolyGamma : public Operator {
+  static constexpr const char *Type = "PolyGamma";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpInput<1> n;
+  af::AscOpOutput y;
+  inline PolyGamma(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), n(this), y(this, 0) {
+    this->InputRegister("x");
+    this->InputRegister("n");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+    std::set<ge::DataType> support_dtypes_of_sym_U;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_U.find(input_dtypes[1]) != support_dtypes_of_sym_U.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline PolyGamma &operator=(const PolyGamma &) = delete;
+  inline PolyGamma(PolyGamma &&) = delete;
+  inline PolyGamma(const PolyGamma &other) : af::Operator(other), attr(other.attr), x(this), n(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:293
+namespace af {
+namespace ascir_op {
+struct SignBit : public Operator {
+  static constexpr const char *Type = "SignBit";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline SignBit(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_INT32};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_INT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_INT32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_INT32};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    std::set<ge::DataType> support_dtypes_of_sym_U;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_U = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_U = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_U = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_U = {DT_UINT8, DT_BOOL};
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_U.find(expect_output_dtypes[0]) != support_dtypes_of_sym_U.end());
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
+    return SUCCESS;
+  };
+
+  inline SignBit &operator=(const SignBit &) = delete;
+  inline SignBit(SignBit &&) = delete;
+  inline SignBit(const SignBit &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:301
+namespace af {
+namespace ascir_op {
+struct Frexp : public Operator {
+  static constexpr const char *Type = "Frexp";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput mantissa;
+  af::AscOpOutput exponent;
+  inline Frexp(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), mantissa(this, 0), exponent(this, 1) {
+    this->InputRegister("x");
+    this->OutputRegister("mantissa");
+    this->OutputRegister("exponent");
+    mantissa.TryInitTensorAttr();
+    exponent.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 2U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_INT32);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_INT32);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_INT32);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_INT32);
+      }
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    std::set<ge::DataType> support_dtypes_of_sym_U;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_U.find(expect_output_dtypes[1]) != support_dtypes_of_sym_U.end());
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_INT32);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_INT32);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_INT32);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_INT32);
+    }
+    return SUCCESS;
+  };
+
+  inline Frexp &operator=(const Frexp &) = delete;
+  inline Frexp(Frexp &&) = delete;
+  inline Frexp(const Frexp &other)
+      : af::Operator(other), attr(other.attr), x(this), mantissa(this, 0), exponent(this, 1) {
+    mantissa.TryInitTensorAttr();
+    exponent.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:310
+namespace af {
+namespace ascir_op {
+struct Igamma : public Operator {
+  static constexpr const char *Type = "Igamma";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x1;
+  af::AscOpInput<1> x2;
+  af::AscOpOutput y;
+  inline Igamma(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x1(this), x2(this), y(this, 0) {
+    this->InputRegister("x1");
+    this->InputRegister("x2");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+    GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline Igamma &operator=(const Igamma &) = delete;
+  inline Igamma(Igamma &&) = delete;
+  inline Igamma(const Igamma &other) : af::Operator(other), attr(other.attr), x1(this), x2(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:319
+namespace af {
+namespace ascir_op {
+struct Igammac : public Operator {
+  static constexpr const char *Type = "Igammac";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x1;
+  af::AscOpInput<1> x2;
+  af::AscOpOutput y;
+  inline Igammac(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x1(this), x2(this), y(this, 0) {
+    this->InputRegister("x1");
+    this->InputRegister("x2");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+    GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline Igammac &operator=(const Igammac &) = delete;
+  inline Igammac(Igammac &&) = delete;
+  inline Igammac(const Igammac &other) : af::Operator(other), attr(other.attr), x1(this), x2(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:328
+namespace af {
+namespace ascir_op {
+struct Zeta : public Operator {
+  static constexpr const char *Type = "Zeta";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x1;
+  af::AscOpInput<1> x2;
+  af::AscOpOutput y;
+  inline Zeta(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x1(this), x2(this), y(this, 0) {
+    this->InputRegister("x1");
+    this->InputRegister("x2");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+    GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline Zeta &operator=(const Zeta &) = delete;
+  inline Zeta(Zeta &&) = delete;
+  inline Zeta(const Zeta &other) : af::Operator(other), attr(other.attr), x1(this), x2(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:337
+namespace af {
+namespace ascir_op {
+struct ShiftedChebyshevPolynomialT : public Operator {
+  static constexpr const char *Type = "ShiftedChebyshevPolynomialT";
+  af::AscNodeAttr &attr;
+  struct AscShiftedChebyshevPolynomialTIrAttrDef : public af::AscIrAttrDefBase {
+    ~AscShiftedChebyshevPolynomialTIrAttrDef() override = default;
+    graphStatus GetN(int64_t &n) const {
+      auto attr_value = attr_store_.GetAnyValue("n");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(n);
+    }
+    graphStatus SetN(int64_t n) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("n");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(n);
+    }
+  };
+  AscShiftedChebyshevPolynomialTIrAttrDef &ir_attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline ShiftedChebyshevPolynomialT(const char *name)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscShiftedChebyshevPolynomialTIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscShiftedChebyshevPolynomialTIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline ShiftedChebyshevPolynomialT &operator=(const ShiftedChebyshevPolynomialT &) = delete;
+  inline ShiftedChebyshevPolynomialT(ShiftedChebyshevPolynomialT &&) = delete;
+  inline ShiftedChebyshevPolynomialT(const ShiftedChebyshevPolynomialT &other)
+      : af::Operator(other),
+        attr(other.attr),
+        ir_attr(dynamic_cast<AscShiftedChebyshevPolynomialTIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:346
+namespace af {
+namespace ascir_op {
+struct ShiftedChebyshevPolynomialU : public Operator {
+  static constexpr const char *Type = "ShiftedChebyshevPolynomialU";
+  af::AscNodeAttr &attr;
+  struct AscShiftedChebyshevPolynomialUIrAttrDef : public af::AscIrAttrDefBase {
+    ~AscShiftedChebyshevPolynomialUIrAttrDef() override = default;
+    graphStatus GetN(int64_t &n) const {
+      auto attr_value = attr_store_.GetAnyValue("n");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(n);
+    }
+    graphStatus SetN(int64_t n) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("n");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(n);
+    }
+  };
+  AscShiftedChebyshevPolynomialUIrAttrDef &ir_attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline ShiftedChebyshevPolynomialU(const char *name)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscShiftedChebyshevPolynomialUIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscShiftedChebyshevPolynomialUIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline ShiftedChebyshevPolynomialU &operator=(const ShiftedChebyshevPolynomialU &) = delete;
+  inline ShiftedChebyshevPolynomialU(ShiftedChebyshevPolynomialU &&) = delete;
+  inline ShiftedChebyshevPolynomialU(const ShiftedChebyshevPolynomialU &other)
+      : af::Operator(other),
+        attr(other.attr),
+        ir_attr(dynamic_cast<AscShiftedChebyshevPolynomialUIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:355
+namespace af {
+namespace ascir_op {
+struct ShiftedChebyshevPolynomialV : public Operator {
+  static constexpr const char *Type = "ShiftedChebyshevPolynomialV";
+  af::AscNodeAttr &attr;
+  struct AscShiftedChebyshevPolynomialVIrAttrDef : public af::AscIrAttrDefBase {
+    ~AscShiftedChebyshevPolynomialVIrAttrDef() override = default;
+    graphStatus GetN(int64_t &n) const {
+      auto attr_value = attr_store_.GetAnyValue("n");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(n);
+    }
+    graphStatus SetN(int64_t n) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("n");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(n);
+    }
+  };
+  AscShiftedChebyshevPolynomialVIrAttrDef &ir_attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline ShiftedChebyshevPolynomialV(const char *name)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscShiftedChebyshevPolynomialVIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscShiftedChebyshevPolynomialVIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline ShiftedChebyshevPolynomialV &operator=(const ShiftedChebyshevPolynomialV &) = delete;
+  inline ShiftedChebyshevPolynomialV(ShiftedChebyshevPolynomialV &&) = delete;
+  inline ShiftedChebyshevPolynomialV(const ShiftedChebyshevPolynomialV &other)
+      : af::Operator(other),
+        attr(other.attr),
+        ir_attr(dynamic_cast<AscShiftedChebyshevPolynomialVIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:364
+namespace af {
+namespace ascir_op {
+struct ShiftedChebyshevPolynomialW : public Operator {
+  static constexpr const char *Type = "ShiftedChebyshevPolynomialW";
+  af::AscNodeAttr &attr;
+  struct AscShiftedChebyshevPolynomialWIrAttrDef : public af::AscIrAttrDefBase {
+    ~AscShiftedChebyshevPolynomialWIrAttrDef() override = default;
+    graphStatus GetN(int64_t &n) const {
+      auto attr_value = attr_store_.GetAnyValue("n");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(n);
+    }
+    graphStatus SetN(int64_t n) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("n");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(n);
+    }
+  };
+  AscShiftedChebyshevPolynomialWIrAttrDef &ir_attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline ShiftedChebyshevPolynomialW(const char *name)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscShiftedChebyshevPolynomialWIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscShiftedChebyshevPolynomialWIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline ShiftedChebyshevPolynomialW &operator=(const ShiftedChebyshevPolynomialW &) = delete;
+  inline ShiftedChebyshevPolynomialW(ShiftedChebyshevPolynomialW &&) = delete;
+  inline ShiftedChebyshevPolynomialW(const ShiftedChebyshevPolynomialW &other)
+      : af::Operator(other),
+        attr(other.attr),
+        ir_attr(dynamic_cast<AscShiftedChebyshevPolynomialWIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:373
+namespace af {
+namespace ascir_op {
+struct ChebyshevPolynomialT : public Operator {
+  static constexpr const char *Type = "ChebyshevPolynomialT";
+  af::AscNodeAttr &attr;
+  struct AscChebyshevPolynomialTIrAttrDef : public af::AscIrAttrDefBase {
+    ~AscChebyshevPolynomialTIrAttrDef() override = default;
+    graphStatus GetN(int64_t &n) const {
+      auto attr_value = attr_store_.GetAnyValue("n");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(n);
+    }
+    graphStatus SetN(int64_t n) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("n");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(n);
+    }
+  };
+  AscChebyshevPolynomialTIrAttrDef &ir_attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline ChebyshevPolynomialT(const char *name)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscChebyshevPolynomialTIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscChebyshevPolynomialTIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline ChebyshevPolynomialT &operator=(const ChebyshevPolynomialT &) = delete;
+  inline ChebyshevPolynomialT(ChebyshevPolynomialT &&) = delete;
+  inline ChebyshevPolynomialT(const ChebyshevPolynomialT &other)
+      : af::Operator(other),
+        attr(other.attr),
+        ir_attr(dynamic_cast<AscChebyshevPolynomialTIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:382
+namespace af {
+namespace ascir_op {
+struct ChebyshevPolynomialU : public Operator {
+  static constexpr const char *Type = "ChebyshevPolynomialU";
+  af::AscNodeAttr &attr;
+  struct AscChebyshevPolynomialUIrAttrDef : public af::AscIrAttrDefBase {
+    ~AscChebyshevPolynomialUIrAttrDef() override = default;
+    graphStatus GetN(int64_t &n) const {
+      auto attr_value = attr_store_.GetAnyValue("n");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(n);
+    }
+    graphStatus SetN(int64_t n) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("n");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(n);
+    }
+  };
+  AscChebyshevPolynomialUIrAttrDef &ir_attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline ChebyshevPolynomialU(const char *name)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscChebyshevPolynomialUIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscChebyshevPolynomialUIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline ChebyshevPolynomialU &operator=(const ChebyshevPolynomialU &) = delete;
+  inline ChebyshevPolynomialU(ChebyshevPolynomialU &&) = delete;
+  inline ChebyshevPolynomialU(const ChebyshevPolynomialU &other)
+      : af::Operator(other),
+        attr(other.attr),
+        ir_attr(dynamic_cast<AscChebyshevPolynomialUIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:391
+namespace af {
+namespace ascir_op {
+struct ChebyshevPolynomialV : public Operator {
+  static constexpr const char *Type = "ChebyshevPolynomialV";
+  af::AscNodeAttr &attr;
+  struct AscChebyshevPolynomialVIrAttrDef : public af::AscIrAttrDefBase {
+    ~AscChebyshevPolynomialVIrAttrDef() override = default;
+    graphStatus GetN(int64_t &n) const {
+      auto attr_value = attr_store_.GetAnyValue("n");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(n);
+    }
+    graphStatus SetN(int64_t n) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("n");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(n);
+    }
+  };
+  AscChebyshevPolynomialVIrAttrDef &ir_attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline ChebyshevPolynomialV(const char *name)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscChebyshevPolynomialVIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscChebyshevPolynomialVIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline ChebyshevPolynomialV &operator=(const ChebyshevPolynomialV &) = delete;
+  inline ChebyshevPolynomialV(ChebyshevPolynomialV &&) = delete;
+  inline ChebyshevPolynomialV(const ChebyshevPolynomialV &other)
+      : af::Operator(other),
+        attr(other.attr),
+        ir_attr(dynamic_cast<AscChebyshevPolynomialVIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:400
+namespace af {
+namespace ascir_op {
+struct ChebyshevPolynomialW : public Operator {
+  static constexpr const char *Type = "ChebyshevPolynomialW";
+  af::AscNodeAttr &attr;
+  struct AscChebyshevPolynomialWIrAttrDef : public af::AscIrAttrDefBase {
+    ~AscChebyshevPolynomialWIrAttrDef() override = default;
+    graphStatus GetN(int64_t &n) const {
+      auto attr_value = attr_store_.GetAnyValue("n");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(n);
+    }
+    graphStatus SetN(int64_t n) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("n");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(n);
+    }
+  };
+  AscChebyshevPolynomialWIrAttrDef &ir_attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline ChebyshevPolynomialW(const char *name)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscChebyshevPolynomialWIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscChebyshevPolynomialWIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline ChebyshevPolynomialW &operator=(const ChebyshevPolynomialW &) = delete;
+  inline ChebyshevPolynomialW(ChebyshevPolynomialW &&) = delete;
+  inline ChebyshevPolynomialW(const ChebyshevPolynomialW &other)
+      : af::Operator(other),
+        attr(other.attr),
+        ir_attr(dynamic_cast<AscChebyshevPolynomialWIrAttrDef &>(*(attr.ir_attr))),
+        x(this),
+        y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:409
+namespace af {
+namespace ascir_op {
+struct HermitePolynomialH : public Operator {
+  static constexpr const char *Type = "HermitePolynomialH";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpInput<1> n;
+  af::AscOpOutput y;
+  inline HermitePolynomialH(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), n(this), y(this, 0) {
+    this->InputRegister("x");
+    this->InputRegister("n");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+    std::set<ge::DataType> support_dtypes_of_sym_U;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_U.find(input_dtypes[1]) != support_dtypes_of_sym_U.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline HermitePolynomialH &operator=(const HermitePolynomialH &) = delete;
+  inline HermitePolynomialH(HermitePolynomialH &&) = delete;
+  inline HermitePolynomialH(const HermitePolynomialH &other)
+      : af::Operator(other), attr(other.attr), x(this), n(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:418
+namespace af {
+namespace ascir_op {
+struct HermitePolynomialHe : public Operator {
+  static constexpr const char *Type = "HermitePolynomialHe";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpInput<1> n;
+  af::AscOpOutput y;
+  inline HermitePolynomialHe(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), n(this), y(this, 0) {
+    this->InputRegister("x");
+    this->InputRegister("n");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+    std::set<ge::DataType> support_dtypes_of_sym_U;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_U = {DT_INT32};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_U.find(input_dtypes[1]) != support_dtypes_of_sym_U.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline HermitePolynomialHe &operator=(const HermitePolynomialHe &) = delete;
+  inline HermitePolynomialHe(HermitePolynomialHe &&) = delete;
+  inline HermitePolynomialHe(const HermitePolynomialHe &other)
+      : af::Operator(other), attr(other.attr), x(this), n(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:427
+namespace af {
+namespace ascir_op {
 struct LaguerrePolynomialL : public Operator {
   static constexpr const char *Type = "LaguerrePolynomialL";
   af::AscNodeAttr &attr;
@@ -8810,8 +12904,12 @@ struct LaguerrePolynomialL : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8820,8 +12918,12 @@ struct LaguerrePolynomialL : public Operator {
       support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_U.find(input_dtypes[1]) != support_dtypes_of_sym_U.end());
@@ -8858,7 +12960,7 @@ struct LaguerrePolynomialL : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:182
+// Defined at ascir_builtin_ops_v2.cpp:438
 namespace af {
 namespace ascir_op {
 struct LegendrePolynomialP : public Operator {
@@ -8889,8 +12991,12 @@ struct LegendrePolynomialP : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -8899,8 +13005,12 @@ struct LegendrePolynomialP : public Operator {
       support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_U.find(input_dtypes[1]) != support_dtypes_of_sym_U.end());
@@ -8937,7 +13047,7 @@ struct LegendrePolynomialP : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:193
+// Defined at ascir_builtin_ops_v2.cpp:449
 namespace af {
 namespace ascir_op {
 struct AiryAi : public Operator {
@@ -8966,8 +13076,12 @@ struct AiryAi : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9003,7 +13117,7 @@ struct AiryAi : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:201
+// Defined at ascir_builtin_ops_v2.cpp:457
 namespace af {
 namespace ascir_op {
 struct Erfinv : public Operator {
@@ -9032,8 +13146,12 @@ struct Erfinv : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9069,7 +13187,268 @@ struct Erfinv : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:256
+// Defined at ascir_builtin_ops_v2.cpp:496
+namespace af {
+namespace ascir_op {
+struct Arange : public Operator {
+  static constexpr const char *Type = "Arange";
+  af::AscNodeAttr &attr;
+  struct AscArangeIrAttrDef : public af::AscIrAttrDefBase {
+    ~AscArangeIrAttrDef() override = default;
+    graphStatus GetBase(Expression &base) const {
+      auto attr_value = attr_store_.GetAnyValue("base");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(base);
+    }
+    graphStatus SetBase(Expression base) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("base");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(base);
+    }
+    graphStatus GetStep(Expression &step) const {
+      auto attr_value = attr_store_.GetAnyValue("step");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(step);
+    }
+    graphStatus SetStep(Expression step) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("step");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(step);
+    }
+  };
+  AscArangeIrAttrDef &ir_attr;
+  af::AscOpOutput y;
+  inline Arange(const char *name, af::AscGraph &graph)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscArangeIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscArangeIrAttrDef &>(*(attr.ir_attr))),
+        y(this, 0) {
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+    graph.AddNode(*this);
+  }
+  inline Arange(const char *name)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscArangeIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscArangeIrAttrDef &>(*(attr.ir_attr))),
+        y(this, 0) {
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 0U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      GELOGW("Output ir_index [0] has multi result {DT_INT32, DT_INT64}, cannot infer.");
+      return FAILED;
+    }
+    // 输出外部指定，生成校验的代码
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_INT64};
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T.end());
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 0U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    GELOGW("Output ir_index [0] has multi result {DT_INT32, DT_INT64}, cannot infer.");
+    return FAILED;
+  };
+
+  inline Arange &operator=(const Arange &) = delete;
+  inline Arange(Arange &&) = delete;
+  inline Arange(const Arange &other)
+      : af::Operator(other),
+        attr(other.attr),
+        ir_attr(dynamic_cast<AscArangeIrAttrDef &>(*(attr.ir_attr))),
+        y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:513
+namespace af {
+namespace ascir_op {
+struct Rand : public Operator {
+  static constexpr const char *Type = "Rand";
+  af::AscNodeAttr &attr;
+  af::AscOpOutput y;
+  inline Rand(const char *name, af::AscGraph &graph)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), y(this, 0) {
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(11);
+    graph.AddNode(*this);
+  }
+  inline Rand(const char *name) : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), y(this, 0) {
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(11);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 0U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_FLOAT);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_FLOAT);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_FLOAT);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_FLOAT);
+      }
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T.end());
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 0U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_FLOAT);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_FLOAT);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_FLOAT);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_FLOAT);
+    }
+    return SUCCESS;
+  };
+
+  inline Rand &operator=(const Rand &) = delete;
+  inline Rand(Rand &&) = delete;
+  inline Rand(const Rand &other) : af::Operator(other), attr(other.attr), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:518
+namespace af {
+namespace ascir_op {
+struct Randn : public Operator {
+  static constexpr const char *Type = "Randn";
+  af::AscNodeAttr &attr;
+  af::AscOpOutput y;
+  inline Randn(const char *name, af::AscGraph &graph)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), y(this, 0) {
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(11);
+    graph.AddNode(*this);
+  }
+  inline Randn(const char *name) : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), y(this, 0) {
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(11);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 0U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      GELOGW("Output ir_index [0] has multi result {DT_INT32, DT_UINT32}, cannot infer.");
+      return FAILED;
+    }
+    // 输出外部指定，生成校验的代码
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_UINT32};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_UINT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_UINT32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_INT32, DT_UINT32};
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T.end());
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 0U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    GELOGW("Output ir_index [0] has multi result {DT_INT32, DT_UINT32}, cannot infer.");
+    return FAILED;
+  };
+
+  inline Randn &operator=(const Randn &) = delete;
+  inline Randn(Randn &&) = delete;
+  inline Randn(const Randn &other) : af::Operator(other), attr(other.attr), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:535
 namespace af {
 namespace ascir_op {
 struct Nddma : public Operator {
@@ -9114,12 +13493,18 @@ struct Nddma : public Operator {
     std::set<ge::DataType> support_dtypes_of_sym_T;
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9160,7 +13545,7 @@ struct Nddma : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:287
+// Defined at ascir_builtin_ops_v2.cpp:567
 namespace af {
 namespace ascir_op {
 struct Round : public Operator {
@@ -9189,8 +13574,12 @@ struct Round : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9226,7 +13615,7 @@ struct Round : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:330
+// Defined at ascir_builtin_ops_v2.cpp:612
 namespace af {
 namespace ascir_op {
 struct Exp2 : public Operator {
@@ -9254,8 +13643,12 @@ struct Exp2 : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9291,7 +13684,7 @@ struct Exp2 : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:338
+// Defined at ascir_builtin_ops_v2.cpp:620
 namespace af {
 namespace ascir_op {
 struct Floor : public Operator {
@@ -9320,8 +13713,12 @@ struct Floor : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9357,7 +13754,7 @@ struct Floor : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:346
+// Defined at ascir_builtin_ops_v2.cpp:628
 namespace af {
 namespace ascir_op {
 struct Fma : public Operator {
@@ -9392,8 +13789,12 @@ struct Fma : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9431,15 +13832,16 @@ struct Fma : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:360
+// Defined at ascir_builtin_ops_v2.cpp:642
 namespace af {
 namespace ascir_op {
-struct Expm : public Operator {
-  static constexpr const char *Type = "Expm";
+struct Expm1 : public Operator {
+  static constexpr const char *Type = "Expm1";
   af::AscNodeAttr &attr;
   af::AscOpInput<0> x;
   af::AscOpOutput y;
-  inline Expm(const char *name) : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+  inline Expm1(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
     this->InputRegister("x");
     this->OutputRegister("y");
     y.TryInitTensorAttr();
@@ -9459,8 +13861,12 @@ struct Expm : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9487,16 +13893,16 @@ struct Expm : public Operator {
     return SUCCESS;
   };
 
-  inline Expm &operator=(const Expm &) = delete;
-  inline Expm(Expm &&) = delete;
-  inline Expm(const Expm &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+  inline Expm1 &operator=(const Expm1 &) = delete;
+  inline Expm1(Expm1 &&) = delete;
+  inline Expm1(const Expm1 &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
     y.TryInitTensorAttr();
   }
 };
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:368
+// Defined at ascir_builtin_ops_v2.cpp:650
 namespace af {
 namespace ascir_op {
 struct Log2 : public Operator {
@@ -9524,8 +13930,12 @@ struct Log2 : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9561,7 +13971,7 @@ struct Log2 : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:380
+// Defined at ascir_builtin_ops_v2.cpp:662
 namespace af {
 namespace ascir_op {
 struct LShift : public Operator {
@@ -9595,8 +14005,16 @@ struct LShift : public Operator {
       results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
                  {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
                  {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
+    } else if (npu_arch == "9201") {
+      results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
+                 {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
+                 {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
+    } else if (npu_arch == "9202") {
+      results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
+                 {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
+                 {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
 
@@ -9605,7 +14023,7 @@ struct LShift : public Operator {
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
       expect_output_dtypes.push_back(input_dtypes[0]);
-      return ge::SUCCESS;
+      return af::SUCCESS;
     }
     // 输出外部指定，生成校验的代码
     GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
@@ -9631,7 +14049,7 @@ struct LShift : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:389
+// Defined at ascir_builtin_ops_v2.cpp:671
 namespace af {
 namespace ascir_op {
 struct Mod : public Operator {
@@ -9663,8 +14081,12 @@ struct Mod : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9701,7 +14123,7 @@ struct Mod : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:649
+// Defined at ascir_builtin_ops_v2.cpp:939
 namespace af {
 namespace ascir_op {
 struct BitwiseNot : public Operator {
@@ -9727,11 +14149,19 @@ struct BitwiseNot : public Operator {
     // 校验同sym的输入的dtype是否在注册范围内并且一致
     std::set<ge::DataType> support_dtypes_of_sym_T;
     if (npu_arch == "3510") {
-      support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9767,7 +14197,7 @@ struct BitwiseNot : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:658
+// Defined at ascir_builtin_ops_v2.cpp:948
 namespace af {
 namespace ascir_op {
 struct BitwiseOr : public Operator {
@@ -9796,11 +14226,19 @@ struct BitwiseOr : public Operator {
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T;
     if (npu_arch == "3510") {
-      support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9837,7 +14275,7 @@ struct BitwiseOr : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:668
+// Defined at ascir_builtin_ops_v2.cpp:958
 namespace af {
 namespace ascir_op {
 struct BitwiseXor : public Operator {
@@ -9866,11 +14304,19 @@ struct BitwiseXor : public Operator {
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T;
     if (npu_arch == "3510") {
-      support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9907,7 +14353,7 @@ struct BitwiseXor : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:678
+// Defined at ascir_builtin_ops_v2.cpp:968
 namespace af {
 namespace ascir_op {
 struct Ceil : public Operator {
@@ -9935,8 +14381,12 @@ struct Ceil : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -9972,7 +14422,7 @@ struct Ceil : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:686
+// Defined at ascir_builtin_ops_v2.cpp:976
 namespace af {
 namespace ascir_op {
 struct Cos : public Operator {
@@ -10000,8 +14450,12 @@ struct Cos : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10037,7 +14491,7 @@ struct Cos : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:694
+// Defined at ascir_builtin_ops_v2.cpp:984
 namespace af {
 namespace ascir_op {
 struct Acos : public Operator {
@@ -10065,8 +14519,12 @@ struct Acos : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10102,7 +14560,7 @@ struct Acos : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:702
+// Defined at ascir_builtin_ops_v2.cpp:992
 namespace af {
 namespace ascir_op {
 struct Cosh : public Operator {
@@ -10130,8 +14588,12 @@ struct Cosh : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10167,7 +14629,7 @@ struct Cosh : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:710
+// Defined at ascir_builtin_ops_v2.cpp:1000
 namespace af {
 namespace ascir_op {
 struct Digamma : public Operator {
@@ -10196,8 +14658,12 @@ struct Digamma : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10233,7 +14699,7 @@ struct Digamma : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:718
+// Defined at ascir_builtin_ops_v2.cpp:1008
 namespace af {
 namespace ascir_op {
 struct Erfc : public Operator {
@@ -10261,8 +14727,12 @@ struct Erfc : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10298,7 +14768,7 @@ struct Erfc : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:726
+// Defined at ascir_builtin_ops_v2.cpp:1016
 namespace af {
 namespace ascir_op {
 struct Erfcx : public Operator {
@@ -10327,8 +14797,12 @@ struct Erfcx : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10364,7 +14838,7 @@ struct Erfcx : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:734
+// Defined at ascir_builtin_ops_v2.cpp:1024
 namespace af {
 namespace ascir_op {
 struct Atan2 : public Operator {
@@ -10396,8 +14870,12 @@ struct Atan2 : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10434,7 +14912,7 @@ struct Atan2 : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:743
+// Defined at ascir_builtin_ops_v2.cpp:1033
 namespace af {
 namespace ascir_op {
 struct CopySign : public Operator {
@@ -10466,8 +14944,12 @@ struct CopySign : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10504,7 +14986,7 @@ struct CopySign : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:752
+// Defined at ascir_builtin_ops_v2.cpp:1042
 namespace af {
 namespace ascir_op {
 struct Ceil2Int : public Operator {
@@ -10533,19 +15015,40 @@ struct Ceil2Int : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_INT32);
+      if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_INT32);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_INT32);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_INT32);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_INT32);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_INT32};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -10558,7 +15061,15 @@ struct Ceil2Int : public Operator {
 
     // 校验同sym的输入的dtype是否一致
 
-    expect_output_dtypes.push_back(DT_INT32);
+    if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_INT32);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_INT32);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_INT32);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_INT32);
+    }
     return SUCCESS;
   };
 
@@ -10571,7 +15082,152 @@ struct Ceil2Int : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:781
+// Defined at ascir_builtin_ops_v2.cpp:1056
+namespace af {
+namespace ascir_op {
+struct IndirectLoad : public Operator {
+  static constexpr const char *Type = "IndirectLoad";
+  af::AscNodeAttr &attr;
+  struct AscIndirectLoadIrAttrDef : public af::AscIrAttrDefBase {
+    ~AscIndirectLoadIrAttrDef() override = default;
+    graphStatus GetAxis(int64_t &axis) const {
+      auto attr_value = attr_store_.GetAnyValue("axis");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(axis);
+    }
+    graphStatus SetAxis(int64_t axis) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("axis");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(axis);
+    }
+    graphStatus GetNegative_index_support(bool &negative_index_support) const {
+      auto attr_value = attr_store_.GetAnyValue("negative_index_support");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(negative_index_support);
+    }
+    graphStatus SetNegative_index_support(bool negative_index_support) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("negative_index_support");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(negative_index_support);
+    }
+    graphStatus GetNeed_check_bound(bool &need_check_bound) const {
+      auto attr_value = attr_store_.GetAnyValue("need_check_bound");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(need_check_bound);
+    }
+    graphStatus SetNeed_check_bound(bool need_check_bound) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("need_check_bound");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(need_check_bound);
+    }
+    graphStatus GetMax(Expression &max) const {
+      auto attr_value = attr_store_.GetAnyValue("max");
+      GE_WARN_ASSERT(attr_value != nullptr);
+      return attr_value->GetValue(max);
+    }
+    graphStatus SetMax(Expression max) {
+      auto attr_value = attr_store_.GetOrCreateAnyValue("max");
+      GE_ASSERT_NOTNULL(attr_value);
+      return attr_value->SetValue(max);
+    }
+  };
+  AscIndirectLoadIrAttrDef &ir_attr;
+  af::AscOpInput<0> x1;
+  af::AscOpInput<1> x2;
+  af::AscOpOutput y;
+  inline IndirectLoad(const char *name)
+      : af::Operator(name, Type),
+        attr(*af::AscNodeAttr::Create<AscIndirectLoadIrAttrDef>(*this)),
+        ir_attr(dynamic_cast<AscIndirectLoadIrAttrDef &>(*(attr.ir_attr))),
+        x1(this),
+        x2(this),
+        y(this, 0) {
+    this->InputRegister("x1");
+    this->InputRegister("x2");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(0);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T1;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(input_dtypes[1]) != support_dtypes_of_sym_T2.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 2U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline IndirectLoad &operator=(const IndirectLoad &) = delete;
+  inline IndirectLoad(IndirectLoad &&) = delete;
+  inline IndirectLoad(const IndirectLoad &other)
+      : af::Operator(other),
+        attr(other.attr),
+        ir_attr(dynamic_cast<AscIndirectLoadIrAttrDef &>(*(attr.ir_attr))),
+        x1(this),
+        x2(this),
+        y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:1086
 namespace af {
 namespace ascir_op {
 struct FloorToInt : public Operator {
@@ -10600,19 +15256,40 @@ struct FloorToInt : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_INT32);
+      if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_INT32);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_INT32);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_INT32);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_INT32);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_INT32};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -10625,7 +15302,15 @@ struct FloorToInt : public Operator {
 
     // 校验同sym的输入的dtype是否一致
 
-    expect_output_dtypes.push_back(DT_INT32);
+    if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_INT32);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_INT32);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_INT32);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_INT32);
+    }
     return SUCCESS;
   };
 
@@ -10638,7 +15323,7 @@ struct FloorToInt : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:789
+// Defined at ascir_builtin_ops_v2.cpp:1094
 namespace af {
 namespace ascir_op {
 struct Fmod : public Operator {
@@ -10670,8 +15355,12 @@ struct Fmod : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10708,7 +15397,7 @@ struct Fmod : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:798
+// Defined at ascir_builtin_ops_v2.cpp:1103
 namespace af {
 namespace ascir_op {
 struct Hypot : public Operator {
@@ -10740,8 +15429,12 @@ struct Hypot : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10778,7 +15471,7 @@ struct Hypot : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:807
+// Defined at ascir_builtin_ops_v2.cpp:1112
 namespace af {
 namespace ascir_op {
 struct Lgamma : public Operator {
@@ -10807,8 +15500,12 @@ struct Lgamma : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10844,7 +15541,7 @@ struct Lgamma : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:815
+// Defined at ascir_builtin_ops_v2.cpp:1120
 namespace af {
 namespace ascir_op {
 struct Log10 : public Operator {
@@ -10873,8 +15570,12 @@ struct Log10 : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -10910,7 +15611,7 @@ struct Log10 : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:823
+// Defined at ascir_builtin_ops_v2.cpp:1128
 namespace af {
 namespace ascir_op {
 struct LogicalXor : public Operator {
@@ -10940,23 +15641,46 @@ struct LogicalXor : public Operator {
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
-                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T1.find(input_dtypes[0]) != support_dtypes_of_sym_T1.end());
 
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
-      expect_output_dtypes.push_back(DT_UINT8);
+      if (npu_arch == "3510") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "5102") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9201") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      } else if (npu_arch == "9202") {
+        expect_output_dtypes.push_back(DT_BOOL);
+      }
       return SUCCESS;
     }
     // 输出外部指定，生成校验的代码
-    static std::set<ge::DataType> support_dtypes_of_sym_T2 = {DT_UINT8};
+    std::set<ge::DataType> support_dtypes_of_sym_T2;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_UINT8, DT_BOOL};
+    }
     GE_WARN_ASSERT(support_dtypes_of_sym_T2.find(expect_output_dtypes[0]) != support_dtypes_of_sym_T2.end());
     return SUCCESS;
   };
@@ -10970,7 +15694,15 @@ struct LogicalXor : public Operator {
     // 校验同sym的输入的dtype是否一致
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
 
-    expect_output_dtypes.push_back(DT_UINT8);
+    if (npu_arch == "3510") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "5102") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9201") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    } else if (npu_arch == "9202") {
+      expect_output_dtypes.push_back(DT_BOOL);
+    }
     return SUCCESS;
   };
 
@@ -10983,7 +15715,7 @@ struct LogicalXor : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:834
+// Defined at ascir_builtin_ops_v2.cpp:1139
 namespace af {
 namespace ascir_op {
 struct Log1p : public Operator {
@@ -11012,8 +15744,12 @@ struct Log1p : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -11049,7 +15785,77 @@ struct Log1p : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:982
+// Defined at ascir_builtin_ops_v2.cpp:1372
+namespace af {
+namespace ascir_op {
+struct Softmax : public Operator {
+  static constexpr const char *Type = "Softmax";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline Softmax(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(5);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+
+    // 校验同sym的输入的dtype是否在注册范围内并且一致
+    std::set<ge::DataType> support_dtypes_of_sym_T;
+    if (npu_arch == "3510") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
+
+    // 输出外部不指定的时候，生成推导的代码
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    // 输出外部指定，生成校验的代码
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  };
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    // 校验入参容器的元素个数是否合法
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+
+    // 校验同sym的输入的dtype是否一致
+
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  };
+
+  inline Softmax &operator=(const Softmax &) = delete;
+  inline Softmax(Softmax &&) = delete;
+  inline Softmax(const Softmax &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+// Defined at ascir_builtin_ops_v2.cpp:1380
 namespace af {
 namespace ascir_op {
 struct Sin : public Operator {
@@ -11077,8 +15883,12 @@ struct Sin : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -11114,7 +15924,7 @@ struct Sin : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:990
+// Defined at ascir_builtin_ops_v2.cpp:1388
 namespace af {
 namespace ascir_op {
 struct Acosh : public Operator {
@@ -11143,8 +15953,12 @@ struct Acosh : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -11180,7 +15994,7 @@ struct Acosh : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:998
+// Defined at ascir_builtin_ops_v2.cpp:1396
 namespace af {
 namespace ascir_op {
 struct Asin : public Operator {
@@ -11208,8 +16022,12 @@ struct Asin : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -11245,7 +16063,7 @@ struct Asin : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:1006
+// Defined at ascir_builtin_ops_v2.cpp:1404
 namespace af {
 namespace ascir_op {
 struct Asinh : public Operator {
@@ -11274,8 +16092,12 @@ struct Asinh : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -11311,7 +16133,7 @@ struct Asinh : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:1014
+// Defined at ascir_builtin_ops_v2.cpp:1412
 namespace af {
 namespace ascir_op {
 struct Atan : public Operator {
@@ -11339,8 +16161,12 @@ struct Atan : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -11376,7 +16202,7 @@ struct Atan : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:1022
+// Defined at ascir_builtin_ops_v2.cpp:1420
 namespace af {
 namespace ascir_op {
 struct Atanh : public Operator {
@@ -11405,8 +16231,12 @@ struct Atanh : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
     GE_WARN_ASSERT(support_dtypes_of_sym_T.find(input_dtypes[0]) != support_dtypes_of_sym_T.end());
@@ -11442,7 +16272,7 @@ struct Atanh : public Operator {
 }  // namespace ascir_op
 }  // namespace af
 
-// Defined at ascir_builtin_ops_v2.cpp:1034
+// Defined at ascir_builtin_ops_v2.cpp:1432
 namespace af {
 namespace ascir_op {
 struct RShift : public Operator {
@@ -11476,8 +16306,16 @@ struct RShift : public Operator {
       results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
                  {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
                  {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
+    } else if (npu_arch == "9201") {
+      results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
+                 {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
+                 {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
+    } else if (npu_arch == "9202") {
+      results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
+                 {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
+                 {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
     } else {
-      GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
     }
 
@@ -11486,7 +16324,7 @@ struct RShift : public Operator {
     // 输出外部不指定的时候，生成推导的代码
     if (expect_output_dtypes.empty()) {
       expect_output_dtypes.push_back(input_dtypes[0]);
-      return ge::SUCCESS;
+      return af::SUCCESS;
     }
     // 输出外部指定，生成校验的代码
     GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
@@ -11856,7 +16694,7 @@ inline af::AscOpOutput ContiguousScalarData(const char *name, af::AscGraph &grap
 
   return op.y;
 }
-inline af::AscOpOutput IndexExpr(const char *name, af::AscGraph &graph, const int64_t &expr) {
+inline af::AscOpOutput IndexExpr(const char *name, af::AscGraph &graph, const Expression &expr) {
   const auto &op_ptr = std::make_shared<af::ascir_op::IndexExpr>(name, graph);
   auto &op = *op_ptr;
   const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
@@ -11874,7 +16712,7 @@ inline af::AscOpOutput IndexExpr(const char *name, af::AscGraph &graph, const in
 }
 inline af::AscOpOutput IndexExpr(const char *name, af::AscGraph &graph, ge::DataType dt,
                                  const std::vector<af::AxisId> &axis_ids, const std::vector<af::Expression> &repeats,
-                                 const std::vector<af::Expression> &strides, const int64_t &expr) {
+                                 const std::vector<af::Expression> &strides, const Expression &expr) {
   const auto &op_ptr = std::make_shared<af::ascir_op::IndexExpr>(name, graph);
   auto &op = *op_ptr;
   const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
@@ -11896,7 +16734,7 @@ inline af::AscOpOutput IndexExpr(const char *name, af::AscGraph &graph, ge::Data
   return op.y;
 }
 inline af::AscOpOutput ContiguousIndexExpr(const char *name, af::AscGraph &graph, ge::DataType dt,
-                                           const std::vector<af::Axis> &axes, const int64_t &expr) {
+                                           const std::vector<af::Axis> &axes, const Expression &expr) {
   const auto &op_ptr = std::make_shared<af::ascir_op::IndexExpr>(name, graph);
   auto &op = *op_ptr;
   const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
@@ -13570,9 +18408,9 @@ inline af::AscOpOutput BatchMatMulOffsetBias(const char *name, const af::AscOpOu
 }
 inline af::AscOpOutput Conv2D(const char *name, const af::AscOpOutput &x_in, const af::AscOpOutput &filter_in,
                               const std::vector<int64_t> &strides, const std::vector<int64_t> &pads,
-                              const std::vector<int64_t> &dilations, const int64_t &groups, const int64_t &has_relu,
-                              const std::string &pad_mode, const std::string &data_format, const int64_t &offset_x,
-                              const bool &enable_hf32, const int64_t &fixed_shift_value) {
+                              const std::vector<int64_t> &dilations, const int64_t &groups, const std::string &pad_mode,
+                              const std::string &data_format, const int64_t &offset_x, const bool &enable_hf32,
+                              const int64_t &fixed_shift_value) {
   const auto &op_ptr = std::make_shared<af::ascir_op::Conv2D>(name);
   auto &op = *op_ptr;
   const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
@@ -13585,7 +18423,6 @@ inline af::AscOpOutput Conv2D(const char *name, const af::AscOpOutput &x_in, con
   op.ir_attr.SetPads(pads);
   op.ir_attr.SetDilations(dilations);
   op.ir_attr.SetGroups(groups);
-  op.ir_attr.SetHas_relu(has_relu);
   op.ir_attr.SetPad_mode(pad_mode);
   op.ir_attr.SetData_format(data_format);
   op.ir_attr.SetOffset_x(offset_x);
@@ -13620,9 +18457,8 @@ inline af::AscOpOutput Conv2D(const char *name, const af::AscOpOutput &x_in, con
 inline af::AscOpOutput Conv2DBias(const char *name, const af::AscOpOutput &x_in, const af::AscOpOutput &filter_in,
                                   const af::AscOpOutput &bias_in, const std::vector<int64_t> &strides,
                                   const std::vector<int64_t> &pads, const std::vector<int64_t> &dilations,
-                                  const int64_t &groups, const int64_t &has_relu, const std::string &pad_mode,
-                                  const std::string &data_format, const int64_t &offset_x, const bool &enable_hf32,
-                                  const int64_t &fixed_shift_value) {
+                                  const int64_t &groups, const std::string &pad_mode, const std::string &data_format,
+                                  const int64_t &offset_x, const bool &enable_hf32, const int64_t &fixed_shift_value) {
   const auto &op_ptr = std::make_shared<af::ascir_op::Conv2DBias>(name);
   auto &op = *op_ptr;
   const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
@@ -13636,7 +18472,6 @@ inline af::AscOpOutput Conv2DBias(const char *name, const af::AscOpOutput &x_in,
   op.ir_attr.SetPads(pads);
   op.ir_attr.SetDilations(dilations);
   op.ir_attr.SetGroups(groups);
-  op.ir_attr.SetHas_relu(has_relu);
   op.ir_attr.SetPad_mode(pad_mode);
   op.ir_attr.SetData_format(data_format);
   op.ir_attr.SetOffset_x(offset_x);
@@ -13673,8 +18508,8 @@ inline af::AscOpOutput Conv2DBias(const char *name, const af::AscOpOutput &x_in,
 inline af::AscOpOutput Conv2DOffset(const char *name, const af::AscOpOutput &x_in, const af::AscOpOutput &filter_in,
                                     const af::AscOpOutput &offset_w_in, const std::vector<int64_t> &strides,
                                     const std::vector<int64_t> &pads, const std::vector<int64_t> &dilations,
-                                    const int64_t &groups, const int64_t &has_relu, const std::string &pad_mode,
-                                    const std::string &data_format, const int64_t &offset_x, const bool &enable_hf32,
+                                    const int64_t &groups, const std::string &pad_mode, const std::string &data_format,
+                                    const int64_t &offset_x, const bool &enable_hf32,
                                     const int64_t &fixed_shift_value) {
   const auto &op_ptr = std::make_shared<af::ascir_op::Conv2DOffset>(name);
   auto &op = *op_ptr;
@@ -13689,7 +18524,6 @@ inline af::AscOpOutput Conv2DOffset(const char *name, const af::AscOpOutput &x_i
   op.ir_attr.SetPads(pads);
   op.ir_attr.SetDilations(dilations);
   op.ir_attr.SetGroups(groups);
-  op.ir_attr.SetHas_relu(has_relu);
   op.ir_attr.SetPad_mode(pad_mode);
   op.ir_attr.SetData_format(data_format);
   op.ir_attr.SetOffset_x(offset_x);
@@ -13727,9 +18561,9 @@ inline af::AscOpOutput Conv2DOffsetBias(const char *name, const af::AscOpOutput 
                                         const af::AscOpOutput &bias_in, const af::AscOpOutput &offset_w_in,
                                         const std::vector<int64_t> &strides, const std::vector<int64_t> &pads,
                                         const std::vector<int64_t> &dilations, const int64_t &groups,
-                                        const int64_t &has_relu, const std::string &pad_mode,
-                                        const std::string &data_format, const int64_t &offset_x,
-                                        const bool &enable_hf32, const int64_t &fixed_shift_value) {
+                                        const std::string &pad_mode, const std::string &data_format,
+                                        const int64_t &offset_x, const bool &enable_hf32,
+                                        const int64_t &fixed_shift_value) {
   const auto &op_ptr = std::make_shared<af::ascir_op::Conv2DOffsetBias>(name);
   auto &op = *op_ptr;
   const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
@@ -13744,7 +18578,6 @@ inline af::AscOpOutput Conv2DOffsetBias(const char *name, const af::AscOpOutput 
   op.ir_attr.SetPads(pads);
   op.ir_attr.SetDilations(dilations);
   op.ir_attr.SetGroups(groups);
-  op.ir_attr.SetHas_relu(has_relu);
   op.ir_attr.SetPad_mode(pad_mode);
   op.ir_attr.SetData_format(data_format);
   op.ir_attr.SetOffset_x(offset_x);
@@ -13772,6 +18605,339 @@ inline af::AscOpOutput Conv2DOffsetBias(const char *name, const af::AscOpOutput 
   op.offset_w = offset_w_in;
 
   SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ExtendConv2D(const char *name, const af::AscOpOutput &x_in, const af::AscOpOutput &filter_in,
+                                    const std::vector<int64_t> &strides, const std::vector<int64_t> &pads,
+                                    const std::vector<int64_t> &dilations, const int64_t &groups,
+                                    const std::string &pad_mode, const std::string &data_format,
+                                    const int64_t &offset_x, const std::string &round_mode, const bool &enable_hf32,
+                                    const int64_t &fixed_shift_value, const bool &enable_relu0) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ExtendConv2D>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+  op.filter = filter_in;
+
+  op.ir_attr.SetStrides(strides);
+  op.ir_attr.SetPads(pads);
+  op.ir_attr.SetDilations(dilations);
+  op.ir_attr.SetGroups(groups);
+  op.ir_attr.SetPad_mode(pad_mode);
+  op.ir_attr.SetData_format(data_format);
+  op.ir_attr.SetOffset_x(offset_x);
+  op.ir_attr.SetRound_mode(round_mode);
+  op.ir_attr.SetEnable_hf32(enable_hf32);
+  op.ir_attr.SetFixed_shift_value(fixed_shift_value);
+  op.ir_attr.SetEnable_relu0(enable_relu0);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ExtendConv2D(const char *name, const af::AscOpOutput &x_in, const af::AscOpOutput &filter_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ExtendConv2D>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+  op.filter = filter_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ExtendConv2DBias(const char *name, const af::AscOpOutput &x_in, const af::AscOpOutput &filter_in,
+                                        const af::AscOpOutput &bias_in, const std::vector<int64_t> &strides,
+                                        const std::vector<int64_t> &pads, const std::vector<int64_t> &dilations,
+                                        const int64_t &groups, const std::string &pad_mode,
+                                        const std::string &data_format, const int64_t &offset_x,
+                                        const std::string &round_mode, const bool &enable_hf32,
+                                        const int64_t &fixed_shift_value, const bool &enable_relu0) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ExtendConv2DBias>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+  op.filter = filter_in;
+  op.bias = bias_in;
+
+  op.ir_attr.SetStrides(strides);
+  op.ir_attr.SetPads(pads);
+  op.ir_attr.SetDilations(dilations);
+  op.ir_attr.SetGroups(groups);
+  op.ir_attr.SetPad_mode(pad_mode);
+  op.ir_attr.SetData_format(data_format);
+  op.ir_attr.SetOffset_x(offset_x);
+  op.ir_attr.SetRound_mode(round_mode);
+  op.ir_attr.SetEnable_hf32(enable_hf32);
+  op.ir_attr.SetFixed_shift_value(fixed_shift_value);
+  op.ir_attr.SetEnable_relu0(enable_relu0);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ExtendConv2DBias(const char *name, const af::AscOpOutput &x_in, const af::AscOpOutput &filter_in,
+                                        const af::AscOpOutput &bias_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ExtendConv2DBias>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+  op.filter = filter_in;
+  op.bias = bias_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ExtendConv2DScale(const char *name, const af::AscOpOutput &x_in,
+                                         const af::AscOpOutput &filter_in, const af::AscOpOutput &scale0_in,
+                                         const std::vector<int64_t> &strides, const std::vector<int64_t> &pads,
+                                         const std::vector<int64_t> &dilations, const int64_t &groups,
+                                         const std::string &pad_mode, const std::string &data_format,
+                                         const int64_t &offset_x, const std::string &round_mode,
+                                         const bool &enable_hf32, const int64_t &fixed_shift_value,
+                                         const bool &enable_relu0) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ExtendConv2DScale>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+  op.filter = filter_in;
+  op.scale0 = scale0_in;
+
+  op.ir_attr.SetStrides(strides);
+  op.ir_attr.SetPads(pads);
+  op.ir_attr.SetDilations(dilations);
+  op.ir_attr.SetGroups(groups);
+  op.ir_attr.SetPad_mode(pad_mode);
+  op.ir_attr.SetData_format(data_format);
+  op.ir_attr.SetOffset_x(offset_x);
+  op.ir_attr.SetRound_mode(round_mode);
+  op.ir_attr.SetEnable_hf32(enable_hf32);
+  op.ir_attr.SetFixed_shift_value(fixed_shift_value);
+  op.ir_attr.SetEnable_relu0(enable_relu0);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ExtendConv2DScale(const char *name, const af::AscOpOutput &x_in,
+                                         const af::AscOpOutput &filter_in, const af::AscOpOutput &scale0_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ExtendConv2DScale>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+  op.filter = filter_in;
+  op.scale0 = scale0_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ExtendConv2DBiasScale(const char *name, const af::AscOpOutput &x_in,
+                                             const af::AscOpOutput &filter_in, const af::AscOpOutput &bias_in,
+                                             const af::AscOpOutput &scale0_in, const std::vector<int64_t> &strides,
+                                             const std::vector<int64_t> &pads, const std::vector<int64_t> &dilations,
+                                             const int64_t &groups, const std::string &pad_mode,
+                                             const std::string &data_format, const int64_t &offset_x,
+                                             const std::string &round_mode, const bool &enable_hf32,
+                                             const int64_t &fixed_shift_value, const bool &enable_relu0) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ExtendConv2DBiasScale>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+  op.filter = filter_in;
+  op.bias = bias_in;
+  op.scale0 = scale0_in;
+
+  op.ir_attr.SetStrides(strides);
+  op.ir_attr.SetPads(pads);
+  op.ir_attr.SetDilations(dilations);
+  op.ir_attr.SetGroups(groups);
+  op.ir_attr.SetPad_mode(pad_mode);
+  op.ir_attr.SetData_format(data_format);
+  op.ir_attr.SetOffset_x(offset_x);
+  op.ir_attr.SetRound_mode(round_mode);
+  op.ir_attr.SetEnable_hf32(enable_hf32);
+  op.ir_attr.SetFixed_shift_value(fixed_shift_value);
+  op.ir_attr.SetEnable_relu0(enable_relu0);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ExtendConv2DBiasScale(const char *name, const af::AscOpOutput &x_in,
+                                             const af::AscOpOutput &filter_in, const af::AscOpOutput &bias_in,
+                                             const af::AscOpOutput &scale0_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ExtendConv2DBiasScale>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+  op.filter = filter_in;
+  op.bias = bias_in;
+  op.scale0 = scale0_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Unsupported(const char *name, af::AscGraph &graph, const std::string &error_msg) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Unsupported>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.ir_attr.SetError_msg(error_msg);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Unsupported(const char *name, af::AscGraph &graph, ge::DataType dt,
+                                   const std::vector<af::AxisId> &axis_ids, const std::vector<af::Expression> &repeats,
+                                   const std::vector<af::Expression> &strides, const std::string &error_msg) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Unsupported>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.ir_attr.SetError_msg(error_msg);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  *op.y.axis = axis_ids;
+  *op.y.repeats = repeats;
+  *op.y.strides = strides;
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ContiguousUnsupported(const char *name, af::AscGraph &graph, ge::DataType dt,
+                                             const std::vector<af::Axis> &axes, const std::string &error_msg) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Unsupported>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.ir_attr.SetError_msg(error_msg);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  op.y.SetContiguousView(axes);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Unsupported(const char *name, af::AscGraph &graph) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Unsupported>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Unsupported(const char *name, af::AscGraph &graph, ge::DataType dt,
+                                   const std::vector<af::AxisId> &axis_ids, const std::vector<af::Expression> &repeats,
+                                   const std::vector<af::Expression> &strides) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Unsupported>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  *op.y.axis = axis_ids;
+  *op.y.repeats = repeats;
+  *op.y.strides = strides;
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ContiguousUnsupported(const char *name, af::AscGraph &graph, ge::DataType dt,
+                                             const std::vector<af::Axis> &axes) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Unsupported>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  op.y.SetContiguousView(axes);
 
   op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
   THROW(PadOutputViewToSched(op.y));
@@ -13973,6 +19139,640 @@ inline af::AscOpOutput ModifiedBesselK1(const char *name, const af::AscOpOutput 
 
   return op.y;
 }
+inline af::AscOpOutput I0(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::I0>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput I0e(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::I0e>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput I1e(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::I1e>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput BesselJ0(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::BesselJ0>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput BesselJ1(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::BesselJ1>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput BesselY0(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::BesselY0>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput BesselY1(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::BesselY1>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ScaledModifiedBesselK0(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ScaledModifiedBesselK0>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ScaledModifiedBesselK1(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ScaledModifiedBesselK1>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput SphericalBesselJ0(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::SphericalBesselJ0>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Ndtr(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Ndtr>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Ndtri(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Ndtri>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput LogNdtr(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::LogNdtr>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput NextAfter(const char *name, const af::AscOpOutput &x1_in, const af::AscOpOutput &x2_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::NextAfter>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x1 = x1_in;
+  op.x2 = x2_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput PolyGamma(const char *name, const af::AscOpOutput &x_in, const af::AscOpOutput &n_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::PolyGamma>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+  op.n = n_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput SignBit(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::SignBit>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline std::tuple<af::AscOpOutput, af::AscOpOutput> Frexp(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Frexp>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.mantissa.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  op.exponent.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.mantissa));
+  THROW(PadOutputViewToSched(op.exponent));
+  *op.mantissa.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.mantissa.axis, op.attr.sched.loop_axis);
+  *op.exponent.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.exponent.axis, op.attr.sched.loop_axis);
+
+  return std::make_tuple(op.mantissa, op.exponent);
+}
+inline af::AscOpOutput Igamma(const char *name, const af::AscOpOutput &x1_in, const af::AscOpOutput &x2_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Igamma>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x1 = x1_in;
+  op.x2 = x2_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Igammac(const char *name, const af::AscOpOutput &x1_in, const af::AscOpOutput &x2_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Igammac>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x1 = x1_in;
+  op.x2 = x2_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Zeta(const char *name, const af::AscOpOutput &x1_in, const af::AscOpOutput &x2_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Zeta>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x1 = x1_in;
+  op.x2 = x2_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ShiftedChebyshevPolynomialT(const char *name, const af::AscOpOutput &x_in, const int64_t &n) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ShiftedChebyshevPolynomialT>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  op.ir_attr.SetN(n);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ShiftedChebyshevPolynomialT(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ShiftedChebyshevPolynomialT>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ShiftedChebyshevPolynomialU(const char *name, const af::AscOpOutput &x_in, const int64_t &n) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ShiftedChebyshevPolynomialU>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  op.ir_attr.SetN(n);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ShiftedChebyshevPolynomialU(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ShiftedChebyshevPolynomialU>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ShiftedChebyshevPolynomialV(const char *name, const af::AscOpOutput &x_in, const int64_t &n) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ShiftedChebyshevPolynomialV>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  op.ir_attr.SetN(n);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ShiftedChebyshevPolynomialV(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ShiftedChebyshevPolynomialV>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ShiftedChebyshevPolynomialW(const char *name, const af::AscOpOutput &x_in, const int64_t &n) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ShiftedChebyshevPolynomialW>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  op.ir_attr.SetN(n);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ShiftedChebyshevPolynomialW(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ShiftedChebyshevPolynomialW>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ChebyshevPolynomialT(const char *name, const af::AscOpOutput &x_in, const int64_t &n) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ChebyshevPolynomialT>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  op.ir_attr.SetN(n);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ChebyshevPolynomialT(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ChebyshevPolynomialT>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ChebyshevPolynomialU(const char *name, const af::AscOpOutput &x_in, const int64_t &n) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ChebyshevPolynomialU>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  op.ir_attr.SetN(n);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ChebyshevPolynomialU(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ChebyshevPolynomialU>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ChebyshevPolynomialV(const char *name, const af::AscOpOutput &x_in, const int64_t &n) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ChebyshevPolynomialV>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  op.ir_attr.SetN(n);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ChebyshevPolynomialV(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ChebyshevPolynomialV>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ChebyshevPolynomialW(const char *name, const af::AscOpOutput &x_in, const int64_t &n) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ChebyshevPolynomialW>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  op.ir_attr.SetN(n);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ChebyshevPolynomialW(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::ChebyshevPolynomialW>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput HermitePolynomialH(const char *name, const af::AscOpOutput &x_in, const af::AscOpOutput &n_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::HermitePolynomialH>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+  op.n = n_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput HermitePolynomialHe(const char *name, const af::AscOpOutput &x_in, const af::AscOpOutput &n_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::HermitePolynomialHe>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+  op.n = n_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
 inline af::AscOpOutput LaguerrePolynomialL(const char *name, const af::AscOpOutput &x_in, const af::AscOpOutput &n_in) {
   const auto &op_ptr = std::make_shared<af::ascir_op::LaguerrePolynomialL>(name);
   auto &op = *op_ptr;
@@ -14032,6 +19832,229 @@ inline af::AscOpOutput Erfinv(const char *name, const af::AscOpOutput &x_in) {
   op.x = x_in;
 
   SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Arange(const char *name, af::AscGraph &graph, const Expression &base, const Expression &step) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Arange>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.ir_attr.SetBase(base);
+  op.ir_attr.SetStep(step);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Arange(const char *name, af::AscGraph &graph, ge::DataType dt,
+                              const std::vector<af::AxisId> &axis_ids, const std::vector<af::Expression> &repeats,
+                              const std::vector<af::Expression> &strides, const Expression &base,
+                              const Expression &step) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Arange>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.ir_attr.SetBase(base);
+  op.ir_attr.SetStep(step);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  *op.y.axis = axis_ids;
+  *op.y.repeats = repeats;
+  *op.y.strides = strides;
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ContiguousArange(const char *name, af::AscGraph &graph, ge::DataType dt,
+                                        const std::vector<af::Axis> &axes, const Expression &base,
+                                        const Expression &step) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Arange>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.ir_attr.SetBase(base);
+  op.ir_attr.SetStep(step);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  op.y.SetContiguousView(axes);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Arange(const char *name, af::AscGraph &graph) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Arange>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Arange(const char *name, af::AscGraph &graph, ge::DataType dt,
+                              const std::vector<af::AxisId> &axis_ids, const std::vector<af::Expression> &repeats,
+                              const std::vector<af::Expression> &strides) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Arange>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  *op.y.axis = axis_ids;
+  *op.y.repeats = repeats;
+  *op.y.strides = strides;
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ContiguousArange(const char *name, af::AscGraph &graph, ge::DataType dt,
+                                        const std::vector<af::Axis> &axes) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Arange>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  op.y.SetContiguousView(axes);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Rand(const char *name, af::AscGraph &graph) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Rand>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Rand(const char *name, af::AscGraph &graph, ge::DataType dt,
+                            const std::vector<af::AxisId> &axis_ids, const std::vector<af::Expression> &repeats,
+                            const std::vector<af::Expression> &strides) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Rand>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  *op.y.axis = axis_ids;
+  *op.y.repeats = repeats;
+  *op.y.strides = strides;
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ContiguousRand(const char *name, af::AscGraph &graph, ge::DataType dt,
+                                      const std::vector<af::Axis> &axes) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Rand>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  op.y.SetContiguousView(axes);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Randn(const char *name, af::AscGraph &graph) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Randn>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Randn(const char *name, af::AscGraph &graph, ge::DataType dt,
+                             const std::vector<af::AxisId> &axis_ids, const std::vector<af::Expression> &repeats,
+                             const std::vector<af::Expression> &strides) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Randn>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  *op.y.axis = axis_ids;
+  *op.y.repeats = repeats;
+  *op.y.strides = strides;
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput ContiguousRandn(const char *name, af::AscGraph &graph, ge::DataType dt,
+                                       const std::vector<af::Axis> &axes) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Randn>(name, graph);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.dtype = dt;
+  op.y.SetContiguousView(axes);
 
   op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
   THROW(PadOutputViewToSched(op.y));
@@ -14140,8 +20163,8 @@ inline af::AscOpOutput Fma(const char *name, const af::AscOpOutput &x1_in, const
 
   return op.y;
 }
-inline af::AscOpOutput Expm(const char *name, const af::AscOpOutput &x_in) {
-  const auto &op_ptr = std::make_shared<af::ascir_op::Expm>(name);
+inline af::AscOpOutput Expm1(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Expm1>(name);
   auto &op = *op_ptr;
   const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
   desc->SetExtAttr(RELATED_OP, op_ptr);
@@ -14418,6 +20441,47 @@ inline af::AscOpOutput Ceil2Int(const char *name, const af::AscOpOutput &x_in) {
 
   return op.y;
 }
+inline af::AscOpOutput IndirectLoad(const char *name, const af::AscOpOutput &x1_in, const af::AscOpOutput &x2_in,
+                                    const int64_t &axis, const bool &negative_index_support,
+                                    const bool &need_check_bound, const Expression &max) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::IndirectLoad>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x1 = x1_in;
+  op.x2 = x2_in;
+
+  op.ir_attr.SetAxis(axis);
+  op.ir_attr.SetNegative_index_support(negative_index_support);
+  op.ir_attr.SetNeed_check_bound(need_check_bound);
+  op.ir_attr.SetMax(max);
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput IndirectLoad(const char *name, const af::AscOpOutput &x1_in, const af::AscOpOutput &x2_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::IndirectLoad>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x1 = x1_in;
+  op.x2 = x2_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
 inline af::AscOpOutput FloorToInt(const char *name, const af::AscOpOutput &x_in) {
   const auto &op_ptr = std::make_shared<af::ascir_op::FloorToInt>(name);
   auto &op = *op_ptr;
@@ -14519,6 +20583,22 @@ inline af::AscOpOutput LogicalXor(const char *name, const af::AscOpOutput &x1_in
 }
 inline af::AscOpOutput Log1p(const char *name, const af::AscOpOutput &x_in) {
   const auto &op_ptr = std::make_shared<af::ascir_op::Log1p>(name);
+  auto &op = *op_ptr;
+  const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
+  desc->SetExtAttr(RELATED_OP, op_ptr);
+
+  op.x = x_in;
+
+  SET_SCHED_AXIS_IF_IN_CONTEXT(op);
+
+  op.y.mem->tensor_id = CodeGenUtils::GenNextTensorId(op);
+  THROW(PadOutputViewToSched(op.y));
+  *op.y.vectorized_axis = AxisUtils::GetDefaultVectorizedAxis(*op.y.axis, op.attr.sched.loop_axis);
+
+  return op.y;
+}
+inline af::AscOpOutput Softmax(const char *name, const af::AscOpOutput &x_in) {
+  const auto &op_ptr = std::make_shared<af::ascir_op::Softmax>(name);
   auto &op = *op_ptr;
   const auto &desc = OpDescUtils::GetOpDescFromOperator(op);
   desc->SetExtAttr(RELATED_OP, op_ptr);
@@ -14735,7 +20815,12 @@ inline af::Status CommonInferDtype(const std::string &type, const std::vector<Da
       {"Conv2DBias", ::af::ascir_op::Conv2DBias::InferDataType},
       {"Conv2DOffset", ::af::ascir_op::Conv2DOffset::InferDataType},
       {"Conv2DOffsetBias", ::af::ascir_op::Conv2DOffsetBias::InferDataType},
+      {"ExtendConv2D", ::af::ascir_op::ExtendConv2D::InferDataType},
+      {"ExtendConv2DBias", ::af::ascir_op::ExtendConv2DBias::InferDataType},
+      {"ExtendConv2DScale", ::af::ascir_op::ExtendConv2DScale::InferDataType},
+      {"ExtendConv2DBiasScale", ::af::ascir_op::ExtendConv2DBiasScale::InferDataType},
       {"Split", ::af::ascir_op::Split::InferDataType},
+      {"Unsupported", ::af::ascir_op::Unsupported::InferDataType},
       {"Square", ::af::ascir_op::Square::InferDataType},
       {"RoundToInt", ::af::ascir_op::RoundToInt::InferDataType},
       {"TruncToInt", ::af::ascir_op::TruncToInt::InferDataType},
@@ -14748,16 +20833,49 @@ inline af::Status CommonInferDtype(const std::string &type, const std::vector<Da
       {"ModifiedBesselI1", ::af::ascir_op::ModifiedBesselI1::InferDataType},
       {"ModifiedBesselK0", ::af::ascir_op::ModifiedBesselK0::InferDataType},
       {"ModifiedBesselK1", ::af::ascir_op::ModifiedBesselK1::InferDataType},
+      {"I0", ::af::ascir_op::I0::InferDataType},
+      {"I0e", ::af::ascir_op::I0e::InferDataType},
+      {"I1e", ::af::ascir_op::I1e::InferDataType},
+      {"BesselJ0", ::af::ascir_op::BesselJ0::InferDataType},
+      {"BesselJ1", ::af::ascir_op::BesselJ1::InferDataType},
+      {"BesselY0", ::af::ascir_op::BesselY0::InferDataType},
+      {"BesselY1", ::af::ascir_op::BesselY1::InferDataType},
+      {"ScaledModifiedBesselK0", ::af::ascir_op::ScaledModifiedBesselK0::InferDataType},
+      {"ScaledModifiedBesselK1", ::af::ascir_op::ScaledModifiedBesselK1::InferDataType},
+      {"SphericalBesselJ0", ::af::ascir_op::SphericalBesselJ0::InferDataType},
+      {"Ndtr", ::af::ascir_op::Ndtr::InferDataType},
+      {"Ndtri", ::af::ascir_op::Ndtri::InferDataType},
+      {"LogNdtr", ::af::ascir_op::LogNdtr::InferDataType},
+      {"NextAfter", ::af::ascir_op::NextAfter::InferDataType},
+      {"PolyGamma", ::af::ascir_op::PolyGamma::InferDataType},
+      {"SignBit", ::af::ascir_op::SignBit::InferDataType},
+      {"Frexp", ::af::ascir_op::Frexp::InferDataType},
+      {"Igamma", ::af::ascir_op::Igamma::InferDataType},
+      {"Igammac", ::af::ascir_op::Igammac::InferDataType},
+      {"Zeta", ::af::ascir_op::Zeta::InferDataType},
+      {"ShiftedChebyshevPolynomialT", ::af::ascir_op::ShiftedChebyshevPolynomialT::InferDataType},
+      {"ShiftedChebyshevPolynomialU", ::af::ascir_op::ShiftedChebyshevPolynomialU::InferDataType},
+      {"ShiftedChebyshevPolynomialV", ::af::ascir_op::ShiftedChebyshevPolynomialV::InferDataType},
+      {"ShiftedChebyshevPolynomialW", ::af::ascir_op::ShiftedChebyshevPolynomialW::InferDataType},
+      {"ChebyshevPolynomialT", ::af::ascir_op::ChebyshevPolynomialT::InferDataType},
+      {"ChebyshevPolynomialU", ::af::ascir_op::ChebyshevPolynomialU::InferDataType},
+      {"ChebyshevPolynomialV", ::af::ascir_op::ChebyshevPolynomialV::InferDataType},
+      {"ChebyshevPolynomialW", ::af::ascir_op::ChebyshevPolynomialW::InferDataType},
+      {"HermitePolynomialH", ::af::ascir_op::HermitePolynomialH::InferDataType},
+      {"HermitePolynomialHe", ::af::ascir_op::HermitePolynomialHe::InferDataType},
       {"LaguerrePolynomialL", ::af::ascir_op::LaguerrePolynomialL::InferDataType},
       {"LegendrePolynomialP", ::af::ascir_op::LegendrePolynomialP::InferDataType},
       {"AiryAi", ::af::ascir_op::AiryAi::InferDataType},
       {"Erfinv", ::af::ascir_op::Erfinv::InferDataType},
+      {"Arange", ::af::ascir_op::Arange::InferDataType},
+      {"Rand", ::af::ascir_op::Rand::InferDataType},
+      {"Randn", ::af::ascir_op::Randn::InferDataType},
       {"Nddma", ::af::ascir_op::Nddma::InferDataType},
       {"Round", ::af::ascir_op::Round::InferDataType},
       {"Exp2", ::af::ascir_op::Exp2::InferDataType},
       {"Floor", ::af::ascir_op::Floor::InferDataType},
       {"Fma", ::af::ascir_op::Fma::InferDataType},
-      {"Expm", ::af::ascir_op::Expm::InferDataType},
+      {"Expm1", ::af::ascir_op::Expm1::InferDataType},
       {"Log2", ::af::ascir_op::Log2::InferDataType},
       {"LShift", ::af::ascir_op::LShift::InferDataType},
       {"Mod", ::af::ascir_op::Mod::InferDataType},
@@ -14774,6 +20892,7 @@ inline af::Status CommonInferDtype(const std::string &type, const std::vector<Da
       {"Atan2", ::af::ascir_op::Atan2::InferDataType},
       {"CopySign", ::af::ascir_op::CopySign::InferDataType},
       {"Ceil2Int", ::af::ascir_op::Ceil2Int::InferDataType},
+      {"IndirectLoad", ::af::ascir_op::IndirectLoad::InferDataType},
       {"FloorToInt", ::af::ascir_op::FloorToInt::InferDataType},
       {"Fmod", ::af::ascir_op::Fmod::InferDataType},
       {"Hypot", ::af::ascir_op::Hypot::InferDataType},
@@ -14781,6 +20900,7 @@ inline af::Status CommonInferDtype(const std::string &type, const std::vector<Da
       {"Log10", ::af::ascir_op::Log10::InferDataType},
       {"LogicalXor", ::af::ascir_op::LogicalXor::InferDataType},
       {"Log1p", ::af::ascir_op::Log1p::InferDataType},
+      {"Softmax", ::af::ascir_op::Softmax::InferDataType},
       {"Sin", ::af::ascir_op::Sin::InferDataType},
       {"Acosh", ::af::ascir_op::Acosh::InferDataType},
       {"Asin", ::af::ascir_op::Asin::InferDataType},
@@ -14885,7 +21005,12 @@ inline af::Status CommonInferDtypeWithNoCheck(const std::string &type, const std
       {"Conv2DBias", ::af::ascir_op::Conv2DBias::InferDataTypeWithNoCheck},
       {"Conv2DOffset", ::af::ascir_op::Conv2DOffset::InferDataTypeWithNoCheck},
       {"Conv2DOffsetBias", ::af::ascir_op::Conv2DOffsetBias::InferDataTypeWithNoCheck},
+      {"ExtendConv2D", ::af::ascir_op::ExtendConv2D::InferDataTypeWithNoCheck},
+      {"ExtendConv2DBias", ::af::ascir_op::ExtendConv2DBias::InferDataTypeWithNoCheck},
+      {"ExtendConv2DScale", ::af::ascir_op::ExtendConv2DScale::InferDataTypeWithNoCheck},
+      {"ExtendConv2DBiasScale", ::af::ascir_op::ExtendConv2DBiasScale::InferDataTypeWithNoCheck},
       {"Split", ::af::ascir_op::Split::InferDataTypeWithNoCheck},
+      {"Unsupported", ::af::ascir_op::Unsupported::InferDataTypeWithNoCheck},
       {"Square", ::af::ascir_op::Square::InferDataTypeWithNoCheck},
       {"RoundToInt", ::af::ascir_op::RoundToInt::InferDataTypeWithNoCheck},
       {"TruncToInt", ::af::ascir_op::TruncToInt::InferDataTypeWithNoCheck},
@@ -14898,16 +21023,49 @@ inline af::Status CommonInferDtypeWithNoCheck(const std::string &type, const std
       {"ModifiedBesselI1", ::af::ascir_op::ModifiedBesselI1::InferDataTypeWithNoCheck},
       {"ModifiedBesselK0", ::af::ascir_op::ModifiedBesselK0::InferDataTypeWithNoCheck},
       {"ModifiedBesselK1", ::af::ascir_op::ModifiedBesselK1::InferDataTypeWithNoCheck},
+      {"I0", ::af::ascir_op::I0::InferDataTypeWithNoCheck},
+      {"I0e", ::af::ascir_op::I0e::InferDataTypeWithNoCheck},
+      {"I1e", ::af::ascir_op::I1e::InferDataTypeWithNoCheck},
+      {"BesselJ0", ::af::ascir_op::BesselJ0::InferDataTypeWithNoCheck},
+      {"BesselJ1", ::af::ascir_op::BesselJ1::InferDataTypeWithNoCheck},
+      {"BesselY0", ::af::ascir_op::BesselY0::InferDataTypeWithNoCheck},
+      {"BesselY1", ::af::ascir_op::BesselY1::InferDataTypeWithNoCheck},
+      {"ScaledModifiedBesselK0", ::af::ascir_op::ScaledModifiedBesselK0::InferDataTypeWithNoCheck},
+      {"ScaledModifiedBesselK1", ::af::ascir_op::ScaledModifiedBesselK1::InferDataTypeWithNoCheck},
+      {"SphericalBesselJ0", ::af::ascir_op::SphericalBesselJ0::InferDataTypeWithNoCheck},
+      {"Ndtr", ::af::ascir_op::Ndtr::InferDataTypeWithNoCheck},
+      {"Ndtri", ::af::ascir_op::Ndtri::InferDataTypeWithNoCheck},
+      {"LogNdtr", ::af::ascir_op::LogNdtr::InferDataTypeWithNoCheck},
+      {"NextAfter", ::af::ascir_op::NextAfter::InferDataTypeWithNoCheck},
+      {"PolyGamma", ::af::ascir_op::PolyGamma::InferDataTypeWithNoCheck},
+      {"SignBit", ::af::ascir_op::SignBit::InferDataTypeWithNoCheck},
+      {"Frexp", ::af::ascir_op::Frexp::InferDataTypeWithNoCheck},
+      {"Igamma", ::af::ascir_op::Igamma::InferDataTypeWithNoCheck},
+      {"Igammac", ::af::ascir_op::Igammac::InferDataTypeWithNoCheck},
+      {"Zeta", ::af::ascir_op::Zeta::InferDataTypeWithNoCheck},
+      {"ShiftedChebyshevPolynomialT", ::af::ascir_op::ShiftedChebyshevPolynomialT::InferDataTypeWithNoCheck},
+      {"ShiftedChebyshevPolynomialU", ::af::ascir_op::ShiftedChebyshevPolynomialU::InferDataTypeWithNoCheck},
+      {"ShiftedChebyshevPolynomialV", ::af::ascir_op::ShiftedChebyshevPolynomialV::InferDataTypeWithNoCheck},
+      {"ShiftedChebyshevPolynomialW", ::af::ascir_op::ShiftedChebyshevPolynomialW::InferDataTypeWithNoCheck},
+      {"ChebyshevPolynomialT", ::af::ascir_op::ChebyshevPolynomialT::InferDataTypeWithNoCheck},
+      {"ChebyshevPolynomialU", ::af::ascir_op::ChebyshevPolynomialU::InferDataTypeWithNoCheck},
+      {"ChebyshevPolynomialV", ::af::ascir_op::ChebyshevPolynomialV::InferDataTypeWithNoCheck},
+      {"ChebyshevPolynomialW", ::af::ascir_op::ChebyshevPolynomialW::InferDataTypeWithNoCheck},
+      {"HermitePolynomialH", ::af::ascir_op::HermitePolynomialH::InferDataTypeWithNoCheck},
+      {"HermitePolynomialHe", ::af::ascir_op::HermitePolynomialHe::InferDataTypeWithNoCheck},
       {"LaguerrePolynomialL", ::af::ascir_op::LaguerrePolynomialL::InferDataTypeWithNoCheck},
       {"LegendrePolynomialP", ::af::ascir_op::LegendrePolynomialP::InferDataTypeWithNoCheck},
       {"AiryAi", ::af::ascir_op::AiryAi::InferDataTypeWithNoCheck},
       {"Erfinv", ::af::ascir_op::Erfinv::InferDataTypeWithNoCheck},
+      {"Arange", ::af::ascir_op::Arange::InferDataTypeWithNoCheck},
+      {"Rand", ::af::ascir_op::Rand::InferDataTypeWithNoCheck},
+      {"Randn", ::af::ascir_op::Randn::InferDataTypeWithNoCheck},
       {"Nddma", ::af::ascir_op::Nddma::InferDataTypeWithNoCheck},
       {"Round", ::af::ascir_op::Round::InferDataTypeWithNoCheck},
       {"Exp2", ::af::ascir_op::Exp2::InferDataTypeWithNoCheck},
       {"Floor", ::af::ascir_op::Floor::InferDataTypeWithNoCheck},
       {"Fma", ::af::ascir_op::Fma::InferDataTypeWithNoCheck},
-      {"Expm", ::af::ascir_op::Expm::InferDataTypeWithNoCheck},
+      {"Expm1", ::af::ascir_op::Expm1::InferDataTypeWithNoCheck},
       {"Log2", ::af::ascir_op::Log2::InferDataTypeWithNoCheck},
       {"LShift", ::af::ascir_op::LShift::InferDataTypeWithNoCheck},
       {"Mod", ::af::ascir_op::Mod::InferDataTypeWithNoCheck},
@@ -14924,6 +21082,7 @@ inline af::Status CommonInferDtypeWithNoCheck(const std::string &type, const std
       {"Atan2", ::af::ascir_op::Atan2::InferDataTypeWithNoCheck},
       {"CopySign", ::af::ascir_op::CopySign::InferDataTypeWithNoCheck},
       {"Ceil2Int", ::af::ascir_op::Ceil2Int::InferDataTypeWithNoCheck},
+      {"IndirectLoad", ::af::ascir_op::IndirectLoad::InferDataTypeWithNoCheck},
       {"FloorToInt", ::af::ascir_op::FloorToInt::InferDataTypeWithNoCheck},
       {"Fmod", ::af::ascir_op::Fmod::InferDataTypeWithNoCheck},
       {"Hypot", ::af::ascir_op::Hypot::InferDataTypeWithNoCheck},
@@ -14931,6 +21090,7 @@ inline af::Status CommonInferDtypeWithNoCheck(const std::string &type, const std
       {"Log10", ::af::ascir_op::Log10::InferDataTypeWithNoCheck},
       {"LogicalXor", ::af::ascir_op::LogicalXor::InferDataTypeWithNoCheck},
       {"Log1p", ::af::ascir_op::Log1p::InferDataTypeWithNoCheck},
+      {"Softmax", ::af::ascir_op::Softmax::InferDataTypeWithNoCheck},
       {"Sin", ::af::ascir_op::Sin::InferDataTypeWithNoCheck},
       {"Acosh", ::af::ascir_op::Acosh::InferDataTypeWithNoCheck},
       {"Asin", ::af::ascir_op::Asin::InferDataTypeWithNoCheck},
