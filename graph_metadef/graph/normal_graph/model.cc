@@ -19,6 +19,7 @@
 #include <fstream>
 #include <iomanip>
 #include "graph/debug/ge_attr_define.h"
+#include "debug/ge_op_types.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 #include "graph_metadef/common/ge_common/util.h"
 #include "framework/common/debug/ge_log.h"
@@ -261,7 +262,26 @@ graphStatus Model::LoadFromFile(const std::string &file_name) {
     GELOGE(GRAPH_FAILED, "[Call][ParseFromFileDescriptor] failed, file:%s.", &real_path[0]);
     return GRAPH_FAILED;
   }
-  std::string path(real_path);
+  const std::string path(real_path);
+  const std::string model_dir = path.substr(0U, path.find_last_of('/') + 1U);
+  for (proto::GraphDef &graph_def : *model_def.mutable_graph()) {
+    for (proto::OpDef &op_def : *graph_def.mutable_op()) {
+      if (op_def.type() != FILECONSTANT) {
+        continue;
+      }
+      auto attr = op_def.mutable_attr()->find(ATTR_NAME_FILE_PATH);
+      if (attr == op_def.mutable_attr()->end() || attr->second.s().empty()) {
+        continue;
+      }
+      const std::string weight_path = attr->second.s();
+      const size_t separator = weight_path.find_last_of('/');
+      const std::string weight_name =
+          (separator == std::string::npos) ? weight_path : weight_path.substr(separator + 1U);
+      attr->second.set_s(model_dir + weight_name);
+      GELOGI("Relocate FileConstant %s file_path from %s to %s", op_def.name().c_str(), weight_path.c_str(),
+             attr->second.s().c_str());
+    }
+  }
   return Load(model_def, file_name);
 }
 
