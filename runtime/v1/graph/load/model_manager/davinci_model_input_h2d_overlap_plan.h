@@ -19,7 +19,6 @@
 
 #include "acl/acl_rt.h"
 #include "ge/ge_api_types.h"
-#include "ge_common/ge_common_api_types.h"
 
 namespace domi {
 class ModelTaskDef;

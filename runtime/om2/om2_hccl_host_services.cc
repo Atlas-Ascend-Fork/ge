@@ -119,14 +119,15 @@ void AssembleGETaskInfo(ge::GETaskInfo &ge_task, const HcclTaskParams &params, g
   const bool set_output = is_reduce || is_update_output;
   const bool has_zero_copy = (params.input_zero_copy_flags != nullptr) || (params.output_zero_copy_flags != nullptr);
 
-  const auto slot_input = [&](uint32_t i) {
+  const auto slot_input = [need_refresh, &params](uint32_t i) {
     return need_refresh || ((params.input_zero_copy_flags != nullptr) && (params.input_zero_copy_flags[i] != 0));
   };
-  const auto slot_output = [&](uint32_t i) {
+  const auto slot_output = [need_refresh, &params](uint32_t i) {
     return need_refresh || ((params.output_zero_copy_flags != nullptr) && (params.output_zero_copy_flags[i] != 0));
   };
 
-  const auto assemble_common = [&](ge::GETaskKernelHcclInfo &info, uint32_t idx) {
+  const auto assemble_common = [need_refresh, &args_base, &params, &hccl_type, is_reduce, set_output, has_zero_copy,
+                                &slot_input, &slot_output](ge::GETaskKernelHcclInfo &info, uint32_t idx) {
     info.hccl_type = hccl_type;
     info.rootId = static_cast<int64_t>(params.root_id);
     if (is_reduce) {

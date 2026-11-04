@@ -11,6 +11,7 @@
 #ifndef GE_INC_FRAMEWORK_RUNTIME_ATTACHED_STREAM_PROVIDER_H_
 #define GE_INC_FRAMEWORK_RUNTIME_ATTACHED_STREAM_PROVIDER_H_
 
+#include <cstdint>
 #include "graph/ascend_string.h"
 
 namespace gert {

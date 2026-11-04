@@ -11,26 +11,40 @@
 
 namespace ge {
 bool OpsDeliverablesManager::Load(std::vector<OpsDeliverable> &deliverables, std::string &reason) {
+  (void)deliverables;
+  (void)reason;
   return false;
 }
 
 bool OpsDeliverablesManager::ResolvePaths(const std::vector<OpsDeliverable> &deliverables,
                                           const std::map<std::string, std::string> &variables,
                                           std::vector<std::string> &paths, std::string &reason) {
+  (void)deliverables;
+  (void)variables;
+  (void)paths;
+  (void)reason;
   return false;
 }
 
 bool OpsDeliverablesManager::ResolveFrameworkPluginPaths(const std::map<std::string, std::string> &options,
                                                          const std::string &framework, std::vector<std::string> &paths,
                                                          std::string &reason) {
+  (void)options;
+  (void)framework;
+  (void)paths;
+  (void)reason;
   return false;
 }
 
 void OpsDeliverablesManager::UpdateFrameworkPluginPaths(const std::map<std::string, std::string> &options,
                                                         const std::string &framework, std::vector<std::string> &paths) {
+  (void)options;
+  (void)framework;
+  (void)paths;
 }
 
 graphStatus OpsDeliverablesManager::LoadOppPackages(const std::map<std::string, std::string> &options) {
+  (void)options;
   return GRAPH_SUCCESS;
 }
 

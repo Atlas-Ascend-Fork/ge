@@ -13,7 +13,6 @@
 #include <map>
 #include <string>
 #include <vector>
-#include "graph/types.h"
 #include "graph/error_codes.h"
 
 namespace ge {

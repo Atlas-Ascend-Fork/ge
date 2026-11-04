@@ -10,7 +10,9 @@
 
 #ifndef AIR_CXX_RUNTIME_V2_CORE_OM2_MODEL_EXECUTOR_H_
 #define AIR_CXX_RUNTIME_V2_CORE_OM2_MODEL_EXECUTOR_H_
+#include <map>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 #include "common/ge_visibility.h"

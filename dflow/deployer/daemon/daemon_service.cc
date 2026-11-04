@@ -147,7 +147,7 @@ void DaemonService::ProcessDisconnectRequest(const std::string &peer_uri, const 
 }
 
 void DaemonService::ProcessHeartbeatRequest(DeployerDaemonClient *client, const deployer::DeployerRequest &request,
-                                            deployer::DeployerResponse &response) {
+                                            deployer::DeployerResponse &response) const {
   client->SetIsExecuting(true);
   client->OnHeartbeat();
   client->SetIsExecuting(false);
@@ -179,7 +179,7 @@ DeployerDaemonClient *DaemonService::GetVerifiedClient(const std::string &peer_u
 }
 
 void DaemonService::ProcessDeployRequest(DeployerDaemonClient *client, const deployer::DeployerRequest &request,
-                                         deployer::DeployerResponse &response) {
+                                         deployer::DeployerResponse &response) const {
   int64_t client_id = request.client_id();
   GELOGI("[Process][Request] process deploy request begin, client_id = %" PRId64 ", type = %s.", client_id,
          deployer::DeployerRequestType_Name(request.type()).c_str());
