@@ -115,7 +115,7 @@ jobs:
         run: |
           cd ${{ steps.process_checkout.outputs.path }}
           python3 om2_ut_check.py --repo-root .
-    if: "${{ default() }}"
+    if: env.TARGET_BRANCH == 'develop' || env.TARGET_BRANCH == 'master'
     runs-on: ['self-hosted', 'arch=x64', 'spec=small']
     container:
       image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.doccheck_image_version }}
@@ -146,7 +146,7 @@ jobs:
         run: |
           cd ${{ steps.process_checkout.outputs.path }}
           python3 om2_doc_check.py --repo-root .
-    if: "${{ default() }}"
+    if: env.TARGET_BRANCH == 'develop' || env.TARGET_BRANCH == 'master'
     runs-on: ['self-hosted', 'arch=x64', 'spec=small']
     container:
       image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.doccheck_image_version }}
