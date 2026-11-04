@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <stdint.h>
 #include "plog.h"
 #include "slog_stub.h"
 
@@ -95,6 +96,23 @@ int CheckLogLevel(int moduleId, int log_level_check) {
     return log_level_check >= ge::SlogStub::GetInstance()->GetGeLevel();
   }
   return log_level_check >= dlog_getlevel(moduleId, nullptr);
+}
+
+int32_t AlogCheckDebugLevel(uint32_t moduleId, int32_t level) {
+  return CheckLogLevel(static_cast<int>(moduleId), level);
+}
+
+int32_t AlogRecord(uint32_t moduleId, uint32_t logType, int32_t level, const char *fmt, ...) {
+  (void)logType;
+  va_list valist;
+  va_start(valist, fmt);
+  if (moduleId & RUN_LOG_MASK) {
+    ge::SlogStub::GetInstance()->Log(static_cast<int>(moduleId & (~RUN_LOG_MASK)), DLOG_INFO, fmt, valist);
+  } else {
+    ge::SlogStub::GetInstance()->Log(static_cast<int>(moduleId), level, fmt, valist);
+  }
+  va_end(valist);
+  return 0;
 }
 
 /**

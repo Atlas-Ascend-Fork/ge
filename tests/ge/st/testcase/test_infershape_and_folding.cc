@@ -863,11 +863,26 @@ TEST_F(InferAndFoldingTest, test_assign_infershape) {
 
 ComputeGraphPtr MakeFunctionGraph2(const std::string &func_node_name, const std::string &func_node_type) {
   DEF_GRAPH(g1) {
-    CHAIN(NODE("_arg_0", DATA)->NODE(func_node_name, func_node_type)->NODE("Node_Output", NETOUTPUT));
+    auto branch_index = OP_CFG(DATA).TensorDesc(FORMAT_ND, DT_INT32, {});
+    CHAIN(NODE("_arg_0", branch_index)->NODE(func_node_name, func_node_type)->NODE("Node_Output", NETOUTPUT));
     CHAIN(NODE("_arg_1", DATA)->NODE(func_node_name));
     CHAIN(NODE("_arg_2", DATA)->NODE(func_node_name));
   };
-  return ToComputeGraph(g1);
+  const auto &graph = ToComputeGraph(g1);
+  const auto &call_node = graph->FindNode(func_node_name);
+  if (call_node != nullptr) {
+    const std::vector<int64_t> scalar_shape;
+    const auto &call_op_desc = call_node->GetOpDesc();
+    (void)call_op_desc->UpdateInputName({{"branch_index", 0U}, {"input0", 1U}, {"input1", 2U}});
+    const auto &branch_index_desc = call_op_desc->MutableInputDesc(0);
+    branch_index_desc->SetDataType(DT_INT32);
+    branch_index_desc->SetOriginDataType(DT_INT32);
+    branch_index_desc->SetFormat(FORMAT_ND);
+    branch_index_desc->SetOriginFormat(FORMAT_ND);
+    branch_index_desc->SetShape(GeShape(scalar_shape));
+    branch_index_desc->SetOriginShape(GeShape(scalar_shape));
+  }
+  return graph;
 };
 
 ComputeGraphPtr MakeSubGraph(const std::string &prefix) {
