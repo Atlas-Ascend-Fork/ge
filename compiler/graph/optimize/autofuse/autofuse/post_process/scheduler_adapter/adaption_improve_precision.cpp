@@ -9,6 +9,8 @@
  */
 
 #include "adaption_improve_precision.h"
+#include <unordered_set>
+#include <vector>
 #include "common/checker.h"
 #include "graph/utils/node_utils.h"
 #include "graph/utils/graph_utils.h"
@@ -19,6 +21,8 @@
 
 namespace ge {
 namespace {
+using PrecisionNodeSet = std::unordered_set<const Node *>;
+
 static const std::unordered_map<std::string, std::string> kTypeToGroup = {{kCastType, kCastType},
                                                                           {kLoadType, kLoadType},
                                                                           {kGatherType, kGatherType},
@@ -95,7 +99,8 @@ bool ShouldChangeDataType(const NodePtr &node, const std::vector<NodePtr> &peer_
 }
 
 Status IsNeedInsertCastBeforeOther(const AscGraph &asc_graph, const NodePtr &other_node, bool &need_insert,
-                                   std::vector<int32_t> &input_idxs) {
+                                   std::vector<int32_t> &input_idxs,
+                                   const PrecisionNodeSet *precision_nodes = nullptr) {
   // 获取前驱节点
   std::vector<NodePtr> peer_out_nodes;
   GE_ASSERT_SUCCESS(asc_adapt::GetPeerOutNodes(other_node, peer_out_nodes));
@@ -104,7 +109,8 @@ Status IsNeedInsertCastBeforeOther(const AscGraph &asc_graph, const NodePtr &oth
     auto peer_out_node = peer_out_nodes[idx];
     GE_ASSERT_SUCCESS(asc_adapt::GetOutputTensorDesc(peer_out_node, peer_output_tensor_desc));
     if (peer_out_node->GetType() == kCastType || peer_out_node->GetType() == kLoadType ||
-        peer_out_node->GetType() == kGatherType) {
+        peer_out_node->GetType() == kGatherType ||
+        (precision_nodes != nullptr && precision_nodes->count(peer_out_node.get()) == 0U)) {
       if (IsLowPrecisionDataType(peer_output_tensor_desc->GetDataType())) {
         need_insert = true;
         input_idxs.push_back(idx);
@@ -339,7 +345,7 @@ bool IsFloatToUltraLowNeedInsertCast(const NodePtr &peer_out_node, DataType peer
   return true;
 }
 
-Status CastNodeProc(AscGraph &asc_graph, const NodePtr &node) {
+Status CastNodeProc(AscGraph &asc_graph, const NodePtr &node, bool preserve_control_edges = false) {
   // 获取前驱节点
   NodePtr peer_out_node;
   GE_ASSERT_SUCCESS(asc_adapt::GetPeerOutNode(node, peer_out_node, 0));
@@ -356,8 +362,13 @@ Status CastNodeProc(AscGraph &asc_graph, const NodePtr &node) {
   GE_ASSERT_SUCCESS(asc_adapt::GetOutputTensorDesc(node, output_tensor_desc));
   const auto peer_output_dtype = peer_output_tensor_desc->GetDataType();
   const auto output_dtype = output_tensor_desc->GetDataType();
+  // Keep controlled CV casts as ordering boundaries, including data-to-control edges.
+  const bool keep_control_cast =
+      preserve_control_edges && (!node->GetInControlAnchor()->GetPeerAnchorsPtr().empty() ||
+                                 !node->GetOutControlAnchor()->GetPeerAnchorsPtr().empty() ||
+                                 !node->GetOutDataAnchor(0)->GetPeerInControlAnchors().empty());
   // 判断是否需要删除节点
-  if (ShouldDeleteCastNode(node, peer_in_nodes, peer_out_node, peer_output_dtype, output_dtype)) {
+  if (!keep_control_cast && ShouldDeleteCastNode(node, peer_in_nodes, peer_out_node, peer_output_dtype, output_dtype)) {
     GE_ASSERT_SUCCESS(asc_adapt::DelNode(asc_graph, node));
     return SUCCESS;
   }
@@ -434,7 +445,8 @@ Status CheckNodeDtype(const NodePtr &node) {
   return SUCCESS;
 }
 
-Status IsAllNodesInBlacklist(const AscGraph &asc_graph, bool &is_in_blacklist) {
+Status IsAllNodesInBlacklist(const AscGraph &asc_graph, bool &is_in_blacklist,
+                             const PrecisionNodeSet *precision_nodes = nullptr) {
   auto &blacklist2 = autofuse::AutoFuseConfig::Config().GetFusionStrategySolver().improve_precision_blacklist;
   bool has_all = (blacklist2.find(kAllNodesType) != blacklist2.end());
   // 如果有"all"，则对所有节点检查数据类型
@@ -443,7 +455,8 @@ Status IsAllNodesInBlacklist(const AscGraph &asc_graph, bool &is_in_blacklist) {
            asc_graph.GetName().c_str());
     for (const auto &node : AscGraphUtils::GetComputeGraph(asc_graph)->GetAllNodes()) {
       // 跳过输入输出节点
-      if (BackendUtils::IsOutputNode(node) || BackendUtils::IsInputNode(node)) {
+      if (BackendUtils::IsOutputNode(node) || BackendUtils::IsInputNode(node) ||
+          (precision_nodes != nullptr && precision_nodes->count(node.get()) == 0U)) {
         continue;
       }
       // 检查节点数据类型
@@ -462,6 +475,13 @@ Status IsAllNodesInBlacklist(const AscGraph &asc_graph, bool &is_in_blacklist) {
   }
   // 没有"all"，走按ascir配置黑名单处理的流程
   for (const auto &node : AscGraphUtils::GetComputeGraph(asc_graph)->GetAllNodes()) {
+    if (precision_nodes != nullptr && precision_nodes->count(node.get()) == 0U) {
+      continue;
+    }
+    // ReLU and existing casts alone need no promotion; preserve native MM+ReLU fixpipe eligibility.
+    if (precision_nodes != nullptr && (node->GetType() == kReluType || node->GetType() == kCastType)) {
+      continue;
+    }
     if (IsInBlackList1(node)) {
       // 在内部写死升精度黑名单, doing nothing
     } else if (IsInBlackList2(node)) {
@@ -477,11 +497,13 @@ Status IsAllNodesInBlacklist(const AscGraph &asc_graph, bool &is_in_blacklist) {
 }
 
 Status GetTypeToNodesFromGraph(AscGraph &asc_graph,
-                               std::unordered_map<std::string, std::vector<NodePtr>> &type_to_nodes) {
+                               std::unordered_map<std::string, std::vector<NodePtr>> &type_to_nodes,
+                               const PrecisionNodeSet *precision_nodes = nullptr) {
   for (const auto &node : AscGraphUtils::GetComputeGraph(asc_graph)->GetAllNodes()) {
     // 输入和Output不需要升精度处理
     auto node_type = node->GetType();
-    if (BackendUtils::IsOutputNode(node) || BackendUtils::IsInputNode(node)) {
+    if (BackendUtils::IsOutputNode(node) || BackendUtils::IsInputNode(node) ||
+        (precision_nodes != nullptr && precision_nodes->count(node.get()) == 0U)) {
       continue;
     }
     // 获取当前节点的输出描述符
@@ -498,6 +520,45 @@ Status GetTypeToNodesFromGraph(AscGraph &asc_graph,
   return SUCCESS;
 }
 
+// Treat each matrix and all its operand producers as an immutable Load boundary.
+// Apply ordinary vector precision rules to the remaining graph, including auxiliary branches.
+PrecisionNodeSet GetMatmulVectorNodes(const AscGraph &asc_graph) {
+  static const std::unordered_set<std::string> kMatmulTypes = {
+      kMatMul,      kMatMulBias,      kMatMulOffset,      kMatMulOffsetBias,
+      kBatchMatMul, kBatchMatMulBias, kBatchMatMulOffset, kBatchMatMulOffsetBias};
+  std::vector<NodePtr> pending;
+  for (const auto &node : AscGraphUtils::GetComputeGraph(asc_graph)->GetAllNodes()) {
+    if (!AutofuseUtils::IsCubeNodeType(node)) {
+      continue;
+    }
+    if (kMatmulTypes.count(node->GetType()) == 0U) {
+      return {};  // Conv precision handling remains unchanged.
+    }
+    pending.push_back(node);
+  }
+  if (pending.empty()) {
+    return {};
+  }
+  PrecisionNodeSet protected_nodes;
+  while (!pending.empty()) {
+    const auto node = pending.back();
+    pending.pop_back();
+    if (!protected_nodes.insert(node.get()).second) {
+      continue;
+    }
+    for (const auto &input : node->GetInDataNodes()) {
+      pending.push_back(input);
+    }
+  }
+  PrecisionNodeSet vector_nodes;
+  for (const auto &node : AscGraphUtils::GetComputeGraph(asc_graph)->GetAllNodes()) {
+    if (protected_nodes.count(node.get()) == 0U) {
+      vector_nodes.insert(node.get());
+    }
+  }
+  return vector_nodes;
+}
+
 Status ImprovePrecision(AscGraph &asc_graph, [[maybe_unused]] const NodePtr &asc_node) {
   // 后端不支持concat后有cast的情况，当前分析不出这是concat特例还是搬运类算子的普遍情况，暂时先跳过concat，如果是普遍情况还需要和后端Scheduler讨论处理方案
   const auto asc_node_attr = BackendUtils::GetNodeAutoFuseAttr(asc_node);
@@ -506,22 +567,27 @@ Status ImprovePrecision(AscGraph &asc_graph, [[maybe_unused]] const NodePtr &asc
     GELOGI("graph %s fuse type is concat, don't improve precision.", asc_graph.GetName().c_str());
     return SUCCESS;
   }
+  PrecisionNodeSet vector_nodes;
+  const PrecisionNodeSet *precision_nodes = nullptr;
   if (BackendUtils::IsCubeAscNode(asc_node)) {
-    GELOGI("graph %s fuse type is cube, don't improve precision.", asc_graph.GetName().c_str());
-    return SUCCESS;
+    vector_nodes = GetMatmulVectorNodes(asc_graph);
+    if (vector_nodes.empty()) {
+      return SUCCESS;
+    }
+    precision_nodes = &vector_nodes;
   }
 
   bool is_in_blacklist = true;
-  GE_ASSERT_SUCCESS(IsAllNodesInBlacklist(asc_graph, is_in_blacklist));
+  GE_ASSERT_SUCCESS(IsAllNodesInBlacklist(asc_graph, is_in_blacklist, precision_nodes));
   if (is_in_blacklist) {
     GELOGI("graph %s all nodes are in blacklist, don't improve precision.", asc_graph.GetName().c_str());
     return SUCCESS;
   }
 
   std::unordered_map<std::string, std::vector<NodePtr>> type_to_nodes;
-  GE_ASSERT_SUCCESS(GetTypeToNodesFromGraph(asc_graph, type_to_nodes));
+  GE_ASSERT_SUCCESS(GetTypeToNodesFromGraph(asc_graph, type_to_nodes, precision_nodes));
   for (const auto &node : type_to_nodes[kCastType]) {
-    GE_ASSERT_SUCCESS(CastNodeProc(asc_graph, node));
+    GE_ASSERT_SUCCESS(CastNodeProc(asc_graph, node, precision_nodes != nullptr));
   }
   for (const auto &node : type_to_nodes[kLoadType]) {
     bool is_need_insert_cast = false;
@@ -543,7 +609,7 @@ Status ImprovePrecision(AscGraph &asc_graph, [[maybe_unused]] const NodePtr &asc
   for (const auto &node : type_to_nodes["Other"]) {
     bool is_need_insert_cast = false;
     std::vector<int32_t> input_idxs;
-    GE_ASSERT_SUCCESS(IsNeedInsertCastBeforeOther(asc_graph, node, is_need_insert_cast, input_idxs));
+    GE_ASSERT_SUCCESS(IsNeedInsertCastBeforeOther(asc_graph, node, is_need_insert_cast, input_idxs, precision_nodes));
     bool is_increase_precision = true;
     GE_ASSERT_SUCCESS(InsertCastBeforeNode(asc_graph, node, is_need_insert_cast, is_increase_precision, input_idxs));
     GE_ASSERT_SUCCESS(asc_adapt::FromDtypeToOtherDtype(node, DT_BF16, DT_FLOAT));

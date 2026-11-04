@@ -425,6 +425,14 @@ graphStatus BuildLoopCtx(const std::vector<LoopOpPtr> &inputs, const std::vector
 }  // anonymous namespace
 
 graphStatus StoreMatMulOp::RealizeImpl() {
+  for (auto &dim : dims_) {
+    dim = dim.Simplify();
+  }
+  for (auto &input_dims : input_dims_) {
+    for (auto &dim : input_dims) {
+      dim = dim.Simplify();
+    }
+  }
   LoopCtx loop_ctx(dims_);
   Ops()->SetLoopAxis(loop_ctx.loop_axis);
   GE_WARN_ASSERT_GRAPH_SUCCESS(BuildLoopCtx(inputs_, input_dims_, loop_ctx), "Failed build loop ctx for %s",
