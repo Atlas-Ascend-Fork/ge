@@ -77,6 +77,8 @@ StagePartition → EnginePlacer1 → HostcpuEngineUpdatePass
 | CompositeEnginePartition | `EnginePartitioner` | 按组合引擎拆分子图并优化 |
 | AtomicEnginePartition | `EnginePartitioner` | 按原子引擎拆分子图并优化 |
 
+`HostcpuEngineUpdatePass` 的输入输出类型检查使用 Tensor 描述指针接口，保留对无效可选输入的过滤，并在读取数据类型前跳过空描述指针；自定义 Host CPU 算子的 lowering 属性通过字符串指针读取，缺失或类型不匹配时不命中。
+
 ## 4. 对外接口
 
 ### 4.1 atc 命令行选项

@@ -370,6 +370,8 @@ Key step analysis:
 
 **EnginePlacer**: Determine execution engine for each operator. This step determines by querying operator registration information (OpDesc's `GetOpKernelLibName()`). Assignment strategy implemented in `engine_place.cc`.
 
+`HostcpuEngineUpdatePass` reads data types and the lowering attribute through `GetAllInputsDescPtr()`, `GetAllOutputsDescPtr()`, and the string pointer overload of `AttrUtils::GetStr()`, avoiding copies of Tensor descriptors and strings. It skips null descriptor pointers before reading data types and still returns false for the custom Host CPU operator check when the attribute is absent.
+
 **DynamicShapePartition**: Dynamic Shape partitioning (`partition/dynamic_shape_partition.cc`) divides graph into "known Shape" and "unknown Shape" subgraphs. Unknown Shape subgraphs need special runtime scheduling (device-side Shape computation).
 
 **Two-level Partitioning (Composite + Atomic)**:

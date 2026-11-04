@@ -438,6 +438,8 @@ REGISTER_KERNEL(MyKernel)
 
 `KernelRunContext` 和 `KernelContext` 为 Kernel 提供执行所需的上下文信息，包括输入/输出地址、shape 描述、运行时参数等。
 
+`AicpuHostExecFunc` 通过仓内 `PtrToPtr<KernelContext, ExtendedKernelContext>()` 工具访问扩展上下文中的计算节点信息，再转换输出 shape，沿用既有上下文布局及执行顺序。
+
 ### 5.6 HybridModelRtV2Executor：Hybrid 场景的执行入口
 
 定义在 `runtime/v1/hybrid/executor/hybrid_model_rt_v2_executor.h` 中。

@@ -399,6 +399,7 @@ ge::graphStatus AicpuHostExecFunc(KernelContext *context) {
   GE_ASSERT_NOTNULL(aicpu_host_execute_func);
   GE_ASSERT_SUCCESS(aicpu_host_execute_func(context));
 
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
   const auto extended_context = reinterpret_cast<ExtendedKernelContext *>(context);
   GE_ASSERT_NOTNULL(extended_context);
   const auto compute_node_info = extended_context->GetComputeNodeInfo();

@@ -371,6 +371,8 @@ flowchart TD
 
 **EnginePlacer**：为每个算子确定执行引擎。这一步通过查询算子注册信息（OpDesc 的 `GetOpKernelLibName()`）确定。分配策略在 `engine_place.cc` 中实现。
 
+`HostcpuEngineUpdatePass` 通过 `GetAllInputsDescPtr()`、`GetAllOutputsDescPtr()` 和返回字符串指针的 `AttrUtils::GetStr()` 读取类型及 lowering 属性，避免复制 Tensor 描述和字符串；读取类型前跳过空描述指针，属性不存在时仍返回非 Host CPU 自定义算子。
+
 **DynamicShapePartition**：动态 Shape 分区（`partition/dynamic_shape_partition.cc`）将图分为"已知 Shape"和"未知 Shape"的子图。未知 Shape 的子图需要特殊的运行时调度（设备侧 Shape 计算）。
 
 **两级分区（Composite + Atomic）**：
