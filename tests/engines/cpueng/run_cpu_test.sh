@@ -18,5 +18,7 @@ cd ${BUILD_PATH}
 echo "current path: ${BUILD_PATH}"
 ./tests/engines/cpueng/ut/cpu_engine_utest &&
 ./tests/engines/cpueng/ut/tf_engine_utest &&
+./tests/engines/cpueng/ut/host_engine_utest &&
 ./tests/engines/cpueng/st/cpu_engine_stest &&
-./tests/engines/cpueng/st/tf_engine_stest
+./tests/engines/cpueng/st/tf_engine_stest &&
+./tests/engines/cpueng/st/host_engine_stest
