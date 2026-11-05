@@ -152,7 +152,12 @@ value_dependent_shape_custom
 - 样例当前使用 `x0=[2,2,2]`、`x1=[2,1,2]`（float）与 `concat_dim`（值 `1`）做结果校验，实际输出为 `[2, 3, 2]`。
 - 演示 kernel 固定 2 路输入，要求输入 shape 全已知、非轴维一致且为连续 ND 布局（`InferShape` 本身支持任意实例数与 unknown 维）。
 - 样例依赖可用 NPU 与 Ascend C 编译环境；运行期重推与预填机制依赖 RT2 动态执行链路（`ge.graphRunMode=1`），环境不支持时 `Execute` 显式报错。
-- `.asc` 编译参数当前固定为 `--npu-arch=dav-2201`，如目标芯片不同需调整 `CMakeLists.txt`。
+- `.asc` 编译参数由 `CMakeLists.txt` 中 `target_compile_options(... --npu-arch=...)` 指定，需与运行环境的产品形态匹配，取值与产品的对应关系如下，切换时修改该取值并清理 `build/` 后重新编译：
+
+  | `--npu-arch` 取值 | 对应产品 |
+  | --- | --- |
+  | `dav-2201`（默认） | Atlas A2/A3 训练/推理系列产品 |
+  | `dav-3510` | Ascend 950 系列产品（如 Ascend 950PR、Ascend 950DT） |
 
 ## 附录
 
