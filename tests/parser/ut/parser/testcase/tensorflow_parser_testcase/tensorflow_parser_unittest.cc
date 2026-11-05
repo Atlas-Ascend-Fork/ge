@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <cstdlib>
 #include <limits>
 #include <unistd.h>
 
@@ -7174,5 +7175,102 @@ TEST_F(UtestTensorflowParser, TensorFlowModelParser_ParseFromMemory_valid_graph)
   ge::GetParserContext().input_dims["test_input"] = {1, 3, 224, 224};
   auto ret = parser.ParseFromMemory(buffer.data(), static_cast<int>(buffer.size()), graph);
   EXPECT_NE(ret, FAILED);
+}
+
+TEST_F(UtestTensorflowParser, SparseSoftmaxDowngradeToFrameworkOpUsesFrameworkOpParser) {
+  REGISTER_CUSTOM_OP("SparseSoftmaxCrossEntropyWithLogits")
+      .FrameworkType(domi::TENSORFLOW)
+      .OriginOpType("SparseSoftmaxCrossEntropyWithLogits")
+      .ParseParamsByOperatorFn(ParseParamByOpFunc)
+      .ImplyType(ImplyType::TVM);
+  std::vector<OpRegistrationData> reg_datas = domi::OpRegistry::Instance()->registrationDatas;
+  for (auto reg_data : reg_datas) {
+    OpRegistrationTbe::Instance()->Finalize(reg_data, true);
+    domi::OpRegistry::Instance()->Register(reg_data);
+  }
+  domi::OpRegistry::Instance()->registrationDatas.clear();
+
+  domi::tensorflow::NodeDef node_def;
+  node_def.set_name("softmax_loss");
+  node_def.set_op("SparseSoftmaxCrossEntropyWithLogits");
+  domi::tensorflow::AttrValue input_desc_value;
+  domi::tensorflow::NameAttrList input_desc_item;
+  domi::tensorflow::AttrValue datatype_value;
+  datatype_value.set_i(static_cast<int64_t>(domi::tensorflow::DT_FLOAT));
+  domi::tensorflow::AttrValue format_value;
+  format_value.set_i(1);
+  domi::tensorflow::AttrValue shape_value;
+  shape_value.mutable_list()->add_i(10);
+  input_desc_item.mutable_attr()->insert({"serialize_datatype", datatype_value});
+  input_desc_item.mutable_attr()->insert({"serialize_format", format_value});
+  input_desc_item.mutable_attr()->insert({"serialize_shape", shape_value});
+  *(input_desc_value.mutable_list()->add_func()) = input_desc_item;
+  node_def.mutable_attr()->insert({ge::ATTR_NAME_INPUT_TENSOR_DESC, input_desc_value});
+  domi::tensorflow::AttrValue op_def_value;
+  op_def_value.set_s("SparseSoftmaxCrossEntropyWithLogits");
+  node_def.mutable_attr()->insert({ge::ATTR_NAME_FRAMEWORK_OP_DEF, op_def_value});
+
+  TensorFlowModelParser parser;
+  Status ret = parser.AdaptOpType(&node_def, false);
+  EXPECT_EQ(SUCCESS, ret);
+  EXPECT_EQ("FrameworkOp", parser.adaptedOpTypeMap_["softmax_loss"]);
+
+  auto factory = OpParserFactory::Instance(domi::TENSORFLOW);
+  auto migrated_op_parser = factory->CreateOpParser(parser.adaptedOpTypeMap_["softmax_loss"]);
+  ASSERT_NE(migrated_op_parser, nullptr);
+  ge::OpDescPtr migrated_op = std::make_shared<ge::OpDesc>("softmax_loss", "FrameworkOp");
+  ret = TensorFlowModelParser::ParseOpParams(&node_def, migrated_op, migrated_op_parser);
+  EXPECT_EQ(SUCCESS, ret);
+  std::string original_type;
+  ASSERT_TRUE(ge::AttrUtils::GetStr(migrated_op, ge::ATTR_NAME_FRAMEWORK_ORIGINAL_TYPE, original_type));
+  EXPECT_EQ("SparseSoftmaxCrossEntropyWithLogits", original_type);
+
+  auto origin_op_parser = factory->CreateOpParser("SparseSoftmaxCrossEntropyWithLogits");
+  ASSERT_NE(origin_op_parser, nullptr);
+  ge::OpDescPtr origin_op = std::make_shared<ge::OpDesc>("softmax_loss", "SparseSoftmaxCrossEntropyWithLogits");
+  ret = TensorFlowModelParser::ParseOpParams(&node_def, origin_op, origin_op_parser);
+  EXPECT_EQ(SUCCESS, ret);
+}
+
+TEST_F(UtestTensorflowParser, SparseSoftmaxDowngradeWithRealTfPbParsesAsFrameworkOp) {
+  const char *pb_path = std::getenv("S2C_PB_PATH");
+  if (pb_path == nullptr) {
+    GTEST_SKIP() << "S2C_PB_PATH not set";
+  }
+  REGISTER_CUSTOM_OP("SparseSoftmaxCrossEntropyWithLogits")
+      .FrameworkType(domi::TENSORFLOW)
+      .OriginOpType("SparseSoftmaxCrossEntropyWithLogits")
+      .ParseParamsByOperatorFn(ParseParamByOpFunc)
+      .ImplyType(ImplyType::TVM);
+  std::vector<OpRegistrationData> reg_datas = domi::OpRegistry::Instance()->registrationDatas;
+  for (auto reg_data : reg_datas) {
+    OpRegistrationTbe::Instance()->Finalize(reg_data, true);
+    domi::OpRegistry::Instance()->Register(reg_data);
+  }
+  domi::OpRegistry::Instance()->registrationDatas.clear();
+
+  domi::tensorflow::GraphDef graph_def;
+  bool proto_ret = parser::ReadProtoFromBinaryFile(pb_path, &graph_def);
+  ASSERT_EQ(proto_ret, true);
+
+  PreChecker::Instance().Clear();
+  TensorFlowModelParser tensorflow_parser;
+  ge::ComputeGraphPtr root_graph = ge::parser::MakeShared<ge::ComputeGraph>("tmp_graph");
+  Status ret = tensorflow_parser.ParseProto(reinterpret_cast<google::protobuf::Message *>(&graph_def), root_graph);
+  EXPECT_EQ(SUCCESS, ret);
+
+  bool found_framework_op = false;
+  for (const auto &node : root_graph->GetDirectNode()) {
+    const auto op_desc = node->GetOpDesc();
+    if ((op_desc == nullptr) || (op_desc->GetType() != "FrameworkOp")) {
+      continue;
+    }
+    std::string original_type;
+    if (ge::AttrUtils::GetStr(op_desc, ge::ATTR_NAME_FRAMEWORK_ORIGINAL_TYPE, original_type) &&
+        (original_type == "SparseSoftmaxCrossEntropyWithLogits")) {
+      found_framework_op = true;
+    }
+  }
+  EXPECT_TRUE(found_framework_op);
 }
 }  // namespace ge
