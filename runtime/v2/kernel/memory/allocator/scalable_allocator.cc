@@ -107,6 +107,9 @@ ge::MemBlock *ScalableAllocator::ConvertToRootBlock(ge::MemBlock *block) {
     return nullptr;
   }
   auto root_block = span->GetBlockAddr();
+  if (root_block != nullptr) {
+    device_allocator_.ReleaseOccupiedSize(span->GetSize());
+  }
   occupied_spans_.remove(*span);
   span_allocator_.Free(*span);
   return root_block;
