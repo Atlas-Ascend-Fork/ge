@@ -9,6 +9,7 @@
  */
 
 #include <iostream>
+#include <set>
 #include <vector>
 #include "register_custom_pass.h"
 
@@ -112,18 +113,26 @@ int64_t GetDataTypeSize(DataType data_type) {
   }
 }
 
-// 计算张量字节数，shape中存在非正维度（动态shape）或数据类型不支持时返回-1
-int64_t GetTensorBytes(const TensorDesc &tensor_desc) {
+// 计算从指定维度（含）起累乘到末维的slice字节数，不含该维度之前的维度（如batch维N）：
+// 多batch下conv在concat输出连续内存中的基地址偏移按“单个batch元素”的slice大小计算，
+// 批间排布由kernel按total_shape推导的跳写步长承担，
+// 与GE内置ConcatCOptimizeFusionPass::CalSliceOffset、local engine GetConcatOffset口径一致：
+// shape中存在非正维度（动态shape）、维度非法或数据类型不支持时返回-1
+int64_t GetSliceBytesFromDim(const TensorDesc &tensor_desc, int64_t dim) {
   int64_t type_size = GetDataTypeSize(tensor_desc.GetDataType());
   if (type_size == 0) {
     return -1;
   }
+  auto dims = tensor_desc.GetShape().GetDims();
+  if (dim < 0 || static_cast<size_t>(dim) >= dims.size()) {
+    return -1;
+  }
   int64_t element_cnt = 1;
-  for (auto dim : tensor_desc.GetShape().GetDims()) {
-    if (dim <= 0) {
+  for (size_t i = static_cast<size_t>(dim); i < dims.size(); ++i) {
+    if (dims[i] <= 0) {
       return -1;
     }
-    element_cnt *= dim;
+    element_cnt *= dims[i];
   }
   return element_cnt * type_size;
 }
@@ -258,9 +267,13 @@ graphStatus SetAttrsForConcat(const GNode &concat_node, int64_t concat_dim) {
 }
 
 // 为每个Conv2D设置私有属性：
-// 1. _output_offset_list_for_continuous：各输出在concat输出连续内存中相对于第1个conv输出地址的字节偏移
+// 1. _output_offset_list_for_continuous：各输出在concat输出连续内存中相对于第1个conv输出地址的字节偏移。
+// 多batch下偏移按“单个batch元素”从真实concat轴到末维的slice大小累加，不含batch维N：
+// conv的输出基地址只负责批内concat方向偏移，批间排布由kernel按total_shape推导的跳写步长承担
+// （第n个batch写在 基地址+offset+n*单batch总大小 处），与GE内置跳写机制口径一致
 // 2. total_shape / valid_shape：conv输出所在concat输出的完整shape与conv自身输出的有效shape
-graphStatus SetAttrsForConvs(const GNode &concat_node, const vector<pair<GNodePtr, int32_t>> &conv_inputs) {
+graphStatus SetAttrsForConvs(const GNode &concat_node, const vector<pair<GNodePtr, int32_t>> &conv_inputs,
+                             int64_t concat_dim) {
   TensorDesc concat_out_desc;
   if (concat_node.GetOutputDesc(0, concat_out_desc) != GRAPH_SUCCESS) {
     cout << "Get output desc of concat node failed." << endl;
@@ -274,9 +287,9 @@ graphStatus SetAttrsForConvs(const GNode &concat_node, const vector<pair<GNodePt
       cout << "Get output desc of conv2d node failed." << endl;
       return FAILED;
     }
-    int64_t conv_out_bytes = GetTensorBytes(conv_out_desc);
-    if (conv_out_bytes <= 0) {
-      cout << "Conv2d output size is invalid." << endl;
+    int64_t slice_bytes = GetSliceBytesFromDim(conv_out_desc, concat_dim);
+    if (slice_bytes <= 0) {
+      cout << "Conv2d output slice size is invalid." << endl;
       return FAILED;
     }
     vector<int64_t> valid_shape = conv_out_desc.GetShape().GetDims();
@@ -288,7 +301,7 @@ graphStatus SetAttrsForConvs(const GNode &concat_node, const vector<pair<GNodePt
       cout << "Set attrs of conv2d node failed." << endl;
       return FAILED;
     }
-    offset += conv_out_bytes;
+    offset += slice_bytes;
   }
   return GRAPH_SUCCESS;
 }
@@ -302,21 +315,38 @@ graphStatus SetAttrsForConvs(const GNode &concat_node, const vector<pair<GNodePt
 // |o>        ConcatD
 // |o>------------------------------------------------------------
 // 识别说明：本例识别上图中Conv2D/Conv2DV2/ExtendConv2D与ConcatD/ConcatV2D组成的结构，通过属性标记实现Concat零拷贝优化：
-// 1. 通过GetAllNodes遍历图内所有节点（含子图节点），与内置pass逐图优化的行为对齐；
+// 1. 逐图遍历（根图与各子图分别处理），并通过图内节点名集合校验conv输入与concat同图，
+//    跨图数据依赖场景（Concat为子图节点而输入conv位于根图）会触发未知错误，直接跳过；
 // 2. 给Concat设置 _no_task/_output_reuse_input/_no_padding_continuous_input/_reuse_input_on_dim_index 属性，
 //    内存分配时Concat输出不单独分配内存，运行时不生成硬件Task；
 // 3. 给每个Conv2D设置 _output_offset_list_for_continuous/total_shape/valid_shape 私有属性，
 //    描述其输出在Concat输出连续内存中的字节偏移及完整/有效shape信息。
 // 注意：仅针对静态shape、conv输出独占消费、conv输出为NCHW/NHWC格式且C维度大小32B对齐、
 // concat轴与conv输出C轴对应的简单场景，实际使用时需结合内存校验确保地址连续性。
-graphStatus ConvConcatNotaskPass(GraphPtr &graph, CustomPassContext &custom_context) {
-  cout << "ConvConcatNotaskPass begin." << endl;
-  // 0. 芯片版本校验：仅mc62版本芯片执行本pass，其他芯片直接跳过
-  if (!IsMc62SocVersion(custom_context)) {
-    cout << "ConvConcatNotaskPass end." << endl;
-    return GRAPH_SUCCESS;
+// 校验conv输入与concat同图：conv输入的节点名需在当前图的直接节点名集合中。
+// 当Concat为子图节点而输入conv位于根图（跨图数据依赖）时，属性标记会触发未知错误，需跳过该场景
+bool IsConvInputsInSameGraph(const vector<pair<GNodePtr, int32_t>> &conv_inputs, const set<string> &graph_node_names) {
+  for (const auto &[conv_node, out_port] : conv_inputs) {
+    AscendString conv_name;
+    if (conv_node->GetName(conv_name) != GRAPH_SUCCESS ||
+        graph_node_names.find(conv_name.GetString()) == graph_node_names.end()) {
+      return false;
+    }
   }
-  for (auto &node : graph->GetAllNodes()) {
+  return true;
+}
+
+// 逐图处理单张图（根图或子图）中的conv2d+concat pattern
+graphStatus ProcessConvConcatInGraph(const GraphPtr &graph, CustomPassContext &custom_context) {
+  // 建立当前图直接节点的名字集合，用于conv输入的同图校验
+  set<string> graph_node_names;
+  for (const auto &node : graph->GetDirectNode()) {
+    AscendString node_name;
+    if (node.GetName(node_name) == GRAPH_SUCCESS) {
+      graph_node_names.emplace(node_name.GetString());
+    }
+  }
+  for (auto &node : graph->GetDirectNode()) {
     if (!IsConcatNode(node) || IsNoTaskNode(node)) {
       continue;
     }
@@ -326,32 +356,74 @@ graphStatus ConvConcatNotaskPass(GraphPtr &graph, CustomPassContext &custom_cont
       cout << "Node is not a conv2d + concat pattern, skip." << endl;
       continue;
     }
-    // 2. 校验conv输出为NCHW/NHWC格式且C维度大小满足32B对齐（concat连续内存中各输入起始地址对齐的前提）
+    // 2. 校验conv输入与concat同图（跨图数据依赖场景会触发未知错误，直接跳过）
+    if (!IsConvInputsInSameGraph(conv_inputs, graph_node_names)) {
+      cout << "Conv inputs of concat are not in the same graph, skip." << endl;
+      continue;
+    }
+    // 3. 校验conv输出为NCHW/NHWC格式且C维度大小满足32B对齐（concat连续内存中各输入起始地址对齐的前提）
     if (!IsConvOutputCAxisAligned(conv_inputs)) {
       cout << "Conv2d output format is not supported or C dim size is not 32B aligned, skip." << endl;
       continue;
     }
-    // 3. 计算真实的concat轴
+    // 4. 计算真实的concat轴
     int64_t concat_dim = -1;
     if (!GetRealConcatDim(node, concat_dim)) {
       cout << "Node shape does not match concat pattern, skip." << endl;
       continue;
     }
-    // 4. 校验concat_dim与conv输出的C轴对应（NCHW为dim 1或-3，NHWC为dim 3或-1）
+    // 5. 校验concat_dim与conv输出的C轴对应（NCHW为dim 1或-3，NHWC为dim 3或-1）
     if (!IsConcatDimOnCAxis(conv_inputs, concat_dim)) {
       cout << "Concat dim does not match the C axis of conv output, skip." << endl;
       continue;
     }
-    // 5. 设置Conv2d私有属性（先设置conv侧属性，失败时保证concat未被误标记）
-    if (SetAttrsForConvs(node, conv_inputs) != GRAPH_SUCCESS) {
+    // 6. 设置Conv2d私有属性（先设置conv侧属性，失败时保证concat未被误标记）
+    if (SetAttrsForConvs(node, conv_inputs, concat_dim) != GRAPH_SUCCESS) {
       custom_context.SetErrorMessage("Set attrs of conv2d nodes failed.");
       return FAILED;
     }
-    // 6. 设置Concat属性
+    // 7. 设置Concat属性
     if (SetAttrsForConcat(node, concat_dim) != GRAPH_SUCCESS) {
       custom_context.SetErrorMessage("Set attrs of concat node failed.");
       return FAILED;
     }
+  }
+  return GRAPH_SUCCESS;
+}
+
+// 递归处理图及其所有子图（visited_graphs按图名去重，防止环）
+graphStatus ProcessGraphAndSubgraphs(const GraphPtr &graph, CustomPassContext &custom_context,
+                                     set<string> &visited_graphs) {
+  AscendString graph_name;
+  if (graph->GetName(graph_name) != GRAPH_SUCCESS) {
+    cout << "Get graph name failed." << endl;
+    return FAILED;
+  }
+  if (!visited_graphs.emplace(graph_name.GetString()).second) {
+    return GRAPH_SUCCESS;
+  }
+  if (ProcessConvConcatInGraph(graph, custom_context) != GRAPH_SUCCESS) {
+    return FAILED;
+  }
+  for (const auto &subgraph : graph->GetAllSubgraphs()) {
+    if (ProcessGraphAndSubgraphs(subgraph, custom_context, visited_graphs) != GRAPH_SUCCESS) {
+      return FAILED;
+    }
+  }
+  return GRAPH_SUCCESS;
+}
+
+graphStatus ConvConcatNotaskPass(GraphPtr &graph, CustomPassContext &custom_context) {
+  cout << "ConvConcatNotaskPass begin." << endl;
+  // 0. 芯片版本校验：仅mc62版本芯片执行本pass，其他芯片直接跳过
+  if (!IsMc62SocVersion(custom_context)) {
+    cout << "ConvConcatNotaskPass end." << endl;
+    return GRAPH_SUCCESS;
+  }
+  // 逐图遍历：根图与各子图分别处理，conv与concat仅在各自图内匹配
+  set<string> visited_graphs;
+  if (ProcessGraphAndSubgraphs(graph, custom_context, visited_graphs) != GRAPH_SUCCESS) {
+    return FAILED;
   }
   cout << "ConvConcatNotaskPass end." << endl;
   return GRAPH_SUCCESS;

@@ -2,7 +2,7 @@
 
 ## Description
 
-This sample demonstrates a custom pass that marks the Conv2D/Conv2DV2/ExtendConv2D+Concat pattern for zero-copy optimization. After the Conv2D/Conv2DV2/ExtendConv2D+Concat structure is identified, the Concat node is marked as a virtual operator (no hardware task generated, output reusing input memory) by setting attributes, and the layout information of each conv output in the continuous output memory of Concat is described. The pass traverses all nodes in the graph (including subgraph nodes) via GetAllNodes.
+This sample demonstrates a custom pass that marks the Conv2D/Conv2DV2/ExtendConv2D+Concat pattern for zero-copy optimization. After the Conv2D/Conv2DV2/ExtendConv2D+Concat structure is identified, the Concat node is marked as a virtual operator (no hardware task generated, output reusing input memory) by setting attributes, and the layout information of each conv output in the continuous output memory of Concat is described. The pass traverses graph by graph (the root graph and each subgraph are processed separately, and conv/concat are matched only within the same graph), checks the chip version at the entry (takes effect only on mc62 chips), and supports both single-batch and multi-batch layout schemes (see the matching conditions for details).
 
 The matched fixed pattern:
 
@@ -22,8 +22,8 @@ Attributes set by this pass:
 | ConcatD/ConcatV2D | `_output_reuse_input` (ATTR_NAME_OUTPUT_REUSE_INPUT) | bool | Marks that the output reuses input memory |
 | ConcatD/ConcatV2D | `_no_padding_continuous_input` (ATTR_NAME_NOPADDING_CONTINUOUS_INPUT) | bool | Marks that the inputs are continuous memory without padding |
 | ConcatD/ConcatV2D | `_reuse_input_on_dim_index` (ATTR_NAME_REUSE_INPUT_ON_DIM_INDEX) | int64 | The dim index for output reusing input memory (in this sample, the real concat dim obtained by comparing input and output shapes) |
-| Conv2D/Conv2DV2/ExtendConv2D | `_output_offset_list_for_continuous` (ATTR_NAME_OUTPUT_OFFSET_LIST_FOR_CONTINUOUS) | list\<int64\> | Byte offset of each output in the continuous output memory of the concat, relative to the first conv output |
-| Conv2D/Conv2DV2/ExtendConv2D | `total_shape` (private attr) | list\<int64\> | The complete shape of the concat output where the conv output resides |
+| Conv2D/Conv2DV2/ExtendConv2D | `_output_offset_list_for_continuous` (ATTR_NAME_OUTPUT_OFFSET_LIST_FOR_CONTINUOUS) | list\<int64\> | Base address offset of each output in the continuous output memory of the concat (relative to the first conv output), accumulated by the single-batch slice bytes of each conv output along the concat dim (the product of dims from concat_dim to the end × the dtype size) |
+| Conv2D/Conv2DV2/ExtendConv2D | `total_shape` (private attr) | list\<int64\> | The complete shape of the concat output where the conv output resides; in strided-write scenarios it is also the basis for the operator to derive the segment stride (corresponding to slice_output_shape of FE `StridedWriteOptimizer`) |
 | Conv2D/Conv2DV2/ExtendConv2D | `valid_shape` (private attr) | list\<int64\> | The valid shape of the conv output itself |
 
 Matching conditions:
@@ -31,9 +31,14 @@ Matching conditions:
 - All inputs of ConcatD/ConcatV2D come from different Conv2D/Conv2DV2/ExtendConv2D nodes, and each conv output is consumed only by this Concat;
 - The format of each conv output is NCHW or NHWC, and the C dim is 32-byte aligned (the C dim size = the C axis size × the dtype size, which is a multiple of 32 bytes; in NCHW the C axis is dim 1, and in NHWC the C axis is the innermost dim 3), ensuring that the start address of each input in the continuous output memory of the concat is 32B aligned (stronger than the tensor-size 32B alignment check of the built-in GE `CheckPhonyConcatInputIs32Align`);
 - The concat dim of the Concat corresponds to the C axis of the conv outputs, negative indices (counting from the last dim) are supported: dim 1 or -3 for NCHW, dim 3 or -1 for NHWC;
+- No restriction on the batch axis; both single-batch and multi-batch schemes are supported (base address offsets are accumulated by the single-batch slice bytes of each conv output along the concat dim, referring to the GE built-in `GetConcatOffset` and FE `CalSliceOffset` implementations):
+  - Single batch with data as one contiguous segment (NCHW, referring to the built-in `ConvConcatFusionPass`): the offset is the segment start of each conv output, no strided write needed;
+  - Data not one contiguous segment (NHWC chunked by (h,w) position, or multi-batch segmented by batch, referring to the built-in `StridedWriteOptimizer`): the offset is the base address of the first segment, and `total_shape` serves as the basis for the operator to derive the segment stride;
 - Input and output shapes are static, and data types are common fixed-length types.
 
-> Note: This sample only demonstrates how to set attributes, and does not cover the complete check chain of the built-in GE Concat no-task optimization (such as 32-byte alignment, predecessor node types, cascaded continuous input, etc.). In actual use, memory checks are required to ensure that the output addresses of each conv satisfy the continuity requirement; otherwise, runtime errors may occur.
+> Restriction: when the Concat is a subgraph node while its input Conv operators are in the root graph (cross-graph data dependency), this pass detects the scenario and skips the corresponding node (no attributes are set, and the log prints "Conv inputs of concat are not in the same graph, skip."); the attribute marking of this scenario would trigger unknown errors, so it is out of the scope of this sample.
+>
+> Note: This sample only demonstrates how to set attributes, and does not cover the complete check chain of the built-in GE Concat no-task optimization (such as 32-byte alignment, predecessor node types, cascaded continuous input, and the runtime-format check that all dims before the concat dim are 1). In actual use, memory checks are required to ensure that the output addresses of each conv satisfy the continuity requirement; otherwise, runtime errors may occur.
 
 ## Directory Structure
 
