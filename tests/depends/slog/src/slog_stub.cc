@@ -128,7 +128,13 @@ int SlogStub::Format(char *buff, size_t buff_len, int module_id, int level, cons
   if (len < 0) {
     return len;
   }
-  pos += len;
+  // vsnprintf 截断时返回所需长度，扫描上界需限制在缓冲区已写入范围内。
+  const auto remaining_size = buff_len - static_cast<size_t>(pos);
+  if (static_cast<size_t>(len) >= remaining_size) {
+    pos = static_cast<int>(buff_len - 1U);
+  } else {
+    pos += len;
+  }
   // 按照原来的实现，这里有一个裁掉目录，仅保存文件名的步骤，原地打印后，没法使用原来的机制了，所以重写一个。。。
   return EraseFolderFromPath(buff, pos);
 }
