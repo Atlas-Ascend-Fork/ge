@@ -31,6 +31,13 @@ Multistream是一个纯Python多流规划模块。调用者将计算任务及其
 
 搭建完整的AI处理器环境。按照[环境准备](overview/environment_setup.md)安装驱动固件和CANN软件包，并设置环境变量。
 
+通过GE启用DAG自动多流（`ge.autoMultistreamParallelMode=LoadBalance:N`或`MainStream:N`）时，需要加载Python原生桥接组件。若没有匹配当前Python版本、平台及组件ABI的预编译产物，GE会在本机编译这些组件；此时需要可用的C++编译器、当前Python的开发头文件和libpython，以及包含头文件的pybind11。可以在运行GE的同一个Python环境中安装已验证的版本：
+
+```bash
+python -m pip install 'pybind11==2.13.6'
+python -c "import sys, pybind11; print(sys.version); print(sys.prefix); print(pybind11.get_include())"
+```
+
 ### 构图与规划
 
 下面用一个分叉后汇合的计算图演示调用流程。运行示例前需完成上述环境准备。

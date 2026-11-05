@@ -8,6 +8,7 @@ multistream.plan(
     *, max_stream_num: Optional[int] = None,
     base_stream_id: int = 0,
     merge_strategy: MergeStrategy = MergeStrategy.LOAD_BALANCE,
+    profiling_path: Optional[str] = None,
 ) -> StreamPlan
 ```
 
@@ -19,6 +20,7 @@ multistream.plan(
 | max_stream_num | 输入 | 普通流数上限，整数1～64，`None`按8处理。 |
 | base_stream_id | 输入 | 流ID起点，非负整数，默认0。 |
 | merge_strategy | 输入 | [MergeStrategy](MergeStrategy.md)枚举，默认负载均衡。 |
+| profiling_path | 输入 | profiling CSV文件路径，支持字符串或返回字符串路径的`os.PathLike`对象。默认`None`；`None`或空字符串表示不读取profiling文件。 |
 
 ## 返回值说明
 
@@ -31,7 +33,7 @@ multistream.plan(
 - 调用前需准备CANN Runtime，并完成运行时初始化或离线目标SoC配置。Runtime加载或核数查询失败时向调用方报告异常，不使用默认核数。
 - 图类型或整数参数类型错误抛出`TypeError`；流数越界、起点为负或策略无效抛出`ValueError`；图有环或内部结果不一致抛出`RuntimeError`。
 - 推荐使用枚举；兼容字符串`LoadBalance`、`load_balance`、`MainStream`、`main_stream`，忽略大小写，支持空格和连字符转下划线。
-- 当前接口不接受`profiling_path`，不自动读取profiling CSV或选择加权策略。
+- 提供`profiling_path`时，读取profiling CSV并按算子名称匹配节点；有效记录命中参与普通路径合并的节点时，自动采用加权负载均衡策略，覆盖`merge_strategy`的选择，否则仍使用指定策略。文件不可读或缺少必需列时抛出`ValueError`。
 
 ## 调用示例
 

@@ -23,6 +23,8 @@
 #include "common/share_graph.h"
 #include "common/python_runtime/python_artifact_utils.h"
 #include "common/python_runtime/python_bridge_loader_utils.h"
+#include "common/python_runtime/python_fallback_codegen_helper.h"
+#include "common/util/error_manager/error_manager.h"
 #include "es_ge_test_ops.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/operator_factory_impl.h"
@@ -1580,6 +1582,53 @@ TEST_F(UtestFusionPassExecutor, PythonPassBridgeLoader_ProbesPathPythonRuntime) 
   ScopedPyRuntimeProbeFailureForUt scoped_probe_failure;
   EXPECT_EQ(RegisterPythonPassesFromPlugin(), FAILED);
   ShutdownPythonPassesForProcess();
+}
+
+TEST_F(UtestFusionPassExecutor, PythonPassBridgeLoader_ReportsFallbackDependencyFailure) {
+  ScopedTempDir temp_dir;
+  const auto fake_python3 = temp_dir.CreateFilePath("python3");
+  WriteFile(fake_python3,
+            "#!/bin/sh\n"
+            "case \"$2\" in\n"
+            "  *sys.version_info*) printf 'cp399\\n3.99.0\\n' ;;\n"
+            "  *) printf '__GE_PYTHON_FALLBACK_ERROR__=No module named pybind11; install in /opt/ge-python.\\n'; "
+            "exit 1 ;;\n"
+            "esac\n");
+  ASSERT_EQ(chmod(fake_python3.c_str(), 0700), 0);
+  ShutdownPythonPassesForProcess();
+  (void)ErrorManager::GetInstance().GetErrorMessage();
+  ScopedEnvVar scoped_path("PATH", temp_dir.FilePath(""));
+  ScopedPyRuntimeProbeFailureForUt scoped_probe_failure;
+  EXPECT_EQ(RegisterPythonPassesFromPlugin(), FAILED);
+  const auto message = ErrorManager::GetInstance().GetErrorMessage();
+  EXPECT_NE(message.find("No module named pybind11; install in /opt/ge-python."), std::string::npos);
+  EXPECT_EQ(message.find("__GE_PYTHON_FALLBACK_ERROR__"), std::string::npos);
+  ShutdownPythonPassesForProcess();
+}
+
+TEST_F(UtestFusionPassExecutor, PythonFallbackCodegen_ReportsInProcessErrorAndKeepsSuccessClean) {
+  const auto *api = LoadBridgeApiForUt();
+  ASSERT_NE(api, nullptr);
+  PythonFusionPassRegistrar registrar = {&RecordPythonPassFromDirectBridge,
+                                         &RecordPythonResourcePlanPassFromDirectBridge};
+  // Initialize Python with its normal search path, without importing a native module.
+  api->reset_bridge_state();
+  ForgetNativeModuleForUt();
+  PythonFusionPassBridgeArtifactConfig empty_config = {nullptr, nullptr};
+  ASSERT_EQ(api->set_artifact_config(&empty_config), SUCCESS);
+  EXPECT_EQ(api->register_passes(&registrar), FAILED);
+  ASSERT_NE(QueryRealPyIsInitializedForUt(), 0);
+  (void)ErrorManager::GetInstance().GetErrorMessage();
+  std::string result;
+  EXPECT_FALSE(python_fallback_codegen::RunEvalExpressionInProcess(
+      "(_ for _ in ()).throw(RuntimeError('pybind11 is unavailable; install in /opt/ge-python'))", result));
+  const auto message = ErrorManager::GetInstance().GetErrorMessage();
+  EXPECT_NE(message.find("pybind11 is unavailable; install in /opt/ge-python"), std::string::npos);
+  EXPECT_TRUE(result.empty());
+  EXPECT_TRUE(python_fallback_codegen::RunEvalExpressionInProcess("'/tmp/artifacts'", result));
+  EXPECT_EQ(result, "/tmp/artifacts");
+  EXPECT_TRUE(ErrorManager::GetInstance().GetErrorMessage().empty());
+  CleanupBridgeStateForUt(*api);
 }
 
 TEST_F(UtestFusionPassExecutor, PythonPassBridgeLoader_SkipsBrokenPrebuiltCandidate) {

@@ -57,18 +57,12 @@ def _spec(tmp_path, **overrides):
     return native_loader.NativeComponentSpec(**values)
 
 
-def test_python_environment_resolution_handles_optional_dependencies(
-    tmp_path, monkeypatch
-):
+def test_python_environment_resolution(tmp_path, monkeypatch):
     pybind = types.SimpleNamespace(get_include=lambda: str(tmp_path / "pybind"))
-    (tmp_path / "pybind").mkdir()
+    (tmp_path / "pybind" / "pybind11").mkdir(parents=True)
+    (tmp_path / "pybind" / "pybind11" / "pybind11.h").touch()
     monkeypatch.setitem(sys.modules, "pybind11", pybind)
     assert fallback._resolve_pybind_include() == tmp_path / "pybind"
-
-    pybind.get_include = lambda: str(tmp_path / "missing")
-    assert fallback._resolve_pybind_include() is None
-    pybind.get_include = lambda: (_ for _ in ()).throw(RuntimeError("bad"))
-    assert fallback._resolve_pybind_include() is None
 
     monkeypatch.setattr(
         fallback.sysconfig,
@@ -77,6 +71,33 @@ def test_python_environment_resolution_handles_optional_dependencies(
     )
     dirs = fallback._resolve_libpython_dirs()
     assert Path(sys.prefix) / "lib" in dirs
+
+
+def test_missing_pybind_reports_runtime_environment_and_install_hint(monkeypatch):
+    monkeypatch.setitem(sys.modules, "pybind11", None)
+    monkeypatch.setattr(sys, "prefix", "/opt/ge-python")
+    monkeypatch.setattr(sys, "executable", "/opt/cann/bin/atc")
+    with pytest.raises(RuntimeError) as caught:
+        fallback._resolve_pybind_include()
+    message = str(caught.value)
+    assert "pybind11" in message
+    assert sys.version.split()[0] in message
+    assert "sys.prefix='/opt/ge-python'" in message
+    assert "python -m pip install 'pybind11==2.13.6'" in message
+    assert "atc -m pip" not in message
+    assert isinstance(caught.value.__cause__, ModuleNotFoundError)
+
+
+def test_pybind_header_and_api_failures_keep_original_reason(tmp_path, monkeypatch):
+    pybind = types.SimpleNamespace(get_include=lambda: str(tmp_path))
+    monkeypatch.setitem(sys.modules, "pybind11", pybind)
+    with pytest.raises(RuntimeError, match="pybind11 header is missing"):
+        fallback._resolve_pybind_include()
+    pybind.get_include = lambda: (_ for _ in ()).throw(
+        RuntimeError("broken include lookup")
+    )
+    with pytest.raises(RuntimeError, match="broken include lookup"):
+        fallback._resolve_pybind_include()
 
 
 def test_resolve_python_library_prefers_shared_existing_file(tmp_path, monkeypatch):
