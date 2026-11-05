@@ -499,6 +499,24 @@ class AscOverrides final : public OpOverrides {
     return MakeCse(cse_key, broadcast);
   }
 
+  CseVar ReduceThenBroadcast(const CseVar &src, ReduceType reduce_type,
+                             const std::vector<int64_t> &reduce_dims) override {
+    GE_WARN_ASSERT(src.IsValid());
+    GE_WARN_ASSERT(!reduce_dims.empty());
+    auto repeats = asc_axis_repeats_;
+    for (const auto reduce_dim : reduce_dims) {
+      const auto normalized_dim = reduce_dim < 0 ? reduce_dim + static_cast<int64_t>(repeats.size()) : reduce_dim;
+      GE_WARN_ASSERT(normalized_dim >= 0 && static_cast<size_t>(normalized_dim) < repeats.size());
+      repeats[static_cast<size_t>(normalized_dim)] = Symbol(1);
+    }
+    auto reduce_op = MakeReduceVar(src, reduce_type);
+    GE_WARN_ASSERT(reduce_op.IsValid());
+    reduce_op.SetTensorLoop(asc_axis_, repeats, ContiguousStrides(repeats));
+    auto broadcast = MakeAscVar<ascir_op::Broadcast>(reduce_op);
+    broadcast.SetTensorLoop(asc_axis_, asc_axis_repeats_, ContiguousStrides(asc_axis_repeats_));
+    return CseVar(broadcast.Shared());
+  }
+
   CseVar LoadSeed(const std::string &name, const CseVar &x) override {
     GE_WARN_ASSERT(false, "LoadSeed %s", CseKey<UnimplementOp>(name, x).c_str());
   }

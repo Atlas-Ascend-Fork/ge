@@ -843,6 +843,12 @@ LoopVar ReduceThenBroadcast(ReduceType type, const LoopVar &op, int64_t dim) {
   return LoopVar(std::make_shared<ReduceThenBroadcastOp>(type, op.Op(), dim));
 }
 
+LoopVar ReduceThenBroadcast(ReduceType type, const LoopVar &op, const std::vector<int64_t> &dims) {
+  GE_WARN_ASSERT(op.IsValid());
+  GE_WARN_ASSERT(!dims.empty());
+  return LoopVar(std::make_shared<ReduceThenBroadcastOp>(type, op.Op(), dims));
+}
+
 LoopVar ToDtypeBitcast(const LoopVar &x, ge::DataType dst_type, ge::DataType src_type) {
   GE_WARN_ASSERT(x.IsValid());
   LoopKernel kernel = [dst_type, src_type](const std::vector<CseVar> &vars) -> CseVar {
