@@ -77,6 +77,8 @@ Responsibilities of each step:
 | CompositeEnginePartition | `EnginePartitioner` | Split subgraphs by composite engine and optimize |
 | AtomicEnginePartition | `EnginePartitioner` | Split subgraphs by atomic engine and optimize |
 
+`HostcpuEngineUpdatePass` checks input and output types through Tensor descriptor pointer interfaces, retains filtering of invalid optional inputs, and skips null descriptor pointers before reading data types. The lowering attribute of a custom Host CPU operator is read through a string pointer; a missing attribute or a type mismatch does not match.
+
 ## 4. External Interfaces
 
 ### 4.1 atc Command-line Options

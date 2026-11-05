@@ -82,7 +82,7 @@ ge::graphStatus OpCompileContext::GetPlatformInfos(fe::PlatFormInfos &platform_i
   return res;
 }
 
-bool OpCompileContext::GetContextValue(const ContextParam key, uint64_t &value) const {
+bool OpCompileContext::GetContextValue(ContextParam key, uint64_t &value) const {
   (void)key;
   (void)value;
   return false;

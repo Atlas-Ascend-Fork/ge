@@ -366,7 +366,7 @@ std::string TaskCodeBuilderUtil::EscapeToOctalString(const std::vector<uint8_t> 
 
 ArgsTableEntrySemantic *TaskCodeBuilderUtil::InitArgsTableEntry(const TaskSemanticContributeContext &context,
                                                                 std::optional<ArgsTableEntrySemantic> &entry_storage,
-                                                                const uint64_t args_size) {
+                                                                uint64_t args_size) {
   (void)entry_storage.emplace();
   entry_storage->table_index = *context.next_args_table_index;
   entry_storage->args_size = args_size;

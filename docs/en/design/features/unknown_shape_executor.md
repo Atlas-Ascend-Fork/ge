@@ -439,6 +439,8 @@ Each Kernel can register the following functions:
 
 `KernelRunContext` and `KernelContext` provide execution-needed context info for Kernel, including input/output addresses, shape descriptions, runtime parameters, etc.
 
+`AicpuHostExecFunc` uses the repository's `PtrToPtr<KernelContext, ExtendedKernelContext>()` utility to access compute node information in the extended context before converting output shapes, preserving the existing context layout and execution order.
+
 ### 5.6 HybridModelRtV2Executor: Execution Entry for Hybrid Scenario
 
 Defined in `runtime/v1/hybrid/executor/hybrid_model_rt_v2_executor.h`.

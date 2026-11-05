@@ -11,8 +11,8 @@
 #ifndef GE_INC_FRAMEWORK_RUNTIME_ARGS_HANDLER_H_
 #define GE_INC_FRAMEWORK_RUNTIME_ARGS_HANDLER_H_
 
+#include <cstddef>
 #include <deque>
-#include "framework/runtime/attached_stream_provider.h"
 #include "exe_graph/runtime/kernel_args.h"
 
 namespace gert {

@@ -27,6 +27,8 @@ extern "C" {
 // for some old ge testcases
 void SetMockRtGetDeviceWay(int32_t is_mock_new_way);
 int32_t GetMockRtGetDeviceWay();
+// 注入 rtModelGetHcclStream 桩返回的外部 hccl 单算子流（对应 davinci_model.cc 中的临时声明）
+void SetRtHcclStreamStub(const rtStream_t *streams, uint32_t num_streams);
 #ifdef __cplusplus
 }
 #endif

@@ -35,10 +35,10 @@ class DaemonService {
   void ProcessDisconnectRequest(const std::string &peer_uri, const deployer::DeployerRequest &request);
 
   void ProcessHeartbeatRequest(DeployerDaemonClient *client, const deployer::DeployerRequest &request,
-                               deployer::DeployerResponse &response);
+                               deployer::DeployerResponse &response) const;
 
   void ProcessDeployRequest(DeployerDaemonClient *client, const deployer::DeployerRequest &request,
-                            deployer::DeployerResponse &response);
+                            deployer::DeployerResponse &response) const;
 
   DeployerDaemonClient *GetVerifiedClient(const std::string &peer_uri, int64_t client_id);
 

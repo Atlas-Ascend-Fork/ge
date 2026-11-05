@@ -81,7 +81,7 @@ size_t AnnotatedArgsHandler::LaunchRecord::GetCustomDataBlobCount() const {
   return custom_data_blobs_.size();
 }
 
-const std::vector<uint8_t> *AnnotatedArgsHandler::LaunchRecord::GetCustomDataBlob(const size_t index) const {
+const std::vector<uint8_t> *AnnotatedArgsHandler::LaunchRecord::GetCustomDataBlob(size_t index) const {
   if (index >= custom_data_blobs_.size()) {
     return nullptr;
   }

@@ -489,6 +489,57 @@ bool IsStaticShape(std::vector<Expression> output_dims, const ge::OutDataAnchorP
   return true;
 }
 
+bool IsValidMatMulShape(const std::vector<std::vector<Expression>> &input_dims,
+                        const std::vector<Expression> &output_dims, const MatMulAttr &matmul_attr) {
+  const auto rank = output_dims.size();
+  if (input_dims.size() < 2U || rank < 2U || input_dims[0].size() != rank || input_dims[1].size() != rank ||
+      (matmul_attr.is_batch ? rank < 3U : rank != 2U)) {
+    return false;
+  }
+  // Dynamic BMM uses the existing contiguous, equal-batch Cube path. A matching
+  // batch product alone is insufficient: each batch axis must match the output.
+  for (size_t i = 0U; i < rank - 2U; ++i) {
+    if (ge::SymbolicUtils::StaticCheckEq(input_dims[0][i], input_dims[1][i]) != ge::TriBool::kTrue ||
+        ge::SymbolicUtils::StaticCheckEq(output_dims[i], input_dims[0][i]) != ge::TriBool::kTrue) {
+      return false;
+    }
+  }
+
+  const bool transpose_x1 = matmul_attr.adj_x1 || matmul_attr.transpose_x1;
+  const bool transpose_x2 = matmul_attr.adj_x2 || matmul_attr.transpose_x2;
+  const auto &x1 = input_dims[0];
+  const auto &x2 = input_dims[1];
+  const auto &m = transpose_x1 ? x1[rank - 1U] : x1[rank - 2U];
+  const auto &k1 = transpose_x1 ? x1[rank - 2U] : x1[rank - 1U];
+  const auto &k2 = transpose_x2 ? x2[rank - 1U] : x2[rank - 2U];
+  const auto &n = transpose_x2 ? x2[rank - 2U] : x2[rank - 1U];
+  if (ge::SymbolicUtils::StaticCheckEq(k1, k2) != ge::TriBool::kTrue ||
+      ge::SymbolicUtils::StaticCheckEq(output_dims[rank - 2U], m) != ge::TriBool::kTrue ||
+      ge::SymbolicUtils::StaticCheckEq(output_dims[rank - 1U], n) != ge::TriBool::kTrue) {
+    return false;
+  }
+
+  for (const auto &dim : x1) {
+    int64_t value = 0;
+    if (dim.GetConstValue(value) && value <= 0) {
+      return false;
+    }
+  }
+  for (const auto &dim : x2) {
+    int64_t value = 0;
+    if (dim.GetConstValue(value) && value <= 0) {
+      return false;
+    }
+  }
+  for (const auto &dim : output_dims) {
+    int64_t value = 0;
+    if (dim.GetConstValue(value) && value <= 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool IsSameBatchSize(const std::vector<std::vector<Expression>> &input_dims) {
   if (input_dims.size() < 2U) {
     return false;
@@ -566,14 +617,13 @@ KernelBox StoreMatMul(const ge::OutDataAnchorPtr &dst, const std::vector<ge::InD
   if (!ValidateAndLoadInputs(dst, inputs, input_buffers, input_dims, max_dim)) {
     return StoreExtern(dst);
   }
+  if (!IsStaticShape(dims, dst, inputs) && !IsValidMatMulShape(input_dims, dims, matmul_attr)) {
+    GELOGI("Drop lower result of %s as its dynamic matmul shape is unsupported", BufferName(dst).c_str());
+    return StoreExtern(dst);
+  }
   PadDimsToMax(input_dims, max_dim);
   if (!IsSameBatchSize(input_dims)) {
     GELOGI("Drop lower result of %s as it has different batch size", BufferName(dst).c_str());
-    return StoreExtern(dst);
-  }
-
-  if (!IsStaticShape(dims, dst, inputs)) {
-    GELOGI("Drop lower result of %s as it is not static shape", BufferName(dst).c_str());
     return StoreExtern(dst);
   }
 

@@ -59,13 +59,13 @@ bool IsUnsupportedHostCpuDataType(const DataType data_type) {
 }
 
 bool HasUnsupportedHostCpuDataType(const OpDescPtr &op_desc) {
-  for (const auto &tensor_desc : op_desc->GetAllInputsDesc()) {
-    if (IsUnsupportedHostCpuDataType(tensor_desc.GetDataType())) {
+  for (const auto &tensor_desc : op_desc->GetAllInputsDescPtr()) {
+    if ((tensor_desc != nullptr) && IsUnsupportedHostCpuDataType(tensor_desc->GetDataType())) {
       return true;
     }
   }
-  for (const auto &tensor_desc : op_desc->GetAllOutputsDesc()) {
-    if (IsUnsupportedHostCpuDataType(tensor_desc.GetDataType())) {
+  for (const auto &tensor_desc : op_desc->GetAllOutputsDescPtr()) {
+    if ((tensor_desc != nullptr) && IsUnsupportedHostCpuDataType(tensor_desc->GetDataType())) {
       return true;
     }
   }
@@ -93,8 +93,8 @@ bool IsCustomOpExecOnHostCpu(const OpDescPtr &op_desc) {
                                   OpRegistrationPriority::kTop, OpEngine::kCustom)) {
     return false;
   }
-  std::string lowering_func;
-  return AttrUtils::GetStr(op_desc, kAttrLowingFunc, lowering_func) && (lowering_func == kHostCpuCustomOpLowerFunc);
+  const auto *lowering_func = AttrUtils::GetStr(op_desc, kAttrLowingFunc);
+  return (lowering_func != nullptr) && (*lowering_func == kHostCpuCustomOpLowerFunc);
 }
 
 bool IsControlV2Op(const std::string &op_type) {
