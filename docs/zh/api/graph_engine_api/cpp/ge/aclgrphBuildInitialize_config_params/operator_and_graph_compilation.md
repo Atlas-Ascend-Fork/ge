@@ -120,12 +120,14 @@
      例如Atlas A2系列产品。
      <!-- end id15 -->
 
+     ![](../../../figures/logic_arch_diagram_0.png)
+
 - 当AI数据处理核心单元是AI Core以及单独的Vector Core：AI Core和Vector Core都拥有独立的Scalar调度单元。
     <!-- npu="310p" id16 -->
     例如Atlas推理系列产品。
     <!-- end id16 -->
 
-    ![](../../../figures/logic_arch_diagram_0.png)
+    ![](../../../figures/logic_arch_diagram_1.png)
 
 ## CORE\_TYPE
 
