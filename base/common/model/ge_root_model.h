@@ -33,6 +33,15 @@ struct GertModelData;
 
 namespace ge {
 
+// autofuse 离线双执行体：兜底执行体在 subgraph_instance_name_to_model_ 中的约定 key。
+constexpr char const *kFallbackModelKey = "__fallback__";
+// 兜底执行体子图前缀（不以 "__fallback__" 为前缀，摘取需双条件判断）。
+constexpr char const *kFallbackSubgraphPrefix = "__fallback_sub__";
+// 双执行体标记：主/兜底 root 图各一份，用于兼容旧 OM，避免仅凭保留图名误判。
+constexpr char const *kDualBodyAttr = "_autofuse_dual_body";
+// 保存期双体权重一致性判定结果（仅主根图）。
+constexpr char const *kWeightsIdenticalAttr = "_autofuse_weights_identical";
+
 struct FixedFeatureMemory {
   std::string ToString() const {
     std::stringstream ss;

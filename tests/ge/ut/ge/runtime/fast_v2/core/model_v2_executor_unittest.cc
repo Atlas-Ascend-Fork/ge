@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 #include <map>
 #include <mutex>
+#include <fstream>
 #include "graph/operator_factory_impl.h"
 #include "graph/types.h"
 #include "core/execution_data.h"
@@ -37,6 +38,8 @@
 #include "common/opskernel/ops_kernel_info_types.h"
 #include "graph/custom_op_factory.h"
 #include "common/model_v2_executor_test_helper.h"
+#include "common/model/ge_root_model.h"
+#include "graph/debug/ge_attr_define.h"
 
 // using namespace ge;
 namespace gert {
@@ -222,6 +225,145 @@ TEST_F(ExecutorUnitTest, LoadExecutorFromModelDataWithLoadArgsInitializesMissing
   ASSERT_NE(global_options.find(ge::DETERMINISTIC_LEVEL), global_options.cend());
   EXPECT_EQ(global_options.at(ge::DETERMINISTIC), "1");
   EXPECT_EQ(global_options.at(ge::DETERMINISTIC_LEVEL), "2");
+}
+
+TEST_F(ExecutorUnitTest, LoadExecutorSetFromModelDataWithoutFallback) {
+  ScopedDeterministicOptions deterministic_options(false);
+  auto graph = ShareGraph::BuildSingleNodeGraph();
+  graph->TopologicalSorting();
+  auto ge_root_model = GeModelBuilder(graph)
+                           .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                           .FakeTbeBin({"Add"})
+                           .BuildGeRootModel();
+  auto model_data = ModelDataFaker().GeRootModel(ge_root_model).BuildUnknownShape();
+  LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_EQ(LoadExecutorSetFromModelData(model_data.Get(), args, executor_set), ge::GRAPH_SUCCESS);
+  EXPECT_NE(executor_set.main, nullptr);
+  EXPECT_EQ(executor_set.fallback, nullptr);
+  EXPECT_EQ(executor_set.guard, nullptr);
+  EXPECT_FALSE(executor_set.weights_identical);
+}
+
+namespace {
+ge::GeRootModelPtr BuildDualBodyRootForExecutorUt() {
+  auto graph = ShareGraph::BuildSingleNodeGraph();
+  graph->TopologicalSorting();
+  auto root = GeModelBuilder(graph)
+                  .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                  .FakeTbeBin({"Add"})
+                  .BuildGeRootModel();
+  auto fallback_graph = std::make_shared<ge::ComputeGraph>(ge::kFallbackModelKey);
+  if (ge::GraphUtils::CopyComputeGraph(graph, fallback_graph) != ge::SUCCESS) {
+    return nullptr;
+  }
+  auto fallback_root = GeModelBuilder(fallback_graph)
+                           .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                           .FakeTbeBin({"Add"})
+                           .BuildGeRootModel();
+  if (fallback_root == nullptr) {
+    return nullptr;
+  }
+  for (const auto &kv : fallback_root->GetSubgraphInstanceNameToModel()) {
+    root->SetSubgraphInstanceNameToModel(kv.first, kv.second);
+  }
+  (void)ge::AttrUtils::SetBool(root->GetRootGraph(), ge::kDualBodyAttr, true);
+  return root;
+}
+}  // namespace
+
+namespace {
+class DummyGuardCheckerForUt : public gert::GuardChecker {
+ public:
+  bool Match(const std::vector<gert::Tensor *> &, char_t *, size_t) const override {
+    return false;
+  }
+};
+}  // namespace
+
+TEST_F(ExecutorUnitTest, GuardCheckerVirtualDestructor) {
+  auto guard = std::make_shared<DummyGuardCheckerForUt>();
+  EXPECT_FALSE(guard->Match({}, nullptr, 0U));
+  guard.reset();
+}
+
+TEST_F(ExecutorUnitTest, LoadExecutorSetFromModelDataWithFallback) {
+  ScopedDeterministicOptions deterministic_options(false);
+  auto root = BuildDualBodyRootForExecutorUt();
+  ASSERT_NE(root, nullptr);
+  (void)ge::AttrUtils::SetBool(root->GetRootGraph(), ge::kWeightsIdenticalAttr, true);
+  auto model_data = ModelDataFaker().GeRootModel(root).BuildUnknownShape();
+  LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_EQ(LoadExecutorSetFromModelData(model_data.Get(), args, executor_set), ge::GRAPH_SUCCESS);
+  EXPECT_NE(executor_set.main, nullptr);
+  EXPECT_NE(executor_set.fallback, nullptr);
+  EXPECT_EQ(executor_set.guard, nullptr);
+  EXPECT_TRUE(executor_set.weights_identical);
+}
+
+namespace {
+std::string ReadGuardSoForExecutorUt(const std::string &path) {
+  std::ifstream ifs(path, std::ios::binary);
+  if (!ifs.is_open()) {
+    return "";
+  }
+  return std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+}
+}  // namespace
+
+TEST_F(ExecutorUnitTest, LoadExecutorSetFromModelDataWithFallbackAndGuard) {
+  ScopedDeterministicOptions deterministic_options(false);
+  auto root = BuildDualBodyRootForExecutorUt();
+  ASSERT_NE(root, nullptr);
+  const auto guard_so = ReadGuardSoForExecutorUt(GUARD_CHECK_UT_STUB_PATH);
+  ASSERT_FALSE(guard_so.empty());
+  (void)ge::AttrUtils::SetStr(root->GetRootGraph(), "_guard_check_so_data", guard_so);
+  auto model_data = ModelDataFaker().GeRootModel(root).BuildUnknownShape();
+  LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_EQ(LoadExecutorSetFromModelData(model_data.Get(), args, executor_set), ge::GRAPH_SUCCESS);
+  EXPECT_NE(executor_set.main, nullptr);
+  EXPECT_NE(executor_set.fallback, nullptr);
+  ASSERT_NE(executor_set.guard, nullptr);
+  char_t reason[16] = {};
+  EXPECT_TRUE(executor_set.guard->Match({}, reason, sizeof(reason)));
+}
+
+TEST_F(ExecutorUnitTest, LoadExecutorFromModelDataIgnoresFallbackBody) {
+  ScopedDeterministicOptions deterministic_options(false);
+  auto root = BuildDualBodyRootForExecutorUt();
+  ASSERT_NE(root, nullptr);
+  auto model_data = ModelDataFaker().GeRootModel(root).BuildUnknownShape();
+  LoadExecutorArgs args{nullptr, {}};
+  ge::graphStatus error_code = ge::GRAPH_FAILED;
+  auto executor = LoadExecutorFromModelData(model_data.Get(), args, error_code);
+  EXPECT_EQ(error_code, ge::GRAPH_SUCCESS);
+  EXPECT_NE(executor, nullptr);
+}
+
+TEST_F(ExecutorUnitTest, LoadExecutorSetFromModelDataInvalidDataFails) {
+  LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  ge::ModelData invalid_data{};
+  EXPECT_NE(LoadExecutorSetFromModelData(invalid_data, args, executor_set), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(executor_set.main, nullptr);
+  EXPECT_EQ(executor_set.fallback, nullptr);
+}
+
+TEST_F(ExecutorUnitTest, LoadExecutorSetFromModelDataWithFallbackAndInvalidGuard) {
+  ScopedDeterministicOptions deterministic_options(false);
+  auto root = BuildDualBodyRootForExecutorUt();
+  ASSERT_NE(root, nullptr);
+  (void)ge::AttrUtils::SetStr(root->GetRootGraph(), "_guard_check_so_data", "invalid_guard_so");
+  auto model_data = ModelDataFaker().GeRootModel(root).BuildUnknownShape();
+  LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_EQ(LoadExecutorSetFromModelData(model_data.Get(), args, executor_set), ge::GRAPH_SUCCESS);
+  EXPECT_NE(executor_set.main, nullptr);
+  EXPECT_NE(executor_set.fallback, nullptr);
+  EXPECT_EQ(executor_set.guard, nullptr);
+  EXPECT_FALSE(executor_set.weights_identical);
 }
 
 TEST_F(ExecutorUnitTest, LoadStreamExecutorFromModelDataDoesNotCheckProcessDeterministicConfig) {

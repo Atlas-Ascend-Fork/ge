@@ -165,6 +165,47 @@ TEST_F(ModelConverterUT, LoadModelDescFromRootModel) {
   gert::DestroyVersionInfo();
 }
 
+TEST_F(ModelConverterUT, ConvertFallbackModelToExecuteGraphWithoutFallback) {
+  auto graph = ShareGraph::BuildTwoAddNodeGraph();
+  graph->TopologicalSorting();
+  auto main_root = GeModelBuilder(graph)
+                       .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                       .FakeTbeBin({"Add"})
+                       .BuildGeRootModel();
+  ASSERT_NE(main_root, nullptr);
+  ge::GeRootModelPtr fallback_root_model = nullptr;
+  std::map<std::string, ge::GeModelPtr> fallback_models;
+  EXPECT_EQ(ModelConverter().ConvertFallbackModelToExecuteGraph(main_root, fallback_models, {}, fallback_root_model),
+            nullptr);
+  EXPECT_EQ(fallback_root_model, nullptr);
+}
+
+TEST_F(ModelConverterUT, ConvertFallbackModelToExecuteGraphSuccess) {
+  auto main_graph = ShareGraph::BuildTwoAddNodeGraph();
+  main_graph->TopologicalSorting();
+  auto main_root = GeModelBuilder(main_graph)
+                       .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                       .FakeTbeBin({"Add"})
+                       .BuildGeRootModel();
+  ASSERT_NE(main_root, nullptr);
+
+  auto fallback_graph = std::make_shared<ge::ComputeGraph>(ge::kFallbackModelKey);
+  ASSERT_EQ(ge::GraphUtils::CopyComputeGraph(main_root->GetRootGraph(), fallback_graph), ge::SUCCESS);
+  auto fallback_root = GeModelBuilder(fallback_graph)
+                           .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                           .FakeTbeBin({"Add"})
+                           .BuildGeRootModel();
+  ASSERT_NE(fallback_root, nullptr);
+  const auto &fallback_models = fallback_root->GetSubgraphInstanceNameToModel();
+  ASSERT_NE(fallback_models.find(ge::kFallbackModelKey), fallback_models.end());
+
+  ge::GeRootModelPtr lowered_fallback_root = nullptr;
+  auto exe_graph =
+      ModelConverter().ConvertFallbackModelToExecuteGraph(main_root, fallback_models, {}, lowered_fallback_root);
+  EXPECT_NE(exe_graph, nullptr);
+  EXPECT_NE(lowered_fallback_root, nullptr);
+}
+
 TEST_F(ModelConverterUT, ConvertShouldFailWhenRootModelHasNoCustomOpRegistry) {
   gert::CreateVersionInfo();
   auto graph = ShareGraph::BuildTwoAddNodeGraph();

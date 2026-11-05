@@ -2320,7 +2320,7 @@ bool GraphPrepare::IsDynamicDims(const NodePtr &input_node) const {
     return true;
   }
   // adapts to autofuse offline compiled dynamic shape scenes
-  if ((!all_is_positive) && GetAutofuseFlagValue(kAutoFuseEnableOption) == "true") {
+  if ((!all_is_positive) && ge::IsAutofuseEnabled(input_node->GetOwnerComputeGraph())) {
     GELOGI("No need fresh input shape when autofuse dynamic shape scenes, shape: %s", data_shape.ToString().c_str());
     return true;
   }

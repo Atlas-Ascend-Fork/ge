@@ -91,6 +91,12 @@ void AclResourceManager::AddExecutor(uint32_t &modelId, std::unique_ptr<gert::Mo
   rtSessionMap_[modelId] = rtSession;
 }
 
+void FreeSharedWeight(const AclResourceManager::AutofuseFallbackInfo &info) {
+  if (info.shared_weight_ptr != nullptr) {
+    (void)aclrtFree(info.shared_weight_ptr);
+  }
+}
+
 aclError AclResourceManager::DeleteExecutor(const uint32_t modelId) {
   const std::lock_guard<std::mutex> locker(mutex_);
   const auto iter = executorMap_.find(modelId);
@@ -99,6 +105,15 @@ aclError AclResourceManager::DeleteExecutor(const uint32_t modelId) {
     return static_cast<aclError>(ACL_ERROR_GE_EXEC_MODEL_ID_INVALID);
   }
   (void)executorMap_.erase(iter);
+  const auto fallback_iter = autofuseFallbackMap_.find(modelId);
+  if (fallback_iter != autofuseFallbackMap_.end()) {
+    ACL_LOG_INFO("release fallback resources in DeleteExecutor, modelId[%u].", modelId);
+    auto fallback_info = std::move(fallback_iter->second);
+    (void)autofuseFallbackMap_.erase(fallback_iter);
+    fallback_info.executor.reset();
+    fallback_info.guard.reset();
+    FreeSharedWeight(fallback_info);
+  }
 
   const auto it = rtSessionMap_.find(modelId);
   if (it == rtSessionMap_.end()) {
@@ -135,6 +150,42 @@ std::shared_ptr<gert::ModelV2Executor> AclResourceManager::GetExecutor(const uin
     return nullptr;
   }
   return iter->second;
+}
+
+void AclResourceManager::SetAutofuseFallback(const uint32_t modelId, std::shared_ptr<gert::ModelV2Executor> executor,
+                                             std::shared_ptr<gert::GuardChecker> guard, void *shared_weight_ptr,
+                                             size_t shared_weight_size) {
+  const std::lock_guard<std::mutex> locker(mutex_);
+  const auto iter = autofuseFallbackMap_.find(modelId);
+  if (iter != autofuseFallbackMap_.end()) {
+    FreeSharedWeight(iter->second);
+  }
+  autofuseFallbackMap_[modelId] =
+      AutofuseFallbackInfo{std::move(executor), std::move(guard), shared_weight_ptr, shared_weight_size};
+  ACL_LOG_INFO("set fallback resources, modelId[%u], has_guard=%d, shared_weight_size[%zu].", modelId,
+               static_cast<int32_t>(autofuseFallbackMap_[modelId].guard != nullptr), shared_weight_size);
+}
+
+AclResourceManager::AutofuseFallbackExecutors AclResourceManager::GetAutofuseFallback(const uint32_t modelId) {
+  const std::lock_guard<std::mutex> locker(mutex_);
+  const auto iter = autofuseFallbackMap_.find(modelId);
+  if (iter == autofuseFallbackMap_.end()) {
+    return AutofuseFallbackExecutors{};
+  }
+  return AutofuseFallbackExecutors{iter->second.executor, iter->second.guard};
+}
+
+void AclResourceManager::DeleteAutofuseFallback(const uint32_t modelId) {
+  const std::lock_guard<std::mutex> locker(mutex_);
+  const auto iter = autofuseFallbackMap_.find(modelId);
+  if (iter != autofuseFallbackMap_.end()) {
+    ACL_LOG_INFO("delete fallback resources, modelId[%u].", modelId);
+    auto fallback_info = std::move(iter->second);
+    (void)autofuseFallbackMap_.erase(iter);
+    fallback_info.executor.reset();
+    fallback_info.guard.reset();
+    FreeSharedWeight(fallback_info);
+  }
 }
 
 std::shared_ptr<gert::RtSession> AclResourceManager::CreateRtSession() {

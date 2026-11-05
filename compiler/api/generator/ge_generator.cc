@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <cstdlib>
+#include <map>
 #include <graph/preprocess/hccl_offline_option_builder.h>
 
 #include "analyzer/analyzer.h"
@@ -44,6 +45,8 @@
 #include "graph/opsproto_manager.h"
 #include "base/registry/opp_package_utils.h"
 #include "graph/utils/graph_utils.h"
+#include "graph/utils/attr_utils.h"
+#include "common/model/ge_root_model.h"
 #include "graph/utils/graph_utils_ex.h"
 #include "graph/utils/type_utils.h"
 #include "graph/utils/op_desc_utils_ex.h"
@@ -406,11 +409,16 @@ class GeGenerator::Impl {
   };
 
   Status BuildModel(const Graph &graph, const std::vector<GeTensor> &inputs, GeRootModelPtr &ge_root_model);
+  Status BuildModel(const Graph &graph, const std::vector<GeTensor> &inputs, GeRootModelPtr &ge_root_model,
+                    GeRootModelPtr &fallback_root_model);
   Status SaveModel(const std::string &file_name_prefix, GeModelPtr &model, ModelBufferData &model_buff) const;
 
   Status SaveRootModel(const std::string &file_name_prefix, const GeRootModelPtr &ge_root_model,
                        ModelBufferData &model_buff,
-                       OfflineModelFormat om_format = OfflineModelFormat::OM_FORMAT_DEFAULT) const;
+                       OfflineModelFormat om_format = OfflineModelFormat::OM_FORMAT_DEFAULT);
+  Status SaveRootModel(const std::string &file_name_prefix, const GeRootModelPtr &ge_root_model,
+                       const GeRootModelPtr &fallback_root_model, ModelBufferData &model_buff,
+                       OfflineModelFormat om_format = OfflineModelFormat::OM_FORMAT_DEFAULT);
   Status SaveParams(GeModelPtr &ge_model, const std::string &type, const std::map<std::string, GeAttrValue> &attrs,
                     const std::vector<GeTensor> &inputs, const std::vector<GeTensor> &outputs);
 
@@ -436,6 +444,9 @@ class GeGenerator::Impl {
  private:
   Status BuildModelWithGraphId(const GraphId &graph_id, const std::vector<GeTensor> &inputs,
                                GeRootModelPtr &ge_root_model, const std::map<std::string, std::string> &options);
+  Status BuildFallbackExecutionBody(const Graph &graph, const std::vector<GeTensor> &inputs,
+                                    const std::map<std::string, std::string> &options,
+                                    std::atomic<GraphId> &atomic_graph_id, GeRootModelPtr &fallback_root_model);
   bool SetAtcVersionInfo(AttrHolder &obj) const;
   void SetOmSystemInfo(AttrHolder &obj) const;
   void SetHostEnvOsCpuInfo(const GeRootModelPtr &ge_root_model, AttrHolder &obj) const;
@@ -706,12 +717,13 @@ Status GeGenerator::GenerateModel(const Graph &graph, const std::string &file_na
                                   const std::vector<GeTensor> &inputs, ModelBufferData &model, bool is_offline,
                                   OfflineModelFormat om_format) {
   GeRootModelPtr ge_root_model = nullptr;
+  GeRootModelPtr fallback_root_model = nullptr;
   GE_CHECK_NOTNULL_EXEC(impl_, return PARAM_INVALID);
   impl_->is_offline_ = is_offline;
   impl_->pending_cleanup_session_id_ = UINT64_MAX;  // reset
   Impl::SessionCleanupGuard guard{impl_.get()};
   GE_CHK_STATUS_RET_NOLOG(InitializeHcclOfflineOptions());
-  Status ret = impl_->BuildModel(graph, inputs, ge_root_model);
+  Status ret = impl_->BuildModel(graph, inputs, ge_root_model, fallback_root_model);
   if (ret != SUCCESS) {
     GELOGE(ret, "[Build][Model] failed, ret:%u.", ret);
     if (impl_->graph_manager_.Finalize() != SUCCESS) {
@@ -743,14 +755,16 @@ Status GeGenerator::GenerateModel(const Graph &graph, const std::string &file_na
     }
     const auto &compute_graph = ge_root_model->GetRootGraph();
     GE_CHECK_NOTNULL(compute_graph);
-    GE_CHK_STATUS_RET(FileConstantUtils::ChangeFilePath(compute_graph, file_name_prefix),
+    const ComputeGraphPtr fallback_graph =
+        (fallback_root_model != nullptr) ? fallback_root_model->GetRootGraph() : nullptr;
+    GE_CHK_STATUS_RET(FileConstantUtils::ChangeFilePath(compute_graph, fallback_graph, file_name_prefix),
                       "Failed to change file path, graph name:%s", compute_graph->GetName().c_str());
   }
   ret = SetModelNameForDump(ge_root_model);
   if (ret != SUCCESS) {
     return ret;
   }
-  ret = impl_->SaveRootModel(file_name_prefix, ge_root_model, model, om_format);
+  ret = impl_->SaveRootModel(file_name_prefix, ge_root_model, fallback_root_model, model, om_format);
   if (ret != SUCCESS) {
     GELOGE(ret, "[Save][RootModel] failed, ret:%u, file:%s", ret, file_name_prefix.c_str());
     if (impl_->graph_manager_.Finalize() != SUCCESS) {
@@ -1580,8 +1594,25 @@ Status GeGenerator::Impl::SaveModel(const std::string &file_name_prefix, GeModel
   return SUCCESS;
 }
 
+static bool IsGraphDynamicShape(const ComputeGraphPtr &graph) {
+  return (graph != nullptr) && (graph->GetGraphUnknownFlag() || GraphUtils::IsUnknownShapeGraph(graph));
+}
+
+static bool IsDualBodyRequired(const ComputeGraphPtr &graph, const bool is_offline, const bool is_single_op,
+                               const bool has_hint_shape) {
+  return is_offline && (graph != nullptr) && ge::IsAutofuseEnabled(graph) && (!is_single_op) &&
+         (!GraphUtils::IsSingleOpScene(graph)) && IsGraphDynamicShape(graph) && has_hint_shape;
+}
+
 Status GeGenerator::Impl::SaveRootModel(const std::string &file_name_prefix, const GeRootModelPtr &ge_root_model,
-                                        ModelBufferData &model_buff, OfflineModelFormat om_format) const {
+                                        ModelBufferData &model_buff, OfflineModelFormat om_format) {
+  const GeRootModelPtr fallback_root_model = nullptr;
+  return SaveRootModel(file_name_prefix, ge_root_model, fallback_root_model, model_buff, om_format);
+}
+
+Status GeGenerator::Impl::SaveRootModel(const std::string &file_name_prefix, const GeRootModelPtr &ge_root_model,
+                                        const GeRootModelPtr &fallback_root_model, ModelBufferData &model_buff,
+                                        OfflineModelFormat om_format) {
   bool is_unknown_shape = false;
   GE_ASSERT_SUCCESS(ge_root_model->CheckIsUnknownShape(is_unknown_shape),
                     "root model(id:%u) CheckIsUnknownShape failed", ge_root_model->GetModelId());
@@ -1617,16 +1648,150 @@ Status GeGenerator::Impl::SaveRootModel(const std::string &file_name_prefix, con
     (void)model_save_helper->ConfigureAttrCompressionMode(attr_compression_value);
   }
 
+  if (fallback_root_model != nullptr) {
+    GE_CHECK_NOTNULL(fallback_root_model->GetRootGraph());
+    const Status dual_ret = model_save_helper->SaveDualBodyRootModel(ge_root_model, fallback_root_model,
+                                                                     file_name_prefix, model_buff, is_unknown_shape);
+    if (dual_ret != SUCCESS) {
+      GELOGE(dual_ret, "save dual execution body failed, model id:%u.", ge_root_model->GetModelId());
+      return dual_ret;
+    }
+    return SUCCESS;
+  }
   GE_ASSERT_SUCCESS(model_save_helper->SaveToOmRootModel(ge_root_model, file_name_prefix, model_buff, is_unknown_shape),
                     "SaveToOmRootModel failed, model id:%u, om_format:%d", ge_root_model->GetModelId(), om_format);
   return SUCCESS;
 }
 
+static void ClearDisableAutofuseAttr(const ComputeGraphPtr &graph) {
+  if (graph == nullptr) {
+    return;
+  }
+  (void)graph->DelAttr(kDisableAutofuseAttr);
+  for (const auto &sub_graph : graph->GetAllSubgraphs()) {
+    if (sub_graph != nullptr) {
+      (void)sub_graph->DelAttr(kDisableAutofuseAttr);
+    }
+  }
+}
+
+static void ClearFallbackCompileAttrs(const GeRootModelPtr &fallback_root_model) {
+  if (fallback_root_model == nullptr) {
+    return;
+  }
+  ClearDisableAutofuseAttr(fallback_root_model->GetRootGraph());
+  for (const auto &kv : fallback_root_model->GetSubgraphInstanceNameToModel()) {
+    if (kv.second != nullptr) {
+      ClearDisableAutofuseAttr(kv.second->GetGraph());
+    }
+  }
+}
+
+static Status RenameFallbackSubgraphs(const ComputeGraphPtr &fallback_graph) {
+  if (fallback_graph == nullptr) {
+    return SUCCESS;
+  }
+  const std::string prefix = kFallbackSubgraphPrefix;
+  for (const auto &sub_graph : fallback_graph->GetAllSubgraphs()) {
+    if (sub_graph == nullptr) {
+      continue;
+    }
+    const auto old_name = sub_graph->GetName();
+    const auto new_name = prefix + old_name;
+    if (fallback_graph->GetSubgraph(new_name) != nullptr) {
+      GELOGE(FAILED, "rename fallback subgraph conflict, new name[%s] already exists.", new_name.c_str());
+      return FAILED;
+    }
+    const auto parent_node = sub_graph->GetParentNode();
+    if (parent_node != nullptr) {
+      const auto parent_desc = parent_node->GetOpDesc();
+      if (parent_desc != nullptr) {
+        const auto &instance_names = parent_desc->GetSubgraphInstanceNames();
+        for (size_t i = 0U; i < instance_names.size(); ++i) {
+          if (parent_desc->GetSubgraphInstanceName(static_cast<uint32_t>(i)) == old_name) {
+            (void)parent_desc->SetSubgraphInstanceName(static_cast<uint32_t>(i), new_name);
+          }
+        }
+      }
+    }
+    fallback_graph->RemoveSubgraph(old_name);
+    sub_graph->SetName(new_name);
+    (void)fallback_graph->AddSubgraph(new_name, sub_graph);
+  }
+  return SUCCESS;
+}
+
+Status GeGenerator::Impl::BuildFallbackExecutionBody(const Graph &graph, const std::vector<GeTensor> &inputs,
+                                                     const std::map<std::string, std::string> &options,
+                                                     std::atomic<GraphId> &atomic_graph_id,
+                                                     GeRootModelPtr &fallback_root_model) {
+  fallback_root_model = nullptr;
+  auto root_compute_graph = GraphUtilsEx::GetComputeGraph(graph);
+  GE_CHECK_NOTNULL(root_compute_graph);
+  std::string hint_shape;
+  const bool has_hint_shape =
+      (ge::GetContext().GetOption(ge::INPUT_HINT_SHAPE, hint_shape) == ge::SUCCESS) && (!hint_shape.empty());
+  if (!IsDualBodyRequired(root_compute_graph, is_offline_, is_singleop_unregistered_, has_hint_shape)) {
+    GELOGD("autofuse offline dual-body skipped");
+    return SUCCESS;
+  }
+  GELOGI("dual-body enabled, fork fallback graph from[%s].", root_compute_graph->GetName().c_str());
+  auto fallback_compute_graph = MakeShared<ComputeGraph>(kFallbackModelKey);
+  GE_CHECK_NOTNULL(fallback_compute_graph);
+  GE_CHK_STATUS_RET(GraphUtils::CopyComputeGraph(root_compute_graph, fallback_compute_graph),
+                    "fork fallback graph failed.");
+  (void)AttrUtils::SetBool(fallback_compute_graph, kDisableAutofuseAttr, true);
+  (void)AttrUtils::SetBool(fallback_compute_graph, kDualBodyAttr, true);
+  for (const auto &sub_graph : fallback_compute_graph->GetAllSubgraphs()) {
+    if (sub_graph != nullptr) {
+      (void)AttrUtils::SetBool(sub_graph, kDisableAutofuseAttr, true);
+    }
+  }
+  GE_CHK_STATUS_RET(RenameFallbackSubgraphs(fallback_compute_graph), "rename fallback subgraphs failed.");
+
+  auto fallback_graph = GraphUtilsEx::CreateGraphFromComputeGraph(fallback_compute_graph);
+  const auto fallback_graph_id = atomic_graph_id.fetch_add(1);
+  Status fret = graph_manager_.AddGraph(fallback_graph_id, fallback_graph, options, omg_context_);
+  if (fret != SUCCESS) {
+    GELOGE(GE_GENERATOR_GRAPH_MANAGER_ADD_GRAPH_FAILED, "add fallback graph failed, graph_id=%u, ret=%u.",
+           fallback_graph_id, fret);
+    (void)graph_manager_.Finalize();
+    return GE_GENERATOR_GRAPH_MANAGER_ADD_GRAPH_FAILED;
+  }
+  fret = BuildModelWithGraphId(fallback_graph_id, inputs, fallback_root_model, options);
+  if (fret != SUCCESS) {
+    GELOGE(GE_GENERATOR_GRAPH_MANAGER_BUILD_GRAPH_FAILED,
+           "[Build][FallbackGraph] fail, graph id: %u. Please check whether the original model is compilable.",
+           fallback_graph_id);
+    (void)graph_manager_.Finalize();
+    return GE_GENERATOR_GRAPH_MANAGER_BUILD_GRAPH_FAILED;
+  }
+  ClearFallbackCompileAttrs(fallback_root_model);
+  GELOGI("fallback execution body built, graph_id=%u.", fallback_graph_id);
+  return SUCCESS;
+}
+
 Status GeGenerator::Impl::BuildModel(const Graph &graph, const std::vector<GeTensor> &inputs,
                                      GeRootModelPtr &ge_root_model) {
+  GeRootModelPtr fallback_root_model = nullptr;
+  return BuildModel(graph, inputs, ge_root_model, fallback_root_model);
+}
+
+Status GeGenerator::Impl::BuildModel(const Graph &graph, const std::vector<GeTensor> &inputs,
+                                     GeRootModelPtr &ge_root_model, GeRootModelPtr &fallback_root_model) {
   static std::atomic<GraphId> atomic_graph_id(0);
   auto graph_id = atomic_graph_id.fetch_add(1);
   const std::map<std::string, std::string> options = GetThreadLocalContext().GetAllGraphOptions();
+  graph_manager_.SetOptionsRunGraphFlag(false);
+
+  GeRootModelPtr built_fallback_root_model = nullptr;
+  const Status fallback_ret =
+      BuildFallbackExecutionBody(graph, inputs, options, atomic_graph_id, built_fallback_root_model);
+  if (fallback_ret != SUCCESS) {
+    return fallback_ret;
+  }
+  const bool dual_body = (built_fallback_root_model != nullptr);
+
   Status ret = graph_manager_.AddGraph(graph_id, graph, options, omg_context_);
   if (ret != SUCCESS) {
     REPORT_INNER_ERR_MSG("E19999", "add graph(id:%u) failed, ret:%u", graph_id, ret);
@@ -1635,8 +1800,20 @@ Status GeGenerator::Impl::BuildModel(const Graph &graph, const std::vector<GeTen
     return GE_GENERATOR_GRAPH_MANAGER_ADD_GRAPH_FAILED;
   }
 
-  graph_manager_.SetOptionsRunGraphFlag(false);
-  return BuildModelWithGraphId(graph_id, inputs, ge_root_model, options);
+  ret = BuildModelWithGraphId(graph_id, inputs, ge_root_model, options);
+  if (ret != SUCCESS) {
+    if (dual_body) {
+      GELOGE(GE_GENERATOR_GRAPH_MANAGER_BUILD_GRAPH_FAILED,
+             "optimized execution body build failed, graph id: %u, ret: %u.", graph_id, ret);
+      return GE_GENERATOR_GRAPH_MANAGER_BUILD_GRAPH_FAILED;
+    }
+    return ret;
+  }
+  if (dual_body) {
+    fallback_root_model = built_fallback_root_model;
+    GELOGI("optimized execution body built, graph_id=%u.", graph_id);
+  }
+  return ret;
 }
 
 Status GeGenerator::Impl::BuildModelWithGraphId(const GraphId &graph_id, const std::vector<GeTensor> &inputs,

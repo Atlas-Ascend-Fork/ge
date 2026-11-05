@@ -24,6 +24,9 @@ class HostResourceCenter {
   HostResourceCenter();
   const HostResourceManager *GetHostResourceMgr(HostResourceType type) const;
   Status TakeOverHostResources(const ComputeGraphPtr &root_graph);
+  // 按资源类型单独接管，避免 TakeOverHostResources 连带处理另一类资源。
+  Status TakeOverTilingResources(const ComputeGraphPtr &root_graph);
+  Status TakeOverWeightResources(const ComputeGraphPtr &root_graph);
   ~HostResourceCenter() = default;
 
  private:

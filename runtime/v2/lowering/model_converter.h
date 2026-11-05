@@ -96,10 +96,16 @@ class VISIBILITY_EXPORT ModelConverter {
     NotifyAllocator *const notify_allocator = nullptr;
     const std::vector<ge::FileConstantMem> *const file_constant_mems = nullptr;
   };
-  ge::ExecuteGraphPtr ConvertGeModelToExecuteGraph(const ge::GeRootModelPtr &root_model, const Args &args);
+  ge::ExecuteGraphPtr ConvertGeModelToExecuteGraph(const ge::GeRootModelPtr &root_model, const Args &args,
+                                                   const bool is_fallback = false);
   ge::ExecuteGraphPtr ConvertGeModelToExecuteGraph(const ge::GeRootModelPtr &root_model) {
     return ConvertGeModelToExecuteGraph(root_model, {});
   }
+  // autofuse 离线双执行体：为原始兜底执行体（根 + 子图）单独 lowering。
+  // fallback_models 为空或无兜底根（kFallbackModelKey）时返回 nullptr，调用方据此走单执行体。
+  ge::ExecuteGraphPtr ConvertFallbackModelToExecuteGraph(const ge::GeRootModelPtr &root_model,
+                                                         const std::map<std::string, ge::GeModelPtr> &fallback_models,
+                                                         const Args &args, ge::GeRootModelPtr &fallback_root_model);
   ModelDescHolder &GetModelDescHolder() {
     return model_desc_holder_;
   }

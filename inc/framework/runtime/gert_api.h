@@ -38,6 +38,27 @@ struct LoadExecutorArgs {
   std::vector<ge::FileConstantMem> file_constant_mems;
 };
 
+// 整图 guard 抽象：runtime 侧基于 DispatcherTable 实现，ACL 只依赖该接口。
+class GuardChecker {
+ public:
+  virtual ~GuardChecker() = default;
+  // true=命中（走主执行体）；false=未命中（走兜底）。
+  virtual bool Match(const std::vector<Tensor *> &inputs, char_t *reason, size_t reason_size) const = 0;
+};
+
+// autofuse 离线双执行体：主执行体 + 兜底执行体（可空）+ 整图 guard（可空）。
+struct ExecutorSet {
+  std::unique_ptr<ModelV2Executor> main;
+  std::unique_ptr<ModelV2Executor> fallback;
+  std::shared_ptr<GuardChecker> guard;
+  bool weights_identical{false};
+  size_t shared_weight_size{0U};
+};
+
+VISIBILITY_EXPORT
+ge::graphStatus LoadExecutorSetFromModelData(const ge::ModelData &model_data, const LoadExecutorArgs &args,
+                                             ExecutorSet &executor_set);
+
 VISIBILITY_EXPORT
 std::unique_ptr<ModelV2Executor> LoadExecutorFromFile(const ge::char_t *model_path, ge::graphStatus &error_code);
 

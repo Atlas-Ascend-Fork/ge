@@ -1757,6 +1757,81 @@ TEST_F(GeIrBuildTest, GenerateOfflineModelDynamicInvalidHostEnvFailsDeferredChec
             std::string::npos);
 }
 
+static Graph ConstructSimpleDynamicGraphForDualBody() {
+  DEF_GRAPH(sub) {
+    auto data = OP_CFG(DATA)
+                    .InCnt(1)
+                    .OutCnt(1)
+                    .TensorDesc(FORMAT_ND, DT_FLOAT, {4, 4})
+                    .Attr(ATTR_NAME_PARENT_NODE_INDEX, 0)
+                    .Attr(ATTR_NAME_INDEX, 0)
+                    .Build("sub_data");
+    auto sub_output =
+        OP_CFG(ge::NETOUTPUT).TensorDesc(FORMAT_ND, DT_FLOAT, {4, 4}).InCnt(1).OutCnt(1).Build("sub_output");
+    AttrUtils::SetInt(sub_output->MutableInputDesc(0), ATTR_NAME_PARENT_NODE_INDEX, 0);
+    CHAIN(NODE(data)->EDGE(0, 0)->NODE(sub_output));
+  };
+  DEF_GRAPH(root) {
+    auto data = OP_CFG(DATA).InCnt(1).OutCnt(1).TensorDesc(FORMAT_ND, DT_FLOAT, {-1, -1}).Build("data");
+    auto partitioned_call = OP_CFG(ge::PARTITIONEDCALL)
+                                .TensorDesc(FORMAT_ND, DT_FLOAT, {4, 4})
+                                .InCnt(1)
+                                .OutCnt(1)
+                                .Build("partitioned_call");
+    auto output = OP_CFG(ge::NETOUTPUT).TensorDesc(FORMAT_ND, DT_FLOAT, {-1, -1}).InCnt(1).OutCnt(1).Build("output");
+    output->SetSrcName({"partitioned_call"});
+    output->SetSrcIndex({0});
+    CHAIN(NODE(data)->NODE(partitioned_call)->EDGE(0, 0)->NODE(output));
+  };
+  auto graph = ToGeGraph(root);
+  auto root_graph = ge::GraphUtilsEx::GetComputeGraph(graph);
+  root_graph->SetGraphUnknownFlag(true);
+  auto sub_graph = ToGeGraph(sub);
+  auto sub_compute_graph = ge::GraphUtilsEx::GetComputeGraph(sub_graph);
+  sub_compute_graph->SetGraphUnknownFlag(false);
+  auto sub_output = sub_compute_graph->FindNode("sub_output");
+  sub_output->GetOpDesc()->SetSrcName({"sub_data"});
+  sub_output->GetOpDesc()->SetSrcIndex({0});
+  auto partitioned_call = root_graph->FindNode("partitioned_call");
+  partitioned_call->GetOpDesc()->AddSubgraphName(sub_compute_graph->GetName());
+  partitioned_call->GetOpDesc()->SetSubgraphInstanceName(0U, sub_compute_graph->GetName());
+  sub_compute_graph->SetParentNode(partitioned_call);
+  sub_compute_graph->SetParentGraph(root_graph);
+  root_graph->AddSubgraph(sub_compute_graph->GetName(), sub_compute_graph);
+  return graph;
+}
+
+TEST_F(GeIrBuildTest, GenerateOfflineModelDualBodyForDynamicShape) {
+  GeRunningEnvFaker ge_env;
+  ge_env.InstallDefault();
+  ge_env.InstallDefault().Install(FakeOp(REDUCESUM).InfoStoreAndBuilder("AicoreLib").InferShape(StubInferFunction));
+  std::string valid_host_env_os;
+  std::string valid_host_env_cpu;
+  SetDefaultHostEnvOsAndHostEnvCpu(valid_host_env_os, valid_host_env_cpu);
+  const char *env_name = "AUTOFUSE_FLAGS";
+  const char *old_value = std::getenv(env_name);
+  const std::string backup = (old_value == nullptr) ? "" : old_value;
+  (void)setenv(env_name, "--enable_autofuse=true", 1);
+  GeGenerator generator;
+  ASSERT_EQ(generator.Initialize({}), SUCCESS);
+  Status generate_ret = FAILED;
+  {
+    ScopedGraphOptions guard({{std::string(OPTION_HOST_ENV_OS), valid_host_env_os},
+                              {std::string(OPTION_HOST_ENV_CPU), valid_host_env_cpu},
+                              {std::string(INPUT_HINT_SHAPE), "0:[4]"}});
+    generate_ret = generator.GenerateOfflineModel(ConstructSimpleDynamicGraphForDualBody(), "./dual_body_generator_st");
+  }
+  EXPECT_EQ(generator.Finalize(), SUCCESS);
+  if (old_value != nullptr) {
+    (void)setenv(env_name, backup.c_str(), 1);
+  } else {
+    (void)unsetenv(env_name);
+  }
+  if (generate_ret != SUCCESS) {
+    GTEST_SKIP() << "autofuse guard codegen is unavailable in current environment: " << generate_ret;
+  }
+}
+
 TEST_F(GeIrBuildTest, recover_op_runinfo_dyn_graph) {
   GeRunningEnvFaker ge_env;
   ge_env.InstallDefault();

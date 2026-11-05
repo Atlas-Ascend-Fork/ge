@@ -43,6 +43,13 @@ class GE_FUNC_VISIBILITY ModelHelper : public ModelSaveHelper {
                          const size_t mode_index, const bool is_dyn_root) const;
   Status SaveToOmRootModel(const GeRootModelPtr &ge_root_model, const std::string &output_file, ModelBufferData &model,
                            const bool is_unknown_shape) override;
+  Status SaveDualBodyRootModel(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root,
+                               const std::string &output_file, ModelBufferData &model,
+                               const bool is_unknown_shape) override;
+  // 编译/保存期判定两体内嵌 Const/Constant 权重是否内容+布局完全一致（不读文件、不做 hash）。
+  // 任一体含 FileConstant 时返回 false；main_size/fallback_size 为各体 GeModel 权重字节总和。
+  static bool AreDualBodyWeightsIdentical(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root,
+                                          size_t &main_size, size_t &fallback_size);
   Status SaveOriginalGraphToOmModel(const ge::Graph &graph, const std::string &output_file) const;
 
   Status LoadModel(const ge::ModelData &model_data);
@@ -263,6 +270,15 @@ class GE_FUNC_VISIBILITY ModelHelper : public ModelSaveHelper {
   Status SaveRootModelPartitions(std::shared_ptr<OmFileSaveHelper> &om_file_save_helper,
                                  const GeRootModelPtr &ge_root_model, const GeModelPtr &first_ge_model,
                                  string &output_file_name, const bool has_asc_node);
+  // 保存一个执行体的全部 model group（根在前、子图在后）；cur_index 由主/兜底两体共用。
+  // unfold 空壳根只写 MODEL_DEF；整个 OM 只在第一个 model 写一次 MODEL_INOUT_INFO。
+  Status SaveBodyModelGroups(std::shared_ptr<OmFileSaveHelper> &om_file_save_helper, const GeRootModelPtr &body_root,
+                             const GeModelPtr &first_ge_model, std::vector<ge::Buffer> &model_buffers,
+                             std::vector<ge::Buffer> &task_buffers, size_t &cur_index, const bool is_first_body,
+                             const bool is_unknown) const;
+  Status MergeFallbackTiling(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root) const;
+  static void ClearTilingIds(const ComputeGraphPtr &graph);
+  bool IsUnfoldShellRoot(const GeModelPtr &model) const;
   Status SaveRootModelLoop(std::shared_ptr<OmFileSaveHelper> &om_file_save_helper,
                            const std::vector<std::string> &model_names,
                            const std::map<std::string, GeModelPtr> &name_to_ge_model,

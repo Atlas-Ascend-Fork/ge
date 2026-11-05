@@ -250,6 +250,12 @@ target_link_libraries(st_om2_test
 )
 
 ################################################################################
+# build guard check stub for ST
+add_library(guard_check_st_stub SHARED
+        "${AIR_CODE_DIR}/tests/ge/ut/ge/runtime/fast_v2/engine/aicore/guard_check_ut_stub.c")
+set_target_properties(guard_check_st_stub PROPERTIES PREFIX "" OUTPUT_NAME "guard_check_st_stub")
+
+################################################################################
 # build ge_common_atc
 add_executable(ge_common_atc
     "${AIR_CODE_DIR}/tests/ge/ut/ge/ffts_plus_proto_tools.cc"
@@ -262,6 +268,8 @@ add_executable(ge_common_atc
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_ctrl_flow_compile.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_single_op.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_ge_ir_build.cc"
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_autofuse_offline.cc"
+    "${AIR_CODE_DIR}/tests/ge/ut/ge/graph/passes/graph_builder_utils.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_ge_ir_build_offline_launch.cc"
     "${AIR_CODE_DIR}/tests/graph_metadef/depends/checker/tensor_check_utils.cc"
     "${AIR_CODE_DIR}/tests/graph_metadef/depends/faker/allocator_faker.cc"
@@ -382,7 +390,6 @@ add_executable(graph_engine_compile_test
         "${AIR_CODE_DIR}/tests/ge/ut/ge/fusion/pass/graph_builder_utils.cc"
         "${AIR_CODE_DIR}/tests/ge/ut/ge/fusion/pass/graph_fuse_inspector_utils_unittest.cc"
         "${AIR_CODE_DIR}/tests/ge/ut/ge/fusion/pass/fusion_pass_executor_unittest.cc"
-        "${AIR_CODE_DIR}/tests/ge/st/testcase/test_autofuse_offline.cc"
         "${AIR_CODE_DIR}/tests/ge/st/testcase/test_v1_loop.cc"
         "${AIR_CODE_DIR}/tests/ge/st/testcase/test_deleted_op.cc"
         "${AIR_CODE_DIR}/tests/ge/st/testcase/test_merge_shape_n.cc"

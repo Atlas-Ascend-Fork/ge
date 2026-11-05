@@ -35,4 +35,28 @@ Status HostResourceCenter::TakeOverHostResources(const ComputeGraphPtr &root_gra
   }
   return SUCCESS;
 }
+
+Status HostResourceCenter::TakeOverTilingResources(const ComputeGraphPtr &root_graph) {
+  GE_ASSERT_NOTNULL(root_graph);
+  const auto index = static_cast<size_t>(HostResourceType::kTilingData);
+  GE_ASSERT_TRUE(index < resource_managers_.size());
+  auto &resource_mgr = resource_managers_[index];
+  GE_ASSERT_NOTNULL(resource_mgr);
+  for (const auto &node : root_graph->GetAllNodes()) {
+    GE_ASSERT_GRAPH_SUCCESS(resource_mgr->TakeoverResources(node->GetOpDesc()));
+  }
+  return SUCCESS;
+}
+
+Status HostResourceCenter::TakeOverWeightResources(const ComputeGraphPtr &root_graph) {
+  GE_ASSERT_NOTNULL(root_graph);
+  const auto index = static_cast<size_t>(HostResourceType::kWeight);
+  GE_ASSERT_TRUE(index < resource_managers_.size());
+  auto &resource_mgr = resource_managers_[index];
+  GE_ASSERT_NOTNULL(resource_mgr);
+  for (const auto &node : root_graph->GetAllNodes()) {
+    GE_ASSERT_GRAPH_SUCCESS(resource_mgr->TakeoverResources(node->GetOpDesc()));
+  }
+  return SUCCESS;
+}
 }  // namespace ge

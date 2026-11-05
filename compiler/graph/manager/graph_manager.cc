@@ -1696,7 +1696,8 @@ Status GraphManager::StartForRunGraph(const GraphNodePtr &graph_node, const std:
     std::vector<GeShape> hint_shape;
     GE_ASSERT_SUCCESS(ParseHintInputShape(hint_shape));
     std::vector<GeTensor> ge_tensor_inputs;
-    bool is_enable_autofuse = GetAutofuseFlagValue(kAutoFuseEnableOption) == "true";
+    // 用本图开关判定，保证离线双体的兜底图不构造符号化输入。
+    bool is_enable_autofuse = ge::IsAutofuseEnabled(compute_graph_ptr);
     // Adapt to offline compile autofuse scenarios
     if (is_enable_autofuse && inputs.empty()) {
       // static scene & dynamic atc scene

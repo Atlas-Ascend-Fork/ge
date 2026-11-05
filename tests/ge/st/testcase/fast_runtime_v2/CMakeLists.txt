@@ -33,6 +33,7 @@ target_compile_options(st_fast_runtime2_test PRIVATE -g -O0
 target_compile_definitions(st_fast_runtime2_test PRIVATE
         google=ascend_private
         CMAKE_BINARY_DIR=\"${CMAKE_BINARY_DIR}\"
+        GUARD_CHECK_ST_STUB_PATH=\"$<TARGET_FILE:guard_check_st_stub>\"
         )
 
 target_include_directories(st_fast_runtime2_test PRIVATE
@@ -59,6 +60,8 @@ target_link_options(st_fast_runtime2_test PRIVATE
         -Wl,-Bsymbolic
         -Wl,--disable-new-dtags
         )
+
+add_dependencies(st_fast_runtime2_test guard_check_st_stub)
 
 target_link_libraries(st_fast_runtime2_test PRIVATE
         GTestShared::gtest

@@ -39,6 +39,7 @@
 #include "graph/utils/graph_utils_ex.h"
 #include "graph/utils/file_utils.h"
 #include "graph/debug/ge_attr_define.h"
+#include "graph/utils/tensor_utils.h"
 #include "graph/ge_local_context.h"
 #include "depends/runtime/src/runtime_stub.h"
 #include "macro_utils/dt_public_unscope.h"
@@ -976,6 +977,170 @@ TEST_F(UtestModelHelper, SaveToOmRootModel) {
   EXPECT_NE(model_helper.SaveToOmRootModel(ge_root_model, output_file, model, is_unknown_shape), SUCCESS);
 }
 
+TEST_F(UtestModelHelper, AreDualBodyWeightsIdenticalTest) {
+  auto build_root_model = [](const std::string &graph_name, const std::vector<uint8_t> &weights,
+                             const bool add_file_constant) -> GeRootModelPtr {
+    auto graph = std::make_shared<ComputeGraph>(graph_name);
+    if (add_file_constant) {
+      auto op_desc = std::make_shared<OpDesc>("file_constant", FILECONSTANT);
+      (void)graph->AddNode(op_desc);
+    }
+    auto root_model = std::make_shared<GeRootModel>();
+    EXPECT_EQ(root_model->Initialize(graph), SUCCESS);
+    auto model = std::make_shared<GeModel>();
+    model->SetGraph(graph);
+    if (!weights.empty()) {
+      model->SetWeight(Buffer::CopyFrom(weights.data(), weights.size()));
+    }
+    root_model->SetSubgraphInstanceNameToModel(graph_name, model);
+    return root_model;
+  };
+
+  size_t main_size = 0U;
+  size_t fallback_size = 0U;
+  auto main_root = build_root_model("main_graph", {1U, 2U, 3U, 4U}, false);
+  auto fallback_root = build_root_model(kFallbackModelKey, {1U, 2U, 3U, 4U}, false);
+  EXPECT_TRUE(ModelHelper::AreDualBodyWeightsIdentical(main_root, fallback_root, main_size, fallback_size));
+  EXPECT_EQ(main_size, 4U);
+  EXPECT_EQ(fallback_size, 4U);
+
+  auto fallback_diff = build_root_model(kFallbackModelKey, {1U, 2U, 3U, 5U}, false);
+  EXPECT_FALSE(ModelHelper::AreDualBodyWeightsIdentical(main_root, fallback_diff, main_size, fallback_size));
+
+  auto fallback_with_file_constant = build_root_model(kFallbackModelKey, {1U, 2U, 3U, 4U}, true);
+  EXPECT_FALSE(
+      ModelHelper::AreDualBodyWeightsIdentical(main_root, fallback_with_file_constant, main_size, fallback_size));
+}
+
+TEST_F(UtestModelHelper, AreDualBodyWeightsIdenticalLayoutAndBoundaryTest) {
+  auto build_root = [](const std::string &graph_name, const std::string &model_key, const uint32_t offset,
+                       const bool add_const) -> GeRootModelPtr {
+    auto graph = std::make_shared<ComputeGraph>(graph_name);
+    if (add_const) {
+      auto op_desc = std::make_shared<OpDesc>("const_node", CONSTANT);
+      op_desc->AddOutputDesc(GeTensorDesc(GeShape({4}), FORMAT_ND, DT_FLOAT));
+      GeTensorDesc tensor_desc(GeShape({4}), FORMAT_ND, DT_FLOAT);
+      (void)TensorUtils::SetDataOffset(tensor_desc, static_cast<int64_t>(offset));
+      auto tensor = std::make_shared<GeTensor>(tensor_desc);
+      (void)AttrUtils::SetTensor(op_desc, ATTR_NAME_WEIGHTS, tensor);
+      (void)graph->AddNode(op_desc);
+    }
+    auto root_model = std::make_shared<GeRootModel>();
+    EXPECT_EQ(root_model->Initialize(graph), SUCCESS);
+    auto model = std::make_shared<GeModel>();
+    model->SetGraph(graph);
+    const std::vector<uint8_t> weights{1U, 2U, 3U, 4U};
+    model->SetWeight(Buffer::CopyFrom(weights.data(), weights.size()));
+    root_model->SetSubgraphInstanceNameToModel(model_key, model);
+    return root_model;
+  };
+
+  size_t main_size = 0U;
+  size_t fallback_size = 0U;
+  auto main_root = build_root("main_graph", "main_graph", 0U, true);
+  auto fallback_root = build_root(kFallbackModelKey, kFallbackModelKey, 0U, true);
+  EXPECT_TRUE(ModelHelper::AreDualBodyWeightsIdentical(main_root, fallback_root, main_size, fallback_size));
+  auto fallback_diff_offset = build_root(kFallbackModelKey, kFallbackModelKey, 8U, true);
+  EXPECT_FALSE(ModelHelper::AreDualBodyWeightsIdentical(main_root, fallback_diff_offset, main_size, fallback_size));
+
+  auto fallback_missing_key = build_root(kFallbackModelKey, "__fallback_sub_other", 0U, false);
+  EXPECT_FALSE(ModelHelper::AreDualBodyWeightsIdentical(main_root, fallback_missing_key, main_size, fallback_size));
+  EXPECT_FALSE(ModelHelper::AreDualBodyWeightsIdentical(main_root, nullptr, main_size, fallback_size));
+  EXPECT_FALSE(ModelHelper::AreDualBodyWeightsIdentical(nullptr, fallback_root, main_size, fallback_size));
+
+  auto no_graph_root = std::make_shared<GeRootModel>();
+  EXPECT_FALSE(ModelHelper::AreDualBodyWeightsIdentical(no_graph_root, fallback_root, main_size, fallback_size));
+}
+
+TEST_F(UtestModelHelper, AreDualBodyWeightsIdenticalNullGraphAndDuplicateKeyTest) {
+  auto main_graph = std::make_shared<ComputeGraph>("main_graph");
+  auto main_root = std::make_shared<GeRootModel>();
+  ASSERT_EQ(main_root->Initialize(main_graph), SUCCESS);
+  auto main_model = std::make_shared<GeModel>();
+  main_model->SetGraph(main_graph);
+  main_model->SetWeight(Buffer::CopyFrom(std::vector<uint8_t>{1U, 2U, 3U, 4U}.data(), 4U));
+  main_root->SetSubgraphInstanceNameToModel("main_graph", main_model);
+
+  auto fallback_root = std::make_shared<GeRootModel>();
+  ASSERT_EQ(fallback_root->Initialize(std::make_shared<ComputeGraph>(kFallbackModelKey)), SUCCESS);
+  auto null_graph_model = std::make_shared<GeModel>();
+  null_graph_model->SetWeight(Buffer::CopyFrom(std::vector<uint8_t>{1U, 2U, 3U, 4U}.data(), 4U));
+  fallback_root->SetSubgraphInstanceNameToModel(kFallbackModelKey, null_graph_model);
+  size_t main_size = 0U;
+  size_t fallback_size = 0U;
+  EXPECT_FALSE(ModelHelper::AreDualBodyWeightsIdentical(main_root, fallback_root, main_size, fallback_size));
+  EXPECT_EQ(main_size, 4U);
+  EXPECT_EQ(fallback_size, 4U);
+
+  auto size_diff_root = std::make_shared<GeRootModel>();
+  ASSERT_EQ(size_diff_root->Initialize(std::make_shared<ComputeGraph>(kFallbackModelKey)), SUCCESS);
+  auto size_diff_model = std::make_shared<GeModel>();
+  size_diff_model->SetGraph(size_diff_root->GetRootGraph());
+  size_diff_model->SetWeight(Buffer::CopyFrom(std::vector<uint8_t>{1U, 2U, 3U, 4U, 5U, 6U}.data(), 6U));
+  size_diff_root->SetSubgraphInstanceNameToModel(kFallbackModelKey, size_diff_model);
+  EXPECT_FALSE(ModelHelper::AreDualBodyWeightsIdentical(main_root, size_diff_root, main_size, fallback_size));
+
+  auto duplicate_root = std::make_shared<GeRootModel>();
+  ASSERT_EQ(duplicate_root->Initialize(std::make_shared<ComputeGraph>(kFallbackModelKey)), SUCCESS);
+  auto dup_model_a = std::make_shared<GeModel>();
+  dup_model_a->SetGraph(duplicate_root->GetRootGraph());
+  auto dup_model_b = std::make_shared<GeModel>();
+  dup_model_b->SetGraph(duplicate_root->GetRootGraph());
+  duplicate_root->SetSubgraphInstanceNameToModel(kFallbackModelKey, dup_model_a);
+  duplicate_root->SetSubgraphInstanceNameToModel("__root__", dup_model_b);
+  EXPECT_FALSE(ModelHelper::AreDualBodyWeightsIdentical(main_root, duplicate_root, main_size, fallback_size));
+}
+
+TEST_F(UtestModelHelper, SaveDualBodyRootModelInvalidArgsTest) {
+  ModelHelper model_helper;
+  ModelBufferData model;
+  EXPECT_NE(model_helper.SaveDualBodyRootModel(nullptr, nullptr, "dual_body", model, true), SUCCESS);
+  auto main_root = std::make_shared<GeRootModel>();
+  EXPECT_NE(model_helper.SaveDualBodyRootModel(main_root, nullptr, "dual_body", model, true), SUCCESS);
+  auto fallback_root = std::make_shared<GeRootModel>();
+  EXPECT_NE(model_helper.SaveDualBodyRootModel(main_root, fallback_root, "dual_body", model, true), SUCCESS);
+  auto main_graph = std::make_shared<ComputeGraph>("main_graph");
+  EXPECT_EQ(main_root->Initialize(main_graph), SUCCESS);
+  auto fallback_graph = std::make_shared<ComputeGraph>(kFallbackModelKey);
+  EXPECT_EQ(fallback_root->Initialize(fallback_graph), SUCCESS);
+  EXPECT_NE(model_helper.SaveDualBodyRootModel(main_root, fallback_root, "dual_body", model, true), SUCCESS);
+}
+
+TEST_F(UtestModelHelper, SaveDualBodyRootModelSuccessTest) {
+  auto build_body_root = [](const std::string &root_name, const std::string &sub_key,
+                            const std::string &sub_name) -> GeRootModelPtr {
+    auto root_graph = std::make_shared<ComputeGraph>(root_name);
+    auto root_model = std::make_shared<GeRootModel>();
+    EXPECT_EQ(root_model->Initialize(root_graph), SUCCESS);
+    root_model->SetCustomOpRegistry(CustomOpFactory::GetGlobalRegistryPtr());
+    auto root_ge_model = std::make_shared<GeModel>();
+    root_ge_model->SetGraph(root_graph);
+    FillModelTaskDef(root_ge_model);
+    root_model->SetSubgraphInstanceNameToModel(root_name, root_ge_model);
+
+    auto sub_graph = std::make_shared<ComputeGraph>(sub_name);
+    auto sub_model = std::make_shared<GeModel>();
+    sub_model->SetGraph(sub_graph);
+    FillModelTaskDef(sub_model);
+    root_model->SetSubgraphInstanceNameToModel(sub_key, sub_model);
+    return root_model;
+  };
+
+  auto main_root = build_body_root("main_graph", "sub_graph", "sub_graph");
+  auto fallback_root =
+      build_body_root(kFallbackModelKey, std::string(kFallbackSubgraphPrefix) + "sub_graph", "sub_graph");
+  ModelHelper model_helper;
+  model_helper.SetSaveMode(false);
+  ModelBufferData model;
+  EXPECT_EQ(model_helper.SaveDualBodyRootModel(main_root, fallback_root, "dual_body", model, true), SUCCESS);
+  bool dual_body = false;
+  EXPECT_TRUE(AttrUtils::GetBool(main_root->GetRootGraph(), kDualBodyAttr, dual_body));
+  EXPECT_TRUE(dual_body);
+  bool weights_identical = false;
+  EXPECT_TRUE(AttrUtils::GetBool(main_root->GetRootGraph(), kWeightsIdenticalAttr, weights_identical));
+  EXPECT_TRUE(weights_identical);
+}
+
 TEST_F(UtestModelHelper, SaveModelDef) {
   ModelHelper model_helper;
   std::shared_ptr<OmFileSaveHelper> om_file_save_helper = std::make_shared<OmFileSaveHelper>();
@@ -1004,6 +1169,140 @@ TEST_F(UtestModelHelper, SaveToOmModel) {
   std::string output_file = "";
   ModelBufferData model;
   EXPECT_EQ(model_helper.SaveToOmModel(ge_model, output_file, model), FAILED);
+}
+
+class DefaultModelSaveHelperForUt : public ModelSaveHelper {
+ public:
+  Status SaveToOmRootModel(const GeRootModelPtr &, const std::string &, ModelBufferData &, const bool) override {
+    return SUCCESS;
+  }
+  Status SaveToOmModel(const GeModelPtr &, const std::string &, ModelBufferData &, const GeRootModelPtr &) override {
+    return SUCCESS;
+  }
+  void SetSaveMode(const bool) override {}
+};
+
+class TestableModelHelperForDualBodyUt : public ModelHelper {
+ public:
+  using ModelHelper::ClearTilingIds;
+  using ModelHelper::IsUnfoldShellRoot;
+  using ModelHelper::MergeFallbackTiling;
+  using ModelHelper::SaveBodyModelGroups;
+};
+
+TEST_F(UtestModelHelper, DualBodyHelpersBoundaryTest) {
+  TestableModelHelperForDualBodyUt helper;
+  TestableModelHelperForDualBodyUt::ClearTilingIds(nullptr);
+
+  auto graph = std::make_shared<ComputeGraph>("clear_tiling_graph");
+  auto op_desc = std::make_shared<OpDesc>("node", "Add");
+  (void)graph->AddNode(op_desc);
+  (void)AttrUtils::SetListInt(op_desc, "_op_tiling_ids", {1, 2});
+  TestableModelHelperForDualBodyUt::ClearTilingIds(graph);
+  std::vector<int64_t> tiling_ids{1};
+  EXPECT_TRUE(AttrUtils::GetListInt(op_desc, "_op_tiling_ids", tiling_ids));
+  EXPECT_TRUE(tiling_ids.empty());
+
+  EXPECT_FALSE(helper.IsUnfoldShellRoot(nullptr));
+  auto null_graph_model = std::make_shared<GeModel>();
+  EXPECT_FALSE(helper.IsUnfoldShellRoot(null_graph_model));
+
+  auto shell_graph = std::make_shared<ComputeGraph>("shell_root");
+  (void)AttrUtils::SetBool(shell_graph, ATTR_NAME_DYNAMIC_SHAPE_PARTITIONED, true);
+  auto sub_graph = std::make_shared<ComputeGraph>("partitioned_sub_graph");
+  sub_graph->SetGraphUnknownFlag(true);
+  auto pc_desc = std::make_shared<OpDesc>("partitioned_call", PARTITIONEDCALL);
+  auto pc_node = shell_graph->AddNode(pc_desc);
+  ASSERT_NE(pc_node, nullptr);
+  (void)pc_desc->AddSubgraphName("partitioned_sub_graph");
+  (void)pc_desc->SetSubgraphInstanceName(0U, "partitioned_sub_graph");
+  sub_graph->SetParentGraph(shell_graph);
+  sub_graph->SetParentNode(pc_node);
+  ASSERT_EQ(shell_graph->AddSubgraph("partitioned_sub_graph", sub_graph), GRAPH_SUCCESS);
+  auto shell_model = std::make_shared<GeModel>();
+  shell_model->SetGraph(shell_graph);
+  EXPECT_TRUE(helper.IsUnfoldShellRoot(shell_model));
+
+  auto fallback_root = std::make_shared<GeRootModel>();
+  EXPECT_EQ(fallback_root->Initialize(std::make_shared<ComputeGraph>(kFallbackModelKey)), SUCCESS);
+  fallback_root->SetSubgraphInstanceNameToModel("null_model", nullptr);
+  EXPECT_EQ(helper.MergeFallbackTiling(fallback_root, fallback_root), SUCCESS);
+}
+
+TEST_F(UtestModelHelper, SaveBodyModelGroupsUsesFirstModelWhenRootKeyMissing) {
+  TestableModelHelperForDualBodyUt helper;
+  auto root_graph = std::make_shared<ComputeGraph>("body_root");
+  auto body_root = std::make_shared<GeRootModel>();
+  ASSERT_EQ(body_root->Initialize(root_graph), SUCCESS);
+  auto other_graph = std::make_shared<ComputeGraph>("other_graph");
+  auto other_model = std::make_shared<GeModel>();
+  other_model->SetGraph(other_graph);
+  FillModelTaskDef(other_model);
+  body_root->SetSubgraphInstanceNameToModel("other_graph", other_model);
+
+  auto first_model = std::make_shared<GeModel>();
+  first_model->SetGraph(root_graph);
+  FillModelTaskDef(first_model);
+  auto om_helper = std::make_shared<OmFileSaveHelper>();
+  std::vector<ge::Buffer> model_buffers(2U);
+  std::vector<ge::Buffer> task_buffers(2U);
+  size_t cur_index = 0U;
+  EXPECT_EQ(
+      helper.SaveBodyModelGroups(om_helper, body_root, first_model, model_buffers, task_buffers, cur_index, true, true),
+      SUCCESS);
+  EXPECT_EQ(cur_index, 2U);
+}
+
+TEST_F(UtestModelHelper, SaveBodyModelGroupsCreatesModelWhenRootKeyMissing) {
+  TestableModelHelperForDualBodyUt helper;
+  auto root_graph = std::make_shared<ComputeGraph>("body_root");
+  auto body_root = std::make_shared<GeRootModel>();
+  ASSERT_EQ(body_root->Initialize(root_graph), SUCCESS);
+  body_root->SetSubgraphInstanceNameToModel("other_graph", nullptr);
+  auto om_helper = std::make_shared<OmFileSaveHelper>();
+  std::vector<ge::Buffer> model_buffers(2U);
+  std::vector<ge::Buffer> task_buffers(2U);
+  size_t cur_index = 1U;
+  EXPECT_NE(
+      helper.SaveBodyModelGroups(om_helper, body_root, nullptr, model_buffers, task_buffers, cur_index, false, true),
+      SUCCESS);
+}
+
+TEST_F(UtestModelHelper, SaveBodyModelGroupsShellRootSavesModelDef) {
+  TestableModelHelperForDualBodyUt helper;
+  auto shell_graph = std::make_shared<ComputeGraph>("shell_root");
+  (void)AttrUtils::SetBool(shell_graph, ATTR_NAME_DYNAMIC_SHAPE_PARTITIONED, true);
+  auto sub_graph = std::make_shared<ComputeGraph>("partitioned_sub_graph");
+  sub_graph->SetGraphUnknownFlag(true);
+  auto pc_desc = std::make_shared<OpDesc>("partitioned_call", PARTITIONEDCALL);
+  auto pc_node = shell_graph->AddNode(pc_desc);
+  ASSERT_NE(pc_node, nullptr);
+  (void)pc_desc->AddSubgraphName("partitioned_sub_graph");
+  (void)pc_desc->SetSubgraphInstanceName(0U, "partitioned_sub_graph");
+  sub_graph->SetParentGraph(shell_graph);
+  sub_graph->SetParentNode(pc_node);
+  ASSERT_EQ(shell_graph->AddSubgraph("partitioned_sub_graph", sub_graph), GRAPH_SUCCESS);
+  auto shell_model = std::make_shared<GeModel>();
+  shell_model->SetGraph(shell_graph);
+
+  auto body_root = std::make_shared<GeRootModel>();
+  ASSERT_EQ(body_root->Initialize(shell_graph), SUCCESS);
+  body_root->SetSubgraphInstanceNameToModel("shell_root", shell_model);
+  auto om_helper = std::make_shared<OmFileSaveHelper>();
+  std::vector<ge::Buffer> model_buffers(1U);
+  std::vector<ge::Buffer> task_buffers(1U);
+  size_t cur_index = 0U;
+  EXPECT_EQ(
+      helper.SaveBodyModelGroups(om_helper, body_root, nullptr, model_buffers, task_buffers, cur_index, false, true),
+      SUCCESS);
+  EXPECT_EQ(cur_index, 1U);
+}
+
+TEST_F(UtestModelHelper, ModelSaveHelperDefaultDualBodyUnsupported) {
+  DefaultModelSaveHelperForUt helper;
+  ModelBufferData model;
+  EXPECT_EQ(helper.SaveDualBodyRootModel(nullptr, nullptr, "dual", model, false), UNSUPPORTED);
+  EXPECT_EQ(helper.ConfigureAttrCompressionMode("true"), SUCCESS);
 }
 
 TEST_F(UtestModelHelper, LoadFromFile_failed) {

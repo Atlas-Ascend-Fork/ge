@@ -621,6 +621,84 @@ TEST_F(UtestFileConstantUtilTransfer, test_change_file_path_success) {
   (void)mmRmdir("om_path");
 }
 
+namespace {
+struct DualFilePathGraphsForUt {
+  ComputeGraphPtr main_graph;
+  ComputeGraphPtr fallback_graph;
+  OpDescPtr main_fc_desc;
+  OpDescPtr fallback_shared_desc;
+  OpDescPtr fallback_only_desc;
+};
+
+DualFilePathGraphsForUt BuildDualFilePathGraphsForUt(const std::string &shared_path,
+                                                     const std::string &fallback_only_path) {
+  DualFilePathGraphsForUt graphs;
+  ut::GraphBuilder main_builder("main_graph");
+  auto main_fc = main_builder.AddNode("main_fc", FILECONSTANT, 0, 1, FORMAT_ND, DT_FLOAT, {3});
+  auto main_out = main_builder.AddNode("main_out", "NetOutPut", 1, 0);
+  main_builder.AddDataEdge(main_fc, 0, main_out, 0);
+  graphs.main_fc_desc = main_fc->GetOpDesc();
+  (void)AttrUtils::SetStr(graphs.main_fc_desc, ATTR_NAME_LOCATION, shared_path);
+  (void)AttrUtils::SetDataType(graphs.main_fc_desc, "dtype", DT_FLOAT);
+  graphs.main_graph = main_builder.GetGraph();
+
+  ut::GraphBuilder fallback_builder("fallback_graph");
+  auto fallback_shared_fc =
+      fallback_builder.AddNode("fallback_shared_fc", FILECONSTANT, 0, 1, FORMAT_ND, DT_FLOAT, {3});
+  auto fallback_only_fc = fallback_builder.AddNode("fallback_only_fc", FILECONSTANT, 0, 1, FORMAT_ND, DT_FLOAT, {3});
+  auto fallback_out = fallback_builder.AddNode("fallback_out", "NetOutPut", 2, 0);
+  fallback_builder.AddDataEdge(fallback_shared_fc, 0, fallback_out, 0);
+  fallback_builder.AddDataEdge(fallback_only_fc, 0, fallback_out, 1);
+  graphs.fallback_shared_desc = fallback_shared_fc->GetOpDesc();
+  graphs.fallback_only_desc = fallback_only_fc->GetOpDesc();
+  (void)AttrUtils::SetStr(graphs.fallback_shared_desc, ATTR_NAME_LOCATION, shared_path);
+  (void)AttrUtils::SetStr(graphs.fallback_only_desc, ATTR_NAME_LOCATION, fallback_only_path);
+  (void)AttrUtils::SetDataType(graphs.fallback_shared_desc, "dtype", DT_FLOAT);
+  (void)AttrUtils::SetDataType(graphs.fallback_only_desc, "dtype", DT_FLOAT);
+  graphs.fallback_graph = fallback_builder.GetGraph();
+  return graphs;
+}
+}  // namespace
+
+TEST_F(UtestFileConstantUtilTransfer, test_change_file_path_for_dual_graphs) {
+  const std::string main_dir = "tmp_weight_dual_main";
+  const std::string fallback_dir = "tmp_weight_dual_fallback";
+  ASSERT_EQ(CreateDirectory(main_dir), 0);
+  ASSERT_EQ(CreateDirectory(fallback_dir), 0);
+  const std::string shared_path = main_dir + "/shared.bin";
+  const std::string fallback_only_path = fallback_dir + "/fallback_only.bin";
+  {
+    std::ofstream shared_ofs(shared_path, std::ios::binary);
+    shared_ofs << "shared";
+    std::ofstream fallback_ofs(fallback_only_path, std::ios::binary);
+    fallback_ofs << "fallback";
+  }
+
+  auto graphs = BuildDualFilePathGraphsForUt(shared_path, fallback_only_path);
+  const std::string om_path = "om_dual_path/hello.om";
+  ASSERT_EQ(FileConstantUtils::ChangeFilePath(graphs.main_graph, graphs.fallback_graph, om_path), SUCCESS);
+
+  std::string main_location;
+  std::string fallback_shared_location;
+  std::string fallback_only_location;
+  EXPECT_TRUE(AttrUtils::GetStr(graphs.main_fc_desc, ATTR_NAME_LOCATION, main_location));
+  EXPECT_TRUE(AttrUtils::GetStr(graphs.fallback_shared_desc, ATTR_NAME_LOCATION, fallback_shared_location));
+  EXPECT_TRUE(AttrUtils::GetStr(graphs.fallback_only_desc, ATTR_NAME_LOCATION, fallback_only_location));
+  EXPECT_EQ(main_location, "shared.bin");
+  EXPECT_EQ(fallback_shared_location, "shared.bin");
+  EXPECT_EQ(fallback_only_location, "fallback_only.bin");
+
+  const std::string weight_dir = om_path.substr(0U, om_path.rfind('/')) + "/weight";
+  EXPECT_EQ(mmAccess((weight_dir + "/shared.bin").c_str()), EN_OK);
+  EXPECT_EQ(mmAccess((weight_dir + "/fallback_only.bin").c_str()), EN_OK);
+  (void)remove((weight_dir + "/shared.bin").c_str());
+  (void)remove((weight_dir + "/fallback_only.bin").c_str());
+  (void)mmRmdir(weight_dir.c_str());
+  (void)mmRmdir(om_path.substr(0U, om_path.rfind('/')).c_str());
+  (void)mmRmdir(main_dir.c_str());
+  (void)mmRmdir(fallback_dir.c_str());
+}
+
 TEST_F(UtestFileConstantUtilTransfer, test_reuse_external_weight_success) {
   GetContext().SetSessionId(0U);
   ge::ut::GraphBuilder builder("graph");
