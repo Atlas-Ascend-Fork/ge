@@ -52,10 +52,10 @@ find /usr/local/Ascend -name ascend_toolkit_install.info
 
 - Python3 >= 3.9.x
 
-  除了CANN开发套件包需要的Python依赖外，还需要额外安装coverage，并将Python3的bin路径添加到PATH环境变量中，命令示例如下：
+  除了CANN开发套件包需要的Python依赖外，还需要额外安装coverage和pytest（UT/ST中的pyge测试通过`python -m pytest`执行），并将Python3的bin路径添加到PATH环境变量中，命令示例如下：
 
   ```bash
-  pip3 install coverage
+  pip3 install coverage pytest
   # 修改下面的PYTHON3_HOME为实际的PYTHON安装目录
   export PATH=$PATH:$PYTHON3_HOME/bin
   ```

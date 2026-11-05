@@ -578,6 +578,7 @@ fi
 #   setuptools>=59.0.1
 #   wheel>=0.37.1
 #   coverage          (build.md 也单独提及: pip3 install coverage)
+#   pytest            (build.md 也单独提及; UT/ST 的 pyge 测试使用)
 #   cloudpickle
 print_header "9. Python 包 [requirements.txt]"
 
@@ -650,6 +651,7 @@ if [ -n "$PYTHON_CMD" ]; then
     check_py_pkg "numpy"       "numpy"
     check_py_pkg "jinja2"      "jinja2"
     check_py_pkg "coverage"    "coverage"      # build.md 也单独提及
+    check_py_pkg "pytest"      "pytest"        # build.md 也单独提及; pyge 测试使用
     check_py_pkg "cloudpickle" "cloudpickle"
 
     # --- 快捷安装提示 ---
