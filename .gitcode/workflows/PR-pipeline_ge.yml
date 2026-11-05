@@ -696,6 +696,7 @@ stages:
               git_token: ${{secrets.GIT_TOKEN}}
           -
             name: rename
+            if: ${{ always() }}
             run: |
               if [ -f "${{ steps.process_checkout.outputs.path }}/ut_cov_graphengine.tar.gz" ]; then
                 mv ${{ steps.process_checkout.outputs.path }}/ut_cov_graphengine.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_graphengine.tar.gz
@@ -755,6 +756,7 @@ stages:
               git_token: ${{secrets.GIT_TOKEN}}
           -
             name: rename
+            if: ${{ always() }}
             run: |
               if [ -f "${{ steps.process_checkout.outputs.path }}/ut_cov_ge_executor_c.tar.gz" ]; then
                 mv ${{ steps.process_checkout.outputs.path }}/ut_cov_ge_executor_c.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_ge_executor_c.tar.gz
@@ -814,6 +816,7 @@ stages:
               git_token: ${{secrets.GIT_TOKEN}}
           -
             name: rename
+            if: ${{ always() }}
             run: |
               if [ -f "${{ steps.process_checkout.outputs.path }}/ut_cov_ge_autofuse.tar.gz" ]; then
                 mv ${{ steps.process_checkout.outputs.path }}/ut_cov_ge_autofuse.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_ge_autofuse.tar.gz
@@ -873,6 +876,7 @@ stages:
               git_token: ${{secrets.GIT_TOKEN}}
           -
             name: rename
+            if: ${{ always() }}
             run: |
               if [ -f "${{ steps.process_checkout.outputs.path }}/ut_cov_fe.tar.gz" ]; then
                 mv ${{ steps.process_checkout.outputs.path }}/ut_cov_fe.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_fe.tar.gz
@@ -932,6 +936,7 @@ stages:
               git_token: ${{secrets.GIT_TOKEN}}
           -
             name: rename
+            if: ${{ always() }}
             run: |
               if [ -f "${{ steps.process_checkout.outputs.path }}/ut_cov_hcce.tar.gz" ]; then
                 mv ${{ steps.process_checkout.outputs.path }}/ut_cov_hcce.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_hcce.tar.gz
