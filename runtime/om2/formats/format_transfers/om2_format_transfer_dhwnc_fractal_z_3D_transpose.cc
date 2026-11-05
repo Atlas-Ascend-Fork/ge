@@ -18,15 +18,15 @@
 #include "framework/common/debug/ge_log.h"
 #include "graph/utils/type_utils_inner.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
 namespace {
-Status CheckDataTypeSupportForDhwncToFz3DT(const DataType dtype) {
-  return (GetSizeByDataType(dtype) > 0) ? SUCCESS : UNSUPPORTED;
+ge::Status CheckDataTypeSupportForDhwncToFz3DT(const ge::DataType dtype) {
+  return (ge::GetSizeByDataType(dtype) > 0) ? ge::SUCCESS : UNSUPPORTED;
 }
 
-Status TransShapeToFzForDhwncToFz3DT(const int64_t d, const int64_t n, const int64_t c, const int64_t h,
-                                     const int64_t w, const int64_t c0, std::vector<int64_t> &dst_shape) {
+ge::Status TransShapeToFzForDhwncToFz3DT(const int64_t d, const int64_t n, const int64_t c, const int64_t h,
+                                         const int64_t w, const int64_t c0, std::vector<int64_t> &dst_shape) {
   if (c0 <= 0) {
     return ACL_ERROR_GE_DATATYPE_INVALID;
   }
@@ -40,11 +40,11 @@ Status TransShapeToFzForDhwncToFz3DT(const int64_t d, const int64_t n, const int
   dst_shape.push_back(kNiSize);
   dst_shape.push_back(c0);
 
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status TransShapeDhwncToFz3DTranspose(const std::vector<int64_t> &src_shape, const Format &dst_format,
-                                      std::vector<int64_t> &dst_shape) {
+ge::Status TransShapeDhwncToFz3DTranspose(const std::vector<int64_t> &src_shape, const ge::Format &dst_format,
+                                          std::vector<int64_t> &dst_shape) {
   if (!CheckShapeValid(src_shape, kDhwncDimsNum)) {
     return ACL_ERROR_GE_SHAPE_INVALID;
   }
@@ -53,12 +53,12 @@ Status TransShapeDhwncToFz3DTranspose(const std::vector<int64_t> &src_shape, con
   const auto w = src_shape.at(kDhwncW);
   const auto n = src_shape.at(kDhwncN);
   const auto c = src_shape.at(kDhwncC);
-  const auto c0 = GetC0Value(static_cast<int32_t>(dst_format));
+  const auto c0 = ge::GetC0Value(static_cast<int32_t>(dst_format));
 
   // exchange n c, normalize process with dhwcn to fraz3D
   return TransShapeToFzForDhwncToFz3DT(d, c, n, h, w, c0, dst_shape);
 }
-Status TransFormatDhwncToFz3DTranspose(const TransArgs &args, TransResult &result) {
+ge::Status TransFormatDhwncToFz3DTranspose(const TransArgs &args, TransResult &result) {
   if (!CheckShapeValid(args.src_shape, kDhwncDimsNum)) {
     return ACL_ERROR_GE_SHAPE_INVALID;
   }
@@ -69,7 +69,7 @@ Status TransFormatDhwncToFz3DTranspose(const TransArgs &args, TransResult &resul
   const int64_t c = args.src_shape[kDhwncN];
   const int64_t n = args.src_shape[kDhwncC];
   const int64_t n1n0 = Ceil(n, static_cast<int64_t>(kNiSize)) * kNiSize;
-  const int64_t c0 = GetC0Value(static_cast<int32_t>(args.dst_format));
+  const int64_t c0 = ge::GetC0Value(static_cast<int32_t>(args.dst_format));
   const int64_t c1 = Ceil(c, c0);
 
   const auto cn = c * n;
@@ -79,7 +79,7 @@ Status TransFormatDhwncToFz3DTranspose(const TransArgs &args, TransResult &resul
   const auto hwn1n0c0 = h * wn1n0c0;
   const auto c1hwn1n0c0 = c1 * hwn1n0c0;
 
-  const int64_t data_size = GetSizeByDataType(args.src_data_type);
+  const int64_t data_size = ge::GetSizeByDataType(args.src_data_type);
   int64_t dst_size = 1;
   for (const auto dim : args.dst_shape) {
     dst_size *= dim;
@@ -87,7 +87,7 @@ Status TransFormatDhwncToFz3DTranspose(const TransArgs &args, TransResult &resul
   dst_size *= data_size;
   if (dst_size == 0) {
     result.length = static_cast<size_t>(dst_size);
-    return SUCCESS;
+    return ge::SUCCESS;
   }
 
   const std::shared_ptr<uint8_t> dst(new (std::nothrow) uint8_t[dst_size], std::default_delete<uint8_t[]>());
@@ -149,18 +149,18 @@ Status TransFormatDhwncToFz3DTranspose(const TransArgs &args, TransResult &resul
   }
   result.data = dst;
   result.length = static_cast<size_t>(dst_size);
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 }  // namespace
 
-Status FormatTransferDhwncFractalZ3DTranspose::TransFormat(const TransArgs &args, TransResult &result) {
+ge::Status FormatTransferDhwncFractalZ3DTranspose::TransFormat(const TransArgs &args, TransResult &result) {
   GELOGD("Begin to trans format from %s to %s, src shape %s, data type %s, dst shape %s",
          TypeUtilsInner::FormatToSerialString(args.src_format).c_str(),
          TypeUtilsInner::FormatToSerialString(args.dst_format).c_str(), ShapeToString(args.src_shape).c_str(),
          TypeUtilsInner::DataTypeToSerialString(args.src_data_type).c_str(), ShapeToString(args.dst_shape).c_str());
   std::vector<int64_t> expect_shape;
   const auto ret = TransShape(args.src_format, args.src_shape, args.src_data_type, args.dst_format, expect_shape);
-  if (ret != SUCCESS) {
+  if (ret != ge::SUCCESS) {
     return ret;
   }
   if (!IsTransShapeDstCorrect(args, expect_shape)) {
@@ -174,17 +174,17 @@ Status FormatTransferDhwncFractalZ3DTranspose::TransFormat(const TransArgs &args
   return ACL_ERROR_GE_FORMAT_INVALID;
 }
 
-Status FormatTransferDhwncFractalZ3DTranspose::TransShape(const Format src_format,
-                                                          const std::vector<int64_t> &src_shape,
-                                                          const DataType data_type, const Format dst_format,
-                                                          std::vector<int64_t> &dst_shape) {
-  if (CheckDataTypeSupportForDhwncToFz3DT(data_type) != SUCCESS) {
+ge::Status FormatTransferDhwncFractalZ3DTranspose::TransShape(const ge::Format src_format,
+                                                              const std::vector<int64_t> &src_shape,
+                                                              const ge::DataType data_type, const ge::Format dst_format,
+                                                              std::vector<int64_t> &dst_shape) {
+  if (CheckDataTypeSupportForDhwncToFz3DT(data_type) != ge::SUCCESS) {
     return ACL_ERROR_GE_DATATYPE_INVALID;
   }
 
-  const Format src_primary_format = static_cast<Format>(GetPrimaryFormat(static_cast<int32_t>(src_format)));
-  const Format dst_primary_format = static_cast<Format>(GetPrimaryFormat(static_cast<int32_t>(dst_format)));
-  if ((src_primary_format == FORMAT_DHWNC) && (dst_primary_format == FORMAT_FRACTAL_Z_3D_TRANSPOSE)) {
+  const ge::Format src_primary_format = static_cast<ge::Format>(ge::GetPrimaryFormat(static_cast<int32_t>(src_format)));
+  const ge::Format dst_primary_format = static_cast<ge::Format>(ge::GetPrimaryFormat(static_cast<int32_t>(dst_format)));
+  if ((src_primary_format == ge::FORMAT_DHWNC) && (dst_primary_format == ge::FORMAT_FRACTAL_Z_3D_TRANSPOSE)) {
     return TransShapeDhwncToFz3DTranspose(src_shape, dst_format, dst_shape);
   }
 
@@ -193,4 +193,4 @@ Status FormatTransferDhwncFractalZ3DTranspose::TransShape(const Format src_forma
 
 REGISTER_FORMAT_TRANSFER(FormatTransferDhwncFractalZ3DTranspose, FORMAT_DHWNC, FORMAT_FRACTAL_Z_3D_TRANSPOSE)
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert

@@ -43,6 +43,7 @@ class ProgramGenerator {
   Status GenerateKernelRegSource(Om2CodePrinter &code_printer);
   Status GenerateArgsManagerSource(Om2CodePrinter &code_printer);
   Status GenerateLoadAndRunSource(Om2CodePrinter &code_printer);
+  Status GenerateVarMgrSource(Om2CodePrinter &code_printer);
   Status GenerateMakeFile(Om2CodePrinter &code_printer);
 
   AstBuildContext &ast_;
@@ -50,6 +51,9 @@ class ProgramGenerator {
   uint64_t args_table_index_ = 0U;
   Om2CodegenModel codegen_model_;
   bool has_custom_kernel_ = false;
+  // 磁盘 Makefile 的 SRC_FILES 是硬编码的，须与实际产物集合一致
+  // （内存编译路径由 CreateCompileCppFiles 按 .cpp 后缀自动派生，无需感知）
+  bool has_var_mgr_file_ = false;
 };
 }  // namespace ge
 

@@ -304,7 +304,8 @@ Status Om2CodegenModelBuilder::CreateTaskCodeBuilders(const GeModelPtr &model, A
 
 Status Om2CodegenModelBuilder::Build(const GeModelPtr &model, const std::vector<TaskCodeBuilderPtr> &task_builders,
                                      Om2CodegenModel &codegen_model,
-                                     std::vector<gert::GertModelDataConstMeta> &const_metas) {
+                                     std::vector<gert::GertModelDataConstMeta> &const_metas,
+                                     std::vector<VarSlotMeta> &var_metas) {
   op_desc_by_index_.clear();
   op_id_to_input_edges_.clear();
   weight_offset_to_varname_.clear();
@@ -312,6 +313,7 @@ Status Om2CodegenModelBuilder::Build(const GeModelPtr &model, const std::vector<
   var_addr_ranges_.clear();
   op_index_to_count_map_.clear();
   const_metas.clear();
+  var_metas.clear();
   GE_ASSERT_SUCCESS(BuildOpDescLookup(model));
   GE_ASSERT_SUCCESS(BuildOpInputEdges(model));
   GE_ASSERT_SUCCESS(BuildModelInfo(model, codegen_model));
@@ -319,8 +321,7 @@ Status Om2CodegenModelBuilder::Build(const GeModelPtr &model, const std::vector<
   GE_ASSERT_SUCCESS(BuildModelIo(model, codegen_model));
   GE_ASSERT_SUCCESS(BuildFileConstInputs(model, codegen_model, const_metas));
   GE_ASSERT_SUCCESS(BuildConstInputs(model, task_builders, codegen_model, const_metas));
-  std::vector<gert::GertModelDataVarMeta> var_metas;
-  GE_ASSERT_SUCCESS(BuildVarInputs(model, codegen_model, var_metas));
+  GE_ASSERT_SUCCESS(BuildVarInputs(model, var_metas));
   GE_ASSERT_SUCCESS(BuildKernelRegistry(model, task_builders, codegen_model));
   GE_ASSERT_SUCCESS(GenerateArgsData(model, task_builders, codegen_model));
   GE_ASSERT_SUCCESS(BuildTaskSemantics(model, task_builders, codegen_model));
@@ -758,8 +759,7 @@ Status Om2CodegenModelBuilder::BuildFileConstInputs(const GeModelPtr &model, Om2
   return SUCCESS;
 }
 
-Status Om2CodegenModelBuilder::BuildVarInputs(const GeModelPtr &model, Om2CodegenModel &codegen_model,
-                                              std::vector<gert::GertModelDataVarMeta> &var_metas) {
+Status Om2CodegenModelBuilder::BuildVarInputs(const GeModelPtr &model, std::vector<VarSlotMeta> &var_metas) {
   GE_ASSERT_NOTNULL(model);
   const auto compute_graph = model->GetGraph();
   GE_ASSERT_NOTNULL(compute_graph);
@@ -776,9 +776,8 @@ Status Om2CodegenModelBuilder::BuildVarInputs(const GeModelPtr &model, Om2Codege
     if (output_offsets.empty()) {
       continue;
     }
-    GE_ASSERT_SUCCESS(BuildVarInputForNode(op_desc, node_type, var_metas, var_index));
+    GE_ASSERT_SUCCESS(BuildVarInputForNode(op_desc, var_metas, var_index));
   }
-  codegen_model.var_metas = std::move(var_metas);
   return SUCCESS;
 }
 
@@ -805,8 +804,7 @@ Status Om2CodegenModelBuilder::ParseVarRootAndSize(const OpDescPtr &op_desc, con
   return SUCCESS;
 }
 
-Status Om2CodegenModelBuilder::BuildVarInputForNode(const OpDescPtr &op_desc, const std::string &node_type,
-                                                    std::vector<gert::GertModelDataVarMeta> &var_metas,
+Status Om2CodegenModelBuilder::BuildVarInputForNode(const OpDescPtr &op_desc, std::vector<VarSlotMeta> &var_metas,
                                                     size_t &var_index) {
   const auto output_desc = op_desc->MutableOutputDesc(0U);
   GE_ASSERT_NOTNULL(output_desc);
@@ -833,15 +831,7 @@ Status Om2CodegenModelBuilder::BuildVarInputForNode(const OpDescPtr &op_desc, co
                  "[OM2] Variable index %zu exceeds uint32 range", var_index);
   const std::string var_name = "var_" + std::to_string(var_index);
   var_addr_ranges_[root] = VarAddrInfo{size, var_index, var_name};
-  gert::GertModelDataVarMeta meta;
-  meta.index = var_index;
-  meta.var_name = gert::GertMakeStr(op_desc->GetName());
-  meta.op_type = gert::GertMakeStr(node_type);
-  meta.op_name = gert::GertMakeStr(op_desc->GetName());
-  meta.tensor_desc = gert::MakeGertTensorDesc(op_desc->GetName(), output_desc->GetDataType(), output_desc->GetFormat(),
-                                              output_desc->GetShape().GetDims());
-  meta.tensor_desc.size = size;
-  var_metas.push_back(std::move(meta));
+  var_metas.push_back(VarSlotMeta{static_cast<uint32_t>(var_index), op_desc->GetName()});
   ++var_index;
   return SUCCESS;
 }

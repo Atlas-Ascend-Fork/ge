@@ -296,7 +296,8 @@ Status ResolveStablePart(StablePartId id, std::string &output) {
           "  // Create Model\n"
           "  auto *obj = new om2::Om2Model(config->bin_files, config->bin_data, config->bin_size,\n"
           "                                static_cast<size_t>(config->bin_num), config->constants,\n"
-          "                                config->var_addrs, config->work_ptr, config->session_id,\n"
+          "                                static_cast<const GertModelVarContext *>(config->var_context),\n            "
+          "                    config->work_ptr, config->session_id,\n"
           "                                static_cast<uint32_t>(config->model_id), config->instance_handle,\n"
           "                                config->callbacks);\n"
           "  if (obj == nullptr) {\n"
@@ -1171,6 +1172,81 @@ Status ResolveStablePart(StablePartId id, std::string &output) {
           "  }\n"
           "  return ACL_SUCCESS;\n"
           "}\n";
+      return SUCCESS;
+    case StablePartId::kVarMgrDecls:
+      // <model>_var_mgr.cpp 是独立编译单元，resources.cpp 要调它的两个入口，而二者都不进
+      // <model>_internal.h（内部入口不导出），故在此声明。本部件只在有变量时发射：
+      // GenerateResourcesSource 以 HasVariables() 门控它，与 <model>_var_mgr.cpp 的生成同判据，
+      // 故无变量的模型两者都不出现，resources.cpp 内不留任何 gert::var_mgr 痕迹。
+      output =
+          "namespace gert {\n"
+          "namespace var_mgr {\n"
+          "uint32_t GetSlotNum();\n"
+          "aclError PrepareVars(const GertModelVarContext *ctx, void **var_addrs, uint32_t slot_num);\n"
+          "}  // namespace var_mgr\n"
+          "}  // namespace gert\n";
+      return SUCCESS;
+    case StablePartId::kVarTransAdapter:
+      // <model>_var_mgr.cpp 内转换部分的适配头：复刻模型 SO 可见路径内不存在的符号。
+      // 整块走 StablePart 而非 AST，因为四类内容 AST 都表达不了：两个宏（GE_CHECK_GE /
+      // GE_CHECK_NOTNULL）无预处理节点，与既有 kChkStatusMacro / kGetAddrMacro 同一处理；
+      // MakeShared 是函数模板而 AST 无模板声明；TypeUtilsInner 的两个静态方法带内联函数体而
+      // MethodDecl 无 body，改成类外定义会让它们无条件发射代码（今天是 inline 且未使用时零代码）；
+      // UNSUPPORTED 是 constexpr、本可 AST 化，但与上述三者同属"复刻 SO 不可见符号"一个语义单元。
+      // 三者落在产物私有的 gert 而非其宿主的 ge：宿主的 ge::TypeUtilsInner 有 14 个方法且输出名字表，
+      // 这份复刻只有 2 个方法且输出数值，同名不同定义写进 ge 就是形式上的 ODR 违规；gert 下宿主无
+      // 这三个实体，冲突在结构上不存在。代价是块内 Status/Format/DataType 失去 ge 作用域，须逐个补
+      // ge:: 限定。内嵌单元正文相应改引裸名——它们都在 gert::formats 内，非限定查找即命中外层 gert。
+      // 产物内的注释只写"复刻自哪个符号"这一溯源信息，不写各符号被用到多少处——那是仓库内部
+      // 的统计，客户拿到产物既无法核对也无法据此行动。TypeUtilsInner 取数值版而非内嵌名字表，
+      // 代价是错误消息里格式与数据类型显示为数字而非名字。
+      output =
+          "// 复刻 inc/graph_metadef/common/ge_common/util.h 的 GE_CHECK_GE。\n"
+          "#ifndef GE_CHECK_GE\n"
+          "#define GE_CHECK_GE(lhs, rhs)                                                        \\\n"
+          "  do {                                                                             \\\n"
+          "    if ((lhs) < (rhs)) {                                                           \\\n"
+          "      GELOGE(ge::FAILED, \"param[%s][%ld] is less than[%s][%ld]\", #lhs,          \\\n"
+          "             static_cast<int64_t>(lhs), #rhs, static_cast<int64_t>(rhs));         \\\n"
+          "      return ge::PARAM_INVALID;                                                  \\\n"
+          "    }                                                                            \\\n"
+          "  } while (false)\n"
+          "#endif\n"
+          "\n"
+          "// 复刻 inc/graph_metadef/common/ge_common/util.h 的 GE_CHECK_NOTNULL。\n"
+          "#ifndef GE_CHECK_NOTNULL\n"
+          "#define GE_CHECK_NOTNULL(val, ...)                                                   \\\n"
+          "  do {                                                                             \\\n"
+          "    if ((val) == nullptr) {                                                        \\\n"
+          "      REPORT_INNER_ERR_MSG(\"E19999\", \"Param:\" #val \" is nullptr, check invalid\" __VA_ARGS__); \\\n"
+          "      GELOGE(ge::FAILED, \"[Check][Param:\" #val \"]null is invalid\" __VA_ARGS__);  \\\n"
+          "      return ge::PARAM_INVALID;                                                  \\\n"
+          "    }                                                                            \\\n"
+          "  } while (false)\n"
+          "#endif\n"
+          "\n"
+          "namespace gert {\n"
+          "// 复刻 inc/graph_metadef/common/ge_common/fmk_error_codes.h 的 "
+          "DECLARE_ERRORNO_COMMON(UNSUPPORTED, 100)。\n"
+          "// 数值与同在 SO 可见路径内的 ge::PARAM_INVALID(0x50100001) 同基 0x50100000。\n"
+          "constexpr ge::Status UNSUPPORTED = static_cast<ge::Status>(0x50100064U);\n"
+          "\n"
+          "template <typename T, typename... Args>\n"
+          "std::shared_ptr<T> MakeShared(Args &&...args) {\n"
+          "  return std::shared_ptr<T>(new (std::nothrow) T(std::forward<Args>(args)...), std::default_delete<T>());\n"
+          "}\n"
+          "\n"
+          "// 只输出数值：错误消息里的格式与数据类型显示为数字而非名字。\n"
+          "class TypeUtilsInner {\n"
+          " public:\n"
+          "  static std::string FormatToSerialString(const ge::Format f) {\n"
+          "    return std::to_string(static_cast<uint32_t>(f));\n"
+          "  }\n"
+          "  static std::string DataTypeToSerialString(const ge::DataType d) {\n"
+          "    return std::to_string(static_cast<uint32_t>(d));\n"
+          "  }\n"
+          "};\n"
+          "}  // namespace gert\n";
       return SUCCESS;
     default:
       output.clear();

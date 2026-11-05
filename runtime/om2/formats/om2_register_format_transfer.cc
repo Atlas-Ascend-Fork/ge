@@ -12,17 +12,17 @@
 
 #include <map>
 
-namespace ge {
+namespace gert {
 namespace formats {
 namespace {
 struct FormatTransferRegistry {
-  Status RegisterBuilder(const Format src, const Format dst, FormatTransferBuilder builder) {
+  ge::Status RegisterBuilder(const ge::Format src, const ge::Format dst, FormatTransferBuilder builder) {
     src_dst_builder[src][dst] = std::move(builder);
-    return SUCCESS;
+    return ge::SUCCESS;
   }
 
-  std::shared_ptr<FormatTransfer> GenerateFormatTransfer(const Format src, const Format dst) {
-    const std::map<Format, std::map<Format, FormatTransferBuilder>>::const_iterator dst_builder =
+  std::shared_ptr<FormatTransfer> GenerateFormatTransfer(const ge::Format src, const ge::Format dst) {
+    const std::map<ge::Format, std::map<ge::Format, FormatTransferBuilder>>::const_iterator dst_builder =
         src_dst_builder.find(src);
     if (dst_builder == src_dst_builder.cend()) {
       return nullptr;
@@ -34,8 +34,8 @@ struct FormatTransferRegistry {
     return builder_iter->second();
   }
 
-  bool IsFormatTransferExists(const Format src, const Format dst) {
-    const std::map<Format, std::map<Format, FormatTransferBuilder>>::const_iterator dst_builder =
+  bool IsFormatTransferExists(const ge::Format src, const ge::Format dst) {
+    const std::map<ge::Format, std::map<ge::Format, FormatTransferBuilder>>::const_iterator dst_builder =
         src_dst_builder.find(src);
     if (dst_builder == src_dst_builder.cend()) {
       return false;
@@ -44,7 +44,7 @@ struct FormatTransferRegistry {
   }
 
  private:
-  std::map<Format, std::map<Format, FormatTransferBuilder>> src_dst_builder;
+  std::map<ge::Format, std::map<ge::Format, FormatTransferBuilder>> src_dst_builder;
 };
 
 FormatTransferRegistry &GetFormatTransferRegistry() {
@@ -53,8 +53,8 @@ FormatTransferRegistry &GetFormatTransferRegistry() {
 }
 }  // namespace
 
-FormatTransferRegister::FormatTransferRegister(FormatTransferBuilder builder, const Format src,
-                                               const Format dst) noexcept {
+FormatTransferRegister::FormatTransferRegister(FormatTransferBuilder builder, const ge::Format src,
+                                               const ge::Format dst) noexcept {
   (void)GetFormatTransferRegistry().RegisterBuilder(src, dst, std::move(builder));
   // RegisterBuilder() always return success, no need to check value
 }
@@ -68,4 +68,4 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY bool FormatTransferExists(const T
   return GetFormatTransferRegistry().IsFormatTransferExists(args.src_primary_format, args.dst_primary_format);
 }
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert

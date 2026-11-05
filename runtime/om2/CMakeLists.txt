@@ -10,25 +10,17 @@
 
 # ---- libom2_executor.so: 不再包含 dump/ 源码（profiling_* 已移至 profiling/ 目录，随 executor 编译），
 # 运行时通过 dlopen 加载 libom2_dump.so ----
+# 也不再包含 formats/ 与 common/ 的转换代码：这两处共 8366 行只在生成的
+# <model>_var_mgr.cpp 里按需文本内嵌（见 base/CMakeLists.txt 的 OM2_VAR_TRANS_UNITS），
+# 执行器自身无任何调用点，编进来只是白占体积并把 ge::formats 的模板实例泄漏到动态符号表。
 file(GLOB_RECURSE OM2_EXECUTOR_SRCS CONFIGURE_DEPENDS "${AIR_CODE_DIR}/runtime/om2/*.cc")
 list(FILTER OM2_EXECUTOR_SRCS EXCLUDE REGEX "om2_model_manager\\.cc$")
 list(FILTER OM2_EXECUTOR_SRCS EXCLUDE REGEX "/dump/.*\\.cc$")
-set(OM2_EXTRA_SRCS
-        "${AIR_CODE_DIR}/graph_metadef/base/utils/type_utils_inner.cc"
-        "${AIR_CODE_DIR}/base/common/plugin/datatype_util.cc"
-)
+list(FILTER OM2_EXECUTOR_SRCS EXCLUDE REGEX "/formats/.*\\.cc$")
+list(FILTER OM2_EXECUTOR_SRCS EXCLUDE REGEX "/om2/common/.*\\.cc$")
 add_library(om2_executor SHARED
         ${OM2_EXECUTOR_SRCS}
-        ${OM2_EXTRA_SRCS}
         # 此处仅添加执行时依赖的源文件
-)
-
-file(GLOB_RECURSE OM2_FORMAT_SRCS CONFIGURE_DEPENDS
-        "${AIR_CODE_DIR}/runtime/om2/formats/*.cc"
-        "${AIR_CODE_DIR}/runtime/om2/common/*.cc"
-)
-set_source_files_properties(${OM2_FORMAT_SRCS} PROPERTIES
-        COMPILE_FLAGS "-fvisibility=hidden"
 )
 
 # AIPP still includes codegen types containing task.pb.h; OM2 Dump supports both protobuf and TLV payload formats.

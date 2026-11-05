@@ -22,18 +22,18 @@
 #include "graph/utils/type_utils_inner.h"
 #include "base/err_msg.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
 namespace {
-bool CheckDataTypeSupportedForFracZToHwcn(const DataType data_type) {
-  return GetSizeByDataType(data_type) > 0;
+bool CheckDataTypeSupportedForFracZToHwcn(const ge::DataType data_type) {
+  return ge::GetSizeByDataType(data_type) > 0;
 }
 
-Status CheckFormatAndDataTypeForFracZToHwcn(const TransArgs &args) {
-  if ((args.src_primary_format != FORMAT_FRACTAL_Z) || (args.dst_primary_format != FORMAT_HWCN)) {
+ge::Status CheckFormatAndDataTypeForFracZToHwcn(const TransArgs &args) {
+  if ((args.src_primary_format != ge::FORMAT_FRACTAL_Z) || (args.dst_primary_format != ge::FORMAT_HWCN)) {
     const std::string error = "Does not support trans format from " +
-                              FmtToStr(TypeUtilsInner::FormatToSerialString(args.src_primary_format)) + " to " +
-                              FmtToStr(TypeUtilsInner::FormatToSerialString(args.dst_primary_format));
+                              ge::FmtToStr(TypeUtilsInner::FormatToSerialString(args.src_primary_format)) + " to " +
+                              ge::FmtToStr(TypeUtilsInner::FormatToSerialString(args.dst_primary_format));
     GE_ERRORLOG_AND_ERRORMSG(ACL_ERROR_GE_FORMAT_INVALID, error.c_str());
     return ACL_ERROR_GE_FORMAT_INVALID;
   }
@@ -48,10 +48,10 @@ Status CheckFormatAndDataTypeForFracZToHwcn(const TransArgs &args) {
                                    "The data type is unsupported."}));
     return ACL_ERROR_GE_DATATYPE_INVALID;
   }
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status CheckShapeForFracZToHwcn(const TransArgs &args) {
+ge::Status CheckShapeForFracZToHwcn(const TransArgs &args) {
   if (!CheckShapeValid(args.src_shape, kFracZDimsNum)) {
     GELOGE(ACL_ERROR_GE_SHAPE_INVALID, "[Check][Shape]Value is invalid, src shape %s",
            ShapeToString(args.src_shape).c_str());
@@ -68,11 +68,11 @@ Status CheckShapeForFracZToHwcn(const TransArgs &args) {
                                                          "Invalid destination shape check."}));
     return ACL_ERROR_GE_SHAPE_INVALID;
   }
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status CheckShapeRelationForFracZToHwcn(const TransArgs &args) {
-  const int64_t c0 = GetC0Value(static_cast<int32_t>(args.src_format));
+ge::Status CheckShapeRelationForFracZToHwcn(const TransArgs &args) {
+  const int64_t c0 = ge::GetC0Value(static_cast<int32_t>(args.src_format));
   if (c0 < 0) {
     return ACL_ERROR_GE_DATATYPE_INVALID;
   }
@@ -82,32 +82,33 @@ Status CheckShapeRelationForFracZToHwcn(const TransArgs &args) {
   const int64_t n0 = Ceil(dst_shape.at(kHwcnN), static_cast<int64_t>(kNiSize));
   if ((src_shape.at(kFracZHWC1) != (dst_shape.at(kHwcnH) * dst_shape.at(kHwcnW) * c1)) ||
       (src_shape.at(kFracZC0) != c0) || (src_shape.at(kFracZNi) != kNiSize) || (src_shape.at(kFracZN0) != n0)) {
-    const std::string error = "Failed to check relationship between src shape" + FmtToStr(ShapeToString(src_shape)) +
-                              " and dst shape" + FmtToStr(ShapeToString(dst_shape));
+    const std::string error = "Failed to check relationship between src shape" +
+                              ge::FmtToStr(ShapeToString(src_shape)) + " and dst shape" +
+                              ge::FmtToStr(ShapeToString(dst_shape));
     GE_ERRORLOG_AND_ERRORMSG(ACL_ERROR_GE_SHAPE_INVALID, error.c_str());
     return ACL_ERROR_GE_SHAPE_INVALID;
   }
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status CheckArgsForFracZToHwcn(const TransArgs &args) {
-  Status ret = CheckFormatAndDataTypeForFracZToHwcn(args);
-  if (ret != SUCCESS) {
+ge::Status CheckArgsForFracZToHwcn(const TransArgs &args) {
+  ge::Status ret = CheckFormatAndDataTypeForFracZToHwcn(args);
+  if (ret != ge::SUCCESS) {
     return ret;
   }
   ret = CheckShapeForFracZToHwcn(args);
-  if (ret != SUCCESS) {
+  if (ret != ge::SUCCESS) {
     return ret;
   }
   ret = CheckShapeRelationForFracZToHwcn(args);
-  if (ret != SUCCESS) {
+  if (ret != ge::SUCCESS) {
     return ret;
   }
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status GetDstDataAfterTransForFracZToHwcn(const TransArgs &args, TransResult &result, const int32_t size,
-                                          const int64_t total_size) {
+ge::Status GetDstDataAfterTransForFracZToHwcn(const TransArgs &args, TransResult &result, const int32_t size,
+                                              const int64_t total_size) {
   const std::shared_ptr<uint8_t> dst(new (std::nothrow) uint8_t[total_size], std::default_delete<uint8_t[]>());
   if (dst == nullptr) {
     GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION,
@@ -160,7 +161,7 @@ Status GetDstDataAfterTransForFracZToHwcn(const TransArgs &args, TransResult &re
                                           : static_cast<int64_t>(SECUREC_MEM_MAX_LEN);
           GE_CHECK_GE(protected_size, 0);
           const auto ret =
-              memcpy_s(PtrAdd(dst.get(), static_cast<size_t>(total_size), static_cast<size_t>(dst_offset)),
+              memcpy_s(ge::PtrAdd(dst.get(), static_cast<size_t>(total_size), static_cast<size_t>(dst_offset)),
                        static_cast<size_t>(protected_size), args.data + src_offset, static_cast<size_t>(size));
           if (ret != EOK) {
             GELOGE(ACL_ERROR_GE_MEMORY_OPERATE_FAILED,
@@ -181,22 +182,22 @@ Status GetDstDataAfterTransForFracZToHwcn(const TransArgs &args, TransResult &re
   }
   result.data = dst;
   result.length = static_cast<size_t>(total_size);
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 }  // namespace
 
-Status FormatTransferFracZHwcn::TransFormat(const TransArgs &args, TransResult &result) {
-  Status ret = CheckArgsForFracZToHwcn(args);
-  if (ret != SUCCESS) {
+ge::Status FormatTransferFracZHwcn::TransFormat(const TransArgs &args, TransResult &result) {
+  ge::Status ret = CheckArgsForFracZToHwcn(args);
+  if (ret != ge::SUCCESS) {
     return ret;
   }
-  const int32_t size = GetSizeByDataType(args.src_data_type);
+  const int32_t size = ge::GetSizeByDataType(args.src_data_type);
   const auto total_size = GetItemNumByShape(args.dst_shape) * size;
   if (total_size <= 0) {
     const int64_t src_size = GetItemNumByShape(args.src_shape);
     if ((total_size == 0) && (src_size == 0)) {
       result.length = static_cast<size_t>(total_size);
-      return SUCCESS;
+      return ge::SUCCESS;
     }
     GELOGE(ACL_ERROR_GE_SHAPE_INVALID,
            "[Get][ShapeSize]Failed, "
@@ -213,7 +214,7 @@ Status FormatTransferFracZHwcn::TransFormat(const TransArgs &args, TransResult &
          ShapeToString(args.src_shape).c_str(), TypeUtilsInner::DataTypeToSerialString(args.src_data_type).c_str(),
          ShapeToString(args.dst_shape).c_str(), total_size);
   ret = GetDstDataAfterTransForFracZToHwcn(args, result, size, total_size);
-  if (ret != SUCCESS) {
+  if (ret != ge::SUCCESS) {
     GELOGE(ret,
            "[Get][Data]Failed after trans, src shape %s, "
            "data type %s, dst shape %s, memory size %" PRId64 ", error_code %u",
@@ -227,12 +228,12 @@ Status FormatTransferFracZHwcn::TransFormat(const TransArgs &args, TransResult &
                          ShapeToString(args.dst_shape).c_str(), total_size, ret);
     return ret;
   }
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status FormatTransferFracZHwcn::TransShape(const Format src_format, const std::vector<int64_t> &src_shape,
-                                           const DataType data_type, const Format dst_format,
-                                           std::vector<int64_t> &dst_shape) {
+ge::Status FormatTransferFracZHwcn::TransShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                                               const ge::DataType data_type, const ge::Format dst_format,
+                                               std::vector<int64_t> &dst_shape) {
   (void)src_format;
   (void)src_shape;
   (void)data_type;
@@ -244,4 +245,4 @@ Status FormatTransferFracZHwcn::TransShape(const Format src_format, const std::v
 
 REGISTER_FORMAT_TRANSFER(FormatTransferFracZHwcn, FORMAT_FRACTAL_Z, FORMAT_HWCN)
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert

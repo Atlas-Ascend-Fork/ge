@@ -28,6 +28,7 @@ class CppEmitter final : public CodeEmitter {
   Status Emit(const ParamDecl &node, std::string &output) override final;
   Status Emit(const TranslationUnit &node, std::string &output) override final;
   Status Emit(const StablePartDecl &node, std::string &output) override final;
+  Status Emit(const RawTextDecl &node, std::string &output) override final;
   Status Emit(const IncludeDecl &node, std::string &output) override final;
   Status Emit(const SpaceDecl &node, std::string &output) override final;
   Status Emit(const TypeAliasDecl &node, std::string &output) override final;
@@ -35,6 +36,7 @@ class CppEmitter final : public CodeEmitter {
   Status Emit(const ExternBlockDecl &node, std::string &output) override final;
   Status Emit(const ClassDecl &node, std::string &output) override final;
   Status Emit(const StructDecl &node, std::string &output) override final;
+  Status Emit(const EnumDecl &node, std::string &output) override final;
   Status Emit(const AccessSectionDecl &node, std::string &output) override final;
   Status Emit(const FieldDecl &node, std::string &output) override final;
   Status Emit(const MethodDecl &node, std::string &output) override final;
@@ -74,6 +76,8 @@ class CppEmitter final : public CodeEmitter {
   Status Emit(const RangeForStmt &node, std::string &output) override final;
   Status Emit(const CaseStmt &node, std::string &output) override final;
   Status Emit(const BreakStmt &node, std::string &output) override final;
+  Status Emit(const ContinueStmt &node, std::string &output) override final;
+  Status Emit(const TryCatchStmt &node, std::string &output) override final;
   Status Emit(const SwitchStmt &node, std::string &output) override final;
 
  private:
@@ -84,6 +88,7 @@ class CppEmitter final : public CodeEmitter {
   Status EmitRecordDecl(const char *keyword, StringRef name, const ArrayRef<DeclNode *> &items, std::string &output);
   Status EmitFunctionSignature(StringRef return_type, StringRef name, const ArrayRef<ParamDecl *> &params,
                                std::string &output);
+  Status EmitIfBody(const IfStmt &node, std::string &output);
   Status EmitPreprocessorIf(const IfStmt &node, std::string &output);
 
   std::string indent_unit_{"  "};

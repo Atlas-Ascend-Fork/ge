@@ -30,17 +30,6 @@ bool EndsWith(const std::string &str, const std::string &suffix) {
   return (str.size() >= suffix.size()) && (str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0);
 }
 
-ge::JsonFile SerializeTensorDesc(const gert::GertTensorDesc &desc) {
-  ge::JsonFile json;
-  (void)json.Set("name", gert::GertGetStr(desc.name));
-  (void)json.Set("shape", desc.shape);
-  (void)json.Set("data_type", static_cast<int32_t>(desc.data_type));
-  (void)json.Set("format", static_cast<int32_t>(desc.format));
-  (void)json.Set("size", desc.size);
-  (void)json.Set("shape_range", desc.shape_range);
-  return json;
-}
-
 ge::Status SerializeCodegenArtifacts(const gert::GertModelDataModel &unit,
                                      const std::shared_ptr<ZipArchiveWriter> &zip_writer, const size_t model_index) {
   if (unit.runtime == nullptr) {
@@ -117,94 +106,17 @@ ge::Status SerializeConstantsConfig(const gert::GertModelDataModel &unit,
   return ge::SUCCESS;
 }
 
-ge::JsonFile::json SerializeVarTransRoad(const gert::RTVarTransRoad &trans_road) {
-  auto trans_road_json = ge::JsonFile::json::array();
-  for (const auto &node : trans_road) {
-    ge::JsonFile node_json;
-    (void)node_json.Set("node_type", gert::GertGetStr(node.node_type));
-    (void)node_json.Set("input", SerializeTensorDesc(node.input).Raw());
-    (void)node_json.Set("output", SerializeTensorDesc(node.output).Raw());
-    trans_road_json.push_back(node_json.Raw());
-  }
-  return trans_road_json;
-}
-
-ge::JsonFile::json SerializeVarEntry(const gert::RTVarEntry &entry, const std::string &file_base,
-                                     std::vector<uint8_t> &weight_buffer) {
-  ge::JsonFile entry_json;
-  (void)entry_json.Set("var_name", gert::GertGetStr(entry.var_name));
-  (void)entry_json.Set("file_name", file_base);
-  (void)entry_json.Set("var_key", gert::GertGetStr(entry.var_key));
-  (void)entry_json.Set("op_type", gert::GertGetStr(entry.op_type));
-  (void)entry_json.Set("logic_addr", entry.logic_addr);
-  (void)entry_json.Set("size", entry.size);
-  (void)entry_json.Set("memory_type", entry.memory_type);
-  (void)entry_json.Set("changed_graph_id", entry.changed_graph_id);
-  (void)entry_json.Set("allocated_graph_id", entry.allocated_graph_id);
-  (void)entry_json.Set("tensor_desc", SerializeTensorDesc(entry.tensor_desc).Raw());
-  (void)entry_json.Set("trans_road", SerializeVarTransRoad(entry.trans_road));
-  ge::JsonFile copy_info_json;
-  (void)copy_info_json.Set("src_var_name", gert::GertGetStr(entry.copy_info.src_var_name));
-  (void)copy_info_json.Set("src_tensor_desc", SerializeTensorDesc(entry.copy_info.src_tensor_desc).Raw());
-  (void)entry_json.Set("copy_info", copy_info_json.Raw());
-  size_t init_data_offset = 0U;
-  size_t init_data_size = 0U;
-  if (!entry.init_data.empty()) {
-    init_data_offset = weight_buffer.size();
-    init_data_size = entry.init_data.size();
-    (void)weight_buffer.insert(weight_buffer.end(), entry.init_data.begin(), entry.init_data.end());
-  }
-  (void)entry_json.Set("init_data_offset", init_data_offset);
-  (void)entry_json.Set("init_data_size", init_data_size);
-  return entry_json.Raw();
-}
-
-// data/model_%s/variables_config.json（graph_id + var_metas + entries）+ data/variables/var_weight_data_%s
-ge::Status SerializeVariablesData(const gert::GertModelDataModel &unit,
+// data/variables/var_weight_data_%s：变量初始数据块。数据块由 Codegen 固化表单一来源产出，
+// 此处原样写入；块内各变量的偏移已固化进模型 SO，归档不再承载 variables_config.json。
+// 路径按模型序号拼装，与 model_meta.json 的 var_weight_file_name 一致（Bundle 组装时已重写）。
+ge::Status SerializeVarWeightData(const gert::GertModelDataFile &weight,
                                   const std::shared_ptr<ZipArchiveWriter> &zip_writer, const size_t model_index) {
-  if ((unit.variables_config == nullptr) ||
-      (unit.variables_config->var_metas.empty() && unit.variables_config->entries.empty())) {
+  if ((weight.data == nullptr) || (weight.data_size == 0U)) {
     return ge::SUCCESS;
   }
-  const auto &variables_config = *unit.variables_config;
-  ge::JsonFile json_file;
-  (void)json_file.Set("graph_id", variables_config.graph_id);
-  if (variables_config.global_shared_var_size > 0U) {
-    (void)json_file.Set("global_shared_var_size", variables_config.global_shared_var_size);
-  }
-  auto var_metas_json = ge::JsonFile::json::array();
-  for (const auto &meta_ptr : variables_config.var_metas) {
-    const auto &meta = *meta_ptr;
-    ge::JsonFile meta_json;
-    (void)meta_json.Set("index", meta.index);
-    (void)meta_json.Set("var_name", gert::GertGetStr(meta.var_name));
-    (void)meta_json.Set("op_type", gert::GertGetStr(meta.op_type));
-    (void)meta_json.Set("op_name", gert::GertGetStr(meta.op_name));
-    (void)meta_json.Set("tensor_desc", SerializeTensorDesc(meta.tensor_desc).Raw());
-    var_metas_json.push_back(meta_json.Raw());
-  }
-  (void)json_file.Set("var_metas", var_metas_json);
-
-  if (!variables_config.entries.empty()) {
-    auto entries_json = ge::JsonFile::json::object();
-    std::vector<uint8_t> weight_buffer;
-    const auto weight_file = FormatOm2Path(OM2_VAR_WEIGHT_FILE_FORMAT, std::to_string(model_index).c_str());
-    // file_name 记录权重文件基名（由路径常量推导，与实际写盘文件保持一致），供反序列化按名寻址
-    const std::string file_base = weight_file.substr(weight_file.find_last_of('/') + 1U);
-    for (const auto &entry : variables_config.entries) {
-      entries_json[gert::GertGetStr(entry.var_key)] = SerializeVarEntry(entry, file_base, weight_buffer);
-    }
-    (void)json_file.Set("entries", entries_json);
-    if (!weight_buffer.empty()) {
-      GE_ASSERT_TRUE(zip_writer->WriteBytes(weight_file, weight_buffer.data(), weight_buffer.size(),
-                                            IsGertFileCompressed(GertFileType::kVarWeight)));
-    }
-  }
-
-  const std::string json_str = json_file.Dump();
-  const auto config_path = FormatOm2Path(OM2_VARIABLES_CONFIG_PATH_FORMAT, std::to_string(model_index).c_str());
-  GE_ASSERT_TRUE(zip_writer->WriteBytes(config_path, json_str.data(), json_str.size(),
-                                        IsGertFileCompressed(GertFileType::kVariablesConfig)));
+  const auto weight_file = FormatOm2Path(OM2_VAR_WEIGHT_FILE_FORMAT, std::to_string(model_index).c_str());
+  GE_ASSERT_TRUE(zip_writer->WriteBytes(weight_file, weight.data.get(), weight.data_size,
+                                        IsGertFileCompressed(GertFileType::kVarWeight)));
   return ge::SUCCESS;
 }
 
@@ -453,6 +365,11 @@ ge::Status SerializeModelMeta(const gert::GertModelDataModel &unit, const std::s
   (void)model_meta_info.Set("work_size", model_meta.work_size);
   (void)model_meta_info.Set("zero_copy_size", model_meta.zero_copy_size);
   (void)model_meta_info.Set("name", gert::GertGetStr(model_meta.model_name));
+  // 为 0 时仍写入：运行期据此判定不分配外置变量内存区
+  (void)model_meta_info.Set("global_shared_var_size", model_meta.global_shared_var_size);
+  if ((model_meta.var_weight_file_name != nullptr) && (gert::GertGetStr(model_meta.var_weight_file_name)[0] != '\0')) {
+    (void)model_meta_info.Set("var_weight_file_name", gert::GertGetStr(model_meta.var_weight_file_name));
+  }
 
   // 序列化 AIPP 元数据
   SerializeAippMeta(model_meta, model_meta_info);
@@ -542,7 +459,11 @@ ge::Status SerializeGertModelData(const GertModelData &model_data, ge::ModelBuff
     GE_ASSERT_SUCCESS(SerializeConstantsConfig(unit, zip_writer, is_offline, model_index));
     GE_ASSERT_SUCCESS(SerializeModelMeta(unit, zip_writer, model_index));
     GE_ASSERT_SUCCESS(SerializeDebugInfo(unit, zip_writer, model_index));
-    GE_ASSERT_SUCCESS(SerializeVariablesData(unit, zip_writer, model_index));
+    if ((model_index < model_data.variables->var_weight_data.size()) &&
+        (model_data.variables->var_weight_data[model_index] != nullptr)) {
+      GE_ASSERT_SUCCESS(
+          SerializeVarWeightData(*model_data.variables->var_weight_data[model_index], zip_writer, model_index));
+    }
   }
   GE_ASSERT_SUCCESS(SerializeKernelBinaries(model_data, zip_writer));
   GE_ASSERT_SUCCESS(SerializeCustomKernelBinaries(model_data, zip_writer));

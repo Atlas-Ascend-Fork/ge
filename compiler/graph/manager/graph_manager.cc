@@ -485,10 +485,6 @@ ge::Status BuildOm2PackageIfNeeded(const GraphNodePtr &graph_node, const GeRootM
   auto model_data = std::make_shared<gert::GertModelData>();
   Om2PackageHelper package_helper;
   GE_ASSERT_SUCCESS(package_helper.BuildOm2ModelData(ge_model, *model_data, ge_root_model));
-  GELOGI("[OM2] BuildOm2PackageIfNeeded entries=%zu",
-         ((!model_data->models.empty()) && (model_data->models[0]->variables_config != nullptr))
-             ? model_data->models[0]->variables_config->entries.size()
-             : 0U);
   ge_root_model->SetOm2ModelData(std::move(model_data));
 
   GELOGI("OM2 model data built successfully for graph %u", graph_node->GetGraphId());
@@ -2949,10 +2945,7 @@ Status GraphManager::GetCompiledModel(uint32_t graph_id, ModelBufferData &model_
   if (IsOm2OnlineMode()) {
     const auto &om2_model_data = ge_root_model->GetOm2ModelData();
     GE_ASSERT_NOTNULL(om2_model_data, "[OM2] Missing GertModelData in OM2 online mode.");
-    GELOGI("[OM2] SaveModel online entries=%zu",
-           ((!om2_model_data->models.empty()) && (om2_model_data->models[0]->variables_config != nullptr))
-               ? om2_model_data->models[0]->variables_config->entries.size()
-               : 0U);
+    GELOGI("[OM2] SaveModel in online mode, serialize GertModelData.");
     return gert::SerializeGertModelData(*om2_model_data, model_buffer, false);
   }
 

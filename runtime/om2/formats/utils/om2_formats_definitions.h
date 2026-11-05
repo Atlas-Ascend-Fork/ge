@@ -13,7 +13,7 @@
 
 #include <cstdint>
 
-namespace ge {
+namespace gert {
 namespace formats {
 constexpr int64_t kCubeSize = 16L;
 constexpr int32_t kNiSize = 16;
@@ -46,5 +46,5 @@ enum DhwcnDimIndex { kDhwcnD, kDhwcnH, kDhwcnW, kDhwcnC, kDhwcnN, kDhwcnDimsNum 
 
 enum DhwncDimIndex { kDhwncD, kDhwncH, kDhwncW, kDhwncN, kDhwncC, kDhwncDimsNum };
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert
 #endif  // GE_OM2_COMMON_FORMATS_UTILS_FORMATS_DEFINITIONS_H_

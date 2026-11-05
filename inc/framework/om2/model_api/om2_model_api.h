@@ -267,6 +267,7 @@ using ReleaseBinHandleFromStoreFunc = int32_t (*)(const char *bin_id, uint8_t *n
 
 /**
  * @brief 模型加载期由执行器提供给模型 SO 的回调集合。
+ * @note 变量相关的回调不在此处，见 GertModelVarContext。
  */
 struct GertModelLoadCallbacks {
   uint64_t struct_size = sizeof(GertModelLoadCallbacks);                  // 布局变化时更新。
@@ -302,6 +303,99 @@ struct GertModelRunCallbacks {
 };
 
 /**
+ * @brief 变量地址解析模式。数值一经发布不可改变，新增值只能追加。
+ */
+enum GertVarAddrMode : uint32_t {
+  GERT_VAR_ADDR_RESOLVE = 0,     // 解析或分配地址，可选写入首次使用的初始数据。
+  GERT_VAR_ADDR_QUERY_ONLY = 1,  // 只查询容器内既有地址，不分配、不写入。
+};
+
+/**
+ * @brief 变量地址解析的请求与应答。
+ * @note 由模型 SO 填写输入字段，容器填写输出字段。容器只在调用期间读取 var_key 与
+ *       host_data，不持有其所有权。
+ */
+struct GertVarDesc {
+  uint64_t struct_size = sizeof(GertVarDesc);  // 布局变化时更新。
+  const char *var_key = nullptr;               // 输入，变量键，UTF-8、以 \0 结束。
+  uint64_t size = 0;                           // 输入，变量字节数，用于分配，必须大于 0；
+                                               // QUERY_ONLY 模式下为输出，由容器回填。
+  uint64_t memory_type = 0;                    // 输入，分配策略，取值同 RT_MEMORY_HBM 等内存类型常量。
+  uint64_t logic_addr = 0;                     // 输入，编译期逻辑地址原值，用于内存区分支判定。
+  const void *host_data = nullptr;             // 输入，首次使用的初始数据；为空表示只解析地址。
+  uint64_t host_data_size = 0;                 // 输入，host_data 字节数；非空时必须等于 size。
+  uint32_t device_id = 0;                      // 输入，变量所在 device。
+  uint32_t mode = GERT_VAR_ADDR_RESOLVE;       // 输入，取值见 GertVarAddrMode。
+  void *dev_addr = nullptr;                    // 输出，该变量在此设备上的地址；
+                                               // QUERY_ONLY 未命中时为 nullptr。
+  uint32_t is_loaded = 0;                      // 输出，该变量在此设备上是否已有有效数据。
+  uint32_t abi_pad_0 = 0;                      // 显式填充，无业务含义。
+};
+
+/**
+ * @brief 解析变量设备地址，并可选写入该变量首次使用时期的初始数据。
+ * @param[in]     var_manager_handle 会话级变量容器句柄。
+ * @param[in,out] desc 请求与应答。
+ * @return 0 表示调用成功，含 QUERY_ONLY 未命中（此时 desc->dev_addr 为 nullptr）；
+ *         非 0 表示入参非法或内部失败。不跨边界抛异常。
+ * @note 未命中用出参 nullptr 表达而非独立返回码，与 QueryBinHandleFromStoreFunc 同一约定。
+ * @note mode 为 GERT_VAR_ADDR_RESOLVE 时：host_data 非空且该设备尚未加载则写入并置
+ *       is_loaded = 1，已加载则不重复写入；host_data 为空则只分配、不写入。
+ * @note mode 为 GERT_VAR_ADDR_QUERY_ONLY 时：返回容器内既有地址、加载状态与该变量的字节数，
+ *       不分配、不写入；此时 memory_type 与 logic_addr 被忽略，host_data 必须为空。
+ *       回填 size 是必需的，调用方随后要对该地址做设备到主机拷贝，而它没有源条目的元数据。
+ * @note 在调用方线程上同步执行，使用调用方当前的 aclrt 上下文；不切换上下文、不创建线程、
+ *       不跨线程转交任务。
+ * @note 变量设备内存的分配与释放全部由容器负责，调用方不得释放 dev_addr，也不得向其写入数据。
+ * @note 线程安全：可被多个线程并发调用，包括不同变量之间以及同一变量的重复调用。
+ */
+using GetVarAddrFunc = int32_t (*)(void *var_manager_handle, struct GertVarDesc *desc);
+
+/**
+ * @brief 提交派生数据（格式转换或变量间拷贝的结果）的请求与应答。
+ * @note 由模型 SO 填写输入字段，容器填写输出字段。容器只在调用期间读取 var_key 与
+ *       host_data，不持有其所有权。
+ */
+struct GertVarCommit {
+  uint64_t struct_size = sizeof(GertVarCommit);  // 布局变化时更新。
+  const char *var_key = nullptr;                 // 输入，目标变量键，UTF-8、以 \0 结束。
+  const void *host_data = nullptr;               // 输入，派生数据，不可为空。
+  uint64_t host_data_size = 0;                   // 输入，字节数，不得超过容器记下的变量字节数。
+  uint32_t device_id = 0;                        // 输入，变量所在 device。
+  uint32_t is_loaded = 0;                        // 输出，返回时该变量在此设备上是否已有有效数据。
+  void *dev_addr = nullptr;                      // 输出，返回时该变量在此设备上的地址。
+};
+
+/**
+ * @brief 把调用方准备好的派生数据写入变量设备内存，并置加载状态。
+ * @param[in]     var_manager_handle 会话级变量容器句柄。
+ * @param[in,out] commit 请求与应答。
+ * @return 0 表示成功，含"已加载故幂等跳过"；非 0 表示失败。不跨边界抛异常。
+ * @note 不分配内存：该变量必须已由 GetVarAddrFunc 解析出地址，否则返回错误。
+ * @note 该设备 is_loaded 已为 1 时不写入，幂等丢弃本次数据，返回既有地址与 is_loaded = 1，
+ *       不视为错误。
+ * @note host_data_size 超过容器记下的变量字节数时返回错误、不写入。
+ * @note 执行线程、aclrt 上下文、内存归属与线程安全语义同 GetVarAddrFunc。
+ */
+using CommitVarDataFunc = int32_t (*)(void *var_manager_handle, struct GertVarCommit *commit);
+
+/**
+ * @brief 变量容器句柄、变量初始数据通道与变量回调集合。
+ * @note 变量相关的全部边界内容集中于此。GertModelLoadCallbacks 保持不变，
+ *       变量回调不追加到那里。
+ */
+struct GertModelVarContext {
+  uint64_t struct_size = sizeof(GertModelVarContext);  // 布局变化时更新。
+  void *var_manager_handle = nullptr;                  // 输入，会话级变量容器句柄。
+  uint32_t device_id = 0;                              // 输入，变量所在 device。
+  uint8_t abi_pad_0[4] = {0};                          // 显式填充，无业务含义。
+  const void *var_weight_data = nullptr;               // 输入，变量初始数据块基址，可为空。
+  uint64_t var_weight_data_size = 0;                   // 输入，数据块字节数。
+  GetVarAddrFunc get_var_addr = nullptr;               // 输入，解析变量地址。
+  CommitVarDataFunc commit_var_data = nullptr;         // 输入，提交派生数据。
+};
+
+/**
  * @brief GertModelLoad 的加载参数。
  */
 struct GertModelLoadConfig {
@@ -311,7 +405,7 @@ struct GertModelLoadConfig {
   uint64_t *bin_size = nullptr;                        // 输入，二进制大小数组，单位为字节。
   uint64_t bin_num = 0;                                // 输入，二进制个数。
   void **constants = nullptr;                          // 输入，常量地址数组。
-  void **var_addrs = nullptr;                          // 输入，变量地址数组。
+  void *var_context = nullptr;                         // 输入，变量容器上下文，实际指向 GertModelVarContext。
   void *work_ptr = nullptr;                            // 输入，工作空间地址。
   uint64_t *session_id = nullptr;                      // 输入，Session ID。
   uint64_t model_id = 0;                               // 输入，用于日志和 DFX 的模型 ID。

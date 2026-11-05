@@ -17,7 +17,7 @@
 #include "graph/types.h"
 #include "graph/def_types.h"
 
-namespace ge {
+namespace gert {
 enum class DimIndex : uint32_t {
   kDim0 = 0,
   kDim1,
@@ -293,12 +293,12 @@ using fp16_t = class TagFp16 final {
   /// @param [in] f_val float object to be converted to fp16_t
   /// @brief   Override basic evaluation operator to convert float to fp16_t
   /// @return  Return fp16_t result from f_val
-  TagFp16 &operator=(const float32_t f_val) &;
+  TagFp16 &operator=(const ge::float32_t f_val) &;
   /// @ingroup fp16_t math evaluation operator
   /// @param [in] d_val double object to be converted to fp16_t
   /// @brief   Override basic evaluation operator to convert double to fp16_t
   /// @return  Return fp16_t result from d_val
-  TagFp16 &operator=(const float64_t d_val) &;
+  TagFp16 &operator=(const ge::float64_t d_val) &;
   /// @ingroup fp16_t math evaluation operator
   /// @param [in] i_val int32_t object to be converted to fp16_t
   /// @brief   Override basic evaluation operator to convert int32_t to fp16_t
@@ -307,11 +307,11 @@ using fp16_t = class TagFp16 final {
   /// @ingroup fp16_t math conversion
   /// @brief   Override convert operator to convert fp16_t to float/fp32
   /// @return  Return float/fp32 value of fp16_t
-  explicit operator float32_t() const;
+  explicit operator ge::float32_t() const;
   /// @ingroup fp16_t math conversion
   /// @brief   Override convert operator to convert fp16_t to double/fp64
   /// @return  Return double/fp64 value of fp16_t
-  explicit operator float64_t() const;
+  explicit operator ge::float64_t() const;
   /// @ingroup fp16_t math conversion
   /// @brief   Override convert operator to convert fp16_t to int8_t
   /// @return  Return int8_t value of fp16_t
@@ -347,11 +347,11 @@ using fp16_t = class TagFp16 final {
   /// @ingroup fp16_t math conversion
   /// @brief   Convert fp16_t to float/fp32
   /// @return  Return float/fp32 value of fp16_t
-  float32_t ToFloat() const;
+  ge::float32_t ToFloat() const;
   /// @ingroup fp16_t math conversion
   /// @brief   Convert fp16_t to double/fp64
   /// @return  Return double/fp64 value of fp16_t
-  float64_t ToDouble() const;
+  ge::float64_t ToDouble() const;
   /// @ingroup fp16_t math conversion
   /// @brief   Convert fp16_t to int8_t
   /// @return  Return int8_t value of fp16_t
@@ -477,5 +477,5 @@ int16_t GetManBitLength(T man) {
   }
   return len;
 }
-}  // namespace ge
+}  // namespace gert
 #endif  // GE_OM2_COMMON_FP16_T_H_

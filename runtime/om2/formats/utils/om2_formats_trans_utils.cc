@@ -16,14 +16,14 @@
 #include "framework/common/debug/log.h"
 #include "graph/utils/type_utils_inner.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
-int64_t GetCubeSizeByDataType(const DataType data_type) {
+int64_t GetCubeSizeByDataType(const ge::DataType data_type) {
   // Current cube does not support 4 bytes and longer data
-  const auto size = GetSizeByDataType(data_type);
+  const auto size = ge::GetSizeByDataType(data_type);
   if (size <= 0) {
     const std::string error = "Failed to get cube size, the data type " +
-                              FmtToStr(TypeUtilsInner::DataTypeToSerialString(data_type)) + " is invalid";
+                              ge::FmtToStr(TypeUtilsInner::DataTypeToSerialString(data_type)) + " is invalid";
     GE_WARNINGLOG_AND_ERRORMSG(error.c_str());
     return -1;
   } else if (size == 1) {
@@ -65,7 +65,8 @@ int64_t GetItemNumByShape(const std::vector<int64_t> &shape) {
 
 bool CheckShapeValid(const std::vector<int64_t> &shape, const int64_t expect_dims) {
   if ((expect_dims <= 0) || (shape.size() != static_cast<size_t>(expect_dims))) {
-    const std::string error = "Invalid shape, dims num " + FmtToStr(shape.size()) + ", expect " + FmtToStr(expect_dims);
+    const std::string error =
+        "Invalid shape, dims num " + ge::FmtToStr(shape.size()) + ", expect " + ge::FmtToStr(expect_dims);
     GE_WARNINGLOG_AND_ERRORMSG(error.c_str());
     return false;
   }
@@ -79,12 +80,12 @@ bool IsShapeValid(const std::vector<int64_t> &shape) {
   int64_t num = 1;
   for (const auto dim : shape) {
     if (dim < 0) {
-      const std::string error = "Invalid negative dims in the shape " + FmtToStr(ShapeToString(shape));
+      const std::string error = "Invalid negative dims in the shape " + ge::FmtToStr(ShapeToString(shape));
       GE_WARNINGLOG_AND_ERRORMSG(error.c_str());
       return false;
     }
     if ((dim != 0) && ((static_cast<int64_t>(kShapeItemNumMAX) / dim) < num)) {
-      const std::string error = "Shape overflow, the total count should be less than " + FmtToStr(kShapeItemNumMAX);
+      const std::string error = "Shape overflow, the total count should be less than " + ge::FmtToStr(kShapeItemNumMAX);
       GE_WARNINGLOG_AND_ERRORMSG(error.c_str());
       return false;
     }
@@ -96,9 +97,10 @@ bool IsShapeValid(const std::vector<int64_t> &shape) {
 bool IsTransShapeSrcCorrect(const TransArgs &args, const std::vector<int64_t> &expect_shape) {
   if (args.src_shape != expect_shape) {
     const std::string error =
-        "Failed to trans format from" + FmtToStr(TypeUtilsInner::FormatToSerialString(args.src_format)) + " to " +
-        FmtToStr(TypeUtilsInner::FormatToSerialString(args.dst_format)) + ", invalid relationship between src shape " +
-        FmtToStr(ShapeToString(args.src_shape)) + " and dst " + FmtToStr(ShapeToString(args.dst_shape));
+        "Failed to trans format from" + ge::FmtToStr(TypeUtilsInner::FormatToSerialString(args.src_format)) + " to " +
+        ge::FmtToStr(TypeUtilsInner::FormatToSerialString(args.dst_format)) +
+        ", invalid relationship between src shape " + ge::FmtToStr(ShapeToString(args.src_shape)) + " and dst " +
+        ge::FmtToStr(ShapeToString(args.dst_shape));
     GE_WARNINGLOG_AND_ERRORMSG(error.c_str());
     return false;
   }
@@ -108,13 +110,13 @@ bool IsTransShapeSrcCorrect(const TransArgs &args, const std::vector<int64_t> &e
 bool IsTransShapeDstCorrect(const TransArgs &args, const std::vector<int64_t> &expect_shape) {
   if ((!args.dst_shape.empty()) && (args.dst_shape != expect_shape)) {
     const std::string error =
-        "Failed to trans format from " + FmtToStr(TypeUtilsInner::FormatToSerialString(args.src_format)) + " to " +
-        FmtToStr(TypeUtilsInner::FormatToSerialString(args.dst_format)) + ", the dst shape" +
-        FmtToStr(ShapeToString(args.dst_shape)) + " is invalid, expect" + FmtToStr(ShapeToString(expect_shape));
+        "Failed to trans format from " + ge::FmtToStr(TypeUtilsInner::FormatToSerialString(args.src_format)) + " to " +
+        ge::FmtToStr(TypeUtilsInner::FormatToSerialString(args.dst_format)) + ", the dst shape" +
+        ge::FmtToStr(ShapeToString(args.dst_shape)) + " is invalid, expect" + ge::FmtToStr(ShapeToString(expect_shape));
     GE_WARNINGLOG_AND_ERRORMSG(error.c_str());
     return false;
   }
   return true;
 }
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert

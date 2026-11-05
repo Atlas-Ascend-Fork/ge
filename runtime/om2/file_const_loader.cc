@@ -297,7 +297,7 @@ ge::Status LoadUniqueIndividualConsts(const std::map<std::string, const Om2Const
   }
 
   const uint32_t pool_size = static_cast<uint32_t>(std::min<size_t>(4U, unique_file_consts.size()));
-  ge::om2::ThreadPool thread_pool("om2fc", pool_size == 0U ? 1U : pool_size);
+  gert::ThreadPool thread_pool("om2fc", pool_size == 0U ? 1U : pool_size);
   std::vector<std::future<ge::Status>> futures;
   futures.reserve(unique_file_consts.size());
   for (const auto &item : unique_file_consts) {

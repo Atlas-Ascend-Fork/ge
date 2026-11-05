@@ -22,7 +22,7 @@
 #include "graph/utils/type_utils_inner.h"
 #include "base/err_msg.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
 namespace {
 const int32_t kDimSize4D = 4;
@@ -42,23 +42,23 @@ const size_t kFZzDimCountBackwardsW0 = 1U;
 const size_t kFZzDimCountBackwardsW0H0 = 2U;
 const size_t kFZzDimCountBackwardsW0H0W1 = 3U;
 const size_t kFZzDimCountBackwardsW0H0W1H1 = 4U;
-bool CheckDataTypeSupportForFractalZz(const DataType d_type) {
-  return GetSizeByDataType(d_type) > 0;
+bool CheckDataTypeSupportForFractalZz(const ge::DataType d_type) {
+  return ge::GetSizeByDataType(d_type) > 0;
 }
 
 using ShapeVector = std::vector<int64_t>;
-bool CheckShape(const Format format, const ShapeVector &shape) {
+bool CheckShape(const ge::Format format, const ShapeVector &shape) {
   bool ret = false;
   switch (format) {
-    case FORMAT_ND:
+    case ge::FORMAT_ND:
       ret = IsShapeValid(shape);
       break;
-    case FORMAT_NCHW:
-    case FORMAT_NHWC:
+    case ge::FORMAT_NCHW:
+    case ge::FORMAT_NHWC:
       ret = CheckShapeValid(shape, kDimSize4D);
       break;
     default:
-      const std::string error = "Trans format between " + FmtToStr(TypeUtilsInner::FormatToSerialString(format)) +
+      const std::string error = "Trans format between " + ge::FmtToStr(TypeUtilsInner::FormatToSerialString(format)) +
                                 " and FORMAT_FRACTAL_ZZ is not supported.";
       GE_ERRORLOG_AND_ERRORMSG(ACL_ERROR_GE_FORMAT_INVALID, error.c_str());
       ret = false;
@@ -73,8 +73,8 @@ bool CheckShape(const Format format, const ShapeVector &shape) {
  * @dst_shape: N*H1*W1*H0*w0
  * @return
  */
-Status TransShapeToFracZz(const ShapeVector &src_shape, const int64_t c0, ShapeVector &dst_shape,
-                          ShapeVector &hw_shape) {
+ge::Status TransShapeToFracZz(const ShapeVector &src_shape, const int64_t c0, ShapeVector &dst_shape,
+                              ShapeVector &hw_shape) {
   dst_shape.clear();
   hw_shape.clear();
   const auto w0 = c0;
@@ -116,14 +116,14 @@ Status TransShapeToFracZz(const ShapeVector &src_shape, const int64_t c0, ShapeV
       return ACL_ERROR_GE_SHAPE_INVALID;
     }
   }
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status CheckShapeRelation(const TransArgs &args, ShapeVector &hw_shape) {
+ge::Status CheckShapeRelation(const TransArgs &args, ShapeVector &hw_shape) {
   ShapeVector expect_src_shape;
-  const int64_t c0 = GetC0Value(static_cast<int32_t>(args.src_format));
+  const int64_t c0 = ge::GetC0Value(static_cast<int32_t>(args.src_format));
   const auto ret = TransShapeToFracZz(args.dst_shape, c0, expect_src_shape, hw_shape);
-  if (ret != SUCCESS) {
+  if (ret != ge::SUCCESS) {
     GELOGE(ret, "[Trans][ShapeToFracZz] Failed from %s to %s, shape %s to %s, data type %s, c0 is %ld",
            TypeUtilsInner::FormatToSerialString(args.dst_format).c_str(),
            TypeUtilsInner::FormatToSerialString(args.src_format).c_str(), ShapeToString(args.dst_shape).c_str(),
@@ -135,15 +135,15 @@ Status CheckShapeRelation(const TransArgs &args, ShapeVector &hw_shape) {
     return ACL_ERROR_GE_SHAPE_INVALID;
   }
 
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status TransFormatFromNdToFracZz(const TransArgs &args, TransResult &result, const ShapeVector &hw_shape) {
-  const int32_t size = GetSizeByDataType(args.src_data_type);
+ge::Status TransFormatFromNdToFracZz(const TransArgs &args, TransResult &result, const ShapeVector &hw_shape) {
+  const int32_t size = ge::GetSizeByDataType(args.src_data_type);
   const int64_t dst_size = GetItemNumByShape(args.dst_shape) * size;
   if (dst_size == 0) {
     result.length = static_cast<size_t>(dst_size);
-    return SUCCESS;
+    return ge::SUCCESS;
   }
 
   const std::shared_ptr<uint8_t> dst(new (std::nothrow) uint8_t[dst_size](), std::default_delete<uint8_t[]>());
@@ -193,9 +193,10 @@ Status TransFormatFromNdToFracZz(const TransArgs &args, TransResult &result, con
                                           ? (dst_size - dst_offset)
                                           : static_cast<int64_t>(SECUREC_MEM_MAX_LEN);
           GE_CHECK_GE(protected_size, 0);
-          const auto ret = memcpy_s(PtrAdd(dst.get(), static_cast<size_t>(dst_size), static_cast<size_t>(dst_offset)),
-                                    static_cast<size_t>(protected_size), args.data + src_offset,
-                                    static_cast<size_t>(size) * static_cast<size_t>(w0));
+          const auto ret =
+              memcpy_s(ge::PtrAdd(dst.get(), static_cast<size_t>(dst_size), static_cast<size_t>(dst_offset)),
+                       static_cast<size_t>(protected_size), args.data + src_offset,
+                       static_cast<size_t>(size) * static_cast<size_t>(w0));
           if (ret != EOK) {
             GELOGE(ACL_ERROR_GE_MEMORY_OPERATE_FAILED,
                    "[Operate][DSTMemory]Failed at offset %" PRId64
@@ -219,7 +220,7 @@ Status TransFormatFromNdToFracZz(const TransArgs &args, TransResult &result, con
                                           : static_cast<int64_t>(SECUREC_MEM_MAX_LEN);
           GE_CHECK_GE(protected_size, 0);
           const auto ret =
-              memcpy_s(PtrAdd(dst.get(), static_cast<size_t>(dst_size), static_cast<size_t>(dst_offset)),
+              memcpy_s(ge::PtrAdd(dst.get(), static_cast<size_t>(dst_size), static_cast<size_t>(dst_offset)),
                        static_cast<size_t>(protected_size), args.data + src_offset, static_cast<size_t>(size));
           if (ret != EOK) {
             GELOGE(ACL_ERROR_GE_MEMORY_OPERATE_FAILED,
@@ -237,15 +238,15 @@ Status TransFormatFromNdToFracZz(const TransArgs &args, TransResult &result, con
   }
   result.data = dst;
   result.length = static_cast<size_t>(dst_size);
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status TransFormatFromFracZzToNd(const TransArgs &args, TransResult &result, const ShapeVector &dst_hw_shape) {
-  const int32_t size = GetSizeByDataType(args.src_data_type);
+ge::Status TransFormatFromFracZzToNd(const TransArgs &args, TransResult &result, const ShapeVector &dst_hw_shape) {
+  const int32_t size = ge::GetSizeByDataType(args.src_data_type);
   const int64_t dst_size = GetItemNumByShape(args.dst_shape) * size;
   if (dst_size == 0) {
     result.length = static_cast<size_t>(dst_size);
-    return SUCCESS;
+    return ge::SUCCESS;
   }
 
   const std::shared_ptr<uint8_t> dst(new (std::nothrow) uint8_t[dst_size](), std::default_delete<uint8_t[]>());
@@ -296,9 +297,10 @@ Status TransFormatFromFracZzToNd(const TransArgs &args, TransResult &result, con
                                           ? (dst_size - dst_offset)
                                           : static_cast<int64_t>(SECUREC_MEM_MAX_LEN);
           GE_CHECK_GE(protected_size, 0);
-          const auto ret = memcpy_s(PtrAdd(dst.get(), static_cast<size_t>(dst_size), static_cast<size_t>(dst_offset)),
-                                    static_cast<size_t>(protected_size), args.data + src_offset,
-                                    (static_cast<size_t>(size) * static_cast<size_t>(w0)));
+          const auto ret =
+              memcpy_s(ge::PtrAdd(dst.get(), static_cast<size_t>(dst_size), static_cast<size_t>(dst_offset)),
+                       static_cast<size_t>(protected_size), args.data + src_offset,
+                       (static_cast<size_t>(size) * static_cast<size_t>(w0)));
           if (ret != EOK) {
             GELOGE(ACL_ERROR_GE_MEMORY_OPERATE_FAILED,
                    "[Operate][DSTMemory]Failed at offset "
@@ -321,7 +323,7 @@ Status TransFormatFromFracZzToNd(const TransArgs &args, TransResult &result, con
                                           : static_cast<int64_t>(SECUREC_MEM_MAX_LEN);
           GE_CHECK_GE(protected_size, 0);
           const auto ret =
-              memcpy_s(PtrAdd(dst.get(), static_cast<size_t>(dst_size), static_cast<size_t>(dst_offset)),
+              memcpy_s(ge::PtrAdd(dst.get(), static_cast<size_t>(dst_size), static_cast<size_t>(dst_offset)),
                        static_cast<size_t>(protected_size), args.data + src_offset, static_cast<size_t>(size));
           if (ret != EOK) {
             GELOGE(ACL_ERROR_GE_MEMORY_OPERATE_FAILED,
@@ -339,11 +341,11 @@ Status TransFormatFromFracZzToNd(const TransArgs &args, TransResult &result, con
   }
   result.data = dst;
   result.length = static_cast<size_t>(dst_size);
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 }  // namespace
 
-Status FormatTransferFractalZz::TransFormat(const TransArgs &args, TransResult &result) {
+ge::Status FormatTransferFractalZz::TransFormat(const TransArgs &args, TransResult &result) {
   if (!CheckDataTypeSupportForFractalZz(args.src_data_type)) {
     GELOGE(ACL_ERROR_GE_DATATYPE_INVALID,
            "[Check][Datatype]Failed, does not support trans format from %s to %s, "
@@ -382,9 +384,9 @@ Status FormatTransferFractalZz::TransFormat(const TransArgs &args, TransResult &
          ShapeToString(args.dst_shape).c_str(), TypeUtilsInner::DataTypeToSerialString(args.src_data_type).c_str());
   ShapeVector expect_shape;
   ShapeVector hw_shape;
-  const int64_t c0 = GetC0Value(static_cast<int32_t>(args.dst_format));
+  const int64_t c0 = ge::GetC0Value(static_cast<int32_t>(args.dst_format));
   const auto ret = TransShapeToFracZz(args.src_shape, c0, expect_shape, hw_shape);
-  if (ret != SUCCESS) {
+  if (ret != ge::SUCCESS) {
     return ret;
   }
   if (!IsTransShapeDstCorrect(args, expect_shape)) {
@@ -393,9 +395,9 @@ Status FormatTransferFractalZz::TransFormat(const TransArgs &args, TransResult &
   return TransFormatFromNdToFracZz(args, result, hw_shape);
 }
 
-Status FormatTransferFractalZz::TransShape(const Format src_format, const std::vector<int64_t> &src_shape,
-                                           const DataType data_type, const Format dst_format,
-                                           std::vector<int64_t> &dst_shape) {
+ge::Status FormatTransferFractalZz::TransShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                                               const ge::DataType data_type, const ge::Format dst_format,
+                                               std::vector<int64_t> &dst_shape) {
   if (!CheckDataTypeSupportForFractalZz(data_type)) {
     GELOGE(ACL_ERROR_GE_DATATYPE_INVALID,
            "[Check][Datatype]Failed, does not support trans format from %s to %s, "
@@ -409,8 +411,8 @@ Status FormatTransferFractalZz::TransShape(const Format src_format, const std::v
             {"datatype", TypeUtilsInner::DataTypeToSerialString(data_type).c_str(), "The data type is unsupported."}));
     return ACL_ERROR_GE_DATATYPE_INVALID;
   }
-  const Format src_primary_format = static_cast<Format>(GetPrimaryFormat(static_cast<int32_t>(src_format)));
-  const Format dst_primary_format = static_cast<Format>(GetPrimaryFormat(static_cast<int32_t>(dst_format)));
+  const ge::Format src_primary_format = static_cast<ge::Format>(ge::GetPrimaryFormat(static_cast<int32_t>(src_format)));
+  const ge::Format dst_primary_format = static_cast<ge::Format>(ge::GetPrimaryFormat(static_cast<int32_t>(dst_format)));
   if (!CheckShape(src_primary_format, src_shape)) {
     GELOGE(ACL_ERROR_GE_SHAPE_INVALID,
            "[Check][Shape]Failed, does not support trans format from %s to %s, "
@@ -427,11 +429,11 @@ Status FormatTransferFractalZz::TransShape(const Format src_format, const std::v
     return ACL_ERROR_GE_SHAPE_INVALID;
   }
   ShapeVector hw_shape;
-  const auto c0 = GetC0Value(static_cast<int32_t>(dst_format));
+  const auto c0 = ge::GetC0Value(static_cast<int32_t>(dst_format));
   return TransShapeToFracZz(src_shape, c0, dst_shape, hw_shape);
 }
 
-Status FormatTransferFractalZzND::TransFormat(const TransArgs &args, TransResult &result) {
+ge::Status FormatTransferFractalZzND::TransFormat(const TransArgs &args, TransResult &result) {
   if (!CheckDataTypeSupportForFractalZz(args.src_data_type)) {
     GELOGE(ACL_ERROR_GE_DATATYPE_INVALID,
            "[Check][Datatype]Failed, does not support trans format from %s to %s, "
@@ -471,16 +473,16 @@ Status FormatTransferFractalZzND::TransFormat(const TransArgs &args, TransResult
          ShapeToString(args.dst_shape).c_str(), TypeUtilsInner::DataTypeToSerialString(args.src_data_type).c_str());
 
   ShapeVector hw_shape;
-  const Status ret = CheckShapeRelation(args, hw_shape);
-  if (ret != SUCCESS) {
+  const ge::Status ret = CheckShapeRelation(args, hw_shape);
+  if (ret != ge::SUCCESS) {
     return ret;
   }
   return TransFormatFromFracZzToNd(args, result, hw_shape);
 }
 
-Status FormatTransferFractalZzND::TransShape(const Format src_format, const std::vector<int64_t> &src_shape,
-                                             const DataType data_type, const Format dst_format,
-                                             std::vector<int64_t> &dst_shape) {
+ge::Status FormatTransferFractalZzND::TransShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                                                 const ge::DataType data_type, const ge::Format dst_format,
+                                                 std::vector<int64_t> &dst_shape) {
   (void)src_shape;
   (void)data_type;
   (void)dst_shape;
@@ -497,4 +499,4 @@ REGISTER_FORMAT_TRANSFER(FormatTransferFractalZzND, FORMAT_FRACTAL_ZZ, FORMAT_ND
 REGISTER_FORMAT_TRANSFER(FormatTransferFractalZzND, FORMAT_FRACTAL_ZZ, FORMAT_NCHW)
 REGISTER_FORMAT_TRANSFER(FormatTransferFractalZzND, FORMAT_FRACTAL_ZZ, FORMAT_NHWC)
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert

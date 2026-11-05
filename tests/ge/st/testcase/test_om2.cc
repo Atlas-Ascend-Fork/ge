@@ -37,6 +37,7 @@
 #include <map>
 #include <memory>
 #include <sstream>
+#include <utility>
 #include <vector>
 #include "common/env_path.h"
 #include "init_ge.h"
@@ -894,6 +895,53 @@ namespace gert {
   class Tensor;
 }
 
+// 以下类型镜像 inc/framework/om2/model_api/om2_model_api.h 的真实定义。
+// 假 SO 不能 include 真实头（本文件已自定义 GertModelLoadConfig 等，会重定义冲突）。
+// 真实布局由 tests/ge/ut/ge/compatibility/om2/struct_layout_check.cpp 冻结，改动真实头须同步这里。
+enum GertVarAddrMode : uint32_t {
+  GERT_VAR_ADDR_RESOLVE = 0,
+  GERT_VAR_ADDR_QUERY_ONLY = 1,
+};
+
+struct GertVarDesc {
+  uint64_t struct_size = sizeof(GertVarDesc);
+  const char *var_key = nullptr;
+  uint64_t size = 0;
+  uint64_t memory_type = 0;
+  uint64_t logic_addr = 0;
+  const void *host_data = nullptr;
+  uint64_t host_data_size = 0;
+  uint32_t device_id = 0;
+  uint32_t mode = GERT_VAR_ADDR_RESOLVE;
+  void *dev_addr = nullptr;
+  uint32_t is_loaded = 0;
+  uint32_t abi_pad_0 = 0;
+};
+
+struct GertVarCommit {
+  uint64_t struct_size = sizeof(GertVarCommit);
+  const char *var_key = nullptr;
+  const void *host_data = nullptr;
+  uint64_t host_data_size = 0;
+  uint32_t device_id = 0;
+  uint32_t is_loaded = 0;
+  void *dev_addr = nullptr;
+};
+
+using GetVarAddrFunc = int32_t (*)(void *var_manager_handle, struct GertVarDesc *desc);
+using CommitVarDataFunc = int32_t (*)(void *var_manager_handle, struct GertVarCommit *commit);
+
+struct GertModelVarContext {
+  uint64_t struct_size = sizeof(GertModelVarContext);
+  void *var_manager_handle = nullptr;
+  uint32_t device_id = 0;
+  uint8_t abi_pad_0[4] = {0};
+  const void *var_weight_data = nullptr;
+  uint64_t var_weight_data_size = 0;
+  GetVarAddrFunc get_var_addr = nullptr;
+  CommitVarDataFunc commit_var_data = nullptr;
+};
+
 struct GertModelLoadConfig {
   uint64_t struct_size = sizeof(GertModelLoadConfig);
   const char **bin_files = nullptr;
@@ -901,7 +949,7 @@ struct GertModelLoadConfig {
   uint64_t *bin_size = nullptr;
   uint64_t bin_num = 0;
   void **constants = nullptr;
-  void **var_addrs = nullptr;
+  void *var_context = nullptr;  // 实际指向 GertModelVarContext
   void *work_ptr = nullptr;
   uint64_t *session_id = nullptr;
   uint64_t model_id = 0; // used for logging
@@ -963,10 +1011,16 @@ std::string MakeFakeOm2InterfaceHeader() {
   return fake_interface_header_src;
 }
 
-std::string MakeFakeOm2LoadAndRunCreateCpp() {
+// 下面三个函数拼出 fake 模型 SO 的 load_and_run 源码。拆成三段只为满足单函数体量门禁，
+// 拼接结果与拆分前逐字节相同：Prelude（头文件 + FakeModel + 取环境变量助手）、
+// VarReplay（回放 get_var_addr 的函数）、Create（GertModelLoad 入口）。
+std::string MakeFakeOm2CreatePreludeCpp() {
   return R"(#include "g1_interface.h"
 
+#include <cstdint>
+#include <cstdlib>
 #include <new>
+#include <string>
 
 namespace {
 struct FakeModel {
@@ -974,8 +1028,68 @@ struct FakeModel {
 };
 }
 
+namespace {
+uint64_t FakeGetEnvU64(const char *name) {
+  const char *value = std::getenv(name);
+  if ((value == nullptr) || (value[0] == '\0')) {
+    return 0U;
+  }
+  return static_cast<uint64_t>(std::atoll(value));
+}
+)";
+}
+
+std::string MakeFakeOm2VarReplayCpp() {
+  return R"(
+// 扮演真实模型 SO 的角色：按环境变量描述的变量回放 get_var_addr，
+// 使容器完成地址解析与初始数据 H2D。变量准备已下沉到 SO，执行器不再代做。
+int FakeReplayVarPrepare(const void *var_context) {
+  if (var_context == nullptr) {
+    return 0;
+  }
+  const auto *ctx = static_cast<const GertModelVarContext *>(var_context);
+  if ((ctx->var_manager_handle == nullptr) || (ctx->get_var_addr == nullptr)) {
+    return -1;
+  }
+  const auto num = static_cast<int>(FakeGetEnvU64("OM2_FAKE_VAR_NUM"));
+  for (int i = 0; i < num; ++i) {
+    const std::string prefix = std::string("OM2_FAKE_VAR") + std::to_string(i) + "_";
+    const char *key = std::getenv((prefix + "KEY").c_str());
+    if (key == nullptr) {
+      return -1;
+    }
+    GertVarDesc desc{};
+    desc.var_key = key;
+    desc.size = FakeGetEnvU64((prefix + "SIZE").c_str());
+    desc.memory_type = 2U;  // RT_MEMORY_HBM
+    desc.logic_addr = FakeGetEnvU64((prefix + "LOGIC_ADDR").c_str());
+    desc.device_id = ctx->device_id;
+    desc.mode = GERT_VAR_ADDR_RESOLVE;
+    desc.host_data_size = FakeGetEnvU64((prefix + "INIT_SIZE").c_str());
+    if (desc.host_data_size > 0U) {
+      if (ctx->var_weight_data == nullptr) {
+        return -1;
+      }
+      desc.host_data =
+          static_cast<const uint8_t *>(ctx->var_weight_data) + FakeGetEnvU64((prefix + "INIT_OFFSET").c_str());
+    }
+    if (ctx->get_var_addr(ctx->var_manager_handle, &desc) != 0) {
+      return -1;
+    }
+  }
+  return 0;
+}
+}  // namespace
+)";
+}
+
+std::string MakeFakeOm2LoadAndRunCreateCpp() {
+  return MakeFakeOm2CreatePreludeCpp() + MakeFakeOm2VarReplayCpp() + R"(
 extern "C" int GertModelLoad(const struct GertModelLoadConfig *config, GertModelHandle *model_handle, struct GertModelLoadOutput *output) {
   if ((model_handle == nullptr) || (config == nullptr) || (config->constants == nullptr) || (config->constants[0] == nullptr)) {
+    return 1;
+  }
+  if (FakeReplayVarPrepare(config->var_context) != 0) {
     return 1;
   }
   auto *model = new (std::nothrow) FakeModel();
@@ -1202,50 +1316,49 @@ std::string MakeFakeOm2BundleConstantsConfigJson(const size_t index) {
 constexpr uint64_t kFakeBundleVarLogicAddr = ::kMemoryVarLogicBase + 64U;
 const std::vector<uint8_t> kFakeBundleVarInitData{5U, 6U, 7U, 8U};
 
-// 合并格式的 variables_config JSON：graph_id + var_metas + entries；global_shared_var_size > 0 时写入配置级字段
-// （Bundle 外置变量内存总大小，查询时跨子模型取最大值）；entry 的 file_name 指向 data/variables/ 下的权重文件
-std::string MakeFakeOm2BundleVariablesConfigJson(const uint64_t global_shared_var_size = 0U,
-                                                 const std::string &var_weight_file_name = "var_weight_data_0") {
-  JsonFile tensor_desc;
-  (void)tensor_desc.Set("name", "var_0");
-  (void)tensor_desc.Set("shape", std::vector<int64_t>{1});
-  (void)tensor_desc.Set("data_type", static_cast<int32_t>(DT_FLOAT));
-  (void)tensor_desc.Set("format", static_cast<int32_t>(FORMAT_ND));
-  (void)tensor_desc.Set("size", 4U);
-  (void)tensor_desc.Set("shape_range", std::vector<std::pair<int64_t, int64_t>>{});
+// 假 SO 回放 get_var_addr 所需的环境变量。设置与复位共用这一张表，不会漏掉某个变量。
+const std::vector<std::pair<const char *, std::string>> kFakeVarReplayEnv = {
+    {"OM2_FAKE_VAR_NUM", "1"},          {"OM2_FAKE_VAR0_KEY", "var_00_0"},
+    {"OM2_FAKE_VAR0_SIZE", "4"},        {"OM2_FAKE_VAR0_LOGIC_ADDR", std::to_string(kFakeBundleVarLogicAddr)},
+    {"OM2_FAKE_VAR0_INIT_OFFSET", "0"}, {"OM2_FAKE_VAR0_INIT_SIZE", "4"}};
 
-  JsonFile meta;
-  (void)meta.Set("index", 0U);
-  (void)meta.Set("var_name", "var_0");
-  auto metas = JsonFile::json::array();
-  metas.push_back(meta.Raw());
-
-  JsonFile entry;
-  (void)entry.Set("var_name", "var_0");
-  (void)entry.Set("file_name", var_weight_file_name);
-  (void)entry.Set("var_key", "var_00_0");
-  (void)entry.Set("op_type", "VARIABLE");
-  (void)entry.Set("logic_addr", kFakeBundleVarLogicAddr);
-  (void)entry.Set("size", 4U);
-  (void)entry.Set("memory_type", static_cast<uint32_t>(RT_MEMORY_HBM));
-  (void)entry.Set("changed_graph_id", 7U);
-  (void)entry.Set("allocated_graph_id", 7U);
-  (void)entry.Set("tensor_desc", tensor_desc.Raw());
-  (void)entry.Set("trans_road", JsonFile::json::array());
-  (void)entry.Set("copy_info", JsonFile::json::object());
-  (void)entry.Set("init_data_offset", 0U);
-  (void)entry.Set("init_data_size", 4U);
-  auto entries = JsonFile::json::object();
-  entries["var_00_0"] = entry.Raw();
-
-  JsonFile root;
-  (void)root.Set("graph_id", 7U);
-  if (global_shared_var_size > 0U) {
-    (void)root.Set("global_shared_var_size", global_shared_var_size);
+// 变量准备已下沉到模型 SO：假 SO 需按上表回放 get_var_addr，容器才会做地址解析与初始数据 H2D。
+// 做成 RAII 类而非裸 setenv——用例的 ASSERT_* 会提前返回，而其余用例共用同一份假 SO 源码，
+// 环境变量泄漏会让它们也触发回放。
+class FakeVarReplayEnv {
+ public:
+  FakeVarReplayEnv() {
+    for (const auto &var : kFakeVarReplayEnv) {
+      (void)setenv(var.first, var.second.c_str(), 1);
+    }
   }
-  (void)root.Set("var_metas", metas);
-  (void)root.Set("entries", entries);
-  return root.Dump();
+  ~FakeVarReplayEnv() {
+    for (const auto &var : kFakeVarReplayEnv) {
+      (void)unsetenv(var.first);
+    }
+  }
+  FakeVarReplayEnv(const FakeVarReplayEnv &) = delete;
+  FakeVarReplayEnv &operator=(const FakeVarReplayEnv &) = delete;
+};
+
+// variables_config.json 已从归档格式删除：变量元数据全部固化进模型 SO，归档只在 model_meta.json
+// 里保留 global_shared_var_size（Bundle 外置变量内存总大小，查询时跨子模型取最大值）与
+// var_weight_file_name（data/variables/ 下初始数据块的基名，执行器按名查找数据源）
+std::string MakeFakeOm2BundleModelMetaJson(const uint64_t global_shared_var_size,
+                                           const std::string &var_weight_file_name) {
+  std::string model_meta = MakeFakeOm2ModelMetaJson();
+  const std::string old_field = R"("zero_copy_size": 0)";
+  std::string new_field =
+      "\"zero_copy_size\": 0,\n    \"global_shared_var_size\": " + std::to_string(global_shared_var_size);
+  if (!var_weight_file_name.empty()) {
+    new_field += ",\n    \"var_weight_file_name\": \"" + var_weight_file_name + "\"";
+  }
+  const auto pos = model_meta.find(old_field);
+  EXPECT_NE(pos, std::string::npos);
+  if (pos != std::string::npos) {
+    model_meta.replace(pos, old_field.size(), new_field);
+  }
+  return model_meta;
 }
 
 // 构造双子模型 fake OM2 Bundle 归档；with_shared_var 为真时两个子模型写入同 var_key 的变量资源与初始化数据
@@ -1256,11 +1369,14 @@ void CreateFakeOm2BundleFile(const std::string &work_dir, const std::string &out
 
   gert::ZipArchiveWriter zip_writer(output_file);
   ASSERT_TRUE(zip_writer.IsMemFileOpened());
-  const auto model_meta = MakeFakeOm2ModelMetaJson();
   const auto op_attr = MakeFakeOm2OpAttrJson();
   for (size_t index = 0U; index < 2U; ++index) {
     const std::string idx = std::to_string(index);
     const std::string model_dir = "data/model_" + idx + "/";
+    const std::string var_weight_file_name = with_shared_var ? ("var_weight_data_" + idx) : std::string();
+    const auto model_meta = with_shared_var
+                                ? MakeFakeOm2BundleModelMetaJson(global_shared_var_size, var_weight_file_name)
+                                : MakeFakeOm2ModelMetaJson();
     ASSERT_TRUE(zip_writer.WriteBytes(model_dir + "model_meta.json", model_meta.data(), model_meta.size(), false));
     ASSERT_TRUE(zip_writer.WriteBytes(model_dir + "op_attr.json", op_attr.data(), op_attr.size(), false));
     ASSERT_TRUE(zip_writer.WriteFile(model_dir + "runtime/libg1_om2.so", so_path, false));
@@ -1271,10 +1387,6 @@ void CreateFakeOm2BundleFile(const std::string &work_dir, const std::string &out
     ASSERT_TRUE(
         zip_writer.WriteBytes("data/constants/constant_" + idx, constant_blob.data(), constant_blob.size(), false));
     if (with_shared_var) {
-      const std::string var_weight_file_name = "var_weight_data_" + idx;
-      const auto variables_config = MakeFakeOm2BundleVariablesConfigJson(global_shared_var_size, var_weight_file_name);
-      ASSERT_TRUE(zip_writer.WriteBytes(model_dir + "variables_config.json", variables_config.data(),
-                                        variables_config.size(), false));
       ASSERT_TRUE(zip_writer.WriteBytes("data/variables/" + var_weight_file_name, kFakeBundleVarInitData.data(),
                                         kFakeBundleVarInitData.size(), false));
     }
@@ -2365,7 +2477,17 @@ static GeRootModelPtr PrepareVarTestOm2(const std::string &output_file) {
   GeTensorDesc tensor_desc(GeShape({4}), FORMAT_ND, DT_FLOAT);
   TensorUtils::SetSize(tensor_desc, 16L);
   AddVariableNodeToGraph(compute_graph, "test_var", tensor_desc, std::vector<float>(4, 2.0f));
-  EXPECT_EQ(var_manager->SetVarAddr("test_var", tensor_desc, nullptr, RT_MEMORY_HBM, nullptr), SUCCESS);
+  // 必须登记节点上的 output desc，不能用本地 tensor_desc 副本：ATTR_NAME_INIT_VALUE 是
+  // AddVariableNodeToGraph 设在 op_desc 的 output desc 上的，而 BuildFixupEntry 从
+  // GetCurVarDesc 的返回上取初始数据（详见 PrepareTransSrcOm2 处同一约束的完整说明）。
+  // 用副本会使 init_data 为空、权重数据块不落盘。
+  const auto var_node = compute_graph->FindNode("test_var");
+  if (var_node == nullptr) {
+    ADD_FAILURE() << "variable node not found: test_var";
+    return ge_root_model;
+  }
+  const auto var_node_desc = var_node->GetOpDesc()->GetOutputDesc(0U);
+  EXPECT_EQ(var_manager->SetVarAddr("test_var", var_node_desc, nullptr, RT_MEMORY_HBM, nullptr), SUCCESS);
 
   Om2PackageHelper om2_packager;
   ModelBufferData model_data;
@@ -2423,16 +2545,27 @@ static GeRootModelPtr PrepareMixedVarTestOm2(const std::string &output_file) {
 
   const auto ge_root_model = CreateGeRootModelWithAicoreOp();
   auto &compute_graph = ge_root_model->GetRootGraph();
-  GeTensorDesc tensor_desc(GeShape({4}), FORMAT_ND, DT_FLOAT);
+  // 格式对必须是两侧注册表（base/formats 与内嵌的 runtime/om2/formats）都支持的：
+  // NCHW -> NHWC 由 FormatTransferTranspose 注册。NCHW -> ND 两侧都无单元注册，
+  // 真实流水线经 IsTransSupport 也产不出这条路，会被 CollectFormatUnits 在 Codegen 期拦下。
+  GeTensorDesc tensor_desc(GeShape({4}), FORMAT_NHWC, DT_FLOAT);
   TensorUtils::SetSize(tensor_desc, 16L);
   AddVariableNodeToGraph(compute_graph, "mixed_var", tensor_desc, std::vector<float>(4, 1.0f));
-  EXPECT_EQ(var_manager->SetVarAddr("mixed_var", tensor_desc, nullptr, RT_MEMORY_HBM, nullptr), SUCCESS);
+  // 同 PrepareVarTestOm2：必须登记节点上的 output desc，本地副本不带 ATTR_NAME_INIT_VALUE。
+  // 下面的 mixed_const 是 CONSTANTOP，初始数据走 op_desc 的 ATTR_NAME_WEIGHTS，不受此约束。
+  const auto mixed_var_node = compute_graph->FindNode("mixed_var");
+  if (mixed_var_node == nullptr) {
+    ADD_FAILURE() << "variable node not found: mixed_var";
+    return ge_root_model;
+  }
+  const auto mixed_var_desc = mixed_var_node->GetOpDesc()->GetOutputDesc(0U);
+  EXPECT_EQ(var_manager->SetVarAddr("mixed_var", mixed_var_desc, nullptr, RT_MEMORY_HBM, nullptr), SUCCESS);
 
   VarTransRoad road;
   TransNodeInfo node_info;
   node_info.node_type = "TransData";
   node_info.input = GeTensorDesc(GeShape({4}), FORMAT_NCHW, DT_FLOAT);
-  node_info.output = GeTensorDesc(GeShape({4}), FORMAT_ND, DT_FLOAT);
+  node_info.output = GeTensorDesc(GeShape({4}), FORMAT_NHWC, DT_FLOAT);
   road.push_back(node_info);
   EXPECT_EQ(var_manager->SetTransRoad("mixed_var", road), SUCCESS);
   EXPECT_EQ(var_manager->SetChangedGraphId("mixed_var", 42U), SUCCESS);
@@ -2448,6 +2581,193 @@ static GeRootModelPtr PrepareMixedVarTestOm2(const std::string &output_file) {
   SyncKernelNameForAllModels(ge_root_model);
   EXPECT_EQ(om2_packager.SaveToOmRootModel(ge_root_model, output_file, model_data, false), SUCCESS);
   return ge_root_model;
+}
+
+// ==================== T1/T2/T6 变量格式转换基线 ====================
+// 两个独立 .om2 共享同一变量，格式分别为 NCHW（图A，转换源）与 NHWC（图B，转换目标）。
+// 打包次序必须 A 先 B 后：VarResource::cur_var_tensor_desc_map_ 按 var_name 单键、后写覆盖
+// （base/graph/manager/graph_var_manager.cc），故 B 打包时 GetCurVarDesc 取到 NHWC，
+// 其条目键为 (名, NHWC)；A 的条目键 (名, NCHW) 由 A 自己打包时固化。
+// 加载 B 时触发转换：三图标识比较（changed(22) == 本图(22) 且 changed(22) != allocated(11)）
+// 在 B 打包时已由构表期求值，判据通过的条目才写入 trans_road，产物内 trans_road_num 即唯一判据，
+// 运行期只保留"向容器只查询目标加载状态"这一道真正动态的判据；
+// 转换源键 BuildVarKey(名, NCHW)（编译期固化进 trans_src_var_key）
+// 命中容器内由 A 的 Init 合并进来的条目。
+// 逻辑地址基准必须用全局 ::kMemoryVarLogicBase（runtime 侧 768GB，与容器 logic_var_base_ 同源）；
+// namespace ge 内的同名常量是 32GB，用错会使容器 GetVarDevAddr:163 的区内判定失败。
+constexpr uint64_t kTransSessionId = 105U;
+constexpr uint32_t kTransGraphIdSrc = 11U;
+constexpr uint32_t kTransGraphIdDst = 22U;
+constexpr uint64_t kTransSrcArenaOffset = 0U;
+constexpr uint64_t kTransDstArenaOffset = 256U;
+constexpr uint64_t kTransArenaSize = 4096U;
+constexpr size_t kTransElemNum = 24U;  // {1,2,3,4} 非退化 4D，恒等变换测不出数据搬移
+const char *const kTransVarName = "trans_w";
+// 第二个待转换变量：使 TransAllVarData 的任务数 > 1，从而真正走线程池并行分支。
+// 任务数为 1 时分派走串行，线程池代码只被编译、不会执行，并行路径等于未验证。
+// 偏移避开第一个变量的 src[0,96) 与 dst[256,352)，且远在 kTransArenaSize 内。
+const char *const kTransVarName2 = "trans_w2";
+constexpr uint64_t kTransSrcArenaOffset2 = 512U;
+constexpr uint64_t kTransDstArenaOffset2 = 768U;
+const std::vector<int64_t> kTransSrcShape{1, 2, 3, 4};  // NCHW: N=1 C=2 H=3 W=4
+const std::vector<int64_t> kTransDstShape{1, 3, 4, 2};  // NHWC: N=1 H=3 W=4 C=2
+
+// NCHW→NHWC 的期望结果：out[h*8 + w*2 + c] = in[c*12 + h*4 + w]，输入取 in[i] = i。
+const std::vector<float> kTransExpected{0.F, 12.F, 1.F, 13.F, 2.F, 14.F, 3.F, 15.F, 4.F,  16.F, 5.F,  17.F,
+                                        6.F, 18.F, 7.F, 19.F, 8.F, 20.F, 9.F, 21.F, 10.F, 22.F, 11.F, 23.F};
+
+static std::vector<float> MakeTransSrcValues() {
+  std::vector<float> values(kTransElemNum);
+  for (size_t i = 0U; i < kTransElemNum; ++i) {
+    values[i] = static_cast<float>(i);
+  }
+  return values;
+}
+
+// 第二个转换变量用整体偏移的初值，使两个并行任务的数据可区分：
+// 若结果写串了槽位，断言立刻抓到；两份相同数据则抓不到。
+constexpr float kTransVar2Base = 100.F;
+
+static std::vector<float> MakeTransSrcValuesWithBase(const float base) {
+  std::vector<float> values(kTransElemNum);
+  for (size_t i = 0U; i < kTransElemNum; ++i) {
+    values[i] = base + static_cast<float>(i);
+  }
+  return values;
+}
+
+// NCHW→NHWC 是纯位置置换，与元素值无关，故期望结果就是 kTransExpected 整体加 base。
+static std::vector<float> MakeTransExpectedWithBase(const float base) {
+  std::vector<float> values(kTransExpected);
+  for (auto &value : values) {
+    value += base;
+  }
+  return values;
+}
+
+// 图A：转换源。变量当前描述为 NCHW，带初始数据，无转换链。
+static GeRootModelPtr PrepareTransSrcOm2(const std::string &output_file) {
+  GetContext().SetSessionId(kTransSessionId);
+  const auto var_manager = VarManager::Instance(kTransSessionId);
+  EXPECT_EQ(var_manager->Init(0U, kTransSessionId, 0U, 0U), SUCCESS);
+
+  const auto ge_root_model = CreateGeRootModelWithAicoreOp("trans_src");
+  auto &compute_graph = ge_root_model->GetRootGraph();
+  compute_graph->SetGraphID(kTransGraphIdSrc);
+
+  GeTensorDesc src_desc(GeShape(kTransSrcShape), FORMAT_NCHW, DT_FLOAT);
+  TensorUtils::SetSize(src_desc, static_cast<int64_t>(kTransElemNum * sizeof(float)));
+  AddVariableNodeToGraph(compute_graph, kTransVarName, src_desc, MakeTransSrcValues());
+  // 生产路径传给 AssignVarMem 的是 op_desc 的 output desc
+  // （base/graph/build/memory/var_mem_assign_util.cc），该 desc 携带 ATTR_NAME_INIT_VALUE；
+  // 而 ExtractInitValueFromDesc（base/common/om2/codegen/var_fixup_table_builder.cc）正是从
+  // GetCurVarDesc 返回的这份 desc 上取初始数据。故此处必须登记节点上的 desc，不能用本地副本
+  // （副本无该属性，会导致 init_data 为空、权重数据块不落盘、加载期无 H2D）。
+  const auto src_node = compute_graph->FindNode(kTransVarName);
+  if (src_node == nullptr) {
+    ADD_FAILURE() << "variable node not found: " << kTransVarName;
+    return ge_root_model;
+  }
+  const auto src_node_desc = src_node->GetOpDesc()->GetOutputDesc(0U);
+  const auto src_logic_addr = reinterpret_cast<const uint8_t *>(::kMemoryVarLogicBase + kTransSrcArenaOffset);
+  EXPECT_EQ(var_manager->SetVarAddr(kTransVarName, src_node_desc, src_logic_addr, RT_MEMORY_HBM, nullptr), SUCCESS);
+
+  // 第二个转换源变量。与第一个同构（NCHW、带初始数据、无转换链），仅名字、初值基准与
+  // 逻辑地址不同，使加载转换方模型时 TransAllVarData 的任务数为 2。
+  AddVariableNodeToGraph(compute_graph, kTransVarName2, src_desc, MakeTransSrcValuesWithBase(kTransVar2Base));
+  const auto src_node2 = compute_graph->FindNode(kTransVarName2);
+  if (src_node2 == nullptr) {
+    ADD_FAILURE() << "variable node not found: " << kTransVarName2;
+    return ge_root_model;
+  }
+  const auto src_node_desc2 = src_node2->GetOpDesc()->GetOutputDesc(0U);
+  const auto src_logic_addr2 = reinterpret_cast<const uint8_t *>(::kMemoryVarLogicBase + kTransSrcArenaOffset2);
+  EXPECT_EQ(var_manager->SetVarAddr(kTransVarName2, src_node_desc2, src_logic_addr2, RT_MEMORY_HBM, nullptr), SUCCESS);
+
+  Om2PackageHelper om2_packager;
+  ModelBufferData model_data;
+  SyncKernelNameForAllModels(ge_root_model);
+  EXPECT_EQ(om2_packager.SaveToOmRootModel(ge_root_model, output_file, model_data, false), SUCCESS);
+  return ge_root_model;
+}
+
+// 图B：转换目标。变量当前描述为 NHWC，无初始数据，带 TransData NCHW→NHWC 转换链。
+static GeRootModelPtr PrepareTransDstOm2(const std::string &output_file) {
+  GetContext().SetSessionId(kTransSessionId);
+  const auto var_manager = VarManager::Instance(kTransSessionId);
+  EXPECT_EQ(var_manager->Init(0U, kTransSessionId, 0U, 0U), SUCCESS);
+
+  const auto ge_root_model = CreateGeRootModelWithAicoreOp("trans_dst");
+  auto &compute_graph = ge_root_model->GetRootGraph();
+  compute_graph->SetGraphID(kTransGraphIdDst);
+
+  GeTensorDesc dst_desc(GeShape(kTransDstShape), FORMAT_NHWC, DT_FLOAT);
+  TensorUtils::SetSize(dst_desc, static_cast<int64_t>(kTransElemNum * sizeof(float)));
+  // 目标变量不带初始数据（数据由转换产出），故 init_values 传空
+  AddVariableNodeToGraph(compute_graph, kTransVarName, dst_desc, {});
+  const auto dst_node = compute_graph->FindNode(kTransVarName);
+  if (dst_node == nullptr) {
+    ADD_FAILURE() << "variable node not found: " << kTransVarName;
+    return ge_root_model;
+  }
+  const auto dst_node_desc = dst_node->GetOpDesc()->GetOutputDesc(0U);
+  const auto dst_logic_addr = reinterpret_cast<const uint8_t *>(::kMemoryVarLogicBase + kTransDstArenaOffset);
+  EXPECT_EQ(var_manager->SetVarAddr(kTransVarName, dst_node_desc, dst_logic_addr, RT_MEMORY_HBM, nullptr), SUCCESS);
+
+  VarTransRoad road;
+  TransNodeInfo node_info;
+  node_info.node_type = TRANSDATA;
+  node_info.input = GeTensorDesc(GeShape(kTransSrcShape), FORMAT_NCHW, DT_FLOAT);
+  node_info.output = dst_desc;
+  road.push_back(node_info);
+  EXPECT_EQ(var_manager->SetTransRoad(kTransVarName, road), SUCCESS);
+  EXPECT_EQ(var_manager->SetChangedGraphId(kTransVarName, kTransGraphIdDst), SUCCESS);
+  EXPECT_EQ(var_manager->SetAllocatedGraphId(kTransVarName, kTransGraphIdSrc), SUCCESS);
+
+  // 第二个转换目标变量。三图标识与转换链同第一个，故加载时两个条目都满足 TransAllVarData 的
+  // 触发条件 ⇒ trans_tasks.size() == 2 ⇒ 分派走线程池并行分支。
+  AddVariableNodeToGraph(compute_graph, kTransVarName2, dst_desc, {});
+  const auto dst_node2 = compute_graph->FindNode(kTransVarName2);
+  if (dst_node2 == nullptr) {
+    ADD_FAILURE() << "variable node not found: " << kTransVarName2;
+    return ge_root_model;
+  }
+  const auto dst_node_desc2 = dst_node2->GetOpDesc()->GetOutputDesc(0U);
+  const auto dst_logic_addr2 = reinterpret_cast<const uint8_t *>(::kMemoryVarLogicBase + kTransDstArenaOffset2);
+  EXPECT_EQ(var_manager->SetVarAddr(kTransVarName2, dst_node_desc2, dst_logic_addr2, RT_MEMORY_HBM, nullptr), SUCCESS);
+  EXPECT_EQ(var_manager->SetTransRoad(kTransVarName2, road), SUCCESS);
+  EXPECT_EQ(var_manager->SetChangedGraphId(kTransVarName2, kTransGraphIdDst), SUCCESS);
+  EXPECT_EQ(var_manager->SetAllocatedGraphId(kTransVarName2, kTransGraphIdSrc), SUCCESS);
+
+  Om2PackageHelper om2_packager;
+  ModelBufferData model_data;
+  SyncKernelNameForAllModels(ge_root_model);
+  EXPECT_EQ(om2_packager.SaveToOmRootModel(ge_root_model, output_file, model_data, false), SUCCESS);
+  return ge_root_model;
+}
+
+// 持有 .om2 归档缓冲，保证 executor 内的零拷贝权重视图在其存活期间有效。
+struct Om2ArchiveHolder {
+  ge::ModelData data{};
+  std::shared_ptr<void> guard;
+
+  bool Read(const std::string &key) {
+    if (gert::LoadOm2DataFromFile(SuiteOm2File(key), data) != SUCCESS) {
+      return false;
+    }
+    guard = std::shared_ptr<void>(data.model_data, [](const void *const p) {
+      if (p != nullptr) {
+        delete[] static_cast<const uint8_t *>(p);
+      }
+    });
+    return true;
+  }
+};
+
+static std::vector<float> ReadArenaFloats(const std::vector<uint8_t> &arena, const uint64_t offset) {
+  std::vector<float> values(kTransElemNum);
+  (void)memcpy_s(values.data(), kTransElemNum * sizeof(float), arena.data() + offset, kTransElemNum * sizeof(float));
+  return values;
 }
 
 static GeRootModelPtr PrepareNoVarTestOm2(const std::string &output_file) {
@@ -2590,6 +2910,9 @@ void Om2St::SetUpTestSuite() {
   PrepareSuiteOm2("hccl_node", "fake_test.om2", PrepareHcclNodeOm2);
   PrepareSuiteOm2("hccl_hvd", "fake_test.om2", PrepareHvdNodeOm2);
   PrepareSuiteOm2("hccl_online", "fake_test.om2", PrepareHcclOnlineOm2);
+  // 转换源必须先于转换目标打包：cur_var_tensor_desc_map_ 按 var_name 单键、后写覆盖
+  PrepareSuiteOm2("trans_src", "trans_src.om2", PrepareTransSrcOm2);
+  PrepareSuiteOm2("trans_dst", "trans_dst.om2", PrepareTransDstOm2);
   // 变量产物已序列化落盘，预构建期设置的 VarManager 会话状态不再需要，统一销毁
   VarManagerPool::Instance().Destroy();
   GELOGI("Om2St::SetUpTestSuite: %zu om2 artifacts pre-built in %s", SuiteOm2Files().size(), SuiteWorkDir().c_str());
@@ -4241,7 +4564,7 @@ TEST_F(Om2St, LoadOm2Bundle_Ok_LoadBothIndexesAndRunTwice) {
  * 用例描述：Bundle 中两个子模型共享同一变量，绑定同一 RtSession 并注入外部变量 arena 后，初始化数据只写入一次
  * 预置条件：
  *   1. 构造 fake Bundle 归档：两个子模型均含同 var_key 的变量条目（逻辑地址=变量逻辑基址+64，大小 4 字节）
- *      与 4 字节初始化数据，variables_config global_shared_var_size=4096
+ *      与 4 字节初始化数据，model_meta global_shared_var_size=4096
  *   2. RtSession 通过 SetExternalVar 注入 4096 字节外部变量 arena
  * 测试步骤：
  *   1. LoadOm2ExecutorFromBundleData 加载子模型 0（load_arg.rt_session 指向共享 Session）
@@ -4256,6 +4579,9 @@ TEST_F(Om2St, LoadOm2Bundle_Ok_LoadBothIndexesAndRunTwice) {
 TEST_F(Om2St, LoadOm2Bundle_Ok_SharedVarInitializedOnce) {
   const std::string bundle_file = PathUtils::Join({test_work_dir, kZipFileBaseName + "_bundle_var.om2"});
   CreateFakeOm2BundleFile(test_work_dir, bundle_file, 4096U, true);
+
+  // 析构时复位环境变量，理由见 FakeVarReplayEnv 的定义处
+  const FakeVarReplayEnv var_replay_env;
 
   ge::ModelData model_data;
   ASSERT_EQ(gert::LoadOm2DataFromFile(bundle_file, model_data), SUCCESS);
@@ -4681,7 +5007,7 @@ class Om2VarSt : public Om2St {
 };
 
 /**
- * 用例描述：测试包含Variable节点的模型通过OM2编译流程，验证变量资源正确构建和序列化
+ * 用例描述：测试包含Variable节点的模型通过OM2编译流程，验证变量初始数据块正确产出与寻址
  * 预置条件：
  *   1. 基于AiCore静态图模型，添加Variable节点
  *   2. 在VarManager中注册变量
@@ -4691,13 +5017,12 @@ class Om2VarSt : public Om2St {
  *   3. 解析输出OM2文件
  * 预期结果：
  *   1. OM2文件生成成功
- *   2. 包含data/model_0/variables_config.json
- *   3. variables_config.json的entries中包含Variable节点的条目（合并自var_resource.json）
- *   4.
- *   5. variables_config.json中包含var_metas信息
+ *   2. 归档内不再包含 data/model_0/variables_config.json（该文件已从格式删除）
+ *   3. 变量初始数据块落在 data/variables/var_weight_data_0，内容为 Variable 节点的初始值
+ *   4. model_meta.json 写入 var_weight_file_name，执行器据此按名查找数据源
  */
-TEST_F(Om2VarSt, GenOm2WithVariableNodes_VarResourceSerialized) {
-  // Suite 预构建已完成 VarManager 注册 + 打包，此处验证 variables_config.json 序列化内容
+TEST_F(Om2VarSt, GenOm2WithVariableNodes_VarWeightSerialized) {
+  // Suite 预构建已完成 VarManager 注册 + 打包，此处验证变量数据块与 model_meta 的序列化内容
   const auto &output_file = SuiteOm2File("var_test");
 
   uint32_t model_buf_size = 0;
@@ -4705,193 +5030,32 @@ TEST_F(Om2VarSt, GenOm2WithVariableNodes_VarResourceSerialized) {
   gert::ZipArchiveReader archive(reinterpret_cast<const uint8_t *>(model_buf.get()), model_buf_size);
   ASSERT_TRUE(archive.IsGood());
 
-  const auto file_names = archive.ListFiles();
-  bool found_var_config = false;
-  for (const auto &f : file_names) {
-    if (f.find("data/model_0/variables_config.json") != std::string::npos) {
-      found_var_config = true;
-    }
-  }
-  EXPECT_TRUE(found_var_config) << "variables_config.json not found in OM2 archive";
-
-  if (found_var_config) {
-    size_t var_config_size = 0;
-    const auto var_config_buf = archive.ExtractToMem("var_test/data/model_0/variables_config.json", var_config_size);
-    ASSERT_NE(var_config_buf, nullptr);
-    JsonFile var_config_json(reinterpret_cast<const uint8_t *>(var_config_buf.get()), var_config_size);
-    ASSERT_TRUE(var_config_json.IsValid());
-    ASSERT_TRUE(var_config_json.Raw().contains("entries"));
-    const auto &entries = var_config_json.Raw().at("entries");
-    EXPECT_FALSE(entries.empty()) << "var_resource entries should not be empty";
-    ASSERT_TRUE(var_config_json.Raw().contains("var_metas"));
-    const auto &var_metas = var_config_json.Raw().at("var_metas");
-    EXPECT_FALSE(var_metas.empty()) << "var_metas should not be empty";
-    bool found_test_var = false;
-    for (const auto &meta : var_metas) {
-      if (meta.contains("var_name") && meta.at("var_name") == "test_var") {
-        found_test_var = true;
-        EXPECT_EQ(meta.at("op_type"), JsonFile::json("Variable"));
-      }
-    }
-    EXPECT_TRUE(found_test_var) << "test_var not found in var_metas";
-  }
-}
-
-/**
- * 用例描述：测试包含ConstantOp节点的模型通过OM2编译流程，验证权重数据正确序列化
- * 预置条件：
- *   1. 基于AiCore静态图模型，添加ConstantOp节点（带权重数据）
- *   2. 在VarManager中注册变量
- * 测试步骤：
- *   1. 构造带ConstantOp节点的GeRootModel
- *   2. 调用SaveToOmRootModel
- *   3. 解析输出OM2文件中的variables_config.json
- * 预期结果：
- *   1. OM2文件生成成功
- *   2. variables_config.json的entries中包含ConstantOp节点的条目
- *   3. 条目的init_data_size大于0（权重数据被序列化）
- */
-TEST_F(Om2VarSt, GenOm2WithConstantOpNodes_InitDataSerialized) {
-  const auto &output_file = SuiteOm2File("const_test");
-
-  uint32_t model_buf_size = 0;
-  const auto model_buf = GetBinDataFromFile(output_file, model_buf_size);
-  gert::ZipArchiveReader archive(reinterpret_cast<const uint8_t *>(model_buf.get()), model_buf_size);
-  ASSERT_TRUE(archive.IsGood());
-
-  size_t var_config_size = 0;
-  const auto var_config_buf = archive.ExtractToMem("const_test/data/model_0/variables_config.json", var_config_size);
-  if (var_config_buf != nullptr) {
-    JsonFile var_config_json(reinterpret_cast<const uint8_t *>(var_config_buf.get()), var_config_size);
-    ASSERT_TRUE(var_config_json.IsValid());
-    const auto &entries = var_config_json.Raw().at("entries");
-    bool found_const_entry = false;
-    for (const auto &[key, entry] : entries.items()) {
-      if (entry.contains("var_name") && entry.at("var_name") == "test_const") {
-        found_const_entry = true;
-        EXPECT_EQ(entry.at("op_type"), JsonFile::json("Constant"));
-        EXPECT_GT(entry.at("init_data_size").get<size_t>(), 0U) << "ConstantOp init_data should be serialized";
-      }
-    }
-    EXPECT_TRUE(found_const_entry) << "test_const entry not found in variables_config.json";
-  }
-}
-
-/**
- * 用例描述：测试包含ConstPlaceHolder节点的模型通过OM2编译流程
- * 预置条件：
- *   1. 基于AiCore静态图模型，添加ConstPlaceHolder节点
- *   2. 在VarManager中注册变量（带设备地址）
- * 测试步骤：
- *   1. 构造带ConstPlaceHolder节点的GeRootModel
- *   2. 调用SaveToOmRootModel
- *   3. 解析输出OM2文件中的variables_config.json
- * 预期结果：
- *   1. OM2文件生成成功
- *   2. variables_config.json的entries中包含ConstPlaceHolder节点的条目
- *   3. 条目的op_type为ConstPlaceHolder
- */
-TEST_F(Om2VarSt, GenOm2WithConstPlaceHolderNodes_ExternalAddrSerialized) {
-  const auto &output_file = SuiteOm2File("placeholder_test");
-
-  uint32_t model_buf_size = 0;
-  const auto model_buf = GetBinDataFromFile(output_file, model_buf_size);
-  gert::ZipArchiveReader archive(reinterpret_cast<const uint8_t *>(model_buf.get()), model_buf_size);
-  ASSERT_TRUE(archive.IsGood());
-
-  size_t var_config_size = 0;
-  const auto var_config_buf =
-      archive.ExtractToMem("placeholder_test/data/model_0/variables_config.json", var_config_size);
-  if (var_config_buf != nullptr) {
-    JsonFile var_config_json(reinterpret_cast<const uint8_t *>(var_config_buf.get()), var_config_size);
-    ASSERT_TRUE(var_config_json.IsValid());
-    const auto &entries = var_config_json.Raw().at("entries");
-    bool found_placeholder = false;
-    for (const auto &[key, entry] : entries.items()) {
-      if (entry.contains("var_name") && entry.at("var_name") == "test_placeholder") {
-        found_placeholder = true;
-        EXPECT_EQ(entry.at("op_type"), JsonFile::json("ConstPlaceHolder"));
-      }
-    }
-    EXPECT_TRUE(found_placeholder) << "test_placeholder entry not found in variables_config.json";
-  }
-}
-
-/**
- * 用例描述：测试包含多种类型变量节点（Variable+ConstantOp+ConstPlaceHolder）的模型，
- *           验证TransRoad和CopyInfo的序列化
- * 预置条件：
- *   1. 基于AiCore静态图模型，添加多种类型的变量节点
- *   2. 在VarManager中注册变量，并设置TransRoad
- * 测试步骤：
- *   1. 构造带多种变量节点的GeRootModel
- *   2. 设置TransRoad和ChangedGraphId
- *   3. 调用SaveToOmRootModel
- *   4. 解析输出OM2文件
- * 预期结果：
- *   1. OM2文件生成成功
- *   2. variables_config.json的entries中包含所有变量节点的条目
- *   3. TransRoad信息被正确序列化
- *   4. var_weight_data文件存在（因为有init_data）
- */
-TEST_F(Om2VarSt, GenOm2WithMixedVarNodes_TransRoadAndCopyInfoSerialized) {
-  const auto &output_file = SuiteOm2File("mixed_var_test");
-
-  uint32_t model_buf_size = 0;
-  const auto model_buf = GetBinDataFromFile(output_file, model_buf_size);
-  gert::ZipArchiveReader archive(reinterpret_cast<const uint8_t *>(model_buf.get()), model_buf_size);
-  ASSERT_TRUE(archive.IsGood());
-
-  size_t var_config_size = 0;
-  const auto var_config_buf =
-      archive.ExtractToMem("mixed_var_test/data/model_0/variables_config.json", var_config_size);
-  if (var_config_buf != nullptr) {
-    JsonFile var_config_json(reinterpret_cast<const uint8_t *>(var_config_buf.get()), var_config_size);
-    ASSERT_TRUE(var_config_json.IsValid());
-    const auto &entries = var_config_json.Raw().at("entries");
-    bool found_var = false;
-    bool found_const = false;
-    for (const auto &[key, entry] : entries.items()) {
-      if (entry.contains("var_name") && entry.at("var_name") == "mixed_var") {
-        found_var = true;
-        EXPECT_EQ(entry.at("op_type"), JsonFile::json("Variable"));
-        ASSERT_TRUE(entry.contains("trans_road"));
-        EXPECT_FALSE(entry.at("trans_road").empty()) << "TransRoad should be serialized";
-        if (!entry.at("trans_road").empty()) {
-          EXPECT_EQ(entry.at("trans_road")[0].at("node_type"), JsonFile::json("TransData"));
-        }
-        EXPECT_EQ(entry.at("changed_graph_id"), JsonFile::json(42U));
-        EXPECT_EQ(entry.at("allocated_graph_id"), JsonFile::json(7U));
-      }
-      if (entry.contains("var_name") && entry.at("var_name") == "mixed_const") {
-        found_const = true;
-        EXPECT_EQ(entry.at("op_type"), JsonFile::json("Constant"));
-      }
-    }
-    EXPECT_TRUE(found_var) << "mixed_var entry not found";
-    EXPECT_TRUE(found_const) << "mixed_const entry not found";
-  }
-
-  bool found_var_weight = false;
   for (const auto &f : archive.ListFiles()) {
-    if (f.find("data/variables/var_weight_data_0") != std::string::npos) {
-      found_var_weight = true;
-    }
+    EXPECT_EQ(f.find("variables_config.json"), std::string::npos)
+        << "variables_config.json should have been removed from the archive format: " << f;
   }
-  EXPECT_TRUE(found_var_weight) << "var_weight_data file should exist when init_data is present";
+
+  // test_var 的初始值为 4 个 float(2.0f)，由 Codegen 固化表单一来源产出为整块数据
+  const auto weight_entry = archive.FindEntry("data/variables/var_weight_data_0");
+  ASSERT_FALSE(weight_entry.empty()) << "var_weight_data_0 not found in OM2 archive";
+  size_t weight_size = 0;
+  const auto weight_buf = archive.ExtractToMem(weight_entry, weight_size);
+  ASSERT_NE(weight_buf, nullptr);
+  const std::vector<float> expected(4, 2.0F);
+  ASSERT_EQ(weight_size, expected.size() * sizeof(float));
+  EXPECT_EQ(std::memcmp(weight_buf.get(), expected.data(), weight_size), 0);
+
+  const auto meta_entry = archive.FindEntry("data/model_0/model_meta.json");
+  ASSERT_FALSE(meta_entry.empty());
+  size_t meta_size = 0;
+  const auto meta_buf = archive.ExtractToMem(meta_entry, meta_size);
+  ASSERT_NE(meta_buf, nullptr);
+  JsonFile meta_json(reinterpret_cast<const uint8_t *>(meta_buf.get()), meta_size);
+  ASSERT_TRUE(meta_json.IsValid());
+  ASSERT_TRUE(meta_json.Raw().contains("var_weight_file_name"));
+  EXPECT_EQ(meta_json.Raw().at("var_weight_file_name"), JsonFile::json("var_weight_data_0"));
 }
 
-/**
- * 用例描述：测试无变量节点的模型不生成变量资源文件
- * 预置条件：
- *   1. 使用标准AiCore静态图模型（无Variable/ConstantOp/ConstPlaceHolder节点）
- * 测试步骤：
- *   1. 调用SaveToOmRootModel
- *   2. 解析输出OM2文件
- * 预期结果：
- *   1. OM2文件生成成功
- *   2. 不包含variables_config.json与var_weight_data文件
- */
 TEST_F(Om2VarSt, GenOm2WithoutVarNodes_NoVarResourceFiles) {
   const auto &output_file = SuiteOm2File("no_var_test");
 
@@ -4906,6 +5070,161 @@ TEST_F(Om2VarSt, GenOm2WithoutVarNodes_NoVarResourceFiles) {
     EXPECT_EQ(f.find("var_weight_data"), std::string::npos)
         << "Unexpected var_weight_data in model without variables: " << f;
   }
+
+  // 无变量模型不声明数据块名，执行器据此把空数据块交给模型 SO
+  const auto meta_entry = archive.FindEntry("data/model_0/model_meta.json");
+  ASSERT_FALSE(meta_entry.empty());
+  size_t meta_size = 0;
+  const auto meta_buf = archive.ExtractToMem(meta_entry, meta_size);
+  ASSERT_NE(meta_buf, nullptr);
+  JsonFile meta_json(reinterpret_cast<const uint8_t *>(meta_buf.get()), meta_size);
+  ASSERT_TRUE(meta_json.IsValid());
+  EXPECT_FALSE(meta_json.Raw().contains("var_weight_file_name"));
+}
+
+/**
+ * 用例描述：T1 变量值迁移——转换源所属模型先加载，转换方模型后加载，转换成功且结果逐字节正确
+ *
+ * 预置条件：
+ * 1. Suite 预构建两个独立 .om2：trans_src（变量 NCHW、带初始数据 0..23、无转换链）
+ *    与 trans_dst（同名变量 NHWC、无初始数据、带 TransData NCHW→NHWC 转换链、
+ *    changed_graph_id=22、allocated_graph_id=11；这两个值在打包期由构表器求值，判据通过才写入
+ *    转换链，二者本身不进产物）
+ * 2. RtSession 注入 host arena 作为外置变量内存区，两个变量的逻辑地址分别落在
+ *    arena 偏移 0（源）与 256（目标）
+ *
+ * 测试步骤：
+ * 1. 同一 session 内先加载 trans_src，源变量初始数据经 H2D 落到 arena[0..96)
+ * 2. 再加载 trans_dst，TransAllVarData 遍历全表、按构表期折叠好的 trans_road_num 跳过无链条目，
+ *    对余下条目从源读回、转换、写入目标
+ * 3. 逐字节比对 arena[256..352) 与 NCHW→NHWC 的期望排列
+ *
+ * 预期结果：
+ * 1. 两次加载均成功
+ * 2. arena 源区保持初始数据不变
+ * 3. arena 目标区等于 out[h*8 + w*2 + c] = in[c*12 + h*4 + w] 的排列结果
+ */
+TEST_F(Om2VarSt, LoadOm2VarTrans_Ok_ValueMigratedFromPreviouslyLoadedSource) {
+  constexpr uint64_t kRtSessionId = 424301U;
+  Om2ArchiveHolder src_archive;
+  Om2ArchiveHolder dst_archive;
+  ASSERT_TRUE(src_archive.Read("trans_src"));
+  ASSERT_TRUE(dst_archive.Read("trans_dst"));
+
+  std::vector<uint8_t> arena(kTransArenaSize, 0U);
+  gert::RtSession session(kRtSessionId);
+  session.SetExternalVar(arena.data(), arena.size());
+  gert::Om2ModelLoadArg load_arg;
+  load_arg.device_id = 0;
+  load_arg.rt_session = &session;
+
+  ge::graphStatus error_code = ge::FAILED;
+  const auto src_executor = gert::LoadOm2ExecutorFromData(src_archive.data, load_arg, error_code);
+  ASSERT_EQ(error_code, SUCCESS);
+  ASSERT_NE(src_executor, nullptr);
+  EXPECT_EQ(ReadArenaFloats(arena, kTransSrcArenaOffset), MakeTransSrcValues());
+  EXPECT_EQ(ReadArenaFloats(arena, kTransSrcArenaOffset2), MakeTransSrcValuesWithBase(kTransVar2Base));
+
+  error_code = ge::FAILED;
+  const auto dst_executor = gert::LoadOm2ExecutorFromData(dst_archive.data, load_arg, error_code);
+  ASSERT_EQ(error_code, SUCCESS);
+  ASSERT_NE(dst_executor, nullptr);
+  EXPECT_EQ(ReadArenaFloats(arena, kTransDstArenaOffset), kTransExpected);
+  EXPECT_EQ(ReadArenaFloats(arena, kTransSrcArenaOffset), MakeTransSrcValues());
+  // 两个待转换任务 ⇒ TransAllVarData 走线程池并行分支。第二个变量初值基准不同，
+  // 故这两条断言能抓到"结果写串槽位"，而两份相同数据抓不到。
+  EXPECT_EQ(ReadArenaFloats(arena, kTransDstArenaOffset2), MakeTransExpectedWithBase(kTransVar2Base));
+  EXPECT_EQ(ReadArenaFloats(arena, kTransSrcArenaOffset2), MakeTransSrcValuesWithBase(kTransVar2Base));
+
+  gert::Om2RTVarManagerPool::Instance().RemoveManager(kRtSessionId);
+}
+
+/**
+ * 用例描述：T2 数据面条目缺失立即报错——只加载转换方模型、转换源所属模型未加载时加载失败
+ *
+ * 预置条件：同 T1，但只加载 trans_dst
+ *
+ * 测试步骤：
+ * 1. 新建 session，只加载 trans_dst
+ * 2. 转换源键 BuildVarKey(名, NCHW) 在容器内不存在
+ *
+ * 预期结果：
+ * 1. 加载失败（TransAllVarData 以只查询模式取不到转换源即返回失败，
+ *    经产物 InitResources 对 PrepareVars 返回值的检查上抛）
+ * 2. 这是 OM2 与 V1 的行为差异点：V1 的转换源来自同一 ComputeGraph 的活图节点，
+ *    不存在"源所属模型未加载"的情形
+ */
+TEST_F(Om2VarSt, LoadOm2VarTrans_Fail_SourceModelNotLoaded) {
+  constexpr uint64_t kRtSessionId = 424302U;
+  Om2ArchiveHolder dst_archive;
+  ASSERT_TRUE(dst_archive.Read("trans_dst"));
+
+  std::vector<uint8_t> arena(kTransArenaSize, 0U);
+  gert::RtSession session(kRtSessionId);
+  session.SetExternalVar(arena.data(), arena.size());
+  gert::Om2ModelLoadArg load_arg;
+  load_arg.device_id = 0;
+  load_arg.rt_session = &session;
+
+  ge::graphStatus error_code = SUCCESS;
+  const auto dst_executor = gert::LoadOm2ExecutorFromData(dst_archive.data, load_arg, error_code);
+  EXPECT_NE(error_code, SUCCESS);
+  EXPECT_EQ(dst_executor, nullptr);
+
+  gert::Om2RTVarManagerPool::Instance().RemoveManager(kRtSessionId);
+}
+
+/**
+ * 用例描述：T6 重复加载幂等——转换方模型加载两次，第二次不重复转换
+ *
+ * 预置条件：同 T1
+ *
+ * 测试步骤：
+ * 1. 同一 session 内加载 trans_src、trans_dst，确认目标区已写入转换结果
+ * 2. 把目标区篡改为 0xFF
+ * 3. 再次加载 trans_dst
+ * 4. 断言目标区仍是 0xFF（未被重新转换覆盖）
+ *
+ * 预期结果：
+ * 1. 三次加载均成功
+ * 2. 第二次加载 trans_dst 时 TransAllVarData 见 is_loaded 为真即跳过，
+ *    目标区保持篡改后的值
+ */
+TEST_F(Om2VarSt, LoadOm2VarTrans_Ok_RepeatLoadDoesNotRetransform) {
+  constexpr uint64_t kRtSessionId = 424303U;
+  Om2ArchiveHolder src_archive;
+  Om2ArchiveHolder dst_archive;
+  ASSERT_TRUE(src_archive.Read("trans_src"));
+  ASSERT_TRUE(dst_archive.Read("trans_dst"));
+
+  std::vector<uint8_t> arena(kTransArenaSize, 0U);
+  gert::RtSession session(kRtSessionId);
+  session.SetExternalVar(arena.data(), arena.size());
+  gert::Om2ModelLoadArg load_arg;
+  load_arg.device_id = 0;
+  load_arg.rt_session = &session;
+
+  ge::graphStatus error_code = ge::FAILED;
+  const auto src_executor = gert::LoadOm2ExecutorFromData(src_archive.data, load_arg, error_code);
+  ASSERT_EQ(error_code, SUCCESS);
+  error_code = ge::FAILED;
+  const auto dst_executor0 = gert::LoadOm2ExecutorFromData(dst_archive.data, load_arg, error_code);
+  ASSERT_EQ(error_code, SUCCESS);
+  ASSERT_NE(dst_executor0, nullptr);
+  ASSERT_EQ(ReadArenaFloats(arena, kTransDstArenaOffset), kTransExpected);
+
+  const size_t dst_bytes = kTransElemNum * sizeof(float);
+  std::fill(arena.begin() + kTransDstArenaOffset, arena.begin() + kTransDstArenaOffset + dst_bytes, 0xFFU);
+
+  error_code = ge::FAILED;
+  const auto dst_executor1 = gert::LoadOm2ExecutorFromData(dst_archive.data, load_arg, error_code);
+  ASSERT_EQ(error_code, SUCCESS);
+  ASSERT_NE(dst_executor1, nullptr);
+  const std::vector<uint8_t> tampered(arena.begin() + kTransDstArenaOffset,
+                                      arena.begin() + kTransDstArenaOffset + dst_bytes);
+  EXPECT_EQ(tampered, std::vector<uint8_t>(dst_bytes, 0xFFU));
+
+  gert::Om2RTVarManagerPool::Instance().RemoveManager(kRtSessionId);
 }
 
 /**

@@ -62,6 +62,14 @@ Status StablePartDecl::Accept(CodeEmitter &emitter, std::string &output) const {
   return emitter.Emit(*this, output);
 }
 
+RawTextDecl *RawTextDecl::Create(AstContext &ctx, const std::string &text) {
+  return AllocateNode<RawTextDecl>(ctx, ctx.CopyString(text.c_str()));
+}
+
+Status RawTextDecl::Accept(CodeEmitter &emitter, std::string &output) const {
+  return emitter.Emit(*this, output);
+}
+
 IncludeDecl *IncludeDecl::Create(AstContext &ctx, const std::string &path, Kind kind) {
   return AllocateNode<IncludeDecl>(ctx, ctx.CopyString(path.c_str()), kind);
 }
@@ -116,6 +124,22 @@ StructDecl *StructDecl::Create(AstContext &ctx, const std::string &name, const s
 }
 
 Status StructDecl::Accept(CodeEmitter &emitter, std::string &output) const {
+  return emitter.Emit(*this, output);
+}
+
+EnumDecl *EnumDecl::Create(AstContext &ctx, const std::string &name, const std::string &underlying_type,
+                           const std::vector<std::string> &names, const std::vector<Expr *> &values) {
+  GE_ASSERT_TRUE(names.size() == values.size(), "[OM2][AST] enum %s has %zu names but %zu values.", name.c_str(),
+                 names.size(), values.size());
+  auto *arena = static_cast<StringRef *>(ctx.Allocate(names.size() * sizeof(StringRef)));
+  for (size_t i = 0U; i < names.size(); ++i) {
+    new (&arena[i]) StringRef(ctx.CopyString(names[i].c_str()));
+  }
+  return AllocateNode<EnumDecl>(ctx, ctx.CopyString(name.c_str()), ctx.CopyString(underlying_type.c_str()),
+                                ArrayRef<StringRef>(arena, names.size()), CopyArray(ctx, values));
+}
+
+Status EnumDecl::Accept(CodeEmitter &emitter, std::string &output) const {
   return emitter.Emit(*this, output);
 }
 
@@ -196,6 +220,10 @@ Status IdentifierExpr::Accept(CodeEmitter &emitter, std::string &output) const {
 
 LiteralExpr *LiteralExpr::CreateInt(AstContext &ctx, int64_t value, IntSuffix suffix) {
   return AllocateNode<LiteralExpr>(ctx, Kind::kInt, value, suffix, false, StringRef());
+}
+
+LiteralExpr *LiteralExpr::CreateHex(AstContext &ctx, uint64_t value, IntSuffix suffix) {
+  return AllocateNode<LiteralExpr>(ctx, Kind::kHex, static_cast<int64_t>(value), suffix, false, StringRef());
 }
 
 LiteralExpr *LiteralExpr::CreateBool(AstContext &ctx, bool value) {
@@ -364,22 +392,25 @@ Status CppCastExpr::Accept(CodeEmitter &emitter, std::string &output) const {
   return emitter.Emit(*this, output);
 }
 
-LambdaExpr *LambdaExpr::Create(AstContext &ctx, const std::vector<std::string> &captures, BlockStmt *body) {
+LambdaExpr *LambdaExpr::Create(AstContext &ctx, const std::vector<std::string> &captures, BlockStmt *body,
+                               const std::vector<ParamDecl *> &params, const std::string &return_type) {
   GE_ASSERT_NOTNULL(body);
   std::vector<StringRef> copied;
   copied.reserve(captures.size());
   for (const auto &capture : captures) {
     copied.push_back(ctx.CopyString(capture.c_str()));
   }
-  return AllocateNode<LambdaExpr>(ctx, CopyArray(ctx, copied), body);
+  return AllocateNode<LambdaExpr>(ctx, CopyArray(ctx, copied), body, CopyArray(ctx, params),
+                                  ctx.CopyString(return_type.c_str()));
 }
 
 Status LambdaExpr::Accept(CodeEmitter &emitter, std::string &output) const {
   return emitter.Emit(*this, output);
 }
 
-InitListExpr *InitListExpr::Create(AstContext &ctx, const std::vector<Expr *> &elements, bool compact) {
-  return AllocateNode<InitListExpr>(ctx, CopyArray(ctx, elements), compact);
+InitListExpr *InitListExpr::Create(AstContext &ctx, const std::vector<Expr *> &elements, bool compact,
+                                   Delimiter delimiter) {
+  return AllocateNode<InitListExpr>(ctx, CopyArray(ctx, elements), compact, delimiter);
 }
 
 Status InitListExpr::Accept(CodeEmitter &emitter, std::string &output) const {
@@ -424,8 +455,9 @@ Status BlankLineStmt::Accept(CodeEmitter &emitter, std::string &output) const {
   return emitter.Emit(*this, output);
 }
 
-VarDeclStmt *VarDeclStmt::Create(AstContext &ctx, const std::string &type_spec, const std::string &name, Expr *init) {
-  return AllocateNode<VarDeclStmt>(ctx, ctx.CopyString(type_spec.c_str()), ctx.CopyString(name.c_str()), init);
+VarDeclStmt *VarDeclStmt::Create(AstContext &ctx, const std::string &type_spec, const std::string &name, Expr *init,
+                                 InitStyle style) {
+  return AllocateNode<VarDeclStmt>(ctx, ctx.CopyString(type_spec.c_str()), ctx.CopyString(name.c_str()), init, style);
 }
 
 Status VarDeclStmt::Accept(CodeEmitter &emitter, std::string &output) const {
@@ -503,6 +535,23 @@ BreakStmt *BreakStmt::Create(AstContext &ctx) {
   return AllocateNode<BreakStmt>(ctx);
 }
 Status BreakStmt::Accept(CodeEmitter &emitter, std::string &output) const {
+  return emitter.Emit(*this, output);
+}
+
+ContinueStmt *ContinueStmt::Create(AstContext &ctx) {
+  return AllocateNode<ContinueStmt>(ctx);
+}
+Status ContinueStmt::Accept(CodeEmitter &emitter, std::string &output) const {
+  return emitter.Emit(*this, output);
+}
+
+TryCatchStmt *TryCatchStmt::Create(AstContext &ctx, BlockStmt *try_body, BlockStmt *catch_body) {
+  GE_ASSERT_NOTNULL(try_body);
+  GE_ASSERT_NOTNULL(catch_body);
+  return AllocateNode<TryCatchStmt>(ctx, try_body, catch_body);
+}
+
+Status TryCatchStmt::Accept(CodeEmitter &emitter, std::string &output) const {
   return emitter.Emit(*this, output);
 }
 

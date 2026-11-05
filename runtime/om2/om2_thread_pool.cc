@@ -14,8 +14,7 @@
 
 #include <system_error>
 
-namespace ge {
-namespace om2 {
+namespace gert {
 ThreadPool::ThreadPool(std::string thread_name_prefix, const uint32_t size)
     : thread_name_prefix_(std::move(thread_name_prefix)), is_stoped_(false) {
   idle_thrd_num_ = size < 1U ? 1U : size;
@@ -78,5 +77,4 @@ void ThreadPool::ThreadFunc(ThreadPool *const thread_pool, uint32_t thread_idx) 
     ++thread_pool->idle_thrd_num_;
   }
 }
-}  // namespace om2
-}  // namespace ge
+}  // namespace gert

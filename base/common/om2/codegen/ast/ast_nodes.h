@@ -116,6 +116,8 @@ enum class StablePartId : uint8_t {
   kOm2LogMacros,
   kCreateClassCustomOpFactory,
   kCustomTaskHelpers,
+  kVarMgrDecls,
+  kVarTransAdapter,
 };
 
 enum class StablePartPlacement : uint8_t {
@@ -150,6 +152,23 @@ class StablePartDecl final : public DeclNode {
   StablePartId id_;
   StablePartRole role_;
   StablePartPlacement placement_;
+};
+
+// 原样发射一段文本，不做任何缩进与解析。用于承载无法 AST 化的内容——
+// 例如 <model>_var_mgr.cpp 里按依赖序文本内联的 47 个转换单元源码。
+// 与 StablePartDecl 的区别：后者按固定 id 查表取文本，本节点由调用方当场给定。
+class RawTextDecl final : public DeclNode {
+ public:
+  static RawTextDecl *Create(AstContext &ctx, const std::string &text);
+  explicit RawTextDecl(StringRef text) : DeclNode(), text_(text) {}
+  Status Accept(CodeEmitter &emitter, std::string &output) const override final;
+
+  StringRef GetText() const {
+    return text_;
+  }
+
+ private:
+  StringRef text_;
 };
 
 class IncludeDecl final : public DeclNode {
@@ -270,6 +289,37 @@ class StructDecl final : public DeclNode {
  private:
   StringRef name_;
   ArrayRef<DeclNode *> items_;
+};
+
+// 枚举声明。underlying_type 为空时发射无底层类型的 enum；values[i] 为空时该枚举项
+// 不带显式取值。names 与 values 等长（与 DesignatedInitListExpr 的平行数组同一风格）。
+// 末项带尾逗号，C++11 起合法。
+class EnumDecl final : public DeclNode {
+ public:
+  static EnumDecl *Create(AstContext &ctx, const std::string &name, const std::string &underlying_type,
+                          const std::vector<std::string> &names, const std::vector<Expr *> &values);
+  EnumDecl(StringRef name, StringRef underlying_type, ArrayRef<StringRef> names, ArrayRef<Expr *> values)
+      : DeclNode(), name_(name), underlying_type_(underlying_type), names_(names), values_(values) {}
+  Status Accept(CodeEmitter &emitter, std::string &output) const override final;
+
+  StringRef GetName() const {
+    return name_;
+  }
+  StringRef GetUnderlyingType() const {
+    return underlying_type_;
+  }
+  ArrayRef<StringRef> GetNames() const {
+    return names_;
+  }
+  ArrayRef<Expr *> GetValues() const {
+    return values_;
+  }
+
+ private:
+  StringRef name_;
+  StringRef underlying_type_;
+  ArrayRef<StringRef> names_;
+  ArrayRef<Expr *> values_;
 };
 
 class AccessSectionDecl final : public DeclNode {
@@ -466,6 +516,7 @@ class LiteralExpr final : public Expr {
  public:
   enum class Kind : uint8_t {
     kInt = 0,
+    kHex,
     kBool,
     kString,
     kNullptr,
@@ -476,9 +527,12 @@ class LiteralExpr final : public Expr {
     kU,
     kL,
     kUL,
+    kULL,
   };
 
   static LiteralExpr *CreateInt(AstContext &ctx, int64_t value, IntSuffix suffix = IntSuffix::kNone);
+  // 十六进制形式，用于地址等按位阅读的取值。value 须可容纳于 int64_t（本仓地址均 < 2^48）
+  static LiteralExpr *CreateHex(AstContext &ctx, uint64_t value, IntSuffix suffix = IntSuffix::kNone);
   static LiteralExpr *CreateBool(AstContext &ctx, bool value);
   static LiteralExpr *CreateString(AstContext &ctx, const std::string &value);
   static LiteralExpr *CreateNullptr(AstContext &ctx);
@@ -851,8 +905,11 @@ class CppCastExpr final : public Expr {
 
 class LambdaExpr final : public Expr {
  public:
-  static LambdaExpr *Create(AstContext &ctx, const std::vector<std::string> &captures, BlockStmt *body);
-  LambdaExpr(ArrayRef<StringRef> captures, BlockStmt *body) : Expr(), captures_(captures), body_(body) {}
+  // params 为空且 return_type 为空时发射 "[]() {…}"，与既有无参 guard 用法逐字节一致
+  static LambdaExpr *Create(AstContext &ctx, const std::vector<std::string> &captures, BlockStmt *body,
+                            const std::vector<ParamDecl *> &params = {}, const std::string &return_type = "");
+  LambdaExpr(ArrayRef<StringRef> captures, BlockStmt *body, ArrayRef<ParamDecl *> params, StringRef return_type)
+      : Expr(), captures_(captures), body_(body), params_(params), return_type_(return_type) {}
   Status Accept(CodeEmitter &emitter, std::string &output) const override final;
 
   ArrayRef<StringRef> GetCaptures() const {
@@ -861,10 +918,18 @@ class LambdaExpr final : public Expr {
   BlockStmt *GetBody() const {
     return body_;
   }
+  ArrayRef<ParamDecl *> GetParams() const {
+    return params_;
+  }
+  StringRef GetReturnType() const {
+    return return_type_;
+  }
 
  private:
   ArrayRef<StringRef> captures_;
   BlockStmt *body_;
+  ArrayRef<ParamDecl *> params_;
+  StringRef return_type_;
 };
 
 class CCastExpr final : public Expr {
@@ -887,9 +952,17 @@ class CCastExpr final : public Expr {
 
 class InitListExpr final : public Expr {
  public:
-  static InitListExpr *Create(AstContext &ctx, const std::vector<Expr *> &elements, bool compact = false);
-  explicit InitListExpr(ArrayRef<Expr *> elements, bool compact = false)
-      : Expr(), elements_(elements), compact_(compact) {}
+  // kParen 用于直接初始化 T x(a, b)：与 kBrace 的 T x = {a, b} 语义不同，
+  // std::vector<uint8_t> v(n, 0U) 写成 = {n, 0U} 会变成 2 元素向量
+  enum class Delimiter : uint8_t {
+    kBrace = 0,
+    kParen,
+  };
+
+  static InitListExpr *Create(AstContext &ctx, const std::vector<Expr *> &elements, bool compact = false,
+                              Delimiter delimiter = Delimiter::kBrace);
+  explicit InitListExpr(ArrayRef<Expr *> elements, bool compact = false, Delimiter delimiter = Delimiter::kBrace)
+      : Expr(), elements_(elements), compact_(compact), delimiter_(delimiter) {}
   Status Accept(CodeEmitter &emitter, std::string &output) const override final;
 
   ArrayRef<Expr *> GetElements() const {
@@ -898,10 +971,14 @@ class InitListExpr final : public Expr {
   bool IsCompact() const {
     return compact_;
   }
+  Delimiter GetDelimiter() const {
+    return delimiter_;
+  }
 
  private:
   ArrayRef<Expr *> elements_;
   bool compact_{false};
+  Delimiter delimiter_{Delimiter::kBrace};
 };
 
 class DesignatedInitListExpr final : public Expr {
@@ -951,10 +1028,18 @@ class BlankLineStmt final : public Stmt {
 
 class VarDeclStmt final : public Stmt {
  public:
+  // kAssign 发 "name = init"；kDirect 发 "name init"，由 init 自带定界符
+  // （InitListExpr 的 kBrace / kParen），用于 std::atomic<size_t> a{0U}、
+  // std::vector<uint8_t> v(n, 0U)、GertVarDesc desc{} 这类不能用拷贝初始化的场景
+  enum class InitStyle : uint8_t {
+    kAssign = 0,
+    kDirect,
+  };
+
   static VarDeclStmt *Create(AstContext &ctx, const std::string &type_spec, const std::string &name,
-                             Expr *init = nullptr);
-  VarDeclStmt(StringRef type_spec, StringRef name, Expr *init)
-      : Stmt(), type_spec_(type_spec), name_(name), init_(init) {}
+                             Expr *init = nullptr, InitStyle style = InitStyle::kAssign);
+  VarDeclStmt(StringRef type_spec, StringRef name, Expr *init, InitStyle style = InitStyle::kAssign)
+      : Stmt(), type_spec_(type_spec), name_(name), init_(init), init_style_(style) {}
   Status Accept(CodeEmitter &emitter, std::string &output) const override final;
 
   StringRef GetTypeSpec() const {
@@ -966,11 +1051,15 @@ class VarDeclStmt final : public Stmt {
   Expr *GetInit() const {
     return init_;
   }
+  InitStyle GetInitStyle() const {
+    return init_style_;
+  }
 
  private:
   StringRef type_spec_;
   StringRef name_;
   Expr *init_;
+  InitStyle init_style_{InitStyle::kAssign};
 };
 
 class ExprStmt final : public Stmt {
@@ -1117,6 +1206,34 @@ class BreakStmt final : public Stmt {
   static BreakStmt *Create(AstContext &ctx);
   BreakStmt() = default;
   Status Accept(CodeEmitter &emitter, std::string &output) const override final;
+};
+
+class ContinueStmt final : public Stmt {
+ public:
+  static ContinueStmt *Create(AstContext &ctx);
+  ContinueStmt() = default;
+  Status Accept(CodeEmitter &emitter, std::string &output) const override final;
+};
+
+// try { … } catch (…) { … }。catch 子句恒为 catch (…)：现有需求只有兜底捕获
+// （异常逃出 std::thread 会直接 std::terminate，且不得跨 SO 边界传播）。
+// 若日后需要按类型捕获，再给本节点加异常声明字段。
+class TryCatchStmt final : public Stmt {
+ public:
+  static TryCatchStmt *Create(AstContext &ctx, BlockStmt *try_body, BlockStmt *catch_body);
+  TryCatchStmt(BlockStmt *try_body, BlockStmt *catch_body) : Stmt(), try_body_(try_body), catch_body_(catch_body) {}
+  Status Accept(CodeEmitter &emitter, std::string &output) const override final;
+
+  BlockStmt *GetTryBody() const {
+    return try_body_;
+  }
+  BlockStmt *GetCatchBody() const {
+    return catch_body_;
+  }
+
+ private:
+  BlockStmt *try_body_;
+  BlockStmt *catch_body_;
 };
 
 class SwitchStmt final : public Stmt {

@@ -42,7 +42,8 @@ class Om2CodegenModelBuilder {
   static Status CreateTaskCodeBuilders(const GeModelPtr &model, AstBuildContext &ast,
                                        std::vector<TaskCodeBuilderPtr> &task_builders, Om2CodegenModel &codegen_model);
   Status Build(const GeModelPtr &model, const std::vector<TaskCodeBuilderPtr> &task_builders,
-               Om2CodegenModel &codegen_model, std::vector<gert::GertModelDataConstMeta> &const_metas);
+               Om2CodegenModel &codegen_model, std::vector<gert::GertModelDataConstMeta> &const_metas,
+               std::vector<VarSlotMeta> &var_metas);
 
  private:
   Status BuildOpDescLookup(const GeModelPtr &model);
@@ -59,10 +60,8 @@ class Om2CodegenModelBuilder {
                           Om2CodegenModel &codegen_model, std::vector<gert::GertModelDataConstMeta> &const_metas);
   Status BuildFileConstInputs(const GeModelPtr &model, Om2CodegenModel &codegen_model,
                               std::vector<gert::GertModelDataConstMeta> &const_metas);
-  Status BuildVarInputs(const GeModelPtr &model, Om2CodegenModel &codegen_model,
-                        std::vector<gert::GertModelDataVarMeta> &var_metas);
-  Status BuildVarInputForNode(const OpDescPtr &op_desc, const std::string &node_type,
-                              std::vector<gert::GertModelDataVarMeta> &var_metas, size_t &var_index);
+  Status BuildVarInputs(const GeModelPtr &model, std::vector<VarSlotMeta> &var_metas);
+  Status BuildVarInputForNode(const OpDescPtr &op_desc, std::vector<VarSlotMeta> &var_metas, size_t &var_index);
   Status ParseVarRootAndSize(const OpDescPtr &op_desc, const GeTensorDescPtr &output_desc, uint64_t &root,
                              uint64_t &size) const;
   Status BuildKernelRegistry(const GeModelPtr &model, const std::vector<TaskCodeBuilderPtr> &task_builders,

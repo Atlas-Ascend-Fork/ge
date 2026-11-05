@@ -19,9 +19,15 @@
 #include "graph/def_types.h"
 #include "formats/om2_register_format_transfer.h"
 
-namespace ge {
+namespace gert {
+// GE_WARNINGLOG_AND_ERRORMSG 的宏体里写的是非限定 char_t（ge_log.h 的
+// std::vector<const char_t *>），展开点在本命名空间内 ⇒ 查找 gert::char_t / ::char_t 均落空
+// （graph/types.h 里那个看似全局的 using char_t 实际在 namespace domi 内）。宏体属工具包、
+// 调用点无从限定，故只能在此桥接。本文件的 6 处该宏调用依赖此行，删除即编译失败。
+using ::ge::char_t;
+
 namespace formats {
-int64_t GetCubeSizeByDataType(const DataType data_type);
+int64_t GetCubeSizeByDataType(const ge::DataType data_type);
 
 /**
  * Convert a std::vector to a std::string using ','
@@ -88,5 +94,5 @@ inline int64_t Lcm(const int64_t a, const int64_t b) {
   return temp;
 }
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert
 #endif  // GE_OM2_COMMON_FORMATS_UTILS_FORMATS_TRANS_UTILS_H_

@@ -15,14 +15,15 @@
 
 #include "formats/om2_register_format_transfer.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
 class FormatTransferC1hwncoc0Hwcn : public FormatTransfer {
  public:
-  Status TransFormat(const TransArgs &args, TransResult &result) override;
-  Status TransShape(const Format src_format, const std::vector<int64_t> &src_shape, const DataType data_type,
-                    const Format dst_format, std::vector<int64_t> &dst_shape) override;
+  ge::Status TransFormat(const TransArgs &args, TransResult &result) override;
+  ge::Status TransShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                        const ge::DataType data_type, const ge::Format dst_format,
+                        std::vector<int64_t> &dst_shape) override;
 };
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert
 #endif  // GE_OM2_COMMON_FORMATS_FORMAT_TRANSFERS_FORMAT_TRANSFER_C1HWNCOC0_HWCN_H_

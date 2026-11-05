@@ -16,7 +16,7 @@
 #include "graph/types.h"
 #include "framework/common/ge_inner_error_codes.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
 /**
  * Convert the data format, and put the converted format and length in the result
@@ -24,12 +24,12 @@ namespace formats {
  * @param result
  * @return
  */
-Status TransDataFormat(const TransArgs &args, TransResult &result);
+ge::Status TransDataFormat(const TransArgs &args, TransResult &result);
 
-Status TransTensorShape(const Format src_format, const std::vector<int64_t> &src_shape, const DataType data_type,
-                        const Format dst_format, std::vector<int64_t> &dst_shape);
+ge::Status TransTensorShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                            const ge::DataType data_type, const ge::Format dst_format, std::vector<int64_t> &dst_shape);
 
 bool IsTransFormatSupport(const TransArgs &args);
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert
 #endif  // GE_OM2_COMMON_FORMATS_FORMATS_H_

@@ -23,8 +23,7 @@
 #include "framework/common/debug/ge_log.h"
 #include "ge/ge_api_error_codes.h"
 
-namespace ge {
-namespace om2 {
+namespace gert {
 using ThreadTask = std::function<void()>;
 
 class ThreadPool {
@@ -70,7 +69,6 @@ class ThreadPool {
   std::atomic<bool> is_stoped_;
   std::atomic<uint32_t> idle_thrd_num_;
 };
-}  // namespace om2
-}  // namespace ge
+}  // namespace gert
 
 #endif  // GE_RUNTIME_OM2_OM2_THREAD_POOL_H_

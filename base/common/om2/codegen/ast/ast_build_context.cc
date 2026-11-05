@@ -311,6 +311,12 @@ Expr *AstBuildContext::UInt(uint64_t value) const {
 Expr *AstBuildContext::ULong(uint64_t value) const {
   return LiteralExpr::CreateInt(ctx_, static_cast<int64_t>(value), LiteralExpr::IntSuffix::kUL);
 }
+Expr *AstBuildContext::ULongLong(uint64_t value) const {
+  return LiteralExpr::CreateInt(ctx_, static_cast<int64_t>(value), LiteralExpr::IntSuffix::kULL);
+}
+Expr *AstBuildContext::Hex(uint64_t value, LiteralExpr::IntSuffix suffix) const {
+  return LiteralExpr::CreateHex(ctx_, value, suffix);
+}
 
 TypeAliasDecl *AstBuildContext::TypeAlias(const std::string &type_spec, const std::string &name) const {
   return TypeAliasDecl::Create(ctx_, type_spec, name);
@@ -336,6 +342,19 @@ StructDecl *AstBuildContext::Struct(const std::string &name, std::initializer_li
   return Struct(name, std::vector<DeclNode *>(items.begin(), items.end()));
 }
 
+EnumDecl *AstBuildContext::Enum(const std::string &name, const std::string &underlying_type,
+                                const std::vector<std::pair<std::string, Arg>> &enumerators) const {
+  std::vector<std::string> names;
+  std::vector<Expr *> values;
+  names.reserve(enumerators.size());
+  values.reserve(enumerators.size());
+  for (const auto &enumerator : enumerators) {
+    names.push_back(enumerator.first);
+    values.push_back(ResolveArg(enumerator.second, ctx_));
+  }
+  return EnumDecl::Create(ctx_, name, underlying_type, names, values);
+}
+
 NamespaceDecl *AstBuildContext::Namespace(const std::string &name, const std::vector<DeclNode *> &items) const {
   return NamespaceDecl::Create(ctx_, name, items);
 }
@@ -350,6 +369,10 @@ ExternBlockDecl *AstBuildContext::ExternBlock(const std::string &lang, const std
 
 ExternBlockDecl *AstBuildContext::ExternBlock(const std::string &lang, std::initializer_list<DeclNode *> items) const {
   return ExternBlock(lang, std::vector<DeclNode *>(items.begin(), items.end()));
+}
+
+RawTextDecl *AstBuildContext::RawText(const std::string &text) const {
+  return RawTextDecl::Create(ctx_, text);
 }
 
 StablePartDecl *AstBuildContext::StablePart(StablePartId id, StablePartPlacement placement) const {
@@ -440,12 +463,22 @@ InitListExpr *AstBuildContext::InitList(std::initializer_list<Arg> items, bool c
 }
 
 InitListExpr *AstBuildContext::InitList(const std::vector<Arg> &items, bool compact) const {
+  return InitList(items, compact, InitListExpr::Delimiter::kBrace);
+}
+
+InitListExpr *AstBuildContext::InitList(std::initializer_list<Arg> items, bool compact,
+                                        InitListExpr::Delimiter delimiter) const {
+  return InitList(std::vector<Arg>(items.begin(), items.end()), compact, delimiter);
+}
+
+InitListExpr *AstBuildContext::InitList(const std::vector<Arg> &items, bool compact,
+                                        InitListExpr::Delimiter delimiter) const {
   std::vector<Expr *> resolved;
   resolved.reserve(items.size());
   for (const auto &item : items) {
     resolved.push_back(ResolveArg(item, ctx_));
   }
-  return InitListExpr::Create(ctx_, resolved, compact);
+  return InitListExpr::Create(ctx_, resolved, compact, delimiter);
 }
 
 DesignatedInitListExpr *AstBuildContext::DesignatedInit(const std::vector<std::pair<std::string, Arg>> &members,
@@ -507,12 +540,18 @@ LambdaCaptureSpec AstBuildContext::CaptureRef(const VarRef &symbol) const {
 
 ExprRef AstBuildContext::Lambda(std::initializer_list<LambdaCaptureSpec> captures,
                                 std::initializer_list<BodyItem> items) const {
+  return Lambda(captures, std::vector<VarRef>{}, "", items);
+}
+
+ExprRef AstBuildContext::Lambda(std::initializer_list<LambdaCaptureSpec> captures, const std::vector<VarRef> &params,
+                                const std::string &return_type, std::initializer_list<BodyItem> items) const {
   std::vector<std::string> built_captures;
   built_captures.reserve(captures.size());
   for (const auto &capture : captures) {
     built_captures.push_back(BuildLambdaCapture(capture));
   }
-  return ExprRef(ctx_, LambdaExpr::Create(ctx_, built_captures, BlockStmt::Create(ctx_, Body(items))));
+  return ExprRef(ctx_, LambdaExpr::Create(ctx_, built_captures, BlockStmt::Create(ctx_, Body(items)),
+                                          BuildParamDecls(ctx_, params), return_type));
 }
 
 ExprRef AstBuildContext::Call(const std::string &callee_name, std::initializer_list<Arg> args) const {
@@ -551,8 +590,29 @@ VarDeclStmt *AstBuildContext::VarDecl(const VarRef &symbol, Arg init) const {
   return VarDecl(symbol.TypeName(), symbol.SymbolName(), init);
 }
 
+VarDeclStmt *AstBuildContext::VarDecl(const std::string &type_spec, const std::string &name, Arg init,
+                                      VarDeclStmt::InitStyle style) const {
+  return VarDeclStmt::Create(ctx_, type_spec, name, ResolveArg(init, ctx_), style);
+}
+
+VarDeclStmt *AstBuildContext::VarDecl(const VarRef &symbol, Arg init, VarDeclStmt::InitStyle style) const {
+  return VarDecl(symbol.TypeName(), symbol.SymbolName(), init, style);
+}
+
 BlockStmt *AstBuildContext::Block(const std::vector<BodyItem> &items) const {
   return BlockStmt::Create(ctx_, Body(items));
+}
+
+TryCatchStmt *AstBuildContext::TryCatchAll(const std::vector<BodyItem> &try_items,
+                                           const std::vector<BodyItem> &catch_items) const {
+  return TryCatchStmt::Create(ctx_, BlockStmt::Create(ctx_, Body(try_items)),
+                              BlockStmt::Create(ctx_, Body(catch_items)));
+}
+
+TryCatchStmt *AstBuildContext::TryCatchAll(std::initializer_list<BodyItem> try_items,
+                                           std::initializer_list<BodyItem> catch_items) const {
+  return TryCatchAll(std::vector<BodyItem>(try_items.begin(), try_items.end()),
+                     std::vector<BodyItem>(catch_items.begin(), catch_items.end()));
 }
 
 IfStmt *AstBuildContext::If(Arg cond, std::initializer_list<BodyItem> then_items) const {
@@ -573,9 +633,13 @@ IfStmt *AstBuildContext::If(Arg cond, const std::vector<BodyItem> &then_items, c
                         is_preprocessor);
 }
 
-ForStmt *AstBuildContext::For(Stmt *init, Arg cond, Arg step, std::initializer_list<BodyItem> items) const {
+ForStmt *AstBuildContext::For(Stmt *init, Arg cond, Arg step, const std::vector<BodyItem> &items) const {
   return ForStmt::Create(ctx_, init, ResolveArg(cond, ctx_), ResolveArg(step, ctx_),
                          BlockStmt::Create(ctx_, Body(items)));
+}
+
+ForStmt *AstBuildContext::For(Stmt *init, Arg cond, Arg step, std::initializer_list<BodyItem> items) const {
+  return For(init, cond, step, std::vector<BodyItem>(items.begin(), items.end()));
 }
 
 RangeForStmt *AstBuildContext::RangeFor(const VarRef &loop_var, Arg range,
@@ -605,6 +669,10 @@ CaseStmt *AstBuildContext::Case(Arg value) const {
 
 BreakStmt *AstBuildContext::Break() const {
   return BreakStmt::Create(ctx_);
+}
+
+ContinueStmt *AstBuildContext::Continue() const {
+  return ContinueStmt::Create(ctx_);
 }
 
 MemberInitSpec AstBuildContext::MemberInit(const std::string &member_name, Arg init) const {
