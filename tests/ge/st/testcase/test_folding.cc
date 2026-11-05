@@ -169,8 +169,10 @@ static void BuildGatherShapesGraph(std::vector<std::vector<int64_t>> &axes, Grap
                           .TensorDesc(FORMAT_NCHW, DT_INT32, {-1})
                           .Attr<std::vector<std::vector<int64_t>>>("axes", axes);
   auto netouput = OP_CFG(NETOUTPUT).TensorDesc(FORMAT_NCHW, DT_INT32, {-1});
-  auto constant_1 = OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {1, 2, 3});
-  auto constant_2 = OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {2, 3, 4});
+  auto constant_1_weight = GenerateTensor(DT_INT32, {1, 2, 3});
+  auto constant_2_weight = GenerateTensor(DT_INT32, {2, 3, 4});
+  auto constant_1 = OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {1, 2, 3}).Weight(constant_1_weight);
+  auto constant_2 = OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {2, 3, 4}).Weight(constant_2_weight);
 
   DEF_GRAPH(g1) {
     CHAIN(NODE("constant_1", constant_1)->EDGE(0, 0)->NODE("gathershapes", gathershapes));
@@ -186,8 +188,10 @@ static void BuildGatherShapesGraph1(std::vector<std::vector<int64_t>> &axes, Gra
                           .TensorDesc(FORMAT_NCHW, DT_INT32, {-1})
                           .Attr<std::vector<std::vector<int64_t>>>("axes", axes);
   auto netoutput = OP_CFG(NETOUTPUT).TensorDesc(FORMAT_NCHW, DT_INT32, {-1});
-  auto constant_1 = OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {1, 2, 3});
-  auto constant_2 = OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {2, 3, 4});
+  auto constant_1_weight = GenerateTensor(DT_INT32, {1, 2, 3});
+  auto constant_2_weight = GenerateTensor(DT_INT32, {2, 3, 4});
+  auto constant_1 = OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {1, 2, 3}).Weight(constant_1_weight);
+  auto constant_2 = OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {2, 3, 4}).Weight(constant_2_weight);
 
   DEF_GRAPH(g1) {
     CHAIN(NODE("constant_1", constant_1)->EDGE(0, 0)->NODE("gathershapes1", gathershapes));
@@ -311,15 +315,8 @@ TEST_F(ConstantFoldingTest, test_gathershapes_folding_fail) {
 TEST_F(ConstantFoldingTest, test_flattenv2_folding) {
   int64_t axis = 1;
   int64_t end_axis = -1;
-  GeTensor weight;
-  std::vector<uint8_t> data = {1, 2};
-  weight.SetData(data);
-  GeTensorDesc weight_desc;
-  weight_desc.SetShape(GeShape({2, 3, 4}));
-  weight_desc.SetOriginShape(GeShape({2, 3, 4}));
-  weight.SetTensorDesc(weight_desc);
-  auto constant =
-      OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {2, 3, 4}).Attr<GeTensor>(ATTR_NAME_WEIGHTS, weight);
+  auto constant_weight = GenerateTensor(DT_INT32, {2, 3, 4});
+  auto constant = OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {2, 3, 4}).Weight(constant_weight);
   auto flattenv2 =
       OP_CFG(FLATTENV2).TensorDesc(FORMAT_NCHW, DT_INT32, {1, 2, 3}).Attr("axis", axis).Attr("end_axis", end_axis);
   auto netouput = OP_CFG(NETOUTPUT).TensorDesc(FORMAT_NCHW, DT_INT32, {-1});
@@ -360,22 +357,12 @@ TEST_F(ConstantFoldingTest, test_flattenv2_folding) {
  *      netoutput
  */
 TEST_F(ConstantFoldingTest, test_squeezev3_folding) {
-  GeTensor weight;
-  std::vector<uint8_t> data = {1, 2};
-  weight.SetData(data);
-  GeTensorDesc weight_desc;
-  weight_desc.SetShape(GeShape({2, 3, 4}));
-  weight_desc.SetOriginShape(GeShape({2, 3, 4}));
-  weight.SetTensorDesc(weight_desc);
-
   auto data_x =
       OP_CFG(DATA).Attr(ATTR_NAME_INDEX, 0).TensorDesc(FORMAT_NCHW, DT_FLOAT, {1, 2, 3, 4}).InCnt(1).OutCnt(1);
 
   auto squeezev3 = OP_CFG(SQUEEZEV3).TensorDesc(FORMAT_NCHW, DT_INT32, {1, 2, 3});
-  std::vector<uint8_t> data_2 = {0};
-  weight.SetData(data_2);
-  auto constant_axes =
-      OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {1}).Attr<GeTensor>(ATTR_NAME_WEIGHTS, weight);
+  auto constant_axes_weight = GenerateTensor(DT_INT32, {1});
+  auto constant_axes = OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {1}).Weight(constant_axes_weight);
 
   auto netouput = OP_CFG(NETOUTPUT).TensorDesc(FORMAT_NCHW, DT_INT32, {1, 2, 3});
   DEF_GRAPH(graph_squeezev3) {
@@ -414,22 +401,12 @@ TEST_F(ConstantFoldingTest, test_squeezev3_folding) {
  *     netoutput
  */
 TEST_F(ConstantFoldingTest, test_unsqueezev3_folding) {
-  GeTensor weight;
-  std::vector<uint8_t> data = {1, 2};
-  weight.SetData(data);
-  GeTensorDesc weight_desc;
-  weight_desc.SetShape(GeShape({2, 3, 4}));
-  weight_desc.SetOriginShape(GeShape({2, 3, 4}));
-  weight.SetTensorDesc(weight_desc);
-
   auto data_x =
       OP_CFG(DATA).Attr(ATTR_NAME_INDEX, 0).TensorDesc(FORMAT_NCHW, DT_FLOAT, {1, 2, 3, 4}).InCnt(1).OutCnt(1);
 
   auto unsqueezev3 = OP_CFG(UNSQUEEZEV3).TensorDesc(FORMAT_NCHW, DT_INT32, {1, 2, 3});
-  std::vector<uint8_t> data_2 = {0};
-  weight.SetData(data_2);
-  auto constant_axes =
-      OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {1}).Attr<GeTensor>(ATTR_NAME_WEIGHTS, weight);
+  auto constant_axes_weight = GenerateTensor(DT_INT32, {1});
+  auto constant_axes = OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_INT32, {1}).Weight(constant_axes_weight);
 
   auto netouput = OP_CFG(NETOUTPUT).TensorDesc(FORMAT_NCHW, DT_INT32, {1, 2, 3, 4});
   DEF_GRAPH(graph_unsqueezev3) {
@@ -555,6 +532,7 @@ TEST_F(ConstantFoldingTest, test_cast_float32toint32) {
   GeTensorDesc weight_desc;
   weight_desc.SetShape(GeShape({2, 3}));
   weight_desc.SetOriginShape(GeShape({2, 3}));
+  weight_desc.SetDataType(DT_FLOAT16);
   weight.SetTensorDesc(weight_desc);
   auto constant =
       OP_CFG(CONSTANT).TensorDesc(FORMAT_NCHW, DT_FLOAT16, {2, 3}).Attr<GeTensor>(ATTR_NAME_WEIGHTS, weight);
@@ -657,15 +635,10 @@ TEST_F(ConstantFoldingTest, test_ConstantFolding_Notchanged) {
 }
 
 static void BuildNotFoldGraph(Graph &graph) {
-  GeTensor weight;
-  std::vector<uint8_t> data(2 * 5);
-  weight.SetData(data);
-  GeTensorDesc weight_desc;
-  weight_desc.SetShape(GeShape({2, 5}));
-  weight_desc.SetOriginShape(GeShape({2, 5}));
-  weight.SetTensorDesc(weight_desc);
-  auto constant_1 = OP_CFG(CONSTANT).TensorDesc(FORMAT_ND, DT_INT32, {2, 5}).Attr<GeTensor>(ATTR_NAME_WEIGHTS, weight);
-  auto constant_2 = OP_CFG(CONSTANT).TensorDesc(FORMAT_ND, DT_INT32, {2, 5}).Attr<GeTensor>(ATTR_NAME_WEIGHTS, weight);
+  auto constant_1_weight = GenerateTensor(DT_INT32, {2, 5});
+  auto constant_2_weight = GenerateTensor(DT_INT32, {2, 5});
+  auto constant_1 = OP_CFG(CONSTANT).TensorDesc(FORMAT_ND, DT_INT32, {2, 5}).Weight(constant_1_weight);
+  auto constant_2 = OP_CFG(CONSTANT).TensorDesc(FORMAT_ND, DT_INT32, {2, 5}).Weight(constant_2_weight);
   auto add1 = OP_CFG(ADDN).TensorDesc(FORMAT_ND, DT_INT32, {2, 5});
   auto netouput = OP_CFG(NETOUTPUT).TensorDesc(FORMAT_ND, DT_INT32, {2, 5});
   auto flatten1 = OP_CFG(FLATTEN).TensorDesc(FORMAT_ND, DT_INT32, {10});
@@ -726,7 +699,7 @@ TEST_F(ConstantFoldingTest, test_do_not_constant_folding) {
 
 TEST_F(ConstantFoldingTest, TestFolding_Ok_IgnoreFoldingWhen) {
   GeTensor weight;
-  std::vector<uint8_t> data(9);
+  std::vector<uint8_t> data(9 * sizeof(int32_t));
   weight.SetData(data);
   GeTensorDesc weight_desc;
   weight_desc.SetShape(GeShape({9}));

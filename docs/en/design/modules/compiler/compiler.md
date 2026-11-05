@@ -109,6 +109,8 @@ flowchart TD
     E5 --> F[GeRootModel: Compilation Product]
 ```
 
+`CheckAndUpdateInput` called by `NormalizeGraph` executes `CheckConstOp` at its entry first, validating `Const` nodes and `FrameworkOp` nodes whose original type is `Const` in the root graph and subgraphs. Even if the graph is already marked as normalized, or the user input list is empty, constant validation must complete before deciding whether to skip input check and update. This validation reuses the existing preprocessing stage, without adding an independent graph dump.
+
 ### 1.3 Three-Stage Optimization Design
 
 GE divides graph optimization into three stages (`PreRunOptimizeOriginalGraph` → `PreRunOptimizeSubGraph` → `PreRunAfterOptimizeSubGraph`):

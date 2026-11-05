@@ -480,6 +480,12 @@ class GraphBuilderTest : public testing::Test {
       GeTensorDesc weight_desc(GeShape({1, 1, 224, 224}), FORMAT_NCHW, DT_FLOAT);
       GeTensorPtr tensor = std::make_shared<GeTensor>(weight_desc, (uint8_t *)weight, sizeof(weight));
       OpDescUtils::SetWeights(const_node, {tensor});
+    } else {
+      // the DSL now fills default weights for bare Const cfgs; remove them to keep the no-weight case
+      auto const_node = root_graph->FindNode("const1");
+      if (const_node != nullptr) {
+        (void)const_node->GetOpDesc()->DelAttr(ATTR_NAME_WEIGHTS);
+      }
     }
     return root_graph;
   }

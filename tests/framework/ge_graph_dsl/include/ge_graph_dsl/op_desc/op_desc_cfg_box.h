@@ -126,6 +126,7 @@ struct OpDescCfgBox : OpBox, private OpDescCfg {
 
  private:
   void UpdateAttrs(OpDescPtr &) const;
+  void AddDefaultConstWeights(OpDescPtr &) const;
   std::map<std::string, GeAttrValue> attrs_;
   std::map<size_t, std::map<std::string, GeAttrValue>> input_attrs_;
   std::map<size_t, std::map<std::string, GeAttrValue>> output_attrs_;

@@ -144,6 +144,8 @@ Attribute definition located at `inc/graph_metadef/graph/debug/ge_attr_define.h`
 
 ## 4 Specific Implementation
 
+During graph preprocessing, the entry of `GraphPrepare::CheckAndUpdateInput` validates `Const` nodes and `FrameworkOp` nodes whose original type is `Const` through `CheckConstOp`: it checks whether the `value` tensor exists and whether the actual data length of non-string tensors matches the shape and dtype. This validation runs before the early returns for `graph_normalized_` and empty user input, preventing abnormal constants from entering subsequent shape inference and constant folding. Valid scalars, empty tensors, and low-bit types continue to follow the existing rules of `VerifyConstOp`.
+
 ### 4.1 Overall Architecture
 
 Constant folding adopts Pass chain execution mode, driven through GE Pass management framework. Core implementation concentrated in `compiler/graph/passes/standard_optimize/constant_folding/` directory, composed of 5 registered Passes (ConstantFoldingPass, DimensionComputePass, DimensionAdjustPass, ReplaceWithEmptyConstPass, PotentialConstTakenEffectPass) and 2 abstract base classes (FoldingPass, PotentialFoldingPass) and supporting infrastructure:

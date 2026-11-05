@@ -11,9 +11,12 @@
 #include "ge_graph_dsl/op_desc/op_desc_cfg_box.h"
 #include "easy_graph/infra/status.h"
 #include "ge_graph_dsl/op_desc/op_desc_cfg_repo.h"
+#include "framework/common/framework_types_internal.h"
 #include "graph/gnode.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/ge_tensor.h"
+#include "graph/utils/attr_utils.h"
+#include "graph/utils/tensor_utils.h"
 
 using ::EG_NS::Status;
 using ::GE_NS::OpDescCfg;
@@ -229,6 +232,22 @@ void OpDescCfgBox::UpdateAttrs(OpDescPtr &op_desc) const {
   });
 }
 
+void OpDescCfgBox::AddDefaultConstWeights(OpDescPtr &op_desc) const {
+  if ((GetType() != CONSTANT) || op_desc->HasAttr(ATTR_NAME_WEIGHTS)) {
+    return;
+  }
+  // Graph prepare validates the weights (value) attr of Const nodes: data size must match shape/dtype.
+  // Bare Const cfgs without explicit weights get content-agnostic zero weights matching the default desc.
+  GeTensorDesc weight_desc(ge::GeShape(default_tensor_.shape_), default_tensor_.format_, default_tensor_.data_type_);
+  int64_t tensor_size = 0;
+  if (TensorUtils::GetTensorSizeInBytes(weight_desc, tensor_size) != GRAPH_SUCCESS) {
+    return;
+  }
+  const auto data = std::vector<uint8_t>(static_cast<size_t>(tensor_size), 0U);
+  const GeTensorPtr weight = std::make_shared<GeTensor>(weight_desc, data.data(), data.size());
+  (void)AttrUtils::SetTensor(op_desc, ATTR_NAME_WEIGHTS, weight);
+}
+
 OpDescPtr OpDescCfgBox::Build(const ::EG_NS::NodeId &id) const {
   auto opPtr = std::make_shared<OpDesc>(id, GetType());
   GeTensorDesc tensor_desc(ge::GeShape(default_tensor_.shape_), default_tensor_.format_, default_tensor_.data_type_);
@@ -258,6 +277,7 @@ OpDescPtr OpDescCfgBox::Build(const ::EG_NS::NodeId &id) const {
   }
 
   UpdateAttrs(opPtr);
+  AddDefaultConstWeights(opPtr);
   return opPtr;
 }
 OpDescCfgBox &OpDescCfgBox::InNames(std::initializer_list<std::string> names) {

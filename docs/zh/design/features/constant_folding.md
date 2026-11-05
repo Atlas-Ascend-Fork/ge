@@ -144,6 +144,11 @@ REG_OPTION(OO_CONSTANT_FOLDING)
 
 ## 4 具体实现
 
+图预处理在 `GraphPrepare::CheckAndUpdateInput` 入口通过 `CheckConstOp` 校验 `Const` 和原始类型为
+`Const` 的 `FrameworkOp`：检查 `value` 张量是否存在，并检查非字符串张量的实际数据长度是否符合
+shape 和 dtype。该校验在 `graph_normalized_` 和空用户输入的提前返回之前执行，避免异常常量进入后续
+shape 推导与常量折叠。合法标量、空张量及低比特类型继续沿用 `VerifyConstOp` 的已有规则。
+
 ### 4.1 整体架构
 
 常量折叠采用 Pass 链式执行模式，通过 GE 的 Pass 管理框架驱动。核心实现集中在 `compiler/graph/passes/standard_optimize/constant_folding/` 目录下，由 5 个注册 Pass（ConstantFoldingPass、DimensionComputePass、DimensionAdjustPass、ReplaceWithEmptyConstPass、PotentialConstTakenEffectPass）和 2 个抽象基类（FoldingPass、PotentialFoldingPass）及配套的基础设施组成：

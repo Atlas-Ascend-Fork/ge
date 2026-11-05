@@ -2637,6 +2637,7 @@ Status GraphPrepare::ProcessNetOutput() const {
 
 Status GraphPrepare::CheckAndUpdateInput(const std::vector<GeTensor> &user_input,
                                          const std::map<std::string, std::string> &graph_option) {
+  GE_CHK_STATUS_RET(CheckConstOp(), "[Check][ConstOp] fail");
   if (graph_normalized_) {
     return SUCCESS;
   }
@@ -2654,12 +2655,6 @@ Status GraphPrepare::CheckAndUpdateInput(const std::vector<GeTensor> &user_input
   ret = UpdateInput(user_input, graph_option);
   if (ret != SUCCESS) {
     GELOGE(ret, "[Update][Input] fail, ret:%u", ret);
-    return ret;
-  }
-
-  ret = CheckConstOp();
-  if (ret != SUCCESS) {
-    GELOGE(ret, "[Check][ConstOp] fail, ret:%u", ret);
     return ret;
   }
 
