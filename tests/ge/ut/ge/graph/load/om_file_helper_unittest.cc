@@ -249,8 +249,15 @@ TEST_F(UtestOmFileHelper, CheckModelCompatibility_IncompatibleDevice_ReturnFaile
 
 TEST_F(UtestOmFileHelper, CheckPartitionTableNum_invalid) {
   EXPECT_EQ(OmFileLoadHelper::CheckPartitionTableNum(0U), false);
-  EXPECT_EQ(OmFileLoadHelper::CheckPartitionTableNum(9U), false);
+  EXPECT_EQ(OmFileLoadHelper::CheckPartitionTableNum(10U), false);
   EXPECT_EQ(OmFileLoadHelper::CheckPartitionTableNum(100U), false);
+}
+
+// 新增 PYTHON_CUSTOM_OPS 分区后，合法分区数上界由 8 提升到 9
+TEST_F(UtestOmFileHelper, CheckPartitionTableNum_python_custom_ops_upper_bound) {
+  EXPECT_EQ(OmFileLoadHelper::CheckPartitionTableNum(8U), true);
+  EXPECT_EQ(OmFileLoadHelper::CheckPartitionTableNum(9U), true);
+  EXPECT_EQ(OmFileLoadHelper::CheckPartitionTableNum(10U), false);
 }
 
 TEST_F(UtestOmFileHelper, GetModelPartitions_out_of_range_and_valid) {
@@ -268,6 +275,107 @@ TEST_F(UtestOmFileHelper, GetModelPartition_not_found_not_optional) {
   loader.model_contexts_.emplace_back(OmFileContext{});
   ModelPartition partition;
   EXPECT_EQ(loader.GetModelPartition(MODEL_DEF, partition, 0U), FAILED);
+}
+
+// PYTHON_CUSTOM_OPS 属于可选分区：不存在时返回 SUCCESS 且不写出参，调用方据此判断模型是否携带 Python 自定义算子
+TEST_F(UtestOmFileHelper, GetModelPartition_python_custom_ops_is_optional) {
+  OmFileLoadHelper loader;
+  loader.is_inited_ = true;
+  loader.model_contexts_.emplace_back(OmFileContext{});
+  ModelPartition partition{ModelPartitionType::PYTHON_CUSTOM_OPS, nullptr, 0UL};
+  EXPECT_EQ(loader.GetModelPartition(ModelPartitionType::PYTHON_CUSTOM_OPS, partition, 0U), SUCCESS);
+  EXPECT_EQ(partition.data, nullptr);
+  EXPECT_EQ(partition.size, 0UL);
+}
+
+TEST_F(UtestOmFileHelper, AddOwnedPartition_python_custom_ops) {
+  OmFileSaveHelper saver;
+  std::vector<uint8_t> payload = {0x0AU, 0x0BU, 0x0CU, 0x0DU, 0x0EU};
+  const std::vector<uint8_t> expected = payload;
+
+  EXPECT_EQ(saver.AddOwnedPartition(ModelPartitionType::PYTHON_CUSTOM_OPS, std::move(payload), 0U), SUCCESS);
+  ASSERT_EQ(saver.model_contexts_.size(), 1U);
+
+  const auto &ctx = saver.model_contexts_[0U];
+  ASSERT_EQ(ctx.partition_datas_.size(), 1U);
+  ASSERT_EQ(ctx.owned_partitions_.size(), 1U);
+  ASSERT_NE(ctx.owned_partitions_[0U], nullptr);
+
+  const auto &partition = ctx.partition_datas_[0U];
+  EXPECT_EQ(partition.type, ModelPartitionType::PYTHON_CUSTOM_OPS);
+  EXPECT_EQ(partition.size, expected.size());
+  ASSERT_NE(partition.data, nullptr);
+  EXPECT_EQ(partition.data, ctx.owned_partitions_[0U]->data());
+
+  const std::vector<uint8_t> actual(partition.data, partition.data + partition.size);
+  EXPECT_EQ(actual, expected);
+}
+
+// CUSTOM_OPS 与 PYTHON_CUSTOM_OPS 必须能在同一模型内共存，且各自 payload 互不覆盖
+TEST_F(UtestOmFileHelper, AddOwnedPartition_custom_ops_and_python_custom_ops_coexist) {
+  OmFileSaveHelper saver;
+  const std::vector<uint8_t> state_expected = {0x11U, 0x22U};
+  const std::vector<uint8_t> source_expected = {0x33U, 0x44U, 0x55U};
+  std::vector<uint8_t> state_payload = state_expected;
+  std::vector<uint8_t> source_payload = source_expected;
+
+  EXPECT_EQ(saver.AddOwnedPartition(ModelPartitionType::CUSTOM_OPS, std::move(state_payload), 0U), SUCCESS);
+  EXPECT_EQ(saver.AddOwnedPartition(ModelPartitionType::PYTHON_CUSTOM_OPS, std::move(source_payload), 0U), SUCCESS);
+
+  const auto &ctx = saver.model_contexts_[0U];
+  ASSERT_EQ(ctx.partition_datas_.size(), 2U);
+  EXPECT_EQ(ctx.partition_datas_[0U].type, ModelPartitionType::CUSTOM_OPS);
+  EXPECT_EQ(ctx.partition_datas_[1U].type, ModelPartitionType::PYTHON_CUSTOM_OPS);
+  EXPECT_EQ(ctx.model_data_len_, state_expected.size() + source_expected.size());
+
+  const std::vector<uint8_t> state_actual(ctx.partition_datas_[0U].data,
+                                          ctx.partition_datas_[0U].data + ctx.partition_datas_[0U].size);
+  const std::vector<uint8_t> source_actual(ctx.partition_datas_[1U].data,
+                                           ctx.partition_datas_[1U].data + ctx.partition_datas_[1U].size);
+  EXPECT_EQ(state_actual, state_expected);
+  EXPECT_EQ(source_actual, source_expected);
+}
+
+// 走标准模型（非 flow model）路径，使 CheckPartitionTableNum 真正生效，验证两个自定义算子分区的完整读写往返
+TEST_F(UtestOmFileHelper, LoadModelPartitionTable_custom_ops_and_python_custom_ops_round_trip) {
+  const std::vector<uint8_t> state_expected = {0x11U, 0x22U};
+  const std::vector<uint8_t> source_expected = {0x33U, 0x44U, 0x55U};
+  const uint32_t num = 2U;
+  const uint64_t table_size = sizeof(ModelPartitionTable) + sizeof(ModelPartitionMemInfo) * num;
+  const uint64_t total_size = table_size + state_expected.size() + source_expected.size();
+  std::vector<uint8_t> data(table_size, 0);
+  data.insert(data.end(), state_expected.begin(), state_expected.end());
+  data.insert(data.end(), source_expected.begin(), source_expected.end());
+
+  auto *pt = reinterpret_cast<ModelPartitionTable *>(data.data());
+  pt->num = num;
+  pt->partition[0] = {CUSTOM_OPS, 0U, static_cast<uint64_t>(state_expected.size())};
+  pt->partition[1] = {PYTHON_CUSTOM_OPS, 0U, static_cast<uint64_t>(source_expected.size())};
+
+  ModelFileHeader header;
+  header.modeltype = MODEL_TYPE_STANDARD_MODEL;
+  header.model_length = total_size;
+
+  OmFileLoadHelper loader;
+  ASSERT_EQ(loader.Init(data.data(), total_size, 1U, &header), SUCCESS);
+
+  ModelPartition state_partition{MODEL_DEF, nullptr, 0UL};
+  ASSERT_EQ(loader.GetModelPartition(CUSTOM_OPS, state_partition, 0U), SUCCESS);
+  ASSERT_NE(state_partition.data, nullptr);
+  const std::vector<uint8_t> state_actual(state_partition.data, state_partition.data + state_partition.size);
+  EXPECT_EQ(state_actual, state_expected);
+
+  ModelPartition source_partition{MODEL_DEF, nullptr, 0UL};
+  ASSERT_EQ(loader.GetModelPartition(PYTHON_CUSTOM_OPS, source_partition, 0U), SUCCESS);
+  ASSERT_NE(source_partition.data, nullptr);
+  const std::vector<uint8_t> source_actual(source_partition.data, source_partition.data + source_partition.size);
+  EXPECT_EQ(source_actual, source_expected);
+}
+
+// PYTHON_CUSTOM_OPS 的数值是 OM 持久化格式契约的一部分，不得被重排或复用
+TEST_F(UtestOmFileHelper, ModelPartitionType_python_custom_ops_value_is_stable) {
+  EXPECT_EQ(static_cast<uint32_t>(ModelPartitionType::CUSTOM_OPS), 26U);
+  EXPECT_EQ(static_cast<uint32_t>(ModelPartitionType::PYTHON_CUSTOM_OPS), 27U);
 }
 
 TEST_F(UtestOmFileHelper, LoadModelPartitionTable_data_too_small) {

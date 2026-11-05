@@ -13,6 +13,7 @@ add_library(custom_op_runtime SHARED
     "python_custom_op_adapter.cc"
     "python_custom_op_bridge_loader.cc"
     "python_custom_op_proto.cc"
+    "python_custom_op_restore_hook.cc"
 )
 
 target_compile_definitions(custom_op_runtime PRIVATE

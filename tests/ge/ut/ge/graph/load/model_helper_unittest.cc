@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <stdio.h>
 #include <gtest/gtest.h>
 #include <dlfcn.h>
 #include <algorithm>
@@ -20,6 +19,7 @@
 #include <fstream>
 #include <mutex>
 #include <set>
+#include <string>
 #include <thread>
 #include <utility>
 #include "mmpa/mmpa_api.h"
@@ -56,7 +56,10 @@
 #include "graph/custom_op_registry.h"
 #include "graph/custom_op/op_proto_ledger.h"
 #include "graph/custom_op/framework_hosted_op.h"
+#include "graph/custom_op/artifact_provider.h"
+#include "graph/custom_op/model_scope.h"
 #include "graph/operator_factory_impl.h"
+#include "runtime/custom_op/python_custom_op_bridge_c_api.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 
 using namespace std;
@@ -85,6 +88,9 @@ constexpr const char *kPortableOpEmptyTypeForModelHelper = "ModelHelperPortableO
 constexpr const char *kPortableOpSerializeFailTypeForModelHelper = "ModelHelperPortableOpSerializeFailForUt";
 constexpr const char *kNonPortableOpTypeForModelHelper = "ModelHelperNonPortableOpForUt";
 constexpr const char *kFrameworkHostedOpTypeForModelHelper = "ModelHelperFrameworkHostedOpForUt";
+constexpr const char *kPythonDeployOnlyOpTypeForModelHelper = "ModelHelperPythonDeployOnlyOpForUt";
+constexpr const char *kPythonPortableDeployOpTypeForModelHelper = "ModelHelperPythonPortableDeployOpForUt";
+constexpr const char *kPythonNoDeployOpTypeForModelHelper = "ModelHelperPythonNoDeployOpForUt";
 constexpr const char *kNullInstanceOpTypeForModelHelper = "ModelHelperNullInstanceOpForUt";
 constexpr const char *kUnregisteredPortableOpTypeForModelHelper = "ModelHelperUnregisteredPortableOpForUt";
 constexpr const char *kRegistryOnlyPortableOpTypeForModelHelper = "ModelHelperRegistryOnlyPortableOpForUt";
@@ -572,6 +578,113 @@ class ModelHelperFrameworkHostedOpForUt : public EagerExecuteOp, public Framewor
     return ge::GRAPH_SUCCESS;
   }
 };
+
+// 构造一个通过 PythonCustomOpPackageBuilder::ValidateArtifact 的最小合法 artifact：
+// artifact_id 是 source_sha256 的 64 字符小写十六进制；source 非空；descriptors 非空。
+static std::shared_ptr<const PythonCustomOpDeploymentArtifact> MakeDeploymentArtifactForUt(const std::string &op_type,
+                                                                                           const uint8_t seed) {
+  auto artifact = std::make_shared<PythonCustomOpDeploymentArtifact>();
+  artifact->bridge_abi_version = custom_op::kPythonCustomOpBridgeAbiVersion;
+  artifact->producer_python_major = 3U;
+  artifact->producer_python_minor = 9U;
+  for (size_t i = 0U; i < PythonCustomOpDeploymentArtifact::kSha256Len; ++i) {
+    artifact->source_sha256[i] = static_cast<uint8_t>(seed + i);
+  }
+  static constexpr char kHexDigits[] = "0123456789abcdef";
+  std::string hex;
+  hex.reserve(PythonCustomOpDeploymentArtifact::kArtifactIdLen);
+  for (const auto byte : artifact->source_sha256) {
+    hex.push_back(kHexDigits[(byte >> 4U) & 0x0FU]);
+    hex.push_back(kHexDigits[byte & 0x0FU]);
+  }
+  artifact->artifact_id = std::move(hex);
+  artifact->source_name = "plugin.py";
+  artifact->source = std::make_shared<std::vector<uint8_t>>(std::vector<uint8_t>{'p', 'a', 's', 's', '\n'});
+  PythonOpDescriptorSnapshot snapshot;
+  snapshot.op_type = op_type;
+  snapshot.class_name = op_type;
+  snapshot.capabilities = 0U;
+  artifact->descriptors.emplace_back(snapshot);
+  return artifact;
+}
+
+// 「仅源码无 state」的无状态 Python 算子：继承 FrameworkHostedOp（判 Python）与
+// CustomOpArtifactProvider（交出源码 artifact），但**不**继承 PortableOp，故不产生 CUSTOM_OPS 数据。
+class ModelHelperPythonDeployOnlyOpForUt : public EagerExecuteOp,
+                                           public FrameworkHostedOp,
+                                           public CustomOpArtifactProvider {
+ public:
+  explicit ModelHelperPythonDeployOnlyOpForUt(const std::string &op_type)
+      : artifact_(MakeDeploymentArtifactForUt(op_type, 0x11U)) {}
+
+  ge::graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
+    (void)ctx;
+    return ge::GRAPH_SUCCESS;
+  }
+
+  std::vector<std::shared_ptr<const PythonCustomOpDeploymentArtifact>> GetDeploymentArtifacts() const override {
+    return {artifact_};
+  }
+
+ private:
+  std::shared_ptr<const PythonCustomOpDeploymentArtifact> artifact_;
+};
+
+// 「portable + 源码」的有状态 Python 算子：同时产出 CUSTOM_OPS（state）与 PYTHON_CUSTOM_OPS（源码）。
+class ModelHelperPythonPortableDeployOpForUt : public EagerExecuteOp,
+                                               public PortableOp,
+                                               public FrameworkHostedOp,
+                                               public CustomOpArtifactProvider {
+ public:
+  explicit ModelHelperPythonPortableDeployOpForUt(const std::string &op_type)
+      : artifact_(MakeDeploymentArtifactForUt(op_type, 0x22U)) {}
+
+  ge::graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
+    (void)ctx;
+    return ge::GRAPH_SUCCESS;
+  }
+
+  ge::graphStatus Serialize(std::vector<uint8_t> &buffer) override {
+    buffer = kPortableKernelBinForModelHelper;
+    return ge::GRAPH_SUCCESS;
+  }
+
+  ge::graphStatus Deserialize(const std::vector<uint8_t> &buffer) override {
+    (void)buffer;
+    return ge::GRAPH_SUCCESS;
+  }
+
+  std::vector<std::shared_ptr<const PythonCustomOpDeploymentArtifact>> GetDeploymentArtifacts() const override {
+    return {artifact_};
+  }
+
+ private:
+  std::shared_ptr<const PythonCustomOpDeploymentArtifact> artifact_;
+};
+
+// 图中使用的 Python 算子（FrameworkHostedOp）但无可打包源码（artifact 为空，对应源码不可定位形态）。
+class ModelHelperPythonNoDeployOpForUt : public EagerExecuteOp, public FrameworkHostedOp {
+ public:
+  ge::graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
+    (void)ctx;
+    return ge::GRAPH_SUCCESS;
+  }
+};
+
+// 查找已保存的 PYTHON_CUSTOM_OPS 分区，供「源码入 OM」断言使用。
+static bool FindPythonCustomOpsPartitionForModelHelperUt(const std::shared_ptr<OmFileSaveHelper> &om_file_save_helper,
+                                                         ModelPartition &partition) {
+  if (om_file_save_helper == nullptr || om_file_save_helper->model_contexts_.empty()) {
+    return false;
+  }
+  for (const auto &saved_partition : om_file_save_helper->model_contexts_[0U].partition_datas_) {
+    if (saved_partition.type == ModelPartitionType::PYTHON_CUSTOM_OPS) {
+      partition = saved_partition;
+      return true;
+    }
+  }
+  return false;
+}
 
 static void RegisterCustomOpCreatorForModelHelperUt(const std::string &op_type, const BaseOpCreator &creator) {
   const auto ret = CustomOpFactory::RegisterCustomOpCreator(op_type.c_str(), creator);
@@ -1408,6 +1521,30 @@ TEST_F(UtestModelHelper, LoadCustomOpsWithRegistryShouldNotUseGlobalFactory) {
   EXPECT_FALSE(CustomOpFactory::IsExistOp(kRegistryOnlyPortableOpTypeForModelHelper));
 }
 
+// 反向判据（复用现有失败路径）：CUSTOM_OPS 携带的 op_type 在模型级 registry 里没有 portable
+// creator（「有 state 无源码」形态，或源码恢复未注册该 creator）时，反序列化必须点名失败，
+// 不得静默通过把错误推迟到执行期。这是该形态在加载期的唯一防线。
+TEST_F(UtestModelHelper, LoadCustomOpsShouldFailWhenStateHasNoPortableCreator) {
+  OmFileLoadHelper load_helper;
+  load_helper.is_inited_ = true;
+
+  const auto payload = BuildExpectedCustomOpsDataForModelHelperUt(kRegistryOnlyPortableOpTypeForModelHelper,
+                                                                  kPortableKernelBinForModelHelper);
+  OmFileContext cur_ctx;
+  ModelPartition custom_partition;
+  custom_partition.type = ModelPartitionType::CUSTOM_OPS;
+  custom_partition.data = payload.data();
+  custom_partition.size = payload.size();
+  cur_ctx.partition_datas_.push_back(custom_partition);
+  load_helper.model_contexts_.push_back(cur_ctx);
+
+  // 模型级 registry 不注册任何 creator，模拟「CUSTOM_OPS 有 state 但对应源码 creator 未恢复」。
+  auto registry = std::make_shared<CustomOpRegistry>();
+
+  ModelHelper model_helper;
+  EXPECT_NE(model_helper.LoadCustomOps(load_helper, registry), SUCCESS);
+}
+
 TEST_F(UtestModelHelper, LoadCustomOpRegistryShouldCreateEmptyModelRegistryWhenNoSoBinsOrCustomOps) {
   OmFileLoadHelper load_helper;
   load_helper.is_inited_ = true;
@@ -1552,6 +1689,69 @@ TEST_F(UtestModelHelper, ValidateCustomOpsDeserializedSucceedsWhenUsedCreatorHas
   EXPECT_EQ(model_helper.ValidateCustomOpsDeserialized(ge_root_model, registry), SUCCESS);
 }
 
+// 缺失/能力不匹配档：PYTHON_CUSTOM_OPS manifest 声明过、被图使用却无 creator 的
+// op_type，从静默跳过升级为点名硬失败（模拟源码执行失败或与 manifest 能力不匹配）。
+TEST_F(UtestModelHelper, ValidateCustomOpsDeserializedFailsWhenManifestOpTypeUsedButNoCreator) {
+  const auto ge_root_model = CreateGeRootModelForModelHelperUt(kRegistryOnlyPortableOpTypeForModelHelper, "");
+  ASSERT_NE(ge_root_model, nullptr);
+  auto registry = std::make_shared<CustomOpRegistry>();
+  CustomOpRegistry::PythonRestoreManifest manifest;
+  (void)manifest.manifest_op_types.insert(kRegistryOnlyPortableOpTypeForModelHelper);
+  registry->SetPythonRestoreManifest(std::move(manifest));
+
+  ModelHelper model_helper;
+  EXPECT_NE(model_helper.ValidateCustomOpsDeserialized(ge_root_model, registry), SUCCESS);
+}
+
+// 零回归：manifest 为空（等价于纯 C++/无 Python 分区路径）时，图中 op_type 无 creator
+// 保持原静默跳过语义，不得失败。
+TEST_F(UtestModelHelper, ValidateCustomOpsDeserializedSkipsNonManifestOpTypeWithoutCreator) {
+  const auto ge_root_model = CreateGeRootModelForModelHelperUt(kRegistryOnlyPortableOpTypeForModelHelper, "");
+  ASSERT_NE(ge_root_model, nullptr);
+  auto registry = std::make_shared<CustomOpRegistry>();
+
+  ModelHelper model_helper;
+  EXPECT_EQ(model_helper.ValidateCustomOpsDeserialized(ge_root_model, registry), SUCCESS);
+}
+
+// 冲突档：Python-C++ 冲突被跳过（registry 内已有 C++ creator，HasCreator 为真）
+// 且被图使用 → 点名硬失败。判据独立于 HasCreator。
+TEST_F(UtestModelHelper, ValidateCustomOpsDeserializedFailsWhenConflictSkippedOpTypeUsed) {
+  const auto ge_root_model = CreateGeRootModelForModelHelperUt(kRegistryOnlyPortableOpTypeForModelHelper, "");
+  ASSERT_NE(ge_root_model, nullptr);
+  auto registry = std::make_shared<CustomOpRegistry>();
+  // 已有 C++ SO creator，使 HasCreator 为真；Python creator 因冲突被跳过
+  ASSERT_EQ(registry->RegisterCreator(
+                kRegistryOnlyPortableOpTypeForModelHelper, OpBackend::kDevice,
+                []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<ModelHelperPortableOpForUt>(); }),
+            GRAPH_SUCCESS);
+  CustomOpRegistry::PythonRestoreManifest manifest;
+  (void)manifest.conflict_skipped_op_types.insert(kRegistryOnlyPortableOpTypeForModelHelper);
+  registry->SetPythonRestoreManifest(std::move(manifest));
+
+  ModelHelper model_helper;
+  EXPECT_NE(model_helper.ValidateCustomOpsDeserialized(ge_root_model, registry), SUCCESS);
+}
+
+// 正常路径：manifest op_type 成功恢复出 creator 与实例 → 通过（manifest 判据只在
+// !HasCreator 时触发，恢复成功路径不受影响）。
+TEST_F(UtestModelHelper, ValidateCustomOpsDeserializedSucceedsWhenManifestOpTypeRestoredWithInstance) {
+  const auto ge_root_model = CreateGeRootModelForModelHelperUt(kRegistryOnlyPortableOpTypeForModelHelper, "");
+  ASSERT_NE(ge_root_model, nullptr);
+  auto registry = std::make_shared<CustomOpRegistry>();
+  ASSERT_EQ(registry->RegisterCreator(
+                kRegistryOnlyPortableOpTypeForModelHelper, OpBackend::kDevice,
+                []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<ModelHelperPortableOpForUt>(); }),
+            GRAPH_SUCCESS);
+  ASSERT_NE(registry->CreateOrGetCustomOp(kRegistryOnlyPortableOpTypeForModelHelper, OpBackend::kDevice), nullptr);
+  CustomOpRegistry::PythonRestoreManifest manifest;
+  (void)manifest.manifest_op_types.insert(kRegistryOnlyPortableOpTypeForModelHelper);
+  registry->SetPythonRestoreManifest(std::move(manifest));
+
+  ModelHelper model_helper;
+  EXPECT_EQ(model_helper.ValidateCustomOpsDeserialized(ge_root_model, registry), SUCCESS);
+}
+
 TEST_F(UtestModelHelper, SerializeCustomOpKernelNullPortableOpReturnsFailed) {
   ModelHelper model_helper;
   std::vector<uint8_t> merged_kernels = {0xB0U};
@@ -1663,7 +1863,10 @@ TEST_F(UtestModelHelper, SaveCustomOpsPartitionHasSerializablePortableOpsSavesPa
   ModelPartition custom_partition;
   ASSERT_TRUE(FindCustomOpsPartitionForModelHelperUt(om_file_save_helper, custom_partition));
   ASSERT_FALSE(om_file_save_helper->model_contexts_.empty());
+  // 回归：纯 C++ PortableOp 只有 state、没有 Python 源码，是合法形态而非半成品；
+  // 不得因此失败，也不得额外写出 PYTHON_CUSTOM_OPS 分区。
   ASSERT_EQ(om_file_save_helper->model_contexts_[0U].owned_partitions_.size(), 1U);
+  ASSERT_EQ(om_file_save_helper->model_contexts_[0U].partition_datas_[0U].type, ModelPartitionType::CUSTOM_OPS);
   EXPECT_EQ(custom_partition.data, om_file_save_helper->model_contexts_[0U].owned_partitions_[0U]->data());
 
   const auto expected_partition_size =
@@ -1725,6 +1928,107 @@ TEST_F(UtestModelHelper, SaveCustomOpsPartitionPortableAndNonPortableMixedSuccee
   const auto expected_partition_size =
       sizeof(CustomKernelItemHeader) + strlen(kPortableOpTypeForModelHelper) + kPortableKernelBinForModelHelper.size();
   ASSERT_EQ(custom_partition.size, expected_partition_size);
+}
+
+// 组合「仅源码无 state」：无状态 Python 算子只写 PYTHON_CUSTOM_OPS，不写 CUSTOM_OPS，且保存成功
+// （此形态明确判为合法，原设计误判为半成品而失败）。
+TEST_F(UtestModelHelper, SaveCustomOpsPartitionDeployOnlyWithoutStateSucceeds) {
+  RegisterCustomOpCreatorForModelHelperUt(kPythonDeployOnlyOpTypeForModelHelper, []() -> std::unique_ptr<BaseCustomOp> {
+    return std::make_unique<ModelHelperPythonDeployOnlyOpForUt>(kPythonDeployOnlyOpTypeForModelHelper);
+  });
+  const auto ge_root_model =
+      CreateGeRootModelForModelHelperUt(kPythonDeployOnlyOpTypeForModelHelper, kPythonDeployOnlyOpTypeForModelHelper);
+  ASSERT_NE(ge_root_model, nullptr);
+
+  std::shared_ptr<OmFileSaveHelper> om_file_save_helper = std::make_shared<OmFileSaveHelper>();
+  ModelHelper model_helper;
+  ASSERT_EQ(model_helper.SaveCustomOpsPartition(om_file_save_helper, ge_root_model), SUCCESS);
+
+  // 源码分区必须写出且非空；state 分区不得写出（算子非 PortableOp，根本不进 Serialize 链）。
+  ModelPartition python_partition;
+  ASSERT_TRUE(FindPythonCustomOpsPartitionForModelHelperUt(om_file_save_helper, python_partition));
+  ASSERT_GT(python_partition.size, 0U);
+  ModelPartition custom_partition;
+  EXPECT_FALSE(FindCustomOpsPartitionForModelHelperUt(om_file_save_helper, custom_partition));
+}
+
+// 组合「portable + 源码」：有状态 Python 算子同时写 CUSTOM_OPS 与 PYTHON_CUSTOM_OPS。
+TEST_F(UtestModelHelper, SaveCustomOpsPartitionPortableAndDeployWritesBothPartitions) {
+  RegisterCustomOpCreatorForModelHelperUt(
+      kPythonPortableDeployOpTypeForModelHelper, []() -> std::unique_ptr<BaseCustomOp> {
+        return std::make_unique<ModelHelperPythonPortableDeployOpForUt>(kPythonPortableDeployOpTypeForModelHelper);
+      });
+  const auto ge_root_model = CreateGeRootModelForModelHelperUt(kPythonPortableDeployOpTypeForModelHelper,
+                                                               kPythonPortableDeployOpTypeForModelHelper);
+  ASSERT_NE(ge_root_model, nullptr);
+
+  std::shared_ptr<OmFileSaveHelper> om_file_save_helper = std::make_shared<OmFileSaveHelper>();
+  ModelHelper model_helper;
+  ASSERT_EQ(model_helper.SaveCustomOpsPartition(om_file_save_helper, ge_root_model), SUCCESS);
+
+  ModelPartition custom_partition;
+  ASSERT_TRUE(FindCustomOpsPartitionForModelHelperUt(om_file_save_helper, custom_partition));
+  ASSERT_GT(custom_partition.size, 0U);
+  ModelPartition python_partition;
+  ASSERT_TRUE(FindPythonCustomOpsPartitionForModelHelperUt(om_file_save_helper, python_partition));
+  ASSERT_GT(python_partition.size, 0U);
+}
+
+// 图中使用的 Python 算子无可打包源码（artifact 为空）：保存侧不拦截（fail-open），OM 照常产出，
+// 只是不进 PYTHON_CUSTOM_OPS；恢复失败延后到加载/执行期暴露。
+TEST_F(UtestModelHelper, SaveCustomOpsPartitionPythonWithoutDeploySkipsPythonPartition) {
+  RegisterCustomOpCreatorForModelHelperUt(kPythonNoDeployOpTypeForModelHelper, []() -> std::unique_ptr<BaseCustomOp> {
+    return std::make_unique<ModelHelperPythonNoDeployOpForUt>();
+  });
+  const auto ge_root_model =
+      CreateGeRootModelForModelHelperUt(kPythonNoDeployOpTypeForModelHelper, kPythonNoDeployOpTypeForModelHelper);
+  ASSERT_NE(ge_root_model, nullptr);
+
+  std::shared_ptr<OmFileSaveHelper> om_file_save_helper = std::make_shared<OmFileSaveHelper>();
+  ModelHelper model_helper;
+  EXPECT_EQ(model_helper.SaveCustomOpsPartition(om_file_save_helper, ge_root_model), SUCCESS);
+
+  ModelPartition python_partition;
+  EXPECT_FALSE(FindPythonCustomOpsPartitionForModelHelperUt(om_file_save_helper, python_partition));
+}
+
+// DetectUsedPythonDeployCustomOp：无状态 deploy-only 算子应置位 has_python_deploy_custom_op，
+// 证明识别判据已与 portable 解耦（旧逻辑只在 PortableOp 分支内查 artifact，会漏判此形态）。
+TEST_F(UtestModelHelper, DetectUsedPythonDeployCustomOpDeployOnlySetsFlag) {
+  RegisterCustomOpCreatorForModelHelperUt(kPythonDeployOnlyOpTypeForModelHelper, []() -> std::unique_ptr<BaseCustomOp> {
+    return std::make_unique<ModelHelperPythonDeployOnlyOpForUt>(kPythonDeployOnlyOpTypeForModelHelper);
+  });
+  const auto ge_root_model =
+      CreateGeRootModelForModelHelperUt(kPythonDeployOnlyOpTypeForModelHelper, kPythonDeployOnlyOpTypeForModelHelper);
+  ASSERT_NE(ge_root_model, nullptr);
+
+  ModelHelper model_helper;
+  std::set<std::string> used_custom_op_types;
+  bool has_python_deploy_custom_op = false;
+  ASSERT_EQ(
+      model_helper.DetectUsedPythonDeployCustomOp(ge_root_model, used_custom_op_types, has_python_deploy_custom_op),
+      SUCCESS);
+  EXPECT_TRUE(has_python_deploy_custom_op);
+  EXPECT_EQ(used_custom_op_types.count(kPythonDeployOnlyOpTypeForModelHelper), 1U);
+}
+
+// DetectUsedPythonDeployCustomOp：图中使用的 Python 算子无可打包源码（artifact 为空），保存侧不拦截，
+// 只是不置位 has_python_deploy_custom_op（该算子不进 PYTHON_CUSTOM_OPS）。
+TEST_F(UtestModelHelper, DetectUsedPythonDeployCustomOpNoDeployDoesNotSetFlag) {
+  RegisterCustomOpCreatorForModelHelperUt(kPythonNoDeployOpTypeForModelHelper, []() -> std::unique_ptr<BaseCustomOp> {
+    return std::make_unique<ModelHelperPythonNoDeployOpForUt>();
+  });
+  const auto ge_root_model =
+      CreateGeRootModelForModelHelperUt(kPythonNoDeployOpTypeForModelHelper, kPythonNoDeployOpTypeForModelHelper);
+  ASSERT_NE(ge_root_model, nullptr);
+
+  ModelHelper model_helper;
+  std::set<std::string> used_custom_op_types;
+  bool has_python_deploy_custom_op = true;
+  EXPECT_EQ(
+      model_helper.DetectUsedPythonDeployCustomOp(ge_root_model, used_custom_op_types, has_python_deploy_custom_op),
+      SUCCESS);
+  EXPECT_FALSE(has_python_deploy_custom_op);
 }
 
 TEST_F(UtestModelHelper, SaveCustomOpsPartitionSkipsRootGraphRepeatedInSubgraphMap) {
@@ -3432,7 +3736,105 @@ OmFileLoadHelper BuildSoBinsOnlyLoadHelperForUt(const std::vector<uint8_t> &so_p
   load_helper.model_contexts_.push_back(cur_ctx);
   return load_helper;
 }
+
+// 记录调用次数的 PYTHON_CUSTOM_OPS 恢复 hook，用于断言加载控制流走到 Restore()。
+class RecordingRestoreHookForUt : public PythonCustomOpRestoreHook {
+ public:
+  graphStatus Restore(const uint8_t *data, size_t len, const CustomOpRegistryPtr &registry) override {
+    (void)data;
+    ++restore_call_count;
+    last_len = len;
+    last_registry = registry;
+    return restore_ret;
+  }
+  int restore_call_count = 0;
+  size_t last_len = 0U;
+  CustomOpRegistryPtr last_registry;
+  graphStatus restore_ret = SUCCESS;
+};
+
+// 构造仅含 PYTHON_CUSTOM_OPS 分区（无 SO_BINS）的纯 Python OM load helper（fall-through 目标形态）。
+OmFileLoadHelper BuildPythonOnlyLoadHelperForUt(const std::vector<uint8_t> &python_payload) {
+  OmFileLoadHelper load_helper;
+  load_helper.is_inited_ = true;
+  OmFileContext cur_ctx;
+  ModelPartition python_partition;
+  python_partition.type = ModelPartitionType::PYTHON_CUSTOM_OPS;
+  python_partition.data = python_payload.data();
+  python_partition.size = python_payload.size();
+  cur_ctx.partition_datas_.push_back(python_partition);
+  load_helper.model_contexts_.push_back(cur_ctx);
+  return load_helper;
+}
 }  // namespace
+
+// 纯 Python OM（无 SO_BINS）不得 early-return 设空 registry，必须 fall-through 走到 Restore()。
+TEST_F(UtestModelHelper, LoadCustomOpRegistryShouldRestorePythonPartitionWithoutSoBins) {
+  RecordingRestoreHookForUt hook;
+  SetPythonCustomOpRestoreHook(&hook);
+  const std::vector<uint8_t> payload(64U, 0xABU);
+  auto load_helper = BuildPythonOnlyLoadHelperForUt(payload);
+  auto ge_root_model = BuildRootModelForCustomOpLoadUt("python_only_restore_graph");
+  ASSERT_NE(ge_root_model, nullptr);
+
+  ModelHelper model_helper;
+  EXPECT_EQ(model_helper.LoadCustomOpRegistry(load_helper, ge_root_model), SUCCESS);
+  EXPECT_EQ(hook.restore_call_count, 1);
+  EXPECT_EQ(hook.last_len, payload.size());
+  // Restore 收到的必须是模型级 registry，且已被挂到 root model 上。
+  ASSERT_NE(ge_root_model->GetCustomOpRegistry(), nullptr);
+  EXPECT_EQ(hook.last_registry, ge_root_model->GetCustomOpRegistry());
+  SetPythonCustomOpRestoreHook(nullptr);
+}
+
+// OM 携带 PYTHON_CUSTOM_OPS 但恢复 hook 未注册时，必须点名 Python 显式失败，不得静默跳过。
+TEST_F(UtestModelHelper, LoadCustomOpRegistryShouldFailWhenPythonPartitionPresentButNoHook) {
+  SetPythonCustomOpRestoreHook(nullptr);
+  ASSERT_EQ(GetPythonCustomOpRestoreHook(), nullptr);
+  const std::vector<uint8_t> payload(32U, 0xCDU);
+  auto load_helper = BuildPythonOnlyLoadHelperForUt(payload);
+  auto ge_root_model = BuildRootModelForCustomOpLoadUt("python_only_no_hook_graph");
+  ASSERT_NE(ge_root_model, nullptr);
+
+  ModelHelper model_helper;
+  EXPECT_EQ(model_helper.LoadCustomOpRegistry(load_helper, ge_root_model), FAILED);
+  // 失败时不得把半成品 registry 挂到 root model 上。
+  EXPECT_EQ(ge_root_model->GetCustomOpRegistry(), nullptr);
+}
+
+// Restore() 返回失败必须向上传播，且不得设置 registry。
+TEST_F(UtestModelHelper, LoadCustomOpRegistryShouldPropagateRestoreFailure) {
+  RecordingRestoreHookForUt hook;
+  hook.restore_ret = FAILED;
+  SetPythonCustomOpRestoreHook(&hook);
+  const std::vector<uint8_t> payload(16U, 0x11U);
+  auto load_helper = BuildPythonOnlyLoadHelperForUt(payload);
+  auto ge_root_model = BuildRootModelForCustomOpLoadUt("python_restore_fail_graph");
+  ASSERT_NE(ge_root_model, nullptr);
+
+  ModelHelper model_helper;
+  EXPECT_EQ(model_helper.LoadCustomOpRegistry(load_helper, ge_root_model), FAILED);
+  EXPECT_EQ(hook.restore_call_count, 1);
+  EXPECT_EQ(ge_root_model->GetCustomOpRegistry(), nullptr);
+  SetPythonCustomOpRestoreHook(nullptr);
+}
+
+// 空 PYTHON_CUSTOM_OPS 分区（size==0）不算携带源码，走原空 registry 分支且不触发 hook。
+TEST_F(UtestModelHelper, LoadCustomOpRegistryShouldTreatEmptyPythonPartitionAsAbsent) {
+  RecordingRestoreHookForUt hook;
+  SetPythonCustomOpRestoreHook(&hook);
+  OmFileLoadHelper load_helper;
+  load_helper.is_inited_ = true;
+  load_helper.model_contexts_.emplace_back(OmFileContext{});
+  auto ge_root_model = BuildRootModelForCustomOpLoadUt("python_empty_partition_graph");
+  ASSERT_NE(ge_root_model, nullptr);
+
+  ModelHelper model_helper;
+  EXPECT_EQ(model_helper.LoadCustomOpRegistry(load_helper, ge_root_model), SUCCESS);
+  EXPECT_EQ(hook.restore_call_count, 0);
+  ASSERT_NE(ge_root_model->GetCustomOpRegistry(), nullptr);
+  SetPythonCustomOpRestoreHook(nullptr);
+}
 
 // E2E：同名异内容双模型 → 后加载者被无条件拦截；拦截后全局状态等价
 TEST_F(UtestModelHelper, LoadCustomOpRegistryShouldBlockConflictingImplementation) {

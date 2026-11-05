@@ -13,6 +13,17 @@ add_subdirectory(slice)
 add_subdirectory(common/om2/model_data)
 
 ##################################################################
+# python_custom_op.proto 只有 base 使用（PYTHON_CUSTOM_OPS 分区的序列化格式），由使用方自己生成并编译：
+# 它不能挂在 graph_metadef 的 metadef_protos 上——产品构建既不设 BUILD_METADEF，也不设 ENABLE_TEST，
+# graph_metadef 整个不参与配置，那份 .pb.h 没有生成者、.pb.cc 也没有编译者。
+set(PYTHON_CUSTOM_OP_PROTO_LIST
+    "${METADEF_PROTO_DIR}/python_custom_op.proto"
+)
+generate_cann_protobuf(python_custom_op_protos PYTHON_CUSTOM_OP_PROTO_SRCS PYTHON_CUSTOM_OP_PROTO_HDRS
+    ${PYTHON_CUSTOM_OP_PROTO_LIST} "--proto_path=${METADEF_PROTO_DIR}" TARGET)
+set(PYTHON_CUSTOM_OP_PROTO_INCLUDE_DIR "${CMAKE_BINARY_DIR}/proto/python_custom_op_protos")
+
+##################################################################
 set(SRC_FORMAT_TRANSFERS
     "${AIR_CODE_DIR}/base/formats/format_transfers/format_transfer_c1hwncoc0_hwcn.cc"
     "${AIR_CODE_DIR}/base/formats/format_transfers/format_transfer_dhwcn_fractal_z_3D.cc"
@@ -188,6 +199,7 @@ set(SRC_BASE_LIST
     "common/helper/custom_op_registry_builder.cc"
     "common/helper/custom_op_so_loader.cc"
     "common/helper/model_custom_kernels_helper.cc"
+    "common/helper/python_custom_op_package_helper.cc"
     "common/helper/pre_model_helper.cc"
     "common/helper/nano_model_save_helper.cc"
     "common/helper/om_file_helper.cc"
@@ -372,10 +384,12 @@ target_link_libraries(ge_common
 add_library(ge_common_base SHARED
     ${SRC_BASE_LIST}
     ${SRC_FORMAT_TRANSFERS}
+    ${PYTHON_CUSTOM_OP_PROTO_SRCS}
 )
 
 add_dependencies(ge_common_base
     graphengine_protos
+    python_custom_op_protos
 )
 
 target_compile_definitions(ge_common_base PRIVATE
@@ -398,6 +412,7 @@ target_include_directories(ge_common_base PRIVATE
     ${AIR_CODE_DIR}/inc/graph_metadef
     ${CMAKE_BINARY_DIR}
     ${CMAKE_BINARY_DIR}/proto/graphengine_protos
+    ${PYTHON_CUSTOM_OP_PROTO_INCLUDE_DIR}
     ${TOP_DIR}/runtime/pkg_inc
     ${TOP_DIR}/metadef/inc
     ${TOP_DIR}/air/inc/external
@@ -454,10 +469,12 @@ add_library(ge_common_static STATIC
     ${SRC_LIST}
     ${SRC_BASE_LIST}
     ${SRC_FORMAT_TRANSFERS}
+    ${PYTHON_CUSTOM_OP_PROTO_SRCS}
 )
 
 add_dependencies(ge_common_static
     graphengine_protos
+    python_custom_op_protos
 )
 
 target_compile_definitions(ge_common_static PRIVATE
@@ -486,6 +503,7 @@ target_include_directories(ge_common_static PRIVATE
     ${AIR_CODE_DIR}/inc/framework
     ${CMAKE_BINARY_DIR}
     ${CMAKE_BINARY_DIR}/proto/graphengine_protos
+    ${PYTHON_CUSTOM_OP_PROTO_INCLUDE_DIR}
     ${ASCGEN_DIR}/inc
     ${METADEF_DIR}/pkg_inc
 )
@@ -577,11 +595,13 @@ target_link_libraries(ge_common
 add_library(ge_common_base SHARED
     ${SRC_BASE_LIST}
     ${SRC_FORMAT_TRANSFERS}
+    ${PYTHON_CUSTOM_OP_PROTO_SRCS}
         common/memory/tensor_trans_utils.cc
         common/memory/tensor_trans_utils.h
 )
 add_dependencies(ge_common_base
     graphengine_protos
+    python_custom_op_protos
 )
 
 target_compile_definitions(ge_common_base PRIVATE
@@ -604,6 +624,7 @@ target_include_directories(ge_common_base PRIVATE
     ${AIR_CODE_DIR}/inc/framework
     ${CMAKE_BINARY_DIR}
     ${CMAKE_BINARY_DIR}/proto/graphengine_protos
+    ${PYTHON_CUSTOM_OP_PROTO_INCLUDE_DIR}
     ${ASCGEN_DIR}/inc
     ${TOP_DIR}/air/inc/external
     ${TOP_DIR}/runtime/include/external
@@ -650,7 +671,7 @@ endif ()
 if ("${PRODUCT}" STREQUAL "ascend031")
     target_clone(ge_common_base ge_common_base_static STATIC)
 
-    add_dependencies(ge_common_base_static graphengine_protos)
+    add_dependencies(ge_common_base_static graphengine_protos python_custom_op_protos)
 
     target_compile_options(ge_common_base_static PRIVATE
         -Os

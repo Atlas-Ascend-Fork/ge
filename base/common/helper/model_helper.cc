@@ -749,10 +749,19 @@ Status ModelHelper::SaveRootModelPartitionsForOmModel(std::shared_ptr<OmFileSave
   if (has_embedded_custom_so) {
     GE_ASSERT_SUCCESS(ge_root_model->CheckAndSetNeedSoInOM(), "Check embedded custom op so dependencies failed.");
   }
+  // Python 实现的自定义算子没有 SO 可打包，其 creator 只能由 PYTHON_CUSTOM_OPS 分区中的源码恢复，
+  // 因此在线路径也必须写出自定义算子分区。该判据与 SO_BINS 的判据相互独立。
+  std::set<std::string> used_custom_op_types;
+  bool has_python_deploy_custom_op = false;
+  GE_ASSERT_SUCCESS(DetectUsedPythonDeployCustomOp(ge_root_model, used_custom_op_types, has_python_deploy_custom_op),
+                    "[Detect][PythonDeployCustomOp]Failed");
   if (is_offline_ || has_embedded_custom_so) {
     GE_ASSERT_SUCCESS(SaveSoStoreModelPartitionInfo(om_file_save_helper, ge_root_model, output_file_name, ge_model),
                       "[SaveSoStoreModelPartition]Failed");
-    GE_ASSERT_SUCCESS(SaveCustomOpsPartition(om_file_save_helper, ge_root_model), "[Save][CustomOpsPartition]Failed");
+  }
+  if (is_offline_ || has_embedded_custom_so || has_python_deploy_custom_op) {
+    GE_ASSERT_SUCCESS(SaveCustomOpsPartition(om_file_save_helper, ge_root_model, used_custom_op_types),
+                      "[Save][CustomOpsPartition]Failed");
   }
   GE_ASSERT_SUCCESS(SaveTilingData(om_file_save_helper, ge_root_model), "Save tiling data to model failed.");
   return SUCCESS;
@@ -850,11 +859,20 @@ Status ModelHelper::SaveRootModelPartitions(std::shared_ptr<OmFileSaveHelper> &o
   if (has_embedded_custom_so && !has_asc_node) {
     GE_ASSERT_SUCCESS(ge_root_model->CheckAndSetNeedSoInOM(), "Check embedded custom op so dependencies failed.");
   }
+  // Python 实现的自定义算子没有 SO 可打包，其 creator 只能由 PYTHON_CUSTOM_OPS 分区中的源码恢复，
+  // 因此在线路径也必须写出自定义算子分区。该判据与 SO_BINS 的判据相互独立。
+  std::set<std::string> used_custom_op_types;
+  bool has_python_deploy_custom_op = false;
+  GE_ASSERT_SUCCESS(DetectUsedPythonDeployCustomOp(ge_root_model, used_custom_op_types, has_python_deploy_custom_op),
+                    "[Detect][PythonDeployCustomOp]Failed");
   if (is_offline_ || has_asc_node || has_embedded_custom_so) {
     GE_ASSERT_SUCCESS(
         SaveSoStoreModelPartitionInfo(om_file_save_helper, ge_root_model, output_file_name, first_ge_model),
         "[SaveSoStoreModelPartitionInfo]Failed");
-    GE_ASSERT_SUCCESS(SaveCustomOpsPartition(om_file_save_helper, ge_root_model), "[Save][CustomOpsPartition]Failed");
+  }
+  if (is_offline_ || has_asc_node || has_embedded_custom_so || has_python_deploy_custom_op) {
+    GE_ASSERT_SUCCESS(SaveCustomOpsPartition(om_file_save_helper, ge_root_model, used_custom_op_types),
+                      "[Save][CustomOpsPartition]Failed");
   }
   GE_ASSERT_SUCCESS(SaveTilingData(om_file_save_helper, ge_root_model));
   return SUCCESS;

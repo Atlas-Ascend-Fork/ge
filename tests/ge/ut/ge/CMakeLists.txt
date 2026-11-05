@@ -494,11 +494,13 @@ set(MULTI_PARTS_TEST_FILES
     "common/dnnengines_unittest.cc"
     "common/engine_manage_unittest.cc"
     "common/helper/custom_op_registry_builder_unittest.cc"
+    "common/helper/python_custom_op_package_helper_unittest.cc"
     "runtime/custom_op/python_custom_op_ir_meta_unittest.cc"
     "runtime/custom_op/custom_op_loader_unittest.cc"
     "runtime/custom_op/python_custom_op_bridge_loader_unittest.cc"
     "runtime/custom_op/python_custom_op_proto_unittest.cc"
     "runtime/custom_op/python_custom_op_infer_meta_unittest.cc"
+    "runtime/custom_op/python_custom_op_restore_hook_unittest.cc"
     "graph_ir/ge_custom_op_factory_unittest.cc"
     "graph_ir/op_proto_ledger_unittest.cc"
     "graph_ir/ge_custom_op_pull_registry_unittest.cc"
@@ -808,6 +810,7 @@ target_include_directories(ut_libge_multiparts_utest PRIVATE
     ${ASCEND_INSTALL_PATH}/include/exe_graph
     ${ASCGEN_DIR}/inc
     ${CMAKE_BINARY_DIR}/proto/data_flow_protos
+    ${CMAKE_BINARY_DIR}/proto/python_custom_op_protos
     ${AIR_CODE_DIR}/inc/graph_metadef
     ${AIR_CODE_DIR}/pkg_inc
     ${AIR_CODE_DIR}/tests/ge/st/stubs/

@@ -151,6 +151,21 @@ graphStatus CompileMockPythonCustomOp(const void *holder, gert::OpCompileContext
   return ((holder != nullptr) && (ctx != nullptr)) ? GRAPH_SUCCESS : GRAPH_FAILED;
 }
 
+graphStatus SerializeMockPythonCustomOp(const void *holder, std::vector<uint8_t> *output) {
+  if ((holder == nullptr) || (output == nullptr)) {
+    return GRAPH_FAILED;
+  }
+  *output = {0x01U, 0x02U, 0x03U};
+  return GRAPH_SUCCESS;
+}
+
+graphStatus DeserializeMockPythonCustomOp(const void *holder, const uint8_t *data, size_t size) {
+  if ((holder == nullptr) || (data == nullptr) || (size == 0U)) {
+    return GRAPH_FAILED;
+  }
+  return GRAPH_SUCCESS;
+}
+
 void *FailCreatePythonCustomOpHolder(const PythonCustomOpAdapterDescriptorView *) {
   return nullptr;
 }
@@ -516,6 +531,87 @@ TEST(UtestCustomOpCast, rejects_unsupported_python_adapter_capability) {
   callbacks.destroy_impl_holder = DestroyMockPythonCustomOpHolder;
 
   EXPECT_FALSE(PythonCustomOpImplRuntimeRegistry::Register(desc, callbacks));
+}
+
+TEST(UtestCustomOpCast, filters_python_adapter_portable_op_by_capability) {
+  PythonCustomOpAdapterDescriptor desc;
+  desc.impl_descriptor_key = "python_adapter_portable_only_cast";
+  desc.op_type = "PythonAdapterPortableOnlyCast";
+  AddCustomOpCapability(desc.capabilities, CustomOpCapability::kPortable);
+
+  PythonCustomOpAdapterCallbacks callbacks;
+  callbacks.create_impl_holder = CreateMockPythonCustomOpHolder;
+  callbacks.destroy_impl_holder = DestroyMockPythonCustomOpHolder;
+  callbacks.serialize = SerializeMockPythonCustomOp;
+  callbacks.deserialize = DeserializeMockPythonCustomOp;
+
+  ASSERT_TRUE(PythonCustomOpImplRuntimeRegistry::Register(desc, callbacks));
+  {
+    PythonCustomOpAdapter adapter(desc);
+    EXPECT_TRUE(adapter.IsValid());
+
+    BaseCustomOp *base = &adapter;
+    EXPECT_NE(nullptr, CustomOpCast<PortableOp>(base));
+    EXPECT_EQ(nullptr, CustomOpCast<EagerExecuteOp>(base));
+    EXPECT_EQ(nullptr, CustomOpCast<AnnotatedArgsOp>(base));
+    EXPECT_EQ(nullptr, CustomOpCast<CompilableOp>(base));
+    EXPECT_EQ(nullptr, CustomOpCast<ShapeInferOp>(base));
+    EXPECT_EQ(nullptr, CustomOpCast<ArgsUpdater>(base));
+
+    std::vector<uint8_t> buffer;
+    EXPECT_EQ(GRAPH_SUCCESS, CustomOpCast<PortableOp>(base)->Serialize(buffer));
+    EXPECT_EQ(buffer.size(), 3U);
+    EXPECT_EQ(GRAPH_SUCCESS, CustomOpCast<PortableOp>(base)->Deserialize(buffer));
+  }
+  EXPECT_TRUE(PythonCustomOpImplRuntimeRegistry::Unregister(desc.impl_descriptor_key));
+}
+
+TEST(UtestCustomOpCast, exposes_python_adapter_portable_in_dual_mode) {
+  PythonCustomOpAdapterDescriptor desc;
+  desc.impl_descriptor_key = "python_adapter_portable_dual_cast";
+  desc.op_type = "PythonAdapterPortableDualCast";
+  AddCustomOpCapability(desc.capabilities, CustomOpCapability::kEagerExecute);
+  AddCustomOpCapability(desc.capabilities, CustomOpCapability::kPortable);
+
+  PythonCustomOpAdapterCallbacks callbacks;
+  callbacks.create_impl_holder = CreateMockPythonCustomOpHolder;
+  callbacks.destroy_impl_holder = DestroyMockPythonCustomOpHolder;
+  callbacks.execute = ExecuteMockPythonCustomOp;
+  callbacks.serialize = SerializeMockPythonCustomOp;
+  callbacks.deserialize = DeserializeMockPythonCustomOp;
+
+  ASSERT_TRUE(PythonCustomOpImplRuntimeRegistry::Register(desc, callbacks));
+  {
+    PythonCustomOpAdapter adapter(desc);
+    EXPECT_TRUE(adapter.IsValid());
+    BaseCustomOp *base = &adapter;
+    EXPECT_NE(nullptr, CustomOpCast<EagerExecuteOp>(base));
+    EXPECT_NE(nullptr, CustomOpCast<PortableOp>(base));
+    EXPECT_EQ(nullptr, CustomOpCast<AnnotatedArgsOp>(base));
+  }
+  EXPECT_TRUE(PythonCustomOpImplRuntimeRegistry::Unregister(desc.impl_descriptor_key));
+}
+
+TEST(UtestCustomOpCast, rejects_portable_cast_for_eager_only_adapter) {
+  PythonCustomOpAdapterDescriptor desc;
+  desc.impl_descriptor_key = "python_adapter_eager_no_portable_cast";
+  desc.op_type = "PythonAdapterEagerNoPortableCast";
+  AddCustomOpCapability(desc.capabilities, CustomOpCapability::kEagerExecute);
+
+  PythonCustomOpAdapterCallbacks callbacks;
+  callbacks.create_impl_holder = CreateMockPythonCustomOpHolder;
+  callbacks.destroy_impl_holder = DestroyMockPythonCustomOpHolder;
+  callbacks.execute = ExecuteMockPythonCustomOp;
+
+  ASSERT_TRUE(PythonCustomOpImplRuntimeRegistry::Register(desc, callbacks));
+  {
+    PythonCustomOpAdapter adapter(desc);
+    EXPECT_TRUE(adapter.IsValid());
+    BaseCustomOp *base = &adapter;
+    EXPECT_EQ(nullptr, CustomOpCast<PortableOp>(base));
+    EXPECT_NE(nullptr, CustomOpCast<EagerExecuteOp>(base));
+  }
+  EXPECT_TRUE(PythonCustomOpImplRuntimeRegistry::Unregister(desc.impl_descriptor_key));
 }
 
 TEST(UtestCustomOpCast, rejects_python_adapter_with_missing_impl_key_or_callback) {

@@ -151,12 +151,8 @@ class ScopedArtifactTree {
     }
     root_ = created_dir;
     const std::vector<std::string> dirs = {
-        Path("site-packages"),
-        Path("site-packages/ge"),
-        Path("site-packages/ge/custom_op"),
-        Path("site-packages/ge/custom_op/python_custom_op_artifacts"),
-        ArtifactRoot(),
-    };
+        Path("site-packages"), Path("site-packages/ge"), Path("site-packages/ge/custom_op"),
+        Path("site-packages/ge/custom_op/python_custom_op_artifacts"), ArtifactRoot()};
     for (const auto &dir : dirs) {
       if ((mkdir(dir.c_str(), 0700) != 0) && (errno != EEXIST)) {
         return false;
@@ -180,7 +176,9 @@ class ScopedArtifactTree {
         "  \"platform\": \"" +
         python_artifact::CurrentPlatformTag() +
         "\",\n"
-        "  \"bridge_abi\": 2,\n"
+        "  \"bridge_abi\": " +
+        std::to_string(kPythonCustomOpBridgeAbiVersion) +
+        ",\n"
         "  \"artifacts\": {\n"
         "    \"bridge\": \"" +
         kFakeBridgeArtifactName +
