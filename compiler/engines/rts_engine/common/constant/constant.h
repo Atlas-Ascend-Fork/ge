@@ -43,7 +43,8 @@ constexpr const char_t *kSocType[] = {
     "16",  // CHIP_CLOUD_V5
     "17",  // CHIP_MC62XX
     "18",  // CHIP_MC32XX
-    "19"   // CHIP_ASCEND_350
+    "19",  // CHIP_ASCEND_350
+    "22"   // CHIP_CLOUD_V6
 };
 
 enum RtOpImplType { RT_OP_IMPL_STARS = 0, RT_OP_IMPL_TSCPU = 1 };
