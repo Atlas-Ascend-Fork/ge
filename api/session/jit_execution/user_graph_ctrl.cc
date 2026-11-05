@@ -226,6 +226,8 @@ std::map<AscendString, AscendString> UserGraphControl::GetLoadOptions() const {
 }
 
 Status UserGraphControl::CompileCompleteGraph(uint64_t session_id) {
+  // 共享锁保护整图 CopyComputeGraph(读原图)与图 id 生成，与池线程执行路径对原图的属性写互斥
+  std::lock_guard<std::mutex> locker(compile_mutex_);
   auto iter = user_graph_id_to_ins_id.find(user_graph_id_);
   uint32_t instance_id = 0;
   if (iter == user_graph_id_to_ins_id.end()) {
@@ -301,6 +303,8 @@ Status UserGraphControl::GetCompiledGraphId(uint32_t &graph_id) {
     return SUCCESS;
   }
 
+  // 共享锁保护 GetInputTensors 惰性构造与 GuardCheckCache 读，与池线程执行路径互斥
+  std::lock_guard<std::mutex> locker(compile_mutex_);
   bool is_unknown_input_shape{false};
   const auto &inputs = order_.GetInputTensors(is_unknown_input_shape);
   if (is_unknown_input_shape) {
@@ -313,7 +317,7 @@ Status UserGraphControl::GetCompiledGraphId(uint32_t &graph_id) {
     return GE_GRAPH_NOT_BUILT;
   }
   auto *gep = ep->FindGuarded(inputs);
-  if ((gep == nullptr) || !gep->Compiled()) {
+  if (!JIT_GEP_COMPILED(gep)) {
     GELOGI("GEP is not compiled, user_graph_id:%u", user_graph_id_);
     return GE_GRAPH_NOT_BUILT;
   }

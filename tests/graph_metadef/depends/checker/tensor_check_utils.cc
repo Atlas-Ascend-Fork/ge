@@ -13,6 +13,7 @@
 #include "checker.h"
 #include "tensor_adapter.h"
 
+#include <mutex>
 #include <sstream>
 #include "ge/ge_allocator.h"
 
@@ -27,6 +28,7 @@ class AllocatorUtStub : public Allocator {
     GE_ASSERT_NOTNULL(addr);
     auto block = new (std::nothrow) MemBlock(*this, addr, size);
     GE_ASSERT_NOTNULL(block);
+    const std::lock_guard<std::mutex> lock(mutex_);
     blocks_.insert(block);
     return block;
   }
@@ -35,7 +37,10 @@ class AllocatorUtStub : public Allocator {
   }
   void Free(MemBlock *block) override {
     if (block != nullptr) {
-      blocks_.erase(block);
+      {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        blocks_.erase(block);
+      }
       delete[] reinterpret_cast<uint8_t *>(block->GetAddr());
       delete block;
     }
@@ -47,6 +52,7 @@ class AllocatorUtStub : public Allocator {
   }
 
  private:
+  std::mutex mutex_;
   std::set<MemBlock *> blocks_;
 };
 
