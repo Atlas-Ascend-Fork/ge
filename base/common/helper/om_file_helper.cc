@@ -23,7 +23,9 @@
 
 namespace {
 constexpr uint32_t kOptionalNum = 2U;
-constexpr uint32_t kMaxIncreasePartitionNum = 3U;  // 新增partition类型时需要修改
+// 每新增一个分区类型 +1，用于接受更新版本写出的 OM（读侧向后兼容：老版本读不出
+// 新分区类型，但不拒绝其分区表）。
+constexpr uint32_t kMaxIncreasePartitionNum = 4U;
 constexpr const char *kSocVersion = "soc_version";
 constexpr const char *kArchType = "arch_type";
 }  // namespace
@@ -114,7 +116,7 @@ Status OmFileLoadHelper::GetModelPartition(const ModelPartitionType type, ModelP
   static const std::set<ModelPartitionType> model_partitions = {
       ModelPartitionType::TBE_KERNELS, ModelPartitionType::WEIGHTS_DATA,     ModelPartitionType::CUST_AICPU_KERNELS,
       ModelPartitionType::SO_BINS,     ModelPartitionType::MODEL_INOUT_INFO, ModelPartitionType::TASK_INFO,
-      ModelPartitionType::TILING_DATA, ModelPartitionType::CUSTOM_OPS,
+      ModelPartitionType::TILING_DATA, ModelPartitionType::CUSTOM_OPS,       ModelPartitionType::PYTHON_CUSTOM_OPS,
   };
 
   if (model_partitions.count(type) == 0UL) {

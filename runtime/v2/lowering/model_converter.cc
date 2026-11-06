@@ -26,6 +26,8 @@
 #include "common/ge_inner_attrs.h"
 #include "graph/load/model_manager/model_utils.h"
 #include "common/host_resource_center/host_resource_center.h"
+#include "common/host_resource_center/host_resource_serializer.h"
+#include "common/model/ge_root_model.h"
 #include "graph/utils/graph_dump_utils.h"
 #include "common/opskernel/ops_kernel_info_types.h"
 #include "acl/acl_rt.h"
@@ -524,10 +526,45 @@ ge::graphStatus SetFixedFeatureMemory(const ge::GeRootModelPtr &root_model, Lowe
   }
   return ge::GRAPH_SUCCESS;
 }
+
+bool PrepareFallbackRootModel(const ge::GeRootModelPtr &root_model,
+                              const std::map<std::string, ge::GeModelPtr> &fallback_models,
+                              ge::GeRootModelPtr &fallback_root_model) {
+  fallback_root_model = nullptr;
+  const auto fallback_root_it = fallback_models.find(ge::kFallbackModelKey);
+  if ((root_model == nullptr) || (fallback_root_it == fallback_models.end()) || (fallback_root_it->second == nullptr) ||
+      (fallback_root_it->second->GetGraph() == nullptr)) {
+    return false;
+  }
+  auto forked_root_model = root_model->Fork();
+  if (forked_root_model == nullptr) {
+    return false;
+  }
+  std::vector<std::string> submodel_keys;
+  for (const auto &kv : forked_root_model->GetSubgraphInstanceNameToModel()) {
+    submodel_keys.emplace_back(kv.first);
+  }
+  for (const auto &key : submodel_keys) {
+    forked_root_model->RemoveInstanceSubgraphModel(key);
+  }
+  for (const auto &kv : fallback_models) {
+    forked_root_model->RemoveInstanceSubgraphModel(kv.first);
+    forked_root_model->SetSubgraphInstanceNameToModel(kv.first, kv.second);
+  }
+  forked_root_model->SetRootGraph(fallback_root_it->second->GetGraph());
+  forked_root_model->SetFlattenGraph(nullptr);
+  forked_root_model->SetCurModelId(root_model->GetCurModelId());
+  if (forked_root_model->ModifyOwnerGraphForSubModels() != ge::SUCCESS) {
+    return false;
+  }
+  fallback_root_model = forked_root_model;
+  return true;
+}
+
 }  // namespace
 
-ge::ExecuteGraphPtr ModelConverter::ConvertGeModelToExecuteGraph(const ge::GeRootModelPtr &root_model,
-                                                                 const Args &args) {
+ge::ExecuteGraphPtr ModelConverter::ConvertGeModelToExecuteGraph(const ge::GeRootModelPtr &root_model, const Args &args,
+                                                                 const bool is_fallback) {
   if ((root_model == nullptr) || (root_model->GetRootGraph() == nullptr)) {
     return nullptr;
   }
@@ -544,6 +581,13 @@ ge::ExecuteGraphPtr ModelConverter::ConvertGeModelToExecuteGraph(const ge::GeRoo
   if (flatten_graph == nullptr) {
     GE_ASSERT_GRAPH_SUCCESS(ReadInCompileResults(root_graph, root_model, nodes_to_task_defs, graph_to_static_models));
     InitConstWeights(root_model, require_weight_size);
+    if (is_fallback) {
+      // 兜底体共享主 center，但 WeightManager 只由主 root 的 Initialize 建立；此处只注册权重索引，
+      // 不能调用 TakeOverHostResources，否则会重复对 tiling AddResource。
+      const auto &center = root_model->GetHostResourceCenterPtr();
+      GE_ASSERT_NOTNULL(center);
+      GE_ASSERT_SUCCESS(center->TakeOverWeightResources(root_graph));
+    }
     flatten_graph = GraphUnfolder::IsGraphNeedUnfold(root_graph) ? FlattenComputeGraph(root_graph) : root_graph;
     GE_ASSERT_NOTNULL(flatten_graph);
     GE_ASSERT_GRAPH_SUCCESS(ge::RecoverIrDefinitions(flatten_graph), "Failed to recover ir definitions");
@@ -582,6 +626,22 @@ ge::ExecuteGraphPtr ModelConverter::ConvertGeModelToExecuteGraph(const ge::GeRoo
   GE_ASSERT_NOTNULL(graph, "Failed lowering compute graph %s", flatten_graph->GetName().c_str());
   ge::DumpGraph(graph.get(), "ExecuteGraphAfterSplit");
   return graph;
+}
+
+ge::ExecuteGraphPtr ModelConverter::ConvertFallbackModelToExecuteGraph(
+    const ge::GeRootModelPtr &root_model, const std::map<std::string, ge::GeModelPtr> &fallback_models,
+    const Args &args, ge::GeRootModelPtr &fallback_root_model) {
+  if (!PrepareFallbackRootModel(root_model, fallback_models, fallback_root_model)) {
+    return nullptr;
+  }
+  const auto &center = fallback_root_model->GetHostResourceCenterPtr();
+  GE_ASSERT_NOTNULL(center);
+  GE_ASSERT_SUCCESS(
+      ge::HostResourceSerializer::RecoverOpRunInfoToExtAttrs(*center, fallback_root_model->GetRootGraph()));
+  auto fallback_execute_graph = ConvertGeModelToExecuteGraph(fallback_root_model, args, /*is_fallback=*/true);
+  GELOGI("convert fallback model %s, graph[%s].", (fallback_execute_graph != nullptr) ? "success" : "failed",
+         fallback_root_model->GetRootGraph()->GetName().c_str());
+  return fallback_execute_graph;
 }
 
 ge::ExecuteGraphPtr LoadExecuteGraphFromModelFile(const ge::char_t *const model_path, ge::graphStatus &error_code) {

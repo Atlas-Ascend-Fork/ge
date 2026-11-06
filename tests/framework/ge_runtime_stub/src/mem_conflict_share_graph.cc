@@ -523,7 +523,7 @@ ComputeGraphPtr MemConflictShareGraph::BuildUserInAndRtsSpecialInGraph() {
  */
 ComputeGraphPtr MemConflictShareGraph::BuildUserInRefDataAndRtsSpecialInGraph() {
   vector<int64_t> perm1(1 * 1 * 224 * 224, 0);
-  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}));
+  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}), FORMAT_ND, DT_INT64);
   GeTensorPtr const_tensor1 = std::make_shared<GeTensor>(tensor_desc1, reinterpret_cast<uint8_t *>(perm1.data()),
                                                          sizeof(int64_t) * perm1.size());
   auto constant = OP_CFG(CONSTANT).Weight(const_tensor1);
@@ -555,7 +555,7 @@ ComputeGraphPtr MemConflictShareGraph::BuildUserInRefDataAndRtsSpecialInGraph() 
  */
 ComputeGraphPtr MemConflictShareGraph::BuildUserInRefDataAndRtsSpecialOutGraph() {
   vector<int64_t> perm1(1 * 1 * 224 * 224, 0);
-  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}));
+  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}), FORMAT_ND, DT_INT64);
   GeTensorPtr const_tensor1 = std::make_shared<GeTensor>(tensor_desc1, reinterpret_cast<uint8_t *>(perm1.data()),
                                                          sizeof(int64_t) * perm1.size());
   auto constant = OP_CFG(CONSTANT).Weight(const_tensor1);
@@ -586,7 +586,7 @@ ComputeGraphPtr MemConflictShareGraph::BuildUserInRefDataAndRtsSpecialOutGraph()
  */
 ComputeGraphPtr MemConflictShareGraph::BuildUserInRefDataAndNotSupportRefreshInGraph() {
   vector<int64_t> perm1(1 * 1 * 224 * 224, 0);
-  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}));
+  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}), FORMAT_ND, DT_INT64);
   GeTensorPtr const_tensor1 = std::make_shared<GeTensor>(tensor_desc1, reinterpret_cast<uint8_t *>(perm1.data()),
                                                          sizeof(int64_t) * perm1.size());
   auto constant = OP_CFG(CONSTANT).Weight(const_tensor1);
@@ -613,7 +613,7 @@ ComputeGraphPtr MemConflictShareGraph::BuildUserInRefDataAndNotSupportRefreshInG
  */
 ComputeGraphPtr MemConflictShareGraph::BuildUserInRefDataAndNotSupportRefreshOutGraph() {
   vector<int64_t> perm1(1 * 1 * 224 * 224, 0);
-  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}));
+  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}), FORMAT_ND, DT_INT64);
   GeTensorPtr const_tensor1 = std::make_shared<GeTensor>(tensor_desc1, reinterpret_cast<uint8_t *>(perm1.data()),
                                                          sizeof(int64_t) * perm1.size());
   auto constant = OP_CFG(CONSTANT).Weight(const_tensor1);
@@ -1120,7 +1120,7 @@ ComputeGraphPtr MemConflictShareGraph::BuildUserInOutConnectNoPaddingContinuousI
  */
 ComputeGraphPtr MemConflictShareGraph::BuildUserInAndNoPaddingContinuousInByAssignOutput() {
   vector<int64_t> perm1(1 * 1 * 224 * 224, 0);
-  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}));
+  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}), FORMAT_ND, DT_INT64);
   GeTensorPtr const_tensor1 = std::make_shared<GeTensor>(tensor_desc1, reinterpret_cast<uint8_t *>(perm1.data()),
                                                          sizeof(int64_t) * perm1.size());
   auto constant = OP_CFG(CONSTANT).Weight(const_tensor1);
@@ -1387,7 +1387,13 @@ ComputeGraphPtr MemConflictShareGraph::BuildRefDataGraph() {
  *    a    b
  */
 ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAndNoPaddingContinuousOutput() {
-  const auto const_node = OP_CFG(CONSTANT).TensorDesc(FORMAT_NHWC, DT_FLOAT, {1, 1, 224, 448});
+  // Graph prepare validates the weights attr of Const: data size must match shape/dtype.
+  // Inject content-agnostic zero weights to satisfy the check.
+  const std::vector<uint8_t> weight_data(sizeof(float) * 1 * 1 * 224 * 448, 0U);
+  GeTensorPtr const_weight =
+      std::make_shared<GeTensor>(GeTensorDesc(GeShape(std::vector<int64_t>({1, 1, 224, 448})), FORMAT_NHWC, DT_FLOAT),
+                                 weight_data.data(), weight_data.size());
+  const auto const_node = OP_CFG(CONSTANT).TensorDesc(FORMAT_NHWC, DT_FLOAT, {1, 1, 224, 448}).Weight(const_weight);
   const auto phony_split = OP_CFG("PhonySplit");
   DEF_GRAPH(g1) {
     CHAIN(NODE("const_2", const_node)->NODE("netoutput", NETOUTPUT));
@@ -1527,7 +1533,7 @@ ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAndContinuousOutput() {
  */
 ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAndContinuousByAssignOutput() {
   vector<int64_t> perm1(1 * 1 * 224 * 224, 0);
-  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}));
+  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}), FORMAT_ND, DT_INT64);
   GeTensorPtr const_tensor1 = std::make_shared<GeTensor>(tensor_desc1, reinterpret_cast<uint8_t *>(perm1.data()),
                                                          sizeof(int64_t) * perm1.size());
   auto constant = OP_CFG(CONSTANT).Weight(const_tensor1);
@@ -1564,7 +1570,7 @@ ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAndContinuousByAssignOut
  */
 ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAndNoPaddingContinuousInByAssignOutput() {
   vector<int64_t> perm1(1 * 1 * 224 * 224, 0);
-  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}));
+  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}), FORMAT_ND, DT_INT64);
   GeTensorPtr const_tensor1 = std::make_shared<GeTensor>(tensor_desc1, reinterpret_cast<uint8_t *>(perm1.data()),
                                                          sizeof(int64_t) * perm1.size());
   auto constant = OP_CFG(CONSTANT).Weight(const_tensor1);
@@ -1595,7 +1601,7 @@ ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAndNoPaddingContinuousIn
  */
 ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAndNoPaddingAndContinuousByRefOutput() {
   vector<int64_t> perm1(1 * 1 * 224 * 224, 0);
-  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}));
+  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}), FORMAT_ND, DT_INT64);
   GeTensorPtr const_tensor1 = std::make_shared<GeTensor>(tensor_desc1, reinterpret_cast<uint8_t *>(perm1.data()),
                                                          sizeof(int64_t) * perm1.size());
   auto constant1 = OP_CFG(CONSTANT).Weight(const_tensor1);
@@ -2351,7 +2357,7 @@ ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAndRtsSpecailInGraph() {
  */
 ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAndRtsSpecailInByAssignGraph() {
   vector<int64_t> perm1(1 * 1 * 224 * 224, 0);
-  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}));
+  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}), FORMAT_ND, DT_INT64);
   GeTensorPtr const_tensor1 = std::make_shared<GeTensor>(tensor_desc1, reinterpret_cast<uint8_t *>(perm1.data()),
                                                          sizeof(int64_t) * perm1.size());
   auto constant = OP_CFG(CONSTANT).Weight(const_tensor1);
@@ -2429,7 +2435,7 @@ ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAndRtsSpecailOutGraph() 
  */
 ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAnRtsSpecailOutByAssignOutput() {
   vector<int64_t> perm1(1 * 1 * 224 * 224, 0);
-  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}));
+  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}), FORMAT_ND, DT_INT64);
   GeTensorPtr const_tensor1 = std::make_shared<GeTensor>(tensor_desc1, reinterpret_cast<uint8_t *>(perm1.data()),
                                                          sizeof(int64_t) * perm1.size());
   auto constant = OP_CFG(CONSTANT).Weight(const_tensor1);
@@ -2468,7 +2474,7 @@ ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAnRtsSpecailOutByAssignO
  */
 ComputeGraphPtr MemConflictShareGraph::BuildImmutableOutAnRtsSpecailOutContinuousInOutByAssignGraph() {
   vector<int64_t> perm1(1 * 1 * 224 * 224, 0);
-  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}));
+  GeTensorDesc tensor_desc1(GeShape(vector<int64_t>{1, 1, 224, 224}), FORMAT_ND, DT_INT64);
   GeTensorPtr const_tensor1 = std::make_shared<GeTensor>(tensor_desc1, reinterpret_cast<uint8_t *>(perm1.data()),
                                                          sizeof(int64_t) * perm1.size());
   auto constant = OP_CFG(CONSTANT).Weight(const_tensor1);

@@ -720,7 +720,8 @@ enum ModelPartitionType : uint32_t {
   PRE_MODEL_DESC_EXTEND = 23,
   BUNDLE_MODEL_INFO = 24,
   BUNDLE_MODEL_VAR_INFO = 25,
-  CUSTOM_OPS = 26
+  CUSTOM_OPS = 26,
+  PYTHON_CUSTOM_OPS = 27
 };
 
 // Custom kernel item header for CUSTOM_OPS partition

@@ -27,6 +27,7 @@
 #include "graph/utils/graph_utils.h"
 #include "graph/utils/graph_utils_ex.h"
 #include "graph/utils/tensor_utils.h"
+#include "graph/utils/tensor_utils_ex.h"
 #include "graph/passes/feature/set_ffts_plus_attr_pass.h"
 #include "base/err_mgr.h"
 #include "macro_utils/dt_public_scope.h"
@@ -5857,6 +5858,36 @@ TEST_F(GraphCompilerTest, test_build_memory_var_broadcast) {
   EXPECT_EQ(ret, SUCCESS);
 }
 
+// 按 GetGraphAvailableMemory 实现的同一规则计算 new_var_total_size：
+// 未注册进 VarManager 的 VARIABLE/CONSTANT 类节点按 AutoPadding 尺寸累入
+// （该尺寸随 SoC padding 变化，现场计算以消除环境假设）
+static Status CalcExpectedNewVarTotalSize(const ComputeGraphPtr &graph, const std::shared_ptr<VarManager> &var_manager,
+                                          uint64_t &new_var_total_size) {
+  new_var_total_size = 0U;
+  for (const NodePtr &node : graph->GetDirectNode()) {
+    const auto node_type = node->GetType();
+    if ((node_type != VARIABLE) && (node_type != CONSTANTOP) && (node_type != FILECONSTANT) &&
+        (node_type != CONSTANT)) {
+      continue;
+    }
+    if (var_manager->IsVarExist(node->GetName())) {
+      continue;
+    }
+    const auto node_op_desc = node->GetOpDesc();
+    if (node_op_desc == nullptr) {
+      return FAILED;
+    }
+    for (const auto &output_desc : node_op_desc->GetAllOutputsDesc()) {
+      int64_t tensor_size = 0L;
+      if (TensorUtilsEx::GetTensorMemorySizeInBytesWithAutoPadding(output_desc, tensor_size) != GRAPH_SUCCESS) {
+        return FAILED;
+      }
+      new_var_total_size += static_cast<uint64_t>(tensor_size);
+    }
+  }
+  return SUCCESS;
+}
+
 /**
  *      var
  *        \
@@ -5892,12 +5923,24 @@ TEST_F(GraphCompilerTest, test_build_memory_var_assign) {
 
   std::vector<InputTensorInfo> inputs;
   auto ret = session.BuildGraph(1, inputs);
-  EXPECT_EQ(ret, SUCCESS);
+  ASSERT_EQ(ret, SUCCESS);
+  // 原用例硬编码 109051872，为打桩环境专属值（aclrtGetMemInfo 桩返回 128MiB →
+  // use_max=124MiB、var_max=20MiB 再减 reshape const 32B），随环境漂移（A3 实测 27917086688）。
+  // 此处固定会话 VarManager 内存配置并按其可读状态推导期望值；会话级 VarManager 随 Session
+  // 析构回收（Finalize->RemoveVarManager），不影响后续用例，无需恢复。
+  const auto var_manager = VarManager::Instance(compute_graph->GetSessionID());
+  ASSERT_NE(var_manager, nullptr);
+  var_manager->UpdateMemoryConfig(kGraphMemoryManagerMallocMaxSize, kMemoryVarManagerMallocSize, kVarMemoryLogicBase,
+                                  kUseMaxMemorySize);
   uint64_t available_mem = 0U;
-  EXPECT_EQ(GetGraphAvailableMemory(compute_graph, available_mem), SUCCESS);
-  // reshape shape const no need apply 32 mem when reshape to scalar.
-  // so available mem add 32
-  EXPECT_EQ(available_mem, 109051872UL);
+  ASSERT_EQ(GetGraphAvailableMemory(compute_graph, available_mem), SUCCESS);
+  uint64_t new_var_total_size = 0U;
+  ASSERT_EQ(CalcExpectedNewVarTotalSize(compute_graph, var_manager, new_var_total_size), SUCCESS);
+  const uint64_t var_size =
+      std::max(static_cast<uint64_t>(var_manager->GetVarMemSize(RT_MEMORY_HBM)), var_manager->GetVarMemMaxSize());
+  EXPECT_EQ(available_mem, var_manager->GetUseMaxMemorySize() - var_size - new_var_total_size);
+  // 保留原用例的业务语义校验：构图后 var_1 已注册进会话 VarManager
+  EXPECT_TRUE(var_manager->IsVarExist("var_1"));
 }
 
 /**
@@ -5936,14 +5979,20 @@ TEST_F(GraphCompilerTest, test_build_memory_var_ref) {
 
   std::vector<InputTensorInfo> inputs;
   auto ret = session.BuildGraph(1, inputs);
-  EXPECT_EQ(ret, SUCCESS);
+  ASSERT_EQ(ret, SUCCESS);
   // not assign memory, use variable's memory
   vector<int64_t> out_list = op_desc->GetOutputOffset();
-  EXPECT_EQ(out_list.size(), 1U);
+  // 前置条件改用 ASSERT 校验：失败时立即返回，避免下方 out_list[0] 越界、var_1_node/var_manager 空指针
+  // 解引用导致进程段错误（SEGFAULT 会中断整个 ST 进程，掩盖后续所有用例结果）
+  ASSERT_EQ(out_list.size(), 1U);
   uint8_t *dev_ptr = nullptr;
   auto var_1_node = compute_graph->FindNode("var_1");
-  VarManager::Instance(compute_graph->GetSessionID())
-      ->GetVarAddr("var_1", var_1_node->GetOpDesc()->GetOutputDesc(0), dev_ptr);
+  ASSERT_NE(var_1_node, nullptr);
+  auto var_1_op_desc = var_1_node->GetOpDesc();
+  ASSERT_NE(var_1_op_desc, nullptr);
+  auto var_manager = VarManager::Instance(compute_graph->GetSessionID());
+  ASSERT_NE(var_manager, nullptr);
+  ASSERT_EQ(var_manager->GetVarAddr("var_1", var_1_op_desc->GetOutputDesc(0), dev_ptr), SUCCESS);
   EXPECT_EQ(out_list[0], (int64_t)dev_ptr);
 }
 

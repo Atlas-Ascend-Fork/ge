@@ -14,7 +14,7 @@
 模型结构:
   input(NCHW) -> Conv1 -> conv1_out \
                 Conv2 -> conv2_out /  -> Concat(axis=1) -> output
-conv 输出为 NCHW 格式，shape 均为 [1, 8, 64, 64]，C 维度大小（8*4=32B）为 32B 的整数倍，满足 pass 的 C 维度 32B 对齐要求。
+conv 输出为 NCHW 格式，shape 均为 [1, 16, 64, 64]，C 维度大小（16*4=64B）为 32B 的整数倍，满足 pass 的 C 维度 32B 对齐要求。
 """
 
 import os
@@ -24,8 +24,8 @@ from onnx import TensorProto, helper
 
 
 def make_conv_weight(name):
-    values = [(i % 7) * 0.1 for i in range(8 * 3 * 3 * 3)]
-    return helper.make_tensor(name, TensorProto.FLOAT, [8, 3, 3, 3], values)
+    values = [(i % 7) * 0.1 for i in range(16 * 3 * 3 * 3)]
+    return helper.make_tensor(name, TensorProto.FLOAT, [16, 3, 3, 3], values)
 
 
 def convert():
@@ -33,7 +33,7 @@ def convert():
         "input", TensorProto.FLOAT, [1, 3, 64, 64]
     )
     output_info = helper.make_tensor_value_info(
-        "output", TensorProto.FLOAT, [1, 16, 64, 64]
+        "output", TensorProto.FLOAT, [1, 32, 64, 64]
     )
 
     conv1 = helper.make_node(

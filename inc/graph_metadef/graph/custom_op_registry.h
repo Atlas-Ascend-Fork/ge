@@ -17,6 +17,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
+#include <string>
 #include <vector>
 
 #include "graph/ascend_string.h"
@@ -35,6 +37,11 @@ using BaseOpCreator = std::function<std::unique_ptr<BaseCustomOp>()>;
 class CustomOpSoHandle;
 using CustomOpSoHandlePtr = std::shared_ptr<CustomOpSoHandle>;
 
+// 模型级自定义算子作用域，前向声明即可：shared_ptr 的 deleter 在构造处（runtime/custom_op）
+// 就已类型擦除，CustomOpRegistry 无需感知其完整定义，与 CustomOpSoHandle 的处理方式一致。
+class CustomOpModelScope;
+using CustomOpModelScopePtr = std::shared_ptr<CustomOpModelScope>;
+
 class CustomOpRegistry {
  public:
   ~CustomOpRegistry();
@@ -43,6 +50,8 @@ class CustomOpRegistry {
   graphStatus RegisterCreator(const AscendString &op_type, OpBackend backend, OpRegistrationPriority priority,
                               OpEngine engine, const BaseOpCreator &creator);
   void AddSoHandles(const std::vector<CustomOpSoHandlePtr> &so_handles);
+  // 由 Python 自定义算子恢复流程设置；registry 强引用 scope，scope 不反向引用 registry。
+  void SetModelScope(const CustomOpModelScopePtr &scope);
 
   BaseCustomOp *CreateOrGetCustomOp(const AscendString &op_type, OpBackend backend);
   // 按优先级从高到低（kTop -> kBottom）在指定engine/backend下解析注册项并取实例，kBottom兜底注册可命中
@@ -76,6 +85,25 @@ class CustomOpRegistry {
   bool HasCreator(const AscendString &op_type, OpBackend backend) const;
   // 实例口径（任意优先级）：已有实例即返回true（反序列化完成的判据）；
   // 与HasCreator（注册项口径）不同：一个查已创建实例，一个查注册项
+  // 由 Python 自定义算子恢复流程（runtime hook）在恢复成功后一次性写入。
+  // base 侧 ValidateCustomOpNodeDeserialized 用它实现分级判据（详见设计文档
+  // 「内存源码初始化与 Descriptor 校验」节）：
+  //   - manifest_op_types：PYTHON_CUSTOM_OPS manifest 声明的全部 op_type。hook 只为
+  //     与 manifest 精确匹配（op_type/class_qualname/capabilities）的 descriptor 注册
+  //     creator；缺失或能力不匹配的 op_type 无 creator。base 对"图中使用了 manifest
+  //     op_type 却 !HasCreator"点名失败（档位1：被图使用的缺失/能力不匹配 → 硬失败）。
+  //   - conflict_skipped_op_types：注册 Python creator 时与模型 registry 内已有 creator
+  //     （C++ SO）冲突而被跳过的 op_type。base 对"图中使用了被跳过的 op_type"点名失败
+  //     （Python-C++ 冲突且被图使用 → 硬失败）；未被图使用的冲突只有 hook 侧 warning。
+  // 非 Python 分区路径两个集合皆空，判据回退到原静默语义，兼容性零回归。
+  struct PythonRestoreManifest {
+    std::set<std::string> manifest_op_types;
+    std::set<std::string> conflict_skipped_op_types;
+  };
+  void SetPythonRestoreManifest(PythonRestoreManifest &&manifest);
+  // 均为 membership 查询，不内部调用 HasCreator（避免 mu_ 非递归重入）；调用方组合判据。
+  bool IsPythonManifestOpType(const AscendString &op_type) const;
+  bool IsPythonConflictSkippedOpType(const AscendString &op_type) const;
   bool HasCustomOp(const AscendString &op_type) const;
   // 自定义算子承载/收集口径（OM打包、so-in-om、序列化收集与反序列化校验、自定义算子编译任务收集共用）：
   // 按引擎维度匹配，与 custom store 认领口径一致：kCustom 引擎仅 kTop；映射引擎（kHccl→DNN_HCCL）任意优先级；
@@ -112,6 +140,8 @@ class CustomOpRegistry {
   std::map<AscendString, PriorityCreatorMap> creators_;
   std::map<AscendString, PriorityInstanceMap> custom_ops_;
   std::shared_ptr<Impl> impl_;
+  // 声明在实例与 creator 之后无关紧要：析构函数显式控制释放顺序，不依赖成员声明顺序。
+  CustomOpModelScopePtr model_scope_;
 };
 
 using CustomOpRegistryPtr = std::shared_ptr<CustomOpRegistry>;

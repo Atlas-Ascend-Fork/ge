@@ -149,6 +149,14 @@ class FileConstantUtils {
   /// @return Status
   static Status ChangeFilePath(const ComputeGraphPtr &compute_graph, const std::string &om_path);
 
+  /// @brief change file path attrs for main and fallback graphs, then move weight files once
+  /// @param [in] main_graph main execution body graph
+  /// @param [in] fallback_graph fallback execution body graph, may be nullptr
+  /// @param [in] om_path om output path
+  /// @return Status
+  static Status ChangeFilePath(const ComputeGraphPtr &main_graph, const ComputeGraphPtr &fallback_graph,
+                               const std::string &om_path);
+
   /// @brief move external weight files according to path mapping
   /// @param [in] old_file_to_new_file
   /// @return Status

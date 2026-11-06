@@ -20,7 +20,7 @@ MethodDef *ResourcesFileCodeGenerator::BuildOm2ModelConstructor(const Om2Codegen
   auto bin_size = ast_.Var("uint64_t *", "bin_size");
   auto bin_num = ast_.Var("size_t", "bin_num");
   auto constants = ast_.Var("void **", "constants");
-  auto var_addrs = ast_.Var("void **", "var_addrs");
+  auto var_context = ast_.Var("const GertModelVarContext *", "var_context");
   auto work_ptr = ast_.Var("void *", "work_ptr");
   auto session_id = ast_.Var("uint64_t *", "session_id");
   auto model_id = ast_.Var("uint32_t", "model_id");
@@ -54,10 +54,10 @@ MethodDef *ResourcesFileCodeGenerator::BuildOm2ModelConstructor(const Om2Codegen
   (void)body.emplace_back(ast_.Call("OM2_LOGD", {ast_.Str("Om2Model created")}));
   return ast_.DefineMethod(
       "Om2Model", "Om2Model",
-      {bin_files, bin_data, bin_size, bin_num, constants, var_addrs, work_ptr, session_id, model_id, instance_handle,
+      {bin_files, bin_data, bin_size, bin_num, constants, var_context, work_ptr, session_id, model_id, instance_handle,
        callbacks},
       "",
-      {ast_.MemberInit("constants_", constants), ast_.MemberInit("var_addrs_", var_addrs),
+      {ast_.MemberInit("constants_", constants), ast_.MemberInit("var_context_", var_context),
        ast_.MemberInit("total_dev_mem_ptr_", work_ptr), ast_.MemberInit("owns_total_dev_mem_", false),
        ast_.MemberInit("session_id_", session_id), ast_.MemberInit("model_id_", model_id),
        ast_.MemberInit("instance_handle_", instance_handle), ast_.MemberInit("callbacks_", ast_.Deref(callbacks)),
@@ -85,34 +85,56 @@ MethodDef *ResourcesFileCodeGenerator::BuildInitResourcesMethod(
   const auto model_zero_copy_size = ast_.Var("size_t", "kModelZeroCopySize");
   auto external_resources = ast_.Var("const GertModelExternalResources &", "external_resources");
 
+  const auto var_slot_num = ast_.Var("const uint32_t", "var_slot_num");
   std::vector<BodyItem> body = {
       ast_.Call("OM2_LOGI", {ast_.Str("InitResources begin")}),
-      ast_.Call("OM2_LOGI", {ast_.Str("model_id=%u, InitResources: work_ptr=%p, work_size=%zu, zero_copy_size=%zu"),
-                             model_id_, total_dev_mem_ptr_, model_work_size, model_zero_copy_size}),
-      ast_.VarDecl(required_work_size, model_work_size),
-      ast_.If(reuse_zero_copy != 0U, {ast_.Assign(required_work_size, model_work_size - model_zero_copy_size)}),
-      ast_.If(total_dev_mem_ptr_ != nullptr,
-              {ast_.Call("OM2_LOGI", {ast_.Str("model_id=%u, InitResources: use external work_ptr=%p"), model_id_,
-                                      total_dev_mem_ptr_})}),
-      ast_.If((total_dev_mem_ptr_ == nullptr) && (required_work_size != 0U),
-              {ast_.Call("OM2_LOGI", {ast_.Str("model_id=%u, InitResources: prepare work_ptr allocation, "
-                                               "work_size=%zu, zero_copy_size=%zu, malloc_size=%zu"),
-                                      model_id_, model_work_size, model_zero_copy_size, required_work_size}),
-               ChkStatus(AclrtMallocHelper(total_dev_mem_ptr_.Addr(), required_work_size, "RT_MEMORY_HBM", 0U)),
-               ast_.Assign(owns_total_dev_mem_, true)}),
       ast_.BlankLine(),
-      ast_.Comment("1. 创建 model"),
-      ast_.If(external_resources.Attr("external_rt_model") != nullptr,
-              {ast_.Assign(model_handle_, external_resources.Attr("external_rt_model")),
-               ast_.Assign(is_external_rt_model_, true)},
-              {ChkStatus(AclmdlRIBuildBegin(model_handle_.Addr(), 0))}),
-      ChkStatus(AclmdlRISetName(model_handle_, ast_.Str(codegen_model.model_name))),
-      ast_.BlankLine(),
-      ast_.Comment("2. 获取overflow地址"),
-      ChkStatus(AclrtCtxGetFloatOverflowAddr(overflow_addr_.Addr())),
-      ast_.BlankLine(),
-      ast_.Comment("3. 创建其他资源"),
   };
+  // 变量准备整体在 SO 内完成：解析地址、格式与数据类型转换、变量间拷贝、填出运行期地址表。
+  // 与 <model>_var_mgr.cpp 的生成同判据：无变量时那个文件不生成、gert::var_mgr 的两个入口
+  // 无定义，发射调用点即链接失败，故整段裁掉（文件头的入口声明由 GenerateResourcesSource
+  // 以同一判据裁剪）。此时 var_addrs_ 保持默认构造的空 vector，DispatchOpContext 拿到的
+  // data() 为 nullptr，与 resize(0) 的结果等价。
+  if (HasVariables(codegen_model.var_fixup)) {
+    const auto prepare_vars =
+        ast_.Call("::gert::var_mgr::PrepareVars", {var_context_, var_addrs_.Data(), var_slot_num});
+    (void)body.emplace_back(ast_.VarDecl(var_slot_num, ast_.Call("::gert::var_mgr::GetSlotNum", {})));
+    (void)body.emplace_back(var_addrs_.Attr("resize")({var_slot_num, nullptr}));
+    (void)body.emplace_back(
+        ast_.If(prepare_vars != "ACL_SUCCESS",
+                {ast_.Call("OM2_LOGE", {ast_.Str("model_id=%u, InitResources: PrepareVars failed"), model_id_}),
+                 ast_.Return("ACL_ERROR_FAILURE")}));
+    (void)body.emplace_back(ast_.BlankLine());
+  }
+  body.insert(
+      body.end(),
+      {
+          ast_.Call("OM2_LOGI", {ast_.Str("model_id=%u, InitResources: work_ptr=%p, work_size=%zu, zero_copy_size=%zu"),
+                                 model_id_, total_dev_mem_ptr_, model_work_size, model_zero_copy_size}),
+          ast_.VarDecl(required_work_size, model_work_size),
+          ast_.If(reuse_zero_copy != 0U, {ast_.Assign(required_work_size, model_work_size - model_zero_copy_size)}),
+          ast_.If(total_dev_mem_ptr_ != nullptr,
+                  {ast_.Call("OM2_LOGI", {ast_.Str("model_id=%u, InitResources: use external work_ptr=%p"), model_id_,
+                                          total_dev_mem_ptr_})}),
+          ast_.If((total_dev_mem_ptr_ == nullptr) && (required_work_size != 0U),
+                  {ast_.Call("OM2_LOGI", {ast_.Str("model_id=%u, InitResources: prepare work_ptr allocation, "
+                                                   "work_size=%zu, zero_copy_size=%zu, malloc_size=%zu"),
+                                          model_id_, model_work_size, model_zero_copy_size, required_work_size}),
+                   ChkStatus(AclrtMallocHelper(total_dev_mem_ptr_.Addr(), required_work_size, "RT_MEMORY_HBM", 0U)),
+                   ast_.Assign(owns_total_dev_mem_, true)}),
+          ast_.BlankLine(),
+          ast_.Comment("1. 创建 model"),
+          ast_.If(external_resources.Attr("external_rt_model") != nullptr,
+                  {ast_.Assign(model_handle_, external_resources.Attr("external_rt_model")),
+                   ast_.Assign(is_external_rt_model_, true)},
+                  {ChkStatus(AclmdlRIBuildBegin(model_handle_.Addr(), 0))}),
+          ChkStatus(AclmdlRISetName(model_handle_, ast_.Str(codegen_model.model_name))),
+          ast_.BlankLine(),
+          ast_.Comment("2. 获取overflow地址"),
+          ChkStatus(AclrtCtxGetFloatOverflowAddr(overflow_addr_.Addr())),
+          ast_.BlankLine(),
+          ast_.Comment("3. 创建其他资源"),
+      });
   const auto &runtime = codegen_model.runtime;
   BuildInitStreamResources(body, runtime, external_resources, priority);
   BuildInitHcclFollowStreamResources(body, runtime, priority);

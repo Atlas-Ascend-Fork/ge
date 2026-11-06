@@ -44,6 +44,8 @@ static const std::unordered_set<std::string> kBoolOptions = {"", "true", "false"
 static const std::unordered_set<std::string> kStateOptions = {"", "0", "1"};
 constexpr char const *kAutoFuseEnableOption = "--enable_autofuse";
 constexpr char const *kSliceScheduleOption = "--experimental_enable_jit_executor_v2";
+// 图属性：标记本图不参与自动融合（autofuse 离线双执行体的兜底编译用）。
+constexpr char const *kDisableAutofuseAttr = "_disable_autofuse";
 
 /*
  * @brief 获取环境变量AUTOFUSE_FLAGS中对应option的值，比如AUTOFUSE_FLAGS="--enable_autofuse=true",
@@ -52,6 +54,13 @@ constexpr char const *kSliceScheduleOption = "--experimental_enable_jit_executor
  * @return 返回对应字符串的值
  */
 std::string GetAutofuseFlagValue(const std::string &option);
+
+/*
+ * @brief 统一判定自动融合是否启用：优先查图上的 kDisableAutofuseAttr（图开关，按图隔离），
+ *        未设置再读环境变量 AUTOFUSE_FLAGS（--enable_autofuse=true）。
+ * @param graph 目标图；为空表示无图场景，仅读环境变量。
+ */
+bool IsAutofuseEnabled(const ComputeGraphPtr &graph = nullptr);
 
 bool CheckDynamicBatchSizeInputShapeValid(std::map<std::string, std::vector<int64_t>> shape_map,
                                           std::string &dynamic_batch_size);

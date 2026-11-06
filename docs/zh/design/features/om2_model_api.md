@@ -688,6 +688,99 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 
 - **返回值说明**：`0` 表示成功；非 `0` 表示 HCCL 任务下发失败，pbody 侧 `GertModelLoad` 中止并返回错误。
 
+#### 3.9 var_context（GertModelVarContext）与变量准备两个回调
+
+- **功能说明**：变量准备（地址解析、格式与数据类型转换、变量间拷贝、按槽位填地址表）已下沉到模型 SO，在 `GertModelLoad` 内由 SO 自己的 `PrepareVars` 完成。执行器不再解释变量元数据，只提供两样东西：一个会话级变量容器句柄，以及两个回调。SO 经 `GertModelLoadConfig::var_context` 取得 `GertModelVarContext`，据此在加载期按需向容器申请地址、读回初始数据、提交派生数据。
+- **版本要求**：含变量的模型要求 `GertModelLoadConfig::var_context` 非空，且 `GertModelVarContext::struct_size` 覆盖 `commit_var_data` 字段；无变量的模型可为空。
+- **上下文结构体 GertModelVarContext**：
+
+| 字段 | 类型 | 输入/输出 | 说明 |
+|------|------|----------|------|
+| struct_size | uint64_t | 输入 | 本次提供的结构体字节范围，初始化为 `sizeof(GertModelVarContext)` |
+| var_manager_handle | void * | 输入 | 会话级变量容器句柄，两个回调的第一个参数原样回传 |
+| device_id | uint32_t | 输入 | 变量所在 device |
+| abi_pad_0 | uint8_t[4] | — | 显式填充，无业务含义 |
+| var_weight_data | const void * | 输入 | 变量初始数据块基址，可为空（本模型无初始数据） |
+| var_weight_data_size | uint64_t | 输入 | 数据块字节数 |
+| get_var_addr | GetVarAddrFunc | 输入 | 解析或只查询变量地址，见第 3.10 节 |
+| commit_var_data | CommitVarDataFunc | 输入 | 提交派生数据，见第 3.11 节 |
+
+- **说明**：`var_weight_data` 指向归档内 `data/variables/var_weight_data_N` 的整块数据（见第二部分第 1.14 节）；块内各变量的偏移与大小不落盘，由 SO 按编译期固化的 `init_data_offset` / `init_data_size` 自行切片。变量设备内存的分配与释放全部由容器负责，SO 不得释放 `dev_addr`，也不得直接向其写入数据——写入只能经 `commit_var_data`。
+
+#### 3.10 get_var_addr（GetVarAddrFunc）
+
+- **功能说明**：变量设备地址的唯一入口，两种模式合一。`GERT_VAR_ADDR_RESOLVE` 解析或分配地址、可选写入首次使用的初始数据；`GERT_VAR_ADDR_QUERY_ONLY` 只查询容器内既有地址，不分配、不写入。
+- **函数原型**：
+
+```c
+int32_t (*GetVarAddrFunc)(void *var_manager_handle, struct GertVarDesc *desc);
+```
+
+- **参数说明**：
+
+| 参数 | 类型 | 输入/输出 | 说明 |
+|------|------|----------|------|
+| var_manager_handle | void * | 输入 | `GertModelVarContext::var_manager_handle` 原样回传 |
+| desc | struct GertVarDesc * | 输入/输出 | 变量描述，SO 填输入字段，容器回填输出字段 |
+
+- **模式枚举 GertVarAddrMode**：
+
+| 枚举项 | 数值 | 说明 |
+|--------|------|------|
+| `GERT_VAR_ADDR_RESOLVE` | 0 | 解析或分配地址，可选写入首次使用的初始数据 |
+| `GERT_VAR_ADDR_QUERY_ONLY` | 1 | 只查询容器内既有地址，不分配、不写入 |
+
+- **参数结构体 GertVarDesc**：
+
+| 字段 | 类型 | 输入/输出 | 说明 |
+|------|------|----------|------|
+| struct_size | uint64_t | 输入 | 初始化为 `sizeof(GertVarDesc)`，布局变化时更新 |
+| var_key | const char * | 输入 | 变量键，UTF-8、以 `\0` 结束 |
+| size | uint64_t | 输入/输出 | 输入：变量字节数，用于分配，必须大于 0；`GERT_VAR_ADDR_QUERY_ONLY` 模式下为输出，由容器回填源字节数 |
+| memory_type | uint64_t | 输入 | 分配策略，取值同 `RT_MEMORY_HBM` 等内存类型常量 |
+| logic_addr | uint64_t | 输入 | 编译期逻辑地址原值，用于内存区分支判定 |
+| host_data | const void * | 输入 | 首次使用的初始数据；为空表示只解析地址 |
+| host_data_size | uint64_t | 输入 | `host_data` 字节数；非空时必须等于 `size` |
+| device_id | uint32_t | 输入 | 变量所在 device |
+| mode | uint32_t | 输入 | 取值见 `GertVarAddrMode`，默认 `GERT_VAR_ADDR_RESOLVE` |
+| dev_addr | void * | 输出 | 该变量在此设备上的地址；`GERT_VAR_ADDR_QUERY_ONLY` 未命中时为 `nullptr` |
+| is_loaded | uint32_t | 输出 | 该变量在此设备上是否已有有效数据 |
+| abi_pad_0 | uint32_t | — | 显式填充，无业务含义 |
+
+- **返回值说明**：`0` 表示成功；非 `0` 表示地址解析失败，SO 侧 `PrepareVars` 中止并返回错误。
+- **说明**：申请幂等——命中既有地址即直接返回，故 SO 不留地址缓存、在各消费点按需惰性调用。线程安全：可被多个线程并发调用，包括不同变量之间以及同一变量的重复调用；容器侧自行加锁，不跨线程转交任务。
+
+#### 3.11 commit_var_data（CommitVarDataFunc）
+
+- **功能说明**：把 SO 派生出的变量数据（格式/数据类型转换结果、变量间拷贝结果）写回容器。
+- **函数原型**：
+
+```c
+int32_t (*CommitVarDataFunc)(void *var_manager_handle, struct GertVarCommit *commit);
+```
+
+- **参数说明**：
+
+| 参数 | 类型 | 输入/输出 | 说明 |
+|------|------|----------|------|
+| var_manager_handle | void * | 输入 | `GertModelVarContext::var_manager_handle` 原样回传 |
+| commit | struct GertVarCommit * | 输入/输出 | 提交描述，SO 填输入字段，容器回填输出字段 |
+
+- **参数结构体 GertVarCommit**：
+
+| 字段 | 类型 | 输入/输出 | 说明 |
+|------|------|----------|------|
+| struct_size | uint64_t | 输入 | 初始化为 `sizeof(GertVarCommit)`，布局变化时更新 |
+| var_key | const char * | 输入 | 目标变量键，UTF-8、以 `\0` 结束 |
+| host_data | const void * | 输入 | 派生数据，不可为空 |
+| host_data_size | uint64_t | 输入 | 字节数，不得超过容器记下的变量字节数 |
+| device_id | uint32_t | 输入 | 变量所在 device |
+| is_loaded | uint32_t | 输出 | 返回时该变量在此设备上是否已有有效数据 |
+| dev_addr | void * | 输出 | 返回时该变量在此设备上的地址 |
+
+- **返回值说明**：`0` 表示成功；非 `0` 表示提交失败。`host_data_size` 超过容器记下的变量字节数时返回错误、不写入。
+- **说明**：执行线程、aclrt 上下文、内存归属与线程安全语义同 `GetVarAddrFunc`。重复提交同一变量不视为错误。
+
 ## 第二部分：OM2 模型数据
 
 `gert_model_data.h` 和 `om2_package_contants.h` 共同约定 OM2 包的数据组织与目录结构：前者以 `GertModelData` 为根，描述包清单、各模型及共享资源；后者定义这些数据的包内路径、JSON 键名、文件类别和压缩规则。序列化模块按照这些约定，将模型数据写入 ZIP 归档。
@@ -714,8 +807,9 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 | `constants` | `std::unique_ptr<GertModelDataConstants>` | 常量权重数据集合，对应 `data/constants/`；具体常量与模型的关联由模型的常量配置描述 |
 | `kernels` | `std::unique_ptr<GertModelDataKernels>` | 算子二进制集合，对应 `data/kernels/` |
 | `custom_ops` | `std::unique_ptr<GertModelDataCustomOps>` | 自定义算子产物集合，对应 `data/custom_ops/binaries_npu_arch/` 和 `data/custom_ops/shared_libs/` |
+| `variables` | `std::unique_ptr<GertModelDataVariables>` | 变量初始数据块集合，对应 `data/variables/`，见第 1.14 节 |
 
-其中，`models` 的元素类型 `GertModelDataModel` 进一步描述单模型目录下的 `model_meta.json`、`constants_config.json`、`variables_config.json`、`op_attr.json`、`runtime/` 和 `debug/`。变量初始化数据位于包级 `data/variables/`，由模型变量配置中的文件名、偏移和大小关联，不是 `GertModelData` 的独立顶层成员。文件是否实际生成由对应数据和序列化条件决定。
+其中，`models` 的元素类型 `GertModelDataModel` 进一步描述单模型目录下的 `model_meta.json`、`constants_config.json`、`op_attr.json`、`runtime/` 和 `debug/`。变量初始数据块位于包级 `data/variables/`，是 `GertModelData` 的独立顶层成员 `variables`（见第 1.14 节）；块内各变量的偏移与大小不再落盘，改由模型 SO 内编译期固化的元数据表承载，`model_meta.json` 只留 `var_weight_file_name` 供执行器按名查找数据源。文件是否实际生成由对应数据和序列化条件决定。
 
 #### 1.2 GertModelDataManifest
 
@@ -757,7 +851,6 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 | `op_attr_json` | `std::unique_ptr<char[]>` | 算子属性 JSON 原文，对应 `op_attr.json` |
 | `runtime` | `std::unique_ptr<GertModelDataRuntime>` | 运行时代码与模型 SO，对应 `runtime/`，见第 1.11 节 |
 | `debug` | `std::unique_ptr<GertModelDataDebug>` | 调试数据，对应 `debug/`，见第 1.13 节 |
-| `variables_config` | `std::unique_ptr<GertModelDataVariablesConfig>` | 变量配置，对应 `variables_config.json`，见第 1.14 节 |
 
 #### 1.6 GertModelDataModelMeta
 
@@ -779,6 +872,8 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 | `user_designate_shape_order` | `std::vector<std::unique_ptr<char[]>>` | 动态分档的用户指定 shape 顺序 |
 | `origin_input_dims` | `std::vector<std::vector<int64_t>>` | 动态分档原始输入 shape，写入 `inputs[].shape` |
 | `aipp_infos` | `std::vector<std::unique_ptr<GertModelDataAippMeta>>` | AIPP 元信息，对应 `aipp.aipp_infos[]`，元素结构见第 1.8 节 |
+| `global_shared_var_size` | `uint64_t` | 全局共享变量 HBM 总字节数，默认 0；Bundle 工作区按各子模型最大值分配。为 0 时仍写入，运行期据此不分配外置变量内存区 |
+| `var_weight_file_name` | `std::unique_ptr<char[]>` | `data/variables/` 下变量初始数据块的基名（如 `var_weight_data_0`），与 `GertModelDataVariables::var_weight_data` 元素的 `file_name` 对应，供执行器按名查找数据源；空表示本模型无初始数据块 |
 
 #### 1.7 GertTensorDesc
 
@@ -869,77 +964,20 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 | `struct_size` | `uint64_t` | 结构体字节数 |
 | `visual_json` | `std::unique_ptr<char[]>` | 可视化 JSON 原文 |
 
-#### 1.14 GertModelDataVariablesConfig
+#### 1.14 GertModelDataVariables
 
-由 `GertModelDataModel::variables_config` 引用。
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `struct_size` | `uint64_t` | 结构体字节数 |
-| `graph_id` | `uint64_t` | 图 ID，默认 0 |
-| `entries` | `std::vector<RTVarEntry>` | 变量资源，元素结构见第 1.15 节；JSON 中为对象 |
-| `var_metas` | `std::vector<std::unique_ptr<GertModelDataVarMeta>>` | 变量元信息，元素结构见第 1.18 节 |
-| `global_shared_var_size` | `uint64_t` | 全局共享变量 HBM 总字节数，默认 0；Bundle 工作区按子模型最大值分配 |
-
-#### 1.15 RTVarEntry
-
-由 `GertModelDataVariablesConfig::entries` 的元素引用。
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `var_name` | `std::unique_ptr<char[]>` | 变量名 |
-| `var_key` | `std::unique_ptr<char[]>` | 变量键，同时作为 JSON `entries` 对象键 |
-| `op_type` | `std::unique_ptr<char[]>` | 算子类型 |
-| `logic_addr` | `uint64_t` | 逻辑地址，默认 0 |
-| `size` | `uint64_t` | 变量字节数，默认 0 |
-| `memory_type` | `uint64_t` | 内存类型，默认 0 |
-| `tensor_desc` | `GertTensorDesc` | 变量描述，复用第 1.7 节 |
-| `trans_road` | `RTVarTransRoad` | `std::vector<RTTransNodeInfo>` 的别名；转换路径，元素结构见第 1.16 节 |
-| `changed_graph_id` | `uint64_t` | 变更关联图 ID，默认 0 |
-| `allocated_graph_id` | `uint64_t` | 分配关联图 ID，默认 0 |
-| `copy_info` | `RTCopyNodeInfo` | 变量拷贝信息，见第 1.17 节 |
-| `extern_dev_addr` | `void *` | 外部 Device 地址，默认空，不序列化 |
-| `init_data` | `std::vector<uint8_t>` | 初始化数据，写入变量权重文件，以 JSON 的偏移和大小定位 |
-| `file_name` | `std::unique_ptr<char[]>` | 变量权重文件基名，反序列化时按名寻址 |
-| `reserved` | `uint64_t[4]` | 保留 |
-
-#### 1.16 RTTransNodeInfo
-
-由 `RTVarEntry::trans_road` 的元素引用。
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `node_type` | `std::unique_ptr<char[]>` | 转换节点类型 |
-| `input` | `GertTensorDesc` | 转换前描述，复用第 1.7 节 |
-| `output` | `GertTensorDesc` | 转换后描述，复用第 1.7 节 |
-| `reserved` | `uint64_t[4]` | 保留 |
-
-#### 1.17 RTCopyNodeInfo
-
-由 `RTVarEntry::copy_info` 引用。
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `src_var_name` | `std::unique_ptr<char[]>` | 拷贝源变量名 |
-| `src_tensor_desc` | `GertTensorDesc` | 拷贝源描述，复用第 1.7 节 |
-| `reserved` | `uint64_t[4]` | 保留 |
-
-#### 1.18 GertModelDataVarMeta
-
-`entries` 引用的数据展开完毕后，继续介绍 `GertModelDataVariablesConfig::var_metas` 的元素类型。
+由 `GertModelData::variables` 引用，对应包级 `data/variables/`。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `struct_size` | `uint64_t` | 结构体字节数 |
-| `index` | `uint64_t` | 变量下标，默认 0 |
-| `var_name` | `std::unique_ptr<char[]>` | 变量名 |
-| `op_type` | `std::unique_ptr<char[]>` | 算子类型 |
-| `tensor_desc` | `GertTensorDesc` | 变量描述，复用第 1.7 节 |
-| `op_name` | `std::unique_ptr<char[]>` | 算子名 |
+| `var_weight_data` | `std::vector<std::unique_ptr<GertModelDataFile>>` | 变量初始数据块，元素结构见第 1.12 节。下标与 `GertModelData::models` 一一对应，无初始数据块的模型该元素为 null；元素 `file_name` 记录基名 `var_weight_data_N`（前缀常量 `OM2_VAR_WEIGHT_FILE_PREFIX`），与 `GertModelDataModelMeta::var_weight_file_name` 对应，供执行器按名查找数据源 |
 
-至此，`GertModelData::models` 引用的数据已展开完毕，下面依次介绍根结构的其余成员。
+执行器把命中块的 `data` / `data_size` 经 `GertModelVarContext`（见第 3.9 节）交给模型 SO，由 SO 按编译期固化的 `init_data_offset` / `init_data_size` 自行切片——**块内各变量的偏移与大小不落盘**，归档里只有一个整块文件。这是变量准备下沉到模型 SO 的直接结果：变量元数据的唯一来源是 SO 内的固化表，不再有 `variables_config.json` 这条并行通道（该文件与 `GertModelDataVariablesConfig` / `RTVarEntry` / `RTTransNodeInfo` / `RTCopyNodeInfo` / `GertModelDataVarMeta` 五个结构均已删除）。
 
-#### 1.19 GertModelDataConstants
+至此，`GertModelData::models` 与 `GertModelData::variables` 引用的数据已展开完毕，下面依次介绍根结构的其余成员。
+
+#### 1.15 GertModelDataConstants
 
 由 `GertModelData::constants` 引用，对应包级 `data/constants/`。
 
@@ -948,7 +986,7 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 | `struct_size` | `uint64_t` | 结构体字节数 |
 | `constants_data` | `std::vector<std::unique_ptr<GertModelDataFile>>` | 按模型下标关联 `constant_N`，外置权重场景元素可空；文件结构复用第 1.12 节 |
 
-#### 1.20 GertModelDataKernels
+#### 1.16 GertModelDataKernels
 
 由 `GertModelData::kernels` 引用，对应包级 `data/kernels/`。
 
@@ -957,7 +995,7 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 | `struct_size` | `uint64_t` | 结构体字节数 |
 | `binaries` | `std::vector<std::unique_ptr<GertModelDataFile>>` | 算子二进制文件集合，文件结构复用第 1.12 节 |
 
-#### 1.21 GertModelDataCustomOps
+#### 1.17 GertModelDataCustomOps
 
 由 `GertModelData::custom_ops` 引用，对应包级 `data/custom_ops/`。
 
@@ -967,7 +1005,7 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 | `binaries` | `std::vector<std::unique_ptr<GertModelDataFile>>` | `binaries_npu_arch/` 下的自定义算子二进制，文件结构复用第 1.12 节 |
 | `libraries` | `std::vector<std::unique_ptr<GertModelDataFile>>` | `shared_libs/` 下的自定义算子动态库，文件结构复用第 1.12 节 |
 
-#### 1.22 GertBuffer
+#### 1.18 GertBuffer
 
 根结构的递归介绍到此结束。`GertBuffer` 是本头文件定义的公共缓冲区，不是 `GertModelData` 的成员，单独补充如下。
 
@@ -977,7 +1015,7 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 | `data` | `std::shared_ptr<uint8_t>` | 共享持有缓冲区，默认空 |
 | `reserved` | `uint64_t[4]` | 保留 |
 
-#### 1.23 公共常量
+#### 1.19 公共常量
 
 | 定义 | 类型/值 | 说明 |
 |------|---------|------|
@@ -1014,9 +1052,9 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 | `OM2_CONSTANTS_DIR` | `data/constants/` | 常量目录 |
 | `OM2_CONSTANTS_FILE_PREFIX` | `constant_` | 常量文件名前缀 |
 | `OM2_CONSTANTS_CONFIG_PATH_FORMAT` | `data/model_%s/constants_config.json` | 常量配置 |
-| `OM2_VARIABLES_CONFIG_PATH_FORMAT` | `data/model_%s/variables_config.json` | 变量配置 |
-| `OM2_VARIABLES_DIR` | `data/variables/` | 变量权重目录 |
-| `OM2_VAR_WEIGHT_FILE_FORMAT` | `data/variables/var_weight_data_%s` | 变量权重文件，`%s` 为模型索引 |
+| `OM2_VARIABLES_DIR` | `data/variables/` | 变量初始数据块目录 |
+| `OM2_VAR_WEIGHT_FILE_PREFIX` | `var_weight_data_` | 变量初始数据块基名前缀，写入 `model_meta.json` 的 `var_weight_file_name` |
+| `OM2_VAR_WEIGHT_FILE_FORMAT` | `data/variables/var_weight_data_%s` | 变量初始数据块文件，`%s` 为模型索引 |
 | `OM2_VISUAL_JSON_PATH_FORMAT` | `data/model_%s/debug/ge_visual_00000000_graph_0.json` | 可视化 JSON |
 
 #### 2.2 GertFileType 与压缩白名单
@@ -1030,13 +1068,17 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 | `kConstants` | 2 | `data/constants/constant_N` | 否，Stored |
 | `kConstantsConfig` | 3 | `data/model_%s/constants_config.json` | 是，白名单内，DEFLATE |
 | `kVarWeight` | 4 | `data/variables/var_weight_data_N` | 否，Stored |
-| `kVariablesConfig` | 5 | `data/model_%s/variables_config.json` | 否，Stored |
-| `kKernels` | 6 | `data/kernels/*` | 否，Stored |
-| `kCustomKernels` | 7 | `data/custom_ops/*` | 否，Stored |
-| `kModelMeta` | 8 | `data/model_%s/model_meta.json` | 否，Stored |
-| `kOpAttr` | 9 | `data/model_%s/op_attr.json` | 是，白名单内，DEFLATE |
-| `kVisualJson` | 10 | `data/model_%s/debug/ge_visual_*.json` | 是，白名单内，DEFLATE |
-| `kManifest` | 11 | `manifest.json` | 否，Stored |
+| `kKernels` | 5 | `data/kernels/*` | 否，Stored |
+| `kCustomKernels` | 6 | `data/custom_ops/*` | 否，Stored |
+| `kModelMeta` | 7 | `data/model_%s/model_meta.json` | 否，Stored |
+| `kOpAttr` | 8 | `data/model_%s/op_attr.json` | 是，白名单内，DEFLATE |
+| `kVisualJson` | 9 | `data/model_%s/debug/ge_visual_*.json` | 是，白名单内，DEFLATE |
+| `kManifest` | 10 | `manifest.json` | 否，Stored |
+
+> 原先位于 `kVarWeight` 之后的 `kVariablesConfig`（值 5，对应 `data/model_%s/variables_config.json`）
+> 已随变量准备下沉到模型 SO 而删除，其后各枚举项的数值**整体前移 1**（`kKernels` 6→5 …
+> `kManifest` 11→10）。该枚举只用于归档打包时区分文件类别、不作为数值落盘，且 OM2 尚未发布，
+> 故无存量兼容影响。
 
 #### 2.3 工具函数与维护
 

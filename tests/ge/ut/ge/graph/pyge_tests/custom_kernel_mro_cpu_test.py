@@ -14,6 +14,7 @@
 import importlib.util
 from pathlib import Path
 import sys
+import types
 
 import pytest
 
@@ -21,11 +22,31 @@ import pytest
 @pytest.fixture
 def registry(monkeypatch):
     # This module is pure Python; no native classes or decorator internals are replaced.
-    path = (
-        Path(__file__).resolve().parents[6] / "api/python/ge/ge/custom_op/registry.py"
+    # registry.py imports its package siblings (``from ._portable import ...``), so it can
+    # no longer be exec'd as a standalone module without a known parent package. Load the
+    # three pure-Python modules (``_portable``, ``_scope``, ``registry``) under a throwaway
+    # package so the relative imports resolve to the same isolated source files, while
+    # keeping the per-test fresh-module semantics (no shared decorator state).
+    source_dir = Path(__file__).resolve().parents[6] / "api/python/ge/ge/custom_op"
+    package_name = "custom_registry_mro_cpu_pkg"
+    package = types.ModuleType(package_name)
+    package.__path__ = [str(source_dir)]
+    monkeypatch.setitem(sys.modules, package_name, package)
+
+    for name in ("_portable", "_scope"):
+        spec = importlib.util.spec_from_file_location(
+            f"{package_name}.{name}", source_dir / f"{name}.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        module.__package__ = package_name
+        monkeypatch.setitem(sys.modules, spec.name, module)
+        spec.loader.exec_module(module)
+
+    spec = importlib.util.spec_from_file_location(
+        f"{package_name}.registry", source_dir / "registry.py"
     )
-    spec = importlib.util.spec_from_file_location("custom_registry_mro_cpu", path)
     api = importlib.util.module_from_spec(spec)
+    api.__package__ = package_name
     monkeypatch.setitem(sys.modules, spec.name, api)
     spec.loader.exec_module(api)
     return api

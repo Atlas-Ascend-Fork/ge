@@ -132,7 +132,6 @@ set(DISTINCT_GRAPH_LOAD_TEST_FILES
     "executor/om2_model_executor_unittest.cc"
     "executor/om2_kernel_handles_unittest.cc"
     "executor/om2_rt_var_manager_unittest.cc"
-    "executor/rt_var_resource_unittest.cc"
     "executor/om2_model_manager_unittest.cc"
     "executor/file_const_loader_unittest.cc"
     "executor/executor_utils_unittest.cc"
@@ -430,10 +429,14 @@ set(BASE_COMMON_TEST_FILES
     "common/error_registry_unittest.cc"
     "common/zip_archive_unittest.cc"
     "common/om2_codegen_unittest.cc"
+    "common/om2_ast_emitter_unittest.cc"
     "common/om2_codegen_model_builder_unittest.cc"
     "common/control_task_code_builder_unittest.cc"
     "common/program_generator_unittest.cc"
-    "common/om2_var_resource_builder_unittest.cc"
+    "common/om2_var_fixup_table_builder_unittest.cc"
+    "common/om2_var_mgr_file_code_generator_unittest.cc"
+    "common/om2_var_trans_file_code_generator_unittest.cc"
+    "common/om2_var_product_compile_unittest.cc"
     "om2/codegen/stream_switch_task_code_builder_unittest.cc"
     "om2/codegen/hccl_task_code_builder_unittest.cc"
 )
@@ -491,11 +494,13 @@ set(MULTI_PARTS_TEST_FILES
     "common/dnnengines_unittest.cc"
     "common/engine_manage_unittest.cc"
     "common/helper/custom_op_registry_builder_unittest.cc"
+    "common/helper/python_custom_op_package_helper_unittest.cc"
     "runtime/custom_op/python_custom_op_ir_meta_unittest.cc"
     "runtime/custom_op/custom_op_loader_unittest.cc"
     "runtime/custom_op/python_custom_op_bridge_loader_unittest.cc"
     "runtime/custom_op/python_custom_op_proto_unittest.cc"
     "runtime/custom_op/python_custom_op_infer_meta_unittest.cc"
+    "runtime/custom_op/python_custom_op_restore_hook_unittest.cc"
     "graph_ir/ge_custom_op_factory_unittest.cc"
     "graph_ir/op_proto_ledger_unittest.cc"
     "graph_ir/ge_custom_op_pull_registry_unittest.cc"
@@ -805,6 +810,7 @@ target_include_directories(ut_libge_multiparts_utest PRIVATE
     ${ASCEND_INSTALL_PATH}/include/exe_graph
     ${ASCGEN_DIR}/inc
     ${CMAKE_BINARY_DIR}/proto/data_flow_protos
+    ${CMAKE_BINARY_DIR}/proto/python_custom_op_protos
     ${AIR_CODE_DIR}/inc/graph_metadef
     ${AIR_CODE_DIR}/pkg_inc
     ${AIR_CODE_DIR}/tests/ge/st/stubs/
@@ -1583,6 +1589,8 @@ target_compile_options(ut_libge_distinct_load_utest PRIVATE
 
 target_compile_definitions(ut_libge_distinct_load_utest PRIVATE
     google=ascend_private
+    # om2_model_executor_unittest 生成的假模型 SO 需要真实的 GertModelVarContext /
+    # GertVarDesc 定义，而 om2_model_api.h 不在工具包 include 内，故把源码树路径传下去
     FAKE_CUSTOM_OP_CONFLICT_SO_A_PATH="$<TARGET_FILE:fake_custom_op_conflict_so_a>"
     FAKE_CUSTOM_OP_CONFLICT_SO_B_PATH="$<TARGET_FILE:fake_custom_op_conflict_so_b>"
 )

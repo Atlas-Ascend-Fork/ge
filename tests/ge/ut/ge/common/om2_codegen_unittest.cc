@@ -2667,38 +2667,6 @@ TEST_F(Om2CodegenUt, CppEmitter_NestedSwitchCaseBodyIndentation) {
             "}\n");
 }
 
-class RTVarResourceCoverageTest : public testing::Test {
- protected:
-  gert::RTVarEntry MakeEntry(const std::string &var_name, int format, int dtype) {
-    gert::RTVarEntry entry;
-    entry.var_name = gert::GertMakeStr(var_name);
-    gert::GertTensorDesc desc;
-    desc.format = static_cast<ge::Format>(format);
-    desc.data_type = static_cast<ge::DataType>(dtype);
-    entry.var_key = gert::GertMakeStr(gert::RTVarBuildKey(var_name, desc));
-    entry.tensor_desc = std::move(desc);
-    return entry;
-  }
-};
-
-TEST_F(RTVarResourceCoverageTest, GetAllVarKeys) {
-  std::vector<gert::RTVarEntry> entries;
-  ASSERT_EQ(gert::RTVarAddEntry(entries, MakeEntry("a", 1, 0)), ge::SUCCESS);
-  ASSERT_EQ(gert::RTVarAddEntry(entries, MakeEntry("b", 1, 0)), ge::SUCCESS);
-  std::vector<std::string> keys;
-  for (const auto &entry : entries) {
-    keys.push_back(gert::GertGetStr(entry.var_key));
-  }
-  EXPECT_EQ(keys.size(), 2U);
-}
-
-TEST_F(RTVarResourceCoverageTest, AddEntryEmptyKeyFails) {
-  std::vector<gert::RTVarEntry> entries;
-  gert::RTVarEntry entry;
-  entry.var_key = gert::GertMakeStr("");
-  EXPECT_NE(gert::RTVarAddEntry(entries, std::move(entry)), ge::SUCCESS);
-}
-
 TEST_F(Om2CodegenUt, CppEmitter_InvalidEnumDefaults) {
   AstContext ctx;
   auto *ident_x = IdentifierExpr::Create(ctx, "x");

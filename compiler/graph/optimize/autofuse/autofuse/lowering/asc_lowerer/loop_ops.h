@@ -543,14 +543,19 @@ class StoreConcatOp : public LoopOp {
 class ReduceThenBroadcastOp : public ReductionBaseOp {
  public:
   explicit ReduceThenBroadcastOp(ReduceType type, LoopOpPtr input, int64_t dim)
-      : ReductionBaseOp(std::move(input)), reduce_type_(type), reduce_dim_(dim) {}
+      : ReductionBaseOp(std::move(input)), reduce_type_(type), reduce_dims_({dim}) {}
+  explicit ReduceThenBroadcastOp(ReduceType type, LoopOpPtr input, std::vector<int64_t> dims)
+      : ReductionBaseOp(std::move(input)), reduce_type_(type), reduce_dims_(std::move(dims)) {}
   graphStatus ReIndex(const Index &index, Index &reindex) const override {
     reindex = index;
     return GRAPH_SUCCESS;
   }
 
   [[nodiscard]] CseVar Compute(const LoopCtx &ctx) const override {
-    return Ops()->ReduceThenBroadcast(ctx.Get(inputs_[0]), reduce_type_, reduce_dim_);
+    if (reduce_dims_.size() == 1U) {
+      return Ops()->ReduceThenBroadcast(ctx.Get(inputs_[0]), reduce_type_, reduce_dims_[0]);
+    }
+    return Ops()->ReduceThenBroadcast(ctx.Get(inputs_[0]), reduce_type_, reduce_dims_);
   }
 
   [[nodiscard]] const std::string &Type() const override {
@@ -564,7 +569,19 @@ class ReduceThenBroadcastOp : public ReductionBaseOp {
 
   [[nodiscard]] std::string ReadableLine(const std::vector<std::string> &var_names) const override {
     std::stringstream ss;
-    ss << "ops." << ReduceTypeToString(reduce_type_) << "Broadcast(" << var_names[0] << ", dim=" << reduce_dim_ << ")";
+    ss << "ops." << ReduceTypeToString(reduce_type_) << "Broadcast(" << var_names[0];
+    if (reduce_dims_.size() == 1U) {
+      ss << ", dim=" << reduce_dims_[0] << ")";
+      return ss.str();
+    }
+    ss << ", dims=[";
+    for (size_t i = 0U; i < reduce_dims_.size(); ++i) {
+      ss << reduce_dims_[i];
+      if (i + 1U < reduce_dims_.size()) {
+        ss << ", ";
+      }
+    }
+    ss << "])";
     return ss.str();
   }
 
@@ -573,7 +590,7 @@ class ReduceThenBroadcastOp : public ReductionBaseOp {
 
  private:
   ReduceType reduce_type_;
-  int64_t reduce_dim_;
+  std::vector<int64_t> reduce_dims_;
 };
 
 class ScalarOp : public LoopOp {

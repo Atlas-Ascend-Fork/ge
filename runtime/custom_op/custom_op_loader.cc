@@ -15,6 +15,7 @@
 #include "framework/common/debug/ge_log.h"
 #include "register/op_lib_register_impl.h"
 #include "runtime/custom_op/python_custom_op_bridge_loader.h"
+#include "runtime/custom_op/python_custom_op_restore_hook.h"
 
 namespace ge {
 namespace custom_op {
@@ -28,6 +29,11 @@ class CustomOpLoader {
 
   Status Load() {
     std::lock_guard<std::mutex> lock(mutex_);
+    // 安装 PYTHON_CUSTOM_OPS 恢复 hook（进程级单例，幂等）。LoadCustomOps() 是
+    // 天然的"确保 custom_op_runtime 已载入"锚点，覆盖所有会加载 Python OM 的进程初始化
+    // 路径（GEInitialize/ATC/GeExecutor/ge_generator）。库未被载入的进程 hook 为 null，
+    // base 加载侧点名 Python 显式失败，不静默跳过。
+    InstallPythonCustomOpRestoreHook();
     if (active_users_ == 0U) {
       shutdown_done_ = false;
       const auto cpp_load_ret = OpLibRegistry::GetInstance().PreProcessForCustomOp();

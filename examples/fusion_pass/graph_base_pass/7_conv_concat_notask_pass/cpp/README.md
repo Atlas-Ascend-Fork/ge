@@ -2,7 +2,7 @@
 
 ## 功能描述<a name="section5991635456363"></a>
 
-本样例为 Conv2D/Conv2DV2/ExtendConv2D 与 Concat 零拷贝标记的自定义 pass 样例，识别 Conv2D/Conv2DV2/ExtendConv2D+Concat 结构后，通过给节点设置属性的方式将 Concat 标记为虚拟算子（不生成 Task、输出复用输入内存），并描述各 conv 输出在 Concat 输出连续内存中的排布信息。pass 通过 GetAllNodes 遍历图内所有节点（含子图节点）。
+本样例为 Conv2D/Conv2DV2/ExtendConv2D 与 Concat 零拷贝标记的自定义 pass 样例，识别 Conv2D/Conv2DV2/ExtendConv2D+Concat 结构后，通过给节点设置属性的方式将 Concat 标记为虚拟算子（不生成 Task、输出复用输入内存），并描述各 conv 输出在 Concat 输出连续内存中的排布信息。pass 采用逐图遍历（根图与各子图分别处理，conv 与 concat 仅在同图内匹配），入口处校验芯片版本（仅 mc62 版本芯片生效），并支持单/多 batch 两种排布方案（详见匹配条件说明）。
 
 识别的固定 pattern：
 
@@ -22,8 +22,8 @@
 | ConcatD/ConcatV2D | `_output_reuse_input`（ATTR_NAME_OUTPUT_REUSE_INPUT） | bool | 标记输出复用输入内存 |
 | ConcatD/ConcatV2D | `_no_padding_continuous_input`（ATTR_NAME_NOPADDING_CONTINUOUS_INPUT） | bool | 标记输入为无 padding 的连续内存 |
 | ConcatD/ConcatV2D | `_reuse_input_on_dim_index`（ATTR_NAME_REUSE_INPUT_ON_DIM_INDEX） | int64 | 输出复用输入内存的维度索引（本例为比较输入输出 shape 求出的真实 concat 轴） |
-| Conv2D/Conv2DV2/ExtendConv2D | `_output_offset_list_for_continuous`（ATTR_NAME_OUTPUT_OFFSET_LIST_FOR_CONTINUOUS） | list\<int64\> | 各输出在 concat 输出连续内存中相对于第 1 个 conv 输出地址的字节偏移 |
-| Conv2D/Conv2DV2/ExtendConv2D | `total_shape`（私有属性） | list\<int64\> | conv 输出所在 concat 输出的完整 shape |
+| Conv2D/Conv2DV2/ExtendConv2D | `_output_offset_list_for_continuous`（ATTR_NAME_OUTPUT_OFFSET_LIST_FOR_CONTINUOUS） | list\<int64\> | 各输出在 concat 输出连续内存中的基地址偏移（相对第 1 个 conv 输出地址），按各 conv 输出沿 concat 轴的单 batch 切片字节数（concat_dim 及其后各维大小之积 × dtype 大小）累加 |
+| Conv2D/Conv2DV2/ExtendConv2D | `total_shape`（私有属性） | list\<int64\> | conv 输出所在 concat 输出的完整 shape；跳写场景下同时作为算子推导分段步长的依据（对应 FE `StridedWriteOptimizer` 的 slice_output_shape） |
 | Conv2D/Conv2DV2/ExtendConv2D | `valid_shape`（私有属性） | list\<int64\> | conv 自身输出的有效 shape |
 
 匹配条件：
@@ -31,9 +31,14 @@
 - ConcatD/ConcatV2D 的所有输入均来自不同的 Conv2D/Conv2DV2/ExtendConv2D 节点，且对应 conv 输出仅被该 Concat 消费；
 - 每个 conv 输出 format 为 NCHW 或 NHWC，且 C 维度 32 字节对齐（C 维度大小 = C 轴大小 × dtype 大小，为 32B 的整数倍；NCHW 中 C 轴为 dim 1，NHWC 中 C 轴为最内层 dim 3），保证各输入在 concat 连续内存中的起始地址 32B 对齐（强于 GE 内置 `CheckPhonyConcatInputIs32Align` 的张量大小 32B 对齐约束）；
 - concat 的拼接轴（concat_dim）与 conv 输出的 C 轴对应，支持负索引（从最后一维起算）：NCHW 为 dim 1 或 -3，NHWC 为 dim 3 或 -1；
+- batch 轴无限制，支持单/多 batch 两种方案（基地址偏移按各 conv 输出沿 concat 轴的单 batch 切片字节数累加，参考 GE 内置 `GetConcatOffset` 与 FE `CalSliceOffset` 实现）：
+  - 单 batch 且数据整段连续（NCHW，参考内置 `ConvConcatFusionPass`）：偏移即各 conv 输出段的起点，无需跳写；
+  - 数据非整段连续（NHWC 按 (h,w) 位置分块，或多 batch 按 batch 分段，参考内置 `StridedWriteOptimizer`）：偏移为首段基地址，`total_shape` 作为算子推导分段步长的依据；
 - 输入输出 shape 为静态 shape，数据类型为常见定长类型。
 
-> 说明：本样例仅演示属性设置方式，未覆盖 GE 内置 Concat no-task 优化的完整校验链（如 32 字节对齐、前驱节点类型、级联 continuous input 等）。实际使用时需结合内存校验确保各 conv 输出地址满足连续性要求，否则可能导致运行结果错误。
+> 限制条件：当 Concat 作为子图节点，而其输入的 Conv 算子位于根图（跨图数据依赖）时，本 pass 会检测该场景并跳过对应节点（不设置属性，日志打印 "Conv inputs of concat are not in the same graph, skip."）；该场景的属性标记会触发未知错误，不在本样例处理范围内。
+>
+> 说明：本样例仅演示属性设置方式，未覆盖 GE 内置 Concat no-task 优化的完整校验链（如 32 字节对齐、前驱节点类型、级联 continuous input、concat_dim 之前维度为 1 的运行时格式校验等）。实际使用时需结合内存校验确保各 conv 输出地址满足连续性要求，否则可能导致运行结果错误。
 
 ## 目录结构<a name="section7668345634665"></a>
 

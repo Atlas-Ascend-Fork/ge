@@ -13,6 +13,17 @@ add_subdirectory(slice)
 add_subdirectory(common/om2/model_data)
 
 ##################################################################
+# python_custom_op.proto 只有 base 使用（PYTHON_CUSTOM_OPS 分区的序列化格式），由使用方自己生成并编译：
+# 它不能挂在 graph_metadef 的 metadef_protos 上——产品构建既不设 BUILD_METADEF，也不设 ENABLE_TEST，
+# graph_metadef 整个不参与配置，那份 .pb.h 没有生成者、.pb.cc 也没有编译者。
+set(PYTHON_CUSTOM_OP_PROTO_LIST
+    "${METADEF_PROTO_DIR}/python_custom_op.proto"
+)
+generate_cann_protobuf(python_custom_op_protos PYTHON_CUSTOM_OP_PROTO_SRCS PYTHON_CUSTOM_OP_PROTO_HDRS
+    ${PYTHON_CUSTOM_OP_PROTO_LIST} "--proto_path=${METADEF_PROTO_DIR}" TARGET)
+set(PYTHON_CUSTOM_OP_PROTO_INCLUDE_DIR "${CMAKE_BINARY_DIR}/proto/python_custom_op_protos")
+
+##################################################################
 set(SRC_FORMAT_TRANSFERS
     "${AIR_CODE_DIR}/base/formats/format_transfers/format_transfer_c1hwncoc0_hwcn.cc"
     "${AIR_CODE_DIR}/base/formats/format_transfers/format_transfer_dhwcn_fractal_z_3D.cc"
@@ -74,6 +85,97 @@ file(READ "${OM2_MODEL_API_HEADER}" OM2_MODEL_API_CONTENT)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/common/om2/codegen/om2_model_api_resource.cc.in"
                "${CMAKE_CURRENT_BINARY_DIR}/om2_model_api_resource.cc" @ONLY)
 list(APPEND OM2_SRCS "${CMAKE_CURRENT_BINARY_DIR}/om2_model_api_resource.cc")
+
+# OM2 变量转换源码内嵌：47 个单元按依赖序拼接进 <model>_var_mgr.cpp 的转换段。
+# 不使用 configure_file：这些源码内含 316 个 '@'，@ONLY 仍会误解析 @VAR@ 形式，
+# 故由 file(WRITE)/file(APPEND) 直接生成资源文件。
+set(OM2_VAR_TRANS_UNITS
+        "runtime/om2/formats/om2_register_format_transfer.h"
+        "runtime/om2/formats/om2_register_format_transfer.cc"
+        "runtime/om2/formats/utils/om2_formats_definitions.h"
+        "runtime/om2/formats/utils/om2_formats_trans_utils.h"
+        "runtime/om2/formats/utils/om2_formats_trans_utils.cc"
+        "runtime/om2/formats/om2_formats.h"
+        "runtime/om2/formats/om2_formats.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_c1hwncoc0_hwcn.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_c1hwncoc0_hwcn.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_dhwcn_fractal_z_3D.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_dhwcn_fractal_z_3D.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_dhwnc_fractal_z_3D_transpose.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_dhwnc_fractal_z_3D_transpose.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fractal_nz.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fractal_nz.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fractal_z.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fractal_z.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fractal_z_tbe.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fractal_z_tbe.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fractal_zz.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fractal_zz.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fracz_hwcn.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fracz_hwcn.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fracz_nchw.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fracz_nchw.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fracz_nhwc.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fracz_nhwc.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_transpose.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_transpose.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fz_c04.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_fz_c04.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_hwcn_c1hwncoc0.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_hwcn_c1hwncoc0.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_nc1hwc0_nchw.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_nc1hwc0_nchw.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_nc1hwc0_nhwc.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_nc1hwc0_nhwc.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_nchw_nc1hwc0.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_nchw_nc1hwc0.cc"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_nhwc_nc1hwc0.h"
+        "runtime/om2/formats/format_transfers/om2_format_transfer_nhwc_nc1hwc0.cc"
+        "runtime/om2/common/fp16_t/om2_fp16_t.h"
+        "runtime/om2/common/fp16_t/om2_fp16_t.cc"
+        "runtime/om2/common/math/om2_hif8_t.h"
+        "runtime/om2/common/math/om2_hif8_t.cc"
+        "runtime/om2/common/datatype_transfer/om2_datatype_transfer.h"
+        "runtime/om2/common/datatype_transfer/om2_datatype_transfer.cc"
+)
+set(OM2_VAR_TRANS_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/om2_var_trans_resource.cc")
+file(WRITE "${OM2_VAR_TRANS_RESOURCE}"
+     "// OM2 变量转换源码资源，由 base/CMakeLists.txt 在 configure 阶段生成，勿手改\n"
+     "#include <map>\n#include <string>\n#include <string_view>\n\nnamespace ge {\n"
+     "const std::map<std::string, std::string_view> &GetVarTransSources() {\n"
+     "  static const std::map<std::string, std::string_view> kSources = {\n")
+foreach(_om2_vt_unit ${OM2_VAR_TRANS_UNITS})
+  file(READ "${AIR_CODE_DIR}/${_om2_vt_unit}" _om2_vt_content)
+  file(APPEND "${OM2_VAR_TRANS_RESOURCE}"
+       "    {\"${_om2_vt_unit}\", R\"VT_SRC(\n${_om2_vt_content}\n)VT_SRC\"},\n")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${AIR_CODE_DIR}/${_om2_vt_unit}")
+endforeach()
+file(APPEND "${OM2_VAR_TRANS_RESOURCE}"
+     "  };\n  return kSources;\n}\n}  // namespace ge\n")
+list(APPEND OM2_SRCS "${OM2_VAR_TRANS_RESOURCE}")
+
+# OM2 线程池源码内嵌：逐字拼进 <model>_var_mgr.cpp。.h 必须在 .cc 前（类定义先于类外定义）。
+# 与 OM2_VAR_TRANS_UNITS 分开：后者有严格的依赖排序语义（SelectUnits 按 FormatUnitNames()
+# 原序过滤、FixedUnits() 打头），且 GetVarTransSources() 的名字就限定了语义。
+set(OM2_VAR_MGR_UNITS
+        "runtime/om2/om2_thread_pool.h"
+        "runtime/om2/om2_thread_pool.cc"
+)
+set(OM2_VAR_MGR_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/om2_var_mgr_resource.cc")
+file(WRITE "${OM2_VAR_MGR_RESOURCE}"
+     "// OM2 变量准备内嵌源码资源，由 base/CMakeLists.txt 在 configure 阶段生成，勿手改\n"
+     "#include <map>\n#include <string>\n#include <string_view>\n\nnamespace ge {\n"
+     "const std::map<std::string, std::string_view> &GetOm2ThreadPoolSources() {\n"
+     "  static const std::map<std::string, std::string_view> kSources = {\n")
+foreach(_om2_vm_unit ${OM2_VAR_MGR_UNITS})
+  file(READ "${AIR_CODE_DIR}/${_om2_vm_unit}" _om2_vm_content)
+  file(APPEND "${OM2_VAR_MGR_RESOURCE}"
+       "    {\"${_om2_vm_unit}\", R\"VM_SRC(\n${_om2_vm_content}\n)VM_SRC\"},\n")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${AIR_CODE_DIR}/${_om2_vm_unit}")
+endforeach()
+file(APPEND "${OM2_VAR_MGR_RESOURCE}"
+     "  };\n  return kSources;\n}\n}  // namespace ge\n")
+list(APPEND OM2_SRCS "${OM2_VAR_MGR_RESOURCE}")
 set(SRC_BASE_LIST
     "common/context/ctx.cc"
     "common/context/local_context.cc"
@@ -97,6 +199,7 @@ set(SRC_BASE_LIST
     "common/helper/custom_op_registry_builder.cc"
     "common/helper/custom_op_so_loader.cc"
     "common/helper/model_custom_kernels_helper.cc"
+    "common/helper/python_custom_op_package_helper.cc"
     "common/helper/pre_model_helper.cc"
     "common/helper/nano_model_save_helper.cc"
     "common/helper/om_file_helper.cc"
@@ -281,10 +384,12 @@ target_link_libraries(ge_common
 add_library(ge_common_base SHARED
     ${SRC_BASE_LIST}
     ${SRC_FORMAT_TRANSFERS}
+    ${PYTHON_CUSTOM_OP_PROTO_SRCS}
 )
 
 add_dependencies(ge_common_base
     graphengine_protos
+    python_custom_op_protos
 )
 
 target_compile_definitions(ge_common_base PRIVATE
@@ -307,6 +412,7 @@ target_include_directories(ge_common_base PRIVATE
     ${AIR_CODE_DIR}/inc/graph_metadef
     ${CMAKE_BINARY_DIR}
     ${CMAKE_BINARY_DIR}/proto/graphengine_protos
+    ${PYTHON_CUSTOM_OP_PROTO_INCLUDE_DIR}
     ${TOP_DIR}/runtime/pkg_inc
     ${TOP_DIR}/metadef/inc
     ${TOP_DIR}/air/inc/external
@@ -363,10 +469,12 @@ add_library(ge_common_static STATIC
     ${SRC_LIST}
     ${SRC_BASE_LIST}
     ${SRC_FORMAT_TRANSFERS}
+    ${PYTHON_CUSTOM_OP_PROTO_SRCS}
 )
 
 add_dependencies(ge_common_static
     graphengine_protos
+    python_custom_op_protos
 )
 
 target_compile_definitions(ge_common_static PRIVATE
@@ -395,6 +503,7 @@ target_include_directories(ge_common_static PRIVATE
     ${AIR_CODE_DIR}/inc/framework
     ${CMAKE_BINARY_DIR}
     ${CMAKE_BINARY_DIR}/proto/graphengine_protos
+    ${PYTHON_CUSTOM_OP_PROTO_INCLUDE_DIR}
     ${ASCGEN_DIR}/inc
     ${METADEF_DIR}/pkg_inc
 )
@@ -486,11 +595,13 @@ target_link_libraries(ge_common
 add_library(ge_common_base SHARED
     ${SRC_BASE_LIST}
     ${SRC_FORMAT_TRANSFERS}
+    ${PYTHON_CUSTOM_OP_PROTO_SRCS}
         common/memory/tensor_trans_utils.cc
         common/memory/tensor_trans_utils.h
 )
 add_dependencies(ge_common_base
     graphengine_protos
+    python_custom_op_protos
 )
 
 target_compile_definitions(ge_common_base PRIVATE
@@ -513,6 +624,7 @@ target_include_directories(ge_common_base PRIVATE
     ${AIR_CODE_DIR}/inc/framework
     ${CMAKE_BINARY_DIR}
     ${CMAKE_BINARY_DIR}/proto/graphengine_protos
+    ${PYTHON_CUSTOM_OP_PROTO_INCLUDE_DIR}
     ${ASCGEN_DIR}/inc
     ${TOP_DIR}/air/inc/external
     ${TOP_DIR}/runtime/include/external
@@ -559,7 +671,7 @@ endif ()
 if ("${PRODUCT}" STREQUAL "ascend031")
     target_clone(ge_common_base ge_common_base_static STATIC)
 
-    add_dependencies(ge_common_base_static graphengine_protos)
+    add_dependencies(ge_common_base_static graphengine_protos python_custom_op_protos)
 
     target_compile_options(ge_common_base_static PRIVATE
         -Os

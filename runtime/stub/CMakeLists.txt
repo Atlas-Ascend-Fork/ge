@@ -50,6 +50,8 @@ list(TRANSFORM STUB_HEADER_LIST
 
 add_custom_command(
     OUTPUT ${STUB_SRC_LIST}
+    DEPENDS ${STUB_HEADER_LIST}
+            ${GE_METADEF_DIR}/../tests/graph_metadef/stub/gen_stubapi.py
     COMMAND echo "Generating gert_stub files."
             && ${HI_PYTHON} ${GE_METADEF_DIR}/../tests/graph_metadef/stub/gen_stubapi.py ${CMAKE_CURRENT_BINARY_DIR} ${STUB_HEADER_LIST}
             && echo "Generating stub files end."

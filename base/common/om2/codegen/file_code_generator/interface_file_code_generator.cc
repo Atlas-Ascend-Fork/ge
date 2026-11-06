@@ -160,9 +160,9 @@ ClassDecl *InterfaceFileCodeGenerator::BuildOm2ModelClass(const Om2CodegenModel 
           "Om2Model",
           {ast_.Var("const char **", "bin_files"), ast_.Var("const void **", "bin_data"),
            ast_.Var("uint64_t *", "bin_size"), ast_.Var("size_t", "bin_num"), ast_.Var("void **", "constants"),
-           ast_.Var("void **", "var_addrs"), ast_.Var("void *", "work_ptr"), ast_.Var("uint64_t *", "session_id"),
-           ast_.Var("uint32_t", "model_id"), ast_.Var("void *", "instance_handle"),
-           ast_.Var("const GertModelLoadCallbacks *", "callbacks")},
+           ast_.Var("const GertModelVarContext *", "var_context"), ast_.Var("void *", "work_ptr"),
+           ast_.Var("uint64_t *", "session_id"), ast_.Var("uint32_t", "model_id"),
+           ast_.Var("void *", "instance_handle"), ast_.Var("const GertModelLoadCallbacks *", "callbacks")},
           ""),
       ast_.DeclareMethod("~Om2Model", {}, ""),
       ast_.DeclareMethod("InitResources",
@@ -190,7 +190,10 @@ ClassDecl *InterfaceFileCodeGenerator::BuildOm2ModelClass(const Om2CodegenModel 
                          "void"),
       ast_.Private(),
       ast_.Field("void **", "constants_"),
-      ast_.Field("void **", "var_addrs_"),
+      // 运行期变量地址表的自有存储：InitResources 内 resize 后由 gert::var_mgr::PrepareVars 填出
+      // （原为借用执行器传入的数组）
+      ast_.Field("std::vector<void *>", "var_addrs_"),
+      ast_.Field("const GertModelVarContext *", "var_context_"),
       ast_.Field("aclmdlRI", "model_handle_"),
       ast_.Field("bool", "is_external_rt_model_"),
   };

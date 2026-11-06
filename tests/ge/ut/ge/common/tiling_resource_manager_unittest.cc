@@ -17,6 +17,7 @@
 #include "common/host_resource_center/host_resource_center.h"
 #include "common/host_resource_center/host_resource_manager.h"
 #include "common/host_resource_center/host_resource_serializer.h"
+#include "common/share_graph.h"
 #include "ge_graph_dsl/graph_dsl.h"
 #include "register/op_tiling_info.h"
 #include "graph/utils/node_utils.h"
@@ -33,6 +34,23 @@ TEST_F(TilingResourceManagerUT, SetGetResource) {
   const TilingResource *resource = dynamic_cast<const TilingResource *>(manager.GetResource(op_desc, 0));
   ASSERT_NE(resource, nullptr);
   EXPECT_EQ(resource->GetOpRunInfo().get(), run_info.get());
+}
+
+TEST_F(TilingResourceManagerUT, TakeOverTilingResourcesOnly) {
+  HostResourceCenter center;
+  auto graph = gert::ShareGraph::BuildSingleNodeGraph();
+  auto node = graph->FindFirstNodeMatchType("Add");
+  ASSERT_NE(node, nullptr);
+  auto run_info = std::make_shared<optiling::utils::OpRunInfo>();
+  node->GetOpDesc()->SetExtAttr(ATTR_NAME_OP_RUN_INFO, run_info);
+
+  EXPECT_EQ(center.TakeOverTilingResources(graph), SUCCESS);
+  auto tiling_manager = center.GetHostResourceMgr(HostResourceType::kTilingData);
+  ASSERT_NE(tiling_manager, nullptr);
+  EXPECT_NE(tiling_manager->GetResource(node->GetOpDesc(), 0), nullptr);
+  auto weight_manager = center.GetHostResourceMgr(HostResourceType::kWeight);
+  ASSERT_NE(weight_manager, nullptr);
+  EXPECT_EQ(weight_manager->GetResource(node->GetOpDesc(), 0), nullptr);
 }
 
 TEST_F(TilingResourceManagerUT, SerializeDeSerialize_Success) {

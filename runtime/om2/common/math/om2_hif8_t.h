@@ -14,7 +14,7 @@
 #include <cstdint>
 #include "common/fp16_t/om2_fp16_t.h"
 
-namespace ge {
+namespace gert {
 using hif8_t = class HiF8 final {
  private:
   HiF8() = default;
@@ -40,6 +40,6 @@ using hif8_t = class HiF8 final {
 };
 
 static_assert(sizeof(hif8_t) == sizeof(uint8_t), "sizeof hif8_t must be 1");
-}  // namespace ge
+}  // namespace gert
 
 #endif

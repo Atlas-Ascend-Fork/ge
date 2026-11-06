@@ -302,8 +302,9 @@ Status BuildControlCodegenModel(const GeModelPtr &ge_model) {
   GE_ASSERT_SUCCESS(Om2CodegenModelBuilder::CreateTaskCodeBuilders(ge_model, ast, task_code_builders, codegen_model));
 
   std::vector<gert::GertModelDataConstMeta> const_metas;
+  std::vector<VarSlotMeta> var_metas;
   Om2CodegenModelBuilder builder;
-  return builder.Build(ge_model, task_code_builders, codegen_model, const_metas);
+  return builder.Build(ge_model, task_code_builders, codegen_model, const_metas, var_metas);
 }
 
 TEST_F(ControlTaskCodeGeneratorUt, GenerateControlTaskFiles_Ok) {
@@ -316,8 +317,9 @@ TEST_F(ControlTaskCodeGeneratorUt, GenerateControlTaskFiles_Ok) {
   ASSERT_EQ(Om2CodegenModelBuilder::CreateTaskCodeBuilders(ge_model, ast, task_code_builders, codegen_model), SUCCESS);
 
   std::vector<gert::GertModelDataConstMeta> const_metas;
+  std::vector<VarSlotMeta> var_metas;
   Om2CodegenModelBuilder builder;
-  ASSERT_EQ(builder.Build(ge_model, task_code_builders, codegen_model, const_metas), SUCCESS);
+  ASSERT_EQ(builder.Build(ge_model, task_code_builders, codegen_model, const_metas, var_metas), SUCCESS);
 
   codegen_model.artifact_name = codegen_model.model_name;
   ProgramGenerator generator(ast, task_code_builders, std::move(codegen_model));

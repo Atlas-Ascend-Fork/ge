@@ -266,11 +266,25 @@ TEST_F(Om2ModelDataTest, Manifest_PopulateBundleFields) {
   EXPECT_EQ(std::string(gert::GertGetStr(manifest.compatibility.compiler_version)), "1.0");
 }
 
-TEST_F(Om2ModelDataTest, VariablesConfig_GlobalSharedVarSize_DefaultAndPopulate) {
-  GertModelDataVariablesConfig config;
-  EXPECT_EQ(config.global_shared_var_size, 0U);
-  config.global_shared_var_size = 4096U;
-  EXPECT_EQ(config.global_shared_var_size, 4096U);
+TEST_F(Om2ModelDataTest, ModelMeta_VarFields_DefaultAndPopulate) {
+  GertModelDataModelMeta model_meta;
+  EXPECT_EQ(model_meta.global_shared_var_size, 0U);
+  EXPECT_EQ(model_meta.var_weight_file_name, nullptr);
+  model_meta.global_shared_var_size = 4096U;
+  model_meta.var_weight_file_name = gert::GertMakeStr("var_weight_data_0");
+  EXPECT_EQ(model_meta.global_shared_var_size, 4096U);
+  EXPECT_EQ(std::string(gert::GertGetStr(model_meta.var_weight_file_name)), "var_weight_data_0");
+}
+
+TEST_F(Om2ModelDataTest, Variables_VarWeightData_DefaultEmpty) {
+  GertModelDataVariables variables;
+  EXPECT_EQ(variables.var_weight_data.size(), 0U);
+  // 槽位可以先占位后填充（无初始数据块的模型保持 null）
+  variables.var_weight_data.emplace_back();
+  EXPECT_EQ(variables.var_weight_data.size(), 1U);
+  EXPECT_EQ(variables.var_weight_data[0], nullptr);
+  variables.var_weight_data[0] = std::make_unique<GertModelDataFile>();
+  EXPECT_NE(variables.var_weight_data[0], nullptr);
 }
 
 // Test move semantics
@@ -647,7 +661,10 @@ TEST_F(Om2ModelDataTest, DeserializeFull_OptionalVariablesMissing) {
   GertModelData model_data;
   gert::InitGertModelData(model_data);
   EXPECT_EQ(gert::DeserializeGertModelData(buf.data.get(), buf.length, &model_data), 0U);
-  EXPECT_EQ(model_data.models[0]->variables_config, nullptr);
+  // 变量初始数据块缺失属正常：槽位保持空，model_meta 的 var_weight_file_name 也保持空
+  ASSERT_EQ(model_data.variables->var_weight_data.size(), 1U);
+  EXPECT_EQ(model_data.variables->var_weight_data[0], nullptr);
+  EXPECT_EQ(model_data.models[0]->model_meta->var_weight_file_name, nullptr);
 }
 
 // 反序列化接口：必选文件在包中缺失时报错（model_meta.json 不在精简归档中）

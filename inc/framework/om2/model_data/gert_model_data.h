@@ -116,6 +116,13 @@ struct GertModelDataModelMeta {
   // 动态分档模型的原始输入 shape：写入 "inputs"[]"shape"（此时 input_desc.shape 退为 "max_gear_shape"）
   std::vector<std::vector<int64_t>> origin_input_dims;
   std::vector<std::unique_ptr<GertModelDataAippMeta>> aipp_infos;  // "aipp"."aipp_infos"[]
+  // 全局共享变量 HBM 总大小（bundle 工作区按各子模型最大值分配）。为 0 时仍写入，
+  // 运行期据此不分配外置变量内存区
+  uint64_t global_shared_var_size = 0U;  // "global_shared_var_size"
+  // data/variables/ 下变量初始数据块的基名（如 "var_weight_data_0"），与
+  // GertModelDataVariables::var_weight_data 元素的 file_name 对应，供按名查找数据源；
+  // 空表示本模型无初始数据块
+  std::unique_ptr<char[]> var_weight_file_name;  // "var_weight_file_name"
 };
 
 // ==================== data/model_N/runtime/（so + csrc/）====================
@@ -160,56 +167,15 @@ struct GertModelDataDebug {
   std::unique_ptr<char[]> visual_json;
 };
 
-// ==================== data/model_N/variables_config.json（entries 合并自 var_resource.json）====================
-struct RTTransNodeInfo {
-  std::unique_ptr<char[]> node_type;
-  GertTensorDesc input;
-  GertTensorDesc output;
-  uint64_t reserved[4] = {0U};
-};
-
-using RTVarTransRoad = std::vector<RTTransNodeInfo>;
-
-struct RTCopyNodeInfo {
-  std::unique_ptr<char[]> src_var_name;
-  GertTensorDesc src_tensor_desc;
-  uint64_t reserved[4] = {0U};
-};
-
-struct RTVarEntry {
-  std::unique_ptr<char[]> var_name;
-  std::unique_ptr<char[]> var_key;  // 同时作为 "entries" 对象的 key
-  std::unique_ptr<char[]> op_type;
-  uint64_t logic_addr = 0U;
-  uint64_t size = 0U;
-  uint64_t memory_type = 0U;
-  GertTensorDesc tensor_desc;
-  RTVarTransRoad trans_road;
-  uint64_t changed_graph_id = 0U;
-  uint64_t allocated_graph_id = 0U;
-  RTCopyNodeInfo copy_info;
-  void *extern_dev_addr = nullptr;
-  std::vector<uint8_t> init_data;
-  std::unique_ptr<char[]> file_name;  // 权重数据文件基名（如 "var_weight_data_0"），反序列化按名寻址
-  uint64_t reserved[4] = {0U};
-};
-
-struct GertModelDataVarMeta {
-  uint64_t struct_size = sizeof(GertModelDataVarMeta);
-  uint64_t index = 0U;
-  std::unique_ptr<char[]> var_name;
-  std::unique_ptr<char[]> op_type;
-  GertTensorDesc tensor_desc;
-  std::unique_ptr<char[]> op_name;
-};
-
-struct GertModelDataVariablesConfig {
-  uint64_t struct_size = sizeof(GertModelDataVariablesConfig);
-  uint64_t graph_id = 0U;
-  std::vector<RTVarEntry> entries;                               // "entries"（合并自 var_resource.json）
-  std::vector<std::unique_ptr<GertModelDataVarMeta>> var_metas;  // "var_metas"
-  // 全局共享变量 HBM 总大小（bundle 工作区按各子模型最大值分配）
-  uint64_t global_shared_var_size = 0U;
+// ==================== data/variables/var_weight_data_N ====================
+// data/variables/ 目录的聚合结构
+struct GertModelDataVariables {
+  uint64_t struct_size = sizeof(GertModelDataVariables);
+  // var_weight_data_N，下标与 GertModelData::models 一一对应（无初始数据块的模型该元素为 null）；
+  // 元素 file_name 记录基名 var_weight_data_N，与 GertModelDataModelMeta::var_weight_file_name
+  // 对应，供执行器按名查找数据源。执行器把 data/data_size 经 GertModelVarContext 交给模型 SO，
+  // 由 SO 按编译期固化的 init_data_offset 自行切片
+  std::vector<std::unique_ptr<GertModelDataFile>> var_weight_data;
 };
 
 // ========= data/model_N/（单个模型目录的全部文件，对应 manifest.model_num）=========
@@ -220,7 +186,6 @@ struct GertModelDataModel {
   std::unique_ptr<char[]> op_attr_json;                            // data/model_N/op_attr.json
   std::unique_ptr<GertModelDataRuntime> runtime;                   // data/model_N/runtime/
   std::unique_ptr<GertModelDataDebug> debug;                       // data/model_N/debug/
-  std::unique_ptr<GertModelDataVariablesConfig> variables_config;  // data/model_N/variables_config.json
 };
 
 // data/kernels/ 目录的聚合结构
@@ -244,6 +209,7 @@ struct GertModelData {
   std::unique_ptr<GertModelDataConstants> constants;        // data/constants/
   std::unique_ptr<GertModelDataKernels> kernels;            // data/kernels/
   std::unique_ptr<GertModelDataCustomOps> custom_ops;       // data/custom_ops/
+  std::unique_ptr<GertModelDataVariables> variables;        // data/variables/
 };
 }  // namespace gert
 

@@ -37,6 +37,12 @@ finally:
 
 
 class NativeWheelAbiTest(unittest.TestCase):
+    WHEEL_PREFIXES = (
+        "",
+        "ge_py_pass_bridge-0.0.1.data/purelib/",
+        "ge_py_pass_bridge-0.0.1.data/platlib/",
+    )
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -85,8 +91,8 @@ class NativeWheelAbiTest(unittest.TestCase):
             json.dumps(self.manifest)
         )
 
-    def write_wheel(self):
-        prefix = "ge/passes/python_pass_artifacts/cp37-linux-x86_64/"
+    def write_wheel(self, prefix=""):
+        prefix += "ge/passes/python_pass_artifacts/cp37-linux-x86_64/"
         with zipfile.ZipFile(self.args.current_wheel, "w") as archive:
             archive.writestr(prefix + "manifest.json", json.dumps(self.manifest))
             for name in self.manifest["artifacts"].values():
@@ -113,13 +119,29 @@ class NativeWheelAbiTest(unittest.TestCase):
 
     def test_reuse_rejects_old_abi_before_copy(self):
         self.manifest["bridge_abi"] = 1
-        self.write_wheel()
-        with self.assertRaisesRegex(RuntimeError, "bridge_abi mismatch"):
-            matrix_builder._copy_current_wheel(self.args, "cp37")
-        self.assertFalse(self.args.dist_dir.exists())
+        for prefix in self.WHEEL_PREFIXES:
+            with self.subTest(prefix=prefix):
+                self.write_wheel(prefix)
+                with self.assertRaisesRegex(RuntimeError, "bridge_abi mismatch"):
+                    matrix_builder._copy_current_wheel(self.args, "cp37")
+                self.assertFalse(self.args.dist_dir.exists())
 
     def test_reuse_accepts_current_abi(self):
-        self.write_wheel()
+        for prefix in self.WHEEL_PREFIXES:
+            with self.subTest(prefix=prefix):
+                self.write_wheel(prefix)
+                copied = matrix_builder._copy_current_wheel(self.args, "cp37")
+                self.assertEqual(
+                    copied.read_bytes(), self.args.current_wheel.read_bytes()
+                )
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("setuptools") and importlib.util.find_spec("wheel"),
+        "needs setuptools and wheel",
+    )
+    def test_reuse_accepts_bdist_wheel_output(self):
+        self.write_manifest()
+        self.args.current_wheel = wheel_builder.build_wheel(self.args)
         copied = matrix_builder._copy_current_wheel(self.args, "cp37")
         self.assertEqual(copied.read_bytes(), self.args.current_wheel.read_bytes())
 
@@ -145,13 +167,25 @@ class NativeWheelAbiTest(unittest.TestCase):
         )
 
     def test_reuse_rejects_incomplete_wheel(self):
-        prefix = "ge/passes/python_pass_artifacts/cp37-linux-x86_64/"
-        with zipfile.ZipFile(self.args.current_wheel, "w") as archive:
-            archive.writestr(prefix + "manifest.json", json.dumps(self.manifest))
-            archive.writestr(prefix + "_ge_pass_native.so", b"test artifact")
-        with self.assertRaises(KeyError):
-            matrix_builder._copy_current_wheel(self.args, "cp37")
-        self.assertFalse(self.args.dist_dir.exists())
+        for prefix in self.WHEEL_PREFIXES:
+            with self.subTest(prefix=prefix):
+                prefix += "ge/passes/python_pass_artifacts/cp37-linux-x86_64/"
+                with zipfile.ZipFile(self.args.current_wheel, "w") as archive:
+                    archive.writestr(
+                        prefix + "manifest.json", json.dumps(self.manifest)
+                    )
+                    archive.writestr(prefix + "_ge_pass_native.so", b"test artifact")
+                with self.assertRaisesRegex(KeyError, "libge_python_pass_bridge.so"):
+                    matrix_builder._copy_current_wheel(self.args, "cp37")
+                self.assertFalse(self.args.dist_dir.exists())
+
+    def test_reuse_rejects_manifest_outside_package_directories(self):
+        for prefix in ("unrelated/", "ge_py_pass_bridge-0.0.1.data/data/"):
+            with self.subTest(prefix=prefix):
+                self.write_wheel(prefix)
+                with self.assertRaises(KeyError):
+                    matrix_builder._copy_current_wheel(self.args, "cp37")
+                self.assertFalse(self.args.dist_dir.exists())
 
     def test_manifest_checks_python_and_platform(self):
         for key, value in (("python_tag", "cp311"), ("platform", "linux-aarch64")):

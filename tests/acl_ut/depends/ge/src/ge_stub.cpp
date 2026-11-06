@@ -1919,6 +1919,19 @@ std::unique_ptr<ModelV2Executor> LoadExecutorFromModelData(const ge::ModelData &
   return MockFunctionTest::aclStubInstance().LoadExecutorFromModelData(model_data, error_code);
 }
 
+ge::graphStatus LoadExecutorSetFromModelData(const ge::ModelData &model_data, const LoadExecutorArgs &args,
+                                             ExecutorSet &executor_set) {
+  ge::graphStatus error_code = ge::GRAPH_SUCCESS;
+  executor_set.main = MockFunctionTest::aclStubInstance().LoadExecutorFromModelData(model_data, args, error_code);
+  if (error_code != ge::GRAPH_SUCCESS) {
+    return error_code;
+  }
+  if (executor_set.main == nullptr) {
+    return ge::GRAPH_FAILED;
+  }
+  return ge::GRAPH_SUCCESS;
+}
+
 std::unique_ptr<ModelV2Executor> LoadExecutorFromModelData(const ge::ModelData &model_data,
                                                            const LoadExecutorArgs &args, ge::graphStatus &error_code) {
   return MockFunctionTest::aclStubInstance().LoadExecutorFromModelData(model_data, args, error_code);

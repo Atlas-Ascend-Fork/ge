@@ -14,28 +14,30 @@
 #include <vector>
 #include "formats/om2_register_format_transfer.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
 class FormatTransfer4DToFZC04 : public FormatTransfer {
  public:
-  Status TransFormat(const ge::formats::TransArgs &args, ge::formats::TransResult &result) override;
-  Status TransShape(const Format src_format, const std::vector<int64_t> &src_shape, const DataType data_type,
-                    const Format dst_format, std::vector<int64_t> &dst_shape) override;
+  ge::Status TransFormat(const gert::formats::TransArgs &args, gert::formats::TransResult &result) override;
+  ge::Status TransShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                        const ge::DataType data_type, const ge::Format dst_format,
+                        std::vector<int64_t> &dst_shape) override;
 
  private:
-  Status BuildTransArgsNchwToFzC04(const ge::formats::TransArgs &src_dst_args, TransResult &nchw_result_holder,
-                                   ge::formats::TransArgs &nchw_dst_args) const;
-  Status TransShapeFromSrcToNchw(const Format src_format, const std::vector<int64_t> &src_shape,
-                                 const DataType data_type, std::vector<int64_t> &nchw_shape) const;
+  ge::Status BuildTransArgsNchwToFzC04(const gert::formats::TransArgs &src_dst_args, TransResult &nchw_result_holder,
+                                       gert::formats::TransArgs &nchw_dst_args) const;
+  ge::Status TransShapeFromSrcToNchw(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                                     const ge::DataType data_type, std::vector<int64_t> &nchw_shape) const;
 };
 
 class FormatTransferFZC04To4D : public FormatTransfer {
  public:
-  Status TransFormat(const ge::formats::TransArgs &args, ge::formats::TransResult &result) override;
-  Status TransShape(const Format src_format, const std::vector<int64_t> &src_shape, const DataType data_type,
-                    const Format dst_format, std::vector<int64_t> &dst_shape) override;
+  ge::Status TransFormat(const gert::formats::TransArgs &args, gert::formats::TransResult &result) override;
+  ge::Status TransShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                        const ge::DataType data_type, const ge::Format dst_format,
+                        std::vector<int64_t> &dst_shape) override;
 };
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert
 
 #endif  // GE_OM2_COMMON_FORMATS_FORMAT_TRANSFERS_FORMAT_TRANSFER_NCHW_FZ_C04_H_

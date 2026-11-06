@@ -171,12 +171,11 @@ Status DeleteCastForDataTypeUnconsistantNode(const ge::ComputeGraphPtr &compute_
   }
   return GRAPH_SUCCESS;
 }
-bool IsEnableAutofuse() {
-  // 新的自动融合配置选项
-  if (GetAutofuseFlagValue(kAutoFuseEnableOption) == "true") {
+bool IsEnableAutofuse(const ComputeGraphPtr &graph) {
+  if (ge::IsAutofuseEnabled(graph)) {
     return true;
   }
-  GELOGI("Option --enable_autofuse=true is not set in env AUTOFUSE_FLAGS, skip autofuse.");
+  GELOGI("Autofuse is disabled for graph[%s], skip autofuse.", graph != nullptr ? graph->GetName().c_str() : "<null>");
   return false;
 }
 }  // namespace
@@ -202,8 +201,8 @@ Status AutofuseOptimize::PostProcess(const ge::ComputeGraphPtr &compute_graph) c
 }
 
 Status AutofuseOptimize::Run(const ge::ComputeGraphPtr &compute_graph, const std::vector<GeTensor> &inputs) const {
-  if (!IsEnableAutofuse()) {
-    GELOGI("Auto fuse env is disabled, skip it.");
+  if (!IsEnableAutofuse(compute_graph)) {
+    GELOGI("Auto fuse is disabled, skip it.");
     return GRAPH_SUCCESS;
   }
 

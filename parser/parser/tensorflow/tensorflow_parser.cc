@@ -495,23 +495,33 @@ Status TensorFlowModelParser::ParseOpParams(const domi::tensorflow::NodeDef *nod
       return status;
     }
   } else {
-    ge::Operator op_src(node_def->name().c_str(), node_def->op().c_str());
-    status = domi::OperatorAutoMapping(node_def, op_src);
-    if (status != SUCCESS) {
-      REPORT_INNER_ERR_MSG("E19999", "Auto mapping node_def:%s(%s) to operator failed", node_def->name().c_str(),
-                           node_def->op().c_str());
-      GELOGE(status, "Node[%s] auto mapping failed.", node_name.c_str());
-      return status;
-    }
     std::shared_ptr<ge::TensorFlowCustomParserAdapter> tf_custom_op_parser =
         std::dynamic_pointer_cast<ge::TensorFlowCustomParserAdapter>(op_parser);
-    GE_CHECK_NOTNULL(tf_custom_op_parser);
-    status = tf_custom_op_parser->ParseParams(op_src, op);
-    if (status != SUCCESS) {
-      GELOGE(status, "Parse params for node[%s] failed", ParserUtils::GetOperatorName(op_src).c_str());
-      return status;
+    if ((tf_custom_op_parser == nullptr) && (op->GetType() == ge::parser::FRAMEWORKOP)) {
+      shared_ptr<TensorFlowOpParser> tensorflow_op_parser = std::dynamic_pointer_cast<TensorFlowOpParser>(op_parser);
+      GE_CHECK_NOTNULL(tensorflow_op_parser);
+      status = tensorflow_op_parser->ParseParams(node_def, op);
+      if (status != SUCCESS) {
+        GELOGE(status, "Parse params for node[%s] failed", node_name.c_str());
+        return status;
+      }
+    } else {
+      GE_CHECK_NOTNULL(tf_custom_op_parser);
+      ge::Operator op_src(node_def->name().c_str(), node_def->op().c_str());
+      status = domi::OperatorAutoMapping(node_def, op_src);
+      if (status != SUCCESS) {
+        REPORT_INNER_ERR_MSG("E19999", "Auto mapping node_def:%s(%s) to operator failed", node_def->name().c_str(),
+                             node_def->op().c_str());
+        GELOGE(status, "Node[%s] auto mapping failed.", node_name.c_str());
+        return status;
+      }
+      status = tf_custom_op_parser->ParseParams(op_src, op);
+      if (status != SUCCESS) {
+        GELOGE(status, "Parse params for node[%s] failed", ParserUtils::GetOperatorName(op_src).c_str());
+        return status;
+      }
+      op_src.BreakConnect();
     }
-    op_src.BreakConnect();
   }
 
   ParseOpAttributes(node_def, op);

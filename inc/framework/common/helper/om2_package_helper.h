@@ -20,7 +20,6 @@
 
 namespace gert {
 struct GertModelDataConstMeta;
-struct GertModelDataVarMeta;
 struct GertModelData;
 struct GertModelDataFile;
 struct GertModelDataModelMeta;
@@ -49,10 +48,10 @@ class GE_FUNC_VISIBILITY Om2PackageHelper : public ModelSaveHelper {
   /// @param ge_root_model  编译产出的根模型。
   static Status EnsureGertModelData(const GeRootModelPtr &ge_root_model);
 
-  /// @brief 将各子模型 GertModelData 组装为 Bundle 结构（移动语义：子模型的 models/constants 槽被移出）。
+  /// @brief 将各子模型 GertModelData 组装为 Bundle 结构（移动语义：子模型的 models/constants/variables 槽被移出）。
   /// @param sub_models  各子模型编译产物（每个须为单模型、非 Bundle、无 custom op so）。
-  /// @param global_shared_var_size  全局共享变量 HBM 总大小，写入各子模型 variables_config。
-  /// @param bundle_data 输出的 Bundle 结构（models/constants/kernels/custom_ops/manifest 齐备）。
+  /// @param global_shared_var_size  全局共享变量 HBM 总大小，写入各子模型 model_meta。
+  /// @param bundle_data 输出的 Bundle 结构（models/constants/variables/kernels/custom_ops/manifest 齐备）。
   static Status AssembleBundleModelData(std::vector<std::shared_ptr<gert::GertModelData>> &sub_models,
                                         const uint64_t global_shared_var_size, gert::GertModelData &bundle_data);
 
@@ -71,7 +70,8 @@ class GE_FUNC_VISIBILITY Om2PackageHelper : public ModelSaveHelper {
 
  private:
   static Status BuildProgramBody(const GeModelPtr &ge_model, gert::GertModelData &model_data,
-                                 gert::GertModelDataModel &unit);
+                                 gert::GertModelDataModel &unit,
+                                 std::unique_ptr<gert::GertModelDataFile> &var_weight_slot, const size_t model_index);
   static Status BuildKernelBinaries(const GeModelPtr &ge_model, gert::GertModelData &model_data);
   static Status BuildModelMeta(const GeModelPtr &ge_model, gert::GertModelDataModel &unit);
   static Status BuildConstantsData(const GeModelPtr &ge_model, gert::GertModelDataModel &unit,

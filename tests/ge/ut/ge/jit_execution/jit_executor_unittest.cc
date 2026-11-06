@@ -1030,3 +1030,69 @@ TEST_F(JitExecutorUT, multi_slice_multi_run_multi_input) {
   EXPECT_EQ(jit_executor->Finalize(), SUCCESS);
   EXPECT_EQ(graph_manager.Finalize(), SUCCESS);
 }
+
+/*
+ * 快路径(第二次执行命中 TryExecuteWithoutProcessWithCallback)回归：
+ * 需值符号化输入(reshape 的 shape 输入 data1)必须与编译时一致保留在 host 传入模型，
+ * 其余输入 H2D 到 device。断言：
+ *   1. 第二次执行命中快路径("fast path with callback" 日志)；
+ *   2. 快路径 H2D 时 shape 输入(input[1])保留 host("keep on host" 日志)。
+ */
+TEST_F(JitExecutorUT, run_fast_path_keep_symbolize_input_on_host) {
+  // 首次执行需真实编译，且本例需执行两遍(完整路径+快路径)；CI/ST 环境耗时超过默认 1000ms 阈值
+  // slow_test_limit = 3000
+  ModelExecutor model_executor;
+  model_executor.Initialize({}, 0);
+  GraphManager graph_manager;
+  EXPECT_EQ(graph_manager.Initialize({}, &model_executor), SUCCESS);
+  UserGraphExecutionQueue task_queue;
+  uint32_t user_graph_id = 0u;
+  auto graph = JitShareGraph::OneReshapeNode();
+  auto compute_graph = GraphUtilsEx::GetComputeGraph(*graph.get());
+  ExecutionOrder order({user_graph_id, compute_graph, {}, true});
+  CompileContext compile_context(graph_manager);
+  CompiledModelCache cmc(user_graph_id, compile_context, graph_manager);
+  std::mutex tmp_mutex;
+
+  auto jit_executor = JitExecutor::Create(graph_manager, task_queue, order, compile_context, cmc, tmp_mutex);
+  EXPECT_NE(jit_executor, nullptr);
+
+  std::vector<int64_t> shape_dim = {2, 3, 3, 2};
+  TensorDesc td(Shape(shape_dim), FORMAT_NCHW, DT_FLOAT);
+  td.SetOriginShape(Shape(shape_dim));
+  Tensor tensor(td);
+  std::vector<int64_t> input_data_2{2, 3, 3, 2};
+  TensorDesc desc_2(Shape({4}), FORMAT_NCHW, DT_INT64);
+  desc_2.SetOriginShape(Shape({4}));
+  desc_2.SetPlacement(Placement::kPlacementHost);
+  Tensor input_tensor_2{desc_2};
+  input_tensor_2.SetData(reinterpret_cast<uint8_t *>(input_data_2.data()), input_data_2.size() * sizeof(int64_t));
+  std::vector<Tensor> inputs{tensor, input_tensor_2};
+
+  const RunAsyncCallbackV2 callback = [&](Status status, std::vector<gert::Tensor> &outputs) {
+    EXPECT_EQ(status, SUCCESS);
+    return SUCCESS;
+  };
+
+  // 第一次执行：完整路径，触发 GEP 编译
+  {
+    std::vector<gert::Tensor> gert_inputs;
+    TensorTransUtils::Tensors2GertTensors(inputs, gert_inputs);
+    UserGraphExecution task(user_graph_id, gert_inputs, callback, 0);
+    EXPECT_EQ(jit_executor->RunWithCallback(std::move(task)), SUCCESS);
+  }
+  // 第二次执行：同 shape 输入命中快路径
+  gert_stub_.GetSlogStub().SetLevelDebug();
+  gert_stub_.GetSlogStub().Clear();
+  {
+    std::vector<gert::Tensor> gert_inputs;
+    TensorTransUtils::Tensors2GertTensors(inputs, gert_inputs);
+    UserGraphExecution task(user_graph_id, gert_inputs, callback, 0);
+    EXPECT_EQ(jit_executor->RunWithCallback(std::move(task)), SUCCESS);
+  }
+  EXPECT_NE(gert_stub_.GetSlogStub().FindLog(DLOG_INFO, "fast path with callback"), -1);
+  EXPECT_NE(gert_stub_.GetSlogStub().FindLog(DLOG_INFO, "input[1] keep on host, not transfer to device."), -1);
+
+  EXPECT_EQ(jit_executor->Finalize(), SUCCESS);
+  EXPECT_EQ(graph_manager.Finalize(), SUCCESS);
+}

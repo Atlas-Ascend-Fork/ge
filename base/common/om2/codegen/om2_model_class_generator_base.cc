@@ -14,7 +14,8 @@ namespace ge {
 Om2ModelClassGeneratorBase::Om2ModelClassGeneratorBase(AstBuildContext &ast)
     : CodeGeneratorBase(ast),
       constants_(ast.Var("void **", "constants_")),
-      var_addrs_(ast.Var("void **", "var_addrs_")),
+      var_addrs_(ast.Var("std::vector<void *>", "var_addrs_")),
+      var_context_(ast.Var("const GertModelVarContext *", "var_context_")),
       model_handle_(ast.Var("aclmdlRI", "model_handle_")),
       bin_ids_(ast.Var("std::vector<std::string>", "bin_ids_")),
       bin_handles_(ast.Var("std::vector<aclrtBinHandle>", "bin_handles_")),

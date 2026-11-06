@@ -15,24 +15,25 @@
 
 #include "formats/om2_register_format_transfer.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
-Status Transpose(const uint8_t *const src, const std::vector<int64_t> &src_shape, const DataType src_data_type,
-                 const std::vector<int64_t> &perm_arg, TransResult &result);
+ge::Status Transpose(const uint8_t *const src, const std::vector<int64_t> &src_shape, const ge::DataType src_data_type,
+                     const std::vector<int64_t> &perm_arg, TransResult &result);
 
-Status TransposeWithShapeCheck(const uint8_t *const src, const std::vector<int64_t> &src_shape,
-                               const std::vector<int64_t> &dst_shape, const DataType src_data_type,
-                               const std::vector<int64_t> &perm_arg, TransResult &result);
+ge::Status TransposeWithShapeCheck(const uint8_t *const src, const std::vector<int64_t> &src_shape,
+                                   const std::vector<int64_t> &dst_shape, const ge::DataType src_data_type,
+                                   const std::vector<int64_t> &perm_arg, TransResult &result);
 
-Status GetPermByForamt(const Format src_format, const Format dst_format, std::vector<int64_t> &perm);
+ge::Status GetPermByForamt(const ge::Format src_format, const ge::Format dst_format, std::vector<int64_t> &perm);
 
 class FormatTransferTranspose : public FormatTransfer {
  public:
-  Status TransFormat(const TransArgs &args, TransResult &result) override;
-  Status TransShape(const Format src_format, const std::vector<int64_t> &src_shape, const DataType data_type,
-                    const Format dst_format, std::vector<int64_t> &dst_shape) override;
+  ge::Status TransFormat(const TransArgs &args, TransResult &result) override;
+  ge::Status TransShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                        const ge::DataType data_type, const ge::Format dst_format,
+                        std::vector<int64_t> &dst_shape) override;
 };
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert
 
 #endif  // GE_OM2_COMMON_FORMATS_FORMAT_TRANSFERS_FORMAT_TRANSFER_TRANSPOSE_H_

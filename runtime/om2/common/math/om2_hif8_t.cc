@@ -176,7 +176,7 @@ auto BitCast(const From &src) -> To {
 }
 }  // namespace
 
-namespace ge {
+namespace gert {
 HiF8 HiF8::FromRawBits(uint8_t bits) {
   HiF8 hif8;
   hif8.u8_ = bits;
@@ -272,4 +272,4 @@ HiF8::operator fp16_t() const {
   tmp = static_cast<float>(*this);
   return tmp;
 }
-}  // namespace ge
+}  // namespace gert

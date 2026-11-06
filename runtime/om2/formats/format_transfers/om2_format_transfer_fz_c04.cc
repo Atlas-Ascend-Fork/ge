@@ -32,7 +32,7 @@
  *      Padding to (N, ceil(Z/16)*16)
  *  Last Step: View the (N, ceil(Z/16)*16) as 4D (N/16, 16, C/16, 16) and transpose to (C/16, N/16, 16, 16)
  */
-namespace ge {
+namespace gert {
 namespace formats {
 namespace {
 constexpr int64_t kMaxDimsNumC = 4;
@@ -40,21 +40,21 @@ constexpr int64_t kC04 = 4;
 constexpr int64_t kC0Size = 16;
 constexpr int64_t kCubeK = 16;  // 当前硬件为固定值
 
-Status CheckGroupsSupport(const int32_t groups) {
+ge::Status CheckGroupsSupport(const int32_t groups) {
   // 这里的语义不是group为0，是fe在group为1的场景下，为了保证subformat的兼容性，影响面降低，把subformat置为0.
   // 所以这里从subformat获取的时候，当group为0的时候，认为其为1，忽略即可
   if (groups == 0 || groups == 1) {
-    return SUCCESS;
+    return ge::SUCCESS;
   }
   GELOGW("Currently groups %ld are not supported, should be 1 on fzc04 format transfer.", groups);
   return ACL_ERROR_GE_PARAM_INVALID;
 }
 
-Status CheckDataTypeSupport(const DataType data_type) {
-  return (GetSizeByDataType(data_type) > 0) ? SUCCESS : UNSUPPORTED;
+ge::Status CheckDataTypeSupport(const ge::DataType data_type) {
+  return (ge::GetSizeByDataType(data_type) > 0) ? ge::SUCCESS : UNSUPPORTED;
 }
 
-Status GetTotalDataSize(const std::vector<int64_t> &shape_4d, const int64_t dtype_size, int64_t &total_size) {
+ge::Status GetTotalDataSize(const std::vector<int64_t> &shape_4d, const int64_t dtype_size, int64_t &total_size) {
   // data overflow check totally
   // 输出的4d shape不一定是nchw格式，这里只是为了按顺序取每个轴的值
   const auto n_o = shape_4d.at(kNchwN);
@@ -62,28 +62,28 @@ Status GetTotalDataSize(const std::vector<int64_t> &shape_4d, const int64_t dtyp
   const auto h_o = shape_4d.at(kNchwH);
   const auto w_o = shape_4d.at(kNchwW);
   int64_t t1, t2 = 0;
-  GE_ASSERT_TRUE(!MulOverflow(h_o, w_o, t1),
+  GE_ASSERT_TRUE(!ge::MulOverflow(h_o, w_o, t1),
                  "[Check][Shape]Failed, "
                  "int64 mul overflow.A[%" PRId64 "], B[%" PRId64 "]",
                  h_o, w_o);
-  GE_ASSERT_TRUE(!MulOverflow(n_o, c_o, t2),
+  GE_ASSERT_TRUE(!ge::MulOverflow(n_o, c_o, t2),
                  "[Check][Shape]Failed, "
                  "int64 mul overflow.A[%" PRId64 "], B[%" PRId64 "]",
                  n_o, c_o);
   int64_t total_ele_cnt = 0;
-  GE_ASSERT_TRUE(!MulOverflow(t1, t2, total_ele_cnt),
+  GE_ASSERT_TRUE(!ge::MulOverflow(t1, t2, total_ele_cnt),
                  "[Check][Shape]Failed, "
                  "int64 mul overflow.A[%" PRId64 "], B[%" PRId64 "]",
                  t1, t2);
-  GE_ASSERT_TRUE(!MulOverflow(total_ele_cnt, static_cast<int64_t>(dtype_size), total_size),
+  GE_ASSERT_TRUE(!ge::MulOverflow(total_ele_cnt, static_cast<int64_t>(dtype_size), total_size),
                  "[Check][Shape]Failed, "
                  "int64 mul overflow.A[%" PRId64 "], B[%d]",
                  total_ele_cnt, dtype_size);
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status TransShapeNchwToFzC04(const std::vector<int64_t> &src_shape, const DataType data_type,
-                             std::vector<int64_t> &dst_shape) {
+ge::Status TransShapeNchwToFzC04(const std::vector<int64_t> &src_shape, const ge::DataType data_type,
+                                 std::vector<int64_t> &dst_shape) {
   if (!CheckShapeValid(src_shape, kNchwDimsNum)) {
     return ACL_ERROR_GE_SHAPE_INVALID;
   }
@@ -116,24 +116,24 @@ Status TransShapeNchwToFzC04(const std::vector<int64_t> &src_shape, const DataTy
         std::vector<const char *>({"shape", ShapeToString(dst_shape).c_str(), "Invalid destination shape check."}));
     return ACL_ERROR_GE_SHAPE_INVALID;
   }
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status TransFormatNchwToFzC04(const TransArgs &args, TransResult &result) {
+ge::Status TransFormatNchwToFzC04(const TransArgs &args, TransResult &result) {
   const int64_t n = args.src_shape.at(kNchwN);
   const int64_t c = args.src_shape.at(kNchwC);
   const int64_t h = args.src_shape.at(kNchwH);
   const int64_t w = args.src_shape.at(kNchwW);
 
   const int64_t c0 = GetCubeSizeByDataType(args.src_data_type);
-  const int32_t dtype_size = GetSizeByDataType(args.src_data_type);
+  const int32_t dtype_size = ge::GetSizeByDataType(args.src_data_type);
 
   const auto data = args.data;
   TransResult trans_result_1;
   const std::vector<int64_t> perm_arg_1 = {0, 2, 3, 1};
   const std::vector<int64_t> expect_shape = {n, h, w, c};
-  auto ret = ge::formats::Transpose(data, args.src_shape, args.src_data_type, perm_arg_1, trans_result_1);
-  if (ret != SUCCESS) {
+  auto ret = gert::formats::Transpose(data, args.src_shape, args.src_data_type, perm_arg_1, trans_result_1);
+  if (ret != ge::SUCCESS) {
     GELOGE(ret, "[Trans][Formats]Failed from NCHW to HWCN, src_shape %s, src_data_type %s",
            ShapeToString(args.src_shape).c_str(), TypeUtilsInner::DataTypeToSerialString(args.src_data_type).c_str());
     REPORT_INNER_ERR_MSG("E19999",
@@ -169,7 +169,7 @@ Status TransFormatNchwToFzC04(const TransArgs &args, TransResult &result) {
   GE_ASSERT_SUCCESS(GetTotalDataSize(shape_o, dtype_size, dst_size));
   if (dst_size == 0) {
     result.length = 0U;
-    return SUCCESS;
+    return ge::SUCCESS;
   }
 
   const std::shared_ptr<uint8_t> dst(new (std::nothrow) uint8_t[dst_size], std::default_delete<uint8_t[]>());
@@ -203,7 +203,7 @@ Status TransFormatNchwToFzC04(const TransArgs &args, TransResult &result) {
   auto protected_size = dst_size;
   for (int64_t k = 0L; k < n; k++) {
     const auto cpy_ret =
-        memcpy_s(PtrAdd(p_dst, static_cast<size_t>(dst_size), static_cast<size_t>(k) * static_cast<size_t>(stride)),
+        memcpy_s(ge::PtrAdd(p_dst, static_cast<size_t>(dst_size), static_cast<size_t>(k) * static_cast<size_t>(stride)),
                  static_cast<size_t>(protected_size), p_start + (k * block), static_cast<size_t>(block));
     if (cpy_ret != EOK) {
       GELOGE(ACL_ERROR_GE_MEMORY_OPERATE_FAILED,
@@ -226,17 +226,17 @@ Status TransFormatNchwToFzC04(const TransArgs &args, TransResult &result) {
 
   // transpose : 2,0,1,3
   const std::vector<int64_t> perm_arg_2 = {2, 0, 1, 3};
-  ret = ge::formats::Transpose(dst.get(), shape_o, args.src_data_type, perm_arg_2, result);
-  if (ret != SUCCESS) {
+  ret = gert::formats::Transpose(dst.get(), shape_o, args.src_data_type, perm_arg_2, result);
+  if (ret != ge::SUCCESS) {
     GELOGE(ret, "[Trans][Formats]Failed from NCHW to HWCN, error_code %u", ret);
     REPORT_INNER_ERR_MSG("E19999", "Failed to trans formats from NCHW to HWCN, error_code %u", ret);
     return ret;
   }
 
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status PaddingNC(const TransArgs &args, TransArgs &args_tmp, std::shared_ptr<uint8_t> &dst) {
+ge::Status PaddingNC(const TransArgs &args, TransArgs &args_tmp, std::shared_ptr<uint8_t> &dst) {
   args_tmp = args;
   auto src_shape = args_tmp.src_shape;
   if (!CheckShapeValid(src_shape, kNchwDimsNum)) {
@@ -267,10 +267,10 @@ Status PaddingNC(const TransArgs &args, TransArgs &args_tmp, std::shared_ptr<uin
 
   // malloc dst data and reset to 0
   int64_t dst_size = 0;
-  const int32_t dtype_size = GetSizeByDataType(args.src_data_type);
+  const int32_t dtype_size = ge::GetSizeByDataType(args.src_data_type);
   GE_ASSERT_SUCCESS(GetTotalDataSize(args_tmp.src_shape, static_cast<int64_t>(dtype_size), dst_size));
   if (dst_size == 0) {
-    return SUCCESS;
+    return ge::SUCCESS;
   }
   dst.reset(new (std::nothrow) uint8_t[dst_size], std::default_delete<uint8_t[]>());
   GE_ASSERT_NOTNULL(dst,
@@ -291,7 +291,7 @@ Status PaddingNC(const TransArgs &args, TransArgs &args_tmp, std::shared_ptr<uin
   for (int64_t i = 0; i < n; i++) {
     for (int64_t j = 0; j < c; j++) {
       const int64_t dst_offset = ((i * c_o * h_o * w_o) + (j * h_o * w_o)) * dtype_size;
-      ret = memcpy_s(PtrAdd(p_dst, static_cast<size_t>(dst_size), static_cast<size_t>(dst_offset)),
+      ret = memcpy_s(ge::PtrAdd(p_dst, static_cast<size_t>(dst_size), static_cast<size_t>(dst_offset)),
                      static_cast<size_t>(protected_size), p_start + (((i * c * h * w) + (j * h * w)) * dtype_size),
                      static_cast<size_t>(block));
       if (ret != EOK) {
@@ -311,13 +311,13 @@ Status PaddingNC(const TransArgs &args, TransArgs &args_tmp, std::shared_ptr<uin
     }
   }
   args_tmp.data = dst.get();
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status TransFormatFzC04ToHwcn(const TransArgs &args, TransResult &result) {
-  const Format format_4d = args.dst_primary_format;
-  if (format_4d != FORMAT_HWCN) {
-    return GRAPH_FAILED;
+ge::Status TransFormatFzC04ToHwcn(const TransArgs &args, TransResult &result) {
+  const ge::Format format_4d = args.dst_primary_format;
+  if (format_4d != ge::FORMAT_HWCN) {
+    return ge::GRAPH_FAILED;
   }
   const std::vector<int64_t> shape_4d = args.dst_shape;
   int64_t h_dim = shape_4d[kHwcnH];
@@ -328,10 +328,10 @@ Status TransFormatFzC04ToHwcn(const TransArgs &args, TransResult &result) {
   int64_t cin_ori = c_dim;
   int64_t cout_ori = n_dim;
   if (cin_ori == 0 || cout_ori == 0) {
-    return GRAPH_FAILED;
+    return ge::GRAPH_FAILED;
   }
 
-  const DataType data_type = args.src_data_type;
+  const ge::DataType data_type = args.src_data_type;
   const int64_t cube_k = GetCubeSizeByDataType(args.src_data_type);
   auto groups = static_cast<int64_t>(args.src_sub_format);
   // 这里group若为0，认为其为1. 原因参考如下函数内部注释
@@ -343,7 +343,7 @@ Status TransFormatFzC04ToHwcn(const TransArgs &args, TransResult &result) {
   int64_t c1 = cin_opt / cube_k;
   int64_t n1 = Ceil(e_mult * cout_ori, static_cast<int64_t>(kCubeSize));
 
-  int64_t dtype_size = GetSizeByDataType(data_type);
+  int64_t dtype_size = ge::GetSizeByDataType(data_type);
   int64_t dst_size = 0;
   GE_ASSERT_SUCCESS(GetTotalDataSize(args.dst_shape, dtype_size, dst_size));
   int64_t src_size = 0;
@@ -351,7 +351,7 @@ Status TransFormatFzC04ToHwcn(const TransArgs &args, TransResult &result) {
   // The input is empty tensor, we should return success directly.
   if (dst_size == 0) {
     result.length = static_cast<size_t>(dst_size);
-    return GRAPH_FAILED;
+    return ge::GRAPH_FAILED;
   }
   std::shared_ptr<uint8_t> dst(new (std::nothrow) uint8_t[dst_size], std::default_delete<uint8_t[]>());
   GE_ASSERT_NOTNULL(dst, "Failed to allocate memory for dst buf [%lld] when trans format from [%s] to [%s]", dst_size,
@@ -368,8 +368,8 @@ Status TransFormatFzC04ToHwcn(const TransArgs &args, TransResult &result) {
           int64_t idx_fz = (common_factor / cube_k * (cube_k * kNiSize * n1)) + (n / kNiSize * (cube_k * kNiSize)) +
                            (n % kNiSize * cube_k) + (common_factor % cube_k);
           int64_t idx_4d = (h * w_dim * c_dim * n_dim) + (w * c_dim * n_dim) + (c * n_dim) + n;
-          auto ret = memcpy_s(PtrAdd(dst.get(), dst_size, idx_4d * dtype_size), protected_size,
-                              PtrAdd(args.data, src_size, idx_fz * dtype_size), dtype_size);
+          auto ret = memcpy_s(ge::PtrAdd(dst.get(), dst_size, idx_4d * dtype_size), protected_size,
+                              ge::PtrAdd(args.data, src_size, idx_fz * dtype_size), dtype_size);
           GE_ASSERT_EOK(ret, "[Set][Memcpy]Failed, stride %zu, protect_size %" PRId64 ", error_code %d", dtype_size,
                         protected_size);
           protected_size -= dtype_size;
@@ -380,20 +380,20 @@ Status TransFormatFzC04ToHwcn(const TransArgs &args, TransResult &result) {
 
   result.data = dst;
   result.length = static_cast<size_t>(dst_size);
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 }  // namespace
-Status FormatTransfer4DToFZC04::BuildTransArgsNchwToFzC04(const ge::formats::TransArgs &src_dst_args,
-                                                          TransResult &nchw_result_holder,
-                                                          ge::formats::TransArgs &nchw_dst_args) const {
-  if (src_dst_args.src_primary_format == FORMAT_NCHW) {
-    return SUCCESS;
+ge::Status FormatTransfer4DToFZC04::BuildTransArgsNchwToFzC04(const gert::formats::TransArgs &src_dst_args,
+                                                              TransResult &nchw_result_holder,
+                                                              gert::formats::TransArgs &nchw_dst_args) const {
+  if (src_dst_args.src_primary_format == ge::FORMAT_NCHW) {
+    return ge::SUCCESS;
   }
-  ge::formats::TransArgs src_to_nchw_args = src_dst_args;
+  gert::formats::TransArgs src_to_nchw_args = src_dst_args;
   src_to_nchw_args.dst_format =
-      static_cast<Format>(GetFormatFromSub(FORMAT_NCHW, GetSubFormat(src_dst_args.dst_sub_format)));
-  src_to_nchw_args.dst_primary_format = FORMAT_NCHW;
-  if (!ge::formats::IsTransFormatSupport(src_to_nchw_args)) {
+      static_cast<ge::Format>(GetFormatFromSub(ge::FORMAT_NCHW, ge::GetSubFormat(src_dst_args.dst_sub_format)));
+  src_to_nchw_args.dst_primary_format = ge::FORMAT_NCHW;
+  if (!gert::formats::IsTransFormatSupport(src_to_nchw_args)) {
     GELOGE(ACL_ERROR_GE_FORMAT_INVALID, "Does not support trans format from %s to %s.",
            TypeUtilsInner::FormatToSerialString(src_dst_args.src_format).c_str(),
            TypeUtilsInner::FormatToSerialString(src_to_nchw_args.dst_format).c_str());
@@ -404,50 +404,51 @@ Status FormatTransfer4DToFZC04::BuildTransArgsNchwToFzC04(const ge::formats::Tra
   GE_ASSERT_SUCCESS(TransShapeFromSrcToNchw(src_to_nchw_args.src_format, src_to_nchw_args.src_shape,
                                             src_to_nchw_args.src_data_type, nchw_shape));
   src_to_nchw_args.dst_shape = nchw_shape;
-  GE_ASSERT_SUCCESS(ge::formats::TransDataFormat(src_to_nchw_args, nchw_result_holder));
+  GE_ASSERT_SUCCESS(gert::formats::TransDataFormat(src_to_nchw_args, nchw_result_holder));
 
   std::vector<int64_t> dst_shape;
   nchw_dst_args = {nchw_result_holder.data.get(),
-                   FORMAT_NCHW,
+                   ge::FORMAT_NCHW,
                    src_dst_args.dst_format,
-                   FORMAT_NCHW,
+                   ge::FORMAT_NCHW,
                    src_dst_args.dst_primary_format,
-                   FORMAT_RESERVED,
+                   ge::FORMAT_RESERVED,
                    src_dst_args.dst_sub_format,
                    kC0Size,
                    kC0Size,
                    nchw_shape,
                    dst_shape,
                    src_dst_args.src_data_type};
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status FormatTransfer4DToFZC04::TransShapeFromSrcToNchw(const Format src_format, const std::vector<int64_t> &src_shape,
-                                                        const DataType data_type,
-                                                        std::vector<int64_t> &nchw_shape) const {
-  const Format src_primary_format = static_cast<Format>(GetPrimaryFormat(static_cast<int32_t>(src_format)));
-  if (src_primary_format == FORMAT_NCHW) {
-    return SUCCESS;
+ge::Status FormatTransfer4DToFZC04::TransShapeFromSrcToNchw(const ge::Format src_format,
+                                                            const std::vector<int64_t> &src_shape,
+                                                            const ge::DataType data_type,
+                                                            std::vector<int64_t> &nchw_shape) const {
+  const ge::Format src_primary_format = static_cast<ge::Format>(ge::GetPrimaryFormat(static_cast<int32_t>(src_format)));
+  if (src_primary_format == ge::FORMAT_NCHW) {
+    return ge::SUCCESS;
   }
-  ge::formats::TransArgs args{nullptr,     src_format,      FORMAT_NCHW,     src_primary_format,
-                              FORMAT_NCHW, FORMAT_RESERVED, FORMAT_RESERVED, kC0Size,
-                              kC0Size,     src_shape,       nchw_shape,      data_type};
-  if (!ge::formats::IsTransFormatSupport(args)) {
+  gert::formats::TransArgs args{nullptr,         src_format,          ge::FORMAT_NCHW,     src_primary_format,
+                                ge::FORMAT_NCHW, ge::FORMAT_RESERVED, ge::FORMAT_RESERVED, kC0Size,
+                                kC0Size,         src_shape,           nchw_shape,          data_type};
+  if (!gert::formats::IsTransFormatSupport(args)) {
     GELOGE(ACL_ERROR_GE_FORMAT_INVALID, "Does not support trans shape from %s to %s",
-           ge::TypeUtilsInner::FormatToSerialString(src_format).c_str(),
-           ge::TypeUtilsInner::FormatToSerialString(FORMAT_NCHW).c_str());
+           TypeUtilsInner::FormatToSerialString(src_format).c_str(),
+           TypeUtilsInner::FormatToSerialString(ge::FORMAT_NCHW).c_str());
     return ACL_ERROR_GE_FORMAT_INVALID;
   }
-  GE_ASSERT_SUCCESS(ge::formats::TransTensorShape(src_format, src_shape, data_type, FORMAT_NCHW, nchw_shape));
-  return SUCCESS;
+  GE_ASSERT_SUCCESS(gert::formats::TransTensorShape(src_format, src_shape, data_type, ge::FORMAT_NCHW, nchw_shape));
+  return ge::SUCCESS;
 }
 
-Status FormatTransfer4DToFZC04::TransFormat(const TransArgs &args, TransResult &result) {
+ge::Status FormatTransfer4DToFZC04::TransFormat(const TransArgs &args, TransResult &result) {
   GELOGD("Begin to trans format from %s to %s, src shape %s, data type %s, dst shape %s",
          TypeUtilsInner::FormatToSerialString(args.src_format).c_str(),
          TypeUtilsInner::FormatToSerialString(args.dst_format).c_str(), ShapeToString(args.src_shape).c_str(),
          TypeUtilsInner::DataTypeToSerialString(args.src_data_type).c_str(), ShapeToString(args.dst_shape).c_str());
-  if (CheckGroupsSupport(GetSubFormat(static_cast<int32_t>(args.dst_format))) != SUCCESS) {
+  if (CheckGroupsSupport(ge::GetSubFormat(static_cast<int32_t>(args.dst_format))) != ge::SUCCESS) {
     return UNSUPPORTED;
   }
 
@@ -459,7 +460,7 @@ Status FormatTransfer4DToFZC04::TransFormat(const TransArgs &args, TransResult &
   TransArgs args_tmp = nchw_to_dst_args;
   std::shared_ptr<uint8_t> dst = nullptr;
   auto ret = PaddingNC(nchw_to_dst_args, args_tmp, dst);
-  if (ret != SUCCESS) {
+  if (ret != ge::SUCCESS) {
     GELOGE(ret, "[Padding][NCAxis]Failed, error_code %u", ret);
     REPORT_INNER_ERR_MSG("E19999", "Padding in NC axis failed, error_code %u", ret);
     return ret;
@@ -467,7 +468,7 @@ Status FormatTransfer4DToFZC04::TransFormat(const TransArgs &args, TransResult &
 
   std::vector<int64_t> expect_shape;
   ret = TransShape(args_tmp.src_format, args_tmp.src_shape, args_tmp.src_data_type, args_tmp.dst_format, expect_shape);
-  if (ret != SUCCESS) {
+  if (ret != ge::SUCCESS) {
     return ret;
   }
 
@@ -475,25 +476,25 @@ Status FormatTransfer4DToFZC04::TransFormat(const TransArgs &args, TransResult &
     return ACL_ERROR_GE_SHAPE_INVALID;
   }
 
-  if ((args_tmp.src_primary_format == FORMAT_NCHW) && (args_tmp.dst_primary_format == FORMAT_FRACTAL_Z_C04)) {
+  if ((args_tmp.src_primary_format == ge::FORMAT_NCHW) && (args_tmp.dst_primary_format == ge::FORMAT_FRACTAL_Z_C04)) {
     return TransFormatNchwToFzC04(args_tmp, result);
   }
 
   return ACL_ERROR_GE_FORMAT_INVALID;
 }
 
-Status FormatTransfer4DToFZC04::TransShape(const Format src_format, const std::vector<int64_t> &src_shape,
-                                           const DataType data_type, const Format dst_format,
-                                           std::vector<int64_t> &dst_shape) {
-  const Format dst_primary_format = static_cast<Format>(GetPrimaryFormat(static_cast<int32_t>(dst_format)));
-  if (CheckDataTypeSupport(data_type) != SUCCESS) {
+ge::Status FormatTransfer4DToFZC04::TransShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                                               const ge::DataType data_type, const ge::Format dst_format,
+                                               std::vector<int64_t> &dst_shape) {
+  const ge::Format dst_primary_format = static_cast<ge::Format>(ge::GetPrimaryFormat(static_cast<int32_t>(dst_format)));
+  if (CheckDataTypeSupport(data_type) != ge::SUCCESS) {
     return ACL_ERROR_GE_DATATYPE_INVALID;
   }
   // try transhape from src_format to NCHW
   std::vector<int64_t> nchw_shape = src_shape;
   GE_ASSERT_SUCCESS(TransShapeFromSrcToNchw(src_format, src_shape, data_type, nchw_shape));
 
-  if (dst_primary_format == FORMAT_FRACTAL_Z_C04) {
+  if (dst_primary_format == ge::FORMAT_FRACTAL_Z_C04) {
     return TransShapeNchwToFzC04(nchw_shape, data_type, dst_shape);
   }
 
@@ -503,12 +504,12 @@ Status FormatTransfer4DToFZC04::TransShape(const Format src_format, const std::v
 /*
  * FzC04 axes: (Ceil(kC0*h*w*C1/16), N1, N0, 16), which N1 = 16, C0 = 4, N1 = Ceil(N/N0), C1 = Ceil(C/C0)
  */
-Status FormatTransferFZC04To4D::TransFormat(const TransArgs &args, TransResult &result) {
+ge::Status FormatTransferFZC04To4D::TransFormat(const TransArgs &args, TransResult &result) {
   GELOGD("Begin to trans format from %s to %s, src shape %s, data type %s, dst shape %s",
          TypeUtilsInner::FormatToSerialString(args.src_format).c_str(),
          TypeUtilsInner::FormatToSerialString(args.dst_format).c_str(), ShapeToString(args.src_shape).c_str(),
          TypeUtilsInner::DataTypeToSerialString(args.src_data_type).c_str(), ShapeToString(args.dst_shape).c_str());
-  if (args.src_primary_format != FORMAT_FRACTAL_Z_C04 || args.dst_primary_format != FORMAT_HWCN) {
+  if (args.src_primary_format != ge::FORMAT_FRACTAL_Z_C04 || args.dst_primary_format != ge::FORMAT_HWCN) {
     GELOGE(ACL_ERROR_GE_FORMAT_INVALID, "Src format is %s, dst format is %s, Not supported.",
            TypeUtilsInner::FormatToSerialString(args.src_primary_format).c_str(),
            TypeUtilsInner::FormatToSerialString(args.dst_primary_format).c_str());
@@ -527,9 +528,9 @@ Status FormatTransferFZC04To4D::TransFormat(const TransArgs &args, TransResult &
   return TransFormatFzC04ToHwcn(args, result);
 }
 
-Status FormatTransferFZC04To4D::TransShape(const Format src_format, const std::vector<int64_t> &src_shape,
-                                           const DataType data_type, const Format dst_format,
-                                           std::vector<int64_t> &dst_shape) {
+ge::Status FormatTransferFZC04To4D::TransShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                                               const ge::DataType data_type, const ge::Format dst_format,
+                                               std::vector<int64_t> &dst_shape) {
   (void)src_format;
   (void)src_shape;
   (void)data_type;
@@ -543,4 +544,4 @@ REGISTER_FORMAT_TRANSFER(FormatTransfer4DToFZC04, FORMAT_NCHW, FORMAT_FRACTAL_Z_
 REGISTER_FORMAT_TRANSFER(FormatTransfer4DToFZC04, FORMAT_HWCN, FORMAT_FRACTAL_Z_C04)
 REGISTER_FORMAT_TRANSFER(FormatTransferFZC04To4D, FORMAT_FRACTAL_Z_C04, FORMAT_HWCN)
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert

@@ -31,6 +31,7 @@
 
 #include "common/checker.h"
 #include "common/ge_common/debug/ge_log.h"
+#include "common/ge_visibility.h"
 #include "graph/custom_op/infer_meta.h"
 #include "exe_graph/runtime/host_cpu_op_execution_context.h"
 #include "graph/utils/ir_definitions_query.h"
@@ -187,6 +188,57 @@ std::unique_ptr<PythonCustomOpIrMeta> CollectPythonCustomOpIrMeta(const std::str
   return ir_meta;
 }
 
+// 解析 Python scope 返回的 IR dict（结构由 restore_model_scope 随 embedded source
+// 传入，与 BuildPythonIrMeta 产出的结构一致）。任何字段异常返回 false，调用方按
+// IR 缺失处理。需持有 GIL 调用。
+bool ParseScopeIrMetaDict(const pybind11::dict &ir_meta, const std::string &op_type, PythonCustomOpIrMeta &result) {
+  const auto parse_kind = [](const pybind11::dict &item, uint32_t &kind) {
+    const auto kind_obj = item["kind"];
+    if (!pybind11::isinstance<pybind11::int_>(kind_obj)) {
+      return false;
+    }
+    const auto value = kind_obj.cast<long>();
+    if ((value < 0L) || (value > static_cast<long>(UINT32_MAX))) {
+      return false;
+    }
+    kind = static_cast<uint32_t>(value);
+    return true;
+  };
+  try {
+    result.op_type = op_type;
+    const auto inputs = ir_meta["inputs"].cast<pybind11::list>();
+    for (const auto &input_item : inputs) {
+      const auto item = pybind11::cast<pybind11::dict>(input_item);
+      uint32_t kind = 0U;
+      if (!parse_kind(item, kind)) {
+        GELOGE(FAILED, "Scope IR input kind of custom op[%s] is invalid.", op_type.c_str());
+        return false;
+      }
+      result.inputs.emplace_back(PythonCustomOpIrInputMeta{item["name"].cast<std::string>(), kind});
+    }
+    const auto attrs = ir_meta["attrs"].cast<pybind11::list>();
+    for (const auto &attr_item : attrs) {
+      const auto item = pybind11::cast<pybind11::dict>(attr_item);
+      result.attrs.emplace_back(
+          PythonCustomOpIrAttrMeta{item["name"].cast<std::string>(), item["type"].cast<std::string>()});
+    }
+    const auto outputs = ir_meta["outputs"].cast<pybind11::list>();
+    for (const auto &output_item : outputs) {
+      const auto item = pybind11::cast<pybind11::dict>(output_item);
+      uint32_t kind = 0U;
+      if (!parse_kind(item, kind)) {
+        GELOGE(FAILED, "Scope IR output kind of custom op[%s] is invalid.", op_type.c_str());
+        return false;
+      }
+      result.outputs.emplace_back(PythonCustomOpIrOutputMeta{item["name"].cast<std::string>(), kind});
+    }
+  } catch (const pybind11::builtin_exception &err) {
+    GELOGE(FAILED, "Parse scope IR of custom op[%s] failed: %s", op_type.c_str(), err.what());
+    return false;
+  }
+  return true;
+}
+
 struct PythonCustomOpBridgeHolder {
   PythonCustomOpBridgeHolder(std::string key, std::string id, std::unique_ptr<PythonCustomOpIrMeta> meta)
       : descriptor_key(std::move(key)), instance_id(std::move(id)), ir_meta(std::move(meta)) {}
@@ -196,12 +248,10 @@ struct PythonCustomOpBridgeHolder {
   std::unique_ptr<PythonCustomOpIrMeta> ir_meta;
 };
 
+// 跨 SO 字符串视图拷贝统一走 bridge_types.h 的共享入口（R2-4）；本文件此前
+// 的本地副本无 allow_empty 形态，全部调用点均为非空语义。
 bool CopyStringView(const PythonCustomOpStringView &view, std::string &value) {
-  if ((view.size != 0U) && (view.data == nullptr)) {
-    return false;
-  }
-  value.assign(view.data == nullptr ? "" : view.data, view.size);
-  return (!value.empty()) && (value.find('\0') == std::string::npos);
+  return CopyPythonCustomOpStringView(view, false, value);
 }
 
 graphStatus ParseInferMetaOutputs(const py::list &output_metas, const size_t expected_count,
@@ -293,6 +343,290 @@ class PythonCustomOpPybindBridge {
     return CollectAndRegisterImplDescriptorsWithCheck(descriptors, registrar);
   }
 
+  // 拉取编译期已冻结的 Python 部署 artifact。view 中的指针借用 storage 持有的存储，
+  // 因此 sink 必须在本次回调内完成深拷贝，不得跨迭代保存。
+  Status CollectDeploymentArtifacts(const PythonCustomOpDeploymentArtifactSink &sink, void *user_data) {
+    if (sink.on_artifact == nullptr) {
+      GELOGE(FAILED, "Python custom op deployment artifact sink callback is null.");
+      return FAILED;
+    }
+    const auto prepare_ret = EnsureBridgeReady();
+    if (prepare_ret != SUCCESS) {
+      GELOGE(prepare_ret, "Prepare python custom op pybind bridge failed for deployment artifacts.");
+      return prepare_ret;
+    }
+    py::gil_scoped_acquire gil;
+    py::list artifacts;
+    try {
+      artifacts = bridge_module_.attr("load_and_get_deployment_artifacts")().cast<py::list>();
+    } catch (const py::error_already_set &err) {
+      GELOGE(FAILED, "Load python custom op deployment artifacts failed: %s", err.what());
+      return FAILED;
+    } catch (const std::exception &err) {
+      GELOGE(FAILED, "Load python custom op deployment artifacts failed: %s", err.what());
+      return FAILED;
+    }
+
+    size_t collected = 0U;
+    for (const auto &item : artifacts) {
+      py::dict artifact_dict;
+      try {
+        artifact_dict = item.cast<py::dict>();
+      } catch (const py::error_already_set &err) {
+        GELOGE(FAILED, "Cast python custom op deployment artifact failed: %s", err.what());
+        return FAILED;
+      } catch (const std::exception &err) {
+        GELOGE(FAILED, "Cast python custom op deployment artifact failed: %s", err.what());
+        return FAILED;
+      }
+      DeploymentArtifactStorage storage;
+      if (storage.Parse(artifact_dict) != SUCCESS) {
+        return FAILED;
+      }
+      auto view = storage.BuildView();
+      if (!sink.on_artifact(user_data, &view)) {
+        GELOGE(FAILED, "Consume python custom op deployment artifact[%s] failed.", storage.artifact_id.c_str());
+        return FAILED;
+      }
+      ++collected;
+    }
+    GELOGI("Collected %zu python custom op deployment artifact(s).", collected);
+    return SUCCESS;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 模型 scope 恢复能力：供 PYTHON_CUSTOM_OPS 分区的恢复 hook（runtime/custom_op）
+  // 经 C ABI 调用。scope id 由 C++ 侧权威分配（64-bit 单调、永不回收），Python 侧
+  // `_scope` 防御性镜像该契约。全部入口遵循既有模式：EnsureBridgeReady ->
+  // GIL -> bridge_module_ attr 调用 -> 异常转 GELOGE(FAILED)。
+  // ---------------------------------------------------------------------------
+
+  Status RestoreModelScope(const uint64_t scope_id, const PythonCustomOpEmbeddedSourceView *sources,
+                           const size_t source_count, const PythonCustomOpScopedDescriptorSink &sink, void *user_data) {
+    if (sink.on_descriptor == nullptr) {
+      GELOGE(FAILED, "Python custom op scoped descriptor sink callback is null.");
+      return FAILED;
+    }
+    // sources 为同步借用：全部 view 的字符串/指针在本次调用栈内有效。
+    // source 非空由 codec（ParseAndValidatePythonCustomOpPackage 复用 ValidateArtifact）保证，
+    // 此处不再复校；下列 4 组 ir 指针/计数配对是跨 SO 边界校验（调用方 view 数组由
+    // restore_hook 栈上构建，配对错误会在下方 py 转换段读越界），必须保留。
+    for (size_t i = 0U; i < source_count; ++i) {
+      std::string artifact_id;
+      std::string source_name;
+      if ((!CopyStringView(sources[i].artifact_id, artifact_id)) ||
+          (!CopyStringView(sources[i].source_name, source_name))) {
+        GELOGE(FAILED, "Embedded source view of model scope[%llu] has invalid artifact id or source name.",
+               static_cast<unsigned long long>(scope_id));
+        return FAILED;
+      }
+      if ((sources[i].ir_def_count > 0U) && (sources[i].ir_defs == nullptr)) {
+        GELOGE(FAILED, "Embedded source view of artifact[%s] has null ir defs.", artifact_id.c_str());
+        return FAILED;
+      }
+      for (size_t j = 0U; j < sources[i].ir_def_count; ++j) {
+        const auto &ir_def = sources[i].ir_defs[j];
+        if ((ir_def.ir_input_count > 0U) && (ir_def.ir_inputs == nullptr)) {
+          GELOGE(FAILED, "Embedded source ir def of artifact[%s] has null ir inputs.", artifact_id.c_str());
+          return FAILED;
+        }
+        if ((ir_def.ir_attr_count > 0U) && (ir_def.ir_attrs == nullptr)) {
+          GELOGE(FAILED, "Embedded source ir def of artifact[%s] has null ir attrs.", artifact_id.c_str());
+          return FAILED;
+        }
+        if ((ir_def.ir_output_count > 0U) && (ir_def.ir_outputs == nullptr)) {
+          GELOGE(FAILED, "Embedded source ir def of artifact[%s] has null ir outputs.", artifact_id.c_str());
+          return FAILED;
+        }
+      }
+    }
+    const auto prepare_ret = EnsureBridgeReady();
+    if (prepare_ret != SUCCESS) {
+      GELOGE(prepare_ret, "Prepare python custom op pybind bridge failed for restoring model scope[%llu].",
+             static_cast<unsigned long long>(scope_id));
+      return prepare_ret;
+    }
+    py::gil_scoped_acquire gil;
+    py::list descriptors;
+    try {
+      // 逐 source 构造 Python 侧参数：py::bytes 深拷贝源码内容；canonical IR 快照
+      // （保存侧冻结）展开为 dict[op_type] -> {"inputs": [...], "attrs": [...], "outputs": [...]}。
+      py::list source_items;
+      for (size_t i = 0U; i < source_count; ++i) {
+        const auto &source_view = sources[i];
+        std::string artifact_id;
+        std::string source_name;
+        if ((!CopyStringView(source_view.artifact_id, artifact_id)) ||
+            (!CopyStringView(source_view.source_name, source_name))) {
+          GELOGE(FAILED, "Embedded source view of model scope[%llu] has invalid artifact id or source name.",
+                 static_cast<unsigned long long>(scope_id));
+          return FAILED;
+        }
+        py::dict item;
+        item["artifact_id"] = artifact_id;
+        item["source_name"] = source_name;
+        item["source"] = py::bytes(reinterpret_cast<const char *>(source_view.source), source_view.source_size);
+        py::dict ir_defs;
+        for (size_t j = 0U; j < source_view.ir_def_count; ++j) {
+          const auto &ir_def = source_view.ir_defs[j];
+          std::string op_type;
+          if (!CopyStringView(ir_def.op_type, op_type)) {
+            GELOGE(FAILED, "Embedded source ir def of artifact[%s] has an invalid op type.", artifact_id.c_str());
+            return FAILED;
+          }
+          if (ir_defs.contains(op_type.c_str())) {
+            GELOGE(FAILED, "Embedded source ir def of artifact[%s] has duplicated op type[%s].", artifact_id.c_str(),
+                   op_type.c_str());
+            return FAILED;
+          }
+          py::dict ir_meta;
+          py::list inputs;
+          for (size_t k = 0U; k < ir_def.ir_input_count; ++k) {
+            py::dict input_item;
+            input_item["name"] = py::str(ir_def.ir_inputs[k].name.data, ir_def.ir_inputs[k].name.size);
+            input_item["kind"] = py::int_(ir_def.ir_inputs[k].kind);
+            inputs.append(std::move(input_item));
+          }
+          py::list attrs;
+          for (size_t k = 0U; k < ir_def.ir_attr_count; ++k) {
+            py::dict attr_item;
+            attr_item["name"] = py::str(ir_def.ir_attrs[k].name.data, ir_def.ir_attrs[k].name.size);
+            attr_item["type"] = py::str(ir_def.ir_attrs[k].type.data, ir_def.ir_attrs[k].type.size);
+            attrs.append(std::move(attr_item));
+          }
+          py::list outputs;
+          for (size_t k = 0U; k < ir_def.ir_output_count; ++k) {
+            py::dict output_item;
+            output_item["name"] = py::str(ir_def.ir_outputs[k].name.data, ir_def.ir_outputs[k].name.size);
+            output_item["kind"] = py::int_(ir_def.ir_outputs[k].kind);
+            outputs.append(std::move(output_item));
+          }
+          ir_meta["inputs"] = std::move(inputs);
+          ir_meta["attrs"] = std::move(attrs);
+          ir_meta["outputs"] = std::move(outputs);
+          ir_defs[op_type.c_str()] = std::move(ir_meta);
+        }
+        item["ir_defs"] = std::move(ir_defs);
+        source_items.append(std::move(item));
+      }
+      // restore_model_scope 一次完成 open + 逐 source 初始化 + descriptor 收集；
+      // 失败时 Python 侧自行 close，中间态不外泄。
+      descriptors = bridge_module_.attr("restore_model_scope")(scope_id, source_items).cast<py::list>();
+    } catch (const py::error_already_set &err) {
+      GELOGE(FAILED, "Restore python custom op model scope[%llu] with %zu embedded source(s) failed: %s",
+             static_cast<unsigned long long>(scope_id), source_count, err.what());
+      return FAILED;
+    } catch (const std::exception &err) {
+      GELOGE(FAILED, "Restore python custom op model scope[%llu] with %zu embedded source(s) failed: %s",
+             static_cast<unsigned long long>(scope_id), source_count, err.what());
+      return FAILED;
+    }
+    // storage 持有的深拷贝只在 sink 回调期间借用：逐项构造，回调返回后即释放。
+    // callbacks 与编译期 register_op_impl 对称：bridge 侧同一套 GetCallbacks() 产出，
+    // 按 descriptor_key/instance_id 区分具体 holder，供恢复 hook 注册运行时 registry。
+    const auto callbacks = GetCallbacks();
+    try {
+      for (const auto &item : descriptors) {
+        ScopedDescriptorStorage storage;
+        if (storage.Parse(item.cast<py::dict>()) != SUCCESS) {
+          return FAILED;
+        }
+        const auto view = storage.BuildView();
+        if (!sink.on_descriptor(user_data, &view, &callbacks)) {
+          GELOGE(FAILED, "Consume python custom op scoped descriptor[%s] failed.", storage.op_type.c_str());
+          return FAILED;
+        }
+      }
+    } catch (const py::error_already_set &err) {
+      GELOGE(FAILED, "Parse python custom op scoped descriptors of model scope[%llu] failed: %s",
+             static_cast<unsigned long long>(scope_id), err.what());
+      return FAILED;
+    } catch (const std::exception &err) {
+      GELOGE(FAILED, "Parse python custom op scoped descriptors of model scope[%llu] failed: %s",
+             static_cast<unsigned long long>(scope_id), err.what());
+      return FAILED;
+    }
+    return SUCCESS;
+  }
+
+  Status CollectModelScopeProtoOpTypes(const uint64_t scope_id, const PythonCustomOpStringSink &sink, void *user_data) {
+    if (sink.on_string == nullptr) {
+      GELOGE(FAILED, "Python custom op string sink callback is null.");
+      return FAILED;
+    }
+    const auto prepare_ret = EnsureBridgeReady();
+    if (prepare_ret != SUCCESS) {
+      GELOGE(prepare_ret, "Prepare python custom op pybind bridge failed for suppressed proto declarations.");
+      return prepare_ret;
+    }
+    py::gil_scoped_acquire gil;
+    py::list op_types;
+    try {
+      op_types = bridge_module_.attr("collect_model_scope_proto_op_types")(scope_id).cast<py::list>();
+    } catch (const py::error_already_set &err) {
+      GELOGE(FAILED, "Collect suppressed python custom op proto op types of model scope[%llu] failed: %s",
+             static_cast<unsigned long long>(scope_id), err.what());
+      return FAILED;
+    } catch (const std::exception &err) {
+      GELOGE(FAILED, "Collect suppressed python custom op proto op types of model scope[%llu] failed: %s",
+             static_cast<unsigned long long>(scope_id), err.what());
+      return FAILED;
+    }
+    try {
+      for (const auto &item : op_types) {
+        const std::string op_type = py::str(item);
+        const auto view = PythonCustomOpStringView{op_type.data(), op_type.size()};
+        if (!sink.on_string(user_data, &view)) {
+          GELOGE(FAILED, "Consume suppressed python custom op proto op type[%s] failed.", op_type.c_str());
+          return FAILED;
+        }
+      }
+    } catch (const py::error_already_set &err) {
+      GELOGE(FAILED, "Parse suppressed proto op types of model scope[%llu] failed: %s",
+             static_cast<unsigned long long>(scope_id), err.what());
+      return FAILED;
+    } catch (const std::exception &err) {
+      GELOGE(FAILED, "Parse suppressed proto op types of model scope[%llu] failed: %s",
+             static_cast<unsigned long long>(scope_id), err.what());
+      return FAILED;
+    }
+    return SUCCESS;
+  }
+
+  Status CloseModelScope(const uint64_t scope_id) {
+    // finalize 保护：解释器已 finalize 后不得再触碰 Python API（EnsureBridgeReady 会重新
+    // 初始化解释器，CPython 不支持，行为未定义）。与同文件 ResetBridgeState/Shutdown 的
+    // 既有保护范式一致——本函数曾在模型卸载晚于解释器 finalize 的路径上无保护。
+    if (Py_IsInitialized() == 0) {
+      GELOGW("Skip closing python custom op model scope[%llu] because interpreter is not initialized.",
+             static_cast<unsigned long long>(scope_id));
+      return FAILED;
+    }
+    const auto prepare_ret = EnsureBridgeReady();
+    if (prepare_ret != SUCCESS) {
+      GELOGE(prepare_ret, "Prepare python custom op pybind bridge failed for closing model scope[%llu].",
+             static_cast<unsigned long long>(scope_id));
+      return prepare_ret;
+    }
+    py::gil_scoped_acquire gil;
+    try {
+      const bool closed = bridge_module_.attr("close_model_scope")(scope_id).cast<bool>();
+      if (!closed) {
+        GELOGW("Python custom op model scope[%llu] was already closed or unknown.",
+               static_cast<unsigned long long>(scope_id));
+      }
+    } catch (const py::error_already_set &err) {
+      GELOGE(FAILED, "Close python custom op model scope[%llu] failed: %s", static_cast<unsigned long long>(scope_id),
+             err.what());
+      return FAILED;
+    } catch (const std::exception &err) {
+      GELOGE(FAILED, "Close python custom op model scope[%llu] failed: %s", static_cast<unsigned long long>(scope_id),
+             err.what());
+      return FAILED;
+    }
+    return SUCCESS;
+  }
+
   void ResetBridgeState() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (Py_IsInitialized() == 0) {
@@ -322,6 +656,38 @@ class PythonCustomOpPybindBridge {
     owns_interpreter_ = false;
   }
 
+  // IR 查询主路径 + 模型 scope 兜底：编译/单测进程 OperatorFactory 可查（proto 已注册）；
+  // 推理进程 D4 抑制原型注册，改为查询 restore 时随 PYTHON_CUSTOM_OPS 分区注入 scope 的
+  // canonical IR 快照（保存侧冻结）。两路皆空返回 nullptr，调用方按 IR 缺失点名失败。
+  // 需持有 GIL 调用（scope 查询走 bridge_module_）。
+  std::unique_ptr<PythonCustomOpIrMeta> CollectPythonCustomOpIrMetaWithScopeFallback(const std::string &op_type) {
+    auto ir_meta = CollectPythonCustomOpIrMeta(op_type);
+    if (ir_meta != nullptr) {
+      return ir_meta;
+    }
+    try {
+      const py::object scope_ir = bridge_module_.attr("get_model_scope_ir_meta")(op_type);
+      if (scope_ir.is_none()) {
+        return nullptr;
+      }
+      auto scoped_meta = std::make_unique<PythonCustomOpIrMeta>();
+      if (!ParseScopeIrMetaDict(scope_ir.cast<py::dict>(), op_type, *scoped_meta)) {
+        return nullptr;
+      }
+      GELOGI("Canonical IR of custom op[%s] resolved from model scope snapshot.", op_type.c_str());
+      return scoped_meta;
+    } catch (const py::error_already_set &err) {
+      GELOGE(FAILED, "Query model scope IR of custom op[%s] failed: %s", op_type.c_str(), err.what());
+      return nullptr;
+    } catch (const py::builtin_exception &err) {
+      GELOGE(FAILED, "Query model scope IR of custom op[%s] failed: %s", op_type.c_str(), err.what());
+      return nullptr;
+    } catch (const std::exception &err) {
+      GELOGE(FAILED, "Query model scope IR of custom op[%s] failed: %s", op_type.c_str(), err.what());
+      return nullptr;
+    }
+  }
+
   void *CreateImplHolder(const PythonCustomOpAdapterDescriptorView *desc_view) {
     if (desc_view == nullptr) {
       return nullptr;
@@ -339,7 +705,7 @@ class PythonCustomOpPybindBridge {
     }
     py::gil_scoped_acquire gil;
     const std::string instance_id = BuildInstanceId(descriptor_key);
-    auto ir_meta = CollectPythonCustomOpIrMeta(op_type);
+    auto ir_meta = CollectPythonCustomOpIrMetaWithScopeFallback(op_type);
     try {
       const bool created = bridge_module_.attr("create_op_impl_holder")(instance_id, descriptor_key).cast<bool>();
       if (!created) {
@@ -381,7 +747,7 @@ class PythonCustomOpPybindBridge {
                op_type.c_str());
         return true;
       }
-      const auto ir_meta = CollectPythonCustomOpIrMeta(op_type);
+      const auto ir_meta = CollectPythonCustomOpIrMetaWithScopeFallback(op_type);
       if (ir_meta == nullptr) {
         GELOGE(FAILED, "Validate python custom op impl failed because canonical IR is missing, op type[%s].",
                op_type.c_str());
@@ -486,7 +852,7 @@ class PythonCustomOpPybindBridge {
     py::gil_scoped_acquire gil;
     try {
       py::object ir_meta_obj = py::none();
-      const auto ir_meta = CollectPythonCustomOpIrMeta(op_type);
+      const auto ir_meta = CollectPythonCustomOpIrMetaWithScopeFallback(op_type);
       if (ir_meta != nullptr) {
         ir_meta_obj = BuildPythonIrMeta(ir_meta.get());
       }
@@ -570,6 +936,88 @@ class PythonCustomOpPybindBridge {
       InvalidateBorrowedCompileContext(compile_ctx);
       GELOGE(GRAPH_FAILED, "Compile python custom op failed, descriptor key[%s], instance id[%s]: %s",
              holder->descriptor_key.c_str(), holder->instance_id.c_str(), error_message.c_str());
+      return GRAPH_FAILED;
+    }
+  }
+
+  graphStatus Serialize(const PythonCustomOpBridgeHolder *holder, std::vector<uint8_t> *output) {
+    if ((holder == nullptr) || (output == nullptr)) {
+      GELOGE(GRAPH_FAILED, "Python custom op bridge holder or output buffer is null at serialize stage.");
+      return GRAPH_FAILED;
+    }
+    const auto prepare_ret = EnsureBridgeReady();
+    if (prepare_ret != SUCCESS) {
+      GELOGE(GRAPH_FAILED, "Prepare python custom op bridge failed at serialize stage.");
+      return GRAPH_FAILED;
+    }
+    py::gil_scoped_acquire gil;
+    try {
+      py::object result = bridge_module_.attr("call_serialize")(holder->instance_id);
+      if (!py::isinstance<py::bytes>(result)) {
+        GELOGE(GRAPH_FAILED,
+               "Serialize python custom op failed to extract bytes, descriptor key[%s], instance id[%s], "
+               "stage[serialize].",
+               holder->descriptor_key.c_str(), holder->instance_id.c_str());
+        return GRAPH_FAILED;
+      }
+      const std::string serialized = result.cast<std::string>();
+      output->assign(serialized.begin(), serialized.end());
+      return GRAPH_SUCCESS;
+    } catch (const py::error_already_set &err) {
+      GELOGE(GRAPH_FAILED,
+             "Serialize python custom op failed, descriptor key[%s], instance id[%s], stage[serialize], "
+             "error[%s].",
+             holder->descriptor_key.c_str(), holder->instance_id.c_str(), err.what());
+      return GRAPH_FAILED;
+    } catch (const std::exception &err) {
+      GELOGE(GRAPH_FAILED,
+             "Serialize python custom op failed, descriptor key[%s], instance id[%s], stage[serialize], "
+             "error[%s].",
+             holder->descriptor_key.c_str(), holder->instance_id.c_str(), err.what());
+      return GRAPH_FAILED;
+    }
+  }
+
+  graphStatus Deserialize(const PythonCustomOpBridgeHolder *holder, const uint8_t *data, size_t size) {
+    if (holder == nullptr) {
+      GELOGE(GRAPH_FAILED, "Python custom op bridge holder is null at deserialize stage.");
+      return GRAPH_FAILED;
+    }
+    if (size == 0U) {
+      GELOGE(GRAPH_FAILED,
+             "Python custom op bridge deserialize input is empty, descriptor key[%s], instance id[%s], "
+             "stage[deserialize].",
+             holder->descriptor_key.c_str(), holder->instance_id.c_str());
+      return GRAPH_FAILED;
+    }
+    if (data == nullptr) {
+      GELOGE(GRAPH_FAILED,
+             "Python custom op bridge deserialize data pointer is null with non-zero size, descriptor "
+             "key[%s], instance id[%s], stage[deserialize], size[%zu].",
+             holder->descriptor_key.c_str(), holder->instance_id.c_str(), size);
+      return GRAPH_FAILED;
+    }
+    const auto prepare_ret = EnsureBridgeReady();
+    if (prepare_ret != SUCCESS) {
+      GELOGE(GRAPH_FAILED, "Prepare python custom op bridge failed at deserialize stage.");
+      return GRAPH_FAILED;
+    }
+    py::gil_scoped_acquire gil;
+    try {
+      py::bytes data_copy(reinterpret_cast<const char *>(data), size);
+      (void)bridge_module_.attr("call_deserialize")(holder->instance_id, data_copy);
+      return GRAPH_SUCCESS;
+    } catch (const py::error_already_set &err) {
+      GELOGE(GRAPH_FAILED,
+             "Deserialize python custom op failed, descriptor key[%s], instance id[%s], "
+             "stage[deserialize], data length[%zu], error[%s].",
+             holder->descriptor_key.c_str(), holder->instance_id.c_str(), size, err.what());
+      return GRAPH_FAILED;
+    } catch (const std::exception &err) {
+      GELOGE(GRAPH_FAILED,
+             "Deserialize python custom op failed, descriptor key[%s], instance id[%s], "
+             "stage[deserialize], data length[%zu], error[%s].",
+             holder->descriptor_key.c_str(), holder->instance_id.c_str(), size, err.what());
       return GRAPH_FAILED;
     }
   }
@@ -880,6 +1328,14 @@ class PythonCustomOpPybindBridge {
       return PythonCustomOpPybindBridge::GetInstance().Compile(static_cast<const PythonCustomOpBridgeHolder *>(holder),
                                                                ctx);
     };
+    callbacks.serialize = [](const void *holder, std::vector<uint8_t> *output) -> graphStatus {
+      return PythonCustomOpPybindBridge::GetInstance().Serialize(
+          static_cast<const PythonCustomOpBridgeHolder *>(holder), output);
+    };
+    callbacks.deserialize = [](const void *holder, const uint8_t *data, size_t size) -> graphStatus {
+      return PythonCustomOpPybindBridge::GetInstance().Deserialize(
+          static_cast<const PythonCustomOpBridgeHolder *>(holder), data, size);
+    };
     callbacks.infer_meta = [](const PythonCustomOpStringView *op_type, gert::InferShapeContext *ctx,
                               PythonCustomOpInferMetaResultView *result) -> graphStatus {
       if ((op_type == nullptr) || ((op_type->size != 0U) && (op_type->data == nullptr))) {
@@ -900,32 +1356,85 @@ class PythonCustomOpPybindBridge {
 };
 }  // namespace
 
-Status SetPythonCustomOpBridgeArtifactConfig(const PythonCustomOpBridgeArtifactConfig *config) {
+// C ABI 表（GeGetPythonCustomOpBridgeApi）的填充函数。它们只在本 TU 内取地址，
+// 必须保持 hidden 可见性：若以默认可见性导出，ABI 表槽位的函数地址重定位会携带
+// 动态符号（R_AARCH64_ABS64 + symbol），运行期服从全局符号插入——一旦宿主进程
+// 先以 RTLD_GLOBAL 加载了同样导出这些符号的 libcustom_op_runtime.so，表槽位会被
+// 解析到 loader 侧实现，RestoreModelScope 持 loader mutex_ 回调 api_->restore_model_scope
+// 即同线程二次加锁自死锁（ST 设备侧已复现）。hidden 使重定位退化为 RELATIVE，
+// 表槽位永远绑定 bridge SO 自身实现。
+VISIBILITY_HIDDEN Status SetPythonCustomOpBridgeArtifactConfig(const PythonCustomOpBridgeArtifactConfig *config) {
   return PythonCustomOpPybindBridge::GetInstance().SetArtifactConfig(config);
 }
 
-Status RegisterPythonCustomOpsFromBridge(const PythonCustomOpRegistrar *registrar) {
+VISIBILITY_HIDDEN Status RegisterPythonCustomOpsFromBridge(const PythonCustomOpRegistrar *registrar) {
   if (registrar == nullptr) {
     return FAILED;
   }
   return PythonCustomOpPybindBridge::GetInstance().RegisterCustomOps(*registrar);
 }
 
-void ResetPythonCustomOpBridgeState() {
+VISIBILITY_HIDDEN void ResetPythonCustomOpBridgeState() {
   PythonCustomOpPybindBridge::GetInstance().ResetBridgeState();
 }
 
-void ShutdownPythonCustomOpBridge() {
+VISIBILITY_HIDDEN void ShutdownPythonCustomOpBridge() {
   PythonCustomOpPybindBridge::GetInstance().Shutdown();
+}
+
+VISIBILITY_HIDDEN Status CollectPythonCustomOpDeploymentArtifacts(const PythonCustomOpDeploymentArtifactSink *sink,
+                                                                  void *user_data) {
+  if (sink == nullptr) {
+    return FAILED;
+  }
+  return PythonCustomOpPybindBridge::GetInstance().CollectDeploymentArtifacts(*sink, user_data);
+}
+
+// 模型 scope 会话的 C ABI 入口。函数名带 Bridge 前缀：loader SO（python_custom_op_bridge_loader.cc）
+// 在同一命名空间导出同名 C++ 函数（RestorePythonCustomOpModelScope 等），顶层 const 不参与函数
+// 类型，mangled name 完全相同——曾导致 bridge ABI 表槽位被解析到 loader 实现、loader 持
+// mutex_ 回调自己形成同线程自死锁（commit 8838684e9）。VISIBILITY_HIDDEN 保留作纵深防御；
+// 新增 bridge 侧 C ABI 入口一律带 Bridge 前缀。
+VISIBILITY_HIDDEN Status BridgeRestorePythonCustomOpModelScope(const uint64_t scope_id,
+                                                               const PythonCustomOpEmbeddedSourceView *sources,
+                                                               const size_t source_count,
+                                                               const PythonCustomOpScopedDescriptorSink *sink,
+                                                               void *user_data) {
+  if ((sources == nullptr) && (source_count != 0U)) {
+    return FAILED;
+  }
+  if (sink == nullptr) {
+    return FAILED;
+  }
+  return PythonCustomOpPybindBridge::GetInstance().RestoreModelScope(scope_id, sources, source_count, *sink, user_data);
+}
+
+VISIBILITY_HIDDEN Status BridgeCollectPythonCustomOpModelScopeProtoOpTypes(const uint64_t scope_id,
+                                                                           const PythonCustomOpStringSink *sink,
+                                                                           void *user_data) {
+  if (sink == nullptr) {
+    return FAILED;
+  }
+  return PythonCustomOpPybindBridge::GetInstance().CollectModelScopeProtoOpTypes(scope_id, *sink, user_data);
+}
+
+VISIBILITY_HIDDEN Status BridgeClosePythonCustomOpModelScope(const uint64_t scope_id) {
+  return PythonCustomOpPybindBridge::GetInstance().CloseModelScope(scope_id);
 }
 }  // namespace custom_op
 }  // namespace ge
 
 extern "C" const ge::custom_op::PythonCustomOpBridgeApi *GeGetPythonCustomOpBridgeApi() {
   static const ge::custom_op::PythonCustomOpBridgeApi kBridgeApi = {
-      ge::custom_op::kPythonCustomOpBridgeAbiVersion,    &ge::custom_op::SetPythonCustomOpBridgeArtifactConfig,
-      &ge::custom_op::RegisterPythonCustomOpsFromBridge, &ge::custom_op::ResetPythonCustomOpBridgeState,
+      ge::custom_op::kPythonCustomOpBridgeAbiVersion,
+      &ge::custom_op::SetPythonCustomOpBridgeArtifactConfig,
+      &ge::custom_op::RegisterPythonCustomOpsFromBridge,
+      &ge::custom_op::ResetPythonCustomOpBridgeState,
       &ge::custom_op::ShutdownPythonCustomOpBridge,
+      &ge::custom_op::CollectPythonCustomOpDeploymentArtifacts,
+      &ge::custom_op::BridgeRestorePythonCustomOpModelScope,
+      &ge::custom_op::BridgeCollectPythonCustomOpModelScopeProtoOpTypes,
+      &ge::custom_op::BridgeClosePythonCustomOpModelScope,
   };
   return &kBridgeApi;
 }

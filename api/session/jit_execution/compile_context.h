@@ -10,6 +10,7 @@
 
 #ifndef COMPILE_CONTEXT_H
 #define COMPILE_CONTEXT_H
+#include <atomic>
 #include <cstdint>
 #include "ge/ge_api_types.h"
 #include "exe_graph/runtime/runtime_tensor.h"
@@ -22,7 +23,8 @@ class CompileContext {
  public:
   explicit CompileContext(GraphManager &graph_manager) : graph_manager_(graph_manager) {}
   uint32_t GenNewGraphId() {
-    return inner_ge_graph_id_generator_++;
+    // 多线程场景(池线程编译/session线程整图编译)可能并发分配图 id，需原子自增
+    return inner_ge_graph_id_generator_.fetch_add(1U);
   }
   Status Compile(uint32_t graph_id, const ComputeGraphPtr &graph, const std::vector<gert::Tensor> &inputs,
                  const std::map<std::string, std::string> &options, uint64_t session_id);
@@ -36,7 +38,7 @@ class CompileContext {
 
  private:
   GraphManager &graph_manager_;
-  uint32_t inner_ge_graph_id_generator_{0};
+  std::atomic<uint32_t> inner_ge_graph_id_generator_{0};
 };
 
 }  // namespace ge

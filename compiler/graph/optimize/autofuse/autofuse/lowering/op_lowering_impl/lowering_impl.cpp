@@ -2044,16 +2044,15 @@ REGISTER_LOWERING(LayerNorm) {
                               "LayerNorm reduce element count cannot be represented by FP16 scalar");
 
   auto x = loop::Load(x_anchor);
-  auto mean_bcast = x;
+  std::vector<int64_t> reduce_axes;
+  reduce_axes.reserve(x_dims.size() - norm_axis);
   for (size_t axis = norm_axis; axis < x_dims.size(); ++axis) {
-    mean_bcast = loop::ReduceThenBroadcast(loop::ReduceType::MEAN, mean_bcast, static_cast<int64_t>(axis));
+    reduce_axes.emplace_back(static_cast<int64_t>(axis));
   }
+  auto mean_bcast = loop::ReduceThenBroadcast(loop::ReduceType::MEAN, x, reduce_axes);
   auto centered = loop::Sub(x, mean_bcast);
   auto square = loop::Mul(centered, centered);
-  auto m2_bcast = square;
-  for (size_t axis = norm_axis; axis < x_dims.size(); ++axis) {
-    m2_bcast = loop::ReduceThenBroadcast(loop::ReduceType::SUM, m2_bcast, static_cast<int64_t>(axis));
-  }
+  auto m2_bcast = loop::ReduceThenBroadcast(loop::ReduceType::SUM, square, reduce_axes);
   const auto rank = x_dims.size();
   auto reduce_count_bcast = ScalarBroadcast2Size(std::to_string(reduce_count), compute_dtype, rank);
   auto epsilon_bcast = ScalarBroadcast2Size(ToPrecString(epsilon, 20), compute_dtype, rank);

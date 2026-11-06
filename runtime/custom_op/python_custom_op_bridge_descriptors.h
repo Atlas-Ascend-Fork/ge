@@ -17,6 +17,7 @@
 
 #include "graph/error_codes.h"
 #include "pybind11/pytypes.h"
+#include "runtime/custom_op/python_custom_op_bridge_c_api.h"
 #include "runtime/custom_op/python_custom_op_bridge_types.h"
 
 namespace ge {
@@ -76,6 +77,50 @@ struct AdapterDescriptorStorage {
 
   Status Parse(const pybind11::dict &dict);
   PythonCustomOpAdapterDescriptorView BuildView() const;
+};
+
+// 恢复侧模型 scope 内执行 embedded source 后捕获的单个 impl descriptor 的深拷贝载体。
+// capabilities 由 interfaces 经 ParseInterfaces 权威映射；class_qualname 供 manifest 分级比对。
+// view 中的指针指向本结构持有的存储，sink 回调必须在本结构析构前完成消费。
+struct ScopedDescriptorStorage {
+  std::string op_type;
+  std::string impl_descriptor_key;
+  std::string class_name;
+  std::string class_qualname;
+  CustomOpCapabilityMask capabilities{0U};
+
+  Status Parse(const pybind11::dict &dict);
+  PythonCustomOpScopedDescriptorView BuildView() const;
+};
+
+// 编译期冻结的 Python 部署 artifact 在 bridge 侧的深拷贝载体。
+// view 中的指针指向本结构持有的存储，因此 sink 回调必须在本结构析构前完成消费。
+// ir_* 为保存侧（编译进程）经 OperatorFactory 冻结的 canonical IR；Python 侧不产出该数据，
+// 因此 Parse 不读它——loader 调 FreezeArtifactIrSnapshots 注入后由 loader 侧直接持有。
+struct DeploymentDescriptorStorage {
+  std::string op_type;
+  std::string class_name;
+  uint32_t capabilities{0U};
+  std::vector<PythonCustomOpIrInputDefView> ir_input_views;
+  std::vector<PythonCustomOpIrAttrDefView> ir_attr_views;
+  std::vector<PythonCustomOpIrOutputDefView> ir_output_views;
+
+  Status Parse(const pybind11::dict &dict);
+  PythonCustomOpDeploymentDescriptorView BuildView() const;
+};
+
+struct DeploymentArtifactStorage {
+  std::string artifact_id;
+  std::string source_name;
+  std::vector<uint8_t> source_sha256;
+  std::vector<uint8_t> source;
+  std::vector<DeploymentDescriptorStorage> descriptors;
+  std::vector<PythonCustomOpDeploymentDescriptorView> descriptor_views;
+  uint32_t producer_python_major{0U};
+  uint32_t producer_python_minor{0U};
+
+  Status Parse(const pybind11::dict &dict);
+  PythonCustomOpDeploymentArtifactView BuildView();
 };
 }  // namespace custom_op
 }  // namespace ge

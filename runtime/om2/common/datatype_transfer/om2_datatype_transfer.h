@@ -14,18 +14,18 @@
 #include "formats/om2_register_format_transfer.h"
 #include "framework/common/ge_inner_error_codes.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
 class DataTypeTransfer {
  public:
   static bool DataTypeTransferExists(const CastArgs &args);
-  static Status TransDataType(const CastArgs &args, TransResult &result);
+  static ge::Status TransDataType(const CastArgs &args, TransResult &result);
 };
 
 bool IsTransDataTypeSupport(const CastArgs &args);
 
-Status TransTensorDataType(const CastArgs &args, TransResult &result);
+ge::Status TransTensorDataType(const CastArgs &args, TransResult &result);
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert
 
 #endif  // GE_OM2_COMMON_FORMATS_FORMAT_TRANSFERS_DATATYPE_TRANSFER_H_

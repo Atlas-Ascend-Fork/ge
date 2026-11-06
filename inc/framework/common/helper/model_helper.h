@@ -43,6 +43,13 @@ class GE_FUNC_VISIBILITY ModelHelper : public ModelSaveHelper {
                          const size_t mode_index, const bool is_dyn_root) const;
   Status SaveToOmRootModel(const GeRootModelPtr &ge_root_model, const std::string &output_file, ModelBufferData &model,
                            const bool is_unknown_shape) override;
+  Status SaveDualBodyRootModel(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root,
+                               const std::string &output_file, ModelBufferData &model,
+                               const bool is_unknown_shape) override;
+  // 编译/保存期判定两体内嵌 Const/Constant 权重是否内容+布局完全一致（不读文件、不做 hash）。
+  // 任一体含 FileConstant 时返回 false；main_size/fallback_size 为各体 GeModel 权重字节总和。
+  static bool AreDualBodyWeightsIdentical(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root,
+                                          size_t &main_size, size_t &fallback_size);
   Status SaveOriginalGraphToOmModel(const ge::Graph &graph, const std::string &output_file) const;
 
   Status LoadModel(const ge::ModelData &model_data);
@@ -149,8 +156,19 @@ class GE_FUNC_VISIBILITY ModelHelper : public ModelSaveHelper {
                                        const GeModelPtr &first_ge_model);
   Status SaveCustomOpsPartition(std::shared_ptr<OmFileSaveHelper> &om_file_save_helper,
                                 const GeRootModelPtr &ge_root_model) const;
+  // 复用调用方已收集的 used_custom_op_types，避免为 gating 判据重复扫描全图
+  Status SaveCustomOpsPartition(std::shared_ptr<OmFileSaveHelper> &om_file_save_helper,
+                                const GeRootModelPtr &ge_root_model,
+                                const std::set<std::string> &used_custom_op_types) const;
   Status CollectUsedCustomOpTypes(const GeRootModelPtr &ge_root_model,
                                   std::set<std::string> &used_custom_op_types) const;
+  // 收集实际使用的自定义算子类型，并判断其中是否存在需要把源码打包进 OM 的 Python 算子。
+  // 识别判据是 FrameworkHostedOp 标记接口（与 portable 声明正交），覆盖非 portable 的无状态 Python 算子。
+  // 该判据决定在线编译路径是否需要写出自定义算子分区，与 SO_BINS 的判据相互独立。
+  // 图中使用的 Python 算子若未携带部署 artifact（源码不可定位），保存侧不做检查，仅不进 PYTHON_CUSTOM_OPS。
+  Status DetectUsedPythonDeployCustomOp(const GeRootModelPtr &ge_root_model,
+                                        std::set<std::string> &used_custom_op_types,
+                                        bool &has_python_deploy_custom_op) const;
   Status SerializeCustomOpKernel(PortableOp *serializable_op, const std::string &op_type_str,
                                  std::vector<uint8_t> &merged_buffers) const;
   Status SaveModelHeader(shared_ptr<OmFileSaveHelper> &om_file_save_helper, const GeModelPtr &ge_model,
@@ -252,6 +270,15 @@ class GE_FUNC_VISIBILITY ModelHelper : public ModelSaveHelper {
   Status SaveRootModelPartitions(std::shared_ptr<OmFileSaveHelper> &om_file_save_helper,
                                  const GeRootModelPtr &ge_root_model, const GeModelPtr &first_ge_model,
                                  string &output_file_name, const bool has_asc_node);
+  // 保存一个执行体的全部 model group（根在前、子图在后）；cur_index 由主/兜底两体共用。
+  // unfold 空壳根只写 MODEL_DEF；整个 OM 只在第一个 model 写一次 MODEL_INOUT_INFO。
+  Status SaveBodyModelGroups(std::shared_ptr<OmFileSaveHelper> &om_file_save_helper, const GeRootModelPtr &body_root,
+                             const GeModelPtr &first_ge_model, std::vector<ge::Buffer> &model_buffers,
+                             std::vector<ge::Buffer> &task_buffers, size_t &cur_index, const bool is_first_body,
+                             const bool is_unknown) const;
+  Status MergeFallbackTiling(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root) const;
+  static void ClearTilingIds(const ComputeGraphPtr &graph);
+  bool IsUnfoldShellRoot(const GeModelPtr &model) const;
   Status SaveRootModelLoop(std::shared_ptr<OmFileSaveHelper> &om_file_save_helper,
                            const std::vector<std::string> &model_names,
                            const std::map<std::string, GeModelPtr> &name_to_ge_model,

@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <fstream>
 #include <memory>
+#include <tuple>
 #include "ge_graph_dsl/graph_dsl.h"
 
 #include "macro_utils/dt_public_scope.h"
@@ -25,6 +26,7 @@
 #include "graph/debug/ge_attr_define.h"
 #include "graph/manager/graph_var_manager.h"
 #include "stub/gert_runtime_stub.h"
+#include "common/context/local_context.h"
 
 #include "graph/node.h"
 #include "graph/preprocess/graph_prepare.h"
@@ -2414,4 +2416,86 @@ TEST_F(UtestGraphPreproces, CopyVarIntoSubgraph_BasicGraph) {
   auto ret = graph_prepare.CopyVarIntoSubgraph();
   EXPECT_EQ(ret, SUCCESS);
 }
+
+class UtestGraphPrepareConstCheck : public testing::TestWithParam<std::tuple<bool, bool, std::string>> {
+ protected:
+  void SetUp() override {
+    SetLocalOmgContext(omg_context_);
+    auto builder = ut::GraphBuilder("g_check_const_inputs");
+    data_node_ = builder.AddNode("data", DATA, 1, 1, FORMAT_ND, DT_INT32, {2});
+    const_node_ = builder.AddNode("const", std::get<2>(GetParam()), 0, 1, FORMAT_ND, DT_INT32, {2});
+    auto add = builder.AddNode("add", ADD, 2, 1, FORMAT_ND, DT_INT32, {2});
+    auto netoutput = builder.AddNode("netoutput", NETOUTPUT, 1, 0);
+    builder.AddDataEdge(data_node_, 0, add, 0);
+    builder.AddDataEdge(const_node_, 0, add, 1);
+    builder.AddDataEdge(add, 0, netoutput, 0);
+    ASSERT_TRUE(AttrUtils::SetInt(data_node_->GetOpDesc(), ATTR_NAME_INDEX, 0));
+    if (std::get<2>(GetParam()) == FRAMEWORKOP) {
+      ASSERT_TRUE(AttrUtils::SetStr(const_node_->GetOpDesc(), ATTR_NAME_FRAMEWORK_ORIGINAL_TYPE, CONSTANT));
+    }
+    graph_prepare_.compute_graph_ = builder.GetGraph();
+    graph_prepare_.compute_graph_->SetInputSize(2U);
+    graph_prepare_.SetGraphNormalized(std::get<0>(GetParam()));
+    if (!std::get<1>(GetParam())) {
+      user_input_.emplace_back(GeTensorDesc(GeShape({3}), FORMAT_ND, DT_INT32));
+    }
+  }
+  void TearDown() override {
+    SetLocalOmgContext(domi::GetContext());
+  }
+
+  OmgContext omg_context_;
+  GraphPrepare graph_prepare_;
+  NodePtr data_node_;
+  NodePtr const_node_;
+  std::vector<GeTensor> user_input_;
+};
+
+TEST_P(UtestGraphPrepareConstCheck, RejectMissingConstValue) {
+  EXPECT_EQ(graph_prepare_.CheckAndUpdateInput(user_input_, {}), PARAM_INVALID);
+  EXPECT_EQ(graph_prepare_.compute_graph_->GetInputSize(), 2U);
+  EXPECT_EQ(data_node_->GetOpDesc()->GetOutputDesc(0).GetShape().GetDims(), std::vector<int64_t>({2}));
+}
+
+TEST_P(UtestGraphPrepareConstCheck, RejectMismatchedConstDataSize) {
+  for (const size_t data_size : {0U, 4U, 12U}) {
+    SCOPED_TRACE(data_size);
+    GeTensor weight(GeTensorDesc(GeShape({2}), FORMAT_ND, DT_INT32));
+    ASSERT_EQ(weight.SetData(std::vector<uint8_t>(data_size, 0U)), GRAPH_SUCCESS);
+    ASSERT_TRUE(AttrUtils::SetTensor(const_node_->GetOpDesc(), ATTR_NAME_WEIGHTS, weight));
+
+    EXPECT_NE(graph_prepare_.CheckAndUpdateInput(user_input_, {}), SUCCESS);
+    EXPECT_EQ(graph_prepare_.compute_graph_->GetInputSize(), 2U);
+    EXPECT_EQ(data_node_->GetOpDesc()->GetOutputDesc(0).GetShape().GetDims(), std::vector<int64_t>({2}));
+  }
+}
+
+TEST_P(UtestGraphPrepareConstCheck, AcceptValidConstValues) {
+  struct ConstValueCase {
+    std::vector<int64_t> shape;
+    size_t data_size;
+    DataType data_type;
+  };
+  const std::vector<ConstValueCase> cases = {
+      {{2}, 8U, DT_INT32}, {{0}, 0U, DT_INT32}, {{}, 4U, DT_INT32}, {{}, 0U, DT_INT32}, {{2}, 1U, DT_INT4}};
+  const bool graph_normalized = std::get<0>(GetParam());
+  const bool empty_input = std::get<1>(GetParam());
+  for (size_t i = 0U; i < cases.size(); ++i) {
+    SCOPED_TRACE(i);
+    const auto &test_case = cases[i];
+    GeTensorDesc desc(GeShape(test_case.shape), FORMAT_ND, test_case.data_type);
+    GeTensor weight(desc);
+    ASSERT_EQ(weight.SetData(std::vector<uint8_t>(test_case.data_size, 0U)), GRAPH_SUCCESS);
+    ASSERT_TRUE(AttrUtils::SetTensor(const_node_->GetOpDesc(), ATTR_NAME_WEIGHTS, weight));
+    ASSERT_EQ(const_node_->GetOpDesc()->UpdateOutputDesc(0, desc), GRAPH_SUCCESS);
+
+    EXPECT_EQ(graph_prepare_.CheckAndUpdateInput(user_input_, {}), SUCCESS);
+    EXPECT_EQ(graph_prepare_.compute_graph_->GetInputSize(), graph_normalized ? 2U : user_input_.size());
+    const std::vector<int64_t> expected_shape = {(!graph_normalized && !empty_input) ? 3 : 2};
+    EXPECT_EQ(data_node_->GetOpDesc()->GetOutputDesc(0).GetShape().GetDims(), expected_shape);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(InputStates, UtestGraphPrepareConstCheck,
+                         testing::Combine(testing::Bool(), testing::Bool(), testing::Values(CONSTANT, FRAMEWORKOP)));
 }  // namespace ge

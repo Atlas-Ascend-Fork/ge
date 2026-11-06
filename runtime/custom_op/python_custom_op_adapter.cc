@@ -241,7 +241,8 @@ PythonCustomOpAdapter::PythonCustomOpAdapter(PythonCustomOpAdapterDescriptor des
     : op_type_(desc.op_type),
       impl_descriptor_key_(desc.impl_descriptor_key),
       capabilities_(desc.capabilities),
-      infer_meta_(desc.infer_meta) {
+      infer_meta_(desc.infer_meta),
+      deployment_artifacts_(desc.deployment_artifacts) {
   if (!desc.impl_descriptor_key.empty()) {
     holder_ = std::make_unique<PythonCustomOpImplHolder>(desc);
   }
@@ -269,6 +270,11 @@ bool PythonCustomOpAdapter::IsValid() const {
 
 bool PythonCustomOpAdapter::HasCapability(CustomOpCapability capability) const {
   return HasCustomOpCapability(capabilities_, capability);
+}
+
+std::vector<std::shared_ptr<const PythonCustomOpDeploymentArtifact>> PythonCustomOpAdapter::GetDeploymentArtifacts()
+    const {
+  return deployment_artifacts_;
 }
 
 graphStatus PythonCustomOpAdapter::Execute(gert::EagerOpExecutionContext *ctx) {
@@ -366,13 +372,41 @@ graphStatus PythonCustomOpAdapter::InferMeta(gert::InferShapeContext *ctx, Custo
 }
 
 graphStatus PythonCustomOpAdapter::Serialize(std::vector<uint8_t> &buffer) {
+  if (!HasCapability(CustomOpCapability::kPortable)) {
+    return ReportUnsupported(CustomOpCapability::kPortable, "Serialize");
+  }
+  if ((holder_ == nullptr) || (!holder_->IsValid()) || (holder_->GetHolder() == nullptr) ||
+      (holder_->GetCallbacks().serialize == nullptr)) {
+    GELOGE(GRAPH_FAILED,
+           "Python custom op adapter serialize failed because holder or callback is invalid, descriptor key[%s], "
+           "op type[%s].",
+           impl_descriptor_key_.c_str(), op_type_.c_str());
+    return GRAPH_FAILED;
+  }
   buffer.clear();
-  return ReportUnsupported(CustomOpCapability::kPortable, "Serialize");
+  return holder_->GetCallbacks().serialize(holder_->GetHolder(), &buffer);
 }
 
 graphStatus PythonCustomOpAdapter::Deserialize(const std::vector<uint8_t> &buffer) {
-  (void)buffer;
-  return ReportUnsupported(CustomOpCapability::kPortable, "Deserialize");
+  if (!HasCapability(CustomOpCapability::kPortable)) {
+    return ReportUnsupported(CustomOpCapability::kPortable, "Deserialize");
+  }
+  if ((holder_ == nullptr) || (!holder_->IsValid()) || (holder_->GetHolder() == nullptr) ||
+      (holder_->GetCallbacks().deserialize == nullptr)) {
+    GELOGE(GRAPH_FAILED,
+           "Python custom op adapter deserialize failed because holder or callback is invalid, descriptor key[%s], "
+           "op type[%s].",
+           impl_descriptor_key_.c_str(), op_type_.c_str());
+    return GRAPH_FAILED;
+  }
+  if (buffer.empty()) {
+    GELOGE(GRAPH_FAILED,
+           "Python custom op adapter deserialize failed because input buffer is empty, descriptor key[%s], "
+           "op type[%s].",
+           impl_descriptor_key_.c_str(), op_type_.c_str());
+    return GRAPH_FAILED;
+  }
+  return holder_->GetCallbacks().deserialize(holder_->GetHolder(), buffer.data(), buffer.size());
 }
 
 graphStatus PythonCustomOpAdapter::UpdateHostArgs(gert::UpdateArgsContext *ctx) {

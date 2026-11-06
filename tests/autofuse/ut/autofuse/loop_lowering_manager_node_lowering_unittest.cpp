@@ -1364,6 +1364,7 @@ TEST_F(LoopNodeLoweringUT, LoweringLayerNormStaticYOnly) {
   EXPECT_TRUE(y_kernel.IsReduction());
   const auto readable = y_kernel.Readable();
   EXPECT_NE(readable.find("ops.Mean"), string::npos);
+  EXPECT_NE(readable.find("dims=[1, 2]"), string::npos);
   EXPECT_NE(readable.find("ops.Sum"), string::npos);
   EXPECT_NE(readable.find("ops.Rsqrt"), string::npos);
   EXPECT_NE(readable.find("ops.Load(\"gamma:0\")"), string::npos);

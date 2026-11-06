@@ -52,10 +52,10 @@ Developers can download the source code of this repository through the following
 
 - Python3 >= 3.9.x
 
-  In addition to Python dependencies required by CANN development suite package, you also need to install coverage additionally and add Python3's bin path to PATH environment variable. Command example is as follows:
+  In addition to Python dependencies required by CANN development suite package, you also need to install coverage and pytest additionally (the pyge tests in UT/ST are executed via `python -m pytest`), and add Python3's bin path to PATH environment variable. Command example is as follows:
 
   ```bash
-  pip3 install coverage
+  pip3 install coverage pytest
   # Modify PYTHON3_HOME below to actual Python installation directory
   export PATH=$PATH:$PYTHON3_HOME/bin
   ```

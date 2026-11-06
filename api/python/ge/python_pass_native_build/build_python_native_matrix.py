@@ -891,6 +891,19 @@ def _copy_current_wheel(args: argparse.Namespace, tag: str) -> Optional[Path]:
         f"{tag}-{args.platform_tag}"
     )
     with zipfile.ZipFile(args.current_wheel) as archive:
+        manifest_path = f"{artifact_root}/manifest.json"
+        if manifest_path not in archive.namelist():
+            # Older setuptools may put packages under the wheel's .data directory.
+            for name in archive.namelist():
+                parts = name.split("/", 2)
+                if (
+                    len(parts) == 3
+                    and parts[0].endswith(".data")
+                    and parts[1] in ("purelib", "platlib")
+                    and parts[2] == manifest_path
+                ):
+                    artifact_root = name.rsplit("/", 1)[0]
+                    break
         manifest = json.loads(archive.read(f"{artifact_root}/manifest.json"))
         validate_artifact_manifest(manifest, config, tag, args.platform_tag)
         for filename in manifest["artifacts"].values():

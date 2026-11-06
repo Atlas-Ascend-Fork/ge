@@ -125,6 +125,9 @@ inline void InitGertModelData(GertModelData &model_data) {
   if (model_data.custom_ops == nullptr) {
     model_data.custom_ops = std::make_unique<GertModelDataCustomOps>();
   }
+  if (model_data.variables == nullptr) {
+    model_data.variables = std::make_unique<GertModelDataVariables>();
+  }
 }
 
 // 从身份字段构造（size = 0，shape_range 为空，长尾字段调用方后赋值）
@@ -172,19 +175,6 @@ inline std::unique_ptr<GertModelDataAippMeta> MakeGertModelDataAippMeta(const Ge
     meta->orig_input_info = std::make_unique<ge::OriginInputInfo>(*other.orig_input_info);
   }
   return meta;
-}
-
-inline std::string RTVarBuildKey(const std::string &var_name, const GertTensorDesc &desc) {
-  return var_name + std::to_string(static_cast<int32_t>(desc.format)) + "_" +
-         std::to_string(static_cast<int32_t>(desc.data_type));
-}
-
-inline ge::Status RTVarAddEntry(std::vector<RTVarEntry> &entries, RTVarEntry entry) {
-  if (!entry.var_key || GertGetStr(entry.var_key)[0] == '\0') {
-    return ge::PARAM_INVALID;
-  }
-  entries.push_back(std::move(entry));
-  return ge::SUCCESS;
 }
 
 }  // namespace gert

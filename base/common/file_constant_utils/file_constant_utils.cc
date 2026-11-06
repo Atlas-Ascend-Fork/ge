@@ -738,10 +738,25 @@ Status FileConstantUtils::ConvertConstToFileConst(const NodePtr &node) {
 }
 
 Status FileConstantUtils::ChangeFilePath(const ComputeGraphPtr &compute_graph, const std::string &om_path) {
+  return ChangeFilePath(compute_graph, nullptr, om_path);
+}
+
+Status FileConstantUtils::ChangeFilePath(const ComputeGraphPtr &main_graph, const ComputeGraphPtr &fallback_graph,
+                                         const std::string &om_path) {
+  GE_ASSERT_NOTNULL(main_graph);
   std::map<std::string, std::string> old_file_to_new_file;
-  GE_ASSERT_SUCCESS(ChangeFilePathAttr(compute_graph, om_path, old_file_to_new_file),
-                    "Change file path attribute for graph %s failed.", compute_graph->GetName().c_str());
-  return MoveFilePath(old_file_to_new_file);
+  GE_ASSERT_SUCCESS(ChangeFilePathAttr(main_graph, om_path, old_file_to_new_file),
+                    "Change file path attribute for graph %s failed.", main_graph->GetName().c_str());
+  if (fallback_graph != nullptr) {
+    GE_ASSERT_SUCCESS(ChangeFilePathAttr(fallback_graph, om_path, old_file_to_new_file),
+                      "Change file path attribute for fallback graph %s failed.", fallback_graph->GetName().c_str());
+  }
+  const Status move_ret = MoveFilePath(old_file_to_new_file);
+  if (fallback_graph != nullptr) {
+    GELOGI("dual-body FileConstant path change %s, moved file num=%zu.", (move_ret == SUCCESS) ? "success" : "failed",
+           old_file_to_new_file.size());
+  }
+  return move_ret;
 }
 
 std::string FileConstantUtils::GetTmpWeightDir(const int32_t pid, const uint64_t session_id) {

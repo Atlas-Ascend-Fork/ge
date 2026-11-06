@@ -47,8 +47,8 @@ TEST(Om2ModelDataConstCompatibility, PackagePathConstantsAreFrozen) {
   EXPECT_CONST_STR_FROZEN(OM2_CONSTANTS_DIR, "data/constants/");
   EXPECT_CONST_STR_FROZEN(OM2_CONSTANTS_FILE_PREFIX, "constant_");
   EXPECT_CONST_STR_FROZEN(OM2_CONSTANTS_CONFIG_PATH_FORMAT, "data/model_%s/constants_config.json");
-  EXPECT_CONST_STR_FROZEN(OM2_VARIABLES_CONFIG_PATH_FORMAT, "data/model_%s/variables_config.json");
   EXPECT_CONST_STR_FROZEN(OM2_VARIABLES_DIR, "data/variables/");
+  EXPECT_CONST_STR_FROZEN(OM2_VAR_WEIGHT_FILE_PREFIX, "var_weight_data_");
   EXPECT_CONST_STR_FROZEN(OM2_VAR_WEIGHT_FILE_FORMAT, "data/variables/var_weight_data_%s");
   EXPECT_CONST_STR_FROZEN(OM2_VISUAL_JSON_PATH_FORMAT, "data/model_%s/debug/ge_visual_00000000_graph_0.json");
 }
@@ -82,9 +82,6 @@ TEST(Om2ModelDataConstCompatibility, ArchiveCompressionWhitelistIsFrozen) {
   static_assert(!gert::IsGertFileCompressed(gert::GertFileType::kVarWeight),
                 "kVarWeight should not be in compression whitelist");
   EXPECT_FALSE(gert::IsGertFileCompressed(gert::GertFileType::kVarWeight));
-  static_assert(!gert::IsGertFileCompressed(gert::GertFileType::kVariablesConfig),
-                "kVariablesConfig should not be in compression whitelist");
-  EXPECT_FALSE(gert::IsGertFileCompressed(gert::GertFileType::kVariablesConfig));
   static_assert(!gert::IsGertFileCompressed(gert::GertFileType::kKernels),
                 "kKernels should not be in compression whitelist");
   EXPECT_FALSE(gert::IsGertFileCompressed(gert::GertFileType::kKernels));

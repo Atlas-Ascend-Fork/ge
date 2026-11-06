@@ -64,6 +64,9 @@ class Arg {
                                                     !std::is_same<typename std::decay<T>::type, bool>::value>>
   Arg(T value) : kind_(Kind::kInt), int_value_(static_cast<int64_t>(value)), bool_value_(false), expr_(nullptr) {}
 
+  // text 是"已转义好的字符串字面量内容"，发射时只在两侧补引号、不再转义。
+  // 内容含引号、反斜杠或不可打印字节时由调用方自行转义
+  // （先例：KernelExTaskCodeBuilder::SerializeBytesToOctalString 把二进制 blob 编成 \104\000 形式）。
   static Arg StringLiteral(const std::string &text);
 
   bool Empty() const;
@@ -168,19 +171,28 @@ class AstBuildContext {
   BlankLineStmt *BlankLine() const;
   AccessSectionDecl *Public() const;
   AccessSectionDecl *Private() const;
+  // 与 Arg::StringLiteral 同一契约：text 须是已转义好的字面量内容，发射时不再转义
   Expr *Str(const std::string &text) const;
   Expr *UInt(uint64_t value) const;
   Expr *ULong(uint64_t value) const;
+  Expr *ULongLong(uint64_t value) const;
+  // 十六进制字面量，用于地址等按位阅读的取值
+  Expr *Hex(uint64_t value, LiteralExpr::IntSuffix suffix = LiteralExpr::IntSuffix::kNone) const;
   TypeAliasDecl *TypeAlias(const std::string &type_spec, const std::string &name) const;
   FieldDecl *Field(const std::string &type_spec, const std::string &name, Arg init = {}) const;
   ClassDecl *Class(const std::string &name, const std::vector<DeclNode *> &items) const;
   ClassDecl *Class(const std::string &name, std::initializer_list<DeclNode *> items) const;
   StructDecl *Struct(const std::string &name, const std::vector<DeclNode *> &items) const;
   StructDecl *Struct(const std::string &name, std::initializer_list<DeclNode *> items) const;
+  // 枚举声明。enumerators 的 second 为空 Arg 时该枚举项不带显式取值
+  EnumDecl *Enum(const std::string &name, const std::string &underlying_type,
+                 const std::vector<std::pair<std::string, Arg>> &enumerators) const;
   NamespaceDecl *Namespace(const std::string &name, const std::vector<DeclNode *> &items) const;
   NamespaceDecl *Namespace(const std::string &name, std::initializer_list<DeclNode *> items) const;
   ExternBlockDecl *ExternBlock(const std::string &lang, const std::vector<DeclNode *> &items) const;
   ExternBlockDecl *ExternBlock(const std::string &lang, std::initializer_list<DeclNode *> items) const;
+  // 原样发射一段文本（自带换行与缩进），用于承载无法 AST 化的内容
+  RawTextDecl *RawText(const std::string &text) const;
   StablePartDecl *StablePart(StablePartId id,
                              StablePartPlacement placement = StablePartPlacement::kTranslationUnit) const;
   FunctionDecl *DeclareFunction(const std::string &name, const std::vector<VarRef> &params,
@@ -213,6 +225,8 @@ class AstBuildContext {
   CCastExpr *CCast(const std::string &target_type, Arg expr) const;
   InitListExpr *InitList(std::initializer_list<Arg> items, bool compact = false) const;
   InitListExpr *InitList(const std::vector<Arg> &items, bool compact = false) const;
+  InitListExpr *InitList(std::initializer_list<Arg> items, bool compact, InitListExpr::Delimiter delimiter) const;
+  InitListExpr *InitList(const std::vector<Arg> &items, bool compact, InitListExpr::Delimiter delimiter) const;
   DesignatedInitListExpr *DesignatedInit(const std::vector<std::pair<std::string, Arg>> &members,
                                          bool compact = false) const;
   VarRef Var(const std::string &type_name, const std::string &symbol_name) const;
@@ -227,6 +241,9 @@ class AstBuildContext {
   ExprRef IgnoreOutput(Arg expr) const;
   LambdaCaptureSpec CaptureRef(const VarRef &symbol) const;
   ExprRef Lambda(std::initializer_list<LambdaCaptureSpec> captures, std::initializer_list<BodyItem> items) const;
+  // 带参数表与尾置返回类型的 lambda：[caps](params) -> ret {…}
+  ExprRef Lambda(std::initializer_list<LambdaCaptureSpec> captures, const std::vector<VarRef> &params,
+                 const std::string &return_type, std::initializer_list<BodyItem> items) const;
   ExprRef Call(const std::string &callee_name, std::initializer_list<Arg> args) const;
   ExprRef Call(const std::string &callee_name, const std::vector<Arg> &args) const;
   ExprRef MakeUniqueArray(BuiltinType elem_type, Arg count) const;
@@ -235,19 +252,28 @@ class AstBuildContext {
   ReturnStmt *Return(Arg value = {}) const;
   VarDeclStmt *VarDecl(const std::string &type_spec, const std::string &name, Arg init = {}) const;
   VarDeclStmt *VarDecl(const VarRef &symbol, Arg init = {}) const;
+  // kDirect：init 自带定界符，用于 T x(a, b) / T x{a} / T x{} 这类不能拷贝初始化的场景
+  VarDeclStmt *VarDecl(const std::string &type_spec, const std::string &name, Arg init,
+                       VarDeclStmt::InitStyle style) const;
+  VarDeclStmt *VarDecl(const VarRef &symbol, Arg init, VarDeclStmt::InitStyle style) const;
   BlockStmt *Block(const std::vector<BodyItem> &items) const;
+  TryCatchStmt *TryCatchAll(std::initializer_list<BodyItem> try_items,
+                            std::initializer_list<BodyItem> catch_items) const;
+  TryCatchStmt *TryCatchAll(const std::vector<BodyItem> &try_items, const std::vector<BodyItem> &catch_items) const;
   IfStmt *If(Arg cond, std::initializer_list<BodyItem> then_items) const;
   IfStmt *If(Arg cond, std::initializer_list<BodyItem> then_items, std::initializer_list<BodyItem> else_items,
              bool is_preprocessor = false) const;
   IfStmt *If(Arg cond, const std::vector<BodyItem> &then_items, const std::vector<BodyItem> &else_items,
              bool is_preprocessor = false) const;
   ForStmt *For(Stmt *init, Arg cond, Arg step, std::initializer_list<BodyItem> items) const;
+  ForStmt *For(Stmt *init, Arg cond, Arg step, const std::vector<BodyItem> &items) const;
   RangeForStmt *RangeFor(const VarRef &loop_var, Arg range, std::initializer_list<BodyItem> items) const;
   RangeForStmt *RangeFor(const std::string &type_spec, const std::string &name, Arg range,
                          std::initializer_list<BodyItem> items) const;
   SwitchStmt *Switch(Arg cond, const std::vector<BodyItem> &items) const;
   CaseStmt *Case(Arg value) const;
   BreakStmt *Break() const;
+  ContinueStmt *Continue() const;
   MemberInitSpec MemberInit(const std::string &member_name, Arg init) const;
   std::vector<Stmt *> Body(std::initializer_list<BodyItem> items) const;
   std::vector<Stmt *> Body(const std::vector<BodyItem> &items) const;

@@ -30,6 +30,10 @@
 #include "acl/acl_rt_allocator.h"
 #include "acl/acl_rt.h"
 
+namespace gert {
+class GuardChecker;
+}  // namespace gert
+
 namespace acl {
 class ExternalAllocatorDesc {
  public:
@@ -71,6 +75,23 @@ class ACL_FUNC_VISIBILITY AclResourceManager {
                    const std::shared_ptr<gert::RtSession> &rtSession);
   std::shared_ptr<gert::ModelV2Executor> GetExecutor(const uint32_t modelId);
   aclError DeleteExecutor(const uint32_t modelId);
+
+  // autofuse 离线双执行体：主执行体仍存 executorMap_；兜底执行体 + guard 存旁路表。
+  struct AutofuseFallbackInfo {
+    std::shared_ptr<gert::ModelV2Executor> executor;
+    std::shared_ptr<gert::GuardChecker> guard;
+    void *shared_weight_ptr{nullptr};
+    size_t shared_weight_size{0U};
+  };
+  struct AutofuseFallbackExecutors {
+    std::shared_ptr<gert::ModelV2Executor> executor;
+    std::shared_ptr<gert::GuardChecker> guard;
+  };
+  void SetAutofuseFallback(const uint32_t modelId, std::shared_ptr<gert::ModelV2Executor> executor,
+                           std::shared_ptr<gert::GuardChecker> guard, void *shared_weight_ptr = nullptr,
+                           size_t shared_weight_size = 0U);
+  AutofuseFallbackExecutors GetAutofuseFallback(const uint32_t modelId);
+  void DeleteAutofuseFallback(const uint32_t modelId);
 
   std::shared_ptr<gert::RtSession> CreateRtSession();
   std::shared_ptr<gert::RtSession> GetRtSession(const uint32_t rtSessionId);
@@ -124,6 +145,7 @@ class ACL_FUNC_VISIBILITY AclResourceManager {
   std::map<const void *, std::pair<ExternalAllocatorDesc, std::shared_ptr<gert::Allocators>>> streamExternalAllocator_;
   std::recursive_mutex streamAllocatorMutex_;
 
+  std::unordered_map<uint32_t, AutofuseFallbackInfo> autofuseFallbackMap_;
   std::unordered_map<uint32_t, BundleModelInfo> bundleInfos_;
   std::unordered_set<uint32_t> bundleInnerIds_;
 };

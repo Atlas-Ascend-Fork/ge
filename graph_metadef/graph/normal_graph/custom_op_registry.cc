@@ -12,7 +12,9 @@
 #include "graph/custom_op_registry.h"
 
 #include <algorithm>
+#include <atomic>
 #include <limits>
+#include <set>
 #include <string>
 #include <typeinfo>
 #include <utility>
@@ -20,6 +22,7 @@
 #include "debug/ge_log.h"
 #include "framework/common/framework_types_internal.h"
 #include "graph/custom_op/cast.h"
+#include "graph/custom_op/model_scope.h"
 
 namespace ge {
 namespace {
@@ -221,6 +224,10 @@ void MoveCustomOpInstancesForRemoval(PriorityInstanceMap &priority_instances,
 
 struct CustomOpRegistry::Impl {
   std::vector<OpProtoClaimRecord> proto_claims;
+  // PYTHON_CUSTOM_OPS manifest 声明的全部 op_type，以及注册时因冲突被跳过的 op_type。
+  // 由 runtime hook 在恢复成功后写入，供 base 侧加载校验读取。
+  std::set<std::string> python_manifest_op_types;
+  std::set<std::string> python_conflict_skipped_op_types;
 };
 
 CustomOpRegistry::~CustomOpRegistry() {
@@ -235,11 +242,61 @@ CustomOpRegistry::~CustomOpRegistry() {
     if (!claims.empty()) {
       OpProtoLedger::ReleaseClaims(claims);  // 按事务日志精确扣减，替代盲删（锁外执行，避免与账本锁嵌套）
     }
+
+    // 显式控制释放顺序，不依赖成员声明的隐式析构顺序：
+    //   实例/adapter/holder -> 模型局部 creator -> 模型 scope -> SO handle
+    // scope 必须在实例与 creator 之后关闭：Python holder 引用的对象由 scope 内的 module 持有，
+    // 先关 scope 会让后续 holder 析构访问已失效的 Python 对象。
+    custom_ops_.clear();
+    creators_.clear();
+    if (model_scope_ != nullptr) {
+      model_scope_->Close();
+      model_scope_.reset();
+    }
+    so_handles_.clear();
   } catch (const std::exception &e) {
     GELOGW("[CUSTOM OP] Exception in CustomOpRegistry destructor: %s", e.what());
   } catch (...) {
     GELOGW("[CUSTOM OP] Unknown exception in CustomOpRegistry destructor.");
   }
+}
+
+void CustomOpRegistry::SetModelScope(const CustomOpModelScopePtr &scope) {
+  const std::lock_guard<std::mutex> lock(mu_);
+  model_scope_ = scope;
+}
+
+void CustomOpRegistry::SetPythonRestoreManifest(PythonRestoreManifest &&manifest) {
+  const std::lock_guard<std::mutex> lock(mu_);
+  if (impl_ == nullptr) {
+    impl_ = std::make_shared<Impl>();
+  }
+  impl_->python_manifest_op_types = std::move(manifest.manifest_op_types);
+  impl_->python_conflict_skipped_op_types = std::move(manifest.conflict_skipped_op_types);
+}
+
+bool CustomOpRegistry::IsPythonManifestOpType(const AscendString &op_type) const {
+  const std::lock_guard<std::mutex> lock(mu_);
+  if ((impl_ == nullptr) || impl_->python_manifest_op_types.empty()) {
+    return false;
+  }
+  const char *op_type_str = op_type.GetString();
+  if (op_type_str == nullptr) {
+    return false;
+  }
+  return impl_->python_manifest_op_types.find(op_type_str) != impl_->python_manifest_op_types.cend();
+}
+
+bool CustomOpRegistry::IsPythonConflictSkippedOpType(const AscendString &op_type) const {
+  const std::lock_guard<std::mutex> lock(mu_);
+  if ((impl_ == nullptr) || impl_->python_conflict_skipped_op_types.empty()) {
+    return false;
+  }
+  const char *op_type_str = op_type.GetString();
+  if (op_type_str == nullptr) {
+    return false;
+  }
+  return impl_->python_conflict_skipped_op_types.find(op_type_str) != impl_->python_conflict_skipped_op_types.cend();
 }
 
 graphStatus CustomOpRegistry::RegisterCreator(const AscendString &op_type, OpBackend backend,
@@ -766,5 +823,20 @@ void CustomOpRegistry::AppendProtoClaims(std::vector<OpProtoClaimRecord> &&claim
   }
   impl_->proto_claims.insert(impl_->proto_claims.end(), std::make_move_iterator(claims.begin()),
                              std::make_move_iterator(claims.end()));
+}
+
+namespace {
+// PythonCustomOpRestoreHook 的进程级单例指针（原独立 TU custom_op_model_scope.cc，随
+// reporter 机制一并精简后只剩此一处状态，并入本文件）。注册发生在库初始化阶段，读取发生在
+// 模型加载阶段，用 atomic 保证可见性；不引入互斥锁，因为注册只发生一次且早于任何读取。
+std::atomic<PythonCustomOpRestoreHook *> g_python_custom_op_restore_hook{nullptr};
+}  // namespace
+
+void SetPythonCustomOpRestoreHook(PythonCustomOpRestoreHook *hook) {
+  g_python_custom_op_restore_hook.store(hook);
+}
+
+PythonCustomOpRestoreHook *GetPythonCustomOpRestoreHook() {
+  return g_python_custom_op_restore_hook.load();
 }
 }  // namespace ge

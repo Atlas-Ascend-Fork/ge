@@ -928,6 +928,77 @@ TEST_F(UtestGeGenerator, CheckForSingleOp) {
   FinalizeGeLib();
 }
 
+TEST_F(UtestGeGenerator, GenerateModelDualBodyEnabled) {
+  const char *env_name = "AUTOFUSE_FLAGS";
+  const char *old_value = std::getenv(env_name);
+  const std::string backup = (old_value == nullptr) ? "" : old_value;
+  (void)setenv(env_name, "--enable_autofuse=true", 1);
+  InitGeLib();
+  auto &instance = GeGenerator::GetInstance();
+  ASSERT_EQ(instance.Initialize({}), SUCCESS);
+  auto compute_graph = MakeGraph();
+  compute_graph->SetGraphUnknownFlag(true);
+  ASSERT_EQ(compute_graph->TopologicalSorting(), GRAPH_SUCCESS);
+  Graph graph = ge::GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);
+  const auto graph_options = GetThreadLocalContext().GetAllGraphOptions();
+  std::map<std::string, std::string> options;
+  options[ge::INPUT_HINT_SHAPE] = "0:[4, 2]";
+  GetThreadLocalContext().SetGraphOption(options);
+  ModelBufferData model;
+  (void)instance.GenerateModel(graph, "dual_body_prefix", {}, model, true);
+  GetThreadLocalContext().SetGraphOption(graph_options);
+  (void)instance.Finalize();
+  FinalizeGeLib();
+  if (old_value != nullptr) {
+    (void)setenv(env_name, backup.c_str(), 1);
+  } else {
+    (void)unsetenv(env_name);
+  }
+}
+
+TEST_F(UtestGeGenerator, GenerateModelDualBodyMinimalGraph) {
+  const char *env_name = "AUTOFUSE_FLAGS";
+  const char *old_value = std::getenv(env_name);
+  const std::string backup = (old_value == nullptr) ? "" : old_value;
+  (void)setenv(env_name, "--enable_autofuse=true", 1);
+  InitGeLib();
+  auto &instance = GeGenerator::GetInstance();
+  ASSERT_EQ(instance.Initialize({}), SUCCESS);
+  ge::ut::GraphBuilder builder("minimal_graph");
+  auto data = builder.AddNode("data", "Data", 1, 1);
+  auto output = builder.AddNode("output", "NetOutput", 1, 1);
+  auto pc = builder.AddNode("pc", "PartitionedCall", 1, 1);
+  builder.AddDataEdge(data, 0, output, 0);
+  data->GetOpDescBarePtr()->AddInferFunc(InferFunctionStub);
+  output->GetOpDescBarePtr()->AddInferFunc(InferFunctionStub);
+  pc->GetOpDescBarePtr()->AddInferFunc(InferFunctionStub);
+  auto compute_graph = builder.GetGraph();
+  auto partitioned_sub_graph = std::make_shared<ge::ComputeGraph>("minimal_sub_graph");
+  partitioned_sub_graph->SetGraphUnknownFlag(true);
+  partitioned_sub_graph->SetParentGraph(compute_graph);
+  partitioned_sub_graph->SetParentNode(pc);
+  ASSERT_EQ(compute_graph->AddSubgraph("minimal_sub_graph", partitioned_sub_graph), GRAPH_SUCCESS);
+  (void)pc->GetOpDesc()->AddSubgraphName("minimal_sub_graph");
+  (void)pc->GetOpDesc()->SetSubgraphInstanceName(0U, "minimal_sub_graph");
+  compute_graph->SetGraphUnknownFlag(true);
+  ASSERT_EQ(compute_graph->TopologicalSorting(), GRAPH_SUCCESS);
+  Graph graph = ge::GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);
+  const auto graph_options = GetThreadLocalContext().GetAllGraphOptions();
+  std::map<std::string, std::string> options;
+  options[ge::INPUT_HINT_SHAPE] = "0:[4, 2]";
+  GetThreadLocalContext().SetGraphOption(options);
+  ModelBufferData model;
+  (void)instance.GenerateModel(graph, "dual_body_min_prefix", {}, model, true);
+  GetThreadLocalContext().SetGraphOption(graph_options);
+  (void)instance.Finalize();
+  FinalizeGeLib();
+  if (old_value != nullptr) {
+    (void)setenv(env_name, backup.c_str(), 1);
+  } else {
+    (void)unsetenv(env_name);
+  }
+}
+
 TEST_F(UtestGeGenerator, GenerateModelAndDumpBuildGraph) {
   InitGeLib();
   auto &instance = GeGenerator::GetInstance();

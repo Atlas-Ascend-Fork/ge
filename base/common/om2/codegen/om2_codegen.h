@@ -19,7 +19,8 @@ namespace ge {
 class Om2Codegen {
  public:
   Status Om2CodegenAndCompile(const GeModelPtr &ge_model, const gert::GertModelData &model_data,
-                              gert::GertModelDataModel &unit) const;
+                              gert::GertModelDataModel &unit, std::unique_ptr<gert::GertModelDataFile> &var_weight_slot,
+                              const size_t model_index) const;
 };
 }  // namespace ge
 

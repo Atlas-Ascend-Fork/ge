@@ -1,0 +1,82 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+syntax = "proto3";
+package ge.python_custom_op.proto;
+
+// OM 中 PYTHON_CUSTOM_OPS 分区的持久化格式。
+//
+// 只承载"部署实现"（用户 Python 源码及其实现类描述），不承载 PortableOp 的 opaque state；
+// 后者仍由 CUSTOM_OPS 分区按既有格式保存。两层数据通过 op_type 关联，通过 artifact_id 去重。
+//
+// 格式契约（保存与加载双方都必须遵守）：
+//   1. sources 按 artifact_id 升序排列；
+//   2. 每个 artifact 的 descriptors 按 (op_type, class_name) 升序排列；
+//   3. 同一 op_type 在整个 package 内只能出现一次；
+//   4. 序列化使用 deterministic 模式，相同输入必须产生逐字节相同的输出。
+// 不使用 map 字段，因此排序后的 repeated 字段配合 deterministic 序列化即可保证字节稳定。
+message PythonCustomOpPackageDef {
+  uint32 format_version = 1;
+  uint32 bridge_abi_version = 2;
+  uint32 producer_python_major = 3;
+  uint32 producer_python_minor = 4;
+  repeated PythonSourceArtifactDef sources = 5;
+}
+
+// 一个 Python 定义文件对应一个 artifact。同一文件内注册的全部实现类共享同一份 source，
+// 因此源码只保存一次，descriptors 保存该文件的完整实现类集合（不按模型实际使用情况筛选）。
+message PythonSourceArtifactDef {
+  // source_sha256 的 64 字符小写十六进制形式，用于跨 artifact 去重与排序
+  string artifact_id = 1;
+  // 仅用于诊断的文件名，不保存构建机绝对路径，加载侧不参与任何路径拼接
+  string source_name = 2;
+  // 固定 32 bytes 的原始摘要，用于校验 source 完整性
+  bytes source_sha256 = 3;
+  // 定义文件的原始 bytes，加载侧在内存中解析执行，不落盘
+  bytes source = 4;
+  repeated PythonOpDescriptorDef descriptors = 5;
+}
+
+// 单个 Python 实现类的描述快照。
+// 只保存跨进程稳定的字段；不得保存 descriptor_key 与 module_name，
+// 二者由 Python 侧字符串 hash 派生，受 PYTHONHASHSEED 随机化影响，跨进程不稳定。
+message PythonOpDescriptorDef {
+  string op_type = 1;
+  // 类限定名（Python __qualname__），用于区分嵌套类
+  string class_name = 2;
+  // CustomOpCapabilityMask，与 graph/custom_op/capability.h 中 CustomOpCapability 的位定义一致
+  uint32 capabilities = 3;
+  // canonical IR 快照（编译进程 OperatorFactory 的注册定义）：加载态 D4 抑制原型注册，
+  // schema-bound execute 的参数绑定在加载进程查不到 OperatorFactory，必须随分区携带。
+  // 字段缺省（老分区）时加载侧视为无 IR，行为与旧版本一致（执行期点名失败）。
+  repeated PythonIrInputDef inputs = 4;
+  repeated PythonIrAttrDef attrs = 5;
+  repeated PythonIrOutputDef outputs = 6;
+}
+
+// IR 输入定义：kind 与 PythonCustomOpProtoInputKind 一致
+// （0=required, 1=optional, 2=dynamic）。
+message PythonIrInputDef {
+  string name = 1;
+  uint32 kind = 2;
+}
+
+// IR 属性定义：kind 为属性类型名（GetRegisteredIrDefFromGraph 返回的原样字符串，
+// 如 "required_int"/"int" 等，加载侧按 Python 侧 runtime attr 规格解释）。
+message PythonIrAttrDef {
+  string name = 1;
+  string type = 2;
+}
+
+// IR 输出定义：kind 与 PythonCustomOpProtoOutputKind 一致（0=required, 1=dynamic）。
+message PythonIrOutputDef {
+  string name = 1;
+  uint32 kind = 2;
+}

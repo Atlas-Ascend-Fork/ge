@@ -19,10 +19,14 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Callable, Dict, List, Mapping, Optional, Type
 
+from ._portable import validate_portable_methods
+from ._scope import find_scoped_impl_descriptor, get_active_model_scope
+
 INTERFACE_EAGER_EXECUTE = "eager_execute"
 INTERFACE_HOST_CPU_EXECUTE = "host_cpu_execute"
 INTERFACE_COMPILABLE = "compilable"
 INTERFACE_ANNOTATED_ARGS = "annotated_args"
+INTERFACE_PORTABLE = "portable"
 
 
 class OpBackend(Enum):
@@ -240,7 +244,7 @@ def _collect_kernel_bindings(cls: Type[Any]) -> Dict[str, KernelBinding]:
 
 
 def _collect_interfaces(
-    cls: Type[Any], kernel_bindings: Mapping[OpBackend, KernelBinding]
+    cls: Type[Any], kernel_bindings: Mapping[OpBackend, KernelBinding], op_type: str
 ) -> List[str]:
     interfaces = []
     for backend, interface_name in _EXECUTE_INTERFACE_BY_BACKEND.items():
@@ -265,13 +269,15 @@ def _collect_interfaces(
             raise TypeError(f"{method_name} must be callable")
         if callable(method):
             interfaces.append(interface_name)
+    if validate_portable_methods(cls, op_type):
+        interfaces.append(INTERFACE_PORTABLE)
     return interfaces
 
 
 def _get_interfaces(
-    cls: Type[Any], kernel_bindings: Mapping[str, KernelBinding]
+    cls: Type[Any], kernel_bindings: Mapping[str, KernelBinding], op_type: str
 ) -> List[str]:
-    interfaces = _collect_interfaces(cls, kernel_bindings)
+    interfaces = _collect_interfaces(cls, kernel_bindings, op_type)
     if not interfaces:
         supported_methods = ", ".join(
             ["execute"] + [method_name for _, method_name in _METHOD_INTERFACES]
@@ -288,22 +294,40 @@ def _register_op_impl_class(cls: Type[Any], *, op_type: str) -> Type[Any]:
     module_name = cls.__module__
     class_name = cls.__name__
     kernel_bindings = _collect_kernel_bindings(cls)
+    interfaces = _get_interfaces(cls, kernel_bindings, op_type)
     descriptor = OpImplDescriptor(
         descriptor_key=_build_descriptor_key(module_name, class_name, op_type),
         op_type=op_type,
         module_name=module_name,
         class_name=class_name,
-        interfaces=_get_interfaces(cls, kernel_bindings),
+        interfaces=interfaces,
         cls=cls,
         kernel_bindings=MappingProxyType(kernel_bindings),
     )
-    _OP_IMPL_REGISTRY.register(descriptor)
+    # OM 恢复期间（模型 scope 激活）注册进 scope-local capture，进程级全局
+    # 注册表零写入；正常编译/eager 路径行为不变。
+    active_scope = get_active_model_scope()
+    if active_scope is not None:
+        active_scope.register_impl(descriptor)
+    else:
+        _OP_IMPL_REGISTRY.register(descriptor)
     setattr(cls, _OP_IMPL_DESCRIPTOR_ATTR, descriptor)
     return cls
 
 
 def register_op_impl(*, op_type: str) -> callable:
-    """Decorator for Python custom op implementation classes."""
+    """Decorator for Python custom op implementation classes.
+
+    Args:
+        op_type: the custom op type this class implements.
+
+    Every registered implementation's definition file is frozen at compile time
+    and, when the op is used by a model, packaged into the OM so the model is
+    self-contained on the deployment host.  There is no per-class packaging
+    switch: mirroring how C++ custom ops unconditionally collect their SO into
+    ``SO_BINS``, source packaging is decided by whether the op is used by the
+    graph, not by a declaration on the implementation.
+    """
 
     normalized_op_type = _normalize_op_type(op_type)
 
@@ -332,7 +356,12 @@ def get_registered_op_impl_dicts() -> List[dict]:
 def get_registered_op_impl_by_descriptor_key(
     descriptor_key: str,
 ) -> Optional[OpImplDescriptor]:
-    return _OP_IMPL_REGISTRY.get_by_descriptor_key(descriptor_key)
+    descriptor = _OP_IMPL_REGISTRY.get_by_descriptor_key(descriptor_key)
+    if descriptor is not None:
+        return descriptor
+    # OM 恢复出的 creator 捕获的是 scoped descriptor key（模型 scope 内注册，
+    # 进程级全局注册表查不到），运行时创建 holder 需回退查询存活模型 scope。
+    return find_scoped_impl_descriptor(descriptor_key)
 
 
 def register_kernel(

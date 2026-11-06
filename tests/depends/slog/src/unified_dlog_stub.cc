@@ -98,6 +98,13 @@ int CheckLogLevel(int moduleId, int log_level_check) {
   return log_level_check >= dlog_getlevel(moduleId, nullptr);
 }
 
+// atc_static 以 LOG_CPP 编译（见 api/atc/CMakeLists.txt），其对 CheckLogLevel(int, int) 的引用为
+// C++ 修饰符号 _Z13CheckLogLevelii；发布态该符号由 libascendalog.so 提供，而 DT 打桩态 slog 目标
+// 映射为本桩（仅导出 C 链接符号），导致 libpyatc_wrapper.so 残留该强未定义符号，pyge 测试经
+// ctypes RTLD_NOW 加载时报 undefined symbol。此处按发布态 libascendalog.so 的导出补充修饰名
+// 别名，转发到上面的 C 链接实现（两者语义一致，均转发 SlogStub）。
+extern "C" int _Z13CheckLogLevelii(int moduleId, int logLevel) __attribute__((alias("CheckLogLevel")));
+
 int32_t AlogCheckDebugLevel(uint32_t moduleId, int32_t level) {
   return CheckLogLevel(static_cast<int>(moduleId), level);
 }

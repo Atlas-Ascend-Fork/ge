@@ -88,8 +88,10 @@ Status CopyHostInputsToDevice(UserGraphExecution &execution_task, Allocator *con
   auto &inputs_memblocks = execution_task.inputs_memblocks;
   bool enable_input_batch_cpy = IsEnableBatchCpy(*external_rt_inputs);
   if (keep_on_host_idxs.empty()) {
-    GE_ASSERT_SUCCESS(TensorTransUtils::TransHostGertTensorsToDevice(
-        allocator, *external_rt_inputs, device_gert_tensors, inputs_memblocks, enable_input_batch_cpy));
+    JIT_ASSERT_SUCCESS(
+        TensorTransUtils::TransHostGertTensorsToDevice(allocator, *external_rt_inputs, device_gert_tensors,
+                                                       inputs_memblocks, enable_input_batch_cpy),
+        execution_task, "TransHostGertTensorsToDevice failed, input num:%zu", external_rt_inputs->size());
     return SUCCESS;
   }
 
@@ -116,8 +118,9 @@ Status CopyHostInputsToDevice(UserGraphExecution &execution_task, Allocator *con
   std::vector<gert::Tensor> to_device_dst;
   std::vector<MemBlock *> to_device_blocks(to_device_src.size(), nullptr);
   if (!to_device_src.empty()) {
-    GE_ASSERT_SUCCESS(TensorTransUtils::TransHostGertTensorsToDevice(allocator, to_device_src, to_device_dst,
-                                                                     to_device_blocks, enable_input_batch_cpy));
+    JIT_ASSERT_SUCCESS(TensorTransUtils::TransHostGertTensorsToDevice(allocator, to_device_src, to_device_dst,
+                                                                      to_device_blocks, enable_input_batch_cpy),
+                       execution_task, "TransHostGertTensorsToDevice failed, input num:%zu", to_device_src.size());
   }
 
   device_gert_tensors.resize(external_rt_inputs->size());
@@ -142,6 +145,8 @@ Status FreeInputsAllocByJit(std::vector<MemBlock *> &input_blocks) {
       continue;
     }
     mem_block->Free();
+    // 置空保证幂等：重复调用(如失败清理后再由 guard 兜底)不会二次释放
+    mem_block = nullptr;
   }
   return SUCCESS;
 }
@@ -206,31 +211,45 @@ Status PrepareGraphInputs(const ComputeGraphPtr &graph, std::vector<gert::Tensor
   return SUCCESS;
 }
 
-// 快速路径(TryExecuteWithoutProcess)直接透传用户输入给guard匹配与执行：guard在host侧解引用数据，
-// 故cond输入与需要值符号化的输入必须位于host，校验不过回退完整路径
-bool FastPathInputsOnHost(const ComputeGraphPtr &graph, const std::vector<gert::Tensor> &inputs,
-                          std::map<ComputeGraph *, std::set<size_t>> &cond_input_cache, std::mutex &cache_mutex) {
+// 收集"必须保留在host"的输入集合(cond ∪ value-dependent)，即 BuildCompileInputs 编译时
+// 打 host 标的集合。调用方需已持有共享锁 mutex_（内部会写共享 graph 的属性缓存）。
+Status GetInputsMustStayOnHost(const ComputeGraphPtr &graph,
+                               std::map<ComputeGraph *, std::set<size_t>> &cond_input_cache, std::mutex &cache_mutex,
+                               std::set<size_t> &need_host_idxs) {
   if (graph == nullptr) {
-    return false;
+    return SUCCESS;
   }
-  std::set<size_t> need_host_idxs;
-  {
-    std::lock_guard<std::mutex> locker(cache_mutex);
-    if (GetAllCondInputData(graph, need_host_idxs, cond_input_cache) != SUCCESS) {
-      return false;
-    }
+  std::lock_guard<std::mutex> locker(cache_mutex);
+  GE_ASSERT_SUCCESS(GetAllCondInputData(graph, need_host_idxs, cond_input_cache));
+  return SymbolicInferUtil::GetNeedSymbolizeValueInputIdxs(graph, need_host_idxs);
+}
+
+// 快速路径直接透传用户输入给guard匹配与执行：guard在host侧解引用数据，
+// 故cond输入与value-dependent输入必须已位于host，校验不过回退完整路径。
+// need_host_idxs 输出"必须保留在host"的输入集合(cond ∪ value-dependent)，与完整路径
+// BuildCompileInputs 编译时打 host 标的集合一致。
+// 返回值语义：SUCCESS + inputs_on_host=true 表示可走快路径；SUCCESS + false 表示前提不满足(降级)；
+// 非 SUCCESS 表示图结构/内部解析失败，属硬错误，调用方不得降级。
+Status FastPathInputsOnHost(const ComputeGraphPtr &graph, const std::vector<gert::Tensor> &inputs,
+                            std::map<ComputeGraph *, std::set<size_t>> &cond_input_cache, std::mutex &cache_mutex,
+                            std::set<size_t> &need_host_idxs, bool &inputs_on_host) {
+  inputs_on_host = false;
+  if (graph == nullptr) {
+    return SUCCESS;
   }
-  if (SymbolicInferUtil::GetNeedSymbolizeValueInputIdxs(graph, need_host_idxs) != SUCCESS) {
-    return false;
+  const Status ret = GetInputsMustStayOnHost(graph, cond_input_cache, cache_mutex, need_host_idxs);
+  if (ret != SUCCESS) {
+    return ret;
   }
   for (const auto data_idx : need_host_idxs) {
     if (data_idx >= inputs.size() || gert::TensorPlacementUtils::IsOnHost(inputs[data_idx].GetPlacement())) {
       continue;
     }
     GELOGI("Input[%zu] need on host in fast path but placement is device, fallback to full process.", data_idx);
-    return false;
+    return SUCCESS;
   }
-  return true;
+  inputs_on_host = true;
+  return SUCCESS;
 }
 
 Status BuildCompileInputs(const std::vector<gert::Tensor> &ori_inputs, const ComputeGraphPtr &graph,
@@ -303,8 +322,12 @@ Status JitExecutor::Finalize() {
   // graph之前，因为LoadGraph接口中会默认create一个allocator，而在execute阶段会优先使用默认create的allocator 在load
   // graph之前外置allocator会导致load过程中去申请const、feature等内存，这就强制要求这个外置allocator的生命周期大于整个GE的生命周期，否则会在remove的时候释放const内存失败。所以不在JIT中外置allocator
   {
-    std::lock_guard<std::mutex> locker(guarded_execution_cache_mutex_);
+    // guarded_execution_cache_ 与 cond_input_data_cache_ 由不同锁保护，分别清理
+    std::lock_guard<std::mutex> locker(mutex_);
     guarded_execution_cache_.clear();
+  }
+  {
+    std::lock_guard<std::mutex> locker(cond_input_cache_mutex_);
     cond_input_data_cache_.clear();
   }
   auto sorted_geps_to_inner_graph_id = SortMapByValue(geps_to_inner_ge_graph_id_, false);
@@ -331,15 +354,20 @@ Status JitExecutor::CompileGraph(UserGraphExecution &task, uint64_t session_id) 
   GE_ASSERT_SUCCESS(order_.FirstPoint(ge_tensors, ep));
   GELOGD("Get EP[%ld] of USER_GRAPH[%u] for CompileGraph", ep->GetId(), task.user_graph_id);
 
-  auto gep = ep->FindOrCreateGuarded(*task.external_rt_inputs);
-  GE_ASSERT_NOTNULL(gep);
-  GELOGD("Get GEP[compiled_graph_id:%u] [compiled? %d] of EP[%ld] USER_GRAPH[%u].", gep->GetCompiledGraphId(),
-         gep->Compiled(), ep->GetId(), task.user_graph_id);
   std::vector<Tensor> tensors;
   for (auto ge_tensor : ge_tensors) {
     tensors.emplace_back(TensorAdapter::AsTensor(ge_tensor));
   }
-  GE_ASSERT_SUCCESS(Compile(tensors, gep, session_id));
+  // 共享锁保护 GuardCheckCache 读写与图属性访问，与池线程的执行路径互斥
+  GuardedExecutionPoint *gep = nullptr;
+  {
+    std::lock_guard<std::mutex> locker(mutex_);
+    gep = ep->FindOrCreateGuarded(*task.external_rt_inputs);
+    GE_ASSERT_NOTNULL(gep);
+    GELOGD("Get GEP[compiled_graph_id:%u] [compiled? %d] of EP[%ld] USER_GRAPH[%u].", gep->GetCompiledGraphId(),
+           gep->Compiled(), ep->GetId(), task.user_graph_id);
+    GE_ASSERT_SUCCESS(Compile(tensors, gep, session_id));
+  }
   if (!ep->IsLast()) {
     GELOGD("Get EP[%ld] of USER_GRAPH[%u] is not last, need compile whole graph", ep->GetId(), task.user_graph_id);
     return ge::GE_GRAPH_NOT_BUILT;
@@ -356,24 +384,32 @@ Status JitExecutor::LoadGraph(UserGraphExecution &task) {
   GE_ASSERT_SUCCESS(order_.FirstPoint(ge_tensors, ep));
   GELOGD("Get EP[%ld] of USER_GRAPH[%u] for LoadGraph", ep->GetId(), task.user_graph_id);
 
-  auto gep = ep->FindGuarded(*task.external_rt_inputs);
-  if (gep == nullptr || !gep->Compiled()) {
-    GELOGE(ge::FAILED, "Guard does not exist or Compiled EP[%ld], USER_GRAPH[%u]", ep->GetId(), task.user_graph_id);
-    return FAILED;
+  uint32_t instance_id = 0U;
+  {
+    // 共享锁保护 GuardCheckCache 读与 geps 映射访问，与池线程执行路径互斥
+    std::lock_guard<std::mutex> locker(mutex_);
+    auto gep = ep->FindGuarded(*task.external_rt_inputs);
+    JIT_ASSERT(JIT_GEP_COMPILED(gep), task, "Guard does not exist or Compiled EP[%ld], USER_GRAPH[%u]", ep->GetId(),
+               task.user_graph_id);
+    GELOGD("Get GEP[compiled_graph_id:%u] [compiled? %d] of EP[%ld] USER_GRAPH[%u].", gep->GetCompiledGraphId(),
+           gep->Compiled(), ep->GetId(), task.user_graph_id);
+    auto iter = geps_to_inner_ge_graph_id_.find(gep);
+    GE_ASSERT_TRUE(iter != geps_to_inner_ge_graph_id_.end());
+    instance_id = iter->second;
   }
-  GELOGD("Get GEP[compiled_graph_id:%u] [compiled? %d] of EP[%ld] USER_GRAPH[%u].", gep->GetCompiledGraphId(),
-         gep->Compiled(), ep->GetId(), task.user_graph_id);
-  auto iter = geps_to_inner_ge_graph_id_.find(gep);
-  GE_ASSERT_TRUE(iter != geps_to_inner_ge_graph_id_.end());
 
-  GE_ASSERT_SUCCESS(compile_context_.Load(iter->second, task.load_options, stream));
+  GE_ASSERT_SUCCESS(compile_context_.Load(instance_id, task.load_options, stream));
   return SUCCESS;
 }
 
 Status JitExecutor::RunWithCallback(UserGraphExecution &&task) {
+  JIT_ASSERT_NOTNULL(task.external_rt_inputs, task);
+  const auto fast_ret = TryExecuteWithoutProcessWithCallback(task);
+  if (fast_ret != ge::UNSUPPORTED) {
+    return fast_ret;
+  }
   ExecutionPoint *ep;
   GE_ASSERT_RT_OK(SetDeviceCached(device_id_));
-  JIT_ASSERT_NOTNULL(task.external_rt_inputs, task);
 
   std::vector<GeTensor> ge_tensors;
   ep = order_.GetFirstPoint();
@@ -385,12 +421,20 @@ Status JitExecutor::RunWithCallback(UserGraphExecution &&task) {
   std::vector<gert::Tensor> tensors0;
   GE_MAKE_GUARD(free_input_mem, [&task]() { (void)FreeInputsAllocByJit(task.inputs_memblocks); });
   std::set<size_t> keep_on_host_idxs;
-  if (ep != nullptr && ep->GetSlicedGraph() != nullptr) {
-    std::lock_guard<std::mutex> locker(guarded_execution_cache_mutex_);
-    JIT_ASSERT_SUCCESS(SymbolicInferUtil::GetNeedSymbolizeValueInputIdxs(ep->GetSlicedGraph(), keep_on_host_idxs),
+  {
+    // mutex_ 为所有 executor 共享：GetAllCondInputData/GetNeedSymbolizeValueInputIdxs 首次调用会写
+    // 共享 sliced graph 的属性缓存，per-executor 锁保护不了共享图。keep_on_host 需与编译时打的
+    // host 标一致(cond ∪ value-dependent)，否则 cond 输入会先 H2D 再被 BuildCompileInputs D2H 回 host。
+    std::lock_guard<std::mutex> locker(mutex_);
+    JIT_ASSERT_SUCCESS(GetInputsMustStayOnHost(ep->GetSlicedGraph(), cond_input_data_cache_, cond_input_cache_mutex_,
+                                               keep_on_host_idxs),
                        task);
   }
-  JIT_ASSERT_SUCCESS(CopyHostInputsToDevice(task, device_allocator_.get(), tensors0, keep_on_host_idxs), task);
+  // 失败回调/日志已由 CopyHostInputsToDevice 内的 JIT_ASSERT 完成，这里只透传错误码
+  const Status copy_ret = CopyHostInputsToDevice(task, device_allocator_.get(), tensors0, keep_on_host_idxs);
+  if (copy_ret != ge::SUCCESS) {
+    return copy_ret;
+  }
 
   std::vector<gert::Tensor> tensors1;
   auto inputs = &tensors0;
@@ -484,13 +528,14 @@ Status JitExecutor::MallocOutputsForStatic(uint32_t guarded_ep_instance_id, cons
   return SUCCESS;
 }
 
+// 调用方必须已持有共享锁 mutex_：内部访问共享 sliced graph 属性与 GuardCheckCache。
+// 独立加锁会导致与 ProcessAndExecuteGraphAsync 的外层锁重入死锁。
 Status JitExecutor::GetOrCompileGuardedExecutionPoint(UserGraphExecution &task,
                                                       const std::vector<gert::Tensor> &compile_inputs,
                                                       ExecutionPoint *ep, rtStream_t stream,
                                                       GuardedExecutionInfo &execution_info) {
   GuardedExecutionCacheEntry cache_entry;
   {
-    std::lock_guard<std::mutex> locker(guarded_execution_cache_mutex_);
     const auto cache_it = guarded_execution_cache_.find(ep);
     if (cache_it != guarded_execution_cache_.end()) {
       cache_entry = cache_it->second;
@@ -498,15 +543,13 @@ Status JitExecutor::GetOrCompileGuardedExecutionPoint(UserGraphExecution &task,
   }
 
   if (cache_entry.valid) {
-    std::lock_guard<std::mutex> locker(mutex_);
     execution_info.gep = ep->FindGuardedByCompiledGraphId(cache_entry.compiled_graph_id, compile_inputs);
-    if (execution_info.gep != nullptr && execution_info.gep->Compiled()) {
+    if (JIT_GEP_COMPILED(execution_info.gep)) {
       execution_info.instance_id = cache_entry.instance_id;
       return SUCCESS;
     }
   }
 
-  std::lock_guard<std::mutex> locker(mutex_);
   execution_info.gep = ep->FindOrCreateGuarded(compile_inputs);
   JIT_ASSERT_NOTNULL(execution_info.gep, task);
   GELOGD("Get GEP[compiled_graph_id:%u] [compiled? %d] of EP[%ld] USER_GRAPH[%u], session_id:%llu.",
@@ -516,7 +559,6 @@ Status JitExecutor::GetOrCompileGuardedExecutionPoint(UserGraphExecution &task,
   JIT_ASSERT_SUCCESS(CompileAndLoad(compile_inputs, execution_info.gep, execution_info.instance_id, stream,
                                     task.load_options, task.session_id),
                      task);
-  std::lock_guard<std::mutex> cache_locker(guarded_execution_cache_mutex_);
   guarded_execution_cache_[ep] = {true, execution_info.gep->GetCompiledGraphId(), execution_info.instance_id};
   return SUCCESS;
 }
@@ -529,17 +571,24 @@ Status JitExecutor::ProcessAndExecuteGraphAsync(UserGraphExecution &task, const 
   // 并统一打 ATTR_NAME_HOST_TENSOR_AS_MODEL_INPUT；下游编译/执行/静态图随路拷贝只读该属性，
   // 不再重复判断 placement
   std::vector<gert::Tensor> compile_inputs;
-  GE_ASSERT_SUCCESS(BuildCompileInputs(inputs, ep->GetSlicedGraph(), compile_inputs, cond_input_data_cache_,
-                                       guarded_execution_cache_mutex_));
   GuardedExecutionInfo execution_info;
-  GE_ASSERT_SUCCESS(GetOrCompileGuardedExecutionPoint(task, compile_inputs, ep, stream, execution_info));
-  GELOGD("ExecuteGraphWithStreamAsync GEP[ins_id:%u] of EP[%ld] USER_GRAPH[%u].", execution_info.instance_id,
-         execution_info.gep->GetOwnerEp()->GetId(), task.user_graph_id);
-  GE_ASSERT_RT_OK(SetDeviceCached(device_id_));
-
-  if (need_malloc_output) {
-    GE_ASSERT_SUCCESS(MallocOutputsForStatic(execution_info.instance_id, execution_info.gep, outputs));
+  {
+    // mutex_ 为所有 executor 共享：互斥保护共享 sliced graph 的属性写、GuardCheckCache
+    // 读写与 GEP 编译(编译期间 CopyComputeGraph 读图，与属性写并发会破坏 protobuf)。
+    // 设备执行(ExecuteGraphWithStreamAsync)与流同步在锁外，保留并发度。
+    std::lock_guard<std::mutex> locker(mutex_);
+    GE_ASSERT_SUCCESS(BuildCompileInputs(inputs, ep->GetSlicedGraph(), compile_inputs, cond_input_data_cache_,
+                                         cond_input_cache_mutex_));
+    // BuildCompileInputs -> PrepareGraphInputs 已基于 compile_inputs 统一完成 host 打标
+    GE_ASSERT_SUCCESS(GetOrCompileGuardedExecutionPoint(task, compile_inputs, ep, stream, execution_info));
+    GELOGD("ExecuteGraphWithStreamAsync GEP[ins_id:%u] of EP[%ld] USER_GRAPH[%u].", execution_info.instance_id,
+           execution_info.gep->GetOwnerEp()->GetId(), task.user_graph_id);
+    // value-dependent/cond 输入编译时若需 malloc output，必须在持锁段内完成以避免 GEP 淘汰竞态
+    if (need_malloc_output) {
+      GE_ASSERT_SUCCESS(MallocOutputsForStatic(execution_info.instance_id, execution_info.gep, outputs));
+    }
   }
+  GE_ASSERT_RT_OK(SetDeviceCached(device_id_));
   // value-dependent/cond 输入在 BuildCompileInputs 中已被 D2H 为 host tensor，guard 匹配与 GEP 编译
   // 均建立在该 host 假设上（符号化推导从 host 数据取值）。执行阶段必须传入同一份 compile_inputs，
   // 由执行器按 host placement 消化（RT2 动态图走 alloc+H2D，静态图走随路拷贝）。
@@ -550,35 +599,112 @@ Status JitExecutor::ProcessAndExecuteGraphAsync(UserGraphExecution &task, const 
   return SUCCESS;
 }
 
-Status JitExecutor::TryExecuteWithoutProcess(UserGraphExecution &task) {
+Status JitExecutor::TryExecuteWithoutProcessWithCallback(UserGraphExecution &task) {
+  // 快路径可能被派发到未执行过完整路径的池线程(thread_local 设备缓存为空)，后续
+  // CopyHostInputsToDevice/ExecuteGraphWithStreamAsync/模型内 UpdateForExecute 的
+  // aclrtMemcpyAsync 均依赖当前线程设备上下文，必须先设置，否则 rt 调用失败
+  GE_ASSERT_RT_OK(SetDeviceCached(device_id_));
   const auto first_ep = order_.GetFirstPoint();
   if (first_ep == nullptr || !first_ep->IsLast()) {
     return ge::UNSUPPORTED;
   }
-  if (!FastPathInputsOnHost(first_ep->GetSlicedGraph(), *task.external_rt_inputs, cond_input_data_cache_,
-                            guarded_execution_cache_mutex_)) {
-    return ge::UNSUPPORTED;
-  }
-  GELOGD("Get EP[%ld] of USER_GRAPH[%u] for LoadGraph", first_ep->GetId(), task.user_graph_id);
-  const auto gep = first_ep->FindGuarded(*(task.external_rt_inputs));
-  if (gep == nullptr || !gep->Compiled()) {
-    return ge::UNSUPPORTED;
-  }
-  GELOGD("Get GEP[compiled_graph_id:%u] [compiled? %d] of EP[%ld] USER_GRAPH[%u].", gep->GetCompiledGraphId(),
-         gep->Compiled(), first_ep->GetId(), task.user_graph_id);
-  const auto iter = geps_to_inner_ge_graph_id_.find(gep);
-  if (iter == geps_to_inner_ge_graph_id_.end()) {
-    return ge::UNSUPPORTED;
-  }
-  GELOGD("Graph id:%u No need Execute with Jit process.", iter->second);
   rtStream_t const stream = (task.stream == nullptr) ? stream_ : task.stream;
-  GE_ASSERT_SUCCESS(
-      graph_manager_.ExecuteGraphWithStreamAsync(iter->second, stream, *(task.external_rt_inputs), *(task.rt_outputs)));
+  // mutex_ 为所有 executor 共享：保护共享 sliced graph 的属性惰性缓存写与 GuardCheckCache
+  // 的并发读写(FindGuarded 更新 priority / FindOrCreateGuarded 写+sort)。设备执行在锁外，保证并发度。
+  uint32_t instance_id = 0U;
+  std::set<size_t> keep_on_host_idxs;
+  bool inputs_on_host = false;
+  Status prepare_ret = ge::SUCCESS;
+  {
+    std::lock_guard<std::mutex> locker(mutex_);
+    prepare_ret = FastPathInputsOnHost(first_ep->GetSlicedGraph(), *task.external_rt_inputs, cond_input_data_cache_,
+                                       cond_input_cache_mutex_, keep_on_host_idxs, inputs_on_host);
+    if ((prepare_ret == ge::SUCCESS) && inputs_on_host) {
+      const auto gep = first_ep->FindGuarded(*(task.external_rt_inputs));
+      JIT_RETURN_IF_GEP_NOT_COMPILED(gep, ge::UNSUPPORTED);
+      const auto iter = geps_to_inner_ge_graph_id_.find(gep);
+      if (iter == geps_to_inner_ge_graph_id_.end()) {
+        return ge::UNSUPPORTED;
+      }
+      instance_id = iter->second;
+    }
+  }
+  // cond/value-dependent 输入解析失败属于图结构错误(硬失败)，不能降级
+  JIT_ASSERT_SUCCESS(prepare_ret, task, "GetInputsMustStayOnHost failed");
+  if (!inputs_on_host) {
+    return ge::UNSUPPORTED;
+  }
+  GELOGI("Graph id:%u fast path with callback, no JIT process.", instance_id);
+
+  // keep_on_host_idxs(cond ∪ value-dependent)与编译时打 host 标的集合一致：这些输入必须以 host
+  // placement 传给模型(随路拷贝按 host 语义消费)，其余输入 H2D 到 device
+  std::vector<gert::Tensor> device_inputs;
+  const Status copy_ret = CopyHostInputsToDevice(task, device_allocator_.get(), device_inputs, keep_on_host_idxs);
+  if (copy_ret != ge::SUCCESS) {
+    // 输入搬运失败是真实错误，不是"快路径不适用"：回调与日志已由 CopyHostInputsToDevice 内的
+    // JIT_ASSERT 完成，这里只释放已分配的 device 内存并透传错误码，避免二次回调。
+    (void)FreeInputsAllocByJit(task.inputs_memblocks);
+    return copy_ret;
+  }
+  GE_MAKE_GUARD(free_fast_input_mem, [&task]() { (void)FreeInputsAllocByJit(task.inputs_memblocks); });
+
+  std::vector<gert::Tensor> fast_outputs;
+  std::vector<GeTensor> unused_ge_tensors;
+  PrepareOutputs(*first_ep, fast_outputs, unused_ge_tensors, false);
+  JIT_ASSERT_SUCCESS(graph_manager_.ExecuteGraphWithStreamAsync(instance_id, stream, device_inputs, fast_outputs),
+                     task);
+  JIT_ASSERT_RT_OK(aclrtSynchronizeStream(stream), task);
+  GE_CHECK_NOTNULL(task.callback);
+  std::vector<gert::Tensor> host_tensors;
+  JIT_ASSERT_SUCCESS(TensorTransUtils::TransGertTensorsToHost(fast_outputs, host_tensors), task);
+  task.callback(SUCCESS, host_tensors);
   return SUCCESS;
 }
 
+Status JitExecutor::TryExecuteWithoutProcess(UserGraphExecution &task) {
+  // 与 TryExecuteWithoutProcessWithCallback 同理：快路径线程必须先设置设备上下文
+  GE_ASSERT_RT_OK(SetDeviceCached(device_id_));
+  const auto first_ep = order_.GetFirstPoint();
+  if (first_ep == nullptr || !first_ep->IsLast()) {
+    return ge::UNSUPPORTED;
+  }
+  rtStream_t const stream = (task.stream == nullptr) ? stream_ : task.stream;
+  // 共享锁保护图属性缓存写与 GuardCheckCache 并发读写，见 TryExecuteWithoutProcessWithCallback
+  uint32_t instance_id = 0U;
+  bool inputs_on_host = false;
+  Status prepare_ret = ge::SUCCESS;
+  {
+    std::lock_guard<std::mutex> locker(mutex_);
+    std::set<size_t> need_host_idxs;
+    prepare_ret = FastPathInputsOnHost(first_ep->GetSlicedGraph(), *task.external_rt_inputs, cond_input_data_cache_,
+                                       cond_input_cache_mutex_, need_host_idxs, inputs_on_host);
+    if ((prepare_ret == ge::SUCCESS) && inputs_on_host) {
+      GELOGD("Get EP[%ld] of USER_GRAPH[%u] for fast path", first_ep->GetId(), task.user_graph_id);
+      const auto gep = first_ep->FindGuarded(*(task.external_rt_inputs));
+      JIT_RETURN_IF_GEP_NOT_COMPILED(gep, ge::UNSUPPORTED);
+      const auto iter = geps_to_inner_ge_graph_id_.find(gep);
+      if (iter == geps_to_inner_ge_graph_id_.end()) {
+        return ge::UNSUPPORTED;
+      }
+      instance_id = iter->second;
+    }
+  }
+  if (prepare_ret != ge::SUCCESS) {
+    // 图结构/内部解析失败属硬错误，原样返回错误码，不再降级
+    return prepare_ret;
+  }
+  if (!inputs_on_host) {
+    return ge::UNSUPPORTED;
+  }
+  GELOGD("Graph id:%u No need Execute with Jit process.", instance_id);
+  JIT_ASSERT_SUCCESS(
+      graph_manager_.ExecuteGraphWithStreamAsync(instance_id, stream, *(task.external_rt_inputs), *(task.rt_outputs)),
+      task);
+  return SUCCESS;
+}
+
+// 调用方必须已持有共享锁 mutex_（见 CompileGraph/CompileAndLoad 调用方）
 Status JitExecutor::Compile(const std::vector<ge::Tensor> &inputs, GuardedExecutionPoint *gep, uint64_t session_id) {
-  std::lock_guard<std::mutex> locker(mutex_);
   if (!gep->Compiled()) {
     auto instance_id = compile_context_.GenNewGraphId();
     GELOGI("Start to compile GEP[%u] for EP[%ld].", instance_id, gep->GetOwnerEp()->GetId());

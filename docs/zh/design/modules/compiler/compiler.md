@@ -109,6 +109,10 @@ flowchart TD
     E5 --> F[GeRootModel: 编译产物]
 ```
 
+`NormalizeGraph` 调用的 `CheckAndUpdateInput` 在入口先执行 `CheckConstOp`，校验根图及子图中的
+`Const` 和原始类型为 `Const` 的 `FrameworkOp`。即使图已标记为归一化，或用户输入列表为空，
+也必须先完成常量校验，再决定是否跳过输入检查与更新。该校验复用现有预处理阶段，不增加独立的图 dump。
+
 ### 1.3 三阶段优化设计
 
 GE 将图优化分为三个阶段（`PreRunOptimizeOriginalGraph` → `PreRunOptimizeSubGraph` → `PreRunAfterOptimizeSubGraph`）：

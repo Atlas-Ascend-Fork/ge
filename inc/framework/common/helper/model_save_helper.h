@@ -33,6 +33,18 @@ class GE_FUNC_VISIBILITY ModelSaveHelper {
   virtual Status SaveToOmRootModel(const GeRootModelPtr &ge_root_model, const std::string &output_file,
                                    ModelBufferData &model, const bool is_unknown_shape) = 0;
 
+  // autofuse 离线双执行体：一个 OM 内保存两个 peer root + 一份共享区。默认不支持，标准 OM 覆盖实现。
+  virtual Status SaveDualBodyRootModel(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root,
+                                       const std::string &output_file, ModelBufferData &model,
+                                       const bool is_unknown_shape) {
+    (void)main_root;
+    (void)fallback_root;
+    (void)output_file;
+    (void)model;
+    (void)is_unknown_shape;
+    return UNSUPPORTED;
+  }
+
   virtual Status SaveToOmModel(const GeModelPtr &ge_model, const std::string &output_file, ModelBufferData &model,
                                const GeRootModelPtr &ge_root_model = nullptr) = 0;
 

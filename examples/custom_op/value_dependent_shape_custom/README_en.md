@@ -153,7 +153,12 @@ If it fails, check first:
 - The sample validates results with `x0=[2,2,2]`, `x1=[2,1,2]` (float) and `concat_dim` (value `1`); the actual output is `[2, 3, 2]`.
 - The demo kernel is fixed to 2 inputs and requires fully-known input shapes, consistent non-axis dims and contiguous ND layout (`InferShape` itself supports any instance count and unknown dims).
 - The sample requires a usable NPU and Ascend C compilation environment; runtime re-inference and pre-fill rely on the RT2 dynamic execution pipeline (`ge.graphRunMode=1`), and `Execute` fails explicitly if the environment does not support it.
-- The `.asc` compilation option is currently fixed to `--npu-arch=dav-2201`; adjust `CMakeLists.txt` for a different target chip.
+- The `.asc` compilation option is set via `target_compile_options(... --npu-arch=...)` in `CMakeLists.txt` and must match the product form of the running environment; modify the value and clean up `build/` before rebuilding when switching product forms:
+
+  | `--npu-arch` value | Corresponding product |
+  | --- | --- |
+  | `dav-2201` (default) | Atlas A2/A3 training/inference series products |
+  | `dav-3510` | Ascend 950 series products (e.g., Ascend 950PR, Ascend 950DT) |
 
 ## Appendix
 

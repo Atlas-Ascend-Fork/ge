@@ -26,6 +26,16 @@
 #include "graph/utils/tensor_adapter.h"
 #include "graph/utils/type_utils.h"
 
+// 注意：宏会求值两次，只允许传无副作用的表达式（局部变量/成员访问）
+#define JIT_GEP_COMPILED(gep) (((gep) != nullptr) && (gep)->Compiled())
+// 降级/信号场景：不打印、不回调，直接返回指定码
+#define JIT_RETURN_IF_GEP_NOT_COMPILED(gep, ret) \
+  do {                                           \
+    if (!JIT_GEP_COMPILED(gep)) {                \
+      return (ret);                              \
+    }                                            \
+  } while (false)
+
 namespace ge {
 struct UserGraphExecution {
   UserGraphExecution(uint32_t graph_id, const std::vector<gert::Tensor> &inputs,
@@ -103,6 +113,7 @@ class JitExecutor {
                                      const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
                                      ExecutionPoint *ep, bool need_malloc_output = false);
   Status TryExecuteWithoutProcess(UserGraphExecution &task);
+  Status TryExecuteWithoutProcessWithCallback(UserGraphExecution &task);
   Status MallocOutputsForStatic(uint32_t guarded_ep_instance_id, const GuardedExecutionPoint *gep,
                                 std::vector<gert::Tensor> &outputs);
   Status GetOrCompileGuardedExecutionPoint(UserGraphExecution &task, const std::vector<gert::Tensor> &compile_inputs,
@@ -126,7 +137,7 @@ class JitExecutor {
     uint32_t instance_id{0U};
   };
   std::map<const ExecutionPoint *, GuardedExecutionCacheEntry> guarded_execution_cache_;
-  std::mutex guarded_execution_cache_mutex_;
+  std::mutex cond_input_cache_mutex_;
   std::map<ComputeGraph *, std::set<size_t>> cond_input_data_cache_;
 };
 }  // namespace ge

@@ -169,6 +169,7 @@ void AddReshapeAxisChange(const LoopVar &reshape, const std::vector<Expression> 
                           const std::vector<Expression> &dst_dims);
 LoopVar LoadSeed(const std::string &name, const LoopVar &offset);
 LoopVar ReduceThenBroadcast(ReduceType type, const LoopVar &op, int64_t dim);
+LoopVar ReduceThenBroadcast(ReduceType type, const LoopVar &op, const std::vector<int64_t> &dims);
 LoopVar ToDtypeBitcast(const LoopVar &x, ge::DataType dst_type, ge::DataType src_type);
 LoopVar LeakyRelu(const LoopVar &x, float32_t negative_slope);
 LoopVar Axpy(const LoopVar &x1, const LoopVar &x2, float32_t alpha);

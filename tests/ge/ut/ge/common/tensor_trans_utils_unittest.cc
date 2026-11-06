@@ -11,6 +11,8 @@
 #include "tensor_utils.h"
 
 #include <gtest/gtest.h>
+#include <cstring>
+#include <memory>
 #include "common/memory/tensor_trans_utils.h"
 #include "../../../graph_metadef/depends/checker/tensor_check_utils.h"
 #include "ge/ge_api_error_codes.h"
@@ -31,6 +33,26 @@ bool IsEqualWith(const gert::Shape &rt_shape, const ge::Shape &ge_shape) {
   }
   return true;
 }
+class UtTestAllocator : public Allocator {
+ public:
+  MemBlock *Malloc(size_t size) override {
+    auto buf = std::unique_ptr<uint8_t[]>(new uint8_t[size]);
+    blocks_.emplace_back(std::make_unique<MemBlock>(*this, buf.get(), size));
+    bufs_.emplace_back(std::move(buf));
+    return blocks_.back().get();
+  }
+  void Free(MemBlock *block) override {
+    for (size_t i = 0U; i < blocks_.size(); ++i) {
+      if (blocks_[i].get() == block) {
+        blocks_.erase(blocks_.begin() + static_cast<std::ptrdiff_t>(i));
+        bufs_.erase(bufs_.begin() + static_cast<std::ptrdiff_t>(i));
+        return;
+      }
+    }
+  }
+  std::vector<std::unique_ptr<uint8_t[]>> bufs_;
+  std::vector<std::unique_ptr<MemBlock>> blocks_;
+};
 }  // namespace
 class UtestTensorTransUtils : public testing::Test {
  protected:
@@ -689,6 +711,165 @@ TEST_F(UtestTensorTransUtils, FillRtTensorDesc_DevicePlacement) {
   gert::Tensor rt_tensor;
   EXPECT_EQ(TensorTransUtils::FillRtTensorDesc(ge_tensor, rt_tensor), SUCCESS);
   EXPECT_EQ(rt_tensor.GetPlacement(), gert::TensorPlacement::kOnDeviceHbm);
+}
+
+TEST_F(UtestTensorTransUtils, TransHostGertTensorsToDevice_MergeSmallInputs) {
+  constexpr size_t kInputNum = 10U;
+  constexpr size_t kInputBytes = 100U;
+  UtTestAllocator allocator;
+  std::vector<std::vector<uint8_t>> host_data(kInputNum, std::vector<uint8_t>(kInputBytes, 0U));
+  std::vector<gert::Tensor> src_tensors;
+  gert::Shape shape;
+  shape.SetDimNum(1U);
+  shape.SetDim(0U, static_cast<int64_t>(kInputBytes));
+  for (size_t i = 0U; i < kInputNum; ++i) {
+    for (size_t j = 0U; j < kInputBytes; ++j) {
+      host_data[i][j] = static_cast<uint8_t>((i * kInputBytes + j) % 251U);
+    }
+    gert::Tensor src;
+    src.MutableOriginShape() = shape;
+    src.MutableStorageShape() = shape;
+    src.SetDataType(ge::DT_UINT8);
+    src.SetPlacement(gert::kOnHost);
+    src.SetData(gert::TensorData(host_data[i].data(), nullptr, kInputBytes, gert::kOnHost));
+    src_tensors.emplace_back(std::move(src));
+  }
+
+  std::vector<gert::Tensor> dst_tensors;
+  std::vector<MemBlock *> inputs_memblocks(kInputNum, nullptr);
+  ASSERT_EQ(
+      TensorTransUtils::TransHostGertTensorsToDevice(&allocator, src_tensors, dst_tensors, inputs_memblocks, true),
+      GRAPH_SUCCESS);
+  // 合并成一块 device 内存，只保留首块的 memblock
+  ASSERT_EQ(allocator.blocks_.size(), 1U);
+  ASSERT_EQ(dst_tensors.size(), kInputNum);
+  EXPECT_EQ(inputs_memblocks[0], allocator.blocks_[0].get());
+  for (size_t i = 1U; i < kInputNum; ++i) {
+    EXPECT_EQ(inputs_memblocks[i], nullptr);
+  }
+  const auto *base = static_cast<const uint8_t *>(dst_tensors[0].GetAddr());
+  for (size_t i = 0U; i < kInputNum; ++i) {
+    ASSERT_EQ(dst_tensors[i].GetPlacement(), gert::TensorPlacement::kOnDeviceHbm);
+    // 与原逐条分配一致：Tensor 上记录的是对齐后的可用大小
+    EXPECT_GE(dst_tensors[i].GetSize(), kInputBytes);
+    // 每个输入按 512B 对齐排布
+    EXPECT_EQ(dst_tensors[i].GetAddr(), base + i * 512U);
+    EXPECT_EQ(std::memcmp(dst_tensors[i].GetAddr(), host_data[i].data(), kInputBytes), 0);
+  }
+}
+
+TEST_F(UtestTensorTransUtils, TransHostGertTensorsToDevice_MergeWithEmptyTensor) {
+  constexpr size_t kInputNum = 10U;
+  constexpr size_t kInputBytes = 100U;
+  UtTestAllocator allocator;
+  std::vector<std::vector<uint8_t>> host_data(kInputNum, std::vector<uint8_t>(kInputBytes, 0U));
+  std::vector<gert::Tensor> src_tensors;
+  gert::Shape shape;
+  shape.SetDimNum(1U);
+  shape.SetDim(0U, static_cast<int64_t>(kInputBytes));
+  gert::Shape empty_shape;
+  empty_shape.SetDimNum(1U);
+  empty_shape.SetDim(0U, 0);
+  for (size_t i = 0U; i < kInputNum; ++i) {
+    gert::Tensor src;
+    if (i == 0U) {
+      // 空 tensor 也需占一个对齐单元，否则其后输入的起始地址会退化为 32B 对齐
+      src.MutableOriginShape() = empty_shape;
+      src.MutableStorageShape() = empty_shape;
+      src.SetDataType(ge::DT_UINT8);
+      src.SetPlacement(gert::kOnHost);
+      src.SetData(gert::TensorData(host_data[i].data(), nullptr, 0U, gert::kOnHost));
+    } else {
+      for (size_t j = 0U; j < kInputBytes; ++j) {
+        host_data[i][j] = static_cast<uint8_t>((i * kInputBytes + j) % 251U);
+      }
+      src.MutableOriginShape() = shape;
+      src.MutableStorageShape() = shape;
+      src.SetDataType(ge::DT_UINT8);
+      src.SetPlacement(gert::kOnHost);
+      src.SetData(gert::TensorData(host_data[i].data(), nullptr, kInputBytes, gert::kOnHost));
+    }
+    src_tensors.emplace_back(std::move(src));
+  }
+
+  std::vector<gert::Tensor> dst_tensors;
+  std::vector<MemBlock *> inputs_memblocks(kInputNum, nullptr);
+  ASSERT_EQ(
+      TensorTransUtils::TransHostGertTensorsToDevice(&allocator, src_tensors, dst_tensors, inputs_memblocks, false),
+      GRAPH_SUCCESS);
+  ASSERT_EQ(allocator.blocks_.size(), 1U);
+  ASSERT_EQ(dst_tensors.size(), kInputNum);
+  const auto *base = static_cast<const uint8_t *>(dst_tensors[0].GetAddr());
+  for (size_t i = 0U; i < kInputNum; ++i) {
+    ASSERT_EQ(dst_tensors[i].GetPlacement(), gert::TensorPlacement::kOnDeviceHbm);
+    // 空 tensor 之后的所有输入仍应相对 base 按 512B 对齐
+    EXPECT_EQ(dst_tensors[i].GetAddr(), base + i * 512U);
+  }
+  for (size_t i = 1U; i < kInputNum; ++i) {
+    EXPECT_EQ(std::memcmp(dst_tensors[i].GetAddr(), host_data[i].data(), kInputBytes), 0);
+  }
+}
+
+TEST_F(UtestTensorTransUtils, TransHostGertTensorsToDevice_NoMergeWhenTooLarge) {
+  constexpr size_t kInputNum = 8U;
+  constexpr size_t kInputBytes = 200U * 1024U;  // 合计超过合并上限
+  UtTestAllocator allocator;
+  std::vector<std::vector<uint8_t>> host_data(kInputNum, std::vector<uint8_t>(kInputBytes, 7U));
+  std::vector<gert::Tensor> src_tensors;
+  gert::Shape shape;
+  shape.SetDimNum(1U);
+  shape.SetDim(0U, static_cast<int64_t>(kInputBytes));
+  for (size_t i = 0U; i < kInputNum; ++i) {
+    gert::Tensor src;
+    src.MutableOriginShape() = shape;
+    src.MutableStorageShape() = shape;
+    src.SetDataType(ge::DT_UINT8);
+    src.SetPlacement(gert::kOnHost);
+    src.SetData(gert::TensorData(host_data[i].data(), nullptr, kInputBytes, gert::kOnHost));
+    src_tensors.emplace_back(std::move(src));
+  }
+
+  std::vector<gert::Tensor> dst_tensors;
+  std::vector<MemBlock *> inputs_memblocks(kInputNum, nullptr);
+  ASSERT_EQ(
+      TensorTransUtils::TransHostGertTensorsToDevice(&allocator, src_tensors, dst_tensors, inputs_memblocks, false),
+      GRAPH_SUCCESS);
+  // 不满足合并条件时保持逐条分配
+  EXPECT_EQ(allocator.blocks_.size(), kInputNum);
+  for (size_t i = 0U; i < kInputNum; ++i) {
+    ASSERT_NE(inputs_memblocks[i], nullptr);
+    EXPECT_EQ(std::memcmp(dst_tensors[i].GetAddr(), host_data[i].data(), kInputBytes), 0);
+  }
+}
+
+TEST_F(UtestTensorTransUtils, TransHostGertTensorsToDevice_NoMergeWhenFewInputs) {
+  constexpr size_t kInputNum = 3U;
+  constexpr size_t kInputBytes = 32U;
+  UtTestAllocator allocator;
+  std::vector<std::vector<uint8_t>> host_data(kInputNum, std::vector<uint8_t>(kInputBytes, 3U));
+  std::vector<gert::Tensor> src_tensors;
+  gert::Shape shape;
+  shape.SetDimNum(1U);
+  shape.SetDim(0U, static_cast<int64_t>(kInputBytes));
+  for (size_t i = 0U; i < kInputNum; ++i) {
+    gert::Tensor src;
+    src.MutableOriginShape() = shape;
+    src.MutableStorageShape() = shape;
+    src.SetDataType(ge::DT_UINT8);
+    src.SetPlacement(gert::kOnHost);
+    src.SetData(gert::TensorData(host_data[i].data(), nullptr, kInputBytes, gert::kOnHost));
+    src_tensors.emplace_back(std::move(src));
+  }
+
+  std::vector<gert::Tensor> dst_tensors;
+  std::vector<MemBlock *> inputs_memblocks(kInputNum, nullptr);
+  ASSERT_EQ(
+      TensorTransUtils::TransHostGertTensorsToDevice(&allocator, src_tensors, dst_tensors, inputs_memblocks, false),
+      GRAPH_SUCCESS);
+  EXPECT_EQ(allocator.blocks_.size(), kInputNum);
+  for (size_t i = 0U; i < kInputNum; ++i) {
+    EXPECT_NE(inputs_memblocks[i], nullptr);
+  }
 }
 
 TEST_F(UtestTensorTransUtils, TransGertTensorToHost_EmptyShape_ZeroOutputSize) {

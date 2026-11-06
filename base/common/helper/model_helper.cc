@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <cstring>
 #include <base/err_msg.h>
 #include "framework/common/helper/model_helper.h"
 #include "common/checker.h"
@@ -21,6 +22,7 @@
 #include "graph/utils/attr_utils.h"
 #include "graph/unfold/graph_unfolder.h"
 #include "graph/utils/graph_utils.h"
+#include "graph/utils/tensor_utils.h"
 #include "graph/utils/graph_utils_ex.h"
 #include "framework/omg/omg_inner_types.h"
 #include "mmpa/mmpa_api.h"
@@ -79,6 +81,7 @@ namespace {
 // 模型中大小支持超4G的Partition类型，当前只识别了表格中部分，其他部分分析支持超4G后也可以加到这个表格中
 std::unordered_set<ModelPartitionType> kSupportBeyond4GTypes = {WEIGHTS_DATA, TBE_KERNELS, CUST_AICPU_KERNELS};
 const std::string kMultiBatchNodePostfix = "_ascend_mbatch_batch_";
+constexpr char const *kOpTilingIdsAttr = "_op_tiling_ids";
 void UpdateFftsPlusTaskAddr(domi::TaskDef &task_def, const std::map<int64_t, int64_t> &logical_addr_mapping) {
   auto *const mutable_ffts_plus_task = task_def.mutable_ffts_plus_task();
   for (int32_t i = 0; i < mutable_ffts_plus_task->ffts_plus_ctx_size(); ++i) {
@@ -128,6 +131,161 @@ std::string GetOppPkgPath(const std::string &opp_path, const string &whole_pkg_p
                                         is_sub_pkg);
   }
   return opp_path;
+}
+
+bool IsFallbackModelName(const std::string &name) {
+  const std::string root_key = kFallbackModelKey;
+  const std::string sub_prefix = kFallbackSubgraphPrefix;
+  return (name == root_key) || (name.compare(0U, sub_prefix.size(), sub_prefix) == 0U);
+}
+
+bool IsDualBodyGraph(const ComputeGraphPtr &graph) {
+  bool dual_body = false;
+  return (graph != nullptr) && ge::AttrUtils::GetBool(graph, kDualBodyAttr, dual_body) && dual_body;
+}
+
+bool IsTaskEmpty(const GeModelPtr &model) {
+  if (model == nullptr) {
+    return true;
+  }
+  const auto task = model->GetModelTaskDefPtr();
+  return (task == nullptr) || (task->ByteSizeLong() == 0U);
+}
+
+bool HasFileConstant(const ComputeGraphPtr &graph) {
+  if (graph == nullptr) {
+    return false;
+  }
+  for (const auto &node : graph->GetAllNodes()) {
+    if ((node != nullptr) && (node->GetType() == FILECONSTANT)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::string NormalizeBodyModelKey(const std::string &name, const bool is_fallback, const std::string &main_root_name) {
+  if (is_fallback) {
+    if (name == kFallbackModelKey) {
+      return "__root__";
+    }
+    const std::string prefix = kFallbackSubgraphPrefix;
+    if (name.compare(0U, prefix.size(), prefix) == 0U) {
+      return name.substr(prefix.size());
+    }
+    return name;
+  }
+  if (name == main_root_name) {
+    return "__root__";
+  }
+  return name;
+}
+
+bool CollectWeightLayout(const ComputeGraphPtr &graph, std::map<std::string, std::pair<int64_t, int64_t>> &layout) {
+  if (graph == nullptr) {
+    return false;
+  }
+  for (const auto &node : graph->GetAllNodes()) {
+    if (node == nullptr) {
+      continue;
+    }
+    const auto &type = node->GetType();
+    if ((type != CONSTANT) && (type != CONSTANTOP)) {
+      continue;
+    }
+    const auto op_desc = node->GetOpDesc();
+    if (op_desc == nullptr) {
+      return false;
+    }
+    ge::GeTensorPtr tensor;
+    if ((!ge::AttrUtils::MutableTensor(op_desc, ATTR_NAME_WEIGHTS, tensor)) || (tensor == nullptr)) {
+      return false;
+    }
+    int64_t offset = 0;
+    if (ge::TensorUtils::GetDataOffset(tensor->GetTensorDesc(), offset) != SUCCESS) {
+      return false;
+    }
+    const int64_t weight_size = ge::TensorUtils::GetWeightSize(tensor->GetTensorDesc());
+    layout[node->GetName()] = {offset, weight_size};
+  }
+  return true;
+}
+
+bool CollectBodyModels(const GeRootModelPtr &root, const bool is_fallback, std::map<std::string, GeModelPtr> &models) {
+  if ((root == nullptr) || (root->GetRootGraph() == nullptr)) {
+    return false;
+  }
+  const auto &root_name = root->GetRootGraph()->GetName();
+  for (const auto &[name, model] : root->GetSubgraphInstanceNameToModel()) {
+    if (model == nullptr) {
+      return false;
+    }
+    if (HasFileConstant(model->GetGraph())) {
+      GELOGI("graph[%s] contains FileConstant, dual-body weights cannot be shared.",
+             model->GetGraph()->GetName().c_str());
+      return false;
+    }
+    const auto key = NormalizeBodyModelKey(name, is_fallback, root_name);
+    if (!models.emplace(key, model).second) {
+      return false;
+    }
+  }
+  return true;
+}
+
+size_t SumBodyWeightSize(const std::map<std::string, GeModelPtr> &models) {
+  size_t total = 0U;
+  for (const auto &entry : models) {
+    if (entry.second != nullptr) {
+      total += entry.second->GetWeightSize();
+    }
+  }
+  return total;
+}
+
+bool CompareSingleModelWeights(const GeModelPtr &main_model, const GeModelPtr &fallback_model) {
+  if ((main_model == nullptr) || (fallback_model == nullptr)) {
+    return false;
+  }
+  const auto weight_size = main_model->GetWeightSize();
+  if (weight_size != fallback_model->GetWeightSize()) {
+    return false;
+  }
+  if (weight_size > 0U) {
+    const auto *main_data = main_model->GetWeightData();
+    const auto *fallback_data = fallback_model->GetWeightData();
+    if ((main_data == nullptr) || (fallback_data == nullptr) || (memcmp(main_data, fallback_data, weight_size) != 0)) {
+      return false;
+    }
+  }
+  std::map<std::string, std::pair<int64_t, int64_t>> main_layout;
+  std::map<std::string, std::pair<int64_t, int64_t>> fallback_layout;
+  return CollectWeightLayout(main_model->GetGraph(), main_layout) &&
+         CollectWeightLayout(fallback_model->GetGraph(), fallback_layout) && (main_layout == fallback_layout);
+}
+
+bool MarkDualBodyWeightsIdentical(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root) {
+  size_t main_size = 0U;
+  size_t fallback_size = 0U;
+  const bool identical = ModelHelper::AreDualBodyWeightsIdentical(main_root, fallback_root, main_size, fallback_size);
+  (void)ge::AttrUtils::SetBool(main_root->GetRootGraph(), kWeightsIdenticalAttr, identical);
+  GELOGI("dual-body weights identical=%d, main_size=%zu, fallback_size=%zu.", static_cast<int32_t>(identical),
+         main_size, fallback_size);
+  return identical;
+}
+
+size_t CountBodyModelGroups(const GeRootModelPtr &body_root) {
+  if ((body_root == nullptr) || (body_root->GetRootGraph() == nullptr)) {
+    return 0U;
+  }
+  size_t count = 1U;
+  const auto &root_name = body_root->GetRootGraph()->GetName();
+  for (const auto &kv : body_root->GetSubgraphInstanceNameToModel()) {
+    if (kv.first != root_name) {
+      ++count;
+    }
+  }
+  return count;
 }
 }  // namespace
 
@@ -749,10 +907,19 @@ Status ModelHelper::SaveRootModelPartitionsForOmModel(std::shared_ptr<OmFileSave
   if (has_embedded_custom_so) {
     GE_ASSERT_SUCCESS(ge_root_model->CheckAndSetNeedSoInOM(), "Check embedded custom op so dependencies failed.");
   }
+  // Python 实现的自定义算子没有 SO 可打包，其 creator 只能由 PYTHON_CUSTOM_OPS 分区中的源码恢复，
+  // 因此在线路径也必须写出自定义算子分区。该判据与 SO_BINS 的判据相互独立。
+  std::set<std::string> used_custom_op_types;
+  bool has_python_deploy_custom_op = false;
+  GE_ASSERT_SUCCESS(DetectUsedPythonDeployCustomOp(ge_root_model, used_custom_op_types, has_python_deploy_custom_op),
+                    "[Detect][PythonDeployCustomOp]Failed");
   if (is_offline_ || has_embedded_custom_so) {
     GE_ASSERT_SUCCESS(SaveSoStoreModelPartitionInfo(om_file_save_helper, ge_root_model, output_file_name, ge_model),
                       "[SaveSoStoreModelPartition]Failed");
-    GE_ASSERT_SUCCESS(SaveCustomOpsPartition(om_file_save_helper, ge_root_model), "[Save][CustomOpsPartition]Failed");
+  }
+  if (is_offline_ || has_embedded_custom_so || has_python_deploy_custom_op) {
+    GE_ASSERT_SUCCESS(SaveCustomOpsPartition(om_file_save_helper, ge_root_model, used_custom_op_types),
+                      "[Save][CustomOpsPartition]Failed");
   }
   GE_ASSERT_SUCCESS(SaveTilingData(om_file_save_helper, ge_root_model), "Save tiling data to model failed.");
   return SUCCESS;
@@ -850,11 +1017,20 @@ Status ModelHelper::SaveRootModelPartitions(std::shared_ptr<OmFileSaveHelper> &o
   if (has_embedded_custom_so && !has_asc_node) {
     GE_ASSERT_SUCCESS(ge_root_model->CheckAndSetNeedSoInOM(), "Check embedded custom op so dependencies failed.");
   }
+  // Python 实现的自定义算子没有 SO 可打包，其 creator 只能由 PYTHON_CUSTOM_OPS 分区中的源码恢复，
+  // 因此在线路径也必须写出自定义算子分区。该判据与 SO_BINS 的判据相互独立。
+  std::set<std::string> used_custom_op_types;
+  bool has_python_deploy_custom_op = false;
+  GE_ASSERT_SUCCESS(DetectUsedPythonDeployCustomOp(ge_root_model, used_custom_op_types, has_python_deploy_custom_op),
+                    "[Detect][PythonDeployCustomOp]Failed");
   if (is_offline_ || has_asc_node || has_embedded_custom_so) {
     GE_ASSERT_SUCCESS(
         SaveSoStoreModelPartitionInfo(om_file_save_helper, ge_root_model, output_file_name, first_ge_model),
         "[SaveSoStoreModelPartitionInfo]Failed");
-    GE_ASSERT_SUCCESS(SaveCustomOpsPartition(om_file_save_helper, ge_root_model), "[Save][CustomOpsPartition]Failed");
+  }
+  if (is_offline_ || has_asc_node || has_embedded_custom_so || has_python_deploy_custom_op) {
+    GE_ASSERT_SUCCESS(SaveCustomOpsPartition(om_file_save_helper, ge_root_model, used_custom_op_types),
+                      "[Save][CustomOpsPartition]Failed");
   }
   GE_ASSERT_SUCCESS(SaveTilingData(om_file_save_helper, ge_root_model));
   return SUCCESS;
@@ -917,6 +1093,154 @@ Status ModelHelper::SavePartitionedFirstModel(std::shared_ptr<OmFileSaveHelper> 
   is_need_compress_ = false;
   ++cur_index;
   return SUCCESS;
+}
+
+bool ModelHelper::IsUnfoldShellRoot(const GeModelPtr &model) const {
+  if ((model == nullptr) || (model->GetGraph() == nullptr)) {
+    return false;
+  }
+  return IsPartitionedGraph(model) && gert::GraphUnfolder::IsGraphNeedUnfold(model->GetGraph()) && IsTaskEmpty(model);
+}
+
+void ModelHelper::ClearTilingIds(const ComputeGraphPtr &graph) {
+  if (graph == nullptr) {
+    return;
+  }
+  const std::vector<int64_t> empty_ids;
+  for (const auto &node : graph->GetAllNodes()) {
+    const auto op_desc = node->GetOpDesc();
+    if (op_desc == nullptr) {
+      continue;
+    }
+    (void)ge::AttrUtils::SetListInt(op_desc, kOpTilingIdsAttr, empty_ids);
+  }
+}
+
+Status ModelHelper::SaveBodyModelGroups(std::shared_ptr<OmFileSaveHelper> &om_file_save_helper,
+                                        const GeRootModelPtr &body_root, const GeModelPtr &first_ge_model,
+                                        std::vector<ge::Buffer> &model_buffers, std::vector<ge::Buffer> &task_buffers,
+                                        size_t &cur_index, const bool is_first_body, const bool is_unknown) const {
+  GE_ASSERT_NOTNULL(body_root);
+  const auto &root_graph = body_root->GetRootGraph();
+  GE_ASSERT_NOTNULL(root_graph);
+  const auto &name_to_model = body_root->GetSubgraphInstanceNameToModel();
+  std::vector<std::string> model_names{root_graph->GetName()};
+  for (const auto &kv : name_to_model) {
+    if (kv.first != model_names.front()) {
+      (void)model_names.emplace_back(kv.first);
+    }
+  }
+  for (const auto &model_name : model_names) {
+    GeModelPtr ge_model;
+    const auto iter = name_to_model.find(model_name);
+    if (iter != name_to_model.end()) {
+      ge_model = iter->second;
+    } else if ((is_first_body && (cur_index == 0U) && (first_ge_model != nullptr))) {
+      ge_model = first_ge_model;
+    } else {
+      ge_model = MakeShared<GeModel>();
+      GE_CHECK_NOTNULL(ge_model);
+      ge_model->SetGraph(root_graph);
+    }
+    GE_ASSERT_NOTNULL(ge_model);
+    if (is_first_body && (cur_index == 0U)) {
+      GE_ASSERT_SUCCESS(SaveModelIntroduction(om_file_save_helper, ge_model, is_unknown));
+    }
+    const bool is_shell_root = (model_name == root_graph->GetName()) && IsUnfoldShellRoot(ge_model);
+    if (is_shell_root) {
+      GE_ASSERT_SUCCESS(SaveModelDef(om_file_save_helper, ge_model, model_buffers[cur_index], cur_index));
+    } else {
+      GE_ASSERT_SUCCESS(SaveAllModelPartiton(om_file_save_helper, ge_model, model_buffers[cur_index],
+                                             task_buffers[cur_index], cur_index));
+    }
+    ++cur_index;
+  }
+  return SUCCESS;
+}
+
+bool ModelHelper::AreDualBodyWeightsIdentical(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root,
+                                              size_t &main_size, size_t &fallback_size) {
+  main_size = 0U;
+  fallback_size = 0U;
+  std::map<std::string, GeModelPtr> main_models;
+  std::map<std::string, GeModelPtr> fallback_models;
+  if (!CollectBodyModels(main_root, false, main_models) || !CollectBodyModels(fallback_root, true, fallback_models)) {
+    return false;
+  }
+  main_size = SumBodyWeightSize(main_models);
+  fallback_size = SumBodyWeightSize(fallback_models);
+  if ((main_size != fallback_size) || (main_models.size() != fallback_models.size())) {
+    return false;
+  }
+  for (const auto &[name, main_model] : main_models) {
+    const auto iter = fallback_models.find(name);
+    if ((iter == fallback_models.end()) || (!CompareSingleModelWeights(main_model, iter->second))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Status ModelHelper::MergeFallbackTiling(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root) const {
+  GE_ASSERT_NOTNULL(main_root);
+  GE_ASSERT_NOTNULL(fallback_root);
+  GE_ASSERT_NOTNULL(main_root->GetHostResourceCenterPtr());
+  for (const auto &kv : fallback_root->GetSubgraphInstanceNameToModel()) {
+    const auto &fallback_model = kv.second;
+    if ((fallback_model == nullptr) || (fallback_model->GetGraph() == nullptr)) {
+      continue;
+    }
+    ClearTilingIds(fallback_model->GetGraph());
+    GE_ASSERT_SUCCESS(main_root->GetHostResourceCenterPtr()->TakeOverTilingResources(fallback_model->GetGraph()));
+  }
+  return SUCCESS;
+}
+
+Status ModelHelper::SaveDualBodyRootModel(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root,
+                                          const std::string &output_file, ModelBufferData &model,
+                                          const bool is_unknown_shape) {
+  GE_ASSERT_NOTNULL(main_root);
+  GE_ASSERT_NOTNULL(fallback_root);
+  GE_ASSERT_NOTNULL(main_root->GetRootGraph());
+  GE_ASSERT_NOTNULL(fallback_root->GetRootGraph());
+  GE_ASSERT_NOTNULL(main_root->GetHostResourceCenterPtr());
+  (void)ge::AttrUtils::SetBool(main_root->GetRootGraph(), kDualBodyAttr, true);
+  (void)ge::AttrUtils::SetBool(fallback_root->GetRootGraph(), kDualBodyAttr, true);
+  (void)MarkDualBodyWeightsIdentical(main_root, fallback_root);
+  GE_ASSERT_SUCCESS(MergeFallbackTiling(main_root, fallback_root));
+
+  const auto &main_models = main_root->GetSubgraphInstanceNameToModel();
+  const size_t total_model_num = CountBodyModelGroups(main_root) + CountBodyModelGroups(fallback_root);
+  std::vector<ge::Buffer> model_buffers(total_model_num);
+  std::vector<ge::Buffer> task_buffers(total_model_num);
+
+  GeModelPtr first_ge_model;
+  GE_ASSERT_SUCCESS(InitFirstGeModel(main_root, main_models, first_ge_model));
+  GE_ASSERT_NOTNULL(first_ge_model);
+  SaveOutNodesFromRootGraph(main_root, first_ge_model);
+
+  const auto &root_graph = main_root->GetRootGraph();
+  const bool has_asc_node = (root_graph->FindFirstNodeMatchType("AscBackend") != nullptr) ||
+                            (root_graph->FindFirstNodeMatchType("FusedAscBackend") != nullptr);
+  is_need_compress_ = !has_asc_node;
+  GE_ASSERT_SUCCESS(main_root->CheckAndSetNeedSoInOM());
+
+  auto om_file_save_helper = ge::MakeShared<OmFileSaveHelper>();
+  GE_CHECK_NOTNULL(om_file_save_helper);
+  std::string output_file_name = output_file;
+  GE_ASSERT_SUCCESS(
+      SaveRootModelPartitions(om_file_save_helper, main_root, first_ge_model, output_file_name, has_asc_node));
+
+  size_t cur_index = 0U;
+  GE_ASSERT_SUCCESS(SaveBodyModelGroups(om_file_save_helper, main_root, first_ge_model, model_buffers, task_buffers,
+                                        cur_index, true, is_unknown_shape));
+  GE_ASSERT_SUCCESS(SaveBodyModelGroups(om_file_save_helper, fallback_root, nullptr, model_buffers, task_buffers,
+                                        cur_index, false, is_unknown_shape));
+  GE_ASSERT_SUCCESS(SaveModelHeader(om_file_save_helper, first_ge_model, cur_index, is_so_store_, is_unknown_shape));
+  const Status save_ret = om_file_save_helper->SaveModel(output_file_name.c_str(), model, is_offline_ && save_to_file_);
+  GELOGI("dual-body root model save %s, model_id=%u, model_num=%zu.", (save_ret == SUCCESS) ? "success" : "failed",
+         main_root->GetModelId(), cur_index);
+  return save_ret;
 }
 
 Status ModelHelper::SaveToOmRootModel(const GeRootModelPtr &ge_root_model, const std::string &output_file,
@@ -1368,6 +1692,11 @@ Status ModelHelper::GenerateGeModel(const OmFileLoadHelper &om_load_helper, GeMo
     if (gert::GraphUnfolder::IsGraphNeedUnfold(cur_model->GetGraph())) {
       return SUCCESS;
     }
+  } else if (IsPartitionedGraph(cur_model) && gert::GraphUnfolder::IsGraphNeedUnfold(cur_model->GetGraph()) &&
+             IsFallbackModelName(cur_model->GetGraph()->GetName()) && IsDualBodyGraph(cur_model->GetGraph())) {
+    // autofuse 离线双执行体：兜底 unfold 空壳根位于 index > 0，只读 MODEL_DEF，不加载 weights/task/tbe/cust。
+    // 限定兜底 key，避免把旧 OM 中普通分区子图误判为空壳根。
+    return SUCCESS;
   }
 
   ret = LoadWeights(om_load_helper, cur_model, mode_index);

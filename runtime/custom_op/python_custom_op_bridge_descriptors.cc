@@ -13,9 +13,12 @@
 #undef PyCFunction_NewEx
 #endif
 
+#include <limits>
 #include <map>
+#include <utility>
 
 #include "common/ge_common/debug/ge_log.h"
+#include "graph/custom_op/artifact_provider.h"
 #include "pybind11/embed.h"
 #include "pybind11/stl.h"
 #include "runtime/custom_op/python_custom_op_bridge_descriptors.h"
@@ -28,6 +31,7 @@ constexpr const char *kInterfaceAnnotatedArgs = "annotated_args";
 constexpr const char *kInterfaceEagerExecute = "eager_execute";
 constexpr const char *kInterfaceHostCpuExecute = "host_cpu_execute";
 constexpr const char *kInterfaceCompilable = "compilable";
+constexpr const char *kInterfacePortable = "portable";
 
 PythonCustomOpStringView MakeStringView(const std::string &value) {
   return PythonCustomOpStringView{value.data(), value.size()};
@@ -76,12 +80,39 @@ Status ParseInterfaces(const py::object &interfaces_obj, CustomOpCapabilityMask 
       AddCustomOpCapability(capabilities, CustomOpCapability::kAnnotatedArgs);
     } else if (interface_name == kInterfaceCompilable) {
       AddCustomOpCapability(capabilities, CustomOpCapability::kCompilable);
+    } else if (interface_name == kInterfacePortable) {
+      AddCustomOpCapability(capabilities, CustomOpCapability::kPortable);
     } else {
       GELOGE(FAILED, "Unsupported python custom op interface[%s].", interface_name.c_str());
       return FAILED;
     }
   }
   return capabilities == 0U ? FAILED : SUCCESS;
+}
+Status ParseBytesField(const py::handle &value, const char *field_name, std::vector<uint8_t> &out) {
+  if (!py::isinstance<py::bytes>(value)) {
+    GELOGE(FAILED, "Python custom op deployment artifact field[%s] is not bytes.", field_name);
+    return FAILED;
+  }
+  // py::bytes -> std::string 保留内嵌 '\0'，因此可以承载任意二进制源码内容
+  const auto text = value.cast<std::string>();
+  out.assign(text.begin(), text.end());
+  return SUCCESS;
+}
+
+Status ParseUint32Field(const py::handle &value, const char *field_name, uint32_t &out) {
+  if (!IsStrictInt(value)) {
+    GELOGE(FAILED, "Python custom op deployment field[%s] is not an int.", field_name);
+    return FAILED;
+  }
+  const auto raw = value.cast<int64_t>();
+  if ((raw < 0) || (raw > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()))) {
+    GELOGE(FAILED, "Python custom op deployment field[%s] value[%lld] is out of uint32 range.", field_name,
+           static_cast<long long>(raw));
+    return FAILED;
+  }
+  out = static_cast<uint32_t>(raw);
+  return SUCCESS;
 }
 }  // namespace
 
@@ -330,6 +361,123 @@ Status AdapterDescriptorStorage::Parse(const py::dict &dict) {
 PythonCustomOpAdapterDescriptorView AdapterDescriptorStorage::BuildView() const {
   return PythonCustomOpAdapterDescriptorView{MakeStringView(op_type), MakeStringView(impl_descriptor_key),
                                              capabilities};
+}
+
+Status ScopedDescriptorStorage::Parse(const py::dict &dict) {
+  try {
+    op_type = py::str(dict["op_type"]);
+    impl_descriptor_key = py::str(dict["descriptor_key"]);
+    class_name = py::str(dict["class_name"]);
+    class_qualname = py::str(dict["class_qualname"]);
+    // capabilities 不信任 Python 收集侧派生值：interfaces -> mask 的权威映射只在 C++ 一处
+    return ParseInterfaces(dict["interfaces"], capabilities);
+  } catch (const py::error_already_set &err) {
+    GELOGE(FAILED, "Parse python custom op scoped descriptor failed: %s", err.what());
+    return FAILED;
+  } catch (const std::exception &err) {
+    GELOGE(FAILED, "Parse python custom op scoped descriptor failed: %s", err.what());
+    return FAILED;
+  }
+}
+
+PythonCustomOpScopedDescriptorView ScopedDescriptorStorage::BuildView() const {
+  return PythonCustomOpScopedDescriptorView{MakeStringView(op_type), MakeStringView(impl_descriptor_key),
+                                            MakeStringView(class_name), MakeStringView(class_qualname), capabilities};
+}
+
+Status DeploymentDescriptorStorage::Parse(const py::dict &dict) {
+  try {
+    op_type = py::str(dict["op_type"]);
+    class_name = py::str(dict["class_name"]);
+    return ParseUint32Field(dict["capabilities"], "capabilities", capabilities);
+  } catch (const py::error_already_set &err) {
+    GELOGE(FAILED, "Parse python custom op deployment descriptor failed: %s", err.what());
+    return FAILED;
+  } catch (const std::exception &err) {
+    GELOGE(FAILED, "Parse python custom op deployment descriptor failed: %s", err.what());
+    return FAILED;
+  }
+}
+
+PythonCustomOpDeploymentDescriptorView DeploymentDescriptorStorage::BuildView() const {
+  PythonCustomOpDeploymentDescriptorView view;
+  view.op_type = MakeStringView(op_type);
+  view.class_name = MakeStringView(class_name);
+  view.capabilities = capabilities;
+  view.ir_inputs = ir_input_views.empty() ? nullptr : ir_input_views.data();
+  view.ir_input_count = ir_input_views.size();
+  view.ir_attrs = ir_attr_views.empty() ? nullptr : ir_attr_views.data();
+  view.ir_attr_count = ir_attr_views.size();
+  view.ir_outputs = ir_output_views.empty() ? nullptr : ir_output_views.data();
+  view.ir_output_count = ir_output_views.size();
+  return view;
+}
+
+Status DeploymentArtifactStorage::Parse(const py::dict &dict) {
+  try {
+    artifact_id = py::str(dict["artifact_id"]);
+    source_name = py::str(dict["source_name"]);
+    if (ParseBytesField(dict["source_sha256"], "source_sha256", source_sha256) != SUCCESS) {
+      return FAILED;
+    }
+    if (source_sha256.size() != PythonCustomOpDeploymentArtifact::kSha256Len) {
+      GELOGE(FAILED, "Python custom op deployment artifact source_sha256 length[%zu] is not %zu.", source_sha256.size(),
+             PythonCustomOpDeploymentArtifact::kSha256Len);
+      return FAILED;
+    }
+    if (ParseBytesField(dict["source"], "source", source) != SUCCESS) {
+      return FAILED;
+    }
+    if (source.empty()) {
+      GELOGE(FAILED, "Python custom op deployment artifact[%s] source is empty.", artifact_id.c_str());
+      return FAILED;
+    }
+
+    const auto items = dict["descriptors"].cast<py::list>();
+    if (items.empty()) {
+      GELOGE(FAILED, "Python custom op deployment artifact[%s] has no descriptor.", artifact_id.c_str());
+      return FAILED;
+    }
+    descriptors.clear();
+    descriptors.reserve(items.size());
+    for (const auto &item : items) {
+      DeploymentDescriptorStorage descriptor;
+      if (descriptor.Parse(item.cast<py::dict>()) != SUCCESS) {
+        return FAILED;
+      }
+      descriptors.push_back(std::move(descriptor));
+    }
+    if (ParseUint32Field(dict["producer_python_major"], "producer_python_major", producer_python_major) != SUCCESS) {
+      return FAILED;
+    }
+    return ParseUint32Field(dict["producer_python_minor"], "producer_python_minor", producer_python_minor);
+  } catch (const py::error_already_set &err) {
+    GELOGE(FAILED, "Parse python custom op deployment artifact failed: %s", err.what());
+    return FAILED;
+  } catch (const std::exception &err) {
+    GELOGE(FAILED, "Parse python custom op deployment artifact failed: %s", err.what());
+    return FAILED;
+  }
+}
+
+PythonCustomOpDeploymentArtifactView DeploymentArtifactStorage::BuildView() {
+  descriptor_views.clear();
+  descriptor_views.reserve(descriptors.size());
+  for (const auto &descriptor : descriptors) {
+    descriptor_views.push_back(descriptor.BuildView());
+  }
+  return PythonCustomOpDeploymentArtifactView{
+      MakeStringView(artifact_id),
+      MakeStringView(source_name),
+      source_sha256.data(),
+      source_sha256.size(),
+      source.data(),
+      source.size(),
+      descriptor_views.empty() ? nullptr : descriptor_views.data(),
+      descriptor_views.size(),
+      producer_python_major,
+      producer_python_minor,
+  };
 }
 }  // namespace custom_op
 }  // namespace ge

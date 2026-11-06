@@ -513,6 +513,39 @@ class Om2PackageHelperUt : public testing::Test {
   std::string test_work_dir;
   const std::string kZipFileBaseName = "fake_test";
   std::filesystem::path om2_workspace_base_dir_;
+  // 变量权重数据块的载荷与块名，供两个 SerializeVarWeightData_* 用例共用
+  const std::string kVarWeightPayload{"\x01\x02\x03\x04", 4U};
+  const std::string kVarWeightBlockName = "var_weight_data_0";
+
+  // 装配一个带变量权重数据块的 GertModelData。两个 SerializeVarWeightData_* 用例共用，
+  // 避免把装配代码抄两遍（连装配带断言会使单个用例超过门禁的 50 行 nbnc 上限）。
+  // 数据块由 Codegen 固化表单一来源产出并挂在 variables 槽上，块名同时写进 model_meta；
+  // 此处绕过 Codegen 直接构造 GertModelData，故需自行挂上等价的数据块与名字。
+  void MakeVarWeightModelData(gert::GertModelData &model_data) const {
+    gert::InitGertModelData(model_data);
+    model_data.models.emplace_back(std::make_unique<gert::GertModelDataModel>());
+    model_data.constants->constants_data.emplace_back();
+    model_data.variables->var_weight_data.emplace_back();
+    auto &model = model_data.models[0];
+    model->model_meta = std::make_unique<gert::GertModelDataModelMeta>();
+    model->model_meta->model_name = gert::GertMakeStr("var_test_model");
+    model->constants_config = std::make_unique<gert::GertModelDataConstantsConfig>();
+    auto var_weight_slot = std::make_unique<gert::GertModelDataFile>();
+    var_weight_slot->file_name = gert::GertMakeStr(kVarWeightBlockName.c_str());
+    var_weight_slot->data = gert::GertMakeFileData(kVarWeightPayload.data(), kVarWeightPayload.size());
+    var_weight_slot->data_size = kVarWeightPayload.size();
+    model_data.variables->var_weight_data[0] = std::move(var_weight_slot);
+    model->model_meta->var_weight_file_name = gert::GertMakeStr(kVarWeightBlockName.c_str());
+    model->model_meta->global_shared_var_size = 4096U;
+    model->runtime = std::make_unique<gert::GertModelDataRuntime>();
+    model->runtime->so_artifact.file_name = gert::GertMakeStr("libtest.so");
+    const std::string so_data = "fake_so";
+    model->runtime->so_artifact.data = gert::GertMakeFileData(so_data.data(), so_data.size());
+    model->runtime->so_artifact.data_size = so_data.size();
+    model->debug = std::make_unique<gert::GertModelDataDebug>();
+    model->debug->visual_json =
+        gert::GertMakeStr(R"({"format":"ge_visual_json","format_version":1,"model":{"graph":[]}})");
+  }
 
  private:
   std::unique_ptr<ScopedEnvVar> asan_guard_;
@@ -836,8 +869,12 @@ TEST_F(Om2PackageHelperUt, Om2CodegenAndCompile_Fail_DoesNotDumpGeneratedFiles) 
   model_data.models[0]->runtime = std::make_unique<gert::GertModelDataRuntime>();
   model_data.models[0]->constants_config = std::make_unique<gert::GertModelDataConstantsConfig>();
   model_data.constants->constants_data[0] = std::make_unique<gert::GertModelDataFile>();
+  model_data.variables->var_weight_data.emplace_back();
+  model_data.models[0]->model_meta = std::make_unique<gert::GertModelDataModelMeta>();
   Om2Codegen codegen;
-  ASSERT_NE(codegen.Om2CodegenAndCompile(ge_model, model_data, *model_data.models[0]), SUCCESS);
+  ASSERT_NE(codegen.Om2CodegenAndCompile(ge_model, model_data, *model_data.models[0],
+                                         model_data.variables->var_weight_data[0], 0UL),
+            SUCCESS);
 
   for (const auto &file_name : dump_files) {
     std::string content;
@@ -1409,8 +1446,12 @@ TEST_F(Om2PackageHelperUt, Om2CodegenAndCompile_InvalidModel_Fail) {
   model_data.models[0]->runtime = std::make_unique<gert::GertModelDataRuntime>();
   model_data.models[0]->constants_config = std::make_unique<gert::GertModelDataConstantsConfig>();
   model_data.constants->constants_data[0] = std::make_unique<gert::GertModelDataFile>();
+  model_data.variables->var_weight_data.emplace_back();
+  model_data.models[0]->model_meta = std::make_unique<gert::GertModelDataModelMeta>();
   Om2Codegen codegen;
-  EXPECT_NE(codegen.Om2CodegenAndCompile(ge_model, model_data, *model_data.models[0]), SUCCESS);
+  EXPECT_NE(codegen.Om2CodegenAndCompile(ge_model, model_data, *model_data.models[0],
+                                         model_data.variables->var_weight_data[0], 0UL),
+            SUCCESS);
 }
 
 // ============================================================================
@@ -1625,65 +1666,13 @@ TEST_F(Om2PackageHelperUt, SetSaveMode_Ok) {
   om2_packager.SetSaveMode(false);
 }
 
-TEST_F(Om2PackageHelperUt, SerializeVarResource_WithEntriesAndInitData) {
+// 变量权重数据块**原样落盘、不压缩**。装配代码见 MakeVarWeightModelData；与下面的
+// MetaData 用例拆开，是因为连装配带断言会使单个用例超过门禁的 50 行 nbnc 上限。
+TEST_F(Om2PackageHelperUt, SerializeVarWeightData_PayloadIsStoredVerbatim) {
   gert::GertModelData model_data;
-  gert::InitGertModelData(model_data);
-  model_data.models.emplace_back(std::make_unique<gert::GertModelDataModel>());
-  model_data.constants->constants_data.emplace_back();
-  model_data.models[0]->model_meta = std::make_unique<gert::GertModelDataModelMeta>();
-  model_data.models[0]->model_meta->model_name = gert::GertMakeStr("var_test_model");
-  model_data.models[0]->variables_config = std::make_unique<gert::GertModelDataVariablesConfig>();
-  gert::RTVarEntry entry;
-  const std::string var_name_str = "test_var";
-  entry.var_name = gert::GertMakeStr(var_name_str);
-  entry.op_type = gert::GertMakeStr("Variable");
-  entry.logic_addr = 0x1000U;
-  entry.size = 16U;
-  entry.memory_type = RT_MEMORY_HBM;
-  entry.changed_graph_id = 1U;
-  entry.allocated_graph_id = 0U;
-  entry.tensor_desc.name = gert::GertMakeStr("test_var");
-  entry.tensor_desc.shape = {4};
-  entry.tensor_desc.data_type = ge::DT_FLOAT;
-  entry.tensor_desc.format = ge::FORMAT_ND;
-  entry.tensor_desc.size = 16U;
-  entry.tensor_desc.shape_range = {{1, 8}};
-  entry.var_key = gert::GertMakeStr(gert::RTVarBuildKey(var_name_str, entry.tensor_desc));
+  MakeVarWeightModelData(model_data);
 
-  gert::RTTransNodeInfo trans_node;
-  trans_node.node_type = gert::GertMakeStr("TransData");
-  trans_node.input.name = gert::GertMakeStr("in");
-  trans_node.input.shape = {4};
-  trans_node.input.data_type = ge::DT_FLOAT;
-  trans_node.input.format = ge::FORMAT_NCHW;
-  trans_node.input.size = 16U;
-  trans_node.output.name = gert::GertMakeStr("out");
-  trans_node.output.shape = {4};
-  trans_node.output.data_type = ge::DT_FLOAT;
-  trans_node.output.format = ge::FORMAT_ND;
-  trans_node.output.size = 16U;
-  entry.trans_road.push_back(std::move(trans_node));
-
-  entry.copy_info.src_var_name = gert::GertMakeStr("src_var");
-  entry.copy_info.src_tensor_desc.name = gert::GertMakeStr("src_td");
-  entry.copy_info.src_tensor_desc.shape = {4};
-  entry.copy_info.src_tensor_desc.data_type = ge::DT_FLOAT;
-  entry.copy_info.src_tensor_desc.format = ge::FORMAT_ND;
-  entry.copy_info.src_tensor_desc.size = 16U;
-
-  entry.init_data = {0x01, 0x02, 0x03, 0x04};
-  ASSERT_EQ(gert::RTVarAddEntry(model_data.models[0]->variables_config->entries, std::move(entry)), ge::SUCCESS);
-
-  model_data.models[0]->runtime = std::make_unique<gert::GertModelDataRuntime>();
-  model_data.models[0]->runtime->so_artifact.file_name = gert::GertMakeStr("libtest.so");
-  const std::string so_data = "fake_so";
-  model_data.models[0]->runtime->so_artifact.data = gert::GertMakeFileData(so_data.data(), so_data.size());
-  model_data.models[0]->runtime->so_artifact.data_size = so_data.size();
-  model_data.models[0]->debug = std::make_unique<gert::GertModelDataDebug>();
-  model_data.models[0]->debug->visual_json =
-      gert::GertMakeStr(R"({"format":"ge_visual_json","format_version":1,"model":{"graph":[]}})");
-
-  const std::string writer_path = PathUtils::Join({test_work_dir, "var_resource.om2"});
+  const std::string writer_path = PathUtils::Join({test_work_dir, "var_payload.om2"});
   ModelBufferData model_buffer;
   ASSERT_EQ(gert::SerializeGertModelData(model_data, model_buffer, false, writer_path), SUCCESS);
   ASSERT_NE(model_buffer.data, nullptr);
@@ -1692,39 +1681,63 @@ TEST_F(Om2PackageHelperUt, SerializeVarResource_WithEntriesAndInitData) {
   gert::ZipArchiveReader archive(model_buffer.data.get(), model_buffer.length);
   ASSERT_TRUE(archive.IsGood());
 
-  const auto file_names = archive.ListFiles();
-  std::string var_entry_path;
+  const std::string var_weight_entry = "variables/" + kVarWeightBlockName;
   std::string var_weight_path;
-  for (const auto &name : file_names) {
-    if (name.find("model_0/variables_config.json") != std::string::npos) {
-      var_entry_path = name;
-    }
-    if (name.find("variables/var_weight_data_0") != std::string::npos) {
+  for (const auto &name : archive.ListFiles()) {
+    if (name.find(var_weight_entry) != std::string::npos) {
       var_weight_path = name;
     }
+    // variables_config.json 已从归档格式删除，变量元数据全部固化进模型 SO
+    EXPECT_EQ(name.find("variables_config.json"), std::string::npos) << "unexpected entry: " << name;
   }
-  ASSERT_FALSE(var_entry_path.empty()) << "model_0/variables_config.json not found";
+  ASSERT_FALSE(var_weight_path.empty()) << "var_weight_data not found";
 
-  size_t buf_size = 0U;
-  const auto buf = archive.ExtractToMem(var_entry_path, buf_size);
-  ASSERT_NE(buf, nullptr);
-  ASSERT_GT(buf_size, 0U);
-  const std::string var_json(reinterpret_cast<const char *>(buf.get()), buf_size);
-  EXPECT_NE(var_json.find("test_var"), std::string::npos);
-  EXPECT_NE(var_json.find("TransData"), std::string::npos);
-  EXPECT_NE(var_json.find("src_var"), std::string::npos);
-  EXPECT_NE(var_json.find("init_data_offset"), std::string::npos);
-
-  EXPECT_FALSE(var_weight_path.empty()) << "var_weight_data not found";
+  size_t weight_size = 0U;
+  const auto weight_buf = archive.ExtractToMem(var_weight_path, weight_size);
+  ASSERT_NE(weight_buf, nullptr);
+  ASSERT_EQ(weight_size, kVarWeightPayload.size());
+  EXPECT_EQ(std::string(reinterpret_cast<const char *>(weight_buf.get()), weight_size), kVarWeightPayload);
 }
 
-TEST_F(Om2PackageHelperUt, SerializeVarResource_NullAndEmpty) {
+// 块名与 global_shared_var_size 迁至 model_meta.json，执行器据此按名查找数据源
+TEST_F(Om2PackageHelperUt, SerializeVarWeightData_MetaDataCarriesBlockNameAndSharedSize) {
+  gert::GertModelData model_data;
+  MakeVarWeightModelData(model_data);
+
+  const std::string writer_path = PathUtils::Join({test_work_dir, "var_meta.om2"});
+  ModelBufferData model_buffer;
+  ASSERT_EQ(gert::SerializeGertModelData(model_data, model_buffer, false, writer_path), SUCCESS);
+  ASSERT_NE(model_buffer.data, nullptr);
+  ASSERT_GT(model_buffer.length, 0U);
+
+  gert::ZipArchiveReader archive(model_buffer.data.get(), model_buffer.length);
+  ASSERT_TRUE(archive.IsGood());
+
+  std::string model_meta_path;
+  for (const auto &name : archive.ListFiles()) {
+    if (name.find("model_0/model_meta.json") != std::string::npos) {
+      model_meta_path = name;
+    }
+  }
+  ASSERT_FALSE(model_meta_path.empty()) << "model_0/model_meta.json not found";
+
+  size_t meta_size = 0U;
+  const auto meta_buf = archive.ExtractToMem(model_meta_path, meta_size);
+  ASSERT_NE(meta_buf, nullptr);
+  const std::string meta_json(reinterpret_cast<const char *>(meta_buf.get()), meta_size);
+  EXPECT_NE(meta_json.find("\"var_weight_file_name\""), std::string::npos);
+  EXPECT_NE(meta_json.find(kVarWeightBlockName), std::string::npos);
+  EXPECT_NE(meta_json.find("\"global_shared_var_size\""), std::string::npos);
+}
+
+TEST_F(Om2PackageHelperUt, SerializeVarWeightData_NoInitData) {
   gert::GertModelData model_data;
   gert::InitGertModelData(model_data);
   model_data.models.emplace_back(std::make_unique<gert::GertModelDataModel>());
   model_data.constants->constants_data.emplace_back();
   model_data.models[0]->model_meta = std::make_unique<gert::GertModelDataModelMeta>();
   model_data.models[0]->model_meta->model_name = gert::GertMakeStr("var_empty_model");
+  model_data.models[0]->constants_config = std::make_unique<gert::GertModelDataConstantsConfig>();
   model_data.models[0]->runtime = std::make_unique<gert::GertModelDataRuntime>();
   model_data.models[0]->runtime->so_artifact.file_name = gert::GertMakeStr("libtest.so");
   const std::string so_data = "fake_so";
@@ -1734,15 +1747,28 @@ TEST_F(Om2PackageHelperUt, SerializeVarResource_NullAndEmpty) {
   model_data.models[0]->debug->visual_json =
       gert::GertMakeStr(R"({"format":"ge_visual_json","format_version":1,"model":{"graph":[]}})");
 
-  model_data.models[0]->variables_config = nullptr;
+  // 无变量初始数据：variables 槽为空、model_meta 不带 var_weight_file_name，序列化仍须成功
   const std::string writer_path1 = PathUtils::Join({test_work_dir, "var_null.om2"});
   ModelBufferData buf1;
   ASSERT_EQ(gert::SerializeGertModelData(model_data, buf1, false, writer_path1), SUCCESS);
+  ASSERT_NE(buf1.data, nullptr);
+  gert::ZipArchiveReader archive1(buf1.data.get(), buf1.length);
+  ASSERT_TRUE(archive1.IsGood());
+  for (const auto &name : archive1.ListFiles()) {
+    EXPECT_EQ(name.find("variables/var_weight_data"), std::string::npos) << "unexpected entry: " << name;
+  }
 
-  model_data.models[0]->variables_config = std::make_unique<gert::GertModelDataVariablesConfig>();
+  // 槽位存在但数据为空：同样不写入归档
+  model_data.variables->var_weight_data.emplace_back(std::make_unique<gert::GertModelDataFile>());
   const std::string writer_path2 = PathUtils::Join({test_work_dir, "var_empty.om2"});
   ModelBufferData buf2;
   ASSERT_EQ(gert::SerializeGertModelData(model_data, buf2, false, writer_path2), SUCCESS);
+  ASSERT_NE(buf2.data, nullptr);
+  gert::ZipArchiveReader archive2(buf2.data.get(), buf2.length);
+  ASSERT_TRUE(archive2.IsGood());
+  for (const auto &name : archive2.ListFiles()) {
+    EXPECT_EQ(name.find("variables/var_weight_data"), std::string::npos) << "unexpected entry: " << name;
+  }
 }
 
 TEST_F(Om2PackageHelperUt, BuildKernelBinaries_WithAtomicKernel_Ok) {
@@ -2167,6 +2193,7 @@ std::shared_ptr<gert::GertModelData> MakeBundleSubModelData(const std::string &m
   gert::InitGertModelData(*model_data);
   model_data->models.emplace_back(std::make_unique<gert::GertModelDataModel>());
   model_data->constants->constants_data.emplace_back();
+  model_data->variables->var_weight_data.emplace_back();
   auto &unit = *model_data->models[0];
   unit.model_meta = std::make_unique<gert::GertModelDataModelMeta>();
   unit.model_meta->model_name = gert::GertMakeStr(model_name);
@@ -2202,26 +2229,15 @@ std::shared_ptr<gert::GertModelData> MakeBundleSubModelData(const std::string &m
   model_data->kernels->binaries.emplace_back(std::move(kernel));
 
   if (with_vars) {
-    unit.variables_config = std::make_unique<gert::GertModelDataVariablesConfig>();
-    gert::RTVarEntry entry;
-    const std::string var_name_str = "shared_var";
-    entry.var_name = gert::GertMakeStr(var_name_str);
-    entry.op_type = gert::GertMakeStr("Variable");
-    entry.logic_addr = 0x1000U;
-    entry.size = 4U;
-    entry.memory_type = RT_MEMORY_HBM;
-    entry.tensor_desc.name = gert::GertMakeStr(var_name_str);
-    entry.tensor_desc.shape = {1};
-    entry.tensor_desc.data_type = ge::DT_FLOAT;
-    entry.tensor_desc.format = ge::FORMAT_ND;
-    entry.tensor_desc.size = 4U;
-    entry.var_key = gert::GertMakeStr(gert::RTVarBuildKey(var_name_str, entry.tensor_desc));
-    entry.init_data = {0x01, 0x02, 0x03, 0x04};
-    (void)gert::RTVarAddEntry(unit.variables_config->entries, std::move(entry));
-    auto var_meta = std::make_unique<gert::GertModelDataVarMeta>();
-    var_meta->index = 0U;
-    var_meta->var_name = gert::GertMakeStr(var_name_str);
-    unit.variables_config->var_metas.emplace_back(std::move(var_meta));
+    // 子模型独立编译，数据块名固定为 var_weight_data_0；Bundle 组装时由
+    // RewriteVarWeightFileName 重写为 Bundle 级名称（与 RewriteInternalConstFileName 同理）
+    const std::string var_weight_bundle("\x01\x02\x03\x04", 4U);
+    auto var_weight_slot = std::make_unique<gert::GertModelDataFile>();
+    var_weight_slot->file_name = gert::GertMakeStr("var_weight_data_0");
+    var_weight_slot->data = gert::GertMakeFileData(var_weight_bundle.data(), var_weight_bundle.size());
+    var_weight_slot->data_size = var_weight_bundle.size();
+    model_data->variables->var_weight_data[0] = std::move(var_weight_slot);
+    unit.model_meta->var_weight_file_name = gert::GertMakeStr("var_weight_data_0");
   }
 
   model_data->manifest = std::make_unique<gert::GertModelDataManifest>();
@@ -2262,14 +2278,12 @@ TEST_F(Om2PackageHelperUt, AssembleBundle_TwoSubModels_ArchiveLayout) {
       "data/model_0/constants_config.json",
       "data/model_0/runtime/libsub0_om2.so",
       "data/model_0/debug/ge_visual_00000000_graph_0.json",
-      "data/model_0/variables_config.json",
       "data/variables/var_weight_data_0",
       "data/model_1/model_meta.json",
       "data/model_1/op_attr.json",
       "data/model_1/constants_config.json",
       "data/model_1/runtime/libsub1_om2.so",
       "data/model_1/debug/ge_visual_00000000_graph_0.json",
-      "data/model_1/variables_config.json",
       "data/variables/var_weight_data_1",
       "data/constants/constant_0",
       "data/constants/constant_1",
@@ -2280,6 +2294,8 @@ TEST_F(Om2PackageHelperUt, AssembleBundle_TwoSubModels_ArchiveLayout) {
   for (const auto &entry : expected_entries) {
     EXPECT_TRUE(archive.HasEntryByRelativePath(entry)) << "missing entry: " << entry;
   }
+  // variables_config.json 已从归档格式删除
+  EXPECT_FALSE(HasEntryWith(archive.ListFiles(), "variables_config.json"));
 
   const auto manifest_entry = archive.FindEntry("manifest.json");
   ASSERT_FALSE(manifest_entry.empty());
@@ -2290,11 +2306,11 @@ TEST_F(Om2PackageHelperUt, AssembleBundle_TwoSubModels_ArchiveLayout) {
   ASSERT_TRUE(manifest_json.IsValid());
   const auto &raw = manifest_json.Raw();
   EXPECT_EQ(raw.at(gert::OM2_MODEL_NUM), 2U);
-  // global_shared_var_size 不由 manifest 承载（写入各子模型 variables_config）
+  // global_shared_var_size 不由 manifest 承载（写入各子模型 model_meta.json）
   EXPECT_FALSE(raw.contains("global_shared_var_size"));
 }
 
-TEST_F(Om2PackageHelperUt, AssembleBundle_VarSizeWrittenToVariablesConfig) {
+TEST_F(Om2PackageHelperUt, AssembleBundle_VarSizeWrittenToModelMeta) {
   std::vector<std::shared_ptr<gert::GertModelData>> sub_models;
   sub_models.push_back(MakeBundleSubModelData("sub0", "kernel_a.o", {1U}, true));
   sub_models.push_back(MakeBundleSubModelData("sub1", "kernel_b.o", {2U}, true));
@@ -2307,15 +2323,15 @@ TEST_F(Om2PackageHelperUt, AssembleBundle_VarSizeWrittenToVariablesConfig) {
 
   gert::ZipArchiveReader archive(bundle_buffer.data.get(), bundle_buffer.length);
   ASSERT_TRUE(archive.IsGood());
-  for (const auto &config_path : {"data/model_0/variables_config.json", "data/model_1/variables_config.json"}) {
-    const auto config_entry = archive.FindEntry(config_path);
-    ASSERT_FALSE(config_entry.empty()) << config_path;
-    size_t buf_size = 0U;
-    const auto buf = archive.ExtractToMem(config_entry, buf_size);
-    ASSERT_NE(buf, nullptr) << config_path;
-    const JsonFile config_json(reinterpret_cast<const uint8_t *>(buf.get()), buf_size);
-    ASSERT_TRUE(config_json.IsValid());
-    EXPECT_EQ(config_json.Raw().at("global_shared_var_size"), kVarSize) << config_path;
+  for (const auto &meta_path : {"data/model_0/model_meta.json", "data/model_1/model_meta.json"}) {
+    const auto meta_entry = archive.FindEntry(meta_path);
+    ASSERT_FALSE(meta_entry.empty()) << meta_path;
+    size_t meta_buf_size = 0U;
+    const auto meta_buf = archive.ExtractToMem(meta_entry, meta_buf_size);
+    ASSERT_NE(meta_buf, nullptr) << meta_path;
+    const JsonFile meta_json(reinterpret_cast<const uint8_t *>(meta_buf.get()), meta_buf_size);
+    ASSERT_TRUE(meta_json.IsValid());
+    EXPECT_EQ(meta_json.Raw().at("global_shared_var_size"), kVarSize) << meta_path;
   }
   const auto manifest_entry = archive.FindEntry("manifest.json");
   ASSERT_FALSE(manifest_entry.empty());
@@ -2325,6 +2341,49 @@ TEST_F(Om2PackageHelperUt, AssembleBundle_VarSizeWrittenToVariablesConfig) {
   const JsonFile manifest_json(reinterpret_cast<const uint8_t *>(buf.get()), buf_size);
   ASSERT_TRUE(manifest_json.IsValid());
   EXPECT_FALSE(manifest_json.Raw().contains("global_shared_var_size"));
+}
+
+// Bundle 各子模型独立编译时数据块名都是 var_weight_data_0，组装必须重写为 Bundle 级名称，
+// 否则序列化会互相覆盖、且执行器按名查找会全部命中同一块
+TEST_F(Om2PackageHelperUt, AssembleBundle_VarWeightFileNameRewritten) {
+  std::vector<std::shared_ptr<gert::GertModelData>> sub_models;
+  sub_models.push_back(MakeBundleSubModelData("sub0", "kernel_a.o", {1U}, true));
+  sub_models.push_back(MakeBundleSubModelData("sub1", "kernel_b.o", {2U}, true));
+  gert::GertModelData bundle_data;
+  ASSERT_EQ(Om2PackageHelper::AssembleBundleModelData(sub_models, 0U, bundle_data), SUCCESS);
+
+  ASSERT_EQ(bundle_data.variables->var_weight_data.size(), 2U);
+  for (size_t i = 0U; i < bundle_data.models.size(); ++i) {
+    const auto expected = "var_weight_data_" + std::to_string(i);
+    ASSERT_NE(bundle_data.variables->var_weight_data[i], nullptr);
+    EXPECT_EQ(std::string(gert::GertGetStr(bundle_data.variables->var_weight_data[i]->file_name)), expected);
+    ASSERT_NE(bundle_data.models[i]->model_meta, nullptr);
+    EXPECT_EQ(std::string(gert::GertGetStr(bundle_data.models[i]->model_meta->var_weight_file_name)), expected);
+  }
+
+  // 两个数据块在归档内并存，未互相覆盖
+  const std::string writer_path = PathUtils::Join({test_work_dir, "bundle_var_name.om2"});
+  ModelBufferData bundle_buffer;
+  ASSERT_EQ(gert::SerializeGertModelData(bundle_data, bundle_buffer, false, writer_path), SUCCESS);
+  gert::ZipArchiveReader archive(bundle_buffer.data.get(), bundle_buffer.length);
+  ASSERT_TRUE(archive.IsGood());
+  const auto file_names = archive.ListFiles();
+  EXPECT_TRUE(HasEntryWith(file_names, "data/variables/var_weight_data_0"));
+  EXPECT_TRUE(HasEntryWith(file_names, "data/variables/var_weight_data_1"));
+  EXPECT_EQ(CountEntriesWith(file_names, "variables/var_weight_data_"), 2U);
+}
+
+// 无变量子模型：var_weight_file_name 保持空，组装不得凭空造出名字
+TEST_F(Om2PackageHelperUt, AssembleBundle_NoVarWeightNameStaysEmpty) {
+  std::vector<std::shared_ptr<gert::GertModelData>> sub_models;
+  sub_models.push_back(MakeBundleSubModelData("sub0", "kernel_a.o", {1U}, false));
+  sub_models.push_back(MakeBundleSubModelData("sub1", "kernel_b.o", {2U}, false));
+  gert::GertModelData bundle_data;
+  ASSERT_EQ(Om2PackageHelper::AssembleBundleModelData(sub_models, 0U, bundle_data), SUCCESS);
+  for (size_t i = 0U; i < bundle_data.models.size(); ++i) {
+    EXPECT_EQ(bundle_data.models[i]->model_meta->var_weight_file_name, nullptr);
+    EXPECT_EQ(bundle_data.variables->var_weight_data[i], nullptr);
+  }
 }
 
 TEST_F(Om2PackageHelperUt, AssembleBundle_InternalConstFileNameRewritten) {
@@ -2449,7 +2508,8 @@ TEST_F(Om2PackageHelperUt, Serialize_SingleModel_ManifestOmitsBundleFields) {
   gert::ZipArchiveReader archive(model_buffer.data.get(), model_buffer.length);
   ASSERT_TRUE(archive.IsGood());
   const auto file_names = archive.ListFiles();
-  EXPECT_TRUE(HasEntryWith(file_names, "data/model_0/variables_config.json"));
+  EXPECT_FALSE(HasEntryWith(file_names, "variables_config.json"));
+  EXPECT_TRUE(HasEntryWith(file_names, "data/model_0/model_meta.json"));
   EXPECT_TRUE(HasEntryWith(file_names, "data/variables/var_weight_data_0"));
 
   // 单模型 manifest 不写 global_shared_var_size

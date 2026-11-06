@@ -15,6 +15,10 @@ list(REMOVE_ITEM RUNTIME2_TEST_SRCS
         "${AIR_CODE_DIR}/tests/ge/ut/ge/runtime/fast_v2/engine/dvpp/dvpp_rtkernel/stub_dvpp_context.cc"
 )
 
+add_library(guard_check_ut_stub SHARED
+        "${CMAKE_CURRENT_LIST_DIR}/engine/aicore/guard_check_ut_stub.c")
+set_target_properties(guard_check_ut_stub PROPERTIES PREFIX "" OUTPUT_NAME "guard_check_ut_stub")
+
 add_executable(ut_fast_runtime2_test
         "${AIR_CODE_DIR}/tests/depends/graph_tuner/rt2_src/graph_tunner_rt2_stub.cc"
         "${AIR_CODE_DIR}/tests/graph_metadef/depends/faker/allocator_faker.cc"
@@ -42,8 +46,11 @@ target_compile_options(ut_fast_runtime2_test PRIVATE
 target_compile_definitions(ut_fast_runtime2_test PRIVATE
         google=ascend_private
         CMAKE_BINARY_DIR=\"${CMAKE_BINARY_DIR}\"
+        GUARD_CHECK_UT_STUB_PATH=\"$<TARGET_FILE:guard_check_ut_stub>\"
         RUN_TEST
         )
+
+add_dependencies(ut_fast_runtime2_test guard_check_ut_stub)
 
 target_include_directories(ut_fast_runtime2_test PRIVATE
         ${AIR_CODE_DIR}

@@ -192,48 +192,148 @@ static aclError ModelLoadFromFileWithMem(const char_t *const modelPath, uint32_t
   return ACL_SUCCESS;
 }
 
-static aclError RuntimeV2ModelLoadCommon(ge::ModelData &modelData, uint32_t *const modelId, const void *const weightPtr,
-                                         const size_t weightSize, std::vector<ge::FileConstantMem> file_constant_mems,
-                                         const std::shared_ptr<gert::RtSession> &rtSessionExternal) {
-  ACL_LOG_INFO("call ge interface gert::LoadExecutorFromModelData, weightSize[%zu]", weightSize);
-  ge::graphStatus ret = ge::GRAPH_SUCCESS;
-  std::unique_ptr<gert::ModelV2Executor> executor;
-  auto rtSession =
-      (rtSessionExternal != nullptr) ? rtSessionExternal : acl::AclResourceManager::GetInstance().CreateRtSession();
-  ACL_REQUIRES_NOT_NULL(rtSession);
-  gert::LoadExecutorArgs args = {.rt_session = rtSession.get(), .file_constant_mems = std::move(file_constant_mems)};
-  executor = gert::LoadExecutorFromModelData(modelData, args, ret);
-  if (ret != ge::GRAPH_SUCCESS) {
-    ACL_LOG_CALL_ERROR(
-        "[Model][FromData]call gert::LoadExecutorFromModelDataWithMem load model from data failed, "
-        "ge result[%u]",
-        ret);
-    return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
+struct DualBodyWeightMem {
+  const void *main_ptr{nullptr};
+  size_t main_size{0U};
+  const void *fallback_ptr{nullptr};
+  size_t fallback_size{0U};
+  void *shared_ptr{nullptr};
+};
+
+static aclError PrepareDualBodyWeightMem(const gert::ExecutorSet &executors, const void *const weight_ptr,
+                                         const size_t weight_size, DualBodyWeightMem &mem) {
+  mem.main_ptr = weight_ptr;
+  mem.main_size = weight_size;
+  if (executors.fallback == nullptr) {
+    ACL_LOG_DEBUG("no fallback executor, use user weight memory for main.");
+    return ACL_SUCCESS;
   }
-  ACL_REQUIRES_NOT_NULL(executor);
-  // 4. load rt2.0 executor
-  ACL_LOG_DEBUG("call ge interface executorV2.Load");
+  if (!executors.weights_identical) {
+    // 权重不一致时，兜底不能继承用户的同一块 weightPtr，否则会覆盖主体权重。
+    mem.fallback_ptr = nullptr;
+    mem.fallback_size = 0U;
+    ACL_LOG_INFO("dual-body weights not identical, fallback allocates its own weight memory.");
+    return ACL_SUCCESS;
+  }
+  if (executors.shared_weight_size == 0U) {
+    mem.fallback_ptr = weight_ptr;
+    mem.fallback_size = weight_size;
+    ACL_LOG_INFO("dual-body has no weight, skip shared weight memory allocation.");
+    return ACL_SUCCESS;
+  }
+  if ((weight_ptr != nullptr) && (weight_size >= executors.shared_weight_size)) {
+    mem.main_size = executors.shared_weight_size;
+    mem.fallback_ptr = weight_ptr;
+    mem.fallback_size = executors.shared_weight_size;
+    ACL_LOG_INFO("use user weight memory for shared dual-body weight, size[%zu].", executors.shared_weight_size);
+    return ACL_SUCCESS;
+  }
+  if (weight_ptr != nullptr) {
+    ACL_LOG_ERROR("user weight memory size[%zu] is smaller than shared weight size[%zu].", weight_size,
+                  executors.shared_weight_size);
+    return ACL_ERROR_INVALID_PARAM;
+  }
+  const aclError malloc_ret = aclrtMalloc(&mem.shared_ptr, executors.shared_weight_size, ACL_MEM_TYPE_HIGH_BAND_WIDTH);
+  if (malloc_ret != ACL_ERROR_NONE) {
+    ACL_LOG_CALL_ERROR("malloc shared weight memory failed, ret=%d", static_cast<int32_t>(malloc_ret));
+    return malloc_ret;
+  }
+  mem.main_ptr = mem.shared_ptr;
+  mem.main_size = executors.shared_weight_size;
+  mem.fallback_ptr = mem.shared_ptr;
+  mem.fallback_size = executors.shared_weight_size;
+  ACL_LOG_INFO("allocate shared dual-body weight memory success, size[%zu].", executors.shared_weight_size);
+  return ACL_SUCCESS;
+}
+
+static void ReleaseDualBodyWeightMem(DualBodyWeightMem &mem) {
+  if (mem.shared_ptr != nullptr) {
+    (void)aclrtFree(mem.shared_ptr);
+  }
+  mem.shared_ptr = nullptr;
+}
+
+static aclError LoadExecutorSetForModel(gert::ExecutorSet &executors, const std::shared_ptr<gert::RtSession> &rtSession,
+                                        const DualBodyWeightMem &mem) {
   aclrtStream rtStream = nullptr;
   ACL_REQUIRES_CALL_RTS_OK(aclrtCreateStream(&rtStream), aclrtCreateStream);
-
   gert::ModelExecuteArg exeArg;
   exeArg.stream = rtStream;
-  ret = executor->Load(exeArg, gert::ModelLoadArg(rtSession.get(), {weightPtr, weightSize}));
+  ge::graphStatus ret =
+      executors.main->Load(exeArg, gert::ModelLoadArg(rtSession.get(), {mem.main_ptr, mem.main_size}));
   if (ret != ge::GRAPH_SUCCESS) {
     ACL_LOG_CALL_ERROR("[Model][FromData]call load executorV2 failed, ge result[%u]", ret);
     (void)aclrtDestroyStream(rtStream);
     return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
   }
+  ACL_LOG_INFO("main executor load success.");
+  if (executors.fallback != nullptr) {
+    ret = executors.fallback->Load(exeArg, gert::ModelLoadArg(rtSession.get(), {mem.fallback_ptr, mem.fallback_size}));
+    if (ret != ge::GRAPH_SUCCESS) {
+      ACL_LOG_CALL_ERROR("[Model][FromData]call load fallback executorV2 failed, ge result[%u]", ret);
+      (void)executors.main->UnLoad();
+      (void)aclrtDestroyStream(rtStream);
+      return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
+    }
+    ACL_LOG_INFO("fallback executor load success.");
+  }
   ret = aclrtSynchronizeStream(rtStream);
   if (ret != ACL_ERROR_NONE) {
     ACL_LOG_CALL_ERROR("synchronize stream failed, runtime result = %d", static_cast<int32_t>(ret));
+    (void)executors.main->UnLoad();
+    if (executors.fallback != nullptr) {
+      (void)executors.fallback->UnLoad();
+    }
     (void)aclrtDestroyStream(rtStream);
     return ACL_GET_ERRCODE_RTS(ret);
   }
   (void)aclrtDestroyStream(rtStream);
+  return ACL_SUCCESS;
+}
 
-  // 5. get model-id
-  acl::AclResourceManager::GetInstance().AddExecutor(*modelId, std::move(executor), rtSession);
+static void RegisterDualBodyExecutors(uint32_t &modelId, gert::ExecutorSet &executors, const DualBodyWeightMem &mem,
+                                      const std::shared_ptr<gert::RtSession> &rtSession) {
+  const bool has_fallback = (executors.fallback != nullptr);
+  auto fallback = std::move(executors.fallback);
+  auto guard = std::move(executors.guard);
+  acl::AclResourceManager::GetInstance().AddExecutor(modelId, std::move(executors.main), rtSession);
+  ACL_LOG_INFO("main executor registered, modelId[%u].", modelId);
+  if (has_fallback) {
+    acl::AclResourceManager::GetInstance().SetAutofuseFallback(modelId, std::move(fallback), std::move(guard),
+                                                               mem.shared_ptr, mem.main_size);
+    ACL_LOG_INFO("fallback executor registered, modelId[%u], shared_weight_size[%zu].", modelId, mem.main_size);
+  }
+}
+
+static aclError RuntimeV2ModelLoadCommon(ge::ModelData &modelData, uint32_t *const modelId, const void *const weightPtr,
+                                         const size_t weightSize, std::vector<ge::FileConstantMem> file_constant_mems,
+                                         const std::shared_ptr<gert::RtSession> &rtSessionExternal) {
+  ACL_LOG_INFO("load model start, weightSize[%zu].", weightSize);
+  ge::graphStatus ret = ge::GRAPH_SUCCESS;
+  gert::ExecutorSet executors;
+  auto rtSession =
+      (rtSessionExternal != nullptr) ? rtSessionExternal : acl::AclResourceManager::GetInstance().CreateRtSession();
+  ACL_REQUIRES_NOT_NULL(rtSession);
+  gert::LoadExecutorArgs args = {.rt_session = rtSession.get(), .file_constant_mems = std::move(file_constant_mems)};
+  ret = gert::LoadExecutorSetFromModelData(modelData, args, executors);
+  if (ret != ge::GRAPH_SUCCESS) {
+    ACL_LOG_CALL_ERROR("[Model][FromData]call gert::LoadExecutorSetFromModelData failed, ge result[%u]", ret);
+    return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
+  }
+  ACL_REQUIRES_NOT_NULL(executors.main);
+
+  DualBodyWeightMem weight_mem;
+  const aclError prep_ret = PrepareDualBodyWeightMem(executors, weightPtr, weightSize, weight_mem);
+  if (prep_ret != ACL_SUCCESS) {
+    return prep_ret;
+  }
+  const aclError load_ret = LoadExecutorSetForModel(executors, rtSession, weight_mem);
+  if (load_ret != ACL_SUCCESS) {
+    ReleaseDualBodyWeightMem(weight_mem);
+    return load_ret;
+  }
+  RegisterDualBodyExecutors(*modelId, executors, weight_mem, rtSession);
+  ACL_LOG_INFO("load model success, modelId[%u].", *modelId);
   return ACL_SUCCESS;
 }
 
@@ -564,19 +664,40 @@ static void SetInputData(const std::vector<AclModelTensor> &blobs, std::vector<g
 }
 
 // runtime2.0 execute
+static std::shared_ptr<gert::ModelV2Executor> SelectDualBodyExecutor(const uint32_t modelId,
+                                                                     const std::shared_ptr<gert::ModelV2Executor> &main,
+                                                                     const std::vector<gert::Tensor *> &inputVec) {
+  auto fallback_info = acl::AclResourceManager::GetInstance().GetAutofuseFallback(modelId);
+  if (fallback_info.executor == nullptr) {
+    ACL_LOG_DEBUG("no fallback executor, take main body.");
+    return main;
+  }
+  if (fallback_info.guard == nullptr) {
+    ACL_LOG_INFO("fallback exists but guard is empty, take fallback body.");
+    return fallback_info.executor;
+  }
+  char_t reason[1024] = {};
+  if (!fallback_info.guard->Match(inputVec, reason, sizeof(reason))) {
+    ACL_LOG_INFO("final execution body: fallback(guard miss), reason: %s", reason);
+    return fallback_info.executor;
+  }
+  ACL_LOG_INFO("final execution body: main(guard hit).");
+  return main;
+}
+
 static aclError RuntimeV2ModelExecute(const uint32_t modelId, const aclmdlDataset *const input,
                                       aclmdlDataset *const output, const bool isAsync, const aclrtStream stream) {
   ACL_LOG_INFO("start to execute ModelExecute, modelId[%u]", modelId);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(input);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(output);
 
-  auto const executor = acl::AclResourceManager::GetInstance().GetExecutor(modelId);
-  if (executor == nullptr) {
+  auto const main_executor = acl::AclResourceManager::GetInstance().GetExecutor(modelId);
+  if (main_executor == nullptr) {
     ACL_LOG_ERROR("input modelId[%u] is invalid, please make sure model has been loaded", modelId);
     return static_cast<aclError>(ACL_ERROR_GE_EXEC_MODEL_ID_INVALID);
   }
 
-  const gert::ModelDesc &desc = executor->GetModelDesc();
+  const gert::ModelDesc &desc = main_executor->GetModelDesc();
   const size_t inputNum = desc.GetInputNum();
   ACL_LOG_INFO("get model input num %zu, input num %zu", inputNum, input->blobs.size());
   if (input->blobs.size() < inputNum) {
@@ -608,6 +729,7 @@ static aclError RuntimeV2ModelExecute(const uint32_t modelId, const aclmdlDatase
   }
 
   SetInputData(input->blobs, inputTensor);
+  auto const executor = SelectDualBodyExecutor(modelId, main_executor, inputVec);
   ge::InputAippType type = ge::DATA_WITHOUT_AIPP;
   size_t aippIndex = 0U;
   for (size_t i = 0UL; i < inputNum; ++i) {
@@ -1115,7 +1237,27 @@ aclError aclmdlGetDescFromMemImpl(aclmdlDesc *modelDesc, const void *model, size
   return ACL_SUCCESS;
 }
 
+static aclError UnloadAutofuseFallback(const uint32_t modelId) {
+  auto fallback_info = acl::AclResourceManager::GetInstance().GetAutofuseFallback(modelId);
+  if (fallback_info.executor == nullptr) {
+    return ACL_SUCCESS;
+  }
+  ACL_LOG_INFO("unload fallback executor start, modelId[%u].", modelId);
+  const auto ret = fallback_info.executor->UnLoad();
+  if (ret != ge::GRAPH_SUCCESS) {
+    ACL_LOG_ERROR("[Unload][Model]failed to unload autofuse fallback executor, modelId is %u, errorCode is %u", modelId,
+                  ret);
+    return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
+  }
+  ACL_LOG_INFO("unload fallback executor success, modelId[%u].", modelId);
+  return ACL_SUCCESS;
+}
+
 static aclError UnloadRt2Model(const uint32_t modelId, const bool isSessionShared) {
+  const aclError fallback_ret = UnloadAutofuseFallback(modelId);
+  if (fallback_ret != ACL_SUCCESS) {
+    return fallback_ret;
+  }
   const auto executor = acl::AclResourceManager::GetInstance().GetExecutor(modelId);
   ge::graphStatus ret = ge::GRAPH_SUCCESS;
   if (executor != nullptr) {
@@ -1128,6 +1270,8 @@ static aclError UnloadRt2Model(const uint32_t modelId, const bool isSessionShare
     ACL_LOG_CALL_ERROR("[Unload][Model]failed to unload model, modelId is %u, errorCode is %u", modelId, ret);
     return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
   }
+  // 主/兜底都卸载完成后再释放共享权重，避免主体卸载期间访问已释放内存。
+  acl::AclResourceManager::GetInstance().DeleteAutofuseFallback(modelId);
   auto session = acl::AclResourceManager::GetInstance().GetRtSession(modelId);
   // cannot destroy shared session
   if ((session != nullptr) && !isSessionShared) {

@@ -24,6 +24,7 @@ enum class GeneratedFileIndex : uint32_t {
   kLoadingAndRunningFile,
   kInterfaceHeaderFile,
   kCMakeListsFile,
+  kVarMgrFile,
   kEnd
 };
 struct GeneratedFileInfo {
@@ -42,9 +43,11 @@ class Om2CodePrinter {
   const std::string &GetFileName(GeneratedFileIndex generated_file_index) const {
     return output_[static_cast<size_t>(generated_file_index)].file_name;
   }
+  // 按需生成物由生成器在判定需要时注册文件名；未注册时 GetOutputFiles 按 file_name.empty() 跳过。
+  // InitDefaultFileInfo 只无条件注册全部既有文件，不含按需生成物。
+  void SetFileInfo(GeneratedFileIndex generated_file_index, const std::string &file_name);
 
  private:
-  void SetFileInfo(GeneratedFileIndex generated_file_index, const std::string &file_name);
   void InitDefaultFileInfo(const std::string &model_name);
 
  private:

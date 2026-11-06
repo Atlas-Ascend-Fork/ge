@@ -688,6 +688,99 @@ int32_t (*HcclLoadTaskFunc)(void *instance_handle, const HcclTaskParams *params)
 
 - **Return value**: `0` indicates success; a nonzero value indicates that HCCL task launching failed, in which case `GertModelLoad` on the model SO side aborts and returns the error.
 
+#### 3.9 var_context (GertModelVarContext) and the Two Variable-Preparation Callbacks
+
+- **Purpose**: Variable preparation (address resolution, format and data-type conversion, variable-to-variable copy, and filling the address table by slot) has been offloaded into the model SO and runs inside `GertModelLoad` via the SO's own `PrepareVars`. The executor no longer interprets variable metadata; it supplies only two things: a session-level variable-container handle and two callbacks. The SO obtains `GertModelVarContext` through `GertModelLoadConfig::var_context` and uses it during load to request addresses from the container on demand, read back initial data, and commit derived data.
+- **Version requirement**: A model with variables requires `GertModelLoadConfig::var_context` to be non-null and `GertModelVarContext::struct_size` to cover the `commit_var_data` field; a model without variables may leave it null.
+- **Context structure GertModelVarContext**:
+
+| Field | Type | In/Out | Description |
+|------|------|----------|------|
+| struct_size | uint64_t | In | Byte range provided this time; initialized to `sizeof(GertModelVarContext)` |
+| var_manager_handle | void * | In | Session-level variable-container handle, passed back verbatim as the first argument of both callbacks |
+| device_id | uint32_t | In | Device where the variables reside |
+| abi_pad_0 | uint8_t[4] | — | Explicit padding, no business meaning |
+| var_weight_data | const void * | In | Base address of the variable initial-data block; may be null (this model has no initial data) |
+| var_weight_data_size | uint64_t | In | Block size in bytes |
+| get_var_addr | GetVarAddrFunc | In | Resolve or query-only a variable address; see Section 3.10 |
+| commit_var_data | CommitVarDataFunc | In | Commit derived data; see Section 3.11 |
+
+- **Notes**: `var_weight_data` points at the whole block archived under `data/variables/var_weight_data_N` (see Part II Section 1.14). Per-variable offsets and sizes inside the block are not persisted; the SO slices it by the `init_data_offset` / `init_data_size` values fixated at compile time. Allocation and release of variable device memory are entirely the container's responsibility: the SO must not free `dev_addr` and must not write to it directly — writes go through `commit_var_data` only.
+
+#### 3.10 get_var_addr (GetVarAddrFunc)
+
+- **Purpose**: The single entry point for variable device addresses, with two modes combined. `GERT_VAR_ADDR_RESOLVE` resolves or allocates an address and may optionally write the initial data on first use; `GERT_VAR_ADDR_QUERY_ONLY` only queries an address already present in the container, without allocating or writing.
+- **Prototype**:
+
+```c
+int32_t (*GetVarAddrFunc)(void *var_manager_handle, struct GertVarDesc *desc);
+```
+
+- **Parameters**:
+
+| Parameter | Type | In/Out | Description |
+|------|------|----------|------|
+| var_manager_handle | void * | In | `GertModelVarContext::var_manager_handle` passed back verbatim |
+| desc | struct GertVarDesc * | In/Out | Variable descriptor; the SO fills the input fields and the container writes back the output fields |
+
+- **Mode enum GertVarAddrMode**:
+
+| Enumerator | Value | Description |
+|--------|------|------|
+| `GERT_VAR_ADDR_RESOLVE` | 0 | Resolve or allocate the address, optionally writing the initial data on first use |
+| `GERT_VAR_ADDR_QUERY_ONLY` | 1 | Only query an address already in the container; no allocation, no write |
+
+- **Parameter structure GertVarDesc**:
+
+| Field | Type | In/Out | Description |
+|------|------|----------|------|
+| struct_size | uint64_t | In | Initialized to `sizeof(GertVarDesc)`; update when the layout changes |
+| var_key | const char * | In | Variable key, UTF-8 and `\0`-terminated |
+| size | uint64_t | In/Out | In: variable size in bytes, used for allocation, must be greater than 0. Out under `GERT_VAR_ADDR_QUERY_ONLY`: source byte count written back by the container |
+| memory_type | uint64_t | In | Allocation policy; values are the memory-type constants such as `RT_MEMORY_HBM` |
+| logic_addr | uint64_t | In | Original compile-time logical address, used for the memory-region branch decision |
+| host_data | const void * | In | Initial data for first use; null means resolve the address only |
+| host_data_size | uint64_t | In | Byte count of `host_data`; must equal `size` when non-null |
+| device_id | uint32_t | In | Device where the variable resides |
+| mode | uint32_t | In | See `GertVarAddrMode`; defaults to `GERT_VAR_ADDR_RESOLVE` |
+| dev_addr | void * | Out | Address of the variable on this device; `nullptr` when `GERT_VAR_ADDR_QUERY_ONLY` misses |
+| is_loaded | uint32_t | Out | Whether the variable already holds valid data on this device |
+| abi_pad_0 | uint32_t | — | Explicit padding, no business meaning |
+
+- **Return value**: `0` on success; non-`0` means address resolution failed, and the SO's `PrepareVars` aborts and returns the error.
+- **Notes**: Allocation is idempotent — an existing address is returned as is — so the SO keeps no address cache and calls lazily at each consumption point. Thread safety: may be called concurrently from multiple threads, both across different variables and repeatedly for the same variable; the container locks internally and never hands tasks across threads.
+
+#### 3.11 commit_var_data (CommitVarDataFunc)
+
+- **Purpose**: Write variable data derived by the SO (format/data-type conversion results, variable-to-variable copy results) back into the container.
+- **Prototype**:
+
+```c
+int32_t (*CommitVarDataFunc)(void *var_manager_handle, struct GertVarCommit *commit);
+```
+
+- **Parameters**:
+
+| Parameter | Type | In/Out | Description |
+|------|------|----------|------|
+| var_manager_handle | void * | In | `GertModelVarContext::var_manager_handle` passed back verbatim |
+| commit | struct GertVarCommit * | In/Out | Commit descriptor; the SO fills the input fields and the container writes back the output fields |
+
+- **Parameter structure GertVarCommit**:
+
+| Field | Type | In/Out | Description |
+|------|------|----------|------|
+| struct_size | uint64_t | In | Initialized to `sizeof(GertVarCommit)`; update when the layout changes |
+| var_key | const char * | In | Target variable key, UTF-8 and `\0`-terminated |
+| host_data | const void * | In | Derived data; must not be null |
+| host_data_size | uint64_t | In | Byte count; must not exceed the variable size recorded by the container |
+| device_id | uint32_t | In | Device where the variable resides |
+| is_loaded | uint32_t | Out | Whether the variable holds valid data on this device when the call returns |
+| dev_addr | void * | Out | Address of the variable on this device when the call returns |
+
+- **Return value**: `0` on success; non-`0` means the commit failed. When `host_data_size` exceeds the variable size recorded by the container, an error is returned and nothing is written.
+- **Notes**: Execution thread, aclrt context, memory ownership and thread-safety semantics are the same as `GetVarAddrFunc`. Committing the same variable more than once is not an error.
+
 ## Part II: OM2 Model Data
 
 `gert_model_data.h` and `om2_package_contants.h` jointly define the data organization and directory structure of an OM2 package. The former describes the package manifest, models, and shared resources rooted at `GertModelData`; the latter defines their package paths, JSON keys, file categories, and compression rules. The serialization module follows these conventions to write model data into a ZIP archive.
@@ -714,8 +807,9 @@ Smart pointers and containers are further expanded according to the custom types
 | `constants` | `std::unique_ptr<GertModelDataConstants>` | Constant weight data collection, corresponding to `data/constants/`; each constant's association with a model is described by the model's constant configuration |
 | `kernels` | `std::unique_ptr<GertModelDataKernels>` | Operator binary collection, corresponding to `data/kernels/` |
 | `custom_ops` | `std::unique_ptr<GertModelDataCustomOps>` | Custom operator artifact collection, corresponding to `data/custom_ops/binaries_npu_arch/` and `data/custom_ops/shared_libs/` |
+| `variables` | `std::unique_ptr<GertModelDataVariables>` | Variable initial-data block collection, corresponding to `data/variables/`; see Section 1.14 |
 
-The element type of `models`, `GertModelDataModel`, further describes `model_meta.json`, `constants_config.json`, `variables_config.json`, `op_attr.json`, `runtime/`, and `debug/` in a single-model directory. Variable initialization data resides in package-level `data/variables/`, associated through file names, offsets, and sizes in model variable configurations; it is not an independent top-level member of `GertModelData`. Whether files are actually generated depends on the corresponding data and serialization conditions.
+The element type of `models`, `GertModelDataModel`, further describes `model_meta.json`, `constants_config.json`, `op_attr.json`, `runtime/`, and `debug/` in a single-model directory. Variable initial-data blocks reside in package-level `data/variables/` and are an independent top-level member `variables` of `GertModelData` (see Section 1.14). Per-variable offsets and sizes inside a block are no longer persisted; they are carried by the metadata table fixated into the model SO at compile time, and `model_meta.json` keeps only `var_weight_file_name` so the executor can look the data source up by name. Whether files are actually generated depends on the corresponding data and serialization conditions.
 
 #### 1.2 GertModelDataManifest
 
@@ -757,7 +851,6 @@ Referenced by elements of `GertModelData::models`, corresponding to a single `da
 | `op_attr_json` | `std::unique_ptr<char[]>` | Raw operator attribute JSON, corresponding to `op_attr.json` |
 | `runtime` | `std::unique_ptr<GertModelDataRuntime>` | Runtime code and model SO, corresponding to `runtime/`; see Section 1.11 |
 | `debug` | `std::unique_ptr<GertModelDataDebug>` | Debug data, corresponding to `debug/`; see Section 1.13 |
-| `variables_config` | `std::unique_ptr<GertModelDataVariablesConfig>` | Variable configuration, corresponding to `variables_config.json`; see Section 1.14 |
 
 #### 1.6 GertModelDataModelMeta
 
@@ -779,6 +872,8 @@ Referenced by `GertModelDataModel::model_meta`; stores model metadata.
 | `user_designate_shape_order` | `std::vector<std::unique_ptr<char[]>>` | User-specified shape order for dynamic gears |
 | `origin_input_dims` | `std::vector<std::vector<int64_t>>` | Original input shapes for dynamic gears, written to `inputs[].shape` |
 | `aipp_infos` | `std::vector<std::unique_ptr<GertModelDataAippMeta>>` | AIPP metadata, corresponding to `aipp.aipp_infos[]`; element structure is in Section 1.8 |
+| `global_shared_var_size` | `uint64_t` | Total HBM bytes of globally shared variables, default 0; the Bundle workspace is sized by the maximum across sub-models. Written even when 0, so the runtime can tell that no external variable arena is needed |
+| `var_weight_file_name` | `std::unique_ptr<char[]>` | Base name of the variable initial-data block under `data/variables/` (e.g. `var_weight_data_0`); matches the `file_name` of the corresponding `GertModelDataVariables::var_weight_data` element so the executor can look the data source up by name. Empty means this model has no initial-data block |
 
 #### 1.7 GertTensorDesc
 
@@ -869,77 +964,20 @@ Referenced by `GertModelDataModel::debug`; contains only the structure size and 
 | `struct_size` | `uint64_t` | Structure size in bytes |
 | `visual_json` | `std::unique_ptr<char[]>` | Raw visualization JSON |
 
-#### 1.14 GertModelDataVariablesConfig
+#### 1.14 GertModelDataVariables
 
-Referenced by `GertModelDataModel::variables_config`.
-
-| Field | Type | Description |
-|------|------|------|
-| `struct_size` | `uint64_t` | Structure size in bytes |
-| `graph_id` | `uint64_t` | Graph ID, default 0 |
-| `entries` | `std::vector<RTVarEntry>` | Variable resources; element structure is in Section 1.15. Represented as an object in JSON |
-| `var_metas` | `std::vector<std::unique_ptr<GertModelDataVarMeta>>` | Variable metadata; element structure is in Section 1.18 |
-| `global_shared_var_size` | `uint64_t` | Total global shared variable HBM size in bytes, default 0; Bundle workspace is allocated according to the maximum across submodels |
-
-#### 1.15 RTVarEntry
-
-Referenced by elements of `GertModelDataVariablesConfig::entries`.
-
-| Field | Type | Description |
-|------|------|------|
-| `var_name` | `std::unique_ptr<char[]>` | Variable name |
-| `var_key` | `std::unique_ptr<char[]>` | Variable key, also used as the JSON `entries` object key |
-| `op_type` | `std::unique_ptr<char[]>` | Operator type |
-| `logic_addr` | `uint64_t` | Logical address, default 0 |
-| `size` | `uint64_t` | Variable size in bytes, default 0 |
-| `memory_type` | `uint64_t` | Memory type, default 0 |
-| `tensor_desc` | `GertTensorDesc` | Variable description; reuses Section 1.7 |
-| `trans_road` | `RTVarTransRoad` | Alias for `std::vector<RTTransNodeInfo>`; transformation path, with element structure in Section 1.16 |
-| `changed_graph_id` | `uint64_t` | Graph ID associated with a change, default 0 |
-| `allocated_graph_id` | `uint64_t` | Graph ID associated with allocation, default 0 |
-| `copy_info` | `RTCopyNodeInfo` | Variable copy information; see Section 1.17 |
-| `extern_dev_addr` | `void *` | External device address, default null; not serialized |
-| `init_data` | `std::vector<uint8_t>` | Initialization data, written to a variable weight file and located by the JSON offset and size |
-| `file_name` | `std::unique_ptr<char[]>` | Variable weight file basename, used for lookup by name during deserialization |
-| `reserved` | `uint64_t[4]` | Reserved |
-
-#### 1.16 RTTransNodeInfo
-
-Referenced by elements of `RTVarEntry::trans_road`.
-
-| Field | Type | Description |
-|------|------|------|
-| `node_type` | `std::unique_ptr<char[]>` | Transformation node type |
-| `input` | `GertTensorDesc` | Description before transformation; reuses Section 1.7 |
-| `output` | `GertTensorDesc` | Description after transformation; reuses Section 1.7 |
-| `reserved` | `uint64_t[4]` | Reserved |
-
-#### 1.17 RTCopyNodeInfo
-
-Referenced by `RTVarEntry::copy_info`.
-
-| Field | Type | Description |
-|------|------|------|
-| `src_var_name` | `std::unique_ptr<char[]>` | Source variable name |
-| `src_tensor_desc` | `GertTensorDesc` | Source Tensor description; reuses Section 1.7 |
-| `reserved` | `uint64_t[4]` | Reserved |
-
-#### 1.18 GertModelDataVarMeta
-
-After expanding data referenced by `entries`, this section covers the element type of `GertModelDataVariablesConfig::var_metas`.
+Referenced by `GertModelData::variables`, corresponding to package-level `data/variables/`.
 
 | Field | Type | Description |
 |------|------|------|
 | `struct_size` | `uint64_t` | Structure size in bytes |
-| `index` | `uint64_t` | Variable index, default 0 |
-| `var_name` | `std::unique_ptr<char[]>` | Variable name |
-| `op_type` | `std::unique_ptr<char[]>` | Operator type |
-| `tensor_desc` | `GertTensorDesc` | Variable description; reuses Section 1.7 |
-| `op_name` | `std::unique_ptr<char[]>` | Operator name |
+| `var_weight_data` | `std::vector<std::unique_ptr<GertModelDataFile>>` | Variable initial-data blocks; element structure is in Section 1.12. The index corresponds one-to-one with `GertModelData::models`, and the element is null for a model with no initial-data block. Each element's `file_name` holds the base name `var_weight_data_N` (prefix constant `OM2_VAR_WEIGHT_FILE_PREFIX`), matching `GertModelDataModelMeta::var_weight_file_name` so the executor can look the data source up by name |
 
-This completes the expansion of data referenced by `GertModelData::models`. The following sections cover the remaining members of the root structure in order.
+The executor hands the matched block's `data` / `data_size` to the model SO through `GertModelVarContext` (see Section 3.9), and the SO slices it by the `init_data_offset` / `init_data_size` values fixated at compile time — **per-variable offsets and sizes inside the block are not persisted**; the archive holds a single whole-block file. This follows directly from offloading variable preparation into the model SO: the SO's fixated table is the only source of variable metadata, and the parallel `variables_config.json` channel is gone (that file and the five structures `GertModelDataVariablesConfig` / `RTVarEntry` / `RTTransNodeInfo` / `RTCopyNodeInfo` / `GertModelDataVarMeta` have all been removed).
 
-#### 1.19 GertModelDataConstants
+This completes the expansion of data referenced by `GertModelData::models` and `GertModelData::variables`. The following sections cover the remaining members of the root structure in order.
+
+#### 1.15 GertModelDataConstants
 
 Referenced by `GertModelData::constants`, corresponding to package-level `data/constants/`.
 
@@ -948,7 +986,7 @@ Referenced by `GertModelData::constants`, corresponding to package-level `data/c
 | `struct_size` | `uint64_t` | Structure size in bytes |
 | `constants_data` | `std::vector<std::unique_ptr<GertModelDataFile>>` | Associated with `constant_N` by model index; elements may be null for external weights. File structure reuses Section 1.12 |
 
-#### 1.20 GertModelDataKernels
+#### 1.16 GertModelDataKernels
 
 Referenced by `GertModelData::kernels`, corresponding to package-level `data/kernels/`.
 
@@ -957,7 +995,7 @@ Referenced by `GertModelData::kernels`, corresponding to package-level `data/ker
 | `struct_size` | `uint64_t` | Structure size in bytes |
 | `binaries` | `std::vector<std::unique_ptr<GertModelDataFile>>` | Operator binary file collection; file structure reuses Section 1.12 |
 
-#### 1.21 GertModelDataCustomOps
+#### 1.17 GertModelDataCustomOps
 
 Referenced by `GertModelData::custom_ops`, corresponding to package-level `data/custom_ops/`.
 
@@ -967,7 +1005,7 @@ Referenced by `GertModelData::custom_ops`, corresponding to package-level `data/
 | `binaries` | `std::vector<std::unique_ptr<GertModelDataFile>>` | Custom operator binaries under `binaries_npu_arch/`; file structure reuses Section 1.12 |
 | `libraries` | `std::vector<std::unique_ptr<GertModelDataFile>>` | Custom operator shared libraries under `shared_libs/`; file structure reuses Section 1.12 |
 
-#### 1.22 GertBuffer
+#### 1.18 GertBuffer
 
 The recursive description of the root structure ends here. `GertBuffer` is a common buffer defined in this header, not a member of `GertModelData`, and is documented separately below.
 
@@ -977,7 +1015,7 @@ The recursive description of the root structure ends here. `GertBuffer` is a com
 | `data` | `std::shared_ptr<uint8_t>` | Shared ownership of the buffer, default null |
 | `reserved` | `uint64_t[4]` | Reserved |
 
-#### 1.23 Common Constants
+#### 1.19 Common Constants
 
 | Definition | Type/Value | Description |
 |------|---------|------|
@@ -1014,9 +1052,9 @@ All 23 string constants below have type `inline constexpr const char *` and are 
 | `OM2_CONSTANTS_DIR` | `data/constants/` | Constant directory |
 | `OM2_CONSTANTS_FILE_PREFIX` | `constant_` | Constant file name prefix |
 | `OM2_CONSTANTS_CONFIG_PATH_FORMAT` | `data/model_%s/constants_config.json` | Constant configuration |
-| `OM2_VARIABLES_CONFIG_PATH_FORMAT` | `data/model_%s/variables_config.json` | Variable configuration |
-| `OM2_VARIABLES_DIR` | `data/variables/` | Variable weight directory |
-| `OM2_VAR_WEIGHT_FILE_FORMAT` | `data/variables/var_weight_data_%s` | Variable weight file; `%s` is the model index |
+| `OM2_VARIABLES_DIR` | `data/variables/` | Variable initial-data block directory |
+| `OM2_VAR_WEIGHT_FILE_PREFIX` | `var_weight_data_` | Base-name prefix of a variable initial-data block; written into `var_weight_file_name` of `model_meta.json` |
+| `OM2_VAR_WEIGHT_FILE_FORMAT` | `data/variables/var_weight_data_%s` | Variable initial-data block file; `%s` is the model index |
 | `OM2_VISUAL_JSON_PATH_FORMAT` | `data/model_%s/debug/ge_visual_00000000_graph_0.json` | Visualization JSON |
 
 #### 2.2 GertFileType and the Compression Whitelist
@@ -1030,13 +1068,18 @@ All 23 string constants below have type `inline constexpr const char *` and are 
 | `kConstants` | 2 | `data/constants/constant_N` | No, Stored |
 | `kConstantsConfig` | 3 | `data/model_%s/constants_config.json` | Yes, whitelisted, DEFLATE |
 | `kVarWeight` | 4 | `data/variables/var_weight_data_N` | No, Stored |
-| `kVariablesConfig` | 5 | `data/model_%s/variables_config.json` | No, Stored |
-| `kKernels` | 6 | `data/kernels/*` | No, Stored |
-| `kCustomKernels` | 7 | `data/custom_ops/*` | No, Stored |
-| `kModelMeta` | 8 | `data/model_%s/model_meta.json` | No, Stored |
-| `kOpAttr` | 9 | `data/model_%s/op_attr.json` | Yes, whitelisted, DEFLATE |
-| `kVisualJson` | 10 | `data/model_%s/debug/ge_visual_*.json` | Yes, whitelisted, DEFLATE |
-| `kManifest` | 11 | `manifest.json` | No, Stored |
+| `kKernels` | 5 | `data/kernels/*` | No, Stored |
+| `kCustomKernels` | 6 | `data/custom_ops/*` | No, Stored |
+| `kModelMeta` | 7 | `data/model_%s/model_meta.json` | No, Stored |
+| `kOpAttr` | 8 | `data/model_%s/op_attr.json` | Yes, whitelisted, DEFLATE |
+| `kVisualJson` | 9 | `data/model_%s/debug/ge_visual_*.json` | Yes, whitelisted, DEFLATE |
+| `kManifest` | 10 | `manifest.json` | No, Stored |
+
+> `kVariablesConfig` (value 5, `data/model_%s/variables_config.json`) used to sit right after
+> `kVarWeight` and has been removed together with the offload of variable preparation into the
+> model SO, so every subsequent enumerator **shifts down by 1** (`kKernels` 6 to 5 ... `kManifest`
+> 11 to 10). The enum only distinguishes file categories while packaging an archive and is never
+> persisted as a number, and OM2 has not been released yet, so there is no compatibility impact.
 
 #### 2.3 Utility Functions and Maintenance
 

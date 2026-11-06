@@ -19,6 +19,7 @@ namespace ge {
 class ParamDecl;
 class TranslationUnit;
 class StablePartDecl;
+class RawTextDecl;
 class IncludeDecl;
 class SpaceDecl;
 class TypeAliasDecl;
@@ -26,6 +27,7 @@ class NamespaceDecl;
 class ExternBlockDecl;
 class ClassDecl;
 class StructDecl;
+class EnumDecl;
 class AccessSectionDecl;
 class FieldDecl;
 class MethodDecl;
@@ -65,6 +67,8 @@ class ForStmt;
 class RangeForStmt;
 class CaseStmt;
 class BreakStmt;
+class ContinueStmt;
+class TryCatchStmt;
 class SwitchStmt;
 
 class CodeEmitter {
@@ -74,6 +78,7 @@ class CodeEmitter {
   virtual Status Emit(const ParamDecl &node, std::string &output) = 0;
   virtual Status Emit(const TranslationUnit &node, std::string &output) = 0;
   virtual Status Emit(const StablePartDecl &node, std::string &output) = 0;
+  virtual Status Emit(const RawTextDecl &node, std::string &output) = 0;
   virtual Status Emit(const IncludeDecl &node, std::string &output) = 0;
   virtual Status Emit(const SpaceDecl &node, std::string &output) = 0;
   virtual Status Emit(const TypeAliasDecl &node, std::string &output) = 0;
@@ -81,6 +86,7 @@ class CodeEmitter {
   virtual Status Emit(const ExternBlockDecl &node, std::string &output) = 0;
   virtual Status Emit(const ClassDecl &node, std::string &output) = 0;
   virtual Status Emit(const StructDecl &node, std::string &output) = 0;
+  virtual Status Emit(const EnumDecl &node, std::string &output) = 0;
   virtual Status Emit(const AccessSectionDecl &node, std::string &output) = 0;
   virtual Status Emit(const FieldDecl &node, std::string &output) = 0;
   virtual Status Emit(const MethodDecl &node, std::string &output) = 0;
@@ -120,6 +126,8 @@ class CodeEmitter {
   virtual Status Emit(const RangeForStmt &node, std::string &output) = 0;
   virtual Status Emit(const CaseStmt &node, std::string &output) = 0;
   virtual Status Emit(const BreakStmt &node, std::string &output) = 0;
+  virtual Status Emit(const ContinueStmt &node, std::string &output) = 0;
+  virtual Status Emit(const TryCatchStmt &node, std::string &output) = 0;
   virtual Status Emit(const SwitchStmt &node, std::string &output) = 0;
 };
 

@@ -17,6 +17,7 @@
 #include "common/om2/codegen/file_code_generator/kernel_reg_file_code_generator.h"
 #include "common/om2/codegen/file_code_generator/load_and_run_file_code_generator.h"
 #include "common/om2/codegen/file_code_generator/resources_file_code_generator.h"
+#include "common/om2/codegen/file_code_generator/var_mgr_file_code_generator.h"
 #include "common/om2/codegen/om2_codegen_utils.h"
 #include "framework/common/debug/ge_log.h"
 
@@ -50,7 +51,33 @@ Status ProgramGenerator::GenerateProgram(Om2CodePrinter &code_printer) {
   GE_ASSERT_SUCCESS(GenerateResourcesSource(code_printer));
   GE_ASSERT_SUCCESS(GenerateLoadAndRunSource(code_printer));
   GE_ASSERT_SUCCESS(GenerateArgsManagerSource(code_printer));
+  // 必须在 GenerateMakeFile 之前：磁盘 Makefile 的 SRC_FILES 要按是否生成条件追加
+  GE_ASSERT_SUCCESS(GenerateVarMgrSource(code_printer));
   GE_ASSERT_SUCCESS(GenerateMakeFile(code_printer));
+  return SUCCESS;
+}
+
+Status ProgramGenerator::GenerateVarMgrSource(Om2CodePrinter &code_printer) {
+  VarMgrFileCodeGenerator generator(ast_, codegen_model_.artifact_name, codegen_model_.var_fixup);
+  if (!generator.HasVariables()) {
+    // 无变量的模型不生成该文件。不会留下悬空引用：resources.cpp 同判据不发射 var_mgr 入口声明
+    // 与变量准备段，Makefile 的 SRC_FILES 由 has_var_mgr_file_ 保持 false 而自动省略，产物列表按
+    // file_name.empty() 跳过。转换部分与本文件同生共死，故不存在"只少一半"的中间状态。
+    return SUCCESS;
+  }
+  const std::string file_name = codegen_model_.artifact_name + "_var_mgr.cpp";
+  // 先构建再注册：内嵌单元缺失、或转换链里有未注册的格式对时直接失败，
+  // 不留一个已注册却无内容的文件
+  DeclNode *file = nullptr;
+  GE_CHK_STATUS_RET(generator.BuildFile(file), "Failed to build %s.", file_name.c_str());
+  // 不在 InitDefaultFileInfo 注册：该函数无条件注册全部既有文件，
+  // 改由此处按需注册，未注册时 GetOutputFiles 按 file_name.empty() 自动跳过
+  code_printer.SetFileInfo(GeneratedFileIndex::kVarMgrFile, file_name);
+  // atc 经 /proc/self/fd/N 传源码给编译器，__FILE__ 会展开为 fd 路径，EmitFile 内插 #line 纠正
+  GE_ASSERT_SUCCESS(EmitFile(GeneratedFileIndex::kVarMgrFile, file, code_printer));
+  has_var_mgr_file_ = true;
+  GELOGI("[OM2] Model %s var_mgr source is generated, %zu entries.", codegen_model_.artifact_name.c_str(),
+         codegen_model_.var_fixup.entries.size());
   return SUCCESS;
 }
 
@@ -132,11 +159,19 @@ Status ProgramGenerator::GenerateResourcesSource(Om2CodePrinter &code_printer) {
   if (codegen_model_.runtime.has_label_goto) {
     resources_items.push_back(ast_.StablePart(StablePartId::kCreateLabelListForLabelGotoEx));
   }
-  auto *translation_unit = ast_.File({
+  std::vector<DeclNode *> file_items = {
       ast_.Include(codegen_model_.artifact_name + "_internal.h"),
       ast_.Space(),
-      ast_.Namespace("om2", resources_items),
-  });
+  };
+  if (HasVariables(codegen_model_.var_fixup)) {
+    // var_mgr.cpp 是独立编译单元，其两个入口不进 _internal.h，故在此声明。
+    // 无变量时那个文件不生成，声明与 InitResources 里的调用点按同一判据一并裁掉，
+    // 产物内不留任何 gert::var_mgr 痕迹。
+    file_items.push_back(ast_.StablePart(StablePartId::kVarMgrDecls));
+    file_items.push_back(ast_.Space());
+  }
+  file_items.push_back(ast_.Namespace("om2", resources_items));
+  auto *translation_unit = ast_.File(file_items);
   GE_ASSERT_SUCCESS(EmitFile(GeneratedFileIndex::kResourcesFile, translation_unit, code_printer));
   GELOGD("[OM2] Interface header file code is generated.");
   return SUCCESS;
@@ -239,6 +274,8 @@ Status ProgramGenerator::GenerateLoadAndRunSource(Om2CodePrinter &code_printer) 
 Status ProgramGenerator::GenerateMakeFile(Om2CodePrinter &code_printer) {
   const std::string &artifact_name = codegen_model_.artifact_name;
   const std::string lib_name = artifact_name + "_om2";
+  // 磁盘 Makefile 的 SRC_FILES 是硬编码的，须与实际产物集合一致，否则用户离线重编会缺文件
+  const std::string var_mgr_src = has_var_mgr_file_ ? (" " + artifact_name + "_var_mgr.cpp") : "";
   std::string cmakelists_content = R"(CANN_ROOT ?= $(ASCEND_HOME_PATH)
 USE_STUB_LIB ?= 1
 MAKEFLAGS += -j$(shell nproc)
@@ -251,11 +288,12 @@ CXX ?= c++
 TARGET := ../lib)" + lib_name + R"(.so
 SRC_FILES := )" + artifact_name + R"(_resources.cpp )" +
                                    artifact_name + R"(_kernel_reg.cpp )" + artifact_name + R"(_load_and_run.cpp )" +
-                                   artifact_name + R"(_args_manager.cpp
+                                   artifact_name + R"(_args_manager.cpp)" + var_mgr_src + R"(
 
 ifndef CPPFLAGS
 CPPFLAGS := \
   -I$(CANN_ROOT)/include \
+  -I$(CANN_ROOT)/include/external \
   -I$(CANN_ROOT)/pkg_inc \
   -I$(CANN_ROOT)/pkg_inc/base \
   -I$(CANN_ROOT)/pkg_inc/runtime \

@@ -13,6 +13,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include "graph/custom_op/capability.h"
 #include "graph/error_codes.h"
@@ -33,6 +35,18 @@ struct PythonCustomOpStringView {
   const char *data;
   size_t size;
 };
+
+// 跨 SO 边界的字符串视图统一拷贝入口（loader / proto / pybind bridge 共用）：
+// size 非零却无 data 视为非法；\0 只可能来自对端写坏的内存，一并拒绝。
+// allow_empty 仅放宽空串（如仅诊断用途的 source_name），其余语义（非空 + 无 \0）不变。
+inline bool CopyPythonCustomOpStringView(const PythonCustomOpStringView &view, const bool allow_empty,
+                                         std::string &value) {
+  if ((view.size != 0U) && (view.data == nullptr)) {
+    return false;
+  }
+  value.assign(view.data == nullptr ? "" : view.data, view.size);
+  return (allow_empty || (!value.empty())) && (value.find('\0') == std::string::npos);
+}
 
 enum PythonCustomOpProtoInputKind : uint32_t {
   kPythonInputRequired = 0U,
@@ -129,12 +143,34 @@ struct PythonCustomOpAdapterDescriptorView {
   CustomOpCapabilityMask capabilities;
 };
 
+// 恢复侧携带的 canonical IR 定义（保存侧从编译进程 OperatorFactory 冻结）。
+// kind 与 PythonCustomOpProtoInputKind / PythonCustomOpProtoOutputKind 位定义一致；
+// attr 的 type 为 IR 类型名字符串（int/float/bool/string/dataType/listInt/...）。
+// 仅用于 D4 抑制原型注册后 schema-bound 接口的参数绑定，不参与注册与 shape 推导。
+struct PythonCustomOpIrInputDefView {
+  PythonCustomOpStringView name;
+  uint32_t kind;
+};
+
+struct PythonCustomOpIrAttrDefView {
+  PythonCustomOpStringView name;
+  PythonCustomOpStringView type;
+};
+
+struct PythonCustomOpIrOutputDefView {
+  PythonCustomOpStringView name;
+  uint32_t kind;
+};
+
 using PythonCustomOpImplHolderCreateFn = void *(*)(const PythonCustomOpAdapterDescriptorView *desc);
 using PythonCustomOpImplHolderDestroyFn = void (*)(void *holder);
 using PythonCustomOpImplExecuteFn = graphStatus (*)(const void *holder, gert::EagerOpExecutionContext *ctx);
 using PythonCustomOpImplHostExecuteFn = graphStatus (*)(const void *holder, gert::HostCpuOpExecutionContext *ctx);
 using PythonCustomOpImplDeclareLaunchArgsFn = graphStatus (*)(const void *holder, gert::AnnotatedArgsContext *ctx);
 using PythonCustomOpImplCompileFn = graphStatus (*)(const void *holder, gert::OpCompileContext *ctx);
+using PythonCustomOpImplSerializeFn = graphStatus (*)(const void *holder, std::vector<uint8_t> *output);
+using PythonCustomOpImplDeserializeFn = graphStatus (*)(const void *holder, const uint8_t *data, size_t size);
+// 接口扩展约定：新增字段一律尾部追加，不得插入既有字段之间（参考 graph_metadef.md §3）。
 struct PythonCustomOpAdapterCallbacks {
   PythonCustomOpImplHolderCreateFn create_impl_holder{nullptr};
   PythonCustomOpImplHolderDestroyFn destroy_impl_holder{nullptr};
@@ -143,12 +179,15 @@ struct PythonCustomOpAdapterCallbacks {
   PythonCustomOpImplDeclareLaunchArgsFn declare_launch_args{nullptr};
   PythonCustomOpImplCompileFn compile_impl{nullptr};
   PythonCustomOpInferMetaFn infer_meta{nullptr};
+  PythonCustomOpImplSerializeFn serialize{nullptr};
+  PythonCustomOpImplDeserializeFn deserialize{nullptr};
 
   bool IsValid(CustomOpCapabilityMask capabilities) const {
     const auto supported_capabilities = static_cast<CustomOpCapabilityMask>(CustomOpCapability::kEagerExecute) |
                                         static_cast<CustomOpCapabilityMask>(CustomOpCapability::kHostCpuExecute) |
                                         static_cast<CustomOpCapabilityMask>(CustomOpCapability::kCompilable) |
-                                        static_cast<CustomOpCapabilityMask>(CustomOpCapability::kAnnotatedArgs);
+                                        static_cast<CustomOpCapabilityMask>(CustomOpCapability::kAnnotatedArgs) |
+                                        static_cast<CustomOpCapabilityMask>(CustomOpCapability::kPortable);
     if ((capabilities == 0U) || ((capabilities & (~supported_capabilities)) != 0U)) {
       return false;
     }
@@ -165,6 +204,10 @@ struct PythonCustomOpAdapterCallbacks {
       return false;
     }
     if (HasCustomOpCapability(capabilities, CustomOpCapability::kCompilable) && (compile_impl == nullptr)) {
+      return false;
+    }
+    if (HasCustomOpCapability(capabilities, CustomOpCapability::kPortable) &&
+        ((serialize == nullptr) || (deserialize == nullptr))) {
       return false;
     }
     return true;

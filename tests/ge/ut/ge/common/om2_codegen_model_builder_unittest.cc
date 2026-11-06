@@ -1079,7 +1079,8 @@ GeRootModelPtr CreateGeRootModelWithTwoNetOutputs() {
 
 Status BuildCodegenModel(const GeRootModelPtr &ge_root_model, Om2CodegenModel &doc,
                          std::vector<TaskCodeBuilderPtr> *task_generators_out = nullptr,
-                         std::vector<gert::GertModelDataConstMeta> *const_metas_out = nullptr) {
+                         std::vector<gert::GertModelDataConstMeta> *const_metas_out = nullptr,
+                         std::vector<VarSlotMeta> *var_metas_out = nullptr) {
   GE_ASSERT_NOTNULL(ge_root_model);
   SyncKernelNameForAllModels(ge_root_model);
   const auto &name_to_ge_model = ge_root_model->GetSubgraphInstanceNameToModel();
@@ -1093,19 +1094,24 @@ Status BuildCodegenModel(const GeRootModelPtr &ge_root_model, Om2CodegenModel &d
 
   Om2CodegenModelBuilder builder;
   std::vector<gert::GertModelDataConstMeta> const_metas;
-  GE_CHK_STATUS_RET(builder.Build(ge_model, task_builders, doc, const_metas));
+  std::vector<VarSlotMeta> var_metas;
+  GE_CHK_STATUS_RET(builder.Build(ge_model, task_builders, doc, const_metas, var_metas));
   if (task_generators_out != nullptr) {
     *task_generators_out = task_builders;
   }
   if (const_metas_out != nullptr) {
     *const_metas_out = std::move(const_metas);
   }
+  if (var_metas_out != nullptr) {
+    *var_metas_out = std::move(var_metas);
+  }
   return SUCCESS;
 }
 
 Status BuildCodegenModel(const GeModelPtr &ge_model, Om2CodegenModel &doc,
                          std::vector<TaskCodeBuilderPtr> *task_generators_out = nullptr,
-                         std::vector<gert::GertModelDataConstMeta> *const_metas_out = nullptr) {
+                         std::vector<gert::GertModelDataConstMeta> *const_metas_out = nullptr,
+                         std::vector<VarSlotMeta> *var_metas_out = nullptr) {
   GE_ASSERT_NOTNULL(ge_model);
   SyncKernelNameFromOpDesc(ge_model);
   std::vector<TaskCodeBuilderPtr> task_builders;
@@ -1114,14 +1120,24 @@ Status BuildCodegenModel(const GeModelPtr &ge_model, Om2CodegenModel &doc,
 
   Om2CodegenModelBuilder builder;
   std::vector<gert::GertModelDataConstMeta> const_metas;
-  GE_CHK_STATUS_RET(builder.Build(ge_model, task_builders, doc, const_metas));
+  std::vector<VarSlotMeta> var_metas;
+  GE_CHK_STATUS_RET(builder.Build(ge_model, task_builders, doc, const_metas, var_metas));
   if (task_generators_out != nullptr) {
     *task_generators_out = task_builders;
   }
   if (const_metas_out != nullptr) {
     *const_metas_out = std::move(const_metas);
   }
+  if (var_metas_out != nullptr) {
+    *var_metas_out = std::move(var_metas);
+  }
   return SUCCESS;
+}
+
+// var_metas 已不是 Om2CodegenModel 的成员（改为 builder 的出参），只关心变量槽位元数据的用例走这个封装
+Status BuildVarSlotMetas(const GeRootModelPtr &ge_root_model, std::vector<VarSlotMeta> &var_metas) {
+  Om2CodegenModel doc;
+  return BuildCodegenModel(ge_root_model, doc, nullptr, nullptr, &var_metas);
 }
 
 Status BuildCodegenModelWithTaskGenerators(const GeRootModelPtr &ge_root_model,
@@ -1134,7 +1150,8 @@ Status BuildCodegenModelWithTaskGenerators(const GeRootModelPtr &ge_root_model,
   GE_ASSERT_NOTNULL(ge_model);
   Om2CodegenModelBuilder builder;
   std::vector<gert::GertModelDataConstMeta> const_metas;
-  return builder.Build(ge_model, task_builders, doc, const_metas);
+  std::vector<VarSlotMeta> var_metas;
+  return builder.Build(ge_model, task_builders, doc, const_metas, var_metas);
 }
 
 // 构造带一个 MODEL_TASK_CUSTOM_KERNEL 任务的模型，args_format 可指定，
@@ -1411,7 +1428,8 @@ TEST_F(Om2CodegenModelBuilderUt, BuildKernelRegistryAndLaunch_AicoreAtomic_Ok) {
       SUCCESS);
   Om2CodegenModelBuilder builder;
   std::vector<gert::GertModelDataConstMeta> const_metas;
-  ASSERT_EQ(builder.Build(ge_model, task_builders, doc, const_metas), SUCCESS);
+  std::vector<VarSlotMeta> var_metas;
+  ASSERT_EQ(builder.Build(ge_model, task_builders, doc, const_metas, var_metas), SUCCESS);
 
   const std::string kernel_name = "te_Add_12345_AicoreKernel";
   const std::string atomic_kernel_name = "te_Add_12345_atomic_AicoreKernel";
@@ -1862,21 +1880,22 @@ GeRootModelPtr CreateGeRootModelWithVariableOps(const std::vector<VariableNodeSp
   return ge_root_model;
 }
 
-TEST_F(Om2CodegenModelBuilderUt, BuildVarInputs_ThreeVariableTypesKeepRootSizeAndUniqueIndex) {
+TEST_F(Om2CodegenModelBuilderUt, BuildVarInputs_ThreeVariableTypesKeepUniqueSlot) {
   const std::vector<VariableNodeSpec> specs{{"variable", VARIABLE, 1024, {16}},
                                             {"constant", CONSTANTOP, 2048, {32}},
                                             {"placeholder", CONSTPLACEHOLDER, 4096, {64}}};
   auto ge_root_model = CreateGeRootModelWithVariableOps(specs);
   ASSERT_NE(ge_root_model, nullptr);
 
-  Om2CodegenModel doc;
-  ASSERT_EQ(BuildCodegenModel(ge_root_model, doc), SUCCESS);
-  ASSERT_EQ(doc.var_metas.size(), specs.size());
+  std::vector<VarSlotMeta> var_metas;
+  ASSERT_EQ(BuildVarSlotMetas(ge_root_model, var_metas), SUCCESS);
+  // var_metas 是纯槽位编号载体（slot + var_name），不携带 op_type 与 tensor_desc：
+  // 槽位下标经固化表直接编进模型 SO，归档里没有承载这两项的文件。
+  // 三个变量的 root/size 冲突与重叠校验仍在 BuildVarInputForNode 内执行，尺寸算错会直接断言失败。
+  ASSERT_EQ(var_metas.size(), specs.size());
   for (size_t i = 0U; i < specs.size(); ++i) {
-    EXPECT_EQ(doc.var_metas[i].index, i);
-    EXPECT_EQ(std::string(gert::GertGetStr(doc.var_metas[i].var_name)), specs[i].name);
-    EXPECT_EQ(std::string(gert::GertGetStr(doc.var_metas[i].op_type)), specs[i].type);
-    EXPECT_EQ(doc.var_metas[i].tensor_desc.size, static_cast<size_t>(specs[i].shape[0]));
+    EXPECT_EQ(var_metas[i].slot, i);
+    EXPECT_EQ(var_metas[i].var_name, specs[i].name);
   }
 }
 
@@ -1885,11 +1904,11 @@ TEST_F(Om2CodegenModelBuilderUt, BuildVarInputs_MissingOutputOffsetKeepsSkipBeha
       {{"skipped", VARIABLE, 0, {16}, std::nullopt, false}, {"kept", CONSTANTOP, 1024, {32}}});
   ASSERT_NE(ge_root_model, nullptr);
 
-  Om2CodegenModel doc;
-  ASSERT_EQ(BuildCodegenModel(ge_root_model, doc), SUCCESS);
-  ASSERT_EQ(doc.var_metas.size(), 1U);
-  EXPECT_EQ(doc.var_metas[0].index, 0U);
-  EXPECT_EQ(std::string(gert::GertGetStr(doc.var_metas[0].var_name)), "kept");
+  std::vector<VarSlotMeta> var_metas;
+  ASSERT_EQ(BuildVarSlotMetas(ge_root_model, var_metas), SUCCESS);
+  ASSERT_EQ(var_metas.size(), 1U);
+  EXPECT_EQ(var_metas[0].slot, 0U);
+  EXPECT_EQ(var_metas[0].var_name, "kept");
 }
 
 TEST_F(Om2CodegenModelBuilderUt, BuildVarInputs_AdjacentRangesSucceed) {
@@ -1897,11 +1916,11 @@ TEST_F(Om2CodegenModelBuilderUt, BuildVarInputs_AdjacentRangesSucceed) {
       CreateGeRootModelWithVariableOps({{"left", VARIABLE, 1024, {16}}, {"right", CONSTANTOP, 1040, {32}}});
   ASSERT_NE(ge_root_model, nullptr);
 
-  Om2CodegenModel doc;
-  ASSERT_EQ(BuildCodegenModel(ge_root_model, doc), SUCCESS);
-  ASSERT_EQ(doc.var_metas.size(), 2U);
-  EXPECT_EQ(doc.var_metas[0].index, 0U);
-  EXPECT_EQ(doc.var_metas[1].index, 1U);
+  std::vector<VarSlotMeta> var_metas;
+  ASSERT_EQ(BuildVarSlotMetas(ge_root_model, var_metas), SUCCESS);
+  ASSERT_EQ(var_metas.size(), 2U);
+  EXPECT_EQ(var_metas[0].slot, 0U);
+  EXPECT_EQ(var_metas[1].slot, 1U);
 }
 
 TEST_F(Om2CodegenModelBuilderUt, BuildVarInputs_DifferentRootsOverlappingFails) {
@@ -1918,13 +1937,13 @@ TEST_F(Om2CodegenModelBuilderUt, BuildVarInputs_SameRootSameSizeKeepsUniqueMetad
       CreateGeRootModelWithVariableOps({{"first", CONSTANTOP, 1024, {32}}, {"last", CONSTANTOP, 1024, {32}}});
   ASSERT_NE(ge_root_model, nullptr);
 
-  Om2CodegenModel doc;
-  ASSERT_EQ(BuildCodegenModel(ge_root_model, doc), SUCCESS);
-  ASSERT_EQ(doc.var_metas.size(), 2U);
-  EXPECT_EQ(doc.var_metas[0].index, 0U);
-  EXPECT_EQ(std::string(gert::GertGetStr(doc.var_metas[0].var_name)), "first");
-  EXPECT_EQ(doc.var_metas[1].index, 1U);
-  EXPECT_EQ(std::string(gert::GertGetStr(doc.var_metas[1].var_name)), "last");
+  std::vector<VarSlotMeta> var_metas;
+  ASSERT_EQ(BuildVarSlotMetas(ge_root_model, var_metas), SUCCESS);
+  ASSERT_EQ(var_metas.size(), 2U);
+  EXPECT_EQ(var_metas[0].slot, 0U);
+  EXPECT_EQ(var_metas[0].var_name, "first");
+  EXPECT_EQ(var_metas[1].slot, 1U);
+  EXPECT_EQ(var_metas[1].var_name, "last");
 }
 
 TEST_F(Om2CodegenModelBuilderUt, BuildVarInputs_SameRootDifferentSizeFails) {
@@ -1982,10 +2001,11 @@ TEST_F(Om2CodegenModelBuilderUt, BuildVarInputs_HighSignedRootAndSizeFitUint64) 
       CreateGeRootModelWithVariableOps({{"high_root", VARIABLE, std::numeric_limits<int64_t>::max() - 7, {16}}});
   ASSERT_NE(ge_root_model, nullptr);
 
-  Om2CodegenModel doc;
-  ASSERT_EQ(BuildCodegenModel(ge_root_model, doc), SUCCESS);
-  ASSERT_EQ(doc.var_metas.size(), 1U);
-  EXPECT_EQ(doc.var_metas[0].tensor_desc.size, 16U);
+  std::vector<VarSlotMeta> var_metas;
+  ASSERT_EQ(BuildVarSlotMetas(ge_root_model, var_metas), SUCCESS);
+  // root + size 的溢出校验在 ParseVarRootAndSize 内，越界会让 BuildVarSlotMetas 直接失败
+  ASSERT_EQ(var_metas.size(), 1U);
+  EXPECT_EQ(var_metas[0].var_name, "high_root");
 }
 
 GeRootModelPtr CreateGeRootModelWithVariableOp() {
@@ -2063,17 +2083,13 @@ GeRootModelPtr CreateGeRootModelWithVariableOp() {
 TEST_F(Om2CodegenModelBuilderUt, BuildVarInputs_WithVariableNode_Ok) {
   GeRootModelPtr ge_root_model = CreateGeRootModelWithVariableOp();
   ASSERT_NE(ge_root_model, nullptr);
-  Om2CodegenModel doc;
-  ASSERT_EQ(BuildCodegenModel(ge_root_model, doc), SUCCESS);
-  ASSERT_GE(doc.var_metas.size(), 1U);
+  std::vector<VarSlotMeta> var_metas;
+  ASSERT_EQ(BuildVarSlotMetas(ge_root_model, var_metas), SUCCESS);
+  ASSERT_GE(var_metas.size(), 1U);
   bool found_var = false;
-  for (const auto &meta : doc.var_metas) {
-    if (std::string(gert::GertGetStr(meta.var_name)) == "var1") {
+  for (const auto &meta : var_metas) {
+    if (meta.var_name == "var1") {
       found_var = true;
-      EXPECT_EQ(std::string(gert::GertGetStr(meta.op_type)), "Variable");
-      EXPECT_EQ(std::string(gert::GertGetStr(meta.op_name)), "var1");
-      EXPECT_EQ(meta.tensor_desc.data_type, DT_FLOAT);
-      EXPECT_EQ(meta.tensor_desc.format, FORMAT_ND);
     }
   }
   EXPECT_TRUE(found_var) << "Variable node 'var1' not found in var_metas";

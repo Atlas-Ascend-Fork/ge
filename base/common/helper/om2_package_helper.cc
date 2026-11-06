@@ -38,7 +38,6 @@
 #include "common/helper/visual_json_converter.h"
 #include "graph/ge_context.h"
 #include "graph/manager/graph_var_manager.h"
-#include "common/helper/om2/rt_var_resource_builder.h"
 #include "common/op_so_store/op_so_store_utils.h"
 #include "framework/common/gert_model_data_repack.h"
 
@@ -716,11 +715,13 @@ Status Om2PackageHelper::ExtractVisualJson(const void *model_data, size_t model_
 }
 
 Status Om2PackageHelper::BuildProgramBody(const GeModelPtr &ge_model, gert::GertModelData &model_data,
-                                          gert::GertModelDataModel &unit) {
+                                          gert::GertModelDataModel &unit,
+                                          std::unique_ptr<gert::GertModelDataFile> &var_weight_slot,
+                                          const size_t model_index) {
   GELOGI("[OM2] Begin to build program body");
   auto &body = *unit.runtime;
   Om2Codegen codegen;
-  GE_ASSERT_SUCCESS(codegen.Om2CodegenAndCompile(ge_model, model_data, unit));
+  GE_ASSERT_SUCCESS(codegen.Om2CodegenAndCompile(ge_model, model_data, unit, var_weight_slot, model_index));
   GE_ASSERT_TRUE(!body.source_artifacts.empty());
 
   for (const auto &artifact : body.source_artifacts) {
@@ -733,9 +734,9 @@ Status Om2PackageHelper::BuildProgramBody(const GeModelPtr &ge_model, gert::Gert
   }
 
   auto &const_metas = unit.constants_config->consts;
-  const auto var_metas_size = (unit.variables_config != nullptr) ? unit.variables_config->var_metas.size() : 0UL;
-  GELOGI("[OM2] Successfully built program body, artifacts count=%zu, const_metas count=%zu, var_metas count=%zu",
-         body.source_artifacts.size(), const_metas.size(), var_metas_size);
+  const auto var_weight_size = (var_weight_slot != nullptr) ? var_weight_slot->data_size : 0UL;
+  GELOGI("[OM2] Successfully built program body, artifacts count=%zu, const_metas count=%zu, var_weight_size=%" PRIu64,
+         body.source_artifacts.size(), const_metas.size(), var_weight_size);
   return SUCCESS;
 }
 
@@ -968,6 +969,7 @@ Status Om2PackageHelper::BuildOm2ModelData(const GeModelPtr &ge_model, gert::Ger
   // 入口统一分配目录聚合结构（多次构建追加模型时仅首次分配）
   gert::InitGertModelData(model_data);
   (void)model_data.constants->constants_data.emplace_back();
+  (void)model_data.variables->var_weight_data.emplace_back();
   model_data.manifest = std::make_unique<gert::GertModelDataManifest>();
 
   // Set model-level attrs for OM2 JSON compatibility
@@ -985,22 +987,11 @@ Status Om2PackageHelper::BuildOm2ModelData(const GeModelPtr &ge_model, gert::Ger
 
   GE_ASSERT_SUCCESS(BuildCustomKernelBinaries(ge_root_model, model_data));
   GE_ASSERT_SUCCESS(BuildCustomSharedLibs(ge_root_model, model_data));
-  GE_ASSERT_SUCCESS(BuildProgramBody(ge_model, model_data, unit));
+  GE_ASSERT_SUCCESS(BuildProgramBody(ge_model, model_data, unit, model_data.variables->var_weight_data[0], 0UL));
   GE_ASSERT_SUCCESS(BuildKernelBinaries(ge_model, model_data));
   GE_ASSERT_SUCCESS(BuildModelMeta(ge_model, unit));
   GE_ASSERT_SUCCESS(BuildConstantsData(ge_model, unit, model_data.constants->constants_data[0], 0UL));
 
-  const auto compute_graph = ge_model->GetGraph();
-  if (unit.variables_config == nullptr) {
-    unit.variables_config = std::make_unique<gert::GertModelDataVariablesConfig>();
-  }
-  unit.variables_config->graph_id = (compute_graph != nullptr) ? compute_graph->GetGraphID() : 0U;
-  const auto session_id = GetContext().SessionId();
-  auto var_manager = ge::VarManager::Instance(session_id);
-  if (var_manager != nullptr) {
-    GE_ASSERT_SUCCESS(gert::BuildRTVarResource(*var_manager, ge_model->GetGraph(), unit.variables_config->var_metas,
-                                               unit.variables_config->entries));
-  }
   GE_ASSERT_SUCCESS(BuildDebugInfo(ge_model, unit));
   GE_ASSERT_SUCCESS(BuildManifest(model_data, ge_model));
 
@@ -1085,6 +1076,25 @@ Status RewriteInternalConstFileName(const std::unique_ptr<gert::GertModelDataMod
   }
   return SUCCESS;
 }
+
+// 与 RewriteInternalConstFileName 同理：子模型编译期变量数据块名固定为 var_weight_data_0，
+// Bundle 序列化后第 i 个子模型的数据块为 data/variables/var_weight_data_<i>，且执行器按
+// model_meta.var_weight_file_name 匹配数据源，组装时须把名字与数据块一并重写为 Bundle 级名称
+Status RewriteVarWeightFileName(const std::unique_ptr<gert::GertModelDataModel> &unit,
+                                std::unique_ptr<gert::GertModelDataFile> &var_weight_slot, const size_t bundle_index) {
+  if ((unit == nullptr) || (unit->model_meta == nullptr)) {
+    return SUCCESS;
+  }
+  const auto bundle_file_name = gert::FormatOm2Path("%s%zu", gert::OM2_VAR_WEIGHT_FILE_PREFIX, bundle_index);
+  if (var_weight_slot != nullptr) {
+    var_weight_slot->file_name = gert::GertMakeStr(bundle_file_name);
+  }
+  // 无数据块的模型 var_weight_file_name 为空，保持为空——执行器据此判定"无初始数据"
+  if (unit->model_meta->var_weight_file_name != nullptr) {
+    unit->model_meta->var_weight_file_name = gert::GertMakeStr(bundle_file_name);
+  }
+  return SUCCESS;
+}
 }  // namespace
 
 Status Om2PackageHelper::AssembleBundleModelData(std::vector<std::shared_ptr<gert::GertModelData>> &sub_models,
@@ -1095,6 +1105,7 @@ Status Om2PackageHelper::AssembleBundleModelData(std::vector<std::shared_ptr<ger
   gert::InitGertModelData(bundle_data);
   bundle_data.models.reserve(sub_models.size());
   bundle_data.constants->constants_data.reserve(sub_models.size());
+  bundle_data.variables->var_weight_data.reserve(sub_models.size());
   std::unordered_map<std::string, MergedKernelRecord> merged_kernels;
   for (size_t i = 0UL; i < sub_models.size(); ++i) {
     const auto &model_data = sub_models[i];
@@ -1113,11 +1124,14 @@ Status Om2PackageHelper::AssembleBundleModelData(std::vector<std::shared_ptr<ger
     (void)bundle_data.models.emplace_back(std::move(model_data->models[0]));
     GE_ASSERT_SUCCESS(RewriteInternalConstFileName(bundle_data.models.back(), i));
     (void)bundle_data.constants->constants_data.emplace_back(std::move(model_data->constants->constants_data[0]));
+    auto var_weight_slot = std::move(model_data->variables->var_weight_data[0]);
+    GE_ASSERT_SUCCESS(RewriteVarWeightFileName(bundle_data.models.back(), var_weight_slot, i));
+    (void)bundle_data.variables->var_weight_data.emplace_back(std::move(var_weight_slot));
   }
   GE_ASSERT_SUCCESS(BuildBundleManifest(bundle_data, *sub_models.front()->manifest));
   for (const auto &unit : bundle_data.models) {
-    if (unit->variables_config != nullptr) {
-      unit->variables_config->global_shared_var_size = global_shared_var_size;
+    if (unit->model_meta != nullptr) {
+      unit->model_meta->global_shared_var_size = global_shared_var_size;
     }
   }
   GELOGI("[OM2][Bundle] Assemble bundle model data success, model_num:%zu, global_shared_var_size:%" PRIu64 ".",

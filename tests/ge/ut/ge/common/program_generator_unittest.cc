@@ -1470,7 +1470,8 @@ ProgramGenerator CreateProgramGenerator(GeRootModelPtr &ge_root_model, bool has_
   }
   Om2CodegenModelBuilder builder;
   std::vector<gert::GertModelDataConstMeta> const_metas;
-  if (builder.Build(ge_model, task_code_builders, codegen_model, const_metas) != SUCCESS) {
+  std::vector<VarSlotMeta> var_metas;
+  if (builder.Build(ge_model, task_code_builders, codegen_model, const_metas, var_metas) != SUCCESS) {
     ADD_FAILURE() << "[OM2] Failed to build om2 codegen model";
     return ProgramGenerator(ast, {}, Om2CodegenModel(), has_custom_kernel);
   }
@@ -1661,6 +1662,7 @@ SRC_FILES := g1_resources.cpp g1_kernel_reg.cpp g1_load_and_run.cpp g1_args_mana
 ifndef CPPFLAGS
 CPPFLAGS := \
   -I$(CANN_ROOT)/include \
+  -I$(CANN_ROOT)/include/external \
   -I$(CANN_ROOT)/pkg_inc \
   -I$(CANN_ROOT)/pkg_inc/base \
   -I$(CANN_ROOT)/pkg_inc/runtime \
@@ -1706,8 +1708,8 @@ TEST_F(ProgramGeneratorUt, GenerateResourcesSource_Ok) {
 #include "g1_internal.h"
 
 namespace om2 {
-Om2Model::Om2Model(const char **bin_files, const void **bin_data, uint64_t *bin_size, size_t bin_num, void **constants, void **var_addrs, void *work_ptr, uint64_t *session_id, uint32_t model_id, void *instance_handle, const GertModelLoadCallbacks *callbacks)
-  : constants_(constants), var_addrs_(var_addrs), total_dev_mem_ptr_(work_ptr), owns_total_dev_mem_(false), session_id_(session_id), model_id_(model_id), instance_handle_(instance_handle), callbacks_(*callbacks), kernel_id_(0), session_scope_mem_ptr_(nullptr), is_external_rt_model_(false), is_external_streams_(false), is_external_notifies_(false), is_external_events_(false), is_external_labels_(false) {
+Om2Model::Om2Model(const char **bin_files, const void **bin_data, uint64_t *bin_size, size_t bin_num, void **constants, const GertModelVarContext *var_context, void *work_ptr, uint64_t *session_id, uint32_t model_id, void *instance_handle, const GertModelLoadCallbacks *callbacks)
+  : constants_(constants), var_context_(var_context), total_dev_mem_ptr_(work_ptr), owns_total_dev_mem_(false), session_id_(session_id), model_id_(model_id), instance_handle_(instance_handle), callbacks_(*callbacks), kernel_id_(0), session_scope_mem_ptr_(nullptr), is_external_rt_model_(false), is_external_streams_(false), is_external_notifies_(false), is_external_events_(false), is_external_labels_(false) {
   for (size_t i = 0; (i < bin_num); ++i) {
     bin_info_map_[std::string(bin_files[i])] = {bin_data[i], bin_size[i]};
   }
@@ -1725,6 +1727,7 @@ Om2Model::~Om2Model() {
 
 aclError Om2Model::InitResources(int32_t priority, uint64_t reuse_zero_copy, const GertModelExternalResources &external_resources) {
   OM2_LOGI("InitResources begin");
+
   OM2_LOGI("model_id=%u, InitResources: work_ptr=%p, work_size=%zu, zero_copy_size=%zu", model_id_, total_dev_mem_ptr_, kModelWorkSize, kModelZeroCopySize);
   size_t required_work_size = kModelWorkSize;
   if (reuse_zero_copy != 0) {
@@ -1837,6 +1840,42 @@ TEST_F(ProgramGeneratorUt, GenerateArgsManagerSource_Ok) {
   ASSERT_EQ(GenerateProgramFiles(generator, outputs), SUCCESS);
 
   ASSERT_EQ(outputs[GeneratedFileIndex::kArgsManagerFile], GetExpectedArgsManagerSource());
+}
+
+// 无变量：按需产物 <model>_var_mgr.cpp（含其内的转换部分）不生成，
+// _resources.cpp 内不留任何 gert::var_mgr 痕迹，Makefile 的 SRC_FILES 也不列它。
+// CreateGeRootModelWithAicoreOp 的变量固化表为空。
+// 这条是"可选生成"唯一的端到端看护点：三个发射点（文件生成、入口声明、变量准备段）
+// 必须同判据，漏掉任一处就会留下无定义的声明或悬空调用。
+TEST_F(ProgramGeneratorUt, NoVariablesOmitsVarArtifact) {
+  GeRootModelPtr ge_root_model = CreateGeRootModelWithAicoreOp();
+  auto generator = CreateProgramGenerator(ge_root_model);
+  Om2CodePrinter code_printer("g1");
+  ASSERT_EQ(generator.GenerateProgram(code_printer), SUCCESS);
+  std::vector<gert::GertModelDataFile> artifacts;
+  code_printer.GetOutputFiles(artifacts);
+
+  // 只剩 InitDefaultFileInfo 无条件注册的 7 个既有文件（有变量时为 8：多一个 _var_mgr.cpp）
+  ASSERT_EQ(artifacts.size(), 7U);
+  for (const auto &artifact : artifacts) {
+    const std::string name = gert::GertGetStr(artifact.file_name);
+    EXPECT_EQ(name.find("_var_mgr.cpp"), std::string::npos) << name;
+  }
+
+  // _resources.cpp：var_mgr 入口声明与 InitResources 的变量准备段都不发射
+  std::string resources;
+  ASSERT_EQ(ReadGeneratedArtifact(artifacts, GeneratedFileIndex::kResourcesFile, resources), SUCCESS);
+  EXPECT_EQ(resources.find("namespace var_mgr"), std::string::npos);
+  EXPECT_EQ(resources.find("gert::var_mgr"), std::string::npos);
+  EXPECT_EQ(resources.find("GetSlotNum"), std::string::npos);
+  EXPECT_EQ(resources.find("PrepareVars"), std::string::npos);
+  EXPECT_EQ(resources.find("var_slot_num"), std::string::npos);
+  EXPECT_EQ(resources.find("var_addrs_"), std::string::npos);
+
+  // Makefile：SRC_FILES 不列该按需文件
+  std::string makefile;
+  ASSERT_EQ(ReadGeneratedArtifact(artifacts, GeneratedFileIndex::kCMakeListsFile, makefile), SUCCESS);
+  EXPECT_EQ(makefile.find("_var_mgr.cpp"), std::string::npos);
 }
 
 TEST_F(ProgramGeneratorUt, GenerateInterfaceHeader_Ok) {
@@ -2526,7 +2565,7 @@ struct DispatchOpContext {
 
 class Om2Model {
   public:
-    Om2Model(const char **bin_files, const void **bin_data, uint64_t *bin_size, size_t bin_num, void **constants, void **var_addrs, void *work_ptr, uint64_t *session_id, uint32_t model_id, void *instance_handle, const GertModelLoadCallbacks *callbacks);
+    Om2Model(const char **bin_files, const void **bin_data, uint64_t *bin_size, size_t bin_num, void **constants, const GertModelVarContext *var_context, void *work_ptr, uint64_t *session_id, uint32_t model_id, void *instance_handle, const GertModelLoadCallbacks *callbacks);
     ~Om2Model();
     aclError InitResources(int32_t priority, uint64_t reuse_zero_copy, const GertModelExternalResources &external_resources);
     aclError RegisterKernels();
@@ -2539,7 +2578,8 @@ class Om2Model {
     void GetStreamList(aclrtStream **streams, uint64_t *stream_num);
   private:
     void **constants_;
-    void **var_addrs_;
+    std::vector<void *> var_addrs_;
+    const GertModelVarContext *var_context_;
     aclmdlRI model_handle_;
     bool is_external_rt_model_;
     std::vector<std::string> bin_ids_;
@@ -3255,7 +3295,7 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if (callbacks != nullptr) {
     hccl_load_task = callbacks->hccl_load_task;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));
@@ -3344,7 +3384,8 @@ int32_t GertModelLoad(const struct GertModelLoadConfig *config, GertModelHandle 
   // Create Model
   auto *obj = new om2::Om2Model(config->bin_files, config->bin_data, config->bin_size,
                                 static_cast<size_t>(config->bin_num), config->constants,
-                                config->var_addrs, config->work_ptr, config->session_id,
+                                static_cast<const GertModelVarContext *>(config->var_context),
+                                config->work_ptr, config->session_id,
                                 static_cast<uint32_t>(config->model_id), config->instance_handle,
                                 config->callbacks);
   if (obj == nullptr) {
@@ -3949,7 +3990,7 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if (callbacks != nullptr) {
     hccl_load_task = callbacks->hccl_load_task;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));
@@ -4038,7 +4079,8 @@ int32_t GertModelLoad(const struct GertModelLoadConfig *config, GertModelHandle 
   // Create Model
   auto *obj = new om2::Om2Model(config->bin_files, config->bin_data, config->bin_size,
                                 static_cast<size_t>(config->bin_num), config->constants,
-                                config->var_addrs, config->work_ptr, config->session_id,
+                                static_cast<const GertModelVarContext *>(config->var_context),
+                                config->work_ptr, config->session_id,
                                 static_cast<uint32_t>(config->model_id), config->instance_handle,
                                 config->callbacks);
   if (obj == nullptr) {
@@ -4731,7 +4773,7 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if (callbacks != nullptr) {
     hccl_load_task = callbacks->hccl_load_task;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));
@@ -4822,7 +4864,8 @@ int32_t GertModelLoad(const struct GertModelLoadConfig *config, GertModelHandle 
   // Create Model
   auto *obj = new om2::Om2Model(config->bin_files, config->bin_data, config->bin_size,
                                 static_cast<size_t>(config->bin_num), config->constants,
-                                config->var_addrs, config->work_ptr, config->session_id,
+                                static_cast<const GertModelVarContext *>(config->var_context),
+                                config->work_ptr, config->session_id,
                                 static_cast<uint32_t>(config->model_id), config->instance_handle,
                                 config->callbacks);
   if (obj == nullptr) {
@@ -5447,7 +5490,7 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if (callbacks != nullptr) {
     hccl_load_task = callbacks->hccl_load_task;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_, args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));
@@ -5536,7 +5579,8 @@ int32_t GertModelLoad(const struct GertModelLoadConfig *config, GertModelHandle 
   // Create Model
   auto *obj = new om2::Om2Model(config->bin_files, config->bin_data, config->bin_size,
                                 static_cast<size_t>(config->bin_num), config->constants,
-                                config->var_addrs, config->work_ptr, config->session_id,
+                                static_cast<const GertModelVarContext *>(config->var_context),
+                                config->work_ptr, config->session_id,
                                 static_cast<uint32_t>(config->model_id), config->instance_handle,
                                 config->callbacks);
   if (obj == nullptr) {
@@ -5965,7 +6009,8 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSourceForCmoBarrierTask_LogicIdNumM
   ASSERT_EQ(Om2CodegenModelBuilder::CreateTaskCodeBuilders(ge_model, ast, task_code_builders, codegen_model), SUCCESS);
   Om2CodegenModelBuilder builder;
   std::vector<gert::GertModelDataConstMeta> const_metas;
-  EXPECT_NE(builder.Build(ge_model, task_code_builders, codegen_model, const_metas), SUCCESS);
+  std::vector<VarSlotMeta> var_metas;
+  EXPECT_NE(builder.Build(ge_model, task_code_builders, codegen_model, const_metas, var_metas), SUCCESS);
 }
 
 TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSourceForCmoTask_Ok) {

@@ -106,6 +106,18 @@ class UtestIrCommon : public testing::Test {
   void TearDown() {}
 };
 
+TEST(UtestIrCommon, IsAutofuseEnabledByGraphAttrAndEnv) {
+  mmSetEnv("AUTOFUSE_FLAGS", "--enable_autofuse=true", 1);
+  auto graph = std::make_shared<ComputeGraph>("autofuse_switch_graph");
+  EXPECT_TRUE(IsAutofuseEnabled(graph));
+  (void)AttrUtils::SetBool(graph, kDisableAutofuseAttr, true);
+  EXPECT_FALSE(IsAutofuseEnabled(graph));
+  unsetenv("AUTOFUSE_FLAGS");
+  auto graph2 = std::make_shared<ComputeGraph>("autofuse_env_off_graph");
+  EXPECT_FALSE(IsAutofuseEnabled(graph2));
+  EXPECT_FALSE(IsAutofuseEnabled(nullptr));
+}
+
 class UtestIrBuild : public testing::Test {
  protected:
   void SetUp() {}

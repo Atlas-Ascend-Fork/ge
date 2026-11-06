@@ -15,6 +15,7 @@
 from typing import Optional
 
 from ._ir_types import InputType, OutputType
+from ._scope import find_scoped_proto
 from ._signature import _get_runtime_attr_spec
 from .proto import get_registered_op_proto_by_op_type
 
@@ -113,6 +114,17 @@ def _flatten_infer_outputs(ir_outputs: list, result) -> tuple:
 def call_infer_meta(op_type: str, ir_meta: Optional[dict], ctx) -> list:
     try:
         proto = get_registered_op_proto_by_op_type(op_type)
+        if proto is None:
+            # 部署进程从未执行编译期插件注册，进程级原型表按设计恒空（D4 保证加载态
+            # 零写入），原型声明只存在于恢复 scope 中。不回退这里，动态 shape 推导
+            # 在跨进程部署下必然 AttributeError——即"能力位补了、实际调不通"。
+            proto = find_scoped_proto(op_type)
+        if proto is None:
+            raise RuntimeError(
+                f"canonical python prototype not found for infer_meta of op type "
+                f"'{op_type}': neither the process-global proto registry nor any "
+                f"live model scope holds a declaration"
+            )
         infer_func = proto.infer_func
         args = _build_infer_inputs(ctx, ir_meta["inputs"])
         kwargs = _build_infer_attrs(ctx, ir_meta["attrs"])

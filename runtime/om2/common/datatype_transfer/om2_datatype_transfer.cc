@@ -23,7 +23,7 @@
 #include "graph/utils/type_utils_inner.h"
 #include "securec.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
 namespace {
 enum class DataTypeTransMode : uint16_t {
@@ -49,53 +49,73 @@ enum class DataTypeTransMode : uint16_t {
   kTransferWithDatatypeHiF8ToFloat16,
 };
 
-std::map<std::pair<DataType, DataType>, DataTypeTransMode> trans_mode_map{
-    {std::pair<DataType, DataType>(DT_FLOAT, DT_FLOAT16), DataTypeTransMode::kTransferWithDatatypeFloatToFloat16},
-    {std::pair<DataType, DataType>(DT_FLOAT, DT_INT32), DataTypeTransMode::kTransferWithDatatypeFloatToInt32},
-    {std::pair<DataType, DataType>(DT_FLOAT16, DT_FLOAT), DataTypeTransMode::kTransferWithDatatypeFloat16ToFloat},
-    {std::pair<DataType, DataType>(DT_FLOAT16, DT_INT32), DataTypeTransMode::kTransferWithDatatypeFloat16ToInt32},
-    {std::pair<DataType, DataType>(DT_INT32, DT_FLOAT), DataTypeTransMode::kTransferWithDatatypeInt32ToFloat},
-    {std::pair<DataType, DataType>(DT_INT32, DT_FLOAT16), DataTypeTransMode::kTransferWithDatatypeInt32ToFloat16},
-    {std::pair<DataType, DataType>(DT_INT32, DT_UINT8), DataTypeTransMode::kTransferWithDatatypeInt32ToUint8},
-    {std::pair<DataType, DataType>(DT_INT32, DT_INT8), DataTypeTransMode::kTransferWithDatatypeInt32ToInt8},
-    {std::pair<DataType, DataType>(DT_UINT8, DT_FLOAT), DataTypeTransMode::kTransferWithDatatypeUint8ToFloat},
-    {std::pair<DataType, DataType>(DT_UINT8, DT_INT32), DataTypeTransMode::kTransferWithDatatypeUint8ToInt32},
-    {std::pair<DataType, DataType>(DT_INT8, DT_FLOAT), DataTypeTransMode::kTransferWithDatatypeInt8ToFloat},
-    {std::pair<DataType, DataType>(DT_INT8, DT_INT32), DataTypeTransMode::kTransferWithDatatypeInt8ToInt32},
-    {std::pair<DataType, DataType>(DT_INT64, DT_INT32), DataTypeTransMode::kTransferWithDatatypeInt64ToInt32},
-    {std::pair<DataType, DataType>(DT_INT32, DT_INT64), DataTypeTransMode::kTransferWithDatatypeInt32ToInt64},
-    {std::pair<DataType, DataType>(DT_INT32, DT_DOUBLE), DataTypeTransMode::kTransferWithDatatypeInt32ToDouble},
-    {std::pair<DataType, DataType>(DT_DOUBLE, DT_INT32), DataTypeTransMode::kTransferWithDatatypeDoubleToInt32},
-    {std::pair<DataType, DataType>(DT_FLOAT, DT_HIFLOAT8), DataTypeTransMode::kTransferWithDatatypeFloatToHiF8},
-    {std::pair<DataType, DataType>(DT_FLOAT16, DT_HIFLOAT8), DataTypeTransMode::kTransferWithDatatypeFloat16ToHiF8},
-    {std::pair<DataType, DataType>(DT_HIFLOAT8, DT_FLOAT), DataTypeTransMode::kTransferWithDatatypeHiF8ToFloat},
-    {std::pair<DataType, DataType>(DT_HIFLOAT8, DT_FLOAT16), DataTypeTransMode::kTransferWithDatatypeHiF8ToFloat16},
+std::map<std::pair<ge::DataType, ge::DataType>, DataTypeTransMode> trans_mode_map{
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_FLOAT, ge::DT_FLOAT16),
+     DataTypeTransMode::kTransferWithDatatypeFloatToFloat16},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_FLOAT, ge::DT_INT32),
+     DataTypeTransMode::kTransferWithDatatypeFloatToInt32},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_FLOAT16, ge::DT_FLOAT),
+     DataTypeTransMode::kTransferWithDatatypeFloat16ToFloat},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_FLOAT16, ge::DT_INT32),
+     DataTypeTransMode::kTransferWithDatatypeFloat16ToInt32},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_INT32, ge::DT_FLOAT),
+     DataTypeTransMode::kTransferWithDatatypeInt32ToFloat},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_INT32, ge::DT_FLOAT16),
+     DataTypeTransMode::kTransferWithDatatypeInt32ToFloat16},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_INT32, ge::DT_UINT8),
+     DataTypeTransMode::kTransferWithDatatypeInt32ToUint8},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_INT32, ge::DT_INT8),
+     DataTypeTransMode::kTransferWithDatatypeInt32ToInt8},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_UINT8, ge::DT_FLOAT),
+     DataTypeTransMode::kTransferWithDatatypeUint8ToFloat},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_UINT8, ge::DT_INT32),
+     DataTypeTransMode::kTransferWithDatatypeUint8ToInt32},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_INT8, ge::DT_FLOAT),
+     DataTypeTransMode::kTransferWithDatatypeInt8ToFloat},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_INT8, ge::DT_INT32),
+     DataTypeTransMode::kTransferWithDatatypeInt8ToInt32},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_INT64, ge::DT_INT32),
+     DataTypeTransMode::kTransferWithDatatypeInt64ToInt32},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_INT32, ge::DT_INT64),
+     DataTypeTransMode::kTransferWithDatatypeInt32ToInt64},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_INT32, ge::DT_DOUBLE),
+     DataTypeTransMode::kTransferWithDatatypeInt32ToDouble},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_DOUBLE, ge::DT_INT32),
+     DataTypeTransMode::kTransferWithDatatypeDoubleToInt32},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_FLOAT, ge::DT_HIFLOAT8),
+     DataTypeTransMode::kTransferWithDatatypeFloatToHiF8},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_FLOAT16, ge::DT_HIFLOAT8),
+     DataTypeTransMode::kTransferWithDatatypeFloat16ToHiF8},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_HIFLOAT8, ge::DT_FLOAT),
+     DataTypeTransMode::kTransferWithDatatypeHiF8ToFloat},
+    {std::pair<ge::DataType, ge::DataType>(ge::DT_HIFLOAT8, ge::DT_FLOAT16),
+     DataTypeTransMode::kTransferWithDatatypeHiF8ToFloat16},
 };
 
 template <typename SrcT, typename DstT>
-Status TransDataSrc2Dst(const CastArgs &args, uint8_t *const dst_raw, const size_t data_size) {
+ge::Status TransDataSrc2Dst(const CastArgs &args, uint8_t *const dst_raw, const size_t data_size) {
   auto *src = reinterpret_cast<const SrcT *>(args.data);
   auto *dst = reinterpret_cast<DstT *>(dst_raw);
   for (size_t idx = 0U; idx != data_size; idx++) {
     dst[idx] = static_cast<DstT>(src[idx]);
   }
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
 template <typename SrcT>
-Status TransDataSrc2Fp16(const CastArgs &args, uint8_t *const dst, const size_t data_size) {
+ge::Status TransDataSrc2Fp16(const CastArgs &args, uint8_t *const dst, const size_t data_size) {
   fp16_t src_data;
   for (size_t idx = 0U; idx != data_size; idx++) {
     src_data = reinterpret_cast<const SrcT *>(args.data)[idx];
     reinterpret_cast<uint16_t *>(dst)[idx] = src_data.val;
   }
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status CastKernel(const CastArgs &args, uint8_t *const dst, const size_t data_size,
-                  const DataTypeTransMode trans_mode) {
-  static std::map<DataTypeTransMode, std::function<Status(const CastArgs &, uint8_t *, const size_t)>> transfer_handle =
-      {
+ge::Status CastKernel(const CastArgs &args, uint8_t *const dst, const size_t data_size,
+                      const DataTypeTransMode trans_mode) {
+  static std::map<DataTypeTransMode, std::function<ge::Status(const CastArgs &, uint8_t *, const size_t)>>
+      transfer_handle = {
           {DataTypeTransMode::kTransferWithDatatypeFloatToFloat16, &TransDataSrc2Fp16<float>},
           {DataTypeTransMode::kTransferWithDatatypeFloatToInt32, &TransDataSrc2Dst<float, int32_t>},
           {DataTypeTransMode::kTransferWithDatatypeFloat16ToFloat, &TransDataSrc2Dst<fp16_t, float>},
@@ -126,32 +146,33 @@ Status CastKernel(const CastArgs &args, uint8_t *const dst, const size_t data_si
 }
 }  // namespace
 
-Status DataTypeTransfer::TransDataType(const CastArgs &args, TransResult &result) {
+ge::Status DataTypeTransfer::TransDataType(const CastArgs &args, TransResult &result) {
   GELOGD("Begin trans data from %s to %s, data size %zu",
          TypeUtilsInner::DataTypeToSerialString(args.src_data_type).c_str(),
          TypeUtilsInner::DataTypeToSerialString(args.dst_data_type).c_str(), args.src_data_size);
-  const std::pair<DataType, DataType> trans_info(args.src_data_type, args.dst_data_type);
+  const std::pair<ge::DataType, ge::DataType> trans_info(args.src_data_type, args.dst_data_type);
   const auto iter = trans_mode_map.find(trans_info);
   if (iter == trans_mode_map.end()) {
-    const std::string error =
-        "Failed to trans data from datatype " + FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.src_data_type)) +
-        " to " + FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.dst_data_type)) + " , it is not supported.";
+    const std::string error = "Failed to trans data from datatype " +
+                              ge::FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.src_data_type)) + " to " +
+                              ge::FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.dst_data_type)) +
+                              " , it is not supported.";
     GE_ERRORLOG_AND_ERRORMSG(ACL_ERROR_GE_DATATYPE_INVALID, error.c_str());
     return ACL_ERROR_GE_DATATYPE_INVALID;
   }
   const auto trans_mode = iter->second;
 
-  const int32_t size = GetSizeByDataType(args.dst_data_type);
+  const int32_t size = ge::GetSizeByDataType(args.dst_data_type);
   if (size <= 0) {
     const std::string error = "Failed to calc size from data type" +
-                              FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.dst_data_type)) +
+                              ge::FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.dst_data_type)) +
                               ", it is not supported.";
     GE_ERRORLOG_AND_ERRORMSG(ACL_ERROR_GE_DATATYPE_INVALID, error.c_str());
     return ACL_ERROR_GE_DATATYPE_INVALID;
   }
   if (args.src_data_size > (SIZE_MAX / static_cast<size_t>(size))) {
-    const std::string error =
-        "args.src_data_size" + FmtToStr(args.src_data_size) + " or data type size" + FmtToStr(size) + " is too big";
+    const std::string error = "args.src_data_size" + ge::FmtToStr(args.src_data_size) + " or data type size" +
+                              ge::FmtToStr(size) + " is too big";
     GE_ERRORLOG_AND_ERRORMSG(ACL_ERROR_GE_PARAM_INVALID, error.c_str());
     return ACL_ERROR_GE_PARAM_INVALID;
   }
@@ -159,7 +180,7 @@ Status DataTypeTransfer::TransDataType(const CastArgs &args, TransResult &result
   result.length = total_size;
   if (total_size == 0U) {
     GELOGI("In TransDataType, total_size is zero, has no data.");
-    return SUCCESS;
+    return ge::SUCCESS;
   }
 
   const std::shared_ptr<uint8_t> dst(new (std::nothrow) uint8_t[total_size], std::default_delete<uint8_t[]>());
@@ -171,20 +192,20 @@ Status DataTypeTransfer::TransDataType(const CastArgs &args, TransResult &result
     return ACL_ERROR_GE_MEMORY_ALLOCATION;
   }
 
-  if (CastKernel(args, dst.get(), args.src_data_size, trans_mode) != SUCCESS) {
+  if (CastKernel(args, dst.get(), args.src_data_size, trans_mode) != ge::SUCCESS) {
     const std::string error = "Failed to cast data from datatype " +
-                              FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.src_data_type)) + " to " +
-                              FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.dst_data_type)) + ", data size is " +
-                              FmtToStr(std::to_string(args.src_data_size));
+                              ge::FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.src_data_type)) + " to " +
+                              ge::FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.dst_data_type)) +
+                              ", data size is " + ge::FmtToStr(std::to_string(args.src_data_size));
     GE_ERRORLOG_AND_ERRORMSG(ACL_ERROR_GE_INTERNAL_ERROR, error.c_str());
     return ACL_ERROR_GE_INTERNAL_ERROR;
   }
   result.data = dst;
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
 bool DataTypeTransfer::DataTypeTransferExists(const CastArgs &args) {
-  const std::pair<DataType, DataType> trans_info(args.src_data_type, args.dst_data_type);
+  const std::pair<ge::DataType, ge::DataType> trans_info(args.src_data_type, args.dst_data_type);
   const auto iter = trans_mode_map.find(trans_info);
   return iter != trans_mode_map.end();
 }
@@ -193,11 +214,11 @@ bool IsTransDataTypeSupport(const CastArgs &args) {
   return DataTypeTransfer::DataTypeTransferExists(args);
 }
 
-Status TransTensorDataType(const CastArgs &args, TransResult &result) {
+ge::Status TransTensorDataType(const CastArgs &args, TransResult &result) {
   if (!DataTypeTransfer::DataTypeTransferExists(args)) {
     const std::string error = "Failed to trans data from datatype " +
-                              FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.src_data_type)) + " to " +
-                              FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.dst_data_type));
+                              ge::FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.src_data_type)) + " to " +
+                              ge::FmtToStr(TypeUtilsInner::DataTypeToSerialString(args.dst_data_type));
     GE_ERRORLOG_AND_ERRORMSG(ACL_ERROR_GE_DATATYPE_INVALID, error.c_str());
     return ACL_ERROR_GE_DATATYPE_INVALID;
   }
@@ -213,4 +234,4 @@ Status TransTensorDataType(const CastArgs &args, TransResult &result) {
   return DataTypeTransfer::TransDataType(args, result);
 }
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert

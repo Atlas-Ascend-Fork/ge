@@ -37,6 +37,7 @@ constexpr const char *kPyObjectStrSymbol = "PyObject_Str";
 constexpr int kPyEvalInput = 258;
 
 constexpr const char *kSubProcessFallbackRootPrefix = "__GE_PYTHON_FALLBACK_ROOT__=";
+constexpr const char *kSubProcessFallbackErrorPrefix = "__GE_PYTHON_FALLBACK_ERROR__=";
 
 struct InProcessPythonApi {
   using PyObjectPtr = void *;
@@ -248,6 +249,7 @@ inline bool RunEvalExpressionInProcess(const char *expression, std::string &resu
     if (error_message.empty()) {
       GELOGE(FAILED, "In-process Python fallback codegen failed.");
     } else {
+      REPORT_INNER_ERR_MSG("E19999", "Python native component compilation failed: %s", error_message.c_str());
       GELOGE(FAILED, "In-process Python fallback codegen failed: %s", error_message.c_str());
     }
     return false;
@@ -288,11 +290,18 @@ inline bool RunFallbackCodegenViaSubprocess(const ::ge::python_artifact::PythonR
       "    print('" +
       std::string(kSubProcessFallbackRootPrefix) + "' + str(" + function_name +
       "().root))\n"
-      "except Exception:\n"
+      "except Exception as error:\n"
+      "    print('" +
+      std::string(kSubProcessFallbackErrorPrefix) +
+      "' + str(error).replace('\\n', ' '))\n"
       "    traceback.print_exc(file=sys.stdout)\n"
       "    sys.exit(1)\" 2>/dev/null";
   std::string output;
   if (!deps.read_command_output(std::string(python_command) + script, output)) {
+    const auto error_message = FetchLineByPrefix(output, kSubProcessFallbackErrorPrefix);
+    REPORT_INNER_ERR_MSG(
+        "E19999", "Python native component compilation failed: %s",
+        error_message.empty() ? "Python subprocess failed; see the log for details." : error_message.c_str());
     GELOGE(FAILED, "Subprocess Python fallback codegen failed, command[%s], output[%s].", python_command.c_str(),
            output.c_str());
     return false;

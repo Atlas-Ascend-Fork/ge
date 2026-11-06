@@ -68,6 +68,12 @@ class DeviceAllocator {
     return free_count_;
   }
 
+  void ReleaseOccupiedSize(MemSize size) {
+    if (occupied_size_ >= size) {
+      occupied_size_ -= size;
+    }
+  }
+
   DeviceId GetDeviceId() const {
     return mem_allocator_.GetDeviceId();
   }

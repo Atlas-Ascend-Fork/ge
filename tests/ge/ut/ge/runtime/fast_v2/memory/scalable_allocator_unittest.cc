@@ -2428,3 +2428,22 @@ TEST_F(ScaleAllocatorTest, multithread_allocator_recycle) {
   EXPECT_TRUE(allocator.all_caching_mem_allocators_.size() == old_object_size);
   ge::AclRuntimeStub::Reset();
 }
+
+TEST_F(ScaleAllocatorTest, convert_span_to_root_block_release_occupied_size) {
+  size_t buddyPageCount = 10U * 1024U;
+  auto scalable_allocator = caching_allocator->GetScalableAllocator();
+  auto span1 = scalable_allocator->Alloc(*caching_allocator, pageSize * buddyPageCount);
+  auto span2 = scalable_allocator->Alloc(*caching_allocator, pageSize * buddyPageCount);
+  ASSERT_NE(span1, nullptr);
+  ASSERT_NE(span2, nullptr);
+  ASSERT_EQ(scalable_allocator->device_allocator_.GetOccupiedSize(), pageSize * buddyPageCount * 2U);
+  ASSERT_EQ(scalable_allocator->GetOccupiedSpanCount(), 2U);
+
+  auto root_block = scalable_allocator->ConvertToRootBlock(span1);
+  ASSERT_NE(root_block, nullptr);
+  ASSERT_EQ(scalable_allocator->device_allocator_.GetOccupiedSize(), pageSize * buddyPageCount);
+  ASSERT_EQ(scalable_allocator->GetOccupiedSpanCount(), 1U);
+
+  root_block->Free();
+  span2->Free();
+}

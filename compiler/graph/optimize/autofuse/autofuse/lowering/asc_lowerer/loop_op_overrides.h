@@ -42,6 +42,8 @@ class OpOverrides {
   virtual CseVar Scalar(const std::string &face, ge::DataType dtype) = 0;
   virtual CseVar LoadSeed(const std::string &name, const CseVar &offset) = 0;
   virtual CseVar ReduceThenBroadcast(const CseVar &x, ReduceType reduce_type, int64_t reduce_dim) = 0;
+  virtual CseVar ReduceThenBroadcast(const CseVar &x, ReduceType reduce_type,
+                                     const std::vector<int64_t> &reduce_dims) = 0;
   virtual CseVar ToDtypeBitcast(const CseVar &x, ge::DataType dst_type, ge::DataType src_type) = 0;
   virtual CseVar LeakyRelu(const CseVar &x, float32_t negative_slope) = 0;
   virtual CseVar Axpy(const CseVar &x1, const CseVar &x2, float32_t alpha) = 0;

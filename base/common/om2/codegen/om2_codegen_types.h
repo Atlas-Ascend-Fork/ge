@@ -53,6 +53,85 @@ struct VarAddressMatch {
   std::string symbol_hint;
 };
 
+// 不被算子直接引用的条目（如拷贝源变量）没有槽位下标，FillVarAddrTable 跳过它们，
+// 但它们必须在固化表内，否则 CopyVarData 找不到源数据的地址与初始数据偏移。
+constexpr uint32_t kVarNoSlot = 0xFFFFFFFFU;
+
+// 转换动作种类。由 Codegen 在发射固化表时从算子类型字符串映射得到，
+// 模型 SO 侧只对枚举 switch、不做任何字符串比较——SO 无法 include
+// framework/common/framework_types_internal.h，手写字符串字面量一旦与常量脱钩就静默失配。
+enum class VarTransKind : uint8_t {
+  kNoOp = 0U,         // Reshape / ReFormat / SqueezeV2 / UnsqueezeV2：跳过该节点
+  kFormat = 1U,       // TransData / TransposeD：格式转换
+  kCast = 2U,         // Cast：数据类型转换
+  kUnsupported = 3U,  // 其余：运行期报错（编译期已被 IsTransSupport 拦下，此处是防御）
+};
+
+// 转换链节点 dims 的定长上限。var_fixup_table_builder 按它把 src_dims/dst_dims 补齐到定长，
+// var_mgr_file_code_generator 按它发射产物内 TransNode::src_dims[N] 并遍历读取——
+// 两侧必须同值，否则生成器会越界读补齐后的数组，故只在此处定义一份。
+constexpr size_t kVarDimsMax = 8U;
+
+// 转换链节点的编译期固化形态。dims 定长 kVarDimsMax，与生成产物内 TransNode::src_dims[8] 一致。
+struct VarTransNodeFixup {
+  VarTransKind kind{VarTransKind::kUnsupported};
+  uint32_t src_format{0U};
+  uint32_t dst_format{0U};
+  uint32_t src_data_type{0U};
+  uint32_t dst_data_type{0U};
+  std::vector<int64_t> src_dims;
+  std::vector<int64_t> dst_dims;
+  // 真实维数，src 与 dst 各一个。不能用 src_dims.size()：补齐后恒为 kVarDimsMax，
+  // 转换单元拿它与 perm 长度比对会让 transpose 失败，GetItemNumByShape 连乘时补齐的 0
+  // 会把乘积归零。src/dst 也须分开：格式转换会改变维数（NCHW 4 维 → NC1HWC0 5 维）。
+  uint32_t src_dim_num{0U};
+  uint32_t dst_dim_num{0U};
+};
+
+// 变量槽位元数据：Codegen 为每个变量算子分配的槽位下标与变量名。纯编译期产物、不落盘，
+// 槽位下标经固化表直接编进模型 SO。
+struct VarSlotMeta {
+  uint32_t slot{0U};
+  std::string var_name;
+};
+
+// 变量固化表条目：编译期算好全部字段，Codegen 直接发射为模型 SO 内的 C++ 常量。
+struct VarFixupEntry {
+  uint32_t slot{kVarNoSlot};
+  std::string var_key;
+  uint64_t size{0U};
+  uint64_t memory_type{0U};
+  uint32_t data_type{0U};  // 条目自身的数据类型，供阶段 C 判定拷贝是否需要 CAST
+  uint64_t logic_addr{0U};
+  uint64_t extern_dev_addr{0U};
+  uint64_t init_data_offset{0U};
+  uint64_t init_data_size{0U};
+  // 转换链。非空 ⟺ 本模型将执行该转换：三条静态判据已在构表期一次求值，不满足者根本不写入
+  // 本字段与 trans_src_var_key，故 codegen 与产物侧都无需再判图标识，运行期只保留容器
+  // is_loaded 探测这一个动态判据。判据本身见 var_fixup_table_builder.cc 的 BuildFixupEntry。
+  std::vector<VarTransNodeFixup> trans_road;
+  // 转换源键。转换源不在本模型固化表内，SO 只能凭该键向容器只查询；
+  // 键的公式所在头文件不在 SO 可见范围内，故必须编译期算好。与 trans_road 成对写入或成对留空。
+  std::string trans_src_var_key;
+  std::string copy_src_var_key;  // 空表示无变量间拷贝；非空时该键在本表内
+  uint32_t copy_src_data_type{0U};
+};
+
+// 变量固化表与权重数据块。数据块内偏移按 entries 顺序累加各变量初始数据长度，
+// 偏移分配与数据块写入必须在同一步骤内完成，否则固化值与落盘内容错位。
+struct VarFixupTable {
+  uint64_t graph_id{0U};
+  std::vector<VarFixupEntry> entries;
+  std::vector<uint8_t> weight_data;
+};
+
+// "模型有变量"的唯一判据：固化表非空。BuildVarFixupTable 只在 var_metas 为空时留下空表，
+// 且每个 var_name 恰好入表一次、构建失败一律向上传播 ⇒ entries.empty() 与"模型无变量"严格
+// 等价。var_mgr.cpp 生成门控、resources.cpp 变量准备段与入口声明发射门控全读这一个函数。
+inline bool HasVariables(const VarFixupTable &table) {
+  return !table.entries.empty();
+}
+
 struct OpInputEdges {
   std::vector<int64_t> input_op_ids;
   std::vector<int32_t> input_anchor_indices;
@@ -313,7 +392,8 @@ struct Om2CodegenModel {
   KernelRegistrySemantic kernel_registry;
   ArgsTableSemantic args_table;
   std::vector<ConstInputEntry> const_inputs;
-  std::vector<gert::GertModelDataVarMeta> var_metas;
+  // 变量固化表与权重数据块。由 BuildVarFixupTable 在 var_metas 产出之后、源码生成之前填充。
+  VarFixupTable var_fixup;
   uint32_t aicpu_task_count{0U};
   bool is_need_va2pa{false};
 };

@@ -14,7 +14,7 @@
 #include "formats/utils/om2_formats_trans_utils.h"
 #include "framework/common/util.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
 namespace {
 enum class NdDimIndex { k2dC, k2dN, k2dDimsNum };
@@ -27,17 +27,17 @@ enum class NdDimIndex { k2dC, k2dN, k2dDimsNum };
  * frac_z axes: (C1*H*W, No, Ni, C0), which Ni = 16, C0 = 8/16/32, No = Ceil(N/Ni), C1 = Ceil(C/C0)
  * @return
  */
-Status TransShapeNdToFz(const std::vector<int64_t> &src_shape, const Format &dst_format,
-                        std::vector<int64_t> &dst_shape) {
+ge::Status TransShapeNdToFz(const std::vector<int64_t> &src_shape, const ge::Format &dst_format,
+                            std::vector<int64_t> &dst_shape) {
   if (!CheckShapeValid(src_shape, static_cast<int64_t>(NdDimIndex::k2dDimsNum))) {
-    GELOGE(FAILED, "src_shape is valid");
-    return FAILED;  // Only support 2D to fracz
+    GELOGE(ge::FAILED, "src_shape is valid");
+    return ge::FAILED;  // Only support 2D to fracz
   }
 
-  const int64_t c0 = GetC0Value(static_cast<int32_t>(dst_format));
+  const int64_t c0 = ge::GetC0Value(static_cast<int32_t>(dst_format));
   if (c0 <= 0) {
-    GELOGE(FAILED, "data_type is valid");
-    return FAILED;
+    GELOGE(ge::FAILED, "data_type is valid");
+    return ge::FAILED;
   }
 
   const int64_t h = 1;
@@ -53,23 +53,23 @@ Status TransShapeNdToFz(const std::vector<int64_t> &src_shape, const Format &dst
   dst_shape.push_back(kNiSize);
   dst_shape.push_back(c0);
   if (!IsShapeValid(dst_shape)) {
-    GELOGE(FAILED, "dst_shape is valid");
-    return FAILED;
+    GELOGE(ge::FAILED, "dst_shape is valid");
+    return ge::FAILED;
   }
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 
-Status TransFormatNdToFz(const TransArgs &args, TransResult &result) {
+ge::Status TransFormatNdToFz(const TransArgs &args, TransResult &result) {
   int64_t dst_size = 1;
   for (const auto dim : args.dst_shape) {
     dst_size *= dim;
   }
 
-  const int64_t data_size = GetSizeByDataType(args.src_data_type);
+  const int64_t data_size = ge::GetSizeByDataType(args.src_data_type);
   dst_size *= data_size;
   if (dst_size == 0) {
     result.length = static_cast<size_t>(dst_size);
-    return SUCCESS;
+    return ge::SUCCESS;
   }
 
   const std::shared_ptr<uint8_t> dst(new (std::nothrow) uint8_t[dst_size], std::default_delete<uint8_t[]>());
@@ -78,7 +78,7 @@ Status TransFormatNdToFz(const TransArgs &args, TransResult &result) {
   const int64_t c = args.src_shape[static_cast<size_t>(NdDimIndex::k2dC)];
   const int64_t n = args.src_shape[static_cast<size_t>(NdDimIndex::k2dN)];
   const int64_t n1n0 = Ceil(n, static_cast<int64_t>(kNiSize)) * kNiSize;
-  const int64_t c0 = GetC0Value(static_cast<int32_t>(args.dst_format));
+  const int64_t c0 = ge::GetC0Value(static_cast<int32_t>(args.dst_format));
   const int64_t c1 = Ceil(c, c0);
   const int64_t hwn1n0c0 = n1n0 * c0;
   for (int64_t c1i = 0; c1i < c1; ++c1i) {
@@ -100,8 +100,8 @@ Status TransFormatNdToFz(const TransArgs &args, TransResult &result) {
                          static_cast<size_t>(data_size));
         }
         if (ret != EOK) {
-          GELOGE(FAILED, "ret != EOK");
-          return FAILED;
+          GELOGE(ge::FAILED, "ret != EOK");
+          return ge::FAILED;
         }
       }
     }
@@ -109,14 +109,14 @@ Status TransFormatNdToFz(const TransArgs &args, TransResult &result) {
 
   result.data = dst;
   result.length = static_cast<size_t>(dst_size);
-  return SUCCESS;
+  return ge::SUCCESS;
 }
 }  // namespace
 
-Status FormatTransferFractalZTbe::TransFormat(const TransArgs &args, TransResult &result) {
+ge::Status FormatTransferFractalZTbe::TransFormat(const TransArgs &args, TransResult &result) {
   std::vector<int64_t> expect_shape;
   const auto ret = TransShape(args.src_format, args.src_shape, args.src_data_type, args.dst_format, expect_shape);
-  if (ret != SUCCESS) {
+  if (ret != ge::SUCCESS) {
     return ret;
   }
   if ((!args.dst_shape.empty()) && (args.dst_shape != expect_shape)) {
@@ -127,16 +127,16 @@ Status FormatTransferFractalZTbe::TransFormat(const TransArgs &args, TransResult
   return TransFormatNdToFz(args, result);
 }
 
-Status FormatTransferFractalZTbe::TransShape(const Format src_format, const std::vector<int64_t> &src_shape,
-                                             const DataType data_type, const Format dst_format,
-                                             std::vector<int64_t> &dst_shape) {
-  const Format src_primary_format = static_cast<Format>(GetPrimaryFormat(static_cast<int32_t>(src_format)));
-  const Format dst_primary_format = static_cast<Format>(GetPrimaryFormat(static_cast<int32_t>(dst_format)));
-  if (GetSizeByDataType(data_type) <= 0) {
+ge::Status FormatTransferFractalZTbe::TransShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                                                 const ge::DataType data_type, const ge::Format dst_format,
+                                                 std::vector<int64_t> &dst_shape) {
+  const ge::Format src_primary_format = static_cast<ge::Format>(ge::GetPrimaryFormat(static_cast<int32_t>(src_format)));
+  const ge::Format dst_primary_format = static_cast<ge::Format>(ge::GetPrimaryFormat(static_cast<int32_t>(dst_format)));
+  if (ge::GetSizeByDataType(data_type) <= 0) {
     return ACL_ERROR_GE_DATATYPE_INVALID;
   }
 
-  if ((src_primary_format == FORMAT_ND) && (dst_primary_format == FORMAT_FRACTAL_Z)) {
+  if ((src_primary_format == ge::FORMAT_ND) && (dst_primary_format == ge::FORMAT_FRACTAL_Z)) {
     return TransShapeNdToFz(src_shape, dst_format, dst_shape);
   }
 
@@ -145,4 +145,4 @@ Status FormatTransferFractalZTbe::TransShape(const Format src_format, const std:
 
 REGISTER_FORMAT_TRANSFER(FormatTransferFractalZTbe, FORMAT_ND, FORMAT_FRACTAL_Z)
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert

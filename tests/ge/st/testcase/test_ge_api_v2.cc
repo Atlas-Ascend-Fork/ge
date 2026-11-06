@@ -9,10 +9,15 @@
  */
 
 #include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
+#include <future>
 #include <iostream>
 #include <map>
 #include <mutex>
 #include <regex>
+#include <thread>
+#include <vector>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -966,6 +971,94 @@ TEST_F(GeApiV2Test, test_ExecuteGraphWithStreamAsync_with_hint_option) {
     rtStream_t stream = (void *)0x123;
     EXPECT_EQ(SUCCESS, session.RunGraphWithStreamAsync(graph_id, stream, gert_inputs, gert_outputs));
     runtime_stub.Clear();
+  }
+  unsetenv("AUTOFUSE_FLAGS");
+  mmSetEnv("ASCEND_OPP_PATH", old_opp_path_env, 1);
+  mmSetEnv("LD_LIBRARY_PATH", old_ld_path_env, 1);
+}
+
+/*
+ * AUTOFUSE(JIT) 开启后，同一动态 shape 图多线程并发 RunGraphAsync 回归。
+ * 多次 AddGraph 注册多个 JIT executor，多线程同时首次执行会并发触发：
+ *   1. 共享 sliced graph 的属性惰性缓存写入(GetNeedSymbolizeValueInputIdxs/SetListInt)；
+ *   2. GuardCheckCache 的 FindGuarded(读+priority写) 与 FindOrCreateGuarded(写+sort)；
+ *   3. BuildCompileInputs 写图属性(PrepareGraphInputs/SetBool) 与编译读图(CopyComputeGraph)。
+ * 上述共享对象的并发读写必须互斥保护，否则出现数据竞争(间歇崩溃/挂死/callback失败)。
+ */
+TEST_F(GeApiV2Test, RunGraphAsync_AutoFuse_Concurrent_MultiInstance) {
+  mmSetEnv("AUTOFUSE_FLAGS", "--enable_autofuse=true", 1);
+  auto ascend_install_path = EnvPath().GetAscendInstallPath();
+  char old_opp_path_env[MMPA_MAX_PATH] = {'\0'};
+  char old_ld_path_env[MMPA_MAX_PATH] = {'\0'};
+  (void)mmGetEnv("ASCEND_OPP_PATH", old_opp_path_env, MMPA_MAX_PATH);
+  (void)mmGetEnv("LD_LIBRARY_PATH", old_ld_path_env, MMPA_MAX_PATH);
+  setenv("ASCEND_OPP_PATH", (ascend_install_path + "/opp").c_str(), 1);
+  setenv("LD_LIBRARY_PATH", (ascend_install_path + "/runtime/lib64").c_str(), 1);
+  {
+    ge::diagnoseSwitch::DisableDumper();
+    std::map<AscendString, AscendString> options_init;
+    options_init.emplace(ge::OPTION_CONST_LIFECYCLE, "graph");
+    GeSession session(options_init);
+    auto graph = gert::ShareGraph::OnlyDataGraph({-1, -1}, {-1, -1});
+    const GraphId graph_id = 1;
+    std::map<AscendString, AscendString> options;
+    options.emplace(std::make_pair("ge.inputHintShape", "0:[4, 2];1:[4, 2]"));
+    constexpr uint32_t kThreadNum = 4U;
+    constexpr uint32_t kIterPerThread = 10U;
+    // 回调未触发时不能无限等待，否则用例挂死而非失败
+    constexpr uint32_t kFutureTimeoutSec = 60U;
+    // 每个执行线程注册一个 graph instance(JIT executor)，保证执行请求可并行派发
+    for (uint32_t i = 0U; i < kThreadNum; ++i) {
+      EXPECT_EQ(session.AddGraph(graph_id, graph, options), SUCCESS);
+    }
+
+    // 不同线程轮转不同输入shape，制造并发 guard 重匹配与新 GEP 编译(cache 写+sort)，
+    // 与其它线程的稳态快路径(FindGuarded 读+priority写)/图属性写(BuildCompileInputs/SetBool) 交错
+    const std::vector<std::vector<int64_t>> kThreadShapes = {{4, 2}, {2, 4}, {4, 2}, {6, 2}};
+    std::atomic<uint32_t> ready{0U};
+    std::atomic<bool> go{false};
+    std::atomic<int32_t> failed_count{0};
+    std::vector<std::thread> threads;
+    for (uint32_t t = 0U; t < kThreadNum; ++t) {
+      threads.emplace_back([&, t]() {
+        std::vector<std::vector<gert::Tensor>> iter_inputs(kIterPerThread);
+        for (uint32_t i = 0U; i < kIterPerThread; ++i) {
+          iter_inputs[i].resize(2U);
+          ge::TensorCheckUtils::ConstructGertTensor(iter_inputs[i][0], {kThreadShapes[t][0], kThreadShapes[t][1]});
+          ge::TensorCheckUtils::ConstructGertTensor(iter_inputs[i][1], {kThreadShapes[t][0], kThreadShapes[t][1]});
+        }
+        ready.fetch_add(1);
+        while (!go.load()) {
+          std::this_thread::yield();
+        }
+        for (uint32_t iter = 0U; iter < kIterPerThread; ++iter) {
+          auto promise_ptr = std::make_shared<std::promise<Status>>();
+          auto future = promise_ptr->get_future();
+          const RunAsyncCallbackV2 callback = [promise_ptr](Status status, std::vector<gert::Tensor> &outputs) {
+            promise_ptr->set_value(status);
+            return SUCCESS;
+          };
+          const auto run_ret = session.RunGraphAsync(graph_id, iter_inputs[iter], callback);
+          EXPECT_EQ(run_ret, SUCCESS);
+          if ((run_ret != SUCCESS) ||
+              (future.wait_for(std::chrono::seconds(kFutureTimeoutSec)) != std::future_status::ready)) {
+            failed_count.fetch_add(1);
+            continue;
+          }
+          if (future.get() != SUCCESS) {
+            failed_count.fetch_add(1);
+          }
+        }
+      });
+    }
+    while (ready.load() < kThreadNum) {
+      std::this_thread::yield();
+    }
+    go.store(true);
+    for (auto &thread : threads) {
+      thread.join();
+    }
+    EXPECT_EQ(failed_count.load(), 0);
   }
   unsetenv("AUTOFUSE_FLAGS");
   mmSetEnv("ASCEND_OPP_PATH", old_opp_path_env, 1);

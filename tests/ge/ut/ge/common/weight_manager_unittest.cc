@@ -45,6 +45,21 @@ TEST_F(WeightManagerUT, TakeoverResourceSuccess_SimpleGraph) {
   EXPECT_NE(weight_manager.AddResource(const_node->GetOpDesc(), 0, dummy), SUCCESS);
 }
 
+TEST_F(WeightManagerUT, TakeOverWeightResourcesOnly) {
+  HostResourceCenter center;
+  auto graph = gert::ShareGraph::BuildCtrlToConstGraph();
+  auto const_node = graph->FindFirstNodeMatchType("Const");
+  ASSERT_NE(const_node, nullptr);
+
+  EXPECT_EQ(center.TakeOverWeightResources(graph), SUCCESS);
+  auto weight_manager = center.GetHostResourceMgr(HostResourceType::kWeight);
+  ASSERT_NE(weight_manager, nullptr);
+  EXPECT_NE(weight_manager->GetResource(const_node->GetOpDesc(), 0), nullptr);
+  auto tiling_manager = center.GetHostResourceMgr(HostResourceType::kTilingData);
+  ASSERT_NE(tiling_manager, nullptr);
+  EXPECT_EQ(tiling_manager->GetResource(const_node->GetOpDesc(), 0), nullptr);
+}
+
 TEST_F(WeightManagerUT, TakeoverResourceSuccess_WithFunctionNode) {
   WeightManager weight_mananger;
   auto graph = gert::ShareGraph::BuildDynamicAndStaticGraph();

@@ -194,7 +194,9 @@ Status EmitForInitStmt(const Stmt &node, CppEmitter &emitter, std::string &outpu
     AppendTypeNameSeparator(var_decl->GetTypeSpec(), output);
     AppendStringRef(var_decl->GetName(), output);
     if (var_decl->GetInit() != nullptr) {
-      (void)output.append(" = ");
+      if (var_decl->GetInitStyle() == VarDeclStmt::InitStyle::kAssign) {
+        (void)output.append(" = ");
+      }
       return var_decl->GetInit()->Accept(emitter, output);
     }
     return SUCCESS;
@@ -215,9 +217,28 @@ const char *IntSuffixToken(LiteralExpr::IntSuffix suffix) {
       return "L";
     case LiteralExpr::IntSuffix::kUL:
       return "UL";
+    case LiteralExpr::IntSuffix::kULL:
+      return "ULL";
     default:
       return "";
   }
+}
+
+// 小写十六进制、不带前导零，与 std::hex 的输出一致；不引 <sstream>
+void AppendHexLiteral(uint64_t value, std::string &output) {
+  output.append("0x");
+  if (value == 0U) {
+    output.push_back('0');
+    return;
+  }
+  constexpr char kDigits[] = "0123456789abcdef";
+  char buffer[sizeof(uint64_t) * 2U] = {0};
+  size_t pos = sizeof(buffer);
+  while (value != 0U) {
+    buffer[--pos] = kDigits[value & 0xFU];
+    value >>= 4U;  // NOLINT: 4 位一组即一个十六进制位
+  }
+  output.append(buffer + pos, sizeof(buffer) - pos);
 }
 
 bool IsSpacingBoundaryDecl(const DeclNode &node) {
@@ -225,8 +246,9 @@ bool IsSpacingBoundaryDecl(const DeclNode &node) {
          dynamic_cast<const TypeAliasDecl *>(&node) != nullptr ||
          dynamic_cast<const NamespaceDecl *>(&node) != nullptr ||
          dynamic_cast<const ExternBlockDecl *>(&node) != nullptr || dynamic_cast<const ClassDecl *>(&node) != nullptr ||
-         dynamic_cast<const StructDecl *>(&node) != nullptr || dynamic_cast<const FunctionDecl *>(&node) != nullptr ||
-         dynamic_cast<const FunctionDef *>(&node) != nullptr || dynamic_cast<const MethodDef *>(&node) != nullptr;
+         dynamic_cast<const StructDecl *>(&node) != nullptr || dynamic_cast<const EnumDecl *>(&node) != nullptr ||
+         dynamic_cast<const FunctionDecl *>(&node) != nullptr || dynamic_cast<const FunctionDef *>(&node) != nullptr ||
+         dynamic_cast<const MethodDef *>(&node) != nullptr;
 }
 }  // namespace
 
@@ -342,6 +364,12 @@ Status CppEmitter::Emit(const StablePartDecl &node, std::string &output) {
   return SUCCESS;
 }
 
+Status CppEmitter::Emit(const RawTextDecl &node, std::string &output) {
+  // 原文照发，不加缩进：调用方给的文本自带换行与缩进（如内联的转换单元源码）
+  AppendStringRef(node.GetText(), output);
+  return SUCCESS;
+}
+
 Status CppEmitter::Emit(const IncludeDecl &node, std::string &output) {
   (void)output.append("#include ");
   if (node.GetKind() == IncludeDecl::Kind::kAngle) {
@@ -415,6 +443,42 @@ Status CppEmitter::Emit(const ClassDecl &node, std::string &output) {
 
 Status CppEmitter::Emit(const StructDecl &node, std::string &output) {
   return EmitRecordDecl("struct", node.GetName(), node.GetItems(), output);
+}
+
+Status CppEmitter::Emit(const EnumDecl &node, std::string &output) {
+  // 与 EmitRecordDecl 一致：关键字前不加缩进（namespace 体本身不缩进），枚举项按层缩进
+  (void)output.append("enum ");
+  AppendStringRef(node.GetName(), output);
+  if (!node.GetUnderlyingType().Empty()) {
+    (void)output.append(" : ");
+    AppendStringRef(node.GetUnderlyingType(), output);
+  }
+  (void)output.append(" {\n");
+  if (indent_level_ < std::numeric_limits<uint32_t>::max()) {
+    indent_level_++;
+  }
+  const auto names = node.GetNames();
+  const auto values = node.GetValues();
+  for (size_t i = 0; i < names.Size(); ++i) {
+    AppendIndent(output);
+    AppendStringRef(names[i], output);
+    if (values[i] != nullptr) {
+      (void)output.append(" = ");
+      const auto status = values[i]->Accept(*this, output);
+      if (status != SUCCESS) {
+        if (indent_level_ > 0U) {
+          indent_level_--;
+        }
+        return status;
+      }
+    }
+    (void)output.append(",\n");
+  }
+  if (indent_level_ > 0U) {
+    indent_level_--;
+  }
+  (void)output.append("};\n");
+  return SUCCESS;
 }
 
 Status CppEmitter::Emit(const AccessSectionDecl &node, std::string &output) {
@@ -518,10 +582,17 @@ Status CppEmitter::Emit(const LiteralExpr &node, std::string &output) {
       (void)output.append(std::to_string(node.GetIntValue()));
       (void)output.append(IntSuffixToken(node.GetIntSuffix()));
       return SUCCESS;
+    case LiteralExpr::Kind::kHex:
+      AppendHexLiteral(static_cast<uint64_t>(node.GetIntValue()), output);
+      (void)output.append(IntSuffixToken(node.GetIntSuffix()));
+      return SUCCESS;
     case LiteralExpr::Kind::kBool:
       (void)output.append(node.GetBoolValue() ? "true" : "false");
       return SUCCESS;
     case LiteralExpr::Kind::kString:
+      // 不转义：LiteralExpr 的字符串值契约是"已转义好的字面量内容"，
+      // 由调用方负责（见 AstBuildContext::Str 的说明）。此处再转义会把
+      // AICPU 二进制 blob 的 \104\000 八进制序列变成 \\104\\000。
       (void)output.push_back('"');
       AppendStringRef(node.GetStringValue(), output);
       (void)output.push_back('"');
@@ -759,7 +830,17 @@ Status CppEmitter::Emit(const LambdaExpr &node, std::string &output) {
     }
     AppendStringRef(captures[i], output);
   }
-  (void)output.append("]() ");
+  (void)output.append("](");
+  const auto status = EmitParamList(node.GetParams(), output);
+  if (status != SUCCESS) {
+    return status;
+  }
+  (void)output.append(")");
+  if (!node.GetReturnType().Empty()) {
+    (void)output.append(" -> ");
+    AppendStringRef(node.GetReturnType(), output);
+  }
+  (void)output.append(" ");
   return node.GetBody()->Accept(*this, output);
 }
 
@@ -772,7 +853,9 @@ Status CppEmitter::Emit(const CCastExpr &node, std::string &output) {
 
 Status CppEmitter::Emit(const InitListExpr &node, std::string &output) {
   const auto elements = node.GetElements();
-  if (node.IsCompact()) {
+  const bool use_paren = (node.GetDelimiter() == InitListExpr::Delimiter::kParen);
+  // 括号内不允许尾逗号，故 compact 展开只对花括号生效
+  if (node.IsCompact() && !use_paren) {
     output.append("{\n");
     if (indent_level_ < std::numeric_limits<size_t>::max()) {
       indent_level_++;
@@ -791,7 +874,7 @@ Status CppEmitter::Emit(const InitListExpr &node, std::string &output) {
     AppendIndent(output);
     output.append("}");
   } else {
-    output.append("{");
+    output.append(use_paren ? "(" : "{");
     for (size_t i = 0; i < elements.Size(); ++i) {
       if (i > 0) {
         output.append(", ");
@@ -801,7 +884,7 @@ Status CppEmitter::Emit(const InitListExpr &node, std::string &output) {
         return status;
       }
     }
-    output.append("}");
+    output.append(use_paren ? ")" : "}");
   }
   return SUCCESS;
 }
@@ -869,11 +952,18 @@ Status CppEmitter::Emit(const VarDeclStmt &node, std::string &output) {
   AppendTypeNameSeparator(node.GetTypeSpec(), output);
   AppendStringRef(node.GetName(), output);
   if (node.GetInit() != nullptr) {
-    (void)output.append(" = ");
+    // kDirect 由 init 自带定界符（{…} 或 (…)），既不能插 " = " 也不能插空格
+    if (node.GetInitStyle() == VarDeclStmt::InitStyle::kAssign) {
+      (void)output.append(" = ");
+    }
     const auto status = node.GetInit()->Accept(*this, output);
     if (status != SUCCESS) {
       return status;
     }
+  }
+  // init 以换行结尾（lambda、多行块）时吃掉它，否则分号会孤零零另起一行
+  if (!output.empty() && output.back() == '\n') {
+    output.pop_back();
   }
   (void)output.append(";\n");
   return SUCCESS;
@@ -944,11 +1034,7 @@ Status CppEmitter::Emit(const BlockStmt &node, std::string &output) {
   return SUCCESS;
 }
 
-Status CppEmitter::Emit(const IfStmt &node, std::string &output) {
-  if (node.IsPreprocessor()) {
-    return EmitPreprocessorIf(node, output);
-  }
-  AppendIndent(output);
+Status CppEmitter::EmitIfBody(const IfStmt &node, std::string &output) {
   (void)output.append("if (");
   auto status = node.GetCond()->Accept(*this, output);
   if (status != SUCCESS) {
@@ -964,12 +1050,27 @@ Status CppEmitter::Emit(const IfStmt &node, std::string &output) {
       output.pop_back();
     }
     (void)output.append(" else ");
+    // else 块只含一条非预处理 if 时扁平化为 else if，避免产出 else { if (…) {…} }。
+    // 递归调用 EmitIfBody 使 else if … else if … 链逐级展开。
+    const auto else_stmts = node.GetElseBlock()->GetStatements();
+    const auto *nested_if = (else_stmts.Size() == 1U) ? dynamic_cast<const IfStmt *>(else_stmts[0]) : nullptr;
+    if ((nested_if != nullptr) && !nested_if->IsPreprocessor()) {
+      return EmitIfBody(*nested_if, output);
+    }
     status = node.GetElseBlock()->Accept(*this, output);
     if (status != SUCCESS) {
       return status;
     }
   }
   return SUCCESS;
+}
+
+Status CppEmitter::Emit(const IfStmt &node, std::string &output) {
+  if (node.IsPreprocessor()) {
+    return EmitPreprocessorIf(node, output);
+  }
+  AppendIndent(output);
+  return EmitIfBody(node, output);
 }
 
 Status CppEmitter::EmitPreprocessorIf(const IfStmt &node, std::string &output) {
@@ -1061,6 +1162,32 @@ Status CppEmitter::Emit(const BreakStmt &node, std::string &output) {
   (void)node;
   AppendIndent(output);
   output.append("break;\n");
+  return SUCCESS;
+}
+
+Status CppEmitter::Emit(const ContinueStmt &node, std::string &output) {
+  (void)node;
+  AppendIndent(output);
+  output.append("continue;\n");
+  return SUCCESS;
+}
+
+Status CppEmitter::Emit(const TryCatchStmt &node, std::string &output) {
+  AppendIndent(output);
+  (void)output.append("try ");
+  auto status = node.GetTryBody()->Accept(*this, output);
+  if (status != SUCCESS) {
+    return status;
+  }
+  // 与 IfStmt 的 else 同一手法：吃掉块尾换行后接 catch，BlockStmt 见末字符非 '\n' 便不再缩进
+  if (!output.empty() && output.back() == '\n') {
+    output.pop_back();
+  }
+  (void)output.append(" catch (...) ");
+  status = node.GetCatchBody()->Accept(*this, output);
+  if (status != SUCCESS) {
+    return status;
+  }
   return SUCCESS;
 }
 

@@ -29,12 +29,9 @@
 namespace ge {
 namespace custom_op {
 namespace {
+// 跨 SO 字符串视图拷贝统一走 bridge_types.h 的共享入口（R2-4），本文件不再保留本地副本。
 bool CopyString(const PythonCustomOpStringView &view, const bool allow_empty, std::string &value) {
-  if ((view.size != 0U) && (view.data == nullptr)) {
-    return false;
-  }
-  value.assign(view.data == nullptr ? "" : view.data, view.size);
-  return (allow_empty || (!value.empty())) && (value.find('\0') == std::string::npos);
+  return CopyPythonCustomOpStringView(view, allow_empty, value);
 }
 
 bool IsValidArray(const void *data, const size_t count) {

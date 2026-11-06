@@ -243,105 +243,7 @@ ge::Status ParseAippJson(const ge::JsonFile &aipp_json,
   return ge::SUCCESS;
 }
 
-// ===== 4. RTVar 解析 =====
-
-ge::Status ParseTransNodeFromJson(const ge::JsonFile &json_file, RTTransNodeInfo &node_info) {
-  ge::JsonFile::TryGetAndApply<std::string>(
-      json_file, "node_type", [&node_info](const std::string &v) { node_info.node_type = gert::GertMakeStr(v); });
-  ge::JsonFile input_json;
-  if (json_file.Get("input", input_json)) {
-    GE_ASSERT_SUCCESS(ParseTensorDescFromJson(input_json, node_info.input));
-  }
-  ge::JsonFile output_json;
-  if (json_file.Get("output", output_json)) {
-    GE_ASSERT_SUCCESS(ParseTensorDescFromJson(output_json, node_info.output));
-  }
-  return ge::SUCCESS;
-}
-
-ge::Status ParseCopyInfoFromJson(const ge::JsonFile &json_file, RTCopyNodeInfo &copy_info) {
-  ge::JsonFile::TryGetAndApply<std::string>(
-      json_file, "src_var_name", [&copy_info](const std::string &v) { copy_info.src_var_name = gert::GertMakeStr(v); });
-  ge::JsonFile src_tensor_desc_json;
-  if (json_file.Get("src_tensor_desc", src_tensor_desc_json)) {
-    GE_ASSERT_SUCCESS(ParseTensorDescFromJson(src_tensor_desc_json, copy_info.src_tensor_desc));
-  }
-  return ge::SUCCESS;
-}
-
-// init_data_offset/init_data_size 指向 var_weight_data 文件内的区间，校验后切片写入 entry.init_data
-ge::Status ParseVarEntryFromJson(const ge::JsonFile &json_file, const uint8_t *weight_data, size_t weight_data_size,
-                                 RTVarEntry &entry) {
-  ge::JsonFile::TryGetAndApply<std::string>(json_file, "var_name",
-                                            [&entry](const std::string &v) { entry.var_name = gert::GertMakeStr(v); });
-  ge::JsonFile::TryGetAndApply<std::string>(json_file, "file_name",
-                                            [&entry](const std::string &v) { entry.file_name = gert::GertMakeStr(v); });
-  ge::JsonFile::TryGetAndApply<std::string>(json_file, "var_key",
-                                            [&entry](const std::string &v) { entry.var_key = gert::GertMakeStr(v); });
-  ge::JsonFile::TryGetAndApply<std::string>(json_file, "op_type",
-                                            [&entry](const std::string &v) { entry.op_type = gert::GertMakeStr(v); });
-  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "logic_addr",
-                                         [&entry](const uint64_t &v) { entry.logic_addr = v; });
-  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "size", [&entry](const uint64_t &v) { entry.size = v; });
-  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "memory_type",
-                                         [&entry](const uint64_t &v) { entry.memory_type = v; });
-  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "changed_graph_id",
-                                         [&entry](const uint64_t &v) { entry.changed_graph_id = v; });
-  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "allocated_graph_id",
-                                         [&entry](const uint64_t &v) { entry.allocated_graph_id = v; });
-
-  ge::JsonFile tensor_desc_json;
-  if (json_file.Get("tensor_desc", tensor_desc_json)) {
-    GE_ASSERT_SUCCESS(ParseTensorDescFromJson(tensor_desc_json, entry.tensor_desc));
-  }
-
-  ge::JsonFile::json trans_road_json;
-  if (json_file.Get("trans_road", trans_road_json) && trans_road_json.is_array()) {
-    for (const auto &node_json : trans_road_json) {
-      RTTransNodeInfo node_info;
-      GE_ASSERT_SUCCESS(ParseTransNodeFromJson(ge::JsonFile(node_json), node_info));
-      (void)entry.trans_road.emplace_back(std::move(node_info));
-    }
-  }
-
-  ge::JsonFile copy_info_json;
-  if (json_file.Get("copy_info", copy_info_json)) {
-    GE_ASSERT_SUCCESS(ParseCopyInfoFromJson(copy_info_json, entry.copy_info));
-  }
-
-  size_t init_data_offset = 0U;
-  size_t init_data_size = 0U;
-  (void)json_file.Get("init_data_offset", init_data_offset);
-  (void)json_file.Get("init_data_size", init_data_size);
-  if (init_data_size > 0U) {
-    const bool is_init_data_valid =
-        (init_data_offset <= weight_data_size) && (init_data_size <= (weight_data_size - init_data_offset));
-    if (!is_init_data_valid) {
-      GELOGW("[OM2][Var] Invalid or missing init data for var=%s, skip init_data.", gert::GertGetStr(entry.var_name));
-    } else {
-      entry.init_data.assign(weight_data + init_data_offset, weight_data + init_data_offset + init_data_size);
-    }
-  }
-  return ge::SUCCESS;
-}
-
-ge::Status ParseVarMetaFromJson(const ge::JsonFile &json_file, gert::GertModelDataVarMeta &meta) {
-  ge::JsonFile::TryGetAndApply<size_t>(json_file, "index", [&meta](const size_t &v) { meta.index = v; });
-  ge::JsonFile::TryGetAndApply<std::string>(json_file, "var_name",
-                                            [&meta](const std::string &v) { meta.var_name = gert::GertMakeStr(v); });
-  ge::JsonFile::TryGetAndApply<std::string>(json_file, "op_type",
-                                            [&meta](const std::string &v) { meta.op_type = gert::GertMakeStr(v); });
-  ge::JsonFile::TryGetAndApply<std::string>(json_file, "op_name",
-                                            [&meta](const std::string &v) { meta.op_name = gert::GertMakeStr(v); });
-
-  ge::JsonFile tensor_desc_json;
-  if (json_file.Get("tensor_desc", tensor_desc_json)) {
-    GE_ASSERT_SUCCESS(ParseTensorDescFromJson(tensor_desc_json, meta.tensor_desc));
-  }
-  return ge::SUCCESS;
-}
-
-// ===== 5. 版本兼容性校验 =====
+// ===== 4. 版本兼容性校验 =====
 
 uint32_t ParseVersion(const std::string &version) {
   uint32_t major = 0U;
@@ -402,7 +304,7 @@ ge::Status ValidateVersionCompatibility(const GertModelDataCompatibility &compat
   return ge::SUCCESS;
 }
 
-// ===== 6. 文件反序列化（按主流程调用序）=====
+// ===== 5. 文件反序列化（按主流程调用序）=====
 
 // manifest 是机制依赖（model_num 驱动模型定位），不占用掩码位，两种模式下均必须存在
 ge::Status DeserializeManifest(const gert::ZipArchiveReader &archive, const std::string &relative_path,
@@ -564,6 +466,14 @@ ge::Status DeserializeModelMeta(const gert::ZipArchiveReader &archive, const std
   model_meta.model_name = gert::GertMakeStr(model_name_str);
   GE_ASSERT_TRUE(gert::GertGetStr(model_meta.model_name)[0] != '\0', "[OM2] model_meta.json missing 'name' field");
 
+  // 变量相关字段均为可选：缺字段时 global_shared_var_size 保持 0（不分配外置变量内存区）、
+  // var_weight_file_name 保持空（本模型无初始数据块）
+  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "global_shared_var_size",
+                                         [&model_meta](const uint64_t &v) { model_meta.global_shared_var_size = v; });
+  ge::JsonFile::TryGetAndApply<std::string>(json_file, "var_weight_file_name", [&model_meta](const std::string &v) {
+    model_meta.var_weight_file_name = gert::GertMakeStr(v);
+  });
+
   // 读取 aipp 字段
   ge::JsonFile aipp_json;
   if (json_file.Get("aipp", aipp_json) && aipp_json.IsValid()) {
@@ -694,83 +604,28 @@ ge::Status DeserializeOpAttr(const gert::ZipArchiveReader &archive, const std::s
   return ge::SUCCESS;
 }
 
-// 解析 variables_config.json 中的 graph_id/global_shared_var_size/var_metas 字段，写入 unit.variables_config
-ge::Status ParseVariablesConfigJson(const ge::JsonFile &json_file, gert::GertModelDataModel &unit) {
-  (void)json_file.Get("graph_id", unit.variables_config->graph_id);
-  ge::JsonFile::TryGetAndApply<uint64_t>(json_file, "global_shared_var_size", [&unit](const uint64_t &v) {
-    unit.variables_config->global_shared_var_size = v;
-  });
-  ge::JsonFile::json var_metas_json;
-  if (json_file.Get("var_metas", var_metas_json) && var_metas_json.is_array()) {
-    for (const auto &meta_json : var_metas_json) {
-      gert::GertModelDataVarMeta meta;
-      GE_ASSERT_SUCCESS(ParseVarMetaFromJson(ge::JsonFile(meta_json), meta));
-      (void)unit.variables_config->var_metas.emplace_back(
-          std::make_unique<gert::GertModelDataVarMeta>(std::move(meta)));
-    }
-  }
-  return ge::SUCCESS;
-}
-
-// 定位并提取 variables_config.json，解析配置部分（graph_id/global_shared_var_size/var_metas）写入
-// unit.variables_config； 文件不存在时返回成功且 buff_data 保持为空；buff_data 非空时输出 JSON
-// 原文缓冲，供调用方继续解析 entries
-ge::Status ParseVariablesConfigEntry(const gert::ZipArchiveReader &archive, const std::string &relative_path,
-                                     gert::GertModelDataModel &unit, ge::ReadonlyByteBuffer &buff_data,
-                                     size_t &buff_size) {
-  const auto full_path = archive.FindEntry(relative_path);
-  if (full_path.empty()) {
-    GELOGW("[OM2] Optional file [%s] not found in ZIP archive, skipped.", relative_path.c_str());
+// data/variables/<file_name>：变量初始数据块。file_name 取自 model_meta.json 的
+// var_weight_file_name（为空表示本模型无初始数据块）。块内各变量的偏移已固化进模型 SO，
+// 归档不再承载 variables_config.json。
+ge::Status DeserializeVarWeight(const gert::ZipArchiveReader &archive, const std::string &file_name,
+                                std::unique_ptr<gert::GertModelDataFile> &weight_slot) {
+  if (file_name.empty()) {
     return ge::SUCCESS;
   }
-  buff_data = archive.ExtractToMem(full_path, buff_size);
-  GE_ASSERT_NOTNULL(buff_data, "[OM2] Failed to extract %s", full_path.c_str());
-  GE_ASSERT_TRUE(buff_size > 0U);
-  const ge::JsonFile json_file(buff_data.get(), buff_size);
-  GE_ASSERT_TRUE(json_file.IsValid(), "[OM2] Invalid variables config JSON from entry %s", full_path.c_str());
-  unit.variables_config = std::make_unique<gert::GertModelDataVariablesConfig>();
-  GE_ASSERT_SUCCESS(ParseVariablesConfigJson(json_file, unit));
-  return ge::SUCCESS;
-}
-
-// data/model_%s/variables_config.json（graph_id/var_metas/entries）+ data/variables/var_weight_data_%s：
-// 解析 graph_id/var_metas 与 entries，按 entry 的 file_name 在 data/variables/ 下寻址权重文件，
-// 并按 init_data_offset/size 切片写入 entry.init_data
-ge::Status DeserializeVariablesData(const gert::ZipArchiveReader &archive, const std::string &relative_path,
-                                    gert::GertModelDataModel &unit) {
-  ge::ReadonlyByteBuffer buff_data(nullptr, ge::ConditionalDeleter{false});
-  size_t buff_size = 0U;
-  GE_ASSERT_SUCCESS(ParseVariablesConfigEntry(archive, relative_path, unit, buff_data, buff_size));
-  if (buff_data == nullptr) {
-    return ge::SUCCESS;
+  // FindEntry 返回归档内解析后的实际路径（带前缀容错），必须用它的返回值去提取；
+  // 直接把构造出的路径传给 ExtractToMem 会在归档布局不完全一致时提取失败。
+  const auto found_path = archive.FindEntry(std::string(gert::OM2_VARIABLES_DIR) + file_name);
+  if (found_path.empty()) {
+    return ge::SUCCESS;  // 无初始数据块（全部变量都无 init_data）属正常情况
   }
-  const ge::JsonFile json_file(buff_data.get(), buff_size);
-
-  ge::JsonFile::json entries_json;
-  if (!json_file.Get("entries", entries_json) || !entries_json.is_object() || entries_json.empty()) {
-    return ge::SUCCESS;
-  }
-  // 权重文件按第一条 entry 的 file_name 在 data/variables/ 下寻址（每模型一个文件，全部 entry 共享）
-  std::string first_file_name;
-  (void)ge::JsonFile(entries_json.begin().value()).Get("file_name", first_file_name);
   size_t weight_data_size = 0U;
-  ge::ReadonlyByteBuffer weight_data(nullptr, ge::ConditionalDeleter{false});
-  if (!first_file_name.empty()) {
-    const auto var_weight_path = archive.FindEntry(std::string(gert::OM2_VARIABLES_DIR) + first_file_name);
-    if (!var_weight_path.empty()) {
-      weight_data = archive.ExtractToMem(var_weight_path, weight_data_size);
-      GE_ASSERT_NOTNULL(weight_data, "[OM2] Failed to extract %s", var_weight_path.c_str());
-    } else {
-      GELOGW("[OM2] Optional file [%s] not found in ZIP archive.", first_file_name.c_str());
-    }
-  }
-
-  for (const auto &[key, val] : entries_json.items()) {
-    (void)key;
-    RTVarEntry var_entry;
-    GE_ASSERT_SUCCESS(ParseVarEntryFromJson(ge::JsonFile(val), weight_data.get(), weight_data_size, var_entry));
-    GE_ASSERT_SUCCESS(RTVarAddEntry(unit.variables_config->entries, std::move(var_entry)));
-  }
+  auto weight_data = archive.ExtractToMem(found_path, weight_data_size);
+  GE_ASSERT_NOTNULL(weight_data, "[OM2] Failed to extract %s", found_path.c_str());
+  weight_slot = std::make_unique<gert::GertModelDataFile>();
+  weight_slot->data = std::move(weight_data);
+  weight_slot->data_size = static_cast<uint64_t>(weight_data_size);
+  // file_name 取 entry 基名，与 model_meta.var_weight_file_name 对应，供执行器按名查找数据源
+  weight_slot->file_name = gert::GertMakeStr(ExtractParentDirAndFileName(found_path).second);
   return ge::SUCCESS;
 }
 
@@ -845,7 +700,7 @@ ge::Status DeserializeVisualJson(const gert::ZipArchiveReader &archive, const st
   return ge::SUCCESS;
 }
 
-// ===== 7. 主流程与公共入口 =====
+// ===== 6. 主流程与公共入口 =====
 
 // 公共前置：解析 manifest 校验 model_index，并在 models[model_index] 放置模型单元及各子结构
 // （下标与 data/model_N 对应；入口统一分配目录聚合结构，多次反序列化仅首次分配）
@@ -881,6 +736,10 @@ ge::Status DeserializeGertModelDataFromArchive(gert::ZipArchiveReader &archive, 
     model_data.constants->constants_data.resize(model_index + 1U);
   }
   auto &weight_slot = model_data.constants->constants_data[model_index];
+  if (model_data.variables->var_weight_data.size() <= model_index) {
+    model_data.variables->var_weight_data.resize(model_index + 1U);
+  }
+  auto &var_weight_slot = model_data.variables->var_weight_data[model_index];
   GE_CHK_STATUS_RET_NOLOG(
       DeserializeModelMeta(archive, gert::FormatOm2Path(gert::OM2_MODEL_META_PATH_FORMAT, idx.c_str()), unit));
   GE_CHK_STATUS_RET_NOLOG(
@@ -891,8 +750,9 @@ ge::Status DeserializeGertModelDataFromArchive(gert::ZipArchiveReader &archive, 
       archive, std::string(gert::OM2_CONSTANTS_DIR) + gert::OM2_CONSTANTS_FILE_PREFIX + idx, unit, weight_slot));
   GE_CHK_STATUS_RET_NOLOG(
       DeserializeOpAttr(archive, gert::FormatOm2Path(gert::OM2_OP_ATTR_PATH_FORMAT, idx.c_str()), unit));
-  GE_ASSERT_SUCCESS(DeserializeVariablesData(
-      archive, gert::FormatOm2Path(gert::OM2_VARIABLES_CONFIG_PATH_FORMAT, idx.c_str()), unit));
+  // 变量数据块按 model_meta.var_weight_file_name 寻址，故必须在 DeserializeModelMeta 之后
+  GE_ASSERT_SUCCESS(
+      DeserializeVarWeight(archive, gert::GertGetStr(unit.model_meta->var_weight_file_name), var_weight_slot));
   GE_ASSERT_SUCCESS(DeserializeKernels(archive, gert::OM2_KERNELS_DIR, model_data));
   GE_ASSERT_SUCCESS(DeserializeCustomKernels(archive, "data/custom_ops/binaries_", model_data));
   GE_ASSERT_SUCCESS(DeserializeCustomSharedLibs(archive, "data/custom_ops/shared_libs", model_data));
@@ -928,19 +788,6 @@ ge::Status DeserializeGertVisualJsonFromArchive(gert::ZipArchiveReader &archive,
   GE_ASSERT_SUCCESS(DeserializeVisualJson(
       archive, gert::FormatOm2Path(gert::OM2_VISUAL_JSON_PATH_FORMAT, std::to_string(model_index).c_str()), unit));
   return ge::SUCCESS;
-}
-
-// 仅反序列化 data/model_<index>/variables_config.json 的配置部分（graph_id/var_metas/global_shared_var_size），
-// 不解析 entries 与权重数据，供 Bundle 查询接口轻量读取 global_shared_var_size 使用
-ge::Status DeserializeGertVariablesConfigFromArchive(gert::ZipArchiveReader &archive, GertModelData &model_data,
-                                                     const uint32_t model_index) {
-  GE_ASSERT_SUCCESS(PrepareModelUnit(archive, model_data, model_index));
-  auto &unit = *model_data.models[model_index];
-  ge::ReadonlyByteBuffer buff_data(nullptr, ge::ConditionalDeleter{false});
-  size_t buff_size = 0U;
-  return ParseVariablesConfigEntry(
-      archive, gert::FormatOm2Path(gert::OM2_VARIABLES_CONFIG_PATH_FORMAT, std::to_string(model_index).c_str()), unit,
-      buff_data, buff_size);
 }
 
 // 公共入口前置校验 + 打开归档，执行指定归档级流程
@@ -983,11 +830,6 @@ uint32_t DeserializeGertConstantsConfig(const uint8_t *data, uint64_t data_size,
 uint32_t DeserializeGertVisualJson(const uint8_t *data, uint64_t data_size, GertModelData *model_data,
                                    uint32_t model_index) {
   return RunDeserializeEntry(data, data_size, model_data, model_index, DeserializeGertVisualJsonFromArchive);
-}
-
-uint32_t DeserializeGertVariablesConfig(const uint8_t *data, uint64_t data_size, GertModelData *model_data,
-                                        uint32_t model_index) {
-  return RunDeserializeEntry(data, data_size, model_data, model_index, DeserializeGertVariablesConfigFromArchive);
 }
 
 }  // namespace gert

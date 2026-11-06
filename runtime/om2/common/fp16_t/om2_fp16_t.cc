@@ -10,7 +10,7 @@
 
 #include "common/fp16_t/om2_fp16_t.h"
 
-namespace ge {
+namespace gert {
 /// @ingroup fp16_t global filed
 /// @brief   round mode of last valid digital
 constexpr TagFp16RoundMode g_round_mode = TagFp16RoundMode::kRoundToNearest;
@@ -68,7 +68,7 @@ static void Fp16NormalizeVal(int16_t &exp_val, uint16_t &man) {
 /// @param [in] fp_val uint16_t value of fp16_t object
 /// @brief   Convert fp16_t to float/fp32
 /// @return  Return float/fp32 value of fp_val which is the value of fp16_t object
-static float32_t Fp16ToFloatVal(const uint16_t fp_val) {
+static ge::float32_t Fp16ToFloatVal(const uint16_t fp_val) {
   uint16_t hf_sign;
   uint16_t hf_man;
   int16_t hf_exp;
@@ -91,7 +91,7 @@ static float32_t Fp16ToFloatVal(const uint16_t fp_val) {
     m_ret = m_ret << static_cast<uint32_t>(kFp32ManLen - kFp16ManLen);
   }
   const uint32_t f_val = Fp32Constructor(s_ret, e_ret, m_ret);
-  const auto p_ret_v = PtrToPtr<const uint32_t, const float32_t>(&f_val);
+  const auto p_ret_v = ge::PtrToPtr<const uint32_t, const ge::float32_t>(&f_val);
 
   return *p_ret_v;
 }
@@ -99,7 +99,7 @@ static float32_t Fp16ToFloatVal(const uint16_t fp_val) {
 /// @param [in] fp_val uint16_t value of fp16_t object
 /// @brief   Convert fp16_t to double/fp64
 /// @return  Return double/fp64 value of fp_val which is the value of fp16_t object
-static float64_t Fp16ToDouble(const uint16_t fp_val) {
+static ge::float64_t Fp16ToDouble(const uint16_t fp_val) {
   uint16_t hf_sign;
   uint16_t hf_man;
   int16_t hf_exp;
@@ -122,7 +122,7 @@ static float64_t Fp16ToDouble(const uint16_t fp_val) {
     m_ret = m_ret << static_cast<uint64_t>(kFp64ManLen - kFp16ManLen);
   }
   const uint64_t f_val = (s_ret << kFp64SignIndex) | (e_ret << kFp64ManLen) | (m_ret);
-  const auto p_ret_v = PtrToPtr<const uint64_t, const float64_t>(&f_val);
+  const auto p_ret_v = ge::PtrToPtr<const uint64_t, const ge::float64_t>(&f_val);
 
   return *p_ret_v;
 }
@@ -163,7 +163,7 @@ static int8_t Fp16ToInt8(const uint16_t fp_val) {
 
   if (Fp16IsDenorm(fp_val)) {  // Denormalized number
     ret_v = 0U;
-    ret = *(PtrToPtr<uint8_t, int8_t>(&ret_v));
+    ret = *(ge::PtrToPtr<uint8_t, int8_t>(&ret_v));
     return ret;
   }
 
@@ -201,7 +201,7 @@ static int8_t Fp16ToInt8(const uint16_t fp_val) {
     ret_v = GetUint8ValByMan(s_ret, long_int_m, shift_out);
   }
 
-  ret = *(PtrToPtr<uint8_t, int8_t>(&ret_v));
+  ret = *(ge::PtrToPtr<uint8_t, int8_t>(&ret_v));
   return ret;
 }
 /// @ingroup fp16_t math conversion static method
@@ -291,7 +291,7 @@ static int16_t Fp16ToInt16(const uint16_t fp_val) {
 
   if (Fp16IsDenorm(fp_val)) {  // Denormalized number
     ret_v = 0U;
-    ret = static_cast<int16_t>(*(PtrToPtr<uint16_t, uint8_t>(&ret_v)));
+    ret = static_cast<int16_t>(*(ge::PtrToPtr<uint16_t, uint8_t>(&ret_v)));
     return ret;
   }
 
@@ -328,7 +328,7 @@ static int16_t Fp16ToInt16(const uint16_t fp_val) {
     // Generate final result
     ret_v = GetUint16ValByMan(s_ret, long_int_m, shift_out);
   }
-  ret = *(PtrToPtr<uint16_t, int16_t>(&ret_v));
+  ret = *(ge::PtrToPtr<uint16_t, int16_t>(&ret_v));
   return ret;
 }
 /// @ingroup fp16_t math conversion static method
@@ -417,7 +417,7 @@ static int32_t Fp16ToInt32(const uint16_t fp_val) {
     ret_v = (s_ret << static_cast<uint32_t>(BitShift::kBitShift31)) | (m_ret);
   }
 
-  return *(PtrToPtr<uint32_t, int32_t>(&ret_v));
+  return *(ge::PtrToPtr<uint32_t, int32_t>(&ret_v));
 }
 /// @ingroup fp16_t math conversion static method
 /// @param [in] fp_val uint16_t value of fp16_t object
@@ -720,14 +720,14 @@ bool operator<=(const TagFp16 lhs, const TagFp16 rhs) noexcept {
 }
 
 // evaluation
-TagFp16 &TagFp16::operator=(const float32_t f_val) & {
+TagFp16 &TagFp16::operator=(const ge::float32_t f_val) & {
   uint16_t s_ret;
   uint16_t m_ret;
   int16_t e_ret;
   uint32_t e_f;
   uint32_t m_f;
   // 1:8:23bit sign:exp:man
-  const uint32_t ui32_v = *(PtrToPtr<const float32_t, const uint32_t>(&f_val));
+  const uint32_t ui32_v = *(ge::PtrToPtr<const ge::float32_t, const uint32_t>(&f_val));
   uint32_t m_len_delta;
 
   // 4Byte->2Byte
@@ -821,23 +821,23 @@ TagFp16 &TagFp16::operator=(const int32_t i_val) & {
   if (i_val == 0) {
     val = 0U;
   } else {
-    uint32_t ui_val = *(PtrToPtr<const int32_t, const uint32_t>(&i_val));
+    uint32_t ui_val = *(ge::PtrToPtr<const int32_t, const uint32_t>(&i_val));
     const uint16_t s_ret = static_cast<uint16_t>(ui_val >> static_cast<uint32_t>(BitShift::kBitShift31));
     if (s_ret != 0U) {
       int32_t iValM = -i_val;
-      ui_val = *(PtrToPtr<int32_t, uint32_t>(&iValM));
+      ui_val = *(ge::PtrToPtr<int32_t, uint32_t>(&iValM));
     }
     SetValByUint32Val(ui_val, s_ret, val);
   }
   return *this;
 }
-TagFp16 &TagFp16::operator=(const float64_t d_val) & {
+TagFp16 &TagFp16::operator=(const ge::float64_t d_val) & {
   uint16_t s_ret;
   uint16_t m_ret;
   int16_t e_ret;
   uint64_t e_d;
   uint64_t m_d;
-  const uint64_t ui64_v = *(PtrToPtr<const float64_t, const uint64_t>(&d_val));  // 1:11:52bit sign:exp:man
+  const uint64_t ui64_v = *(ge::PtrToPtr<const ge::float64_t, const uint64_t>(&d_val));  // 1:11:52bit sign:exp:man
   uint32_t m_len_delta;
 
   s_ret = static_cast<uint16_t>((ui64_v & kFp64SignMask) >> static_cast<uint16_t>(kFp64SignIndex));  // 4Byte
@@ -891,10 +891,10 @@ TagFp16 &TagFp16::operator=(const float64_t d_val) & {
 }
 
 // convert
-TagFp16::operator float32_t() const {
+TagFp16::operator ge::float32_t() const {
   return Fp16ToFloatVal(val);
 }
-TagFp16::operator float64_t() const {
+TagFp16::operator ge::float64_t() const {
   return Fp16ToDouble(val);
 }
 TagFp16::operator int8_t() const {
@@ -924,10 +924,10 @@ TagFp16::operator uint64_t() const {
   return 0U;
 }
 
-float32_t fp16_t::ToFloat() const {
+ge::float32_t fp16_t::ToFloat() const {
   return Fp16ToFloatVal(val);
 }
-float64_t fp16_t::ToDouble() const {
+ge::float64_t fp16_t::ToDouble() const {
   return Fp16ToDouble(val);
 }
 int8_t fp16_t::ToInt8() const {
@@ -948,4 +948,4 @@ int32_t fp16_t::ToInt32() const {
 uint32_t fp16_t::ToUInt32() const {
   return Fp16ToUInt32(val);
 }
-}  // namespace ge
+}  // namespace gert

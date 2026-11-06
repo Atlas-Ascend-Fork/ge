@@ -18,6 +18,7 @@
 #include "common/host_resource_center/host_resource_center.h"
 #include "core/debug/kernel_tracing.h"
 #include "core/builder/model_v2_executor_builder.h"
+#include "engine/aicore/autofuse_dispatcher/dispatcher_table.h"
 #include "graph/utils/attr_utils.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/ge_global_options.h"
@@ -32,6 +33,18 @@
 
 namespace gert {
 namespace {
+class DispatcherGuardChecker : public GuardChecker {
+ public:
+  explicit DispatcherGuardChecker(std::shared_ptr<ge::autofuse_dispatcher::DispatcherTable> table)
+      : table_(std::move(table)) {}
+  bool Match(const std::vector<Tensor *> &inputs, char_t *reason, size_t reason_size) const override {
+    return (table_ != nullptr) && table_->Match(inputs, reason, reason_size);
+  }
+
+ private:
+  std::shared_ptr<ge::autofuse_dispatcher::DispatcherTable> table_;
+};
+
 ge::Status CheckGlobalDeterministicOption(std::map<std::string, std::string> &global_options,
                                           const std::string &option_name, const int32_t model_value) {
   int32_t process_value = 0;
@@ -68,42 +81,163 @@ ge::Status CheckGlobalDeterministicConfig(const ge::ComputeGraphPtr &root_graph)
   return ge::SUCCESS;
 }
 
-ge::graphStatus LoadToModelV2ExecutorBuilder(const ge::ModelData &model_data, const ModelConverter::Args &args,
-                                             ModelV2ExecutorBuilder &builder,
-                                             const bool check_global_deterministic_config) {
-  ge::ModelHelper model_helper;
-  auto error_code = model_helper.LoadRootModel(model_data);
-  if (error_code != ge::GRAPH_SUCCESS) {
-    GELOGE(ge::FAILED, "Failed to load root model from model data");
-    return error_code;
+std::map<std::string, ge::GeModelPtr> ExtractFallbackModels(const ge::GeRootModelPtr &root_model) {
+  std::map<std::string, ge::GeModelPtr> fallback_models;
+  bool dual_body = false;
+  if ((root_model->GetRootGraph() == nullptr) ||
+      (!ge::AttrUtils::GetBool(root_model->GetRootGraph(), ge::kDualBodyAttr, dual_body)) || (!dual_body)) {
+    return fallback_models;
   }
-  // todo： 当前单算子是一个临时方案， 后续考虑与图流程归一
-  auto root_model = model_helper.GetGeRootModel();
+  const std::string fb_root_key = ge::kFallbackModelKey;
+  const std::string fb_sub_prefix = ge::kFallbackSubgraphPrefix;
+  std::vector<std::string> fb_keys;
+  for (const auto &kv : root_model->GetSubgraphInstanceNameToModel()) {
+    if ((kv.first == fb_root_key) || (kv.first.compare(0U, fb_sub_prefix.size(), fb_sub_prefix) == 0U)) {
+      fb_keys.emplace_back(kv.first);
+    }
+  }
+  for (const auto &key : fb_keys) {
+    fallback_models[key] = root_model->GetSubgraphInstanceNameToModel().at(key);
+    root_model->RemoveInstanceSubgraphModel(key);
+  }
+  return fallback_models;
+}
+
+size_t SumModelWeightSize(const std::map<std::string, ge::GeModelPtr> &models) {
+  size_t total = 0U;
+  for (const auto &kv : models) {
+    if (kv.second != nullptr) {
+      total += kv.second->GetWeightSize();
+    }
+  }
+  return total;
+}
+
+void FillDualBodyWeightInfo(const ge::ComputeGraphPtr &root_graph, const ge::GeRootModelPtr &root_model,
+                            const std::map<std::string, ge::GeModelPtr> &fallback_models, ExecutorSet &executor_set) {
+  const size_t main_weight_size = SumModelWeightSize(root_model->GetSubgraphInstanceNameToModel());
+  bool weights_identical = false;
+  (void)ge::AttrUtils::GetBool(root_graph, ge::kWeightsIdenticalAttr, weights_identical);
+  executor_set.weights_identical = weights_identical && (!fallback_models.empty());
+  executor_set.shared_weight_size = executor_set.weights_identical ? main_weight_size : 0U;
+  if (fallback_models.empty()) {
+    return;
+  }
+  GELOGI("dual-body weights identical=%d, main_size=%zu.", static_cast<int32_t>(executor_set.weights_identical),
+         main_weight_size);
+}
+
+ge::graphStatus LoadRootModelForExecutor(const ge::ModelData &model_data, ge::ModelHelper &model_helper,
+                                         ge::GeRootModelPtr &root_model, const bool check_global_deterministic_config) {
+  const auto ret = model_helper.LoadRootModel(model_data);
+  if (ret != ge::GRAPH_SUCCESS) {
+    GELOGE(ge::FAILED, "load root model failed.");
+    return ret;
+  }
+  root_model = model_helper.GetGeRootModel();
   GE_ASSERT_NOTNULL(root_model);
   auto root_graph = root_model->GetRootGraph();
   GE_ASSERT_NOTNULL(root_graph);
   if (check_global_deterministic_config) {
     GE_ASSERT_SUCCESS(CheckGlobalDeterministicConfig(root_graph));
   }
-
   if (ge::GraphUtils::IsSingleOpScene(root_graph)) {
-    GELOGD("single op scene, set ge model as root model");
     auto root_ge_model = model_helper.GetGeModel();
+    GE_ASSERT_NOTNULL(root_ge_model);
     root_graph->SetGraphUnknownFlag(true);
     root_model->SetRootGraph(root_graph);
     root_model->SetSubgraphInstanceNameToModel(root_graph->GetName(), root_ge_model);
   }
+  return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus AssignModelIdForExecutor(const ge::GeRootModelPtr &root_model) {
   uint32_t model_id = 0U;
   ge::ModelManager::GetInstance().GenModelId(model_id);
   root_model->SetCurModelId(model_id);
   GELOGI("Current id of hybrid model %s is %u.", root_model->GetModelName().c_str(), root_model->GetCurModelId());
   for (auto &named_model : root_model->GetSubgraphInstanceNameToModel()) {
-    GE_ASSERT_NOTNULL(named_model.second, "Compiled model of graph %s is nullptr", named_model.first.c_str());
+    if (named_model.second == nullptr) {
+      GELOGE(ge::FAILED, "Compiled model of graph %s is nullptr", named_model.first.c_str());
+      return ge::FAILED;
+    }
     named_model.second->SetModelId(model_id);
   }
-  GE_ASSERT_SUCCESS(ge::ModelManager::GetInstance().InitOpMasterDeviceSo(model_id, root_model),
-                    "Init model [%u] op master device failed", model_id);
+  return ge::ModelManager::GetInstance().InitOpMasterDeviceSo(model_id, root_model);
+}
+
+ge::graphStatus BuildMainExecutor(const ge::ModelData &model_data, const ModelConverter::Args &args,
+                                  RtSession *const rt_session, const ge::GeRootModelPtr &root_model,
+                                  ExecutorSet &executor_set) {
+  auto main_graph = ModelConverter().ConvertGeModelToExecuteGraph(root_model, args);
+  if (main_graph == nullptr) {
+    GELOGE(ge::FAILED, "lower main execution body failed.");
+    return ge::FAILED;
+  }
+  ModelV2ExecutorBuilder main_builder(rt_session);
+  main_builder.ExecuteGraph(main_graph).ModelData(model_data).GeRootModel(root_model);
+  executor_set.main = main_builder.Build(ExecutorOption{});
+  if (executor_set.main == nullptr) {
+    GELOGE(ge::FAILED, "build main executor failed.");
+    return ge::FAILED;
+  }
+  return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus BuildFallbackExecutor(const ge::ModelData &model_data, const ModelConverter::Args &args,
+                                      RtSession *const rt_session, const ge::GeRootModelPtr &root_model,
+                                      const std::map<std::string, ge::GeModelPtr> &fallback_models,
+                                      ExecutorSet &executor_set) {
+  ge::GeRootModelPtr fallback_root_model = nullptr;
+  auto fallback_graph =
+      ModelConverter().ConvertFallbackModelToExecuteGraph(root_model, fallback_models, args, fallback_root_model);
+  if (fallback_graph == nullptr) {
+    GELOGE(ge::FAILED, "lower fallback execution body failed.");
+    return ge::FAILED;
+  }
+  ModelV2ExecutorBuilder fallback_builder(rt_session);
+  fallback_builder.ExecuteGraph(fallback_graph).ModelData(model_data).GeRootModel(fallback_root_model);
+  executor_set.fallback = fallback_builder.Build(ExecutorOption{});
+  if (executor_set.fallback == nullptr) {
+    GELOGE(ge::FAILED, "build fallback executor failed.");
+    return ge::FAILED;
+  }
+  return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus LoadGuardForExecutor(const ge::ComputeGraphPtr &root_graph, ExecutorSet &executor_set) {
+  const std::string *guard_so = ge::AttrUtils::GetStr(root_graph, "_guard_check_so_data");
+  if ((guard_so == nullptr) || guard_so->empty()) {
+    return ge::GRAPH_SUCCESS;
+  }
+  auto table = std::make_shared<ge::autofuse_dispatcher::DispatcherTable>();
+  if (table == nullptr) {
+    return ge::FAILED;
+  }
+  if (table->LoadGuardSo(*guard_so) != ge::SUCCESS) {
+    GELOGW("load guard so failed, disable guard and always take fallback body.");
+    return ge::GRAPH_SUCCESS;
+  }
+  executor_set.guard = std::make_shared<DispatcherGuardChecker>(std::move(table));
+  GELOGI("guard loaded, guard so size=%zu.", guard_so->size());
+  return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus LoadToModelV2ExecutorBuilder(const ge::ModelData &model_data, const ModelConverter::Args &args,
+                                             ModelV2ExecutorBuilder &builder,
+                                             const bool check_global_deterministic_config) {
+  // todo： 当前单算子是一个临时方案， 后续考虑与图流程归一
+  ge::ModelHelper model_helper;
+  ge::GeRootModelPtr root_model = nullptr;
+  GE_ASSERT_SUCCESS(LoadRootModelForExecutor(model_data, model_helper, root_model, check_global_deterministic_config));
+
+  GE_ASSERT_SUCCESS(AssignModelIdForExecutor(root_model));
+
+  // autofuse 离线双执行体：单执行体接口只返回主执行体，先摘出兜底 sub-model。
+  const auto fallback_models = ExtractFallbackModels(root_model);
+  if (!fallback_models.empty()) {
+    GELOGI("model contains %zu fallback sub model(s), ignored by single-executor API.", fallback_models.size());
+  }
 
   auto graph = ModelConverter().ConvertGeModelToExecuteGraph(root_model, args);
   GE_ASSERT_NOTNULL(graph, "Failed to lowering to execute graph");
@@ -113,6 +247,30 @@ ge::graphStatus LoadToModelV2ExecutorBuilder(const ge::ModelData &model_data, co
   return ge::GRAPH_SUCCESS;
 }
 }  // namespace
+
+ge::graphStatus LoadExecutorSetFromModelData(const ge::ModelData &model_data, const LoadExecutorArgs &args,
+                                             ExecutorSet &executor_set) {
+  ge::ModelHelper model_helper;
+  ge::GeRootModelPtr root_model = nullptr;
+  GE_ASSERT_SUCCESS(LoadRootModelForExecutor(model_data, model_helper, root_model, true));
+  GE_ASSERT_SUCCESS(AssignModelIdForExecutor(root_model));
+
+  const auto fallback_models = ExtractFallbackModels(root_model);
+  FillDualBodyWeightInfo(root_model->GetRootGraph(), root_model, fallback_models, executor_set);
+  ModelConverter::Args converter_args{{}, nullptr, nullptr, nullptr, &args.file_constant_mems};
+  GE_ASSERT_SUCCESS(BuildMainExecutor(model_data, converter_args, args.rt_session, root_model, executor_set));
+  if (!fallback_models.empty()) {
+    GE_ASSERT_SUCCESS(
+        BuildFallbackExecutor(model_data, converter_args, args.rt_session, root_model, fallback_models, executor_set));
+  }
+  if (executor_set.fallback != nullptr) {
+    GE_ASSERT_SUCCESS(LoadGuardForExecutor(root_model->GetRootGraph(), executor_set));
+  }
+  GELOGI("load executor set success, has_fallback=%d, weights_identical=%d.",
+         static_cast<int32_t>(executor_set.fallback != nullptr), static_cast<int32_t>(executor_set.weights_identical));
+  return ge::GRAPH_SUCCESS;
+}
+
 void FreeModelData(ge::ModelData &model_data) {
   delete[] static_cast<ge::char_t *>(model_data.model_data);
   model_data.model_data = nullptr;

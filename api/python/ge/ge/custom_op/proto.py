@@ -30,6 +30,7 @@ from ge.graph import DataType
 from ge.runtime import Tensor, TensorDesc
 
 from ._ir_types import AttrType, InputType, OutputType
+from ._scope import get_active_model_scope
 
 
 def _get_origin(annotation):
@@ -518,9 +519,14 @@ def register_op(*, op_type: str, mutates_args=()) -> callable:
         try:
             if not inspect.isfunction(fn):
                 raise TypeError("register_op expects a Python function")
-            descriptor = _OP_PROTO_REGISTRY.register(
-                _build_descriptor(fn, normalized_op_type, mutates_args)
-            )
+            built = _build_descriptor(fn, normalized_op_type, mutates_args)
+            active_scope = get_active_model_scope()
+            if active_scope is not None:
+                # OM 恢复 scope 内只记录原型声明，进程级全局注册表零写入，
+                # C++ OperatorFactoryImpl 自然零触碰。
+                descriptor = active_scope.declare_proto(built)
+            else:
+                descriptor = _OP_PROTO_REGISTRY.register(built)
         except (TypeError, ValueError) as exc:
             raise type(exc)(
                 f"register_op op_type '{normalized_op_type}' failed: {exc}"

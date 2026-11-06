@@ -31,9 +31,9 @@ py_func: Optional = None, workspace_dir: Optional = None)
 
 UDF的编译配置文件示例如下：
 
-    ```
-    {"func_list":[{"func_name":"Add", "inputs_index":[1,0], "outputs_index":[0]}],"input_num":2,"output_num":1,"target_bin":"libadd.so","workspace":"./","cmakelist_path":"CMakeLists.txt","compiler": "./cpu_compile.json","running_resources_info":[{"type":"cpu","num":2},{"type":"memory","num":100}],"heavy_load":false}
-    ```
+  ```json
+  {"func_list":[{"func_name":"Add", "inputs_index":[1,0], "outputs_index":[0]}],"input_num":2,"output_num":1,"target_bin":"libadd.so","workspace":"./","cmakelist_path":"CMakeLists.txt","compiler": "./cpu_compile.json","running_resources_info":[{"type":"cpu","num":2},{"type":"memory","num":100}],"heavy_load":false}
+  ```
 
 **表1**  FuncProcessPoint的json配置文件
 
@@ -57,9 +57,9 @@ UDF的编译配置文件示例如下：
 
 compiler的json配置内容示例和各字段解释如下。
 
-    ```
-    {"compiler":[{"resource_type":"X86","toolchain":"/usr/bin/g++"},{"resource_type":"Aarch","toolchain":"/usr/bin/g++"},{"resource_type":"Ascend","toolchain":"/usr/local/Ascend/hcc"}]}
-    ```
+```json
+{"compiler":[{"resource_type":"X86","toolchain":"/usr/bin/g++"},{"resource_type":"Aarch","toolchain":"/usr/bin/g++"},{"resource_type":"Ascend","toolchain":"/usr/local/Ascend/hcc"}]}
+```
 
 **表2**  compiler的json配置文件
 
@@ -71,13 +71,13 @@ compiler的json配置内容示例和各字段解释如下。
 
 buf\_cfg的json配置内容示例和各字段解释如下。
 
-    ```
-    "buf_cfg":[{"total_size":2097152,"blk_size":256,"max_buf_size":8192,"page_type":"normal"},        // 1.total:2M  max:8K
-               {"total_size":10485760,"blk_size":4096,"max_buf_size":8388608,"page_type":"normal"},   // 2.total:10M  max:8M
-               {"total_size":2097152,"blk_size":256,"max_buf_size":8192,"page_type":"huge"},          // 3.total:2M  max:8K
-               {"total_size":10485760,"blk_size":8192,"max_buf_size":8388608,"page_type":"huge"},     // 4.total:10M  max:8M
-               {"total_size":69206016,"blk_size":8192,"max_buf_size":67108864,"page_type":"huge"}]    // 5.total:66M  max:64M
-      ```
+```json
+"buf_cfg":[{"total_size":2097152,"blk_size":256,"max_buf_size":8192,"page_type":"normal"},        // 1.total:2M  max:8K
+{"total_size":10485760,"blk_size":4096,"max_buf_size":8388608,"page_type":"normal"},   // 2.total:10M  max:8M
+{"total_size":2097152,"blk_size":256,"max_buf_size":8192,"page_type":"huge"},          // 3.total:2M  max:8K
+{"total_size":10485760,"blk_size":8192,"max_buf_size":8388608,"page_type":"huge"},     // 4.total:10M  max:8M
+{"total_size":69206016,"blk_size":8192,"max_buf_size":67108864,"page_type":"huge"}]    // 5.total:66M  max:64M
+```
 
 说明：
 <br>- 如上样例共配置了5个内存档位，前两条针对普通内存，后三条针对大页内存。
@@ -116,105 +116,104 @@ CMakeLists文件相关内容如下：
   - 编译脚本要使用RESOURCE\_TYPE变量判断资源类型，如果当前UDF不支持某一个资源类型，需要将对应的注释放开。
   - CMakeLists sample如下：
 
-        ```
-        cmake_minimum_required(VERSION 3.5)
-        PROJECT(UDF)
-        if ("x${RESOURCE_TYPE}" STREQUAL "xAscend")
-          message(STATUS "ascend compiler enter")
-          # if unsupported current resource type, please uncomment the next line.
-          # message(FATAL_ERROR "Unsupported compile Ascend target!")
-        elseif("x${RESOURCE_TYPE}" STREQUAL "xAarch")
-          message(STATUS "aarch64 compiler enter")
-          # if unsupported current resource type, please uncomment the next line.
-          # message(FATAL_ERROR "Unsupported compile Aarch64 target!")
-        else()
-          message(STATUS "x86 compiler enter")
-          # if unsupported current resource type, please uncomment the next line.
-          # message(FATAL_ERROR "Unsupporte'd compile X86 target!")
-        endif()
+    ```text
+    cmake_minimum_required(VERSION 3.5)
+    PROJECT(UDF)
+    if ("x${RESOURCE_TYPE}" STREQUAL "xAscend")
+      message(STATUS "ascend compiler enter")
+      # if unsupported current resource type, please uncomment the next line.
+      # message(FATAL_ERROR "Unsupported compile Ascend target!")
+    elseif("x${RESOURCE_TYPE}" STREQUAL "xAarch")
+      message(STATUS "aarch64 compiler enter")
+      # if unsupported current resource type, please uncomment the next line.
+      # message(FATAL_ERROR "Unsupported compile Aarch64 target!")
+    else()
+      message(STATUS "x86 compiler enter")
+      # if unsupported current resource type, please uncomment the next line.
+      # message(FATAL_ERROR "Unsupported compile X86 target!")
+    endif()
 
-        if(DEFINED ENV{ASCEND_HOME_PATH})
-          set(ASCEND_HOME_PATH $ENV{ASCEND_HOME_PATH})
-          message(STATUS "Read ASCEND_HOME_PATH from ENV: ${ASCEND_HOME_PATH}")
-        else()
+    if(DEFINED ENV{ASCEND_HOME_PATH})
+      set(ASCEND_HOME_PATH $ENV{ASCEND_HOME_PATH})
+      message(STATUS "Read ASCEND_HOME_PATH from ENV: ${ASCEND_HOME_PATH}")
+    else()
 
-          message(FATAL_ERROR "ASCEND_HOME_PATH is not set, please export ASCEND_HOME_PATH based on actual installation path.")
-        endif()
+      message(FATAL_ERROR "ASCEND_HOME_PATH is not set, please export ASCEND_HOME_PATH based on actual installation path.")
+    endif()
 
-        # set dynamic library output path
-        set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/${RELEASE_DIR})
-        # set static library output path
-        set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/${RELEASE_DIR})
+    # set dynamic library output path
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/${RELEASE_DIR})
+    # set static library output path
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/${RELEASE_DIR})
 
-        message(STATUS "CMAKE_LIBRARY_OUTPUT_DIRECTORY= ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+    message(STATUS "CMAKE_LIBRARY_OUTPUT_DIRECTORY= ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 
-        set(INC_DIR "${ASCEND_HOME_PATH}/include")flow_func")
+    set(INC_DIR "${ASCEND_HOME_PATH}/include/flow_func")
         file(GLOB SRC_LIST "*.cpp")
 
-        # Specify cross compiler
-        add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
+    # Specify cross compiler
+    add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 
-        # set c++ compiler
-        set(CMAKE_CXX_COMPILER ${TOOLCHAIN})
+    # set c++ compiler
+    set(CMAKE_CXX_COMPILER ${TOOLCHAIN})
 
-        # =========================UDF so compile============================
-        # check if SRC_LIST exists
-        if("x${SRC_LIST}" STREQUAL "x")
-            message(UDF "=========no source file=============")
-            add_custom_target(${UDF_TARGET_LIB}
-                COMMAND echo "no source to make lib${UDF_TARGET_LIB}.so")
-            return(0)
-        endif()
+    # =========================UDF so compile============================
+    # check if SRC_LIST exists
+    if("x${SRC_LIST}" STREQUAL "x")
+        message(UDF "=========no source file=============")
+        add_custom_target(${UDF_TARGET_LIB}
+            COMMAND echo "no source to make lib${UDF_TARGET_LIB}.so")
+        return(0)
+    endif()
 
-        add_library(${UDF_TARGET_LIB} SHARED
-          ${SRC_LIST}
-        )
+    add_library(${UDF_TARGET_LIB} SHARED
+      ${SRC_LIST}
+    )
 
-        target_include_directories(${UDF_TARGET_LIB} PRIVATE
-          ${INC_DIR}
-        )
+    target_include_directories(${UDF_TARGET_LIB} PRIVATE
+      ${INC_DIR}
+    )
 
-        target_compile_options(${UDF_TARGET_LIB} PRIVATE
-          -O2
-          -std=c++11
-          -ftrapv
-          -fstack-protector-all
-          -fPIC
-        )
+    target_compile_options(${UDF_TARGET_LIB} PRIVATE
+      -O2
+      -std=c++11
+      -ftrapv
+      -fstack-protector-all
+      -fPIC
+    )
 
-        if ("x${RESOURCE_TYPE}" STREQUAL "xAscend")
-          target_link_libraries(${UDF_TARGET_LIB} PRIVATE
-            -Wl,--whole-archive
-            ${ASCEND_HOME_PATH}/devlib/device/libflow_func.so
-            -Wl,--no-whole-archive
-          )
-          # if there are any dependent so, please release the following comments and copy dependent so to ${PROJECT_BINARY_DIR}/${RELEASE_DIR}
-          # [[execute_process(
+    if ("x${RESOURCE_TYPE}" STREQUAL "xAscend")
+      target_link_libraries(${UDF_TARGET_LIB} PRIVATE
+        -Wl,--whole-archive
+        ${ASCEND_HOME_PATH}/devlib/device/libflow_func.so
+        -Wl,--no-whole-archive
+      )
+      # if there are any dependent so, please release the following comments and copy dependent so to ${PROJECT_BINARY_DIR}/${RELEASE_DIR}
+      # [[execute_process(
             COMMAND cp libdepend_xxx.so ${PROJECT_BINARY_DIR}/${RELEASE_DIR}
-          )]]
-        elseif("x${RESOURCE_TYPE}" STREQUAL "xAarch")
-          target_link_libraries(${UDF_TARGET_LIB} PRIVATE
-            -Wl,--whole-archive
-           ${ASCEND_HOME_PATH}/devlib/linux/aarch64/libflow_func.so
-            -Wl,--no-whole-archive
-          )
-          # if there are any dependent so, please release the following comments and copy dependent so to ${PROJECT_BINARY_DIR}/${RELEASE_DIR}
-          # [[execute_process(
-            COMMAND cp libdepend_xxx.so ${PROJECT_BINARY_DIR}/${RELEASE_DIR}
-          )]]
-        else()
-          target_link_libraries(${UDF_TARGET_LIB} PRIVATE
-            -Wl,--whole-archive
-            ${ASCEND_HOME_PATH}/devlib/linux/x86_64/libflow_func.so
-            -Wl,--no-whole-archive
-          )
-          # if there are any dependent so, please release the following comments and copy dependent so to ${PROJECT_BINARY_DIR}/${RELEASE_DIR}
-          # [[execute_process(
-             COMMAND cp libdepend_xxx.so ${PROJECT_BINARY_DIR}/${RELEASE_DIR}
-          )]]
-        endif()
-
-        ```
+      )]]
+    elseif("x${RESOURCE_TYPE}" STREQUAL "xAarch")
+      target_link_libraries(${UDF_TARGET_LIB} PRIVATE
+        -Wl,--whole-archive
+        ${ASCEND_HOME_PATH}/devlib/linux/aarch64/libflow_func.so
+        -Wl,--no-whole-archive
+      )
+      # if there are any dependent so, please release the following comments and copy dependent so to ${PROJECT_BINARY_DIR}/${RELEASE_DIR}
+      # [[execute_process(
+        COMMAND cp libdepend_xxx.so ${PROJECT_BINARY_DIR}/${RELEASE_DIR}
+      )]]
+    else()
+      target_link_libraries(${UDF_TARGET_LIB} PRIVATE
+        -Wl,--whole-archive
+        ${ASCEND_HOME_PATH}/devlib/linux/x86_64/libflow_func.so
+        -Wl,--no-whole-archive
+      )
+      # if there are any dependent so, please release the following comments and copy dependent so to ${PROJECT_BINARY_DIR}/${RELEASE_DIR}
+      # [[execute_process(
+        COMMAND cp libdepend_xxx.so ${PROJECT_BINARY_DIR}/${RELEASE_DIR}
+      )]]
+    endif()
+    ```
 
 ## 返回值
 

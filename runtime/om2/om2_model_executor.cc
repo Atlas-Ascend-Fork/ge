@@ -16,7 +16,6 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
-#include <unordered_set>
 #include "ge_common/api_error_codes.h"
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -336,25 +335,30 @@ ge::Status FindInternalWeightBuf(const gert::GertModelData &om2_data,
   return ge::SUCCESS;
 }
 
-ge::Status ValidateVarMetas(const std::vector<std::unique_ptr<gert::GertModelDataVarMeta>> &var_metas) {
-  if (var_metas.empty()) {
+// 按 model_meta.var_weight_file_name 查找变量初始数据块（与 FindInternalWeightBuf 同一套按名匹配机制：
+// Bundle 反序列化把目标子模型放在 [model_index]，按下标访问会漂移，按名查找天然免疫）。
+// 名字为空表示本模型无初始数据块，输出保持空。
+ge::Status FindVarWeightBuf(const gert::GertModelData &om2_data, const gert::GertModelDataModelMeta &model_meta,
+                            ge::ReadonlyByteBuffer &var_weight_buf, uint64_t &var_weight_size) {
+  const std::string var_file_name = gert::GertGetStr(model_meta.var_weight_file_name);
+  if (var_file_name.empty()) {
     return ge::SUCCESS;
   }
-  const size_t n = var_metas.size();
-  std::unordered_set<size_t> seen_indices;
-  seen_indices.reserve(n);
-  for (const auto &meta : var_metas) {
-    if (meta->index >= n) {
-      GELOGE(ge::PARAM_INVALID, "[OM2][Var][Validate] var_meta index %zu out of range [0, %zu), var_name=%s.",
-             meta->index, n, gert::GertGetStr(meta->var_name));
-      return ge::PARAM_INVALID;
-    }
-    if (!seen_indices.insert(meta->index).second) {
-      GELOGE(ge::PARAM_INVALID, "[OM2][Var][Validate] duplicate var_meta index %zu, var_name=%s.", meta->index,
-             gert::GertGetStr(meta->var_name));
-      return ge::PARAM_INVALID;
-    }
+  const auto &var_weight_data = om2_data.variables->var_weight_data;
+  const auto data_it =
+      std::find_if(var_weight_data.begin(), var_weight_data.end(),
+                   [&var_file_name](const std::unique_ptr<gert::GertModelDataFile> &slot) {
+                     return (slot != nullptr) && (std::string(gert::GertGetStr(slot->file_name)) == var_file_name);
+                   });
+  if (data_it == var_weight_data.end()) {
+    REPORT_PREDEFINED_ERR_MSG(
+        "E10059", std::vector<const char *>({"stage", "reason"}),
+        std::vector<const char *>({"LoadFromOm2ModelData", "Variable weight data not found in ZIP archive."}));
+    GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2][Check] Variable weight data [%s] not found.", var_file_name.c_str());
+    return ACL_ERROR_GE_PARAM_INVALID;
   }
+  var_weight_buf = ge::ReadonlyByteBuffer(data_it->get()->data.get(), ge::ConditionalDeleter{false});
+  var_weight_size = data_it->get()->data_size;
   return ge::SUCCESS;
 }
 
@@ -412,6 +416,24 @@ int32_t ReportRunInfoPostprocess(void *instance_handle, const GertModelRunReport
   return 0;
 }
 
+// GertModelVarContext 的两个回调适配：ABI 要的是收 void* 句柄的 C 链接自由函数，
+// 容器只提供成员函数，故在此转发。ge::SUCCESS == 0 与回调"0 表示成功"的约定一致，
+// 非 0 的失败码原样透传。
+int32_t VarCtxGetVarAddr(void *var_manager_handle, GertVarDesc *desc) {
+  if ((var_manager_handle == nullptr) || (desc == nullptr)) {
+    return -1;
+  }
+  auto *manager = static_cast<Om2RTVarManager *>(var_manager_handle);
+  return static_cast<int32_t>(manager->GetVarAddr(*desc));
+}
+
+int32_t VarCtxCommitVarData(void *var_manager_handle, GertVarCommit *commit) {
+  if ((var_manager_handle == nullptr) || (commit == nullptr)) {
+    return -1;
+  }
+  auto *manager = static_cast<Om2RTVarManager *>(var_manager_handle);
+  return static_cast<int32_t>(manager->CommitVarData(*commit));
+}
 }  // namespace
 
 class Om2ModelExecutor::Impl {
@@ -528,11 +550,10 @@ class Om2ModelExecutor::Impl {
     for (const auto &k : kernels) {
       KernelBinInfo bin_info;
       bin_info.file = gert::GertGetStr(k->file_name);
-      // 创建非拥有引用：指向 GertModelDataFile::data 的内部缓冲区。
-      // 生命周期约束：调用方必须保证 GertModelData 在 kernel 二进制使用期间保持存活。
-      // 当前调用链：LoadOm2Graph → Om2ModelManager::LoadModel → executor->Load(model_data, ...)
-      // 其中 model_data 通过 const & 传递，指向 GeRootModel 持有的 shared_ptr<GertModelData>，
-      // 因此只要 GeRootModel 存活（通常在整个 Session 生命周期内），数据就安全。
+      // 创建非拥有引用：指向 GertModelDataFile::data 的内部缓冲区。生命周期约束：调用方必须保证
+      // GertModelData 在 kernel 二进制使用期间存活。当前调用链 LoadOm2Graph → LoadModel →
+      // executor->Load(model_data, ...) 中 model_data 经 const & 传递、指向 GeRootModel 持有的
+      // shared_ptr，故只要 GeRootModel 存活（通常是整个 Session 生命周期）数据就安全。
       if (k->data != nullptr) {
         bin_info.data = ge::ReadonlyByteBuffer(k->data.get(), ge::ConditionalDeleter{false});
         bin_info.data_size = k->data_size;
@@ -615,34 +636,12 @@ class Om2ModelExecutor::Impl {
     return ge::SUCCESS;
   }
 
-  ge::Status PrepareVarAddrs(const gert::GertModelData &model_data, uint32_t device_id,
-                             std::vector<void *> &var_addrs) const {
-    const std::vector<std::unique_ptr<gert::GertModelDataVarMeta>> *var_metas = nullptr;
-    const auto *variables_config = model_data.models.empty() ? nullptr : model_data.models[0]->variables_config.get();
-    if (variables_config != nullptr) {
-      var_metas = &variables_config->var_metas;
-    }
-    if ((var_metas == nullptr) || var_metas->empty()) {
-      return ge::SUCCESS;
-    }
-    auto var_manager = Om2RTVarManagerPool::Instance().GetManager(session_id_);
-    GE_ASSERT_NOTNULL(var_manager);
-
-    var_addrs.resize(var_metas->size(), nullptr);
-    for (const auto &meta : *var_metas) {
-      void *dev_addr = nullptr;
-      GE_ASSERT_SUCCESS(var_manager->GetVarDevAddr(gert::GertGetStr(meta->var_name), device_id, dev_addr));
-      var_addrs[meta->index] = dev_addr;
-    }
-    return ge::SUCCESS;
-  }
-
-  ge::Status PrepareVariablesFromStruct(const gert::GertModelDataModel &model_unit,
-                                        const Om2ModelLoadArg &load_arg) const {
-    const auto *variables_config = model_unit.variables_config.get();
-    if ((variables_config == nullptr) || variables_config->entries.empty()) {
-      return ge::SUCCESS;
-    }
+  // 组装变量上下文：容器句柄、设备号、初始数据块与两个回调适配函数。变量的地址解析、格式与
+  // 数据类型转换、变量间拷贝全部下沉到模型 SO 的 PrepareVars，执行器只负责把外置变量内存区交给
+  // 容器。无条件组装：变量元数据已固化进 SO，执行器侧无从判断"有无变量"；无变量模型的固化表为
+  // 空、SO 侧各阶段零次循环，上下文非空是安全的。
+  ge::Status PrepareVarContext(const gert::GertModelData &model_data, const Om2ModelLoadArg &load_arg,
+                               GertModelVarContext &var_context) const {
     auto var_manager = Om2RTVarManagerPool::Instance().GetManager(session_id_);
     GE_ASSERT_NOTNULL(var_manager);
     // 外部变量内存经 rt_session 透传，Bundle 子模型共享同一 Session 时幂等合并
@@ -651,22 +650,26 @@ class Om2ModelExecutor::Impl {
     if (load_arg.rt_session != nullptr) {
       load_arg.rt_session->GetExternalVar(external_var_addr, external_var_size);
     }
-    GE_ASSERT_SUCCESS(var_manager->Init(variables_config->entries, external_var_addr, external_var_size));
+    var_manager->SetExternalVar(external_var_addr, external_var_size);
 
-    std::vector<std::string> var_names;
-    for (const auto &meta : variables_config->var_metas) {
-      var_names.push_back(gert::GertGetStr(meta->var_name));
-    }
-    GE_ASSERT_SUCCESS(
-        var_manager->TransAllVarData(var_names, static_cast<uint32_t>(load_arg.device_id), variables_config->graph_id));
-    GE_ASSERT_SUCCESS(var_manager->CopyVarData(var_names, static_cast<uint32_t>(load_arg.device_id)));
+    ge::ReadonlyByteBuffer var_weight_buf(nullptr, ge::ConditionalDeleter{false});
+    uint64_t var_weight_size = 0U;
+    GE_CHK_STATUS_RET(FindVarWeightBuf(model_data, *model_data.models[0]->model_meta, var_weight_buf, var_weight_size),
+                      "[OM2][Call]FindVarWeightBuf failed");
+
+    var_context.var_manager_handle = static_cast<void *>(var_manager.get());
+    var_context.device_id = static_cast<uint32_t>(load_arg.device_id);
+    var_context.var_weight_data = var_weight_buf.get();
+    var_context.var_weight_data_size = var_weight_size;
+    var_context.get_var_addr = VarCtxGetVarAddr;
+    var_context.commit_var_data = VarCtxCommitVarData;
     return ge::SUCCESS;
   }
 
   ge::Status CreateModelFromStruct(const gert::GertModelData &model_data, ge::ReadonlyByteBuffer &weight_buf,
                                    std::vector<KernelBinInfo> &kernel_bin_info, const Om2ModelLoadArg &load_arg,
                                    uint64_t session_id, std::vector<void *> &constants,
-                                   std::vector<void *> &var_addrs) {
+                                   GertModelVarContext &var_context) {
     GE_ASSERT_TRUE(has_model_);
     GE_ASSERT_TRUE(load_arg.device_id >= 0, "[OM2][Check] Invalid device id.");
     device_id_ = load_arg.device_id;
@@ -683,27 +686,28 @@ class Om2ModelExecutor::Impl {
     GE_CHK_STATUS_RET(
         PrepareConstantsFromStruct(*model_data.models[0]->constants_config, weight_buf, load_arg, constants),
         "[OM2][Call]PrepareConstantsFromStruct failed.");
-    GE_ASSERT_SUCCESS(PrepareVariablesFromStruct(*model_data.models[0], load_arg));
-
-    GE_ASSERT_SUCCESS(PrepareVarAddrs(model_data, static_cast<uint32_t>(load_arg.device_id), var_addrs));
+    GE_ASSERT_SUCCESS(PrepareVarContext(model_data, load_arg, var_context));
 
     GE_ASSERT_NOTNULL(run_model_info_.load_func);
     const GertModelLoadCallbacks callbacks = CreateGertModelLoadCallbacks();
-    struct GertModelLoadConfig config = {.struct_size = sizeof(GertModelLoadConfig),
-                                         .bin_files = bin_files.data(),
-                                         .bin_data = bin_data.data(),
-                                         .bin_size = bin_sizes.data(),
-                                         .bin_num = bin_data.size(),
-                                         .constants = constants.empty() ? nullptr : constants.data(),
-                                         .var_addrs = var_addrs.empty() ? nullptr : var_addrs.data(),
-                                         .work_ptr = load_arg.work_ptr,
-                                         .session_id = &session_id_,
-                                         .model_id = load_arg.model_id,
-                                         .instance_handle = static_cast<void *>(owner_),
-                                         .callbacks = &callbacks,
-                                         .priority = load_arg.priority,
-                                         .reuse_zero_copy = load_arg.reuse_zero_copy ? 1U : 0U,
-                                         .external_rt_model = run_model_info_.external_rt_model};
+    struct GertModelLoadConfig config = {
+        .struct_size = sizeof(GertModelLoadConfig),
+        .bin_files = bin_files.data(),
+        .bin_data = bin_data.data(),
+        .bin_size = bin_sizes.data(),
+        .bin_num = bin_data.size(),
+        .constants = constants.empty() ? nullptr : constants.data(),
+        // PrepareVarContext 无条件组装上下文：变量元数据已固化进模型 SO，执行器侧不判断有无变量。
+        // 无变量模型的固化表为空，SO 侧各阶段零次循环，非空上下文是安全的。
+        .var_context = static_cast<void *>(&var_context),
+        .work_ptr = load_arg.work_ptr,
+        .session_id = &session_id_,
+        .model_id = load_arg.model_id,
+        .instance_handle = static_cast<void *>(owner_),
+        .callbacks = &callbacks,
+        .priority = load_arg.priority,
+        .reuse_zero_copy = load_arg.reuse_zero_copy ? 1U : 0U,
+        .external_rt_model = run_model_info_.external_rt_model};
     GE_ASSERT_SUCCESS(run_model_info_.load_func(&config, &run_model_info_.model_handle, nullptr));
     GE_ASSERT_NOTNULL(run_model_info_.model_handle);
     run_model_info_.load_priority = load_arg.priority;
@@ -725,11 +729,12 @@ class Om2ModelExecutor::Impl {
                                           uint64_t session_id) {
     GE_ASSERT_SUCCESS(PrepareExternalRtModel(load_arg));
     std::vector<void *> constants;
-    std::vector<void *> var_addrs;
+    // 只在 GertModelLoad 期间被 SO 使用（其 InitResources 内调 PrepareVars），故局部量足够
+    GertModelVarContext var_context;
     GE_ASSERT_SUCCESS(InitModelDumpInfo(load_arg));
     ReportModelLoadBegin();
     GE_CHK_STATUS_RET(
-        CreateModelFromStruct(model_data, weight_buf, kernel_bin_info, load_arg, session_id, constants, var_addrs),
+        CreateModelFromStruct(model_data, weight_buf, kernel_bin_info, load_arg, session_id, constants, var_context),
         "[OM2][Call][CreateModelFromStruct] failed.");
     ReportModelLoadEnd();
     GE_ASSERT_SUCCESS(DispatchDumpInfo());
@@ -738,10 +743,9 @@ class Om2ModelExecutor::Impl {
     return ge::GRAPH_SUCCESS;
   }
 
-  // 调度模式外部 RI 管理：已配置时创建/设置，未配置时零影响（不创建外部 RI，模型 SO 自建并释放）。
-  // 目标时序为 BuildBegin → SetAttribute → GertModelLoad → BuildEnd，保证属性设置早于模型 SO 的任意 BindStream，
-  // 且 BuildEnd 在模型 SO 完成流绑定和任务下发后由 executor 调用。
-  // 当前 OM2 仅支持静态图，动态 shape 校验作为遗留问题暂不处理。
+  // 调度模式外部 RI 管理：已配置时创建/设置，未配置时零影响（不创建外部 RI，模型 SO 自建并
+  // 释放）。目标时序为 BuildBegin → SetAttribute → GertModelLoad → BuildEnd，保证属性设置早于
+  // 模型 SO 的任意 BindStream。当前 OM2 仅支持静态图，动态 shape 校验作为遗留问题暂不处理。
   ge::Status PrepareExternalRtModel(const Om2ModelLoadArg &load_arg) {
     if (!load_arg.sch_mode_configured) {
       return ge::SUCCESS;
@@ -1454,9 +1458,6 @@ ge::Status Om2ModelExecutor::Load(ge::ModelData &model_data, const Om2ModelLoadA
 
 ge::Status Om2ModelExecutor::Load(const gert::GertModelData &model_data, const Om2ModelLoadArg &load_arg,
                                   const uint64_t session_id) const {
-  if (!model_data.models.empty() && (model_data.models[0]->variables_config != nullptr)) {
-    GE_ASSERT_SUCCESS(ValidateVarMetas(model_data.models[0]->variables_config->var_metas));
-  }
   ge::ReadonlyByteBuffer weight_buf;
   std::vector<KernelBinInfo> kernel_bin_info;
   GE_CHK_STATUS_RET(impl_->LoadFromOm2ModelData(model_data, weight_buf, kernel_bin_info),
@@ -1851,9 +1852,10 @@ ge::Status GetOm2ModelMetadata(const void *model_data, size_t model_size, std::v
 }
 
 namespace {
-// 反序列化子模型 model_meta 并校验 Bundle manifest；index 为 0 时解析输出 model_num
+// 反序列化子模型 model_meta 并校验 Bundle manifest；index 为 0 时解析输出 model_num。
+// global_shared_var_size 同在 model_meta 内，一并输出，避免为它再解析一次归档。
 ge::Status QuerySubModelWorkSize(const uint8_t *bytes, const size_t size, const size_t index, size_t &work_size,
-                                 size_t &model_num) {
+                                 size_t &model_num, size_t &shared_var_size) {
   gert::GertModelData meta_data;
   const uint32_t meta_ret = gert::DeserializeGertModelMeta(bytes, size, &meta_data, static_cast<uint32_t>(index));
   if (meta_ret != 0U) {
@@ -1875,12 +1877,13 @@ ge::Status QuerySubModelWorkSize(const uint8_t *bytes, const size_t size, const 
                  "[OM2][Bundle] sub model is empty, index[%zu].", index);
   GE_ASSERT_NOTNULL(meta_data.models[index]->model_meta);
   work_size = static_cast<size_t>(meta_data.models[index]->model_meta->work_size);
+  shared_var_size = static_cast<size_t>(meta_data.models[index]->model_meta->global_shared_var_size);
   return ge::SUCCESS;
 }
 
-// 反序列化子模型 constants_config 与 variables_config（仅配置部分），输出内置权重与全局共享变量规模
-ge::Status QuerySubModelWeightAndVarSize(const uint8_t *bytes, const size_t size, const size_t index,
-                                         size_t &internal_weight_size, size_t &shared_var_size) {
+// 反序列化子模型 constants_config（仅配置部分），输出内置权重规模
+ge::Status QuerySubModelWeightSize(const uint8_t *bytes, const size_t size, const size_t index,
+                                   size_t &internal_weight_size) {
   gert::GertModelData config_data;
   const uint32_t config_ret =
       gert::DeserializeGertConstantsConfig(bytes, size, &config_data, static_cast<uint32_t>(index));
@@ -1895,25 +1898,10 @@ ge::Status QuerySubModelWeightAndVarSize(const uint8_t *bytes, const size_t size
                  "[OM2][Bundle] sub model is empty, index[%zu].", index);
   GE_ASSERT_NOTNULL(config_data.models[index]->constants_config);
   internal_weight_size = static_cast<size_t>(config_data.models[index]->constants_config->internal_weight_size);
-
-  shared_var_size = 0U;
-  gert::GertModelData vars_data;
-  const uint32_t vars_ret = gert::DeserializeGertVariablesConfig(bytes, size, &vars_data, static_cast<uint32_t>(index));
-  if (vars_ret != 0U) {
-    GELOGE(ACL_ERROR_GE_PARAM_INVALID,
-           "[OM2][Bundle] deserialize sub model variables config failed, index[%zu], "
-           "ret[%u].",
-           index, vars_ret);
-    return ACL_ERROR_GE_PARAM_INVALID;
-  }
-  if ((vars_data.models.size() > index) && (vars_data.models[index] != nullptr) &&
-      (vars_data.models[index]->variables_config != nullptr)) {
-    shared_var_size = static_cast<size_t>(vars_data.models[index]->variables_config->global_shared_var_size);
-  }
   return ge::SUCCESS;
 }
 
-// 逐子模型按类别反序列化（model_meta + constants_config + variables_config），收集规模信息与最大 global_shared_var_size
+// 逐子模型按类别反序列化（model_meta + constants_config），收集规模信息与最大 global_shared_var_size
 ge::Status CollectBundleInfo(const void *data, const size_t size, std::vector<std::pair<size_t, size_t>> &model_sizes,
                              size_t &var_size) {
   if ((data == nullptr) || (size == 0U)) {
@@ -1925,11 +1913,11 @@ ge::Status CollectBundleInfo(const void *data, const size_t size, std::vector<st
   size_t index = 0U;
   do {
     size_t work_size = 0U;
-    const auto meta_status = QuerySubModelWorkSize(bytes, size, index, work_size, model_num);
+    size_t shared_var_size = 0U;
+    const auto meta_status = QuerySubModelWorkSize(bytes, size, index, work_size, model_num, shared_var_size);
     GE_CHK_STATUS_RET_NOLOG(meta_status);
     size_t internal_weight_size = 0U;
-    size_t shared_var_size = 0U;
-    const auto weight_status = QuerySubModelWeightAndVarSize(bytes, size, index, internal_weight_size, shared_var_size);
+    const auto weight_status = QuerySubModelWeightSize(bytes, size, index, internal_weight_size);
     GE_CHK_STATUS_RET_NOLOG(weight_status);
     model_sizes.emplace_back(work_size, internal_weight_size);
     var_size = std::max(var_size, shared_var_size);

@@ -24,14 +24,14 @@
 #include "framework/common/ge_inner_error_codes.h"
 #include "graph/utils/type_utils_inner.h"
 
-namespace ge {
+namespace gert {
 namespace formats {
-Status TransDataFormat(const TransArgs &args, TransResult &result) {
+ge::Status TransDataFormat(const TransArgs &args, TransResult &result) {
   const auto transfer = BuildFormatTransfer(args);
   if (transfer == nullptr) {
     const std::string error = "Failed to trans data from format " +
-                              FmtToStr(TypeUtilsInner::FormatToSerialString(args.src_format)) + " to " +
-                              FmtToStr(TypeUtilsInner::FormatToSerialString(args.dst_format));
+                              ge::FmtToStr(TypeUtilsInner::FormatToSerialString(args.src_format)) + " to " +
+                              ge::FmtToStr(TypeUtilsInner::FormatToSerialString(args.dst_format));
     GE_ERRORLOG_AND_ERRORMSG(ACL_ERROR_GE_FORMAT_INVALID, error.c_str());
     return ACL_ERROR_GE_FORMAT_INVALID;
   }
@@ -51,18 +51,19 @@ Status TransDataFormat(const TransArgs &args, TransResult &result) {
   return transfer->TransFormat(args, result);
 }
 
-Status TransTensorShape(const Format src_format, const std::vector<int64_t> &src_shape, const DataType data_type,
-                        const Format dst_format, std::vector<int64_t> &dst_shape) {
-  formats::TransArgs args;
+ge::Status TransTensorShape(const ge::Format src_format, const std::vector<int64_t> &src_shape,
+                            const ge::DataType data_type, const ge::Format dst_format,
+                            std::vector<int64_t> &dst_shape) {
+  gert::formats::TransArgs args;
   args.src_format = src_format;
   args.dst_format = dst_format;
-  args.src_primary_format = static_cast<Format>(GetPrimaryFormat(static_cast<int32_t>(src_format)));
-  args.dst_primary_format = static_cast<Format>(GetPrimaryFormat(static_cast<int32_t>(dst_format)));
+  args.src_primary_format = static_cast<ge::Format>(ge::GetPrimaryFormat(static_cast<int32_t>(src_format)));
+  args.dst_primary_format = static_cast<ge::Format>(ge::GetPrimaryFormat(static_cast<int32_t>(dst_format)));
   const auto transfer = BuildFormatTransfer(args);
   if (transfer == nullptr) {
     const std::string error = "Failed to trans data from format " +
-                              FmtToStr(TypeUtilsInner::FormatToSerialString(args.src_primary_format)) + " to " +
-                              FmtToStr(TypeUtilsInner::FormatToSerialString(args.dst_primary_format));
+                              ge::FmtToStr(TypeUtilsInner::FormatToSerialString(args.src_primary_format)) + " to " +
+                              ge::FmtToStr(TypeUtilsInner::FormatToSerialString(args.dst_primary_format));
     GE_ERRORLOG_AND_ERRORMSG(ACL_ERROR_GE_FORMAT_INVALID, error.c_str());
     return ACL_ERROR_GE_FORMAT_INVALID;
   }
@@ -74,4 +75,4 @@ bool IsTransFormatSupport(const TransArgs &args) {
   return FormatTransferExists(args);
 }
 }  // namespace formats
-}  // namespace ge
+}  // namespace gert

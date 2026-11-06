@@ -19,6 +19,7 @@ import pytest
 
 proto = importlib.import_module("ge.custom_op.proto")
 bridge = importlib.import_module("ge.custom_op._bridge")
+scope_mod = importlib.import_module("ge.custom_op._scope")
 runtime = importlib.import_module("ge.runtime")
 runtime_native = importlib.import_module("ge.runtime._native")
 graph = importlib.import_module("ge.graph")
@@ -32,7 +33,9 @@ OutputType = proto.OutputType
 @pytest.fixture(autouse=True)
 def clear_registries():
     proto.clear_registered_op_protos()
+    scope_mod.reset_model_scopes_for_test()
     yield
+    scope_mod.reset_model_scopes_for_test()
     proto.clear_registered_op_protos()
 
 
@@ -447,6 +450,74 @@ def test_get_registered_op_proto_by_op_type():
 
     missing = proto.get_registered_op_proto_by_op_type("NonExistent")
     assert missing is None
+
+
+# 恢复 scope 内的原型声明是部署进程唯一的 infer_func 来源：进程级原型表按设计
+# 恒空（D4），只查全局表就等于"能力位补了、实际调不通"。
+SCOPED_PROTO_SOURCE = b"""
+from ge.custom_op import register_op
+from ge.graph import DataType
+from ge.runtime import TensorDesc
+
+
+@register_op(op_type="ScopedProtoOp")
+def infer_meta(x: TensorDesc) -> TensorDesc:
+    return TensorDesc(x.shape, DataType.DT_INT32)
+"""
+
+
+def test_call_infer_meta_falls_back_to_scope_proto():
+    scope = scope_mod.open_model_scope(1)
+    scope.initialize_source("f" * 64, "proto_plugin.py", SCOPED_PROTO_SOURCE)
+
+    # D4：scope 内的声明不写进程级原型表
+    assert proto.get_registered_op_proto_by_op_type("ScopedProtoOp") is None
+
+    ir_meta = _make_ir_meta(
+        [_make_ir_input("x", InputType.REQUIRED)],
+        [_make_ir_output("output0", OutputType.REQUIRED)],
+    )
+    ctx = FakeInferMetaContext(ir_meta["inputs"], ir_meta["outputs"])
+    ctx.set_input_shape(
+        0, runtime_native.StorageShape([2, 3], [2, 3]), int(DataType.DT_FLOAT)
+    )
+
+    outputs = bridge.call_infer_meta("ScopedProtoOp", ir_meta, ctx)
+    assert _output_dtypes(outputs) == [int(DataType.DT_INT32)]
+    assert outputs[0][1] == [2, 3]
+
+
+def test_call_infer_meta_reports_missing_proto_in_scope_and_registry():
+    # 两处都查不到必须点名失败，不能静默返回空结果
+    ir_meta = _make_ir_meta(
+        [_make_ir_input("x", InputType.REQUIRED)],
+        [_make_ir_output("output0", OutputType.REQUIRED)],
+    )
+    ctx = FakeInferMetaContext(ir_meta["inputs"], ir_meta["outputs"])
+    ctx.set_input_shape(
+        0, runtime_native.StorageShape([1], [1]), int(DataType.DT_FLOAT)
+    )
+
+    with pytest.raises(RuntimeError, match="canonical python prototype not found"):
+        bridge.call_infer_meta("MissingProtoOp", ir_meta, ctx)
+
+
+def test_call_infer_meta_ignores_closed_scope_proto():
+    scope = scope_mod.open_model_scope(2)
+    scope.initialize_source("g" * 64, "proto_plugin.py", SCOPED_PROTO_SOURCE)
+    scope_mod.close_model_scope(2)
+
+    ir_meta = _make_ir_meta(
+        [_make_ir_input("x", InputType.REQUIRED)],
+        [_make_ir_output("output0", OutputType.REQUIRED)],
+    )
+    ctx = FakeInferMetaContext(ir_meta["inputs"], ir_meta["outputs"])
+    ctx.set_input_shape(
+        0, runtime_native.StorageShape([1], [1]), int(DataType.DT_FLOAT)
+    )
+
+    with pytest.raises(RuntimeError, match="canonical python prototype not found"):
+        bridge.call_infer_meta("ScopedProtoOp", ir_meta, ctx)
 
 
 def test_call_infer_meta_changes_dtype():

@@ -40,7 +40,7 @@ function benchmark_test(){
 }
 
 function parse_args(){
-    parsed_args=$(getopt -a -o ubch --long unit,component,help -- "$@") || {
+    parsed_args=$(getopt -a -o ubch --long unit,benchmark,component,help -- "$@") || {
         help
         exit 1
     }

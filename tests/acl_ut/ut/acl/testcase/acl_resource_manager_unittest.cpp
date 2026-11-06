@@ -36,6 +36,7 @@
 #undef protected
 #include "acl/acl.h"
 #include "acl/acl_rt_allocator.h"
+#include "framework/runtime/gert_api.h"
 #include "utils/acl_hash_utils.h"
 #include "utils/acl_file_utils.h"
 #include "utils/acl_attr_utils.h"
@@ -67,6 +68,37 @@ class UTEST_ACL_Resource_Manager : public testing::Test {
 };
 
 static void *g_priCtx = nullptr;
+
+namespace {
+class FakeGuardCheckerForUt : public gert::GuardChecker {
+ public:
+  bool Match(const std::vector<gert::Tensor *> &, char_t *, size_t) const override {
+    return true;
+  }
+};
+}  // namespace
+
+TEST(UTEST_ACL_Resource_Manager, AutofuseFallbackLifecycle) {
+  auto &manager = AclResourceManager::GetInstance();
+  uint32_t model_id = 0U;
+  auto rt_session = manager.CreateRtSession();
+  ASSERT_NE(rt_session, nullptr);
+  std::unique_ptr<gert::ModelV2Executor> main_executor = nullptr;
+  manager.AddExecutor(model_id, std::move(main_executor), rt_session);
+
+  void *shared_weight = nullptr;
+  ASSERT_EQ(aclrtMalloc(&shared_weight, 16U, ACL_MEM_MALLOC_HUGE_FIRST), ACL_SUCCESS);
+  auto guard = std::make_shared<FakeGuardCheckerForUt>();
+  manager.SetAutofuseFallback(model_id, nullptr, guard, shared_weight, 16U);
+  auto fallback = manager.GetAutofuseFallback(model_id);
+  EXPECT_EQ(fallback.executor, nullptr);
+  EXPECT_NE(fallback.guard, nullptr);
+
+  EXPECT_EQ(manager.DeleteExecutor(model_id), ACL_SUCCESS);
+  auto deleted = manager.GetAutofuseFallback(model_id);
+  EXPECT_EQ(deleted.executor, nullptr);
+  EXPECT_EQ(deleted.guard, nullptr);
+}
 
 TEST(UTEST_ACL_Resource_Manager, TestGetEnv) {
   AclResourceManager mng;

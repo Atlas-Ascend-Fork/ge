@@ -62,14 +62,23 @@ class _CompiledArtifactSet:
     python_info: PythonBuildInfo
 
 
-def _resolve_pybind_include() -> Optional[Path]:
+def _resolve_pybind_include() -> Path:
     try:
         import pybind11
 
         include = Path(pybind11.get_include())
-        return include if include.is_dir() else None
-    except Exception:
-        return None
+        header = include / "pybind11" / "pybind11.h"
+        if not header.is_file():
+            raise FileNotFoundError(f"pybind11 header is missing: {header}")
+        return include
+    except Exception as error:
+        raise RuntimeError(
+            f"Cannot use pybind11 for Python native component compilation: {error}. "
+            f"Install pybind11 in the Python {sys.version.split()[0]} environment "
+            f"with sys.prefix={sys.prefix!r}: "
+            "python -m pip install 'pybind11==2.13.6'. "
+            "Use the Python interpreter from that environment."
+        ) from error
 
 
 def _resolve_libpython_dirs() -> List[Path]:

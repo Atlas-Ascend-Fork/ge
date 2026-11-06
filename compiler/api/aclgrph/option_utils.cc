@@ -34,6 +34,7 @@
 #include "graph/utils/type_utils_inner.h"
 #include "graph/utils/tensor_utils.h"
 #include "graph/debug/ge_attr_define.h"
+#include "graph/utils/attr_utils.h"
 #include "graph/utils/op_type_utils.h"
 #include "register/optimization_option_registry.h"
 #include "graph/option/optimization_option.h"
@@ -1183,6 +1184,16 @@ std::string GetAutofuseFlagValue(const std::string &option) {
   }
   GELOGI("Option %s is not set in env AUTOFUSE_FLAGS", option.c_str());
   return "";
+}
+
+bool IsAutofuseEnabled(const ComputeGraphPtr &graph) {
+  if (graph != nullptr) {
+    bool disabled = false;
+    if (ge::AttrUtils::GetBool(graph, kDisableAutofuseAttr, disabled) && disabled) {
+      return false;
+    }
+  }
+  return GetAutofuseFlagValue(kAutoFuseEnableOption) == "true";
 }
 
 Status CheckInsertOpConfParamValid(const std::string &insert_op_conf) {

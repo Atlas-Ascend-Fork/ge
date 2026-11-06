@@ -158,7 +158,7 @@ TEST_F(FileConstLoaderUt, om2_file_utils_split_file_path_matches_public_impl) {
 }
 
 TEST_F(FileConstLoaderUt, om2_thread_pool_executes_all_tasks) {
-  ge::om2::ThreadPool pool("om2ut", 2U);
+  gert::ThreadPool pool("om2ut", 2U);
   std::atomic<int32_t> counter = 0;
   auto future0 = pool.commit([&counter]() {
     ++counter;
@@ -174,7 +174,7 @@ TEST_F(FileConstLoaderUt, om2_thread_pool_executes_all_tasks) {
 }
 
 TEST_F(FileConstLoaderUt, om2_thread_pool_zero_size_falls_back_to_one_thread) {
-  ge::om2::ThreadPool pool("om2ut", 0U);
+  gert::ThreadPool pool("om2ut", 0U);
   auto future = pool.commit([]() { return 7; });
   EXPECT_EQ(future.get(), 7);
 }
