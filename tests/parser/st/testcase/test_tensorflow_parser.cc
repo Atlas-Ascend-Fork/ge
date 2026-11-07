@@ -1275,8 +1275,10 @@ TEST_F(STestTensorflowParser, modelparser_parsefrommemory_success)
   ge::ComputeGraphPtr compute_graph = ge::GraphUtilsEx::GetComputeGraph(graph);
   TensorFlowModelParser modelParser;
   MemBuffer* memBuffer = MemBufferFromFile(tmp_tf_pb_model);
-  PreChecker::Instance().HasError() == false;
+  PreChecker::Instance().Clear();
+  EXPECT_FALSE(PreChecker::Instance().HasError());
   ret = modelParser.ParseFromMemory((char*)memBuffer->data, memBuffer->size, compute_graph);
+  EXPECT_EQ(ret, SUCCESS);
   free(memBuffer->data);
   delete memBuffer;
 }
