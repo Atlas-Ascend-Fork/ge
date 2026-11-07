@@ -263,9 +263,18 @@ ge::Status ParseConstItems(const gert::GertModelDataConstantsConfig &config, std
   const_items.clear();
   internal_weight_size = config.internal_weight_size;
 
+  const size_t const_num = config.consts.size();
+  std::vector<char> seen_indices(const_num, 0);
   for (const auto &meta : config.consts) {
     Om2ConstItem const_item;
     const_item.index = meta->index;
+    if ((const_item.index >= const_num) || (seen_indices[const_item.index] != 0)) {
+      GELOGE(ACL_ERROR_GE_PARAM_INVALID,
+             "[OM2][Check] Invalid const index %zu in constants config, expect unique value in [0, %zu).",
+             const_item.index, const_num);
+      return ACL_ERROR_GE_PARAM_INVALID;
+    }
+    seen_indices[const_item.index] = 1;
     const_item.type = gert::GertGetStr(meta->type);
     const_item.file_name = gert::GertGetStr(meta->file_name);
     if (const_item.type != "INTERNAL") {
@@ -615,7 +624,8 @@ class Om2ModelExecutor::Impl {
                                         std::vector<void *> &constants) {
     std::vector<Om2ConstItem> const_items;
     size_t internal_weight_size = 0U;
-    GE_ASSERT_SUCCESS(ParseConstItems(constants_config, const_items, internal_weight_size));
+    GE_CHK_STATUS_RET(ParseConstItems(constants_config, const_items, internal_weight_size),
+                      "[OM2][Call]ParseConstItems failed");
     if (const_items.empty()) {
       return ge::SUCCESS;
     }

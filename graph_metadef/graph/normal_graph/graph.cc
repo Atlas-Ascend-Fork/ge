@@ -1140,8 +1140,8 @@ GNodePtr Graph::FindNodeByName(const AscendString &node_name) const {
     return nullptr;
   }
   auto node = impl_->GetComputeGraph()->FindNode(node_name.GetString());
-  GE_ASSERT_NOTNULL(node, "Node name: %s was not found in the current graph: %s.", node_name.GetString(),
-                    impl_->GetName().c_str());
+  GE_WARN_ASSERT(node != nullptr, "Node name: %s was not found in the current graph: %s.", node_name.GetString(),
+                 impl_->GetName().c_str());
   return NodeAdapter::Node2GNodePtr(node);
 }
 
@@ -1152,7 +1152,7 @@ ConstGraphPtr Graph::GetParentGraph() const {
     return nullptr;
   }
   auto parent_compute_graph_ptr = impl_->GetComputeGraph()->GetParentGraph();
-  GE_ASSERT_NOTNULL(parent_compute_graph_ptr);
+  GE_WARN_ASSERT(parent_compute_graph_ptr != nullptr, "Graph %s has no parent graph.", impl_->GetName().c_str());
   return GraphUtilsEx::CreateGraphPtrFromComputeGraph(parent_compute_graph_ptr);
 }
 
@@ -1163,7 +1163,7 @@ GNodePtr Graph::GetParentNode() const {
     return nullptr;
   }
   auto parent_graph_node_ptr = impl_->GetComputeGraph()->GetParentNode();
-  GE_ASSERT_NOTNULL(parent_graph_node_ptr);
+  GE_WARN_ASSERT(parent_graph_node_ptr != nullptr, "Graph %s has no parent node.", impl_->GetName().c_str());
   return NodeAdapter::Node2GNodePtr(parent_graph_node_ptr);
 }
 

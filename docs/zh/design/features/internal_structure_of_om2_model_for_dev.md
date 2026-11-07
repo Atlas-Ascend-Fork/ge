@@ -124,7 +124,7 @@ OM2 为 ZIP 归档。以下路径均相对包内根前缀 `<base_name>/`：在�
 | `internal_weight_size` | integer | 是 | uint64 语义的内置权重总字节数，无内置权重时为 0；供 `aclmdlQuerySize` / `aclmdlQuerySizeFromMem` 返回权重大小、`aclmdlBundleGetSize` 返回子模型权重大小；加载时 `PrepareInternalConsts` 用于分配或校验内置权重内存 |
 | `consts` | object | 是 | 常量配置映射，可为空对象；不是数组；经 `DeserializeConstantsConfig`、`PrepareConstantsFromStruct` 为 ACL 模型加载准备常量地址表，传入 `GertModelLoad` |
 | `consts.<key>` | object | 否（存在对应常量时写入） | `INTERNAL` 常量键为 `constant_<index>`，其他来源以算子名为键；`DeserializeConstantsConfig` 遍历对象值恢复常量条目，当前运行时地址表按条目内 `index` 而非对象键索引 |
-| `consts.<key>.index` | integer | 是 | uint64 语义的常量下标；`PrepareConstantsFromStruct` 及各类 `Prepare*Consts` 用于确定 `GertModelLoadConfig.constants` 地址表长度和槽位 |
+| `consts.<key>.index` | integer | 是 | uint64 语义的常量下标；`PrepareConstantsFromStruct` 及各类 `Prepare*Consts` 用于确定 `GertModelLoadConfig.constants` 地址表长度和槽位；加载时 `ParseConstItems` 校验其唯一且落在 `[0, consts 条目数)` 内，非法则加载失败返回 `ACL_ERROR_GE_PARAM_INVALID` |
 | `consts.<key>.type` | string | 是 | 常量来源类型；`ClassifyConstItems` 将 `INTERNAL`、`COMBINED`、`INDIVIDUAL` 分流到内置权重、合并外置权重、独立外置权重准备接口，未知类型导致加载失败 |
 | `consts.<key>.file_name` | string | 是 | 数据源文件名；`FindInternalWeightBuf` 用于匹配包内常量文件，`PrepareCombinedConsts` / `PrepareIndividualConsts` 用于匹配外置权重文件或用户提供的文件常量内存；关联 `aclmdlSetExternalWeightAddress` 配置 |
 | `consts.<key>.file_path` | string | 否（非离线序列化、非 INTERNAL 且路径非空时写入） | `RepackOm2ModelData` 的 `RewriteOm2ConstantsConfig` 在模型保存时用于外置权重搬迁并移除此字段；执行器 `ParseConstItems` 不读取该成员，不作为 ACL 离线加载的路径来源 |
