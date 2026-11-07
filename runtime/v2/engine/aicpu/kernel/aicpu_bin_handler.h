@@ -97,7 +97,7 @@ class CustBinHandlerManager {
   static CustBinHandlerManager &Instance();
   ge::graphStatus LoadAndGetBinHandle(const std::string &so_name, const ge::OpKernelBinPtr &kernel_bin,
                                       rtBinHandle &handle, void *&resource_token);
-  ge::graphStatus ReleaseBinHandle(void *resource_token);
+  ge::graphStatus ReleaseBinHandle(void *const resource_token);
 
  private:
   CustBinHandlerManager() = default;
