@@ -98,7 +98,7 @@ graph = Graph("my_graph")
 GeUtils.infer_shape(graph, [[1, 3, 224, 224], [1, 3, 224, 224]])
 
 # Check if node is supported on AICore
-node = graph.get_node("node_name")
+node = graph.find_node_by_name("node_name")
 is_supported, reason = GeUtils.check_node_support_on_aicore(node)
 if is_supported:
     print("Node is supported on AICore")
