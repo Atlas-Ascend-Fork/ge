@@ -47,7 +47,7 @@ function parse_args(){
 
     if [ $# -lt 1 ]; then
         build_all_docs
-        exit 1
+        return
     fi
 
     eval set -- "$parsed_args"
