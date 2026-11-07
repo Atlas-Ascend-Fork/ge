@@ -25,7 +25,7 @@ Session 类用于管理图的编译和执行会话。支持同步执行（run_gr
 ```python
 class Session:
     def __init__(self, options: Optional[dict] = None) -> None
-    def add_graph(self, graph_id: int, graph: Graph, options: Optional[dict] = None) -> None
+    def add_graph(self, graph_id: int, add_graph: Graph, options: Optional[dict] = None) -> None
     def remove_graph(self, graph_id: int) -> None
     def run_graph(self, graph_id: int, inputs: List[Tensor]) -> List[Tensor]
     def run_graph_with_stream_async(self, graph_id: int, stream: int, inputs: List[Tensor]) -> List[Tensor]
@@ -59,7 +59,7 @@ def __init__(self, options: Optional[dict] = None) -> None
 ### add_graph
 
 ```python
-def add_graph(self, graph_id: int, graph: Graph, options: Optional[dict] = None) -> None
+def add_graph(self, graph_id: int, add_graph: Graph, options: Optional[dict] = None) -> None
 ```
 
 **功能说明**：将图添加到会话中，支持传入额外的编译选项。
@@ -69,14 +69,14 @@ def add_graph(self, graph_id: int, graph: Graph, options: Optional[dict] = None)
 | 参数名 | 类型 | 必选/可选 | 说明 |
 | :----- | :--- | :-------- | :--- |
 | graph_id | int | 必选 | 图的唯一标识，用于在会话中区分不同的图。 |
-| graph | Graph | 必选 | 待添加的图对象。 |
+| add_graph | Graph | 必选 | 待添加的图对象。 |
 | options | Optional[dict] | 可选 | 图编译配置字典，键值对均为字符串类型。不传入时使用默认配置。 |
 
 **返回值说明**：无返回值。
 
 **约束说明**：
 - graph_id 必须为 int 类型，否则抛出 TypeError。
-- graph 必须为 Graph 类型，否则抛出 TypeError。
+- add_graph 必须为 Graph 类型，否则抛出 TypeError。
 - options 必须为 dict 类型或 None，否则抛出 TypeError。
 - 添加图失败时将抛出 GeError，异常信息包含 GE 内部错误信息和接口上下文。
 

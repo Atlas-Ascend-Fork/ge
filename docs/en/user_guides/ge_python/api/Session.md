@@ -25,7 +25,7 @@ Does not support copy and deep copy.
 ```python
 class Session:
     def __init__(self, options: Optional[dict] = None) -> None
-    def add_graph(self, graph_id: int, graph: Graph, options: Optional[dict] = None) -> None
+    def add_graph(self, graph_id: int, add_graph: Graph, options: Optional[dict] = None) -> None
     def remove_graph(self, graph_id: int) -> None
     def run_graph(self, graph_id: int, inputs: List[Tensor]) -> List[Tensor]
     def run_graph_with_stream_async(self, graph_id: int, stream: int, inputs: List[Tensor]) -> List[Tensor]
@@ -59,7 +59,7 @@ def __init__(self, options: Optional[dict] = None) -> None
 ### add_graph
 
 ```python
-def add_graph(self, graph_id: int, graph: Graph, options: Optional[dict] = None) -> None
+def add_graph(self, graph_id: int, add_graph: Graph, options: Optional[dict] = None) -> None
 ```
 
 **Functionality Description**: Adds graph to session, supports passing additional compilation options.
@@ -69,14 +69,14 @@ def add_graph(self, graph_id: int, graph: Graph, options: Optional[dict] = None)
 | Parameter | Type | Required/Optional | Description |
 | :----- | :--- | :-------- | :--- |
 | graph_id | int | Required | Unique identifier of graph, used to distinguish different graphs in session. |
-| graph | Graph | Required | Graph object to be added. |
+| add_graph | Graph | Required | Graph object to be added. |
 | options | Optional[dict] | Optional | Graph compilation configuration dictionary, key-value pairs are string type. When not passed, uses default configuration. |
 
 **Return Value Description**: No return value.
 
 **Constraint Description**:
 - graph_id must be int type, otherwise throws TypeError.
-- graph must be Graph type, otherwise throws TypeError.
+- add_graph must be Graph type, otherwise throws TypeError.
 - options must be dict type or None, otherwise throws TypeError.
 - When adding graph fails, will throw GeError, exception information contains GE internal error information and interface context.
 
