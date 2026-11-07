@@ -12,6 +12,7 @@
 #include "graph/ascendc_ir/ascendc_ir_core/ascendc_ir.h"
 #include "graph/attribute_group/attr_group_symbolic_desc.h"
 #include "graph/debug/ge_op_types.h"
+#include "graph/utils/graph_utils.h"
 #include "graph/utils/graph_utils_ex.h"
 #include "graph/debug/ge_attr_define.h"
 
@@ -1816,6 +1817,42 @@ tmp3 = ascir.Output(Output_0, [tmp2])
 )");
 }
 
+TEST_F(LoopLoweringToAscBackendUT, LayerNormV3LoweringToAscBackend) {
+  const auto origin = autofuse::AutoFuseConfig::LoweringConfig().experimental_lowering_reduce;
+  GE_MAKE_GUARD(
+      config, [origin]() { autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = origin; });
+  autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = true;
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "x", nullptr);
+    auto gamma = es_graph_->CreateInput(1, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(2, "beta", nullptr);
+    x.SetSymbolShape({"2", "3", "4"});
+    gamma.SetSymbolShape({"3", "4"});
+    beta.SetSymbolShape({"3", "4"});
+    auto layer_norm = es::LayerNormV3(x, gamma, beta, -2, -2, 0.001F);
+    layer_norm.y.SetSymbolShape({"2", "3", "4"});
+    layer_norm.mean.SetSymbolShape({"2", "1", "1"});
+    layer_norm.rstd.SetSymbolShape({"2", "1", "1"});
+    es_graph_->SetOutput(layer_norm.y, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto layer_norm = cg->FindNode("LayerNormV3_0");
+  ASSERT_NE(layer_norm, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  auto asc_kernel = loop::GetKernelBox(layer_norm->GetOutDataAnchor(0));
+  ASSERT_FALSE(asc_kernel.IsExternKernel());
+  auto asc_graph = asc_kernel.Realize<loop::AscOverrides>("graph");
+  ASSERT_NE(asc_graph, nullptr);
+  const auto readable = ReadableAscGraph(asc_graph->Graph());
+  EXPECT_NE(readable.find("ascir.Mean"), string::npos);
+  EXPECT_NE(readable.find("ascir.Sum"), string::npos);
+  EXPECT_NE(readable.find("ascir.Rsqrt"), string::npos);
+  EXPECT_NE(readable.find("ascir.Broadcast"), string::npos);
+}
+
 TEST_F(LoopLoweringToAscBackendUT, SimpleLayerNormBetaGammaBackpropV2) {
   [this]() {
     auto dy = es_graph_->CreateInput(0, "dy", nullptr);
@@ -2544,6 +2581,35 @@ TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2InvalidAxesFallback) {
   ASSERT_NE(softmax, nullptr);
   ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
   EXPECT_TRUE(ge::loop::GetKernelBox(softmax->GetOutDataAnchor(0)).IsExternKernel());
+}
+
+TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxWithStableAttributes) {
+  [this]() {
+    auto data = es_graph_->CreateInput(0, "data0", nullptr);
+    data.SetSymbolShape({"s0", "s1", "s2"});
+    auto softmax = es::SoftmaxV2(data, {-1});
+    softmax.SetSymbolShape({"s0", "s1", "s2"});
+    es_graph_->SetOutput(softmax, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto softmax = cg->FindNode("SoftmaxV2_0");
+  ASSERT_NE(softmax, nullptr);
+  auto op_desc = softmax->GetOpDesc();
+  ASSERT_NE(op_desc, nullptr);
+  op_desc->SetType("Softmax");
+  AttrUtils::SetInt(op_desc, "axis", 1L);
+  AttrUtils::SetInt(op_desc, "algo", 1L);
+  AttrUtils::SetFloat(op_desc, "alpha", 1.0F);
+  AttrUtils::SetFloat(op_desc, "beta", 0.0F);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  loop::KernelBox asc_kernel = ge::loop::GetKernelBox(softmax->GetOutDataAnchor(0));
+  ASSERT_TRUE(asc_kernel.IsReduction());
+  const auto asc_graph = asc_kernel.Realize<loop::AscOverrides>("graph");
+  ASSERT_NE(asc_graph, nullptr);
+  EXPECT_NE(ReadableAscGraph(asc_graph->Graph()).find("repeats = [s0, 1, s2]"), std::string::npos);
 }
 
 TEST_F(LoopLoweringToAscBackendUT, AutoConvertInputBoolToUint8) {
@@ -5653,4 +5719,5 @@ TEST_F(LoopLoweringToAscBackendUT, AscendQuantSqrtModeLoweringToAscBackend) {
   auto kernel = ge::loop::GetKernelBox(node->GetOutDataAnchor(0));
   ASSERT_FALSE(kernel.IsExternKernel());
 }
+
 }  // namespace ge

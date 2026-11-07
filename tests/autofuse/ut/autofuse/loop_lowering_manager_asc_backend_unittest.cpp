@@ -1085,6 +1085,35 @@ TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2InvalidAxesFallback) {
   EXPECT_TRUE(ge::loop::GetKernelBox(softmax->GetOutDataAnchor(0)).IsExternKernel());
 }
 
+TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxWithStableAttributes) {
+  [this]() {
+    auto data = es_graph_->CreateInput(0, "data0", nullptr);
+    data.SetSymbolShape({"s0", "s1", "s2"});
+    auto softmax = es::SoftmaxV2(data, {-1});
+    softmax.SetSymbolShape({"s0", "s1", "s2"});
+    es_graph_->SetOutput(softmax, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto softmax = cg->FindNode("SoftmaxV2_0");
+  ASSERT_NE(softmax, nullptr);
+  auto op_desc = softmax->GetOpDesc();
+  ASSERT_NE(op_desc, nullptr);
+  op_desc->SetType("Softmax");
+  AttrUtils::SetInt(op_desc, "axis", 1L);
+  AttrUtils::SetInt(op_desc, "algo", 1L);
+  AttrUtils::SetFloat(op_desc, "alpha", 1.0F);
+  AttrUtils::SetFloat(op_desc, "beta", 0.0F);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  loop::KernelBox asc_kernel = ge::loop::GetKernelBox(softmax->GetOutDataAnchor(0));
+  ASSERT_TRUE(asc_kernel.IsReduction());
+  const auto asc_graph = asc_kernel.Realize<loop::AscOverrides>("graph");
+  ASSERT_NE(asc_graph, nullptr);
+  EXPECT_NE(ReadableAscGraph(asc_graph->Graph()).find("repeats = [s0, 1, s2]"), std::string::npos);
+}
+
 TEST_F(LoopLoweringToAscBackendUT, VectorizeBmmV2) {
   [this]() {
     auto data0 = es_graph_->CreateInput(0, "data0", nullptr);

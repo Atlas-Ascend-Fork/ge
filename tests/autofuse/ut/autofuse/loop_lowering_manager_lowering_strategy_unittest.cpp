@@ -818,6 +818,32 @@ tmp2 = ge.NetOutput(NetOutput, [tmp1])
 )");
 }
 
+// 盒内除视图算子外只有 1 个计算算子时不应落盒：{SplitV, SqueezeV3} 这类盒会让 SqueezeV3 从零成本
+// 视图算子变成一次真实搬运 kernel（m004/m007 各 72 盒/step，实装后两网 E2E 退化）
+TEST_F(LoopGraphLoweringStrategyUT, LiftingBoxWhoseOnlyOtherNodeIsViewSqueezeV3) {
+  [this]() {
+    auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+    data0.SetSymbolShape({"s0", "1", "s2"});
+    auto abs = es::Abs(data0);
+    abs.SetSymbolShape({"s0", "1", "s2"});
+    auto axes = CreateConst(*es_graph_, ge::DT_INT32, {1}, std::vector<int32_t>{1});
+    auto squeeze = es::SqueezeV3(abs, axes);
+    squeeze.SetSymbolShape({"s0", "s2"});
+    es_graph_->SetOutput(squeeze, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  ASSERT_EQ(LoweringManager::FusedLoopToAscBackendOp(cg), GRAPH_SUCCESS);
+  EXPECT_NE(ReadableComputeGraph(cg).find("AscBackend"), std::string::npos);
+  ASSERT_EQ(LiftingManager::LiftingGraph(cg), GRAPH_SUCCESS);
+  const auto readable = ReadableComputeGraph(cg);
+  EXPECT_EQ(readable.find("AscBackend"), std::string::npos);
+  EXPECT_NE(readable.find("ge.SqueezeV3"), std::string::npos);
+  EXPECT_NE(readable.find("ge.Abs"), std::string::npos);
+}
+
 TEST_F(LoopGraphLoweringStrategyUT, NodeLiftSucceedIfLoweringNotUseInputData) {
   [this]() {
     auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
