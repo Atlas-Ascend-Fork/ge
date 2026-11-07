@@ -87,11 +87,11 @@ aclRet = aclopSetModelDir("op_models");
 aclopExecuteV2(opType, numInputs, inputDesc, inputs,
                numOutputs, outputDesc, outputs, attr, nullptr);
 
-// 处理执行算子后的输出数据，例如在屏幕上显示、写入文件等，由用户根据实际情况自行实现
-// ......
-
 // 阻塞应用运行，直到指定Stream中的所有任务都完成
 aclrtSynchronizeStream(nullptr);
+
+// 处理执行算子后的输出数据，例如在屏幕上显示、写入文件等，由用户根据实际情况自行实现
+// ......
 
 // 5. 释放运行时资源（默认Context、Stream无需用户释放，调用aclrtResetDevice接口后自动释放）
 aclRet = aclrtResetDevice(0);
