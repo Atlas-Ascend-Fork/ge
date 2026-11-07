@@ -54,7 +54,9 @@ function target_kernel()
     local arch=""
 
     if command -v lscpu >/dev/null 2>&1; then
-        arch_info=$(lscpu 2>/dev/null | grep -i "Architecture" | head -n1)
+        if ! arch_info=$(lscpu 2>/dev/null | grep -i "Architecture" | head -n1); then
+            arch_info=""
+        fi
         if [[ -n "$arch_info" ]]; then
             arch=$(echo "$arch_info" | awk -F: '{print $2}' | tr -d ' \t\n\r' | tr '[:upper:]' '[:lower:]')
 
@@ -77,13 +79,13 @@ function target_kernel()
     declare -i CHOICE_TIMES=0
     target_kernel=""
     while [[ "${target_kernel}" == "" ]]; do
-        ((CHOICE_TIMES++))
+        ((++CHOICE_TIMES))
         if [[ ${CHOICE_TIMES} -gt 3 ]]; then
             echo "[ERROR] target_kernel entered incorrectly three times. Please input 'arm' or 'x86'."
             return 1
         fi
 
-        read -p "Please input target_kernel? [arm/x86]: " input_kernel
+        read -p "Please input target_kernel? [arm/x86]: " input_kernel || input_kernel=""
         input_kernel=$(echo "$input_kernel" | tr '[:upper:]' '[:lower:]')
 
         if [[ "$input_kernel" == "arm" || "$input_kernel" == "x86" ]]; then
