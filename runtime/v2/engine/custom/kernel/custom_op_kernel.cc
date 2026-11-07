@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include "acl/acl_rt.h"
 #include "custom_op_kernel.h"
 #include "register/kernel_registry.h"
 #include "common/checker.h"
@@ -82,7 +83,7 @@ std::string PrintStreamIdAndTaskId() {
   std::stringstream ss;
   uint32_t stream_id = 0U;
   uint32_t flip_task_id = 0U;
-  if (rtGetTaskIdAndStreamID(&flip_task_id, &stream_id) == RT_ERROR_NONE) {
+  if (aclrtGetThreadLastTaskIdAndStreamId(&flip_task_id, &stream_id) == RT_ERROR_NONE) {
     const uint32_t task_id = flip_task_id & 0xFFFFU;  // lower 16bits
     const uint32_t flip_num = flip_task_id >> 16U;    // high 16bits
     ss << "stream_id=" << stream_id << ", task_id=" << task_id << ", flip_num=" << flip_num
