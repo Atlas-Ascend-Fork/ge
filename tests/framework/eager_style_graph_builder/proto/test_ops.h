@@ -710,6 +710,14 @@ REG_OP(Abs)
     .ATTR(noop_with_empty_axes, Bool, true)
     .OP_END_FACTORY_REG(ReduceMax)
 
+        REG_OP(ReduceMean)
+    .INPUT(x, TensorType::NumberType())
+    .INPUT(axes, TensorType::IndexNumberType())
+    .OUTPUT(y, TensorType::NumberType())
+    .ATTR(keep_dims, Bool, false)
+    .ATTR(noop_with_empty_axes, Bool, true)
+    .OP_END_FACTORY_REG(ReduceMean)
+
         REG_OP(ReduceProd)
     .INPUT(x, TensorType::NumberType())
     .INPUT(axes, TensorType::IndexNumberType())
@@ -1293,6 +1301,13 @@ REG_OP(Abs)
     .OUTPUT(y, TensorType({DT_FLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT8, DT_UINT8, DT_INT16, DT_INT32, DT_INT64,
                            DT_COMPLEX128, DT_BOOL, DT_BF16}))
     .OP_END_FACTORY_REG(OnesLike)
+
+        REG_OP(ZerosLike)
+    .INPUT(x, TensorType({DT_FLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT8, DT_UINT8, DT_INT16, DT_INT32, DT_INT64,
+                          DT_COMPLEX128, DT_BOOL, DT_BF16}))
+    .OUTPUT(y, TensorType({DT_FLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT8, DT_UINT8, DT_INT16, DT_INT32, DT_INT64,
+                           DT_COMPLEX128, DT_BOOL, DT_BF16}))
+    .OP_END_FACTORY_REG(ZerosLike)
 
         REG_OP(PRelu)
     .INPUT(x, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))

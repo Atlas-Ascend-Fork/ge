@@ -183,6 +183,7 @@ graphStatus InferShape4MaxPoolWithArgmax(gert::InferSymbolShapeContext *context)
 
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(AvgPool).InferSymbolShape(InferShape4AvgPool);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MaxPool).InferSymbolShape(InferShape4MaxPool);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MaxPoolExt2).InferSymbolShape(InferShape4MaxPool);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MaxPoolWithArgmax).InferSymbolShape(InferShape4MaxPoolWithArgmax);
 
 }  // namespace

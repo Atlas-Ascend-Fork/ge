@@ -11,6 +11,11 @@
 #include "common/checker.h"
 
 namespace ge {
+SymbolicKernelFactory &SymbolicKernelFactory::GetInstance() {
+  static SymbolicKernelFactory instance;
+  return instance;
+}
+
 InferSymbolComputeKernelFunc SymbolicKernelFactory::Create(const std::string &op_type) const {
   const auto it = creators_.find(op_type);
   if (it == creators_.end()) {

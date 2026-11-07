@@ -21,10 +21,10 @@ namespace ge {
 using InferSymbolComputeKernelFunc = UINT32 (*)(gert::InferSymbolComputeContext *);
 class SymbolicKernelFactory {
  public:
-  static SymbolicKernelFactory &GetInstance() {
-    static SymbolicKernelFactory instance;
-    return instance;
-  }
+  // 定义在 .cc 并随 libge_compiler.so 导出：单例必须进程唯一。若置于头文件内联，
+  // 各 DSO（如 jit_exe 以 -fvisibility=hidden 编译的 libge_runner_v2.so）会实例化出
+  // per-DSO 本地副本，JIT 侧查询恒拿到空注册表，误分类算子无回调
+  static SymbolicKernelFactory &GetInstance();
 
   InferSymbolComputeKernelFunc Create(const std::string &op_type) const;
 

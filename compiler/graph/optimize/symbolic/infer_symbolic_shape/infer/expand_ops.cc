@@ -15,14 +15,13 @@
 #include "common/framework_types_internal.h"
 #include "graph/utils/type_utils.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
-#include "symbolizer/symbolic_utils.h"
 
 namespace ge {
 namespace {
-graphStatus ExpandShapeInference(const gert::SymbolShape *input_shape, const gert::SymbolTensor *target_tensor,
+graphStatus ExpandShapeInference(const gert::SymbolShape *input_shape, const std::vector<Expression> &target_dims,
                                  gert::SymbolShape *output_shape) {
   size_t input_dim = input_shape->GetDimNum();
-  auto target_dim = target_tensor->GetSymbolicValue()->size();
+  auto target_dim = target_dims.size();
   auto diff = (target_dim > input_dim) ? (target_dim - input_dim) : (input_dim - target_dim);
 
   if (target_dim < input_dim) {
@@ -30,7 +29,7 @@ graphStatus ExpandShapeInference(const gert::SymbolShape *input_shape, const ger
       output_shape->MutableDims().emplace_back(input_shape->GetDim(i));
     }
     for (size_t i = diff; i < input_dim; i++) {
-      auto dim = target_tensor->GetSymbolicValue()->at(i - diff);
+      auto dim = target_dims[i - diff];
       if (dim == 0) {
         output_shape->MutableDims().emplace_back(dim);
         continue;
@@ -52,11 +51,11 @@ graphStatus ExpandShapeInference(const gert::SymbolShape *input_shape, const ger
     }
   } else {
     for (size_t i = 0; i < diff; ++i) {
-      output_shape->MutableDims().emplace_back(target_tensor->GetSymbolicValue()->at(i));
+      output_shape->MutableDims().emplace_back(target_dims[i]);
     }
 
     for (size_t i = diff; i < target_dim; i++) {
-      auto dim = target_tensor->GetSymbolicValue()->at(i);
+      auto dim = target_dims[i];
       if (dim == 0) {
         output_shape->MutableDims().emplace_back(dim);
         continue;
@@ -85,17 +84,45 @@ graphStatus InferShape4Expand(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(input_shape);
   auto target_shape = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(target_shape);
+  const auto target_value = target_shape->GetSymbolicValue();
+  GE_UNSUPPORTED_IF_NULL(target_value);
   auto output_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(output_shape);
 
   output_shape->MutableDims().clear();
 
-  auto ret = ExpandShapeInference(input_shape, target_shape, output_shape);
+  auto ret = ExpandShapeInference(input_shape, *target_value, output_shape);
   if (ret != GRAPH_SUCCESS) {
     return ret;
   }
 
   return GRAPH_SUCCESS;
+}
+
+/**
+ * ExpandD 算子的符号化shape推导
+ * 【算子功能】Expand 的 D 变体（目标 shape 由输入转为 attr 0 的 ListInt），将输入广播到目标 shape。
+ * 【算子约束】目标维为 0 时透传 0；其余须与输入右对齐兼容（输入维为 1 或相等）。
+ * 【推导逻辑】从 attr 0 读取常量目标维，复用 ExpandShapeInference。
+ * 【举例】x=[1,3]、shape=[2,3] 时，y=[2,3]。
+ */
+graphStatus InferShape4ExpandD(gert::InferSymbolShapeContext *context) {
+  auto input_shape = context->GetInputSymbolShape(0);
+  GE_UNSUPPORTED_IF_NULL(input_shape);
+  const auto attrs = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attrs);
+  const auto target_attr = attrs->GetListInt(0);
+  GE_UNSUPPORTED_IF_NULL(target_attr);
+  auto output_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(output_shape);
+
+  output_shape->MutableDims().clear();
+  std::vector<Expression> target_dims;
+  target_dims.reserve(target_attr->GetSize());
+  for (size_t i = 0; i < target_attr->GetSize(); ++i) {
+    target_dims.emplace_back(Symbol(target_attr->GetData()[i]));
+  }
+  return ExpandShapeInference(input_shape, target_dims, output_shape);
 }
 
 graphStatus InferShape4BroadcastTo(gert::InferSymbolShapeContext *context) {
@@ -114,7 +141,17 @@ graphStatus InferShape4BroadcastTo(gert::InferSymbolShapeContext *context) {
   out_shape->MutableDims() = *shape_value;
   auto diff = static_cast<int32_t>(shape_size - in_dims_num);
   for (int32_t i = shape_size - 1; i >= 0; i--) {
-    if (SymbolicUtils::StaticCheckEq(shape_value->at(i), Symbol(-1)) == TriBool::kTrue) {
+    // -1 表示沿用输入对应维度；常量直接取值，值符号化来源的非常量按 hint 取值（运行时真实数据）。
+    // hint 来源的 -1 需登记 guard 固化假设：其它档位该位取其它合法值时按广播规则重推
+    const auto &dim_expr = shape_value->at(i);
+    int64_t dim_value = -2;
+    const bool has_dim_value = dim_expr.IsConstExpr()
+                                   ? SymbolicInferUtil::TryGetConstInt(dim_expr, dim_value) == ge::GRAPH_SUCCESS
+                                   : dim_expr.GetHint(dim_value);
+    if (has_dim_value && dim_value == -1) {
+      if (!dim_expr.IsConstExpr()) {
+        (void)EXPECT_SYMBOL_EQ(dim_expr, Symbol(-1));
+      }
       if (i >= diff) {
         out_shape->MutableDim(i) = in_shape->GetDim(i - diff);
       } else {
@@ -131,6 +168,7 @@ graphStatus InferShape4BroadcastTo(gert::InferSymbolShapeContext *context) {
 }
 
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Expand).InferSymbolShape(InferShape4Expand);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ExpandD).InferSymbolShape(InferShape4ExpandD);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BroadcastTo).InferSymbolShape(InferShape4BroadcastTo);
 }  // namespace
 

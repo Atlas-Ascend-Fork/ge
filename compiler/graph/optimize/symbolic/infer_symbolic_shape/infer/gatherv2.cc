@@ -38,9 +38,9 @@ graphStatus GatherCommonInfer(gert::InferSymbolShapeContext *context, const gert
                               const gert::SymbolShape *indies_shape, const GatherInfo &gather_info) {
   const auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
+  // batch_dims attr 缺省（如 GatherV2D 仅含 axis attr）时按 TF 惯例取 0
   const auto batch_dims_ptr = attrs->GetAttrPointer<int64_t>(gather_info.index_batch_dims);
-  GE_ASSERT_NOTNULL(batch_dims_ptr);
-  int64_t batch_dims = *batch_dims_ptr;
+  int64_t batch_dims = (batch_dims_ptr != nullptr) ? *batch_dims_ptr : 0;
   int64_t axis = gather_info.axis;
   int64_t in_real_dim_cnt = in_shape->GetDimNum();
   // 如果是标量为0，如果是向量为1
@@ -169,6 +169,30 @@ graphStatus InferShape4GatherEles(gert::InferSymbolShapeContext *context) {
   return SUCCESS;
 }
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(GatherElements).InferSymbolShape(InferShape4GatherEles);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(GatherElementsV2).InferSymbolShape(InferShape4GatherEles);
+
+/**
+ * GatherV2D 算子的符号化shape推导
+ * 【算子功能】GatherV2 的 D 变体（axis 由输入转为 attr 0），按指定轴从 x 中按 indices 取值。
+ * 【算子约束】axis 为 [-rank, rank) 的整数属性；无 batch_dims 属性（按 0 处理）。
+ * 【推导逻辑】从 attr 0 读 axis，复用 GatherCommonInfer（batch_dims 缺省 0）。
+ * 【举例】x=[2,3]、indices=[2,2]、axis=1 时，y=[2,2]。
+ */
+graphStatus InferShape4GatherV2D(gert::InferSymbolShapeContext *context) {
+  const auto in_shape = context->GetInputSymbolShape(0);
+  GE_UNSUPPORTED_IF_NULL(in_shape);
+  const auto indies_shape = context->GetInputSymbolShape(1);
+  GE_UNSUPPORTED_IF_NULL(indies_shape);
+  const auto attrs = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attrs);
+  const auto axis_ptr = attrs->GetAttrPointer<int64_t>(0);
+  GE_UNSUPPORTED_IF_NULL(axis_ptr);
+  // index_batch_dims 指向不存在的 attr 索引以触发缺省 batch_dims=0
+  constexpr int64_t kNoBatchDimsAttrIdx = 1;
+  const GatherInfo gather_info = {*axis_ptr, kNoBatchDimsAttrIdx};
+  return GatherCommonInfer(context, in_shape, indies_shape, gather_info);
+}
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(GatherV2D).InferSymbolShape(InferShape4GatherV2D);
 
 // DynamicStitch: 根据indices将多个输入张量x拼接到输出张量的指定位置
 // 符号化shape推导逻辑：

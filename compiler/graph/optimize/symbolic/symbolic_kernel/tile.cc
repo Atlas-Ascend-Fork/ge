@@ -11,6 +11,7 @@
 #include <list>
 #include "framework/common/framework_types_internal.h"
 #include "common/util.h"
+#include "common/plugin/ge_make_unique_util.h"
 #include "graph/optimize/symbolic/symbol_compute_context.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "graph/optimize/symbolic/symbolic_kernel_factory.h"
@@ -186,4 +187,175 @@ static graphStatus TileSymbolicKernelCompute(gert::InferSymbolComputeContext *co
   return SUCCESS;
 }
 REGISTER_SYMBOLIC_KERNEL(Tile, TileSymbolicKernelCompute);
+
+namespace {
+constexpr size_t kShapeInputIndex = 1UL;
+
+// 目标shape取自输入1的SymbolicValue：仅接受常量维；-1表示沿用输入对应维度（与shape推导语义一致）。
+// 非常量目标维度无法在值路径展开，降级交由 shape 推导回调处理。
+graphStatus GetBroadcastTargetDims(const gert::InferSymbolComputeContext *context, const std::vector<int64_t> &x_dims,
+                                   std::vector<int64_t> &target_dims) {
+  auto shape_tensor = context->GetInputSymbolTensor(kShapeInputIndex);
+  GE_UNSUPPORTED_IF_NULL(shape_tensor);
+  auto shape_symbols = shape_tensor->GetSymbolicValue();
+  GE_UNSUPPORTED_IF_NULL(shape_symbols);
+  if (shape_symbols->empty() || shape_symbols->size() > kMaxSupportDim) {
+    GELOGW("SymbolicKernel compute unsupported, reason: target shape rank(%zu) invalid, node %s[%s].",
+           shape_symbols->size(), context->GetNodeName(), context->GetNodeType());
+    return UNSUPPORTED;
+  }
+
+  target_dims.clear();
+  const int64_t diff = static_cast<int64_t>(shape_symbols->size() - x_dims.size());
+  for (size_t i = 0UL; i < shape_symbols->size(); i++) {
+    int64_t dim = 0L;
+    if (!(*shape_symbols)[i].GetConstValue(dim)) {
+      GELOGW("SymbolicKernel compute unsupported, reason: target dim(%zu) is not constant, node %s[%s].", i,
+             context->GetNodeName(), context->GetNodeType());
+      return UNSUPPORTED;
+    }
+    if (dim == -1) {
+      const int64_t src_idx = static_cast<int64_t>(i) - diff;
+      if (src_idx < 0) {
+        GELOGW("SymbolicKernel compute unsupported, reason: -1 dim(%zu) has no input dim to reuse, node %s[%s].", i,
+               context->GetNodeName(), context->GetNodeType());
+        return UNSUPPORTED;
+      }
+      dim = x_dims[static_cast<size_t>(src_idx)];
+    }
+    if (dim <= 0L) {
+      // 0维输出为空tensor，值传播无意义，降级
+      GELOGW("SymbolicKernel compute unsupported, reason: target dim(%zu) value %lld is not positive, node %s[%s].", i,
+             dim, context->GetNodeName(), context->GetNodeType());
+      return UNSUPPORTED;
+    }
+    target_dims.emplace_back(dim);
+  }
+  return SUCCESS;
+}
+
+// x维度右对齐后校验可广播：每个对齐维为1或等于目标维
+bool CheckBroadcastable(const std::vector<int64_t> &x_dims, const std::vector<int64_t> &target_dims) {
+  const size_t diff = target_dims.size() - x_dims.size();
+  for (size_t i = 0UL; i < target_dims.size(); i++) {
+    if (i < diff) {
+      continue;
+    }
+    const int64_t x_dim = x_dims[i - diff];
+    if (x_dim != 1L && x_dim != target_dims[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// 依据stride将x的SymbolicValue映射到输出线性位置（广播维取0步长）
+graphStatus BroadcastInputXSymbols(const std::vector<Expression> &src_data, const std::vector<int64_t> &x_dims,
+                                   const std::vector<int64_t> &target_dims, std::vector<Expression> &dst_data) {
+  std::vector<int64_t> aligned_x = x_dims;
+  while (aligned_x.size() < target_dims.size()) {
+    aligned_x.insert(aligned_x.begin(), 1L);
+  }
+  auto compute_strides = [](const std::vector<int64_t> &shape) {
+    std::vector<int64_t> strides(shape.size(), 1L);
+    for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; i--) {
+      strides[static_cast<size_t>(i)] = strides[static_cast<size_t>(i + 1)] * shape[static_cast<size_t>(i + 1)];
+    }
+    return strides;
+  };
+  const std::vector<int64_t> src_strides = compute_strides(aligned_x);
+  const std::vector<int64_t> dst_strides = compute_strides(target_dims);
+
+  int64_t total_elements = 1L;
+  for (auto dim : target_dims) {
+    total_elements *= dim;
+  }
+  dst_data.clear();
+  dst_data.reserve(static_cast<size_t>(total_elements));
+  for (int64_t pos = 0L; pos < total_elements; pos++) {
+    int64_t src_linear = 0L;
+    for (size_t i = 0UL; i < target_dims.size(); i++) {
+      const int64_t idx = (pos / dst_strides[i]) % target_dims[i];
+      src_linear += (idx % aligned_x[i]) * src_strides[i];
+    }
+    dst_data.push_back(src_data[static_cast<size_t>(src_linear)]);
+  }
+  return SUCCESS;
+}
+}  // namespace
+
+/**
+ * BroadcastTo算子的符号化计算
+ * 【算子功能】将输入张量按目标shape广播（对齐维为1的维度扩展到目标大小）。
+ * 【推导逻辑】目标shape取自输入1 SymbolicValue的常量维（-1沿用输入对应维），x维度右对齐后校验
+ *          广播兼容性生成输出Shape；再依据stride将x的SymbolicValue映射到输出线性位置。
+ *          输出元素数超过上限或目标维非常量时降级，交由shape推导回调处理。
+ * 【算子约束】x与目标shape必须静态可确定且满足广播规则，x必须存在SymbolicValue。
+ * 【举例】x Shape=[1,2]、value=[10,20]，目标shape=[2,2]时，
+ *          输出Shape为[2,2]，输出value为[10,20,10,20]。
+ */
+static graphStatus BroadcastToSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  GE_ASSERT_NOTNULL(context);
+  GELOGD("BroadcastTo Symbolic Kernel in, node %s[%s].", context->GetNodeName(), context->GetNodeType());
+
+  // 获取x的静态Shape
+  std::vector<int64_t> x_dims;
+  if (!context->GetConstInputDims(kXInputIndex, x_dims)) {
+    GELOGW("SymbolicKernel compute unsupported, reason: get x const input dim failed, node %s[%s].",
+           context->GetNodeName(), context->GetNodeType());
+    return UNSUPPORTED;
+  }
+  if (x_dims.size() > kMaxSupportDim) {
+    GELOGW("SymbolicKernel compute unsupported, reason: x rank(%zu) over limit(%zu), node %s[%s].", x_dims.size(),
+           kMaxSupportDim, context->GetNodeName(), context->GetNodeType());
+    return UNSUPPORTED;
+  }
+
+  // 获取目标shape并校验广播兼容性与输出规模
+  std::vector<int64_t> target_dims;
+  if (GetBroadcastTargetDims(context, x_dims, target_dims) != SUCCESS) {
+    return UNSUPPORTED;
+  }
+  if (target_dims.size() < x_dims.size() || !CheckBroadcastable(x_dims, target_dims)) {
+    GELOGW("SymbolicKernel compute unsupported, reason: x cannot broadcast to target shape, node %s[%s].",
+           context->GetNodeName(), context->GetNodeType());
+    return UNSUPPORTED;
+  }
+  int64_t output_size = 1L;
+  for (auto dim : target_dims) {
+    if (ge::MulOverflow(output_size, dim, output_size)) {
+      return UNSUPPORTED;
+    }
+  }
+  if (output_size > kMaxOutputSize) {
+    GELOGW("SymbolicKernel compute unsupported, reason: output size(%lld) over limit(%lld), node %s[%s].", output_size,
+           kMaxOutputSize, context->GetNodeName(), context->GetNodeType());
+    return UNSUPPORTED;
+  }
+
+  // 获取x的SymbolicValue并广播
+  auto x_tensor = context->GetInputSymbolTensor(kXInputIndex);
+  GE_UNSUPPORTED_IF_NULL(x_tensor);
+  auto x_symbols = x_tensor->GetSymbolicValue();
+  GE_UNSUPPORTED_IF_NULL(x_symbols);
+  std::vector<Expression> output_values;
+  GE_ASSERT_SUCCESS(BroadcastInputXSymbols(*x_symbols, x_dims, target_dims, output_values));
+
+  // 写入输出Shape和SymbolicValue
+  auto output_tensor = context->GetOutputSymbolTensor(kOutputIndex);
+  GE_ASSERT_NOTNULL(output_tensor);
+  std::vector<Expression> output_shape_symbols;
+  for (auto dim : target_dims) {
+    output_shape_symbols.emplace_back(Symbol(dim));
+  }
+  output_tensor->MutableOriginSymbolShape().MutableDims() = output_shape_symbols;
+  auto output_values_unique = MakeUnique<std::vector<Expression>>(std::move(output_values));
+  if (output_values_unique != nullptr) {
+    output_tensor->SetSymbolicValue(std::move(output_values_unique));
+  }
+  GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
+         SymbolicInferUtil::DumpSymbolTensor(*output_tensor).c_str());
+  return SUCCESS;
+}
+REGISTER_SYMBOLIC_KERNEL(BroadcastTo, BroadcastToSymbolicKernelCompute);
 }  // namespace ge

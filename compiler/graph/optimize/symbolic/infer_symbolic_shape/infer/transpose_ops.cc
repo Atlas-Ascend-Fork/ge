@@ -135,6 +135,7 @@ graphStatus InferShape4TransposeD(gert::InferSymbolShapeContext *context) {
 }
 
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Transpose).InferSymbolShape(InferShape4Transpose);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(TransposeV2).InferSymbolShape(InferShape4Transpose);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(TransposeD).InferSymbolShape(InferShape4TransposeD);
 }  // namespace
 }  // namespace ge

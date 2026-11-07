@@ -66,12 +66,37 @@ graphStatus InferShape4RandomStandardNormal(gert::InferSymbolShapeContext *conte
   return GRAPH_SUCCESS;
 }
 
+/**
+ * RandomUniformIntV2/RandomStandardNormalV2/TruncatedNormalV2 的符号 Shape 推导。
+ * 【算子功能】随机采样类算子的 V2 变体：fusion pass 换型后新增 offset 输出（shape=[1]，记录随机数流偏移）。
+ * 【算子约束】shape 为 int32/int64 的 1-D 张量（data dependency），其值即输出各维度。
+ * 【推导逻辑】输出 y 的 Shape 取 shape 输入的 SymbolicValue；输出 offset 恒为 [1]。
+ * 【举例】shape=[2,3] 时，y=[2,3]，offset=[1]。
+ */
+graphStatus InferShape4RandomV2(gert::InferSymbolShapeContext *context) {
+  const auto shape_tensor = context->GetInputSymbolTensor(0);
+  GE_UNSUPPORTED_IF_NULL(shape_tensor);
+  const auto shape_value = shape_tensor->GetSymbolicValue();
+  GE_UNSUPPORTED_IF_NULL(shape_value);
+  const auto out_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(out_shape);
+  out_shape->MutableDims() = *shape_value;
+  const auto offset_shape = context->GetOutputSymbolShape(1);
+  GE_ASSERT_NOTNULL(offset_shape);
+  offset_shape->MutableDims().clear();
+  offset_shape->MutableDims().emplace_back(Symbol(1));
+  return GRAPH_SUCCESS;
+}
+
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Assign).InferSymbolShape(InferShape4Assign);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(L2Loss).InferSymbolShape(InferShape4L2Loss);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(RandomUniform).InferSymbolShape(InferSymbolicShapeFunc);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(RandomUniformV2).InferSymbolShape(InferSymbolicShapeFunc);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(RandomStandardNormal).InferSymbolShape(InferShape4RandomStandardNormal);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(TruncatedNormal).InferSymbolShape(InferSymbolicShapeFunc);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(RandomUniformIntV2).InferSymbolShape(InferShape4RandomV2);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(RandomStandardNormalV2).InferSymbolShape(InferShape4RandomV2);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(TruncatedNormalV2).InferSymbolShape(InferShape4RandomV2);
 
 }  // namespace
 }  // namespace ge

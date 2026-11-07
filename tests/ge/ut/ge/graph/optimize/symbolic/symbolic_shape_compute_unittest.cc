@@ -30,6 +30,7 @@
 #include "attribute_group/attr_group_symbolic_desc.h"
 #include "stub/gert_runtime_stub.h"
 #include "expect_node_info_check_test.h"
+#include "graph/symbolizer/symbol_operator.h"
 
 namespace ge {
 class SymbolicShapeComputeUT : public testing::Test {
@@ -5627,6 +5628,435 @@ TEST_F(SymbolicShapeComputeUT, test_select_v2_symbolic_input_shape_degrade) {
   auto out_attr = select_node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(out_attr, nullptr);
   EXPECT_EQ(out_attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+}
+
+// ┌────────┐ (0,0) ┌───────┐ (0,0) ┌────────────────┐ (0,0) ┌─────────────┐
+// │ data_0 │ ─────> │ shape │ ─────> │ GatherElements │ ─────> │ Node_Output │
+// └────────┘        └───────┘       └────────────────┘       └─────────────┘
+//                                     ∧ (0,1)
+//                                     │
+//                              ┌──────────────┐
+//                              │ const(index) │
+//                              └──────────────┘
+// x 值为符号表达式 [s0, 3]，dim=-1 覆盖负轴归一化，索引含负值覆盖末尾计数语义
+TEST_F(SymbolicShapeComputeUT, InferShapeForGatherElementsWithSymbolicValue) {
+  auto data0 = EsCreateGraphInputWithDetails(graph_, 0, "data0", nullptr, C_DataType::C_DT_FLOAT, C_Format::C_FORMAT_ND,
+                                             nullptr, 0);
+  ASSERT_NE(data0, nullptr);
+  auto shape0 = EsShape(data0, 3);
+  const std::vector<int32_t> index_value = {1, -2};
+  auto index = EsCreateVectorInt32(graph_, index_value.data(), index_value.size());
+  ASSERT_NE(index, nullptr);
+  auto gather_elements = EsGatherElements(shape0, index, -1);
+  ASSERT_NE(gather_elements, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(gather_elements, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  DataInfo di = {ge::FORMAT_ND, DT_FLOAT, {-1, 3}};
+  ASSERT_EQ(SetNoStorage(cg, "data0", di, 0), SUCCESS);
+  std::vector<ge::GeTensor> input_vec;
+  ge::Shape input_shape({2, 3});
+  ge::TensorDesc td{input_shape, ge::FORMAT_ND, DT_FLOAT};
+  td.SetOriginShape(input_shape);
+  ge::Tensor tensor{td};
+  input_vec.emplace_back(ge::TensorAdapter::AsGeTensor(tensor));
+  // x=[s0, 3]：idx=1 取 x[1]=3，idx=-2 归一化为 0 取 x[0]=s0
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("GatherElements", std::vector<Expression>{Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(3), Symbol("s0")}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, input_vec), SUCCESS);
+}
+
+// ┌──────────────┐ (0,0) ┌────────────────┐ (0,0) ┌─────────────┐
+// │ const(x 2x2) │ ─────> │ GatherElements │ ─────> │ Node_Output │
+// └──────────────┘       └────────────────┘       └─────────────┘
+//                        ∧ (0,1)
+//                        │
+//                 ┌────────────────┐
+//                 │ const(idx 2x2) │
+//                 └────────────────┘
+// dim=1：按输出位置逐位替换 dim 维坐标后从 x 取值，覆盖 N-D 坐标分解
+TEST_F(SymbolicShapeComputeUT, InferShapeForGatherElementsRank2WithDim) {
+  const std::vector<int32_t> x_value = {10, 11, 12, 13};
+  const std::vector<int64_t> x_dims = {2, 2};
+  auto x = EsCreateConstInt32(graph_, x_value.data(), x_dims.data(), x_dims.size());
+  ASSERT_NE(x, nullptr);
+  const std::vector<int32_t> index_value = {0, 1, 1, 0};
+  auto index = EsCreateConstInt32(graph_, index_value.data(), x_dims.data(), x_dims.size());
+  ASSERT_NE(index, nullptr);
+  auto gather_elements = EsGatherElements(x, index, 1);
+  ASSERT_NE(gather_elements, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(gather_elements, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  // y[i][j] = x[i][index[i][j]]，行主序结果 [10, 11, 13, 12]
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("GatherElements", std::vector<Expression>{Symbol(2), Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(10), Symbol(11), Symbol(13), Symbol(12)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// ┌────────┐ (0,0) ┌───────┐ (0,0) ┌──────────┐ (0,0) ┌─────────────┐
+// │ data_0 │ ─────> │ shape │ ─────> │          │ ─────> │ Node_Output │
+// └────────┘        └───────┘       │          │        └─────────────┘
+// ┌────────┐ (0,0) ┌───────┐ (0,0)  │ ConcatV2 │
+// │ data_1 │ ─────> │ shape │ ─────> │          │
+// └────────┘        └───────┘       └──────────┘
+//                                    ∧ (2,0)
+//                                    │
+//                             ┌─────────────┐
+//                             │ const(axis) │
+//                             └─────────────┘
+// concat_dim 为末位输入 tensor 且取负值-1，覆盖轴值解析与负轴归一化
+TEST_F(SymbolicShapeComputeUT, InferShapeForConcatV2WithSymbolicValue) {
+  auto data0 = EsCreateGraphInputWithDetails(graph_, 0, "data0", nullptr, C_DataType::C_DT_FLOAT, C_Format::C_FORMAT_ND,
+                                             nullptr, 0);
+  auto data1 = EsCreateGraphInputWithDetails(graph_, 1, "data1", nullptr, C_DataType::C_DT_FLOAT, C_Format::C_FORMAT_ND,
+                                             nullptr, 0);
+  auto shape0 = EsShape(data0, 3);
+  auto shape1 = EsShape(data1, 3);
+  auto concat_dim = EsCreateScalarInt32(graph_, -1);
+  ASSERT_NE(concat_dim, nullptr);
+  std::vector<EsCTensorHolder *> esb;
+  esb.push_back(shape0);
+  esb.push_back(shape1);
+  auto concat = EsConcatV2(esb.data(), 2, concat_dim, 2);
+  ASSERT_NE(concat, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(concat, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  DataInfo di = {ge::FORMAT_ND, DT_FLOAT, {-1, 3}};
+  ASSERT_EQ(SetNoStorage(cg, "data0", di, 0), SUCCESS);
+  di.shape = {-1, 6};
+  ASSERT_EQ(SetNoStorage(cg, "data1", di, 1), SUCCESS);
+  std::vector<ge::GeTensor> input_vec;
+  ge::Shape shape_a({2, 3});
+  ge::TensorDesc td_a{shape_a, ge::FORMAT_ND, DT_FLOAT};
+  td_a.SetOriginShape(shape_a);
+  ge::Tensor tensor_a{td_a};
+  input_vec.emplace_back(ge::TensorAdapter::AsGeTensor(tensor_a));
+  ge::Shape shape_b({2, 6});
+  ge::TensorDesc td_b{shape_b, ge::FORMAT_ND, DT_FLOAT};
+  td_b.SetOriginShape(shape_b);
+  ge::Tensor tensor_b{td_b};
+  input_vec.emplace_back(ge::TensorAdapter::AsGeTensor(tensor_b));
+  // shape 值 [s0, 3] 与 [s1, 6] 沿轴 0 拼接
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("ConcatV2", std::vector<Expression>{Symbol(4)}, {}, {},
+                                        std::vector<Expression>{Symbol("s0"), Symbol(3), Symbol("s1"), Symbol(6)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, input_vec), SUCCESS);
+}
+
+// ┌───────────────┐ (0,0) ┌──────────┐ (0,0) ┌─────────────┐
+// │ const(x1 2x2) │ ─────> │          │ ─────> │ Node_Output │
+// └───────────────┘        │          │        └─────────────┘
+// ┌───────────────┐ (0,0)  │ ConcatV2 │
+// │ const(x2 2x2) │ ─────> │          │
+// └───────────────┘        └──────────┘
+//                          ∧ (2,0)
+//                          │
+//                   ┌─────────────┐
+//                   │ const(axis) │
+//                   └─────────────┘
+// axis=1：覆盖非零轴拼接的行主序交错重排
+TEST_F(SymbolicShapeComputeUT, InferShapeForConcatV2Rank2InterleaveValue) {
+  const std::vector<int64_t> dims = {2, 2};
+  const std::vector<int32_t> x1_value = {10, 11, 12, 13};
+  const std::vector<int32_t> x2_value = {20, 21, 22, 23};
+  auto x1 = EsCreateConstInt32(graph_, x1_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x1, nullptr);
+  auto x2 = EsCreateConstInt32(graph_, x2_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x2, nullptr);
+  auto concat_dim = EsCreateScalarInt32(graph_, 1);
+  ASSERT_NE(concat_dim, nullptr);
+  std::vector<EsCTensorHolder *> esb;
+  esb.push_back(x1);
+  esb.push_back(x2);
+  auto concat = EsConcatV2(esb.data(), 2, concat_dim, 2);
+  ASSERT_NE(concat, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(concat, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  // (2,2)+(2,2) 沿轴 1 拼接为 (2,4)，行主序按行交错
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("ConcatV2", std::vector<Expression>{Symbol(2), Symbol(4)}, {}, {},
+                                        std::vector<Expression>{Symbol(10), Symbol(11), Symbol(20), Symbol(21),
+                                                                Symbol(12), Symbol(13), Symbol(22), Symbol(23)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// ┌───────────────┐ (0,0) ┌───────┐ (0,0) ┌──────────┐ (0,0) ┌─────────────┐
+// │ const(x1 2x2) │ ─────> │ Floor │ ─────> │ FloorMod │ ─────> │ Node_Output │
+// └───────────────┘        │  Mod  │        └──────────┘       └─────────────┘
+// ┌───────────────┐ (0,0)  └───────┘
+// │ const(x2 1x2) │ ─────>    ∧
+// └───────────────┘           │
+// x2 广播至 [2,2]：FloorMod = x1 - x2*floor(x1/x2)，floor 语义模
+TEST_F(SymbolicShapeComputeUT, InferShapeForFloorModWithConstValue) {
+  const std::vector<int32_t> x1_value = {7, 8, 9, 10};
+  const std::vector<int64_t> dims = {2, 2};
+  auto x1 = EsCreateConstInt32(graph_, x1_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x1, nullptr);
+  const std::vector<int32_t> x2_value = {3, 3};
+  const std::vector<int64_t> x2_dims = {1, 2};
+  auto x2 = EsCreateConstInt32(graph_, x2_value.data(), x2_dims.data(), x2_dims.size());
+  ASSERT_NE(x2, nullptr);
+  auto floor_mod = EsFloorMod(x1, x2);
+  ASSERT_NE(floor_mod, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(floor_mod, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  // 7%3=1, 8%3=2, 9%3=0, 10%3=1
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("FloorMod", std::vector<Expression>{Symbol(2), Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(1), Symbol(2), Symbol(0), Symbol(1)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// ┌───────────────┐ (0,0) ┌───────┐ (0,0) ┌──────────┐ (0,0) ┌─────────────┐
+// │ const(x1 2x2) │ ─────> │ Floor │ ─────> │ FloorDiv │ ─────> │ Node_Output │
+// └───────────────┘        │  Div  │        └──────────┘       └─────────────┘
+// ┌───────────────┐ (0,0)  └───────┘
+// │ const(x2 1x2) │ ─────>    ∧
+// └───────────────┘           │
+// FloorDiv = floor(x1/x2)，向下取整
+TEST_F(SymbolicShapeComputeUT, InferShapeForFloorDivWithConstValue) {
+  const std::vector<int32_t> x1_value = {7, 8, 9, 10};
+  const std::vector<int64_t> dims = {2, 2};
+  auto x1 = EsCreateConstInt32(graph_, x1_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x1, nullptr);
+  const std::vector<int32_t> x2_value = {2, 3};
+  const std::vector<int64_t> x2_dims = {1, 2};
+  auto x2 = EsCreateConstInt32(graph_, x2_value.data(), x2_dims.data(), x2_dims.size());
+  ASSERT_NE(x2, nullptr);
+  auto floor_div = EsFloorDiv(x1, x2);
+  ASSERT_NE(floor_div, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(floor_div, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  // floor(7/2)=3, floor(8/3)=2, floor(9/2)=4, floor(10/3)=3
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("FloorDiv", std::vector<Expression>{Symbol(2), Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(3), Symbol(2), Symbol(4), Symbol(3)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// AddV2 与 Add 同构：广播加法
+TEST_F(SymbolicShapeComputeUT, InferShapeForAddV2WithConstValue) {
+  const std::vector<int32_t> x1_value = {1, 2, 3, 4};
+  const std::vector<int64_t> dims = {2, 2};
+  auto x1 = EsCreateConstInt32(graph_, x1_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x1, nullptr);
+  const std::vector<int32_t> x2_value = {10, 20};
+  const std::vector<int64_t> x2_dims = {1, 2};
+  auto x2 = EsCreateConstInt32(graph_, x2_value.data(), x2_dims.data(), x2_dims.size());
+  ASSERT_NE(x2, nullptr);
+  auto add = EsAddV2(x1, x2);
+  ASSERT_NE(add, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(add, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("AddV2", std::vector<Expression>{Symbol(2), Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(11), Symbol(22), Symbol(13), Symbol(24)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// BroadcastTo 值 kernel：x=[1,2] 广播到 [2,2]，按 stride 映射
+TEST_F(SymbolicShapeComputeUT, InferShapeForBroadcastToWithConstValue) {
+  const std::vector<int32_t> x_value = {10, 20};
+  const std::vector<int64_t> x_dims = {1, 2};
+  auto x = EsCreateConstInt32(graph_, x_value.data(), x_dims.data(), x_dims.size());
+  ASSERT_NE(x, nullptr);
+  const std::vector<int32_t> shape_value = {2, 2};
+  const std::vector<int64_t> shape_dims = {2};
+  auto shape = EsCreateConstInt32(graph_, shape_value.data(), shape_dims.data(), shape_dims.size());
+  ASSERT_NE(shape, nullptr);
+  auto broadcast_to = EsBroadcastTo(x, shape);
+  ASSERT_NE(broadcast_to, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(broadcast_to, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("BroadcastTo", std::vector<Expression>{Symbol(2), Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(10), Symbol(20), Symbol(10), Symbol(20)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// BroadcastTo 值 kernel：目标 shape 含 -1（沿用输入对应维）
+TEST_F(SymbolicShapeComputeUT, InferShapeForBroadcastToWithMinusOneDim) {
+  const std::vector<int32_t> x_value = {10, 20};
+  const std::vector<int64_t> x_dims = {1, 2};
+  auto x = EsCreateConstInt32(graph_, x_value.data(), x_dims.data(), x_dims.size());
+  ASSERT_NE(x, nullptr);
+  const std::vector<int32_t> shape_value = {2, -1};
+  const std::vector<int64_t> shape_dims = {2};
+  auto shape = EsCreateConstInt32(graph_, shape_value.data(), shape_dims.data(), shape_dims.size());
+  ASSERT_NE(shape, nullptr);
+  auto broadcast_to = EsBroadcastTo(x, shape);
+  ASSERT_NE(broadcast_to, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(broadcast_to, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  // -1 沿用输入 dim=2，输出 [2,2]
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("BroadcastTo", std::vector<Expression>{Symbol(2), Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(10), Symbol(20), Symbol(10), Symbol(20)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// ┌─────────────┐ (0,0) ┌───────┐ (0,1)/(0,2) ┌────────┐ (0,0) ┌─────────────┐
+// │ const(dim 1)│ ─────> │Concat │ <── const x │        │ ─────> │ Node_Output │
+// └─────────────┘        └───────┘             └────────┘       └─────────────┘
+// Concat 的 concat_dim 为首位输入：x1=[2,2]、x2=[2,2] 沿轴 1 拼接
+TEST_F(SymbolicShapeComputeUT, InferShapeForConcatWithLeadingDimInput) {
+  const std::vector<int64_t> dims = {2, 2};
+  const std::vector<int32_t> x1_value = {10, 11, 12, 13};
+  const std::vector<int32_t> x2_value = {20, 21, 22, 23};
+  auto x1 = EsCreateConstInt32(graph_, x1_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x1, nullptr);
+  auto x2 = EsCreateConstInt32(graph_, x2_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x2, nullptr);
+  auto concat_dim = EsCreateScalarInt32(graph_, 1);
+  ASSERT_NE(concat_dim, nullptr);
+  EsCTensorHolder *xs[] = {x1, x2};
+  auto concat = EsConcat(concat_dim, xs, 2, 3);
+  ASSERT_NE(concat, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(concat, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  // (2,2)+(2,2) 沿轴 1 拼接为 (2,4)，行主序按行交错
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("Concat", std::vector<Expression>{Symbol(2), Symbol(4)}, {}, {},
+                                        std::vector<Expression>{Symbol(10), Symbol(11), Symbol(20), Symbol(21),
+                                                                Symbol(12), Symbol(13), Symbol(22), Symbol(23)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// GatherNd 值 kernel：x=[2,2]、indices shape=[2,2]（末维 idx_rank=2 为坐标长度）
+TEST_F(SymbolicShapeComputeUT, InferShapeForGatherNdWithConstValue) {
+  const std::vector<int32_t> x_value = {10, 11, 12, 13};
+  const std::vector<int64_t> x_dims = {2, 2};
+  auto x = EsCreateConstInt32(graph_, x_value.data(), x_dims.data(), x_dims.size());
+  ASSERT_NE(x, nullptr);
+  const std::vector<int32_t> index_value = {1, 1, 0, 1};
+  auto index = EsCreateConstInt32(graph_, index_value.data(), x_dims.data(), x_dims.size());
+  ASSERT_NE(index, nullptr);
+  auto gather_nd = EsGatherNd(x, index, false);
+  ASSERT_NE(gather_nd, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(gather_nd, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  // 坐标 (1,1)->x[3]=13，(0,1)->x[1]=11
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("GatherNd", std::vector<Expression>{Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(13), Symbol(11)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// ReduceMean 值 kernel：x=[2,2]、axes=[1]、keep_dims=false，均值 = sum/2
+TEST_F(SymbolicShapeComputeUT, InferShapeForReduceMeanWithConstValue) {
+  const std::vector<int32_t> x_value = {1, 2, 3, 4};
+  const std::vector<int64_t> dims = {2, 2};
+  auto x = EsCreateConstInt32(graph_, x_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x, nullptr);
+  const std::vector<int32_t> axes_value = {1};
+  const std::vector<int64_t> axes_dims = {1};
+  auto axes = EsCreateConstInt32(graph_, axes_value.data(), axes_dims.data(), axes_dims.size());
+  ASSERT_NE(axes, nullptr);
+  auto reduce_mean = EsReduceMean(x, axes, false, true);
+  ASSERT_NE(reduce_mean, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(reduce_mean, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("ReduceMean", std::vector<Expression>{Symbol(2)}, {}, {},
+                                        std::vector<Expression>{sym::Rational(3, 2), sym::Rational(7, 2)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// ZerosLike 值 kernel：输出 shape 透传 x，值全 0
+TEST_F(SymbolicShapeComputeUT, InferShapeForZerosLikeWithConstValue) {
+  const std::vector<int32_t> x_value = {7, 8, 9, 10};
+  const std::vector<int64_t> dims = {2, 2};
+  auto x = EsCreateConstInt32(graph_, x_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x, nullptr);
+  auto zeros = EsZerosLike(x);
+  ASSERT_NE(zeros, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(zeros, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("ZerosLike", std::vector<Expression>{Symbol(2), Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(0), Symbol(0), Symbol(0), Symbol(0)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// OnesLike 值 kernel：输出 shape 透传 x，值全 1
+TEST_F(SymbolicShapeComputeUT, InferShapeForOnesLikeWithConstValue) {
+  const std::vector<int32_t> x_value = {7, 8, 9, 10};
+  const std::vector<int64_t> dims = {2, 2};
+  auto x = EsCreateConstInt32(graph_, x_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x, nullptr);
+  auto ones = EsOnesLike(x);
+  ASSERT_NE(ones, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(ones, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("OnesLike", std::vector<Expression>{Symbol(2), Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(1), Symbol(1), Symbol(1), Symbol(1)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// Muls 值 kernel：x 逐元素乘 attr 标量
+TEST_F(SymbolicShapeComputeUT, InferShapeForMulsAddsWithConstValue) {
+  const std::vector<int32_t> x_value = {2, 3};
+  const std::vector<int64_t> dims = {2};
+  auto x = EsCreateConstInt32(graph_, x_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x, nullptr);
+  auto muls = EsMuls(x, 2.0f);
+  ASSERT_NE(muls, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(muls, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("Muls", std::vector<Expression>{Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(4.0), Symbol(6.0)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+// Adds 值 kernel：x 逐元素加 attr 标量
+TEST_F(SymbolicShapeComputeUT, InferShapeForAddsWithConstValue) {
+  const std::vector<int32_t> x_value = {2, 3};
+  const std::vector<int64_t> dims = {2};
+  auto x = EsCreateConstInt32(graph_, x_value.data(), dims.data(), dims.size());
+  ASSERT_NE(x, nullptr);
+  auto adds = EsAdds(x, 2.0f);
+  ASSERT_NE(adds, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(adds, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("Adds", std::vector<Expression>{Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(4.0), Symbol(5.0)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
 }
 
 }  // namespace ge

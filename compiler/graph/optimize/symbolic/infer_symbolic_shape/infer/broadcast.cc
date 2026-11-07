@@ -41,6 +41,29 @@ graphStatus InferShape4BroadcastCommon(gert::InferSymbolShapeContext *context) {
 }
 
 /**
+ * MaximumGrad/MinimumGrad 的符号 Shape 推导。
+ * 【算子功能】Maximum/Minimum 的梯度：grad_x、grad_y 分别为两输入的梯度掩码。
+ * 【算子约束】x1 与 x2 的 Shape 须满足右对齐广播约束；grads 输入与广播结果的 Shape 一致。
+ * 【推导逻辑】双输出均为 broadcast(x1, x2)。
+ * 【举例】x1=[B,S]、x2=[S] 时，y1=y2=[B,S]。
+ */
+graphStatus InferShape4BroadcastGrad(gert::InferSymbolShapeContext *context) {
+  auto in_shape1 = context->GetInputSymbolShape(1);
+  GE_UNSUPPORTED_IF_NULL(in_shape1);
+  auto in_shape2 = context->GetInputSymbolShape(2);
+  GE_UNSUPPORTED_IF_NULL(in_shape2);
+  std::vector<Expression> broadcast_dims;
+  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast({in_shape1->GetDims(), in_shape2->GetDims()}, broadcast_dims));
+  auto out_shape1 = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(out_shape1);
+  auto out_shape2 = context->GetOutputSymbolShape(1);
+  GE_ASSERT_NOTNULL(out_shape2);
+  out_shape1->MutableDims() = broadcast_dims;
+  out_shape2->MutableDims() = std::move(broadcast_dims);
+  return ge::GRAPH_SUCCESS;
+}
+
+/**
  * Lerp 的符号 Shape 推导。
  * 【算子功能】按权重在 start 和 end 之间执行逐元素线性插值，输出插值结果 y。
  * 【算子约束】start、end 和 weight 的 Shape 必须满足右对齐广播约束。
@@ -151,10 +174,14 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(EluGrad).InferSymbolShape(InferShape4BroadcastC
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(SoftmaxGrad).InferSymbolShape(InferShape4BroadcastCommon);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(TanhGrad).InferSymbolShape(InferShape4BroadcastCommon);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Axpy).InferSymbolShape(InferShape4BroadcastCommon);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(AxpyV2).InferSymbolShape(InferShape4BroadcastCommon);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Addcmul).InferSymbolShape(InferShape4Addcmul);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Atan2).InferSymbolShape(InferShape4BroadcastCommon);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Lerp).InferSymbolShape(InferShape4Lerp);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(PRelu).InferSymbolShape(InferShape4BroadcastCommon);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ClipByValue).InferSymbolShape(InferShape4BroadcastInputThree);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ClipByValueV2).InferSymbolShape(InferShape4BroadcastInputThree);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MaximumGrad).InferSymbolShape(InferShape4BroadcastGrad);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MinimumGrad).InferSymbolShape(InferShape4BroadcastGrad);
 }  // namespace
 }  // namespace ge

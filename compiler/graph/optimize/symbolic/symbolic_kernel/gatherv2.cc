@@ -273,4 +273,209 @@ static graphStatus GatherSymbolicKernelCompute(gert::InferSymbolComputeContext *
   return GatherCompute(context, axis, batch_dims);
 }
 REGISTER_SYMBOLIC_KERNEL(Gather, GatherSymbolicKernelCompute);
+
+namespace {
+constexpr size_t kElementsXIndex = 0UL;
+constexpr size_t kElementsIndexIdx = 1UL;
+constexpr size_t kElementsDimAttrIdx = 0UL;
+constexpr size_t kElementsOutputIdx = 0UL;
+}  // namespace
+
+// 按输出扁平位置分解 index 形状的 N-D 坐标（行主序），dim 维替换为归一化索引值后
+// 映射 x 扁平偏移，逐元素选取 x 的值表达式
+static graphStatus CalGatherElementsOutValue(gert::InferSymbolComputeContext *context,
+                                             const std::vector<int64_t> &x_dims, const std::vector<int64_t> &index_dims,
+                                             const std::vector<ge::Expression> &x_values,
+                                             const std::vector<int64_t> &index_values, int64_t dim,
+                                             std::vector<ge::Expression> &out_values) {
+  const auto rank = static_cast<int64_t>(x_dims.size());
+  out_values.reserve(index_values.size());
+  std::vector<int64_t> coords(x_dims.size(), 0L);
+  for (size_t p = 0UL; p < index_values.size(); p++) {
+    int64_t remain = static_cast<int64_t>(p);
+    for (int64_t d = rank - 1; d >= 0; d--) {
+      coords[static_cast<size_t>(d)] = remain % index_dims[static_cast<size_t>(d)];
+      remain /= index_dims[static_cast<size_t>(d)];
+    }
+    int64_t gather_index = 0L;
+    const auto index_ret =
+        NormalizeGatherIndex(index_values[p], x_dims[static_cast<size_t>(dim)], context, gather_index);
+    if (index_ret != GRAPH_SUCCESS) {
+      return index_ret;
+    }
+    coords[static_cast<size_t>(dim)] = gather_index;
+    int64_t offset = 0L;
+    for (int64_t d = 0L; d < rank; d++) {
+      offset = offset * x_dims[static_cast<size_t>(d)] + coords[static_cast<size_t>(d)];
+    }
+    out_values.emplace_back(x_values[static_cast<size_t>(offset)]);
+  }
+  return GRAPH_SUCCESS;
+}
+
+static graphStatus GatherElementsSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  GE_ASSERT_NOTNULL(context);
+  GELOGD("GatherElements Symbolic Kernel in, node %s[%s].", context->GetNodeName(), context->GetNodeType());
+  std::vector<int64_t> x_dims;
+  std::vector<ge::Expression> x_values;
+  graphStatus ret = GetInputDimsAndValue(context, kElementsXIndex, x_dims, x_values);
+  if (ret != GRAPH_SUCCESS) {
+    return ret;
+  }
+  std::vector<int64_t> index_dims;
+  std::vector<ge::Expression> index_symbol_values;
+  ret = GetInputDimsAndValue(context, kElementsIndexIdx, index_dims, index_symbol_values);
+  if (ret != GRAPH_SUCCESS) {
+    return ret;
+  }
+  // 索引值必须为常量，逐元素按 Gather 语义从 x 值表达式中选取
+  std::vector<int64_t> index_values;
+  ret = GetIndicesValue(context, index_symbol_values, index_values);
+  if (ret != GRAPH_SUCCESS) {
+    return ret;
+  }
+  // 0 维输入与秩不等属不支持形态，降级回退传统推导；秩相等与 index.size(d)<=input.size(d)
+  // 是 torch gather 的文档化约束，违反即非法图，断言硬报错打挂推导
+  if (x_dims.empty() || x_dims.size() != index_dims.size()) {
+    GELOGW(
+        "SymbolicKernel compute unsupported, reason: x rank %zu should be positive and equal to index rank %zu, "
+        "node %s[%s].",
+        x_dims.size(), index_dims.size(), context->GetNodeName(), context->GetNodeType());
+    return UNSUPPORTED;
+  }
+  for (size_t d = 0UL; d < index_dims.size(); d++) {
+    GE_ASSERT_TRUE(index_dims[d] <= x_dims[d],
+                   "SymbolicKernel compute failed, reason: index dim[%zu]: %lld should be no greater than x dim: "
+                   "%lld, node %s[%s].",
+                   d, index_dims[d], x_dims[d], context->GetNodeName(), context->GetNodeType());
+  }
+  auto attrs = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attrs);
+  const auto dim_ptr = attrs->GetAttrPointer<int64_t>(kElementsDimAttrIdx);
+  GE_ASSERT_NOTNULL(dim_ptr);
+  int64_t dim = *dim_ptr;
+  dim = dim < 0 ? dim + static_cast<int64_t>(x_dims.size()) : dim;
+  GE_ASSERT_TRUE(dim >= 0 && dim < static_cast<int64_t>(x_dims.size()),
+                 "SymbolicKernel compute failed, reason: dim %lld should be in [-%zu, %zu), node %s[%s].", *dim_ptr,
+                 x_dims.size(), x_dims.size(), context->GetNodeName(), context->GetNodeType());
+  // 空 tensor(维为0，合法图)与维乘积溢出防护：任一命中即降级
+  int64_t x_total = 0L;
+  int64_t index_total = 0L;
+  const auto rank = static_cast<int64_t>(x_dims.size());
+  if (!MulDimsSafely(x_dims, 0L, rank, x_total) || !MulDimsSafely(index_dims, 0L, rank, index_total) ||
+      static_cast<int64_t>(x_values.size()) != x_total || static_cast<int64_t>(index_values.size()) != index_total) {
+    return UNSUPPORTED;
+  }
+  auto symbolic_tensor = context->GetOutputSymbolTensor(kElementsOutputIdx);
+  GE_ASSERT_NOTNULL(symbolic_tensor);
+  symbolic_tensor->MutableOriginSymbolShape().Clear();
+  for (const auto d : index_dims) {
+    symbolic_tensor->MutableOriginSymbolShape().AppendDim(Symbol(d));
+  }
+  auto output_symbol_values = symbolic_tensor->MutableSymbolicValue();
+  GE_ASSERT_NOTNULL(output_symbol_values);
+  const graphStatus value_ret =
+      CalGatherElementsOutValue(context, x_dims, index_dims, x_values, index_values, dim, *output_symbol_values);
+  if (value_ret != SUCCESS) {
+    return value_ret;
+  }
+  GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
+         SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
+  return SUCCESS;
+}
+REGISTER_SYMBOLIC_KERNEL(GatherElements, GatherElementsSymbolicKernelCompute);
+
+/**
+ * GatherNd算子的符号化计算
+ * 【算子功能】按 indices 末 idx_rank 维给出的 N-D 坐标，从 x 中逐前缀位置取整段尾部维数据。
+ * 【推导逻辑】输出 Shape = indices 前缀维 + x[idx_rank:]；索引值须为常量，逐前缀位置取
+ *          idx_rank 个坐标（负索引归一化、越界断言硬报错），映射 x 扁平偏移后整段拷贝
+ *          x 尾部维的值表达式。
+ * 【算子约束】x/indices 须有静态 Shape 与 SymbolicValue；idx_rank 不超过 x 的秩；
+ *          空 tensor/维乘积溢出/值数不匹配降级。
+ * 【举例】x=[2,2] value=[10,11,12,13]、indices shape=[2,2] value=[1,1,0,1] 时，
+ *          输出 Shape 为[2]，输出 value 为[13,11]。
+ */
+static graphStatus GatherNdSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  GE_ASSERT_NOTNULL(context);
+  GELOGD("GatherNd Symbolic Kernel in, node %s[%s].", context->GetNodeName(), context->GetNodeType());
+  std::vector<int64_t> x_dims;
+  std::vector<ge::Expression> x_values;
+  graphStatus ret = GetInputDimsAndValue(context, kElementsXIndex, x_dims, x_values);
+  if (ret != GRAPH_SUCCESS) {
+    return ret;
+  }
+  std::vector<int64_t> indices_dims;
+  std::vector<ge::Expression> indices_symbol_values;
+  ret = GetInputDimsAndValue(context, kElementsIndexIdx, indices_dims, indices_symbol_values);
+  if (ret != GRAPH_SUCCESS) {
+    return ret;
+  }
+  // 索引值必须为常量
+  std::vector<int64_t> indices_values;
+  ret = GetIndicesValue(context, indices_symbol_values, indices_values);
+  if (ret != GRAPH_SUCCESS) {
+    return ret;
+  }
+  // 空 tensor(维为0，合法图)降级；idx_rank 为坐标长度，不得超过 x 的秩
+  if (x_dims.empty() || indices_dims.empty() || x_values.empty() || indices_values.empty()) {
+    GELOGW("SymbolicKernel compute unsupported, reason: empty x/indices tensor, node %s[%s].", context->GetNodeName(),
+           context->GetNodeType());
+    return UNSUPPORTED;
+  }
+  const auto x_rank = static_cast<int64_t>(x_dims.size());
+  const int64_t idx_rank = indices_dims.back();
+  if (idx_rank <= 0L || idx_rank > x_rank) {
+    GELOGW("SymbolicKernel compute unsupported, reason: indices last dim %lld should be in (0, %lld], node %s[%s].",
+           idx_rank, x_rank, context->GetNodeName(), context->GetNodeType());
+    return UNSUPPORTED;
+  }
+
+  int64_t prefix_total = 0L;
+  int64_t tail_size = 0L;
+  int64_t x_total = 0L;
+  if (!MulDimsSafely(indices_dims, 0L, static_cast<int64_t>(indices_dims.size()) - 1L, prefix_total) ||
+      !MulDimsSafely(x_dims, idx_rank, x_rank, tail_size) || !MulDimsSafely(x_dims, 0L, x_rank, x_total) ||
+      static_cast<int64_t>(x_values.size()) != x_total ||
+      static_cast<int64_t>(indices_values.size()) != prefix_total * idx_rank) {
+    GELOGW("SymbolicKernel compute unsupported, reason: dims product overflow or value size mismatch, node %s[%s].",
+           context->GetNodeName(), context->GetNodeType());
+    return UNSUPPORTED;
+  }
+
+  auto symbolic_tensor = context->GetOutputSymbolTensor(kElementsOutputIdx);
+  GE_ASSERT_NOTNULL(symbolic_tensor);
+  symbolic_tensor->MutableOriginSymbolShape().Clear();
+  for (size_t i = 0UL; i + 1UL < indices_dims.size(); i++) {
+    symbolic_tensor->MutableOriginSymbolShape().AppendDim(Symbol(indices_dims[i]));
+  }
+  for (int64_t i = idx_rank; i < x_rank; i++) {
+    symbolic_tensor->MutableOriginSymbolShape().AppendDim(Symbol(x_dims[static_cast<size_t>(i)]));
+  }
+  auto output_symbol_values = symbolic_tensor->MutableSymbolicValue();
+  GE_ASSERT_NOTNULL(output_symbol_values);
+  output_symbol_values->clear();
+  output_symbol_values->reserve(static_cast<size_t>(prefix_total * tail_size));
+  for (int64_t p = 0L; p < prefix_total; p++) {
+    // 逐前缀位置解析 idx_rank 个坐标并映射 x 扁平偏移（前缀偏移 * 尾部长度）
+    int64_t offset = 0L;
+    for (int64_t i = 0L; i < idx_rank; i++) {
+      int64_t coord = 0L;
+      const auto coord_ret = NormalizeGatherIndex(indices_values[static_cast<size_t>(p * idx_rank + i)],
+                                                  x_dims[static_cast<size_t>(i)], context, coord);
+      if (coord_ret != GRAPH_SUCCESS) {
+        return coord_ret;
+      }
+      offset = offset * x_dims[static_cast<size_t>(i)] + coord;
+    }
+    const int64_t base = offset * tail_size;
+    for (int64_t t = 0L; t < tail_size; t++) {
+      output_symbol_values->emplace_back(x_values[static_cast<size_t>(base + t)]);
+    }
+  }
+  GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
+         SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
+  return SUCCESS;
+}
+REGISTER_SYMBOLIC_KERNEL(GatherNd, GatherNdSymbolicKernelCompute);
 }  // namespace ge
