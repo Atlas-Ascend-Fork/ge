@@ -6444,12 +6444,12 @@ TEST_F(SymbolicShapeInferenceST, test_conv2d_padding_same) {
   ASSERT_EQ(guard_infos.size(), 15);
   const std::set<std::string> expect_guard = {"ExpectNe(0, s7)",
                                               "ExpectNe(0, s1)",
-                                              "ExpectNe(((Mod((-2 + s4), 2) * Rational(1 , 2)) + (Rational(1 , 2) * "
-                                              "s1) + Floor(((-2 + s4) * Rational(1 , 2)))), (Rational(1 , 2) * s4))",
+                                              "ExpectNe(((2 * Floor(((-2 + s4) * Rational(1 , 2)))) + Mod((-2 + s4), 2)"
+                                              " + s1), s4)",
                                               "ExpectNe(0, s0)",
                                               "ExpectNe(0, s3)",
-                                              "ExpectNe(((Mod((-2 + s5), 2) * Rational(1 , 2)) + (Rational(1 , 2) * "
-                                              "s2) + Floor(((-2 + s5) * Rational(1 , 2)))), (Rational(1 , 2) * s5))",
+                                              "ExpectNe(((2 * Floor(((-2 + s5) * Rational(1 , 2)))) + Mod((-2 + s5), 2)"
+                                              " + s2), s5)",
                                               "ExpectNe(0, s2)",
                                               "ExpectNe((s3 / (s6)), 0)",
                                               "ExpectEq(0, Mod(s3, s6))",
@@ -6561,11 +6561,10 @@ TEST_F(SymbolicShapeInferenceST, test_conv2d_padding_valid) {
   EXPECT_EQ(std::string(conv2d_symbol_shape.GetDim(3).Serialize().get()), "s7");
   const std::vector<SymbolCheckInfo> guard_infos = shape_env_attr->GetAllSymbolCheckInfos();
   ASSERT_EQ(guard_infos.size(), 12);
-  const std::set<std::string> expect_guard = {
-      "ExpectNe(0, s7)", "ExpectNe(0, s1)",          "ExpectNe((Rational(1 , 2) * s2), (Rational(1 , 2) * s5))",
-      "ExpectNe(0, s0)", "ExpectNe(0, s3)",          "ExpectNe((Rational(1 , 2) * s1), (Rational(1 , 2) * s4))",
-      "ExpectNe(0, s2)", "ExpectNe((s3 / (s6)), 0)", "ExpectEq(0, Mod(s3, s6))",
-      "ExpectNe(0, s6)", "ExpectNe(0, s4)",          "ExpectNe(0, s5)"};
+  const std::set<std::string> expect_guard = {"ExpectNe(0, s7)", "ExpectNe(0, s1)",          "ExpectNe(s2, s5)",
+                                              "ExpectNe(0, s0)", "ExpectNe(0, s3)",          "ExpectNe(s1, s4)",
+                                              "ExpectNe(0, s2)", "ExpectNe((s3 / (s6)), 0)", "ExpectEq(0, Mod(s3, s6))",
+                                              "ExpectNe(0, s6)", "ExpectNe(0, s4)",          "ExpectNe(0, s5)"};
   for (auto &iter : guard_infos) {
     const std::string guard_str = std::string(iter.expr.Serialize().get());
     std::cout << "guard info: " << guard_str << std::endl;
