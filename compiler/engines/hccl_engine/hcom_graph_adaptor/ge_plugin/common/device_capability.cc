@@ -27,8 +27,8 @@ namespace {
 //   DEV_TYPE_960 = 8
 struct CapabilityFlags {
   bool v2Kernel;
-  bool aicpuMc2Resource;  // SupportsAicpuMc2Resource() 返回值 (AICPU MC2 新流程)
-  bool aivCheck;          // UsesHcomSelectAlgForAiv() 返回值 (非 950 设备走 HcomSelectAlg)
+  bool mc2Resource;  // SupportsMc2Resource() 返回值 (MC2 新流程)
+  bool aivCheck;     // UsesHcomSelectAlgForAiv() 返回值 (非 950 设备走 HcomSelectAlg)
   bool legacyMem;
   bool strictDet;
   int identity;
@@ -98,7 +98,7 @@ DeviceCapability::DeviceCapability() {
   HCCL_INFO(
       "[DeviceCapability] initialized. socVersion[%s], v2Kernel[%d], aicpuMc2[%d], aivCheck[%d], "
       "legacyMem[%d], strictDet[%d], identity[%d].",
-      cachedSocVersion_.c_str(), supportsV2Kernel_, supportsAicpuMc2Resource_, supportsAivCheck_, hasLegacyMemoryModel_,
+      cachedSocVersion_.c_str(), supportsV2Kernel_, supportsMc2Resource_, supportsAivCheck_, hasLegacyMemoryModel_,
       supportsStrictDeterministic_, deviceIdentity_);
 }
 
@@ -117,7 +117,7 @@ void DeviceCapability::InitFromSocVersion(const std::string &socVersion) {
   if (exactIt != kSocMap.end()) {
     const auto &flags = exactIt->second;
     supportsV2Kernel_ = flags.v2Kernel;
-    supportsAicpuMc2Resource_ = flags.aicpuMc2Resource;
+    supportsMc2Resource_ = flags.mc2Resource;
     supportsAivCheck_ = flags.aivCheck;
     hasLegacyMemoryModel_ = flags.legacyMem;
     supportsStrictDeterministic_ = flags.strictDet;
@@ -144,7 +144,7 @@ void DeviceCapability::InitFromSocVersion(const std::string &socVersion) {
   }
   if (bestKey != nullptr) {
     supportsV2Kernel_ = bestFlags.v2Kernel;
-    supportsAicpuMc2Resource_ = bestFlags.aicpuMc2Resource;
+    supportsMc2Resource_ = bestFlags.mc2Resource;
     supportsAivCheck_ = bestFlags.aivCheck;
     hasLegacyMemoryModel_ = bestFlags.legacyMem;
     supportsStrictDeterministic_ = bestFlags.strictDet;
@@ -163,8 +163,8 @@ bool DeviceCapability::SupportsV2Kernel() {
   return supportsV2Kernel_;
 }
 
-bool DeviceCapability::SupportsAicpuMc2Resource() {
-  return supportsAicpuMc2Resource_;
+bool DeviceCapability::SupportsMc2Resource() {
+  return supportsMc2Resource_;
 }
 
 bool DeviceCapability::UsesHcomSelectAlgForAiv() {

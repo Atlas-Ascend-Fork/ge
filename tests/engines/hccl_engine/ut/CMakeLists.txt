@@ -81,6 +81,7 @@ set(hcce_ut_llt_stub
 set(hccl_engine_src_test_file
     ${CMAKE_CURRENT_SOURCE_DIR}/ut_main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ut_hcom_plugin.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/ut_hcom_graph_mc2.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ut_hcom_executor.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ut_hcom_launch_kernel.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ut_hcom_lowering.cc

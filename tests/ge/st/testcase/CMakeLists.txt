@@ -146,6 +146,7 @@ target_link_options(graph_engine_test PRIVATE
 
 target_link_libraries(graph_engine_test
     intf_llt_pub
+    mockcpp
     ascendcl_stub
     -Wl,-z,muldefs
     ge_compiler
@@ -327,6 +328,7 @@ target_link_options(ge_common_atc PRIVATE
 
 target_link_libraries(ge_common_atc
     intf_llt_pub
+    mockcpp
     mmpa_stub
     ascendcl_stub
     -Wl,-z,muldefs

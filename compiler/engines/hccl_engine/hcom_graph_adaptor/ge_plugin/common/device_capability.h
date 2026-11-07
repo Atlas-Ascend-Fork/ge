@@ -24,8 +24,8 @@ class DeviceCapability {
   static DeviceCapability &Instance();
   // V2 kernel 能力
   bool SupportsV2Kernel();
-  // AICPU MC2 资源能力 (用于门控 HcomGetA5AicpuContext 新流程)
-  bool SupportsAicpuMc2Resource();
+  // MC2 资源能力 (用于门控 HcomGetMC2Context 新流程)
+  bool SupportsMc2Resource();
   // 通过 HcomSelectAlg 接口进行 AIV 模式判断 (非 950 设备; 950 走 superKernel attr 路径)
   bool UsesHcomSelectAlgForAiv();
   // 旧内存模型
@@ -49,8 +49,8 @@ class DeviceCapability {
 
   std::string cachedSocVersion_;  // 缓存的 SOC 字符串
   bool supportsV2Kernel_ = false;
-  bool supportsAicpuMc2Resource_ = false;  // SupportsAicpuMc2Resource() 返回值
-  bool supportsAivCheck_ = false;          // UsesHcomSelectAlgForAiv() 返回值
+  bool supportsMc2Resource_ = false;  // SupportsMc2Resource() 返回值
+  bool supportsAivCheck_ = false;     // UsesHcomSelectAlgForAiv() 返回值
   bool hasLegacyMemoryModel_ = false;
   bool supportsStrictDeterministic_ = false;
   int deviceIdentity_ = -1;  // 映射旧 DevType 枚举值, 未知 SOC 为 -1

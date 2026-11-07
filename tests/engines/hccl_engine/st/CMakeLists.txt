@@ -92,6 +92,7 @@ set(hccl_engine_src_test_file
     ${CMAKE_CURRENT_SOURCE_DIR}/st_gradient_split.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/st_hccl_kernel_info.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/st_superFastKernel.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/st_hcom_graph_mc2.cc
     ${hcce_st_llt_stub}
 )
 
