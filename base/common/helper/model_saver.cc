@@ -37,7 +37,7 @@ Status ModelSaver::SaveJsonToFile(const char_t *const file_path, const Json &mod
     GELOGE(FAILED, "[Check][OutputFile]Failed, file %s", safe_path);
     (void)REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
-        std::vector<const char *>({safe_path, "output_file", "the output file path is invalid"}));
+        std::vector<const char *>({safe_path, "output_file", "the output file path is invalid."}));
     return FAILED;
   }
   std::string model_str;

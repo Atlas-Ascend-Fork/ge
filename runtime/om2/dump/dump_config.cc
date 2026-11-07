@@ -440,7 +440,7 @@ bool DumpConfig::ValidateDumpMode(const nlohmann::json &jsDumpConfig) {
            "[Check][DumpConfig]dump_mode value[%s] error in config, only supports input/output/all", dumpMode.c_str());
     REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
-        std::vector<const char *>({dumpMode.c_str(), "dump_mode", "only supports input/output/all"}));
+        std::vector<const char *>({dumpMode.c_str(), "dump_mode", "only supports input/output/all."}));
     return false;
   }
   GELOGD("dump_mode value[%s] is valid", dumpMode.c_str());
@@ -460,7 +460,7 @@ bool DumpConfig::ValidateDumpLevel(const nlohmann::json &jsDumpConfig) {
            "[Check][DumpConfig]dump_level value[%s] error in config, only supports op/kernel/all", dumpLevel.c_str());
     REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
-        std::vector<const char *>({dumpLevel.c_str(), "dump_level", "only supports op/kernel/all"}));
+        std::vector<const char *>({dumpLevel.c_str(), "dump_level", "only supports op/kernel/all."}));
     return false;
   }
   GELOGD("dump_level value[%s] is valid", dumpLevel.c_str());
@@ -507,9 +507,9 @@ bool DumpConfig::CheckDumpSceneSwitch(const nlohmann::json &jsDumpConfig, std::s
     if (GetConfigWithDefault(jsDumpConfig, GE_DUMP_DEBUG, GE_DUMP_DEBUG_DEFAULT) == GE_DUMP_STATUS_ON) {
       GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpScene]dump_scene is %s when dump_debug is on is unsupported.",
              dumpScene.c_str());
-      REPORT_PREDEFINED_ERR_MSG(
-          "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
-          std::vector<const char *>({dumpScene.c_str(), "dump_scene", "dump_scene watcher conflicts with dump_debug"}));
+      REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"value", "parameter", "reason"}),
+                                std::vector<const char *>({dumpScene.c_str(), "dump_scene",
+                                                           "dump_scene watcher conflicts with dump_debug."}));
       return false;
     }
     if (GetConfigWithDefault(jsDumpConfig, GE_DUMP_OP_SWITCH, GE_DUMP_OP_SWITCH_DEFAULT) == GE_DUMP_STATUS_ON) {
@@ -517,7 +517,7 @@ bool DumpConfig::CheckDumpSceneSwitch(const nlohmann::json &jsDumpConfig, std::s
              dumpScene.c_str());
       REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"value", "parameter", "reason"}),
                                 std::vector<const char *>({dumpScene.c_str(), "dump_scene",
-                                                           "dump_scene watcher conflicts with dump_op_switch"}));
+                                                           "dump_scene watcher conflicts with dump_op_switch."}));
       return false;
     }
     if (GetConfigWithDefault(jsDumpConfig, GE_DUMP_MODE, GE_DUMP_MODE_DEFAULT) != GE_DUMP_MODE_OUTPUT) {
@@ -525,7 +525,7 @@ bool DumpConfig::CheckDumpSceneSwitch(const nlohmann::json &jsDumpConfig, std::s
              dumpScene.c_str());
       REPORT_PREDEFINED_ERR_MSG(
           "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
-          std::vector<const char *>({dumpScene.c_str(), "dump_mode", "dump_mode only supports output for watcher"}));
+          std::vector<const char *>({dumpScene.c_str(), "dump_mode", "dump_mode only supports output for watcher."}));
       return false;
     }
     // watcher 依赖 dump_path 落盘目录，缺失时无法产出 dump 文件（对齐 v1 对 dump_path 的必填要求）

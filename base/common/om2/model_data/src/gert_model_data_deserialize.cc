@@ -313,7 +313,7 @@ ge::Status DeserializeManifest(const gert::ZipArchiveReader &archive, const std:
   if (full_path.empty()) {
     (void)REPORT_PREDEFINED_ERR_MSG(
         "E10059", std::vector<const char *>({"stage", "reason"}),
-        std::vector<const char *>({"DeserializeGertModelData", "manifest.json not found in ZIP archive."}));
+        std::vector<const char *>({"DeserializeGertModelData", "manifest.json not found in ZIP archive"}));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2] manifest.json not found in ZIP archive.");
     return ACL_ERROR_GE_PARAM_INVALID;
   }
@@ -443,7 +443,7 @@ ge::Status DeserializeModelMeta(const gert::ZipArchiveReader &archive, const std
   if (full_path.empty()) {
     (void)REPORT_PREDEFINED_ERR_MSG(
         "E10059", std::vector<const char *>({"stage", "reason"}),
-        std::vector<const char *>({"DeserializeGertModelData", "model_meta.json not found in ZIP archive."}));
+        std::vector<const char *>({"DeserializeGertModelData", "model_meta.json not found in ZIP archive"}));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2] model_meta.json not found in ZIP archive.");
     return ACL_ERROR_GE_PARAM_INVALID;
   }
@@ -504,7 +504,7 @@ ge::Status DeserializeCodegen(const gert::ZipArchiveReader &archive, const std::
   }
   (void)REPORT_PREDEFINED_ERR_MSG(
       "E10059", std::vector<const char *>({"stage", "reason"}),
-      std::vector<const char *>({"DeserializeGertModelData", "Compiled .so not found in ZIP archive."}));
+      std::vector<const char *>({"DeserializeGertModelData", "Compiled .so not found in ZIP archive"}));
   GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2] Compiled .so not found in ZIP archive.");
   return ACL_ERROR_GE_PARAM_INVALID;
 }
@@ -515,7 +515,7 @@ ge::Status DeserializeConstantsConfig(const gert::ZipArchiveReader &archive, con
   if (full_path.empty()) {
     (void)REPORT_PREDEFINED_ERR_MSG(
         "E10059", std::vector<const char *>({"stage", "reason"}),
-        std::vector<const char *>({"DeserializeGertModelData", "constants config not found in ZIP archive."}));
+        std::vector<const char *>({"DeserializeGertModelData", "constants config not found in ZIP archive"}));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2] constants config not found in ZIP archive.");
     return ACL_ERROR_GE_PARAM_INVALID;
   }
@@ -591,7 +591,7 @@ ge::Status DeserializeOpAttr(const gert::ZipArchiveReader &archive, const std::s
   if (full_path.empty()) {
     (void)REPORT_PREDEFINED_ERR_MSG(
         "E10059", std::vector<const char *>({"stage", "reason"}),
-        std::vector<const char *>({"DeserializeGertModelData", "op_attr.json not found in ZIP archive."}));
+        std::vector<const char *>({"DeserializeGertModelData", "op_attr.json not found in ZIP archive"}));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2] op_attr.json not found in ZIP archive.");
     return ACL_ERROR_GE_PARAM_INVALID;
   }

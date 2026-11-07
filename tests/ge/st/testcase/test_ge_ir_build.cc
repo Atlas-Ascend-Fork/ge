@@ -2143,4 +2143,61 @@ TEST_F(GeIrBuildTest, Fp8ConstGraph_fp8e4m3fn_ok) {
   BuildAndCheckSimpleConstCastGraph(true, DT_FLOAT8_E4M3FN);
   BuildAndCheckSimpleConstCastGraph(false, DT_FLOAT8_E4M3FN);
 }
+
+/**
+ * 用例描述：测试 aclgrphBuildInitialize 的全局 options 中 op_select_implmode 为非法值时的业务层校验
+ * 预置条件：
+ *   1. 无（本用例不依赖 opp 环境）
+ * 测试步骤：
+ *   1. 构造 init_options，注入非法 op_select_implmode（invalid_implmode，不在业务层合法值集内；
+ *      aclgrph 入口不经 atc 的 flag 值集校验，可直达业务层 CheckImplmodeParamValid）
+ *   2. 调用 aclgrphBuildInitialize
+ * 预期结果：
+ *   1. 初始化返回非 SUCCESS，业务层上报 op_select_implmode 非法错误码
+ */
+TEST_F(GeIrBuildTest, TestBuildInitializeFailWithInvalidImplmode) {
+  BenchEnv::Init();
+  std::shared_ptr<GELib> ge_lib = GELib::GetInstance();
+  if (ge_lib != nullptr) {
+    ge_lib->init_flag_ = false;
+  }
+  std::map<AscendString, AscendString> init_options;
+  init_options.emplace(ge::ir_option::OP_SELECT_IMPL_MODE, "invalid_implmode");
+  EXPECT_NE(aclgrphBuildInitialize(init_options), SUCCESS);
+  aclgrphBuildFinalize();
+}
+
+/**
+ * 用例描述：测试 aclgrphBuildModel 的 build options 中 output_type 为非法值时的参数校验
+ * 预置条件：
+ *   1. ASCEND_OPP_PATH 已设置
+ * 测试步骤：
+ *   1. 调用 aclgrphBuildInitialize（其成败依赖运行环境的 opp 支持列表，可能受同进程先前
+ *      用例影响，不作为本用例断言目标；无论其成败，BuildModel 均会执行 output_type 校验）
+ *   2. 构造 build_options，注入非法 output_type（FP99，不在支持的数据类型集内）
+ *   3. 调用 aclgrphBuildModel 构建模型
+ * 预期结果：
+ *   1. 构建返回非 SUCCESS，output_type 校验失败并上报错误码
+ */
+
+TEST_F(GeIrBuildTest, TestBuildModelFailWithInvalidOutputType) {
+  BenchEnv::Init();
+  std::shared_ptr<GELib> ge_lib = GELib::GetInstance();
+  if (ge_lib != nullptr) {
+    ge_lib->init_flag_ = false;
+  }
+  std::map<AscendString, AscendString> init_options;
+  init_options.emplace(ge::OPTION_EXEC_HCCL_FLAG, "0");
+  (void)aclgrphBuildInitialize(init_options);
+
+  setenv("ASCEND_OPP_PATH", "./", 0);
+
+  auto graph = GraphFactory::SingeOpGraph2();
+  std::map<AscendString, AscendString> build_options;
+  build_options.emplace(ge::ir_option::INPUT_FORMAT, "NCHW");
+  build_options.emplace(ge::ir_option::OUTPUT_TYPE, "FP99");
+  ModelBufferData model_buffer_data{};
+  EXPECT_NE(aclgrphBuildModel(graph, build_options, model_buffer_data), SUCCESS);
+  aclgrphBuildFinalize();
+}
 }  // namespace ge

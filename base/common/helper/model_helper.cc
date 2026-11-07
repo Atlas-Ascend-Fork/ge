@@ -947,7 +947,7 @@ Status ModelHelper::SaveToOmModel(const GeModelPtr &ge_model, const std::string 
            ge_model->GetName().c_str());
     REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
-        std::vector<const char *>({output_file.c_str(), "output_file", "the file name prefix is empty"}));
+        std::vector<const char *>({output_file.c_str(), "output_file", "the file name prefix is empty."}));
     return FAILED;
   }
 

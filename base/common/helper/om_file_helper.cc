@@ -269,7 +269,8 @@ Status OmFileLoadHelper::CheckModelCompatibility(const Model &model) const {
   const aclError acl_ret = aclrtCheckArchCompatibility(model_soc_version.c_str(), &compatible);
   if (acl_ret != ACL_ERROR_NONE) {
     // soc_version 为用户输入参数，校验失败按参数错误(E10001)上报，而非内部错误(E19999)
-    const std::string reason = "aclrtCheckArchCompatibility ret: 0x" + std::to_string(static_cast<uint32_t>(acl_ret));
+    const std::string reason =
+        "aclrtCheckArchCompatibility ret: 0x" + std::to_string(static_cast<uint32_t>(acl_ret)) + ".";
     (void)REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
         std::vector<const char *>({"soc_version", model_soc_version.c_str(), reason.c_str()}));

@@ -295,7 +295,7 @@ static Status GEInitializeImpl(const std::map<std::string, std::string> &options
            opsproto_path.c_str());
     REPORT_PREDEFINED_ERR_MSG(
         "E13026", std::vector<const char *>({"pathname", "reason"}),
-        std::vector<const char *>({opsproto_path.c_str(), "failed to load the OpsProto lib plugin"}));
+        std::vector<const char *>({opsproto_path.c_str(), "failed to load the OpsProto lib plugin."}));
     return FAILED;
   }
   GE_ASSERT_SUCCESS(fusion::LoadPassPlugins());

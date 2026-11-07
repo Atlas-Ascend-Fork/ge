@@ -2030,10 +2030,22 @@ TEST_F(AtcCommonSTest, pb_modify_mixlist_fail) {
   ReInitGe();  // the main_impl will call GEFinalize, so re-init after call it
 }
 
+/**
+ * 用例描述：测试 --op_select_implmode 传入非法值时命令行 flag 层的拦截
+ * 预置条件：
+ *   1. st_run_data/origin_model/add.pb 模型文件存在
+ * 测试步骤：
+ *   1. 构造 atc 参数：--op_select_implmode=invalid（不在 flag 值集内）
+ *   2. 调用 main_impl 执行 atc
+ * 预期结果：
+ *   1. atc 返回 -1，flag 值校验层上报 E10001
+ * 注：非法 implmode 值在 flag 值集校验层即被拦截（其值集严于业务层 CheckImplmodeParamValid），
+ *     业务层 implmode 非法值分支经由 atc 命令行不可达
+ */
 TEST_F(AtcCommonSTest, pb_op_select_implmode_fail) {
   auto om_path = PathJoin(GetRunPath().c_str(), "temp");
   Mkdir(om_path.c_str());
-  om_path = PathJoin(om_path.c_str(), "pb_abnormal");
+  om_path = PathJoin(om_path.c_str(), "pb_abnormal.om");
   std::string model_arg = "--model=st_run_data/origin_model/add.pb";
   std::string output_arg = "--output=" + om_path;
   char *argv[] = {
@@ -2042,6 +2054,7 @@ TEST_F(AtcCommonSTest, pb_op_select_implmode_fail) {
       const_cast<char *>(output_arg.c_str()),
       "--framework=3",  // FrameworkType
       "--soc_version=Ascend310",
+      "--input_format=NCHW",
       "--output_type=FP32",
       "--out_nodes=add_test_1:0",
       "--op_select_implmode=invalid",
@@ -2055,7 +2068,7 @@ TEST_F(AtcCommonSTest, pb_op_select_implmode_fail) {
 TEST_F(AtcCommonSTest, pb_optypelist_for_implmode_fail) {
   auto om_path = PathJoin(GetRunPath().c_str(), "temp");
   Mkdir(om_path.c_str());
-  om_path = PathJoin(om_path.c_str(), "pb_abnormal");
+  om_path = PathJoin(om_path.c_str(), "pb_abnormal.om");
   std::string model_arg = "--model=st_run_data/origin_model/add.pb";
   std::string output_arg = "--output=" + om_path;
   char *argv[] = {
@@ -2064,9 +2077,10 @@ TEST_F(AtcCommonSTest, pb_optypelist_for_implmode_fail) {
       const_cast<char *>(output_arg.c_str()),
       "--framework=3",  // FrameworkType
       "--soc_version=Ascend310",
+      "--input_format=NCHW",
       "--output_type=FP32",
       "--out_nodes=add_test_1:0",
-      "--op_select_implmode=invalid",
+      "--optypelist_for_implmode=invalid",
   };
   auto ret = main_impl(sizeof(argv) / sizeof(argv[0]), argv);
   EXPECT_EQ(ret, -1);
@@ -3762,5 +3776,212 @@ TEST_F(AtcCommonSTest, pb_model_load_custom_op_with_legacy_so) {
   cmd = "rm -rf " + test_opp;
   system(cmd.c_str());
   ReInitGe();
+}
+
+/**
+ * 用例描述：测试编译模式下 framework 为 Caffe 且 input_format 为非法值的参数校验
+ * 预置条件：
+ *   1. st_run_data/origin_model/add.pb 模型文件存在
+ * 测试步骤：
+ *   1. 构造 atc 参数：--mode=0、--framework=0（Caffe）、--input_format=NHWC（不在 Caffe
+ *      支持的 {NCHW, ND} 集合内；注意 input_format 为空时会补默认值直接通过校验，
+ *      必须显式传非法值）、--weight 指向存在的文件（Caffe 框架 flag 层要求 weight 非空）
+ *   2. 调用 main_impl 执行 atc
+ * 预期结果：
+ *   1. atc 返回 -1，input_format 校验失败并上报错误码
+ */
+TEST_F(AtcCommonSTest, infer_shape_json_caffe_invalid_format) {
+  auto om_path = PathJoin(GetRunPath().c_str(), "temp");
+  Mkdir(om_path.c_str());
+  om_path = PathJoin(om_path.c_str(), "pb_abnormal");
+  std::string model_arg = "--model=st_run_data/origin_model/add.pb";
+  std::string output_arg = "--output=" + om_path;
+
+  char *argv[] = {
+      "atc",
+      const_cast<char *>(model_arg.c_str()),
+      const_cast<char *>(output_arg.c_str()),
+      "--framework=0",  // FrameworkType
+      "--soc_version=Ascend310",
+      "--output_type=FP32",
+      "--mode=0",
+      "--weight=st_run_data/origin_model/add.pb",
+      "--input_format=NHWC",
+      "--out_nodes=add_test_1:0",
+  };
+  auto ret = main_impl(sizeof(argv) / sizeof(argv[0]), argv);
+  EXPECT_EQ(ret, -1);
+  ReInitGe();  // the main_impl will call GEFinalize, so re-init after call it
+}
+
+/**
+ * 用例描述：测试编译模式下 framework 为 ONNX 且 input_format 为非法值的参数校验
+ * 预置条件：
+ *   1. st_run_data/origin_model/add.pb 模型文件存在
+ * 测试步骤：
+ *   1. 构造 atc 参数：--mode=0、--framework=5（ONNX）、--input_format=NHWC（不在 ONNX
+ *      支持的 {NCHW, ND, NCDHW} 集合内；input_format 为空时会补默认值，必须显式传非法值）
+ *   2. 调用 main_impl 执行 atc
+ * 预期结果：
+ *   1. atc 返回 -1，input_format 校验失败并上报错误码
+ */
+TEST_F(AtcCommonSTest, infer_shape_json_onnx_invalid_format) {
+  auto om_path = PathJoin(GetRunPath().c_str(), "temp");
+  Mkdir(om_path.c_str());
+  om_path = PathJoin(om_path.c_str(), "pb_abnormal");
+  std::string model_arg = "--model=st_run_data/origin_model/add.pb";
+  std::string output_arg = "--output=" + om_path;
+
+  char *argv[] = {
+      "atc",
+      const_cast<char *>(model_arg.c_str()),
+      const_cast<char *>(output_arg.c_str()),
+      "--framework=5",  // FrameworkType
+      "--soc_version=Ascend310",
+      "--output_type=FP32",
+      "--mode=0",
+      "--input_format=NHWC",
+      "--out_nodes=add_test_1:0",
+  };
+  auto ret = main_impl(sizeof(argv) / sizeof(argv[0]), argv);
+  EXPECT_EQ(ret, -1);
+  ReInitGe();  // the main_impl will call GEFinalize, so re-init after call it
+}
+
+/**
+ * 用例描述：测试 --mode 传入未定义的非法值（99）时命令行参数校验层的拦截
+ * 预置条件：
+ *   1. st_run_data/origin_model/add.pb 模型文件存在
+ * 测试步骤：
+ *   1. 构造 atc 参数：--mode=99（不在 cmd_flag_info 定义的模式值集 {0,1,3,5,6,7,30} 内）
+ *   2. 调用 main_impl 执行 atc
+ * 预期结果：
+ *   1. atc 返回 -1，flag 值校验层上报 E10001（模式值不在合法范围内）
+ * 注：非法 mode 在 flag 校验层即被拦截，RunAtcByMode 内的 ReportInvalidRunMode 分支
+ *     经由命令行不可达
+ */
+TEST_F(AtcCommonSTest, run_mode_invalid_value) {
+  auto om_path = PathJoin(GetRunPath().c_str(), "temp");
+  Mkdir(om_path.c_str());
+  om_path = PathJoin(om_path.c_str(), "pb_abnormal");
+  std::string model_arg = "--model=st_run_data/origin_model/add.pb";
+  std::string output_arg = "--output=" + om_path;
+
+  char *argv[] = {
+      "atc",
+      const_cast<char *>(model_arg.c_str()),
+      const_cast<char *>(output_arg.c_str()),
+      "--framework=3",  // FrameworkType
+      "--soc_version=Ascend310",
+      "--output_type=FP32",
+      "--mode=99",
+      "--out_nodes=add_test_1:0",
+  };
+  auto ret = main_impl(sizeof(argv) / sizeof(argv[0]), argv);
+  EXPECT_EQ(ret, -1);
+  ReInitGe();  // the main_impl will call GEFinalize, so re-init after call it
+}
+
+/**
+ * 用例描述：测试 mode=5（pbtxt 转 json）时输入 pbtxt 文件内容非法导致转换失败
+ * 预置条件：
+ *   1. st_run_data/origin_model/add.pb 模型文件存在（--model 必填校验）
+ *   2. 构造一个内容非法的 .txt 文件作为 --om 输入
+ * 测试步骤：
+ *   1. 写入非法内容文件 invalid_content.txt
+ *   2. 构造 atc 参数：--mode=1、--om=<非法txt>、--json=<输出路径>
+ *   3. 调用 main_impl 执行 atc
+ * 预期结果：
+ *   1. atc 返回 -1，ConvertPbtxtToJson 解析失败并上报 E10059 错误码
+ */
+TEST_F(AtcCommonSTest, pbtxt_to_json_convert_failed) {
+  auto om_path = PathJoin(GetRunPath().c_str(), "temp");
+  Mkdir(om_path.c_str());
+  const std::string invalid_pbtxt = PathJoin(om_path.c_str(), "invalid_content.txt");
+  const std::string cmd = "echo not_a_valid_pbtxt_file > " + invalid_pbtxt;
+  system(cmd.c_str());
+  std::string model_arg = "--model=st_run_data/origin_model/add.pb";
+  std::string om_arg = "--om=" + invalid_pbtxt;
+  std::string json_arg = "--json=" + PathJoin(om_path.c_str(), "pbtxt_out.json");
+
+  char *argv[] = {
+      "atc",
+      const_cast<char *>(model_arg.c_str()),
+      const_cast<char *>(om_arg.c_str()),
+      const_cast<char *>(json_arg.c_str()),
+      "--framework=3",  // FrameworkType
+      "--soc_version=Ascend310",
+      "--mode=5",
+  };
+  auto ret = main_impl(sizeof(argv) / sizeof(argv[0]), argv);
+  EXPECT_EQ(ret, -1);
+  ReInitGe();  // the main_impl will call GEFinalize, so re-init after call it
+}
+
+/**
+ * 用例描述：测试 --out_nodes 以 node:index:dtype 三段格式指定时 dtype 字段非法的参数校验
+ * 预置条件：
+ *   1. st_run_data/origin_model/add.pb 模型文件存在
+ * 测试步骤：
+ *   1. 构造 atc 参数：--out_nodes=add_test_1:0:WRONG_DTYPE（dtype 不在支持的数据类型集内）
+ *   2. 调用 main_impl 执行 atc
+ * 预期结果：
+ *   1. atc 返回 -1，omg 解析 out_nodes 时上报 dtype 非法错误码
+ */
+TEST_F(AtcCommonSTest, out_nodes_dtype_invalid) {
+  auto om_path = PathJoin(GetRunPath().c_str(), "temp");
+  Mkdir(om_path.c_str());
+  om_path = PathJoin(om_path.c_str(), "out_nodes_invalid.om");
+  std::string model_arg = "--model=st_run_data/origin_model/add.pb";
+  std::string output_arg = "--output=" + om_path;
+
+  char *argv[] = {
+      "atc",
+      const_cast<char *>(model_arg.c_str()),
+      const_cast<char *>(output_arg.c_str()),
+      "--framework=3",  // FrameworkType
+      "--soc_version=Ascend310",
+      "--input_format=NCHW",
+      "--out_nodes=add_test_1:0:WRONG_DTYPE",
+  };
+  auto ret = main_impl(sizeof(argv) / sizeof(argv[0]), argv);
+  EXPECT_EQ(ret, -1);
+  ReInitGe();  // the main_impl will call GEFinalize, so re-init after call it
+}
+
+/**
+ * 用例描述：测试 --output 的父目录路径中某级为已存在的普通文件时创建目录失败的校验
+ * 预置条件：
+ *   1. st_run_data/origin_model/add.pb 模型文件存在
+ *   2. 预置普通文件 blocker_file，--output 指向其下的二级子路径（创建 blocker_file/sub 时
+ *      mkdir 返回 ENOTDIR，与文件系统相关、与用户权限无关，root 用户下同样失败；
+ *      注意 output 直接挂 blocker_file 下时其存在性检查会跳过 mkdir，必须再隔一层子目录）
+ * 测试步骤：
+ *   1. touch 创建普通文件 blocker_file
+ *   2. 构造 atc 参数：--output=<blocker_file>/sub/model.om
+ *   3. 调用 main_impl 执行 atc，结束后清理
+ * 预期结果：
+ *   1. atc 返回 -1，目录创建失败并上报 errno 错误码
+ */
+TEST_F(AtcCommonSTest, output_dir_create_failed) {
+  auto om_path = PathJoin(GetRunPath().c_str(), "temp");
+  Mkdir(om_path.c_str());
+  const std::string blocker_file = PathJoin(om_path.c_str(), "blocker_file");
+  (void)system(("touch " + blocker_file).c_str());
+  std::string model_arg = "--model=st_run_data/origin_model/add.pb";
+  std::string output_arg = "--output=" + blocker_file + "/sub/model.om";
+
+  char *argv[] = {
+      "atc",
+      const_cast<char *>(model_arg.c_str()),
+      const_cast<char *>(output_arg.c_str()),
+      "--framework=3",  // FrameworkType
+      "--soc_version=Ascend310",
+      "--input_format=NCHW",
+  };
+  auto ret = main_impl(sizeof(argv) / sizeof(argv[0]), argv);
+  EXPECT_EQ(ret, -1);
+  (void)system(("rm -f " + blocker_file).c_str());
+  ReInitGe();  // the main_impl will call GEFinalize, so re-init after call it
 }
 }  // namespace ge

@@ -2382,7 +2382,7 @@ Status ModelManager::GetModelMemAndWeightSize(const ModelData &model, size_t &me
   const auto root_partition_table = *(reinterpret_cast<ModelPartitionTable *>(model_data));
   if ((!is_dynamic_model) && (root_partition_table.num == 1U)) {
     const std::string reason =
-        "The model cannot be executed. For static models, the table number must be greater than 1.";
+        "The model cannot be executed. For static models, the table number must be greater than 1";
     REPORT_PREDEFINED_ERR_MSG("E10055", std::vector<const char_t *>({"reason"}),
                               std::vector<const char_t *>({reason.c_str()}));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[Check][Param] om model is error, please use executable om model");
