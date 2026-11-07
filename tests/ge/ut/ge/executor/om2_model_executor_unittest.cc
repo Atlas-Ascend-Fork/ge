@@ -950,6 +950,13 @@ std::string MakeDuplicateIndividualConstantsConfigJson() {
   return R"({
     "internal_weight_size": 0,
     "consts": {
+      "fc0_weight": {
+        "file_name": "duplicate_fc.bin",
+        "index": 0,
+        "type": "INDIVIDUAL",
+        "offset": 1,
+        "size": 2
+      },
       "fc1_weight": {
         "file_name": "duplicate_fc.bin",
         "index": 1,
@@ -963,6 +970,80 @@ std::string MakeDuplicateIndividualConstantsConfigJson() {
         "type": "INDIVIDUAL",
         "offset": 1,
         "size": 2
+      }
+    }
+  })";
+}
+
+std::string MakeConstIndexOverflowConfigJson() {
+  return R"({
+    "internal_weight_size": 16,
+    "consts": {
+      "fc0_weight": {
+        "file_name": "constant_0",
+        "index": 18446744073709551615,
+        "type": "INTERNAL",
+        "offset": 0,
+        "size": 16
+      }
+    }
+  })";
+}
+
+std::string MakeConstIndexOutOfRangeConfigJson() {
+  return R"({
+    "internal_weight_size": 16,
+    "consts": {
+      "fc0_weight": {
+        "file_name": "constant_0",
+        "index": 1,
+        "type": "INTERNAL",
+        "offset": 0,
+        "size": 16
+      }
+    }
+  })";
+}
+
+std::string MakeDuplicateConstIndexConfigJson() {
+  return R"({
+    "internal_weight_size": 16,
+    "consts": {
+      "fc0_weight": {
+        "file_name": "constant_0",
+        "index": 0,
+        "type": "INTERNAL",
+        "offset": 0,
+        "size": 8
+      },
+      "fc1_weight": {
+        "file_name": "constant_0",
+        "index": 0,
+        "type": "INTERNAL",
+        "offset": 8,
+        "size": 8
+      }
+    }
+  })";
+}
+
+std::string MakeDenseConstIndexConfigJson() {
+  return R"({
+    "internal_weight_size": 16,
+    "consts": {
+      "fc0_weight": {
+        "file_name": "constant_0",
+        "index": 0,
+        "type": "INTERNAL",
+        "offset": 0,
+        "size": 8
+      },
+      "fc1_weight": {
+        "file_name": "constant_0",
+        "index": 1,
+        "type": "INTERNAL",
+        "offset": 8,
+        "size": 8
       }
     }
   })";
@@ -1698,6 +1779,35 @@ class Om2ModelExecutorUt : public testing::Test {
     return holder;
   }
 
+  static ModelDataHolder MakeConstantsArchiveModelData(const std::string &case_suffix,
+                                                       const std::string &constants_config_json) {
+    PrepareOm2File();
+    gert::GertBuffer model_buf;
+    const auto om_path = PathUtils::Join({test_work_dir_, "const_index_" + case_suffix + ".om2"});
+    const auto so_path = PathUtils::Join({test_work_dir_, "fake_runtime", "libg1_om2.so"});
+    gert::ZipArchiveWriter zip_writer(om_path);
+    EXPECT_TRUE(zip_writer.IsMemFileOpened());
+    const auto model_meta = MakeModelMetaJson();
+    EXPECT_TRUE(zip_writer.WriteBytes("data/model_0/model_meta.json", model_meta.data(), model_meta.size(), false));
+    const auto op_attr = MakeEmptyOpAttrJson();
+    EXPECT_TRUE(zip_writer.WriteBytes("data/model_0/op_attr.json", op_attr.data(), op_attr.size(), false));
+    EXPECT_TRUE(WriteFileToZip(zip_writer, "data/model_0/runtime/libg1_om2.so", so_path, false));
+    const auto manifest = MakeManifestJson();
+    EXPECT_TRUE(zip_writer.WriteBytes("manifest.json", manifest.data(), manifest.size(), false));
+    EXPECT_TRUE(zip_writer.WriteBytes("data/model_0/constants_config.json", constants_config_json.data(),
+                                      constants_config_json.size(), false));
+    const std::vector<uint8_t> constant_blob{1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U, 13U, 14U, 15U, 16U};
+    EXPECT_TRUE(zip_writer.WriteBytes("data/constants/constant_0", constant_blob.data(), constant_blob.size(), false));
+    EXPECT_TRUE(zip_writer.SaveModelData(model_buf, false));
+
+    ModelDataHolder holder;
+    holder.model_data.model_data = model_buf.data.get();
+    holder.model_data.model_len = model_buf.length;
+    holder.model_data.om_path = om_path;
+    holder.shared_buffer = model_buf.data;
+    return holder;
+  }
+
   static ModelDataHolder LoadStreamDescModelData() {
     PrepareStreamDescOm2File();
     uint32_t model_buf_size = 0U;
@@ -2215,6 +2325,38 @@ TEST_F(Om2ModelExecutorUt, load_reuses_duplicate_individual_fileconst_in_same_lo
   ASSERT_EQ(setenv("OM2_EXPECT_CONST2_MODE", "NON_NULL", 1), 0);
   ASSERT_EQ(setenv("OM2_EXPECT_CONST2_FIRST_BYTE", "102", 1), 0);
   ASSERT_EQ(setenv("OM2_EXPECT_CONST1_CONST2_PTR_EQUAL", "1", 1), 0);
+  EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
+}
+
+TEST_F(Om2ModelExecutorUt, load_rejects_const_index_overflow) {
+  auto model_data_holder = MakeConstantsArchiveModelData("overflow", MakeConstIndexOverflowConfigJson());
+  gert::Om2ModelExecutor executor;
+  auto load_arg = MakeOm2LoadArg();
+  EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), ACL_ERROR_GE_PARAM_INVALID);
+}
+
+TEST_F(Om2ModelExecutorUt, load_rejects_const_index_out_of_range) {
+  auto model_data_holder = MakeConstantsArchiveModelData("out_of_range", MakeConstIndexOutOfRangeConfigJson());
+  gert::Om2ModelExecutor executor;
+  auto load_arg = MakeOm2LoadArg();
+  EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), ACL_ERROR_GE_PARAM_INVALID);
+}
+
+TEST_F(Om2ModelExecutorUt, load_rejects_duplicate_const_index) {
+  auto model_data_holder = MakeConstantsArchiveModelData("duplicate_index", MakeDuplicateConstIndexConfigJson());
+  gert::Om2ModelExecutor executor;
+  auto load_arg = MakeOm2LoadArg();
+  EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), ACL_ERROR_GE_PARAM_INVALID);
+}
+
+TEST_F(Om2ModelExecutorUt, load_ok_with_dense_const_index) {
+  auto model_data_holder = MakeConstantsArchiveModelData("dense", MakeDenseConstIndexConfigJson());
+  gert::Om2ModelExecutor executor;
+  auto load_arg = MakeOm2LoadArg();
+  ASSERT_EQ(setenv("OM2_EXPECT_CONST0_MODE", "NON_NULL", 1), 0);
+  ASSERT_EQ(setenv("OM2_EXPECT_CONST0_FIRST_BYTE", "1", 1), 0);
+  ASSERT_EQ(setenv("OM2_EXPECT_CONST1_MODE", "NON_NULL", 1), 0);
+  ASSERT_EQ(setenv("OM2_EXPECT_CONST1_FIRST_BYTE", "9", 1), 0);
   EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
 }
 
