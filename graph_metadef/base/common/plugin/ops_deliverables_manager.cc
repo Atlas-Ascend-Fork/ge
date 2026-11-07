@@ -314,7 +314,7 @@ graphStatus RegisterLibraries(const std::vector<std::string> &paths) {
       void *handle = mmDlopen(path.c_str(), MMPA_RTLD_NOW | MMPA_RTLD_GLOBAL);
       if (handle == nullptr) {
         const auto error = mmDlerror();
-        GELOGW("Configured SO load failed [%s]: %s. Skipping this library.", path.c_str(),
+        GELOGE(GRAPH_FAILED, "Configured SO load failed [%s]: %s. Skipping this library.", path.c_str(),
                error == nullptr ? "unknown dynamic loader error" : error);
         continue;
       }
