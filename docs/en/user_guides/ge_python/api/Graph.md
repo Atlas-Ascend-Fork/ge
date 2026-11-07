@@ -294,7 +294,9 @@ No parameters.
 
 | Parameter Name | Type | Required | Default Value | Description |
 | :----- | :--- | :------: | :----- | :--- |
-| subgraph | Graph | Yes | - | Subgraph object to be added, must be Graph type. |### `remove_subgraph`
+| subgraph | Graph | Yes | - | Subgraph object to be added, must be Graph type. |
+
+### `remove_subgraph`
 
 | Parameter Name | Type | Required | Default Value | Description |
 | :----- | :--- | :------: | :----- | :--- |
