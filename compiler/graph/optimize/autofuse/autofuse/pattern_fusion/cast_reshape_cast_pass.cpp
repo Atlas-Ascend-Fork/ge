@@ -10,6 +10,7 @@
 
 #include "cast_reshape_cast_pass.h"
 #include "common/checker.h"
+#include "common/ge_inner_attrs.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 #include "graph/type/tensor_type_impl.h"
 #include "graph/utils/graph_utils.h"
@@ -25,9 +26,6 @@
 #include "util/mem_utils.h"
 
 namespace ge {
-namespace {
-const std::string kDisableAutoFuseNodeAttr = "_disable_autofuse_scope";
-}
 
 graphStatus CastReshapeCastPass::Run(const ComputeGraphPtr &graph) {
   for (const auto &node : graph->GetAllNodes()) {
@@ -57,11 +55,11 @@ graphStatus CastReshapeCastPass::Run(const ComputeGraphPtr &graph) {
       continue;
     }
 
-    (void)AttrUtils::SetBool(in_op_desc, kDisableAutoFuseNodeAttr, true);
-    (void)AttrUtils::SetBool(node->GetOpDesc(), kDisableAutoFuseNodeAttr, true);
+    (void)AttrUtils::SetBool(in_op_desc, kAttrAutofuseDisableScope, true);
+    (void)AttrUtils::SetBool(node->GetOpDesc(), kAttrAutofuseDisableScope, true);
     for (const auto &out_node : node->GetOutDataNodes()) {
       const auto out_op_desc = out_node->GetOpDesc();
-      (void)AttrUtils::SetBool(out_op_desc, kDisableAutoFuseNodeAttr, true);
+      (void)AttrUtils::SetBool(out_op_desc, kAttrAutofuseDisableScope, true);
     }
   }
   return GRAPH_SUCCESS;

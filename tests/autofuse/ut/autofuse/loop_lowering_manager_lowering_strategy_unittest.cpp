@@ -1402,6 +1402,30 @@ tmp3 = ge.NetOutput(NetOutput, [tmp2])
 )");
 }
 
+TEST_F(LoopGraphLoweringStrategyUT, FallbackLoweringAsHostExecSkip) {
+  [this]() {
+    auto data = es_graph_->CreateInput(0, "data0", nullptr);
+    data.SetSymbolShape({"s0", "s1", "s2"});
+    auto abs1 = es::Abs(data);
+    abs1.SetSymbolShape({"s0", "s1", "s2"});
+    auto abs2 = es::Abs(abs1);
+    abs2.SetSymbolShape({"s0", "s1", "s2"});
+    es_graph_->SetOutput(abs2, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  AttrUtils::SetBool(cg->FindNode("Abs_1")->GetOpDesc(), "_autofuse_skip_lowering_for_host_exec", true);
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  ASSERT_EQ(LoweringManager::FusedLoopToAscBackendOp(cg), GRAPH_SUCCESS);
+  EXPECT_EQ(ReadableComputeGraph(cg), R"(ComputeGraph(graph)
+tmp0 = ge.Data(data0, [])
+tmp1 = ge.AscBackend(autofuse_pointwise_0_Abs, [tmp0])
+tmp2 = ge.Abs(Abs_1, [tmp1])
+tmp3 = ge.NetOutput(NetOutput, [tmp2])
+)");
+}
+
 TEST_F(LoopGraphLoweringStrategyUT, DropLoweringResultAsUnsupportedDtype) {
   [this]() {
     auto data = es_graph_->CreateInput(0, "data0", nullptr);

@@ -15,6 +15,7 @@
 #include <set>
 #include <sstream>
 #include "common/checker.h"
+#include "common/ge_inner_attrs.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/debug/ge_op_types.h"
@@ -182,7 +183,7 @@ graphStatus ConcatToBroadcast(const NodePtr &node) {
   LOWERING_WARN_RECORD_REASON(Broadcast(indices, broadcast) == GRAPH_SUCCESS, node, "Failed to apply input broadcast");
   loop::Store(node->GetOutDataAnchor(0), loop::Broadcast(x, x_dims, broadcast));
   GELOGD("concat node: %s lowered to broadcast", node->GetNamePtr());
-  (void)AttrUtils::SetBool(node->GetOpDesc(), "_disable_lifting", true);
+  (void)AttrUtils::SetBool(node->GetOpDesc(), kAttrAutofuseDisableLifting, true);
   return GRAPH_SUCCESS;
 }
 
@@ -915,7 +916,7 @@ graphStatus ConvertToDirectLoad(const NodePtr &node) {
   auto x = loop::Load(x_anchor);
   loop::Store(node->GetOutDataAnchor(0), x);
   GELOGI("Stridedslice node: %s lowered to direct load store", node->GetNamePtr());
-  (void)AttrUtils::SetBool(node->GetOpDesc(), "_disable_lifting", true);
+  (void)AttrUtils::SetBool(node->GetOpDesc(), kAttrAutofuseDisableLifting, true);
   return GRAPH_SUCCESS;
 }
 

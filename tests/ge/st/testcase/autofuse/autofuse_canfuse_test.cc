@@ -14,6 +14,10 @@
 #include "ascir_ops.h"
 #include "graph_utils_ex.h"
 #include "ge_graph_dsl/assert/graph_assert.h"
+#include "ge_graph_dsl/graph_dsl.h"
+#include "graph/optimize/autofuse/autofuse_optimize.h"
+#include "graph/option/optimization_option.h"
+#include "register/optimization_option_registry.h"
 #include "compiler/graph/build/model_builder.h"
 #include "compiler/graph/build/graph_builder.h"
 #include "compiler/graph/manager/graph_manager.h"
@@ -1192,5 +1196,144 @@ TEST_F(TestCanfusePass, test_canfuse_red_and_red_vertical_fusion_2) {
   node_types_to_count.emplace("Output", 1);
   std::string str = gert::SummaryChecker(fused_graph).StrictDirectNodeTypes(node_types_to_count);
   EXPECT_EQ(str, "success");
+}
+
+namespace {
+// 两条链：
+//   data_h -> relu_h -> Node_Output(0)            // host 下沉候选（小值链）
+//   data_d -> abs_d -> exp_d -> Node_Output(1)    // device 链，验证融合仍正常
+ComputeGraphPtr BuildHostExecGuardGraph(const std::initializer_list<int64_t> host_shape,
+                                        const std::initializer_list<int64_t> host_origin_shape,
+                                        const std::initializer_list<int64_t> device_shape,
+                                        const bool host_anchor = true) {
+  DEF_GRAPH(g1) {
+    auto data_h = OP_CFG(DATA).InCnt(1).OutCnt(1).Attr(ATTR_NAME_INDEX, 0).TensorDesc(FORMAT_ND, DT_FLOAT, host_shape);
+    auto relu_h = OP_CFG("Relu").InCnt(1).OutCnt(1).TensorDesc(FORMAT_ND, DT_FLOAT, host_shape);
+    auto data_d =
+        OP_CFG(DATA).InCnt(1).OutCnt(1).Attr(ATTR_NAME_INDEX, 1).TensorDesc(FORMAT_ND, DT_FLOAT, device_shape);
+    auto abs_d = OP_CFG("Abs").InCnt(1).OutCnt(1).TensorDesc(FORMAT_ND, DT_FLOAT, device_shape);
+    auto exp_d = OP_CFG(EXP).InCnt(1).OutCnt(1).TensorDesc(FORMAT_ND, DT_FLOAT, device_shape);
+    auto net_output = OP_CFG(NETOUTPUT).InCnt(2).OutCnt(1).TensorDesc(FORMAT_ND, DT_FLOAT, device_shape);
+
+    CHAIN(NODE("data_h", data_h)->NODE("relu_h", relu_h)->EDGE(0, 0)->NODE("Node_Output", net_output));
+    CHAIN(NODE("data_d", data_d)
+              ->NODE("abs_d", abs_d)
+              ->NODE("exp_d", exp_d)
+              ->EDGE(0, 1)
+              ->NODE("Node_Output", net_output));
+  };
+  auto graph = ToComputeGraph(g1);
+  if (graph == nullptr) {
+    return nullptr;
+  }
+  // 采集在动态图划分之前执行、不依赖 dynamic 标记；这里保留 unknown flag 以贴近真实动态模型。
+  graph->SetGraphUnknownFlag(true);
+  // 符号化需要非负的 origin shape 作为 hint。
+  const auto host_origin = GeShape(std::vector<int64_t>(host_origin_shape));
+  auto data_h = graph->FindNode("data_h");
+  data_h->GetOpDesc()->MutableInputDesc(0)->SetOriginShape(host_origin);
+  data_h->GetOpDesc()->MutableOutputDesc(0)->SetOriginShape(host_origin);
+  // 以 host tensor 输入作为 host 下沉锚点（等价于引擎分配前按类型识别的 shape 值链锚点）。
+  if (host_anchor) {
+    (void)AttrUtils::SetBool(data_h->GetOpDesc(), ge::ATTR_NAME_HOST_TENSOR, true);
+  }
+  return graph;
+}
+
+std::vector<GeTensor> MakeHostExecGuardInputs(const std::initializer_list<int64_t> host_shape,
+                                              const std::initializer_list<int64_t> host_origin_shape,
+                                              const std::initializer_list<int64_t> device_shape) {
+  std::vector<GeTensor> inputs;
+  GeTensorDesc host_desc(GeShape(std::vector<int64_t>(host_shape)), FORMAT_ND, DT_FLOAT);
+  host_desc.SetOriginShape(GeShape(std::vector<int64_t>(host_origin_shape)));
+  inputs.emplace_back(host_desc);
+  inputs.emplace_back(GeTensorDesc(GeShape(std::vector<int64_t>(device_shape)), FORMAT_ND, DT_FLOAT));
+  return inputs;
+}
+
+void InitOoForAutofuse() {
+  const std::map<std::string, std::string> ge_options = {{ge::OO_LEVEL, "O3"}};
+  ge::GetThreadLocalContext().GetOo().Initialize(ge_options, ge::OptionRegistry::GetInstance().GetRegisteredOptTable());
+}
+
+void InstallHostExecGuardEnv(GeRunningEnvFaker &ge_env, const std::string &relu_host_store) {
+  const auto infer_data = ELMTWISE_INFER_SHAPEANDTYPE("x", "y");
+  ge_env.Reset()
+      .Install(FakeEngine("AIcoreEngine").KernelInfoStore("AIcoreEngine"))
+      .Install(FakeEngine("DNN_VM_HOST_CPU").KernelInfoStore("DNN_VM_HOST_CPU_OP_STORE"))
+      .Install(FakeOp(DATA).Inputs({"x"}).Outputs({"y"}).InfoStoreAndBuilder("AIcoreEngine").InferShape(infer_data))
+      .Install(FakeOp("Relu").InfoStoreAndBuilder("AIcoreEngine"))
+      .Install(FakeOp("Relu").InfoStoreAndBuilder(relu_host_store))
+      .Install(FakeOp("Abs").InfoStoreAndBuilder("AIcoreEngine"))
+      .Install(FakeOp(EXP).InfoStoreAndBuilder("AIcoreEngine"))
+      .Install(FakeOp(NETOUTPUT).InfoStoreAndBuilder("AIcoreEngine"));
+}
+}  // namespace
+
+/**
+ * 用例描述：融合准入跳过将下沉 host 的小值链
+ * 预置条件：动态 shape 图开启自动融合；host 链以 host tensor 输入为锚点，Relu 同时具备 host 与 device kernel，
+ *           输出为小值(8 元素，小值判定成立)
+ * 测试步骤：1. 构造 data_h->relu_h 与 data_d->abs_d->exp_d 两条链；2. 调用 AutofuseOptimize::Run
+ * 预期结果：relu_h 被判定为 host 下沉并跳过 lowering，节点保留为原始 Relu；device 链 abs_d/exp_d 仍融合为 AscBackend
+ */
+TEST_F(TestCanfusePass, test_skip_lowering_for_host_exec_small_value_chain) {
+  dlog_setlevel(0, 0, 0);
+  InstallHostExecGuardEnv(ge_env, "DNN_VM_HOST_CPU_OP_STORE");
+  InitOoForAutofuse();
+  auto graph = BuildHostExecGuardGraph({2, 2, 2}, {2, 2, 2}, {2, 2, 2, 2});
+  ASSERT_NE(graph, nullptr);
+  AutofuseOptimize autofuser;
+  ASSERT_EQ(autofuser.Run(graph, MakeHostExecGuardInputs({2, 2, 2}, {2, 2, 2}, {2, 2, 2, 2})), GRAPH_SUCCESS);
+
+  // host 小值链：被收集并跳过 lowering，节点保留为原始算子
+  auto relu_h = graph->FindNode("relu_h");
+  ASSERT_NE(relu_h, nullptr);
+  EXPECT_EQ(relu_h->GetType(), "Relu");
+  // device 链仍正常融合
+  EXPECT_NE(graph->FindFirstNodeMatchType("AscBackend"), nullptr);
+  EXPECT_EQ(graph->FindNode("abs_d"), nullptr);
+  EXPECT_EQ(graph->FindNode("exp_d"), nullptr);
+  dlog_setlevel(0, 3, 0);
+}
+
+/**
+ * 用例描述：不满足小值条件时不触发 host 下沉保护
+ * 预置条件：同上，但 host 链输出为 {16}(>8 小值阈值)
+ * 测试步骤：调用 AutofuseOptimize::Run
+ * 预期结果：relu_h 不被判定为 host 下沉，照常参与融合（节点被融合消除）
+ */
+TEST_F(TestCanfusePass, test_fuse_host_chain_when_output_not_small) {
+  dlog_setlevel(0, 0, 0);
+  InstallHostExecGuardEnv(ge_env, "DNN_VM_HOST_CPU_OP_STORE");
+  InitOoForAutofuse();
+  auto graph = BuildHostExecGuardGraph({16}, {16}, {2, 2, 2, 2});
+  ASSERT_NE(graph, nullptr);
+  AutofuseOptimize autofuser;
+  ASSERT_EQ(autofuser.Run(graph, MakeHostExecGuardInputs({16}, {16}, {2, 2, 2, 2})), GRAPH_SUCCESS);
+
+  EXPECT_EQ(graph->FindNode("relu_h"), nullptr);
+  EXPECT_NE(graph->FindFirstNodeMatchType("AscBackend"), nullptr);
+  dlog_setlevel(0, 3, 0);
+}
+
+/**
+ * 用例描述：相同小值链但缺少 host 锚点时照常融合，用于对照证明保护来自 host 下沉判定
+ * 预置条件：与 host 小值链用例完全相同的 {2,2,2} 形状，仅去掉 data_h 的 host tensor 锚点
+ * 测试步骤：调用 AutofuseOptimize::Run
+ * 预期结果：relu_h 不被判定为 host 下沉，照常参与融合（节点被融合消除）
+ */
+TEST_F(TestCanfusePass, test_fuse_host_chain_when_no_host_anchor) {
+  dlog_setlevel(0, 0, 0);
+  InstallHostExecGuardEnv(ge_env, "DNN_VM_HOST_CPU_OP_STORE");
+  InitOoForAutofuse();
+  auto graph = BuildHostExecGuardGraph({2, 2, 2}, {2, 2, 2}, {2, 2, 2, 2}, false);
+  ASSERT_NE(graph, nullptr);
+  AutofuseOptimize autofuser;
+  ASSERT_EQ(autofuser.Run(graph, MakeHostExecGuardInputs({2, 2, 2}, {2, 2, 2}, {2, 2, 2, 2})), GRAPH_SUCCESS);
+
+  EXPECT_EQ(graph->FindNode("relu_h"), nullptr);
+  EXPECT_NE(graph->FindFirstNodeMatchType("AscBackend"), nullptr);
+  dlog_setlevel(0, 3, 0);
 }
 }  // namespace ge

@@ -11,6 +11,7 @@
 #include "liftings.h"
 #include <algorithm>
 #include "common/checker.h"
+#include "common/ge_inner_attrs.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/debug/ge_op_types.h"
@@ -292,7 +293,7 @@ bool IsSkipLifting(const NodePtr &node, size_t min_compute_nodes) {
   auto fuse_attrs = node->GetOpDesc()->GetAttrsGroup<AutoFuseAttrs>();
   GE_ASSERT_NOTNULL(fuse_attrs);
   bool disable_lifting = false;
-  if (AttrUtils::GetBool(node->GetOpDesc(), "_disable_lifting", disable_lifting) && disable_lifting) {
+  if (AttrUtils::GetBool(node->GetOpDesc(), kAttrAutofuseDisableLifting, disable_lifting) && disable_lifting) {
     GELOGI("Skip lifting node: %s, as it has disable lifting flag", node->GetNamePtr());
     return true;
   }

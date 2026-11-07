@@ -11,8 +11,10 @@
 #include "graph/partition/optimizer/hostcpu_engine_update_pass.h"
 #include "engines/manager/opskernel_manager/dnn_ops_kernel_manager.h"
 #include "graph/utils/node_utils.h"
+#include "graph/utils/graph_utils.h"
 #include "graph/utils/op_type_utils.h"
 #include "common/checker.h"
+#include "common/ge_inner_attrs.h"
 #include "mmpa/mmpa_api.h"
 #include "graph/ge_local_context.h"
 #include "graph/custom_op_factory.h"
@@ -250,11 +252,51 @@ bool CanMarkAsHostModelInput(const NodePtr &node, const std::set<NodePtr> &host_
   }
   return true;
 }
+// 非采集模式：把节点从设备引擎切到 host 引擎并记录引擎归属（采集模式只登记 host_exe_ops_，不调用本函数）。
+void AssignHostExecEngine(const NodePtr &node, const bool is_custom_host_op, NodeEngineMap &node_atomic_engine_map,
+                          NodeEngineMap &node_composite_engine_map) {
+  const std::string &engine_name = is_custom_host_op ? kEngineNameCustom : kHostCpuEngineName;
+  const std::string &kernel_lib_name = is_custom_host_op ? kCustomOpKernelLibName : kHostCpuOpKernelLibName;
+  auto op_desc = node->GetOpDesc();
+  op_desc->SetOpEngineName(engine_name);
+  op_desc->SetOpKernelLibName(kernel_lib_name);
+  (void)AttrUtils::SetStr(op_desc, ATTR_NAME_ENGINE_NAME_FOR_LX, engine_name);
+  (void)AttrUtils::SetStr(op_desc, ATTR_NAME_KKERNEL_LIB_NAME_FOR_LX, kernel_lib_name);
+  if (is_custom_host_op) {
+    (void)AttrUtils::SetStr(op_desc, kAttrLowingFunc, kHostCpuCustomOpLowerFunc);
+  } else {
+    (void)AttrUtils::SetBool(op_desc, kSmallShapeHostcpu, true);
+  }
+  node_atomic_engine_map[node] = engine_name;
+  node_composite_engine_map[node] = engine_name;
+  GELOGI("[HostcpuEngineUpdatePass]: Set OpKernelLibName %s and OpEngineName %s to %s", kernel_lib_name.c_str(),
+         engine_name.c_str(), op_desc->GetName().c_str());
+}
 }  // namespace
 
 void HostcpuEngineUpdatePass::ClearNodeMapSource() {
   node_to_parent_node_.clear();
   is_node_execute_on_host_.clear();
+}
+
+bool HostcpuEngineUpdatePass::IsAnchorOpForCollect(const OpDescPtr &op_desc) const {
+  if (IsAnchorOp(op_desc)) {
+    return true;
+  }
+  if (!before_engine_assign_ || !op_desc->GetOpKernelLibName().empty()) {
+    return false;
+  }
+  // 引擎分配前节点引擎名尚未分配。原本由 GeLocal/host_cpu 引擎承担的锚点，
+  // 此时按算子类型识别：host cpu 自定义算子与 GeLocal 的宿主算子（Shape/Rank 等）。
+  return IsHostCpuCustomOp(op_desc) || kHostExecOp.count(op_desc->GetType()) > 0U;
+}
+
+bool HostcpuEngineUpdatePass::IsExecOnDeviceForCollect(const OpDescPtr &op_desc) const {
+  if (IsExecOnDevice(op_desc)) {
+    return true;
+  }
+  // 引擎分配前引擎名为空，后续 EnginePlacer 会分配到设备引擎，按设备执行处理。
+  return before_engine_assign_ && op_desc->GetOpKernelLibName().empty();
 }
 
 bool HostcpuEngineUpdatePass::IsExecOnHost(const NodePtr &node) {
@@ -267,7 +309,7 @@ bool HostcpuEngineUpdatePass::IsExecOnHost(const NodePtr &node) {
     // CheckAndMarkHostExec modify engineName to DNN_VM_HOST_CPU_OP_STORE
     return (host_exe_ops_.count(node) > 0U);
   }
-  bool ret = IsAnchorOp(op_desc) || IsConstOp(op_desc) || host_exe_ops_.count(node) > 0U;
+  bool ret = IsAnchorOpForCollect(op_desc) || IsConstOp(op_desc) || host_exe_ops_.count(node) > 0U;
   is_node_execute_on_host_[node] = ret;
   return ret;
 }
@@ -331,38 +373,24 @@ bool HostcpuEngineUpdatePass::CheckAndMarkHostExec(const NodePtr &node, NodeEngi
     return true;
   }
 
-  if (IsHostCpuCustomOp(op_desc) && IsExecOnDevice(op_desc)) {
-    op_desc->SetOpEngineName(kEngineNameCustom);
-    op_desc->SetOpKernelLibName(kCustomOpKernelLibName);
-    (void)AttrUtils::SetStr(op_desc, ATTR_NAME_ENGINE_NAME_FOR_LX, kEngineNameCustom);
-    (void)AttrUtils::SetStr(op_desc, ATTR_NAME_KKERNEL_LIB_NAME_FOR_LX, kCustomOpKernelLibName);
-    node_atomic_engine_map[node] = kEngineNameCustom;
-    node_composite_engine_map[node] = kEngineNameCustom;
-    (void)AttrUtils::SetStr(op_desc, kAttrLowingFunc, kHostCpuCustomOpLowerFunc);
-    GELOGI("[HostcpuEngineUpdatePass]: Set OpKernelLibName %s and OpEngineName %s to %s",
-           kCustomOpKernelLibName.c_str(), kEngineNameCustom.c_str(), op_desc->GetName().c_str());
-    host_exe_ops_.insert(node);
+  // 已在 host 引擎执行的节点无需再切换引擎；非采集模式下等价于 !IsExecOnDevice。
+  if (!IsExecOnDeviceForCollect(op_desc)) {
+    return false;
+  }
+  const bool is_custom_host_op = IsHostCpuCustomOp(op_desc);
+  if (!is_custom_host_op && !IsSupportHostcpu(op_desc)) {
+    return false;
+  }
+  host_exe_ops_.insert(node);
+  if (before_engine_assign_) {
     return true;
   }
-
-  if (IsSupportHostcpu(op_desc) && IsExecOnDevice(op_desc)) {
-    op_desc->SetOpEngineName(kHostCpuEngineName);
-    op_desc->SetOpKernelLibName(kHostCpuOpKernelLibName);
-    (void)AttrUtils::SetStr(op_desc, ATTR_NAME_ENGINE_NAME_FOR_LX, kHostCpuEngineName);
-    (void)AttrUtils::SetStr(op_desc, ATTR_NAME_KKERNEL_LIB_NAME_FOR_LX, kHostCpuOpKernelLibName);
-    (void)AttrUtils::SetBool(op_desc, kSmallShapeHostcpu, true);
-    node_atomic_engine_map[node] = kHostCpuEngineName;
-    node_composite_engine_map[node] = kHostCpuEngineName;
-    GELOGI("[HostcpuEngineUpdatePass]: Set OpKernelLibName %s and OpEngineName %s to %s",
-           kHostCpuOpKernelLibName.c_str(), kHostCpuEngineName.c_str(), op_desc->GetName().c_str());
-    host_exe_ops_.insert(node);
-    return true;
-  }
-  return false;
+  AssignHostExecEngine(node, is_custom_host_op, node_atomic_engine_map, node_composite_engine_map);
+  return true;
 }
 
 Status HostcpuEngineUpdatePass::FindHostDataOfSubgraph(const ComputeGraphPtr &graph, std::deque<NodePtr> &q) {
-  if (!IsDynamicGraph(graph)) {
+  if (!before_engine_assign_ && !IsDynamicGraph(graph)) {
     return SUCCESS;
   }
   for (const auto &node : graph->GetDirectNode()) {
@@ -493,7 +521,9 @@ Status HostcpuEngineUpdatePass::UpdateHostcpuEngine(const ComputeGraphPtr &graph
     GELOGI("[HostcpuEngineUpdatePass]: does not support single op scene.");
     return SUCCESS;
   }
-  if (!IsDynamicGraph(graph)) {
+  // 采集（引擎分配前）在动态图划分之前执行，此时动态图标记尚未写入，故采集模式不做动态图判定；
+  // 静态图上的小值链会被常量折叠，最坏只会减少融合机会，不影响正确性。
+  if (!before_engine_assign_ && !IsDynamicGraph(graph)) {
     return SUCCESS;
   }
   std::deque<NodePtr> q;
@@ -509,7 +539,7 @@ Status HostcpuEngineUpdatePass::UpdateHostcpuEngine(const ComputeGraphPtr &graph
       GE_CHECK_NOTNULL(sub_graph);
       GE_ASSERT_SUCCESS(UpdateHostcpuEngine(sub_graph, node_atomic_engine_map, node_composite_engine_map, true));
     }
-    if (IsAnchorOp(op_desc)) {
+    if (IsAnchorOpForCollect(op_desc)) {
       GELOGD("[HostcpuEngineUpdatePass]: graph[%s] get anchor op %s", graph->GetName().c_str(),
              op_desc->GetName().c_str());
       q.emplace_back(node);
@@ -517,9 +547,49 @@ Status HostcpuEngineUpdatePass::UpdateHostcpuEngine(const ComputeGraphPtr &graph
     }
   }
   GE_ASSERT_SUCCESS(FindAndMarkHostCpuNode(q, node_atomic_engine_map, node_composite_engine_map));
+  if (before_engine_assign_) {
+    return SUCCESS;
+  }
   // 将 Host CPU 调度传播结果固化到 Data 节点，供运行时决策输入 Placement。
   GE_ASSERT_SUCCESS(MarkHostTensorAsModelInput(graph));
   return SUCCESS;
+}
+
+void HostcpuEngineUpdatePass::CollectHostExecNodesBeforeEngineAssign(const ComputeGraphPtr &graph,
+                                                                     std::vector<NodePtr> &host_exec_nodes) {
+  if (graph == nullptr) {
+    GELOGW("[HostcpuEngineUpdatePass]: graph is nullptr, skip collecting host exec nodes.");
+    return;
+  }
+  HostcpuEngineUpdatePass collect_pass;
+  collect_pass.before_engine_assign_ = true;
+  NodeEngineMap node_atomic_engine_map;
+  NodeEngineMap node_composite_engine_map;
+  const Status collect_ret = collect_pass.Run(graph, node_atomic_engine_map, node_composite_engine_map);
+  if (collect_ret != SUCCESS) {
+    GELOGW(
+        "[HostcpuEngineUpdatePass]: collect host exec nodes before engine assign failed[%u], skip host exec protection "
+        "for graph[%s].",
+        collect_ret, graph->GetName().c_str());
+    return;
+  }
+  for (const auto &node : collect_pass.host_exe_ops_) {
+    const auto op_desc = (node == nullptr) ? nullptr : node->GetOpDesc();
+    if (op_desc == nullptr) {
+      continue;
+    }
+    // 锚点与跨子图 Data 本身不参与自动融合，无需下发保护标记。
+    if (OpTypeUtils::IsDataNode(op_desc->GetType()) || collect_pass.IsAnchorOpForCollect(op_desc)) {
+      continue;
+    }
+    GELOGI("[HostcpuEngineUpdatePass]: collect host exec node %s type[%s] before engine assign.", op_desc->GetNamePtr(),
+           op_desc->GetTypePtr());
+    // 标记由调用方在自动融合结束后统一回收；此处不改引擎名/kernel lib。
+    (void)AttrUtils::SetBool(op_desc, kAttrAutofuseSkipLoweringForHostExec, true);
+    host_exec_nodes.emplace_back(node);
+  }
+  GELOGI("[HostcpuEngineUpdatePass]: collected %zu host exec nodes before engine assign for graph[%s].",
+         host_exec_nodes.size(), graph->GetName().c_str());
 }
 
 Status HostcpuEngineUpdatePass::Run(const ComputeGraphPtr &graph, NodeEngineMap &node_atomic_engine_map,
