@@ -14,31 +14,35 @@
 
 Makefile:
 
-'''
-
+```makefile
 COMPILER_INCLUDE_DIR := $(ASCEND_PATH)/compiler/include
 OPP_INCLUDE_DIR := $(ASCEND_PATH)/opp/op_proto/built-in/inc
+LOCAL_DIR := $(shell pwd)
 LOCAL_MODULE_NAME := ir_build
 CC := g++
 CFLAGS := -std=c++17 -g -Wall
 SRCS := $(wildcard $(LOCAL_DIR)/main.cpp)
-INCLUDES := -I $(ASCEND_OPP_PATH)/op_proto/built-in/inc \
+INCLUDES := -I $(OPP_INCLUDE_DIR) \
             -I $(COMPILER_INCLUDE_DIR)/graph \
-            -I $(COMPILER_INCLUDE_DIR)/ge \
+            -I $(COMPILER_INCLUDE_DIR)/ge
 
 LIBS := -L ${ASCEND_PATH}/compiler/lib64/stub \
     -lgraph \
     -lge_compiler
 ir_build:
-    mkdir -p out
-    $(CC) $(SRCS) $(INCLUDES) $(LIBS) $(CFLAGS) -o ./out/$(LOCAL_MODULE_NAME)
+	mkdir -p out
+	$(CC) $(SRCS) $(INCLUDES) $(LIBS) $(CFLAGS) -o ./out/$(LOCAL_MODULE_NAME)
 clean:
-    rm -rf out
+	rm -rf out
+```
 
-'''
-make
+```bash
+make clean && make ir_build
+```
 
 ## Run the application after set the LD_LIBRARY_PATH to include the real path of the library which locates in the directory of compiler/lib64
 
-export LD_LIBRARY_PATH= $(ASCEND_PATH)/compiler/lib64
- -  ./ ir_build
+```bash
+export LD_LIBRARY_PATH=${ASCEND_PATH}/compiler/lib64:$LD_LIBRARY_PATH
+./out/ir_build
+```
