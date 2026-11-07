@@ -868,6 +868,7 @@ ConstGeTensorDescPtr OpDescImpl::GetInputDescPtrDfault(const uint32_t index) con
 ConstGeTensorDescPtr OpDescImpl::GetInputDescPtr(const std::string &name) const {
   const auto it = input_name_idx_.find(name);
   GE_CHK_BOOL_RET_STATUS_NOLOG(it != input_name_idx_.end(), shared_ptr<const GeTensorDesc>());
+  GE_CHK_BOOL_RET_STATUS_NOLOG(it->second < inputs_desc_.size(), shared_ptr<const GeTensorDesc>());
   return inputs_desc_[static_cast<uint64_t>(it->second)];
 }
 
