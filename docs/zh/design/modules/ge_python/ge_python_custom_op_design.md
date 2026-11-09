@@ -84,8 +84,9 @@ V1 功能包括：
 - `@register_op_impl(op_type=...)` 注册 Python 自定义算子实现。
 - `@register_kernel(backend=...)` 在一个实现类中按 backend 收集同名 `execute`；支持 device-only、
   host-only 和 device+host。
-- `@register_op(op_type=..., mutates_args=...)` 根据 Python 函数签名收集自定义算子原型。
+- `@register_op(op_type=..., mutates_args=..., output_names=None)` 根据 Python 函数签名收集自定义算子原型。
 - bridge 将 Python 原型同步注册为 `OperatorFactory` creator，并从生效 creator 收集 canonical IR；编译期和 RT2 通过统一 callback 调用 `infer_meta`。
+- `output_names` 可按返回注解的输出槽位顺序指定全部名称；不传时保留自动命名。名称须为非空、不含空字符且互不重复的字符串，动态输出占一个槽位。输出与输入同名时表示引用该输入，无需另传 `mutates_args`。非空 `mutates_args` 与非 `None` 的 `output_names` 互斥，同时传入即抛出 `ValueError`，不定义覆盖优先级；空元组或空列表不触发互斥限制。输出声明的容器类型、参数互斥及显式输出名称校验集中在 `_validate_output_args`，校验通过后构造输出；仅未指定 `output_names` 时解析引用关系。实现注册前必须存在可查询的 canonical IR。
 - `register_op_impl` 反射实现类上的可调用 `execute`、`compile`、`declare_launch_args` 方法并声明对应能力，不要求继承任何能力基类。
 - `execute` 接收按 canonical IR 组装的输入和属性；上下文通过 `get_execute_ctx()` 获取。
 - `EagerOpExecutionContext` 支持输入输出 tensor 查询、动态输入实例数、运行时属性读取、输出/工作区分配和 stream 获取。
@@ -96,8 +97,6 @@ V1 功能包括：
 - GE 初始化和 `GraphManager::PreRun()` 会在需要时幂等加载 Python custom op，使 `OpsKernelInfo` 刷新前能看到对应 op type。
 
 ### 2.4 设计约束
-
-> 临时方案：原型未注册时跳过实现注册阶段的 schema 校验；后续补齐 Python 原型指定输出名称的能力后，恢复先注册原型再校验实现的流程。
 
 - 不改变 AscendIR 图结构、op proto 格式和 OM 文件格式。
 - 不在 `graph_metadef/register` 中直接引入 Python runtime 或 pybind 依赖。
@@ -678,7 +677,7 @@ PythonCustomOpAdapter::DeclareLaunchArgs(ctx)
   在类注册阶段抛 `TypeError`。
 - 多个同名 `execute` 混入未装饰实现，或 `register_kernel` 位于 `staticmethod`/`classmethod` 内层：抛
   `TypeError`，提示必须位于最外层。
-- `register_op` 的 `op_type`、签名标注、属性默认值或 `mutates_args` 不合法：抛 `TypeError` 或 `ValueError`。
+- `register_op` 的 `op_type`、签名标注、属性默认值、`output_names` 或 `mutates_args` 不合法：抛 `TypeError` 或 `ValueError`。
 - 被装饰对象不是 class 或是抽象 class：抛 `TypeError`。
 - 实现 class 未提供任何受支持的可调用方法：抛 `TypeError`，错误信息列出支持的方法。
 - 重复 `op_type` 或 `descriptor_key`：抛 `ValueError`。

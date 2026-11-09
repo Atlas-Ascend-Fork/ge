@@ -846,8 +846,8 @@ class AnnotatedAddCustom:
 #### 注册与发现
 
 **装饰器**:
-- `register_op(op_type, mutates_args=())` - 根据被装饰函数的类型标注声明并收集Python自定义算子原型；被装饰函数同时作为`infer_meta`回调，返回输出`TensorDesc`
-- `register_op_impl(op_type)` - 注册Python实现类，并反射其可调用方法生成能力列表；`execute`对应`eager_execute`，`compile`对应`compilable`，`declare_launch_args`对应`annotated_args`
+- `register_op(op_type, mutates_args=(), output_names=None)` - 根据被装饰函数的类型标注声明并收集 Python 自定义算子原型；被装饰函数同时作为 `infer_meta` 回调，返回输出 `TensorDesc`
+- `register_op_impl(op_type)` - 注册 Python 实现类，并反射其可调用方法生成能力列表；`execute` 对应 `eager_execute`，`compile` 对应 `compilable`，`declare_launch_args` 对应 `annotated_args`
 
 **发现机制**:
 
@@ -857,11 +857,11 @@ class AnnotatedAddCustom:
 
 **原型注册**:
 
-- `register_op`收集required/optional/dynamic input、12类attr、required/dynamic output和`mutates_args`
-- bridge在同一加载事务中先注册Python proto creator、收集生效的canonical IR，再注册impl runtime entry和Adapter creator
-- 支持Python proto-only、Python proto + impl、C++ proto + Python impl；缺少canonical IR的Python impl注册失败
-- Python原型可以覆盖同名内置原型；与已加载的同名C++/Python自定义算子冲突时注册失败
-- 批次失败按Adapter creator、impl runtime entry、proto creator的逆序回滚；卸载只清理当前loader持有的对象
+- `register_op` 收集 required/optional/dynamic input、12 类 attr、required/dynamic output、可选的 `output_names` 和 `mutates_args`
+- bridge 在同一加载事务中先注册 Python proto creator、收集生效的 canonical IR，再注册 impl runtime entry 和 Adapter creator
+- 支持 Python proto-only、Python proto + impl、C++ proto + Python impl；缺少 canonical IR 的 Python impl 注册失败
+- Python 原型可以覆盖同名内置原型；与已加载的同名 C++/Python 自定义算子冲突时注册失败
+- 批次失败按 Adapter creator、impl runtime entry、proto creator 的逆序回滚；卸载只清理当前 loader 持有的对象
 
 **使用示例**:
 ```python

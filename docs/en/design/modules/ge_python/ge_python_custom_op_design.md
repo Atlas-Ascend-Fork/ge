@@ -84,8 +84,9 @@ V1 functions include:
 
 - `@register_op_impl(op_type=...)` registers a Python custom operator implementation.
 - `@register_kernel(backend=...)` collects same-named `execute` functions for device-only, host-only, or dual-backend implementations.
-- `@register_op(op_type=..., mutates_args=...)` collects a custom operator prototype from a Python function signature.
+- `@register_op(op_type=..., mutates_args=..., output_names=None)` collects a custom operator prototype from a Python function signature.
 - The bridge registers Python prototypes as `OperatorFactory` creators and collects canonical IR from the effective creators. It does not invoke `infer_meta` at this stage.
+- `output_names` optionally names all output slots in return-annotation order; omitting it preserves generated names. Names must be non-empty, null-free, unique strings, and a dynamic output occupies one slot. An output with the same name as an input aliases that input without requiring `mutates_args`. Non-empty `mutates_args` and non-`None` `output_names` are mutually exclusive: passing both raises `ValueError`, even when consistent. An empty tuple or list is allowed with `output_names`. `_validate_output_args` centralizes output declaration container types, mutual exclusion, and explicit output name validation before output construction; mutation bindings are parsed only when `output_names` is omitted. Implementation registration requires available canonical IR.
 - `register_op_impl` reflects callable `execute`, `compile`, and `declare_launch_args` methods and declares the corresponding capabilities without requiring inheritance from any capability base class.
 - The schema-bound `execute` form receives inputs and attributes assembled from canonical IR; callbacks use `get_execute_ctx()` when they need the execution context.
 - `EagerOpExecutionContext` supports input and output tensor queries, dynamic input instance counts, runtime attribute access, output and workspace allocation, and stream retrieval.
@@ -96,8 +97,6 @@ V1 functions include:
 - GE initialization and `GraphManager::PreRun()` idempotently load Python custom ops when needed, so that the corresponding op type is visible before `OpsKernelInfo` is refreshed.
 
 ### 2.4 Design Constraints
-
-> Temporary workaround: skip implementation registration schema validation when the prototype is absent; once Python prototypes support explicit output names, restore prototype registration before implementation validation.
 
 - The AscendIR graph structure, op proto format, and OM file format are not changed.
 - Python runtime or pybind dependencies are not directly introduced in `graph_metadef/register`.
@@ -685,7 +684,7 @@ PythonCustomOpAdapter::DeclareLaunchArgs(ctx)
 - Same-named `execute` definitions mix decorated and undecorated functions, or `register_kernel` is placed
   inside `staticmethod`/`classmethod`: registration raises `TypeError` and the message requires the outermost
   position.
-- The `register_op` `op_type`, signature annotations, attribute defaults, or `mutates_args` are invalid: `TypeError` or `ValueError` is raised.
+- The `register_op` `op_type`, signature annotations, attribute defaults, `output_names`, or `mutates_args` are invalid: `TypeError` or `ValueError` is raised.
 - The decorated object is not a class or is an abstract class: `TypeError` is raised.
 - The implementation class provides no supported callable method: `TypeError` is raised and the message lists the supported methods.
 - Duplicate `op_type` or `descriptor_key`: `ValueError` is raised.
