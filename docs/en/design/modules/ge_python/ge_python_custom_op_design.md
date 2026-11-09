@@ -43,7 +43,6 @@ The following items remain outside the V2 scope:
 - InferShapeRange, format inference, symbolic inference, and shape-rule generation.
 - Python argument binding for `serialize` and `deserialize`, as well as ES API generation.
 - Python execute backends other than device and host.
-- Python custom operator serialization and deserialization with OM and cross-process loading.
 - External encapsulation of `KernelArgs` / `MallocReadOnlyDevArgs` on the Python side.
 - Independent compatibility upgrades of the Bridge, native module, and Adapter. V2 still requires them to be built and replaced together, with changes taking effect after restart.
 
@@ -122,8 +121,8 @@ V1 functions include:
 - Python entries in `ASCEND_CUSTOM_OPP_PATH` are `.py` files, non-underscore-prefixed `.py` files one level deep in a directory, or package directories with `__init__.py`.
 - For operators that do not use Python `register_op`, the V1 compatibility path still obtains the operator prototype and shape/dtype inference through the existing C++ / OPP method. Python `register_op` operators use the V2 `infer_meta` path.
 - The Python custom op sample depends on the ACL Python runtime and a Python environment that matches the run package.
-- `declare_launch_args` depends on the Python registration environment only during compilation. A new OM stores the selected refresh mode in `_custom_task_args_mode` and the launch layout in `args_format`; static-model loading uses the explicit mode and does not load the Python implementation again. An OM without the attribute keeps the legacy registry lookup and `args_format` fallback.
-- `compile` runs during graph compilation. Its compilation context and platform information are valid only during the callback; the Python implementation, instance state, and kernel binaries are not saved to OM.
+- `declare_launch_args` depends on the Python registration environment only during compilation. A new OM stores the selected refresh mode in `_custom_task_args_mode` and the launch layout in `args_format`; static-model loading uses the explicit mode and does not invoke `declare_launch_args` again at runtime. Loading still executes the embedded source in the `PYTHON_CUSTOM_OPS` partition to restore operator creators, so the loading process needs a Python runtime (`LoadCustomOpRegistry` fails explicitly when it is missing). An OM without the attribute keeps the legacy registry lookup and `args_format` fallback.
+- `compile` runs during graph compilation. Its compilation context and platform information are valid only during the callback, and the callback's own context objects are not written to OM. The OM carries three kinds of artifacts: the Python implementation is stored as a source snapshot in the `PYTHON_CUSTOM_OPS` partition (executed at load time to restore creators); instance state of operators declaring `portable` is stored in the `CUSTOM_OPS` partition; and the AnnotatedArgs kernel binary is written into TaskDef through `AnnotatedKernelLaunchInfo`.
 
 ## 3. Feature Requirement Analysis and Design
 
@@ -165,7 +164,7 @@ Static-model loading
   -> Read _custom_task_args_mode as the selected compile-time refresh mode
   -> For an old OM without the attribute, query the registry and then use args_format as a fallback
   -> Refresh input, output, workspace, and scalar addresses from args_format stored in the OM
-  -> Do not load the Python implementation
+  -> Execute the PYTHON_CUSTOM_OPS embedded source to restore creators (no compile/declare_launch_args callback)
 ```
 
 ### 3.2 Functional Requirements
@@ -264,7 +263,7 @@ Users implement a `compile` method to declare graph-compilation capability. The 
 **Output**
 
 - `compile` is invoked only during graph compilation; model loading and execution do not invoke it.
-- The Python implementation, instance state, and kernel binary are not written to OM.
+- The `compile` callback's context objects are not written to OM. The Python implementation is written to the `PYTHON_CUSTOM_OPS` partition as a source snapshot, instance state of `portable` operators is written to the `CUSTOM_OPS` partition, and the AnnotatedArgs kernel binary is written to OM through TaskDef.
 
 #### 3.2.4 Plugin Discovery and Registration
 
@@ -441,7 +440,7 @@ The Python custom op does not differentiate between chips and does not introduce
 | Static Shape | Applicable | The Eager path executes through the existing `EagerExecuteOp` call site. The AnnotatedArgs path records the selected refresh mode and `args_format` during compilation, then refreshes addresses when the static model is loaded, without changing DavinciModel interfaces. |
 | Dynamic Shape | Applicable | `EagerOpExecutionContext` provides dynamic input instance counts, tensor queries, and runtime metadata. The bridge assembles dynamic input lists at execution time and adds no RT2 lowering data. |
 | Dynamic Shape Static Subgraph | Applicable | No new `DavinciModelCreate` / `DavinciModelCreateV2` inputs are added, and the v2-to-v1 boundary data is not changed. If a custom op exists in a static subgraph, it is still called through the existing custom op registry and `EagerExecuteOp` path. |
-| Offline Scenario (atc compilation) | Applicable | atc initializes and loads the Python custom op, invokes `declare_launch_args`, and stores the explicit refresh mode and `args_format` in the OM. The Python implementation itself is not stored. Model execution uses the serialized mode and layout and does not depend on the Python registration environment; an Eager `execute` implementation still cannot be deployed independently offline. |
+| Offline Scenario (atc compilation) | Applicable | atc initializes and loads the Python custom op, invokes `declare_launch_args`, and stores the explicit refresh mode and `args_format` in the OM. A snapshot of the Python implementation source is packaged into the `PYTHON_CUSTOM_OPS` partition, and model loading executes the embedded source to restore creators; execution uses the serialized mode and layout and runs no compile-time callback such as `compile`/`declare_launch_args`, but the loading process needs a Python runtime (`LoadCustomOpRegistry` fails explicitly without one). An Eager `execute` implementation still cannot be deployed independently offline. |
 | Online Scenario (framework adaptation) | Applicable | Both online initialization and `GraphManager::PreRun()` can load Python custom ops. The front end still needs to generate matching op types, operator prototypes, and necessary tensor descriptions; schema-bound invocation reuses canonical IR from that prototype. |
 
 ## 4. Performance
@@ -452,7 +451,7 @@ When no Python custom op entry exists, `NeedLoadPythonCustomOps()` only scans on
 
 ### 4.2 OM Size and Memory Usage
 
-The current implementation does not serialize Python implementations into the OM, does not add OM partitions, and does not change model file sizes. Additional in-process memory comes primarily from the Python interpreter, imported modules, bridge/native SO, and Python holders.
+A snapshot of the Python implementation source is written to the newly added `PYTHON_CUSTOM_OPS` partition, so OM size grows with the source size of the Python operators used by the graph; instance state of `portable` operators is additionally written to the `CUSTOM_OPS` partition. Additional in-process memory at load time comes primarily from the Python interpreter, embedded source modules, bridge/native SO, and Python holders.
 
 ### 4.3 Execution Performance
 
@@ -722,8 +721,8 @@ The implementation follows the existing Python pass and GE runtime style:
   implementations use `register_kernel`, with no implicit fallback between host and device.
 - The original C++ custom op `dynamic_cast` semantics are preserved through `CustomOpCast<T>()` fallback for regular C++ ops.
 - The OM format is not changed. Old OMs are still loaded according to the original custom op partition and registry logic on new versions.
-- New OMs do not carry Python implementations. The Python custom op execution capability cannot be assumed to be reproducible on older versions.
-- New OMs carry `_custom_task_args_mode` and AnnotatedArgs `args_format` rather than the Python implementation. A new runtime uses the explicit mode as the source of truth; only an old OM without the attribute falls back to registry lookup and then a non-empty `args_format`.
+- The `PYTHON_CUSTOM_OPS` partition of a new OM (partition type 27) is not recognized by older versions. The Python custom op execution capability cannot be assumed to be reproducible on older versions.
+- New OMs carry `_custom_task_args_mode`, the AnnotatedArgs `args_format`, and the Python implementation source snapshot. A new runtime uses the explicit mode as the source of truth; only an old OM without the attribute falls back to registry lookup and then a non-empty `args_format`.
 - The Python custom op depends on matching versions of `ge_py`, bridge/native SO, and the Python ABI in the runtime environment.
 - The callback POD adds a Host CPU function pointer, so the bridge ABI is v2; v1 and v2 artifacts are not mixed.
 - `ASCEND_CUSTOM_OPP_PATH` is an existing environment variable. Adding Python file and package recognition does not affect C++ OPP paths that have no Python entries.
@@ -843,7 +842,7 @@ At least the following must be verified under every available Python tag:
 | Function | Loader skips when no Python entry exists and loads the bridge when entries exist | C++ gtest / stub | UT |
 | Compatibility | C++ custom op bare capability inheritance still casts correctly | C++ gtest | UT |
 | Feature cross | Ops kernel info is refreshed after online PreRun loading | GE graph execution related tests | UT/ST |
-| Sample | Python `register_op`/`infer_meta`/`register_op_impl`, Ascend C kernel schema-bound online execution, and AnnotatedArgs address refresh after offline compilation without a Python runtime environment | `annotated_args_refresh_add_custom/{online,offline}/python` | ST/hardware |
+| Sample | Python `register_op`/`infer_meta`/`register_op_impl`, Ascend C kernel schema-bound online execution, and AnnotatedArgs address refresh after offline compilation with no compile-time callback at runtime (loading restores from the OM-embedded source, so the process needs a Python runtime) | `annotated_args_refresh_add_custom/{online,offline}/python` | ST/hardware |
 
 ### 9.3 Test Framework Design
 
