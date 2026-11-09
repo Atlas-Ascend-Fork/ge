@@ -22,7 +22,8 @@ logging.basicConfig(
 
 def process(input_path):
     try:
-        input_image = Image.open(input_path)
+        with Image.open(input_path) as source_image:
+            input_image = source_image.convert("RGB")
         input_image = input_image.resize((256, 256))
         # hwc
         img = np.asarray(input_image)
