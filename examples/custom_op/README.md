@@ -19,6 +19,7 @@
 | `tilelang_add_custom` | TileLang 算子通过 GE 入图 | GE 原生 (Session API) | TileLang | TileLang 预编译产出 `.so` | 不涉及 | [README](./tilelang_add_custom/README.md) |
 | `tilelang_add_custom_online` | TileLang 算子在线编译 + 在线执行 | GE 原生 (Session API) | TileLang | GE 编译阶段 `CompilableOp::Compile` subprocess 调用 Python 编译器 | 不涉及 | [README](./tilelang_add_custom_online/README.md) |
 | `tilelang_add_custom_offline` | TileLang 算子离线 OM 模型下沉 | GE 原生 (`aclgrphBuildModel`) | TileLang | `CompilableOp::Compile` + `PortableOp::Serialize` 序列化到 OM | 支持 OM 模型下沉 | [README](./tilelang_add_custom_offline/README.md) |
+| `eager_attached_stream_add` | Eager 自定义算子申请框架托管辅流并下发 kernel 端到端样例 | GE 在线执行 (Session API) | Ascend C | RTC 运行时编译 | 不涉及 | [README](./eager_attached_stream_add/README.md) |
 
 ## 通用开发流程
 

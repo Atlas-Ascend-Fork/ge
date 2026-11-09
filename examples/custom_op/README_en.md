@@ -19,6 +19,7 @@ This directory provides samples related to custom operator graph integration, co
 | `tilelang_add_custom` | TileLang operator enters graph through GE | GE native (Session API) | TileLang | TileLang pre-compiled `.so` | Not involved | [README](./tilelang_add_custom/README_en.md) |
 | `tilelang_add_custom_online` | TileLang operator online compilation + online execution | GE native (Session API) | TileLang | `CompilableOp::Compile` subprocess invokes Python compiler during GE compile phase | Not involved | [README](./tilelang_add_custom_online/README_en.md) |
 | `tilelang_add_custom_offline` | TileLang operator offline OM model sinking | GE native (`aclgrphBuildModel`) | TileLang | `CompilableOp::Compile` + `PortableOp::Serialize` to OM | Supports OM model sinking | [README](./tilelang_add_custom_offline/README_en.md) |
+| `eager_attached_stream_add` | End-to-end sample of Eager custom operator requesting a framework-managed attached stream and launching kernel on it | GE online execution (Session API) | Ascend C | RTC runtime compilation | Not involved | [README](./eager_attached_stream_add/README_en.md) |
 
 ## General Development Process
 
