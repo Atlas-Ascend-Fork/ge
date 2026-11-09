@@ -398,6 +398,8 @@ set(STUB_HEADER_LIST
     ${GE_METADEF_INC_DIR}/graph/custom_op_pull_registry.h
     ${GE_METADEF_INC_DIR}/graph/custom_op/args_refresh.h
     ${GE_METADEF_INC_DIR}/graph/custom_op_registry.h
+    # hook 的注册/查询入口由 libgraph.so 提供，桩形态下引用方需从桩版解析。
+    ${GE_METADEF_INC_DIR}/graph/custom_op/model_scope.h
 )
 
 if (BUILD_OPEN_PROJECT OR ENABLE_OPEN_SRC)
@@ -452,6 +454,12 @@ set(STUB_EXTRA_SRCS "")
 if (NOT "${PRODUCT}" STREQUAL "ascend031")
     list(APPEND STUB_EXTRA_SRCS ${AIR_CODE_DIR}/base/common/ge_api_error_codes.cc)
 endif ()
+# GetRegisteredIrDefFromGraph 属 libgraph.so，而引用方 libge_common_base.so 的 DT_NEEDED
+# 只有 libgraph_base.so，桩形态下需由桩包提供。
+# 不走 STUB_HEADER_LIST 自动生成：该头会拉进 ir_option 静态表使 TU 涨到 31 KB，且生成体
+# return ge::SUCCESS 需要的错误码头会带出 weak 的 RegisterErrorNo，破坏上面的隔离。
+# 挂此处以便 atc_stub 与 fwk_stub 两个产物都覆盖。
+list(APPEND STUB_EXTRA_SRCS ${CMAKE_CURRENT_LIST_DIR}/stub/stub_ir_definitions_query.cc)
 
 #############################################################
 

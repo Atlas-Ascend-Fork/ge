@@ -717,6 +717,7 @@ add_custom_target(stub_ge_common DEPENDS ${STUB_SRC_LIST})
 ############ libge_common_stub.so w/static protobuf ############
 add_library(ge_common_stub SHARED
     ${STUB_SRC_LIST}
+    stub/stub_ge_python_runtime_manager.cc
 )
 
 add_dependencies(ge_common_stub stub_ge_common)
