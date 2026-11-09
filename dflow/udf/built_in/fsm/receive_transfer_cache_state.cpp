@@ -9,7 +9,9 @@
  */
 
 #include "fsm/receive_transfer_cache_state.h"
+#include <cstdint>
 #include <mutex>
+#include "common/data_utils.h"
 #include "fsm/probe_state.h"
 #include "entity/llm_comm_entity_mgr.h"
 #include "llm_common/cache_manager.h"
@@ -60,6 +62,15 @@ FsmStatus ReceiveTransferCacheState::RecvAsync(LlmCommEntity &entity, uint64_t r
 
 FsmStatus ReceiveTransferCacheState::RecvKv(LlmCommEntity &entity) {
   auto *transfer_req_info = static_cast<TransferToRemoteReq *>(entity.GetTransferKvAddrInfo().transfer_kv_req_addr);
+  if ((transfer_req_info == nullptr) || (transfer_req_info->send_nums_per_tensor == 0U)) {
+    UDF_LOG_ERROR("transfer req is invalid, entity:%s.", entity.GetDesc().c_str());
+    return FsmStatus::kFsmParamInvalid;
+  }
+  if ((transfer_req_info->tensor_num_per_layer != 0U) &&
+      (transfer_req_info->send_nums_per_tensor > (UINT64_MAX / transfer_req_info->tensor_num_per_layer))) {
+    UDF_LOG_ERROR("transfer count overflow, entity:%s.", entity.GetDesc().c_str());
+    return FsmStatus::kFsmParamInvalid;
+  }
   LlmCommEntity::RecvTransferKvRecordInfo &record_info = entity.GetRecvTransferKvRecordInfo();
   auto &transfer_index = record_info.recv_call_count;
   auto send_nums_per_layer = transfer_req_info->tensor_num_per_layer * transfer_req_info->send_nums_per_tensor;
@@ -75,17 +86,41 @@ FsmStatus ReceiveTransferCacheState::RecvKv(LlmCommEntity &entity) {
       }
       UDF_LOG_INFO("Probed count:%d", count);
     }
+    if (slot_index >= transfer_req_info->total_slot_nums) {
+      UDF_LOG_ERROR("slot index:%lu is over total:%lu, entity:%s.", slot_index, transfer_req_info->total_slot_nums,
+                    entity.GetDesc().c_str());
+      return FsmStatus::kFsmParamInvalid;
+    }
     auto local_slot_index = slot_index;
     auto &buffer_info = transfer_req_info->slot_infos[local_slot_index];
+    if ((buffer_info.slot_nums_per_transfer == 0U) ||
+        (buffer_info.slot_nums_per_transfer > static_cast<uint64_t>(UINT32_MAX)) ||
+        (buffer_info.slot_nums_per_transfer > (transfer_req_info->total_slot_nums - slot_index))) {
+      UDF_LOG_ERROR("slot_nums_per_transfer:%lu is invalid, entity:%s.", buffer_info.slot_nums_per_transfer,
+                    entity.GetDesc().c_str());
+      return FsmStatus::kFsmParamInvalid;
+    }
     std::vector<void *> buffs_vec(buffer_info.slot_nums_per_transfer);
     std::vector<int32_t> counts_vec(buffer_info.slot_nums_per_transfer);
     int32_t expected_count = 0;
     auto tensor_idx = static_cast<uint64_t>(transfer_index) / transfer_req_info->send_nums_per_tensor;
+    if (tensor_idx >= dst_addrs.size()) {
+      UDF_LOG_ERROR("tensor index:%lu is over dst addr num:%zu, entity:%s.", tensor_idx, dst_addrs.size(),
+                    entity.GetDesc().c_str());
+      return FsmStatus::kFsmParamInvalid;
+    }
     auto base_addr = dst_addrs[tensor_idx];
     for (uint32_t i = 0; i < buffer_info.slot_nums_per_transfer; ++i) {
-      buffs_vec[i] = reinterpret_cast<void *>(base_addr + transfer_req_info->slot_infos[local_slot_index].slot_offset);
-      // single block size count make sure < INT32_MAX, static_cast is safe
-      counts_vec[i] = static_cast<int32_t>(transfer_req_info->slot_infos[local_slot_index].slot_size);
+      const auto &slot_info = transfer_req_info->slot_infos[local_slot_index];
+      if ((slot_info.slot_size > static_cast<uint64_t>(INT32_MAX)) ||
+          CheckAddOverflowUint64(base_addr, slot_info.slot_offset) ||
+          (expected_count > (INT32_MAX - static_cast<int32_t>(slot_info.slot_size)))) {
+        UDF_LOG_ERROR("slot size:%lu or offset:%lu is invalid, entity:%s.", slot_info.slot_size, slot_info.slot_offset,
+                      entity.GetDesc().c_str());
+        return FsmStatus::kFsmParamInvalid;
+      }
+      buffs_vec[i] = reinterpret_cast<void *>(base_addr + slot_info.slot_offset);
+      counts_vec[i] = static_cast<int32_t>(slot_info.slot_size);
       expected_count += counts_vec[i];
       local_slot_index++;
     }

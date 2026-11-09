@@ -43,7 +43,8 @@ class LinkReqHandler {
 
   virtual ~LinkReqHandler() = default;
 
-  void SetUpdateLinkReqInfo(UpdateLinkReqInfo *link_req, int32_t *update_link_ret, int64_t device_index);
+  void SetUpdateLinkReqInfo(UpdateLinkReqInfo *link_req, uint64_t req_size, int32_t *update_link_ret,
+                            int64_t device_index);
 
   FsmStatus HandleReq(uint64_t start_tick);
 
@@ -61,6 +62,8 @@ class LinkReqHandler {
   FsmStatus NotifyPromptUnlink(const EntityPtr &entity, size_t cluster_index, ClusterAddrInfo &cluster);
 
   FsmStatus TransUpdateLinkInfo(const UpdateLinkReqInfo &req_info, DevLinkReqInfo &dev_req_info);
+
+  FsmStatus CheckUpdateLinkBytes(const UpdateLinkReqInfo &req_info) const;
 
   FsmStatus TransClusterInfo(const ClusterInfo &cluster_info, LinkReqType req_type, uint32_t ip_num,
                              ClusterAddrInfo &cluster) const;
@@ -101,6 +104,7 @@ class LinkReqHandler {
                                    const HcclConn &hccl_conn);
 
   UpdateLinkReqInfo *update_link_req_info_ = nullptr;
+  uint64_t update_link_req_size_ = 0UL;
   int32_t *update_link_ret_ = nullptr;
   int64_t device_index_ = 0L;
   uint32_t update_link_comp_count_ = 0U;

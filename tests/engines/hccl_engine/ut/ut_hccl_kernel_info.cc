@@ -21,6 +21,7 @@
 #include "hccl_stub.h"
 #include "external/ge/ge_api_types.h"  // ge对内options
 #include "common/ge_common/ge_types.h"
+#include "ge_common/ge_common_api_types.h"
 #include "hcom_executor.h"
 #include "framework/common/runtime_model_ge.h"
 #include "v80_rank_table.h"
@@ -149,6 +150,11 @@ ge::graphStatus FakeGetOption(ge::GEThreadLocalContext *that, const std::string 
   nlohmann::json group_list = {{{"group_name", "aaa"}, {"group_rank_list", {0, 1}}}};
   if (optionExec == ge::OPTION_EXEC_RANK_TABLE) {
     dumpDebugValue = rank_table.dump();
+  } else if (optionExec == ge::SOC_VERSION) {
+    // 固定 SOC_VERSION 为 910: CI 存在真实 libhccl.so 时 dlsym 图模式函数可加载,
+    // IsUsingOpenSource 会转查 GetOption(SOC_VERSION), 走默认分支返回 '1' 之外的
+    // 明确值可避免 DeviceCapability 以未知 SOC 静默降级
+    dumpDebugValue = "Ascend910";
   } else if (optionExec == ge::OPTION_EXEC_HCOM_GROUPLIST) {
     dumpDebugValue = group_list.dump();
   } else if (optionExec == ge::OPTION_EXEC_RANK_ID) {
@@ -1174,6 +1180,7 @@ TEST_F(HcomKernelInfoTest, ut_RefreshOutputAddr) {
   rtStream_t stream = &dummy_stream_obj;
   HcomOpsKernelInfoStore hcomOpsKernelInfoStore_;
   MOCKER(hrtMemAsyncCopy).expects(atMost(2)).will(returnValue(HCCL_SUCCESS));
+  MOCKER(hrtMemSyncCopy).expects(atMost(1)).will(returnValue(HCCL_SUCCESS));
 
   ret = hcomOpsKernelInfoStore_.RefreshOutputAddr(shapeType, hcomComm, sGroup, outputAddr, OutputAddrSize, stream);
   EXPECT_EQ(ret, HCCL_SUCCESS);
@@ -2757,4 +2764,333 @@ TEST_F(HcomKernelInfoTest, Ut_GetAlltoAllVCParams_When_AllParamsValid_Expect_Cor
   EXPECT_EQ(result, HCCL_E_PARA);
   result = infoStore.HcomAlltoAllVCOpKernel(task, tagVec);
   EXPECT_EQ(result, HCCL_E_PARA);
+  GlobalMockObject::verify();
+}
+
+// ====== HcomOpsKernelInfoStore 各 OpKernel 入口参数校验错误分支 UT ======
+
+// 构造零初始化的 privateDef 并绑定到 task, 用于触发入口参数校验分支(在调用 HCCL 通信库前返回错误, 无需 mock)
+static void InitTaskWithPrivateDef(ge::GETaskInfo &task, HCCL_KERNEL_INFO_PRIVATE_DEF &privateDefBuf) {
+  task = ge::GETaskInfo{};
+  privateDefBuf = HCCL_KERNEL_INFO_PRIVATE_DEF{};
+  strcpy_s((char *)privateDefBuf.group, 128, "hccl_world_group");
+  task.privateDef = (void *)&privateDefBuf;
+  task.privateDefLen = sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomAlltoAllVOpKernel_When_InvalidInput_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // kernelHcclInfo 为空, size != 1, 触发入口校验分支
+  EXPECT_EQ(hcomKernelInfo.HcomAlltoAllVOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // size == 1 但主 stream 为空, 触发 GetStreamMainFromTaskInfo 校验分支
+  task.kernelHcclInfo.push_back(ge::GETaskKernelHcclInfo{});
+  EXPECT_EQ(hcomKernelInfo.HcomAlltoAllVOpKernel(task, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomAllReduceOpKernel_When_InvalidInput_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // kernelHcclInfo 数量为 2, size != 1, 触发入口校验分支
+  ge::GETaskKernelHcclInfo hcclInfo{};
+  task.kernelHcclInfo.push_back(hcclInfo);
+  task.kernelHcclInfo.push_back(hcclInfo);
+  EXPECT_EQ(hcomKernelInfo.HcomAllReduceOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 非法(默认 RESERVED), 触发 GetDataTypeFromTaskInfo 校验分支
+  task.kernelHcclInfo.clear();
+  task.kernelHcclInfo.push_back(hcclInfo);
+  EXPECT_EQ(hcomKernelInfo.HcomAllReduceOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 合法但主 stream 为空, 触发 GetStreamMainFromTaskInfo 校验分支
+  privateDefBuf.dataType = HCCL_DATA_TYPE_INT8;
+  EXPECT_EQ(hcomKernelInfo.HcomAllReduceOpKernel(task, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomAllGatherOpKernel_When_InvalidInput_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // kernelHcclInfo 为空, size != 1, 触发入口校验分支
+  EXPECT_EQ(hcomKernelInfo.HcomAllGatherOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 非法(默认 RESERVED), 触发 GetDataTypeFromTaskInfo 校验分支
+  task.kernelHcclInfo.push_back(ge::GETaskKernelHcclInfo{});
+  EXPECT_EQ(hcomKernelInfo.HcomAllGatherOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 合法但主 stream 为空, 触发 GetStreamMainFromTaskInfo 校验分支
+  privateDefBuf.dataType = HCCL_DATA_TYPE_INT8;
+  EXPECT_EQ(hcomKernelInfo.HcomAllGatherOpKernel(task, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomAllGatherVOpKernel_When_InvalidInput_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // kernelHcclInfo 为空, size != 1, 触发入口校验分支
+  EXPECT_EQ(hcomKernelInfo.HcomAllGatherVOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 非法(默认 RESERVED), 触发 GetDataTypeFromTaskInfo 校验分支
+  task.kernelHcclInfo.push_back(ge::GETaskKernelHcclInfo{});
+  EXPECT_EQ(hcomKernelInfo.HcomAllGatherVOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 合法但主 stream 为空, 触发 GetStreamMainFromTaskInfo 校验分支
+  privateDefBuf.dataType = HCCL_DATA_TYPE_INT8;
+  EXPECT_EQ(hcomKernelInfo.HcomAllGatherVOpKernel(task, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomReduceScatterOpKernel_When_InvalidInput_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // kernelHcclInfo 为空, size != 1, 触发入口校验分支
+  EXPECT_EQ(hcomKernelInfo.HcomReduceScatterOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 非法(默认 RESERVED), 触发 GetDataTypeFromTaskInfo 校验分支
+  task.kernelHcclInfo.push_back(ge::GETaskKernelHcclInfo{});
+  EXPECT_EQ(hcomKernelInfo.HcomReduceScatterOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 合法但主 stream 为空, 触发 GetStreamMainFromTaskInfo 校验分支
+  privateDefBuf.dataType = HCCL_DATA_TYPE_INT8;
+  EXPECT_EQ(hcomKernelInfo.HcomReduceScatterOpKernel(task, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomReduceScatterVOpKernel_When_InvalidInput_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // kernelHcclInfo 为空, size != 1, 触发入口校验分支
+  EXPECT_EQ(hcomKernelInfo.HcomReduceScatterVOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 非法(默认 RESERVED), 触发 GetDataTypeFromTaskInfo 校验分支
+  task.kernelHcclInfo.push_back(ge::GETaskKernelHcclInfo{});
+  EXPECT_EQ(hcomKernelInfo.HcomReduceScatterVOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 合法但主 stream 为空, 触发 GetStreamMainFromTaskInfo 校验分支
+  privateDefBuf.dataType = HCCL_DATA_TYPE_INT8;
+  EXPECT_EQ(hcomKernelInfo.HcomReduceScatterVOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // stream 合法但 reduceType 非法, 触发 GetReduceTypeFromTaskInfo 校验分支
+  task.stream = &dummy_stream_obj;
+  task.kernelHcclInfo[0].opType = HCCL_REDUCE_RESERVED;
+  EXPECT_EQ(hcomKernelInfo.HcomReduceScatterVOpKernel(task, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomBroadcastOpKernel_When_InvalidInput_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // kernelHcclInfo 为空, size != 1, 触发入口校验分支
+  EXPECT_EQ(hcomKernelInfo.HcomBroadcastOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 非法(默认 RESERVED), 触发 GetDataTypeFromTaskInfo 校验分支
+  task.kernelHcclInfo.push_back(ge::GETaskKernelHcclInfo{});
+  EXPECT_EQ(hcomKernelInfo.HcomBroadcastOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 合法但主 stream 为空, 触发 GetStreamMainFromTaskInfo 校验分支
+  privateDefBuf.dataType = HCCL_DATA_TYPE_INT8;
+  EXPECT_EQ(hcomKernelInfo.HcomBroadcastOpKernel(task, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomReduceOpKernel_When_InvalidInput_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // kernelHcclInfo 为空, size != 1, 触发入口校验分支
+  EXPECT_EQ(hcomKernelInfo.HcomReduceOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 非法(默认 RESERVED), 触发 GetDataTypeFromTaskInfo 校验分支
+  task.kernelHcclInfo.push_back(ge::GETaskKernelHcclInfo{});
+  EXPECT_EQ(hcomKernelInfo.HcomReduceOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 合法但主 stream 为空, 触发 GetStreamMainFromTaskInfo 校验分支
+  privateDefBuf.dataType = HCCL_DATA_TYPE_INT8;
+  EXPECT_EQ(hcomKernelInfo.HcomReduceOpKernel(task, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomSendOpKernel_When_InvalidInput_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // kernelHcclInfo 为空, size != 1, 触发入口校验分支
+  EXPECT_EQ(hcomKernelInfo.HcomSendOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 非法(默认 RESERVED), 触发 GetDataTypeFromTaskInfo 校验分支
+  task.kernelHcclInfo.push_back(ge::GETaskKernelHcclInfo{});
+  EXPECT_EQ(hcomKernelInfo.HcomSendOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 合法但主 stream 为空, 触发 GetStreamMainFromTaskInfo 校验分支
+  privateDefBuf.dataType = HCCL_DATA_TYPE_INT8;
+  EXPECT_EQ(hcomKernelInfo.HcomSendOpKernel(task, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomReceiveOpKernel_When_InvalidInput_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // kernelHcclInfo 为空, size != 1, 触发入口校验分支
+  EXPECT_EQ(hcomKernelInfo.HcomReceiveOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 非法(默认 RESERVED), 触发 GetDataTypeFromTaskInfo 校验分支
+  task.kernelHcclInfo.push_back(ge::GETaskKernelHcclInfo{});
+  EXPECT_EQ(hcomKernelInfo.HcomReceiveOpKernel(task, tagVec), HCCL_E_PARA);
+
+  // dataType 合法但主 stream 为空, 触发 GetStreamMainFromTaskInfo 校验分支
+  privateDefBuf.dataType = HCCL_DATA_TYPE_INT8;
+  EXPECT_EQ(hcomKernelInfo.HcomReceiveOpKernel(task, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomSendOpKernel_When_InputAddrNull_Expect_ReturnHCCL_E_PTR) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  privateDefBuf.dataType = HCCL_DATA_TYPE_INT8;
+  task.stream = &dummy_stream_obj;
+  ge::GETaskKernelHcclInfo hcclInfo{};
+  hcclInfo.inputDataAddr = nullptr;
+  task.kernelHcclInfo.push_back(hcclInfo);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // 输入地址为空, 触发 GetInputAddrFromTaskInfo 校验分支
+  EXPECT_EQ(hcomKernelInfo.HcomSendOpKernel(task, tagVec), HCCL_E_PTR);
+}
+
+TEST_F(HcomKernelInfoTest, ut_HcomReceiveOpKernel_When_OutputAddrNull_Expect_ReturnHCCL_E_PTR) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  privateDefBuf.dataType = HCCL_DATA_TYPE_INT8;
+  task.stream = &dummy_stream_obj;
+  ge::GETaskKernelHcclInfo hcclInfo{};
+  hcclInfo.outputDataAddr = nullptr;
+  task.kernelHcclInfo.push_back(hcclInfo);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // 输出地址为空, 触发 GetOutputAddrFromTaskInfo 校验分支
+  EXPECT_EQ(hcomKernelInfo.HcomReceiveOpKernel(task, tagVec), HCCL_E_PTR);
+}
+
+TEST_F(HcomKernelInfoTest, ut_SetKnownShapeWorkspaceResource_When_HcclInfoSizeInvalid_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // comm/group 读取成功后, kernelHcclInfo 为空, size != 1, 触发入口校验分支
+  EXPECT_EQ(hcomKernelInfo.SetKnownShapeWorkspaceResource(task, HCCL_KERNEL_OP_TYPE_ALLREDUCE, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_SetKnownShapeWorkspaceResource_When_WorkSpaceAddrNull_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  ge::GETaskKernelHcclInfo hcclInfo{};
+  hcclInfo.workSpaceAddr = nullptr;
+  hcclInfo.workSpaceMemSize = 0;
+  task.kernelHcclInfo.push_back(hcclInfo);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // 非 V2 kernel 场景下 workspace 地址为空, 触发校验分支
+  EXPECT_EQ(hcomKernelInfo.SetKnownShapeWorkspaceResource(task, HCCL_KERNEL_OP_TYPE_ALLREDUCE, tagVec), HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelInfoTest, ut_SetKnownShapeWorkspaceResource_When_StreamInListNull_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+  ge::GETaskKernelHcclInfo hcclInfo{};
+  hcclInfo.workSpaceAddr = &dummy_stream_obj;
+  hcclInfo.workSpaceMemSize = 32;
+  hcclInfo.hcclStreamList.push_back(nullptr);
+  task.kernelHcclInfo.push_back(hcclInfo);
+  std::vector<std::string> tagVec = {"ut_tag"};
+
+  // workspace 校验通过后, stream 列表中存在空指针, 触发校验分支
+  EXPECT_EQ(hcomKernelInfo.SetKnownShapeWorkspaceResource(task, HCCL_KERNEL_OP_TYPE_ALLREDUCE, tagVec), HCCL_E_PARA);
+}
+
+// rankMap 选项不存在时 GetOption 返回失败
+ge::graphStatus RankMapGetOptionFail(ge::GEThreadLocalContext *that, const std::string &optionExec,
+                                     std::string &dumpDebugValue) {
+  if (optionExec == "ge.exec.rankMap") {
+    return !ge::GRAPH_SUCCESS;
+  }
+  dumpDebugValue.push_back('1');
+  return ge::GRAPH_SUCCESS;
+}
+
+TEST_F(HcomKernelInfoTest, ut_TransfromRealRankId_When_RankMapNotExist_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
+  InitTaskWithPrivateDef(task, privateDefBuf);
+
+  // needMapRank 为 false 时无需转换, 直接返回成功
+  privateDefBuf.needMapRank = false;
+  EXPECT_EQ(hcomKernelInfo.TransfromRealRankId(task), HCCL_SUCCESS);
+
+  // needMapRank 为 true 且 rankMap 选项存在(默认 stub 返回合法 rank_map), 转换成功
+  privateDefBuf.needMapRank = true;
+  privateDefBuf.srcRank = 0;
+  privateDefBuf.destRank = 1;
+  privateDefBuf.selfRank = 0;
+  EXPECT_EQ(hcomKernelInfo.TransfromRealRankId(task), HCCL_SUCCESS);
+
+  // needMapRank 为 true 且 rankMap 选项不存在, 触发错误分支
+  MOCKER_CPP(&ge::GEThreadLocalContext::GetOption).stubs().will(invoke(RankMapGetOptionFail));
+  EXPECT_EQ(hcomKernelInfo.TransfromRealRankId(task), HCCL_E_PARA);
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomKernelInfoTest, ut_GetCollectiveTypeFromTaskInfo_When_HcclTypeInvalid_Expect_ReturnHCCL_E_PARA) {
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskKernelHcclInfo hcclInfo{};
+  std::string sCollectiveType;
+
+  // hccl_type 不在支持列表中, 触发校验分支
+  hcclInfo.hccl_type = "HcomInvalidType";
+  EXPECT_EQ(hcomKernelInfo.GetCollectiveTypeFromTaskInfo(hcclInfo, sCollectiveType), HCCL_E_PARA);
+
+  // hccl_type 合法时返回成功并回填集合通信类型
+  hcclInfo.hccl_type = HCCL_KERNEL_OP_TYPE_ALLREDUCE;
+  EXPECT_EQ(hcomKernelInfo.GetCollectiveTypeFromTaskInfo(hcclInfo, sCollectiveType), HCCL_SUCCESS);
+  EXPECT_EQ(sCollectiveType, HCCL_KERNEL_OP_TYPE_ALLREDUCE);
 }

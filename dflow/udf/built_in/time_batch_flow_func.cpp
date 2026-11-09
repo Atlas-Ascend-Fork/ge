@@ -18,6 +18,15 @@ namespace FlowFunc {
 namespace {
 constexpr int64_t kDynamicWindowMode = -1;
 constexpr int64_t kAddDimMode = -1;
+
+int32_t AppendCopySize(uint64_t elem_size, int64_t copy_num, std::vector<int64_t> &input_copy_sizes) {
+  if ((copy_num <= 0) || (elem_size > (static_cast<uint64_t>(INT64_MAX) / static_cast<uint64_t>(copy_num)))) {
+    UDF_LOG_ERROR("Copy size overflow, elem_size:%lu, copy_num:%ld.", elem_size, copy_num);
+    return FLOW_FUNC_ERR_PARAM_INVALID;
+  }
+  input_copy_sizes.push_back(static_cast<int64_t>(elem_size * static_cast<uint64_t>(copy_num)));
+  return FLOW_FUNC_SUCCESS;
+}
 }  // namespace
 int32_t TimeBatchFlowFunc::Init() {
   UDF_LOG_DEBUG("Begin init.");
@@ -87,6 +96,10 @@ void TimeBatchFlowFunc::ResetState() {
 }
 
 int32_t TimeBatchFlowFunc::CheckFlowInfo(const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) const {
+  if (input_msgs.empty() || (input_msgs[0] == nullptr)) {
+    UDF_LOG_ERROR("Input msg size[%zu] must be at least 1.", input_msgs.size());
+    return FLOW_FUNC_ERR_PARAM_INVALID;
+  }
   const auto &input_msg0 = input_msgs[0];
   const uint64_t start_time0 = input_msg0->GetStartTime();
   const uint64_t end_time0 = input_msg0->GetEndTime();
@@ -136,6 +149,14 @@ int32_t TimeBatchFlowFunc::IsOkShapeForTimeBatch(const std::vector<int64_t> &bas
 int32_t TimeBatchFlowFunc::CheckTensorInfo(const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) const {
   for (size_t i = 0U; i < input_msgs.size(); ++i) {
     const auto input_i = input_msgs[i]->GetTensor();
+    if (input_i == nullptr) {
+      UDF_LOG_ERROR("Input[%zu] tensor is nullptr.", i);
+      return FLOW_FUNC_ERR_PARAM_INVALID;
+    }
+    if ((input_i->GetDataSize() > 0U) && (input_i->GetData() == nullptr)) {
+      UDF_LOG_ERROR("Input[%zu] tensor data is nullptr.", i);
+      return FLOW_FUNC_ERR_PARAM_INVALID;
+    }
     if (input_i->GetElementCnt() <= 0) {
       UDF_LOG_ERROR("Input[%zu] element cnt[%ld] <= 0.", i, input_i->GetElementCnt());
       return FLOW_FUNC_ERR_PARAM_INVALID;
@@ -161,6 +182,10 @@ int32_t TimeBatchFlowFunc::CheckTensorInfo(const std::vector<std::shared_ptr<Flo
 }
 
 int32_t TimeBatchFlowFunc::CheckInput(const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) {
+  if (input_msgs.size() < 1U) {
+    UDF_LOG_ERROR("Input msg size[%zu] must be at least 1.", input_msgs.size());
+    return FLOW_FUNC_ERR_PARAM_INVALID;
+  }
   if (input_msgs.size() != output_num_) {
     UDF_LOG_ERROR("Input num [%zu] is not equal output num [%zu].", input_msgs.size(), output_num_);
     return FLOW_FUNC_ERR_PARAM_INVALID;
@@ -251,42 +276,113 @@ int32_t TimeBatchFlowFunc::UpdateState(const std::vector<std::shared_ptr<FlowMsg
   return FLOW_FUNC_SUCCESS;
 }
 
-void TimeBatchFlowFunc::CalcCopyParams(const std::vector<std::shared_ptr<FlowMsg>> &input,
-                                       std::vector<int64_t> &input_copy_sizes, std::vector<int64_t> &output_shape,
-                                       int64_t &output_flat_dim0, uint32_t &max_step) const {
+int32_t TimeBatchFlowFunc::CalcCopyParams(const std::vector<std::shared_ptr<FlowMsg>> &input,
+                                          std::vector<int64_t> &input_copy_sizes, std::vector<int64_t> &output_shape,
+                                          int64_t &output_flat_dim0, uint32_t &max_step) const {
+  if (input.empty() || (input[0] == nullptr) || (input[0]->GetTensor() == nullptr)) {
+    UDF_LOG_ERROR("Input for time batch is empty.");
+    return FLOW_FUNC_ERR_PARAM_INVALID;
+  }
   const auto input0_tensor = input[0]->GetTensor();
   const auto &input0_shape = input0_tensor->GetShape();
   output_shape = input0_shape;
-  max_step = std::dynamic_pointer_cast<MbufFlowMsg>(input[0])->GetStepId();
+  const auto input0_mbuf = std::dynamic_pointer_cast<MbufFlowMsg>(input[0]);
+  if (input0_mbuf == nullptr) {
+    UDF_LOG_ERROR("Input[0] msg type is invalid.");
+    return FLOW_FUNC_ERR_PARAM_INVALID;
+  }
+  max_step = input0_mbuf->GetStepId();
   if (batch_dim_ == kAddDimMode) {
     output_flat_dim0 = 1;
+    if (input.size() > static_cast<size_t>(INT64_MAX)) {
+      UDF_LOG_ERROR("Input size:%zu is over limit.", input.size());
+      return FLOW_FUNC_ERR_PARAM_INVALID;
+    }
     output_shape.insert(output_shape.cbegin(), static_cast<int64_t>(input.size()));
     for (size_t i = 0U; i < input.size(); ++i) {
-      input_copy_sizes.push_back(input[i]->GetTensor()->GetDataSize());
-      const auto step = std::dynamic_pointer_cast<MbufFlowMsg>(input[i])->GetStepId();
+      if ((input[i] == nullptr) || (input[i]->GetTensor() == nullptr)) {
+        UDF_LOG_ERROR("Input[%zu] tensor is invalid.", i);
+        return FLOW_FUNC_ERR_PARAM_INVALID;
+      }
+      const auto data_size = input[i]->GetTensor()->GetDataSize();
+      if (data_size > static_cast<uint64_t>(INT64_MAX)) {
+        UDF_LOG_ERROR("Input[%zu] data size:%lu is over limit.", i, data_size);
+        return FLOW_FUNC_ERR_PARAM_INVALID;
+      }
+      input_copy_sizes.push_back(static_cast<int64_t>(data_size));
+      const auto step_msg = std::dynamic_pointer_cast<MbufFlowMsg>(input[i]);
+      if (step_msg == nullptr) {
+        UDF_LOG_ERROR("Input[%zu] msg type is invalid.", i);
+        return FLOW_FUNC_ERR_PARAM_INVALID;
+      }
+      const auto step = step_msg->GetStepId();
       max_step = ((FlowFuncDumpManager::IsInDumpStep(step)) && (step > max_step)) ? step : max_step;
     }
   } else {
     int64_t input_i_copy_num = 1;
-    for (size_t i = batch_dim_; i < input0_shape.size(); ++i) {
+    for (size_t i = static_cast<size_t>(batch_dim_); i < input0_shape.size(); ++i) {
+      if (CheckMultiplyOverflowInt64(input_i_copy_num, input0_shape[i])) {
+        UDF_LOG_ERROR("Input shape dim[%zu]:%ld is invalid.", i, input0_shape[i]);
+        return FLOW_FUNC_ERR_PARAM_INVALID;
+      }
       input_i_copy_num *= input0_shape[i];
     }
     const auto input0_element_cnt = input0_tensor->GetElementCnt();
+    if ((input_i_copy_num <= 0) || (input0_element_cnt <= 0)) {
+      UDF_LOG_ERROR("Input element count:%ld or copy num:%ld is invalid.", input0_element_cnt, input_i_copy_num);
+      return FLOW_FUNC_ERR_PARAM_INVALID;
+    }
     output_flat_dim0 = input0_element_cnt / input_i_copy_num;
-    input_copy_sizes.push_back((input0_tensor->GetDataSize() / input0_element_cnt * input_i_copy_num));
+    const auto input0_data_size = input0_tensor->GetDataSize();
+    const uint64_t elem_size = input0_data_size / static_cast<uint64_t>(input0_element_cnt);
+    if (AppendCopySize(elem_size, input_i_copy_num, input_copy_sizes) != FLOW_FUNC_SUCCESS) {
+      return FLOW_FUNC_ERR_PARAM_INVALID;
+    }
     for (size_t i = 1U; i < input.size(); ++i) {
+      if ((input[i] == nullptr) || (input[i]->GetTensor() == nullptr)) {
+        UDF_LOG_ERROR("Input[%zu] tensor is invalid.", i);
+        return FLOW_FUNC_ERR_PARAM_INVALID;
+      }
       const auto input_i_tensor = input[i]->GetTensor();
       const auto &input_i_shape = input_i_tensor->GetShape();
+      if (static_cast<size_t>(batch_dim_) >= input_i_shape.size()) {
+        UDF_LOG_ERROR("Input[%zu] shape size:%zu is not greater than batch dim:%ld.", i, input_i_shape.size(),
+                      batch_dim_);
+        return FLOW_FUNC_ERR_PARAM_INVALID;
+      }
+      if ((input_i_shape[batch_dim_] > 0) && (output_shape[batch_dim_] > (INT64_MAX - input_i_shape[batch_dim_]))) {
+        UDF_LOG_ERROR("Output batch dim overflow.");
+        return FLOW_FUNC_ERR_PARAM_INVALID;
+      }
       output_shape[batch_dim_] += input_i_shape[batch_dim_];
       input_i_copy_num = 1;
-      for (size_t j = batch_dim_; j < input_i_shape.size(); ++j) {
+      for (size_t j = static_cast<size_t>(batch_dim_); j < input_i_shape.size(); ++j) {
+        if (CheckMultiplyOverflowInt64(input_i_copy_num, input_i_shape[j])) {
+          UDF_LOG_ERROR("Input[%zu] shape dim[%zu]:%ld is invalid.", i, j, input_i_shape[j]);
+          return FLOW_FUNC_ERR_PARAM_INVALID;
+        }
         input_i_copy_num *= input_i_shape[j];
       }
-      input_copy_sizes.push_back((input_i_tensor->GetDataSize() / input_i_tensor->GetElementCnt()) * input_i_copy_num);
-      const auto step = std::dynamic_pointer_cast<MbufFlowMsg>(input[i])->GetStepId();
+      const auto input_i_element_cnt = input_i_tensor->GetElementCnt();
+      const auto input_i_data_size = input_i_tensor->GetDataSize();
+      if (input_i_element_cnt <= 0) {
+        UDF_LOG_ERROR("Input[%zu] element count:%ld is invalid.", i, input_i_element_cnt);
+        return FLOW_FUNC_ERR_PARAM_INVALID;
+      }
+      const uint64_t input_i_elem_size = input_i_data_size / static_cast<uint64_t>(input_i_element_cnt);
+      if (AppendCopySize(input_i_elem_size, input_i_copy_num, input_copy_sizes) != FLOW_FUNC_SUCCESS) {
+        return FLOW_FUNC_ERR_PARAM_INVALID;
+      }
+      const auto step_msg = std::dynamic_pointer_cast<MbufFlowMsg>(input[i]);
+      if (step_msg == nullptr) {
+        UDF_LOG_ERROR("Input[%zu] msg type is invalid.", i);
+        return FLOW_FUNC_ERR_PARAM_INVALID;
+      }
+      const auto step = step_msg->GetStepId();
       max_step = ((FlowFuncDumpManager::IsInDumpStep(step)) && (step > max_step)) ? step : max_step;
     }
   }
+  return FLOW_FUNC_SUCCESS;
 }
 
 int32_t TimeBatchFlowFunc::TimeBatch(const std::vector<std::shared_ptr<FlowMsg>> &input, const uint32_t out_index) {
@@ -294,29 +390,57 @@ int32_t TimeBatchFlowFunc::TimeBatch(const std::vector<std::shared_ptr<FlowMsg>>
   std::vector<int64_t> output_shape;
   int64_t output_flat_dim0 = 0;
   uint32_t step_id = 0;
-  CalcCopyParams(input, input_copy_sizes, output_shape, output_flat_dim0, step_id);
+  if (CalcCopyParams(input, input_copy_sizes, output_shape, output_flat_dim0, step_id) != FLOW_FUNC_SUCCESS) {
+    return FLOW_FUNC_ERR_PARAM_INVALID;
+  }
   auto output_msg = context_->AllocTensorMsg(output_shape, input[0]->GetTensor()->GetDataType());
   if (output_msg == nullptr) {
     UDF_LOG_ERROR("Alloc output msg failed.");
     return FLOW_FUNC_FAILED;
   }
   auto output_tensor = output_msg->GetTensor();
+  if (output_tensor == nullptr) {
+    UDF_LOG_ERROR("Alloc output tensor failed.");
+    return FLOW_FUNC_FAILED;
+  }
+  if ((output_tensor->GetDataSize() > 0U) && (output_tensor->GetData() == nullptr)) {
+    UDF_LOG_ERROR("Alloc output tensor data failed.");
+    return FLOW_FUNC_FAILED;
+  }
   auto output_data = output_tensor->GetData();
   auto out_size = output_tensor->GetDataSize();
   std::vector<int64_t> copyed_sizes(input.size(), 0);
   int64_t output_copyed_size = 0;
   for (int64_t dim = 0; dim < output_flat_dim0; ++dim) {
     for (size_t i = 0U; i < input.size(); ++i) {
-      const auto ret =
-          memcpy_s((static_cast<uint8_t *>(output_data) + output_copyed_size), out_size,
-                   static_cast<uint8_t *>(input[i]->GetTensor()->GetData()) + copyed_sizes[i], input_copy_sizes[i]);
-      if (ret != EOK) {
-        UDF_LOG_ERROR(
-            "The memcpy_s error, out addr[%p], out size[%lu], in addr[%p], in "
-            "size[%ld], ret[%d].",
-            (static_cast<uint8_t *>(output_data) + output_copyed_size), out_size,
-            static_cast<uint8_t *>(input[i]->GetTensor()->GetData()) + copyed_sizes[i], input_copy_sizes[i], ret);
+      if ((i >= input_copy_sizes.size()) || (input_copy_sizes[i] < 0) || (copyed_sizes[i] < 0)) {
+        UDF_LOG_ERROR("Input[%zu] copy param is invalid.", i);
         return FLOW_FUNC_FAILED;
+      }
+      const auto copy_size = static_cast<uint64_t>(input_copy_sizes[i]);
+      const auto copied = static_cast<uint64_t>(copyed_sizes[i]);
+      const auto data_size = input[i]->GetTensor()->GetDataSize();
+      if ((copy_size > 0U) && (input[i]->GetTensor()->GetData() == nullptr)) {
+        UDF_LOG_ERROR("Input[%zu] tensor data is nullptr.", i);
+        return FLOW_FUNC_FAILED;
+      }
+      if ((copy_size > data_size) || (copied > (data_size - copy_size)) || (copy_size > out_size)) {
+        UDF_LOG_ERROR("Input[%zu] copy size:%lu is over limit, data size:%lu, out size:%lu.", i, copy_size, data_size,
+                      out_size);
+        return FLOW_FUNC_FAILED;
+      }
+      if (copy_size > 0U) {
+        const auto ret =
+            memcpy_s((static_cast<uint8_t *>(output_data) + output_copyed_size), out_size,
+                     static_cast<uint8_t *>(input[i]->GetTensor()->GetData()) + copyed_sizes[i], input_copy_sizes[i]);
+        if (ret != EOK) {
+          UDF_LOG_ERROR(
+              "The memcpy_s error, out addr[%p], out size[%lu], in addr[%p], in "
+              "size[%ld], ret[%d].",
+              (static_cast<uint8_t *>(output_data) + output_copyed_size), out_size,
+              static_cast<uint8_t *>(input[i]->GetTensor()->GetData()) + copyed_sizes[i], input_copy_sizes[i], ret);
+          return FLOW_FUNC_FAILED;
+        }
       }
       out_size -= input_copy_sizes[i];
       copyed_sizes[i] += input_copy_sizes[i];
@@ -325,7 +449,12 @@ int32_t TimeBatchFlowFunc::TimeBatch(const std::vector<std::shared_ptr<FlowMsg>>
   }
   output_msg->SetStartTime(start_time_);
   output_msg->SetEndTime(end_time_);
-  std::dynamic_pointer_cast<MbufFlowMsg>(output_msg)->SetStepId(step_id);
+  const auto output_mbuf = std::dynamic_pointer_cast<MbufFlowMsg>(output_msg);
+  if (output_mbuf == nullptr) {
+    UDF_LOG_ERROR("Output msg type is invalid.");
+    return FLOW_FUNC_FAILED;
+  }
+  output_mbuf->SetStepId(step_id);
   const auto ret = context_->SetOutput(out_index, output_msg);
   if (ret != FLOW_FUNC_SUCCESS) {
     UDF_LOG_ERROR("Set output[%u] msg failed, ret = %d.", out_index, ret);

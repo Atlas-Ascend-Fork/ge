@@ -21,6 +21,7 @@
 #include "llm_common/llm_common.h"
 #include "llm_common/statistic_manager.h"
 #include "llm_common/hccl_proxy.h"
+#include "common/data_utils.h"
 
 namespace FlowFunc {
 namespace {
@@ -639,11 +640,27 @@ FsmStatus LlmCommEntity::TransferCacheData(const TransferKvReqInfo &req_info, co
   client_tick_record_.transfer_kv_start_tick = StatisticManager::GetInstance().GetCpuTick();
   const uint64_t timeout = (req_info.timeout == 0UL) ? kSyncKvTimeout : req_info.timeout;
   auto *transfer_req_info = static_cast<TransferToRemoteReq *>(transfer_kv_addr_info_.transfer_kv_req_addr);
+  if ((cache_entry == nullptr) || (transfer_req_info == nullptr) || (req_info.tensor_num_per_layer == 0U) ||
+      ((req_info.src_layer_index != 0U) && (req_info.tensor_num_per_layer > (UINT64_MAX / req_info.src_layer_index)))) {
+    UDF_LOG_ERROR("Transfer cache req is invalid, dst_cluster_id:%lu, entity:%s.", req_info.dst_cluster_id,
+                  desc_.c_str());
+    return FsmStatus::kFsmParamInvalid;
+  }
   uint64_t send_complete_cnt = 0U;
-  auto tensor_start_idx = req_info.src_layer_index * req_info.tensor_num_per_layer;
+  const uint64_t tensor_start_idx = req_info.src_layer_index * req_info.tensor_num_per_layer;
+  if ((tensor_start_idx > cache_entry->tensors.size()) ||
+      (req_info.tensor_num_per_layer > (cache_entry->tensors.size() - tensor_start_idx))) {
+    UDF_LOG_ERROR("Src layer index:%lu is out of range, tensor num:%zu, tensor_num_per_layer:%lu, entity:%s.",
+                  req_info.src_layer_index, cache_entry->tensors.size(), req_info.tensor_num_per_layer, desc_.c_str());
+    return FsmStatus::kFsmParamInvalid;
+  }
   for (uint64_t i = 0; i < req_info.tensor_num_per_layer; i++) {
-    // validate array index before.
-    auto &tensor = cache_entry->tensors[tensor_start_idx + i];
+    std::shared_ptr<FlowMsg> tensor;
+    if ((!GetCacheTensor(*cache_entry, tensor_start_idx + i, tensor)) || (tensor == nullptr) ||
+        (tensor->GetTensor() == nullptr) || (tensor->GetTensor()->GetData() == nullptr)) {
+      UDF_LOG_ERROR("Src tensor index:%lu is invalid, entity:%s.", tensor_start_idx + i, desc_.c_str());
+      return FsmStatus::kFsmParamInvalid;
+    }
     uint64_t send_index = 0U;
     uint64_t slot_index = 0U;
     while (send_index < transfer_req_info->send_nums_per_tensor) {
@@ -1132,6 +1149,10 @@ FsmStatus LlmCommEntity::ReceiveKvCacheAsync(const PullKvReqInfo &req_info, cons
     return FsmStatus::kFsmParamInvalid;
   }
   auto *sync_req_info = static_cast<SyncKvReqInfo *>(sync_kv_addr_info_.sync_kv_req_addr);
+  if ((sync_req_info == nullptr) || (sync_req_info->buffer_count_per_layer == 0U)) {
+    UDF_LOG_ERROR("sync kv req is invalid, req_id:%lu.", req_info.req_id);
+    return FsmStatus::kFsmParamInvalid;
+  }
   while (index < static_cast<size_t>(transfer_count)) {
     uint64_t transfer_index = index % sync_req_info->buffer_count_per_layer;
     size_t buff_size = sync_req_info->transfer_infos[transfer_index].buffer_info.buffer_len;
@@ -1226,23 +1247,46 @@ std::vector<uintptr_t> LlmCommEntity::GetRecvAddrs(const PullKvReqInfo &req_info
   recv_addrs.reserve(transfer_count);
   auto *sync_req_info = static_cast<SyncKvReqInfo *>(sync_kv_addr_info_.sync_kv_req_addr);
   if (cache_entry != nullptr) {
+    if ((sync_req_info == nullptr) || (sync_req_info->buffer_count_per_layer == 0U)) {
+      UDF_LOG_ERROR("sync kv req is invalid, req_id:%lu.", req_info.req_id);
+      return recv_addrs;
+    }
     const auto tensor_indices = LocalTensorIndices(req_info, enable_paged_attention_);
     UDF_LOG_INFO(
         "LocalTensorIndices = %s",
         ToString(std::vector<uint64_t>(tensor_indices, tensor_indices + req_info.dst_tensor_index_count)).c_str());
-    if (enable_paged_attention_) {
-      for (uint32_t index = 0U; index < transfer_count; ++index) {
-        auto kv_index = index / sync_req_info->buffer_count_per_layer;
-        kv_index = req_info.dst_tensor_index_count > 0 ? tensor_indices[kv_index] : kv_index;
-        auto kv_blocks_addr = reinterpret_cast<uintptr_t>(cache_entry->tensors[kv_index]->GetTensor()->GetData());
-        recv_addrs.emplace_back(kv_blocks_addr);
+    for (uint32_t index = 0U; index < transfer_count; ++index) {
+      uint64_t kv_index = static_cast<uint64_t>(index) / sync_req_info->buffer_count_per_layer;
+      if (req_info.dst_tensor_index_count > 0U) {
+        if (kv_index >= req_info.dst_tensor_index_count) {
+          UDF_LOG_ERROR("kv index:%lu is over dst tensor index count:%u, req_id:%lu.", kv_index,
+                        req_info.dst_tensor_index_count, req_info.req_id);
+          return {};
+        }
+        kv_index = tensor_indices[kv_index];
       }
-    } else {
-      for (uint32_t index = 0U; index < transfer_count; ++index) {
-        auto kv_index = index / sync_req_info->buffer_count_per_layer;
-        kv_index = req_info.dst_tensor_index_count > 0 ? tensor_indices[kv_index] : kv_index;
-        auto addr = static_cast<uint8_t *>(cache_entry->tensors[kv_index]->GetTensor()->GetData()) +
-                    req_info.batch_index * cache_entry->batch_stride + req_info.dst_cache_offset;
+      std::shared_ptr<FlowMsg> kv_tensor;
+      if ((!GetCacheTensor(*cache_entry, kv_index, kv_tensor)) || (kv_tensor == nullptr) ||
+          (kv_tensor->GetTensor() == nullptr) || (kv_tensor->GetTensor()->GetData() == nullptr)) {
+        UDF_LOG_ERROR("kv index:%lu is invalid, tensor num:%zu, req_id:%lu.", kv_index, cache_entry->tensors.size(),
+                      req_info.req_id);
+        return {};
+      }
+      if (enable_paged_attention_) {
+        auto kv_blocks_addr = reinterpret_cast<uintptr_t>(kv_tensor->GetTensor()->GetData());
+        recv_addrs.emplace_back(kv_blocks_addr);
+      } else {
+        if ((cache_entry->batch_stride != 0U) && (req_info.batch_index > (UINT64_MAX / cache_entry->batch_stride))) {
+          UDF_LOG_ERROR("cache offset overflow, req_id:%lu.", req_info.req_id);
+          return {};
+        }
+        const uint64_t batch_offset = req_info.batch_index * cache_entry->batch_stride;
+        if (CheckAddOverflowUint64(batch_offset, req_info.dst_cache_offset)) {
+          UDF_LOG_ERROR("cache offset overflow, req_id:%lu.", req_info.req_id);
+          return {};
+        }
+        auto addr =
+            static_cast<uint8_t *>(kv_tensor->GetTensor()->GetData()) + batch_offset + req_info.dst_cache_offset;
         recv_addrs.emplace_back(reinterpret_cast<uintptr_t>(addr));
       }
     }

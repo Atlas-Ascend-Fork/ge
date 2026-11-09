@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -11,6 +11,7 @@
 #include "gtest/gtest.h"
 #include <mockcpp/mockcpp.hpp>
 #include <stdio.h>
+#include <map>
 
 #define private public
 #define protected public
@@ -199,4 +200,209 @@ TEST_F(AutoTuningHcclKernelBuilderTest, ut_generateTask) {
   ge ::Status ge_ret = ge::INTERNAL_ERROR;
   ge_ret = autoTuningHcomKernelBuilder.GenerateTask(*nodeptr, runContext_dummy, taskDefList);
   EXPECT_EQ(ge_ret, ge::SUCCESS);
+}
+
+// 构造带有效 privateDef 与 1 条 kernelHcclInfo 的任务信息, privateDef 生命周期由调用方保证
+static ge::GETaskInfo BuildAutoTuningTask(AUTO_TUNING_HCCL_KERNEL_INFO_PRIVATE_DEF &privateDef, void *stream) {
+  ge::GETaskInfo task = {};
+  task.privateDef = &privateDef;
+  task.privateDefLen = sizeof(AUTO_TUNING_HCCL_KERNEL_INFO_PRIVATE_DEF);
+  task.stream = stream;
+  ge::GETaskKernelHcclInfo hcclInfo = {};
+  hcclInfo.inputDataAddr = reinterpret_cast<void *>(0x10);
+  hcclInfo.outputDataAddr = reinterpret_cast<void *>(0x20);
+  hcclInfo.count = 1;
+  task.kernelHcclInfo.push_back(hcclInfo);
+  return task;
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest, ut_AutoTuningGetHcclInfo_When_KernelHcclInfoEmpty_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  ge::GETaskInfo task = {};
+  ge::GETaskKernelHcclInfo hcclInfo;
+  HcclResult ret = infoStore.GetHcclInfo(task, hcclInfo);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest,
+       ut_AutoTuningGetHcclInfo_When_KernelHcclInfoSizeNotOne_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  ge::GETaskInfo task = {};
+  ge::GETaskKernelHcclInfo hcclInfo1 = {};
+  ge::GETaskKernelHcclInfo hcclInfo2 = {};
+  task.kernelHcclInfo.push_back(hcclInfo1);
+  task.kernelHcclInfo.push_back(hcclInfo2);
+  ge::GETaskKernelHcclInfo hcclInfoOut;
+  HcclResult ret = infoStore.GetHcclInfo(task, hcclInfoOut);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest, ut_AutoTuningGetHcclInfo_When_KernelHcclInfoSizeOne_Expect_ReturnHCCL_SUCCESS) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  ge::GETaskInfo task = {};
+  ge::GETaskKernelHcclInfo hcclInfo = {};
+  hcclInfo.count = 128;
+  task.kernelHcclInfo.push_back(hcclInfo);
+  ge::GETaskKernelHcclInfo hcclInfoOut = {};
+  HcclResult ret = infoStore.GetHcclInfo(task, hcclInfoOut);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(hcclInfoOut.count, 128);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest,
+       ut_AutoTuningHcomAllGatherOpKernel_When_KernelHcclInfoEmpty_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  ge::GETaskInfo task = {};
+  HcclResult ret = infoStore.HcomAllGatherOpKernel(task);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest, ut_AutoTuningHcomAllGatherOpKernel_When_StreamNull_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  AUTO_TUNING_HCCL_KERNEL_INFO_PRIVATE_DEF privateDef = {1, ORIGINAL_GRAPH_KNOWNSHAPE_TYPE, 8, HCCL_DATA_TYPE_INT8};
+  ge::GETaskInfo task = BuildAutoTuningTask(privateDef, nullptr);
+  HcclResult ret = infoStore.HcomAllGatherOpKernel(task);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest,
+       ut_AutoTuningHcomAllGatherOpKernel_When_UnknownShape_Expect_ReturnHCCL_E_NOT_SUPPORT) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  AUTO_TUNING_HCCL_KERNEL_INFO_PRIVATE_DEF privateDef = {1, ORIGINAL_GRAPH_UNKNOWNSHAPE_TYPE, 8, HCCL_DATA_TYPE_INT8};
+  u64 dummyStream = 1;
+  ge::GETaskInfo task = BuildAutoTuningTask(privateDef, &dummyStream);
+  HcclResult ret = infoStore.HcomAllGatherOpKernel(task);
+  EXPECT_EQ(ret, HCCL_E_NOT_SUPPORT);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest,
+       ut_AutoTuningHcomReduceOpKernel_When_KernelHcclInfoEmpty_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  ge::GETaskInfo task = {};
+  HcclResult ret = infoStore.HcomReduceOpKernel(task);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest, ut_AutoTuningHcomReduceOpKernel_When_StreamNull_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  AUTO_TUNING_HCCL_KERNEL_INFO_PRIVATE_DEF privateDef = {1, ORIGINAL_GRAPH_KNOWNSHAPE_TYPE, 8, HCCL_DATA_TYPE_INT8};
+  ge::GETaskInfo task = BuildAutoTuningTask(privateDef, nullptr);
+  HcclResult ret = infoStore.HcomReduceOpKernel(task);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest,
+       ut_AutoTuningHcomReduceOpKernel_When_UnknownShape_Expect_ReturnHCCL_E_NOT_SUPPORT) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  AUTO_TUNING_HCCL_KERNEL_INFO_PRIVATE_DEF privateDef = {1, ORIGINAL_GRAPH_UNKNOWNSHAPE_TYPE, 8, HCCL_DATA_TYPE_INT8};
+  u64 dummyStream = 1;
+  ge::GETaskInfo task = BuildAutoTuningTask(privateDef, &dummyStream);
+  HcclResult ret = infoStore.HcomReduceOpKernel(task);
+  EXPECT_EQ(ret, HCCL_E_NOT_SUPPORT);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest,
+       ut_AutoTuningHcomReduceScatterOpKernel_When_KernelHcclInfoEmpty_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  ge::GETaskInfo task = {};
+  HcclResult ret = infoStore.HcomReduceScatterOpKernel(task);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest,
+       ut_AutoTuningHcomReduceScatterOpKernel_When_StreamNull_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  AUTO_TUNING_HCCL_KERNEL_INFO_PRIVATE_DEF privateDef = {1, ORIGINAL_GRAPH_KNOWNSHAPE_TYPE, 8, HCCL_DATA_TYPE_INT8};
+  ge::GETaskInfo task = BuildAutoTuningTask(privateDef, nullptr);
+  HcclResult ret = infoStore.HcomReduceScatterOpKernel(task);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest,
+       ut_AutoTuningHcomReduceScatterOpKernel_When_UnknownShape_Expect_ReturnHCCL_E_NOT_SUPPORT) {
+  AutoTuningHcomOpsKernelInfoStore infoStore;
+  AUTO_TUNING_HCCL_KERNEL_INFO_PRIVATE_DEF privateDef = {1, ORIGINAL_GRAPH_UNKNOWNSHAPE_TYPE, 8, HCCL_DATA_TYPE_INT8};
+  u64 dummyStream = 1;
+  ge::GETaskInfo task = BuildAutoTuningTask(privateDef, &dummyStream);
+  HcclResult ret = infoStore.HcomReduceScatterOpKernel(task);
+  EXPECT_EQ(ret, HCCL_E_NOT_SUPPORT);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest, ut_AutoTuningGetRankSizeFromDesc_When_NoRankSizeAttr_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomOpsKernelBuilder builder;
+  ge::NodePtr nodeptr(new NodeTest);
+  uint32_t rankSize = 0;
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_FALSE_RANK_SIZE");  // HasAttr("rank_size")返回false
+  HcclResult ret = builder.GetRankSizeFromDesc(nodeptr->GetOpDesc(), rankSize, HCCL_KERNEL_OP_TYPE_ALLGATHER);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+  EXPECT_EQ(rankSize, 0);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest,
+       ut_AutoTuningGetRankSizeFromDesc_When_GetRankSizeFailed_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomOpsKernelBuilder builder;
+  ge::NodePtr nodeptr(new NodeTest);
+  uint32_t rankSize = 0;
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_TRUE_RANK_SIZE");
+  ge::dummy_Int64MAP.erase("rank_size");  // 使 GetInt("rank_size")返回false
+  HcclResult ret = builder.GetRankSizeFromDesc(nodeptr->GetOpDesc(), rankSize, HCCL_KERNEL_OP_TYPE_ALLGATHER);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest,
+       ut_AutoTuningGetRankSizeFromDesc_When_NotAllGatherOp_Expect_ReturnHCCL_SUCCESS) {
+  AutoTuningHcomOpsKernelBuilder builder;
+  ge::NodePtr nodeptr(new NodeTest);
+  uint32_t rankSize = 0;
+  HcclResult ret = builder.GetRankSizeFromDesc(nodeptr->GetOpDesc(), rankSize, HCCL_KERNEL_OP_TYPE_ALLREDUCE);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(rankSize, 0);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest, ut_AutoTuningGetRankSizeFromDesc_When_ValidRankSize_Expect_ReturnHCCL_SUCCESS) {
+  AutoTuningHcomOpsKernelBuilder builder;
+  ge::NodePtr nodeptr(new NodeTest);
+  uint32_t rankSize = 0;
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_TRUE_RANK_SIZE");
+  ge::AttrUtils::SetInt(nodeptr->GetOpDesc(), "rank_size", 8);
+  HcclResult ret = builder.GetRankSizeFromDesc(nodeptr->GetOpDesc(), rankSize, HCCL_KERNEL_OP_TYPE_ALLGATHER);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(rankSize, 8);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest, ut_AutoTuningSetOpMemAttr_When_GetGroupFailed_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomGraphOptimizer optimizer;
+  ge::NodePtr nodeptr(new NodeTest);
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_TRUE_GROUP");
+  ge::dummyStringMAP.erase("group");  // 使 GetStr("group")返回false
+  HcclResult ret = optimizer.SetOpMemAttr(*nodeptr, HCCL_KERNEL_OP_TYPE_ALLREDUCE, 0);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest, ut_AutoTuningSetOpMemAttr_When_GroupEmpty_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomGraphOptimizer optimizer;
+  ge::NodePtr nodeptr(new NodeTest);
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_TRUE_GROUP");
+  ge::AttrUtils::SetStr(nodeptr->GetOpDesc(), "group", "");
+  HcclResult ret = optimizer.SetOpMemAttr(*nodeptr, HCCL_KERNEL_OP_TYPE_ALLREDUCE, 0);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest,
+       ut_AutoTuningSetOpMemAttr_When_NotBroadcastWithValidGroup_Expect_ReturnHCCL_SUCCESS) {
+  AutoTuningHcomGraphOptimizer optimizer;
+  ge::NodePtr nodeptr(new NodeTest);
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_TRUE_GROUP");
+  ge::AttrUtils::SetStr(nodeptr->GetOpDesc(), "group", HCCL_WORLD_GROUP);
+  HcclResult ret = optimizer.SetOpMemAttr(*nodeptr, HCCL_KERNEL_OP_TYPE_ALLREDUCE, 1024);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+}
+
+TEST_F(AutoTuningHcclKernelBuilderTest, ut_AutoTuningSetOpMemAttr_When_BroadcastOp_Expect_ReturnHCCL_SUCCESS) {
+  AutoTuningHcomGraphOptimizer optimizer;
+  ge::NodePtr nodeptr(new NodeTest);
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_TRUE_GROUP");
+  ge::AttrUtils::SetStr(nodeptr->GetOpDesc(), "group", HCCL_WORLD_GROUP);
+  HcclResult ret = optimizer.SetOpMemAttr(*nodeptr, HCCL_KERNEL_OP_TYPE_BROADCAST, 0);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
 }

@@ -31,6 +31,7 @@ using std::string;
 #include "hccl/base.h"
 #include "exe_graph/lowering/dev_mem_value_holder.h"
 #include "hccl/hcom.h"
+#include "hccl/hccl_res.h"
 #include "llt_hccl_stub_sal_pub.h"
 #include "llt_hccl_stub_gert.h"
 
@@ -377,6 +378,18 @@ HcclResult HcomGetCommCCLBufferSize(const char *group, uint64_t &size);
 HcclResult HcclGetInstTopoTypeByNetLayer(HcclComm comm, uint32_t netLayer, CommTopo *topoType);
 HcclResult HcclGetInstSizeByNetLayer(HcclComm comm, uint32_t netLayer, uint32_t *rankNum);
 HcclResult HcclGetNetLayers(HcclComm comm, uint32_t **netLayers, uint32_t *netLayerNum);
+
+// hccl_res.h 线程资源接口桩: 隔离真实 libhcomm.so, 输出参数必须写全, 避免调用方读到栈野值
+HcclResult HcclThreadAcquire(HcclComm comm, CommEngine engine, uint32_t threadNum, uint32_t notifyNumPerThread,
+                             ThreadHandle *threads);
+
+HcclResult HcclDedicatedThreadAcquire(HcclComm comm, decltype(HCCL_DED_THREAD_TYPE_AICPU_LAUNCH) useType,
+                                      uint32_t threadNum, ThreadHandle *threads);
+
+HcclResult HcclEngineCtxGet(HcclComm comm, const char *ctxName, CommEngine engine, void **ctx, uint64_t *ctxSize);
+
+HcclResult HcclEngineCtxCreate(HcclComm comm, const char *ctxName, CommEngine engine, uint64_t ctxSize, void **ctx);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

@@ -9,7 +9,9 @@
  */
 
 #include "fsm/receive_transfer_req_state.h"
+#include <cstdint>
 #include <mutex>
+#include "common/data_utils.h"
 #include "fsm/probe_state.h"
 #include "entity/llm_comm_entity_mgr.h"
 #include "llm_common/cache_manager.h"
@@ -18,7 +20,51 @@
 namespace FlowFunc {
 namespace {
 constexpr uint64_t kOneLayerCacheSize = 2U;
+
+FsmStatus ValidateTransferSlots(const TransferToRemoteReq *req_info) {
+  if (req_info->send_nums_per_tensor == 0U) {
+    UDF_LOG_ERROR("send_nums_per_tensor is 0.");
+    return FsmStatus::kFsmParamInvalid;
+  }
+  if ((req_info->tensor_num_per_layer != 0U) &&
+      (req_info->send_nums_per_tensor > (UINT64_MAX / req_info->tensor_num_per_layer))) {
+    UDF_LOG_ERROR("transfer count overflow, tensor_num_per_layer:%lu, send_nums_per_tensor:%lu.",
+                  req_info->tensor_num_per_layer, req_info->send_nums_per_tensor);
+    return FsmStatus::kFsmParamInvalid;
+  }
+  if ((req_info->dst_cache_id >= 0) && (req_info->tensor_num_per_layer == 0U)) {
+    UDF_LOG_ERROR("tensor_num_per_layer is 0.");
+    return FsmStatus::kFsmParamInvalid;
+  }
+  uint64_t index = 0U;
+  while (index < req_info->total_slot_nums) {
+    const uint64_t count = req_info->slot_infos[index].slot_nums_per_transfer;
+    if ((count == 0U) || (count > static_cast<uint64_t>(UINT32_MAX)) || (count > (req_info->total_slot_nums - index))) {
+      UDF_LOG_ERROR("slot_nums_per_transfer:%lu is invalid, index:%lu, total:%lu.", count, index,
+                    req_info->total_slot_nums);
+      return FsmStatus::kFsmParamInvalid;
+    }
+    uint64_t group_bytes = 0U;
+    for (uint64_t i = 0U; i < count; ++i) {
+      const auto &slot = req_info->slot_infos[index + i];
+      if ((slot.slot_size > static_cast<uint64_t>(INT32_MAX)) ||
+          CheckAddOverflowUint64(slot.slot_offset, slot.slot_size) ||
+          CheckAddOverflowUint64(group_bytes, slot.slot_size)) {
+        UDF_LOG_ERROR("slot info is invalid, index:%lu, offset:%lu, size:%lu.", index + i, slot.slot_offset,
+                      slot.slot_size);
+        return FsmStatus::kFsmParamInvalid;
+      }
+      group_bytes += slot.slot_size;
+    }
+    if (group_bytes > static_cast<uint64_t>(INT32_MAX)) {
+      UDF_LOG_ERROR("slot group size:%lu is over int32, index:%lu.", group_bytes, index);
+      return FsmStatus::kFsmParamInvalid;
+    }
+    index += count;
+  }
+  return FsmStatus::kFsmSuccess;
 }
+}  // namespace
 
 FsmStatus ReceiveTransferReqState::Preprocess(LlmCommEntity &entity) {
   std::vector<HcclMessage> &probe_msgs = entity.GetProbeMsgs();
@@ -106,8 +152,14 @@ FsmStatus ReceiveTransferReqState::CheckAndSendMeta(LlmCommEntity &entity) {
   }
   auto *resp_info = static_cast<TransferKvMetaInfo *>(addr_info.transfer_kv_resp_meta_addr);
   resp_info->err_code = static_cast<int32_t>(FsmStatus::kFsmSuccess);
-  uint64_t buffer_info_size = static_cast<uint64_t>(addr_info.req_info_count) - sizeof(TransferToRemoteReq);
   auto *req_info = static_cast<TransferToRemoteReq *>(entity.GetTransferKvAddrInfo().transfer_kv_req_addr);
+  if ((req_info == nullptr) || (addr_info.req_info_count < 0) ||
+      (static_cast<uint64_t>(addr_info.req_info_count) < sizeof(TransferToRemoteReq))) {
+    UDF_LOG_ERROR("Invalid transfer req, req size:%d, entity:%s.", addr_info.req_info_count, entity.GetDesc().c_str());
+    resp_info->err_code = static_cast<int32_t>(FsmStatus::kFsmParamInvalid);
+    return FsmStatus::kFsmParamInvalid;
+  }
+  uint64_t buffer_info_size = static_cast<uint64_t>(addr_info.req_info_count) - sizeof(TransferToRemoteReq);
   if (req_info->total_slot_nums != (buffer_info_size / sizeof(TransferSlotInfo))) {
     UDF_RUN_LOG_INFO(
         "Invalid req size, probably caused by pull cache failed, total_slot_nums:%lu, real count:%lu, "
@@ -115,6 +167,9 @@ FsmStatus ReceiveTransferReqState::CheckAndSendMeta(LlmCommEntity &entity) {
         req_info->total_slot_nums, buffer_info_size / sizeof(TransferSlotInfo), entity.GetDesc().c_str());
     resp_info->err_code = static_cast<int32_t>(FsmStatus::kFsmParamInvalid);
     ret = FsmStatus::kFsmIgnore;
+  } else if (ValidateTransferSlots(req_info) != FsmStatus::kFsmSuccess) {
+    resp_info->err_code = static_cast<int32_t>(FsmStatus::kFsmParamInvalid);
+    ret = FsmStatus::kFsmParamInvalid;
   } else if (req_info->dst_cache_id >= 0) {
     UDF_LOG_INFO("Push kv without addr, cache id:%ld, batch index:%lu, tensor per layer:%lu.", req_info->dst_cache_id,
                  req_info->dst_batch_index, req_info->tensor_num_per_layer);
@@ -155,6 +210,10 @@ FsmStatus ReceiveTransferReqState::ValidateAndSetPushAddrs(const TransferToRemot
                   cache_entry.tensor_size, buffer_len);
     return FsmStatus::kFsmParamInvalid;
   }
+  if (req_info->tensor_num_per_layer == 0U) {
+    UDF_LOG_ERROR("cacheId:%ld, tensor_num_per_layer is 0.", req_info->dst_cache_id);
+    return FsmStatus::kFsmParamInvalid;
+  }
   if (cache_entry.tensors.size() % req_info->tensor_num_per_layer != 0) {
     UDF_LOG_ERROR("cacheId:%ld, tensors num:%zu is not a multiple of %lu.", req_info->dst_cache_id,
                   cache_entry.tensors.size(), req_info->tensor_num_per_layer);
@@ -166,12 +225,39 @@ FsmStatus ReceiveTransferReqState::ValidateAndSetPushAddrs(const TransferToRemot
                   req_info->dst_layer_index, max_layer_index);
     return FsmStatus::kFsmParamInvalid;
   }
+  if ((cache_entry.batch_stride != 0U) && (req_info->dst_batch_index > (UINT64_MAX / cache_entry.batch_stride))) {
+    UDF_LOG_ERROR("cacheId:%ld, batch offset overflow, batch_index:%lu, stride:%lu.", req_info->dst_cache_id,
+                  req_info->dst_batch_index, cache_entry.batch_stride);
+    return FsmStatus::kFsmParamInvalid;
+  }
   auto batch_offset = req_info->dst_batch_index * cache_entry.batch_stride;
-  auto tensor_start_idx = req_info->dst_layer_index * req_info->tensor_num_per_layer;
+  if (CheckAddOverflowUint64(batch_offset, req_info->max_size) ||
+      ((batch_offset + req_info->max_size) > cache_entry.tensor_size)) {
+    UDF_LOG_ERROR("cacheId:%ld, batch_offset:%lu add max_size:%lu is over tensor size:%lu.", req_info->dst_cache_id,
+                  batch_offset, req_info->max_size, cache_entry.tensor_size);
+    return FsmStatus::kFsmParamInvalid;
+  }
+  if ((req_info->dst_layer_index != 0U) &&
+      (req_info->tensor_num_per_layer > (UINT64_MAX / req_info->dst_layer_index))) {
+    UDF_LOG_ERROR("cacheId:%ld, layer index:%lu overflows.", req_info->dst_cache_id, req_info->dst_layer_index);
+    return FsmStatus::kFsmParamInvalid;
+  }
+  const auto tensor_start_idx = req_info->dst_layer_index * req_info->tensor_num_per_layer;
+  if ((tensor_start_idx > cache_entry.tensors.size()) ||
+      (req_info->tensor_num_per_layer > (cache_entry.tensors.size() - tensor_start_idx))) {
+    UDF_LOG_ERROR("cacheId:%ld, layer index:%lu is out of range, tensor num:%zu.", req_info->dst_cache_id,
+                  req_info->dst_layer_index, cache_entry.tensors.size());
+    return FsmStatus::kFsmParamInvalid;
+  }
   auto &dst_addrs = entity.GetPushDstAddrs();
   dst_addrs.resize(req_info->tensor_num_per_layer);
   for (uint64_t i = 0; i < req_info->tensor_num_per_layer; i++) {
-    auto &tensor = cache_entry.tensors[tensor_start_idx + i];
+    std::shared_ptr<FlowMsg> tensor;
+    if ((!GetCacheTensor(cache_entry, tensor_start_idx + i, tensor)) || (tensor == nullptr) ||
+        (tensor->GetTensor() == nullptr) || (tensor->GetTensor()->GetData() == nullptr)) {
+      UDF_LOG_ERROR("cacheId:%ld, tensor index:%lu is invalid.", req_info->dst_cache_id, tensor_start_idx + i);
+      return FsmStatus::kFsmParamInvalid;
+    }
     auto data_addr = static_cast<uint8_t *>(tensor->GetTensor()->GetData()) + batch_offset;
     dst_addrs[i] = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(data_addr));
   }

@@ -1690,8 +1690,9 @@ TEST_F(LlmServiceFlowFuncUTest, allocate_cache_failed) {
   auto &req_info = *static_cast<AllocateCacheReqInfo *>(flow_msg->GetTensor()->GetData());
   req_info.cache_id = 666;
   req_info.num_tensors = 1;
-  req_info.num_dims = 1;
-  req_info.dims[0] = 128000000000;
+  req_info.num_dims = 2;
+  req_info.dims[0] = 1;
+  req_info.dims[1] = 8000000000LL;
   EXPECT_EQ(llm_service_flow_func.AllocateCache(run_context, msgs), FLOW_FUNC_SUCCESS);
   auto output_data = static_cast<int32_t *>(out_msg->GetTensor()->GetData());
   EXPECT_EQ(static_cast<FsmStatus>(*output_data), FsmStatus::kFsmOutOfMemory);
@@ -4210,6 +4211,115 @@ TEST_F(LlmServiceFlowFuncUTest, test_receive_with_cacheid_push_not_exist_kv) {
   llm_service_flow_func.SyncKvData(run_context, msgs);
   EXPECT_EQ(entity->GetCurState(), FsmState::kFsmErrorState);
   EXPECT_EQ(DeallocateCache(run_context, out_msg, llm_service_flow_func, cache_id), FsmStatus::kFsmSuccess);
+}
+
+FsmStatus FlowStatusOf(const std::shared_ptr<FlowMsg> &msg) {
+  return static_cast<FsmStatus>(*static_cast<int32_t *>(msg->GetTensor()->GetData()));
+}
+
+std::shared_ptr<FlowFuncRunContext> MakeRunContext(const std::shared_ptr<FlowFuncParams> &params,
+                                                   std::shared_ptr<FlowMsg> &out_msg) {
+  WriterCallback lambda = [&out_msg](uint32_t, const std::shared_ptr<FlowMsg> &msg) -> int32_t {
+    out_msg = msg;
+    return 0;
+  };
+  return std::make_shared<FlowFuncRunContext>(0, params, lambda);
+}
+
+TEST_F(LlmServiceFlowFuncUTest, reject_empty_upper_input) {
+  LlmServiceFlowFunc llm_service_flow_func;
+  std::shared_ptr<FlowFuncParams> params = CreateAttrs();
+  EXPECT_EQ(llm_service_flow_func.Init(params), FLOW_FUNC_SUCCESS);
+  std::shared_ptr<FlowMsg> out_msg;
+  auto run_context = MakeRunContext(params, out_msg);
+  const std::vector<std::shared_ptr<FlowMsg>> empty_msgs;
+  EXPECT_EQ(llm_service_flow_func.GetCache(run_context, empty_msgs), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+  EXPECT_EQ(llm_service_flow_func.AllocateCache(run_context, empty_msgs), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+  EXPECT_EQ(llm_service_flow_func.CopyCache(run_context, empty_msgs), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+  EXPECT_EQ(llm_service_flow_func.DeallocateCache(run_context, empty_msgs), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+  EXPECT_EQ(llm_service_flow_func.RemoveCacheIndex(run_context, empty_msgs), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+  EXPECT_EQ(llm_service_flow_func.SwitchRole(run_context, empty_msgs), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+  EXPECT_EQ(llm_service_flow_func.PullCache(run_context, empty_msgs), FLOW_FUNC_FAILED);
+  EXPECT_EQ(llm_service_flow_func.TransferCache(run_context, empty_msgs), FLOW_FUNC_FAILED);
+  EXPECT_EQ(llm_service_flow_func.CheckLink(run_context, empty_msgs), FLOW_FUNC_FAILED);
+  EXPECT_EQ(llm_service_flow_func.UpdateLink(run_context, empty_msgs), FLOW_FUNC_FAILED);
+  EXPECT_EQ(llm_service_flow_func.UnlinkData(run_context, empty_msgs), FLOW_FUNC_FAILED);
+}
+
+TEST_F(LlmServiceFlowFuncUTest, reject_null_and_bad_tensor_index) {
+  LlmServiceFlowFunc llm_service_flow_func;
+  std::shared_ptr<FlowFuncParams> params = CreateAttrs();
+  EXPECT_EQ(llm_service_flow_func.Init(params), FLOW_FUNC_SUCCESS);
+  std::shared_ptr<FlowMsg> out_msg;
+  auto run_context = MakeRunContext(params, out_msg);
+  std::vector<std::shared_ptr<FlowMsg>> null_elem(1U);
+  EXPECT_EQ(llm_service_flow_func.GetCache(run_context, null_elem), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+  std::shared_ptr<Mbuf> null_mbuf;
+  std::vector<std::shared_ptr<FlowMsg>> null_tensor{std::make_shared<MbufFlowMsg>(null_mbuf)};
+  EXPECT_EQ(llm_service_flow_func.AllocateCache(run_context, null_tensor), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+
+  const int64_t cache_id = 81;
+  EXPECT_EQ(AllocateCache(run_context, out_msg, llm_service_flow_func, cache_id, {}), FsmStatus::kFsmSuccess);
+  std::shared_ptr<FlowMsg> get_msg =
+      run_context->AllocTensorMsg({static_cast<int64_t>(sizeof(GetCacheReqInfo))}, TensorDataType::DT_UINT8);
+  auto &get_req = *static_cast<GetCacheReqInfo *>(get_msg->GetTensor()->GetData());
+  get_req.cache_id = cache_id;
+  get_req.tensor_index = -1;
+  EXPECT_EQ(llm_service_flow_func.GetCache(run_context, {get_msg}), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+  get_req.tensor_index = static_cast<int64_t>(kKvSize);
+  EXPECT_EQ(llm_service_flow_func.GetCache(run_context, {get_msg}), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+  EXPECT_EQ(DeallocateCache(run_context, out_msg, llm_service_flow_func, cache_id), FsmStatus::kFsmSuccess);
+}
+
+TEST_F(LlmServiceFlowFuncUTest, reject_bad_allocate_role_and_link) {
+  LlmServiceFlowFunc llm_service_flow_func;
+  std::shared_ptr<FlowFuncParams> params = CreateAttrs();
+  EXPECT_EQ(llm_service_flow_func.Init(params), FLOW_FUNC_SUCCESS);
+  std::shared_ptr<FlowMsg> out_msg;
+  auto run_context = MakeRunContext(params, out_msg);
+  const int64_t cache_id = 81;
+  std::shared_ptr<FlowMsg> alloc_msg =
+      run_context->AllocTensorMsg({static_cast<int64_t>(sizeof(AllocateCacheReqInfo))}, TensorDataType::DT_UINT8);
+  auto &alloc_req = *static_cast<AllocateCacheReqInfo *>(alloc_msg->GetTensor()->GetData());
+  alloc_req.cache_id = cache_id;
+  alloc_req.num_tensors = 1U;
+  alloc_req.num_dims = 33U;
+  alloc_req.num_requests = 0U;
+  EXPECT_EQ(llm_service_flow_func.AllocateCache(run_context, {alloc_msg}), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+
+  std::shared_ptr<FlowMsg> role_msg =
+      run_context->AllocTensorMsg({static_cast<int64_t>(sizeof(SwitchRoleReqInfo))}, TensorDataType::DT_UINT8);
+  auto &role_req = *static_cast<SwitchRoleReqInfo *>(role_msg->GetTensor()->GetData());
+  role_req.role_id = 3;
+  role_req.prompt_listen_ip = 1U;
+  role_req.prompt_listen_port = 1U;
+  EXPECT_EQ(llm_service_flow_func.SwitchRole(run_context, {role_msg}), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+  role_req.role_id = 0;
+  role_req.prompt_listen_port = static_cast<uint32_t>(UINT16_MAX) + 1U;
+  EXPECT_EQ(llm_service_flow_func.SwitchRole(run_context, {role_msg}), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
+
+  std::shared_ptr<FlowMsg> link_msg =
+      run_context->AllocTensorMsg({static_cast<int64_t>(sizeof(UpdateLinkReqInfo))}, TensorDataType::DT_UINT8);
+  auto link_req = static_cast<UpdateLinkReqInfo *>(link_msg->GetTensor()->GetData());
+  link_req->operator_type = static_cast<uint32_t>(LinkReqType::kLink);
+  link_req->cluster_num = 1U;
+  link_req->timeout = 10000U;
+  link_req->force_flag = 0U;
+  EXPECT_EQ(llm_service_flow_func.UpdateLink(run_context, {link_msg}), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(FlowStatusOf(out_msg), FsmStatus::kFsmParamInvalid);
 }
 
 TEST_F(LlmServiceFlowFuncUTest, get_entity_by_ip_locked_lookup) {

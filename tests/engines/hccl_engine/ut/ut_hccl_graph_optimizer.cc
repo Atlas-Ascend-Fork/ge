@@ -2603,3 +2603,81 @@ TEST_F(HcomGraphOptimizerTest, Ut_GetFusionOption_When_FusionAttrNoFusion_Expect
   result = broadcast.GetFusionOption(nodeptr, fusionOption);
   EXPECT_EQ(result, HCCL_SUCCESS);
 }
+
+TEST_F(HcomGraphOptimizerTest, ut_HcomGraphOptimizeInitialize_When_OptionsEmpty_Expect_SuccessWithDefault) {
+  HcomGraphOptimizer optimizer;
+  std::map<std::string, std::string> options;
+
+  // 未配置 FUSION_TENSOR_SIZE 与 HCOM_MULTI_MODE 时使用默认值
+  HcclResult ret = optimizer.HcomGraphOptimizeInitialize(options, nullptr);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(optimizer.fusionTensorSizeLimit_, 524288000U);
+  EXPECT_EQ(optimizer.hcomMultiMode_, 0);
+}
+
+TEST_F(HcomGraphOptimizerTest, ut_HcomGraphOptimizeInitialize_When_FusionTensorSizeInvalid_Expect_ReturnParaError) {
+  HcomGraphOptimizer optimizer;
+  std::map<std::string, std::string> options;
+  options.insert(std::make_pair(ge::FUSION_TENSOR_SIZE, "invalid_size"));
+
+  // FUSION_TENSOR_SIZE 不是合法整数
+  HcclResult ret = optimizer.HcomGraphOptimizeInitialize(options, nullptr);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(HcomGraphOptimizerTest, ut_HcomGraphOptimizeInitialize_When_HcomMultiModeInvalid_Expect_ReturnParaError) {
+  HcomGraphOptimizer optimizer;
+  std::map<std::string, std::string> options;
+  options.insert(std::make_pair(ge::HCOM_MULTI_MODE, "invalid_mode"));
+
+  // HCOM_MULTI_MODE 不是合法整数
+  HcclResult ret = optimizer.HcomGraphOptimizeInitialize(options, nullptr);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+
+  // HCOM_MULTI_MODE 超出[0,1]取值范围
+  options[ge::HCOM_MULTI_MODE] = "5";
+  ret = optimizer.HcomGraphOptimizeInitialize(options, nullptr);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+
+  // 合法取值初始化成功
+  options[ge::HCOM_MULTI_MODE] = "1";
+  options.insert(std::make_pair(ge::FUSION_TENSOR_SIZE, "1024"));
+  ret = optimizer.HcomGraphOptimizeInitialize(options, nullptr);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(optimizer.hcomMultiMode_, 1);
+  EXPECT_EQ(optimizer.fusionTensorSizeLimit_, 1024U);
+}
+
+TEST_F(HcomGraphOptimizerTest, ut_SetOpMemAttr_When_SetReferenceAttrFail_Expect_ReturnParaError) {
+  HcomGraphOptimizer optimizer;
+  ge::NodePtr nodeptr(new NodeTest);
+  u64 opMemSize = 1024;
+  std::string type = HCCL_KERNEL_OP_TYPE_BROADCAST;
+
+  nodeptr->GetOpDesc()->SetType(type);
+  MOCKER(&ge::AttrUtils::SetBool).stubs().will(returnValue(false));
+  HcclResult ret = optimizer.SetOpMemAttr(*nodeptr, type, opMemSize);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomGraphOptimizerTest, ut_SetOpMemAttr_When_NotBroadcast_Expect_ReturnSuccess) {
+  HcomGraphOptimizer optimizer;
+  ge::NodePtr nodeptr(new NodeTest);
+  u64 opMemSize = 1024;
+  std::string group = HCCL_WORLD_GROUP;
+
+  // 非 Broadcast 算子走 reference 跳过分支
+  std::string type = HCCL_KERNEL_OP_TYPE_ALLGATHER;
+  nodeptr->GetOpDesc()->SetType(type);
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_TRUE_GROUP");
+  ge::AttrUtils::SetStr(nodeptr->GetOpDesc(), "group", group);
+  HcclResult ret = optimizer.SetOpMemAttr(*nodeptr, type, opMemSize);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+
+  // Broadcast 算子走 reference 设置分支
+  type = HCCL_KERNEL_OP_TYPE_BROADCAST;
+  nodeptr->GetOpDesc()->SetType(type);
+  ret = optimizer.SetOpMemAttr(*nodeptr, type, opMemSize);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+}

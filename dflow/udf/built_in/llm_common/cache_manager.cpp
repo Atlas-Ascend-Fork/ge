@@ -18,6 +18,28 @@
 namespace FlowFunc {
 namespace {
 constexpr uint32_t kMemAlign = 512U;
+
+bool BatchByteOffset(uint64_t stride, uint64_t batch_index, uint64_t inner_offset, uint64_t &offset) {
+  if ((stride != 0U) && (batch_index > (UINT64_MAX / stride))) {
+    return false;
+  }
+  if (CheckAddOverflowUint64(stride * batch_index, inner_offset)) {
+    return false;
+  }
+  offset = (stride * batch_index) + inner_offset;
+  return true;
+}
+
+bool TensorRange(const std::shared_ptr<FlowMsg> &tensor, uint64_t offset, uint64_t copy_size, uint8_t *&data) {
+  if ((tensor == nullptr) || (tensor->GetTensor() == nullptr) || (tensor->GetTensor()->GetData() == nullptr)) {
+    return false;
+  }
+  if (CheckAddOverflowUint64(offset, copy_size) || ((offset + copy_size) > tensor->GetTensor()->GetDataSize())) {
+    return false;
+  }
+  data = static_cast<uint8_t *>(tensor->GetTensor()->GetData());
+  return true;
+}
 }  // namespace
 
 CacheManager &CacheManager::GetInstance() {
@@ -29,6 +51,11 @@ FsmStatus CacheManager::AllocateCache(const std::shared_ptr<MetaRunContext> &run
                                       const AllocateCacheReqInfo &req_info, uint64_t *data_addresses) {
   std::lock_guard<std::mutex> lk(mu_);
   if (req_info.num_tensors == 0U) {
+    return FsmStatus::kFsmParamInvalid;
+  }
+  if (req_info.num_dims > (sizeof(req_info.dims) / sizeof(req_info.dims[0]))) {
+    UDF_LOG_ERROR("[cache_id:%ld][Allocate] num_dims:%u is over limit:%zu.", req_info.cache_id, req_info.num_dims,
+                  sizeof(req_info.dims) / sizeof(req_info.dims[0]));
     return FsmStatus::kFsmParamInvalid;
   }
   CacheEntry cache_entry;
@@ -48,8 +75,16 @@ FsmStatus CacheManager::AllocateCache(const std::shared_ptr<MetaRunContext> &run
   }
   cache_entry.ext_ref_count = 1U;
   cache_entry.tensor_size = static_cast<size_t>(tensor_size);
-  cache_entry.batch_size = shape.empty() ? 1U : static_cast<uint32_t>(shape.front());
-  cache_entry.batch_stride = tensor_size / cache_entry.batch_size;
+  uint32_t batch_size = 1U;
+  if (!shape.empty()) {
+    if ((shape.front() <= 0) || (shape.front() > static_cast<int64_t>(UINT32_MAX))) {
+      UDF_LOG_ERROR("[cache_id:%ld][Allocate] batch dim:%ld is invalid.", req_info.cache_id, shape.front());
+      return FsmStatus::kFsmParamInvalid;
+    }
+    batch_size = static_cast<uint32_t>(shape.front());
+  }
+  cache_entry.batch_size = batch_size;
+  cache_entry.batch_stride = static_cast<uint64_t>(tensor_size) / batch_size;
   cache_entry.seq_len_dim_index = req_info.seq_len_dim_index;
   UDF_LOG_INFO(
       "[cache_id:%ld][Allocate] allocate start, tensorNum = %u, tensor_size = %lu, "
@@ -57,10 +92,15 @@ FsmStatus CacheManager::AllocateCache(const std::shared_ptr<MetaRunContext> &run
       req_info.cache_id, req_info.num_tensors, cache_entry.tensor_size, cache_entry.batch_size,
       cache_entry.batch_stride, req_info.seq_len_dim_index, cache_indices.size());
   const auto num_tensors = static_cast<size_t>(req_info.num_tensors);
+  if (data_addresses == nullptr) {
+    UDF_LOG_ERROR("[cache_id:%ld][Allocate] data address is nullptr.", req_info.cache_id);
+    return FsmStatus::kFsmParamInvalid;
+  }
   cache_entry.tensors.resize(num_tensors);
   for (size_t i = 0U; i < num_tensors; ++i) {
     auto cache_tensor = run_context->AllocTensorMsgWithAlign(shape, dtype, kMemAlign);
-    if (cache_tensor == nullptr) {
+    if ((cache_tensor == nullptr) || (cache_tensor->GetTensor() == nullptr) ||
+        (cache_tensor->GetTensor()->GetData() == nullptr)) {
       UDF_LOG_ERROR(
           "Allocate cache failed. cache_id = %ld, tensorNum = %u, tensor_size = %lu, "
           "currentCacheNum = %zu",
@@ -125,6 +165,9 @@ void CacheManager::AddCacheIndicesForBlocks(const AllocateCacheReqInfo &req_info
 
 void CacheManager::RemoveAddrToSize(const CacheEntry &cache_entry) {
   for (const auto &tensor : cache_entry.tensors) {
+    if ((tensor == nullptr) || (tensor->GetTensor() == nullptr) || (tensor->GetTensor()->GetData() == nullptr)) {
+      continue;
+    }
     auto addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(tensor->GetTensor()->GetData()));
     if (addr_to_size_.find(addr) != addr_to_size_.end()) {
       (void)addr_to_size_.erase(addr);
@@ -165,8 +208,12 @@ FsmStatus CacheManager::RemoveCacheIndex(const CacheIndex &cache_index, bool is_
     return FsmStatus::kFsmKvNotExist;
   }
   const auto cache_id = cache_id_it->second;
-  // 保证cache index指向的cache entry必然存在
   const auto it = cache_id_to_entry_.find(cache_id);
+  if (it == cache_id_to_entry_.cend()) {
+    UDF_LOG_ERROR("[cache_id:%ld][RemoveIndex] cache entry does not exist, cacheKey (%lu, %lu).", cache_id,
+                  cache_index.first, cache_index.second);
+    return FsmStatus::kFsmKvNotExist;
+  }
   auto &cache_entry = it->second;
   auto batch_index_and_size_it = cache_entry.id_to_batch_index_and_size.find(cache_index.first);
   if (batch_index_and_size_it != cache_entry.id_to_batch_index_and_size.cend()) {
@@ -216,10 +263,22 @@ FsmStatus CacheManager::CopyBlockCache(const CopyCacheReqInfo &req_info) const {
     }
   }
   for (const auto &kv_tensor : cache_entry.tensors) {
-    auto data_addr = static_cast<uint8_t *>(kv_tensor->GetTensor()->GetData());
     for (uint32_t i = 0; i < req_info.copy_block_count; ++i) {
-      auto src_mem = data_addr + req_info.block_copy_infos[i].src_block_index * cache_entry.block_len;
-      auto dst_mem = data_addr + req_info.block_copy_infos[i].dst_block_index * cache_entry.block_len;
+      uint64_t src_off = 0U;
+      uint64_t dst_off = 0U;
+      uint8_t *src_mem = nullptr;
+      uint8_t *dst_mem = nullptr;
+      if ((!BatchByteOffset(cache_entry.block_len, req_info.block_copy_infos[i].src_block_index, 0U, src_off)) ||
+          (!BatchByteOffset(cache_entry.block_len, req_info.block_copy_infos[i].dst_block_index, 0U, dst_off)) ||
+          (!TensorRange(kv_tensor, src_off, cache_entry.block_len, src_mem)) ||
+          (!TensorRange(kv_tensor, dst_off, cache_entry.block_len, dst_mem))) {
+        UDF_LOG_ERROR("[cache_id:%ld][CopyBlockCache] block copy range is invalid, src:%lu, dst:%lu, block_len:%lu.",
+                      req_info.dst_cache_id, req_info.block_copy_infos[i].src_block_index,
+                      req_info.block_copy_infos[i].dst_block_index, cache_entry.block_len);
+        return FsmStatus::kFsmParamInvalid;
+      }
+      src_mem += src_off;
+      dst_mem += dst_off;
       const auto copy_ret = halSdmaCopy(reinterpret_cast<uintptr_t>(dst_mem), cache_entry.block_len,
                                         reinterpret_cast<uintptr_t>(src_mem), cache_entry.block_len);
       if (copy_ret != DRV_ERROR_NONE) {
@@ -251,16 +310,32 @@ FsmStatus CacheManager::CopyCache(const CopyCacheReqInfo &req_info) const {
   if (CheckCopyCacheParam(src_cache_entry, dst_cache_entry, req_info, copy_size) != FsmStatus::kFsmSuccess) {
     return FsmStatus::kFsmParamInvalid;
   }
-  const auto dst_offset = dst_cache_entry.batch_stride * req_info.dst_batch_index + req_info.offset;
-  const auto src_offset = src_cache_entry.batch_stride * req_info.src_batch_index + req_info.offset;
+  uint64_t dst_offset = 0U;
+  uint64_t src_offset = 0U;
+  if ((!BatchByteOffset(dst_cache_entry.batch_stride, req_info.dst_batch_index, req_info.offset, dst_offset)) ||
+      (!BatchByteOffset(src_cache_entry.batch_stride, req_info.src_batch_index, req_info.offset, src_offset))) {
+    UDF_LOG_ERROR("[CopyCache](%ld->%ld) failed, batch offset overflow.", req_info.src_cache_id, req_info.dst_cache_id);
+    return FsmStatus::kFsmParamInvalid;
+  }
   const auto dst_max = dst_cache_entry.batch_stride - req_info.offset;
   UDF_LOG_INFO("[CopyCache](%ld->%ld) start, num_tensors = %zu, copy_size = %lu", req_info.src_cache_id,
                req_info.dst_cache_id, src_cache_entry.tensors.size(), copy_size);
   UDF_LOG_INFO("Src: [batch_index = %u, offset = %lu], Dst: [BatchIndex = %u, offset = %lu]", req_info.src_batch_index,
                src_offset, req_info.dst_batch_index, dst_offset);
   for (size_t i = 0U; i < src_cache_entry.tensors.size(); ++i) {
-    auto src_mem_base = static_cast<uint8_t *>(src_cache_entry.tensors[i]->GetTensor()->GetData());
-    auto dst_mem_base = static_cast<uint8_t *>(dst_cache_entry.tensors[i]->GetTensor()->GetData());
+    if (i >= dst_cache_entry.tensors.size()) {
+      UDF_LOG_ERROR("[CopyCache](%ld->%ld) failed, dst tensor index:%zu is out of range, tensor num:%zu.",
+                    req_info.src_cache_id, req_info.dst_cache_id, i, dst_cache_entry.tensors.size());
+      return FsmStatus::kFsmParamInvalid;
+    }
+    uint8_t *src_mem_base = nullptr;
+    uint8_t *dst_mem_base = nullptr;
+    if ((!TensorRange(src_cache_entry.tensors[i], src_offset, copy_size, src_mem_base)) ||
+        (!TensorRange(dst_cache_entry.tensors[i], dst_offset, copy_size, dst_mem_base))) {
+      UDF_LOG_ERROR("[CopyCache](%ld->%ld) failed, tensor index:%zu copy range is invalid.", req_info.src_cache_id,
+                    req_info.dst_cache_id, i);
+      return FsmStatus::kFsmParamInvalid;
+    }
     auto dst_mem = dst_mem_base + dst_offset;
     auto src_men = src_mem_base + src_offset;
     const auto copy_ret = D2DCopy(dst_mem, dst_max, src_men, copy_size);
@@ -354,7 +429,8 @@ FsmStatus CacheManager::CheckReqInfo(const CacheEntry &cache_entry, PullKvReqInf
   if (req_info->block_len == 0U) {
     req_info->block_len = (cache_entry.batch_stride - req_info->dst_cache_offset);
   }
-  if ((req_info->dst_cache_offset + req_info->block_len) > cache_entry.batch_stride) {
+  if (CheckAddOverflowUint64(req_info->dst_cache_offset, req_info->block_len) ||
+      ((req_info->dst_cache_offset + req_info->block_len) > cache_entry.batch_stride)) {
     UDF_LOG_ERROR("[cache_id:%ld][Pull] dst_cache_offset(%lu) or block_len(%lu) is invalid, cache batch stride(%lu).",
                   req_info->cache_id, req_info->dst_cache_offset, req_info->block_len, cache_entry.batch_stride);
     return FsmStatus::kFsmParamInvalid;
@@ -393,6 +469,10 @@ FsmStatus CacheManager::TransferCache(TransferKvReqInfo *req_info, ClusterManage
   if (!GetCacheEntry(req_info->cache_id, cache_entry)) {
     UDF_LOG_ERROR("[cache_id:%ld][Transfer] cache_id not found.", req_info->cache_id);
     return FsmStatus::kFsmKvNotExist;
+  }
+  if (req_info->tensor_num_per_layer == 0U) {
+    UDF_LOG_ERROR("[cache_id:%ld][Transfer] tensor_num_per_layer is 0.", req_info->cache_id);
+    return FsmStatus::kFsmParamInvalid;
   }
   if (cache_entry.tensors.size() % req_info->tensor_num_per_layer != 0) {
     UDF_LOG_ERROR("[cache_id:%ld][Transfer] tensors num:%zu is not a multiple of %lu.", req_info->cache_id,
@@ -455,8 +535,11 @@ bool CacheManager::GetCacheEntry(const CacheIndex &cache_index, CacheEntry &cach
   if (it == index_to_id.cend()) {
     return false;
   }
-  // cacheIndex存在, 则cache entry必然存在
-  cache_entry = *DoGetCacheEntry(it->second);
+  const auto *entry = DoGetCacheEntry(it->second);
+  if (entry == nullptr) {
+    return false;
+  }
+  cache_entry = *entry;
   return true;
 }
 
@@ -515,10 +598,17 @@ FsmStatus CacheManager::CheckAndCreateCacheIndices(const AllocateCacheReqInfo &r
 }
 
 FsmStatus CacheManager::CheckAddr(uint64_t addr, uint64_t check_size) {
+  if (CheckAddOverflowUint64(addr, check_size)) {
+    UDF_LOG_ERROR("Addr:%lu add size:%lu overflow.", addr, check_size);
+    return FsmStatus::kFsmParamInvalid;
+  }
   const auto it = addr_to_size_.find(addr);
   if (it == addr_to_size_.end()) {
     for (auto &addr_size_pair : addr_to_size_) {
       auto exist_addr = addr_size_pair.first;
+      if (CheckAddOverflowUint64(exist_addr, addr_size_pair.second)) {
+        continue;
+      }
       if ((addr > exist_addr) && ((addr + check_size) <= (exist_addr + addr_size_pair.second))) {
         return FsmStatus::kFsmSuccess;
       }

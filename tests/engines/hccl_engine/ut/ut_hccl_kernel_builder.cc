@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -951,4 +951,195 @@ TEST_F(HcomKernelBuilderTest, Ut_SetPrivateDefWithTensorInfo) {
   HcomOpsKernelBuilder hcomOpsKernelInfoStore_;
   HcclResult result = hcomOpsKernelInfoStore_.SetPrivateDefWithTensorInfo(*nodeptr, privateDefBuf, taskDef);
   EXPECT_EQ(result, HCCL_SUCCESS);
+}
+
+/*
+ * 说明: 以下 GetStr 失败类用例依赖 stub 全局 dummyStringMAP 中尚无 "_super_kernel_scope" 键,
+ *       必须置于 SetStr("_super_kernel_scope") 的用例(ut_CheckSuperKernelEligibility_When_OpNotInAivList_*)之前
+ */
+TEST_F(HcomKernelBuilderTest, ut_GetSuperKernelFromDesc_When_GetStrAttrFail_Expect_ReturnParaError) {
+  HcomOpsKernelBuilder hcomKernelInfo;
+  ge::NodePtr nodeptr(new NodeTest);
+  ge::OpDescPtr opDescPtr = nodeptr->GetOpDesc();
+  std::string superKernel;
+
+  // super_kernel_scope 属性存在但未设置字符串值, GetStr 失败
+  ge::AttrUtils::HasAttr(opDescPtr, "ATTR_SUPER_KERNEL_SCOPE");
+  HcclResult ret = hcomKernelInfo.GetSuperKernelFromDesc(opDescPtr, superKernel);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(HcomKernelBuilderTest, ut_CheckSuperKernelEligibility_When_GetScopeAttrFail_Expect_ReturnParaError) {
+  HcomOpsKernelBuilder hcomKernelInfo;
+  ge::NodePtr nodeptr(new NodeTest);
+  ge::OpDescPtr opDescPtr = nodeptr->GetOpDesc();
+  std::string sCollectiveType;
+  std::string superKernelScope;
+  HcclCMDType opType = HcclCMDType::HCCL_CMD_INVALID;
+  bool needProcess = true;
+
+  // 支持的算子类型 + super_kernel_scope 属性存在但 GetStr 失败
+  nodeptr->GetOpDesc()->SetType(HCCL_KERNEL_OP_TYPE_BROADCAST);
+  ge::AttrUtils::HasAttr(opDescPtr, "ATTR_SUPER_KERNEL_SCOPE");
+  HcclResult ret = hcomKernelInfo.CheckSuperKernelEligibility(*nodeptr, opDescPtr, sCollectiveType, superKernelScope,
+                                                              opType, needProcess);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+  EXPECT_FALSE(needProcess);
+}
+
+TEST_F(HcomKernelBuilderTest, ut_CheckSuperKernelEligibility_When_OpTypeNotSupport_Expect_ReturnSuccessAndSkip) {
+  HcomOpsKernelBuilder hcomKernelInfo;
+  ge::NodePtr nodeptr(new NodeTest);
+  ge::OpDescPtr opDescPtr = nodeptr->GetOpDesc();
+  std::string sCollectiveType;
+  std::string superKernelScope;
+  HcclCMDType opType = HcclCMDType::HCCL_CMD_INVALID;
+  bool needProcess = true;
+
+  // 算子类型不在支持列表, 直接跳过 SuperKernel 处理
+  nodeptr->GetOpDesc()->SetType("HcomNotSupportOp");
+  HcclResult ret = hcomKernelInfo.CheckSuperKernelEligibility(*nodeptr, opDescPtr, sCollectiveType, superKernelScope,
+                                                              opType, needProcess);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_FALSE(needProcess);
+}
+
+TEST_F(HcomKernelBuilderTest, ut_CheckSuperKernelEligibility_When_OpNotInAivList_Expect_ReturnSuccessAndSkip) {
+  HcomOpsKernelBuilder hcomKernelInfo;
+  ge::NodePtr nodeptr(new NodeTest);
+  ge::OpDescPtr opDescPtr = nodeptr->GetOpDesc();
+  std::string sCollectiveType;
+  std::string superKernelScope;
+  HcclCMDType opType = HcclCMDType::HCCL_CMD_INVALID;
+  bool needProcess = true;
+  std::string superKernelScopeValue = "level0";
+
+  // Broadcast 不在 AIV SuperKernel 支持列表, 删除属性并跳过
+  nodeptr->GetOpDesc()->SetType(HCCL_KERNEL_OP_TYPE_BROADCAST);
+  ge::AttrUtils::HasAttr(opDescPtr, "ATTR_SUPER_KERNEL_SCOPE");
+  ge::AttrUtils::SetStr(opDescPtr, "_super_kernel_scope", superKernelScopeValue);
+  HcclResult ret = hcomKernelInfo.CheckSuperKernelEligibility(*nodeptr, opDescPtr, sCollectiveType, superKernelScope,
+                                                              opType, needProcess);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_FALSE(needProcess);
+  EXPECT_EQ(superKernelScope, superKernelScopeValue);
+
+  // AllGather 在 AIV 支持列表, 但 optionFeatureBaseRefreshable_ 为 1 时同样跳过
+  nodeptr->GetOpDesc()->SetType(HCCL_KERNEL_OP_TYPE_ALLGATHER);
+  hcomKernelInfo.optionFeatureBaseRefreshable_ = 1;
+  needProcess = true;
+  ret = hcomKernelInfo.CheckSuperKernelEligibility(*nodeptr, opDescPtr, sCollectiveType, superKernelScope, opType,
+                                                   needProcess);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_FALSE(needProcess);
+}
+
+TEST_F(HcomKernelBuilderTest, ut_GetSuperKernelFromDesc_When_AttrValid_Expect_ReturnSuccess) {
+  HcomOpsKernelBuilder hcomKernelInfo;
+  ge::NodePtr nodeptr(new NodeTest);
+  ge::OpDescPtr opDescPtr = nodeptr->GetOpDesc();
+  std::string superKernel;
+  std::string superKernelScopeValue = "level1";
+
+  ge::AttrUtils::HasAttr(opDescPtr, "ATTR_SUPER_KERNEL_SCOPE");
+  ge::AttrUtils::SetStr(opDescPtr, "_super_kernel_scope", superKernelScopeValue);
+  HcclResult ret = hcomKernelInfo.GetSuperKernelFromDesc(opDescPtr, superKernel);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(superKernel, superKernelScopeValue);
+}
+
+TEST_F(HcomKernelBuilderTest, ut_GetNeedMapRankFromDesc_When_GetBoolAttrFail_Expect_ReturnParaError) {
+  HcomOpsKernelBuilder hcomKernelInfo;
+  ge::NodePtr nodeptr(new NodeTest);
+  ge::OpDescPtr opDescPtr = nodeptr->GetOpDesc();
+  bool needMapRank = false;
+
+  // 属性存在但 GetBool 获取失败
+  ge::AttrUtils::HasAttr(opDescPtr, "DUMMY_SET_TRUE_NEEDMAPRANK");
+  MOCKER(&ge::AttrUtils::GetBool).stubs().will(returnValue(false));
+  HcclResult ret = hcomKernelInfo.GetNeedMapRankFromDesc(opDescPtr, needMapRank);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+  GlobalMockObject::verify();
+
+  // 属性存在且获取成功
+  ge::AttrUtils::SetBool(opDescPtr, "_need_map_rank_id", true);
+  ret = hcomKernelInfo.GetNeedMapRankFromDesc(opDescPtr, needMapRank);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_TRUE(needMapRank);
+}
+
+TEST_F(HcomKernelBuilderTest, ut_GetDestRankFromDesc_When_NoDestRankAttr_Expect_ReturnParaError) {
+  HcomOpsKernelBuilder hcomKernelInfo;
+  ge::NodePtr nodeptr(new NodeTest);
+  ge::OpDescPtr opDescPtr = nodeptr->GetOpDesc();
+  u32 destRank = 0;
+  s64 tempInt = 8;
+
+  // Send 算子无 dest_rank 属性
+  std::string type = HCCL_KERNEL_OP_TYPE_SEND;
+  ge::AttrUtils::HasAttr(opDescPtr, "DUMMY_SET_FALSE_DESTRANK");
+  HcclResult ret = hcomKernelInfo.GetDestRankFromDesc(opDescPtr, destRank, type);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+  EXPECT_EQ(destRank, 0U);
+
+  // Send 算子 dest_rank 属性获取成功
+  ge::AttrUtils::HasAttr(opDescPtr, "DUMMY_SET_TRUE_DESTRANK");
+  ge::AttrUtils::SetInt(opDescPtr, "dest_rank", tempInt);
+  ret = hcomKernelInfo.GetDestRankFromDesc(opDescPtr, destRank, type);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(destRank, 8U);
+
+  // 非 Send 算子不获取 dest_rank
+  type = HCCL_KERNEL_OP_TYPE_ALLGATHER;
+  destRank = 0;
+  ret = hcomKernelInfo.GetDestRankFromDesc(opDescPtr, destRank, type);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(destRank, 0U);
+}
+
+TEST_F(HcomKernelBuilderTest, ut_SetOpMemAttr_When_SetReferenceAttrFail_Expect_ReturnParaError) {
+  HcomOpsKernelBuilder hcomKernelInfo;
+  ge::NodePtr nodeptr(new NodeTest);
+  u64 opMemSize = 1024;
+  std::string type = HCCL_KERNEL_OP_TYPE_BROADCAST;
+
+  nodeptr->GetOpDesc()->SetType(type);
+  MOCKER(&ge::AttrUtils::SetBool).stubs().will(returnValue(false));
+  HcclResult ret = hcomKernelInfo.SetOpMemAttr(*nodeptr, type, opMemSize);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomKernelBuilderTest, ut_SetOpMemAttr_When_UpdateOutputNameFail_Expect_ReturnParaError) {
+  HcomOpsKernelBuilder hcomKernelInfo;
+  ge::NodePtr nodeptr(new NodeTest);
+  u64 opMemSize = 1024;
+  std::string type = HCCL_KERNEL_OP_TYPE_BROADCAST;
+
+  nodeptr->GetOpDesc()->SetType(type);
+  MOCKER_CPP(&ge::OpDesc::UpdateOutputName).stubs().will(returnValue(false));
+  HcclResult ret = hcomKernelInfo.SetOpMemAttr(*nodeptr, type, opMemSize);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomKernelBuilderTest, ut_SetOpMemAttr_When_NotBroadcast_Expect_ReturnSuccess) {
+  HcomOpsKernelBuilder hcomKernelInfo;
+  ge::NodePtr nodeptr(new NodeTest);
+  u64 opMemSize = 1024;
+  std::string group = HCCL_WORLD_GROUP;
+
+  // 非 Broadcast 算子走 reference 跳过分支
+  std::string type = HCCL_KERNEL_OP_TYPE_ALLGATHER;
+  nodeptr->GetOpDesc()->SetType(type);
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_TRUE_GROUP");
+  ge::AttrUtils::SetStr(nodeptr->GetOpDesc(), "group", group);
+  HcclResult ret = hcomKernelInfo.SetOpMemAttr(*nodeptr, type, opMemSize);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+
+  // Broadcast 算子走 reference 设置分支
+  type = HCCL_KERNEL_OP_TYPE_BROADCAST;
+  nodeptr->GetOpDesc()->SetType(type);
+  ret = hcomKernelInfo.SetOpMemAttr(*nodeptr, type, opMemSize);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
 }

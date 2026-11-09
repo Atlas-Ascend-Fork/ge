@@ -274,8 +274,7 @@ stages:
 
       JOB_UT_Test_hcce:
         name: UT_Test_hcce
-        # 临时关闭hcce UT门禁（增量覆盖率80%阻塞存量PR合入），恢复时改回 env.TARGET_BRANCH == 'master'
-        if: env.TARGET_BRANCH == 'disabled'
+        if: env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
         uses: .gitcode/workflows/ut_action.yml
         with:
           ut_type: 'hcce'
@@ -390,8 +389,7 @@ stages:
 
       JOB_ST_Test_hcce:
         name: ST_Test_hcce
-        # 临时关闭hcce ST门禁（增量覆盖率80%阻塞存量PR合入），恢复时改回 env.TARGET_BRANCH == 'master'
-        if: env.TARGET_BRANCH == 'disabled'
+        if: env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
         uses: .gitcode/workflows/st_action.yml
         with:
           st_type: 'hcce'
@@ -657,8 +655,7 @@ stages:
               artifact-path: |
                 ${{ steps.process_checkout.outputs.path }}/ut_cov_*.tar.gz
               object-prefix: ${{ env.obs_path }}/
-        # 临时关闭hcce UT Report（配套UT/ST门禁临时关闭，Test job被disable后无覆盖率产物），恢复时改回 env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
-        if: env.TARGET_BRANCH == 'disabled'
+        if: env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
         runs-on: ['self-hosted', 'arch=x64', 'spec=small']
         container:
           image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ jobs.JOB_image.outputs.UT_Test_Report }}
@@ -699,6 +696,7 @@ stages:
               git_token: ${{secrets.GIT_TOKEN}}
           -
             name: rename
+            if: ${{ always() }}
             run: |
               if [ -f "${{ steps.process_checkout.outputs.path }}/ut_cov_graphengine.tar.gz" ]; then
                 mv ${{ steps.process_checkout.outputs.path }}/ut_cov_graphengine.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_graphengine.tar.gz
@@ -758,6 +756,7 @@ stages:
               git_token: ${{secrets.GIT_TOKEN}}
           -
             name: rename
+            if: ${{ always() }}
             run: |
               if [ -f "${{ steps.process_checkout.outputs.path }}/ut_cov_ge_executor_c.tar.gz" ]; then
                 mv ${{ steps.process_checkout.outputs.path }}/ut_cov_ge_executor_c.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_ge_executor_c.tar.gz
@@ -817,6 +816,7 @@ stages:
               git_token: ${{secrets.GIT_TOKEN}}
           -
             name: rename
+            if: ${{ always() }}
             run: |
               if [ -f "${{ steps.process_checkout.outputs.path }}/ut_cov_ge_autofuse.tar.gz" ]; then
                 mv ${{ steps.process_checkout.outputs.path }}/ut_cov_ge_autofuse.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_ge_autofuse.tar.gz
@@ -876,6 +876,7 @@ stages:
               git_token: ${{secrets.GIT_TOKEN}}
           -
             name: rename
+            if: ${{ always() }}
             run: |
               if [ -f "${{ steps.process_checkout.outputs.path }}/ut_cov_fe.tar.gz" ]; then
                 mv ${{ steps.process_checkout.outputs.path }}/ut_cov_fe.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_fe.tar.gz
@@ -935,6 +936,7 @@ stages:
               git_token: ${{secrets.GIT_TOKEN}}
           -
             name: rename
+            if: ${{ always() }}
             run: |
               if [ -f "${{ steps.process_checkout.outputs.path }}/ut_cov_hcce.tar.gz" ]; then
                 mv ${{ steps.process_checkout.outputs.path }}/ut_cov_hcce.tar.gz ${{ steps.process_checkout.outputs.path }}/st_cov_hcce.tar.gz
@@ -953,8 +955,7 @@ stages:
               artifact-path: |
                 ${{ steps.process_checkout.outputs.path }}/st_cov_*.tar.gz
               object-prefix: ${{ env.obs_path }}/
-        # 临时关闭hcce ST Report（配套UT/ST门禁临时关闭，Test job被disable后无覆盖率产物），恢复时改回 env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
-        if: env.TARGET_BRANCH == 'disabled'
+        if: env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
         runs-on: ['self-hosted', 'arch=x64', 'spec=small']
         container:
           image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ jobs.JOB_image.outputs.ST_Test_Report }}
@@ -1032,6 +1033,63 @@ stages:
         runs-on: ['self-hosted','npu=1','smoke=204']
         container:
           image: swr.cn-south-1.myhuaweicloud.com/pre_smoke/${{ jobs.JOB_image.outputs.PreSmoke_A900_npupool }}
+      PreSmoke_A5:
+        name: PreSmoke_A5
+        steps:
+          -
+            name: Checkout
+            identifier: process_checkout
+            uses: checkout
+            with:
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+              allow-unsafe-pr-checkout: true
+          -
+            name: download pr files
+            uses: obs-download
+            with:
+              endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
+              bucket: "ascend-ci"
+              access-key: ${{ secrets.AK }}
+              secret-key: ${{ secrets.SK }}
+              key: |
+                ${{ env.obs_path }}/pr_filelist.txt
+                ${{ env.obs_path }}/pr_filelist_mod.txt
+                ${{ env.obs_path }}/update_file_detail.txt
+                ${{ env.obs_path }}/pre_smoke.sh
+              path: ${{ steps.process_checkout.outputs.path }}
+          -
+            name: smoke executor
+            timeout-minutes: 30
+            run: |
+                set -e
+                # set env
+                export WORKSPACE=${{ steps.process_checkout.outputs.path }}
+                export dflow_url=${{jobs.JOB_x86_dflow_ubuntu24.outputs.compile_run_url}}
+                export executor_url=${{jobs.JOB_x86_executor_ubuntu24.outputs.compile_run_url}}
+                export compiler_url=${{jobs.JOB_x86_compiler_ubuntu24.outputs.compile_run_url}}
+                export repo_name=${{env.repo_name}}
+                export pr_id=${{ env.MERGE_ID }}
+                export obs_path=${{env.obs_path}}
+                export AK=${{secrets.AK}}
+                export SK=${{secrets.SK}}
+                export obs_smoke_path=${{ env.obs_smoke_path }}
+                # A5 冒烟镜像(pre_mindspore_A5_conda)缺少 GE 运行期(tbe/AOE InitCannKB)所需 python 依赖,
+                # 缺失时 GEInitialize 报 Environment_Error_Import_Python_Module_Failed(EC0010), 故先补齐
+                pip3 install numpy decorator sympy scipy attrs psutil
+                bash ${{ steps.process_checkout.outputs.path }}/pre_smoke.sh
+          - name: upload
+            uses: obs-upload
+            with:
+              endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
+              bucket: "ascend-ci"
+              access-key: ${{ secrets.AK }}
+              secret-key: ${{ secrets.SK }}
+              artifact-path: "${{ steps.process_checkout.outputs.path }}/slog*.tar.gz"
+              object-prefix: ${{ env.obs_smoke_path }}/plog/A5/
+        if: env.TARGET_BRANCH == 'master' || env.TARGET_BRANCH == 'develop'
+        runs-on: ['self-hosted','npu=1','smoke=501']
+        container:
+          image: swr.cn-north-4.myhuaweicloud.com/pre_smoke/${{ jobs.JOB_image.outputs.PreSmoke_A5 }}
     pre:
       - type: auto
     fail-fast: true

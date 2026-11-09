@@ -11,6 +11,7 @@
 #include "gtest/gtest.h"
 #include <mockcpp/mockcpp.hpp>
 #include <stdio.h>
+#include <map>
 
 #define private public
 #define protected public
@@ -158,4 +159,45 @@ TEST_F(AutoTuningHcomAllReduceFusionTest, utAddFusionMapInFusionJsonWithNonempty
   EXPECT_EQ(ret, HCCL_SUCCESS);
   GlobalMockObject::verify();
   remove(file_name_2);
+}
+
+TEST_F(AutoTuningHcomAllReduceFusionTest, ut_AutoTuningGetGroupName_When_NoGroupAttr_Expect_ReturnHCCL_SUCCESS) {
+  AutoTuningHcomAllReduceFusion fusion;
+  ge::NodePtr nodeptr(new NodeTest);
+  std::string group;
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_FALSE_GROUP");  // HasAttr("group")返回false
+  HcclResult ret = fusion.GetGroupName(nodeptr->GetOpDesc(), group);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(group, std::string(HCCL_WORLD_GROUP));
+}
+
+TEST_F(AutoTuningHcomAllReduceFusionTest, ut_AutoTuningGetGroupName_When_GetGroupFailed_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomAllReduceFusion fusion;
+  ge::NodePtr nodeptr(new NodeTest);
+  std::string group;
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_TRUE_GROUP");
+  ge::dummyStringMAP.erase("group");  // 使 GetStr("group")返回false
+  HcclResult ret = fusion.GetGroupName(nodeptr->GetOpDesc(), group);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcomAllReduceFusionTest, ut_AutoTuningGetGroupName_When_GroupEmpty_Expect_ReturnHCCL_E_PARA) {
+  AutoTuningHcomAllReduceFusion fusion;
+  ge::NodePtr nodeptr(new NodeTest);
+  std::string group;
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_TRUE_GROUP");
+  ge::AttrUtils::SetStr(nodeptr->GetOpDesc(), "group", "");
+  HcclResult ret = fusion.GetGroupName(nodeptr->GetOpDesc(), group);
+  EXPECT_EQ(ret, HCCL_E_PARA);
+}
+
+TEST_F(AutoTuningHcomAllReduceFusionTest, ut_AutoTuningGetGroupName_When_ValidGroupAttr_Expect_ReturnHCCL_SUCCESS) {
+  AutoTuningHcomAllReduceFusion fusion;
+  ge::NodePtr nodeptr(new NodeTest);
+  std::string group;
+  ge::AttrUtils::HasAttr(nodeptr->GetOpDesc(), "DUMMY_SET_TRUE_GROUP");
+  ge::AttrUtils::SetStr(nodeptr->GetOpDesc(), "group", "hccl_world_group");
+  HcclResult ret = fusion.GetGroupName(nodeptr->GetOpDesc(), group);
+  EXPECT_EQ(ret, HCCL_SUCCESS);
+  EXPECT_EQ(group, std::string(HCCL_WORLD_GROUP));
 }

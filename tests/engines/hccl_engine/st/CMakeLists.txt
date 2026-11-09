@@ -170,6 +170,7 @@ target_link_options(hccl_engine_stest PRIVATE
     -Wl,-rpath,${ASCEND_COMPILER_DIR}
     -Wl,-rpath,${AIR_CODE_DIR}/build/graph_metadef/register
     -Wl,-rpath,${AIR_CODE_DIR}/build/graph_metadef/graph
+    -Wl,-rpath,${CANN_3RD_LIB_PATH}/lib_cache/gtest_shared/lib64
 )
 
 target_link_directories(hcce_st_llt PRIVATE
