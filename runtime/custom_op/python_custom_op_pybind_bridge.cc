@@ -31,7 +31,7 @@
 
 #include "common/checker.h"
 #include "common/ge_common/debug/ge_log.h"
-#include "common/ge_visibility.h"
+#include "framework/common/ge_visibility.h"
 #include "graph/custom_op/infer_meta.h"
 #include "exe_graph/runtime/host_cpu_op_execution_context.h"
 #include "graph/utils/ir_definitions_query.h"

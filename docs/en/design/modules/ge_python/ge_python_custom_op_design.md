@@ -796,6 +796,8 @@ Python-side code entries: the C++ bridge loaders of custom-op and pass invoke `r
 
 The custom op's requirement on the runtime is a dependency, not ownership. If the runtime fallback succeeds while the custom-op fallback fails, the runtime artifact can be retained; the custom-op loader must clean up its own incomplete intermediate artifacts and return a clear error.
 
+The sources and headers embedded for fallback form a self-contained compilation unit: an on-site compile only sees the source tree materialized at packaging time plus the installed `include` and `pkg_inc`. Every GE-private header they reference must therefore be registered in the `GE_PYTHON_CUSTOM_OP_BRIDGE_*_HEADERS` inventory in `api/python/ge/CMakeLists.txt`, and the include spelling must match the materialization directories of `gen_fallback_resources.py`; this include closure is checked statically by `FallbackIncludeClosureTest` in `tests/ge/ut/ge/graph/pyge_tests/python_native_packaging_test.py`.
+
 #### 8.1.5 Runtime Selection and Compatibility Validation
 
 - Both the Python side and the C++ side use the actual Python runtime key of the current process as the version selection basis, and do not substitute the outer launcher Python version for the current process version.
@@ -811,6 +813,7 @@ At least the following must be verified under every available Python tag:
 - `import ge.runtime`, `import ge.custom_op`, and native type loading;
 - `execute`, `compile`, `infer_meta`, and `declare_launch_args` callbacks of the Python custom op;
 - Combination scenarios of runtime precompiled/custom-op fallback and runtime fallback/custom-op precompiled;
+- The GE-private include closure of the embedded fallback sources and headers matches the packaging inventory (static check, independent of a CANN installation or compiler);
 - Errors and rollback on mismatched Python tag, platform, runtime ABI, or custom-op ABI;
 - Online execution, offline atc compilation, AnnotatedArgs address refresh, and RT2 dynamic shape scenarios.
 

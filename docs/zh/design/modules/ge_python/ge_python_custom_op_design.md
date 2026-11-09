@@ -789,6 +789,8 @@ Python 侧代码入口：custom-op 与 pass 的 C++ bridge loader 分别通过�
 
 custom-op 对 runtime 的要求是依赖关系，不是所有权关系。若 runtime fallback 成功而 custom-op fallback 失败，runtime artifact 可以保留；custom-op loader 必须清理自身未完成的临时产物，并返回清晰错误。
 
+嵌入 fallback 的源码与头文件构成一个自包含编译单元，现场编译只能看到打包期物化的源码树与安装包的 `include`、`pkg_inc`。因此它们引用的 GE 私有头必须同步登记到 `api/python/ge/CMakeLists.txt` 的 `GE_PYTHON_CUSTOM_OP_BRIDGE_*_HEADERS` 清单，include 写法必须与 `gen_fallback_resources.py` 的物化目录一致；该 include 闭包由 `tests/ge/ut/ge/graph/pyge_tests/python_native_packaging_test.py` 中的 `FallbackIncludeClosureTest` 静态校验。
+
 #### 8.1.5 运行时选择和兼容校验
 
 - Python 侧和 C++ 侧均以当前进程实际 Python runtime key 为版本选择依据，不使用外层 launcher Python 版本替代当前进程版本。
@@ -804,6 +806,7 @@ custom-op 对 runtime 的要求是依赖关系，不是所有权关系。若 run
 - `import ge.runtime`、`import ge.custom_op` 以及 native 类型加载；
 - Python custom-op 的 `execute`、`compile`、`infer_meta`、`declare_launch_args` 回调；
 - runtime 预编译/custom-op fallback、runtime fallback/custom-op 预编译的组合场景；
+- 嵌入 fallback 源码与嵌入头的 GE 私有头 include 闭包与打包清单一致（静态校验，不依赖 CANN 安装与编译器）；
 - Python tag、平台、runtime ABI、custom-op ABI 不匹配时的错误和回滚；
 - 在线执行、离线 atc 编译、AnnotatedArgs 地址刷新和 RT2 动态 Shape 场景。
 

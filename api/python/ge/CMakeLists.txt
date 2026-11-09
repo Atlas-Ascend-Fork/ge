@@ -204,6 +204,7 @@ set(GE_PYTHON_CUSTOM_OP_BRIDGE_HEADERS
         ${AIR_CODE_DIR}/runtime/custom_op/python_custom_op_bridge_descriptors.h
         ${AIR_CODE_DIR}/runtime/custom_op/python_custom_op_bridge_types.h)
 set(GE_PYTHON_CUSTOM_OP_BRIDGE_GRAPH_HEADERS
+        ${AIR_CODE_DIR}/inc/graph_metadef/graph/custom_op/artifact_provider.h
         ${AIR_CODE_DIR}/inc/graph_metadef/graph/custom_op/capability.h
         ${AIR_CODE_DIR}/inc/graph_metadef/graph/custom_op/infer_meta.h)
 set(GE_PYTHON_CUSTOM_OP_BRIDGE_UTILS_HEADERS
