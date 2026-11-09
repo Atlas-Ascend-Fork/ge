@@ -926,7 +926,7 @@ class AscOverrides final : public OpOverrides {
   }
 
   CseVar Remainder(const CseVar &x1, const CseVar &x2) override {
-    return AscOp<ascir_op::Remainder>(x1, x2);
+    GE_WARN_ASSERT(false, "Remainder %s", CseKey<UnimplementOp>(x1, x2).c_str());
   }
 
   CseVar Sub(const CseVar &x1, const CseVar &x2) override {

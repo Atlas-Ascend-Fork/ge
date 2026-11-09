@@ -1863,15 +1863,6 @@ REGISTER_LOWERING(ClipByValue) {
   return GRAPH_SUCCESS;
 }
 
-// ClipByValueV2 与 ClipByValue 输入布局一致（x/clip_value_min/clip_value_max 三路广播），复用同一 lowering
-REGISTER_LOWERING_WITH_EXISTED(ClipByValueV2, LoweringClipByValue);
-
-// FloorMod 映射 ascir Remainder：RemainderExtend 语义为 dividend - floor(dividend/divisor)*divisor，
-// 即 floor 语义模（结果符号与除数一致），与 GE FloorMod 精确一致；后端注册 dtype 为 FLOAT/INT32
-// （int32 经 Cast 转 float 计算，|值|>2^24 精度损失为后端既有文档化边界），其余 dtype（fp16/int64）
-// 由 ascir dtype 门控在 kernel box 推断期拒绝并按既有链路回退，无正确性风险。
-REGISTER_POINTWISE_LOWER(FloorMod, loop::Remainder);
-
 REGISTER_LOWERING(BiasAdd) {
   std::vector<Expression> dims;
   GE_ASSERT_NOTNULL(node->GetInDataAnchor(0));
