@@ -315,7 +315,7 @@ ge::Status ParseArgsFormat(const std::string &args_format,
   // custom_data_block 含 '.'，下面的 regex 不匹配，若不显式拒绝会被静默跳过并产出可错跑的 .omc
   if (args_format.find("custom_data_block") != std::string::npos) {
     GELOGE(ge::FAILED, "[Mobile] args format [%s] contains unsupported CUSTOM_DATA_BLOCK.", args_format.c_str());
-    const std::string reason = "Variable length custom data args is not supported for mobile OMC.";
+    const std::string reason = "Variable length custom data args is not supported for mobile OMC";
     REPORT_PREDEFINED_ERR_MSG("E10055", std::vector<const char_t *>({"reason"}),
                               std::vector<const char_t *>({reason.c_str()}));
     return ge::FAILED;

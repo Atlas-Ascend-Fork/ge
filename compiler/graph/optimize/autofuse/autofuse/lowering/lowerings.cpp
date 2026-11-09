@@ -9,6 +9,7 @@
  */
 
 #include "common/checker.h"
+#include "common/ge_inner_attrs.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/debug/ge_op_types.h"
@@ -294,7 +295,7 @@ bool IsNodeShouldLowering(const NodePtr &node) {
     return false;
   }
   bool disable_autofuse_scope;
-  if ((AttrUtils::GetBool(node->GetOpDesc(), "_disable_autofuse_scope", disable_autofuse_scope)) &&
+  if (AttrUtils::GetBool(node->GetOpDesc(), kAttrAutofuseDisableScope, disable_autofuse_scope) &&
       disable_autofuse_scope) {
     GraphFusionReasonStore::CountNodeFuseFailReason(node->GetName(), "it is in disable autofuse scope",
                                                     GraphFusionReasonStore::FailReasonCategory::NODE_INFO_ERROR);
@@ -314,6 +315,17 @@ bool IsNodeShouldLowering(const NodePtr &node) {
   if (!skip_node_names.empty() && skip_node_names.find(node->GetName()) != skip_node_names.end()) {
     GraphFusionReasonStore::CountNodeFuseFailReason(
         node->GetName(), node->GetName() + " is in skip list",
+        GraphFusionReasonStore::FailReasonCategory::TEMPORARILY_NOT_SUPPORTED);
+    return false;
+  }
+
+  bool skip_lowering_for_host_exec = false;
+  if (AttrUtils::GetBool(node->GetOpDesc(), kAttrAutofuseSkipLoweringForHostExec, skip_lowering_for_host_exec) &&
+      skip_lowering_for_host_exec) {
+    GELOGI("[AutofuseLowering]: node[%s] will be scheduled on host, skip lowering to avoid device to host sync.",
+           node->GetName().c_str());
+    GraphFusionReasonStore::CountNodeFuseFailReason(
+        node->GetName(), "it will be scheduled on host, skip lowering to avoid device to host sync",
         GraphFusionReasonStore::FailReasonCategory::TEMPORARILY_NOT_SUPPORTED);
     return false;
   }
@@ -488,8 +500,8 @@ graphStatus LoweringManager::FusedSubgraphLoopToAscBackendOp(
       auto asc_node = graph->InsertNode(expect_position, op_desc);
       GE_ASSERT_NOTNULL(asc_node);
       bool disable_lifting = false;
-      if (AttrUtils::GetBool(node->GetOpDesc(), "_disable_lifting", disable_lifting) && disable_lifting) {
-        (void)AttrUtils::SetBool(asc_node->GetOpDesc(), "_disable_lifting", disable_lifting);
+      if (AttrUtils::GetBool(node->GetOpDesc(), kAttrAutofuseDisableLifting, disable_lifting) && disable_lifting) {
+        (void)AttrUtils::SetBool(asc_node->GetOpDesc(), kAttrAutofuseDisableLifting, disable_lifting);
         GELOGI("Success to set disable lifting flag to new ascbackend node: %s", asc_node->GetName().c_str());
       }
       expect_position = asc_node;

@@ -15,7 +15,9 @@ import os
 import numpy as np
 from PIL import Image
 
-logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(asctime)s : %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="[%(levelname)s] %(asctime)s : %(message)s"
+)
 
 
 def process(input_path):
@@ -37,7 +39,7 @@ def process(input_path):
         img[:, :, 2] /= 255
         img = img.reshape([1] + list(shape))
         result = img.transpose([0, 3, 1, 2])
-        output_name = input_path.split(".")[0] + ".bin"
+        output_name = os.path.splitext(input_path)[0] + ".bin"
         result.tofile(output_name)
         input_image.close()
     except Exception as except_err:

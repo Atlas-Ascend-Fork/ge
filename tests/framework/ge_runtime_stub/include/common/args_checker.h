@@ -69,8 +69,8 @@ class ArgsChecker {
   template <typename T>
   Status SetModelInputAddr(const std::vector<int64_t> &input_index, const std::vector<T> &inputs) {
     for (const int64_t &index : input_index) {
-      if (index >= (int64_t)inputs.size()) {
-        GELOGE(FAILED, "index:%lu exceed inputs size:%z", index, inputs.size());
+      if (index < 0 || index >= (int64_t)inputs.size()) {
+        GELOGE(FAILED, "index:%ld exceed inputs size:%zu", index, inputs.size());
         return FAILED;
       }
       auto [addr, length] = ParseFromTensor(inputs[index]);
@@ -111,8 +111,8 @@ class ArgsChecker {
       if (op_desc->GetType() == NETOUTPUT) {
         const std::vector<int64_t> &output_offset = op_desc->GetInputOffset();
         for (const int64_t &index : output_index) {
-          if (index >= (int64_t)outputs.size()) {
-            GELOGE(FAILED, "index:%lu exceed outputs size:%z", index, outputs.size());
+          if (index < 0 || index >= (int64_t)outputs.size()) {
+            GELOGE(FAILED, "index:%ld exceed outputs size:%zu", index, outputs.size());
             return FAILED;
           }
           auto [addr, length] = ParseFromTensor(outputs[index]);

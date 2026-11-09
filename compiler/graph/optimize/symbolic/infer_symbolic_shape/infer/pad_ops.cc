@@ -152,10 +152,49 @@ graphStatus InferShape4MirrorPad(gert::InferSymbolShapeContext *context) {
 }
 
 // PadV2与Pad的paddings布局一致（恒为contiguous，形状[n, 2]），constant_values不影响shape，直接复用Pad推导
+/**
+ * PadV3D 算子的符号化shape推导
+ * 【算子功能】PadV3 的 D 变体（paddings/constant_values 由输入转为 attr 0/attr 1），按轴对前后补元。
+ * 【算子约束】paddings 为长度 2*rank 的 ListInt 属性；paddings_contiguous 为 attr 3。
+ * 【推导逻辑】从 attr 0 读常量 paddings，按 contiguous 布局取每轴前后补元数，输出维 = 输入维 + pad_front + pad_end。
+ * 【举例】x=[2,3]、paddings=[1,1,2,2] 时，y=[4,7]。
+ */
+graphStatus InferShape4PadV3D(gert::InferSymbolShapeContext *context) {
+  const auto x_shape = context->GetInputSymbolShape(0);
+  GE_UNSUPPORTED_IF_NULL(x_shape);
+  auto y_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(y_shape);
+  const auto attrs = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attrs);
+  const auto paddings_attr = attrs->GetListInt(0);
+  GE_UNSUPPORTED_IF_NULL(paddings_attr);
+  const auto paddings_contiguous = attrs->GetAttrPointer<bool>(3);
+  GE_ASSERT_NOTNULL(paddings_contiguous);
+  const size_t input_dim_size = x_shape->GetDimNum();
+  GE_ASSERT(input_dim_size != 0UL, "input shape cannot be empty");
+  const auto paddings_size = paddings_attr->GetSize();
+  GE_ASSERT(paddings_size == input_dim_size * PAIR, "Invalid paddings size %zu, expect %zu.", paddings_size,
+            input_dim_size * PAIR);
+
+  size_t index_cof = 1UL;
+  size_t index_offset = input_dim_size;
+  if (*paddings_contiguous) {
+    index_cof = PAIR;
+    index_offset = 1UL;
+  }
+  for (size_t i = 0UL; i < input_dim_size; ++i) {
+    const auto pad_front = Symbol(paddings_attr->GetData()[index_cof * i]);
+    const auto pad_end = Symbol(paddings_attr->GetData()[index_cof * i + index_offset]);
+    y_shape->AppendDim(x_shape->GetDim(i) + pad_front + pad_end);
+  }
+  return GRAPH_SUCCESS;
+}
+
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Pad).InferSymbolShape(InferShape4Pad);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(PadD).InferSymbolShape(InferShape4PadD);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(PadV2).InferSymbolShape(InferShape4Pad);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(PadV3).InferSymbolShape(InferShape4PadV3);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(PadV3D).InferSymbolShape(InferShape4PadV3D);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MirrorPad).InferSymbolShape(InferShape4MirrorPad);
 }  // namespace
 }  // namespace ge

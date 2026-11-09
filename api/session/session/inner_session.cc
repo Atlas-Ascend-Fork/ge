@@ -73,7 +73,7 @@ Status CheckReuseMemoryOption(const std::map<std::string, std::string> &options)
       GELOGE(PARAM_INVALID, "[CheckReuse][MemoryOption]option %s=%s is invalid", OPTION_EXEC_DISABLE_REUSED_MEMORY,
              iter->second.c_str());
       const auto readable_name = ge::GetContext().GetReadableName(OPTION_EXEC_DISABLE_REUSED_MEMORY);
-      std::string reason = readable_name + " only support 0 or 1";
+      std::string reason = readable_name + " only support 0 or 1.";
       REPORT_PREDEFINED_ERR_MSG(
           "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
           std::vector<const char *>({readable_name.c_str(), iter->second.c_str(), reason.c_str()}));

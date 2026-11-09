@@ -454,7 +454,7 @@ Status FilterAndValidateRawGeOptions(std::map<std::string, std::string> &raw_opt
       const std::string level = (level_iter == raw_option_levels.end()) ? "" : level_iter->second;
       if (!FLAGS_raw_ge_options_ignore_unsupported) {
         const std::string reason = "RawGeOptions[" + option_iter->first + ":" + option_iter->second + "] in level [" +
-                                   level + "] is not supported in ATC. Please do not set it.";
+                                   level + "] is not supported in ATC. Please do not set it";
         REPORT_PREDEFINED_ERR_MSG("E10055", std::vector({"reason"}), std::vector({reason.c_str()}));
         GELOGE(FAILED, "[Check][RawGeOptions]option [%s] in level [%s] is not supported by atc. value: %s",
                option_iter->first.c_str(), level.c_str(), option_iter->second.c_str());
@@ -1197,7 +1197,7 @@ static bool CheckInputFormat() {
     REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
         std::vector<const char *>({"--input_format", FLAGS_input_format.c_str(), kCaffeFormatSupport}));
-    GELOGE(FAILED, "[Check][InputFormat]Invalid value for --input_format[%s], %s.", FLAGS_input_format.c_str(),
+    GELOGE(FAILED, "[Check][InputFormat]Invalid value for --input_format[%s], %s", FLAGS_input_format.c_str(),
            kCaffeFormatSupport);
     return false;
   }
@@ -1209,7 +1209,7 @@ static bool CheckInputFormat() {
     REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
         std::vector<const char *>({"--input_format", FLAGS_input_format.c_str(), kTFFormatSupport}));
-    GELOGE(FAILED, "[Check][InputFormat]Invalid value for --input_format[%s], %s.", FLAGS_input_format.c_str(),
+    GELOGE(FAILED, "[Check][InputFormat]Invalid value for --input_format[%s], %s", FLAGS_input_format.c_str(),
            kTFFormatSupport);
     return false;
   }
@@ -1221,7 +1221,7 @@ static bool CheckInputFormat() {
     REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
         std::vector<const char *>({"--input_format", FLAGS_input_format.c_str(), kONNXFormatSupport}));
-    GELOGE(FAILED, "[Check][InputFormat]Invalid value for --input_format[%s], %s.", FLAGS_input_format.c_str(),
+    GELOGE(FAILED, "[Check][InputFormat]Invalid value for --input_format[%s], %s", FLAGS_input_format.c_str(),
            kONNXFormatSupport);
     return false;
   }
@@ -2153,7 +2153,7 @@ Status ConvertPbtxtToJson() {
   ret = ConvertPbtxtToJson(FLAGS_om.c_str(), FLAGS_json.c_str());
   if (ret != SUCCESS) {
     GELOGE(FAILED, "[Convert][PbtxtToJson] fail.");
-    const std::string reason = "failed to convert pbtxt file " + FLAGS_om + " to JSON.";
+    const std::string reason = "failed to convert pbtxt file " + FLAGS_om + " to JSON";
     REPORT_PREDEFINED_ERR_MSG("E10059", std::vector<const char *>({"stage", "reason"}),
                               std::vector<const char *>({"Convert pbtxt to JSON", reason.c_str()}));
     return FAILED;
@@ -2338,7 +2338,7 @@ bool IsGenerateOmMode() {
 Status ReportInvalidRunMode() {
   REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
                             std::vector<const char *>({"--mode", std::to_string(FLAGS_mode).c_str(), kModeSupport}));
-  GELOGE(PARAM_INVALID, "[Check][Parameter]Invalid value for --mode[%d], %s.", FLAGS_mode, kModeSupport);
+  GELOGE(PARAM_INVALID, "[Check][Parameter]Invalid value for --mode[%d], %s", FLAGS_mode, kModeSupport);
   return FAILED;
 }
 

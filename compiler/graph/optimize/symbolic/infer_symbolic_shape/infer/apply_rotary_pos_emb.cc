@@ -92,4 +92,36 @@ graphStatus ApplyRotaryPosEmbInferSymbolShape(gert::InferSymbolShapeContext *con
 }
 
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ApplyRotaryPosEmb).InferSymbolShape(ApplyRotaryPosEmbInferSymbolShape);
+
+namespace {
+/**
+ * RotaryPositionEmbeddingGrad 的符号 Shape 推导。
+ * 【算子功能】RotaryPositionEmbedding 的梯度：输入 dy/cos/sin（x 为可选中间量），输出 dx/dcos/dsin。
+ * 【推导逻辑】三个输出分别透传 dy、cos、sin 的符号 Shape。
+ * 【举例】dy=[B,S,H]、cos=[B,S,H]、sin=[B,S,H] 时，dx=dcos=dsin=[B,S,H]。
+ */
+graphStatus InferShape4RotaryPositionEmbeddingGrad(gert::InferSymbolShapeContext *context) {
+  constexpr size_t kDyIdx = 0UL;
+  constexpr size_t kCosIdx = 1UL;
+  constexpr size_t kSinIdx = 2UL;
+  const auto dy_shape = context->GetInputSymbolShape(kDyIdx);
+  GE_UNSUPPORTED_IF_NULL(dy_shape);
+  const auto cos_shape = context->GetInputSymbolShape(kCosIdx);
+  GE_UNSUPPORTED_IF_NULL(cos_shape);
+  const auto sin_shape = context->GetInputSymbolShape(kSinIdx);
+  GE_UNSUPPORTED_IF_NULL(sin_shape);
+  const auto dx_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(dx_shape);
+  const auto dcos_shape = context->GetOutputSymbolShape(1);
+  GE_ASSERT_NOTNULL(dcos_shape);
+  const auto dsin_shape = context->GetOutputSymbolShape(2);
+  GE_ASSERT_NOTNULL(dsin_shape);
+  *dx_shape = *dy_shape;
+  *dcos_shape = *cos_shape;
+  *dsin_shape = *sin_shape;
+  return GRAPH_SUCCESS;
+}
+}  // namespace
+
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(RotaryPositionEmbeddingGrad).InferSymbolShape(InferShape4RotaryPositionEmbeddingGrad);
 }  // namespace ge

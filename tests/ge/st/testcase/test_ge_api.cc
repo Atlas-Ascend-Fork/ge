@@ -466,10 +466,80 @@ void MockGenerateTask() {
   MockForGenerateTask("RTSLib", rts_func);
 }
 
+void CheckCompiledGraphSummary(Session &session, uint32_t graph_id, size_t &feature_size) {
+  const CompiledGraphSummaryPtr summary = session.GetCompiledGraphSummary(graph_id);
+  EXPECT_NE(summary, nullptr);
+  size_t weight_size = 0;
+  EXPECT_EQ(SUCCESS, summary->GetConstMemorySize(weight_size));
+  EXPECT_EQ(SUCCESS, summary->GetFeatureMemorySize(feature_size));
+  bool is_refreshable = false;
+  EXPECT_EQ(SUCCESS, summary->GetFeatureMemoryBaseRefreshable(is_refreshable));
+  EXPECT_EQ(is_refreshable, true);
+}
+
+void FillExecuteTensors(std::vector<gert::Tensor> &gert_inputs, std::vector<gert::Tensor> &gert_outputs,
+                        const std::vector<int32_t> &input_data_1, const std::vector<int32_t> &input_data_2,
+                        const std::vector<uint8_t> &output_data_1) {
+  gert_inputs.resize(2);
+  gert_outputs.resize(1);
+  gert_inputs[0] = {{{1, 2, 3, 4}, {1, 2, 3, 4}},                // shape
+                    {ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, {}},  // format
+                    gert::kOnDeviceHbm,                          // placement
+                    ge::DT_INT32,                                // data type
+                    (void *)input_data_1.data()};
+  gert_inputs[1] = {{{1, 2, 3, 4}, {1, 2, 3, 4}},                // shape
+                    {ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, {}},  // format
+                    gert::kOnDeviceHbm,                          // placement
+                    ge::DT_INT32,                                // data type
+                    (void *)input_data_2.data()};
+  gert_outputs[0] = {{{1, 2, 3, 4}, {1, 2, 3, 4}},                // shape
+                     {ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, {}},  // format
+                     gert::kOnDeviceHbm,                          // placement
+                     ge::DT_INT32,                                // data type
+                     (void *)output_data_1.data()};
+}
+
+void CheckCompiledSession(Session &session, const Graph &graph, uint32_t graph_id,
+                          gert::GertRuntimeStub &runtime_stub) {
+  size_t feature_size = 0;
+  CheckCompiledGraphSummary(session, graph_id, feature_size);
+
+  std::vector<uint8_t> feature_mem(feature_size, 0);
+  EXPECT_EQ(SUCCESS, session.UpdateGraphFeatureMemoryBase(graph_id, feature_mem.data(), feature_size));
+
+  std::vector<ge::Tensor> inputs;
+  std::vector<ge::Tensor> outputs;
+  ConstructInputOutputTensor(inputs, outputs);
+  ge::diagnoseSwitch::DisableDumper();
+  runtime_stub.Clear();
+  EXPECT_EQ(SUCCESS, session.RunGraphWithStreamAsync(graph_id, nullptr, inputs, outputs));
+
+  std::vector<int32_t> input_data_1(1 * 2 * 3 * 4, 666);
+  std::vector<int32_t> input_data_2(1 * 2 * 3 * 4, 666);
+  std::vector<uint8_t> output_data_1(96, 0xFF);
+  std::vector<gert::Tensor> gert_inputs;
+  std::vector<gert::Tensor> gert_outputs;
+  FillExecuteTensors(gert_inputs, gert_outputs, input_data_1, input_data_2, output_data_1);
+
+  ge::diagnoseSwitch::DisableDumper();
+  runtime_stub.Clear();
+  EXPECT_EQ(SUCCESS, session.ExecuteGraphWithStreamAsync(graph_id, nullptr, gert_inputs, gert_outputs));
+
+  std::unique_ptr<ArgsChecker> args_checker;
+  CHECK_GRAPH(PreRunAfterBuild) {
+    args_checker = std::make_unique<ArgsChecker>(graph, graph_id, session.GetSessionId(), runtime_stub);
+  };
+  EXPECT_EQ(SUCCESS, args_checker->SetFmAddr((uint64_t)feature_mem.data(), feature_size));
+  EXPECT_EQ(SUCCESS, args_checker->SetModelInputAddr({0, 1}, inputs));
+  EXPECT_EQ(SUCCESS, args_checker->SetModelOutputAddr({0}, outputs));
+  EXPECT_EQ(FAILED, args_checker->SetModelInputAddr({-1}, inputs));
+  EXPECT_EQ(FAILED, args_checker->SetModelOutputAddr({-1}, outputs));
+  EXPECT_EQ(SUCCESS, args_checker->TaskIoAddressesAreCorrect());
+}
+
 void RunSession(bool compile, int threadId) {
   // 多线程用例, slog stub在主线程已配置，避免进程结束有先后造成的内存泄漏
   gert::GertRuntimeStub runtime_stub(false);
-  std::unique_ptr<ArgsChecker> args_checker;
 
   std::map<AscendString, AscendString> options;
   options.emplace(ge::OPTION_CONST_LIFECYCLE, "graph");
@@ -484,61 +554,7 @@ void RunSession(bool compile, int threadId) {
     if (compile) {
       auto ret = session.CompileGraph(graph_id);
       ASSERT_EQ(ret, SUCCESS);
-
-      const CompiledGraphSummaryPtr summary = session.GetCompiledGraphSummary(graph_id);
-      EXPECT_NE(summary, nullptr);
-      size_t weight_size, feature_size;
-      EXPECT_EQ(SUCCESS, summary->GetConstMemorySize(weight_size));
-      EXPECT_EQ(SUCCESS, summary->GetFeatureMemorySize(feature_size));
-      bool is_refreshable = false;
-      EXPECT_EQ(SUCCESS, summary->GetFeatureMemoryBaseRefreshable(is_refreshable));
-      EXPECT_EQ(is_refreshable, true);
-
-      std::vector<uint8_t> feature_mem(feature_size, 0);
-      EXPECT_EQ(SUCCESS, session.UpdateGraphFeatureMemoryBase(graph_id, feature_mem.data(), feature_size));
-
-      std::vector<ge::Tensor> inputs;
-      std::vector<ge::Tensor> outputs;
-      ConstructInputOutputTensor(inputs, outputs);
-      ge::diagnoseSwitch::DisableDumper();
-      runtime_stub.Clear();
-      EXPECT_EQ(SUCCESS, session.RunGraphWithStreamAsync(graph_id, nullptr, inputs, outputs));
-
-      std::vector<gert::Tensor> gert_inputs;
-      std::vector<gert::Tensor> gert_outputs;
-      gert_inputs.resize(2);
-      gert_outputs.resize(1);
-      std::vector<int32_t> input_data_1(1 * 2 * 3 * 4, 666);
-      gert_inputs[0] = {{{1, 2, 3, 4}, {1, 2, 3, 4}},                // shape
-                        {ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, {}},  // format
-                        gert::kOnDeviceHbm,                          // placement
-                        ge::DT_INT32,                                // data type
-                        (void *)input_data_1.data()};
-
-      std::vector<int32_t> input_data_2(1 * 2 * 3 * 4, 666);
-      gert_inputs[1] = {{{1, 2, 3, 4}, {1, 2, 3, 4}},                // shape
-                        {ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, {}},  // format
-                        gert::kOnDeviceHbm,                          // placement
-                        ge::DT_INT32,                                // data type
-                        (void *)input_data_2.data()};
-
-      std::vector<uint8_t> output_data_1(96, 0xFF);
-      gert_outputs[0] = {{{1, 2, 3, 4}, {1, 2, 3, 4}},                // shape
-                         {ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, {}},  // format
-                         gert::kOnDeviceHbm,                          // placement
-                         ge::DT_INT32,                                // data type
-                         (void *)output_data_1.data()};
-      ge::diagnoseSwitch::DisableDumper();
-      runtime_stub.Clear();
-      EXPECT_EQ(SUCCESS, session.ExecuteGraphWithStreamAsync(graph_id, nullptr, gert_inputs, gert_outputs));
-      CHECK_GRAPH(PreRunAfterBuild) {
-        args_checker = std::make_unique<ArgsChecker>(graph, graph_id, session.GetSessionId(), runtime_stub);
-      };
-
-      EXPECT_EQ(SUCCESS, args_checker->SetFmAddr((uint64_t)feature_mem.data(), feature_size));
-      EXPECT_EQ(SUCCESS, args_checker->SetModelInputAddr({0, 1}, inputs));
-      EXPECT_EQ(SUCCESS, args_checker->SetModelOutputAddr({0}, outputs));
-      EXPECT_EQ(SUCCESS, args_checker->TaskIoAddressesAreCorrect());
+      CheckCompiledSession(session, graph, graph_id, runtime_stub);
     } else {
       std::vector<ge::Tensor> inputs;
       std::vector<ge::Tensor> outputs;

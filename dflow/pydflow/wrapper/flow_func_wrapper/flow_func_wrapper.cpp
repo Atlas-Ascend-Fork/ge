@@ -363,7 +363,11 @@ class FuncDataTypeManager {
 };
 
 py::memoryview ToReadonlyMemoryView(const Tensor &tensor) {
-  const auto element_size = tensor.GetDataSize() / tensor.GetElementCnt();
+  const auto element_cnt = tensor.GetElementCnt();
+  if (element_cnt <= 0) {
+    throw std::runtime_error("Invalid tensor element count: " + std::to_string(element_cnt));
+  }
+  const auto element_size = tensor.GetDataSize() / static_cast<uint64_t>(element_cnt);
   std::vector<uint64_t> strides;
   strides.push_back(element_size);
   auto stride_num = tensor.GetShape().size();
@@ -687,7 +691,11 @@ void BindTensor(py::module &m) {
         if (it == format_descs.cend()) {
           throw std::runtime_error("Unsupported data type: " + std::to_string(static_cast<int32_t>(dtype)));
         }
-        const auto item_size = static_cast<ssize_t>((tensor.GetDataSize() / tensor.GetElementCnt()));
+        const auto element_cnt = tensor.GetElementCnt();
+        if (element_cnt <= 0) {
+          throw std::runtime_error("Invalid tensor element count: " + std::to_string(element_cnt));
+        }
+        const auto item_size = static_cast<ssize_t>((tensor.GetDataSize() / static_cast<uint64_t>(element_cnt)));
         const auto shape = tensor.GetShape();
         std::vector<ssize_t> strides;
         const std::string err_msg = wrapper::ComputeStrides(item_size, shape, strides);
@@ -862,13 +870,21 @@ void BindRuntimeTensorDesc(py::module &m) {
                       throw std::runtime_error("Buffer size is less than sizeof(RuntimeTensorDesc)");
                     }
                     auto desc_view = static_cast<RuntimeTensorDesc *>(info.ptr);
+                    if ((desc_view->shape[0] < 0) || (desc_view->shape[0] > static_cast<int64_t>(kMaxDimSize))) {
+                      throw std::runtime_error("Invalid dim num in RuntimeTensorDesc buffer");
+                    }
                     return *desc_view;
                   })
       .def_readwrite("address", &RuntimeTensorDesc::data_addr)
       .def_readwrite("dtype", &RuntimeTensorDesc::dtype)
       .def_readwrite("size", &RuntimeTensorDesc::data_size)
       .def_property(
-          "shape", [](RuntimeTensorDesc &s) { return std::vector<int64_t>(&s.shape[1], &s.shape[1 + s.shape[0]]); },
+          "shape",
+          [](RuntimeTensorDesc &s) {
+            const int64_t dim_num =
+                std::min(std::max(s.shape[0], static_cast<int64_t>(0)), static_cast<int64_t>(kMaxDimSize));
+            return std::vector<int64_t>(&s.shape[1], &s.shape[1 + dim_num]);
+          },
           [](RuntimeTensorDesc &s, const std::vector<int64_t> &v) {
             s.shape[0] = v.size() > kMaxDimSize ? kMaxDimSize : static_cast<int64_t>(v.size());
             for (int64_t i = 0; i < s.shape[0]; ++i) {

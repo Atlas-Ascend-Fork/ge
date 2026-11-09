@@ -124,5 +124,32 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ArgMaxWithValue).InferSymbolShape(InferShape4Ar
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ArgMinWithValue).InferSymbolShape(InferShape4ArgWithValue);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ArgMaxV2).InferSymbolShape(InferShape4ArgMaxV2);
 
+/**
+ * ArgMaxD 算子的符号化shape推导
+ * 【算子功能】hard_max_fusion_pass 将 HardMax 换型生成 ArgMaxD（dimension 由输入转为 attr 0），
+ *            输出为输入沿 dimension 维做 ArgMax 的索引（去掉该维）。
+ * 【算子约束】dimension 为 [-rank, rank) 的整数属性。
+ * 【推导逻辑】从 attr 0 读 dimension，复用 ReduceDimsWithoutKeepDims 去 axis 维。
+ * 【举例】x=[2,3,4]、dimension=1 时，y=[2,4]。
+ */
+graphStatus InferShape4ArgMaxD(gert::InferSymbolShapeContext *context) {
+  const auto x_shape = context->GetInputSymbolShape(0);
+  GE_UNSUPPORTED_IF_NULL(x_shape);
+  const auto y_shape = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(y_shape);
+
+  if (x_shape->GetDimNum() <= 1U) {
+    y_shape->MutableDims().clear();
+    return GRAPH_SUCCESS;
+  }
+
+  const auto attrs = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attrs);
+  const auto dimension_ptr = attrs->GetAttrPointer<int64_t>(0);
+  GE_UNSUPPORTED_IF_NULL(dimension_ptr);
+  return SymbolicInferUtil::ReduceDimsWithoutKeepDims<int64_t>(x_shape, {*dimension_ptr}, 1U, y_shape);
+}
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ArgMaxD).InferSymbolShape(InferShape4ArgMaxD);
+
 }  // namespace
 }  // namespace ge

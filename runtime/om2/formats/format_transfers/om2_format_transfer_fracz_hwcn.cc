@@ -57,7 +57,7 @@ ge::Status CheckShapeForFracZToHwcn(const TransArgs &args) {
            ShapeToString(args.src_shape).c_str());
     REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
-        std::vector<const char *>({"shape", ShapeToString(args.src_shape).c_str(), "Invalid source shape check"}));
+        std::vector<const char *>({"shape", ShapeToString(args.src_shape).c_str(), "Invalid source shape check."}));
     return ACL_ERROR_GE_SHAPE_INVALID;
   }
   if (!CheckShapeValid(args.dst_shape, kHwcnDimsNum)) {

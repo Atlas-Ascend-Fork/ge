@@ -11,6 +11,7 @@
 #include "liftings.h"
 #include <algorithm>
 #include "common/checker.h"
+#include "common/ge_inner_attrs.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/debug/ge_op_types.h"
@@ -292,7 +293,7 @@ bool IsSkipLifting(const NodePtr &node, size_t min_compute_nodes) {
   auto fuse_attrs = node->GetOpDesc()->GetAttrsGroup<AutoFuseAttrs>();
   GE_ASSERT_NOTNULL(fuse_attrs);
   bool disable_lifting = false;
-  if (AttrUtils::GetBool(node->GetOpDesc(), "_disable_lifting", disable_lifting) && disable_lifting) {
+  if (AttrUtils::GetBool(node->GetOpDesc(), kAttrAutofuseDisableLifting, disable_lifting) && disable_lifting) {
     GELOGI("Skip lifting node: %s, as it has disable lifting flag", node->GetNamePtr());
     return true;
   }
@@ -314,13 +315,15 @@ bool IsSkipLifting(const NodePtr &node, size_t min_compute_nodes) {
     return !need_lifting;
   }
   auto origin_nodes = fuse_attrs->GetOriginNodes();
-  if ((origin_nodes.size() > kNumOne) && (fuse_attrs->HasFuseType(loop::FuseType::kSliceSplit))) {
+  vector<const Node *> compute_nodes = AutofuseUtils::GetComputeOps(origin_nodes);
+  // slice 只融合了视图算子时不构成有效盒，按 step4 的计算节点数判定（否则视图算子会被落成真实搬运）
+  if ((origin_nodes.size() > kNumOne) && (fuse_attrs->HasFuseType(loop::FuseType::kSliceSplit)) &&
+      (compute_nodes.size() >= min_compute_nodes)) {
     GELOGI("Skip lifting node: %s, as slice fuse other node, origin node size is %zu", node->GetNamePtr(),
            origin_nodes.size());
     return true;
   }
   // step4: compute node num
-  vector<const Node *> compute_nodes = AutofuseUtils::GetComputeOps(origin_nodes);
   if (compute_nodes.size() >= min_compute_nodes) {
     GELOGD("Skip lifting node: %s, as num fused nodes num %zu >= %zu", node->GetNamePtr(), compute_nodes.size(),
            min_compute_nodes);

@@ -92,9 +92,21 @@ void RegisterTransposeAndReduceOps() {
   RegisterOpCreatorV2("LogicalAnd", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Unsqueeze", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Squeeze", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  // UnsqueezeV3/SqueezeV3 的 axes 是第 2 个可选输入（SqueezeV3 允许不传，表示压掉所有长度 1 的轴）
+  RegisterVecInputTypeOpCreatorV2("UnsqueezeV3", {"x", "axes"}, {ge::kIrInputRequired, ge::kIrInputOptional}, {"y"},
+                                  kIrOutputRequired, {});
+  RegisterVecInputTypeOpCreatorV2("SqueezeV3", {"x", "axes"}, {ge::kIrInputRequired, ge::kIrInputOptional}, {"y"},
+                                  kIrOutputRequired, {});
+  RegisterOpCreatorV2("Softmax", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("SoftmaxV2", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("LayerNorm", {"x", "gamma", "beta"}, ge::kIrInputRequired, {"y", "mean", "variance"},
                       kIrOutputRequired, {});
+  RegisterOpCreatorV2("LayerNormV3", {"x", "gamma", "beta"}, ge::kIrInputRequired, {"y", "mean", "rstd"},
+                      kIrOutputRequired, {});
+  RegisterVecInputTypeOpCreatorV2(
+      "AddLayerNorm", {"x1", "x2", "gamma", "beta", "bias"},
+      {ge::kIrInputRequired, ge::kIrInputRequired, ge::kIrInputRequired, ge::kIrInputRequired, ge::kIrInputOptional},
+      {"y", "mean", "rstd", "x"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("BatchMatMulV2", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("SoftmaxStub", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Slice", {"x1", "x2", "x3"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});

@@ -53,7 +53,7 @@ atc --model="$SCRIPT_DIR/model.onnx" \
 # Step 3: Analyze dump file - check Data node format
 echo ""
 echo "[Step 3] Analyzing Data node format from dump..."
-PRE_RUN_DUMP=$(ls "$SCRIPT_DIR"/ge_proto_*_PreRunBegin.txt 2>/dev/null | head -1)
+PRE_RUN_DUMP=$(ls "$SCRIPT_DIR"/ge_proto_*_PreRunBegin.txt 2>/dev/null | head -1 || true)
 if [ -z "$PRE_RUN_DUMP" ]; then
     echo "ERROR: No PreRunBegin dump file found."
     echo "Try setting DUMP_GE_GRAPH=2 and re-running ATC."
@@ -84,8 +84,8 @@ echo "=== 关键结论 ==="
 echo "Data 默认格式是 NCHW。Transpose 删除后 InferFormat 的后续行为取决于下游算子。"
 echo "如需确认 InferFormat 是否会重新插入 TransData，请对比以下 dump:"
 ls "$SCRIPT_DIR"/ge_proto_*_PreRunBegin.txt 2>/dev/null
-ls "$SCRIPT_DIR"/ge_proto_*_AfterInfershape.txt 2>/dev/null
-ls "$SCRIPT_DIR"/ge_proto_*_Build.txt 2>/dev/null
+ls "$SCRIPT_DIR"/ge_proto_*_AfterInfershape.txt 2>/dev/null || echo "WARNING: No AfterInfershape dump found; comparison for this stage is unavailable."
+ls "$SCRIPT_DIR"/ge_proto_*_Build.txt 2>/dev/null || echo "WARNING: No Build dump found; comparison for this stage is unavailable."
 echo ""
 echo "========================================================"
 echo " Verification complete!"

@@ -33,8 +33,10 @@
 namespace hccl {
 static constexpr u32 NEW_TILING_VERSION = 2U;
 static constexpr u32 INIT_TILING_VERSION = 100U;
+static constexpr u32 INIT_CCU_TILING_VERSION = 101U;
 static constexpr u32 MAX_CC_TILING_NUM = 8U;
 static constexpr u8 COMM_ENGINE_AICPU_FOR_MC2 = 2U;
+static constexpr u8 COMM_ENGINE_CCU_FOR_MC2 = 6U;
 static constexpr char MC2_CLIENT_SO_NAME[] = "libmc2_client.so";
 static constexpr char MC2_A5_ALLOC_FUNC_NAME[] = "HcclAllocComResourceByTilingA5Mc2";
 const uint32_t GROUP_NAME_OFFSET = 5;
@@ -239,7 +241,8 @@ bool ParseMc2CommEngines(const std::string &tilingData, std::vector<u8> &commEng
   }
 
   const auto *initTiling = reinterpret_cast<const Mc2InitTilingForGe *>(tilingData.data());
-  if (initTiling->version != INIT_TILING_VERSION || initTiling->mc2HcommCnt > MAX_CC_TILING_NUM) {
+  if ((initTiling->version != INIT_TILING_VERSION && initTiling->version != INIT_CCU_TILING_VERSION) ||
+      initTiling->mc2HcommCnt > MAX_CC_TILING_NUM) {
     HCCL_WARNING("GE_MC2_A5_RESOURCE invalid init tiling version[%u] or cnt[%u].", initTiling->version,
                  initTiling->mc2HcommCnt);
     return false;
@@ -269,29 +272,29 @@ std::string FormatCommEngines(const std::vector<u8> &commEngines) {
   return oss.str();
 }
 
-bool NeedUseAicpuMc2Resource(const u32 tilingVersion, const std::string &tilingData) {
-  const bool supportsAicpuMc2Resource = DeviceCapability::Instance().SupportsAicpuMc2Resource();
+bool NeedUseMc2Resource(const u32 tilingVersion, const std::string &tilingData) {
+  const bool supportsMc2Resource = DeviceCapability::Instance().SupportsMc2Resource();
   std::vector<u8> commEngines;
   bool parsed = false;
-  if (tilingVersion == INIT_TILING_VERSION) {
+  if (tilingVersion == INIT_TILING_VERSION || tilingVersion == INIT_CCU_TILING_VERSION) {
     parsed = ParseMc2CommEngines(tilingData, commEngines);
   }
-  bool allAicpu = !commEngines.empty();
+  bool allMC2 = !commEngines.empty();
   for (const u8 commEngine : commEngines) {
-    if (commEngine != COMM_ENGINE_AICPU_FOR_MC2) {
-      allAicpu = false;
+    if (commEngine != COMM_ENGINE_AICPU_FOR_MC2 &&
+        (tilingVersion != INIT_CCU_TILING_VERSION || commEngine != COMM_ENGINE_CCU_FOR_MC2)) {
+      allMC2 = false;
       break;
     }
   }
-
-  const bool useNewFlow = supportsAicpuMc2Resource && parsed && allAicpu;
+  const bool useNewFlow = supportsMc2Resource && parsed && allMC2;
   HCCL_INFO(
-      "GE_MC2_AICPU_RESOURCE dispatch supportsAicpuMc2Resource[%d], tilingVersion[%u], ccTilingCnt[%zu], "
+      "GE_MC2_AICPU_RESOURCE dispatch supportsMc2Resource[%d], tilingVersion[%u], ccTilingCnt[%zu], "
       "commEngines[%s], "
       "selected[%s].",
-      supportsAicpuMc2Resource, tilingVersion, commEngines.size(), FormatCommEngines(commEngines).c_str(),
+      supportsMc2Resource, tilingVersion, commEngines.size(), FormatCommEngines(commEngines).c_str(),
       (useNewFlow ? "new/asc-devkit-aicpu" : "old/hcomm"));
-  if (supportsAicpuMc2Resource && parsed && !allAicpu) {
+  if (supportsMc2Resource && parsed && !allMC2) {
     HCCL_INFO("GE_MC2_AICPU_RESOURCE AICPU MC2 resource skipped, keep old flow, commEngines[%s].",
               FormatCommEngines(commEngines).c_str());
   }
@@ -387,7 +390,8 @@ void *HcomGetContext(const rtStream_t stream, const void *tilingData, const char
 }
 
 #ifndef OPEN_BUILD_PROJECT
-void *HcomGetA5AicpuContext(const rtStream_t stream, const void *tilingData, const char *groupName) {
+void *HcomGetMC2Context(const rtStream_t stream, const void *tilingData, const char *groupName,
+                        const u32 tilingVersion) {
   HcclComm com = nullptr;
   HcclResult ret = HcomGetCommHandleByGroup(groupName, &com);
   CHK_PRT_RET(ret != HCCL_SUCCESS || com == nullptr,
@@ -402,9 +406,24 @@ void *HcomGetA5AicpuContext(const rtStream_t stream, const void *tilingData, con
   void *context = nullptr;
   ret = allocFunc(com, stream, const_cast<void *>(tilingData), &context);
   CHK_PRT_RET(ret != HCCL_SUCCESS || context == nullptr,
-              HCCL_ERROR("GE_MC2_A5_RESOURCE failed to create A5 AICPU ComResource by tiling, errNo[0x%016llx].",
+              HCCL_ERROR("GE_MC2_A5_RESOURCE failed to create MC2 ComResource by tiling, errNo[0x%016llx].",
                          HCCL_ERROR_CODE(ret)),
               nullptr);
+
+  const auto *initTiling = static_cast<const Mc2InitTilingForGe *>(tilingData);
+  bool isCcuContext = tilingVersion == INIT_CCU_TILING_VERSION && initTiling != nullptr &&
+                      initTiling->version == INIT_CCU_TILING_VERSION && initTiling->mc2HcommCnt > 0U &&
+                      initTiling->mc2HcommCnt <= MAX_CC_TILING_NUM;
+  for (u32 i = 0U; isCcuContext && i < initTiling->mc2HcommCnt; ++i) {
+    const auto *ccTiling =
+        reinterpret_cast<const Mc2CcTilingForGe *>(static_cast<const char *>(tilingData) + initTiling->offset[i]);
+    isCcuContext = ccTiling->commEngine == COMM_ENGINE_CCU_FOR_MC2;
+  }
+  if (isCcuContext) {
+    HCCL_RUN_INFO("[GE_MC2_CCU] CCU context ready, group[%s], tilingVersion[%u], comm[%p], context[%p].", groupName,
+                  tilingVersion, com, context);
+    return context;
+  }
 
   uint64_t streamMode = 0U;
   CHK_PRT_RET(hrtStreamGetMode(stream, &streamMode) != HCCL_SUCCESS,
@@ -541,11 +560,16 @@ ge::graphStatus HcomCreateComResourceMC2(const ge::OpDescPtr &opdesc, std::vecto
   const u32 version = HcomGetTilingVersionByOpDesc(opdesc, tilingData);
   HCCL_INFO("Tiling version of op %s is %u.", opdesc->GetName().c_str(), version);
 #ifndef OPEN_BUILD_PROJECT
-  const bool useAicpuMc2Resource = NeedUseAicpuMc2Resource(version, tilingData);
+  const bool useMc2Resource = NeedUseMc2Resource(version, tilingData);
 #else
-  const bool useAicpuMc2Resource = false;
+  const bool useMc2Resource = false;
+  HCCL_RUN_INFO("[GE_MC2_CCU] resource dispatch uses OPEN_BUILD_PROJECT, mc2_client path disabled.");
 #endif
 
+  HCCL_RUN_INFO(
+      "[GE_MC2_CCU] resource dispatch, op[%s], opDesc[%p], tilingVersion[%u], "
+      "useMc2Client[%d], stream[%p], groups[%zu].",
+      opdesc->GetNamePtr(), opdesc.get(), version, useMc2Resource, stream, groups.size());
   for (const auto &group : groups) {
     HCCL_INFO("HcomCreateComResourceMC2 group is %s.", group.c_str());
     if (group.empty()) {
@@ -555,8 +579,8 @@ ge::graphStatus HcomCreateComResourceMC2(const ge::OpDescPtr &opdesc, std::vecto
     }
 #ifndef OPEN_BUILD_PROJECT
     void *context =
-        useAicpuMc2Resource
-            ? HcomGetA5AicpuContext(stream, reinterpret_cast<const void *>(tilingData.c_str()), group.c_str())
+        useMc2Resource
+            ? HcomGetMC2Context(stream, reinterpret_cast<const void *>(tilingData.c_str()), group.c_str(), version)
             : HcomGetContext(stream, reinterpret_cast<const void *>(tilingData.c_str()), group.c_str());
 #else
     void *context = HcomGetContext(stream, reinterpret_cast<const void *>(tilingData.c_str()), group.c_str());
@@ -564,6 +588,8 @@ ge::graphStatus HcomCreateComResourceMC2(const ge::OpDescPtr &opdesc, std::vecto
     CHK_PRT_RET(context == nullptr, HCCL_ERROR("Failed to create ComResource by tiling."), ge::GRAPH_FAILED);
     contexts.push_back(context);
   }
+  HCCL_RUN_INFO("[GE_MC2_CCU] resources published, op[%s], opDesc[%p], useMc2Client[%d], contextCount[%zu].",
+                opdesc->GetNamePtr(), opdesc.get(), useMc2Resource, contexts.size());
   return ge::GRAPH_SUCCESS;
 }
 REG_HIDDEN_INPUTS_FUNC(ge::HiddenInputsType::HCOM, HcomCreateComResource);

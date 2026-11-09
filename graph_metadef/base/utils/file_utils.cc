@@ -82,7 +82,7 @@ static inline int32_t CheckAndMkdir(const char_t *tmp_dir_path, mmMode_t mode) {
       }
       std::vector<char_t> err_buf(kMaxErrorStrLen + 1U, '\0');
       const auto err_msg = mmGetErrorFormatMessage(mmGetErrorCode(), err_buf.data(), kMaxErrorStrLen);
-      std::string reason = FormatErrnoReason(mmGetErrorCode(), err_msg);
+      std::string reason = FormatErrnoReason(mmGetErrorCode(), err_msg) + ".";
       (void)REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char_t *>({"parameter", "value", "reason"}),
                                       std::vector<const char_t *>({"filepath", tmp_dir_path, reason.c_str()}));
       GELOGW(

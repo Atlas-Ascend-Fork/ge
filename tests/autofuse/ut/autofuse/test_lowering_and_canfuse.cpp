@@ -1467,6 +1467,45 @@ REG_OP(SplitV)
   SetCurShapeEnvContext(nullptr);
 }
 
+// m004/m007 的真实形态：SplitV 的每个分支各接一个 SqueezeV3。slice 盒只融合了视图算子，
+// 不能因为 "slice fuse other node" 就直接保留（否则 SqueezeV3 被落成真实搬运 kernel）
+TEST_F(LoweringAndCanfuseUT, SliceBoxWithOnlyViewSqueezeV3IsLifted) {
+  [this]() {
+    auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+    data0.SetSymbolShape({"3", "1", "2", "4"});
+    auto size_splits = CreateConst(*es_graph_, ge::DT_INT64, {3}, std::vector<int64_t>{1, 1, 1});
+    size_splits.SetSymbolShape({"3"});
+    auto split_dim = CreateConst(*es_graph_, ge::DT_INT64, {1}, std::vector<int64_t>{0});
+    split_dim.SetSymbolShape({"1"});
+    auto axes = CreateConst(*es_graph_, ge::DT_INT64, {1}, std::vector<int64_t>{1});
+    axes.SetSymbolShape({"1"});
+    auto split_outputs = es::SplitV(data0, size_splits, split_dim, 3);
+    int32_t index = 0;
+    for (auto &output : split_outputs) {
+      output.SetSymbolShape({"1", "1", "2", "4"});
+      auto squeeze = es::SqueezeV3(output, axes);
+      squeeze.SetSymbolShape({"1", "2", "4"});
+      es_graph_->SetOutput(squeeze, index++);
+    }
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+
+  ge::PatternFusion patter_fusion;
+  ASSERT_EQ(patter_fusion.RunAllPatternFusion(cg), GRAPH_SUCCESS);
+  ge::AscIrLowerer lowerer;
+  ASSERT_EQ(lowerer.Lowering(cg), GRAPH_SUCCESS);
+  ASSERT_EQ(asc_adapt::GeFallback(cg), GRAPH_SUCCESS);
+  FusionStrategySolver fusion_strategy_solver;
+  FusionDeciderRegistry::Instance().Register(std::unique_ptr<FusionDecider>(new AscBackendFusionDecider()));
+  EXPECT_EQ(fusion_strategy_solver.Fuse(cg), SUCCESS);
+  ASSERT_EQ(lowerer.Lifting(cg), GRAPH_SUCCESS);
+  EXPECT_EQ(CountAscBackendNodes(cg), 0U);
+  EXPECT_NE(cg->FindFirstNodeMatchType("SqueezeV3"), nullptr);
+  SetCurShapeEnvContext(nullptr);
+}
+
 TEST_F(LoweringAndCanfuseUT, TestFusedAscBackendBranchOfFunctionPreNodeInputIsSimplestLoad) {
   [this]() {
     auto data0 = es_graph_->CreateInput(0, "data0", nullptr);

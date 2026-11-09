@@ -818,6 +818,32 @@ tmp2 = ge.NetOutput(NetOutput, [tmp1])
 )");
 }
 
+// 盒内除视图算子外只有 1 个计算算子时不应落盒：{SplitV, SqueezeV3} 这类盒会让 SqueezeV3 从零成本
+// 视图算子变成一次真实搬运 kernel（m004/m007 各 72 盒/step，实装后两网 E2E 退化）
+TEST_F(LoopGraphLoweringStrategyUT, LiftingBoxWhoseOnlyOtherNodeIsViewSqueezeV3) {
+  [this]() {
+    auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+    data0.SetSymbolShape({"s0", "1", "s2"});
+    auto abs = es::Abs(data0);
+    abs.SetSymbolShape({"s0", "1", "s2"});
+    auto axes = CreateConst(*es_graph_, ge::DT_INT32, {1}, std::vector<int32_t>{1});
+    auto squeeze = es::SqueezeV3(abs, axes);
+    squeeze.SetSymbolShape({"s0", "s2"});
+    es_graph_->SetOutput(squeeze, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  ASSERT_EQ(LoweringManager::FusedLoopToAscBackendOp(cg), GRAPH_SUCCESS);
+  EXPECT_NE(ReadableComputeGraph(cg).find("AscBackend"), std::string::npos);
+  ASSERT_EQ(LiftingManager::LiftingGraph(cg), GRAPH_SUCCESS);
+  const auto readable = ReadableComputeGraph(cg);
+  EXPECT_EQ(readable.find("AscBackend"), std::string::npos);
+  EXPECT_NE(readable.find("ge.SqueezeV3"), std::string::npos);
+  EXPECT_NE(readable.find("ge.Abs"), std::string::npos);
+}
+
 TEST_F(LoopGraphLoweringStrategyUT, NodeLiftSucceedIfLoweringNotUseInputData) {
   [this]() {
     auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
@@ -1366,6 +1392,30 @@ TEST_F(LoopGraphLoweringStrategyUT, FallbackLoweringAsInDiableAutofuseScope) {
   auto graph = es_graph_->Build();
   auto cg = GraphUtilsEx::GetComputeGraph(*graph);
   AttrUtils::SetBool(cg->FindNode("Abs_1")->GetOpDesc(), "_disable_autofuse_scope", true);
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  ASSERT_EQ(LoweringManager::FusedLoopToAscBackendOp(cg), GRAPH_SUCCESS);
+  EXPECT_EQ(ReadableComputeGraph(cg), R"(ComputeGraph(graph)
+tmp0 = ge.Data(data0, [])
+tmp1 = ge.AscBackend(autofuse_pointwise_0_Abs, [tmp0])
+tmp2 = ge.Abs(Abs_1, [tmp1])
+tmp3 = ge.NetOutput(NetOutput, [tmp2])
+)");
+}
+
+TEST_F(LoopGraphLoweringStrategyUT, FallbackLoweringAsHostExecSkip) {
+  [this]() {
+    auto data = es_graph_->CreateInput(0, "data0", nullptr);
+    data.SetSymbolShape({"s0", "s1", "s2"});
+    auto abs1 = es::Abs(data);
+    abs1.SetSymbolShape({"s0", "s1", "s2"});
+    auto abs2 = es::Abs(abs1);
+    abs2.SetSymbolShape({"s0", "s1", "s2"});
+    es_graph_->SetOutput(abs2, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  AttrUtils::SetBool(cg->FindNode("Abs_1")->GetOpDesc(), "_autofuse_skip_lowering_for_host_exec", true);
   ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
   ASSERT_EQ(LoweringManager::FusedLoopToAscBackendOp(cg), GRAPH_SUCCESS);
   EXPECT_EQ(ReadableComputeGraph(cg), R"(ComputeGraph(graph)

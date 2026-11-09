@@ -851,7 +851,7 @@ FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY bool ReadProtoFromBinaryFile(co
   std::string real_path = RealPath(file);
   if (real_path.empty()) {
     REPORT_PREDEFINED_ERR_MSG("E13026", std::vector<const char *>({"pathname", "reason"}),
-                              std::vector<const char *>({file, "realpath failed"}));
+                              std::vector<const char *>({file, "realpath failed."}));
     GELOGE(FAILED, "[Check][Param]pb file path '%s' not valid, realpath failed", file);
     return false;
   }

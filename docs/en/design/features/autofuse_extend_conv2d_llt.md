@@ -146,8 +146,7 @@ Both targets link against `ge_compiler`. If the toolkit headers are older than t
 Coverage:
 
 ```bash
-bash scripts/coverage/ge_cov.sh
-# Or use -c with the autofuse script
+bash scripts/test/run_autofuse_test.sh -u -m autofuse -c
 # Report: ge/cov/coverage_report/index.html
 ```
 

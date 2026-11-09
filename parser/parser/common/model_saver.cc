@@ -104,7 +104,7 @@ FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY Status ModelSaver::CheckPath(co
   // Determine file path length
   if (file_path.size() >= PATH_MAX) {
     REPORT_PREDEFINED_ERR_MSG("E13026", std::vector<const char *>({"pathname", "reason"}),
-                              std::vector<const char *>({file_path.c_str(), "the path is too long"}));
+                              std::vector<const char *>({file_path.c_str(), "the path is too long."}));
     GELOGE(FAILED, "[Check][Param] Path is too long:%zu", file_path.size());
     return FAILED;
   }

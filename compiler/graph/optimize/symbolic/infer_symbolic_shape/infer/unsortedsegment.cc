@@ -120,9 +120,36 @@ graphStatus InferShape4SparseSegmentMean(gert::InferSymbolShapeContext *context)
   return BuildSegmentOutputShape(x_shape, segment_ids_tensor, y_shape);
 }
 
+/**
+ * UnsortedSegmentMaxD/MinD/SumD 算子的符号化shape推导
+ * 【算子功能】UnsortedSegment* 的 D 变体（num_segments 由输入转为 attr 0），按 segment_ids 分组聚合。
+ * 【算子约束】num_segments 为非负整数属性。
+ * 【推导逻辑】从 attr 0 读 num_segments，复用 UnsortedSegmentInferShapeImpl：首维替换为 num_segments，
+ *          其余维取 x 对应维。
+ * 【举例】x=[4,2]、segment_ids=[4]、num_segments=3 时，y=[3,2]。
+ */
+graphStatus InferShape4UnsortedSegmentD(gert::InferSymbolShapeContext *context) {
+  const auto x_shape = context->GetInputSymbolShape(kXIdx);
+  GE_UNSUPPORTED_IF_NULL(x_shape);
+  const auto segment_ids_shape = context->GetInputSymbolShape(kSegmentIdsIdx);
+  GE_UNSUPPORTED_IF_NULL(segment_ids_shape);
+  const auto attrs = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attrs);
+  const auto num_segments_ptr = attrs->GetAttrPointer<int64_t>(0);
+  GE_UNSUPPORTED_IF_NULL(num_segments_ptr);
+  GE_ASSERT_TRUE(*num_segments_ptr >= 0, "num_segments must be non-negative, num_segments: %lld", *num_segments_ptr);
+
+  const auto output_shape = context->GetOutputSymbolShape(kOutputIdx);
+  GE_ASSERT_NOTNULL(output_shape);
+  return UnsortedSegmentInferShapeImpl(*num_segments_ptr, x_shape, segment_ids_shape, output_shape);
+}
+
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(UnsortedSegmentMax).InferSymbolShape(InferShape4UnsortedSegment);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(UnsortedSegmentMin).InferSymbolShape(InferShape4UnsortedSegment);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(UnsortedSegmentSum).InferSymbolShape(InferShape4UnsortedSegment);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(UnsortedSegmentMaxD).InferSymbolShape(InferShape4UnsortedSegmentD);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(UnsortedSegmentMinD).InferSymbolShape(InferShape4UnsortedSegmentD);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(UnsortedSegmentSumD).InferSymbolShape(InferShape4UnsortedSegmentD);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(SegmentSum).InferSymbolShape(InferShape4SegmentSum);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(SparseSegmentMean).InferSymbolShape(InferShape4SparseSegmentMean);
 }  // namespace

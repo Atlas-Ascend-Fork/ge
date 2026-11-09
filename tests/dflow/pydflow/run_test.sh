@@ -74,7 +74,7 @@ checkopts() {
         exit 1
         ;;
       --ascend_install_path)
-        ASCEND_INSTALL_PATH="$(realpath $2)"
+        ASCEND_INSTALL_PATH="$(realpath "$2")"
         shift 2
         ;;
       --)

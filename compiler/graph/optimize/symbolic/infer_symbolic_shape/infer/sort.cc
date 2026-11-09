@@ -128,8 +128,73 @@ graphStatus InferShape4TopKV2(gert::InferSymbolShapeContext *context) {
   return GRAPH_SUCCESS;
 }
 
+/**
+ * TopKD 算子的符号化shape推导
+ * 【算子功能】FE top_k_fusion_pass 在 legacy 平台将 TopKV2 换型生成：k 从输入转为属性，
+ *            并新增 assist_seq 辅助输入（fp16 序列，不参与shape语义）
+ *            输入：x(输入张量)、assist_seq(辅助序列)
+ *            属性：k(前K个数, attr 0)、sorted(attr 1)、dim(操作维度, attr 2)、largest(attr 3)
+ *            输出：values(前K个值)、indices(前K个值的索引)
+ * 【算子约束】k >= 1 且 k <= 指定维度的大小；dim 范围 [-dim_num, dim_num)
+ * 【推导逻辑】与 TopKV2 一致：获取输入x的形状与属性k/dim，将操作维度替换为k，其他维度保持不变
+ *      举例：输入x_shape=(2,5,4)，k=3，dim=1，则values_shape=(2,3,4)，indices_shape=(2,3,4)
+ */
+graphStatus InferShape4TopKD(gert::InferSymbolShapeContext *context) {
+  // 获取输入形状（输入1为assist_seq辅助序列，不参与shape推导）
+  auto shape_x = context->GetInputSymbolShape(0);
+  GE_UNSUPPORTED_IF_NULL(shape_x);
+  auto dim_num_x = shape_x->GetDimNum();
+
+  // 获取属性：k(attr 0)、dim(attr 2)，属性序与 TopKD IR 定义一致
+  auto attrs = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attrs);
+  const auto k_ptr = attrs->GetAttrPointer<int64_t>(0U);
+  GE_UNSUPPORTED_IF_NULL(k_ptr);
+  const auto dim = attrs->GetAttrPointer<int64_t>(2U);
+  GE_UNSUPPORTED_IF_NULL(dim);
+  GE_ASSERT_TRUE(*k_ptr >= 1, "k must be a positive integer, k: %lld", *k_ptr);
+
+  // 确定操作维度；属性布局与预期不一致时降级，避免产出错误符号
+  int64_t actual_dim = *dim;
+  if (actual_dim < 0) {
+    actual_dim = dim_num_x + actual_dim;
+  }
+  if (actual_dim < 0 || static_cast<size_t>(actual_dim) >= dim_num_x) {
+    GELOGW("TopKD dim %ld out of range for input with %zu dimensions, degrade.", actual_dim, dim_num_x);
+    return UNSUPPORTED;
+  }
+
+  // 校验k的值不能大于输入x在指定dim维度上的大小
+  const auto k = Symbol(*k_ptr);
+  auto dim_size = shape_x->GetDim(static_cast<size_t>(actual_dim));
+  GE_ASSERT_TRUE(k.Compare(dim_size) <= 0, "k must be less than or equal to dim_size");
+
+  // 计算输出形状
+  auto shape_values = context->GetOutputSymbolShape(0);
+  GE_ASSERT_NOTNULL(shape_values);
+  auto shape_indices = context->GetOutputSymbolShape(1);
+  GE_ASSERT_NOTNULL(shape_indices);
+
+  // 构建输出形状
+  for (size_t i = 0; i < dim_num_x; ++i) {
+    if (i == static_cast<size_t>(actual_dim)) {
+      // 替换为k值
+      shape_values->AppendDim(k);
+      shape_indices->AppendDim(k);
+    } else {
+      // 保持原维度
+      shape_values->AppendDim(shape_x->GetDim(i));
+      shape_indices->AppendDim(shape_x->GetDim(i));
+    }
+  }
+
+  return GRAPH_SUCCESS;
+}
+
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Sort).InferSymbolShape(InferShape4Sort);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(SortWithIndex).InferSymbolShape(InferShape4SortWithIndex);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(TopKV2).InferSymbolShape(InferShape4TopKV2);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(TopKV2D).InferSymbolShape(InferShape4TopKV2);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(TopKD).InferSymbolShape(InferShape4TopKD);
 }  // namespace
 }  // namespace ge

@@ -161,6 +161,30 @@ graphStatus InferShape4BatchNormV3(gert::InferSymbolShapeContext *context) {
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BNTrainingReduce).InferSymbolShape(InferShape4BNTrainingReduce);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BNTrainingUpdate).InferSymbolShape(InferShape4BNTrainingUpdate);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BNTrainingUpdateV3).InferSymbolShape(InferShape4BNTrainingUpdate);
+
+/**
+ * BNTrainingUpdateV2 算子的符号化shape推导
+ * 【算子功能】TF BNTrainingUpdate 换型生成：mean/variance 由输入转为内部重算，仅 3 输出
+ *            （y/batch_mean/batch_variance），输入布局与 BNTrainingUpdate 前 5 路一致。
+ * 【推导逻辑】输出 y 取 x 的 Shape；batch_mean/batch_variance 取 scale（输入 3）的 Shape。
+ * 【举例】x=[N,C,H,W]、scale=[C] 时，y=[N,C,H,W]，batch_mean=batch_variance=[C]。
+ */
+graphStatus InferShape4BNTrainingUpdateV2(gert::InferSymbolShapeContext *context) {
+  auto x_shape = context->GetInputSymbolShape(0);
+  GE_UNSUPPORTED_IF_NULL(x_shape);
+  auto scale_shape = context->GetInputSymbolShape(3);
+  GE_UNSUPPORTED_IF_NULL(scale_shape);
+
+  constexpr size_t output_num = 3U;
+  for (size_t i = 0U; i < output_num; ++i) {
+    auto output_shape = context->GetOutputSymbolShape(i);
+    GE_ASSERT(output_shape != nullptr, "BNTrainingUpdateV2 output shape is null, idx %zu", i);
+    *output_shape = (i == 0U) ? *x_shape : *scale_shape;
+  }
+
+  return ge::GRAPH_SUCCESS;
+}
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BNTrainingUpdateV2).InferSymbolShape(InferShape4BNTrainingUpdateV2);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BatchNorm).InferSymbolShape(InferShape4BatchNorm);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BatchNormV3).InferSymbolShape(InferShape4BatchNormV3);
 

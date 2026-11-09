@@ -132,7 +132,7 @@ Status DumpProperties::CheckDumpPathValid(const std::string &input) const {
   if (mmIsDir(input.c_str()) != EN_OK) {
     char_t err_buf[kMaxErrorStrLength + 1U] = {};
     const auto err_msg = mmGetErrorFormatMessage(mmGetErrorCode(), &err_buf[0], kMaxErrorStrLength);
-    std::string reason = FormatErrnoReason(mmGetErrorCode(), err_msg);
+    std::string reason = FormatErrnoReason(mmGetErrorCode(), err_msg) + ".";
     (void)REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
         std::vector<const char *>(
@@ -144,7 +144,7 @@ Status DumpProperties::CheckDumpPathValid(const std::string &input) const {
   if (mmRealPath(input.c_str(), trusted_path.data(), MMPA_MAX_PATH) != EN_OK) {
     char_t err_buf[kMaxErrorStrLength + 1U] = {};
     const auto err_msg = mmGetErrorFormatMessage(mmGetErrorCode(), &err_buf[0], kMaxErrorStrLength);
-    std::string reason = FormatErrnoReason(mmGetErrorCode(), err_msg);
+    std::string reason = FormatErrnoReason(mmGetErrorCode(), err_msg) + ".";
     (void)REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
         std::vector<const char *>(
@@ -156,7 +156,7 @@ Status DumpProperties::CheckDumpPathValid(const std::string &input) const {
   if (mmAccess2(trusted_path.data(), access_flag) != EN_OK) {
     char_t err_buf[kMaxErrorStrLength + 1U] = {};
     const auto err_msg = mmGetErrorFormatMessage(mmGetErrorCode(), &err_buf[0], kMaxErrorStrLength);
-    std::string reason = FormatErrnoReason(mmGetErrorCode(), err_msg);
+    std::string reason = FormatErrnoReason(mmGetErrorCode(), err_msg) + ".";
     (void)REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
         std::vector<const char *>(

@@ -326,7 +326,7 @@ domi::Status VerifyOutputTypeAndOutNodes(std::vector<std::string> &out_type_vec)
       REPORT_PREDEFINED_ERR_MSG(
           "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
           std::vector<const char *>({"--output_type", out_type_vec[i].c_str(), kOutputTypeError}));
-      GELOGE(FAILED, "[Check][Param]Invalid value for --output_type[%s], %s.", out_type_vec[i].c_str(),
+      GELOGE(FAILED, "[Check][Param]Invalid value for --output_type[%s], %s", out_type_vec[i].c_str(),
              kOutputTypeError);
       return FAILED;
     }
@@ -340,7 +340,7 @@ domi::Status CheckOutPutDataTypeSupport(const std::string &output_type) {
   if (it == output_type_str_to_datatype.cend()) {
     REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
                               std::vector<const char *>({"--output_type", output_type.c_str(), kOutputTypeSupport}));
-    GELOGE(PARAM_INVALID, "[Check][Param]Invalid value for --output_type[%s], %s.", output_type.c_str(),
+    GELOGE(PARAM_INVALID, "[Check][Param]Invalid value for --output_type[%s], %s", output_type.c_str(),
            kOutputTypeSupport);
     return FAILED;
   }
@@ -360,7 +360,7 @@ domi::Status ParseOutputType(const std::string &output_type,
     if (node_index_type_v.size() != 3) {  // The size must be 3.
       REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
                                 std::vector<const char *>({"--output_type", node.c_str(), kOutputTypeSample}));
-      GELOGE(PARAM_INVALID, "[Parse][Param]Invalid value for --output_type[%s], %s.", node.c_str(), kOutputTypeSample);
+      GELOGE(PARAM_INVALID, "[Parse][Param]Invalid value for --output_type[%s], %s", node.c_str(), kOutputTypeSample);
       return FAILED;
     }
     std::string node_name = StringUtils::Trim(node_index_type_v[kNodeNameIndex]);
@@ -378,7 +378,7 @@ domi::Status ParseOutputType(const std::string &output_type,
     if (it == output_type_str_to_datatype.cend()) {
       REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
                                 std::vector<const char *>({"--output_type", dt_value.c_str(), kOutputTypeSupport}));
-      GELOGE(ge::PARAM_INVALID, "[Parse][Param]Invalid value for --output_type[%s], %s.", dt_value.c_str(),
+      GELOGE(ge::PARAM_INVALID, "[Parse][Param]Invalid value for --output_type[%s], %s", dt_value.c_str(),
              kOutputTypeSupport);
       return FAILED;
     }

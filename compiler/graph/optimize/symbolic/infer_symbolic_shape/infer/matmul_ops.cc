@@ -202,6 +202,7 @@ graphStatus InferShape4SparseTensorDenseMatMul(gert::InferSymbolShapeContext *co
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MatMul).InferSymbolShape(InferShape4MatMul);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MatMulV2).InferSymbolShape(InferShape4MatMul);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MatMulV3).InferSymbolShape(InferShape4MatMul);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BatchMatMul).InferSymbolShape(InferShape4BatchMatMulV2);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BatchMatMulV2).InferSymbolShape(InferShape4BatchMatMulV2);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BatchMatMulV3).InferSymbolShape(InferShape4BatchMatMulV2);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(SparseTensorDenseMatMul).InferSymbolShape(InferShape4SparseTensorDenseMatMul);

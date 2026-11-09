@@ -931,7 +931,7 @@ Status CheckOutputTypeParamValid(const std::string &output_type) {
   if ((!output_type.empty()) && (kOutputTypeSupportDatatype.find(output_type) == kOutputTypeSupportDatatype.end())) {
     REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
                               std::vector<const char *>({"--output_type", output_type.c_str(), kOutputTypeSupport}));
-    GELOGE(ge::PARAM_INVALID, "[Check][Param]Invalid value for --output_type[%s], %s.", output_type.c_str(),
+    GELOGE(ge::PARAM_INVALID, "[Check][Param]Invalid value for --output_type[%s], %s", output_type.c_str(),
            kOutputTypeSupport);
     return ge::PARAM_INVALID;
   }
@@ -944,7 +944,7 @@ Status CheckBufferOptimizeParamValid(const std::string &buffer_optimize) {
     REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
         std::vector<const char *>({"--buffer_optimize", buffer_optimize.c_str(), kBufferOptimizeSupport}));
-    GELOGE(ge::PARAM_INVALID, "[Check][BufferOptimize]Invalid value for [%s], %s.", buffer_optimize.c_str(),
+    GELOGE(ge::PARAM_INVALID, "[Check][BufferOptimize]Invalid value for [%s], %s", buffer_optimize.c_str(),
            kBufferOptimizeSupport);
     return ge::PARAM_INVALID;
   }
@@ -1286,7 +1286,7 @@ Status CheckImplmodeParamValid(const std::string &optypelist_for_implmode, std::
     REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
         std::vector<const char *>({"--op_select_implmode", op_select_implmode.c_str(), kCompressWeightError}));
-    GELOGE(ge::PARAM_INVALID, "[Check][Param:--op_select_implmode]value:%s invalid, %s.", op_select_implmode.c_str(),
+    GELOGE(ge::PARAM_INVALID, "[Check][Param:--op_select_implmode]value:%s invalid, %s", op_select_implmode.c_str(),
            kCompressWeightError);
     return ge::PARAM_INVALID;
   }
@@ -1303,7 +1303,7 @@ Status CheckImplmodeParamValid(const std::string &optypelist_for_implmode, std::
       REPORT_PREDEFINED_ERR_MSG(
           "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
           std::vector<const char *>({"--op_select_implmode", op_select_implmode.c_str(), kSelectImplmodeError}));
-      GELOGE(ge::PARAM_INVALID, "[Check][Implmode]Invalid value for --op_select_implmode[%s], %s.",
+      GELOGE(ge::PARAM_INVALID, "[Check][Implmode]Invalid value for --op_select_implmode[%s], %s",
              op_select_implmode.c_str(), kSelectImplmodeError);
       return ge::PARAM_INVALID;
     }

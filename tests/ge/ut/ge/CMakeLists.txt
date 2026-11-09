@@ -1622,6 +1622,7 @@ target_link_options(ut_libge_distinct_load_utest PRIVATE
 
 target_link_libraries(ut_libge_distinct_load_utest
     intf_llt_pub
+    mockcpp
     ascend_hal_stub
     ge_metadef_headers
     ascendcl_stub

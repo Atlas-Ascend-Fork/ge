@@ -178,14 +178,19 @@ def parse_device_list(dev_list_str: str) -> List[int]:
         List of integer device IDs.
 
     Raises:
-        ValueError: If the string contains non-integer values.
+        ValueError: If no device IDs are present, or IDs are invalid or repeated.
     """
     try:
-        return [int(d.strip()) for d in dev_list_str.split(",") if d.strip()]
+        devices = [int(d.strip()) for d in dev_list_str.split(",") if d.strip()]
     except ValueError:
         raise ValueError(
             f"Invalid device list: '{dev_list_str}', expected format: 0,1,2"
         )
+    if not devices:
+        raise ValueError(f"Device list is empty: '{dev_list_str}'")
+    if len(devices) != len(set(devices)):
+        raise ValueError(f"Duplicate device IDs in device list: '{dev_list_str}'")
+    return devices
 
 
 def generate_topology(dev_list: List[int]) -> Tuple[dict, list]:

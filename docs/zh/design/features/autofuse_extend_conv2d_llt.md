@@ -146,8 +146,7 @@ make -C cmake-build-gcov ut_libge_common_utest -j 3
 覆盖率：
 
 ```bash
-bash scripts/coverage/ge_cov.sh
-# 或 autofuse 脚本 -c
+bash scripts/test/run_autofuse_test.sh -u -m autofuse -c
 # 报告：ge/cov/coverage_report/index.html
 ```
 

@@ -705,7 +705,7 @@ Status Om2PackageHelper::ExtractVisualJson(const void *model_data, size_t model_
                                       std::vector<const char *>({"ExtractVisualJson", reason}));
       GELOGE(FAILED, "[OM2] ExtractVisualJson failed. Reason: %s", reason);
     };
-    report_extract_failed("Failed to extract visual JSON from OM2 archive.");
+    report_extract_failed("Failed to extract visual JSON from OM2 archive");
     return FAILED;
   }
 

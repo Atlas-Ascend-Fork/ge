@@ -30,5 +30,10 @@ constexpr char_t const *kRelativeBranch = "branch";
 constexpr char_t const *kConditionGraph = "CondGraph";
 constexpr char_t const *kThenGraph = "then_graph";
 constexpr char_t const *kElseGraph = "else_graph";
+// autofuse: 标记将被下沉 host 执行的节点，使其跳过设备侧 lowering/融合；由 AutoFusePass 打标并回收。
+constexpr char_t const *kAttrAutofuseSkipLoweringForHostExec = "_autofuse_skip_lowering_for_host_exec";
+// autofuse 融合/lowering 过程中的临时标记，生命周期与本次自动融合一致，结束时统一回收。
+constexpr char_t const *kAttrAutofuseDisableScope = "_disable_autofuse_scope";
+constexpr char_t const *kAttrAutofuseDisableLifting = "_disable_lifting";
 }  // namespace ge
 #endif  // AIR_CXX_BASE_COMMON_GE_INNER_ATTRS_H_

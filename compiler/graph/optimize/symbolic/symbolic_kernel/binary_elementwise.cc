@@ -11,6 +11,7 @@
 #include "framework/common/framework_types_internal.h"
 #include "common/util/mem_utils.h"
 #include "common/checker.h"
+#include "graph/symbolizer/symbol_operator.h"
 #include "graph/optimize/symbolic/symbol_compute_context.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "graph/optimize/symbolic/symbolic_kernel_factory.h"
@@ -207,7 +208,42 @@ graphStatus MulSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
                                                 [](const Expression &x1, const Expression &x2) { return x1 * x2; });
 }
 
+/**
+ * FloorMod算子的符号化计算
+ * 【算子功能】对两个输入张量执行逐元素floor取模（结果符号与除数一致，对齐 Python % 语义）。
+ * 【推导逻辑】先获取x1和x2的确定Shape及SymbolicValue，按尾部维度补1并逐维校验广播兼容性，生成输出
+ *          Shape；然后依据stride将两个SymbolicValue映射到输出线性位置，在每个位置构造
+ *          x1 - x2*floor(x1/x2) 的精确等价表达式，最后写入输出Shape和SymbolicValue。
+ * 【算子约束】输入Shape必须可确定并满足广播规则，两个输入必须存在且长度匹配的SymbolicValue；
+ *          除零场景沿用运行期语义，不在符号层拦截。
+ * 【举例】x1 Shape=[2,2]、value=[7,8,9,10]，x2 Shape=[1,2]、value=[3,3]时，
+ *          输出Shape为[2,2]，输出value为[1,2,0,1]。
+ */
+graphStatus FloorModSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  GELOGD("FloorMod Symbolic Kernel in, node %s[%s].", context->GetNodeName(), context->GetNodeType());
+  return BinaryElementwiseSymbolicKernelCompute(
+      context, [](const Expression &x1, const Expression &x2) { return x1 - x2 * sym::Floor(x1 / x2); });
+}
+
 REGISTER_SYMBOLIC_KERNEL(Add, AddSymbolicKernelCompute);
+REGISTER_SYMBOLIC_KERNEL(AddV2, AddSymbolicKernelCompute);
 REGISTER_SYMBOLIC_KERNEL(Sub, SubSymbolicKernelCompute);
 REGISTER_SYMBOLIC_KERNEL(Mul, MulSymbolicKernelCompute);
+/**
+ * FloorDiv算子的符号化计算
+ * 【算子功能】对两个输入张量执行逐元素floor除法（结果向下取整，对齐 Python // 语义）。
+ * 【推导逻辑】复用二元逐元素框架：按 stride 将两个 SymbolicValue 映射到输出线性位置，
+ *          在每个位置构造 floor(x1/x2) 的值表达式。
+ * 【算子约束】输入Shape必须可确定并满足广播规则，两个输入必须存在且长度匹配的SymbolicValue；
+ *          除零场景沿用运行期语义，不在符号层拦截。
+ * 【举例】x1 Shape=[2]、value=[7,8]，x2 Shape=[2]、value=[2,3]时，
+ *          输出Shape为[2]，输出value为[3,2]。
+ */
+graphStatus FloorDivSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  GELOGD("FloorDiv Symbolic Kernel in, node %s[%s].", context->GetNodeName(), context->GetNodeType());
+  return BinaryElementwiseSymbolicKernelCompute(
+      context, [](const Expression &x1, const Expression &x2) { return sym::Floor(x1 / x2); });
+}
+REGISTER_SYMBOLIC_KERNEL(FloorDiv, FloorDivSymbolicKernelCompute);
+REGISTER_SYMBOLIC_KERNEL(FloorMod, FloorModSymbolicKernelCompute);
 }  // namespace ge

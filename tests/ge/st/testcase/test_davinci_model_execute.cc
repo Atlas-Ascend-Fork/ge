@@ -9,6 +9,8 @@
  */
 
 #include "gtest/gtest.h"
+#include <array>
+#include <mockcpp/mockcpp.hpp>
 #include "init_ge.h"
 #include "utils/bench_env.h"
 #include "ge_graph_dsl/graph_dsl.h"
@@ -16,6 +18,8 @@
 #include "base/err_mgr.h"
 
 #include "macro_utils/dt_public_scope.h"
+#include "ge/ut/ge/graph/load/mc2_library_stub.h"
+#include "register/hidden_inputs_func_registry.h"
 #include "ge/ut/ge/test_tools_task_info.h"
 #include "hybrid/hybrid_davinci_model.h"
 #include "graph/utils/graph_utils.h"
@@ -77,9 +81,6 @@ using namespace testing;
 using namespace gert;
 
 namespace {
-HcclResult InitializeHeterogeneousRuntime(const std::string &group, void *tilingData, void *ccuTaskGroup) {
-  return HCCL_SUCCESS;
-}
 struct AdumpCallRecord {
   int call_count = 0;
   std::string op_type;
@@ -206,6 +207,13 @@ class DavinciModelTest : public testing::Test {
     actual_info_type.clear();
     (void)mmGetEnv("ASCEND_OPP_PATH", old_path_env_, MMPA_MAX_PATH);
     gert::SpaceRegistryFaker::CreateDefaultSpaceRegistry();
+    const auto &builders = OpsKernelBuilderRegistry::GetInstance().GetAll();
+    for (const char *name : {"AIcoreEngine", "AiCoreLib", "RTSLib"}) {
+      const auto it = builders.find(name);
+      if (it != builders.end()) {
+        saved_builders_.emplace(it->first, it->second);
+      }
+    }
     MockGenerateTask();
   }
   void TearDown() override {
@@ -218,10 +226,18 @@ class DavinciModelTest : public testing::Test {
       mmSetEnv("ASCEND_OPP_PATH", old_path_env_, 1);
     }
     RTS_STUB_TEARDOWN();
+    TearDownForGenerateTask("AIcoreEngine");
+    TearDownForGenerateTask("AiCoreLib");
+    TearDownForGenerateTask("RTSLib");
+    for (const auto &builder : saved_builders_) {
+      OpsKernelBuilderRegistry::GetInstance().Register(builder.first, builder.second);
+    }
+    saved_builders_.clear();
   }
 
  private:
   char old_path_env_[MMPA_MAX_PATH] = {'\0'};
+  std::map<std::string, OpsKernelBuilderPtr> saved_builders_;
 };
 
 extern void BuildSampleGraph(ComputeGraphPtr &graph, uint32_t &mem_offset);
@@ -5963,187 +5979,353 @@ TEST_F(DavinciModelTest, init_mc2_cust_aicpu_with_tilefwk_hiddeninput_success) {
   EXPECT_EQ(kernel_task_info.Init(aicpu_task, &model, args, persistant_workspace, iow_addrs), SUCCESS);
 }
 
-TEST_F(DavinciModelTest, mc2_with_fusion_task_graph_load_and_success) {
-  dlog_setlevel(GE_MODULE_NAME, DLOG_DEBUG, 0);
-  auto hcom_hidden_funcs = [](const ge::OpDescPtr &op_desc, std::vector<void *> &addrs) {
-    addrs.push_back(reinterpret_cast<void *>(0xf1));
-    return ge::GRAPH_SUCCESS;
-  };
-  REG_HIDDEN_INPUTS_FUNC(HiddenInputsType::HCOM, hcom_hidden_funcs);
+enum class Mc2LoadCase {
+  Legacy100,
+  LegacyShort,
+  CcuHandle,
+  CcuStub,
+  HcommOpenRetry,
+  HcommSymbolRetry,
+  Mc2OpenRetry,
+  Mc2SymbolRetry,
+  CcuFailure,
+  AicoreFailure,
+  NullContext
+};
 
-  HcclDllHcomMgr mgr = HcclDllHcomMgr::GetInstance();
-  HcclDllHcomMgr::GetInstance().hccl_HcomGetCcuTaskInfo_func = &InitializeHeterogeneousRuntime;
-
-  DEF_GRAPH(g1) {
-    auto data_0 = OP_CFG(DATA).Attr(ATTR_NAME_PARENT_NODE_INDEX, 0);  // x1
-    auto data_1 = OP_CFG(DATA).Attr(ATTR_NAME_PARENT_NODE_INDEX, 1);  // bias
-    auto data_2 = OP_CFG(DATA).Attr(ATTR_NAME_PARENT_NODE_INDEX, 2);  // k0
-    auto data_3 = OP_CFG(DATA).Attr(ATTR_NAME_PARENT_NODE_INDEX, 3);  // k1
-    auto data_4 = OP_CFG(DATA).Attr(ATTR_NAME_PARENT_NODE_INDEX, 4);  // x2
-    auto mc2 = OP_CFG("mc2_fusion")
-                   .Attr(ATTR_NAME_IMPLY_TYPE, static_cast<int64_t>(domi::ImplyType::TVM))
-                   .Attr(ATTR_NAME_CUBE_VECTOR_CORE_TYPE, "AIV")
-                   .Attr(TVM_ATTR_NAME_MAGIC, "RT_DEV_BINARY_MAGIC_ELF")
-                   .Attr(ATTR_NAME_KERNEL_BIN_ID, "fake_mc2_bin_id")
-                   .Attr("_kernel_list_first_name", true);
-    CHAIN(NODE("_arg_0", data_0)->EDGE(0, 0)->NODE("mc2", mc2)->EDGE(0, 0)->NODE("Node_Output", NETOUTPUT));
-    CHAIN(NODE("_arg_1", data_1)->EDGE(0, 1)->NODE("mc2", mc2));
-    CHAIN(NODE("_arg_2", data_2)->EDGE(0, 2)->NODE("mc2", mc2));
-    CHAIN(NODE("_arg_3", data_3)->EDGE(0, 3)->NODE("mc2", mc2));
-    CHAIN(NODE("_arg_4", data_4)->EDGE(0, 4)->NODE("mc2", mc2));
-    CHAIN(NODE("mc2", mc2)->EDGE(1, 1)->NODE("Node_Output", NETOUTPUT));
-    CHAIN(NODE("mc2", mc2)->EDGE(2, 2)->NODE("Node_Output", NETOUTPUT));
-    CHAIN(NODE("mc2", mc2)->EDGE(3, 3)->NODE("Node_Output", NETOUTPUT));
-    CHAIN(NODE("mc2", mc2)->EDGE(4, 4)->NODE("Node_Output", NETOUTPUT));
-    CHAIN(NODE("mc2", mc2)->EDGE(5, 5)->NODE("Node_Output", NETOUTPUT));
-  };
-
-  auto root_graph = ToComputeGraph(g1);
-  EXPECT_NE(root_graph, nullptr);
-
-  for (auto i = 0; i <= 4; ++i) {
-    GeTensorDesc output_tensor(GeShape({4, 4, 4, 4}), FORMAT_ND, DT_FLOAT);
-    const auto &data = root_graph->FindNode("_arg_" + std::to_string(i));
-    EXPECT_NE(data, nullptr);
-    data->GetOpDesc()->UpdateOutputDesc(0, output_tensor);
-    data->GetOpDesc()->SetOutputOffset({1000 + i * 1000});
-    data->GetOpDesc()->SetOpKernelLibName("DNN_VM_GE_LOCAL_OP_STORE");
+class Mc2ModelRuntime : public RuntimeStub {
+ public:
+  rtError_t rtKernelLaunchWithHandleV2(void *, uint64_t key, uint32_t blocks, rtArgsEx_t *args, rtSmDesc_t *,
+                                       rtStream_t, const rtTaskCfgInfo_t *cfg) override {
+    all_kernel = true;
+    EXPECT_EQ(key, 0x1234U);
+    return Capture(blocks, args, cfg);
   }
 
-  const auto &out_node = root_graph->FindNode("Node_Output");
-  EXPECT_NE(out_node, nullptr);
-  out_node->GetOpDesc()->SetSrcName({"mc2", "mc2", "mc2", "mc2", "mc2", "mc2"});
-  out_node->GetOpDesc()->SetSrcIndex({0, 1, 2, 3, 4, 5});
-  out_node->GetOpDesc()->SetOpKernelLibName("DNN_VM_GE_LOCAL_OP_STORE");
-  GeTensorDesc input_desc(GeShape({1, 4, 4, 4}), FORMAT_ND, DT_FLOAT);
-  out_node->GetOpDesc()->UpdateInputDesc(0, input_desc);
-  out_node->GetOpDesc()->UpdateInputDesc(1, input_desc);
-  out_node->GetOpDesc()->SetInputOffset({10000, 11000, 12000, 13000, 14000, 15000});
-  auto mc2_node = root_graph->FindNode("mc2");
-  EXPECT_NE(mc2_node, nullptr);
-  GeShape shape({4, 4, 4, 4});
-  GeTensorDesc desc(shape);
-  GeShape scalar_shape;
-  GeTensorDesc scalar_desc(scalar_shape);
-  const auto op_desc = mc2_node->GetOpDescBarePtr();
+  rtError_t rtKernelLaunchWithFlagV2(const void *, uint32_t blocks, rtArgsEx_t *args, rtSmDesc_t *, rtStream_t,
+                                     uint32_t flags, const rtTaskCfgInfo_t *cfg) override {
+    all_kernel = false;
+    EXPECT_EQ(flags, 0U);
+    return Capture(blocks, args, cfg);
+  }
 
-  op_desc->UpdateInputDesc(0, desc);
-  op_desc->UpdateInputDesc(1, desc);
-  op_desc->AddDynamicInputDescByIndex("k", 2, 2);
-  op_desc->UpdateInputDesc(2, desc);
-  op_desc->UpdateInputDesc(3, desc);
-  op_desc->UpdateInputDesc(4, desc);
-  AttrUtils::SetInt(op_desc, ATTR_NAME_ATTACHED_STREAM_ID, 0);
+  rtError_t Capture(uint32_t blocks, const rtArgsEx_t *args, const rtTaskCfgInfo_t *cfg) {
+    calls.emplace_back("aicore");
+    EXPECT_EQ(blocks, 256U);
+    EXPECT_NE(args->args, nullptr);
+    EXPECT_GT(args->argsSize, 0U);
+    EXPECT_EQ(static_cast<uint32_t>(args->isNoNeedH2DCopy), 1U);
+    EXPECT_EQ(static_cast<uint32_t>(cfg->blockDimOffset), 1U);
+    EXPECT_EQ(static_cast<uint32_t>(cfg->schemMode), 1U);
+    return result;
+  }
 
-  op_desc->MutableAllInputName() = {{"x1", 0}, {"bias", 1}, {"k0", 2}, {"k1", 3}, {"a", 4}};
-  op_desc->MutableAllOutputName() = {{"y", 0}, {"gather_out", 1}, {"z0", 2}, {"z1", 3}, {"m", 4}, {"n", 5}};
+  bool all_kernel = false;
+  rtError_t result = RT_ERROR_NONE;
+  std::vector<std::string> calls;
+};
 
-  // ir的顺序为添加顺序
-  op_desc->AppendIrInput("x1", IrInputType::kIrInputRequired);
-  op_desc->AppendIrInput("x2", IrInputType::kIrInputOptional);
-  op_desc->AppendIrInput("bias", IrInputType::kIrInputRequired);
-  op_desc->AppendIrInput("k", IrInputType::kIrInputDynamic);
-  op_desc->AppendIrInput("a", IrInputType::kIrInputRequired);
-  op_desc->AppendIrOutput("y", IrOutputType::kIrOutputRequired);
-  op_desc->AppendIrOutput("gather_out", IrOutputType::kIrOutputRequired);
-  op_desc->AppendIrOutput("z", IrOutputType::kIrOutputDynamic);
-  op_desc->AppendIrOutput("m", IrOutputType::kIrOutputRequired);
-  op_desc->AppendIrOutput("n", IrOutputType::kIrOutputRequired);
+class Mc2FusionModelLoadTest : public DavinciModelTest, public testing::WithParamInterface<Mc2LoadCase> {
+ protected:
+  void SetUp() override {
+    DavinciModelTest::SetUp();
+    saved_mgr_ = HcclDllHcomMgr::GetInstance();
+    saved_hidden_funcs_ = HiddenInputsFuncRegistry::GetInstance().type_to_funcs_;
+    saved_runtime_ = RuntimeStub::fake_instance_;
+    saved_dump_flags_ = gert::GlobalDumper::GetInstance()->enable_flags_;
+    gert::GlobalDumper::GetInstance()->enable_flags_ = 0U;
+    HiddenInputsFuncRegistry::GetInstance().Register(
+        HiddenInputsType::HCOM, [](const OpDescPtr &op, std::vector<void *> &addrs) -> graphStatus {
+          auto *calls = op->TryGetExtAttr<size_t *>("_st_mc2_hidden_calls", nullptr);
+          if (calls == nullptr) {
+            return GRAPH_FAILED;
+          }
+          ++(*calls);
+          addrs = op->TryGetExtAttr<std::vector<void *>>("_st_mc2_contexts", {});
+          return GRAPH_SUCCESS;
+        });
+    HcclDllHcomMgr::GetInstance().hccl_HcomGetCcuTaskInfo_func = [this](const std::string &group, void *, void *) {
+      EXPECT_EQ(group, "test_second");
+      ++legacy_calls_;
+      return HCCL_SUCCESS;
+    };
+    if (!IsLegacy()) {
+      ASSERT_NO_FATAL_FAILURE(PrepareLibraries());
+      runtime_.result = GetParam() == Mc2LoadCase::AicoreFailure ? ACL_ERROR_RT_PARAM_INVALID : RT_ERROR_NONE;
+      RuntimeStub::Install(&runtime_);
+    }
+  }
 
-  op_desc->MutableInputDesc(1) = nullptr;
-  AttrUtils::SetInt(op_desc, ATTR_NAME_ATTACHED_STREAM_ID, 0);
-  AttrUtils::SetInt(op_desc, RECV_ATTR_NOTIFY_ID, 0);
+  void PrepareLibraries() {
+    libraries_.reset(new Mc2LibraryStub());
+    libraries_->comm = &comm_;
+    if (GetParam() == Mc2LoadCase::HcommOpenRetry) {
+      libraries_->missing_library = "libhcomm.so";
+    } else if (GetParam() == Mc2LoadCase::HcommSymbolRetry) {
+      libraries_->missing_symbol = "HcomGetCommHandleByGroup";
+    }
+    auto &mgr = HcclDllHcomMgr::GetInstance();
+    if (GetParam() == Mc2LoadCase::NullContext) {
+      EXPECT_EQ(mgr.CcuKernelLaunchFunc(nullptr, &contexts_[1]), HCCL_E_PTR);
+      EXPECT_EQ(mgr.CcuKernelLaunchFunc(&comm_, nullptr), HCCL_E_PTR);
+    }
+    void *comm = nullptr;
+    if (!libraries_->missing_library.empty() || !libraries_->missing_symbol.empty()) {
+      EXPECT_EQ(mgr.HcomGetCommHandleByGroupFunc("test_second", comm), HCCL_E_INTERNAL);
+      EXPECT_EQ(comm, nullptr);
+      libraries_->missing_library.clear();
+      libraries_->missing_symbol.clear();
+    }
+    ASSERT_EQ(mgr.HcomGetCommHandleByGroupFunc("test_second", comm), HCCL_SUCCESS);
+    EXPECT_EQ(comm, &comm_);
+    if (GetParam() == Mc2LoadCase::Mc2OpenRetry) {
+      libraries_->missing_library = "libmc2_client.so";
+    } else if (GetParam() == Mc2LoadCase::Mc2SymbolRetry) {
+      libraries_->missing_symbol = "CcuKernelLaunch";
+    }
+    if (!libraries_->missing_library.empty() || !libraries_->missing_symbol.empty()) {
+      EXPECT_EQ(mgr.CcuKernelLaunchFunc(comm, &contexts_[1]), HCCL_E_INTERNAL);
+      EXPECT_TRUE(libraries_->launches.empty());
+      libraries_->missing_library.clear();
+      libraries_->missing_symbol.clear();
+    }
+    ASSERT_EQ(mgr.CcuKernelLaunchFunc(comm, &contexts_[1]), HCCL_SUCCESS);
+    const size_t open_retries = GetParam() == Mc2LoadCase::HcommOpenRetry || GetParam() == Mc2LoadCase::Mc2OpenRetry;
+    const size_t symbol_retries =
+        GetParam() == Mc2LoadCase::HcommSymbolRetry || GetParam() == Mc2LoadCase::Mc2SymbolRetry;
+    EXPECT_EQ(libraries_->open_calls, 2U + open_retries);
+    EXPECT_EQ(libraries_->symbol_calls, 2U + symbol_retries);
+    libraries_->StopIntercepting();
+    libraries_->groups.clear();
+    libraries_->launches.clear();
+    libraries_->launch_result = GetParam() == Mc2LoadCase::CcuFailure ? 1U : 0U;
+    libraries_->on_launch = [this]() { runtime_.calls.emplace_back("ccu"); };
+  }
 
-  auto output_desc_ptr = op_desc->MutableOutputDesc(5);
-  (void)ge::AttrUtils::SetInt(output_desc_ptr, ge::ATTR_NAME_MEMORY_SIZE_CALC_TYPE,
-                              static_cast<int64_t>(ge::MemorySizeCalcType::ALWAYS_EMPTY));
+  void TearDown() override {
+    libraries_.reset();
+    if (stored_kernel_) {
+      TBEHandleStore::GetInstance().EraseTBEHandle({{"fake_mc2_bin_id_static_bin", 1U}});
+    }
+    HcclDllHcomMgr::GetInstance() = saved_mgr_;
+    HiddenInputsFuncRegistry::GetInstance().type_to_funcs_ = saved_hidden_funcs_;
+    RuntimeStub::Install(saved_runtime_);
+    gert::GlobalDumper::GetInstance()->enable_flags_ = saved_dump_flags_;
+    DavinciModelTest::TearDown();
+  }
 
-  op_desc->SetInputOffset({1000, 2000, 3000, 4000, 5000});
-  op_desc->SetOutputOffset({10000, 11000, 12000, 13000, 14000, 15000});
-  op_desc->SetWorkspace({20000});
-  op_desc->SetWorkspaceBytes({512});
-  (void)AttrUtils::SetInt(op_desc, GLOBALWORKSPACE_TYPE, 1);
-  (void)AttrUtils::SetStr(op_desc, HCOM_ATTR_GROUP, "test");
+  bool IsLegacy() const {
+    return GetParam() == Mc2LoadCase::Legacy100 || GetParam() == Mc2LoadCase::LegacyShort;
+  }
 
-  gert::SpaceRegistryFaker::UpdateOpImplToDefaultSpaceRegistry();
-  auto &space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-  auto funcs = space_registry->CreateOrGetOpImpl("mc2_fusion");
-  funcs->tiling = nullptr;
-  funcs->tiling_parse = nullptr;
-  funcs->compile_info_creator = nullptr;
-  funcs->compile_info_deleter = nullptr;
-  EXPECT_EQ(funcs->SetTilingInputDataDependency(5), GRAPH_SUCCESS);
+  void BuildMc2Graph(ComputeGraphPtr &root_graph) {
+    DEF_GRAPH(g1) {
+      auto data_0 = OP_CFG(DATA).Attr(ATTR_NAME_PARENT_NODE_INDEX, 0);  // x1
+      auto data_1 = OP_CFG(DATA).Attr(ATTR_NAME_PARENT_NODE_INDEX, 1);  // bias
+      auto data_2 = OP_CFG(DATA).Attr(ATTR_NAME_PARENT_NODE_INDEX, 2);  // k0
+      auto data_3 = OP_CFG(DATA).Attr(ATTR_NAME_PARENT_NODE_INDEX, 3);  // k1
+      auto data_4 = OP_CFG(DATA).Attr(ATTR_NAME_PARENT_NODE_INDEX, 4);  // x2
+      auto mc2 = OP_CFG("mc2_fusion")
+                     .Attr(ATTR_NAME_IMPLY_TYPE, static_cast<int64_t>(domi::ImplyType::TVM))
+                     .Attr(ATTR_NAME_CUBE_VECTOR_CORE_TYPE, "AIV")
+                     .Attr(TVM_ATTR_NAME_MAGIC, "RT_DEV_BINARY_MAGIC_ELF")
+                     .Attr(ATTR_NAME_KERNEL_BIN_ID, "fake_mc2_bin_id")
+                     .Attr("_kernel_list_first_name", true);
+      CHAIN(NODE("_arg_0", data_0)->EDGE(0, 0)->NODE("mc2", mc2)->EDGE(0, 0)->NODE("Node_Output", NETOUTPUT));
+      CHAIN(NODE("_arg_1", data_1)->EDGE(0, 1)->NODE("mc2", mc2));
+      CHAIN(NODE("_arg_2", data_2)->EDGE(0, 2)->NODE("mc2", mc2));
+      CHAIN(NODE("_arg_3", data_3)->EDGE(0, 3)->NODE("mc2", mc2));
+      CHAIN(NODE("_arg_4", data_4)->EDGE(0, 4)->NODE("mc2", mc2));
+      CHAIN(NODE("mc2", mc2)->EDGE(1, 1)->NODE("Node_Output", NETOUTPUT));
+      CHAIN(NODE("mc2", mc2)->EDGE(2, 2)->NODE("Node_Output", NETOUTPUT));
+      CHAIN(NODE("mc2", mc2)->EDGE(3, 3)->NODE("Node_Output", NETOUTPUT));
+      CHAIN(NODE("mc2", mc2)->EDGE(4, 4)->NODE("Node_Output", NETOUTPUT));
+      CHAIN(NODE("mc2", mc2)->EDGE(5, 5)->NODE("Node_Output", NETOUTPUT));
+    };
 
-  std::vector<char> test_bin(64, '\0');
-  std::string kernel_handle_name = "fake_mc2_bin_id_static_bin";
-  ge::TBEKernelPtr test_kernel = MakeShared<ge::OpKernelBin>("fake_mc2_bin_id_static_bin", std::move(test_bin));
-  (void)AttrUtils::SetStr(mc2_node->GetOpDesc(), ATTR_NAME_TBE_KERNEL_NAME, "fake_mc2_bin_id_static_bin");
-  op_desc->SetExtAttr(test_kernel->GetName(), test_kernel);
-  op_desc->SetExtAttr(OP_EXTATTR_NAME_TBE_KERNEL, test_kernel);
-  TBEHandleStore::GetInstance().StoreTBEHandle(kernel_handle_name, nullptr, nullptr);
+    root_graph = ToComputeGraph(g1);
+    ASSERT_NE(root_graph, nullptr);
+    ASSERT_NO_FATAL_FAILURE(InitMc2GraphIo(root_graph));
+  }
 
-  auto run_info = std::make_shared<optiling::utils::OpRunInfo>(0, false, 0);
-  run_info->AddTilingData("11111111");
-  run_info->SetTilingKey(0x1234);
-  run_info->AddWorkspace(512);
-  op_desc->SetExtAttr(ATTR_NAME_OP_RUN_INFO, run_info);
-  AttrUtils::SetBool(op_desc, "_memcheck", true);
+  void InitMc2GraphIo(const ComputeGraphPtr &root_graph) {
+    for (auto i = 0; i <= 4; ++i) {
+      GeTensorDesc output_tensor(GeShape({4, 4, 4, 4}), FORMAT_ND, DT_FLOAT);
+      const auto &data = root_graph->FindNode("_arg_" + std::to_string(i));
+      EXPECT_NE(data, nullptr);
+      data->GetOpDesc()->UpdateOutputDesc(0, output_tensor);
+      data->GetOpDesc()->SetOutputOffset({1000 + i * 1000});
+      data->GetOpDesc()->SetOpKernelLibName("DNN_VM_GE_LOCAL_OP_STORE");
+    }
 
-  std::shared_ptr<domi::ModelTaskDef> model_task_def = MakeShared<domi::ModelTaskDef>();
-  auto &fusion_task = *model_task_def->add_task();
-  fusion_task.set_type(static_cast<int32_t>(ge::ModelTaskType::MODEL_TASK_FUSION_KERNEL));
-  auto fusion = fusion_task.mutable_fusion_task();
-  fusion->set_args_format(
-      "{i0}{i2}{}{i_desc3}{i_instance4}{o0}{o1}{o_desc2}{o_instance4}{}{hi.hcom0*}{ws*}{overflow_addr}{ws0}{t}{#123}");
-  fusion->set_op_index(op_desc->GetId());
-  fusion->set_kfc_args_format_offset(12);
+    const auto &out_node = root_graph->FindNode("Node_Output");
+    EXPECT_NE(out_node, nullptr);
+    out_node->GetOpDesc()->SetSrcName({"mc2", "mc2", "mc2", "mc2", "mc2", "mc2"});
+    out_node->GetOpDesc()->SetSrcIndex({0, 1, 2, 3, 4, 5});
+    out_node->GetOpDesc()->SetOpKernelLibName("DNN_VM_GE_LOCAL_OP_STORE");
+    GeTensorDesc input_desc(GeShape({1, 4, 4, 4}), FORMAT_ND, DT_FLOAT);
+    out_node->GetOpDesc()->UpdateInputDesc(0, input_desc);
+    out_node->GetOpDesc()->UpdateInputDesc(1, input_desc);
+    out_node->GetOpDesc()->SetInputOffset({10000, 11000, 12000, 13000, 14000, 15000});
+  }
 
-  // 1.1 AICORE 子任务
-  auto *sub1 = fusion->add_fusion_sub_task_info();
-  sub1->set_type(domi::FusionSubTaskInfo::AICORE);
-  auto *aicore = sub1->mutable_task()->mutable_aicore_fusion_task_info();
+  void InitMc2Op(const OpDescPtr &op_desc) {
+    GeShape shape({4, 4, 4, 4});
+    GeTensorDesc desc(shape);
+    GeShape scalar_shape;
+    GeTensorDesc scalar_desc(scalar_shape);
 
-  // 1.1.1 KernelContext
-  auto *ctx = aicore->mutable_context();
-  ctx->set_kernel_type(11);
+    op_desc->UpdateInputDesc(0, desc);
+    op_desc->UpdateInputDesc(1, desc);
+    op_desc->AddDynamicInputDescByIndex("k", 2, 2);
+    op_desc->UpdateInputDesc(2, desc);
+    op_desc->UpdateInputDesc(3, desc);
+    op_desc->UpdateInputDesc(4, desc);
+    AttrUtils::SetInt(op_desc, ATTR_NAME_ATTACHED_STREAM_ID, 0);
 
-  // 1.1.2 args 二进制
-  aicore->set_is_all_kernel(true);
+    op_desc->MutableAllInputName() = {{"x1", 0}, {"bias", 1}, {"k0", 2}, {"k1", 3}, {"a", 4}};
+    op_desc->MutableAllOutputName() = {{"y", 0}, {"gather_out", 1}, {"z0", 2}, {"z1", 3}, {"m", 4}, {"n", 5}};
 
-  // 1.1.3 LaunchConfig → LaunchAttribute
-  auto *cfg = aicore->mutable_config();
-  auto *attr = cfg->add_launch_attribute();
-  attr->set_id(domi::LaunchAttribute::BLOCKDIM);
-  attr->mutable_value()->set_block_dim(256);
+    // ir的顺序为添加顺序
+    op_desc->AppendIrInput("x1", IrInputType::kIrInputRequired);
+    op_desc->AppendIrInput("x2", IrInputType::kIrInputOptional);
+    op_desc->AppendIrInput("bias", IrInputType::kIrInputRequired);
+    op_desc->AppendIrInput("k", IrInputType::kIrInputDynamic);
+    op_desc->AppendIrInput("a", IrInputType::kIrInputRequired);
+    op_desc->AppendIrOutput("y", IrOutputType::kIrOutputRequired);
+    op_desc->AppendIrOutput("gather_out", IrOutputType::kIrOutputRequired);
+    op_desc->AppendIrOutput("z", IrOutputType::kIrOutputDynamic);
+    op_desc->AppendIrOutput("m", IrOutputType::kIrOutputRequired);
+    op_desc->AppendIrOutput("n", IrOutputType::kIrOutputRequired);
 
-  attr = cfg->add_launch_attribute();
-  attr->set_id(domi::LaunchAttribute::BLOCKDIM_OFFSET);
-  attr->mutable_value()->set_block_dim_offset(1);
+    op_desc->MutableInputDesc(1) = nullptr;
+    AttrUtils::SetInt(op_desc, ATTR_NAME_ATTACHED_STREAM_ID, 0);
+    AttrUtils::SetInt(op_desc, RECV_ATTR_NOTIFY_ID, 0);
 
-  attr = cfg->add_launch_attribute();
-  attr->set_id(domi::LaunchAttribute::SCHEMMODE);
-  attr->mutable_value()->set_schem_model(1);
+    auto output_desc_ptr = op_desc->MutableOutputDesc(5);
+    (void)ge::AttrUtils::SetInt(output_desc_ptr, ge::ATTR_NAME_MEMORY_SIZE_CALC_TYPE,
+                                static_cast<int64_t>(ge::MemorySizeCalcType::ALWAYS_EMPTY));
 
-  // 1.2 CCU 子任务
-  auto *sub3 = fusion->add_fusion_sub_task_info();
-  sub3->set_type(domi::FusionSubTaskInfo::CCU);
-  sub3->mutable_task()->mutable_ccu_task_group()->add_group("group");
+    op_desc->SetInputOffset({1000, 2000, 3000, 4000, 5000});
+    op_desc->SetOutputOffset({10000, 11000, 12000, 13000, 14000, 15000});
+    op_desc->SetWorkspace({20000});
+    op_desc->SetWorkspaceBytes({512});
+    (void)AttrUtils::SetInt(op_desc, GLOBALWORKSPACE_TYPE, 1);
+    (void)AttrUtils::SetStr(op_desc, HCOM_ATTR_GROUP, "test");
+    ASSERT_TRUE(AttrUtils::SetStr(op_desc, "group_1", "test_second"));
+    ASSERT_TRUE(AttrUtils::SetInt(op_desc, "group_00", 1));
+  }
 
-  GeModelPtr ge_model = MakeShared<GeModel>();
-  auto &kernel_store = ge_model->GetTBEKernelStore();
-  kernel_store.AddTBEKernel(test_kernel);
+  void PrepareMc2Kernel(const OpDescPtr &op_desc, TBEKernelPtr &test_kernel) {
+    gert::SpaceRegistryFaker::UpdateOpImplToDefaultSpaceRegistry();
+    auto &space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto funcs = space_registry->CreateOrGetOpImpl("mc2_fusion");
+    funcs->tiling = nullptr;
+    funcs->tiling_parse = nullptr;
+    funcs->compile_info_creator = nullptr;
+    funcs->compile_info_deleter = nullptr;
+    EXPECT_EQ(funcs->SetTilingInputDataDependency(5), GRAPH_SUCCESS);
 
-  ge_model->SetGraph(root_graph);
-  ge_model->SetModelTaskDef(model_task_def);
-  EXPECT_TRUE(AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 20480));
-  EXPECT_TRUE(AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 2));
-  EXPECT_TRUE(AttrUtils::SetInt(ge_model, ATTR_MODEL_EVENT_NUM, 1));
-  EXPECT_TRUE(AttrUtils::SetInt(ge_model, ATTR_MODEL_LABEL_NUM, 0));
-  EXPECT_TRUE(AttrUtils::SetInt(ge_model, MODEL_ATTR_TASK_GEN_BASE_ADDR, 0));
-  EXPECT_TRUE(AttrUtils::SetInt(ge_model, MODEL_ATTR_TASK_GEN_WEIGHT_ADDR, 0));
-  EXPECT_TRUE(AttrUtils::SetInt(ge_model, ATTR_MODEL_VAR_SIZE, 0));
-  EXPECT_NE(ge_model, nullptr);
-  {
+    std::vector<char> test_bin(64, '\0');
+    std::string kernel_handle_name = "fake_mc2_bin_id_static_bin";
+    test_kernel = MakeShared<ge::OpKernelBin>("fake_mc2_bin_id_static_bin", std::move(test_bin));
+    (void)AttrUtils::SetStr(op_desc, ATTR_NAME_TBE_KERNEL_NAME, "fake_mc2_bin_id_static_bin");
+    op_desc->SetExtAttr(test_kernel->GetName(), test_kernel);
+    op_desc->SetExtAttr(OP_EXTATTR_NAME_TBE_KERNEL, test_kernel);
+    ASSERT_EQ(TBEHandleStore::GetInstance().StoreTBEHandle(kernel_handle_name, nullptr, nullptr), SUCCESS);
+    stored_kernel_ = true;
+
+    auto run_info = std::make_shared<optiling::utils::OpRunInfo>(0, false, 0);
+    const uint32_t version = IsLegacy() ? 100U : 101U;
+    std::array<uint32_t, 16> init{};
+    init[0] = version;
+    init[1] = 1U;
+    init[2] = sizeof(init);
+    std::string tiling(sizeof(init) + 16U, '\0');
+    ASSERT_EQ(memcpy_s(&tiling[0], tiling.size(), init.data(), sizeof(init)), EOK);
+    tiling[sizeof(init) + 13U] = static_cast<char>(6U);
+    if (GetParam() == Mc2LoadCase::LegacyShort) {
+      tiling.resize(3U);
+    }
+    run_info->AddTilingData(tiling.data(), tiling.size());
+    run_info->SetTilingKey(0x1234);
+    run_info->AddWorkspace(512);
+    op_desc->SetExtAttr(ATTR_NAME_OP_RUN_INFO, run_info);
+    AttrUtils::SetBool(op_desc, "_memcheck", true);
+  }
+
+  void BuildMc2TaskDef(const OpDescPtr &op_desc, domi::ModelTaskDef &model_task_def) {
+    auto &fusion_task = *model_task_def.add_task();
+    fusion_task.set_type(static_cast<int32_t>(ge::ModelTaskType::MODEL_TASK_FUSION_KERNEL));
+    auto fusion = fusion_task.mutable_fusion_task();
+    fusion->set_args_format(
+        "{i0}{i2}{}{i_desc3}{i_instance4}{o0}{o1}{o_desc2}{o_instance4}{}{hi.hcom0*}{ws*}{overflow_addr}{ws0}{t}{#"
+        "123}");
+    fusion->set_op_index(op_desc->GetId());
+    fusion->set_kfc_args_format_offset(12);
+
+    // 1.1 AICORE 子任务
+    auto *sub1 = fusion->add_fusion_sub_task_info();
+    sub1->set_type(domi::FusionSubTaskInfo::AICORE);
+    auto *aicore = sub1->mutable_task()->mutable_aicore_fusion_task_info();
+
+    // 1.1.1 KernelContext
+    auto *ctx = aicore->mutable_context();
+    ctx->set_kernel_type(11);
+
+    // 1.1.2 args 二进制
+    aicore->set_is_all_kernel(GetParam() != Mc2LoadCase::CcuStub);
+
+    // 1.1.3 LaunchConfig → LaunchAttribute
+    auto *cfg = aicore->mutable_config();
+    auto *attr = cfg->add_launch_attribute();
+    attr->set_id(domi::LaunchAttribute::BLOCKDIM);
+    attr->mutable_value()->set_block_dim(256);
+
+    attr = cfg->add_launch_attribute();
+    attr->set_id(domi::LaunchAttribute::BLOCKDIM_OFFSET);
+    attr->mutable_value()->set_block_dim_offset(1);
+
+    attr = cfg->add_launch_attribute();
+    attr->set_id(domi::LaunchAttribute::SCHEMMODE);
+    attr->mutable_value()->set_schem_model(1);
+
+    // 1.2 CCU 子任务
+    auto *sub3 = fusion->add_fusion_sub_task_info();
+    sub3->set_type(domi::FusionSubTaskInfo::CCU);
+    sub3->mutable_task()->mutable_ccu_task_group()->add_group("group_1");
+  }
+
+  void BuildMc2Model(const ComputeGraphPtr &root_graph, GeModelPtr &ge_model) {
+    auto mc2_node = root_graph->FindNode("mc2");
+    ASSERT_NE(mc2_node, nullptr);
+    const auto op_desc = mc2_node->GetOpDesc();
+    ASSERT_NO_FATAL_FAILURE(InitMc2Op(op_desc));
+    ASSERT_TRUE(op_desc->SetExtAttr("_st_mc2_hidden_calls", &hidden_calls_));
+    void *const second_context = GetParam() == Mc2LoadCase::NullContext ? nullptr : &contexts_[1];
+    ASSERT_TRUE(op_desc->SetExtAttr("_st_mc2_contexts", std::vector<void *>{&contexts_[0], second_context}));
+    TBEKernelPtr test_kernel;
+    ASSERT_NO_FATAL_FAILURE(PrepareMc2Kernel(op_desc, test_kernel));
+    auto model_task_def = MakeShared<domi::ModelTaskDef>();
+    ASSERT_NO_FATAL_FAILURE(BuildMc2TaskDef(op_desc, *model_task_def));
+
+    ge_model = MakeShared<GeModel>();
+    auto &kernel_store = ge_model->GetTBEKernelStore();
+    kernel_store.AddTBEKernel(test_kernel);
+
+    ge_model->SetGraph(root_graph);
+    ge_model->SetModelTaskDef(model_task_def);
+    EXPECT_TRUE(AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 20480));
+    EXPECT_TRUE(AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 2));
+    EXPECT_TRUE(AttrUtils::SetInt(ge_model, ATTR_MODEL_EVENT_NUM, 1));
+    EXPECT_TRUE(AttrUtils::SetInt(ge_model, ATTR_MODEL_LABEL_NUM, 0));
+    EXPECT_TRUE(AttrUtils::SetInt(ge_model, MODEL_ATTR_TASK_GEN_BASE_ADDR, 0));
+    EXPECT_TRUE(AttrUtils::SetInt(ge_model, MODEL_ATTR_TASK_GEN_WEIGHT_ADDR, 0));
+    EXPECT_TRUE(AttrUtils::SetInt(ge_model, ATTR_MODEL_VAR_SIZE, 0));
+    EXPECT_NE(ge_model, nullptr);
+  }
+
+  void LoadMc2Model(const ComputeGraphPtr &root_graph, const GeModelPtr &ge_model) {
     GeRootModelPtr ge_root_model = MakeShared<GeRootModel>();
     EXPECT_EQ(ge_root_model->Initialize(root_graph), SUCCESS);
     ge_root_model->SetCustomOpRegistry(CustomOpFactory::GetGlobalRegistryPtr());
@@ -6157,13 +6339,81 @@ TEST_F(DavinciModelTest, mc2_with_fusion_task_graph_load_and_success) {
     ModelExecutor model_executor;
     EXPECT_EQ(model_executor.Initialize({}, root_graph->GetSessionID()), SUCCESS);
     model_executor.StartRunThread();
-    EXPECT_EQ(model_executor.LoadGraph(ge_root_model, graph_node, nullptr), SUCCESS);
-    EXPECT_EQ(model_executor.UnloadGraph(ge_root_model, graph_id), SUCCESS);
+    const bool load_failure = GetParam() == Mc2LoadCase::CcuFailure || GetParam() == Mc2LoadCase::AicoreFailure ||
+                              GetParam() == Mc2LoadCase::NullContext;
+    const auto load_ret = model_executor.LoadGraph(ge_root_model, graph_node, nullptr);
+    if (load_failure) {
+      EXPECT_NE(load_ret, SUCCESS);
+    } else {
+      EXPECT_EQ(load_ret, SUCCESS);
+      if (load_ret == SUCCESS) {
+        EXPECT_EQ(model_executor.UnloadGraph(ge_root_model, graph_id), SUCCESS);
+      }
+    }
     EXPECT_EQ(model_executor.Finalize(), SUCCESS);
   }
-  RuntimeStub::Reset();
-  dlog_setlevel(GE_MODULE_NAME, DLOG_ERROR, 0);
+
+  void CheckMc2LaunchResult() {
+    EXPECT_EQ(hidden_calls_, 1U);
+    if (IsLegacy()) {
+      EXPECT_EQ(legacy_calls_, 1U);
+      EXPECT_TRUE(runtime_.calls.empty());
+    } else {
+      EXPECT_EQ(legacy_calls_, 0U);
+      if (GetParam() == Mc2LoadCase::NullContext) {
+        EXPECT_TRUE(libraries_->groups.empty());
+        EXPECT_TRUE(libraries_->launches.empty());
+        EXPECT_TRUE(runtime_.calls.empty());
+      } else {
+        EXPECT_EQ(libraries_->groups, (std::vector<std::string>{"test_second"}));
+        ASSERT_EQ(libraries_->launches.size(), 1U);
+        EXPECT_EQ(libraries_->launches[0],
+                  std::make_pair(static_cast<void *>(&comm_), static_cast<void *>(&contexts_[1])));
+        const auto expected = GetParam() == Mc2LoadCase::CcuFailure ? std::vector<std::string>{"ccu"}
+                                                                    : std::vector<std::string>{"ccu", "aicore"};
+        EXPECT_EQ(runtime_.calls, expected);
+        if (GetParam() != Mc2LoadCase::CcuFailure) {
+          EXPECT_EQ(runtime_.all_kernel, GetParam() != Mc2LoadCase::CcuStub);
+        }
+      }
+    }
+  }
+
+  HcclDllHcomMgr saved_mgr_{HcclDllHcomMgr::GetInstance()};
+  std::map<HiddenInputsType, GetHiddenAddrs> saved_hidden_funcs_;
+  RuntimeStub *saved_runtime_ = nullptr;
+  std::unique_ptr<Mc2LibraryStub> libraries_;
+  Mc2ModelRuntime runtime_;
+  uint64_t contexts_[2]{};
+  uint64_t comm_ = 0U;
+  size_t hidden_calls_ = 0U;
+  size_t legacy_calls_ = 0U;
+  uint64_t saved_dump_flags_ = 0U;
+  bool stored_kernel_ = false;
+};
+
+/**
+ * 用例描述：MC2 模型加载支持 CCU split launch、旧 tiling，以及依赖加载重试和执行失败。
+ * 预置条件：使用 Runtime 桩、两个 group 的 hidden context 和外部通信库桩；保留模型加载与任务分发流程。
+ * 测试步骤：构造 MC2 模型；对缺失 DLL/符号场景先验证失败再恢复依赖；加载并卸载模型。
+ * 预期结果：101 按 group 选择第二个 context，先启动 CCU 再启动 AICORE；旧版本保留 fusion 路径；
+ *           context 缺失或 CCU/AICORE 失败时加载失败；已解析的 DLL 接口可被模型加载复用。
+ */
+TEST_P(Mc2FusionModelLoadTest, LoadAndDistributeMc2Model) {
+  ComputeGraphPtr root_graph;
+  ASSERT_NO_FATAL_FAILURE(BuildMc2Graph(root_graph));
+  GeModelPtr ge_model;
+  ASSERT_NO_FATAL_FAILURE(BuildMc2Model(root_graph, ge_model));
+  ASSERT_NO_FATAL_FAILURE(LoadMc2Model(root_graph, ge_model));
+  CheckMc2LaunchResult();
 }
+
+INSTANTIATE_TEST_SUITE_P(Mc2ContextAndLaunch, Mc2FusionModelLoadTest,
+                         testing::Values(Mc2LoadCase::Legacy100, Mc2LoadCase::LegacyShort, Mc2LoadCase::CcuHandle,
+                                         Mc2LoadCase::CcuStub, Mc2LoadCase::HcommOpenRetry,
+                                         Mc2LoadCase::HcommSymbolRetry, Mc2LoadCase::Mc2OpenRetry,
+                                         Mc2LoadCase::Mc2SymbolRetry, Mc2LoadCase::CcuFailure,
+                                         Mc2LoadCase::AicoreFailure, Mc2LoadCase::NullContext));
 
 /**
  * ST场景: CheckIoReuseAddrs - 端到端验证地址相同时校验通过

@@ -336,7 +336,7 @@ ge::Status FindInternalWeightBuf(const gert::GertModelData &om2_data,
   if (data_it == constants_data.end()) {
     REPORT_PREDEFINED_ERR_MSG(
         "E10059", std::vector<const char *>({"stage", "reason"}),
-        std::vector<const char *>({"LoadFromOm2ModelData", "Constants data not found in ZIP archive."}));
+        std::vector<const char *>({"LoadFromOm2ModelData", "Constants data not found in ZIP archive"}));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2][Check] Constants data [%s] not found.", internal_file_name.c_str());
     return ACL_ERROR_GE_PARAM_INVALID;
   }
@@ -1344,7 +1344,7 @@ class Om2ModelExecutor::Impl {
                                 std::vector<const char *>({"PrepareInternalConsts",
                                                            "Internal weight file [data/constants/constant_0] not found "
                                                            "in OM2 package, please check whether the OM2 model file is "
-                                                           "complete or has been modified."}));
+                                                           "complete or has been modified"}));
       GELOGE(ACL_ERROR_GE_PARAM_INVALID,
              "[OM2][Check] Missing internal host weight buffer, the internal weight file is not found in OM2 file.");
       return ACL_ERROR_GE_PARAM_INVALID;
@@ -1954,7 +1954,7 @@ ge::Status IsOm2Model(const void *data, size_t size, bool &is_support) {
 
   if (size < FILE_MAGIC_HEADER_SIZE) {
     const std::string err_msg =
-        "Model data size must be greater than or equal to " + std::to_string(FILE_MAGIC_HEADER_SIZE);
+        "Model data size must be greater than or equal to " + std::to_string(FILE_MAGIC_HEADER_SIZE) + ".";
     REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
                               std::vector<const char *>({"size", std::to_string(size).c_str(), err_msg.c_str()}));
     GELOGE(ACL_ERROR_GE_EXEC_MODEL_DATA_SIZE_INVALID,

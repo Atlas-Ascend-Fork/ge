@@ -279,16 +279,9 @@ TEST_F(OpsDeliverablesManagerUT, LoadOppPackagesSkipsInvalidLibraries) {
                                                        "{ASCEND_OPP_PATH}/bad_second.so"]}]})");
 
   EXPECT_EQ(OpsDeliverablesManager::LoadOppPackages(), GRAPH_SUCCESS);
-  EXPECT_TRUE(logs_->load_errors.empty());
-  std::vector<std::string> load_warnings;
-  for (const auto &warning : logs_->warnings) {
-    if (warning.find("Configured SO load failed") != std::string::npos) {
-      load_warnings.push_back(warning);
-    }
-  }
-  ASSERT_EQ(load_warnings.size(), 2U);
-  EXPECT_NE(load_warnings[0].find("bad_first.so"), std::string::npos);
-  EXPECT_NE(load_warnings[1].find("bad_second.so"), std::string::npos);
+  ASSERT_EQ(logs_->load_errors.size(), 2U);
+  EXPECT_NE(logs_->load_errors[0].find("bad_first.so"), std::string::npos);
+  EXPECT_NE(logs_->load_errors[1].find("bad_second.so"), std::string::npos);
 }
 }  // namespace
 }  // namespace ge

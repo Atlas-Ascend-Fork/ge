@@ -22,6 +22,8 @@
 
 #include "common/env_path.h"
 #include "framework/om2/model_data/gert_model_data.h"
+#include "ge/ge_api.h"
+#include "graph/ge_context.h"
 #include "framework/common/gert_model_data_utils.h"
 #include "common/helper/om2/om2_utils.h"
 #include "common/memory/tensor_trans_utils.h"
@@ -897,6 +899,31 @@ TEST_F(Om2OnlineModelExecutorTest, GetCompiledModel_Om2Mode_Success) {
   EXPECT_EQ(graph_manager.GetCompiledModel(graph_id, model_buffer), SUCCESS);
   ASSERT_NE(model_buffer.data, nullptr);
   EXPECT_GT(model_buffer.length, 0U);
+}
+
+/**
+ * 用例描述：测试创建 Session 时 options 中 ge.exec.disableReuseMemory 为非法值的参数校验
+ * 预置条件：
+ *   1. GEInitialize 已成功执行
+ * 测试步骤：
+ *   1. 构造 session options，注入 ge.exec.disableReuseMemory=100（合法值仅为 0/1）
+ *   2. 构造 ge::Session 对象
+ * 预期结果：
+ *   1. Session 创建失败，GetSessionId 保持 0，并上报 disableReuseMemory 非法错误码
+ * 注意：本用例置于本文件末尾——Session 初始化失败路径会在全局留下状态残留
+ *      （InnerSession::Initialize 在参数校验失败前已创建 UserGraphsManager 等组件），
+ *      可能影响同进程后续用例，故必须作为本 target 的最后一个用例执行。
+ */
+TEST(SessionOptionInvalidTest, disable_reuse_memory_invalid) {
+  std::map<std::string, std::string> options;
+  options[ge::OPTION_EXEC_DEVICE_ID] = "0";
+  EXPECT_EQ(ge::GEInitialize(options), ge::SUCCESS);
+
+  std::map<std::string, std::string> session_options;
+  session_options["ge.exec.disableReuseMemory"] = "100";
+  ge::Session session(session_options);
+  EXPECT_EQ(session.GetSessionId(), 0U);
+  EXPECT_EQ(ge::GEFinalize(), ge::SUCCESS);
 }
 
 }  // namespace ge

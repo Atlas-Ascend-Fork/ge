@@ -10,6 +10,7 @@
 
 #include "graph/load/model_manager/task_info/fe/fusion_task_info.h"
 
+#include <array>
 #include <securec.h>
 #include "common/checker.h"
 #include "common/tbe_handle_store/tbe_handle_store.h"
@@ -39,9 +40,41 @@ constexpr uint64_t kDefaultShapeNum = 0x100000000U;
 constexpr uint32_t kAddressLen = static_cast<uint32_t>(sizeof(uint64_t));
 constexpr char_t const *kMaxTilingSize = "op_para_size";
 constexpr uint64_t kMaxTilingDataSize = 16UL * 1024UL;
+constexpr uint32_t kInitCcuTilingVersion = 101U;
+constexpr uint32_t kMaxMc2CcTilingNum = 8U;
+constexpr size_t kMc2InitTilingSize = 64U;
+constexpr size_t kMc2CcTilingSize = 16U;
+constexpr size_t kMc2CommEngineOffset = 13U;
+constexpr uint8_t kMc2CcuCommEngine = 6U;
 
 constexpr uint64_t kBitFlag8 = 0x00FFFFFFFFFFFFFFUL;
 constexpr uint64_t kLevel2BitFlagWithShape = 0x0200000000000000UL;
+
+ge::Status GetMc2ClientLaunchFlag(const std::string &tiling_data, const char *op_name, bool &use_mc2_client) {
+  use_mc2_client = false;
+  uint32_t tiling_version = 0U;
+  if (tiling_data.size() >= sizeof(tiling_version)) {
+    GE_ASSERT_EOK(memcpy_s(&tiling_version, sizeof(tiling_version), tiling_data.data(), sizeof(tiling_version)));
+  }
+  if (tiling_version == kInitCcuTilingVersion && tiling_data.size() >= kMc2InitTilingSize) {
+    // The init prefix contains version, count and offsets; each CC prefix carries commEngine at byte 13.
+    std::array<uint32_t, kMaxMc2CcTilingNum + 2U> init_tiling{};
+    GE_ASSERT_EOK(memcpy_s(init_tiling.data(), sizeof(init_tiling), tiling_data.data(), sizeof(init_tiling)));
+    const uint32_t cc_tiling_count = init_tiling[1];
+    use_mc2_client = cc_tiling_count > 0U && cc_tiling_count <= kMaxMc2CcTilingNum;
+    for (uint32_t i = 0U; use_mc2_client && i < cc_tiling_count; ++i) {
+      const size_t offset = init_tiling[i + 2U];
+      if (offset > tiling_data.size() || tiling_data.size() - offset < kMc2CcTilingSize) {
+        use_mc2_client = false;
+        break;
+      }
+      use_mc2_client = static_cast<uint8_t>(tiling_data[offset + kMc2CommEngineOffset]) == kMc2CcuCommEngine;
+    }
+  }
+  GELOGI("[GE_MC2_CCU] host tiling dispatch, op[%s], tilingVersion[%u], useMc2Client[%d].", op_name, tiling_version,
+         use_mc2_client);
+  return ge::SUCCESS;
+}
 
 void AppendShapeDesc(const ge::GeTensorDesc &tensor_desc, std::vector<int64_t> &shape_infos) {
   const auto &shape = tensor_desc.GetShape();
@@ -601,6 +634,7 @@ Status FusionTaskInfo::AssembleIoByArgsFormat(const ArgsFormatInfo &args_format_
         break;
     }
   }
+  hcom_context_addrs_ = std::move(context_addrs);
   GE_ASSERT_SUCCESS(AssembleShapeInfoAddrs(dynamic_args_desc, level_addr_idx, args_format_info));
   return SUCCESS;
 }
@@ -766,7 +800,7 @@ Status FusionTaskInfo::InitKernel(const domi::TaskDef &task_def, const PisToArgs
     dump_flag_ = RT_KERNEL_DUMPFLAG;
   }
 
-  InitArgs(args);
+  GE_ASSERT_SUCCESS(InitArgs(args));
 
   GE_CHK_STATUS_RET(SetTvmTaskZeroCopy(op_desc_, io_addrs_, args_));
 
@@ -799,15 +833,43 @@ Status FusionTaskInfo::InitKernel(const domi::TaskDef &task_def, const PisToArgs
         break;
       }
       case domi::FusionSubTaskInfo::CCU: {
-        rt_fusion_task_.subTask[index].type =
-            static_cast<rtFusionType_t>(DomiFusionTypeToRtFusionType(fusion_sub_task_info.type()));
-        GE_ASSERT_TRUE(rt_fusion_task_.subTask[index].type != RT_FUSION_END);
         const auto &ccu_task_group = task.ccu_task_group();
         GE_ASSERT(ccu_task_group.group_size() == 1U);
         string hcom_group_attr_name = ccu_task_group.group(0);
         string hcom_group;
         GE_ASSERT(AttrUtils::GetStr(op_desc_, hcom_group_attr_name, hcom_group), "Op %s get hcom group attr name %s",
                   op_desc_->GetName().c_str(), hcom_group_attr_name.c_str());
+
+        bool use_mc2_client = false;
+        GE_ASSERT_SUCCESS(GetMc2ClientLaunchFlag(tiling_data_host_, op_desc_->GetNamePtr(), use_mc2_client));
+
+        if (use_mc2_client) {
+          // Match the group order used by HcomGetGroupsByOpDesc when creating hidden inputs.
+          size_t context_index = 0U;
+          for (const auto &attr_name : op_desc_->GetAllAttrNames()) {
+            string group;
+            if (attr_name.substr(0, 5U) == "group" && AttrUtils::GetStr(op_desc_, attr_name, group)) {
+              if (group == hcom_group) {
+                break;
+              }
+              ++context_index;
+            }
+          }
+          GE_ASSERT_TRUE(context_index < hcom_context_addrs_.size(), "No mc2_client context for group %s.",
+                         hcom_group.c_str());
+          void *const context = hcom_context_addrs_[context_index];
+          GE_ASSERT_NOTNULL(context);
+          void *comm = nullptr;
+          GE_ASSERT_SUCCESS(HcclDllHcomMgr::GetInstance().HcomGetCommHandleByGroupFunc(hcom_group, comm));
+          GE_ASSERT_NOTNULL(comm);
+          mc2_ccu_resources_.emplace_back(comm, context);
+          GELOGI("[GE_MC2_CCU] resource ready, op[%s], group[%s], contextIndex[%zu], comm[%p], context[%p].",
+                 op_desc_->GetNamePtr(), hcom_group.c_str(), context_index, comm, context);
+          continue;
+        }
+        rt_fusion_task_.subTask[index].type =
+            static_cast<rtFusionType_t>(DomiFusionTypeToRtFusionType(fusion_sub_task_info.type()));
+        GE_ASSERT_TRUE(rt_fusion_task_.subTask[index].type != RT_FUSION_END);
         GE_ASSERT_SUCCESS(HcclDllHcomMgr::GetInstance().HcomGetCcuTaskInfoFunc(hcom_group, tiling_data_host_.data(),
                                                                                &(rt_fusion_task_.subTask[index].task)));
         GELOGI("Op %s hcom group attr name %s group %s", op_desc_->GetName().c_str(), hcom_group_attr_name.c_str(),
@@ -870,6 +932,49 @@ void FusionTaskInfo::UpdateTaskId() {
   }
 }
 
+Status FusionTaskInfo::LaunchMc2Ccu() {
+  GE_ASSERT_TRUE(rt_fusion_task_.subTaskNum == 1U && rt_fusion_task_.subTask[0].type == RT_FUSION_AICORE,
+                 "mc2_client split launch requires one AICORE subtask.");
+  uint32_t block_dim = 1U;
+  rtTaskCfgInfo_t cfg = {};
+  cfg.dumpflag = static_cast<uint8_t>(dump_flag_);
+  for (const auto &attr : launch_attr_list_) {
+    switch (attr.id) {
+      case RT_LAUNCH_ATTRIBUTE_BLOCKDIM:
+        block_dim = attr.value.blockDim;
+        break;
+      case RT_LAUNCH_ATTRIBUTE_BLOCKDIM_OFFSET:
+        cfg.blockDimOffset = attr.value.blockDimOffset;
+        break;
+      case RT_LAUNCH_ATTRIBUTE_SCHEMMODE:
+        cfg.schemMode = attr.value.schemMode;
+        break;
+      default:
+        break;
+    }
+  }
+  rtArgsEx_t args = {};
+  args.args = args_;
+  args.argsSize = args_size_;
+  args.isNoNeedH2DCopy = 1U;
+  for (const auto &resource : mc2_ccu_resources_) {
+    GELOGI("[GE_MC2_CCU] CCU launch begin, op[%s], comm[%p], context[%p].", op_desc_->GetNamePtr(), resource.first,
+           resource.second);
+    GE_ASSERT_SUCCESS(HcclDllHcomMgr::GetInstance().CcuKernelLaunchFunc(resource.first, resource.second));
+    GELOGI("[GE_MC2_CCU] CCU launch end, op[%s].", op_desc_->GetNamePtr());
+  }
+  const auto &aicore_info = rt_fusion_task_.subTask[0].task.aicoreInfo;
+  GELOGI("[GE_MC2_CCU] AICORE launch begin, op[%s], allKernel[%d], blockDim[%u], stream[%p], args[%p], size[%u].",
+         op_desc_->GetNamePtr(), is_all_kernel_, block_dim, stream_, args_, args_size_);
+  if (is_all_kernel_) {
+    GE_CHK_RT_RET(
+        rtKernelLaunchWithHandleV2(aicore_info.hdl, aicore_info.tilingKey, block_dim, &args, nullptr, stream_, &cfg));
+  } else {
+    GE_CHK_RT_RET(rtKernelLaunchWithFlagV2(aicore_info.stubFunc, block_dim, &args, nullptr, stream_, 0U, &cfg));
+  }
+  return SUCCESS;
+}
+
 Status FusionTaskInfo::Distribute() {
   GE_CHECK_NOTNULL(op_desc_);
   GE_ASSERT_SUCCESS(ReportL0ExceptionDumpInfo(op_desc_, l0_dump_list_), "[%s] report l0 exception dump addr failed",
@@ -889,7 +994,11 @@ Status FusionTaskInfo::Distribute() {
   rt_args_ex_.args = args_;
   rt_args_ex_.argsSize = args_size_;
   rt_args_ex_.isNoNeedH2DCopy = 1;
-  GE_CHK_RT_RET(rtFusionLaunch(&rt_fusion_task_, stream_, &rt_args_ex_));
+  if (mc2_ccu_resources_.empty()) {
+    GE_CHK_RT_RET(rtFusionLaunch(&rt_fusion_task_, stream_, &rt_args_ex_));
+  } else {
+    GE_ASSERT_SUCCESS(LaunchMc2Ccu());
+  }
 
   call_save_dump_ = true;
 

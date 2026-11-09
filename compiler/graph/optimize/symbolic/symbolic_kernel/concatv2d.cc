@@ -19,9 +19,10 @@
 
 namespace ge {
 namespace {
-graphStatus BuildOutWithOneInput(const gert::InferSymbolComputeContext *context, gert::SymbolTensor &out_tesnor) {
+graphStatus BuildOutWithOneInput(const gert::InferSymbolComputeContext *context, size_t input_idx,
+                                 gert::SymbolTensor &out_tesnor) {
   std::vector<int64_t> input_dims;
-  auto symbol_tensor = context->GetInputSymbolTensor(0);
+  auto symbol_tensor = context->GetInputSymbolTensor(input_idx);
   GE_UNSUPPORTED_IF_NULL(symbol_tensor);
   auto symbolic_value = symbol_tensor->GetSymbolicValue();
   if (symbolic_value == nullptr) {
@@ -29,7 +30,7 @@ graphStatus BuildOutWithOneInput(const gert::InferSymbolComputeContext *context,
            context->GetNodeType());
     return UNSUPPORTED;
   }
-  if (!context->GetConstInputDims(0, input_dims)) {
+  if (!context->GetConstInputDims(input_idx, input_dims)) {
     GELOGW("SymbolicKernel compute unsupported, reason: Get input dim failed, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -43,20 +44,25 @@ graphStatus BuildOutWithOneInput(const gert::InferSymbolComputeContext *context,
   return SUCCESS;
 }
 
+graphStatus BuildOutWithOneInput(const gert::InferSymbolComputeContext *context, gert::SymbolTensor &out_tesnor) {
+  return BuildOutWithOneInput(context, 0UL, out_tesnor);
+}
+
 graphStatus GetInputsValueAndShape(const gert::InferSymbolComputeContext *context, const int64_t N,
-                                   std::vector<std::vector<Expression>> &inputs_values,
+                                   const size_t input_offset, std::vector<std::vector<Expression>> &inputs_values,
                                    std::vector<std::vector<int64_t>> &inputs_dims) {
   size_t dim_num = 0;
   for (int64_t i = 0; i < N; ++i) {
+    const size_t input_idx = i + input_offset;
     std::vector<int64_t> input_dims;
-    GE_UNSUPPORTED_IF_NULL(context->GetInputSymbolTensor(i));
-    auto input_sym_values = context->GetInputSymbolTensor(i)->GetSymbolicValue();
+    GE_UNSUPPORTED_IF_NULL(context->GetInputSymbolTensor(input_idx));
+    auto input_sym_values = context->GetInputSymbolTensor(input_idx)->GetSymbolicValue();
     if (input_sym_values == nullptr) {
       GELOGW("SymbolicKernel compute unsupported, reason: no symbolic value, node %s[%s].", context->GetNodeName(),
              context->GetNodeType());
       return UNSUPPORTED;
     }
-    if (!context->GetConstInputDims(i, input_dims)) {
+    if (!context->GetConstInputDims(input_idx, input_dims)) {
       GELOGW("SymbolicKernel compute unsupported, reason: get input dims failed, node %s[%s].", context->GetNodeName(),
              context->GetNodeType());
       return UNSUPPORTED;
@@ -152,30 +158,13 @@ Status CalOutValue(const std::vector<std::vector<Expression>> &inputs_values,
 }
 }  // namespace
 
-static graphStatus ConcatV2DSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
-  GE_CHECK_NOTNULL(context);
-  GELOGD("ConcatV2D Symbolic Kernel in, node %s[%s].", context->GetNodeName(), context->GetNodeType());
-
-  int64_t attr_N = context->GetComputeNodeInputNum();
-
-  auto symbolic_tensor = context->GetOutputSymbolTensor(0);
-  GE_ASSERT_NOTNULL(symbolic_tensor);
-  // 如果只有一个输入则输出跟输入相同
-  if (attr_N == 1) {
-    return BuildOutWithOneInput(context, *symbolic_tensor);
-  }
-
-  int64_t concat_dim;
-  auto attrs = context->GetAttrs();
-  GE_ASSERT_NOTNULL(attrs);
-  auto concat_dim_ptr = attrs->GetInt(0);
-  GE_ASSERT_NOTNULL(concat_dim_ptr);
-  concat_dim = *concat_dim_ptr;
-
+// 拼接主体：input_num 个 x 输入的值/dims 已按 [0, input_num) 收集，concat_dim 已解析（可为负，内部归一化）
+graphStatus ConcatCompute(gert::InferSymbolComputeContext *context, int64_t input_num, size_t input_offset,
+                          int64_t concat_dim, gert::SymbolTensor &symbolic_tensor) {
   std::vector<std::vector<Expression>> inputs_values;
   std::vector<std::vector<int64_t>> inputs_dims;
 
-  auto ret = GetInputsValueAndShape(context, attr_N, inputs_values, inputs_dims);
+  graphStatus ret = GetInputsValueAndShape(context, input_num, input_offset, inputs_values, inputs_dims);
   if (ret != SUCCESS) {
     return ret;
   }
@@ -192,19 +181,133 @@ static graphStatus ConcatV2DSymbolicKernelCompute(gert::InferSymbolComputeContex
   }
 
   if (first_shape.empty()) {
-    return BuildOutWithScalarInput(inputs_values, attr_N, *symbolic_tensor);
+    return BuildOutWithScalarInput(inputs_values, input_num, symbolic_tensor);
   }
 
-  ret = CalOutShape(inputs_dims, concat_dim, *symbolic_tensor);
+  ret = CalOutShape(inputs_dims, concat_dim, symbolic_tensor);
   if (ret != SUCCESS) {
     return ret;
   }
-  ret = CalOutValue(inputs_values, inputs_dims, concat_dim, *symbolic_tensor);
-  GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
-         SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
+  return CalOutValue(inputs_values, inputs_dims, concat_dim, symbolic_tensor);
+}
+
+static graphStatus ConcatV2DSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  GE_CHECK_NOTNULL(context);
+  GELOGD("ConcatV2D Symbolic Kernel in, node %s[%s].", context->GetNodeName(), context->GetNodeType());
+
+  int64_t attr_N = context->GetComputeNodeInputNum();
+
+  auto symbolic_tensor = context->GetOutputSymbolTensor(0);
+  GE_ASSERT_NOTNULL(symbolic_tensor);
+  // 如果只有一个输入则输出跟输入相同
+  if (attr_N == 1) {
+    return BuildOutWithOneInput(context, *symbolic_tensor);
+  }
+
+  auto attrs = context->GetAttrs();
+  GE_ASSERT_NOTNULL(attrs);
+  auto concat_dim_ptr = attrs->GetInt(0);
+  GE_ASSERT_NOTNULL(concat_dim_ptr);
+
+  graphStatus ret = ConcatCompute(context, attr_N, 0UL, *concat_dim_ptr, *symbolic_tensor);
+  if (ret == SUCCESS) {
+    GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
+           SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
+  }
   return ret;
 }
 
 REGISTER_SYMBOLIC_KERNEL(ConcatV2D, ConcatV2DSymbolicKernelCompute);
 REGISTER_SYMBOLIC_KERNEL(ConcatD, ConcatV2DSymbolicKernelCompute);
+
+namespace {
+// ConcatV2 的 concat_dim 为末位输入 tensor（扁平位置随 x 实例数变化，不能写死常量索引），
+// 沿轴向的值需为单一常量，否则降级交由上层回退传统推导
+graphStatus GetConcatDimFromInput(gert::InferSymbolComputeContext *context, size_t axis_input_idx,
+                                  int64_t &concat_dim) {
+  auto axis_tensor = context->GetInputSymbolTensor(axis_input_idx);
+  if (axis_tensor == nullptr || axis_tensor->GetSymbolicValue() == nullptr ||
+      axis_tensor->GetSymbolicValue()->size() != 1UL) {
+    GELOGW(
+        "SymbolicKernel compute unsupported, reason: concat_dim input[%zu] symbolic value is unavailable, node "
+        "%s[%s].",
+        axis_input_idx, context->GetNodeName(), context->GetNodeType());
+    return UNSUPPORTED;
+  }
+  if (!axis_tensor->GetSymbolicValue()->front().GetConstValue(concat_dim)) {
+    GELOGW("SymbolicKernel compute unsupported, reason: get concat_dim const value failed, node %s[%s].",
+           context->GetNodeName(), context->GetNodeType());
+    return UNSUPPORTED;
+  }
+  return GRAPH_SUCCESS;
+}
+}  // namespace
+
+static graphStatus ConcatV2SymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  GE_CHECK_NOTNULL(context);
+  GELOGD("ConcatV2 Symbolic Kernel in, node %s[%s].", context->GetNodeName(), context->GetNodeType());
+  // 末位扁平输入为 concat_dim，其余为 x
+  const int64_t input_num = static_cast<int64_t>(context->GetComputeNodeInputNum()) - 1;
+  GE_ASSERT_TRUE(input_num >= 1, "input num %lld should be no less than 1, node %s[%s].", input_num,
+                 context->GetNodeName(), context->GetNodeType());
+
+  auto symbolic_tensor = context->GetOutputSymbolTensor(0);
+  GE_ASSERT_NOTNULL(symbolic_tensor);
+  // 如果只有一个输入则输出跟输入相同
+  if (input_num == 1) {
+    return BuildOutWithOneInput(context, *symbolic_tensor);
+  }
+
+  int64_t concat_dim = 0;
+  graphStatus ret = GetConcatDimFromInput(context, static_cast<size_t>(input_num), concat_dim);
+  if (ret != GRAPH_SUCCESS) {
+    return ret;
+  }
+  ret = ConcatCompute(context, input_num, 0UL, concat_dim, *symbolic_tensor);
+  if (ret == SUCCESS) {
+    GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
+           SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
+  }
+  return ret;
+}
+
+REGISTER_SYMBOLIC_KERNEL(ConcatV2, ConcatV2SymbolicKernelCompute);
+
+/**
+ * Concat算子的符号化计算
+ * 【算子功能】沿 concat_dim 轴拼接多个输入张量。
+ * 【推导逻辑】concat_dim 为首位输入 tensor（固定位置 0），x 输入从位置 1 开始；
+ *          复用 ConcatCompute（输入偏移 1），轴值须为单一常量，否则降级。
+ * 【算子约束】各 x 输入须有 SymbolicValue 且静态 Shape 维数一致。
+ * 【举例】x1=[1,2] value=[10,11]、x2=[1,2] value=[20,21]、concat_dim=1 时，
+ *          输出 Shape 为[1,4]，输出 value 为[10,11,20,21]。
+ */
+static graphStatus ConcatSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  GE_CHECK_NOTNULL(context);
+  GELOGD("Concat Symbolic Kernel in, node %s[%s].", context->GetNodeName(), context->GetNodeType());
+  // 首位输入为 concat_dim，其余为 x
+  const int64_t input_num = static_cast<int64_t>(context->GetComputeNodeInputNum()) - 1;
+  GE_ASSERT_TRUE(input_num >= 1, "input num %lld should be no less than 1, node %s[%s].", input_num,
+                 context->GetNodeName(), context->GetNodeType());
+
+  auto symbolic_tensor = context->GetOutputSymbolTensor(0);
+  GE_ASSERT_NOTNULL(symbolic_tensor);
+  if (input_num == 1) {
+    return BuildOutWithOneInput(context, 1UL, *symbolic_tensor);
+  }
+
+  int64_t concat_dim = 0;
+  graphStatus ret = GetConcatDimFromInput(context, 0UL, concat_dim);
+  if (ret != GRAPH_SUCCESS) {
+    return ret;
+  }
+  ret = ConcatCompute(context, input_num, 1UL, concat_dim, *symbolic_tensor);
+  if (ret == SUCCESS) {
+    GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
+           SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
+  }
+  return ret;
+}
+
+REGISTER_SYMBOLIC_KERNEL(Concat, ConcatSymbolicKernelCompute);
 }  // namespace ge

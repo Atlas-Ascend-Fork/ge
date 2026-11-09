@@ -280,7 +280,7 @@ bool CheckInputPathValid(const std::string &file_path, const std::string &atc_pa
   if (real_path.empty()) {
     char_t err_buf[kMaxErrorStrLength + 1U] = {};
     const auto err_msg = mmGetErrorFormatMessage(mmGetErrorCode(), &err_buf[0], kMaxErrorStrLength);
-    const std::string reason = FormatErrnoReason(mmGetErrorCode(), err_msg);
+    const std::string reason = FormatErrnoReason(mmGetErrorCode(), err_msg) + ".";
     PathValidErrReport(file_path, atc_param, reason);
     GELOGW("Path[%s]'s realpath is empty, errmsg[%s]", file_path.c_str(), err_msg);
     return false;
@@ -293,7 +293,7 @@ bool CheckInputPathValid(const std::string &file_path, const std::string &atc_pa
   if (!ValidateStr(real_path, mode)) {
 #endif
     PathValidErrReport(file_path, atc_param, kPathValidReason);
-    GELOGE(FAILED, "Invalid value for %s[%s], %s.", atc_param.c_str(), real_path.c_str(), kPathValidReason.c_str());
+    GELOGE(FAILED, "Invalid value for %s[%s], %s", atc_param.c_str(), real_path.c_str(), kPathValidReason.c_str());
     return false;
   }
 
@@ -338,7 +338,7 @@ bool CheckOutputPathValid(const std::string &file_path, const std::string &atc_p
   if (!ValidateStr(file_path, mode)) {
 #endif
     PathValidErrReport(file_path, atc_param, kPathValidReason);
-    GELOGE(FAILED, "Invalid value for %s[%s], %s.", atc_param.c_str(), file_path.c_str(), kPathValidReason.c_str());
+    GELOGE(FAILED, "Invalid value for %s[%s], %s", atc_param.c_str(), file_path.c_str(), kPathValidReason.c_str());
     return false;
   }
 

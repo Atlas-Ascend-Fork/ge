@@ -214,7 +214,9 @@ Status ReduceOutputSymbolValue(const std::vector<Expression> &input_symbols, con
   return SUCCESS;
 }
 
-static graphStatus ReduceSymbolicKernelCompute(gert::InferSymbolComputeContext *context, const ReduceCompute &compute) {
+static graphStatus ReduceSymbolicKernelCompute(gert::InferSymbolComputeContext *context, const ReduceCompute &compute,
+                                               const bool noop_with_empty_axes_default,
+                                               const bool divide_by_reduce_size = false) {
   GE_ASSERT_NOTNULL(context);
   std::vector<int64_t> input_dims;
   if (!context->GetConstInputDims(kXInputIndex, input_dims)) {
@@ -229,8 +231,9 @@ static graphStatus ReduceSymbolicKernelCompute(gert::InferSymbolComputeContext *
 
   auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
-  auto keep_dims = attrs->GetBool(0);
-  GE_ASSERT_NOTNULL(keep_dims);
+  // keep_dims 为可选属性，缺省（如 ES 构图不写默认值）时按 TF 惯例取 false
+  const auto keep_dims_ptr = attrs->GetBool(0);
+  const bool keep_dims = (keep_dims_ptr != nullptr) ? *keep_dims_ptr : false;
 
   std::vector<int64_t> axis_dims;
   // GetAxisDims的UNSUPPORTED出口(如非常量axis值)需优雅透传，由外层降级到传统推导；
@@ -243,7 +246,7 @@ static graphStatus ReduceSymbolicKernelCompute(gert::InferSymbolComputeContext *
   GE_ASSERT_SUCCESS(NormalizeAxisDims(static_cast<int64_t>(input_dims.size()), axis_dims));
   axis_dims.erase(std::unique(axis_dims.begin(), axis_dims.end()), axis_dims.end());
 
-  bool noop_with_empty_axes = true;
+  bool noop_with_empty_axes = noop_with_empty_axes_default;
   const bool *noop_attr = attrs->GetAttrPointer<bool>(1);
   if (noop_attr != nullptr) {
     noop_with_empty_axes = *noop_attr;
@@ -256,7 +259,7 @@ static graphStatus ReduceSymbolicKernelCompute(gert::InferSymbolComputeContext *
   auto output_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output_tensor);
   std::vector<Expression> output_shape;
-  GE_ASSERT_SUCCESS(CalcOutputShape(input_dims, axis_dims, *keep_dims, output_shape));
+  GE_ASSERT_SUCCESS(CalcOutputShape(input_dims, axis_dims, keep_dims, output_shape));
   output_tensor->MutableOriginSymbolShape().MutableDims() = output_shape;
 
   std::vector<Expression> output_symbols;
@@ -269,26 +272,82 @@ static graphStatus ReduceSymbolicKernelCompute(gert::InferSymbolComputeContext *
       return value_ret;
     }
   }
+  if (divide_by_reduce_size && !axis_dims.empty()) {
+    int64_t reduce_size = 1L;
+    for (const auto axis : axis_dims) {
+      reduce_size *= input_dims[static_cast<size_t>(axis)];
+    }
+    for (auto &expr : output_symbols) {
+      expr = expr / Symbol(reduce_size);
+    }
+  }
   output_tensor->SetSymbolicValue(ge::MakeUnique<std::vector<Expression>>(std::move(output_symbols)));
   return SUCCESS;
 }
 
 static graphStatus ReduceSumSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
-  return ReduceSymbolicKernelCompute(context, [](const Expression &x1, const Expression &x2) { return x1 + x2; });
+  return ReduceSymbolicKernelCompute(context, [](const Expression &x1, const Expression &x2) { return x1 + x2; }, true);
 }
 
 static graphStatus ReduceMaxSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
-  return ReduceSymbolicKernelCompute(context,
-                                     [](const Expression &x1, const Expression &x2) { return sym::Max(x1, x2); });
+  return ReduceSymbolicKernelCompute(
+      context, [](const Expression &x1, const Expression &x2) { return sym::Max(x1, x2); }, true);
 }
 
 static graphStatus ReduceMinSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
-  return ReduceSymbolicKernelCompute(context,
-                                     [](const Expression &x1, const Expression &x2) { return sym::Min(x1, x2); });
+  return ReduceSymbolicKernelCompute(
+      context, [](const Expression &x1, const Expression &x2) { return sym::Min(x1, x2); }, true);
+}
+
+/**
+ * ReduceMean算子的符号化计算
+ * 【算子功能】沿 axes 维求均值。
+ * 【推导逻辑】复用 Sum 折叠框架，折叠完成后每个输出元素除以被归约维度的元素总数
+ *          （axes 归一化去重后各维 size 的乘积，常量表达式）。
+ * 【算子约束】与 ReduceSum 一致：静态 shape、常量 axes、SymbolicValue 完备；空维降级。
+ * 【举例】x=[2,3]、axes=[1] 时，输出Shape为[2]，输出value为[avg(每行)]。
+ */
+static graphStatus ReduceMeanSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  return ReduceSymbolicKernelCompute(
+      context, [](const Expression &x1, const Expression &x2) { return x1 + x2; }, true, true);
+}
+
+static Expression ToLogicalPredicate(const Expression &value) {
+  return value.IsBooleanExpr() ? value : sym::Ne(value, Symbol(0));
+}
+
+/**
+ * ReduceAll/ReduceAny算子的符号化计算
+ * 【算子功能】沿 axes 维做逻辑与/或聚合。
+ * 【推导逻辑】复用通用 reduce 折叠框架（LogicalAnd/LogicalOr 二元折叠）；与 ReduceSum 不同，
+ *          该族无 noop_with_empty_axes 属性，空 axes 按全归约处理（默认 false）。
+ * 【算子约束】静态 shape、常量 axes、SymbolicValue 完备；空维降级（框架内 UNSUPPORTED）。
+ * 【举例】x=[2,2]、value=[true,false,true,true]、axes=[1] 时，
+ *          ReduceAll输出value为[false,true]，ReduceAny输出value为[true,true]。
+ */
+static graphStatus ReduceAllSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  return ReduceSymbolicKernelCompute(
+      context,
+      [](const Expression &x1, const Expression &x2) {
+        return sym::LogicalAnd({ToLogicalPredicate(x1), ToLogicalPredicate(x2)});
+      },
+      false);
+}
+
+static graphStatus ReduceAnySymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  return ReduceSymbolicKernelCompute(
+      context,
+      [](const Expression &x1, const Expression &x2) {
+        return sym::LogicalOr({ToLogicalPredicate(x1), ToLogicalPredicate(x2)});
+      },
+      false);
 }
 
 REGISTER_SYMBOLIC_KERNEL(ReduceProd, ReduceProdSymbolicKernelCompute);
 REGISTER_SYMBOLIC_KERNEL(ReduceSum, ReduceSumSymbolicKernelCompute);
 REGISTER_SYMBOLIC_KERNEL(ReduceMax, ReduceMaxSymbolicKernelCompute);
 REGISTER_SYMBOLIC_KERNEL(ReduceMin, ReduceMinSymbolicKernelCompute);
+REGISTER_SYMBOLIC_KERNEL(ReduceMean, ReduceMeanSymbolicKernelCompute);
+REGISTER_SYMBOLIC_KERNEL(ReduceAll, ReduceAllSymbolicKernelCompute);
+REGISTER_SYMBOLIC_KERNEL(ReduceAny, ReduceAnySymbolicKernelCompute);
 }  // namespace ge

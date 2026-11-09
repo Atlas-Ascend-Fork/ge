@@ -285,6 +285,7 @@ graphStatus InferShape4DiagPartD(gert::InferSymbolShapeContext *context) {
 
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MatrixDiagV2).InferSymbolShape(InferShape4MatrixDiagV2);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MatrixDiag).InferSymbolShape(InferShape4MatrixDiag);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MatrixDiagD).InferSymbolShape(InferShape4MatrixDiag);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Eye).InferSymbolShape(InferShape4Eye);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(DiagPartD).InferSymbolShape(InferShape4DiagPartD);
 }  // namespace

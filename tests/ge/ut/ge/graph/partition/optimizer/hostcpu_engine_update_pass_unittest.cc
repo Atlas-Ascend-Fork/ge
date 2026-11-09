@@ -26,6 +26,7 @@
 #include "graph/ge_local_context.h"
 #include "graph/option/optimization_option.h"
 #include "register/optimization_option_registry.h"
+#include "common/ge_inner_attrs.h"
 
 using namespace testing;
 
@@ -408,6 +409,30 @@ ComputeGraphPtr BuildPartitionedCallWithHostCpuCustomSubgraph(const std::string 
   sub_graph->SetParentNode(partition_node);
   sub_graph->SetParentGraph(graph);
   graph->AddSubgraph(sub_graph);
+  return graph;
+}
+
+// 引擎分配前的采集场景：节点尚未分配 kernel lib，host 锚点按算子类型识别。
+// data -> shape -> gather -> unsqueeze -> concat -> netoutput
+//           const -> gather / unsqueeze / concat 的第二输入
+ComputeGraphPtr BuildEngineAssignCollectGraph(const int64_t out_dim, const int64_t in_dim) {
+  DEF_GRAPH(g1) {
+    CHAIN(NODE("data", "Data")
+              ->NODE("shape", "Shape")
+              ->NODE("gather", "Gather")
+              ->NODE("unsqueeze", "Unsqueeze")
+              ->NODE("concat", "Concat")
+              ->NODE("netoutput", "NetOutput"));
+    CHAIN(NODE("const1", "Const")->EDGE(0, 1)->NODE("gather", "Gather"));
+    CHAIN(NODE("const2", "Const")->EDGE(0, 1)->NODE("unsqueeze", "Unsqueeze"));
+    CHAIN(NODE("const3", "Const")->EDGE(0, 1)->NODE("concat", "Concat"));
+  };
+  auto graph = ToComputeGraph(g1);
+  graph->SetGraphUnknownFlag(true);
+  SetNoStorage(graph->FindNode("gather")->GetOpDesc(), ge::FORMAT_ND, DT_INT32, {in_dim}, {out_dim});
+  SetNoStorage(graph->FindNode("unsqueeze")->GetOpDesc(), ge::FORMAT_ND, DT_INT32, {in_dim}, {out_dim});
+  SetNoStorage(graph->FindNode("concat")->GetOpDesc(), ge::FORMAT_ND, DT_INT32, {in_dim}, {out_dim});
+  // 采集发生在引擎分配前：此处刻意不设置任何 kernel lib name。
   return graph;
 }
 
@@ -1161,5 +1186,52 @@ TEST_F(UtestHostcpuEngineUpdatePass, Run_WithStaticSubgraph) {
   NodeEngineMap node_composite_engine_map;
   EXPECT_EQ(pass.Run(root_graph, node_atomic_engine_map, node_composite_engine_map), SUCCESS);
   unsetenv("ENABLE_RUNTIME_V2");
+}
+
+// 引擎分配前采集：锚点(Shape)下游小值链应被收集并打内部标记，不改引擎名/kernel lib。
+TEST_F(UtestHostcpuEngineUpdatePass, CollectHostExecNodesBeforeEngineAssign) {
+  std::map<std::string, std::string> ge_options = {{ge::OO_LEVEL, "O3"}};
+  ge::GetThreadLocalContext().GetOo().Initialize(ge_options, ge::OptionRegistry::GetInstance().GetRegisteredOptTable());
+  auto graph = BuildEngineAssignCollectGraph(4, 4);
+  ASSERT_NE(graph, nullptr);
+  std::vector<NodePtr> host_exec_nodes;
+  HostcpuEngineUpdatePass::CollectHostExecNodesBeforeEngineAssign(graph, host_exec_nodes);
+  // 只收集可下沉 host 的计算节点；锚点(Shape)与 Data 不参与，Unsqueeze 无 host kernel 使传播停止。
+  ASSERT_EQ(host_exec_nodes.size(), 1U);
+  EXPECT_EQ(host_exec_nodes[0]->GetName(), "gather");
+  // 采集只改内部标记，不改引擎名/kernel lib。
+  const auto &gather_desc = graph->FindNode("gather")->GetOpDesc();
+  EXPECT_TRUE(gather_desc->GetOpKernelLibName().empty());
+  EXPECT_TRUE(gather_desc->GetOpEngineName().empty());
+  EXPECT_FALSE(AttrUtils::HasAttr(gather_desc, "SmallShapeHostcpu"));
+  EXPECT_TRUE(AttrUtils::HasAttr(gather_desc, kAttrAutofuseSkipLoweringForHostExec));
+  // 未被采集的节点不打标。
+  EXPECT_FALSE(AttrUtils::HasAttr(graph->FindNode("unsqueeze")->GetOpDesc(), kAttrAutofuseSkipLoweringForHostExec));
+  EXPECT_FALSE(AttrUtils::HasAttr(graph->FindNode("concat")->GetOpDesc(), kAttrAutofuseSkipLoweringForHostExec));
+}
+
+// 输出超过小值阈值(>8)时不应被判定为 host 下沉节点。
+TEST_F(UtestHostcpuEngineUpdatePass, CollectHostExecNodesBeforeEngineAssign_SkipLargeOutput) {
+  std::map<std::string, std::string> ge_options = {{ge::OO_LEVEL, "O3"}};
+  ge::GetThreadLocalContext().GetOo().Initialize(ge_options, ge::OptionRegistry::GetInstance().GetRegisteredOptTable());
+  auto graph = BuildEngineAssignCollectGraph(16, 4);
+  ASSERT_NE(graph, nullptr);
+  std::vector<NodePtr> host_exec_nodes;
+  HostcpuEngineUpdatePass::CollectHostExecNodesBeforeEngineAssign(graph, host_exec_nodes);
+  EXPECT_TRUE(host_exec_nodes.empty());
+}
+
+// 采集早于动态图划分，不依赖 unknown flag：静态图同样采集并打标（静态链会被常量折叠，最坏只少融合）。
+TEST_F(UtestHostcpuEngineUpdatePass, CollectHostExecNodesBeforeEngineAssign_StaticGraph) {
+  std::map<std::string, std::string> ge_options = {{ge::OO_LEVEL, "O3"}};
+  ge::GetThreadLocalContext().GetOo().Initialize(ge_options, ge::OptionRegistry::GetInstance().GetRegisteredOptTable());
+  auto graph = BuildEngineAssignCollectGraph(4, 4);
+  ASSERT_NE(graph, nullptr);
+  graph->SetGraphUnknownFlag(false);
+  std::vector<NodePtr> host_exec_nodes;
+  HostcpuEngineUpdatePass::CollectHostExecNodesBeforeEngineAssign(graph, host_exec_nodes);
+  ASSERT_EQ(host_exec_nodes.size(), 1U);
+  EXPECT_EQ(host_exec_nodes[0]->GetName(), "gather");
+  EXPECT_TRUE(AttrUtils::HasAttr(graph->FindNode("gather")->GetOpDesc(), kAttrAutofuseSkipLoweringForHostExec));
 }
 }  // namespace ge

@@ -14,6 +14,7 @@
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_shape_inference.h"
 #include "graph/optimize/symbolic/codegen/guard_codegen.h"
 #include "common/checker.h"
+#include "common/ge_inner_attrs.h"
 #include "ge_common/ge_api_error_codes.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/ge_context.h"
@@ -28,6 +29,7 @@
 #include "common/compile_profiling/ge_trace_wrapper.h"
 #include "common/plugin/ge_make_unique_util.h"
 #include "graph/passes/base_pass.h"
+#include "graph/partition/optimizer/hostcpu_engine_update_pass.h"
 #include "algebraic_simplification_pass.h"
 #include "graph/passes/standard_optimize/prune_pass.h"
 #include "graph/passes/standard_optimize/constant_folding/constant_folding_pass.h"
@@ -35,6 +37,18 @@
 
 namespace ge {
 namespace {
+// 自动融合内部属性：生命周期与本次融合一致，任何提前返回都必须回收，避免残留在常驻图对象上。
+void ClearAutofuseInnerAttrs(const ComputeGraphPtr &graph) {
+  for (const auto &node : graph->GetAllNodes()) {
+    const auto op_desc = (node == nullptr) ? nullptr : node->GetOpDesc();
+    if (op_desc == nullptr) {
+      continue;
+    }
+    (void)op_desc->DelAttr(kAttrAutofuseSkipLoweringForHostExec);
+    (void)op_desc->DelAttr(kAttrAutofuseDisableScope);
+    (void)op_desc->DelAttr(kAttrAutofuseDisableLifting);
+  }
+}
 // 标记ascbc node的引擎为AiCoreEngine
 Status MarkEngineAttrForAutofuseNode(const ComputeGraphPtr &graph) {
   for (const auto &node : graph->GetDirectNode()) {
@@ -79,15 +93,21 @@ Status AutoFusePass::Run(ComputeGraphPtr graph) {
   GE_ASSERT_NOTNULL(root_graph);
   // 设置context
   ShapeEnvGuarder guarder(root_graph->GetAttrsGroup<ShapeEnvAttr>());
+  {
+    // 内部属性（含采集打标）的生命周期与本次自动融合一致，任何提前返回都必须回收。
+    GE_MAKE_GUARD(clear_autofuse_inner_attrs, [&graph]() { ClearAutofuseInnerAttrs(graph); });
 
-  auto autofuse_counter = MakeUnique<AutofuseCounter>();
-  GE_ASSERT_NOTNULL(autofuse_counter);
-  GE_ASSERT_SUCCESS(LoweringAndCanFuseWithCounter(graph, autofuse_counter.get()));
-
-  GE_ASSERT_SUCCESS(MarkEngineAttrForAutofuseNode(graph));
-  // todo: inner attrs 生命周期在自动融合结束时结束，外部只能看到公开的属性
+    // 融合前先收集并给将被下沉到 host 执行的节点打内部标记：小值链（如 shape 值张量上的 Slice/ConcatD）
+    // 不参与自动融合。否则这些值会被融合进设备核，运行期需要同步回读到 host 供下游消费，引入跨设备同步。
+    // 不新增开关：收集复用 HostcpuEngineUpdatePass 的既有使能开关，host 下沉关闭时结果为空。
+    std::vector<NodePtr> host_exec_nodes;
+    HostcpuEngineUpdatePass::CollectHostExecNodesBeforeEngineAssign(graph, host_exec_nodes);
+    auto autofuse_counter = MakeUnique<AutofuseCounter>();
+    GE_ASSERT_NOTNULL(autofuse_counter);
+    GE_ASSERT_SUCCESS(LoweringAndCanFuseWithCounter(graph, autofuse_counter.get()));
+    GE_ASSERT_SUCCESS(MarkEngineAttrForAutofuseNode(graph));
+  }
   GE_DUMP(graph, std::string("AutoFuser_AfterAllFuse") + kSuffix);
-
   return SUCCESS;
 }
 

@@ -14,6 +14,7 @@
 #include "graph/debug/ge_attr_define.h"
 #include "graph/debug/ge_op_types.h"
 
+#include "graph/utils/graph_utils.h"
 #include "graph/utils/graph_utils_ex.h"
 #include "lowering/asc_lowerer/loop_api.h"
 #include "lowering/lowerings.h"
@@ -1374,6 +1375,45 @@ TEST_F(LoopNodeLoweringUT, LoweringLayerNormStaticYOnly) {
   EXPECT_FALSE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(2)).IsExternKernel());
 }
 
+TEST_F(LoopNodeLoweringUT, LoweringLayerNormV3StaticYOnly) {
+  const auto origin = autofuse::AutoFuseConfig::LoweringConfig().experimental_lowering_reduce;
+  GE_MAKE_GUARD(
+      config, [origin]() { autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = origin; });
+  autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = true;
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "x", nullptr);
+    auto gamma = es_graph_->CreateInput(1, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(2, "beta", nullptr);
+    x.SetSymbolShape({"2", "3", "4"});
+    gamma.SetSymbolShape({"3", "4"});
+    beta.SetSymbolShape({"3", "4"});
+    auto layer_norm = es::LayerNormV3(x, gamma, beta, -2, -2, 0.001F);
+    layer_norm.y.SetSymbolShape({"2", "3", "4"});
+    layer_norm.mean.SetSymbolShape({"2", "1", "1"});
+    layer_norm.rstd.SetSymbolShape({"2", "1", "1"});
+    es_graph_->SetOutput(layer_norm.y, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto layer_norm = cg->FindNode("LayerNormV3_0");
+  ASSERT_NE(layer_norm, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  auto y_kernel = loop::GetKernelBox(layer_norm->GetOutDataAnchor(0));
+  ASSERT_FALSE(y_kernel.IsExternKernel());
+  EXPECT_TRUE(y_kernel.IsReduction());
+  const auto readable = y_kernel.Readable();
+  EXPECT_NE(readable.find("ops.Mean"), string::npos);
+  EXPECT_NE(readable.find("ops.Sum"), string::npos);
+  EXPECT_NE(readable.find("ops.Rsqrt"), string::npos);
+  EXPECT_NE(readable.find("ops.Load(\"gamma:0\")"), string::npos);
+  EXPECT_NE(readable.find("ops.Load(\"beta:0\")"), string::npos);
+
+  EXPECT_FALSE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(1)).IsExternKernel());
+  EXPECT_FALSE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(2)).IsExternKernel());
+}
+
 TEST_F(LoopNodeLoweringUT, LoweringLayerNormWithStatisticsConsumerFallback) {
   [this]() {
     auto x = es_graph_->CreateInput(0, "x", nullptr);
@@ -1395,6 +1435,35 @@ TEST_F(LoopNodeLoweringUT, LoweringLayerNormWithStatisticsConsumerFallback) {
   auto graph = es_graph_->Build();
   auto cg = GraphUtilsEx::GetComputeGraph(*graph);
   auto layer_norm = cg->FindNode("LayerNorm_0");
+  ASSERT_NE(layer_norm, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(0)).IsExternKernel());
+  EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(1)).IsExternKernel());
+  EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(2)).IsExternKernel());
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringLayerNormV3WithRstdConsumerFallback) {
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "x", nullptr);
+    auto gamma = es_graph_->CreateInput(1, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(2, "beta", nullptr);
+    x.SetSymbolShape({"2", "3", "4"});
+    gamma.SetSymbolShape({"3", "4"});
+    beta.SetSymbolShape({"3", "4"});
+    auto layer_norm = es::LayerNormV3(x, gamma, beta, 1, 1, 0.001F);
+    layer_norm.y.SetSymbolShape({"2", "3", "4"});
+    layer_norm.mean.SetSymbolShape({"2", "1", "1"});
+    layer_norm.rstd.SetSymbolShape({"2", "1", "1"});
+    auto abs = es::Abs(layer_norm.rstd);
+    abs.SetSymbolShape({"2", "1", "1"});
+    es_graph_->SetOutput(layer_norm.y, 0);
+    es_graph_->SetOutput(abs, 1);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto layer_norm = cg->FindNode("LayerNormV3_0");
   ASSERT_NE(layer_norm, nullptr);
 
   ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
@@ -1427,6 +1496,115 @@ TEST_F(LoopNodeLoweringUT, LoweringLayerNormDynamicShapeFallback) {
   EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(0)).IsExternKernel());
   EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(1)).IsExternKernel());
   EXPECT_TRUE(loop::GetKernelBox(layer_norm->GetOutDataAnchor(2)).IsExternKernel());
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringAddLayerNormStaticYOnly) {
+  [this]() {
+    auto x1 = es_graph_->CreateInput(0, "x1", nullptr);
+    auto x2 = es_graph_->CreateInput(1, "x2", nullptr);
+    auto gamma = es_graph_->CreateInput(2, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(3, "beta", nullptr);
+    auto bias = es_graph_->CreateInput(4, "bias", nullptr);
+    x1.SetSymbolShape({"2", "3", "4"});
+    x2.SetSymbolShape({"2", "3", "4"});
+    gamma.SetSymbolShape({"4"});
+    beta.SetSymbolShape({"4"});
+    bias.SetSymbolShape({"4"});
+    auto add_layer_norm = es::AddLayerNorm(x1, x2, gamma, beta, bias, 0.001F, false);
+    add_layer_norm.y.SetSymbolShape({"2", "3", "4"});
+    add_layer_norm.mean.SetSymbolShape({"2", "3", "1"});
+    add_layer_norm.rstd.SetSymbolShape({"2", "3", "1"});
+    add_layer_norm.x.SetSymbolShape({"2", "3", "4"});
+    es_graph_->SetOutput(add_layer_norm.y, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto add_layer_norm = cg->FindNode("AddLayerNorm_0");
+  ASSERT_NE(add_layer_norm, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  auto y_kernel = loop::GetKernelBox(add_layer_norm->GetOutDataAnchor(0));
+  ASSERT_FALSE(y_kernel.IsExternKernel());
+  EXPECT_TRUE(y_kernel.IsReduction());
+  const auto readable = y_kernel.Readable();
+  EXPECT_NE(readable.find("ops.Load(\"x1:0\")"), string::npos);
+  EXPECT_NE(readable.find("ops.Load(\"x2:0\")"), string::npos);
+  EXPECT_NE(readable.find("ops.Load(\"bias:0\")"), string::npos);
+  EXPECT_NE(readable.find("ops.Mean"), string::npos);
+  EXPECT_NE(readable.find("ops.Rsqrt"), string::npos);
+  EXPECT_NE(readable.find("ops.Load(\"gamma:0\")"), string::npos);
+  EXPECT_NE(readable.find("ops.Load(\"beta:0\")"), string::npos);
+
+  EXPECT_FALSE(loop::GetKernelBox(add_layer_norm->GetOutDataAnchor(1)).IsExternKernel());
+  EXPECT_FALSE(loop::GetKernelBox(add_layer_norm->GetOutDataAnchor(2)).IsExternKernel());
+  EXPECT_FALSE(loop::GetKernelBox(add_layer_norm->GetOutDataAnchor(3)).IsExternKernel());
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringAddLayerNormWithoutBias) {
+  [this]() {
+    auto x1 = es_graph_->CreateInput(0, "x1", nullptr);
+    auto x2 = es_graph_->CreateInput(1, "x2", nullptr);
+    auto gamma = es_graph_->CreateInput(2, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(3, "beta", nullptr);
+    x1.SetSymbolShape({"2", "3", "4"});
+    x2.SetSymbolShape({"2", "3", "4"});
+    gamma.SetSymbolShape({"4"});
+    beta.SetSymbolShape({"4"});
+    auto add_layer_norm = es::AddLayerNorm(x1, x2, gamma, beta, nullptr, 0.001F, false);
+    add_layer_norm.y.SetSymbolShape({"2", "3", "4"});
+    add_layer_norm.mean.SetSymbolShape({"2", "3", "1"});
+    add_layer_norm.rstd.SetSymbolShape({"2", "3", "1"});
+    add_layer_norm.x.SetSymbolShape({"2", "3", "4"});
+    es_graph_->SetOutput(add_layer_norm.y, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto add_layer_norm = cg->FindNode("AddLayerNorm_0");
+  ASSERT_NE(add_layer_norm, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  auto y_kernel = loop::GetKernelBox(add_layer_norm->GetOutDataAnchor(0));
+  ASSERT_FALSE(y_kernel.IsExternKernel());
+  const auto readable = y_kernel.Readable();
+  EXPECT_NE(readable.find("ops.Load(\"x1:0\")"), string::npos);
+  EXPECT_NE(readable.find("ops.Load(\"x2:0\")"), string::npos);
+  EXPECT_EQ(readable.find("ops.Load(\"bias:0\")"), string::npos);
+  EXPECT_NE(readable.find("ops.Mean"), string::npos);
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringAddLayerNormWithXConsumerFallback) {
+  [this]() {
+    auto x1 = es_graph_->CreateInput(0, "x1", nullptr);
+    auto x2 = es_graph_->CreateInput(1, "x2", nullptr);
+    auto gamma = es_graph_->CreateInput(2, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(3, "beta", nullptr);
+    x1.SetSymbolShape({"2", "3", "4"});
+    x2.SetSymbolShape({"2", "3", "4"});
+    gamma.SetSymbolShape({"4"});
+    beta.SetSymbolShape({"4"});
+    auto add_layer_norm = es::AddLayerNorm(x1, x2, gamma, beta, nullptr, 0.001F, false);
+    add_layer_norm.y.SetSymbolShape({"2", "3", "4"});
+    add_layer_norm.mean.SetSymbolShape({"2", "3", "1"});
+    add_layer_norm.rstd.SetSymbolShape({"2", "3", "1"});
+    add_layer_norm.x.SetSymbolShape({"2", "3", "4"});
+    auto abs = es::Abs(add_layer_norm.x);
+    abs.SetSymbolShape({"2", "3", "4"});
+    es_graph_->SetOutput(add_layer_norm.y, 0);
+    es_graph_->SetOutput(abs, 1);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto add_layer_norm = cg->FindNode("AddLayerNorm_0");
+  ASSERT_NE(add_layer_norm, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  EXPECT_TRUE(loop::GetKernelBox(add_layer_norm->GetOutDataAnchor(0)).IsExternKernel());
+  EXPECT_TRUE(loop::GetKernelBox(add_layer_norm->GetOutDataAnchor(1)).IsExternKernel());
+  EXPECT_TRUE(loop::GetKernelBox(add_layer_norm->GetOutDataAnchor(2)).IsExternKernel());
+  EXPECT_TRUE(loop::GetKernelBox(add_layer_norm->GetOutDataAnchor(3)).IsExternKernel());
 }
 
 TEST_F(LoopNodeLoweringUT, LoweringLayerNormBetaGammaBackpropV2Neg) {
@@ -1905,6 +2083,116 @@ TEST_F(LoopNodeLoweringUT, LoweringSqueeze) {
             "tmp3 = ops.Squeeze(tmp2, 2)\n"
             "tmp4 = ops.Store(\"Squeeze_0:0\", tmp3)\n");
   ExpectReshapeAxisChange(kernel, {0, 1, 2, 3, 4}, {"s0", "1", "2", "1", "1"}, {0, 1}, {"s0", "2"});
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringUnsqueezeV3) {
+  [this]() {
+    auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+    data0.SetSymbolShape({"s0", "2"});
+    auto axes = es_graph_->CreateVector({0, 1});
+    auto unsqueeze = es::UnsqueezeV3(data0, axes);
+    unsqueeze.SetSymbolShape({"1", "1", "s0", "2"});
+    es_graph_->SetOutput(unsqueeze, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto unsqueeze = cg->FindFirstNodeMatchType("UnsqueezeV3");
+  ASSERT_NE(unsqueeze, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  auto kernel = ge::loop::GetKernelBox(unsqueeze->GetOutDataAnchor(0));
+  ASSERT_FALSE(kernel.IsExternKernel());
+  EXPECT_EQ(kernel.Readable(),
+            "tmp0 = ops.Load(\"data0:0\")\n"
+            "tmp1 = ops.Unsqueeze(tmp0, 0)\n"
+            "tmp2 = ops.Unsqueeze(tmp1, 1)\n"
+            "tmp3 = ops.StoreReshape(\"UnsqueezeV3_1:0\", tmp2)\n");
+  ExpectReshapeAxisChange(kernel, {0, 1}, {"s0", "2"}, {0, 1, 2, 3}, {"1", "1", "s0", "2"});
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringSqueezeV3) {
+  [this]() {
+    auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+    data0.SetSymbolShape({"s0", "1", "2", "1", "1"});
+    auto axes = es_graph_->CreateVector({1, 3, -1});
+    auto squeeze = es::SqueezeV3(data0, axes);
+    squeeze.SetSymbolShape({"s0", "2"});
+    es_graph_->SetOutput(squeeze, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto squeeze = cg->FindFirstNodeMatchType("SqueezeV3");
+  ASSERT_NE(squeeze, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  auto kernel = ge::loop::GetKernelBox(squeeze->GetOutDataAnchor(0));
+  ASSERT_FALSE(kernel.IsExternKernel());
+  EXPECT_EQ(kernel.Readable(),
+            "tmp0 = ops.Load(\"data0:0\")\n"
+            "tmp1 = ops.Squeeze(tmp0, 1)\n"
+            "tmp2 = ops.Squeeze(tmp1, 2)\n"
+            "tmp3 = ops.Squeeze(tmp2, 2)\n"
+            "tmp4 = ops.Store(\"SqueezeV3_1:0\", tmp3)\n");
+  ExpectReshapeAxisChange(kernel, {0, 1, 2, 3, 4}, {"s0", "1", "2", "1", "1"}, {0, 1}, {"s0", "2"});
+}
+
+// axes 输入未连接时按"压掉所有长度为 1 的轴"处理（与符号推导语义一致，不能因此回退）
+TEST_F(LoopNodeLoweringUT, LoweringSqueezeV3WithoutAxes) {
+  [this]() {
+    auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+    data0.SetSymbolShape({"s0", "1", "2", "1"});
+    auto squeeze = es::SqueezeV3(data0);
+    squeeze.SetSymbolShape({"s0", "2"});
+    es_graph_->SetOutput(squeeze, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto squeeze = cg->FindFirstNodeMatchType("SqueezeV3");
+  ASSERT_NE(squeeze, nullptr);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  auto kernel = ge::loop::GetKernelBox(squeeze->GetOutDataAnchor(0));
+  ASSERT_FALSE(kernel.IsExternKernel());
+  EXPECT_EQ(kernel.Readable(),
+            "tmp0 = ops.Load(\"data0:0\")\n"
+            "tmp1 = ops.Squeeze(tmp0, 1)\n"
+            "tmp2 = ops.Squeeze(tmp1, 2)\n"
+            "tmp3 = ops.Store(\"SqueezeV3_0:0\", tmp2)\n");
+}
+
+// m007/m049 的 "盒 -> SqueezeV3 -> TransposeD" 链：SqueezeV3 无 lowering 时整段盒会回退，
+// 这里覆盖 SqueezeV3 与 Transpose 同图时两者都能落到非 extern kernel
+TEST_F(LoopNodeLoweringUT, LoweringSqueezeV3ThenTranspose) {
+  ge::autofuse::AutoFuseConfig::MutableConfig().MutableLoweringConfig().experimental_lowering_transpose = true;
+  [this]() {
+    auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+    data0.SetSymbolShape({"s0", "1", "s1", "s2"});
+    auto axes = es_graph_->CreateVector({1});
+    auto squeeze = es::SqueezeV3(data0, axes);
+    squeeze.SetSymbolShape({"s0", "s1", "s2"});
+    auto perms = CreateConst(*es_graph_, ge::DT_INT32, {3}, std::vector<int32_t>{0, 2, 1});
+    auto transpose = es::Transpose(squeeze, perms);
+    transpose.SetSymbolShape({"s0", "s2", "s1"});
+    es_graph_->SetOutput(transpose, 0);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto squeeze = cg->FindFirstNodeMatchType("SqueezeV3");
+  ASSERT_NE(squeeze, nullptr);
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+
+  auto squeeze_kernel = ge::loop::GetKernelBox(squeeze->GetOutDataAnchor(0));
+  ASSERT_FALSE(squeeze_kernel.IsExternKernel());
+  auto transpose = cg->FindFirstNodeMatchType("Transpose");
+  ASSERT_NE(transpose, nullptr);
+  auto transpose_kernel = ge::loop::GetKernelBox(transpose->GetOutDataAnchor(0));
+  ASSERT_FALSE(transpose_kernel.IsExternKernel());
+  EXPECT_NE(transpose_kernel.Readable().find("ops.Permute"), std::string::npos);
+  ge::autofuse::AutoFuseConfig::MutableConfig().MutableLoweringConfig().experimental_lowering_transpose = false;
 }
 
 TEST_F(LoopNodeLoweringUT, LoweringSqueezeLowerAxisIsNull) {
