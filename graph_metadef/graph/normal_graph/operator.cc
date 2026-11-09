@@ -13,7 +13,6 @@
 #include <cstdint>
 #include <algorithm>
 #include <mutex>
-#include <queue>
 #include <set>
 #include "framework/common/debug/ge_log.h"
 #include "debug/ge_op_types.h"
@@ -33,6 +32,7 @@
 #include "graph/type/tensor_type_impl.h"
 #include "graph/normal_graph/op_io.h"
 #include "graph/normal_graph/operator_impl.h"
+#include "normal_graph/operator_graph_builder.h"
 #include "graph/utils/graph_utils_ex.h"
 #include "graph/utils/node_utils_ex.h"
 #include "graph/utils/op_desc_utils_ex.h"
@@ -2880,9 +2880,121 @@ graphStatus Operator::UpdateOutputDesc(const uint32_t index, const TensorDesc &t
   return operator_impl_->UpdateOutputDesc(index, TensorAdapter::TensorDesc2GeTensorDesc(tensor_desc));
 }
 
+struct ComputeGraphBuildOps {
+  using GraphPtr = ComputeGraphPtr;
+  using NodeType = NodePtr;
+
+  static NodeType CreateNode(const GraphPtr &graph, const OpDescPtr &desc) {
+    return graph->AddNode(desc);
+  }
+
+  static graphStatus CheckDataOutput(const NodeType &node, int32_t index) {
+    if (node->GetOutDataAnchor(index) == nullptr) {
+      REPORT_INNER_ERR_MSG("E18888", "GetOutDataAnchor failed, index:%d, op:%s.", index,
+                           node->GetOpDesc()->GetNamePtr());
+      GELOGE(GRAPH_FAILED, "[Get][OutDataAnchor] failed, index:%d.", index);
+      return GRAPH_FAILED;
+    }
+    return GRAPH_SUCCESS;
+  }
+
+  static graphStatus AddDataEdge(const GraphPtr &, const NodeType &src, int32_t src_index, const NodeType &dst,
+                                 int32_t dst_index) {
+    const auto src_anchor = src->GetOutDataAnchor(src_index);
+    const auto dst_anchor = dst->GetInDataAnchor(dst_index);
+    if (dst_anchor == nullptr) {
+      REPORT_INNER_ERR_MSG("E18888", "GetInDataAnchor failed, index:%d, op:%s", dst_index,
+                           src->GetOpDesc()->GetNamePtr());
+      GELOGE(GRAPH_FAILED, "GetInDataAnchor failed, index:%d", dst_index);
+      return GRAPH_FAILED;
+    }
+    const auto ret = GraphUtils::AddEdge(src_anchor, dst_anchor);
+    if (ret != GRAPH_SUCCESS) {
+      REPORT_INNER_ERR_MSG("E18888", "add edge from node[%s][%d] to node[%s][%d] failed.", src->GetNamePtr(),
+                           src_anchor->GetIdx(), dst->GetNamePtr(), dst_anchor->GetIdx());
+      GELOGE(GRAPH_FAILED, "[Add][Edge] from node[%s][%d] to node[%s][%d] failed.", src->GetNamePtr(),
+             src_anchor->GetIdx(), dst->GetNamePtr(), dst_anchor->GetIdx());
+      return GRAPH_FAILED;
+    }
+    return ret;
+  }
+
+  static graphStatus AddControlEdge(const GraphPtr &, const NodeType &src, const NodeType &dst) {
+    const auto ret = GraphUtils::AddEdge(src->GetOutControlAnchor(), dst->GetInControlAnchor());
+    if (ret != GRAPH_SUCCESS) {
+      REPORT_INNER_ERR_MSG("E18888", "add edge failed. srcNode %s:%s, dstNode %s:%s", src->GetOpDesc()->GetNamePtr(),
+                           src->GetOpDesc()->GetTypePtr(), dst->GetNamePtr(), dst->GetTypePtr());
+      GELOGE(ret, "[Add][Edge] failed. srcNode %s:%s, dstNode %s:%s", src->GetOpDesc()->GetNamePtr(),
+             src->GetOpDesc()->GetTypePtr(), dst->GetNamePtr(), dst->GetTypePtr());
+      return ret;
+    }
+    return ret;
+  }
+
+  static graphStatus MountSubgraph(const GraphPtr &owner, const NodeType &node, const std::string &, uint32_t index,
+                                   const Graph &graph) {
+    const auto subgraph = GraphUtilsEx::GetComputeGraph(graph);
+    if (subgraph == nullptr) {
+      REPORT_INNER_ERR_MSG("E18888", "Node: %s, Build graph failed.", node->GetNamePtr());
+      GELOGE(GRAPH_FAILED, "[Get][Graph] Node: %s, Build graph failed.", node->GetNamePtr());
+      return GRAPH_FAILED;
+    }
+    subgraph->SetParentNode(node);
+    subgraph->SetParentGraph(owner);
+    if (owner->AddSubgraph(subgraph->GetName(), subgraph) != GRAPH_SUCCESS) {
+      return GRAPH_FAILED;
+    }
+    if (node->GetOpDesc()->SetSubgraphInstanceName(index, subgraph->GetName()) != GRAPH_SUCCESS) {
+      REPORT_INNER_ERR_MSG("E18888", "Failed to set subgraph %s index %u", subgraph->GetName().c_str(), index);
+      GELOGE(GRAPH_FAILED, "[Set][SubGraph] %s index %u failed", subgraph->GetName().c_str(), index);
+      return GRAPH_FAILED;
+    }
+    return GRAPH_SUCCESS;
+  }
+
+  static graphStatus MoveSubgraphToRoot(const int32_t recursion_depth, const ComputeGraphPtr &graph) {
+    if (recursion_depth > kMaxDepth) {
+      REPORT_INNER_ERR_MSG("E18888", "param recursion_depth:%d is bigger than kMaxRecursiveDepth:%d", recursion_depth,
+                           kMaxDepth);
+      GELOGE(GRAPH_FAILED, "[Check][Param] DecodeGraph: recursion depth is too large, abort");
+      return GRAPH_FAILED;
+    }
+    const ComputeGraphPtr &root_graph = GraphUtils::FindRootGraph(graph);
+    if (root_graph == nullptr) {
+      REPORT_INNER_ERR_MSG("E18888", "failed to find root graph of %s", graph->GetName().c_str());
+      GELOGE(GRAPH_FAILED, "[Find][RootGraph] failed for graph:%s.", graph->GetName().c_str());
+      return GRAPH_FAILED;
+    }
+
+    if (root_graph == graph) {
+      const auto subgraphs = graph->GetAllSubgraphs();
+
+      for (auto &subgraph : subgraphs) {
+        if (MoveSubgraphToRoot(recursion_depth + 1, subgraph) != GRAPH_SUCCESS) {
+          return GRAPH_FAILED;
+        }
+      }
+    } else {
+      const auto subgraphs = graph->GetAllSubgraphs();
+      for (auto &subgraph : subgraphs) {
+        if (root_graph->AddSubgraph(subgraph->GetName(), subgraph) != GRAPH_SUCCESS) {
+          return GRAPH_FAILED;
+        }
+        graph->RemoveSubgraph(subgraph->GetName());
+        if (MoveSubgraphToRoot(recursion_depth + 1, subgraph) != GRAPH_SUCCESS) {
+          return GRAPH_FAILED;
+        }
+      }
+    }
+
+    return GRAPH_SUCCESS;
+  }
+};
+
 class GraphBuilderImpl {
  public:
-  explicit GraphBuilderImpl(const std::string &name) : graph_(ComGraphMakeShared<ComputeGraph>(name)) {
+  explicit GraphBuilderImpl(const std::string &name)
+      : graph_(ComGraphMakeShared<ComputeGraph>(name)), builder_(graph_) {
     if (graph_ == nullptr) {
       REPORT_INNER_ERR_MSG("E18888", "ComputeGraph make shared failed");
       GELOGE(GRAPH_FAILED, "[Call][ComGraphMakeShared] ComputeGraph make shared failed");
@@ -2924,10 +3036,13 @@ class GraphBuilderImpl {
                      return nullptr,
                             "[Check][Param] User Input do not include operator such as "
                             "Data, Variable operator or operator that has output but no input.");
-    auto ret = WalkAllOperators(vec_inputs);
+    auto ret = builder_.WalkAllOperators(vec_inputs);
     GE_CHK_BOOL_EXEC(ret == GRAPH_SUCCESS, return nullptr, "[Call][WalkAllOperators] failed, ret:%d.", ret);
 
-    ret = AddEdge();
+    ret = ComputeGraphBuildOps::MoveSubgraphToRoot(0, graph_);
+    GE_CHK_BOOL_EXEC(ret == GRAPH_SUCCESS, return nullptr, "[Call][MoveSubgraphToRoot] failed, ret:%d.", ret);
+
+    ret = builder_.AddEdges();
     GE_CHK_BOOL_EXEC(ret == GRAPH_SUCCESS, return nullptr, "[Add][Edge] failed, ret:%d.", ret);
 
     return graph_;
@@ -2941,244 +3056,22 @@ class GraphBuilderImpl {
       if (OpTypeUtils::IsDataNode(op_type.GetString())) {
         input_size++;
       }
-      GE_ASSERT_SUCCESS(GenerateNodeFromOperator(op));
+      GE_ASSERT_SUCCESS(builder_.GenerateNode(op.operator_impl_));
     }
-    GE_ASSERT_SUCCESS(AddEdge());
+    GE_ASSERT_SUCCESS(builder_.AddEdges());
     const int32_t start_recursion_depth = 0;
-    GE_ASSERT_SUCCESS(MoveSubgraphToRoot(start_recursion_depth, graph_));
+    GE_ASSERT_SUCCESS(ComputeGraphBuildOps::MoveSubgraphToRoot(start_recursion_depth, graph_));
     graph_->SetInputSize(input_size);
     return graph_;
   }
 
   const std::map<OperatorImplPtr, NodePtr> &GetAllNodesInfo() const {
-    return all_nodes_info_;
+    return builder_.GetAllNodesInfo();
   }
 
  private:
-  graphStatus GenerateNodeFromOperator(const Operator &op) {
-    GE_ASSERT_NOTNULL(graph_);
-    const auto op_impl = op.operator_impl_;
-    GE_ASSERT_NOTNULL(op_impl);
-    auto node_ptr = graph_->AddNode(op_impl->op_desc_);
-    GE_ASSERT_NOTNULL(node_ptr);
-    (void)all_nodes_info_.insert(std::make_pair(op_impl, node_ptr));
-    (void)stable_all_nodes_info_.insert(std::make_pair(op_impl, node_ptr));
-    GE_ASSERT_SUCCESS(WalkAllSubgraphs(node_ptr, op_impl));
-    return GRAPH_SUCCESS;
-  }
-
-  graphStatus WalkAllOperators(const std::vector<OperatorImplPtr> &vec_ops) {
-    GE_CHK_BOOL_EXEC(graph_ != nullptr, REPORT_INNER_ERR_MSG("E18888", "graph_ is nullptr, check invalid.");
-                     return GRAPH_FAILED, "[Check][Param] graph_ is null.");
-    std::queue<std::vector<OperatorImplPtr>> que;
-    que.push(vec_ops);
-    while (!que.empty()) {
-      const auto vec_tem = que.front();
-      que.pop();
-      for (const auto &op_impl : vec_tem) {
-        GE_CHK_BOOL_EXEC(op_impl != nullptr, REPORT_INNER_ERR_MSG("E18888", "op_impl is nullptr, check invalid.");
-                         return GRAPH_FAILED, "[Check][Param] Operator Impl is null.");
-        if (all_nodes_info_.find(op_impl) != all_nodes_info_.cend()) {
-          GELOGI("Node %s has been created.", op_impl->GetName().c_str());
-          continue;
-        }
-        auto node_ptr = graph_->AddNode(op_impl->op_desc_);
-        GE_CHK_BOOL_EXEC(node_ptr != nullptr, REPORT_INNER_ERR_MSG("E18888", "add node failed.");
-                         return GRAPH_FAILED, "[Add][Node] failed.");
-        (void)(all_nodes_info_.insert(std::make_pair(op_impl, node_ptr)));
-        (void)(stable_all_nodes_info_.insert(std::make_pair(op_impl, node_ptr)));
-
-        auto &out_links = op_impl->output_links_;
-        std::vector<OperatorImplPtr> vec_op_forward{};
-        for (const auto &out_link : out_links) {
-          for (const auto &op_forward : out_link.second) {
-            vec_op_forward.push_back(op_forward.GetOwner());
-          }
-        }
-
-        auto &out_control_links = op_impl->control_output_link_;
-        for (const auto &out_link : out_control_links) {
-          vec_op_forward.push_back(out_link.lock());
-        }
-        que.push(vec_op_forward);
-
-        auto &in_links = op_impl->input_link_;
-        std::vector<OperatorImplPtr> vec_op_back_forward{};
-        for (const auto &in_link : in_links) {
-          vec_op_back_forward.push_back(in_link.second.GetOwner());
-        }
-
-        auto &in_control_links = op_impl->control_input_link_;
-        for (const auto &in_link : in_control_links) {
-          vec_op_back_forward.push_back(in_link.lock());
-        }
-        que.push(vec_op_back_forward);
-
-        if (WalkAllSubgraphs(node_ptr, op_impl) != GRAPH_SUCCESS) {
-          return GRAPH_FAILED;
-        }
-      }
-    }
-    return MoveSubgraphToRoot(0, graph_);
-  }
-
-  graphStatus WalkAllSubgraphs(const NodePtr &node, const OperatorImplPtr &op_impl) {
-    const std::string name = node->GetName();
-    for (auto &name_idx : op_impl->op_desc_->GetSubgraphNameIndexes()) {
-      const SubgraphBuilder &builder = op_impl->GetSubgraphBuilder(name_idx.first);
-      if (builder == nullptr) {
-        GELOGW("[Check][Param] Node %s has no builder", name.c_str());
-        continue;
-      }
-
-      const Graph graph = builder();  // Build subgraph from user define builder.
-      const ComputeGraphPtr &subgraph = GraphUtilsEx::GetComputeGraph(graph);
-      GE_CHK_BOOL_EXEC(subgraph != nullptr,
-                       REPORT_INNER_ERR_MSG("E18888", "Node: %s, Build graph failed.", name.c_str());
-                       return GRAPH_FAILED, "[Get][Graph] Node: %s, Build graph failed.", name.c_str());
-
-      subgraph->SetParentNode(node);
-      subgraph->SetParentGraph(graph_);
-      if (graph_->AddSubgraph(subgraph->GetName(), subgraph) != GRAPH_SUCCESS) {
-        return GRAPH_FAILED;
-      }
-
-      if (op_impl->op_desc_->SetSubgraphInstanceName(name_idx.second, subgraph->GetName()) != GRAPH_SUCCESS) {
-        REPORT_INNER_ERR_MSG("E18888", "Failed to set subgraph %s index %u", subgraph->GetName().c_str(),
-                             name_idx.second);
-        GELOGE(GRAPH_FAILED, "[Set][SubGraph] %s index %u failed", subgraph->GetName().c_str(), name_idx.second);
-        return GRAPH_FAILED;
-      }
-    }
-
-    return GRAPH_SUCCESS;
-  }
-
-  graphStatus MoveSubgraphToRoot(const int32_t recursion_depth, const ComputeGraphPtr &graph) const {
-    if (recursion_depth > kMaxDepth) {
-      REPORT_INNER_ERR_MSG("E18888", "param recursion_depth:%d is bigger than kMaxRecursiveDepth:%d", recursion_depth,
-                           kMaxDepth);
-      GELOGE(GRAPH_FAILED, "[Check][Param] DecodeGraph: recursion depth is too large, abort");
-      return GRAPH_FAILED;
-    }
-    const ComputeGraphPtr &root_graph = GraphUtils::FindRootGraph(graph);
-    if (root_graph == nullptr) {
-      REPORT_INNER_ERR_MSG("E18888", "failed to find root graph of %s", graph->GetName().c_str());
-      GELOGE(GRAPH_FAILED, "[Find][RootGraph] failed for graph:%s.", graph->GetName().c_str());
-      return GRAPH_FAILED;
-    }
-
-    if (root_graph == graph) {
-      const auto subgraphs = graph->GetAllSubgraphs();
-
-      for (auto &subgraph : subgraphs) {
-        if (MoveSubgraphToRoot(recursion_depth + 1, subgraph) != GRAPH_SUCCESS) {
-          return GRAPH_FAILED;
-        }
-      }
-    } else {
-      const auto subgraphs = graph->GetAllSubgraphs();
-      for (auto &subgraph : subgraphs) {
-        if (root_graph->AddSubgraph(subgraph->GetName(), subgraph) != GRAPH_SUCCESS) {
-          return GRAPH_FAILED;
-        }
-        graph->RemoveSubgraph(subgraph->GetName());
-        if (MoveSubgraphToRoot(recursion_depth + 1, subgraph) != GRAPH_SUCCESS) {
-          return GRAPH_FAILED;
-        }
-      }
-    }
-
-    return GRAPH_SUCCESS;
-  }
-
-  graphStatus AddEdge() {
-    for (const auto &node_info : stable_all_nodes_info_) {
-      const auto src_op_impl_ptr = node_info.first;
-      const auto src_node_ptr = node_info.second;
-
-      GE_IF_BOOL_EXEC((src_op_impl_ptr == nullptr) || (src_node_ptr == nullptr), continue);
-      const auto out_links = src_op_impl_ptr->output_links_;
-      GE_CHK_BOOL_EXEC(src_op_impl_ptr->op_desc_ != nullptr,
-                       REPORT_INNER_ERR_MSG("E18888", "Src operator impl's op_desc is nullptr, check invalid.");
-                       return GRAPH_FAILED, "[Check][Param] Src operator impl's op_desc is null.");
-      auto &op_desc = src_op_impl_ptr->op_desc_;
-      GE_IF_BOOL_EXEC(op_desc == nullptr, continue);
-      for (const auto &out : out_links) {
-        const auto src_idx = op_desc->GetOutputIndexByName(out.first);
-        GE_CHK_BOOL_EXEC(src_idx >= 0, REPORT_INNER_ERR_MSG("E18888", "Find output index by name:%s in op:%s failed",
-                                                            out.first.c_str(), op_desc->GetName().c_str());
-                         return GRAPH_FAILED, "[Get][Index] Find output index by name:%s failed", out.first.c_str());
-
-        const auto src_anchor = src_node_ptr->GetOutDataAnchor(src_idx);
-        GE_CHK_BOOL_EXEC(src_anchor != nullptr,
-                         REPORT_INNER_ERR_MSG("E18888", "GetOutDataAnchor failed, index:%d, op:%s.", src_idx,
-                                              op_desc->GetName().c_str());
-                         return GRAPH_FAILED, "[Get][OutDataAnchor] failed, index:%d.", src_idx);
-
-        for (const auto &dst_opio : out.second) {
-          const std::map<OperatorImplPtr, NodePtr>::const_iterator dst_node_info =
-              all_nodes_info_.find(dst_opio.GetOwner());
-          GE_CHK_BOOL_EXEC(dst_node_info != all_nodes_info_.cend(),
-                           REPORT_INNER_ERR_MSG("E18888", "Find Dst node failed, op:%s.", op_desc->GetName().c_str());
-                           return GRAPH_FAILED, "[Check][Param] Find Dst node failed.");
-
-          GE_IF_BOOL_EXEC(dst_node_info->second == nullptr, continue);
-
-          const auto dst_anchor = dst_node_info->second->GetInDataAnchor(dst_opio.GetIndex());
-          GE_CHK_BOOL_EXEC(dst_anchor != nullptr,
-                           REPORT_INNER_ERR_MSG("E18888", "GetInDataAnchor failed, index:%d, op:%s",
-                                                dst_opio.GetIndex(), op_desc->GetName().c_str());
-                           return GRAPH_FAILED, "GetInDataAnchor failed, index:%d", dst_opio.GetIndex());
-
-          const auto ret = GraphUtils::AddEdge(src_anchor, dst_anchor);
-          GE_CHK_BOOL_EXEC(ret == GRAPH_SUCCESS,
-                           REPORT_INNER_ERR_MSG("E18888", "add edge from node[%s][%d] to node[%s][%d] failed.",
-                                                src_node_ptr->GetName().c_str(), src_anchor->GetIdx(),
-                                                dst_node_info->second->GetName().c_str(), dst_anchor->GetIdx());
-                           return GRAPH_FAILED, "[Add][Edge] from node[%s][%d] to node[%s][%d] failed.",
-                                  src_node_ptr->GetName().c_str(), src_anchor->GetIdx(),
-                                  dst_node_info->second->GetName().c_str(), dst_anchor->GetIdx());
-        }
-      }
-      const auto out_control_anchor = src_node_ptr->GetOutControlAnchor();
-      for (const auto &control_out : src_op_impl_ptr->control_output_link_) {
-        const std::map<OperatorImplPtr, NodePtr>::const_iterator dst_node_info =
-            all_nodes_info_.find(control_out.lock());
-        if (dst_node_info == all_nodes_info_.cend()) {
-          REPORT_INNER_ERR_MSG("E18888", "Find Dst node failed.");
-          GELOGE(GRAPH_FAILED, "[Check][Param] Find Dst node failed.");
-          return GRAPH_FAILED;
-        }
-        GE_IF_BOOL_EXEC(dst_node_info->second == nullptr, continue);
-        const auto in_control_anchor = dst_node_info->second->GetInControlAnchor();
-        const auto ret = GraphUtils::AddEdge(out_control_anchor, in_control_anchor);
-        if (ret != GRAPH_SUCCESS) {
-          REPORT_INNER_ERR_MSG("E18888", "add edge failed. srcNode %s:%s, dstNode %s:%s", op_desc->GetName().c_str(),
-                               op_desc->GetType().c_str(), dst_node_info->second->GetName().c_str(),
-                               dst_node_info->second->GetType().c_str());
-          GELOGE(ret, "[Add][Edge] failed. srcNode %s:%s, dstNode %s:%s", op_desc->GetName().c_str(),
-                 op_desc->GetType().c_str(), dst_node_info->second->GetName().c_str(),
-                 dst_node_info->second->GetType().c_str());
-          return ret;
-        }
-      }
-    }
-    return GRAPH_SUCCESS;
-  }
-  struct OperatorCompareKey {
-    bool operator()(const OperatorImplPtr &n0, const OperatorImplPtr &n1) const {
-      if ((n0 == nullptr) || (n1 == nullptr)) {
-        return false;
-      }
-      return (n0->GetName() < n1->GetName());
-    }
-  };
   ComputeGraphPtr graph_ = nullptr;
-  std::map<OperatorImplPtr, NodePtr> all_nodes_info_{};
-  // stable_all_nodes_info_中的键值对和all_nodes_info_中的一样，stable_all_nodes_info_
-  // 用于保证每次遍历到的键值对的顺序是固定的
-  std::map<OperatorImplPtr, NodePtr, OperatorCompareKey> stable_all_nodes_info_{};
+  OperatorGraphBuilder<ComputeGraphBuildOps> builder_;
 };
 
 void Operator::DynamicInputRegister(const char_t *name, const uint32_t num, const char_t *datatype_symbol,

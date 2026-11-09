@@ -31,6 +31,13 @@ struct EsCGraphBuilder {
    */
   explicit EsCGraphBuilder(const char *name);
 
+  /**
+   * @brief 构造函数，指定图的后端类别
+   * @param name 图名称，可为空（使用默认名称）
+   * @param kind 图类别，创建后固定
+   */
+  EsCGraphBuilder(const char *name, ge::GraphKind kind);
+
   ~EsCGraphBuilder();
   EsCGraphBuilder(EsCGraphBuilder &&) noexcept;
   EsCGraphBuilder &operator=(EsCGraphBuilder &&) noexcept;

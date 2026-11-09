@@ -9,6 +9,8 @@
  */
 
 #include <gtest/gtest.h>
+#include <cstdio>
+#include <functional>
 #include <iostream>
 #include "graph/graph.h"
 #include "graph/operator.h"
@@ -27,6 +29,7 @@
 #include "graph/operator_factory_impl.h"
 #include "graph/utils/op_desc_utils.h"
 #include "graph/utils/graph_utils_ex.h"
+#include "graph/utils/node_adapter.h"
 #include "graph/utils/op_desc_utils_ex.h"
 #include "graph_builder_utils.h"
 #include "graph/utils/file_utils.h"
@@ -38,6 +41,12 @@
 #include "graph/ascend_string.h"
 #include "graph/types.h"
 #include "graph/ge_context.h"
+#include "es_graph_builder.h"
+#include "es_c_graph_builder.h"
+#include "error_manager.h"
+#include "normal_graph/graph_impl.h"
+#include "normal_graph/operator_impl.h"
+
 #include "mmpa/mmpa_api.h"
 #include <debug/ge_attr_define.h>
 #include <dirent.h>
@@ -1207,6 +1216,37 @@ TEST_F(UtestGraph, LoadFromMemFailed) {
   EXPECT_NE(ret, GRAPH_SUCCESS);
 }
 
+TEST_F(UtestGraph, LoadOverloadsPreserveEmptyImplAndDispatchByBackend) {
+  Graph source = GraphUtilsEx::CreateGraphFromComputeGraph(BuildComputeGraph());
+  GraphBuffer buffer;
+  ASSERT_EQ(GRAPH_SUCCESS, source.SaveToMem(buffer));
+  const std::string file_name = "./ut_graph_load_dispatch.txt";
+  ASSERT_EQ(GRAPH_SUCCESS, source.SaveToFile(file_name));
+  const std::vector<std::function<graphStatus(Graph &)>> loaders = {
+      [&file_name](Graph &graph) { return graph.LoadFromFile(file_name); },
+      [&file_name](Graph &graph) { return graph.LoadFromFile(file_name.c_str()); },
+      [&buffer](Graph &graph) { return graph.LoadFromMem(buffer); },
+      [&buffer](Graph &graph) { return graph.LoadFromMem(buffer.GetData(), buffer.GetSize()); },
+      [&buffer](Graph &graph) { return graph.LoadFromSerializedModelArray(buffer.GetData(), buffer.GetSize()); }};
+  for (const auto &load : loaders) {
+    Graph empty;
+    EXPECT_EQ(nullptr, empty.impl_);
+    ASSERT_EQ(GRAPH_SUCCESS, load(empty));
+    EXPECT_TRUE(empty.IsValid());
+    EXPECT_EQ(source.GetName(), empty.GetName());
+
+    Graph compute("previous");
+    ASSERT_EQ(GRAPH_SUCCESS, compute.SetValid());
+    const auto old_compute_impl = compute.impl_;
+    EXPECT_NE(GRAPH_SUCCESS, compute.LoadFromMem(nullptr, 0));
+    EXPECT_EQ(old_compute_impl, compute.impl_);
+    ASSERT_EQ(GRAPH_SUCCESS, load(compute));
+    EXPECT_NE(old_compute_impl, compute.impl_);
+    EXPECT_EQ(source.GetName(), compute.GetName());
+  }
+  EXPECT_EQ(0, std::remove(file_name.c_str()));
+}
+
 TEST_F(UtestGraph, ErrorCodeCheck) {
   EXPECT_EQ(ge::FAILED, 4294967295);
   EXPECT_EQ(ge::END_OF_SEQUENCE, 1343225863);
@@ -2148,6 +2188,291 @@ TEST_F(UtestGraph, TestGraphGetParentNode_success) {
   ASSERT_TRUE(ret_parent_node_name == exp_parent_node_name);
 }
 
+namespace {
+// 无原型节点：DynamicInput/OutputRegister 声明端口数量，不依赖算子原型注册（任务 3.1 组合方式的前置形态）。
+Operator MakeTestOp(const char_t *name, const char_t *type, uint32_t in_cnt, uint32_t out_cnt) {
+  Operator op(name, type);
+  if (in_cnt != 0U) {
+    op.DynamicInputRegister("x", in_cnt);
+  }
+  if (out_cnt != 0U) {
+    op.DynamicOutputRegister("y", out_cnt);
+  }
+  return op;
+}
+}  // namespace
+
+TEST_F(UtestGraph, ComputeGraphSetInputsReturnGraphFailedForEmptyInputs) {
+  Graph graph("empty_inputs", 0);
+  EXPECT_EQ(GRAPH_FAILED, graph.impl_->SetInputs({}));
+  EXPECT_FALSE(graph.IsValid());
+}
+
+TEST_F(UtestGraph, ComputeGraphImplSetInputsPreservesFailureRetryAndInitializationOrder) {
+  Graph graph("inputs", 0);
+  GraphImpl &impl = *graph.impl_;
+  EXPECT_EQ(GRAPH_FAILED, impl.SetInputs({}));
+  EXPECT_FALSE(graph.IsValid());
+  EXPECT_EQ(GRAPH_FAILED, impl.SetInputs({Operator()}));
+  EXPECT_FALSE(graph.IsValid());
+
+  auto input = MakeTestOp("input", "Data", 0U, 1U);
+  ASSERT_EQ(GRAPH_SUCCESS, impl.SetInputs({input}));
+  ASSERT_TRUE(graph.IsValid());
+  ASSERT_NE(nullptr, graph.FindNodeByName(AscendString("input")));
+
+  EXPECT_EQ(1U, GraphUtilsEx::GetComputeGraph(graph)->GetInputSize());
+
+  auto replacement = MakeTestOp("replacement", "Data", 0U, 1U);
+  EXPECT_NE(GRAPH_SUCCESS, impl.SetInputs({replacement}));
+  EXPECT_EQ(1U, graph.GetDirectNode().size());
+  EXPECT_NE(nullptr, graph.FindNodeByName(AscendString("input")));
+  EXPECT_EQ(nullptr, graph.FindNodeByName(AscendString("replacement")));
+}
+
+TEST_F(UtestGraph, CreateGraphsFromOperatorRejectInvalidInputs) {
+  EXPECT_EQ(nullptr, GraphUtilsEx::CreateGraphFromOperator("empty_inputs", {}));
+
+  Operator invalid;
+  EXPECT_EQ(nullptr, GraphUtilsEx::CreateGraphFromOperator("null_impl", {invalid}));
+
+  auto missing_desc = MakeTestOp("missing_desc", "PlainOp", 0U, 1U);
+  missing_desc.operator_impl_->op_desc_.reset();
+  EXPECT_EQ(nullptr, GraphUtilsEx::CreateGraphFromOperator("null_desc", {missing_desc}));
+}
+
+TEST_F(UtestGraph, ComputeGraphAddNodeByOpAcceptDuplicateAndEmptyNames) {
+  Graph graph("names", 0);
+  auto first = graph.AddNodeByOp(MakeTestOp("same", "PlainOp", 0U, 1U));
+  auto second = graph.AddNodeByOp(MakeTestOp("same", "PlainOp", 0U, 1U));
+  auto empty_op = OpDescUtils::CreateOperatorFromOpDesc(std::make_shared<OpDesc>("", "PlainOp"));
+  auto unnamed = graph.AddNodeByOp(empty_op);
+  AscendString name;
+  ASSERT_EQ(GRAPH_SUCCESS, first.GetName(name));
+  EXPECT_EQ(AscendString("same"), name);
+  ASSERT_EQ(GRAPH_SUCCESS, second.GetName(name));
+  EXPECT_EQ(AscendString("same"), name);
+  ASSERT_EQ(GRAPH_SUCCESS, unnamed.GetName(name));
+  EXPECT_EQ(AscendString(""), name);
+  EXPECT_EQ(3U, graph.GetDirectNode().size());
+}
+
+TEST_F(UtestGraph, ComputeGraphAddNodeByOpRejectMissingDescBeforeInitializingGraph) {
+  auto missing_desc = MakeTestOp("missing_desc", "PlainOp", 0U, 1U);
+  missing_desc.operator_impl_->op_desc_.reset();
+  Graph graph("invalid_op", 0);
+  for (const auto &op : std::vector<Operator>{Operator(), missing_desc}) {
+    auto node = graph.AddNodeByOp(op);
+    AscendString name;
+    EXPECT_NE(GRAPH_SUCCESS, node.GetName(name));
+    EXPECT_FALSE(graph.IsValid());
+  }
+}
+
+// 计算图上的加节点、连边、枚举、查找和删节点闭环。
+TEST_F(UtestGraph, ComputeGraphImplNodeEditingPreservesBackendBehavior) {
+  Graph graph("edit", 0);
+  GraphImpl &impl = *graph.impl_;
+  auto source_op = MakeTestOp("source", "PlainOp", 0U, 1U);
+  auto source = impl.AddNodeByOp(source_op);
+  auto target = impl.AddNodeByOp(MakeTestOp("target", "PlainOp", 1U, 0U));
+  ASSERT_NE(nullptr, impl.FindNodeByName(AscendString("source")));
+  EXPECT_EQ(nullptr, impl.FindNodeByName(AscendString("missing")));
+
+  Operator found;
+  EXPECT_EQ(GRAPH_SUCCESS, graph.FindOpByName("source", found));
+
+  GNode invalid;
+  EXPECT_EQ(GRAPH_FAILED, impl.AddDataEdge(invalid, 0, target, 0));
+  EXPECT_EQ(GRAPH_FAILED, impl.AddDataEdge(source, 0, invalid, 0));
+  EXPECT_EQ(GRAPH_FAILED, impl.AddControlEdge(invalid, target));
+  EXPECT_EQ(GRAPH_FAILED, impl.RemoveEdge(source, 0, invalid, 0));
+  ASSERT_EQ(GRAPH_SUCCESS, impl.AddDataEdge(source, 0, target, 0));
+  EXPECT_EQ(GRAPH_FAILED, impl.AddDataEdge(source, 0, target, 0));
+  ASSERT_EQ(GRAPH_SUCCESS, impl.AddControlEdge(source, target));
+  EXPECT_EQ(1U, source.GetOutControlNodes().size());
+  ASSERT_EQ(GRAPH_SUCCESS, impl.RemoveEdge(source, 0, target, 0));
+  EXPECT_EQ(GRAPH_FAILED, impl.RemoveEdge(source, 0, target, 0));
+  ASSERT_EQ(GRAPH_SUCCESS, impl.AddDataEdge(source, 0, target, 0));
+  const auto retained_node = NodeAdapter::GNode2Node(source);
+  ASSERT_EQ(GRAPH_SUCCESS, impl.RemoveNode(source, false));
+  EXPECT_EQ(nullptr, impl.FindNodeByName(AscendString("source")));
+  EXPECT_EQ(nullptr, target.GetInDataNodesAndPortIndexs(0).first);
+  EXPECT_TRUE(target.GetInControlNodes().empty());
+
+  EXPECT_EQ(nullptr, retained_node->GetOwnerComputeGraph());
+
+  EXPECT_EQ(ge::PARAM_INVALID, impl.RemoveNode(invalid, false));
+}
+
+TEST_F(UtestGraph, ComputeGraphImplEdgesPreserveBackendSpecificCrossGraphRules) {
+  Graph first("first", 0);
+  Graph second("second", 0);
+  auto source = first.AddNodeByOp(MakeTestOp("source", "PlainOp", 0U, 1U));
+  auto target = second.AddNodeByOp(MakeTestOp("target", "PlainOp", 1U, 0U));
+  GraphImpl &impl = *first.impl_;
+
+  ASSERT_EQ(GRAPH_SUCCESS, impl.AddDataEdge(source, 0, target, 0));
+  ASSERT_EQ(GRAPH_SUCCESS, impl.AddControlEdge(source, target));
+  ASSERT_EQ(GRAPH_SUCCESS, impl.RemoveEdge(source, 0, target, 0));
+  ASSERT_EQ(GRAPH_SUCCESS, impl.RemoveEdge(source, -1, target, -1));
+
+  EXPECT_TRUE(source.GetOutDataNodesAndPortIndexs(0).empty());
+  EXPECT_TRUE(source.GetOutControlNodes().empty());
+  EXPECT_EQ(nullptr, target.GetInDataNodesAndPortIndexs(0).first);
+}
+
+TEST_F(UtestGraph, ComputeGraphImplAttributesPreserveInitializationAndEmptyNameSemantics) {
+  Graph graph("attrs", 0);
+  GraphImpl &impl = *graph.impl_;
+  AttrValue value;
+  ASSERT_EQ(GRAPH_SUCCESS, value.SetAttrValue(static_cast<int64_t>(7)));
+  AttrValue read;
+  EXPECT_NE(GRAPH_SUCCESS, impl.SetAttr(AscendString("key"), value));
+  EXPECT_NE(GRAPH_SUCCESS, impl.GetAttr(AscendString("key"), read));
+  EXPECT_FALSE(graph.IsValid());
+  ASSERT_EQ(GRAPH_SUCCESS, graph.SetValid());
+  EXPECT_NE(GRAPH_SUCCESS, impl.GetAttr(AscendString("missing"), read));
+  ASSERT_EQ(GRAPH_SUCCESS, impl.SetAttr(AscendString(""), value));
+  ASSERT_EQ(GRAPH_SUCCESS, impl.GetAttr(AscendString(""), read));
+  int64_t number = 0;
+  ASSERT_EQ(GRAPH_SUCCESS, read.GetValue(number));
+  EXPECT_EQ(7, number);
+}
+
+namespace {
+// 3.2 用：按名称声明固定端口，便于用 Operator::SetInput 表达连接关系。
+Operator MakeNamedTestOp(const char_t *name, const char_t *type, const std::vector<const char_t *> &out_names,
+                         const std::vector<const char_t *> &in_names) {
+  Operator op(name, type);
+  for (const auto *in : in_names) {
+    op.InputRegister(in, "");
+  }
+  for (const auto *out : out_names) {
+    op.OutputRegister(out, "");
+  }
+  return op;
+}
+
+}  // namespace
+
+TEST_F(UtestGraph, ComputeGraphAddDataEdgeAllowSelfLoop) {
+  Graph graph("self_loop", 0);
+  auto node = graph.AddNodeByOp(MakeTestOp("node", "PlainOp", 1U, 1U));
+  ASSERT_EQ(GRAPH_SUCCESS, graph.AddDataEdge(node, 0, node, 0));
+  EXPECT_EQ(1U, node.GetOutDataNodesAndPortIndexs(0).size());
+  const auto producer = node.GetInDataNodesAndPortIndexs(0);
+  ASSERT_NE(nullptr, producer.first);
+  AscendString name;
+  ASSERT_EQ(GRAPH_SUCCESS, producer.first->GetName(name));
+  EXPECT_EQ(AscendString("node"), name);
+  ASSERT_EQ(GRAPH_SUCCESS, graph.RemoveEdge(node, 0, node, 0));
+  EXPECT_TRUE(node.GetOutDataNodesAndPortIndexs(0).empty());
+}
+
+TEST_F(UtestGraph, ComputeGraphAddControlEdgeAllowSelfLoopAndDuplicates) {
+  Graph graph("self_loop", 0);
+  auto node = graph.AddNodeByOp(MakeTestOp("node", "PlainOp", 0U, 0U));
+  ASSERT_EQ(GRAPH_SUCCESS, graph.AddControlEdge(node, node));
+  ASSERT_EQ(GRAPH_SUCCESS, graph.AddControlEdge(node, node));
+  EXPECT_EQ(2U, node.GetInControlNodes().size());
+  EXPECT_EQ(2U, node.GetOutControlNodes().size());
+  ASSERT_EQ(GRAPH_SUCCESS, graph.RemoveEdge(node, -1, node, -1));
+  EXPECT_EQ(1U, node.GetInControlNodes().size());
+  EXPECT_EQ(1U, node.GetOutControlNodes().size());
+  ASSERT_EQ(GRAPH_SUCCESS, graph.RemoveEdge(node, -1, node, -1));
+  EXPECT_TRUE(node.GetInControlNodes().empty());
+  EXPECT_TRUE(node.GetOutControlNodes().empty());
+}
+
+TEST_F(UtestGraph, ComputeGraphCopyFromSupportSelfCopyAndOverwrite) {
+  Graph src("src", 0);
+  src.AddNodeByOp(MakeTestOp("a", "PlainOp", 0U, 1U));
+  Graph old_src = src;
+  ASSERT_EQ(GRAPH_SUCCESS, src.CopyFrom(src));
+  EXPECT_NE(src.impl_, old_src.impl_);
+  EXPECT_NE(nullptr, src.FindNodeByName(AscendString("a")));
+  EXPECT_NE(nullptr, old_src.FindNodeByName(AscendString("a")));
+
+  Graph nonempty("nonempty", 0);
+  auto old_node = nonempty.AddNodeByOp(MakeTestOp("x", "PlainOp", 0U, 1U));
+  Graph alias = nonempty;
+  ASSERT_EQ(GRAPH_SUCCESS, nonempty.CopyFrom(src));
+  EXPECT_EQ(src.GetAllNodes().size(), nonempty.GetAllNodes().size());
+  EXPECT_NE(nullptr, nonempty.FindNodeByName(AscendString("a")));
+  EXPECT_EQ(nullptr, nonempty.FindNodeByName(AscendString("x")));
+  EXPECT_NE(nullptr, alias.FindNodeByName(AscendString("x")));
+  AscendString name;
+  EXPECT_EQ(GRAPH_SUCCESS, old_node.GetName(name));
+  EXPECT_EQ(AscendString("x"), name);
+  EXPECT_EQ("nonempty", nonempty.GetName());
+
+  EXPECT_EQ("nonempty", GraphUtilsEx::GetComputeGraph(nonempty)->GetName());
+}
+
+TEST_F(UtestGraph, ComputeGraphCopyFromPreservesEmptyImplAndNameFallbackSemantics) {
+  Graph src("source");
+  src.AddNodeByOp(MakeTestOp("a", "PlainOp", 0U, 1U));
+  Graph dst;
+  EXPECT_EQ(nullptr, dst.impl_);
+  ASSERT_EQ(GRAPH_SUCCESS, dst.CopyFrom(src));
+  EXPECT_EQ("source", dst.GetName());
+  EXPECT_NE(nullptr, dst.FindNodeByName(AscendString("a")));
+  Graph empty_name("");
+  ASSERT_EQ(GRAPH_SUCCESS, empty_name.CopyFrom(src));
+  EXPECT_EQ("source", empty_name.GetName());
+  Graph invalid;
+  const auto original_impl = dst.impl_;
+  EXPECT_EQ(GRAPH_FAILED, dst.CopyFrom(invalid));
+  EXPECT_EQ(original_impl, dst.impl_);
+  EXPECT_NE(nullptr, dst.FindNodeByName(AscendString("a")));
+}
+
+// 12.18.1：计算图重命名行为与穿刺前基线一致，逐个节点加前缀。
+TEST_F(UtestGraph, ComputeGraphRenameAllNodesPreservesBehavior) {
+  auto compute_graph = std::make_shared<ComputeGraph>("rename_compute");
+  auto node_a = compute_graph->AddNode(std::make_shared<OpDesc>("node_a", "PlainOp"));
+  auto node_b = compute_graph->AddNode(std::make_shared<OpDesc>("node_b", "PlainOp"));
+  ASSERT_NE(nullptr, node_a);
+  ASSERT_NE(nullptr, node_b);
+  auto graph = GraphUtilsEx::CreateGraphPtrFromComputeGraph(compute_graph);
+  ASSERT_NE(nullptr, graph);
+  GeApiWrapper_RenameAllNodes(graph.get(), "prefix");
+  EXPECT_NE(nullptr, compute_graph->FindNode("prefix_node_a"));
+  EXPECT_NE(nullptr, compute_graph->FindNode("prefix_node_b"));
+  // 原名不再存在，说明每个节点都被重命名，没有在中间提前返回。
+  EXPECT_EQ(nullptr, compute_graph->FindNode("node_a"));
+  EXPECT_EQ(nullptr, compute_graph->FindNode("node_b"));
+}
+
+TEST_F(UtestGraph, ComputeGraphImplAddSubGraphPreservesRegistrationAndFailureSemantics) {
+  Graph root("root", 0);
+  auto parent = root.AddNodeByOp(MakeTestOp("parent", "If", 0U, 1U));
+  Graph child("child", 0);
+  child.AddNodeByOp(MakeTestOp("inner", "PlainOp", 0U, 1U));
+
+  auto native_child = GraphUtilsEx::GetComputeGraph(child);
+  native_child->SetParentGraph(GraphUtilsEx::GetComputeGraph(root));
+  native_child->SetParentNode(NodeAdapter::GNode2Node(parent));
+
+  GraphImpl &impl = *root.impl_;
+  ASSERT_EQ(GRAPH_SUCCESS, impl.AddSubGraph(child));
+  ASSERT_EQ(1U, root.GetAllSubgraphs().size());
+  ASSERT_NE(nullptr, root.GetSubGraph("child"));
+  EXPECT_EQ(GRAPH_FAILED, impl.AddSubGraph(child));
+  EXPECT_EQ(1U, root.GetAllSubgraphs().size());
+
+  Graph invalid;
+  EXPECT_NE(GRAPH_SUCCESS, impl.AddSubGraph(invalid));
+  Graph missing_parent("missing_parent", 0);
+  ASSERT_EQ(GRAPH_SUCCESS, missing_parent.SetValid());
+  EXPECT_EQ(GRAPH_FAILED, impl.AddSubGraph(missing_parent));
+  EXPECT_EQ(1U, root.GetAllSubgraphs().size());
+  EXPECT_EQ(nullptr, root.GetSubGraph("missing_parent"));
+  ASSERT_NE(nullptr, child.GetParentGraph());
+  ASSERT_NE(nullptr, child.GetParentNode());
+}
+
 TEST_F(UtestGraph, IncCov_GraphConstructor_NullName) {
   Graph graph(nullptr);
   EXPECT_FALSE(graph.IsValid());
@@ -2652,4 +2977,155 @@ TEST_F(UtestGraph, IncCov_SetOutputs_InvalidGraph) {
 TEST_F(UtestGraph, IncCov_SetNeedIteration_InvalidGraph) {
   Graph graph("invalid_graph");
   graph.SetNeedIteration(true);
+}
+
+TEST_F(UtestGraph, ComputeGraphImplSetOutputsSharesSelectionRules) {
+  using IndexedOutputs = std::vector<std::pair<Operator, std::vector<size_t>>>;
+  using NamedOutputs = std::vector<std::pair<Operator, std::string>>;
+  using AscendNamedOutputs = std::vector<std::pair<Operator, AscendString>>;
+  using NodeOutputs = std::vector<std::pair<GNode, int32_t>>;
+  Graph graph("outputs", 0);
+  auto op = MakeNamedTestOp("producer", "PlainOp", {"left", "middle", "right"}, {});
+  auto node = graph.AddNodeByOp(op);
+  auto alias = MakeTestOp("producer", "OtherType", 0U, 0U);
+  auto missing = MakeTestOp("missing", "PlainOp", 0U, 1U);
+  GraphImpl &impl = *graph.impl_;
+  const auto ports = [&graph]() {
+    std::vector<int32_t> result;
+
+    for (const auto &output : GraphUtilsEx::GetComputeGraph(graph)->GetGraphOutNodesInfo()) {
+      result.emplace_back(output.second);
+    }
+
+    return result;
+  };
+  ASSERT_EQ(GRAPH_SUCCESS, impl.SetOutputs(std::vector<Operator>{alias}));
+  EXPECT_EQ((std::vector<int32_t>{0, 1, 2}), ports());
+  ASSERT_EQ(GRAPH_SUCCESS, impl.SetOutputs(IndexedOutputs{{alias, {2, 99, 2}}, {missing, {0}}}));
+  EXPECT_EQ((std::vector<int32_t>{2, 2}), ports());
+  ASSERT_EQ(GRAPH_SUCCESS, impl.SetOutputs(NamedOutputs{{alias, "middle"}, {alias, ""}}));
+  EXPECT_EQ((std::vector<int32_t>{1, 0, 1, 2}), ports());
+  ASSERT_EQ(GRAPH_SUCCESS,
+            impl.SetOutputs(AscendNamedOutputs{{alias, AscendString("right")}, {alias, AscendString("")}}));
+  EXPECT_EQ((std::vector<int32_t>{2, 0, 1, 2}), ports());
+  EXPECT_EQ(GRAPH_SUCCESS, impl.SetOutputs(std::vector<Operator>{}));
+  EXPECT_EQ(GRAPH_SUCCESS, impl.SetOutputs(IndexedOutputs{}));
+  EXPECT_EQ(GRAPH_SUCCESS, impl.SetOutputs(NamedOutputs{}));
+  EXPECT_EQ(GRAPH_SUCCESS, impl.SetOutputs(AscendNamedOutputs{}));
+  EXPECT_EQ((std::vector<int32_t>{2, 0, 1, 2}), ports());
+  EXPECT_EQ(GRAPH_FAILED, impl.SetOutputs(NamedOutputs{{alias, "left"}, {missing, "left"}}));
+  EXPECT_EQ((std::vector<int32_t>{2, 0, 1, 2}), ports());
+  ASSERT_EQ(GRAPH_SUCCESS, impl.SetOutputs(NodeOutputs{{node, 0}, {node, 2}}));
+  EXPECT_EQ((std::vector<int32_t>{0, 2}), ports());
+  ASSERT_EQ(GRAPH_SUCCESS, impl.SetOutputs(NodeOutputs{}));
+  EXPECT_TRUE(ports().empty());
+}
+
+TEST_F(UtestGraph, GraphImplSetOutputsPreservesComputeOutputMetadata) {
+  using IndexedOutputs = std::vector<std::pair<Operator, std::vector<size_t>>>;
+  using NamedOutputs = std::vector<std::pair<Operator, std::string>>;
+  Graph graph("compute_outputs");
+  auto op = MakeNamedTestOp("producer", "PlainOp", {"left", "middle", "right"}, {});
+  graph.AddNodeByOp(op);
+  auto missing = MakeTestOp("missing", "PlainOp", 0U, 1U);
+  auto native = GraphUtilsEx::GetComputeGraph(graph);
+  GraphImpl &impl = *graph.impl_;
+  ASSERT_EQ(GRAPH_SUCCESS, impl.SetOutputs(IndexedOutputs{{op, {2, 99, 0}}, {missing, {0}}}));
+  const auto outputs = native->GetGraphOutNodesInfo();
+  ASSERT_EQ(2U, outputs.size());
+  EXPECT_EQ(2, outputs[0].second);
+  EXPECT_EQ(0, outputs[1].second);
+  EXPECT_EQ(2U, native->GetOutputSize());
+  EXPECT_EQ("producer:0;producer:2", native->GetOutput());
+  ASSERT_EQ(GRAPH_SUCCESS, impl.SetOutputs(IndexedOutputs{}));
+  EXPECT_EQ(outputs, native->GetGraphOutNodesInfo());
+  EXPECT_EQ(2U, native->GetOutputSize());
+  EXPECT_EQ(GRAPH_FAILED, impl.SetOutputs(NamedOutputs{{op, "middle"}, {missing, "left"}}));
+  EXPECT_EQ(outputs, native->GetGraphOutNodesInfo());
+  EXPECT_EQ(2U, native->GetOutputSize());
+  ASSERT_EQ(GRAPH_SUCCESS, impl.SetOutputs(NamedOutputs{{op, "right"}}));
+  EXPECT_EQ(1U, native->GetOutputSize());
+  // 按名称设置输出不更新原有 user-defined output 登记。
+  EXPECT_EQ("producer:0;producer:2", native->GetOutput());
+}
+
+TEST_F(UtestGraph, ComputeOperatorBuilderPreservesStableOrderDescriptorsAndSubgraphSlots) {
+  auto src = MakeNamedTestOp("src", "PlainOp", {"out"}, {});
+  auto side = MakeNamedTestOp("side", "PlainOp", {}, {});
+  auto dst = MakeNamedTestOp("dst", "PlainOp", {"out"}, {"in"});
+  dst.SetInput("in", src, "out");
+  dst.AddControlInput(side);
+  auto desc = OpDescUtils::GetOpDescFromOperator(dst);
+  std::vector<std::string> calls;
+  for (const auto *name : {"z", "a"}) {
+    desc->RegisterSubgraphIrName(name, kStatic);
+    dst.SubgraphCountRegister(name, 1U);
+    dst.SetSubgraphBuilder(name, 0U, [&calls, name]() {
+      calls.emplace_back(name);
+      Graph branch(name);
+      (void)branch.SetValid();
+      return branch;
+    });
+  }
+  auto graph = GraphUtilsEx::CreateComputeGraphFromOperatorWithStableTopo("stable", {dst, side, src});
+  ASSERT_NE(nullptr, graph);
+  std::vector<std::string> names;
+  for (const auto &node : graph->GetDirectNode()) {
+    names.emplace_back(node->GetName());
+  }
+  EXPECT_EQ((std::vector<std::string>{"dst", "side", "src"}), names);
+  EXPECT_EQ((std::vector<std::string>{"a", "z"}), calls);
+  auto node = graph->FindNode("dst");
+  ASSERT_NE(nullptr, node);
+  EXPECT_EQ(desc, node->GetOpDesc());
+  EXPECT_EQ("z", desc->GetSubgraphInstanceName(0));
+  EXPECT_EQ("a", desc->GetSubgraphInstanceName(1));
+  EXPECT_EQ(3U, graph->GetAllNodesInfo().size());
+  EXPECT_EQ(graph->FindNode("src"), node->GetInDataAnchor(0)->GetPeerOutAnchor()->GetOwnerNode());
+  ASSERT_EQ(1U, node->GetInControlNodes().size());
+  EXPECT_EQ(graph->FindNode("side"), node->GetInControlNodes().at(0));
+  ASSERT_EQ(2U, graph->GetAllSubgraphs().size());
+  EXPECT_EQ(node, graph->GetSubgraph("z")->GetParentNode());
+  EXPECT_EQ(graph, graph->GetSubgraph("a")->GetParentGraph());
+}
+
+TEST_F(UtestGraph, ComputeGraphEsCreateInputKeepsExistingTypeRules) {
+  ge::es::EsGraphBuilder builder("compute_inputs");
+  int64_t index = 0;
+  for (const auto *type : {"Data", "RefData", "AippData", "AnyData"}) {
+    SCOPED_TRACE(type);
+    const auto name = "input_" + std::to_string(index);
+    auto input = builder.CreateInput(index++, name.c_str(), type);
+    EXPECT_NE(nullptr, input.GetCTensorHolder());
+  }
+  auto invalid = builder.CreateInput(index, "invalid", "ConstData");
+  EXPECT_EQ(nullptr, invalid.GetCTensorHolder());
+}
+
+TEST_F(UtestGraph, EsComputeTensorDescSettersRemainSupported) {
+  ge::es::EsGraphBuilder builder("compute_desc_setters");
+  auto input = builder.CreateInput(0);
+  auto *holder = input.GetCTensorHolder();
+  ASSERT_NE(nullptr, holder);
+  const int64_t dims[] = {2, 3};
+  EXPECT_EQ(SUCCESS, EsSetDataType(holder, C_DT_INT32));
+  EXPECT_EQ(SUCCESS, EsSetFormat(holder, C_FORMAT_ND));
+  EXPECT_EQ(SUCCESS, EsSetShape(holder, dims, 2));
+  TensorDesc desc;
+  ASSERT_EQ(GRAPH_SUCCESS, holder->GetProducer().GetOutputDesc(0, desc));
+  EXPECT_EQ(DT_INT32, desc.GetDataType());
+  EXPECT_EQ(DT_INT32, desc.GetOriginDataType());
+  EXPECT_EQ(FORMAT_ND, desc.GetFormat());
+  EXPECT_EQ(FORMAT_ND, desc.GetOriginFormat());
+  EXPECT_EQ(std::vector<int64_t>({2, 3}), desc.GetShape().GetDims());
+  EXPECT_EQ(std::vector<int64_t>({2, 3}), desc.GetOriginShape().GetDims());
+  EXPECT_EQ(SUCCESS, holder->SetOriginFormat(FORMAT_NCHW));
+  EXPECT_EQ(SUCCESS, holder->SetStorageFormat(FORMAT_NHWC));
+  EXPECT_EQ(SUCCESS, holder->SetOriginShape(Shape({4})));
+  EXPECT_EQ(SUCCESS, holder->SetStorageShape(Shape({6})));
+  ASSERT_EQ(GRAPH_SUCCESS, holder->GetProducer().GetOutputDesc(0, desc));
+  EXPECT_EQ(FORMAT_NCHW, desc.GetOriginFormat());
+  EXPECT_EQ(FORMAT_NHWC, desc.GetFormat());
+  EXPECT_EQ(std::vector<int64_t>({4}), desc.GetOriginShape().GetDims());
+  EXPECT_EQ(std::vector<int64_t>({6}), desc.GetShape().GetDims());
 }

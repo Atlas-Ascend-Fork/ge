@@ -206,6 +206,7 @@ class OpDescImpl {
   friend class NodeUtils;
   friend class FastNodeUtils;
   friend class ExecuteGraphUtils;
+  friend struct ExecuteGraphBuildOps;
   std::vector<std::string> subgraph_instance_names_;
 
   // subgraph names to index, for a `if` operator:

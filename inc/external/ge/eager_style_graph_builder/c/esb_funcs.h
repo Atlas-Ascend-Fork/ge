@@ -13,6 +13,9 @@
 #include <cstdint>
 #include "graph/c_types.h"
 
+/* 图类别枚举 C_GraphKind 统一定义在 metadef 公共头 graph/c_types.h 中（C/C++ 共用）；
+   ge 侧完成依赖切换前，本头文件中的接口暂用整型，取值与该枚举一致。 */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -28,6 +31,13 @@ struct EsCNode;
  * @return
  */
 EsCGraphBuilder *EsCreateGraphBuilder(const char *name);
+/**
+ * 创建一个指定后端类别的图构建器
+ * @param name 可选，图的名字，如果为空则默认为`"graph"`
+ * @param kind 图类别，0 为计算图（默认），1 为执行图
+ * @return 失败（名称或类别非法）时返回 nullptr
+ */
+EsCGraphBuilder *EsCreateGraphBuilderWithKind(const char *name, int32_t kind);
 /**
  * 释放图构建器
  * @param graph

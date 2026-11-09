@@ -61,6 +61,10 @@ inline bool IsTypeConst(const ge::char_t *const node_type) {
 inline bool IsTypeConstData(const ge::char_t *const node_type) {
   return strcmp(kConstData, node_type) == 0;
 }
+// Keep this construction-side check aligned with the runtime's IsGraphInputNode.
+inline bool IsTypeGraphInput(const ge::char_t *const node_type) {
+  return IsTypeData(node_type) || strcmp("AippData", node_type) == 0 || IsTypeConstData(node_type);
+}
 inline bool IsTypeOutputData(const ge::char_t *const node_type) {
   return strcmp(kOutputData, node_type) == 0;
 }

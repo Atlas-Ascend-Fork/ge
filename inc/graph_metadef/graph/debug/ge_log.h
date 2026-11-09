@@ -10,7 +10,17 @@
 
 #ifndef COMMON_GRAPH_DEBUG_GE_LOG_H_
 #define COMMON_GRAPH_DEBUG_GE_LOG_H_
+#include "base/err_msg.h"
 #include "common/ge_common/debug/ge_log.h"
 #include "common/ge_common/string_util.h"
 #include "graph_metadef/common/ge_common/util.h"
+
+#define GE_REPORT_UNSUPPORTED_EXECUTE_OPERATION(operation)                                             \
+  do {                                                                                                 \
+    const char *const ge_unsupported_operation = (operation);                                          \
+    GELOGE(::ge::GRAPH_FAILED, "[GertGraph][Unsupported] %s does not support execution graphs.",       \
+           ge_unsupported_operation);                                                                  \
+    REPORT_INNER_ERR_MSG("E18888", "%s does not support execution graphs.", ge_unsupported_operation); \
+  } while (false)
+
 #endif  // COMMON_GRAPH_DEBUG_GE_LOG_H_

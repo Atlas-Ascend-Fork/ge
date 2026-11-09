@@ -41,6 +41,7 @@ class OpDesc : public std::enable_shared_from_this<OpDesc>, public AttrHolder {
   using Vistor = RangeVistor<T, shared_ptr<const OpDesc>>;
 
   friend class GraphBuilderImpl;
+  friend struct ExecuteGraphBuildOps;
 
   friend class OperatorImpl;
 

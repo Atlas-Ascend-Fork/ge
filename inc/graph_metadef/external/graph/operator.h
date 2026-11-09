@@ -63,6 +63,7 @@ class GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY Operator {
  public:
   friend class OperatorImpl;
   friend class GraphBuilderImpl;
+  friend class ExecuteGraphBuilderImpl;
   friend class MultiThreadGraphBuilder;
   friend class NodeUtils;
   friend class OpDescUtils;

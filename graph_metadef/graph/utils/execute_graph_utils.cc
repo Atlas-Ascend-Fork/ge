@@ -10,13 +10,188 @@
 
 #include "graph/utils/execute_graph_utils.h"
 
+#include <algorithm>
+#include <deque>
+
 #include "common/checker.h"
+#include "common/util/mem_utils.h"
 #include "graph/fast_graph/fast_graph_impl.h"
 #include "graph/fast_graph/fast_graph_utils.h"
 #include "graph/utils/fast_node_utils.h"
+#include "graph/utils/attr_utils.h"
 #include "graph/utils/op_type_utils.h"
 
 namespace ge {
+graphStatus ExecuteGraphUtils::CopyGraphContents(const ExecuteGraph &src, ExecuteGraph &dst,
+                                                 std::map<const FastNode *, FastNode *> &node_old_2_new) {
+  dst.graph_shared_->extend_info_ = src.graph_shared_->extend_info_;
+  dst.SetGraphId(src.GetGraphId());
+  dst.inputs_order_ = src.inputs_order_;
+  for (const auto &attr : AttrUtils::GetAllAttrs(src)) {
+    GE_ASSERT_GRAPH_SUCCESS(dst.TrySetAttr(attr.first, attr.second));
+  }
+  for (const auto *node : src.GetDirectNode()) {
+    GE_ASSERT_NOTNULL(node);
+    GE_ASSERT_NOTNULL(node->GetOpDescBarePtr());
+    const auto desc = MakeShared<OpDesc>(*node->GetOpDescBarePtr());
+    GE_ASSERT_NOTNULL(desc);
+    auto *copied_node = dst.AddNode(desc, desc->GetId());
+    GE_ASSERT_NOTNULL(copied_node);
+    auto *source_info = node->GetExtendInfo();
+    auto *copied_info = copied_node->GetExtendInfo();
+    GE_ASSERT_NOTNULL(source_info);
+    copied_info->SetHostNode(source_info->GetHostNode());
+    for (size_t i = 0U; i < node->GetDataInNum(); ++i) {
+      GE_ASSERT_GRAPH_SUCCESS(copied_info->SetInputSymbol(i, source_info->GetInputSymbol(i)));
+    }
+    for (size_t i = 0U; i < node->GetDataOutNum(); ++i) {
+      GE_ASSERT_GRAPH_SUCCESS(copied_info->SetOutputSymbol(i, source_info->GetOutputSymbol(i)));
+    }
+    node_old_2_new.emplace(node, copied_node);
+  }
+  for (const auto *edge : src.GetAllEdges()) {
+    GE_ASSERT_NOTNULL(edge);
+    const auto src_iter = node_old_2_new.find(edge->src);
+    const auto dst_iter = node_old_2_new.find(edge->dst);
+    GE_ASSERT_TRUE((src_iter != node_old_2_new.end()) && (dst_iter != node_old_2_new.end()));
+    auto *copied_edge = dst.AddEdge(src_iter->second, edge->src_output, dst_iter->second, edge->dst_input);
+    GE_ASSERT_NOTNULL(copied_edge);
+  }
+  std::vector<FastNode *> inputs;
+  for (const auto *node : GetGraphInputs(&src)) {
+    if (node == nullptr) {
+      inputs.emplace_back(nullptr);
+      continue;
+    }
+    const auto iter = node_old_2_new.find(node);
+    GE_ASSERT_TRUE(iter != node_old_2_new.end());
+    inputs.emplace_back(iter->second);
+  }
+  GE_ASSERT_GRAPH_SUCCESS(SetGraphInputs(&dst, inputs));
+  std::vector<std::pair<FastNode *, int32_t>> outputs;
+  for (const auto &output : GetGraphOutputs(&src)) {
+    if (output.first == nullptr) {
+      outputs.emplace_back(nullptr, output.second);
+      continue;
+    }
+    const auto iter = node_old_2_new.find(output.first);
+    GE_ASSERT_TRUE(iter != node_old_2_new.end());
+    outputs.emplace_back(iter->second, output.second);
+  }
+  GE_ASSERT_GRAPH_SUCCESS(SetGraphOutputs(&dst, outputs));
+  if (src.graph_shared_->graph_netoutput_ != nullptr) {
+    const auto iter = node_old_2_new.find(src.graph_shared_->graph_netoutput_);
+    GE_ASSERT_TRUE(iter != node_old_2_new.end());
+    dst.graph_shared_->SetNetOutputNode(iter->second);
+  }
+  return GRAPH_SUCCESS;
+}
+
+graphStatus ExecuteGraphUtils::CopyGraph(const ExecuteGraph &src, ExecuteGraph &dst) {
+  GE_ASSERT_TRUE(dst.GetDirectNodesSize() == 0U && dst.GetAllSubgraphs().empty());
+  std::map<const ExecuteGraph *, std::shared_ptr<ExecuteGraph>> graph_old_2_new;
+  graph_old_2_new.emplace(&src, dst.shared_from_this());
+  std::vector<const ExecuteGraph *> graphs{&src};
+  // 登记表可位于根图或中间图。先建立唯一的图映射，避免同一子图被复制多次。
+  for (size_t i = 0U; i < graphs.size(); ++i) {
+    for (const auto *subgraph : graphs[i]->GetAllSubgraphs()) {
+      GE_ASSERT_NOTNULL(subgraph);
+      if (graph_old_2_new.count(subgraph) == 0U) {
+        const auto copied = MakeShared<ExecuteGraph>(subgraph->GetName());
+        GE_ASSERT_NOTNULL(copied);
+        graph_old_2_new.emplace(subgraph, copied);
+        graphs.emplace_back(subgraph);
+      }
+    }
+  }
+  std::map<const FastNode *, FastNode *> node_old_2_new;
+  for (const auto *graph : graphs) {
+    GE_ASSERT_GRAPH_SUCCESS(CopyGraphContents(*graph, *graph_old_2_new.at(graph), node_old_2_new));
+  }
+  // 使用源图身份映射父图和父节点，不能靠名称匹配，也不能沿用源图的裸指针。
+  for (const auto *graph : graphs) {
+    if (graph == &src) {
+      continue;
+    }
+    const auto parent = graph_old_2_new.find(graph->GetParentGraphBarePtr());
+    const auto parent_node = node_old_2_new.find(graph->GetParentNodeBarePtr());
+    GE_ASSERT_TRUE((parent != graph_old_2_new.end()) && (parent_node != node_old_2_new.end()));
+    const auto &copied = graph_old_2_new.at(graph);
+    copied->SetParentGraph(parent->second.get());
+    copied->SetParentNode(parent_node->second);
+  }
+  for (const auto *graph : graphs) {
+    const auto &copied = graph_old_2_new.at(graph);
+    for (const auto *subgraph : graph->GetAllSubgraphs()) {
+      const auto &copied_subgraph = graph_old_2_new.at(subgraph);
+      auto *registered = copied->AddSubGraph(copied_subgraph, subgraph->GetName());
+      GE_ASSERT_NOTNULL(registered);
+    }
+  }
+  return GRAPH_SUCCESS;
+}
+
+std::vector<FastNode *> ExecuteGraphUtils::GetGraphInputs(const ExecuteGraph *graph) {
+  return ((graph != nullptr) && (graph->graph_shared_ != nullptr)) ? graph->graph_shared_->GetInputNodes()
+                                                                   : std::vector<FastNode *>{};
+}
+
+graphStatus ExecuteGraphUtils::SetGraphInputs(ExecuteGraph *graph, const std::vector<FastNode *> &inputs) {
+  GE_ASSERT_NOTNULL(graph);
+  GE_ASSERT_NOTNULL(graph->graph_shared_);
+  for (auto *node : inputs) {
+    if (node == nullptr) {
+      continue;
+    }
+    GE_ASSERT_TRUE(graph->CheckNodeIsInGraph(node));
+    GE_ASSERT_NOTNULL(node->GetExtendInfo());
+  }
+  for (auto *node : graph->graph_shared_->input_nodes_) {
+    if (node != nullptr) {
+      node->GetExtendInfo()->SetInputIndex(-1);
+    }
+  }
+  graph->graph_shared_->input_nodes_ = inputs;
+  for (size_t i = 0U; i < inputs.size(); ++i) {
+    if (inputs[i] != nullptr) {
+      inputs[i]->GetExtendInfo()->SetInputIndex(static_cast<int32_t>(i));
+    }
+  }
+  return GRAPH_SUCCESS;
+}
+
+graphStatus ExecuteGraphUtils::SetGraphOutputs(ExecuteGraph *graph,
+                                               const std::vector<std::pair<FastNode *, int32_t>> &outputs) {
+  GE_ASSERT_NOTNULL(graph);
+  GE_ASSERT_NOTNULL(graph->graph_shared_);
+  for (const auto &output : outputs) {
+    if (output.first == nullptr) {
+      GE_ASSERT_TRUE(output.second == -1, "An empty output slot must use index -1");
+      continue;
+    }
+    GE_ASSERT_TRUE(graph->CheckNodeIsInGraph(output.first));
+    GE_ASSERT_NOTNULL(output.first->GetExtendInfo());
+    GE_ASSERT_TRUE((output.second >= 0) && (static_cast<size_t>(output.second) < output.first->GetDataOutNum()));
+  }
+  for (const auto &output : graph->graph_shared_->GetAllOutNodeInfo()) {
+    if (output.first != nullptr) {
+      output.first->GetExtendInfo()->GetOutputIndex().clear();
+    }
+  }
+  graph->graph_shared_->SetGraphOutNodesInfo(outputs);
+  for (size_t i = 0U; i < outputs.size(); ++i) {
+    if (outputs[i].first != nullptr) {
+      outputs[i].first->GetExtendInfo()->AddOneOutputIndex(static_cast<int32_t>(i));
+    }
+  }
+  return GRAPH_SUCCESS;
+}
+
+std::vector<std::pair<FastNode *, int32_t>> ExecuteGraphUtils::GetGraphOutputs(const ExecuteGraph *graph) {
+  return ((graph != nullptr) && (graph->graph_shared_ != nullptr)) ? graph->graph_shared_->GetAllOutNodes()
+                                                                   : std::vector<std::pair<FastNode *, int32_t>>{};
+}
+
 namespace {
 using InFastNodesToOut = std::map<FastNode *, std::vector<FastNode *>, FastNodeCompareKey>;
 InFastNodesToOut GetFullConnectIONodes(const FastNode *fast_node) {

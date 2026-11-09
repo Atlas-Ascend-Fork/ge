@@ -1534,4 +1534,146 @@ TEST_F(UtestExecuteGraph, SortNodes_Order_ok) {
   EXPECT_NE(it1, map_in_edge_num.end());
   EXPECT_EQ(it1->second, 7);  // 4 data edge + 3 control edge
 }
+
+TEST_F(UtestExecuteGraph, NodeHandleRejectsInvalidAndForeignNodes) {
+  ExecuteGraph graph("graph");
+  ExecuteGraph other("other");
+  auto *node = graph.AddNode(std::make_shared<OpDesc>("node", "PlainOp"));
+  const auto handle = graph.GetNodeHandle(node);
+  EXPECT_EQ(node, graph.ResolveNode(handle));
+  EXPECT_EQ(node, graph.ResolveNode(graph.GetNodeHandle(node)));
+  EXPECT_EQ(nullptr, other.ResolveNode(handle));
+  EXPECT_EQ(nullptr, graph.ResolveNode(ExecuteGraph::NodeHandle{}));
+  EXPECT_EQ(nullptr, graph.ResolveNode(graph.GetNodeHandle(nullptr)));
+  EXPECT_EQ(nullptr, other.ResolveNode(other.GetNodeHandle(node)));
+}
+
+TEST_F(UtestExecuteGraph, NodeHandleInvalidAfterRemovalAndEveryAllocationOverload) {
+  const std::vector<std::function<FastNode *(ExecuteGraph &, const OpDescPtr &)>> creators = {
+      [](ExecuteGraph &g, const OpDescPtr &op) { return g.AddNode(op); },
+      [](ExecuteGraph &g, const OpDescPtr &op) { return g.AddNode(op, 17); },
+      [](ExecuteGraph &g, const OpDescPtr &op) { return g.AddNodeFront(op); }};
+  for (const auto &create : creators) {
+    for (const bool recycle : {false, true}) {
+      ExecuteGraph graph("reuse");
+      const auto desc = std::make_shared<OpDesc>("node", "PlainOp");
+      auto *original = graph.AddNode(desc);
+      const auto handle = graph.GetNodeHandle(original);
+      ASSERT_EQ(GRAPH_SUCCESS, recycle ? graph.RecycleQuickNode(original) : graph.RemoveJustNode(original));
+      EXPECT_EQ(nullptr, graph.ResolveNode(handle));
+      auto *replacement = create(graph, desc);
+      ASSERT_EQ(original, replacement);
+      EXPECT_EQ(nullptr, graph.ResolveNode(handle));
+      EXPECT_EQ(replacement, graph.ResolveNode(graph.GetNodeHandle(replacement)));
+    }
+  }
+}
+
+TEST_F(UtestExecuteGraph, NodeHandleTracksAllPointerInsertionOverloads) {
+  const std::vector<std::function<FastNode *(ExecuteGraph &, FastNode *)>> insertions = {
+      [](ExecuteGraph &g, FastNode *n) { return g.AddNode(n); },
+      [](ExecuteGraph &g, FastNode *n) { return g.AddNodeFront(n); },
+      [](ExecuteGraph &g, FastNode *n) { return g.AddInputNode(n); },
+      [](ExecuteGraph &g, FastNode *n) { return g.AddOutputNodeByIndex(n, 0); }};
+  for (const auto &insert : insertions) {
+    ExecuteGraph source("source");
+    ExecuteGraph destination("destination");
+    const auto desc = std::make_shared<OpDesc>("node", "PlainOp");
+    ASSERT_EQ(GRAPH_SUCCESS, desc->AddOutputDesc(GeTensorDesc{}));
+    auto *node = source.AddNode(desc);
+    const auto original = source.GetNodeHandle(node);
+    ASSERT_EQ(node, insert(source, node));
+    EXPECT_EQ(node, source.ResolveNode(original));
+    ASSERT_EQ(node, insert(destination, node));
+    // Return without resolving the old handle while the node is away.
+    ASSERT_EQ(node, insert(source, node));
+    EXPECT_EQ(nullptr, source.ResolveNode(original));
+    EXPECT_EQ(node, source.ResolveNode(source.GetNodeHandle(node)));
+  }
+}
+
+TEST_F(UtestExecuteGraph, NodeHandleSurvivesReorderAndIoDeregistration) {
+  ExecuteGraph graph("graph");
+  auto desc = std::make_shared<OpDesc>("node", "PlainOp");
+  ASSERT_EQ(GRAPH_SUCCESS, desc->AddOutputDesc(GeTensorDesc{}));
+  auto *node = graph.AddNode(desc);
+  const auto handle = graph.GetNodeHandle(node);
+  ASSERT_EQ(node, graph.AddInputNode(node));
+  ASSERT_EQ(node, graph.AddOutputNodeByIndex(node, 0));
+  ASSERT_EQ(GRAPH_SUCCESS, graph.RemoveInputNode(node));
+  ASSERT_EQ(GRAPH_SUCCESS, graph.RemoveOutputNode(node));
+  EXPECT_EQ(node, graph.ResolveNode(handle));
+  graph.ReorderByNodeId();
+  ASSERT_EQ(GRAPH_SUCCESS, graph.TopologicalSorting());
+  EXPECT_EQ(node, graph.ResolveNode(handle));
+}
+
+TEST_F(UtestExecuteGraph, NodeHandleSharesStateWhenEnabledAfterShallowCopy) {
+  ExecuteGraph graph("graph");
+  ExecuteGraph alias("alias");
+  auto desc = std::make_shared<OpDesc>("node", "PlainOp");
+  auto *node = graph.AddNode(desc);
+  alias = graph;
+  const auto handle = graph.GetNodeHandle(node);
+  EXPECT_EQ(node, alias.ResolveNode(handle));
+  ASSERT_EQ(GRAPH_SUCCESS, alias.RemoveJustNode(node));
+  auto *replacement = alias.AddNode(desc);
+  ASSERT_EQ(node, replacement);
+  EXPECT_EQ(nullptr, graph.ResolveNode(handle));
+  EXPECT_EQ(replacement, graph.ResolveNode(alias.GetNodeHandle(replacement)));
+}
+
+TEST_F(UtestExecuteGraph, NodeHandleInvalidAfterDeepCopyOrReassignment) {
+  ExecuteGraph source("source");
+  ExecuteGraph destination("destination");
+  ExecuteGraph alias("alias");
+  auto *src = source.AddNode(std::make_shared<OpDesc>("src", "PlainOp"));
+  auto *dst = destination.AddNode(std::make_shared<OpDesc>("dst", "PlainOp"));
+  alias = destination;
+  const auto src_handle = source.GetNodeHandle(src);
+  const auto dst_handle = alias.GetNodeHandle(dst);
+  destination.CompleteCopy(source);
+  EXPECT_EQ(nullptr, destination.ResolveNode(dst_handle));
+  EXPECT_EQ(nullptr, alias.ResolveNode(dst_handle));
+  EXPECT_EQ(src, source.ResolveNode(src_handle));
+  auto *copy = destination.GetDirectNode().front();
+  EXPECT_EQ(nullptr, destination.ResolveNode(src_handle));
+  const auto copy_handle = destination.GetNodeHandle(copy);
+  EXPECT_EQ(copy, alias.ResolveNode(copy_handle));
+  destination = source;
+  EXPECT_EQ(nullptr, destination.ResolveNode(copy_handle));
+  EXPECT_EQ(src, destination.ResolveNode(src_handle));
+  EXPECT_EQ(copy, alias.ResolveNode(copy_handle));
+}
+
+TEST_F(UtestExecuteGraph, NodeHandleDoesNotDereferenceNodeFreedByAnotherGraph) {
+  ExecuteGraph source("source");
+  auto *node = source.AddNode(std::make_shared<OpDesc>("node", "PlainOp"));
+  const auto handle = source.GetNodeHandle(node);
+  {
+    ExecuteGraph destination("destination");
+    ASSERT_EQ(node, destination.AddNode(node));
+  }
+  EXPECT_EQ(nullptr, source.ResolveNode(handle));
+}
+
+TEST_F(UtestExecuteGraph, NodeHandleReplacementAndExpiredStateDoNotRevive) {
+  ExecuteGraph graph("graph");
+  auto *node = graph.AddNode(std::make_shared<OpDesc>("node", "PlainOp"));
+  const auto old = graph.GetNodeHandle(node);
+  ExecuteGraph source("source");
+  source.AddNode(std::make_shared<OpDesc>("replacement", "PlainOp"));
+  graph.CompleteCopy(source);
+  auto *replacement = graph.GetDirectNode().front();
+  const auto current = graph.GetNodeHandle(replacement);
+  EXPECT_EQ(nullptr, graph.ResolveNode(old));
+  EXPECT_EQ(replacement, graph.ResolveNode(current));
+  ExecuteGraph::NodeHandle expired;
+  {
+    ExecuteGraph temporary("temporary");
+    auto *other = temporary.AddNode(std::make_shared<OpDesc>("other", "PlainOp"));
+    expired = temporary.GetNodeHandle(other);
+  }
+  EXPECT_EQ(nullptr, graph.ResolveNode(expired));
+}
 }  // namespace ge
