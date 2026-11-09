@@ -117,7 +117,7 @@ Assume that the CANN package is installed in INSTALL_PATH, for example, `/home/H
       Alternatively, directly use the basic run script in the **data** directory (the script internally sets environment variables such as DUMP_GE_GRAPH and performs the ATC conversion):
 
       ```
-      bash run_atc.sh MC62
+      for example：bash run_atc.sh MC62CM12AA
       ```
 
     - Check the result:
