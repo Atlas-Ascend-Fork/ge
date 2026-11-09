@@ -114,6 +114,130 @@ TEST_F(UtestFileConstantUtilTransfer, CopyOneWeightFromFileOK) {
   (void)remove("tmp_weight_pid/test_copy_one_weight.bin");
 }
 
+TEST_F(UtestFileConstantUtilTransfer, CopyOneWeightFromFileTruncatedFile) {
+  const std::string file_name = "test_truncated_weight.bin";
+  {
+    std::ofstream out(file_name, std::ios::binary);
+    ASSERT_TRUE(out.is_open());
+    const std::string data(64U, 'A');
+    out.write(data.data(), static_cast<std::streamsize>(data.size()));
+  }
+  std::unique_ptr<char[]> buf(new char[256]);
+  size_t left_size = 256U;
+  // 文件仅 64 字节而声明读 128 字节, 必须失败而不是静默少读
+  EXPECT_NE(FileConstantUtils::CopyOneWeightFromFile(buf.get(), file_name, 0U, 128U, left_size), SUCCESS);
+  EXPECT_EQ(left_size, 256U);
+  // offset 落在 EOF 之后
+  left_size = 256U;
+  EXPECT_NE(FileConstantUtils::CopyOneWeightFromFile(buf.get(), file_name, 128U, 16U, left_size), SUCCESS);
+  EXPECT_EQ(left_size, 256U);
+  // int64 负 offset 转 size_t 后的超大值, 必须快速失败而不是死循环
+  left_size = 256U;
+  EXPECT_NE(FileConstantUtils::CopyOneWeightFromFile(buf.get(), file_name, static_cast<size_t>(-8), 16U, left_size),
+            SUCCESS);
+  EXPECT_EQ(left_size, 256U);
+  // 合法范围内仍成功
+  left_size = 256U;
+  EXPECT_EQ(FileConstantUtils::CopyOneWeightFromFile(buf.get(), file_name, 16U, 32U, left_size), SUCCESS);
+  EXPECT_EQ(left_size, 256U - 32U);
+  (void)remove(file_name.c_str());
+}
+
+TEST_F(UtestFileConstantUtilTransfer, CopyOneWeightFromFileShortLengthClearTail) {
+  const std::string file_name = "test_short_length_weight.bin";
+  {
+    std::ofstream out(file_name, std::ios::binary);
+    ASSERT_TRUE(out.is_open());
+    const std::string data(16U, 'B');
+    out.write(data.data(), static_cast<std::streamsize>(data.size()));
+  }
+  std::unique_ptr<char[]> buf(new char[64]);
+  size_t left_size = 64U;
+  // 仅声明 16 字节权重, 剩余 48 字节由拷贝函数清零, 避免暴露未初始化设备内存
+  EXPECT_EQ(FileConstantUtils::CopyOneWeightFromFile(buf.get(), file_name, 0U, 16U, left_size), SUCCESS);
+  EXPECT_EQ(left_size, 64U - 16U);
+  (void)remove(file_name.c_str());
+}
+
+TEST_F(UtestFileConstantUtilTransfer, CopyOneWeightFromFileWithoutDeclaredLength) {
+  // length 未声明的场景: 请求长度由张量尺寸推导(可能含对齐 padding), 允许文件偏短,
+  // 读入可用部分后对剩余区域清零, 不能因为文件短就加载失败
+  const std::string file_name = "test_no_declared_length_weight.bin";
+  {
+    std::ofstream out(file_name, std::ios::binary);
+    ASSERT_TRUE(out.is_open());
+    const std::string data(64U, 'D');
+    out.write(data.data(), static_cast<std::streamsize>(data.size()));
+  }
+  std::unique_ptr<char[]> buf(new char[128]);
+  size_t left_size = 128U;
+  EXPECT_EQ(FileConstantUtils::CopyOneWeightFromFile(buf.get(), file_name, 0U, 128U, left_size,
+                                                     /* enforce_range = */ false),
+            SUCCESS);
+  EXPECT_EQ(left_size, 128U - 64U);
+  (void)remove(file_name.c_str());
+}
+
+TEST_F(UtestFileConstantUtilTransfer, CopyOneWeightFromFileClearTailRange) {
+  const std::string file_name = "test_clear_tail_weight.bin";
+  {
+    std::ofstream out(file_name, std::ios::binary);
+    ASSERT_TRUE(out.is_open());
+    const std::string data(16U, 'C');
+    out.write(data.data(), static_cast<std::streamsize>(data.size()));
+  }
+  std::unique_ptr<char[]> buf(new char[1024]);
+  // acl 桩对 maxCount == 321 的 memset 返回失败: 337 - 16 == 321, 用该组合精确验证
+  // 尾部清零范围是 [本次读入量, 目标缓冲总大小)
+  size_t left_size = 337U;
+  Status ret = FileConstantUtils::CopyOneWeightFromFile(buf.get(), file_name, 0U, 16U, left_size);
+  EXPECT_NE(ret, SUCCESS);           // 说明尾部清零确实被调用且 maxCount 按剩余空间计算
+  EXPECT_EQ(left_size, 337U - 16U);  // 失败路径仍按实际读入量回填剩余空间
+
+  // 对照: maxCount 变为 320 时不命中桩的失败注入, 说明清零范围随缓冲大小线性变化
+  left_size = 336U;
+  ret = FileConstantUtils::CopyOneWeightFromFile(buf.get(), file_name, 0U, 16U, left_size);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(left_size, 336U - 16U);
+  (void)remove(file_name.c_str());
+}
+
+TEST_F(UtestFileConstantUtilTransfer, CopyOneWeightFromFileClearHostTail) {
+  const std::string file_name = "test_clear_host_tail_weight.bin";
+  {
+    std::ofstream out(file_name, std::ios::binary);
+    ASSERT_TRUE(out.is_open());
+    const std::string data(16U, 'H');
+    out.write(data.data(), static_cast<std::streamsize>(data.size()));
+  }
+  // buf 模拟 HostMemAllocator 分配的普通堆内存(AlignedPtr 底层为 new[]), 预填 0xFF 以验证尾部被真正清零
+  std::unique_ptr<char[]> buf(new char[1024]);
+  for (size_t i = 0U; i < 1024U; ++i) {
+    buf[i] = static_cast<char>(0xFF);
+  }
+  // acl 桩对 maxCount == 321 的 aclrtMemset 返回失败(337 - 16 == 321), 用作"是否走了 ACL 接口"的探针:
+  // Host 路径走 memset_s 不经过该桩故应成功; 若误用 aclrtMemset 清零 Host 内存则会命中注入而失败
+  size_t left_size = 337U;
+  const Status ret = FileConstantUtils::CopyOneWeightFromFile(buf.get(), file_name, 0U, 16U, left_size, true,
+                                                              WeightMemLocation::kHost);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(left_size, 337U - 16U);
+  EXPECT_EQ(buf[0U], 'H');
+  EXPECT_EQ(buf[15U], 'H');
+  bool tail_cleared = true;
+  for (size_t i = 16U; i < 337U; ++i) {
+    if (buf[i] != '\0') {
+      tail_cleared = false;
+      break;
+    }
+  }
+  EXPECT_TRUE(tail_cleared);
+  // 对照: 同尺寸下默认 Device 路径命中桩的失败注入, 证明两条分支确实调用了不同接口
+  left_size = 337U;
+  EXPECT_NE(FileConstantUtils::CopyOneWeightFromFile(buf.get(), file_name, 0U, 16U, left_size), SUCCESS);
+  (void)remove(file_name.c_str());
+}
+
 TEST_F(UtestFileConstantUtilTransfer, GetFilePathOK) {
   std::map<std::string, std::string> options;
   options["ge.exec.value_bins"] =

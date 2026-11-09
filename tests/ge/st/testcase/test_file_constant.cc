@@ -130,13 +130,14 @@ TEST_F(StestFileConstantUtilTransfer, Preprocess_Fileconstant_Op_OK) {
   op_desc2->SetOutputOffset({128});
   graph->AddNode(op_desc2);  // test ExternalWeightManager::CheckAndSetWeightLoaded
 
-  std::unique_ptr<float[]> float_buf(new float[16]);
+  // 两个 FileConstant 节点的 offset 为 0 / 128 且张量均为 128 字节, 权重文件需覆盖 [0, 256)
+  std::unique_ptr<float[]> float_buf(new float[64]);
   std::string file_name = "tmp_weight_file.bin";
   std::ofstream out1(file_name, std::ios::binary);
   if (!out1.is_open()) {
     return;
   }
-  out1.write((char *)float_buf.get(), 16 * sizeof(float));
+  out1.write((char *)float_buf.get(), 64 * sizeof(float));
   out1.close();
   model.file_id_and_path_map_.insert(std::pair<std::string, std::string>("file", "tmp_weight_file.bin"));
   ModelParam default_parm;

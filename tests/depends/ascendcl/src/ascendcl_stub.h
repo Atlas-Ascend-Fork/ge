@@ -112,6 +112,7 @@ class AclRuntimeStub {
   virtual aclError aclrtMallocHostWithCfg(void **hostPtr, size_t size, aclrtMallocConfig *cfg);
   virtual aclError aclrtMallocAlign32(void **devPtr, size_t size, aclrtMemMallocPolicy policy);
   virtual aclError aclrtMemset(void *devPtr, size_t maxCount, int32_t value, size_t count);
+  virtual aclError aclrtMemsetAsync(void *devPtr, size_t maxCount, int32_t value, size_t count, aclrtStream stream);
   virtual aclError aclrtFree(void *devPtr);
   virtual aclError aclrtFreeHost(void *devPtr);
   virtual aclError aclrtHostRegister(void *ptr, uint64_t size, aclrtHostRegisterType type, void **devPtr);

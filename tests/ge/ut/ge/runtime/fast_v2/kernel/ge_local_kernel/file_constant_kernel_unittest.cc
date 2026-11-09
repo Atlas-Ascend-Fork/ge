@@ -41,14 +41,16 @@ ge::Status CreateFileConstantFile(const std::string &file_dir, const std::string
   if (!file_dir.empty()) {
     GE_ASSERT_TRUE(ge::CreateDirectory(file_dir) == 0);
   }
-  std::unique_ptr<int32_t[]> int32_t_buf(new int32_t[output_size / sizeof(int32_t)]);
-  for (size_t i = 0U; i < output_size / sizeof(int32_t); ++i) {
-    int32_t_buf[i] = i;
+  // 向上取整, 避免 output_size 非 4 字节对齐时越界写
+  const size_t element_cnt = (output_size + sizeof(int32_t) - 1U) / sizeof(int32_t);
+  std::unique_ptr<int32_t[]> int32_t_buf(new int32_t[element_cnt]);
+  for (size_t i = 0U; i < element_cnt; ++i) {
+    int32_t_buf[i] = static_cast<int32_t>(i);
   }
   const auto file_constant_file = file_dir + file_name;
   std::ofstream out1(file_constant_file, std::ios::binary);
   GE_ASSERT_TRUE(out1.is_open());
-  out1.write((char *)int32_t_buf.get(), output_size);
+  out1.write((char *)int32_t_buf.get(), static_cast<std::streamsize>(output_size));
   out1.close();
   return ge::SUCCESS;
 }
@@ -75,11 +77,33 @@ struct FileConstantKernelUt : public testing::Test {
     std::string file_name_;
   };
 
+  // 失败场景的具体错误码可能被上层包装(如 PARAM_INVALID), 只断言与成功状态不同
+  static void CheckKernelResult(const ge::graphStatus ret, const ge::graphStatus expected_exc_status) {
+    if (expected_exc_status == ge::GRAPH_SUCCESS) {
+      EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
+    } else {
+      EXPECT_NE(ret, ge::GRAPH_SUCCESS);
+    }
+  }
+
+  static void CheckFileConstantOutput(KernelContext *const context, const size_t output_size) {
+    auto td = context->GetOutputPointer<GertTensorData>(static_cast<size_t>(0));
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->GetPlacement(), kOnDeviceHbm);
+    ASSERT_TRUE(td->GetSize() >= output_size);
+    for (size_t i = 0U; i < output_size / sizeof(int32_t); ++i) {
+      EXPECT_EQ(static_cast<int32_t *>(td->GetAddr())[i], static_cast<int32_t>(i));
+    }
+  }
+
   static void TestFileConstantKernel(const std::string &attr_file_path, const std::string &location,
                                      const size_t total_execute_cnt, const ge::graphStatus expected_exc_status,
-                                     KernelFakeInputs &kernel_fake_inputs) {
+                                     KernelFakeInputs &kernel_fake_inputs, const int64_t attr_length = 0,
+                                     const size_t file_size = 0U) {
+    // file_size 为 0 时按节点输出大小生成权重文件
+    const size_t actual_file_size = (file_size == 0U ? kernel_fake_inputs.output_size_ : file_size);
     EXPECT_EQ(CreateFileConstantFile(kernel_fake_inputs.file_constant_weight_dir_, kernel_fake_inputs.file_name_,
-                                     kernel_fake_inputs.output_size_),
+                                     actual_file_size),
               ge::SUCCESS);
 
     // fake kernel inputs
@@ -91,7 +115,7 @@ struct FileConstantKernelUt : public testing::Test {
     auto file_name_data = static_cast<void *>(const_cast<char *>(kernel_fake_inputs.file_name_.c_str()));
     // fake attr param
     int64_t offset = 0;
-    int64_t length = 0;
+    int64_t length = attr_length;
     auto context_holder =
         KernelRunContextFaker()
             .KernelIONum(static_cast<size_t>(kernel::FileConstantKernelInputIdx::kEnd),
@@ -112,16 +136,10 @@ struct FileConstantKernelUt : public testing::Test {
     ASSERT_NE(funcs, nullptr);
     ASSERT_EQ(funcs->outputs_creator(nullptr, context), ge::GRAPH_SUCCESS);
     for (size_t execute_cnt = 0U; execute_cnt < total_execute_cnt; ++execute_cnt) {
-      auto ret = funcs->run_func(context);
-      EXPECT_EQ(ret, expected_exc_status);
+      const auto ret = funcs->run_func(context);
+      CheckKernelResult(ret, expected_exc_status);
       if (ret == ge::GRAPH_SUCCESS) {
-        auto td = context->GetOutputPointer<GertTensorData>(static_cast<size_t>(0));
-        ASSERT_NE(td, nullptr);
-        EXPECT_EQ(td->GetPlacement(), kOnDeviceHbm);
-        ASSERT_TRUE(td->GetSize() >= kernel_fake_inputs.output_size_);
-        for (size_t i = 0U; i < kernel_fake_inputs.output_size_ / sizeof(int32_t); ++i) {
-          EXPECT_EQ(static_cast<int32_t *>(td->GetAddr())[i], i);
-        }
+        CheckFileConstantOutput(context, kernel_fake_inputs.output_size_);
       }
     }
     context_holder.FreeAll();
@@ -179,6 +197,22 @@ struct FileConstantKernelUt : public testing::Test {
     }
   }
 };
+
+// 用例描述: 权重文件比节点输出大小短时, 加载必须失败, 不允许静默少读后仍标记权重就绪.
+TEST_F(FileConstantKernelUt, FileConstantKernel_WeightFileTruncated) {
+  RtSession rt_session;
+  string var_id("file_constant_node_0");
+  std::string file_constant_weight_dir;
+  std::string file_name = "test_truncated_weight.bin";
+  KernelFakeInputs kernel_fake_inputs(&rt_session, var_id, file_constant_weight_dir, file_name);
+  // location 非空才会从私有属性读取 offset/length; location 为空时直接按 file_name 加载且视为未声明长度
+  std::string location = file_name;
+  std::string attr_file_path;
+  const ge::graphStatus expected_exc_status = ge::GRAPH_FAILED;
+  // 文件只有输出大小的一半, 且 length 属性显式声明了完整长度: 必须失败
+  TestFileConstantKernel(attr_file_path, location, 1, expected_exc_status, kernel_fake_inputs,
+                         static_cast<int64_t>(kernel_fake_inputs.output_size_), kernel_fake_inputs.output_size_ / 2U);
+}
 
 // 用例描述: 在线场景下, 不走var_mgr, FileConstantKernel功能正常:权重加载成功 + 权重数据正确.
 TEST_F(FileConstantKernelUt, FileConstantKernel_WeightLoadSuccessWithoutVarManager) {
