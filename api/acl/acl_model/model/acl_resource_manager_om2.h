@@ -22,6 +22,22 @@
 
 namespace acl {
 
+// OM2 Bundle 模型信息。参考 acl::BundleModelInfo，但 OM2 不使用 gert::RtSession：
+// Bundle 与其会话 1:1，共享的会话资源仅以 gert::Om2SessionContext（session_id + 外置变量 arena）
+// 承载，由 Om2RTVarManagerPool / Om2ExternalWeightManagerPool 按 session_id 管理，
+// 避免 libacl_mdl_impl_om2.so 反向依赖 ge_common_base / davinci_executor。
+struct Om2BundleModelInfo {
+  bool isInit = false;              // aclmdlBundleInit scene means true
+  gert::Om2SessionContext session;  // session_id(= bundleId) + 外置变量 arena, 透传给各子模型
+  size_t varSize = 0U;
+  std::string fromFilePath;
+  std::shared_ptr<const uint8_t> bundleModelData;
+  size_t bundleModelSize = 0U;
+  std::vector<BundleSubModelInfo> subModelInfos;
+  std::vector<uint32_t> loadedSubModelId;  // aclmdlBundleGetModelId use this when aclmdlBundleLoadFromxx is called
+  std::set<uint32_t> loadedSubModelIdSet;
+};
+
 class ACL_FUNC_VISIBILITY AclResourceManagerOm2 {
  public:
   ~AclResourceManagerOm2();
@@ -43,8 +59,8 @@ class ACL_FUNC_VISIBILITY AclResourceManagerOm2 {
   // Bundle管理
   void AddBundleSubmodelId(const uint32_t bundleId, uint32_t modelId);
   void DeleteBundleSubmodelId(const uint32_t bundleId, uint32_t modelId);
-  aclError SetBundleInfo(const uint32_t bundleId, const BundleModelInfo &bundleInfos);
-  aclError GetBundleInfo(const uint32_t bundleId, BundleModelInfo &bundleInfos);
+  aclError SetBundleInfo(const uint32_t bundleId, const Om2BundleModelInfo &bundleInfos);
+  aclError GetBundleInfo(const uint32_t bundleId, Om2BundleModelInfo &bundleInfos);
   void DeleteBundleInfo(const uint32_t bundleId);
   bool IsBundleInnerId(const uint32_t modelId) const;
   bool IsOm2BundleById(const uint32_t bundleId) const;
@@ -60,7 +76,7 @@ class ACL_FUNC_VISIBILITY AclResourceManagerOm2 {
   // modelId/bundleId 共用计数器。高位起点除避开低位保留 id 外，还使 bundle 的 session id
   // （复用 bundleId）与 OM2 单模型 session id（GetNextSessionId，从 0 递增）区间隔离，勿改低起点
   std::atomic_uint32_t modelIdGenerator_{std::numeric_limits<uint32_t>::max() / 2U};
-  std::unordered_map<uint32_t, BundleModelInfo> bundleInfos_;
+  std::unordered_map<uint32_t, Om2BundleModelInfo> bundleInfos_;
   std::set<uint32_t> bundleInnerIds_;
   mutable std::mutex mutex_;
 };

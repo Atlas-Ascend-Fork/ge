@@ -18,7 +18,6 @@
 #include "common/util/error_manager/error_manager.h"
 #include "framework/omg/omg.h"
 #include "framework/runtime/om2_model_executor.h"
-#include "framework/runtime/rt_session.h"
 #include "ge/ge_error_codes.h"
 #include "framework/runtime/gert_model/gert_model_executor_callbacks.h"
 #include "generator/ge_generator.h"
@@ -4563,15 +4562,15 @@ TEST_F(Om2St, LoadOm2Bundle_Ok_LoadBothIndexesAndRunTwice) {
 }
 
 /**
- * 用例描述：Bundle 中两个子模型共享同一变量，绑定同一 RtSession 并注入外部变量 arena 后，初始化数据只写入一次
+ * 用例描述：Bundle 中两个子模型共享同一变量，绑定同一 session_id 并注入外部变量 arena 后，初始化数据只写入一次
  * 预置条件：
  *   1. 构造 fake Bundle 归档：两个子模型均含同 var_key 的变量条目（逻辑地址=变量逻辑基址+64，大小 4 字节）
  *      与 4 字节初始化数据，model_meta global_shared_var_size=4096
- *   2. RtSession 通过 SetExternalVar 注入 4096 字节外部变量 arena
+ *   2. load_arg.session_ctx 通过 external_var_addr/external_var_size 注入 4096 字节外部变量 arena
  * 测试步骤：
- *   1. LoadOm2ExecutorFromBundleData 加载子模型 0（load_arg.rt_session 指向共享 Session）
+ *   1. LoadOm2ExecutorFromBundleData 加载子模型 0（load_arg.session_ctx 携带共享会话 id）
  *   2. 校验 arena 偏移 64 处已写入变量初始化数据
- *   3. 将该区域篡改为 0xFF 后，用同一 Session 加载子模型 1
+ *   3. 将该区域篡改为 0xFF 后，用同一 session_id 加载子模型 1
  *   4. 校验 arena 偏移 64 处内容仍为 0xFF
  * 预期结果：
  *   1. 两个子模型均加载成功
@@ -4596,11 +4595,13 @@ TEST_F(Om2St, LoadOm2Bundle_Ok_SharedVarInitializedOnce) {
   constexpr uint64_t kSessionId = 424200U;
   constexpr uint64_t kArenaOffset = 64U;
   std::vector<uint8_t> arena(4096U, 0U);
-  gert::RtSession session(kSessionId);
-  session.SetExternalVar(arena.data(), arena.size());
   gert::Om2ModelLoadArg load_arg;
   load_arg.device_id = 0;
-  load_arg.rt_session = &session;
+  gert::Om2SessionContext session_ctx;
+  session_ctx.session_id = kSessionId;
+  session_ctx.external_var_addr = arena.data();
+  session_ctx.external_var_size = arena.size();
+  load_arg.session_ctx = &session_ctx;
 
   ge::graphStatus error_code = ge::FAILED;
   const auto executor0 =
@@ -5092,7 +5093,7 @@ TEST_F(Om2VarSt, GenOm2WithoutVarNodes_NoVarResourceFiles) {
  *    与 trans_dst（同名变量 NHWC、无初始数据、带 TransData NCHW→NHWC 转换链、
  *    changed_graph_id=22、allocated_graph_id=11；这两个值在打包期由构表器求值，判据通过才写入
  *    转换链，二者本身不进产物）
- * 2. RtSession 注入 host arena 作为外置变量内存区，两个变量的逻辑地址分别落在
+ * 2. load_arg.session_ctx 注入 host arena 作为外置变量内存区，两个变量的逻辑地址分别落在
  *    arena 偏移 0（源）与 256（目标）
  *
  * 测试步骤：
@@ -5107,18 +5108,20 @@ TEST_F(Om2VarSt, GenOm2WithoutVarNodes_NoVarResourceFiles) {
  * 3. arena 目标区等于 out[h*8 + w*2 + c] = in[c*12 + h*4 + w] 的排列结果
  */
 TEST_F(Om2VarSt, LoadOm2VarTrans_Ok_ValueMigratedFromPreviouslyLoadedSource) {
-  constexpr uint64_t kRtSessionId = 424301U;
+  constexpr uint64_t kSessionId = 424301U;
   Om2ArchiveHolder src_archive;
   Om2ArchiveHolder dst_archive;
   ASSERT_TRUE(src_archive.Read("trans_src"));
   ASSERT_TRUE(dst_archive.Read("trans_dst"));
 
   std::vector<uint8_t> arena(kTransArenaSize, 0U);
-  gert::RtSession session(kRtSessionId);
-  session.SetExternalVar(arena.data(), arena.size());
   gert::Om2ModelLoadArg load_arg;
   load_arg.device_id = 0;
-  load_arg.rt_session = &session;
+  gert::Om2SessionContext session_ctx;
+  session_ctx.session_id = kSessionId;
+  session_ctx.external_var_addr = arena.data();
+  session_ctx.external_var_size = arena.size();
+  load_arg.session_ctx = &session_ctx;
 
   ge::graphStatus error_code = ge::FAILED;
   const auto src_executor = gert::LoadOm2ExecutorFromData(src_archive.data, load_arg, error_code);
@@ -5138,7 +5141,7 @@ TEST_F(Om2VarSt, LoadOm2VarTrans_Ok_ValueMigratedFromPreviouslyLoadedSource) {
   EXPECT_EQ(ReadArenaFloats(arena, kTransDstArenaOffset2), MakeTransExpectedWithBase(kTransVar2Base));
   EXPECT_EQ(ReadArenaFloats(arena, kTransSrcArenaOffset2), MakeTransSrcValuesWithBase(kTransVar2Base));
 
-  gert::Om2RTVarManagerPool::Instance().RemoveManager(kRtSessionId);
+  gert::Om2RTVarManagerPool::Instance().RemoveManager(kSessionId);
 }
 
 /**
@@ -5157,23 +5160,25 @@ TEST_F(Om2VarSt, LoadOm2VarTrans_Ok_ValueMigratedFromPreviouslyLoadedSource) {
  *    不存在"源所属模型未加载"的情形
  */
 TEST_F(Om2VarSt, LoadOm2VarTrans_Fail_SourceModelNotLoaded) {
-  constexpr uint64_t kRtSessionId = 424302U;
+  constexpr uint64_t kSessionId = 424302U;
   Om2ArchiveHolder dst_archive;
   ASSERT_TRUE(dst_archive.Read("trans_dst"));
 
   std::vector<uint8_t> arena(kTransArenaSize, 0U);
-  gert::RtSession session(kRtSessionId);
-  session.SetExternalVar(arena.data(), arena.size());
   gert::Om2ModelLoadArg load_arg;
   load_arg.device_id = 0;
-  load_arg.rt_session = &session;
+  gert::Om2SessionContext session_ctx;
+  session_ctx.session_id = kSessionId;
+  session_ctx.external_var_addr = arena.data();
+  session_ctx.external_var_size = arena.size();
+  load_arg.session_ctx = &session_ctx;
 
   ge::graphStatus error_code = SUCCESS;
   const auto dst_executor = gert::LoadOm2ExecutorFromData(dst_archive.data, load_arg, error_code);
   EXPECT_NE(error_code, SUCCESS);
   EXPECT_EQ(dst_executor, nullptr);
 
-  gert::Om2RTVarManagerPool::Instance().RemoveManager(kRtSessionId);
+  gert::Om2RTVarManagerPool::Instance().RemoveManager(kSessionId);
 }
 
 /**
@@ -5193,18 +5198,20 @@ TEST_F(Om2VarSt, LoadOm2VarTrans_Fail_SourceModelNotLoaded) {
  *    目标区保持篡改后的值
  */
 TEST_F(Om2VarSt, LoadOm2VarTrans_Ok_RepeatLoadDoesNotRetransform) {
-  constexpr uint64_t kRtSessionId = 424303U;
+  constexpr uint64_t kSessionId = 424303U;
   Om2ArchiveHolder src_archive;
   Om2ArchiveHolder dst_archive;
   ASSERT_TRUE(src_archive.Read("trans_src"));
   ASSERT_TRUE(dst_archive.Read("trans_dst"));
 
   std::vector<uint8_t> arena(kTransArenaSize, 0U);
-  gert::RtSession session(kRtSessionId);
-  session.SetExternalVar(arena.data(), arena.size());
   gert::Om2ModelLoadArg load_arg;
   load_arg.device_id = 0;
-  load_arg.rt_session = &session;
+  gert::Om2SessionContext session_ctx;
+  session_ctx.session_id = kSessionId;
+  session_ctx.external_var_addr = arena.data();
+  session_ctx.external_var_size = arena.size();
+  load_arg.session_ctx = &session_ctx;
 
   ge::graphStatus error_code = ge::FAILED;
   const auto src_executor = gert::LoadOm2ExecutorFromData(src_archive.data, load_arg, error_code);
@@ -5226,7 +5233,7 @@ TEST_F(Om2VarSt, LoadOm2VarTrans_Ok_RepeatLoadDoesNotRetransform) {
                                       arena.begin() + kTransDstArenaOffset + dst_bytes);
   EXPECT_EQ(tampered, std::vector<uint8_t>(dst_bytes, 0xFFU));
 
-  gert::Om2RTVarManagerPool::Instance().RemoveManager(kRtSessionId);
+  gert::Om2RTVarManagerPool::Instance().RemoveManager(kSessionId);
 }
 
 /**

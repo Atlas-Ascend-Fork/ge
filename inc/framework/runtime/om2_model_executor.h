@@ -25,7 +25,16 @@ struct GertModelTaskDesc;
 
 namespace gert {
 struct GertModelData;
-class RtSession;
+
+// Bundle 子模型共享的会话上下文。OM2 不持有 RtSession（其 stream/event/notify allocator 与
+// ge:: 会话池均非 OM2 所需），会话仅以 (session_id + 外置变量 arena) 承载，避免 ACL OM2 实现库
+// 反向依赖 ge_common_base / davinci_executor。session_id 为 0 表示未指定，由执行器自动分配。
+// 契约：仅在 Load 调用期间有效（执行器读取后不留存），调用方需保证其存活期覆盖加载调用。
+struct Om2SessionContext {
+  uint64_t session_id = 0U;
+  void *external_var_addr = nullptr;
+  size_t external_var_size = 0U;
+};
 
 struct VISIBILITY_EXPORT Om2ModelLoadArg {
   int32_t device_id = -1;
@@ -35,7 +44,7 @@ struct VISIBILITY_EXPORT Om2ModelLoadArg {
   void *weight_ptr = nullptr;
   size_t weight_size = 0U;
   int32_t priority = 0;
-  gert::RtSession *rt_session = nullptr;
+  const Om2SessionContext *session_ctx = nullptr;
   std::vector<ge::FileConstantMem> file_constant_mems;
   bool need_clear_dfx_cache = false;
   bool reuse_zero_copy = false;
