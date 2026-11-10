@@ -7728,17 +7728,6 @@ Status DavinciModel::InitFileConstant(const NodePtr &node) {
   size_t length = 0U;
   GE_CHK_STATUS_RET(FileConstantUtils::GetFilePath(op_desc, file_id_and_path_map_, file_path, offset, length),
                     "Failed to get file path.");
-  // weight_size 取自 TensorDesc::size(模型可控), 而设备内存按 HandleIndividualWeights 的
-  // alloc_size 分配, 因此需校验拷贝长度不超过分配大小, 否则会造成设备内存越界写
-  const auto v_output_size = ModelUtils::GetOutputSize(op_desc);
-  GE_ASSERT_TRUE(!v_output_size.empty(), "Output size of file constant node[%s] is empty.", op_desc->GetNamePtr());
-  int64_t tensor_size = 0;
-  GE_ASSERT_SUCCESS(TensorUtils::GetTensorSizeInBytes(*tensor_desc, tensor_size),
-                    "Failed to get file constant tensor size, node: %s.", op_desc->GetNamePtr());
-  const int64_t alloc_size = std::max(v_output_size[0], std::max(tensor_size, static_cast<int64_t>(length)));
-  GE_ASSERT_TRUE(weight_size <= alloc_size,
-                 "File constant node[%s] weight size[%" PRId64 "] exceeds allocated memory[%" PRId64 "].",
-                 op_desc->GetNamePtr(), weight_size, alloc_size);
   size_t left_size = static_cast<size_t>(weight_size);
   const auto &external_weight_manager = ExternalWeightManagerPool::Instance().GetManager(session_id_);
   GE_CHECK_NOTNULL(external_weight_manager);
