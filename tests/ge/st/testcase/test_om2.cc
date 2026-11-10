@@ -3026,6 +3026,8 @@ TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithHcclNode) {
             std::string::npos);
   EXPECT_NE(resources.find("RT_STREAM_OVERFLOW"), std::string::npos);
   EXPECT_NE(resources.find("created %u hccl follow streams for main stream %u"), std::string::npos);
+  EXPECT_NE(resources.find("aclmdlRIUnbindStream(model_handle_, hccl_stream)"), std::string::npos);
+  EXPECT_NE(resources.find("aclrtDestroyStream(hccl_stream)"), std::string::npos);
 
   size_t load_and_run_size = 0U;
   const auto load_and_run_buf =

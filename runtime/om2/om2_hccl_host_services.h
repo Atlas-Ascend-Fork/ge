@@ -17,6 +17,7 @@
 namespace gert {
 int32_t HcclHostLoadTask(void *instance_handle, const HcclTaskParams *params);
 int32_t HcclHostUnloadTask(void *instance_handle);
+int32_t HcclHostFinalize(void *instance_handle);
 }  // namespace gert
 
 #endif  // GE_RUNTIME_OM2_OM2_HCCL_HOST_SERVICES_H_

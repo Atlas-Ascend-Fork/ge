@@ -14,6 +14,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include "common/checker.h"
 #include "common/opskernel/ge_task_info.h"
@@ -29,6 +30,7 @@ namespace {
 using HcclPluginInitializeFunc = ge::Status (*)(const std::map<std::string, std::string> &options);
 using HcclPluginGetStoresFunc =
     void (*)(std::map<std::string, std::shared_ptr<ge::OpsKernelInfoStore>> &op_kernel_infos);
+using HcclPluginFinalizeFunc = ge::Status (*)();
 
 const char *const kHcclExecutorLibName = "libhcom_executor.so";
 const char *const kHcclKernelInfoStoreName = "ops_kernel_info_hccl";
@@ -50,42 +52,107 @@ const char_t *HCOMRECEIVE = "HcomReceive";
 const char_t *HVDCALLBACKALLREDUCE = "HorovodAllreduce";
 const char_t *HVDCALLBACKALLGATHER = "HorovodAllgather";
 
-// 进程级插件缓存
-std::mutex g_hccl_store_mu;
-void *g_hccl_so_handle = nullptr;                                                 // libhcom_executor.so
-std::map<std::string, std::shared_ptr<ge::OpsKernelInfoStore>> g_hccl_executors;  // 持有 store 生命周期
-ge::OpsKernelInfoStore *g_hccl_store = nullptr;                                   // "ops_kernel_info_hccl"
-std::atomic<uint32_t> g_hccl_next_task_id{1U};                                    // 全局自增 task id
+// 进程级 HCCL 插件缓存与活跃实例登记（单例）
+class HcclHostService {
+ public:
+  static HcclHostService &Instance() {
+    static HcclHostService instance;
+    return instance;
+  }
+
+  // 持锁完成插件获取与实例登记（原子，消除"拿到 store 后、登记前插件被并发 Finalize 销毁"的窗口）；
+  // 返回后调用方无锁使用 store，插件存活由登记门控保证（注销点在 Cleanup 末尾的 HcclHostFinalize）
+  ge::OpsKernelInfoStore *GetStore(void *instance_handle);
+  int32_t Finalize(void *instance_handle);
+  uint32_t NextTaskId() {
+    return next_task_id_.fetch_add(1U);
+  }
+
+ private:
+  HcclHostService() = default;
+  ~HcclHostService() = default;
+  HcclHostService(const HcclHostService &) = delete;
+  HcclHostService &operator=(const HcclHostService &) = delete;
+
+  std::mutex store_mu_;
+  void *so_handle_ = nullptr;                                                 // libhcom_executor.so
+  std::map<std::string, std::shared_ptr<ge::OpsKernelInfoStore>> executors_;  // 持有 store 生命周期
+  ge::OpsKernelInfoStore *store_ = nullptr;                                   // "ops_kernel_info_hccl"
+  // 已登记 HCCL 使用的 executor 实例（instance_handle），与上述成员同受 store_mu_ 保护。
+  // 不变式：集合非空 ⟺ 尚有 executor 的 Cleanup 未到达末尾；故 HcclHostFinalize 仅在集合为空时
+  // 才允许销毁插件，多模型场景下不会过早 Finalize
+  std::set<void *> active_instances_;
+  std::atomic<uint32_t> next_task_id_{1U};  // 自增 task id
+};
 
 ge::Status HcomExecutorPluginPath(std::string &lib_path) {
   lib_path = ge::GetModelPath() + kHcclExecutorLibName;
   return ge::SUCCESS;
 }
 
-ge::OpsKernelInfoStore *GetHcclStore() {
-  const std::lock_guard<std::mutex> lk(g_hccl_store_mu);
-  if (g_hccl_store != nullptr) {
-    return g_hccl_store;
+ge::OpsKernelInfoStore *HcclHostService::GetStore(void *instance_handle) {
+  const std::lock_guard<std::mutex> lk(store_mu_);
+  if (store_ != nullptr) {
+    (void)active_instances_.insert(instance_handle);
+    return store_;
   }
   std::string lib_path;
   GE_ASSERT_SUCCESS(HcomExecutorPluginPath(lib_path));
-  g_hccl_so_handle = mmDlopen(lib_path.c_str(), static_cast<int32_t>(MMPA_RTLD_NOW));
-  GE_ASSERT_NOTNULL(g_hccl_so_handle, "[OM2] mmDlopen %s failed, please check the hccl plugin.", lib_path.c_str());
+  so_handle_ = mmDlopen(lib_path.c_str(), static_cast<int32_t>(MMPA_RTLD_NOW));
+  GE_ASSERT_NOTNULL(so_handle_, "[OM2] mmDlopen %s failed, please check the hccl plugin.", lib_path.c_str());
 
-  auto initialize_func = reinterpret_cast<HcclPluginInitializeFunc>(mmDlsym(g_hccl_so_handle, "Initialize"));
-  auto get_stores_func = reinterpret_cast<HcclPluginGetStoresFunc>(mmDlsym(g_hccl_so_handle, "GetOpsKernelInfoStores"));
+  auto initialize_func = reinterpret_cast<HcclPluginInitializeFunc>(mmDlsym(so_handle_, "Initialize"));
+  auto get_stores_func = reinterpret_cast<HcclPluginGetStoresFunc>(mmDlsym(so_handle_, "GetOpsKernelInfoStores"));
+  GE_ASSERT_NOTNULL(initialize_func, "[OM2] mmDlsym Initialize from %s failed.", lib_path.c_str());
   GE_ASSERT_NOTNULL(get_stores_func, "[OM2] mmDlsym GetOpsKernelInfoStores from %s failed.", lib_path.c_str());
-  if (initialize_func != nullptr) {
-    const std::map<std::string, std::string> options;
-    GE_ASSERT_SUCCESS(initialize_func(options), "[OM2] hccl plugin Initialize failed.");
-  }
-  get_stores_func(g_hccl_executors);
-  const auto it = g_hccl_executors.find(kHcclKernelInfoStoreName);
-  GE_ASSERT_TRUE(it != g_hccl_executors.end() && (it->second != nullptr), "[OM2] executor %s not found in %s.",
+  const std::map<std::string, std::string> options;
+  GE_ASSERT_SUCCESS(initialize_func(options), "[OM2] hccl plugin Initialize failed.");
+  get_stores_func(executors_);
+  const auto it = executors_.find(kHcclKernelInfoStoreName);
+  GE_ASSERT_TRUE(it != executors_.end() && (it->second != nullptr), "[OM2] executor %s not found in %s.",
                  kHcclKernelInfoStoreName, lib_path.c_str());
-  g_hccl_store = it->second.get();
+  store_ = it->second.get();
   GELOGI("[OM2] hccl plugin loaded, lib=%s, store=%s", lib_path.c_str(), kHcclKernelInfoStoreName);
-  return g_hccl_store;
+  (void)active_instances_.insert(instance_handle);
+  return store_;
+}
+
+int32_t HcclHostService::Finalize(void *instance_handle) {
+  const std::lock_guard<std::mutex> lk(store_mu_);
+  // 在 Cleanup 末尾注销本实例：注销点必须在 Cleanup 末尾（而非 UnloadTask 开头），
+  // 保证"集合为空 ⟺ 所有 executor 的 Cleanup 均已完成（SO 已卸载、RI 已销毁）"，
+  // 否则并发场景下他人可在本实例 RI 销毁前提前 Finalize 插件
+  const auto erased = active_instances_.erase(instance_handle);
+  GELOGI("[OM2][Hccl][Finalize] unregister instance=%p, erased=%u, active remaining=%zu.", instance_handle, erased,
+         active_instances_.size());
+  if (so_handle_ == nullptr) {
+    GELOGI("[OM2][Hccl][Finalize] plugin not loaded, instance=%p, nothing to finalize.", instance_handle);
+    return static_cast<int32_t>(ge::SUCCESS);
+  }
+  if (!active_instances_.empty()) {
+    GELOGI("[OM2][Hccl][Finalize] skip, %zu instance(s) still active.", active_instances_.size());
+    return static_cast<int32_t>(ge::SUCCESS);
+  }
+  GELOGI("[OM2][Hccl][Finalize] begin.");
+  executors_.clear();
+  store_ = nullptr;
+  auto finalize_func = reinterpret_cast<HcclPluginFinalizeFunc>(mmDlsym(so_handle_, "Finalize"));
+  if (finalize_func == nullptr) {
+    GELOGW("[OM2][Hccl][Finalize] Finalize not found in hccl plugin, skip plugin finalize.");
+  } else {
+    const ge::Status ret = finalize_func();
+    if (ret != ge::SUCCESS) {
+      GELOGW("[OM2][Hccl][Finalize] hccl plugin Finalize failed, ret=%u.", ret);
+    }
+  }
+  if (mmDlclose(so_handle_) != 0) {
+    const char_t *error = mmDlerror();
+    error = (error == nullptr) ? "" : error;
+    GELOGW("[OM2][Hccl][Finalize] dlclose failed, error=%s.", error);
+  }
+  so_handle_ = nullptr;
+  GELOGI("[OM2][Hccl][Finalize] hccl host services finalized.");
+  return static_cast<int32_t>(ge::SUCCESS);
 }
 
 bool IsHcclReduceOp(const std::string &hccl_type) {
@@ -100,7 +167,7 @@ bool IsHcclUpdateOutputAddr(const std::string &hccl_type) {
 }
 
 void AssembleGETaskInfo(ge::GETaskInfo &ge_task, const HcclTaskParams &params, ge::OpsKernelInfoStore *store) {
-  ge_task.id = g_hccl_next_task_id.fetch_add(1U);
+  ge_task.id = HcclHostService::Instance().NextTaskId();
   ge_task.type = static_cast<uint16_t>(ge::ModelTaskType::MODEL_TASK_HCCL);
   ge_task.stream = params.main_stream;
   ge_task.privateDef = const_cast<void *>(params.private_def);
@@ -216,17 +283,17 @@ int32_t HcclHostLoadTask(void *instance_handle, const HcclTaskParams *params) {
   if ((instance_handle == nullptr) || (params == nullptr) || (params->hccl_type == nullptr)) {
     return static_cast<int32_t>(ge::PARAM_INVALID);
   }
-  GELOGI("[OM2][Hccl][Load] enter, type=%s, main_stream=%p, in=%u, out=%u, ws=%p/%" PRIu64
+  GELOGI("[OM2][Hccl][Load] enter, instance=%p, type=%s, main_stream=%p, in=%u, out=%u, ws=%p/%" PRIu64
          ", args_base=%p, need_refresh=%u, hvd_metas=%p, hvd_wait=%u, collective=%u, follow=%u, attached=%u, "
          "overflow=%p",
-         params->hccl_type, params->main_stream, params->input_num, params->output_num, params->workspace_addr,
-         params->workspace_size, params->args_base, static_cast<uint32_t>(params->need_refresh),
+         instance_handle, params->hccl_type, params->main_stream, params->input_num, params->output_num,
+         params->workspace_addr, params->workspace_size, params->args_base, static_cast<uint32_t>(params->need_refresh),
          static_cast<const void *>(params->hvd_metas), static_cast<uint32_t>(params->hvd_wait),
          static_cast<uint32_t>(params->is_collective), params->follow_stream_num, params->attached_stream_num,
          params->overflow_addr);
   auto *executor = static_cast<gert::Om2ModelExecutor *>(instance_handle);
-  auto *store = GetHcclStore();
-  // GetHcclStore 所有失败路径（mmDlopen/dlsym/Initialize/store 未注册）经 ErrorResult 返回 nullptr，
+  auto *store = HcclHostService::Instance().GetStore(instance_handle);
+  // GetStore 所有失败路径（mmDlopen/dlsym/Initialize/store 未注册）经 ErrorResult 返回 nullptr，
   // 不判空会在下方虚调用处空指针 coredump；判空后转为可诊断的错误返回
   if (store == nullptr) {
     GELOGE(ge::FAILED, "[OM2] hccl store unavailable, skip load task, hccl_type=%s.", params->hccl_type);
@@ -267,8 +334,12 @@ int32_t HcclHostUnloadTask(void *instance_handle) {
     return static_cast<int32_t>(ge::PARAM_INVALID);
   }
   auto *executor = static_cast<gert::Om2ModelExecutor *>(instance_handle);
-  auto *store = GetHcclStore();
   auto loaded_tasks = executor->TakeHcclLoadedTasks();
+  if (loaded_tasks.empty()) {
+    GELOGI("[OM2][Hccl][Unload] no hccl task recorded, instance=%p, skip.", instance_handle);
+    return static_cast<int32_t>(ge::SUCCESS);
+  }
+  auto *store = HcclHostService::Instance().GetStore(instance_handle);
   GELOGI("[OM2][Hccl][Unload] begin, task_num=%zu.", loaded_tasks.size());
   if (store == nullptr) {
     GELOGW("[OM2][Hccl][Unload] hccl store unavailable, skip UnloadTask, drain %zu tasks.", loaded_tasks.size());
@@ -286,5 +357,12 @@ int32_t HcclHostUnloadTask(void *instance_handle) {
   }
   GELOGI("[OM2] hccl tasks unloaded, num=%zu", loaded_tasks.size());
   return static_cast<int32_t>(ge::SUCCESS);
+}
+
+int32_t HcclHostFinalize(void *instance_handle) {
+  if (instance_handle == nullptr) {
+    return static_cast<int32_t>(ge::PARAM_INVALID);
+  }
+  return HcclHostService::Instance().Finalize(instance_handle);
 }
 }  // namespace gert

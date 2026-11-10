@@ -1330,6 +1330,9 @@ class Om2ModelExecutor::Impl {
     }
     CloseMemFd(run_model_info_.so_fd);
     ReleaseOwnedMemory();
+    if (owner_ != nullptr) {
+      (void)gert::HcclHostFinalize(static_cast<void *>(owner_));
+    }
   }
 
  private:

@@ -340,6 +340,7 @@ Status HcclTaskCodeBuilder::Contribute(TaskSemanticContributeContext &context) {
                                          static_cast<uint64_t>(build_data_.workspace_addrs.size()));
   if (args_size > 0U) {
     InitArgsTableEntry(context, args_size);
+    ++(*context.next_args_table_index);
     GE_ASSERT_SUCCESS(AssembleOrderedArgs());
   }
   GELOGI("[OM2] hccl task compiled, op=%s, type=%s, stream_id=%u, in=%zu, out=%zu, ws=%zu, count=%" PRIu64
