@@ -90,7 +90,7 @@ class MemoryTraceChecker {
     }
     auto expect_pairs = iter->second;
     EXPECT_TRUE(expect_pairs.size() == 1U);
-    expect_pairs[0].second = logic_stream_id;
+    expect_pairs[0].second = std::to_string(logic_stream_id);
     checkers_.emplace_back(RegexsAndChecker({event, expect_pairs}));
     return *this;
   }
@@ -99,8 +99,8 @@ class MemoryTraceChecker {
     auto expect_pairs = kRegexs2CheckerTemplates.at(event);
     EXPECT_TRUE(expect_pairs.size() == 2U);
 
-    expect_pairs[0].second = src_logic_stream_id;
-    expect_pairs[1].second = dst_logic_stream_id;
+    expect_pairs[0].second = std::to_string(src_logic_stream_id);
+    expect_pairs[1].second = std::to_string(dst_logic_stream_id);
     checkers_.emplace_back(RegexsAndChecker({event, expect_pairs}));
     return *this;
   }
@@ -116,7 +116,7 @@ class MemoryTraceChecker {
 
     for (size_t i = 0U; i < target_logs.size(); ++i) {
       std::cout << "index" << i << std::endl;
-      if (checkers_[i].IsLogMatches(target_logs[i])) {
+      if (!checkers_[i].IsLogMatches(target_logs[i])) {
         error_msg << "Index: " << i << "Target logs not as expect: " << target_logs[i] << std::endl;
         std::cout << error_msg.str() << std::endl;
         return false;

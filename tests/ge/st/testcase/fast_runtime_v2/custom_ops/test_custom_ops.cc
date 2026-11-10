@@ -277,8 +277,8 @@ REG_OP(CustomOp)
   EXPECT_EQ(ess->GetExecuteCountByNodeTypeAndKernelType("CustomOp", "FreeArgsGuarder"), 1);
   EXPECT_EQ(ess->GetExecuteCountByNodeTypeAndKernelType("CustomOp", "FreeMemory"), 1);
   EXPECT_TRUE(MemoryTraceChecker(runtime_stub.GetSlogStub(), output_addr)
-                  .AppendExpectEvent(kAllocRe, 0)  // (1) alloc in stream 0
-                  .AppendExpectEvent(kFreeRe, 0)   // (3) free on stream 0, trigger LocalRecycle
+                  .AppendExpectEvent(kFreeRe, 0)          // (1) free in stream 0
+                  .AppendExpectEvent(kBirthRecycleRe, 0)  // (2) recycle on stream 0
                   .AsYouWish());
   ge::diagnoseSwitch::DisableProfiling();
   aclrtDestroyStream(stream);
@@ -423,11 +423,11 @@ TEST_F(TestCustomNodeKernel, custom_op_shape_infer_op_execute_test) {
  *   1. 创建计算图并注册MallocReadOnlyDevArgsCustomOp算子
  *   2. 通过ModelV2Executor编译加载并执行
  *   3. 验证Execute/FreeArgsGuarder/FreeCustomOpWorkspaces kernel执行计数
- *   4. 通过MemoryTraceChecker验证输出Tensor内存的分配和释放事件
+ *   4. 通过MemoryTraceChecker验证输出Tensor内存在stream 0上的释放和回收事件
  *   5. 调用UnLoad卸载模型
  * 预期结果：
  *   1. 算子执行成功，各kernel执行计数符合预期
- *   2. 输出Tensor内存在stream 0上正确分配和释放
+ *   2. 输出Tensor内存在stream 0上正确释放和回收
  *   3. 模型卸载成功
  */
 TEST_F(TestCustomNodeKernel, custom_op_malloc_read_only_dev_args_test) {
@@ -468,8 +468,8 @@ TEST_F(TestCustomNodeKernel, custom_op_malloc_read_only_dev_args_test) {
   EXPECT_EQ(ess->GetExecuteCountByNodeTypeAndKernelType(op_type, "FreeArgsGuarder"), 1);
   EXPECT_EQ(ess->GetExecuteCountByNodeTypeAndKernelType(op_type, "FreeCustomOpWorkspaces"), 1);
   EXPECT_TRUE(MemoryTraceChecker(runtime_stub.GetSlogStub(), output_addr)
-                  .AppendExpectEvent(kAllocRe, 0)
-                  .AppendExpectEvent(kFreeRe, 0)
+                  .AppendExpectEvent(kFreeRe, 0)          // (1) free in stream 0
+                  .AppendExpectEvent(kBirthRecycleRe, 0)  // (2) recycle on stream 0
                   .AsYouWish());
   EXPECT_EQ(model_executor->UnLoad(), GRAPH_SUCCESS);
   aclrtDestroyStream(stream);
