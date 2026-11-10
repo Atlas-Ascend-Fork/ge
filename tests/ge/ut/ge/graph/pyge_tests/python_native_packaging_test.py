@@ -297,6 +297,162 @@ class PassFallbackHeadersTest(unittest.TestCase):
             )
 
 
+class FallbackIncludeClosureTest(unittest.TestCase):
+    """Embedded bridge sources must not include private headers outside the inventory.
+
+    The main build compiles them with -I inc/framework and -I inc/graph_metadef,
+    so a missing entry stays invisible until a host without prebuilt artifacts
+    runs fallback codegen: the on-site compile then only sees the materialized
+    tree plus the installed include/pkg_inc, and GEInitialize fails.
+    """
+
+    INCLUDE_PATTERN = re.compile(r'^\s*#\s*include\s*"([^"]+)"', re.M)
+    # Mirrors the _collect_files destinations in gen_fallback_resources.py main().
+    BRIDGE_DESTINATIONS = {
+        "bridge-source": ("src/bridge",),
+        "bridge-header": ("include/bridge",),
+        "bridge-runtime-header": ("include/bridge", "common/python_runtime"),
+        "bridge-tree-header": ("include/bridge", "runtime/custom_op"),
+        "bridge-graph-header": ("include/bridge", "graph/custom_op"),
+        "bridge-debug-header": ("include/bridge", "graph/debug"),
+        "bridge-metadef-header": ("include/bridge", "graph"),
+        "bridge-utils-header": ("include/bridge", "graph/utils"),
+        "bridge-framework-header": ("include/bridge", "framework/common"),
+    }
+    PRIVATE_HEADER_ROOTS = (
+        "inc",
+        "base",
+        "runtime",
+        "compiler",
+        "parser",
+        "graph_metadef",
+        "dflow",
+        "api",
+    )
+    SHIPPED_DIRS = {"external", "pkg_inc", "tests"}
+
+    def _variables(self, text):
+        raw = dict(re.findall(r"set\((GE_PYTHON_\w+?)\s+(.*?)\)\s*\n", text, re.S))
+
+        def expand(value, depth=0):
+            if depth > 8:
+                return value
+            return re.sub(
+                r"\$\{(\w+)\}",
+                lambda item: expand(raw.get(item.group(1), item.group(0)), depth + 1),
+                value,
+            )
+
+        return {name: expand(body).split() for name, body in raw.items()}
+
+    def _manifests(self, text=None):
+        """Parse the production inventory: {component: {materialized: source}}."""
+        text = (
+            (ROOT / "api/python/ge/CMakeLists.txt").read_text()
+            if text is None
+            else text
+        )
+        variables = self._variables(text)
+        manifests = {}
+        for block in re.finditer(r"add_custom_command\((.*?)\n\)", text, re.S):
+            body = block.group(1)
+            if "gen_fallback_resources.py" not in body:
+                continue
+            found = re.search(r"--component\s+(\S+)", body)
+            # --component defaults to "pass" in gen_fallback_resources.py.
+            component = found.group(1) if found else "pass"
+            manifest = {}
+            for flag, destination in self.BRIDGE_DESTINATIONS.items():
+                valued = re.search(
+                    r"--" + flag + r"\s+(.*?)(?=\n\s*(?:--|DEPENDS|COMMAND|\Z))",
+                    body,
+                    re.S,
+                )
+                if not valued:
+                    continue
+                expanded = re.sub(
+                    r"\$\{(\w+)\}",
+                    lambda item: " ".join(variables.get(item.group(1), [])),
+                    valued.group(1),
+                )
+                for source in expanded.split():
+                    source = source.replace("${AIR_CODE_DIR}", "").lstrip("/")
+                    if source:
+                        key = "/".join(destination + (os.path.basename(source),))
+                        manifest[key] = source
+            if manifest:
+                manifests[component] = manifest
+        return manifests
+
+    def _private_headers(self):
+        """Index every GE-private include form to its repository path."""
+        index = {}
+        for name in self.PRIVATE_HEADER_ROOTS:
+            for root, dirs, files in os.walk(ROOT / name):
+                dirs[:] = [item for item in dirs if item not in self.SHIPPED_DIRS]
+                for file_name in files:
+                    if not file_name.endswith((".h", ".hpp")):
+                        continue
+                    path = Path(root, file_name).relative_to(ROOT).as_posix()
+                    parts = path.split("/")
+                    for depth in range(1, len(parts)):
+                        index.setdefault("/".join(parts[depth:]), []).append(path)
+        return index
+
+    def _missing_headers(self, manifest, index):
+        missing = []
+        for destination, source in sorted(manifest.items()):
+            path = ROOT / source
+            if not path.is_file():
+                continue
+            for include in self.INCLUDE_PATTERN.findall(
+                path.read_text(errors="replace")
+            ):
+                if ("include/bridge/" + include) in manifest:
+                    continue
+                if include in index:
+                    missing.append((destination, include, index[include][0]))
+        return missing
+
+    def test_embedded_bridge_include_closure_is_complete(self):
+        manifests = self._manifests()
+        self.assertIn("custom_op", manifests)
+        index = self._private_headers()
+        problems = [
+            '{}: {} includes "{}" but {} is not embedded'.format(
+                component, destination, include, source
+            )
+            for component, manifest in sorted(manifests.items())
+            for destination, include, source in self._missing_headers(manifest, index)
+        ]
+        self.assertEqual([], problems, "\n".join(problems))
+
+    def test_custom_op_bridge_embeds_artifact_provider_header(self):
+        # Regression anchor for the !5822 on-site compile failure.
+        self.assertIn(
+            "include/bridge/graph/custom_op/artifact_provider.h",
+            self._manifests()["custom_op"],
+        )
+
+    def test_closure_check_flags_unlisted_private_header(self):
+        index = self._private_headers()
+        self.assertIn("graph/custom_op/model_scope.h", index)
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "probe.cc"
+            source.write_text('#include "graph/custom_op/model_scope.h"\n')
+            missing = self._missing_headers({"src/bridge/probe.cc": str(source)}, index)
+        self.assertEqual(
+            [
+                (
+                    "src/bridge/probe.cc",
+                    "graph/custom_op/model_scope.h",
+                    "inc/graph_metadef/graph/custom_op/model_scope.h",
+                )
+            ],
+            missing,
+        )
+
+
 class FallbackResourceCompressionTest(unittest.TestCase):
     # The resource generator must run on every HI_PYTHON of the cp37-cp314
     # matrix even though some hosts only provide Python 3.7/3.8.

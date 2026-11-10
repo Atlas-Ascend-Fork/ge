@@ -43,6 +43,7 @@ struct H2DCopyHelper {
   size_t offset;
   size_t file_length;
   size_t left_size;
+  bool has_declared_length{false};
 };
 
 struct SharedConstantCopyHelper {

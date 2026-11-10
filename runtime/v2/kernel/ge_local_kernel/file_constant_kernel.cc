@@ -9,7 +9,10 @@
  */
 
 #include "file_constant_kernel.h"
+#include <algorithm>
 #include <fstream>
+#include <memory>
+#include <new>
 #include "securec.h"
 #include "graph/error_codes.h"
 #include "graph/def_types.h"
@@ -20,6 +23,7 @@
 #include "common/checker.h"
 #include "exe_graph/runtime/extended_kernel_context.h"
 #include "common/file_constant_utils/file_constant_utils.h"
+#include "common/plugin/ge_make_unique_util.h"
 #include "exe_graph/runtime/runtime_attrs.h"
 #include "exe_graph/runtime/gert_mem_allocator.h"
 #include "kernel/kernel_log.h"
@@ -41,6 +45,7 @@ struct FileConstantInfo {
   std::string file_path;
   size_t file_offset;
   size_t file_length;
+  bool has_declared_length{false};
 
   std::string DebugString() const {
     std::stringstream ss;
@@ -50,40 +55,89 @@ struct FileConstantInfo {
   }
 };
 
-ge::graphStatus CopyWeightFromFileAsync(const void *const curr_dev_ptr, const FileConstantInfo &file_constant_info,
-                                        size_t &left_size, aclrtStream stream) {
-  ge::graphStatus ret = ge::GRAPH_SUCCESS;
-  GE_ASSERT_TRUE(left_size >= file_constant_info.file_length);
-  const std::string real_path = ge::RealPath(file_constant_info.file_path.c_str());
-  std::ifstream ifs(real_path, std::ifstream::binary);
-  GE_ASSERT_TRUE(ifs.is_open(), "[Open][File] %s failed.", file_constant_info.file_path.c_str());
-  ifs.clear();
-  (void)ifs.seekg(static_cast<int64_t>(file_constant_info.file_offset), std::ifstream::beg);
-  size_t used_memory = 0U;
-  std::string compress_nodes;
-  compress_nodes.reserve(static_cast<size_t>(kBlockSize));
-
-  while ((!ifs.eof()) && (used_memory < file_constant_info.file_length)) {
-    (void)ifs.read(&compress_nodes[0U], kBlockSize);
+namespace {
+// 按 kBlockSize 分块异步拷贝文件内容到设备内存
+ge::graphStatus CopyBlocksAsync(const void *const curr_dev_ptr, const std::string &real_path, std::ifstream &ifs,
+                                const size_t usable_size, const size_t left_size, aclrtStream stream,
+                                size_t &used_memory) {
+  // 分块上限为 kBlockSize, 小权重只分配实际需要的量; MakeUnique 会零初始化缓冲区
+  const size_t buf_size = std::min<size_t>(static_cast<size_t>(kBlockSize), std::max<size_t>(usable_size, 1U));
+  const std::unique_ptr<char[]> compress_nodes = ge::MakeUnique<char[]>(buf_size);
+  GE_ASSERT_NOTNULL(compress_nodes);
+  while ((!ifs.eof()) && (used_memory < usable_size)) {
+    const size_t once_size = std::min(buf_size, usable_size - used_memory);
+    (void)ifs.read(compress_nodes.get(), static_cast<std::streamsize>(once_size));
     auto copy_len_once = static_cast<size_t>(ifs.gcount());
-    if ((file_constant_info.file_length - used_memory) < copy_len_once) {
-      copy_len_once = file_constant_info.file_length - used_memory;
+    // read 失败(如 I/O 错误)时可能既不推进读指针也不置 eofbit, 必须显式退出避免死循环
+    if (copy_len_once == 0U) {
+      GELOGE(ge::GRAPH_FAILED, "Read file[%s] failed or got no data at used memory[%zu].", real_path.c_str(),
+             used_memory);
+      return ge::GRAPH_FAILED;
+    }
+    if ((usable_size - used_memory) < copy_len_once) {
+      copy_len_once = usable_size - used_memory;
     }
     GELOGI("copy %zu bytes to memory.", copy_len_once);
     void *const cur_dev_ptr = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(curr_dev_ptr) + used_memory);
-    const aclError rts_error = aclrtMemcpyAsync(cur_dev_ptr, left_size - used_memory, &compress_nodes[0U],
+    const aclError rts_error = aclrtMemcpyAsync(cur_dev_ptr, left_size - used_memory, compress_nodes.get(),
                                                 copy_len_once, ACL_MEMCPY_HOST_TO_BUF_TO_DEVICE, stream);
     if (rts_error != ACL_SUCCESS) {
       GELOGE(ge::GRAPH_FAILED, "copy failed, result code = %d.", rts_error);
-      ret = RT_ERROR_TO_GE_STATUS(rts_error);
-      break;
+      return RT_ERROR_TO_GE_STATUS(rts_error);
     }
     used_memory += copy_len_once;
   }
+  return ge::GRAPH_SUCCESS;
+}
+
+// 文件未覆盖的部分显式清零, 避免把残留的设备内存内容暴露给算子
+ge::graphStatus ClearDeviceTailAsync(const void *const curr_dev_ptr, const size_t used_memory, const size_t total_size,
+                                     const std::string &real_path, aclrtStream stream) {
+  if (used_memory >= total_size) {
+    return ge::GRAPH_SUCCESS;
+  }
+  void *const tail_dev_ptr = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(curr_dev_ptr) + used_memory);
+  const size_t tail_size = total_size - used_memory;
+  GELOGI("clear %zu bytes tail of file constant for file[%s].", tail_size, real_path.c_str());
+  const aclError rts_error = aclrtMemsetAsync(tail_dev_ptr, tail_size, 0, tail_size, stream);
+  if (rts_error != ACL_SUCCESS) {
+    GELOGE(ge::GRAPH_FAILED, "clear tail of file constant failed, result code = %d.", rts_error);
+    return RT_ERROR_TO_GE_STATUS(rts_error);
+  }
+  return ge::GRAPH_SUCCESS;
+}
+}  // namespace
+
+ge::graphStatus CopyWeightFromFileAsync(const void *const curr_dev_ptr, const FileConstantInfo &file_constant_info,
+                                        size_t &left_size, aclrtStream stream) {
+  GE_ASSERT_TRUE(left_size >= file_constant_info.file_length);
+  const size_t total_size = left_size;
+  const std::string real_path = ge::RealPath(file_constant_info.file_path.c_str());
+  std::ifstream ifs(real_path, std::ifstream::binary);
+  GE_ASSERT_TRUE(ifs.is_open(), "[Open][File] %s failed.", file_constant_info.file_path.c_str());
+  size_t usable_size = 0U;
+  GE_ASSERT_TRUE(ge::FileConstantUtils::CheckAndSeekWeightFile(ifs, real_path, file_constant_info.file_offset,
+                                                               file_constant_info.file_length, usable_size,
+                                                               file_constant_info.has_declared_length) == ge::SUCCESS,
+                 "Check weight file[%s] failed, offset[%zu], length[%zu].", real_path.c_str(),
+                 file_constant_info.file_offset, file_constant_info.file_length);
+  size_t used_memory = 0U;
+  const auto copy_ret = CopyBlocksAsync(curr_dev_ptr, real_path, ifs, usable_size, total_size, stream, used_memory);
   ifs.close();
+  // 与前序实现保持一致: 无论成功与否都按实际读入量回填剩余空间
   left_size -= used_memory;
+  if (copy_ret != ge::GRAPH_SUCCESS) {
+    return copy_ret;
+  }
+  // 实际读入的字节数必须与可读长度一致, 否则说明文件在读取期间被截断
+  if (used_memory != usable_size) {
+    GELOGE(ge::GRAPH_FAILED, "Read [%zu] bytes from file[%s] but expect [%zu] bytes.", used_memory, real_path.c_str(),
+           usable_size);
+    return ge::GRAPH_FAILED;
+  }
+  const auto clear_ret = ClearDeviceTailAsync(curr_dev_ptr, used_memory, total_size, real_path, stream);
   GELOGI("used memory is %zu.", used_memory);
-  return ret;
+  return clear_ret;
 }
 
 ge::graphStatus AllocHbmMemForFileConstant(const size_t tensor_size, KernelContext *context) {
@@ -193,6 +247,8 @@ ge::graphStatus FileConstantKernel(KernelContext *context) {
       GELOGD("Get file constant weight path %s.", file_constant_info.file_path.c_str());
     }
     auto left_size = context->GetInputValue<size_t>(static_cast<size_t>(FileConstantKernelInputIdx::kOutputSizeIdx));
+    // length 属性为 0 时以分配尺寸作为读取上限(可能含对齐 padding), 允许权重文件偏短, 交由尾部清零兜底
+    file_constant_info.has_declared_length = (file_constant_info.file_length != 0U);
     file_constant_info.file_length =
         (file_constant_info.file_length == 0U ? left_size : file_constant_info.file_length);
 

@@ -105,9 +105,13 @@ SET(GRAPH_SOURCE_LIST
     "normal_graph/operator_factory_impl.cc"
     "normal_graph/op_proto_ledger.cc"
     "normal_graph/graph.cc"
-    "normal_graph/gnode.cc"
+    "normal_graph/graph_impl.cc"
     "normal_graph/compute_graph_backend.cc"
     "normal_graph/compute_node_backend.cc"
+    "normal_graph/execute_graph_backend.cc"
+    "normal_graph/execute_node_backend.cc"
+    "normal_graph/gnode.cc"
+    "normal_graph/gnode_impl.cc"
     "normal_graph/named_io_node_builder.cc"
     "args_format/args_format_serializer.cc"
     "args_format/arg_desc_info.cc"
@@ -126,6 +130,7 @@ SET(GRAPH_SOURCE_LIST
     "utils/ffts_graph_utils.cc"
     "utils/transformer_utils.cc"
     "utils/graph_utils_ex.cc"
+    "normal_graph/execute_graph_backend_utils.cc"
     "utils/node_utils_ex.cc"
     "utils/op_desc_utils_ex.cc"
     "utils/graph_thread_pool.cc"
@@ -398,6 +403,8 @@ set(STUB_HEADER_LIST
     ${GE_METADEF_INC_DIR}/graph/custom_op_pull_registry.h
     ${GE_METADEF_INC_DIR}/graph/custom_op/args_refresh.h
     ${GE_METADEF_INC_DIR}/graph/custom_op_registry.h
+    # hook 的注册/查询入口由 libgraph.so 提供，桩形态下引用方需从桩版解析。
+    ${GE_METADEF_INC_DIR}/graph/custom_op/model_scope.h
 )
 
 if (BUILD_OPEN_PROJECT OR ENABLE_OPEN_SRC)
@@ -452,6 +459,12 @@ set(STUB_EXTRA_SRCS "")
 if (NOT "${PRODUCT}" STREQUAL "ascend031")
     list(APPEND STUB_EXTRA_SRCS ${AIR_CODE_DIR}/base/common/ge_api_error_codes.cc)
 endif ()
+# GetRegisteredIrDefFromGraph 属 libgraph.so，而引用方 libge_common_base.so 的 DT_NEEDED
+# 只有 libgraph_base.so，桩形态下需由桩包提供。
+# 不走 STUB_HEADER_LIST 自动生成：该头会拉进 ir_option 静态表使 TU 涨到 31 KB，且生成体
+# return ge::SUCCESS 需要的错误码头会带出 weak 的 RegisterErrorNo，破坏上面的隔离。
+# 挂此处以便 atc_stub 与 fwk_stub 两个产物都覆盖。
+list(APPEND STUB_EXTRA_SRCS ${CMAKE_CURRENT_LIST_DIR}/stub/stub_ir_definitions_query.cc)
 
 #############################################################
 

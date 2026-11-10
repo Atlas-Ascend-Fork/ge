@@ -1798,8 +1798,9 @@ TEST_F(LlmServiceFlowFuncSTest, allocate_cache_failed) {
   auto &req_info = *static_cast<AllocateCacheReqInfo *>(flow_msg->GetTensor()->GetData());
   req_info.cache_id = 666;
   req_info.num_tensors = 1;
-  req_info.num_dims = 1;
-  req_info.dims[0] = 128000000000;
+  req_info.num_dims = 2;
+  req_info.dims[0] = 1;
+  req_info.dims[1] = 8000000000LL;
   req_info.is_allocate_blocks = false;
   EXPECT_EQ(llm_service_flow_func.AllocateCache(run_context, msgs), FLOW_FUNC_SUCCESS);
   auto output_data = static_cast<int32_t *>(out_msg->GetTensor()->GetData());

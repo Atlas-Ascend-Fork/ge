@@ -175,6 +175,8 @@ RETURN_STATEMENTS = {
         "    static std::map<ge::AscendString, TuningTilingDefConstructor> instance;\n    return instance;"
     ),
     "std::shared_ptr<TuningTilingDef>": "    return nullptr;",
+    "std::shared_ptr<ExecuteGraph>": "    return nullptr;",
+    "std::shared_ptr<ExecuteGraphBackend>": "    return nullptr;",
     "OpBankKeyConvertFun&": "    return convert_func_;",
     "OpBankParseFun&": "    return parse_func_;",
     "OpBankLoadFun&": "    return load_func_;",
@@ -231,6 +233,7 @@ RETURN_STATEMENTS = {
     "std::vector<FieldInfo>": "    return {};",
     "std::vector<GNodePtr>": "    return {};",
     "std::vector<std::pair<GNodePtr, int32_t>>": "    return {};",
+    "std::vector<std::pair<FastNode *, int32_t>>": "    return {};",
     "std::vector<ge::NodePtr>": "    return {};",
     "std::vector<NodeToOutAnchor>": "    return {};",
     "std::vector<ConstGeTensorPtr>": "    return {};",
@@ -544,7 +547,7 @@ pat_format_func = re.compile(
     r"""^((?:const\s+)?
     (?:[:\w]+
     |std::(?:vector|set|shared_ptr|unique_ptr)<[:\w* ]+>
-    |std::(?:vector|set|shared_ptr|unique_ptr)<std::(?:vector|pair)<[:\w, ]+>>
+    |std::(?:vector|set|shared_ptr|unique_ptr)<std::(?:vector|pair)<[:\w,* ]+>>
     |std::(?:unique_ptr)<[:\w, \[\]]+>
     |std::(?:vector|set|shared_ptr)<std::string>
     |std::(?:map|unordered_map|pair)<[:\w]+[, ]+[:\w]+>
@@ -561,7 +564,7 @@ pat_search_func = re.compile(
     r"""^(?:const\s+)?
     (?P<ret_type>(?:[:\w]+
     |std::(?:vector|set|shared_ptr|unique_ptr)<[:\w* ]+>
-    |std::(?:vector|set|shared_ptr|unique_ptr)<std::(?:vector|pair)<[:\w, ]+>>
+    |std::(?:vector|set|shared_ptr|unique_ptr)<std::(?:vector|pair)<[:\w,* ]+>>
     |std::(?:unique_ptr)<[:\w, \[\]]+>
     |std::(?:vector|set|shared_ptr)<std::string>
     |std::(?:map|unordered_map|pair)<[:\w]+[, ]+[:\w]+>

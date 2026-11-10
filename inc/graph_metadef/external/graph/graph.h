@@ -11,6 +11,9 @@
 #ifndef INC_EXTERNAL_GRAPH_GRAPH_H_
 #define INC_EXTERNAL_GRAPH_GRAPH_H_
 
+#ifdef __cplusplus
+
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,6 +26,10 @@ namespace ge {
 class Graph;
 class GraphImpl;
 class GraphBuffer;
+
+/* 图后端类别枚举 C_GraphKind（C_GRAPH_COMPUTE = 0 计算图，C_GRAPH_EXECUTE = 1 执行图）统一定义在
+   metadef 公共头 graph/c_types.h 中；ge 侧完成依赖切换前，GraphKind 暂用整型别名，取值与该枚举一致。 */
+using GraphKind = int32_t;
 
 using GraphImplPtr = std::shared_ptr<GraphImpl>;
 using GraphPtr = std::shared_ptr<Graph>;
@@ -39,6 +46,9 @@ class GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY Graph {
   explicit Graph(const std::string &name);
 
   explicit Graph(const char_t *name);
+
+  // The backend kind is fixed for the lifetime of the graph.
+  Graph(const char_t *name, GraphKind kind);
 
   Graph() = default;
 
@@ -210,5 +220,7 @@ class GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY Graph {
   GraphImplPtr impl_{nullptr};
 };
 }  // namespace ge
+
+#endif  // __cplusplus
 
 #endif  // INC_EXTERNAL_GRAPH_GRAPH_H_

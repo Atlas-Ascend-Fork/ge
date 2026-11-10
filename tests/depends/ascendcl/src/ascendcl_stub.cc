@@ -666,6 +666,13 @@ aclError AclRuntimeStub::aclrtMemset(void *devPtr, size_t maxCount, int32_t valu
   return ACL_SUCCESS;
 }
 
+aclError AclRuntimeStub::aclrtMemsetAsync(void *devPtr, size_t maxCount, int32_t value, size_t count,
+                                          aclrtStream stream) {
+  (void)stream;
+  // 测试桩无真实流语义, 复用同步实现以保持失败注入(maxCount == 321)行为一致
+  return aclrtMemset(devPtr, maxCount, value, count);
+}
+
 aclError AclRuntimeStub::aclrtFree(void *devPtr) {
   delete[] (uint8_t *)devPtr;
   return ACL_SUCCESS;
@@ -1622,6 +1629,10 @@ aclError aclrtMallocHostWithCfg(void **hostPtr, size_t size, aclrtMallocConfig *
 
 aclError aclrtMemset(void *devPtr, size_t maxCount, int32_t value, size_t count) {
   return ge::AclRuntimeStub::GetInstance()->aclrtMemset(devPtr, maxCount, value, count);
+}
+
+aclError aclrtMemsetAsync(void *devPtr, size_t maxCount, int32_t value, size_t count, aclrtStream stream) {
+  return ge::AclRuntimeStub::GetInstance()->aclrtMemsetAsync(devPtr, maxCount, value, count, stream);
 }
 
 aclError aclrtFree(void *devPtr) {

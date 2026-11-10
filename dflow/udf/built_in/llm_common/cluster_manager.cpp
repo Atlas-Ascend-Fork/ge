@@ -9,6 +9,7 @@
  */
 
 #include "llm_common/cluster_manager.h"
+#include <cstdint>
 #include "flow_func/flow_func_log.h"
 #include "flow_func/meta_flow_func.h"
 #include "common/scope_guard.h"
@@ -70,6 +71,11 @@ int32_t ClusterManager::InitServerConn(const std::shared_ptr<MetaParams> &params
     UDF_LOG_ERROR("GetAttr port failed.");
     return ret;
   }
+  if ((listen_ip < 0L) || (listen_ip > static_cast<int64_t>(UINT32_MAX)) || (listen_port < 0L) ||
+      (listen_port > static_cast<int64_t>(UINT16_MAX))) {
+    UDF_LOG_ERROR("Invalid listen ip:%ld or port:%ld.", listen_ip, listen_port);
+    return FLOW_FUNC_FAILED;
+  }
   auto entity_ret = LlmCommEntityMgr::GetInstance().InitServerConn(static_cast<uint32_t>(listen_ip),
                                                                    static_cast<uint16_t>(listen_port));
   if (entity_ret != FsmStatus::kFsmSuccess) {
@@ -93,6 +99,7 @@ int32_t ClusterManager::UpdateLink(const std::shared_ptr<MetaRunContext> &run_co
     return FLOW_FUNC_FAILED;
   }
   const auto update_link_req = static_cast<UpdateLinkReqInfo *>(input_msgs.front()->GetTensor()->GetData());
+  const auto req_size = input_msgs.front()->GetTensor()->GetDataSize();
   if ((update_link_req->cluster_num > kUpdateLinkMaxCount)) {
     UDF_LOG_ERROR("Cluster num:%u is over limit:%zu.", update_link_req->cluster_num, kUpdateLinkMaxCount);
     return FLOW_FUNC_FAILED;
@@ -100,6 +107,10 @@ int32_t ClusterManager::UpdateLink(const std::shared_ptr<MetaRunContext> &run_co
   const int64_t output_idx = update_link_output_idx_;
   UDF_LOG_INFO("Begin to update link, operator_type:%u, cluster_num:%u, device_index:%ld, output_idx:%ld.",
                update_link_req->operator_type, update_link_req->cluster_num, device_index_, output_idx);
+  if ((update_link_output_->GetTensor() == nullptr) || (update_link_output_->GetTensor()->GetData() == nullptr)) {
+    UDF_LOG_ERROR("Update link output tensor is invalid.");
+    return FLOW_FUNC_FAILED;
+  }
   auto update_link_ret = static_cast<int32_t *>(update_link_output_->GetTensor()->GetData());
   if ((update_link_req->cluster_num + LlmCommEntityMgr::GetInstance().QueryLinkNum()) > kMaxLinkNum) {
     UDF_LOG_ERROR("Link num is over limit:%u", kMaxLinkNum);
@@ -107,7 +118,7 @@ int32_t ClusterManager::UpdateLink(const std::shared_ptr<MetaRunContext> &run_co
       update_link_ret[index] = static_cast<int32_t>(FsmStatus::kFsmParamInvalid);
     }
   } else {
-    LinkReqHandler::GetInstance().SetUpdateLinkReqInfo(update_link_req, update_link_ret, device_index_);
+    LinkReqHandler::GetInstance().SetUpdateLinkReqInfo(update_link_req, req_size, update_link_ret, device_index_);
     (void)LinkReqHandler::GetInstance().HandleReq(start_tick);
     StatisticManager::GetInstance().Dump();
   }
@@ -130,8 +141,13 @@ int32_t ClusterManager::UnlinkData(const std::shared_ptr<MetaRunContext> &run_co
   if (CheckInputTensor(input_msgs, 1UL, 0UL, sizeof(UpdateLinkReqInfo), true) != FLOW_FUNC_SUCCESS) {
     return FLOW_FUNC_FAILED;
   }
+  if ((unlink_output_->GetTensor() == nullptr) || (unlink_output_->GetTensor()->GetData() == nullptr)) {
+    UDF_LOG_ERROR("Unlink output tensor is invalid.");
+    return FLOW_FUNC_FAILED;
+  }
   auto output_data = static_cast<int32_t *>(unlink_output_->GetTensor()->GetData());
   const auto update_link_req = static_cast<UpdateLinkReqInfo *>(input_msgs.front()->GetTensor()->GetData());
+  const auto req_size = input_msgs.front()->GetTensor()->GetDataSize();
   if (update_link_req->operator_type != static_cast<uint32_t>(LinkReqType::kServerUnlink) &&
       update_link_req->operator_type != static_cast<uint32_t>(LinkReqType::kUnlink)) {
     UDF_LOG_ERROR("Invalid param, operator type must be unlink.");
@@ -140,7 +156,7 @@ int32_t ClusterManager::UnlinkData(const std::shared_ptr<MetaRunContext> &run_co
   }
   UDF_LOG_INFO("Begin to unlink, cluster_num:%u, output_idx:%ld.", update_link_req->cluster_num, unlink_output_idx_);
   LinkReqHandler::GetInstance().SetUpdateLinkReqInfo(
-      update_link_req, static_cast<int32_t *>(unlink_output_->GetTensor()->GetData()), device_index_);
+      update_link_req, req_size, static_cast<int32_t *>(unlink_output_->GetTensor()->GetData()), device_index_);
   (void)LinkReqHandler::GetInstance().HandleReq(start_tick);
   StatisticManager::GetInstance().Dump();
   int32_t ret = run_context->SetOutput(unlink_output_idx_, unlink_output_);
@@ -150,8 +166,13 @@ int32_t ClusterManager::UnlinkData(const std::shared_ptr<MetaRunContext> &run_co
 }
 
 FsmStatus ClusterManager::CheckPullReqSize(uint64_t msg_data_size, const PullKvReqInfo *req_info) {
+  if ((req_info == nullptr) || (msg_data_size < sizeof(PullKvReqInfo))) {
+    UDF_LOG_ERROR("Invalid pull req, msg size:%lu.", msg_data_size);
+    return FsmStatus::kFsmParamInvalid;
+  }
   uint64_t block_info_byte_size = msg_data_size - sizeof(PullKvReqInfo);
-  if ((req_info->block_count + req_info->prompt_block_count) > (block_info_byte_size / sizeof(uint64_t))) {
+  const uint64_t num_blocks = static_cast<uint64_t>(req_info->block_count) + req_info->prompt_block_count;
+  if (num_blocks > (block_info_byte_size / sizeof(uint64_t))) {
     UDF_LOG_ERROR("Invalid req size, block_count:%u, prompt_block_count:%u, real count:%lu.", req_info->block_count,
                   req_info->prompt_block_count, block_info_byte_size / sizeof(uint64_t));
     return FsmStatus::kFsmParamInvalid;

@@ -26,8 +26,8 @@ class TimeBatchFlowFunc : public MetaFlowFunc {
   int32_t CheckTensorInfo(const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) const;
   int32_t CheckInput(const std::vector<std::shared_ptr<FlowMsg>> &input_msgs);
   int32_t UpdateState(const std::vector<std::shared_ptr<FlowMsg>> &input_msgs);
-  void CalcCopyParams(const std::vector<std::shared_ptr<FlowMsg>> &input, std::vector<int64_t> &input_copy_sizes,
-                      std::vector<int64_t> &output_shape, int64_t &output_flat_dim0, uint32_t &max_step) const;
+  int32_t CalcCopyParams(const std::vector<std::shared_ptr<FlowMsg>> &input, std::vector<int64_t> &input_copy_sizes,
+                         std::vector<int64_t> &output_shape, int64_t &output_flat_dim0, uint32_t &max_step) const;
   int32_t TimeBatchAll();
   int32_t TimeBatch(const std::vector<std::shared_ptr<FlowMsg>> &input, const uint32_t out_index);
   int32_t PublishErrorOut(const int32_t error_code) const;

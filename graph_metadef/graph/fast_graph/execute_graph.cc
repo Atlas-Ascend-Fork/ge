@@ -9,10 +9,14 @@
  */
 
 #include "graph/fast_graph/execute_graph.h"
+#include "common/checker.h"
+#include "common/util/mem_utils.h"
 #include "framework/common/debug/ge_log.h"
 #include "common/ge_common/ge_types.h"
 #include "fast_graph/fast_graph_impl.h"
 #include "graph/utils/fast_node_utils.h"
+#include "graph/utils/node_utils.h"
+#include "exe_graph/lowering/builtin_node_types.h"
 
 namespace ge {
 namespace {
@@ -206,9 +210,79 @@ void InitNodeStatus(const ExecuteGraph *compute_graph, std::vector<NodeStatus> &
 }
 }  // namespace
 
+struct ExecuteGraphNodeHandleState {
+  uint64_t next_generation = 0U;
+  std::unique_ptr<std::unordered_map<const FastNode *, uint64_t>> generations;
+};
+
+ExecuteGraph::NodeHandle ExecuteGraph::GetNodeHandle(const FastNode *node) {
+  NodeHandle handle;
+  if ((node == nullptr) || (FindNode(reinterpret_cast<size_t>(node)) != node)) {
+    return handle;
+  }
+  auto &state = *node_handle_state_;
+  if (state.generations == nullptr) {
+    state.generations = std::make_unique<std::unordered_map<const FastNode *, uint64_t>>();
+  }
+  auto it = state.generations->find(node);
+  if (it == state.generations->end()) {
+    if (state.next_generation == UINT64_MAX) {
+      GELOGE(GRAPH_FAILED, "Node handle generation exhausted");
+      return handle;
+    }
+    it = state.generations->emplace(node, ++state.next_generation).first;
+  }
+  handle.state_ = node_handle_state_;
+  handle.node_ = node;
+  handle.generation_ = it->second;
+  return handle;
+}
+
+FastNode *ExecuteGraph::ResolveNode(const NodeHandle &handle) const {
+  if ((handle.generation_ == 0U) || (handle.state_.lock() != node_handle_state_) ||
+      (node_handle_state_->generations == nullptr)) {
+    return nullptr;
+  }
+  auto &generations = *node_handle_state_->generations;
+  const auto it = generations.find(handle.node_);
+  if ((it == generations.end()) || (it->second != handle.generation_)) {
+    return nullptr;
+  }
+  // Search live nodes instead of dereferencing an address that may have migrated and been freed elsewhere.
+  const auto *node = FindNode(reinterpret_cast<size_t>(handle.node_));
+  if (node != handle.node_) {
+    generations.erase(it);
+    return nullptr;
+  }
+  return const_cast<FastNode *>(node);
+}
+
+void ExecuteGraph::InvalidateNodeHandles() {
+  if (node_handle_state_->generations != nullptr) {
+    node_handle_state_->generations->clear();
+  }
+}
+
+bool ExecuteGraph::HasHandleNode(const FastNode *node) const {
+  return (node_handle_state_->generations != nullptr) && CheckNodeIsInGraph(node);
+}
+
+void ExecuteGraph::OnNodeAdded(const FastNode *node, bool was_in_graph) {
+  if ((node != nullptr) && !was_in_graph && (node_handle_state_->generations != nullptr)) {
+    node_handle_state_->generations->erase(node);
+  }
+}
+
+void ExecuteGraph::OnNodeRemoved(graphStatus status, const FastNode *node) {
+  if ((status == GRAPH_SUCCESS) && (node_handle_state_->generations != nullptr)) {
+    node_handle_state_->generations->erase(node);
+  }
+}
+
 ExecuteGraph::ExecuteGraph(const std::string &name) {
   graph_shared_ = std::make_shared<FastGraphImpl<FastNode, ExecuteGraph>>(name);
   graph_shared_->SetOwnerGraph(this);
+  node_handle_state_ = std::make_shared<ExecuteGraphNodeHandleState>();
 }
 
 ExecuteGraph &ExecuteGraph::operator=(ge::ExecuteGraph &exec_graph) {
@@ -217,6 +291,7 @@ ExecuteGraph &ExecuteGraph::operator=(ge::ExecuteGraph &exec_graph) {
   }
 
   graph_shared_ = exec_graph.graph_shared_;
+  node_handle_state_ = exec_graph.node_handle_state_;
   names_to_subgraph_ = exec_graph.names_to_subgraph_;
   inputs_order_ = exec_graph.inputs_order_;
   AttrHolder::SwapBase(exec_graph);
@@ -228,6 +303,7 @@ ExecuteGraph &ExecuteGraph::CompleteCopy(ge::ExecuteGraph &exec_graph) {
     return *this;
   }
 
+  InvalidateNodeHandles();
   graph_shared_->DeepCopy(*(exec_graph.graph_shared_));
 
   const std::map<string, GeAttrValue> &original_attrs = AttrUtils::GetAllAttrs(exec_graph);
@@ -245,11 +321,15 @@ ExecuteGraph &ExecuteGraph::CompleteCopy(ge::ExecuteGraph &exec_graph) {
 }
 
 FastNode *ExecuteGraph::AddNode(const OpDescPtr &op) {
-  return graph_shared_->AddNode(op);
+  auto *node = graph_shared_->AddNode(op);
+  OnNodeAdded(node);
+  return node;
 }
 
 FastNode *ExecuteGraph::AddNode(const OpDescPtr &op, int64_t id) {
-  return graph_shared_->AddNode(op, id);
+  auto *node = graph_shared_->AddNode(op, id);
+  OnNodeAdded(node);
+  return node;
 }
 
 void ExecuteGraph::RemoveNodeFromNodesFree(const FastNode *const fast_node) const {
@@ -268,12 +348,17 @@ FastNode *ExecuteGraph::AddNode(FastNode *fast_node) {
     return nullptr;
   }
 
+  const bool was_in_graph = HasHandleNode(fast_node);
   RemoveNodeFromNodesFree(fast_node);
-  return graph_shared_->AddNode(fast_node);
+  auto *node = graph_shared_->AddNode(fast_node);
+  OnNodeAdded(node, was_in_graph);
+  return node;
 }
 
 FastNode *ExecuteGraph::AddNodeFront(const OpDescPtr &op) {
-  return graph_shared_->AddNodeFront(op);
+  auto *node = graph_shared_->AddNodeFront(op);
+  OnNodeAdded(node);
+  return node;
 }
 
 FastNode *ExecuteGraph::AddNodeFront(FastNode *const fast_node) {
@@ -283,8 +368,11 @@ FastNode *ExecuteGraph::AddNodeFront(FastNode *const fast_node) {
     return nullptr;
   }
 
+  const bool was_in_graph = HasHandleNode(fast_node);
   RemoveNodeFromNodesFree(fast_node);
-  return graph_shared_->AddNodeFront(fast_node);
+  auto *node = graph_shared_->AddNodeFront(fast_node);
+  OnNodeAdded(node, was_in_graph);
+  return node;
 }
 
 graphStatus ExecuteGraph::RemoveJustNode(const FastNode *const fast_node) {
@@ -293,7 +381,9 @@ graphStatus ExecuteGraph::RemoveJustNode(const FastNode *const fast_node) {
     GE_LOGE("[Check][Param] The node is nullptr.");
     return GRAPH_FAILED;
   }
-  return graph_shared_->RemoveJustNode(FastGraphUtils::GetListElementAddr(fast_node));
+  const auto ret = graph_shared_->RemoveJustNode(FastGraphUtils::GetListElementAddr(fast_node));
+  OnNodeRemoved(ret, fast_node);
+  return ret;
 }
 
 FastEdge *ExecuteGraph::AddEdge(FastNode *const src, int32_t src_index, FastNode *const dst, int32_t dst_index) {
@@ -464,8 +554,11 @@ FastNode *ExecuteGraph::AddInputNode(FastNode *fast_node) {
     return nullptr;
   }
 
+  const bool was_in_graph = HasHandleNode(fast_node);
   RemoveNodeFromNodesFree(fast_node);
-  return graph_shared_->AddInputNode(fast_node);
+  auto *node = graph_shared_->AddInputNode(fast_node);
+  OnNodeAdded(node, was_in_graph);
+  return node;
 }
 
 graphStatus ExecuteGraph::RemoveInputNode(FastNode *const fast_node) {
@@ -485,8 +578,79 @@ FastNode *ExecuteGraph::AddOutputNodeByIndex(FastNode *const fast_node, int32_t 
     return nullptr;
   }
 
+  const bool was_in_graph = HasHandleNode(fast_node);
   RemoveNodeFromNodesFree(fast_node);
-  return graph_shared_->AddOutputNodeByIndex(fast_node, index);
+  auto *node = graph_shared_->AddOutputNodeByIndex(fast_node, index);
+  OnNodeAdded(node, was_in_graph);
+  return node;
+}
+
+graphStatus ExecuteGraph::SetGraphOutNodesInfo(const std::vector<std::pair<FastNode *, int32_t>> &outputs) {
+  GE_ASSERT_NOTNULL(graph_shared_);
+  for (const auto &output : outputs) {
+    GE_ASSERT_NOTNULL(output.first);
+    GE_ASSERT_TRUE(CheckNodeIsInGraph(output.first));
+    GE_ASSERT_NOTNULL(output.first->GetExtendInfo());
+    GE_ASSERT_TRUE((output.second >= 0) && (static_cast<size_t>(output.second) < output.first->GetDataOutNum()));
+    GE_ASSERT_NOTNULL(output.first->GetOpDescBarePtr());
+    GE_ASSERT_TRUE(static_cast<size_t>(output.second) < output.first->GetOpDescBarePtr()->GetOutputsSize());
+  }
+
+  FastNode *net_output = nullptr;
+  for (auto *node : GetDirectNode()) {
+    if (node->GetOpDescBarePtr() == nullptr) {
+      continue;
+    }
+    if (gert::IsTypeNetOutput(node->GetTypePtr()) || gert::IsTypeInnerNetOutput(node->GetTypePtr())) {
+      net_output = node;
+      break;
+    }
+  }
+  // An empty graph has no output node, as in ComputeGraph.
+  if ((net_output == nullptr) && (GetDirectNodesSize() == 0U)) {
+    graph_shared_->SetGraphOutNodesInfo(outputs);
+    return GRAPH_SUCCESS;
+  }
+  if (net_output == nullptr) {
+    const auto *type = GetParentNodeBarePtr() == nullptr ? gert::kNetOutput : gert::kInnerNetOutput;
+    const auto desc = MakeShared<OpDesc>(type, type);
+    GE_ASSERT_NOTNULL(desc);
+    net_output = AddNode(desc);
+    GE_ASSERT_NOTNULL(net_output);
+  }
+  const auto desc = net_output->GetOpDescPtr();
+  GE_ASSERT_NOTNULL(desc);
+  desc->SetType(GetParentNodeBarePtr() == nullptr ? gert::kNetOutput : gert::kInnerNetOutput);
+  const auto input_edges = net_output->GetAllInDataEdges();
+  for (auto *edge : input_edges) {
+    GE_ASSERT_GRAPH_SUCCESS(RemoveEdge(edge));
+  }
+  while (desc->GetAllInputsSize() > 0U) {
+    GE_ASSERT_TRUE(NodeUtils::ClearInputDesc(desc, static_cast<uint32_t>(desc->GetAllInputsSize() - 1U)));
+  }
+  desc->MutableAllInputName().clear();
+  std::vector<bool> is_input_const;
+  for (size_t i = 0U; i < outputs.size(); ++i) {
+    const auto &output = outputs[i];
+    GE_ASSERT_GRAPH_SUCCESS(
+        desc->AddInputDesc("x" + std::to_string(i), output.first->GetOpDescBarePtr()->GetOutputDesc(output.second)));
+    is_input_const.emplace_back(gert::IsTypeConst(output.first->GetTypePtr()));
+  }
+  desc->SetIsInputConst(is_input_const);
+  net_output->UpdateDataInNum(outputs.size());
+  for (size_t i = 0U; i < outputs.size(); ++i) {
+    GE_ASSERT_NOTNULL(AddEdge(outputs[i].first, outputs[i].second, net_output, static_cast<int32_t>(i)));
+  }
+  for (const auto &output : graph_shared_->GetAllOutNodeInfo()) {
+    if (output.first != nullptr) {
+      output.first->GetExtendInfo()->GetOutputIndex().clear();
+    }
+  }
+  graph_shared_->SetGraphOutNodesInfo(outputs);
+  for (size_t i = 0U; i < outputs.size(); ++i) {
+    outputs[i].first->GetExtendInfo()->AddOneOutputIndex(static_cast<int32_t>(i));
+  }
+  return GRAPH_SUCCESS;
 }
 
 graphStatus ExecuteGraph::RemoveOutputNode(const FastNode *const fast_node) {
@@ -915,7 +1079,9 @@ graphStatus ExecuteGraph::RecycleQuickNode(const FastNode *const fast_node) {
     GE_LOGE("[Check][Param] The node is nullptr.");
     return GRAPH_FAILED;
   }
-  return graph_shared_->RecycleQuickNode(FastGraphUtils::GetListElementAddr(fast_node));
+  const auto ret = graph_shared_->RecycleQuickNode(FastGraphUtils::GetListElementAddr(fast_node));
+  OnNodeRemoved(ret, fast_node);
+  return ret;
 }
 
 std::vector<FastNode *> ExecuteGraph::GetAllNodes() const {

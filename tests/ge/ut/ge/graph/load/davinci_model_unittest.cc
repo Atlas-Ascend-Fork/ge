@@ -1664,6 +1664,7 @@ TEST_F(UtestDavinciModel, init_constant_op) {
   if (!out1.is_open()) {
     return;
   }
+  // 未声明 length 时允许文件短于张量尺寸: 读入可用部分后对剩余区域清零
   out1.write((char *)float_buf.get(), 16 * sizeof(float));
   out1.close();
   model.file_id_and_path_map_.insert(std::pair<std::string, std::string>("file", "tmp_weight_file.bin"));
@@ -1708,6 +1709,51 @@ TEST_F(UtestDavinciModel, Preprocess_Fileconstant_Op_OK) {
             model.runtime_param_.fileconstant_addr_mapping.end());
   free(reinterpret_cast<void *>(model.weights_mem_base_));
   (void)remove("tmp_weight_file.bin");
+}
+
+// 用例描述: InitFileConstant 的分配大小校验不误伤合法模型: length 小于张量大小时仍成功,
+// 且文件数据之后的目标内存被清零, 不再保留旧内容.
+TEST_F(UtestDavinciModel, InitFileConstant_WeightSizeCheckNotRejectLegalModel) {
+  DavinciModel model(0, g_local_call_back);
+  model.ge_model_ = MakeShared<GeModel>();
+  model.session_id_ = 7U;
+  model.runtime_param_.mem_size = 4096U;
+
+  ComputeGraphPtr graph = MakeShared<ComputeGraph>("default");
+  OpDescPtr op_desc = CreateOpDesc("FileConstant", FILECONSTANT);
+  GeTensorDesc tensor_desc(GeShape({2, 2, 2, 2}), FORMAT_ND, DT_FLOAT);  // 128 字节
+  TensorUtils::SetSize(tensor_desc, 128);
+  op_desc->AddOutputDesc(tensor_desc);
+  op_desc->SetOutputOffset({0});
+  EXPECT_TRUE(AttrUtils::SetStr(op_desc, ATTR_NAME_LOCATION, "tmp_init_fileconstant_weight.bin"));
+  EXPECT_TRUE(AttrUtils::SetInt(op_desc, ATTR_NAME_LENGTH, 64));  // 小于张量大小, 触发尾部清零
+  const auto node = graph->AddNode(op_desc);
+  ASSERT_NE(node, nullptr);
+
+  const std::string weight_data(64U, 'W');
+  {
+    std::ofstream out("tmp_init_fileconstant_weight.bin", std::ios::binary);
+    ASSERT_TRUE(out.is_open());
+    out.write(weight_data.data(), static_cast<std::streamsize>(weight_data.size()));
+  }
+
+  // 用 new[] 模拟设备内存: ACL 桩以 delete[] 释放, 需与分配方式匹配; 初始为 0xFF 以验证尾部被清零
+  constexpr size_t kDevMemSize = 128U;
+  uint8_t *const dev_mem = new uint8_t[kDevMemSize];
+  std::fill(dev_mem, dev_mem + kDevMemSize, 0xFFU);
+  model.runtime_param_.fileconstant_addr_mapping[0] = reinterpret_cast<uintptr_t>(dev_mem);
+
+  EXPECT_EQ(model.InitFileConstant(node), SUCCESS);
+  for (size_t i = 0U; i < weight_data.size(); ++i) {
+    EXPECT_EQ(dev_mem[i], static_cast<uint8_t>(weight_data[i]));
+  }
+  for (size_t i = weight_data.size(); i < kDevMemSize; ++i) {
+    EXPECT_EQ(dev_mem[i], 0U);
+  }
+  // 主动释放并清空映射, 避免 DavinciModel 析构时对该地址重复释放
+  model.runtime_param_.fileconstant_addr_mapping.clear();
+  delete[] dev_mem;
+  (void)remove("tmp_init_fileconstant_weight.bin");
 }
 
 TEST_F(UtestDavinciModel, Preprocess_Fileconstant_Success_UserDeviceMem) {

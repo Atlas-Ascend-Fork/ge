@@ -16,8 +16,16 @@
 #include "graph/graph.h"
 
 namespace ge {
+class ExecuteGraph;
 class GraphUtilsEx {
  public:
+  static std::shared_ptr<ExecuteGraph> CreateExecuteGraphFromOperator(const std::string &name,
+                                                                      const std::vector<Operator> &inputs);
+
+  static std::shared_ptr<ExecuteGraph> Graph2ExecuteGraph(const Graph &graph);
+  static bool IsExecuteGraph(const Graph &graph);
+  // 包装已有执行图生成 Graph 门面；不同包装按底层图共享节点引用。
+  static GraphPtr ExecuteGraph2Graph(const std::shared_ptr<ExecuteGraph> &execute_graph);
   // Detach from ComputeGraph
   static graphStatus InferOriginFormat(const ComputeGraphPtr &graph);
   static graphStatus InferShapeInNeed(const ComputeGraphPtr &graph);

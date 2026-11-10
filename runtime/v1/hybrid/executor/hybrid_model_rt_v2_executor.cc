@@ -467,8 +467,13 @@ ge::Status GraphVarVisitor::LoadFileConstantToAddr(const ge::OpDescPtr &op_desc,
                    weight_size, var_instance.size);
     const size_t file_length = (length == 0U ? static_cast<size_t>(weight_size) : length);
     size_t left_size = static_cast<size_t>(var_instance.size);
-    const auto dev_addr = static_cast<void *>(var_instance.addr);
-    GE_ASSERT_SUCCESS(FileConstantUtils::CopyOneWeightFromFile(dev_addr, file_path, offset, file_length, left_size));
+    // var_instance.addr 不一定是设备内存: AssembleFileConstantsOnHost 以 RT_MEMORY_HOST 分配并置
+    // placement = kOnHost, 故按 placement 选择清零接口, 避免对普通 Host 堆内存调用 aclrtMemset(未定义行为)
+    const auto var_addr = static_cast<void *>(var_instance.addr);
+    const auto mem_loc =
+        (var_instance.placement == VariablePlacement::kOnHost) ? WeightMemLocation::kHost : WeightMemLocation::kDevice;
+    GE_ASSERT_SUCCESS(FileConstantUtils::CopyOneWeightFromFile(var_addr, file_path, offset, file_length, left_size,
+                                                               length != 0U, mem_loc));
     GELOGD("Load file constant [%s] weight size [%ld] to addr [%p] success.", op_desc->GetName().c_str(),
            var_instance.size, var_instance.addr);
   } else {
@@ -516,6 +521,7 @@ Status GraphVarVisitor::PreLoadFileConstant(const ge::OpDescPtr &op_desc, const 
   GE_ASSERT_TRUE(weight_size <= var_instance.size, "Weight size[%ld] cannot be larger than mem size[%ld].", weight_size,
                  var_instance.size);
   helper.file_length = (length == 0U ? static_cast<size_t>(weight_size) : length);
+  helper.has_declared_length = (length != 0U);
   helper.left_size = static_cast<size_t>(var_instance.size);
   GELOGD("Finish to prepare for loading file constant for %s.", op_desc->GetNamePtr());
 
@@ -536,7 +542,8 @@ Status GraphVarVisitor::LoadFileConstantToDevice(const ExternalWeightManagerPtr 
       continue;
     }
     GE_ASSERT_SUCCESS(FileConstantUtils::CopyOneWeightFromFile(helper.dev_addr, helper.file_path, helper.offset,
-                                                               helper.file_length, helper.left_size));
+                                                               helper.file_length, helper.left_size,
+                                                               helper.has_declared_length));
     GELOGD("Load file constant [%s] file path [%s] weight size [%ld] to addr [%p] success.", helper.node_name.c_str(),
            helper.file_path.c_str(), helper.file_length, helper.dev_addr);
   }

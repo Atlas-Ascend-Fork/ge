@@ -18,6 +18,7 @@
 #include "common/checker.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 #include "compliant_node_builder.h"
+#include "exe_graph/lowering/builtin_node_types.h"
 
 namespace ge {
 namespace {
@@ -128,7 +129,10 @@ graphStatus NormalizeEsToGe(Graph &graph) {
 
 struct EsCGraphBuilder::EsCGraphBuilderImpl {
  public:
-  EsCGraphBuilderImpl(const char *name) : graph_(std::make_unique<ge::Graph>(name)), nodes_num_(0) {
+  EsCGraphBuilderImpl(const char *name) : EsCGraphBuilderImpl(name, 0) {}
+
+  EsCGraphBuilderImpl(const char *name, ge::GraphKind kind) : nodes_num_(0), kind_(kind) {
+    graph_ = std::make_unique<ge::Graph>(name, kind_);
     if (graph_ != nullptr) {
       graph_->SetValid();
     }
@@ -140,6 +144,7 @@ struct EsCGraphBuilder::EsCGraphBuilderImpl {
     output_indexes_to_tensor_[output_index] = tensor;
     return ge::SUCCESS;
   }
+
   bool IsGraphValid() const {
     if (!graph_input_indexes_.empty()) {
       GE_ASSERT_TRUE(*graph_input_indexes_.begin() == 0, "Invalid graph, graph input index must starts with 0");
@@ -195,7 +200,10 @@ struct EsCGraphBuilder::EsCGraphBuilderImpl {
       output_node_and_index.emplace_back(src_node, src_node_output_idx);
     }
     GE_ASSERT_GRAPH_SUCCESS(graph_->SetOutputs(output_node_and_index));
-    GE_ASSERT_GRAPH_SUCCESS(ge::NormalizeEsToGe(*graph_));
+    // 执行图后端在挂载时登记子图，无需计算图的 Data 描述回填和收尾子图搬迁。
+    if (kind_ == 0) {
+      GE_ASSERT_GRAPH_SUCCESS(ge::NormalizeEsToGe(*graph_));
+    }
     return std::move(graph_);
   }
 
@@ -221,11 +229,15 @@ struct EsCGraphBuilder::EsCGraphBuilderImpl {
                                   C_DataType data_type, C_Format format, const int64_t *dims, int64_t dim_num) {
     GE_ASSERT_NOTNULL(graph_, "Graph has been build and reset, cannot add graph input");
     GE_ASSERT_TRUE(index >= 0, "Invalid input index %d, must be non-negative", index);
+    if (kind_ == 1) {
+      GE_ASSERT_TRUE(gert::IsTypeGraphInput(type == nullptr ? "Data" : type),
+                     "Execution graph input type must be Data, AippData or ConstData");
+    }
     GE_ASSERT_TRUE(graph_input_indexes_.insert(index).second, "Duplicated graph input index %d", index);
 
     if (type == nullptr) {
       type = "Data";
-    } else {
+    } else if (kind_ != 1) {
       GE_ASSERT_TRUE(ge::kDataOpSet.find(type) != ge::kDataOpSet.end(), "Input type must be one of {%s}",
                      ge::Join(ge::kDataOpSet.begin(), ge::kDataOpSet.end()).c_str());
     }
@@ -259,6 +271,7 @@ struct EsCGraphBuilder::EsCGraphBuilderImpl {
   std::set<int32_t> graph_input_indexes_;
   std::map<int32_t, EsCTensorHolder *> output_indexes_to_tensor_;
   int64_t nodes_num_;  // Node name 自生成计数
+  ge::GraphKind kind_{0};
 };
 
 EsCGraphBuilder::EsCGraphBuilder() {
@@ -266,8 +279,12 @@ EsCGraphBuilder::EsCGraphBuilder() {
   impl_ = std::make_unique<EsCGraphBuilderImpl>("graph");
 }
 EsCGraphBuilder::EsCGraphBuilder(const char *name) {
-  // nnew失败说明业务无法正常进行，主动抛出异常
+  // new失败说明业务无法正常进行，主动抛出异常
   impl_ = std::make_unique<EsCGraphBuilderImpl>(name);
+}
+EsCGraphBuilder::EsCGraphBuilder(const char *name, ge::GraphKind kind) {
+  // new失败说明业务无法正常进行，主动抛出异常
+  impl_ = std::make_unique<EsCGraphBuilderImpl>(name, kind);
 }
 EsCGraphBuilder::~EsCGraphBuilder() = default;
 EsCGraphBuilder::EsCGraphBuilder(EsCGraphBuilder &&) noexcept = default;

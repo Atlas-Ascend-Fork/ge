@@ -16,4 +16,12 @@ TEST_F(BuiltInNodeTypesUT, IsTypeOutputData) {
   ASSERT_TRUE(IsTypeOutputData("OutputData"));
   ASSERT_FALSE(IsTypeOutputData("Data"));
 }
+TEST_F(BuiltInNodeTypesUT, IsTypeGraphInput) {
+  for (const auto *type : {"Data", "AippData", "ConstData"}) {
+    EXPECT_TRUE(IsTypeGraphInput(type)) << type;
+  }
+  for (const auto *type : {"Const", "InnerData", "RefData", "NetOutput", "PlainOp"}) {
+    EXPECT_FALSE(IsTypeGraphInput(type)) << type;
+  }
+}
 }  // namespace gert

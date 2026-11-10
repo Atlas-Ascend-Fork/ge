@@ -7733,9 +7733,11 @@ Status DavinciModel::InitFileConstant(const NodePtr &node) {
   GE_CHECK_NOTNULL(external_weight_manager);
   if (!external_weight_manager->CheckAndSetWeightLoaded(file_path + ":" + std::to_string(offset), device_id_)) {
     const size_t file_length = (length == 0U ? static_cast<size_t>(weight_size) : length);
-    GE_CHK_STATUS_RET(
-        FileConstantUtils::CopyOneWeightFromFile(v_output_addr[0U], file_path, offset, file_length, left_size),
-        "Failed to copy data to file constant.");
+    // length 为 0 时 file_length 由张量尺寸推导(可能含对齐 padding), 允许权重文件偏短, 由尾部清零兜底;
+    // 显式声明 length 时必须由文件完整覆盖
+    GE_CHK_STATUS_RET(FileConstantUtils::CopyOneWeightFromFile(v_output_addr[0U], file_path, offset, file_length,
+                                                               left_size, length != 0U),
+                      "Failed to copy data to file constant.");
     GELOGD("Load file constant [%s] file path [%s] weight size [%zu] to addr [%p] success.", node->GetName().c_str(),
            file_path.c_str(), file_length, v_output_addr[0U]);
   }

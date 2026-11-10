@@ -30,6 +30,16 @@ constexpr const char *kExternalWeightCombined = "2";  // 启用外置权重，�
 
 using ConstNodeWeightHashList = std::vector<std::pair<NodePtr, std::pair<GeTensorPtr, std::string>>>;
 
+/* FileConstant 权重缓冲的内存位置, 决定尾部清零走哪个接口:
+ * kDevice: 设备内存, 使用 aclrtMemset;
+ * kHost:   主机内存, 使用 memset_s. Host 内存若不是 acl 接口(如 aclrtMallocHost)申请的,
+ *          传给 aclrtMemset 属未定义行为, 而 HostMemAllocator 分配的 AlignedPtr 底层是普通 new[].
+ */
+enum class WeightMemLocation {
+  kDevice = 0,  // 设备内存
+  kHost = 1,    // 主机内存
+};
+
 struct FileIdToFilePath {
   std::string value_bin_file_id;
   std::string value_bin_file_path;
@@ -57,7 +67,20 @@ class FileConstantUtils {
   static Status GetFileIdToPathMapFromOption(std::map<std::string, std::string> &file_id_to_path_map);
   static Status CopyOneWeightFromFileWithFilehandler(const void *const curr_dev_ptr, const std::string &file_path,
                                                      const size_t offset, const size_t file_constant_size,
-                                                     size_t &left_size, std::ifstream &ifs);
+                                                     size_t &left_size, std::ifstream &ifs,
+                                                     const bool enforce_range = true,
+                                                     const WeightMemLocation mem_loc = WeightMemLocation::kDevice);
+
+  /// @brief check the weight file range [offset, offset + length) and seek to offset
+  /// @param [in] ifs opened weight file stream
+  /// @param [in] file path, only used for log
+  /// @param [in] offset
+  /// @param [in] length
+  /// @param [out] usable_size actually readable bytes, min(length, file_size - offset)
+  /// @param [in] enforce_range whether the file must contain the whole [offset, offset + length)
+  /// @return Status
+  static Status CheckAndSeekWeightFile(std::ifstream &ifs, const std::string &file_path, const size_t offset,
+                                       const size_t length, size_t &usable_size, const bool enforce_range = true);
 
   /// @brief load one weight from file to device memory
   /// @param [in] fileconstant memory addr on device
@@ -65,9 +88,13 @@ class FileConstantUtils {
   /// @param [in] offset
   /// @param [in] weight size
   /// @param [in] fileconstant memory size
+  /// @param [in] enforce_range see CheckAndSeekWeightFile
+  /// @param [in] mem_loc memory location of curr_dev_ptr, decides how the uncovered tail is cleared
   /// @return Status
   static Status CopyOneWeightFromFile(const void *const curr_dev_ptr, const std::string &file_path, const size_t offset,
-                                      const size_t file_constant_size, size_t &left_size);
+                                      const size_t file_constant_size, size_t &left_size,
+                                      const bool enforce_range = true,
+                                      const WeightMemLocation mem_loc = WeightMemLocation::kDevice);
 
   /// @brief get weight file path
   /// @param [in] op_desc

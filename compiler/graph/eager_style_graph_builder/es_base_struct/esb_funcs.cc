@@ -18,6 +18,7 @@
 #include "common/checker.h"
 #include "mmpa/mmpa_api.h"
 #include "graph/utils/type_utils.h"
+#include "graph/utils/graph_utils_ex.h"
 #include <fstream>
 #include <iostream>
 #include "base/err_msg.h"
@@ -95,6 +96,18 @@ EsCGraphBuilder *EsCreateGraphBuilder(const char *name) {
     name = kDefaultGraphName;
   }
   return new EsCGraphBuilder(name);
+}
+
+EsCGraphBuilder *EsCreateGraphBuilderWithKind(const char *name, int32_t kind) {
+  if (name == nullptr) {
+    name = kDefaultGraphName;
+  }
+  if ((kind != 0) && (kind != 1)) {
+    GELOGE(ge::GRAPH_PARAM_INVALID, "[GertGraph][Parameter] Invalid graph kind %d.", kind);
+    return nullptr;
+  }
+  // kind 为整型直传（0 = 计算图，1 = 执行图），取值与 metadef c_types.h 中 C_GraphKind 枚举一致。
+  return new EsCGraphBuilder(name, kind);
 }
 
 void EsDestroyGraphBuilder(EsCGraphBuilder *graph) {
@@ -265,6 +278,13 @@ EsCTensorHolder *EsCreateScalarFloat(EsCGraphBuilder *graph, float value) {
 
 EsCTensorHolder *EsCreateVariable(EsCGraphBuilder *graph, int32_t index, const char *name) {
   GE_ASSERT_NOTNULL(graph);
+  const auto ge_graph = graph->GetGraph();
+  if ((ge_graph != nullptr) && ge::GraphUtilsEx::IsExecuteGraph(*ge_graph)) {
+    REPORT_PREDEFINED_ERR_MSG(
+        "E10062", std::vector<const char *>({"interface", "reason"}),
+        std::vector<const char *>({"EsCreateVariable", "this ES interface does not support execution graphs"}));
+    return nullptr;
+  }
   auto av_index = ge::AttrValue();
   auto index_value = static_cast<int64_t>(index);
   (void)av_index.SetAttrValue(index_value);

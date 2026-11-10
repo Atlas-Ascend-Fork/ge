@@ -927,7 +927,7 @@ Within one AnnotatedArgs task-plan lifecycle, `declare_launch_args` is invoked e
 
 **Decorators**:
 
-- `register_op(op_type, mutates_args=())` - Declares and collects a Python custom operator prototype from annotations on the decorated function; the decorated function also serves as the `infer_meta` callback and returns output `TensorDesc` objects
+- `register_op(op_type, mutates_args=(), output_names=None)` - Declares and collects a Python custom operator prototype from annotations on the decorated function; the decorated function also serves as the `infer_meta` callback and returns output `TensorDesc` objects
 - `register_op_impl(op_type)` - Registers a Python implementation class and reflects its callable methods into a capability list; `execute` maps to `eager_execute`, `compile` maps to `compilable`, and `declare_launch_args` maps to `annotated_args`
 
 **Discovery mechanism**:
@@ -938,7 +938,7 @@ Within one AnnotatedArgs task-plan lifecycle, `declare_launch_args` is invoked e
 
 **Prototype registration**:
 
-- `register_op` collects required, optional, and dynamic inputs, 12 attribute types, required and dynamic outputs, and `mutates_args`.
+- `register_op` collects required, optional, and dynamic inputs, 12 attribute types, required and dynamic outputs, optional `output_names`, and `mutates_args`.
 - In one loading transaction, the bridge first registers Python prototype creators and collects the effective canonical IR, then registers implementation runtime entries and Adapter creators.
 - Python proto-only, Python proto with implementation, and C++ proto with a Python implementation are supported. A Python implementation without canonical IR is rejected.
 - A Python prototype may replace a built-in prototype with the same name. Registration fails when a loaded C++ or Python custom operator already owns that name.

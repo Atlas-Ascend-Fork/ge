@@ -94,6 +94,11 @@ int32_t CountBatchFlowFunc::PaddingInputCache(size_t cache_size) {
 int32_t CountBatchFlowFunc::PaddingToBatchSize(int64_t padding_cnt) {
   UDF_LOG_DEBUG("[CountBatch]PaddingToBatchSize, padding_cnt= %ld", padding_cnt);
   for (size_t i = 0; i < batch_flow_msg_.size(); ++i) {
+    if ((batch_flow_msg_[i].empty()) || (batch_flow_msg_[i].front().first == nullptr) ||
+        (batch_flow_msg_[i].front().first->GetTensor() == nullptr)) {
+      UDF_LOG_ERROR("[CountBatch]PaddingToBatchSize: cache tensor is invalid, index:%zu.", i);
+      return FLOW_FUNC_FAILED;
+    }
     auto cache_tensor = batch_flow_msg_[i].front().first->GetTensor();
     for (int64_t j = 0; j < padding_cnt; ++j) {
       auto output_flow_msg = context_->AllocTensorMsg(cache_tensor->GetShape(), cache_tensor->GetDataType());
@@ -102,9 +107,17 @@ int32_t CountBatchFlowFunc::PaddingToBatchSize(int64_t padding_cnt) {
         return FLOW_FUNC_FAILED;
       }
       auto output_tensor = output_flow_msg->GetTensor();
+      if (output_tensor == nullptr) {
+        UDF_LOG_ERROR("[CountBatch]PaddingToBatchSize: output tensor is nullptr.");
+        return FLOW_FUNC_FAILED;
+      }
       auto data = output_tensor->GetData();
       auto data_size = output_tensor->GetDataSize();
-      auto error = memset_s(data, data_size, 0, data_size);
+      if ((data_size > 0U) && (data == nullptr)) {
+        UDF_LOG_ERROR("[CountBatch]PaddingToBatchSize: output tensor data is nullptr.");
+        return FLOW_FUNC_FAILED;
+      }
+      auto error = (data_size == 0U) ? EOK : memset_s(data, data_size, 0, data_size);
       if (error != EOK) {
         UDF_LOG_ERROR("[CountBatch]memset_s failed.");
         return FLOW_FUNC_FAILED;
@@ -154,11 +167,19 @@ int32_t CountBatchFlowFunc::CheckTensorInfo(const std::vector<std::shared_ptr<Fl
       UDF_LOG_ERROR("[CountBatch]Input[%zu] tensor is nullptr.", i);
       return FLOW_FUNC_ERR_PARAM_INVALID;
     }
+    if ((input_tensor->GetDataSize() > 0U) && (input_tensor->GetData() == nullptr)) {
+      UDF_LOG_ERROR("[CountBatch]Input[%zu] tensor data is nullptr.", i);
+      return FLOW_FUNC_ERR_PARAM_INVALID;
+    }
     if (is_cache_empty) {
       UDF_LOG_DEBUG("batch_flow_msg_ is empty.");
       continue;
     }
     if (!batch_flow_msg_[i].empty()) {
+      if ((batch_flow_msg_[i].front().first == nullptr) || (batch_flow_msg_[i].front().first->GetTensor() == nullptr)) {
+        UDF_LOG_ERROR("[CountBatch]Input[%zu] cache tensor is nullptr.", i);
+        return FLOW_FUNC_ERR_PARAM_INVALID;
+      }
       auto cache_tensor = batch_flow_msg_[i].front().first->GetTensor();
       if (cache_tensor->GetShape() != input_tensor->GetShape()) {
         UDF_LOG_ERROR("[CountBatch]Input[%zu] shape is invalid for auto batch.", i);
@@ -175,8 +196,8 @@ int32_t CountBatchFlowFunc::CheckTensorInfo(const std::vector<std::shared_ptr<Fl
 }
 
 int32_t CountBatchFlowFunc::CheckInput(const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) const {
-  if (input_msgs.empty()) {
-    UDF_LOG_ERROR("[CountBatch]Input is empty.");
+  if (input_msgs.size() < 1U) {
+    UDF_LOG_ERROR("[CountBatch]Input msg size[%zu] must be at least 1.", input_msgs.size());
     return FLOW_FUNC_ERR_PARAM_INVALID;
   }
   for (size_t i = 0; i < input_msgs.size(); ++i) {
@@ -260,6 +281,11 @@ int32_t CountBatchFlowFunc::Proc(const std::vector<std::shared_ptr<FlowMsg>> &in
 int32_t CountBatchFlowFunc::ConstructOutputTensor(std::deque<std::pair<std::shared_ptr<FlowMsg>, bool>> &batch_tensor,
                                                   std::shared_ptr<FlowMsg> &output_flow_msg) const {
   UDF_LOG_DEBUG("[CountBatch]ConstructOutputTensor enter, batch_tensor.size = %ld", batch_tensor.size());
+  if (batch_tensor.empty() || (batch_tensor.front().first == nullptr) ||
+      (batch_tensor.front().first->GetTensor() == nullptr)) {
+    UDF_LOG_ERROR("[CountBatch]batch tensor is empty.");
+    return FLOW_FUNC_FAILED;
+  }
   std::deque<std::pair<std::shared_ptr<FlowMsg>, bool>> temp_que(batch_tensor);
   auto input_tensor = batch_tensor.front().first->GetTensor();
   auto output_data_type = input_tensor->GetDataType();
@@ -272,15 +298,42 @@ int32_t CountBatchFlowFunc::ConstructOutputTensor(std::deque<std::pair<std::shar
     return FLOW_FUNC_FAILED;
   }
   auto output_tensor = output_flow_msg->GetTensor();
+  if (output_tensor == nullptr) {
+    UDF_LOG_ERROR("[CountBatch]output tensor is nullptr.");
+    return FLOW_FUNC_FAILED;
+  }
+  if ((output_tensor->GetDataSize() > 0U) && (output_tensor->GetData() == nullptr)) {
+    UDF_LOG_ERROR("[CountBatch]output tensor data is nullptr.");
+    return FLOW_FUNC_FAILED;
+  }
   auto data = output_tensor->GetData();
   auto data_size = output_tensor->GetDataSize();
   uint64_t used_size = 0;
   uint32_t max_step = 0;
   while (!batch_tensor.empty()) {
+    if (batch_tensor.front().first == nullptr) {
+      UDF_LOG_ERROR("[CountBatch]batch tensor is invalid.");
+      return FLOW_FUNC_FAILED;
+    }
     auto temp_tensor = batch_tensor.front().first->GetTensor();
-    const auto step = std::dynamic_pointer_cast<MbufFlowMsg>(batch_tensor.front().first)->GetStepId();
+    const auto step_msg = std::dynamic_pointer_cast<MbufFlowMsg>(batch_tensor.front().first);
+    if ((temp_tensor == nullptr) || (step_msg == nullptr)) {
+      UDF_LOG_ERROR("[CountBatch]batch tensor is invalid.");
+      return FLOW_FUNC_FAILED;
+    }
+    const auto step = step_msg->GetStepId();
     max_step = ((FlowFuncDumpManager::IsInDumpStep(step)) && (step > max_step)) ? step : max_step;
-    errno_t ret = memcpy_s(data, data_size - used_size, temp_tensor->GetData(), temp_tensor->GetDataSize());
+    const auto copy_size = temp_tensor->GetDataSize();
+    if (((copy_size > 0U) && (temp_tensor->GetData() == nullptr)) || (copy_size > data_size) ||
+        (used_size > (data_size - copy_size))) {
+      UDF_LOG_ERROR("[CountBatch]used_size[%lu] add copy_size[%lu] is larger than data_size[%lu].", used_size,
+                    copy_size, data_size);
+      return FLOW_FUNC_FAILED;
+    }
+    errno_t ret = EOK;
+    if (copy_size > 0U) {
+      ret = memcpy_s(data, data_size - used_size, temp_tensor->GetData(), copy_size);
+    }
     if (ret != EOK) {
       UDF_LOG_ERROR("[CountBatch]memcpy_s failed.");
       return FLOW_FUNC_FAILED;
@@ -293,7 +346,12 @@ int32_t CountBatchFlowFunc::ConstructOutputTensor(std::deque<std::pair<std::shar
       return FLOW_FUNC_FAILED;
     }
   }
-  std::dynamic_pointer_cast<MbufFlowMsg>(output_flow_msg)->SetStepId(max_step);
+  const auto output_mbuf = std::dynamic_pointer_cast<MbufFlowMsg>(output_flow_msg);
+  if (output_mbuf == nullptr) {
+    UDF_LOG_ERROR("[CountBatch]output msg type is invalid.");
+    return FLOW_FUNC_FAILED;
+  }
+  output_mbuf->SetStepId(max_step);
 
   if (slide_stride_ != 0) {
     int64_t min_size =

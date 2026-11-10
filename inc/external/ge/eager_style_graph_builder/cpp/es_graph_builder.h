@@ -176,6 +176,14 @@ class EsGraphBuilder {
   explicit EsGraphBuilder(const char *name) : graph_builder_(EsCreateGraphBuilder(name), EsDestroyGraphBuilder) {}
 
   /**
+   * @brief 构造函数，创建指定后端类别的图构建器
+   * @param name 构建的图名称
+   * @param kind 图类别，创建后固定
+   */
+  EsGraphBuilder(const char *name, GraphKind kind)
+      : graph_builder_(EsCreateGraphBuilderWithKind(name, kind), EsDestroyGraphBuilder) {}
+
+  /**
    * @brief 创建指定数据类型和张量形状的张量
    * @tparam T 张量数据类型
    * @param value 张量数据指针

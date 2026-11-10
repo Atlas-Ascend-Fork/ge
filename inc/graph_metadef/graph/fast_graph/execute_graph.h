@@ -23,10 +23,27 @@ namespace ge {
 template <class T, class G>
 class FastGraphImpl;
 
+struct ExecuteGraphNodeHandleState;
+
 using FastNodeFilter = std::function<bool(const FastNode *)>;
 
 class ExecuteGraph : public std::enable_shared_from_this<ExecuteGraph>, public AttrHolder {
  public:
+  class NodeHandle {
+   public:
+    NodeHandle() = default;
+
+   private:
+    friend class ExecuteGraph;
+    std::weak_ptr<ExecuteGraphNodeHandleState> state_;
+    const FastNode *node_ = nullptr;
+    uint64_t generation_ = 0U;
+  };
+
+  // Handles identify a node incarnation; resolving does not synchronize concurrent graph mutation.
+  NodeHandle GetNodeHandle(const FastNode *node);
+  FastNode *ResolveNode(const NodeHandle &handle) const;
+
   struct SubGraphInfo {
     std::shared_ptr<ExecuteGraph> sub_graph;
     ListElement<ExecuteGraph *> *quick_graph;
@@ -80,6 +97,10 @@ class ExecuteGraph : public std::enable_shared_from_this<ExecuteGraph>, public A
    * The function is used to add output node of graph.
    */
   FastNode *AddOutputNodeByIndex(FastNode *const fast_node, int32_t index);
+
+  // Replace output endpoints and create or update the output node, its descriptors and data edges.
+  // Endpoint order and repetitions are preserved. Existing output control dependencies are retained.
+  graphStatus SetGraphOutNodesInfo(const std::vector<std::pair<FastNode *, int32_t>> &outputs);
 
   /**
    * The function is used to remove output node of graph.
@@ -225,6 +246,12 @@ class ExecuteGraph : public std::enable_shared_from_this<ExecuteGraph>, public A
   ConstProtoAttrMap &GetAttrMap() const override;
 
  private:
+  // Invalidate issued handles before replacing nodes in CompleteCopy.
+  void InvalidateNodeHandles();
+  bool HasHandleNode(const FastNode *node) const;
+  void OnNodeAdded(const FastNode *node, bool was_in_graph = false);
+  void OnNodeRemoved(graphStatus status, const FastNode *node);
+
   std::vector<FastNode *> AllGraphNodes(std::vector<std::shared_ptr<ExecuteGraph>> &subgraphs,
                                         const FastNodeFilter &fast_node_filter) const;
   void GetAllNodesFromOpdesc(std::vector<std::shared_ptr<ExecuteGraph>> &subgraphs, const OpDesc &op_desc,
@@ -245,6 +272,7 @@ class ExecuteGraph : public std::enable_shared_from_this<ExecuteGraph>, public A
 
  private:
   std::shared_ptr<FastGraphImpl<FastNode, ExecuteGraph>> graph_shared_;
+  std::shared_ptr<ExecuteGraphNodeHandleState> node_handle_state_;
   std::unordered_map<std::string, SubGraphInfo> names_to_subgraph_;
   std::vector<std::string> inputs_order_;
   AttrStore attrs_;

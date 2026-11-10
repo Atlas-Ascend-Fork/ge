@@ -58,8 +58,18 @@ class ClusterManager {
 template <typename T>
 FsmStatus ClusterManager::CheckPullAndTransferReqSize(uint64_t msg_data_size, T *req_info,
                                                       uint32_t additional_block_count) {
-  uint64_t block_info_byte_size = msg_data_size - sizeof(T);
-  const auto num_blocks = req_info->block_count + req_info->prompt_block_count + additional_block_count;
+  if ((req_info == nullptr) || (msg_data_size < sizeof(T))) {
+    UDF_LOG_ERROR("Invalid req, msg size:%lu, header:%zu.", msg_data_size, sizeof(T));
+    return FsmStatus::kFsmParamInvalid;
+  }
+  const uint64_t block_info_byte_size = msg_data_size - sizeof(T);
+  if ((block_info_byte_size % sizeof(uint64_t)) != 0U) {
+    UDF_LOG_ERROR("Invalid req tail size:%lu.", block_info_byte_size);
+    return FsmStatus::kFsmParamInvalid;
+  }
+  // Add in uint64. The fields are uint32 and their sum can wrap.
+  const uint64_t num_blocks =
+      static_cast<uint64_t>(req_info->block_count) + req_info->prompt_block_count + additional_block_count;
   if (num_blocks != (block_info_byte_size / sizeof(uint64_t))) {
     UDF_LOG_ERROR("Invalid req size, blockCount:%u, promptBlockCount:%u, real count:%lu.", req_info->block_count,
                   req_info->prompt_block_count, block_info_byte_size / sizeof(uint64_t));
@@ -70,10 +80,15 @@ FsmStatus ClusterManager::CheckPullAndTransferReqSize(uint64_t msg_data_size, T 
 
 template <typename T>
 FsmStatus ClusterManager::CheckBlockIndices(T *req_info, uint64_t max_block_index, uint32_t start_index) {
-  for (uint32_t i = 0; i < req_info->block_count; ++i) {
-    if (req_info->block_indices[start_index + i] >= max_block_index) {
+  if (req_info == nullptr) {
+    UDF_LOG_ERROR("Invalid param, req info is nullptr.");
+    return FsmStatus::kFsmParamInvalid;
+  }
+  for (uint32_t i = 0U; i < req_info->block_count; ++i) {
+    const uint64_t block_pos = static_cast<uint64_t>(start_index) + i;
+    if (req_info->block_indices[block_pos] >= max_block_index) {
       UDF_LOG_ERROR("Invalid param, cacheId:%ld, blockIndex (%lu) out of range [0, %zu).", req_info->cache_id,
-                    req_info->block_indices[start_index + i], max_block_index);
+                    req_info->block_indices[block_pos], max_block_index);
       return FsmStatus::kFsmParamInvalid;
     }
   }

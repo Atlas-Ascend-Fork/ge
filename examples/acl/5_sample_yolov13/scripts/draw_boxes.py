@@ -42,8 +42,7 @@ def letterbox_coords(orig_w, orig_h):
 def draw(img_path, result_path, output_path):
     img = cv2.imread(img_path)
     if img is None:
-        logging.error("cannot read %s", img_path)
-        return
+        raise OSError(f"cannot read image: {img_path}")
 
     h, w = img.shape[:2]
     scale, pad_l, pad_t = letterbox_coords(w, h)
@@ -52,7 +51,7 @@ def draw(img_path, result_path, output_path):
         lines = f.readlines()
 
     for line in lines:
-        parts = line.strip().split()
+        parts = line.strip().rsplit(maxsplit=5)
         if len(parts) < 6:
             continue
         label, conf = parts[0], float(parts[1])
@@ -75,16 +74,24 @@ def draw(img_path, result_path, output_path):
             2,
         )
 
-    cv2.imwrite(output_path, img)
+    if not cv2.imwrite(output_path, img):
+        raise OSError(f"cannot write image: {output_path}")
     logging.info("saved: %s", output_path)
 
 
 if __name__ == "__main__":
     import glob
 
+    failed = False
     for fpath in glob.glob("*.jpg") + glob.glob("*.png"):
         basename = os.path.splitext(fpath)[0]
         result = basename + "_result.txt"
         if not os.path.exists(result):
             continue
-        draw(fpath, result, basename + "_out.jpg")
+        try:
+            draw(fpath, result, basename + "_out.jpg")
+        except OSError as exc:
+            logging.error("Failed to process %s: %s", fpath, exc)
+            failed = True
+    if failed:
+        raise SystemExit(1)

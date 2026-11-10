@@ -42,7 +42,6 @@ V2 完成后仍不覆盖以下内容：
 - InferShapeRange、format、符号化推导和 shape rule 生成。
 - Python `serialize`、`deserialize` 参数绑定，以及 ES API 自动生成。
 - device/host 之外的其它 Python execute backend。
-- Python 自定义算子随 OM 序列化、反序列化和跨进程加载。
 - Python 侧 `KernelArgs` / `MallocReadOnlyDevArgs` 对外封装。
 - Bridge、native 和 Adapter 的独立升级兼容；V2 仍按同批构建、整体替换和重启生效管理。
 
@@ -85,8 +84,9 @@ V1 功能包括：
 - `@register_op_impl(op_type=...)` 注册 Python 自定义算子实现。
 - `@register_kernel(backend=...)` 在一个实现类中按 backend 收集同名 `execute`；支持 device-only、
   host-only 和 device+host。
-- `@register_op(op_type=..., mutates_args=...)` 根据 Python 函数签名收集自定义算子原型。
+- `@register_op(op_type=..., mutates_args=..., output_names=None)` 根据 Python 函数签名收集自定义算子原型。
 - bridge 将 Python 原型同步注册为 `OperatorFactory` creator，并从生效 creator 收集 canonical IR；编译期和 RT2 通过统一 callback 调用 `infer_meta`。
+- `output_names` 可按返回注解的输出槽位顺序指定全部名称；不传时保留自动命名。名称须为非空、不含空字符且互不重复的字符串，动态输出占一个槽位。输出与输入同名时表示引用该输入，无需另传 `mutates_args`。非空 `mutates_args` 与非 `None` 的 `output_names` 互斥，同时传入即抛出 `ValueError`，不定义覆盖优先级；空元组或空列表不触发互斥限制。输出声明的容器类型、参数互斥及显式输出名称校验集中在 `_validate_output_args`，校验通过后构造输出；仅未指定 `output_names` 时解析引用关系。实现注册前必须存在可查询的 canonical IR。
 - `register_op_impl` 反射实现类上的可调用 `execute`、`compile`、`declare_launch_args` 方法并声明对应能力，不要求继承任何能力基类。
 - `execute` 接收按 canonical IR 组装的输入和属性；上下文通过 `get_execute_ctx()` 获取。
 - `EagerOpExecutionContext` 支持输入输出 tensor 查询、动态输入实例数、运行时属性读取、输出/工作区分配和 stream 获取。
@@ -97,8 +97,6 @@ V1 功能包括：
 - GE 初始化和 `GraphManager::PreRun()` 会在需要时幂等加载 Python custom op，使 `OpsKernelInfo` 刷新前能看到对应 op type。
 
 ### 2.4 设计约束
-
-> 临时方案：原型未注册时跳过实现注册阶段的 schema 校验；后续补齐 Python 原型指定输出名称的能力后，恢复先注册原型再校验实现的流程。
 
 - 不改变 AscendIR 图结构、op proto 格式和 OM 文件格式。
 - 不在 `graph_metadef/register` 中直接引入 Python runtime 或 pybind 依赖。
@@ -122,8 +120,8 @@ V1 功能包括：
 - `ASCEND_CUSTOM_OPP_PATH` 中的 Python 入口是 `.py` 文件，或目录下一层非 `_` 开头 `.py` 文件，或带 `__init__.py` 的包目录。
 - 对未使用 Python `register_op` 的算子，V1 兼容路径中的算子原型和 shape/dtype 推导仍由用户按现有 C++ / OPP 方式提供；Python `register_op` 算子使用本 V2 的 `infer_meta` 路径。
 - Python custom op 样例依赖 ACL Python runtime 和与 run 包匹配的 Python 环境。
-- `declare_launch_args` 仅在编译期依赖 Python 注册环境。新 OM 通过 `_custom_task_args_mode` 保存最终选择的刷新方式，并通过 `args_format` 保存 launch 布局；静态模型加载时以显式模式为准，不需要再次加载 Python 实现。没有该属性的旧 OM 保留 registry 查询和 `args_format` 兼容兜底。
-- `compile` 在图编译阶段执行，编译上下文和平台信息只在当前回调内有效；不把 Python 实现、实例状态或 kernel binary 保存到 OM。
+- `declare_launch_args` 仅在编译期依赖 Python 注册环境。新 OM 通过 `_custom_task_args_mode` 保存最终选择的刷新方式，并通过 `args_format` 保存 launch 布局；静态模型加载时以显式模式为准，运行期不再回调 `declare_launch_args`。但加载期仍会执行 `PYTHON_CUSTOM_OPS` 分区中的内嵌源码以恢复算子 creator，故加载进程需具备 Python 运行时（缺失时 `LoadCustomOpRegistry` 点名失败）。没有该属性的旧 OM 保留 registry 查询和 `args_format` 兼容兜底。
+- `compile` 在图编译阶段执行，编译上下文和平台信息只在当前回调内有效，回调自身的上下文对象不写入 OM。OM 承载三类产物：Python 实现以源码快照写入 `PYTHON_CUSTOM_OPS` 分区（加载期执行以恢复 creator）；声明 `portable` 的算子其实例状态写入 `CUSTOM_OPS` 分区；AnnotatedArgs 的 kernel binary 经 `AnnotatedKernelLaunchInfo` 写入 TaskDef。
 
 ## 3. 特性需求分析与设计
 
@@ -165,7 +163,7 @@ GE 初始化 / PreRun
   -> 读取 _custom_task_args_mode，得到编译期最终选择的刷新方式
   -> 旧 OM 没有该属性时，先查询 registry，再使用 args_format 兼容兜底
   -> 按 OM 中 args_format 刷新输入、输出、workspace 和 scalar 地址
-  -> 不加载 Python 实现
+  -> 执行 PYTHON_CUSTOM_OPS 内嵌源码恢复 creator（不回调 compile/declare_launch_args）
 ```
 
 ### 3.2 功能需求
@@ -263,7 +261,7 @@ class MyCustomOpImpl:
 **输出**
 
 - `compile`只在图编译阶段调用，不在模型加载和执行阶段调用。
-- Python实现、实例状态和kernel binary不写入OM。
+- `compile`回调的上下文对象不写入OM。Python实现以源码快照写入`PYTHON_CUSTOM_OPS`分区，`portable`算子的实例状态写入`CUSTOM_OPS`分区，AnnotatedArgs的kernel binary经TaskDef写入OM。
 
 #### 3.2.4 插件发现与注册
 
@@ -439,7 +437,7 @@ Python custom op 不区分芯片，不引入芯片分支。device/host kernel �
 | 静态 Shape | 适用 | Eager 路径通过已有 `EagerExecuteOp` 调用点执行；AnnotatedArgs 路径在编译期记录刷新模式并生成 `args_format`，静态模型加载时据此刷新地址，不改变 DavinciModel 接口。 |
 | 动态 Shape | 适用 | Eager/Host CPU context 提供动态输入实例数、tensor 查询和 runtime 元信息，bridge 在执行期组装 dynamic input 列表，不新增 RT2 lowering 数据。 |
 | 动态 Shape 静态子图 | 适用 | 不新增 `DavinciModelCreate` / `DavinciModelCreateV2` 输入，不改变 v2 到 v1 边界数据。静态子图内如存在 custom op，仍通过已有 custom op registry 和 `EagerExecuteOp` 路径调用。 |
-| 离线场景（atc 编译） | 适用 | atc 初始化并加载 Python custom op，执行 `declare_launch_args` 后把显式刷新模式和 `args_format` 保存到 OM。Python 实现本身不随 OM 保存；模型运行阶段使用序列化模式和布局，不依赖 Python 注册环境。Eager `execute` 实现仍不能离线独立部署。 |
+| 离线场景（atc 编译） | 适用 | atc 初始化并加载 Python custom op，执行 `declare_launch_args` 后把显式刷新模式和 `args_format` 保存到 OM。Python 实现的源码快照随 `PYTHON_CUSTOM_OPS` 分区打包进 OM，模型加载期执行内嵌源码恢复 creator；运行阶段使用序列化模式和布局，不执行 `compile`/`declare_launch_args` 等编译期回调，但加载进程需具备 Python 运行时（无 Python 时 `LoadCustomOpRegistry` 点名失败）。Eager `execute` 实现仍不能离线独立部署。 |
 | 在线场景（框架适配） | 适用 | 在线初始化和 `GraphManager::PreRun()` 均可加载 Python custom op；前端仍需生成匹配的 op type、算子原型和必要 tensor 描述，schema-bound 调用复用该原型的 canonical IR。 |
 
 ## 4. 性能
@@ -450,7 +448,7 @@ Python custom op 不区分芯片，不引入芯片分支。device/host kernel �
 
 ### 4.2 OM 大小和加载占用内存
 
-当前不把 Python 实现序列化进 OM，不新增 OM 分区，也不改变模型文件大小。进程内额外内存主要来自 Python 解释器、导入模块、bridge/native SO 和 Python holder。
+Python 实现的源码快照写入新增的 `PYTHON_CUSTOM_OPS` 分区，OM 体积随被图使用的 Python 算子源码量增长；`portable` 算子的实例状态另写入 `CUSTOM_OPS` 分区。加载期进程内额外内存主要来自 Python 解释器、内嵌源码模块、bridge/native SO 和 Python holder。
 
 ### 4.3 执行性能
 
@@ -679,7 +677,7 @@ PythonCustomOpAdapter::DeclareLaunchArgs(ctx)
   在类注册阶段抛 `TypeError`。
 - 多个同名 `execute` 混入未装饰实现，或 `register_kernel` 位于 `staticmethod`/`classmethod` 内层：抛
   `TypeError`，提示必须位于最外层。
-- `register_op` 的 `op_type`、签名标注、属性默认值或 `mutates_args` 不合法：抛 `TypeError` 或 `ValueError`。
+- `register_op` 的 `op_type`、签名标注、属性默认值、`output_names` 或 `mutates_args` 不合法：抛 `TypeError` 或 `ValueError`。
 - 被装饰对象不是 class 或是抽象 class：抛 `TypeError`。
 - 实现 class 未提供任何受支持的可调用方法：抛 `TypeError`，错误信息列出支持的方法。
 - 重复 `op_type` 或 `descriptor_key`：抛 `ValueError`。
@@ -715,8 +713,8 @@ PythonCustomOpAdapter::DeclareLaunchArgs(ctx)
   `register_kernel`，不在 host/device 间 fallback。
 - C++ custom op 原有 `dynamic_cast` 语义通过 `CustomOpCast<T>()` 对普通 C++ op 退化保持兼容。
 - 不改变 OM 格式，老 OM 在新版本下仍按原有 custom op 分区和 registry 逻辑加载。
-- 新 OM 不携带 Python 实现，不能假设在老版本上复现 Python custom op 执行能力。
-- 新 OM 携带 `_custom_task_args_mode` 和 AnnotatedArgs `args_format`，但不携带 Python 实现；新运行时以显式模式为第一事实来源。只有没有该属性的旧 OM 才先查询 registry，再按非空 `args_format` 兼容兜底。
+- 新 OM 的 `PYTHON_CUSTOM_OPS` 分区（分区类型 27）不被老版本识别，不能假设在老版本上复现 Python custom op 执行能力。
+- 新 OM 携带 `_custom_task_args_mode`、AnnotatedArgs `args_format` 和 Python 实现源码快照；新运行时以显式模式为第一事实来源。只有没有该属性的旧 OM 才先查询 registry，再按非空 `args_format` 兼容兜底。
 - Python custom op 依赖运行环境中匹配版本的 `ge_py`、bridge/native SO 和 Python ABI。
 - callback POD 增加 Host CPU 函数指针后 bridge ABI 升级到 v2；v1 与 v2 artifact 不混用。
 - `ASCEND_CUSTOM_OPP_PATH` 已是既有环境变量，新增 Python 文件/包识别不会影响没有 Python 入口的 C++ OPP 路径。
@@ -789,6 +787,8 @@ Python 侧代码入口：custom-op 与 pass 的 C++ bridge loader 分别通过�
 
 custom-op 对 runtime 的要求是依赖关系，不是所有权关系。若 runtime fallback 成功而 custom-op fallback 失败，runtime artifact 可以保留；custom-op loader 必须清理自身未完成的临时产物，并返回清晰错误。
 
+嵌入 fallback 的源码与头文件构成一个自包含编译单元，现场编译只能看到打包期物化的源码树与安装包的 `include`、`pkg_inc`。因此它们引用的 GE 私有头必须同步登记到 `api/python/ge/CMakeLists.txt` 的 `GE_PYTHON_CUSTOM_OP_BRIDGE_*_HEADERS` 清单，include 写法必须与 `gen_fallback_resources.py` 的物化目录一致；该 include 闭包由 `tests/ge/ut/ge/graph/pyge_tests/python_native_packaging_test.py` 中的 `FallbackIncludeClosureTest` 静态校验。
+
 #### 8.1.5 运行时选择和兼容校验
 
 - Python 侧和 C++ 侧均以当前进程实际 Python runtime key 为版本选择依据，不使用外层 launcher Python 版本替代当前进程版本。
@@ -804,6 +804,7 @@ custom-op 对 runtime 的要求是依赖关系，不是所有权关系。若 run
 - `import ge.runtime`、`import ge.custom_op` 以及 native 类型加载；
 - Python custom-op 的 `execute`、`compile`、`infer_meta`、`declare_launch_args` 回调；
 - runtime 预编译/custom-op fallback、runtime fallback/custom-op 预编译的组合场景；
+- 嵌入 fallback 源码与嵌入头的 GE 私有头 include 闭包与打包清单一致（静态校验，不依赖 CANN 安装与编译器）；
 - Python tag、平台、runtime ABI、custom-op ABI 不匹配时的错误和回滚；
 - 在线执行、离线 atc 编译、AnnotatedArgs 地址刷新和 RT2 动态 Shape 场景。
 
@@ -835,7 +836,7 @@ custom-op 对 runtime 的要求是依赖关系，不是所有权关系。若 run
 | 功能 | loader 在无 Python 入口时跳过，有入口时加载 bridge | C++ gtest / stub | UT |
 | 兼容性 | C++ custom op 裸能力继承仍可正常 cast | C++ gtest | UT |
 | 特性交叉 | 在线 PreRun 加载后刷新 ops kernel info | GE 图执行相关测试 | UT/ST |
-| 样例 | Python `register_op`/`infer_meta`/`register_op_impl`、Ascend C kernel 的 schema-bound 在线执行，以及 AnnotatedArgs 离线编译后无 Python 环境的地址刷新执行 | `annotated_args_refresh_add_custom/{online,offline}/python` | ST/真机 |
+| 样例 | Python `register_op`/`infer_meta`/`register_op_impl`、Ascend C kernel 的 schema-bound 在线执行，以及 AnnotatedArgs 离线编译后不执行编译期回调的地址刷新执行（加载期从 OM 内嵌源码恢复，进程需具备 Python 运行时） | `annotated_args_refresh_add_custom/{online,offline}/python` | ST/真机 |
 
 ### 9.3 测试框架设计
 

@@ -15,8 +15,13 @@
 #include "graph/node.h"
 
 namespace ge {
+class ExecuteGraph;
+class FastNode;
 class GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY NodeAdapter {
  public:
+  static GNodePtr ExecuteNode2GNode(FastNode *node);
+  static FastNode *GNode2ExecuteNode(const GNode &node);
+  static bool IsExecuteNode(const GNode &node);
   static GNode Node2GNode(const NodePtr &node);
   static NodePtr GNode2Node(const GNode &node);
   static GNodePtr Node2GNodePtr(const NodePtr &node);

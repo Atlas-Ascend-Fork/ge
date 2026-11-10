@@ -21,6 +21,7 @@
 #include "graph_builder_utils.h"
 #include "node_utils.h"
 #include "graph/attr_value.h"
+#include "graph/operator_factory.h"
 
 #undef private
 #undef protected

@@ -284,6 +284,165 @@ def test_direct_dataclass_construction_freezes_mutable_containers():
     )
 
 
+@pytest.mark.parametrize("output_names", [("values", "parts"), ["values", "parts"]])
+def test_register_op_supports_explicit_output_names(output_names):
+    @proto.register_op(op_type="NamedOutputsCustom", output_names=output_names)
+    def infer_meta(x: TensorDesc) -> Tuple[TensorDesc, List[TensorDesc]]:
+        return x, []
+
+    descriptor = infer_meta.__ge_op_proto_descriptor__
+    assert [(item.name, item.index, item.kind) for item in descriptor.outputs] == [
+        ("values", 0, proto.OutputType.REQUIRED),
+        ("parts", 1, proto.OutputType.DYNAMIC),
+    ]
+    assert descriptor.to_bridge_dict()["outputs"] == [
+        {"name": "values", "kind": int(proto.OutputType.REQUIRED)},
+        {"name": "parts", "kind": int(proto.OutputType.DYNAMIC)},
+    ]
+
+
+def test_register_op_supports_single_and_zero_named_outputs():
+    @proto.register_op(op_type="SingleNamedOutputCustom", output_names=("y",))
+    def infer_meta(x: TensorDesc) -> TensorDesc:
+        return x
+
+    @proto.register_op(op_type="ZeroNamedOutputCustom", output_names=())
+    def no_output() -> None:
+        pass
+
+    assert infer_meta.__ge_op_proto_descriptor__.outputs == (
+        proto.OpOutput("y", 0, proto.OutputType.REQUIRED),
+    )
+    assert no_output.__ge_op_proto_descriptor__.outputs == ()
+
+
+@pytest.mark.parametrize(
+    ("output_names", "mutates_args", "error_type"),
+    [
+        ("y", (), TypeError),
+        ((1,), (), TypeError),
+        (("",), (), TypeError),
+        (("y\0",), (), TypeError),
+        ((), (), ValueError),
+        (("y", "z"), (), ValueError),
+        (("y",), ("x",), ValueError),
+    ],
+)
+def test_register_op_rejects_invalid_output_names(
+    output_names, mutates_args, error_type
+):
+    def infer_meta(x: TensorDesc) -> TensorDesc:
+        return x
+
+    with pytest.raises(error_type, match="output_names"):
+        proto.register_op(
+            op_type="InvalidNamedOutputCustom",
+            output_names=output_names,
+            mutates_args=mutates_args,
+        )(infer_meta)
+    assert proto.get_registered_op_protos() == []
+
+
+def test_register_op_rejects_duplicate_output_names():
+    def infer_meta(x: TensorDesc) -> Tuple[TensorDesc, TensorDesc]:
+        return x, x
+
+    with pytest.raises(ValueError, match="output_names must be unique"):
+        proto.register_op(
+            op_type="DuplicateNamedOutputsCustom", output_names=("y", "y")
+        )(infer_meta)
+
+
+@pytest.mark.parametrize("mutates_args", [(), []])
+def test_register_op_names_can_alias_inputs_without_mutates_args(mutates_args):
+    @proto.register_op(
+        op_type="NamedAliasCustom", output_names=("x",), mutates_args=mutates_args
+    )
+    def infer_meta(x: TensorDesc) -> TensorDesc:
+        return x
+
+    descriptor = infer_meta.__ge_op_proto_descriptor__
+    assert descriptor.outputs == (proto.OpOutput("x", 0, proto.OutputType.REQUIRED),)
+    assert descriptor.to_bridge_dict()["outputs"] == [
+        {"name": "x", "kind": int(proto.OutputType.REQUIRED)},
+    ]
+
+
+@pytest.mark.parametrize(
+    "mutates_args",
+    [("x",), (("x", 0),), ("missing",), (("x", 2),), ("x", ("x", 0))],
+)
+@pytest.mark.parametrize("output_names", [("x",), ("y",), ()])
+def test_register_op_rejects_both_mutates_args_and_output_names(
+    mutates_args, output_names
+):
+    def infer_meta(x: TensorDesc) -> TensorDesc:
+        return x
+
+    with pytest.raises(
+        ValueError, match="mutates_args and output_names are mutually exclusive"
+    ):
+        proto.register_op(
+            op_type="MutuallyExclusiveCustom",
+            mutates_args=mutates_args,
+            output_names=output_names,
+        )(infer_meta)
+    assert proto.get_registered_op_protos() == []
+
+
+@pytest.mark.parametrize("mutates_args", [None, False, 0, "", "x"])
+@pytest.mark.parametrize("output_names", [None, ("y",)])
+def test_register_op_checks_mutates_args_type_before_exclusivity(
+    mutates_args, output_names
+):
+    def infer_meta(x: TensorDesc) -> TensorDesc:
+        return x
+
+    with pytest.raises(TypeError, match="mutates_args must be a list or tuple"):
+        proto.register_op(
+            op_type="InvalidMutationTypeCustom",
+            mutates_args=mutates_args,
+            output_names=output_names,
+        )(infer_meta)
+    assert proto.get_registered_op_protos() == []
+
+
+def test_register_op_names_and_mutates_args_produce_the_same_prototype():
+    def infer_meta(x: TensorDesc) -> Tuple[TensorDesc, TensorDesc]:
+        return x, x
+
+    proto.register_op(op_type="EquivalentAliasCustom", mutates_args=(("x", 1),))(
+        infer_meta
+    )
+    first = infer_meta.__ge_op_proto_descriptor__
+    proto.register_op(op_type="EquivalentAliasCustom", output_names=("output0", "x"))(
+        infer_meta
+    )
+    assert infer_meta.__ge_op_proto_descriptor__ is first
+    assert [item.name for item in first.outputs] == ["output0", "x"]
+    assert len(proto.get_registered_op_protos()) == 1
+
+
+def test_register_op_named_mutation_is_idempotent_and_rejects_changed_names():
+    def infer_meta(x: TensorDesc) -> Tuple[TensorDesc, TensorDesc]:
+        return x, x
+
+    decorator = proto.register_op(
+        op_type="NamedMutationCustom",
+        output_names=("value", "x"),
+    )
+    decorator(infer_meta)
+    first = infer_meta.__ge_op_proto_descriptor__
+    decorator(infer_meta)
+    assert infer_meta.__ge_op_proto_descriptor__ is first
+    assert [item.name for item in first.outputs] == ["value", "x"]
+    with pytest.raises(ValueError, match="descriptor content changed"):
+        proto.register_op(
+            op_type="NamedMutationCustom",
+            output_names=("other", "x"),
+        )(infer_meta)
+
+
 def test_register_op_supports_explicit_mutation_and_unique_fresh_names():
     @proto.register_op(op_type="ExplicitMutateCustom", mutates_args=(("state", 2),))
     def infer_meta(

@@ -8,12 +8,15 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "es_c_tensor_holder.h"
+#include "es_c_graph_builder.h"
 #include "common/checker.h"
+#include "common/ge_common/ge_inner_error_codes.h"
 /****************************************************/
 // 这部分头文件是符号化能力引入的对内头文件，符号化能力暂时无法对外
 #include "graph/symbolizer/symbolic.h"
 #include "attribute_group/attr_group_symbolic_desc.h"
 #include "graph/utils/node_adapter.h"
+#include "graph/utils/graph_utils_ex.h"
 /****************************************************/
 
 struct EsCTensorHolder::EsCTensorHolderImpl {
@@ -23,6 +26,10 @@ struct EsCTensorHolder::EsCTensorHolderImpl {
 
   // 符号化相关能力因为没有对外接口，暂时使用内部接口；后续提供对外接口后，这部分整改掉
   ge::Status SetOriginSymbolShape(const char *const *shape_str, const int64_t shape_str_num) {
+    const auto status = CheckTensorDescMutable("EsSetOriginSymbolShape");
+    if (status != ge::SUCCESS) {
+      return status;
+    }
     GELOGW("This interface has no compatibility guarantees for now; use with caution!");
     std::vector<ge::Expression> shape;
     shape.reserve(shape_str_num);
@@ -37,16 +44,28 @@ struct EsCTensorHolder::EsCTensorHolderImpl {
     return ge::SUCCESS;
   }
   ge::Status SetFormat(const ge::Format format) {
+    const auto status = CheckTensorDescMutable("EsSetFormat");
+    if (status != ge::SUCCESS) {
+      return status;
+    }
     GE_ASSERT_SUCCESS(SetOriginFormat(format));
     GE_ASSERT_SUCCESS(SetStorageFormat(format));
     return ge::SUCCESS;
   }
   ge::Status SetShape(const ge::Shape &shape) {
+    const auto status = CheckTensorDescMutable("EsSetShape");
+    if (status != ge::SUCCESS) {
+      return status;
+    }
     GE_ASSERT_SUCCESS(SetOriginShape(shape));
     GE_ASSERT_SUCCESS(SetStorageShape(shape));
     return ge::SUCCESS;
   }
   ge::Status SetDataType(const ge::DataType data_type) {
+    const auto status = CheckTensorDescMutable("EsSetDataType");
+    if (status != ge::SUCCESS) {
+      return status;
+    }
     auto td = GetTd();
     td.SetOriginDataType(data_type);
     td.SetDataType(data_type);
@@ -54,24 +73,40 @@ struct EsCTensorHolder::EsCTensorHolderImpl {
     return ge::SUCCESS;
   }
   ge::Status SetOriginFormat(const ge::Format format) {
+    const auto status = CheckTensorDescMutable("EsCTensorHolder::SetOriginFormat");
+    if (status != ge::SUCCESS) {
+      return status;
+    }
     auto td = GetTd();
     td.SetOriginFormat(format);
     UpdateTd(td);
     return ge::SUCCESS;
   }
   ge::Status SetStorageFormat(const ge::Format format) {
+    const auto status = CheckTensorDescMutable("EsCTensorHolder::SetStorageFormat");
+    if (status != ge::SUCCESS) {
+      return status;
+    }
     auto td = GetTd();
     td.SetFormat(format);
     UpdateTd(td);
     return ge::SUCCESS;
   }
   ge::Status SetOriginShape(const ge::Shape &shape) {
+    const auto status = CheckTensorDescMutable("EsCTensorHolder::SetOriginShape");
+    if (status != ge::SUCCESS) {
+      return status;
+    }
     auto td = GetTd();
     td.SetOriginShape(shape);
     UpdateTd(td);
     return ge::SUCCESS;
   }
   ge::Status SetStorageShape(const ge::Shape &shape) {
+    const auto status = CheckTensorDescMutable("EsCTensorHolder::SetStorageShape");
+    if (status != ge::SUCCESS) {
+      return status;
+    }
     auto td = GetTd();
     td.SetShape(shape);
     UpdateTd(td);
@@ -88,6 +123,20 @@ struct EsCTensorHolder::EsCTensorHolderImpl {
   }
 
  private:
+  ge::Status CheckTensorDescMutable(const char *interface) const {
+    // 计算图节点保持既有语义：build/reset 后仍可经 ES 接口修改节点描述
+    if (!ge::NodeAdapter::IsExecuteNode(producer_)) {
+      return ge::SUCCESS;
+    }
+    const auto *graph = owner_graph_builder_.GetGraph();
+    GE_ASSERT_NOTNULL(graph, "Graph has been built and reset");
+    GE_CHK_BOOL_EXEC(!ge::GraphUtilsEx::IsExecuteGraph(*graph),
+                     REPORT_PREDEFINED_ERR_MSG(
+                         "E10062", std::vector<const char *>({"interface", "reason"}),
+                         std::vector<const char *>({interface, "this ES interface does not support execution graphs"}));
+                     return ge::UNSUPPORTED, "%s does not support execution graphs.", interface);
+    return ge::SUCCESS;
+  }
   ge::GeTensorDescPtr GetInnerTd(const ge::GNode &node, int32_t output_index) const {
     auto ge_node = ge::NodeAdapter::GNode2Node(node);
     GE_ASSERT_NOTNULL(ge_node);

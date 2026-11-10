@@ -9,6 +9,7 @@
  */
 
 #include "link_req_handler.h"
+#include <cstdint>
 #include <set>
 #include <thread>
 #include "entity/llm_comm_entity_mgr.h"
@@ -38,8 +39,10 @@ LinkReqHandler::LinkReqHandler() {
   update_link_client_infos_.reserve(kUpdateLinkMaxCount);
 }
 
-void LinkReqHandler::SetUpdateLinkReqInfo(UpdateLinkReqInfo *link_req, int32_t *update_link_ret, int64_t device_index) {
+void LinkReqHandler::SetUpdateLinkReqInfo(UpdateLinkReqInfo *link_req, uint64_t req_size, int32_t *update_link_ret,
+                                          int64_t device_index) {
   update_link_req_info_ = link_req;
+  update_link_req_size_ = req_size;
   update_link_ret_ = update_link_ret;
   device_index_ = device_index;
   update_link_comp_count_ = 0U;
@@ -128,6 +131,11 @@ FsmStatus LinkReqHandler::TransUpdateLinkInfo(const UpdateLinkReqInfo &req_info,
     return FsmStatus::kFsmReqOverLimit;
   }
   dev_req_info.cluster_num = req_info.cluster_num;
+  const FsmStatus bytes_ret = CheckUpdateLinkBytes(req_info);
+  if (bytes_ret != FsmStatus::kFsmSuccess) {
+    SetOutput(static_cast<size_t>(req_info.cluster_num), bytes_ret);
+    return bytes_ret;
+  }
   // check and set operator type
   uint32_t operator_type = req_info.operator_type;
   if ((operator_type != static_cast<uint32_t>(LinkReqType::kLink)) &&
@@ -185,9 +193,38 @@ FsmStatus LinkReqHandler::TransUpdateLinkInfo(const UpdateLinkReqInfo &req_info,
   return FsmStatus::kFsmSuccess;
 }
 
+FsmStatus LinkReqHandler::CheckUpdateLinkBytes(const UpdateLinkReqInfo &req_info) const {
+  if (update_link_req_size_ < sizeof(UpdateLinkReqInfo)) {
+    UDF_LOG_ERROR("Update link req size:%lu is smaller than header:%zu.", update_link_req_size_,
+                  sizeof(UpdateLinkReqInfo));
+    return FsmStatus::kFsmParamInvalid;
+  }
+  const uint64_t tail_size = update_link_req_size_ - sizeof(UpdateLinkReqInfo);
+  if (tail_size < sizeof(ClusterInfo)) {
+    UDF_LOG_ERROR("Update link req has no complete cluster info, tail size:%lu.", tail_size);
+    return FsmStatus::kFsmParamInvalid;
+  }
+  const uint32_t ip_num = req_info.cluster_infos[0].ip_num;
+  if ((ip_num == 0U) || (ip_num > ((UINT64_MAX - sizeof(ClusterInfo)) / sizeof(IpInfo)))) {
+    UDF_LOG_ERROR("Update link req ip_num:%u is invalid.", ip_num);
+    return FsmStatus::kFsmParamInvalid;
+  }
+  const uint64_t cluster_info_size = sizeof(ClusterInfo) + (static_cast<uint64_t>(ip_num) * sizeof(IpInfo));
+  if (static_cast<uint64_t>(req_info.cluster_num) > (tail_size / cluster_info_size)) {
+    UDF_LOG_ERROR("Update link req buffer is too small, cluster_num:%u, cluster_info_size:%lu, tail:%lu.",
+                  req_info.cluster_num, cluster_info_size, tail_size);
+    return FsmStatus::kFsmParamInvalid;
+  }
+  return FsmStatus::kFsmSuccess;
+}
+
 FsmStatus LinkReqHandler::TransClusterInfo(const ClusterInfo &cluster_info, LinkReqType req_type, uint32_t ip_num,
                                            LinkReqHandler::ClusterAddrInfo &cluster) const {
   FuncStatisticInfo &stat_info = StatisticManager::GetInstance().GetStatisticInfo();
+  if (device_index_ < 0) {
+    UDF_LOG_ERROR("Param invalid for update link req, device_index:%ld.", device_index_);
+    return FsmStatus::kFsmParamInvalid;
+  }
   cluster.local_cluster_id = cluster_info.local_cluster_id;
   cluster.remote_cluster_id = cluster_info.remote_cluster_id;
   if (cluster_info.ip_num != ip_num) {
@@ -472,8 +509,19 @@ void LinkReqHandler::DoUnlink(size_t cluster_index, ClusterAddrInfo &cluster) {
 }
 
 void LinkReqHandler::DoServerUnlink(size_t cluster_index, ClusterAddrInfo &cluster) {
+  if ((update_link_req_info_ == nullptr) || (cluster_index >= update_link_req_info_->cluster_num)) {
+    UDF_LOG_ERROR("Server unlink req is invalid, cluster index:%zu.", cluster_index);
+    return;
+  }
   ClusterInfo &cluster_info = update_link_req_info_->cluster_infos[cluster_index];
-  const IpInfo &ip_info = cluster_info.ip_infos[device_index_];
+  if ((device_index_ < 0) || (static_cast<uint64_t>(device_index_) >= static_cast<uint64_t>(cluster_info.ip_num))) {
+    UDF_LOG_ERROR("Server unlink device_index:%ld is out of range, ip_num:%u.", device_index_, cluster_info.ip_num);
+    if (!update_link_comp_flags_[cluster_index]) {
+      SetResult(LinkReqType::kServerUnlink, cluster_index, FsmStatus::kFsmParamInvalid);
+    }
+    return;
+  }
+  const IpInfo &ip_info = cluster_info.ip_infos[static_cast<size_t>(device_index_)];
   HcclConn conn = LlmCommEntityMgr::GetInstance().GetEntityByIp(ip_info.remote_ip);
   if (conn == nullptr) {
     return SetResult(LinkReqType::kServerUnlink, cluster_index, FsmStatus::kFsmNotLink);

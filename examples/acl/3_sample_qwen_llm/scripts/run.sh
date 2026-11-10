@@ -17,7 +17,7 @@ function main()
 {
   echo "[INFO] The sample starts to run"
 
-  cd $script_path/../out
+  cd "$script_path/../out" || return 1
   ./main
 }
 

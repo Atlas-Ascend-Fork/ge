@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <iomanip>
 #include <fstream>
+#include <memory>
+#include "securec.h"
 #include "framework/common/debug/log.h"
 #include "framework/common/framework_types_internal.h"
 #include "common/helper/file_saver.h"
@@ -170,52 +172,142 @@ Status FileConstantUtils::GetFileIdToPathMapFromOption(std::map<std::string, std
   return SUCCESS;
 }
 
-Status FileConstantUtils::CopyOneWeightFromFileWithFilehandler(const void *const curr_dev_ptr,
-                                                               const std::string &file_path, const size_t offset,
-                                                               const size_t file_constant_size, size_t &left_size,
-                                                               std::ifstream &ifs) {
-  GE_CHECK_GE(left_size, file_constant_size);
-  ifs.clear();
-  (void)ifs.seekg(static_cast<int64_t>(offset), ifs.beg);
-  size_t used_memory = 0U;
-  std::string compress_nodes;
-  compress_nodes.reserve(static_cast<size_t>(kBlockSize));
-  Status ret = SUCCESS;
-  while ((!ifs.eof()) && (used_memory != file_constant_size)) {
-    (void)ifs.read(&compress_nodes[0U], kBlockSize);
+namespace {
+// 按 kBlockSize 分块把文件内容拷贝到目标内存(设备或主机), 返回实际拷贝字节数
+// aclrtMemcpy 的 kind 为预留参数, 系统按源/目的地址自动判定, 且文档明确支持非锁页 Host 内存(malloc/new 申请),
+// 故 Host 权重缓冲也可直接走本函数, 无需像清零那样区分内存位置
+Status CopyBlocksToDevice(const void *const curr_dev_ptr, const std::string &file_path, std::ifstream &ifs,
+                          const size_t usable_size, const size_t left_size, size_t &used_memory) {
+  // 分块上限为 kBlockSize, 小权重只分配实际需要的量; MakeUnique 会零初始化缓冲区
+  const size_t buf_size = std::min<size_t>(static_cast<size_t>(kBlockSize), std::max<size_t>(usable_size, 1U));
+  const std::unique_ptr<char[]> compress_nodes = MakeUnique<char[]>(buf_size);
+  GE_CHECK_NOTNULL(compress_nodes);
+  while ((!ifs.eof()) && (used_memory != usable_size)) {
+    const size_t once_size = std::min(buf_size, usable_size - used_memory);
+    (void)ifs.read(compress_nodes.get(), static_cast<std::streamsize>(once_size));
     auto copy_len_once = static_cast<size_t>(ifs.gcount());
-    if ((file_constant_size - used_memory) < copy_len_once) {
-      copy_len_once = file_constant_size - used_memory;
+    // read 失败(如 I/O 错误)时可能既不推进读指针也不置 eofbit, 必须显式退出避免死循环
+    if (copy_len_once == 0U) {
+      GELOGE(FAILED, "Read file[%s] failed or got no data at used memory[%zu].", file_path.c_str(), used_memory);
+      REPORT_INNER_ERR_MSG("E19999", "Read weight file[%s] failed at used memory[%zu].", file_path.c_str(),
+                           used_memory);
+      return FAILED;
     }
-    if (left_size < (used_memory + copy_len_once)) {
-      GELOGE(GRAPH_FAILED, "copy failed for lack memory, free size is %zu, need memory is %zu.", left_size,
-             used_memory + copy_len_once);
-      REPORT_INNER_ERR_MSG("E19999", "copy failed for lack memory, free size is %zu, need memory is %zu.", left_size,
-                           used_memory + copy_len_once);
-      ret = FAILED;
-      break;
+    if ((usable_size - used_memory) < copy_len_once) {
+      copy_len_once = usable_size - used_memory;
     }
-
     GELOGI("copy %zu bytes to memory, path = %s.", copy_len_once, file_path.c_str());
     void *const cur_dev_ptr = reinterpret_cast<void *>(PtrToValue(curr_dev_ptr) + used_memory);
-    const aclError rts_error = aclrtMemcpy(cur_dev_ptr, left_size - used_memory, &compress_nodes[0U], copy_len_once,
+    const aclError rts_error = aclrtMemcpy(cur_dev_ptr, left_size - used_memory, compress_nodes.get(), copy_len_once,
                                            ACL_MEMCPY_HOST_TO_DEVICE);
     if (rts_error != ACL_SUCCESS) {
       GELOGE(GRAPH_FAILED, "copy failed, result code = %d.", rts_error);
       REPORT_INNER_ERR_MSG("E19999", "copy failed, result code = %d.", rts_error);
-      ret = RT_ERROR_TO_GE_STATUS(rts_error);
-      break;
+      return RT_ERROR_TO_GE_STATUS(rts_error);
     }
     used_memory += copy_len_once;
   }
+  return SUCCESS;
+}
+
+// 文件数据未覆盖的区域显式清零, 避免把残留内存内容暴露给算子
+// Host 缓冲走 memset_s: 非 acl 接口(如 aclrtMallocHost)申请的 Host 内存传给 aclrtMemset 属未定义行为
+Status ClearWeightTail(const void *const curr_ptr, const size_t used_memory, const size_t total_size,
+                       const std::string &file_path, const WeightMemLocation mem_loc) {
+  if (used_memory >= total_size) {
+    return SUCCESS;
+  }
+  void *const tail_ptr = reinterpret_cast<void *>(PtrToValue(curr_ptr) + used_memory);
+  const size_t tail_size = total_size - used_memory;
+  GELOGI("Clear [%zu] bytes tail of file constant for file[%s].", tail_size, file_path.c_str());
+  if (mem_loc == WeightMemLocation::kHost) {
+    const auto memset_err = memset_s(tail_ptr, tail_size, 0, tail_size);
+    if (memset_err != EOK) {
+      GELOGE(FAILED, "Clear host tail of file constant failed, err = %d.", memset_err);
+      return FAILED;
+    }
+    return SUCCESS;
+  }
+  const aclError rts_error = aclrtMemset(tail_ptr, tail_size, 0, tail_size);
+  if (rts_error != ACL_SUCCESS) {
+    GELOGE(GRAPH_FAILED, "Clear tail of file constant failed, result code = %d.", rts_error);
+    return RT_ERROR_TO_GE_STATUS(rts_error);
+  }
+  return SUCCESS;
+}
+}  // namespace
+
+Status FileConstantUtils::CheckAndSeekWeightFile(std::ifstream &ifs, const std::string &file_path, const size_t offset,
+                                                 const size_t length, size_t &usable_size, const bool enforce_range) {
+  usable_size = 0U;
+  ifs.clear();
+  (void)ifs.seekg(0, std::ifstream::end);
+  const std::streamoff file_size = ifs.tellg();
+  if (ifs.fail() || (file_size < 0)) {
+    GELOGE(FAILED, "Failed to get size of weight file[%s].", file_path.c_str());
+    (void)REPORT_PREDEFINED_ERR_MSG("E13001", std::vector<const char *>({"file", "errmsg"}),
+                                    std::vector<const char *>({file_path.c_str(), "Get file size failed"}));
+    return FAILED;
+  }
+  // 减法比较: 既避免 offset + length 溢出, 也能拦截 int64 负属性值转成 size_t 后的超大值
+  const size_t act_file_len = static_cast<size_t>(file_size);
+  if (offset > act_file_len) {
+    GELOGE(FAILED, "Offset[%zu] exceeds the size[%zu] of weight file[%s].", offset, act_file_len, file_path.c_str());
+    REPORT_INNER_ERR_MSG("E19999", "Offset[%zu] exceeds weight file size[%zu], file[%s].", offset, act_file_len,
+                         file_path.c_str());
+    return FAILED;
+  }
+  usable_size = std::min(length, act_file_len - offset);
+  // length 为调用方未声明权重长度时推导出的上限(可能含对齐 padding), 允许文件偏短, 由调用方对剩余区域清零;
+  // 显式声明长度时必须完整覆盖, 否则说明权重文件被截断
+  if (enforce_range && (usable_size != length)) {
+    GELOGE(FAILED, "Weight file[%s] is truncated: expect offset[%zu] length[%zu], but actual file size is[%zu].",
+           file_path.c_str(), offset, length, act_file_len);
+    REPORT_INNER_ERR_MSG("E19999", "Weight file is truncated: expect offset[%zu] length[%zu], actual size[%zu].",
+                         offset, length, act_file_len);
+    return FAILED;
+  }
+  ifs.clear();
+  (void)ifs.seekg(static_cast<int64_t>(offset), ifs.beg);
+  if (ifs.fail()) {
+    GELOGE(FAILED, "Failed to seek weight file[%s] to offset[%zu].", file_path.c_str(), offset);
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+Status FileConstantUtils::CopyOneWeightFromFileWithFilehandler(const void *const curr_dev_ptr,
+                                                               const std::string &file_path, const size_t offset,
+                                                               const size_t file_constant_size, size_t &left_size,
+                                                               std::ifstream &ifs, const bool enforce_range,
+                                                               const WeightMemLocation mem_loc) {
+  GE_CHECK_GE(left_size, file_constant_size);
+  const size_t total_size = left_size;
+  size_t usable_size = 0U;
+  GE_CHK_STATUS_RET(CheckAndSeekWeightFile(ifs, file_path, offset, file_constant_size, usable_size, enforce_range),
+                    "Check weight file[%s] failed, offset[%zu], length[%zu].", file_path.c_str(), offset,
+                    file_constant_size);
+  size_t used_memory = 0U;
+  GE_CHK_STATUS_RET(CopyBlocksToDevice(curr_dev_ptr, file_path, ifs, usable_size, total_size, used_memory),
+                    "Copy weight from file[%s] failed.", file_path.c_str());
+  // 实际读入的字节数必须与可读长度一致, 否则说明文件在读取期间被截断
+  if (used_memory != usable_size) {
+    GELOGE(FAILED, "Read [%zu] bytes from file[%s] but expect [%zu] bytes.", used_memory, file_path.c_str(),
+           usable_size);
+    REPORT_INNER_ERR_MSG("E19999", "Read weight file[%s] incomplete, read[%zu] expect[%zu].", file_path.c_str(),
+                         used_memory, usable_size);
+    return FAILED;
+  }
+  // 与前序实现保持一致: 无论清零是否成功都按实际读入量回填剩余空间
+  const Status clear_ret = ClearWeightTail(curr_dev_ptr, used_memory, total_size, file_path, mem_loc);
   left_size -= used_memory;
   GELOGI("used memory is %zu.", used_memory);
-  return ret;
+  return clear_ret;
 }
 
 Status FileConstantUtils::CopyOneWeightFromFile(const void *const curr_dev_ptr, const std::string &file_path,
-                                                const size_t offset, const size_t file_constant_size,
-                                                size_t &left_size) {
+                                                const size_t offset, const size_t file_constant_size, size_t &left_size,
+                                                const bool enforce_range, const WeightMemLocation mem_loc) {
   GE_CHECK_GE(left_size, file_constant_size);
   const std::string real_path = RealPath(file_path.c_str());
   std::ifstream ifs(real_path, std::ifstream::binary);
@@ -225,8 +317,8 @@ Status FileConstantUtils::CopyOneWeightFromFile(const void *const curr_dev_ptr, 
                                     std::vector<const char *>({file_path.c_str(), "Open file failed"}));
     return FAILED;
   }
-  const Status ret =
-      CopyOneWeightFromFileWithFilehandler(curr_dev_ptr, real_path, offset, file_constant_size, left_size, ifs);
+  const Status ret = CopyOneWeightFromFileWithFilehandler(curr_dev_ptr, real_path, offset, file_constant_size,
+                                                          left_size, ifs, enforce_range, mem_loc);
   ifs.close();
   return ret;
 }
@@ -351,12 +443,9 @@ Status FileConstantUtils::ReadExternalWeightFromFile(const std::string &file_pat
   GE_CHK_BOOL_RET_STATUS(!real_path.empty(), FAILED, "Failed to get real path of %s", file_path.c_str());
   std::ifstream ifs(real_path, std::ifstream::binary);
   GE_CHK_BOOL_RET_STATUS(ifs.is_open(), FAILED, "Read file %s failed.", real_path.c_str());
-  (void)ifs.seekg(0, std::ifstream::end);
-  const size_t act_file_len = static_cast<size_t>(ifs.tellg());
-  const size_t pos = offset + file_length;
-  GE_CHECK_LE(pos, act_file_len);
-  ifs.clear();
-  (void)ifs.seekg(static_cast<int64_t>(offset), ifs.beg);
+  size_t usable_size = 0U;
+  GE_CHK_STATUS_RET(CheckAndSeekWeightFile(ifs, real_path, offset, file_length, usable_size),
+                    "Check weight file[%s] failed, offset[%zu], length[%zu].", real_path.c_str(), offset, file_length);
   (void)ifs.read(bin_buff, static_cast<int64_t>(file_length));
   GE_CHK_BOOL_RET_STATUS(ifs.good(), FAILED, "read file %s failed.", real_path.c_str());
   ifs.close();

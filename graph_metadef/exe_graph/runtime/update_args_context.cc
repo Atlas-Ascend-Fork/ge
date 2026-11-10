@@ -15,12 +15,12 @@
 
 namespace gert {
 
-const KernelArgs* UpdateArgsContext::GetKernelArgs(Placement placement, size_t index) const {
+const KernelArgs *UpdateArgsContext::GetKernelArgs(Placement placement, size_t index) const {
   auto additional_output_start = GetAdditionalOutputStartIndex();
   GE_ASSERT_TRUE(additional_output_start >= 0);
 
   auto *chain = GetOutput(static_cast<size_t>(additional_output_start) +
-      static_cast<size_t>(EagerOpExecutionContext::AdditionalOutputIndex::kArgsHandler));
+                          static_cast<size_t>(EagerOpExecutionContext::AdditionalOutputIndex::kArgsHandler));
   GE_ASSERT_NOTNULL(chain);
   auto *handler = chain->GetValue<ArgsHandler *>();
   GE_ASSERT_NOTNULL(handler);

@@ -9,6 +9,10 @@
  */
 
 #include "graph/gnode.h"
+#include "graph/debug/ge_log.h"
+#include <map>
+#include "graph/fast_graph/execute_graph.h"
+#include "normal_graph/execute_node_backend.h"
 #include "normal_graph/compute_node_backend.h"
 #include "normal_graph/gnode_impl.h"
 #include "graph/graph.h"
@@ -61,13 +65,45 @@
   }
 
 namespace ge {
+GNodePtr NodeAdapter::ExecuteNode2GNode(FastNode *node) {
+  if ((node == nullptr) || (node->GetExtendInfo() == nullptr)) {
+    return nullptr;
+  }
+  auto *owner = node->GetExtendInfo()->GetOwnerGraphBarePtr();
+  const auto graph = owner != nullptr ? owner->weak_from_this().lock() : nullptr;
+  if (graph == nullptr) {
+    return nullptr;
+  }
+  const auto handle = graph->GetNodeHandle(node);
+  if (graph->ResolveNode(handle) != node) {
+    return nullptr;
+  }
+  auto wrapped = ComGraphMakeShared<GNode>();
+  GE_ASSERT_NOTNULL(wrapped);
+  wrapped->impl_ = ComGraphMakeShared<ExecuteNodeBackend>(graph, handle);
+  GE_ASSERT_NOTNULL(wrapped->impl_);
+  return wrapped;
+}
+
+FastNode *NodeAdapter::GNode2ExecuteNode(const GNode &node) {
+  const auto *backend = dynamic_cast<const ExecuteNodeBackend *>(node.impl_.get());
+  return backend != nullptr ? backend->GetNode() : nullptr;
+}
+
+bool NodeAdapter::IsExecuteNode(const GNode &node) {
+  return dynamic_cast<const ExecuteNodeBackend *>(node.impl_.get()) != nullptr;
+}
+
 NodePtr NodeAdapter::GNode2Node(const ge::GNode &node) {
+  if (dynamic_cast<const ExecuteNodeBackend *>(node.impl_.get()) != nullptr) {
+    GE_REPORT_UNSUPPORTED_EXECUTE_OPERATION("GNode2Node");
+    return nullptr;
+  }
   if (node.impl_ == nullptr) {
     REPORT_INNER_ERR_MSG("E18888", "param graph_node.impl_ is nullptr, check invalid.");
     GELOGE(GRAPH_FAILED, "[Check][Param] GNode2Node: gnode impl is nullptr.");
     return nullptr;
   }
-  // 计算节点：经派生类取底层 Node；执行图接入时改为按动态类型校验并报不支持（设计稿 §10）
   return static_cast<const ComputeNodeBackend *>(node.impl_.get())->node_ptr_.lock();
 }
 
@@ -99,6 +135,11 @@ GNodePtr NodeAdapter::Node2GNodePtr(const ge::NodePtr &node) {
   if (gnode == nullptr) {
     REPORT_INNER_ERR_MSG("E18888", "create GNode failed.");
     GELOGE(GRAPH_FAILED, "[Create][GNode] Node2GNodePtr: gnode is nullptr, node[%s].", node->GetName().c_str());
+    return nullptr;
+  }
+
+  if (gnode->impl_ == nullptr) {
+    GELOGW("[Check][Param] Gnode impl is nullptr, node:%s", node->GetName().c_str());
     return nullptr;
   }
   static_cast<ComputeNodeBackend *>(gnode->impl_.get())->node_ptr_ = node;
@@ -150,7 +191,7 @@ std::vector<GNodePtr> GNode::GetInControlNodes() const {
     return {};
   }
 
-  return impl_->GetControlNodes(true);
+  return impl_->GetInControlNodes();
 }
 
 std::vector<std::pair<GNodePtr, int32_t>> GNode::GetOutDataNodesAndPortIndexs(const int32_t index) const {
@@ -170,7 +211,7 @@ std::vector<GNodePtr> GNode::GetOutControlNodes() const {
     return {};
   }
 
-  return impl_->GetControlNodes(false);
+  return impl_->GetOutControlNodes();
 }
 
 graphStatus GNode::GetInputConstData(const int32_t index, Tensor &data) const {

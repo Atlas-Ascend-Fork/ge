@@ -9,6 +9,8 @@
  */
 
 #include "graph/graph.h"
+#include "graph/debug/ge_log.h"
+#include "normal_graph/execute_graph_backend.h"
 #include "normal_graph/compute_graph_backend.h"
 #include <cstring>
 #include "graph/graph_buffer.h"
@@ -31,6 +33,22 @@
 
 namespace ge {
 
+GraphPtr GraphUtilsEx::ExecuteGraph2Graph(const std::shared_ptr<ExecuteGraph> &execute_graph) {
+  if (execute_graph == nullptr) {
+    return nullptr;
+  }
+  auto backend = ComGraphMakeShared<ExecuteGraphBackend>(execute_graph);
+  if (backend == nullptr) {
+    return nullptr;
+  }
+  auto graph = ComGraphMakeShared<Graph>();
+  if (graph == nullptr) {
+    return nullptr;
+  }
+  graph->impl_ = backend;
+  return graph;
+}
+
 Graph::Graph(const std::string &name) {
   impl_ = ComGraphMakeShared<ComputeGraphBackend>(name);
   if (impl_ == nullptr) {
@@ -47,6 +65,18 @@ Graph::Graph(const char_t *name) {
     }
   } else {
     GELOGW("[Check][Param] Input graph name is nullptr.");
+  }
+}
+
+Graph::Graph(const char_t *name, GraphKind kind) {
+  if ((name == nullptr) || ((kind != 0) && (kind != 1))) {
+    GELOGE(GRAPH_PARAM_INVALID, "[GertGraph][Parameter] Invalid graph name or backend kind.");
+    return;
+  }
+  if (kind == 1) {
+    impl_ = ComGraphMakeShared<ExecuteGraphBackend>(name);
+  } else {
+    impl_ = ComGraphMakeShared<ComputeGraphBackend>(name);
   }
 }
 
@@ -161,17 +191,7 @@ Graph &Graph::SetOutputs(const std::vector<std::pair<Operator, std::string>> &ou
 Graph &Graph::SetOutputs(const std::vector<std::pair<ge::Operator, AscendString>> &outputs) {
   GE_CHK_BOOL_EXEC(impl_ != nullptr, REPORT_INNER_ERR_MSG("E18888", "graph cannot be used, impl is nullptr.");
                    return *this, "[Check][Param] SetOutputs failed: graph cannot be used, impl is nullptr.");
-  std::vector<std::pair<ge::Operator, std::string>> graph_outputs;
-  for (auto &item : outputs) {
-    const char_t *const name = item.second.GetString();
-    if (name != nullptr) {
-      graph_outputs.emplace_back((std::pair<ge::Operator, std::string>(item.first, name)));
-    } else {
-      GELOGW("[SetOutputs][CheckParam] Input output_op_name is nullptr.");
-    }
-  }
-
-  (void)impl_->SetOutputs(graph_outputs);
+  (void)impl_->SetOutputs(outputs);
   return *this;
 }
 
@@ -296,42 +316,15 @@ graphStatus Graph::AddControlEdge(GNode &src_node, GNode &dst_node) {
 }
 
 GraphPtr Graph::ConstructFromInputs(const std::vector<Operator> &inputs, const AscendString &name) {
-  const char_t *const ascend_name = name.GetString();
-  if (ascend_name == nullptr) {
-    REPORT_INNER_ERR_MSG("E18888", "ascend string error");
-    GELOGE(GRAPH_PARAM_INVALID, "[Check][Param] ascend string error.");
-    return nullptr;
-  }
-
-  if (inputs.empty()) {
-    REPORT_INNER_ERR_MSG("E18888", "inputs size cannot be 0.");
-    GELOGE(GRAPH_FAILED, "[Check][Param] inputs size cannot be 0, graph: %s", ascend_name);
-    return nullptr;
-  }
-
-  const std::string graph_name = ascend_name;
-  const ComputeGraphPtr compute_graph = GraphUtilsEx::CreateGraphFromOperator(graph_name, inputs);
-  if (compute_graph == nullptr) {
-    REPORT_INNER_ERR_MSG("E18888", "create compute graph from op failed, name:%s", graph_name.c_str());
-    GELOGE(GRAPH_FAILED, "[Create][ComputeGraph] failed, name:%s.", graph_name.c_str());
-    return nullptr;
-  }
-
-  compute_graph->SetInputSize(static_cast<uint32_t>(inputs.size()));
-  const GraphPtr graph_ptr = GraphUtilsEx::CreateGraphPtrFromComputeGraph(compute_graph);
-  if (graph_ptr == nullptr) {
-    REPORT_INNER_ERR_MSG("E18888", "create graph from compute graph:%s failed.", compute_graph->GetName().c_str());
-    GELOGE(GRAPH_FAILED, "[Create][Graph] from compute graph:%s failed.", compute_graph->GetName().c_str());
-    return nullptr;
-  }
-
-  return graph_ptr;
+  return ComputeGraphBackend::ConstructFromInputs(inputs, name);
 }
 
 graphStatus Graph::SaveToFile(const std::string &file_name) const {
-  // impl 为空的门面按计算图处理（既有行为：空图保存经模型序列化失败）
-  const ComputeGraphPtr compute_graph = (impl_ != nullptr) ? impl_->GetComputeGraph() : nullptr;
-  return ComputeGraphBackend::SaveToFile(compute_graph, file_name);
+  if (impl_ == nullptr) {
+    // 旧行为：空门面按空计算图处理，经模型序列化失败返回
+    return ComputeGraphBackend::SaveToFile(nullptr, file_name);
+  }
+  return impl_->SaveToFile(file_name);
 }
 
 graphStatus Graph::SaveToFile(const char_t *file_name) const {
@@ -341,17 +334,21 @@ graphStatus Graph::SaveToFile(const char_t *file_name) const {
     return GRAPH_FAILED;
   }
 
-  const ComputeGraphPtr compute_graph = (impl_ != nullptr) ? impl_->GetComputeGraph() : nullptr;
-  return ComputeGraphBackend::SaveToFile(compute_graph, std::string(file_name));
+  if (impl_ == nullptr) {
+    // 旧行为：空门面按空计算图处理，经模型序列化失败返回
+    return ComputeGraphBackend::SaveToFile(nullptr, std::string(file_name));
+  }
+  return impl_->SaveToFile(std::string(file_name));
 }
 
 graphStatus Graph::LoadFromFile(const std::string &file_name) {
-  ComputeGraphPtr compute_graph;
-  const graphStatus ret = ComputeGraphBackend::LoadFromFile(file_name, compute_graph);
+  Graph loaded_graph;
+  const graphStatus ret = impl_ != nullptr ? impl_->LoadFromFile(file_name, loaded_graph)
+                                           : ComputeGraphBackend::LoadFromFile(loaded_graph, file_name);
   if (ret != GRAPH_SUCCESS) {
     return ret;
   }
-  *this = GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);
+  *this = std::move(loaded_graph);
   return GRAPH_SUCCESS;
 }
 
@@ -362,49 +359,42 @@ graphStatus Graph::LoadFromFile(const char_t *file_name) {
     return GRAPH_FAILED;
   }
 
-  ComputeGraphPtr compute_graph;
-  const graphStatus ret = ComputeGraphBackend::LoadFromFile(std::string(file_name), compute_graph);
-  if (ret != GRAPH_SUCCESS) {
-    return ret;
-  }
-  *this = GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);
-  return GRAPH_SUCCESS;
+  return LoadFromFile(std::string(file_name));
 }
 
 graphStatus Graph::LoadFromSerializedModelArray(const void *serialized_model, size_t size) {
-  ComputeGraphPtr compute_graph;
-  const graphStatus ret = ComputeGraphBackend::LoadFromSerializedModelArray(serialized_model, size, compute_graph);
+  Graph loaded_graph;
+  const graphStatus ret = impl_ != nullptr
+                              ? impl_->LoadFromSerializedModelArray(serialized_model, size, loaded_graph)
+                              : ComputeGraphBackend::LoadFromSerializedModelArray(loaded_graph, serialized_model, size);
   if (ret != GRAPH_SUCCESS) {
     return ret;
   }
-  *this = GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);
+  *this = std::move(loaded_graph);
   return GRAPH_SUCCESS;
 }
 
 graphStatus Graph::SaveToMem(GraphBuffer &graph_buffer) const {
   // GraphBuffer::buffer_ 仅 Graph 可见，门面取出原始 Buffer 引用后分发
-  const ComputeGraphPtr compute_graph = (impl_ != nullptr) ? impl_->GetComputeGraph() : nullptr;
-  return ComputeGraphBackend::SaveToMem(compute_graph, *(graph_buffer.buffer_));
+  if (impl_ == nullptr) {
+    // 旧行为：空门面按空计算图处理，经模型序列化失败返回
+    return ComputeGraphBackend::SaveToMem(nullptr, *(graph_buffer.buffer_));
+  }
+  return impl_->SaveToMem(*(graph_buffer.buffer_));
 }
 
 graphStatus Graph::LoadFromMem(const GraphBuffer &graph_buffer) {
-  ComputeGraphPtr compute_graph;
-  const graphStatus ret =
-      ComputeGraphBackend::LoadFromMem(graph_buffer.GetData(), graph_buffer.GetSize(), compute_graph);
-  if (ret != GRAPH_SUCCESS) {
-    return ret;
-  }
-  *this = GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);
-  return GRAPH_SUCCESS;
+  return LoadFromMem(graph_buffer.GetData(), graph_buffer.GetSize());
 }
 
 graphStatus Graph::LoadFromMem(const uint8_t *data, const size_t len) {
-  ComputeGraphPtr compute_graph;
-  const graphStatus ret = ComputeGraphBackend::LoadFromMem(data, len, compute_graph);
+  Graph loaded_graph;
+  const graphStatus ret = impl_ != nullptr ? impl_->LoadFromMem(data, len, loaded_graph)
+                                           : ComputeGraphBackend::LoadFromMem(loaded_graph, data, len);
   if (ret != GRAPH_SUCCESS) {
     return ret;
   }
-  *this = GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);
+  *this = std::move(loaded_graph);
   return GRAPH_SUCCESS;
 }
 
@@ -424,7 +414,9 @@ graphStatus Graph::GetName(AscendString &name) const {
 }
 
 graphStatus Graph::CopyFrom(const Graph &src_graph) {
-  const auto res = GraphUtilsEx::CopyGraph(src_graph, *this);
+  Graph copied_graph;
+  const auto res = impl_ != nullptr ? impl_->CopyFrom(src_graph, copied_graph)
+                                    : ComputeGraphBackend::CopyFrom(src_graph, "", copied_graph);
   if (res != GRAPH_SUCCESS) {
     AscendString name;
     (void)src_graph.GetName(name);
@@ -432,6 +424,7 @@ graphStatus Graph::CopyFrom(const Graph &src_graph) {
     GELOGE(GRAPH_FAILED, "[Copy][Graph] from %s failed.", name.GetString());
     return GRAPH_FAILED;
   }
+  *this = std::move(copied_graph);
   return GRAPH_SUCCESS;
 }
 
@@ -488,6 +481,16 @@ GNodePtr Graph::GetParentNode() const {
   return impl_->GetParentNode();
 }
 
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY std::shared_ptr<ExecuteGraph> GraphUtilsEx::Graph2ExecuteGraph(
+    const Graph &graph) {
+  const auto *backend = dynamic_cast<const ExecuteGraphBackend *>(graph.impl_.get());
+  return ((backend != nullptr) && graph.IsValid()) ? backend->GetGraph() : nullptr;
+}
+
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY bool GraphUtilsEx::IsExecuteGraph(const Graph &graph) {
+  return dynamic_cast<const ExecuteGraphBackend *>(graph.impl_.get()) != nullptr;
+}
+
 GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY ComputeGraphPtr GraphUtilsEx::GetComputeGraph(const ge::Graph &graph) {
   if (!graph.IsValid()) {
     return nullptr;
@@ -499,6 +502,8 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY graphStatus
 GraphUtilsEx::CreateGraphFromOperatorWithStableTopo(Graph &graph, const std::vector<Operator> &ops) {
   AscendString graph_name;
   GE_ASSERT_SUCCESS(graph.GetName(graph_name));
+  GE_ASSERT_TRUE(dynamic_cast<const ExecuteGraphBackend *>(graph.impl_.get()) == nullptr,
+                 "Stable compute graph conversion does not support execution graphs");
   GE_ASSERT_TRUE(graph.impl_->GetComputeGraph() == nullptr, "Compute graph of graph: %s has been created",
                  graph_name.GetString());
   const auto compute_graph = GraphUtilsEx::CreateComputeGraphFromOperatorWithStableTopo(graph_name.GetString(), ops);
@@ -571,6 +576,10 @@ void GeApiWrapper_RenameAllNodes(void *graph_ptr, const char *prefix) {
   }
   std::string prefix_str(prefix);
   ge::Graph *graph = static_cast<ge::Graph *>(graph_ptr);
+  if (ge::GraphUtilsEx::IsExecuteGraph(*graph)) {
+    GE_REPORT_UNSUPPORTED_EXECUTE_OPERATION("GeApiWrapper_RenameAllNodes");
+    return;
+  }
   for (auto &sub_node : graph->GetAllNodes()) {
     auto snode = ge::NodeAdapter::GNode2Node(sub_node);
     auto orig_name = snode->GetNamePtr() == nullptr ? std::string("") : std::string(snode->GetNamePtr());

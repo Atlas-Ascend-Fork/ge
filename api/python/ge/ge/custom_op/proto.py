@@ -358,8 +358,6 @@ def _thaw_default(value):
 
 
 def _parse_mutates_args(mutates_args, inputs, output_count: int) -> Dict[int, str]:
-    if isinstance(mutates_args, str) or not isinstance(mutates_args, (list, tuple)):
-        raise TypeError("mutates_args must be a list or tuple")
     if not mutates_args:
         return {}
 
@@ -403,12 +401,40 @@ def _parse_mutates_args(mutates_args, inputs, output_count: int) -> Dict[int, st
     return bindings
 
 
+def _validate_output_args(mutates_args, output_names, output_count: int) -> None:
+    if not isinstance(mutates_args, (list, tuple)):
+        raise TypeError("mutates_args must be a list or tuple")
+    if output_names is not None and mutates_args:
+        raise ValueError("mutates_args and output_names are mutually exclusive")
+    if output_names is not None:
+        if not isinstance(output_names, (list, tuple)):
+            raise TypeError("output_names must be a list or tuple")
+        if len(output_names) != output_count:
+            raise ValueError("output_names must have one name per output slot")
+        for name in output_names:
+            if not isinstance(name, str) or not name or "\0" in name:
+                raise TypeError(
+                    "output_names entries must be non-empty strings without null characters"
+                )
+        if len(set(output_names)) != len(output_names):
+            raise ValueError("output_names must be unique")
+
+
 def _build_outputs(
-    output_kinds: Tuple[OutputType, ...], inputs: Tuple[OpInput, ...], mutates_args
+    output_kinds: Tuple[OutputType, ...],
+    inputs: Tuple[OpInput, ...],
+    mutates_args,
+    output_names,
 ) -> Tuple[OpOutput, ...]:
+    _validate_output_args(mutates_args, output_names, len(output_kinds))
+    if output_names is not None:
+        return tuple(
+            OpOutput(name=name, index=index, kind=kind)
+            for index, (name, kind) in enumerate(zip(output_names, output_kinds))
+        )
     mutations = _parse_mutates_args(mutates_args, inputs, len(output_kinds))
     used_names = {item.name for item in inputs}
-    output_names = set()
+    used_output_names = set()
     outputs = []
     for index, kind in enumerate(output_kinds):
         name = mutations.get(index)
@@ -416,16 +442,16 @@ def _build_outputs(
             base_name = f"output{index}"
             name = base_name
             suffix = 1
-            while name in used_names or name in output_names:
+            while name in used_names or name in used_output_names:
                 name = f"{base_name}_{suffix}"
                 suffix += 1
-        output_names.add(name)
+        used_output_names.add(name)
         outputs.append(OpOutput(name=name, index=index, kind=kind))
     return tuple(outputs)
 
 
 def _build_descriptor(
-    fn: Callable[..., object], op_type: str, mutates_args
+    fn: Callable[..., object], op_type: str, mutates_args, output_names
 ) -> OpProtoDescriptor:
     signature = inspect.signature(fn)
     try:
@@ -494,7 +520,10 @@ def _build_descriptor(
         raise TypeError("register_op return type annotation is required")
     input_tuple = tuple(inputs)
     outputs = _build_outputs(
-        _parse_output_kinds(type_hints["return"]), input_tuple, mutates_args
+        _parse_output_kinds(type_hints["return"]),
+        input_tuple,
+        mutates_args,
+        output_names,
     )
     module_name = fn.__module__
     func_name = fn.__qualname__
@@ -510,7 +539,7 @@ def _build_descriptor(
     )
 
 
-def register_op(*, op_type: str, mutates_args=()) -> callable:
+def register_op(*, op_type: str, mutates_args=(), output_names=None) -> callable:
     """Collect a Python custom op prototype without registering it in C++."""
 
     normalized_op_type = _normalize_op_type(op_type)
@@ -519,7 +548,9 @@ def register_op(*, op_type: str, mutates_args=()) -> callable:
         try:
             if not inspect.isfunction(fn):
                 raise TypeError("register_op expects a Python function")
-            built = _build_descriptor(fn, normalized_op_type, mutates_args)
+            built = _build_descriptor(
+                fn, normalized_op_type, mutates_args, output_names
+            )
             active_scope = get_active_model_scope()
             if active_scope is not None:
                 # OM 恢复 scope 内只记录原型声明，进程级全局注册表零写入，

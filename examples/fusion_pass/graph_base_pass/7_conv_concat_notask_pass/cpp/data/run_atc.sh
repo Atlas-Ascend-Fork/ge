@@ -44,8 +44,9 @@ if [ ! -f "${SCRIPT_DIR}/model.onnx" ]; then
     exit 1
 fi
 
-# 清理上次产物
+# 清理上次产物（GE会在DUMP_GRAPH_PATH下创建pid_*_deviceid_*子目录存放dump文件，需一并清理）
 rm -f "${SCRIPT_DIR}/model.om"
+rm -rf "${DUMP_DIR}"/pid_*_deviceid_*
 rm -f "${DUMP_DIR}"/ge_onnx_*.pbtxt
 rm -f "${DUMP_DIR}"/ge_proto_*.txt
 
@@ -65,14 +66,14 @@ atc --model="${SCRIPT_DIR}/model.onnx" \
     --log=${ATC_LOG_LEVEL}
 
 echo ""
-echo "[2/2] ATC finished. Dump files:"
-ls -lh "${DUMP_DIR}"/ge_proto_*.txt 2>/dev/null || echo "(no proto txt dump)"
-ls -lh "${DUMP_DIR}"/ge_onnx_*.pbtxt 2>/dev/null || echo "(no onnx pbtxt dump)"
+echo "[2/2] ATC finished. Dump files (under pid_*_deviceid_* subdirectory):"
+ls -lh "${DUMP_DIR}"/*/ge_proto_*.txt 2>/dev/null || echo "(no proto txt dump)"
+ls -lh "${DUMP_DIR}"/*/ge_onnx_*.pbtxt 2>/dev/null || echo "(no onnx pbtxt dump)"
 ls -lh "${SCRIPT_DIR}"/model.om 2>/dev/null || echo "(no om output)"
 
 echo ""
 echo "============================================"
 echo " 分析提示："
-echo "   grep '_no_task'                           ${DUMP_DIR}/ge_proto_*_RunCustomPass*.txt"
-echo "   grep '_output_offset_list_for_continuous' ${DUMP_DIR}/ge_proto_*_RunCustomPass*.txt"
+echo "   grep '_no_task'                           ${DUMP_DIR}/pid_*_deviceid_*/ge_proto_*_RunCustomPass*.txt"
+echo "   grep '_output_offset_list_for_continuous' ${DUMP_DIR}/pid_*_deviceid_*/ge_proto_*_RunCustomPass*.txt"
 echo "============================================"

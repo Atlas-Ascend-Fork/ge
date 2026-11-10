@@ -10,12 +10,19 @@
 
 #ifndef INC_GRAPH_UTILS_EXECUTE_GRAPH_UTILS_H
 #define INC_GRAPH_UTILS_EXECUTE_GRAPH_UTILS_H
+#include <map>
 #include "graph/fast_graph/fast_node.h"
 #include "graph/fast_graph/execute_graph.h"
 
 namespace ge {
 class ExecuteGraphUtils {
  public:
+  // Copy into an empty graph, preserving its name. Failures leave a partial destination for the caller to discard.
+  static graphStatus CopyGraph(const ExecuteGraph &src, ExecuteGraph &dst);
+  static std::vector<FastNode *> GetGraphInputs(const ExecuteGraph *graph);
+  static graphStatus SetGraphInputs(ExecuteGraph *graph, const std::vector<FastNode *> &inputs);
+  static std::vector<std::pair<FastNode *, int32_t>> GetGraphOutputs(const ExecuteGraph *graph);
+
   /**
    * 查找`exe_graph`的根图，如果当前图就是根图或者当前图没有父图，则返回当前图
    * @param exe_graph
@@ -191,6 +198,12 @@ class ExecuteGraphUtils {
    * @return 节点名到节点的映射
    */
   static std::unordered_map<std::string, FastNode *> GetNodeMapFromAllNodes(ExecuteGraph *exe_graph);
+
+ private:
+  // Refresh output registration only; preserves empty slots {nullptr, -1} without updating NetOutput or edges.
+  static graphStatus SetGraphOutputs(ExecuteGraph *graph, const std::vector<std::pair<FastNode *, int32_t>> &outputs);
+  static graphStatus CopyGraphContents(const ExecuteGraph &src, ExecuteGraph &dst,
+                                       std::map<const FastNode *, FastNode *> &node_old_2_new);
 };
 }  // namespace ge
 #endif  // INC_GRAPH_UTILS_EXECUTE_GRAPH_UTILS_H

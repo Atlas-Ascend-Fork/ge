@@ -4,7 +4,9 @@
 
 本离线样例展示使用 Python 装饰器完成自定义算子原型注册、`infer_meta`、`compile` 和
 `declare_launch_args`，生成 AIR/OM 并由 ACL 在 NPU 上执行的最小链路。`declare_launch_args`
-只在 ATC 编译期运行，离线运行期只消费已生成的任务描述，不再导入 Python 模块。
+只在 ATC 编译期运行，离线运行期只消费已生成的任务描述，不再执行 `compile`/
+`declare_launch_args`/`infer_meta` 等编译期回调。OM 加载期会从内嵌的 Python 源码快照恢复算子定义，
+因此加载进程需要可用的 Python 运行时。
 
 核心链路：
 
@@ -22,7 +24,8 @@ Python 装饰器注册原型和 infer_meta
 
 - 本样例的算子类型是 `AnnotatedAddCustom`，原型、`infer_meta`、`compile` 和
   `declare_launch_args` 均由 `src/ge/annotated_add_custom.py` 的 Python 装饰器提供。
-- 离线模型路径不依赖 Python `execute` 回调；OM 运行期无需 Python 环境。
+- 离线模型路径不依赖 Python `execute` 回调，运行期只消费 OM 中的任务描述与地址布局；
+  OM 加载期需从内嵌源码恢复算子定义，故加载进程需具备 Python 运行时。
 - `declare_launch_args` 使用 `append_input`/`append_output` 标注两个输入地址槽和一个输出地址槽，
   GE 根据 args 布局完成地址刷新。
 - kernel binary 由 Python `compile` 回调调用 `bisheng` 编译 `add_custom_kernel.cpp` 生成，
@@ -102,7 +105,7 @@ OM 执行期:
   ACL 加载 OM
     ├─ GE 按 TaskDef 下发 custom kernel
     └─ 执行前刷新 INPUT/OUTPUT 地址槽位
-    （运行期不导入 Python 模块）
+    （运行期不执行编译期 Python 回调；加载期从 OM 内嵌源码恢复算子定义）
 ```
 
 callback 约束：
@@ -116,7 +119,8 @@ callback 约束：
 - `build/annotated_add.air`
   `build_graph.py` 生成的 AIR 中间图。
 - `build/annotated_add.om`
-  ATC 编译生成的离线模型，内嵌 kernel binary 和 AnnotatedArgs 地址布局，运行期无需 Python 环境。
+  ATC 编译生成的离线模型，内嵌 kernel binary、AnnotatedArgs 地址布局和 Python 算子源码快照，
+  可脱离本样例目录分发。
 - `build/opp/`
   自定义算子 OPP 注册库（`op_proto/custom/libcust_opapi.so` 及平台拷贝），通过 `ASCEND_CUSTOM_OPP_PATH` 暴露给 GE/ATC。
 - `build/es_output/`
@@ -124,7 +128,11 @@ callback 约束：
 
 ## 注意事项
 
-- ATC 日志应包含 Python 模块加载、`infer_meta`、Python compile 和地址声明标记；OM 运行期
-  不应再次出现这些标记，`run.sh` 会自动校验。
-- `run.sh` 在 ATC 阶段后 unset `ASCEND_CUSTOM_OPP_PATH`，验证 OM 运行不依赖 Python 插件路径。
-- OM 内嵌 kernel binary 和地址布局，可脱离本样例目录分发执行。
+- ATC 日志应包含 Python 模块加载、`infer_meta`、Python compile 和地址声明标记，运行期日志应包含
+  两轮地址刷新结果标记（`ROUND_*`、`NPU_TWO_ROUND_VALIDATION`），`run.sh` 会自动校验。
+  「运行期不执行编译期回调」属框架内部契约，由 ST/UT 以调用计数探针保证
+  （见 `tests/ge/st/testcase/test_ge_ir_build_offline_launch.cc` 的 declare 计数断言），
+  不由本样例 grep 日志标记推断。
+- OM 加载期从内嵌源码恢复 Python 算子定义，故加载进程需具备 Python 运行时；`run.sh` 在 ATC
+  阶段后 unset `ASCEND_CUSTOM_OPP_PATH`，验证恢复来源是 OM 内嵌源码而非插件路径。
+- OM 内嵌 kernel binary、地址布局和 Python 源码快照，可脱离本样例目录分发执行。

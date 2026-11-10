@@ -98,13 +98,20 @@ FsmStatus CheckTimeout(uint64_t start_tick, uint64_t timeout) {
 
 int32_t CheckInputTensor(const std::vector<std::shared_ptr<FlowMsg>> &input_msgs, uint64_t msgs_min_size,
                          size_t target_pos, uint64_t expect_size, bool is_expect_min) {
-  if (input_msgs.size() < msgs_min_size) {
-    UDF_LOG_ERROR("input msg size is not valid expect min:%lu, real size:%zu.", input_msgs.size(), msgs_min_size);
+  // target_pos is used as a subscript below, so the vector length must be greater than that index.
+  if ((input_msgs.size() < msgs_min_size) || (target_pos >= input_msgs.size())) {
+    UDF_LOG_ERROR("input msg size is invalid, expect min:%lu, target pos:%zu, real size:%zu.", msgs_min_size,
+                  target_pos, input_msgs.size());
     return FLOW_FUNC_FAILED;
   }
-  const Tensor *req_info_tensor = input_msgs[target_pos]->GetTensor();
-  if ((input_msgs[target_pos]->GetRetCode() != 0) || (req_info_tensor == nullptr)) {
-    UDF_LOG_ERROR("input tensor is not valid, ret code:%d.", input_msgs[target_pos]->GetRetCode());
+  const auto &input_msg = input_msgs[target_pos];
+  if (input_msg == nullptr) {
+    UDF_LOG_ERROR("input msg[%zu] is nullptr.", target_pos);
+    return FLOW_FUNC_FAILED;
+  }
+  const Tensor *req_info_tensor = input_msg->GetTensor();
+  if ((input_msg->GetRetCode() != 0) || (req_info_tensor == nullptr) || (req_info_tensor->GetData() == nullptr)) {
+    UDF_LOG_ERROR("input tensor is not valid, ret code:%d.", input_msg->GetRetCode());
     return FLOW_FUNC_FAILED;
   }
   if (is_expect_min) {
@@ -176,8 +183,14 @@ std::string TransferReqDebugString(const TransferKvReqInfo &req_info) {
 
 drvError_t D2DCopy(void *dst, uint64_t dst_max, const void *src, uint64_t count) {
   constexpr uint64_t kMaxBlockSize = 4UL * 1024UL * 1024UL * 1024UL;  // 4 GB
-  // actually checked before; return hal error code
-  if ((dst_max < count) || (count <= kMaxBlockSize)) {
+  if ((dst == nullptr) || (src == nullptr) || (dst_max < count)) {
+    UDF_LOG_ERROR("Invalid d2d copy param, dst:%p, src:%p, dst_max:%lu, count:%lu.", dst, src, dst_max, count);
+    return DRV_ERROR_INVALID_VALUE;
+  }
+  if (count == 0U) {
+    return DRV_ERROR_NONE;
+  }
+  if (count <= kMaxBlockSize) {
     return halSdmaCopy(reinterpret_cast<uintptr_t>(dst), dst_max, reinterpret_cast<uintptr_t>(src), count);
   }
   uint64_t offset = 0;

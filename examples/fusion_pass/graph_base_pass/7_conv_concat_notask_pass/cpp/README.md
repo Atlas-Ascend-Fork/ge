@@ -125,7 +125,7 @@
       或直接使用**data**目录下的基础运行脚本（脚本内部已设置DUMP_GE_GRAPH等环境变量并执行ATC转换）：
 
       ```
-      bash run_atc.sh MC62
+      例如：bash run_atc.sh MC62CM12AA
       ```
 
     - 检查执行结果：

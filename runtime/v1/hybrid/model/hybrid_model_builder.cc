@@ -1248,7 +1248,9 @@ Status HybridModelBuilder::InitFileConstantInHost(const int64_t output_size, con
     GE_CHK_STATUS_RET(FileConstantUtils::GetFilePath(op_desc, file_id_and_path_map_, file_path, offset, length),
                       "Failed to get file path.");
     const size_t file_length = (length == 0U ? static_cast<size_t>(output_size) : length);
-    GE_CHK_STATUS_RET(FileConstantUtils::CopyOneWeightFromFile(mem_addr, file_path, offset, file_length, malloc_size),
+    // mem_addr 来自 HostMemInstance(底层是 AlignedPtr 的普通 new[]), 尾部清零必须走 Host 分支
+    GE_CHK_STATUS_RET(FileConstantUtils::CopyOneWeightFromFile(mem_addr, file_path, offset, file_length, malloc_size,
+                                                               length != 0U, WeightMemLocation::kHost),
                       "Failed to copy data.");
     var_tensor = MakeUnique<TensorValue>(mem_addr, file_length);
   } else {
@@ -1267,7 +1269,8 @@ Status HybridModelBuilder::InitFileConstantInDevice(const int64_t output_size, c
                       "Failed to get file path.");
     size_t left_size = tensor_value.GetSize();
     const size_t file_length = (length == 0U ? static_cast<size_t>(output_size) : length);
-    return FileConstantUtils::CopyOneWeightFromFile(tensor_value.GetData(), file_path, offset, file_length, left_size);
+    return FileConstantUtils::CopyOneWeightFromFile(tensor_value.GetData(), file_path, offset, file_length, left_size,
+                                                    length != 0U);
   } else {
     GELOGI("File constant [%s] has no weight data.", op_desc->GetName().c_str());
     return SUCCESS;

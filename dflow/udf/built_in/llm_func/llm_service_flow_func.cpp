@@ -9,6 +9,7 @@
  */
 
 #include "llm_service_flow_func.h"
+#include <cstdint>
 #include "flow_func/flow_func_log.h"
 #include "flow_func/meta_flow_func.h"
 #include "llm_common/statistic_manager.h"
@@ -23,15 +24,45 @@ constexpr const char *kAttrNameOutIndices = "output_indices";
 constexpr const char *kRolePrompt = "Prompt";
 constexpr const char *kRoleDecoder = "Decoder";
 constexpr const char *kRoleMix = "Mix";
+constexpr int32_t kMinRoleId = 0;
+constexpr int32_t kMaxRoleId = 2;
+
+FsmStatus GetReqTensor(const std::shared_ptr<FlowMsg> &input, const Tensor *&tensor) {
+  if (input == nullptr) {
+    UDF_LOG_ERROR("input msg is nullptr.");
+    return FsmStatus::kFsmParamInvalid;
+  }
+  if (input->GetRetCode() != 0) {
+    UDF_LOG_ERROR("input msg ret code:%d is invalid.", input->GetRetCode());
+    return FsmStatus::kFsmParamInvalid;
+  }
+  tensor = input->GetTensor();
+  if ((tensor == nullptr) || (tensor->GetData() == nullptr)) {
+    UDF_LOG_ERROR("input tensor data is invalid.");
+    return FsmStatus::kFsmParamInvalid;
+  }
+  return FsmStatus::kFsmSuccess;
+}
+
+bool ReqTailOverflow(uint64_t count, uint64_t elem_size, uint64_t header_size) {
+  if (elem_size == 0U) {
+    return false;
+  }
+  return count > ((UINT64_MAX - header_size) / elem_size);
+}
 
 template <typename T>
 FsmStatus AsReqInfo(const std::shared_ptr<FlowMsg> &input, const T *&req_info) {
-  const auto &tensor = *input->GetTensor();
-  if (tensor.GetDataSize() != sizeof(T)) {
-    UDF_LOG_ERROR("Expect tensor size = %zu, but only %lu", sizeof(T), tensor.GetDataSize());
+  const Tensor *tensor = nullptr;
+  const auto tensor_ret = GetReqTensor(input, tensor);
+  if (tensor_ret != FsmStatus::kFsmSuccess) {
+    return tensor_ret;
+  }
+  if (tensor->GetDataSize() != sizeof(T)) {
+    UDF_LOG_ERROR("Expect tensor size = %zu, but only %lu", sizeof(T), tensor->GetDataSize());
     return FsmStatus::kFsmParamInvalid;
   }
-  req_info = reinterpret_cast<const T *>(tensor.GetData());
+  req_info = reinterpret_cast<const T *>(tensor->GetData());
   return FsmStatus::kFsmSuccess;
 }
 
@@ -47,36 +78,70 @@ std::string ToRole(int32_t role_id) {
 template <>
 FsmStatus AsReqInfo<AllocateCacheReqInfo>(const std::shared_ptr<FlowMsg> &input,
                                           const AllocateCacheReqInfo *&req_info) {
-  const auto &tensor = *input->GetTensor();
-  const auto tensor_size = tensor.GetDataSize();
+  const Tensor *tensor = nullptr;
+  const auto tensor_ret = GetReqTensor(input, tensor);
+  if (tensor_ret != FsmStatus::kFsmSuccess) {
+    return tensor_ret;
+  }
+  const auto tensor_size = tensor->GetDataSize();
   if (tensor_size < sizeof(AllocateCacheReqInfo)) {
-    UDF_LOG_ERROR("Expect tensor size at least = %zu, but only %zu", sizeof(AllocateCacheReqInfo), tensor_size);
+    UDF_LOG_ERROR("Expect tensor size at least = %zu, but only %lu", sizeof(AllocateCacheReqInfo), tensor_size);
     return FsmStatus::kFsmParamInvalid;
   }
 
-  req_info = reinterpret_cast<const AllocateCacheReqInfo *>(tensor.GetData());
-  if ((req_info->num_requests > 0) &&
-      (tensor_size != (sizeof(AllocateCacheReqInfo) + (req_info->num_requests * sizeof(int64_t))))) {
-    UDF_LOG_ERROR("Expect tensor size = %zu, but only %zu",
-                  sizeof(AllocateCacheReqInfo) + (req_info->num_requests * sizeof(int64_t)), tensor_size);
+  req_info = reinterpret_cast<const AllocateCacheReqInfo *>(tensor->GetData());
+  const auto max_dims = sizeof(req_info->dims) / sizeof(req_info->dims[0]);
+  if (req_info->num_dims > max_dims) {
+    UDF_LOG_ERROR("num_dims:%u is over limit:%zu.", req_info->num_dims, max_dims);
     return FsmStatus::kFsmParamInvalid;
+  }
+  if (req_info->num_requests > 0U) {
+    if (ReqTailOverflow(req_info->num_requests, sizeof(uint64_t), sizeof(AllocateCacheReqInfo))) {
+      UDF_LOG_ERROR("num_requests:%lu overflows allocate req size.", req_info->num_requests);
+      return FsmStatus::kFsmParamInvalid;
+    }
+    const uint64_t expect_size = sizeof(AllocateCacheReqInfo) + (req_info->num_requests * sizeof(uint64_t));
+    if (tensor_size != expect_size) {
+      UDF_LOG_ERROR("Expect tensor size = %lu, but only %lu", expect_size, tensor_size);
+      return FsmStatus::kFsmParamInvalid;
+    }
   }
   return FsmStatus::kFsmSuccess;
 }
 
 template <>
 FsmStatus AsReqInfo<CopyCacheReqInfo>(const std::shared_ptr<FlowMsg> &input, const CopyCacheReqInfo *&req_info) {
-  const auto &tensor = *input->GetTensor();
-  const auto tensor_size = tensor.GetDataSize();
+  const Tensor *tensor = nullptr;
+  const auto tensor_ret = GetReqTensor(input, tensor);
+  if (tensor_ret != FsmStatus::kFsmSuccess) {
+    return tensor_ret;
+  }
+  const auto tensor_size = tensor->GetDataSize();
   if (tensor_size < sizeof(CopyCacheReqInfo)) {
     return FsmStatus::kFsmParamInvalid;
   }
-  req_info = reinterpret_cast<const CopyCacheReqInfo *>(tensor.GetData());
-  auto expect_size = sizeof(CopyCacheReqInfo) + (req_info->copy_block_count * sizeof(BlockCopyInfo));
-  if ((req_info->copy_block_count > 0U) && (tensor_size != expect_size)) {
-    return FsmStatus::kFsmParamInvalid;
+  req_info = reinterpret_cast<const CopyCacheReqInfo *>(tensor->GetData());
+  if (req_info->copy_block_count > 0U) {
+    if (ReqTailOverflow(req_info->copy_block_count, sizeof(BlockCopyInfo), sizeof(CopyCacheReqInfo))) {
+      return FsmStatus::kFsmParamInvalid;
+    }
+    const uint64_t expect_size =
+        sizeof(CopyCacheReqInfo) + (static_cast<uint64_t>(req_info->copy_block_count) * sizeof(BlockCopyInfo));
+    if (tensor_size != expect_size) {
+      return FsmStatus::kFsmParamInvalid;
+    }
   }
   return FsmStatus::kFsmSuccess;
+}
+
+template <typename T>
+FsmStatus ParseReqInfo(const std::vector<std::shared_ptr<FlowMsg>> &input_msgs, const T *&req_info) {
+  // The request is read from subscript 0, so the vector length must be at least 1.
+  if (input_msgs.size() < 1U) {
+    UDF_LOG_ERROR("input msg size:%zu is invalid, size must be at least 1.", input_msgs.size());
+    return FsmStatus::kFsmParamInvalid;
+  }
+  return AsReqInfo(input_msgs.front(), req_info);
 }
 }  // namespace
 
@@ -137,6 +202,10 @@ int32_t LlmServiceFlowFunc::ParseFlowFuncAttrs(const std::shared_ptr<MetaParams>
     return FLOW_FUNC_FAILED;
   }
   for (const auto out_index : out_indices) {
+    if (out_index < 0) {
+      UDF_LOG_ERROR("output index %ld is invalid.", out_index);
+      return FLOW_FUNC_FAILED;
+    }
     flow_func_out_indices_.emplace_back(static_cast<uint32_t>(out_index));
   }
   UDF_LOG_INFO("%s = %s", kAttrNameOutIndices, ToString(out_indices).c_str());
@@ -166,15 +235,22 @@ int32_t LlmServiceFlowFunc::AllocateCache(const std::shared_ptr<MetaRunContext> 
   const auto out_index = flow_func_out_indices_[static_cast<size_t>(FlowFuncType::kAllocate)];
   // response: Status(s32) | padding(s32) | tensor_addr * N
   const AllocateCacheReqInfo *req_info = nullptr;
-  auto ret = AsReqInfo(input_msgs[0], req_info);
+  auto ret = ParseReqInfo(input_msgs, req_info);
   if (ret != FsmStatus::kFsmSuccess) {
     return SetOutput(run_context, out_index, ret);
   }
 
   const auto output_dim = static_cast<int64_t>(req_info->num_tensors) + 1L;
   auto result_msg = run_context->AllocTensorMsg({output_dim}, TensorDataType::DT_UINT64);
-  if (result_msg == nullptr) {
+  if ((result_msg == nullptr) || (result_msg->GetTensor() == nullptr) ||
+      (result_msg->GetTensor()->GetData() == nullptr)) {
     UDF_LOG_ERROR("Fail to alloc output tensor");
+    return FLOW_FUNC_FAILED;
+  }
+  const uint64_t expect_output_bytes = (static_cast<uint64_t>(req_info->num_tensors) + 1UL) * sizeof(uint64_t);
+  if (result_msg->GetTensor()->GetDataSize() < expect_output_bytes) {
+    UDF_LOG_ERROR("Alloc output tensor size:%lu is smaller than expect:%lu.", result_msg->GetTensor()->GetDataSize(),
+                  expect_output_bytes);
     return FLOW_FUNC_FAILED;
   }
   auto *output_data = static_cast<uint64_t *>(result_msg->GetTensor()->GetData());
@@ -192,7 +268,7 @@ int32_t LlmServiceFlowFunc::AllocateCache(const std::shared_ptr<MetaRunContext> 
 int32_t LlmServiceFlowFunc::DeallocateCache(const std::shared_ptr<MetaRunContext> &run_context,
                                             const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) {
   const int64_t *cache_id = nullptr;
-  auto ret = AsReqInfo(input_msgs[0], cache_id);
+  auto ret = ParseReqInfo(input_msgs, cache_id);
   if (ret == FsmStatus::kFsmSuccess) {
     ret = CacheManager::GetInstance().DeallocateCache(*cache_id);
   }
@@ -208,7 +284,7 @@ int32_t LlmServiceFlowFunc::DeallocateCache(const std::shared_ptr<MetaRunContext
 int32_t LlmServiceFlowFunc::RemoveCacheIndex(const std::shared_ptr<MetaRunContext> &run_context,
                                              const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) {
   const RemoveCacheIndexReqInfo *req_info = nullptr;
-  auto ret = AsReqInfo(input_msgs[0], req_info);
+  auto ret = ParseReqInfo(input_msgs, req_info);
   if (ret == FsmStatus::kFsmSuccess) {
     bool is_prefix = (req_info->prefix_id != UINT64_MAX);
     std::pair<uint64_t, uint64_t> cache_index =
@@ -222,7 +298,7 @@ int32_t LlmServiceFlowFunc::CopyCache(const std::shared_ptr<MetaRunContext> &run
                                       const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) {
   const uint64_t start_tick = StatisticManager::GetInstance().GetCpuTick();
   const CopyCacheReqInfo *req_info = nullptr;
-  FsmStatus ret = AsReqInfo(input_msgs[0], req_info);
+  FsmStatus ret = ParseReqInfo(input_msgs, req_info);
   if (ret == FsmStatus::kFsmSuccess) {
     ret = CacheManager::GetInstance().CopyCache(*req_info);
   }
@@ -232,13 +308,15 @@ int32_t LlmServiceFlowFunc::CopyCache(const std::shared_ptr<MetaRunContext> &run
   UpdateTickCost(tick_cost, stat_info.copy_kv_total_times, stat_info.copy_kv_min_tick_cost,
                  stat_info.copy_kv_max_tick_cost, stat_info.copy_kv_total_tick_cost, max_tick_cost_flag);
   const double time_cost = StatisticManager::GetInstance().GetTimeCost(tick_cost);
-  if (max_tick_cost_flag) {
-    StatisticManager::GetInstance().Dump();
-    UDF_RUN_LOG_INFO("Success to copy cache with max time cost, %s, time_cost:%.2f us, total_times:%lu.",
-                     CopyCacheDebugString(*req_info).c_str(), time_cost, stat_info.copy_kv_total_times.load());
+  if (req_info != nullptr) {
+    if (max_tick_cost_flag) {
+      StatisticManager::GetInstance().Dump();
+      UDF_RUN_LOG_INFO("Success to copy cache with max time cost, %s, time_cost:%.2f us, total_times:%lu.",
+                       CopyCacheDebugString(*req_info).c_str(), time_cost, stat_info.copy_kv_total_times.load());
+    }
+    UDF_LOG_INFO("Success to copy cache, %s, time_cost:%.2f us, total_time:%lu.",
+                 CopyCacheDebugString(*req_info).c_str(), time_cost, stat_info.copy_kv_total_times.load());
   }
-  UDF_LOG_INFO("Success to copy cache, %s, time_cost:%.2f us, total_time:%lu.", CopyCacheDebugString(*req_info).c_str(),
-               time_cost, stat_info.copy_kv_total_times.load());
   return SetOutput(run_context, FlowFuncType::kCopy, ret);
 }
 
@@ -246,19 +324,30 @@ int32_t LlmServiceFlowFunc::GetCache(const std::shared_ptr<MetaRunContext> &run_
                                      const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) {
   const auto out_index = flow_func_out_indices_[static_cast<size_t>(FlowFuncType::kGetTensorSummary)];
   const GetCacheReqInfo *req_info = nullptr;
-  FsmStatus fsm_ret = AsReqInfo(input_msgs[0], req_info);
+  FsmStatus fsm_ret = ParseReqInfo(input_msgs, req_info);
   if (fsm_ret != FsmStatus::kFsmSuccess) {
     return SetOutput(run_context, out_index, fsm_ret);
   }
-  UDF_LOG_INFO("[cache_id:%ld][GetTensor] start, tensor_index = %d", req_info->cache_id, req_info->tensor_index);
+  if (req_info->tensor_index < 0) {
+    UDF_LOG_ERROR("[cache_id:%ld][GetTensor] tensor_index:%ld is invalid.", req_info->cache_id, req_info->tensor_index);
+    return SetOutput(run_context, out_index, FsmStatus::kFsmParamInvalid);
+  }
+  UDF_LOG_INFO("[cache_id:%ld][GetTensor] start, tensor_index = %ld", req_info->cache_id, req_info->tensor_index);
   CacheEntry cache_entry;
   if (!CacheManager::GetInstance().GetCacheEntry(req_info->cache_id, cache_entry)) {
-    UDF_LOG_ERROR("[cache_id:%ld][GetTensor] failed, cache does not exist");
+    UDF_LOG_ERROR("[cache_id:%ld][GetTensor] failed, cache does not exist", req_info->cache_id);
     return SetOutput(run_context, out_index, FsmStatus::kFsmKvNotExist);
+  }
+  std::shared_ptr<FlowMsg> tensor;
+  if (!GetCacheTensor(cache_entry, static_cast<uint64_t>(req_info->tensor_index), tensor)) {
+    UDF_LOG_ERROR("[cache_id:%ld][GetTensor] tensor_index:%ld is out of range, tensor num:%zu.", req_info->cache_id,
+                  req_info->tensor_index, cache_entry.tensors.size());
+    return SetOutput(run_context, out_index, FsmStatus::kFsmParamInvalid);
   }
 
   const auto result_msg = run_context->AllocTensorMsg({2}, TensorDataType::DT_INT32);
-  if (result_msg == nullptr) {
+  if ((result_msg == nullptr) || (result_msg->GetTensor() == nullptr) ||
+      (result_msg->GetTensor()->GetData() == nullptr)) {
     UDF_LOG_ERROR("Fail to alloc output tensor");
     return FLOW_FUNC_FAILED;
   }
@@ -267,9 +356,12 @@ int32_t LlmServiceFlowFunc::GetCache(const std::shared_ptr<MetaRunContext> &run_
   ret_code_and_num[1] = 1;  // will support multiple tensor later
   auto ret = run_context->SetOutput(out_index, result_msg);
   if (ret == FLOW_FUNC_SUCCESS) {
-    auto tensor = cache_entry.tensors[req_info->tensor_index];
+    if ((tensor == nullptr) || (tensor->GetTensor() == nullptr)) {
+      UDF_LOG_ERROR("[cache_id:%ld][GetTensor] tensor_index:%ld is empty.", req_info->cache_id, req_info->tensor_index);
+      return SetOutput(run_context, out_index, FsmStatus::kFsmParamInvalid);
+    }
     ret = run_context->SetOutput(out_index, std::move(tensor));
-    UDF_LOG_INFO("[cache_id:%ld][GetTensor] end, tensor_index = %d", req_info->cache_id, req_info->tensor_index);
+    UDF_LOG_INFO("[cache_id:%ld][GetTensor] end, tensor_index = %ld", req_info->cache_id, req_info->tensor_index);
   }
   return ret;
 }
@@ -369,9 +461,14 @@ int32_t LlmServiceFlowFunc::PullCache(const std::shared_ptr<MetaRunContext> &run
 int32_t LlmServiceFlowFunc::SwitchRole(const std::shared_ptr<MetaRunContext> &run_context,
                                        const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) {
   const SwitchRoleReqInfo *req_info = nullptr;
-  FsmStatus fsm_ret = AsReqInfo(input_msgs[0], req_info);
+  FsmStatus fsm_ret = ParseReqInfo(input_msgs, req_info);
   if (fsm_ret != FsmStatus::kFsmSuccess) {
     return SetOutput(run_context, FlowFuncType::kSwitchRole, fsm_ret);
+  }
+  if ((req_info->role_id < kMinRoleId) || (req_info->role_id > kMaxRoleId) ||
+      (req_info->prompt_listen_port > UINT16_MAX)) {
+    UDF_LOG_ERROR("[SwitchRole] invalid role_id:%d or port:%u.", req_info->role_id, req_info->prompt_listen_port);
+    return SetOutput(run_context, FlowFuncType::kSwitchRole, FsmStatus::kFsmParamInvalid);
   }
   std::string target_role = ToRole(req_info->role_id);
   UDF_LOG_INFO("[SwitchRole] [%s->%s] start", role_.c_str(), target_role.c_str());
@@ -385,8 +482,8 @@ int32_t LlmServiceFlowFunc::SwitchRole(const std::shared_ptr<MetaRunContext> &ru
   }
   if (target_role == kRolePrompt) {
     UDF_LOG_INFO("start to init server conn, ip=%u, port=%u", req_info->prompt_listen_ip, req_info->prompt_listen_port);
-    auto entity_ret =
-        LlmCommEntityMgr::GetInstance().InitServerConn(req_info->prompt_listen_ip, req_info->prompt_listen_port);
+    auto entity_ret = LlmCommEntityMgr::GetInstance().InitServerConn(
+        req_info->prompt_listen_ip, static_cast<uint16_t>(req_info->prompt_listen_port));
     if (entity_ret != FsmStatus::kFsmSuccess) {
       UDF_LOG_ERROR("[SwitchRole] [%s->%s] InitServerConn failed. ret = %d", role_.c_str(), target_role.c_str(),
                     static_cast<int32_t>(entity_ret));
@@ -457,7 +554,8 @@ int32_t LlmServiceFlowFunc::SyncKvData(const std::shared_ptr<MetaRunContext> &ru
 int32_t LlmServiceFlowFunc::SetOutput(const std::shared_ptr<MetaRunContext> &run_context, uint32_t output_idx,
                                       FsmStatus status) {
   auto result_msg = run_context->AllocTensorMsg({}, TensorDataType::DT_INT32);
-  if (result_msg == nullptr) {
+  if ((result_msg == nullptr) || (result_msg->GetTensor() == nullptr) ||
+      (result_msg->GetTensor()->GetData() == nullptr)) {
     UDF_LOG_ERROR("Fail to alloc output tensor for outputIndex = %u", output_idx);
     return FLOW_FUNC_FAILED;
   }
@@ -485,8 +583,13 @@ void LlmServiceFlowFunc::SetEnvs(const std::shared_ptr<MetaParams> &params) {
   UDF_LOG_INFO("env_names = %s, env_values = %s", ToString(env_names).c_str(), ToString(env_values).c_str());
   if (env_names.size() == env_values.size()) {
     for (size_t i = 0U; i < env_names.size(); ++i) {
-      if (std::string(env_names[i].GetString()).find(kValidEnvNamePrefix) == 0) {
-        setenv(env_names[i].GetString(), env_values[i].GetString(), 1);
+      const char *env_name = env_names[i].GetString();
+      const char *env_value = env_values[i].GetString();
+      if ((env_name == nullptr) || (env_value == nullptr) || (std::string(env_name).find('=') != std::string::npos)) {
+        continue;
+      }
+      if (std::string(env_name).find(kValidEnvNamePrefix) == 0) {
+        (void)setenv(env_name, env_value, 1);
       }
     }
   }

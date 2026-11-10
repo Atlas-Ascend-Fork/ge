@@ -95,6 +95,8 @@ class OperatorImpl : public std::enable_shared_from_this<OperatorImpl> {
 
  private:
   friend class GraphBuilderImpl;
+  template <typename GraphOps>
+  friend class OperatorGraphBuilder;
   friend class MultiThreadGraphBuilder;
   friend class OpDescUtils;
 };

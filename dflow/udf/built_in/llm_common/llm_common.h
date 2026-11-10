@@ -235,6 +235,14 @@ struct CacheEntry {
   std::map<uint64_t, std::set<uint64_t>> id_to_unpulled_tensor_indices;
 };
 
+inline bool GetCacheTensor(const CacheEntry &cache_entry, uint64_t tensor_index, std::shared_ptr<FlowMsg> &tensor) {
+  if (tensor_index >= cache_entry.tensors.size()) {
+    return false;
+  }
+  tensor = cache_entry.tensors[static_cast<size_t>(tensor_index)];
+  return true;
+}
+
 std::ostream &operator<<(std::ostream &str, const FlowFunc::AscendString &ascend_string);
 std::ostream &operator<<(std::ostream &str, const FlowFunc::TensorDataType &data_type);
 /**

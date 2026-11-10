@@ -22,7 +22,7 @@ void EagerArgsHandler::Initialize(GertAllocator *allocator, int64_t stream_id) {
   stream_id_ = stream_id;
 }
 
-const KernelArgs* EagerArgsHandler::MallocReadOnlyDevArgs(void *host_args, size_t args_size) {
+const KernelArgs *EagerArgsHandler::MallocReadOnlyDevArgs(void *host_args, size_t args_size) {
   GE_ASSERT_NOTNULL(allocator_);
   GE_ASSERT_NOTNULL(host_args);
   GE_ASSERT_TRUE(args_size > 0);
@@ -43,7 +43,7 @@ const KernelArgs* EagerArgsHandler::MallocReadOnlyDevArgs(void *host_args, size_
   return &device_args_.back();
 }
 
-const std::deque<KernelArgs>& EagerArgsHandler::GetKernelArgs(Placement placement) const {
+const std::deque<KernelArgs> &EagerArgsHandler::GetKernelArgs(Placement placement) const {
   if (placement == Placement::kPlacementHost) {
     static const std::deque<KernelArgs> kEmptyArgs;
     return kEmptyArgs;
