@@ -4952,11 +4952,11 @@ struct Gather : public Operator {
     // 校验同sym的输入的dtype是否在注册范围内并且一致
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_BF16};
     } else if (npu_arch == "3510") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
