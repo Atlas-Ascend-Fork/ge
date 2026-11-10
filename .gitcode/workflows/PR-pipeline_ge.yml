@@ -1249,8 +1249,6 @@ stages:
                 export repo_name=${{env.repo_name}}
                 export pr_id=${{ env.MERGE_ID }}
                 export obs_path=${{env.obs_path}}
-                export AK=${{secrets.AK}}
-                export SK=${{secrets.SK}}
                 export obs_smoke_path=${{ env.obs_smoke_path }}
                 bash ${{ steps.process_checkout.outputs.path }}/pre_smoke.sh
           - name: upload
@@ -1311,8 +1309,6 @@ stages:
                 export repo_name=${{env.repo_name}}
                 export pr_id=${{ env.MERGE_ID }}
                 export obs_path=${{env.obs_path}}
-                export AK=${{secrets.AK}}
-                export SK=${{secrets.SK}}
                 export obs_smoke_path=${{ env.obs_smoke_path }}
                 # A5 冒烟镜像(pre_mindspore_A5_conda)缺少 GE 运行期(tbe/AOE InitCannKB)所需 python 依赖,
                 # 缺失时 GEInitialize 报 Environment_Error_Import_Python_Module_Failed(EC0010), 故先补齐
