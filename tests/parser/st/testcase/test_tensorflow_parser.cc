@@ -9,6 +9,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <complex>
+#include <limits>
+#include <tuple>
 #include <unistd.h>
 #include "file_utils.h"
 #include "parser/common/op_parser_factory.h"
@@ -554,7 +557,7 @@ void GenOriginNodeDef(ge::TensorFlowModelParser *tensorflow_parser, vector<strin
   NodeDef *pre_node_a = MallocNodeDef("pre_node_a", "Const");
   EXPECT_NE(pre_node_a, nullptr);
   {
-    google::protobuf::Map< ::std::string, ::tensorflow::AttrValue> *node_attr_map = pre_node_a->mutable_attr();
+    google::protobuf::Map<::std::string, ::tensorflow::AttrValue> *node_attr_map = pre_node_a->mutable_attr();
     tensorflow::AttrValue attr_dtype;
     attr_dtype.set_type(tensorflow::DT_FLOAT);
     (*node_attr_map)["dtype"] = attr_dtype;
@@ -570,7 +573,7 @@ void GenOriginNodeDef(ge::TensorFlowModelParser *tensorflow_parser, vector<strin
   NodeDef *pre_node_ctrl_in = MallocNodeDef("pre_node_ctrl_in", "Const");
   EXPECT_NE(pre_node_ctrl_in, nullptr);
   {
-    ::google::protobuf::Map< ::std::string, ::tensorflow::AttrValue> *node_attr_map = pre_node_ctrl_in->mutable_attr();
+    ::google::protobuf::Map<::std::string, ::tensorflow::AttrValue> *node_attr_map = pre_node_ctrl_in->mutable_attr();
     tensorflow::AttrValue attr_dtype;
     attr_dtype.set_type(tensorflow::DT_FLOAT);
     (*node_attr_map)["dtype"] = attr_dtype;
@@ -5867,6 +5870,92 @@ TEST_F(STestTensorflowCustomOpParser, ParseCustomOp_OutDirContainsPid) {
 
   delete node_def;
   custom_nodes_map.clear();
+}
+
+/**
+ * 用例描述：TensorFlow Const 的原始内容经解析适配器转换后，仅保留 shape 所需的数据字节。
+ * 预置条件：使用 parser ST 的系统接口桩，调用真实解析适配器、自动映射及 Tensor 转换实现。
+ * 测试步骤：为各固定宽度类型构造包含两个元素的 Const，分别使用等长及多一个尾部字节的内容。
+ * 预期结果：解析成功，权重 shape 为 [2]，只复制两个元素的数据，忽略尾部多余内容。
+ */
+TEST_F(STestTensorflowParser, RawTensorContentCopiesRequiredBytes) {
+  const std::vector<std::pair<domi::tensorflow::DataType, size_t>> types = {
+      {domi::tensorflow::DT_FLOAT, sizeof(float)},
+      {domi::tensorflow::DT_DOUBLE, sizeof(double)},
+      {domi::tensorflow::DT_INT8, sizeof(int8_t)},
+      {domi::tensorflow::DT_BOOL, sizeof(bool)},
+      {domi::tensorflow::DT_HALF, sizeof(uint16_t)},
+      {domi::tensorflow::DT_INT16, sizeof(int16_t)},
+      {domi::tensorflow::DT_INT32, sizeof(int32_t)},
+      {domi::tensorflow::DT_UINT32, sizeof(uint32_t)},
+      {domi::tensorflow::DT_INT64, sizeof(int64_t)},
+      {domi::tensorflow::DT_UINT64, sizeof(uint64_t)},
+      {domi::tensorflow::DT_COMPLEX32, sizeof(uint32_t)},
+      {domi::tensorflow::DT_COMPLEX64, sizeof(std::complex<float>)},
+      {domi::tensorflow::DT_COMPLEX128, sizeof(std::complex<double>)}};
+  for (const auto &type : types) {
+    SCOPED_TRACE(domi::tensorflow::DataType_Name(type.first));
+    const std::string content(2U * type.second, '\1');
+    for (const auto &raw_content : {content, content + '\2'}) {
+      SCOPED_TRACE(raw_content.size());
+      NodeDef node;
+      node.set_name("raw_const");
+      node.set_op("Const");
+      (*node.mutable_attr())["dtype"].set_type(type.first);
+      auto tensor = (*node.mutable_attr())["value"].mutable_tensor();
+      tensor->set_dtype(type.first);
+      tensor->mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor->set_tensor_content(raw_content);
+      auto op_desc = std::make_shared<ge::OpDesc>(node.name(), ge::parser::CONSTANT);
+      TensorFlowAutoMappingParserAdapter adapter;
+      ASSERT_EQ(adapter.ParseParams(&node, op_desc), domi::SUCCESS);
+      ge::ConstGeTensorPtr weight;
+      ASSERT_TRUE(ge::AttrUtils::GetTensor(op_desc, "value", weight));
+      ASSERT_NE(weight, nullptr);
+      EXPECT_EQ(weight->GetTensorDesc().GetShape().GetDims(), std::vector<int64_t>({2}));
+      ASSERT_EQ(weight->GetData().GetSize(), content.size());
+      EXPECT_EQ(std::string(reinterpret_cast<const char *>(weight->GetData().data()), content.size()), content);
+    }
+  }
+}
+
+/**
+ * 用例描述：异常或零元素 TensorFlow 原始内容经解析适配器转换后，权重数据为空。
+ * 预置条件：使用 parser ST 的系统接口桩，调用真实解析适配器、自动映射及 Tensor 转换实现。
+ * 测试步骤：解析内容不足、大 shape 配合短内容、字节数溢出及零元素 Tensor 的 Const。
+ * 预期结果：保持原有解析返回行为，生成权重的 shape 与模型一致，但数据长度为零。
+ */
+TEST_F(STestTensorflowParser, RawTensorContentSkipsInvalidOrEmptyCopy) {
+  const auto overflow_count =
+      static_cast<int64_t>(std::numeric_limits<size_t>::max() / sizeof(std::complex<double>) + 2U);
+  const std::vector<std::tuple<domi::tensorflow::DataType, int64_t, size_t>> cases = {
+      {domi::tensorflow::DT_FLOAT, 4, 1U},
+      {domi::tensorflow::DT_FLOAT, 1000000, 1U},
+      {domi::tensorflow::DT_COMPLEX128, overflow_count, sizeof(std::complex<double>)},
+      {domi::tensorflow::DT_FLOAT, 0, 1U}};
+  for (const auto &test_case : cases) {
+    const auto type = std::get<0>(test_case);
+    const auto count = std::get<1>(test_case);
+    SCOPED_TRACE(domi::tensorflow::DataType_Name(type));
+    SCOPED_TRACE(count);
+    SCOPED_TRACE(std::get<2>(test_case));
+    NodeDef node;
+    node.set_name("raw_const");
+    node.set_op("Const");
+    (*node.mutable_attr())["dtype"].set_type(type);
+    auto tensor = (*node.mutable_attr())["value"].mutable_tensor();
+    tensor->set_dtype(type);
+    tensor->mutable_tensor_shape()->add_dim()->set_size(count);
+    tensor->set_tensor_content(std::string(std::get<2>(test_case), '\1'));
+    auto op_desc = std::make_shared<ge::OpDesc>(node.name(), ge::parser::CONSTANT);
+    TensorFlowAutoMappingParserAdapter adapter;
+    ASSERT_EQ(adapter.ParseParams(&node, op_desc), domi::SUCCESS);
+    ge::ConstGeTensorPtr weight;
+    ASSERT_TRUE(ge::AttrUtils::GetTensor(op_desc, "value", weight));
+    ASSERT_NE(weight, nullptr);
+    EXPECT_EQ(weight->GetTensorDesc().GetShape().GetDims(), std::vector<int64_t>({count}));
+    EXPECT_EQ(weight->GetData().GetSize(), 0U);
+  }
 }
 
 }  // namespace ge

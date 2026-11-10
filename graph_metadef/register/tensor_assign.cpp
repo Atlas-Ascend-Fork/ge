@@ -368,35 +368,7 @@ void TensorAssign::SetWeightData(const tensorflow::DataType data_type, const int
     return;
   }
   GELOGD("Set data from tensor_content, count = %ld, data_type = %s.", count, DataType_Name(data_type).c_str());
-  const auto tensor_content_data = tensor_content.data();
-  const bool is_four_byte =
-      CheckSignedFourByte(data_type) || CheckUnsignedFourByte(data_type) || CheckComplex32Val(data_type);
-  const bool is_double_byte = CheckHalfVal(data_type) || CheckDoubleByte(data_type);
-  const bool is_eight_byte = CheckSignedEightByte(data_type) || CheckUnsignedEightByte(data_type);
-  if (CheckByte(data_type)) {
-    (void)weight->SetData(ge::PtrToPtr<char, uint8_t>(tensor_content_data),
-                          static_cast<size_t>(count) * sizeof(uint8_t));
-  } else if (CheckBoolVal(data_type)) {
-    (void)weight->SetData(ge::PtrToPtr<char, uint8_t>(tensor_content_data), static_cast<size_t>(count) * sizeof(bool));
-  } else if (is_double_byte) {
-    (void)weight->SetData(ge::PtrToPtr<char, uint8_t>(tensor_content_data),
-                          static_cast<size_t>(count) * sizeof(uint16_t));
-  } else if (is_four_byte) {
-    (void)weight->SetData(ge::PtrToPtr<char, uint8_t>(tensor_content_data),
-                          static_cast<size_t>(count) * sizeof(uint32_t));
-  } else if (is_eight_byte) {
-    (void)weight->SetData(ge::PtrToPtr<char, uint8_t>(tensor_content_data),
-                          static_cast<size_t>(count) * sizeof(uint64_t));
-  } else if (CheckDoubleVal(data_type)) {
-    (void)weight->SetData(ge::PtrToPtr<char, uint8_t>(tensor_content_data),
-                          static_cast<size_t>(count) * sizeof(double));
-  } else if (CheckComplex128Val(data_type)) {
-    (void)weight->SetData(ge::PtrToPtr<char, uint8_t>(tensor_content_data),
-                          static_cast<size_t>(count) * sizeof(std::complex<double>));
-  } else if (CheckComplex64Val(data_type)) {
-    (void)weight->SetData(ge::PtrToPtr<char, uint8_t>(tensor_content_data),
-                          static_cast<size_t>(count) * sizeof(std::complex<float>));
-  } else if (CheckStringVal(data_type)) {
+  if (CheckStringVal(data_type)) {
     if (ge::TypeUtilsInner::CheckUint64MulOverflow(static_cast<uint64_t>(count),
                                                    static_cast<uint32_t>(sizeof(ge::StringHead)))) {
       GELOGE(ge::FAILED, "count multiply StringHead is overflow uint64, count: %u", static_cast<uint64_t>(count));
@@ -428,9 +400,39 @@ void TensorAssign::SetWeightData(const tensorflow::DataType data_type, const int
       ptr_size += static_cast<uint64_t>(str.size()) + 1U;
     }
     (void)weight->SetData(ge::PtrToPtr<uint8_t, const uint8_t>(addr.data()), total_size);
-  } else {
-    (void)weight->SetData(ge::PtrToPtr<char, uint8_t>(tensor_content_data), static_cast<size_t>(count) * sizeof(float));
+    return;
   }
+
+  size_t element_size = sizeof(float);
+  if (CheckByte(data_type)) {
+    element_size = sizeof(uint8_t);
+  } else if (CheckBoolVal(data_type)) {
+    element_size = sizeof(bool);
+  } else if (CheckHalfVal(data_type) || CheckDoubleByte(data_type)) {
+    element_size = sizeof(uint16_t);
+  } else if (CheckSignedFourByte(data_type) || CheckUnsignedFourByte(data_type) || CheckComplex32Val(data_type)) {
+    element_size = sizeof(uint32_t);
+  } else if (CheckSignedEightByte(data_type) || CheckUnsignedEightByte(data_type)) {
+    element_size = sizeof(uint64_t);
+  } else if (CheckDoubleVal(data_type)) {
+    element_size = sizeof(double);
+  } else if (CheckComplex128Val(data_type)) {
+    element_size = sizeof(std::complex<double>);
+  } else if (CheckComplex64Val(data_type)) {
+    element_size = sizeof(std::complex<float>);
+  }
+
+  if (static_cast<uint64_t>(count) > std::numeric_limits<size_t>::max() / element_size) {
+    GELOGE(FAILED, "Tensor byte size overflow, count:%ld, element size:%zu.", count, element_size);
+    return;
+  }
+  const size_t expected_size = static_cast<size_t>(count) * element_size;
+  if (tensor_content.size() < expected_size) {
+    GELOGE(FAILED, "Tensor content size mismatch, actual:%zu, expected:%zu, dtype:%s.", tensor_content.size(),
+           expected_size, DataType_Name(data_type).c_str());
+    return;
+  }
+  (void)weight->SetData(ge::PtrToPtr<char, uint8_t>(tensor_content.data()), expected_size);
 }
 
 Status TensorAssign::SetGeTensor(const TensorProto &tensor, GeTensorPtr &weight) {
