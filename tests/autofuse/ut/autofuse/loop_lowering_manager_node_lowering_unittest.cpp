@@ -8,6 +8,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#include <regex>
+#include <tuple>
 #include <utility>
 #include "graph/ascendc_ir/ascendc_ir_core/ascendc_ir.h"
 #include "graph/attribute_group/attr_group_symbolic_desc.h"
@@ -4125,4 +4127,56 @@ TEST_F(LoopNodeLoweringUT, AscendQuantLoweringDstTypeFloat16) {
             "tmp8 = ops.Cast(tmp7, DT_FLOAT16)\n"
             "tmp9 = ops.Store(\"AscendQuant_0:0\", tmp8)\n");
 }
+
+class LoopInt64LogicalLoweringUT : public LoopNodeLoweringUT,
+                                   public testing::WithParamInterface<std::tuple<bool, bool>> {};
+
+TEST_P(LoopInt64LogicalLoweringUT, BroadcastLogicalCastDoesNotFallback) {
+  const bool use_or = std::get<0>(GetParam());
+  const std::vector<const char *> shape =
+      std::get<1>(GetParam()) ? std::vector<const char *>{"s0", "s1", "s2"} : std::vector<const char *>{"2", "3", "5"};
+  auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+  auto data1 = es_graph_->CreateInput(1, "data1", nullptr);
+  data0.SetSymbolShape({shape[0], "1", shape[2]});
+  data1.SetSymbolShape(shape);
+  auto logical = use_or ? es::LogicalOr(data0, data1) : es::LogicalAnd(data0, data1);
+  logical.SetSymbolShape(shape);
+  auto cast = es::Cast(logical, DT_INT64);
+  cast.SetSymbolShape(shape);
+  es_graph_->SetOutput(cast, 0);
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  const std::string logical_type = use_or ? "LogicalOr" : "LogicalAnd";
+  auto logical_node = cg->FindNode(logical_type + "_0");
+  auto cast_node = cg->FindNode("Cast_1");
+  ASSERT_NE(logical_node, nullptr);
+  ASSERT_NE(cast_node, nullptr);
+  for (const auto &node : logical_node->GetInDataNodes()) {
+    node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(DT_INT64);
+    node->GetOpDesc()->MutableOutputDesc(0)->SetOriginDataType(DT_INT64);
+  }
+  for (size_t i = 0; i < 2U; ++i) {
+    logical_node->GetOpDesc()->MutableInputDesc(i)->SetDataType(DT_INT64);
+    logical_node->GetOpDesc()->MutableInputDesc(i)->SetOriginDataType(DT_INT64);
+  }
+  logical_node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(DT_UINT8);
+  logical_node->GetOpDesc()->MutableOutputDesc(0)->SetOriginDataType(DT_UINT8);
+  cast_node->GetOpDesc()->MutableInputDesc(0)->SetDataType(DT_UINT8);
+  cast_node->GetOpDesc()->MutableInputDesc(0)->SetOriginDataType(DT_UINT8);
+  cast_node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(DT_INT64);
+  cast_node->GetOpDesc()->MutableOutputDesc(0)->SetOriginDataType(DT_INT64);
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  const auto logical_kernel = loop::GetKernelBox(logical_node->GetOutDataAnchor(0));
+  const auto cast_kernel = loop::GetKernelBox(cast_node->GetOutDataAnchor(0));
+  ASSERT_FALSE(logical_kernel.IsExternKernel());
+  ASSERT_FALSE(cast_kernel.IsExternKernel());
+  EXPECT_NE(logical_kernel.Readable().find("ops.Broadcast("), std::string::npos);
+  EXPECT_NE(logical_kernel.Readable().find("ops." + logical_type + "("), std::string::npos);
+  // Fusion changes temporary numbering; verify the Cast operation and its destination type together.
+  EXPECT_TRUE(std::regex_search(cast_kernel.Readable(), std::regex(R"(ops\.Cast\(tmp[0-9]+, DT_INT64\))")))
+      << cast_kernel.Readable();
+}
+
+INSTANTIATE_TEST_SUITE_P(Int64, LoopInt64LogicalLoweringUT, testing::Combine(testing::Bool(), testing::Bool()));
 }  // namespace ge
