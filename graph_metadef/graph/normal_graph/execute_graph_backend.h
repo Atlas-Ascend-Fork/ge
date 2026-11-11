@@ -78,7 +78,7 @@ class ExecuteGraphBackend : public GraphImpl {
   void BuildGraphFromInputs(const std::vector<Operator> &inputs) override;
   bool IsCompatibleSubgraph(const Graph &subgraph) const override;
   graphStatus RegisterSubgraph(const Graph &subgraph) override;
-  GNodePtr FindDirectNode(const AscendString &name) const override;
+  GNodePtr FindDirectNode(const AscendString &name, bool &found) const override;
   ConstOpDescPtr GetOutputOpDesc(const GNode &node) const override;
   graphStatus SetGraphOutNodesInfo(const std::vector<std::pair<GNode, int32_t>> &outputs) override;
   void PrepareSetOutputs() override {
