@@ -155,7 +155,7 @@ checkopts() {
 
   ENABLE_SIGN="off"
   CUSTOM_SIGN_SCRIPT=""
-  VERSION_INFO="9.1.0"
+  VERSION_INFO="9.3.0"
 
   OUTPUT_PATH="${BASEPATH}/output"
   CANN_3RD_LIB_PATH="${BASEPATH}/output/third_party"
@@ -392,6 +392,16 @@ mk_dir() {
   echo "created ${create_dir}"
 }
 
+move_pkg() {
+  local component="$1"
+  local pkg_name="$2"
+  if [ -f "${OUTPUT_PATH}/${pkg_name}" ]; then
+    mv "${OUTPUT_PATH}/${pkg_name}" "${BUILD_OUT_PATH}/"
+  else
+    mv ${OUTPUT_PATH}/cann-${component}*.run "${BUILD_OUT_PATH}/${pkg_name}"
+  fi
+}
+
 copy_pkg() {
   local component="$1"
   if [ "${ENABLE_BUILD_DEVICE}" = "ON" ]; then
@@ -400,13 +410,13 @@ copy_pkg() {
     if [ -f "/etc/lsb-release" ]; then
       ubuntu_version=$(grep -E '^DISTRIB_RELEASE=' /etc/lsb-release | cut -d'=' -f2 | xargs)
       ubuntu_version="ubuntu${ubuntu_version}"
-      mv ${OUTPUT_PATH}/cann-${component}_*.run ${BUILD_OUT_PATH}/cann-${component}-${VERSION_INFO}-${ubuntu_version}.x86_64.run
+      move_pkg "${component}" "cann-${component}-${VERSION_INFO}-${ubuntu_version}.x86_64.run"
     else
       echo "Error: operate environment is not ubuntu."
       exit 1
     fi
   else
-    mv ${OUTPUT_PATH}/cann-${component}_*.run ${BUILD_OUT_PATH}/cann-${component}-${VERSION_INFO}-aoskernel.aarch64.run
+    move_pkg "${component}" "cann-${component}-${VERSION_INFO}-aoskernel.aarch64.run"
   fi
 }
 
