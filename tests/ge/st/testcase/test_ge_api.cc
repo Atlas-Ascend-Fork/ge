@@ -2210,9 +2210,8 @@ TEST_F(GeApiTest, RunGraphAsync_AfterCompileGraph_Incompatible) {
 }
 
 TEST_F(GeApiTest, SessionApis_GraphNotExist_ReportE10062) {
-  // GetGraphNode/CheckCompiledFlag are silent tools. For a non-existent graph, the CheckCompiledFlag callers
-  // report E10062 at the Session layer, while CompileGraph/RemoveGraph report it from GraphManager itself
-  // ("get the graph"). Covers both not-found report paths.
+  // CheckCompiledFlag callers report E10062 at the Session layer for a non-existent graph.
+  // CompileGraph and RemoveGraph fail during graph-kind lookup before reaching GraphManager APIs.
   std::map<std::string, std::string> str_options;
   EXPECT_EQ(GEInitialize(str_options), SUCCESS);
   std::map<AscendString, AscendString> options;
@@ -2238,15 +2237,17 @@ TEST_F(GeApiTest, SessionApis_GraphNotExist_ReportE10062) {
             SUCCESS);
   EXPECT_NE(session.UpdateGraphRefreshableFeatureMemoryBase(graph_id, nullptr, 0U), SUCCESS);
 
-  // CompileGraph/RemoveGraph: graph does not exist -> E10062 reported by GraphManager itself ("get the graph").
+  // CompileGraph fails during graph-kind lookup and reports the graph-not-found status at the API boundary.
   EXPECT_NE(session.CompileGraph(graph_id), SUCCESS);
   err_msg = ge::GEGetErrorMsgV2().GetString();
-  EXPECT_NE(err_msg.find("get the graph"), std::string::npos);
+  EXPECT_NE(err_msg.find("Compile graph failed"), std::string::npos);
+  EXPECT_NE(err_msg.find(std::to_string(GE_GRAPH_GRAPH_NOT_EXIST)), std::string::npos);
   EXPECT_NE(err_msg.find("99999"), std::string::npos);
 
   EXPECT_NE(session.RemoveGraph(graph_id), SUCCESS);
   err_msg = ge::GEGetErrorMsgV2().GetString();
-  EXPECT_NE(err_msg.find("get the graph"), std::string::npos);
+  EXPECT_NE(err_msg.find("Remove graph failed"), std::string::npos);
+  EXPECT_NE(err_msg.find(std::to_string(GE_GRAPH_GRAPH_NOT_EXIST)), std::string::npos);
   EXPECT_NE(err_msg.find("99999"), std::string::npos);
 
   ReInitGe();

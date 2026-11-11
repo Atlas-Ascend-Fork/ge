@@ -126,7 +126,7 @@ TEST_F(UserGraphsManagerlUT, RemoveGraph_NotExist) {
   EXPECT_EQ(graph_manager.Initialize({}, &model_executor), SUCCESS);
   UserGraphsManager user_graph_manager(graph_manager);
 
-  EXPECT_EQ(user_graph_manager.RemoveGraph(0), FAILED);
+  EXPECT_EQ(user_graph_manager.RemoveGraph(0), GE_GRAPH_GRAPH_NOT_EXIST);
 
   EXPECT_EQ(user_graph_manager.Finalize(), SUCCESS);
   EXPECT_EQ(graph_manager.Finalize(), SUCCESS);

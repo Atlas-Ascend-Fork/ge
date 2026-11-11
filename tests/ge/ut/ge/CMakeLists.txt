@@ -145,6 +145,7 @@ set(DISTINCT_GRAPH_LOAD_TEST_FILES
     "graph/load/model_helper_attr_compression_unittest.cc"
     "graph/load/model_helper_misc_unittest.cc"
     "graph/load/om2_package_helper_unittest.cc"
+    "graph/load/om2_graph_package_helper_unittest.cc"
     "graph/load/om_file_helper_unittest.cc"
     "common/visualization_unittest.cc"
     "common/wire/wire_tlv_frame_unittest.cc"

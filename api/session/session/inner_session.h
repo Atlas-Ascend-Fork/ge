@@ -150,6 +150,7 @@ class InnerSession {
   bool GetBuildFlag(uint32_t graph_id) const;
 
   bool GetLoadFlag(uint32_t graph_id) const;
+  Status IsExecuteGraph(uint32_t graph_id, bool &is_execute_graph) const;
 
  private:
   Status InnerInitialize();

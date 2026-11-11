@@ -3992,8 +3992,8 @@ void ExpectOm2ExecutorRun(const std::unique_ptr<gert::Om2ModelExecutor> &executo
   std::vector<gert::Tensor *> inputs;
   std::vector<gert::Tensor *> outputs;
   ConstructOm2IoTensors(input_tensors, output_tensors, inputs, outputs);
-  EXPECT_EQ(executor->Run(inputs, outputs), SUCCESS);
-  EXPECT_EQ(executor->RunAsync(nullptr, inputs, outputs), SUCCESS);
+  EXPECT_EQ(executor->Run(inputs, outputs, gert::Om2ModelRunArg{}), SUCCESS);
+  EXPECT_EQ(executor->RunAsync(nullptr, inputs, outputs, gert::Om2ModelRunArg{}), SUCCESS);
 }
 
 TEST_F(Om2St, LoadGeneratedOm2_Ok_ExecutorMainFlow) {

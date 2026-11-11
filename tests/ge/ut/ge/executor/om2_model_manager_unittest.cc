@@ -86,6 +86,7 @@ struct GertModelRunConfig {
   void **output_data;
   uint64_t stream_sync_timeout_ms;
   const struct GertModelRunCallbacks *run_callbacks = nullptr;
+  void *external_allocator = nullptr;
 };
 
 struct GertModelUnloadConfig {
@@ -219,7 +220,8 @@ std::string Om2ModelManagerTest::fake_so_path_;
 TEST_F(Om2ModelManagerTest, RunModel_NotLoaded_ReturnsNotLoaded) {
   std::vector<gert::Tensor *> inputs;
   std::vector<gert::Tensor *> outputs;
-  EXPECT_EQ(Om2ModelManager::GetInstance().RunModel(kModelId1, nullptr, inputs, outputs), GE_RTI_MODEL_NOT_LOADED);
+  EXPECT_EQ(Om2ModelManager::GetInstance().RunModel(kModelId1, nullptr, inputs, outputs, gert::Om2ModelRunArg{}),
+            GE_RTI_MODEL_NOT_LOADED);
 }
 
 TEST_F(Om2ModelManagerTest, UnloadModel_NotFound_ReturnsSuccess) {
@@ -243,7 +245,8 @@ TEST_F(Om2ModelManagerTest, LoadModel_EmptySoData_NotStoredInMap) {
   // Verify model is NOT in the map by trying to run it
   std::vector<gert::Tensor *> inputs;
   std::vector<gert::Tensor *> outputs;
-  EXPECT_EQ(Om2ModelManager::GetInstance().RunModel(kModelId1, nullptr, inputs, outputs), GE_RTI_MODEL_NOT_LOADED);
+  EXPECT_EQ(Om2ModelManager::GetInstance().RunModel(kModelId1, nullptr, inputs, outputs, gert::Om2ModelRunArg{}),
+            GE_RTI_MODEL_NOT_LOADED);
 }
 
 // --- Success path tests (using fake .so) ---
@@ -273,7 +276,7 @@ TEST_F(Om2ModelManagerTest, RunModel_AfterLoad) {
   std::vector<gert::Tensor *> outputs;
   // RunModel looks up executor and calls RunAsync - the executor's RunAsync validates counts
   // but the key test is that RunModel finds the model and delegates to executor
-  auto ret = Om2ModelManager::GetInstance().RunModel(kModelId1, nullptr, inputs, outputs);
+  auto ret = Om2ModelManager::GetInstance().RunModel(kModelId1, nullptr, inputs, outputs, gert::Om2ModelRunArg{});
   // The fake .so RunAsync accepts any input/output counts since we pass empty vectors
   // The actual return value depends on the executor's internal validation
   // We just verify it doesn't return GE_RTI_MODEL_NOT_LOADED (meaning it found the model)
@@ -290,7 +293,8 @@ TEST_F(Om2ModelManagerTest, UnloadModel_RemovesFromMap) {
   // After unload, RunModel should fail
   std::vector<gert::Tensor *> inputs;
   std::vector<gert::Tensor *> outputs;
-  EXPECT_EQ(Om2ModelManager::GetInstance().RunModel(kModelId1, nullptr, inputs, outputs), GE_RTI_MODEL_NOT_LOADED);
+  EXPECT_EQ(Om2ModelManager::GetInstance().RunModel(kModelId1, nullptr, inputs, outputs, gert::Om2ModelRunArg{}),
+            GE_RTI_MODEL_NOT_LOADED);
 }
 
 TEST_F(Om2ModelManagerTest, UnloadModel_Idempotent) {
@@ -379,7 +383,7 @@ TEST_F(Om2ModelManagerTest, RunModel_WithStream_CallsRunAsync) {
   void *fake_stream = reinterpret_cast<void *>(0xDEAD);
   std::vector<gert::Tensor *> inputs;
   std::vector<gert::Tensor *> outputs;
-  auto ret = Om2ModelManager::GetInstance().RunModel(kModelId1, fake_stream, inputs, outputs);
+  auto ret = Om2ModelManager::GetInstance().RunModel(kModelId1, fake_stream, inputs, outputs, gert::Om2ModelRunArg{});
   EXPECT_NE(ret, GE_RTI_MODEL_NOT_LOADED);
 }
 

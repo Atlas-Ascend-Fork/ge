@@ -25,6 +25,7 @@ struct GertModelTaskDesc;
 
 namespace gert {
 struct GertModelData;
+class Allocators;
 
 // Bundle 子模型共享的会话上下文。OM2 不持有 RtSession（其 stream/event/notify allocator 与
 // ge:: 会话池均非 OM2 所需），会话仅以 (session_id + 外置变量 arena) 承载，避免 ACL OM2 实现库
@@ -53,6 +54,15 @@ struct VISIBILITY_EXPORT Om2ModelLoadArg {
   // 调度模式：是否配置与配置值必须分别保存，禁止以模式值推断是否启用外部 RI 链路（显式 normal 也走外部 RI 路径）
   bool sch_mode_configured = false;
   int32_t sch_mode = 0;  // model schedule mode, 0: normal, 1: exclusive, only support om2 models
+  // 借用的内存 allocator 集合，executor 加载时复制其共享持有关系并保活，SO 只接收不透明指针。
+  // 调用方保证集合在 Load 调用期间有效；nullptr 使用图内 allocator。
+  gert::Allocators *external_allocator = nullptr;
+};
+
+struct Om2ModelRunArg {
+  // 借用的本次 Main allocator 集合；nullptr 沿用 Load 集合。
+  // 集合及 allocator 须存活至关联流任务完成、相关内存块释放。
+  gert::Allocators *external_allocator = nullptr;
 };
 
 class VISIBILITY_EXPORT Om2ModelExecutor {
@@ -68,10 +78,14 @@ class VISIBILITY_EXPORT Om2ModelExecutor {
   /// 新接口：直接从 GertModelData 加载（统一入口）
   ge::Status Load(const gert::GertModelData &model_data, const Om2ModelLoadArg &load_arg,
                   const uint64_t session_id) const;
+  // nullptr preserves the default loading path; a specified loading stream is not supported yet.
+  ge::Status Load(const gert::GertModelData &model_data, const Om2ModelLoadArg &load_arg, const uint64_t session_id,
+                  void *stream) const;
   ge::Status Load(ge::ModelData &model_data, const Om2ModelLoadArg &load_arg, const uint64_t session_id) const;
-  ge::Status Run(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs) const;
-  ge::Status RunAsync(void *const stream, std::vector<gert::Tensor *> &inputs,
-                      std::vector<gert::Tensor *> &outputs) const;
+  ge::Status Run(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs,
+                 const Om2ModelRunArg &run_arg) const;
+  ge::Status RunAsync(void *const stream, std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs,
+                      const Om2ModelRunArg &run_arg) const;
   ge::Status GetModelDescInfo(const std::vector<gert::GertTensorDesc> *&input_desc,
                               const std::vector<gert::GertTensorDesc> *&output_desc, bool new_model_desc = false) const;
   ge::Status GetModelAttrs(std::vector<std::string> &dynamic_output_shape) const;
@@ -112,6 +126,8 @@ class VISIBILITY_EXPORT Om2ModelExecutor {
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+using Om2ModelExecutorPtr = std::shared_ptr<Om2ModelExecutor>;
 
 VISIBILITY_EXPORT ge::Status LoadOm2DataFromFile(const std::string &model_path, ge::ModelData &model_data);
 VISIBILITY_EXPORT ge::Status GetOm2MemAndWeightSize(const std::string &model_path, size_t &work_size,

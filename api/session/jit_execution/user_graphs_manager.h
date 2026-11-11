@@ -52,6 +52,7 @@ class UserGraphsManager {
   Status GetOmeContextByGraphId(const GraphId &graph_id, OmeContext &ome_context) const;
   Status GetRunGraphMode(uint32_t user_graph_id, RunGraphMode &mode);
   Status SetRunGraphMode(uint32_t user_graph_id, const RunGraphMode &mode);
+  Status IsExecuteGraph(uint32_t user_graph_id, bool &is_execute_graph) const;
 
  private:
   UserGraphControl *GetUserGraphControl(uint32_t user_graph_id);

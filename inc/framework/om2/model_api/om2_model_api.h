@@ -422,6 +422,9 @@ struct GertModelLoadConfig {
   uint64_t external_label_num = 0;                     // 输入，外部 Label 个数。
   aclrtNotify *external_notifies = nullptr;            // 输入，外部 Notify 数组。
   uint64_t external_notify_num = 0;                    // 输入，外部 Notify 个数。
+  // 可选尾字段：借用的 gert::Allocators*；旧尺寸或 nullptr 表示未提供。
+  // 集合及 allocator 须存活至关联流任务完成、相关内存块释放；不转移所有权。
+  void *external_allocator = nullptr;
 };
 
 /**
@@ -435,6 +438,9 @@ struct GertModelRunConfig {
   gert::Tensor **output_data = nullptr;                  // 输入，模型输出 Tensor 数组。
   uint64_t stream_sync_timeout_ms = 0;                   // 输入，同步执行的流同步超时，单位为毫秒。
   const GertModelRunCallbacks *run_callbacks = nullptr;  // 输入，执行期 DFX 回调集合。
+  // 借用的 gert::Allocators*；nullptr 沿用 Load 的 allocator 集合，不转移所有权。
+  // 调用方保证集合及 allocator 在关联流任务完成、相关内存块释放前有效。
+  void *external_allocator = nullptr;
 };
 
 /** @brief GertModelUnload 的预留参数。 */

@@ -1058,23 +1058,28 @@ Status ModelManager::Stop(const uint32_t model_id) {
 /// @author
 ///
 Status ModelManager::HandleCommand(const Command &cmd_info) {
-  static const std::map<std::string, std::function<uint32_t(const Command &)>> cmds = {
-      {kCmdTypeDump, &HandleDumpCommand},
-      {kCmdTypeProfInit, &HandleProfInitCommand},
-      {kCmdTypeProfFinalize, &HandleProfFinalizeCommand},
-      {kCmdTypeProfStart, &HandleProfStartCommand},
-      {kCmdTypeProfStop, &HandleProfStopCommand},
-      {kCmdTypeProfModelSubscribe, &HandleProfModelSubscribeCommand},
-      {kCmdTypeProfModelUnsubscribe, &HandleProfModelUnsubscribeCommand}};
+  using CommandHandler = Status (*)(const Command &);
+  struct CommandHandlerEntry {
+    const std::string *command;
+    CommandHandler handler;
+  };
+  const CommandHandlerEntry cmds[] = {{&kCmdTypeDump, &HandleDumpCommand},
+                                      {&kCmdTypeProfInit, &HandleProfInitCommand},
+                                      {&kCmdTypeProfFinalize, &HandleProfFinalizeCommand},
+                                      {&kCmdTypeProfStart, &HandleProfStartCommand},
+                                      {&kCmdTypeProfStop, &HandleProfStopCommand},
+                                      {&kCmdTypeProfModelSubscribe, &HandleProfModelSubscribeCommand},
+                                      {&kCmdTypeProfModelUnsubscribe, &HandleProfModelUnsubscribeCommand}};
 
-  const auto iter = cmds.find(cmd_info.cmd_type);
-  if (iter == cmds.end()) {
-    REPORT_INNER_ERR_MSG("E19999", "Unsupported command:%s check", cmd_info.cmd_type.c_str());
-    GELOGE(PARAM_INVALID, "[Check][Param] Unsupported command:%s", cmd_info.cmd_type.c_str());
-    return PARAM_INVALID;
-  } else {
-    return iter->second(cmd_info);
+  for (const auto &entry : cmds) {
+    if (cmd_info.cmd_type == *entry.command) {
+      return entry.handler(cmd_info);
+    }
   }
+
+  REPORT_INNER_ERR_MSG("E19999", "Unsupported command:%s check", cmd_info.cmd_type.c_str());
+  GELOGE(PARAM_INVALID, "[Check][Param] Unsupported command:%s", cmd_info.cmd_type.c_str());
+  return PARAM_INVALID;
 }
 
 Status ModelManager::GetModelIdByCmd(const Command &cmd_info, uint32_t &model_id) {

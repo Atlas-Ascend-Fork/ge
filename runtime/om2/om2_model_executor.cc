@@ -9,9 +9,11 @@
  */
 
 #include <algorithm>
+#include <atomic>
 #include <cinttypes>
 #include <cstddef>
 #include <mutex>
+#include <new>
 #include <string>
 #include <fstream>
 #include <regex>
@@ -22,6 +24,7 @@
 #include "acl/acl_rt.h"
 #include "registry/op_impl_space_registry_v2.h"
 #include "framework/om2/model_api/om2_model_api.h"
+#include "framework/runtime/mem_allocator.h"
 #include "framework/runtime/gert_model/gert_model_executor_callbacks.h"
 #include "framework/runtime/dump/model_dump_c_api.h"
 #include "framework/runtime/dump/profiling_impl.h"
@@ -703,6 +706,8 @@ class Om2ModelExecutor::Impl {
 
     GE_ASSERT_NOTNULL(run_model_info_.load_func);
     const GertModelLoadCallbacks callbacks = CreateGertModelLoadCallbacks();
+    load_allocators_ =
+        load_arg.external_allocator == nullptr ? nullptr : std::make_shared<Allocators>(*load_arg.external_allocator);
     struct GertModelLoadConfig config = {
         .struct_size = sizeof(GertModelLoadConfig),
         .bin_files = bin_files.data(),
@@ -721,6 +726,8 @@ class Om2ModelExecutor::Impl {
         .priority = load_arg.priority,
         .reuse_zero_copy = load_arg.reuse_zero_copy ? 1U : 0U,
         .external_rt_model = run_model_info_.external_rt_model};
+    // Keep a shared-owning copy alive while the model borrows the collection.
+    config.external_allocator = load_allocators_.get();
     GE_ASSERT_SUCCESS(run_model_info_.load_func(&config, &run_model_info_.model_handle, nullptr));
     GE_ASSERT_NOTNULL(run_model_info_.model_handle);
     run_model_info_.load_priority = load_arg.priority;
@@ -839,11 +846,11 @@ class Om2ModelExecutor::Impl {
     return ge::SUCCESS;
   }
 
-  // 组装 Run/RunAsync 公共的 run 配置：profiling 回调探测（executor 本地实现）+ 输入/输出/超时字段填充。
+  // 组装 Run/RunAsync 公共的 run 配置：profiling、输入输出、超时及运行期 allocator。
   // run_callbacks 为出参，须由调用方持有至 run_func 调用结束（config 内部持有其指针）。
   ge::Status BuildRunConfig(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs,
                             uint64_t stream_sync_timeout_ms, GertModelRunCallbacks &run_callbacks,
-                            GertModelRunConfig &config) {
+                            GertModelRunConfig &config, const Om2ModelRunArg &run_arg) {
     GE_ASSERT_NOTNULL(run_model_info_.model_handle);
     if ((profiling_impl_ != nullptr) && profiling_impl_->IsProfilingEnabled()) {
       run_callbacks.report_run_info_preprocess = &ReportRunInfoPreprocess;
@@ -855,17 +862,19 @@ class Om2ModelExecutor::Impl {
                                 .output_count = outputs.size(),
                                 .output_data = outputs.data(),
                                 .stream_sync_timeout_ms = stream_sync_timeout_ms,
-                                .run_callbacks = &run_callbacks};
+                                .run_callbacks = &run_callbacks,
+                                .external_allocator = run_arg.external_allocator};
     return ge::GRAPH_SUCCESS;
   }
 
-  ge::Status Run(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs) {
+  ge::Status Run(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs,
+                 const Om2ModelRunArg &run_arg) {
     GE_ASSERT_TRUE(has_model_);
     GE_ASSERT_NOTNULL(run_model_info_.run_func);
     int32_t timeout = GetOm2ThreadLocalContext().StreamSyncTimeout();
     GertModelRunCallbacks run_callbacks;
     GertModelRunConfig config;
-    GE_ASSERT_SUCCESS(BuildRunConfig(inputs, outputs, static_cast<uint64_t>(timeout), run_callbacks, config));
+    GE_ASSERT_SUCCESS(BuildRunConfig(inputs, outputs, static_cast<uint64_t>(timeout), run_callbacks, config, run_arg));
     struct GertModelRunOutput output = {.struct_size = sizeof(GertModelRunOutput)};
     // 执行前把当前 step（从 0 开始）刷入 dump step 设备内存，供 AICPU dump kernel 计算 step 落盘目录
     if (dump_manager_handle_ != nullptr) {
@@ -876,12 +885,13 @@ class Om2ModelExecutor::Impl {
     return ge::GRAPH_SUCCESS;
   }
 
-  ge::Status RunAsync(void *const stream, std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs) {
+  ge::Status RunAsync(void *const stream, std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs,
+                      const Om2ModelRunArg &run_arg) {
     GE_ASSERT_TRUE(has_model_);
     GE_ASSERT_NOTNULL(run_model_info_.run_async_func);
     GertModelRunCallbacks run_callbacks;
     GertModelRunConfig config;
-    GE_ASSERT_SUCCESS(BuildRunConfig(inputs, outputs, 0, run_callbacks, config));
+    GE_ASSERT_SUCCESS(BuildRunConfig(inputs, outputs, 0, run_callbacks, config, run_arg));
     struct GertModelRunOutput output = {.struct_size = sizeof(GertModelRunOutput)};
     // 执行前在模型流上异步刷新当前 step（从 0 开始）到 dump step 设备内存，
     // 与后续模型任务保序，供 AICPU dump kernel 计算 step 落盘目录
@@ -1438,6 +1448,8 @@ class Om2ModelExecutor::Impl {
   uint64_t session_id_ = 0U;
   bool has_model_ = false;
   uint64_t step_id_ = 1U;
+  // Loading already binds this collection in pbody; keep that collection valid until unload.
+  std::shared_ptr<Allocators> load_allocators_;
   aclrtStream prof_stream_ = nullptr;
   Om2ModelExecutor *owner_ = nullptr;
   mutable std::mutex stream_attr_mutex_;
@@ -1491,13 +1503,20 @@ ge::Status Om2ModelExecutor::Load(const gert::GertModelData &model_data, const O
   return ge::SUCCESS;
 }
 
-ge::Status Om2ModelExecutor::Run(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs) const {
-  return impl_->Run(inputs, outputs);
+ge::Status Om2ModelExecutor::Load(const gert::GertModelData &model_data, const Om2ModelLoadArg &load_arg,
+                                  const uint64_t session_id, void *stream) const {
+  (void)stream;
+  return Load(model_data, load_arg, session_id);
+}
+
+ge::Status Om2ModelExecutor::Run(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs,
+                                 const Om2ModelRunArg &run_arg) const {
+  return impl_->Run(inputs, outputs, run_arg);
 }
 
 ge::Status Om2ModelExecutor::RunAsync(void *const stream, std::vector<gert::Tensor *> &inputs,
-                                      std::vector<gert::Tensor *> &outputs) const {
-  return impl_->RunAsync(stream, inputs, outputs);
+                                      std::vector<gert::Tensor *> &outputs, const Om2ModelRunArg &run_arg) const {
+  return impl_->RunAsync(stream, inputs, outputs, run_arg);
 }
 
 ge::Status Om2ModelExecutor::GetModelDescInfo(const std::vector<gert::GertTensorDesc> *&input_desc,

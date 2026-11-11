@@ -9,6 +9,7 @@
  */
 
 #include "graph/manager/graph_manager.h"
+#include "graph/fast_graph/execute_graph.h"
 #include <cinttypes>
 #include <cstdlib>
 
@@ -145,9 +146,19 @@
 #include "framework/common/gert_model_data_serialize.h"
 #include "framework/common/helper/om2_package_helper.h"
 #include "platform/platform_info.h"
+#include "framework/runtime/om2_model_executor.h"
+#include "framework/runtime/gert_api.h"
+#include "framework/runtime/mem_allocator.h"
 
 namespace ge {
 namespace {
+Status IsExecuteGraph(const GraphNodePtr &graph_node, bool &is_execute_graph) {
+  GE_ASSERT_NOTNULL(graph_node);
+  GE_ASSERT_NOTNULL(graph_node->GetGraph());
+  is_execute_graph = GraphUtilsEx::IsExecuteGraph(*graph_node->GetGraph());
+  return SUCCESS;
+}
+
 const char *const kSummary = "Summary";
 const char *const kSave = "Save";
 const char *const kNetOutput = "NetOutput";
@@ -492,6 +503,37 @@ ge::Status BuildOm2PackageIfNeeded(const GraphNodePtr &graph_node, const GeRootM
 }
 
 }  // namespace
+
+Status GraphManager::GetExecuteGraphAllocators(const GraphId graph_id, const aclrtStream stream,
+                                               gert::Allocators *&allocators) const {
+  allocators = nullptr;
+  auto allocator = ExternalAllocatorManager::GetExternalAllocator(stream);
+  if (allocator == nullptr) {
+    return SUCCESS;
+  }
+  const std::lock_guard<std::mutex> lock(execute_graph_allocator_mutex_);
+  auto &allocator_entries = execute_graph_allocators_[graph_id];
+  for (const auto &entry : allocator_entries) {
+    if ((entry.stream == stream) && (entry.allocator == allocator)) {
+      allocators = entry.allocators.get();
+      return SUCCESS;
+    }
+  }
+  auto candidate = MakeShared<gert::Allocators>();
+  GE_ASSERT_NOTNULL(candidate);
+  for (size_t usage = 0U; usage < static_cast<size_t>(gert::AllocatorUsage::kEnd); ++usage) {
+    GE_ASSERT_SUCCESS(candidate->SetAllocator(gert::kOnDeviceHbm, usage, allocator));
+  }
+  allocators = candidate.get();
+  allocator_entries.push_back(ExecuteGraphAllocator{stream, allocator, std::move(candidate)});
+  return SUCCESS;
+}
+
+void GraphManager::RemoveExecuteGraphAllocators(const GraphId graph_id) const {
+  const std::lock_guard<std::mutex> lock(execute_graph_allocator_mutex_);
+  (void)execute_graph_allocators_.erase(graph_id);
+}
+
 GraphManager::~GraphManager() {
   // set thread local omg_contex to default, to avoid other use invalid memory
   SetLocalOmgContext(domi::GetContext());
@@ -560,7 +602,9 @@ void GraphManager::UpdateDynamicParams(std::string &input_shape, std::string &dy
 
 Status GraphManager::UnloadModel(GeRootModelPtr ge_root_model, uint32_t graph_id) {
   GE_CHECK_NOTNULL(executor_);
-  return executor_->UnloadGraph(ge_root_model, graph_id);
+  const auto ret = executor_->UnloadGraph(ge_root_model, graph_id);
+  RemoveExecuteGraphAllocators(graph_id);
+  return ret;
 }
 
 Status GraphManager::Finalize() {
@@ -595,6 +639,9 @@ Status GraphManager::Finalize() {
     }
 
     // clear analyzer saved info(graph level)
+    if (GraphUtilsEx::IsExecuteGraph(*graph_node->GetGraph())) {
+      continue;
+    }
     auto compute_graph = GraphUtilsEx::GetComputeGraph(*graph_node->GetGraph());
     GE_CHECK_NOTNULL(compute_graph);
     auto session_id = compute_graph->GetSessionID();
@@ -611,6 +658,7 @@ Status GraphManager::Finalize() {
   graph_map_.clear();
   graph_ids_.clear();
   graph_count_.clear();
+  (void)execute_graph_allocators_.clear();
 
   // graph context
   if (graph_context_ != nullptr) {
@@ -739,6 +787,11 @@ void GraphManager::SetSessionGraphId(ComputeGraphPtr compute_graph, uint32_t gra
   }
 }
 
+void GraphManager::SetSessionGraphId(const std::shared_ptr<ExecuteGraph> &execute_graph, uint32_t graph_id) const {
+  (void)execute_graph;
+  (void)graph_id;
+}
+
 Status GraphManager::NotifyWaittingGraph(uint32_t graph_id) {
   uint32_t count = 0;
   if (GetGraphCount(graph_id, count) != SUCCESS) {
@@ -855,7 +908,31 @@ Status GraphManager::CheckOptionsValid(const ComputeGraphPtr &compute_graph,
   return SUCCESS;
 }
 
-Status GraphManager::CheckGraphExisted(const GraphId &graph_id, bool &is_added) {
+Status GraphManager::CheckExecuteGraphOptionsValid(const std::shared_ptr<ExecuteGraph> &execute_graph,
+                                                   const std::map<std::string, std::string> &options) const {
+  (void)execute_graph;
+  (void)options;
+  return SUCCESS;
+}
+
+Status GraphManager::CheckGraphExisted(const GraphId &graph_id, bool &is_added, const Graph *graph) {
+  if ((graph != nullptr) && HasGraphNode(graph_id)) {
+    GraphNodePtr existing_graph_node;
+    const auto get_graph_ret = GetGraphNode(graph_id, existing_graph_node);
+    if (get_graph_ret != SUCCESS) {
+      return get_graph_ret;
+    }
+    bool existing_is_execute_graph = false;
+    GE_ASSERT_SUCCESS(IsExecuteGraph(existing_graph_node, existing_is_execute_graph));
+    const bool is_execute_graph = GraphUtilsEx::IsExecuteGraph(*graph);
+    if (existing_is_execute_graph != is_execute_graph) {
+      GELOGE(GE_GRAPH_GRAPH_ALREADY_EXIST,
+             "Graph id:%u is already registered with a different graph type, existing execute:%d, "
+             "incoming execute:%d.",
+             graph_id, existing_is_execute_graph, is_execute_graph);
+      return GE_GRAPH_GRAPH_ALREADY_EXIST;
+    }
+  }
   IncreaseGraphCount(graph_id);
   // validation for adding graphs of same graph_id in multi-thread scenario
   // 1.previous thread owns same graph_id has finished the AddGraph procession
@@ -884,18 +961,10 @@ Status GraphManager::CheckGraphExisted(const GraphId &graph_id, bool &is_added) 
   return SUCCESS;
 }
 
-Status GraphManager::AddGraph(const GraphId &graph_id, const Graph &graph,
-                              const std::map<std::string, std::string> &options, const OmgContext &omg_context) {
-  GetThreadLocalContext().SetGraphOption(options);
-  auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
+Status GraphManager::AddComputeGraph(const GraphId &graph_id, const Graph &graph,
+                                     const std::map<std::string, std::string> &options, const OmgContext &omg_context) {
+  const auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
   GE_CHECK_NOTNULL(compute_graph);
-  GE_ASSERT_SUCCESS(CheckOptionsValid(compute_graph, options));
-  bool is_added = false;
-  GE_ASSERT_SUCCESS(CheckGraphExisted(graph_id, is_added));
-  if (is_added) {
-    return SUCCESS;
-  }
-  // Do add graph
   SetAddGraphCondition(graph_id, kStartAdd);
   if (CheckGraphAdded(graph_id, graph) != SUCCESS) {
     GELOGE(FAILED, "[Check][GraphAdded] failed, graph id:%u.", graph_id);
@@ -927,6 +996,67 @@ Status GraphManager::AddGraph(const GraphId &graph_id, const Graph &graph,
   return SUCCESS;
 }
 
+Status GraphManager::AddExecuteGraph(const GraphId &graph_id, const Graph &graph,
+                                     const std::map<std::string, std::string> &options, const OmgContext &omg_context) {
+  const auto execute_graph = GraphUtilsEx::Graph2ExecuteGraph(graph);
+  GE_CHECK_NOTNULL(execute_graph);
+  SetAddGraphCondition(graph_id, kStartAdd);
+  // 检查图是否被注册过
+  if (CheckGraphAdded(graph_id, graph) != SUCCESS) {
+    GELOGE(FAILED, "[Check][GraphAdded] failed, graph id:%u.", graph_id);
+    return FAILED;
+  }
+  GE_ASSERT_TRUE(AttrUtils::SetBool(*execute_graph, ATTR_NAME_GRAPH_HAS_BEEN_ADDED, true));
+
+  AddLocalOmgContext(graph_id, omg_context);
+
+  auto graph_node = MakeShared<GraphNode>(graph_id);
+  GE_ASSERT_NOTNULL(graph_node);
+  auto graph_ptr = MakeShared<Graph>(graph);
+  GE_ASSERT_NOTNULL(graph_ptr);
+  graph_node->SetGraph(graph_ptr);
+  graph_node->SetOptions(options);
+  graph_node->IncreaseLoadCount();
+  AddGraphNode(graph_id, graph_node);
+
+  SetAddGraphCondition(graph_id, kDoneAdded);
+  // There are threads waiting for adding same graph
+  if (NotifyWaittingGraph(graph_id) != SUCCESS) {
+    GELOGE(INTERNAL_ERROR, "[Notify][WaittingGraph] failed, graph id:%u.", graph_id);
+    return INTERNAL_ERROR;
+  }
+  return SUCCESS;
+}
+
+Status GraphManager::AddGraph(const GraphId &graph_id, const Graph &graph,
+                              const std::map<std::string, std::string> &options, const OmgContext &omg_context) {
+  std::unique_lock<std::mutex> add_lock(add_graph_mutex_);
+  const bool is_execute_graph = GraphUtilsEx::IsExecuteGraph(graph);
+
+  // Check options && isExisted
+  GetThreadLocalContext().SetGraphOption(options);
+  if (!is_execute_graph) {
+    const auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
+    GE_CHECK_NOTNULL(compute_graph);
+    GE_ASSERT_SUCCESS(CheckOptionsValid(compute_graph, options));
+  } else {
+    const auto execute_graph = GraphUtilsEx::Graph2ExecuteGraph(graph);
+    GE_CHECK_NOTNULL(execute_graph);
+    GE_ASSERT_SUCCESS(CheckExecuteGraphOptionsValid(execute_graph, options));
+  }
+  bool is_added = false;
+  GE_ASSERT_SUCCESS(CheckGraphExisted(graph_id, is_added, &graph));
+  if (is_added) {
+    return SUCCESS;
+  }
+
+  // Do Add Graph
+  if (is_execute_graph) {
+    return AddExecuteGraph(graph_id, graph, options, omg_context);
+  }
+  return AddComputeGraph(graph_id, graph, options, omg_context);
+}
+
 Status GraphManager::AddGraphForBuild(const GraphId &graph_id, const ComputeGraphPtr &compute_graph,
                                       const std::map<std::string, std::string> &options, bool graph_normalized) {
   const auto &graph = GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);
@@ -949,6 +1079,11 @@ Status GraphManager::AddGraphForBuild(const GraphId &graph_id, const ComputeGrap
 }
 
 Status GraphManager::CheckGraphAdded(const GraphId &graph_id, const Graph &graph) {
+  GE_ASSERT_TRUE(graph.IsValid(), "[Check][Param] graph is invalid, graph_id:%u.", graph_id);
+  const bool is_execute_graph = GraphUtilsEx::IsExecuteGraph(graph);
+  if (is_execute_graph) {
+    return CheckGraphAdded(graph_id, GraphUtilsEx::Graph2ExecuteGraph(graph));
+  }
   auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
   if (compute_graph != nullptr) {
     compute_graph->SetGraphID(graph_id);
@@ -969,9 +1104,26 @@ Status GraphManager::CheckGraphAdded(const GraphId &graph_id, const Graph &graph
   return SUCCESS;
 }
 
+Status GraphManager::CheckGraphAdded(const GraphId &graph_id, const std::shared_ptr<ExecuteGraph> &execute_graph) {
+  GE_CHECK_NOTNULL(execute_graph);
+  execute_graph->SetGraphId(graph_id);
+  bool graph_has_been_added = false;
+  if (AttrUtils::GetBool(*execute_graph, ATTR_NAME_GRAPH_HAS_BEEN_ADDED, graph_has_been_added) &&
+      graph_has_been_added) {
+    GELOGE(GE_GRAPH_GRAPH_ALREADY_EXIST, "Execute graph has already been added, graph id:%u.", graph_id);
+    return GE_GRAPH_GRAPH_ALREADY_EXIST;
+  }
+  return SUCCESS;
+}
+
 Status GraphManager::AddGraphWithCopy(const GraphId &graph_id, const Graph &graph,
                                       const std::map<std::string, std::string> &options,
                                       const OmgContext &omg_context) {
+  std::unique_lock<std::mutex> add_lock(add_graph_mutex_);
+  const bool is_execute_graph = GraphUtilsEx::IsExecuteGraph(graph);
+  if (is_execute_graph) {
+    return UNSUPPORTED;
+  }
   GetThreadLocalContext().SetGraphOption(options);
   if (HasGraphNode(graph_id)) {
     GELOGE(GE_GRAPH_GRAPH_ALREADY_EXIST, "[Has][GraphNode] graph exists, graph_id = %u", graph_id);
@@ -1651,7 +1803,13 @@ Status GraphManager::InnerRunGraphWithStream(const GraphNodePtr &graph_node, con
                                              aclrtStream stream, const std::vector<GeTensor> &inputs,
                                              std::vector<GeTensor> &outputs) {
   GE_CHECK_NOTNULL(executor_);
-  return executor_->RunGraphWithStream(graph_node, graph_id, stream, inputs, outputs);
+  bool is_execute_graph = false;
+  GE_ASSERT_SUCCESS(IsExecuteGraph(graph_node, is_execute_graph));
+  gert::Allocators *allocators = nullptr;
+  if (is_execute_graph) {
+    GE_ASSERT_SUCCESS(GetExecuteGraphAllocators(graph_id, stream, allocators));
+  }
+  return executor_->RunGraphWithStream(graph_node, graph_id, stream, inputs, outputs, allocators);
 }
 
 Status GraphManager::SubexpressionMigration(ComputeGraphPtr &compute_graph) const {
@@ -1844,10 +2002,14 @@ Status GraphManager::LoadGraph(const uint32_t graph_id, const std::map<AscendStr
                   }
                 }));
   GetThreadLocalContext().SetGraphOption(graph_options);
-  GE_ASSERT_SUCCESS(graph_node->ParseFrozenInputIndex(), "Parse frozen input index failed");
-  GE_ASSERT_SUCCESS(SetFrozenInputAttrs(ge_root_model, graph_node), "Set frozen input attrs failed");
+  bool is_execute_graph = false;
+  GE_ASSERT_SUCCESS(IsExecuteGraph(graph_node, is_execute_graph));
+  if (!is_execute_graph) {
+    GE_ASSERT_SUCCESS(graph_node->ParseFrozenInputIndex(), "Parse frozen input index failed");
+    GE_ASSERT_SUCCESS(SetFrozenInputAttrs(ge_root_model, graph_node), "Set frozen input attrs failed");
+  }
   AllocatorPtr external_allocator = ExternalAllocatorManager::GetExternalAllocator(stream);
-  if (external_allocator != nullptr) {
+  if ((external_allocator != nullptr) && !is_execute_graph) {
     if (logLevel_ <= DLOG_DEBUG) {
       GELOGD("LoadGraph with external allocator = %p", external_allocator.get());
     }
@@ -1867,7 +2029,6 @@ Status GraphManager::InnerLoadGraph(const GeRootModelPtr &ge_root_model, const G
   if (!options_.run_graph_flag) {
     return SUCCESS;
   }
-  GE_CHECK_NOTNULL(executor_);
 
   /*
    * 规避方案：规避aoe流程不实际编译模型，但是会走到加载流程里，后续aoe流程在外面统一判断不走到加载流程
@@ -1879,7 +2040,17 @@ Status GraphManager::InnerLoadGraph(const GeRootModelPtr &ge_root_model, const G
     return SUCCESS;
   }
 
-  Status ret = executor_->LoadGraph(ge_root_model, graph_node, stream);
+  GE_CHECK_NOTNULL(executor_);
+  bool is_execute_graph = false;
+  GE_ASSERT_SUCCESS(IsExecuteGraph(graph_node, is_execute_graph));
+  Status ret = SUCCESS;
+  if (is_execute_graph) {
+    gert::Allocators *allocators = nullptr;
+    GE_ASSERT_SUCCESS(GetExecuteGraphAllocators(graph_node->GetGraphId(), stream, allocators));
+    ret = executor_->LoadGraph(ge_root_model, graph_node, stream, allocators);
+  } else {
+    ret = executor_->LoadGraph(ge_root_model, graph_node, stream);
+  }
   if (ret != SUCCESS) {
     return ret;
   }
@@ -2164,6 +2335,12 @@ Status GraphManager::RunGraph(const GraphId &graph_id, const std::vector<gert::T
   graph_node->SetRunFlag(true);
   GE_MAKE_GUARD(run_flag_guard, [&graph_node]() { graph_node->SetRunFlag(false); });
 
+  GE_CHECK_NOTNULL(executor_);
+  if (GraphUtilsEx::IsExecuteGraph(*graph_node->GetGraph())) {
+    gert::Allocators *allocators = nullptr;
+    GE_ASSERT_SUCCESS(GetExecuteGraphAllocators(graph_id, nullptr, allocators));
+    return executor_->RunGraph(graph_node, graph_id, inputs, outputs, allocators);
+  }
   ComputeGraphPtr compute_graph_tmp = GraphUtilsEx::GetComputeGraph(*(graph_node->GetGraph()));
   GE_IF_BOOL_EXEC(GetTrainFlag(),
                   GE_IF_BOOL_EXEC(compute_graph_tmp == nullptr,
@@ -2498,6 +2675,7 @@ Status GraphManager::InnerRemoveGraph(const GraphId &graph_id) {
 }
 
 Status GraphManager::RemoveGraph(const GraphId &graph_id) {
+  std::unique_lock<std::mutex> add_lock(add_graph_mutex_);
   GraphNodePtr graph_node = nullptr;
   Status ret = GetGraphNode(graph_id, graph_node);
   if (ret != SUCCESS) {
@@ -3834,6 +4012,11 @@ Status GraphManager::RunGraphAsync(const GraphId &graph_id, std::vector<gert::Te
     callback(status, outputs);
     GELOGE(status, "run graph async failed, graph_id=%u", graph_id);
     return status;
+  }
+  bool is_execute_graph = false;
+  GE_CHK_STATUS_RET_NOLOG(IsExecuteGraph(graph_node, is_execute_graph));
+  if (is_execute_graph) {
+    return UNSUPPORTED;
   }
   GetThreadLocalContext().SetGraphOption(graph_node->GetOptions());
   if (IsOm2OnlineMode()) {
@@ -5206,6 +5389,24 @@ Status GraphManager::UpdateInputWithHintShape(const std::vector<GeShape> &hint_s
   return SUCCESS;
 }
 
+Status GraphManager::BuildExecuteGraphModel(const GraphNodePtr &graph_node) const {
+  if (graph_node->GetBuildFlag()) {
+    return SUCCESS;
+  }
+  GetThreadLocalContext().SetGraphOption(graph_node->GetOptions());
+  const auto candidate = MakeShared<gert::GertModelData>();
+  GE_ASSERT_NOTNULL(candidate);
+  const auto graph = graph_node->GetGraph();
+  GE_ASSERT_NOTNULL(graph);
+  GE_CHK_STATUS_RET_NOLOG(Om2PackageHelper().BuildGertModelDataFromGraph(*graph, *candidate));
+  const auto ge_root_model = MakeShared<GeRootModel>();
+  GE_ASSERT_NOTNULL(ge_root_model);
+  ge_root_model->SetOm2ModelData(candidate);
+  graph_node->SetGeRootModel(ge_root_model);
+  graph_node->SetBuildFlag(true);
+  return SUCCESS;
+}
+
 Status GraphManager::CompileGraph(uint32_t graph_id, uint64_t session_id, const vector<ge::Tensor> &inputs) {
   GraphNodePtr graph_node = nullptr;
   if (GetGraphNode(graph_id, graph_node) != SUCCESS) {
@@ -5223,6 +5424,9 @@ Status GraphManager::CompileGraph(uint32_t graph_id, uint64_t session_id, const 
     GELOGE(GE_GRAPH_ALREADY_RUNNING, "[Get][RunFlag] graph already running, graph id = %u", graph_node->GetGraphId());
     return GE_GRAPH_ALREADY_RUNNING;
   }
+
+  bool is_execute_graph = false;
+  GE_ASSERT_SUCCESS(IsExecuteGraph(graph_node, is_execute_graph));
 
   // has compiled before, return
   if (graph_node->GetBuildFlag()) {
@@ -5243,7 +5447,27 @@ Status GraphManager::CompileGraph(uint32_t graph_id, uint64_t session_id, const 
            session_id, graph_id, inputs.size());
     return SUCCESS;
   }
+  if (is_execute_graph) {
+    GE_CHK_STATUS_RET_NOLOG(CompileExecuteGraph(graph_node));
+  } else {
+    GE_CHK_STATUS_RET_NOLOG(CompileComputeGraph(graph_node, session_id, inputs));
+  }
 
+  graph_node->SetBuildFlag(true);
+  GE_ASSERT_NOTNULL(graph_rebuild_state_ctrl_);
+  graph_rebuild_state_ctrl_->SetGraphBuildEnd(graph_node->GetGraphId());
+
+  std::string refreshable = "0";  // default is not refreshable
+  (void)GetContext().GetOption(OPTION_FEATURE_BASE_REFRESHABLE, refreshable);
+  graph_node->SetFeatureBaseRefreshable(refreshable.compare("1") == 0);
+  GELOGI("compile graph success, graph_id:%u, session_id:%" PRIu64 ", is feature refreshable:%d.",
+         graph_node->GetGraphId(), session_id, graph_node->IsFeatureBaseRefreshable());
+  return SUCCESS;
+}
+
+Status GraphManager::CompileComputeGraph(const GraphNodePtr &graph_node, uint64_t session_id,
+                                         const std::vector<Tensor> &inputs) {
+  const auto graph_id = graph_node->GetGraphId();
   GE_ASSERT_NOTNULL(graph_node->GetGraph());
   auto compute_graph = GraphUtilsEx::GetComputeGraph(*(graph_node->GetGraph()));
   GE_ASSERT_NOTNULL(compute_graph);
@@ -5276,15 +5500,23 @@ Status GraphManager::CompileGraph(uint32_t graph_id, uint64_t session_id, const 
                     session_id);
   GE_ASSERT_SUCCESS(BuildOm2PackageIfNeeded(graph_node, ge_root_model));
 
-  graph_node->SetBuildFlag(true);
-  GE_ASSERT_NOTNULL(graph_rebuild_state_ctrl_);
-  graph_rebuild_state_ctrl_->SetGraphBuildEnd(graph_node->GetGraphId());
+  return SUCCESS;
+}
 
-  std::string refreshable = "0";  // default is not refreshable
-  (void)GetContext().GetOption(OPTION_FEATURE_BASE_REFRESHABLE, refreshable);
-  graph_node->SetFeatureBaseRefreshable(refreshable.compare("1") == 0);
-  GELOGI("compile graph success, graph_id:%u, session_id:%" PRIu64 ", is feature refreshable:%d.",
-         graph_node->GetGraphId(), session_id, graph_node->IsFeatureBaseRefreshable());
+Status GraphManager::CompileExecuteGraph(const GraphNodePtr &graph_node) {
+  const auto graph_id = graph_node->GetGraphId();
+  GE_ASSERT_NOTNULL(graph_node->GetGraph());
+  const auto execute_graph = GraphUtilsEx::Graph2ExecuteGraph(*graph_node->GetGraph());
+  GE_ASSERT_NOTNULL(execute_graph);
+
+  UpdateLocalOmgContext(graph_id);
+  GetThreadLocalContext().SetGraphOption(graph_node->GetOptions());
+  graph_node->SetRunFlag(true);
+  // Restore the busy flag on scope exit, including early returns caused by compilation failures.
+  GE_MAKE_GUARD(run_flag_guard, [&graph_node]() { graph_node->SetRunFlag(false); });
+
+  GE_ASSERT_SUCCESS(BuildExecuteGraphModel(graph_node), "Compile execute graph failed, graph_id:%u.", graph_id);
+
   return SUCCESS;
 }
 

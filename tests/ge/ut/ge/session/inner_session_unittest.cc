@@ -12,10 +12,15 @@
 
 #include "macro_utils/dt_public_scope.h"
 #include "session/inner_session.h"
+#include "graph/utils/attr_utils.h"
+#include "graph/debug/ge_attr_define.h"
+#include "graph/utils/node_utils.h"
+#include "graph/op_desc.h"
 #include "ge/ge_api.h"
 #include "framework/omg/omg_inner_types.h"
 #include "graph/ge_local_context.h"
 #include "depends/runtime/src/runtime_stub.h"
+#include "graph/fast_graph/execute_graph.h"
 #include "graph/utils/graph_utils_ex.h"
 #include "graph/ge_global_options.h"
 #include "compiler/api/gelib/gelib.h"
@@ -68,7 +73,7 @@ class ExternalAllocatorUtStub : public Allocator {
 class StubExecutor : public Executor {
  public:
   Status LoadGraph(const GeRootModelPtr &ge_root_model, const GraphNodePtr &graph_node,
-                   const rtStream_t stream = nullptr) override {
+                   const rtStream_t stream = nullptr, gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
@@ -81,17 +86,19 @@ class StubExecutor : public Executor {
   }
 
   Status RunGraph(const GraphNodePtr &graph_node, const GraphId graph_id, const std::vector<gert::Tensor> &inputs,
-                  std::vector<gert::Tensor> &outputs) override {
+                  std::vector<gert::Tensor> &outputs, gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
   Status RunGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id, const rtStream_t stream,
-                            const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs) override {
+                            const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs,
+                            gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
   Status ExecuteGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id, rtStream_t const stream,
-                                const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs) override {
+                                const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
+                                gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
@@ -982,4 +989,53 @@ TEST_F(UtestInnerSession, IsGraphNeedRebuild_WithInit_CovEnhance2) {
   EXPECT_EQ(ret, true);
   EXPECT_EQ(inner_session.Finalize(), SUCCESS);
 }
+TEST_F(UtestInnerSession, RunGraphModeUsesSessionMapForBothGraphKinds) {
+  InnerSession session(1U, {});
+  uint32_t graph_id = 1U;
+  for (const auto kind : {static_cast<GraphKind>(0), static_cast<GraphKind>(1)}) {
+    auto node = std::make_shared<GraphNode>(graph_id);
+    node->SetGraph(std::make_shared<Graph>("graph", kind));
+    session.graph_manager_.AddGraphNode(graph_id, node);
+    session.run_graph_modes_.emplace(graph_id, RunGraphMode::kRunGraphModeEnd);
+
+    RunGraphMode mode = RunGraphMode::kRunGraph;
+    ASSERT_EQ(session.GetRunGraphMode(graph_id, mode), SUCCESS);
+    EXPECT_EQ(mode, RunGraphMode::kRunGraphModeEnd);
+    ASSERT_EQ(session.SetRunGraphMode(graph_id, RunGraphMode::kRunGraphWithStreamAsync), SUCCESS);
+    EXPECT_EQ(session.run_graph_modes_.at(graph_id), RunGraphMode::kRunGraphWithStreamAsync);
+    ASSERT_EQ(session.GetRunGraphMode(graph_id, mode), SUCCESS);
+    EXPECT_EQ(mode, RunGraphMode::kRunGraphWithStreamAsync);
+
+    session.run_graph_modes_.erase(graph_id);
+    EXPECT_EQ(session.GetRunGraphMode(graph_id, mode), GE_GRAPH_GRAPH_NOT_EXIST);
+    EXPECT_EQ(session.SetRunGraphMode(graph_id, RunGraphMode::kRunGraph), GE_GRAPH_GRAPH_NOT_EXIST);
+    EXPECT_EQ(mode, RunGraphMode::kRunGraphWithStreamAsync);
+    session.graph_manager_.RemoveGraphNode(graph_id);
+    ++graph_id;
+  }
+}
+
+TEST_F(UtestInnerSession, SetSessionGraphIdUpdatesComputeGraphAndSubgraph) {
+  InnerSession session(12U, {});
+  auto root = std::make_shared<ComputeGraph>("root");
+  auto child = std::make_shared<ComputeGraph>("child");
+  const auto call_node = root->AddNode(std::make_shared<OpDesc>("call", "PartitionedCall"));
+  ASSERT_NE(call_node, nullptr);
+  ASSERT_EQ(NodeUtils::AddSubgraph(*call_node, "child", child), GRAPH_SUCCESS);
+  const auto graph = GraphUtilsEx::CreateGraphFromComputeGraph(root);
+  ASSERT_EQ(session.SetSessionGraphId(graph, 12U, 34U), SUCCESS);
+  std::string value;
+  ASSERT_TRUE(AttrUtils::GetStr(*root, ATTR_NAME_SESSION_GRAPH_ID, value));
+  EXPECT_EQ(value, "12_34");
+  ASSERT_TRUE(AttrUtils::GetStr(*child, ATTR_NAME_SESSION_GRAPH_ID, value));
+  EXPECT_EQ(value, "12_34");
+}
+
+TEST_F(UtestInnerSession, SetSessionGraphIdAcceptsExecuteGraphBackend) {
+  InnerSession session(12U, {});
+  Graph graph = *GraphUtilsEx::ExecuteGraph2Graph(std::make_shared<ExecuteGraph>("execute"));
+  ASSERT_NE(GraphUtilsEx::Graph2ExecuteGraph(graph), nullptr);
+  EXPECT_EQ(session.SetSessionGraphId(graph, 12U, 34U), SUCCESS);
+}
+
 }  // namespace ge

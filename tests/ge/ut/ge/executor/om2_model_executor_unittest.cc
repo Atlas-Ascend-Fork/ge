@@ -20,6 +20,7 @@
 
 #include "framework/runtime/dump/model_dump_manager.h"
 #include "framework/runtime/om2_model_executor.h"
+#include "framework/runtime/mem_allocator.h"
 #include "ge/ge_ir_build.h"
 #include "common/env_path.h"
 #include "framework/common/json_file.h"
@@ -31,8 +32,10 @@
 #include "graph_metadef/depends/checker/tensor_check_utils.h"
 #include "ge/ge_error_codes.h"
 #include "rt_external_mem.h"
+#include "framework/common/gert_model_data_deserialize.h"
 #include "framework/common/gert_model_data_utils.h"
 #include "runtime/om2/om2_rt_var_manager.h"
+#include "runtime/om2/om2_model_manager.h"
 
 namespace ge {
 namespace {
@@ -484,6 +487,7 @@ struct GertModelRunConfig {
   gert::Tensor **output_data = nullptr;
   uint64_t stream_sync_timeout_ms = 0;
   const struct GertModelRunCallbacks *run_callbacks = nullptr;
+  void *external_allocator = nullptr;
 };
 
 struct GertModelUnloadConfig {
@@ -762,11 +766,21 @@ extern "C" int GertModelRunAsync(GertModelHandle model_handle, void *stream, con
   if ((model_handle == nullptr) || (config == nullptr) || (config->input_data == nullptr) || (config->output_data == nullptr)) {
     return 1;
   }
+  const char *expected_allocator = std::getenv("OM2_EXPECT_RUN_ALLOCATOR");
+  if ((expected_allocator != nullptr) &&
+      (reinterpret_cast<uintptr_t>(config->external_allocator) != std::stoull(expected_allocator, nullptr, 16))) {
+    return 1;
+  }
   return (config->input_count == 2 && config->output_count == 1) ? 0 : 1;
 }
 
 extern "C" int GertModelRun(GertModelHandle model_handle, const struct GertModelRunConfig *config, struct GertModelRunOutput *output) {
   if ((model_handle == nullptr) || (config == nullptr) || (config->input_data == nullptr) || (config->output_data == nullptr)) {
+    return 1;
+  }
+  const char *expected_allocator = std::getenv("OM2_EXPECT_RUN_ALLOCATOR");
+  if ((expected_allocator != nullptr) &&
+      (reinterpret_cast<uintptr_t>(config->external_allocator) != std::stoull(expected_allocator, nullptr, 16))) {
     return 1;
   }
   return (config->input_count == 2 && config->output_count == 1) ? 0 : 1;
@@ -1865,6 +1879,38 @@ TEST_F(Om2ModelExecutorUt, load_ok) {
   EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
 }
 
+TEST_F(Om2ModelExecutorUt, ModelManagerForwardsLoadStreamToExistingLoader) {
+  auto holder = LoadValidModelData();
+  gert::GertModelData data;
+  ASSERT_EQ(gert::DeserializeGertModelData(static_cast<const uint8_t *>(holder.model_data.model_data),
+                                           holder.model_data.model_len, &data),
+            SUCCESS);
+  auto &manager = Om2ModelManager::GetInstance();
+  const auto model_id = manager.GenModelId();
+  int stream_token = 0;
+  ASSERT_EQ(manager.LoadModel(model_id, data, MakeOm2LoadArg(), 123U, &stream_token), SUCCESS);
+  EXPECT_EQ(manager.UnloadModel(model_id), SUCCESS);
+}
+
+TEST_F(Om2ModelExecutorUt, ExecuteGraph_FourArgumentLoadIgnoresStream) {
+  auto holder = LoadValidModelData();
+  gert::GertModelData data;
+  ASSERT_EQ(gert::DeserializeGertModelData(static_cast<const uint8_t *>(holder.model_data.model_data),
+                                           holder.model_data.model_len, &data),
+            SUCCESS);
+  gert::Om2ModelExecutor executor;
+  int stream_token = 0;
+  ASSERT_EQ(executor.Load(data, MakeOm2LoadArg(), 123U, &stream_token), SUCCESS);
+  std::vector<gert::Tensor> input_tensors;
+  std::vector<gert::Tensor> output_tensors;
+  std::vector<gert::Tensor *> inputs;
+  std::vector<gert::Tensor *> outputs;
+  ConstructIoTensors(input_tensors, output_tensors, inputs, outputs);
+  EXPECT_EQ(executor.Run(inputs, outputs, gert::Om2ModelRunArg{}), SUCCESS);
+  gert::Om2ModelExecutor archive_executor;
+  EXPECT_EQ(archive_executor.Load(holder.model_data, MakeOm2LoadArg(), 124U), SUCCESS);
+}
+
 TEST_F(Om2ModelExecutorUt, load_ok_with_zip_archive_writer_base_name_prefix) {
   PrepareOm2File();
   gert::GertBuffer model_buf;
@@ -2511,7 +2557,7 @@ TEST_F(Om2ModelExecutorUt, run_before_load_failed) {
   std::vector<gert::Tensor *> inputs;
   std::vector<gert::Tensor *> outputs;
   ConstructIoTensors(input_tensors, output_tensors, inputs, outputs);
-  EXPECT_NE(executor.Run(inputs, outputs), SUCCESS);
+  EXPECT_NE(executor.Run(inputs, outputs, gert::Om2ModelRunArg{}), SUCCESS);
 }
 
 TEST_F(Om2ModelExecutorUt, run_ok_after_load) {
@@ -2525,7 +2571,7 @@ TEST_F(Om2ModelExecutorUt, run_ok_after_load) {
   std::vector<gert::Tensor *> inputs;
   std::vector<gert::Tensor *> outputs;
   ConstructIoTensors(input_tensors, output_tensors, inputs, outputs);
-  EXPECT_EQ(executor.Run(inputs, outputs), SUCCESS);
+  EXPECT_EQ(executor.Run(inputs, outputs, gert::Om2ModelRunArg{}), SUCCESS);
 }
 
 TEST_F(Om2ModelExecutorUt, run_async_before_load_failed) {
@@ -2535,7 +2581,7 @@ TEST_F(Om2ModelExecutorUt, run_async_before_load_failed) {
   std::vector<gert::Tensor *> inputs;
   std::vector<gert::Tensor *> outputs;
   ConstructIoTensors(input_tensors, output_tensors, inputs, outputs);
-  EXPECT_NE(executor.RunAsync(nullptr, inputs, outputs), SUCCESS);
+  EXPECT_NE(executor.RunAsync(nullptr, inputs, outputs, gert::Om2ModelRunArg{}), SUCCESS);
 }
 
 TEST_F(Om2ModelExecutorUt, run_async_ok_after_load) {
@@ -2549,7 +2595,7 @@ TEST_F(Om2ModelExecutorUt, run_async_ok_after_load) {
   std::vector<gert::Tensor *> inputs;
   std::vector<gert::Tensor *> outputs;
   ConstructIoTensors(input_tensors, output_tensors, inputs, outputs);
-  EXPECT_EQ(executor.RunAsync(nullptr, inputs, outputs), SUCCESS);
+  EXPECT_EQ(executor.RunAsync(nullptr, inputs, outputs, gert::Om2ModelRunArg{}), SUCCESS);
 }
 
 TEST_F(Om2ModelExecutorUt, set_get_stream_priority_before_load_failed) {
@@ -5209,6 +5255,27 @@ TEST_F(Om2ModelExecutorUt, load_om2_executor_from_data_failed_returns_nullptr_an
   auto executor = gert::LoadOm2ExecutorFromData(model_data, load_arg, error_code);
   EXPECT_EQ(executor, nullptr);
   EXPECT_NE(error_code, SUCCESS);
+}
+
+TEST_F(Om2ModelExecutorUt, run_allocator_passed_to_sync_and_async_model_calls) {
+  EnvValueGuard allocator_guard("OM2_EXPECT_RUN_ALLOCATOR");
+  gert::Allocators first;
+  gert::Allocators second;
+  auto holder = LoadValidModelData();
+  gert::Om2ModelExecutor executor;
+  ASSERT_EQ(executor.Load(holder.model_data, MakeOm2LoadArg(), 1U), SUCCESS);
+  std::vector<gert::Tensor> input_tensors;
+  std::vector<gert::Tensor> output_tensors;
+  std::vector<gert::Tensor *> inputs;
+  std::vector<gert::Tensor *> outputs;
+  ConstructIoTensors(input_tensors, output_tensors, inputs, outputs);
+  for (auto *allocator : {&first, &second, static_cast<gert::Allocators *>(nullptr)}) {
+    ASSERT_EQ(setenv("OM2_EXPECT_RUN_ALLOCATOR", PtrToHexString(allocator).c_str(), 1), 0);
+    gert::Om2ModelRunArg run_arg;
+    run_arg.external_allocator = allocator;
+    EXPECT_EQ(executor.Run(inputs, outputs, run_arg), SUCCESS);
+    EXPECT_EQ(executor.RunAsync(nullptr, inputs, outputs, run_arg), SUCCESS);
+  }
 }
 
 }  // namespace ge

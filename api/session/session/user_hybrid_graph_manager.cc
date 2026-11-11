@@ -87,7 +87,8 @@ bool UserHybridGraphManager::IsHybridMode(const std::map<std::string, std::strin
 
 Status UserHybridGraphManager::AddGraph(uint32_t user_graph_id, const Graph &graph,
                                         const std::map<std::string, std::string> &options) {
-  if (!IsHybridMode(options)) {
+  const bool is_execute_graph = GraphUtilsEx::IsExecuteGraph(graph);
+  if (is_execute_graph || !IsHybridMode(options)) {
     return user_graph_manager_.AddGraph(user_graph_id, graph, options);
   }
   if (EnableSliceSchedule()) {
@@ -313,5 +314,18 @@ Status UserHybridGraphManager::Finalize() {
     dynamic_graph_id_map_.clear();
   }
   return SUCCESS;
+}
+
+Status UserHybridGraphManager::IsExecuteGraph(uint32_t user_graph_id, bool &is_execute_graph) {
+  const auto ret = user_graph_manager_.IsExecuteGraph(user_graph_id, is_execute_graph);
+  if (ret != GE_GRAPH_GRAPH_NOT_EXIST) {
+    return ret;
+  }
+  uint32_t dynamic_gear_graph_id = 0U;
+  uint32_t dynamic_shape_graph_id = 0U;
+  if (TryGetDynamicGraphId(user_graph_id, dynamic_gear_graph_id, dynamic_shape_graph_id)) {
+    return user_graph_manager_.IsExecuteGraph(dynamic_gear_graph_id, is_execute_graph);
+  }
+  return ret;
 }
 }  // namespace ge

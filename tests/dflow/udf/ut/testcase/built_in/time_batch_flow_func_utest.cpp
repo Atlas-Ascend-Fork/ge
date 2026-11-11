@@ -73,6 +73,9 @@ int halMbufGetPrivInfoStub(Mbuf *mbuf, void **priv, unsigned int *size) {
 }
 
 int halMbufGetDataLenStub(Mbuf *mbuf, uint64_t *len) {
+  if ((mbuf == nullptr) || (len == nullptr)) {
+    return DRV_ERROR_PARA_ERROR;
+  }
   MbufImpl *mbuf_impl = reinterpret_cast<MbufImpl *>(mbuf);
   *len = mbuf_impl->mbuf_size;
   return DRV_ERROR_NONE;
@@ -85,7 +88,7 @@ class TimeBatchFlowFuncUTest : public testing::Test {
     MOCKER(halMbufAllocEx).defaults().will(invoke(halMbufAllocExStub));
     MOCKER(halMbufFree).defaults().will(invoke(halMbufFreeStub));
     MOCKER(halMbufGetBuffAddr).defaults().will(invoke(halMbufGetBuffAddrStub));
-    MOCKER(halMbufGetBuffSize).defaults().will(invoke(halMbufGetBuffSizeStub));
+    // EXPERIMENT removed GetBuffSize mock
     MOCKER(halMbufSetDataLen).defaults().will(invoke(halMbufSetDataLenStub));
     MOCKER(halMbufGetPrivInfo).defaults().will(invoke(halMbufGetPrivInfoStub));
     MOCKER(halMbufGetDataLen).defaults().will(invoke(halMbufGetDataLenStub));

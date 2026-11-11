@@ -78,7 +78,6 @@ class ScopedDeterministicOptions {
 };
 
 static FakeOpsKernelInfoStore g_fake_hccl_ops_kernel_info_store;
-bool test_callback_called = false;
 
 bool CheckWeightFile(const std::string &external_weight_dir) {
   if (mmAccess(external_weight_dir.c_str()) != EN_OK || !ge::IsDir(external_weight_dir.c_str())) {
@@ -656,6 +655,12 @@ TEST_F(GeApiV2Test, CheckOptionsKeyInvalid_test) {
   ge::GEGetWarningMsgV2();
 }
 
+/**
+ * 用例描述：异步执行提交失败后，仍可提交有效图并收到执行失败的回调。
+ * 预置条件：MockGenerateTask，注册一张空图。
+ * 测试步骤：提交不存在的图并检查错误日志，再提交已注册的图并限时等待回调。
+ * 预期结果：首次提交返回图不存在，第二次提交成功且回调返回失败状态。
+ */
 TEST_F(GeApiV2Test, RunGraphAsync) {
   ModelManager::GetInstance().cust_aicpu_so_.clear();
   MockGenerateTask();
@@ -663,9 +668,9 @@ TEST_F(GeApiV2Test, RunGraphAsync) {
   EXPECT_EQ(GEInitializeV2(str_options), SUCCESS);
   ReInitGe();
   GertRuntimeStub runtime_stub;
-  const char_t *kKeyLogOnFial = "Run graph async failed";
+  const char_t *kKeyLogOnFial = "graph does not exist, graph_id= 10000";
   std::map<AscendString, AscendString> options;
-  const auto session_ptr = new GeSession(options);
+  const auto session_ptr = MakeUnique<GeSession>(options);
   GraphId graph_id = 1;
   const auto compute_graph = MakeShared<ComputeGraph>("test_graph");
   EXPECT_EQ(session_ptr->AddGraph(graph_id, GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph)), SUCCESS);
@@ -674,23 +679,21 @@ TEST_F(GeApiV2Test, RunGraphAsync) {
 
   // invalid graph id
   // RunGraphAsync submit failed
-  test_callback_called = false;
-  auto callback = [](Status status, std::vector<gert::Tensor> &outputs) {
-    EXPECT_NE(status, SUCCESS);
-    test_callback_called = true;
+  auto callback_result = std::make_shared<std::promise<Status>>();
+  auto callback_future = callback_result->get_future();
+  auto callback = [callback_result](Status status, std::vector<gert::Tensor> &outputs) {
+    callback_result->set_value(status);
   };
 
   // get graph_node fail
-  EXPECT_NE(session_ptr->RunGraphAsync(10000, inputs, callback), SUCCESS);
-  sleep(1);  // wait callback
+  EXPECT_EQ(session_ptr->RunGraphAsync(10000, inputs, callback), FAILED);
   ASSERT_TRUE(runtime_stub.GetSlogStub().FindLog(DLOG_ERROR, kKeyLogOnFial) >= 0);
   runtime_stub.GetSlogStub().Clear();
 
   // after RunGraphAsync run failed before, RunGraphAsync submit success
-  EXPECT_EQ(session_ptr->RunGraphAsync(graph_id, inputs, callback), SUCCESS);
-  sleep(1);  // wait callback
-  EXPECT_EQ(test_callback_called, true);
-  delete session_ptr;
+  ASSERT_EQ(session_ptr->RunGraphAsync(graph_id, inputs, callback), SUCCESS);
+  ASSERT_EQ(callback_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  EXPECT_NE(callback_future.get(), SUCCESS);
 }
 
 TEST_F(GeApiV2Test, RunGraphAsync_RunCustomPass_Success) {

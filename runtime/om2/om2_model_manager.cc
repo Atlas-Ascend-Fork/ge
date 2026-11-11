@@ -23,7 +23,7 @@ Om2ModelManager &Om2ModelManager::GetInstance() {
 }
 
 ge::Status Om2ModelManager::LoadModel(uint32_t model_id, const gert::GertModelData &model_data,
-                                      const gert::Om2ModelLoadArg &load_arg, uint64_t session_id) {
+                                      const gert::Om2ModelLoadArg &load_arg, uint64_t session_id, void *stream) {
   const std::lock_guard<std::mutex> lock(mutex_);
 
   auto iter = model_map_.find(model_id);
@@ -34,7 +34,7 @@ ge::Status Om2ModelManager::LoadModel(uint32_t model_id, const gert::GertModelDa
 
   auto executor = std::make_shared<gert::Om2ModelExecutor>();
 
-  const ge::Status ret = executor->Load(model_data, load_arg, session_id);
+  const ge::Status ret = executor->Load(model_data, load_arg, session_id, stream);
   if (ret != SUCCESS) {
     GELOGE(ret, "[OM2] Failed to load model %u, ret=%d", model_id, ret);
     return ret;
@@ -46,7 +46,7 @@ ge::Status Om2ModelManager::LoadModel(uint32_t model_id, const gert::GertModelDa
 }
 
 ge::Status Om2ModelManager::RunModel(const uint32_t model_id, void *const stream, std::vector<gert::Tensor *> &inputs,
-                                     std::vector<gert::Tensor *> &outputs) {
+                                     std::vector<gert::Tensor *> &outputs, const gert::Om2ModelRunArg &run_arg) {
   std::shared_ptr<gert::Om2ModelExecutor> executor;
   {
     const std::lock_guard<std::mutex> lock(mutex_);
@@ -59,9 +59,9 @@ ge::Status Om2ModelManager::RunModel(const uint32_t model_id, void *const stream
   }
 
   if (stream == nullptr) {
-    return executor->Run(inputs, outputs);
+    return executor->Run(inputs, outputs, run_arg);
   }
-  return executor->RunAsync(stream, inputs, outputs);
+  return executor->RunAsync(stream, inputs, outputs, run_arg);
 }
 
 ge::Status Om2ModelManager::UnloadModel(uint32_t model_id) {
