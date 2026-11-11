@@ -11,40 +11,217 @@
 #include "register/core_num_utils.h"
 
 #include <cstdint>
+#include <mutex>
+#include <string>
 
 #include "ge_common/debug/ge_log.h"
 #include "common/checker.h"
+#include "graph/ge_context.h"
 #include "graph/ge_local_context.h"
 #include "graph/utils/attr_utils.h"
 #include "graph/utils/graph_utils.h"
+#include "graph_metadef/common/plugin/plugin_manager.h"
+#include "mmpa/mmpa_api.h"
 #include "platform/platform_info.h"
 
 namespace ge {
 namespace {
-graphStatus ConvertStrToInt32(const std::string &str, int32_t &val) {
-  try {
-    val = std::stoi(str);
-  } catch (const std::invalid_argument &) {
-    GELOGE(GRAPH_FAILED, "[Parse][Param]Failed, digit str:%s is invalid", str.c_str());
-    const std::string reason = "digit str:" + str + " is invalid";
-    REPORT_PREDEFINED_ERR_MSG("E10060", std::vector<const char *>({"reason"}),
-                              std::vector<const char *>({reason.c_str()}));
-    return GRAPH_FAILED;
-  } catch (const std::out_of_range &) {
-    GELOGE(GRAPH_FAILED, "[Parse][Param]Failed, digit str:%s cannot change to int", str.c_str());
-    const std::string reason = "digit str:" + str + " cannot change to int";
-    REPORT_PREDEFINED_ERR_MSG("E10060", std::vector<const char *>({"reason"}),
-                              std::vector<const char *>({reason.c_str()}));
-    return GRAPH_FAILED;
-  } catch (...) {
-    GELOGE(GRAPH_FAILED, "[Parse][Param]Failed, digit str:%s cannot change to int", str.c_str());
-    const std::string reason = "digit str:" + str + " cannot change to int";
-    REPORT_PREDEFINED_ERR_MSG("E10060", std::vector<const char *>({"reason"}),
-                              std::vector<const char *>({reason.c_str()}));
-    return GRAPH_FAILED;
+constexpr int32_t kRtErrorNone = 0;
+constexpr uint32_t kSocSpecValueLen = 32U;
+const std::string kSocSpecLabel = "SoCInfo";
+const std::string kSocSpecKeyAiCoreCnt = "ai_core_cnt";
+const std::string kSocSpecKeyCubeCoreCnt = "cube_core_cnt";
+const std::string kSocSpecKeyVectorCoreCnt = "vector_core_cnt";
+const std::string kRuntimeLibName = "libruntime.so";
+const std::string kRtGetSocSpecName = "rtGetSocSpec";
+
+// rtGetSocSpec 是 runtime 侧 C 接口，形参为字符指针；这里按仓库惯例用 char_t（即 char）描述该 ABI。
+using RtGetSocSpecFunc = int32_t (*)(const char_t *, const char_t *, char_t *, const uint32_t);
+
+// 解析阶段临时数据，不入库。cube_core_cnt 查询失败时回退 ai_core_cnt。
+struct SocCoreSpec {
+  uint32_t ai_core_cnt;
+  uint32_t cube_core_cnt;
+  uint32_t vector_core_cnt;
+};
+
+enum class CoreNumCheckResult {
+  kOk,
+  kNotInteger,
+  kInvalidFormat,
+  kOutOfRange,
+};
+
+void LogInvalidAicoreNumFormat(const std::string &value) {
+  GELOGW("Invalid format for ge.aicoreNum: %s. Expected format: aicore_num|vectorcore_num.", value.c_str());
+}
+
+std::string GetRuntimeLibPath() {
+  const std::string lib_dir = ge::GetModelPath();
+  if (lib_dir.empty()) {
+    GELOGW("[SocSpec][Path]Failed to get lib directory path.");
+    return "";
+  }
+  return lib_dir + kRuntimeLibName;
+}
+
+RtGetSocSpecFunc GetRtGetSocSpecFunc() {
+  static std::once_flag load_flag;
+  static RtGetSocSpecFunc func = nullptr;
+  static void *runtime_handle = nullptr;
+
+  std::call_once(load_flag, []() {
+    const std::string runtime_path = GetRuntimeLibPath();
+    if (runtime_path.empty()) {
+      return;
+    }
+
+    GELOGI("[SocSpec][Load]Loading runtime from: %s", runtime_path.c_str());
+    runtime_handle = mmDlopen(runtime_path.c_str(), MMPA_RTLD_NOW);
+    if (runtime_handle == nullptr) {
+      const char_t *error = mmDlerror();
+      GELOGW("[SocSpec][Load]mmDlopen failed, path=%s, error=%s", runtime_path.c_str(),
+             (error == nullptr) ? "" : error);
+      return;
+    }
+
+    func = reinterpret_cast<RtGetSocSpecFunc>(mmDlsym(runtime_handle, kRtGetSocSpecName.c_str()));
+    if (func == nullptr) {
+      const char_t *error = mmDlerror();
+      GELOGW("[SocSpec][Symbol]mmDlsym rtGetSocSpec failed, error=%s", (error == nullptr) ? "" : error);
+      // 符号查询失败说明句柄后续不会再使用，关闭句柄避免库常驻内存；成功分支则保留句柄使函数指针长期有效。
+      (void)mmDlclose(runtime_handle);
+      runtime_handle = nullptr;
+      return;
+    }
+    GELOGI("[SocSpec][Load]Successfully loaded rtGetSocSpec.");
+  });
+
+  return func;
+}
+
+bool ParseUint32(const std::string &value, uint32_t &parsed) {
+  if (value.empty()) {
+    return false;
+  }
+  uint64_t result = 0U;
+  for (const char ch : value) {
+    // 只接受十进制数字：空白、正负号、小数点等一律判失败，避免解析出错误核数
+    if ((ch < '0') || (ch > '9')) {
+      return false;
+    }
+    result = (result * 10U) + static_cast<uint64_t>(ch - '0');
+    if (result > static_cast<uint64_t>(UINT32_MAX)) {
+      return false;
+    }
+  }
+  parsed = static_cast<uint32_t>(result);
+  return true;
+}
+
+// 查询单个 SoC 规格键。warn_on_failure 为 false 时用于可回退的键（cube_core_cnt），失败不留告警。
+bool QuerySocSpecValue(const std::string &key, bool warn_on_failure, uint32_t &core_cnt) {
+  const RtGetSocSpecFunc rt_get_soc_spec = GetRtGetSocSpecFunc();
+  if (rt_get_soc_spec == nullptr) {
+    if (warn_on_failure) {
+      GELOGW("skip deriving ge.vectorcoreNum: failed to load libruntime.so or symbol rtGetSocSpec.");
+    }
+    return false;
   }
 
-  return GRAPH_SUCCESS;
+  std::string value(kSocSpecValueLen, '\0');
+  const int32_t ret = rt_get_soc_spec(kSocSpecLabel.c_str(), key.c_str(), value.data(), kSocSpecValueLen);
+  value[kSocSpecValueLen - 1U] = '\0';
+  // 查询结果按 C 字符串写到缓冲区，去掉尾部填充的 '\0' 后再解析
+  value.resize(std::char_traits<char>::length(value.c_str()));
+  if ((ret == kRtErrorNone) && ParseUint32(value, core_cnt)) {
+    GELOGD("[SocSpec][Query]label: %s, key: %s, value: %s, core_cnt: %u.", kSocSpecLabel.c_str(), key.c_str(),
+           value.c_str(), core_cnt);
+    return true;
+  }
+
+  if (warn_on_failure) {
+    GELOGW("skip deriving ge.vectorcoreNum: failed to get SoC spec, label=%s, key=%s, ret=0x%X.", kSocSpecLabel.c_str(),
+           key.c_str(), static_cast<uint32_t>(ret));
+  }
+  return false;
+}
+
+// 查询派生所需的核数。ai_core_cnt 必须成功，cube_core_cnt 失败回退 ai_core_cnt，任一失败返回 false。
+bool QuerySocCoreSpec(SocCoreSpec &spec) {
+  spec.ai_core_cnt = 0U;
+  spec.cube_core_cnt = 0U;
+  spec.vector_core_cnt = 0U;
+  const bool ai_core_cnt_ok = QuerySocSpecValue(kSocSpecKeyAiCoreCnt, true, spec.ai_core_cnt);
+  if (!ai_core_cnt_ok) {
+    return false;
+  }
+  if (spec.ai_core_cnt == 0U) {
+    GELOGW("skip deriving ge.vectorcoreNum: failed to get SoC spec, label=%s, key=%s.", kSocSpecLabel.c_str(),
+           kSocSpecKeyAiCoreCnt.c_str());
+    return false;
+  }
+  if (!QuerySocSpecValue(kSocSpecKeyCubeCoreCnt, false, spec.cube_core_cnt)) {
+    spec.cube_core_cnt = spec.ai_core_cnt;
+    GELOGD("[SocSpec][Query]cube_core_cnt is unavailable, fallback to ai_core_cnt: %u.", spec.ai_core_cnt);
+  }
+  return QuerySocSpecValue(kSocSpecKeyVectorCoreCnt, true, spec.vector_core_cnt);
+}
+
+// 核数规则单一来源：整数解析、规范格式、范围校验。report_error 为 true 时按旧行为上报 E10060。
+CoreNumCheckResult CheckCoreNum(const std::string &value, int32_t min_value, int32_t max_value, int32_t &parsed_value,
+                                bool report_error) {
+  try {
+    parsed_value = std::stoi(value);
+  } catch (const std::invalid_argument &) {
+    if (report_error) {
+      GELOGE(GRAPH_FAILED, "[Parse][Param]Failed, digit str:%s is invalid", value.c_str());
+      const std::string reason = "digit str:" + value + " is invalid";
+      (void)REPORT_PREDEFINED_ERR_MSG("E10060", std::vector<const char *>({"reason"}),
+                                      std::vector<const char *>({reason.c_str()}));
+    }
+    return CoreNumCheckResult::kNotInteger;
+  } catch (const std::out_of_range &) {
+    if (report_error) {
+      GELOGE(GRAPH_FAILED, "[Parse][Param]Failed, digit str:%s cannot change to int", value.c_str());
+      const std::string reason = "digit str:" + value + " cannot change to int";
+      (void)REPORT_PREDEFINED_ERR_MSG("E10060", std::vector<const char *>({"reason"}),
+                                      std::vector<const char *>({reason.c_str()}));
+    }
+    return CoreNumCheckResult::kNotInteger;
+  } catch (...) {
+    if (report_error) {
+      GELOGE(GRAPH_FAILED, "[Parse][Param]Failed, digit str:%s cannot change to int", value.c_str());
+      const std::string reason = "digit str:" + value + " cannot change to int";
+      (void)REPORT_PREDEFINED_ERR_MSG("E10060", std::vector<const char *>({"reason"}),
+                                      std::vector<const char *>({reason.c_str()}));
+    }
+    return CoreNumCheckResult::kNotInteger;
+  }
+
+  if (std::to_string(parsed_value) != value) {
+    return CoreNumCheckResult::kInvalidFormat;
+  }
+  if ((parsed_value < min_value) || (parsed_value > max_value)) {
+    return CoreNumCheckResult::kOutOfRange;
+  }
+  return CoreNumCheckResult::kOk;
+}
+
+// 静默校验：只判断能否作为合法核数解析，不产生任何 error。用于解析阶段判断"能否派生"。
+graphStatus TryParseCoreNum(const std::string &value, int32_t min_value, int32_t max_value, int32_t &parsed_value) {
+  return (CheckCoreNum(value, min_value, max_value, parsed_value, false) == CoreNumCheckResult::kOk) ? GRAPH_SUCCESS
+                                                                                                     : GRAPH_FAILED;
+}
+
+// 显式 ge.vectorcoreNum 查询：本入口 options 优先，其次线程上下文（graph/session/global）。
+bool LookupExplicitVectorCoreNum(const std::map<std::string, std::string> &options, std::string &value) {
+  const auto iter = options.find(kVectorCoreNum);
+  if (iter != options.end()) {
+    value = iter->second;
+    return true;
+  }
+  return GetThreadLocalContext().GetOption(kVectorCoreNum, value) == GRAPH_SUCCESS;
 }
 
 graphStatus ReportParamError(const std::string &param_name, const std::string &param_value_str,
@@ -65,44 +242,160 @@ graphStatus GetOneCoreNumFromGraph(const ge::ComputeGraphPtr &compute_graph, con
   }
   return CoreNumUtils::ParseAndValidateCoreNum(attr_name, core_num_str, 0, INT32_MAX, core_num);
 }
-}  // namespace
-graphStatus CoreNumUtils::ParseAicoreNumFromOption(std::map<std::string, std::string> &options) {
-  auto it = options.find(AICORE_NUM);
-  if (it == options.end()) {
-    return GRAPH_SUCCESS;
+
+// 成对分支：X|Y 是"同时设置两个键"的捷径，拆分规则与改前保持一致，只新增冲突校验与显式优先。
+graphStatus ParsePairCoreNum(std::map<std::string, std::string> &options, const std::string &origin_value,
+                             const std::string &aicore_num_str, const std::string &vectorcore_num_str) {
+  std::string explicit_value;
+  const bool has_explicit = LookupExplicitVectorCoreNum(options, explicit_value);
+  int32_t pair_vectorcore_num = 0;
+  int32_t explicit_vectorcore_num = 0;
+  const bool pair_is_positive =
+      (TryParseCoreNum(vectorcore_num_str, 0, INT32_MAX, pair_vectorcore_num) == GRAPH_SUCCESS) &&
+      (pair_vectorcore_num > 0);
+  const bool explicit_is_positive =
+      has_explicit && (TryParseCoreNum(explicit_value, 0, INT32_MAX, explicit_vectorcore_num) == GRAPH_SUCCESS) &&
+      (explicit_vectorcore_num > 0);
+  if (pair_is_positive && explicit_is_positive && (pair_vectorcore_num != explicit_vectorcore_num)) {
+    const std::string reason = "Conflict: ge.vectorcoreNum is set to " + explicit_value + " explicitly, while " +
+                               AICORE_NUM + " \"" + origin_value + "\" implies " + vectorcore_num_str + ".";
+    return ReportParamError(ge::GetContext().GetReadableName(AICORE_NUM), origin_value, reason);
   }
-  std::string aicore_num_option_str = it->second;
-  if (aicore_num_option_str.empty()) {
-    return GRAPH_SUCCESS;
-  }
-  if (aicore_num_option_str.find('|') == std::string::npos) {
-    GELOGW("Invalid format for ge.aicoreNum: %s. Expected format: aicore_num|vectorcore_num.",
-           aicore_num_option_str.c_str());
-    return GRAPH_SUCCESS;
-  }
-  GELOGI("origin ge.aicoreNum in options, value: %s.", aicore_num_option_str.c_str());
-  const auto delimiter_pos = aicore_num_option_str.find('|');
-  std::string aicore_num_str = aicore_num_option_str.substr(0U, delimiter_pos);
-  std::string vectorcore_num_str = aicore_num_option_str.substr(delimiter_pos + 1U);
 
   options[AICORE_NUM] = aicore_num_str;
+  // 右侧为空/0 且显式值可解析为正整数时保留显式值（显式优先），其余情况沿用改前的写回规则。
+  if (((vectorcore_num_str.empty()) || (vectorcore_num_str == "0")) && explicit_is_positive) {
+    GELOGI("ge.vectorcoreNum is configured explicitly (%s), skip overriding by ge.aicoreNum.", explicit_value.c_str());
+    return GRAPH_SUCCESS;
+  }
   options[kVectorCoreNum] = vectorcore_num_str;
   return GRAPH_SUCCESS;
 }
 
-graphStatus CoreNumUtils::ParseAndValidateCoreNum(const std::string &param_name, const std::string &param_value_str,
-                                                  int32_t min_value, int32_t max_value, int32_t &parsed_value) {
-  if (ConvertStrToInt32(param_value_str, parsed_value) != GRAPH_SUCCESS) {
-    return ReportParamError(param_name, param_value_str, "It is not integer.");
+// 显式 ge.vectorcoreNum 优先：返回 true 表示允许继续派生，false 表示跳过派生（原因已记录）。
+bool IsDeriveAllowedByExplicitCoreNum(const std::map<std::string, std::string> &options) {
+  std::string explicit_value;
+  if (!LookupExplicitVectorCoreNum(options, explicit_value)) {
+    return true;
+  }
+  if (explicit_value.empty()) {
+    GELOGI("ge.vectorcoreNum is empty or 0, treated as unconfigured.");
+    return true;
+  }
+  int32_t explicit_vectorcore_num = 0;
+  if (TryParseCoreNum(explicit_value, 0, INT32_MAX, explicit_vectorcore_num) != GRAPH_SUCCESS) {
+    // 显式值非法：不派生、不覆盖，交由 platform info 报 E10001。
+    GELOGD("ge.vectorcoreNum is invalid (%s), skip deriving.", explicit_value.c_str());
+    return false;
+  }
+  if (explicit_vectorcore_num > 0) {
+    GELOGI("ge.vectorcoreNum is configured explicitly (%s), skip deriving.", explicit_value.c_str());
+    return false;
+  }
+  GELOGI("ge.vectorcoreNum is empty or 0, treated as unconfigured.");
+  return true;
+}
+
+// 按芯片 Cube:Vector 比例计算派生值；无法派生时打印告警/错误并返回 -1。
+int32_t CalcDerivedVectorCoreNum(const SocCoreSpec &spec, int32_t aicore_num, const std::string &aicore_num_str) {
+  const uint32_t cube_core_cnt = (spec.cube_core_cnt > 0U) ? spec.cube_core_cnt : spec.ai_core_cnt;
+  if (static_cast<uint32_t>(aicore_num) > cube_core_cnt) {
+    LogInvalidAicoreNumFormat(aicore_num_str);
+    return -1;
+  }
+  if (spec.vector_core_cnt == 0U) {
+    GELOGW("skip deriving ge.vectorcoreNum: vector_core_cnt is 0 (no independent vector core).");
+    return -1;
   }
 
-  if (std::to_string(parsed_value) != param_value_str) {
+  const uint64_t cube_core_cnt_u64 = static_cast<uint64_t>(cube_core_cnt);
+  const uint64_t vector_core_cnt_u64 = static_cast<uint64_t>(spec.vector_core_cnt);
+  uint32_t ratio = 0U;
+  if (vector_core_cnt_u64 == cube_core_cnt_u64) {
+    ratio = 1U;
+  } else if (vector_core_cnt_u64 == (cube_core_cnt_u64 * 2U)) {
+    ratio = 2U;
+  } else {
+    GELOGW("skip deriving ge.vectorcoreNum: ratio of vector_core_cnt(%u) to cube_core_cnt(%u) is not supported.",
+           spec.vector_core_cnt, cube_core_cnt);
+    return -1;
+  }
+
+  const int64_t derived_value = static_cast<int64_t>(aicore_num) * static_cast<int64_t>(ratio);
+  if (derived_value > static_cast<int64_t>(INT32_MAX)) {
+    LogInvalidAicoreNumFormat(aicore_num_str);
+    return -1;
+  }
+  GELOGI(
+      "Derive ge.vectorcoreNum: aicore_num=%d, cube_core_cnt=%u, vector_core_cnt=%u, ratio=1:%u, "
+      "derived_vectorcore_num=%d.",
+      aicore_num, cube_core_cnt, spec.vector_core_cnt, ratio, static_cast<int32_t>(derived_value));
+  return static_cast<int32_t>(derived_value);
+}
+
+// 单值分支：显式优先 → 查询规格 → 按比例派生并写回。
+graphStatus ParseSingleCoreNum(std::map<std::string, std::string> &options, const std::string &aicore_num_str,
+                               int32_t aicore_num) {
+  if (aicore_num == 0) {
+    LogInvalidAicoreNumFormat(aicore_num_str);
+    return GRAPH_SUCCESS;
+  }
+  if (!IsDeriveAllowedByExplicitCoreNum(options)) {
+    return GRAPH_SUCCESS;
+  }
+
+  SocCoreSpec spec;
+  if (!QuerySocCoreSpec(spec)) {
+    return GRAPH_SUCCESS;
+  }
+  const int32_t derived_value = CalcDerivedVectorCoreNum(spec, aicore_num, aicore_num_str);
+  if (derived_value < 0) {
+    return GRAPH_SUCCESS;
+  }
+  options[kVectorCoreNum] = std::to_string(derived_value);
+  return GRAPH_SUCCESS;
+}
+}  // namespace
+
+graphStatus CoreNumUtils::ParseAicoreNumFromOption(std::map<std::string, std::string> &options) {
+  const auto iter = options.find(AICORE_NUM);
+  if (iter == options.end()) {
+    return GRAPH_SUCCESS;
+  }
+  const std::string aicore_num_option_str = iter->second;
+  if (aicore_num_option_str.empty()) {
+    return GRAPH_SUCCESS;
+  }
+
+  const auto delimiter_pos = aicore_num_option_str.find('|');
+  if (delimiter_pos != std::string::npos) {
+    GELOGI("origin ge.aicoreNum in options, value: %s.", aicore_num_option_str.c_str());
+    const std::string aicore_num_str = aicore_num_option_str.substr(0U, delimiter_pos);
+    const std::string vectorcore_num_str = aicore_num_option_str.substr(delimiter_pos + 1U);
+    return ParsePairCoreNum(options, aicore_num_option_str, aicore_num_str, vectorcore_num_str);
+  }
+
+  int32_t aicore_num = 0;
+  if (TryParseCoreNum(aicore_num_option_str, 0, INT32_MAX, aicore_num) != GRAPH_SUCCESS) {
+    // 静默校验失败：保持旧文案与旧行为（只告警、不派生），格式/范围由 platform info 报 E10001。
+    LogInvalidAicoreNumFormat(aicore_num_option_str);
+    return GRAPH_SUCCESS;
+  }
+  return ParseSingleCoreNum(options, aicore_num_option_str, aicore_num);
+}
+
+graphStatus CoreNumUtils::ParseAndValidateCoreNum(const std::string &param_name, const std::string &param_value_str,
+                                                  int32_t min_value, int32_t max_value, int32_t &parsed_value) {
+  const CoreNumCheckResult check_result = CheckCoreNum(param_value_str, min_value, max_value, parsed_value, true);
+  if (check_result == CoreNumCheckResult::kNotInteger) {
+    return ReportParamError(param_name, param_value_str, "It is not integer.");
+  }
+  if (check_result == CoreNumCheckResult::kInvalidFormat) {
     return ReportParamError(param_name, param_value_str,
                             "Invalid integer format: only non-negative decimal digits are allowed "
                             "(no leading zeros, spaces, or mixed characters).");
   }
-
-  if (parsed_value < min_value || parsed_value > max_value) {
+  if (check_result == CoreNumCheckResult::kOutOfRange) {
     return ReportParamError(param_name, param_value_str,
                             "It is out of range, value must be in range (" + std::to_string(min_value) + ", " +
                                 std::to_string(max_value) + "].");

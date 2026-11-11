@@ -28,6 +28,16 @@ class MmpaStubApiGe {
     return dlsym(handle, func_name);
   }
 
+  // 规格查询桩：默认返回成功且不写 value，保持与既有 MockRtGetSocSpec 一致的行为，
+  // 需要构造派生场景的用例可覆盖该虚函数注入目标芯片核数。
+  virtual int32_t RtGetSocSpec(const char *label, const char *key, char *value, const uint32_t size) {
+    (void)label;
+    (void)key;
+    (void)value;
+    (void)size;
+    return 0;
+  }
+
   virtual int32_t DlClose(void *handle) {
     return dlclose(handle);
   }

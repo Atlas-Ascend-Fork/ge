@@ -92,6 +92,9 @@ TEST_F(UtestGeLib, InnerInitialize_aicore_num_invalid) {
   // not greater than 0
   options[AICORE_NUM] = "0|20";
   options[SOC_VERSION] = "Ascend910";
+  // InnerInitialize 会按引用写回 ge.vectorcoreNum，先显式置为未配置，避免上一用例 100|100 的
+  // 残留值触发"成对与显式值不一致"的解析期冲突校验
+  options["ge.vectorcoreNum"] = "0";
   p1->init_flag_ = false;
   EXPECT_EQ(p1->InnerInitialize(options), SUCCESS);
 

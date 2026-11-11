@@ -431,8 +431,8 @@ static bool MockIsEnableMdeTopoSort() {
   return false;
 }
 
-static rtError_t MockRtGetSocSpec(const char *label, const char *key, char *value, uint32_t size) {
-  return 0;
+static int32_t RtGetSocSpecTrampoline(const char *label, const char *key, char *value, const uint32_t size) {
+  return ge::MmpaStub::GetInstance().GetImpl()->RtGetSocSpec(label, key, value, size);
 }
 
 VOID *mmDlopen(const CHAR *fileName, INT32 mode) {
@@ -488,7 +488,7 @@ INT32 mmDlclose(VOID *handle) {
 
 VOID *mmDlsym(VOID *handle, const CHAR *funcName) {
   if (std::string(funcName) == "rtGetSocSpec") {
-    return (void *)&MockRtGetSocSpec;
+    return (void *)&RtGetSocSpecTrampoline;
   }
 
   if ((handle == libcce_name.data()) && (funcName == std::string("ccUpdateKernelArgs"))) {
