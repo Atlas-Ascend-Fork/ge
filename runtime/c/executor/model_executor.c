@@ -19,21 +19,27 @@
 #include "rt_external_model.h"
 static void *ModelGetIoAddr(uint32_t in_nums, uint32_t out_nums, const InputData *input_data, OutputData *output_data,
                             GeModelDesc *mdlDesc) {
-  uint32_t ioa_size = in_nums + out_nums;
-  GELOGI("output->ioa_size:%u, ioa_size:%u", output_data->ioa_size, ioa_size);
-  if ((output_data->ioa_size < ioa_size) && (output_data->io_addr != NULL)) {
-    aclrtFree(output_data->io_addr);
-    output_data->io_addr = NULL;
-  }
   uint32_t fifo_num = mdlDesc->fifoInfo.fifoNum;
-  uint64_t addr_size = sizeof(uint64_t) * (ioa_size + fifo_num);
+  uint32_t total_ioa_size = in_nums + out_nums + fifo_num;
+  GELOGI("output->ioa_size:%u, total_ioa_size:%u", output_data->ioa_size, total_ioa_size);
+  if (output_data->ioa_size < total_ioa_size) {
+    if (output_data->io_addr != NULL) {
+      (void)aclrtFree(output_data->io_addr);
+      output_data->io_addr = NULL;
+    }
+    if (output_data->io_addr_host != NULL) {
+      (void)mmFree(output_data->io_addr_host);
+      output_data->io_addr_host = NULL;
+    }
+  }
+  uint64_t addr_size = sizeof(uint64_t) * total_ioa_size;
   if (output_data->io_addr == NULL) {
     if (aclrtMalloc((void **)&output_data->io_addr, addr_size, mdlDesc->memType) != ACL_SUCCESS) {
       output_data->io_addr = NULL;
       output_data->ioa_size = 0;
       return NULL;
     }
-    output_data->ioa_size = ioa_size + fifo_num;
+    output_data->ioa_size = total_ioa_size;
   }
   if (output_data->io_addr_host == NULL) {
     output_data->io_addr_host = mmMalloc(addr_size);
