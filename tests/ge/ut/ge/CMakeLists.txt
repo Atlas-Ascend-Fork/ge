@@ -445,6 +445,7 @@ set(OM2_COMPATIBILITY_TEST_FILES
     "compatibility/om2/struct_layout_check.cpp"
     "compatibility/om2/enum_value_check.cpp"
     "compatibility/om2/const_check.cpp"
+    "compatibility/om2/feature_list_check.cpp"
 )
 
 file(GLOB_RECURSE SYMBOL_SHAPE_INFER_FUNCS_TEST_SRCS CONFIGURE_DEPENDS "graph/optimize/symbolic/*.cc")

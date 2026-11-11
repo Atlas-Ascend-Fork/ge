@@ -15,6 +15,7 @@
 #include "common/om2/codegen/om2_codegen_types.h"
 #include "framework/om2/model_data/gert_model_data.h"
 #include "framework/common/gert_model_data_utils.h"
+#include "framework/common/om2_feature_list.h"
 #include "framework/om2/model_data/om2_package_contants.h"
 #define private public
 #include "framework/common/helper/om2_package_helper.h"
@@ -2522,5 +2523,26 @@ TEST_F(Om2PackageHelperUt, Serialize_SingleModel_ManifestOmitsBundleFields) {
   ASSERT_TRUE(manifest_json.IsValid());
   const auto &raw = manifest_json.Raw();
   EXPECT_FALSE(raw.contains("global_shared_var_size"));
+}
+
+// Feature List：Bundle manifest 取各子模型 used_features 的并集，required_executor_version 取并集上的最大值
+TEST_F(Om2PackageHelperUt, AssembleBundle_ShouldUnionUsedFeaturesAndTakeMaxRequired_WhenSubModelsDeclareFeatures) {
+  std::vector<std::shared_ptr<gert::GertModelData>> sub_models;
+  sub_models.push_back(MakeBundleSubModelData("sub0", "kernel_a.o", {1U, 2U}, false));
+  sub_models.push_back(MakeBundleSubModelData("sub1", "kernel_b.o", {3U, 4U}, false));
+  ASSERT_EQ(sub_models.size(), 2U);
+  sub_models[0]->manifest->compatibility.used_features[gert::GertMakeStr("feature_a")] = gert::GertMakeStr("1.0");
+  sub_models[1]->manifest->compatibility.used_features[gert::GertMakeStr("feature_a")] = gert::GertMakeStr("1.0");
+  sub_models[1]->manifest->compatibility.used_features[gert::GertMakeStr("future_feature")] = gert::GertMakeStr("2.3");
+  sub_models[1]->manifest->compatibility.required_executor_version = gert::GertMakeStr("2.3");
+
+  gert::GertModelData bundle_data;
+  ASSERT_EQ(Om2PackageHelper::AssembleBundleModelData(sub_models, 0U, bundle_data), SUCCESS);
+  ASSERT_NE(bundle_data.manifest, nullptr);
+  const auto &compat = bundle_data.manifest->compatibility;
+  EXPECT_EQ(compat.used_features.size(), 2U);
+  EXPECT_STREQ(gert::GertGetStr(compat.required_executor_version), "2.3");
+  EXPECT_STREQ(gert::GertGetStr(compat.compiler_version), gert::GERT_EXECUTOR_VERSION);
+  EXPECT_EQ(bundle_data.manifest->model_num, 2U);
 }
 }  // namespace ge

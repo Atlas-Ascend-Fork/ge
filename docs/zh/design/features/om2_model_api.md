@@ -828,9 +828,9 @@ int32_t (*CommitVarDataFunc)(void *var_manager_handle, struct GertVarCommit *com
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `compiler_version` | `std::unique_ptr<char[]>` | 编译侧版本 |
-| `required_executor_version` | `std::unique_ptr<char[]>` | 模型所需执行器版本 |
-| `used_features` | `std::map<std::unique_ptr<char[]>, std::unique_ptr<char[]>, UniquePtrCharCompare>` | 特性名到版本串的映射；键和值均为字符串，比较器见第 1.4 节 |
+| `compiler_version` | `std::unique_ptr<char[]>` | 编译侧版本，取代码宏 `GERT_EXECUTOR_VERSION`；major 表示包结构不兼容变更 |
+| `required_executor_version` | `std::unique_ptr<char[]>` | 模型所需执行器版本，取 `used_features` 中各特性需求的最大版本号；无特性声明时为 null（为空串） |
+| `used_features` | `std::map<std::unique_ptr<char[]>, std::unique_ptr<char[]>, UniquePtrCharCompare>` | 键为模型使用的特性清单（Feature List），根据编译期对模型数据的探测结果动态登记；值为特性要求的执行器最低版本号，为该特性上线、不兼容变更时的执行器版本；键和值均为字符串，比较器见第 1.4 节 |
 | `reserved` | `uint64_t[4]` | 保留 |
 
 #### 1.4 UniquePtrCharCompare

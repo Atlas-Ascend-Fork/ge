@@ -2992,7 +2992,7 @@ TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithAicoreNode) {
  *   2. g1_internal.h 含从流数常量 map {{0U, 2U}}，不含 HcclHorovodMeta 镜像结构，含 hvd.metas 全局类型引用
  *   3. g1_resources.cpp 含从流通用循环、RT_STREAM_OVERFLOW 与创建日志
  *   4. g1_load_and_run.cpp 含 DispatchHccl 入口/参数 DEBUG 日志、宿主服务调用与执行器版本自检
- *   5. manifest.json 的 used_features 含 hccl_communication
+ *   5. manifest.json 的 used_features 不含 hccl_communication（OM2初版本不录入兼容性管控）
  */
 TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithHcclNode) {
   // slow_test_limit = 3000
@@ -3042,7 +3042,7 @@ TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithHcclNode) {
   const auto manifest_buf = archive.ExtractToMem(kZipFileBaseName + "/manifest.json", manifest_size);
   ASSERT_NE(manifest_buf, nullptr);
   const std::string manifest(reinterpret_cast<const char *>(manifest_buf.get()), manifest_size);
-  EXPECT_NE(manifest.find("hccl_communication"), std::string::npos);
+  EXPECT_EQ(manifest.find("hccl_communication"), std::string::npos);
 }
 
 /**

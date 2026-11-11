@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <array>
 #include <cinttypes>
 #include <cerrno>
 #include <cstring>
@@ -26,6 +27,7 @@
 #include "framework/common/json_file.h"
 #include "framework/om2/model_data/gert_model_data.h"
 #include "framework/common/gert_model_data_utils.h"
+#include "framework/common/om2_feature_list.h"
 #include "common/om2/codegen/om2_codegen.h"
 #include "common/om2/codegen/om2_codegen_utils.h"
 #include "framework/omg/omg_inner_types.h"
@@ -934,26 +936,49 @@ Status Om2PackageHelper::BuildDebugInfo(const GeModelPtr &ge_model, gert::GertMo
   return SUCCESS;
 }
 
+namespace {
+// 特性探测函数原型
+using Om2FeatureDetectFunc = bool (*)(const gert::GertModelData &, const GeModelPtr &);
+
+// 特性探测函数驱动表
+constexpr std::array<Om2FeatureDetectFunc, 0> kOm2DetectByIndex{};
+static_assert(kOm2DetectByIndex.size() == static_cast<size_t>(gert::Om2FeatureIndex::kFeatureIndexMax),
+              "kOm2DetectByIndex must provide a detector for every gert::Om2FeatureIndex value");
+}  // namespace
+
 Status Om2PackageHelper::BuildManifest(gert::GertModelData &model_data, const GeModelPtr &ge_model) {
   GELOGI("[OM2] Begin to build manifest");
   gert::GertModelDataManifest &manifest = *model_data.manifest;
-  manifest.compatibility.compiler_version = gert::GertMakeStr(gert::GERT_EXECUTOR_VERSION);
-  manifest.model_num = static_cast<uint64_t>(model_data.models.size());
   manifest.atc_command = gert::GertMakeStr(domi::GetContext().atc_cmdline);
-  if (ge_model != nullptr) {
-    const auto &model_task_def = ge_model->GetModelTaskDefPtr();
-    if (model_task_def != nullptr) {
-      for (int32_t i = 0; i < model_task_def->task_size(); ++i) {
-        if (static_cast<ModelTaskType>(model_task_def->task(i).type()) == ModelTaskType::MODEL_TASK_HCCL) {
-          (void)manifest.compatibility.used_features.emplace(gert::GertMakeStr("hccl_communication"),
-                                                             gert::GertMakeStr("1.0"));
-          GELOGI("[OM2] Manifest used_features registered: hccl_communication");
-          break;
-        }
-      }
+  manifest.model_num = static_cast<uint64_t>(model_data.models.size());
+
+  // 构造compatibility数据
+  manifest.compatibility.compiler_version = gert::GertMakeStr(gert::GERT_EXECUTOR_VERSION);
+  // Feature List：探测本包用到的必需能力，按"上线或不兼容变更时的执行器版本"登记；
+  const char *max_feature_version = nullptr;
+  uint32_t max_version = 0U;
+  for (const auto &feature : gert::kOm2FeatureList) {
+    const auto detect = kOm2DetectByIndex[static_cast<size_t>(feature.index)];
+    // 部分特性和模型相关 通过模型判断是否涉及具体特性
+    if ((detect == nullptr) || (!detect(model_data, ge_model))) {
+      continue;
     }
+    (void)manifest.compatibility.used_features.emplace(gert::GertMakeStr(feature.name),
+                                                       gert::GertMakeStr(feature.version));
+    // required_executor_version 取登记特性中最大的版本号，未登记任何特性时保持为空字符串
+    const uint32_t feature_version = gert::ParseVersion(feature.version);
+    if (feature_version > max_version) {
+      max_version = feature_version;
+      max_feature_version = feature.version;
+    }
+    GELOGI("[OM2][FeatureList] feature registered: %s=%s", feature.name, feature.version);
   }
-  GELOGI("[OM2] Successfully built manifest");
+  if (max_feature_version != nullptr) {
+    manifest.compatibility.required_executor_version = gert::GertMakeStr(max_feature_version);
+  }
+  GELOGI("[OM2] Successfully built manifest, compiler_version:%s, used_features:%zu, required_executor_version:%s",
+         gert::GertGetStr(manifest.compatibility.compiler_version), manifest.compatibility.used_features.size(),
+         gert::GertGetStr(manifest.compatibility.required_executor_version));
   return SUCCESS;
 }
 
@@ -1047,17 +1072,37 @@ Status MergeBundleKernels(gert::GertModelData &bundle_data, gert::GertModelData 
   return SUCCESS;
 }
 
-Status BuildBundleManifest(gert::GertModelData &bundle_data, const gert::GertModelDataManifest &sub_manifest) {
+Status BuildBundleManifest(gert::GertModelData &bundle_data,
+                           const std::vector<std::shared_ptr<gert::GertModelData>> &sub_models) {
   auto manifest = std::make_unique<gert::GertModelDataManifest>();
   GE_ASSERT_NOTNULL(manifest);
-  manifest->compatibility.compiler_version = gert::GertMakeStr(sub_manifest.compatibility.compiler_version);
-  manifest->compatibility.required_executor_version =
-      gert::GertMakeStr(sub_manifest.compatibility.required_executor_version);
-  for (const auto &[feature_name, feature_version] : sub_manifest.compatibility.used_features) {
-    manifest->compatibility.used_features[gert::GertMakeStr(feature_name)] = gert::GertMakeStr(feature_version);
-  }
-  manifest->atc_command = gert::GertMakeStr(sub_manifest.atc_command);
+  const auto &first_manifest = *sub_models.front()->manifest;
+  manifest->atc_command = gert::GertMakeStr(first_manifest.atc_command);
   manifest->model_num = bundle_data.models.size();
+
+  // 构造compatibility数据
+  manifest->compatibility.compiler_version = gert::GertMakeStr(first_manifest.compatibility.compiler_version);
+  // feature list规则：used_features 为各子模型的并集、required_executor_version 为并集中的最大版本号。
+  std::string max_feature_version;
+  uint32_t max_version = 0U;
+  for (const auto &sub_model : sub_models) {
+    for (const auto &[feature_name, feature_version] : sub_model->manifest->compatibility.used_features) {
+      const char *name = gert::GertGetStr(feature_name);
+      const char *version = gert::GertGetStr(feature_version);
+      manifest->compatibility.used_features[gert::GertMakeStr(name)] = gert::GertMakeStr(version);
+      const uint32_t version_num = gert::ParseVersion(version);
+      if (version_num > max_version) {
+        max_version = version_num;
+        max_feature_version = version;
+      }
+    }
+  }
+  if (!max_feature_version.empty()) {
+    manifest->compatibility.required_executor_version = gert::GertMakeStr(max_feature_version);
+  }
+  GELOGI("[OM2][Bundle] manifest built, model_num:%" PRIu64 ", used_features:%zu, required_executor_version:%s",
+         manifest->model_num, manifest->compatibility.used_features.size(),
+         gert::GertGetStr(manifest->compatibility.required_executor_version));
   bundle_data.manifest = std::move(manifest);
   return SUCCESS;
 }
@@ -1128,7 +1173,7 @@ Status Om2PackageHelper::AssembleBundleModelData(std::vector<std::shared_ptr<ger
     GE_ASSERT_SUCCESS(RewriteVarWeightFileName(bundle_data.models.back(), var_weight_slot, i));
     (void)bundle_data.variables->var_weight_data.emplace_back(std::move(var_weight_slot));
   }
-  GE_ASSERT_SUCCESS(BuildBundleManifest(bundle_data, *sub_models.front()->manifest));
+  GE_ASSERT_SUCCESS(BuildBundleManifest(bundle_data, sub_models));
   for (const auto &unit : bundle_data.models) {
     if (unit->model_meta != nullptr) {
       unit->model_meta->global_shared_var_size = global_shared_var_size;

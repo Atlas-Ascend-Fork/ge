@@ -596,7 +596,8 @@ std::shared_ptr<FlowFuncParams> CreateAttrsByRole(const std::string &role, bool 
   }
   ff::udf::AttrValue output_indices;
   auto array = output_indices.mutable_array();
-  for (int32_t i = 0; i < 12; ++i) {
+  // One slot per FlowFuncType, including kCheckLink. A missing slot is an unset output.
+  for (int32_t i = 0; i < 13; ++i) {
     array->add_i(0);
   }
   auto output_indices_attr = std::make_shared<AttrValueImpl>(output_indices);
