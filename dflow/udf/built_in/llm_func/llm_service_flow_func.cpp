@@ -26,6 +26,17 @@ constexpr const char *kRoleDecoder = "Decoder";
 constexpr const char *kRoleMix = "Mix";
 constexpr int32_t kMinRoleId = 0;
 constexpr int32_t kMaxRoleId = 2;
+// Host writes -1 when this flow func is not deployed on the node.
+constexpr int64_t kUnsetOutIndex = -1;
+constexpr uint32_t kUnsetOutIndexU32 = static_cast<uint32_t>(kUnsetOutIndex);
+
+bool HasConfiguredOutIndex(uint32_t output_idx) {
+  if (output_idx != kUnsetOutIndexU32) {
+    return true;
+  }
+  UDF_LOG_ERROR("output index is not configured.");
+  return false;
+}
 
 FsmStatus GetReqTensor(const std::shared_ptr<FlowMsg> &input, const Tensor *&tensor) {
   if (input == nullptr) {
@@ -202,14 +213,14 @@ int32_t LlmServiceFlowFunc::ParseFlowFuncAttrs(const std::shared_ptr<MetaParams>
     return FLOW_FUNC_FAILED;
   }
   for (const auto out_index : out_indices) {
-    if (out_index < 0) {
+    if (out_index < kUnsetOutIndex) {
       UDF_LOG_ERROR("output index %ld is invalid.", out_index);
       return FLOW_FUNC_FAILED;
     }
     flow_func_out_indices_.emplace_back(static_cast<uint32_t>(out_index));
   }
   UDF_LOG_INFO("%s = %s", kAttrNameOutIndices, ToString(out_indices).c_str());
-  flow_func_out_indices_.resize(static_cast<size_t>(FlowFuncType::kMax), -1);
+  flow_func_out_indices_.resize(static_cast<size_t>(FlowFuncType::kMax), kUnsetOutIndexU32);
   AscendString role_str;
   (void)params->GetAttr(kAttrNameRole, role_str);
   role_ = role_str.GetString();
@@ -233,6 +244,9 @@ int32_t LlmServiceFlowFunc::Initialize(const std::shared_ptr<MetaRunContext> &ru
 int32_t LlmServiceFlowFunc::AllocateCache(const std::shared_ptr<MetaRunContext> &run_context,
                                           const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) {
   const auto out_index = flow_func_out_indices_[static_cast<size_t>(FlowFuncType::kAllocate)];
+  if (!HasConfiguredOutIndex(out_index)) {
+    return FLOW_FUNC_FAILED;
+  }
   // response: Status(s32) | padding(s32) | tensor_addr * N
   const AllocateCacheReqInfo *req_info = nullptr;
   auto ret = ParseReqInfo(input_msgs, req_info);
@@ -323,6 +337,9 @@ int32_t LlmServiceFlowFunc::CopyCache(const std::shared_ptr<MetaRunContext> &run
 int32_t LlmServiceFlowFunc::GetCache(const std::shared_ptr<MetaRunContext> &run_context,
                                      const std::vector<std::shared_ptr<FlowMsg>> &input_msgs) {
   const auto out_index = flow_func_out_indices_[static_cast<size_t>(FlowFuncType::kGetTensorSummary)];
+  if (!HasConfiguredOutIndex(out_index)) {
+    return FLOW_FUNC_FAILED;
+  }
   const GetCacheReqInfo *req_info = nullptr;
   FsmStatus fsm_ret = ParseReqInfo(input_msgs, req_info);
   if (fsm_ret != FsmStatus::kFsmSuccess) {
@@ -553,6 +570,9 @@ int32_t LlmServiceFlowFunc::SyncKvData(const std::shared_ptr<MetaRunContext> &ru
 
 int32_t LlmServiceFlowFunc::SetOutput(const std::shared_ptr<MetaRunContext> &run_context, uint32_t output_idx,
                                       FsmStatus status) {
+  if (!HasConfiguredOutIndex(output_idx)) {
+    return FLOW_FUNC_FAILED;
+  }
   auto result_msg = run_context->AllocTensorMsg({}, TensorDataType::DT_INT32);
   if ((result_msg == nullptr) || (result_msg->GetTensor() == nullptr) ||
       (result_msg->GetTensor()->GetData() == nullptr)) {

@@ -577,7 +577,8 @@ std::shared_ptr<FlowFuncParams> CreateAttrsByRole(const std::string &role, bool 
   }
   ff::udf::AttrValue output_indices;
   auto array = output_indices.mutable_array();
-  for (int32_t i = 0; i < 12; ++i) {
+  // One slot per FlowFuncType, including kCheckLink. A missing slot is an unset output.
+  for (int32_t i = 0; i < 13; ++i) {
     array->add_i(0);
   }
   auto output_indices_attr = std::make_shared<AttrValueImpl>(output_indices);
@@ -591,6 +592,20 @@ std::shared_ptr<FlowFuncParams> CreateAttrsByRole(const std::string &role, bool 
 
 std::shared_ptr<FlowFuncParams> CreateAttrs(bool is_prompt = false, bool set_env = false) {
   return CreateAttrsByRole(is_prompt ? "Prompt" : "Decoder", set_env);
+}
+
+void SetOutputIndices(const std::shared_ptr<FlowFuncParams> &params, const std::vector<int64_t> &indices) {
+  ff::udf::AttrValue output_indices;
+  auto array = output_indices.mutable_array();
+  for (const auto index : indices) {
+    array->add_i(index);
+  }
+  params->attr_map_["output_indices"] = std::make_shared<AttrValueImpl>(output_indices);
+}
+
+std::vector<int64_t> DefaultOutputIndices() {
+  // Same length as FlowFuncType::kMax. Slot values follow the host layout.
+  return std::vector<int64_t>(13, 0);
 }
 
 std::vector<uint8_t> sync_req_info_data;
@@ -790,6 +805,63 @@ TEST_F(LlmServiceFlowFuncUTest, init_failed) {
   params->attr_map_.erase("device_index");
   auto ret = llm_service_flow_func.Init(params);
   EXPECT_EQ(ret, FLOW_FUNC_ERR_ATTR_NOT_EXITS);
+}
+
+TEST_F(LlmServiceFlowFuncUTest, init_accepts_unset_output_index) {
+  LlmServiceFlowFunc llm_service_flow_func;
+  std::shared_ptr<FlowFuncParams> params = CreateAttrs();
+  auto indices = DefaultOutputIndices();
+  indices[5] = -1;  // kGetTensor is not deployed when the attribute is written
+  SetOutputIndices(params, indices);
+  EXPECT_EQ(llm_service_flow_func.Init(params), FLOW_FUNC_SUCCESS);
+
+  std::shared_ptr<FlowMsg> out_msg;
+  WriterCallback lambda = [&out_msg](uint32_t, const std::shared_ptr<FlowMsg> &msg) -> int32_t {
+    out_msg = msg;
+    return 0;
+  };
+  std::shared_ptr<FlowFuncRunContext> run_context = std::make_shared<FlowFuncRunContext>(0, params, lambda);
+  const std::vector<std::shared_ptr<FlowMsg>> empty_msgs;
+  EXPECT_EQ(llm_service_flow_func.Initialize(run_context, empty_msgs), FLOW_FUNC_SUCCESS);
+}
+
+TEST_F(LlmServiceFlowFuncUTest, init_rejects_output_index_below_unset) {
+  LlmServiceFlowFunc llm_service_flow_func;
+  std::shared_ptr<FlowFuncParams> params = CreateAttrs();
+  auto indices = DefaultOutputIndices();
+  indices[0] = -2;
+  SetOutputIndices(params, indices);
+  EXPECT_EQ(llm_service_flow_func.Init(params), FLOW_FUNC_FAILED);
+}
+
+TEST_F(LlmServiceFlowFuncUTest, set_output_fails_when_index_unset) {
+  LlmServiceFlowFunc llm_service_flow_func;
+  std::shared_ptr<FlowFuncParams> params = CreateAttrs();
+  auto indices = DefaultOutputIndices();
+  indices[11] = -1;  // kInitialize
+  SetOutputIndices(params, indices);
+  EXPECT_EQ(llm_service_flow_func.Init(params), FLOW_FUNC_SUCCESS);
+
+  std::shared_ptr<FlowFuncRunContext> run_context = std::make_shared<FlowFuncRunContext>(
+      0, params, [](uint32_t, const std::shared_ptr<FlowMsg> &) -> int32_t { return 0; });
+  const std::vector<std::shared_ptr<FlowMsg>> empty_msgs;
+  EXPECT_EQ(llm_service_flow_func.Initialize(run_context, empty_msgs), FLOW_FUNC_FAILED);
+}
+
+TEST_F(LlmServiceFlowFuncUTest, unset_allocate_and_get_cache_fail) {
+  LlmServiceFlowFunc llm_service_flow_func;
+  std::shared_ptr<FlowFuncParams> params = CreateAttrs();
+  auto indices = DefaultOutputIndices();
+  indices[2] = -1;  // kAllocate
+  indices[4] = -1;  // kGetTensorSummary
+  SetOutputIndices(params, indices);
+  EXPECT_EQ(llm_service_flow_func.Init(params), FLOW_FUNC_SUCCESS);
+
+  std::shared_ptr<FlowFuncRunContext> run_context = std::make_shared<FlowFuncRunContext>(
+      0, params, [](uint32_t, const std::shared_ptr<FlowMsg> &) -> int32_t { return 0; });
+  const std::vector<std::shared_ptr<FlowMsg>> empty_msgs;
+  EXPECT_EQ(llm_service_flow_func.AllocateCache(run_context, empty_msgs), FLOW_FUNC_FAILED);
+  EXPECT_EQ(llm_service_flow_func.GetCache(run_context, empty_msgs), FLOW_FUNC_FAILED);
 }
 
 TEST_F(LlmServiceFlowFuncUTest, init_group_query_failed) {
