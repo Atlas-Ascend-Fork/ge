@@ -92,6 +92,8 @@ class UserGraphControl {
   Status Finalize();
   bool IsUserGraphNeedRebuild();
   bool GetCompiledFlag() const;
+  bool GetLoadFlag() const;
+  bool GetBuildFlag() const;
   void SetCompiledFlag(bool flag);
   std::map<AscendString, AscendString> GetLoadOptions() const;
 
@@ -138,6 +140,10 @@ class UserGraphControl {
   bool whole_graph_added_{false};
   bool whole_graph_compiled_{false};
   bool whole_graph_loaded_{false};
+  // AutoFuse 用户图级别的构建/加载状态：仅供 GetBuildFlag/GetLoadFlag 判断是否需要预编译/预加载，
+  // 首次 CompileGraph/LoadGraph/Execute 成功后置 true，不随 AddGraph 多实例重置
+  std::atomic_bool user_graph_loaded_{false};
+  std::atomic_bool user_graph_built_{false};
   RunGraphMode run_graph_mode_{RunGraphMode::kRunGraphModeEnd};
 };
 }  // namespace ge

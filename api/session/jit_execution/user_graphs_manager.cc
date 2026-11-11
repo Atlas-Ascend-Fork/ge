@@ -245,6 +245,24 @@ Status UserGraphsManager::RemoveGraph(uint32_t user_graph_id) {
   return SUCCESS;
 }
 
+bool UserGraphsManager::GetLoadFlag(uint32_t user_graph_id) {
+  if (!EnableAutoFuse()) {
+    return graph_manager_.GetLoadFlag(user_graph_id);
+  }
+  std::lock_guard<std::mutex> locker(user_graph_ctrl_mutex_);
+  const auto iter = ids_to_user_graph_ctrl_.find(user_graph_id);
+  return (iter != ids_to_user_graph_ctrl_.end()) && iter->second->GetLoadFlag();
+}
+
+bool UserGraphsManager::GetBuildFlag(uint32_t user_graph_id) {
+  if (!EnableAutoFuse()) {
+    return graph_manager_.GetBuildFlag(user_graph_id);
+  }
+  std::lock_guard<std::mutex> locker(user_graph_ctrl_mutex_);
+  const auto iter = ids_to_user_graph_ctrl_.find(user_graph_id);
+  return (iter != ids_to_user_graph_ctrl_.end()) && iter->second->GetBuildFlag();
+}
+
 bool UserGraphsManager::IsGraphNeedRebuild(uint32_t user_graph_id) {
   if (!EnableAutoFuse()) {
     return graph_manager_.IsGraphNeedRebuild(user_graph_id);

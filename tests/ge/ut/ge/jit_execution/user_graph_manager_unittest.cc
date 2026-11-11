@@ -1174,4 +1174,59 @@ TEST_F(UserGraphsManagerlUT, add_graph_verify_three_ep_middle_options) {
   EXPECT_EQ(graph_manager.Finalize(), SUCCESS);
 }
 
+TEST_F(UserGraphsManagerlUT, autofuse_static_compile_load_and_flags) {
+  mmSetEnv("AUTOFUSE_FLAGS", "--enable_autofuse=true", 1);
+  ModelExecutor model_executor;
+  model_executor.Initialize({}, 0);
+  GraphManager graph_manager;
+  ASSERT_EQ(graph_manager.Initialize({}, &model_executor), SUCCESS);
+  UserGraphsManager user_graph_manager(graph_manager);
+
+  const uint32_t user_graph_id = 1U;
+  auto graph = JitShareGraph::AllNormalNodes({1, 2, 3, 4});
+  const std::map<std::string, std::string> options;
+  ASSERT_EQ(user_graph_manager.AddGraph(user_graph_id, *graph, options), SUCCESS);
+  EXPECT_FALSE(user_graph_manager.GetBuildFlag(user_graph_id));
+  EXPECT_FALSE(user_graph_manager.GetLoadFlag(user_graph_id));
+  EXPECT_FALSE(user_graph_manager.GetBuildFlag(user_graph_id + 100U));
+
+  ASSERT_EQ(user_graph_manager.CompileGraph(user_graph_id, 0, {}), SUCCESS);
+  EXPECT_TRUE(user_graph_manager.GetBuildFlag(user_graph_id));
+  EXPECT_FALSE(user_graph_manager.GetLoadFlag(user_graph_id));
+
+  std::map<AscendString, AscendString> load_options;
+  ASSERT_EQ(user_graph_manager.LoadGraph(user_graph_id, load_options, nullptr), SUCCESS);
+  EXPECT_TRUE(user_graph_manager.GetLoadFlag(user_graph_id));
+  EXPECT_TRUE(user_graph_manager.GetBuildFlag(user_graph_id));
+
+  EXPECT_EQ(user_graph_manager.RemoveGraph(user_graph_id), SUCCESS);
+  EXPECT_EQ(user_graph_manager.Finalize(), SUCCESS);
+  EXPECT_EQ(graph_manager.Finalize(), SUCCESS);
+  unsetenv("AUTOFUSE_FLAGS");
+}
+
+TEST_F(UserGraphsManagerlUT, autofuse_dynamic_load_graph_and_flags) {
+  mmSetEnv("AUTOFUSE_FLAGS", "--enable_autofuse=true", 1);
+  ModelExecutor model_executor;
+  model_executor.Initialize({}, 0);
+  GraphManager graph_manager;
+  ASSERT_EQ(graph_manager.Initialize({}, &model_executor), SUCCESS);
+  UserGraphsManager user_graph_manager(graph_manager);
+
+  const uint32_t user_graph_id = 2U;
+  auto graph = JitShareGraph::AllNormalNodes();
+  const std::map<std::string, std::string> options;
+  ASSERT_EQ(user_graph_manager.AddGraph(user_graph_id, *graph, options), SUCCESS);
+  EXPECT_FALSE(user_graph_manager.GetLoadFlag(user_graph_id));
+
+  std::map<AscendString, AscendString> load_options;
+  ASSERT_EQ(user_graph_manager.LoadGraph(user_graph_id, load_options, nullptr), SUCCESS);
+  EXPECT_TRUE(user_graph_manager.GetLoadFlag(user_graph_id));
+
+  EXPECT_EQ(user_graph_manager.RemoveGraph(user_graph_id), SUCCESS);
+  EXPECT_EQ(user_graph_manager.Finalize(), SUCCESS);
+  EXPECT_EQ(graph_manager.Finalize(), SUCCESS);
+  unsetenv("AUTOFUSE_FLAGS");
+}
+
 }  // namespace ge
