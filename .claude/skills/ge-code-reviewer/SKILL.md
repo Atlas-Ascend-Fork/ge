@@ -29,6 +29,7 @@ description: >
   2. 在"关键特性设计原则和软件约束"文档表中查找与这些模块相关的其他特性文档
   3. 按 cross_feature_check.md 中的场景表逐项评估适用性和影响
   4. 输出评估结论，如有风险需明确标注
+- [ ] **OM2 兼容性**：若修改触及 `inc/framework/om2/`、`inc/framework/common/om2_feature_list.h` 或 `base/common/om2/`，必须按 `.claude/skills/om2-abi-compat/SKILL.md` 与 `inc/framework/om2/README.md` 逐条核对；重点确认特性清单（`kOm2FeatureList`）新增或变更条目时 `GERT_EXECUTOR_VERSION` 是否在**同一 PR** 提高版本、特性名是否使用 `OM2_FEATURE_*` 常量、是否误把兼容类变更登记进 `used_features`。未触及上述路径则标注"不适用"
 
 **检查结果必须使用以下格式输出，不得省略或修改结构：**
 
@@ -39,6 +40,7 @@ description: >
 - [x] 跨特性交叉影响：已按 cross_feature_check.md 逐场景分析，
       修改涉及 compiler/graph/build/memory/，已检查 stream_allocator.md，
       确认本次内存分配改动不影响流分配逻辑
+- [x] OM2 兼容性：未触及 OM2 相关路径，不适用
 ```
 
 ---

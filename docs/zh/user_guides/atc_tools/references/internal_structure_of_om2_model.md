@@ -44,8 +44,8 @@
 {
     "atc_command": "/usr/local/Ascend/cann-xxx/{arch}-linux/bin/atc.bin --model=./resnet50.onnx --framework=5 --output=./resnet50 --soc_version={soc_version} --mode=7 --external_weight=1",
     "compatibility": {
-        "compiler_version": "1.0.0",
-        "required_executor_version": "1.0.0",
+        "compiler_version": "1.0",
+        "required_executor_version": "",
         "used_features": {}
     },
     "model_num": 1
@@ -56,8 +56,8 @@
 - model\_num：包含的模型数量。
 - compatibility：版本兼容性信息。
     - compiler\_version：生成模型的编译器版本。
-    - required\_executor\_version：模型所需的最低执行器版本。
-    - used\_features：模型使用的特性名称到版本字符串的映射，未使用特性时为空对象。
+    - required\_executor\_version：模型所需的最低执行器版本，取值为本模型使用的各特性要求的执行器版本中的最大值；未使用任何特性时为空字符串。
+    - used\_features：模型使用的特性名称到特性所需执行器版本字符串的映射；未使用特性时为空对象。
 
 以上版本号仅为示例，请以实际模型中的信息为准。
 

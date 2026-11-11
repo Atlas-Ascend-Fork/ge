@@ -119,7 +119,7 @@ rm -rf build_ut/ build_st/ output/ build/ build_out/ cov/ build_cmake_gcov/
 
 ### OM2 C ABI 兼容性
 
-**触发词**：`$om2-abi-compat`、OM2 SO 与 Executor C ABI、`om2_model_api.h`、`GertModel*` 导出 API 或回调、跨该边界的数据结构。
+**触发词**：`$om2-abi-compat`、OM2 SO 与 Executor C ABI、`om2_model_api.h`、`GertModel*` 导出 API 或回调、跨该边界的数据结构、OM2 落盘格式与 `manifest.json`、`om2_feature_list.h`、OM2 特性清单。
 
 **使用技能**：满足上述任一触发条件时，读取并遵循 `.claude/skills/om2-abi-compat/SKILL.md`。
 

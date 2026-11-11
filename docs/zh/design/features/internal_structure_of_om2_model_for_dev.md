@@ -43,10 +43,10 @@ OM2 为 ZIP 归档。以下路径均相对包内根前缀 `<base_name>/`：在�
 | JSON 字段 | 类型 | 必选 | 说明 |
 |-----------|------|------|------|
 | `compatibility` | object | 是 | 版本与特性信息对象；`DeserializeManifest` 解析后交给 `ValidateVersionCompatibility` 校验，供 ACL 模型加载及元信息查询路径共用 |
-| `compatibility.compiler_version` | string | 是 | 编译侧版本；`ValidateVersionCompatibility` 比较编译器与当前执行器的主版本，编译侧主版本更高时拒绝解析 |
-| `compatibility.required_executor_version` | string | 是 | 模型所需执行器版本；`ValidateVersionCompatibility` 在该值非空时比较所需版本与当前执行器版本，所需版本更高时拒绝解析 |
-| `compatibility.used_features` | object | 是 | 使用特性名到版本串的映射，无使用特性时为空对象；`BuildUsedFeaturesStr` 将其用于版本不兼容的错误诊断，当前不逐特性校验版本 |
-| `compatibility.used_features.<feature_name>` | string | 否（使用对应特性时写入） | 对应特性的版本串；由 `BuildUsedFeaturesStr` 输出到兼容性诊断信息，无独立 ACL 查询接口 |
+| `compatibility.compiler_version` | string | 是 | 编译侧版本，取自代码宏 `GERT_EXECUTOR_VERSION`；包结构不兼容变更时提升其主版本。`ValidateVersionCompatibility` 比较编译器与当前执行器的主版本，编译侧主版本更高时拒绝解析 |
+| `compatibility.required_executor_version` | string | 是 | 模型所需执行器版本，取自 `used_features` 中最高的版本号；无任何特性声明时为空。`ValidateVersionCompatibility` 在该值非空时比较所需版本与当前执行器版本，所需版本更高时拒绝解析 |
+| `compatibility.used_features` | object | 是 | 本包使用的特性清单及所需版本号（Feature List）；`BuildManifest` 根据全量特性清单的探测结果动态拼接；不涉及任何特性时为空。`ValidateVersionCompatibility` 只用其中的版本号做比较，不校验特性名是否被当前执行器收录。`BuildUsedFeaturesStr` 将其用于"所需执行器版本过高"场景的错误诊断 |
+| `compatibility.used_features.<feature_name>` | string | 否（使用到对应特性时写入） | 对应特性的版本串，取值为该特性上线、不兼容变更时的 `GERT_EXECUTOR_VERSION`，不因其他特性上线、变更而变化；参与 `required_executor_version` 的最大值计算，无独立 ACL 查询接口 |
 | `model_num` | integer | 是 | uint64 语义的模型数量；单模型为 1，Bundle 为子模型数量；`PrepareModelUnit` 用于子模型下标校验，`GetOm2BundleInfo` 用于枚举子模型，间接服务 `aclmdlBundleGetModelNum`、`aclmdlBundleGetQueryModelNum` |
 | `atc_command` | string | 是 | ATC 命令记录，非 ATC 路径可为空串；`DeserializeManifest` 解析保存，当前 OM2 ACL 加载和查询实现未读取该成员返回给用户 |
 

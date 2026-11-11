@@ -25,6 +25,7 @@
 #include "common/checker.h"
 #include "framework/common/gert_model_data_deserialize.h"
 #include "framework/common/gert_model_data_utils.h"
+#include "framework/common/om2_feature_list.h"
 
 namespace gert {
 namespace {
@@ -245,17 +246,6 @@ ge::Status ParseAippJson(const ge::JsonFile &aipp_json,
 
 // ===== 4. 版本兼容性校验 =====
 
-uint32_t ParseVersion(const std::string &version) {
-  uint32_t major = 0U;
-  uint32_t minor = 0U;
-  (void)sscanf_s(version.c_str(), "%u.%u", &major, &minor);
-  return major * 10000U + minor;
-}
-
-uint32_t GetMajorVersion(uint32_t version) {
-  return version / 10000U;
-}
-
 std::string BuildUsedFeaturesStr(
     const std::map<std::unique_ptr<char[]>, std::unique_ptr<char[]>, UniquePtrCharCompare> &used_features) {
   if (used_features.empty()) {
@@ -271,14 +261,15 @@ std::string BuildUsedFeaturesStr(
 ge::Status ValidateVersionCompatibility(const GertModelDataCompatibility &compat) {
   const uint32_t compiler_ver = ParseVersion(gert::GertGetStr(compat.compiler_version));
   const uint32_t executor_ver = ParseVersion(GERT_EXECUTOR_VERSION);
-  const std::string features_str = BuildUsedFeaturesStr(compat.used_features);
 
+  // 检查1 执行器版本的主版本号需要比编译时版本号高
   if (GetMajorVersion(compiler_ver) > GetMajorVersion(executor_ver)) {
-    REPORT_INNER_ERR_MSG("E19999",
-                         "[OM2] Version incompatible: compiler_version=%s (major=%u) > executor_version=%s (major=%u), "
-                         "used_features=%s",
-                         gert::GertGetStr(compat.compiler_version), GetMajorVersion(compiler_ver),
-                         GERT_EXECUTOR_VERSION, GetMajorVersion(executor_ver), features_str.c_str());
+    const std::string reason = "The major version of compiler_version " +
+                               std::string(gert::GertGetStr(compat.compiler_version)) +
+                               " of the model package is higher than the current executor version " +
+                               GERT_EXECUTOR_VERSION + ". Upgrade the CANN package and load the model again.";
+    (void)REPORT_PREDEFINED_ERR_MSG("E10055", std::vector<const char *>({"reason"}),
+                                    std::vector<const char *>({reason.c_str()}));
     GELOGE(ACL_ERROR_GE_PARAM_INVALID,
            "[OM2] Version incompatible: compiler_version=%s (major=%u) > executor_version=%s (major=%u)",
            gert::GertGetStr(compat.compiler_version), GetMajorVersion(compiler_ver), GERT_EXECUTOR_VERSION,
@@ -286,14 +277,17 @@ ge::Status ValidateVersionCompatibility(const GertModelDataCompatibility &compat
     return ACL_ERROR_GE_PARAM_INVALID;
   }
 
+  // 检查2 所需的执行器版本要小于等于当前执行器版本
   if (compat.required_executor_version != nullptr && gert::GertGetStr(compat.required_executor_version)[0] != '\0') {
     const uint32_t required_ver = ParseVersion(gert::GertGetStr(compat.required_executor_version));
     if (required_ver > executor_ver) {
-      REPORT_INNER_ERR_MSG("E19999",
-                           "[OM2] Version incompatible: required_executor_version=%s > executor_version=%s, "
-                           "used_features=%s",
-                           gert::GertGetStr(compat.required_executor_version), GERT_EXECUTOR_VERSION,
-                           features_str.c_str());
+      const std::string features_str = BuildUsedFeaturesStr(compat.used_features);
+      const std::string reason = "The model package requires executor version " +
+                                 std::string(gert::GertGetStr(compat.required_executor_version)) +
+                                 ", but the current executor version is " + GERT_EXECUTOR_VERSION +
+                                 ". Upgrade the CANN package and load the model again. used_features: " + features_str;
+      (void)REPORT_PREDEFINED_ERR_MSG("E10055", std::vector<const char *>({"reason"}),
+                                      std::vector<const char *>({reason.c_str()}));
       GELOGE(ACL_ERROR_GE_PARAM_INVALID,
              "[OM2] Version incompatible: required_executor_version=%s > executor_version=%s",
              gert::GertGetStr(compat.required_executor_version), GERT_EXECUTOR_VERSION);

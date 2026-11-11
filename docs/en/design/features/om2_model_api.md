@@ -828,9 +828,9 @@ Referenced by `GertModelDataManifest::compatibility`, corresponding to the `comp
 
 | Field | Type | Description |
 |------|------|------|
-| `compiler_version` | `std::unique_ptr<char[]>` | Compiler-side version |
-| `required_executor_version` | `std::unique_ptr<char[]>` | Executor version required by the model |
-| `used_features` | `std::map<std::unique_ptr<char[]>, std::unique_ptr<char[]>, UniquePtrCharCompare>` | Map from feature names to version strings; both keys and values are strings. See Section 1.4 for the comparator |
+| `compiler_version` | `std::unique_ptr<char[]>` | Compiler-side version, taken from the `GERT_EXECUTOR_VERSION` macro; a major bump means an incompatible package structure change |
+| `required_executor_version` | `std::unique_ptr<char[]>` | Executor version required by the model, which is the maximum version among `used_features`; null when no feature is registered (serialized as an empty string) |
+| `used_features` | `std::map<std::unique_ptr<char[]>, std::unique_ptr<char[]>, UniquePtrCharCompare>` | Keys are the Feature List of capabilities used by the model, registered dynamically at compile time from the detection results over the model data; values are the minimum executor version required by the feature, that is, the executor version at which the feature was introduced or incompatibly changed; both keys and values are strings. See Section 1.4 for the comparator |
 | `reserved` | `uint64_t[4]` | Reserved |
 
 #### 1.4 UniquePtrCharCompare
