@@ -10,7 +10,8 @@
 
 ## 关联参数
 
-动态分档场景，需要配合使用[--dynamic\_batch\_size](--dynamic_batch_size.md)（设置batch\_size档位）或[--dynamic\_image\_size](--dynamic_image_size.md)（设置分辨率档位）或[--dynamic\_dims](--dynamic_dims.md)（设置指定维度档位）参数。
+- 动态分档场景，需要配合使用[--dynamic\_batch\_size](--dynamic_batch_size.md)（设置batch\_size档位）或[--dynamic\_image\_size](--dynamic_image_size.md)（设置分辨率档位）或[--dynamic\_dims](--dynamic_dims.md)（设置指定维度档位）参数。
+- [--mode](--mode.md)=7时，**仅支持纯静态shape**，不支持动态shape范围。
 
 ## 参数取值
 

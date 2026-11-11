@@ -36,6 +36,10 @@ Tiling下沉是在Device侧CPU做Tiling计算。由于NPU中AI Core内部存储�
 2. 模型中的算子支持Tiling下沉，比如FusedInferAttentionScore、IncreFlashAttention等融合算子。
 3. 支持Tiling下沉的算子值有依赖，需要满足前一个算子的值有device的执行结果；如果依赖的值是Const，则不需要下沉执行Tiling，编译时会完成Tiling。
 
+## 关联参数
+
+[--mode](--mode.md)取值为7时，不支持配置Tiling下沉特性。
+
 ## 参数取值
 
 - 0：（默认值）关闭Tiling下沉。

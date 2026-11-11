@@ -37,7 +37,8 @@ Caffe网络中具有相同类型名但计算功能不同的层，比如Detection
 
 ## 关联参数
 
-[--framework](--framework.md)取值为0时，才支持使用该参数；当[--framework](--framework.md)取值为1且为MindSpore框架网络模型时，设置本参数无效，但模型转换成功。
+- [--framework](--framework.md)取值为0时，才支持使用该参数；当[--framework](--framework.md)取值为1且为MindSpore框架网络模型时，设置本参数无效，但模型转换成功。
+- [--mode](--mode.md)取值为7时，不支持配置该参数。
 
 ## 参数取值
 
