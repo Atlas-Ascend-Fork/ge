@@ -262,7 +262,7 @@ aclError Om2UpdateOutputTensorDesc(aclmdlDataset *const &output, std::vector<ger
 // Internal OM2 model loading functions
 aclError ConstructOm2ModelLoadArg(
     void *workPtr, size_t workSize, void *weightPtr, size_t weightSize, int32_t priority,
-    gert::Om2ModelLoadArg &loadArgs, gert::RtSession *rtSession = nullptr,
+    gert::Om2ModelLoadArg &loadArgs, const acl::Om2BundleModelInfo *bundleInfo = nullptr,
     const std::vector<ge::FileConstantMem> &fileConstantMems = std::vector<ge::FileConstantMem>(),
     bool needClearDfxCache = false, bool reuseZeroCopy = false) {
   loadArgs = {};
@@ -271,7 +271,10 @@ aclError ConstructOm2ModelLoadArg(
   loadArgs.weight_ptr = weightPtr;
   loadArgs.weight_size = weightSize;
   loadArgs.priority = priority;
-  loadArgs.rt_session = rtSession;
+  if (bundleInfo != nullptr) {
+    // session_ctx 仅在加载调用期间被读取；bundleInfo（栈上 info）存活期覆盖整个加载调用
+    loadArgs.session_ctx = &bundleInfo->session;
+  }
   loadArgs.file_constant_mems = fileConstantMems;
   loadArgs.need_clear_dfx_cache = needClearDfxCache;
   loadArgs.reuse_zero_copy = reuseZeroCopy;
@@ -1063,26 +1066,26 @@ aclError InitOm2BundleFromData(const std::shared_ptr<const uint8_t> &model, cons
     return ACL_ERROR_INVALID_PARAM;
   }
 
-  acl::BundleModelInfo info;
+  acl::Om2BundleModelInfo info;
   info.isInit = true;
   info.fromFilePath = from_file_path;
   info.varSize = required_var_size;
   info.bundleModelData = model;
   info.bundleModelSize = model_size;
-  info.rtSession = std::make_shared<gert::RtSession>();
-  info.rtSession->SetExternalVar(var_weight_ptr, var_weight_size);
+  info.session.external_var_addr = var_weight_ptr;
+  info.session.external_var_size = var_weight_size;
   info.subModelInfos.reserve(model_sizes.size());
   for (const auto &model_size_info : model_sizes) {
     info.subModelInfos.push_back({model_size_info.first, model_size_info.second, 0U, 0U});
   }
   *bundle_id = acl::AclResourceManagerOm2::GetInstance().GenerateModelId();
-  // Bundle 与其 RtSession 1:1 同生命周期，直接复用 bundleId 作 session id（消费方均经
-  // rtSession->GetSessionId() 取值，不依赖等值）；与单模型 session id 的隔离依赖 modelIdGenerator_ 高位起点
-  info.rtSession->SetSessionId(*bundle_id);
+  // Bundle 与其会话 1:1 同生命周期，直接复用 bundleId 作 session_id（消费方均经
+  // info.session.session_id 取值，不依赖等值）；与单模型 session id 的隔离依赖 modelIdGenerator_ 高位起点
+  info.session.session_id = *bundle_id;
   return acl::AclResourceManagerOm2::GetInstance().SetBundleInfo(*bundle_id, info);
 }
 
-aclError LoadOm2BundleSubModel(const acl::BundleModelInfo &info, const size_t index, gert::Om2ModelLoadArg &args,
+aclError LoadOm2BundleSubModel(const acl::Om2BundleModelInfo &info, const size_t index, gert::Om2ModelLoadArg &args,
                                uint32_t *model_id) {
   args.model_id = acl::AclResourceManagerOm2::GetInstance().GenerateModelId();
   args.om_path = info.fromFilePath;
@@ -1098,7 +1101,7 @@ aclError LoadOm2BundleSubModel(const acl::BundleModelInfo &info, const size_t in
   return ACL_SUCCESS;
 }
 
-aclError GetOm2TargetBundleInfo(const uint32_t bundle_id, acl::BundleModelInfo &info) {
+aclError GetOm2TargetBundleInfo(const uint32_t bundle_id, acl::Om2BundleModelInfo &info) {
   const std::unique_lock<std::mutex> lock(aclmdlOm2BundleMutex);
   ACL_REQUIRES_OK(acl::AclResourceManagerOm2::GetInstance().GetBundleInfo(bundle_id, info));
   if (info.bundleModelData != nullptr || info.fromFilePath.empty()) {
@@ -1119,7 +1122,7 @@ aclError GetOm2TargetBundleInfo(const uint32_t bundle_id, acl::BundleModelInfo &
 }
 
 // Eager 加载：按 index 顺序加载全部子模型，任一失败整体回滚
-aclError LoadAllOm2BundleSubModels(const uint32_t bundle_id, acl::BundleModelInfo &info) {
+aclError LoadAllOm2BundleSubModels(const uint32_t bundle_id, acl::Om2BundleModelInfo &info) {
   info.isInit = false;
   for (size_t index = 0U; index < info.subModelInfos.size(); ++index) {
     uint32_t model_id = 0U;
@@ -1137,7 +1140,7 @@ aclError LoadAllOm2BundleSubModels(const uint32_t bundle_id, acl::BundleModelInf
 }
 
 // 按需加载公共前置：获取 Bundle 信息（含快照重载）并校验 index 与数据可用性
-aclError PrepareOm2BundleSubModelLoad(const uint32_t bundle_id, const size_t index, acl::BundleModelInfo &info) {
+aclError PrepareOm2BundleSubModelLoad(const uint32_t bundle_id, const size_t index, acl::Om2BundleModelInfo &info) {
   ACL_REQUIRES_OK(GetOm2TargetBundleInfo(bundle_id, info));
   if (index >= info.subModelInfos.size()) {
     ACL_LOG_ERROR("[OM2][Bundle] index[%zu] should be smaller than model num[%zu], bundleId[%u]", index,
@@ -1160,7 +1163,7 @@ aclError aclmdlBundleLoadFromFileImplOm2(const char *modelPath, uint32_t *bundle
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(bundleId);
   ACL_LOG_INFO("[OM2] start to execute aclmdlBundleLoadFromFile, modelPath[%s]", modelPath);
   ACL_REQUIRES_OK(aclmdlBundleInitFromFileImplOm2(modelPath, nullptr, 0U, bundleId));
-  acl::BundleModelInfo info;
+  acl::Om2BundleModelInfo info;
   ACL_REQUIRES_OK(acl::AclResourceManagerOm2::GetInstance().GetBundleInfo(*bundleId, info));
   ACL_REQUIRES_OK(LoadAllOm2BundleSubModels(*bundleId, info));
   if (!info.fromFilePath.empty()) {
@@ -1182,7 +1185,7 @@ aclError aclmdlBundleLoadFromMemImplOm2(const void *model, size_t modelSize, uin
   ACL_REQUIRES_POSITIVE_WITH_INPUT_REPORT(modelSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(bundleId);
   ACL_REQUIRES_OK(aclmdlBundleInitFromMemImplOm2(model, modelSize, nullptr, 0U, bundleId));
-  acl::BundleModelInfo info;
+  acl::Om2BundleModelInfo info;
   ACL_REQUIRES_OK(acl::AclResourceManagerOm2::GetInstance().GetBundleInfo(*bundleId, info));
   ACL_REQUIRES_OK(LoadAllOm2BundleSubModels(*bundleId, info));
   const aclError set_ret = acl::AclResourceManagerOm2::GetInstance().SetBundleInfo(*bundleId, info);
@@ -1245,7 +1248,7 @@ aclError aclmdlLoadFromMemImplOm2(const void *model, size_t modelSize, uint32_t 
 
 aclError aclmdlBundleGetModelNumImplOm2(uint32_t bundleId, size_t *modelNum) {
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelNum);
-  acl::BundleModelInfo info;
+  acl::Om2BundleModelInfo info;
   ACL_REQUIRES_OK(acl::AclResourceManagerOm2::GetInstance().GetBundleInfo(bundleId, info));
   *modelNum = info.subModelInfos.size();
   ACL_LOG_INFO("[OM2] get bundleId[%u] model num[%zu]", bundleId, *modelNum);
@@ -1254,7 +1257,7 @@ aclError aclmdlBundleGetModelNumImplOm2(uint32_t bundleId, size_t *modelNum) {
 
 aclError aclmdlBundleGetModelIdImplOm2(uint32_t bundleId, size_t index, uint32_t *modelId) {
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelId);
-  acl::BundleModelInfo info;
+  acl::Om2BundleModelInfo info;
   ACL_REQUIRES_OK(acl::AclResourceManagerOm2::GetInstance().GetBundleInfo(bundleId, info));
   if (info.isInit) {
     ACL_LOG_ERROR("[OM2] aclmdlBundleGetModelId is supported only after aclmdlBundleLoadFromFile/Mem, bundleId[%u]",
@@ -1394,10 +1397,10 @@ aclError aclmdlBundleLoadModelWithMemImplOm2(uint32_t bundleId, size_t index, vo
   ACL_PROFILING_REG(acl::AclProfType::AclmdlBundleLoadModelWithMem);
   ACL_LOG_INFO("[OM2] start to execute aclmdlBundleLoadModelWithMem, bundleId[%u], index[%zu]", bundleId, index);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelId);
-  acl::BundleModelInfo info;
+  acl::Om2BundleModelInfo info;
   ACL_REQUIRES_OK(PrepareOm2BundleSubModelLoad(bundleId, index, info));
   gert::Om2ModelLoadArg args;
-  ACL_REQUIRES_OK(ConstructOm2ModelLoadArg(workPtr, workSize, weightPtr, weightSize, 0, args, info.rtSession.get()));
+  ACL_REQUIRES_OK(ConstructOm2ModelLoadArg(workPtr, workSize, weightPtr, weightSize, 0, args, &info));
   const aclError ret = LoadOm2BundleSubModel(info, index, args, modelId);
   if (ret != ACL_SUCCESS) {
     return ret;
@@ -1419,12 +1422,12 @@ aclError aclmdlBundleLoadModelWithConfigImplOm2(uint32_t bundleId, size_t index,
     return ACL_ERROR_FEATURE_UNSUPPORTED;
   }
   ACL_REQUIRES_OK(acl::CheckOm2UserLoadConfigOptValid(handle));
-  acl::BundleModelInfo info;
+  acl::Om2BundleModelInfo info;
   ACL_REQUIRES_OK(PrepareOm2BundleSubModelLoad(bundleId, index, info));
   gert::Om2ModelLoadArg args;
   ACL_REQUIRES_OK(ConstructOm2ModelLoadArg(handle->workPtr, handle->workSize, handle->weightPtr, handle->weightSize,
-                                           handle->priority, args, info.rtSession.get(), handle->fileConstantMem,
-                                           handle->withoutGraph, handle->reuseZeroCopy != 0U));
+                                           handle->priority, args, &info, handle->fileConstantMem, handle->withoutGraph,
+                                           handle->reuseZeroCopy != 0U));
   args.weight_path = handle->weightPath;
   const aclError ret = LoadOm2BundleSubModel(info, index, args, modelId);
   if (ret != ACL_SUCCESS) {
@@ -1439,7 +1442,7 @@ aclError aclmdlBundleLoadModelWithConfigImplOm2(uint32_t bundleId, size_t index,
 aclError aclmdlBundleUnloadModelImplOm2(uint32_t bundleId, uint32_t modelId) {
   ACL_PROFILING_REG(acl::AclProfType::AclmdlBundleUnloadModel);
   ACL_LOG_INFO("[OM2] start to execute aclmdlBundleUnloadModel, bundleId[%u], modelId[%u]", bundleId, modelId);
-  acl::BundleModelInfo info;
+  acl::Om2BundleModelInfo info;
   ACL_REQUIRES_OK(acl::AclResourceManagerOm2::GetInstance().GetBundleInfo(bundleId, info));
   if (info.loadedSubModelIdSet.count(modelId) == 0U) {
     ACL_LOG_ERROR("[OM2][Bundle] current modelId[%u] is not a sub model of bundleId[%u]", modelId, bundleId);
@@ -1622,7 +1625,7 @@ aclError aclmdlUnloadImplOm2(uint32_t modelId) {
 aclError aclmdlBundleUnloadImplOm2(uint32_t bundleId) {
   ACL_PROFILING_REG(acl::AclProfType::AclmdlBundleUnload);
   ACL_LOG_INFO("[OM2] start to execute aclmdlBundleUnload, bundleId[%u]", bundleId);
-  acl::BundleModelInfo info;
+  acl::Om2BundleModelInfo info;
   ACL_REQUIRES_OK(acl::AclResourceManagerOm2::GetInstance().GetBundleInfo(bundleId, info));
   aclError result = ACL_SUCCESS;
   for (const auto model_id : info.loadedSubModelIdSet) {
@@ -1636,12 +1639,10 @@ aclError aclmdlBundleUnloadImplOm2(uint32_t bundleId) {
     }
   }
   ACL_REQUIRES_OK(result);
-  if (info.rtSession != nullptr) {
-    const auto session_id = info.rtSession->GetSessionId();
-    gert::Om2RTVarManagerPool::Instance().RemoveManager(session_id);
-    gert::Om2ExternalWeightManagerPool::Instance().RemoveManager(session_id);
-    info.rtSession->DestroyResources();
-  }
+  // OM2 会话资源仅存于 Om2RTVarManagerPool / Om2ExternalWeightManagerPool（按 session_id 索引），
+  // 不涉及 ge:: 会话池，故无需 RtSession::DestroyResources。session_id 恒等于 bundleId（非 0）。
+  gert::Om2RTVarManagerPool::Instance().RemoveManager(info.session.session_id);
+  gert::Om2ExternalWeightManagerPool::Instance().RemoveManager(info.session.session_id);
   acl::AclResourceManagerOm2::GetInstance().DeleteBundleInfo(bundleId);
   ACL_LOG_INFO("[OM2] end to execute aclmdlBundleUnload, bundleId[%u], ret[%d]", bundleId, result);
   return result;

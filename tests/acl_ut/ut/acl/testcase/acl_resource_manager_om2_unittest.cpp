@@ -163,7 +163,7 @@ TEST_F(UTEST_ACL_Resource_Manager_Om2, IsOm2ModelById_False_ZeroId) {
 // 2.3 Bundle管理测试（4个用例）
 
 TEST_F(UTEST_ACL_Resource_Manager_Om2, SetBundleInfo_Success) {
-  acl::BundleModelInfo bundleInfo;
+  acl::Om2BundleModelInfo bundleInfo;
   bundleInfo.isInit = true;
   bundleInfo.varSize = 1024;
   bundleInfo.bundleModelSize = 2048;
@@ -174,13 +174,13 @@ TEST_F(UTEST_ACL_Resource_Manager_Om2, SetBundleInfo_Success) {
 }
 
 TEST_F(UTEST_ACL_Resource_Manager_Om2, GetBundleInfo_Success) {
-  acl::BundleModelInfo bundleInfo;
+  acl::Om2BundleModelInfo bundleInfo;
   bundleInfo.isInit = true;
   bundleInfo.varSize = 1024;
   bundleInfo.bundleModelSize = 2048;
   acl::AclResourceManagerOm2::GetInstance().SetBundleInfo(1U, bundleInfo);
 
-  acl::BundleModelInfo retrieved;
+  acl::Om2BundleModelInfo retrieved;
   aclError ret = acl::AclResourceManagerOm2::GetInstance().GetBundleInfo(1U, retrieved);
 
   EXPECT_EQ(ret, ACL_SUCCESS);
@@ -190,20 +190,20 @@ TEST_F(UTEST_ACL_Resource_Manager_Om2, GetBundleInfo_Success) {
 }
 
 TEST_F(UTEST_ACL_Resource_Manager_Om2, GetBundleInfo_NotFound) {
-  acl::BundleModelInfo retrieved;
+  acl::Om2BundleModelInfo retrieved;
   aclError ret = acl::AclResourceManagerOm2::GetInstance().GetBundleInfo(999U, retrieved);
 
   EXPECT_EQ(ret, ACL_ERROR_INVALID_BUNDLE_MODEL_ID);
 }
 
 TEST_F(UTEST_ACL_Resource_Manager_Om2, DeleteBundleInfo_Success) {
-  acl::BundleModelInfo bundleInfo;
+  acl::Om2BundleModelInfo bundleInfo;
   bundleInfo.isInit = true;
   acl::AclResourceManagerOm2::GetInstance().SetBundleInfo(1U, bundleInfo);
 
   acl::AclResourceManagerOm2::GetInstance().DeleteBundleInfo(1U);
 
-  acl::BundleModelInfo retrieved;
+  acl::Om2BundleModelInfo retrieved;
   aclError ret = acl::AclResourceManagerOm2::GetInstance().GetBundleInfo(1U, retrieved);
   EXPECT_EQ(ret, ACL_ERROR_INVALID_BUNDLE_MODEL_ID);
 }
@@ -258,7 +258,7 @@ TEST_F(UTEST_ACL_Resource_Manager_Om2, IsBundleInnerId_False) {
 }
 
 TEST_F(UTEST_ACL_Resource_Manager_Om2, IsOm2BundleById_True) {
-  acl::BundleModelInfo bundleInfo;
+  acl::Om2BundleModelInfo bundleInfo;
   bundleInfo.isInit = true;
   acl::AclResourceManagerOm2::GetInstance().SetBundleInfo(1U, bundleInfo);
 
@@ -274,7 +274,7 @@ TEST_F(UTEST_ACL_Resource_Manager_Om2, IsOm2BundleById_False) {
 }
 
 TEST_F(UTEST_ACL_Resource_Manager_Om2, SetBundleInfo_WithSubmodels) {
-  acl::BundleModelInfo bundleInfo;
+  acl::Om2BundleModelInfo bundleInfo;
   bundleInfo.isInit = true;
   bundleInfo.loadedSubModelIdSet.insert(100U);
   bundleInfo.loadedSubModelIdSet.insert(101U);
@@ -387,7 +387,7 @@ TEST_F(UTEST_ACL_Resource_Manager_Om2, BundleWithExecutors) {
   }
 
   // 创建Bundle并关联执行器
-  acl::BundleModelInfo bundleInfo;
+  acl::Om2BundleModelInfo bundleInfo;
   bundleInfo.isInit = true;
   for (uint32_t modelId : modelIds) {
     bundleInfo.loadedSubModelIdSet.insert(modelId);
@@ -602,7 +602,7 @@ TEST_F(UTEST_ACL_Resource_Manager_Om2, DeleteBundleSubmodelId_NonexistentBundle_
   EXPECT_FALSE(instance.IsBundleInnerId(100U));
 
   // 已存在的 bundle：仅移除目标 modelId，不影响同 bundle 其他子模型
-  acl::BundleModelInfo bundleInfo;
+  acl::Om2BundleModelInfo bundleInfo;
   ASSERT_EQ(instance.SetBundleInfo(1U, bundleInfo), ACL_SUCCESS);
   instance.AddBundleSubmodelId(1U, 100U);
   instance.AddBundleSubmodelId(1U, 101U);
@@ -610,7 +610,7 @@ TEST_F(UTEST_ACL_Resource_Manager_Om2, DeleteBundleSubmodelId_NonexistentBundle_
   instance.DeleteBundleSubmodelId(1U, 100U);
   EXPECT_FALSE(instance.IsBundleInnerId(100U));
   EXPECT_TRUE(instance.IsBundleInnerId(101U));
-  acl::BundleModelInfo retrieved;
+  acl::Om2BundleModelInfo retrieved;
   ASSERT_EQ(instance.GetBundleInfo(1U, retrieved), ACL_SUCCESS);
   EXPECT_EQ(retrieved.loadedSubModelIdSet.count(100U), 0U);
   EXPECT_EQ(retrieved.loadedSubModelIdSet.count(101U), 1U);

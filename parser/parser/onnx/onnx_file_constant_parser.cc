@@ -9,6 +9,8 @@
  */
 
 #include "onnx_file_constant_parser.h"
+#include <algorithm>
+#include <cctype>
 #include <cinttypes>
 #include <vector>
 
@@ -36,6 +38,34 @@ const char *const kLength = "length";
 const char *const kFileConstant = "FileConstant";
 }  // namespace
 namespace ge {
+namespace {
+void ReportInvalidExternalDataValue(const std::string &value, const std::string &key, const char *reason) {
+  REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"value", "parameter", "reason"}),
+                            std::vector<const char *>({value.c_str(), key.c_str(), reason}));
+  GELOGE(domi::PARAM_INVALID, "Convert external data key[%s] value[%s] to int64_t failed: %s.", key.c_str(),
+         value.c_str(), reason);
+}
+
+Status ConvertExternalDataValueToInt64(const std::string &value, const std::string &key, int64_t &converted_value) {
+  // offset/length 只接受非负十进制整数。stoll 会接受前导空白、'+'/'-' 号以及数字前缀
+  // （如 " 42"、"1024abc"、"0x10"），所以这里先要求整个字符串均由数字组成，
+  // 只留下"超过 int64_t 范围"一种情况交给 stoll 抛出的 out_of_range 异常处理。
+  const bool is_all_digits = (!value.empty()) && std::all_of(value.begin(), value.end(), [](const unsigned char c) {
+                               return std::isdigit(c) != 0;
+                             });
+  if (!is_all_digits) {
+    ReportInvalidExternalDataValue(value, key, "it must be a non-negative integer without spaces or other characters");
+    return FAILED;
+  }
+  try {
+    converted_value = static_cast<int64_t>(stoll(value));
+  } catch (const std::exception &e) {
+    ReportInvalidExternalDataValue(value, key, e.what());
+    return FAILED;
+  }
+  return SUCCESS;
+}
+}  // namespace
 Status OnnxFileConstantParser::ParseParams(const Message *op_src, ge::Operator &op_def) {
   GE_CHECK_NOTNULL(op_src);
   const ge::onnx::NodeProto *node = PtrToPtr<const Message, const ge::onnx::NodeProto>(op_src);
@@ -116,26 +146,26 @@ Status OnnxFileConstantParser::ParsePath(const ge::onnx::TensorProto &tensor_pro
 
 Status OnnxFileConstantParser::SetPathAttr(const ge::onnx::StringStringEntryProto &string_proto,
                                            ge::Operator &op_def) const {
-  if (string_proto.key() == kLocation) {
-    op_def.SetAttr(kLocation, string_proto.value());
-  } else {
-    int64_t value;
-    try {
-      value = stol(string_proto.value());
-    } catch (const std::exception &e) {
-      const std::string proto_value = string_proto.value();
-      const std::string proto_key = string_proto.key();
-      REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"value", "parameter", "reason"}),
-                                std::vector<const char *>({proto_value.c_str(), proto_key.c_str(), e.what()}));
-      GELOGE(domi::PARAM_INVALID, "Convert %s to int64_t value failed:%s", string_proto.value().c_str(), e.what());
+  const std::string &key = string_proto.key();
+  const std::string &value = string_proto.value();
+  if (key == kLocation) {
+    if (value.empty()) {
+      ReportInvalidExternalDataValue(value, key, "the location of external data must not be empty");
       return FAILED;
     }
-    if (string_proto.key() == kOffset) {
-      op_def.SetAttr(kOffset, value);
-    } else {
-      op_def.SetAttr(kLength, value);
-    }
+    op_def.SetAttr(kLocation, value);
+    return SUCCESS;
   }
+  if ((key != kOffset) && (key != kLength)) {
+    GELOGD("The external data key[%s] is ignored by GE.", key.c_str());
+    return SUCCESS;
+  }
+
+  int64_t converted_value = 0;
+  if (ConvertExternalDataValueToInt64(value, key, converted_value) != SUCCESS) {
+    return FAILED;
+  }
+  op_def.SetAttr((key == kOffset) ? kOffset : kLength, converted_value);
   return SUCCESS;
 }
 

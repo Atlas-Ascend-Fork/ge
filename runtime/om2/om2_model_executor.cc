@@ -22,7 +22,6 @@
 #include "acl/acl_rt.h"
 #include "registry/op_impl_space_registry_v2.h"
 #include "framework/om2/model_api/om2_model_api.h"
-#include "framework/runtime/rt_session.h"
 #include "framework/runtime/gert_model/gert_model_executor_callbacks.h"
 #include "framework/runtime/dump/model_dump_c_api.h"
 #include "framework/runtime/dump/profiling_impl.h"
@@ -176,7 +175,10 @@ uint64_t GetNextSessionId() {
 }
 
 uint64_t ResolveSessionId(const Om2ModelLoadArg &load_arg) {
-  return (load_arg.rt_session == nullptr) ? GetNextSessionId() : load_arg.rt_session->GetSessionId();
+  if ((load_arg.session_ctx != nullptr) && (load_arg.session_ctx->session_id != 0U)) {
+    return load_arg.session_ctx->session_id;
+  }
+  return GetNextSessionId();
 }
 
 ge::Status RtMallocBuffer(size_t size, void *&ptr) {
@@ -654,11 +656,12 @@ class Om2ModelExecutor::Impl {
                                GertModelVarContext &var_context) const {
     auto var_manager = Om2RTVarManagerPool::Instance().GetManager(session_id_);
     GE_ASSERT_NOTNULL(var_manager);
-    // 外部变量内存经 rt_session 透传，Bundle 子模型共享同一 Session 时幂等合并
+    // 外部变量内存经 session_ctx 透传，Bundle 子模型共享同一 session_id 时幂等合并
     void *external_var_addr = nullptr;
     uint64_t external_var_size = 0U;
-    if (load_arg.rt_session != nullptr) {
-      load_arg.rt_session->GetExternalVar(external_var_addr, external_var_size);
+    if (load_arg.session_ctx != nullptr) {
+      external_var_addr = load_arg.session_ctx->external_var_addr;
+      external_var_size = load_arg.session_ctx->external_var_size;
     }
     var_manager->SetExternalVar(external_var_addr, external_var_size);
 
@@ -1330,6 +1333,9 @@ class Om2ModelExecutor::Impl {
     }
     CloseMemFd(run_model_info_.so_fd);
     ReleaseOwnedMemory();
+    if (owner_ != nullptr) {
+      (void)gert::HcclHostFinalize(static_cast<void *>(owner_));
+    }
   }
 
  private:

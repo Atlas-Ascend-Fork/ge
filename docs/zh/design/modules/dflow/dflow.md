@@ -896,6 +896,8 @@ Python 侧的两个核心装饰器 `@df.pyflow` 与 `@df.npu_model` 共享同一
 
 **支持的选项**：`num_returns`、`resources`（memory/num_cpus/num_npus，当前仅 num_cpus 参与部署生效）、`env_hook_func`（初始化前环境钩子）、`visible_device_enable`、`stream_input`（流式输入，当前仅支持 "Queue"）、`choice_output`（输出过滤回调，返回 False 的输出置空跳过）。后两者为 pyflow 独有。
 
+固定长度的 tuple 返回类型注解按元素个数推导输出数；其他注解表示单个输出。可变长度的 tuple 注解无法确定输出数，应通过 `num_returns` 指定，未指定时默认一个输出。
+
 **工程生成链路**（`FuncProcessPoint` → `tools/func_ws_creator.py`）：
 
 1. cloudpickle 序列化函数/类对象到 `<name>.pkl`；全局消息类型注册表序列化到 `_msg_type_register.pkl`（UDF 进程启动时恢复，保证执行器识别自定义消息类型）；`env_hook_func` 可选序列化
@@ -1032,12 +1034,16 @@ heavy_load UDF 虽然在 host CPU 执行，但仍需指定 logic_device_id——
 
 **C++ 构图场景**：C++ 构图时用户直接指定唯一的 FlowNode 名称，部署配置 JSON 中用该节点名匹配即可，无需设置别名。
 
+Python 自动命名的计数器按线程隔离，并在各线程首次使用时初始化。
+
 **Python 构图场景**：Python 构图时节点名由框架自动生成（`name_scope` 自动命名），用户不一定知道确切名称，可通过以下步骤方便配置：
 
 1. （可选）为节点设置 alias：`node.set_alias("preprocess")`（`pydflow/python/dataflow/dataflow.py` 的 `FlowNode.set_alias`），部署配置中用该 alias 匹配
 2. 调用 `df.utils.generate_deploy_template(graph, "deploy.json")` 生成模板（`pydflow/python/dataflow/utils/deploy_template.py`），自动遍历图中所有节点并填充部署名，每个节点默认 `logic_device_list: "0:0:0:0"`
 3. 手动编辑生成的 JSON，修改各节点目标设备
 4. 编译时设 `ge.experiment.data_flow_deploy_info_path = "deploy.json"`
+
+如果设置的 alias 已存在，操作会抛出异常，并恢复进入该名称作用域前的状态。
 
 #### 4.6.3 多实例部署
 

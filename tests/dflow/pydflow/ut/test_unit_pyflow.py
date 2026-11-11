@@ -13,7 +13,7 @@
 import os
 import unittest
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, Optional, Tuple
 
 import cloudpickle
 import dataflow as df
@@ -22,10 +22,12 @@ import dataflow.flow_func as ff
 import dataflow.flow_func.flowfunc_wrapper as fw
 import dataflow.utils.utils as utils
 import numpy as np
-from dataflow.pyflow import PyActorProcessPoint
+from dataflow.pyflow import PyActorProcessPoint, _get_func_num_returns
 
 
-@df.pyflow(resources={"memory": 100, "num_cpus": 1, "num_npus": 1}, visible_device_enable=True)
+@df.pyflow(
+    resources={"memory": 100, "num_cpus": 1, "num_npus": 1}, visible_device_enable=True
+)
 class Foo:
     def __init__(self, name, val):
         self.name = name
@@ -68,8 +70,8 @@ class TestFooInvalid:
 
 @df.pyflow(stream_input="Queue")
 def func_with_stream_input(queue0, queue1):
-    in0 = queue0.get()
-    in1 = queue1.get()
+    queue0.get()
+    queue1.get()
     return df.alloc_tensor([2, 3], dt.DT_FLOAT16)
 
 
@@ -77,7 +79,7 @@ def func_with_stream_input(queue0, queue1):
 class MyClass:
     @df.method(stream_input="Queue")
     def func_with_stream_input(self, queue0):
-        in0 = queue0.get()
+        queue0.get()
         return df.alloc_tensor([2, 3], dt.DT_FLOAT16)
 
     @df.method(choice_output=lambda e: e is not None)
@@ -110,6 +112,25 @@ def func_with_invalid_output_num(in0, in1):
 
 
 class TestPyFlow(unittest.TestCase):
+    def test_output_count_for_return_annotations(self):
+        def mapping() -> Dict[str, int]:
+            return {"value": 1}
+
+        def optional() -> Optional[int]:
+            return 1
+
+        def pair() -> Tuple[int, int]:
+            return 1, 2
+
+        def variable_tuple() -> Tuple[int, ...]:
+            return 1, 2, 3
+
+        self.assertEqual(_get_func_num_returns(mapping, {}), 1)
+        self.assertEqual(_get_func_num_returns(mapping, {"num_returns": 1}), 1)
+        self.assertEqual(_get_func_num_returns(optional, {}), 1)
+        self.assertEqual(_get_func_num_returns(pair, {}), 2)
+        self.assertEqual(_get_func_num_returns(variable_tuple, {"num_returns": 3}), 3)
+
     def test_pyflow_success(self):
         df.init({"ge.exec.deviceId": "0"})
 
@@ -129,7 +150,9 @@ class TestPyFlow(unittest.TestCase):
         # input index is defined by func inner order, add_1/sub_1
         self.assertEqual(foo._input_anchors[0].name, "d1")
         self.assertEqual(foo._input_anchors[1].name, "d0")
-        func_out0, func_out1, func_out2 = some_func.fnode().set_alias("some_func")(add1_out0, add1_out1)
+        func_out0, func_out1, func_out2 = some_func.fnode().set_alias("some_func")(
+            add1_out0, add1_out1
+        )
         graph = df.FlowGraph([sub1_out, func_out0, func_out1, func_out2])
         self.assertEqual(Path("./some_func_fnode_ws").exists(), True)
         self.assertEqual(Path(foo.name + "_ws").exists(), True)
@@ -209,13 +232,19 @@ class TestPyFlow(unittest.TestCase):
         os.remove("./test_generate_deploy_info.json")
 
     def test_pyflow_run_with_stream_input(self):
-        ret = func_with_stream_input(fw.MetaRunContext(), [fw.FlowMsgQueue(), fw.FlowMsgQueue()])
+        ret = func_with_stream_input(
+            fw.MetaRunContext(), [fw.FlowMsgQueue(), fw.FlowMsgQueue()]
+        )
         self.assertEqual(ret, 0)
         fnode0 = MyClass.fnode()
-        self.assertEqual(Path(fnode0.name + "_ws/src_python/MyClass.pkl").exists(), True)
+        self.assertEqual(
+            Path(fnode0.name + "_ws/src_python/MyClass.pkl").exists(), True
+        )
         with open(fnode0.name + "_ws/src_python/MyClass.pkl", "rb") as f:
             my_class = cloudpickle.loads(f.read())
-            ret = my_class.func_with_stream_input(fw.MetaRunContext(), [fw.FlowMsgQueue()])
+            ret = my_class.func_with_stream_input(
+                fw.MetaRunContext(), [fw.FlowMsgQueue()]
+            )
             self.assertEqual(ret, 0)
         os.system("rm -rf ./*_fnode_ws")
 
@@ -223,8 +252,8 @@ class TestPyFlow(unittest.TestCase):
         def decorate_func():
             @df.pyflow(stream_input="Iterator")
             def func_with_invalid_stream_input(queue0, queue1):
-                in0 = queue0.get()
-                in1 = queue1.get()
+                queue0.get()
+                queue1.get()
                 return df.alloc_tensor([2, 3], dt.DT_FLOAT16)
 
         self.assertRaises(TypeError, decorate_func)
@@ -247,14 +276,18 @@ class TestPyFlow(unittest.TestCase):
         ret = func_with_stream_ouput(fw.MetaRunContext(), [fw.FlowMsg(), fw.FlowMsg()])
         self.assertEqual(ret, 0)
         fnode0 = MyClassWithStreamOutput.fnode()
-        with open(fnode0.name + "_ws/src_python/MyClassWithStreamOutput.pkl", "rb") as f:
+        with open(
+            fnode0.name + "_ws/src_python/MyClassWithStreamOutput.pkl", "rb"
+        ) as f:
             my_class = cloudpickle.loads(f.read())
             ret = my_class.func_with_stream_ouput(fw.MetaRunContext(), [fw.FlowMsg()])
             self.assertEqual(ret, 0)
         os.system("rm -rf ./*_fnode_ws")
 
     def test_func_with_invalid_output_num(self):
-        ret = func_with_invalid_output_num(fw.MetaRunContext(), [fw.FlowMsg(), fw.FlowMsg()])
+        ret = func_with_invalid_output_num(
+            fw.MetaRunContext(), [fw.FlowMsg(), fw.FlowMsg()]
+        )
         self.assertEqual(ret, ff.FLOW_FUNC_FAILED)
 
     def test_pyflow_run_with_invalid_input(self):

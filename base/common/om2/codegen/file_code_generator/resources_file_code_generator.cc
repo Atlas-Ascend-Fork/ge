@@ -413,7 +413,9 @@ void ResourcesFileCodeGenerator::BuildReleaseResourcesMethodForHccl(std::vector<
   auto hccl_stream = ast_.Var("void *", "hccl_stream");
   (void)body.emplace_back(ast_.RangeFor(
       follow_kv, main_follow_stream_mapping_,
-      {ast_.RangeFor(hccl_stream, follow_kv.Attr("second"), {ChkStatus(AclrtDestroyStream(hccl_stream))})}));
+      {ast_.RangeFor(hccl_stream, follow_kv.Attr("second"),
+                     {ast_.If(hccl_stream != nullptr, {ChkStatus(AclmdlRIUnbindStream(model_handle_, hccl_stream)),
+                                                       ChkStatus(AclrtDestroyStream(hccl_stream))})})}));
   (void)body.emplace_back(main_follow_stream_mapping_.Clear());
 }
 

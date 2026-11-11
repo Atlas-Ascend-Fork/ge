@@ -3093,6 +3093,20 @@ TEST_F(Om2CodegenUt, ResourcesFileCodeGenerator_HcclFollowStreamResources) {
   EXPECT_TRUE(empty_body.empty());
 }
 
+TEST_F(Om2CodegenUt, ResourcesFileCodeGenerator_HcclFollowStreamReleaseUnbind) {
+  AstContext ctx;
+  AstBuildContext ast(ctx);
+  ResourcesFileCodeGenerator generator(ast);
+
+  std::vector<BodyItem> body;
+  generator.BuildReleaseResourcesMethodForHccl(body);
+  ASSERT_FALSE(body.empty());
+  const auto output = EmitBodyItems(ast, body);
+  ExpectContainsAll(output, {"for (auto &follow_kv : main_follow_stream_mapping_)", "if (hccl_stream != nullptr)",
+                             "aclmdlRIUnbindStream(model_handle_, hccl_stream)", "aclrtDestroyStream(hccl_stream)",
+                             "main_follow_stream_mapping_.clear()"});
+}
+
 TEST_F(Om2CodegenUt, TaskCodeBuilderUtil_IsCollectiveCommType_Categories) {
   const std::vector<std::string> collective_types = {HCOMALLREDUCE,
                                                      HCOMALLGATHER,

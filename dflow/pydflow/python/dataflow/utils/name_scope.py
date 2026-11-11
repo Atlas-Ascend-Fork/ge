@@ -25,7 +25,11 @@ class _NameScope(object):
 
     def __enter__(self):
         self._old_name_scope.append(self.name)
-        return self._unique_name()
+        try:
+            return self._unique_name()
+        except BaseException:
+            self._old_name_scope.pop()
+            raise
 
     def __exit__(self, type_arg, value_arg, traceback_arg):
         self._old_name_scope.pop()
@@ -62,10 +66,13 @@ def name_scope(name, default_name=None, namespace=None, auto_name=True):
     if namespace is not None and not isinstance(namespace, str):
         raise TypeError("namespace for name_scope must be a string.")
     global _thread_local_data
-    _thread_local_data.name_scope.name = name
-    _thread_local_data.name_scope.namespace = namespace
-    _thread_local_data.name_scope.auto_name = auto_name
-    return _thread_local_data.name_scope
+    thread_data = _thread_local_data
+    if not hasattr(thread_data, "name_scope"):
+        thread_data.name_scope = _NameScope(None)
+    thread_data.name_scope.name = name
+    thread_data.name_scope.namespace = namespace
+    thread_data.name_scope.auto_name = auto_name
+    return thread_data.name_scope
 
 
 def reset_name_scope():

@@ -34,7 +34,9 @@ class DfException(Exception):
     def __init__(self, obj, error_code: int = None):
         super().__init__()
         self.message = obj
-        self.error_code = error_code if error_code is not None else dwrapper.PARAM_INVALID
+        self.error_code = (
+            error_code if error_code is not None else dwrapper.PARAM_INVALID
+        )
 
     def __str__(self):
         return f"DfException:{self.error_code}:{self.message}"
@@ -56,7 +58,9 @@ def _is_instance(value, dtype):
     if isinstance(dtype, type):
         if not isinstance(value, dtype):
             return False
-    elif hasattr(dtype, "__origin__") and (dtype.__origin__ in _global_type_checker_functions):
+    elif hasattr(dtype, "__origin__") and (
+        dtype.__origin__ in _global_type_checker_functions
+    ):
         return _global_type_checker_functions[dtype.__origin__](value, dtype)
     else:
         raise TypeError(f"The type {value} check of data {dtype} is not supported")
@@ -68,7 +72,9 @@ def _check_dict_key_value_type(arg, dtype):
         return False
     dict_key_value_type = dtype.__args__
     for key, value in arg.items():
-        if not _is_instance(key, dict_key_value_type[0]) or not _is_instance(value, dict_key_value_type[1]):
+        if not _is_instance(key, dict_key_value_type[0]) or not _is_instance(
+            value, dict_key_value_type[1]
+        ):
             return False
     return True
 
@@ -180,7 +186,9 @@ def convert_flow_msg_to_object(flow_msg):
     if int(flow_msg.get_msg_type()) == int(ff.MSG_TYPE_TENSOR_DATA):
         return flow_msg.get_tensor()
     elif get_msg_type_register().registered(flow_msg.get_msg_type()):
-        deserialize_func = get_msg_type_register().get_deserialize_func(flow_msg.get_msg_type())
+        deserialize_func = get_msg_type_register().get_deserialize_func(
+            flow_msg.get_msg_type()
+        )
         obj = deserialize_func(flow_msg.get_raw_data())
         return obj
     else:
@@ -195,9 +203,13 @@ def get_param_count(func):
 def get_typing_num_returns(func):
     sig = inspect.signature(func)
     if sig.return_annotation != inspect.Signature.empty:
-        if hasattr(sig.return_annotation, "__args__"):
-            return len(sig.return_annotation.__args__)
-        else:
-            return 1
+        annotation = sig.return_annotation
+        if getattr(annotation, "__origin__", None) is tuple:
+            args = getattr(annotation, "__args__", ())
+            if args and args[-1] is Ellipsis:
+                return -1
+            if args:
+                return len(args)
+        return 1
     else:
         return -1

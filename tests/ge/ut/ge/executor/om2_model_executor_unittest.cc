@@ -20,7 +20,6 @@
 
 #include "framework/runtime/dump/model_dump_manager.h"
 #include "framework/runtime/om2_model_executor.h"
-#include "framework/runtime/rt_session.h"
 #include "ge/ge_ir_build.h"
 #include "common/env_path.h"
 #include "framework/common/json_file.h"
@@ -2127,7 +2126,7 @@ TEST_F(Om2ModelExecutorUt, load_ok_when_input_shape_is_empty) {
   EXPECT_EQ(executor.Load(holder.model_data, load_arg, 1U), SUCCESS);
 }
 
-TEST_F(Om2ModelExecutorUt, load_generates_session_id_without_rt_session) {
+TEST_F(Om2ModelExecutorUt, load_generates_session_id_when_session_id_unset) {
   auto model_data_holder = LoadValidModelData();
   auto load_arg = MakeOm2LoadArg();
   ge::Status error_code = SUCCESS;
@@ -2137,11 +2136,12 @@ TEST_F(Om2ModelExecutorUt, load_generates_session_id_without_rt_session) {
   ASSERT_NE(executor, nullptr);
 }
 
-TEST_F(Om2ModelExecutorUt, load_uses_rt_session_id_when_rt_session_is_not_null) {
+TEST_F(Om2ModelExecutorUt, load_uses_provided_session_id_when_not_zero) {
   auto model_data_holder = LoadValidModelData();
   auto load_arg = MakeOm2LoadArg();
-  gert::RtSession rt_session(9527U);
-  load_arg.rt_session = &rt_session;
+  gert::Om2SessionContext session_ctx;
+  session_ctx.session_id = 9527U;
+  load_arg.session_ctx = &session_ctx;
   ge::Status error_code = SUCCESS;
   ASSERT_EQ(setenv("OM2_EXPECT_SESSION_ID", "9527", 1), 0);
   auto executor = gert::LoadOm2ExecutorFromData(model_data_holder.model_data, load_arg, error_code);
@@ -5048,9 +5048,10 @@ TEST_F(Om2ModelExecutorUt, load_from_bundle_data_shared_var_initialized_once) {
   ASSERT_EQ(setenv("OM2_EXPECT_VAR0_MODE", "NON_NULL", 1), 0);
   VarInitDataRecordingAclRuntimeStub runtime_stub;
   AclRuntimeStubGuard runtime_stub_guard(&runtime_stub);
-  gert::RtSession session(4242U);
   auto load_arg = MakeOm2LoadArg();
-  load_arg.rt_session = &session;
+  gert::Om2SessionContext session_ctx;
+  session_ctx.session_id = 4242U;
+  load_arg.session_ctx = &session_ctx;
 
   const auto count_var_init_records = [&runtime_stub, &weight]() {
     size_t count = 0U;
@@ -5090,9 +5091,10 @@ TEST_F(Om2ModelExecutorUt, load_from_bundle_data_conflicting_shared_var_fails) {
   ASSERT_EQ(setenv("OM2_EXPECT_VAR0_MODE", "NON_NULL", 1), 0);
   SetFakeVarNum(1);
   SetFakeVarDesc(0, "var_00_0", 4U, kMemoryVarLogicBase, 0U, 4U);
-  gert::RtSession session(4343U);
   auto load_arg = MakeOm2LoadArg();
-  load_arg.rt_session = &session;
+  gert::Om2SessionContext session_ctx;
+  session_ctx.session_id = 4343U;
+  load_arg.session_ctx = &session_ctx;
 
   ge::graphStatus error_code0 = ge::FAILED;
   const auto executor0 = gert::LoadOm2ExecutorFromBundleData(holder.model_data.model_data, holder.model_data.model_len,
@@ -5120,10 +5122,12 @@ TEST_F(Om2ModelExecutorUt, load_from_bundle_data_external_var_arena) {
   auto holder = MakeOm2BundleArchiveModelData(test_work_dir_, "bundle_external_var", 2U, {var_meta}, &weight);
 
   std::vector<uint8_t> arena(4096U, 0U);
-  gert::RtSession session(4444U);
-  session.SetExternalVar(arena.data(), arena.size());
   auto load_arg = MakeOm2LoadArg();
-  load_arg.rt_session = &session;
+  gert::Om2SessionContext session_ctx;
+  session_ctx.session_id = 4444U;
+  session_ctx.external_var_addr = arena.data();
+  session_ctx.external_var_size = arena.size();
+  load_arg.session_ctx = &session_ctx;
 
   ASSERT_EQ(setenv("OM2_EXPECT_VAR0_MODE", "NON_NULL", 1), 0);
   VarInitDataRecordingAclRuntimeStub runtime_stub;

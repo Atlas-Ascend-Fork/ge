@@ -939,6 +939,49 @@ TEST_F(UtestOnnxParser, FileConstantParsePath) {
   EXPECT_EQ(attr_value, "/usr/local");
 }
 
+TEST_F(UtestOnnxParser, FileConstantParseAttrRejectInvalidValue) {
+  OnnxFileConstantParser parser;
+  ge::onnx::StringStringEntryProto string_proto;
+  ge::OpDescPtr op_desc_src = std::make_shared<ge::OpDesc>("file_constant", "FileConstant");
+  ge::Operator op = ge::OpDescUtils::CreateOperatorFromOpDesc(op_desc_src);
+
+  // length 正常写入
+  string_proto.set_key("length");
+  string_proto.set_value("128");
+  Status ret = parser.SetPathAttr(string_proto, op);
+  EXPECT_EQ(ret, SUCCESS);
+  int64_t length_value = 0;
+  EXPECT_TRUE(AttrUtils::GetInt(op_desc_src, "length", length_value));
+  EXPECT_EQ(length_value, 128);
+
+  // 负数、前缀垃圾、十六进制、前后空格、空串、超范围均拒绝
+  const std::vector<std::string> invalid_values = {"-1", "1024abc", "0x10", " 42", "42 ", "", "9223372036854775808"};
+  for (const auto &invalid_value : invalid_values) {
+    string_proto.set_key("offset");
+    string_proto.set_value(invalid_value);
+    ret = parser.SetPathAttr(string_proto, op);
+    EXPECT_EQ(ret, FAILED) << "invalid value:[" << invalid_value << "]";
+  }
+  // 非法值不会写入 offset 属性
+  int64_t offset_value = 0;
+  EXPECT_FALSE(AttrUtils::GetInt(op_desc_src, "offset", offset_value));
+
+  // checksum 与未知键被忽略，不再覆盖 length
+  string_proto.set_key("checksum");
+  string_proto.set_value("sha1:abcdef0123456789");
+  EXPECT_EQ(parser.SetPathAttr(string_proto, op), SUCCESS);
+  string_proto.set_key("unknown_key");
+  string_proto.set_value("abc");
+  EXPECT_EQ(parser.SetPathAttr(string_proto, op), SUCCESS);
+  EXPECT_TRUE(AttrUtils::GetInt(op_desc_src, "length", length_value));
+  EXPECT_EQ(length_value, 128);
+
+  // location 为空被拒绝
+  string_proto.set_key("location");
+  string_proto.set_value("");
+  EXPECT_EQ(parser.SetPathAttr(string_proto, op), FAILED);
+}
+
 TEST_F(UtestOnnxParser, FileConstantParseParam) {
   OnnxFileConstantParser parser;
   ge::onnx::NodeProto input_node;

@@ -11,7 +11,6 @@
 #include "acl_resource_manager_om2.h"
 #include "common/log_inner.h"
 #include "mmpa/mmpa_api.h"
-#include "runtime/rt_session.h"
 #include "framework/runtime/om2_model_executor.h"
 #include "model_desc_internal.h"
 
@@ -128,7 +127,7 @@ void AclResourceManagerOm2::DeleteBundleSubmodelId(const uint32_t bundleId, uint
   (void)bundleInnerIds_.erase(modelId);
 }
 
-aclError AclResourceManagerOm2::SetBundleInfo(const uint32_t bundleId, const BundleModelInfo &bundleInfos) {
+aclError AclResourceManagerOm2::SetBundleInfo(const uint32_t bundleId, const Om2BundleModelInfo &bundleInfos) {
   const std::lock_guard<std::mutex> locker(mutex_);
   bundleInfos_[bundleId] = bundleInfos;
   for (const auto &modelId : bundleInfos.loadedSubModelIdSet) {
@@ -137,7 +136,7 @@ aclError AclResourceManagerOm2::SetBundleInfo(const uint32_t bundleId, const Bun
   return ACL_SUCCESS;
 }
 
-aclError AclResourceManagerOm2::GetBundleInfo(const uint32_t bundleId, BundleModelInfo &bundleInfos) {
+aclError AclResourceManagerOm2::GetBundleInfo(const uint32_t bundleId, Om2BundleModelInfo &bundleInfos) {
   const std::lock_guard<std::mutex> locker(mutex_);
   const auto it = bundleInfos_.find(bundleId);
   if (it == bundleInfos_.end()) {
