@@ -45,4 +45,6 @@
 | DT_FLOAT6_E2M3 | 39 | float6_e2m3类型 |
 | DT_FLOAT4_E2M1 | 40 | float4_e2m1类型 |
 | DT_FLOAT4_E1M2 | 41 | float4_e1m2类型 |
-| DT_MAX | 42 | 类型边界标记 |
+| DT_HIFLOAT4 | 42 | 4 位高精度浮点型 |
+| DT_HIFLOAT4_SCALE | 43 | hifloat4 带缩放因子类型（4 字节/元素） |
+| DT_MAX | 44 | 数据类型边界标记，不代表实际数据类型 |
