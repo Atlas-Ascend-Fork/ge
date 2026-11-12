@@ -980,10 +980,10 @@ Status InnerSession::GetCompiledModel(uint32_t graph_id, ModelBufferData &model_
 }
 
 bool InnerSession::GetBuildFlag(uint32_t graph_id) const {
-  return graph_manager_.GetBuildFlag(graph_id);
+  return user_graphs_manager_->GetBuildFlag(graph_id);
 }
 
 bool InnerSession::GetLoadFlag(uint32_t graph_id) const {
-  return graph_manager_.GetLoadFlag(graph_id);
+  return user_graphs_manager_->GetLoadFlag(graph_id);
 }
 }  // namespace ge
