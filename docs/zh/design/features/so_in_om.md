@@ -76,6 +76,7 @@ SO in OM 特性在 OM 文件格式中新增了独立的分区类型 `SO_BINS`：
 | `SO_BINS` | 算子 .so 文件集合 | SO in OM 的核心载体 |
 | `TILING_DATA` | 预计算的 tiling 参数 | 与 SpaceRegistry SO 配合使用 |
 | `CUSTOM_OPS` | 自定义算子实例序列化数据 | 与 SO_BINS 中 kCustomOp 类型 SO 配合使用 |
+| `PYTHON_CUSTOM_OPS` | Python 自定义算子的源码 artifact + descriptor manifest（去重、deterministic bytes） | **可选分区**，与 `SO_BINS` 互斥承载 Python 算子（Python 算子不打包任何 SO，由 `FrameworkHostedOp` 标记跳过 SO 收集）；由被图使用且源码可定位的 Python 算子触发，无声明开关。 |
 
 ### 2.2 四种 SO 类型
 

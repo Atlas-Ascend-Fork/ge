@@ -809,6 +809,7 @@ custom_op/
 ├── bootstrap.py             # Plugin discovery and loading
 ├── context.py               # Current execution context binding for schema-bound execute/compile
 ├── _bridge.py               # Bridge runtime helper (instance management, for C++ bridge .so callbacks)
+├── _portable.py             # Portable method contract validation
 ├── _native.py               # Native module loading and re-export
 ├── _artifact_utils.py       # Runtime artifact selection helper
 ├── fallback_runtime.py      # Component fallback entry: compiles so on site when no matching prebuilt artifact exists
@@ -821,7 +822,7 @@ Note: `EagerOpExecutionContext`, `OpCompileContext`, `CompilePlatformInfo`, and 
 
 #### Module Positioning
 
-The long-term goal of the Python custom operator is to support users in describing custom operator prototypes and implementing custom operator capabilities in Python. Callable `execute`, `compile`, and `declare_launch_args` methods are now reflected from the implementation class to detect execution capability, graph-compilation capability, and declarative static-graph address-refresh capability, respectively. User classes do not inherit from capability base classes. The execution entry uses a schema-bound form whose inputs and attributes are bound from canonical IR in declaration order; callbacks access the execution context through `get_execute_ctx()`, while `compile` and `declare_launch_args` bind inputs, outputs, and attributes from canonical IR. After a Python prototype is registered with `OperatorFactory` through `register_op`, the compile-time and RT2 dynamic-shape paths invoke the same Python `infer_meta` callback. Compile-time inference writes output shape, dtype, and origin dtype; RT2 updates output shape only.
+The long-term goal of the Python custom operator is to support users in describing custom operator prototypes and implementing custom operator capabilities in Python. Callable `execute`, `compile`, `declare_launch_args`, and paired `serialize`/`deserialize` methods are now reflected from the implementation class to detect execution capability, graph-compilation capability, declarative static-graph address-refresh capability, and Portable state snapshot capability, respectively. User classes do not inherit from capability base classes. The execution entry uses a schema-bound form whose inputs and attributes are bound from canonical IR in declaration order; callbacks access the execution context through `get_execute_ctx()`, while `compile` and `declare_launch_args` bind inputs, outputs, and attributes from canonical IR. After a Python prototype is registered with `OperatorFactory` through `register_op`, the compile-time and RT2 dynamic-shape paths invoke the same Python `infer_meta` callback. Compile-time inference writes output shape, dtype, and origin dtype; RT2 updates output shape only.
 
 #### Runtime Native Artifact Selection
 
@@ -908,7 +909,30 @@ Within one AnnotatedArgs task-plan lifecycle, `declare_launch_args` is invoked e
 
 `OpCompileContext`, `CompilePlatformInfo`, input and output `Tensor` objects, and attribute views are borrowed objects valid only during the callback and become invalid after it returns or raises. The compile callback is not invoked during model loading or execution, and the Python implementation, instance state, and kernel binary are not written to the OM.
 
-##### 6. OpImplDescriptor Data Class
+##### 6. Portable State Interface
+
+**File location**: `_portable.py`, `registry.py`, `_bridge.py`
+
+`serialize` and `deserialize` are paired ordinary instance methods that declare the Portable state snapshot capability. Their signatures are `serialize(self) -> bytes` and `deserialize(self, data: bytes) -> None`. GE does not introduce a new Python `PortableOp` base class, context, or payload wrapper. Both methods must coexist as ordinary instance methods; `staticmethod` and `classmethod` are not supported. No additional parameters, defaults, keyword-only parameters, `*args`, or `**kwargs` are permitted beyond `self` and `data`. Parameter and return annotations must be explicitly present.
+
+```python
+@register_op_impl(op_type="AddPortableCustom")
+class AddPortableCustom:
+    def __init__(self) -> None:
+        self._state: dict[str, bytes] = {}
+
+    def serialize(self) -> bytes:
+        return encode_state(self._state)
+
+    def deserialize(self, data: bytes) -> None:
+        self._state = decode_state(data)
+```
+
+`serialize` returns non-empty `bytes` with length in the range `1..UINT32_MAX`, rejecting `bytearray`, `memoryview`, empty `bytes`, and oversized results. `deserialize` receives a Python `bytes` with its own storage and must return `None`. The payload is fully opaque to GE: GE does not use pickle, does not parse the user protocol, and does not provide version headers or compatibility fallbacks. One Python/C++ `bytes` copy occurs in each direction; no borrowed buffer is used.
+
+The compile-side `compile` and `serialize` share the same holder; the restore-side creates a new holder, obtains an empty instance through `cls()`, then calls `deserialize()` once. After restoration, other capabilities continue to reuse the same instance. `portable` can be independently combined with the `eager_execute`, `compilable`, and `annotated_args` capabilities. Python exceptions and illegal return values are uniformly converted to `GRAPH_FAILED` without retry or fallback.
+
+##### 7. OpImplDescriptor Data Class
 
 **File location**: `registry.py`
 
@@ -920,7 +944,7 @@ Within one AnnotatedArgs task-plan lifecycle, `declare_launch_args` is invoked e
 - `op_type` - Custom operator type
 - `module_name` - Associated module name
 - `class_name` - Class name
-- `interfaces` - Capability interface list; it may contain `"eager_execute"`, `"compilable"`, and `"annotated_args"`
+- `interfaces` - Capability interface list; it may contain `"eager_execute"`, `"compilable"`, `"annotated_args"`, and `"portable"` or valid combinations thereof
 - `cls` - Python implementation class reference
 
 #### Registration and Discovery
@@ -928,7 +952,7 @@ Within one AnnotatedArgs task-plan lifecycle, `declare_launch_args` is invoked e
 **Decorators**:
 
 - `register_op(op_type, mutates_args=(), output_names=None)` - Declares and collects a Python custom operator prototype from annotations on the decorated function; the decorated function also serves as the `infer_meta` callback and returns output `TensorDesc` objects
-- `register_op_impl(op_type)` - Registers a Python implementation class and reflects its callable methods into a capability list; `execute` maps to `eager_execute`, `compile` maps to `compilable`, and `declare_launch_args` maps to `annotated_args`
+- `register_op_impl(op_type)` - Registers a Python implementation class and reflects its callable methods into a capability list; `execute` maps to `eager_execute`, `compile` maps to `compilable`, `declare_launch_args` maps to `annotated_args`, and paired `serialize`/`deserialize` maps to `portable`
 
 **Discovery mechanism**:
 
@@ -956,6 +980,24 @@ class AddPythonCustomOp:
         ctx = get_execute_ctx()
         z = ctx.malloc_output_tensor(0, x.shape, x.format, x.data_type)
         ...
+```
+
+Portable state interface example:
+
+```python
+from ge.custom_op import register_op_impl
+
+
+@register_op_impl(op_type="AddPortableCustom")
+class AddPortableCustom:
+    def __init__(self) -> None:
+        self._kernel_by_key: dict[str, bytes] = {}
+
+    def serialize(self) -> bytes:
+        return encode_state(self._kernel_by_key)
+
+    def deserialize(self, data: bytes) -> None:
+        self._kernel_by_key = decode_state(data)
 ```
 
 Load Python custom operators:

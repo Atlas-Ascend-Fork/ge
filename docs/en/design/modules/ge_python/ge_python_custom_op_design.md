@@ -38,10 +38,10 @@ V2 specifically covers the following capabilities:
 
 The following items remain outside the V2 scope:
 
-- Python does not directly expose C++ `BaseCustomOp` capability interfaces such as `ShapeInferOp`, `CompilableOp`, `PortableOp`, and `ArgsUpdater`; V2 provides Meta inference through the `infer_meta` callback instead.
+- Python does not directly expose C++ `BaseCustomOp` capability interfaces such as `ShapeInferOp`, `CompilableOp`, and `ArgsUpdater`; V2 provides Meta inference through the `infer_meta` callback instead.
 - Data-dependent inference that reads input Tensor data.
 - InferShapeRange, format inference, symbolic inference, and shape-rule generation.
-- Python argument binding for `serialize` and `deserialize`, as well as ES API generation.
+- ES API generation.
 - Python execute backends other than device and host.
 - External encapsulation of `KernelArgs` / `MallocReadOnlyDevArgs` on the Python side.
 - Independent compatibility upgrades of the Bridge, native module, and Adapter. V2 still requires them to be built and replaced together, with changes taking effect after restart.
@@ -103,15 +103,22 @@ V1 functions include:
 - Python entry failures affect loading only when Python custom op entries actually exist. The loading is skipped when no Python file or package is present.
 - `EagerOpExecutionContext`, `AnnotatedArgsContext`, and borrowed views such as `Tensor` objects returned through them can be used only within the current callback. An `AnnotatedKernelArgs` object cannot be reused after `add_launch` consumes it.
 - The Python `execute` and `declare_launch_args` methods must return `None`. A normal `None` return indicates success, and an exception indicates failure.
-- The C++ adapter for Python custom ops declares `EagerExecuteOp`, `HostCpuExecuteOp`, `CompilableOp`, and
-  `AnnotatedArgsOp`; the descriptor capability mask filters the interfaces that are actually visible.
+- The C++ adapter for Python custom ops declares `EagerExecuteOp`, `HostCpuExecuteOp`, `CompilableOp`,
+  `AnnotatedArgsOp`, and `PortableOp`; the descriptor capability mask filters the interfaces that are actually visible.
 - The schema-bound form depends on canonical IR from the existing operator prototype. While loading descriptors, the bridge collects canonical IR and calls `validate_op_impl_descriptor` before holder creation or any business callback to validate schema-bound signatures once. `execute` validates IR inputs and attributes and excludes IR outputs from its parameters; `compile` and `declare_launch_args` validate inputs, outputs, and attributes and require an explicit `None` return annotation. All three callbacks must return `None` at runtime. Runtime callbacks only assemble arguments, invoke business methods, and check the runtime return; they do not validate signatures, and validation state does not enter the holder lifecycle.
 - Cross-SO prototype and Adapter descriptors are synchronously borrowed C POD views. Runtime callbacks must finish validation and deep copying before returning.
 - A Python prototype may replace a built-in prototype. If `CustomOpFactory` already contains a C++ or Python custom operator with the same name, registration reports a custom-operator conflict.
 - The instance cache and common-capability lookup converge at the priority dimension: within the same `op_type` and priority, registrations of the same dynamic type share one instance across engines/backends. `GetCustomOpCommonCapability` enforces a unique provider across the whole priority subtree and ignores the engine dimension; distinct implementation classes providing the same common capability under one priority make the lookup fail with an error.
 - A schema-bound callback obtains the current context through `get_execute_ctx()`, `get_compile_ctx()`, or `get_declare_launch_args_ctx()`. The binding is valid only in the dynamic scope of that callback.
 - The Python custom op native/bridge is related to the Python ABI at build time. Cross-Python minor version compatibility is not guaranteed.
-- The bridge C ABI is v2. Device and host `execute` use separately typed context callbacks. The bridge queries
+- The bridge C ABI is upgraded to v2. It adds
+  the `serialize`/`deserialize` callbacks, separately typed device/host `execute` context callbacks, and the
+  four function-table pointers appended at the end — `collect_deployment_artifacts`/`restore_model_scope`/
+  `collect_model_scope_proto_op_types`/`close_model_scope` — serving
+  the load-side restoration of Python source packaging into OM; see
+  `docs/en/design/features/so_in_om.md`. When `kPortable` is declared, both callbacks
+  in `PythonCustomOpAdapterCallbacks` must be non-null. The `serialize`/`deserialize` callbacks pass only the
+  holder and the `bytes` buffer without passing a context. The bridge queries
   canonical IR through the public run-package API instead of passing a private ABI projection.
 
 ### 2.5 Assumptions and Dependencies
@@ -296,7 +303,7 @@ Each descriptor contains at least:
 | `op_type` | Custom operator type |
 | `module_name` | Python module name |
 | `class_name` | Python class name |
-| `interfaces` | Capability list containing `"eager_execute"`, `"host_cpu_execute"`, `"compilable"`, and/or `"annotated_args"` |
+| `interfaces` | Capability list containing `"eager_execute"`, `"host_cpu_execute"`, `"compilable"`, `"annotated_args"`, `"portable"`, and/or valid combinations thereof |
 
 `interfaces` is the source of the C++ capability declaration: a device kernel maps to
 `"eager_execute"` and a host kernel maps to `"host_cpu_execute"`.
@@ -366,8 +373,10 @@ Existing C++ custom ops express capabilities through interface inheritance. The 
 
 - `PythonCustomOpAdapter` inherits `EagerExecuteOp`, `HostCpuExecuteOp`, `AnnotatedArgsOp`, `CompilableOp`,
   `ShapeInferOp`, `PortableOp`, `ArgsUpdater`, and `CustomOpCapabilityProvider`.
-- `PythonCustomOpCallbacks::IsValid()` accepts `kEagerExecute`, `kHostCpuExecute`, `kCompilable`,
-  `kAnnotatedArgs`, and their combinations, and verifies that each capability has its corresponding callback.
+- `PythonCustomOpAdapterCallbacks::IsValid()` accepts `kEagerExecute`, `kHostCpuExecute`, `kCompilable`,
+  `kAnnotatedArgs`, `kPortable`, and their valid combinations, and verifies that each capability has its
+  corresponding callback. When `kPortable` is declared, both the `serialize` and `deserialize` callbacks must
+  be non-null. Callbacks for capabilities that are not declared are not validated.
 - The internal GE capability detection uses `CustomOpCast<T>()`. For regular C++ custom ops, it degrades to `dynamic_cast<T *>`. For the Python adapter, it checks the bitmask first.
 
 **Output**
@@ -376,7 +385,11 @@ Existing C++ custom ops express capabilities through interface inheritance. The 
 - When `kHostCpuExecute` is supported, the Host CPU `Execute(ctx)` forwards to the Python host kernel.
 - When `kCompilable` is supported, `Compile(ctx)` forwards to Python.
 - When `kAnnotatedArgs` is supported, `DeclareLaunchArgs(ctx)` forwards to Python.
-- Unsupported `InferShape`, `InferDataType`, `Serialize`, `Deserialize`, and `UpdateHostArgs` return `GRAPH_FAILED` and log a message.
+- When `kPortable` is supported, `Serialize(vector)` and `Deserialize(vector)` forward to the Python holder's
+  `serialize`/`deserialize` instance methods. The payload is treated as opaque `bytes`; one Python/C++ `bytes`
+  copy occurs in each direction, and no borrowed buffer is used.
+- Unsupported `InferShape`, `InferDataType`, and `UpdateHostArgs` return `GRAPH_FAILED` and log a message.
+  `Serialize`/`Deserialize` on an adapter without the `kPortable` capability also return `GRAPH_FAILED`.
 
 #### 3.2.7 Loading, Unloading, and Lifecycle
 
@@ -401,6 +414,52 @@ Python custom op loading is managed by `runtime/custom_op` to avoid direct Pytho
 - When the adapter is destructed, the Python holder is destroyed and the runtime registry entry is released.
 - Individual runtime registry unregistration remains guarded by active adapters; process unload removes Adapter creators first and clears the registry in bulk.
 
+#### 3.2.8 Python Portable State Interface
+
+**Introduction**
+
+The Portable capability enables users to declare operator state snapshot capability through paired `serialize`/`deserialize` ordinary instance methods on a plain Python class. GE does not introduce a new Python `PortableOp` base class, context, payload wrapper, or serialization utility, nor does it add new declaration parameters for `register_op_impl`. The interface is delivered at the Python holder, native bridge, and C++ adapter layers; packaging the source snapshot and the Portable state into the OM and restoring them at load time are described in `docs/en/design/features/so_in_om.md`.
+
+**Input**
+
+- Paired `serialize` and `deserialize` ordinary instance methods on the implementation class, with fixed signatures:
+
+```python
+def serialize(self) -> bytes: ...
+
+def deserialize(self, data: bytes) -> None: ...
+```
+
+- `serialize` returns non-empty `bytes` with length in the range `1..UINT32_MAX`.
+- `deserialize` receives a Python `bytes` with its own storage and returns `None`.
+
+**Processing**
+
+- At decoration time, `register_op_impl` uses `inspect.getattr_static` to statically resolve `serialize`/`deserialize` attributes, rejecting `staticmethod`, `classmethod`, non-callable attributes, and one-sided presence. When neither method exists, no `portable` capability is generated and other capability detection is unaffected.
+- Registration-time signature validation is strict: no additional parameters, defaults, keyword-only parameters, `*args`, or `**kwargs` are permitted beyond `self` and `data`. Parameter and return annotations must be explicitly present. String annotations and `from __future__ import annotations` are resolved through `typing.get_type_hints`. `serialize` return annotation must be `bytes`; `deserialize` data parameter annotation must be `bytes` and return annotation must be `None`. The `deserialize` data parameter name is not constrained.
+- Registration-time validation only checks that `cls()` can be bound with no arguments; the constructor is not invoked. Holder creation actually invokes `cls()`, and constructor exceptions are treated as holder creation failures. Portable state to be restored cannot be injected through constructor arguments and can only be restored by `deserialize`.
+- After validation, the descriptor's `interfaces` gains a single `portable` entry, which maps to `CustomOpCapability::kPortable`.
+- `portable` can be independently combined with `eager_execute`, `host_cpu_execute`, `compilable`, `annotated_args`, and other capabilities; none implicitly include another.
+- `PythonCustomOpAdapter::Serialize` validates capability, holder, callback, and output vector before the call, clears the output, and forwards to `callbacks.serialize`. `Deserialize` validates capability, holder, callback, data, and size; it rejects an empty vector and then forwards to `callbacks.deserialize`.
+- The bridge `call_serialize` acquires the GIL, calls the holder instance's `serialize()`, validates that the return is non-empty `bytes` with length not exceeding `UINT32_MAX`, and copies it into the C++ vector. The bridge `call_deserialize` acquires the GIL, copies the C++ buffer into a Python `bytes` with its own storage, then calls the holder instance's `deserialize(data)` and validates the return is `None`.
+- Holder lifecycle: the compile-side `compile` and subsequent `serialize` share the same holder; the restore-side creates a new holder, obtains an empty instance through `cls()`, then calls `deserialize()` once. After restoration, other capabilities continue to reuse the same instance. All capabilities of the same adapter always share the same holder.
+- The payload is fully opaque to GE: GE does not use pickle, does not parse the user protocol, and does not provide version headers, magic, checksum, or compatibility fallbacks. User code implements the payload protocol through standard Python encoding libraries.
+- `serialize()` does not receive a node, model, or compilation context. It may be called repeatedly and must return a deterministic snapshot of the current state without consuming or emptying the instance state. The framework does not commit to calling only once per instance or per model.
+- No per-holder lock is introduced. Pure Python state is protected by the GIL. After user code releases the GIL, any native shared state accessed is the user's responsibility to synchronize. No new threads are created, and `serialize` or `deserialize` is not called on the model execution hot path.
+- Logs record only descriptor/op metadata, stage, exception type, and length. They must not contain payload content, script content, kernel binary, Tensor data, device addresses, or user protocol field values.
+
+**Output**
+
+- A legal paired method combination produces the `kPortable` capability, which can exist independently or combined with `kEagerExecute`, `kHostCpuExecute`, `kCompilable`, and `kAnnotatedArgs`.
+- `serialize`'s returned `bytes` are copied byte-by-byte into the C++ vector. `deserialize`'s input `bytes` has independent storage, and the Python side does not hold a C++ pointer.
+- Python exceptions, illegal return values (non-`bytes`, empty `bytes`, oversized, non-`None` return), and conversion errors are uniformly converted to `GRAPH_FAILED` without automatic retry, automatic fallback to compile, or half-successful result retention.
+
+**Explicit exclusions**
+
+- The Portable interface itself adds no OM partition and does not change the model cache key. The source snapshot and the Portable state are saved in the OM through the `PYTHON_CUSTOM_OPS` partition (partition type 27) and the existing `CUSTOM_OPS` partition respectively.
+- Load-time restoration of the Python implementation and the model-level registry is performed by the `PYTHON_CUSTOM_OPS` restore path; see `docs/en/design/features/so_in_om.md`. The Portable interface only provides the state serialize/deserialize callbacks in that path.
+- `runtime/v1`, `runtime/v2`, AscendIR, graph splitting, memory, stream, and TaskDef paths are not modified; the model load chain changes live in `base/common/helper` and `runtime/custom_op`.
+
 ### 3.3 Non-Functional Requirements
 
 #### 3.3.1 Maintainability
@@ -411,10 +470,10 @@ Python custom op loading is managed by `runtime/custom_op` to avoid direct Pytho
 
 #### 3.3.2 Testability
 
-- Python UT covers plain-class registration, reflection of both capabilities, schema-bound signature validation during descriptor loading, schema-bound invocation, `declare_launch_args` return validation, flattened instance indices, context scope, holder lifecycle, and environment-variable plugin loading.
-- C++ UT should cover the capability helper, canonical IR lookup, adapter device/host execute and declare
-  forwarding, dual-backend creator registration, loader skip/load paths, bridge ABI v2 verification, and shutdown
-  order.
+- Python UT covers plain-class registration, reflection of both capabilities, schema-bound signature validation during descriptor loading, schema-bound invocation, `declare_launch_args` return validation, flattened instance indices, Portable paired-method and signature validation, `call_serialize`/`call_deserialize` boundaries, context scope, holder lifecycle, and environment-variable plugin loading.
+- C++ UT should cover the capability helper, canonical IR lookup, adapter device/host execute, declare and
+  portable forwarding, dual-backend creator registration, loader skip/load paths, bridge ABI verification, and
+  shutdown order.
 - The samples `examples/custom_op/annotated_args_refresh_add_custom/{online,offline}/python` verify public Python `register_op`/`infer_meta`/`register_op_impl` with the Ascend C kernel online and offline. Both online operators are Python implementations; `AnnotatedAddCustom` has no C++ creator in the Python sample.
 
 #### 3.3.3 Portability
@@ -474,19 +533,21 @@ The current public Python interfaces are as follows:
 | Interface | Description |
 |-----------|-------------|
 | `execute` | User-implemented schema-bound execution entry |
+| `serialize` | User-implemented Portable state snapshot method, with signature `serialize(self) -> bytes` |
+| `deserialize` | User-implemented Portable state restore method, with signature `deserialize(self, data: bytes) -> None` |
 | `register_kernel` | Declares the `device` or `host` backend for same-named `execute` functions |
 | `OpBackend` | Backend enum used by `register_kernel`, with members `DEVICE` and `HOST` |
 | `EagerOpExecutionContext` | Execution context borrowed view |
 | `HostCpuOpExecutionContext` | Host CPU execution context borrowed view |
 | `get_execute_ctx` | Obtains the execution context of the active schema-bound callback |
 | `register_op` | Declares and collects a Python custom operator prototype |
-| `register_op_impl` | Registers an implementation class and reflects its capability methods |
+| `register_op_impl` | Registers an implementation class and reflects its capability methods, including `execute`, `compile`, `declare_launch_args`, and paired `serialize`/`deserialize` |
 | `get_registered_op_impls` | Obtains the list of descriptor objects |
 | `get_registered_op_impl_dicts` | Obtains the bridge dictionary list |
 | `get_registered_op_impl_by_descriptor_key` | Queries a descriptor by descriptor key |
 | `clear_registered_op_impls` | Clears the Python registry |
 
-`TensorDesc` is publicly available from `ge.runtime` and is the input/output type of `register_op` infer-meta functions. `Tensor`, `Shape`, `StorageShape`, `StorageFormat`, and `TensorPlacement` in `ge.runtime` are context types and are not included in the `__all__` of `ge.custom_op`.
+`TensorDesc` is publicly available from `ge.runtime` and is the input/output type of `register_op` infer-meta functions. `Tensor`, `Shape`, `StorageShape`, `StorageFormat`, and `TensorPlacement` in `ge.runtime` are context types and are not included in the `__all__` of `ge.custom_op`. Portable `serialize`/`deserialize` introduce no new public types; the payload uses the Python built-in `bytes` directly.
 
 ### 5.2 Interface Check Items
 
@@ -545,10 +606,11 @@ struct PythonCustomOpAdapterDescriptor {
 
 #### PythonCustomOpAdapterCallbacks
 
-The bridge registers create/destroy/device execute/host execute/compile/declare_launch_args callbacks to the
-runtime. Schema-bound signature validation is not a C++ callback; the bridge calls
+The bridge registers create/destroy/device execute/host execute/compile/declare_launch_args/serialize/
+deserialize callbacks to the runtime. Schema-bound signature validation is not a C++ callback; the bridge calls
 `validate_op_impl_descriptor` internally before registering an Adapter. `IsValid()` requires create/destroy and
-checks every callback required by the capability mask.
+checks every callback required by the capability mask; when `kPortable` is declared, both the `serialize` and
+`deserialize` callbacks must be non-null.
 
 #### BorrowedEagerOpExecutionContext
 
@@ -575,7 +637,9 @@ The native binding holds a `gert::AnnotatedArgsContext *` and an independent val
 - **Capability reflection**: A device kernel maps to `eager_execute`/`kEagerExecute`, a host kernel maps to
   `kHostCpuExecute`, and `compile` maps to the common `kCompilable` capability without participating in
   device/host backend selection. `declare_launch_args` and `ArgsUpdater` remain device-only capabilities
-  with their existing mappings.
+  with their existing mappings. Portable statically resolves the paired `serialize`/`deserialize` through
+  `inspect.getattr_static` and maps them to the common `portable`/`kPortable` capability, rejecting
+  `staticmethod`/`classmethod` and one-sided presence, also without participating in backend selection.
 - **Capability filtering**: `CustomOpCast<T>()` first identifies `CustomOpCapabilityProvider` and then checks the bitmask to determine whether the target interface is supported.
 - **IR argument assembly**: The bridge queries canonical IR through the public run-package API during descriptor loading for signature validation, then queries it again at holder creation and owns the resulting runtime snapshot. Callbacks read required, optional, and dynamic inputs/outputs and typed runtime attributes in that IR order, then construct positional and keyword arguments.
 - **Registration flow**: Prototype ownership remains with the existing loader. `CommitPythonCustomOpRegistrations()`
@@ -583,8 +647,9 @@ The native binding holds a `gert::AnnotatedArgsContext *` and an independent val
   the upper-level loader invokes `UnloadPythonCustomOps()` for unified cleanup. A descriptor with any device-only
   capability registers a `kDevice` creator; a descriptor with `kHostCpuExecute` registers a `kHostCPU` creator.
   A descriptor containing only common capabilities retains the existing `kDevice` anchor behavior.
-- **Callback signature validation**: While loading a descriptor, the bridge calls `validate_op_impl_descriptor` to validate schema-bound signatures once, before holder creation or any business callback. For `execute`, it validates the total parameter count, the positional form and supplied type annotations of inputs, and the keyword-only form, names, and supplied type annotations of attributes. `compile` and `declare_launch_args` additionally validate outputs; all three callbacks require a `None` return annotation. Runtime callbacks do not validate signatures, but they check the runtime return value for `None`, and validation state does not enter the holder lifecycle.
-- **Holder lifecycle**: The C++ adapter owns `PythonCustomOpHolder`. The Python side uses `_OP_IMPL_HOLDERS` to save instances by `instance_id`. When the adapter is destructed, the Python holder is destroyed.
+- **Callback signature validation**: While loading a descriptor, the bridge calls `validate_op_impl_descriptor` to validate schema-bound signatures once, before holder creation or any business callback. For `execute`, it validates the total parameter count, the positional form and supplied type annotations of inputs, and the keyword-only form, names, and supplied type annotations of attributes. `compile` and `declare_launch_args` additionally validate outputs; all three callbacks require a `None` return annotation. Runtime callbacks do not validate signatures, but they check the runtime return value for `None`, and validation state does not enter the holder lifecycle. Portable signature validation happens at `register_op_impl` decoration time through the standalone validator `_portable.py`, which strictly checks the parameter count, kind, annotations of `serialize(self) -> bytes` and `deserialize(self, data: bytes) -> None`, and the zero-argument constructor signature, without invoking the constructor.
+- **Holder lifecycle**: The C++ adapter owns `PythonCustomOpImplHolder`. The Python side uses `_OP_IMPL_HOLDERS` to save instances by `instance_id`. When the adapter is destructed, the Python holder is destroyed. For Portable, the compile-side `compile` and `serialize` share the same holder; a restore-side holder first calls `cls()` and then `deserialize()`, and other capabilities continue to reuse that instance.
+- **Portable bytes boundary**: The bridge `call_serialize` validates that the return is non-empty `bytes` with length not exceeding `UINT32_MAX` before copying into the C++ vector; `call_deserialize` copies the C++ buffer into a Python `bytes` with its own storage before invoking the user method. Exactly one Python/C++ `bytes` copy occurs in each direction; no borrowed buffer or memoryview is used. The length upper-bound check is extracted into the standalone helper `_validate_portable_payload_length` so that UT does not allocate 4 GiB of memory.
 - **Context binding**: Schema-bound callbacks establish dynamic scopes with `ContextVar`, and `get_execute_ctx()`, `get_compile_ctx()` / `get_compile_platform_info()`, and `get_declare_launch_args_ctx()` read their corresponding bindings. Resetting the token restores the outer context after nested invocation.
 - **Context invalidation**: Execute, compile, and declare bridge calls use `finally` to ensure context invalidation and do not rely on the user returning normally.
 
@@ -651,14 +716,41 @@ PythonCustomOpAdapter::DeclareLaunchArgs(ctx)
   -> ge.custom_op._bridge.call_declare_launch_args(instance_id, ir_meta, py_ctx)
   -> user_op.declare_launch_args(*inputs, *outputs, **attrs)
   -> py_ctx._invalidate()
+
+PythonCustomOpAdapter::Serialize(vector)
+  -> HasCapability(kPortable)
+  -> validate holder/callback/output vector
+  -> buffer.clear()
+  -> callbacks.serialize(holder, &vector)
+  -> PythonCustomOpPybindBridge::Serialize
+  -> acquire GIL
+  -> ge.custom_op._bridge.call_serialize(instance_id)
+  -> holder.instance.serialize()
+  -> validate bytes/non-empty/UINT32_MAX
+  -> copy bytes to vector
+  -> GRAPH_SUCCESS / GRAPH_FAILED
+
+PythonCustomOpAdapter::Deserialize(vector)
+  -> HasCapability(kPortable)
+  -> validate holder/callback/data/size, reject empty vector
+  -> callbacks.deserialize(holder, vector.data(), vector.size())
+  -> PythonCustomOpPybindBridge::Deserialize
+  -> acquire GIL
+  -> copy to Python bytes (owns its storage)
+  -> ge.custom_op._bridge.call_deserialize(instance_id, data)
+  -> holder.instance.deserialize(data)
+  -> validate None result
+  -> GRAPH_SUCCESS / GRAPH_FAILED
 ```
 
 ### 6.4 Modifications to Submodules
 
-- `api/python/ge/ge/custom_op/`: Added the Python custom op API, registry, bootstrap, bridge helper, a separate schema-callback signature-validation module, and native context binding.
+- `api/python/ge/ge/custom_op/`: Added the Python custom op API, registry, bootstrap, bridge helper, a separate schema-callback signature-validation module, the Portable method contract validation module `_portable.py`, and native context binding.
 - `api/python/ge/ge/runtime/`: Provides runtime tensor/shape/format types for reuse by the custom op context.
-- `runtime/custom_op/`: The bridge C ABI is v2. The adapter forwards Eager, Host CPU, Compile, and AnnotatedArgs
-  callbacks, and the bridge obtains and caches canonical IR through the public run-package API.
+- `runtime/custom_op/`: The bridge C ABI is upgraded to v2 (it adds the Portable `serialize`/`deserialize`
+  callbacks and appends the four model-level scope restore pointers to the function table). The adapter
+  forwards Eager, Host CPU, Compile, AnnotatedArgs,
+  and Portable `Serialize`/`Deserialize` callbacks, and the bridge obtains and caches canonical IR through the public run-package API.
 - `inc/graph_metadef/graph/custom_op/`: Added capability and cast helper.
 - GE initialization entry: Ensures the Python runtime is attempted to be ready before `LoadCustomOps()`. On failure, a warning is logged and execution continues. The Python custom op loader performs a hard fail only when Python entries actually exist.
 - `compiler/graph/manager/graph_manager.cc`: `PreRun()` idempotently loads Python custom ops before refreshing ops kernel information.
@@ -675,6 +767,12 @@ PythonCustomOpAdapter::DeclareLaunchArgs(ctx)
 - A schema-bound `execute`, `compile`, or `declare_launch_args` signature that does not match canonical IR causes `validate_op_impl_descriptor` to raise `TypeError` during descriptor loading/registration; no business callback runs.
 - A `compile` without canonical IR, with a non-`None` return, or with an expired context causes the Python bridge/native binding to raise and terminate graph compilation.
 - A non-`None` `declare_launch_args` return, reuse of a consumed `AnnotatedKernelArgs`, or an out-of-range flattened input/output instance index causes the Python bridge/native binding to raise and terminate compilation.
+- A Portable constructor exception during holder creation: holder creation fails, the adapter is deemed invalid, and `Serialize`/`Deserialize` return `GRAPH_FAILED`.
+- A Portable `serialize` returning non-`bytes`, empty `bytes`, or a length exceeding `UINT32_MAX`: Python raises `TypeError`/`ValueError` and the bridge converts it to `GRAPH_FAILED`.
+- A Portable `deserialize` receiving an empty or illegally sized C++ buffer: the adapter/bridge returns `GRAPH_FAILED`.
+- A Portable `deserialize` returning non-`None`: Python raises `TypeError` and the bridge converts it to `GRAPH_FAILED`.
+- A user exception during Portable `serialize`/`deserialize`: the callback returns `GRAPH_FAILED` without retry or fallback.
+- A bridge ABI version mismatch: failure occurs before callback registration.
 
 #### Interface Errors
 
@@ -693,6 +791,9 @@ PythonCustomOpAdapter::DeclareLaunchArgs(ctx)
 - `get_compile_ctx()` or `get_compile_platform_info()` is called outside a `compile` callback: `RuntimeError` is raised.
 - `get_declare_launch_args_ctx()` is called outside its callback: `RuntimeError` is raised.
 - Accessing a borrowed view after expiration: `RuntimeError` is raised.
+- Only one of the Portable `serialize`/`deserialize` methods exists: `register_op_impl` raises `TypeError` and the message contains the op type and the missing method name.
+- A Portable method is a `staticmethod`, `classmethod`, or non-callable attribute, or its signature contains extra parameters, defaults, keyword-only parameters, `*args`, or `**kwargs`, or lacks explicit annotations, or its annotation types are not `bytes`/`None`: `register_op_impl` raises `TypeError` and the message contains the op type, method name, and the specific rule.
+- The registered class `cls()` requires arguments: `register_op_impl` raises `TypeError` and states that a zero-argument constructor is required.
 
 ## 7. Security Check
 
@@ -723,8 +824,16 @@ The implementation follows the existing Python pass and GE runtime style:
 - The `PYTHON_CUSTOM_OPS` partition of a new OM (partition type 27) is not recognized by older versions. The Python custom op execution capability cannot be assumed to be reproducible on older versions.
 - New OMs carry `_custom_task_args_mode`, the AnnotatedArgs `args_format`, and the Python implementation source snapshot. A new runtime uses the explicit mode as the source of truth; only an old OM without the attribute falls back to registry lookup and then a non-empty `args_format`.
 - The Python custom op depends on matching versions of `ge_py`, bridge/native SO, and the Python ABI in the runtime environment.
-- The callback POD adds a Host CPU function pointer, so the bridge ABI is v2; v1 and v2 artifacts are not mixed.
+- The callback POD adds a Host CPU function pointer, so the bridge ABI becomes v2; the Portable
+  `serialize`/`deserialize` function pointers and the four model-level scope restore pointers at the
+  end of the function table (load-side restoration of Python source packaging into OM) added by this feature
+  are folded into **v2 without bumping the version number** — existing v2 bridge SOs are only build products
+  of the dev/test environment built together with the load-side header. Artifacts of different ABI versions
+  are not mixed, and the load side matches exactly.
 - `ASCEND_CUSTOM_OPP_PATH` is an existing environment variable. Adding Python file and package recognition does not affect C++ OPP paths that have no Python entries.
+- Python classes without `serialize`/`deserialize` keep their existing behavior. A plain class with a legal paired combination gains the `portable` capability, which is the expected new behavior. A class with only one of the two methods changes from being possibly ignored to failing registration, so that an unrecoverable state is avoided.
+- `portable` can be combined with the `eager_execute`, `host_cpu_execute`, `compilable`, and `annotated_args` capabilities; other interface signatures and behaviors are unchanged.
+- The Portable interface does not change the model cache key. The source snapshot and the Portable state are written to the `PYTHON_CUSTOM_OPS` partition (new partition type 27) and the existing `CUSTOM_OPS` partition respectively, and are restored at load time by the corresponding restore path; see `docs/en/design/features/so_in_om.md`.
 
 ### 8.1 Python Version Release and Fallback Compatibility Strategy
 
@@ -822,6 +931,7 @@ At least the following must be verified under every available Python tag:
 - Python API test entries: `ge.custom_op`, `ge.custom_op.proto`, `ge.custom_op._bridge`, `ge.custom_op.bootstrap`.
 - Native context test entries: Eager/Compile/AnnotatedArgs borrowed contexts, `AnnotatedKernelArgs`, and launch-info methods.
 - C++ test entries: `CustomOpCast<T>`, `PythonCustomOpAdapter`, `AnnotatedKernelArgs`, `CustomTaskInfo`, `LoadPythonCustomOps()`, and `LoadCustomOps()`/`UnloadCustomOps()`.
+- Portable test entries: `register_op_impl` Portable signature validation, holder `_bridge.call_serialize`/`call_deserialize`, and adapter `Serialize`/`Deserialize` forwarding.
 - End-to-end sample entries: `examples/custom_op/annotated_args_refresh_add_custom/online/python/run.sh` and `examples/custom_op/annotated_args_refresh_add_custom/offline/python/run.sh`.
 
 ### 9.2 Test Design
@@ -836,9 +946,14 @@ At least the following must be verified under every available Python tag:
 | Function | Schema-bound `compile` input/output/attribute assembly, signature validation, compilation context and platform queries, return validation, and context invalidation | Python pytest fake/native context | UT |
 | Function | `get_execute_ctx()` / `get_declare_launch_args_ctx()` access in callbacks, exception cleanup, and nested invocation restoration | Python pytest | UT |
 | Function | Bridge descriptor retrieval, holder creation/destruction, non-callable method rejection, and context invalidation | Python pytest | UT |
-| Function | Canonical IR lookup/cache, bridge ABI v2, and adapter device/host execute and declare forwarding | C++ gtest | UT |
+| Function | Canonical IR lookup/cache, bridge ABI, and adapter device/host execute, declare and portable forwarding | C++ gtest | UT |
 | Function | Capability bitmask and `CustomOpCast<T>()` behavior | C++ gtest | UT |
 | Function | Loader skips when no Python entry exists and loads the bridge when entries exist | C++ gtest / stub | UT |
+| Function | Portable paired methods, signature validation, zero-argument constructor validation, and `portable` capability generation and combination | Python pytest | UT |
+| Function | Portable `serialize` `bytes` round-trip, `deserialize` state restoration, holder identity, and repeated-call determinism | Python pytest | UT |
+| Boundary | Portable empty `bytes`, `bytearray`, `memoryview`, `UINT32_MAX` boundary, and oversize simulation | Python pytest fake length helper | UT |
+| Reliability | Portable user exceptions, null holder/callback/data, non-`None` return, and ABI version mismatch | Python/C++ gtest | UT |
+| Security | Portable logs contain no payload or script content | Python/C++ gtest | UT |
 | Compatibility | C++ custom op bare capability inheritance still casts correctly | C++ gtest | UT |
 | Feature cross | Ops kernel info is refreshed after online PreRun loading | GE graph execution related tests | UT/ST |
 | Sample | Python `register_op`/`infer_meta`/`register_op_impl`, Ascend C kernel schema-bound online execution, and AnnotatedArgs address refresh after offline compilation with no compile-time callback at runtime (loading restores from the OM-embedded source, so the process needs a Python runtime) | `annotated_args_refresh_add_custom/{online,offline}/python` | ST/hardware |

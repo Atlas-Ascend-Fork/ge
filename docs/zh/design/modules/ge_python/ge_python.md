@@ -729,7 +729,10 @@ custom_op/
 ├── registry.py              # Python 自定义算子实现注册中心与装饰器
 ├── bootstrap.py             # 插件发现与加载
 ├── context.py               # schema-bound execute/compile 的当前执行上下文绑定
-├── _bridge.py               # Bridge 运行时辅助（实例管理，供 C++ bridge .so 回调）
+├── _bridge.py               # Bridge 运行时辅助（实例管理，供 C++ bridge .so 回调；含 scope 会话 API）
+├── _portable.py             # Portable 方法契约校验
+├── _deployment.py           # Python 源码定位、分组冻结、SHA-256/artifact_id、descriptor 快照（保存侧，Python 源码打包进 OM）
+├── _scope.py                # 模型级 scope 的 Python 侧实现（加载侧）：scope 开关、scope-local impl capture、内存 source 初始化、descriptor 收集
 ├── _native.py               # native module 装载与 re-export
 ├── _artifact_utils.py       # 运行时 artifact 选择辅助
 ├── fallback_runtime.py      # 组件 fallback 入口(无匹配预编译 artifact 时现场编译 so)
@@ -742,7 +745,7 @@ custom_op/
 
 #### 模块定位
 
-Python自定义算子的长期目标是支持用户使用Python描述自定义算子原型，并实现自定义算子的各类能力。当前通过反射实现类上的可调用`execute`、`compile`和`declare_launch_args`方法，分别识别执行能力、图编译能力和静态图声明式地址刷新能力，不要求用户类继承任何能力基类。执行入口统一按照canonical IR输入、属性顺序绑定，执行上下文通过`get_execute_ctx()`在回调内访问；`compile`和`declare_launch_args`按canonical IR绑定输入、输出和属性。Python原型通过`register_op`注册到`OperatorFactory`后，编译期和RT2动态Shape路径会调用同一Python `infer_meta`回调：编译期回写输出shape、dtype和origin dtype，RT2运行期只回写输出shape。
+Python自定义算子的长期目标是支持用户使用Python描述自定义算子原型，并实现自定义算子的各类能力。当前通过反射实现类上的可调用`execute`、`compile`、`declare_launch_args`和成对的`serialize`/`deserialize`方法，分别识别执行能力、图编译能力、静态图声明式地址刷新能力和Portable状态快照能力，不要求用户类继承任何能力基类。执行入口统一按照canonical IR输入、属性顺序绑定，执行上下文通过`get_execute_ctx()`在回调内访问；`compile`和`declare_launch_args`按canonical IR绑定输入、输出和属性。Python原型通过`register_op`注册到`OperatorFactory`后，编译期和RT2动态Shape路径会调用同一Python `infer_meta`回调：编译期回写输出shape、dtype和origin dtype，RT2运行期只回写输出shape。
 
 #### 运行时native artifact选择
 
@@ -828,7 +831,30 @@ class AnnotatedAddCustom:
 
 `OpCompileContext`、`CompilePlatformInfo`、输入输出`Tensor`和属性视图都是当前回调内有效的借用对象，回调返回或抛出异常后失效。编译回调不在模型加载和执行阶段调用，Python实现、实例状态和kernel binary不写入OM。
 
-##### 6. OpImplDescriptor数据类
+##### 6. Portable状态接口
+
+**文件位置**: `_portable.py`、`registry.py`、`_bridge.py`
+
+`serialize`和`deserialize`是Portable能力的成对普通实例方法，签名为`serialize(self) -> bytes`和`deserialize(self, data: bytes) -> None`。GE不新增Python `PortableOp`基类、context或payloadwrapper。两个方法必须同时存在且均为普通实例方法，不支持`staticmethod`或`classmethod`；`self`和`data`以外不允许额外参数、默认值、keyword-only参数、`*args`或`**kwargs`；参数和返回注解必须显式存在。
+
+```python
+@register_op_impl(op_type="AddPortableCustom")
+class AddPortableCustom:
+    def __init__(self) -> None:
+        self._state: dict[str, bytes] = {}
+
+    def serialize(self) -> bytes:
+        return encode_state(self._state)
+
+    def deserialize(self, data: bytes) -> None:
+        self._state = decode_state(data)
+```
+
+`serialize`返回非空`bytes`，长度范围为`1..UINT32_MAX`，拒绝`bytearray`、`memoryview`、空`bytes`和超长结果。`deserialize`接收拥有自身存储的Python `bytes`，必须返回`None`。payload对GE完全不透明：GE不使用pickle，不解析用户协议，不提供版本头或兼容性fallback。每个方向各发生一次Python/C++ `bytes`复制，不使用borrowed buffer。
+
+编译侧`compile`与`serialize`复用同一holder；恢复侧创建新holder，先通过`cls()`获得空实例，再调用一次`deserialize()`，恢复后其他capability继续复用该实例。`portable`可与`eager_execute`、`compilable`、`annotated_args`等capability独立组合。Python异常和非法返回值统一转换为`GRAPH_FAILED`，不重试，不fallback。
+
+##### 7. OpImplDescriptor 数据类
 
 **文件位置**: `registry.py`
 
@@ -840,14 +866,14 @@ class AnnotatedAddCustom:
 - `op_type` - 自定义算子类型
 - `module_name` - 所属模块名
 - `class_name` - 类名
-- `interfaces` - 能力接口列表，可包含`"eager_execute"`、`"compilable"`和`"annotated_args"`
-- `cls` - Python实现类引用
+- `interfaces` - 能力接口列表，可包含`"eager_execute"`、`"compilable"`、`"annotated_args"`和`"portable"`或其合法组合
+- `cls` - Python 实现类引用
 
 #### 注册与发现
 
 **装饰器**:
 - `register_op(op_type, mutates_args=(), output_names=None)` - 根据被装饰函数的类型标注声明并收集 Python 自定义算子原型；被装饰函数同时作为 `infer_meta` 回调，返回输出 `TensorDesc`
-- `register_op_impl(op_type)` - 注册 Python 实现类，并反射其可调用方法生成能力列表；`execute` 对应 `eager_execute`，`compile` 对应 `compilable`，`declare_launch_args` 对应 `annotated_args`
+- `register_op_impl(op_type)` - 注册 Python 实现类，并反射其可调用方法生成能力列表；`execute` 对应 `eager_execute`，`compile` 对应 `compilable`，`declare_launch_args` 对应 `annotated_args`，成对的 `serialize`/`deserialize` 对应 `portable`
 
 **发现机制**:
 
