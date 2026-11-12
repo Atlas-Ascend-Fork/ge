@@ -16,6 +16,15 @@
 
 namespace ge {
 Status UserGraphsManager::IsExecuteGraph(uint32_t user_graph_id, bool &is_execute_graph) const {
+  if (EnableAutoFuse()) {
+    // AutoFuse 下用户图 id 只登记在 ids_to_user_graph_ctrl_ 中，未注册到底层 graph_manager_。
+    // 先查用户图，命中则直接判定，避免对未注册的 id 调用 GetGraphNode 触发 error 日志。
+    std::lock_guard<std::mutex> locker(user_graph_ctrl_mutex_);
+    if (ids_to_user_graph_ctrl_.find(user_graph_id) != ids_to_user_graph_ctrl_.end()) {
+      is_execute_graph = false;
+      return SUCCESS;
+    }
+  }
   GraphNodePtr graph_node;
   const auto ret = graph_manager_.GetGraphNode(user_graph_id, graph_node);
   if (ret == SUCCESS) {
@@ -23,15 +32,6 @@ Status UserGraphsManager::IsExecuteGraph(uint32_t user_graph_id, bool &is_execut
     const auto graph = graph_node->GetGraph();
     GE_ASSERT_NOTNULL(graph);
     is_execute_graph = GraphUtilsEx::IsExecuteGraph(*graph);
-    return SUCCESS;
-  }
-  if (ret != GE_GRAPH_GRAPH_NOT_EXIST) {
-    return ret;
-  }
-  // AutoFuse owns user IDs separately from its instantiated GraphManager graphs.
-  std::lock_guard<std::mutex> locker(user_graph_ctrl_mutex_);
-  if (ids_to_user_graph_ctrl_.find(user_graph_id) != ids_to_user_graph_ctrl_.end()) {
-    is_execute_graph = false;
     return SUCCESS;
   }
   return ret;
