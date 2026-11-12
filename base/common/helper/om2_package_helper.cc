@@ -1184,5 +1184,11 @@ Status Om2PackageHelper::AssembleBundleModelData(std::vector<std::shared_ptr<ger
   return SUCCESS;
 }
 
+Status Om2PackageHelper::BuildGertModelDataFromGraph(const Graph &graph, gert::GertModelData &model_data) const {
+  (void)graph;
+  (void)model_data;
+  return SUCCESS;
+}
+
 REGISTER_MODEL_SAVE_HELPER(OM_FORMAT_OM2, Om2PackageHelper);
 }  // namespace ge

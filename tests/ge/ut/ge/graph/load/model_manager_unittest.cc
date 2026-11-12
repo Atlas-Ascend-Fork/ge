@@ -304,7 +304,7 @@ class DModelListener : public ModelListener {
 class StubExecutor : public Executor {
  public:
   Status LoadGraph(const GeRootModelPtr &ge_root_model, const GraphNodePtr &graph_node,
-                   const rtStream_t stream = nullptr) override {
+                   const rtStream_t stream = nullptr, gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
@@ -317,17 +317,19 @@ class StubExecutor : public Executor {
   }
 
   Status RunGraph(const GraphNodePtr &graph_node, const GraphId graph_id, const std::vector<gert::Tensor> &inputs,
-                  std::vector<gert::Tensor> &outputs) override {
+                  std::vector<gert::Tensor> &outputs, gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
   Status RunGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id, const rtStream_t stream,
-                            const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs) override {
+                            const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs,
+                            gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
   Status ExecuteGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id, rtStream_t const stream,
-                                const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs) override {
+                                const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
+                                gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
@@ -1761,6 +1763,7 @@ void CreateSummaryCompiledModel(GraphNodePtr &graph_node, GeModelPtr &ge_model, 
   graph_node = MakeShared<ge::GraphNode>(graph_id);
   graph_node->SetGeRootModel(ge_root_model);
   graph_node->SetComputeGraph(compute_graph);
+  graph_node->SetGraph(GraphUtilsEx::CreateGraphPtrFromComputeGraph(compute_graph));
 
   AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, 512);
   AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 1024);
@@ -1833,6 +1836,8 @@ TEST_F(UtestModelManagerModelManager, MallocConstMemory_AppRefreshable) {
 TEST_F(UtestModelManagerModelManager, MallocConstMemory_success) {
   std::shared_ptr<Allocator> external_allocator = MakeShared<ExternalAllocatorUtStub>();
   GraphManager graph_manager;
+  StubExecutor executor;
+  graph_manager.executor_ = &executor;
   graph_manager.graph_rebuild_state_ctrl_ = MakeShared<GraphRebuildStateCtrl>();
   GeModelPtr ge_model;
   GraphNodePtr graph_node;
@@ -1851,7 +1856,7 @@ TEST_F(UtestModelManagerModelManager, MallocConstMemory_success) {
   EXPECT_EQ(mem_block->GetAddr(), mem_base.first);
   EXPECT_EQ(mem_block->GetSize(), mem_base.second);
   graph_node->SetLoadFlag(true);
-  graph_manager.RemoveGraph(graph_id);
+  EXPECT_EQ(graph_manager.RemoveGraph(graph_id), SUCCESS);
   EXPECT_EQ(dynamic_cast<ExternalAllocatorUtStub *>(external_allocator.get())->GetBlockAddr(), nullptr);
 }
 

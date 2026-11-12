@@ -39,6 +39,7 @@
 #include "graph/opsproto_manager.h"
 #include "base/registry/opp_package_utils.h"
 #include "graph/utils/type_utils.h"
+#include "graph/utils/graph_utils_ex.h"
 #include "graph/utils/ir_definitions_query.h"
 #include "api/gelib/gelib.h"
 #include "api/aclgrph/option_utils.h"
@@ -50,6 +51,7 @@
 #include "runtime/v2/core/debug/kernel_tracing.h"
 #include "session/session_manager.h"
 #include "session/ge_session_impl.h"
+#include "session/inner_session.h"
 #include "session/ge_session_registry.h"
 #include "plog.h"
 #include "common/checker.h"
@@ -150,6 +152,26 @@ void ReportIfGraphNotExist(const char *const api_name, const uint32_t graph_id, 
   const std::string iface_msg = "call " + std::string(api_name);
   REPORT_PREDEFINED_ERR_MSG("E10062", std::vector<const char *>({"interface", "reason"}),
                             std::vector<const char *>({iface_msg.c_str(), reason.c_str()}));
+}
+
+Status CheckExecuteGraphUnsupported(const Graph &graph, const char *const api_name, const uint32_t graph_id) {
+  if (graph.IsValid() && GraphUtilsEx::IsExecuteGraph(graph)) {
+    GELOGE(UNSUPPORTED, "%s does not support execute graph, graph_id:%u.", api_name, graph_id);
+    return UNSUPPORTED;
+  }
+  return SUCCESS;
+}
+
+Status CheckExecuteGraphUnsupported(const std::shared_ptr<InnerSession> &session, const char *const api_name,
+                                    const uint32_t graph_id) {
+  GE_CHK_BOOL_RET_STATUS(session != nullptr, FAILED, "inner_session is null (null inner_session pointer)");
+  bool is_execute_graph = false;
+  const auto ret = session->IsExecuteGraph(graph_id, is_execute_graph);
+  if ((ret == SUCCESS) && is_execute_graph) {
+    GELOGE(UNSUPPORTED, "%s does not support execute graph, graph_id:%u.", api_name, graph_id);
+    return UNSUPPORTED;
+  }
+  return SUCCESS;
 }
 
 Status CheckRunGraphMode(const RunGraphMode &cur_mode, uint32_t graph_id, const RunGraphMode &expect_mode) {
@@ -576,6 +598,7 @@ Status GeSession::AddGraphClone(uint32_t graph_id, const Graph &graph,
 
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
 
+  GE_CHK_STATUS_RET_NOLOG(CheckExecuteGraphUnsupported(graph, "AddGraphClone", graph_id));
   AscendString graph_name;
   GE_ASSERT_SUCCESS(graph.GetName(graph_name), "Add graph failed, get graph name failed.");
   GELOGT(TRACE_INIT, "Start to add graph in GeSession. graph_id: %u, graph_name: %s, session_id: %lu.", graph_id,
@@ -811,6 +834,7 @@ Status GeSession::GraphDebugJSONPrint(const uint32_t graph_id, uint32_t flags, A
   }
 
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
+  GE_CHK_STATUS_RET_NOLOG(CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "GraphDebugJSONPrint", graph_id));
   RunGraphMode cur_mode = RunGraphMode::kRunGraphModeEnd;
   const auto get_mode_ret = impl_->GetRunGraphMode(graph_id, cur_mode);
   ReportIfGraphNotExist("GraphDebugJSONPrint", graph_id, get_mode_ret);
@@ -837,6 +861,7 @@ Status GeSession::RunGraphAsync(uint32_t graph_id, const std::vector<gert::Tenso
   }
 
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
+  GE_CHK_STATUS_RET_NOLOG(CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "RunGraphAsync", graph_id));
   RunGraphMode cur_mode = RunGraphMode::kRunGraphModeEnd;
   const auto get_mode_ret = impl_->GetRunGraphMode(graph_id, cur_mode);
   ReportIfGraphNotExist("RunGraphAsync", graph_id, get_mode_ret);
@@ -938,6 +963,9 @@ CompiledGraphSummaryPtr GeSession::GetCompiledGraphSummary(uint32_t graph_id) {
     return nullptr;
   }
   GE_ASSERT_NOTNULL(impl_, "GeSession construction incomplete (null impl pointer)");
+  if (CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "GetCompiledGraphSummary", graph_id) != SUCCESS) {
+    return nullptr;
+  }
 
   CompiledGraphSummaryPtr summary = nullptr;
   Status ret = impl_->GetCompiledGraphSummary(graph_id, summary);
@@ -958,6 +986,7 @@ Status GeSession::SetGraphConstMemoryBase(uint32_t graph_id, const void *const m
     return FAILED;
   }
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
+  GE_CHK_STATUS_RET_NOLOG(CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "SetGraphConstMemoryBase", graph_id));
   if (EnableSliceSchedule()) {
     GELOGE(UNSUPPORTED,
            "[Construct][GeSession]SetGraphConstMemoryBase does not support slice schedule currently, session_id:%lu, "
@@ -988,6 +1017,8 @@ Status GeSession::UpdateGraphFeatureMemoryBase(uint32_t graph_id, const void *co
     return FAILED;
   }
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
+  GE_CHK_STATUS_RET_NOLOG(
+      CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "UpdateGraphFeatureMemoryBase", graph_id));
   if (EnableSliceSchedule()) {
     GELOGE(UNSUPPORTED,
            "[Construct][GeSession]UpdateGraphFeatureMemoryBase does not support slice schedule currently, "
@@ -1020,6 +1051,8 @@ Status GeSession::SetGraphFixedFeatureMemoryBaseWithType(uint32_t graph_id, Memo
     return FAILED;
   }
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
+  GE_CHK_STATUS_RET_NOLOG(
+      CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "SetGraphFixedFeatureMemoryBaseWithType", graph_id));
   if (EnableSliceSchedule()) {
     GELOGE(UNSUPPORTED,
            "[Construct][GeSession]SetGraphFixedFeatureMemoryBaseWithType does not support slice schedule currently, "
@@ -1053,6 +1086,8 @@ Status GeSession::UpdateGraphRefreshableFeatureMemoryBase(uint32_t graph_id, con
     return FAILED;
   }
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
+  GE_CHK_STATUS_RET_NOLOG(
+      CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "UpdateGraphRefreshableFeatureMemoryBase", graph_id));
   if (EnableSliceSchedule()) {
     GELOGE(UNSUPPORTED,
            "[Construct][GeSession]UpdateGraphRefreshableFeatureMemoryBase does not support slice schedule currently, "
@@ -1116,6 +1151,7 @@ Status GeSession::GetCompiledModel(uint32_t graph_id, ModelBufferData &model_buf
     return FAILED;
   }
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
+  GE_CHK_STATUS_RET_NOLOG(CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "GetCompiledModel", graph_id));
   const auto ret = impl_->GetCompiledModel(graph_id, model_buffer);
   ReportIfGraphNotExist("GetCompiledModel", graph_id, ret);
   return ret;

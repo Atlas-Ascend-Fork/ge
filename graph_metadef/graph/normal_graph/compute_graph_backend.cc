@@ -151,8 +151,13 @@ AttrHolder *ComputeGraphBackend::GetAttributeHolder() const {
   return compute_graph_.get();
 }
 
-GNodePtr ComputeGraphBackend::FindDirectNode(const AscendString &name) const {
-  return NodeAdapter::Node2GNodePtr(compute_graph_->FindNode(name.GetString()));
+GNodePtr ComputeGraphBackend::FindDirectNode(const AscendString &name, bool &found) const {
+  const auto node = compute_graph_->FindNode(name.GetString());
+  found = (node != nullptr);
+  if (node == nullptr) {
+    return nullptr;
+  }
+  return NodeAdapter::Node2GNodePtr(node);
 }
 
 ConstOpDescPtr ComputeGraphBackend::GetOutputOpDesc(const GNode &node) const {

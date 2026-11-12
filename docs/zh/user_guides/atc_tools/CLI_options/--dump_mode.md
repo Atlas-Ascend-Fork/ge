@@ -11,6 +11,7 @@
 ## 关联参数
 
 - 该参数需要与[--json](--json.md)、[--mode](--mode.md)=1、[--framework](--framework.md)、[--om](--om.md)参数（需要为原始模型文件，如果为Caffe框架模型文件，还需要增加[--weight](--weight.md)参数）配合使用。
+- [--mode](--mode.md)取值为7时，不支持生成带shape信息的JSON文件。
 
 ## 参数取值
 

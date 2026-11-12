@@ -23,6 +23,7 @@
 namespace gert {
 struct GertModelData;
 struct Om2ModelLoadArg;
+struct Om2ModelRunArg;
 class Om2ModelExecutor;
 class Tensor;
 }  // namespace gert
@@ -33,10 +34,10 @@ class Om2ModelManager {
   static Om2ModelManager &GetInstance();
 
   ge::Status LoadModel(uint32_t model_id, const gert::GertModelData &model_data, const gert::Om2ModelLoadArg &load_arg,
-                       uint64_t session_id);
+                       uint64_t session_id, void *stream = nullptr);
 
   ge::Status RunModel(const uint32_t model_id, void *const stream, std::vector<gert::Tensor *> &inputs,
-                      std::vector<gert::Tensor *> &outputs);
+                      std::vector<gert::Tensor *> &outputs, const gert::Om2ModelRunArg &run_arg);
 
   ge::Status UnloadModel(uint32_t model_id);
 

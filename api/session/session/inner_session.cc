@@ -33,6 +33,7 @@
 #include "runtime/om2/om2_rt_var_manager.h"
 #include "runtime/om2/om2_external_weight_manager.h"
 #include "graph/utils/graph_utils_ex.h"
+#include "graph/fast_graph/execute_graph.h"
 #include "api/aclgrph/option_utils.h"
 #include "common/profiling/profiling_manager.h"
 #include "common/profiling/profiling_init.h"
@@ -357,9 +358,19 @@ Status InnerSession::AddGraph(uint32_t graph_id, const Graph &graph,
 }
 
 Status InnerSession::SetSessionGraphId(const Graph &graph, uint64_t session_id, uint32_t graph_id) {
+  const std::string session_graph_id = std::to_string(session_id) + "_" + std::to_string(graph_id);
+  if (GraphUtilsEx::IsExecuteGraph(graph)) {
+    const auto execute_graph = GraphUtilsEx::Graph2ExecuteGraph(graph);
+    GE_CHECK_NOTNULL(execute_graph);
+    if (!AttrUtils::SetStr(*execute_graph, ATTR_NAME_SESSION_GRAPH_ID, session_graph_id)) {
+      GELOGW("Set graph session_graph_id attr failed.");
+    } else {
+      GELOGD("Set graph session_graph_id attr to [%s]", session_graph_id.c_str());
+    }
+    return SUCCESS;
+  }
   auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
   GE_CHECK_NOTNULL(compute_graph);
-  std::string session_graph_id = std::to_string(session_id) + "_" + std::to_string(graph_id);
   if (!AttrUtils::SetStr(*compute_graph, ATTR_NAME_SESSION_GRAPH_ID, session_graph_id)) {
     GELOGW("Set graph session_graph_id attr failed.");
   } else {
@@ -388,6 +399,10 @@ Status InnerSession::LoadGraph(const uint32_t graph_id, const std::map<AscendStr
 Status InnerSession::AddGraphWithCopy(uint32_t graph_id, const Graph &graph,
                                       const std::map<std::string, std::string> &options) {
   std::lock_guard<std::mutex> lock(resource_mutex_);
+  bool is_execute_graph = false;
+  if ((IsExecuteGraph(graph_id, is_execute_graph) == SUCCESS) && is_execute_graph) {
+    return GE_GRAPH_GRAPH_ALREADY_EXIST;
+  }
   GE_ASSERT_SUCCESS(SetSessionGraphId(graph, session_id_, graph_id));
   PrintOptionsWithLengthLimit(options, "AddGraphWithCopy option");
   UpdateGlobalSessionContext();
@@ -983,10 +998,15 @@ Status InnerSession::GetCompiledModel(uint32_t graph_id, ModelBufferData &model_
 }
 
 bool InnerSession::GetBuildFlag(uint32_t graph_id) const {
-  return graph_manager_.GetBuildFlag(graph_id);
+  return user_graphs_manager_->GetBuildFlag(graph_id);
 }
 
 bool InnerSession::GetLoadFlag(uint32_t graph_id) const {
-  return graph_manager_.GetLoadFlag(graph_id);
+  return user_graphs_manager_->GetLoadFlag(graph_id);
+}
+
+Status InnerSession::IsExecuteGraph(uint32_t graph_id, bool &is_execute_graph) const {
+  GE_ASSERT_NOTNULL(user_hybrid_graph_manager_);
+  return user_hybrid_graph_manager_->IsExecuteGraph(graph_id, is_execute_graph);
 }
 }  // namespace ge

@@ -8314,6 +8314,7 @@ TEST_F(UtestDavinciModel, CopyInputData_SkipInputH2DOverlapPlannedInput) {
   EXPECT_EQ(model.CopyInputData(input_data), SUCCESS);
   EXPECT_TRUE(call_log.memcpy_calls.empty());
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -8367,6 +8368,7 @@ TEST_F(UtestDavinciModel, CopyInputDataWithMergeH2D_InputH2DOverlapKeepsPlannedM
   EXPECT_EQ(memcmp(device_memory.data() + kOverlapInputSize, host_input1.data(), kOverlapInputSize), 0);
 
   model.input_merge_copy_mem_base_.reset();
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -8416,6 +8418,7 @@ TEST_F(UtestDavinciModel, CopyInputDataWithMergeH2D_InputH2DOverlapPreparedMerge
   call_log.memcpy_calls.clear();
   call_log.record_event_calls.clear();
   EXPECT_EQ(LaunchRuntimePlanForTest(model, input_data, std::vector<GeTensor>()), SUCCESS);
+  model.input_h2d_overlap_plan_.reset();
   EXPECT_TRUE(call_log.memcpy_calls.empty());
   EXPECT_TRUE(call_log.memcpy_batch_calls.empty());
   ASSERT_EQ(call_log.record_event_calls.size(), 1U);
@@ -8447,6 +8450,7 @@ TEST_F(UtestDavinciModel, InputH2DOverlapRuntimePlan_RejectInvalidHostInputBefor
 
   std::vector<GeTensor> input_tensors;
   EXPECT_EQ(LaunchRuntimePlanForTest(model, input_data, input_tensors), PARAM_INVALID);
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
 }
 
@@ -8472,6 +8476,7 @@ TEST_F(UtestDavinciModel, InputH2DOverlapRuntimePlan_GertTensorLaunchUsesWorkerH
                       static_cast<void *>(host_input.data())};
 
   EXPECT_EQ(LaunchRuntimePlanForTest(model, input_tensors), SUCCESS);
+  model.input_h2d_overlap_plan_.reset();
 
   const std::vector<std::string> expected_calls = {"h2d", "record"};
   EXPECT_EQ(call_log.calls, expected_calls);
@@ -8536,6 +8541,7 @@ TEST_F(UtestDavinciModel, NnExecute_InputH2DOverlapFeaturePlanLaunchesCopyBefore
   EXPECT_EQ(call_log.record_event_calls[0].stream, copy_stream);
   EXPECT_EQ(call_log.model_execute_stream, compute_stream);
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -8596,6 +8602,7 @@ TEST_F(UtestDavinciModel, NnExecute_InputH2DOverlapGroupUsesBatchCopyOnCopyStrea
   EXPECT_EQ(call_log.record_event_calls[0].stream, copy_stream);
   EXPECT_EQ(call_log.model_execute_stream, compute_stream);
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -8645,6 +8652,7 @@ TEST_F(UtestDavinciModel, NnExecute_InputH2DOverlapFeaturePlanSyncModeUsesWorker
   EXPECT_EQ(call_log.record_event_calls[0].stream, copy_stream);
   EXPECT_EQ(call_log.model_execute_stream, compute_stream);
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -8694,6 +8702,7 @@ TEST_F(UtestDavinciModel, NnExecute_InputH2DOverlapRefreshableHostInputCopiesOnC
   EXPECT_EQ(call_log.record_event_calls[0].stream, copy_stream);
   EXPECT_EQ(call_log.model_execute_stream, compute_stream);
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -8749,6 +8758,7 @@ TEST_F(UtestDavinciModel, NnExecute_InputH2DOverlapSkipsHostInputIndexesStaging)
   EXPECT_EQ(call_log.record_event_calls[0].stream, copy_stream);
   EXPECT_EQ(call_log.model_execute_stream, compute_stream);
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -8784,6 +8794,7 @@ TEST_F(UtestDavinciModel, NnExecute_InputH2DOverlapRefreshableDeviceInputFails) 
   EXPECT_TRUE(call_log.memcpy_calls.empty());
   EXPECT_TRUE(call_log.record_event_calls.empty());
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -8820,6 +8831,7 @@ TEST_F(UtestDavinciModel, NnExecute_InputH2DOverlapRefreshableRejectInvalidPlace
   EXPECT_TRUE(call_log.memcpy_calls.empty());
   EXPECT_TRUE(call_log.record_event_calls.empty());
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -8908,6 +8920,7 @@ TEST_F(UtestDavinciModel, NnExecute_InputH2DOverlapFeaturePlanRunsRepeatedly) {
   EXPECT_EQ(memcmp(device_memory.data() + kOverlapAllocationOffset, host_input.data(), kOverlapInputSize), 0);
   EXPECT_EQ(call_log.model_execute_stream, compute_stream);
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -8947,6 +8960,7 @@ TEST_F(UtestDavinciModel, NnExecute_InputH2DOverlapH2DFailureDoesNotBlockCurrent
   EXPECT_TRUE(call_log.record_event_calls.empty());
   EXPECT_EQ(call_log.model_execute_stream, compute_stream);
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -8989,6 +9003,7 @@ TEST_F(UtestDavinciModel, NnExecute_InputH2DOverlapRecordFailureDoesNotBlockCurr
   EXPECT_EQ(call_log.record_event_calls[0].stream, copy_stream);
   EXPECT_EQ(call_log.model_execute_stream, compute_stream);
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();
@@ -9034,6 +9049,7 @@ TEST_F(UtestDavinciModel, NnExecute_InputH2DOverlapPreviousWorkerFailureBlocksNe
   EXPECT_TRUE(call_log.record_event_calls.empty());
   EXPECT_EQ(call_log.model_execute_stream, nullptr);
 
+  model.input_h2d_overlap_plan_.reset();
   model.stream_list_.clear();
   model.event_list_.clear();
   model.task_list_.clear();

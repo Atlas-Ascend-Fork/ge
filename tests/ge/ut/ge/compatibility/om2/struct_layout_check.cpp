@@ -417,8 +417,8 @@ TEST(Om2AbiStructCompatibility, StreamDescLayoutIsFrozen) {
                                  sizeof(GertModelStreamDesc::streams) + sizeof(GertModelStreamDesc::stream_num));
 }
 
-TEST(Om2AbiStructCompatibility, ApiConfigLayoutsAreFrozen) {
-  EXPECT_STRUCT_LAYOUT(GertModelLoadConfig, 184U, 8U);
+TEST(Om2AbiStructCompatibility, LoadConfigLayoutIsFrozen) {
+  EXPECT_STRUCT_LAYOUT(GertModelLoadConfig, 192U, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, struct_size, uint64_t, 0U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, bin_files, const char **, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, bin_data, const void **, 16U);
@@ -442,6 +442,7 @@ TEST(Om2AbiStructCompatibility, ApiConfigLayoutsAreFrozen) {
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, external_label_num, uint64_t, 160U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, external_notifies, aclrtNotify *, 168U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, external_notify_num, uint64_t, 176U);
+  EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, external_allocator, void *, 184U);
   EXPECT_NO_IMPLICIT_PADDING(
       GertModelLoadConfig,
       sizeof(GertModelLoadConfig::struct_size) + sizeof(GertModelLoadConfig::bin_files) +
@@ -455,9 +456,11 @@ TEST(Om2AbiStructCompatibility, ApiConfigLayoutsAreFrozen) {
           sizeof(GertModelLoadConfig::external_stream_num) + sizeof(GertModelLoadConfig::external_events) +
           sizeof(GertModelLoadConfig::external_event_num) + sizeof(GertModelLoadConfig::external_labels) +
           sizeof(GertModelLoadConfig::external_label_num) + sizeof(GertModelLoadConfig::external_notifies) +
-          sizeof(GertModelLoadConfig::external_notify_num));
+          sizeof(GertModelLoadConfig::external_notify_num) + sizeof(GertModelLoadConfig::external_allocator));
+}
 
-  EXPECT_STRUCT_LAYOUT(GertModelRunConfig, 56U, 8U);
+TEST(Om2AbiStructCompatibility, RunConfigLayoutIsFrozen) {
+  EXPECT_STRUCT_LAYOUT(GertModelRunConfig, 64U, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelRunConfig, struct_size, uint64_t, 0U);
   EXPECT_MEMBER_LAYOUT(GertModelRunConfig, input_count, uint64_t, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelRunConfig, input_data, gert::Tensor **, 16U);
@@ -465,13 +468,16 @@ TEST(Om2AbiStructCompatibility, ApiConfigLayoutsAreFrozen) {
   EXPECT_MEMBER_LAYOUT(GertModelRunConfig, output_data, gert::Tensor **, 32U);
   EXPECT_MEMBER_LAYOUT(GertModelRunConfig, stream_sync_timeout_ms, uint64_t, 40U);
   EXPECT_MEMBER_LAYOUT(GertModelRunConfig, run_callbacks, const GertModelRunCallbacks *, 48U);
-  EXPECT_NO_IMPLICIT_PADDING(GertModelRunConfig,
-                             sizeof(GertModelRunConfig::struct_size) + sizeof(GertModelRunConfig::input_count) +
-                                 sizeof(GertModelRunConfig::input_data) + sizeof(GertModelRunConfig::output_count) +
-                                 sizeof(GertModelRunConfig::output_data) +
-                                 sizeof(GertModelRunConfig::stream_sync_timeout_ms) +
-                                 sizeof(GertModelRunConfig::run_callbacks));
+  EXPECT_MEMBER_LAYOUT(GertModelRunConfig, external_allocator, void *, 56U);
+  EXPECT_NO_IMPLICIT_PADDING(
+      GertModelRunConfig,
+      sizeof(GertModelRunConfig::struct_size) + sizeof(GertModelRunConfig::input_count) +
+          sizeof(GertModelRunConfig::input_data) + sizeof(GertModelRunConfig::output_count) +
+          sizeof(GertModelRunConfig::output_data) + sizeof(GertModelRunConfig::stream_sync_timeout_ms) +
+          sizeof(GertModelRunConfig::run_callbacks) + sizeof(GertModelRunConfig::external_allocator));
+}
 
+TEST(Om2AbiStructCompatibility, ReservedApiConfigLayoutsAreFrozen) {
   EXPECT_STRUCT_LAYOUT(GertModelUnloadConfig, 8U, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelUnloadConfig, struct_size, uint64_t, 0U);
   EXPECT_NO_IMPLICIT_PADDING(GertModelUnloadConfig, sizeof(GertModelUnloadConfig::struct_size));

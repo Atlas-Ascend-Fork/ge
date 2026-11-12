@@ -135,9 +135,7 @@ bool DumpConfigValidator::ValidateDumpMode(const nlohmann::json &jsDumpConfig) {
     dumpMode = jsDumpConfig[GE_DUMP_MODE].get<std::string>();
   }
 
-  const std::vector<std::string> validModes = {GE_DUMP_MODE_INPUT, GE_DUMP_MODE_OUTPUT, GE_DUMP_MODE_ALL};
-
-  if (std::find(validModes.begin(), validModes.end(), dumpMode) == validModes.end()) {
+  if ((dumpMode != GE_DUMP_MODE_INPUT) && (dumpMode != GE_DUMP_MODE_OUTPUT) && (dumpMode != GE_DUMP_MODE_ALL)) {
     GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
            "[Check][DumpConfig]dump_mode value[%s] error in config, only supports input/output/all", dumpMode.c_str());
     REPORT_INNER_ERR_MSG("E19999", "dump_mode value[%s] error in config, only supports input/output/all",
@@ -154,9 +152,7 @@ bool DumpConfigValidator::ValidateDumpLevel(const nlohmann::json &jsDumpConfig) 
     dumpLevel = jsDumpConfig[GE_DUMP_LEVEL].get<std::string>();
   }
 
-  const std::vector<std::string> validLevels = {GE_DUMP_LEVEL_OP, GE_DUMP_LEVEL_KERNEL, GE_DUMP_LEVEL_ALL};
-
-  if (std::find(validLevels.begin(), validLevels.end(), dumpLevel) == validLevels.end()) {
+  if ((dumpLevel != GE_DUMP_LEVEL_OP) && (dumpLevel != GE_DUMP_LEVEL_KERNEL) && (dumpLevel != GE_DUMP_LEVEL_ALL)) {
     GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
            "[Check][DumpConfig]dump_level value[%s] error in config, only supports op/kernel/all", dumpLevel.c_str());
     REPORT_INNER_ERR_MSG("E19999", "dump_level value[%s] error in config, only supports op/kernel/all",

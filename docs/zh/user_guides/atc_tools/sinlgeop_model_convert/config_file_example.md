@@ -324,7 +324,7 @@
                         "name":"x2",
                         "format": "NCHW",
                         "shape": [1,3,166,166],
-                        "type": "float32",
+                        "type": "float32"
 
                     }
                 ],

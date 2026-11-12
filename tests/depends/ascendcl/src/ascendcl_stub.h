@@ -105,6 +105,7 @@ class AclRuntimeStub {
   virtual aclError aclrtDestroyStream(aclrtStream stream);
   virtual aclError aclrtStreamAbort(aclrtStream stream);
   virtual aclError aclrtSynchronizeStream(aclrtStream stream);
+  virtual aclError aclrtSynchronizeDevice();
   virtual aclError aclrtSynchronizeStreamWithTimeout(aclrtStream stream, int32_t timeout);
   virtual aclError aclrtMalloc(void **devPtr, size_t size, aclrtMemMallocPolicy policy);
   virtual aclError aclrtMallocHost(void **hostPtr, size_t size);

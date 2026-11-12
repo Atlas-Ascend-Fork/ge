@@ -230,8 +230,13 @@ AttrHolder *ExecuteGraphBackend::GetAttributeHolder() const {
   return graph_.get();
 }
 
-GNodePtr ExecuteGraphBackend::FindDirectNode(const AscendString &name) const {
-  return NodeAdapter::ExecuteNode2GNode(FindDirectNodeByName(name));
+GNodePtr ExecuteGraphBackend::FindDirectNode(const AscendString &name, bool &found) const {
+  const auto node = FindDirectNodeByName(name);
+  found = (node != nullptr);
+  if (node == nullptr) {
+    return nullptr;
+  }
+  return NodeAdapter::ExecuteNode2GNode(node);
 }
 
 ConstOpDescPtr ExecuteGraphBackend::GetOutputOpDesc(const GNode &node) const {

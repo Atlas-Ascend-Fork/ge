@@ -48,6 +48,7 @@
 #include "graph/debug/ge_attr_define.h"
 #include "graph/utils/graph_utils.h"
 #include "graph/utils/graph_utils_ex.h"
+#include "graph/fast_graph/execute_graph.h"
 #include "engines/manager/opskernel_manager/ops_kernel_builder_manager.h"
 #include "graph/execute/model_executor.h"
 #include "ge_graph_dsl/graph_dsl.h"
@@ -447,7 +448,7 @@ class UtestGraphManagerTest : public testing::Test {
 class StubExecutor : public Executor {
  public:
   Status LoadGraph(const GeRootModelPtr &ge_root_model, const GraphNodePtr &graph_node,
-                   const rtStream_t stream = nullptr) override {
+                   const rtStream_t stream = nullptr, gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
@@ -460,17 +461,19 @@ class StubExecutor : public Executor {
   }
 
   Status RunGraph(const GraphNodePtr &graph_node, const GraphId graph_id, const std::vector<gert::Tensor> &inputs,
-                  std::vector<gert::Tensor> &outputs) override {
+                  std::vector<gert::Tensor> &outputs, gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
   Status RunGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id, const rtStream_t stream,
-                            const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs) override {
+                            const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs,
+                            gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
   Status ExecuteGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id, rtStream_t const stream,
-                                const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs) override {
+                                const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
+                                gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
@@ -500,7 +503,7 @@ class StubExecutor : public Executor {
 class StubExecutorFail : public Executor {
  public:
   Status LoadGraph(const GeRootModelPtr &ge_root_model, const GraphNodePtr &graph_node,
-                   const rtStream_t stream = nullptr) override {
+                   const rtStream_t stream = nullptr, gert::Allocators *external_allocators = nullptr) override {
     return FAILED;
   }
 
@@ -513,17 +516,19 @@ class StubExecutorFail : public Executor {
   }
 
   Status RunGraph(const GraphNodePtr &graph_node, const GraphId graph_id, const std::vector<gert::Tensor> &inputs,
-                  std::vector<gert::Tensor> &outputs) override {
+                  std::vector<gert::Tensor> &outputs, gert::Allocators *external_allocators = nullptr) override {
     return SUCCESS;
   }
 
   Status RunGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id, const rtStream_t stream,
-                            const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs) override {
+                            const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs,
+                            gert::Allocators *external_allocators = nullptr) override {
     return FAILED;
   }
 
   Status ExecuteGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id, rtStream_t const stream,
-                                const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs) override {
+                                const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
+                                gert::Allocators *external_allocators = nullptr) override {
     return FAILED;
   }
 
@@ -1039,6 +1044,7 @@ TEST_F(UtestGraphManagerTest, test_add_graph_2) {
   GraphManager graph_manager;
   graph_manager.graph_rebuild_state_ctrl_ = MakeShared<GraphRebuildStateCtrl>();
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
+  graph_node->SetGraph(MakeShared<Graph>("existing_compute_graph"));
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_manager.SetAddGraphCondition(graph_id, kDoneAdded);
   Graph graph("test_graph");
@@ -1133,6 +1139,7 @@ TEST_F(UtestGraphManagerTest, test_remove_graph_1) {
   GraphManager graph_manager;
   graph_manager.graph_rebuild_state_ctrl_ = MakeShared<GraphRebuildStateCtrl>();
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
+  graph_node->SetGraph(MakeShared<Graph>("compute_graph"));
   Status status = graph_manager.RemoveGraph(graph_id);
   EXPECT_EQ(status, ge::GE_GRAPH_GRAPH_NOT_EXIST);
   graph_manager.AddGraphNode(graph_id, graph_node);
@@ -1161,6 +1168,7 @@ TEST_F(UtestGraphManagerTest, test_remove_graph_2) {
   Graph graph("test_graph");
   CreateGraph(graph);
   auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
+  graph_node->SetGraph(GraphUtilsEx::CreateGraphPtrFromComputeGraph(compute_graph));
   auto ge_root_model = MakeShared<GeRootModel>();
   ge_root_model->Initialize(compute_graph);
   ge_root_model->SetModelId(1);
@@ -1176,6 +1184,7 @@ TEST_F(UtestGraphManagerTest, test_remove_fork_graph) {
   GraphManager graph_manager;
   graph_manager.graph_rebuild_state_ctrl_ = MakeShared<GraphRebuildStateCtrl>();
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
+  graph_node->SetGraph(MakeShared<Graph>("compute_graph"));
   graph_node->SetOriginGraphId(0);
   graph_manager.AddGraphNode(graph_id, graph_node);
   EXPECT_EQ(graph_manager.RemoveGraph(graph_id), SUCCESS);
@@ -1570,6 +1579,8 @@ TEST_F(UtestGraphManagerTest, test_pre_run_thread_3) {
   GraphManager graph_manager;
   GraphNodePtr graph_node1 = MakeShared<ge::GraphNode>(graph_id1);
   GraphNodePtr graph_node2 = MakeShared<ge::GraphNode>(graph_id2);
+  graph_node1->SetGraph(MakeShared<Graph>("compute_graph_1"));
+  graph_node2->SetGraph(MakeShared<Graph>("compute_graph_2"));
   graph_manager.AddGraphNode(graph_id1, graph_node1);
   graph_manager.AddGraphNode(graph_id2, graph_node2);
   graph_manager.SetAddGraphCondition(graph_id1, kDoneAdded);
@@ -1757,7 +1768,7 @@ TEST_F(UtestGraphManagerTest, test_CheckGraphAdded) {
   GraphId graph_id = 1;
   GraphManager graph_manager;
   Graph graph;
-  EXPECT_EQ(graph_manager.CheckGraphAdded(graph_id, graph), FAILED);
+  EXPECT_EQ(graph_manager.CheckGraphAdded(graph_id, graph), PARAM_INVALID);
 }
 
 TEST_F(UtestGraphManagerTest, CheckPrecisionModeValue_PrecisionMode_SUCCESS) {
@@ -1939,6 +1950,7 @@ TEST_F(UtestGraphManagerTest, test_InnerRunGraphWithStream) {
   graph_manager.executor_ = &executor;
   GraphId graph_id = 1;
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
+  graph_node->SetGraph(MakeShared<Graph>("compute_graph"));
   const std::vector<GeTensor> inputs;
   std::vector<GeTensor> outputs;
   rtStream_t stream = nullptr;
@@ -1979,6 +1991,7 @@ TEST_F(UtestGraphManagerTest, test_ExecuteGraphWithStreamAsync2) {
   graph_manager.executor_ = &executor;
   GraphId graph_id = 1;
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
+  graph_node->SetGraph(MakeShared<Graph>("compute_graph"));
   graph_node->SetRunFlag(true);
   graph_manager.AddGraphNode(graph_id, graph_node);
   const std::vector<gert::Tensor> inputs;
@@ -1993,6 +2006,7 @@ TEST_F(UtestGraphManagerTest, test_RunGraphWithStreamAsync2) {
   graph_manager.executor_ = &executor;
   GraphId graph_id = 1;
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
+  graph_node->SetGraph(MakeShared<Graph>("compute_graph"));
   graph_node->SetRunFlag(true);
   graph_manager.AddGraphNode(graph_id, graph_node);
   const std::vector<gert::Tensor> inputs;
@@ -3048,6 +3062,7 @@ TEST_F(UtestGraphManagerTest, CompileGraph_Error_StateInvalid) {
   StubExecutor executor;
   graph_manager.executor_ = &executor;
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
+  graph_node->SetGraph(MakeShared<Graph>("compute_graph"));
 
   graph_manager.AddGraphNode(graph_id, graph_node);
   uint64_t session_id = 1;
@@ -5552,6 +5567,7 @@ TEST_F(UtestGraphManagerTest, test_run_graph_already_running) {
   GraphId graph_id = 1;
   GraphManager graph_manager;
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
+  graph_node->SetGraph(MakeShared<Graph>("compute_graph"));
   graph_node->SetRunFlag(true);
   graph_manager.AddGraphNode(graph_id, graph_node);
   std::vector<gert::Tensor> inputs;
@@ -5722,7 +5738,7 @@ TEST_F(UtestGraphManagerTest, GetCompiledModel_SerializesOm2ModelDataInOm2Mode) 
   EXPECT_GT(model_buffer.length, 0U);
 }
 
-TEST_F(UtestGraphManagerTest, RunGraphAsync_Om2Mode_ReturnsUnsupported) {
+TEST_F(UtestGraphManagerTest, RunGraphAsync_Om2ComputeGraphReturnsUnsupported) {
   EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
@@ -5733,6 +5749,7 @@ TEST_F(UtestGraphManagerTest, RunGraphAsync_Om2Mode_ReturnsUnsupported) {
   GraphNodePtr graph_node;
   GeModelPtr ge_model;
   CreateSummaryCompiledModel(graph_node, ge_model);
+  graph_node->SetGraph(MakeShared<Graph>("compute_graph"));
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_node->SetBuildFlag(true);
   graph_node->SetCompiledFlag(true);
@@ -6104,6 +6121,467 @@ TEST_F(UtestGraphManagerTest, ProcessPcieThrough_SkipWhenEnvVarZero) {
 
   SetPcieThroughPartialSupport(false);
   gert::DefaultOpImplSpaceRegistryV2::GetInstance().SetSpaceRegistry(nullptr);
+}
+
+namespace {
+Graph MakeSessionExecuteGraph(const char *name) {
+  return *GraphUtilsEx::ExecuteGraph2Graph(std::make_shared<ExecuteGraph>(name));
+}
+
+std::shared_ptr<gert::GertModelData> GetExecuteModelData(const GraphNodePtr &node) {
+  const auto root = node->GetGeRootModel();
+  return root == nullptr ? nullptr : root->GetOm2ModelData();
+}
+
+void SetExecuteModelData(const GraphNodePtr &node, const std::shared_ptr<gert::GertModelData> &data) {
+  auto root = std::make_shared<GeRootModel>();
+  root->SetOm2ModelData(data);
+  node->SetGeRootModel(root);
+}
+
+std::shared_ptr<gert::GertModelData> MakeExecuteGraphModelData() {
+  auto data = std::make_shared<gert::GertModelData>();
+  gert::InitGertModelData(*data);
+  auto model = std::make_unique<gert::GertModelDataModel>();
+  model->model_meta = std::make_unique<gert::GertModelDataModelMeta>();
+  gert::GertTensorDesc desc;
+  desc.data_type = DT_FLOAT;
+  desc.format = FORMAT_ND;
+  desc.shape = {-1, 3};
+  desc.shape_range = {{1, 8}, {3, 3}};
+  model->model_meta->input_desc.emplace_back(std::move(desc));
+  data->models.emplace_back(std::move(model));
+  return data;
+}
+
+class ExecuteGraphDispatchStub : public StubExecutor {
+ public:
+  Status LoadGraph(const GeRootModelPtr &root, const GraphNodePtr &node, const aclrtStream stream = nullptr,
+                   gert::Allocators *external_allocators = nullptr) override {
+    ++loads;
+    loaded_data = root->GetOm2ModelData();
+    loaded_node = node;
+    loaded_stream = stream;
+    return load_status;
+  }
+
+  Status RunGraph(const GraphNodePtr &node, const GraphId graph_id, const std::vector<gert::Tensor> &inputs,
+                  std::vector<gert::Tensor> &outputs, gert::Allocators *external_allocators = nullptr) override {
+    ++runs;
+    EXPECT_EQ(node, loaded_node);
+    EXPECT_EQ(graph_id, node->GetGraphId());
+    return PARAM_INVALID;
+  }
+
+  Status ExecuteGraphWithStream(const GraphNodePtr &node, const GraphId graph_id, rtStream_t const stream,
+                                const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
+                                gert::Allocators *external_allocators = nullptr) override {
+    ++stream_runs;
+    execution_stream = stream;
+    EXPECT_EQ(node, loaded_node);
+    EXPECT_EQ(graph_id, node->GetGraphId());
+    return PARAM_INVALID;
+  }
+
+  Status load_status = FAILED;
+  size_t loads = 0U;
+  size_t runs = 0U;
+  size_t stream_runs = 0U;
+  std::shared_ptr<gert::GertModelData> loaded_data;
+  GraphNodePtr loaded_node;
+  aclrtStream loaded_stream = nullptr;
+  rtStream_t execution_stream = nullptr;
+};
+}  // namespace
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_BackendQueryRejectsInvalidFacadeRegistration) {
+  Graph compute("compute");
+  EXPECT_FALSE(GraphUtilsEx::IsExecuteGraph(compute));
+  Graph invalid;
+  EXPECT_FALSE(GraphUtilsEx::IsExecuteGraph(invalid));
+  GraphManager manager;
+  EXPECT_NE(manager.AddGraph(40U, invalid, {}, OmgContext{}), SUCCESS);
+  EXPECT_FALSE(manager.HasGraphNode(40U));
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_CheckGraphAddedSetsIdAndRejectsRegisteredObject) {
+  const auto graph = std::make_shared<ExecuteGraph>("execute");
+  ASSERT_EQ(GraphManager::CheckGraphAdded(71U, graph), SUCCESS);
+  EXPECT_EQ(graph->GetGraphId(), 71U);
+  ASSERT_TRUE(AttrUtils::SetBool(*graph, ATTR_NAME_GRAPH_HAS_BEEN_ADDED, true));
+  EXPECT_EQ(GraphManager::CheckGraphAdded(72U, graph), GE_GRAPH_GRAPH_ALREADY_EXIST);
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_CheckGraphAddedAcceptsFalseRegistrationMarker) {
+  const auto graph = std::make_shared<ExecuteGraph>("execute");
+  ASSERT_TRUE(AttrUtils::SetBool(*graph, ATTR_NAME_GRAPH_HAS_BEEN_ADDED, false));
+  EXPECT_EQ(GraphManager::CheckGraphAdded(73U, graph), SUCCESS);
+  EXPECT_EQ(graph->GetGraphId(), 73U);
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_AddRegistersExecuteBackend) {
+  GraphManager manager;
+  Graph graph = MakeSessionExecuteGraph("execute");
+  const std::map<std::string, std::string> options{{"ge.exec.precision_mode", "allow_fp32_to_fp16"}};
+  EXPECT_NE(GraphUtilsEx::Graph2ExecuteGraph(graph), nullptr);
+  EXPECT_EQ(manager.AddGraph(41U, graph, options, OmgContext{}), SUCCESS);
+  EXPECT_TRUE(manager.HasGraphNode(41U));
+  EXPECT_EQ(manager.graph_count_.count(41U), 1U);
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_AddOwnsFacadeWithoutCreatingComputeResources) {
+  GraphManager manager;
+  manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
+  GraphNodePtr node;
+  {
+    Graph graph = MakeSessionExecuteGraph("execute");
+    ASSERT_EQ(manager.AddGraph(41U, graph, {}, OmgContext{}), SUCCESS);
+    ASSERT_EQ(manager.GetGraphNode(41U, node), SUCCESS);
+  }
+  ASSERT_NE(node->GetGraph(), nullptr);
+  EXPECT_TRUE(GraphUtilsEx::IsExecuteGraph(*node->GetGraph()));
+  EXPECT_EQ(node->GetComputeGraph(), nullptr);
+  EXPECT_EQ(node->GetGeRootModel(), nullptr);
+  EXPECT_EQ(GetExecuteModelData(node), nullptr);
+  EXPECT_FALSE(node->GetBuildFlag());
+  EXPECT_FALSE(node->GetLoadFlag());
+  ASSERT_EQ(manager.RemoveGraph(41U), SUCCESS);
+  EXPECT_FALSE(manager.HasGraphNode(41U));
+  EXPECT_EQ(manager.RemoveGraph(41U), GE_GRAPH_GRAPH_NOT_EXIST);
+  EXPECT_EQ(manager.AddGraph(41U, MakeSessionExecuteGraph("replacement"), {}, OmgContext{}), SUCCESS);
+}
+
+TEST_F(UtestGraphManagerTest, AddGraph_RejectsDifferentGraphTypeForRegisteredIdWithoutIncreasingCounts) {
+  for (const auto existing_kind : {static_cast<GraphKind>(0), static_cast<GraphKind>(1)}) {
+    GraphManager manager;
+    const GraphId graph_id = 76U;
+    auto original = std::make_shared<GraphNode>(graph_id);
+    original->SetGraph(std::make_shared<Graph>("original", existing_kind));
+    original->IncreaseLoadCount();
+    manager.AddGraphNode(graph_id, original);
+    manager.IncreaseGraphCount(graph_id);
+    manager.SetAddGraphCondition(graph_id, kDoneAdded);
+    const auto load_count = original->load_count_;
+    const auto incoming_kind =
+        existing_kind == static_cast<GraphKind>(0) ? static_cast<GraphKind>(1) : static_cast<GraphKind>(0);
+    Graph incoming("incoming", incoming_kind);
+
+    bool is_added = false;
+    EXPECT_EQ(manager.CheckGraphExisted(graph_id, is_added, &incoming), GE_GRAPH_GRAPH_ALREADY_EXIST);
+    uint32_t count = 0U;
+    ASSERT_EQ(manager.GetGraphCount(graph_id, count), SUCCESS);
+    EXPECT_EQ(count, 1U);
+    EXPECT_EQ(original->load_count_, load_count);
+    GraphNodePtr after;
+    ASSERT_EQ(manager.GetGraphNode(graph_id, after), SUCCESS);
+    EXPECT_EQ(after, original);
+    manager.RemoveGraphNode(graph_id);
+  }
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_DuplicateIdReusesRegisteredGraphAndIncreasesCount) {
+  GraphManager manager;
+  Graph execute = MakeSessionExecuteGraph("execute");
+  ASSERT_EQ(manager.AddGraph(42U, execute, {}, OmgContext{}), SUCCESS);
+  GraphNodePtr original;
+  ASSERT_EQ(manager.GetGraphNode(42U, original), SUCCESS);
+  uint32_t count = 0U;
+  ASSERT_EQ(manager.GetGraphCount(42U, count), SUCCESS);
+  EXPECT_EQ(count, 1U);
+  ASSERT_EQ(manager.AddGraph(42U, MakeSessionExecuteGraph("replacement"), {}, OmgContext{}), SUCCESS);
+  ASSERT_EQ(manager.GetGraphCount(42U, count), SUCCESS);
+  EXPECT_EQ(count, 2U);
+  EXPECT_EQ(manager.AddGraph(42U, BuildHCCLGraph(), {}, OmgContext{}), PARAM_INVALID);
+  ASSERT_EQ(manager.GetGraphCount(42U, count), SUCCESS);
+  EXPECT_EQ(count, 2U);
+  GraphNodePtr after;
+  ASSERT_EQ(manager.GetGraphNode(42U, after), SUCCESS);
+  EXPECT_EQ(after, original);
+
+  // Model a compute graph whose registration has completed.
+  auto compute_node = std::make_shared<GraphNode>(43U);
+  compute_node->SetGraph(std::make_shared<Graph>(BuildHCCLGraph()));
+  compute_node->IncreaseLoadCount();
+  manager.AddGraphNode(43U, compute_node);
+  manager.IncreaseGraphCount(43U);
+  manager.SetAddGraphCondition(43U, kDoneAdded);
+  EXPECT_EQ(manager.AddGraph(43U, execute, {}, OmgContext{}), PARAM_INVALID);
+  ASSERT_EQ(manager.GetGraphCount(43U, count), SUCCESS);
+  EXPECT_EQ(count, 1U);
+  ASSERT_EQ(manager.GetGraphNode(43U, after), SUCCESS);
+  EXPECT_EQ(after, compute_node);
+  manager.RemoveGraphNode(43U);
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_AddPreservesOptionsAndRejectsClone) {
+  GraphManager manager;
+  Graph graph = MakeSessionExecuteGraph("execute");
+  EXPECT_EQ(manager.AddGraphWithCopy(44U, graph, {}, OmgContext{}), UNSUPPORTED);
+  EXPECT_FALSE(manager.HasGraphNode(44U));
+  const std::map<std::string, std::string> options{{"ge.exec.precision_mode", "allow_fp32_to_fp16"}};
+  ASSERT_EQ(manager.AddGraph(44U, graph, options, OmgContext{}), SUCCESS);
+  EXPECT_EQ(manager.LoadGraph(44U, {{"ge.exec.unknown_execute_option", "1"}}, nullptr), PARAM_INVALID);
+  GraphNodePtr node;
+  ASSERT_EQ(manager.GetGraphNode(44U, node), SUCCESS);
+  EXPECT_EQ(node->GetOptions(), options);
+  EXPECT_FALSE(node->GetBuildFlag());
+  EXPECT_FALSE(node->GetLoadFlag());
+  EXPECT_EQ(GetExecuteModelData(node), nullptr);
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileFailureDoesNotPublishOrKeepBusyState) {
+  GTEST_SKIP() << "BuildGertModelDataFromGraph is a success stub until model generation is available.";
+  EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
+  EnableOm2OnlineMode();
+  GraphManager manager;
+  manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
+  // An empty execute graph has no model description or output endpoints and cannot generate a model.
+  ASSERT_EQ(manager.AddGraph(45U, MakeSessionExecuteGraph("invalid_execute"), {}, OmgContext{}), SUCCESS);
+  GraphNodePtr node;
+  ASSERT_EQ(manager.GetGraphNode(45U, node), SUCCESS);
+  for (size_t attempt = 0U; attempt < 2U; ++attempt) {
+    EXPECT_NE(manager.CompileGraph(45U, 1U, {}), SUCCESS);
+    EXPECT_FALSE(node->GetRunFlag());
+    EXPECT_FALSE(node->GetBuildFlag());
+    EXPECT_FALSE(node->GetLoadFlag());
+    EXPECT_EQ(GetExecuteModelData(node), nullptr);
+    EXPECT_TRUE(manager.HasGraphNode(45U));
+  }
+  EXPECT_EQ(manager.RemoveGraph(45U), SUCCESS);
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileReusesArtifactRegardlessOfOm2OnlineMode) {
+  EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
+  GraphManager manager;
+  manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
+  auto node = std::make_shared<GraphNode>(75U);
+  node->SetGraph(std::make_shared<Graph>(MakeSessionExecuteGraph("execute")));
+  const auto data = MakeExecuteGraphModelData();
+  SetExecuteModelData(node, data);
+  node->SetBuildFlag(true);
+  manager.AddGraphNode(75U, node);
+
+  ASSERT_EQ(unsetenv("ENABLE_RUNTIME_OM2"), 0);
+  EXPECT_EQ(manager.CompileGraph(75U, 1U, {}), SUCCESS);
+  for (const char *value : {"0", "true", "1"}) {
+    ASSERT_EQ(setenv("ENABLE_RUNTIME_OM2", value, 1), 0);
+    EXPECT_EQ(manager.CompileGraph(75U, 1U, {}), SUCCESS);
+  }
+  EXPECT_TRUE(node->GetBuildFlag());
+  EXPECT_FALSE(node->GetRunFlag());
+  EXPECT_EQ(GetExecuteModelData(node), data);
+
+  manager.RemoveGraphNode(75U);
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileBuildsModelRegardlessOfOm2OnlineMode) {
+  EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
+  for (const char *value : {static_cast<const char *>(nullptr), "0", "true", "1"}) {
+    if (value == nullptr) {
+      ASSERT_EQ(unsetenv("ENABLE_RUNTIME_OM2"), 0);
+    } else {
+      ASSERT_EQ(setenv("ENABLE_RUNTIME_OM2", value, 1), 0);
+    }
+    GraphManager manager;
+    manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
+    ASSERT_EQ(manager.AddGraph(77U, MakeSessionExecuteGraph("execute"), {}, OmgContext{}), SUCCESS);
+    GraphNodePtr node;
+    ASSERT_EQ(manager.GetGraphNode(77U, node), SUCCESS);
+    EXPECT_EQ(manager.CompileGraph(77U, 1U, {}), SUCCESS);
+    EXPECT_TRUE(node->GetBuildFlag());
+    EXPECT_FALSE(node->GetRunFlag());
+    EXPECT_FALSE(node->GetLoadFlag());
+    EXPECT_NE(GetExecuteModelData(node), nullptr);
+    EXPECT_EQ(manager.RemoveGraph(77U), SUCCESS);
+  }
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileChecksBusyAndRebuildStateBeforeReusingArtifact) {
+  EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
+  EnableOm2OnlineMode();
+  GraphManager manager;
+  manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
+  auto node = std::make_shared<GraphNode>(46U);
+  node->SetGraph(std::make_shared<Graph>(MakeSessionExecuteGraph("execute")));
+  const auto data = MakeExecuteGraphModelData();
+  SetExecuteModelData(node, data);
+  node->SetBuildFlag(true);
+  manager.AddGraphNode(46U, node);
+
+  node->SetRunFlag(true);
+  EXPECT_EQ(manager.CompileGraph(46U, 1U, {}), GE_GRAPH_ALREADY_RUNNING);
+  EXPECT_TRUE(node->GetRunFlag());
+  node->SetRunFlag(false);
+  EXPECT_EQ(manager.CompileGraph(46U, 1U, {}), SUCCESS);
+  EXPECT_EQ(manager.CompileGraph(46U, 1U, {Tensor(TensorDesc(Shape({2, 3}), FORMAT_ND, DT_INT32))}), SUCCESS);
+
+  manager.graph_rebuild_state_ctrl_->AddResourceName(46U, "resource");
+  manager.graph_rebuild_state_ctrl_->SetStateChanged("resource");
+  EXPECT_EQ(manager.CompileGraph(46U, 1U, {}), PARAM_INVALID);
+  EXPECT_TRUE(node->GetBuildFlag());
+  EXPECT_FALSE(node->GetRunFlag());
+  EXPECT_FALSE(node->GetLoadFlag());
+  EXPECT_EQ(GetExecuteModelData(node), data);
+  manager.RemoveGraphNode(46U);
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileRejectsMissingFacadeWithoutPublishingArtifact) {
+  GraphManager manager;
+  auto node = std::make_shared<GraphNode>(74U);
+  manager.AddGraphNode(74U, node);
+  EXPECT_NE(manager.CompileGraph(74U, 1U, {}), SUCCESS);
+  EXPECT_FALSE(node->GetRunFlag());
+  EXPECT_FALSE(node->GetBuildFlag());
+  EXPECT_EQ(GetExecuteModelData(node), nullptr);
+  manager.RemoveGraphNode(74U);
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_LoadFailurePreservesCompiledArtifactAndUsesRootModel) {
+  auto executor = std::make_shared<ExecuteGraphDispatchStub>();
+  GraphManager manager;
+  manager.executor_ = executor.get();
+  manager.options_.run_graph_flag = true;
+  auto node = std::make_shared<GraphNode>(47U);
+  node->SetGraph(std::make_shared<Graph>(MakeSessionExecuteGraph("execute")));
+  manager.AddGraphNode(47U, node);
+  const auto data = MakeExecuteGraphModelData();
+  SetExecuteModelData(node, data);
+  node->SetBuildFlag(true);
+  int stream_token = 0;
+  auto stream = static_cast<aclrtStream>(&stream_token);
+  EXPECT_EQ(manager.LoadGraph(47U, {}, stream), FAILED);
+  EXPECT_EQ(executor->loads, 1U);
+  EXPECT_EQ(executor->loaded_data, data);
+  EXPECT_EQ(executor->loaded_node, node);
+  EXPECT_EQ(executor->loaded_stream, stream);
+  EXPECT_EQ(GetExecuteModelData(node), data);
+  EXPECT_TRUE(node->GetBuildFlag());
+  EXPECT_FALSE(node->GetLoadFlag());
+  EXPECT_FALSE(node->GetRunFlag());
+
+  executor->load_status = SUCCESS;
+  ASSERT_EQ(manager.LoadGraph(47U, {}, nullptr), SUCCESS);
+  const auto loaded = node->GetGeRootModel();
+  ASSERT_NE(loaded, nullptr);
+  EXPECT_TRUE(node->GetLoadFlag());
+  EXPECT_EQ(manager.LoadGraph(47U, {}, nullptr), GE_GRAPH_REPEAT_OPERATION);
+  EXPECT_EQ(executor->loads, 2U);
+  EXPECT_EQ(node->GetGeRootModel(), loaded);
+  std::vector<gert::Tensor> outputs;
+  EXPECT_EQ(manager.RunGraph(47U, std::vector<gert::Tensor>{}, outputs), PARAM_INVALID);
+  EXPECT_EQ(executor->runs, 1U);
+  EXPECT_FALSE(node->GetRunFlag());
+  EXPECT_EQ(node->GetGeRootModel(), loaded);
+  manager.RemoveGraphNode(47U);
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_BusyRemoveUsesDeferredRemoval) {
+  GraphManager manager;
+  manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
+  ASSERT_EQ(manager.AddGraph(48U, MakeSessionExecuteGraph("execute"), {}, OmgContext{}), SUCCESS);
+  GraphNodePtr node;
+  ASSERT_EQ(manager.GetGraphNode(48U, node), SUCCESS);
+  auto data = MakeExecuteGraphModelData();
+  std::weak_ptr<gert::GertModelData> weak_data = data;
+  SetExecuteModelData(node, data);
+  node->SetBuildFlag(true);
+  data.reset();
+  node->SetRunFlag(true);
+  EXPECT_EQ(manager.RemoveGraph(48U), SUCCESS);
+  EXPECT_EQ(manager.to_be_deleted_graphs_.count(48U), 1U);
+  EXPECT_TRUE(manager.HasGraphNode(48U));
+  EXPECT_FALSE(weak_data.expired());
+  EXPECT_TRUE(node->GetBuildFlag());
+  node->SetRunFlag(false);
+  EXPECT_EQ(manager.RemoveGraph(48U), SUCCESS);
+  EXPECT_FALSE(manager.HasGraphNode(48U));
+  EXPECT_FALSE(weak_data.expired());
+  node.reset();
+  EXPECT_TRUE(weak_data.expired());
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_StreamRunDispatchPreservesStreamAndSyncRunUsesCommonPath) {
+  ExecuteGraphDispatchStub executor;
+  GraphManager manager;
+  manager.options_.run_graph_flag = true;
+  manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
+  manager.executor_ = &executor;
+  ASSERT_EQ(manager.AddGraph(49U, MakeSessionExecuteGraph("execute"), {}, OmgContext{}), SUCCESS);
+  GraphNodePtr node;
+  ASSERT_EQ(manager.GetGraphNode(49U, node), SUCCESS);
+  SetExecuteModelData(node, MakeExecuteGraphModelData());
+  node->SetBuildFlag(true);
+  executor.load_status = SUCCESS;
+  ASSERT_EQ(manager.LoadGraph(49U, {}, nullptr), SUCCESS);
+  int stream_token = 0;
+  auto stream = static_cast<rtStream_t>(&stream_token);
+  std::vector<gert::Tensor> outputs;
+  const auto original_mode = node->GetRunGraphMode();
+  EXPECT_EQ(manager.ExecuteGraphWithStreamAsync(49U, stream, {}, outputs), PARAM_INVALID);
+  EXPECT_EQ(executor.stream_runs, 1U);
+  EXPECT_EQ(executor.execution_stream, stream);
+  EXPECT_FALSE(node->GetRunFlag());
+  EXPECT_EQ(node->GetRunGraphMode(), original_mode);
+  EXPECT_EQ(manager.RunGraph(49U, std::vector<gert::Tensor>{}, outputs), PARAM_INVALID);
+  EXPECT_EQ(executor.runs, 1U);
+  EXPECT_EQ(executor.loads, 1U);
+  EXPECT_FALSE(node->GetRunFlag());
+}
+
+TEST_F(UtestGraphManagerTest, ExecuteGraph_StreamAllocatorIsRetainedUntilGraphRemoved) {
+  ExecuteGraphDispatchStub executor;
+  executor.load_status = SUCCESS;
+  GraphManager manager;
+  manager.executor_ = &executor;
+  manager.options_.run_graph_flag = true;
+  manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
+  ASSERT_EQ(manager.AddGraph(50U, MakeSessionExecuteGraph("execute"), {}, OmgContext{}), SUCCESS);
+  GraphNodePtr node;
+  ASSERT_EQ(manager.GetGraphNode(50U, node), SUCCESS);
+  SetExecuteModelData(node, MakeExecuteGraphModelData());
+  node->SetBuildFlag(true);
+
+  int stream_tag = 0;
+  int other_stream_tag = 0;
+  const auto stream = static_cast<aclrtStream>(&stream_tag);
+  const auto other_stream = static_cast<aclrtStream>(&other_stream_tag);
+  auto allocator = MakeShared<ExternalAllocatorUtStub>();
+  auto other_allocator = MakeShared<ExternalAllocatorUtStub>();
+  const std::weak_ptr<Allocator> retained_allocator = allocator;
+  const std::weak_ptr<Allocator> unused_allocator = other_allocator;
+  ExternalAllocatorManager::SetExternalAllocator(stream, allocator);
+  ExternalAllocatorManager::SetExternalAllocator(other_stream, other_allocator);
+
+  ASSERT_EQ(manager.LoadGraph(50U, {}, stream), SUCCESS);
+  ExternalAllocatorManager::DeleteExternalAllocator(stream);
+  ExternalAllocatorManager::DeleteExternalAllocator(other_stream);
+  allocator.reset();
+  other_allocator.reset();
+  // The graph owns the allocator set used by asynchronous runs; a stream never used by the graph is not retained.
+  EXPECT_FALSE(retained_allocator.expired());
+  EXPECT_TRUE(unused_allocator.expired());
+
+  EXPECT_EQ(manager.RemoveGraph(50U), SUCCESS);
+  EXPECT_TRUE(retained_allocator.expired());
+}
+
+TEST_F(UtestGraphManagerTest, RunGraphModeGetAndSetUseSameBehaviorForBothGraphKinds) {
+  for (const auto kind : {static_cast<GraphKind>(0), static_cast<GraphKind>(1)}) {
+    GraphManager manager;
+    const GraphId graph_id = 77U;
+    auto node = std::make_shared<GraphNode>(graph_id);
+    node->SetGraph(std::make_shared<Graph>("graph", kind));
+    manager.AddGraphNode(graph_id, node);
+    for (const auto mode : {RunGraphMode::kRunGraph, RunGraphMode::kRunGraphWithStreamAsync, RunGraphMode::kRunGraph,
+                            RunGraphMode::kRunGraphModeEnd}) {
+      EXPECT_EQ(manager.SetRunGraphMode(graph_id, mode), SUCCESS);
+      EXPECT_EQ(node->GetRunGraphMode(), mode);
+      RunGraphMode actual = RunGraphMode::kRunGraphModeEnd;
+      EXPECT_EQ(manager.GetRunGraphMode(graph_id, actual), SUCCESS);
+      EXPECT_EQ(actual, mode);
+    }
+    manager.RemoveGraphNode(graph_id);
+  }
 }
 
 }  // namespace ge

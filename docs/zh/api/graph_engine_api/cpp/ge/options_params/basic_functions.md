@@ -154,7 +154,7 @@ N表示该台Server上的可用AI处理器个数。
 
 **必选/可选**：可选
 
-**生效级别**：全局/session/graph
+**生效级别**：全局
 
 ## ge.exec.rankId
 
@@ -175,7 +175,7 @@ N表示该台Server上的可用AI处理器个数。
 
 **必选/可选**：可选
 
-**生效级别**：全局/session/graph
+**生效级别**：全局
 
 ## ge.graphRunMode
 

@@ -15,9 +15,32 @@
 #include "api/aclgrph/option_utils.h"
 
 namespace ge {
+Status UserGraphsManager::IsExecuteGraph(uint32_t user_graph_id, bool &is_execute_graph) const {
+  if (EnableAutoFuse()) {
+    // AutoFuse 下用户图 id 只登记在 ids_to_user_graph_ctrl_ 中，未注册到底层 graph_manager_。
+    // 先查用户图，命中则直接判定，避免对未注册的 id 调用 GetGraphNode 触发 error 日志。
+    std::lock_guard<std::mutex> locker(user_graph_ctrl_mutex_);
+    if (ids_to_user_graph_ctrl_.find(user_graph_id) != ids_to_user_graph_ctrl_.end()) {
+      is_execute_graph = false;
+      return SUCCESS;
+    }
+  }
+  GraphNodePtr graph_node;
+  const auto ret = graph_manager_.GetGraphNode(user_graph_id, graph_node);
+  if (ret == SUCCESS) {
+    GE_ASSERT_NOTNULL(graph_node);
+    const auto graph = graph_node->GetGraph();
+    GE_ASSERT_NOTNULL(graph);
+    is_execute_graph = GraphUtilsEx::IsExecuteGraph(*graph);
+    return SUCCESS;
+  }
+  return ret;
+}
+
 Status UserGraphsManager::AddGraph(uint32_t user_graph_id, const Graph &graph,
                                    const std::map<std::string, std::string> &options) {
-  if (!EnableAutoFuse()) {
+  const bool is_execute_graph = GraphUtilsEx::IsExecuteGraph(graph);
+  if (is_execute_graph || !EnableAutoFuse()) {
     return graph_manager_.AddGraph(user_graph_id, graph, options, domi::GetContext());
   }
   auto compute_graph = GraphUtilsEx::GetComputeGraph(graph);
@@ -107,7 +130,9 @@ UserGraphControl *UserGraphsManager::GetUserGraphControl(uint32_t user_graph_id)
 }
 
 Status UserGraphsManager::CompileGraph(uint32_t user_graph_id, uint64_t session_id, const vector<ge::Tensor> &inputs) {
-  if (!EnableAutoFuse()) {
+  bool is_execute_graph = false;
+  GE_CHK_STATUS_RET(IsExecuteGraph(user_graph_id, is_execute_graph));
+  if (is_execute_graph || !EnableAutoFuse()) {
     return graph_manager_.CompileGraph(user_graph_id, session_id, inputs);
   }
   UserGraphControl *user_graph_control = GetUserGraphControl(user_graph_id);
@@ -158,7 +183,9 @@ Status UserGraphsManager::UpdateGraphRefreshableFeatureMemoryBase(uint32_t user_
 
 Status UserGraphsManager::LoadGraph(const uint32_t user_graph_id, const std::map<AscendString, AscendString> &options,
                                     void *stream) {
-  if (!EnableAutoFuse()) {
+  bool is_execute_graph = false;
+  GE_CHK_STATUS_RET(IsExecuteGraph(user_graph_id, is_execute_graph));
+  if (is_execute_graph || !EnableAutoFuse()) {
     return graph_manager_.LoadGraph(user_graph_id, options, stream);
   }
   UserGraphControl *user_graph_control = GetUserGraphControl(user_graph_id);
@@ -170,6 +197,11 @@ Status UserGraphsManager::LoadGraph(const uint32_t user_graph_id, const std::map
 Status UserGraphsManager::ExecuteGraphWithStreamAsync(uint32_t user_graph_id, void *stream,
                                                       const std::vector<gert::Tensor> &inputs,
                                                       std::vector<gert::Tensor> &outputs, uint64_t session_id) {
+  bool is_execute_graph = false;
+  GE_CHK_STATUS_RET(IsExecuteGraph(user_graph_id, is_execute_graph));
+  if (is_execute_graph) {
+    return graph_manager_.ExecuteGraphWithStreamAsync(user_graph_id, stream, inputs, outputs);
+  }
   if (!EnableAutoFuse()) {
     return graph_manager_.ExecuteGraphWithStreamAsync(user_graph_id, stream, inputs, outputs);
   }
@@ -192,6 +224,11 @@ Status UserGraphsManager::Finalize() {
 }
 
 Status UserGraphsManager::RemoveGraph(uint32_t user_graph_id) {
+  bool is_execute_graph = false;
+  GE_CHK_STATUS_RET(IsExecuteGraph(user_graph_id, is_execute_graph));
+  if (is_execute_graph) {
+    return graph_manager_.RemoveGraph(user_graph_id);
+  }
   if (!EnableAutoFuse()) {
     std::lock_guard<std::mutex> locker(user_graph_ctrl_mutex_);
     return graph_manager_.RemoveGraph(user_graph_id);
@@ -206,6 +243,24 @@ Status UserGraphsManager::RemoveGraph(uint32_t user_graph_id) {
   (void)ids_to_user_graph_ctrl_.erase(user_graph_id);
   GELOGI("Remove graph %u success.", user_graph_id);
   return SUCCESS;
+}
+
+bool UserGraphsManager::GetLoadFlag(uint32_t user_graph_id) {
+  if (!EnableAutoFuse()) {
+    return graph_manager_.GetLoadFlag(user_graph_id);
+  }
+  std::lock_guard<std::mutex> locker(user_graph_ctrl_mutex_);
+  const auto iter = ids_to_user_graph_ctrl_.find(user_graph_id);
+  return (iter != ids_to_user_graph_ctrl_.end()) && iter->second->GetLoadFlag();
+}
+
+bool UserGraphsManager::GetBuildFlag(uint32_t user_graph_id) {
+  if (!EnableAutoFuse()) {
+    return graph_manager_.GetBuildFlag(user_graph_id);
+  }
+  std::lock_guard<std::mutex> locker(user_graph_ctrl_mutex_);
+  const auto iter = ids_to_user_graph_ctrl_.find(user_graph_id);
+  return (iter != ids_to_user_graph_ctrl_.end()) && iter->second->GetBuildFlag();
 }
 
 bool UserGraphsManager::IsGraphNeedRebuild(uint32_t user_graph_id) {
@@ -223,6 +278,11 @@ bool UserGraphsManager::IsGraphNeedRebuild(uint32_t user_graph_id) {
 }
 
 Status UserGraphsManager::GetCompiledFlag(uint32_t user_graph_id, bool &flag) {
+  bool is_execute_graph = false;
+  GE_CHK_STATUS_RET(IsExecuteGraph(user_graph_id, is_execute_graph));
+  if (is_execute_graph) {
+    return graph_manager_.GetCompiledFlag(user_graph_id, flag);
+  }
   if (!EnableAutoFuse()) {
     return graph_manager_.GetCompiledFlag(user_graph_id, flag);
   }
@@ -242,6 +302,11 @@ Status UserGraphsManager::DumpDebugJSONPrint(uint32_t user_graph_id, uint32_t fl
 }
 
 Status UserGraphsManager::SetCompiledFlag(uint32_t user_graph_id, bool flag) {
+  bool is_execute_graph = false;
+  GE_CHK_STATUS_RET(IsExecuteGraph(user_graph_id, is_execute_graph));
+  if (is_execute_graph) {
+    return graph_manager_.SetCompiledFlag(user_graph_id, flag);
+  }
   if (!EnableAutoFuse()) {
     return graph_manager_.SetCompiledFlag(user_graph_id, flag);
   }
@@ -257,6 +322,11 @@ Status UserGraphsManager::GetOmeContextByGraphId(const GraphId &graph_id, OmeCon
 }
 
 Status UserGraphsManager::GetRunGraphMode(uint32_t user_graph_id, RunGraphMode &mode) {
+  bool is_execute_graph = false;
+  GE_CHK_STATUS_RET(IsExecuteGraph(user_graph_id, is_execute_graph));
+  if (is_execute_graph) {
+    return graph_manager_.GetRunGraphMode(user_graph_id, mode);
+  }
   if (!EnableAutoFuse()) {
     return graph_manager_.GetRunGraphMode(user_graph_id, mode);
   }
@@ -266,6 +336,11 @@ Status UserGraphsManager::GetRunGraphMode(uint32_t user_graph_id, RunGraphMode &
 }
 
 Status UserGraphsManager::SetRunGraphMode(uint32_t user_graph_id, const RunGraphMode &mode) {
+  bool is_execute_graph = false;
+  GE_CHK_STATUS_RET(IsExecuteGraph(user_graph_id, is_execute_graph));
+  if (is_execute_graph) {
+    return graph_manager_.SetRunGraphMode(user_graph_id, mode);
+  }
   if (!EnableAutoFuse()) {
     return graph_manager_.SetRunGraphMode(user_graph_id, mode);
   }

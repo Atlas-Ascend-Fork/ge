@@ -42,6 +42,10 @@
 
 <!-- @ref: ge/res/docs/zh/user_guides/atc_tools/CLI_options/--ac_parallel_enable_res.md#id2 -->
 
+## 关联参数
+
+[--mode](--mode.md)取值为7时，不支持配置该参数。
+
 ## 参数取值
 
 <!-- npu="950,A3,910b,910,310p,310b,IPV350" id9 -->

@@ -51,6 +51,8 @@ target_link_libraries(ut_register
     slog_headers
     msprof_headers
     exe_graph lowering register graph graph_base mmpa
+    # option_supportion_checker 的白名单用例直接调用 ge_common 导出的检查函数，显式链接避免依赖间接传递
+    ge_common
     opp_registry
     unified_dlog
     GTestShared::gtest

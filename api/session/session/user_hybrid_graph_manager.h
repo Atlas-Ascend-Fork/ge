@@ -39,6 +39,7 @@ class UserHybridGraphManager {
   Status GetCompiledFlag(uint32_t user_graph_id, bool &flag);
   Status SetCompiledFlag(uint32_t user_graph_id, bool flag);
   Status Finalize();
+  Status IsExecuteGraph(uint32_t user_graph_id, bool &is_execute_graph);
 
  private:
   bool IsHybridMode(const std::map<std::string, std::string> &options) const;

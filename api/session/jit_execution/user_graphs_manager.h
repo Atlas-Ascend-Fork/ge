@@ -49,9 +49,12 @@ class UserGraphsManager {
   Status LoadGraph(const uint32_t user_graph_id, const std::map<AscendString, AscendString> &options, void *stream);
   Status ExecuteGraphWithStreamAsync(uint32_t user_graph_id, void *stream, const std::vector<gert::Tensor> &inputs,
                                      std::vector<gert::Tensor> &outputs, uint64_t session_id);
+  bool GetLoadFlag(uint32_t user_graph_id);
+  bool GetBuildFlag(uint32_t user_graph_id);
   Status GetOmeContextByGraphId(const GraphId &graph_id, OmeContext &ome_context) const;
   Status GetRunGraphMode(uint32_t user_graph_id, RunGraphMode &mode);
   Status SetRunGraphMode(uint32_t user_graph_id, const RunGraphMode &mode);
+  Status IsExecuteGraph(uint32_t user_graph_id, bool &is_execute_graph) const;
 
  private:
   UserGraphControl *GetUserGraphControl(uint32_t user_graph_id);

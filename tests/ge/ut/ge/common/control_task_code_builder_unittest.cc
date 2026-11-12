@@ -717,6 +717,7 @@ struct GertModelRunConfig {
   gert::Tensor **output_data = nullptr;
   uint64_t stream_sync_timeout_ms = 0;
   const struct GertModelRunCallbacks *run_callbacks = nullptr;
+  void *external_allocator = nullptr;
 };
 
 struct GertModelUnloadConfig {

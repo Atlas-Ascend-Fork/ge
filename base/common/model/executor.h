@@ -19,6 +19,10 @@
 #include "base/err_mgr.h"
 #include "acl/acl_rt.h"
 
+namespace gert {
+class Allocators;
+}  // namespace gert
+
 namespace ge {
 struct RunArgs {
   GraphNodePtr graph_node;
@@ -45,7 +49,7 @@ class Executor {
    * @return Status result of function
    */
   virtual Status LoadGraph(const GeRootModelPtr &root_model, const GraphNodePtr &graph_node,
-                           const aclrtStream stream = nullptr) = 0;
+                           const aclrtStream stream = nullptr, gert::Allocators *external_allocators = nullptr) = 0;
 
   /**
    * @ingroup ge
@@ -74,7 +78,8 @@ class Executor {
    * @return Status result of function
    */
   virtual Status RunGraph(const GraphNodePtr &graph_node, const GraphId graph_id,
-                          const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs) = 0;
+                          const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
+                          gert::Allocators *external_allocators = nullptr) = 0;
 
   /**
    * @ingroup ge
@@ -87,11 +92,13 @@ class Executor {
    * @return Status result of function
    */
   virtual Status RunGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id, const aclrtStream stream,
-                                    const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs) = 0;
+                                    const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs,
+                                    gert::Allocators *external_allocators = nullptr) = 0;
 
   virtual Status ExecuteGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id,
                                         aclrtStream const stream, const std::vector<gert::Tensor> &inputs,
-                                        std::vector<gert::Tensor> &outputs) = 0;
+                                        std::vector<gert::Tensor> &outputs,
+                                        gert::Allocators *external_allocators = nullptr) = 0;
 
   virtual Status DumpDebugJSONPrint(uint32_t model_id, uint32_t graph_id, uint32_t flags,
                                     AscendString &json_result) = 0;

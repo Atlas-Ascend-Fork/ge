@@ -4,20 +4,7 @@
 
 OM2是GE以“模型即代码”方式交付编译结果的离线模型格式，文件后缀为`.om2`，定位为连接图编译与模型部署的透明执行载体。传统OM采用私有二进制格式保存模型信息，开发者通常需要借助专用工具分析其执行行为。加载时，模型结构反序列化、属性解压缩、算子Task定义解析三项操作的耗时占比接近30%，是影响模型启动速度的主要因素之一；相关处理还增加了GE执行时的体积，不利于边缘、端侧场景的快速启动与轻量化部署。为此，OM2在编译阶段生成模型专属的C++加载执行源码及动态库`lib<model_name>_om2.so`，并与模型元信息、常量权重、算子二进制及调试信息一同封装为可直接解压查看的ZIP文件，在提升模型可读性与可调试性的同时，减少加载阶段的上述处理开销。运行时，应用沿用acl Model接口，OM2执行器从内存中的归档数据解析`model_meta.json`、常量配置、算子二进制和模型动态库，通过`dlopen`/`dlsym`装载模型动态库并绑定其导出的C接口，完成模型加载、执行与资源释放；模型动态库在Host侧调用Runtime接口，驱动算子二进制在昇腾NPU上执行。整体关系如下图所示。
 
-```mermaid
-flowchart TB
-    subgraph Compile["编译期"]
-        direction LR
-        Model["原始模型/IR、ES构图"] --> GE["GE图编译与代码生成"]
-        GE --> Package["OM2文件<br/>源码、动态库、权重及模型数据"]
-    end
-    subgraph Run["加载执行期"]
-        direction LR
-        App["用户应用<br/>通过acl接口加载与执行"] --> Executor["OM2执行器与模型动态库"]
-        Executor -->|调用Runtime| NPU["昇腾NPU"]
-    end
-    Package -->|模型路径或数据| App
-```
+![](../figures/om2_overall_relationship.png "om2整体关系图")
 
 生成`.om2`文件完成的是模型编译。运行时，用户将模型文件路径传给`aclmdlLoadFromFile`，或将完整模型数据传给`aclmdlLoadFromMem`，加载成功后获得`modelId`；准备输入输出后，通过`aclmdlExecute`或`aclmdlExecuteAsync`发起推理，使用结束后调用`aclmdlUnload`。归档解析和模型动态库装载由acl内部的OM2执行路径完成，应用无需预先解压。具体调用流程见[加载与执行OM2模型](#加载与执行om2模型)。
 
@@ -55,15 +42,7 @@ flowchart TB
 
 下面给出两种编译入口的简易流程。选择其中一种生成模型，随后按[加载与执行OM2模型](#加载与执行om2模型)调用acl接口加载执行。
 
-```mermaid
-flowchart TB
-    Source["原始模型/已构造的Graph"] --> Entry{"选择编译入口"}
-    Entry --> ATC["ATC命令行<br/>atc --mode=7"]
-    Entry --> IR["IR/ES构图<br/>aclgrphBuildInitialize → aclgrphBuildModel<br/>OFFLINE_MODE=7"]
-    ATC --> File["生成.om2文件"]
-    IR --> Save["aclgrphSaveModel<br/>aclgrphBuildFinalize"] --> File
-    File --> Infer["acl加载、执行与卸载"]
-```
+![](../figures/om2_compile_flow.png "om2编译简易流程")
 
 #### 通过ATC转换
 
@@ -98,36 +77,7 @@ ret = ge::aclgrphSaveModel("./model/resnet50_npu", model);
 
 用户可根据模型运行内存的管理方式，选择以下加载路径。加载成功后返回的`modelId`用于后续模型描述查询、推理执行和模型卸载。
 
-```mermaid
-flowchart LR
-    classDef default font-size:12px;
-    classDef optional fill:#C1F7EC,stroke:#88D8C0;
-    classDef mandatory fill:#D1E0FF,stroke:#A5C2FF;
-    classDef decision fill:#FFE5CC,stroke:#F97316;
-
-    Start([模型数据]) --> Type{内存管理方式?}
-
-    Type -->|用户管理| Query["查询权重内存和工作内存大小<br/>aclmdlQuerySize/aclmdlQuerySizeFromMem"]:::optional
-    Query --> Malloc["申请权重内存、工作内存<br/>aclrtMalloc"]:::mandatory
-    Malloc --> ExtWeight{用户提供外置权重内存?}
-    ExtWeight -->|是| ExtMalloc["申请外置权重Device内存<br/>拷贝外置权重数据"]:::mandatory
-    ExtMalloc --> ExtSet["设置外置权重地址<br/>aclmdlSetExternalWeightAddress"]:::optional
-    ExtSet --> LoadConfig["通过配置加载模型<br/>aclmdlLoadWithConfig"]:::mandatory
-    LoadConfig --> Loaded
-    ExtWeight -->|否| UserLoadType{加载方式?}
-    UserLoadType -->|文件| FileWithMem["从文件加载模型<br/>aclmdlLoadFromFileWithMem"]:::mandatory
-    UserLoadType -->|内存| MemWithMem["从内存加载模型<br/>aclmdlLoadFromMemWithMem"]:::mandatory
-
-    Type -->|系统管理| SystemLoadType{加载方式?}
-    SystemLoadType -->|文件| File["从文件加载模型<br/>aclmdlLoadFromFile"]:::mandatory
-    SystemLoadType -->|内存| Mem["从内存加载模型<br/>aclmdlLoadFromMem"]:::mandatory
-
-    FileWithMem --> Loaded([返回模型ID])
-    MemWithMem --> Loaded
-    File --> Loaded
-    Mem --> Loaded
-    class Type,UserLoadType,SystemLoadType,ExtWeight decision;
-```
+![](../figures/om2_loading_and_execution.png "om2加载与执行")
 
 通过aclmdl接口加载编译产物：
 
@@ -157,27 +107,7 @@ acl自动识别om和om2，无需在应用中增加格式判断，也无需先解
 
 以ATC编译、从文件加载模型为例，使用上的差异如下。橙色节点标出迁移时需要调整的两处，蓝色节点表示沿用原有调用流程；加载前的acl初始化及设备设置同样沿用原有程序。
 
-```mermaid
-flowchart TB
-    Source["同一原始模型"] --> OmCompile
-    Source --> Om2Compile
-    subgraph OM["原有OM用法"]
-        OmCompile["ATC编译<br/>--mode=0或不指定"] --> OmFile["生成model.om"]
-        OmFile --> OmLoad["从文件加载<br/>aclmdlLoadFromFile<br/>路径：model.om"]
-    end
-    subgraph OM2["迁移到OM2"]
-        Om2Compile["变化1：修改编译参数<br/>--mode=7"] --> Om2File["重新编译生成model.om2"]
-        Om2File --> Om2Load["变化2：修改加载路径<br/>aclmdlLoadFromFile<br/>路径：model.om2，接口不变"]
-    end
-    OmLoad --> Data["沿用：查询模型描述、准备输入输出<br/>aclmdlGetDesc/Dataset构造"]
-    Om2Load --> Data
-    Data --> Run["沿用：模型执行<br/>aclmdlExecute或aclmdlExecuteAsync<br/>异步路径保留原有流同步"]
-    Run --> Release["沿用：模型卸载与资源释放<br/>aclmdlUnload/内存、Dataset等资源释放"]
-    classDef changed fill:#fff3e0,stroke:#e65100;
-    classDef reused fill:#e3f2fd,stroke:#1565c0;
-    class Om2Compile,Om2Load changed;
-    class Data,Run,Release reused;
-```
+![](../figures/om2_migration.png "om2迁移流程")
 
 使用额外编译参数或加载配置项时，先核对[ATC参数说明](../CLI_options/README.md)和[使用约束](#使用约束)。不同加载执行方式的迁移要点如下：
 

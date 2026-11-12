@@ -513,6 +513,10 @@ aclError AclRuntimeStub::aclrtStreamAbort(aclrtStream stream) {
   return ACL_SUCCESS;
 }
 
+aclError AclRuntimeStub::aclrtSynchronizeDevice() {
+  return ACL_SUCCESS;
+}
+
 aclError AclRuntimeStub::aclrtSynchronizeStream(aclrtStream stream) {
   const char *const kEnvRecordPath = "CONSTANT_FOLDING_PASS_9";
   char record_path[MMPA_MAX_PATH] = {};
@@ -1585,6 +1589,10 @@ aclError aclrtDestroyStreamForce(aclrtStream stream) {
 
 aclError aclrtStreamAbort(aclrtStream stream) {
   return ge::AclRuntimeStub::GetInstance()->aclrtStreamAbort(stream);
+}
+
+aclError aclrtSynchronizeDevice() {
+  return ge::AclRuntimeStub::GetInstance()->aclrtSynchronizeDevice();
 }
 
 aclError aclrtSynchronizeStream(aclrtStream stream) {

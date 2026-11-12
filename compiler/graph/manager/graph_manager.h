@@ -39,7 +39,12 @@
 #include "ge/ge_allocator.h"
 #include "exe_graph/runtime/runtime_tensor.h"
 
+namespace gert {
+class Allocators;
+}  // namespace gert
+
 namespace ge {
+class ExecuteGraph;
 class GraphManager {
  public:
   GraphManager() = default;
@@ -259,6 +264,16 @@ class GraphManager {
   Status SetCompiledFlag(uint32_t graph_id, bool flag);
 
  private:
+  // Caller holds add_graph_mutex_ and has checked graph registration state.
+  Status AddComputeGraph(const GraphId &graph_id, const Graph &graph, const std::map<std::string, std::string> &options,
+                         const OmgContext &omg_context);
+  Status AddExecuteGraph(const GraphId &graph_id, const Graph &graph, const std::map<std::string, std::string> &options,
+                         const OmgContext &omg_context);
+
+  Status CompileComputeGraph(const GraphNodePtr &graph_node, uint64_t session_id, const std::vector<Tensor> &inputs);
+  Status CompileExecuteGraph(const GraphNodePtr &graph_node);
+  Status BuildExecuteGraphModel(const GraphNodePtr &graph_node) const;
+
   struct CompilerStages {
     GraphPrepare preparer;
     GraphOptimize optimizer;
@@ -277,7 +292,7 @@ class GraphManager {
                                                 const std::string &root_graph_name, uint64_t session_id,
                                                 const struct error_message::ErrorManagerContext &error_context,
                                                 const GEThreadLocalContext &ge_context, int32_t device_id);
-  Status CheckGraphExisted(const GraphId &graph_id, bool &is_added);
+  Status CheckGraphExisted(const GraphId &graph_id, bool &is_added, const Graph *graph = nullptr);
   Status RunCustomPassAfterOriginGraphOptimize(ConstGraphPtr const_graph) const;
   Status RunCustomPass(ConstGraphPtr const_graph) const;
   Status PreRun(const GraphNodePtr &graph_node, const std::vector<GeTensor> &inputs, GeRootModelPtr &ge_root_model,
@@ -436,10 +451,12 @@ class GraphManager {
   Status UnloadModel(GeRootModelPtr ge_root_model, uint32_t graph_id);
 
   void SetSessionGraphId(ComputeGraphPtr compute_graph, uint32_t graph_id) const;
+  void SetSessionGraphId(const std::shared_ptr<ExecuteGraph> &execute_graph, uint32_t graph_id) const;
 
   Status ModifyDataIndex(const Graph &graph, const std::map<std::string, std::string> &graph_option) const;
 
   static Status CheckGraphAdded(const GraphId &graph_id, const Graph &graph);
+  static Status CheckGraphAdded(const GraphId &graph_id, const std::shared_ptr<ExecuteGraph> &execute_graph);
   std::string GetBuildMode(const GraphNodePtr &graph_node) const;
   std::string GetBuildStep(const GraphNodePtr &graph_node) const;
   std::string GetTuningPath(const GraphNodePtr &graph_node) const;
@@ -458,6 +475,8 @@ class GraphManager {
 
   Status CheckOptionsValid(const ComputeGraphPtr &compute_graph,
                            const std::map<std::string, std::string> &options) const;
+  Status CheckExecuteGraphOptionsValid(const std::shared_ptr<ExecuteGraph> &execute_graph,
+                                       const std::map<std::string, std::string> &options) const;
   Status CheckFixedFeatureMemoryBase(const uint32_t graph_id, const MemoryType type, const void *const memory,
                                      const size_t size, bool &fixed_mem_not_exist);
 
@@ -487,7 +506,18 @@ class GraphManager {
   std::shared_ptr<GraphRebuildStateCtrl> graph_rebuild_state_ctrl_;
   ResourceContextMgr resource_context_mgr_;
   std::map<GraphId, CompilerStages> compiler_stages_;
+  struct ExecuteGraphAllocator {
+    aclrtStream stream;
+    std::shared_ptr<Allocator> allocator;
+    std::shared_ptr<gert::Allocators> allocators;
+  };
+  Status GetExecuteGraphAllocators(GraphId graph_id, aclrtStream stream, gert::Allocators *&allocators) const;
+  void RemoveExecuteGraphAllocators(GraphId graph_id) const;
+
   Executor *executor_{nullptr};
+  // Keep every allocator set ever used by the graph alive until unload; async runs may outlive ExecuteGraph.
+  mutable std::mutex execute_graph_allocator_mutex_;
+  mutable std::map<GraphId, std::vector<ExecuteGraphAllocator>> execute_graph_allocators_;
 
   mutable std::shared_mutex callback_mutex_;
   mutable std::mutex member_mutex_;

@@ -2116,13 +2116,16 @@ ge::graphStatus Om2ModelExecutor::Load(ge::ModelData &model_data, const Om2Model
   (void)session_id;
   return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus Om2ModelExecutor::Run(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs) const {
+ge::graphStatus Om2ModelExecutor::Run(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs,
+                                      const Om2ModelRunArg &run_arg) const {
+  (void)run_arg;
   (void)inputs;
   (void)outputs;
   return ge::GRAPH_SUCCESS;
 }
 ge::graphStatus Om2ModelExecutor::RunAsync(void *stream, std::vector<gert::Tensor *> &inputs,
-                                           std::vector<gert::Tensor *> &outputs) const {
+                                           std::vector<gert::Tensor *> &outputs, const Om2ModelRunArg &run_arg) const {
+  (void)run_arg;
   (void)inputs;
   (void)outputs;
   return ge::GRAPH_SUCCESS;

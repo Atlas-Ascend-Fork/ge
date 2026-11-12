@@ -12,6 +12,7 @@
 
 - 若配置了该参数，则不能对同一个输入节点同时使用[--insert\_op\_conf](--insert_op_conf.md)参数。
 - 当[--framework](--framework.md)取值为1，且为MindSpore框架网络模型时，设置本参数无效，但模型转换成功。
+<!-- @ref: ge/res/docs/zh/user_guides/atc_tools/CLI_options/--input_fp16_nodes_res.md#id1 -->
 
 ## 参数取值
 

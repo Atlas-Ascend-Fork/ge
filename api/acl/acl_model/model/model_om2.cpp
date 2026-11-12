@@ -442,9 +442,9 @@ aclError Om2ModelExecuteCommon(uint32_t modelId, const aclmdlDataset *input, acl
   // Call executor run with tensor pointers
   ge::Status run_ret = ge::GRAPH_SUCCESS;
   if (isAsync) {
-    run_ret = executor->RunAsync(stream, inputVec, outputVec);
+    run_ret = executor->RunAsync(stream, inputVec, outputVec, gert::Om2ModelRunArg{});
   } else {
-    run_ret = executor->Run(inputVec, outputVec);
+    run_ret = executor->Run(inputVec, outputVec, gert::Om2ModelRunArg{});
   }
   if (run_ret != ge::SUCCESS) {
     ACL_LOG_CALL_ERROR("[Exec][Model]Execute model failed, ge result[%u], modelId[%u]", run_ret, modelId);

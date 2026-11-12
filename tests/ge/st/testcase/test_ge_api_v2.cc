@@ -78,7 +78,6 @@ class ScopedDeterministicOptions {
 };
 
 static FakeOpsKernelInfoStore g_fake_hccl_ops_kernel_info_store;
-bool test_callback_called = false;
 
 bool CheckWeightFile(const std::string &external_weight_dir) {
   if (mmAccess(external_weight_dir.c_str()) != EN_OK || !ge::IsDir(external_weight_dir.c_str())) {
@@ -113,6 +112,69 @@ bool CheckWeightFile(const std::string &external_weight_dir) {
 
 int RemoveAll(const std::string &path) {
   return ge::PathUtils::RemoveDirectories(path);
+}
+
+class StaticDataGraphTensors {
+ public:
+  StaticDataGraphTensors() {
+    input_storage_.assign(2U, std::vector<int32_t>(2 * 4, 666));
+    output_storage_.assign(2U, std::vector<uint8_t>(96, 0xFF));
+    inputs_.resize(2U);
+    outputs_.resize(2U);
+    for (size_t i = 0U; i < 2U; ++i) {
+      inputs_[i] = {{{4, 2}, {4, 2}},
+                    {ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, {}},
+                    gert::kOnDeviceHbm,
+                    ge::DT_INT32,
+                    (void *)input_storage_[i].data()};
+      outputs_[i] = {{{4, 2}, {4, 2}},
+                     {ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, {}},
+                     gert::kOnDeviceHbm,
+                     ge::DT_INT32,
+                     (void *)output_storage_[i].data()};
+    }
+  }
+  std::vector<gert::Tensor> &Inputs() {
+    return inputs_;
+  }
+  std::vector<gert::Tensor> &Outputs() {
+    return outputs_;
+  }
+
+ private:
+  std::vector<std::vector<int32_t>> input_storage_;
+  std::vector<std::vector<uint8_t>> output_storage_;
+  std::vector<gert::Tensor> inputs_;
+  std::vector<gert::Tensor> outputs_;
+};
+
+void RunAutoFuseStaticDataGraphStreamScenario(uint32_t graph_id, bool load_after_compile) {
+  mmSetEnv("AUTOFUSE_FLAGS", "--enable_autofuse=true", 1);
+  auto ascend_install_path = EnvPath().GetAscendInstallPath();
+  char old_opp_path_env[MMPA_MAX_PATH] = {'\0'};
+  char old_ld_path_env[MMPA_MAX_PATH] = {'\0'};
+  (void)mmGetEnv("ASCEND_OPP_PATH", old_opp_path_env, MMPA_MAX_PATH);
+  (void)mmGetEnv("LD_LIBRARY_PATH", old_ld_path_env, MMPA_MAX_PATH);
+  setenv("ASCEND_OPP_PATH", (ascend_install_path + "/opp").c_str(), 1);
+  setenv("LD_LIBRARY_PATH", (ascend_install_path + "/runtime/lib64").c_str(), 1);
+  ge::diagnoseSwitch::DisableDumper();
+
+  std::map<AscendString, AscendString> options_init;
+  options_init.emplace(ge::OPTION_CONST_LIFECYCLE, "graph");
+  options_init.emplace(ge::OPTION_FEATURE_BASE_REFRESHABLE, "1");
+  options_init.emplace(ge::OPTION_GRAPH_RUN_MODE, "1");
+  GeSession session(options_init);
+  EXPECT_EQ(session.AddGraph(graph_id, gert::ShareGraph::OnlyDataGraph({4, 2}, {4, 2})), SUCCESS);
+  EXPECT_EQ(session.CompileGraph(graph_id), SUCCESS);
+  if (load_after_compile) {
+    EXPECT_EQ(session.LoadGraph(graph_id, {}, nullptr), SUCCESS);
+  }
+  StaticDataGraphTensors tensors;
+  EXPECT_EQ(SUCCESS, session.RunGraphWithStreamAsync(graph_id, nullptr, tensors.Inputs(), tensors.Outputs()));
+
+  unsetenv("AUTOFUSE_FLAGS");
+  mmSetEnv("ASCEND_OPP_PATH", old_opp_path_env, 1);
+  mmSetEnv("LD_LIBRARY_PATH", old_ld_path_env, 1);
 }
 }  // namespace
 class GeApiV2Test : public testing::Test {
@@ -656,6 +718,12 @@ TEST_F(GeApiV2Test, CheckOptionsKeyInvalid_test) {
   ge::GEGetWarningMsgV2();
 }
 
+/**
+ * 用例描述：异步执行提交失败后，仍可提交有效图并收到执行失败的回调。
+ * 预置条件：MockGenerateTask，注册一张空图。
+ * 测试步骤：提交不存在的图并检查错误日志，再提交已注册的图并限时等待回调。
+ * 预期结果：首次提交返回图不存在，第二次提交成功且回调返回失败状态。
+ */
 TEST_F(GeApiV2Test, RunGraphAsync) {
   ModelManager::GetInstance().cust_aicpu_so_.clear();
   MockGenerateTask();
@@ -663,9 +731,9 @@ TEST_F(GeApiV2Test, RunGraphAsync) {
   EXPECT_EQ(GEInitializeV2(str_options), SUCCESS);
   ReInitGe();
   GertRuntimeStub runtime_stub;
-  const char_t *kKeyLogOnFial = "Run graph async failed";
+  const char_t *kKeyLogOnFial = "graph does not exist, graph_id= 10000";
   std::map<AscendString, AscendString> options;
-  const auto session_ptr = new GeSession(options);
+  const auto session_ptr = MakeUnique<GeSession>(options);
   GraphId graph_id = 1;
   const auto compute_graph = MakeShared<ComputeGraph>("test_graph");
   EXPECT_EQ(session_ptr->AddGraph(graph_id, GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph)), SUCCESS);
@@ -674,23 +742,21 @@ TEST_F(GeApiV2Test, RunGraphAsync) {
 
   // invalid graph id
   // RunGraphAsync submit failed
-  test_callback_called = false;
-  auto callback = [](Status status, std::vector<gert::Tensor> &outputs) {
-    EXPECT_NE(status, SUCCESS);
-    test_callback_called = true;
+  auto callback_result = std::make_shared<std::promise<Status>>();
+  auto callback_future = callback_result->get_future();
+  auto callback = [callback_result](Status status, std::vector<gert::Tensor> &outputs) {
+    callback_result->set_value(status);
   };
 
   // get graph_node fail
-  EXPECT_NE(session_ptr->RunGraphAsync(10000, inputs, callback), SUCCESS);
-  sleep(1);  // wait callback
+  EXPECT_EQ(session_ptr->RunGraphAsync(10000, inputs, callback), FAILED);
   ASSERT_TRUE(runtime_stub.GetSlogStub().FindLog(DLOG_ERROR, kKeyLogOnFial) >= 0);
   runtime_stub.GetSlogStub().Clear();
 
   // after RunGraphAsync run failed before, RunGraphAsync submit success
-  EXPECT_EQ(session_ptr->RunGraphAsync(graph_id, inputs, callback), SUCCESS);
-  sleep(1);  // wait callback
-  EXPECT_EQ(test_callback_called, true);
-  delete session_ptr;
+  ASSERT_EQ(session_ptr->RunGraphAsync(graph_id, inputs, callback), SUCCESS);
+  ASSERT_EQ(callback_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  EXPECT_NE(callback_future.get(), SUCCESS);
 }
 
 TEST_F(GeApiV2Test, RunGraphAsync_RunCustomPass_Success) {
@@ -975,6 +1041,61 @@ TEST_F(GeApiV2Test, test_ExecuteGraphWithStreamAsync_with_hint_option) {
   unsetenv("AUTOFUSE_FLAGS");
   mmSetEnv("ASCEND_OPP_PATH", old_opp_path_env, 1);
   mmSetEnv("LD_LIBRARY_PATH", old_ld_path_env, 1);
+}
+
+TEST_F(GeApiV2Test, RunGraphWithStreamAsync_AutoFuse_AfterLoadGraph) {
+  mmSetEnv("AUTOFUSE_FLAGS", "--enable_autofuse=true", 1);
+  auto ascend_install_path = EnvPath().GetAscendInstallPath();
+  char old_opp_path_env[MMPA_MAX_PATH] = {'\0'};
+  char old_ld_path_env[MMPA_MAX_PATH] = {'\0'};
+  (void)mmGetEnv("ASCEND_OPP_PATH", old_opp_path_env, MMPA_MAX_PATH);
+  (void)mmGetEnv("LD_LIBRARY_PATH", old_ld_path_env, MMPA_MAX_PATH);
+  setenv("ASCEND_OPP_PATH", (ascend_install_path + "/opp").c_str(), 1);
+  setenv("LD_LIBRARY_PATH", (ascend_install_path + "/runtime/lib64").c_str(), 1);
+  {
+    gert::GertRuntimeStub runtime_stub;
+    runtime_stub.GetSlogStub().NoConsoleOut().SetLevelInfo();
+    ge::diagnoseSwitch::DisableDumper();
+
+    std::map<AscendString, AscendString> options_init;
+    options_init.emplace(ge::OPTION_CONST_LIFECYCLE, "graph");
+    options_init.emplace(ge::OPTION_FEATURE_BASE_REFRESHABLE, "1");
+    options_init.emplace(ge::OPTION_GRAPH_RUN_MODE, "1");
+    GeSession session(options_init);
+
+    // 静态 shape 图：显式 LoadGraph 会真实加载 GEP，此时旧逻辑在 RunGraphWithStreamAsync 中再次
+    // LoadGraph 会返回 GE_GRAPH_REPEAT_OPERATION；修复后跳过该分支，流式执行应成功
+    auto graph = gert::ShareGraph::OnlyDataGraph({4, 2}, {4, 2});
+    const GraphId graph_id = 1;
+    EXPECT_EQ(session.AddGraph(graph_id, graph), SUCCESS);
+    EXPECT_EQ(session.CompileGraph(graph_id), SUCCESS);
+    EXPECT_EQ(session.LoadGraph(graph_id, {}, nullptr), SUCCESS);
+
+    StaticDataGraphTensors tensors;
+    runtime_stub.GetSlogStub().Clear();
+    EXPECT_EQ(SUCCESS, session.RunGraphWithStreamAsync(graph_id, nullptr, tensors.Inputs(), tensors.Outputs()));
+    EXPECT_EQ(runtime_stub.GetSlogStub().FindLog(-1, "Graph is not loaded, start to load graph"), -1);
+    runtime_stub.Clear();
+  }
+  unsetenv("AUTOFUSE_FLAGS");
+  mmSetEnv("ASCEND_OPP_PATH", old_opp_path_env, 1);
+  mmSetEnv("LD_LIBRARY_PATH", old_ld_path_env, 1);
+}
+
+TEST_F(GeApiV2Test, RunGraphWithStreamAsync_AutoFuse_GraphId0CompileRun) {
+  RunAutoFuseStaticDataGraphStreamScenario(0U, false);
+}
+
+TEST_F(GeApiV2Test, RunGraphWithStreamAsync_AutoFuse_GraphId0CompileLoadRun) {
+  RunAutoFuseStaticDataGraphStreamScenario(0U, true);
+}
+
+TEST_F(GeApiV2Test, RunGraphWithStreamAsync_AutoFuse_GraphId1CompileRun) {
+  RunAutoFuseStaticDataGraphStreamScenario(1U, false);
+}
+
+TEST_F(GeApiV2Test, RunGraphWithStreamAsync_AutoFuse_GraphId1CompileLoadRun) {
+  RunAutoFuseStaticDataGraphStreamScenario(1U, true);
 }
 
 /*

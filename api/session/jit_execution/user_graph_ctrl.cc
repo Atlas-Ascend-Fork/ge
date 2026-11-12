@@ -260,6 +260,8 @@ Status UserGraphControl::CompileGraph(uint64_t session_id) {
   if (is_unknown_input_shape) {
     GELOGI("CompileGraph dynamic graph %u need compile whole graph not by JIT.", user_graph_id_);
     GE_ASSERT_SUCCESS(CompileCompleteGraph(session_id));
+    // 动态图完成整图编译，标记为已构建
+    user_graph_built_.store(true);
     return SUCCESS;
   }
   auto compile_task = MakeUnique<UserGraphExecution>(user_graph_id_, inputs, nullptr, session_id);
@@ -274,6 +276,8 @@ Status UserGraphControl::CompileGraph(uint64_t session_id) {
     GELOGI("CompileGraph graph %u need compile whole graph not by JIT.", user_graph_id_);
     GE_ASSERT_SUCCESS(CompileCompleteGraph(session_id));
   }
+  // JIT/整图编译成功；v2 已合并 BuildGraph 与 CompileGraph，构建状态以本接口为准
+  user_graph_built_.store(true);
   return SUCCESS;
 }
 
@@ -373,6 +377,8 @@ Status UserGraphControl::LoadGraph(const std::map<AscendString, AscendString> &o
   const auto &inputs = order_.GetInputTensors(is_unknown_input_shape);
   if (is_unknown_input_shape) {
     GELOGI("CompileGraph dynamic graph %u skip.", user_graph_id_);
+    // 动态图实际加载延迟到执行期（JIT 惰性加载），标记为无需再预加载
+    user_graph_loaded_.store(true);
     return SUCCESS;
   }
   auto load_task = MakeUnique<UserGraphExecution>(user_graph_id_, inputs, nullptr, INVALID_SESSION_ID);
@@ -386,6 +392,11 @@ Status UserGraphControl::LoadGraph(const std::map<AscendString, AscendString> &o
   GELOGD("Start to LoadGraph");
   const auto ret = jit_executor->LoadGraph(*load_task);
   jit_executor_pool_.BackToIdle(jit_executor);
+  if (ret == SUCCESS) {
+    // 真实加载成功，说明 GEP 已编译并已加载，同步回写构建/加载状态
+    user_graph_loaded_.store(true);
+    user_graph_built_.store(true);
+  }
   return ret;
 }
 
@@ -397,6 +408,11 @@ Status UserGraphControl::ExecuteGraphWithStreamAsync(std::unique_ptr<UserGraphEx
   GELOGD("Start to ExecuteGraphWithStreamAsync");
   auto ret = jit_executor->Execute(std::move(*task));
   jit_executor_pool_.BackToIdle(jit_executor);
+  if (ret == SUCCESS) {
+    // JIT 执行路径已完成惰性编译+加载，回写状态避免后续重复 CompileGraph/LoadGraph
+    user_graph_loaded_.store(true);
+    user_graph_built_.store(true);
+  }
   return ret;
 }
 
@@ -444,6 +460,14 @@ void UserGraphControl::ExecuteUserGraph() {
 
 bool UserGraphControl::GetCompiledFlag() const {
   return compiled_flag_;
+}
+
+bool UserGraphControl::GetLoadFlag() const {
+  return user_graph_loaded_.load();
+}
+
+bool UserGraphControl::GetBuildFlag() const {
+  return user_graph_built_.load();
 }
 
 void UserGraphControl::SetCompiledFlag(bool flag) {

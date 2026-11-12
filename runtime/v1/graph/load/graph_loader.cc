@@ -227,21 +227,36 @@ Status GraphLoader::GetModelDescInfoFromMem(const ModelData &model_data, ModelIn
   }
 
   using GetModelInOutInfoFunc = ge::Status (*)(const uint8_t *data, size_t size, ge::ModelInOutInfo &info);
-  std::map<ge::ModelDescType, GetModelInOutInfoFunc> GetModelInOutInfoFuncMap = {
-      {ge::ModelDescType::MODEL_INPUT_DESC, &ge::ModelParserBase::GetModelInputDesc},
-      {ge::ModelDescType::MODEL_OUTPUT_DESC, &ge::ModelParserBase::GetModelOutputDesc},
-      {ge::ModelDescType::MODEL_DYNAMIC_BATCH, &ge::ModelParserBase::GetDynamicBatch},
-      {ge::ModelDescType::MODEL_DYNAMIC_HW, &ge::ModelParserBase::GetDynamicHW},
-      {ge::ModelDescType::MODEL_DYNAMIC_DIMS, &ge::ModelParserBase::GetDynamicDims},
-      {ge::ModelDescType::MODEL_DYNAMIC_OUTPUT_SHAPE, &ge::ModelParserBase::GetDynamicOutShape},
-      {ge::ModelDescType::MODEL_DESIGNATE_SHAPE_ORDER, &ge::ModelParserBase::GetDataNameOrder},
-  };
   for (auto &cfg : tlv_config) {
-    const auto it = GetModelInOutInfoFuncMap.find(static_cast<ModelDescType>(cfg.type));
-    GE_IF_BOOL_EXEC(it == GetModelInOutInfoFuncMap.end(), GELOGE(FAILED, "get type failed, type is %d", cfg.type);
-                    return FAILED);
+    GetModelInOutInfoFunc handler = nullptr;
+    switch (static_cast<ModelDescType>(cfg.type)) {
+      case ge::ModelDescType::MODEL_INPUT_DESC:
+        handler = &ge::ModelParserBase::GetModelInputDesc;
+        break;
+      case ge::ModelDescType::MODEL_OUTPUT_DESC:
+        handler = &ge::ModelParserBase::GetModelOutputDesc;
+        break;
+      case ge::ModelDescType::MODEL_DYNAMIC_BATCH:
+        handler = &ge::ModelParserBase::GetDynamicBatch;
+        break;
+      case ge::ModelDescType::MODEL_DYNAMIC_HW:
+        handler = &ge::ModelParserBase::GetDynamicHW;
+        break;
+      case ge::ModelDescType::MODEL_DYNAMIC_DIMS:
+        handler = &ge::ModelParserBase::GetDynamicDims;
+        break;
+      case ge::ModelDescType::MODEL_DYNAMIC_OUTPUT_SHAPE:
+        handler = &ge::ModelParserBase::GetDynamicOutShape;
+        break;
+      case ge::ModelDescType::MODEL_DESIGNATE_SHAPE_ORDER:
+        handler = &ge::ModelParserBase::GetDataNameOrder;
+        break;
+      default:
+        GELOGE(FAILED, "get type failed, type is %d", cfg.type);
+        return FAILED;
+    }
     GELOGD("start to analyze type is %d, len is %u", cfg.type, cfg.length);
-    GE_CHK_STATUS_RET_NOLOG(it->second(cfg.value, static_cast<size_t>(cfg.length), info));
+    GE_CHK_STATUS_RET_NOLOG(handler(cfg.value, static_cast<size_t>(cfg.length), info));
   }
   return SUCCESS;
 }

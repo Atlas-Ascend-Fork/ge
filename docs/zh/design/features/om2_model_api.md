@@ -73,6 +73,7 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | external_label_num | uint64_t | 外部 Label 个数 |
 | external_notifies | aclrtNotify * | 外部 Notify 数组，长度为 external_notify_num |
 | external_notify_num | uint64_t | 外部 Notify 个数 |
+| external_allocator | void * | 可选尾字段，输入，借用的 `gert::Allocators *`，不转移所有权；旧尺寸未覆盖该字段或值为 `nullptr` 时表示未提供外部分配器集合 |
 
 - **参数结构体 GertModelLoadCallbacks**：
 
@@ -124,6 +125,7 @@ int32_t GertModelRun(GertModelHandle model_handle, const GertModelRunConfig *con
 | output_data | gert::Tensor ** | 模型输出 Tensor 指针数组（由 Executor 填写输出地址），长度为 output_count |
 | stream_sync_timeout_ms | uint64_t | 同步执行的流同步超时，单位毫秒 |
 | run_callbacks | const GertModelRunCallbacks * | 执行期 DFX 回调集合，见下表；具体回调语义见 3.7 |
+| external_allocator | void * | 可选尾字段，输入，借用的 `gert::Allocators *`，供本次 Run/RunAsync 使用，不转移所有权；未提供时沿用 Load 的 allocator 集合 |
 
 - **参数结构体 GertModelRunCallbacks**：
 

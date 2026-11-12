@@ -42,7 +42,7 @@ class ModelExecutor : public Executor {
   /// @param [in] GraphNode: node of graph.
   /// @return Status result of function
   Status LoadGraph(const GeRootModelPtr &ge_root_model, const GraphNodePtr &graph_node,
-                   const aclrtStream stream = nullptr) override;
+                   const aclrtStream stream = nullptr, gert::Allocators *external_allocators = nullptr) override;
 
   /// @ingroup ge
   /// @brief Unload mode for graph.
@@ -64,7 +64,7 @@ class ModelExecutor : public Executor {
   /// @param [out] outputs: output data of the graph running
   /// @return Status result of function
   Status RunGraph(const GraphNodePtr &graph_node, const GraphId graph_id, const std::vector<gert::Tensor> &inputs,
-                  std::vector<gert::Tensor> &outputs) override;
+                  std::vector<gert::Tensor> &outputs, gert::Allocators *external_allocators = nullptr) override;
 
   /// @ingroup ge
   /// @brief Run graph for NN synchronize model.
@@ -75,10 +75,12 @@ class ModelExecutor : public Executor {
   /// @param [out] outputs: output data of the graph running
   /// @return Status result of function
   Status RunGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id, aclrtStream const stream,
-                            const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs) override;
+                            const std::vector<GeTensor> &inputs, std::vector<GeTensor> &outputs,
+                            gert::Allocators *external_allocators = nullptr) override;
 
   Status ExecuteGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id, aclrtStream const stream,
-                                const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs) override;
+                                const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
+                                gert::Allocators *external_allocators = nullptr) override;
 
   Status DumpDebugJSONPrint(uint32_t model_id, uint32_t graph_id, uint32_t flags, AscendString &json_result) override;
 
@@ -140,10 +142,11 @@ class ModelExecutor : public Executor {
   void StopQueue();
   void ReturnError(const RunAsyncCallbackV2 &callback, const Status ret, const std::string &log_info) const;
 
-  ge::Status LoadOm2Graph(const GeRootModelPtr &ge_root_model, const GraphNodePtr &graph_node,
-                          const aclrtStream stream);
+  ge::Status LoadOm2Graph(const GeRootModelPtr &ge_root_model, const GraphNodePtr &graph_node, const aclrtStream stream,
+                          gert::Allocators *external_allocators = nullptr);
   ge::Status RunOm2Graph(const GraphNodePtr &graph_node, uint32_t graph_id, const aclrtStream stream,
-                         const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs) const;
+                         const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
+                         gert::Allocators *external_allocators = nullptr) const;
   ge::Status UnloadOm2Graph(const GeRootModelPtr &ge_root_model, uint32_t graph_id) const;
   ge::Status GetOm2ModelTensorDesc(const GraphNodePtr &graph_node, const std::vector<gert::GertTensorDesc> *&input_desc,
                                    const std::vector<gert::GertTensorDesc> *&output_desc) const;

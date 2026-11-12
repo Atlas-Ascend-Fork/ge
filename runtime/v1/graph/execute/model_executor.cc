@@ -140,11 +140,11 @@ void ModelExecutor::RemoveGraphNode(const GraphId graph_id) {
 /// @return Status result of function
 ///
 Status ModelExecutor::LoadGraph(const GeRootModelPtr &ge_root_model, const GraphNodePtr &graph_node,
-                                const aclrtStream stream) {
+                                const aclrtStream stream, gert::Allocators *external_allocators) {
   GE_CHECK_NOTNULL(graph_node);
   GE_CHECK_NOTNULL(ge_root_model);
   if (IsOm2OnlineMode()) {
-    return LoadOm2Graph(ge_root_model, graph_node, stream);
+    return LoadOm2Graph(ge_root_model, graph_node, stream, external_allocators);
   }
   return ModelLoad(ge_root_model, graph_node, stream);
 }
@@ -295,14 +295,15 @@ void ModelExecutor::RunThread() {
 /// @return Status result of function
 ///
 Status ModelExecutor::RunGraph(const GraphNodePtr &graph_node, const GraphId graph_id,
-                               const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs) {
+                               const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
+                               gert::Allocators *external_allocators) {
   const auto ge_root_model = graph_node->GetGeRootModel();
   GE_CHECK_NOTNULL(ge_root_model);
   if (IsOm2OnlineMode()) {
     if (outputs.empty()) {
       GE_ASSERT_SUCCESS(PrepareOm2Outputs(graph_node, outputs));
     }
-    return RunOm2Graph(graph_node, graph_id, nullptr, inputs, outputs);
+    return RunOm2Graph(graph_node, graph_id, nullptr, inputs, outputs, external_allocators);
   }
   Status ret = graph_executor_.ExecuteGraph(graph_id, ge_root_model, inputs, outputs);
   graph_node->SetRunFlag(false);
@@ -324,7 +325,7 @@ Status ModelExecutor::RunGraph(const GraphNodePtr &graph_node, const GraphId gra
 ///
 Status ModelExecutor::RunGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id,
                                          aclrtStream const stream, const std::vector<GeTensor> &inputs,
-                                         std::vector<GeTensor> &outputs) {
+                                         std::vector<GeTensor> &outputs, gert::Allocators *external_allocators) {
   const auto ge_root_model = graph_node->GetGeRootModel();
   GE_CHECK_NOTNULL(ge_root_model);
   if (IsOm2OnlineMode()) {
@@ -332,7 +333,7 @@ Status ModelExecutor::RunGraphWithStream(const GraphNodePtr &graph_node, const G
     GE_ASSERT_SUCCESS(TensorTransUtils::GeTensors2GertTensors(inputs, gert_inputs));
     std::vector<gert::Tensor> gert_outputs;
     GE_ASSERT_SUCCESS(TensorTransUtils::GeTensors2GertTensors(outputs, gert_outputs));
-    auto ret = RunOm2Graph(graph_node, graph_id, stream, gert_inputs, gert_outputs);
+    auto ret = RunOm2Graph(graph_node, graph_id, stream, gert_inputs, gert_outputs, external_allocators);
     graph_node->SetRunFlag(false);
     graph_node->SetIsSpecificStream(false);
     if (ret != SUCCESS) {
@@ -355,10 +356,11 @@ Status ModelExecutor::RunGraphWithStream(const GraphNodePtr &graph_node, const G
 
 Status ModelExecutor::ExecuteGraphWithStream(const GraphNodePtr &graph_node, const GraphId graph_id,
                                              aclrtStream const stream, const std::vector<gert::Tensor> &inputs,
-                                             std::vector<gert::Tensor> &outputs) {
+                                             std::vector<gert::Tensor> &outputs,
+                                             gert::Allocators *external_allocators) {
   GE_CHECK_NOTNULL(graph_node);
   if (IsOm2OnlineMode()) {
-    return RunOm2Graph(graph_node, graph_id, stream, inputs, outputs);
+    return RunOm2Graph(graph_node, graph_id, stream, inputs, outputs, external_allocators);
   }
   auto ge_root_model = graph_node->GetGeRootModel();
   GE_CHECK_NOTNULL(ge_root_model);
@@ -1031,10 +1033,7 @@ Status ModelExecutor::PaRemapped(const GraphNodePtr &graph_node, const uint64_t 
 }
 
 Status ModelExecutor::LoadOm2Graph(const GeRootModelPtr &ge_root_model, const GraphNodePtr &graph_node,
-                                   const aclrtStream stream) {
-  // NOTE: Load 阶段不需要 stream。stream 在 Execute 阶段通过 RunOm2Graph 传递给 RunAsync。
-  // OM1 路径中 ModelLoad 也不使用 stream 参数（仅 MallocFixedFeatureMemoryIfNeed 使用）。
-  (void)stream;
+                                   const aclrtStream stream, gert::Allocators *external_allocators) {
   uint32_t device_id = GetContext().DeviceId();
   GE_CHK_STATUS_RET(ModelUtils::SetDevice(device_id), "[Call][SetDevice] failed, device_id:%u", device_id);
   const auto &model_data = ge_root_model->GetOm2ModelData();
@@ -1056,6 +1055,7 @@ Status ModelExecutor::LoadOm2Graph(const GeRootModelPtr &ge_root_model, const Gr
   load_arg.device_id = static_cast<int32_t>(GetContext().DeviceId());
   load_arg.model_id = model_id;
   load_arg.reuse_zero_copy = ModelUtils::IsReuseZeroCopyMemory();
+  load_arg.external_allocator = external_allocators;
 
   const auto &const_mem = graph_node->GetConstMemoryBase();
   if (const_mem.first != nullptr) {
@@ -1073,7 +1073,7 @@ Status ModelExecutor::LoadOm2Graph(const GeRootModelPtr &ge_root_model, const Gr
            feature_mem.first, feature_mem.second);
   }
 
-  const ge::Status ret = Om2ModelManager::GetInstance().LoadModel(model_id, *model_data, load_arg, session_id_);
+  const ge::Status ret = Om2ModelManager::GetInstance().LoadModel(model_id, *model_data, load_arg, session_id_, stream);
   if (ret == SUCCESS) {
     graph_node->SetLoaded();
     AddGraphNode(graph_id, graph_node);
@@ -1123,7 +1123,8 @@ Status ModelExecutor::PrepareOm2Outputs(const GraphNodePtr &graph_node, std::vec
 }
 
 Status ModelExecutor::RunOm2Graph(const GraphNodePtr &graph_node, uint32_t graph_id, const aclrtStream stream,
-                                  const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs) const {
+                                  const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
+                                  gert::Allocators *external_allocators) const {
   const auto ge_root_model = graph_node->GetGeRootModel();
   GE_CHECK_NOTNULL(ge_root_model);
   const uint32_t model_id = ge_root_model->GetModelId();
@@ -1186,7 +1187,9 @@ Status ModelExecutor::RunOm2Graph(const GraphNodePtr &graph_node, uint32_t graph
     }
   }
 
-  const ge::Status ret = Om2ModelManager::GetInstance().RunModel(model_id, stream, input_ptrs, output_ptrs);
+  gert::Om2ModelRunArg run_arg;
+  run_arg.external_allocator = external_allocators;
+  const ge::Status ret = Om2ModelManager::GetInstance().RunModel(model_id, stream, input_ptrs, output_ptrs, run_arg);
   if (ret == SUCCESS) {
     for (const size_t i : host_output_indices) {
       const size_t size = outputs[i].GetSize();

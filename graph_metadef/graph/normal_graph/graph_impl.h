@@ -140,7 +140,8 @@ class GraphImpl {
   virtual bool IsCompatibleSubgraph(const Graph &subgraph) const = 0;
   virtual graphStatus RegisterSubgraph(const Graph &subgraph) = 0;
   virtual void PrepareSetOutputs() {}
-  virtual GNodePtr FindDirectNode(const AscendString &name) const = 0;
+  // found 区分"未命中"与"命中后包装分配失败"两类结果
+  virtual GNodePtr FindDirectNode(const AscendString &name, bool &found) const = 0;
   virtual ConstOpDescPtr GetOutputOpDesc(const GNode &node) const = 0;
   virtual graphStatus SetGraphOutNodesInfo(const std::vector<std::pair<GNode, int32_t>> &outputs) = 0;
   virtual std::string *GetUserOutputNames() {
@@ -152,8 +153,8 @@ class GraphImpl {
  private:
   graphStatus ResolveEdgeNodes(const GNode &src, const GNode &dst, NodeContext &src_context,
                                NodeContext &dst_context) const;
-  void AppendUserOutput(const Operator &output, const std::vector<size_t> &indexes,
-                        std::vector<std::pair<GNode, int32_t>> &output_nodes);
+  graphStatus AppendUserOutput(const Operator &output, const std::vector<size_t> &indexes,
+                               std::vector<std::pair<GNode, int32_t>> &output_nodes);
   graphStatus AppendNamedUserOutput(const Operator &output, const std::string &output_name,
                                     std::vector<std::pair<GNode, int32_t>> &output_nodes);
   void AppendUserOutputName(const AscendString &name, size_t index);

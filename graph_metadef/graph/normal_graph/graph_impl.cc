@@ -29,8 +29,9 @@ GNode GraphImpl::AddNodeByOp(const Operator &op) {
 }
 
 GNodePtr GraphImpl::FindNodeByName(const AscendString &node_name) const {
-  const auto node = FindDirectNode(node_name);
-  GE_WARN_ASSERT(node != nullptr, "Node name: %s was not found in the current graph: %s.", node_name.GetString(),
+  bool found = false;
+  const auto node = FindDirectNode(node_name, found);
+  GE_WARN_ASSERT(found, "Node name: %s was not found in the current graph: %s.", node_name.GetString(),
                  GetName().c_str());
   return node;
 }
@@ -233,7 +234,10 @@ graphStatus GraphImpl::SetOutputs(const std::vector<std::pair<Operator, std::vec
   PrepareSetOutputs();
   std::vector<std::pair<GNode, int32_t>> output_nodes;
   for (const auto &item : output_indexes) {
-    AppendUserOutput(item.first, item.second, output_nodes);
+    const graphStatus append_ret = AppendUserOutput(item.first, item.second, output_nodes);
+    if (append_ret != GRAPH_SUCCESS) {
+      return append_ret;
+    }
   }
   FinalizeUserOutputNames();
   const auto *output_names = GetUserOutputNames();
@@ -301,19 +305,27 @@ graphStatus GraphImpl::SetOutputs(const std::vector<std::pair<GNode, int32_t>> &
   return GRAPH_SUCCESS;
 }
 
-void GraphImpl::AppendUserOutput(const Operator &output, const std::vector<size_t> &indexes,
-                                 std::vector<std::pair<GNode, int32_t>> &output_nodes) {
+graphStatus GraphImpl::AppendUserOutput(const Operator &output, const std::vector<size_t> &indexes,
+                                        std::vector<std::pair<GNode, int32_t>> &output_nodes) {
   AscendString out_name;
   (void)output.GetName(out_name);
-  const auto node = FindDirectNode(out_name);
-  if (node == nullptr) {
+  bool found = false;
+  const auto node = FindDirectNode(out_name, found);
+  if (!found) {
     GELOGW("[SetOutputs][Check] User designated out_node %s does not exist in graph, skip it", out_name.GetString());
-    return;
+    return GRAPH_SUCCESS;
+  }
+  if (node == nullptr) {
+    GELOGE(GRAPH_FAILED, "[SetOutputs][Get][GNode] wrap out_node (%s) to gnode failed in graph:%s.",
+           out_name.GetString(), GetName().c_str());
+    REPORT_INNER_ERR_MSG("E18888", "wrap out_node (%s) to gnode failed in graph:%s.", out_name.GetString(),
+                         GetName().c_str());
+    return GRAPH_FAILED;
   }
   const auto op_desc = GetOutputOpDesc(*node);
   if (op_desc == nullptr) {
     GELOGE(GRAPH_FAILED, "op_desc in node must not be null.");
-    return;
+    return GRAPH_SUCCESS;
   }
   const size_t output_size = op_desc->GetOutputsSize();
   if (indexes.empty()) {
@@ -333,20 +345,29 @@ void GraphImpl::AppendUserOutput(const Operator &output, const std::vector<size_
       }
     }
   }
+  return GRAPH_SUCCESS;
 }
 
 graphStatus GraphImpl::AppendNamedUserOutput(const Operator &output, const std::string &output_name,
                                              std::vector<std::pair<GNode, int32_t>> &output_nodes) {
   AscendString out_name;
   (void)output.GetName(out_name);
-  const auto node = FindDirectNode(out_name);
-  if (node == nullptr) {
+  bool found = false;
+  const auto node = FindDirectNode(out_name, found);
+  if (!found) {
     REPORT_INNER_ERR_MSG("E18888", "designated out_node (%s) does not exist in graph:%s, this out_node ignored!",
                          out_name.GetString(), GetName().c_str());
     GELOGE(GRAPH_FAILED,
            "[Check][Param] Warning, user designated out_node (%s) does not exist in graph:%s, "
            "this out_node ignored!",
            out_name.GetString(), GetName().c_str());
+    return GRAPH_FAILED;
+  }
+  if (node == nullptr) {
+    GELOGE(GRAPH_FAILED, "[SetOutputs][Get][GNode] wrap out_node (%s) to gnode failed in graph:%s.",
+           out_name.GetString(), GetName().c_str());
+    REPORT_INNER_ERR_MSG("E18888", "wrap out_node (%s) to gnode failed in graph:%s.", out_name.GetString(),
+                         GetName().c_str());
     return GRAPH_FAILED;
   }
   const auto op_desc = GetOutputOpDesc(*node);

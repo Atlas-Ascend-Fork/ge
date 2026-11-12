@@ -73,6 +73,7 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | external_label_num | uint64_t | External label count |
 | external_notifies | aclrtNotify * | External notify array of length external_notify_num |
 | external_notify_num | uint64_t | External notify count |
+| external_allocator | void * | Optional tail field, input; a borrowed `gert::Allocators *` with no ownership transfer. If the caller's structure size does not cover this field or the value is `nullptr`, no external allocator collection is provided |
 
 - **Parameter structure GertModelLoadCallbacks**:
 
@@ -124,6 +125,7 @@ int32_t GertModelRun(GertModelHandle model_handle, const GertModelRunConfig *con
 | output_data | gert::Tensor ** | Array of model output Tensor pointers (output addresses filled in by the Executor), of length output_count |
 | stream_sync_timeout_ms | uint64_t | Stream synchronization timeout for synchronous execution, in milliseconds |
 | run_callbacks | const GertModelRunCallbacks * | Execution-time DFX callback collection; see below. Callback semantics are described in 3.7 |
+| external_allocator | void * | Optional tail field, input; a borrowed `gert::Allocators *` for this Run/RunAsync call, with no ownership transfer. If not provided, the allocator collection from Load is reused |
 
 - **Parameter structure GertModelRunCallbacks**:
 
