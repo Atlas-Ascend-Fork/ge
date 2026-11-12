@@ -50,16 +50,35 @@ Reserved parameters need to force users use invalid values, otherwise after subs
 
 Memory length exceeding 4G scenarios, 32-bit cannot express, using 32-bit data type, encountering corresponding scenario, need to add new interface with same logic, causing extra development and maintenance cost.
 
-### 3. When Modifying Public Interfaces, Must Strictly Ensure API and ABI Compatibility
+### 3. When Modifying or Adding Public Interfaces, Must Strictly Ensure API and ABI Compatibility
 
-Header files under `inc/external` directory are public interfaces, need to strictly ensure ABI and API compatibility, if incompatible, will cause customer code modification or recompilation, original program unable to run.
+Header files whose paths contain an `external` directory (e.g. `inc/external`, `inc/graph_metadef/external`) are public interfaces, need to strictly ensure ABI and API compatibility, if incompatible, will cause customer code modification or recompilation, original program unable to run.
 
 > **Supplementary Note**:
 >
-> - Header files under `inc/external` directory are all public interface boundaries, other directories considered internal interfaces, can freely modify.
+> - Header files whose paths contain an `external` directory (e.g. `inc/external`, `inc/graph_metadef/external`) are public interface boundaries, other directories considered internal interfaces, can freely modify.
 > - C++ public interfaces generally use classes (not structs), when extending add class methods, don't modify existing method signatures.
 > - C public structs have reserved fields. When creating new public structs must also reserve fields.
 > - In public header file public interfaces prohibit using `std::string` (including function parameters, return values, class/public members etc.), because different C++ standard library/compiler versions `std::string` underlying implementation may differ, causing ABI incompatibility. Should use `AscendString` instead.
+
+**Modifying or adding public interfaces must also satisfy** ("published" means headers and symbols already provided by any externally released version, including beta/pre):
+
+1. **Header dependencies**: may only include public headers already installed externally, referencing internal headers is prohibited; new header files must be placed under existing public include directories, and must not require consumers to add include paths in CMake.
+2. **ABI compatibility**: for published structs/classes:
+   - Adding or removing fields or data members, changing field order, changing base class order or virtual inheritance, changing alignment or bit-field width are prohibited (they change `sizeof`, offsets and RTTI);
+   - Adding, deleting, reordering or modifying virtual functions (including virtual destructors) is prohibited;
+   - Deleting or reordering existing methods, or modifying existing method declarations (signature, access rights, `const`/`noexcept` qualifiers) is prohibited.
+
+   When extension is truly needed, only fill in fields originally reserved in the struct, or create a new struct (e.g. `FooV2`) to carry the new fields, keeping the published struct itself unchanged; reserved fields must define zero-initialized semantics, so readers can determine whether a field is valid.
+3. **Enum extension**: for published enums:
+   - Inserting new values between existing values, or deleting existing values, is prohibited;
+   - Modifying the underlying type or existing values is prohibited (type/size changes break ABI).
+
+   New values may only be appended at the end with explicit fixed values (immediately before a sentinel value when one exists); new enums must explicitly specify the underlying type, and consumers must tolerate unknown values (`switch` must have a `default` branch).
+4. **Capability extension**:
+   - **Adding methods**: only non-virtual methods may be added (not changing the vtable and object layout), prefer inline; when inline is not possible, declare as a weak symbol, the interface consumer must check for null before calling, skip the capability when null, and must not dereference.
+   - **Adding classes**: virtual functions must be inline or pure virtual (avoiding key function causing derived parties to strongly reference vtable/typeinfo), non-virtual functions follow the previous rule; the layout must be frozen once and for all, extension only by filling reserved fields.
+5. **Documentation**: new interfaces must add `@since`, Doxygen comments, API documentation and interface review.
 
 ### 4. Prohibit Doing Non-Equivalent Transformation When Modifying Graph, Must Consider Control, Data Two Types of Relationship Equivalence
 
