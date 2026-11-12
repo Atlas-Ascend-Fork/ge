@@ -56,7 +56,7 @@ IPV350：不支持
 
 ## 关联参数
 
-使用该参数时，只有如下参数可以配合使用，其中[--output](--output.md)、[--soc\_version](--soc_version.md)为必填。
+使用该参数时，只有如下参数可以配合使用，其中[--output](--output.md)、[--soc\_version](--soc_version.md)为必填；[--mode](--mode.md)取值为7时，不支持单算子场景。
 
 <!-- npu="950" id14 -->
 - Ascend 950PR&950DT系列产品可配合使用的参数：

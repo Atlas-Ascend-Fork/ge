@@ -12,7 +12,8 @@
 
 ## 关联参数
 
-该参数不能与[--dynamic\_batch\_size](--dynamic_batch_size.md)、[--dynamic\_image\_size](--dynamic_image_size.md)、[--dynamic\_dims](--dynamic_dims.md)参数同时使用，同时设置时模型转换报错。
+- 该参数不能与[--dynamic\_batch\_size](--dynamic_batch_size.md)、[--dynamic\_image\_size](--dynamic_image_size.md)、[--dynamic\_dims](--dynamic_dims.md)参数同时使用，同时设置时模型转换报错。
+- [--mode](--mode.md)取值为7时，不支持配置该参数。
 
 ## 参数取值
 
