@@ -334,12 +334,6 @@ Python 层会自动创建 ES `GraphBuilder`、图输入、图输出和 pattern c
 
 自动融合在精度调整后、格式调整前执行，时机选择很关键：精度已经确定（不会再插入 Cast），但格式尚未固定（还有变换的空间）。
 
-融合准入通过 GE 自带的 `temporary_dependencies/ascir/ascir_ops.h` 校验 AscIR 数据类型，需与
-graph-autofusion 的算子注册及后端实现同步。`2201` 平台支持 `int64` Broadcast、`uint8 → int64` Cast，
-以及两个 `int64` 输入的 LogicalAnd/LogicalOr（输出为 `uint8`），避免广播和类型转换使 lowering box 回退。
-这不扩展 `int64` Add/Mul/Sum 的支持范围；使用时需配套包含 graph-autofusion PR #2863 的后端，
-其中提供 Cast 转换路径、64 位整数 Duplicate 临时空间及广播修复。
-
 自动融合子系统（`compiler/graph/optimize/autofuse/`）包含完整的子目录结构：`ascir/`、`autofuse/`（内含 `autoschedule/`、`can_fuse/`、`fusion/`、`lowering/`、`pattern_fusion/`、`post_process/`）、`cmake/`、`common/`、`examples/`、`graph/`、`inc/`、`proto/` 等，表明它不仅做融合决策，还涉及融合后算子的代码生成——这是一条从算子分类到代码生成的完整路径。
 
 ## 4. 引擎分区
