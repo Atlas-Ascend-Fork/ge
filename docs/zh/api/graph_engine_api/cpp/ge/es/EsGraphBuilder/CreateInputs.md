@@ -17,7 +17,7 @@
 
 - 创建指定数量的输入节点，返回数组，适用于编译时的结构化绑定
 
-```c++
+    ```c++
     template <size_t inputs_num>
     std::array<EsTensorHolder, inputs_num> CreateInputs(size_t start_index = 0)
     ```
@@ -52,7 +52,7 @@
 
 -   创建指定数量的输入节点，返回数组，适用于编译时的结构化绑定
 
-```c++
+    ```c++
     // 1. 创建图构建器（EsGraphBuilder）
     EsGraphBuilder builder("graph_name");
     // 2. 添加 2 个输入节点，使用c++17的结构化绑定到data0和data1

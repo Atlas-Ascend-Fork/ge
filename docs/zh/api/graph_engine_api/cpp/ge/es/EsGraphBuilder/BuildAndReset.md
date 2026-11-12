@@ -17,7 +17,7 @@
 
 - 构建计算图
 
-```c++
+    ```c++
     std::unique_ptr<Graph> BuildAndReset() const
     ```
 
@@ -49,7 +49,7 @@
 
 -   构建计算图
 
-```c++
+    ```c++
     // 1. 创建图构建器（EsGraphBuilder）
     EsGraphBuilder builder("graph_name");
     // 2. 添加 2 个输入节点
