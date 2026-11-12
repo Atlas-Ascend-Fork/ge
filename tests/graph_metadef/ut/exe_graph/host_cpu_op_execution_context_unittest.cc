@@ -146,6 +146,36 @@ TEST_F(HostCpuOpExecutionContextUT, MallocOutputTensorZeroLengthAfterMallocOk) {
   EXPECT_EQ(output_tensor->GetAddr(), nullptr);
 }
 
+// 动态 shape 场景：本接口每轮执行都会被调用，shape 增大时必须重新分配输出内存，
+// 否则算子会按本轮 shape 向上一轮分配的过小缓冲区写出界
+TEST_F(HostCpuOpExecutionContextUT, MallocOutputTensorReallocWhenShapeGrows) {
+  auto context = context_holder_.GetContext<HostCpuOpExecutionContext>();
+  ASSERT_NE(context, nullptr);
+
+  // 第 1 轮：24 个 float16 元素，逻辑尺寸 48B
+  auto *first = context->MallocOutputTensor(1, {{2, 1, 3, 4}, {1, 2, 3, 4}},
+                                            {ge::FORMAT_ND, ge::FORMAT_ND, ExpandDimsType()}, ge::DT_FLOAT16);
+  ASSERT_NE(first, nullptr);
+  const auto *first_addr = first->GetAddr();
+  ASSERT_NE(first_addr, nullptr);
+  EXPECT_EQ(first->GetSize(), 48UL);
+
+  // 第 2 轮：shape 增大到 1024 个元素（2048B > 已有 48B），必须重新分配
+  auto *grown = context->MallocOutputTensor(1, {{1024}, {1024}}, {ge::FORMAT_ND, ge::FORMAT_ND, ExpandDimsType()},
+                                            ge::DT_FLOAT16);
+  ASSERT_NE(grown, nullptr);
+  EXPECT_NE(grown->GetAddr(), first_addr);
+  EXPECT_GE(grown->GetSize(), 2048UL);
+
+  // 第 3 轮：shape 变回小尺寸，已有内存足够，复用而不重新分配
+  const auto *grown_addr = grown->GetAddr();
+  auto *shrunk = context->MallocOutputTensor(1, {{2, 1, 3, 4}, {1, 2, 3, 4}},
+                                             {ge::FORMAT_ND, ge::FORMAT_ND, ExpandDimsType()}, ge::DT_FLOAT16);
+  ASSERT_NE(shrunk, nullptr);
+  EXPECT_EQ(shrunk->GetAddr(), grown_addr);
+  EXPECT_GE(shrunk->GetSize(), 2048UL);
+}
+
 TEST_F(HostCpuOpExecutionContextUT, MallocOutputTensorRefOutputError) {
   auto context = context_holder_.GetContext<HostCpuOpExecutionContext>();
 
