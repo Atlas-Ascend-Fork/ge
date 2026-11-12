@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/err_msg.h"
 #include "common/checker.h"
 #include "common/proto_util/proto_util.h"
 #include "framework/common/debug/ge_log.h"
@@ -129,10 +130,17 @@ Status ParseInputH2DOverlapOptionValue(const std::string &option_value, InputH2D
   if (option_value == "1") {
     return SUCCESS;
   }
-  GE_ASSERT_TRUE(option_value.find(',') != std::string::npos,
-                 "[Check][InputH2DOverlapOption] invalid option value:%s. Use 0, 1, or comma-separated manual "
-                 "boundaries such as \"44,\" or \",44\".",
-                 option_value.c_str());
+  if (option_value.find(',') == std::string::npos) {
+    REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
+                              std::vector<const char *>({kInputH2DOverlapOptionName, option_value.c_str(),
+                                                         "valid values are 0, 1, or comma-separated manual "
+                                                         "boundaries such as \"44,\" or \",44\""}));
+    GELOGE(PARAM_INVALID,
+           "[Check][InputH2DOverlapOption] invalid option value:%s. Use 0, 1, or comma-separated manual "
+           "boundaries such as \"44,\" or \",44\".",
+           option_value.c_str());
+    return PARAM_INVALID;
+  }
   manual_config = option_value;
   return SUCCESS;
 }
@@ -220,12 +228,22 @@ Status SplitInputH2DOverlapManualConfig(const std::string &manual_config, const 
         manual_config.substr(begin, (end == std::string::npos) ? std::string::npos : end - begin));
     if (token.empty()) {
       const bool is_edge_token = (begin == 0U) || (end == std::string::npos);
-      GE_ASSERT_TRUE(is_edge_token, "[Check][InputH2DOverlapConfig] empty token in manual config:%s.",
-                     manual_config.c_str());
+      if (!is_edge_token) {
+        REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
+                                  std::vector<const char *>({kInputH2DOverlapOptionName, manual_config.c_str(),
+                                                             "manual boundaries contain an empty non-edge item"}));
+        GELOGE(PARAM_INVALID, "[Check][InputH2DOverlapConfig] empty token in manual config:%s.", manual_config.c_str());
+        return PARAM_INVALID;
+      }
       ++empty_edge_token_count;
-      GE_ASSERT_TRUE(empty_edge_token_count == 1U,
-                     "[Check][InputH2DOverlapConfig] manual config:%s can only omit one edge boundary.",
-                     manual_config.c_str());
+      if (empty_edge_token_count != 1U) {
+        REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
+                                  std::vector<const char *>({kInputH2DOverlapOptionName, manual_config.c_str(),
+                                                             "manual boundaries can only omit one edge boundary"}));
+        GELOGE(PARAM_INVALID, "[Check][InputH2DOverlapConfig] manual config:%s can only omit one edge boundary.",
+               manual_config.c_str());
+        return PARAM_INVALID;
+      }
     } else {
       tokens.emplace_back(token);
     }
@@ -239,19 +257,42 @@ Status SplitInputH2DOverlapManualConfig(const std::string &manual_config, const 
 
 Status ParseInputH2DOverlapManualIndex(const std::string &token, size_t &index) {
   const auto trimmed_token = TrimInputH2DOverlapString(token);
-  GE_ASSERT_TRUE(!trimmed_token.empty(), "[Check][InputH2DOverlapConfig] manual index is empty.");
+  if (trimmed_token.empty()) {
+    REPORT_PREDEFINED_ERR_MSG(
+        "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
+        std::vector<const char *>({kInputH2DOverlapOptionName, token.c_str(), "manual boundary item is empty"}));
+    GELOGE(PARAM_INVALID, "[Check][InputH2DOverlapConfig] manual index is empty.");
+    return PARAM_INVALID;
+  }
   uint64_t parsed = 0U;
   for (const char ch : trimmed_token) {
-    GE_ASSERT_TRUE(std::isdigit(static_cast<unsigned char>(ch)) != 0,
-                   "[Check][InputH2DOverlapConfig] manual index:%s is not a non-negative integer.",
-                   trimmed_token.c_str());
+    if (std::isdigit(static_cast<unsigned char>(ch)) == 0) {
+      REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
+                                std::vector<const char *>({kInputH2DOverlapOptionName, trimmed_token.c_str(),
+                                                           "manual boundary must be a non-negative integer"}));
+      GELOGE(PARAM_INVALID, "[Check][InputH2DOverlapConfig] manual index:%s is not a non-negative integer.",
+             trimmed_token.c_str());
+      return PARAM_INVALID;
+    }
     const uint64_t digit = static_cast<uint64_t>(ch - '0');
-    GE_ASSERT_TRUE(parsed <= ((std::numeric_limits<uint64_t>::max() - digit) / 10U),
-                   "[Check][InputH2DOverlapConfig] manual index:%s exceeds uint64 range.", trimmed_token.c_str());
+    if (parsed > ((std::numeric_limits<uint64_t>::max() - digit) / 10U)) {
+      REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
+                                std::vector<const char *>({kInputH2DOverlapOptionName, trimmed_token.c_str(),
+                                                           "manual boundary exceeds uint64 range"}));
+      GELOGE(PARAM_INVALID, "[Check][InputH2DOverlapConfig] manual index:%s exceeds uint64 range.",
+             trimmed_token.c_str());
+      return PARAM_INVALID;
+    }
     parsed = (parsed * 10U) + digit;
   }
-  GE_ASSERT_TRUE(parsed <= static_cast<uint64_t>(std::numeric_limits<size_t>::max()),
-                 "[Check][InputH2DOverlapConfig] manual index:%s exceeds size_t range.", trimmed_token.c_str());
+  if (parsed > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+    REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
+                              std::vector<const char *>({kInputH2DOverlapOptionName, trimmed_token.c_str(),
+                                                         "manual boundary exceeds size_t range"}));
+    GELOGE(PARAM_INVALID, "[Check][InputH2DOverlapConfig] manual index:%s exceeds size_t range.",
+           trimmed_token.c_str());
+    return PARAM_INVALID;
+  }
   index = static_cast<size_t>(parsed);
   return SUCCESS;
 }
@@ -260,8 +301,14 @@ Status ParseInputH2DOverlapBoundaryConfig(const std::string &manual_config, Inpu
   std::vector<std::string> tokens;
   GE_CHK_STATUS_RET(SplitInputH2DOverlapManualConfig(manual_config, ',', tokens),
                     "[Split][InputH2DOverlapBoundaryConfig] failed.");
-  GE_ASSERT_TRUE(!tokens.empty(), "[Check][InputH2DOverlapConfig] boundary config:%s needs at least one index.",
-                 manual_config.c_str());
+  if (tokens.empty()) {
+    REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
+                              std::vector<const char *>({kInputH2DOverlapOptionName, manual_config.c_str(),
+                                                         "manual boundaries need at least one boundary index"}));
+    GELOGE(PARAM_INVALID, "[Check][InputH2DOverlapConfig] boundary config:%s needs at least one index.",
+           manual_config.c_str());
+    return PARAM_INVALID;
+  }
   config.boundaries.reserve(tokens.size());
   for (const auto &token : tokens) {
     size_t boundary = 0U;
@@ -270,9 +317,14 @@ Status ParseInputH2DOverlapBoundaryConfig(const std::string &manual_config, Inpu
     config.boundaries.emplace_back(boundary);
   }
   for (size_t i = 1U; i < config.boundaries.size(); ++i) {
-    GE_ASSERT_TRUE(config.boundaries[i - 1U] < config.boundaries[i],
-                   "[Check][InputH2DOverlapConfig] boundary config:%s must be strictly increasing.",
-                   manual_config.c_str());
+    if (config.boundaries[i - 1U] >= config.boundaries[i]) {
+      REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
+                                std::vector<const char *>({kInputH2DOverlapOptionName, manual_config.c_str(),
+                                                           "manual boundary indices must be strictly increasing"}));
+      GELOGE(PARAM_INVALID, "[Check][InputH2DOverlapConfig] boundary config:%s must be strictly increasing.",
+             manual_config.c_str());
+      return PARAM_INVALID;
+    }
   }
   return SUCCESS;
 }
@@ -283,7 +335,13 @@ Status LoadInputH2DOverlapConfig(const std::string &manual_config, InputH2DOverl
     return SUCCESS;
   }
   const auto trimmed_config = TrimInputH2DOverlapString(manual_config);
-  GE_ASSERT_TRUE(!trimmed_config.empty(), "[Check][InputH2DOverlapConfig] manual config is empty.");
+  if (trimmed_config.empty()) {
+    REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
+                              std::vector<const char *>({kInputH2DOverlapOptionName, manual_config.c_str(),
+                                                         "manual boundaries contain only whitespace"}));
+    GELOGE(PARAM_INVALID, "[Check][InputH2DOverlapConfig] manual config is empty.");
+    return PARAM_INVALID;
+  }
   GELOGI("[InputH2DOverlap] use manual boundary config %s=%s.", kInputH2DOverlapOptionName, trimmed_config.c_str());
   GE_CHK_STATUS_RET(ParseInputH2DOverlapBoundaryConfig(trimmed_config, config),
                     "[Parse][InputH2DOverlapBoundaryConfig] failed.");
