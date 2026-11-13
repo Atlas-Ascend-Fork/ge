@@ -232,6 +232,7 @@ add_library(graph SHARED
     ${GRAPH_SOURCE_LIST}
     $<TARGET_OBJECTS:metadef_attr_group_protos_obj>
 )
+
 target_compile_options(graph PRIVATE -DNO_METADEF_ABI_COMPATIABLE)
 
 target_compile_options(graph PRIVATE
@@ -243,6 +244,7 @@ target_compile_options(graph PRIVATE
 target_compile_definitions(graph PRIVATE
     $<$<OR:$<STREQUAL:${PRODUCT_SIDE},host>,$<STREQUAL:${ENABLE_OPEN_SRC},True>>:FMK_SUPPORT_DUMP>
     CUSTOM_OP_PULL_REGISTRY_HIDDEN_EXPORT
+    GE_API_EXPORTS
     google=ascend_private
     $<IF:$<STREQUAL:${TARGET_SYSTEM_NAME},Windows>,OS_TYPE=WIN,OS_TYPE=0>
     $<$<STREQUAL:${TARGET_SYSTEM_NAME},Windows>:SECUREC_USING_STD_SECURE_LIB=0 NOMINMAX>
@@ -295,6 +297,7 @@ add_library(custom_op_registry_static STATIC
 target_compile_options(custom_op_registry_static PRIVATE
     $<$<STREQUAL:${TARGET_SYSTEM_NAME},Linux>:-fPIC -fvisibility=hidden -fvisibility-inlines-hidden>
 )
+target_compile_definitions(custom_op_registry_static PRIVATE GE_API_EXPORTS)
 
 target_include_directories(custom_op_registry_static PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}

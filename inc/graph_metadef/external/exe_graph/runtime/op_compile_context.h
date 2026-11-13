@@ -16,6 +16,12 @@
 #include "graph/tensor.h"
 #include "platform/platform_infos_def.h"
 
+#if defined(GE_API_EXPORTS)
+#define GE_CONTEXT_API_IMPORT
+#else
+#define GE_CONTEXT_API_IMPORT __attribute__((weak))
+#endif
+
 namespace gert {
 
 class OpCompileContext : public ExtendedKernelContext {
@@ -93,8 +99,9 @@ class OpCompileContext : public ExtendedKernelContext {
    * @param key 交互参数
    * @param value 输出取值
    * @return 成功返回true；key未定义、参数未设置或当前上下文不可用时返回false（不写出value）
+   * @since 9.3.0(2026-10)
    */
-  bool GetContextValue(ContextParam key, uint64_t &value) const;
+  GE_CONTEXT_API_IMPORT bool GetContextValue(ContextParam key, uint64_t &value) const;
 
   enum class AdditionalOutputIndex : uint32_t {
     kContextInfo = 0,  // 编译期上下文伴生信息
@@ -103,4 +110,6 @@ class OpCompileContext : public ExtendedKernelContext {
 };
 
 }  // namespace gert
+#undef GE_CONTEXT_API_IMPORT
+
 #endif  // CANN_GRAPH_ENGINE_OP_COMPILE_CONTEXT_H

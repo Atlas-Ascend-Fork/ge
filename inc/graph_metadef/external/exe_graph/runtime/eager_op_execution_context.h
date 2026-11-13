@@ -17,6 +17,12 @@
 #include "exe_graph/runtime/kernel_args.h"
 #include "graph/ascend_string.h"
 
+#if defined(GE_API_EXPORTS)
+#define GE_CONTEXT_API_IMPORT
+#else
+#define GE_CONTEXT_API_IMPORT __attribute__((weak))
+#endif
+
 namespace gert {
 using rtStream = void *;
 
@@ -130,8 +136,9 @@ class EagerOpExecutionContext : public ExtendedKernelContext {
    *              由算子自行传入，GE直接透传给辅流创建；仅新建时生效，复用命中时忽略。
    *              不需要特殊标志时填0，按框架默认创建参数建流
    * @return 托管的辅流句柄；不支持或参数无效时返回 nullptr
+   * @since 9.3.0(2026-10)
    */
-  rtStream RequestAttachedStream(const ge::AscendString &key, uint32_t flags);
+  GE_CONTEXT_API_IMPORT rtStream RequestAttachedStream(const ge::AscendString &key, uint32_t flags);
 
   /**
    * 查询GE与自定义算子之间的运行期交互参数取值。
@@ -139,16 +146,19 @@ class EagerOpExecutionContext : public ExtendedKernelContext {
    * @param key 交互参数
    * @param value 输出取值
    * @return 成功返回true；key未定义或当前上下文不可用时返回false（不写出value）
+   * @since 9.3.0(2026-10)
    */
-  bool GetContextValue(ContextParam key, uint64_t &value) const;
+  GE_CONTEXT_API_IMPORT bool GetContextValue(ContextParam key, uint64_t &value) const;
 
   /**
    * 获取运行期选项（全局/会话/图三级合并语义）。
    * @param option_key 选项key
    * @param option_value 输出选项值
    * @return 成功返回GRAPH_SUCCESS；选项未配置或当前上下文不可用时返回失败状态码（不写出value）
+   * @since 9.3.0(2026-10)
    */
-  ge::graphStatus GetOption(const ge::AscendString &option_key, ge::AscendString &option_value) const;
+  GE_CONTEXT_API_IMPORT ge::graphStatus GetOption(const ge::AscendString &option_key,
+                                                  ge::AscendString &option_value) const;
 
   enum class AdditionalInputIndex : uint32_t { kDeviceAllocator = 0, kStream, kNum };
 
@@ -180,4 +190,6 @@ class EagerOpExecutionContext : public ExtendedKernelContext {
 static_assert(std::is_standard_layout<EagerOpExecutionContext>::value,
               "The class EagerOpExecutionContext must be a POD");
 }  // namespace gert
+#undef GE_CONTEXT_API_IMPORT
+
 #endif  // METADEF_CXX_INC_EXE_GRAPH_RUNTIME_EAGER_OP_EXECUTION_CONTEXT_H_

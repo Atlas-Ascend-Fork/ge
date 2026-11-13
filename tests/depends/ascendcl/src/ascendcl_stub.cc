@@ -2094,6 +2094,14 @@ aclError aclrtHostGetDevicePointerAddrRange(aclrtAddrRange *addrRange, uint32_t 
   return ACL_SUCCESS;
 }
 
+aclError aclsysGetVersionNum(char *pkgName, int32_t *versionNum) {
+  (void)pkgName;
+  if (versionNum != nullptr) {
+    *versionNum = 90300000;
+  }
+  return ACL_SUCCESS;
+}
+
 #ifdef __cplusplus
 }
 #endif
