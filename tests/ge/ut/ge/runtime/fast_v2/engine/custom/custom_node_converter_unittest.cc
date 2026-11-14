@@ -132,7 +132,7 @@ TEST_F(CustomNodeConverterUT, custom_op_convert_test) {
   auto exe_graph = frame->GetExecuteGraph().get();
   ASSERT_NE(exe_graph, nullptr);
   ASSERT_EQ(ExeGraphSummaryChecker(exe_graph).StrictAllNodeTypes({{"Data", 5},
-                                                                  {"Const", 11},
+                                                                  {"Const", 13},
                                                                   {"BuildRefTensor", 3},
                                                                   {"CalcTensorSizeFromStorage", 3},
                                                                   {"ExecuteCustomOp", 1},
@@ -150,7 +150,7 @@ TEST_F(CustomNodeConverterUT, custom_op_convert_test) {
   // 与 CustomOpInput 枚举保持一致，新增附加输入必须插在 func 之后
   const auto *execute_node = ge::ExecuteGraphUtils::FindFirstNodeMatchType(exe_graph, "ExecuteCustomOp");
   ASSERT_NE(execute_node, nullptr);
-  ASSERT_EQ(execute_node->GetDataInNum(), 10);
+  ASSERT_EQ(execute_node->GetDataInNum(), 12);
 }
 
 TEST_F(CustomNodeConverterUT, custom_op_convert_injects_vector_core_num) {
@@ -175,14 +175,18 @@ TEST_F(CustomNodeConverterUT, custom_op_convert_injects_vector_core_num) {
 
   auto *execute_node = ge::ExecuteGraphUtils::FindFirstNodeMatchType(frame->GetExecuteGraph().get(), "ExecuteCustomOp");
   ASSERT_NE(execute_node, nullptr);
-  ASSERT_EQ(execute_node->GetDataInNum(), 10);
+  ASSERT_EQ(execute_node->GetDataInNum(), 12);
   int64_t value = 0;
   ASSERT_TRUE(ReadInjectedInt64Input(frame->GetExecuteGraph().get(), kVectorCoreInputIndex, value));
   EXPECT_EQ(value, 24);
+  // 新增槽位：index 10 = AI Core数量，index 11 = AICPU数量
+  ASSERT_TRUE(ReadInjectedInt64Input(frame->GetExecuteGraph().get(), 10, value));
+  EXPECT_GT(value, 0);
+  ASSERT_TRUE(ReadInjectedInt64Input(frame->GetExecuteGraph().get(), 11, value));
 }
 
-TEST_F(CustomNodeConverterUT, custom_op_convert_injects_vector_core_num_sentinel_when_invalid) {
-  // 首字符非数字 → 视为未设置，注入sentinel(-1)
+TEST_F(CustomNodeConverterUT, custom_op_convert_falls_back_to_platform_when_vector_core_num_invalid) {
+  // 非法属性视为未配置，回退平台默认核数
   constexpr int32_t kVectorCoreInputIndex = 9;
   auto graph = ShareGraph::BuildCustomOpGraph();
   (void)ge::AttrUtils::SetStr(graph->FindNode("custom_op")->GetOpDesc(), ge::kVectorCoreNumOp, "abc");
@@ -202,7 +206,7 @@ TEST_F(CustomNodeConverterUT, custom_op_convert_injects_vector_core_num_sentinel
 
   int64_t value = 0;
   ASSERT_TRUE(ReadInjectedInt64Input(frame->GetExecuteGraph().get(), kVectorCoreInputIndex, value));
-  EXPECT_EQ(value, -1);
+  EXPECT_GT(value, 0);
 }
 
 TEST_F(CustomNodeConverterUT, host_cpu_custom_op_convert_test) {

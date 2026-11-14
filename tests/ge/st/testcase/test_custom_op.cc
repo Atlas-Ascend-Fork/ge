@@ -421,6 +421,12 @@ bool StHostCpuE2ECustomOp::execute_called_ = false;
 class TestBaseCustomOp : public EagerExecuteOp {
  public:
   graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
+    // 核数上下文透传校验
+    uint64_t core_num = 0UL;
+    GE_ASSERT_TRUE(ctx->GetContextValue(gert::ContextParam::kAiCoreNum, core_num));
+    GE_ASSERT_TRUE(core_num > 0UL);
+    GE_ASSERT_TRUE(ctx->GetContextValue(gert::ContextParam::kVectorCoreNum, core_num));
+    GE_ASSERT_TRUE(core_num > 0UL);
     auto input_tensor0 = ctx->GetInputTensor(0);
     GE_ASSERT_NOTNULL(input_tensor0);
     auto input_shape0 = input_tensor0->GetShape().GetStorageShape();
@@ -490,6 +496,23 @@ class TestCompileOutputCustomOp : public EagerExecuteOp, public CompilableOp {
     GE_ASSERT_NOTNULL(dynamic_output1);
     GE_ASSERT_TRUE(dynamic_output1->GetShape().GetStorageShape() == gert::Shape({32, 16}));
     GE_ASSERT_TRUE(dynamic_output1->GetDataType() == DT_INT32);
+
+    // 编译期核数透传：已配置时透传有效值；平台信息缺失时不设置（查询失败）
+    uint64_t ai_core_num = 0UL;
+    if (ctx->GetContextValue(gert::ContextParam::kAiCoreNum, ai_core_num)) {
+      GE_ASSERT_TRUE(ai_core_num > 0UL);
+    }
+    uint64_t vector_core_num = 0UL;
+    if (ctx->GetContextValue(gert::ContextParam::kVectorCoreNum, vector_core_num)) {
+      GE_ASSERT_TRUE(vector_core_num > 0UL);
+    }
+    uint64_t ai_cpu_num = 0UL;
+    if (ctx->GetContextValue(gert::ContextParam::kAiCpuNum, ai_cpu_num)) {
+      GE_ASSERT_TRUE(ai_cpu_num > 0UL);
+    }
+    // 编译期不可确定的参数未设置，查询返回false
+    uint64_t unset_value = 0UL;
+    GE_ASSERT_TRUE(!ctx->GetContextValue(gert::ContextParam::kStaticModel, unset_value));
     return SUCCESS;
   }
 };
@@ -888,6 +911,8 @@ TEST_F(CustomOpRefreshTest, custom_op_compile_context_construct_outputs_success)
   const char *const op_type = "StCompileOutputCustomOp";
   auto graph = std::make_shared<ComputeGraph>("compile_output_custom_op_graph");
   auto op_desc = std::make_shared<OpDesc>("custom_op", op_type);
+  (void)ge::AttrUtils::SetStr(op_desc, "_op_aicore_num", "4");
+  (void)ge::AttrUtils::SetStr(op_desc, "_op_vectorcore_num", "8");
   op_desc->AppendIrOutput("y", kIrOutputRequired);
   op_desc->AppendIrOutput("dy", kIrOutputDynamic);
 
@@ -908,7 +933,7 @@ TEST_F(CustomOpRefreshTest, custom_op_compile_context_construct_outputs_success)
       GRAPH_SUCCESS);
 
   CustomGraphOptimizer optimizer;
-  ASSERT_EQ(optimizer.OptimizeSubgraphPostProc(*graph), GRAPH_SUCCESS);
+  ASSERT_EQ(optimizer.OptimizeWholeGraph(*graph), GRAPH_SUCCESS);
 }
 
 class TestArgsUpdaterCustomOp : public ArgsUpdater, public EagerExecuteOp {
@@ -1183,6 +1208,15 @@ int TestArgsUpdaterMultiAllocCustomOp::update_host_args_count_ = 0;
 class TestEagerOnlyWithMallocCustomOp : public EagerExecuteOp {
  public:
   graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
+    // 核数上下文透传校验（含 AICPU 条件查询）
+    uint64_t core_num = 0UL;
+    GE_ASSERT_TRUE(ctx->GetContextValue(gert::ContextParam::kAiCoreNum, core_num));
+    GE_ASSERT_TRUE(core_num > 0UL);
+    GE_ASSERT_TRUE(ctx->GetContextValue(gert::ContextParam::kVectorCoreNum, core_num));
+    GE_ASSERT_TRUE(core_num > 0UL);
+    if (ctx->GetContextValue(gert::ContextParam::kAiCpuNum, core_num)) {
+      GE_ASSERT_TRUE(core_num > 0UL);
+    }
     auto output_tensor = ctx->MallocOutputTensor(0, gert::StorageShape({2, 2, 2}, {2, 2, 2}),
                                                  gert::StorageFormat(FORMAT_ND, FORMAT_ND, ExpandDimsType()), DT_FLOAT);
     GE_ASSERT_NOTNULL(output_tensor);
@@ -1477,6 +1511,8 @@ TEST_F(CustomOpRefreshTest, eager_only_op_with_malloc_read_only_dev_args) {
   options.emplace(ge::OPTION_GRAPH_RUN_MODE, "1");
   Session session(options);
   auto compute_graph = ShareGraph::BuildOnlyCustomOpKnowShapeGraph();
+  (void)ge::AttrUtils::SetStr(compute_graph, "ge.aicoreNum", "4");
+  (void)ge::AttrUtils::SetStr(compute_graph, "ge.vectorcoreNum", "8");
   auto custom_op_node = compute_graph->FindNode("custom_op");
   custom_op_node->GetOpDesc()->SetType("EagerOnlyMallocOp");
   auto graph = GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);

@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <map>
 #include <memory>
 #include <string>
 #include "register/core_num_utils.h"
@@ -73,6 +74,15 @@ TEST_F(CoreNumValidateUT, ValidateCoreNumWithOpDesc_ZeroAiCoreNum_ReturnsSuccess
   auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
   (void)ge::AttrUtils::SetStr(op_desc, kAiCoreNumOp, "0");
   EXPECT_EQ(CoreNumUtils::ValidateCoreNumWithOpDesc(platform_info_, op_desc), GRAPH_SUCCESS);
+  // 0 表示未设置，移除属性，让下游走模型级/平台回退
+  EXPECT_FALSE(op_desc->HasAttr(kAiCoreNumOp));
+}
+
+TEST_F(CoreNumValidateUT, ValidateCoreNumWithOpDesc_ZeroVectorCoreNum_RemovesAttr) {
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  (void)ge::AttrUtils::SetStr(op_desc, kVectorCoreNumOp, "0");
+  EXPECT_EQ(CoreNumUtils::ValidateCoreNumWithOpDesc(platform_info_, op_desc), GRAPH_SUCCESS);
+  EXPECT_FALSE(op_desc->HasAttr(kVectorCoreNumOp));
 }
 
 TEST_F(CoreNumValidateUT, ValidateCoreNumWithOpDesc_MaxAiCoreNum_ReturnsSuccess) {
@@ -409,6 +419,151 @@ TEST_F(CoreNumValidateUT, GetCoreNumOptionsFromGraph_InvalidAttr_ReturnsError) {
   (void)ge::AttrUtils::SetStr(graph, AICORE_NUM, "abc");
   std::map<std::string, std::string> options;
   EXPECT_NE(CoreNumUtils::GetCoreNumOptionsFromGraph(graph, options), GRAPH_SUCCESS);
+}
+
+// --- ResolveCoreNumByOp ---
+
+TEST_F(CoreNumValidateUT, ResolveCoreNumByOp_NullOpDesc_ReturnsError) {
+  auto graph = std::make_shared<ComputeGraph>("test_graph");
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_NE(CoreNumUtils::ResolveCoreNumByOp(nullptr, graph, platform_info_, effective), GRAPH_SUCCESS);
+}
+
+TEST_F(CoreNumValidateUT, ResolveCoreNumByOp_OpOverridesGraphAndPlatform) {
+  auto graph = std::make_shared<ComputeGraph>("test_graph");
+  (void)ge::AttrUtils::SetStr(graph, AICORE_NUM, "16");
+  (void)ge::AttrUtils::SetStr(graph, kVectorCoreNum, "8");
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  (void)ge::AttrUtils::SetStr(op_desc, kAiCoreNumOp, "8");
+  (void)ge::AttrUtils::SetStr(op_desc, kVectorCoreNumOp, "4");
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_EQ(CoreNumUtils::ResolveCoreNumByOp(op_desc, graph, platform_info_, effective), GRAPH_SUCCESS);
+  EXPECT_EQ(effective.aicore_num, 8);
+  EXPECT_EQ(effective.vector_core_num, 4);
+}
+
+TEST_F(CoreNumValidateUT, ResolveCoreNumByOp_GraphOverridesPlatform) {
+  auto graph = std::make_shared<ComputeGraph>("test_graph");
+  (void)ge::AttrUtils::SetStr(graph, AICORE_NUM, "16");
+  (void)ge::AttrUtils::SetStr(graph, kVectorCoreNum, "8");
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_EQ(CoreNumUtils::ResolveCoreNumByOp(op_desc, graph, platform_info_, effective), GRAPH_SUCCESS);
+  EXPECT_EQ(effective.aicore_num, 16);
+  EXPECT_EQ(effective.vector_core_num, 8);
+}
+
+TEST_F(CoreNumValidateUT, ResolveCoreNumByOp_NoConfig_UsesPlatform) {
+  auto graph = std::make_shared<ComputeGraph>("test_graph");
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_EQ(CoreNumUtils::ResolveCoreNumByOp(op_desc, graph, platform_info_, effective), GRAPH_SUCCESS);
+  EXPECT_EQ(effective.aicore_num, 32);
+  EXPECT_EQ(effective.vector_core_num, 16);
+}
+
+TEST_F(CoreNumValidateUT, ResolveCoreNumByOp_NullRootGraph_UsesPlatform) {
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_EQ(CoreNumUtils::ResolveCoreNumByOp(op_desc, nullptr, platform_info_, effective), GRAPH_SUCCESS);
+  EXPECT_EQ(effective.aicore_num, 32);
+  EXPECT_EQ(effective.vector_core_num, 16);
+}
+
+TEST_F(CoreNumValidateUT, ResolveCoreNumByOp_ZeroOpAttr_FallsBackToGraph) {
+  auto graph = std::make_shared<ComputeGraph>("test_graph");
+  (void)ge::AttrUtils::SetStr(graph, AICORE_NUM, "16");
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  (void)ge::AttrUtils::SetStr(op_desc, kAiCoreNumOp, "0");
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_EQ(CoreNumUtils::ResolveCoreNumByOp(op_desc, graph, platform_info_, effective), GRAPH_SUCCESS);
+  EXPECT_EQ(effective.aicore_num, 16);
+}
+
+TEST_F(CoreNumValidateUT, ResolveCoreNumByOp_InvalidOpAttr_FallsBackToGraph) {
+  auto graph = std::make_shared<ComputeGraph>("test_graph");
+  (void)ge::AttrUtils::SetStr(graph, kVectorCoreNum, "8");
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  (void)ge::AttrUtils::SetStr(op_desc, kVectorCoreNumOp, "abc");
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_EQ(CoreNumUtils::ResolveCoreNumByOp(op_desc, graph, platform_info_, effective), GRAPH_SUCCESS);
+  EXPECT_EQ(effective.vector_core_num, 8);
+}
+
+TEST_F(CoreNumValidateUT, ResolveSinkOpCoreNum_PlatformInfosFallback) {
+  fe::PlatFormInfos platform_infos;
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  CoreNumUtils::EffectiveCoreNum effective;
+  // soc_name 为空时无算子级校验上限；UT 的 PlatFormInfos stub 固定返回 SoCInfo 24/24，
+  // 未配置算子属性时应回退到该值（若读取失败则为 -1）
+  EXPECT_EQ(CoreNumUtils::ResolveSinkOpCoreNum(op_desc, platform_infos, nullptr, effective), GRAPH_SUCCESS);
+  EXPECT_EQ(effective.aicore_num, 24);
+  EXPECT_EQ(effective.vector_core_num, 24);
+}
+
+TEST_F(CoreNumValidateUT, ResolveSinkOpCoreNum_OpAttrOverridesFallback) {
+  fe::PlatFormInfos platform_infos;
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  (void)ge::AttrUtils::SetStr(op_desc, kAiCoreNumOp, "8");
+  (void)ge::AttrUtils::SetStr(op_desc, kVectorCoreNumOp, "4");
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_EQ(CoreNumUtils::ResolveSinkOpCoreNum(op_desc, platform_infos, nullptr, effective), GRAPH_SUCCESS);
+  EXPECT_EQ(effective.aicore_num, 8);
+  EXPECT_EQ(effective.vector_core_num, 4);
+}
+
+// --- ResolveSinkOpCoreNum ---
+
+TEST_F(CoreNumValidateUT, ResolveSinkOpCoreNum_NullOpDesc_ReturnsError) {
+  fe::PlatFormInfos platform_infos;
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_NE(CoreNumUtils::ResolveSinkOpCoreNum(nullptr, platform_infos, nullptr, effective), GRAPH_SUCCESS);
+}
+
+TEST_F(CoreNumValidateUT, ResolveSinkOpCoreNum_NoOpAttr_UsesPlatformInfos) {
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  fe::PlatFormInfos platform_infos;
+  std::map<std::string, std::string> soc_info{{"ai_core_cnt", "8"}, {"vector_core_cnt", "16"}};
+  platform_infos.SetPlatformResWithLock("SoCInfo", soc_info);
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_EQ(CoreNumUtils::ResolveSinkOpCoreNum(op_desc, platform_infos, nullptr, effective), GRAPH_SUCCESS);
+  EXPECT_GT(effective.aicore_num, 0);
+  EXPECT_GT(effective.vector_core_num, 0);
+}
+
+TEST_F(CoreNumValidateUT, ResolveSinkOpCoreNum_OpAttrOverrides) {
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  (void)ge::AttrUtils::SetStr(op_desc, kAiCoreNumOp, "16");
+  (void)ge::AttrUtils::SetStr(op_desc, kVectorCoreNumOp, "24");
+  fe::PlatFormInfos platform_infos;
+  std::map<std::string, std::string> soc_info{{"ai_core_cnt", "8"}, {"vector_core_cnt", "16"}};
+  platform_infos.SetPlatformResWithLock("SoCInfo", soc_info);
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_EQ(CoreNumUtils::ResolveSinkOpCoreNum(op_desc, platform_infos, nullptr, effective), GRAPH_SUCCESS);
+  EXPECT_EQ(effective.aicore_num, 16);
+  EXPECT_EQ(effective.vector_core_num, 24);
+}
+
+TEST_F(CoreNumValidateUT, ResolveSinkOpCoreNum_ZeroOpAttr_KeepsPlatform) {
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  (void)ge::AttrUtils::SetStr(op_desc, kAiCoreNumOp, "0");
+  fe::PlatFormInfos platform_infos;
+  std::map<std::string, std::string> soc_info{{"ai_core_cnt", "8"}, {"vector_core_cnt", "16"}};
+  platform_infos.SetPlatformResWithLock("SoCInfo", soc_info);
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_EQ(CoreNumUtils::ResolveSinkOpCoreNum(op_desc, platform_infos, nullptr, effective), GRAPH_SUCCESS);
+  EXPECT_GT(effective.aicore_num, 0);
+}
+
+TEST_F(CoreNumValidateUT, ResolveSinkOpCoreNum_InvalidOpAttr_KeepsPlatform) {
+  auto op_desc = std::make_shared<OpDesc>("test_op", "Relu");
+  (void)ge::AttrUtils::SetStr(op_desc, kVectorCoreNumOp, "abc");
+  fe::PlatFormInfos platform_infos;
+  std::map<std::string, std::string> soc_info{{"ai_core_cnt", "8"}, {"vector_core_cnt", "16"}};
+  platform_infos.SetPlatformResWithLock("SoCInfo", soc_info);
+  CoreNumUtils::EffectiveCoreNum effective;
+  EXPECT_EQ(CoreNumUtils::ResolveSinkOpCoreNum(op_desc, platform_infos, nullptr, effective), GRAPH_SUCCESS);
+  EXPECT_GT(effective.vector_core_num, 0);
 }
 
 }  // namespace

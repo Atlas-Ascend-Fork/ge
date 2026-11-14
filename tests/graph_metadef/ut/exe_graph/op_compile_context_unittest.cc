@@ -12,6 +12,7 @@
 #include <vector>
 #include <gtest/gtest.h>
 #include "exe_graph/runtime/op_compile_context.h"
+#include "framework/runtime/custom_op_context_info.h"
 #include "faker/kernel_run_context_faker.h"
 #include "lowering/kernel_run_context_builder.h"
 #include "graph/ge_context.h"
@@ -562,6 +563,36 @@ TEST_F(OpCompileContextUT, GetPlatformInfosVerifyOptionalInfos) {
 
   optional_infos.SetSocVersion("Ascend910B");
   optional_infos.SetAICoreNum(32);
+}
+
+TEST_F(OpCompileContextUT, GetContextValueFromCompanionInfo) {
+  ge::OpDescPtr op_desc = std::make_shared<ge::OpDesc>("ctx_param_node", "CtxParamOp");
+  op_desc->AddOutputDesc("y", ge::GeTensorDesc());
+  gert::CustomOpContextInfo context_info;
+  context_info.SetGraphId(7UL);
+  context_info.SetNodeId(11UL);
+  context_info.SetAiCoreNum(32UL);
+  context_info.SetVectorCoreNum(24UL);
+  context_info.SetAiCpuNum(4UL);
+
+  std::vector<void *> outputs = {nullptr, &context_info};
+  ge::graphStatus ret = ge::GRAPH_FAILED;
+  auto holder = KernelRunContextBuilder().Outputs(outputs).Build(op_desc, ret);
+  ASSERT_EQ(ret, ge::GRAPH_SUCCESS);
+  auto *context = reinterpret_cast<OpCompileContext *>(holder.GetKernelContext());
+  ASSERT_NE(context, nullptr);
+
+  uint64_t value = 0UL;
+  ASSERT_TRUE(context->GetContextValue(ContextParam::kGraphId, value));
+  EXPECT_EQ(value, 7UL);
+  ASSERT_TRUE(context->GetContextValue(ContextParam::kNodeId, value));
+  EXPECT_EQ(value, 11UL);
+  ASSERT_TRUE(context->GetContextValue(ContextParam::kAiCoreNum, value));
+  EXPECT_EQ(value, 32UL);
+  ASSERT_TRUE(context->GetContextValue(ContextParam::kVectorCoreNum, value));
+  EXPECT_EQ(value, 24UL);
+  ASSERT_TRUE(context->GetContextValue(ContextParam::kAiCpuNum, value));
+  EXPECT_EQ(value, 4UL);
 }
 
 TEST_F(OpCompileContextUT, GetContextValueWithoutCompanionInfo) {

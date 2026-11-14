@@ -28,6 +28,11 @@ const std::string kSocInfo = "SoCInfo";
 
 class CoreNumUtils {
  public:
+  struct EffectiveCoreNum {
+    int32_t aicore_num{-1};
+    int32_t vector_core_num{-1};
+  };
+
   static graphStatus ParseAicoreNumFromOption(std::map<std::string, std::string> &options);
 
   static graphStatus ParseAndValidateCoreNum(const std::string &param_name, const std::string &param_value_str,
@@ -60,6 +65,14 @@ class CoreNumUtils {
 
   static graphStatus UpdatePlatformInfosWithOpDesc(const fe::PlatformInfo &platform_info, const ge::OpDescPtr &op_desc,
                                                    fe::PlatFormInfos &platform_infos, bool &is_op_core_num_set);
+
+  // 计算算子最终生效核数：算子级 > 全局选项 > 平台默认。未配置的维度回退到下一层。
+  static graphStatus ResolveCoreNumByOp(const ge::OpDescPtr &op_desc, const ge::ComputeGraphPtr &root_graph,
+                                        const fe::PlatformInfo &platform_info, EffectiveCoreNum &effective_core_num);
+
+  // V1下沉路径专用：回退基线取OM已合并的platform_infos（SoCInfo），算子属性覆盖与ResolveCoreNumByOp同口径
+  static graphStatus ResolveSinkOpCoreNum(const ge::OpDescPtr &op_desc, fe::PlatFormInfos &platform_infos,
+                                          const char *soc_name, EffectiveCoreNum &effective_core_num);
 };
 }  // namespace ge
 

@@ -34,7 +34,9 @@ bool GetContextValue(ContextParam key, uint64_t &value) const
 | kAddressRefreshEnabled | 本轮执行的输出地址是否需要刷新，取值0或1。 |
 | kGraphId | 当前模型所属根图的graph id。恒为根图取值，不受子图影响。 |
 | kNodeId | 当前算子节点在图内的节点id，图内唯一。 |
-| kVectorCoreNum | 当前算子节点可用的vector core数量。未配置时查询失败。 |
+| kVectorCoreNum | 当前算子节点可用的vector core数量。算子属性未配置时按全局选项 > 平台默认回退；各来源均不可用时查询失败。 |
+| kAiCoreNum | 当前算子节点可用的AI Core数量。算子属性未配置时按全局选项 > 平台默认回退；各来源均不可用时查询失败。 |
+| kAiCpuNum | 当前算子节点可用的AICPU核数量（设备值）。未配置或获取失败时查询失败。 |
 
 ## 返回值说明
 

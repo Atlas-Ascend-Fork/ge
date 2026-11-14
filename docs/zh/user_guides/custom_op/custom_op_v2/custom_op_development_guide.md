@@ -261,8 +261,19 @@ graphStatus Execute(gert::EagerOpExecutionContext *ctx) override;
 | `ctx->GetOutputTensor(index)` | 获取已分配的输出 Tensor |
 | `ctx->MakeOutputRefInput(out_idx, in_idx)` | 输出引用输入地址（零拷贝） |
 | `ctx->RequestAttachedStream(key, flags)` | 按key申请框架托管的辅流（无特殊标志时flags填0） |
-| `ctx->GetContextValue(key, value)` | 查询运行期交互参数（静态图标志、地址刷新、根图id、节点id、vector core数量） |
-| `ctx->GetOption(key, value)` | 获取运行期选项（全局/会话/图三级合并语义） |
+| `ctx->GetContextValue(key, value)` | 查询运行期交互参数（静态图标志、地址刷新、根图id、节点id、AI/Vector core数量、AICPU核数） |
+| `ctx->GetOption(key, value)` | 获取运行期选项，仅支持`ge.exec.staticMemoryPolicy`、`ge.exec.atomicCleanPolicy`、`ge.hardwareInfo` |
+
+**核数配置与读取：**
+
+自定义算子通过`ctx->GetContextValue(gert::ContextParam::kAiCoreNum, value)`、`kVectorCoreNum`读取本节点最终生效的AI/Vector Core核数；`kAiCpuNum`读取AICPU核数。仅AICPU核数存在口径差异（编译期取平台静态`ai_cpu_cnt`，运行期取设备实时值）；AI/Vector Core核数两条路径口径一致，均为算子属性>全局选项>平台默认。
+
+核数配置沿用内置算子既有入口，不新增配置面：
+
+1. 算子属性：`_op_aicore_num`/`_op_vectorcore_num`（字符串，取值`(0, 平台核数]`）；
+2. 全局选项：`ge.aicoreNum`（格式`aicore_num|vectorcore_num`，例如`"14|8"`），ATC对应`--aicore_num`。
+
+生效优先级：算子属性 > 全局选项 > SoC 默认。
 
 **典型流程：**
 
@@ -334,6 +345,7 @@ graphStatus Compile(gert::OpCompileContext *ctx) override;
 |------|------|
 | `ctx->GetInputTensor(index)` | 获取编译期输入 Tensor（含 shape、dtype、format） |
 | `ctx->GetOutputTensor(index)` | 获取编译期输出 Tensor |
+| `ctx->GetContextValue(key, value)` | 查询编译期上下文参数（根图id、节点id、AI/Vector Core核数、AICPU核数） |
 | `ctx->GetOption(key, value)` | 获取编译选项 |
 | `ctx->GetPlatformInfos(...)` | 获取目标平台信息（芯片型号等） |
 

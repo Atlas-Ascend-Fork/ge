@@ -1111,15 +1111,25 @@ void CustomTaskInfo::UpdateContextInfo() {
     if (op_desc_->GetId() >= 0) {
       context_info_.SetNodeId(static_cast<uint64_t>(op_desc_->GetId()));
     }
-    // vector core数量：_op_vectorcore_num字符串属性，解析与校验统一走CoreNumUtils
-    // （严格十进制 + 范围校验）；属性缺失、空串或非法时视为未设置（由utils上报）
-    std::string vector_core_num_str;
-    int32_t vector_core_num = 0;
-    if (ge::AttrUtils::GetStr(op_desc_, ge::kVectorCoreNumOp, vector_core_num_str) && (!vector_core_num_str.empty()) &&
-        (ge::CoreNumUtils::ParseAndValidateCoreNum(ge::kVectorCoreNumOp, vector_core_num_str, 0, INT32_MAX,
-                                                   vector_core_num) == ge::GRAPH_SUCCESS)) {
-      context_info_.SetVectorCoreNum(static_cast<uint64_t>(vector_core_num));
+    // 核数：算子级属性优先，未配置或非法时回退到OM已合并的模型级核数（全局选项已合并）
+    ge::CoreNumUtils::EffectiveCoreNum core_num;
+    if (ge::CoreNumUtils::ResolveSinkOpCoreNum(op_desc_, davinci_model_->MutablePlatformInfo(), aclrtGetSocName(),
+                                               core_num) == ge::GRAPH_SUCCESS) {
+      if (core_num.aicore_num > 0) {
+        context_info_.SetAiCoreNum(static_cast<uint64_t>(core_num.aicore_num));
+      }
+      if (core_num.vector_core_num > 0) {
+        context_info_.SetVectorCoreNum(static_cast<uint64_t>(core_num.vector_core_num));
+      }
     }
+  }
+  // AICPU核数量：无配置链路，只透传设备值
+  int32_t device_id = -1;
+  int64_t ai_cpu_cnt = -1;
+  if ((aclrtGetDevice(&device_id) == ACL_SUCCESS) &&
+      (aclrtGetDeviceInfo(static_cast<uint32_t>(device_id), ACL_DEV_ATTR_AICPU_CORE_NUM, &ai_cpu_cnt) == ACL_SUCCESS) &&
+      (ai_cpu_cnt >= 0)) {
+    context_info_.SetAiCpuNum(static_cast<uint64_t>(ai_cpu_cnt));
   }
   const auto has_refreshable_mem = [](const std::vector<uint64_t> &mem_types) {
     for (const auto mem_type : mem_types) {

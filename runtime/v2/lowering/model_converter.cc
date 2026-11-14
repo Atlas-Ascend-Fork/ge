@@ -569,6 +569,13 @@ ge::ExecuteGraphPtr ModelConverter::ConvertGeModelToExecuteGraph(const ge::GeRoo
     return nullptr;
   }
 
+  // 与 HybridModel::Init 对齐：lowering 前确保运行平台缓存已初始化（所有 V2 加载入口共享）；
+  // 无设备时跳过，由 ResolveCustomOpCoreNum 查询失败降级为未设置
+  int32_t device_id = -1;
+  if (aclrtGetDevice(&device_id) == ACL_SUCCESS) {
+    (void)ge::ModelHelper::InitRuntimePlatform();
+  }
+
   GE_ASSERT_SUCCESS(CreateModelDesc(root_model, args.stream_allocator, args.event_allocator, args.notify_allocator));
 
   auto root_graph = root_model->GetRootGraph();

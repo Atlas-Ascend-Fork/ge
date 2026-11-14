@@ -24,7 +24,12 @@
 #include "common/thread_pool/thread_pool.h"
 #include "common/context/local_context.h"
 #include "debug/ge_util.h"
+#include "framework/runtime/custom_op_context_info.h"
+#include "graph/utils/attr_utils.h"
+#include "graph/utils/graph_utils.h"
 #include "platform/platform_info.h"
+#include "register/core_num_utils.h"
+#include "acl/acl_rt.h"
 #include "mmpa/mmpa_api.h"
 
 namespace {
@@ -96,6 +101,40 @@ ge::Status ConstructCustomCompileContextOutputs(const ge::OpDescPtr &op_desc,
   return ge::SUCCESS;
 }
 
+void FillCompileContextInfo(const ge::NodePtr &node, gert::CustomOpContextInfo &context_info) {
+  const auto op_desc = node->GetOpDesc();
+  if (op_desc == nullptr) {
+    return;
+  }
+  const auto graph = node->GetOwnerComputeGraph();
+  const auto root_graph = (graph == nullptr) ? nullptr : ge::GraphUtils::FindRootGraph(graph);
+  if (root_graph != nullptr) {
+    context_info.SetGraphId(static_cast<uint64_t>(root_graph->GetGraphID()));
+  }
+  if (op_desc->GetId() >= 0) {
+    context_info.SetNodeId(static_cast<uint64_t>(op_desc->GetId()));
+  }
+  const char *soc_name = aclrtGetSocName();
+  fe::PlatformInfo platform_info;
+  if ((soc_name != nullptr) &&
+      (ge::CoreNumUtils::GetGeDefaultPlatformInfo(soc_name, platform_info) == ge::GRAPH_SUCCESS)) {
+    ge::CoreNumUtils::EffectiveCoreNum effective_core_num;
+    if (ge::CoreNumUtils::ResolveCoreNumByOp(op_desc, root_graph, platform_info, effective_core_num) ==
+        ge::GRAPH_SUCCESS) {
+      if (effective_core_num.aicore_num > 0) {
+        context_info.SetAiCoreNum(static_cast<uint64_t>(effective_core_num.aicore_num));
+      }
+      if (effective_core_num.vector_core_num > 0) {
+        context_info.SetVectorCoreNum(static_cast<uint64_t>(effective_core_num.vector_core_num));
+      }
+    }
+    // 编译期无稳定设备上下文，AICPU 核数固定使用平台静态值
+    if (platform_info.soc_info.ai_cpu_cnt > 0) {
+      context_info.SetAiCpuNum(static_cast<uint64_t>(platform_info.soc_info.ai_cpu_cnt));
+    }
+  }
+}
+
 struct CompileTask {
   CompileTask(ge::CompilableOp *op_ptr, std::vector<std::unique_ptr<uint8_t[]>> &&inputs_holder,
               std::vector<std::unique_ptr<uint8_t[]>> &&outputs_holder, gert::KernelContextHolder &&holder,
@@ -164,6 +203,12 @@ ge::Status AppendCompileTaskIfNeeded(const ge::NodePtr &node, std::vector<Compil
   std::vector<std::unique_ptr<uint8_t[]>> op_compile_outputs_holder;
   GE_ASSERT_SUCCESS(ConstructCustomCompileContextInputs(node->GetOpDesc(), op_compile_inputs_holder));
   GE_ASSERT_SUCCESS(ConstructCustomCompileContextOutputs(node->GetOpDesc(), op_compile_outputs_holder));
+  // 伴生对象：承载编译期上下文参数（根图graph id/node id/核数），作为附加输出传入
+  auto compile_context_info_holder = ge::ComGraphMakeUnique<uint8_t[]>(sizeof(gert::CustomOpContextInfo));
+  GE_ASSERT_NOTNULL(compile_context_info_holder, "Create compile context info holder failed.");
+  auto *compile_context_info = new (compile_context_info_holder.get()) gert::CustomOpContextInfo();
+  FillCompileContextInfo(node, *compile_context_info);
+  (void)op_compile_outputs_holder.emplace_back(std::move(compile_context_info_holder));
   auto op_compile_context_holder = gert::KernelRunContextBuilder()
                                        .Inputs(GetHoldersRawPtr(op_compile_inputs_holder))
                                        .Outputs(GetHoldersRawPtr(op_compile_outputs_holder))

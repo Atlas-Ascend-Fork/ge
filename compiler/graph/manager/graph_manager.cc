@@ -1455,6 +1455,8 @@ Status GraphManager::PreRunAfterOptimizeSubGraph(const GraphNodePtr &graph_node,
   const auto build_step = GetBuildStep(graph_node);
   GELOGD("PreRunAfterOptimizeSubGraph build step: [%s].", build_step.c_str());
   if (build_step != BUILD_STEP_AFTER_BUILD) {
+    // 全局选项核数快照需在自定义算子编译(FillCompileContextInfo)之前可见，否则会回落到 SoC 默认值
+    GE_ASSERT_SUCCESS(PersistCoreNumOptionsToRootGraph(compute_graph));
     CompilerStages &stages = GetCompilerStages(graph_node->GetGraphId());
     GM_RUN_AND_DUMP_PERF("OptimizeWholeGraph", stages.optimizer.OptimizeWholeGraph, compute_graph);
     GM_RUN_AND_DUMP_PERF("Optimize2", OptimizeStage2, compute_graph);

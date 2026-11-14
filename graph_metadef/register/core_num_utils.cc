@@ -355,6 +355,24 @@ graphStatus ParseSingleCoreNum(std::map<std::string, std::string> &options, cons
   options[kVectorCoreNum] = std::to_string(derived_value);
   return GRAPH_SUCCESS;
 }
+// 算子级核数属性覆盖：严格解析并以传入上限校验，未配置或非法时保持回退值不变
+void ApplyOpAttrCoreNumOverride(const ge::OpDescPtr &op_desc, const int32_t aicore_limit,
+                                const int32_t vectorcore_limit, CoreNumUtils::EffectiveCoreNum &effective_core_num) {
+  const auto override_by_op = [&op_desc](const std::string &param_name, const int32_t soc_core_num, int32_t &core_num) {
+    std::string core_num_str;
+    if ((!ge::AttrUtils::GetStr(op_desc, param_name, core_num_str)) || core_num_str.empty()) {
+      return;
+    }
+    int32_t op_core_num = -1;
+    if ((CoreNumUtils::ParseAndValidateCoreNum(param_name, core_num_str, 0, soc_core_num, op_core_num) ==
+         GRAPH_SUCCESS) &&
+        (op_core_num > 0)) {
+      core_num = op_core_num;
+    }
+  };
+  override_by_op(kAiCoreNumOp, aicore_limit, effective_core_num.aicore_num);
+  override_by_op(kVectorCoreNumOp, vectorcore_limit, effective_core_num.vector_core_num);
+}
 }  // namespace
 
 graphStatus CoreNumUtils::ParseAicoreNumFromOption(std::map<std::string, std::string> &options) {
@@ -431,6 +449,11 @@ graphStatus CoreNumUtils::ValidateCoreNumWithOpDesc(const fe::PlatformInfo &plat
     int32_t op_core_num = -1;
     GE_ASSERT_SUCCESS(ParseAndValidateCoreNum(kAiCoreNumOp, aicore_num_str, 0,
                                               static_cast<int32_t>(platform_info.soc_info.ai_core_cnt), op_core_num));
+    if (op_core_num == 0) {
+      // 0 表示未设置，移除属性，让下游走模型级/平台回退
+      (void)op_desc->DelAttr(kAiCoreNumOp);
+      GELOGI("Remove %s of op[%s] because 0 means unset.", kAiCoreNumOp.c_str(), op_desc->GetName().c_str());
+    }
   }
 
   if (op_desc->HasAttr(kVectorCoreNumOp)) {
@@ -445,6 +468,11 @@ graphStatus CoreNumUtils::ValidateCoreNumWithOpDesc(const fe::PlatformInfo &plat
     GE_ASSERT_SUCCESS(ParseAndValidateCoreNum(kVectorCoreNumOp, vector_core_num_str, 0,
                                               static_cast<int32_t>(platform_info.soc_info.vector_core_cnt),
                                               op_core_num));
+    if (op_core_num == 0) {
+      // 0 表示未设置，移除属性，让下游走模型级/平台回退
+      (void)op_desc->DelAttr(kVectorCoreNumOp);
+      GELOGI("Remove %s of op[%s] because 0 means unset.", kVectorCoreNumOp.c_str(), op_desc->GetName().c_str());
+    }
   }
 
   return GRAPH_SUCCESS;
@@ -567,6 +595,61 @@ graphStatus CoreNumUtils::UpdatePlatformInfosWithOpDesc(const fe::PlatformInfo &
     platform_infos.SetPlatformResWithLock(kSocInfo, res);
   }
 
+  return GRAPH_SUCCESS;
+}
+
+graphStatus CoreNumUtils::ResolveCoreNumByOp(const ge::OpDescPtr &op_desc, const ge::ComputeGraphPtr &root_graph,
+                                             const fe::PlatformInfo &platform_info,
+                                             EffectiveCoreNum &effective_core_num) {
+  GE_ASSERT_NOTNULL(op_desc);
+  int32_t graph_aicore_num = -1;
+  int32_t graph_vectorcore_num = -1;
+  if (root_graph != nullptr) {
+    GE_ASSERT_SUCCESS(GetCoreNumFromGraph(root_graph, graph_aicore_num, graph_vectorcore_num));
+  }
+  effective_core_num.aicore_num =
+      (graph_aicore_num > 0) ? graph_aicore_num : static_cast<int32_t>(platform_info.soc_info.ai_core_cnt);
+  effective_core_num.vector_core_num =
+      (graph_vectorcore_num > 0) ? graph_vectorcore_num : static_cast<int32_t>(platform_info.soc_info.vector_core_cnt);
+  ApplyOpAttrCoreNumOverride(op_desc, static_cast<int32_t>(platform_info.soc_info.ai_core_cnt),
+                             static_cast<int32_t>(platform_info.soc_info.vector_core_cnt), effective_core_num);
+  GELOGD("Resolve core num by op[%s] success, aicore_num: %d, vector_core_num: %d.", op_desc->GetNamePtr(),
+         effective_core_num.aicore_num, effective_core_num.vector_core_num);
+  return GRAPH_SUCCESS;
+}
+
+graphStatus CoreNumUtils::ResolveSinkOpCoreNum(const ge::OpDescPtr &op_desc, fe::PlatFormInfos &platform_infos,
+                                               const char *soc_name, EffectiveCoreNum &effective_core_num) {
+  GE_ASSERT_NOTNULL(op_desc);
+  effective_core_num.aicore_num = -1;
+  effective_core_num.vector_core_num = -1;
+  // 回退基线取OM已合并的核数（全局选项已在ModelHelper中合并进platform_infos_）
+  std::map<std::string, std::string> soc_info;
+  if (platform_infos.GetPlatformResWithLock(kSocInfo, soc_info)) {
+    const auto read_core_cnt = [&soc_info](const std::string &key) {
+      const auto iter = soc_info.find(key);
+      if (iter == soc_info.end()) {
+        return -1;
+      }
+      int32_t core_num = -1;
+      return (CoreNumUtils::ParseAndValidateCoreNum(iter->first, iter->second, 0, INT32_MAX, core_num) == GRAPH_SUCCESS)
+                 ? core_num
+                 : -1;
+    };
+    effective_core_num.aicore_num = read_core_cnt("ai_core_cnt");
+    effective_core_num.vector_core_num = read_core_cnt("vector_core_cnt");
+  }
+  // 校验上限取平台原始默认值，避免用已被全局选项限制后的SoCInfo误判算子级属性；获取失败时不限制
+  int32_t aicore_limit = INT32_MAX;
+  int32_t vectorcore_limit = INT32_MAX;
+  fe::PlatformInfo platform_info;
+  if ((soc_name != nullptr) && (GetGeDefaultPlatformInfo(soc_name, platform_info) == GRAPH_SUCCESS)) {
+    aicore_limit = static_cast<int32_t>(platform_info.soc_info.ai_core_cnt);
+    vectorcore_limit = static_cast<int32_t>(platform_info.soc_info.vector_core_cnt);
+  }
+  ApplyOpAttrCoreNumOverride(op_desc, aicore_limit, vectorcore_limit, effective_core_num);
+  GELOGD("Resolve sink op[%s] core num success, aicore_num: %d, vector_core_num: %d.", op_desc->GetNamePtr(),
+         effective_core_num.aicore_num, effective_core_num.vector_core_num);
   return GRAPH_SUCCESS;
 }
 }  // namespace ge

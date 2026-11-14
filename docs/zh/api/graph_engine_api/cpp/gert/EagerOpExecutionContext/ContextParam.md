@@ -11,7 +11,7 @@
 
 ## 功能说明
 
-GE与自定义算子之间的运行期交互参数枚举，作为[`GetContextValue`](GetContextValue.md)接口的查询key。参数统一按数值语义取值：布尔类参数取值为0或1，数值类参数为对应数值。
+GE与自定义算子之间的上下文交互参数枚举，作为[`GetContextValue`](GetContextValue.md)接口的查询key，运行期与编译期上下文共用。参数统一按数值语义取值：布尔类参数取值为0或1，数值类参数为对应数值。
 
 ## 枚举定义
 
@@ -27,9 +27,11 @@ enum class ContextParam : uint32_t
 | kAddressRefreshEnabled | 本轮执行的输出地址是否需要刷新，取值0或1。 |
 | kGraphId | 当前模型所属根图的graph id。恒为根图取值，不受子图影响。 |
 | kNodeId | 当前算子节点在图内的节点id，图内唯一。 |
-| kVectorCoreNum | 当前算子节点可用的vector core数量。未配置时查询失败。 |
+| kVectorCoreNum | 当前算子节点可用的vector core数量。算子属性未配置时按全局选项 > 平台默认回退；各来源均不可用时查询失败。 |
+| kAiCoreNum | 当前算子节点可用的AI Core数量。算子属性未配置时按全局选项 > 平台默认回退；各来源均不可用时查询失败。 |
+| kAiCpuNum | 当前算子节点可用的AICPU核数量。未配置或获取失败时查询失败。 |
 | kNum | 预留，不作为查询key使用。 |
 
 ## 约束说明
 
-- 枚举值仅在[`Execute`](../../ge/EagerExecuteOp/Execute.md)回调内有效；新增参数只需增加枚举值，不改变接口签名。
+- 枚举值在自定义算子上下文回调（`Execute`/`Compile`）内有效，具体支持子集见对应的`GetContextValue`文档；新增参数只需增加枚举值，不改变接口签名。

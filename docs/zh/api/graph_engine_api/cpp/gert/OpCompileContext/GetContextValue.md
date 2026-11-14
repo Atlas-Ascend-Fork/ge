@@ -30,7 +30,9 @@ bool GetContextValue(ContextParam key, uint64_t &value) const
 | --- | --- |
 | kGraphId | 当前编译子模型所属根图的graph id。 |
 | kNodeId | 当前算子节点在图内的节点id，图内唯一。 |
-| kVectorCoreNum | 当前算子节点可用的vector core数量（由`_op_vectorcore_num`属性配置）。未配置或非法时查询失败。 |
+| kVectorCoreNum | 当前算子节点可用的vector core数量。算子属性未配置时按全局选项 > 平台默认回退；各来源均不可用时查询失败。 |
+| kAiCoreNum | 当前算子节点可用的AI Core数量。算子属性未配置时按全局选项 > 平台默认回退；各来源均不可用时查询失败。 |
+| kAiCpuNum | AICPU核数量（编译期取平台静态`ai_cpu_cnt`）。未配置或获取失败时查询失败。 |
 | kStaticModel、kAddressRefreshEnabled | 编译期不支持，查询返回false。 |
 
 ## 返回值说明

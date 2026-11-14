@@ -255,8 +255,19 @@ graphStatus Execute(gert::EagerOpExecutionContext *ctx) override;
 | `ctx->GetOutputTensor(index)` | Get already allocated output Tensor |
 | `ctx->MakeOutputRefInput(out_idx, in_idx)` | Output references input address (zero-copy) |
 | `ctx->RequestAttachedStream(key, flags)` | Request framework-managed attached stream by key (fill flags with 0 when no special flags needed) |
-| `ctx->GetContextValue(key, value)` | Query runtime interaction parameters (static graph flag, address refresh, root graph id, node id, vector core count) |
-| `ctx->GetOption(key, value)` | Get runtime options (global/session/graph three-level merge semantics) |
+| `ctx->GetContextValue(key, value)` | Query runtime interaction parameters (static graph flag, address refresh, root graph id, node id, AI/Vector core count, AICPU core count) |
+| `ctx->GetOption(key, value)` | Get runtime options; only `ge.exec.staticMemoryPolicy`, `ge.exec.atomicCleanPolicy`, and `ge.hardwareInfo` are supported |
+
+**Core count configuration and query:**
+
+A custom op can read the effective AI/Vector Core count of its node with `ctx->GetContextValue(gert::ContextParam::kAiCoreNum, value)` / `kVectorCoreNum`; `kAiCpuNum` returns the AICPU core count. Only the AICPU core count has a semantics difference: compile-time uses the platform static `ai_cpu_cnt`, while runtime uses the live device value; AI/Vector Core counts follow the same rule in both paths (operator attr > global option > platform default).
+
+Core count configuration reuses the existing entries of built-in ops; no new configuration surface is added:
+
+1. Op attribute: `_op_aicore_num` / `_op_vectorcore_num` (string, range `(0, platform core count]`);
+2. Global option: `ge.aicoreNum` (format `aicore_num|vectorcore_num`, e.g. `"14|8"`), or ATC `--aicore_num`.
+
+Priority: op attribute > global option > SoC default.
 
 **Typical Flow:**
 
@@ -327,6 +338,7 @@ Online compilation callback, called during GE/ATC compilation phase.
 |------|------|
 | `ctx->GetInputTensor(index)` | Get compile-time input Tensor (contains shape, dtype, format) |
 | `ctx->GetOutputTensor(index)` | Get compile-time output Tensor |
+| `ctx->GetContextValue(key, value)` | Query compile-time context parameters (root graph id, node id, AI/Vector Core count, AICPU core count) |
 | `ctx->GetOption(key, value)` | Get compile options |
 | `ctx->GetPlatformInfos(...)` | Get target platform information (chip model etc) |
 

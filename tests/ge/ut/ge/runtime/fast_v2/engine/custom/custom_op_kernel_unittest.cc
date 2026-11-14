@@ -940,5 +940,32 @@ TEST_F(CustomNodeKernelUT, create_custom_op_outputs_ignores_unset_context_values
   EXPECT_FALSE(context_info->GetContextValue(gert::ContextParam::kNodeId, value));
   EXPECT_FALSE(context_info->GetContextValue(gert::ContextParam::kVectorCoreNum, value));
 }
+// AI Core / AICPU核数由lowering注入，outputs_creator读取后写入伴生对象
+TEST_F(CustomNodeKernelUT, create_custom_op_outputs_reads_injected_core_num) {
+  const size_t node_output_num = 1U;
+  const size_t kernel_output_num =
+      node_output_num + static_cast<size_t>(EagerOpExecutionContext::AdditionalOutputIndex::kNum);
+  constexpr uintptr_t kRootGraphIdValue = 7U;
+  constexpr uintptr_t kNodeIdValue = 11U;
+  constexpr uintptr_t kVectorCoreNumValue = 24U;
+  constexpr uintptr_t kAiCoreNumValue = 32U;
+  constexpr uintptr_t kAiCpuNumValue = 4U;
+  auto run_context = KernelRunContextFaker()
+                         .KernelIONum(9U, kernel_output_num)
+                         .NodeIoNum(0U, node_output_num)
+                         .NodeOutputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                         .Inputs({nullptr, nullptr, nullptr, nullptr, reinterpret_cast<void *>(kRootGraphIdValue),
+                                  reinterpret_cast<void *>(kNodeIdValue), reinterpret_cast<void *>(kVectorCoreNumValue),
+                                  reinterpret_cast<void *>(kAiCoreNumValue), reinterpret_cast<void *>(kAiCpuNumValue)})
+                         .Build();
+  auto *context_info = BuildOutputsContextInfo(run_context, node_output_num);
+  ASSERT_NE(context_info, nullptr);
+  uint64_t value = 0UL;
+  ASSERT_TRUE(context_info->GetContextValue(gert::ContextParam::kAiCoreNum, value));
+  EXPECT_EQ(value, static_cast<uint64_t>(kAiCoreNumValue));
+  ASSERT_TRUE(context_info->GetContextValue(gert::ContextParam::kAiCpuNum, value));
+  EXPECT_EQ(value, static_cast<uint64_t>(kAiCpuNumValue));
+}
+
 }  // namespace kernel
 }  // namespace gert
