@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <map>
+#include <set>
 #include <graph/preprocess/hccl_offline_option_builder.h>
 
 #include "analyzer/analyzer.h"
@@ -56,6 +57,7 @@
 #include "ge/ge_api_types.h"
 #include "common/checker.h"
 #include "graph/utils/op_type_utils.h"
+#include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "graph/fusion/pass/pass_plugin_loader.h"
 #include "common/python_runtime/ge_python_runtime_manager.h"
 #include "runtime/custom_op/custom_op_loader.h"
@@ -90,6 +92,7 @@ constexpr const char_t *kFrameWorkType = "framework_type";
 constexpr const char_t *kArchTypeLabel = "version";
 constexpr const char_t *kArchTypeKey = "Arch_type";
 constexpr const char_t *kArchType = "arch_type";
+constexpr const char_t *kHostInputIdxsAttr = "_ge_host_input_idxs";
 
 std::map<ge::OpEngineType, std::string> engine_type_map{
     {ge::ENGINE_SYS, kEngineNameDefault}, {ge::ENGINE_AICORE, kAIcoreEngine}, {ge::ENGINE_VECTOR, kVectorEngine}};
@@ -1610,6 +1613,41 @@ Status GeGenerator::Impl::SaveRootModel(const std::string &file_name_prefix, con
   return SaveRootModel(file_name_prefix, ge_root_model, fallback_root_model, model_buff, om_format);
 }
 
+Status PrepareDualBodyHostInputs(const GeRootModelPtr &root_model) {
+  GE_CHECK_NOTNULL(root_model);
+  const auto root_graph = root_model->GetRootGraph();
+  GE_CHECK_NOTNULL(root_graph);
+  std::set<size_t> host_input_idxs;
+  GE_ASSERT_SUCCESS(SymbolicInferUtil::GetNeedSymbolizeValueInputIdxs(root_graph, host_input_idxs));
+  GELOGI("graph %s requires %zu host input(s).", root_graph->GetName().c_str(), host_input_idxs.size());
+  if (host_input_idxs.empty()) {
+    return SUCCESS;
+  }
+
+  std::vector<int64_t> attr_value(host_input_idxs.cbegin(), host_input_idxs.cend());
+  GE_ASSERT_TRUE(AttrUtils::SetListInt(root_graph, kHostInputIdxsAttr, attr_value),
+                 "set host input indexes failed, graph %s.", root_graph->GetName().c_str());
+
+  size_t marked_count = 0U;
+  for (const auto &node : root_graph->GetDirectNode()) {
+    GE_CHECK_NOTNULL(node);
+    const auto op_desc = node->GetOpDesc();
+    GE_CHECK_NOTNULL(op_desc);
+    if (!OpTypeUtils::IsDataNode(op_desc->GetType())) {
+      continue;
+    }
+    int32_t data_index = -1;
+    (void)AttrUtils::GetInt(op_desc, ATTR_NAME_INDEX, data_index);
+    if ((data_index >= 0) && (host_input_idxs.count(static_cast<size_t>(data_index)) > 0U)) {
+      (void)AttrUtils::SetBool(op_desc, ATTR_NAME_HOST_TENSOR_AS_MODEL_INPUT, true);
+      ++marked_count;
+    }
+  }
+  GELOGI("wrote %zu host input index(es), marked %zu main Data node(s), graph %s.", attr_value.size(), marked_count,
+         root_graph->GetName().c_str());
+  return SUCCESS;
+}
+
 Status GeGenerator::Impl::SaveRootModel(const std::string &file_name_prefix, const GeRootModelPtr &ge_root_model,
                                         const GeRootModelPtr &fallback_root_model, ModelBufferData &model_buff,
                                         OfflineModelFormat om_format) const {
@@ -1810,6 +1848,7 @@ Status GeGenerator::Impl::BuildModel(const Graph &graph, const std::vector<GeTen
     return ret;
   }
   if (dual_body) {
+    GE_ASSERT_SUCCESS(PrepareDualBodyHostInputs(ge_root_model), "prepare host inputs for offline dual body failed.");
     fallback_root_model = built_fallback_root_model;
     GELOGI("optimized execution body built, graph_id=%u.", graph_id);
   }

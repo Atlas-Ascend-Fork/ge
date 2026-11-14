@@ -65,6 +65,7 @@ add_executable(graph_engine_test
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_tensor_move.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_transdata_fusion_optimize.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_ge_opt_info.cc"
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_autofuse_input_hint_value_st.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_exception_dumper.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_memory_assign.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_model_loader.cc"

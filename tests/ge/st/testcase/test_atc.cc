@@ -3984,4 +3984,39 @@ TEST_F(AtcCommonSTest, output_dir_create_failed) {
   (void)system(("rm -f " + blocker_file).c_str());
   ReInitGe();  // the main_impl will call GEFinalize, so re-init after call it
 }
+TEST_F(AtcCommonSTest, pb_model_input_hint_value_invalid) {
+  auto om_path = PathJoin(GetRunPath().c_str(), "temp");
+  Mkdir(om_path.c_str());
+  om_path = PathJoin(om_path.c_str(), "pb_hint_value_invalid");
+  std::string model_arg = "--model=st_run_data/origin_model/add.pb";
+  std::string output_arg = "--output=" + om_path;
+  char *argv[] = {"atc",
+                  const_cast<char *>(model_arg.c_str()),
+                  const_cast<char *>(output_arg.c_str()),
+                  "--framework=3",
+                  "--soc_version=Ascend310",
+                  "--input_format=NCHW",
+                  "--input_hint_value=0"};
+  EXPECT_NE(main_impl(sizeof(argv) / sizeof(argv[0]), argv), 0);
+  ReInitGe();
+}
+
+TEST_F(AtcCommonSTest, pb_model_input_hint_value_valid) {
+  auto om_path = PathJoin(GetRunPath().c_str(), "temp");
+  Mkdir(om_path.c_str());
+  om_path = PathJoin(om_path.c_str(), "pb_hint_value_valid");
+  std::string model_arg = "--model=st_run_data/origin_model/add.pb";
+  std::string output_arg = "--output=" + om_path;
+  char *argv[] = {"atc",
+                  const_cast<char *>(model_arg.c_str()),
+                  const_cast<char *>(output_arg.c_str()),
+                  "--framework=3",
+                  "--soc_version=Ascend310",
+                  "--input_format=NCHW",
+                  "--input_hint_value=0:[1]"};
+  EXPECT_EQ(main_impl(sizeof(argv) / sizeof(argv[0]), argv), 0);
+  EXPECT_TRUE(std::ifstream(om_path + ".om").good());
+  ReInitGe();
+}
+
 }  // namespace ge

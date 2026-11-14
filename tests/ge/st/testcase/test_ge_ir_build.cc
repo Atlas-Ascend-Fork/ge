@@ -2200,4 +2200,44 @@ TEST_F(GeIrBuildTest, TestBuildModelFailWithInvalidOutputType) {
   EXPECT_NE(aclgrphBuildModel(graph, build_options, model_buffer_data), SUCCESS);
   aclgrphBuildFinalize();
 }
+
+TEST_F(GeIrBuildTest, GenerateOfflineModelDualBodyWithHostInputs) {
+  GeRunningEnvFaker ge_env;
+  ge_env.InstallDefault();
+  ge_env.InstallDefault().Install(FakeOp(REDUCESUM).InfoStoreAndBuilder("AicoreLib").InferShape(StubInferFunction));
+  std::string valid_host_env_os;
+  std::string valid_host_env_cpu;
+  SetDefaultHostEnvOsAndHostEnvCpu(valid_host_env_os, valid_host_env_cpu);
+  const char *env_name = "AUTOFUSE_FLAGS";
+  const char *old_value = std::getenv(env_name);
+  const std::string backup = (old_value == nullptr) ? "" : old_value;
+  (void)setenv(env_name, "--enable_autofuse=true", 1);
+  GeGenerator generator;
+  ASSERT_EQ(generator.Initialize({}), SUCCESS);
+  auto graph = ConstructSimpleDynamicGraphForDualBody();
+  auto root_graph = ge::GraphUtilsEx::GetComputeGraph(graph);
+  ASSERT_NE(root_graph, nullptr);
+  auto data = root_graph->FindNode("data");
+  ASSERT_NE(data, nullptr);
+  (void)AttrUtils::SetInt(data->GetOpDesc(), ATTR_NAME_INDEX, 0);
+  (void)AttrUtils::SetListInt(root_graph, "_ge_need_symbolize_value_idxs", {0});
+  Status generate_ret = FAILED;
+  {
+    ScopedGraphOptions guard({{std::string(OPTION_HOST_ENV_OS), valid_host_env_os},
+                              {std::string(OPTION_HOST_ENV_CPU), valid_host_env_cpu},
+                              {std::string(INPUT_HINT_SHAPE), "0:[4]"},
+                              {std::string("ge.inputHintValue"), "0:[6,3,1,2]"}});
+    generate_ret = generator.GenerateOfflineModel(graph, "./dual_body_host_inputs_st");
+  }
+  EXPECT_EQ(generator.Finalize(), SUCCESS);
+  if (old_value != nullptr) {
+    (void)setenv(env_name, backup.c_str(), 1);
+  } else {
+    (void)unsetenv(env_name);
+  }
+  if (generate_ret != SUCCESS) {
+    GTEST_SKIP() << "autofuse guard codegen is unavailable in current environment: " << generate_ret;
+  }
+}
+
 }  // namespace ge

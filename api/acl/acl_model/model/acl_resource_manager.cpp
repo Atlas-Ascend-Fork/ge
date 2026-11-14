@@ -154,16 +154,17 @@ std::shared_ptr<gert::ModelV2Executor> AclResourceManager::GetExecutor(const uin
 
 void AclResourceManager::SetAutofuseFallback(const uint32_t modelId, std::shared_ptr<gert::ModelV2Executor> executor,
                                              std::shared_ptr<gert::GuardChecker> guard, void *shared_weight_ptr,
-                                             size_t shared_weight_size) {
+                                             size_t shared_weight_size, std::vector<size_t> host_input_indexes) {
   const std::lock_guard<std::mutex> locker(mutex_);
   const auto iter = autofuseFallbackMap_.find(modelId);
   if (iter != autofuseFallbackMap_.end()) {
     FreeSharedWeight(iter->second);
   }
-  autofuseFallbackMap_[modelId] =
-      AutofuseFallbackInfo{std::move(executor), std::move(guard), shared_weight_ptr, shared_weight_size};
-  ACL_LOG_INFO("set fallback resources, modelId[%u], has_guard=%d, shared_weight_size[%zu].", modelId,
-               static_cast<int32_t>(autofuseFallbackMap_[modelId].guard != nullptr), shared_weight_size);
+  autofuseFallbackMap_[modelId] = AutofuseFallbackInfo{std::move(executor), std::move(guard), shared_weight_ptr,
+                                                       shared_weight_size, std::move(host_input_indexes)};
+  ACL_LOG_INFO("set fallback resources, modelId[%u], has_guard=%d, shared_weight_size[%zu], host_input_num[%zu].",
+               modelId, static_cast<int32_t>(autofuseFallbackMap_[modelId].guard != nullptr), shared_weight_size,
+               autofuseFallbackMap_[modelId].host_input_indexes.size());
 }
 
 AclResourceManager::AutofuseFallbackExecutors AclResourceManager::GetAutofuseFallback(const uint32_t modelId) {
@@ -172,7 +173,7 @@ AclResourceManager::AutofuseFallbackExecutors AclResourceManager::GetAutofuseFal
   if (iter == autofuseFallbackMap_.end()) {
     return AutofuseFallbackExecutors{};
   }
-  return AutofuseFallbackExecutors{iter->second.executor, iter->second.guard};
+  return AutofuseFallbackExecutors{iter->second.executor, iter->second.guard, iter->second.host_input_indexes};
 }
 
 void AclResourceManager::DeleteAutofuseFallback(const uint32_t modelId) {

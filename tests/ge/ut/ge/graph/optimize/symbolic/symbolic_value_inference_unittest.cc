@@ -32,6 +32,8 @@
 #include "api/aclgrph/option_utils.h"
 #include "compiler/graph/optimize/symbolic/infer_symbolic_shape/symbolic_shape_symbolizer.h"
 #include "compiler/graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
+#include "graph/utils/attr_utils.h"
+#include "graph/debug/ge_attr_define.h"
 
 namespace ge {
 

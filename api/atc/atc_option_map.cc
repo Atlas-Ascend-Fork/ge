@@ -90,6 +90,7 @@ const std::pair<std::string, std::string> kAtcGeOptionToCliName[] = {
     {ge::HCCL_SUB_COMM_CONFIG, "--hccl_sub_comm_config"},
     {ge::OO_LEVEL, "--oo_level"},
     {ge::INPUT_HINT_SHAPE, "--input_hint_shape"},
+    {ge::INPUT_HINT_VALUE, "--input_hint_value"},
     {ge::JIT_COMPILE, "--jit_compile"},
     {ge::OPTIMIZATION_SWITCH, "--optimization_switch"},
     {ge::OPTION_STATIC_MODEL_OPS_LOWER_LIMIT, "--static_model_ops_lower_limit"},

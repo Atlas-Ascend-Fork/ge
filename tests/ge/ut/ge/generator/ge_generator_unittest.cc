@@ -1355,4 +1355,31 @@ TEST_F(UtestGeGenerator, GenerateModelWithNormalBuildMode) {
   EXPECT_EQ(instance.Finalize(), SUCCESS);
   FinalizeGeLib();
 }
+Status PrepareDualBodyHostInputs(const GeRootModelPtr &root_model);
+
+TEST_F(UtestGeGenerator, PrepareDualBodyHostInputsWithNeedSymbolizeValue) {
+  auto graph = MakeGraph();
+  auto data = graph->FindNode("data");
+  ASSERT_NE(data, nullptr);
+  (void)AttrUtils::SetInt(data->GetOpDesc(), ATTR_NAME_INDEX, 0);
+  (void)AttrUtils::SetListInt(graph, "_ge_need_symbolize_value_idxs", {0});
+  auto root_model = std::make_shared<GeRootModel>();
+  root_model->SetRootGraph(graph);
+  EXPECT_EQ(PrepareDualBodyHostInputs(root_model), SUCCESS);
+  std::vector<int64_t> host_idxs;
+  ASSERT_TRUE(AttrUtils::GetListInt(graph, "_ge_host_input_idxs", host_idxs));
+  EXPECT_EQ(host_idxs, std::vector<int64_t>({0}));
+  bool host_input = false;
+  ASSERT_TRUE(AttrUtils::GetBool(data->GetOpDesc(), ATTR_NAME_HOST_TENSOR_AS_MODEL_INPUT, host_input));
+  EXPECT_TRUE(host_input);
+}
+
+TEST_F(UtestGeGenerator, PrepareDualBodyHostInputsWithoutHostInput) {
+  auto graph = MakeGraph();
+  auto root_model = std::make_shared<GeRootModel>();
+  root_model->SetRootGraph(graph);
+  EXPECT_EQ(PrepareDualBodyHostInputs(root_model), SUCCESS);
+  EXPECT_FALSE(AttrUtils::HasAttr(graph, "_ge_host_input_idxs"));
+}
+
 }  // namespace ge

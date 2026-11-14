@@ -18,6 +18,7 @@
 #include "framework/runtime/gert_api.h"
 #include "framework/runtime/model_desc.h"
 #include "framework/runtime/model_v2_executor.h"
+#include "common/memory/tensor_trans_utils.h"
 #include "framework/runtime/stream_executor.h"
 #include "framework/runtime/om2_context.h"
 #include "framework/runtime/om2_model_executor.h"
@@ -1960,6 +1961,70 @@ const ModelDesc &ModelV2Executor::GetModelDesc() const {
   static ModelDesc desc;
   return desc;
 }
+
+void ModelV2Executor::SetModelDesc(ModelDesc *model_desc) {
+  (void)model_desc;
+}
+
+size_t ModelDesc::CalcSize(size_t input_num, size_t output_num) {
+  return sizeof(ModelDesc) + (input_num + output_num) * sizeof(ModelIoDesc);
+}
+
+void ModelDesc::SetInputNum(size_t input_num) {
+  (void)input_num;
+}
+
+void ModelDesc::SetOutputNum(size_t output_num) {
+  (void)output_num;
+}
+
+ModelIoDesc *ModelDesc::MutableInputDesc(size_t index) {
+  (void)index;
+  static ModelIoDesc desc;
+  return &desc;
+}
+
+ModelIoDesc *ModelDesc::MutableOutputDesc(size_t index) {
+  (void)index;
+  static ModelIoDesc desc;
+  return &desc;
+}
+
+void ModelIoDesc::SetDataType(int32_t data_type) {
+  (void)data_type;
+}
+
+void ModelIoDesc::SetStorageFormat(ge::Format format) {
+  (void)format;
+}
+
+void ModelIoDesc::SetOriginFormat(ge::Format format) {
+  (void)format;
+}
+
+ge::Format ModelIoDesc::GetStorageFormat() const {
+  return ge::FORMAT_NCHW;
+}
+
+Shape &ModelIoDesc::MutableStorageShape() {
+  return shape_.MutableStorageShape();
+}
+
+Shape &ModelIoDesc::MutableOriginShape() {
+  return shape_.MutableOriginShape();
+}
+
+ShapeRange &ModelIoDesc::MutableOriginShapeRange() {
+  return origin_shape_range_;
+}
+
+Shape &ShapeRange::MutableMin() {
+  return min_;
+}
+
+Shape &ShapeRange::MutableMax() {
+  return max_;
+}
 ge::Status ModelV2Executor::GetAippInfo(const uint32_t index, ge::AippConfigInfo &aipp_info) const {
   return MockFunctionTest::aclStubInstance().GetAippInfo(index, aipp_info);
 }
@@ -2399,3 +2464,11 @@ void Om2ExternalWeightManagerPool::RemoveManager(const uint64_t session_id) {
 
 void Om2ExternalWeightManagerPool::Destroy() noexcept {}
 }  // namespace gert
+
+namespace ge {
+Status TensorTransUtils::TransGertTensorToHost(const gert::Tensor &device_tensor, gert::Tensor &host_tensor) {
+  (void)device_tensor;
+  host_tensor.SetPlacement(gert::kOnHost);
+  return aclrtMemcpy(nullptr, 0U, nullptr, 0U, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_ERROR_NONE ? SUCCESS : FAILED;
+}
+}  // namespace ge

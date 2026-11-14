@@ -53,6 +53,9 @@ struct ExecutorSet {
   std::shared_ptr<GuardChecker> guard;
   bool weights_identical{false};
   size_t shared_weight_size{0U};
+  // Input indexes requiring host data, aligned with the online JIT host-input set.
+  // Empty means no host input needs a device-to-host copy.
+  std::vector<size_t> host_input_indexes;
 };
 
 VISIBILITY_EXPORT

@@ -9,11 +9,15 @@
  */
 
 #include <string>
+#include <new>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
 #include "acl_mdl.h"
+#include "exe_graph/runtime/runtime_tensor.h"
+#include "framework/runtime/model_desc.h"
 #define private public
 #include "model/acl_resource_manager.h"
 #include "model/acl_resource_manager_om2.h"
@@ -73,7 +77,67 @@ extern void ExtractFP16(const uint16_t val, uint16_t *const s, int16_t *const e,
 
 namespace {
 constexpr int32_t MIN_ALIGNMENT_YUV = 2;
+
+class HostPlacementGuardForUt : public gert::GuardChecker {
+ public:
+  bool Match(const std::vector<gert::Tensor *> &inputs, char_t *, size_t) const override {
+    called_ = true;
+    host_placement_ = (!inputs.empty()) && (inputs[0] != nullptr) && (inputs[0]->GetPlacement() == gert::kOnHost);
+    return host_placement_;
+  }
+
+  mutable bool called_{false};
+  mutable bool host_placement_{false};
+};
+
+class RejectGuardForUt : public gert::GuardChecker {
+ public:
+  bool Match(const std::vector<gert::Tensor *> &inputs, char_t *, size_t) const override {
+    called_ = true;
+    host_placement_ = (!inputs.empty()) && (inputs[0] != nullptr) && (inputs[0]->GetPlacement() == gert::kOnHost);
+    return false;
+  }
+
+  mutable bool called_{false};
+  mutable bool host_placement_{false};
+};
+struct SingleInputModelDescForUt {
+  std::vector<uint64_t> storage;
+  gert::ModelDesc *desc{nullptr};
+
+  SingleInputModelDescForUt() {
+    const size_t desc_size = gert::ModelDesc::CalcSize(1U, 1U);
+    storage.assign((desc_size + sizeof(uint64_t) - 1U) / sizeof(uint64_t), 0U);
+    desc = new (storage.data()) gert::ModelDesc();
+    desc->SetInputNum(1U);
+    desc->SetOutputNum(1U);
+    gert::Shape shape;
+    shape.SetDimNum(1U);
+    shape.SetDim(0U, 1);
+    SetIoDesc(desc->MutableInputDesc(0U), shape);
+    SetIoDesc(desc->MutableOutputDesc(0U), shape);
+  }
+
+  static void SetIoDesc(gert::ModelIoDesc *io_desc, const gert::Shape &shape) {
+    ASSERT_NE(io_desc, nullptr);
+    io_desc->SetDataType(ge::DT_FLOAT);
+    io_desc->SetStorageFormat(ge::FORMAT_ND);
+    io_desc->SetOriginFormat(ge::FORMAT_ND);
+    io_desc->MutableStorageShape() = shape;
+    io_desc->MutableOriginShape() = shape;
+    io_desc->MutableOriginShapeRange().MutableMin() = shape;
+    io_desc->MutableOriginShapeRange().MutableMax() = shape;
+  }
+};
+std::unique_ptr<gert::ModelV2Executor> NewExecutorForUt(gert::ModelDesc *model_desc) {
+  auto executor = std::unique_ptr<gert::ModelV2Executor>(new (std::nothrow) gert::ModelV2Executor);
+  if (executor != nullptr) {
+    executor->SetModelDesc(model_desc);
+  }
+  return executor;
 }
+
+}  // namespace
 
 ge::graphStatus ExecuteSync_Invoke(gert::Tensor **inputs, size_t input_num, gert::Tensor **outputs, size_t output_num) {
   (void)inputs;
@@ -4338,6 +4402,107 @@ TEST_F(UTEST_ACL_Model, RuntimeV2ExecuteAsync_Ok_ExecuteAsyncDynamic) {
   ret = acl::AclResourceManager::GetInstance().DeleteExecutor(modelId);
   EXPECT_EQ(ret, ACL_SUCCESS);
   acl::AclResourceManager::GetInstance().enableRuntimeV2ForModel_ = false;
+}
+
+TEST_F(UTEST_ACL_Model, RuntimeV2GuardCopiesDeviceInputToHost) {
+  auto &manager = acl::AclResourceManager::GetInstance();
+  manager.enableRuntimeV2ForModel_ = true;
+
+  SingleInputModelDescForUt desc;
+  ASSERT_NE(desc.desc, nullptr);
+  auto *model_desc = desc.desc;
+
+  uint32_t model_id = 1001U;
+  auto rt_session = manager.CreateRtSession();
+  ASSERT_NE(rt_session, nullptr);
+  auto main_executor = NewExecutorForUt(model_desc);
+  ASSERT_NE(main_executor, nullptr);
+  auto fallback_executor = NewExecutorForUt(model_desc);
+  ASSERT_NE(fallback_executor, nullptr);
+  auto guard = std::make_shared<HostPlacementGuardForUt>();
+  manager.AddExecutor(model_id, std::move(main_executor), rt_session);
+  manager.SetAutofuseFallback(model_id, std::move(fallback_executor), guard, nullptr, 0U, {0U});
+
+  aclmdlDataset *input = aclmdlCreateDataset();
+  ASSERT_NE(input, nullptr);
+  aclmdlDataset *output = aclmdlCreateDataset();
+  ASSERT_NE(output, nullptr);
+  aclDataBuffer *input_buffer = aclCreateDataBuffer(reinterpret_cast<void *>(0x1), sizeof(float));
+  ASSERT_NE(input_buffer, nullptr);
+  aclDataBuffer *output_buffer = aclCreateDataBuffer(reinterpret_cast<void *>(0x2), sizeof(float));
+  ASSERT_NE(output_buffer, nullptr);
+  ASSERT_EQ(aclmdlAddDatasetBuffer(input, input_buffer), ACL_SUCCESS);
+  ASSERT_EQ(aclmdlAddDatasetBuffer(output, output_buffer), ACL_SUCCESS);
+
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), IsOriginShapeInRange(_)).WillRepeatedly(Return(true));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), aclrtMemcpy(_, _, _, _, ACL_MEMCPY_DEVICE_TO_HOST)).Times(1);
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), ExecuteSync(_, _, _, _)).WillOnce(Invoke(ExecuteSync_Invoke));
+  EXPECT_EQ(aclmdlExecute(model_id, input, output), ACL_SUCCESS);
+  EXPECT_TRUE(guard->called_);
+  EXPECT_TRUE(guard->host_placement_);
+
+  aclDestroyDataBuffer(input_buffer);
+  aclDestroyDataBuffer(output_buffer);
+  aclmdlDestroyDataset(input);
+  aclmdlDestroyDataset(output);
+  EXPECT_EQ(manager.DeleteExecutor(model_id), ACL_SUCCESS);
+  manager.enableRuntimeV2ForModel_ = false;
+}
+
+TEST_F(UTEST_ACL_Model, RuntimeV2FallbackUsesOriginalDeviceInput) {
+  auto &manager = acl::AclResourceManager::GetInstance();
+  manager.enableRuntimeV2ForModel_ = true;
+
+  SingleInputModelDescForUt desc;
+  ASSERT_NE(desc.desc, nullptr);
+  auto *model_desc = desc.desc;
+
+  uint32_t model_id = 1002U;
+  auto rt_session = manager.CreateRtSession();
+  ASSERT_NE(rt_session, nullptr);
+  auto main_executor = NewExecutorForUt(model_desc);
+  ASSERT_NE(main_executor, nullptr);
+  auto fallback_executor = NewExecutorForUt(model_desc);
+  ASSERT_NE(fallback_executor, nullptr);
+  auto guard = std::make_shared<RejectGuardForUt>();
+  manager.AddExecutor(model_id, std::move(main_executor), rt_session);
+  manager.SetAutofuseFallback(model_id, std::move(fallback_executor), guard, nullptr, 0U, {0U});
+
+  aclmdlDataset *input = aclmdlCreateDataset();
+  ASSERT_NE(input, nullptr);
+  aclmdlDataset *output = aclmdlCreateDataset();
+  ASSERT_NE(output, nullptr);
+  aclDataBuffer *input_buffer = aclCreateDataBuffer(reinterpret_cast<void *>(0x1), sizeof(float));
+  ASSERT_NE(input_buffer, nullptr);
+  aclDataBuffer *output_buffer = aclCreateDataBuffer(reinterpret_cast<void *>(0x2), sizeof(float));
+  ASSERT_NE(output_buffer, nullptr);
+  ASSERT_EQ(aclmdlAddDatasetBuffer(input, input_buffer), ACL_SUCCESS);
+  ASSERT_EQ(aclmdlAddDatasetBuffer(output, output_buffer), ACL_SUCCESS);
+
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), IsOriginShapeInRange(_)).WillRepeatedly(Return(true));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), aclrtMemcpy(_, _, _, _, ACL_MEMCPY_DEVICE_TO_HOST)).Times(1);
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), ExecuteSync(_, _, _, _))
+      .WillOnce(Invoke([](gert::Tensor **inputs, size_t input_num, gert::Tensor **outputs, size_t output_num) {
+        EXPECT_GT(input_num, 0U);
+        EXPECT_NE(inputs, nullptr);
+        EXPECT_NE(inputs[0], nullptr);
+        EXPECT_EQ(inputs[0]->GetPlacement(), gert::kOnDeviceHbm);
+        (void)output_num;
+        static uint64_t tmp{1};
+        outputs[0]->MutableTensorData().SetAddr(&tmp, nullptr);
+        outputs[0]->MutableTensorData().SetSize(sizeof(uint64_t));
+        return ge::GRAPH_SUCCESS;
+      }));
+  EXPECT_EQ(aclmdlExecute(model_id, input, output), ACL_SUCCESS);
+  EXPECT_TRUE(guard->called_);
+  EXPECT_TRUE(guard->host_placement_);
+
+  aclDestroyDataBuffer(input_buffer);
+  aclDestroyDataBuffer(output_buffer);
+  aclmdlDestroyDataset(input);
+  aclmdlDestroyDataset(output);
+  EXPECT_EQ(manager.DeleteExecutor(model_id), ACL_SUCCESS);
+  manager.enableRuntimeV2ForModel_ = false;
 }
 
 TEST_F(UTEST_ACL_Model, RuntimeV2ExecuteWithNullOutput) {

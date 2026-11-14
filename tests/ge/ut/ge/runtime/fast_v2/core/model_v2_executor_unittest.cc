@@ -1268,4 +1268,20 @@ TEST_F(ExecutorUnitTest, LoadExecutorFromModelData_InitOpMasterDeviceSo_Success)
   EXPECT_EQ(so_name, "");
   system(("rm -rf " + opp_path).c_str());
 }
+TEST_F(ExecutorUnitTest, LoadExecutorSetFromModelDataWithHostInputIndexes) {
+  ScopedDeterministicOptions deterministic_options(false);
+  auto graph = ShareGraph::BuildSingleNodeGraph();
+  graph->TopologicalSorting();
+  (void)ge::AttrUtils::SetListInt(graph, "_ge_host_input_idxs", {0, -1});
+  auto ge_root_model = GeModelBuilder(graph)
+                           .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                           .FakeTbeBin({"Add"})
+                           .BuildGeRootModel();
+  auto model_data = ModelDataFaker().GeRootModel(ge_root_model).BuildUnknownShape();
+  LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_EQ(LoadExecutorSetFromModelData(model_data.Get(), args, executor_set), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(executor_set.host_input_indexes, std::vector<size_t>({0U}));
+}
+
 }  // namespace gert

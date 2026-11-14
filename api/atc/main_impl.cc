@@ -133,6 +133,7 @@ void SetOptionNameMap(std::map<std::string, std::string> &options) {
 }  // namespace
 
 const std::unordered_set<std::string> kOm2UnsuppotedFlag = {"input_hint_shape",
+                                                            "input_hint_value",
                                                             "om",
                                                             "singleop",
                                                             "check_report",
@@ -571,6 +572,10 @@ class GFlagUtils {
         "Separate multiple nodes with semicolons (;). "
         "Use double quotation marks (\") to enclose each argument.\n"
         "                      E.g.: \"index1:[n1,c1,h1,w1];index2:[n2,c2,h2,w2]\"\n"
+        "  --input_hint_value  Value hint of dynamic input. "
+        "Separate multiple nodes with semicolons (;). "
+        "Use double quotation marks (\") to enclose each argument.\n"
+        "                      E.g.: \"index1:[v1,v2];index2:[v1,v2]\"\n"
         "  --input_shape_range "
         "This option is deprecated and will be removed in future version, please use input_shape instead."
         "Shape range of input data. Separate multiple nodes with semicolons (;).\n"
@@ -929,6 +934,8 @@ class GFlagUtils {
     GE_ASSERT_SUCCESS(CheckHintShapeConflictWithDynamicParam(FLAGS_input_hint_shape, FLAGS_dynamic_batch_size,
                                                              FLAGS_dynamic_image_size, FLAGS_dynamic_dims),
                       "[Check][input hint shape] failed!");
+    GE_ASSERT_SUCCESS(CheckHintInputValueParamValid(FLAGS_input_hint_value),
+                      "[Check][input hint value] failed, value: %s", FLAGS_input_hint_value.c_str());
     if (CheckDynamicInputParamValid(FLAGS_dynamic_batch_size, FLAGS_dynamic_image_size, FLAGS_dynamic_dims,
                                     FLAGS_input_shape, FLAGS_input_shape_range, FLAGS_input_format,
                                     is_dynamic_input) != SUCCESS) {
@@ -2005,6 +2012,9 @@ void SetAtcEnvironmentOptions(std::map<std::string, std::string> &options) {
   }
   if (!FLAGS_input_hint_shape.empty()) {
     options.insert(std::pair<std::string, std::string>(std::string(INPUT_HINT_SHAPE), FLAGS_input_hint_shape));
+  }
+  if (!FLAGS_input_hint_value.empty()) {
+    options.insert(std::pair<std::string, std::string>(std::string(INPUT_HINT_VALUE), FLAGS_input_hint_value));
   }
 }
 
