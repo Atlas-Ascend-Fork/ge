@@ -120,6 +120,18 @@ void DumpTransportInfoToLog(const DumpTransportInfo &info) {
   }
   GELOGD("========== Dump TransportInfo(TLV) End ==========");
 }
+
+// dump 和 protobuf 解耦之后，旧 driver 包无法解析 tlv 格式的码流，这里获取版本号用于日志中辅助判断
+std::string GetDriverPkgVersionStr() {
+  char driver_pkg_name[] = "driver";
+  char version_str[ACL_PKG_VERSION_MAX_SIZE] = {0};
+  const aclError ret = aclsysGetVersionStr(driver_pkg_name, version_str);
+  if (ret != ACL_SUCCESS) {
+    GELOGW("Get driver package version failed, ret=%d.", ret);
+    return "unknown";
+  }
+  return std::string(version_str);
+}
 }  // namespace
 
 DataDumpImpl::DataDumpImpl() : data_dump_version_(GetDumpDataVersionFromEnv()) {
@@ -305,7 +317,11 @@ Status DataDumpImpl::ExecuteLoadDumpInfo(const std::vector<uint8_t> &payload) {
 
   rt_ret = rtDatadumpInfoLoad(dev_mem_load_, static_cast<uint32_t>(payload_size));
   if (rt_ret != RT_ERROR_NONE) {
-    GELOGE(RT_FAILED, "[Call][rtDatadumpInfoLoad] failed, length:%zu, ret:%d", payload_size, rt_ret);
+    GELOGE(RT_FAILED,
+           "[Call][rtDatadumpInfoLoad] failed, length:%zu, ret:%d, driver version=%s. "
+           "An earlier driver package version may cause this failure, "
+           "please check the driver version printed above.",
+           payload_size, rt_ret, GetDriverPkgVersionStr().c_str());
     (void)aclrtFree(dev_mem_load_);
     dev_mem_load_ = nullptr;
     return RT_FAILED;

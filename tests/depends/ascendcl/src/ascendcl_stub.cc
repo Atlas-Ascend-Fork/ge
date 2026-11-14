@@ -1235,6 +1235,10 @@ aclError AclRuntimeStub::aclrtValueWrite(void *devAddr, uint64_t value, uint32_t
   return ACL_SUCCESS;
 }
 
+aclError AclRuntimeStub::aclsysGetVersionStr(char *pkgName, char *versionStr) {
+  return ACL_SUCCESS;
+}
+
 std::shared_ptr<AclApiStub> AclApiStub::instance_;
 std::mutex AclApiStub::mutex_;
 thread_local AclApiStub *AclApiStub::fake_instance_;
@@ -1967,6 +1971,10 @@ aclError aclrtValueWait(void *devAddr, uint64_t value, uint32_t flag, aclrtStrea
 
 aclError aclrtValueWrite(void *devAddr, uint64_t value, uint32_t flag, aclrtStream stream) {
   return ge::AclRuntimeStub::GetInstance()->aclrtValueWrite(devAddr, value, flag, stream);
+}
+
+aclError aclsysGetVersionStr(char *pkgName, char *versionStr) {
+  return ge::AclRuntimeStub::GetInstance()->aclsysGetVersionStr(pkgName, versionStr);
 }
 
 aclError aclInit(const char *configPath) {

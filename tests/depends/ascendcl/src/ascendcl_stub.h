@@ -205,6 +205,8 @@ class AclRuntimeStub {
 
   virtual aclError aclrtValueWrite(void *devAddr, uint64_t value, uint32_t flag, aclrtStream stream);
 
+  virtual aclError aclsysGetVersionStr(char *pkgName, char *versionStr);
+
  private:
   static std::mutex mutex_;
   static std::shared_ptr<AclRuntimeStub> instance_;
