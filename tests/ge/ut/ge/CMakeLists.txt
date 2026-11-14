@@ -130,6 +130,10 @@ set(DISTINCT_GRAPH_LOAD_TEST_FILES
     "graph/load/model_parser_base_unittest.cc"
     "executor/ge_executor_unittest.cc"
     "executor/om2_model_executor_unittest.cc"
+    "executor/om2_dynamic_context_unittest.cc"
+    "executor/om2_dynamic_dispatch_unittest.cc"
+    "executor/om2_dynamic_loader_unittest.cc"
+    "executor/om2_session_unload_unittest.cc"
     "executor/om2_kernel_handles_unittest.cc"
     "executor/om2_rt_var_manager_unittest.cc"
     "executor/om2_model_manager_unittest.cc"
@@ -145,7 +149,9 @@ set(DISTINCT_GRAPH_LOAD_TEST_FILES
     "graph/load/model_helper_attr_compression_unittest.cc"
     "graph/load/model_helper_misc_unittest.cc"
     "graph/load/om2_package_helper_unittest.cc"
-    "graph/load/om2_graph_package_helper_unittest.cc"
+    "graph/load/om2_dynamic_ge_package_helper_unittest.cc"
+    "graph/load/om2_dynamic_graph_package_helper_unittest.cc"
+    "graph/load/om2_dynamic_codegen_unittest.cc"
     "graph/load/om_file_helper_unittest.cc"
     "common/visualization_unittest.cc"
     "common/wire/wire_tlv_frame_unittest.cc"
@@ -440,10 +446,30 @@ set(BASE_COMMON_TEST_FILES
     "common/om2_var_product_compile_unittest.cc"
     "om2/codegen/stream_switch_task_code_builder_unittest.cc"
     "om2/codegen/hccl_task_code_builder_unittest.cc"
+    "om2/dynamic_codegen/prepare/gert_graph_attrs_unittest.cc"
+    "om2/dynamic_codegen/prepare/gert_metadata_preparer_unittest.cc"
+    "om2/dynamic_codegen/prepare/gert_resources_unittest.cc"
+    "om2/dynamic_codegen/prepare/gert_source_info_unittest.cc"
+    "om2/dynamic_codegen/program_info_collector_unittest.cc"
+    "om2/dynamic_codegen/execution_plan_coverage_unittest.cc"
+    "om2/dynamic_codegen/const_value_coverage_unittest.cc"
+    "om2/dynamic_codegen/kernel_collect_coverage_unittest.cc"
+    "om2/dynamic_codegen/program_codegen_coverage_unittest.cc"
+    "om2/dynamic_codegen/program_info_dumper_unittest.cc"
+    "om2/dynamic_codegen/const_metadata_isolation_unittest.cc"
+    "om2/dynamic_codegen/host_metadata_isolation_unittest.cc"
+    "om2/dynamic_codegen/kernel_contract_unittest.cc"
+    "om2/dynamic_codegen/symbol_metadata_isolation_unittest.cc"
+    "om2/dynamic_codegen/weight_metadata_isolation_unittest.cc"
+    "om2/dynamic_codegen/multithread_program_plan_unittest.cc"
+    "om2/dynamic_codegen/program_body_codegen_unittest.cc"
+    "om2/dynamic_codegen/shared_library_loading_unittest.cc"
+    "om2/dynamic_codegen/control_flow_codegen_unittest.cc"
 )
 
 set(OM2_COMPATIBILITY_TEST_FILES
     "compatibility/om2/struct_layout_check.cpp"
+    "compatibility/om2/struct_size_check.cpp"
     "compatibility/om2/enum_value_check.cpp"
     "compatibility/om2/const_check.cpp"
     "compatibility/om2/feature_list_check.cpp"
@@ -946,7 +972,7 @@ add_executable(ut_libge_common_utest
     ${CMAKE_BINARY_DIR}/proto/ge/proto/tensorflow/graph_library.pb.cc
 )
 
-add_dependencies(ut_libge_common_utest ge)
+add_dependencies(ut_libge_common_utest ge autofuse_stub)
 
 target_compile_options(ut_libge_common_utest PRIVATE -g -O0
     -Werror=format
@@ -972,7 +998,9 @@ target_link_options(ut_libge_common_utest PRIVATE
 
 target_link_libraries(ut_libge_common_utest
     intf_llt_pub
+    mockcpp
     ge_metadef_headers
+    om2_generator
     ascendcl_stub
     symengine
     slice
@@ -1006,6 +1034,8 @@ target_link_options(ut_libge_common_utest PRIVATE
         -Wl,-Bsymbolic
         )
 
+include(om2/dynamic_codegen/fixtures.cmake)
+
 add_test(NAME ut_libge_common_utest COMMAND ut_libge_common_utest --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/ut/ut_libge_common_utest.xml)
 set_tests_properties(ut_libge_common_utest PROPERTIES LABELS "ut;ge_common")
 add_test(NAME ut_libge_common_utest_st COMMAND ut_libge_common_utest --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/st/ut_libge_common_utest.xml)
@@ -1029,6 +1059,11 @@ target_compile_options(ut_libge_others_utest PRIVATE ${AIR_COMMON_COMPILE_OPTION
     -Wno-deprecated-declarations
     -Wall -Wfloat-equal -Werror
     -Wno-subobject-linkage
+)
+
+# ES headers use GraphKind from the source graph API; installed SDK headers may be older.
+target_include_directories(ut_libge_others_utest BEFORE PRIVATE
+    ${AIR_CODE_DIR}/inc/graph_metadef/external
 )
 
 target_include_directories(ut_libge_others_utest PRIVATE
@@ -1626,6 +1661,7 @@ target_link_options(ut_libge_distinct_load_utest PRIVATE
 
 target_link_libraries(ut_libge_distinct_load_utest
     intf_llt_pub
+    om2_generator
     mockcpp
     ascend_hal_stub
     ge_metadef_headers

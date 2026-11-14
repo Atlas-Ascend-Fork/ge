@@ -91,6 +91,7 @@ class VISIBILITY_EXPORT ModelConverter {
           notify_allocator(noti_alloc),
           file_constant_mems(file_const_mems) {}
     LoweringOption option{};
+    bool for_om2 = false;
     StreamAllocator *const stream_allocator = nullptr;
     EventAllocator *const event_allocator = nullptr;
     NotifyAllocator *const notify_allocator = nullptr;

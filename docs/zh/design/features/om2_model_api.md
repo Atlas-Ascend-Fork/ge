@@ -55,7 +55,7 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | bin_data | const void ** | 算子二进制内存地址数组（内存方式加载二进制时填写） |
 | bin_size | uint64_t * | 每个二进制的大小，单位字节 |
 | bin_num | uint64_t | 二进制个数，即 bin_files/bin_data/bin_size 数组长度 |
-| constants | void ** | 常量（权重）Device 地址数组，个数与模型常量数一致，无常量时可空 |
+| constants | void ** | 常量（权重）地址数组，个数与模型常量数一致，无常量时可空；默认使用 Device 地址，显式 Host 常量槽位提供 Host 地址，见 `GertModelDataConstMeta.placement` |
 | var_addrs | void ** | 变量 Device 地址数组，无变量时可空 |
 | work_ptr | void * | 工作空间地址（用户管理内存场景由 Executor 申请后传入），不使用时可空 |
 | session_id | uint64_t * | Session ID 指针 |
@@ -74,6 +74,7 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | external_notifies | aclrtNotify * | 外部 Notify 数组，长度为 external_notify_num |
 | external_notify_num | uint64_t | 外部 Notify 个数 |
 | external_allocator | void * | 可选尾字段，输入，借用的 `gert::Allocators *`，不转移所有权；旧尺寸未覆盖该字段或值为 `nullptr` 时表示未提供外部分配器集合 |
+| dynamic_config | const GertModelDynamicLoadConfig * | 可选尾字段，输入；旧尺寸未覆盖或值为 `nullptr` 表示未提供动态加载配置，保持既有静态加载行为。动态模型按实际资源需求读取，见下文 |
 
 - **参数结构体 GertModelLoadCallbacks**：
 
@@ -94,6 +95,49 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | struct_size | uint64_t | 结构体字节数；当前无其他字段，本结构体为预留，Load 的 output 参数必须传 `nullptr` |
+
+##### 动态加载配置与共享库描述
+
+`GertModelLoadConfig.dynamic_config` 指向 `GertModelDynamicLoadConfig`。以下字段均为输入；
+外层与各层结构独立按 `struct_size` 判断字段是否存在，缺失的可选指针视为 `nullptr`。
+配置和共享库描述至少在 `GertModelLoad` 调用期间有效，所有权不转移给模型 SO。
+
+| GertModelDynamicLoadConfig 字段 | 类型 | 说明 |
+|------|------|------|
+| struct_size | uint64_t | 本次提供的结构体字节范围，初始化为 `sizeof(GertModelDynamicLoadConfig)` |
+| shared_libraries | const GertModelSharedLibraries * | 借用的共享库列表，空指针表示未提供；非空且数量为 0 表示显式空列表 |
+| rt_session | void * | 借用的会话实例，当前实际指向 `gert::RtSession`；需保持有效至模型卸载完成，模型 SO 不负责释放。没有会话绑定的模型可为空；有会话绑定但未提供时加载失败 |
+
+`rt_session` 是进程内对象指针，不是可落盘数据，也不构成内部 C++ 对象布局跨版本稳定的承诺。
+动态插件可以构造并持有会话，也可以借用调用方提供的会话。
+
+| GertModelSharedLibraries 字段 | 类型 | 说明 |
+|------|------|------|
+| struct_size | uint64_t | 本次提供的结构体字节范围，初始化为 `sizeof(GertModelSharedLibraries)` |
+| library_num | uint64_t | 共享库条目数量，默认 0；为 0 时不读取 `libraries` |
+| libraries | const GertModelSharedLibrary *const * | 借用的描述指针数组，长度为 `library_num`；每个条目独立按 `struct_size` 扩展 |
+
+| GertModelSharedLibrary 字段 | 类型 | 说明 |
+|------|------|------|
+| struct_size | uint64_t | 本次提供的结构体字节范围，初始化为 `sizeof(GertModelSharedLibrary)` |
+| so_name | const char * | 原始 SO 名称，不是解决归档重名后的文件名；UTF-8、以 `\0` 结尾 |
+| so_bin_type | GertModelSharedLibraryType | 共享库用途，默认 `GERT_MODEL_SHARED_LIBRARY_UNSPECIFIED` |
+| vendor_name | const char * | UTF-8、以 `\0` 结尾；可为空，表示未指定来源 |
+| data | const void * | 借用的 SO 二进制内容，模型 SO 不得释放 |
+| data_size | uint64_t | 二进制字节数，不包含额外终止符 |
+
+字符串、数组、条目与二进制至少在加载调用期间有效。模型 SO 若需在加载返回后使用这些内容，
+应在加载期间建立自身副本或相应加载资源。
+
+`GertModelSharedLibraryType` 的底层类型为 `uint64_t`，取值如下：
+
+| 枚举项 | 值 | 用途 |
+|------|------|------|
+| GERT_MODEL_SHARED_LIBRARY_SPACE_REGISTRY | 0 | 算子实现注册库 |
+| GERT_MODEL_SHARED_LIBRARY_OP_MASTER_DEVICE | 1 | Op master/device 库 |
+| GERT_MODEL_SHARED_LIBRARY_AUTOFUSE | 2 | Autofuse 库 |
+| GERT_MODEL_SHARED_LIBRARY_CUSTOM_OP | 3 | 自定义算子库 |
+| GERT_MODEL_SHARED_LIBRARY_UNSPECIFIED | 65535（0xFFFF） | 未指定用途，不等同于显式选择注册库 |
 
 #### 2.3 GertModelRun
 
@@ -810,6 +854,8 @@ int32_t (*CommitVarDataFunc)(void *var_manager_handle, struct GertVarCommit *com
 | `kernels` | `std::unique_ptr<GertModelDataKernels>` | 算子二进制集合，对应 `data/kernels/` |
 | `custom_ops` | `std::unique_ptr<GertModelDataCustomOps>` | 自定义算子产物集合，对应 `data/custom_ops/binaries_npu_arch/` 和 `data/custom_ops/shared_libs/` |
 | `variables` | `std::unique_ptr<GertModelDataVariables>` | 变量初始数据块集合，对应 `data/variables/`，见第 1.14 节 |
+| `so_bins` | `std::unique_ptr<GertModelDataSoBins>` | 可选尾字段；对应 `data/shared_libs/`，旧尺寸或空指针表示未提供共享库依赖，见第 1.20 节 |
+| `online_prepare_data` | `std::shared_ptr<Om2OnlinePrepareData>` | 仅在线内存使用的辅助对象；具体定义由生成器与 dynamic 内部约定，om2_executor 不解释其结构。生成器创建、动态插件持有以准备会话并保活源图；不序列化，反序列化不恢复；旧尺寸或空指针表示未提供 |
 
 其中，`models` 的元素类型 `GertModelDataModel` 进一步描述单模型目录下的 `model_meta.json`、`constants_config.json`、`op_attr.json`、`runtime/` 和 `debug/`。变量初始数据块位于包级 `data/variables/`，是 `GertModelData` 的独立顶层成员 `variables`（见第 1.14 节）；块内各变量的偏移与大小不再落盘，改由模型 SO 内编译期固化的元数据表承载，`model_meta.json` 只留 `var_weight_file_name` 供执行器按名查找数据源。文件是否实际生成由对应数据和序列化条件决定。
 
@@ -853,6 +899,7 @@ int32_t (*CommitVarDataFunc)(void *var_manager_handle, struct GertVarCommit *com
 | `op_attr_json` | `std::unique_ptr<char[]>` | 算子属性 JSON 原文，对应 `op_attr.json` |
 | `runtime` | `std::unique_ptr<GertModelDataRuntime>` | 运行时代码与模型 SO，对应 `runtime/`，见第 1.11 节 |
 | `debug` | `std::unique_ptr<GertModelDataDebug>` | 调试数据，对应 `debug/`，见第 1.13 节 |
+| `execution_type` | `GertModelExecutionType` | 仅内存中的执行器选择标记，默认 `kStatic`；不参与序列化，归档不能恢复该标记，见第 1.22 节 |
 
 #### 1.6 GertModelDataModelMeta
 
@@ -876,6 +923,8 @@ int32_t (*CommitVarDataFunc)(void *var_manager_handle, struct GertVarCommit *com
 | `aipp_infos` | `std::vector<std::unique_ptr<GertModelDataAippMeta>>` | AIPP 元信息，对应 `aipp.aipp_infos[]`，元素结构见第 1.8 节 |
 | `global_shared_var_size` | `uint64_t` | 全局共享变量 HBM 总字节数，默认 0；Bundle 工作区按各子模型最大值分配。为 0 时仍写入，运行期据此不分配外置变量内存区 |
 | `var_weight_file_name` | `std::unique_ptr<char[]>` | `data/variables/` 下变量初始数据块的基名（如 `var_weight_data_0`），与 `GertModelDataVariables::var_weight_data` 元素的 `file_name` 对应，供执行器按名查找数据源；空表示本模型无初始数据块 |
+
+Notify 数量由生成 SO 内部的资源描述维护，ProgramBody 据此创建 Notify；`GertModelDataModelMeta` 和 `model_meta.json` 不保存该数量。
 
 #### 1.7 GertTensorDesc
 
@@ -933,6 +982,7 @@ int32_t (*CommitVarDataFunc)(void *var_manager_handle, struct GertVarCommit *com
 | `file_name` | `std::unique_ptr<char[]>` | 数据文件名 |
 | `file_path` | `std::unique_ptr<char[]>` | 外部文件路径，按序列化条件写入 |
 | `op_name` | `std::unique_ptr<char[]>` | 算子名，非 INTERNAL 常量使用它作为 `consts` 的对象键 |
+| `placement` | `GertModelDataConstPlacement` | 可选尾字段；旧尺寸或未指定时沿用 Device 行为。JSON `placement` 可为 `HOST` 或 `DEVICE`，未指定时不写此键；当前反序列化只接受 INTERNAL 类型的 Host 常量，见第 1.21 节 |
 
 #### 1.11 GertModelDataRuntime
 
@@ -1024,6 +1074,50 @@ int32_t (*CommitVarDataFunc)(void *var_manager_handle, struct GertVarCommit *com
 | `GERT_MODEL_DATA_API` | 导出可见性宏 | Windows 使用 `__declspec(dllexport)`，其他环境使用 default visibility |
 | `GERT_EXECUTOR_VERSION` | `const char *`，`"1.0"` | manifest 版本校验基准 |
 | `kOm2InvalidAippDataIndex` | `uint64_t`，`0xFFFFFFFF` | 无关联 AIPP 输入下标 |
+
+#### 1.20 GertModelDataSoBins 与 GertModelDataSoBin
+
+`gert::GertModelData.so_bins` 拥有共享库集合 `gert::GertModelDataSoBins`，集合保持收集顺序。
+对应 `data/shared_libs/so_bins.json` 的 `libraries` 数组及同目录 SO 文件；集合未提供或为空时不生成这些文件。
+归档没有描述文件时不恢复集合；有描述文件但接收方 `GertModelData` 的旧尺寸容纳不下 `so_bins` 时反序列化失败。
+
+| GertModelDataSoBins 字段 | 类型 | 说明 |
+|------|------|------|
+| `struct_size` | `uint64_t` | 结构体字节数，不写入归档 |
+| `libraries` | `std::vector<std::unique_ptr<GertModelDataSoBin>>` | 拥有每个共享库条目，对应 JSON `libraries` 数组 |
+
+| GertModelDataSoBin 字段 | 类型 | 说明 |
+|------|------|------|
+| `struct_size` | `uint64_t` | 结构体字节数，不写入归档 |
+| `binary` | `std::unique_ptr<GertModelDataFile>` | 拥有 SO 文件名、数据和大小；其 `file_name` 对应 JSON `file_name`，同集合内唯一 |
+| `so_name` | `std::unique_ptr<char[]>` | 原始 SO 名称，对应 JSON `so_name`；可能与归档文件名不同 |
+| `so_bin_type` | `uint64_t` | 对应 JSON `so_bin_type`，数值与 `ge::SoBinType` 对应；动态加载时转换为 `GertModelSharedLibraryType` |
+| `vendor_name` | `std::unique_ptr<char[]>` | 来源标识，对应 JSON `vendor_name` |
+
+动态插件将这些自有数据转换为加载期借用的 `GertModelSharedLibraries` 描述。
+SO 文件与描述 JSON 使用 Stored 方式归档，对应路径常量为 `OM2_SO_BINS_DIR` 和 `OM2_SO_BINS_JSON_PATH`。
+
+#### 1.21 GertModelDataConstPlacement
+
+`gert::GertModelDataConstPlacement` 的底层类型为 `uint64_t`，供 `gert::GertModelDataConstMeta.placement` 使用。
+
+| 枚举项 | 值 | 含义 |
+|------|------|------|
+| `kUnspecified` | 0 | 未指定；旧结构体尺寸也按此处理，沿用 Device 行为，序列化省略 placement |
+| `kDevice` | 1 | 显式 Device 常量，序列化为 `DEVICE` |
+| `kHost` | 2 | 显式 Host 常量，序列化为 `HOST`；动态 GE 模型权重使用此标记 |
+
+#### 1.22 GertModelExecutionType
+
+`gert::GertModelExecutionType` 的底层类型为 `uint64_t`，供 `gert::GertModelDataModel.execution_type` 使用。
+
+| 枚举项 | 值 | 含义 |
+|------|------|------|
+| `kStatic` | 0 | 静态执行；默认值，旧尺寸未覆盖 execution_type 时也按静态处理 |
+| `kDynamic` | 1 | 动态执行，由在线生成/准备链路显式设置 |
+
+`execution_type` 与 `gert::GertModelData.online_prepare_data` 均不进入归档。
+共享库和 Host 常量可以独立序列化，不代表反序列化会自动恢复动态执行类型或在线会话。
 
 ### 2. om2_package_contants.h
 

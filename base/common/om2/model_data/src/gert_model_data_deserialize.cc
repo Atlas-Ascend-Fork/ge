@@ -17,6 +17,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "framework/common/json_file.h"
@@ -532,6 +533,15 @@ ge::Status DeserializeConstantsConfig(const gert::ZipArchiveReader &archive, con
       std::string type_str;
       (void)val_file.Get("type", type_str);
       meta.type = gert::GertMakeStr(type_str);
+      if (val.contains("placement")) {
+        GE_ASSERT_TRUE(val["placement"].is_string(), "[OM2] Invalid const placement type");
+        const std::string placement = val["placement"].get<std::string>();
+        GE_ASSERT_TRUE((placement == "HOST") || (placement == "DEVICE"), "[OM2] Unknown const placement");
+        meta.placement =
+            placement == "HOST" ? GertModelDataConstPlacement::kHost : GertModelDataConstPlacement::kDevice;
+        GE_ASSERT_TRUE((placement != "HOST") || (type_str == "INTERNAL"),
+                       "[OM2] Host external weights are not supported yet");
+      }
       std::string file_name_str;
       (void)val_file.Get("file_name", file_name_str);
       meta.file_name = gert::GertMakeStr(file_name_str);
@@ -576,6 +586,51 @@ ge::Status DeserializeWeight(const gert::ZipArchiveReader &archive, const std::s
            static_cast<uint64_t>(unit.constants_config->internal_weight_size));
     return ACL_ERROR_GE_PARAM_INVALID;
   }
+  return ge::SUCCESS;
+}
+
+ge::Status DeserializeHostInternalWeights(const ZipArchiveReader &archive, const GertModelDataModel &unit,
+                                          GertModelDataConstants &constants) {
+  std::map<std::string, GertModelDataFile *> files;
+  uint64_t total_size = 0U;
+  for (const auto &meta : unit.constants_config->consts) {
+    GE_ASSERT_NOTNULL(meta);
+    if ((std::string(GertGetStr(meta->type)) != "INTERNAL") || (meta->size == 0)) {
+      continue;
+    }
+    GE_ASSERT_TRUE((meta->offset >= 0) && (meta->size >= 0));
+    GE_ASSERT_TRUE(GetGertModelConstPlacement(*meta) == GertModelDataConstPlacement::kHost);
+    const std::string name(GertGetStr(meta->file_name));
+    GE_ASSERT_TRUE(!name.empty() && (name.find('/') == std::string::npos) && (name.find('\\') == std::string::npos) &&
+                   (name != ".") && (name != ".."));
+    auto found = files.find(name);
+    if (found == files.end()) {
+      const auto path = archive.FindEntry(std::string(OM2_CONSTANTS_DIR) + name);
+      GE_ASSERT_TRUE(!path.empty(), "[OM2] Missing Host internal weight file %s", name.c_str());
+      size_t size = 0U;
+      auto data = archive.ExtractToMem(path, size);
+      GE_ASSERT_NOTNULL(data);
+      GE_ASSERT_TRUE(size <= UINT64_MAX - total_size);
+      total_size += size;
+      auto file = std::make_unique<GertModelDataFile>();
+      file->file_name = GertMakeStr(name);
+      file->data = std::move(data);
+      file->data_size = size;
+      auto existing = std::find_if(constants.constants_data.begin(), constants.constants_data.end(),
+                                   [&name](const std::unique_ptr<GertModelDataFile> &item) {
+                                     return (item != nullptr) && (name == GertGetStr(item->file_name));
+                                   });
+      found = files.emplace(name, file.get()).first;
+      if (existing == constants.constants_data.end()) {
+        constants.constants_data.emplace_back(std::move(file));
+      } else {
+        *existing = std::move(file);
+      }
+    }
+    GE_ASSERT_TRUE(static_cast<uint64_t>(meta->offset) <= found->second->data_size);
+    GE_ASSERT_TRUE(static_cast<uint64_t>(meta->size) <= found->second->data_size - static_cast<uint64_t>(meta->offset));
+  }
+  GE_ASSERT_TRUE(total_size == unit.constants_config->internal_weight_size, "[OM2] Host internal weight size mismatch");
   return ge::SUCCESS;
 }
 
@@ -642,6 +697,64 @@ ge::Status DeserializeKernels(const gert::ZipArchiveReader &archive, const std::
   return ge::SUCCESS;
 }
 
+ge::Status DeserializeSoBinaries(const gert::ZipArchiveReader &archive, GertModelData &model_data) {
+  const auto description_path = archive.FindEntry(OM2_SO_BINS_JSON_PATH);
+  if (model_data.struct_size < offsetof(GertModelData, so_bins) + sizeof(model_data.so_bins)) {
+    GE_ASSERT_TRUE(description_path.empty(), "[OM2] Output structure cannot hold shared library metadata");
+    return ge::SUCCESS;
+  }
+  if (description_path.empty()) {
+    model_data.so_bins.reset();
+    return ge::SUCCESS;
+  }
+  size_t description_size = 0U;
+  const auto description = archive.ExtractToMem(description_path, description_size);
+  GE_ASSERT_NOTNULL(description);
+  const ge::JsonFile json(description.get(), description_size);
+  GE_ASSERT_TRUE(json.IsValid());
+  ge::JsonFile::json libraries;
+  GE_ASSERT_TRUE(json.Get("libraries", libraries) && libraries.is_array());
+  auto restored = std::make_unique<GertModelDataSoBins>();
+  std::unordered_set<std::string> file_names{"so_bins.json"};
+  const auto valid_name = [](const std::string &name) {
+    return !name.empty() && name != "." && name.find_first_of("/\\") == std::string::npos &&
+           name.find("..") == std::string::npos;
+  };
+  for (const auto &item : libraries) {
+    GE_ASSERT_TRUE(item.is_object());
+    const ge::JsonFile entry(item);
+    std::string file_name;
+    std::string so_name;
+    std::string vendor_name;
+    uint64_t so_bin_type = 0U;
+    GE_ASSERT_TRUE(entry.Get("file_name", file_name) && valid_name(file_name));
+    GE_ASSERT_TRUE(entry.Get("so_name", so_name) && valid_name(so_name));
+    GE_ASSERT_TRUE(item.contains("so_bin_type") && item["so_bin_type"].is_number_integer() &&
+                   entry.Get("so_bin_type", so_bin_type) && so_bin_type <= 3U);
+    if (item.contains("vendor_name")) {
+      GE_ASSERT_TRUE(entry.Get("vendor_name", vendor_name));
+    }
+    GE_ASSERT_TRUE(file_names.insert(file_name).second, "[OM2] Duplicate shared library file: %s", file_name.c_str());
+    const auto binary_path = archive.FindEntry(std::string(OM2_SO_BINS_DIR) + file_name);
+    GE_ASSERT_TRUE(!binary_path.empty(), "[OM2] Missing shared library file: %s", file_name.c_str());
+    auto binary = std::make_unique<GertModelDataFile>();
+    binary->file_name = GertMakeStr(file_name);
+    size_t binary_size = 0U;
+    binary->data = archive.ExtractToMem(binary_path, binary_size);
+    GE_ASSERT_TRUE(binary->data != nullptr && binary_size > 0U);
+    binary->data_size = binary_size;
+    auto library = std::make_unique<GertModelDataSoBin>();
+    library->binary = std::move(binary);
+    library->so_name = GertMakeStr(so_name);
+    library->vendor_name = GertMakeStr(vendor_name);
+    library->so_bin_type = so_bin_type;
+    restored->libraries.emplace_back(std::move(library));
+  }
+  // Replace the package-level collection when loading another model from the same archive.
+  model_data.so_bins = std::move(restored);
+  return ge::SUCCESS;
+}
+
 ge::Status DeserializeCustomKernels(const gert::ZipArchiveReader &archive, const std::string &dir_prefix,
                                     GertModelData &model_data) {
   for (const auto &entry : archive.ListFilesByRelativePrefix(dir_prefix)) {
@@ -699,8 +812,8 @@ ge::Status DeserializeVisualJson(const gert::ZipArchiveReader &archive, const st
 // 公共前置：解析 manifest 校验 model_index，并在 models[model_index] 放置模型单元及各子结构
 // （下标与 data/model_N 对应；入口统一分配目录聚合结构，多次反序列化仅首次分配）
 ge::Status PrepareModelUnit(gert::ZipArchiveReader &archive, GertModelData &model_data, const uint32_t model_index) {
-  model_data.manifest = std::make_unique<GertModelDataManifest>();
   gert::InitGertModelData(model_data);
+  *model_data.manifest = GertModelDataManifest{};
 
   GE_CHK_STATUS_RET_NOLOG(DeserializeManifest(archive, gert::OM2_MANIFEST_PATH, model_data));
   const uint32_t model_num = static_cast<uint32_t>(model_data.manifest->model_num);
@@ -726,10 +839,6 @@ ge::Status DeserializeGertModelDataFromArchive(gert::ZipArchiveReader &archive, 
   GE_CHK_STATUS_RET_NOLOG(PrepareModelUnit(archive, model_data, model_index));
   auto &unit = *model_data.models[model_index];
   const auto idx = std::to_string(model_index);
-  if (model_data.constants->constants_data.size() <= model_index) {
-    model_data.constants->constants_data.resize(model_index + 1U);
-  }
-  auto &weight_slot = model_data.constants->constants_data[model_index];
   if (model_data.variables->var_weight_data.size() <= model_index) {
     model_data.variables->var_weight_data.resize(model_index + 1U);
   }
@@ -740,8 +849,16 @@ ge::Status DeserializeGertModelDataFromArchive(gert::ZipArchiveReader &archive, 
       DeserializeCodegen(archive, gert::FormatOm2Path(gert::OM2_RUNTIME_DIR_FORMAT, idx.c_str()), unit));
   GE_CHK_STATUS_RET_NOLOG(DeserializeConstantsConfig(
       archive, gert::FormatOm2Path(gert::OM2_CONSTANTS_CONFIG_PATH_FORMAT, idx.c_str()), unit));
-  GE_CHK_STATUS_RET_NOLOG(DeserializeWeight(
-      archive, std::string(gert::OM2_CONSTANTS_DIR) + gert::OM2_CONSTANTS_FILE_PREFIX + idx, unit, weight_slot));
+  if (HasHostInternalConstants(*unit.constants_config)) {
+    GE_ASSERT_SUCCESS(DeserializeHostInternalWeights(archive, unit, *model_data.constants));
+  } else {
+    if (model_data.constants->constants_data.size() <= model_index) {
+      model_data.constants->constants_data.resize(model_index + 1U);
+    }
+    auto &weight_slot = model_data.constants->constants_data[model_index];
+    GE_CHK_STATUS_RET_NOLOG(DeserializeWeight(
+        archive, std::string(gert::OM2_CONSTANTS_DIR) + gert::OM2_CONSTANTS_FILE_PREFIX + idx, unit, weight_slot));
+  }
   GE_CHK_STATUS_RET_NOLOG(
       DeserializeOpAttr(archive, gert::FormatOm2Path(gert::OM2_OP_ATTR_PATH_FORMAT, idx.c_str()), unit));
   // 变量数据块按 model_meta.var_weight_file_name 寻址，故必须在 DeserializeModelMeta 之后
@@ -750,6 +867,7 @@ ge::Status DeserializeGertModelDataFromArchive(gert::ZipArchiveReader &archive, 
   GE_ASSERT_SUCCESS(DeserializeKernels(archive, gert::OM2_KERNELS_DIR, model_data));
   GE_ASSERT_SUCCESS(DeserializeCustomKernels(archive, "data/custom_ops/binaries_", model_data));
   GE_ASSERT_SUCCESS(DeserializeCustomSharedLibs(archive, "data/custom_ops/shared_libs", model_data));
+  GE_ASSERT_SUCCESS(DeserializeSoBinaries(archive, model_data));
   return ge::SUCCESS;
 }
 

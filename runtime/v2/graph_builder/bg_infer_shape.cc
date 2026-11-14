@@ -26,6 +26,7 @@
 #include "framework/common/framework_types_internal.h"
 #include "register/node_converter_registry.h"
 #include "exe_graph/lowering/frame_selector.h"
+#include "exe_graph/lowering/exe_graph_attrs.h"
 #include "bg_model_desc.h"
 #include "engine/node_converter_utils.h"
 #include "aicore/converter/autofuse_node_converter.h"
@@ -72,6 +73,21 @@ bool IsInferShapeRegistered(const std::string &type, const gert::OpImplSpaceRegi
 
 bool NeedSymbolInferShape(const ge::NodePtr &node) {
   return ge::OpTypeUtils::IsAutofuseNode(node->GetOpDesc());
+}
+
+// 标记供 OM2 区分符号化参数布局，RT2 InferShape kernel 不读取此标记。
+std::vector<ValueHolderPtr> CreateSymbolInferShapeNode(const std::vector<ValueHolderPtr> &inputs, size_t output_num,
+                                                       const bool for_om2) {
+  auto outputs = ValueHolder::CreateDataOutput("InferShape", inputs, output_num);
+  if (!for_om2 || outputs.empty()) {
+    return outputs;
+  }
+  auto *const node = outputs[0] == nullptr ? nullptr : outputs[0]->GetFastNode();
+  auto *const op_desc = node == nullptr ? nullptr : node->GetOpDescBarePtr();
+  if ((op_desc == nullptr) || !ge::AttrUtils::SetBool(op_desc, kSymbolInferShape, true)) {
+    return {};
+  }
+  return outputs;
 }
 
 std::vector<ValueHolderPtr> BuildCompatibleInferShapeGraph(const ge::NodePtr &node,
@@ -197,12 +213,12 @@ std::vector<ValueHolderPtr> BuildSymbolInferShapeGraph(const ge::NodePtr &node,
   if (infer_merge_key != nullptr && !infer_merge_key->empty()) {
     GELOGD("[%s][%s] get infer merge key[%s] success, merge infer node.", node->GetNamePtr(), node->GetTypePtr(),
            infer_merge_key->c_str());
-    auto builder = [&inputs_holders, &output_num]() -> std::vector<ValueHolderPtr> {
-      return bg::ValueHolder::CreateDataOutput("InferShape", inputs_holders, output_num);
+    auto builder = [&inputs_holders, &output_num, &global_data]() -> std::vector<ValueHolderPtr> {
+      return CreateSymbolInferShapeNode(inputs_holders, output_num, global_data.IsForOm2());
     };
     return global_data.GetOrCreateUniqueValueHolder(*infer_merge_key, builder);
   } else {
-    return bg::ValueHolder::CreateDataOutput("InferShape", inputs_holders, output_num);
+    return CreateSymbolInferShapeNode(inputs_holders, output_num, global_data.IsForOm2());
   }
 }
 

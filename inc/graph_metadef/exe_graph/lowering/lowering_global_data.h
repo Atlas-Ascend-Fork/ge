@@ -101,6 +101,13 @@ class LoweringGlobalData {
     space_registries_v2_ = space_registries;
   }
 
+  bool IsForOm2() const {
+    return for_om2_;
+  }
+  void SetForOm2(const bool for_om2) {
+    for_om2_ = for_om2;
+  }
+
   const LoweringOption &GetLoweringOption() const;
   void SetLoweringOption(const LoweringOption &lowering_option);
 
@@ -219,6 +226,7 @@ class LoweringGlobalData {
   // user set file constant device memory, key is file name
   std::map<std::string, ge::FileConstantMem> file_constant_mems_;
   CoreNumConfig core_num_config_;
+  bool for_om2_{false};
 };
 }  // namespace gert
 #endif  // AIR_CXX_RUNTIME_V2_LOWERING_LOWERING_GLOBAL_DATA_H_

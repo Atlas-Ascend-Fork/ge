@@ -28,6 +28,7 @@
 #endif
 
 namespace gert {
+struct Om2OnlinePrepareData;
 
 // ==================== 公共 ====================
 // OM2 执行器版本，manifest.json compatibility 字段版本校验基准
@@ -134,6 +135,12 @@ struct GertModelDataRuntime {
 };
 
 // ==================== data/model_N/constants_config.json ====================
+enum class GertModelDataConstPlacement : uint64_t {
+  kUnspecified = 0U,  // 未指定或旧尺寸：沿用现有 Device 行为。
+  kDevice = 1U,
+  kHost = 2U
+};
+
 struct GertModelDataConstMeta {
   uint64_t struct_size = sizeof(GertModelDataConstMeta);
   uint64_t index = 0U;
@@ -143,6 +150,8 @@ struct GertModelDataConstMeta {
   std::unique_ptr<char[]> file_name;
   std::unique_ptr<char[]> file_path;
   std::unique_ptr<char[]> op_name;
+  // 可选尾字段；旧尺寸或未指定沿用 Device 行为，动态 GeModel 权重明确指定 Host。
+  GertModelDataConstPlacement placement = GertModelDataConstPlacement::kUnspecified;
 };
 
 struct GertModelDataConstantsConfig {
@@ -178,14 +187,17 @@ struct GertModelDataVariables {
   std::vector<std::unique_ptr<GertModelDataFile>> var_weight_data;
 };
 
+enum class GertModelExecutionType : uint64_t { kStatic = 0U, kDynamic = 1U };
+
 // ========= data/model_N/（单个模型目录的全部文件，对应 manifest.model_num）=========
 struct GertModelDataModel {
   uint64_t struct_size = sizeof(GertModelDataModel);
-  std::unique_ptr<GertModelDataModelMeta> model_meta;              // data/model_N/model_meta.json
-  std::unique_ptr<GertModelDataConstantsConfig> constants_config;  // data/model_N/constants_config.json
-  std::unique_ptr<char[]> op_attr_json;                            // data/model_N/op_attr.json
-  std::unique_ptr<GertModelDataRuntime> runtime;                   // data/model_N/runtime/
-  std::unique_ptr<GertModelDataDebug> debug;                       // data/model_N/debug/
+  std::unique_ptr<GertModelDataModelMeta> model_meta;                       // data/model_N/model_meta.json
+  std::unique_ptr<GertModelDataConstantsConfig> constants_config;           // data/model_N/constants_config.json
+  std::unique_ptr<char[]> op_attr_json;                                     // data/model_N/op_attr.json
+  std::unique_ptr<GertModelDataRuntime> runtime;                            // data/model_N/runtime/
+  std::unique_ptr<GertModelDataDebug> debug;                                // data/model_N/debug/
+  GertModelExecutionType execution_type = GertModelExecutionType::kStatic;  // 仅用于内存，不参与序列化
 };
 
 // data/kernels/ 目录的聚合结构
@@ -201,6 +213,21 @@ struct GertModelDataCustomOps {
   std::vector<std::unique_ptr<GertModelDataFile>> libraries;  // data/custom_ops/shared_libs/*.so
 };
 
+// ==================== data/shared_libs/（动态程序依赖的 SO 及描述）====================
+struct GertModelDataSoBin {
+  uint64_t struct_size = sizeof(GertModelDataSoBin);
+  std::unique_ptr<GertModelDataFile> binary;  // 同目录 SO 文件；file_name 对应 JSON 的 "file_name"
+  std::unique_ptr<char[]> so_name;            // "so_name"：原始 SO 名称
+  uint64_t so_bin_type = 0U;                  // "so_bin_type"：与 ge::SoBinType 的数值对应
+  std::unique_ptr<char[]> vendor_name;        // "vendor_name"
+};
+
+struct GertModelDataSoBins {
+  uint64_t struct_size = sizeof(GertModelDataSoBins);
+  // data/shared_libs/so_bins.json 的 "libraries" 数组，保持收集顺序。
+  std::vector<std::unique_ptr<GertModelDataSoBin>> libraries;
+};
+
 // ==================== 包根：与 OM2 归档目录一一对应 ====================
 struct GertModelData {
   uint64_t struct_size = sizeof(GertModelData);
@@ -210,6 +237,11 @@ struct GertModelData {
   std::unique_ptr<GertModelDataKernels> kernels;            // data/kernels/
   std::unique_ptr<GertModelDataCustomOps> custom_ops;       // data/custom_ops/
   std::unique_ptr<GertModelDataVariables> variables;        // data/variables/
+  // 可选尾字段；旧尺寸或 nullptr 表示未提供动态 SO 依赖。
+  std::unique_ptr<GertModelDataSoBins> so_bins;  // data/shared_libs/
+
+  // Online-only preparation data; never serialized. Defined by generator/dynamic internals.
+  std::shared_ptr<Om2OnlinePrepareData> online_prepare_data;
 };
 }  // namespace gert
 

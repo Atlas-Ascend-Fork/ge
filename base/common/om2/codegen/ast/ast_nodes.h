@@ -118,6 +118,8 @@ enum class StablePartId : uint8_t {
   kCustomTaskHelpers,
   kVarMgrDecls,
   kVarTransAdapter,
+  kCustomKernelDeserializer,
+  kCreateDynamicClassCustomOpFactory,
 };
 
 enum class StablePartPlacement : uint8_t {
@@ -691,6 +693,44 @@ class MakeUniqueArrayExpr final : public Expr {
  private:
   TypeName elem_type_;
   Expr *count_;
+};
+
+class NewExpr final : public Expr {
+ public:
+  static NewExpr *Create(AstContext &ctx, const std::string &type_spec, const std::vector<Expr *> &args,
+                         const std::string &placement);
+  NewExpr(StringRef type_spec, ArrayRef<Expr *> args, StringRef placement)
+      : Expr(), type_spec_(type_spec), args_(args), placement_(placement) {}
+  Status Accept(CodeEmitter &emitter, std::string &output) const override final;
+
+  StringRef GetTypeSpec() const {
+    return type_spec_;
+  }
+  ArrayRef<Expr *> GetArgs() const {
+    return args_;
+  }
+  StringRef GetPlacement() const {
+    return placement_;
+  }
+
+ private:
+  StringRef type_spec_;
+  ArrayRef<Expr *> args_;
+  StringRef placement_;
+};
+
+class DeleteExpr final : public Expr {
+ public:
+  static DeleteExpr *Create(AstContext &ctx, Expr *expr);
+  explicit DeleteExpr(Expr *expr) : Expr(), expr_(expr) {}
+  Status Accept(CodeEmitter &emitter, std::string &output) const override final;
+
+  Expr *GetExpr() const {
+    return expr_;
+  }
+
+ private:
+  Expr *expr_;
 };
 
 class ToStrExpr final : public Expr {

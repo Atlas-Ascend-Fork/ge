@@ -16,6 +16,7 @@
 file(GLOB_RECURSE OM2_EXECUTOR_SRCS CONFIGURE_DEPENDS "${AIR_CODE_DIR}/runtime/om2/*.cc")
 list(FILTER OM2_EXECUTOR_SRCS EXCLUDE REGEX "om2_model_manager\\.cc$")
 list(FILTER OM2_EXECUTOR_SRCS EXCLUDE REGEX "/dump/.*\\.cc$")
+list(FILTER OM2_EXECUTOR_SRCS EXCLUDE REGEX "/dynamic/.*\\.cc$")
 list(FILTER OM2_EXECUTOR_SRCS EXCLUDE REGEX "/formats/.*\\.cc$")
 list(FILTER OM2_EXECUTOR_SRCS EXCLUDE REGEX "/om2/common/.*\\.cc$")
 add_library(om2_executor SHARED
@@ -148,4 +149,52 @@ target_link_libraries(om2_dump PRIVATE
         acl_rt
         $<$<NOT:$<STREQUAL:${TARGET_SYSTEM_NAME},Android>>:-lrt>
         -ldl
+)
+
+# Dynamic adaptation is loaded on demand; no executor DT_NEEDED entry is introduced.
+add_library(om2_dynamic SHARED dynamic/om2_dynamic_support.cc)
+add_dependencies(om2_executor om2_dynamic)
+add_dependencies(om2_dynamic graphengine_protos)
+target_compile_definitions(om2_dynamic PRIVATE
+        PROTOBUF_INLINE_NOT_IN_HEADERS=0
+        google=ascend_private
+        nlohmann=ascend_nlohmann
+)
+target_compile_options(om2_dynamic PRIVATE ${AIR_COMMON_COMPILE_OPTION}
+        $<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Clang>:-fblocks>
+        -fno-strict-aliasing
+)
+target_include_directories(om2_dynamic PRIVATE
+        ${AIR_CODE_DIR}/compiler
+        ${AIR_CODE_DIR}/runtime/v1
+        ${AIR_CODE_DIR}/runtime/v2
+        ${AIR_CODE_DIR}/runtime
+        ${AIR_CODE_DIR}/runtime/om2/
+        ${AIR_CODE_DIR}/base/
+        ${AIR_CODE_DIR}/inc/
+        ${AIR_CODE_DIR}/inc/framework
+        ${AIR_CODE_DIR}/inc/external
+        ${CMAKE_BINARY_DIR}
+        ${CMAKE_BINARY_DIR}/proto/graphengine_protos
+        ${METADEF_DIR}/inc/external
+)
+target_link_libraries(om2_dynamic PRIVATE
+        json
+        hybrid_executor
+        davinci_executor
+        graph
+        ge_common
+        acl_rt
+        ${AIR_COMMON_LINK_OPTION}
+        ge_intf_pub
+        ge_metadef_headers
+        slog_headers
+        runtime_headers
+        msprof_headers
+        ascend_protobuf_shared_headers
+        # RtSession getters and Allocators shared ownership are inline; gert would
+        # introduce a cycle through ge_executor_shared -> om2_executor.
+        ge_common_base
+        error_manager
+        c_sec
 )

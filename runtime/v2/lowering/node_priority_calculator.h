@@ -15,14 +15,21 @@
 #include "exe_graph/lowering/graph_frame.h"
 namespace gert {
 namespace bg {
+// 优先级计算只需要「执行图节点 → 计算节点 topo 序」这一份映射。
+// 直接接收该映射，使不经过 GE lowering 的执行图也能算出优先级，
+// 不必伪造 GraphFrame 或计算图环境。
 class NodePriorityCalculator {
  public:
   explicit NodePriorityCalculator(const GraphFrame &frame);
+  // OM2 外部执行图直接提供映射；RT2 仍通过 GraphFrame 获取。
+  explicit NodePriorityCalculator(std::vector<int64_t> indexes_to_compute_node_id);
   ge::graphStatus CalcNodeExecutionPriorities(const std::vector<ge::FastNode *> &main_graph_nodes,
                                               const size_t root_all_nodes_cnt);
 
  private:
-  const GraphFrame &frame_;
+  // GraphFrame 适配路径使用；独立路径为空。
+  const GraphFrame *frame_{nullptr};
+  std::vector<int64_t> indexes_to_compute_node_id_;
 };
 }  // namespace bg
 }  // namespace gert

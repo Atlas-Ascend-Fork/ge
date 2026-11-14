@@ -24,6 +24,11 @@
 #include "common/helper/om2/om2_utils.h"
 #include "common/om2/codegen/om2_codegen_types.h"
 #include "common/om2/codegen/om2_model_utils.h"
+#include "common/om2/dynamic_codegen/info_collect/chain_normalizer.h"
+#include "common/om2/dynamic_codegen/info_collect/const_value_collector.h"
+#include "common/om2/dynamic_codegen/info_collect/kernel_code_builder.h"
+#include "exe_graph/lowering/exe_graph_attrs.h"
+#include "graph/utils/attr_utils.h"
 #include "common/ge_common/ge_types.h"
 #include "common/util/error_manager/error_manager.h"
 #include "graph/ge_local_context.h"
@@ -1197,6 +1202,40 @@ $(TARGET): $(SRC_FILES)
   return artifacts;
 }
 
+TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_ArbitraryHeadersAndNestedIncludes_Ok) {
+  // slow_test_limit = 6000
+  // Allow for real shared-library compilation and CI compiler load fluctuations.
+  ScopedEnvVar asan_guard("ASAN_OPTIONS", "detect_leaks=0:halt_on_error=0");
+  ScopedEnvVar lsan_guard("LSAN_OPTIONS", "exitcode=0");
+  const std::string model_name = "arbitrary_headers";
+  auto artifacts = MakeBuildConfigTestArtifacts(model_name);
+  const auto replace_file = [](gert::GertModelDataFile &file, const std::string &name, const std::string &content) {
+    file.file_name = gert::GertMakeStr(name);
+    file.data = gert::GertMakeFileData(content.data(), content.size());
+    file.data_size = content.size();
+  };
+  // Compile machinery must not require model_internal.h or model_interface.h.
+  replace_file(artifacts[1], "ordinary.h", "#pragma once\n#include \"om2_model_api.h\"\n#include \"assets.h\"\n");
+  replace_file(artifacts[2], model_name + ".cpp",
+               "#include \"ordinary.h\"\nextern \"C\" int Value() { return ASSET_VALUE; }\n");
+  gert::GertModelDataFile assets;
+  replace_file(assets, "assets.h",
+               "#pragma once\n#include \"register/generated.h\"\n#define ASSET_VALUE GENERATED_VALUE\n");
+  artifacts.push_back(std::move(assets));
+  gert::GertModelDataFile nested;
+  replace_file(nested, "register/generated.h", "#pragma once\n#define GENERATED_VALUE 7\n");
+  artifacts.push_back(std::move(nested));
+  gert::GertModelDataFile so_artifact;
+  ASSERT_EQ(
+      Om2Utils::CompileGeneratedCppToSo(artifacts, Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
+      SUCCESS);
+  EXPECT_GT(so_artifact.data_size, 0U);
+  // Include rewriting applies only to compilation copies, so packaged source remains reusable.
+  EXPECT_NE(std::string(reinterpret_cast<const char *>(artifacts[1].data.get()), artifacts[1].data_size)
+                .find("#include \"assets.h\""),
+            std::string::npos);
+}
+
 TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_MissingModelApiArtifact_Failed) {
   const std::string model_name = "missing_model_api";
   auto artifacts = MakeBuildConfigTestArtifacts(model_name);
@@ -1645,6 +1684,18 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_CrossCompileAscendHomeMissing_Rejec
   GetThreadLocalContext().SetGraphOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", "aarch64"}});
 
   EXPECT_NE(CompileBuildConfigArtifacts("cross_ascend_home_missing"), SUCCESS);
+}
+
+TEST_F(Om2CodegenUt, StablePartProvider_CustomOpDeserializerIsShared) {
+  std::string helpers;
+  std::string deserializer;
+  ASSERT_EQ(ResolveStablePart(StablePartId::kCustomTaskHelpers, helpers), SUCCESS);
+  ASSERT_EQ(ResolveStablePart(StablePartId::kCustomKernelDeserializer, deserializer), SUCCESS);
+  ASSERT_FALSE(deserializer.empty());
+  ASSERT_GE(helpers.size(), deserializer.size());
+  EXPECT_EQ(helpers.substr(helpers.size() - deserializer.size()), deserializer);
+  EXPECT_NE(deserializer.find("PortableOp"), std::string::npos);
+  EXPECT_EQ(deserializer.find("CustKernelContextHolder"), std::string::npos);
 }
 
 TEST_F(Om2CodegenUt, StablePartProvider_AllIds_Ok) {
@@ -3142,5 +3193,159 @@ TEST_F(Om2CodegenUt, TaskCodeBuilderUtil_IsCollectiveCommType_Categories) {
   for (const auto &op_type : non_collective_types) {
     EXPECT_FALSE(TaskCodeBuilderUtil::IsCollectiveCommType(op_type)) << op_type;
   }
+}
+TEST_F(Om2CodegenUt, FxCreateNotifiesPreservesOutputChains) {
+  using namespace gert::om2;
+  ExecuteGraph graph("fx_notifies");
+  auto *node = graph.AddNode(std::make_shared<OpDesc>("notifies", "CreateNotifies"));
+  ASSERT_NE(node, nullptr);
+  auto builder = KernelCodeBuilderFactory::GetInstance().Create("CreateNotifies");
+  ASSERT_NE(builder, nullptr);
+  const std::vector<uint32_t> inputs{3U, 5U};
+  const std::vector<uint32_t> outputs{7U, 11U};
+  KernelProgramInfo info;
+  ASSERT_EQ(builder->Collect(KernelCollectContext(*node, inputs, outputs), info), GRAPH_SUCCESS);
+  ASSERT_EQ(info.inputs.size(), 2U);
+  EXPECT_EQ(info.inputs[0].value_type, Om2ValueType::kTypedContinuousVectorRtNotifyTPtr);
+  ASSERT_EQ(info.outputs.size(), 2U);
+  EXPECT_EQ(info.outputs[1].chain_index, 11U);
+  EXPECT_EQ(info.outputs[1].value_type, Om2ValueType::kRtNotifyTPtr);
+  EXPECT_EQ(builder->GetImplType(), KernelImplType::kCodegenImpl);
+  std::string code;
+  ASSERT_EQ(builder->GenerateKernelCode("BindFxNotifies", code), GRAPH_SUCCESS);
+  EXPECT_NE(code.find("chains_[7U].Set(static_cast<void *>(notifies->GetData()[0])"), std::string::npos);
+  EXPECT_NE(code.find("chains_[11U].Set(static_cast<void *>(notifies->GetData()[1])"), std::string::npos);
+}
+
+TEST_F(Om2CodegenUt, FxCustomOpCollectorsPreserveTensorAndTailContracts) {
+  using namespace gert::om2;
+  for (const bool with_shapes : {false, true}) {
+    const char *type = with_shapes ? "ExecuteCustomOpWithInferShape" : "ExecuteCustomOp";
+    SCOPED_TRACE(type);
+    ExecuteGraph graph("fx_custom_op");
+    auto *node = graph.AddNode(std::make_shared<OpDesc>("custom_op", type));
+    ASSERT_NE(node, nullptr);
+    ASSERT_TRUE(AttrUtils::SetInt(node->GetOpDescBarePtr(), gert::kComputeNodeIndex, 0));
+    auto builder = KernelCodeBuilderFactory::GetInstance().Create(type);
+    ASSERT_NE(builder, nullptr);
+    std::vector<uint32_t> inputs{0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U};
+    if (with_shapes) {
+      inputs.push_back(9U);
+    }
+    const std::vector<uint32_t> outputs{10U, 11U, 12U, 13U};
+    KernelProgramInfo info;
+    ASSERT_EQ(builder->Collect(KernelCollectContext(*node, inputs, outputs), info), GRAPH_SUCCESS);
+    ASSERT_EQ(info.inputs.size(), inputs.size());
+    EXPECT_EQ(info.inputs[0].value_type, Om2ValueType::kGertTensorPtr);
+    EXPECT_EQ(info.inputs[1].value_type, Om2ValueType::kGertTensorPtr);
+    EXPECT_EQ(info.inputs[2].value_type, Om2ValueType::kGertAllocatorPtr);
+    EXPECT_EQ(info.inputs[3].value_type, Om2ValueType::kRtStreamTPtr);
+    EXPECT_EQ(info.inputs[4].value_type, Om2ValueType::kVoidPtr);
+    EXPECT_EQ(info.inputs[5].semantic_name, "attached_stream_provider");
+    EXPECT_EQ(info.inputs[5].value_type, Om2ValueType::kVoidPtr);
+    EXPECT_EQ(info.inputs[6].semantic_name, "root_graph_id");
+    EXPECT_EQ(info.inputs[6].value_type, Om2ValueType::kUInt32T);
+    EXPECT_EQ(info.inputs[7].semantic_name, "node_id");
+    EXPECT_EQ(info.inputs[7].value_type, Om2ValueType::kInt64T);
+    EXPECT_EQ(info.inputs[8].semantic_name, "vector_core_num");
+    EXPECT_EQ(info.inputs[8].value_type, Om2ValueType::kInt64T);
+    if (with_shapes) {
+      EXPECT_EQ(info.inputs[9].semantic_name, "template_tensor_0");
+      EXPECT_EQ(info.inputs[9].value_type, Om2ValueType::kGertTensorPtr);
+    }
+    ASSERT_EQ(info.outputs.size(), 4U);
+    EXPECT_EQ(info.outputs[0].semantic_name, "output_tensor_0");
+    EXPECT_EQ(info.outputs[1].semantic_name, "workspace");
+    EXPECT_EQ(info.outputs[2].semantic_name, "args_handler");
+    EXPECT_EQ(info.outputs[3].semantic_name, "context_info");
+    EXPECT_EQ(info.output_policy, OutputCreatePolicy::kOutputsCreator);
+    const std::vector<uint32_t> missing_workspace_outputs{6U};
+    KernelProgramInfo invalid_info;
+    EXPECT_EQ(builder->Collect(KernelCollectContext(*node, inputs, missing_workspace_outputs), invalid_info),
+              GRAPH_PARAM_INVALID);
+  }
+}
+
+TEST_F(Om2CodegenUt, FxCreateOpFromBufferUsesPortableBytes) {
+  using namespace gert::om2;
+  ExecuteGraph graph("fx_op_buffer");
+  auto *node = graph.AddNode(std::make_shared<OpDesc>("op_buffer", "CreateOpFromBuffer"));
+  ASSERT_NE(node, nullptr);
+  ASSERT_TRUE(AttrUtils::SetInt(node->GetOpDescBarePtr(), gert::kComputeNodeIndex, 0));
+  auto builder = KernelCodeBuilderFactory::GetInstance().Create("CreateOpFromBuffer");
+  ASSERT_NE(builder, nullptr);
+  const std::vector<uint32_t> inputs{0U, 1U};
+  const std::vector<uint32_t> outputs{2U};
+  KernelProgramInfo info;
+  ASSERT_EQ(builder->Collect(KernelCollectContext(*node, inputs, outputs), info), GRAPH_SUCCESS);
+  ASSERT_EQ(info.inputs.size(), 2U);
+  EXPECT_EQ(info.inputs[0].value_type, Om2ValueType::kBytePtr);
+  EXPECT_EQ(info.inputs[1].value_type, Om2ValueType::kSizeT);
+  EXPECT_EQ(builder->GetRestoreConstInputIndices(), (std::vector<uint32_t>{0U, 1U}));
+}
+
+TEST_F(Om2CodegenUt, FxAttachedStreamProviderUsesOutputsCreatorWithoutComputeInfo) {
+  using namespace gert::om2;
+  ExecuteGraph graph("fx_attached_streams");
+  auto *node = graph.AddNode(std::make_shared<OpDesc>("provider", "CreateAttachedStreamProvider"));
+  ASSERT_NE(node, nullptr);
+  auto builder = KernelCodeBuilderFactory::GetInstance().Create("CreateAttachedStreamProvider");
+  ASSERT_NE(builder, nullptr);
+  const std::vector<uint32_t> inputs;
+  const std::vector<uint32_t> outputs{2U};
+  KernelProgramInfo info;
+  ASSERT_EQ(builder->Collect(KernelCollectContext(*node, inputs, outputs), info), GRAPH_SUCCESS);
+  EXPECT_TRUE(info.inputs.empty());
+  EXPECT_FALSE(info.require_compute_node_info);
+  EXPECT_EQ(info.output_policy, OutputCreatePolicy::kOutputsCreator);
+  ASSERT_EQ(info.outputs.size(), 1U);
+  EXPECT_EQ(info.outputs[0].chain_index, 2U);
+  EXPECT_EQ(info.outputs[0].value_type, Om2ValueType::kVoidPtr);
+  KernelProgramInfo invalid_info;
+  const std::vector<uint32_t> missing_outputs;
+  EXPECT_EQ(builder->Collect(KernelCollectContext(*node, inputs, missing_outputs), invalid_info), GRAPH_PARAM_INVALID);
+}
+
+TEST_F(Om2CodegenUt, FxDataPlaceholderInputDoesNotAllocateAnExtraChain) {
+  using namespace gert::om2;
+  ExecuteGraph graph("es_data");
+  auto desc = std::make_shared<OpDesc>("data", "Data");
+  ASSERT_EQ(desc->AddInputDesc("x", GeTensorDesc()), GRAPH_SUCCESS);
+  ASSERT_EQ(desc->AddOutputDesc("y", GeTensorDesc()), GRAPH_SUCCESS);
+  auto *node = graph.AddNode(desc);
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->GetExtendInfo()->SetOutputSymbol(0U, 42U), GRAPH_SUCCESS);
+  ChainNormalizer normalizer;
+  std::vector<ChainInfo> chains;
+  ASSERT_EQ(normalizer.AllocateGraphChains({node}, chains), GRAPH_SUCCESS);
+  ASSERT_EQ(chains.size(), 1U);
+  EXPECT_EQ(chains[0].symbol, 42U);
+  std::vector<uint32_t> output_indices;
+  ASSERT_EQ(normalizer.GetOutputChainIndices(*node, output_indices), GRAPH_SUCCESS);
+  EXPECT_EQ(output_indices, (std::vector<uint32_t>{0U}));
+}
+
+TEST_F(Om2CodegenUt, FxOpDefVoidPointerConsumerRetainsSerializedBytes) {
+  using namespace gert::om2;
+  ExecuteGraph graph("fx_op_def");
+  auto desc = std::make_shared<OpDesc>("const_op_def_test", "Const");
+  ASSERT_EQ(desc->AddOutputDesc("y", GeTensorDesc()), GRAPH_SUCCESS);
+  const std::vector<uint8_t> bytes{0U, 1U, 0U, 2U, 3U, 0U, 4U, 5U, 6U};
+  ASSERT_TRUE(AttrUtils::SetZeroCopyBytes(desc, gert::kConstValue, Buffer::CopyFrom(bytes.data(), bytes.size())));
+  auto *node = graph.AddNode(desc);
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->GetExtendInfo()->SetOutputSymbol(0U, 42U), GRAPH_SUCCESS);
+  ChainNormalizer normalizer;
+  ProgramInfo info;
+  ASSERT_EQ(normalizer.AllocateGraphChains({node}, info.chains), GRAPH_SUCCESS);
+  info.chains[0].source_kind = ChainSourceKind::kConstant;
+  KernelProgramInfo consumer;
+  consumer.execution_node_name = "consume_op_def";
+  consumer.inputs.push_back({0U, "op_buffer", Om2ValueType::kVoidPtr});
+  info.main.kernels.push_back(std::move(consumer));
+  ASSERT_EQ(ConstValueCollector().Collect(graph, normalizer, info), GRAPH_SUCCESS);
+  ASSERT_EQ(info.const_chains.size(), 1U);
+  EXPECT_EQ(info.const_chains[0].value.type, Om2ValueType::kBytePtr);
+  EXPECT_EQ(info.const_chains[0].value.raw_bytes, bytes);
 }
 }  // namespace ge

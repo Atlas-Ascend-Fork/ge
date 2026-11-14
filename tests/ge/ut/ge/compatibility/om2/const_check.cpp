@@ -44,6 +44,8 @@ TEST(Om2ModelDataConstCompatibility, PackagePathConstantsAreFrozen) {
   EXPECT_CONST_STR_FROZEN(OM2_OP_ATTR_PATH_FORMAT, "data/model_%s/op_attr.json");
   EXPECT_CONST_STR_FROZEN(OM2_CUSTOM_KERNELS_DIR_FORMAT, "data/custom_ops/%s/");
   EXPECT_CONST_STR_FROZEN(OM2_KERNELS_DIR, "data/kernels/");
+  EXPECT_CONST_STR_FROZEN(OM2_SO_BINS_DIR, "data/shared_libs/");
+  EXPECT_CONST_STR_FROZEN(OM2_SO_BINS_JSON_PATH, "data/shared_libs/so_bins.json");
   EXPECT_CONST_STR_FROZEN(OM2_CONSTANTS_DIR, "data/constants/");
   EXPECT_CONST_STR_FROZEN(OM2_CONSTANTS_FILE_PREFIX, "constant_");
   EXPECT_CONST_STR_FROZEN(OM2_CONSTANTS_CONFIG_PATH_FORMAT, "data/model_%s/constants_config.json");

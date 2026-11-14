@@ -29,6 +29,7 @@
         <file value="libaicpu_engine_common.so" file_type="shared"/>
         <file value="libfmk_parser.so" file_type="shared"/>
         <file value="libge_compiler.so" file_type="shared"/>
+        <file value="libom2_generator.so" file_type="shared"/>
         <file value="libfmk_onnx_parser.so" file_type="shared"/>
         <file value="libhcom_graph_adaptor.so" file_type="shared"/>
         <file value="libhcom_opskernel_builder.so" file_type="shared" dst_path="lib64/plugin/opskernel" install_path="$(TARGET_ENV)/lib64/plugin/opskernel"/>

@@ -42,6 +42,9 @@ extern "C" {
 #define GERT_ATTR_MODEL_INPUT_NAMES "gert.model.input_names"
 #define GERT_ATTR_MODEL_OUTPUT_NAMES "gert.model.output_names"
 
+/* 逻辑算子拓扑序号：list int64，以下标对应序列化 CNI 池索引。 */
+#define GERT_ATTR_COMPUTE_NODE_TOPO_IDS "gert.compute_node_topo_ids"
+
 /* 统一资源槽数：int64。 */
 #define GERT_ATTR_MODEL_STREAM_COUNT "gert.model.stream_count"
 #define GERT_ATTR_MODEL_EVENT_COUNT "gert.model.event_count"
@@ -100,6 +103,7 @@ constexpr const char *kModelInputs = GERT_ATTR_MODEL_INPUTS;
 constexpr const char *kModelOutputs = GERT_ATTR_MODEL_OUTPUTS;
 constexpr const char *kModelInputNames = GERT_ATTR_MODEL_INPUT_NAMES;
 constexpr const char *kModelOutputNames = GERT_ATTR_MODEL_OUTPUT_NAMES;
+constexpr const char *kComputeNodeTopoIds = GERT_ATTR_COMPUTE_NODE_TOPO_IDS;
 constexpr const char *kModelStreamCount = GERT_ATTR_MODEL_STREAM_COUNT;
 constexpr const char *kModelEventCount = GERT_ATTR_MODEL_EVENT_COUNT;
 constexpr const char *kModelNotifyCount = GERT_ATTR_MODEL_NOTIFY_COUNT;

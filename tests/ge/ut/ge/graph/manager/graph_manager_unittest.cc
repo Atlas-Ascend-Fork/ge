@@ -5759,8 +5759,9 @@ TEST_F(UtestGraphManagerTest, RunGraphAsync_Om2ComputeGraphReturnsUnsupported) {
     callback_called = true;
   };
   std::vector<gert::Tensor> inputs;
-  EXPECT_EQ(graph_manager.RunGraphAsync(graph_id, std::move(inputs), 0U, callback), GE_GRAPH_UNSUPPORTED);
+  ASSERT_EQ(graph_manager.RunGraphAsync(graph_id, std::move(inputs), 0U, callback), GE_GRAPH_UNSUPPORTED);
   EXPECT_FALSE(callback_called);
+  EXPECT_EQ(graph_manager.prerun_args_v2_q_.Size(), 0U);
 }
 
 TEST_F(UtestGraphManagerTest, GraphContext_Initialize_ReturnsSuccess) {
@@ -6330,7 +6331,6 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_AddPreservesOptionsAndRejectsClone) {
 }
 
 TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileFailureDoesNotPublishOrKeepBusyState) {
-  GTEST_SKIP() << "BuildGertModelDataFromGraph is a success stub until model generation is available.";
   EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
   GraphManager manager;
@@ -6374,7 +6374,7 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileReusesArtifactRegardlessOfOm2O
   manager.RemoveGraphNode(75U);
 }
 
-TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileBuildsModelRegardlessOfOm2OnlineMode) {
+TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileValidatesModelRegardlessOfOm2OnlineMode) {
   EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
   for (const char *value : {static_cast<const char *>(nullptr), "0", "true", "1"}) {
     if (value == nullptr) {
@@ -6387,11 +6387,13 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileBuildsModelRegardlessOfOm2Onli
     ASSERT_EQ(manager.AddGraph(77U, MakeSessionExecuteGraph("execute"), {}, OmgContext{}), SUCCESS);
     GraphNodePtr node;
     ASSERT_EQ(manager.GetGraphNode(77U, node), SUCCESS);
-    EXPECT_EQ(manager.CompileGraph(77U, 1U, {}), SUCCESS);
-    EXPECT_TRUE(node->GetBuildFlag());
+    const auto ret = manager.CompileGraph(77U, 1U, {});
+    EXPECT_NE(ret, SUCCESS);
+    EXPECT_NE(ret, UNSUPPORTED);
+    EXPECT_FALSE(node->GetBuildFlag());
     EXPECT_FALSE(node->GetRunFlag());
     EXPECT_FALSE(node->GetLoadFlag());
-    EXPECT_NE(GetExecuteModelData(node), nullptr);
+    EXPECT_EQ(GetExecuteModelData(node), nullptr);
     EXPECT_EQ(manager.RemoveGraph(77U), SUCCESS);
   }
 }

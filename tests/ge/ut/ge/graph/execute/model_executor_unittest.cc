@@ -9,6 +9,8 @@
  */
 
 #include <gtest/gtest.h>
+#include "graph/fast_graph/execute_graph.h"
+#include "graph/utils/graph_utils_ex.h"
 #include <atomic>
 #include <mutex>
 #include <future>
@@ -2195,7 +2197,7 @@ TEST_F(UtestModelExecutorOm2Test, PaRemapped_ReturnsUnsupported) {
   EXPECT_EQ(model_executor.Finalize(), SUCCESS);
 }
 
-TEST_F(UtestModelExecutorOm2Test, RunThread_Om2Mode_ReturnsUnsupported) {
+TEST_F(UtestModelExecutorOm2Test, RunThread_Om2Mode_ReturnsUnsupportedWithCallback) {
   EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
@@ -2224,8 +2226,9 @@ TEST_F(UtestModelExecutorOm2Test, RunThread_Om2Mode_ReturnsUnsupported) {
 
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
   graph_node->SetGeRootModel(ge_root_model);
-  graph_node->SetLoadFlag(true);
-  graph_node->IncreaseLoadCount();
+  auto model_data = std::make_shared<gert::GertModelData>(MakeOm2ModelDataWithFakeSo(fake_so_path_));
+  ge_root_model->SetOm2ModelData(model_data);
+  ASSERT_EQ(model_executor.LoadGraph(ge_root_model, graph_node), SUCCESS);
   graph_node->Lock();
 
   std::vector<gert::Tensor> input_tensors(1);
@@ -2287,6 +2290,23 @@ TEST_F(UtestModelExecutorOm2Test, ExecuteGraphWithStream_Om2Mode_Success) {
 
   EXPECT_EQ(model_executor.ExecuteGraphWithStream(graph_node, graph_id, nullptr, inputs, outputs), SUCCESS);
   EXPECT_EQ(model_executor.UnloadGraph(ge_root_model, graph_id), SUCCESS);
+  EXPECT_EQ(model_executor.Finalize(), SUCCESS);
+}
+
+TEST_F(UtestModelExecutorOm2Test, ExternalExecuteGraphLoadsWithoutRootComputeGraph) {
+  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  EnableOm2OnlineMode();
+  ModelExecutor model_executor;
+  ASSERT_EQ(model_executor.Initialize({}, 0), SUCCESS);
+  auto root = MakeShared<GeRootModel>();
+  const GraphId graph_id = 4003U;
+  auto node = MakeShared<GraphNode>(graph_id);
+  node->SetGraph(GraphUtilsEx::ExecuteGraph2Graph(std::make_shared<ExecuteGraph>("external_execute")));
+  node->SetGeRootModel(root);
+  root->SetOm2ModelData(std::make_shared<gert::GertModelData>(MakeOm2ModelDataWithFakeSo(fake_so_path_)));
+  ASSERT_EQ(root->GetRootGraph(), nullptr);
+  EXPECT_EQ(model_executor.LoadGraph(root, node), SUCCESS);
+  EXPECT_EQ(model_executor.UnloadGraph(root, graph_id), SUCCESS);
   EXPECT_EQ(model_executor.Finalize(), SUCCESS);
 }
 

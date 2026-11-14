@@ -25,10 +25,11 @@ struct GertModelTaskDesc;
 
 namespace gert {
 struct GertModelData;
+class RtSession;
 class Allocators;
 
-// Bundle 子模型共享的会话上下文。OM2 不持有 RtSession（其 stream/event/notify allocator 与
-// ge:: 会话池均非 OM2 所需），会话仅以 (session_id + 外置变量 arena) 承载，避免 ACL OM2 实现库
+// Bundle 子模型共享的会话上下文。ACL OM2 Bundle 不构造 RtSession（其 stream/event/notify allocator 与
+// ge:: 会话池均非静态 OM2 所需），会话仅以 (session_id + 外置变量 arena) 承载，避免 ACL OM2 实现库
 // 反向依赖 ge_common_base / davinci_executor。session_id 为 0 表示未指定，由执行器自动分配。
 // 契约：仅在 Load 调用期间有效（执行器读取后不留存），调用方需保证其存活期覆盖加载调用。
 struct Om2SessionContext {
@@ -57,10 +58,13 @@ struct VISIBILITY_EXPORT Om2ModelLoadArg {
   // 借用的内存 allocator 集合，executor 加载时复制其共享持有关系并保活，SO 只接收不透明指针。
   // 调用方保证集合在 Load 调用期间有效；nullptr 使用图内 allocator。
   gert::Allocators *external_allocator = nullptr;
+  // 动态模型借用的会话，透传给 pbody；调用方保证模型卸载前会话及其变量访问器始终有效。
+  // session_ctx 优先提供会话 ID 和外置变量信息；未提供时沿用此会话的信息。
+  gert::RtSession *rt_session = nullptr;
 };
 
 struct Om2ModelRunArg {
-  // 借用的本次 Main allocator 集合；nullptr 沿用 Load 集合。
+  // 借用的本次 Main allocator 集合；nullptr 使用图内默认 allocator。
   // 集合及 allocator 须存活至关联流任务完成、相关内存块释放。
   gert::Allocators *external_allocator = nullptr;
 };
@@ -107,6 +111,10 @@ class VISIBILITY_EXPORT Om2ModelExecutor {
                                 const std::vector<kAippDynamicBatchPara> &aipp_batch_para,
                                 const kAippDynamicPara &aipp_parms);
   void *GetModelDumpManager() const;
+  bool IsDynamicModel() const;
+  // Online dynamic IO preserves caller placement; kernels perform any required transfers.
+  ge::Status RunDynamicOnline(void *stream, const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
+                              gert::Allocators *external_allocators) const;
   uint32_t GetModelId() const;
   uint64_t GetStepId() const;
   aclrtStream GetOrCreateProfStream();

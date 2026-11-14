@@ -578,6 +578,25 @@ ExprRef AstBuildContext::MakeUniqueArray(const TypeName &elem_type, Arg count) c
   return ExprRef(ctx_, MakeUniqueArrayExpr::Create(ctx_, elem_type, ResolveArg(count, ctx_)));
 }
 
+ExprRef AstBuildContext::New(const std::string &type_spec, std::initializer_list<Arg> args,
+                             const std::string &placement) const {
+  return New(type_spec, std::vector<Arg>(args.begin(), args.end()), placement);
+}
+
+ExprRef AstBuildContext::New(const std::string &type_spec, const std::vector<Arg> &args,
+                             const std::string &placement) const {
+  std::vector<Expr *> resolved;
+  resolved.reserve(args.size());
+  for (const auto &arg : args) {
+    resolved.push_back(ResolveArg(arg, ctx_));
+  }
+  return ExprRef(ctx_, NewExpr::Create(ctx_, type_spec, resolved, placement));
+}
+
+ExprRef AstBuildContext::Delete(Arg expr) const {
+  return ExprRef(ctx_, DeleteExpr::Create(ctx_, ResolveArg(expr, ctx_)));
+}
+
 ReturnStmt *AstBuildContext::Return(Arg value) const {
   return ReturnStmt::Create(ctx_, ResolveArg(value, ctx_));
 }

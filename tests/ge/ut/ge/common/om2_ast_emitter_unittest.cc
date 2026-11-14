@@ -9,7 +9,19 @@
  */
 
 #include <gtest/gtest.h>
+#include "../om2/dynamic_codegen/generated_so_fixture.h"
 #include <string>
+#include <cstdlib>
+#include <cstring>
+#include <dlfcn.h>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <unistd.h>
+#include <vector>
+
+#include "common/om2/codegen/task_code_builder/task_code_builder_util.h"
+#include "common/om2/codegen/task_code_builder/aicpu/kernel_ex_task_code_builder.h"
 
 #include "common/om2/codegen/ast/ast_build_context.h"
 #include "common/om2/codegen/ast/ast_nodes.h"
@@ -175,5 +187,44 @@ TEST_F(AstEmitterUt, ComposesRawTextBetweenNamespaces) {
   EXPECT_NE(code.find("#line 1 \"u.cc\"\nvoid U() {}\n"), std::string::npos);
   EXPECT_NE(code.find("int32_t TransFormat();\n} // namespace var_trans\n} // namespace om2\n"), std::string::npos);
 }
+
+// S-01: compare current emitted declarations with build-time generated sources,
+// then inspect their compiled bytes. Substring checks alone cannot detect double escaping.
+void ExpectCompiledBytes(const std::string &name, const std::string &declaration,
+                         const std::vector<uint8_t> &expected) {
+  const auto directory = std::filesystem::path(OM2_GENERATED_FIXTURE_DIR);
+  ASSERT_EQ(gert::om2::ReadGeneratedFixture(directory / (name + ".txt")), declaration);
+  const auto library = directory / "literals.so";
+  void *handle = dlopen(library.c_str(), RTLD_NOW | RTLD_LOCAL);
+  ASSERT_NE(handle, nullptr) << dlerror();
+  struct LibraryCloser {
+    void *handle;
+    ~LibraryCloser() {
+      (void)dlclose(handle);
+    }
+  } closer{handle};
+  const auto data = reinterpret_cast<const char *(*)()>(dlsym(handle, (name + "_data").c_str()));
+  const auto size = reinterpret_cast<size_t (*)()>(dlsym(handle, (name + "_size").c_str()));
+  ASSERT_NE(data, nullptr);
+  ASSERT_NE(size, nullptr);
+  EXPECT_EQ(size(), expected.size());
+  ASSERT_GE(size(), expected.size());
+  EXPECT_EQ(std::memcmp(data(), expected.data(), expected.size()), 0);
+}
+
+TEST_F(AstEmitterUt, CompiledHcclPrivateDefinitionPreservesBinaryBytes) {
+  const std::vector<uint8_t> bytes{0x44U, 0x00U, 0x22U, 0x5cU, 0xffU};
+  const auto escaped = TaskCodeBuilderUtil::EscapeToOctalString(bytes);
+  const auto declaration = ast.VarDecl("const char", "data[]", Arg::StringLiteral(escaped));
+  ExpectCompiledBytes("hccl", EmitNode(*declaration), bytes);
+}
+
+TEST_F(AstEmitterUt, CompiledAicpuArgumentsPreserveBinaryBytes) {
+  const std::vector<uint8_t> bytes{0x44U, 0x00U, 0x22U, 0x5cU, 0xffU};
+  const auto escaped = KernelExTaskCodeBuilder::SerializeBytesToOctalString(bytes);
+  const auto declaration = ast.VarDecl("const char", "data[]", Arg::StringLiteral(escaped));
+  ExpectCompiledBytes("aicpu", EmitNode(*declaration), bytes);
+}
+
 }  // namespace
 }  // namespace ge

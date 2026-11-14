@@ -180,6 +180,14 @@ target_link_libraries(graph_engine_test
 # build st_om2_test
 add_executable(st_om2_test
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2.cc"
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_ge_generator.cc"
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_graph_generator.cc"
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_constants.cc"
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_kernel_pipeline.cc"
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_resources.cc"
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_online.cc"
+    "${AIR_CODE_DIR}/tests/ge/common/om2_dynamic_host_graph.cc"
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_graph_session.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_online.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_main.cc"
     "${AIR_CODE_DIR}/tests/graph_metadef/depends/checker/tensor_check_utils.cc"
@@ -223,6 +231,7 @@ target_link_options(st_om2_test PRIVATE
 
 target_link_libraries(st_om2_test
     intf_llt_pub
+    om2_generator
     ascendcl_stub
     -Wl,-z,muldefs
     ge_compiler

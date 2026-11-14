@@ -13,6 +13,7 @@
 
 #include <mutex>
 #include <deque>
+#include "common/ge_visibility.h"
 #include "ge/ge_api_error_codes.h"
 #include "exe_graph/runtime/tensor_data.h"
 #include "graph/op_desc.h"
@@ -29,12 +30,15 @@ using AicpuHostProcFunc = ge::graphStatus (*)(KernelContext *);
 
 class AicpuResourceManager {
  public:
-  static AicpuResourceManager &GetInstance();
+  // om2动态当前限制：Exporting this singleton for pbody is a temporary adaptation. The final design must
+  // resolve Host functions through runtime-owned resources without depending on a compile-time singleton.
+  static VISIBILITY_EXPORT AicpuResourceManager &GetInstance();
   ~AicpuResourceManager();
 
-  ge::graphStatus LoadConstantFoldingLib();
+  // 导出供 OM2 pbody 加载并查找 Host 函数，RT2 原有调用方式不变。
+  VISIBILITY_EXPORT ge::graphStatus LoadConstantFoldingLib();
   std::function<uint32_t(void *)> GetRunCpuKernel() const;
-  std::function<AicpuHostProcFunc(std::string)> GetAicpuHostFindFunc() const;
+  VISIBILITY_EXPORT std::function<AicpuHostProcFunc(std::string)> GetAicpuHostFindFunc() const;
 
   bool IsSingleOp() const {
     return is_single_op_;

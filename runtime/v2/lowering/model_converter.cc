@@ -298,6 +298,53 @@ ge::graphStatus InitConstWeights(const ge::GeRootModelPtr &root_model, int64_t &
   return ge::SUCCESS;
 }
 
+// Run after flattening even when the graph is cached from ordinary RT2 lowering.
+// Existing flatten offsets and tensor-local offsets identify the original weight block.
+ge::graphStatus PrepareOm2WeightMetadata(const ge::GeRootModelPtr &root_model,
+                                         const ge::ComputeGraphPtr &flatten_graph) {
+  std::map<int64_t, int64_t> offset_to_index;
+  int64_t weight_index = 0;
+  int64_t weight_offset = 0;
+  for (const auto &entry : root_model->GetSubgraphInstanceNameToModel()) {
+    GE_ASSERT_NOTNULL(entry.second);
+    GE_ASSERT_TRUE(ge::AttrUtils::SetInt(entry.second, "om2_weight_index", weight_index));
+    const auto size = static_cast<int64_t>(entry.second->GetWeightSize());
+    if (size != 0) {
+      offset_to_index.emplace(weight_offset, weight_index);
+    }
+    weight_offset += size;
+    ++weight_index;
+  }
+  for (const auto &node : flatten_graph->GetAllNodes()) {
+    if (node->GetType() != ge::CONSTANT) {
+      continue;
+    }
+    const auto op_desc = node->GetOpDescBarePtr();
+    GE_ASSERT_NOTNULL(op_desc);
+    ge::GeTensorPtr weight;
+    GE_ASSERT_TRUE(ge::AttrUtils::MutableTensor(op_desc, "value", weight));
+    GE_ASSERT_NOTNULL(weight);
+    auto &tensor_desc = weight->MutableTensorDesc();
+    std::vector<int64_t> flatten_offset;
+    if (!ge::AttrUtils::GetListInt(tensor_desc, ge::ATTR_NAME_GRAPH_FLATTEN_OFFSET, flatten_offset)) {
+      continue;
+    }
+    GE_ASSERT_TRUE(flatten_offset.size() == 2U);
+    int64_t data_offset = 0;
+    GE_ASSERT_SUCCESS(ge::TensorUtils::GetDataOffset(tensor_desc, data_offset));
+    const auto it = offset_to_index.find(flatten_offset[0] - data_offset);
+    GE_ASSERT_TRUE(it != offset_to_index.end());
+    tensor_desc.SetAttr("om2_weight_index", ge::GeAttrValue::CreateFrom<int64_t>(it->second));
+    tensor_desc.SetAttr("om2_weight_data_offset", ge::GeAttrValue::CreateFrom<int64_t>(data_offset));
+    GE_ASSERT_TRUE(ge::AttrUtils::SetInt(op_desc, "om2_weight_data_offset", data_offset));
+    auto output_desc = op_desc->MutableOutputDesc(0U);
+    GE_ASSERT_NOTNULL(output_desc);
+    output_desc->SetAttr("om2_weight_index", ge::GeAttrValue::CreateFrom<int64_t>(it->second));
+    output_desc->SetAttr("om2_weight_data_offset", ge::GeAttrValue::CreateFrom<int64_t>(data_offset));
+  }
+  return ge::SUCCESS;
+}
+
 // 获取模型中静态子图的最大workspace size
 void GetRequiredStaicModelWsSize(std::unordered_map<std::string, ge::GeModelPtr> &graph_to_static_models,
                                  int64_t &require_size) {
@@ -605,6 +652,10 @@ ge::ExecuteGraphPtr ModelConverter::ConvertGeModelToExecuteGraph(const ge::GeRoo
     require_weight_size = root_model->GetWeightSize();
   }
 
+  if (args.for_om2) {
+    GE_ASSERT_SUCCESS(PrepareOm2WeightMetadata(root_model, flatten_graph));
+  }
+
   int64_t require_static_model_ws_size = 0;
   GetRequiredStaicModelWsSize(graph_to_static_models, require_static_model_ws_size);
   LoweringGlobalData global_data =
@@ -622,6 +673,7 @@ ge::ExecuteGraphPtr ModelConverter::ConvertGeModelToExecuteGraph(const ge::GeRoo
   GE_ASSERT_NOTNULL(registries);
   global_data.SetSpaceRegistriesV2(*registries);
   global_data.SetLoweringOption(args.option);
+  global_data.SetForOm2(args.for_om2);
   global_data.SetStaicModelWsSize(require_static_model_ws_size);
   GE_ASSERT_SUCCESS(SetFixedFeatureMemory(root_model, global_data));
   if (args.file_constant_mems != nullptr) {

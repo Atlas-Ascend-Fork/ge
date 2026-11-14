@@ -65,6 +65,7 @@ class SlogStubImpl : public ge::SlogStub {
     return *this;
   }
   void Clear() {
+    std::lock_guard<std::mutex> lock(logs_mutex_);
     logs_.clear();
   }
   std::vector<OneLog> &GetLogs() {

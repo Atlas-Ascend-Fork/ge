@@ -50,6 +50,8 @@ class CppEmitter final : public CodeEmitter {
   Status Emit(const UnaryExpr &node, std::string &output) override final;
   Status Emit(const CallExpr &node, std::string &output) override final;
   Status Emit(const MakeUniqueArrayExpr &node, std::string &output) override final;
+  Status Emit(const NewExpr &node, std::string &output) override final;
+  Status Emit(const DeleteExpr &node, std::string &output) override final;
   Status Emit(const ToStrExpr &node, std::string &output) override final;
   Status Emit(const MemcpyExpr &node, std::string &output) override final;
   Status Emit(const SizeofExpr &node, std::string &output) override final;

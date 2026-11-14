@@ -107,6 +107,7 @@ target_link_libraries(atc_static PRIVATE
         msprof_headers
         ge_metadef_headers
         ascend_protobuf
+        om2_generator
         ge_common
         ge_common_base
         davinci_executor

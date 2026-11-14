@@ -18,6 +18,7 @@
 #include "framework/om2/model_data/gert_model_data.h"
 
 #include <securec.h>
+#include <cstddef>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -25,6 +26,37 @@
 #include "common/ge_inner_error_codes.h"
 
 namespace gert {
+
+inline GertModelDataConstPlacement GetGertModelConstPlacement(const GertModelDataConstMeta &meta) {
+  if (meta.struct_size < offsetof(GertModelDataConstMeta, placement) + sizeof(meta.placement)) {
+    return GertModelDataConstPlacement::kUnspecified;
+  }
+  return meta.placement;
+}
+
+inline bool HasHostInternalConstants(const GertModelDataConstantsConfig &config) {
+  for (const auto &meta : config.consts) {
+    if ((meta != nullptr) && (meta->type != nullptr) && (std::strcmp(meta->type.get(), "INTERNAL") == 0) &&
+        (GetGertModelConstPlacement(*meta) == GertModelDataConstPlacement::kHost)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline const GertModelDataSoBins *GetGertModelSoBins(const GertModelData &model_data) {
+  if (model_data.struct_size < offsetof(GertModelData, so_bins) + sizeof(model_data.so_bins)) {
+    return nullptr;
+  }
+  return model_data.so_bins.get();
+}
+
+inline GertModelExecutionType GetGertModelExecutionType(const GertModelDataModel &model) {
+  if (model.struct_size < offsetof(GertModelDataModel, execution_type) + sizeof(model.execution_type)) {
+    return GertModelExecutionType::kStatic;
+  }
+  return model.execution_type;
+}
 
 // 内存申请大小合法性校验上限（G.RES.02）：单字符串/权重 buffer 上限 10 GiB
 inline constexpr uint64_t kMaxStrAllocSize = 10ULL * 1024ULL * 1024ULL * 1024ULL;
@@ -116,6 +148,9 @@ inline const char *GertGetStr(const std::unique_ptr<char[]> &s) {
 
 // 统一初始化顶层目录聚合结构（幂等）：反序列化/Build 入口内含，直接构造 GertModelData 的场景需显式调用
 inline void InitGertModelData(GertModelData &model_data) {
+  if (model_data.manifest == nullptr) {
+    model_data.manifest = std::make_unique<GertModelDataManifest>();
+  }
   if (model_data.constants == nullptr) {
     model_data.constants = std::make_unique<GertModelDataConstants>();
   }
@@ -128,6 +163,15 @@ inline void InitGertModelData(GertModelData &model_data) {
   if (model_data.variables == nullptr) {
     model_data.variables = std::make_unique<GertModelDataVariables>();
   }
+}
+
+// 追加并初始化一个模型单元；不修改已有模型或包级资源，so_bins 仍由需要它的构建流程按需创建。
+inline void InitGertModelDataUnit(GertModelData &model_data) {
+  auto &unit = *model_data.models.emplace_back(std::make_unique<GertModelDataModel>());
+  unit.runtime = std::make_unique<GertModelDataRuntime>();
+  unit.model_meta = std::make_unique<GertModelDataModelMeta>();
+  unit.constants_config = std::make_unique<GertModelDataConstantsConfig>();
+  unit.debug = std::make_unique<GertModelDataDebug>();
 }
 
 // 从身份字段构造（size = 0，shape_range 为空，长尾字段调用方后赋值）

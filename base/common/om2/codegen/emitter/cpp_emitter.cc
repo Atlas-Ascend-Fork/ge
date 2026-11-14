@@ -692,6 +692,34 @@ Status CppEmitter::Emit(const MakeUniqueArrayExpr &node, std::string &output) {
   return SUCCESS;
 }
 
+Status CppEmitter::Emit(const NewExpr &node, std::string &output) {
+  (void)output.append("new ");
+  if (!node.GetPlacement().Empty()) {
+    (void)output.append("(");
+    AppendStringRef(node.GetPlacement(), output);
+    (void)output.append(") ");
+  }
+  AppendStringRef(node.GetTypeSpec(), output);
+  (void)output.append("(");
+  const auto args = node.GetArgs();
+  for (size_t i = 0; i < args.Size(); ++i) {
+    if (i > 0) {
+      (void)output.append(", ");
+    }
+    const auto status = args[i]->Accept(*this, output);
+    if (status != SUCCESS) {
+      return status;
+    }
+  }
+  (void)output.append(")");
+  return SUCCESS;
+}
+
+Status CppEmitter::Emit(const DeleteExpr &node, std::string &output) {
+  (void)output.append("delete ");
+  return node.GetExpr()->Accept(*this, output);
+}
+
 Status CppEmitter::Emit(const ToStrExpr &node, std::string &output) {
   (void)output.append("std::string(");
   const auto status = node.GetExpr()->Accept(*this, output);

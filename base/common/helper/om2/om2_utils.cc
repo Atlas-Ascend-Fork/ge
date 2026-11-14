@@ -67,22 +67,26 @@ void RemoveTempFile(std::string &path) {
   }
 }
 
+Status WriteMemFdFile(const std::string &data, const MemFdFile &file) {
+  if (!data.empty()) {
+    GE_ASSERT_TRUE(data.size() <= static_cast<size_t>(std::numeric_limits<uint32_t>::max()),
+                   "[OM2] memfd data is too large, name=%s, size=%zu", file.file_name.c_str(), data.size());
+    const auto write_count = mmWrite(file.fd, const_cast<char_t *>(data.data()), static_cast<uint32_t>(data.size()));
+    GE_ASSERT_TRUE(write_count == static_cast<int64_t>(data.size()),
+                   "[OM2] Failed to write memfd %s, expected=%zu, actual=%" PRId64, file.file_name.c_str(), data.size(),
+                   static_cast<int64_t>(write_count));
+  }
+  (void)lseek(file.fd, 0, SEEK_SET);
+  return SUCCESS;
+}
+
 Status CreateMemFdFile(const std::string &name, const std::string &data, MemFdFile &file) {
   file.fd = static_cast<int32_t>(syscall(__NR_memfd_create, name.c_str(), 0));
   GE_ASSERT_TRUE(file.fd >= 0, "[OM2] memfd_create failed for %s", name.c_str());
   GE_DISMISSABLE_GUARD(memfd_file_cleanup, [&file]() { CloseMemFdFile(file); });
-
-  if (!data.empty()) {
-    GE_ASSERT_TRUE(data.size() <= static_cast<size_t>(std::numeric_limits<uint32_t>::max()),
-                   "[OM2] memfd data is too large, name=%s, size=%zu", name.c_str(), data.size());
-    const auto write_count = mmWrite(file.fd, const_cast<char_t *>(data.data()), static_cast<uint32_t>(data.size()));
-    GE_ASSERT_TRUE(write_count == static_cast<int64_t>(data.size()),
-                   "[OM2] Failed to write memfd %s, expected=%zu, actual=%" PRId64, name.c_str(),
-                   static_cast<int64_t>(data.size()), static_cast<int64_t>(write_count));
-  }
-  (void)lseek(file.fd, 0, SEEK_SET);
   file.file_name = name;
   file.fd_path = "/proc/" + std::to_string(getpid()) + "/fd/" + std::to_string(file.fd);
+  GE_ASSERT_SUCCESS(WriteMemFdFile(data, file));
   GE_DISMISS_GUARD(memfd_file_cleanup);
   return SUCCESS;
 }
@@ -505,18 +509,47 @@ Status ReplaceInclude(std::string &data, const std::string &include_name, const 
   return SUCCESS;
 }
 
-Status CreateCompileCppFiles(const std::vector<gert::GertModelDataFile> &artifacts, const std::string &interface_name,
-                             const std::string &header_fd_path, std::vector<MemFdFile> &cpp_files) {
+Status ReplaceGeneratedIncludes(std::string &data, const std::vector<MemFdFile> &header_files) {
+  for (const auto &header : header_files) {
+    GE_ASSERT_SUCCESS(ReplaceInclude(data, header.file_name, header.fd_path, false));
+  }
+  return SUCCESS;
+}
+
+Status CreateCompileHeaders(const std::vector<gert::GertModelDataFile> &artifacts,
+                            std::vector<MemFdFile> &header_files) {
+  std::set<std::string> header_names;
+  for (const auto &artifact : artifacts) {
+    const std::string name = gert::GertGetStr(artifact.file_name);
+    if ((name.size() < 2U) || (name.compare(name.size() - 2U, 2U, ".h") != 0)) {
+      continue;
+    }
+    GE_ASSERT_TRUE(header_names.insert(name).second, "[OM2] Duplicate generated header: %s", name.c_str());
+    // Reserve every path before rewriting, so header order and mutual includes do not matter.
+    header_files.emplace_back();
+    GE_ASSERT_SUCCESS(CreateMemFdFile(name, "", header_files.back()));
+  }
+  for (const auto &header : header_files) {
+    const gert::GertModelDataFile *artifact = nullptr;
+    GE_ASSERT_SUCCESS(FindArtifact(artifacts, header.file_name, artifact));
+    std::string data(reinterpret_cast<const char *>(artifact->data.get()), artifact->data_size);
+    GE_ASSERT_SUCCESS(ReplaceGeneratedIncludes(data, header_files));
+    GE_ASSERT_SUCCESS(WriteMemFdFile(data, header));
+  }
+  return SUCCESS;
+}
+
+Status CreateCompileCppFiles(const std::vector<gert::GertModelDataFile> &artifacts,
+                             const std::vector<MemFdFile> &header_files, std::vector<MemFdFile> &cpp_files) {
   for (const auto &artifact : artifacts) {
     if (!IsCppFile(gert::GertGetStr(artifact.file_name))) {
       continue;
     }
     std::string compile_data(reinterpret_cast<const char *>(artifact.data.get()), artifact.data_size);
-    GE_ASSERT_SUCCESS(ReplaceInclude(compile_data, interface_name, header_fd_path));
+    GE_ASSERT_SUCCESS(ReplaceGeneratedIncludes(compile_data, header_files));
 
-    MemFdFile cpp_file;
-    GE_ASSERT_SUCCESS(CreateMemFdFile(gert::GertGetStr(artifact.file_name), compile_data, cpp_file));
-    cpp_files.push_back(std::move(cpp_file));
+    cpp_files.emplace_back();
+    GE_ASSERT_SUCCESS(CreateMemFdFile(gert::GertGetStr(artifact.file_name), compile_data, cpp_files.back()));
   }
   return SUCCESS;
 }
@@ -572,35 +605,24 @@ Status Om2Utils::CompileGeneratedCppToSo(const std::vector<gert::GertModelDataFi
                                          const bool is_release) {
   const auto &model_name = compile_info.model_name;
   constexpr char kModelApiName[] = "om2_model_api.h";
-  const std::string interface_name = compile_info.artifact_name + "_internal.h";
-  const gert::GertModelDataFile *interface_artifact = nullptr;
-  GE_ASSERT_SUCCESS(FindArtifact(artifacts, interface_name, interface_artifact));
   const gert::GertModelDataFile *model_api_artifact = nullptr;
   GE_ASSERT_SUCCESS(FindArtifact(artifacts, kModelApiName, model_api_artifact));
   const gert::GertModelDataFile *makefile_artifact = nullptr;
   GE_ASSERT_SUCCESS(FindArtifact(artifacts, "Makefile", makefile_artifact));
 
-  MemFdFile model_api_file;
-  MemFdFile header_file;
+  std::vector<MemFdFile> header_files;
   std::vector<MemFdFile> cpp_files;
   std::string so_path;
   MemFdFile makefile_file;
-  auto memfd_cleanup_callback = [&model_api_file, &header_file, &cpp_files, &so_path, &makefile_file]() {
-    CloseMemFdFile(model_api_file);
-    CloseMemFdFile(header_file);
+  auto memfd_cleanup_callback = [&header_files, &cpp_files, &so_path, &makefile_file]() {
+    CloseMemFdFiles(header_files);
     CloseMemFdFiles(cpp_files);
     RemoveTempFile(so_path);
     CloseMemFdFile(makefile_file);
   };
   GE_MAKE_GUARD(memfd_cleanup, memfd_cleanup_callback);
-  const std::string model_api_data(reinterpret_cast<const char *>(model_api_artifact->data.get()),
-                                   model_api_artifact->data_size);
-  GE_ASSERT_SUCCESS(CreateMemFdFile(kModelApiName, model_api_data, model_api_file));
-  std::string interface_data(reinterpret_cast<const char *>(interface_artifact->data.get()),
-                             interface_artifact->data_size);
-  GE_ASSERT_SUCCESS(ReplaceInclude(interface_data, kModelApiName, model_api_file.fd_path));
-  GE_ASSERT_SUCCESS(CreateMemFdFile(interface_name, interface_data, header_file));
-  GE_ASSERT_SUCCESS(CreateCompileCppFiles(artifacts, interface_name, header_file.fd_path, cpp_files));
+  GE_ASSERT_SUCCESS(CreateCompileHeaders(artifacts, header_files));
+  GE_ASSERT_SUCCESS(CreateCompileCppFiles(artifacts, header_files, cpp_files));
   GE_CHK_BOOL_RET_STATUS(!cpp_files.empty(), FAILED, "[OM2] No generated cpp artifacts found for model %s",
                          model_name.c_str());
 

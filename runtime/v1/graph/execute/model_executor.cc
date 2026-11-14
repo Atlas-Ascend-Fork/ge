@@ -102,6 +102,9 @@ Status ModelExecutor::Finalize() {
     run_thread_.join();
   }
 
+  GE_CHK_STATUS_RET(Om2ModelManager::GetInstance().UnloadSessionModels(session_id_),
+                    "[OM2] Unload session models failed.");
+
   GELOGI("VarManager free var memory.");
   const auto var_manager = VarManager::Instance(session_id_);
   GE_ASSERT_NOTNULL(var_manager);
@@ -1057,6 +1060,7 @@ Status ModelExecutor::LoadOm2Graph(const GeRootModelPtr &ge_root_model, const Gr
   load_arg.reuse_zero_copy = ModelUtils::IsReuseZeroCopyMemory();
   load_arg.external_allocator = external_allocators;
 
+  std::unique_lock<std::mutex> load_lock(mutex_);
   const auto &const_mem = graph_node->GetConstMemoryBase();
   if (const_mem.first != nullptr) {
     load_arg.weight_ptr = const_cast<void *>(const_mem.first);
@@ -1074,6 +1078,7 @@ Status ModelExecutor::LoadOm2Graph(const GeRootModelPtr &ge_root_model, const Gr
   }
 
   const ge::Status ret = Om2ModelManager::GetInstance().LoadModel(model_id, *model_data, load_arg, session_id_, stream);
+  load_lock.unlock();
   if (ret == SUCCESS) {
     graph_node->SetLoaded();
     AddGraphNode(graph_id, graph_node);
@@ -1096,11 +1101,14 @@ Status ModelExecutor::GetOm2ModelTensorDesc(const GraphNodePtr &graph_node,
   return SUCCESS;
 }
 
+// om2动态当前限制：The final design for online IO placement and dynamic output handling still needs discussion.
 Status ModelExecutor::PrepareOm2Outputs(const GraphNodePtr &graph_node, std::vector<gert::Tensor> &outputs) const {
   const std::vector<gert::GertTensorDesc> *input_desc = nullptr;
   const std::vector<gert::GertTensorDesc> *output_desc = nullptr;
   GE_ASSERT_SUCCESS(GetOm2ModelTensorDesc(graph_node, input_desc, output_desc));
   GE_ASSERT_NOTNULL(output_desc);
+  const auto executor = Om2ModelManager::GetInstance().GetModelExecutor(graph_node->GetGeRootModel()->GetModelId());
+  GE_ASSERT_NOTNULL(executor);
   outputs.clear();
   outputs.reserve(output_desc->size());
   for (const auto &desc : *output_desc) {
@@ -1110,9 +1118,12 @@ Status ModelExecutor::PrepareOm2Outputs(const GraphNodePtr &graph_node, std::vec
     ge_tensor.MutableTensorDesc().SetDataType(desc.data_type);
     ge_tensor.MutableTensorDesc().SetFormat(desc.format);
     ge_tensor.MutableTensorDesc().SetOriginFormat(desc.format);
-    const auto aligned_ptr = MakeShared<AlignedPtr>(desc.size, kOm2OutputMemAlignment);
-    GE_ASSERT_NOTNULL(aligned_ptr);
-    (void)ge_tensor.SetData(aligned_ptr, desc.size);
+    // Leave dynamic unknown-size outputs unallocated to share the runtime output data.
+    if ((desc.size > 0U) || !executor->IsDynamicModel()) {
+      const auto aligned_ptr = MakeShared<AlignedPtr>(desc.size, kOm2OutputMemAlignment);
+      GE_ASSERT_NOTNULL(aligned_ptr);
+      (void)ge_tensor.SetData(aligned_ptr, desc.size);
+    }
     ge_tensor.MutableTensorDesc().SetPlacement(Placement::kPlacementHost);
 
     gert::Tensor gert_tensor;
@@ -1131,6 +1142,14 @@ Status ModelExecutor::RunOm2Graph(const GraphNodePtr &graph_node, uint32_t graph
   if (model_id == INVALID_MODEL_ID) {
     GELOGE(GE_GRAPH_GRAPH_NOT_EXIST, "OM2 graph %u not loaded", graph_id);
     return GE_GRAPH_GRAPH_NOT_EXIST;
+  }
+
+  const auto executor = Om2ModelManager::GetInstance().GetModelExecutor(model_id);
+  GE_ASSERT_NOTNULL(executor);
+  if (executor->IsDynamicModel()) {
+    const auto ret = executor->RunDynamicOnline(stream, inputs, outputs, external_allocators);
+    graph_node->SetRunFlag(false);
+    return ret;
   }
 
   std::vector<void *> temp_device_buffers;
@@ -1204,12 +1223,13 @@ Status ModelExecutor::RunOm2Graph(const GraphNodePtr &graph_node, uint32_t graph
   return ret;
 }
 
-Status ModelExecutor::UnloadOm2Graph(const GeRootModelPtr &ge_root_model, uint32_t graph_id) const {
+Status ModelExecutor::UnloadOm2Graph(const GeRootModelPtr &ge_root_model, uint32_t graph_id) {
   GE_CHECK_NOTNULL(ge_root_model);
   const uint32_t model_id = ge_root_model->GetModelId();
   if (model_id == INVALID_MODEL_ID) {
     return SUCCESS;  // idempotent
   }
+  const std::lock_guard<std::mutex> lock(mutex_);
   GE_CHK_STATUS_RET(Om2ModelManager::GetInstance().UnloadModel(model_id),
                     "[OM2] Unload model failed, modelId=%u, graphId=%u.", model_id, graph_id);
   return SUCCESS;

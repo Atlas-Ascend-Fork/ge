@@ -2181,6 +2181,10 @@ ge::graphStatus Om2ModelExecutor::Load(ge::ModelData &model_data, const Om2Model
   (void)session_id;
   return ge::GRAPH_SUCCESS;
 }
+bool Om2ModelExecutor::IsDynamicModel() const {
+  return false;
+}
+
 ge::graphStatus Om2ModelExecutor::Run(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs,
                                       const Om2ModelRunArg &run_arg) const {
   (void)run_arg;

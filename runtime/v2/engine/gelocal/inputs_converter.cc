@@ -117,6 +117,61 @@ std::unique_ptr<Tensor> CreateExecuteTensorFromCompute(const ge::GeTensor *tenso
   return exe_tensor;
 }
 
+// 供 OM2 代码生成恢复权重引用；RT2 执行直接使用 Const 中的 Tensor 数据。
+void SetConstWeightMetadata(const ge::GeTensor *tensor, const ge::OpDesc *source_op_desc,
+                            const ValueHolderPtr &const_holder) {
+  if ((tensor == nullptr) || (source_op_desc == nullptr) || (const_holder == nullptr)) {
+    return;
+  }
+  auto *const_node = const_holder->GetFastNode();
+  if (const_node == nullptr) {
+    return;
+  }
+  auto *const_op_desc = const_node->GetOpDescBarePtr();
+  if (const_op_desc == nullptr) {
+    return;
+  }
+  auto const_output_desc = const_op_desc->MutableOutputDesc(0U);
+  if (const_output_desc == nullptr) {
+    return;
+  }
+
+  const auto &tensor_desc = tensor->GetTensorDesc();
+  int64_t data_offset = 0;
+  ge::ConstGeTensorPtr source_weight;
+  const auto has_source_weight =
+      ge::AttrUtils::GetTensor(source_op_desc, "value", source_weight) && (source_weight != nullptr);
+  const auto source_output_desc = source_op_desc->GetOutputDescPtr(0U);
+  bool has_weight_data_offset = ge::AttrUtils::GetInt(*source_op_desc, "om2_weight_data_offset", data_offset);
+  if (!has_weight_data_offset && has_source_weight) {
+    has_weight_data_offset =
+        ge::AttrUtils::GetInt(source_weight->GetTensorDesc(), "om2_weight_data_offset", data_offset);
+  }
+  if (!has_weight_data_offset && (source_output_desc != nullptr)) {
+    has_weight_data_offset = ge::AttrUtils::GetInt(*source_output_desc, "om2_weight_data_offset", data_offset);
+  }
+  if (!has_weight_data_offset) {
+    has_weight_data_offset = ge::AttrUtils::GetInt(tensor_desc, "om2_weight_data_offset", data_offset);
+  }
+  if (has_weight_data_offset ||
+      ((source_output_desc != nullptr) &&
+       (ge::TensorUtils::GetDataOffset(*source_output_desc, data_offset) == ge::GRAPH_SUCCESS))) {
+    ge::TensorUtils::SetDataOffset(*const_output_desc, data_offset);
+  }
+  ge::GeAttrValue flatten_attr;
+  std::vector<int64_t> flatten_weight;
+  if ((tensor_desc.GetAttr(ge::ATTR_NAME_GRAPH_FLATTEN_OFFSET, flatten_attr) == ge::GRAPH_SUCCESS) &&
+      (flatten_attr.GetValue(flatten_weight) == ge::GRAPH_SUCCESS) && (flatten_weight.size() == 2U)) {
+    const_output_desc->SetAttr(ge::ATTR_NAME_GRAPH_FLATTEN_OFFSET,
+                               ge::GeAttrValue::CreateFrom<std::vector<int64_t>>(flatten_weight));
+  }
+
+  int64_t weight_index = 0;
+  if (ge::AttrUtils::GetInt(tensor_desc, "om2_weight_index", weight_index)) {
+    const_output_desc->SetAttr("om2_weight_index", ge::GeAttrValue::CreateFrom<int64_t>(weight_index));
+  }
+}
+
 /**
  *      FreeMemory
  *         |
@@ -136,9 +191,12 @@ LowerResult LoweringConstNode(const ge::NodePtr &node, const LowerInput &lower_i
   const auto op_desc = node->GetOpDescBarePtr();
   GE_ASSERT_NOTNULL(op_desc);
 
-  auto outputs = FrameSelector::OnInitRoot([&ge_tensor_ptr, &op_desc]() -> std::vector<ValueHolderPtr> {
+  auto outputs = FrameSelector::OnInitRoot([&ge_tensor_ptr, &op_desc, &lower_input]() -> std::vector<ValueHolderPtr> {
     auto exe_tensor = CreateExecuteTensorFromCompute(ge_tensor_ptr);
     auto const_holder = ValueHolder::CreateConst(exe_tensor.get(), sizeof(Tensor));
+    if (lower_input.global_data->IsForOm2()) {
+      SetConstWeightMetadata(ge_tensor_ptr, op_desc, const_holder);
+    }
     const int64_t logical_stream_id = op_desc->GetStreamId();
     auto stream_id_holder = bg::ValueHolder::CreateConst(&logical_stream_id, sizeof(logical_stream_id));
     auto split_outputs =

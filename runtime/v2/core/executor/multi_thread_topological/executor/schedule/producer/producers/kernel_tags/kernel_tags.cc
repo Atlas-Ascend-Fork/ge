@@ -36,9 +36,14 @@ void KernelTags::Reset(size_t node_num, size_t thread_num) {
 }
 
 ExecTaskType KernelTags::UpdateTag(const Node *kernel) {
-  node_tags_[kernel->node_id] = ExecTaskType::NORMAL;
   const auto extend_context = reinterpret_cast<const ExtendedKernelContext *>(&kernel->context);
   const auto &node_type = extend_context->GetKernelType();
+  node_tags_[kernel->node_id] = ClassifyKernelTask(node_type, thread_num_);
+  return node_tags_[kernel->node_id];
+}
+
+ExecTaskType ClassifyKernelTask(const char *const node_type, const size_t thread_num) {
+  auto task_type = ExecTaskType::NORMAL;
   if (node_type == nullptr) {
     return ExecTaskType::NORMAL;
   }
@@ -48,19 +53,19 @@ ExecTaskType KernelTags::UpdateTag(const Node *kernel) {
     return ExecTaskType::NORMAL;
   }
   if (IsLaunchNode(node_type)) {
-    node_tags_[kernel->node_id] = ExecTaskType::LAUNCH;
+    task_type = ExecTaskType::LAUNCH;
   }
   const auto iter = critical_to_types.find(kernel_info->critical_section);
   if (iter != critical_to_types.cend()) {
-    node_tags_[kernel->node_id] = iter->second;
+    task_type = iter->second;
   }
   // 断流水的内存线程上的kernel只能在线程数为3时放到普通线程上
-  if (IsBrokenNormalToMemoryWaterFlowNode(node_type) && (thread_num_ == 3U)) {
-    node_tags_[kernel->node_id] = ExecTaskType::NORMAL;
+  if (IsBrokenNormalToMemoryWaterFlowNode(node_type) && (thread_num == 3U)) {
+    task_type = ExecTaskType::NORMAL;
   }
   if (IsMemoryToNormalWaterFlowNode(node_type)) {
-    node_tags_[kernel->node_id] = ExecTaskType::MEMORY;
+    task_type = ExecTaskType::MEMORY;
   }
-  return node_tags_[kernel->node_id];
+  return task_type;
 }
 }  // namespace gert

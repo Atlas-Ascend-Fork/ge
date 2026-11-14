@@ -891,12 +891,18 @@ Status ResolveStablePart(StablePartId id, std::string &output) {
           "  } while (false)\n";
       return SUCCESS;
     case StablePartId::kCreateClassCustomOpFactory:
-      output =
+    case StablePartId::kCreateDynamicClassCustomOpFactory:
+      output = id == StablePartId::kCreateDynamicClassCustomOpFactory ? "class CustomOpRegistry;\n" : "";
+      output +=
           "class CustomOpFactory {\n"
           " public:\n"
           "  static graphStatus RegisterCustomOpCreator(const AscendString &op_type, const BaseOpCreator "
           "&op_creator);\n"
-          "  static BaseCustomOp *CreateOrGetCustomOp(const AscendString &op_type);\n"
+          "  static BaseCustomOp *CreateOrGetCustomOp(const AscendString &op_type);\n";
+      if (id == StablePartId::kCreateDynamicClassCustomOpFactory) {
+        output += "  static std::shared_ptr<CustomOpRegistry> GetGlobalRegistryPtr();\n";
+      }
+      output +=
           "  static graphStatus GetAllRegisteredOps(std::vector<AscendString> &all_registered_ops);\n"
           "  static bool IsExistOp(const AscendString &op_type);\n"
           "  static graphStatus LoadCustomOpsPartition(const uint8_t *data, size_t len);\n"
@@ -1127,7 +1133,15 @@ Status ResolveStablePart(StablePartId id, std::string &output) {
           "  }\n"
           "  return custom_op->Execute(op_context);\n"
           "}\n"
-          "\n"
+          "\n";
+      {
+        std::string deserializer;
+        (void)ResolveStablePart(StablePartId::kCustomKernelDeserializer, deserializer);
+        output += deserializer;
+      }
+      return SUCCESS;
+    case StablePartId::kCustomKernelDeserializer:
+      output =
           "aclError DeserializeCustKernelBinaries(std::unordered_map<std::string, BinDataInfo> &bin_info_map) {\n"
           "  for (auto &[name, bin_info] : bin_info_map) {\n"
           "    auto post_fix_pos = name.rfind(\"_CustomKernel.bin\");\n"

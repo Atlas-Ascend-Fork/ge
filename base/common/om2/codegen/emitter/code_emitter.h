@@ -41,6 +41,8 @@ class BinaryExpr;
 class UnaryExpr;
 class CallExpr;
 class MakeUniqueArrayExpr;
+class NewExpr;
+class DeleteExpr;
 class ToStrExpr;
 class MemcpyExpr;
 class SizeofExpr;
@@ -100,6 +102,8 @@ class CodeEmitter {
   virtual Status Emit(const UnaryExpr &node, std::string &output) = 0;
   virtual Status Emit(const CallExpr &node, std::string &output) = 0;
   virtual Status Emit(const MakeUniqueArrayExpr &node, std::string &output) = 0;
+  virtual Status Emit(const NewExpr &node, std::string &output) = 0;
+  virtual Status Emit(const DeleteExpr &node, std::string &output) = 0;
   virtual Status Emit(const ToStrExpr &node, std::string &output) = 0;
   virtual Status Emit(const MemcpyExpr &node, std::string &output) = 0;
   virtual Status Emit(const SizeofExpr &node, std::string &output) = 0;
