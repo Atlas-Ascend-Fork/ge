@@ -105,6 +105,7 @@ target_compile_options(register PRIVATE
 
 target_compile_definitions(register PRIVATE
     google=ascend_private
+    GE_API_EXPORTS
     $<IF:$<STREQUAL:${TARGET_SYSTEM_NAME},Windows>,OS_TYPE=WIN,OS_TYPE=0>
     $<$<STREQUAL:${TARGET_SYSTEM_NAME},Windows>:SECUREC_USING_STD_SECURE_LIB=0 NOMINMAX>
 )
@@ -175,6 +176,7 @@ target_compile_options(register_static PRIVATE
 
 target_compile_definitions(register_static PRIVATE
     google=ascend_private
+    GE_API_EXPORTS
     $<IF:$<STREQUAL:${TARGET_SYSTEM_NAME},Windows>,OS_TYPE=WIN,OS_TYPE=0>
     $<$<STREQUAL:${TARGET_SYSTEM_NAME},Windows>:SECUREC_USING_STD_SECURE_LIB=0 NOMINMAX>
 )
