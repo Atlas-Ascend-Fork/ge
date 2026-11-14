@@ -415,10 +415,10 @@ class GeGenerator::Impl {
 
   Status SaveRootModel(const std::string &file_name_prefix, const GeRootModelPtr &ge_root_model,
                        ModelBufferData &model_buff,
-                       OfflineModelFormat om_format = OfflineModelFormat::OM_FORMAT_DEFAULT);
+                       OfflineModelFormat om_format = OfflineModelFormat::OM_FORMAT_DEFAULT) const;
   Status SaveRootModel(const std::string &file_name_prefix, const GeRootModelPtr &ge_root_model,
                        const GeRootModelPtr &fallback_root_model, ModelBufferData &model_buff,
-                       OfflineModelFormat om_format = OfflineModelFormat::OM_FORMAT_DEFAULT);
+                       OfflineModelFormat om_format = OfflineModelFormat::OM_FORMAT_DEFAULT) const;
   Status SaveParams(GeModelPtr &ge_model, const std::string &type, const std::map<std::string, GeAttrValue> &attrs,
                     const std::vector<GeTensor> &inputs, const std::vector<GeTensor> &outputs);
 
@@ -1605,14 +1605,14 @@ static bool IsDualBodyRequired(const ComputeGraphPtr &graph, const bool is_offli
 }
 
 Status GeGenerator::Impl::SaveRootModel(const std::string &file_name_prefix, const GeRootModelPtr &ge_root_model,
-                                        ModelBufferData &model_buff, OfflineModelFormat om_format) {
+                                        ModelBufferData &model_buff, OfflineModelFormat om_format) const {
   const GeRootModelPtr fallback_root_model = nullptr;
   return SaveRootModel(file_name_prefix, ge_root_model, fallback_root_model, model_buff, om_format);
 }
 
 Status GeGenerator::Impl::SaveRootModel(const std::string &file_name_prefix, const GeRootModelPtr &ge_root_model,
                                         const GeRootModelPtr &fallback_root_model, ModelBufferData &model_buff,
-                                        OfflineModelFormat om_format) {
+                                        OfflineModelFormat om_format) const {
   bool is_unknown_shape = false;
   GE_ASSERT_SUCCESS(ge_root_model->CheckIsUnknownShape(is_unknown_shape),
                     "root model(id:%u) CheckIsUnknownShape failed", ge_root_model->GetModelId());

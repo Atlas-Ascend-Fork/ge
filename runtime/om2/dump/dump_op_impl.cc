@@ -224,7 +224,7 @@ Status DumpOp::BuildTaskInputs(const GertModelTaskDesc &task_desc, const std::st
 }
 
 Status DumpOp::FillProtoInputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc,
-                                     const std::string &model_name, const std::string &root_graph_name) {
+                                     const std::string &model_name, const std::string &root_graph_name) const {
   if (task_desc.inputs == nullptr) {
     return SUCCESS;
   }
@@ -270,7 +270,7 @@ Status DumpOp::FillProtoInputTensors(toolkit::aicpu::dump::Task *task, const Ger
 }
 
 Status DumpOp::FillTlvInputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc,
-                                   const std::string &model_name, const std::string &root_graph_name) {
+                                   const std::string &model_name, const std::string &root_graph_name) const {
   if (task_desc.inputs == nullptr) {
     return SUCCESS;
   }
@@ -343,7 +343,7 @@ Status DumpOp::BuildTaskOutputs(const GertModelTaskDesc &task_desc, const std::s
 }
 
 Status DumpOp::FillProtoOutputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc,
-                                      const std::string &model_name, const std::string &root_graph_name) {
+                                      const std::string &model_name, const std::string &root_graph_name) const {
   if (task_desc.outputs == nullptr) {
     return SUCCESS;
   }
@@ -389,7 +389,7 @@ Status DumpOp::FillProtoOutputTensors(toolkit::aicpu::dump::Task *task, const Ge
 }
 
 Status DumpOp::FillTlvOutputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc,
-                                    const std::string &model_name, const std::string &root_graph_name) {
+                                    const std::string &model_name, const std::string &root_graph_name) const {
   if (task_desc.outputs == nullptr) {
     return SUCCESS;
   }

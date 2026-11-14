@@ -52,13 +52,13 @@ class DumpOp {
   Status SubmitSerializedPayload(const std::string &op_name);
   Status LaunchDumpKernel(const std::string &op_name, aclrtStream stream);
   Status FillProtoInputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc,
-                               const std::string &model_name, const std::string &root_graph_name);
+                               const std::string &model_name, const std::string &root_graph_name) const;
   Status FillProtoOutputTensors(toolkit::aicpu::dump::Task *task, const GertModelTaskDesc &task_desc,
-                                const std::string &model_name, const std::string &root_graph_name);
+                                const std::string &model_name, const std::string &root_graph_name) const;
   Status FillTlvInputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc, const std::string &model_name,
-                             const std::string &root_graph_name);
+                             const std::string &root_graph_name) const;
   Status FillTlvOutputTensors(DumpTransTaskInfo *task, const GertModelTaskDesc &task_desc,
-                              const std::string &model_name, const std::string &root_graph_name);
+                              const std::string &model_name, const std::string &root_graph_name) const;
 
   uint32_t dump_data_version_ = 0;  // 0代表protobuf格式 1代表TLV格式
 

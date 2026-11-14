@@ -288,7 +288,8 @@ graphStatus ComputeGraphBackend::RemoveEdgeByAnchor(const NodePtr &src_node_ptr,
   return RemoveDataEdgeByAnchor(src_node_ptr, src_port_index, dst_node_ptr, dst_port_index);
 }
 
-graphStatus ComputeGraphBackend::RemoveControlEdgeByAnchor(const NodePtr &src_node_ptr, const NodePtr &dst_node_ptr) {
+graphStatus ComputeGraphBackend::RemoveControlEdgeByAnchor(const NodePtr &src_node_ptr,
+                                                           const NodePtr &dst_node_ptr) const {
   if (src_node_ptr->GetOutControlAnchor() == nullptr) {
     REPORT_INNER_ERR_MSG("E18888", "src node:%s out control anchor is null.", src_node_ptr->GetName().c_str());
     GELOGE(GRAPH_FAILED, "[Get][Anchor] src node:%s out control anchor is null.", src_node_ptr->GetName().c_str());
@@ -308,7 +309,7 @@ graphStatus ComputeGraphBackend::RemoveControlEdgeByAnchor(const NodePtr &src_no
 
 graphStatus ComputeGraphBackend::RemoveDataControlEdgeByAnchor(const NodePtr &src_node_ptr,
                                                                const int32_t src_port_index,
-                                                               const NodePtr &dst_node_ptr) {
+                                                               const NodePtr &dst_node_ptr) const {
   const graphStatus res =
       GraphUtils::RemoveEdge(src_node_ptr->GetOutDataAnchor(src_port_index), dst_node_ptr->GetInControlAnchor());
   if (res != GRAPH_SUCCESS) {
@@ -322,7 +323,8 @@ graphStatus ComputeGraphBackend::RemoveDataControlEdgeByAnchor(const NodePtr &sr
 }
 
 graphStatus ComputeGraphBackend::RemoveDataEdgeByAnchor(const NodePtr &src_node_ptr, const int32_t src_port_index,
-                                                        const NodePtr &dst_node_ptr, const int32_t dst_port_index) {
+                                                        const NodePtr &dst_node_ptr,
+                                                        const int32_t dst_port_index) const {
   const graphStatus res = GraphUtils::RemoveEdge(src_node_ptr->GetOutDataAnchor(src_port_index),
                                                  dst_node_ptr->GetInDataAnchor(dst_port_index));
   if (res != GRAPH_SUCCESS) {

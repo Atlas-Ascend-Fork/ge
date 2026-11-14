@@ -11,14 +11,12 @@
 #ifndef AIR_CXX_BASE_COMMON_OM2_CODEGEN_FILE_CODE_GENERATOR_VAR_TRANS_FILE_CODE_GENERATOR_H_
 #define AIR_CXX_BASE_COMMON_OM2_CODEGEN_FILE_CODE_GENERATOR_VAR_TRANS_FILE_CODE_GENERATOR_H_
 
-#include <cstdint>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "common/om2/codegen/code_generator_base.h"
 #include "common/om2/codegen/om2_codegen_types.h"
-#include "graph/types.h"
 
 namespace ge {
 // 产出 <model>_var_mgr.cpp 内的转换部分：把格式转换与数据类型转换的源码按依赖序文本内联，

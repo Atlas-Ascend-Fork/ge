@@ -410,7 +410,7 @@ graphStatus NodeImpl::GetAttr(const AscendString &name, AscendString &attr_value
   return GRAPH_SUCCESS;
 }
 
-graphStatus NodeImpl::GetAttr(const AscendString &name, std::vector<AscendString> &attr_values) const {
+graphStatus NodeImpl::GetAttr(const AscendString &name, std::vector<AscendString> &attr_value) const {
   const char_t *const ascend_name = name.GetString();
   const NodeContext node = ResolveNode();
   if (!node.IsValid()) {
@@ -429,7 +429,7 @@ graphStatus NodeImpl::GetAttr(const AscendString &name, std::vector<AscendString
 
   for (auto &attr_name : attr_names) {
     const AscendString ascend_attr_name(attr_name.c_str());
-    attr_values.push_back(ascend_attr_name);
+    attr_value.push_back(ascend_attr_name);
   }
 
   return GRAPH_SUCCESS;
@@ -451,7 +451,7 @@ graphStatus NodeImpl::SetAttr(const AscendString &name, AscendString &attr_value
   return GRAPH_SUCCESS;
 }
 
-graphStatus NodeImpl::SetAttr(const AscendString &name, std::vector<AscendString> &attr_values) const {
+graphStatus NodeImpl::SetAttr(const AscendString &name, std::vector<AscendString> &attr_value) const {
   const char_t *const ascend_name = name.GetString();
   const NodeContext node = ResolveNode();
   if (!node.IsValid()) {
@@ -460,7 +460,7 @@ graphStatus NodeImpl::SetAttr(const AscendString &name, std::vector<AscendString
     return GRAPH_FAILED;
   }
   std::vector<std::string> node_attr_vals;
-  for (const auto &attr_val : attr_values) {
+  for (const auto &attr_val : attr_value) {
     if (attr_val.GetString() != nullptr) {
       std::string node_attr_val = attr_val.GetString();
       node_attr_vals.emplace_back(node_attr_val);

@@ -197,7 +197,7 @@ Status RegisterModelCreators(const CustomOpRegistryPtr &registry, const PythonCu
   const bool has_device = (adapter_desc.capabilities & device_capabilities) != 0U;
   const bool has_host = HasCustomOpCapability(adapter_desc.capabilities, CustomOpCapability::kHostCpuExecute);
 
-  auto register_one = [&](OpBackend backend) -> Status {
+  auto register_one = [&registry, &op_type, &creator, &adapter_desc](OpBackend backend) -> Status {
     const auto ret = registry->RegisterCreator(op_type, backend, creator);
     if (ret != GRAPH_SUCCESS) {
       GELOGE(FAILED, "[PythonCustomOp][Restore] Register model creator failed, op type[%s], backend[%u], status[%u].",
@@ -373,7 +373,7 @@ class PythonCustomOpRestoreHookImpl : public PythonCustomOpRestoreHook {
     auto scope = std::make_shared<PythonCustomOpModelScope>(scope_id);
     bool committed = false;
     // 失败自回滚：关闭 Python scope + 回收 RuntimeRegistry 条目（creator 由被丢弃的 registry 析构清理）。
-    auto rollback = [&]() {
+    auto rollback = [&committed, &scope]() {
       if (!committed) {
         scope->Close();
       }

@@ -11,7 +11,6 @@
 #ifndef METADEF_GRAPH_NORMAL_GRAPH_EXECUTE_NODE_BACKEND_H_
 #define METADEF_GRAPH_NORMAL_GRAPH_EXECUTE_NODE_BACKEND_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
