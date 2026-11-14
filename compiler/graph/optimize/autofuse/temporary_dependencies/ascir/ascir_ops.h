@@ -909,7 +909,7 @@ struct Broadcast : public Operator {
     std::set<ge::DataType> support_dtypes_of_sym_T;
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
-                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_UINT64};
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
@@ -1206,7 +1206,7 @@ struct Cast : public Operator {
                  {DT_FLOAT16, {DT_FLOAT, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_INT4}},
                  {DT_INT8, {DT_FLOAT16, DT_UINT8}},
                  {DT_INT32, {DT_FLOAT, DT_FLOAT16, DT_INT16, DT_UINT32, DT_INT64}},
-                 {DT_UINT8, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT4}},
+                 {DT_UINT8, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT4, DT_INT64}},
                  {DT_INT16, {DT_FLOAT, DT_FLOAT16, DT_UINT16}},
                  {DT_UINT16, {DT_INT16}},
                  {DT_UINT32, {DT_INT32}},
@@ -3821,7 +3821,7 @@ struct LogicalOr : public Operator {
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT16};
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT16, DT_INT64};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
@@ -3902,7 +3902,7 @@ struct LogicalAnd : public Operator {
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT16};
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT16, DT_INT64};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
