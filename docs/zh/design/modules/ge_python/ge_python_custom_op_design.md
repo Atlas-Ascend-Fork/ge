@@ -37,10 +37,10 @@ V2 具体覆盖以下内容：
 
 V2 完成后仍不覆盖以下内容：
 
-- 不向 Python 直接暴露 `ShapeInferOp`、`CompilableOp`、`PortableOp`、`ArgsUpdater` 等 C++ `BaseCustomOp` 能力接口；V2 的 Meta 推导通过 `infer_meta` 回调提供。
+- 不向 Python 直接暴露 `ShapeInferOp`、`CompilableOp`、`ArgsUpdater` 等 C++ `BaseCustomOp` 能力接口；V2 的 Meta 推导通过 `infer_meta` 回调提供。
 - 读取输入 Tensor 数据的 data-dependent infer。
 - InferShapeRange、format、符号化推导和 shape rule 生成。
-- Python `serialize`、`deserialize` 参数绑定，以及 ES API 自动生成。
+- ES API 自动生成。
 - device/host 之外的其它 Python execute backend。
 - Python 侧 `KernelArgs` / `MallocReadOnlyDevArgs` 对外封装。
 - Bridge、native 和 Adapter 的独立升级兼容；V2 仍按同批构建、整体替换和重启生效管理。
@@ -103,15 +103,16 @@ V1 功能包括：
 - Python 入口失败只在实际存在 Python custom op 入口时影响加载；没有 Python 文件/包时直接跳过。
 - `EagerOpExecutionContext`、`AnnotatedArgsContext` 以及由它们返回的 `Tensor` 等 borrowed view 只能在当前回调内使用；`AnnotatedKernelArgs` 被 `add_launch` 消费后不可复用。
 - Python `execute` 的返回值当前不作为状态码使用；正常返回表示成功，抛出异常表示失败。
-- Python custom op 由 C++ adapter 声明 `EagerExecuteOp`、`HostCpuExecuteOp`、`CompilableOp` 和
-  `AnnotatedArgsOp` capability；实际可见接口由 descriptor capability bitmask 过滤。
+- Python custom op 由 C++ adapter 声明 `EagerExecuteOp`、`HostCpuExecuteOp`、`CompilableOp`、
+  `AnnotatedArgsOp` 和 `PortableOp` capability；实际可见接口由 descriptor capability bitmask 过滤。
 - schema-bound 形式依赖已有算子原型的 canonical IR。bridge 加载 descriptor 时收集 canonical IR，并在创建 holder 和调用业务 callback 之前调用 `validate_op_impl_descriptor`，一次性校验 schema-bound 签名：`execute` 校验 IR 输入和属性，不把输出参数纳入签名；`compile` 和 `declare_launch_args` 校验输入、输出、属性并要求显式声明 `-> None`；三个 callback 的实际返回值也必须为`None`。runtime callback 只组装实参并调用业务方法，不再校验签名；校验结果属于 descriptor 加载阶段，不进入 holder 生命周期。
 - 跨 SO 的 proto/Adapter descriptor 是同步借用的 C POD view，runtime callback 返回前必须完成校验和深拷贝。
 - Python 原型允许覆盖内置原型；若 `CustomOpFactory` 已存在同名 C++ 或 Python 自定义算子，则视为自定义算子冲突。
 - 实例缓存与公共能力查询以 priority 为收敛域：同 `op_type` 同 priority 下，动态类型相同的实现跨 engine/backend 共享同一实例；`GetCustomOpCommonCapability` 在 priority 子树内做唯一 provider 检查，engine 维度不参与筛选——不同实现类在同一 priority 下同时提供同一公共能力时查询失败并报错。
 - schema-bound 回调分别通过 `get_execute_ctx()`、`get_compile_ctx()` 或 `get_declare_launch_args_ctx()` 获取当前 context；该绑定只在当前回调动态作用域内有效。
 - Python custom op native/bridge 与构建时 Python ABI 相关，不提供跨 Python minor version 兼容承诺。
-- bridge C ABI 升级为 v2，device/host `execute` 使用不同类型的 context callback；canonical IR 由
+- bridge C ABI 升级为 v2。新增 `serialize`/`deserialize` callback、device/host `execute` 的差异化 context callback，并在函数表末尾追加四个模型级 scope 恢复指针——`collect_deployment_artifacts`/`restore_model_scope`/`collect_model_scope_proto_op_types`/`close_model_scope`，服务 Python 源码打包进 OM 的加载侧恢复，见 `docs/zh/design/features/so_in_om.md`。声明 `kPortable` 时要求 `PythonCustomOpAdapterCallbacks` 的两个 callback 均非空。
+  `serialize`/`deserialize` 回调只传 holder 与 `bytes` buffer，不传递 context。canonical IR 由
   bridge 通过 run 包公共接口查询，不通过私有 ABI 投影传递。
 
 ### 2.5 假设和依赖关系
@@ -294,7 +295,7 @@ Python custom op 使用 `@register_op_impl(op_type=...)` 装饰器注册实现�
 | `op_type` | 自定义算子类型 |
 | `module_name` | Python 模块名 |
 | `class_name` | Python 类名 |
-| `interfaces` | 能力列表，可包含 `"eager_execute"`、`"host_cpu_execute"`、`"compilable"`、`"annotated_args"` |
+| `interfaces` | 能力列表，可包含 `"eager_execute"`、`"host_cpu_execute"`、`"compilable"`、`"annotated_args"`、`"portable"` 或其合法组合 |
 
 其中，`interfaces` 是 C++ capability 的声明来源：device kernel 对应
 `"eager_execute"`，host kernel 对应 `"host_cpu_execute"`。
@@ -363,8 +364,9 @@ Python custom op 使用 `@register_op_impl(op_type=...)` 装饰器注册实现�
 
 - `PythonCustomOpAdapter` 继承 `EagerExecuteOp`、`HostCpuExecuteOp`、`AnnotatedArgsOp`、
   `CompilableOp`、`ShapeInferOp`、`PortableOp`、`ArgsUpdater` 和 `CustomOpCapabilityProvider`。
-- 当前 `PythonCustomOpCallbacks::IsValid()` 接受 `kEagerExecute`、`kHostCpuExecute`、`kCompilable`、
-  `kAnnotatedArgs` 及其组合，并校验能力对应的 callback 非空。
+- `PythonCustomOpAdapterCallbacks::IsValid()` 接受 `kEagerExecute`、`kHostCpuExecute`、`kCompilable`、
+  `kAnnotatedArgs`、`kPortable` 及其合法组合，并校验能力对应的 callback 非空；声明 `kPortable` 时要求
+  `serialize` 和 `deserialize` callback 同时非空。其它未声明能力对应的 callback 不参与校验。
 - GE 内部能力检测使用 `CustomOpCast<T>()`。普通 C++ custom op 退化为 `dynamic_cast<T *>`，Python adapter 先检查 bitmask。
 
 **输出**
@@ -373,7 +375,11 @@ Python custom op 使用 `@register_op_impl(op_type=...)` 装饰器注册实现�
 - 支持 `kHostCpuExecute` 时，Host CPU `Execute(ctx)` 转发到 Python host kernel。
 - 支持 `kCompilable` 时，`Compile(ctx)` 转发到 Python。
 - 支持 `kAnnotatedArgs` 时，`DeclareLaunchArgs(ctx)` 转发到 Python。
-- 不支持的 `InferShape`、`InferDataType`、`Serialize`、`Deserialize`、`UpdateHostArgs` 返回 `GRAPH_FAILED` 并记录日志。
+- 支持 `kPortable` 时，`Serialize(vector)` 和 `Deserialize(vector)` 转发到 Python holder 的
+  `serialize`/`deserialize` 实例方法；payload 按不透明 `bytes` 处理，每个方向各发生一次 Python/C++ `bytes`
+  复制，不使用 borrowed buffer。
+- 不支持的 `InferShape`、`InferDataType`、`UpdateHostArgs` 返回 `GRAPH_FAILED` 并记录日志。未声明
+  `kPortable` 的 adapter 的 `Serialize`/`Deserialize` 同样返回 `GRAPH_FAILED`。
 
 #### 3.2.7 加载、卸载与生命周期
 
@@ -399,6 +405,52 @@ Python custom op 加载由 `runtime/custom_op` 管理，避免 `graph_metadef/re
 - adapter 析构时销毁 Python holder，并 release runtime registry entry。
 - 单项 runtime registry 注销仍受 active adapter 保护；进程卸载时先移除 Adapter creator，再批量清理 registry。
 
+#### 3.2.8 Python Portable 状态接口
+
+**介绍**
+
+Portable 能力允许用户通过普通 Python 类上成对的 `serialize`/`deserialize` 实例方法声明算子状态快照能力。GE 不新增 Python `PortableOp` 基类、context、payload wrapper 或序列化工具，也不为 `register_op_impl` 新增声明参数。该接口在 Python holder、native bridge 和 C++ adapter 层面交付；源码快照与 Portable 状态打包进 OM 及加载期恢复见 `docs/zh/design/features/so_in_om.md`。
+
+**输入**
+
+- 实现类上成对存在的 `serialize` 和 `deserialize` 普通实例方法，签名固定为：
+
+```python
+def serialize(self) -> bytes: ...
+
+def deserialize(self, data: bytes) -> None: ...
+```
+
+- `serialize` 返回非空 `bytes`，长度范围为 `1..UINT32_MAX`。
+- `deserialize` 接收拥有自身存储的 Python `bytes`，返回 `None`。
+
+**处理**
+
+- `register_op_impl` 装饰阶段使用 `inspect.getattr_static` 静态解析 `serialize`/`deserialize` 属性，拒绝 `staticmethod`、`classmethod`、非可调用属性和单边存在。两个方法均不存在时不产生 `portable` capability，也不影响其他能力识别。
+- 注册期严格校验签名：`self` 和 `data` 以外不允许额外参数；不允许默认值、keyword-only 参数、`*args` 或 `**kwargs`；参数和返回注解必须显式存在，字符串注解和 `from __future__ import annotations` 通过 `typing.get_type_hints` 解析。`serialize` 返回注解必须为 `bytes`，`deserialize` 数据参数注解必须为 `bytes`、返回注解必须为 `None`。`deserialize` 的数据参数名称不作要求。
+- 注册期只校验 `cls()` 的调用签名可绑定空参数，不执行用户构造器；holder 创建期实际调用 `cls()`，构造异常按 holder 创建失败处理。待恢复 Portable 状态不能通过构造参数注入，只能由 `deserialize` 恢复。
+- 校验通过后 descriptor 的 `interfaces` 增加唯一的 `portable` 条目，并映射为 `CustomOpCapability::kPortable`。
+- `portable` 可与 `eager_execute`、`host_cpu_execute`、`compilable`、`annotated_args` 等 capability 独立组合，彼此不隐式包含。
+- `PythonCustomOpAdapter::Serialize` 在调用前校验 capability、holder、callback 和输出 vector，清空输出后转发到 `callbacks.serialize`；`Deserialize` 在调用前校验 capability、holder、callback、data 和 size，拒绝空 vector，再转发到 `callbacks.deserialize`。
+- bridge `call_serialize` 获取 GIL 后调用 holder 实例的 `serialize()`，校验返回值为非空 `bytes` 且长度不超过 `UINT32_MAX`，再复制到 C++ vector。bridge `call_deserialize` 获取 GIL 后将 C++ buffer 复制为拥有自身存储的 Python `bytes`，再调用 holder 实例的 `deserialize(data)`，校验返回值为 `None`。
+- holder 生命周期：编译侧 `compile` 与后续 `serialize` 复用同一 holder；恢复侧创建新 holder，先通过 `cls()` 获得空实例，再调用一次 `deserialize()`，恢复后其他 capability 继续复用该实例。同一 adapter 的所有 capability 始终复用同一 holder。
+- payload 对 GE 完全不透明：GE 不使用 pickle，不解析用户协议，不提供版本头、magic、checksum 或兼容性 fallback。用户代码通过普通 Python 编解码库自行实现 payload 协议。
+- `serialize()` 不接收节点、模型或编译 context，可重复调用且必须返回当前状态的确定性快照，不得消费或清空实例状态。framework 不承诺每个实例或每个模型只调用一次。
+- 不新增 per-holder 锁；纯 Python 状态受 GIL 保护，用户代码释放 GIL 后访问的 native 共享状态由用户自行同步。不创建新线程，不在模型执行热路径调用 `serialize` 或 `deserialize`。
+- 日志只记录 descriptor/op 元数据、阶段、异常类型和长度，不得包含 payload 内容、脚本内容、kernel binary、Tensor 数据、设备地址或用户协议字段值。
+
+**输出**
+
+- 合法配对方法产生 `kPortable` capability，可独立存在或与 `kEagerExecute`、`kHostCpuExecute`、`kCompilable`、`kAnnotatedArgs` 组合。
+- `serialize` 返回的 `bytes` 逐字节复制到 C++ vector；`deserialize` 接收的 `bytes` 拥有独立存储，Python 侧不持有 C++ 指针。
+- Python 异常、非法返回值（非 `bytes`、空 `bytes`、超长、非 `None` 返回）和转换错误统一转换为 `GRAPH_FAILED`，不自动重试，不自动 fallback 到 compile，不保留半成功结果。
+
+**显式排除**
+
+- Portable 接口自身不新增 OM 分区、不改变模型缓存 key；源码快照与 Portable 状态分别复用 `PYTHON_CUSTOM_OPS`（分区类型 27）和既有 `CUSTOM_OPS` 分区随 OM 保存。
+- Python 实现与模型级 registry 的加载期恢复由 `PYTHON_CUSTOM_OPS` 分区的恢复通路完成，见 `docs/zh/design/features/so_in_om.md`；Portable 接口只提供其中的状态序列化与反序列化回调。
+- 不修改 `runtime/v1`、`runtime/v2`、AscendIR、图拆分、内存、流或 TaskDef 路径；模型加载链的改造位于 `base/common/helper` 与 `runtime/custom_op`。
+
 ### 3.3 非功能需求
 
 #### 3.3.1 可维护性
@@ -410,9 +462,10 @@ Python custom op 加载由 `runtime/custom_op` 管理，避免 `graph_metadef/re
 #### 3.3.2 可测试性
 
 - Python UT 覆盖普通 class 注册、backend kernel 收集/冲突/分派、descriptor 加载阶段的 schema-bound
-  签名校验、schema-bound 调用、context 作用域、holder 生命周期和环境变量插件加载。
-- C++ UT 应覆盖 capability helper、canonical IR 查询、adapter 的 device/host execute 转发、双 backend
-  creator、loader 跳过/加载路径、bridge ABI v2 校验和 shutdown 顺序。
+  签名校验、schema-bound 调用、Portable 配对方法与签名校验、`call_serialize`/`call_deserialize` 边界、
+  context 作用域、holder 生命周期和环境变量插件加载。
+- C++ UT 应覆盖 capability helper、canonical IR 查询、adapter 的 device/host execute 与 portable 转发、
+  双 backend creator、loader 跳过/加载路径、bridge ABI 校验和 shutdown 顺序。
 - 样例 `examples/custom_op/annotated_args_refresh_add_custom/{online,offline}/python` 分别验证公开 Python `register_op`/`infer_meta`/`register_op_impl` 与 Ascend C kernel 的在线、离线链路；两个在线算子均由 Python 实现，AnnotatedAddCustom 不再与 C++ creator 共存。
 
 #### 3.3.3 可移植性
@@ -470,19 +523,21 @@ Python 对外 API 见 `docs/zh/api/graph_engine_api/python/ge/custom_op/`。当�
 | 接口 | 说明 |
 |------|------|
 | `execute` | 用户实现的 schema-bound 执行入口 |
+| `serialize` | 用户实现的 Portable 状态快照方法，签名为 `serialize(self) -> bytes` |
+| `deserialize` | 用户实现的 Portable 状态恢复方法，签名为 `deserialize(self, data: bytes) -> None` |
 | `register_kernel` | 为同名 `execute` 显式声明 `device` 或 `host` backend |
 | `OpBackend` | `register_kernel` 使用的 backend 枚举，成员为 `DEVICE`、`HOST` |
 | `EagerOpExecutionContext` | 执行上下文 borrowed view |
 | `HostCpuOpExecutionContext` | Host CPU 执行上下文 borrowed view |
 | `get_execute_ctx` | 获取当前 schema-bound 回调的执行上下文 |
 | `register_op` | 声明并收集 Python 自定义算子原型 |
-| `register_op_impl` | 注册实现类并反射其能力方法 |
+| `register_op_impl` | 注册实现类并反射其能力方法，包括 `execute`、`compile`、`declare_launch_args` 和成对的 `serialize`/`deserialize` |
 | `get_registered_op_impls` | 获取 descriptor 对象列表 |
 | `get_registered_op_impl_dicts` | 获取 bridge 字典列表 |
 | `get_registered_op_impl_by_descriptor_key` | 按 descriptor key 查询 descriptor |
 | `clear_registered_op_impls` | 清理 Python registry |
 
-`ge.runtime` 公开提供 `TensorDesc`，作为 `register_op` infer-meta 函数的输入/输出类型。`ge.runtime` 中的 `Tensor`、`Shape`、`StorageShape`、`StorageFormat`、`TensorPlacement` 是 context 的入参/返回类型，不归入 `ge.custom_op` 的 `__all__`。
+`ge.runtime` 公开提供 `TensorDesc`，作为 `register_op` infer-meta 函数的输入/输出类型。`ge.runtime` 中的 `Tensor`、`Shape`、`StorageShape`、`StorageFormat`、`TensorPlacement` 是 context 的入参/返回类型，不归入 `ge.custom_op` 的 `__all__`。Portable 的 `serialize`/`deserialize` 不引入新的公开类型；payload 直接使用 Python 内置 `bytes`。
 
 ### 5.2 接口检查项
 
@@ -541,10 +596,10 @@ struct PythonCustomOpAdapterDescriptor {
 
 #### PythonCustomOpAdapterCallbacks
 
-bridge 向 runtime 注册 create/destroy/device execute/host execute/compile/declare_launch_args 回调。
-schema-bound 签名校验不是 C++ callback，而是 bridge 在注册 Adapter 前内部调用
+bridge 向 runtime 注册 create/destroy/device execute/host execute/compile/declare_launch_args/serialize/
+deserialize 回调。schema-bound 签名校验不是 C++ callback，而是 bridge 在注册 Adapter 前内部调用
 `validate_op_impl_descriptor` 完成。`IsValid()` 要求 create/destroy 非空，并按 capability 校验对应
-callback。
+callback；声明 `kPortable` 时 `serialize` 和 `deserialize` callback 必须同时非空。
 
 #### BorrowedEagerOpExecutionContext
 
@@ -569,7 +624,9 @@ native binding 保存 `gert::AnnotatedArgsContext *` 和独立 validity 标记�
   未使用 `register_kernel` 的单个 `execute` 归一化为 device。
 - **能力反射**：device kernel 映射为 `eager_execute`/`kEagerExecute`，host kernel 映射为
   `kHostCpuExecute`；`compile` 映射为公共的 `kCompilable` capability，不参与 device/host backend
-  判断；`declare_launch_args` 和 `ArgsUpdater` 仍属于 device-only capability，继续映射为各自 capability。
+  判断；`declare_launch_args` 和 `ArgsUpdater` 仍属于 device-only capability，继续映射为各自 capability；
+  Portable 使用 `inspect.getattr_static` 静态解析成对的 `serialize`/`deserialize` 并映射为公共的
+  `portable`/`kPortable`，拒绝 `staticmethod`/`classmethod` 和单边存在，同样不参与 backend 判断。
 - **capability 过滤**：`CustomOpCast<T>()` 先识别 `CustomOpCapabilityProvider`，再按 bitmask 判断是否支持目标接口。
 - **IR 实参组装**：bridge 在 descriptor 加载阶段通过 run 包公共接口查询 canonical IR 以校验签名，holder 创建时再次查询并持有运行期 IR 快照；runtime callback 按该快照的 IR 顺序读取 required/optional/dynamic 输入输出和 typed runtime attrs，分别构造 positional arguments 和 keyword arguments。
 - **注册流程**：proto 延续现有 loader ownership；`CommitPythonCustomOpRegistrations()` 按
@@ -577,8 +634,9 @@ native binding 保存 `gert::AnnotatedArgsContext *` 和独立 validity 标记�
   `UnloadPythonCustomOps()` 统一清理；包含任一 device-only capability 的 descriptor 注册 `kDevice`
   creator，包含 `kHostCpuExecute` 的 descriptor 注册 `kHostCPU` creator；仅包含公共 capability 的
   descriptor 延续现有 `kDevice` anchor 兼容行为。
-- **回调签名校验**：bridge 加载 descriptor 时调用 `validate_op_impl_descriptor` 一次性校验 schema-bound 签名，并在创建 holder 和业务 callback 之前完成。`execute` 校验总参数数量、输入的位置形式及已提供的类型注解，以及属性的 keyword-only 形式、名称和已提供的类型注解；`compile` 和 `declare_launch_args` 额外校验输出参数，三个 callback 都校验返回注解为 `None`。runtime callback 不再校验签名，但会检查实际返回值必须为`None`，校验状态也不进入 holder 生命周期。
-- **holder 生命周期**：C++ adapter 拥有 `PythonCustomOpHolder`，Python 侧 `_OP_IMPL_HOLDERS` 以 `instance_id` 保存实例；adapter 析构时销毁 Python holder。
+- **回调签名校验**：bridge 加载 descriptor 时调用 `validate_op_impl_descriptor` 一次性校验 schema-bound 签名，并在创建 holder 和业务 callback 之前完成。`execute` 校验总参数数量、输入的位置形式及已提供的类型注解，以及属性的 keyword-only 形式、名称和已提供的类型注解；`compile` 和 `declare_launch_args` 额外校验输出参数，三个 callback 都校验返回注解为 `None`。runtime callback 不再校验签名，但会检查实际返回值必须为`None`，校验状态也不进入 holder 生命周期。Portable 签名校验在 `register_op_impl` 装饰阶段由独立 validator `_portable.py` 完成，严格校验 `serialize(self) -> bytes` 和 `deserialize(self, data: bytes) -> None` 的参数数量、kind、注解和无参构造签名，不执行构造器。
+- **Portable bytes 边界**：bridge `call_serialize` 校验返回值为非空 `bytes` 且长度不超过 `UINT32_MAX` 后复制到 C++ vector；`call_deserialize` 将 C++ buffer 复制为拥有自身存储的 Python `bytes` 后调用用户方法。每个方向只发生一次 Python/C++ `bytes` 复制，不使用 borrowed buffer 或 memoryview。长度上限校验抽取为独立 helper `_validate_portable_payload_length`，以避免在 UT 中分配 4 GiB 内存。
+- **holder 生命周期**：C++ adapter 拥有 `PythonCustomOpImplHolder`，Python 侧 `_OP_IMPL_HOLDERS` 以 `instance_id` 保存实例；adapter 析构时销毁 Python holder。Portable 编译侧 `compile` 与 `serialize` 复用同一 holder；恢复侧新 holder 先 `cls()` 再 `deserialize()`，恢复后其他 capability 继续复用该实例。
 - **上下文绑定**：schema-bound 回调使用 `ContextVar` 建立动态作用域，`get_execute_ctx()`、`get_compile_ctx()` / `get_compile_platform_info()` 和 `get_declare_launch_args_ctx()` 读取对应绑定；token reset 支持嵌套调用后恢复外层 context。
 - **上下文失效**：bridge 的 execute/compile/declare 调用都使用 `finally` 确保 context 失效，不依赖用户正常返回。
 
@@ -645,14 +703,39 @@ PythonCustomOpAdapter::DeclareLaunchArgs(ctx)
   -> ge.custom_op._bridge.call_declare_launch_args(instance_id, ir_meta, py_ctx)
   -> user_op.declare_launch_args(*inputs, *outputs, **attrs)
   -> py_ctx._invalidate()
+
+PythonCustomOpAdapter::Serialize(vector)
+  -> HasCapability(kPortable)
+  -> 校验 holder/callback/output vector
+  -> buffer.clear()
+  -> callbacks.serialize(holder, &vector)
+  -> PythonCustomOpPybindBridge::Serialize
+  -> acquire GIL
+  -> ge.custom_op._bridge.call_serialize(instance_id)
+  -> holder.instance.serialize()
+  -> 校验 bytes/非空/UINT32_MAX
+  -> copy bytes to vector
+  -> GRAPH_SUCCESS / GRAPH_FAILED
+
+PythonCustomOpAdapter::Deserialize(vector)
+  -> HasCapability(kPortable)
+  -> 校验 holder/callback/data/size，拒绝空 vector
+  -> callbacks.deserialize(holder, vector.data(), vector.size())
+  -> PythonCustomOpPybindBridge::Deserialize
+  -> acquire GIL
+  -> copy to Python bytes（拥有自身存储）
+  -> ge.custom_op._bridge.call_deserialize(instance_id, data)
+  -> holder.instance.deserialize(data)
+  -> 校验 None result
+  -> GRAPH_SUCCESS / GRAPH_FAILED
 ```
 
 ### 6.4 对子模块的修改
 
-- `api/python/ge/ge/custom_op/`：新增 Python custom op API、registry、bootstrap、bridge helper、独立的 schema callback 签名校验模块和 native context binding。
+- `api/python/ge/ge/custom_op/`：新增 Python custom op API、registry、bootstrap、bridge helper、独立的 schema callback 签名校验模块、Portable 方法契约校验模块 `_portable.py` 和 native context binding。
 - `api/python/ge/ge/runtime/`：提供 runtime tensor/shape/format 类型，供 custom op context 复用。
-- `runtime/custom_op/`：bridge C ABI 升级为 v2；adapter 转发 Eager、Host CPU、Compile、AnnotatedArgs
-  回调，canonical IR 由 bridge 通过 run 包公共接口获取并缓存。
+- `runtime/custom_op/`：bridge C ABI 升级为 v2（新增 Portable `serialize`/`deserialize` 回调，并在函数表末尾追加四个模型级 scope 恢复指针）；adapter 转发 Eager、Host CPU、Compile、AnnotatedArgs
+  和 Portable `Serialize`/`Deserialize` 回调，canonical IR 由 bridge 通过 run 包公共接口获取并缓存。
 - `inc/graph_metadef/graph/custom_op/`：新增 capability 和 cast helper。
 - GE 初始化入口：在 `LoadCustomOps()` 前确保 Python runtime 尝试 ready；失败告警继续，由 Python custom op loader 在确有 Python 入口时再做 hard fail。
 - `compiler/graph/manager/graph_manager.cc`：`PreRun()` 刷新 ops kernel 信息前幂等加载 Python custom op。
@@ -669,6 +752,12 @@ PythonCustomOpAdapter::DeclareLaunchArgs(ctx)
 - schema-bound `execute`、`compile` 或 `declare_launch_args` 签名与 canonical IR 不匹配：`validate_op_impl_descriptor` 在 descriptor 加载/注册阶段抛 `TypeError`，业务 callback 不会执行。
 - `compile`缺失canonical IR、返回非`None`或访问过期context：Python bridge/native binding抛异常并终止图编译。
 - `declare_launch_args` 返回非 `None`、重复消费 `AnnotatedKernelArgs`，或输入输出实例平铺 index 越界：Python bridge/native binding 抛异常并终止编译。
+- Portable holder 创建期构造器执行异常：holder 创建失败，adapter 判定无效，`Serialize`/`Deserialize` 返回 `GRAPH_FAILED`。
+- Portable `serialize` 返回非 `bytes`、空 `bytes` 或长度超过 `UINT32_MAX`：Python 侧抛 `TypeError`/`ValueError`，bridge 转换为 `GRAPH_FAILED`。
+- Portable `deserialize` 输入为空或长度非法的 C++ buffer：adapter/bridge 返回 `GRAPH_FAILED`。
+- Portable `deserialize` 返回非 `None`：Python 侧抛 `TypeError`，bridge 转换为 `GRAPH_FAILED`。
+- Portable `serialize`/`deserialize` 调用期间用户异常：callback 返回 `GRAPH_FAILED`，不重试，不 fallback。
+- bridge ABI 版本不匹配：在 callback 注册前失败。
 
 #### 接口错误
 
@@ -686,6 +775,9 @@ PythonCustomOpAdapter::DeclareLaunchArgs(ctx)
 - `get_compile_ctx()` 或 `get_compile_platform_info()` 在 `compile` 回调外调用：抛 `RuntimeError`。
 - `get_declare_launch_args_ctx()` 在回调外调用：抛 `RuntimeError`。
 - borrowed view 过期后访问：抛 `RuntimeError`。
+- Portable `serialize`/`deserialize` 只存在其中一个：`register_op_impl` 抛 `TypeError`，错误信息包含 op type 和缺失方法名。
+- Portable 方法为 `staticmethod`、`classmethod`、不可调用属性，或签名包含额外参数、默认值、keyword-only 参数、`*args`、`**kwargs`，或缺少显式注解，或注解类型不是 `bytes`/`None`：`register_op_impl` 抛 `TypeError`，错误信息包含 op type、方法名和具体规则。
+- 注册类 `cls()` 需要实参：`register_op_impl` 抛 `TypeError`，指出必须无参构造。
 
 ## 7. 安全检查
 
@@ -716,8 +808,12 @@ PythonCustomOpAdapter::DeclareLaunchArgs(ctx)
 - 新 OM 的 `PYTHON_CUSTOM_OPS` 分区（分区类型 27）不被老版本识别，不能假设在老版本上复现 Python custom op 执行能力。
 - 新 OM 携带 `_custom_task_args_mode`、AnnotatedArgs `args_format` 和 Python 实现源码快照；新运行时以显式模式为第一事实来源。只有没有该属性的旧 OM 才先查询 registry，再按非空 `args_format` 兼容兜底。
 - Python custom op 依赖运行环境中匹配版本的 `ge_py`、bridge/native SO 和 Python ABI。
-- callback POD 增加 Host CPU 函数指针后 bridge ABI 升级到 v2；v1 与 v2 artifact 不混用。
+- callback POD 增加 Host CPU 函数指针后 bridge ABI 升级到 v2；本特性新增的 Portable `serialize`/`deserialize`
+  函数指针与函数表末尾四个模型级 scope 恢复指针（Python 源码打包进 OM 的加载侧恢复）并入 **v2 而不递增版本号**——现存 v2 bridge SO 仅在开发/测试环境与加载侧头文件同批构建；不同 ABI 版本的 artifact 不混用，加载侧精确匹配。
 - `ASCEND_CUSTOM_OPP_PATH` 已是既有环境变量，新增 Python 文件/包识别不会影响没有 Python 入口的 C++ OPP 路径。
+- 没有 `serialize`/`deserialize` 的 Python 类行为不变；同时存在合法配对方法的普通类新增 `portable` capability，属于预期新增行为。只存在单边同名方法的类由过去可能被忽略变为注册失败，以避免不可恢复状态。
+- `portable` 可与 `eager_execute`、`host_cpu_execute`、`compilable`、`annotated_args` 等 capability 组合，其他接口签名和行为不变。
+- Portable 接口不改变模型缓存 key；源码快照与 Portable 状态分别写入 `PYTHON_CUSTOM_OPS`（新增分区类型 27）与既有 `CUSTOM_OPS` 分区，加载期由对应恢复通路还原，见 `docs/zh/design/features/so_in_om.md`。
 
 ### 8.1 Python 版本发布与 fallback 兼容策略
 
@@ -815,6 +911,7 @@ custom-op 对 runtime 的要求是依赖关系，不是所有权关系。若 run
 - Python API 测试入口：`ge.custom_op`、`ge.custom_op.proto`、`ge.custom_op._bridge`、`ge.custom_op.bootstrap`。
 - Native context 测试入口：Eager/Compile/AnnotatedArgs borrowed context、`AnnotatedKernelArgs` 和 launch info 方法。
 - C++ 测试入口：`CustomOpCast<T>`、`PythonCustomOpAdapter`、`AnnotatedKernelArgs`、`CustomTaskInfo`、`LoadPythonCustomOps()` 和 `LoadCustomOps()`/`UnloadCustomOps()`。
+- Portable 测试入口：`register_op_impl` Portable 签名校验、holder `_bridge.call_serialize`/`call_deserialize`、adapter `Serialize`/`Deserialize` 转发。
 - 端到端样例入口：`examples/custom_op/annotated_args_refresh_add_custom/online/python/run.sh` 和 `examples/custom_op/annotated_args_refresh_add_custom/offline/python/run.sh`。
 
 ### 9.2 测试设计
@@ -829,11 +926,16 @@ custom-op 对 runtime 的要求是依赖关系，不是所有权关系。若 run
 | 功能 | `compile` 的 schema-bound 输入输出属性组装、签名校验、编译上下文和平台信息查询、返回值及 context 失效语义 | Python pytest fake/native context | UT |
 | 功能 | `get_execute_ctx()` / `get_declare_launch_args_ctx()` 回调内访问、异常清理和嵌套调用恢复 | Python pytest | UT |
 | 功能 | bridge descriptor 获取、holder 创建/销毁、不可调用方法拦截和 context 失效 | Python pytest | UT |
-| 功能 | canonical IR 查询缓存、bridge ABI v2 和 adapter device/host execute、declare/infer-meta 转发 | C++ gtest | UT |
+| 功能 | canonical IR 查询缓存、bridge ABI 和 adapter device/host execute、declare/infer-meta、portable 转发 | C++ gtest | UT |
 | 功能 | 编译期第 N 个输出失败、返回数量不匹配时原始输出元信息不变，以及 dynamic/required 多输出完整提交 | Graph Metadef gtest | UT |
 | 功能 | Python infer-meta 使用真实 RT2 InferShape kernel，并通过 native RuntimeAttrs 读取 12 类属性 | C++/Python 联合回调 | ST |
 | 功能 | capability bitmask 和 `CustomOpCast<T>()` 行为 | C++ gtest | UT |
 | 功能 | loader 在无 Python 入口时跳过，有入口时加载 bridge | C++ gtest / stub | UT |
+| 功能 | Portable 配对方法、签名校验、无参构造校验、`portable` capability 生成与组合 | Python pytest | UT |
+| 功能 | Portable `serialize` 返回 `bytes` round-trip、`deserialize` 状态恢复、holder identity 和重复调用确定性 | Python pytest | UT |
+| 边界 | Portable 空 `bytes`、`bytearray`、`memoryview`、`UINT32_MAX` 边界和超长模拟 | Python pytest fake length helper | UT |
+| 可靠性 | Portable 用户异常、holder/callback/data 为空、非 `None` 返回、ABI 版本不匹配 | Python/C++ gtest | UT |
+| 安全 | Portable 日志不包含 payload 和脚本内容 | Python/C++ gtest | UT |
 | 兼容性 | C++ custom op 裸能力继承仍可正常 cast | C++ gtest | UT |
 | 特性交叉 | 在线 PreRun 加载后刷新 ops kernel info | GE 图执行相关测试 | UT/ST |
 | 样例 | Python `register_op`/`infer_meta`/`register_op_impl`、Ascend C kernel 的 schema-bound 在线执行，以及 AnnotatedArgs 离线编译后不执行编译期回调的地址刷新执行（加载期从 OM 内嵌源码恢复，进程需具备 Python 运行时） | `annotated_args_refresh_add_custom/{online,offline}/python` | ST/真机 |

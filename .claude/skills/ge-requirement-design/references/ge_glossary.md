@@ -58,7 +58,7 @@
 | `Stream` | Execution stream | 执行流，支持多流并行 |
 | `Task` | Execution task | 最细粒度调度单元 |
 | `EnginePlacer` | Backend selector | 引擎选择器 |
-| `DnnEngine` / `OpsKernelInfoStore` | Backend plugin interface | 引擎插件接口 |
+| `DNNEngine` / `OpsKernelInfoStore` | Backend plugin interface | 引擎插件接口 |
 
 ## 产物与对外接口
 

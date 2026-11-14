@@ -400,3 +400,4 @@ gep_graph_key = user_graph_key + "_" + ep_id + "_" + timestamp_ns
 3. **变量变更导致缓存失效**：如果图中 Variable 算子的格式或 Shape 发生变化，缓存会自动失效并触发重新编译
 4. **外置权重路径一致性**：配合外置权重使用时，第二次编译需确保权重文件在缓存目录的 `weight/` 子目录下可访问（可通过 `ge.externalWeightDir` 指定持久化路径）
 5. **进程间互斥**：同一 `graph_key` 的缓存操作通过文件锁互斥，同一时刻只有一个进程可以操作
+6. **缓存不感知 Python 自定义算子源码变化**：OM 可携带 `PYTHON_CUSTOM_OPS` 分区（Python 自定义算子源码快照，见 `docs/zh/design/features/so_in_om.md`），模型缓存复用统一 OM 保存/加载逻辑，**不新增源码比较或缓存 key 字段**。`graph_key` 只由图结构与变量描述决定：若用户修改了 Python 算子实现源码而图结构不变，缓存命中后加载的是缓存 OM 内冻结的**旧源码**。用户需自行在源码变更后更换 `graph_key` 或清理缓存目录

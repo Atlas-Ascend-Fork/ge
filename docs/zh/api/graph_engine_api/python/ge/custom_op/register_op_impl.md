@@ -6,7 +6,7 @@
 
 ## 功能说明
 
-注册Python自定义算子实现类。支持实现`execute`、`compile`和`declare_launch_args`方法，这些方法可以组合使用。
+注册Python自定义算子实现类。支持实现`execute`、`compile`、`declare_launch_args`和成对的`serialize`/`deserialize`方法，这些方法可以组合使用。
 
 ## 函数原型
 
@@ -25,6 +25,7 @@ register_op_impl(*, op_type: str) -> callable
 - 注册的实现类必须是具体类，并且至少实现一个受支持的方法。具体回调约束参见[execute](execute.md)、[compile](compile.md)和[declare_launch_args](declare_launch_args.md)。
 - `execute`、`compile`和`declare_launch_args`必须以类方法形式定义在实现类上，且必须可调用；定义为非可调用对象时，注册失败或对应方法不被识别。
 - `op_type`不合法、注册的实现类不是具体类，或实现类未提供受支持的方法时，抛出`TypeError`。`op_type`重复注册发生冲突时，抛出`ValueError`。
+- `serialize`和`deserialize`必须成对声明在实现类自身，从基类继承的同名方法不参与识别。只声明其中一个时，抛出`TypeError`，错误信息包含算子类型和缺失方法名。
 
 ## 调用示例
 

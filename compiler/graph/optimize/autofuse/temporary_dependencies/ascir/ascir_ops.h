@@ -163,6 +163,16 @@ struct VectorFunc : public Operator {
                                  DT_UINT16, DT_UINT32,    DT_INT64,      DT_UINT64, DT_DOUBLE,   DT_BOOL,
                                  DT_STRING, DT_COMPLEX64, DT_COMPLEX128, DT_QINT8,  DT_QINT16,   DT_QINT32,
                                  DT_QUINT8, DT_QUINT16,   DT_RESOURCE,   DT_BF16,   DT_COMPLEX32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16,   DT_INT8,       DT_INT32,  DT_UINT8,    DT_INT16,
+                                 DT_UINT16, DT_UINT32,    DT_INT64,      DT_UINT64, DT_DOUBLE,   DT_BOOL,
+                                 DT_STRING, DT_COMPLEX64, DT_COMPLEX128, DT_QINT8,  DT_QINT16,   DT_QINT32,
+                                 DT_QUINT8, DT_QUINT16,   DT_RESOURCE,   DT_BF16,   DT_COMPLEX32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16,   DT_INT8,       DT_INT32,  DT_UINT8,    DT_INT16,
+                                 DT_UINT16, DT_UINT32,    DT_INT64,      DT_UINT64, DT_DOUBLE,   DT_BOOL,
+                                 DT_STRING, DT_COMPLEX64, DT_COMPLEX128, DT_QINT8,  DT_QINT16,   DT_QINT32,
+                                 DT_QUINT8, DT_QUINT16,   DT_RESOURCE,   DT_BF16,   DT_COMPLEX32};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -547,6 +557,12 @@ struct Output : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -623,6 +639,12 @@ struct Workspace : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -712,6 +734,12 @@ struct Load : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -806,6 +834,12 @@ struct Store : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -882,6 +916,12 @@ struct Broadcast : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -950,6 +990,10 @@ struct RemovePad : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -1016,6 +1060,10 @@ struct Pad : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -1085,6 +1133,12 @@ struct Nop : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_UINT64};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_UINT64};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_UINT64};
     } else {
@@ -1184,6 +1238,30 @@ struct Cast : public Operator {
                  {DT_INT64, {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_UINT64}},
                  {DT_UINT64, {DT_INT64}},
                  {DT_BF16, {DT_FLOAT, DT_INT32}}};
+    } else if (npu_arch == "9201") {
+      results = {{DT_FLOAT, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BOOL, DT_BF16}},
+                 {DT_FLOAT16, {DT_FLOAT, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64}},
+                 {DT_INT8, {DT_FLOAT, DT_FLOAT16, DT_UINT8, DT_INT16, DT_BOOL}},
+                 {DT_INT32, {DT_FLOAT, DT_FLOAT16, DT_INT16, DT_UINT32, DT_INT64, DT_BOOL}},
+                 {DT_UINT8, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_INT16, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_UINT16, DT_BOOL}},
+                 {DT_UINT16, {DT_INT16}},
+                 {DT_UINT32, {DT_INT32}},
+                 {DT_INT64, {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_UINT64, DT_BOOL, DT_BF16}},
+                 {DT_UINT64, {DT_INT64}},
+                 {DT_BF16, {DT_FLOAT, DT_INT32}}};
+    } else if (npu_arch == "9202") {
+      results = {{DT_FLOAT, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BOOL, DT_BF16}},
+                 {DT_FLOAT16, {DT_FLOAT, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64}},
+                 {DT_INT8, {DT_FLOAT, DT_FLOAT16, DT_UINT8, DT_INT16, DT_BOOL}},
+                 {DT_INT32, {DT_FLOAT, DT_FLOAT16, DT_INT16, DT_UINT32, DT_INT64, DT_BOOL}},
+                 {DT_UINT8, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_INT16, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_UINT16, DT_BOOL}},
+                 {DT_UINT16, {DT_INT16}},
+                 {DT_UINT32, {DT_INT32}},
+                 {DT_INT64, {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_UINT64, DT_BOOL, DT_BF16}},
+                 {DT_UINT64, {DT_INT64}},
+                 {DT_BF16, {DT_FLOAT, DT_INT32}}};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -1250,6 +1328,10 @@ struct Abs : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -1318,6 +1400,10 @@ struct Exp : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -1384,6 +1470,10 @@ struct Ln : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -1665,6 +1755,10 @@ struct Sqrt : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -1732,6 +1826,10 @@ struct Rsqrt : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -1801,6 +1899,10 @@ struct Reciprocal : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -1867,6 +1969,10 @@ struct Erf : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -1935,6 +2041,10 @@ struct Sign : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -2001,6 +2111,10 @@ struct Tanh : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -2069,6 +2183,10 @@ struct Isnan : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -2139,6 +2257,10 @@ struct IsFinite : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -2208,6 +2330,10 @@ struct IsInf : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -2276,6 +2402,10 @@ struct Relu : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT64};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -2342,6 +2472,10 @@ struct Neg : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -2418,6 +2552,14 @@ struct LogicalNot : public Operator {
       results = {{DT_FLOAT, {DT_UINT8}}, {DT_FLOAT16, {DT_UINT8}}, {DT_INT8, {DT_UINT8}},   {DT_INT32, {DT_UINT8}},
                  {DT_UINT8, {DT_UINT8}}, {DT_INT16, {DT_UINT8}},   {DT_UINT16, {DT_UINT8}}, {DT_UINT32, {DT_UINT8}},
                  {DT_INT64, {DT_UINT8}}, {DT_UINT64, {DT_UINT8}},  {DT_BF16, {DT_UINT8}}};
+    } else if (npu_arch == "9201") {
+      results = {{DT_FLOAT, {DT_UINT8}}, {DT_FLOAT16, {DT_UINT8}}, {DT_INT8, {DT_UINT8}},   {DT_INT32, {DT_UINT8}},
+                 {DT_UINT8, {DT_UINT8}}, {DT_INT16, {DT_UINT8}},   {DT_UINT16, {DT_UINT8}}, {DT_UINT32, {DT_UINT8}},
+                 {DT_INT64, {DT_UINT8}}, {DT_UINT64, {DT_UINT8}},  {DT_BOOL, {DT_BOOL}},    {DT_BF16, {DT_UINT8}}};
+    } else if (npu_arch == "9202") {
+      results = {{DT_FLOAT, {DT_UINT8}}, {DT_FLOAT16, {DT_UINT8}}, {DT_INT8, {DT_UINT8}},   {DT_INT32, {DT_UINT8}},
+                 {DT_UINT8, {DT_UINT8}}, {DT_INT16, {DT_UINT8}},   {DT_UINT16, {DT_UINT8}}, {DT_UINT32, {DT_UINT8}},
+                 {DT_INT64, {DT_UINT8}}, {DT_UINT64, {DT_UINT8}},  {DT_BOOL, {DT_BOOL}},    {DT_BF16, {DT_UINT8}}};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -2484,6 +2626,10 @@ struct Max : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -2552,6 +2698,10 @@ struct Sum : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -2618,6 +2768,10 @@ struct Min : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -2686,6 +2840,10 @@ struct Mean : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -2752,6 +2910,10 @@ struct Prod : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -2821,6 +2983,10 @@ struct Sigmoid : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -2888,6 +3054,10 @@ struct Any : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -2954,6 +3124,10 @@ struct All : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -3026,6 +3200,12 @@ struct Add : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
@@ -3102,6 +3282,12 @@ struct Sub : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -3173,6 +3359,10 @@ struct Div : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -3248,6 +3438,12 @@ struct Mul : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8,
                                  DT_INT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8, DT_INT16,
+                                 DT_UINT32, DT_INT64,   DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8, DT_INT16,
+                                 DT_UINT32, DT_INT64,   DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -3320,6 +3516,12 @@ struct Minimum : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
@@ -3396,6 +3598,12 @@ struct Maximum : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -3467,6 +3675,10 @@ struct TrueDiv : public Operator {
       results = {{DT_FLOAT, {DT_FLOAT}}, {DT_FLOAT16, {DT_FLOAT16}}, {DT_BF16, {DT_BF16}}};
     } else if (npu_arch == "5102") {
       results = {{DT_FLOAT, {DT_FLOAT}}, {DT_FLOAT16, {DT_FLOAT16}}, {DT_BF16, {DT_BF16}}};
+    } else if (npu_arch == "9201") {
+      results = {{DT_FLOAT, {DT_FLOAT}}, {DT_FLOAT16, {DT_FLOAT16}}, {DT_BF16, {DT_BF16}}};
+    } else if (npu_arch == "9202") {
+      results = {{DT_FLOAT, {DT_FLOAT}}, {DT_FLOAT16, {DT_FLOAT16}}, {DT_BF16, {DT_BF16}}};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -3537,6 +3749,10 @@ struct Remainder : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -3610,6 +3826,12 @@ struct LogicalOr : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
@@ -3687,6 +3909,12 @@ struct LogicalAnd : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -3760,6 +3988,12 @@ struct Pow : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_BF16};
     } else {
@@ -3839,6 +4073,12 @@ struct ClipByValue : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -3913,6 +4153,12 @@ struct Ge : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
@@ -3990,6 +4236,12 @@ struct Eq : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -4063,6 +4315,12 @@ struct Ne : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
@@ -4140,6 +4398,12 @@ struct Gt : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -4213,6 +4477,12 @@ struct Le : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
@@ -4290,6 +4560,12 @@ struct Lt : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -4363,6 +4639,12 @@ struct Concat : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -4435,6 +4717,10 @@ struct Select : public Operator {
       support_dtypes_of_sym_T1 = {DT_UINT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_UINT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -4447,6 +4733,10 @@ struct Select : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_INT64};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_INT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_INT64};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_INT64};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -4521,6 +4811,10 @@ struct Where : public Operator {
       support_dtypes_of_sym_T1 = {DT_UINT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_UINT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_UINT8, DT_BOOL};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -4534,6 +4828,12 @@ struct Where : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T2 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
@@ -4609,6 +4909,10 @@ struct MaskedFill : public Operator {
       support_dtypes_of_sym_T1 = {DT_UINT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_UINT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_UINT8};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_UINT8};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -4621,6 +4925,10 @@ struct MaskedFill : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -4693,6 +5001,12 @@ struct Ub2ub : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
     } else {
@@ -4781,6 +5095,10 @@ struct LeakyRelu : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -4857,6 +5175,12 @@ struct BitwiseAnd : public Operator {
       support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -4957,6 +5281,10 @@ struct Gather : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -4968,6 +5296,10 @@ struct Gather : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T2 = {DT_INT32, DT_INT64};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -5043,6 +5375,12 @@ struct Transpose : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16, DT_UINT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64,   DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64,   DT_BOOL,  DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -5189,6 +5527,12 @@ struct FloorDiv : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -5256,6 +5600,10 @@ struct Gelu : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -5346,6 +5694,10 @@ struct Axpy : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT64, DT_UINT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -5483,6 +5835,10 @@ struct MatMul : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -5625,6 +5981,10 @@ struct MatMulBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -5636,6 +5996,10 @@ struct MatMulBias : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -5778,6 +6142,10 @@ struct MatMulOffset : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -5789,6 +6157,10 @@ struct MatMulOffset : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -5935,6 +6307,10 @@ struct MatMulOffsetBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -5947,6 +6323,10 @@ struct MatMulOffsetBias : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -5958,6 +6338,10 @@ struct MatMulOffsetBias : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -6097,6 +6481,10 @@ struct BatchMatMul : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -6239,6 +6627,10 @@ struct BatchMatMulBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -6250,6 +6642,10 @@ struct BatchMatMulBias : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -6392,6 +6788,10 @@ struct BatchMatMulOffset : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -6403,6 +6803,10 @@ struct BatchMatMulOffset : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -6549,6 +6953,10 @@ struct BatchMatMulOffsetBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -6561,6 +6969,10 @@ struct BatchMatMulOffsetBias : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -6572,6 +6984,10 @@ struct BatchMatMulOffsetBias : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T3 = {DT_INT8, DT_INT4};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -6762,6 +7178,10 @@ struct Conv2D : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -6953,6 +7373,10 @@ struct Conv2DBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -6965,6 +7389,10 @@ struct Conv2DBias : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -7156,6 +7584,10 @@ struct Conv2DOffset : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -7167,6 +7599,10 @@ struct Conv2DOffset : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T3 = {DT_INT8};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T3 = {DT_INT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T3 = {DT_INT8};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -7363,6 +7799,10 @@ struct Conv2DOffsetBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -7375,6 +7815,10 @@ struct Conv2DOffsetBias : public Operator {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_HIFLOAT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -7386,6 +7830,10 @@ struct Conv2DOffsetBias : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T3 = {DT_INT8};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T3 = {DT_INT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_INT8};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T3 = {DT_INT8};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -7514,6 +7962,10 @@ struct ExtendConv2D : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -7600,6 +8052,10 @@ struct ExtendConv2DBias : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -7611,6 +8067,10 @@ struct ExtendConv2DBias : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_FLOAT16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T2 = {DT_FLOAT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -7699,6 +8159,10 @@ struct ExtendConv2DScale : public Operator {
       support_dtypes_of_sym_T1 = {DT_INT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_INT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_INT8};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_INT8};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -7710,6 +8174,10 @@ struct ExtendConv2DScale : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T3 = {DT_UINT64};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T3 = {DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T3 = {DT_UINT64};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T3 = {DT_UINT64};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -7801,6 +8269,10 @@ struct ExtendConv2DBiasScale : public Operator {
       support_dtypes_of_sym_T1 = {DT_INT8};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_INT8};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_INT8};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_INT8};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -7813,6 +8285,10 @@ struct ExtendConv2DBiasScale : public Operator {
       support_dtypes_of_sym_T2 = {DT_INT32};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T2 = {DT_INT32};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T2 = {DT_INT32};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -7824,6 +8300,10 @@ struct ExtendConv2DBiasScale : public Operator {
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T4 = {DT_UINT64};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T4 = {DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T4 = {DT_UINT64};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T4 = {DT_UINT64};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -7929,6 +8409,14 @@ struct Split : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32,  DT_UINT8,   DT_INT16,     DT_UINT16,
                                  DT_UINT32, DT_INT64,   DT_UINT64, DT_DOUBLE, DT_BOOL,    DT_COMPLEX64, DT_COMPLEX128,
                                  DT_QINT8,  DT_QINT16,  DT_QINT32, DT_QUINT8, DT_QUINT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32,  DT_UINT8,   DT_INT16,     DT_UINT16,
+                                 DT_UINT32, DT_INT64,   DT_UINT64, DT_DOUBLE, DT_BOOL,    DT_COMPLEX64, DT_COMPLEX128,
+                                 DT_QINT8,  DT_QINT16,  DT_QINT32, DT_QUINT8, DT_QUINT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,   DT_INT32,  DT_UINT8,   DT_INT16,     DT_UINT16,
+                                 DT_UINT32, DT_INT64,   DT_UINT64, DT_DOUBLE, DT_BOOL,    DT_COMPLEX64, DT_COMPLEX128,
+                                 DT_QINT8,  DT_QINT16,  DT_QINT32, DT_QUINT8, DT_QUINT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -8004,6 +8492,12 @@ struct Square : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_UINT8,  DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_UINT8,  DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT32, DT_UINT8,  DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -8070,6 +8564,14 @@ struct RoundToInt : public Operator {
                  {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
                  {DT_BF16, {DT_INT32}}};
     } else if (npu_arch == "5102") {
+      results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
+                 {DT_BF16, {DT_INT32}}};
+    } else if (npu_arch == "9201") {
+      results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
+                 {DT_BF16, {DT_INT32}}};
+    } else if (npu_arch == "9202") {
       results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
                  {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
                  {DT_BF16, {DT_INT32}}};
@@ -8142,6 +8644,14 @@ struct TruncToInt : public Operator {
       results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
                  {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
                  {DT_BF16, {DT_INT32}}};
+    } else if (npu_arch == "9201") {
+      results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
+                 {DT_BF16, {DT_INT32}}};
+    } else if (npu_arch == "9202") {
+      results = {{DT_FLOAT, {DT_INT32, DT_INT16, DT_INT64}},
+                 {DT_FLOAT16, {DT_INT8, DT_INT32, DT_UINT8, DT_INT16}},
+                 {DT_BF16, {DT_INT32}}};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -8211,6 +8721,10 @@ struct Xor : public Operator {
       support_dtypes_of_sym_T = {DT_UINT8, DT_INT16, DT_UINT16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_UINT8, DT_INT16, DT_UINT16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_UINT8, DT_INT16, DT_UINT16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_UINT8, DT_INT16, DT_UINT16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -8278,6 +8792,10 @@ struct Trunc : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -8342,6 +8860,10 @@ struct Tan : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -8412,6 +8934,10 @@ struct TruncDiv : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -8477,6 +9003,10 @@ struct Sinh : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -8544,6 +9074,10 @@ struct ModifiedBesselI0 : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -8609,6 +9143,10 @@ struct ModifiedBesselI1 : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -8676,6 +9214,10 @@ struct ModifiedBesselK0 : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -8741,6 +9283,10 @@ struct ModifiedBesselK1 : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -8810,6 +9356,10 @@ struct LaguerrePolynomialL : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -8819,6 +9369,10 @@ struct LaguerrePolynomialL : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -8889,6 +9443,10 @@ struct LegendrePolynomialP : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -8898,6 +9456,10 @@ struct LegendrePolynomialP : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_U = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -8966,6 +9528,10 @@ struct AiryAi : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -9031,6 +9597,10 @@ struct Erfinv : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -9118,6 +9688,12 @@ struct Nddma : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                 DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BOOL,  DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -9189,6 +9765,10 @@ struct Round : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -9253,6 +9833,10 @@ struct Exp2 : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -9319,6 +9903,10 @@ struct Floor : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -9391,6 +9979,10 @@ struct Fma : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -9524,6 +10116,10 @@ struct Log2 : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -9595,6 +10191,14 @@ struct LShift : public Operator {
       results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
                  {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
                  {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
+    } else if (npu_arch == "9201") {
+      results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
+                 {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
+                 {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
+    } else if (npu_arch == "9202") {
+      results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
+                 {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
+                 {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -9663,6 +10267,10 @@ struct Mod : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_UINT8, DT_INT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -9730,6 +10338,12 @@ struct BitwiseNot : public Operator {
       support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -9799,6 +10413,12 @@ struct BitwiseOr : public Operator {
       support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -9869,6 +10489,12 @@ struct BitwiseXor : public Operator {
       support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_UINT16, DT_UINT32, DT_INT64, DT_UINT64};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_INT8,   DT_INT32, DT_UINT8,  DT_INT16, DT_UINT16,
+                                 DT_UINT32, DT_INT64, DT_UINT64, DT_BOOL};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -9935,6 +10561,10 @@ struct Ceil : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -9999,6 +10629,10 @@ struct Cos : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -10065,6 +10699,10 @@ struct Acos : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -10129,6 +10767,10 @@ struct Cosh : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -10196,6 +10838,10 @@ struct Digamma : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -10260,6 +10906,10 @@ struct Erfc : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -10326,6 +10976,10 @@ struct Erfcx : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -10395,6 +11049,10 @@ struct Atan2 : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -10466,6 +11124,10 @@ struct CopySign : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -10533,6 +11195,10 @@ struct Ceil2Int : public Operator {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -10599,6 +11265,10 @@ struct FloorToInt : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -10670,6 +11340,10 @@ struct Fmod : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -10740,6 +11414,10 @@ struct Hypot : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -10807,6 +11485,10 @@ struct Lgamma : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -10872,6 +11554,10 @@ struct Log10 : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -10944,6 +11630,12 @@ struct LogicalXor : public Operator {
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
+                                  DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -11012,6 +11704,10 @@ struct Log1p : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -11076,6 +11772,10 @@ struct Sin : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -11143,6 +11843,10 @@ struct Acosh : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -11207,6 +11911,10 @@ struct Asin : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -11274,6 +11982,10 @@ struct Asinh : public Operator {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
       return af::FAILED;
@@ -11338,6 +12050,10 @@ struct Atan : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -11404,6 +12120,10 @@ struct Atanh : public Operator {
     if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else if (npu_arch == "5102") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9201") {
+      support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else if (npu_arch == "9202") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_BF16};
     } else {
       GELOGE(ge::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
@@ -11473,6 +12193,14 @@ struct RShift : public Operator {
                  {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
                  {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
     } else if (npu_arch == "5102") {
+      results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
+                 {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
+                 {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
+    } else if (npu_arch == "9201") {
+      results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
+                 {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
+                 {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};
+    } else if (npu_arch == "9202") {
       results = {{{DT_INT8, DT_INT8}, {}},   {{DT_INT32, DT_INT32}, {}},  {{DT_UINT8, DT_INT8}, {}},
                  {{DT_INT16, DT_INT16}, {}}, {{DT_UINT16, DT_INT16}, {}}, {{DT_UINT32, DT_INT32}, {}},
                  {{DT_INT64, DT_INT64}, {}}, {{DT_UINT64, DT_INT64}, {}}};

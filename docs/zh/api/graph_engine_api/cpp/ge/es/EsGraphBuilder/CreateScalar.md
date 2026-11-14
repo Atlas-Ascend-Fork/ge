@@ -17,7 +17,7 @@
 
 - 创建int64类型的标量常量
 
-```c++
+    ```c++
     EsTensorHolder CreateScalar(int64_t value)
     ```
 

@@ -54,13 +54,52 @@ References:
 
 Execute shortest path in `examples/custom_op/triton_add_custom` directory
 
-Before running, execute the following command in the environment where the `npubin` is compiled to check whether the `npubin` compiled by Triton depends on the FFTS scheduling feature:
+### Step 0: Check Whether the npubin Enables FFTS Scheduling
+
+Run the following script in the environment where the `npubin` is compiled (that is, the environment where `add_custom_kernel.py` runs successfully, with `torch`, `torch_npu` and Triton-Ascend importable), to check whether the `npubin` compiled by Triton depends on the FFTS scheduling feature:
 
 ```bash
-python3 -c "from triton.backends.ascend.utils import is_ffts_supported, get_ascend_arch_from_env, force_disable_ffts; print(is_ffts_supported(get_ascend_arch_from_env()) and (not force_disable_ffts()))"
+python3 - <<'PY'
+import torch  # noqa: F401
+import torch_npu  # noqa: F401  # npu_utils.so links against libtorch_npu.so, load it first
+
+from triton.backends.ascend.utils import is_ffts_supported, force_disable_ffts
+
+try:
+    # Prefer the real compilation target, same source as the triton-ascend launcher check
+    from triton.backends.ascend.driver import NPUUtils
+    arch = NPUUtils().get_arch()
+except Exception as e:
+    # Expose the real reason instead of silently falling back to the deprecated helper
+    print("NPUUtils failed:", e)
+    from triton.backends.ascend.utils import get_ascend_arch_from_env
+    arch = get_ascend_arch_from_env()
+
+if not arch:
+    print("arch = <empty>: undetermined, do NOT treat it as False")
+    raise SystemExit(1)
+
+try:
+    disabled = force_disable_ffts(arch)
+except TypeError:
+    # Compatible with the legacy argument-less signature
+    disabled = force_disable_ffts()
+
+print("arch =", arch)
+print("need ffts_addr =", is_ffts_supported(arch) and not disabled)
+PY
 ```
 
-If it prints `True`, the `npubin` was compiled with the FFTS scheduling feature enabled, and the first argument of kernel args must be the C2C control region address (`ffts_addr`). In this case, uncomment the relevant code following the comments in `ge/src/custom_op.cpp` (2 spots, all in that file; the address is obtained via `aclrtGetHardwareSyncAddr`). If it prints `False`, keep the sample's default layout; no modification is needed. This check uses the same logic triton-ascend applies when generating launchers.
+- `need ffts_addr = True`: the `npubin` was compiled with the FFTS scheduling feature enabled, and the first argument of kernel args must be the C2C control region address (`ffts_addr`). The sample code does not contain this argument by default, so you **must** modify `ge/src/custom_op.cpp` following [Code Adaptation When FFTS Scheduling Is Enabled](#code-adaptation-when-ffts-scheduling-is-enabled-required-when-step-0-prints-true) and rebuild the GE deliverable. Otherwise the kernel argument layout does not match what the `npubin` expects, and task launching fails or the result check does not pass.
+- `need ffts_addr = False`: keep the sample's default layout; no modification is needed.
+- The script prints `arch = <empty>: undetermined, do NOT treat it as False` and exits with code `1`: the compilation target is unavailable in the current environment, which must **not** be treated as `False`. Confirm that `torch`, `torch_npu` and Triton-Ascend are correctly installed and that the NPU device is visible (`npu-smi info` works), then rerun the script in the same environment where the `npubin` was generated. If `NPUUtils failed: ...` was printed, use that exception message to locate the environment problem.
+
+This check uses the same logic that triton-ascend applies when generating launchers and when deciding whether to disable FFTS while compiling the `npubin`: `is_ffts_supported(arch) and not force_disable_ffts(arch)`, where `arch` is the compilation target.
+
+> **Note:**
+>
+> - The script must `import torch_npu` first: the `npu_utils.so` loaded by `NPUUtils()` links against `libtorch_npu.so`, so importing it raises `ImportError` otherwise. If that error were swallowed silently, the script would fall back to the deprecated helper and reach a wrong conclusion.
+> - Do not rely on `get_ascend_arch_from_env()` alone for this check. Newer Triton-Ascend versions deprecated that helper (it only prints a warning and returns an empty string), which makes the check always print `False`. The signature of `force_disable_ffts` is either argument-less or takes `arch`, depending on the version; the script above handles both.
 
 ### Recommended Method
 
@@ -85,11 +124,66 @@ Before execution, confirm `bin_path` in `ge/src/custom_op.cpp` can access `add_k
 
 1. First execute `python3 add_custom_kernel.py` in `add_custom_kernel/` to generate `npubin`.
 2. Then execute `bash build_tf.sh` in `tensorflow/` to generate `outputs/libcustom_ops.so`.
-3. Next execute `bash run.sh` in `ge/` to generate `build_out/libcust_opapi.so` and `framework/tensorflow/npu_supported_ops.json`.
+3. Next execute `bash run.sh` in `ge/` to generate `build_out/libcust_opapi.so` and `framework/tensorflow/npu_supported_ops.json`. If step 0 prints `need ffts_addr = True`, complete the source adaptation described below before this step.
 4. Execute `export ASCEND_CUSTOM_OPP_PATH="$(pwd)/build_out:$ASCEND_CUSTOM_OPP_PATH"` to add `libcust_opapi.so` directory to environment variables.
 5. Finally return to `tensorflow/` directory and execute `python3 ../script/run_add_custom_tf_1.15.py`.
 
 If need to adjust `npubin` output location, can first set `TRITON_CACHE_DIR`; if need to re-specify `npubin` path, can modify `bin_path` in `ge/src/custom_op.cpp` according to actual cache location.
+
+### Code Adaptation When FFTS Scheduling Is Enabled (Required When Step 0 Prints True)
+
+The sample code targets an `npubin` compiled without the FFTS scheduling feature. If step 0 prints `need ffts_addr = True`, modify `ge/src/custom_op.cpp` before running `ge/run.sh`, to add `ffts_addr` as the first kernel argument in 3 places. `ffts_addr` is the C2C control region address obtained through `aclrtGetHardwareSyncAddr`, which is already declared by `acl/acl_rt.h` included at the top of the file, so no extra header is needed. GE uses the same API to obtain this address when launching tasks.
+
+**Change 1**: after the args assembly comment block (`// 拼装 args`) and before `struct __attribute__((packed)) {`, add the code that obtains the C2C control region address.
+
+```cpp
+    void *ffts_addr = nullptr;
+    if (aclrtGetHardwareSyncAddr(&ffts_addr) != ACL_ERROR_NONE) {
+      std::cerr << __FILE__ << ":" << __LINE__ << " get ffts addr failed" << std::endl;
+      return GRAPH_FAILED;
+    }
+```
+
+**Change 2**: add the `ffts_addr` field at the very beginning of the member list of `struct __attribute__((packed))`.
+
+```cpp
+      void *ffts_addr __attribute__((aligned(8)));
+```
+
+**Change 3**: pass `ffts_addr` as the first item of the `args` initializer list.
+
+```cpp
+        ffts_addr,
+```
+
+After the modification, the `args` assembly part should look like the following snippet, which can be used for comparison (the layout matches the repository `.clang-format`):
+
+```cpp
+    void *ffts_addr = nullptr;
+    if (aclrtGetHardwareSyncAddr(&ffts_addr) != ACL_ERROR_NONE) {
+      std::cerr << __FILE__ << ":" << __LINE__ << " get ffts addr failed" << std::endl;
+      return GRAPH_FAILED;
+    }
+    struct __attribute__((packed)) {
+      void *ffts_addr __attribute__((aligned(8)));
+      void *sync_block_lock __attribute__((aligned(8)));
+      void *workspace_addr __attribute__((aligned(8)));
+      const void *arg0 __attribute__((aligned(8)));
+      const void *arg1 __attribute__((aligned(8)));
+      void *arg2 __attribute__((aligned(8)));
+      int32_t arg3 __attribute__((aligned(4)));
+      int32_t grid_x __attribute__((aligned(4)));
+      int32_t grid_y __attribute__((aligned(4)));
+      int32_t grid_z __attribute__((aligned(4)));
+    } args = {
+        ffts_addr, nullptr, nullptr, input_x->GetAddr(), input_y->GetAddr(), z_addr, static_cast<int32_t>(n_elements),
+        grid_x, grid_y, grid_z,
+    };
+```
+
+After modifying the source code, run `bash run.sh` again to regenerate `libcust_opapi.so`, then continue with the remaining steps. If this adaptation is skipped, `aclrtLaunchKernelWithHostArgs` typically returns a value other than `ACL_ERROR_NONE` (the terminal prints `aclError: <error code>`), or the result check fails because the arguments are shifted.
+
+`aclrtGetHardwareSyncAddr` is supported by Atlas A3 and Atlas A2 products, and is not supported by Ascend 950PR/950DT, Atlas 200I/500 A2 and some other products. For details, see the "Kernel Loading and Execution" section of the [Runtime API reference](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md), which is currently available in Chinese only.
 
 ## Directory Structure and Key Files
 
@@ -159,6 +253,7 @@ When successful, can observe:
 
 If failed, prioritize checking:
 
+- When step 0 prints `need ffts_addr = True`, whether `ge/src/custom_op.cpp` has been modified following "Code Adaptation When FFTS Scheduling Is Enabled", and whether `ge/run.sh` has been executed again to regenerate `libcust_opapi.so`.
 - Whether `bin_path` in `ge/src/custom_op.cpp` can correctly access generated `npubin`.
 - Whether `ASCEND_CUSTOM_OPP_PATH` already includes `ge/build_out`.
 - Whether `./outputs/libcustom_ops.so` can be accessed under test script startup directory.
@@ -167,6 +262,7 @@ If failed, prioritize checking:
 ## Notes / Limitations
 
 - Current sample depends on Triton-Ascend target hardware support scope, please refer to [Triton-Ascend project description](https://gitcode.com/Ascend/triton-ascend#hardware-support).
+- Whether `ffts_addr` is required depends on whether the FFTS scheduling feature was enabled when the `npubin` was compiled, not on the device model. After regenerating the `npubin` (changing the device, upgrading Triton-Ascend, modifying `TRITON_CACHE_DIR` and so on), run step 0 again, and if necessary redo the source adaptation and rebuild the GE deliverable.
 - `bin_path` in `ge/src/custom_op.cpp` needs to be consistent with actual generated `npubin` path.
 - Test script defaults to loading TensorFlow-side so from `./outputs/libcustom_ops.so` in current working directory, recommend running test script in `tensorflow/` directory.
 - Sample defaults to using static shape; if need dynamic shape, can enable `compile_dynamic_mode` configuration in test script.

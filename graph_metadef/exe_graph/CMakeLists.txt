@@ -37,6 +37,7 @@ set(LOWERING_SRCS
 
 ######### liblowering.so #############
 add_library(lowering SHARED ${LOWERING_SRCS})
+target_compile_definitions(lowering PRIVATE GE_API_EXPORTS)
 
 target_include_directories(lowering PRIVATE
     ${METADEF_DIR}

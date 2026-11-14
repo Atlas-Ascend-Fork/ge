@@ -54,13 +54,52 @@
 
 在 `examples/custom_op/triton_add_custom` 目录下执行以下最短路径
 
-请先在编译 `npubin` 的环境中执行以下命令判断 Triton 编译出的 `npubin` 是否依赖 FFTS 调度特性：
+### 步骤 0：判定 npubin 是否启用 FFTS 调度
+
+请在编译 `npubin` 的环境中（即能成功执行 `add_custom_kernel.py` 的环境，需可导入 `torch`、`torch_npu` 与 Triton-Ascend）运行以下脚本，判断 Triton 编译出的 `npubin` 是否依赖 FFTS 调度特性：
 
 ```bash
-python3 -c "from triton.backends.ascend.utils import is_ffts_supported, get_ascend_arch_from_env, force_disable_ffts; print(is_ffts_supported(get_ascend_arch_from_env()) and (not force_disable_ffts()))"
+python3 - <<'PY'
+import torch  # noqa: F401
+import torch_npu  # noqa: F401  # npu_utils.so 链接 libtorch_npu.so，必须先加载
+
+from triton.backends.ascend.utils import is_ffts_supported, force_disable_ffts
+
+try:
+    # 优先取真实编译目标，与 triton-ascend 生成 launcher 时的判据一致
+    from triton.backends.ascend.driver import NPUUtils
+    arch = NPUUtils().get_arch()
+except Exception as e:
+    # 暂露真实原因，不静默退回已废弃接口
+    print("NPUUtils failed:", e)
+    from triton.backends.ascend.utils import get_ascend_arch_from_env
+    arch = get_ascend_arch_from_env()
+
+if not arch:
+    print("arch = <empty>: 无法判定，请勿按 False 处理")
+    raise SystemExit(1)
+
+try:
+    disabled = force_disable_ffts(arch)
+except TypeError:
+    # 兼容旧版无参签名
+    disabled = force_disable_ffts()
+
+print("arch =", arch)
+print("need ffts_addr =", is_ffts_supported(arch) and not disabled)
+PY
 ```
 
-输出 `True` 表示 `npubin` 启用了 FFTS 调度特性，kernel args 的首参数需要传入 C2C 控制区地址（`ffts_addr`），此时请按 `ge/src/custom_op.cpp` 中的注释取消相关代码的注释（共 2 处，均在该文件内，通过 `aclrtGetHardwareSyncAddr` 获取地址）；输出 `False` 时保持样例默认写法即可，无需任何修改。判断逻辑与 triton-ascend 生成 launcher 时采用的一致。
+- 输出 `need ffts_addr = True`：`npubin` 启用了 FFTS 调度特性，kernel args 的首参数必须是 C2C 控制区地址（`ffts_addr`）。样例默认代码不含该参数，**必须**先按下文[启用 FFTS 调度时的代码适配](#启用-ffts-调度时的代码适配步骤-0-输出-true-时必做)修改 `ge/src/custom_op.cpp` 并重新编译 GE 交付件；否则 kernel 参数布局与 `npubin` 期望不一致，会出现任务下发失败或结果校验不通过。
+- 输出 `need ffts_addr = False`：保持样例默认写法，无需任何修改。
+- 脚本打印 `arch = <empty>: 无法判定，请勿按 False 处理` 并以退出码 `1` 结束：当前环境取不到编译目标，**不能**当作 `False` 处理。请先确认 `torch`、`torch_npu`、Triton-Ascend 已正确安装且 NPU 设备可见（`npu-smi info` 能正常输出），再在生成 `npubin` 的同一环境中重跑脚本；若打印了 `NPUUtils failed: ...`，请根据其中的异常信息定位环境问题。
+
+判定逻辑与 triton-ascend 生成 launcher、以及编译 `npubin` 时决定是否关闭 FFTS 的逻辑一致，均为 `is_ffts_supported(arch) and not force_disable_ffts(arch)`，其中 `arch` 取自编译目标。
+
+> **说明：**
+>
+> - 脚本必须先 `import torch_npu`：`NPUUtils()` 加载的 `npu_utils.so` 链接了 `libtorch_npu.so`，未先导入时会抛 `ImportError`；若该异常被静默吞掉，就会退回已废弃接口并得出错误结论。
+> - 请勿用 `get_ascend_arch_from_env()` 单独做该判定。较新版本的 Triton-Ascend 已废弃该接口（仅打印告警并返回空字符串），会使判定结果恒为 `False`；`force_disable_ffts` 在不同版本分别为无参和带 `arch` 参数两种签名，上述脚本已做兼容。
 
 ### 推荐方式
 
@@ -85,11 +124,66 @@ python3 ../script/run_add_custom_tf_1.15.py
 
 1. 先在 `add_custom_kernel/` 下执行 `python3 add_custom_kernel.py` 生成 `npubin`。
 2. 再在 `tensorflow/` 下执行 `bash build_tf.sh` 生成 `outputs/libcustom_ops.so`。
-3. 接着在 `ge/` 下执行 `bash run.sh`，生成 `build_out/libcust_opapi.so` 和 `framework/tensorflow/npu_supported_ops.json`。
+3. 接着在 `ge/` 下执行 `bash run.sh`，生成 `build_out/libcust_opapi.so` 和 `framework/tensorflow/npu_supported_ops.json`。若步骤 0 输出 `need ffts_addr = True`，请先完成下文的源码适配再执行本步骤。
 4. 执行 `export ASCEND_CUSTOM_OPP_PATH="$(pwd)/build_out:$ASCEND_CUSTOM_OPP_PATH"`，将 `libcust_opapi.so` 所在目录加入环境变量。
 5. 最后回到 `tensorflow/` 目录执行 `python3 ../script/run_add_custom_tf_1.15.py`。
 
 若需要调整 `npubin` 输出位置，可先设置 `TRITON_CACHE_DIR`；若需要重新指定 `npubin` 路径，可按实际缓存位置修改 `ge/src/custom_op.cpp` 中的 `bin_path`。
+
+### 启用 FFTS 调度时的代码适配（步骤 0 输出 True 时必做）
+
+样例默认代码面向未启用 FFTS 调度的 `npubin`。若步骤 0 输出 `need ffts_addr = True`，需在执行 `ge/run.sh` 之前修改 `ge/src/custom_op.cpp`，为 kernel args 增加首参数 `ffts_addr`，共 3 处。`ffts_addr` 为 C2C 控制区地址，通过 `aclrtGetHardwareSyncAddr` 获取，该接口已由文件顶部包含的 `acl/acl_rt.h` 声明，无需新增头文件；GE 下发任务时同样使用该接口获取此地址。
+
+**修改点 1**：在 `// 拼装 args` 注释之后、`struct __attribute__((packed)) {` 之前，新增获取 C2C 控制区地址的代码。
+
+```cpp
+    void *ffts_addr = nullptr;
+    if (aclrtGetHardwareSyncAddr(&ffts_addr) != ACL_ERROR_NONE) {
+      std::cerr << __FILE__ << ":" << __LINE__ << " get ffts addr failed" << std::endl;
+      return GRAPH_FAILED;
+    }
+```
+
+**修改点 2**：在 `struct __attribute__((packed))` 的成员列表最前面新增 `ffts_addr` 字段。
+
+```cpp
+      void *ffts_addr __attribute__((aligned(8)));
+```
+
+**修改点 3**：在 `args` 初始化列表最前面传入 `ffts_addr`。
+
+```cpp
+        ffts_addr,
+```
+
+修改完成后，`args` 拼装部分应如下所示，可直接比对（排版符合仓库 `.clang-format`）：
+
+```cpp
+    void *ffts_addr = nullptr;
+    if (aclrtGetHardwareSyncAddr(&ffts_addr) != ACL_ERROR_NONE) {
+      std::cerr << __FILE__ << ":" << __LINE__ << " get ffts addr failed" << std::endl;
+      return GRAPH_FAILED;
+    }
+    struct __attribute__((packed)) {
+      void *ffts_addr __attribute__((aligned(8)));
+      void *sync_block_lock __attribute__((aligned(8)));
+      void *workspace_addr __attribute__((aligned(8)));
+      const void *arg0 __attribute__((aligned(8)));
+      const void *arg1 __attribute__((aligned(8)));
+      void *arg2 __attribute__((aligned(8)));
+      int32_t arg3 __attribute__((aligned(4)));
+      int32_t grid_x __attribute__((aligned(4)));
+      int32_t grid_y __attribute__((aligned(4)));
+      int32_t grid_z __attribute__((aligned(4)));
+    } args = {
+        ffts_addr, nullptr, nullptr, input_x->GetAddr(), input_y->GetAddr(), z_addr, static_cast<int32_t>(n_elements),
+        grid_x, grid_y, grid_z,
+    };
+```
+
+源码改完后必须重新执行 `bash run.sh` 生成 `libcust_opapi.so`，再继续后续步骤。若跳过本节修改直接运行，典型现象是 `aclrtLaunchKernelWithHostArgs` 返回非 `ACL_ERROR_NONE`（终端打印 `aclError: <错误码>`），或因参数错位导致结果校验不通过。
+
+`aclrtGetHardwareSyncAddr` 的产品支持范围为 Atlas A3 系列和 Atlas A2 系列，Ascend 950PR/950DT、Atlas 200I/500 A2 等不支持，接口说明请参见《[Runtime运行时API](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md)》中的“Kernel加载与执行”。
 
 ## 目录结构与关键文件
 
@@ -159,6 +253,7 @@ triton_add_custom
 
 若失败，优先检查：
 
+- 步骤 0 输出 `need ffts_addr = True` 时，是否已按《启用 FFTS 调度时的代码适配》修改 `ge/src/custom_op.cpp`，并重新执行 `ge/run.sh` 生成 `libcust_opapi.so`。
 - `ge/src/custom_op.cpp` 中的 `bin_path` 是否能正确访问生成的 `npubin`。
 - `ASCEND_CUSTOM_OPP_PATH` 是否已包含 `ge/build_out`。
 - 测试脚本启动目录下是否能访问 `./outputs/libcustom_ops.so`。
@@ -167,6 +262,7 @@ triton_add_custom
 ## 注意事项 / 限制
 
 - 当前样例依赖 Triton-Ascend 对目标硬件的支持范围，请参考 [Triton-Ascend 项目说明](https://gitcode.com/Ascend/triton-ascend#硬件支持)。
+- 是否需要 `ffts_addr` 取决于 `npubin` 编译时是否启用 FFTS 调度特性，而非设备型号；重新生成 `npubin`（更换设备、升级 Triton-Ascend、修改 `TRITON_CACHE_DIR` 等）后需重新执行步骤 0 判定，必要时重新适配源码并重编 GE 交付件。
 - `ge/src/custom_op.cpp` 中的 `bin_path` 需要与实际生成的 `npubin` 路径保持一致。
 - 测试脚本默认从当前工作目录的 `./outputs/libcustom_ops.so` 加载 TensorFlow 侧 so，建议在 `tensorflow/` 目录下运行测试脚本。
 - 样例默认使用静态 shape；如需动态 shape，可在测试脚本中打开 `compile_dynamic_mode` 配置。

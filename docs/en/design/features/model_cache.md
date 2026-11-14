@@ -315,6 +315,7 @@ CompiledModelCache Constructor:
 #### Cache Restore (RestoreCache)
 
 `RestoreCache()` restores ExecutionOrder graph slicing results, using a layered call chain:
+
 - `RestoreCache()` → `ExecutionOrderUtil::RestoreExecutionOrder()`:
   - Read `slicing_result.json` to get graph slicing strategy
   - For each ExecutionPoint, call `ExecutionPointUtil::RestoreExecutionPoint()` to restore subgraph, remaining graph (`slice_graph.pb`, `rem_graph.pb`) and GEP information
@@ -326,6 +327,7 @@ CompiledModelCache Constructor:
 #### Cache Save (SaveCache)
 
 `SaveCache()` saves after compilation completes:
+
 - Graph slicing strategy to `slicing_result.json`
 - All GEP `gep_graph_key` for each ExecutionPoint to `gep_list.json`
 - Subgraph serialization to `slice_graph.pb`
@@ -400,3 +402,4 @@ The complete cache directory structure is as follows:
 3. **Variable changes cause cache invalidation**: If Format or Shape of Variable operators in the graph changes, the cache is automatically invalidated and triggers recompilation
 4. **External weight path consistency**: When used with external weight, ensure weight files are accessible in the `weight/` subdirectory of the cache directory during the second compilation (can be specified via `ge.externalWeightDir`)
 5. **Inter-process mutual exclusion**: Cache operations for the same `graph_key` are mutually exclusive through file locks, only one process can operate at the same time
+6. **Cache is unaware of Python custom operator source changes**: An OM can carry a `PYTHON_CUSTOM_OPS` partition (Python custom operator source snapshot, see `docs/en/design/features/so_in_om.md`). Model cache reuses the unified OM save/load logic and **adds no source comparison or cache key field**. The `graph_key` is determined solely by graph structure and variable descriptions: if the user modifies a Python operator implementation source while the graph structure is unchanged, a cache hit loads the **old source** frozen in the cached OM. Users must change `graph_key` or clean the cache directory after source changes

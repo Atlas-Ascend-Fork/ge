@@ -832,7 +832,9 @@ target_link_libraries(ut_libge_multiparts_utest
     -Wl,-z,muldefs
     symengine
     unified_dlog
+    -Wl,--whole-archive
     custom_op_registry_static
+    -Wl,--no-whole-archive
     graph
     graph_base
     ge_common_base

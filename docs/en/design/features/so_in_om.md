@@ -77,6 +77,7 @@ The SO in OM feature adds a new partition type `SO_BINS` to the OM file format:
 | `SO_BINS` | Operator .so file collection | Core carrier of SO in OM |
 | `TILING_DATA` | Precomputed tiling parameters | Used together with SpaceRegistry SO |
 | `CUSTOM_OPS` | Custom operator instance serialized data | Used together with kCustomOp type SO in SO_BINS |
+| `PYTHON_CUSTOM_OPS` | Python custom operator source artifacts + descriptor manifest (deduplicated, deterministic bytes) | **Optional partition**, mutually exclusive with `SO_BINS` for carrying Python operators (Python operators package no SO at all; `FrameworkHostedOp` marking skips SO collection); triggered by Python operators that are used by the graph and whose sources are locatable, with no declaration switch. |
 
 ### 2.2 Four SO Types
 
@@ -144,6 +145,7 @@ The detection logic consists of four independent check functions:
 #### 3.2.1 CheckAndSetSpaceRegistry
 
 **Trigger Conditions**:
+
 - Model contains dynamic shape (`ATTR_NAME_DYNAMIC_SHAPE_PARTITIONED` is true or `GetGraphUnknownFlag()` is true)
 - Model contains `_static_to_dynamic_softsync_op` type operators
 
@@ -158,6 +160,7 @@ The detection logic consists of four independent check functions:
 #### 3.2.3 CheckAndSetAutofuseSo
 
 **Trigger Conditions**:
+
 - Graph node contains `bin_file_path` attribute
 - Root graph `_guard_check_so_data` attribute is non-empty (ge_root_model.cc)
 
@@ -353,6 +356,7 @@ The `SingleOpModelParam` structure contains the `space_registries_` field, used 
 Bit flags implement type judgment and setting through bit shift operations. From high bit to low bit: SpaceRegistry(15), OpMasterDevice(14), Autofuse(13), CustomOp(12).
 
 **Bit Flag Values**:
+
 - `kSpaceRegistry` (0): `0x8000`
 - `kOpMasterDevice` (1): `0x4000`
 - `kAutofuse` (2): `0x2000`

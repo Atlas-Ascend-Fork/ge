@@ -64,7 +64,7 @@
 
 - 创建图输入节点
 
-```c++
+    ```c++
     EsGraphBuilder builder("graph_name");
     auto t1 = builder.CreateInput(0, "input0", "Data");
     ```

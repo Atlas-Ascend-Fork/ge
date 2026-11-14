@@ -111,20 +111,13 @@ class AddCustom : public EagerExecuteOp {
     // args 的前3个参数和后3个参数是固定的，中间的是用户自定义的，要求是和核函数的签名里的变量顺序以及类型严格一致
     // 按照当前的样例中的 Kernel 实现，要求 AddCustom 的两个输入的shape必须相同，不支持BroadCast的方式，例如 Shape1 =
     // [2,3,4],Shape2=[4],这种就不支持
-    // 启用 ffts_addr 时，取消下面整段代码的注释（通过 aclrtGetHardwareSyncAddr 获取
-    // C2C 控制区地址，该接口在已包含的 acl/acl_rt.h 中声明，GE 下发任务时也用该接口获取此地址）：
+    // 注意：下面 args 是否需要首参数 ffts_addr，取决于 npubin 编译时是否启用 FFTS 调度特性，而非特定设备型号。
+    // 判定脚本见本样例 README.md 的“步骤 0：判定 npubin 是否启用 FFTS 调度”，
+    // 适配步骤见“启用 FFTS 调度时的代码适配”一节（英文说明见 README_en.md 对应章节）。
+    // 需要 ffts_addr 时，在本文件增加 3 处代码：先通过 aclrtGetHardwareSyncAddr 获取 C2C 控制区地址
+    // （该接口在已包含的 acl/acl_rt.h 中声明，GE 下发任务时也用该接口获取此地址），
+    // 再把 ffts_addr 作为下面结构体的首个成员，并作为 args 初始化列表的首项传入；改完需重新执行 run.sh。
     struct __attribute__((packed)) {
-      // 注意：是否需要 ffts_addr 取决于 npubin 编译时是否启用 FFTS 调度特性，而非特定设备型号。
-      // 判断方法：在编译 npubin 的环境中执行（需要已安装 triton-ascend，即生成 npubin 的前提条件）：
-      // clang-format off
-      //   python3 -c "from triton.backends.ascend.utils import is_ffts_supported, get_ascend_arch_from_env, force_disable_ffts; print(is_ffts_supported(get_ascend_arch_from_env()) and (not force_disable_ffts()))"
-      // clang-format on
-      //   - 输出 True  表示 npubin 启用了 FFTS 调度特性，需要启用本参数（共 2 处修改，均在当前文件）：
-      //       1. 取消上方获取 C2C 控制区地址代码段、以及下行参数的注释；
-      //       2. 取消下方 args 初始化中首行 ffts_addr 的注释；
-      //   - 输出 False 则保持样例默认写法即可，无需任何修改。
-      // 该判断逻辑与 triton-ascend 生成 launcher 时采用的一致
-      // （https://gitcode.com/Ascend/triton-ascend/blob/main/third_party/ascend/backend/utils.py）。
       void *sync_block_lock __attribute__((aligned(8)));
       void *workspace_addr __attribute__((aligned(8)));
       const void *arg0 __attribute__((aligned(8)));
