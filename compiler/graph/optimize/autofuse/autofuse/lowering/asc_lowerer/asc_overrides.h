@@ -534,7 +534,7 @@ class AscOverrides final : public OpOverrides {
   }
 
   CseVar Acosh(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Acosh %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Acosh>(x);
   }
 
   CseVar Asin(const CseVar &x) override {
@@ -542,15 +542,15 @@ class AscOverrides final : public OpOverrides {
   }
 
   CseVar Asinh(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Asinh %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Asinh>(x);
   }
 
   CseVar Atan(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Atan %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Atan>(x);
   }
 
   CseVar Atanh(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Atanh %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Atanh>(x);
   }
 
   CseVar BesselJ0(const CseVar &x) override {
@@ -570,19 +570,19 @@ class AscOverrides final : public OpOverrides {
   }
 
   CseVar BitwiseNot(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "BitwiseNot %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::BitwiseNot>(x);
   }
 
   CseVar Ceil(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Ceil %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Ceil>(x);
   }
 
   CseVar Cos(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Cos %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Cos>(x);
   }
 
   CseVar Cosh(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Cosh %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Cosh>(x);
   }
 
   CseVar Erf(const CseVar &x1) override {
@@ -590,7 +590,7 @@ class AscOverrides final : public OpOverrides {
   }
 
   CseVar Erfc(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Erfc %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Erfc>(x);
   }
 
   CseVar Erfcx(const CseVar &x) override {
@@ -610,11 +610,11 @@ class AscOverrides final : public OpOverrides {
   }
 
   CseVar Expm1(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Expm1 %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Expm1>(x);
   }
 
   CseVar Floor(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Floor %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Floor>(x);
   }
 
   CseVar Frexp(const CseVar &x) override {
@@ -646,7 +646,7 @@ class AscOverrides final : public OpOverrides {
   }
 
   CseVar Lgamma(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Lgamma %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Lgamma>(x);
   }
 
   CseVar LibdeviceAbs(const CseVar &x) override {
@@ -742,11 +742,11 @@ class AscOverrides final : public OpOverrides {
   }
 
   CseVar Sin(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Sin %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Sin>(x);
   }
 
   CseVar Sinh(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Sinh %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Sinh>(x);
   }
 
   CseVar SpecialErf(const CseVar &x) override {
@@ -762,7 +762,7 @@ class AscOverrides final : public OpOverrides {
   }
 
   CseVar Tan(const CseVar &x) override {
-    GE_WARN_ASSERT(false, "Tan %s", CseKey<UnimplementOp>(x).c_str());
+    return AscOp<ascir_op::Tan>(x);
   }
 
   CseVar Tanh(const CseVar &x) override {
@@ -798,11 +798,11 @@ class AscOverrides final : public OpOverrides {
   }
 
   CseVar BitwiseOr(const CseVar &x1, const CseVar &x2) override {
-    GE_WARN_ASSERT(false, "BitwiseOr %s", CseKey<UnimplementOp>(x1, x2).c_str());
+    return AscOp<ascir_op::BitwiseOr>(x1, x2);
   }
 
   CseVar BitwiseXor(const CseVar &x1, const CseVar &x2) override {
-    GE_WARN_ASSERT(false, "BitwiseXor %s", CseKey<UnimplementOp>(x1, x2).c_str());
+    return AscOp<ascir_op::BitwiseXor>(x1, x2);
   }
 
   CseVar ClampMax(const CseVar &x1, const CseVar &x2) override {

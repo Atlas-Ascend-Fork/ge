@@ -159,6 +159,23 @@ class LoopLoweringToAscBackendUTV1 : public testing::Test {
   std::unique_ptr<es::Graph> es_graph_;
 };
 
+class LoopLoweringToAscBackendUTV2 : public testing::Test {
+ protected:
+  void SetUp() override {
+    dlog_setlevel(GE_MODULE_NAME, DLOG_INFO, 0);
+    ge::ResetAutofusePlatform();
+    RuntimeStub::SetInstance(std::make_shared<RuntimeStubV2Common>());
+    es_graph_ = std::unique_ptr<es::Graph>(new es::Graph("graph"));
+    RegisterAllOpCreator();
+  }
+  void TearDown() override {
+    dlog_setlevel(GE_MODULE_NAME, DLOG_ERROR, 0);
+    RuntimeStub::Reset();
+    ge::ResetAutofusePlatform();
+  }
+  std::unique_ptr<es::Graph> es_graph_;
+};
+
 TEST_F(LoopLoweringToAscBackendUT, SimpleAddAbsExpWithCse) {
   [this]() {
     auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
@@ -5290,8 +5307,8 @@ tmp15 = ascir.Output(Output_0, [tmp14])
 )");
 }
 
-#define TEST_F_LOWER_ASCBACKEND_INST1(LOOPOP, ESOP)                                                    \
-  TEST_F(LoopLoweringToAscBackendUT, Simple##LOOPOP) {                                                 \
+#define TEST_F_LOWER_ASCBACKEND_INST1_WITH_TEST_CLASS(TEST_CLASS, LOOPOP, ESOP)                        \
+  TEST_F(TEST_CLASS, Simple##LOOPOP) {                                                                 \
     [this]() {                                                                                         \
       auto data0 = es_graph_->CreateInput(0, "data0", nullptr);                                        \
       data0.SetSymbolShape({"s0", "s1", "s2"});                                                        \
@@ -5318,6 +5335,12 @@ tmp15 = ascir.Output(Output_0, [tmp14])
               "tmp3.attr = {axis = [0, 1, 2], repeats = [s0, s1, s2], strides = [(s1 * s2), s2, 1]}\n" \
               "tmp4 = ascir.Output(Output_0, [tmp3])\n");                                              \
   }
+
+#define TEST_F_LOWER_ASCBACKEND_INST1(LOOPOP, ESOP) \
+  TEST_F_LOWER_ASCBACKEND_INST1_WITH_TEST_CLASS(LoopLoweringToAscBackendUT, LOOPOP, ESOP)
+
+#define TEST_F_LOWER_ASCBACKEND_V2_INST1(LOOPOP, ESOP) \
+  TEST_F_LOWER_ASCBACKEND_INST1_WITH_TEST_CLASS(LoopLoweringToAscBackendUTV2, LOOPOP, ESOP)
 
 #define TEST_F_LOWER_ASCBACKEND_INST1_WITH_DTYPE(LOOPOP, ESOP, OP_DTYPE)                               \
   TEST_F(LoopLoweringToAscBackendUT, Simple##LOOPOP) {                                                 \
@@ -5351,8 +5374,8 @@ tmp15 = ascir.Output(Output_0, [tmp14])
               "tmp4 = ascir.Output(Output_0, [tmp3])\n");                                              \
   }
 
-#define TEST_F_LOWER_ASCBACKEND_INST2(LOOPOP, ESOP)                                                    \
-  TEST_F(LoopLoweringToAscBackendUT, Simple##LOOPOP) {                                                 \
+#define TEST_F_LOWER_ASCBACKEND_INST2_WITH_TEST_CLASS(TEST_CLASS, LOOPOP, ESOP)                        \
+  TEST_F(TEST_CLASS, Simple##LOOPOP) {                                                                 \
     [this]() {                                                                                         \
       auto data0 = es_graph_->CreateInput(0, "data0", nullptr);                                        \
       data0.SetSymbolShape({"s0", "s1", "s2"});                                                        \
@@ -5388,6 +5411,12 @@ tmp15 = ascir.Output(Output_0, [tmp14])
               "tmp5.attr = {axis = [0, 1, 2], repeats = [s0, s1, s2], strides = [(s1 * s2), s2, 1]}\n" \
               "tmp6 = ascir.Output(Output_0, [tmp5])\n");                                              \
   }
+
+#define TEST_F_LOWER_ASCBACKEND_INST2(LOOPOP, ESOP) \
+  TEST_F_LOWER_ASCBACKEND_INST2_WITH_TEST_CLASS(LoopLoweringToAscBackendUT, LOOPOP, ESOP)
+
+#define TEST_F_LOWER_ASCBACKEND_V2_INST2(LOOPOP, ESOP) \
+  TEST_F_LOWER_ASCBACKEND_INST2_WITH_TEST_CLASS(LoopLoweringToAscBackendUTV2, LOOPOP, ESOP)
 
 #define TEST_F_LOWER_ASCBACKEND_INST2_WITH_DTYPE(LOOPOP, ESOP, OP_DTYPE)                               \
   TEST_F(LoopLoweringToAscBackendUT, Simple##LOOPOP) {                                                 \
@@ -5540,6 +5569,62 @@ tmp15 = ascir.Output(Output_0, [tmp14])
     ASSERT_EQ(asc_graph, nullptr);                                                  \
   }
 
+void SetOutputDataType(const NodePtr &node, const DataType dtype) {
+  ASSERT_NE(node, nullptr);
+  auto output_desc = node->GetOpDesc()->MutableOutputDesc(0);
+  output_desc->SetDataType(dtype);
+  output_desc->SetOriginDataType(dtype);
+}
+
+#define TEST_F_LOWER_ASCBACKEND_V2_INT_INST1(LOOPOP, ESOP)                                         \
+  TEST_F(LoopLoweringToAscBackendUTV2, Simple##LOOPOP) {                                           \
+    [this]() {                                                                                     \
+      auto data0 = es_graph_->CreateInput(0, "data0", nullptr);                                    \
+      data0.SetSymbolShape({"s0", "s1", "s2"});                                                    \
+      auto tmp = es::ESOP(data0);                                                                  \
+      tmp.SetSymbolShape({"s0", "s1", "s2"});                                                      \
+      es_graph_->SetOutput(tmp, 0);                                                                \
+    }();                                                                                           \
+    auto graph = es_graph_->Build();                                                               \
+    auto cg = GraphUtilsEx::GetComputeGraph(*graph);                                               \
+    auto data0 = cg->FindNode("data0");                                                            \
+    auto tmp = cg->FindNode(#ESOP "_0");                                                           \
+    tmp->GetOpDesc()->SetType(#LOOPOP);                                                            \
+    SetOutputDataType(data0, DT_INT32);                                                            \
+    SetOutputDataType(tmp, DT_INT32);                                                              \
+    ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);                                  \
+    auto asc_kernel = ge::loop::GetKernelBox(tmp->GetOutDataAnchor(0));                            \
+    auto asc_graph = asc_kernel.Realize<loop::AscOverrides>("graph");                              \
+    ASSERT_NE(asc_graph, nullptr);                                                                 \
+    EXPECT_NE(ReadableAscGraph(asc_graph->Graph()).find("ascir." #LOOPOP "("), std::string::npos); \
+  }
+
+#define TEST_F_LOWER_ASCBACKEND_V2_INT_INST2(LOOPOP, ESOP)                                         \
+  TEST_F(LoopLoweringToAscBackendUTV2, Simple##LOOPOP) {                                           \
+    [this]() {                                                                                     \
+      auto data0 = es_graph_->CreateInput(0, "data0", nullptr);                                    \
+      data0.SetSymbolShape({"s0", "s1", "s2"});                                                    \
+      auto data1 = es_graph_->CreateInput(1, "data1", nullptr);                                    \
+      data1.SetSymbolShape({"s0", "s1", "s2"});                                                    \
+      auto tmp = es::ESOP(data0, data1);                                                           \
+      tmp.SetSymbolShape({"s0", "s1", "s2"});                                                      \
+      es_graph_->SetOutput(tmp, 0);                                                                \
+    }();                                                                                           \
+    auto graph = es_graph_->Build();                                                               \
+    auto cg = GraphUtilsEx::GetComputeGraph(*graph);                                               \
+    auto data0 = cg->FindNode("data0");                                                            \
+    auto data1 = cg->FindNode("data1");                                                            \
+    auto tmp = cg->FindNode(#ESOP "_0");                                                           \
+    SetOutputDataType(data0, DT_INT32);                                                            \
+    SetOutputDataType(data1, DT_INT32);                                                            \
+    SetOutputDataType(tmp, DT_INT32);                                                              \
+    ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);                                  \
+    auto asc_kernel = ge::loop::GetKernelBox(tmp->GetOutDataAnchor(0));                            \
+    auto asc_graph = asc_kernel.Realize<loop::AscOverrides>("graph");                              \
+    ASSERT_NE(asc_graph, nullptr);                                                                 \
+    EXPECT_NE(ReadableAscGraph(asc_graph->Graph()).find("ascir." #LOOPOP "("), std::string::npos); \
+  }
+
 #define TEST_F_LOWER_REDUCE_ASCBACKEND_INST1(LOOPOP, ESOP)                                             \
   TEST_F(LoopLoweringToAscBackendUT, FusePointwiseWithEndKeepDimReduction##ESOP) {                     \
     [this]() {                                                                                         \
@@ -5612,29 +5697,31 @@ TEST_F_LOWER_ASCBACKEND_INST2(TrueDiv, RealDiv)
 TEST_F_LOWER_ASCBACKEND_INST2(FloorDiv, FloorDiv)
 
 TEST_F_NOTIMPLEMENT_INST1(Acos, Acos)
-TEST_F_NOTIMPLEMENT_INST1(Acosh, Acosh)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Acosh, Acosh)
 TEST_F_NOTIMPLEMENT_INST1(Asin, Asin)
-TEST_F_NOTIMPLEMENT_INST1(Asinh, Asinh)
-TEST_F_NOTIMPLEMENT_INST1(Atan, Atan)
-TEST_F_NOTIMPLEMENT_INST1(Atanh, Atanh)
-TEST_F_NOTIMPLEMENT_INST1(Ceil, Ceil)
-TEST_F_NOTIMPLEMENT_INST1(Cos, Cos)
-TEST_F_NOTIMPLEMENT_INST1(Cosh, Cosh)
-TEST_F_NOTIMPLEMENT_INST1(Erfc, Erfc)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Asinh, Asinh)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Atan, Atan)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Atanh, Atanh)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Ceil, Ceil)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Cos, Cos)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Cosh, Cosh)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Erfc, Erfc)
 TEST_F_NOTIMPLEMENT_INST1(Erfinv, Erfinv)
-TEST_F_NOTIMPLEMENT_INST1(Floor, Floor)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Expm1, Expm1)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Floor, Floor)
 TEST_F_NOTIMPLEMENT_INST1(Identity, Identity)
 TEST_F_NOTIMPLEMENT_INST1(IsInf, IsInf)
-TEST_F_NOTIMPLEMENT_INST1(Lgamma, Lgamma)
-TEST_F_NOTIMPLEMENT_INST1(Round, Round)
-TEST_F_NOTIMPLEMENT_INST1(Sin, Sin)
-TEST_F_NOTIMPLEMENT_INST1(Sinh, Sinh)
-TEST_F_NOTIMPLEMENT_INST1(Tan, Tan)
+TEST_F_LOWER_ASCBACKEND_V2_INT_INST1(BitwiseNot, Invert)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Lgamma, Lgamma)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Round, Round)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Sin, Sin)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Sinh, Sinh)
+TEST_F_LOWER_ASCBACKEND_V2_INST1(Tan, Tan)
 TEST_F_NOTIMPLEMENT_INST1(Trunc, Trunc)
 
 TEST_F_NOTIMPLEMENT_INST2(Atan2, Atan2)
-TEST_F_NOTIMPLEMENT_INST2(BitwiseOr, BitwiseOr)
-TEST_F_NOTIMPLEMENT_INST2(BitwiseXor, BitwiseXor)
+TEST_F_LOWER_ASCBACKEND_V2_INT_INST2(BitwiseOr, BitwiseOr)
+TEST_F_LOWER_ASCBACKEND_V2_INT_INST2(BitwiseXor, BitwiseXor)
 TEST_F_NOTIMPLEMENT_INST2(NextAfter, NextAfter)
 TEST_F_NOTIMPLEMENT_INST2(TruncDiv, TruncateDiv)
 

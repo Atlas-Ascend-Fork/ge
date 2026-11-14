@@ -85,6 +85,28 @@ void RegisterElementwiseAndConcatOps() {
   RegisterOpCreatorV2("Concat", {"x"}, ge::kIrInputDynamic, {"y"}, kIrOutputRequired, {});
 }
 
+void RegisterAdditionalElementwiseOps() {
+  RegisterOpCreatorV2("Acosh", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Asinh", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Atan", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Atanh", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("BitwiseNot", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Ceil", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Cos", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Cosh", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Erfc", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Expm1", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Floor", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Invert", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Lgamma", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Round", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Sin", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Sinh", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("Tan", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("BitwiseOr", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("BitwiseXor", {"x1", "x2"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
+}
+
 void RegisterTransposeAndReduceOps() {
   RegisterOpCreatorV2("IsNan", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("Cast", {"x"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
@@ -226,6 +248,7 @@ void RegisterConv2DAndBNOps() {
 void RegisterAllOpCreator() {
   RegisterStubAndReduceOps();
   RegisterElementwiseAndConcatOps();
+  RegisterAdditionalElementwiseOps();
   RegisterTransposeAndReduceOps();
   RegisterTrainingAndOptOps();
   RegisterUnaryAndBinaryOps();

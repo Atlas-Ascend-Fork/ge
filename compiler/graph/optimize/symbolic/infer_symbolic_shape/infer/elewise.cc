@@ -85,6 +85,7 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(AdjacentDifference).InferSymbolShape(InferShape
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Cumsum).InferSymbolShape(InferShape4ElementWise);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(CumsumD).InferSymbolShape(InferShape4ElementWise);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Expm1).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Floor).InferSymbolShape(InferShape4ElementWise);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(IndexPutV2).InferSymbolShape(InferShape4ElementWise);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(IsInf).InferSymbolShape(InferShape4ElementWise);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Adds).InferSymbolShape(InferShape4ElementWise);
@@ -103,6 +104,17 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Swish).InferSymbolShape(InferShape4ElementWise)
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Sin).InferSymbolShape(InferShape4ElementWise);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(MaskedFill).InferSymbolShape(InferShape4ElementWise);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Ceil).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Tan).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Sinh).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Cosh).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Acosh).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Asinh).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Atan).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Atanh).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Lgamma).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Erfc).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Invert).InferSymbolShape(InferShape4ElementWise);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BitwiseNot).InferSymbolShape(InferShape4ElementWise);
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(TensorScatterUpdate).InferSymbolShape(InferShape4ElementWise);
 }  // namespace
 }  // namespace ge
