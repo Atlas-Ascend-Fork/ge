@@ -17,7 +17,7 @@ typedef int aclError;
 | 返回码 | 含义 | 可能原因及解决方法 |
 | --- | --- | --- |
 | static const int ACL_SUCCESS = 0; | 执行成功。 | - |
-| static const int ACL_ERROR_NONE = 0;<br>须知：此返回码后续版本会废弃，请使用ACL_SUCCESS返回码。 | 执行成功。 | - |
+| static const int ACL_SUCCESS = 0;<br>须知：此返回码后续版本会废弃，请使用ACL_SUCCESS返回码。 | 执行成功。 | - |
 | static const int ACL_ERROR_INVALID_PARAM = 100000; | 参数校验失败。 | 请检查接口的入参值是否正确。 |
 | static const int ACL_ERROR_UNINITIALIZE = 100001; | 未初始化。 | - 请检查是否已调用aclInit接口进行初始化，请确保已调用aclInit接口，且在其它acl接口之前调用。<br>  - 请检查是否已调用对应功能的初始化接口，例如初始化Dump的aclmdlInitDump接口、初始化Profiling的aclprofInit接口。 |
 | static const int ACL_ERROR_REPEAT_INITIALIZE = 100002; | 重复初始化或重复加载。 | 请检查是否调用对应的接口重复初始化或重复加载。 |

@@ -157,7 +157,7 @@
     // 构造 Host Tensor
     void* host_buf = nullptr;
     aclError ret = aclrtMallocHost(&host_buf, data_len);  // 分配Host内存
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
         // 处理错误
     }
 
@@ -191,7 +191,7 @@
     // 分配Device内存
     void* dev = nullptr;
     aclError ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_NORMAL_ONLY);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
         // 处理错误
     }
 

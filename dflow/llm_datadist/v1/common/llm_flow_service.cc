@@ -242,7 +242,7 @@ ge::Status LlmFlowService::Initialize(const std::map<ge::AscendString, ge::Ascen
     ret = worker_pool_
               ->commit([device_index, this, &worker, &options]() -> ge::Status {
                 if (device_index < device_ids_.size()) {
-                  LLM_CHK_BOOL_RET_STATUS(aclrtSetDevice(device_ids_[device_index]) == ACL_ERROR_NONE, ge::FAILED,
+                  LLM_CHK_BOOL_RET_STATUS(aclrtSetDevice(device_ids_[device_index]) == ACL_SUCCESS, ge::FAILED,
                                           "Failed to set device, device id = %d", device_ids_[device_index]);
                 }
                 return worker.Initialize(options);
@@ -344,7 +344,7 @@ ge::Status LlmFlowService::LoadDataFlow(const FlowNodeDef &flow_node_def,
   for (size_t i = 0U; i < device_indices_.size(); ++i) {
     auto fut = pool.commit([this, i, &flow_node_def, &options]() -> ge::Status {
       if (i < device_ids_.size()) {
-        LLM_CHK_BOOL_RET_STATUS(aclrtSetDevice(device_ids_[i]) == ACL_ERROR_NONE, ge::FAILED,
+        LLM_CHK_BOOL_RET_STATUS(aclrtSetDevice(device_ids_[i]) == ACL_SUCCESS, ge::FAILED,
                                 "Failed to set device, device id = %d", device_ids_[i]);
       }
       auto node_def = flow_node_def;

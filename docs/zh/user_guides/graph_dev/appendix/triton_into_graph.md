@@ -197,14 +197,14 @@ g++ -std=c++14 -shared $SOURCE_FILES -o outputs/libcustom_ops.so -fPIC ${TF_CFLA
         binary_load_options.options = &binary_load_option;
 
         // 加载算子二进制文件
-        aclError ret = ACL_ERROR_NONE;
+        aclError ret = ACL_SUCCESS;
         ret = aclrtBinaryLoadFromFile(bin_path, &binary_load_options, &bin_handle);
-        if (ret != ACL_ERROR_NONE) {
+        if (ret != ACL_SUCCESS) {
           std::cerr << __FILE__ << ":" << __LINE__ << " aclError: " << ret << std::endl;
         }
         // 从二进制中获取名为"add_kernel"的核函数句柄
         ret = aclrtBinaryGetFunction(bin_handle, "add_kernel", &func_handle);
-        if (ret != ACL_ERROR_NONE) {
+        if (ret != ACL_SUCCESS) {
           std::cerr << __FILE__ << ":" << __LINE__ << " aclError: " << ret << std::endl;
         }
 
@@ -269,7 +269,7 @@ g++ -std=c++14 -shared $SOURCE_FILES -o outputs/libcustom_ops.so -fPIC ${TF_CFLA
         // placeHolderNum[in]:占位数组的个数
         ret = aclrtLaunchKernelWithHostArgs(func_handle, static_cast<uint32_t>(block_num), stream, nullptr,
                                             static_cast<void *>(&args), sizeof(args), nullptr, 0);
-        if (ret != ACL_ERROR_NONE) {
+        if (ret != ACL_SUCCESS) {
           std::cerr << __FILE__ << ":" << __LINE__ << " aclError: " << ret << std::endl;
         }
         return GRAPH_SUCCESS;

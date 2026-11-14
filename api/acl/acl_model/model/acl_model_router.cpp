@@ -27,12 +27,12 @@ aclError AclIsOm2ModelByDesc(const aclmdlDesc *modelDesc, bool *isOm2) {
     return ACL_ERROR_INVALID_PARAM;
   }
   *isOm2 = acl::AclResourceManagerOm2::GetInstance().IsOm2ModelById(modelDesc->modelId);
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclIsOm2ModelById(uint32_t modelId, bool *isOm2) {
   *isOm2 = acl::AclResourceManagerOm2::GetInstance().IsOm2ModelById(modelId);
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclIsOm2ModelByPath(const char *modelPath, bool *isOm2) {
@@ -46,7 +46,7 @@ aclError AclIsOm2ModelByPath(const char *modelPath, bool *isOm2) {
     return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
   }
   ACL_LOG_DEBUG("model type detected from file path: isOm2Model = %d", *isOm2);
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclIsOm2ModelByData(const void *modelData, size_t modelSize, bool *isOm2) {
@@ -60,7 +60,7 @@ aclError AclIsOm2ModelByData(const void *modelData, size_t modelSize, bool *isOm
     return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
   }
   ACL_LOG_DEBUG("model type detected from memory data: isOm2Model = %d", *isOm2);
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclIsOm2ModelByConfig(const aclmdlConfigHandle *handle, bool *isOm2) {
@@ -79,7 +79,7 @@ aclError AclIsOm2ModelByConfig(const aclmdlConfigHandle *handle, bool *isOm2) {
       return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
     }
     ACL_LOG_DEBUG("model type detected from file path: isOm2Model = %d", *isOm2);
-    return ACL_ERROR_NONE;
+    return ACL_SUCCESS;
   }
 
   if (handle->mdlAddr != nullptr && handle->mdlSize > 0) {
@@ -90,7 +90,7 @@ aclError AclIsOm2ModelByConfig(const aclmdlConfigHandle *handle, bool *isOm2) {
       return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
     }
     ACL_LOG_DEBUG("model type detected from memory data: isOm2Model = %d", *isOm2);
-    return ACL_ERROR_NONE;
+    return ACL_SUCCESS;
   }
 
   ACL_LOG_ERROR("config handle has no valid model path or data");
@@ -99,7 +99,7 @@ aclError AclIsOm2ModelByConfig(const aclmdlConfigHandle *handle, bool *isOm2) {
 
 aclError AclIsOm2BundleById(uint32_t bundleId, bool *isOm2) {
   *isOm2 = acl::AclResourceManagerOm2::GetInstance().IsOm2BundleById(bundleId);
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 #ifdef __cplusplus

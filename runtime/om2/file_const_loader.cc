@@ -305,7 +305,7 @@ ge::Status LoadUniqueIndividualConsts(const std::map<std::string, const Om2Const
     const auto *const_item = item.second;
     futures.emplace_back(thread_pool.commit([const_item, key, &ctx, device_id, var_manager, external_weight_manager]() {
       const auto set_device_ret = aclrtSetDevice(device_id);
-      if (set_device_ret != ACL_ERROR_NONE) {
+      if (set_device_ret != ACL_SUCCESS) {
         GELOGE(ge::FAILED, "[OM2][SetDevice] aclrtSetDevice failed, device_id=%d, ret=%u", device_id, set_device_ret);
         return ge::FAILED;
       }

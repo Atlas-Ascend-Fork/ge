@@ -426,7 +426,7 @@ Status NpuSchedModelLoader::UnloadModel() {
   GELOGD("Begin to unload model, model_id = %u, runtime_model_id = %u.", model_id_, runtime_model_id_);
   // check rt ctx is exist
   aclrtContext current_ctx = nullptr;
-  if (aclrtGetCurrentContext(&current_ctx) == ACL_ERROR_NONE) {
+  if (aclrtGetCurrentContext(&current_ctx) == ACL_SUCCESS) {
     (void)UnbindStreams();
     (void)ReleaseTasks();
     // destroy model
@@ -445,20 +445,20 @@ Status NpuSchedModelLoader::UnloadModel() {
 Status NpuSchedModelLoader::UnbindStreams() {
   // unbind and destroy entry stream
   if (rt_entry_stream_ != nullptr) {
-    GE_LOGW_IF(aclmdlRIUnbindStream(rt_model_handle_, rt_entry_stream_) != ACL_ERROR_NONE, "Fail to unbind stream.");
-    GE_LOGW_IF(aclrtDestroyStream(rt_entry_stream_) != ACL_ERROR_NONE, "Fail to destroy stream.");
+    GE_LOGW_IF(aclmdlRIUnbindStream(rt_model_handle_, rt_entry_stream_) != ACL_SUCCESS, "Fail to unbind stream.");
+    GE_LOGW_IF(aclrtDestroyStream(rt_entry_stream_) != ACL_SUCCESS, "Fail to destroy stream.");
     rt_entry_stream_ = nullptr;
   }
   // unbind and destroy next stream
   if (rt_next_stream_ != nullptr) {
-    GE_LOGW_IF(aclmdlRIUnbindStream(rt_model_handle_, rt_next_stream_) != ACL_ERROR_NONE, "Fail to unbind stream.");
-    GE_LOGW_IF(aclrtDestroyStream(rt_next_stream_) != ACL_ERROR_NONE, "Fail to destroy stream.");
+    GE_LOGW_IF(aclmdlRIUnbindStream(rt_model_handle_, rt_next_stream_) != ACL_SUCCESS, "Fail to unbind stream.");
+    GE_LOGW_IF(aclrtDestroyStream(rt_next_stream_) != ACL_SUCCESS, "Fail to destroy stream.");
     rt_next_stream_ = nullptr;
   }
   // unbind and destroy runtime fake stream
   if (rt_fake_stream_ != nullptr) {
-    GE_LOGW_IF(aclmdlRIUnbindStream(rt_model_handle_, rt_fake_stream_) != ACL_ERROR_NONE, "Fail to unbind stream.");
-    GE_LOGW_IF(aclrtDestroyStream(rt_fake_stream_) != ACL_ERROR_NONE, "Fail to destroy stream.");
+    GE_LOGW_IF(aclmdlRIUnbindStream(rt_model_handle_, rt_fake_stream_) != ACL_SUCCESS, "Fail to unbind stream.");
+    GE_LOGW_IF(aclrtDestroyStream(rt_fake_stream_) != ACL_SUCCESS, "Fail to destroy stream.");
     rt_fake_stream_ = nullptr;
   }
   return SUCCESS;

@@ -234,7 +234,7 @@ static aclError PrepareDualBodyWeightMem(const gert::ExecutorSet &executors, con
     return ACL_ERROR_INVALID_PARAM;
   }
   const aclError malloc_ret = aclrtMalloc(&mem.shared_ptr, executors.shared_weight_size, ACL_MEM_TYPE_HIGH_BAND_WIDTH);
-  if (malloc_ret != ACL_ERROR_NONE) {
+  if (malloc_ret != ACL_SUCCESS) {
     ACL_LOG_CALL_ERROR("malloc shared weight memory failed, ret=%d", static_cast<int32_t>(malloc_ret));
     return malloc_ret;
   }
@@ -278,7 +278,7 @@ static aclError LoadExecutorSetForModel(gert::ExecutorSet &executors, const std:
     ACL_LOG_INFO("fallback executor load success.");
   }
   ret = aclrtSynchronizeStream(rtStream);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     ACL_LOG_CALL_ERROR("synchronize stream failed, runtime result = %d", static_cast<int32_t>(ret));
     (void)executors.main->UnLoad();
     if (executors.fallback != nullptr) {
@@ -1863,7 +1863,7 @@ aclError aclmdlExecuteV2Impl(uint32_t modelId, const aclmdlDataset *input, aclmd
     ret = acl::ModelExecute(modelId, input, output, false, stream);
     if (stream != nullptr) {
       const aclError rtErr = aclrtSynchronizeStreamWithTimeout(stream, handle->streamSyncTimeout);
-      if (rtErr != ACL_ERROR_NONE) {
+      if (rtErr != ACL_SUCCESS) {
         ACL_LOG_CALL_ERROR("synchronize stream failed, runtime result = %d", static_cast<int32_t>(rtErr));
         return ACL_GET_ERRCODE_RTS(rtErr);
       }

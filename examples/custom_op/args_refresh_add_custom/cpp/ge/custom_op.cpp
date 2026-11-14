@@ -167,7 +167,7 @@ class AddRefreshOp : public EagerExecuteOp, public ArgsUpdater, public ShapeInfe
     // 使用 device 侧的 args 启动 kernel
     aclError ret = aclrtLaunchKernelV2(g_kernel_loader.GetFuncHandle(), num_blocks, registered_args->args_data,
                                        registered_args->args_size, nullptr, ctx->GetStream());
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtLaunchKernelV2 failed, error: ", ret);
       return GRAPH_FAILED;
     }
@@ -303,14 +303,14 @@ class AddNoRefreshOp : public EagerExecuteOp, public ShapeInferOp {
     // 分配 device 内存（Execute 仅在加载时调用一次）
     void *dev_args = nullptr;
     aclError ret = aclrtMalloc(&dev_args, sizeof(args), ACL_MEM_MALLOC_HUGE_FIRST);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtMalloc failed, error: ", ret);
       return GRAPH_FAILED;
     }
 
     // 拷贝 args 到 device（Execute 仅在加载时调用一次）
     ret = aclrtMemcpy(dev_args, sizeof(args), &args, sizeof(args), ACL_MEMCPY_HOST_TO_DEVICE);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtMemcpy failed, error: ", ret);
       aclrtFree(dev_args);
       return GRAPH_FAILED;
@@ -319,7 +319,7 @@ class AddNoRefreshOp : public EagerExecuteOp, public ShapeInferOp {
     // 使用 device 侧的 args 启动 kernel
     ret = aclrtLaunchKernelV2(g_kernel_loader.GetFuncHandle(), num_blocks, dev_args, sizeof(args), nullptr,
                               ctx->GetStream());
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtLaunchKernelV2 failed, error: ", ret);
       aclrtFree(dev_args);
       return GRAPH_FAILED;

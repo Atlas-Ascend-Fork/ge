@@ -67,13 +67,13 @@
     ```c++
     // 初始化acl
     aclError aerr = aclInit(nullptr);
-    if (aerr != ACL_ERROR_NONE) {
+    if (aerr != ACL_SUCCESS) {
       std::cerr << "Failed to init ACL, error=" << aerr << std::endl;
       return -1;
     }
     // 指定用于运算的Device
     aerr = aclrtSetDevice(0);
-    if (aerr != ACL_ERROR_NONE) {
+    if (aerr != ACL_SUCCESS) {
       std::cerr << "aclrtSetDevice failed, ret=" << aerr << std::endl;
       aclFinalize();
       return -1;

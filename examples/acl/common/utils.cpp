@@ -222,7 +222,7 @@ Result Utils::MemcpyFilesToDeviceBuffer(const std::vector<std::string> &fileName
     memcpyKind = ACL_MEMCPY_HOST_TO_DEVICE;
   }
 
-  aclError aclRet = ACL_ERROR_NONE;
+  aclError aclRet = ACL_SUCCESS;
   for (size_t idx = 0; idx < batchSize; idx++) {
     void *picData = nullptr;
     uint32_t picDataSize = 0U;

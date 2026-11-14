@@ -55,7 +55,7 @@
     ```c++
     std::string aclConfigPath = "xx/xx/xx";
     aclError retInit = aclInit(aclConfigPath);
-    if (retInit != ACL_ERROR_NONE) {
+    if (retInit != ACL_SUCCESS) {
         // ...
         // ...
         return FAILED;
@@ -258,7 +258,7 @@
     ```c++
     std::string aclConfigPath = "xx/xx/xx";
     aclError retInit = aclInit(aclConfigPath);
-    if (retInit != ACL_ERROR_NONE) {
+    if (retInit != ACL_SUCCESS) {
         // ...
         // ...
         return FAILED;

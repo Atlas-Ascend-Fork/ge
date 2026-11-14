@@ -62,28 +62,28 @@ ge::graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
   const auto main_stream = static_cast<aclrtStream>(ctx->GetStream());
   // 主流录制 event，保证辅流上的 kernel 在输入就绪后执行
   aclError ret = aclrtRecordEvent(ev_main_to_aux, main_stream);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     return ge::GRAPH_FAILED;
   }
   ret = aclrtStreamWaitEvent(static_cast<aclrtStream>(aux_stream), ev_main_to_aux);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     return ge::GRAPH_FAILED;
   }
 
   // 将 kernel 下发到辅流（而非主流）上执行
   ret = aclrtLaunchKernelV2(func_handle, num_blocks, dev_args, sizeof(args), nullptr,
                              static_cast<aclrtStream>(aux_stream));
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     return ge::GRAPH_FAILED;
   }
 
   // 辅流录制 event，主流等待，保证输出在 kernel 完成后使用
   ret = aclrtRecordEvent(ev_aux_to_main, static_cast<aclrtStream>(aux_stream));
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     return ge::GRAPH_FAILED;
   }
   ret = aclrtStreamWaitEvent(main_stream, ev_aux_to_main);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     return ge::GRAPH_FAILED;
   }
   return ge::GRAPH_SUCCESS;

@@ -203,12 +203,12 @@ struct BenchmarkContext {
 
     for (int s = 0; s < kMemorySets; ++s) {
       aclError ret = aclrtMemcpy(x_ptrs[s], kDataSizeBytes, host_x.data(), kDataSizeBytes, ACL_MEMCPY_HOST_TO_DEVICE);
-      if (ret != ACL_ERROR_NONE) {
+      if (ret != ACL_SUCCESS) {
         LOG_ERROR("Failed to copy x data to device for set ", s, ", error: ", ret);
         return false;
       }
       ret = aclrtMemcpy(y_ptrs[s], kDataSizeBytes, host_y.data(), kDataSizeBytes, ACL_MEMCPY_HOST_TO_DEVICE);
-      if (ret != ACL_ERROR_NONE) {
+      if (ret != ACL_SUCCESS) {
         LOG_ERROR("Failed to copy y data to device for set ", s, ", error: ", ret);
         return false;
       }
@@ -290,7 +290,7 @@ double BenchmarkGraph(ge::Session &session, uint32_t graph_id, aclrtStream strea
   const int last_set = (iters - 1) % kMemorySets;
   const aclError copy_ret =
       aclrtMemcpy(ctx.host_z.data(), kDataSizeBytes, ctx.z_ptrs[last_set], kDataSizeBytes, ACL_MEMCPY_DEVICE_TO_HOST);
-  if (copy_ret != ACL_ERROR_NONE) {
+  if (copy_ret != ACL_SUCCESS) {
     LOG_ERROR("Failed to copy result to host, error: ", copy_ret);
     ctx.Cleanup();
     return -1.0;
@@ -375,7 +375,7 @@ int main(int argc, char *argv[]) {
 
   aclrtStream stream = nullptr;
   aclError acl_ret = aclrtCreateStream(&stream);
-  if (acl_ret != ACL_ERROR_NONE) {
+  if (acl_ret != ACL_SUCCESS) {
     LOG_ERROR("Failed to create stream, ret: ", acl_ret);
     return 1;
   }
@@ -400,7 +400,7 @@ int main(int argc, char *argv[]) {
   }
 
   acl_ret = aclrtDestroyStream(stream);
-  if (acl_ret != ACL_ERROR_NONE) {
+  if (acl_ret != ACL_SUCCESS) {
     LOG_ERROR("Failed to destroy stream, ret: ", acl_ret);
   }
 

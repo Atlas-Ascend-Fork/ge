@@ -44,7 +44,7 @@ std::string LoadTextFromFile(const std::string &file_path);
 #define CHECK_ACL(x)                                                                  \
   do {                                                                                \
     aclError __ret = x;                                                               \
-    if (__ret != ACL_ERROR_NONE) {                                                    \
+    if (__ret != ACL_SUCCESS) {                                                       \
       std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __ret << std::endl; \
       return GRAPH_FAILED;                                                            \
     }                                                                                 \

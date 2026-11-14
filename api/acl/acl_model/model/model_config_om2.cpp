@@ -38,7 +38,7 @@ aclError CheckMdlLoadPriority(const void *const attrValue, const size_t valueSiz
   static int32_t greatestPriority;
   if (!mdlLoadPriorityFlag) {
     const aclError aclErr = aclrtDeviceGetStreamPriorityRange(&leastPriority, &greatestPriority);
-    if (aclErr != ACL_ERROR_NONE) {
+    if (aclErr != ACL_SUCCESS) {
       ACL_LOG_CALL_ERROR(
           "[Get][PriorityRange]get range of stream priority failed, "
           "runtime errorCode = %d",

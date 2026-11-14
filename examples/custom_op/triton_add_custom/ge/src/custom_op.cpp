@@ -72,15 +72,15 @@ class AddCustom : public EagerExecuteOp {
     binary_load_options.numOpt = 1;
     binary_load_options.options = &binary_load_option;
 
-    aclError ret = ACL_ERROR_NONE;
+    aclError ret = ACL_SUCCESS;
     ret = aclrtBinaryLoadFromData(bin_data.data(), bin_data.size(), &binary_load_options, &bin_handle);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       std::cerr << __FILE__ << ":" << __LINE__ << " aclError: " << ret << std::endl;
       return GRAPH_FAILED;
     }
 
     ret = aclrtBinaryGetFunction(bin_handle, "add_kernel", &func_handle);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       std::cerr << __FILE__ << ":" << __LINE__ << " aclError: " << ret << std::endl;
       return GRAPH_FAILED;
     }
@@ -153,7 +153,7 @@ class AddCustom : public EagerExecuteOp {
     // placeHolderNum[in]:占位数组的个数
     ret = aclrtLaunchKernelWithHostArgs(func_handle, static_cast<uint32_t>(block_num), stream, nullptr,
                                         static_cast<void *>(&args), sizeof(args), nullptr, 0);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       std::cerr << __FILE__ << ":" << __LINE__ << " aclError: " << ret << std::endl;
       return GRAPH_FAILED;
     }

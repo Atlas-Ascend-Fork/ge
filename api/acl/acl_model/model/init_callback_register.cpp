@@ -54,14 +54,14 @@ aclError ResourceInitCallbackFunc(const char *configStr, size_t len, void *userD
   ACL_LOG_INFO("start to enter ResourceInitCallbackFunc");
   // register ge release function by stream
   auto aclErr = aclrtRegStreamStateCallback("ACL_MODULE_STREAM_MODEL", &HandleReleaseSourceByStream, nullptr);
-  if (aclErr != ACL_ERROR_NONE) {
+  if (aclErr != ACL_SUCCESS) {
     ACL_LOG_ERROR("register release function by stream to runtime failed, ret:%d", aclErr);
     return aclErr;
   }
 
   // register ge release function by device
   aclErr = aclrtRegDeviceStateCallback("ACL_MODULE_DEVICE", &HandleReleaseSourceByDevice, nullptr);
-  if (aclErr != ACL_ERROR_NONE) {
+  if (aclErr != ACL_SUCCESS) {
     ACL_LOG_ERROR("register release function by device to runtime failed, ret:%d", aclErr);
     return aclErr;
   }
@@ -99,14 +99,14 @@ aclError ResourceFinalizeCallbackFunc(void *userData) {
   ACL_LOG_INFO("start to enter ResourceFinalizeCallbackFunc");
   // unregister ge release function by stream
   auto aclErr = aclrtRegStreamStateCallback("ACL_MODULE_STREAM_MODEL", nullptr, nullptr);
-  if (aclErr != ACL_ERROR_NONE) {
+  if (aclErr != ACL_SUCCESS) {
     ACL_LOG_ERROR("unregister release function by stream to runtime failed, ret:%d", aclErr);
     return aclErr;
   }
 
   // unregister ge release function by device
   aclErr = aclrtRegDeviceStateCallback("ACL_MODULE_DEVICE", nullptr, nullptr);
-  if (aclErr != ACL_ERROR_NONE) {
+  if (aclErr != ACL_SUCCESS) {
     ACL_LOG_ERROR("unregister release function by device to runtime failed, ret:%d", aclErr);
     return aclErr;
   }

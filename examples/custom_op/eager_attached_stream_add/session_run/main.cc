@@ -207,7 +207,7 @@ int main() {
 
   // 2. 创建执行流（主流，用于 ExecuteGraphWithStreamAsync 调度）
   aclrtStream main_stream = nullptr;
-  if (aclrtCreateStream(&main_stream) != ACL_ERROR_NONE) {
+  if (aclrtCreateStream(&main_stream) != ACL_SUCCESS) {
     LOG_ERROR("aclrtCreateStream failed");
     ge::GEFinalize();
     return 1;

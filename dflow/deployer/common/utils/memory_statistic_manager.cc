@@ -183,7 +183,7 @@ void MemoryStatisticManager::StatisticXsmem() {
 std::string MemoryStatisticManager::GetXsmemSummaryFile() {
   int32_t pid = 0U;
   const aclError rt_ret = aclrtDeviceGetBareTgid(&pid);
-  if (rt_ret != ACL_ERROR_NONE) {
+  if (rt_ret != ACL_SUCCESS) {
     GELOGE(ge::RT_FAILED, "Call rt api failed, use getpid instead, ret: 0x%X", rt_ret);
     pid = static_cast<int32_t>(getpid());
   }

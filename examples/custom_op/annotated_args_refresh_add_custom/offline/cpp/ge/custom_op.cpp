@@ -136,7 +136,7 @@ class AnnotatedAddCustom : public CompilableOp, public ShapeInferOp, public Anno
     }
     aclrtcProg prog = nullptr;
     aclError ret = aclrtcCreateProg(&prog, source.c_str(), kKernelName, 0, nullptr, nullptr);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       std::cerr << __FILE__ << ":" << __LINE__ << " aclrtcCreateProg failed, aclError: " << ret << std::endl;
       return GRAPH_FAILED;
     }
@@ -148,7 +148,7 @@ class AnnotatedAddCustom : public CompilableOp, public ShapeInferOp, public Anno
     };
     const int numOptions = sizeof(options) / sizeof(options[0]);
     ret = aclrtcCompileProg(prog, numOptions, options);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       std::cerr << __FILE__ << ":" << __LINE__ << " aclrtcCompileProg failed, aclError: " << ret << std::endl;
       aclrtcDestroyProg(&prog);
       return GRAPH_FAILED;
@@ -158,7 +158,7 @@ class AnnotatedAddCustom : public CompilableOp, public ShapeInferOp, public Anno
     // aclrtc流程，获取Device侧二进制内容和大小
     size_t binDataSizeRet;
     ret = aclrtcGetBinDataSize(prog, &binDataSizeRet);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       std::cerr << __FILE__ << ":" << __LINE__ << " aclrtcGetBinDataSize failed, aclError: " << ret << std::endl;
       aclrtcDestroyProg(&prog);
       return GRAPH_FAILED;
@@ -166,7 +166,7 @@ class AnnotatedAddCustom : public CompilableOp, public ShapeInferOp, public Anno
     std::cout << __FILE__ << ":" << __LINE__ << " binary data size: " << binDataSizeRet << std::endl;
     KernelBinary device_elf(binDataSizeRet);
     ret = aclrtcGetBinData(prog, reinterpret_cast<char *>(device_elf.data()));
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       std::cerr << __FILE__ << ":" << __LINE__ << " aclrtcGetBinData failed, aclError: " << ret << std::endl;
       aclrtcDestroyProg(&prog);
       return GRAPH_FAILED;

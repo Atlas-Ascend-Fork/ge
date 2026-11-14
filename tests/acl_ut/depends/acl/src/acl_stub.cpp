@@ -93,15 +93,15 @@ aclError aclStub::aclrtCreateEventWithFlag(aclrtEvent *event, uint32_t flag) {
 
 aclError aclStub::aclrtMalloc(void **devPtr, size_t size, aclrtMemMallocPolicy policy) {
   *devPtr = malloc(size);
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError aclStub::aclrtGetEventId(aclrtEvent event, uint32_t *eventId) {
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError aclStub::aclrtResetEvent(aclrtEvent event, aclrtStream stream) {
-  return static_cast<aclError>(ACL_ERROR_NONE);
+  return static_cast<aclError>(ACL_SUCCESS);
 }
 
 aclError aclStub::aclrtDestroyEvent(aclrtEvent event) {
@@ -140,7 +140,7 @@ aclError aclStub::aclrtSynchronizeStream(aclrtStream stream) {
 aclError aclStub::aclrtFree(void *devPtr) {
   free(devPtr);
   devPtr = nullptr;
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError aclStub::aclrtGetNotifyId(aclrtNotify notify, uint32_t *notifyId) {
