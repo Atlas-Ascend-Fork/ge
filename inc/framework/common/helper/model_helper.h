@@ -279,6 +279,7 @@ class GE_FUNC_VISIBILITY ModelHelper : public ModelSaveHelper {
                              const GeModelPtr &first_ge_model, std::vector<ge::Buffer> &model_buffers,
                              std::vector<ge::Buffer> &task_buffers, size_t &cur_index, const bool is_first_body,
                              const bool is_unknown) const;
+  Status MergeFallbackCustomOpSo(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root) const;
   Status MergeFallbackTiling(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root) const;
   static void ClearTilingIds(const ComputeGraphPtr &graph);
   bool IsUnfoldShellRoot(const GeModelPtr &model) const;

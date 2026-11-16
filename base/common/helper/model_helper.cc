@@ -1050,6 +1050,43 @@ bool ModelHelper::AreDualBodyWeightsIdentical(const GeRootModelPtr &main_root, c
   return true;
 }
 
+Status ModelHelper::MergeFallbackCustomOpSo(const GeRootModelPtr &main_root,
+                                            const GeRootModelPtr &fallback_root) const {
+  GE_ASSERT_NOTNULL(main_root);
+  GE_ASSERT_NOTNULL(fallback_root);
+  const ComputeGraphPtr &main_graph = main_root->GetRootGraph();
+  const ComputeGraphPtr &fallback_graph = fallback_root->GetRootGraph();
+  GE_ASSERT_NOTNULL(main_graph);
+  GE_ASSERT_NOTNULL(fallback_graph);
+  const std::map<std::string, OpSoBinPtr> *fallback_buffer =
+      fallback_graph->GetExtAttr<std::map<std::string, OpSoBinPtr>>("bin_file_buffer");
+  if (fallback_buffer == nullptr) {
+    return SUCCESS;
+  }
+  std::map<std::string, OpSoBinPtr> merged_buffer;
+  const std::map<std::string, OpSoBinPtr> *main_buffer =
+      main_graph->GetExtAttr<std::map<std::string, OpSoBinPtr>>("bin_file_buffer");
+  if (main_buffer != nullptr) {
+    merged_buffer = *main_buffer;
+  }
+  for (const auto &entry : *fallback_buffer) {
+    const OpSoBinPtr &so_bin = entry.second;
+    if ((so_bin == nullptr) || (so_bin->GetSoBinType() != SoBinType::kCustomOp)) {
+      continue;
+    }
+    const auto inserted = merged_buffer.emplace(entry.first, so_bin);
+    if (!inserted.second) {
+      const OpSoBinPtr &existing = inserted.first->second;
+      GE_ASSERT_TRUE((existing != nullptr) && (existing->GetSoBinType() == so_bin->GetSoBinType()) &&
+                         (existing->GetBinDataSize() == so_bin->GetBinDataSize()) &&
+                         (std::memcmp(existing->GetBinData(), so_bin->GetBinData(), so_bin->GetBinDataSize()) == 0),
+                     "Conflicting dual-body custom op SO[%s].", entry.first.c_str());
+    }
+  }
+  GE_ASSERT_TRUE(main_graph->SetExtAttr("bin_file_buffer", merged_buffer));
+  return SUCCESS;
+}
+
 Status ModelHelper::MergeFallbackTiling(const GeRootModelPtr &main_root, const GeRootModelPtr &fallback_root) const {
   GE_ASSERT_NOTNULL(main_root);
   GE_ASSERT_NOTNULL(fallback_root);
@@ -1077,6 +1114,7 @@ Status ModelHelper::SaveDualBodyRootModel(const GeRootModelPtr &main_root, const
   (void)ge::AttrUtils::SetBool(fallback_root->GetRootGraph(), kDualBodyAttr, true);
   (void)MarkDualBodyWeightsIdentical(main_root, fallback_root);
   GE_ASSERT_SUCCESS(MergeFallbackTiling(main_root, fallback_root));
+  GE_ASSERT_SUCCESS(MergeFallbackCustomOpSo(main_root, fallback_root));
 
   const auto &main_models = main_root->GetSubgraphInstanceNameToModel();
   const size_t total_model_num = CountBodyModelGroups(main_root) + CountBodyModelGroups(fallback_root);

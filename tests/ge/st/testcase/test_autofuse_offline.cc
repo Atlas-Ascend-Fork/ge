@@ -26,7 +26,10 @@
 #include "common/opskernel/ops_kernel_info_types.h"
 #include "common/env_path.h"
 #include <filesystem>
+#include <algorithm>
 #include "common/op_so_store/op_so_store.h"
+#include "common/op_so_store/op_so_store_utils.h"
+#include "framework/common/host_cpu_fusion_attr.h"
 #include "api/aclgrph/option_utils.h"
 #include "engine/aicore/autofuse_dispatcher/dispatcher_table.h"
 #include "lowering/model_converter.h"
@@ -684,6 +687,163 @@ TEST_F(AutofuseOfflineSt, CheckDualBodySaveWithMissingRootModelKey) {
   auto bad_fallback = build_body_root(kFallbackModelKey, "sub_graph", false);
   ModelBufferData fallback_buff;
   EXPECT_NE(save_helper.SaveDualBodyRootModel(good_main, bad_fallback, "bad_fallback", fallback_buff, true), SUCCESS);
+}
+
+OpSoBinPtr BuildHostCpuCustomOpSoBinSt(const std::string &so_name, const std::string &payload) {
+  auto data = std::unique_ptr<char_t[]>(new (std::nothrow) char_t[payload.size()]);
+  if (data == nullptr) {
+    return nullptr;
+  }
+  std::copy_n(payload.data(), payload.size(), data.get());
+  return std::make_shared<OpSoBin>(so_name, kFusedHostCpuSoVendor, std::move(data),
+                                   static_cast<uint32_t>(payload.size()), SoBinType::kCustomOp);
+}
+
+bool LoadSoBinsFromOmBufferSt(const ModelBufferData &model_buff, std::vector<OpSoBinPtr> &so_bins) {
+  ModelData model_data;
+  model_data.model_data = model_buff.data.get();
+  model_data.model_len = model_buff.length;
+  OmFileLoadHelper load_helper;
+  if (load_helper.Init(model_data) != SUCCESS) {
+    return false;
+  }
+  ModelPartition so_partition;
+  if (load_helper.GetModelPartition(ModelPartitionType::SO_BINS, so_partition, 0U) != SUCCESS) {
+    return false;
+  }
+  OpSoStore op_so_store;
+  if (!op_so_store.Load(so_partition.data, so_partition.size)) {
+    return false;
+  }
+  so_bins = op_so_store.GetSoBin();
+  return true;
+}
+
+std::map<std::string, std::string> CollectCustomOpSoPayloadSt(const std::vector<OpSoBinPtr> &so_bins) {
+  std::map<std::string, std::string> custom_op_sos;
+  for (const auto &so_bin : so_bins) {
+    if ((so_bin == nullptr) || (so_bin->GetSoBinType() != SoBinType::kCustomOp)) {
+      continue;
+    }
+    custom_op_sos[so_bin->GetVendorName() + "/" + so_bin->GetSoName()] =
+        std::string(reinterpret_cast<const char_t *>(so_bin->GetBinData()), so_bin->GetBinDataSize());
+  }
+  return custom_op_sos;
+}
+
+/**
+ * 用例描述：ATC 自动融合双执行体保存时，兜底执行体根图 bin_file_buffer 中的 HostCPU CustomOp SO
+ *          被合并进主执行体，并随唯一的 SO_BINS 分区一起落盘；同 key、同类型、同内容的 SO 去重，
+ *          非 kCustomOp 类型的 SO 不参与合并。
+ * 预置条件：
+ *   1. 构造 autofuse 双执行体模型（主执行体 + 兜底执行体）
+ *   2. 主执行体根图 bin_file_buffer 预置 libStMainHostCpu.so、libStSharedHostCpu.so 两个 kCustomOp SO
+ *   3. 兜底执行体根图 bin_file_buffer 预置独有的 libStFallbackHostCpu.so、与主执行体同 key 同内容的
+ *      libStSharedHostCpu.so，以及一个不应被合并的 kAutofuse SO
+ * 测试步骤：
+ *   1. 调用 SaveDualBodyRootModel 保存双执行体到内存 OM
+ *   2. 用 OmFileLoadHelper 解析 OM 的 SO_BINS 分区，OpSoStore::Load 还原 SO 列表
+ * 预期结果：
+ *   1. 保存成功，主执行体 so_in_om 标志置上 kCustomOp 位
+ *   2. 主执行体根图 bin_file_buffer 合并后含 3 个 kCustomOp SO，不含兜底执行体的 kAutofuse SO，
+ *      同 key 的 SO 保留主执行体原有实例
+ *   3. SO_BINS 分区还原出的 kCustomOp SO 恰好 3 个，key 与内容和主/兜底执行体预置的一致
+ */
+TEST_F(AutofuseOfflineSt, CheckDualBodySaveMergesFallbackCustomOpSo) {
+  const auto models = BuildDualBodyStModels(false, false, false);
+  ASSERT_NE(models.main_root, nullptr);
+  ASSERT_NE(models.fallback_root, nullptr);
+  (void)GetThreadLocalContext().SetGlobalOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", GetHostArchSt()}});
+
+  const std::string vendor = kFusedHostCpuSoVendor;
+  const std::string main_key = vendor + "/libStMainHostCpu.so";
+  const std::string shared_key = vendor + "/libStSharedHostCpu.so";
+  const std::string fallback_key = vendor + "/libStFallbackHostCpu.so";
+  const std::string autofuse_key = vendor + "/libStFallbackAutofuse.so";
+  const auto main_so = BuildHostCpuCustomOpSoBinSt("libStMainHostCpu.so", "main-so");
+  const auto shared_main_so = BuildHostCpuCustomOpSoBinSt("libStSharedHostCpu.so", "shared-so");
+  const auto shared_fallback_so = BuildHostCpuCustomOpSoBinSt("libStSharedHostCpu.so", "shared-so");
+  const auto fallback_so = BuildHostCpuCustomOpSoBinSt("libStFallbackHostCpu.so", "fallback-so");
+  auto autofuse_data = std::unique_ptr<char_t[]>(new (std::nothrow) char_t[1]);
+  autofuse_data[0] = 'a';
+  const auto fallback_autofuse_so = std::make_shared<OpSoBin>("libStFallbackAutofuse.so", "vendor_st",
+                                                              std::move(autofuse_data), 1U, SoBinType::kAutofuse);
+  ASSERT_NE(main_so, nullptr);
+  ASSERT_NE(shared_main_so, nullptr);
+  ASSERT_NE(shared_fallback_so, nullptr);
+  ASSERT_NE(fallback_so, nullptr);
+  ASSERT_TRUE(models.main_root->GetRootGraph()->SetExtAttr(
+      "bin_file_buffer", std::map<std::string, OpSoBinPtr>{{main_key, main_so}, {shared_key, shared_main_so}}));
+  ASSERT_TRUE(models.fallback_root->GetRootGraph()->SetExtAttr(
+      "bin_file_buffer",
+      std::map<std::string, OpSoBinPtr>{
+          {fallback_key, fallback_so}, {shared_key, shared_fallback_so}, {autofuse_key, fallback_autofuse_so}}));
+
+  ModelHelper save_helper;
+  save_helper.SetSaveMode(false);
+  ModelBufferData model_buff;
+  ASSERT_EQ(save_helper.SaveDualBodyRootModel(models.main_root, models.fallback_root, "dual_body_custom_op_so",
+                                              model_buff, true),
+            SUCCESS);
+  EXPECT_TRUE(OpSoStoreUtils::IsSoBinType(models.main_root->GetSoInOmFlag(), SoBinType::kCustomOp));
+
+  const auto merged_buffer =
+      models.main_root->GetRootGraph()->GetExtAttr<std::map<std::string, OpSoBinPtr>>("bin_file_buffer");
+  ASSERT_NE(merged_buffer, nullptr);
+  EXPECT_EQ(merged_buffer->size(), 3U);
+  EXPECT_EQ(merged_buffer->count(autofuse_key), 0U);
+  EXPECT_EQ(merged_buffer->at(shared_key), shared_main_so);
+  EXPECT_EQ(merged_buffer->at(fallback_key), fallback_so);
+
+  std::vector<OpSoBinPtr> so_bins;
+  ASSERT_TRUE(LoadSoBinsFromOmBufferSt(model_buff, so_bins));
+  const auto saved_custom_op_sos = CollectCustomOpSoPayloadSt(so_bins);
+  ASSERT_EQ(saved_custom_op_sos.size(), 3U);
+  EXPECT_EQ(saved_custom_op_sos.at(main_key), "main-so");
+  EXPECT_EQ(saved_custom_op_sos.at(shared_key), "shared-so");
+  EXPECT_EQ(saved_custom_op_sos.at(fallback_key), "fallback-so");
+}
+
+/**
+ * 用例描述：主执行体与兜底执行体的 bin_file_buffer 中出现同 key 但内容不同的 HostCPU CustomOp SO 时，
+ *          双执行体保存失败，避免加载兜底执行体时缺少对应的 creator。
+ * 预置条件：
+ *   1. 构造 autofuse 双执行体模型
+ *   2. 主/兜底执行体根图 bin_file_buffer 使用同一个 key，但 SO 内容不同
+ * 测试步骤：
+ *   1. 调用 SaveDualBodyRootModel 保存双执行体
+ *   2. 检查主执行体根图 bin_file_buffer 是否被污染
+ * 预期结果：
+ *   1. 保存返回非 SUCCESS
+ *   2. 主执行体根图 bin_file_buffer 仍为合并前的内容，冲突的兜底 SO 未被写入
+ */
+TEST_F(AutofuseOfflineSt, CheckDualBodySaveRejectsConflictingFallbackCustomOpSo) {
+  const auto models = BuildDualBodyStModels(false, false, false);
+  ASSERT_NE(models.main_root, nullptr);
+  ASSERT_NE(models.fallback_root, nullptr);
+  (void)GetThreadLocalContext().SetGlobalOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", GetHostArchSt()}});
+
+  const std::string shared_key = std::string(kFusedHostCpuSoVendor) + "/libStConflictHostCpu.so";
+  const auto main_so = BuildHostCpuCustomOpSoBinSt("libStConflictHostCpu.so", "main-content");
+  const auto fallback_so = BuildHostCpuCustomOpSoBinSt("libStConflictHostCpu.so", "fallback-content");
+  ASSERT_NE(main_so, nullptr);
+  ASSERT_NE(fallback_so, nullptr);
+  ASSERT_TRUE(models.main_root->GetRootGraph()->SetExtAttr("bin_file_buffer",
+                                                           std::map<std::string, OpSoBinPtr>{{shared_key, main_so}}));
+  ASSERT_TRUE(models.fallback_root->GetRootGraph()->SetExtAttr(
+      "bin_file_buffer", std::map<std::string, OpSoBinPtr>{{shared_key, fallback_so}}));
+
+  ModelHelper save_helper;
+  save_helper.SetSaveMode(false);
+  ModelBufferData model_buff;
+  EXPECT_NE(save_helper.SaveDualBodyRootModel(models.main_root, models.fallback_root, "dual_body_conflict_so",
+                                              model_buff, true),
+            SUCCESS);
+  const auto merged_buffer =
+      models.main_root->GetRootGraph()->GetExtAttr<std::map<std::string, OpSoBinPtr>>("bin_file_buffer");
+  ASSERT_NE(merged_buffer, nullptr);
+  ASSERT_EQ(merged_buffer->size(), 1U);
+  EXPECT_EQ(merged_buffer->at(shared_key), main_so);
 }
 
 }  // namespace ge
