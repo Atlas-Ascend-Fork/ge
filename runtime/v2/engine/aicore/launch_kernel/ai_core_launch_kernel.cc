@@ -103,7 +103,9 @@ ge::graphStatus UpdatePlaceHolderInfo(std::vector<aclrtPlaceHolderInfo> &infos, 
 LaunchCommonInputs GetLaunchCommonInputs(KernelContext *context) {
   LaunchCommonInputs inputs;
   inputs.stream = context->GetInputValue<void *>(static_cast<int32_t>(InputCommon::kStream));
-  FE_ASSERT_NOTNULL(inputs.stream);
+  if (inputs.stream == nullptr) {
+    GELOGW("[Launch_kernel] inputs.stream is nullptr, it will be treated as default stream when executing.");
+  }
   auto kernel_bin_id = context->GetInputValue<char *>(static_cast<int32_t>(InputCommon::kKernelBinId));
   FE_ASSERT_NOTNULL(kernel_bin_id);
   auto magic = context->GetInputValue<uint32_t>(static_cast<int32_t>(InputCommon::kMagic));
@@ -333,7 +335,6 @@ void PrintHostData(const RtKernelLaunchArgsEx *args, std::vector<std::string> &m
 }
 std::vector<std::string> PrintLaunchArgs(const KernelContext *context) {
   auto stream = context->GetInputValue<void *>(static_cast<int32_t>(InputCommon::kStream));
-  FE_ASSERT_NOTNULL(stream);
   auto kernel_bin_id = context->GetInputValue<char *>(static_cast<int32_t>(InputCommon::kKernelBinId));
   FE_ASSERT_NOTNULL(kernel_bin_id);
   auto block_dim = context->GetInputPointer<uint32_t>(static_cast<int32_t>(InputCommon::kBlockDim));
