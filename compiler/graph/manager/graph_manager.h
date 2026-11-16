@@ -236,6 +236,7 @@ class GraphManager {
 
   static Status SetRunContext(const GraphNodePtr &graph_node);
   Status GetGraphNode(const GraphId &graph_id, GraphNodePtr &out) const;
+  bool HasGraphNode(GraphId graph_id) const;
 
   // GeSession约束RunGraph/RunGraphAsync/RunGraphWithStreamAsync不能混用
   Status GetRunGraphMode(uint32_t graph_id, RunGraphMode &mode) const;
@@ -285,7 +286,6 @@ class GraphManager {
                            const std::map<std::string, std::string> &graph_options) const;
   void AddGraphNode(GraphId graph_id, const GraphNodePtr &graph_node);
   void RemoveGraphNode(GraphId graph_id);
-  bool HasGraphNode(GraphId graph_id) const;
   void WarningForDeprecatedOptions(const std::map<std::string, std::string> &options) const;
   static Status ProcessSubGraphWithMultiThreads(GraphManager *graph_manager, GraphId root_graph_id,
                                                 const SubGraphInfoPtr &sub_graph_info_ptr,
