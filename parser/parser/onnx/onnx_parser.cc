@@ -944,6 +944,88 @@ Status OnnxModelParser::GetModelFromFile(const char *file, ge::onnx::ModelProto 
   return SUCCESS;
 }
 
+namespace {
+// 子图递归深度上限。与 OnnxUtils::DecodeGraph 处理同一棵 ONNX GraphProto 树时的
+// 约定（graph_metadef/graph/utils/ge_ir_utils.cc:25，kMaxRecursiveDepth = 10）保持一致。
+constexpr int32_t kMaxSubgraphDepth = 10;
+// 递归处理一张 GraphProto 及其内嵌子图（If/While/Case 等分支）的外置权重路径。
+// 仅 ONNX 规范允许子图 initializer/Constant 也使用 external data，根图之外同样需要绝对化。
+Status SetExternalPathForGraph(ge::onnx::GraphProto &onnx_graph, const std::string &dir, int32_t depth) {
+  if (depth > kMaxSubgraphDepth) {
+    REPORT_INNER_ERR_MSG("E18888", "subgraph nesting depth:%d exceeds limit:%d, abort.", depth, kMaxSubgraphDepth);
+    GELOGE(PARAM_INVALID, "[Check][Param] subgraph nesting depth:%d exceeds limit:%d.", depth, kMaxSubgraphDepth);
+    return PARAM_INVALID;
+  }
+  for (int32_t i = 0; i < onnx_graph.initializer_size(); ++i) {
+    ge::onnx::TensorProto *initializer_tensor = onnx_graph.mutable_initializer(i);
+    GE_CHECK_NOTNULL(initializer_tensor);
+    if (initializer_tensor->data_location() != ge::onnx::TensorProto_DataLocation_EXTERNAL) {
+      continue;
+    }
+    for (int32_t j = 0; j < initializer_tensor->external_data_size(); ++j) {
+      ge::onnx::StringStringEntryProto *string_proto = initializer_tensor->mutable_external_data(j);
+      GE_CHECK_NOTNULL(string_proto);
+      if (string_proto->key() != kLocation) {
+        continue;
+      }
+      const std::string &file_name = string_proto->value();
+      const std::string new_file = dir + MMPA_PATH_SEPARATOR_STR + file_name;
+      GELOGD("[%s] is external data. concat dir[%s] and file_name[%s], new_file[%s]",
+             initializer_tensor->name().c_str(), dir.c_str(), file_name.c_str(), new_file.c_str());
+      string_proto->set_value(new_file);
+    }
+  }
+
+  for (int32_t i = 0; i < onnx_graph.node_size(); ++i) {
+    ge::onnx::NodeProto *node_proto = onnx_graph.mutable_node(i);
+    GE_CHECK_NOTNULL(node_proto);
+    if (node_proto->op_type() == kOpTypeConstant) {
+      for (int32_t j = 0; j < node_proto->attribute_size(); ++j) {
+        ge::onnx::AttributeProto *attribute_proto = node_proto->mutable_attribute(j);
+        GE_CHECK_NOTNULL(attribute_proto);
+        if (attribute_proto->name() != kAttrNameValue) {
+          continue;
+        }
+        ge::onnx::TensorProto *tensor_proto = attribute_proto->mutable_t();
+        GE_CHECK_NOTNULL(tensor_proto);
+        if (tensor_proto->data_location() != ge::onnx::TensorProto_DataLocation_EXTERNAL) {
+          continue;
+        }
+        for (int32_t k = 0; k < tensor_proto->external_data_size(); ++k) {
+          ge::onnx::StringStringEntryProto *string_proto = tensor_proto->mutable_external_data(k);
+          GE_CHECK_NOTNULL(string_proto);
+          if (string_proto->key() != kLocation) {
+            continue;
+          }
+          const std::string &file_name = string_proto->value();
+          const std::string new_file = dir + MMPA_PATH_SEPARATOR_STR + file_name;
+          GELOGD("[%s] is external data. concat dir[%s] and file_name[%s], new_file[%s]", node_proto->name().c_str(),
+                 dir.c_str(), file_name.c_str(), new_file.c_str());
+          string_proto->set_value(new_file);
+        }
+      }
+    }
+    for (int32_t j = 0; j < node_proto->attribute_size(); ++j) {
+      ge::onnx::AttributeProto *attribute_proto = node_proto->mutable_attribute(j);
+      GE_CHECK_NOTNULL(attribute_proto);
+      if (attribute_proto->has_g()) {
+        const Status sub_ret = SetExternalPathForGraph(*attribute_proto->mutable_g(), dir, depth + 1);
+        if (sub_ret != SUCCESS) {
+          return sub_ret;
+        }
+      }
+      for (int32_t k = 0; k < attribute_proto->graphs_size(); ++k) {
+        const Status sub_ret = SetExternalPathForGraph(*attribute_proto->mutable_graphs(k), dir, depth + 1);
+        if (sub_ret != SUCCESS) {
+          return sub_ret;
+        }
+      }
+    }
+  }
+  return SUCCESS;
+}
+}  // namespace
+
 Status OnnxModelParser::SetExternalPath(const char *file, ge::onnx::ModelProto &onnx_model) const {
   std::string real_path = ge::parser::RealPath(file);
   const size_t file_len = real_path.length();
@@ -961,55 +1043,7 @@ Status OnnxModelParser::SetExternalPath(const char *file, ge::onnx::ModelProto &
   const char *const dir = mmDirName(tmp_file.get());
   GE_CHECK_NOTNULL(dir);
 
-  const ge::onnx::GraphProto &onnx_graph = onnx_model.graph();
-  for (int32_t i = 0; i < onnx_graph.initializer_size(); ++i) {
-    const ge::onnx::TensorProto &initializer_tensor = onnx_graph.initializer(i);
-    if (initializer_tensor.data_location() != ge::onnx::TensorProto_DataLocation_EXTERNAL) {
-      continue;
-    }
-    for (int32_t j = 0; j < initializer_tensor.external_data_size(); ++j) {
-      ge::onnx::StringStringEntryProto &string_proto =
-          const_cast<ge::onnx::StringStringEntryProto &>(initializer_tensor.external_data(j));
-      if (string_proto.key() != kLocation) {
-        continue;
-      }
-      const std::string &file_name = string_proto.value();
-      const std::string new_file = std::string(dir) + MMPA_PATH_SEPARATOR_STR + file_name;
-      GELOGD("[%s] is external data. concat dir[%s] and file_name[%s], new_file[%s]", initializer_tensor.name().c_str(),
-             dir, file_name.c_str(), new_file.c_str());
-      string_proto.set_value(new_file);
-    }
-  }
-
-  for (int32_t i = 0; i < onnx_graph.node_size(); ++i) {
-    const ge::onnx::NodeProto &node_proto = onnx_graph.node(i);
-    if (node_proto.op_type() != kOpTypeConstant) {
-      continue;
-    }
-    for (int32_t j = 0; j < node_proto.attribute_size(); ++j) {
-      const ge::onnx::AttributeProto &attribute_proto = node_proto.attribute(j);
-      if (attribute_proto.name() != kAttrNameValue) {
-        continue;
-      }
-      const ge::onnx::TensorProto &tensor_proto = attribute_proto.t();
-      if (tensor_proto.data_location() != ge::onnx::TensorProto_DataLocation_EXTERNAL) {
-        continue;
-      }
-      for (int32_t k = 0; k < tensor_proto.external_data_size(); ++k) {
-        ge::onnx::StringStringEntryProto &string_proto =
-            const_cast<ge::onnx::StringStringEntryProto &>(tensor_proto.external_data(k));
-        if (string_proto.key() != kLocation) {
-          continue;
-        }
-        const std::string &file_name = string_proto.value();
-        const std::string new_file = std::string(dir) + MMPA_PATH_SEPARATOR_STR + file_name;
-        GELOGD("[%s] is external data. concat dir[%s] and file_name[%s], new_file[%s]", node_proto.name().c_str(), dir,
-               file_name.c_str(), new_file.c_str());
-        string_proto.set_value(new_file);
-      }
-    }
-  }
-  return SUCCESS;
+  return SetExternalPathForGraph(*onnx_model.mutable_graph(), std::string(dir), 0);
 }
 
 Status OnnxModelParser::GetModelFromMemory(const char *data, uint32_t size, ge::onnx::ModelProto &onnx_model) const {
