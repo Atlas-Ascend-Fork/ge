@@ -26,7 +26,12 @@ namespace ascir_op = af::ascir_op;
 namespace {
 enum class PointwiseGraphType {
   kCompute,
-  kDirectBroadcast,
+  kDirectExplicitNBroadcast,
+  kDirectExplicitBatchBroadcast,
+  kDirectInnerNBroadcast,
+  kDirectInnerMBroadcast,
+  kDirectInnerBatchBroadcast,
+  kDirectInnerMNBroadcast,
   kIndirectBatchBroadcast,
   kIndirectInnerBroadcast,
   kViewOnly,
@@ -95,19 +100,31 @@ std::shared_ptr<AscGraph> CreateComputeAscGraph(const std::string &name) {
   return std::make_shared<AscGraph>(graph);
 }
 
-std::shared_ptr<AscGraph> CreateDirectBroadcastAscGraph(const std::string &name) {
+std::shared_ptr<AscGraph> CreateDirectExplicitBroadcastAscGraph(const std::string &name, bool batch_axis, bool m_axis,
+                                                                bool n_axis) {
   AscGraph graph(name.c_str());
   const auto axes = CreateAscAxes(graph);
+  // 模拟GeFallback后的真实形态：mm输出对应轴为1（Load属性压缩编码repeat=1/stride=0），
+  // 且Load后挂显式Broadcast节点
+  const auto broadcast_repeats =
+      std::vector<Expression>{batch_axis ? Symbol(1) : axes.repeats[0], m_axis ? Symbol(1) : axes.repeats[1],
+                              n_axis ? Symbol(1) : axes.repeats[2]};
+  const auto broadcast_strides =
+      std::vector<Expression>{batch_axis ? Symbol(0) : axes.strides[0], m_axis ? Symbol(0) : axes.strides[1],
+                              n_axis ? Symbol(0) : axes.strides[2]};
   ascir_op::Data data((name + "_data").c_str(), graph);
-  SetAscOpAttrs(data, axes, axes.repeats, axes.strides);
+  SetAscOpAttrs(data, axes, broadcast_repeats, broadcast_strides);
   ascir_op::Load load((name + "_load").c_str());
   load.x = data.y;
-  SetAscOpAttrs(load, axes, axes.repeats, axes.strides);
+  SetAscOpAttrs(load, axes, broadcast_repeats, broadcast_strides);
   ascir_op::Broadcast broadcast((name + "_broadcast").c_str());
   broadcast.x = load.y;
   SetAscOpAttrs(broadcast, axes, axes.repeats, axes.strides);
+  ascir_op::Abs abs((name + "_abs").c_str());
+  abs.x = broadcast.y;
+  SetAscOpAttrs(abs, axes, axes.repeats, axes.strides);
   ascir_op::Store store((name + "_store").c_str());
-  store.x = broadcast.y;
+  store.x = abs.y;
   SetAscOpAttrs(store, axes, axes.repeats, axes.strides);
   ascir_op::Output output((name + "_output").c_str());
   output.x = store.y;
@@ -165,9 +182,53 @@ std::shared_ptr<AscGraph> CreateBatchBroadcastAscGraph(const std::string &name, 
   return std::make_shared<AscGraph>(graph);
 }
 
+std::shared_ptr<AscGraph> CreateDirectImplicitBroadcastAscGraph(const std::string &name, bool batch_axis, bool m_axis,
+                                                                bool n_axis) {
+  AscGraph graph(name.c_str());
+  const auto axes = CreateAscAxes(graph);
+  // 模拟mm输出对应轴为1（repeat=1/stride=0），vector消费侧按满秩图轴广播
+  const auto broadcast_repeats =
+      std::vector<Expression>{batch_axis ? Symbol(1) : axes.repeats[0], m_axis ? Symbol(1) : axes.repeats[1],
+                              n_axis ? Symbol(1) : axes.repeats[2]};
+  const auto broadcast_strides =
+      std::vector<Expression>{batch_axis ? Symbol(0) : axes.strides[0], m_axis ? Symbol(0) : axes.strides[1],
+                              n_axis ? Symbol(0) : axes.strides[2]};
+  ascir_op::Data data((name + "_data").c_str(), graph);
+  SetAscOpAttrs(data, axes, broadcast_repeats, broadcast_strides);
+  ascir_op::Load load((name + "_load").c_str());
+  load.x = data.y;
+  SetAscOpAttrs(load, axes, broadcast_repeats, broadcast_strides);
+  ascir_op::Abs abs((name + "_abs").c_str());
+  abs.x = load.y;
+  SetAscOpAttrs(abs, axes, axes.repeats, axes.strides);
+  ascir_op::Store store((name + "_store").c_str());
+  store.x = abs.y;
+  SetAscOpAttrs(store, axes, axes.repeats, axes.strides);
+  ascir_op::Output output((name + "_output").c_str());
+  output.x = store.y;
+  SetAscOpAttrs(output, axes, axes.repeats, axes.strides);
+  SetAscGraphOutput(graph, name + "_output");
+  return std::make_shared<AscGraph>(graph);
+}
+
 std::shared_ptr<AscGraph> CreatePointwiseAscGraph(PointwiseGraphType type, const std::string &name) {
-  if (type == PointwiseGraphType::kDirectBroadcast) {
-    return CreateDirectBroadcastAscGraph(name);
+  if (type == PointwiseGraphType::kDirectExplicitNBroadcast) {
+    return CreateDirectExplicitBroadcastAscGraph(name, false, false, true);
+  }
+  if (type == PointwiseGraphType::kDirectExplicitBatchBroadcast) {
+    return CreateDirectExplicitBroadcastAscGraph(name, true, false, false);
+  }
+  if (type == PointwiseGraphType::kDirectInnerNBroadcast) {
+    return CreateDirectImplicitBroadcastAscGraph(name, false, false, true);
+  }
+  if (type == PointwiseGraphType::kDirectInnerMBroadcast) {
+    return CreateDirectImplicitBroadcastAscGraph(name, false, true, false);
+  }
+  if (type == PointwiseGraphType::kDirectInnerBatchBroadcast) {
+    return CreateDirectImplicitBroadcastAscGraph(name, true, false, false);
+  }
+  if (type == PointwiseGraphType::kDirectInnerMNBroadcast) {
+    return CreateDirectImplicitBroadcastAscGraph(name, false, true, true);
   }
   if (type == PointwiseGraphType::kIndirectBatchBroadcast) {
     return CreateBatchBroadcastAscGraph(name, true);
@@ -289,9 +350,34 @@ TEST_F(CubeFusionStrategyUT, RejectsHorizontalPointwiseFusion) {
   EXPECT_FALSE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
 }
 
-TEST_F(CubeFusionStrategyUT, RejectsDirectBroadcastFusion) {
-  auto pair = CreateCubePair(PointwiseGraphType::kDirectBroadcast);
+TEST_F(CubeFusionStrategyUT, AllowsDirectExplicitNBroadcastFusion) {
+  auto pair = CreateCubePair(PointwiseGraphType::kDirectExplicitNBroadcast);
+  EXPECT_TRUE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
+}
+
+TEST_F(CubeFusionStrategyUT, RejectsDirectExplicitBatchBroadcastFusion) {
+  auto pair = CreateCubePair(PointwiseGraphType::kDirectExplicitBatchBroadcast);
   EXPECT_FALSE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
+}
+
+TEST_F(CubeFusionStrategyUT, AllowsDirectInnerNBroadcastFusion) {
+  auto pair = CreateCubePair(PointwiseGraphType::kDirectInnerNBroadcast);
+  EXPECT_TRUE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
+}
+
+TEST_F(CubeFusionStrategyUT, AllowsDirectInnerMBroadcastFusion) {
+  auto pair = CreateCubePair(PointwiseGraphType::kDirectInnerMBroadcast);
+  EXPECT_TRUE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
+}
+
+TEST_F(CubeFusionStrategyUT, RejectsDirectInnerBatchBroadcastFusion) {
+  auto pair = CreateCubePair(PointwiseGraphType::kDirectInnerBatchBroadcast);
+  EXPECT_FALSE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
+}
+
+TEST_F(CubeFusionStrategyUT, AllowsDirectInnerMNBroadcastFusion) {
+  auto pair = CreateCubePair(PointwiseGraphType::kDirectInnerMNBroadcast);
+  EXPECT_TRUE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
 }
 
 TEST_F(CubeFusionStrategyUT, RejectsIndirectBatchBroadcastFusion) {
