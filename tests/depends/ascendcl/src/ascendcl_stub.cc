@@ -396,14 +396,14 @@ aclError AclRuntimeStub::aclrtCreateContext(aclrtContext *context, int32_t devic
   aclrtContextStub *ctxStub = new aclrtContextStub;
   ctxStub->deviceId = deviceId;
   *context = ctxStub;
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclRuntimeStub::aclrtDestroyContext(aclrtContext context) {
   if (context != nullptr) {
     delete (aclrtContextStub *)context;
   }
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclRuntimeStub::aclrtSetCurrentContext(aclrtContext context) {
@@ -780,7 +780,7 @@ aclError AclRuntimeStub::aclrtMemcpyBatch(void **dsts, size_t *destMax, void **s
 
   input_mem_copy_batch_count_ = numAttrs;
   // Skip actual memcpy in stub to avoid buffer overflow in tests
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclRuntimeStub::aclrtCheckArchCompatibility(const char *socVersion, int32_t *canCompatible) {
@@ -887,12 +887,12 @@ uint32_t AclRuntimeStub::aclrtGetErrorCodeFromExceptionInfo(const aclrtException
 
 aclError AclRuntimeStub::aclrtGetUserDevIdByLogicDevId(const int32_t logicDevId, int32_t *const userDevid) {
   *userDevid = 0;
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclRuntimeStub::aclrtGetLogicDevIdByUserDevId(const int32_t userDevid, int32_t *const logicDevId) {
   *logicDevId = 0;
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclRuntimeStub::aclrtGetDeviceCount(uint32_t *count) {
@@ -903,7 +903,7 @@ aclError AclRuntimeStub::aclrtGetDeviceCount(uint32_t *count) {
 aclError AclRuntimeStub::aclrtGetDeviceCapability(int32_t deviceId, aclrtDevFeatureType devFeatureType,
                                                   int32_t *value) {
   *value = 1;
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclRuntimeStub::aclrtCreateEventWithFlag(aclrtEvent *event, uint32_t flag) {
@@ -1011,12 +1011,12 @@ aclError AclRuntimeStub::aclrtSetOpExecuteTimeOut(uint32_t timeout) {
 }
 
 aclError AclRuntimeStub::aclrtSetDeviceSatMode(aclrtFloatOverflowMode mode) {
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclRuntimeStub::aclrtDeviceGetBareTgid(int32_t *pid) {
   *pid = static_cast<int32_t>(getpid());
-  return ACL_ERROR_NONE;
+  return ACL_SUCCESS;
 }
 
 aclError AclRuntimeStub::aclrtSetOpExecuteTimeOutWithMs(uint32_t timeout) {
@@ -1232,6 +1232,10 @@ aclError AclRuntimeStub::aclrtValueWait(void *devAddr, uint64_t value, uint32_t 
 }
 
 aclError AclRuntimeStub::aclrtValueWrite(void *devAddr, uint64_t value, uint32_t flag, aclrtStream stream) {
+  return ACL_SUCCESS;
+}
+
+aclError AclRuntimeStub::aclsysGetVersionStr(char *pkgName, char *versionStr) {
   return ACL_SUCCESS;
 }
 
@@ -1967,6 +1971,10 @@ aclError aclrtValueWait(void *devAddr, uint64_t value, uint32_t flag, aclrtStrea
 
 aclError aclrtValueWrite(void *devAddr, uint64_t value, uint32_t flag, aclrtStream stream) {
   return ge::AclRuntimeStub::GetInstance()->aclrtValueWrite(devAddr, value, flag, stream);
+}
+
+aclError aclsysGetVersionStr(char *pkgName, char *versionStr) {
+  return ge::AclRuntimeStub::GetInstance()->aclsysGetVersionStr(pkgName, versionStr);
 }
 
 aclError aclInit(const char *configPath) {

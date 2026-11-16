@@ -152,7 +152,7 @@ class RuntimeMock : public ge::AclRuntimeStub {
     } else {
       *status = ACL_EVENT_RECORDED_STATUS_NOT_READY;
     }
-    return ACL_ERROR_NONE;
+    return ACL_SUCCESS;
   }
 
   const char *aclrtGetSocName() override {

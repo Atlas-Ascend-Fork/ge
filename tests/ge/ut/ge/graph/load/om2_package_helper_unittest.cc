@@ -33,6 +33,7 @@
 #include "common/env_path.h"
 #include "mmpa/mmpa_api.h"
 #include "graph/ge_local_context.h"
+#include "graph/fast_graph/execute_graph.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/custom_op_factory.h"
 #include "graph/custom_op.h"
@@ -41,6 +42,8 @@
 #include "graph/utils/file_utils.h"
 #include "graph/utils/graph_utils.h"
 #include <cstdio>
+#include <cstring>
+#include "securec.h"
 #include <sstream>
 
 #include "ge_runtime_stub/include/common/share_graph.h"
@@ -48,118 +51,19 @@
 #include "ge_runtime_stub/include/faker/custom_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/aicore_taskdef_faker.h"
 #include "common/tbe_handle_store/tbe_kernel_store.h"
+#include "common/opskernel/ops_kernel_info_types.h"
+
+#include "om2_package_test_utils.h"
+#include "om2_compile_stub.h"
 
 namespace ge {
 namespace {
 constexpr const char *kOm2DumpDir = "/tmp/.tmp_om2_workspace";
 
-static void SyncKernelNameFromOpDesc(const GeModelPtr &ge_model) {
-  auto model_task_def = ge_model->GetModelTaskDefPtr();
-  if (model_task_def == nullptr) {
-    return;
-  }
-  const auto &graph = ge_model->GetGraph();
-  if (graph == nullptr) {
-    return;
-  }
-  for (int i = 0; i < model_task_def->task_size(); ++i) {
-    auto *task_def = model_task_def->mutable_task(i);
-    for (const auto &node : graph->GetDirectNode()) {
-      auto op_desc = node->GetOpDesc();
-      if (op_desc == nullptr) {
-        continue;
-      }
-      std::string kernel_name;
-      if (ge::AttrUtils::GetStr(op_desc, "_kernelname", kernel_name)) {
-        task_def->mutable_kernel()->set_kernel_name(kernel_name);
-      }
-    }
-  }
-}
-
-static void SyncKernelNameForAllModels(const GeRootModelPtr &ge_root_model) {
-  if (ge_root_model == nullptr) {
-    return;
-  }
-  for (const auto &kv : ge_root_model->GetSubgraphInstanceNameToModel()) {
-    SyncKernelNameFromOpDesc(kv.second);
-  }
-}
-
-class ScopedEnvVar {
- public:
-  ScopedEnvVar(const char *name, const char *value) : name_(name) {
-    const char *old_value = getenv(name);
-    if (old_value != nullptr) {
-      old_value_ = old_value;
-      has_old_value_ = true;
-    }
-    (void)setenv(name, value, 1);
-  }
-
-  ~ScopedEnvVar() {
-    if (has_old_value_) {
-      (void)setenv(name_.c_str(), old_value_.c_str(), 1);
-      return;
-    }
-    (void)unsetenv(name_.c_str());
-  }
-
- private:
-  std::string name_;
-  std::string old_value_;
-  bool has_old_value_ = false;
-};
-
-GeRootModelPtr CreateGeRootModelWithAicoreOp() {
-  auto graph = gert::ShareGraph::AicoreStaticGraph();
-  graph->TopologicalSorting();
-  gert::GeModelBuilder builder(graph);
-  auto ge_root_model =
-      builder
-          .AddTaskDef("Add",
-                      gert::AiCoreTaskDefFaker("add_stub").ArgsFormat("{i_instance0*}{i_instance1*}{o_instance0*}"))
-          .FakeTbeBin({"Add"})
-          .BuildGeRootModel();
-  auto &compute_graph = ge_root_model->GetRootGraph();
-
-  compute_graph->SetGraphUnknownFlag(false);
-  for (const auto &node : compute_graph->GetDirectNode()) {
-    auto op_desc = node->GetOpDesc();
-    if (op_desc == nullptr) {
-      return nullptr;
-    }
-    if ((op_desc->GetType() == DATA)) {
-      op_desc->SetOutputOffset({1024});
-    } else if (op_desc->GetType() == NETOUTPUT) {
-      op_desc->SetInputOffset({3072});
-    } else {
-      op_desc->SetInputOffset(std::vector<int64_t>(op_desc->GetInputsSize(), 1024));
-      op_desc->SetOutputOffset(std::vector<int64_t>(op_desc->GetOutputsSize(), 1024));
-      if (op_desc->GetType() == "Add") {
-        op_desc->SetIsInputConst({true, true});
-        auto input_desc0 = op_desc->MutableInputDesc(0);
-        auto input_desc1 = op_desc->MutableInputDesc(1);
-        if ((input_desc0 == nullptr) || (input_desc1 == nullptr)) {
-          return nullptr;
-        }
-        TensorUtils::SetDataOffset(*input_desc0, 0);
-        TensorUtils::SetDataOffset(*input_desc1, 200704);
-      }
-    }
-  }
-
-  const auto ge_model = ge_root_model->GetSubgraphInstanceNameToModel().begin()->second;
-  std::vector<uint8_t> weights_value(401408, 1U);
-  const size_t weight_size = weights_value.size();
-  ge_model->SetWeight(Buffer::CopyFrom(weights_value.data(), weight_size));
-
-  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 2048);
-  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, weight_size);
-  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
-
-  return ge_root_model;
-}
+using om2_test::CreateGeRootModelWithAicoreOp;
+using om2_test::ScopedEnvVar;
+using om2_test::SyncKernelNameForAllModels;
+using om2_test::SyncKernelNameFromOpDesc;
 
 GeRootModelPtr CreateGeRootModelWithFileConstOp() {
   auto ge_root_model = CreateGeRootModelWithAicoreOp();
@@ -553,6 +457,78 @@ class Om2PackageHelperUt : public testing::Test {
   std::unique_ptr<ScopedEnvVar> lsan_guard_;
   std::unique_ptr<ScopedGraphOptions> graph_options_guard_;
 };
+
+namespace {
+OpSoBinPtr MakeSoBinaryForTest(const std::string &name, const std::string &vendor, const SoBinType type,
+                               const std::vector<uint8_t> &content) {
+  auto data = std::make_unique<char[]>(content.size());
+  if (!content.empty()) {
+    const auto ret = memcpy_s(data.get(), content.size(), content.data(), content.size());
+    EXPECT_EQ(ret, EOK);
+    if (ret != EOK) {
+      return nullptr;
+    }
+  }
+  return std::make_shared<OpSoBin>(name, vendor, std::move(data), static_cast<uint32_t>(content.size()), type);
+}
+}  // namespace
+
+TEST(Om2SoBinaryBuilderUt, PreservesMetadataDeduplicatesAndOwnsData) {
+  auto first = MakeSoBinaryForTest("liba.so", "vendor_a", SoBinType::kSpaceRegistry, {1U, 0U, 2U});
+  auto duplicate = MakeSoBinaryForTest("liba.so", "vendor_a", SoBinType::kSpaceRegistry, {1U, 0U, 2U});
+  auto other_vendor = MakeSoBinaryForTest("liba.so", "vendor_b", SoBinType::kSpaceRegistry, {1U, 0U, 2U});
+  auto other_content = MakeSoBinaryForTest("liba.so", "vendor_a", SoBinType::kSpaceRegistry, {1U, 0U, 3U});
+  auto other_type = MakeSoBinaryForTest("liba.so", "vendor_a", SoBinType::kCustomOp, {1U, 0U, 2U});
+  auto colliding_name = MakeSoBinaryForTest("liba_1.so", "", SoBinType::kSpaceRegistry, {4U});
+  gert::GertModelDataSoBins result;
+  ASSERT_EQ(Om2PackageHelper::BuildSoBinaries(
+                {first, duplicate, other_vendor, other_content, other_type, colliding_name}, result),
+            SUCCESS);
+  ASSERT_EQ(result.libraries.size(), 5U);
+  const std::vector<std::string> archive_names = {"liba.so", "liba_1.so", "liba_2.so", "liba_3.so", "liba_1_1.so"};
+  for (size_t i = 0U; i < archive_names.size(); ++i) {
+    ASSERT_NE(result.libraries[i], nullptr);
+    ASSERT_NE(result.libraries[i]->binary, nullptr);
+    EXPECT_EQ(gert::GertGetStr(result.libraries[i]->binary->file_name), archive_names[i]);
+  }
+  EXPECT_STREQ(gert::GertGetStr(result.libraries[1]->so_name), "liba.so");
+  EXPECT_STREQ(gert::GertGetStr(result.libraries[1]->vendor_name), "vendor_b");
+  EXPECT_EQ(result.libraries[3]->so_bin_type, static_cast<uint64_t>(SoBinType::kCustomOp));
+  EXPECT_EQ(result.libraries[2]->binary->data.get()[2], 3U);
+  EXPECT_STREQ(gert::GertGetStr(result.libraries[4]->vendor_name), "");
+  first->MutableBinData()[0] = 99U;
+  EXPECT_EQ(result.libraries[0]->binary->data.get()[0], 1U);
+  EXPECT_EQ(result.libraries[0]->binary->data_size, 3U);
+}
+
+TEST(Om2SoBinaryBuilderUt, KeepsOrderAndHandlesEmptyInput) {
+  auto legacy = MakeSoBinaryForTest("liba_legacy.so", "", SoBinType::kSpaceRegistry, {1U});
+  auto regular = MakeSoBinaryForTest("libb.so", "", SoBinType::kSpaceRegistry, {2U});
+  gert::GertModelDataSoBins result;
+  ASSERT_EQ(Om2PackageHelper::BuildSoBinaries({legacy, regular}, result), SUCCESS);
+  ASSERT_EQ(result.libraries.size(), 2U);
+  EXPECT_STREQ(gert::GertGetStr(result.libraries[0]->so_name), "liba_legacy.so");
+  EXPECT_STREQ(gert::GertGetStr(result.libraries[1]->so_name), "libb.so");
+  EXPECT_EQ(Om2PackageHelper::BuildSoBinaries({}, result), SUCCESS);
+  EXPECT_TRUE(result.libraries.empty());
+}
+
+TEST(Om2SoBinaryBuilderUt, RejectsInvalidInputWithoutReplacingOutput) {
+  auto valid = MakeSoBinaryForTest("liba.so", "", SoBinType::kSpaceRegistry, {1U});
+  gert::GertModelDataSoBins result;
+  ASSERT_EQ(Om2PackageHelper::BuildSoBinaries({valid}, result), SUCCESS);
+  EXPECT_NE(Om2PackageHelper::BuildSoBinaries({nullptr}, result), SUCCESS);
+  EXPECT_NE(
+      Om2PackageHelper::BuildSoBinaries({MakeSoBinaryForTest("empty.so", "", SoBinType::kSpaceRegistry, {})}, result),
+      SUCCESS);
+  for (const auto &name : {"", ".", "../bad.so", "dir/bad.so", "dir\\bad.so"}) {
+    EXPECT_NE(
+        Om2PackageHelper::BuildSoBinaries({MakeSoBinaryForTest(name, "", SoBinType::kSpaceRegistry, {1U})}, result),
+        SUCCESS);
+  }
+  ASSERT_EQ(result.libraries.size(), 1U);
+  EXPECT_STREQ(gert::GertGetStr(result.libraries[0]->so_name), "liba.so");
+}
 
 TEST_F(Om2PackageHelperUt, ZipArchiveReaderListAndExtractEntries) {
   gert::GertBuffer model_data;
@@ -1348,13 +1324,13 @@ TEST_F(Om2PackageHelperUt, BuildDebugInfo_DumpOriginOpNames) {
   EXPECT_TRUE(found);
 }
 
-TEST_F(Om2PackageHelperUt, BuildManifest_NullRootModel) {
+TEST_F(Om2PackageHelperUt, BuildManifestCommonFields_EmptyResources) {
   Om2PackageHelper om2_packager;
   gert::GertModelData model_data;
   gert::InitGertModelData(model_data);
   model_data.manifest = std::make_unique<gert::GertModelDataManifest>();
   model_data.models.emplace_back(std::make_unique<gert::GertModelDataModel>());
-  ASSERT_EQ(om2_packager.BuildManifest(model_data, nullptr), SUCCESS);
+  ASSERT_EQ(om2_packager.BuildManifestCommonFields(model_data), SUCCESS);
 
   EXPECT_EQ(model_data.manifest->model_num, 1U);
   EXPECT_EQ(std::string(gert::GertGetStr(model_data.manifest->compatibility.compiler_version)),
@@ -1421,6 +1397,8 @@ TEST_F(Om2PackageHelperUt, Om2CodegenAndCompile_Success) {
   // 此处断言其产物（语义与直接调用等价，避免用例内重复编译）
   const auto *model_data = SuiteModelData("aicore");
   ASSERT_NE(model_data, nullptr);
+  ASSERT_EQ(model_data->models.size(), 1U);
+  EXPECT_EQ(gert::GetGertModelExecutionType(*model_data->models[0]), gert::GertModelExecutionType::kStatic);
   EXPECT_FALSE(model_data->models[0]->runtime->source_artifacts.empty());
   bool found_so = false;
   for (const auto &artifact : model_data->models[0]->runtime->source_artifacts) {
@@ -1606,13 +1584,22 @@ TEST_F(Om2PackageHelperUt, ConvertOm2Model_WithoutAipp_NoAippSectionInJson) {
   EXPECT_EQ(model_meta_json_noaipp.find("\"aipp\""), std::string::npos);
 }
 
-TEST_F(Om2PackageHelperUt, SaveToOmRootModel_UnknownShape_ReturnsFailed) {
-  Om2PackageHelper om2_packager;
-  const auto ge_root_model = CreateGeRootModelWithAicoreOp();
-  ASSERT_NE(ge_root_model, nullptr);
-  ModelBufferData model_data;
+TEST_F(Om2PackageHelperUt, SaveToOmRootModel_UnknownShapeReusesAttachedGertModelData) {
+  Om2PackageHelper helper;
+  helper.SetSaveMode(false);
+  const auto root = CreateGeRootModelWithAicoreOp();
+  ASSERT_NE(root, nullptr);
+  root->GetRootGraph()->SetGraphUnknownFlag(true);
+  auto *cached = SuiteModelData("aicore");
+  ASSERT_NE(cached, nullptr);
+  // The suite owns these compiled artifacts; exercise the save route without regenerating a pbody.
+  root->SetOm2ModelData(std::shared_ptr<gert::GertModelData>(cached, [](gert::GertModelData *) {}));
+  ModelBufferData model;
   const std::string output_file = PathUtils::Join({test_work_dir, "test_unknown_shape.om2"});
-  EXPECT_NE(om2_packager.SaveToOmRootModel(ge_root_model, output_file, model_data, true), SUCCESS);
+  ASSERT_EQ(helper.SaveToOmRootModel(root, output_file, model, true), SUCCESS);
+  EXPECT_NE(model.data, nullptr);
+  EXPECT_GT(model.length, 0U);
+  EXPECT_EQ(root->GetOm2ModelData().get(), cached);
 }
 
 TEST_F(Om2PackageHelperUt, SaveToOmRootModel_NullRootModel_ReturnsFailed) {
@@ -2545,4 +2532,95 @@ TEST_F(Om2PackageHelperUt, AssembleBundle_ShouldUnionUsedFeaturesAndTakeMaxRequi
   EXPECT_STREQ(gert::GertGetStr(compat.compiler_version), gert::GERT_EXECUTOR_VERSION);
   EXPECT_EQ(bundle_data.manifest->model_num, 2U);
 }
+TEST_F(Om2PackageHelperUt, BuildOm2ModelDataKeepsStaticWeightAndLibraryLayout) {
+  om2_test::Om2CompileStub compiler;
+  auto root = CreateGeRootModelWithAicoreOp();
+  ASSERT_NE(root, nullptr);
+  SyncKernelNameForAllModels(root);
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  const auto parent = std::make_shared<ComputeGraph>("root_g1");
+  model->GetGraph()->SetParentGraph(parent);
+  gert::GertModelData data;
+  ASSERT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), SUCCESS);
+  const auto expected = SuiteModelData("aicore");
+  ASSERT_NE(expected, nullptr);
+  ASSERT_EQ(data.models.size(), 1U);
+  EXPECT_GT(data.models[0]->runtime->so_artifact.data_size, 0U);
+  EXPECT_EQ(data.models[0]->model_meta->input_desc.size(), expected->models[0]->model_meta->input_desc.size());
+  EXPECT_EQ(data.models[0]->model_meta->output_desc.size(), expected->models[0]->model_meta->output_desc.size());
+  EXPECT_EQ(data.kernels->binaries.size(), expected->kernels->binaries.size());
+  ASSERT_EQ(data.constants->constants_data.size(), 1U);
+  ASSERT_NE(data.constants->constants_data[0], nullptr);
+  EXPECT_EQ(data.constants->constants_data[0]->data.get(), model->GetWeightData());
+  EXPECT_EQ(data.so_bins, nullptr);
+  EXPECT_EQ(data.manifest->model_num, 1U);
+}
+
+TEST_F(Om2PackageHelperUt, StaticCompileFailureKeepsExistingDataAndPartialBuild) {
+  auto root = CreateGeRootModelWithAicoreOp();
+  ASSERT_NE(root, nullptr);
+  SyncKernelNameForAllModels(root);
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  const auto parent = std::make_shared<ComputeGraph>("root_g1");
+  model->GetGraph()->SetParentGraph(parent);
+  ScopedGraphOptions options;
+  GetThreadLocalContext().SetGraphOption({{"ge.buildConfig", "make -s CXX=/bin/false"}});
+
+  gert::GertModelData data;
+  gert::InitGertModelData(data);
+  data.models.emplace_back(std::make_unique<gert::GertModelDataModel>());
+  const auto original_model = data.models[0].get();
+  data.constants->constants_data.emplace_back();
+  data.so_bins = std::make_unique<gert::GertModelDataSoBins>();
+  const auto original_libraries = data.so_bins.get();
+  EXPECT_NE(Om2PackageHelper().BuildOm2ModelData(model, data, root), SUCCESS);
+  ASSERT_EQ(data.models.size(), 2U);
+  EXPECT_EQ(data.models[0].get(), original_model);
+  EXPECT_NE(data.models[1]->runtime, nullptr);
+  EXPECT_NE(data.models[1]->constants_config, nullptr);
+  EXPECT_EQ(data.constants->constants_data.size(), 2U);
+  EXPECT_EQ(data.so_bins.get(), original_libraries);
+  EXPECT_TRUE(model->HasAttr(ATTR_MODEL_ATC_CMDLINE));
+}
+
+TEST_F(Om2PackageHelperUt, StaticBuildPreservesExistingOutputAndOriginalWeightSlot) {
+  om2_test::Om2CompileStub compiler;
+  auto root = CreateGeRootModelWithAicoreOp();
+  ASSERT_NE(root, nullptr);
+  SyncKernelNameForAllModels(root);
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  const auto parent = std::make_shared<ComputeGraph>("root_g1");
+  model->GetGraph()->SetParentGraph(parent);
+  const auto expected = SuiteModelData("aicore");
+  ASSERT_NE(expected, nullptr);
+  ASSERT_FALSE(expected->kernels->binaries.empty());
+
+  gert::GertModelData data;
+  gert::InitGertModelData(data);
+  data.models.emplace_back(std::make_unique<gert::GertModelDataModel>());
+  const auto original_model = data.models[0].get();
+  data.constants->constants_data.emplace_back();
+  data.so_bins = std::make_unique<gert::GertModelDataSoBins>();
+  const auto original_libraries = data.so_bins.get();
+  auto kernel = std::make_unique<gert::GertModelDataFile>();
+  kernel->file_name = gert::GertMakeStr(expected->kernels->binaries[0]->file_name);
+  const uint8_t content = 42U;
+  kernel->data = gert::GertMakeFileData(&content, sizeof(content));
+  kernel->data_size = sizeof(content);
+  const auto original_kernel = kernel.get();
+  data.kernels->binaries.emplace_back(std::move(kernel));
+
+  ASSERT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), SUCCESS);
+  ASSERT_EQ(data.models.size(), 2U);
+  EXPECT_EQ(data.models[0].get(), original_model);
+  EXPECT_EQ(data.kernels->binaries.size(), expected->kernels->binaries.size() + 1U);
+  EXPECT_EQ(data.kernels->binaries[0].get(), original_kernel);
+  ASSERT_EQ(data.constants->constants_data.size(), 2U);
+  ASSERT_NE(data.constants->constants_data[0], nullptr);
+  EXPECT_EQ(data.constants->constants_data[0]->data.get(), model->GetWeightData());
+  EXPECT_EQ(data.constants->constants_data[1], nullptr);
+  EXPECT_EQ(data.so_bins.get(), original_libraries);
+  EXPECT_EQ(data.manifest->model_num, 2U);
+}
+
 }  // namespace ge

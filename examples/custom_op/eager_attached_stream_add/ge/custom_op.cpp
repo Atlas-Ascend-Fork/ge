@@ -150,12 +150,12 @@ class EagerAttachedStreamAddOp : public EagerExecuteOp, public ShapeInferOp {
     // 必须用 ACL_EVENT_SYNC | CAPTURE_STREAM_PROGRESS | TIME_LINE 组合。
     constexpr uint32_t kEventFlags = ACL_EVENT_SYNC | ACL_EVENT_CAPTURE_STREAM_PROGRESS | ACL_EVENT_TIME_LINE;
     aclError ev_ret = aclrtCreateEventWithFlag(&ev_main_to_aux_, kEventFlags);
-    if (ev_ret != ACL_ERROR_NONE) {
+    if (ev_ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtCreateEventWithFlag(ev_in) failed, ret=", ev_ret);
       return GRAPH_FAILED;
     }
     ev_ret = aclrtCreateEventWithFlag(&ev_aux_to_main_, kEventFlags);
-    if (ev_ret != ACL_ERROR_NONE) {
+    if (ev_ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtCreateEventWithFlag(ev_out) failed, ret=", ev_ret);
       return GRAPH_FAILED;
     }
@@ -165,12 +165,12 @@ class EagerAttachedStreamAddOp : public EagerExecuteOp, public ShapeInferOp {
   // (a) 主流录制 ev_in：位于输入搬运任务之后；(b) 辅流等待 ev_in：保证 kernel 在输入搬运完成后执行
   graphStatus SyncMainToAux(aclrtStream main_stream, gert::rtStream aux_stream) {
     aclError ret = aclrtRecordEvent(ev_main_to_aux_, main_stream);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtRecordEvent(ev_in, main) failed, ret=", ret);
       return GRAPH_FAILED;
     }
     ret = aclrtStreamWaitEvent(static_cast<aclrtStream>(aux_stream), ev_main_to_aux_);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtStreamWaitEvent(aux, ev_in) failed, ret=", ret);
       return GRAPH_FAILED;
     }
@@ -180,12 +180,12 @@ class EagerAttachedStreamAddOp : public EagerExecuteOp, public ShapeInferOp {
   // (c) 辅流录制 ev_out：kernel 完成后；(d) 主流等待 ev_out：保证输出搬运在 kernel 完成后执行
   graphStatus SyncAuxToMain(aclrtStream main_stream, gert::rtStream aux_stream) {
     aclError ret = aclrtRecordEvent(ev_aux_to_main_, static_cast<aclrtStream>(aux_stream));
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtRecordEvent(ev_out, aux) failed, ret=", ret);
       return GRAPH_FAILED;
     }
     ret = aclrtStreamWaitEvent(main_stream, ev_aux_to_main_);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtStreamWaitEvent(main, ev_out) failed, ret=", ret);
       return GRAPH_FAILED;
     }
@@ -199,12 +199,12 @@ class EagerAttachedStreamAddOp : public EagerExecuteOp, public ShapeInferOp {
 
     void *dev_args = nullptr;
     aclError ret = aclrtMalloc(&dev_args, sizeof(args), ACL_MEM_MALLOC_HUGE_FIRST);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtMalloc failed, error: ", ret);
       return GRAPH_FAILED;
     }
     ret = aclrtMemcpy(dev_args, sizeof(args), &args, sizeof(args), ACL_MEMCPY_HOST_TO_DEVICE);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtMemcpy failed, error: ", ret);
       aclrtFree(dev_args);
       return GRAPH_FAILED;
@@ -212,7 +212,7 @@ class EagerAttachedStreamAddOp : public EagerExecuteOp, public ShapeInferOp {
 
     ret = aclrtLaunchKernelV2(g_kernel_loader.GetFuncHandle(), num_blocks, dev_args, sizeof(args), nullptr,
                               static_cast<aclrtStream>(aux_stream));
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtLaunchKernelV2 on attached stream failed, error: ", ret);
       aclrtFree(dev_args);
       return GRAPH_FAILED;

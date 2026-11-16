@@ -143,6 +143,32 @@ TEST_F(STEST_opt_info, parse_hint_input_shape_duplicate_index) {
   GetThreadLocalContext().SetGraphOption({});
 }
 
+TEST_F(STEST_opt_info, check_hint_input_value_param_valid) {
+  EXPECT_EQ(CheckHintInputValueParamValid(""), SUCCESS);
+  EXPECT_EQ(CheckHintInputValueParamValid("0:[1,2];1:[3,4]"), SUCCESS);
+  EXPECT_EQ(CheckHintInputValueParamValid("0:[1,2];"), SUCCESS);
+  EXPECT_EQ(CheckHintInputValueParamValid(" 0 : [1, 2] "), SUCCESS);
+}
+
+TEST_F(STEST_opt_info, check_hint_input_value_param_invalid) {
+  EXPECT_EQ(CheckHintInputValueParamValid("0"), PARAM_INVALID);
+  EXPECT_EQ(CheckHintInputValueParamValid("0:1"), PARAM_INVALID);
+  EXPECT_EQ(CheckHintInputValueParamValid("0:[-1]"), PARAM_INVALID);
+  EXPECT_EQ(CheckHintInputValueParamValid("-1:[1]"), PARAM_INVALID);
+  EXPECT_EQ(CheckHintInputValueParamValid("abc:[1]"), PARAM_INVALID);
+  EXPECT_EQ(CheckHintInputValueParamValid("0:[1];0:[2]"), PARAM_INVALID);
+}
+
+TEST_F(STEST_opt_info, parse_hint_input_value) {
+  GetThreadLocalContext().SetGraphOption({{"ge.inputHintValue", "0:[1,2];1:[3]"}});
+  std::map<int64_t, std::vector<int64_t>> option_value;
+  EXPECT_EQ(ParseHintInputValue(option_value), SUCCESS);
+  ASSERT_EQ(option_value.size(), 2U);
+  EXPECT_EQ(option_value[0], std::vector<int64_t>({1, 2}));
+  EXPECT_EQ(option_value[1], std::vector<int64_t>({3}));
+  GetThreadLocalContext().SetGraphOption({});
+}
+
 TEST_F(STEST_opt_info, parse_hint_input_shape_invalid_shape) {
   GetThreadLocalContext().SetGraphOption({{INPUT_HINT_SHAPE, "0:abc"}});
   std::vector<GeShape> option_shape;

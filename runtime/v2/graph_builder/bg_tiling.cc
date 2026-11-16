@@ -30,6 +30,7 @@
 #include "bg_platform.h"
 #include "runtime/subscriber/global_tracer.h"
 #include "exe_graph/lowering/frame_selector.h"
+#include "exe_graph/lowering/exe_graph_attrs.h"
 #include "value_holder_generator.h"
 #include "bg_model_desc.h"
 #include "graph/utils/op_type_utils.h"
@@ -383,6 +384,21 @@ std::vector<bg::ValueHolderPtr> BuildCommonSymbolTilingInputs(const ge::NodePtr 
   return inputs_holders;
 }
 
+// 标记供 OM2 区分符号化参数布局，RT2 tiling kernel 不读取此标记。
+std::vector<ValueHolderPtr> CreateSymbolCacheableTilingNode(const std::vector<ValueHolderPtr> &inputs,
+                                                            size_t output_num, const bool for_om2) {
+  auto outputs = ValueHolder::CreateDataOutput("CacheableTiling", inputs, output_num);
+  if (!for_om2 || outputs.empty()) {
+    return outputs;
+  }
+  auto *const node = outputs[0] == nullptr ? nullptr : outputs[0]->GetFastNode();
+  auto *const op_desc = node == nullptr ? nullptr : node->GetOpDescBarePtr();
+  if ((op_desc == nullptr) || !ge::AttrUtils::SetBool(op_desc, kSymbolTiling, true)) {
+    return {};
+  }
+  return outputs;
+}
+
 }  // namespace
 ge::Status CheckArgsInfo(const std::vector<ArgsInfo> &args_infos, const ge::NodePtr &compute_node) {
   const auto node_input_num = compute_node->GetInDataNodesAndAnchors().size();
@@ -723,7 +739,7 @@ std::vector<ValueHolderPtr> Tiling(const ge::NodePtr &node, const std::vector<Va
         BuildCacheableTilingFwkDataInputs(node, lower_inputs, 0U, "BuildSymbolTilingCacheKey", inputs_holders));
     GE_ASSERT_SUCCESS(BuildTilingDeterministicInput(node, lower_inputs.global_data, inputs_holders));
     GE_ASSERT_SUCCESS(BuildTilingPcieThroughInput(node, inputs_holders, lower_inputs.input_addrs));
-    return bg::ValueHolder::CreateDataOutput("CacheableTiling", inputs_holders, tiling_output_num);
+    return CreateSymbolCacheableTilingNode(inputs_holders, tiling_output_num, lower_inputs.global_data.IsForOm2());
   }
   GE_ASSERT_NOTNULL(node);
   GE_ASSERT_NOTNULL(node->GetOpDesc());

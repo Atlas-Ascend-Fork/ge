@@ -36,7 +36,7 @@ constexpr size_t kNumInputs = 2U;
 
 #define CHECK_ACL(ret, msg)                                       \
   do {                                                            \
-    if ((ret) != ACL_ERROR_NONE) {                                \
+    if ((ret) != ACL_SUCCESS) {                                   \
       std::cerr << (msg) << ", aclError: " << (ret) << std::endl; \
       return 1;                                                   \
     }                                                             \

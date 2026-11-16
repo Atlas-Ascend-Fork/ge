@@ -69,7 +69,7 @@ void *AclOpResourceManager::GetKeyByStreamOrDefaultStream(const aclrtStream stre
   // get current context default stream
   aclrtStream curCtxDefaultStream = nullptr;
   const aclError aclErr = aclrtCtxGetCurrentDefaultStream(&curCtxDefaultStream);
-  if (aclErr != ACL_ERROR_NONE) {
+  if (aclErr != ACL_SUCCESS) {
     ACL_LOG_CALL_ERROR("get current default stream failed, ret:%d", static_cast<int32_t>(aclErr));
     return nullptr;
   }

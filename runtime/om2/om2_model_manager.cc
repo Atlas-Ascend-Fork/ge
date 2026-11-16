@@ -13,6 +13,8 @@
 #include "common/ge_common/debug/ge_log.h"
 #include "common/ge_common/ge_inner_error_codes.h"
 #include "common/checker.h"
+#include "graph/ge_context.h"
+#include "graph/load/model_manager/model_utils.h"
 #include "framework/om2/model_data/gert_model_data.h"
 #include "framework/runtime/om2_model_executor.h"
 
@@ -75,6 +77,29 @@ ge::Status Om2ModelManager::UnloadModel(uint32_t model_id) {
   model_map_.erase(iter);
   GELOGI("[OM2] Unload model %u success", model_id);
   return SUCCESS;
+}
+
+ge::Status Om2ModelManager::UnloadSessionModels(uint64_t session_id) {
+  const std::lock_guard<std::mutex> lock(mutex_);
+  bool device_selected = false;
+  for (auto it = model_map_.begin(); it != model_map_.end();) {
+    if (it->second->SessionId() != session_id) {
+      ++it;
+      continue;
+    }
+    if (!device_selected) {
+      GE_CHK_STATUS_RET(ModelUtils::SetDevice(GetContext().DeviceId()), "[OM2] Set device failed during finalize.");
+      device_selected = true;
+    }
+    it = model_map_.erase(it);
+  }
+  return SUCCESS;
+}
+
+std::shared_ptr<gert::Om2ModelExecutor> Om2ModelManager::GetModelExecutor(uint32_t model_id) {
+  const std::lock_guard<std::mutex> lock(mutex_);
+  const auto it = model_map_.find(model_id);
+  return it == model_map_.end() ? nullptr : it->second;
 }
 
 uint32_t Om2ModelManager::GenModelId() {

@@ -29,8 +29,24 @@ class OfflineOptimizer {
  public:
   explicit OfflineOptimizer(const LoweringOption &option, const LoweringGlobalData &global_data)
       : optimize_option_(option) {
+    Build(ge::MakeUnique<ConstantExpressionMotion>(&global_data));
+  }
+
+  // OM2 外部执行图入口，CEM 保留显式声明的 Main 阶段节点。
+  explicit OfflineOptimizer(const LoweringOption &option, EquivalantNodesFromMainToInit equivalant_nodes)
+      : optimize_option_(option) {
+    Build(ge::MakeUnique<ConstantExpressionMotion>(std::move(equivalant_nodes)));
+  }
+
+  ge::graphStatus Run(ge::ExecuteGraph *graph) {
+    bool changed = false;
+    return optimizer_.Run(graph, changed);
+  }
+
+ private:
+  void Build(std::unique_ptr<Pass> cem) {
     AddPass("ZeroCopy", ge::MakeUnique<ModelOutTensorZeroCopy>());
-    AddPass("CEM", ge::MakeUnique<ConstantExpressionMotion>(&global_data));
+    AddPass("CEM", std::move(cem));
     AddPass("CopyFlowLaunch", ge::MakeUnique<CopyFlowLaunchFuse>());
     AddPass("TrustOutTensor", ge::MakeUnique<TrustOutTensor>());
     // todo 这里不应该调用引擎的头文件，整改掉
@@ -42,12 +58,6 @@ class OfflineOptimizer {
     }
   }
 
-  ge::graphStatus Run(ge::ExecuteGraph *graph) {
-    bool changed;
-    return optimizer_.Run(graph, changed);
-  }
-
- private:
   void AddPass(const char *name, std::unique_ptr<Pass> pass) {
     if (pass == nullptr) {
       GELOGW("The pass %s failed to initialize, skip it.", name);

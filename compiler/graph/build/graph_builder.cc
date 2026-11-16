@@ -759,7 +759,8 @@ Status GraphBuilder::RefreshInfoOfDynamicShapeGraph(ComputeGraphPtr &comp_graph,
   (void)AttrUtils::GetInt(root_model, ATTR_MODEL_EVENT_NUM, event_num);
   (void)AttrUtils::GetInt(root_model, ATTR_MODEL_NOTIFY_NUM, notify_num);
   // eager 自定义算子辅流统计为可选属性：任一子模型带该属性时才在根模型聚合写回，避免无该特性的模型产物变化
-  bool has_eager_attr = AttrUtils::GetInt(root_model, ATTR_MODEL_EAGER_CUSTOM_OP_STREAM_NUM, eager_stream_num);
+  uint32_t has_eager_attr =
+      AttrUtils::GetInt(root_model, ATTR_MODEL_EAGER_CUSTOM_OP_STREAM_NUM, eager_stream_num) ? 1U : 0U;
   GELOGI("Root model: %s, stream num: %u, event num: %u, notify num: %u.", iter_root->first.c_str(), stream_num,
          event_num, notify_num);
 
@@ -775,7 +776,8 @@ Status GraphBuilder::RefreshInfoOfDynamicShapeGraph(ComputeGraphPtr &comp_graph,
     (void)AttrUtils::GetInt(ge_model.second, ATTR_MODEL_EVENT_NUM, tmp_event);
     (void)AttrUtils::GetInt(ge_model.second, ATTR_MODEL_NOTIFY_NUM, tmp_notify);
     // |= 不短路，保证每个子模型的属性读取都执行；不能写作 ||，否则置位后会跳过 GetInt 漏读 tmp 值
-    has_eager_attr |= AttrUtils::GetInt(ge_model.second, ATTR_MODEL_EAGER_CUSTOM_OP_STREAM_NUM, tmp_eager_stream_num);
+    has_eager_attr |=
+        (AttrUtils::GetInt(ge_model.second, ATTR_MODEL_EAGER_CUSTOM_OP_STREAM_NUM, tmp_eager_stream_num) ? 1U : 0U);
     GELOGI("Sub model: %s, stream num: %u, event num: %u, notify num: %u, eager custom op stream num: %u.",
            ge_model.first.c_str(), tmp_stream, tmp_event, tmp_notify, tmp_eager_stream_num);
 
@@ -794,7 +796,7 @@ Status GraphBuilder::RefreshInfoOfDynamicShapeGraph(ComputeGraphPtr &comp_graph,
   GE_ASSERT_TRUE(AttrUtils::SetInt(root_model, ATTR_MODEL_STREAM_NUM, stream_num));
   GE_ASSERT_TRUE(AttrUtils::SetInt(root_model, ATTR_MODEL_EVENT_NUM, event_num));
   GE_ASSERT_TRUE(AttrUtils::SetInt(root_model, ATTR_MODEL_NOTIFY_NUM, notify_num));
-  if (has_eager_attr) {
+  if (has_eager_attr != 0U) {
     GE_ASSERT_TRUE(AttrUtils::SetInt(root_model, ATTR_MODEL_EAGER_CUSTOM_OP_STREAM_NUM, eager_stream_num));
   }
 

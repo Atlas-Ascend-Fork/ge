@@ -41,6 +41,12 @@ constexpr const ge::char_t *kKernelExtendInfo = "KernelExtendInfo";
 // 打在exe node上，用来标识本node所对应的kernel信息的index
 constexpr const ge::char_t *kKernelExtendIndex = "KernelExtendInfoIndex";
 
+// 打在符号推导 InferShape 节点上，标识其输入采用符号推导 ABI。
+constexpr const ge::char_t *kSymbolInferShape = "_symbol_infer_shape";
+
+// 打在符号化 Tiling 的 CacheableTiling 节点上，标识其输入采用符号推导 ABI。
+constexpr const ge::char_t *kSymbolTiling = "_symbol_tiling";
+
 // 打在exe node上，用来标识本node属于某一子图，且该子图内节点源自于子图外部，且对应子图外部节点拥有Guarder
 constexpr const ge::char_t *kNodeWithGuarderOutside = "NodeWithGuarderOutside";
 

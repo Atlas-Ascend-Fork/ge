@@ -723,7 +723,7 @@ Status TensorTransUtils::TryBatchMemcpy(MemcpyBatchParam &args) {
     return SUCCESS;
   }
 
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     GELOGE(RT_FAILED, "Batch memcpy failed, ret=%d, failed index=%zu", ret, fail_idx);
     return RT_FAILED;
   }

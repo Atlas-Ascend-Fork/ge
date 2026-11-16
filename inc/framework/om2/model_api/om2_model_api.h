@@ -302,6 +302,39 @@ struct GertModelRunCallbacks {
   ReportModelRunFunc report_run_info_postprocess = nullptr;  // 执行后回调。
 };
 
+enum GertModelSharedLibraryType : uint64_t {
+  GERT_MODEL_SHARED_LIBRARY_SPACE_REGISTRY = 0U,
+  GERT_MODEL_SHARED_LIBRARY_OP_MASTER_DEVICE = 1U,
+  GERT_MODEL_SHARED_LIBRARY_AUTOFUSE = 2U,
+  GERT_MODEL_SHARED_LIBRARY_CUSTOM_OP = 3U,
+  GERT_MODEL_SHARED_LIBRARY_UNSPECIFIED = 0xFFFFU
+};
+
+/**
+ * @brief Executor 提供给模型 SO 的共享库描述。
+ * 所有字段为输入；字符串为 UTF-8、以 '\0' 结束，vendor_name 可为空（表示未指定来源）。
+ * 指针及二进制内容由调用方持有，至少在 GertModelLoad 调用期间有效；模型 SO 不得释放。
+ * 若模型 SO 需在 Load 返回后使用这些数据，应在 Load 内建立自身副本或对应的加载资源。
+ */
+struct GertModelSharedLibrary {
+  uint64_t struct_size = sizeof(GertModelSharedLibrary);
+  const char *so_name = nullptr;  // 原始 SO 名称，不是解决归档重名后的文件名。
+  GertModelSharedLibraryType so_bin_type = GERT_MODEL_SHARED_LIBRARY_UNSPECIFIED;
+  const char *vendor_name = nullptr;
+  const void *data = nullptr;
+  uint64_t data_size = 0U;  // 二进制内容字节数，不含额外终止符。
+};
+
+/**
+ * @brief 可选共享库列表。library_num 为 0 表示显式提供空列表，libraries 不被读取。
+ * 描述使用指针数组，每项独立按 struct_size 演进；数组及条目的所有权不跨边界转移。
+ */
+struct GertModelSharedLibraries {
+  uint64_t struct_size = sizeof(GertModelSharedLibraries);
+  uint64_t library_num = 0U;
+  const GertModelSharedLibrary *const *libraries = nullptr;
+};
+
 /**
  * @brief 变量地址解析模式。数值一经发布不可改变，新增值只能追加。
  */
@@ -395,36 +428,42 @@ struct GertModelVarContext {
   CommitVarDataFunc commit_var_data = nullptr;         // 输入，提交派生数据。
 };
 
+/** @brief 动态模型的加载参数。 */
+struct GertModelDynamicLoadConfig {
+  uint64_t struct_size = sizeof(GertModelDynamicLoadConfig);
+  const GertModelSharedLibraries *shared_libraries = nullptr;  // 输入，借用的共享库列表。
+  void *rt_session = nullptr;                                  // 输入，借用的会话实例。
+};
+
 /**
  * @brief GertModelLoad 的加载参数。
  */
 struct GertModelLoadConfig {
-  uint64_t struct_size = sizeof(GertModelLoadConfig);  // 布局变化时更新。
-  const char **bin_files = nullptr;                    // 输入，二进制文件路径数组。
-  const void **bin_data = nullptr;                     // 输入，二进制内存地址数组。
-  uint64_t *bin_size = nullptr;                        // 输入，二进制大小数组，单位为字节。
-  uint64_t bin_num = 0;                                // 输入，二进制个数。
-  void **constants = nullptr;                          // 输入，常量地址数组。
-  void *var_context = nullptr;                         // 输入，变量容器上下文，实际指向 GertModelVarContext。
-  void *work_ptr = nullptr;                            // 输入，工作空间地址。
-  uint64_t *session_id = nullptr;                      // 输入，Session ID。
-  uint64_t model_id = 0;                               // 输入，用于日志和 DFX 的模型 ID。
-  void *instance_handle = nullptr;                     // 输入，执行器实例句柄。
-  const GertModelLoadCallbacks *callbacks = nullptr;   // 输入，加载期回调集合。
-  int64_t priority = 0;                                // 输入，模型优先级。
-  uint64_t reuse_zero_copy = 0;                        // 输入，是否复用零拷贝资源。
-  aclmdlRI external_rt_model = nullptr;                // 输入，外部运行时模型句柄。
-  aclrtStream *external_streams = nullptr;             // 输入，外部流数组。
-  uint64_t external_stream_num = 0;                    // 输入，外部流个数。
-  aclrtEvent *external_events = nullptr;               // 输入，外部 Event 数组。
-  uint64_t external_event_num = 0;                     // 输入，外部 Event 个数。
-  aclrtLabel *external_labels = nullptr;               // 输入，外部 Label 数组。
-  uint64_t external_label_num = 0;                     // 输入，外部 Label 个数。
-  aclrtNotify *external_notifies = nullptr;            // 输入，外部 Notify 数组。
-  uint64_t external_notify_num = 0;                    // 输入，外部 Notify 个数。
-  // 可选尾字段：借用的 gert::Allocators*；旧尺寸或 nullptr 表示未提供。
-  // 集合及 allocator 须存活至关联流任务完成、相关内存块释放；不转移所有权。
-  void *external_allocator = nullptr;
+  uint64_t struct_size = sizeof(GertModelLoadConfig);          // 布局变化时更新。
+  const char **bin_files = nullptr;                            // 输入，二进制文件路径数组。
+  const void **bin_data = nullptr;                             // 输入，二进制内存地址数组。
+  uint64_t *bin_size = nullptr;                                // 输入，二进制大小数组，单位为字节。
+  uint64_t bin_num = 0;                                        // 输入，二进制个数。
+  void **constants = nullptr;                                  // 输入，常量地址数组。
+  void *var_context = nullptr;                                 // 输入，变量容器上下文，实际指向 GertModelVarContext。
+  void *work_ptr = nullptr;                                    // 输入，工作空间地址。
+  uint64_t *session_id = nullptr;                              // 输入，Session ID。
+  uint64_t model_id = 0;                                       // 输入，用于日志和 DFX 的模型 ID。
+  void *instance_handle = nullptr;                             // 输入，执行器实例句柄。
+  const GertModelLoadCallbacks *callbacks = nullptr;           // 输入，加载期回调集合。
+  int64_t priority = 0;                                        // 输入，模型优先级。
+  uint64_t reuse_zero_copy = 0;                                // 输入，是否复用零拷贝资源。
+  aclmdlRI external_rt_model = nullptr;                        // 输入，外部运行时模型句柄。
+  aclrtStream *external_streams = nullptr;                     // 输入，外部流数组。
+  uint64_t external_stream_num = 0;                            // 输入，外部流个数。
+  aclrtEvent *external_events = nullptr;                       // 输入，外部 Event 数组。
+  uint64_t external_event_num = 0;                             // 输入，外部 Event 个数。
+  aclrtLabel *external_labels = nullptr;                       // 输入，外部 Label 数组。
+  uint64_t external_label_num = 0;                             // 输入，外部 Label 个数。
+  aclrtNotify *external_notifies = nullptr;                    // 输入，外部 Notify 数组。
+  uint64_t external_notify_num = 0;                            // 输入，外部 Notify 个数。
+  void *external_allocator = nullptr;                          // 输入，借用的 gert::Allocators 集合。
+  const GertModelDynamicLoadConfig *dynamic_config = nullptr;  // 输入，可选动态加载配置。
 };
 
 /**
@@ -438,9 +477,7 @@ struct GertModelRunConfig {
   gert::Tensor **output_data = nullptr;                  // 输入，模型输出 Tensor 数组。
   uint64_t stream_sync_timeout_ms = 0;                   // 输入，同步执行的流同步超时，单位为毫秒。
   const GertModelRunCallbacks *run_callbacks = nullptr;  // 输入，执行期 DFX 回调集合。
-  // 借用的 gert::Allocators*；nullptr 沿用 Load 的 allocator 集合，不转移所有权。
-  // 调用方保证集合及 allocator 在关联流任务完成、相关内存块释放前有效。
-  void *external_allocator = nullptr;
+  void *external_allocator = nullptr;                    // 输入，借用的 allocator 集合，缺省使用图内默认 allocator。
 };
 
 /** @brief GertModelUnload 的预留参数。 */

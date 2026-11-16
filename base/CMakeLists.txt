@@ -73,18 +73,39 @@ set(SRC_LIST
     "${AIR_CODE_DIR}/compiler/graph/fusion/pass/fusion_priority_cache.cc"
 )
 
-file(GLOB_RECURSE OM2_SRCS CONFIGURE_DEPENDS
-        "common/om2/codegen/*.cc"
-        "common/helper/om2/*.cc"
-        "common/helper/om2_package_helper.cc"
+set(OM2_COMMON_SRCS
+        "common/helper/om2/om2_utils.cc"
         "common/helper/visual_json_converter.cc"
 )
+
+file(GLOB_RECURSE OM2_GENERATOR_SRCS CONFIGURE_DEPENDS
+        "common/om2/codegen/*.cc"
+        "common/om2/dynamic_codegen/*.cc"
+        "common/helper/om2_package_helper.cc"
+        "common/helper/om2_dynamic_package_helper.cc"
+)
 set(OM2_MODEL_API_HEADER "${AIR_CODE_DIR}/inc/framework/om2/model_api/om2_model_api.h")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${OM2_MODEL_API_HEADER}")
+set(OM2_MODEL_API_UTILS_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/common/om2/om2_model_api_utils.h")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${OM2_MODEL_API_HEADER}" "${OM2_MODEL_API_UTILS_HEADER}")
 file(READ "${OM2_MODEL_API_HEADER}" OM2_MODEL_API_CONTENT)
+file(READ "${OM2_MODEL_API_UTILS_HEADER}" OM2_MODEL_API_UTILS_CONTENT)
+# Generated pbody uses the API header shipped in its source artifacts.
+string(REPLACE "framework/om2/model_api/om2_model_api.h" "om2_model_api.h"
+       OM2_MODEL_API_UTILS_CONTENT "${OM2_MODEL_API_UTILS_CONTENT}")
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/common/om2/codegen/om2_model_api_resource.cc.in"
                "${CMAKE_CURRENT_BINARY_DIR}/om2_model_api_resource.cc" @ONLY)
-list(APPEND OM2_SRCS "${CMAKE_CURRENT_BINARY_DIR}/om2_model_api_resource.cc")
+list(APPEND OM2_GENERATOR_SRCS "${CMAKE_CURRENT_BINARY_DIR}/om2_model_api_resource.cc")
+
+set(OM2_KERNEL_BIN_HEADER "${AIR_CODE_DIR}/inc/graph_metadef/graph/op_kernel_bin.h")
+set(OM2_HOST_RESOURCE_HEADER "${AIR_CODE_DIR}/inc/graph_metadef/graph/host_resource/host_resource.h")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${OM2_KERNEL_BIN_HEADER}" "${OM2_HOST_RESOURCE_HEADER}")
+file(READ "${OM2_KERNEL_BIN_HEADER}" OM2_KERNEL_BIN_CONTENT)
+file(READ "${OM2_HOST_RESOURCE_HEADER}" OM2_HOST_RESOURCE_CONTENT)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/common/om2/codegen/om2_kernel_bin_resource.cc.in"
+               "${CMAKE_CURRENT_BINARY_DIR}/om2_kernel_bin_resource.cc" @ONLY)
+list(APPEND OM2_GENERATOR_SRCS "${CMAKE_CURRENT_BINARY_DIR}/om2_kernel_bin_resource.cc")
 
 # OM2 变量转换源码内嵌：47 个单元按依赖序拼接进 <model>_var_mgr.cpp 的转换段。
 # 不使用 configure_file：这些源码内含 316 个 '@'，@ONLY 仍会误解析 @VAR@ 形式，
@@ -152,7 +173,7 @@ foreach(_om2_vt_unit ${OM2_VAR_TRANS_UNITS})
 endforeach()
 file(APPEND "${OM2_VAR_TRANS_RESOURCE}"
      "  };\n  return kSources;\n}\n}  // namespace ge\n")
-list(APPEND OM2_SRCS "${OM2_VAR_TRANS_RESOURCE}")
+list(APPEND OM2_GENERATOR_SRCS "${OM2_VAR_TRANS_RESOURCE}")
 
 # OM2 线程池源码内嵌：逐字拼进 <model>_var_mgr.cpp。.h 必须在 .cc 前（类定义先于类外定义）。
 # 与 OM2_VAR_TRANS_UNITS 分开：后者有严格的依赖排序语义（SelectUnits 按 FormatUnitNames()
@@ -175,7 +196,7 @@ foreach(_om2_vm_unit ${OM2_VAR_MGR_UNITS})
 endforeach()
 file(APPEND "${OM2_VAR_MGR_RESOURCE}"
      "  };\n  return kSources;\n}\n}  // namespace ge\n")
-list(APPEND OM2_SRCS "${OM2_VAR_MGR_RESOURCE}")
+list(APPEND OM2_GENERATOR_SRCS "${OM2_VAR_MGR_RESOURCE}")
 set(SRC_BASE_LIST
     "common/context/ctx.cc"
     "common/context/local_context.cc"
@@ -196,6 +217,7 @@ set(SRC_BASE_LIST
     "common/plugin/op_tiling_manager.cc"
     "common/ge_inner_error_codes.cc"
     "common/helper/model_helper.cc"
+    "common/helper/model_save_utils.cc"
     "common/helper/custom_op_registry_builder.cc"
     "common/helper/custom_op_so_loader.cc"
     "common/helper/model_custom_kernels_helper.cc"
@@ -306,7 +328,7 @@ if (NOT ENABLE_D AND NOT ENABLE_ACL)
 ############ libge_common.so ############
 add_library(ge_common SHARED
     ${SRC_LIST}
-    ${OM2_SRCS}
+    ${OM2_COMMON_SRCS}
 )
 
 add_dependencies(ge_common
@@ -368,10 +390,6 @@ target_link_libraries(ge_common
         platform
         -Wl,--as-needed
         json
-        # Internal archives are embedded here, not dependencies of installed Python bridges.
-        gert_model_data_serializer
-        minizip_static
-        gert_model_data_serializer
         $<$<NOT:$<STREQUAL:${TARGET_SYSTEM_NAME},Android>>:-lrt>
         -ldl
         ${AIR_COMMON_LINK_OPTION}
@@ -462,6 +480,91 @@ target_link_libraries(ge_common_base
     PUBLIC
         air_headers
         $<$<NOT:$<BOOL:${MDC_COMPILE_RUNTIME}>>:atrace_headers>
+)
+
+############ libom2_generator.so ############
+add_library(om2_generator SHARED
+    ${OM2_GENERATOR_SRCS}
+)
+
+add_dependencies(om2_generator
+    graphengine_protos
+)
+
+target_compile_definitions(om2_generator PRIVATE
+    PROTOBUF_INLINE_NOT_IN_HEADERS=0
+    HOST_VISIBILITY
+    FMK_SUPPORT_DUMP
+    OS_CENTOS
+    google=ascend_private
+    FUNC_VISIBILITY
+    CMAKE_BINARY_DIR=\"${CMAKE_BINARY_DIR}\"
+)
+
+target_compile_options(om2_generator PRIVATE ${AIR_COMMON_DYNAMIC_COMPILE_OPTION})
+
+target_include_directories(om2_generator PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${AIR_CODE_DIR}
+    ${AIR_CODE_DIR}/inc
+    ${AIR_CODE_DIR}/inc/graph_metadef
+    ${AIR_CODE_DIR}/inc/graph_metadef/external
+    ${AIR_CODE_DIR}/inc/external
+    ${AIR_CODE_DIR}/inc/framework
+    ${AIR_CODE_DIR}/runtime/v2
+    ${AIR_CODE_DIR}/runtime/v2/engine
+    ${AIR_CODE_DIR}/runtime/v1
+    ${AIR_CODE_DIR}/base/common/om2/dynamic_codegen
+    ${CMAKE_BINARY_DIR}
+    ${CMAKE_BINARY_DIR}/proto/graphengine_protos
+    ${CMAKE_BINARY_DIR}/proto/metadef_protos
+    ${ASCGEN_DIR}/inc
+    ${TOP_DIR}/metadef/inc
+    ${TOP_DIR}/runtime/include/external
+    ${TOP_DIR}/runtime/include/external/acl/error_codes
+)
+
+target_link_options(om2_generator PRIVATE
+    -Wl,-Bsymbolic
+    -Wl,--exclude-libs,libminizip.a
+    -Wl,--exclude-libs,libz.a
+)
+
+target_link_libraries(om2_generator
+    PRIVATE
+        ge_intf_pub
+        msprof_headers
+        runtime_headers
+        $<$<TARGET_EXISTS:hccl_headers>:hccl_headers>
+        $<$<TARGET_EXISTS:aicpu_headers>:aicpu_headers>
+        $<$<TARGET_EXISTS:datagw_headers>:datagw_headers>
+        static_mmpa
+        -Wl,--no-as-needed
+        gert
+        ge_common
+        ge_common_base
+        graph
+        exe_graph
+        lowering
+        register
+        ascend_protobuf
+        c_sec
+        error_manager
+        unified_dlog
+        platform
+        -Wl,--as-needed
+        json
+        # Embed compile-side serialization and ZIP support in the generator.
+        gert_model_data_serializer
+        minizip_static
+        gert_model_data_serializer
+        $<$<TARGET_EXISTS:crypto_static>:crypto_static>
+        $<$<NOT:$<STREQUAL:${TARGET_SYSTEM_NAME},Android>>:-lrt>
+        -ldl
+        ${AIR_COMMON_LINK_OPTION}
+    PUBLIC
+        $<BUILD_INTERFACE:air_headers>
+        $<BUILD_INTERFACE:ge_metadef_headers>
 )
 
 ############ libge_common.a ############

@@ -28,7 +28,7 @@ class ExecuteGraphBackendUtils {
   static void NormalizeParentChain(ExecuteGraph *graph);
   static std::shared_ptr<ExecuteGraph> GetParentGraph(ExecuteGraph *graph);
   static void SetParentGraph(ExecuteGraph *graph, const std::shared_ptr<ExecuteGraph> &parent);
-  static bool RegisterSubgraphTree(ExecuteGraph *root_graph, ExecuteGraph *subgraph);
+  static bool RegisterSubgraphTree(ExecuteGraph *root_graph, ExecuteGraph *sub_graph);
 
  private:
   static void CollectSubgraphTree(ExecuteGraph *graph, std::vector<ExecuteGraph *> &tree);

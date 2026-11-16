@@ -249,6 +249,9 @@ class AstBuildContext {
   ExprRef MakeUniqueArray(BuiltinType elem_type, Arg count) const;
   ExprRef MakeUniqueArray(const std::string &elem_type, Arg count) const;
   ExprRef MakeUniqueArray(const char *elem_type, Arg count) const;
+  ExprRef New(const std::string &type_spec, std::initializer_list<Arg> args = {},
+              const std::string &placement = "") const;
+  ExprRef Delete(Arg expr) const;
   ReturnStmt *Return(Arg value = {}) const;
   VarDeclStmt *VarDecl(const std::string &type_spec, const std::string &name, Arg init = {}) const;
   VarDeclStmt *VarDecl(const VarRef &symbol, Arg init = {}) const;
@@ -285,6 +288,7 @@ class AstBuildContext {
   AstContext &ctx_;
 
   ExprRef MakeUniqueArray(const TypeName &elem_type, Arg count) const;
+  ExprRef New(const std::string &type_spec, const std::vector<Arg> &args, const std::string &placement) const;
 };
 
 class BodyItem {

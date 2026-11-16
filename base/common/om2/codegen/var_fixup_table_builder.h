@@ -18,7 +18,6 @@
 
 #include "common/om2/codegen/om2_codegen_types.h"
 #include "framework/om2/model_data/gert_model_data.h"
-#include "graph/ge_error_codes.h"
 
 namespace ge {
 class VarManager;

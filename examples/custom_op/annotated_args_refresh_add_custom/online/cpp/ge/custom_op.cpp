@@ -179,14 +179,14 @@ ge::graphStatus CompileKernelBinary(gert::OpCompileContext *ctx, KernelBinary &d
 
   aclrtcProg prog = nullptr;
   aclError ret = aclrtcCreateProg(&prog, source.c_str(), kAddCustomKernelName, 0, nullptr, nullptr);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LOG_ERROR("aclrtcCreateProg failed, error: ", ret);
     return ge::GRAPH_FAILED;
   }
 
   const char *options[] = {rtc_compile_option.c_str()};
   ret = aclrtcCompileProg(prog, sizeof(options) / sizeof(options[0]), options);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LOG_ERROR("aclrtcCompileProg failed, error: ", ret);
     aclrtcDestroyProg(&prog);
     return ge::GRAPH_FAILED;
@@ -194,7 +194,7 @@ ge::graphStatus CompileKernelBinary(gert::OpCompileContext *ctx, KernelBinary &d
 
   size_t bin_size = 0U;
   ret = aclrtcGetBinDataSize(prog, &bin_size);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LOG_ERROR("aclrtcGetBinDataSize failed, error: ", ret);
     aclrtcDestroyProg(&prog);
     return ge::GRAPH_FAILED;
@@ -202,7 +202,7 @@ ge::graphStatus CompileKernelBinary(gert::OpCompileContext *ctx, KernelBinary &d
 
   KernelBinary compiled_binary(bin_size);
   ret = aclrtcGetBinData(prog, reinterpret_cast<char *>(compiled_binary.data()));
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LOG_ERROR("aclrtcGetBinData failed, error: ", ret);
     aclrtcDestroyProg(&prog);
     return ge::GRAPH_FAILED;
@@ -388,7 +388,7 @@ class NoRefreshAddCustom : public EagerExecuteOp, public ShapeInferOp {
 
     const aclError ret = aclrtLaunchKernelV2(g_kernel_loader.GetFuncHandle(), num_blocks, kernel_args->args_data,
                                              kernel_args->args_size, nullptr, ctx->GetStream());
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtLaunchKernelV2 failed, error: ", ret);
       return GRAPH_FAILED;
     }

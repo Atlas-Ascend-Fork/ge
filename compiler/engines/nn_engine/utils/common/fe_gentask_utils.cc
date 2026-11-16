@@ -424,6 +424,13 @@ ge::Status CreateTilingTaskSuperKernel(const gert::ExeResGenerationContext *cont
   args_des_util.AppendTilingContext(arg_descs, ge::TilingContextSubType::TILING_CONTEXT);
   args_des_util.Append(arg_descs, ge::AddrType::OP_TYPE);
   args_des_util.Append(arg_descs, ge::AddrType::EVENT_ADDR, event_id);
+  if (param.is_custom || param.is_prefix_ops_path) {
+    const auto workspace_bytes = context->GetWorkspaceBytes();
+    const auto workspace_index = workspace_bytes.empty() ? 0 : workspace_bytes.size() - 1;
+    args_des_util.Append(arg_descs, ge::AddrType::WORKSPACE, workspace_index);
+    FE_LOGI("Node[%s, %s] super kernel tiling sink append WORKSPACE[%lu]", context->GetNodeName(),
+            context->GetNodeType(), workspace_index);
+  }
   const std::string &args_format = args_des_util.ToString(arg_descs);
   auto kernel_def = aicpu_task.mutable_kernel();
   auto mutable_context = kernel_def->mutable_context();

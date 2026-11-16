@@ -45,7 +45,7 @@ class DeviceMemoryPtr {
  private:
   void Free() noexcept {
     if (addr_ != 0UL) {
-      if (aclrtFree(ValueToPtr(addr_)) == ACL_ERROR_NONE) {
+      if (aclrtFree(ValueToPtr(addr_)) == ACL_SUCCESS) {
         addr_ = 0UL;
       }
     }

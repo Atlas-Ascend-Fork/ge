@@ -33,6 +33,7 @@ set(LOWERING_SRCS
     runtime/resource_usage_context.cc
     runtime/update_args_context.cc
     runtime/op_compile_context.cc
+    runtime/custom_op_context_info.cc
 )
 
 ######### liblowering.so #############

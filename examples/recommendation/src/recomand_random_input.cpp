@@ -75,7 +75,7 @@ ge::Status AllocateBufferForHostTensor(gert::Tensor &tensor) {
 
   void *host_buf = nullptr;
   aclError ret = aclrtMallocHost(&host_buf, data_len);
-  if (ret != ACL_ERROR_NONE || host_buf == nullptr) {
+  if (ret != ACL_SUCCESS || host_buf == nullptr) {
     std::cerr << "aclrtMallocHost failed, ret=" << ret << std::endl;
     return ge::FAILED;
   }
@@ -432,12 +432,12 @@ int main(int argc, char *argv[]) {
   }
 
   aclError aerr = aclInit(nullptr);
-  if (aerr != ACL_ERROR_NONE) {
+  if (aerr != ACL_SUCCESS) {
     std::cerr << "Failed to init ACL, error=" << aerr << std::endl;
     return EXIT_FAILURE;
   }
   aerr = aclrtSetDevice(0);
-  if (aerr != ACL_ERROR_NONE) {
+  if (aerr != ACL_SUCCESS) {
     std::cerr << "aclrtSetDevice failed, ret=" << aerr << std::endl;
     aclFinalize();
     return EXIT_FAILURE;

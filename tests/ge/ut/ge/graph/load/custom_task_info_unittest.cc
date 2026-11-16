@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <cstdlib>
+#include <map>
 #include <memory>
 #include <utility>
 #include "common/model/ge_model.h"
@@ -2334,9 +2336,10 @@ TEST_F(UtestCustomTaskInfo, UpdateContextInfo_SetsStaticModelFlag) {
   uint64_t node_id = 0xFFFFUL;
   ASSERT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kNodeId, node_id));
   EXPECT_EQ(node_id, static_cast<uint64_t>(task_info.op_desc_->GetId()));
-  // _op_vectorcore_num属性缺失 → 未设置（查询失败）
-  uint64_t vector_core_num = 0xFFFFUL;
-  EXPECT_FALSE(task_info.context_info_.GetContextValue(gert::ContextParam::kVectorCoreNum, vector_core_num));
+  // _op_vectorcore_num属性缺失 → 回退平台/模型级核数
+  uint64_t vector_core_num = 0UL;
+  ASSERT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kVectorCoreNum, vector_core_num));
+  EXPECT_GT(vector_core_num, 0UL);
 }
 
 TEST_F(UtestCustomTaskInfo, UpdateContextInfo_SetsVectorCoreNumWhenAttrPresent) {
@@ -2352,17 +2355,71 @@ TEST_F(UtestCustomTaskInfo, UpdateContextInfo_SetsVectorCoreNumWhenAttrPresent) 
   EXPECT_EQ(vector_core_num, 24UL);
 }
 
-TEST_F(UtestCustomTaskInfo, UpdateContextInfo_IgnoresInvalidVectorCoreNumAttr) {
+TEST_F(UtestCustomTaskInfo, UpdateContextInfo_SetsAiCoreNumFromAttr) {
   CustomTaskInfo task_info;
   DavinciModel model(0, nullptr);
   InitBasicTaskInfo(task_info, model);
   ASSERT_NE(task_info.op_desc_, nullptr);
-  // "abc" 首字符非数字：视为未设置（透传语义下不做范围等额外校验）
+  ASSERT_TRUE(ge::AttrUtils::SetStr(task_info.op_desc_, "_op_aicore_num", "8"));
+
+  task_info.UpdateContextInfo();
+  uint64_t ai_core_num = 0UL;
+  ASSERT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kAiCoreNum, ai_core_num));
+  EXPECT_EQ(ai_core_num, 8UL);
+}
+
+TEST_F(UtestCustomTaskInfo, UpdateContextInfo_OpCoreNumOverridesModelLevel) {
+  CustomTaskInfo task_info;
+  DavinciModel model(0, nullptr);
+  InitBasicTaskInfo(task_info, model);
+  ASSERT_NE(task_info.op_desc_, nullptr);
+  // 模型级/平台核数限制为12，算子级设置16应优先生效
+  std::map<std::string, std::string> soc_info;
+  ASSERT_TRUE(model.MutablePlatformInfo().GetPlatformResWithLock("SoCInfo", soc_info));
+  soc_info["ai_core_cnt"] = "12";
+  model.MutablePlatformInfo().SetPlatformResWithLock("SoCInfo", soc_info);
+  ASSERT_TRUE(ge::AttrUtils::SetStr(task_info.op_desc_, "_op_aicore_num", "16"));
+
+  task_info.UpdateContextInfo();
+  uint64_t ai_core_num = 0UL;
+  ASSERT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kAiCoreNum, ai_core_num));
+  EXPECT_EQ(ai_core_num, 16UL);
+}
+
+TEST_F(UtestCustomTaskInfo, UpdateContextInfo_CoreNumFallsBackToPlatform) {
+  CustomTaskInfo task_info;
+  DavinciModel model(0, nullptr);
+  InitBasicTaskInfo(task_info, model);
+  std::map<std::string, std::string> soc_info;
+  ASSERT_TRUE(model.MutablePlatformInfo().GetPlatformResWithLock("SoCInfo", soc_info));
+  ASSERT_TRUE(soc_info.find("ai_core_cnt") != soc_info.end());
+  ASSERT_TRUE(soc_info.find("vector_core_cnt") != soc_info.end());
+  const auto expect_ai_core_num = static_cast<uint64_t>(std::atoi(soc_info["ai_core_cnt"].c_str()));
+  const auto expect_vector_core_num = static_cast<uint64_t>(std::atoi(soc_info["vector_core_cnt"].c_str()));
+  ASSERT_GT(expect_ai_core_num, 0UL);
+  ASSERT_GT(expect_vector_core_num, 0UL);
+
+  task_info.UpdateContextInfo();
+  uint64_t ai_core_num = 0UL;
+  ASSERT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kAiCoreNum, ai_core_num));
+  EXPECT_EQ(ai_core_num, expect_ai_core_num);
+  uint64_t vector_core_num = 0UL;
+  ASSERT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kVectorCoreNum, vector_core_num));
+  EXPECT_EQ(vector_core_num, expect_vector_core_num);
+}
+
+TEST_F(UtestCustomTaskInfo, UpdateContextInfo_InvalidVectorCoreNumAttrFallsBackToPlatform) {
+  CustomTaskInfo task_info;
+  DavinciModel model(0, nullptr);
+  InitBasicTaskInfo(task_info, model);
+  ASSERT_NE(task_info.op_desc_, nullptr);
+  // 非法属性视为未配置，回退平台/模型级核数
   ASSERT_TRUE(ge::AttrUtils::SetStr(task_info.op_desc_, "_op_vectorcore_num", "abc"));
 
   task_info.UpdateContextInfo();
   uint64_t vector_core_num = 0UL;
-  EXPECT_FALSE(task_info.context_info_.GetContextValue(gert::ContextParam::kVectorCoreNum, vector_core_num));
+  ASSERT_TRUE(task_info.context_info_.GetContextValue(gert::ContextParam::kVectorCoreNum, vector_core_num));
+  EXPECT_GT(vector_core_num, 0UL);
 }
 
 TEST_F(UtestCustomTaskInfo, UpdateContextInfo_GraphIdUnsetWithoutModel) {

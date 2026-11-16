@@ -30,7 +30,7 @@ class CopyJob {
   ge::Status AddCopyTask(void *dst, uint64_t dest_max, const void *src, uint64_t count, rtMemcpyKind_t kind) {
     if (!NeedCopyAsync(kind, count)) {
       if (rt_context_ == nullptr) {
-        LLM_CHK_BOOL_RET_STATUS(aclrtGetCurrentContext(&rt_context_) == ACL_ERROR_NONE, ge::FAILED,
+        LLM_CHK_BOOL_RET_STATUS(aclrtGetCurrentContext(&rt_context_) == ACL_SUCCESS, ge::FAILED,
                                 "Failed to get aclrt context");
       }
       auto fut = pool_.commit([this, dst, dest_max, src, count, kind]() -> ge::Status {

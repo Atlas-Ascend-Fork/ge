@@ -8,14 +8,17 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include "common/om2/om2_online_prepare_data.h"
 #include <gtest/gtest.h>
 
 #include "framework/om2/model_data/gert_model_data.h"
 #include "framework/common/gert_model_data_deserialize.h"
+#include "framework/common/gert_model_data_serialize.h"
 #include "framework/common/gert_model_data_utils.h"
 #include "framework/common/json_file.h"
 #include "framework/om2/model_data/om2_package_contants.h"
 #include "framework/common/zip_archive_writer.h"
+#include "framework/common/zip_archive_reader.h"
 
 namespace gert {
 namespace {
@@ -25,6 +28,376 @@ class Om2ModelDataTest : public testing::Test {
   void SetUp() override {}
   void TearDown() override {}
 };
+
+TEST_F(Om2ModelDataTest, InitPackagePreservesExistingResourcesAndDoesNotAddUnits) {
+  GertModelData data;
+  InitGertModelData(data);
+  ASSERT_NE(data.manifest, nullptr);
+  ASSERT_NE(data.constants, nullptr);
+  ASSERT_NE(data.kernels, nullptr);
+  ASSERT_NE(data.custom_ops, nullptr);
+  ASSERT_NE(data.variables, nullptr);
+  EXPECT_TRUE(data.models.empty());
+  EXPECT_EQ(data.so_bins, nullptr);
+  data.manifest->model_num = 3U;
+  data.kernels->binaries.emplace_back(std::make_unique<GertModelDataFile>());
+  const auto *manifest = data.manifest.get();
+  const auto *kernel = data.kernels->binaries[0].get();
+
+  InitGertModelData(data);
+  EXPECT_EQ(data.manifest.get(), manifest);
+  EXPECT_EQ(data.manifest->model_num, 3U);
+  ASSERT_EQ(data.kernels->binaries.size(), 1U);
+  EXPECT_EQ(data.kernels->binaries[0].get(), kernel);
+  EXPECT_TRUE(data.models.empty());
+}
+
+TEST_F(Om2ModelDataTest, InitUnitAppendsWithoutReplacingExistingUnitOrPackageResources) {
+  GertModelData data;
+  InitGertModelData(data);
+  InitGertModelDataUnit(data);
+  ASSERT_EQ(data.models.size(), 1U);
+  const auto *first = data.models[0].get();
+  const auto *manifest = data.manifest.get();
+  ASSERT_NE(first->model_meta, nullptr);
+  ASSERT_NE(first->runtime, nullptr);
+  ASSERT_NE(first->constants_config, nullptr);
+  ASSERT_NE(first->debug, nullptr);
+  data.models[0]->model_meta->model_name = GertMakeStr("first");
+  EXPECT_EQ(GetGertModelExecutionType(*first), GertModelExecutionType::kStatic);
+  data.models[0]->execution_type = GertModelExecutionType::kDynamic;
+
+  InitGertModelDataUnit(data);
+  ASSERT_EQ(data.models.size(), 2U);
+  EXPECT_EQ(data.models[0].get(), first);
+  EXPECT_STREQ(GertGetStr(data.models[0]->model_meta->model_name), "first");
+  EXPECT_NE(data.models[1].get(), first);
+  EXPECT_NE(data.models[1]->runtime, nullptr);
+  EXPECT_EQ(GetGertModelExecutionType(*data.models[0]), GertModelExecutionType::kDynamic);
+  EXPECT_EQ(GetGertModelExecutionType(*data.models[1]), GertModelExecutionType::kStatic);
+  EXPECT_EQ(data.manifest.get(), manifest);
+}
+
+GertModelData MakeSharedLibSerializerData() {
+  GertModelData model_data;
+  InitGertModelData(model_data);
+  model_data.manifest = std::make_unique<GertModelDataManifest>();
+  model_data.manifest->model_num = 1U;
+  model_data.manifest->compatibility.compiler_version = GertMakeStr(GERT_EXECUTOR_VERSION);
+  auto unit = std::make_unique<GertModelDataModel>();
+  unit->model_meta = std::make_unique<GertModelDataModelMeta>();
+  unit->model_meta->model_name = GertMakeStr("shared_lib_serializer");
+  unit->constants_config = std::make_unique<GertModelDataConstantsConfig>();
+  model_data.models.emplace_back(std::move(unit));
+  return model_data;
+}
+
+TEST(Om2NotifyMetadataUt, ModelMetaOmitsNotifyCount) {
+  for (const auto type : {GertModelExecutionType::kStatic, GertModelExecutionType::kDynamic}) {
+    auto data = MakeSharedLibSerializerData();
+    data.models[0]->execution_type = type;
+    ge::ModelBufferData output;
+    ASSERT_EQ(SerializeGertModelData(data, output, false, "notify_metadata"), ge::SUCCESS);
+    ZipArchiveReader archive(output.data.get(), output.length);
+    ASSERT_TRUE(archive.IsGood());
+    const auto path = archive.FindEntry(FormatOm2Path(OM2_MODEL_META_PATH_FORMAT, "0"));
+    ASSERT_FALSE(path.empty());
+    size_t size = 0U;
+    const auto bytes = archive.ExtractToMem(path, size);
+    ASSERT_NE(bytes, nullptr);
+    const ge::JsonFile json(bytes.get(), size);
+    ASSERT_TRUE(json.IsValid());
+    EXPECT_FALSE(json.Raw().contains("reusable_notify_num"));
+    GertModelData restored;
+    InitGertModelData(restored);
+    ASSERT_EQ(DeserializeGertModelMeta(output.data.get(), output.length, &restored), ge::SUCCESS);
+    ASSERT_EQ(restored.models.size(), 1U);
+    ASSERT_NE(restored.models[0]->model_meta, nullptr);
+  }
+}
+
+std::unique_ptr<GertModelDataSoBin> MakeSharedLibForSerializer(const std::string &file_name) {
+  auto library = std::make_unique<GertModelDataSoBin>();
+  library->so_name = GertMakeStr("liboriginal.so");
+  library->vendor_name = GertMakeStr("vendor/opp_latest/");
+  library->so_bin_type = 2U;
+  library->binary = std::make_unique<GertModelDataFile>();
+  library->binary->file_name = GertMakeStr(file_name);
+  const uint8_t content[] = {0x7FU, 0U, 1U};
+  library->binary->data = GertMakeFileData(content, sizeof(content));
+  library->binary->data_size = sizeof(content);
+  return library;
+}
+
+TEST(Om2SharedLibSerializerUt, WritesFilesAndOrderedMetadataInSameDirectory) {
+  auto model_data = MakeSharedLibSerializerData();
+  model_data.so_bins = std::make_unique<GertModelDataSoBins>();
+  model_data.so_bins->libraries.emplace_back(MakeSharedLibForSerializer("libarchived.so"));
+  auto second = MakeSharedLibForSerializer("libarchived_1.so");
+  second->so_name = GertMakeStr("libsecond.so");
+  second->vendor_name.reset();
+  second->so_bin_type = 0U;
+  model_data.so_bins->libraries.emplace_back(std::move(second));
+  ge::ModelBufferData output;
+  ASSERT_EQ(SerializeGertModelData(model_data, output, false, "shared_lib_serializer"), ge::SUCCESS);
+  ZipArchiveReader archive(output.data.get(), output.length);
+  ASSERT_TRUE(archive.IsGood());
+  const auto json_path = archive.FindEntry(OM2_SO_BINS_JSON_PATH);
+  ASSERT_FALSE(json_path.empty());
+  size_t json_size = 0U;
+  const auto json_buffer = archive.ExtractToMem(json_path, json_size);
+  ASSERT_NE(json_buffer, nullptr);
+  const ge::JsonFile json(json_buffer.get(), json_size);
+  ASSERT_TRUE(json.IsValid());
+  const auto &libraries = json["libraries"];
+  ASSERT_TRUE(libraries.is_array());
+  ASSERT_EQ(libraries.size(), 2U);
+  EXPECT_EQ(libraries[0]["file_name"].get<std::string>(), "libarchived.so");
+  EXPECT_EQ(libraries[0]["so_name"].get<std::string>(), "liboriginal.so");
+  EXPECT_EQ(libraries[0]["so_bin_type"].get<uint64_t>(), 2U);
+  EXPECT_EQ(libraries[0]["vendor_name"].get<std::string>(), "vendor/opp_latest/");
+  EXPECT_EQ(libraries[1]["so_name"].get<std::string>(), "libsecond.so");
+  EXPECT_EQ(libraries[1]["so_bin_type"].get<uint64_t>(), 0U);
+  EXPECT_EQ(libraries[1]["vendor_name"].get<std::string>(), "");
+  for (const auto &name : {"libarchived.so", "libarchived_1.so"}) {
+    const auto path = archive.FindEntry(std::string(OM2_SO_BINS_DIR) + name);
+    ASSERT_FALSE(path.empty());
+    size_t size = 0U;
+    const auto data = archive.ExtractToMem(path, size);
+    ASSERT_NE(data, nullptr);
+    ASSERT_EQ(size, 3U);
+    EXPECT_EQ(data.get()[0], 0x7FU);
+    EXPECT_EQ(data.get()[1], 0U);
+    EXPECT_EQ(data.get()[2], 1U);
+  }
+}
+
+TEST(Om2SharedLibSerializerUt, SkipsAbsentEmptyAndOldSizeFields) {
+  for (size_t scenario = 0U; scenario < 3U; ++scenario) {
+    auto model_data = MakeSharedLibSerializerData();
+    if (scenario > 0U) {
+      model_data.so_bins = std::make_unique<GertModelDataSoBins>();
+    }
+    if (scenario == 2U) {
+      model_data.so_bins->libraries.emplace_back(MakeSharedLibForSerializer("libarchived.so"));
+      model_data.struct_size = 64U;
+    }
+    ge::ModelBufferData output;
+    ASSERT_EQ(SerializeGertModelData(model_data, output, false, "shared_lib_serializer"), ge::SUCCESS);
+    ZipArchiveReader archive(output.data.get(), output.length);
+    ASSERT_TRUE(archive.IsGood());
+    EXPECT_TRUE(archive.ListFilesByRelativePrefix(OM2_SO_BINS_DIR).empty());
+  }
+}
+
+TEST(Om2SharedLibSerializerUt, RejectsInvalidOrDuplicateArchiveNamesAndEmptyData) {
+  for (const auto &name : {"", ".", "../bad.so", "dir/bad.so", "dir\\bad.so", "so_bins.json"}) {
+    auto model_data = MakeSharedLibSerializerData();
+    model_data.so_bins = std::make_unique<GertModelDataSoBins>();
+    model_data.so_bins->libraries.emplace_back(MakeSharedLibForSerializer(name));
+    ge::ModelBufferData output;
+    EXPECT_NE(SerializeGertModelData(model_data, output, false, "shared_lib_serializer"), ge::SUCCESS);
+  }
+  for (size_t scenario = 0U; scenario < 8U; ++scenario) {
+    auto model_data = MakeSharedLibSerializerData();
+    model_data.so_bins = std::make_unique<GertModelDataSoBins>();
+    auto library = MakeSharedLibForSerializer("libarchived.so");
+    if (scenario == 0U) {
+      library.reset();
+    } else if (scenario == 1U) {
+      library->binary.reset();
+    } else if (scenario == 2U) {
+      library->binary->data.reset();
+    } else if (scenario == 3U) {
+      library->binary->data_size = 0U;
+    } else if (scenario == 4U) {
+      model_data.so_bins->libraries.emplace_back(MakeSharedLibForSerializer("libarchived.so"));
+    } else if (scenario == 5U) {
+      library->struct_size = sizeof(GertModelDataSoBin) - 1U;
+    } else if (scenario == 6U) {
+      model_data.so_bins->struct_size = sizeof(GertModelDataSoBins) - 1U;
+    } else {
+      library->so_name = GertMakeStr("../bad.so");
+    }
+    model_data.so_bins->libraries.emplace_back(std::move(library));
+    ge::ModelBufferData output;
+    EXPECT_NE(SerializeGertModelData(model_data, output, false, "shared_lib_serializer"), ge::SUCCESS);
+  }
+}
+
+TEST(Om2ConstPlacementSerializerUt, WritesExplicitPlacementAndOmitsUnspecifiedOrOldTail) {
+  auto model_data = MakeSharedLibSerializerData();
+  for (size_t i = 0U; i < 4U; ++i) {
+    auto meta = std::make_unique<GertModelDataConstMeta>();
+    meta->index = i;
+    meta->type = GertMakeStr("INTERNAL");
+    if ((i == 0U) || (i == 3U)) {
+      meta->placement = GertModelDataConstPlacement::kHost;
+    } else if (i == 1U) {
+      meta->placement = GertModelDataConstPlacement::kDevice;
+    }
+    if (i == 3U) {
+      meta->struct_size = 64U;
+    }
+    model_data.models[0]->constants_config->consts.emplace_back(std::move(meta));
+  }
+  ge::ModelBufferData output;
+  ASSERT_EQ(SerializeGertModelData(model_data, output, false, "const_placement_serializer"), ge::SUCCESS);
+  ZipArchiveReader archive(output.data.get(), output.length);
+  ASSERT_TRUE(archive.IsGood());
+  const auto path = archive.FindEntry(FormatOm2Path(OM2_CONSTANTS_CONFIG_PATH_FORMAT, "0"));
+  ASSERT_FALSE(path.empty());
+  size_t size = 0U;
+  const auto data = archive.ExtractToMem(path, size);
+  ASSERT_NE(data, nullptr);
+  const ge::JsonFile json(data.get(), size);
+  ASSERT_TRUE(json.IsValid());
+  const auto &consts = json["consts"];
+  EXPECT_EQ(consts["constant_0"]["placement"].get<std::string>(), "HOST");
+  EXPECT_EQ(consts["constant_1"]["placement"].get<std::string>(), "DEVICE");
+  EXPECT_FALSE(consts["constant_2"].contains("placement"));
+  EXPECT_FALSE(consts["constant_3"].contains("placement"));
+}
+
+TEST(Om2ConstPlacementSerializerUt, RejectsUnknownPlacement) {
+  auto model_data = MakeSharedLibSerializerData();
+  auto meta = std::make_unique<GertModelDataConstMeta>();
+  meta->type = GertMakeStr("INTERNAL");
+  meta->placement = static_cast<GertModelDataConstPlacement>(99U);
+  model_data.models[0]->constants_config->consts.emplace_back(std::move(meta));
+  ge::ModelBufferData output;
+  EXPECT_NE(SerializeGertModelData(model_data, output, false, "invalid_const_placement"), ge::SUCCESS);
+}
+
+GertModelData MakeHostInternalWeightData() {
+  auto data = MakeSharedLibSerializerData();
+  auto &unit = *data.models[0];
+  unit.runtime = std::make_unique<GertModelDataRuntime>();
+  unit.runtime->so_artifact.file_name = GertMakeStr("libhost_weight.so");
+  unit.runtime->so_artifact.data = GertMakeFileData("ELF", 3U);
+  unit.runtime->so_artifact.data_size = 3U;
+  unit.op_attr_json = GertMakeStr("{}");
+  unit.constants_config->internal_weight_size = 5U;
+  for (const uint64_t index : {0U, 2U}) {
+    auto meta = std::make_unique<GertModelDataConstMeta>();
+    meta->index = index;
+    meta->type = GertMakeStr("INTERNAL");
+    meta->placement = GertModelDataConstPlacement::kHost;
+    const std::string name = "constant_" + std::to_string(index);
+    meta->file_name = GertMakeStr(name);
+    meta->size = index == 0U ? 2 : 3;
+    auto file = std::make_unique<GertModelDataFile>();
+    file->file_name = GertMakeStr(name);
+    file->data_size = static_cast<uint64_t>(meta->size);
+    file->data = GertMakeFileData(index == 0U ? "ab" : "xyz", file->data_size);
+    unit.constants_config->consts.emplace_back(std::move(meta));
+    data.constants->constants_data.emplace_back(std::move(file));
+  }
+  return data;
+}
+
+TEST(Om2HostInternalWeightUt, RoundTripsMultipleFilesAndSparseIndices) {
+  auto data = MakeHostInternalWeightData();
+  ge::ModelBufferData output;
+  ASSERT_EQ(SerializeGertModelData(data, output, false, "host_weights"), ge::SUCCESS);
+  ZipArchiveReader archive(output.data.get(), output.length);
+  ASSERT_TRUE(archive.IsGood());
+  EXPECT_FALSE(archive.FindEntry("data/constants/constant_0").empty());
+  EXPECT_TRUE(archive.FindEntry("data/constants/constant_1").empty());
+  EXPECT_FALSE(archive.FindEntry("data/constants/constant_2").empty());
+  size_t manifest_size = 0U;
+  auto manifest_data = archive.ExtractToMem(archive.FindEntry(OM2_MANIFEST_PATH), manifest_size);
+  ASSERT_NE(manifest_data, nullptr);
+  const ge::JsonFile manifest(manifest_data.get(), manifest_size);
+  EXPECT_EQ(manifest["compatibility"]["required_executor_version"].get<std::string>(), "");
+  EXPECT_FALSE(manifest["compatibility"]["used_features"].contains("host_internal_constants"));
+  GertModelData restored;
+  ASSERT_EQ(DeserializeGertModelData(output.data.get(), output.length, &restored), 0U);
+  ASSERT_EQ(restored.constants->constants_data.size(), 2U);
+  ASSERT_EQ(restored.models[0]->constants_config->consts.size(), 2U);
+  const auto &metas = restored.models[0]->constants_config->consts;
+  EXPECT_EQ(metas[0]->index, 0U);
+  EXPECT_EQ(metas[1]->index, 2U);
+  for (const auto &meta : metas) EXPECT_EQ(GetGertModelConstPlacement(*meta), GertModelDataConstPlacement::kHost);
+  EXPECT_EQ(restored.constants->constants_data[0]->data_size, 2U);
+  EXPECT_EQ(restored.constants->constants_data[1]->data_size, 3U);
+  EXPECT_EQ(std::memcmp(restored.constants->constants_data[0]->data.get(), "ab", 2U), 0);
+  EXPECT_EQ(std::memcmp(restored.constants->constants_data[1]->data.get(), "xyz", 3U), 0);
+}
+
+TEST(Om2HostInternalWeightUt, RejectsMissingShortDuplicateOrMixedInternalFiles) {
+  for (size_t scenario = 0U; scenario < 4U; ++scenario) {
+    auto data = MakeHostInternalWeightData();
+    if (scenario == 0U) data.constants->constants_data.pop_back();
+    if (scenario == 1U) data.constants->constants_data.back()->data_size = 1U;
+    if (scenario == 2U) data.constants->constants_data.back()->file_name = GertMakeStr("constant_0");
+    if (scenario == 3U)
+      data.models[0]->constants_config->consts.back()->placement = GertModelDataConstPlacement::kDevice;
+    ge::ModelBufferData output;
+    EXPECT_NE(SerializeGertModelData(data, output, false, "invalid_host_weights"), ge::SUCCESS);
+  }
+}
+
+TEST(Om2SharedLibDeserializerUt, RoundTripsMetadataAndReplacesCollectionOnRepeatedRead) {
+  auto data = MakeHostInternalWeightData();
+  data.so_bins = std::make_unique<GertModelDataSoBins>();
+  data.so_bins->libraries.push_back(MakeSharedLibForSerializer("libfirst.so"));
+  data.so_bins->libraries.push_back(MakeSharedLibForSerializer("libsecond.so"));
+  ge::ModelBufferData output;
+  ASSERT_EQ(SerializeGertModelData(data, output, false, "shared_lib_roundtrip"), ge::SUCCESS);
+  GertModelData restored;
+  ASSERT_EQ(DeserializeGertModelData(output.data.get(), output.length, &restored), ge::SUCCESS);
+  for (size_t pass = 0U; pass < 2U; ++pass) {
+    ASSERT_NE(restored.so_bins, nullptr);
+    ASSERT_EQ(restored.so_bins->libraries.size(), 2U);
+    const auto &library = *restored.so_bins->libraries[0];
+    EXPECT_STREQ(GertGetStr(library.so_name), "liboriginal.so");
+    EXPECT_STREQ(GertGetStr(library.vendor_name), "vendor/opp_latest/");
+    EXPECT_EQ(library.so_bin_type, 2U);
+    EXPECT_STREQ(GertGetStr(library.binary->file_name), "libfirst.so");
+    ASSERT_EQ(library.binary->data_size, 3U);
+    EXPECT_EQ(library.binary->data.get()[0], 0x7FU);
+    ASSERT_EQ(DeserializeGertModelData(output.data.get(), output.length, &restored), ge::SUCCESS);
+  }
+  auto legacy = MakeHostInternalWeightData();
+  ge::ModelBufferData legacy_output;
+  ASSERT_EQ(SerializeGertModelData(legacy, legacy_output, false, "shared_lib_absent"), ge::SUCCESS);
+  ASSERT_EQ(DeserializeGertModelData(legacy_output.data.get(), legacy_output.length, &restored), ge::SUCCESS);
+  EXPECT_EQ(restored.so_bins, nullptr);
+}
+
+TEST(Om2SharedLibDeserializerUt, RejectsMalformedDescriptionsOrMissingBinary) {
+  const std::vector<std::string> descriptions{
+      "{}",
+      R"({"libraries":{}})",
+      R"({"libraries":[{}]})",
+      R"({"libraries":[{"file_name":"../bad.so","so_name":"valid.so","so_bin_type":0}]})",
+      R"({"libraries":[{"file_name":"missing.so","so_name":"valid.so","so_bin_type":0}]})",
+      R"({"libraries":[{"file_name":"valid.so","so_name":"valid.so","so_bin_type":4}]})",
+      R"({"libraries":[{"file_name":"valid.so","so_name":"valid.so","so_bin_type":-1}]})",
+      R"({"libraries":[{"file_name":"valid.so","so_name":"valid.so","so_bin_type":0,"vendor_name":1}]})",
+      R"({"libraries":[{"file_name":"valid.so","so_name":"valid.so","so_bin_type":0},
+                       {"file_name":"valid.so","so_name":"valid.so","so_bin_type":0}]})"};
+  auto data = MakeHostInternalWeightData();
+  ge::ModelBufferData base;
+  ASSERT_EQ(SerializeGertModelData(data, base, false, "shared_lib_invalid_base"), ge::SUCCESS);
+  ZipArchiveReader archive(base.data.get(), base.length);
+  for (const auto &description : descriptions) {
+    ZipArchiveWriter writer("shared_lib_invalid");
+    for (const auto &path : archive.ListFilesByRelativePrefix("")) {
+      size_t size = 0U;
+      auto bytes = archive.ExtractToMem(path, size);
+      ASSERT_NE(bytes, nullptr);
+      ASSERT_TRUE(writer.WriteBytes(path.substr(path.find('/') + 1U), bytes.get(), size, false));
+    }
+    ASSERT_TRUE(writer.WriteBytes(OM2_SO_BINS_JSON_PATH, description.data(), description.size(), false));
+    ASSERT_TRUE(writer.WriteBytes(std::string(OM2_SO_BINS_DIR) + "valid.so", "SO", 2U, false));
+    GertBuffer invalid;
+    ASSERT_TRUE(writer.SaveModelData(invalid, false));
+    GertModelData restored;
+    EXPECT_NE(DeserializeGertModelData(invalid.data.get(), invalid.length, &restored), ge::SUCCESS) << description;
+  }
+}
 
 // Test default construction
 TEST_F(Om2ModelDataTest, DefaultConstruction) {
@@ -787,6 +1160,22 @@ TEST_F(Om2ModelDataTest, Deserialize_DefaultIsFullMode) {
   EXPECT_EQ(model_data.kernels->binaries.size(), 2U);
   EXPECT_NE(std::string(gert::GertGetStr(model_data.models[0]->runtime->so_artifact.file_name)), "");
   EXPECT_EQ(model_data.models[0]->debug->visual_json, nullptr);
+}
+
+TEST(Om2SharedLibSerializerUt, OnlinePreparationIsNotRestoredFromArchive) {
+  auto data = MakeSharedLibSerializerData();
+  data.online_prepare_data = std::make_shared<Om2OnlinePrepareData>();
+  data.online_prepare_data->graph_id = 987U;
+  data.online_prepare_data->prepare_ge_variables = true;
+  ge::ModelBufferData output;
+  ASSERT_EQ(SerializeGertModelData(data, output, false, "online_prepare"), ge::SUCCESS);
+  GertModelData restored;
+  InitGertModelData(restored);
+  ASSERT_EQ(DeserializeGertModelMeta(static_cast<const uint8_t *>(output.data.get()), output.length, &restored),
+            ge::SUCCESS);
+  EXPECT_EQ(restored.online_prepare_data, nullptr);
+  ASSERT_NE(data.online_prepare_data, nullptr);
+  EXPECT_EQ(data.online_prepare_data->graph_id, 987U);
 }
 
 }  // namespace

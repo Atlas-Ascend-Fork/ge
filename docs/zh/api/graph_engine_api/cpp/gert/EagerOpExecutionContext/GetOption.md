@@ -35,3 +35,8 @@ ge::graphStatus GetOption(const ge::AscendString &option_key, ge::AscendString &
 ## 约束说明
 
 - 仅在[`Execute`](../../ge/EagerExecuteOp/Execute.md)回调内调用有效，读取当前执行上下文可见的选项，算子不应依赖跨轮一致性；选项取值为字符串语义，数值含义由选项自身约定，算子需自行解析。
+- V2 执行器仅向自定义算子透传以下 option：
+  - `ge.exec.staticMemoryPolicy`
+  - `ge.exec.atomicCleanPolicy`
+  - `ge.hardwareInfo`
+- 其余 key 在异步执行线程上查询会返回失败。

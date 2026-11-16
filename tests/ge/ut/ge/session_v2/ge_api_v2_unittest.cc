@@ -3052,15 +3052,16 @@ TEST_F(UtestGeApiV2ExecuteGraph, AddAcceptsOptionsWhileUnsupportedCallsDoNotCons
   EXPECT_EQ(session_->RemoveGraph(64U), SUCCESS);
 }
 
-TEST_F(UtestGeApiV2ExecuteGraph, LoadOptionsDoNotBlockCompilation) {
+TEST_F(UtestGeApiV2ExecuteGraph, LoadOptionsDoNotBypassModelValidation) {
   EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
   ASSERT_EQ(session_->AddGraph(67U, MakeSessionExecuteGraph("execute")), SUCCESS);
   ASSERT_EQ(session_->AddGraph(68U, MakeSessionExecuteGraph("execute_with_options")), SUCCESS);
   const auto empty_options_ret = session_->LoadGraph(67U, {}, nullptr);
+  EXPECT_NE(empty_options_ret, SUCCESS);
   EXPECT_EQ(session_->LoadGraph(68U, {{"ge.exec.unknown_execute_option", "1"}}, nullptr), empty_options_ret);
-  EXPECT_TRUE(session_->impl_->GetBuildFlag(67U));
-  EXPECT_TRUE(session_->impl_->GetBuildFlag(68U));
+  EXPECT_FALSE(session_->impl_->GetBuildFlag(67U));
+  EXPECT_FALSE(session_->impl_->GetBuildFlag(68U));
   EXPECT_EQ(session_->RemoveGraph(67U), SUCCESS);
   EXPECT_EQ(session_->RemoveGraph(68U), SUCCESS);
 }
@@ -3078,7 +3079,6 @@ TEST_F(UtestGeApiV2ExecuteGraph, AsyncExecuteGraphIsUnsupportedWithoutCallbackOr
 }
 
 TEST_F(UtestGeApiV2ExecuteGraph, CompileOverloadsAndImplicitLoadFailureLeaveGraphRemovable) {
-  GTEST_SKIP() << "BuildGertModelDataFromGraph is a success stub until model generation is available.";
   EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
   ASSERT_EQ(session_->AddGraph(66U, MakeSessionExecuteGraph("invalid_execute")), SUCCESS);

@@ -11,10 +11,12 @@
 #define AIR_CXX_RUNTIME_V2_KERNEL_TAGS_H
 
 #include <vector>
+#include "framework/common/ge_visibility.h"
 #include "core/executor/multi_thread_topological/executor/schedule/task/exec_task_type.h"
 #include "core/execution_data.h"
 
 namespace gert {
+VISIBILITY_EXPORT ExecTaskType ClassifyKernelTask(const char *kernel_type, size_t thread_num);
 struct KernelTags {
   void Reset(size_t node_num, size_t thread_num = 0U);
   ExecTaskType GetByNode(const Node *kernel) {

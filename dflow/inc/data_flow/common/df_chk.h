@@ -15,23 +15,23 @@
 #include "acl/acl.h"
 
 // -----------------runtime related macro definitions-------------------------------
-// If expr is not ACL_ERROR_NONE, print the log
+// If expr is not ACL_SUCCESS, print the log
 #define DF_CHK_ACL(expr)                                                   \
   do {                                                                     \
     const aclError _acl_err = (expr);                                      \
-    if (_acl_err != ACL_ERROR_NONE) {                                      \
+    if (_acl_err != ACL_SUCCESS) {                                         \
       GELOGE(ge::RT_FAILED, "Call aclrt api failed, ret: 0x%X", _acl_err); \
     }                                                                      \
   } while (false)
 
-// If expr is not ACL_ERROR_NONE, print the log and return
+// If expr is not ACL_SUCCESS, print the log and return
 #define DF_CHK_ACL_RET(expr) GE_CHK_ACL_RET(expr)
 
 #define DF_FREE_ACL_RT_LOG(addr)                                           \
   do {                                                                     \
     if ((addr) != nullptr) {                                               \
       const aclError error = aclrtFree(addr);                              \
-      if (error != ACL_ERROR_NONE) {                                       \
+      if (error != ACL_SUCCESS) {                                          \
         GELOGE(ge::RT_FAILED, "Call aclrtFree failed, error: %#x", error); \
       }                                                                    \
       (addr) = nullptr;                                                    \

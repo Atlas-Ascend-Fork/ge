@@ -676,7 +676,7 @@ Status DumpOp::LaunchDumpOp(const bool is_single_op_dump, bool need_device_args)
 
   int32_t device_id = 0;
   const aclError rt_ret = aclrtGetDevice(&device_id);
-  if (rt_ret != ACL_ERROR_NONE) {
+  if (rt_ret != ACL_SUCCESS) {
     GELOGE(RT_ERROR_TO_GE_STATUS(rt_ret), "[Call][aclrtGetDevice]Failed, ret %d", rt_ret);
     REPORT_INNER_ERR_MSG("E19999", "[Call][aclrtGetDevice]Failed, ret %d", rt_ret);
     return RT_ERROR_TO_GE_STATUS(rt_ret);

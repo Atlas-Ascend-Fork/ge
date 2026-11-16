@@ -40,6 +40,9 @@ class Om2ModelManager {
                       std::vector<gert::Tensor *> &outputs, const gert::Om2ModelRunArg &run_arg);
 
   ge::Status UnloadModel(uint32_t model_id);
+  ge::Status UnloadSessionModels(uint64_t session_id);
+
+  std::shared_ptr<gert::Om2ModelExecutor> GetModelExecutor(uint32_t model_id);
 
   uint32_t GenModelId();
 

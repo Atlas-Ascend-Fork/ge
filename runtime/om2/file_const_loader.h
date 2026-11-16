@@ -24,6 +24,7 @@ struct Om2ConstItem {
   std::string file_name;
   size_t offset = 0U;
   size_t size = 0U;
+  bool is_host = false;  // INTERNAL Host weights only; external weights keep the existing Device path.
 };
 
 struct FileConstContext {

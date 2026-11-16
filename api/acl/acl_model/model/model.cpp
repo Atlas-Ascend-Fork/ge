@@ -37,6 +37,7 @@
 #include "acl_model_impl.h"
 #include "acl_model_impl_om2.h"
 #include "acl/acl_rt.h"
+#include "common/memory/tensor_trans_utils.h"
 #include "model_common.h"
 
 namespace ge {
@@ -234,7 +235,7 @@ static aclError PrepareDualBodyWeightMem(const gert::ExecutorSet &executors, con
     return ACL_ERROR_INVALID_PARAM;
   }
   const aclError malloc_ret = aclrtMalloc(&mem.shared_ptr, executors.shared_weight_size, ACL_MEM_TYPE_HIGH_BAND_WIDTH);
-  if (malloc_ret != ACL_ERROR_NONE) {
+  if (malloc_ret != ACL_SUCCESS) {
     ACL_LOG_CALL_ERROR("malloc shared weight memory failed, ret=%d", static_cast<int32_t>(malloc_ret));
     return malloc_ret;
   }
@@ -278,7 +279,7 @@ static aclError LoadExecutorSetForModel(gert::ExecutorSet &executors, const std:
     ACL_LOG_INFO("fallback executor load success.");
   }
   ret = aclrtSynchronizeStream(rtStream);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     ACL_LOG_CALL_ERROR("synchronize stream failed, runtime result = %d", static_cast<int32_t>(ret));
     (void)executors.main->UnLoad();
     if (executors.fallback != nullptr) {
@@ -300,7 +301,8 @@ static void RegisterDualBodyExecutors(uint32_t &modelId, gert::ExecutorSet &exec
   ACL_LOG_INFO("main executor registered, modelId[%u].", modelId);
   if (has_fallback) {
     acl::AclResourceManager::GetInstance().SetAutofuseFallback(modelId, std::move(fallback), std::move(guard),
-                                                               mem.shared_ptr, mem.main_size);
+                                                               mem.shared_ptr, mem.main_size,
+                                                               std::move(executors.host_input_indexes));
     ACL_LOG_INFO("fallback executor registered, modelId[%u], shared_weight_size[%zu].", modelId, mem.main_size);
   }
 }
@@ -664,24 +666,100 @@ static void SetInputData(const std::vector<AclModelTensor> &blobs, std::vector<g
 }
 
 // runtime2.0 execute
+// Host inputs are prepared for guard matching and main executor execution.
+// The fallback executor keeps using the original ACL device inputs.
+// An empty list means the original ACL inputs can be used directly.
+static bool SyncStreamForHostCopy(const uint32_t modelId, const bool isAsync, const aclrtStream stream,
+                                  bool &stream_synced) {
+  if ((!isAsync) || stream_synced) {
+    return true;
+  }
+  const auto sync_ret = aclrtSynchronizeStream(stream);
+  if (sync_ret != ACL_ERROR_NONE) {
+    ACL_LOG_WARN("synchronize stream before host input copy failed, result[%d], modelId[%u].",
+                 static_cast<int32_t>(sync_ret), modelId);
+    return false;
+  }
+  stream_synced = true;
+  return true;
+}
+
+static bool PrepareHostInputs(const uint32_t modelId, const gert::ModelDesc &model_desc,
+                              const std::vector<gert::Tensor *> &inputVec, const bool isAsync, const aclrtStream stream,
+                              const acl::AclResourceManager::AutofuseFallbackExecutors &fallback_info,
+                              std::vector<gert::Tensor> &host_inputs, std::vector<gert::Tensor *> &inputs) {
+  inputs = inputVec;
+  if (fallback_info.host_input_indexes.empty()) {
+    return true;
+  }
+  host_inputs.reserve(fallback_info.host_input_indexes.size());
+  ACL_LOG_INFO("prepare host inputs, modelId[%u], count[%zu], async[%d].", modelId,
+               fallback_info.host_input_indexes.size(), static_cast<int32_t>(isAsync));
+  bool stream_synced = false;
+  for (const auto idx : fallback_info.host_input_indexes) {
+    if ((idx >= inputs.size()) || (inputs[idx] == nullptr)) {
+      ACL_LOG_WARN("host input index[%zu] is invalid, modelId[%u].", idx, modelId);
+      inputs = inputVec;
+      return false;
+    }
+    if (gert::TensorPlacementUtils::IsOnHost(inputs[idx]->GetPlacement())) {
+      continue;
+    }
+    const auto *input_desc = model_desc.GetInputDesc(idx);
+    if (input_desc == nullptr) {
+      ACL_LOG_WARN("input desc is null, input[%zu], modelId[%u].", idx, modelId);
+      inputs = inputVec;
+      return false;
+    }
+    if (!SyncStreamForHostCopy(modelId, isAsync, stream, stream_synced)) {
+      inputs = inputVec;
+      return false;
+    }
+    inputs[idx]->SetDataType(static_cast<ge::DataType>(input_desc->GetDataType()));
+    inputs[idx]->MutableFormat().SetStorageFormat(input_desc->GetStorageFormat());
+    inputs[idx]->MutableFormat().SetOriginFormat(input_desc->GetOriginFormat());
+    host_inputs.emplace_back();
+    const auto status = ge::TensorTransUtils::TransGertTensorToHost(*inputs[idx], host_inputs.back());
+    if (status != ge::SUCCESS) {
+      ACL_LOG_WARN("copy input[%zu] to host failed, status[%u], modelId[%u].", idx, static_cast<uint32_t>(status),
+                   modelId);
+      inputs = inputVec;
+      return false;
+    }
+    ACL_LOG_INFO("D2H input[%zu] for modelId[%u].", idx, modelId);
+    inputs[idx] = &host_inputs.back();
+  }
+  return true;
+}
+
 static std::shared_ptr<gert::ModelV2Executor> SelectDualBodyExecutor(const uint32_t modelId,
                                                                      const std::shared_ptr<gert::ModelV2Executor> &main,
-                                                                     const std::vector<gert::Tensor *> &inputVec) {
+                                                                     const std::vector<gert::Tensor *> &inputVec,
+                                                                     std::vector<gert::Tensor> &host_inputs,
+                                                                     std::vector<gert::Tensor *> &inputs,
+                                                                     const bool isAsync, const aclrtStream stream) {
+  inputs = inputVec;
   auto fallback_info = acl::AclResourceManager::GetInstance().GetAutofuseFallback(modelId);
   if (fallback_info.executor == nullptr) {
     ACL_LOG_DEBUG("no fallback executor, take main body.");
     return main;
   }
   if (fallback_info.guard == nullptr) {
-    ACL_LOG_INFO("fallback exists but guard is empty, take fallback body.");
+    ACL_LOG_INFO("guard is empty, take fallback body, modelId[%u].", modelId);
+    return fallback_info.executor;
+  }
+  if (!PrepareHostInputs(modelId, main->GetModelDesc(), inputVec, isAsync, stream, fallback_info, host_inputs,
+                         inputs)) {
+    ACL_LOG_WARN("prepare host inputs failed, take fallback body, modelId[%u].", modelId);
     return fallback_info.executor;
   }
   char_t reason[1024] = {};
-  if (!fallback_info.guard->Match(inputVec, reason, sizeof(reason))) {
-    ACL_LOG_INFO("final execution body: fallback(guard miss), reason: %s", reason);
+  if (!fallback_info.guard->Match(inputs, reason, sizeof(reason))) {
+    ACL_LOG_INFO("final execution body: fallback(guard miss), modelId[%u], reason: %s", modelId, reason);
+    inputs = inputVec;
     return fallback_info.executor;
   }
-  ACL_LOG_INFO("final execution body: main(guard hit).");
+  ACL_LOG_INFO("final execution body: main(guard hit), modelId[%u].", modelId);
   return main;
 }
 
@@ -729,7 +807,12 @@ static aclError RuntimeV2ModelExecute(const uint32_t modelId, const aclmdlDatase
   }
 
   SetInputData(input->blobs, inputTensor);
-  auto const executor = SelectDualBodyExecutor(modelId, main_executor, inputVec);
+  // host_inputs must cover guard matching and Execute. The runtime consumes host
+  // inputs during Execute or backs them up before the asynchronous H2D copy.
+  std::vector<gert::Tensor> host_inputs;
+  std::vector<gert::Tensor *> execution_inputs;
+  auto const executor =
+      SelectDualBodyExecutor(modelId, main_executor, inputVec, host_inputs, execution_inputs, isAsync, stream);
   ge::InputAippType type = ge::DATA_WITHOUT_AIPP;
   size_t aippIndex = 0U;
   for (size_t i = 0UL; i < inputNum; ++i) {
@@ -786,9 +869,9 @@ static aclError RuntimeV2ModelExecute(const uint32_t modelId, const aclmdlDatase
     gert::ModelExecuteArg arg;
     arg.stream = stream;
     arg.external_allocator = acl::AclResourceManager::GetInstance().GetAllocators(arg.stream, false).get();
-    ret = executor->Execute(arg, inputVec.data(), inputTensor.size(), outputVec.data(), outputTensor.size());
+    ret = executor->Execute(arg, execution_inputs.data(), inputTensor.size(), outputVec.data(), outputTensor.size());
   } else {
-    ret = executor->ExecuteSync(inputVec.data(), inputTensor.size(), outputVec.data(), outputTensor.size());
+    ret = executor->ExecuteSync(execution_inputs.data(), inputTensor.size(), outputVec.data(), outputTensor.size());
   }
   CANN_PROFILING_STEP_TRACE(modelId, index_id, kEndTag, stream);
   CANN_PROFILING_EVENT_END(modelId, index_id, gert::GeProfInfoType::kModelExecute, event);
@@ -1863,7 +1946,7 @@ aclError aclmdlExecuteV2Impl(uint32_t modelId, const aclmdlDataset *input, aclmd
     ret = acl::ModelExecute(modelId, input, output, false, stream);
     if (stream != nullptr) {
       const aclError rtErr = aclrtSynchronizeStreamWithTimeout(stream, handle->streamSyncTimeout);
-      if (rtErr != ACL_ERROR_NONE) {
+      if (rtErr != ACL_SUCCESS) {
         ACL_LOG_CALL_ERROR("synchronize stream failed, runtime result = %d", static_cast<int32_t>(rtErr));
         return ACL_GET_ERRCODE_RTS(rtErr);
       }

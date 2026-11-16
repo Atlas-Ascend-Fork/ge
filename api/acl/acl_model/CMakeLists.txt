@@ -34,11 +34,13 @@ target_include_directories(acl_mdl_impl PRIVATE
     ${AIR_CODE_DIR}/inc/graph_metadef
     ${AIR_CODE_DIR}/inc/graph_metadef/external
     ${AIR_CODE_DIR}/base/metadef/pkg_inc
+    ${AIR_CODE_DIR}/base
 
     ${TOP_DIR}/air/inc/external
     ${TOP_DIR}/air/inc/external/acl
     ${TOP_DIR}/runtime/include/external
     ${TOP_DIR}/runtime/include/external/acl
+    ${TOP_DIR}/air/base
 )
 
 target_compile_options(acl_mdl_impl PRIVATE

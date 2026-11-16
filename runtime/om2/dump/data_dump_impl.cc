@@ -120,6 +120,18 @@ void DumpTransportInfoToLog(const DumpTransportInfo &info) {
   }
   GELOGD("========== Dump TransportInfo(TLV) End ==========");
 }
+
+// dump 和 protobuf 解耦之后，旧 driver 包无法解析 tlv 格式的码流，这里获取版本号用于日志中辅助判断
+std::string GetDriverPkgVersionStr() {
+  char driver_pkg_name[] = "driver";
+  char version_str[ACL_PKG_VERSION_MAX_SIZE] = {0};
+  const aclError ret = aclsysGetVersionStr(driver_pkg_name, version_str);
+  if (ret != ACL_SUCCESS) {
+    GELOGW("Get driver package version failed, ret=%d.", ret);
+    return "unknown";
+  }
+  return std::string(version_str);
+}
 }  // namespace
 
 DataDumpImpl::DataDumpImpl() : data_dump_version_(GetDumpDataVersionFromEnv()) {
@@ -305,7 +317,11 @@ Status DataDumpImpl::ExecuteLoadDumpInfo(const std::vector<uint8_t> &payload) {
 
   rt_ret = rtDatadumpInfoLoad(dev_mem_load_, static_cast<uint32_t>(payload_size));
   if (rt_ret != RT_ERROR_NONE) {
-    GELOGE(RT_FAILED, "[Call][rtDatadumpInfoLoad] failed, length:%zu, ret:%d", payload_size, rt_ret);
+    GELOGE(RT_FAILED,
+           "[Call][rtDatadumpInfoLoad] failed, length:%zu, ret:%d, driver version=%s. "
+           "An earlier driver package version may cause this failure, "
+           "please check the driver version printed above.",
+           payload_size, rt_ret, GetDriverPkgVersionStr().c_str());
     (void)aclrtFree(dev_mem_load_);
     dev_mem_load_ = nullptr;
     return RT_FAILED;
@@ -377,20 +393,21 @@ Status DataDumpImpl::BuildOpMappingBasicInfo(const ModelDumpInfo &model_info,
   return ge::SUCCESS;
 }
 
-Status DataDumpImpl::BuildDumpTransportBasicInfo(const ModelDumpInfo &model_info, DumpTransportInfo &result) {
+Status DataDumpImpl::BuildDumpTransportBasicInfo(const ModelDumpInfo &model_info,
+                                                 DumpTransportInfo &dump_transport_info) {
   model_name_ = (model_info.model_name != nullptr) ? model_info.model_name : "";
   root_graph_name_ = (model_info.root_graph_name != nullptr) ? model_info.root_graph_name : "";
   if (dump_transport_base_info_initialized_) {
-    result = dump_transport_base_info_;
+    dump_transport_info = dump_transport_base_info_;
     return ge::SUCCESS;
   }
-  auto &dump_transport_info = dump_transport_base_info_.MutableModel();
+  auto &model = dump_transport_base_info_.MutableModel();
   const char *model_name = model_name_.c_str();
-  dump_transport_info.SetDumpPath(DumpConfig::Instance().GetDumpPath() + std::to_string(model_info.device_id) + "/");
-  dump_transport_info.SetModelName(model_name);
-  dump_transport_info.SetModelId(model_info.model_id);
-  dump_transport_info.SetDumpStep(DumpConfig::Instance().GetDumpStep());
-  dump_transport_info.SetFlag(kAicpuLoadFlag);
+  model.SetDumpPath(DumpConfig::Instance().GetDumpPath() + std::to_string(model_info.device_id) + "/");
+  model.SetModelName(model_name);
+  model.SetModelId(model_info.model_id);
+  model.SetDumpStep(DumpConfig::Instance().GetDumpStep());
+  model.SetFlag(kAicpuLoadFlag);
 
   // step_id_addr 分配设备内存并初始化为 0，先释放旧的
   // AICPU dump kernel 以 uint64_t 解引用 step_id_addr（dump_task.cpp: *(uint64_t *)stepIdAddr）
@@ -415,24 +432,24 @@ Status DataDumpImpl::BuildDumpTransportBasicInfo(const ModelDumpInfo &model_info
     return RT_FAILED;
   }
   step_id_dev_addr_ = step_id_dev_addr;
-  dump_transport_info.SetStepIdAddr(PtrToValue(step_id_dev_addr));
+  model.SetStepIdAddr(PtrToValue(step_id_dev_addr));
 
   // loop_cond_addr 和 iterations_per_loop_addr 保持原逻辑
   if (model_info.loop_cond_addr != 0U) {
-    dump_transport_info.SetLoopCondAddr(model_info.loop_cond_addr);
+    model.SetLoopCondAddr(model_info.loop_cond_addr);
   }
   if (model_info.iterations_per_loop_addr != 0U) {
-    dump_transport_info.SetIterationsPerLoopAddr(model_info.iterations_per_loop_addr);
+    model.SetIterationsPerLoopAddr(model_info.iterations_per_loop_addr);
   }
 
   // 设置 dump_data
   const std::string dump_data_str = DumpConfig::Instance().GetDumpData();
   if (dump_data_str == "stats") {
-    dump_transport_info.SetDumpData(DumpTransDumpData::kStats);
+    model.SetDumpData(DumpTransDumpData::kStats);
   } else {
-    dump_transport_info.SetDumpData(DumpTransDumpData::kTensor);
+    model.SetDumpData(DumpTransDumpData::kTensor);
   }
-  result = dump_transport_base_info_;
+  dump_transport_info = dump_transport_base_info_;
   dump_transport_base_info_initialized_ = true;
   return ge::SUCCESS;
 }

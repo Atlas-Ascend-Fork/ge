@@ -100,6 +100,25 @@ TEST(UTEST_ACL_Resource_Manager, AutofuseFallbackLifecycle) {
   EXPECT_EQ(deleted.guard, nullptr);
 }
 
+TEST(UTEST_ACL_Resource_Manager, AutofuseFallbackHostInputMetadata) {
+  auto &manager = AclResourceManager::GetInstance();
+  uint32_t model_id = 0U;
+  auto rt_session = manager.CreateRtSession();
+  ASSERT_NE(rt_session, nullptr);
+  manager.AddExecutor(model_id, nullptr, rt_session);
+
+  auto guard = std::make_shared<FakeGuardCheckerForUt>();
+  manager.SetAutofuseFallback(model_id, nullptr, guard, nullptr, 0U, {1U, 3U});
+  auto fallback = manager.GetAutofuseFallback(model_id);
+  EXPECT_EQ(fallback.host_input_indexes, std::vector<size_t>({1U, 3U}));
+
+  manager.SetAutofuseFallback(model_id, nullptr, guard, nullptr, 0U);
+  fallback = manager.GetAutofuseFallback(model_id);
+  EXPECT_TRUE(fallback.host_input_indexes.empty());
+
+  EXPECT_EQ(manager.DeleteExecutor(model_id), ACL_SUCCESS);
+}
+
 TEST(UTEST_ACL_Resource_Manager, TestGetEnv) {
   AclResourceManager mng;
 

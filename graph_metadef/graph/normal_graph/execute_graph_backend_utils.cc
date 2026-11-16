@@ -41,7 +41,7 @@ std::shared_ptr<std::weak_ptr<ExecuteGraph>> GetParentLifetime(ExecuteGraph *gra
   return lifetime;
 }
 
-bool HasLocalSubgraph(ExecuteGraph *owner, ExecuteGraph *graph) {
+bool HasLocalSubgraph(const ExecuteGraph *owner, ExecuteGraph *graph) {
   const auto entries = owner->GetAllSubgraphs();
   return std::find(entries.begin(), entries.end(), graph) != entries.end();
 }
@@ -167,12 +167,12 @@ void ExecuteGraphBackendUtils::SetParentGraph(ExecuteGraph *graph, const std::sh
   *lifetime = parent;
 }
 
-void ExecuteGraphBackendUtils::CollectSubgraphTree(ExecuteGraph *root, std::vector<ExecuteGraph *> &tree) {
-  if (root == nullptr) {
+void ExecuteGraphBackendUtils::CollectSubgraphTree(ExecuteGraph *graph, std::vector<ExecuteGraph *> &tree) {
+  if (graph == nullptr) {
     return;
   }
-  auto *registry_root = ExecuteGraphUtils::FindRootGraph(root);
-  std::deque<ExecuteGraph *> pending{root};
+  auto *registry_root = ExecuteGraphUtils::FindRootGraph(graph);
+  std::deque<ExecuteGraph *> pending{graph};
   while (!pending.empty()) {
     auto *current = pending.front();
     pending.pop_front();
@@ -180,7 +180,7 @@ void ExecuteGraphBackendUtils::CollectSubgraphTree(ExecuteGraph *root, std::vect
       continue;
     }
     tree.emplace_back(current);
-    const auto append_children = [&pending, current](ExecuteGraph *registry) {
+    const auto append_children = [&pending, current](const ExecuteGraph *registry) {
       for (auto *child : registry->GetAllSubgraphs()) {
         if ((child != nullptr) && (child->GetParentGraphBarePtr() == current)) {
           pending.emplace_back(child);

@@ -417,8 +417,38 @@ TEST(Om2AbiStructCompatibility, StreamDescLayoutIsFrozen) {
                                  sizeof(GertModelStreamDesc::streams) + sizeof(GertModelStreamDesc::stream_num));
 }
 
+TEST(Om2AbiStructCompatibility, SharedLibraryLayoutsAreFrozen) {
+  EXPECT_STRUCT_LAYOUT(GertModelSharedLibrary, 48U, 8U);
+  EXPECT_MEMBER_LAYOUT(GertModelSharedLibrary, struct_size, uint64_t, 0U);
+  EXPECT_MEMBER_LAYOUT(GertModelSharedLibrary, so_name, const char *, 8U);
+  EXPECT_MEMBER_LAYOUT(GertModelSharedLibrary, so_bin_type, GertModelSharedLibraryType, 16U);
+  EXPECT_MEMBER_LAYOUT(GertModelSharedLibrary, vendor_name, const char *, 24U);
+  EXPECT_MEMBER_LAYOUT(GertModelSharedLibrary, data, const void *, 32U);
+  EXPECT_MEMBER_LAYOUT(GertModelSharedLibrary, data_size, uint64_t, 40U);
+  EXPECT_NO_IMPLICIT_PADDING(GertModelSharedLibrary,
+                             sizeof(GertModelSharedLibrary::struct_size) + sizeof(GertModelSharedLibrary::so_name) +
+                                 sizeof(GertModelSharedLibrary::so_bin_type) +
+                                 sizeof(GertModelSharedLibrary::vendor_name) + sizeof(GertModelSharedLibrary::data) +
+                                 sizeof(GertModelSharedLibrary::data_size));
+
+  EXPECT_STRUCT_LAYOUT(GertModelSharedLibraries, 24U, 8U);
+  EXPECT_MEMBER_LAYOUT(GertModelSharedLibraries, struct_size, uint64_t, 0U);
+  EXPECT_MEMBER_LAYOUT(GertModelSharedLibraries, library_num, uint64_t, 8U);
+  EXPECT_MEMBER_LAYOUT(GertModelSharedLibraries, libraries, const GertModelSharedLibrary *const *, 16U);
+  EXPECT_NO_IMPLICIT_PADDING(GertModelSharedLibraries, sizeof(GertModelSharedLibraries::struct_size) +
+                                                           sizeof(GertModelSharedLibraries::library_num) +
+                                                           sizeof(GertModelSharedLibraries::libraries));
+}
+
 TEST(Om2AbiStructCompatibility, LoadConfigLayoutIsFrozen) {
-  EXPECT_STRUCT_LAYOUT(GertModelLoadConfig, 192U, 8U);
+  EXPECT_STRUCT_LAYOUT(GertModelDynamicLoadConfig, 24U, 8U);
+  EXPECT_MEMBER_LAYOUT(GertModelDynamicLoadConfig, struct_size, uint64_t, 0U);
+  EXPECT_MEMBER_LAYOUT(GertModelDynamicLoadConfig, shared_libraries, const GertModelSharedLibraries *, 8U);
+  EXPECT_MEMBER_LAYOUT(GertModelDynamicLoadConfig, rt_session, void *, 16U);
+  EXPECT_NO_IMPLICIT_PADDING(GertModelDynamicLoadConfig, sizeof(GertModelDynamicLoadConfig::struct_size) +
+                                                             sizeof(GertModelDynamicLoadConfig::shared_libraries) +
+                                                             sizeof(GertModelDynamicLoadConfig::rt_session));
+  EXPECT_STRUCT_LAYOUT(GertModelLoadConfig, 200U, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, struct_size, uint64_t, 0U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, bin_files, const char **, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, bin_data, const void **, 16U);
@@ -443,6 +473,7 @@ TEST(Om2AbiStructCompatibility, LoadConfigLayoutIsFrozen) {
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, external_notifies, aclrtNotify *, 168U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, external_notify_num, uint64_t, 176U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, external_allocator, void *, 184U);
+  EXPECT_MEMBER_LAYOUT(GertModelLoadConfig, dynamic_config, const GertModelDynamicLoadConfig *, 192U);
   EXPECT_NO_IMPLICIT_PADDING(
       GertModelLoadConfig,
       sizeof(GertModelLoadConfig::struct_size) + sizeof(GertModelLoadConfig::bin_files) +
@@ -456,7 +487,8 @@ TEST(Om2AbiStructCompatibility, LoadConfigLayoutIsFrozen) {
           sizeof(GertModelLoadConfig::external_stream_num) + sizeof(GertModelLoadConfig::external_events) +
           sizeof(GertModelLoadConfig::external_event_num) + sizeof(GertModelLoadConfig::external_labels) +
           sizeof(GertModelLoadConfig::external_label_num) + sizeof(GertModelLoadConfig::external_notifies) +
-          sizeof(GertModelLoadConfig::external_notify_num) + sizeof(GertModelLoadConfig::external_allocator));
+          sizeof(GertModelLoadConfig::external_notify_num) + sizeof(GertModelLoadConfig::dynamic_config) +
+          sizeof(GertModelLoadConfig::external_allocator));
 }
 
 TEST(Om2AbiStructCompatibility, RunConfigLayoutIsFrozen) {
@@ -548,7 +580,6 @@ TEST(Om2ModelDataStructCompatibility, AippMetaLayoutIsFrozen) {
 }
 
 TEST(Om2ModelDataStructCompatibility, ModelMetaLayoutIsFrozen) {
-  // 尾部追加 global_shared_var_size(8B) 与 var_weight_file_name(8B)：256U -> 272U，对齐仍为 8
   EXPECT_STRUCT_LAYOUT(gert::GertModelDataModelMeta, 272U, 8U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataModelMeta, struct_size, uint64_t, 0U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataModelMeta, work_size, uint64_t, 8U);
@@ -586,7 +617,7 @@ TEST(Om2ModelDataStructCompatibility, RuntimeLayoutIsFrozen) {
 }
 
 TEST(Om2ModelDataStructCompatibility, ConstantsLayoutsAreFrozen) {
-  EXPECT_STRUCT_LAYOUT(gert::GertModelDataConstMeta, 64U, 8U);
+  EXPECT_STRUCT_LAYOUT(gert::GertModelDataConstMeta, 72U, 8U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataConstMeta, struct_size, uint64_t, 0U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataConstMeta, index, uint64_t, 8U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataConstMeta, offset, int64_t, 16U);
@@ -595,6 +626,7 @@ TEST(Om2ModelDataStructCompatibility, ConstantsLayoutsAreFrozen) {
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataConstMeta, file_name, std::unique_ptr<char[]>, 40U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataConstMeta, file_path, std::unique_ptr<char[]>, 48U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataConstMeta, op_name, std::unique_ptr<char[]>, 56U);
+  EXPECT_MEMBER_LAYOUT(gert::GertModelDataConstMeta, placement, gert::GertModelDataConstPlacement, 64U);
 
   EXPECT_STRUCT_LAYOUT(gert::GertModelDataConstantsConfig, 40U, 8U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataConstantsConfig, struct_size, uint64_t, 0U);
@@ -626,7 +658,7 @@ TEST(Om2ModelDataStructCompatibility, VariablesLayoutIsFrozen) {
 TEST(Om2ModelDataStructCompatibility, ModelLayoutIsFrozen) {
   // variables_config / var_weight_data / var_weight_data_size 三个成员已迁出：
   // variables_config 随归档格式删除，权重块迁往 GertModelData::variables，80U -> 48U
-  EXPECT_STRUCT_LAYOUT(gert::GertModelDataModel, 48U, 8U);
+  EXPECT_STRUCT_LAYOUT(gert::GertModelDataModel, 56U, 8U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataModel, struct_size, uint64_t, 0U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataModel, model_meta, std::unique_ptr<gert::GertModelDataModelMeta>, 8U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataModel, constants_config, std::unique_ptr<gert::GertModelDataConstantsConfig>,
@@ -634,6 +666,7 @@ TEST(Om2ModelDataStructCompatibility, ModelLayoutIsFrozen) {
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataModel, op_attr_json, std::unique_ptr<char[]>, 24U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataModel, runtime, std::unique_ptr<gert::GertModelDataRuntime>, 32U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelDataModel, debug, std::unique_ptr<gert::GertModelDataDebug>, 40U);
+  EXPECT_MEMBER_LAYOUT(gert::GertModelDataModel, execution_type, gert::GertModelExecutionType, 48U);
 }
 
 TEST(Om2ModelDataStructCompatibility, KernelLayoutsAreFrozen) {
@@ -649,9 +682,28 @@ TEST(Om2ModelDataStructCompatibility, KernelLayoutsAreFrozen) {
                        32U);
 }
 
+TEST(Om2ModelDataStructCompatibility, SoBinsLayoutsAreFrozen) {
+  EXPECT_STRUCT_LAYOUT(gert::GertModelDataSoBin, 40U, 8U);
+  EXPECT_MEMBER_LAYOUT(gert::GertModelDataSoBin, struct_size, uint64_t, 0U);
+  EXPECT_MEMBER_LAYOUT(gert::GertModelDataSoBin, binary, std::unique_ptr<gert::GertModelDataFile>, 8U);
+  EXPECT_MEMBER_LAYOUT(gert::GertModelDataSoBin, so_name, std::unique_ptr<char[]>, 16U);
+  EXPECT_MEMBER_LAYOUT(gert::GertModelDataSoBin, so_bin_type, uint64_t, 24U);
+  EXPECT_MEMBER_LAYOUT(gert::GertModelDataSoBin, vendor_name, std::unique_ptr<char[]>, 32U);
+  EXPECT_NO_IMPLICIT_PADDING(gert::GertModelDataSoBin, sizeof(gert::GertModelDataSoBin::struct_size) +
+                                                           sizeof(gert::GertModelDataSoBin::binary) +
+                                                           sizeof(gert::GertModelDataSoBin::so_name) +
+                                                           sizeof(gert::GertModelDataSoBin::so_bin_type) +
+                                                           sizeof(gert::GertModelDataSoBin::vendor_name));
+
+  EXPECT_STRUCT_LAYOUT(gert::GertModelDataSoBins, 32U, 8U);
+  EXPECT_MEMBER_LAYOUT(gert::GertModelDataSoBins, struct_size, uint64_t, 0U);
+  EXPECT_MEMBER_LAYOUT(gert::GertModelDataSoBins, libraries, std::vector<std::unique_ptr<gert::GertModelDataSoBin>>,
+                       8U);
+}
+
 TEST(Om2ModelDataStructCompatibility, ModelDataRootLayoutIsFrozen) {
-  // 尾部追加 variables(8B)：64U -> 72U，对齐仍为 8
-  EXPECT_STRUCT_LAYOUT(gert::GertModelData, 72U, 8U);
+  // 保留既有字段偏移，尾部追加仅内存在线准备信息，对齐仍为 8
+  EXPECT_STRUCT_LAYOUT(gert::GertModelData, 96U, 8U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelData, struct_size, uint64_t, 0U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelData, manifest, std::unique_ptr<gert::GertModelDataManifest>, 8U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelData, models, std::vector<std::unique_ptr<gert::GertModelDataModel>>, 16U);
@@ -659,6 +711,8 @@ TEST(Om2ModelDataStructCompatibility, ModelDataRootLayoutIsFrozen) {
   EXPECT_MEMBER_LAYOUT(gert::GertModelData, kernels, std::unique_ptr<gert::GertModelDataKernels>, 48U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelData, custom_ops, std::unique_ptr<gert::GertModelDataCustomOps>, 56U);
   EXPECT_MEMBER_LAYOUT(gert::GertModelData, variables, std::unique_ptr<gert::GertModelDataVariables>, 64U);
+  EXPECT_MEMBER_LAYOUT(gert::GertModelData, so_bins, std::unique_ptr<gert::GertModelDataSoBins>, 72U);
+  EXPECT_MEMBER_LAYOUT(gert::GertModelData, online_prepare_data, std::shared_ptr<gert::Om2OnlinePrepareData>, 80U);
 }
 
 #pragma GCC diagnostic pop

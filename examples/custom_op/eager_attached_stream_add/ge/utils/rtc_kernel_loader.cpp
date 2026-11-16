@@ -54,7 +54,7 @@ std::string RtcKernelLoader::GetRtcCompileOption() {
 
   int64_t npu_arch = 0;
   aclError ret = aclrtGetDeviceInfo(device_id, ACL_DEV_ATTR_NPU_ARCH, &npu_arch);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LOG_WARNING("Failed to get NPU arch, error: ", ret, ", using default dav-2201");
     return "--npu-arch=dav-2201";
   }
@@ -66,7 +66,7 @@ ge::graphStatus RtcKernelLoader::CompileKernel(const char *kernel_name, const st
                                                std::vector<char> &bin_data) {
   aclrtcProg prog = nullptr;
   aclError ret = aclrtcCreateProg(&prog, source.c_str(), kernel_name, 0, nullptr, nullptr);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LOG_ERROR("aclrtcCreateProg failed, error: ", ret);
     return ge::GRAPH_FAILED;
   }
@@ -74,7 +74,7 @@ ge::graphStatus RtcKernelLoader::CompileKernel(const char *kernel_name, const st
   const std::string compile_option = GetRtcCompileOption();
   const char *options[] = {compile_option.c_str()};
   ret = aclrtcCompileProg(prog, 1, options);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LOG_ERROR("aclrtcCompileProg failed, error: ", ret);
     aclrtcDestroyProg(&prog);
     return ge::GRAPH_FAILED;
@@ -82,7 +82,7 @@ ge::graphStatus RtcKernelLoader::CompileKernel(const char *kernel_name, const st
 
   size_t bin_size = 0;
   ret = aclrtcGetBinDataSize(prog, &bin_size);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LOG_ERROR("aclrtcGetBinDataSize failed, error: ", ret);
     aclrtcDestroyProg(&prog);
     return ge::GRAPH_FAILED;
@@ -90,7 +90,7 @@ ge::graphStatus RtcKernelLoader::CompileKernel(const char *kernel_name, const st
 
   bin_data.resize(bin_size);
   ret = aclrtcGetBinData(prog, bin_data.data());
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LOG_ERROR("aclrtcGetBinData failed, error: ", ret);
     aclrtcDestroyProg(&prog);
     return ge::GRAPH_FAILED;
@@ -108,13 +108,13 @@ ge::graphStatus RtcKernelLoader::LoadBinary(const char *kernel_name, const std::
   binary_load_options.options = &binary_load_option;
 
   aclError ret = aclrtBinaryLoadFromData(bin_data.data(), bin_data.size(), &binary_load_options, &bin_handle_);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LOG_ERROR("aclrtBinaryLoadFromData failed, error: ", ret);
     return ge::GRAPH_FAILED;
   }
 
   ret = aclrtBinaryGetFunction(bin_handle_, kernel_name, &func_handle_);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LOG_ERROR("aclrtBinaryGetFunction failed, error: ", ret);
     aclrtBinaryUnLoad(bin_handle_);
     bin_handle_ = nullptr;

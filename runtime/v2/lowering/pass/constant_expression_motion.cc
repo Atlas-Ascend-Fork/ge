@@ -17,6 +17,8 @@
 
 #include "common/checker.h"
 #include "common/util/mem_utils.h"
+#include "graph/fast_graph/gert_graph_attributes.h"
+#include "graph/utils/attr_utils.h"
 #include "exe_graph/lowering/exe_graph_attrs.h"
 #include "exe_graph/lowering/builtin_node_types.h"
 #include "graph/utils/fast_node_utils.h"
@@ -179,7 +181,7 @@ ge::graphStatus CollectCeAndInnerData(ConstantExpressionMotion &cem, ge::Execute
       [&loop_variant_range, &cem](ge::FastNode *const node, CeNode &ce_node) {
         return IsStart(node, loop_variant_range, cem, ce_node);
       },
-      [](ge::FastNode *const node) { return IsStop(node); });
+      [&cem](ge::FastNode *const node) { return IsStop(node) || cem.IsExplicitMainStage(node); });
   GE_ASSERT_SUCCESS(ret);
   return ge::GRAPH_SUCCESS;
 }
@@ -591,6 +593,9 @@ ge::graphStatus AddCtrlFromInitNodesToCeNodes(ge::ExecuteGraph *const init_graph
 
 // 获取main图对应init图中的等价节点
 void GetEquivalantNodes(const LoweringGlobalData *global_data, EquivalantNodesFromMainToInit &equivalant_nodes) {
+  if (global_data == nullptr) {
+    return;
+  }
   // 获取不同placement下主流L2 allocator的等价节点
   for (int32_t i = 0; i < kTensorPlacementEnd; ++i) {
     AllocatorDesc desc{static_cast<TensorPlacement>(i), AllocatorUsage::kAllocNodeOutput};
@@ -603,6 +608,14 @@ void GetEquivalantNodes(const LoweringGlobalData *global_data, EquivalantNodesFr
 }
 }  // namespace
 
+bool ConstantExpressionMotion::IsExplicitMainStage(const ge::FastNode *node) const {
+  if (!is_external_graph_) {
+    return false;
+  }
+  std::string stage;
+  return ge::AttrUtils::GetStr(node->GetOpDescBarePtr(), gert::attr::kStage, stage) && stage == gert::attr::kStageMain;
+}
+
 ge::graphStatus ConstantExpressionMotion::Init(ge::ExecuteGraph *const root_graph) {
   cached_inner_datas_to_init_out_.clear();
   if (root_graph != root_graph_) {
@@ -612,6 +625,9 @@ ge::graphStatus ConstantExpressionMotion::Init(ge::ExecuteGraph *const root_grap
     cached_init_node_ = nullptr;
     cached_de_init_node_ = nullptr;
     root_graph_ = root_graph;
+    if (is_external_graph_) {
+      cached_equivalant_nodes_ = equivalant_nodes_;
+    }
     GetEquivalantNodes(global_data_, cached_equivalant_nodes_);
     GE_ASSERT_SUCCESS(CollectNoOpSrcNodesFromInitGraph());
   }

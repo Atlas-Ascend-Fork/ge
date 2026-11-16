@@ -82,14 +82,16 @@ class ACL_FUNC_VISIBILITY AclResourceManager {
     std::shared_ptr<gert::GuardChecker> guard;
     void *shared_weight_ptr{nullptr};
     size_t shared_weight_size{0U};
+    std::vector<size_t> host_input_indexes;
   };
   struct AutofuseFallbackExecutors {
     std::shared_ptr<gert::ModelV2Executor> executor;
     std::shared_ptr<gert::GuardChecker> guard;
+    std::vector<size_t> host_input_indexes;
   };
   void SetAutofuseFallback(const uint32_t modelId, std::shared_ptr<gert::ModelV2Executor> executor,
                            std::shared_ptr<gert::GuardChecker> guard, void *shared_weight_ptr = nullptr,
-                           size_t shared_weight_size = 0U);
+                           size_t shared_weight_size = 0U, std::vector<size_t> host_input_indexes = {});
   AutofuseFallbackExecutors GetAutofuseFallback(const uint32_t modelId);
   void DeleteAutofuseFallback(const uint32_t modelId);
 

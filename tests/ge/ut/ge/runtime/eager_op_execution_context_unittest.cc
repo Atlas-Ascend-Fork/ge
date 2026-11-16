@@ -136,7 +136,28 @@ TEST(EagerOpExecutionContextTest, GetContextValueReadsCompanionInfo) {
   EXPECT_EQ(value, 7UL);
 }
 
-TEST(EagerOpExecutionContextTest, GetContextValueDefaultsWhenNotSet) {
+TEST(EagerOpExecutionContextTest, GetContextValueReadsCoreNum) {
+  auto op_desc = std::make_shared<ge::OpDesc>("eager_core_num_op", "EagerCoreNumOp");
+  std::vector<int> ws_vec;
+  ge::SinkOpArgsHandler handler(nullptr);
+  gert::CustomOpContextInfo context_info;
+  context_info.SetAiCoreNum(32UL);
+  context_info.SetVectorCoreNum(24UL);
+  context_info.SetAiCpuNum(4UL);
+
+  auto holder = BuildEagerContextWithInfo(handler, ws_vec, context_info, op_desc);
+  auto *context = reinterpret_cast<EagerOpExecutionContext *>(holder.GetKernelContext());
+  ASSERT_NE(context, nullptr);
+  uint64_t value = 0UL;
+  ASSERT_TRUE(context->GetContextValue(gert::ContextParam::kAiCoreNum, value));
+  EXPECT_EQ(value, 32UL);
+  ASSERT_TRUE(context->GetContextValue(gert::ContextParam::kVectorCoreNum, value));
+  EXPECT_EQ(value, 24UL);
+  ASSERT_TRUE(context->GetContextValue(gert::ContextParam::kAiCpuNum, value));
+  EXPECT_EQ(value, 4UL);
+}
+
+TEST(EagerOpExecutionContextTest, GetContextValueUnsetReturnsFalse) {
   auto op_desc = std::make_shared<ge::OpDesc>("eager_default_info_op", "EagerDefaultInfoOp");
   std::vector<int> ws_vec;
   ge::SinkOpArgsHandler handler(nullptr);
@@ -145,15 +166,11 @@ TEST(EagerOpExecutionContextTest, GetContextValueDefaultsWhenNotSet) {
   auto holder = BuildEagerContextWithInfo(handler, ws_vec, context_info, op_desc);
   auto *context = reinterpret_cast<EagerOpExecutionContext *>(holder.GetKernelContext());
   ASSERT_NE(context, nullptr);
-  // 布尔参数未设置时取值为0（查询仍成功）
+  // 未设置的参数一律返回false；运行期各路径会显式设置布尔参数
   uint64_t value = 0xFFFFUL;
-  ASSERT_TRUE(context->GetContextValue(gert::ContextParam::kStaticModel, value));
-  EXPECT_EQ(value, 0UL);
-  ASSERT_TRUE(context->GetContextValue(gert::ContextParam::kAddressRefreshEnabled, value));
-  EXPECT_EQ(value, 0UL);
-  // graph id未设置时查询失败，与取值为0可区分
-  uint64_t graph_id = 0xFFFFUL;
-  EXPECT_FALSE(context->GetContextValue(gert::ContextParam::kGraphId, graph_id));
+  EXPECT_FALSE(context->GetContextValue(gert::ContextParam::kStaticModel, value));
+  EXPECT_FALSE(context->GetContextValue(gert::ContextParam::kAddressRefreshEnabled, value));
+  EXPECT_FALSE(context->GetContextValue(gert::ContextParam::kGraphId, value));
 }
 
 TEST(EagerOpExecutionContextTest, GetContextValueUndefinedKeyReturnsFalse) {

@@ -34,13 +34,13 @@ void D2dMemcpyThread(const aclrtContext &rt_context, const std::atomic_bool &d2d
   (void)pthread_setname_np(pthread_self(), "ge_llm_swap");
   auto &ret = status_info.first;
   ret = aclrtSetCurrentContext(rt_context);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LLMLOGE(ge::FAILED, "aclrtSetCurrentContext failed");
     return;
   }
   aclrtStream swap_in_stream = nullptr;
   ret = aclrtCreateStream(&swap_in_stream);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     LLMLOGE(ge::FAILED, "aclrtCreateStream failed");
     return;
   }
@@ -57,12 +57,12 @@ void D2dMemcpyThread(const aclrtContext &rt_context, const std::atomic_bool &d2d
     const auto copy_start = std::chrono::steady_clock::now();
     ret = aclrtMemcpyAsync(d2d_args.dst_addr, d2d_args.block_size, d2d_args.src_addr, d2d_args.block_size,
                            ACL_MEMCPY_DEVICE_TO_DEVICE, swap_in_stream);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LLMLOGE(ge::FAILED, "aclrtMemcpyAsync failed");
       return;
     }
     ret = aclrtSynchronizeStream(swap_in_stream);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LLMLOGE(ge::FAILED, "aclrtSynchronizeStream failed");
       return;
     }
@@ -87,7 +87,7 @@ ge::Status AllCachesH2dCopy(const std::vector<uintptr_t> &src_addrs, const std::
                             ge::BlockingQueue<void *> &hbm_buffers) {
   aclrtContext rt_context = nullptr;
   LLM_CHK_ACL_RET(aclrtGetCurrentContext(&rt_context));
-  std::pair<std::atomic_int32_t, size_t> status_info{ACL_ERROR_NONE, 0UL};
+  std::pair<std::atomic_int32_t, size_t> status_info{ACL_SUCCESS, 0UL};
   std::atomic_bool d2d_thread_run_flag(true);
   ge::BlockingQueue<D2dArgs> d2d_args_queue(kDefaultMaxQueueSize);
   std::thread d2d_thread = std::thread(D2dMemcpyThread, rt_context, std::ref(d2d_thread_run_flag),
@@ -105,7 +105,7 @@ ge::Status AllCachesH2dCopy(const std::vector<uintptr_t> &src_addrs, const std::
     auto dst_addr = dst_addrs[i];
     std::queue<std::pair<int64_t, int64_t>> tmp_block_indices(block_indices);
     while (true) {
-      if (tmp_block_indices.empty() || (status_info.first != ACL_ERROR_NONE)) {
+      if (tmp_block_indices.empty() || (status_info.first != ACL_SUCCESS)) {
         break;
       }
       void *hbm_addr = nullptr;
@@ -132,7 +132,7 @@ ge::Status AllCachesH2dCopy(const std::vector<uintptr_t> &src_addrs, const std::
   StopSwapThread(hbm_buffers, d2d_args_queue, d2d_thread_run_flag, d2d_thread);
   LLMLOGI("[LlmPerf] h2d aclrtMemcpy cost time:%zu us, d2d aclrtMemcpyAsync cost time:%zu us", h2d_copy_time.load(),
           status_info.second);
-  LLM_CHK_BOOL_RET_STATUS(status_info.first == ACL_ERROR_NONE, ge::FAILED, "d2d memcpy failed");
+  LLM_CHK_BOOL_RET_STATUS(status_info.first == ACL_SUCCESS, ge::FAILED, "d2d memcpy failed");
   return ge::SUCCESS;
 }
 }  // namespace
@@ -194,12 +194,12 @@ ge::Status SwapImpl::SwapInBlocks(const std::vector<uintptr_t> &src_addrs, const
                                   const std::vector<std::pair<int64_t, int64_t>> &block_mapping) {
   const auto start = std::chrono::steady_clock::now();
   ge::BlockingQueue<void *> hbm_buffers;
-  aclError ret = ACL_ERROR_NONE;
+  aclError ret = ACL_SUCCESS;
   std::vector<void *> need_freed_buffers;
   for (int32_t i = 0; i < kHbmBufferNum; ++i) {
     void *addr = nullptr;
     ret = aclrtMalloc(&addr, block_size, ACL_MEM_TYPE_HIGH_BAND_WIDTH);
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       LLMLOGE(ge::FAILED, "aclrtMalloc failed");
       break;
     }
@@ -213,7 +213,7 @@ ge::Status SwapImpl::SwapInBlocks(const std::vector<uintptr_t> &src_addrs, const
       (void)aclrtFree(buffer);
     }
   });
-  LLM_CHK_BOOL_RET_STATUS(ret == ACL_ERROR_NONE, ge::LLM_DEVICE_OUT_OF_MEMORY, "aclrtMalloc hbm buffer failed");
+  LLM_CHK_BOOL_RET_STATUS(ret == ACL_SUCCESS, ge::LLM_DEVICE_OUT_OF_MEMORY, "aclrtMalloc hbm buffer failed");
   LLM_CHK_STATUS_RET(AllCachesH2dCopy(src_addrs, dst_addrs, block_size, block_mapping, hbm_buffers),
                      "h2d memcpy failed");
   const auto end = std::chrono::steady_clock::now();

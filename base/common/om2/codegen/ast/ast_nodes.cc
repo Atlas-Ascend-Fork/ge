@@ -289,6 +289,25 @@ Status MakeUniqueArrayExpr::Accept(CodeEmitter &emitter, std::string &output) co
   return emitter.Emit(*this, output);
 }
 
+NewExpr *NewExpr::Create(AstContext &ctx, const std::string &type_spec, const std::vector<Expr *> &args,
+                         const std::string &placement) {
+  return AllocateNode<NewExpr>(ctx, ctx.CopyString(type_spec.c_str()), CopyArray(ctx, args),
+                               ctx.CopyString(placement.c_str()));
+}
+
+Status NewExpr::Accept(CodeEmitter &emitter, std::string &output) const {
+  return emitter.Emit(*this, output);
+}
+
+DeleteExpr *DeleteExpr::Create(AstContext &ctx, Expr *expr) {
+  GE_ASSERT_NOTNULL(expr);
+  return AllocateNode<DeleteExpr>(ctx, expr);
+}
+
+Status DeleteExpr::Accept(CodeEmitter &emitter, std::string &output) const {
+  return emitter.Emit(*this, output);
+}
+
 ToStrExpr *ToStrExpr::Create(AstContext &ctx, Expr *expr) {
   GE_ASSERT_NOTNULL(expr);
   return AllocateNode<ToStrExpr>(ctx, expr);

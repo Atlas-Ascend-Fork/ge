@@ -82,13 +82,13 @@ class MockAclMalloc : public AclRuntimeStub {
     *devPtr = new uint8_t[size];
     memset_s(*devPtr, size, 0, size);
 
-    return ACL_ERROR_NONE;
+    return ACL_SUCCESS;
   }
 
   aclError aclrtFree(void *devPtr) override {
     malloc_flag -= 1;
     delete[] (uint8_t *)devPtr;
-    return ACL_ERROR_NONE;
+    return ACL_SUCCESS;
   }
 
   int64_t malloc_flag = 0;

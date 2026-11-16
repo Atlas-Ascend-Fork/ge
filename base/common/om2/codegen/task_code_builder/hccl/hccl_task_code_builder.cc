@@ -119,7 +119,13 @@ Status HcclTaskCodeBuilder::ParseHcclAttrs(const domi::TaskDef &task_def, const 
   if (!build_data_.is_hcom_op || (build_data_.used_stream_num < 0)) {
     build_data_.used_stream_num = 0;
   }
-  build_data_.attached_stream_ids = op_desc->GetAttachedStreamIds();
+  // -1 表示未分配附着流，对齐 V1 AssembleAttachedRtStream 过滤，避免生成代码 stream_list[-1] 越界
+  for (const auto stream_id : op_desc->GetAttachedStreamIds()) {
+    if (stream_id < 0) {
+      continue;
+    }
+    build_data_.attached_stream_ids.push_back(stream_id);
+  }
 
   build_data_.is_collective = TaskCodeBuilderUtil::IsCollectiveCommType(build_data_.hccl_type);
   build_data_.has_global_workspace = AttrUtils::HasAttr(op_desc, GLOBALWORKSPACE_TYPE);

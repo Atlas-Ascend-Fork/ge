@@ -33,6 +33,8 @@ namespace gert {
   DO(OM2_OP_ATTR_PATH_FORMAT, "data/model_%s/op_attr.json");                   \
   DO(OM2_CUSTOM_KERNELS_DIR_FORMAT, "data/custom_ops/%s/");                    \
   DO(OM2_KERNELS_DIR, "data/kernels/");                                        \
+  DO(OM2_SO_BINS_DIR, "data/shared_libs/");                                    \
+  DO(OM2_SO_BINS_JSON_PATH, "data/shared_libs/so_bins.json");                  \
   DO(OM2_CONSTANTS_DIR, "data/constants/");                                    \
   DO(OM2_CONSTANTS_FILE_PREFIX, "constant_");                                  \
   DO(OM2_CONSTANTS_CONFIG_PATH_FORMAT, "data/model_%s/constants_config.json"); \

@@ -218,7 +218,7 @@ class AclErrorLogManager {
 #define ACL_REQUIRES_CALL_RTS_OK(expr, interface)                                                  \
   do {                                                                                             \
     const rtError_t __ret = (expr);                                                                \
-    if (__ret != ACL_ERROR_NONE) {                                                                 \
+    if (__ret != ACL_SUCCESS) {                                                                    \
       if (__ret == ACL_ERROR_RT_FEATURE_NOT_SUPPORT) {                                             \
         ACL_LOG_WARN("rts api [%s] is not supported currently,", #interface);                      \
         return __ret;                                                                              \

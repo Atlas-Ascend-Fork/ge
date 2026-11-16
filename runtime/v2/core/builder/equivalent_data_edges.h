@@ -13,10 +13,12 @@
 
 #include "graph/fast_graph/execute_graph.h"
 #include "graph/error_codes.h"
+#include "framework/common/ge_visibility.h"
 
 namespace gert {
 struct EquivalentDataEdges {
-  ge::graphStatus UpdateEquivalentEdges(ge::ExecuteGraph *const exe_graph);
+  // 导出供 OM2 generator 复用等价边分析，RT2 内部算法不变。
+  VISIBILITY_EXPORT ge::graphStatus UpdateEquivalentEdges(ge::ExecuteGraph *const exe_graph);
 
  private:
   ge::graphStatus ConstructIoEquivalent(const std::vector<ge::FastNode *> &all_nodes);

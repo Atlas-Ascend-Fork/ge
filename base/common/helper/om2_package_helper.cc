@@ -648,12 +648,9 @@ Status Om2PackageHelper::SaveToOmRootModel(const GeRootModelPtr &ge_root_model, 
     return SaveToOmModel(model_root, output_file, model, ge_root_model);
   }
 
-  // todo 动态 shape 场景暂时不支持
-  GELOGE(FAILED, "[OM2] Unknown shape models are not supported for .om2 format conversion");
-  (void)REPORT_PREDEFINED_ERR_MSG(
-      "E10055", std::vector<const char *>({"reason"}),
-      std::vector<const char *>({"Unknown shape models are not supported for .om2 format conversion"}));
-  return FAILED;
+  GE_ASSERT_SUCCESS(EnsureGertModelData(ge_root_model));
+  const auto &model_data = ge_root_model->GetOm2ModelData();
+  return SerializeModelData(*model_data, ge_root_model->GetModelName(), output_file, model);
 }
 
 Status Om2PackageHelper::SaveToOmModel(const GeModelPtr &ge_model, const std::string &output_file,
@@ -841,6 +838,7 @@ Status Om2PackageHelper::BuildCustomKernelBinaries(const GeRootModelPtr &ge_root
 
 Status Om2PackageHelper::BuildKernelBinaries(const GeModelPtr &ge_model, gert::GertModelData &model_data) {
   GELOGI("[OM2] Begin to build kernel binaries");
+  GE_ASSERT_NOTNULL(ge_model);
   const auto &graph = ge_model->GetGraph();
   GE_ASSERT_NOTNULL(graph);
   auto &kernel_binaries = model_data.kernels->binaries;
@@ -863,7 +861,11 @@ Status Om2PackageHelper::BuildModelMeta(const GeModelPtr &ge_model, gert::GertMo
   ModelMetaExtraInfo extra_info;
 
   GE_CHK_STATUS_RET_NOLOG(BuildModelInputDescs(io_nodes, model_meta));
-  GE_CHK_STATUS_RET_NOLOG(BuildModelOutputDescs(ge_model, io_nodes, extra_info, model_meta));
+  if (unit.execution_type == gert::GertModelExecutionType::kDynamic) {
+    GE_CHK_STATUS_RET_NOLOG(BuildDynamicOutputDescs(ge_model, io_nodes.output_ops, model_meta));
+  } else {
+    GE_CHK_STATUS_RET_NOLOG(BuildModelOutputDescs(ge_model, io_nodes, extra_info, model_meta));
+  }
   GE_CHK_STATUS_RET_NOLOG(FillModelMetaScalars(ge_model, io_nodes, extra_info, model_meta));
   GE_CHK_STATUS_RET(CollectAippMetas(graph, model_meta));
 
@@ -986,16 +988,13 @@ Status Om2PackageHelper::BuildOm2ModelData(const GeModelPtr &ge_model, gert::Ger
                                            const GeRootModelPtr &ge_root_model) const {
   GE_ASSERT_NOTNULL(ge_model, "[OM2] ge_model is nullptr");
 
-  auto &unit = *model_data.models.emplace_back(std::make_unique<gert::GertModelDataModel>());
-  unit.runtime = std::make_unique<gert::GertModelDataRuntime>();
-  unit.model_meta = std::make_unique<gert::GertModelDataModelMeta>();
-  unit.constants_config = std::make_unique<gert::GertModelDataConstantsConfig>();
-  unit.debug = std::make_unique<gert::GertModelDataDebug>();
   // 入口统一分配目录聚合结构（多次构建追加模型时仅首次分配）
   gert::InitGertModelData(model_data);
+  gert::InitGertModelDataUnit(model_data);
+  auto &unit = *model_data.models.back();
   (void)model_data.constants->constants_data.emplace_back();
   (void)model_data.variables->var_weight_data.emplace_back();
-  model_data.manifest = std::make_unique<gert::GertModelDataManifest>();
+  *model_data.manifest = gert::GertModelDataManifest{};
 
   // Set model-level attrs for OM2 JSON compatibility
   const bool set_atc_cmdline =
@@ -1016,7 +1015,6 @@ Status Om2PackageHelper::BuildOm2ModelData(const GeModelPtr &ge_model, gert::Ger
   GE_ASSERT_SUCCESS(BuildKernelBinaries(ge_model, model_data));
   GE_ASSERT_SUCCESS(BuildModelMeta(ge_model, unit));
   GE_ASSERT_SUCCESS(BuildConstantsData(ge_model, unit, model_data.constants->constants_data[0], 0UL));
-
   GE_ASSERT_SUCCESS(BuildDebugInfo(ge_model, unit));
   GE_ASSERT_SUCCESS(BuildManifest(model_data, ge_model));
 
@@ -1030,17 +1028,23 @@ Status Om2PackageHelper::EnsureGertModelData(const GeRootModelPtr &ge_root_model
     GELOGI("[OM2] GertModelData already attached, skip rebuilding.");
     return SUCCESS;
   }
-  const auto &root_graph = ge_root_model->GetRootGraph();
-  GE_ASSERT_NOTNULL(root_graph, "[OM2] root graph is nullptr");
-  const auto &name_to_model = ge_root_model->GetSubgraphInstanceNameToModel();
-  const auto it = name_to_model.find(root_graph->GetName());
-  GE_CHK_BOOL_EXEC(it != name_to_model.end(), return FAILED, "[OM2] Cannot find GeModel for root graph %s",
-                   root_graph->GetName().c_str());
   auto model_data = std::make_shared<gert::GertModelData>();
   Om2PackageHelper package_helper;
-  GE_ASSERT_SUCCESS(package_helper.BuildOm2ModelData(it->second, *model_data, ge_root_model));
+  const auto &root_graph = ge_root_model->GetRootGraph();
+  GE_ASSERT_NOTNULL(root_graph, "[OM2] root graph is nullptr");
+  bool is_unknown_shape = false;
+  GE_ASSERT_SUCCESS(ge_root_model->CheckIsUnknownShape(is_unknown_shape));
+  if (is_unknown_shape) {
+    GE_ASSERT_SUCCESS(package_helper.BuildDynamicGertModelData(ge_root_model, *model_data));
+  } else {
+    const auto &name_to_model = ge_root_model->GetSubgraphInstanceNameToModel();
+    const auto it = name_to_model.find(root_graph->GetName());
+    GE_CHK_BOOL_EXEC(it != name_to_model.end(), return FAILED, "[OM2] Cannot find GeModel for root graph %s",
+                     root_graph->GetName().c_str());
+    GE_ASSERT_SUCCESS(package_helper.BuildOm2ModelData(it->second, *model_data, ge_root_model));
+  }
   ge_root_model->SetOm2ModelData(std::move(model_data));
-  GELOGI("[OM2] GertModelData built and attached for root graph %s", root_graph->GetName().c_str());
+  GELOGI("[OM2] GertModelData built and attached for root graph %s", ge_root_model->GetRootGraph()->GetName().c_str());
   return SUCCESS;
 }
 
@@ -1181,12 +1185,6 @@ Status Om2PackageHelper::AssembleBundleModelData(std::vector<std::shared_ptr<ger
   }
   GELOGI("[OM2][Bundle] Assemble bundle model data success, model_num:%zu, global_shared_var_size:%" PRIu64 ".",
          bundle_data.models.size(), global_shared_var_size);
-  return SUCCESS;
-}
-
-Status Om2PackageHelper::BuildGertModelDataFromGraph(const Graph &graph, gert::GertModelData &model_data) const {
-  (void)graph;
-  (void)model_data;
   return SUCCESS;
 }
 

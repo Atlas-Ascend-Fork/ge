@@ -201,6 +201,48 @@ TEST_F(AutofuseOfflineRuntimeSt, CheckDualBodyLoadExecutorSetWithFallback) {
   EXPECT_NE(executor_set.fallback, nullptr);
 }
 
+TEST_F(AutofuseOfflineRuntimeSt, CheckDualBodyLoadExecutorSetWithHostInputIndexes) {
+  auto models = BuildSimpleDualBodyStModels();
+  ASSERT_NE(models.main_root, nullptr);
+  ASSERT_NE(models.fallback_root, nullptr);
+  (void)AttrUtils::SetListInt(models.main_root->GetRootGraph(), "_ge_host_input_idxs", {0, 1});
+  ModelHelper save_helper;
+  save_helper.SetSaveMode(false);
+  ModelBufferData model_buff;
+  ASSERT_EQ(save_helper.SaveDualBodyRootModel(models.main_root, models.fallback_root, "dual_body_host_inputs",
+                                              model_buff, true),
+            SUCCESS);
+  ModelData model_data;
+  model_data.model_data = model_buff.data.get();
+  model_data.model_len = static_cast<uint32_t>(model_buff.length);
+  (void)GetThreadLocalContext().SetGlobalOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", GetHostArchSt()}});
+  gert::LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_EQ(gert::LoadExecutorSetFromModelData(model_data, args, executor_set), GRAPH_SUCCESS);
+  EXPECT_EQ(executor_set.host_input_indexes, std::vector<size_t>({0U, 1U}));
+}
+
+TEST_F(AutofuseOfflineRuntimeSt, CheckDualBodyLoadExecutorSetWithoutHostInputIndexes) {
+  auto models = BuildSimpleDualBodyStModels();
+  ASSERT_NE(models.main_root, nullptr);
+  ASSERT_NE(models.fallback_root, nullptr);
+  (void)AttrUtils::SetListInt(models.main_root->GetRootGraph(), "_ge_need_symbolize_value_idxs", {0, 1});
+  ModelHelper save_helper;
+  save_helper.SetSaveMode(false);
+  ModelBufferData model_buff;
+  ASSERT_EQ(save_helper.SaveDualBodyRootModel(models.main_root, models.fallback_root, "dual_body_no_host_inputs",
+                                              model_buff, true),
+            SUCCESS);
+  ModelData model_data;
+  model_data.model_data = model_buff.data.get();
+  model_data.model_len = static_cast<uint32_t>(model_buff.length);
+  (void)GetThreadLocalContext().SetGlobalOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", GetHostArchSt()}});
+  gert::LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_EQ(gert::LoadExecutorSetFromModelData(model_data, args, executor_set), GRAPH_SUCCESS);
+  EXPECT_TRUE(executor_set.host_input_indexes.empty());
+}
+
 TEST_F(AutofuseOfflineRuntimeSt, CheckDualBodyLoadExecutorSetWithoutFallback) {
   auto main_graph = gert::ShareGraph::BuildSingleNodeGraph();
   ASSERT_NE(main_graph, nullptr);

@@ -19,6 +19,7 @@ DECLARE_int32(framework);
 DECLARE_string(weight);
 DECLARE_string(input_shape);
 DECLARE_string(input_hint_shape);
+DECLARE_string(input_hint_value);
 DECLARE_string(input_shape_range);
 DECLARE_bool(help);
 DECLARE_string(cal_conf);

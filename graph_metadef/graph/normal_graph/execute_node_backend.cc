@@ -74,17 +74,18 @@ OpDescPtr ExecuteNodeBackend::GetDesc(const GNode &node) {
   return native != nullptr ? native->GetOpDescPtr() : nullptr;
 }
 
-graphStatus ExecuteNodeBackend::SetSubgraph(const AscendString &ir_name, const Graph &subgraph) const {
+graphStatus ExecuteNodeBackend::SetSubgraph(const AscendString &subgraph_ir_name, const Graph &subgraph) const {
   const auto owner = owner_.lock();
   auto *node = owner != nullptr ? owner->ResolveNode(handle_) : nullptr;
   GE_ASSERT_NOTNULL(node, "Gnode has invalid node source, try to call `AddNodeByOp` firstly");
 
   const auto sub_graph = GraphUtilsEx::Graph2ExecuteGraph(subgraph);
   GE_ASSERT_NOTNULL(sub_graph, "Execution node only accepts execution subgraphs");
-  return MountSubgraph(owner, node, ir_name, sub_graph);
+  return MountSubgraph(owner, node, subgraph_ir_name, sub_graph);
 }
 
-graphStatus ExecuteNodeBackend::SetSubgraphs(const AscendString &ir_name, const std::vector<Graph> &subgraphs) const {
+graphStatus ExecuteNodeBackend::SetSubgraphs(const AscendString &subgraph_ir_name,
+                                             const std::vector<Graph> &subgraphs) const {
   const auto owner = owner_.lock();
   auto *node = owner != nullptr ? owner->ResolveNode(handle_) : nullptr;
   GE_ASSERT_NOTNULL(node, "Gnode has invalid node source, try to call `AddNodeByOp` firstly");
@@ -97,8 +98,8 @@ graphStatus ExecuteNodeBackend::SetSubgraphs(const AscendString &ir_name, const 
   }
 
   for (size_t i = 0U; i < sub_graphs.size(); ++i) {
-    GE_ASSERT_NOTNULL(ir_name.GetString());
-    const std::string name = std::string(ir_name.GetString()) + std::to_string(i);
+    GE_ASSERT_NOTNULL(subgraph_ir_name.GetString());
+    const std::string name = std::string(subgraph_ir_name.GetString()) + std::to_string(i);
     GE_ASSERT_SUCCESS(MountSubgraph(owner, node, AscendString(name.c_str()), sub_graphs[i]));
   }
   return GRAPH_SUCCESS;
@@ -146,7 +147,7 @@ graphStatus ExecuteNodeBackend::MountSubgraph(const std::shared_ptr<ExecuteGraph
   return SetSubgraphInner(owner, fast_node, iter->second, subgraph);
 }
 
-std::pair<GNodePtr, int32_t> ExecuteNodeBackend::GetInDataNodesAndPortIndexs(int32_t index) const {
+std::pair<GNodePtr, int32_t> ExecuteNodeBackend::GetInDataNodesAndPortIndexs(const int32_t index) const {
   const std::pair<GNodePtr, int32_t> gnode_idx = {nullptr, 0xFF};
   const auto owner = owner_.lock();
   auto *node = owner != nullptr ? owner->ResolveNode(handle_) : nullptr;
@@ -183,7 +184,7 @@ std::pair<GNodePtr, int32_t> ExecuteNodeBackend::GetInDataNodesAndPortIndexs(int
   return {gnode, edge->src_output};
 }
 
-std::vector<std::pair<GNodePtr, int32_t>> ExecuteNodeBackend::GetOutDataNodesAndPortIndexs(int32_t index) const {
+std::vector<std::pair<GNodePtr, int32_t>> ExecuteNodeBackend::GetOutDataNodesAndPortIndexs(const int32_t index) const {
   const auto owner = owner_.lock();
   auto *node = owner != nullptr ? owner->ResolveNode(handle_) : nullptr;
   if (node == nullptr) {

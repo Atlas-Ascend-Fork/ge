@@ -9,6 +9,7 @@
  */
 
 #include "framework/common/helper/pre_model_helper.h"
+#include "common/helper/model_save_utils.h"
 #include "common/preload/model/pre_davinci_model.h"
 #include "common/preload/partition/model_desc_partition.h"
 #include "common/preload/partition/model_task_desc_partition.h"

@@ -27,6 +27,8 @@
 #include "graph/utils/graph_utils.h"
 #include "graph/utils/op_desc_utils.h"
 #include "register/core_num_utils.h"
+#include "platform/platform_info.h"
+#include "acl/acl_rt.h"
 
 #include <cstdint>
 
@@ -137,21 +139,69 @@ ge::graphStatus BuildInputTensors(const ge::NodePtr &node, const LowerInput &low
   return ge::SUCCESS;
 }
 
-// 解析算子 _op_vectorcore_num字符串属性；缺失或非法返回 -1（sentinel：未设置）。
-// 解析与校验统一走CoreNumUtils（严格十进制 + 范围校验，与bg_platform.cc同属性同口径）；
-// 非法值由utils上报，此处仅按未设置处理
-int64_t GetVectorCoreNumFromOpDesc(const ge::OpDescPtr &op_desc) {
-  std::string vector_core_num_str;
-  if ((op_desc == nullptr) || (!ge::AttrUtils::GetStr(op_desc, ge::kVectorCoreNumOp, vector_core_num_str)) ||
-      vector_core_num_str.empty()) {
-    return -1;
+// 计算自定义算子最终透传的核数：aicore/vector 走算子级 > 全局选项 > 设备合并平台值；
+// 无设备上下文时回退平台静态规格；aicpu 取设备值。
+// 获取失败时保持 -1（sentinel：未设置），运行期查询返回 false。
+void ResolveCustomOpCoreNum(const ge::OpDescPtr &op_desc, const ge::ComputeGraphPtr &root_graph, int64_t &aicore_num,
+                            int64_t &vector_core_num, int64_t &aicpu_num) {
+  aicore_num = -1;
+  vector_core_num = -1;
+  aicpu_num = -1;
+  int32_t device_id = -1;
+  int64_t ai_cpu_cnt = -1;
+  const bool has_device = (aclrtGetDevice(&device_id) == ACL_SUCCESS);
+  if (has_device &&
+      (aclrtGetDeviceInfo(static_cast<uint32_t>(device_id), ACL_DEV_ATTR_AICPU_CORE_NUM, &ai_cpu_cnt) == ACL_SUCCESS) &&
+      (ai_cpu_cnt >= 0)) {
+    aicpu_num = ai_cpu_cnt;
   }
-  int32_t vector_core_num = 0;
-  if (ge::CoreNumUtils::ParseAndValidateCoreNum(ge::kVectorCoreNumOp, vector_core_num_str, 0, INT32_MAX,
-                                                vector_core_num) != ge::GRAPH_SUCCESS) {
-    return -1;
+
+  const char *soc_name = aclrtGetSocName();
+  // 回退基线优先取设备合并后的平台信息，与 V1 口径一致；静态规格仅用于算子级属性的校验上限
+  fe::PlatFormInfos platform_infos;
+  if (has_device) {
+    if (fe::PlatformInfoManager::GeInstance().GetRuntimePlatformInfosByDevice(static_cast<uint32_t>(device_id),
+                                                                              platform_infos, true) != 0U) {
+      // 有设备但运行平台缓存不可用：保持未设置，避免固化静态规格导致与设备实际核数不一致
+      GELOGW("Get runtime platform infos failed, core num of op[%s] will not be injected.", op_desc->GetNamePtr());
+      return;
+    }
+    int32_t graph_aicore_num = -1;
+    int32_t graph_vectorcore_num = -1;
+    if ((root_graph != nullptr) && (ge::CoreNumUtils::GetCoreNumFromGraph(root_graph, graph_aicore_num,
+                                                                          graph_vectorcore_num) == ge::GRAPH_SUCCESS)) {
+      std::map<std::string, std::string> soc_info;
+      if (platform_infos.GetPlatformResWithLock("SoCInfo", soc_info)) {
+        if (graph_aicore_num > 0) {
+          soc_info["ai_core_cnt"] = std::to_string(graph_aicore_num);
+          soc_info["cube_core_cnt"] = std::to_string(graph_aicore_num);
+        }
+        if (graph_vectorcore_num > 0) {
+          soc_info["vector_core_cnt"] = std::to_string(graph_vectorcore_num);
+        }
+        platform_infos.SetPlatformResWithLock("SoCInfo", soc_info);
+      }
+    }
+    ge::CoreNumUtils::EffectiveCoreNum effective_core_num;
+    if (ge::CoreNumUtils::ResolveSinkOpCoreNum(op_desc, platform_infos, soc_name, effective_core_num) ==
+        ge::GRAPH_SUCCESS) {
+      aicore_num = effective_core_num.aicore_num;
+      vector_core_num = effective_core_num.vector_core_num;
+    }
+    return;
   }
-  return static_cast<int64_t>(vector_core_num);
+
+  // 无设备上下文：回退平台静态规格
+  fe::PlatformInfo platform_info;
+  if ((soc_name != nullptr) &&
+      (ge::CoreNumUtils::GetGeDefaultPlatformInfo(soc_name, platform_info) == ge::GRAPH_SUCCESS)) {
+    ge::CoreNumUtils::EffectiveCoreNum effective_core_num;
+    if (ge::CoreNumUtils::ResolveCoreNumByOp(op_desc, root_graph, platform_info, effective_core_num) ==
+        ge::GRAPH_SUCCESS) {
+      aicore_num = effective_core_num.aicore_num;
+      vector_core_num = effective_core_num.vector_core_num;
+    }
+  }
 }
 }  // namespace
 
@@ -173,23 +223,32 @@ LowerResult LoweringCustomNode(const ge::NodePtr &node, const LowerInput &lower_
   const auto attached_stream_provider = bg::GetAttachedStreamProvider(*lower_input.global_data);
   LOWER_REQUIRE_NOTNULL(attached_stream_provider);
   input_holders.emplace_back(attached_stream_provider);
-  // 根图graph id / node id / vector core数量：随执行节点输入下发（按节点，非按类型），
+  // 根图graph id / node id / 核数：随执行节点输入下发（按节点，非按类型），
   // 运行期由ExecuteCustomOp的outputs_creator读取并写入执行上下文伴生对象；
-  // node id与vector core数量用sentinel(-1) 表示未设置，须与CustomOpInput枚举顺序一致。
+  // 未设置的值用sentinel(-1)表示，须与CustomOpInput枚举顺序一致。
   const auto owner_graph = node->GetOwnerComputeGraph();
   const auto root_graph = (owner_graph == nullptr) ? nullptr : ge::GraphUtils::FindRootGraph(owner_graph);
   const uint32_t root_graph_id = (root_graph == nullptr) ? 0U : root_graph->GetGraphID();
   const int64_t node_id = node->GetOpDesc()->GetId();
-  const int64_t vector_core_num = GetVectorCoreNumFromOpDesc(node->GetOpDesc());
+  int64_t aicore_num = -1;
+  int64_t vector_core_num = -1;
+  int64_t aicpu_num = -1;
+  ResolveCustomOpCoreNum(node->GetOpDesc(), root_graph, aicore_num, vector_core_num, aicpu_num);
   auto root_graph_id_holder = bg::ValueHolder::CreateConst(&root_graph_id, sizeof(root_graph_id));
   LOWER_REQUIRE_NOTNULL(root_graph_id_holder);
   auto node_id_holder = bg::ValueHolder::CreateConst(&node_id, sizeof(node_id));
   LOWER_REQUIRE_NOTNULL(node_id_holder);
   auto vector_core_num_holder = bg::ValueHolder::CreateConst(&vector_core_num, sizeof(vector_core_num));
   LOWER_REQUIRE_NOTNULL(vector_core_num_holder);
+  auto aicore_num_holder = bg::ValueHolder::CreateConst(&aicore_num, sizeof(aicore_num));
+  LOWER_REQUIRE_NOTNULL(aicore_num_holder);
+  auto aicpu_num_holder = bg::ValueHolder::CreateConst(&aicpu_num, sizeof(aicpu_num));
+  LOWER_REQUIRE_NOTNULL(aicpu_num_holder);
   input_holders.emplace_back(root_graph_id_holder);
   input_holders.emplace_back(node_id_holder);
   input_holders.emplace_back(vector_core_num_holder);
+  input_holders.emplace_back(aicore_num_holder);
+  input_holders.emplace_back(aicpu_num_holder);
   // Check inference_rule
   const auto op_desc = node->GetOpDesc();
   LOWER_REQUIRE_NOTNULL(op_desc);

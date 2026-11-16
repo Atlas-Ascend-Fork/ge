@@ -1160,6 +1160,48 @@ Status ParseHintInputValue(std::map<int64_t, std::vector<int64_t>> &option_value
   return GRAPH_SUCCESS;
 }
 
+Status CheckHintInputValueParamValid(const std::string &input_option) {
+  if (input_option.empty()) {
+    return GRAPH_SUCCESS;
+  }
+  auto input_option_strs = ge::StringUtils::Split(input_option, ';');
+  std::set<int64_t> index_set;
+  for (size_t i = 0U; i < input_option_strs.size(); i++) {
+    auto input_option_local = StringUtils::Trim(input_option_strs[i]);
+    if (input_option_local.empty()) {
+      GELOGW("ATC parameter input_hint_value is invalid, input[%zu] is empty.", i);
+      continue;
+    }
+    auto index_and_value_str = ge::StringUtils::Split(input_option_local, ':');
+    if (index_and_value_str.size() != kLeastStrElementNum) {
+      REPORT_PREDEFINED_ERR_MSG("E10014", std::vector<const char *>({"parameter", "value"}),
+                                std::vector<const char *>({"input_hint_value", input_option.c_str()}));
+      GELOGE(PARAM_INVALID,
+             "ATC parameter input_hint_value is invalid, input[%zu][%s] does not match pattern: "
+             "input_index:[v0,v1,...]",
+             i, input_option_local.c_str());
+      return PARAM_INVALID;
+    }
+    int64_t index = -1;
+    if (ConvertToInt64(index_and_value_str.front(), index) != SUCCESS || index < 0 || !index_set.insert(index).second) {
+      REPORT_PREDEFINED_ERR_MSG("E10014", std::vector<const char *>({"parameter", "value"}),
+                                std::vector<const char *>({"input_hint_value", input_option.c_str()}));
+      GELOGE(PARAM_INVALID, "ATC parameter input_hint_value is invalid, input[%zu][%s] check index fail.", i,
+             input_option_local.c_str());
+      return PARAM_INVALID;
+    }
+    std::vector<int64_t> values;
+    if (ConstructValueListFromStr(StringUtils::Trim(index_and_value_str.back()), values) != GRAPH_SUCCESS) {
+      REPORT_PREDEFINED_ERR_MSG("E10014", std::vector<const char *>({"parameter", "value"}),
+                                std::vector<const char *>({"input_hint_value", input_option.c_str()}));
+      GELOGE(PARAM_INVALID, "ATC parameter input_hint_value is invalid, input[%zu] parse value[%s] failed.", i,
+             input_option_local.c_str());
+      return PARAM_INVALID;
+    }
+  }
+  return GRAPH_SUCCESS;
+}
+
 std::string GetAutofuseFlagValue(const std::string &option) {
   // 自动融合新的环境变量
   const char_t *auto_fuse_options = nullptr;

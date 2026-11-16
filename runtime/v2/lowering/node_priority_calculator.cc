@@ -203,16 +203,22 @@ ge::graphStatus SetPriorityToParentNode(ge::FastNode *node, NodePriorities &prio
   return ge::GRAPH_SUCCESS;
 }
 }  // namespace
-NodePriorityCalculator::NodePriorityCalculator(const GraphFrame &frame) : frame_(frame) {}
+NodePriorityCalculator::NodePriorityCalculator(const GraphFrame &frame) : frame_(&frame) {}
+
+NodePriorityCalculator::NodePriorityCalculator(std::vector<int64_t> indexes_to_compute_node_id)
+    : frame_(nullptr), indexes_to_compute_node_id_(std::move(indexes_to_compute_node_id)) {}
 
 ge::graphStatus NodePriorityCalculator::CalcNodeExecutionPriorities(const std::vector<ge::FastNode *> &main_graph_nodes,
                                                                     const size_t root_all_nodes_cnt) {
-  std::vector<int64_t> index_2_compute_node_id;
-  for (const auto &compute_node : frame_.GetIndexesToNode()) {
-    const auto op_desc = compute_node->GetOpDescBarePtr();
-    GE_ASSERT_NOTNULL(op_desc);
-    index_2_compute_node_id.emplace_back(op_desc->GetId());
-    GELOGD("Get compute node info, node name: %s, id: %" PRId64 "", compute_node->GetNamePtr(), op_desc->GetId());
+  // 优先使用显式传入的映射；GE 适配路径此时才从 GraphFrame 取。
+  std::vector<int64_t> index_2_compute_node_id = indexes_to_compute_node_id_;
+  if (frame_ != nullptr) {
+    for (const auto &compute_node : frame_->GetIndexesToNode()) {
+      const auto op_desc = compute_node->GetOpDescBarePtr();
+      GE_ASSERT_NOTNULL(op_desc);
+      index_2_compute_node_id.emplace_back(op_desc->GetId());
+      GELOGD("Get compute node info, node name: %s, id: %" PRId64 "", compute_node->GetNamePtr(), op_desc->GetId());
+    }
   }
 
   NodePriorities node_ids_to_priority(root_all_nodes_cnt);

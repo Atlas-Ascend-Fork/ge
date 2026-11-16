@@ -504,7 +504,7 @@ class FallbackResourceCompressionTest(unittest.TestCase):
 )
 class CommonLinkInterfaceTest(unittest.TestCase):
     def test_bridge_links_without_internal_static_archives(self):
-        # Exercise the actual ge_common link declaration with small library implementations.
+        # Check the bridge's ge_common dependency without assuming where OM2 serialization lives.
         declaration = re.search(
             r"target_link_libraries\(ge_common\n.*?^\)",
             (ROOT / "base/CMakeLists.txt").read_text(),
@@ -513,13 +513,8 @@ class CommonLinkInterfaceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             sources = {
-                "zip.cc": 'extern "C" int zip_value() { return 7; }',
-                "serializer.cc": 'extern "C" int zip_value(); extern "C" int serialize() { return zip_value(); }',
-                "common.cc": 'extern "C" int serialize(); extern "C" int common() { return serialize(); }',
-                "bridge.cc": (
-                    'extern "C" int common(); extern "C" int serialize(); '
-                    "int main() { return common() != serialize(); }"
-                ),
+                "common.cc": 'extern "C" int common() { return 7; }',
+                "bridge.cc": 'extern "C" int common(); int main() { return common() != 7; }',
             }
             for name, source in sources.items():
                 (root / name).write_text(source)
@@ -531,9 +526,6 @@ foreach(dep ge_intf_pub msprof_headers runtime_headers static_mmpa graph ge_comm
             ascend_protobuf c_sec error_manager unified_dlog platform json air_headers ge_metadef_headers)
     add_library(${dep} INTERFACE)
 endforeach()
-add_library(minizip_static STATIC zip.cc)
-add_library(gert_model_data_serializer STATIC serializer.cc)
-target_link_libraries(gert_model_data_serializer PUBLIC minizip_static)
 add_library(ge_common SHARED common.cc)
 """
                 + declaration

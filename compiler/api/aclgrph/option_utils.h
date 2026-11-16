@@ -96,6 +96,7 @@ Status ParseHintInputShape(std::vector<GeShape> &option_shape);
  * @return 成功返回GRAPH_SUCCESS, 失败返回FAILED
  */
 Status ParseHintInputValue(std::map<int64_t, std::vector<int64_t>> &option_value);
+Status CheckHintInputValueParamValid(const std::string &input_option);
 
 Status ParserShapeRangeByName(std::string &input_shape, std::string &input_shape_range);
 

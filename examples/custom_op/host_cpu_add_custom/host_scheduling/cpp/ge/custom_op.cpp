@@ -93,7 +93,7 @@ class AddCustom final : public EagerExecuteOp, public HostCpuExecuteOp, public S
 
     const aclError ret = aclrtLaunchKernelV2(g_kernel_loader.GetFuncHandle(), num_blocks, kernel_args->args_data,
                                              kernel_args->args_size, nullptr, ctx->GetStream());
-    if (ret != ACL_ERROR_NONE) {
+    if (ret != ACL_SUCCESS) {
       std::cerr << "aclrtLaunchKernelV2 failed, error: " << ret << std::endl;
       return GRAPH_FAILED;
     }

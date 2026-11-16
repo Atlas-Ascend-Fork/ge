@@ -66,12 +66,12 @@ ModelInference::ModelInference(const InferenceParams &inference_params)
 
 void ModelInference::GraphWorker::Run(const std::shared_ptr<ge::Session> &session) {
   aclError aerr = aclrtSetDevice(deviceId);
-  if (aerr != ACL_ERROR_NONE) {
+  if (aerr != ACL_SUCCESS) {
     std::cerr << "aclrtSetDevice failed, ret=" << aerr << std::endl;
     return;
   }
   aerr = aclrtCreateStream(&stream);
-  if (aerr != ACL_ERROR_NONE) {
+  if (aerr != ACL_SUCCESS) {
     std::cerr << "aclrtCreateStream failed, ret=" << aerr << std::endl;
     return;
   }
@@ -103,7 +103,7 @@ void ModelInference::GraphWorker::Run(const std::shared_ptr<ge::Session> &sessio
   if (stream != nullptr) {
     // 确保所有任务执行完成
     aclError aerr = aclrtSynchronizeStream(stream);
-    if (aerr != ACL_ERROR_NONE) {
+    if (aerr != ACL_SUCCESS) {
       std::cerr << "Synchronize stream failed, ret=" << aerr << std::endl;
     }
     aclrtDestroyStream(stream);
@@ -134,7 +134,7 @@ inline bool CopyBatch(MemcpyBatchParam &memcpy_batch_param) {
                                    memcpy_batch_param.srcs.data(), memcpy_batch_param.sizes.data(),
                                    memcpy_batch_param.numBatches, memcpy_batch_param.attrs.data(),
                                    memcpy_batch_param.attrsIndexes.data(), memcpy_batch_param.numAttrs, &failIndex);
-  if (aerr != ACL_ERROR_NONE) {
+  if (aerr != ACL_SUCCESS) {
     std::cerr << " batch failed, ret=" << aerr << ", failIndex=" << failIndex << std::endl;
     return false;
   }
@@ -147,7 +147,7 @@ inline bool CopySingle(const std::vector<gert::Tensor> &src, std::vector<gert::T
   for (size_t i = 0; i < src.size(); ++i) {
     size_t bytes = src[i].GetSize();
     aclError aerr = aclrtMemcpy(dst[i].GetAddr(), bytes, src[i].GetAddr(), bytes, kind);
-    if (aerr != ACL_ERROR_NONE) {
+    if (aerr != ACL_SUCCESS) {
       std::cerr << "CopySingle failed at index " << i << ", ret=" << aerr << std::endl;
       return false;
     }
@@ -219,7 +219,7 @@ inline bool MakeDeviceTensorFromHost(const std::vector<gert::Tensor> &host_tenso
     const size_t bytes = ht.GetSize();
     void *dev = nullptr;
     aclError aerr = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_NORMAL_ONLY);
-    if (aerr != ACL_ERROR_NONE) {
+    if (aerr != ACL_SUCCESS) {
       std::cerr << "aclrtMalloc failed, ret=" << aerr << std::endl;
       return false;
     }
@@ -274,7 +274,7 @@ void ModelInference::GraphTask::operator()() {
   }
 
   aclError aerr = aclrtSynchronizeStream(worker->stream);
-  if (aerr != ACL_ERROR_NONE) {
+  if (aerr != ACL_SUCCESS) {
     std::cerr << "Synchronize stream failed after executeGraphWithStreamAsync, ret=" << aerr << std::endl;
     FreeDevice(device_inputs);
     FreeDevice(device_outputs);

@@ -13,33 +13,41 @@
 #include "proto/task.pb.h"
 
 namespace gert {
-TaskDefBuilder::TaskDefBuilder() : impl_(new (std::nothrow) domi::TaskDef()) {}
-
 KernelDefBuilder::KernelDefBuilder(domi::KernelDef *impl) : impl_(impl) {}
 
 KernelContextBuilder::KernelContextBuilder(domi::KernelContext *impl) : impl_(impl) {}
 
-TaskDefBuilder::~TaskDefBuilder() {
+domi::TaskDef *TaskDefBuilder::CreateOrGetTaskDef() const {
+  if (impl_ == nullptr) {
+    impl_ = new (std::nothrow) domi::TaskDef();
+  }
+  return impl_;
+}
+
+void TaskDefBuilder::Destroy() {
   delete impl_;
   impl_ = nullptr;
 }
 
 TaskDefBuilder &TaskDefBuilder::SetStreamId(uint32_t stream_id) {
-  if (impl_ != nullptr) {
+  if (CreateOrGetTaskDef() != nullptr) {
     impl_->set_stream_id(stream_id);
   }
   return *this;
 }
 
 TaskDefBuilder &TaskDefBuilder::SetType(uint32_t type) {
-  if (impl_ != nullptr) {
+  if (CreateOrGetTaskDef() != nullptr) {
     impl_->set_type(type);
   }
   return *this;
 }
 
 KernelDefBuilder TaskDefBuilder::GetKernelBuilder() const {
-  return KernelDefBuilder(impl_ != nullptr ? impl_->mutable_kernel() : nullptr);
+  if (CreateOrGetTaskDef() == nullptr) {
+    return KernelDefBuilder(nullptr);
+  }
+  return KernelDefBuilder(impl_->mutable_kernel());
 }
 
 size_t TaskDefBuilder::ByteSizeLong() const {

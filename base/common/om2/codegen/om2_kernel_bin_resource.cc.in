@@ -8,20 +8,17 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <gtest/gtest.h>
+#include <string_view>
 
-#include "framework/common/helper/om2_package_helper.h"
-#include "graph/graph.h"
-
+// om2动态当前限制：将内部 OpKernelBin 及其基类 HostResource 的原始头文件内嵌，
+// 供生成模型构造二进制资源对象；这不提供独立的稳定 ABI。后续资源恢复移到运行时后，
+// 应移除生成模型对 graph/op_kernel_bin.h 和 graph/host_resource/host_resource.h 的依赖。
 namespace ge {
-TEST(Om2GraphPackageHelperUT, GraphFacadeStubLeavesOutputUntouched) {
-  gert::GertModelData data;
-  data.manifest = std::make_unique<gert::GertModelDataManifest>();
-  const auto *original = data.manifest.get();
-  Graph graph("compute_graph");
-  EXPECT_EQ(Om2PackageHelper().BuildGertModelDataFromGraph(graph, data), SUCCESS);
-  Graph moved_graph(std::move(graph));
-  EXPECT_EQ(Om2PackageHelper().BuildGertModelDataFromGraph(graph, data), SUCCESS);
-  EXPECT_EQ(data.manifest.get(), original);
+std::string_view GetOm2KernelBinHeader() {
+  return R"OM2_BIN_HDR_RSRC(@OM2_KERNEL_BIN_CONTENT@)OM2_BIN_HDR_RSRC";
+}
+
+std::string_view GetOm2HostResourceHeader() {
+  return R"OM2_HOST_RSRC(@OM2_HOST_RESOURCE_CONTENT@)OM2_HOST_RSRC";
 }
 }  // namespace ge

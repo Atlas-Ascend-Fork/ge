@@ -55,7 +55,7 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | bin_data | const void ** | Array of operator binary memory addresses (provided when loading binaries from memory) |
 | bin_size | uint64_t * | Size of each binary in bytes |
 | bin_num | uint64_t | Binary count, that is, the length of the bin_files/bin_data/bin_size arrays |
-| constants | void ** | Array of device addresses for constants (weights), with a count matching the model's constants; may be null if there are no constants |
+| constants | void ** | Array of constant (weight) addresses, with a count matching the model's constants; may be null if there are no constants. Device addresses are used by default; explicitly marked host constant slots receive host addresses. See `GertModelDataConstMeta.placement` |
 | var_addrs | void ** | Array of variable device addresses; may be null if there are no variables |
 | work_ptr | void * | Workspace address (allocated and passed by the Executor for user-managed memory); may be null when unused |
 | session_id | uint64_t * | Session ID pointer |
@@ -74,6 +74,7 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | external_notifies | aclrtNotify * | External notify array of length external_notify_num |
 | external_notify_num | uint64_t | External notify count |
 | external_allocator | void * | Optional tail field, input; a borrowed `gert::Allocators *` with no ownership transfer. If the caller's structure size does not cover this field or the value is `nullptr`, no external allocator collection is provided |
+| dynamic_config | const GertModelDynamicLoadConfig * | Optional tail field, input. If the caller's structure size does not cover this field or its value is `nullptr`, no dynamic load configuration is provided and existing static loading behavior is preserved. Dynamic models read it according to their resource requirements; see below |
 
 - **Parameter structure GertModelLoadCallbacks**:
 
@@ -94,6 +95,50 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | Field | Type | Description |
 |------|------|------|
 | struct_size | uint64_t | Structure size in bytes; currently has no other fields. This structure is reserved, and the Load output argument must be `nullptr` |
+
+##### Dynamic Load Configuration and Shared Library Descriptors
+
+`GertModelLoadConfig.dynamic_config` points to `GertModelDynamicLoadConfig`. All fields below are inputs.
+The outer structure and each nested structure independently use `struct_size` to determine field availability;
+missing optional pointers are treated as `nullptr`. Configuration and shared library descriptors remain valid
+at least throughout `GertModelLoad`; ownership is not transferred to the model SO.
+
+| GertModelDynamicLoadConfig Field | Type | Description |
+|------|------|------|
+| struct_size | uint64_t | Byte range provided for this structure; initialize to `sizeof(GertModelDynamicLoadConfig)` |
+| shared_libraries | const GertModelSharedLibraries * | Borrowed shared library list. A null pointer means not provided; a non-null pointer with a zero count means an explicitly empty list |
+| rt_session | void * | Borrowed session instance, currently pointing to `gert::RtSession`. It must remain valid until model unloading completes; the model SO does not release it. It may be null for models without session bindings; loading fails if a model requires session bindings but none is supplied |
+
+`rt_session` is an in-process object pointer, not serializable data or a guarantee of cross-version stability
+for the internal C++ object layout. The dynamic plugin can construct and own a session or borrow one supplied by the caller.
+
+| GertModelSharedLibraries Field | Type | Description |
+|------|------|------|
+| struct_size | uint64_t | Byte range provided for this structure; initialize to `sizeof(GertModelSharedLibraries)` |
+| library_num | uint64_t | Number of shared library entries, default 0; `libraries` is not read when this value is 0 |
+| libraries | const GertModelSharedLibrary *const * | Borrowed array of descriptor pointers with `library_num` entries; each entry evolves independently through its own `struct_size` |
+
+| GertModelSharedLibrary Field | Type | Description |
+|------|------|------|
+| struct_size | uint64_t | Byte range provided for this structure; initialize to `sizeof(GertModelSharedLibrary)` |
+| so_name | const char * | Original SO name, not the archive filename after resolving name collisions; UTF-8 and terminated by ` ` |
+| so_bin_type | GertModelSharedLibraryType | Shared library purpose; defaults to `GERT_MODEL_SHARED_LIBRARY_UNSPECIFIED` |
+| vendor_name | const char * | UTF-8 and terminated by ` `; may be null to indicate an unspecified source |
+| data | const void * | Borrowed SO binary content; the model SO must not release it |
+| data_size | uint64_t | Binary size in bytes, excluding any additional terminator |
+
+Strings, arrays, entries, and binary contents remain valid at least throughout the load call.
+If the model SO needs them after loading returns, it must create its own copies or corresponding loaded resources during loading.
+
+`GertModelSharedLibraryType` has the underlying type `uint64_t`, with the following values:
+
+| Enumerator | Value | Purpose |
+|------|------|------|
+| GERT_MODEL_SHARED_LIBRARY_SPACE_REGISTRY | 0 | Operator implementation registry library |
+| GERT_MODEL_SHARED_LIBRARY_OP_MASTER_DEVICE | 1 | Op master/device library |
+| GERT_MODEL_SHARED_LIBRARY_AUTOFUSE | 2 | Autofuse library |
+| GERT_MODEL_SHARED_LIBRARY_CUSTOM_OP | 3 | Custom operator library |
+| GERT_MODEL_SHARED_LIBRARY_UNSPECIFIED | 65535 (0xFFFF) | Unspecified purpose; not equivalent to explicitly selecting a registry library |
 
 #### 2.3 GertModelRun
 
@@ -810,6 +855,8 @@ Smart pointers and containers are further expanded according to the custom types
 | `kernels` | `std::unique_ptr<GertModelDataKernels>` | Operator binary collection, corresponding to `data/kernels/` |
 | `custom_ops` | `std::unique_ptr<GertModelDataCustomOps>` | Custom operator artifact collection, corresponding to `data/custom_ops/binaries_npu_arch/` and `data/custom_ops/shared_libs/` |
 | `variables` | `std::unique_ptr<GertModelDataVariables>` | Variable initial-data block collection, corresponding to `data/variables/`; see Section 1.14 |
+| `so_bins` | `std::unique_ptr<GertModelDataSoBins>` | Optional tail field corresponding to `data/shared_libs/`. An older structure size or a null pointer means no shared library dependencies are provided; see Section 1.20 |
+| `online_prepare_data` | `std::shared_ptr<Om2OnlinePrepareData>` | Helper object used only in memory for online execution. Its definition is an internal contract between the generator and dynamic plugin; om2_executor does not interpret its layout. Created by the generator and retained by the dynamic plugin to prepare the session and keep source graphs alive. It is neither serialized nor restored by deserialization; an older structure size or a null pointer means not provided |
 
 The element type of `models`, `GertModelDataModel`, further describes `model_meta.json`, `constants_config.json`, `op_attr.json`, `runtime/`, and `debug/` in a single-model directory. Variable initial-data blocks reside in package-level `data/variables/` and are an independent top-level member `variables` of `GertModelData` (see Section 1.14). Per-variable offsets and sizes inside a block are no longer persisted; they are carried by the metadata table fixated into the model SO at compile time, and `model_meta.json` keeps only `var_weight_file_name` so the executor can look the data source up by name. Whether files are actually generated depends on the corresponding data and serialization conditions.
 
@@ -853,6 +900,7 @@ Referenced by elements of `GertModelData::models`, corresponding to a single `da
 | `op_attr_json` | `std::unique_ptr<char[]>` | Raw operator attribute JSON, corresponding to `op_attr.json` |
 | `runtime` | `std::unique_ptr<GertModelDataRuntime>` | Runtime code and model SO, corresponding to `runtime/`; see Section 1.11 |
 | `debug` | `std::unique_ptr<GertModelDataDebug>` | Debug data, corresponding to `debug/`; see Section 1.13 |
+| `execution_type` | `GertModelExecutionType` | In-memory executor selection flag, default `kStatic`. Not serialized and cannot be restored from the archive; see Section 1.22 |
 
 #### 1.6 GertModelDataModelMeta
 
@@ -876,6 +924,7 @@ Referenced by `GertModelDataModel::model_meta`; stores model metadata.
 | `aipp_infos` | `std::vector<std::unique_ptr<GertModelDataAippMeta>>` | AIPP metadata, corresponding to `aipp.aipp_infos[]`; element structure is in Section 1.8 |
 | `global_shared_var_size` | `uint64_t` | Total HBM bytes of globally shared variables, default 0; the Bundle workspace is sized by the maximum across sub-models. Written even when 0, so the runtime can tell that no external variable arena is needed |
 | `var_weight_file_name` | `std::unique_ptr<char[]>` | Base name of the variable initial-data block under `data/variables/` (e.g. `var_weight_data_0`); matches the `file_name` of the corresponding `GertModelDataVariables::var_weight_data` element so the executor can look the data source up by name. Empty means this model has no initial-data block |
+| `reusable_notify_num` | `uint64_t` | Retained for compatibility, default 0. The reader still accepts `reusable_notify_num` from legacy `model_meta.json` files; it remains 0 when absent. New packages omit it. ProgramBody creates notifies from the resource description embedded in the generated SO, without using this field |
 
 #### 1.7 GertTensorDesc
 
@@ -933,6 +982,7 @@ Referenced by elements of `GertModelDataConstantsConfig::consts`; all members ar
 | `file_name` | `std::unique_ptr<char[]>` | Data file name |
 | `file_path` | `std::unique_ptr<char[]>` | External file path, written according to serialization conditions |
 | `op_name` | `std::unique_ptr<char[]>` | Operator name; non-INTERNAL constants use it as their object key in `consts` |
+| `placement` | `GertModelDataConstPlacement` | Optional tail field; an older structure size or an unspecified value preserves device behavior. JSON `placement` is `HOST` or `DEVICE`; the key is omitted when unspecified. Deserialization currently accepts host constants only for the INTERNAL type; see Section 1.21 |
 
 #### 1.11 GertModelDataRuntime
 
@@ -1024,6 +1074,51 @@ The recursive description of the root structure ends here. `GertBuffer` is a com
 | `GERT_MODEL_DATA_API` | Export visibility macro | Uses `__declspec(dllexport)` on Windows and default visibility in other environments |
 | `GERT_EXECUTOR_VERSION` | `const char *`, `"1.0"` | Baseline for manifest version validation |
 | `kOm2InvalidAippDataIndex` | `uint64_t`, `0xFFFFFFFF` | No associated AIPP input index |
+
+#### 1.20 GertModelDataSoBins and GertModelDataSoBin
+
+`gert::GertModelData.so_bins` owns the shared library collection `gert::GertModelDataSoBins`, preserving collection order.
+It corresponds to the `libraries` array in `data/shared_libs/so_bins.json` and SO files in the same directory.
+These files are not generated if the collection is absent or empty. No collection is restored when the archive lacks the descriptor file.
+If that file exists but the receiving `GertModelData` has an older size that cannot accommodate `so_bins`, deserialization fails.
+
+| GertModelDataSoBins Field | Type | Description |
+|------|------|------|
+| `struct_size` | `uint64_t` | Structure size in bytes; not written to the archive |
+| `libraries` | `std::vector<std::unique_ptr<GertModelDataSoBin>>` | Owns each shared library entry; corresponds to the JSON `libraries` array |
+
+| GertModelDataSoBin Field | Type | Description |
+|------|------|------|
+| `struct_size` | `uint64_t` | Structure size in bytes; not written to the archive |
+| `binary` | `std::unique_ptr<GertModelDataFile>` | Owns the SO filename, data, and size. Its `file_name` corresponds to JSON `file_name` and is unique within the collection |
+| `so_name` | `std::unique_ptr<char[]>` | Original SO name, corresponding to JSON `so_name`; may differ from the archive filename |
+| `so_bin_type` | `uint64_t` | Corresponds to JSON `so_bin_type`, with values matching `ge::SoBinType`; converted to `GertModelSharedLibraryType` during dynamic loading |
+| `vendor_name` | `std::unique_ptr<char[]>` | Source identifier, corresponding to JSON `vendor_name` |
+
+The dynamic plugin converts this owned data into borrowed `GertModelSharedLibraries` descriptors for loading.
+SO files and the descriptor JSON use Stored archive entries, with path constants `OM2_SO_BINS_DIR` and `OM2_SO_BINS_JSON_PATH`.
+
+#### 1.21 GertModelDataConstPlacement
+
+`gert::GertModelDataConstPlacement` has the underlying type `uint64_t` and is used by `gert::GertModelDataConstMeta.placement`.
+
+| Enumerator | Value | Meaning |
+|------|------|------|
+| `kUnspecified` | 0 | Unspecified; also used for older structure sizes. Preserves device behavior and omits placement during serialization |
+| `kDevice` | 1 | Explicit device constant; serialized as `DEVICE` |
+| `kHost` | 2 | Explicit host constant; serialized as `HOST`. Dynamic GE model weights use this value |
+
+#### 1.22 GertModelExecutionType
+
+`gert::GertModelExecutionType` has the underlying type `uint64_t` and is used by `gert::GertModelDataModel.execution_type`.
+
+| Enumerator | Value | Meaning |
+|------|------|------|
+| `kStatic` | 0 | Static execution, the default. Also used when an older structure size does not cover execution_type |
+| `kDynamic` | 1 | Dynamic execution, explicitly selected by the online generation/preparation path |
+
+Neither `execution_type` nor `gert::GertModelData.online_prepare_data` is stored in the archive.
+Shared libraries and host constants can be serialized independently; this does not mean deserialization automatically restores the dynamic execution type or online session.
 
 ### 2. om2_package_contants.h
 

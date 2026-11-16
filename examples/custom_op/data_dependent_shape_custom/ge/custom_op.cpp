@@ -18,7 +18,7 @@ extern "C" void LaunchWhereLikeCustom(const void *x, void *y, void *shape_buffer
 #define CHECK_ACL(x)                                                                  \
   do {                                                                                \
     aclError __ret = x;                                                               \
-    if (__ret != ACL_ERROR_NONE) {                                                    \
+    if (__ret != ACL_SUCCESS) {                                                       \
       std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __ret << std::endl; \
       return ge::GRAPH_FAILED;                                                        \
     }                                                                                 \

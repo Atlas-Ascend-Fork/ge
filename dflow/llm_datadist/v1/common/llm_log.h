@@ -219,7 +219,7 @@ inline ge::Status ConvertAclError2Ge(int32_t ret) {
 #define LLM_CHK_ACL_RET(expr)                                                                        \
   do {                                                                                               \
     const int32_t _ret = static_cast<int32_t>(expr);                                                 \
-    if (_ret != ACL_ERROR_NONE) {                                                                    \
+    if (_ret != ACL_SUCCESS) {                                                                       \
       REPORT_INNER_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_ret)); \
       LLMLOGE(ge::FAILED, "Call aclrt api failed, ret: 0x%X", static_cast<uint32_t>(_ret));          \
       return llm::ConvertAclError2Ge(_ret);                                                          \
@@ -230,7 +230,7 @@ inline ge::Status ConvertAclError2Ge(int32_t ret) {
 #define LLM_CHK_ACL(expr)                                                                      \
   do {                                                                                         \
     const aclError _rt_err = (expr);                                                           \
-    if (_rt_err != ACL_ERROR_NONE) {                                                           \
+    if (_rt_err != ACL_SUCCESS) {                                                              \
       LLMLOGE(ge::FAILED, "Call aclrt api failed, ret: 0x%X", static_cast<uint32_t>(_rt_err)); \
     }                                                                                          \
   } while (false)
@@ -239,7 +239,7 @@ inline ge::Status ConvertAclError2Ge(int32_t ret) {
   do {                                                                                           \
     if ((addr) != nullptr) {                                                                     \
       const aclError error = aclrtFree(addr);                                                    \
-      if (error != ACL_ERROR_NONE) {                                                             \
+      if (error != ACL_SUCCESS) {                                                                \
         LLMLOGE(ge::FAILED, "Call aclrtFree failed, error: 0x%X", static_cast<uint32_t>(error)); \
       }                                                                                          \
       (addr) = nullptr;                                                                          \

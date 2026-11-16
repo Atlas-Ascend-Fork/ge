@@ -197,7 +197,7 @@ ge::Status LLMDataDist::Impl::TransferCache(uint64_t task_id, const TransferCach
                           "Transfer cache is not supported when device num bigger than one.");
   LLM_CHK_BOOL_RET_STATUS(role_ == kPrompt, ge::LLM_PARAM_INVALID, "Transfer cache is not supported by %s",
                           role_.c_str());
-  LLM_CHK_BOOL_RET_STATUS(aclrtSetDevice(device_ids_.front()) == ACL_ERROR_NONE, ge::FAILED,
+  LLM_CHK_BOOL_RET_STATUS(aclrtSetDevice(device_ids_.front()) == ACL_SUCCESS, ge::FAILED,
                           "Failed to set device, device id = %d", device_ids_.front());
   return cache_engine_->TransferCache(task_id, transfer_cache_config, transfer_block_config);
 }

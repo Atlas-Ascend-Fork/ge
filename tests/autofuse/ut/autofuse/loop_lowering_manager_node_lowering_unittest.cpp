@@ -8,6 +8,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#include <regex>
+#include <tuple>
 #include <utility>
 #include "graph/ascendc_ir/ascendc_ir_core/ascendc_ir.h"
 #include "graph/attribute_group/attr_group_symbolic_desc.h"
@@ -21,6 +23,7 @@
 #include "lowering/op_lowering_impl/lowering_impl.h"
 #include "utils/auto_fuse_config.h"
 #include "ascgen_log.h"
+#include "common/autofuse_platform_api.h"
 
 #include "op_creator_register.h"
 #include "all_ops_cpp.h"
@@ -42,6 +45,24 @@ class LoopNodeLoweringUT : public testing::Test {
   }
   void TearDown() override {}
   std::unique_ptr<es::Graph> es_graph_;
+};
+
+class ScopedAutofusePlatform {
+ public:
+  explicit ScopedAutofusePlatform(const std::string &platform) {
+    ge::ResetAutofusePlatform();
+    status_ = ge::SetAutofusePlatform(platform);
+  }
+  ~ScopedAutofusePlatform() {
+    ge::ResetAutofusePlatform();
+  }
+
+  graphStatus Status() const {
+    return status_;
+  }
+
+ private:
+  graphStatus status_ = GRAPH_FAILED;
 };
 
 std::vector<std::string> ToExpressionStrings(const std::vector<Expression> &expressions) {
@@ -274,6 +295,105 @@ TEST_F(LoopNodeLoweringUT, In1Out1Lowering) {
             "tmp0 = ops.Load(\"data0:0\")\n"
             "tmp1 = ops.Exp(tmp0)\n"
             "tmp2 = ops.Store(\"Exp_0:0\", tmp1)\n");
+}
+
+void BuildAdditionalUnaryElementwiseGraph(es::Graph &graph) {
+  auto data0 = graph.CreateInput(0, "data0", nullptr);
+  data0.SetSymbolShape({"s0", "s1", "s2"});
+  auto acosh = es::Acosh(data0);
+  acosh.SetSymbolShape({"s0", "s1", "s2"});
+  auto asinh = es::Asinh(acosh);
+  asinh.SetSymbolShape({"s0", "s1", "s2"});
+  auto atan = es::Atan(asinh);
+  atan.SetSymbolShape({"s0", "s1", "s2"});
+  auto atanh = es::Atanh(atan);
+  atanh.SetSymbolShape({"s0", "s1", "s2"});
+  auto ceil = es::Ceil(atanh);
+  ceil.SetSymbolShape({"s0", "s1", "s2"});
+  auto cos = es::Cos(ceil);
+  cos.SetSymbolShape({"s0", "s1", "s2"});
+  auto cosh = es::Cosh(cos);
+  cosh.SetSymbolShape({"s0", "s1", "s2"});
+  auto erfc = es::Erfc(cosh);
+  erfc.SetSymbolShape({"s0", "s1", "s2"});
+  auto expm1 = es::Expm1(erfc);
+  expm1.SetSymbolShape({"s0", "s1", "s2"});
+  auto floor = es::Floor(expm1);
+  floor.SetSymbolShape({"s0", "s1", "s2"});
+  auto invert = es::Invert(floor);
+  invert.SetSymbolShape({"s0", "s1", "s2"});
+  auto lgamma = es::Lgamma(invert);
+  lgamma.SetSymbolShape({"s0", "s1", "s2"});
+  auto round = es::Round(lgamma);
+  round.SetSymbolShape({"s0", "s1", "s2"});
+  auto sin = es::Sin(round);
+  sin.SetSymbolShape({"s0", "s1", "s2"});
+  auto sinh = es::Sinh(sin);
+  sinh.SetSymbolShape({"s0", "s1", "s2"});
+  auto tan = es::Tan(sinh);
+  tan.SetSymbolShape({"s0", "s1", "s2"});
+  graph.SetOutput(tan, 0);
+}
+
+TEST_F(LoopNodeLoweringUT, AdditionalUnaryElementwiseLowering) {
+  ge::ResetAutofusePlatform();
+  ASSERT_EQ(ge::SetAutofusePlatform("3510"), GRAPH_SUCCESS);
+  std::string platform_name;
+  ASSERT_EQ(ge::GetAutofusePlatform(platform_name), GRAPH_SUCCESS);
+  ASSERT_EQ(platform_name, "3510");
+  BuildAdditionalUnaryElementwiseGraph(*es_graph_);
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  const std::vector<std::pair<std::string, std::string>> lowered_ops = {
+      {"Acosh", "Acosh"}, {"Asinh", "Asinh"}, {"Atan", "Atan"},         {"Atanh", "Atanh"},
+      {"Ceil", "Ceil"},   {"Cos", "Cos"},     {"Cosh", "Cosh"},         {"Erfc", "Erfc"},
+      {"Expm1", "Expm1"}, {"Floor", "Floor"}, {"Invert", "BitwiseNot"}, {"Lgamma", "Lgamma"},
+      {"Round", "Round"}, {"Sin", "Sin"},     {"Sinh", "Sinh"},         {"Tan", "Tan"},
+  };
+  for (const auto &[op_type, loop_op] : lowered_ops) {
+    auto node = cg->FindFirstNodeMatchType(op_type);
+    ASSERT_NE(node, nullptr) << op_type;
+    ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS) << op_type;
+    const auto kernel = ge::loop::GetKernelBox(node->GetOutDataAnchor(0));
+    ASSERT_FALSE(kernel.IsExternKernel()) << op_type;
+    EXPECT_NE(kernel.Readable().find("ops." + loop_op), std::string::npos) << op_type;
+  }
+  ge::ResetAutofusePlatform();
+}
+
+TEST_F(LoopNodeLoweringUT, AdditionalBinaryElementwiseLowering) {
+  ge::ResetAutofusePlatform();
+  ASSERT_EQ(ge::SetAutofusePlatform("3510"), GRAPH_SUCCESS);
+  std::string platform_name;
+  ASSERT_EQ(ge::GetAutofusePlatform(platform_name), GRAPH_SUCCESS);
+  ASSERT_EQ(platform_name, "3510");
+  [this]() {
+    auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+    auto data1 = es_graph_->CreateInput(1, "data1", nullptr);
+    data0.SetSymbolShape({"s0", "s1", "s2"});
+    data1.SetSymbolShape({"s0", "s1", "s2"});
+    auto bitwise_or = es::BitwiseOr(data0, data1);
+    bitwise_or.SetSymbolShape({"s0", "s1", "s2"});
+    auto bitwise_xor = es::BitwiseXor(data0, data1);
+    bitwise_xor.SetSymbolShape({"s0", "s1", "s2"});
+    es_graph_->SetOutput(bitwise_or, 0);
+    es_graph_->SetOutput(bitwise_xor, 1);
+  }();
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  const std::vector<std::pair<std::string, std::string>> lowered_ops = {{"BitwiseOr", "BitwiseOr"},
+                                                                        {"BitwiseXor", "BitwiseXor"}};
+  for (const auto &[op_type, loop_op] : lowered_ops) {
+    auto node = cg->FindFirstNodeMatchType(op_type);
+    ASSERT_NE(node, nullptr) << op_type;
+    ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS) << op_type;
+    const auto kernel = ge::loop::GetKernelBox(node->GetOutDataAnchor(0));
+    ASSERT_FALSE(kernel.IsExternKernel()) << op_type;
+    EXPECT_NE(kernel.Readable().find("ops." + loop_op), std::string::npos) << op_type;
+  }
+  ge::ResetAutofusePlatform();
 }
 
 TEST_F(LoopNodeLoweringUT, PointwiseFusion) {
@@ -4008,6 +4128,8 @@ TEST_F_LOWER_REDUCE(Min, ReduceMinD)
 TEST_F_LOWER_REDUCE(Prod, ReduceProdD)
 
 TEST_F(LoopNodeLoweringUT, AscendQuantLowering) {
+  const ScopedAutofusePlatform platform("3510");
+  ASSERT_EQ(platform.Status(), GRAPH_SUCCESS);
   [this]() {
     auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
     data0.SetSymbolShape({"s0", "s1", "s2"});
@@ -4042,6 +4164,8 @@ TEST_F(LoopNodeLoweringUT, AscendQuantLowering) {
 }
 
 TEST_F(LoopNodeLoweringUT, AscendQuantLoweringSqrtMode) {
+  const ScopedAutofusePlatform platform("3510");
+  ASSERT_EQ(platform.Status(), GRAPH_SUCCESS);
   [this]() {
     auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
     data0.SetSymbolShape({"s0", "s1"});
@@ -4093,6 +4217,8 @@ TEST_F(LoopNodeLoweringUT, AscendQuantLoweringNonDefaultRoundMode) {
 }
 
 TEST_F(LoopNodeLoweringUT, AscendQuantLoweringDstTypeFloat16) {
+  const ScopedAutofusePlatform platform("3510");
+  ASSERT_EQ(platform.Status(), GRAPH_SUCCESS);
   [this]() {
     auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
     data0.SetSymbolShape({"s0", "s1"});
@@ -4125,4 +4251,56 @@ TEST_F(LoopNodeLoweringUT, AscendQuantLoweringDstTypeFloat16) {
             "tmp8 = ops.Cast(tmp7, DT_FLOAT16)\n"
             "tmp9 = ops.Store(\"AscendQuant_0:0\", tmp8)\n");
 }
+
+class LoopInt64LogicalLoweringUT : public LoopNodeLoweringUT,
+                                   public testing::WithParamInterface<std::tuple<bool, bool>> {};
+
+TEST_P(LoopInt64LogicalLoweringUT, BroadcastLogicalCastDoesNotFallback) {
+  const bool use_or = std::get<0>(GetParam());
+  const std::vector<const char *> shape =
+      std::get<1>(GetParam()) ? std::vector<const char *>{"s0", "s1", "s2"} : std::vector<const char *>{"2", "3", "5"};
+  auto data0 = es_graph_->CreateInput(0, "data0", nullptr);
+  auto data1 = es_graph_->CreateInput(1, "data1", nullptr);
+  data0.SetSymbolShape({shape[0], "1", shape[2]});
+  data1.SetSymbolShape(shape);
+  auto logical = use_or ? es::LogicalOr(data0, data1) : es::LogicalAnd(data0, data1);
+  logical.SetSymbolShape(shape);
+  auto cast = es::Cast(logical, DT_INT64);
+  cast.SetSymbolShape(shape);
+  es_graph_->SetOutput(cast, 0);
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  const std::string logical_type = use_or ? "LogicalOr" : "LogicalAnd";
+  auto logical_node = cg->FindNode(logical_type + "_0");
+  auto cast_node = cg->FindNode("Cast_1");
+  ASSERT_NE(logical_node, nullptr);
+  ASSERT_NE(cast_node, nullptr);
+  for (const auto &node : logical_node->GetInDataNodes()) {
+    node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(DT_INT64);
+    node->GetOpDesc()->MutableOutputDesc(0)->SetOriginDataType(DT_INT64);
+  }
+  for (size_t i = 0; i < 2U; ++i) {
+    logical_node->GetOpDesc()->MutableInputDesc(i)->SetDataType(DT_INT64);
+    logical_node->GetOpDesc()->MutableInputDesc(i)->SetOriginDataType(DT_INT64);
+  }
+  logical_node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(DT_UINT8);
+  logical_node->GetOpDesc()->MutableOutputDesc(0)->SetOriginDataType(DT_UINT8);
+  cast_node->GetOpDesc()->MutableInputDesc(0)->SetDataType(DT_UINT8);
+  cast_node->GetOpDesc()->MutableInputDesc(0)->SetOriginDataType(DT_UINT8);
+  cast_node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(DT_INT64);
+  cast_node->GetOpDesc()->MutableOutputDesc(0)->SetOriginDataType(DT_INT64);
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  const auto logical_kernel = loop::GetKernelBox(logical_node->GetOutDataAnchor(0));
+  const auto cast_kernel = loop::GetKernelBox(cast_node->GetOutDataAnchor(0));
+  ASSERT_FALSE(logical_kernel.IsExternKernel());
+  ASSERT_FALSE(cast_kernel.IsExternKernel());
+  EXPECT_NE(logical_kernel.Readable().find("ops.Broadcast("), std::string::npos);
+  EXPECT_NE(logical_kernel.Readable().find("ops." + logical_type + "("), std::string::npos);
+  // Fusion changes temporary numbering; verify the Cast operation and its destination type together.
+  EXPECT_TRUE(std::regex_search(cast_kernel.Readable(), std::regex(R"(ops\.Cast\(tmp[0-9]+, DT_INT64\))")))
+      << cast_kernel.Readable();
+}
+
+INSTANTIATE_TEST_SUITE_P(Int64, LoopInt64LogicalLoweringUT, testing::Combine(testing::Bool(), testing::Bool()));
 }  // namespace ge

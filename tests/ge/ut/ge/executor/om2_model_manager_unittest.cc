@@ -396,4 +396,17 @@ TEST_F(Om2ModelManagerTest, GenModelId_ReturnsMonotonicallyIncreasing) {
   EXPECT_EQ(id3, id2 + 1U);
 }
 
+TEST_F(Om2ModelManagerTest, UnloadSessionModelsPreservesOtherSessions) {
+  auto model_data = MakeOm2ModelDataWithFakeSo(fake_so_path_);
+  auto &mgr = Om2ModelManager::GetInstance();
+  ASSERT_EQ(mgr.LoadModel(kModelId1, model_data, MakeLoadArg(kModelId1), kSessionId), SUCCESS);
+  ASSERT_EQ(mgr.LoadModel(kModelId2, model_data, MakeLoadArg(kModelId2), kSessionId + 1U), SUCCESS);
+  ASSERT_EQ(mgr.UnloadSessionModels(kSessionId), SUCCESS);
+  std::vector<gert::Tensor *> inputs;
+  std::vector<gert::Tensor *> outputs;
+  EXPECT_EQ(mgr.RunModel(kModelId1, nullptr, inputs, outputs, gert::Om2ModelRunArg{}), GE_RTI_MODEL_NOT_LOADED);
+  EXPECT_NE(mgr.RunModel(kModelId2, nullptr, inputs, outputs, gert::Om2ModelRunArg{}), GE_RTI_MODEL_NOT_LOADED);
+  EXPECT_EQ(mgr.UnloadSessionModels(kSessionId), SUCCESS);
+}
+
 }  // namespace ge

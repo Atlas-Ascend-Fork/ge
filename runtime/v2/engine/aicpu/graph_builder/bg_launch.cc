@@ -19,6 +19,7 @@
 #include "engine/aicpu/converter/aicpu_callback.h"
 #include "graph_builder/bg_condition.h"
 #include "graph/utils/node_utils.h"
+#include "graph/debug/ge_attr_define.h"
 #include "exe_graph/lowering/frame_selector.h"
 
 namespace gert {
@@ -238,6 +239,15 @@ ValueHolderPtr AicpuHostCompute(const ge::NodePtr &node, const AicpuArgs &args, 
   is_host_exec_func = (func != nullptr);
   if (func != nullptr) {
     compute_holder = AicpuHostExecFuncProcess(func, compute_io_info, output_addrs);
+    if (global_data.IsForOm2() && (!compute_io_info.output_shapes.empty() || !output_addrs.empty())) {
+      GE_ASSERT_NOTNULL(compute_holder);
+      const auto compute_node = compute_holder->GetFastNode();
+      GE_ASSERT_NOTNULL(compute_node);
+      GE_ASSERT_NOTNULL(compute_node->GetOpDescBarePtr());
+      // OM2 按原算子类型恢复 Host 函数；RT2 直接使用输入中的函数指针。
+      GE_ASSERT_TRUE(
+          ge::AttrUtils::SetStr(compute_node->GetOpDescBarePtr(), ge::ATTR_NAME_FRAMEWORK_ORIGINAL_TYPE, type));
+    }
   } else {
     compute_holder = AicpuHostComputeByCpuKernel(node, args, compute_io_info, io_info.input_shapes,
                                                  expanded_input_shapes_holder, global_data, output_addrs);

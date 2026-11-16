@@ -205,6 +205,24 @@ ge::graphStatus BuildFallbackExecutor(const ge::ModelData &model_data, const Mod
   return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus LoadHostInputIndexesForExecutor(const ge::ComputeGraphPtr &root_graph, ExecutorSet &executor_set) {
+  executor_set.host_input_indexes.clear();
+  std::vector<int64_t> host_input_idxs;
+  const bool has_host_input_attr =
+      (root_graph != nullptr) && ge::AttrUtils::GetListInt(root_graph, "_ge_host_input_idxs", host_input_idxs);
+  if (!has_host_input_attr) {
+    GELOGI("_ge_host_input_idxs is absent, use ACL inputs directly.");
+    return ge::GRAPH_SUCCESS;
+  }
+  for (const auto idx : host_input_idxs) {
+    if (idx >= 0) {
+      executor_set.host_input_indexes.emplace_back(static_cast<size_t>(idx));
+    }
+  }
+  GELOGI("loaded %zu host input index(es) from _ge_host_input_idxs.", executor_set.host_input_indexes.size());
+  return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus LoadGuardForExecutor(const ge::ComputeGraphPtr &root_graph, ExecutorSet &executor_set) {
   const std::string *guard_so = ge::AttrUtils::GetStr(root_graph, "_guard_check_so_data");
   if ((guard_so == nullptr) || guard_so->empty()) {
@@ -256,6 +274,7 @@ ge::graphStatus LoadExecutorSetFromModelData(const ge::ModelData &model_data, co
   GE_ASSERT_SUCCESS(AssignModelIdForExecutor(root_model));
 
   const auto fallback_models = ExtractFallbackModels(root_model);
+  GE_ASSERT_SUCCESS(LoadHostInputIndexesForExecutor(root_model->GetRootGraph(), executor_set));
   FillDualBodyWeightInfo(root_model->GetRootGraph(), root_model, fallback_models, executor_set);
   ModelConverter::Args converter_args{{}, nullptr, nullptr, nullptr, &args.file_constant_mems};
   GE_ASSERT_SUCCESS(BuildMainExecutor(model_data, converter_args, args.rt_session, root_model, executor_set));

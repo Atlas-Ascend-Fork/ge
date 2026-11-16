@@ -429,6 +429,21 @@ aclError Om2ModelExecuteCommon(uint32_t modelId, const aclmdlDataset *input, acl
     ACL_LOG_ERROR("Prepare input tensors failed.");
     return ret;
   }
+  if (executor->IsDynamicModel()) {
+    for (size_t i = 0U; i < inputNum; ++i) {
+      if (input->blobs[i].tensorDesc != nullptr) {
+        const auto &dims = input->blobs[i].tensorDesc->dims;
+        auto &originShape = inputTensor[i].MutableOriginShape();
+        auto &storageShape = inputTensor[i].MutableStorageShape();
+        originShape.SetDimNum(dims.size());
+        storageShape.SetDimNum(dims.size());
+        for (size_t j = 0U; j < dims.size(); ++j) {
+          (void)originShape.SetDim(j, dims[j]);
+          (void)storageShape.SetDim(j, dims[j]);
+        }
+      }
+    }
+  }
 
   // Prepare output tensors
   std::vector<gert::Tensor> outputTensor(outputNum);

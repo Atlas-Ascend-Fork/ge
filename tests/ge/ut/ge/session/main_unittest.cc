@@ -2841,3 +2841,46 @@ TEST_F(UtestMain, MainImplTest_optimization_switch_append_with_opp) {
   AtcFileFactory::RemoveFile(AtcFileFactory::Generatefile1("", "cov_osw_out.om").c_str());
   system(("rm -rf " + opp_path).c_str());
 }
+TEST_F(UtestMain, MainImplTest_check_hint_input_value_valid) {
+  EXPECT_EQ(CheckHintInputValueParamValid(""), ge::SUCCESS);
+  EXPECT_EQ(CheckHintInputValueParamValid("0:[1,2];1:[3,4]"), ge::SUCCESS);
+  EXPECT_EQ(CheckHintInputValueParamValid("0:[1,2];"), ge::SUCCESS);
+  EXPECT_EQ(CheckHintInputValueParamValid(" 0 : [1, 2] "), ge::SUCCESS);
+}
+
+TEST_F(UtestMain, MainImplTest_check_hint_input_value_invalid) {
+  EXPECT_EQ(CheckHintInputValueParamValid("0"), ge::PARAM_INVALID);
+  EXPECT_EQ(CheckHintInputValueParamValid("0:1"), ge::PARAM_INVALID);
+  EXPECT_EQ(CheckHintInputValueParamValid("0:[-1]"), ge::PARAM_INVALID);
+  EXPECT_EQ(CheckHintInputValueParamValid("-1:[1]"), ge::PARAM_INVALID);
+  EXPECT_EQ(CheckHintInputValueParamValid("abc:[1]"), ge::PARAM_INVALID);
+  EXPECT_EQ(CheckHintInputValueParamValid("0:[1];0:[2]"), ge::PARAM_INVALID);
+}
+
+TEST_F(UtestMain, MainImplTest_input_hint_value_invalid_param) {
+  std::string om_arg = AtcFileFactory::Generatefile1("--model=", "add.pb");
+  std::string output_arg = AtcFileFactory::Generatefile1("--output=", "tmp_hint_value");
+  char *argv[] = {"atc",
+                  "--framework=3",
+                  const_cast<char *>(om_arg.c_str()),
+                  const_cast<char *>(output_arg.c_str()),
+                  "--input_hint_value=0",
+                  "--soc_version=Ascend310",
+                  "--input_format=NCHW"};
+  EXPECT_NE(main_impl(sizeof(argv) / sizeof(argv[0]), argv), 0);
+  AtcFileFactory::RemoveFile(AtcFileFactory::Generatefile1("", "tmp_hint_value.om").c_str());
+}
+
+TEST_F(UtestMain, MainImplTest_input_hint_value_valid_param) {
+  std::string om_arg = AtcFileFactory::Generatefile1("--model=", "add.pb");
+  std::string output_arg = AtcFileFactory::Generatefile1("--output=", "tmp_hint_value");
+  char *argv[] = {"atc",
+                  "--framework=3",
+                  const_cast<char *>(om_arg.c_str()),
+                  const_cast<char *>(output_arg.c_str()),
+                  "--input_hint_value=0:[1]",
+                  "--soc_version=Ascend310",
+                  "--input_format=NCHW"};
+  EXPECT_NE(main_impl(sizeof(argv) / sizeof(argv[0]), argv), 0);
+  AtcFileFactory::RemoveFile(AtcFileFactory::Generatefile1("", "tmp_hint_value.om").c_str());
+}

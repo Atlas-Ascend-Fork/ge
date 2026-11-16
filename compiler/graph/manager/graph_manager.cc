@@ -144,6 +144,7 @@
 #include "graph/preprocess/hccl_offline_option_builder.h"
 #include "runtime/custom_op/custom_op_loader.h"
 #include "framework/common/gert_model_data_serialize.h"
+#include "framework/common/gert_model_data_utils.h"
 #include "framework/common/helper/om2_package_helper.h"
 #include "platform/platform_info.h"
 #include "framework/runtime/om2_model_executor.h"
@@ -483,20 +484,7 @@ ge::Status BuildOm2PackageIfNeeded(const GraphNodePtr &graph_node, const GeRootM
   }
   GE_ASSERT_NOTNULL(ge_root_model);
 
-  const auto &root_graph = ge_root_model->GetRootGraph();
-  GE_ASSERT_NOTNULL(root_graph);
-  const auto &name_to_model = ge_root_model->GetSubgraphInstanceNameToModel();
-  auto it = name_to_model.find(root_graph->GetName());
-  if (it == name_to_model.end()) {
-    GELOGE(ge::FAILED, "Cannot find GeModel for root graph %s", root_graph->GetName().c_str());
-    return ge::FAILED;
-  }
-  GeModelPtr ge_model = it->second;
-
-  auto model_data = std::make_shared<gert::GertModelData>();
-  Om2PackageHelper package_helper;
-  GE_ASSERT_SUCCESS(package_helper.BuildOm2ModelData(ge_model, *model_data, ge_root_model));
-  ge_root_model->SetOm2ModelData(std::move(model_data));
+  GE_ASSERT_SUCCESS(Om2PackageHelper::EnsureGertModelData(ge_root_model));
 
   GELOGI("OM2 model data built successfully for graph %u", graph_node->GetGraphId());
   return ge::SUCCESS;
@@ -1455,6 +1443,8 @@ Status GraphManager::PreRunAfterOptimizeSubGraph(const GraphNodePtr &graph_node,
   const auto build_step = GetBuildStep(graph_node);
   GELOGD("PreRunAfterOptimizeSubGraph build step: [%s].", build_step.c_str());
   if (build_step != BUILD_STEP_AFTER_BUILD) {
+    // 全局选项核数快照需在自定义算子编译(FillCompileContextInfo)之前可见，否则会回落到 SoC 默认值
+    GE_ASSERT_SUCCESS(PersistCoreNumOptionsToRootGraph(compute_graph));
     CompilerStages &stages = GetCompilerStages(graph_node->GetGraphId());
     GM_RUN_AND_DUMP_PERF("OptimizeWholeGraph", stages.optimizer.OptimizeWholeGraph, compute_graph);
     GM_RUN_AND_DUMP_PERF("Optimize2", OptimizeStage2, compute_graph);
@@ -2182,7 +2172,11 @@ Status GraphManager::ExecuteGraphWithStreamAsync(const GraphId &graph_id, const 
   graph_node->SetIsSpecificStream(true);
 
   GE_CHECK_NOTNULL(executor_);
-  return executor_->ExecuteGraphWithStream(graph_node, graph_id, stream, inputs, outputs);
+  gert::Allocators *allocators = nullptr;
+  if (IsOm2OnlineMode()) {
+    GE_ASSERT_SUCCESS(GetExecuteGraphAllocators(graph_id, stream, allocators));
+  }
+  return executor_->ExecuteGraphWithStream(graph_node, graph_id, stream, inputs, outputs, allocators);
 }
 
 Status GraphManager::RunGraphWithStreamAsync(const GraphId &graph_id, const aclrtStream stream, uint64_t session_id,
@@ -5153,6 +5147,16 @@ Status GraphManager::SetFixedFeatureMemoryBase(uint32_t graph_id, MemoryType typ
     return GE_GRAPH_UNSUPPORTED;
   }
   if (IsOm2OnlineMode()) {
+    const auto &ge_root_model = graph_node->GetGeRootModel();
+    const auto om2_model_data = ge_root_model == nullptr ? nullptr : ge_root_model->GetOm2ModelData();
+    if ((om2_model_data != nullptr) && (!om2_model_data->models.empty()) && (om2_model_data->models[0] != nullptr) &&
+        (gert::GetGertModelExecutionType(*om2_model_data->models[0]) == gert::GertModelExecutionType::kDynamic)) {
+      GELOGW(
+          "[OM2][Check] Setting fixed feature memory base is not supported in dynamic OM2 online mode yet. "
+          "The setting is ignored and will not take effect, graph_id:%u.",
+          graph_id);
+      return SUCCESS;
+    }
     GELOGE(GE_GRAPH_UNSUPPORTED,
            "[OM2][Check] Fixed feature memory base is unsupported in OM2 online mode, graph_id:%u.", graph_id);
     return GE_GRAPH_UNSUPPORTED;

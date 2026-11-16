@@ -19,6 +19,10 @@ using EquivalantNodesFromMainToInit = std::unordered_map<ge::FastNode *, ge::Fas
 class ConstantExpressionMotion : public Pass {
  public:
   explicit ConstantExpressionMotion(const LoweringGlobalData *global_data) : global_data_(global_data) {}
+  // 不经过 GE lowering 的执行图没有 LoweringGlobalData，其 Init/Main 等价节点由调用方给出。
+  // 没有在 Init 中预先创建等价 allocator 时传空表即可，语义与查不到等价节点一致。
+  explicit ConstantExpressionMotion(EquivalantNodesFromMainToInit equivalant_nodes)
+      : is_external_graph_(true), equivalant_nodes_(std::move(equivalant_nodes)) {}
   ~ConstantExpressionMotion() override = default;
 
  public:
@@ -30,6 +34,7 @@ class ConstantExpressionMotion : public Pass {
   ge::ExecuteGraph *GetDeInitGraph();
   ge::FastNode *GetInitNetOutput() const;
   ge::FastNode *GetEquivalantNodesInInit(ge::FastNode *const node) const;
+  bool IsExplicitMainStage(const ge::FastNode *node) const;
 
  private:
   ge::graphStatus Init(ge::ExecuteGraph *const root_graph);
@@ -40,6 +45,10 @@ class ConstantExpressionMotion : public Pass {
 
  private:
   const LoweringGlobalData *global_data_{nullptr};
+  // OM2 外部执行图使用显式阶段和等价节点映射；原 RT2 构造路径不启用。
+  bool is_external_graph_{false};
+  // 外部路径直接给出的 Init/Main 等价节点表。
+  EquivalantNodesFromMainToInit equivalant_nodes_;
   ge::ExecuteGraph *root_graph_{nullptr};
   ge::ExecuteGraph *cached_init_graph_{nullptr};
   ge::ExecuteGraph *cached_de_init_graph_{nullptr};

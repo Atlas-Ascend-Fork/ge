@@ -205,6 +205,18 @@ TEST_F(UtestHcclTaskCodeBuilder, ParseHcclAttrs_ZeroCopyFlagSizeMismatchRejected
   EXPECT_NE(builder_->ParseHcclAttrs(task_def, op_desc), SUCCESS);
 }
 
+// attached stream ids 中 -1（未分配）为合法状态，解析时须过滤，
+// 避免生成代码 stream_list[-1] 越界导致 HCCL LoadTask 失败
+TEST_F(UtestHcclTaskCodeBuilder, ParseHcclAttrs_AttachedStreamIdsFilterInvalid) {
+  auto task_def = MakeHcclTaskDef();
+  auto op_desc = MakeHcclOpDesc();
+  std::vector<NamedAttrs> attached_stream_infos(3U);
+  (void)AttrUtils::SetListNamedAttrs(op_desc, ATTR_NAME_ATTACHED_STREAM_INFO_LIST, attached_stream_infos);
+  op_desc->SetAttachedStreamIds({-1, 2, -1});
+  EXPECT_EQ(builder_->ParseHcclAttrs(task_def, op_desc), SUCCESS);
+  EXPECT_EQ(builder_->build_data_.attached_stream_ids, (std::vector<int64_t>{2}));
+}
+
 TEST_F(UtestHcclTaskCodeBuilder, Contribute_NonWhitelistOpRejected) {
   domi::TaskDef task_def = MakeHcclTaskDef();
   task_def.mutable_kernel_hccl()->set_hccl_type("HcomUnknownOp");

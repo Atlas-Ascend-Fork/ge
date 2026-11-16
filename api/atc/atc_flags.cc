@@ -23,6 +23,9 @@ DEFINE_string(input_shape, "",
 DEFINE_string(input_hint_shape, "",
               "Optional; shape hint of input data."
               "Format: \"index1:[n1,c1,h1,w1];index2:[n2,c2,h2,w2]\"");
+DEFINE_string(input_hint_value, "",
+              "Optional; value hint of dynamic input data."
+              "Format: \"index1:[v1,v2,...];index2:[v1,v2,...]\"");
 DEFINE_string(input_shape_range, "",
               "Deprecated; input_shape_range is deprecated and will be removed in future version. "
               "please use input_shape instead. "

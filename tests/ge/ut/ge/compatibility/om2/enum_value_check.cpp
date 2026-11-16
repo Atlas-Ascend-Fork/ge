@@ -13,8 +13,26 @@
 
 #include "gtest/gtest.h"
 #include "om2/model_api/om2_model_api.h"
+#include "framework/om2/model_data/gert_model_data.h"
 
 namespace {
+
+TEST(Om2AbiEnumCompatibility, ModelExecutionTypeValuesAreFrozen) {
+  using ExecutionType = gert::GertModelExecutionType;
+  static_assert(std::is_same<std::underlying_type<ExecutionType>::type, uint64_t>::value,
+                "Model execution type underlying type changed");
+  EXPECT_EQ(static_cast<uint64_t>(ExecutionType::kStatic), 0U);
+  EXPECT_EQ(static_cast<uint64_t>(ExecutionType::kDynamic), 1U);
+}
+
+TEST(Om2AbiEnumCompatibility, ConstPlacementValuesAreFrozen) {
+  using Placement = gert::GertModelDataConstPlacement;
+  static_assert(std::is_same<std::underlying_type<Placement>::type, uint64_t>::value,
+                "Const placement underlying type changed");
+  EXPECT_EQ(static_cast<uint64_t>(Placement::kUnspecified), 0U);
+  EXPECT_EQ(static_cast<uint64_t>(Placement::kDevice), 1U);
+  EXPECT_EQ(static_cast<uint64_t>(Placement::kHost), 2U);
+}
 
 TEST(Om2AbiEnumCompatibility, GertModelArgKindValuesAreFrozen) {
   static_assert(std::is_same<std::underlying_type<GertModelArgKind>::type, uint64_t>::value,
@@ -39,6 +57,20 @@ TEST(Om2AbiEnumCompatibility, GertModelArgKindValuesAreFrozen) {
   EXPECT_EQ(GERT_MODEL_ARG_OVERFLOW_ADDR, 10U);
   EXPECT_EQ(GERT_MODEL_ARG_EMPTY_ADDR, 11U);
   EXPECT_EQ(GERT_MODEL_ARG_INVALID_KIND, 0xFFFFU);
+}
+
+TEST(Om2AbiEnumCompatibility, SharedLibraryTypeValuesAreFrozen) {
+  static_assert(std::is_same<std::underlying_type<GertModelSharedLibraryType>::type, uint64_t>::value,
+                "GertModelSharedLibraryType underlying type changed");
+  static_assert(GERT_MODEL_SHARED_LIBRARY_SPACE_REGISTRY == 0U && GERT_MODEL_SHARED_LIBRARY_OP_MASTER_DEVICE == 1U &&
+                    GERT_MODEL_SHARED_LIBRARY_AUTOFUSE == 2U && GERT_MODEL_SHARED_LIBRARY_CUSTOM_OP == 3U &&
+                    GERT_MODEL_SHARED_LIBRARY_UNSPECIFIED == 0xFFFFU,
+                "GertModelSharedLibraryType value changed");
+  EXPECT_EQ(GERT_MODEL_SHARED_LIBRARY_SPACE_REGISTRY, 0U);
+  EXPECT_EQ(GERT_MODEL_SHARED_LIBRARY_OP_MASTER_DEVICE, 1U);
+  EXPECT_EQ(GERT_MODEL_SHARED_LIBRARY_AUTOFUSE, 2U);
+  EXPECT_EQ(GERT_MODEL_SHARED_LIBRARY_CUSTOM_OP, 3U);
+  EXPECT_EQ(GERT_MODEL_SHARED_LIBRARY_UNSPECIFIED, 0xFFFFU);
 }
 
 TEST(Om2AbiEnumCompatibility, GertModelTaskLaunchTypeValuesAreFrozen) {

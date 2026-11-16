@@ -13,7 +13,7 @@
 #include <utility>
 #include "register/kernel_registry.h"
 #include "exe_graph/lowering/exe_graph_attrs.h"
-#include "core/builder/node_types.h"
+#include "core/builder/executor_selection_policy.h"
 #include "execution_data_builder/execution_data_builder.h"
 #include "common/plugin/ge_make_unique_util.h"
 #include "core/executor/topological/execution_data/topological_execution_data_builder.h"
@@ -37,40 +37,11 @@ const char_t *GetExecutorTypeStr(ExecutorType e_type) {
   return kTypeNames[static_cast<size_t>(e_type)];
 }
 
-struct ExecutorSelectionArgs {
-  bool has_ctrl_node;
-  size_t launch_num;
-};
-void ExtractImportantInfo(const ge::ExecuteGraphPtr &exe_graph, ExecutorSelectionArgs &arg) {
-  for (const auto node : exe_graph->GetAllNodes()) {
-    const auto node_type = node->GetTypePtr();
-    if (!arg.has_ctrl_node) {
-      if (IsIfOrCaseType(node_type) || IsWhileType(node_type)) {
-        arg.has_ctrl_node = true;
-        continue;
-      }
-    }
-    if (IsLaunchNode(node_type)) {
-      arg.launch_num++;
-      continue;
-    }
-  }
-}
 ExecutorType SelectExecutor(const ge::ExecuteGraphPtr &exe_graph, const ExecutorOption *executor_option) {
   if (executor_option && (executor_option->GetExecutorType() != ExecutorType::kEnd)) {
     return executor_option->GetExecutorType();
   }
-  constexpr size_t kLaunchNumLimit = 5UL;
-  ExecutorSelectionArgs arg = {false, 0UL};
-  ExtractImportantInfo(exe_graph, arg);
-
-  if (!arg.has_ctrl_node) {
-    return ExecutorType::kSequentialPriority;
-  }
-  if (arg.launch_num >= kLaunchNumLimit) {
-    return ExecutorType::kTopologicalPriority;
-  }
-  return ExecutorType::kTopological;
+  return SelectDefaultExecutorType(*exe_graph);
 }
 
 // refactoring to factory if we need

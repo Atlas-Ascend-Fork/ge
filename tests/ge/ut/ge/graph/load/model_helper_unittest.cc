@@ -30,6 +30,7 @@
 #include "common/op_so_store/op_so_store_utils.h"
 #undef private
 #include "framework/common/helper/model_helper.h"
+#include "common/helper/model_save_utils.h"
 #include "hybrid/node_executor/aicore/aicore_op_task.h"
 #include "framework/omg/ge_init.h"
 #include "common/model/ge_model.h"
@@ -1584,6 +1585,42 @@ TEST_F(UtestModelHelper, LoadRootModel_GetFileConstantWeightDirWithWrongWeightPa
   model_data.weight_path = "/home";
   EXPECT_NE(model_helper.LoadRootModel(model_data), SUCCESS);
   system(("rm -rf " + output_file).c_str());
+}
+
+TEST_F(UtestModelHelper, InitFirstGeModelReusesRootModel) {
+  auto graph = std::make_shared<ComputeGraph>("root");
+  auto root = std::make_shared<GeRootModel>();
+  root->SetRootGraph(graph);
+  auto existing = std::make_shared<GeModel>();
+  existing->SetGraph(graph);
+  ASSERT_TRUE(AttrUtils::SetInt(existing, ATTR_MODEL_MEMORY_SIZE, 4096));
+  root->SetSubgraphInstanceNameToModel(graph->GetName(), existing);
+
+  GeModelPtr first;
+  ASSERT_EQ(InitFirstGeModel(root, root->GetSubgraphInstanceNameToModel(), first), SUCCESS);
+  EXPECT_EQ(first, existing);
+  int64_t memory_size = 0;
+  ASSERT_TRUE(AttrUtils::GetInt(first, ATTR_MODEL_MEMORY_SIZE, memory_size));
+  EXPECT_EQ(memory_size, 4096);
+  EXPECT_TRUE(first->HasAttr(ATTR_MODEL_ATC_CMDLINE));
+}
+
+TEST_F(UtestModelHelper, InitFirstGeModelCreatesRootShellWithoutChangingModelMap) {
+  auto graph = std::make_shared<ComputeGraph>("root");
+  auto root = std::make_shared<GeRootModel>();
+  root->SetRootGraph(graph);
+  auto child = std::make_shared<GeModel>();
+  child->SetGraph(std::make_shared<ComputeGraph>("child"));
+  root->SetSubgraphInstanceNameToModel("child", child);
+
+  GeModelPtr first;
+  ASSERT_EQ(InitFirstGeModel(root, root->GetSubgraphInstanceNameToModel(), first), SUCCESS);
+  ASSERT_NE(first, nullptr);
+  EXPECT_EQ(first->GetGraph(), graph);
+  EXPECT_NE(first, child);
+  EXPECT_TRUE(first->HasAttr(ATTR_MODEL_ATC_CMDLINE));
+  ASSERT_EQ(root->GetSubgraphInstanceNameToModel().size(), 1U);
+  EXPECT_EQ(root->GetSubgraphInstanceNameToModel().at("child"), child);
 }
 
 TEST_F(UtestModelHelper, SaveOutNodesFromRootGraph) {
@@ -3343,6 +3380,32 @@ TEST_F(UtestModelHelper, GetSoBinData_upgraded_opp_success) {
   ModelHelper model_helper;
   EXPECT_EQ(model_helper.GetSoBinData(cpu_info, os_info), SUCCESS);
   EXPECT_EQ(model_helper.op_so_store_.kernels_.size(), 4U);
+  for (const auto &path : paths) {
+    ge::PathUtils::RemoveDirectories(path);
+  }
+}
+
+TEST_F(UtestModelHelper, CollectSpaceRegistrySoBinsPreservesExistingResources) {
+  std::vector<std::string> paths;
+  gert::CreateBuiltInSplitAndUpgradedSo(paths);
+  OpSoStore store;
+  auto content = std::make_unique<char_t[]>(1U);
+  content[0] = 'x';
+  auto existing =
+      std::make_shared<OpSoBin>("existing.so", "existing", std::move(content), 1U, SoBinType::kSpaceRegistry);
+  store.AddKernel(existing);
+  std::unordered_set<std::string> versions{"existing_version"};
+
+  EXPECT_EQ(CollectSpaceRegistrySoBins(GetCurArch(), "linux", store, versions), SUCCESS);
+  const auto bins = store.GetSoBin();
+  EXPECT_EQ(bins.size(), 5U);
+  if (!bins.empty()) {
+    EXPECT_EQ(bins.front(), existing);
+  }
+  for (const auto &bin : bins) {
+    EXPECT_EQ(bin->GetSoBinType(), SoBinType::kSpaceRegistry);
+  }
+  EXPECT_EQ(versions.count("existing_version"), 1U);
   for (const auto &path : paths) {
     ge::PathUtils::RemoveDirectories(path);
   }

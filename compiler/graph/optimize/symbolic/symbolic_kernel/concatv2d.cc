@@ -223,7 +223,7 @@ REGISTER_SYMBOLIC_KERNEL(ConcatD, ConcatV2DSymbolicKernelCompute);
 namespace {
 // ConcatV2 的 concat_dim 为末位输入 tensor（扁平位置随 x 实例数变化，不能写死常量索引），
 // 沿轴向的值需为单一常量，否则降级交由上层回退传统推导
-graphStatus GetConcatDimFromInput(gert::InferSymbolComputeContext *context, size_t axis_input_idx,
+graphStatus GetConcatDimFromInput(const gert::InferSymbolComputeContext *context, size_t axis_input_idx,
                                   int64_t &concat_dim) {
   auto axis_tensor = context->GetInputSymbolTensor(axis_input_idx);
   if (axis_tensor == nullptr || axis_tensor->GetSymbolicValue() == nullptr ||

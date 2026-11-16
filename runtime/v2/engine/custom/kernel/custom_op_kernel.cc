@@ -38,6 +38,8 @@ enum class CustomOpInput {
   kRootGraphId,
   kNodeId,
   kVectorCoreNum,
+  kAiCoreNum,
+  kAiCpuNum,
   kEnd
 };
 enum class HostCustomOpInput {
@@ -187,6 +189,9 @@ static ge::graphStatus CreateCustomOpOutputs(const ge::FastNode *node, KernelCon
   // 根图graph id / node id / vector core数量由lowering注入，按附加输入槽读取
   auto context_info = ge::MakeUnique<CustomOpContextInfo>();
   GE_ASSERT_NOTNULL(context_info);
+  // V2动态链路非静态下沉路径、不使能地址刷新，显式写入布尔参数
+  context_info->SetStaticModel(false);
+  context_info->SetAddressRefreshEnabled(false);
   const size_t additional_input_start = extended_kernel_context->GetComputeNodeInputNum();
   // 取值约定：graph id恒有效（0合法）；node id / vector core数量用sentinel表示未设置（见lowering注入）
   const auto *root_graph_id =
@@ -203,6 +208,16 @@ static ge::graphStatus CreateCustomOpOutputs(const ge::FastNode *node, KernelCon
       context->GetInputPointer<int64_t>(additional_input_start + static_cast<size_t>(CustomOpInput::kVectorCoreNum));
   if ((vector_core_num != nullptr) && (*vector_core_num >= 0)) {
     context_info->SetVectorCoreNum(static_cast<uint64_t>(*vector_core_num));
+  }
+  const auto *aicore_num =
+      context->GetInputPointer<int64_t>(additional_input_start + static_cast<size_t>(CustomOpInput::kAiCoreNum));
+  if ((aicore_num != nullptr) && (*aicore_num >= 0)) {
+    context_info->SetAiCoreNum(static_cast<uint64_t>(*aicore_num));
+  }
+  const auto *aicpu_num =
+      context->GetInputPointer<int64_t>(additional_input_start + static_cast<size_t>(CustomOpInput::kAiCpuNum));
+  if ((aicpu_num != nullptr) && (*aicpu_num >= 0)) {
+    context_info->SetAiCpuNum(static_cast<uint64_t>(*aicpu_num));
   }
   auto *context_info_output = context->GetOutput(
       node_output_num + static_cast<size_t>(EagerOpExecutionContext::AdditionalOutputIndex::kContextInfo));

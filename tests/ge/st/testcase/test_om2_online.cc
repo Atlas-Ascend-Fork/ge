@@ -48,6 +48,8 @@
 #include "ge_runtime_stub/include/faker/aicore_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/ge_model_builder.h"
 
+#include "om2_online_test_utils.h"
+
 namespace ge {
 namespace {
 
@@ -275,216 +277,6 @@ TEST_F(Om2OnlineSessionTest, Om2ModelData_SharedPtrFork) {
   // Both point to the same data
   EXPECT_EQ(ge_root_model->GetOm2ModelData().get(), forked_data.get());
 }
-
-namespace {
-class EnvValueGuard {
- public:
-  explicit EnvValueGuard(const char *name) : name_(name) {
-    const char *value = std::getenv(name_.c_str());
-    if (value != nullptr) {
-      old_value_ = value;
-      had_value_ = true;
-    }
-  }
-
-  ~EnvValueGuard() {
-    if (had_value_) {
-      (void)setenv(name_.c_str(), old_value_.c_str(), 1);
-    } else {
-      (void)unsetenv(name_.c_str());
-    }
-  }
-
- private:
-  std::string name_;
-  std::string old_value_;
-  bool had_value_ = false;
-};
-
-void EnableOm2OnlineMode() {
-  ASSERT_EQ(setenv("ENABLE_RUNTIME_OM2", "1", 1), 0);
-}
-
-static const std::string fake_om2_so_src = R"(
-#include <cstddef>
-#include <cstdint>
-
-typedef void* aclmdlRI;
-typedef void* aclrtStream;
-typedef void* aclrtEvent;
-typedef void* aclrtLabel;
-typedef void* aclrtNotify;
-
-struct GertModelLoadConfig {
-  uint64_t struct_size;
-  const char **bin_files;
-  const void **bin_data;
-  uint64_t *bin_size;
-  uint64_t bin_num;
-  void **constants;
-  void **var_addrs;
-  void *work_ptr;
-  uint64_t *session_id;
-  uint64_t model_id;
-  void *instance_handle;
-  void *executor_handle;
-  const struct GertModelLoadCallbacks *callbacks;
-  int64_t priority;
-  aclmdlRI external_rt_model = nullptr;
-  aclrtStream *external_streams = nullptr;
-  uint64_t external_stream_num = 0;
-  aclrtEvent *external_events = nullptr;
-  uint64_t external_event_num = 0;
-  aclrtLabel *external_labels = nullptr;
-  uint64_t external_label_num = 0;
-  aclrtNotify *external_notifies = nullptr;
-  uint64_t external_notify_num = 0;
-};
-
-struct GertModelRunConfig {
-  uint64_t struct_size;
-  uint64_t input_count;
-  void **input_data;
-  uint64_t output_count;
-  void **output_data;
-  uint64_t stream_sync_timeout_ms;
-  const struct GertModelRunCallbacks *run_callbacks = nullptr;
-};
-
-struct GertModelUnloadConfig {
-  uint64_t struct_size;
-};
-
-struct GertModelLoadOutput {
-  uint64_t struct_size;
-};
-
-struct GertModelRunOutput {
-  uint64_t struct_size;
-};
-
-struct GertModelUnloadOutput {
-  uint64_t struct_size;
-};
-
-extern "C" {
-int GertModelLoad(const struct GertModelLoadConfig *config, void **model_handle, struct GertModelLoadOutput *output) {
-  if (model_handle) *model_handle = (void *)0x1;
-  return 0;
-}
-
-int GertModelRunAsync(void *model_handle, void *stream, const struct GertModelRunConfig *config, struct GertModelRunOutput *output) {
-  return 0;
-}
-
-int GertModelRun(void *model_handle, const struct GertModelRunConfig *config, struct GertModelRunOutput *output) {
-  return 0;
-}
-
-int GertModelUnload(void *model_handle, const struct GertModelUnloadConfig *config, struct GertModelUnloadOutput *output) { return 0; }
-}
-)";
-
-std::string MakeFakeOm2SoSource() {
-  return fake_om2_so_src;
-}
-
-std::vector<uint8_t> ReadFileBytes(const std::string &path) {
-  std::ifstream ifs(path, std::ios::binary | std::ios::ate);
-  if (!ifs.is_open()) {
-    return {};
-  }
-  const auto size = ifs.tellg();
-  ifs.seekg(0, std::ios::beg);
-  std::vector<uint8_t> data(static_cast<size_t>(size));
-  ifs.read(reinterpret_cast<char *>(data.data()), size);
-  return data;
-}
-
-gert::GertModelData MakeOm2ModelDataWithFakeSo(const std::string &so_path) {
-  gert::GertModelData model_data;
-  gert::InitGertModelData(model_data);
-  model_data.models.emplace_back(std::make_unique<gert::GertModelDataModel>());
-  model_data.constants->constants_data.emplace_back();
-  model_data.models[0]->model_meta = std::make_unique<gert::GertModelDataModelMeta>();
-  model_data.models[0]->runtime = std::make_unique<gert::GertModelDataRuntime>();
-  model_data.constants->constants_data[0] = std::make_unique<gert::GertModelDataFile>();
-  model_data.models[0]->constants_config = std::make_unique<gert::GertModelDataConstantsConfig>();
-  model_data.models[0]->debug = std::make_unique<gert::GertModelDataDebug>();
-  model_data.manifest = std::make_unique<gert::GertModelDataManifest>();
-  model_data.models[0]->model_meta->model_name = gert::GertMakeStr("st_om2_test_model");
-  model_data.models[0]->model_meta->work_size = 1024U;
-
-  gert::GertTensorDesc input_desc;
-  input_desc.name = gert::GertMakeStr("input");
-  input_desc.data_type = ge::DT_FLOAT;
-  input_desc.shape = {1, 4};
-  input_desc.size = 16U;
-  model_data.models[0]->model_meta->input_desc.push_back(std::move(input_desc));
-
-  gert::GertTensorDesc input_desc_v2;
-  input_desc_v2.name = gert::GertMakeStr("input");
-  input_desc_v2.data_type = ge::DT_FLOAT;
-  input_desc_v2.shape = {1, 4};
-  input_desc_v2.size = 16U;
-  model_data.models[0]->model_meta->input_desc_v2.push_back(std::move(input_desc_v2));
-
-  gert::GertTensorDesc output_desc;
-  output_desc.name = gert::GertMakeStr("output");
-  output_desc.data_type = ge::DT_FLOAT;
-  output_desc.shape = {1, 4};
-  output_desc.size = 16U;
-  model_data.models[0]->model_meta->output_desc.push_back(std::move(output_desc));
-
-  gert::GertTensorDesc output_desc_v2;
-  output_desc_v2.name = gert::GertMakeStr("output");
-  output_desc_v2.data_type = ge::DT_FLOAT;
-  output_desc_v2.shape = {1, 4};
-  output_desc_v2.size = 16U;
-  model_data.models[0]->model_meta->output_desc_v2.push_back(std::move(output_desc_v2));
-
-  auto so_bytes = ReadFileBytes(so_path);
-  model_data.models[0]->runtime->so_artifact.file_name = gert::GertMakeStr("libst_test_model_om2.so");
-  model_data.models[0]->runtime->so_artifact.data = gert::GertMakeFileData(so_bytes.data(), so_bytes.size());
-  model_data.models[0]->runtime->so_artifact.data_size = so_bytes.size();
-
-  return model_data;
-}
-}  // namespace
-
-class Om2OnlineModelExecutorTest : public testing::Test {
- protected:
-  static void SetUpTestSuite() {
-    test_work_dir_ = EnvPath().GetOrCreateCaseTmpPath("Om2OnlineModelExecutorTest");
-    setenv("ASCEND_WORK_PATH", test_work_dir_.c_str(), 1);
-
-    const std::string src_path = PathUtils::Join({test_work_dir_, "fake_om2.cpp"});
-    fake_so_path_ = PathUtils::Join({test_work_dir_, "libfake_om2.so"});
-    std::ofstream ofs(src_path, std::ios::binary | std::ios::trunc);
-    ASSERT_TRUE(ofs.is_open());
-    ofs << MakeFakeOm2SoSource();
-    ofs.close();
-    const std::string compile_cmd = "ASAN_OPTIONS=detect_leaks=0 LSAN_OPTIONS=detect_leaks=0 g++ -shared -fPIC -o " +
-                                    fake_so_path_ + " " + src_path;
-    ASSERT_EQ(std::system(compile_cmd.c_str()), 0);
-    ASSERT_EQ(mmAccess2(fake_so_path_.c_str(), M_F_OK), EOK);
-  }
-
-  static void TearDownTestSuite() {
-    unsetenv("ASCEND_WORK_PATH");
-    EnvPath().RemoveRfCaseTmpPath("Om2OnlineModelExecutorTest");
-  }
-
-  void TearDown() override {
-    unsetenv("ENABLE_RUNTIME_OM2");
-  }
-
-  static std::string test_work_dir_;
-  static std::string fake_so_path_;
-};
-
-std::string Om2OnlineModelExecutorTest::test_work_dir_;
-std::string Om2OnlineModelExecutorTest::fake_so_path_;
 
 TEST_F(Om2OnlineModelExecutorTest, LoadAndUnload_Success) {
   EnvValueGuard guard("ENABLE_RUNTIME_OM2");
@@ -787,7 +579,7 @@ TEST_F(Om2OnlineModelExecutorTest, ExecuteGraphWithStream_Om2Mode_Success) {
   EXPECT_EQ(model_executor.Finalize(), SUCCESS);
 }
 
-TEST_F(Om2OnlineModelExecutorTest, RunThread_Om2Mode_ReturnsUnsupported) {
+TEST_F(Om2OnlineModelExecutorTest, RunThread_Om2ModeReportsUnsupportedThroughCallback) {
   EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
@@ -815,8 +607,9 @@ TEST_F(Om2OnlineModelExecutorTest, RunThread_Om2Mode_ReturnsUnsupported) {
 
   GraphNodePtr graph_node = std::make_shared<ge::GraphNode>(graph_id);
   graph_node->SetGeRootModel(ge_root_model);
-  graph_node->SetLoadFlag(true);
-  graph_node->IncreaseLoadCount();
+  auto model_data = std::make_shared<gert::GertModelData>(MakeOm2ModelDataWithFakeSo(fake_so_path_));
+  ge_root_model->SetOm2ModelData(model_data);
+  ASSERT_EQ(model_executor.LoadGraph(ge_root_model, graph_node), SUCCESS);
   graph_node->Lock();
 
   std::vector<gert::Tensor> input_tensors(1);
@@ -901,141 +694,6 @@ TEST_F(Om2OnlineModelExecutorTest, GetCompiledModel_Om2Mode_Success) {
   EXPECT_EQ(graph_manager.GetCompiledModel(graph_id, model_buffer), SUCCESS);
   ASSERT_NE(model_buffer.data, nullptr);
   EXPECT_GT(model_buffer.length, 0U);
-}
-
-std::shared_ptr<gert::GertModelData> GetExecuteModelData(const GraphNodePtr &node) {
-  const auto root = node->GetGeRootModel();
-  return root == nullptr ? nullptr : root->GetOm2ModelData();
-}
-
-void SetExecuteModelData(const GraphNodePtr &node, const std::shared_ptr<gert::GertModelData> &data) {
-  auto root = std::make_shared<GeRootModel>();
-  root->SetOm2ModelData(data);
-  node->SetGeRootModel(root);
-}
-
-class Om2ExecuteGraphSessionTest : public Om2OnlineModelExecutorTest {
- protected:
-  void SetUp() override {
-    EnableOm2OnlineMode();
-    const std::map<AscendString, AscendString> options;
-    ASSERT_EQ(GEInitializeV2(options), SUCCESS);
-    session_ = std::make_unique<GeSession>(options);
-  }
-
-  void TearDown() override {
-    session_.reset();
-    EXPECT_EQ(GEFinalizeV2(), SUCCESS);
-    Om2OnlineModelExecutorTest::TearDown();
-  }
-
-  void AddCompiledGraph(const uint32_t id, GraphNodePtr &node) {
-    const auto inner = session_->impl_->GetInnerSession();
-    ASSERT_NE(inner, nullptr);
-    node = std::make_shared<GraphNode>(id);
-    node->SetGraph(std::make_shared<Graph>("execute_session_st", static_cast<GraphKind>(1)));
-    inner->graph_manager_.AddGraphNode(id, node);
-    inner->graph_manager_.IncreaseGraphCount(id);
-    inner->graph_manager_.SetAddGraphCondition(id, 2U);
-    inner->run_graph_modes_.emplace(id, RunGraphMode::kRunGraphModeEnd);
-    // Isolate generator compilation: reuse this suite's host program SO and exercise the real Session/loader chain.
-    auto data = std::make_shared<gert::GertModelData>(MakeOm2ModelDataWithFakeSo(fake_so_path_));
-    data->models[0]->model_meta->input_desc[0].format = FORMAT_ND;
-    data->models[0]->model_meta->input_desc_v2[0].format = FORMAT_ND;
-    data->models[0]->model_meta->output_desc[0].format = FORMAT_ND;
-    data->models[0]->model_meta->output_desc_v2[0].format = FORMAT_ND;
-    SetExecuteModelData(node, data);
-    node->SetBuildFlag(true);
-  }
-
-  std::vector<gert::Tensor> MakeInputs() {
-    gert::Tensor input;
-    input.SetDataType(DT_FLOAT);
-    input.SetOriginFormat(FORMAT_ND);
-    input.SetStorageFormat(FORMAT_ND);
-    input.MutableOriginShape() = gert::Shape({1, 4});
-    input.MutableStorageShape() = gert::Shape({1, 4});
-    input.SetData(gert::TensorData(input_data_.data(), nullptr, sizeof(input_data_), gert::kOnHost));
-    std::vector<gert::Tensor> inputs;
-    inputs.emplace_back(std::move(input));
-    return inputs;
-  }
-
-  EnvValueGuard om2_env_guard_{"ENABLE_RUNTIME_OM2"};
-  std::unique_ptr<GeSession> session_;
-  std::array<float, 4> input_data_{{1.0F, 2.0F, 3.0F, 4.0F}};
-};
-
-/**
- * 用例描述：执行图经 Session 加载内存产物、重复同步执行、删除并复用 ID。
- * 预置条件：RTS 使用 ST 桩；注入本套件的 Host 测试 SO 作为已编译产物，不验证生成器或 NPU 精度。
- * 测试步骤：Add/注入产物/Compile/Load/两轮 Run/Remove，再以相同 ID 重复生命周期。
- * 预期结果：产物身份保持，输出描述正确，未创建计算图资源，删除后记录消失且引用释放。
- */
-TEST_F(Om2ExecuteGraphSessionTest, ExplicitLifecycleReusesGraphIdAndPreservesCompiledData) {
-  constexpr uint32_t id = 5101U;
-  for (size_t cycle = 0U; cycle < 2U; ++cycle) {
-    SCOPED_TRACE(cycle);
-    GraphNodePtr node;
-    ASSERT_NO_FATAL_FAILURE(AddCompiledGraph(id, node));
-    const auto *const compiled = GetExecuteModelData(node).get();
-    std::weak_ptr<gert::GertModelData> weak_data = GetExecuteModelData(node);
-    ASSERT_EQ(session_->CompileGraph(id), SUCCESS);
-    EXPECT_EQ(GetExecuteModelData(node).get(), compiled);
-    EXPECT_FALSE(node->GetLoadFlag());
-    ASSERT_EQ(session_->LoadGraph(id, {}, nullptr), SUCCESS);
-    const auto loaded = node->GetGeRootModel()->GetModelId();
-    ASSERT_NE(loaded, INVALID_MODEL_ID);
-    EXPECT_NE(session_->LoadGraph(id, {}, nullptr), SUCCESS);
-    EXPECT_EQ(node->GetGeRootModel()->GetModelId(), loaded);
-    for (size_t run = 0U; run < 2U; ++run) {
-      auto inputs = MakeInputs();
-      std::vector<gert::Tensor> outputs;
-      ASSERT_EQ(session_->RunGraph(id, inputs, outputs), SUCCESS);
-      ASSERT_EQ(outputs.size(), 1U);
-      EXPECT_EQ(outputs[0].GetDataType(), DT_FLOAT);
-      EXPECT_EQ(outputs[0].GetStorageFormat(), FORMAT_ND);
-      EXPECT_EQ(outputs[0].GetStorageShape(), gert::Shape({1, 4}));
-      EXPECT_EQ(GetExecuteModelData(node).get(), compiled);
-      EXPECT_FALSE(node->GetRunFlag());
-    }
-    EXPECT_EQ(node->GetComputeGraph(), nullptr);
-    EXPECT_NE(node->GetGeRootModel(), nullptr);
-    ASSERT_EQ(session_->RemoveGraph(id), SUCCESS);
-    EXPECT_EQ(GetExecuteModelData(node).get(), compiled);
-    node.reset();
-    EXPECT_TRUE(weak_data.expired());
-    GraphNodePtr removed;
-    EXPECT_EQ(session_->impl_->GetInnerSession()->getGraphManagerObj().GetGraphNode(id, removed),
-              GE_GRAPH_GRAPH_NOT_EXIST);
-    EXPECT_NE(session_->CompileGraph(id), SUCCESS);
-    EXPECT_EQ(session_->RemoveGraph(id), FAILED);
-  }
-}
-
-/**
- * 用例描述：非空加载流被忽略，使用原加载流程加载后可正常执行。
- * 预置条件：RTS 使用 ST 桩；注入 Host 测试 SO；当前内存 OM2 加载器忽略加载 stream。
- * 测试步骤：指定流 Load 成功，检查编译产物不变，再 Run、Remove。
- * 预期结果：加载不丢失产物、不遗留忙状态，后续执行成功。
- */
-TEST_F(Om2ExecuteGraphSessionTest, LoadStreamIsIgnoredAndCompiledGraphRemainsRunnable) {
-  constexpr uint32_t id = 5102U;
-  GraphNodePtr node;
-  ASSERT_NO_FATAL_FAILURE(AddCompiledGraph(id, node));
-  const auto *const compiled = GetExecuteModelData(node).get();
-  int stream_token = 0;
-  ASSERT_EQ(session_->LoadGraph(id, {}, &stream_token), SUCCESS);
-  EXPECT_EQ(GetExecuteModelData(node).get(), compiled);
-  EXPECT_TRUE(node->GetBuildFlag());
-  EXPECT_TRUE(node->GetLoadFlag());
-  EXPECT_FALSE(node->GetRunFlag());
-  auto inputs = MakeInputs();
-  std::vector<gert::Tensor> outputs;
-  ASSERT_EQ(session_->RunGraph(id, inputs, outputs), SUCCESS);
-  ASSERT_EQ(outputs.size(), 1U);
-  outputs.clear();
-  EXPECT_EQ(session_->RemoveGraph(id), SUCCESS);
 }
 
 /**

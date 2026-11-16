@@ -331,6 +331,13 @@ In `SubgraphRewriter` added `Replace(subgraph, replacement, ctx)` overload, chai
 
 Auto fusion executes after precision adjustment and before format adjustment, timing choice is critical: precision is already determined (no more Cast insertion), but format is not yet fixed (still has transformation space).
 
+Fusion eligibility checks validate AscIR data types using GE's bundled `temporary_dependencies/ascir/ascir_ops.h`,
+which must stay consistent with the capabilities of the backend implementation. On the `2201`
+platform, `int64` Broadcast, `uint8 → int64` Cast, and LogicalAnd/LogicalOr with two `int64` inputs and a `uint8`
+output are supported, preventing broadcasting and type conversion from causing lowering boxes to fall back.
+This does not extend support for `int64` Add/Mul/Sum. The corresponding backend must provide the Cast conversion path,
+temporary storage for 64-bit integer Duplicate, and broadcast handling.
+
 Auto fusion subsystem (`compiler/graph/optimize/autofuse/`) contains complete subdirectory structure: `ascir/`, `autofuse/` (containing `autoschedule/`, `can_fuse/`, `fusion/`, `lowering/`, `pattern_fusion/`, `post_process/`), `cmake/`, `common/`, `examples/`, `graph/`, `inc/`, `proto/` etc, indicating it not only makes fusion decisions, but also involves code generation of fused operators — this is a complete path from operator classification to code generation.
 
 ## 4. Engine Partitioning

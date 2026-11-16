@@ -10,6 +10,7 @@
 
 #include "ge_context.h"
 #include "exe_graph/runtime/op_compile_context.h"
+#include "framework/runtime/custom_op_context_info.h"
 #include "platform/platform_info.h"
 
 namespace gert {
@@ -83,8 +84,16 @@ ge::graphStatus OpCompileContext::GetPlatformInfos(fe::PlatFormInfos &platform_i
 }
 
 bool OpCompileContext::GetContextValue(ContextParam key, uint64_t &value) const {
-  (void)key;
-  (void)value;
-  return false;
+  const auto compute_node_info = GetComputeNodeInfo();
+  if (compute_node_info == nullptr) {
+    return false;
+  }
+  const auto *chain =
+      GetOutput(compute_node_info->GetOutputsNum() + static_cast<size_t>(AdditionalOutputIndex::kContextInfo));
+  if (chain == nullptr) {
+    return false;
+  }
+  const auto *context_info = chain->GetValue<CustomOpContextInfo *>();
+  return (context_info != nullptr) && context_info->GetContextValue(key, value);
 }
 }  // namespace gert

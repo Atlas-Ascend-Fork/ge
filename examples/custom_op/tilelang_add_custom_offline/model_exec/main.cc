@@ -27,7 +27,7 @@ constexpr int kMaxErrorDetails = 10;
 
 #define CHECK_ACL(ret, msg)                                       \
   do {                                                            \
-    if ((ret) != ACL_ERROR_NONE) {                                \
+    if ((ret) != ACL_SUCCESS) {                                   \
       std::cerr << (msg) << ", aclError: " << (ret) << std::endl; \
       return 1;                                                   \
     }                                                             \
@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
   uint32_t model_id = 0;
   std::cout << "Loading OM model (triggers Deserialize): " << om_path << std::endl;
   auto ret = aclmdlLoadFromFile(om_path.c_str(), &model_id);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     std::cerr << "aclmdlLoadFromFile failed, ret: " << ret << std::endl;
     CHECK_ACL(aclFinalize(), "aclFinalize failed");
     return 1;
@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
 
   auto *model_desc = aclmdlCreateDesc();
   ret = aclmdlGetDesc(model_desc, model_id);
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     std::cerr << "aclmdlGetDesc failed, ret: " << ret << std::endl;
     (void)aclmdlUnload(model_id);
     CHECK_ACL(aclFinalize(), "aclFinalize failed");
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
   std::cout << "Executing model (triggers Execute)..." << std::endl;
   ret = aclmdlExecute(model_id, input_dataset, output_dataset);
   bool precision_ok = false;
-  if (ret != ACL_ERROR_NONE) {
+  if (ret != ACL_SUCCESS) {
     std::cerr << "aclmdlExecute failed, ret: " << ret << std::endl;
   } else {
     CHECK_ACL(aclrtMemcpy(host_z.data(), kDataSizeBytes, z_dev, kDataSizeBytes, ACL_MEMCPY_DEVICE_TO_HOST),
@@ -153,5 +153,5 @@ int main(int argc, char *argv[]) {
   (void)aclmdlUnload(model_id);
   (void)aclmdlDestroyDesc(model_desc);
   CHECK_ACL(aclFinalize(), "aclFinalize failed");
-  return (ret == ACL_ERROR_NONE && precision_ok) ? 0 : 1;
+  return (ret == ACL_SUCCESS && precision_ok) ? 0 : 1;
 }

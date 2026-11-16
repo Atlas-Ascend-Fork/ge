@@ -13,6 +13,7 @@
 
 #include "framework/common/helper/model_save_helper.h"
 #include "framework/om2/model_data/gert_model_data.h"
+#include "graph/op_so_bin.h"
 #include <memory>
 #include <set>
 #include <string>
@@ -28,6 +29,7 @@ struct GertModelDataManifest;
 }  // namespace gert
 
 namespace ge {
+class ExecuteGraph;
 class Graph;
 
 class GE_FUNC_VISIBILITY Om2PackageHelper : public ModelSaveHelper {
@@ -45,9 +47,13 @@ class GE_FUNC_VISIBILITY Om2PackageHelper : public ModelSaveHelper {
   Status BuildOm2ModelData(const GeModelPtr &ge_model, gert::GertModelData &model_data,
                            const GeRootModelPtr &ge_root_model = nullptr) const;
 
+  /// @brief 将同一 GeRootModel lowering 后编译打包为单模型 GertModelData，仅成功时发布。
+  Status BuildDynamicGertModelData(const GeRootModelPtr &ge_root_model, gert::GertModelData &model_data) const;
+
+  // 仅接受执行图。原地处理底层图，失败也可能已改图；仅成功时发布模型数据。
   Status BuildGertModelDataFromGraph(const Graph &graph, gert::GertModelData &model_data) const;
 
-  /// @brief 确保 ge_root_model 上已挂载 GertModelData（幂等：已挂载则直接返回）。
+  /// @brief 按需构建并挂载 GertModelData；已挂载则直接返回。
   /// @param ge_root_model  编译产出的根模型。
   static Status EnsureGertModelData(const GeRootModelPtr &ge_root_model);
 
@@ -72,19 +78,42 @@ class GE_FUNC_VISIBILITY Om2PackageHelper : public ModelSaveHelper {
   static Status ExtractVisualJson(const void *model_data, size_t model_len, std::string &json_out);
 
  private:
+  static std::vector<GeModelPtr> GetModelsToBuild(const GeModelPtr &ge_model, const GeRootModelPtr &ge_root_model);
+  static Status PrepareDynamicModelData(const GeRootModelPtr &ge_root_model, gert::GertModelData &model_data);
+  static Status BuildSharedLibraries(const GeRootModelPtr &ge_root_model, const GeModelPtr &ge_model,
+                                     gert::GertModelDataSoBins *shared_libraries);
+  static Status DeduplicateKernelBinaries(gert::GertModelData &model_data);
+  Status SerializeModelData(const gert::GertModelData &model_data, const std::string &model_name,
+                            const std::string &output_file, ModelBufferData &model) const;
+  static Status BuildCustomOpResources(const GeRootModelPtr &ge_root_model, gert::GertModelData &model_data);
+  static Status CompileAndPackageOm2(const std::shared_ptr<ExecuteGraph> &graph, const std::string &model_name,
+                                     uint32_t graph_id, gert::GertModelData &model_data);
+  static Status CompileDynamicProgramBody(const std::string &model_name, uint32_t graph_id,
+                                          std::vector<gert::GertModelDataFile> &&artifacts,
+                                          gert::GertModelDataRuntime &runtime);
   static Status BuildProgramBody(const GeModelPtr &ge_model, gert::GertModelData &model_data,
                                  gert::GertModelDataModel &unit,
                                  std::unique_ptr<gert::GertModelDataFile> &var_weight_slot, const size_t model_index);
   static Status BuildKernelBinaries(const GeModelPtr &ge_model, gert::GertModelData &model_data);
   static Status BuildModelMeta(const GeModelPtr &ge_model, gert::GertModelDataModel &unit);
+  static Status BuildDynamicOutputDescs(const GeModelPtr &ge_model, const std::vector<OpDescPtr> &output_ops,
+                                        gert::GertModelDataModelMeta &model_meta);
+  static Status GetDynamicGeModel(const GeRootModelPtr &ge_root_model, GeModelPtr &ge_model);
   static Status BuildConstantsData(const GeModelPtr &ge_model, gert::GertModelDataModel &unit,
                                    std::unique_ptr<gert::GertModelDataFile> &weight_slot, const size_t model_index);
+  static Status BuildDynamicConstantsData(const std::vector<GeModelPtr> &models, gert::GertModelDataModel &unit,
+                                          gert::GertModelDataConstants &constants);
   static Status BuildDebugInfo(const GeModelPtr &ge_model, gert::GertModelDataModel &unit);
   static Status BuildManifest(gert::GertModelData &model_data, const GeModelPtr &ge_model);
+  static Status BuildDynamicManifest(gert::GertModelData &model_data, const std::vector<GeModelPtr> &models);
+  static Status BuildManifestCommonFields(gert::GertModelData &model_data);
   static Status CollectUsedCustomOpTypes(const GeRootModelPtr &ge_root_model,
                                          std::set<std::string> &used_custom_op_types);
   static Status BuildCustomKernelBinaries(const GeRootModelPtr &ge_root_model, gert::GertModelData &model_data);
   static Status BuildCustomSharedLibs(const GeRootModelPtr &ge_root_model, gert::GertModelData &model_data);
+  static Status CollectSoBinaries(const GeRootModelPtr &ge_root_model, const GeModelPtr &root_model,
+                                  std::vector<OpSoBinPtr> &so_bins);
+  static Status BuildSoBinaries(const std::vector<OpSoBinPtr> &so_bins, gert::GertModelDataSoBins &result);
 
   bool is_offline_{true};
 };

@@ -909,7 +909,7 @@ struct Broadcast : public Operator {
     std::set<ge::DataType> support_dtypes_of_sym_T;
     if (npu_arch == "2201") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
-                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_UINT64};
+                                 DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T = {DT_FLOAT, DT_FLOAT16, DT_INT8,   DT_INT32, DT_UINT8,
                                  DT_INT16, DT_UINT16,  DT_UINT32, DT_INT64, DT_UINT64};
@@ -1206,7 +1206,7 @@ struct Cast : public Operator {
                  {DT_FLOAT16, {DT_FLOAT, DT_INT8, DT_INT32, DT_UINT8, DT_INT16, DT_INT64, DT_INT4}},
                  {DT_INT8, {DT_FLOAT16, DT_UINT8}},
                  {DT_INT32, {DT_FLOAT, DT_FLOAT16, DT_INT16, DT_UINT32, DT_INT64}},
-                 {DT_UINT8, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT4}},
+                 {DT_UINT8, {DT_FLOAT, DT_FLOAT16, DT_INT8, DT_INT32, DT_INT16, DT_INT4, DT_INT64}},
                  {DT_INT16, {DT_FLOAT, DT_FLOAT16, DT_UINT16}},
                  {DT_UINT16, {DT_INT16}},
                  {DT_UINT32, {DT_INT32}},
@@ -3821,7 +3821,7 @@ struct LogicalOr : public Operator {
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT16};
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT16, DT_INT64};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
@@ -3902,7 +3902,7 @@ struct LogicalAnd : public Operator {
     GE_WARN_ASSERT(input_dtypes[0] == input_dtypes[1]);
     std::set<ge::DataType> support_dtypes_of_sym_T1;
     if (npu_arch == "2201") {
-      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT16};
+      support_dtypes_of_sym_T1 = {DT_FLOAT, DT_FLOAT16, DT_INT32, DT_UINT8, DT_INT16, DT_INT64};
     } else if (npu_arch == "3510") {
       support_dtypes_of_sym_T1 = {DT_FLOAT,  DT_FLOAT16, DT_INT8,  DT_INT32,  DT_UINT8, DT_INT16,
                                   DT_UINT16, DT_UINT32,  DT_INT64, DT_UINT64, DT_BF16};
@@ -12241,6 +12241,60 @@ struct RShift : public Operator {
 }  // namespace af
 
 namespace af {
+namespace ascir_op {
+struct Expm1 : public Operator {
+  static constexpr const char *Type = "Expm1";
+  af::AscNodeAttr &attr;
+  af::AscOpInput<0> x;
+  af::AscOpOutput y;
+  inline Expm1(const char *name)
+      : af::Operator(name, Type), attr(*af::AscNodeAttr::Create(*this)), x(this), y(this, 0) {
+    this->InputRegister("x");
+    this->OutputRegister("y");
+    y.TryInitTensorAttr();
+    this->attr.api.compute_type = static_cast<af::ComputeType>(3);
+  }
+
+  inline static Status InferDataType(const std::vector<DataType> &input_dtypes,
+                                     std::vector<DataType> &expect_output_dtypes,
+                                     [[maybe_unused]] const std::string &npu_arch) {
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty() || expect_output_dtypes.size() == 1U);
+    std::set<ge::DataType> support_dtypes_of_sym_t;
+    if (npu_arch == "3510" || npu_arch == "5102") {
+      support_dtypes_of_sym_t = {DT_FLOAT, DT_FLOAT16, DT_BF16};
+    } else {
+      GELOGE(af::FAILED, "Unknown npu arch: %s", npu_arch.c_str());
+      return af::FAILED;
+    }
+    GE_WARN_ASSERT(support_dtypes_of_sym_t.find(input_dtypes[0]) != support_dtypes_of_sym_t.end());
+    if (expect_output_dtypes.empty()) {
+      expect_output_dtypes.push_back(input_dtypes[0]);
+      return SUCCESS;
+    }
+    GE_WARN_ASSERT(input_dtypes[0] == expect_output_dtypes[0]);
+    return SUCCESS;
+  }
+
+  inline static Status InferDataTypeWithNoCheck(const std::vector<DataType> &input_dtypes,
+                                                std::vector<DataType> &expect_output_dtypes,
+                                                [[maybe_unused]] const std::string &npu_arch = "") {
+    GE_ASSERT_EQ(input_dtypes.size(), 1U);
+    GE_ASSERT_TRUE(expect_output_dtypes.empty());
+    expect_output_dtypes.push_back(input_dtypes[0]);
+    return SUCCESS;
+  }
+
+  inline Expm1 &operator=(const Expm1 &) = delete;
+  inline Expm1(Expm1 &&) = delete;
+  inline Expm1(const Expm1 &other) : af::Operator(other), attr(other.attr), x(this), y(this, 0) {
+    y.TryInitTensorAttr();
+  }
+};
+}  // namespace ascir_op
+}  // namespace af
+
+namespace af {
 namespace ascir {
 namespace cg {
 inline af::AscOpOutput Data(const char *name, af::AscGraph &graph, const int64_t &index) {
@@ -15486,6 +15540,7 @@ inline af::Status CommonInferDtype(const std::string &type, const std::vector<Da
       {"Floor", ::af::ascir_op::Floor::InferDataType},
       {"Fma", ::af::ascir_op::Fma::InferDataType},
       {"Expm", ::af::ascir_op::Expm::InferDataType},
+      {"Expm1", ::af::ascir_op::Expm1::InferDataType},
       {"Log2", ::af::ascir_op::Log2::InferDataType},
       {"LShift", ::af::ascir_op::LShift::InferDataType},
       {"Mod", ::af::ascir_op::Mod::InferDataType},
@@ -15636,6 +15691,7 @@ inline af::Status CommonInferDtypeWithNoCheck(const std::string &type, const std
       {"Floor", ::af::ascir_op::Floor::InferDataTypeWithNoCheck},
       {"Fma", ::af::ascir_op::Fma::InferDataTypeWithNoCheck},
       {"Expm", ::af::ascir_op::Expm::InferDataTypeWithNoCheck},
+      {"Expm1", ::af::ascir_op::Expm1::InferDataTypeWithNoCheck},
       {"Log2", ::af::ascir_op::Log2::InferDataTypeWithNoCheck},
       {"LShift", ::af::ascir_op::LShift::InferDataTypeWithNoCheck},
       {"Mod", ::af::ascir_op::Mod::InferDataTypeWithNoCheck},

@@ -8,7 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include "common/om2/om2_online_prepare_data.h"
 #include <gtest/gtest.h>
+#include "mockcpp/mockcpp.hpp"
 
 #include <cstdlib>
 #include <fstream>
@@ -21,6 +23,7 @@
 #include "framework/runtime/dump/model_dump_manager.h"
 #include "framework/runtime/om2_model_executor.h"
 #include "framework/runtime/mem_allocator.h"
+#include "framework/runtime/rt_session.h"
 #include "ge/ge_ir_build.h"
 #include "common/env_path.h"
 #include "framework/common/json_file.h"
@@ -34,8 +37,11 @@
 #include "rt_external_mem.h"
 #include "framework/common/gert_model_data_deserialize.h"
 #include "framework/common/gert_model_data_utils.h"
+#include "framework/common/gert_model_data_deserialize.h"
 #include "runtime/om2/om2_rt_var_manager.h"
 #include "runtime/om2/om2_model_manager.h"
+#include "runtime/om2/om2_dynamic_loader.h"
+#include "framework/om2/model_api/om2_model_api.h"
 
 namespace ge {
 namespace {
@@ -49,6 +55,72 @@ struct ModelDataHolder {
   std::unique_ptr<char[]> buffer;
   std::shared_ptr<uint8_t> shared_buffer;
 };
+
+struct DynamicApiMock {
+  uint32_t create_count = 0U;
+  uint32_t destroy_count = 0U;
+  uint32_t run_count = 0U;
+  Status create_status = SUCCESS;
+  Status load_status = SUCCESS;
+  Om2DynamicCreateInput input;
+  GertModelDynamicLoadConfig load_config;
+  std::string trace_file;
+
+  void Trace(const char *event) const {
+    if (!trace_file.empty()) {
+      std::ofstream(trace_file, std::ios::app) << event << '\n';
+    }
+  }
+
+  static DynamicApiMock *current;
+  static Status Create(gert::Om2DynamicApi *, const Om2DynamicCreateInput &input, Om2DynamicCreateOutput &output) {
+    ++current->create_count;
+    current->input = input;
+    current->Trace("dynamic_create");
+    if (current->create_status == SUCCESS) {
+      output.context = current;
+    }
+    return current->create_status;
+  }
+  static Status PrepareConstants(gert::Om2DynamicApi *, void *context, void **, uint64_t) {
+    EXPECT_EQ(context, current);
+    return SUCCESS;
+  }
+  static Status PrepareLoad(gert::Om2DynamicApi *, void *context, GertModelLoadConfig &config) {
+    EXPECT_EQ(context, current);
+    current->load_config.rt_session = current->input.rt_session;
+    config.dynamic_config = &current->load_config;
+    config.external_allocator = current->input.external_allocator;
+    current->Trace("dynamic_prepare_load");
+    return current->load_status;
+  }
+  static Status PrepareRun(gert::Om2DynamicApi *, void *context, void *allocator, GertModelRunConfig &config) {
+    EXPECT_EQ(context, current);
+    ++current->run_count;
+    config.external_allocator = allocator;
+    return SUCCESS;
+  }
+  static void Destroy(gert::Om2DynamicApi *, void *context) {
+    EXPECT_EQ(context, current);
+    ++current->destroy_count;
+    current->Trace("dynamic_destroy");
+  }
+
+  DynamicApiMock() {
+    current = this;
+    MOCKER_CPP(&gert::Om2DynamicApi::Create).stubs().will(invoke(Create));
+    MOCKER_CPP(&gert::Om2DynamicApi::PrepareConstants).stubs().will(invoke(PrepareConstants));
+    MOCKER_CPP(&gert::Om2DynamicApi::PrepareLoad).stubs().will(invoke(PrepareLoad));
+    MOCKER_CPP(&gert::Om2DynamicApi::PrepareRun).stubs().will(invoke(PrepareRun));
+    MOCKER_CPP(&gert::Om2DynamicApi::Destroy).stubs().will(invoke(Destroy));
+  }
+  ~DynamicApiMock() {
+    GlobalMockObject::verify();
+    GlobalMockObject::reset();
+    current = nullptr;
+  }
+};
+DynamicApiMock *DynamicApiMock::current = nullptr;
 
 std::string GetParentDir(const std::string &path) {
   const auto pos = path.find_last_of('/');
@@ -477,6 +549,15 @@ struct GertModelLoadConfig {
   int64_t priority = 0;
   uint64_t reuse_zero_copy = 0;
   void *external_rt_model = nullptr;  // 与真实 GertModelLoadConfig 前缀布局对齐：executor 注入的外部 RI
+  void **external_streams = nullptr;
+  uint64_t external_stream_num = 0;
+  void **external_events = nullptr;
+  uint64_t external_event_num = 0;
+  void **external_labels = nullptr;
+  uint64_t external_label_num = 0;
+  void **external_notifies = nullptr;
+  uint64_t external_notify_num = 0;
+  void *external_allocator = nullptr;
 };
 
 struct GertModelRunConfig {
@@ -743,6 +824,12 @@ extern "C" int GertModelLoad(const struct GertModelLoadConfig *config, GertModel
     return 1;
   }
   if (ReplayVarPrepare(config->var_context) != 0) {
+    return 1;
+  }
+  const char *source_allocator = std::getenv("OM2_EXPECT_LOAD_ALLOCATOR_COPY");
+  if ((source_allocator != nullptr) &&
+      ((config->external_allocator == nullptr) ||
+       (reinterpret_cast<uintptr_t>(config->external_allocator) == std::stoull(source_allocator, nullptr, 16)))) {
     return 1;
   }
   auto *model = new (std::nothrow) om2::FakeModel();
@@ -1133,6 +1220,19 @@ class VarInitDataRecordingAclRuntimeStub : public AclRuntimeStub {
   }
 
   std::vector<MemcpyRecord> memcpy_records;
+};
+
+class HostWeightRecordingRuntimeStub : public VarInitDataRecordingAclRuntimeStub {
+ public:
+  aclError aclrtMalloc(void **ptr, size_t size, aclrtMemMallocPolicy policy) override {
+    ++device_allocations;
+    return AclRuntimeStub::aclrtMalloc(ptr, size, policy);
+  }
+  aclError aclrtMallocWithCfg(void **ptr, size_t size, aclrtMemMallocPolicy policy, aclrtMallocConfig *cfg) override {
+    ++device_allocations;
+    return AclRuntimeStub::aclrtMallocWithCfg(ptr, size, policy, cfg);
+  }
+  size_t device_allocations = 0U;
 };
 
 // 调度模式可观测桩：记录 RI 生命周期调用（RI、属性、值及全局调用顺序），支持失败注入。
@@ -2206,6 +2306,48 @@ TEST_F(Om2ModelExecutorUt, load_passes_model_id_and_instance_handle_to_create) {
   EXPECT_EQ(error_code, SUCCESS);
   ASSERT_NE(executor, nullptr);
   EXPECT_EQ(executor->GetModelId(), kTestModelId);
+}
+
+TEST_F(Om2ModelExecutorUt, load_host_internal_weights_passes_constants_without_device_allocation_or_h2d) {
+  auto holder = LoadValidModelData();
+  gert::GertModelData data;
+  ASSERT_EQ(gert::DeserializeGertModelData(static_cast<const uint8_t *>(holder.model_data.model_data),
+                                           holder.model_data.model_len, &data),
+            SUCCESS);
+  data.models[0]->execution_type = gert::GertModelExecutionType::kDynamic;
+  auto &config = *data.models[0]->constants_config;
+  config.internal_weight_size = 5U;
+  ASSERT_EQ(config.consts.size(), 1U);
+  config.consts[0]->placement = gert::GertModelDataConstPlacement::kHost;
+  config.consts[0]->size = 2;
+  data.constants->constants_data[0]->data = gert::GertMakeFileData("ab", 2U);
+  data.constants->constants_data[0]->data_size = 2U;
+  auto meta = std::make_unique<gert::GertModelDataConstMeta>();
+  meta->type = gert::GertMakeStr("INTERNAL");
+  meta->placement = gert::GertModelDataConstPlacement::kHost;
+  meta->index = 1U;
+  meta->size = 3;
+  meta->file_name = gert::GertMakeStr("constant_2");
+  config.consts.emplace_back(std::move(meta));
+  auto file = std::make_unique<gert::GertModelDataFile>();
+  file->file_name = gert::GertMakeStr("constant_2");
+  file->data = gert::GertMakeFileData("xyz", 3U);
+  file->data_size = 3U;
+  data.constants->constants_data.emplace_back(std::move(file));
+  EnvValueGuard expect_first("OM2_EXPECT_CONST0_MODE");
+  ASSERT_EQ(setenv("OM2_EXPECT_CONST0_MODE", "NON_NULL", 1), 0);
+  EnvValueGuard first_byte("OM2_EXPECT_CONST0_FIRST_BYTE");
+  ASSERT_EQ(setenv("OM2_EXPECT_CONST0_FIRST_BYTE", "97", 1), 0);
+  EnvValueGuard expect_second("OM2_EXPECT_CONST1_MODE");
+  ASSERT_EQ(setenv("OM2_EXPECT_CONST1_MODE", "NON_NULL", 1), 0);
+  EnvValueGuard second_byte("OM2_EXPECT_CONST1_FIRST_BYTE");
+  ASSERT_EQ(setenv("OM2_EXPECT_CONST1_FIRST_BYTE", "120", 1), 0);
+  HostWeightRecordingRuntimeStub runtime_stub;
+  AclRuntimeStubGuard guard(&runtime_stub);
+  gert::Om2ModelExecutor executor;
+  ASSERT_EQ(executor.Load(data, MakeOm2LoadArg(), 123U), SUCCESS);
+  EXPECT_EQ(runtime_stub.device_allocations, 0U);
+  EXPECT_TRUE(runtime_stub.memcpy_records.empty());
 }
 
 TEST_F(Om2ModelExecutorUt, load_failed_when_device_id_is_not_set) {
@@ -5257,25 +5399,307 @@ TEST_F(Om2ModelExecutorUt, load_om2_executor_from_data_failed_returns_nullptr_an
   EXPECT_NE(error_code, SUCCESS);
 }
 
+TEST_F(Om2ModelExecutorUt, static_load_does_not_create_dynamic_context) {
+  DynamicApiMock dynamic_api;
+  auto holder = LoadValidModelData();
+  {
+    gert::Om2ModelExecutor executor;
+    ASSERT_EQ(executor.Load(holder.model_data, MakeOm2LoadArg(), 1U), SUCCESS);
+    EXPECT_FALSE(executor.IsDynamicModel());
+  }
+  EXPECT_EQ(dynamic_api.create_count, 0U);
+  EXPECT_EQ(dynamic_api.destroy_count, 0U);
+}
+
+TEST_F(Om2ModelExecutorUt, dynamic_plugin_preserves_session_and_owns_allocator_copy_until_destroy) {
+  class TestAllocator : public ge::Allocator {
+   public:
+    ge::MemBlock *Malloc(size_t) override {
+      return nullptr;
+    }
+    void Free(ge::MemBlock *) override {}
+  };
+  gert::GertModelData data;
+  gert::InitGertModelData(data);
+  gert::InitGertModelDataUnit(data);
+  data.models[0]->execution_type = gert::GertModelExecutionType::kDynamic;
+  data.so_bins = std::make_unique<gert::GertModelDataSoBins>();
+  gert::RtSession session(123U);
+  uint8_t var_arena[16] = {};
+  session.SetExternalVar(var_arena, sizeof(var_arena));
+  auto &api = gert::Om2DynamicApi::Instance();
+  auto destroy = [&api](void *context) { api.Destroy(context); };
+  std::unique_ptr<void, decltype(destroy)> context(nullptr, destroy);
+  std::weak_ptr<ge::Allocator> allocator_lifetime;
+  {
+    std::shared_ptr<ge::Allocator> allocator = std::make_shared<TestAllocator>();
+    allocator_lifetime = allocator;
+    gert::Allocators allocators;
+    ASSERT_EQ(allocators.SetAllocator(gert::kOnHost, 0U, allocator), SUCCESS);
+    Om2DynamicCreateInput input;
+    input.model_data = &data;
+    input.rt_session = &session;
+    input.external_allocator = &allocators;
+    Om2DynamicCreateOutput output;
+    ASSERT_EQ(api.Create(input, output), SUCCESS);
+    context.reset(output.context);
+    ASSERT_NE(context, nullptr);
+    EXPECT_EQ(output.external_var_addr, var_arena);
+    EXPECT_EQ(output.external_var_size, sizeof(var_arena));
+    GertModelLoadConfig config;
+    config.struct_size = offsetof(GertModelLoadConfig, dynamic_config) + sizeof(config.dynamic_config) - 1U;
+    EXPECT_NE(api.PrepareLoad(context.get(), config), SUCCESS);
+    EXPECT_EQ(config.dynamic_config, nullptr);
+    config.struct_size = sizeof(config);
+    ASSERT_EQ(api.PrepareLoad(context.get(), config), SUCCESS);
+    ASSERT_NE(config.dynamic_config, nullptr);
+    EXPECT_EQ(config.dynamic_config->rt_session, &session);
+    ASSERT_NE(config.external_allocator, nullptr);
+    EXPECT_NE(config.external_allocator, &allocators);
+    auto *owned_allocators = static_cast<gert::Allocators *>(config.external_allocator);
+    EXPECT_EQ(owned_allocators->GetAllocator(gert::kOnHost, 0U), allocator.get());
+    ASSERT_NE(config.dynamic_config->shared_libraries, nullptr);
+    EXPECT_EQ(config.dynamic_config->shared_libraries->library_num, 0U);
+    GertModelRunConfig run_config;
+    ASSERT_EQ(api.PrepareRun(context.get(), &allocators, run_config), SUCCESS);
+    EXPECT_EQ(run_config.external_allocator, &allocators);
+    ASSERT_EQ(api.PrepareRun(context.get(), nullptr, run_config), SUCCESS);
+    EXPECT_EQ(run_config.external_allocator, nullptr);
+  }
+  EXPECT_FALSE(allocator_lifetime.expired());
+  context.reset();
+  EXPECT_TRUE(allocator_lifetime.expired());
+}
+
+TEST_F(Om2ModelExecutorUt, dynamic_plugin_rejects_missing_model_and_host_weight_without_publishing_context) {
+  Om2DynamicCreateInput input;
+  Om2DynamicCreateOutput output;
+  auto &api = gert::Om2DynamicApi::Instance();
+  EXPECT_NE(api.Create(input, output), SUCCESS);
+  EXPECT_EQ(output.context, nullptr);
+  gert::GertModelData data;
+  gert::InitGertModelData(data);
+  gert::InitGertModelDataUnit(data);
+  data.models[0]->execution_type = gert::GertModelExecutionType::kDynamic;
+  auto meta = std::make_unique<gert::GertModelDataConstMeta>();
+  meta->type = gert::GertMakeStr("INTERNAL");
+  meta->placement = gert::GertModelDataConstPlacement::kHost;
+  meta->size = 1;
+  meta->file_name = gert::GertMakeStr("missing_weight");
+  data.models[0]->constants_config->consts.emplace_back(std::move(meta));
+  input.model_data = &data;
+  EXPECT_NE(api.Create(input, output), SUCCESS);
+  EXPECT_EQ(output.context, nullptr);
+  api.Destroy(output.context);
+}
+
+TEST_F(Om2ModelExecutorUt, dynamic_context_created_before_pbody_and_destroyed_after_unload) {
+  DynamicApiMock dynamic_api;
+  dynamic_api.trace_file = PathUtils::Join({test_work_dir_, "dynamic_lifecycle.txt"});
+  (void)std::remove(dynamic_api.trace_file.c_str());
+  ASSERT_EQ(setenv("OM2_CALL_TRACE", dynamic_api.trace_file.c_str(), 1), 0);
+  auto holder = LoadValidModelData();
+  gert::GertModelData data;
+  ASSERT_EQ(gert::DeserializeGertModelData(static_cast<const uint8_t *>(holder.model_data.model_data),
+                                           holder.model_data.model_len, &data),
+            SUCCESS);
+  data.models[0]->execution_type = gert::GertModelExecutionType::kDynamic;
+  data.so_bins = std::make_unique<gert::GertModelDataSoBins>();
+  uint64_t session_storage = 0U;
+  uint64_t allocator_storage = 0U;
+  auto load_arg = MakeOm2LoadArg();
+  load_arg.rt_session = reinterpret_cast<gert::RtSession *>(&session_storage);
+  load_arg.external_allocator = reinterpret_cast<gert::Allocators *>(&allocator_storage);
+  {
+    gert::Om2ModelExecutor executor;
+    ASSERT_EQ(executor.Load(data, load_arg, 1U), SUCCESS);
+    EXPECT_TRUE(executor.IsDynamicModel());
+    EXPECT_EQ(dynamic_api.input.model_data, &data);
+    EXPECT_EQ(dynamic_api.input.rt_session, &session_storage);
+    EXPECT_EQ(dynamic_api.input.external_allocator, &allocator_storage);
+    EXPECT_EQ(dynamic_api.destroy_count, 0U);
+  }
+  EXPECT_EQ(dynamic_api.create_count, 1U);
+  EXPECT_EQ(dynamic_api.destroy_count, 1U);
+  EXPECT_EQ(ReadTraceFile(dynamic_api.trace_file), std::vector<std::string>({"dynamic_create", "dynamic_prepare_load",
+                                                                             "create", "unload", "dynamic_destroy"}));
+}
+
+TEST_F(Om2ModelExecutorUt, dynamic_prepare_load_failure_destroys_context_without_calling_pbody) {
+  DynamicApiMock dynamic_api;
+  dynamic_api.load_status = FAILED;
+  dynamic_api.trace_file = PathUtils::Join({test_work_dir_, "dynamic_load_failure.txt"});
+  (void)std::remove(dynamic_api.trace_file.c_str());
+  ASSERT_EQ(setenv("OM2_CALL_TRACE", dynamic_api.trace_file.c_str(), 1), 0);
+  auto holder = LoadValidModelData();
+  gert::GertModelData data;
+  ASSERT_EQ(gert::DeserializeGertModelData(static_cast<const uint8_t *>(holder.model_data.model_data),
+                                           holder.model_data.model_len, &data),
+            SUCCESS);
+  data.models[0]->execution_type = gert::GertModelExecutionType::kDynamic;
+  {
+    gert::Om2ModelExecutor executor;
+    EXPECT_NE(executor.Load(data, MakeOm2LoadArg(), 1U), SUCCESS);
+    EXPECT_EQ(dynamic_api.destroy_count, 1U);
+  }
+  EXPECT_EQ(dynamic_api.destroy_count, 1U);
+  EXPECT_EQ(ReadTraceFile(dynamic_api.trace_file),
+            std::vector<std::string>({"dynamic_create", "dynamic_prepare_load", "dynamic_destroy"}));
+}
+
+TEST_F(Om2ModelExecutorUt, dynamic_create_failure_does_not_load_pbody_or_destroy_missing_context) {
+  DynamicApiMock dynamic_api;
+  dynamic_api.create_status = FAILED;
+  dynamic_api.trace_file = PathUtils::Join({test_work_dir_, "dynamic_create_failure.txt"});
+  (void)std::remove(dynamic_api.trace_file.c_str());
+  ASSERT_EQ(setenv("OM2_CALL_TRACE", dynamic_api.trace_file.c_str(), 1), 0);
+  auto holder = LoadValidModelData();
+  gert::GertModelData data;
+  ASSERT_EQ(gert::DeserializeGertModelData(static_cast<const uint8_t *>(holder.model_data.model_data),
+                                           holder.model_data.model_len, &data),
+            SUCCESS);
+  data.models[0]->execution_type = gert::GertModelExecutionType::kDynamic;
+  {
+    gert::Om2ModelExecutor executor;
+    EXPECT_NE(executor.Load(data, MakeOm2LoadArg(), 1U), SUCCESS);
+  }
+  EXPECT_EQ(dynamic_api.create_count, 1U);
+  EXPECT_EQ(dynamic_api.destroy_count, 0U);
+  EXPECT_EQ(ReadTraceFile(dynamic_api.trace_file), std::vector<std::string>({"dynamic_create"}));
+}
+
 TEST_F(Om2ModelExecutorUt, run_allocator_passed_to_sync_and_async_model_calls) {
   EnvValueGuard allocator_guard("OM2_EXPECT_RUN_ALLOCATOR");
-  gert::Allocators first;
-  gert::Allocators second;
+  DynamicApiMock dynamic_api;
+  uint64_t first_storage = 0U;
+  uint64_t second_storage = 0U;
+  auto *first = reinterpret_cast<gert::Allocators *>(&first_storage);
+  auto *second = reinterpret_cast<gert::Allocators *>(&second_storage);
   auto holder = LoadValidModelData();
+  gert::GertModelData data;
+  ASSERT_EQ(gert::DeserializeGertModelData(static_cast<const uint8_t *>(holder.model_data.model_data),
+                                           holder.model_data.model_len, &data),
+            SUCCESS);
+  data.models[0]->execution_type = gert::GertModelExecutionType::kDynamic;
   gert::Om2ModelExecutor executor;
-  ASSERT_EQ(executor.Load(holder.model_data, MakeOm2LoadArg(), 1U), SUCCESS);
+  ASSERT_EQ(executor.Load(data, MakeOm2LoadArg(), 1U), SUCCESS);
   std::vector<gert::Tensor> input_tensors;
   std::vector<gert::Tensor> output_tensors;
   std::vector<gert::Tensor *> inputs;
   std::vector<gert::Tensor *> outputs;
   ConstructIoTensors(input_tensors, output_tensors, inputs, outputs);
-  for (auto *allocator : {&first, &second, static_cast<gert::Allocators *>(nullptr)}) {
+  for (auto *allocator : {first, second, static_cast<gert::Allocators *>(nullptr)}) {
     ASSERT_EQ(setenv("OM2_EXPECT_RUN_ALLOCATOR", PtrToHexString(allocator).c_str(), 1), 0);
     gert::Om2ModelRunArg run_arg;
     run_arg.external_allocator = allocator;
     EXPECT_EQ(executor.Run(inputs, outputs, run_arg), SUCCESS);
     EXPECT_EQ(executor.RunAsync(nullptr, inputs, outputs, run_arg), SUCCESS);
   }
+  EXPECT_EQ(dynamic_api.run_count, 6U);
+}
+
+TEST_F(Om2ModelExecutorUt, static_run_allocator_passed_to_sync_and_async_model_calls) {
+  EnvValueGuard allocator_guard("OM2_EXPECT_RUN_ALLOCATOR");
+  DynamicApiMock dynamic_api;
+  uint64_t first_storage = 0U;
+  uint64_t second_storage = 0U;
+  auto *first = reinterpret_cast<gert::Allocators *>(&first_storage);
+  auto *second = reinterpret_cast<gert::Allocators *>(&second_storage);
+  auto holder = LoadValidModelData();
+  gert::GertModelData data;
+  ASSERT_EQ(gert::DeserializeGertModelData(static_cast<const uint8_t *>(holder.model_data.model_data),
+                                           holder.model_data.model_len, &data),
+            SUCCESS);
+  gert::Om2ModelExecutor executor;
+  ASSERT_EQ(executor.Load(data, MakeOm2LoadArg(), 1U), SUCCESS);
+  std::vector<gert::Tensor> input_tensors;
+  std::vector<gert::Tensor> output_tensors;
+  std::vector<gert::Tensor *> inputs;
+  std::vector<gert::Tensor *> outputs;
+  ConstructIoTensors(input_tensors, output_tensors, inputs, outputs);
+  for (auto *allocator : {first, second, static_cast<gert::Allocators *>(nullptr)}) {
+    ASSERT_EQ(setenv("OM2_EXPECT_RUN_ALLOCATOR", PtrToHexString(allocator).c_str(), 1), 0);
+    gert::Om2ModelRunArg run_arg;
+    run_arg.external_allocator = allocator;
+    EXPECT_EQ(executor.Run(inputs, outputs, run_arg), SUCCESS);
+    EXPECT_EQ(executor.RunAsync(nullptr, inputs, outputs, run_arg), SUCCESS);
+  }
+  EXPECT_EQ(dynamic_api.create_count, 0U);
+  EXPECT_EQ(dynamic_api.run_count, 0U);
+}
+
+TEST_F(Om2ModelExecutorUt, static_load_preserves_allocator_copy_until_model_destruction) {
+  class TestAllocator : public ge::Allocator {
+   public:
+    ge::MemBlock *Malloc(size_t) override {
+      return nullptr;
+    }
+    void Free(ge::MemBlock *) override {}
+  };
+  EnvValueGuard guard("OM2_EXPECT_LOAD_ALLOCATOR_COPY");
+  DynamicApiMock dynamic_api;
+  auto holder = LoadValidModelData();
+  std::weak_ptr<ge::Allocator> lifetime;
+  {
+    gert::Om2ModelExecutor executor;
+    {
+      std::shared_ptr<ge::Allocator> allocator = std::make_shared<TestAllocator>();
+      lifetime = allocator;
+      gert::Allocators allocators;
+      ASSERT_EQ(allocators.SetAllocator(gert::kOnHost, 0U, allocator), SUCCESS);
+      auto load_arg = MakeOm2LoadArg();
+      load_arg.external_allocator = &allocators;
+      ASSERT_EQ(setenv("OM2_EXPECT_LOAD_ALLOCATOR_COPY", PtrToHexString(&allocators).c_str(), 1), 0);
+      ASSERT_EQ(executor.Load(holder.model_data, load_arg, 1U), SUCCESS);
+      EXPECT_FALSE(executor.IsDynamicModel());
+    }
+    EXPECT_FALSE(lifetime.expired());
+  }
+  EXPECT_TRUE(lifetime.expired());
+  EXPECT_EQ(dynamic_api.create_count, 0U);
+}
+
+TEST_F(Om2ModelExecutorUt, dynamic_plugin_owns_online_session_and_ignores_old_root_tail) {
+  gert::GertModelData data;
+  gert::InitGertModelData(data);
+  gert::InitGertModelDataUnit(data);
+  data.online_prepare_data = std::make_shared<gert::Om2OnlinePrepareData>();
+  auto &api = gert::Om2DynamicApi::Instance();
+  for (const bool old_root : {true, false}) {
+    data.struct_size = old_root ? offsetof(gert::GertModelData, online_prepare_data) : sizeof(data);
+    Om2DynamicCreateInput input;
+    input.model_data = &data;
+    input.session_id = 123U;
+    input.runtime_context_valid = 1U;
+    Om2DynamicCreateOutput output;
+    ASSERT_EQ(api.Create(input, output), SUCCESS);
+    auto destroy = [&api](void *context) { api.Destroy(context); };
+    std::unique_ptr<void, decltype(destroy)> context(output.context, destroy);
+    GertModelLoadConfig config;
+    ASSERT_EQ(api.PrepareLoad(context.get(), config), SUCCESS);
+    ASSERT_NE(config.dynamic_config, nullptr);
+    auto *session = static_cast<gert::RtSession *>(config.dynamic_config->rt_session);
+    if (old_root) {
+      EXPECT_EQ(session, nullptr);
+    } else {
+      ASSERT_NE(session, nullptr);
+      EXPECT_EQ(session->GetSessionId(), 123U);
+      EXPECT_EQ(session->GetVarManager(), nullptr);
+      EXPECT_NE(session->GetStreamAllocator(), nullptr);
+    }
+  }
+}
+
+TEST_F(Om2ModelExecutorUt, dynamic_plugin_requires_valid_runtime_context_for_online_preparation) {
+  gert::GertModelData data;
+  gert::InitGertModelData(data);
+  gert::InitGertModelDataUnit(data);
+  data.online_prepare_data = std::make_shared<gert::Om2OnlinePrepareData>();
+  Om2DynamicCreateInput input;
+  input.model_data = &data;
+  Om2DynamicCreateOutput output;
+  EXPECT_NE(gert::Om2DynamicApi::Instance().Create(input, output), SUCCESS);
+  EXPECT_EQ(output.context, nullptr);
 }
 
 }  // namespace ge

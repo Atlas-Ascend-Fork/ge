@@ -30,6 +30,7 @@
 #include "framework/runtime/dump/profiling_impl.h"
 #include "framework/common/framework_types_internal.h"
 #include "om2_dfx_loader.h"
+#include "om2_dynamic_loader.h"
 #include "framework/common/taskdown_common.h"
 #include "runtime/om2_model_executor.h"
 #include "common/checker.h"
@@ -124,6 +125,7 @@ struct KernelBinInfo {
 
 struct ClassifiedConstItems {
   std::vector<Om2ConstItem> internal_consts;
+  std::vector<Om2ConstItem> host_internal_consts;
   std::vector<Om2ConstItem> combined_consts;
   std::vector<Om2ConstItem> individual_consts;
   size_t max_index = 0U;
@@ -281,6 +283,14 @@ ge::Status ParseConstItems(const gert::GertModelDataConstantsConfig &config, std
     }
     seen_indices[const_item.index] = 1;
     const_item.type = gert::GertGetStr(meta->type);
+    const auto placement = GetGertModelConstPlacement(*meta);
+    GE_ASSERT_TRUE((placement == GertModelDataConstPlacement::kUnspecified) ||
+                   (placement == GertModelDataConstPlacement::kDevice) ||
+                   (placement == GertModelDataConstPlacement::kHost));
+    const_item.is_host = placement == GertModelDataConstPlacement::kHost;
+    GE_ASSERT_TRUE(!const_item.is_host || (const_item.type == "INTERNAL"),
+                   "[OM2] Host external weights are not supported yet");
+    GE_ASSERT_TRUE((meta->offset >= 0) && (meta->size >= 0));
     const_item.file_name = gert::GertGetStr(meta->file_name);
     if (const_item.type != "INTERNAL") {
       GE_ASSERT_TRUE(!const_item.file_name.empty());
@@ -298,7 +308,8 @@ ge::Status ClassifyConstItems(const std::vector<Om2ConstItem> &const_items, Clas
   for (const auto &const_item : const_items) {
     classified_items.max_index = std::max(classified_items.max_index, const_item.index);
     if (const_item.type == "INTERNAL") {
-      classified_items.internal_consts.emplace_back(const_item);
+      auto &items = const_item.is_host ? classified_items.host_internal_consts : classified_items.internal_consts;
+      items.emplace_back(const_item);
       continue;
     }
     if (const_item.type == "COMBINED") {
@@ -312,6 +323,8 @@ ge::Status ClassifyConstItems(const std::vector<Om2ConstItem> &const_items, Clas
     GELOGE(ge::FAILED, "[OM2][Check] Unsupported const type, type=%s", const_item.type.c_str());
     return ge::FAILED;
   }
+  GE_ASSERT_TRUE(classified_items.host_internal_consts.empty() || classified_items.internal_consts.empty(),
+                 "[OM2] Mixed Host/Device INTERNAL constants are not supported yet");
   return ge::SUCCESS;
 }
 
@@ -322,7 +335,8 @@ ge::Status FindInternalWeightBuf(const gert::GertModelData &om2_data,
   bool has_internal_const = false;
   std::string internal_file_name;
   for (const auto &const_meta : constants_config.consts) {
-    if (std::string(gert::GertGetStr(const_meta->type)) == "INTERNAL") {
+    if ((std::string(gert::GertGetStr(const_meta->type)) == "INTERNAL") &&
+        (GetGertModelConstPlacement(*const_meta) != GertModelDataConstPlacement::kHost)) {
       has_internal_const = true;
       internal_file_name = gert::GertGetStr(const_meta->file_name);
       break;
@@ -479,7 +493,10 @@ class Om2ModelExecutor::Impl {
       CustSharedLibInfo so_info;
       GE_ASSERT_SUCCESS(CreateSoMemFd(gert::GertGetStr(kb->file_name), kb->data.get(), kb->data_size, so_info.so_file,
                                       so_info.so_fd));
-      so_info.so_handle = mmDlopen(so_info.so_file.c_str(), MMPA_RTLD_NOW);
+      // 仅动态 pbody 需要通过全局符号恢复 CustomOpFactory。
+      const auto flags =
+          MMPA_RTLD_NOW | (GetGertModelExecutionType(unit) == GertModelExecutionType::kDynamic ? MMPA_RTLD_GLOBAL : 0);
+      so_info.so_handle = mmDlopen(so_info.so_file.c_str(), flags);
       if (so_info.so_handle == nullptr) {
         CloseMemFd(so_info.so_fd);
         const char_t *error = mmDlerror();
@@ -637,6 +654,11 @@ class Om2ModelExecutor::Impl {
     ClassifiedConstItems classified_items;
     GE_ASSERT_SUCCESS(ClassifyConstItems(const_items, classified_items));
     constants.resize(classified_items.max_index + 1U, nullptr);
+    if (!classified_items.host_internal_consts.empty()) {
+      GE_ASSERT_NOTNULL(dynamic_context_);
+      GE_ASSERT_SUCCESS(
+          Om2DynamicApi::Instance().PrepareConstants(dynamic_context_, constants.data(), constants.size()));
+    }
     std::map<std::string, ge::FileConstantMem> user_file_const_mems;
     GE_ASSERT_SUCCESS(BuildUserFileConstMemMap(load_arg.file_constant_mems, user_file_const_mems));
     GE_CHK_STATUS_RET(
@@ -706,28 +728,31 @@ class Om2ModelExecutor::Impl {
 
     GE_ASSERT_NOTNULL(run_model_info_.load_func);
     const GertModelLoadCallbacks callbacks = CreateGertModelLoadCallbacks();
-    load_allocators_ =
-        load_arg.external_allocator == nullptr ? nullptr : std::make_shared<Allocators>(*load_arg.external_allocator);
-    struct GertModelLoadConfig config = {
-        .struct_size = sizeof(GertModelLoadConfig),
-        .bin_files = bin_files.data(),
-        .bin_data = bin_data.data(),
-        .bin_size = bin_sizes.data(),
-        .bin_num = bin_data.size(),
-        .constants = constants.empty() ? nullptr : constants.data(),
-        // PrepareVarContext 无条件组装上下文：变量元数据已固化进模型 SO，执行器侧不判断有无变量。
-        // 无变量模型的固化表为空，SO 侧各阶段零次循环，非空上下文是安全的。
-        .var_context = static_cast<void *>(&var_context),
-        .work_ptr = load_arg.work_ptr,
-        .session_id = &session_id_,
-        .model_id = load_arg.model_id,
-        .instance_handle = static_cast<void *>(owner_),
-        .callbacks = &callbacks,
-        .priority = load_arg.priority,
-        .reuse_zero_copy = load_arg.reuse_zero_copy ? 1U : 0U,
-        .external_rt_model = run_model_info_.external_rt_model};
-    // Keep a shared-owning copy alive while the model borrows the collection.
-    config.external_allocator = load_allocators_.get();
+    GertModelLoadConfig config{};
+    config.struct_size = sizeof(GertModelLoadConfig);
+    config.bin_files = bin_files.data();
+    config.bin_data = bin_data.data();
+    config.bin_size = bin_sizes.data();
+    config.bin_num = bin_data.size();
+    config.constants = constants.empty() ? nullptr : constants.data();
+    // PrepareVarContext 无条件组装上下文：变量元数据已固化进模型 SO，执行器侧不判断有无变量。
+    // 无变量模型的固化表为空，SO 侧各阶段零次循环，非空上下文是安全的。
+    config.var_context = static_cast<void *>(&var_context);
+    config.work_ptr = load_arg.work_ptr;
+    config.session_id = &session_id_;
+    config.model_id = load_arg.model_id;
+    config.instance_handle = static_cast<void *>(owner_);
+    config.callbacks = &callbacks;
+    config.priority = load_arg.priority;
+    config.reuse_zero_copy = load_arg.reuse_zero_copy ? 1U : 0U;
+    config.external_rt_model = run_model_info_.external_rt_model;
+    if (dynamic_context_ != nullptr) {
+      GE_ASSERT_SUCCESS(Om2DynamicApi::Instance().PrepareLoad(dynamic_context_, config));
+    } else {
+      load_allocators_ =
+          load_arg.external_allocator == nullptr ? nullptr : std::make_shared<Allocators>(*load_arg.external_allocator);
+      config.external_allocator = load_allocators_.get();
+    }
     GE_ASSERT_SUCCESS(run_model_info_.load_func(&config, &run_model_info_.model_handle, nullptr));
     GE_ASSERT_NOTNULL(run_model_info_.model_handle);
     run_model_info_.load_priority = load_arg.priority;
@@ -862,8 +887,12 @@ class Om2ModelExecutor::Impl {
                                 .output_count = outputs.size(),
                                 .output_data = outputs.data(),
                                 .stream_sync_timeout_ms = stream_sync_timeout_ms,
-                                .run_callbacks = &run_callbacks,
-                                .external_allocator = run_arg.external_allocator};
+                                .run_callbacks = &run_callbacks};
+    if (dynamic_context_ != nullptr) {
+      GE_ASSERT_SUCCESS(Om2DynamicApi::Instance().PrepareRun(dynamic_context_, run_arg.external_allocator, config));
+    } else {
+      config.external_allocator = run_arg.external_allocator;
+    }
     return ge::GRAPH_SUCCESS;
   }
 
@@ -1323,6 +1352,10 @@ class Om2ModelExecutor::Impl {
     } else {
       GELOGI("[OM2] Unload func not found or model not created, so file: %s", run_model_info_.so_file.c_str());
     }
+    if (dynamic_context_ != nullptr) {
+      Om2DynamicApi::Instance().Destroy(dynamic_context_);
+      dynamic_context_ = nullptr;
+    }
     // executor 仅注入 RI，模型 SO 不销毁；必须在 GertModelUnload 返回后释放，确保 SO 释放任务和自身资源期间 RI 仍有效。
     // 失败仅记日志，不阻塞其余资源释放
     if (run_model_info_.external_rt_model != nullptr) {
@@ -1346,6 +1379,7 @@ class Om2ModelExecutor::Impl {
     if (owner_ != nullptr) {
       (void)gert::HcclHostFinalize(static_cast<void *>(owner_));
     }
+    load_allocators_.reset();
   }
 
  private:
@@ -1448,8 +1482,9 @@ class Om2ModelExecutor::Impl {
   uint64_t session_id_ = 0U;
   bool has_model_ = false;
   uint64_t step_id_ = 1U;
-  // Loading already binds this collection in pbody; keep that collection valid until unload.
+  // 静态模型借用的 allocator 集合保活至模型资源释放完成。
   std::shared_ptr<Allocators> load_allocators_;
+  void *dynamic_context_ = nullptr;
   aclrtStream prof_stream_ = nullptr;
   Om2ModelExecutor *owner_ = nullptr;
   mutable std::mutex stream_attr_mutex_;
@@ -1486,20 +1521,53 @@ ge::Status Om2ModelExecutor::Load(ge::ModelData &model_data, const Om2ModelLoadA
 
 ge::Status Om2ModelExecutor::Load(const gert::GertModelData &model_data, const Om2ModelLoadArg &load_arg,
                                   const uint64_t session_id) const {
+  GE_ASSERT_TRUE(!model_data.models.empty(), "[OM2] models is empty");
+  GE_ASSERT_NOTNULL(model_data.models[0]);
+  const auto execution_type = GetGertModelExecutionType(*model_data.models[0]);
+  GE_ASSERT_TRUE(execution_type == GertModelExecutionType::kStatic ||
+                 execution_type == GertModelExecutionType::kDynamic);
+  Om2ModelLoadArg effective_load_arg = load_arg;
+  Om2SessionContext dynamic_session;
+  GE_DISMISSABLE_GUARD(dynamic_load_cleanup, [this]() {
+    if (impl_->dynamic_context_ != nullptr) {
+      impl_->Cleanup();
+    }
+  });
+  if (execution_type == GertModelExecutionType::kDynamic) {
+    Om2DynamicCreateInput input;
+    input.model_data = &model_data;
+    input.session_id = session_id;
+    input.device_id = static_cast<uint32_t>(load_arg.device_id);
+    input.runtime_context_valid = 1U;
+    input.rt_session = load_arg.rt_session;
+    input.external_allocator = load_arg.external_allocator;
+    Om2DynamicCreateOutput output;
+    GE_ASSERT_SUCCESS(Om2DynamicApi::Instance().Create(input, output));
+    impl_->dynamic_context_ = output.context;
+    GE_ASSERT_NOTNULL(impl_->dynamic_context_);
+    if (load_arg.session_ctx == nullptr) {
+      dynamic_session.session_id = session_id;
+      dynamic_session.external_var_addr = output.external_var_addr;
+      dynamic_session.external_var_size = output.external_var_size;
+      effective_load_arg.session_ctx = &dynamic_session;
+    }
+  }
   ge::ReadonlyByteBuffer weight_buf;
   std::vector<KernelBinInfo> kernel_bin_info;
   GE_CHK_STATUS_RET(impl_->LoadFromOm2ModelData(model_data, weight_buf, kernel_bin_info),
                     "[OM2][Load] Load from GertModelData failed.");
-  const auto check_work_size_ret = impl_->CheckExternalWorkSize(load_arg);
+  const auto check_work_size_ret = impl_->CheckExternalWorkSize(effective_load_arg);
   if (check_work_size_ret != ge::SUCCESS) {
     return check_work_size_ret;
   }
   GE_ASSERT_SUCCESS(impl_->LoadSharedObject());
   GE_ASSERT_SUCCESS(impl_->ResolveSymbols());
-  GE_ASSERT_SUCCESS(impl_->CreateDumpManager(load_arg));
+  GE_ASSERT_SUCCESS(impl_->CreateDumpManager(effective_load_arg));
   impl_->owner_ = const_cast<Om2ModelExecutor *>(this);
-  GE_CHK_STATUS_RET(impl_->CreateAndLoadModelFromStruct(model_data, weight_buf, kernel_bin_info, load_arg, session_id),
-                    "[OM2][Call][CreateAndLoadModelFromStruct] failed.");
+  GE_CHK_STATUS_RET(
+      impl_->CreateAndLoadModelFromStruct(model_data, weight_buf, kernel_bin_info, effective_load_arg, session_id),
+      "[OM2][Call][CreateAndLoadModelFromStruct] failed.");
+  GE_DISMISS_GUARD(dynamic_load_cleanup);
   return ge::SUCCESS;
 }
 
@@ -1512,6 +1580,25 @@ ge::Status Om2ModelExecutor::Load(const gert::GertModelData &model_data, const O
 ge::Status Om2ModelExecutor::Run(std::vector<gert::Tensor *> &inputs, std::vector<gert::Tensor *> &outputs,
                                  const Om2ModelRunArg &run_arg) const {
   return impl_->Run(inputs, outputs, run_arg);
+}
+
+ge::Status Om2ModelExecutor::RunDynamicOnline(void *stream, const std::vector<gert::Tensor> &inputs,
+                                              std::vector<gert::Tensor> &outputs,
+                                              gert::Allocators *external_allocators) const {
+  GE_ASSERT_TRUE(IsDynamicModel());
+  std::vector<gert::Tensor *> input_ptrs;
+  input_ptrs.reserve(inputs.size());
+  for (const auto &input : inputs) {
+    input_ptrs.emplace_back(const_cast<gert::Tensor *>(&input));
+  }
+  std::vector<gert::Tensor *> output_ptrs;
+  output_ptrs.reserve(outputs.size());
+  for (auto &output : outputs) {
+    output_ptrs.emplace_back(&output);
+  }
+  Om2ModelRunArg run_arg;
+  run_arg.external_allocator = external_allocators;
+  return stream == nullptr ? Run(input_ptrs, output_ptrs, run_arg) : RunAsync(stream, input_ptrs, output_ptrs, run_arg);
 }
 
 ge::Status Om2ModelExecutor::RunAsync(void *const stream, std::vector<gert::Tensor *> &inputs,
@@ -1588,6 +1675,10 @@ ge::Status Om2ModelExecutor::SetDynamicAippData(void *dynamic_input_addr, const 
 
 void *Om2ModelExecutor::GetModelDumpManager() const {
   return impl_->dump_manager_handle_;
+}
+
+bool Om2ModelExecutor::IsDynamicModel() const {
+  return impl_->dynamic_context_ != nullptr;
 }
 
 uint32_t Om2ModelExecutor::GetModelId() const {

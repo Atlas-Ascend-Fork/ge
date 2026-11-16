@@ -14,4 +14,8 @@ namespace ge {
 std::string_view GetOm2ModelApiHeader() {
   return R"OM2_API_HDR_RSRC(@OM2_MODEL_API_CONTENT@)OM2_API_HDR_RSRC";
 }
+
+std::string_view GetOm2ModelApiUtilsHeader() {
+  return R"OM2_API_UTILS(@OM2_MODEL_API_UTILS_CONTENT@)OM2_API_UTILS";
+}
 }  // namespace ge
