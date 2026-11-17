@@ -23,6 +23,7 @@
 #include "ge_runtime_stub/include/faker/custom_taskdef_faker.h"
 #include "framework/common/framework_types_internal.h"
 #include "graph/debug/ge_attr_define.h"
+#include "graph/custom_op/args_refresh.h"
 #include "graph/utils/tensor_utils.h"
 #include "rt_external.h"
 
@@ -1795,7 +1796,7 @@ aclError Om2Model::InitResources(int32_t priority, uint64_t reuse_zero_copy, con
   auto bind0_flag = RT_HEAD_STREAM;
   OM2_CHK_STATUS(aclmdlRIBindStream(model_handle_, stream_list_[0], bind0_flag));
   is_stream_list_bind_ = true;
-  args_table_.Init();
+  OM2_CHK_STATUS(args_table_.Init());
   OM2_CHK_STATUS(args_table_.ResolveActiveBases(total_dev_mem_ptr_));
   OM2_LOGI("InitResources done");
   return ACL_SUCCESS;
@@ -1915,6 +1916,7 @@ TEST_F(ProgramGeneratorUt, GenerateInterfaceHeader_Ok) {
 #include <cstdint>
 #include <type_traits>
 #include <array>
+#include <memory>
 #include "acl/acl.h"
 #include "acl/acl_base.h"
 #include "exe_graph/runtime/runtime_tensor.h"
@@ -2087,6 +2089,23 @@ struct GertModelExternalResources {
   aclrtLabel *external_labels = nullptr;
   uint64_t external_label_num = 0;
 };
+
+// CustomTaskState 的类型擦除删除器。用具名结构体而非裸函数指针 void (*)(void *)：
+// 后者不可默认构造，会使 std::unique_ptr 失去默认构造函数，进而令
+// std::vector<CustomTaskStatePtr>::resize() 无法编译。
+struct CustomTaskStateDeleter {
+  void (*destroy)(void *){nullptr};
+  void operator()(void *state) const {
+    if ((destroy != nullptr) && (state != nullptr)) {
+      destroy(state);
+    }
+  }
+};
+
+// CustomTaskState 定义在 <model>_load_and_run.cpp 的匿名命名空间（依赖 CustKernelContextHolder
+// 与 SinkOnlyAllocator，二者保持内部链接）。删除器函数指针在构造时捕获，故 resources.cpp 中的
+// ~Om2Model 无需见到 CustomTaskState 的完整定义即可析构本句柄。
+using CustomTaskStatePtr = std::unique_ptr<void, CustomTaskStateDeleter>;
 
 struct rtLabelDevInfo {
   uint16_t modelId;
@@ -2384,6 +2403,26 @@ struct CustomIrInstanceInfo {
   uint32_t instance_num;    // 实例化个数（可选输入未传时为 0，动态输入为实际个数）
 };
 
+// 自定义算子参数刷新策略（SO 私有 2 值枚举，非 ge::ArgsRefreshStrategy 的 3 值版本）
+enum class CustomArgsRefreshStrategy : uint32_t {
+  None = 0,     // 沿用原路由，不生成任何刷新接线
+  Callback,     // 算子实现 ArgsUpdater，由框架逐轮回调刷新私有参数
+};
+
+// 运行期 Tensor 地址来源。构建期已消解 allocation_id，运行期只需按来源取基址再加 offset。
+enum class TensorRefreshSource : uint32_t {
+  KeepInitial = 0,  // 保留加载期地址
+  ModelInput,       // source_index = 用户输入索引
+  ModelOutput,      // source_index = 用户输出索引
+  FeatureMap,       // source_index 不使用，offset 相对整块 FM 基址
+};
+
+struct TensorRefreshInfo {
+  TensorRefreshSource source_type;
+  uint32_t source_index;  // 用户 I/O 索引；KeepInitial 和 FeatureMap 不使用
+  uint64_t offset;        // 相对用户 Tensor 或整块 FM 起点，单位字节
+};
+
 struct CustomDispatchInfo {
   const OpArgInfo *args_info;  // IO 地址解析数组
   uint32_t args_info_num;      // args_info 数组长度
@@ -2399,6 +2438,11 @@ struct CustomDispatchInfo {
   const CustomIrInstanceInfo *output_instance_info;  // 各 IR 输出的实例化信息，长度 ir_outputs_num
   const uint8_t *attrs;        // 编译期序列化的 IR 属性（RuntimeAttrsDef 布局）
   uint32_t attrs_size;         // attrs 字节数
+  // ── Callback 地址刷新（尾部追加，designated initializer 保证既有字段不受影响）──
+  CustomArgsRefreshStrategy args_refresh_strategy;   // 有效刷新策略
+  uint32_t task_index;                               // kOpDefs 下标，不可用 args_idx 替代
+  const TensorRefreshInfo *tensor_refresh_infos;     // 与运行期 io_tensors 下标严格对应
+  uint32_t tensor_refresh_infos_num;                 // 数组长度
 };
 
 struct DsaDispatchInfo {
@@ -2588,6 +2632,12 @@ struct DispatchOpContext {
   GertModelLaunchFunc launch_func; // 任务 launch 回调
   HcclLoadTaskFunc hccl_load_task; // HCCL 任务下发回调（Load 期注入，nullptr 表示宿主服务不可用）
   std::map<uint32_t, std::vector<void *>> &main_follow_stream_mapping; // HCCL follow 从流池（InitResources 按主流预填充，f 段直取）
+  // ── Custom Task Callback 参数刷新（尾部追加）──
+  CreateArgsHandlerFunc create_args_handler;   // 创建参数服务 Handler（Load 期注入，nullptr 表示宿主未提供）
+  DestroyArgsHandlerFunc destroy_args_handler; // 销毁 Handler（同上）
+  // 用指针而非引用：DispatchOpContext 无条件发射，而 Om2Model::custom_tasks_ 仅在模型含
+  // Callback 任务时生成，故非 Callback 模型传 nullptr。仅用于分发定位，TaskState 不反向保存集合。
+  std::vector<CustomTaskStatePtr> *custom_tasks;
 };
 
 
@@ -3323,7 +3373,9 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if (callbacks != nullptr) {
     hccl_load_task = callbacks->hccl_load_task;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
+  CreateArgsHandlerFunc create_args_handler = nullptr;
+  DestroyArgsHandlerFunc destroy_args_handler = nullptr;
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_, create_args_handler, destroy_args_handler, nullptr};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));
@@ -4022,7 +4074,9 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if (callbacks != nullptr) {
     hccl_load_task = callbacks->hccl_load_task;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
+  CreateArgsHandlerFunc create_args_handler = nullptr;
+  DestroyArgsHandlerFunc destroy_args_handler = nullptr;
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_, create_args_handler, destroy_args_handler, nullptr};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));
@@ -4809,7 +4863,9 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if (callbacks != nullptr) {
     hccl_load_task = callbacks->hccl_load_task;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
+  CreateArgsHandlerFunc create_args_handler = nullptr;
+  DestroyArgsHandlerFunc destroy_args_handler = nullptr;
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_, create_args_handler, destroy_args_handler, nullptr};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));
@@ -5530,7 +5586,9 @@ aclError Om2Model::Load(const GertModelLoadCallbacks *callbacks) {
   if (callbacks != nullptr) {
     hccl_load_task = callbacks->hccl_load_task;
   }
-  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_};
+  CreateArgsHandlerFunc create_args_handler = nullptr;
+  DestroyArgsHandlerFunc destroy_args_handler = nullptr;
+  DispatchOpContext ctx = {total_dev_mem_ptr_, session_scope_mem_ptr_, constants_, var_addrs_.data(), args_table_, func_handles_.data(), model_id_, instance_handle_, model_handle_, event_list_, mem_event_id_mem_map_, dev_dynamic_mem_ptrs_, overflow_addr_, label_list_, notify_list_, stream_list_, label_goto_args_, label_goto_ex_label_list_, label_switch_label_list_, session_id_, dev_ext_info_mem_ptrs_, &kernel_id_, launch_func, hccl_load_task, main_follow_stream_mapping_, create_args_handler, destroy_args_handler, nullptr};
   if ((callbacks != nullptr) && (callbacks->report_model_base_info != nullptr)) {
     GertModelBaseInfo cfg = {sizeof(GertModelBaseInfo), ctx.model_handle};
     OM2_CHK_STATUS(callbacks->report_model_base_info(ctx.instance_handle, &cfg));
@@ -8148,10 +8206,15 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_WithCustomKernel_Ok) {
   EXPECT_NE(load_run.find("uint32_t LaunchEagerExecuteOp("), std::string::npos);
   EXPECT_NE(load_run.find("aclError DeserializeCustKernelBinaries("), std::string::npos);
 
-  // workspace 容器必须是 CustKernelContextHolder 的成员（对齐 OM v1 CustomTaskInfo::ws_vec_），
-  // 不能是 BuildKernelContextHolder 的栈局部变量，否则函数返回后 context 里留下悬垂指针
-  EXPECT_NE(load_run.find("std::unique_ptr<std::vector<gert::GertMemBlock *>> ws_vec_holder_;"), std::string::npos);
-  EXPECT_NE(load_run.find("holder_outputs.emplace_back(holder.ws_vec_holder_.get(), nullptr)"), std::string::npos);
+  // workspace 容器与 args handler 的所有权在调用方（C3 决策）：holder 不再自持 ws_vec_holder_，
+  // 改由 BuildKernelContextHolder 入参传入。非 Callback 任务用分发函数内的局部量（生命周期覆盖
+  // 本次 Execute），Callback 任务用 CustomTaskState 持久持有。两者都不能是 BuildKernelContextHolder
+  // 自己的栈局部变量，否则函数返回后 context 里留下悬垂指针。
+  EXPECT_EQ(load_run.find("ws_vec_holder_"), std::string::npos);
+  EXPECT_NE(load_run.find("std::vector<gert::GertMemBlock *> *workspace_blocks"), std::string::npos);
+  EXPECT_NE(load_run.find("holder_outputs.emplace_back(workspace_blocks, nullptr)"), std::string::npos);
+  // 附加输出槽按 AdditionalOutputIndex 顺序推入两个：kWorkSpace=0、kArgsHandler=1
+  EXPECT_NE(load_run.find("holder_outputs.emplace_back(args_handler, nullptr)"), std::string::npos);
   EXPECT_EQ(load_run.find("std::vector<void *> ws_vec;"), std::string::npos);
 
   // Load 方法中应调用 DeserializeCustKernelBinaries 反序列化自定义内核二进制
@@ -8198,7 +8261,12 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_CustomKernelAllocator_Ok) {
   std::map<GeneratedFileIndex, std::string> outputs;
   ASSERT_EQ(GenerateProgramFiles(generator, outputs), SUCCESS);
   const auto &load_run = outputs[GeneratedFileIndex::kLoadingAndRunningFile];
-  EXPECT_NE(load_run.find("std::make_shared<SinkOnlyAllocator>(ctx.dev_dynamic_mem_ptrs)"), std::string::npos);
+  // V4 决策：allocator 用 unique_ptr（BuildKernelContextHolder 只取裸指针，无需共享所有权）
+  EXPECT_NE(load_run.find("std::make_unique<SinkOnlyAllocator>(ctx.dev_dynamic_mem_ptrs)"), std::string::npos);
+  EXPECT_EQ(load_run.find("std::make_shared<SinkOnlyAllocator>"), std::string::npos);
+  // C3 决策：workspace 容器由分发函数内的局部量承载并取地址传入，生命周期覆盖本次 Execute
+  EXPECT_NE(load_run.find("std::vector<gert::GertMemBlock *> workspace_blocks;"), std::string::npos);
+  EXPECT_NE(load_run.find("&workspace_blocks"), std::string::npos);
 }
 
 // 校验 has_custom_kernel 默认为 false 时，不生成自定义算子内核相关代码
@@ -8217,5 +8285,154 @@ TEST_F(ProgramGeneratorUt, GenerateLoadAndRunSource_WithoutCustomKernel_Omitted)
   EXPECT_EQ(load_run.find("BuildGeTensor(const Om2Tensor &om2_tensor)"), std::string::npos);
   EXPECT_EQ(load_run.find("KernelCustTaskDistribute"), std::string::npos);
   EXPECT_EQ(load_run.find("DeserializeCustKernelBinaries"), std::string::npos);
+}
+
+namespace {
+// Callback 端到端用例按断言对象拆分为 setup + 4 个检查组（codecheck 超大函数规则：单函数 nbnc ≤ 50 行），
+// 断言内容与执行顺序与拆分前一致；helper 内 ASSERT 失败后由 HasFatalFailure 提前结束用例。
+void BuildArgsRefreshCallbackOutputs(std::map<GeneratedFileIndex, std::string> &outputs) {
+  auto graph = gert::ShareGraph::BuildCustomOpGraph();
+  ASSERT_NE(graph, nullptr);
+  gert::GeModelBuilder builder(graph);
+  auto ge_root_model = builder.AddTaskDef("custom_op", gert::CustomTaskDefFaker("custom_op_stub"))
+                           .FakeTbeBin({"custom_op"})
+                           .BuildGeRootModel();
+  ASSERT_NE(ge_root_model, nullptr);
+  auto &compute_graph = ge_root_model->GetRootGraph();
+  compute_graph->SetGraphUnknownFlag(false);
+  for (const auto &node : compute_graph->GetDirectNode()) {
+    auto op_desc = node->GetOpDesc();
+    ASSERT_NE(op_desc, nullptr);
+    if (op_desc->GetType() == DATA) {
+      op_desc->SetOutputOffset({1024});
+    } else if (op_desc->GetType() == NETOUTPUT) {
+      op_desc->SetInputOffset({3072});
+    } else {
+      op_desc->SetInputOffset(std::vector<int64_t>(op_desc->GetInputsSize(), 1024));
+      op_desc->SetOutputOffset(std::vector<int64_t>(op_desc->GetOutputsSize(), 1024));
+      if (op_desc->GetType() == "CustomOp") {
+        // B1 输入：编译期由 CustomOpsKernelBuilder 写入的有效策略属性
+        (void)AttrUtils::SetInt(op_desc, ATTR_NAME_CUSTOM_TASK_ARGS_MODE,
+                                static_cast<int64_t>(CustomTaskArgsMode::kUpdateCallback));
+      }
+    }
+  }
+  const auto ge_model = ge_root_model->GetSubgraphInstanceNameToModel().begin()->second;
+  ASSERT_NE(ge_model, nullptr);
+  std::vector<uint64_t> weights_value(64, 1024);
+  const size_t weight_size = weights_value.size() * sizeof(uint64_t);
+  ge_model->SetWeight(Buffer::CopyFrom(reinterpret_cast<uint8_t *>(weights_value.data()), weight_size));
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 2048);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, weight_size);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
+
+  auto generator = CreateProgramGenerator(ge_root_model, true);
+  ASSERT_EQ(GenerateProgramFiles(generator, outputs), SUCCESS);
+}
+
+void CheckArgsRefreshCallbackHeader(std::map<GeneratedFileIndex, std::string> &outputs) {
+  // ── 内部头：reserved 池、类型擦除句柄、Om2Model 新成员、DispatchOpContext 新成员 ──
+  const auto &header = outputs[GeneratedFileIndex::kInterfaceHeaderFile];
+  EXPECT_NE(header.find("struct ReservedSegmentRuntime"), std::string::npos);
+  EXPECT_NE(header.find("std::array<ReservedSegmentRuntime, static_cast<size_t>(3)> reserved_segments_"),
+            std::string::npos);
+  EXPECT_NE(header.find("AllocateArgsBuffer(size_t size, int32_t args_type, ArgsInfo &result)"), std::string::npos);
+  // 类型擦除句柄须用具名 Deleter 结构体：裸函数指针不可默认构造，会使 vector::resize 无法编译
+  EXPECT_NE(header.find("struct CustomTaskStateDeleter"), std::string::npos);
+  EXPECT_NE(header.find("using CustomTaskStatePtr = std::unique_ptr<void, CustomTaskStateDeleter>;"),
+            std::string::npos);
+  EXPECT_NE(header.find("std::vector<CustomTaskStatePtr> custom_tasks_;"), std::string::npos);
+  EXPECT_NE(header.find("uintptr_t fm_base_current_"), std::string::npos);
+  EXPECT_NE(header.find("aclError UpdateCustomOpHostArgs(size_t input_count, gert::Tensor **input_data, "
+                        "size_t output_count, gert::Tensor **output_data)"),
+            std::string::npos);
+  EXPECT_NE(header.find("CreateArgsHandlerFunc create_args_handler;"), std::string::npos);
+  EXPECT_NE(header.find("DestroyArgsHandlerFunc destroy_args_handler;"), std::string::npos);
+  EXPECT_NE(header.find("std::vector<CustomTaskStatePtr> *custom_tasks;"), std::string::npos);
+  // custom_tasks_ 必须声明在 args_table_ 之后，逆序析构时才先于池释放
+  EXPECT_LT(header.find("Om2ArgsTable args_table_;"), header.find("std::vector<CustomTaskStatePtr> custom_tasks_;"));
+}
+
+void CheckArgsRefreshCallbackArgsManager(std::map<GeneratedFileIndex, std::string> &outputs) {
+  // ── args manager：池分配入口、按 built_in + reserved 整块申请、按 current_offset 上传 ──
+  const auto &args_mgr = outputs[GeneratedFileIndex::kArgsManagerFile];
+  EXPECT_NE(args_mgr.find("aclError Om2ArgsTable::AllocateArgsBuffer("), std::string::npos);
+  // 目标块上限 = 普通区 + reserved 整块
+  EXPECT_NE(args_mgr.find("args_sizes_[i] + reserved_segments_[i].total_size"), std::string::npos);
+  // 上传长度 = current_offset（绝对偏移，已含普通区），不可再叠加 args_sizes_[i]
+  EXPECT_NE(args_mgr.find("host_args_[i].data(), reserved_segments_[i].current_offset"), std::string::npos);
+  EXPECT_EQ(args_mgr.find("args_sizes_[i] + reserved_segments_[i].current_offset"), std::string::npos);
+  // B4 容量：custom_op 有 3 输入 1 输出，(3 + 1 + kArgsReserved(16)) * 8 = 160
+  EXPECT_NE(args_mgr.find(".total_size = 160"), std::string::npos);
+}
+
+void CheckArgsRefreshCallbackLoadAndRun(std::map<GeneratedFileIndex, std::string> &outputs) {
+  // ── load_and_run：CustomTaskState、桥接、Handler 创建、逐轮更新与 Run 接线 ──
+  const auto &load_run = outputs[GeneratedFileIndex::kLoadingAndRunningFile];
+  EXPECT_NE(load_run.find("struct Om2ArgsHandlerDeleter"), std::string::npos);
+  EXPECT_NE(load_run.find("using Om2ArgsHandlerHandle = std::unique_ptr<void, Om2ArgsHandlerDeleter>;"),
+            std::string::npos);
+  EXPECT_NE(load_run.find("struct CustomTaskState"), std::string::npos);
+  EXPECT_NE(load_run.find("void DestroyCustomTaskState(void *state)"), std::string::npos);
+  EXPECT_NE(load_run.find("int32_t AllocateOm2ArgsBuffer(void *args_table, uint64_t size, void **host_addr, "
+                          "void **device_addr)"),
+            std::string::npos);
+  EXPECT_NE(load_run.find("aclError Om2Model::UpdateCustomOpHostArgs("), std::string::npos);
+  EXPECT_NE(load_run.find("custom_tasks_.resize(sizeof(kOpDefs) / sizeof(kOpDefs[0]))"), std::string::npos);
+  // 旧 Executor 拦截：两个 Callback 字段的读取必须被 struct_size 门控包裹
+  const auto struct_size_gate = load_run.find("callbacks_.struct_size >= sizeof(GertModelLoadCallbacks)");
+  ASSERT_NE(struct_size_gate, std::string::npos);
+  EXPECT_LT(struct_size_gate, load_run.find("create_args_handler = callbacks_.create_args_handler"));
+  EXPECT_NE(load_run.find("ctx.create_args_handler(&ctx.args_table, AllocateOm2ArgsBuffer, &args_handler_raw)"),
+            std::string::npos);
+  EXPECT_NE(load_run.find("task_state->args_updater = dynamic_cast<ge::ArgsUpdater *>(custom_op_ptr)"),
+            std::string::npos);
+  EXPECT_NE(load_run.find("task_state->context_holder = std::move(eager_context_holder)"), std::string::npos);
+  EXPECT_NE(load_run.find("task_state->io_tensors = std::move(io_tensors)"), std::string::npos);
+  EXPECT_NE(load_run.find("CustomTaskStatePtr(task_state.release(), CustomTaskStateDeleter{DestroyCustomTaskState})"),
+            std::string::npos);
+  // CustomTaskState 字段声明顺序即析构顺序依据：context_holder 必须最后声明
+  EXPECT_LT(load_run.find("Om2ArgsHandlerHandle args_handler;"),
+            load_run.find("CustKernelContextHolder context_holder;"));
+  // kOpDefs 中的策略与来源描述。策略按既有惯例以 StaticCast 发射（同 dispatch_type），
+  // 数值 1 即 CustomArgsRefreshStrategy::Callback。
+  EXPECT_NE(load_run.find(".args_refresh_strategy = static_cast<CustomArgsRefreshStrategy>(1)"), std::string::npos);
+  EXPECT_NE(load_run.find("static_cast<TensorRefreshSource>("), std::string::npos);
+  EXPECT_NE(load_run.find("TensorRefreshSource::"), std::string::npos);
+  // Run 与 RunAsync 均须在 CopyArgsToDevice 之前插入逐轮更新，故该调用应出现两次
+  const auto first_update_call =
+      load_run.find("UpdateCustomOpHostArgs(input_count, input_data, output_count, output_data)");
+  ASSERT_NE(first_update_call, std::string::npos);
+  EXPECT_NE(load_run.find("UpdateCustomOpHostArgs(input_count, input_data, output_count, output_data)",
+                          first_update_call + 1),
+            std::string::npos);
+}
+
+void CheckArgsRefreshCallbackResources(std::map<GeneratedFileIndex, std::string> &outputs) {
+  // ── resources：整体复制、FM 基址、U2 清理 ──
+  const auto &resources = outputs[GeneratedFileIndex::kResourcesFile];
+  EXPECT_EQ(resources.find("CopyModelLoadCallbacks"), std::string::npos);
+  EXPECT_NE(resources.find("callbacks_(*callbacks)"), std::string::npos);
+  EXPECT_NE(resources.find("fm_base_current_ = reinterpret_cast<uintptr_t>(total_dev_mem_ptr_)"), std::string::npos);
+  EXPECT_NE(resources.find("custom_tasks_.clear()"), std::string::npos);
+  // U2 必须在 RI 模型销毁之后、设备内存释放之前
+  EXPECT_LT(resources.find("aclmdlRIDestroy(model_handle_)"), resources.find("custom_tasks_.clear()"));
+  EXPECT_LT(resources.find("custom_tasks_.clear()"), resources.find("dev_dynamic_mem_ptrs_.size()"));
+}
+}  // namespace
+
+// Callback 路径端到端 codegen 校验：算子声明 kUpdateCallback 后，构建期须完成 B1~B4 并驱动
+// 全部生成器输出 reserved 池、CustomTaskState、桥接与逐轮更新接线。
+// 该用例是 has_reserved_args_table 门控分支的唯一覆盖入口——其余用例均为非 Callback 模型。
+TEST_F(ProgramGeneratorUt, GenerateProgramFiles_CustomKernelArgsRefreshCallback_Ok) {
+  std::map<GeneratedFileIndex, std::string> outputs;
+  BuildArgsRefreshCallbackOutputs(outputs);
+  if (HasFatalFailure()) {
+    return;
+  }
+  CheckArgsRefreshCallbackHeader(outputs);
+  CheckArgsRefreshCallbackArgsManager(outputs);
+  CheckArgsRefreshCallbackLoadAndRun(outputs);
+  CheckArgsRefreshCallbackResources(outputs);
 }
 }  // namespace ge

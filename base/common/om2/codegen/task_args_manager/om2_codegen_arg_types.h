@@ -79,6 +79,10 @@ struct TaskRunParam {
   std::vector<AddrDesc> parsed_workspace_addrs;
   std::vector<PersistentWorkspaceDesc> persistent_workspace_descs;
   std::vector<TaskArgsDesc> args_descs;
+  // Custom Task Callback 私有参数区容量申报。不经 args_descs 表达，故不进入 ModelArgsLayoutPlanner，
+  // 不占用普通 args 区布局；由 ModelArgsManager 按 placement 独立累计到 reserved 段。
+  uint64_t reserved_args_len{0UL};
+  ArgsPlacement reserved_args_placement{ArgsPlacement::kArgsPlacementHbm};
 };
 
 struct IowAddrs {
@@ -417,6 +421,10 @@ struct ModelArgsSemantic {
   ArgsPlacement placement;                    // args类型
   uint64_t len;                               // args长度
   std::vector<ModelArgPartition> partitions;  // args分区
+  // Custom Task Callback 私有参数区。start_offset 相对主 args 块起点（= 该 placement 的 built_in len），
+  // 与 len 同为"相对主块"口径。二者随 model_args_semantic 同序导出，故生成侧的存储槽下标天然对齐。
+  uint64_t reserved_start_offset{0UL};
+  uint64_t reserved_total_size{0UL};
 };
 
 struct ArgOffsetAndLenSemantic {

@@ -89,6 +89,8 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | save_bin_handle_to_store | SaveBinHandleToStoreFunc | 将句柄写入缓存，见 3.5 |
 | release_bin_handle_from_store | ReleaseBinHandleFromStoreFunc | 释放缓存句柄，见 3.6 |
 | hccl_load_task | HcclLoadTaskFunc | 下发 HCCL 通信任务（HCOM/HVD），见 3.8 |
+| create_args_handler | CreateArgsHandlerFunc | 创建自定义算子 Callback 参数服务 Handler，见 3.12 |
+| destroy_args_handler | DestroyArgsHandlerFunc | 销毁 Handler 与其两端登记表，见 3.13 |
 
 - **参数结构体 GertModelLoadOutput**：
 
@@ -368,7 +370,7 @@ int32_t GertModelGetNotifyDesc(uint64_t *notify_flags, uint64_t notify_num, void
 
 回调函数由 Executor 实现并通过 `GertModelLoadConfig::callbacks`（加载期）与 `GertModelRunConfig::run_callbacks`（执行期）注入 pbody。回调统一返回 `int32_t`，返回值如何处理见各回调说明。除 bin handle 缓存组回调（3.3~3.6）外，回调第一个参数均为 `void *instance_handle`，其值为 `GertModelLoadConfig::instance_handle` 原样回传，Executor 用它定位自身实例。回调在当前调用线程内同步执行；RunAsync 表示 Device 执行异步，不表示回调在后台线程执行。
 
-可空性按用途区分：`GertModelLoadConfig::callbacks` 本身不得为空；二进制缓存路径使用的 lock/unlock/query/save/release 回调必须提供，当前生成代码会直接调用。`report_model_base_info` 可为空，未提供则跳过上报；`launch_func` 可为空，未提供时由生成代码直接下发。`run_callbacks` 及其中的执行前后回调可为空，未提供则跳过。回调入参由模型 SO 准备，需要由 Executor 回填的字段在说明中注明。
+可空性按用途区分：`GertModelLoadConfig::callbacks` 本身不得为空；二进制缓存路径使用的 lock/unlock/query/save/release 回调必须提供，当前生成代码会直接调用。`report_model_base_info` 可为空，未提供则跳过上报；`launch_func` 可为空，未提供时由生成代码直接下发。`create_args_handler` / `destroy_args_handler` 对不含 Callback 自定义任务的模型可为空；含 Callback 自定义任务的模型必须提供二者，任一为空则 `GertModelLoad` 失败并提示升级 Executor（见 3.12/3.13）。`run_callbacks` 及其中的执行前后回调可为空，未提供则跳过。回调入参由模型 SO 准备，需要由 Executor 回填的字段在说明中注明。
 
 #### 3.1 report_model_base_info（ReportModelBaseInfoFunc）
 
@@ -826,6 +828,67 @@ int32_t (*CommitVarDataFunc)(void *var_manager_handle, struct GertVarCommit *com
 
 - **返回值说明**：`0` 表示成功；非 `0` 表示提交失败。`host_data_size` 超过容器记下的变量字节数时返回错误、不写入。
 - **说明**：执行线程、aclrt 上下文、内存归属与线程安全语义同 `GetVarAddrFunc`。重复提交同一变量不视为错误。
+
+#### 3.12 create_args_handler（CreateArgsHandlerFunc）
+
+- **功能说明**：自定义算子 Callback 参数服务的创建入口。模型加载期，生成代码在分发含 Callback（参数刷新模式 `kUpdateCallback`）的自定义任务时调用本回调，传入 SO 参数池对象地址与 SO 侧分配回调 `allocate_args_buffer`（见 3.14），由 GE 运行库创建 `gert::ArgsHandler` 并以不透明句柄回传；此后算子的私有参数区请求经该句柄在 GE 侧 Handler 与 SO 侧参数池两端登记。本回调由 GE 运行库实现并注入，模型 SO 调用。
+- **版本要求**：含 Callback 自定义任务的模型要求 `callbacks->struct_size` 覆盖 `create_args_handler` 与 `destroy_args_handler` 字段（即不小于 `offsetof(GertModelLoadCallbacks, destroy_args_handler) + sizeof(DestroyArgsHandlerFunc)`），否则 `GertModelLoad` 直接失败并提示升级 Executor；这两个回调对含 Callback 自定义任务的模型为必选，任一为空时同样失败。前 9 字段偏移冻结（`hccl_load_task` 位于偏移 64），旧结构体（`struct_size == 72`）不含这两个字段，不得因此拒绝加载不含 Callback 任务的模型。
+- **函数原型**：
+
+```c
+int32_t (*CreateArgsHandlerFunc)(void *args_table, GertOm2ArgsAllocFunc allocate_args_buffer, void **handler);
+```
+
+- **参数说明**：
+
+| 参数 | 类型 | 输入/输出 | 说明 |
+|------|------|----------|------|
+| args_table | void * | 输入 | SO 参数池对象地址；GE 不解释其内容，仅在调用 `allocate_args_buffer` 时原样回传 |
+| allocate_args_buffer | GertOm2ArgsAllocFunc | 输入 | SO 侧参数分配回调，见 3.14；不可为 nullptr |
+| handler | void ** | 输出 | `gert::ArgsHandler` 基类地址形式的不透明句柄；入函数即被置 nullptr，仅在返回 `ACL_SUCCESS` 时填写 |
+
+- **返回值说明**：`0`（`ACL_SUCCESS`）表示创建成功；入参非法或内部失败返回非 `0`，此时 `*handler` 保持 nullptr。
+- **说明**：只能在 `GertModelLoad` 内（模型加载期）调用，运行期不得调用。句柄由 GE 创建，只能经 `destroy_args_handler` 由 GE 销毁，SO 不得直接 delete。
+
+#### 3.13 destroy_args_handler（DestroyArgsHandlerFunc）
+
+- **功能说明**：销毁 `create_args_handler` 创建的 Handler 与其两端登记表（GE 侧 Handler 与 SO 侧参数池的登记条目）。由 GE 运行库实现并注入，模型 SO 在卸载/清理阶段调用。
+- **版本要求**：与 `create_args_handler` 成对提供，见 3.12。
+- **函数原型**：
+
+```c
+void (*DestroyArgsHandlerFunc)(void *handler);
+```
+
+- **参数说明**：
+
+| 参数 | 类型 | 输入/输出 | 说明 |
+|------|------|----------|------|
+| handler | void * | 输入 | `create_args_handler` 输出的句柄；为 nullptr 时为空操作 |
+
+- **返回值说明**：无返回值。
+- **说明**：不释放 SO 参数池中已划出的字节——那些字节随池整体释放。必须在设备结束引用参数之后、模型 SO 卸载之前调用。
+
+#### 3.14 allocate_args_buffer（GertOm2ArgsAllocFunc）
+
+- **功能说明**：SO 侧参数分配回调：从模型参数池的 reserved 段划出 host/device 成对子区间。与本节其余回调方向相反——由模型 SO 实现（生成代码中的 `AllocateArgsBuffer` 桥接），GE 运行库在 Handler 服务算子请求时调用；`args_table` 由 GE 原样回传，GE 不解释其内容。
+- **函数原型**：
+
+```c
+int32_t (*GertOm2ArgsAllocFunc)(void *args_table, uint64_t size, void **host_addr, void **device_addr);
+```
+
+- **参数说明**：
+
+| 参数 | 类型 | 输入/输出 | 说明 |
+|------|------|----------|------|
+| args_table | void * | 输入 | `create_args_handler` 传入的池对象地址；SO 内部转回其私有池类型 |
+| size | uint64_t | 输入 | 请求字节数；请求不拆分、不对齐、不搬迁，容量不足即整体失败 |
+| host_addr | void ** | 输出 | host 侧子区间首地址；入函数即被置 nullptr，仅在返回 `ACL_SUCCESS` 时填写 |
+| device_addr | void ** | 输出 | device 侧子区间首地址；可空性与 host_addr 一致 |
+
+- **返回值说明**：`0`（`ACL_SUCCESS`）表示分配成功；容量不足或入参非法返回非 `0`，此时两个输出参数保持 nullptr。
+- **说明**：仅在 GE 调用 `create_args_handler` 期间（模型加载期内）同步调用，运行期不得调用。划出的子区间属于 SO 参数池，生命周期与池一致，GE 不得单独释放。
 
 ## 第二部分：OM2 模型数据
 

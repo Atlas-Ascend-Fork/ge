@@ -146,8 +146,16 @@ MethodDef *ResourcesFileCodeGenerator::BuildInitResourcesMethod(
     GE_ASSERT_SUCCESS(task_code_builder->RenderInitResource(body));
   }
   BuildInitSessionScopeMemory(body, runtime);
-  (void)body.emplace_back(args_table_.Attr("Init")());
+  // Init() 申请 Host/Device 参数主块（含 reserved 段），失败必须阻断加载，否则后续会用未分配的
+  // device args 继续下沉任务。生成 OM2_CHK_STATUS(args_table_.Init())，失败即返回错误码。
+  (void)body.emplace_back(ChkStatus(args_table_.Attr("Init")()));
   (void)body.emplace_back(ChkStatus(args_table_.Attr("ResolveActiveBases")(total_dev_mem_ptr_)));
+  if (codegen_model.args_table.has_reserved_args_table) {
+    // X1：工作区就绪后记录当前 FM 基址，作为 TensorRefreshSource::FeatureMap 的运行期取址基准。
+    // 后续 RefreshFeatureMap 成功时同步更新。
+    (void)body.emplace_back(
+        ast_.Assign(ast_.Var("", "fm_base_current_"), ast_.ReinterpretCast("uintptr_t", total_dev_mem_ptr_)));
+  }
   (void)body.emplace_back(ast_.Call("OM2_LOGI", {ast_.Str("InitResources done")}));
   (void)body.emplace_back(ast_.Return("ACL_SUCCESS"));
   return ast_.DefineMethod("Om2Model", "InitResources", {priority, reuse_zero_copy, external_resources}, "aclError",
@@ -387,6 +395,15 @@ MethodDef *ResourcesFileCodeGenerator::BuildReleaseResourcesMethod(const Om2Code
   BuildReleaseResourcesMethodForControlTask(body, runtime);
   auto i = ast_.Var("int", "i");
   (void)body.emplace_back(ast_.If(!is_external_rt_model_, {ChkStatus(AclmdlRIDestroy(model_handle_))}, {}, false));
+  if (codegen_model.args_table.has_reserved_args_table) {
+    // U2：设备已结束对参数的引用（RI 模型已销毁），此时清理 Callback 任务状态。
+    // 逐元素逆序析构 CustomTaskState：context_holder 先销毁（解除 Tensor 与 Handler 槽位引用），
+    // 再由 Om2ArgsHandlerDeleter 调用按值缓存的 destroy_args_handler 交回 GE 销毁。
+    // 必须早于下方 dev_dynamic_mem_ptrs_ 释放（allocator 析构只删块包装，设备内存由该循环释放），
+    // 也早于 args_table_ 成员析构（Handler 借用的池对象须活到 Destroy 完成，由成员声明顺序保证）。
+    (void)body.emplace_back(ast_.Comment("U2: release custom task states after device stops referencing args"));
+    (void)body.emplace_back(ast_.Var("", "custom_tasks_.clear()"));
+  }
   (void)body.emplace_back(ast_.If(session_scope_mem_ptr_ != nullptr, {
                                                                          ChkStatus(AclrtFree(session_scope_mem_ptr_)),
                                                                      }));

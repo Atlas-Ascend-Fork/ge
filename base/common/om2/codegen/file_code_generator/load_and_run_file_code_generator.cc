@@ -92,10 +92,20 @@ MethodDef *LoadAndRunFileCodeGenerator::BuildGetRtModelHandleMethod() const {
   return ast_.DefineMethod("Om2Model", "GetRtModelHandle", {}, "aclmdlRI", {ast_.Return("model_handle_")});
 }
 
-MethodDef *LoadAndRunFileCodeGenerator::BuildRefreshFeatureMapMethod() const {
+MethodDef *LoadAndRunFileCodeGenerator::BuildRefreshFeatureMapMethod(const Om2CodegenModel &codegen_model) const {
   const auto base_addr = ast_.Var("const uintptr_t", "base_addr");
+  if (!codegen_model.args_table.has_reserved_args_table) {
+    return ast_.DefineMethod("Om2Model", "RefreshFeatureMap", {base_addr}, "aclError",
+                             {ast_.Return(args_table_.Attr("RefreshFeatureMap")(base_addr))});
+  }
+  // X1：刷新成功后保存新 FM 基址，供 TensorRefreshSource::FeatureMap 的运行期取址使用。
+  // 失败时不更新，避免运行期按未生效的基址计算地址。
   return ast_.DefineMethod("Om2Model", "RefreshFeatureMap", {base_addr}, "aclError",
-                           {ast_.Return(args_table_.Attr("RefreshFeatureMap")(base_addr))});
+                           {
+                               ChkStatus(args_table_.Attr("RefreshFeatureMap")(base_addr)),
+                               ast_.Assign(ast_.Var("", "fm_base_current_"), base_addr),
+                               ast_.Return("ACL_SUCCESS"),
+                           });
 }
 
 Status LoadAndRunFileCodeGenerator::BuildLoadBody(std::vector<BodyItem> &body, const Om2CodegenModel &codegen_model,
@@ -104,9 +114,16 @@ Status LoadAndRunFileCodeGenerator::BuildLoadBody(std::vector<BodyItem> &body, c
   if (has_custom_kernel_) {
     body.push_back(ChkStatus(ast_.Call("DeserializeCustKernelBinaries", {ast_.Var("", "bin_info_map_")})));
   }
+  if (codegen_model.args_table.has_reserved_args_table) {
+    // 按全部 task 数占槽（非 Callback 位置保持空指针），使运行期能以 task_index 直接下标定位。
+    // 必须在 DispatchOp 循环之前完成：分发函数会按 task_index 写入对应槽位。
+    body.push_back(ast_.Var("", "custom_tasks_.resize(sizeof(kOpDefs) / sizeof(kOpDefs[0]))"));
+  }
   body.push_back(dev_ext_info_mem_ptrs_.Resize(codegen_model.aicpu_task_count));
   auto launch_func = ast_.Var("GertModelLaunchFunc", "launch_func");
   auto hccl_load_task = ast_.Var("HcclLoadTaskFunc", "hccl_load_task");
+  auto create_args_handler = ast_.Var("CreateArgsHandlerFunc", "create_args_handler");
+  auto destroy_args_handler = ast_.Var("DestroyArgsHandlerFunc", "destroy_args_handler");
   auto param_callbacks = ast_.Var("", "callbacks");
 
   if (codegen_model.runtime.has_hccl) {
@@ -120,6 +137,10 @@ Status LoadAndRunFileCodeGenerator::BuildLoadBody(std::vector<BodyItem> &body, c
   }
 
   // 公共 DispatchOpContext 初始化列表（for 循环版和展开版共享）
+  // custom_tasks 是指针而非引用：DispatchOpContext 无条件发射，而 Om2Model::custom_tasks_ 仅在
+  // 模型含 Callback 任务时生成，故非 Callback 模型传 nullptr。
+  const bool has_reserved = codegen_model.args_table.has_reserved_args_table;
+  Arg custom_tasks_arg = has_reserved ? Arg(ast_.Var("", "custom_tasks_").Addr()) : Arg(ast_.Var("", "nullptr"));
   auto ctx_init_list = ast_.InitList({total_dev_mem_ptr_,
                                       session_scope_mem_ptr_,
                                       constants_,
@@ -144,7 +165,10 @@ Status LoadAndRunFileCodeGenerator::BuildLoadBody(std::vector<BodyItem> &body, c
                                       kernel_id_.Addr(),
                                       launch_func,
                                       hccl_load_task,
-                                      main_follow_stream_mapping_});
+                                      main_follow_stream_mapping_,
+                                      create_args_handler,
+                                      destroy_args_handler,
+                                      custom_tasks_arg});
 
   auto ctx_var = ast_.Var("DispatchOpContext", "ctx");
   auto loop_var = ast_.Var("uint32_t", "_op_idx");
@@ -156,6 +180,25 @@ Status LoadAndRunFileCodeGenerator::BuildLoadBody(std::vector<BodyItem> &body, c
   body.push_back(ast_.VarDecl(hccl_load_task, nullptr));
   body.push_back(
       ast_.If(param_callbacks != "nullptr", {ast_.Assign(hccl_load_task, param_callbacks.Arrow("hccl_load_task"))}));
+  body.push_back(ast_.VarDecl(create_args_handler, nullptr));
+  body.push_back(ast_.VarDecl(destroy_args_handler, nullptr));
+  if (has_reserved) {
+    // callbacks_ 为整体按值复制：旧 Executor（struct_size 小于当前 sizeof）下尾部两字段是越界脏数据，
+    // 故读取前按 struct_size 门控；不满足则保持 nullptr，由下方判空明确加载失败并提示升级执行器，
+    // 而不是把脏指针当有效回调使用或静默降级。
+    body.push_back(
+        ast_.If(ast_.Var("", "callbacks_").Attr("struct_size") >= ast_.Sizeof(ast_.Var("", "GertModelLoadCallbacks")),
+                {ast_.Assign(create_args_handler, ast_.Var("", "callbacks_").Attr("create_args_handler")),
+                 ast_.Assign(destroy_args_handler, ast_.Var("", "callbacks_").Attr("destroy_args_handler"))}));
+    body.push_back(ast_.If(
+        (create_args_handler == "nullptr") || (destroy_args_handler == "nullptr"),
+        {ast_.Call("OM2_LOGE",
+                   {ast_.Str("current executor version is too low to support the custom op args refresh feature "
+                             "(create_args_handler=%p, destroy_args_handler=%p), please upgrade the executor "
+                             "and reload the model."),
+                    create_args_handler, destroy_args_handler}),
+         ast_.Return("ACL_ERROR_FAILURE")}));
+  }
   body.push_back(ast_.VarDecl(ctx_var, ctx_init_list));
 
   // 执行 ReportModelBaseInfo 回调
@@ -285,6 +328,16 @@ void LoadAndRunFileCodeGenerator::BuildRunBodyPhaseModelExecute(std::vector<Body
        ast_.Call("run_callbacks->report_run_info_preprocess", {instance_handle_, ast_.Var("", "_r").Addr()})}));
 
   body.push_back(ast_.BlankLine());
+  if (has_reserved_args_table_) {
+    // X2+X3：在既有 I/O 准备与普通参数刷新之后、CopyArgsToDevice 之前，逐 Callback 任务
+    // 更新持久 Tensor 地址并回调算子的 ArgsUpdater::UpdateHostArgs 改写其私有 host 参数字节。
+    // 随后 CopyArgsToDevice 按 reserved 游标把 [0, current_offset) 一并上传。
+    body.push_back(ast_.Comment("X2+X3: refresh custom op tensor addrs then callback ArgsUpdater"));
+    body.push_back(
+        ChkStatus(ast_.Call("UpdateCustomOpHostArgs", {ast_.Var("", "input_count"), ast_.Var("", "input_data"),
+                                                       ast_.Var("", "output_count"), ast_.Var("", "output_data")})));
+    body.push_back(ast_.BlankLine());
+  }
   if (is_need_va2pa) {
     if (is_async) {
       body.push_back(ChkStatus(args_table_.Attr("CopyArgsToDevice")(exe_stream, false)));

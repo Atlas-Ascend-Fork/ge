@@ -35,6 +35,15 @@ namespace om2 {
 constexpr size_t kArgsReserved = 16UL;
 constexpr size_t kArgsFieldSize = sizeof(void *);
 
+// Custom Task Callback 私有参数区（reserved 段）的构建期描述。
+// start_offset 相对主 args 块起点（与 built_in 区尾部相接），total_size 为该 placement 上全部
+// Callback 任务申报容量之和。不含运行期游标 current_offset —— 那是加载/运行期状态，由生成的
+// SO 侧 ReservedSegmentRuntime 持有。
+struct ReservedSegmentInfo {
+  uint64_t start_offset{0UL};
+  uint64_t total_size{0UL};
+};
+
 class ModelArgsManager {
  public:
   enum UpdatePolicy : int32_t {
@@ -154,6 +163,10 @@ class ModelArgsManager {
   std::vector<uint32_t> id_to_plicy_;
   std::vector<uint64_t> id_to_len_;
   std::vector<uint64_t> model_args_len_;
+  // Custom Task Callback 私有参数区。按 ArgsPlacement 索引；start_offset 在 AllocModelArgs 中
+  // 取该 placement 的 built_in_len，故 reserved 段紧接普通区尾部。
+  std::array<ReservedSegmentInfo, static_cast<size_t>(ArgsPlacement::kEnd)> reserved_segments_{};
+  bool has_reserve_args_table_{false};
   uint64_t host_input_size_{0U};
   uint64_t host_input_partition_len_{0U};
   int8_t logLevel_{DLOG_DEBUG};

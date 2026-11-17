@@ -1081,7 +1081,9 @@ Status Om2CodegenModelBuilder::BuildTaskSemantics(const GeModelPtr &model,
                                           &op_index_to_count_map_,
                                           &next_args_table_index,
                                           &next_host_args_offset,
-                                          &codegen_model.aicpu_task_count};
+                                          &codegen_model.aicpu_task_count,
+                                          &codegen_model.args_table,
+                                          static_cast<uint32_t>(i)};
     GE_ASSERT_SUCCESS(task_builder->Contribute(context));
   }
   return SUCCESS;

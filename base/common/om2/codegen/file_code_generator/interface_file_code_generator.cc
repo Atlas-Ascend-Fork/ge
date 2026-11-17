@@ -71,6 +71,16 @@ StructDecl *InterfaceFileCodeGenerator::BuildArgsRefreshInfoStruct() const {
                                         });
 }
 
+StructDecl *InterfaceFileCodeGenerator::BuildReservedSegmentRuntimeStruct() const {
+  // start_offset/total_size 由构建期固化，current_offset 是加载期起的 bump 分配游标。
+  // 三者均为相对主 args 块起点的绝对偏移，与 args_sizes_ 同索引口径（sqe 并入 hbm 槽）。
+  return ast_.Struct("ReservedSegmentRuntime", {
+                                                   ast_.Field("uint64_t", "start_offset"),
+                                                   ast_.Field("uint64_t", "total_size"),
+                                                   ast_.Field("uint64_t", "current_offset"),
+                                               });
+}
+
 DeclNode *InterfaceFileCodeGenerator::BuildHcclFollowStreamCountMap(const Om2CodegenModel &codegen_model) const {
   std::vector<Arg> pairs;
   pairs.reserve(codegen_model.runtime.hccl_follow_stream_counts.size());
@@ -122,7 +132,7 @@ FunctionDef *InterfaceFileCodeGenerator::BuildAclrtMallocFunction() const {
   return ast_.DefineFunction("AclrtMalloc", {ptr, size, mem_type, module_id}, "inline aclError", ast_.Body(body));
 }
 
-ClassDecl *InterfaceFileCodeGenerator::BuildOm2ArgsTableClass() {
+ClassDecl *InterfaceFileCodeGenerator::BuildOm2ArgsTableClass(bool has_reserved_args_table) {
   std::vector<DeclNode *> items = {
       ast_.Public(),
       ast_.DeclareMethod("Om2ArgsTable", {}, "", " = default"),
@@ -139,6 +149,15 @@ ClassDecl *InterfaceFileCodeGenerator::BuildOm2ArgsTableClass() {
       ast_.DeclareMethod("ResolveActiveSrc", {ast_.Var("size_t", "allocation_id"), ast_.Var("uint64_t", "offset")},
                          "void *"),
       ast_.DeclareMethod("CopyArgsToDevice", {ast_.Var("void *", "stream"), ast_.Var("bool", "is_async")}, "aclError"),
+  };
+  if (has_reserved_args_table) {
+    // Custom Task Callback 私有参数区的 bump 分配入口。出参用既有 ArgsInfo，
+    // 与桥接层 GertOm2ArgsAllocFunc 的两个 void ** 签名不同，转换由适配层负责。
+    (void)items.emplace_back(ast_.DeclareMethod(
+        "AllocateArgsBuffer",
+        {ast_.Var("size_t", "size"), ast_.Var("int32_t", "args_type"), ast_.Var("ArgsInfo &", "result")}, "aclError"));
+  }
+  std::vector<DeclNode *> private_items = {
       ast_.Private(),
       // sqe会合并到hbm中
       ast_.Field("std::array<int64_t,  static_cast<size_t>(3)>", "args_sizes_{}"),
@@ -154,6 +173,11 @@ ClassDecl *InterfaceFileCodeGenerator::BuildOm2ArgsTableClass() {
       ast_.Field("std::vector<uintptr_t>", "allocation_ids_to_active_base_addr_all_"),
       //
   };
+  if (has_reserved_args_table) {
+    (void)private_items.emplace_back(
+        ast_.Field("std::array<ReservedSegmentRuntime, static_cast<size_t>(3)>", "reserved_segments_{}"));
+  }
+  (void)items.insert(items.end(), private_items.begin(), private_items.end());
   return ast_.Class("Om2ArgsTable", items);
 }
 
@@ -202,12 +226,28 @@ ClassDecl *InterfaceFileCodeGenerator::BuildOm2ModelClass(const Om2CodegenModel 
       ast_.Field("aclmdlRI", "model_handle_"),
       ast_.Field("bool", "is_external_rt_model_"),
   };
+  if (codegen_model.args_table.has_reserved_args_table) {
+    // X2+X3：逐 Callback 任务更新 Tensor 地址并回调 ArgsUpdater。
+    // 声明在此、定义在 <model>_load_and_run.cpp（须与 kOpDefs / CustomTaskState 同编译单元）。
+    items.push_back(ast_.DeclareMethod("UpdateCustomOpHostArgs",
+                                       {ast_.Var("size_t", "input_count"), ast_.Var("gert::Tensor **", "input_data"),
+                                        ast_.Var("size_t", "output_count"), ast_.Var("gert::Tensor **", "output_data")},
+                                       "aclError"));
+  }
   DealParamForOm2ModelClass(items, runtime);
   items.push_back(ast_.Field("void *", "total_dev_mem_ptr_"));
   items.push_back(ast_.Field("bool", "owns_total_dev_mem_", false));
   items.push_back(ast_.Field("bool", "is_stream_list_bind_"));
   items.push_back(ast_.Field("std::unordered_map<std::string, BinDataInfo>", "bin_info_map_"));
   items.push_back(ast_.Field("Om2ArgsTable", "args_table_"));
+  if (codegen_model.args_table.has_reserved_args_table) {
+    // 声明位置约束：必须在 args_table_ 之后，使逆序析构时先于 args_table_ 释放——
+    // Handler 借用的池对象必须活到 destroy_args_handler 完成。
+    items.push_back(ast_.Field("std::vector<CustomTaskStatePtr>", "custom_tasks_"));
+    // 当前 FM 基址：工作区就绪后置为 total_dev_mem_ptr_，RefreshFeatureMap 成功后更新。
+    // TensorRefreshSource::FeatureMap 的运行期基址来源。
+    items.push_back(ast_.Field("uintptr_t", "fm_base_current_", ast_.ULong(0)));
+  }
   items.push_back(ast_.Field("uint64_t *", "session_id_"));
   items.push_back(ast_.Field("uint32_t", "model_id_"));
   items.push_back(ast_.Field("void *", "instance_handle_"));

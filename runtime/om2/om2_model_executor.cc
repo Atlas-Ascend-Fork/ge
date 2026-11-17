@@ -43,6 +43,7 @@
 #include "rt_external_stream.h"
 #include "common/compile_profiling/ge_call_wrapper.h"
 #include "file_const_loader.h"
+#include "om2_args_handler.h"
 #include "om2_external_weight_manager.h"
 #include "om2_file_utils.h"
 #include "om2_hccl_host_services.h"
@@ -409,15 +410,18 @@ std::vector<std::string> UniquePtrStrVecToStringVec(const std::vector<std::uniqu
 }
 
 GertModelLoadCallbacks CreateGertModelLoadCallbacks() {
-  return {.struct_size = sizeof(GertModelLoadCallbacks),
-          .report_model_base_info = ReportModelBaseInfo,
-          .launch_func = GertModelLaunchTask,
-          .lock_bin_handle_store = LockBinHandleStore,
-          .unlock_bin_handle_store = UnlockBinHandleStore,
-          .query_bin_handle_from_store = QueryBinHandleFromStore,
-          .save_bin_handle_to_store = SaveBinHandleToStore,
-          .release_bin_handle_from_store = ReleaseBinHandleFromStore,
-          .hccl_load_task = gert::HcclHostLoadTask};
+  GertModelLoadCallbacks callbacks{.struct_size = sizeof(GertModelLoadCallbacks),
+                                   .report_model_base_info = ReportModelBaseInfo,
+                                   .launch_func = GertModelLaunchTask,
+                                   .lock_bin_handle_store = LockBinHandleStore,
+                                   .unlock_bin_handle_store = UnlockBinHandleStore,
+                                   .query_bin_handle_from_store = QueryBinHandleFromStore,
+                                   .save_bin_handle_to_store = SaveBinHandleToStore,
+                                   .release_bin_handle_from_store = ReleaseBinHandleFromStore,
+                                   .hccl_load_task = gert::HcclHostLoadTask,
+                                   .create_args_handler = GertOm2ArgsHandlerCreate,
+                                   .destroy_args_handler = GertOm2ArgsHandlerDestroy};
+  return callbacks;
 }
 
 // profiling run info 回调：由 executor 本地实现（profiling 不依赖 libom2_dump.so），

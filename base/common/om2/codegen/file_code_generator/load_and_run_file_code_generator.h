@@ -25,7 +25,7 @@ class LoadAndRunFileCodeGenerator : public Om2ModelClassGeneratorBase {
   MethodDef *BuildLoadMethod(const Om2CodegenModel &codegen_model,
                              const std::vector<TaskCodeBuilderPtr> &task_code_builders);
   MethodDef *BuildGetRtModelHandleMethod() const;
-  MethodDef *BuildRefreshFeatureMapMethod() const;
+  MethodDef *BuildRefreshFeatureMapMethod(const Om2CodegenModel &codegen_model) const;
   MethodDef *BuildRunAsyncMethod(const Om2CodegenModel &codegen_model);
   MethodDef *BuildRunMethod(const Om2CodegenModel &codegen_model);
   std::vector<DeclNode *> BuildQueryResourceApis(const Om2CodegenModel &codegen_model) const;
@@ -36,6 +36,10 @@ class LoadAndRunFileCodeGenerator : public Om2ModelClassGeneratorBase {
                             const std::vector<TaskCodeBuilderPtr> &task_code_builders) const;
   void SetHasCustomKernel(bool value) {
     has_custom_kernel_ = value;
+  }
+  // 模型是否含 Custom Task Callback 任务。决定 Run/RunAsync 是否插入 UpdateCustomOpHostArgs 调用。
+  void SetHasReservedArgsTable(bool value) {
+    has_reserved_args_table_ = value;
   }
 
  private:
@@ -58,6 +62,7 @@ class LoadAndRunFileCodeGenerator : public Om2ModelClassGeneratorBase {
   Status BuildDispatchOp(std::vector<DeclNode *> &items,
                          const std::map<uint32_t, std::string> &type_to_func_name) const;
   bool has_custom_kernel_ = false;
+  bool has_reserved_args_table_ = false;
 };
 }  // namespace ge
 
