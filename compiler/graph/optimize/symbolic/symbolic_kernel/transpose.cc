@@ -25,11 +25,11 @@ constexpr size_t kInputPermIndex = 1U;
 constexpr size_t kOutputIndex = 0U;
 
 bool GetPerm(const gert::SymbolTensor *perm_tensor, std::vector<int64_t> &perm) {
-  if (perm_tensor == nullptr || perm_tensor->GetSymbolicValue() == nullptr) {
+  if (perm_tensor == nullptr || !perm_tensor->HasValue()) {
     return false;
   }
   perm.clear();
-  for (const auto &expr : *perm_tensor->GetSymbolicValue()) {
+  for (auto &expr : SymbolicInferUtil::GetSymbolicValues(*perm_tensor)) {
     int64_t value = 0L;
     if (!expr.GetConstValue(value)) {
       return false;
@@ -50,11 +50,11 @@ std::vector<int64_t> GetStrides(const std::vector<int64_t> &dims) {
 }  // namespace
 
 graphStatus CheckTransposeInputs(const gert::InferSymbolComputeContext *context, std::vector<int64_t> &dims,
-                                 std::vector<int64_t> &perm, const std::vector<Expression> *&values) {
+                                 std::vector<int64_t> &perm, std::vector<Expression> &values) {
   const auto tensor = context->GetInputSymbolTensor(kInputXIndex);
   GE_UNSUPPORTED_IF_NULL(tensor);
-  values = tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(values);
+  values = SymbolicInferUtil::GetSymbolicValues(*tensor);
+  GE_UNSUPPORTED_IF(!tensor->HasValue());
   if (!context->GetConstInputDims(kInputXIndex, dims)) {
     GELOGW("Transpose symbolic compute unsupported: input shape is not constant, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
@@ -95,7 +95,7 @@ graphStatus TransposeSymbolicKernelCompute(gert::InferSymbolComputeContext *cont
 
   std::vector<int64_t> input_dims;
   std::vector<int64_t> perm;
-  const std::vector<Expression> *x_values = nullptr;
+  std::vector<Expression> x_values;
   const auto ret = CheckTransposeInputs(context, input_dims, perm, x_values);
   if (ret != GRAPH_SUCCESS) {
     return ret;
@@ -116,7 +116,7 @@ graphStatus TransposeSymbolicKernelCompute(gert::InferSymbolComputeContext *cont
   for (const auto dim : output_dims) {
     output_size *= dim;
   }
-  if (output_size < 0L || static_cast<size_t>(output_size) != x_values->size() || output_size > 200L) {
+  if (output_size < 0L || static_cast<size_t>(output_size) != x_values.size() || output_size > 200L) {
     GELOGW(
         "Transpose symbolic compute unsupported: output size[%ld] is invalid, mismatched, or exceeds limit, node "
         "%s[%s].",
@@ -128,18 +128,18 @@ graphStatus TransposeSymbolicKernelCompute(gert::InferSymbolComputeContext *cont
   const auto output_strides = GetStrides(output_dims);
   auto output_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output_tensor);
-  output_tensor->MutableOriginSymbolShape().MutableDims() = std::move(output_shape);
-  auto output_values = output_tensor->MutableSymbolicValue();
-  GE_ASSERT_NOTNULL(output_values);
-  output_values->reserve(static_cast<size_t>(output_size));
+  SymbolicInferUtil::SetSymbolDims(*output_tensor, output_shape);
+  std::vector<Expression> output_values;
+  output_values.reserve(static_cast<size_t>(output_size));
   for (int64_t output_index = 0L; output_index < output_size; ++output_index) {
     int64_t input_index = 0L;
     for (size_t output_axis = 0U; output_axis < perm.size(); ++output_axis) {
       const int64_t coordinate = (output_index / output_strides[output_axis]) % output_dims[output_axis];
       input_index += coordinate * input_strides[static_cast<size_t>(perm[output_axis])];
     }
-    output_values->emplace_back(x_values->at(static_cast<size_t>(input_index)));
+    output_values.emplace_back(x_values.at(static_cast<size_t>(input_index)));
   }
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, output_values);
   return GRAPH_SUCCESS;
 }
 

@@ -605,7 +605,7 @@ TEST_F(SymbolicShapeComputeUT, InferShapeForRealDivSymbolicKernelRejectsNonPosit
   ASSERT_EQ(ssi.Infer(cg), SUCCESS);
   auto attr = node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, InferShapeForRealDivSymbolicKernelRejectsZeroDivisor) {
@@ -633,7 +633,7 @@ TEST_F(SymbolicShapeComputeUT, InferShapeForRealDivSymbolicKernelRejectsZeroDivi
   ASSERT_EQ(ssi.Infer(cg), SUCCESS);
   auto attr = node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, InferShapeForRealDivSymbolicKernelRejectsNegativeShapeValue) {
@@ -661,7 +661,7 @@ TEST_F(SymbolicShapeComputeUT, InferShapeForRealDivSymbolicKernelRejectsNegative
   ASSERT_EQ(ssi.Infer(cg), SUCCESS);
   auto attr = node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, InferShapeForBinarySymbolicKernelBroadcastInvalid) {
@@ -865,7 +865,7 @@ TEST_F(SymbolicShapeComputeUT, InferShapeForNoInferFunc) {
   data0->GetOpDescBarePtr()
       ->MutableOutputDesc(0)
       ->template GetOrCreateAttrsGroup<SymbolicDescAttr>()
-      ->symbolic_tensor.SetSymbolShape(symbol_shape);
+      ->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
   std::vector<Expression> expect_dims = {Symbol(2), Symbol(2), Symbol(3), Symbol(4)};
   ExpectNodeInfo expect_node("FOO1", expect_dims, {}, {}, {});
   ExpectNodeInfo expect_node1("FOO2", {}, {}, {}, {});
@@ -977,7 +977,7 @@ TEST_F(SymbolicShapeComputeUT, TestGeTensorDesc_Copy_With_Attr) {
   auto relu1 = cg->FindFirstNodeMatchType("Relu");
   ASSERT_NE(relu1, nullptr);
   auto attr = relu1->GetOpDesc()->MutableInputDesc(0)->template GetOrCreateAttrsGroup<SymbolicDescAttr>();
-  attr->symbolic_tensor.SetSymbolShape({
+  attr->symbolic_tensor.SetOriginSymbolShape({
       Symbol(1),
       Symbol(2),
       Symbol(3),
@@ -998,8 +998,7 @@ TEST_F(SymbolicShapeComputeUT, TestGeTensorDesc_Copy_With_Attr) {
   auto attr3 = all_desc.at(0).template GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr3, nullptr);
   auto ret1 = attr3->symbolic_tensor.GetOriginSymbolShape();
-  ASSERT_EQ(attr3->symbolic_tensor.GetOriginSymbolShape().GetDims(),
-            attr->symbolic_tensor.GetOriginSymbolShape().GetDims());
+  ASSERT_EQ(attr3->symbolic_tensor.GetOriginSymbolShape(), attr->symbolic_tensor.GetOriginSymbolShape());
 
   auto attr4 = relu1->GetOpDesc()->GetAllInputsDescPtr().at(0)->GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr4, nullptr);
@@ -1460,7 +1459,7 @@ TEST_F(SymbolicShapeComputeUT, test_tile_without_symbols_value) {
   ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_tile_symbols_value_format_invalid) {
@@ -1482,7 +1481,7 @@ TEST_F(SymbolicShapeComputeUT, test_tile_symbols_value_format_invalid) {
   ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_tile_create_expression_failed_double_not_support) {
@@ -1506,7 +1505,7 @@ TEST_F(SymbolicShapeComputeUT, test_tile_create_expression_failed_double_not_sup
   ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_tile_without_symbols_value_input2) {
@@ -1531,7 +1530,7 @@ TEST_F(SymbolicShapeComputeUT, test_tile_without_symbols_value_input2) {
   ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_tile_2nd_input_dims_invalid) {
@@ -1607,12 +1606,12 @@ TEST_F(SymbolicShapeComputeUT, test_tile_multiples_symbols_over_limit) {
                                                   Symbol("s1"), Symbol(1), Symbol(1), Symbol("s1"), Symbol("s1"),
                                                   Symbol(1), Symbol(1)});
   auto symbolic_value_unique = ge::MakeUnique<std::vector<ge::Expression>>(input_symbol_value);
-  data_attr->symbolic_tensor.SetSymbolicValue(std::move(symbolic_value_unique));
+  SymbolicInferUtil::SetSymbolicValues(data_attr->symbolic_tensor, *symbolic_value_unique);
   SymbolicShapeInference ssi;
   ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_tile_GetMultiplesDims_failed) {
@@ -1638,7 +1637,7 @@ TEST_F(SymbolicShapeComputeUT, test_tile_GetMultiplesDims_failed) {
   ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_tile_check_outputsize_failed) {
@@ -1665,7 +1664,7 @@ TEST_F(SymbolicShapeComputeUT, test_tile_check_outputsize_failed) {
   ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 //
@@ -1845,7 +1844,7 @@ TEST_F(SymbolicShapeComputeUT, test_pack_without_symbolic_value) {
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
   EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({Symbol(2), Symbol(3), Symbol(3)}));
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_pack_get_const_value_failed) {
@@ -2404,7 +2403,7 @@ TEST_F(SymbolicShapeComputeUT, test_unpack_with_symbols_value) {
     auto attr = unpack_op_desc->GetOutputDesc(i).template GetAttrsGroup<SymbolicDescAttr>();
     ASSERT_NE(attr, nullptr);
     std::vector<Expression> expect_symbolic_shape = {Symbol(2), Symbol(2), Symbol(6)};
-    EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_symbolic_shape);
+    EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(attr->symbolic_tensor.GetOriginSymbolShape()), expect_symbolic_shape);
     auto s0 = ge::Symbol("s0");
     auto s1 = ge::Symbol("s1");
     auto s2 = ge::Symbol("s2");
@@ -2412,8 +2411,8 @@ TEST_F(SymbolicShapeComputeUT, test_unpack_with_symbols_value) {
                                                      (s0 + s1), ge::Symbol(2), s2, (s0 + s1), ge::Symbol(2), s2,
                                                      (s0 + s1), ge::Symbol(2), s2, (s0 + s1), ge::Symbol(2), s2,
                                                      (s0 + s1), ge::Symbol(2), s2, (s0 + s1), ge::Symbol(2), s2};
-    EXPECT_NE(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
-    EXPECT_EQ(*attr->symbolic_tensor.GetSymbolicValue(), expect_symbolic_value);
+    EXPECT_NE(attr->symbolic_tensor.GetValueCount(), 0U);
+    EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues(attr->symbolic_tensor), expect_symbolic_value);
   }
 }
 
@@ -2479,7 +2478,8 @@ TEST_F(SymbolicShapeComputeUT, test_unpack_infer_degrade_without_input_symbol) {
   ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
   // shape推导降级：输出不写入符号shape(dtype符号化可能已创建attr，其shape部分须为空)
   const auto out_attr = unpack_node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
-  ASSERT_TRUE((out_attr == nullptr) || out_attr->symbolic_tensor.GetOriginSymbolShape().GetDims().empty());
+  ASSERT_TRUE((out_attr == nullptr) ||
+              SymbolicInferUtil::GetSymbolDims(out_attr->symbolic_tensor.GetOriginSymbolShape()).empty());
 }
 
 // ┌────────┐  (0,0)   ┌──────────┐ (0,0)    ┌─────────────┐
@@ -2519,10 +2519,10 @@ TEST_F(SymbolicShapeComputeUT, test_unpack_with_const) {
     auto attr = unpack_op_desc->GetOutputDesc(i).template GetAttrsGroup<SymbolicDescAttr>();
     ASSERT_NE(attr, nullptr);
     std::vector<Expression> expect_symbolic_shape = {Symbol(2), Symbol(2)};
-    EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_symbolic_shape);
+    EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(attr->symbolic_tensor.GetOriginSymbolShape()), expect_symbolic_shape);
     std::vector<Expression> expect_symbolic_value = {Symbol(i), Symbol(3 + i), Symbol(6 + i), Symbol(9 + i)};
-    EXPECT_NE(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
-    EXPECT_EQ(*attr->symbolic_tensor.GetSymbolicValue(), expect_symbolic_value);
+    EXPECT_NE(attr->symbolic_tensor.GetValueCount(), 0U);
+    EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues(attr->symbolic_tensor), expect_symbolic_value);
   }
 }
 
@@ -3591,7 +3591,8 @@ void EXPECT_ConcatV2DHostComputeTestCommon(EsCGraphBuilder *graph_, const GeShap
   op_desc->MutableInputDesc(0)->SetShape(data1_shape);
   op_desc->MutableInputDesc(1)->SetShape(data2_shape);
   op_desc->MutableInputDesc(2)->SetShape(data3_shape);
-  ExpectNodeInfo expect_node("ConcatV2D", expect_out_shape.GetDims(), {}, {}, expect_out_values);
+  ExpectNodeInfo expect_node("ConcatV2D", SymbolicInferUtil::GetSymbolDims(expect_out_shape), {}, {},
+                             expect_out_values);
   std::vector<ExpectNodeInfo> expect_node_vec;
   expect_node_vec.push_back(expect_node);
   ASSERT_EQ(RunSymbolInferenceTest(cg, expect_node_vec, {}), SUCCESS);
@@ -3726,7 +3727,7 @@ TEST_F(SymbolicShapeComputeUT, test_concatv2d_hostcompute6_without_value) {
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
 
   EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({Symbol(256), Symbol(32)}));
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_concatv2d_hostcompute7_concat_dim_not_valid) {
@@ -3777,7 +3778,7 @@ TEST_F(SymbolicShapeComputeUT, test_concatv2d_GetConstInputDims_failed_n1) {
   op_desc->MutableInputDesc(0)->SetShape(GeShape({2, 2, 3}));
   auto var_node = cg->FindNode("variable_0");
   auto attr = var_node->GetOpDesc()->MutableOutputDesc(0)->template GetOrCreateAttrsGroup<SymbolicDescAttr>();
-  attr->symbolic_tensor.SetSymbolShape({
+  attr->symbolic_tensor.SetOriginSymbolShape({
       Symbol("s1"),
       Symbol("s2"),
       Symbol(3),
@@ -3785,7 +3786,7 @@ TEST_F(SymbolicShapeComputeUT, test_concatv2d_GetConstInputDims_failed_n1) {
   });
   std::vector<ge::Expression> input_symbol_value({Symbol("s1"), Symbol("s1"), Symbol(1), Symbol(1)});
   auto symbolic_value_unique = ge::MakeUnique<std::vector<ge::Expression>>(input_symbol_value);
-  attr->symbolic_tensor.SetSymbolicValue(std::move(symbolic_value_unique));
+  SymbolicInferUtil::SetSymbolicValues(attr->symbolic_tensor, *symbolic_value_unique);
   SymbolicShapeInference ssi;
   ASSERT_NE(ssi.Infer(cg), ge::UNSUPPORTED);
 }
@@ -3810,7 +3811,7 @@ TEST_F(SymbolicShapeComputeUT, test_concatv2d_GetConstInputDims_failed_n2) {
   op_desc->MutableInputDesc(0)->SetShape(GeShape({2, 2, 3}));
   auto var_node = cg->FindNode("variable_0");
   auto attr = var_node->GetOpDesc()->MutableOutputDesc(0)->template GetOrCreateAttrsGroup<SymbolicDescAttr>();
-  attr->symbolic_tensor.SetSymbolShape({
+  attr->symbolic_tensor.SetOriginSymbolShape({
       Symbol("s1"),
       Symbol("s2"),
       Symbol(3),
@@ -3818,7 +3819,7 @@ TEST_F(SymbolicShapeComputeUT, test_concatv2d_GetConstInputDims_failed_n2) {
   });
   std::vector<ge::Expression> input_symbol_value({Symbol("s1"), Symbol("s1"), Symbol(1), Symbol(1)});
   auto symbolic_value_unique = ge::MakeUnique<std::vector<ge::Expression>>(input_symbol_value);
-  attr->symbolic_tensor.SetSymbolicValue(std::move(symbolic_value_unique));
+  SymbolicInferUtil::SetSymbolicValues(attr->symbolic_tensor, *symbolic_value_unique);
   SymbolicShapeInference ssi;
   ASSERT_NE(ssi.Infer(cg), ge::UNSUPPORTED);
 }
@@ -3847,7 +3848,7 @@ TEST_F(SymbolicShapeComputeUT, test_concatv2d_get_symbolic_input_failed) {
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
 
   EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({}));
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 //
@@ -3989,8 +3990,8 @@ TEST_F(SymbolicShapeComputeUT, test_select_1_n1) {
   std::vector<Expression> expect_values = {c0, c0, c0, c0, c0, c0};
   std::vector<Expression> expect_shape = {Symbol(6)};
 
-  EXPECT_EQ(symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_shape);
-  EXPECT_EQ(*(symbolic_tensor.GetSymbolicValue()), expect_values);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(symbolic_tensor.GetOriginSymbolShape()), expect_shape);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues((symbolic_tensor)), expect_values);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_select_1_n1xn2) {
@@ -4008,8 +4009,8 @@ TEST_F(SymbolicShapeComputeUT, test_select_1_n1xn2) {
   std::vector<Expression> expect_values = {s1, s1, s1, s1, s1, s1};
   std::vector<Expression> expect_shape = {Symbol(2), Symbol(3)};
 
-  EXPECT_EQ(symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_shape);
-  EXPECT_EQ(*(symbolic_tensor.GetSymbolicValue()), expect_values);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(symbolic_tensor.GetOriginSymbolShape()), expect_shape);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues((symbolic_tensor)), expect_values);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_select_1_n1xn2xn3) {
@@ -4028,8 +4029,8 @@ TEST_F(SymbolicShapeComputeUT, test_select_1_n1xn2xn3) {
                                            c1, c1, c1, c1, c1, c1, c1, c1, c1, c1, c1, c1};
   std::vector<Expression> expect_shape = {Symbol(2), Symbol(3), Symbol(4)};
 
-  EXPECT_EQ(symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_shape);
-  EXPECT_EQ(*(symbolic_tensor.GetSymbolicValue()), expect_values);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(symbolic_tensor.GetOriginSymbolShape()), expect_shape);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues((symbolic_tensor)), expect_values);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_select_n3_n1xn2xn3) {
@@ -4049,8 +4050,8 @@ TEST_F(SymbolicShapeComputeUT, test_select_n3_n1xn2xn3) {
                                            c1, c0, c1, c0, c1, c0, c1, c0, c1, c0, c1, c0};
   std::vector<Expression> expect_shape = {Symbol(2), Symbol(3), Symbol(4)};
 
-  EXPECT_EQ(symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_shape);
-  EXPECT_EQ(*(symbolic_tensor.GetSymbolicValue()), expect_values);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(symbolic_tensor.GetOriginSymbolShape()), expect_shape);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues((symbolic_tensor)), expect_values);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_select_n2xn3_n1xn2xn3) {
@@ -4070,8 +4071,8 @@ TEST_F(SymbolicShapeComputeUT, test_select_n2xn3_n1xn2xn3) {
                                            c1, c1, c1, c1, c1, c0, c1, c0, c0, c0, c0, c0};
   std::vector<Expression> expect_shape = {Symbol(2), Symbol(3), Symbol(4)};
 
-  EXPECT_EQ(symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_shape);
-  EXPECT_EQ(*(symbolic_tensor.GetSymbolicValue()), expect_values);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(symbolic_tensor.GetOriginSymbolShape()), expect_shape);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues((symbolic_tensor)), expect_values);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_select_n1x1x1_n1xn2xn3) {
@@ -4091,8 +4092,8 @@ TEST_F(SymbolicShapeComputeUT, test_select_n1x1x1_n1xn2xn3) {
                                            c0, c0, c0, c0, c0, c0, c0, c0, c0, c0, c0, c0};
   std::vector<Expression> expect_shape = {Symbol(2), Symbol(3), Symbol(4)};
 
-  EXPECT_EQ(symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_shape);
-  EXPECT_EQ(*(symbolic_tensor.GetSymbolicValue()), expect_values);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(symbolic_tensor.GetOriginSymbolShape()), expect_shape);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues((symbolic_tensor)), expect_values);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_select_1xn2x1_n1xn2xn3) {
@@ -4112,8 +4113,8 @@ TEST_F(SymbolicShapeComputeUT, test_select_1xn2x1_n1xn2xn3) {
                                            c1, c1, c1, c1, c1, c1, c1, c1, c0, c0, c0, c0};
   std::vector<Expression> expect_shape = {Symbol(2), Symbol(3), Symbol(4)};
 
-  EXPECT_EQ(symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_shape);
-  EXPECT_EQ(*(symbolic_tensor.GetSymbolicValue()), expect_values);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(symbolic_tensor.GetOriginSymbolShape()), expect_shape);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues((symbolic_tensor)), expect_values);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_select_n1xn2x1_n1xn2xn3) {
@@ -4133,8 +4134,8 @@ TEST_F(SymbolicShapeComputeUT, test_select_n1xn2x1_n1xn2xn3) {
                                            c1, c1, c1, c1, c0, c0, c0, c0, c0, c0, c0, c0};
   std::vector<Expression> expect_shape = {Symbol(2), Symbol(3), Symbol(4)};
 
-  EXPECT_EQ(symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_shape);
-  EXPECT_EQ(*(symbolic_tensor.GetSymbolicValue()), expect_values);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(symbolic_tensor.GetOriginSymbolShape()), expect_shape);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues((symbolic_tensor)), expect_values);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_select_n1x1xn3_n1xn2xn3) {
@@ -4154,8 +4155,8 @@ TEST_F(SymbolicShapeComputeUT, test_select_n1x1xn3_n1xn2xn3) {
                                            c1, c0, c1, c0, c1, c0, c1, c0, c1, c0, c1, c0};
   std::vector<Expression> expect_shape = {Symbol(2), Symbol(3), Symbol(4)};
 
-  EXPECT_EQ(symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_shape);
-  EXPECT_EQ(*(symbolic_tensor.GetSymbolicValue()), expect_values);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(symbolic_tensor.GetOriginSymbolShape()), expect_shape);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues((symbolic_tensor)), expect_values);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_select_n1xn2xn3_n1xn2xn3) {
@@ -4175,8 +4176,8 @@ TEST_F(SymbolicShapeComputeUT, test_select_n1xn2xn3_n1xn2xn3) {
                                            c1, c0, c1, c0, c1, c1, c1, c1, c0, c0, c0, c0};
   std::vector<Expression> expect_shape = {Symbol(2), Symbol(3), Symbol(4)};
 
-  EXPECT_EQ(symbolic_tensor.GetOriginSymbolShape().GetDims(), expect_shape);
-  EXPECT_EQ(*(symbolic_tensor.GetSymbolicValue()), expect_values);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(symbolic_tensor.GetOriginSymbolShape()), expect_shape);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues((symbolic_tensor)), expect_values);
 }
 
 TEST_F(SymbolicShapeComputeUT, test_select_inputs_invalid) {
@@ -4644,11 +4645,11 @@ TEST_F(SymbolicShapeComputeUT, InferShapeForSimpleGraphUnkownDimNum) {
 
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  auto result = attr->symbolic_tensor.GetOriginSymbolShape().GetDims();
+  auto result = SymbolicInferUtil::GetSymbolDims(attr->symbolic_tensor.GetOriginSymbolShape());
   std::vector<std::string> expect_dim = {"s1", "s5", "s3", "s6"};
   ASSERT_EQ(result.size(), expect_dim.size());
   for (size_t i = 0UL; i < result.size(); i++) {
-    EXPECT_EQ(std::string(result[i].Serialize().get()), expect_dim[i]);
+    EXPECT_EQ(std::string(result[i].Str().get()), expect_dim[i]);
   }
 }
 
@@ -4698,7 +4699,7 @@ TEST_F(SymbolicShapeComputeUT, InferShapeForSimpleGraphInputData0IsEmpty) {
 
   auto attr = op_desc->GetOutputDesc(0).template GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
-  auto result = attr->symbolic_tensor.GetOriginSymbolShape().GetDims();
+  auto result = SymbolicInferUtil::GetSymbolDims(attr->symbolic_tensor.GetOriginSymbolShape());
   std::vector<Expression> expect_dim = {Symbol("s1"), Symbol(1), Symbol("s2")};
   ASSERT_EQ(result.size(), expect_dim.size());
   ASSERT_EQ(result, expect_dim);
@@ -4752,8 +4753,8 @@ TEST_F(SymbolicShapeComputeUT, test_clean_symbolic_value_when_infer_two_times) {
   ASSERT_NE(attr, nullptr);
   EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({Symbol(2)}));
   std::vector<Expression> expect_values = {Symbol(2), Symbol(2)};
-  EXPECT_NE(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
-  EXPECT_EQ(*attr->symbolic_tensor.GetSymbolicValue(), expect_values);
+  EXPECT_NE(attr->symbolic_tensor.GetValueCount(), 0U);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues(attr->symbolic_tensor), expect_values);
 
   // 第二次推导 - use internal node access for edge manipulation
   auto shape_node = cg->FindFirstNodeMatchType("Shape");
@@ -4766,7 +4767,7 @@ TEST_F(SymbolicShapeComputeUT, test_clean_symbolic_value_when_infer_two_times) {
   attr = const_cast<SymbolicDescAttr *>(op_desc->GetInputDesc(1).template GetAttrsGroup<SymbolicDescAttr>());
   EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(),
             gert::SymbolShape({Symbol("s3"), Symbol("s4"), Symbol("s5")}));
-  EXPECT_EQ(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 TEST_F(SymbolicShapeComputeUT, InferShapeForSimpleGraphShapeNEOriginShape) {
@@ -5058,9 +5059,8 @@ TEST_F(SymbolicShapeComputeUT, test_identity_and_cast_symbolic_value) {
   ASSERT_EQ(SetNoStorage(cg, "input", data_info, 0), SUCCESS);
   auto input_attr = cg->FindNode("input")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(input_attr, nullptr);
-  input_attr->symbolic_tensor.SetSymbolShape(gert::SymbolShape({Symbol(2)}));
-  input_attr->symbolic_tensor.SetSymbolicValue(
-      ge::MakeUnique<std::vector<Expression>>(std::vector<Expression>{Symbol(5), Symbol(400)}));
+  input_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol(2)}));
+  SymbolicInferUtil::SetSymbolicValues(input_attr->symbolic_tensor, std::vector<Expression>{Symbol(5), Symbol(400)});
   auto cast_node = cg->FindFirstNodeMatchType("Cast");
   ASSERT_NE(cast_node, nullptr);
   cast_node->GetOpDesc()->MutableInputDesc(0)->SetDataType(DT_INT32);
@@ -5394,17 +5394,16 @@ TEST_F(SymbolicShapeComputeUT, test_select_symbolic_condition_hint_fold_then) {
   auto cond_attr =
       cg->FindNode("cond_input")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(cond_attr, nullptr);
-  cond_attr->symbolic_tensor.SetSymbolShape(gert::SymbolShape({Symbol(2)}));
-  cond_attr->symbolic_tensor.SetSymbolicValue(
-      ge::MakeUnique<std::vector<Expression>>(std::vector<Expression>{cond_sym, cond_sym}));
+  cond_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol(2)}));
+  SymbolicInferUtil::SetSymbolicValues(cond_attr->symbolic_tensor, std::vector<Expression>{cond_sym, cond_sym});
 
   ExpectNodeInfo expect_node("Select", {Symbol(2)}, {}, {}, {Symbol(7), Symbol(8)});
   ASSERT_EQ(RunSymbolInferenceTest(cg, {expect_node}, {}), SUCCESS);
   // 折叠假设必须登记为运行时 guard（hint 与运行时不符时由 guard 链路拦截）
   const auto guards = env->GetAllSymbolCheckInfos();
   ASSERT_EQ(guards.size(), 1UL);
-  const std::string guard_str(guards.front().expr.Serialize().get());
-  EXPECT_NE(guard_str.find(cond_sym.Serialize().get()), std::string::npos);
+  const std::string guard_str(guards.front().expr.Str().get());
+  EXPECT_NE(guard_str.find(cond_sym.Str().get()), std::string::npos);
 }
 
 // Select 非常量条件按 hint 折叠到 else 分支
@@ -5429,9 +5428,8 @@ TEST_F(SymbolicShapeComputeUT, test_select_symbolic_condition_hint_fold_else) {
   auto cond_attr =
       cg->FindNode("cond_input")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(cond_attr, nullptr);
-  cond_attr->symbolic_tensor.SetSymbolShape(gert::SymbolShape({Symbol(2)}));
-  cond_attr->symbolic_tensor.SetSymbolicValue(
-      ge::MakeUnique<std::vector<Expression>>(std::vector<Expression>{cond_sym, cond_sym}));
+  cond_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol(2)}));
+  SymbolicInferUtil::SetSymbolicValues(cond_attr->symbolic_tensor, std::vector<Expression>{cond_sym, cond_sym});
 
   ExpectNodeInfo expect_node("Select", {Symbol(2)}, {}, {}, {Symbol(70), Symbol(80)});
   ASSERT_EQ(RunSymbolInferenceTest(cg, {expect_node}, {}), SUCCESS);
@@ -5459,9 +5457,9 @@ TEST_F(SymbolicShapeComputeUT, test_select_symbolic_condition_hint_unavailable) 
   auto cond_attr =
       cg->FindNode("cond_input")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(cond_attr, nullptr);
-  cond_attr->symbolic_tensor.SetSymbolShape(gert::SymbolShape({Symbol(2)}));
-  cond_attr->symbolic_tensor.SetSymbolicValue(ge::MakeUnique<std::vector<Expression>>(
-      std::vector<Expression>{Symbol("cond_no_hint"), Symbol("cond_no_hint2")}));
+  cond_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol(2)}));
+  SymbolicInferUtil::SetSymbolicValues(cond_attr->symbolic_tensor,
+                                       std::vector<Expression>{Symbol("cond_no_hint"), Symbol("cond_no_hint2")});
 
   ASSERT_EQ(RunSymbolInferenceTest(cg, {}, {}), SUCCESS);
   auto select_node = cg->FindFirstNodeMatchType(SELECT);
@@ -5469,7 +5467,7 @@ TEST_F(SymbolicShapeComputeUT, test_select_symbolic_condition_hint_unavailable) 
   auto out_attr = select_node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(out_attr, nullptr);
   // 值计算降级后不产生 SymbolicValue（无 guard 的折叠值是错误传播）
-  EXPECT_EQ(out_attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(out_attr->symbolic_tensor.GetValueCount(), 0U);
   // 未登记任何 guard（未做任何分支假设）
   EXPECT_EQ(env->GetAllSymbolCheckInfos().size(), 0UL);
 }
@@ -5608,26 +5606,23 @@ TEST_F(SymbolicShapeComputeUT, test_select_v2_symbolic_input_shape_degrade) {
   auto shape_sym = Symbol("s_input_dim");
   auto cond_attr =
       cg->FindNode("cond_input")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
-  cond_attr->symbolic_tensor.SetSymbolShape(gert::SymbolShape({shape_sym}));
-  cond_attr->symbolic_tensor.SetSymbolicValue(
-      ge::MakeUnique<std::vector<Expression>>(std::vector<Expression>{cond_sym, cond_sym}));
+  cond_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({shape_sym}));
+  SymbolicInferUtil::SetSymbolicValues(cond_attr->symbolic_tensor, std::vector<Expression>{cond_sym, cond_sym});
   auto then_attr =
       cg->FindNode("then_input")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
-  then_attr->symbolic_tensor.SetSymbolShape(gert::SymbolShape({shape_sym}));
-  then_attr->symbolic_tensor.SetSymbolicValue(
-      ge::MakeUnique<std::vector<Expression>>(std::vector<Expression>{Symbol(7), Symbol(8)}));
+  then_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({shape_sym}));
+  SymbolicInferUtil::SetSymbolicValues(then_attr->symbolic_tensor, std::vector<Expression>{Symbol(7), Symbol(8)});
   auto else_attr =
       cg->FindNode("else_input")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
-  else_attr->symbolic_tensor.SetSymbolShape(gert::SymbolShape({shape_sym}));
-  else_attr->symbolic_tensor.SetSymbolicValue(
-      ge::MakeUnique<std::vector<Expression>>(std::vector<Expression>{Symbol(70), Symbol(80)}));
+  else_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({shape_sym}));
+  SymbolicInferUtil::SetSymbolicValues(else_attr->symbolic_tensor, std::vector<Expression>{Symbol(70), Symbol(80)});
 
   ASSERT_EQ(RunSymbolInferenceTest(cg, {}, {}), SUCCESS);
   auto select_node = cg->FindFirstNodeMatchType("SelectV2");
   ASSERT_NE(select_node, nullptr);
   auto out_attr = select_node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(out_attr, nullptr);
-  EXPECT_EQ(out_attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+  EXPECT_EQ(out_attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 // ┌────────┐ (0,0) ┌───────┐ (0,0) ┌────────────────┐ (0,0) ┌─────────────┐
@@ -6057,6 +6052,107 @@ TEST_F(SymbolicShapeComputeUT, InferShapeForAddsWithConstValue) {
   expect_nodes.push_back(ExpectNodeInfo("Adds", std::vector<Expression>{Symbol(2)}, {}, {},
                                         std::vector<Expression>{Symbol(4.0), Symbol(5.0)}));
   ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+TEST_F(SymbolicShapeComputeUT, InferShapeForFillWithEmptyDims) {
+  const int32_t dummy = 0;
+  auto dims = EsCreateVectorInt32(graph_, &dummy, 0);
+  auto value = EsCreateScalarInt32(graph_, 7);
+  ASSERT_NE(dims, nullptr);
+  ASSERT_NE(value, nullptr);
+  auto fill = EsFill(dims, value);
+  ASSERT_NE(fill, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(fill, 0), 0);
+
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), SUCCESS);
+
+  auto node = cg->FindFirstNodeMatchType("Fill");
+  ASSERT_NE(node, nullptr);
+  auto attr = node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({}));
+  EXPECT_TRUE(attr->symbolic_tensor.HasValue());
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 1U);
+  EXPECT_EQ(attr->symbolic_tensor.GetValue(0), Symbol(7));
+}
+
+TEST_F(SymbolicShapeComputeUT, InferShapeForExpandDimsWithEmptyTensor) {
+  const int32_t dummy = 0;
+  auto x = EsCreateVectorInt32(graph_, &dummy, 0);
+  auto axis = EsCreateScalarInt32(graph_, 0);
+  ASSERT_NE(x, nullptr);
+  ASSERT_NE(axis, nullptr);
+  auto expand_dims = EsExpandDims(x, axis);
+  ASSERT_NE(expand_dims, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(expand_dims, 0), 0);
+
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), SUCCESS);
+
+  auto node = cg->FindFirstNodeMatchType(EXPANDDIMS);
+  ASSERT_NE(node, nullptr);
+  auto attr = node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({Symbol(1), Symbol(0)}));
+  EXPECT_TRUE(attr->symbolic_tensor.HasValue());
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
+}
+
+TEST_F(SymbolicShapeComputeUT, InferShapeForConcatV2DWithSingleEmptyTensor) {
+  const int32_t dummy = 0;
+  auto x = EsCreateVectorInt32(graph_, &dummy, 0);
+  ASSERT_NE(x, nullptr);
+  std::vector<EsCTensorHolder *> inputs = {x};
+  auto concat = EsConcatV2D(inputs.data(), 1, 0, 1);
+  ASSERT_NE(concat, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(concat, 0), 0);
+
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), SUCCESS);
+
+  auto node = cg->FindFirstNodeMatchType("ConcatV2D");
+  ASSERT_NE(node, nullptr);
+  auto attr = node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({Symbol(0)}));
+  EXPECT_TRUE(attr->symbolic_tensor.HasValue());
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
+}
+
+TEST_F(SymbolicShapeComputeUT, InferShapeForReshapeWithExplicitEmptyValue) {
+  const int32_t dummy = 0;
+  auto x = EsCreateVectorInt32(graph_, &dummy, 0);
+  const int32_t output_dim = 0;
+  auto shape = EsCreateVectorInt32(graph_, &output_dim, 1);
+  ASSERT_NE(x, nullptr);
+  ASSERT_NE(shape, nullptr);
+  auto reshape = EsReshape(x, shape, 0, -1);
+  ASSERT_NE(reshape, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(reshape, 0), 0);
+
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), SUCCESS);
+
+  auto node = cg->FindFirstNodeMatchType("Reshape");
+  ASSERT_NE(node, nullptr);
+  auto attr = node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({Symbol(0)}));
+  EXPECT_TRUE(attr->symbolic_tensor.HasValue());
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 }  // namespace ge

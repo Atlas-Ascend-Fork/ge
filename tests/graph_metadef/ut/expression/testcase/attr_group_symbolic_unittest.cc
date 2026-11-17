@@ -35,8 +35,9 @@ TEST_F(AttributeGroupUt, Clone) {
 
 TEST_F(AttributeGroupUt, SymbolicDescAttrSerialize) {
   auto symbolicDesc = SymbolicDescAttr();
-  symbolicDesc.symbolic_tensor.MutableOriginSymbolShape().AppendDim(ge::Symbol("s0"));
-  symbolicDesc.symbolic_tensor.MutableSymbolicValue()->emplace_back(ge::Symbol("s2"));
+  symbolicDesc.symbolic_tensor.SetOriginSymbolShape({ge::Symbol("s0")});
+  symbolicDesc.symbolic_tensor.SetValueCount(1UL);
+  symbolicDesc.symbolic_tensor.SetValue(0UL, ge::Symbol("s2"));
   proto::AttrGroupDef attr_group_def;
   auto ret = symbolicDesc.Serialize(attr_group_def);
   EXPECT_EQ(ret, GRAPH_SUCCESS);
@@ -44,8 +45,9 @@ TEST_F(AttributeGroupUt, SymbolicDescAttrSerialize) {
 
 TEST_F(AttributeGroupUt, SymbolicDescAttrDeserialize) {
   auto symbolicDesc = SymbolicDescAttr();
-  symbolicDesc.symbolic_tensor.MutableOriginSymbolShape().AppendDim(ge::Symbol("s0"));
-  symbolicDesc.symbolic_tensor.MutableSymbolicValue()->emplace_back(ge::Symbol("s2"));
+  symbolicDesc.symbolic_tensor.SetOriginSymbolShape({ge::Symbol("s0")});
+  symbolicDesc.symbolic_tensor.SetValueCount(1UL);
+  symbolicDesc.symbolic_tensor.SetValue(0UL, ge::Symbol("s2"));
   proto::AttrGroupDef attr_group_def;
   EXPECT_EQ(GRAPH_SUCCESS, symbolicDesc.Serialize(attr_group_def));
 
@@ -54,8 +56,8 @@ TEST_F(AttributeGroupUt, SymbolicDescAttrDeserialize) {
   EXPECT_EQ(ret, GRAPH_SUCCESS);
   EXPECT_EQ(1, symbolicDesc1.symbolic_tensor.origin_symbol_shape_.GetDimNum());
   EXPECT_EQ(ge::Symbol("s0"), symbolicDesc1.symbolic_tensor.origin_symbol_shape_.GetDim(0));
-  EXPECT_EQ(1, symbolicDesc1.symbolic_tensor.GetSymbolicValue()->size());
-  EXPECT_EQ(ge::Symbol("s2"), *symbolicDesc1.symbolic_tensor.GetSymbolicValue()->begin());
+  EXPECT_EQ(1, symbolicDesc1.symbolic_tensor.GetValueCount());
+  EXPECT_EQ(ge::Symbol("s2"), symbolicDesc1.symbolic_tensor.GetValue(0));
 }
 }  // namespace
 }  // namespace ge

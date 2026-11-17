@@ -48,8 +48,8 @@ class SymbolShape {
   SymbolShape &operator=(SymbolShape &&other) = default;
 
   /**
-   * 判断与另外一个shape对象是否相等，如果两个shape的dim num并且dim num内每个dim中的symbol值都相等，那么认为两个symbol
-   * shape相等
+   * 判断与另外一个shape对象是否相等：dim num相等，且逐维比较时两侧dim均有效的位置symbol值相等；
+   * 任一侧dim为非法表达式（IsValid为false）时该维视为相等
    * @param rht 另一个Shape对象
    * @return true/false
    */
@@ -96,27 +96,12 @@ class SymbolShape {
   }
 
   /**
-   * 判断本Symbol shape是否为标量，所谓标量，是指dims的长度为0，即shape为标量
-   * @return true/false
-   */
-  bool IsScalar() const {
-    return dims_.empty();
-  }
-
-  /**
-   * 设置shape为标量
-   * @param none
-   */
-  void SetScalar() {
-    MutableDims().clear();
-  }
-
-  /**
    * 清空symbol shape的所有维度
    * @return none
    */
   void Clear() {
-    MutableDims().clear();
+    symsize_cache_is_valid_ = false;
+    dims_.clear();
   }
 
   /**
@@ -128,57 +113,46 @@ class SymbolShape {
   }
 
   /**
-   * 向后扩展一个dim值，如果扩展的dim数量超出Shape的最大限制，那么本函数不做任何事情
+   * 向后扩展一个dim值
    * @param 扩展的dim值
    * @return this引用
    */
   SymbolShape &AppendDim(const ge::Expression &dim_value) {
-    MutableDims().emplace_back(dim_value);
+    symsize_cache_is_valid_ = false;
+    dims_.emplace_back(dim_value);
     return *this;
   }
 
   /**
-   * 获取只读的symbol shape的所有维度的常量引用
-   * @return 返回一个常量list，返回所有维度的符号化表达，例如[s0, s1, s2]，返回[s0, s1, s2]
+   * 设置dim num，若设置的dim num大于当前值，扩展出的维度为默认构造的表达式，
+   * 需配合SetDim逐维赋值后使用
+   * @param dim_num dim的个数
+   * @return this引用
    */
-  const std::vector<ge::Expression> &GetDims() const {
-    return dims_;
+  SymbolShape &SetDimNum(size_t dim_num) {
+    symsize_cache_is_valid_ = false;
+    dims_.resize(dim_num);
+    return *this;
+  }
+
+  /**
+   * 设置第idx位置的dim值
+   * @param idx dim的index，调用者需要保证index合法
+   * @param dim_value dim值
+   * @return this引用
+   */
+  SymbolShape &SetDim(size_t idx, const ge::Expression &dim_value) {
+    symsize_cache_is_valid_ = false;
+    dims_[idx] = dim_value;
+    return *this;
   }
 
   /**
    * 获取只读的第idx位置的dim值
-   * @param idx dim的index，调用者需要保证index合法
-   * @return dim值，Expression指针类型，在idx超出MaxDimNum时，会触发vector访问异常
+   * @param idx dim的index，调用方需保证index合法，越界访问属于未定义行为
+   * @return dim值
    */
-  const ge::Expression &GetDim(const size_t idx) const {
-    return dims_[idx];
-  }
-
-  /**
-   * 获取可修改的symbol shape的所有维度的引用
-   * @return 返回一个常量list，返回所有维度的符号化表达，例如[s0, s1, s2]，返回[s0, s1, s2]
-   */
-  std::vector<ge::Expression> &MutableDims() {
-    symsize_cache_is_valid_ = false;
-    return dims_;
-  }
-
-  /**
-   * 获取只读的第idx位置的dim值
-   * @param idx dim的index，调用者需要保证index合法
-   * @return dim值，Expression指针类型，在idx超出MaxDimNum时，会触发vector访问异常
-   */
-  const ge::Expression &GetDim(const size_t idx) {
-    return dims_[idx];
-  }
-
-  /**
-   * 获取可修改的第idx位置的dim值
-   * @param idx dim的index，调用者需要保证index合法
-   * @return dim值，Expression指针类型，在idx超出MaxDimNum时，会触发vector访问异常
-   */
-  ge::Expression &MutableDim(const size_t idx) {
-    symsize_cache_is_valid_ = false;
+  const ge::Expression &GetDim(size_t idx) const {
     return dims_[idx];
   }
 

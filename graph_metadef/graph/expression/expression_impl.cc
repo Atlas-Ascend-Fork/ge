@@ -29,7 +29,6 @@
 
 namespace ge {
 namespace {
-constexpr const char_t *kInvalidName = "INVALID_NAME";
 
 inline std::string sym_str(const SymEngineExprPtr &expr) {
   GE_ASSERT_TRUE(!expr.is_null());
@@ -290,24 +289,6 @@ ExpressionImplPtr ExpressionImpl::Simplify() const {
   return ExpressionImpl::CreateExpressionImpl<const SymEngineExprPtr &>(simplified_expr);
 }
 
-bool ExpressionImpl::ContainVar(const ExpressionImpl *e) const {
-  GE_ASSERT_NOTNULL(e);
-  GE_ASSERT_TRUE(!e->sym_expr_.is_null());
-  if (!(e->sym_expr_->get_args().empty())) {
-    return false;
-  }
-  for (const auto &arg : FreeSymbols()) {
-    GE_ASSERT_NOTNULL(arg);
-    GE_ASSERT_NOTNULL(e);
-    GE_ASSERT_TRUE(!arg->sym_expr_.is_null());
-    GE_ASSERT_TRUE(!e->sym_expr_.is_null());
-    if (SymEngine::eq(*arg->sym_expr_, *(e->sym_expr_))) {
-      return true;
-    }
-  }
-  return false;
-}
-
 std::vector<ExpressionImplPtr> ExpressionImpl::FreeSymbols() const {
   GE_ASSERT_TRUE(!sym_expr_.is_null());
   auto free_symbols = SymEngine::free_symbols(*sym_expr_);
@@ -420,26 +401,6 @@ double ExpressionImpl::GetIntegerResult(const SymEngine::Integer &integer_expr) 
   return static_cast<double>(integer_expr.as_int());
 }
 
-bool ExpressionImpl::GetResult(double &result) const {
-  GE_ASSERT_TRUE(!sym_expr_.is_null());
-  if (SymEngine::is_a<SymEngine::Integer>(*sym_expr_)) {
-    const auto &integer_expr = SymEngine::down_cast<const SymEngine::Integer &>(*sym_expr_);
-    result = GetIntegerResult(integer_expr);
-    return true;
-  }
-  if (SymEngine::is_a<SymEngine::Rational>(*sym_expr_)) {
-    const auto &rational_expr = SymEngine::down_cast<const SymEngine::Rational &>(*sym_expr_);
-    result = GetIntegerResult(*(rational_expr.get_num())) / GetIntegerResult(*(rational_expr.get_den()));
-    return true;
-  }
-  if (SymEngine::is_a<SymEngine::RealDouble>(*sym_expr_)) {
-    const auto &real_double_expr = SymEngine::down_cast<const SymEngine::RealDouble &>(*sym_expr_);
-    result = real_double_expr.as_double();
-    return true;
-  }
-  return false;
-}
-
 uint64_t ExpressionImpl::Hash() const {
   GE_ASSERT_TRUE(!sym_expr_.is_null());
   return sym_expr_->hash();
@@ -449,10 +410,6 @@ int64_t ExpressionImpl::Compare(const ExpressionImpl &e) const {
   GE_ASSERT_TRUE(!sym_expr_.is_null());
   GE_ASSERT_TRUE(!e.sym_expr_.is_null());
   return sym_expr_->__cmp__(*e.sym_expr_);
-}
-
-bool ExpressionImpl::IsVariableExpr() const {
-  return GetExprType() == ExprType::kExprVariable;
 }
 
 bool ExpressionImpl::IsBooleanExpr() const {
@@ -580,19 +537,6 @@ OperationType ExpressionImpl::GetOpType() const {
     return OperationType::kOpLogicalOr;
   }
   return OperationType::kOpNone;
-}
-
-std::string ExpressionImpl::GetName() const {
-  if (IsConstExpr() || GetExprType() == ExprType::kExprVariable) {
-    if (name_.empty()) {
-      static std::atomic<size_t> unique_id(0);
-      // 此处不应该使用Str()拼接，比如对于1.0,会生成Const_1.0_1，如果codegen采用此名字定义c++变量会编译报错
-      name_ = "Const_" + std::to_string(unique_id.fetch_add(1));
-    }
-    return name_;
-  } else {
-    return kInvalidName;
-  }
 }
 
 ExprType ExpressionImpl::GetExprType() const {

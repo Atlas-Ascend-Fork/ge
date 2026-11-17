@@ -128,16 +128,16 @@ graphStatus BinarySymbolicKernelCompute(gert::InferSymbolComputeContext *context
   auto x2 = context->GetInputSymbolTensor(1U);
   GE_UNSUPPORTED_IF_NULL(x1);
   GE_UNSUPPORTED_IF_NULL(x2);
-  const auto x1_value = x1->GetSymbolicValue();
-  const auto x2_value = x2->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(x1_value);
-  GE_UNSUPPORTED_IF_NULL(x2_value);
+  const auto x1_value = SymbolicInferUtil::GetSymbolicValues(*x1);
+  const auto x2_value = SymbolicInferUtil::GetSymbolicValues(*x2);
+  GE_UNSUPPORTED_IF(!x1->HasValue());
+  GE_UNSUPPORTED_IF(!x2->HasValue());
   std::vector<int64_t> x1_dims;
   std::vector<int64_t> x2_dims;
   std::vector<int64_t> out_dims;
   std::vector<Expression> x1_broadcast;
   std::vector<Expression> x2_broadcast;
-  if (PrepareBroadcastValues(context, *x1_value, *x2_value, x1_dims, x2_dims, x1_broadcast, x2_broadcast, out_dims) !=
+  if (PrepareBroadcastValues(context, x1_value, x2_value, x1_dims, x2_dims, x1_broadcast, x2_broadcast, out_dims) !=
       SUCCESS) {
     return UNSUPPORTED;
   }
@@ -154,10 +154,11 @@ graphStatus BinarySymbolicKernelCompute(gert::InferSymbolComputeContext *context
   auto out = context->GetOutputSymbolTensor(0U);
   GE_ASSERT_NOTNULL(out);
   std::vector<Expression> out_shape;
-  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(
-      {x1->GetOriginSymbolShape().GetDims(), x2->GetOriginSymbolShape().GetDims()}, out_shape));
-  out->MutableOriginSymbolShape().MutableDims() = out_shape;
-  out->SetSymbolicValue(ge::MakeUnique<std::vector<Expression>>(std::move(out_value)));
+  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast({SymbolicInferUtil::GetSymbolDims(x1->GetOriginSymbolShape()),
+                                                  SymbolicInferUtil::GetSymbolDims(x2->GetOriginSymbolShape())},
+                                                 out_shape));
+  SymbolicInferUtil::SetSymbolDims(*out, out_shape);
+  SymbolicInferUtil::SetSymbolicValues(*out, out_value);
   return SUCCESS;
 }
 
@@ -219,22 +220,22 @@ graphStatus LogicalNotSymbolicKernelCompute(gert::InferSymbolComputeContext *con
   GE_ASSERT_NOTNULL(context);
   auto input = context->GetInputSymbolTensor(0U);
   GE_UNSUPPORTED_IF_NULL(input);
-  const auto input_value = input->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_value);
-  if (input_value->empty()) {
+  GE_UNSUPPORTED_IF(input->GetValueCount() == 0U);
+  const auto input_value = SymbolicInferUtil::GetSymbolicValues(*input);
+  if (input_value.empty()) {
     GELOGW("LogicalNot symbolic kernel unsupported: empty symbolic input value, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
   }
   auto output = context->GetOutputSymbolTensor(0U);
   GE_ASSERT_NOTNULL(output);
-  output->MutableOriginSymbolShape().MutableDims() = input->GetOriginSymbolShape().GetDims();
+  SymbolicInferUtil::SetSymbolDims(*output, SymbolicInferUtil::GetSymbolDims(input->GetOriginSymbolShape()));
   std::vector<Expression> output_value;
-  output_value.reserve(input_value->size());
-  for (const auto &value : *input_value) {
+  output_value.reserve(input_value.size());
+  for (const auto &value : input_value) {
     output_value.emplace_back(sym::Not(ToLogicalPredicate(value)));
   }
-  output->SetSymbolicValue(ge::MakeUnique<std::vector<Expression>>(std::move(output_value)));
+  SymbolicInferUtil::SetSymbolicValues(*output, output_value);
   return SUCCESS;
 }
 

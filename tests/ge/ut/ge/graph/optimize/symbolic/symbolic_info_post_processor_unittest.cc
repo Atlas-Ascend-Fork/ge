@@ -130,9 +130,9 @@ TEST_F(SymbolicInfoPostProcessorUT, run_test) {
   auto foo1_node = graph->FindNode("foo1");
   auto op_desc = foo1_node->GetOpDesc();
   auto sym_attr0 = op_desc->MutableOutputDesc(0U)->template GetOrCreateAttrsGroup<SymbolicDescAttr>();
-  sym_attr0->symbolic_tensor.MutableOriginSymbolShape() = {s0, s1, s2, s3};
+  sym_attr0->symbolic_tensor.SetOriginSymbolShape({s0, s1, s2, s3});
   auto sym_attr1 = op_desc->MutableOutputDesc(1U)->template GetOrCreateAttrsGroup<SymbolicDescAttr>();
-  sym_attr1->symbolic_tensor.MutableOriginSymbolShape() = {s0, s1, s2, s3};
+  sym_attr1->symbolic_tensor.SetOriginSymbolShape({s0, s1, s2, s3});
 
   ASSERT_EQ(SymbolicInfoPostProcessor::Run(graph), SUCCESS);
 

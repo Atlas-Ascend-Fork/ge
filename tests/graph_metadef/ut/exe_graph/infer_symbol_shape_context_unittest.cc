@@ -164,11 +164,11 @@ TEST_F(InferSymbolShapeContextUT, GetInputSymbolTensorValueOK) {
   EXPECT_EQ(*context->GetInputSymbolShape(0), in_tensor1.GetOriginSymbolShape());
 
   EXPECT_NE(context->GetInputSymbolTensor(1), nullptr);
-  EXPECT_EQ(context->GetInputSymbolTensor(1)->GetSymbolicValue()->size(), 4);
-  EXPECT_EQ(context->GetInputSymbolTensor(1)->GetSymbolicValue()->at(0), sym_3);
-  EXPECT_EQ(context->GetInputSymbolTensor(1)->GetSymbolicValue()->at(1), sym_16);
-  EXPECT_EQ(context->GetInputSymbolTensor(1)->GetSymbolicValue()->at(2), sym_224);
-  EXPECT_EQ(context->GetInputSymbolTensor(1)->GetSymbolicValue()->at(3), sym_16);
+  EXPECT_EQ(context->GetInputSymbolTensor(1)->GetValueCount(), 4);
+  EXPECT_EQ(context->GetInputSymbolTensor(1)->GetValue(0), sym_3);
+  EXPECT_EQ(context->GetInputSymbolTensor(1)->GetValue(1), sym_16);
+  EXPECT_EQ(context->GetInputSymbolTensor(1)->GetValue(2), sym_224);
+  EXPECT_EQ(context->GetInputSymbolTensor(1)->GetValue(3), sym_16);
 }
 
 TEST_F(InferSymbolShapeContextUT, GetOptionalInputTensorOK_SetOptionalInput) {
@@ -195,11 +195,11 @@ TEST_F(InferSymbolShapeContextUT, GetOptionalInputTensorOK_SetOptionalInput) {
   EXPECT_EQ(*context->GetInputSymbolShape(0), in_tensor1.GetOriginSymbolShape());
 
   EXPECT_NE(context->GetOptionalInputSymbolTensor(1), nullptr);
-  ASSERT_EQ(context->GetOptionalInputSymbolTensor(1)->GetSymbolicValue()->size(), 4);
-  EXPECT_EQ(context->GetOptionalInputSymbolTensor(1)->GetSymbolicValue()->at(0), sym_3);
-  EXPECT_EQ(context->GetOptionalInputSymbolTensor(1)->GetSymbolicValue()->at(1), sym_16);
-  EXPECT_EQ(context->GetOptionalInputSymbolTensor(1)->GetSymbolicValue()->at(2), sym_224);
-  EXPECT_EQ(context->GetOptionalInputSymbolTensor(1)->GetSymbolicValue()->at(3), sym_16);
+  ASSERT_EQ(context->GetOptionalInputSymbolTensor(1)->GetValueCount(), 4);
+  EXPECT_EQ(context->GetOptionalInputSymbolTensor(1)->GetValue(0), sym_3);
+  EXPECT_EQ(context->GetOptionalInputSymbolTensor(1)->GetValue(1), sym_16);
+  EXPECT_EQ(context->GetOptionalInputSymbolTensor(1)->GetValue(2), sym_224);
+  EXPECT_EQ(context->GetOptionalInputSymbolTensor(1)->GetValue(3), sym_16);
 
   EXPECT_EQ(context->GetOptionalInputSymbolTensor(2), nullptr);
 }
@@ -241,21 +241,21 @@ TEST_F(InferSymbolShapeContextUT, GetRequiredInputTensorOk) {
 
   // 第二个输入是动态输入，有两个实例，第一个实例获取到value
   ASSERT_NE(context->GetDynamicInputSymbolTensor(1, 1), nullptr);
-  ASSERT_EQ(context->GetDynamicInputSymbolTensor(1, 1)->GetSymbolicValue()->size(), 4);
-  EXPECT_EQ(context->GetDynamicInputSymbolTensor(1, 1)->GetSymbolicValue()->at(0), sym_8);
-  EXPECT_EQ(context->GetDynamicInputSymbolTensor(1, 1)->GetSymbolicValue()->at(1), sym_3);
-  EXPECT_EQ(context->GetDynamicInputSymbolTensor(1, 1)->GetSymbolicValue()->at(2), sym_224);
-  EXPECT_EQ(context->GetDynamicInputSymbolTensor(1, 1)->GetSymbolicValue()->at(3), sym_224);
+  ASSERT_EQ(context->GetDynamicInputSymbolTensor(1, 1)->GetValueCount(), 4);
+  EXPECT_EQ(context->GetDynamicInputSymbolTensor(1, 1)->GetValue(0), sym_8);
+  EXPECT_EQ(context->GetDynamicInputSymbolTensor(1, 1)->GetValue(1), sym_3);
+  EXPECT_EQ(context->GetDynamicInputSymbolTensor(1, 1)->GetValue(2), sym_224);
+  EXPECT_EQ(context->GetDynamicInputSymbolTensor(1, 1)->GetValue(3), sym_224);
 
   // 第三个输入是可选输入，由于可选输入未被设置，获取到shape为nullptr
   EXPECT_EQ(context->GetOptionalInputSymbolShape(2), nullptr);
 
   // 第四个输入是必选输入
   ASSERT_NE(context->GetRequiredInputSymbolTensor(3), nullptr);
-  ASSERT_EQ(context->GetRequiredInputSymbolTensor(3)->GetSymbolicValue()->size(), 4);
-  EXPECT_EQ(context->GetRequiredInputSymbolTensor(3)->GetSymbolicValue()->at(0), sym_3);
-  EXPECT_EQ(context->GetRequiredInputSymbolTensor(3)->GetSymbolicValue()->at(1), sym_8);
-  EXPECT_EQ(context->GetRequiredInputSymbolTensor(3)->GetSymbolicValue()->at(2), sym_16);
-  EXPECT_EQ(context->GetRequiredInputSymbolTensor(3)->GetSymbolicValue()->at(3), sym_16);
+  ASSERT_EQ(context->GetRequiredInputSymbolTensor(3)->GetValueCount(), 4);
+  EXPECT_EQ(context->GetRequiredInputSymbolTensor(3)->GetValue(0), sym_3);
+  EXPECT_EQ(context->GetRequiredInputSymbolTensor(3)->GetValue(1), sym_8);
+  EXPECT_EQ(context->GetRequiredInputSymbolTensor(3)->GetValue(2), sym_16);
+  EXPECT_EQ(context->GetRequiredInputSymbolTensor(3)->GetValue(3), sym_16);
 }
 }  // namespace gert

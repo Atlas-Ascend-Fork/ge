@@ -7,7 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "common/plugin/ge_make_unique_util.h"
 #include "framework/common/framework_types_internal.h"
 #include "common/util.h"
 #include "common/checker.h"
@@ -54,12 +53,13 @@ graphStatus FillLikeSymbolicKernelCompute(gert::InferSymbolComputeContext *conte
 
   auto output_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output_tensor);
-  output_tensor->MutableOriginSymbolShape().MutableDims().clear();
+  gert::SymbolShape origin_symbol_shape;
   for (const auto dim : x_dims) {
-    output_tensor->MutableOriginSymbolShape().AppendDim(Symbol(dim));
+    origin_symbol_shape.AppendDim(Symbol(dim));
   }
+  output_tensor->SetOriginSymbolShape(origin_symbol_shape);
   std::vector<Expression> output_values(static_cast<size_t>(output_size), Symbol(fill_value));
-  output_tensor->SetSymbolicValue(MakeUnique<std::vector<Expression>>(std::move(output_values)));
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, output_values);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_tensor).c_str());
   return SUCCESS;
@@ -92,9 +92,9 @@ graphStatus ScalarSymbolicKernelCompute(gert::InferSymbolComputeContext *context
 
   auto input_tensor = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_tensor);
-  auto input_values = input_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_values);
-  if (input_values->empty()) {
+  GE_UNSUPPORTED_IF(!input_tensor->HasValue());
+  const auto input_values = SymbolicInferUtil::GetSymbolicValues(*input_tensor);
+  if (input_values.empty()) {
     GELOGW("SymbolicKernel compute unsupported, reason: input symbolic value is empty, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
@@ -102,14 +102,14 @@ graphStatus ScalarSymbolicKernelCompute(gert::InferSymbolComputeContext *context
 
   auto output_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output_tensor);
-  output_tensor->MutableOriginSymbolShape().MutableDims() = input_tensor->GetOriginSymbolShape().GetDims();
+  output_tensor->SetOriginSymbolShape(input_tensor->GetOriginSymbolShape());
   std::vector<Expression> output_values;
-  output_values.reserve(input_values->size());
+  output_values.reserve(input_values.size());
   const auto scalar = Symbol(static_cast<double>(*value_ptr));
-  for (const auto &value : *input_values) {
+  for (const auto &value : input_values) {
     output_values.emplace_back(is_mul ? value * scalar : value + scalar);
   }
-  output_tensor->SetSymbolicValue(MakeUnique<std::vector<Expression>>(std::move(output_values)));
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, output_values);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_tensor).c_str());
   return SUCCESS;

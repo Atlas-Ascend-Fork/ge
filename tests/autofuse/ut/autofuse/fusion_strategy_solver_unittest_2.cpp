@@ -121,8 +121,7 @@ class UtestFusionStrategySolverReshape : public testing::Test {
       GE_ASSERT_NOTNULL(node_desc);
       auto output_tensor_desc = node_desc->MutableOutputDesc(out_anchor->GetIdx());
       gert::SymbolShape symbol_shape({Symbol(1), Symbol(2), Symbol(3), Symbol(4)});
-      output_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape() =
-          symbol_shape;
+      output_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
     }
     return SUCCESS;
   }
@@ -148,8 +147,8 @@ class UtestFusionStrategySolverReshape : public testing::Test {
       const auto attr_group = output_tensor_desc->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>();
       GE_ASSERT_NOTNULL(attr_group);
 
-      input_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape() =
-          attr_group->symbolic_tensor.MutableOriginSymbolShape();
+      input_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(
+          attr_group->symbolic_tensor.GetOriginSymbolShape());
     }
     return SUCCESS;
   }
@@ -406,7 +405,7 @@ TEST_F(UtestFusionStrategySolverReshape, SplitStrategyCoversReshapeSqueezeChecks
     auto output_desc = node->GetOpDescBarePtr()->MutableOutputDesc(0);
     EXPECT_NE(output_desc, nullptr);
     if (output_desc != nullptr) {
-      output_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape() = shape;
+      output_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(shape);
     }
   };
 

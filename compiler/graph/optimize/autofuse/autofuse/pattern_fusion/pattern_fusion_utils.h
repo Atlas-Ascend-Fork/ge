@@ -93,7 +93,7 @@ inline Status SetNodeShape(const NodePtr &node, const GeShape &input_shape, cons
     input_desc->SetOriginShape(input_shape);
     auto node_input_attr = input_desc->GetAttrsGroup<ge::SymbolicDescAttr>();
     GE_ASSERT_NOTNULL(node_input_attr);
-    node_input_attr->symbolic_tensor.MutableOriginSymbolShape() = symbol_shape;
+    node_input_attr->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
   }
 
   // 设置所有输出的shape
@@ -103,7 +103,7 @@ inline Status SetNodeShape(const NodePtr &node, const GeShape &input_shape, cons
     output_desc->SetOriginShape(output_shape);
     auto node_output_attr = output_desc->GetAttrsGroup<ge::SymbolicDescAttr>();
     GE_ASSERT_NOTNULL(node_output_attr);
-    node_output_attr->symbolic_tensor.MutableOriginSymbolShape() = symbol_shape;
+    node_output_attr->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
   }
 
   return SUCCESS;

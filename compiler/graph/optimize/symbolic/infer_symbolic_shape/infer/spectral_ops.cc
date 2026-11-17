@@ -31,19 +31,19 @@ graphStatus InferShape4RFFT(gert::InferSymbolShapeContext *context) {
   GE_ASSERT(input_shape->GetDimNum() >= 1, "RFFT input rank must be at least 1");
   const auto fft_length_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(fft_length_tensor);
-  const auto fft_length_value = fft_length_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(fft_length_value);
-  GE_ASSERT(fft_length_value->size() == 1, "RFFT fft_length must be a single element");
+  GE_UNSUPPORTED_IF(!fft_length_tensor->HasValue());
+  const auto fft_length_value = SymbolicInferUtil::GetSymbolicValues(*fft_length_tensor);
+  GE_ASSERT(fft_length_value.size() == 1, "RFFT fft_length must be a single element");
 
   const auto y_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(y_shape);
   *y_shape = *input_shape;
   const auto last_dim = input_shape->GetDimNum() - 1;
-  const auto fft_len = fft_length_value->at(0);
+  const auto fft_len = fft_length_value.at(0);
   int64_t const_len = 0;
   if (SymbolicInferUtil::TryGetConstInt(fft_len, const_len) == GRAPH_SUCCESS) {
     if (const_len == 0) {
-      y_shape->MutableDims()[last_dim] = kSymbolZero;
+      y_shape->SetDim(last_dim, kSymbolZero);
       return ge::GRAPH_SUCCESS;
     }
   } else if (fft_len.IsConstExpr()) {
@@ -51,7 +51,7 @@ graphStatus InferShape4RFFT(gert::InferSymbolShapeContext *context) {
            context->GetNodeType());
     return UNSUPPORTED;
   }
-  y_shape->MutableDims()[last_dim] = sym::Floor(fft_len / kSymbolTwo) + kSymbolOne;
+  y_shape->SetDim(last_dim, sym::Floor(fft_len / kSymbolTwo) + kSymbolOne);
   return ge::GRAPH_SUCCESS;
 }
 
@@ -68,15 +68,15 @@ graphStatus InferShape4IRFFT(gert::InferSymbolShapeContext *context) {
   GE_ASSERT(x_shape->GetDimNum() >= 1, "IRFFT input rank must be at least 1");
   const auto fft_length_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(fft_length_tensor);
-  const auto fft_length_value = fft_length_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(fft_length_value);
-  GE_ASSERT(fft_length_value->size() == 1, "IRFFT fft_length must be a single element");
+  GE_UNSUPPORTED_IF(!fft_length_tensor->HasValue());
+  const auto fft_length_value = SymbolicInferUtil::GetSymbolicValues(*fft_length_tensor);
+  GE_ASSERT(fft_length_value.size() == 1, "IRFFT fft_length must be a single element");
 
   const auto y_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(y_shape);
   *y_shape = *x_shape;
   const auto last_dim = x_shape->GetDimNum() - 1;
-  y_shape->MutableDims()[last_dim] = fft_length_value->at(0);
+  y_shape->SetDim(last_dim, fft_length_value.at(0));
   return ge::GRAPH_SUCCESS;
 }
 

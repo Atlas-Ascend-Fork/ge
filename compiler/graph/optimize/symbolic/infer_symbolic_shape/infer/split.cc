@@ -41,12 +41,12 @@ graphStatus GetInputSymbolTensorValue(gert::InferSymbolShapeContext *context, co
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
-  if (tensor->GetSymbolicValue() == nullptr) {
+  if (!tensor->HasValue()) {
     GELOGW("Symbol Infer unsupported, get split_dim symbolic value is nullptr, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
   }
-  auto exprs = *tensor->GetSymbolicValue();
+  const auto exprs = SymbolicInferUtil::GetSymbolicValues(*tensor);
   if (exprs.size() <= expr_index) {
     GELOGW(
         "Symbol Infer unsupported, get symbolic value failed at expression index %zu, the vector expression size is "
@@ -89,7 +89,7 @@ graphStatus InferShape4Split(gert::InferSymbolShapeContext *context) {
   // todo 添加guard output_dim_size是整数, 依赖Mod运算
   auto output_dim_size = in_shape->GetDim(split_dim) / num_split_sym;
   *out_shape = *in_shape;
-  out_shape->MutableDims()[split_dim] = output_dim_size;
+  out_shape->SetDim(split_dim, output_dim_size);
   for (int64_t i = 1; i < num_split; i++) {
     auto out_shape_dynamic = context->GetOutputSymbolShape(i);
     GE_ASSERT_NOTNULL(out_shape_dynamic);
@@ -137,12 +137,12 @@ graphStatus GetSplitVInput(gert::InferSymbolShapeContext *context, int64_t &num_
 
   auto in_tensor1 = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(in_tensor1);
-  if (in_tensor1->GetSymbolicValue() == nullptr) {
+  if (!in_tensor1->HasValue()) {
     GELOGW("Symbol Infer unsupported, get symbolic value is nullptr, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
   }
-  auto in_tensor1_exprs = *in_tensor1->GetSymbolicValue();
+  const auto in_tensor1_exprs = SymbolicInferUtil::GetSymbolicValues(*in_tensor1);
   GE_ASSERT_TRUE(static_cast<int64_t>(in_tensor1_exprs.size()) == num_split,
                  "in_tensor1 exprs size [%ld] mismatch num_split [%ld]", static_cast<int64_t>(in_tensor1_exprs.size()),
                  num_split);
@@ -192,12 +192,12 @@ graphStatus InferShape4SplitV(gert::InferSymbolShapeContext *context) {
     auto out_shape = context->GetOutputSymbolShape(i);
     GE_ASSERT_NOTNULL(out_shape);
     *out_shape = *in_shape;
-    out_shape->MutableDims()[split_dim] = Symbol(size_splits[i]);
+    out_shape->SetDim(split_dim, Symbol(size_splits[i]));
   }
   if (dynamic_value_idx != -1L) {
     auto out_shape = context->GetOutputSymbolShape(dynamic_value_idx);
     GE_ASSERT_NOTNULL(out_shape);
-    out_shape->MutableDims()[split_dim] = in_shape->GetDim(split_dim) - Symbol(split_size_value_sum);
+    out_shape->SetDim(split_dim, in_shape->GetDim(split_dim) - Symbol(split_size_value_sum));
   }
   return ge::GRAPH_SUCCESS;
 }
@@ -228,7 +228,7 @@ graphStatus InferShape4SplitD(gert::InferSymbolShapeContext *context) {
   // todo 添加guard output_dim_size是整数
   auto output_dim_size = in_shape->GetDim(split_dim) / num_split_sym;
   *out_shape = *in_shape;
-  out_shape->MutableDims()[split_dim] = output_dim_size;
+  out_shape->SetDim(split_dim, output_dim_size);
   for (int64_t i = 1; i < num_split; i++) {
     auto out_shape_dynamic = context->GetOutputSymbolShape(i);
     GE_ASSERT_NOTNULL(out_shape_dynamic);
@@ -281,12 +281,12 @@ graphStatus InferShape4SplitVD(gert::InferSymbolShapeContext *context) {
     auto out_shape = context->GetOutputSymbolShape(i);
     GE_ASSERT_NOTNULL(out_shape);
     *out_shape = *in_shape;
-    out_shape->MutableDims()[split_dim] = Symbol(size_splits[i]);
+    out_shape->SetDim(split_dim, Symbol(size_splits[i]));
   }
   if (dynamic_value_idx != -1L) {
     auto out_shape = context->GetOutputSymbolShape(dynamic_value_idx);
     GE_ASSERT_NOTNULL(out_shape);
-    out_shape->MutableDims()[split_dim] = in_shape->GetDim(split_dim) - Symbol(split_size_value_sum);
+    out_shape->SetDim(split_dim, in_shape->GetDim(split_dim) - Symbol(split_size_value_sum));
   }
   return ge::GRAPH_SUCCESS;
 }

@@ -102,7 +102,7 @@ TEST_F(AttributeGroupShapeEnvUt, CreateSymbolDuckMode_Succ) {
   EXPECT_EQ(sym, shape_env.value_to_symbol_[2][0]);
   EXPECT_EQ(2, shape_env.symbol_to_value_[sym]);
   EXPECT_EQ(0, shape_env.symbol_to_source_[sym]->GetGlobalIndex());
-  EXPECT_EQ(std::string(sym.Serialize().get()), "s0");
+  EXPECT_EQ(std::string(sym.Str().get()), "s0");
   Symbol sym1 = shape_env.CreateSymbol(2, MakeShared<GraphInputShapeSourceStub>(1, 0));
   EXPECT_EQ(sym, sym1);
 }
@@ -113,12 +113,12 @@ TEST_F(AttributeGroupShapeEnvUt, CreateSymbolSpecializeZeroOne_Succ) {
   EXPECT_EQ(0, shape_env.symbol_to_value_.size());
   EXPECT_EQ(0, shape_env.value_to_symbol_.size());
   EXPECT_EQ(0, shape_env.symbol_to_source_.size());
-  EXPECT_EQ(std::string(sym.Serialize().get()), "1");
+  EXPECT_EQ(std::string(sym.Str().get()), "1");
   Symbol sym1 = shape_env.CreateSymbol(0, MakeShared<GraphInputShapeSourceStub>(0, 3));
   EXPECT_EQ(0, shape_env.symbol_to_value_.size());
   EXPECT_EQ(0, shape_env.value_to_symbol_.size());
   EXPECT_EQ(0, shape_env.symbol_to_source_.size());
-  EXPECT_EQ(std::string(sym1.Serialize().get()), "0");
+  EXPECT_EQ(std::string(sym1.Str().get()), "0");
 }
 
 TEST_F(AttributeGroupShapeEnvUt, CreateSymbolDynamicMode_Succ) {
@@ -135,7 +135,7 @@ TEST_F(AttributeGroupShapeEnvUt, CreateSymbolDynamicMode_Succ) {
   EXPECT_EQ(sym, shape_env.value_to_symbol_[2][0]);
   EXPECT_EQ(2, shape_env.symbol_to_value_[sym]);
   EXPECT_EQ(0, shape_env.symbol_to_source_[sym]->GetGlobalIndex());
-  EXPECT_EQ(std::string(sym.Serialize().get()), "s0");
+  EXPECT_EQ(std::string(sym.Str().get()), "s0");
   Symbol sym1 = shape_env.CreateSymbol(2, MakeShared<GraphInputShapeSourceStub>(1, 0));
   EXPECT_EQ(2, shape_env.symbol_to_value_.size());
   EXPECT_EQ(1, shape_env.value_to_symbol_.size());
@@ -145,7 +145,7 @@ TEST_F(AttributeGroupShapeEnvUt, CreateSymbolDynamicMode_Succ) {
   EXPECT_EQ(sym1, shape_env.value_to_symbol_[2][1]);
   EXPECT_EQ(2, shape_env.symbol_to_value_[sym1]);
   EXPECT_EQ(1, shape_env.symbol_to_source_[sym1]->GetGlobalIndex());
-  EXPECT_EQ(std::string(sym1.Serialize().get()), "s1");
+  EXPECT_EQ(std::string(sym1.Str().get()), "s1");
 }
 
 TEST_F(AttributeGroupShapeEnvUt, CreateSymbolStaticMode_Succ) {
@@ -159,7 +159,7 @@ TEST_F(AttributeGroupShapeEnvUt, CreateSymbolStaticMode_Succ) {
   EXPECT_EQ(sym, shape_env.value_to_symbol_[2][0]);
   EXPECT_EQ(2, shape_env.symbol_to_value_[sym]);
   EXPECT_EQ(0, shape_env.symbol_to_source_[sym]->GetGlobalIndex());
-  EXPECT_EQ(std::string(sym.Serialize().get()), "s0");
+  EXPECT_EQ(std::string(sym.Str().get()), "s0");
   Symbol sym1 = shape_env.CreateSymbol(2, MakeShared<GraphInputShapeSourceStub>(0, 2));
   EXPECT_EQ(sym, sym1);
   EXPECT_EQ(true, shape_env.HasSymbolAssertInfo(sym::Eq(sym, Symbol(2))));

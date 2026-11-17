@@ -38,11 +38,11 @@ graphStatus InferSymbolicShapeFunc(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_NOTNULL(context);
   const auto in_tensor = context->GetInputSymbolTensor(0);
   GE_UNSUPPORTED_IF_NULL(in_tensor);
-  const auto in_tensor_val = in_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(in_tensor_val);
+  GE_UNSUPPORTED_IF(!in_tensor->HasValue());
+  const auto in_tensor_val = SymbolicInferUtil::GetSymbolicValues(*in_tensor);
   const auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
-  out_shape->MutableDims() = *in_tensor_val;
+  SymbolicInferUtil::SetSymbolDims(*out_shape, in_tensor_val);
   return GRAPH_SUCCESS;
 }
 /**
@@ -55,13 +55,13 @@ graphStatus InferSymbolicShapeFunc(gert::InferSymbolShapeContext *context) {
 graphStatus InferShape4RandomStandardNormal(gert::InferSymbolShapeContext *context) {
   const auto shape_tensor = context->GetInputSymbolTensor(0);
   GE_UNSUPPORTED_IF_NULL(shape_tensor);
-  const auto shape_value = shape_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(shape_value);
+  GE_UNSUPPORTED_IF(!shape_tensor->HasValue());
+  const auto shape_value = SymbolicInferUtil::GetSymbolicValues(*shape_tensor);
   const auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
-  out_shape->MutableDims().clear();
-  for (const auto &dim : *shape_value) {
-    out_shape->MutableDims().emplace_back(dim);
+  out_shape->Clear();
+  for (const auto &dim : shape_value) {
+    out_shape->AppendDim(dim);
   }
   return GRAPH_SUCCESS;
 }
@@ -76,15 +76,15 @@ graphStatus InferShape4RandomStandardNormal(gert::InferSymbolShapeContext *conte
 graphStatus InferShape4RandomV2(gert::InferSymbolShapeContext *context) {
   const auto shape_tensor = context->GetInputSymbolTensor(0);
   GE_UNSUPPORTED_IF_NULL(shape_tensor);
-  const auto shape_value = shape_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(shape_value);
+  GE_UNSUPPORTED_IF(!shape_tensor->HasValue());
+  const auto shape_value = SymbolicInferUtil::GetSymbolicValues(*shape_tensor);
   const auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
-  out_shape->MutableDims() = *shape_value;
+  SymbolicInferUtil::SetSymbolDims(*out_shape, shape_value);
   const auto offset_shape = context->GetOutputSymbolShape(1);
   GE_ASSERT_NOTNULL(offset_shape);
-  offset_shape->MutableDims().clear();
-  offset_shape->MutableDims().emplace_back(Symbol(1));
+  offset_shape->Clear();
+  offset_shape->AppendDim(Symbol(1));
   return GRAPH_SUCCESS;
 }
 

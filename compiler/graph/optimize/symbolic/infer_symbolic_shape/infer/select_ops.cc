@@ -68,8 +68,12 @@ graphStatus InferShape4SelectV2(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(in_shape2);
   const auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
+  std::vector<Expression> out_dims;
   GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(
-      {in_shape1->GetDims(), in_shape2->GetDims(), condition_shape->GetDims()}, out_shape->MutableDims()));
+      {SymbolicInferUtil::GetSymbolDims(*in_shape1), SymbolicInferUtil::GetSymbolDims(*in_shape2),
+       SymbolicInferUtil::GetSymbolDims(*condition_shape)},
+      out_dims));
+  SymbolicInferUtil::SetSymbolDims(*out_shape, out_dims);
   return ge::GRAPH_SUCCESS;
 }
 

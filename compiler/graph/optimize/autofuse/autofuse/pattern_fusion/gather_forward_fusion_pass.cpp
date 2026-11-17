@@ -59,9 +59,9 @@ gert::SymbolShape GetNodeSymbolShape(const NodePtr &node) {
 
 Status SetNodeSymbolShape(const NodePtr &node, gert::SymbolShape &gather_symbolic_shape) {
   auto node_mutable_output_attr = GetNodeMutableOutputAttr(node);
-  node_mutable_output_attr->symbolic_tensor.MutableOriginSymbolShape() = gather_symbolic_shape;
+  node_mutable_output_attr->symbolic_tensor.SetOriginSymbolShape(gather_symbolic_shape);
   auto node_mutable_input_attr = GetNodeMutableInputAttr(node);
-  node_mutable_input_attr->symbolic_tensor.MutableOriginSymbolShape() = gather_symbolic_shape;
+  node_mutable_input_attr->symbolic_tensor.SetOriginSymbolShape(gather_symbolic_shape);
   return SUCCESS;
 }
 
@@ -72,8 +72,8 @@ bool CheckShape(const NodePtr &node) {
     GELOGD("now ele node %s's input or output symbolic shape is null", node->GetType().c_str());
     return false;
   }
-  auto node_mutable_output_symbolic_shape = node_mutable_output_attr->symbolic_tensor.MutableOriginSymbolShape();
-  auto node_mutable_input_symbolic_shape = node_mutable_input_attr->symbolic_tensor.MutableOriginSymbolShape();
+  const auto &node_mutable_output_symbolic_shape = node_mutable_output_attr->symbolic_tensor.GetOriginSymbolShape();
+  const auto &node_mutable_input_symbolic_shape = node_mutable_input_attr->symbolic_tensor.GetOriginSymbolShape();
   if (node_mutable_input_symbolic_shape != node_mutable_output_symbolic_shape) {
     return false;
   }

@@ -37,7 +37,7 @@ graphStatus InferShape4ForeachNorm(gert::InferSymbolShapeContext *context) {
   for (size_t i = 0U; i < output_count; ++i) {
     auto output_shape = context->GetOutputSymbolShape(i);
     GE_ASSERT_NOTNULL(output_shape);
-    output_shape->MutableDims().clear();
+    output_shape->Clear();
     output_shape->AppendDim(kSymbolOne);
   }
   return ge::GRAPH_SUCCESS;

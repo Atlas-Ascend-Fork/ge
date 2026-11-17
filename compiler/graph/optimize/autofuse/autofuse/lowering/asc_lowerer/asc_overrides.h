@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <type_traits>
 #include <utility>
 #include <vector>
 #include <thread>
@@ -215,7 +216,7 @@ class AscOverrides final : public OpOverrides {
     asc_axis_.reserve(loop_axis.axis.size());
     asc_axis_repeats_.reserve(loop_axis.axis.size());
     for (size_t i = 0U; i < loop_axis.axis.size(); i++) {
-      const auto repeat_str = loop_axis.repeats[i].Serialize();
+      const auto repeat_str = loop_axis.repeats[i].Str();
       const auto axis_id =
           af::AscGraphCreateAxisBySerializedExpr(*graph_, loop_axis.names[i].c_str(), repeat_str.get());
       asc_axis_.push_back(axis_id);
@@ -1068,7 +1069,11 @@ class AscOverrides final : public OpOverrides {
   template <typename T>
   std::string CseKeyArgs(const T &head) const {
     std::stringstream ss;
-    ss << head;
+    if constexpr (std::is_same<typename std::decay<T>::type, ge::Expression>::value) {
+      ss << head.Str().get();
+    } else {
+      ss << head;
+    }
     return ss.str();
   }
 

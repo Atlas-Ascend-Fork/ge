@@ -378,7 +378,7 @@ graphStatus BroadCastByInDataAnchors(const NodePtr &node, const vector<InDataAnc
     auto sym_attr = desc->GetAttrsGroup<SymbolicDescAttr>();
     LOWERING_WARN_RECORD_REASON(sym_attr != nullptr, in_anchor->GetOwnerNode(), "No symbolic desc attr for node %s",
                                 in_anchor->GetOwnerNode()->GetName().c_str());
-    indices.emplace_back(sym_attr->symbolic_tensor.GetOriginSymbolShape().GetDims());
+    indices.emplace_back(AutofuseUtils::GetSymbolDims(sym_attr->symbolic_tensor.GetOriginSymbolShape()));
   }
   LOWERING_WARN_RECORD_REASON(Broadcast(indices, broadcasted) == GRAPH_SUCCESS, node,
                               "Failed to apply broadcast input");
@@ -665,7 +665,7 @@ graphStatus LowerPointwise(const NodePtr &node,
     GE_ASSERT_NOTNULL(desc);
     auto sym_attr = desc->GetAttrsGroup<SymbolicDescAttr>();
     LOWERING_WARN_RECORD_REASON(sym_attr != nullptr, node, "No symbolic desc attr");
-    indices.emplace_back(sym_attr->symbolic_tensor.GetOriginSymbolShape().GetDims());
+    indices.emplace_back(AutofuseUtils::GetSymbolDims(sym_attr->symbolic_tensor.GetOriginSymbolShape()));
     dtypes.emplace_back(desc->GetDataType());
   }
 
@@ -2263,7 +2263,7 @@ REGISTER_LOWERING(AddN) {
     GE_ASSERT_NOTNULL(desc);
     auto sym_attr = desc->GetAttrsGroup<SymbolicDescAttr>();
     LOWERING_WARN_RECORD_REASON(sym_attr != nullptr, node, "No symbolic desc attr.");
-    indices.emplace_back(sym_attr->symbolic_tensor.GetOriginSymbolShape().GetDims());
+    indices.emplace_back(AutofuseUtils::GetSymbolDims(sym_attr->symbolic_tensor.GetOriginSymbolShape()));
   }
   LOWERING_WARN_RECORD_REASON(Broadcast(indices, broadcasted) == GRAPH_SUCCESS, node,
                               "Failed to apply input broadcast");

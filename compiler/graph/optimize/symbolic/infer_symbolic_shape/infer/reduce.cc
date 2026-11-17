@@ -27,7 +27,7 @@ graphStatus InferShape4ReduceCommon(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto axes_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(axes_tensor);
-  if (axes_tensor->GetSymbolicValue() == nullptr) {
+  if (!axes_tensor->HasValue()) {
     GELOGW("Symbol Infer unsupported, get symbolic value is nullptr, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -39,12 +39,12 @@ graphStatus InferShape4ReduceCommon(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_NOTNULL(attrs);
   const bool *keep_dims = attrs->GetAttrPointer<bool>(0);
   GE_ASSERT_NOTNULL(keep_dims);
-  if (axes_tensor->GetSymbolicValue()->empty()) {
+  if (axes_tensor->GetValueCount() == 0U) {
     *out_shape = *in_shape;
     GELOGD("axes is empty tensor, will ignore infer, set output shape = input shape");
     return ge::GRAPH_SUCCESS;
   }
-  auto axes_size = axes_tensor->GetSymbolicValue()->size();
+  auto axes_size = axes_tensor->GetValueCount();
   auto input1_desc = context->GetInputDesc(1);
   GE_ASSERT_NOTNULL(input1_desc);
   auto dtype = input1_desc->GetDataType();
@@ -206,8 +206,10 @@ graphStatus InferShape4LayerNormBetaGammaBackpropV2(gert::InferSymbolShapeContex
       reduce_axes.emplace_back(i);
     }
   }
-  GE_ASSERT_GRAPH_SUCCESS(
-      SymbolicInferUtil::Broadcast({dy_shape->GetDims(), res_for_gamma_shape->GetDims()}, out_shape->MutableDims()));
+  std::vector<Expression> out_dims;
+  GE_ASSERT_GRAPH_SUCCESS(SymbolicInferUtil::Broadcast(
+      {SymbolicInferUtil::GetSymbolDims(*dy_shape), SymbolicInferUtil::GetSymbolDims(*res_for_gamma_shape)}, out_dims));
+  SymbolicInferUtil::SetSymbolDims(*out_shape, out_dims);
   GE_ASSERT_GRAPH_SUCCESS(
       SymbolicInferUtil::ReduceDimsWithKeepDims<int64_t>(out_shape, reduce_axes, reduce_axes.size(), out_shape));
   GE_ASSERT_GRAPH_SUCCESS(
@@ -296,8 +298,8 @@ graphStatus InferShape4LayerNormV4(gert::InferSymbolShapeContext *context) {
 
   // get norm_shape_len from norm_shape's shape
   GE_ASSERT_TRUE(norm_shape_shape->GetDimNum() <= 1, "Shape of norm_shape should be 1 dimensions!");
-  int64_t norm_shape_len = norm_shape_shape->IsScalar() ? 1 : 0;
-  if (!norm_shape_shape->IsScalar()) {
+  int64_t norm_shape_len = (norm_shape_shape->GetDimNum() == 0U) ? 1 : 0;
+  if (norm_shape_shape->GetDimNum() != 0U) {
     if (SymbolicInferUtil::TryGetConstInt(norm_shape_shape->GetDim(0), norm_shape_len) != GRAPH_SUCCESS) {
       GELOGW("Symbol Infer unsupported, norm_shape_len is not an integer const, node %s[%s].", context->GetNodeName(),
              context->GetNodeType());

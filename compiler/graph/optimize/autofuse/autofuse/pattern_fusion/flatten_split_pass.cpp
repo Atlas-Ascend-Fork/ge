@@ -93,7 +93,7 @@ graphStatus GetSplitOutputBufferShape(const NodePtr &split_node, std::vector<Exp
   GE_ASSERT_NOTNULL(desc);
   const auto sym_attr = desc->GetAttrsGroup<SymbolicDescAttr>();
   GE_ASSERT_NOTNULL(sym_attr);
-  dims = sym_attr->symbolic_tensor.GetOriginSymbolShape().GetDims();
+  dims = AutofuseUtils::GetSymbolDims(sym_attr->symbolic_tensor.GetOriginSymbolShape());
   return GRAPH_SUCCESS;
 }
 

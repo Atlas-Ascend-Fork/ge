@@ -38,16 +38,16 @@ class UtestFusionStrategySolverManual : public testing::Test {
       GE_ASSERT_NOTNULL(out_anchor);
       auto output_tensor_desc = node_desc->MutableOutputDesc(out_anchor->GetIdx());
       if (output_tensor_desc != nullptr) {
-        output_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape() =
-            symbol_shape;
+        output_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(
+            symbol_shape);
       }
     }
     for (const auto in_anchor : node->GetAllInDataAnchorsPtr()) {
       GE_ASSERT_NOTNULL(in_anchor);
       auto input_tensor_desc = node_desc->MutableInputDesc(in_anchor->GetIdx());
       if (input_tensor_desc != nullptr) {
-        input_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape() =
-            symbol_shape;
+        input_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(
+            symbol_shape);
       }
     }
     return SUCCESS;

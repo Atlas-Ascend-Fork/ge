@@ -557,7 +557,7 @@ Status AscGraphAxisMapping::GetPreNodeAttrs(const NodePtr &node, const int32_t i
   GE_ASSERT_NOTNULL(output_tensor_desc);
   const auto attr_group = output_tensor_desc->GetAttrsGroup<ge::SymbolicDescAttr>();
   GE_ASSERT_NOTNULL(attr_group);
-  dims = attr_group->symbolic_tensor.GetOriginSymbolShape().GetDims();
+  dims = AutofuseUtils::GetSymbolDims(attr_group->symbolic_tensor.GetOriginSymbolShape());
 
   if (peer_node->GetType() == kAscBackendType) {
     ComputeGraphPtr graph;

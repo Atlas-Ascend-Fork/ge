@@ -7507,8 +7507,8 @@ TEST_F(GraphCompilerTest, test_graph_with_autofuse) {
   auto out_desc = op_desc->GetOutputDescPtr(0);
   EXPECT_NE(out_desc, nullptr);
   EXPECT_NE(out_desc->GetAttrsGroup<SymbolicDescAttr>(), nullptr);
-  EXPECT_EQ(out_desc->GetAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.GetOriginSymbolShape().GetDims(),
-            std::vector<Expression>({Symbol(4), Symbol(5), Symbol(6)}));
+  EXPECT_EQ(out_desc->GetAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.GetOriginSymbolShape(),
+            gert::SymbolShape({Symbol(4), Symbol(5), Symbol(6)}));
 
   auto data_node = graph->FindFirstNodeMatchType(DATA);
   EXPECT_NE(data_node, nullptr);
@@ -7517,8 +7517,8 @@ TEST_F(GraphCompilerTest, test_graph_with_autofuse) {
   out_desc = op_desc->GetOutputDescPtr(0);
   EXPECT_NE(out_desc, nullptr);
   EXPECT_NE(out_desc->GetAttrsGroup<SymbolicDescAttr>(), nullptr);
-  EXPECT_EQ(out_desc->GetAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.GetOriginSymbolShape().GetDims(),
-            std::vector<Expression>({Symbol(4), Symbol(5), Symbol(6)}));
+  EXPECT_EQ(out_desc->GetAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.GetOriginSymbolShape(),
+            gert::SymbolShape({Symbol(4), Symbol(5), Symbol(6)}));
 
   session_0_var_manager->Destroy();
   VarManagerPool::Instance().RemoveVarManager(0);

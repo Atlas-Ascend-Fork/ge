@@ -56,7 +56,7 @@ graphStatus InferShape4ConcatV2Common(gert::InferSymbolShapeContext *context, in
   }
 
   // 多输入场景下，再判断输入维度是否为标量。因为如果是标量，其shape为空，但拼接后的shape有1个dim，因此需要为其增加一个dim。
-  if (out_shape->IsScalar()) {
+  if (out_shape->GetDimNum() == 0U) {
     out_shape->AppendDim(Symbol(1));
   }
   auto out_dim_num = static_cast<int64_t>(out_shape->GetDimNum());
@@ -72,7 +72,7 @@ graphStatus InferShape4ConcatV2Common(gert::InferSymbolShapeContext *context, in
     auto input_i_shape = context->GetInputSymbolShape(i + start_shape_idx);
     GE_UNSUPPORTED_IF_NULL(input_i_shape);
     // 输入和输出(第一个输入)的维度相同 且 都是标量，直接+1即可
-    if (input_i_shape->IsScalar() && out_dim_num == 1) {
+    if ((input_i_shape->GetDimNum() == 0U) && (out_dim_num == 1)) {
       total_concat_dim_size = total_concat_dim_size + Symbol(1);
       continue;
     }
@@ -86,7 +86,7 @@ graphStatus InferShape4ConcatV2Common(gert::InferSymbolShapeContext *context, in
       }
       ASSERT_SYMBOL_EQ(input_i_shape->GetDim(check_dim), out_shape->GetDim(check_dim));
       if (!out_shape->GetDim(check_dim).IsConstExpr() && input_i_shape->GetDim(check_dim).IsConstExpr()) {
-        out_shape->MutableDims()[check_dim] = input_i_shape->GetDim(check_dim);
+        out_shape->SetDim(check_dim, input_i_shape->GetDim(check_dim));
       }
     }
 
@@ -95,21 +95,21 @@ graphStatus InferShape4ConcatV2Common(gert::InferSymbolShapeContext *context, in
   }
 
   // 将累计的拼接轴维数设置回输出shape中，结束。
-  out_shape->MutableDims()[concat_axis] = total_concat_dim_size;
+  out_shape->SetDim(concat_axis, total_concat_dim_size);
   return GRAPH_SUCCESS;
 }
 
 graphStatus GetConcatDimValue(const gert::InferSymbolShapeContext *context, size_t dim_index, int64_t &concat_dim) {
   auto concat_dim_tensor = context->GetInputSymbolTensor(dim_index);
   GE_UNSUPPORTED_IF_NULL(concat_dim_tensor);
-  auto concat_dim_value = concat_dim_tensor->GetSymbolicValue();
-  if (concat_dim_value == nullptr) {
+  const auto concat_dim_value = SymbolicInferUtil::GetSymbolicValues(*concat_dim_tensor);
+  if (concat_dim_value.empty()) {
     GELOGW("Symbol Infer unsupported, reason get symbolic value is nullptr, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
   }
-  GE_ASSERT_EQ(concat_dim_value->size(), 1UL);
-  if (SymbolicInferUtil::TryGetConstInt(concat_dim_value->at(0), concat_dim) != GRAPH_SUCCESS) {
+  GE_ASSERT_EQ(concat_dim_value.size(), 1UL);
+  if (SymbolicInferUtil::TryGetConstInt(concat_dim_value.at(0), concat_dim) != GRAPH_SUCCESS) {
     GELOGW("Symbol Infer unsupported, concat dim is not an integer const, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;

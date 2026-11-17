@@ -76,10 +76,10 @@ graphStatus SetOutputShapeAndValue(gert::InferSymbolComputeContext *context, con
   for (auto dim : output_dims) {
     output_shape_symbols.emplace_back(Symbol(dim));
   }
-  output_tensor->MutableOriginSymbolShape().MutableDims() = output_shape_symbols;
+  SymbolicInferUtil::SetSymbolDims(*output_tensor, output_shape_symbols);
   auto output_values_unique = ge::MakeUnique<std::vector<ge::Expression>>(std::move(output_values));
   if (output_values_unique != nullptr) {
-    output_tensor->SetSymbolicValue(std::move(output_values_unique));
+    SymbolicInferUtil::SetSymbolicValues(*output_tensor, *output_values_unique);
   }
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_tensor).c_str());
@@ -131,16 +131,16 @@ graphStatus BinaryElementwiseSymbolicKernelCompute(gert::InferSymbolComputeConte
   }
   auto x1_tensor = context->GetInputSymbolTensor(kX1InputIndex);
   GE_UNSUPPORTED_IF_NULL(x1_tensor);
-  auto x1_symbols = x1_tensor->GetSymbolicValue();
-  if (x1_symbols == nullptr) {
+  const auto x1_symbols = SymbolicInferUtil::GetSymbolicValues(*x1_tensor);
+  if (x1_symbols.empty()) {
     GELOGW("SymbolicKernel compute unsupported, reason: get x1 symbolic value failed, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
   auto x2_tensor = context->GetInputSymbolTensor(kX2InputIndex);
   GE_UNSUPPORTED_IF_NULL(x2_tensor);
-  auto x2_symbols = x2_tensor->GetSymbolicValue();
-  if (x2_symbols == nullptr) {
+  const auto x2_symbols = SymbolicInferUtil::GetSymbolicValues(*x2_tensor);
+  if (x2_symbols.empty()) {
     GELOGW("SymbolicKernel compute unsupported, reason: get x2 symbolic value failed, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
@@ -148,9 +148,9 @@ graphStatus BinaryElementwiseSymbolicKernelCompute(gert::InferSymbolComputeConte
   std::vector<int64_t> output_dims;
   GE_ASSERT_SUCCESS(ComputeBroadcastShape(context, x1_dims, x2_dims, output_dims));
   std::vector<Expression> x1_broadcast;
-  GE_ASSERT_SUCCESS(BroadcastData(*x1_symbols, x1_dims, output_dims, x1_broadcast));
+  GE_ASSERT_SUCCESS(BroadcastData(x1_symbols, x1_dims, output_dims, x1_broadcast));
   std::vector<Expression> x2_broadcast;
-  GE_ASSERT_SUCCESS(BroadcastData(*x2_symbols, x2_dims, output_dims, x2_broadcast));
+  GE_ASSERT_SUCCESS(BroadcastData(x2_symbols, x2_dims, output_dims, x2_broadcast));
   GE_ASSERT_TRUE(x1_broadcast.size() == x2_broadcast.size(), "broadcast size mismatch: %zu vs %zu", x1_broadcast.size(),
                  x2_broadcast.size());
   std::vector<Expression> output_values;

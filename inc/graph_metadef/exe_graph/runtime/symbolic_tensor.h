@@ -18,7 +18,6 @@
 #include <type_traits>
 #include <limits>
 #include <memory>
-#include <new>
 #include "utils/extern_math_util.h"
 #include "symbolic_shape.h"
 
@@ -71,13 +70,6 @@ class SymbolTensor {
     return origin_symbol_shape_;
   }
   /**
-   * 获取可修改的原始格式符号化shape
-   * @return 原始格式符号化shape引用
-   */
-  SymbolShape &MutableOriginSymbolShape() {
-    return origin_symbol_shape_;
-  }
-  /**
    * 设置原始格式符号化shape
    * @return void
    */
@@ -86,44 +78,58 @@ class SymbolTensor {
   }
 
   /**
-   * 设置原始格式、存储格式符号化shape
-   * @return void
+   * 判断是否存在符号值：无符号值（未设置）返回false；已设置符号值（含个数为0的显式空值）返回true
+   * @return 是否存在符号值
    */
-  void SetSymbolShape(const SymbolShape &symbol_shape) {
-    SetOriginSymbolShape(symbol_shape);
+  bool HasValue() const {
+    return symbolic_values_ != nullptr;
   }
   /**
-   * 获取symbol tensor中存储的符号值，一般在data dependent算子场景使用
-   * 1. 返回值为nullptr，表明无符号值
-   * 2. 返回值为{}，表明符号值为空
-   * 3. 返回值不为空，表明存在符号值
-   *
-   * @return 只读的symbol tensor符号值;
+   * 获取符号值个数，无符号值时返回0
+   * @return 符号值个数
    */
-  const std::vector<ge::Expression> *GetSymbolicValue() const {
-    return symbolic_values_.get();
+  size_t GetValueCount() const {
+    return (symbolic_values_ == nullptr) ? 0U : symbolic_values_->size();
   }
   /**
-   * 设置symbol tensor中存储的符号值
-   * @param symbolic_values
+   * 获取只读的第idx位置的符号值
+   * @param idx 符号值的index
+   * @return 符号值；无符号值或index越界时返回默认构造的表达式，该表达式并非有效符号值，
+   * 调用方应先通过HasValue/GetValueCount判断取值是否可用
    */
-  void SetSymbolicValue(std::unique_ptr<std::vector<ge::Expression>> symbolic_values) {
-    symbolic_values_ = std::move(symbolic_values);
+  const ge::Expression &GetValue(size_t idx) const {
+    if (symbolic_values_ == nullptr || idx >= symbolic_values_->size()) {
+      static const ge::Expression kInvalidExpr;
+      return kInvalidExpr;
+    }
+    return (*symbolic_values_)[idx];
   }
   /**
-   * 获取tensor data
-   * @return 可写的symbol tensor符号值
+   * 设置符号值个数，若设置的个数大于当前值，扩展出的符号值为默认构造的表达式，
+   * 需配合SetValue逐个赋值后使用
+   * @param value_count 符号值个数
+   * @return this引用
    */
-  std::vector<ge::Expression> *MutableSymbolicValue() {
-    if (!symbolic_values_) {
+  SymbolTensor &SetValueCount(size_t value_count) {
+    if (symbolic_values_ == nullptr) {
       symbolic_values_ = std::unique_ptr<std::vector<ge::Expression>>(new (std::nothrow) std::vector<ge::Expression>());
     }
-
-    if (!symbolic_values_) {
-      return nullptr;
+    if (symbolic_values_ != nullptr) {
+      symbolic_values_->resize(value_count);
     }
-
-    return symbolic_values_.get();
+    return *this;
+  }
+  /**
+   * 设置第idx位置的符号值
+   * @param idx 符号值的index，调用者需要保证index合法
+   * @param value 符号值
+   * @return this引用
+   */
+  SymbolTensor &SetValue(size_t idx, const ge::Expression &value) {
+    if (symbolic_values_ != nullptr) {
+      (*symbolic_values_)[idx] = value;
+    }
+    return *this;
   }
 
  private:

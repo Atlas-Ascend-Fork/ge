@@ -39,11 +39,11 @@ graphStatus GetAxisDims(const gert::InferSymbolComputeContext *context, std::vec
   }
   auto axis_tensor = context->GetInputSymbolTensor(kAxisInputIndex);
   GE_UNSUPPORTED_IF_NULL(axis_tensor);
-  auto axis_symbols = axis_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(axis_symbols);
-  for (size_t i = 0UL; i < axis_symbols->size(); i++) {
+  GE_UNSUPPORTED_IF(!axis_tensor->HasValue());
+  const auto axis_symbols = SymbolicInferUtil::GetSymbolicValues(*axis_tensor);
+  for (size_t i = 0UL; i < axis_symbols.size(); i++) {
     int64_t dim = 0L;
-    if (!(*axis_symbols)[i].GetConstValue(dim)) {
+    if (!(axis_symbols)[i].GetConstValue(dim)) {
       GELOGW("SymbolicKernel compute unsupported, reason: get %zu input const value failed, node %s[%s].", i,
              context->GetNodeName(), context->GetNodeType());
       return UNSUPPORTED;
@@ -136,8 +136,8 @@ static graphStatus ReduceProdSymbolicKernelCompute(gert::InferSymbolComputeConte
   // 获取输入的值
   auto input_x_tensor = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_x_tensor);
-  auto input_x_symbols = input_x_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_x_symbols);
+  GE_UNSUPPORTED_IF(!input_x_tensor->HasValue());
+  const auto input_x_symbols = SymbolicInferUtil::GetSymbolicValues(*input_x_tensor);
   // 获取axis
   std::vector<int64_t> axis_dims;
   auto ret = GetAxisDims(context, axis_dims);
@@ -155,15 +155,15 @@ static graphStatus ReduceProdSymbolicKernelCompute(gert::InferSymbolComputeConte
 
   auto out_symbolic_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(out_symbolic_tensor);
-  out_symbolic_tensor->MutableOriginSymbolShape().MutableDims() = output_symbol_shape;
+  SymbolicInferUtil::SetSymbolDims(*out_symbolic_tensor, output_symbol_shape);
 
   // 扩展x_symbols（原样透传：空tensor/溢出的UNSUPPORTED由外层降级，ErrorResult由驱动打挂推导）
-  auto output_symbols = out_symbolic_tensor->MutableSymbolicValue();
-  GE_ASSERT_NOTNULL(output_symbols);
-  const auto prod_ret = ReduceProdOutputSymbolValue(*input_x_symbols, input_x_dims, axis_dims, *output_symbols);
+  std::vector<Expression> output_symbols;
+  const auto prod_ret = ReduceProdOutputSymbolValue(input_x_symbols, input_x_dims, axis_dims, output_symbols);
   if (prod_ret != SUCCESS) {
     return prod_ret;
   }
+  SymbolicInferUtil::SetSymbolicValues(*out_symbolic_tensor, output_symbols);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*out_symbolic_tensor).c_str());
   return SUCCESS;
@@ -226,8 +226,8 @@ static graphStatus ReduceSymbolicKernelCompute(gert::InferSymbolComputeContext *
   }
   auto input_tensor = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_tensor);
-  auto input_symbols = input_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_symbols);
+  GE_UNSUPPORTED_IF(!input_tensor->HasValue());
+  const auto input_symbols = SymbolicInferUtil::GetSymbolicValues(*input_tensor);
 
   auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
@@ -260,14 +260,14 @@ static graphStatus ReduceSymbolicKernelCompute(gert::InferSymbolComputeContext *
   GE_ASSERT_NOTNULL(output_tensor);
   std::vector<Expression> output_shape;
   GE_ASSERT_SUCCESS(CalcOutputShape(input_dims, axis_dims, keep_dims, output_shape));
-  output_tensor->MutableOriginSymbolShape().MutableDims() = output_shape;
+  SymbolicInferUtil::SetSymbolDims(*output_tensor, output_shape);
 
   std::vector<Expression> output_symbols;
   if (axis_dims.empty()) {
-    output_symbols = *input_symbols;
+    output_symbols = input_symbols;
   } else {
     // 原样透传：空tensor/溢出/不整除的UNSUPPORTED由外层降级，ErrorResult由驱动打挂推导
-    const auto value_ret = ReduceOutputSymbolValue(*input_symbols, input_dims, axis_dims, compute, output_symbols);
+    const auto value_ret = ReduceOutputSymbolValue(input_symbols, input_dims, axis_dims, compute, output_symbols);
     if (value_ret != SUCCESS) {
       return value_ret;
     }
@@ -281,7 +281,7 @@ static graphStatus ReduceSymbolicKernelCompute(gert::InferSymbolComputeContext *
       expr = expr / Symbol(reduce_size);
     }
   }
-  output_tensor->SetSymbolicValue(ge::MakeUnique<std::vector<Expression>>(std::move(output_symbols)));
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, output_symbols);
   return SUCCESS;
 }
 

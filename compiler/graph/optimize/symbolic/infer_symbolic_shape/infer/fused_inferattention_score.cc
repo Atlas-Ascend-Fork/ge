@@ -202,31 +202,31 @@ ge::graphStatus InferAttentionOutShape(std::string attentionOutLayout, gert::Sym
     Expression outH = Symbol(numHeads) * valueD;
     Expression queryH = queryShape->GetDim(kTwo);
     outH = (outH == kSymbolZero || queryH == kSymbolZero) ? queryH : outH;
-    attentionOutShape->MutableDims() = {dims.shape_b, dims.shape_s1, outH};
+    SymbolicInferUtil::SetSymbolDims(*attentionOutShape, {dims.shape_b, dims.shape_s1, outH});
   } else if (attentionOutLayout == kLayoutBSND) {
     GetQueryBSND(queryShape, queryLayout, numHeads, dims);
     Expression outD = calculateOutD();
-    attentionOutShape->MutableDims() = {dims.shape_b, dims.shape_s1, dims.shape_n1, outD};
+    SymbolicInferUtil::SetSymbolDims(*attentionOutShape, {dims.shape_b, dims.shape_s1, dims.shape_n1, outD});
   } else if (attentionOutLayout == kLayoutBNSD) {
     GetQueryBSND(queryShape, queryLayout, numHeads, dims);
     Expression outD = calculateOutD();
-    attentionOutShape->MutableDims() = {dims.shape_b, dims.shape_n1, dims.shape_s1, outD};
+    SymbolicInferUtil::SetSymbolDims(*attentionOutShape, {dims.shape_b, dims.shape_n1, dims.shape_s1, outD});
   } else if (attentionOutLayout == "NBSD") {
     GetQueryBSND(queryShape, queryLayout, numHeads, dims);
     Expression outD = calculateOutD();
-    attentionOutShape->MutableDims() = {dims.shape_n1, dims.shape_b, dims.shape_s1, outD};
+    SymbolicInferUtil::SetSymbolDims(*attentionOutShape, {dims.shape_n1, dims.shape_b, dims.shape_s1, outD});
   } else if (attentionOutLayout == kLayoutTND) {
     GetQueryTND(queryShape, queryLayout, dims);
     Expression outD = calculateOutD();
-    attentionOutShape->MutableDims() = {dims.shape_t, dims.shape_n1, outD};
+    SymbolicInferUtil::SetSymbolDims(*attentionOutShape, {dims.shape_t, dims.shape_n1, outD});
   } else if (attentionOutLayout == kLayoutNTD) {
     GetQueryTND(queryShape, queryLayout, dims);
     Expression outD = calculateOutD();
-    attentionOutShape->MutableDims() = {dims.shape_n1, dims.shape_t, outD};
+    SymbolicInferUtil::SetSymbolDims(*attentionOutShape, {dims.shape_n1, dims.shape_t, outD});
   } else if (attentionOutLayout == kLayoutNSD) {
     GetQueryBSND(queryShape, queryLayout, numHeads, dims);
     Expression outD = calculateOutD();
-    attentionOutShape->MutableDims() = {dims.shape_n1, dims.shape_s1, outD};
+    SymbolicInferUtil::SetSymbolDims(*attentionOutShape, {dims.shape_n1, dims.shape_s1, outD});
   }
   return ge::GRAPH_SUCCESS;
 }
@@ -241,10 +241,10 @@ ge::graphStatus InferLseOutShape(const std::string &inputLayout, gert::SymbolSha
   if (inputLayout == kLayoutTND || inputLayout == kLayoutNTD || inputLayout == kLayoutTNT_NTD ||
       inputLayout == kLayoutNTDTND) {
     GetQueryTND(queryShape, queryLayout, dims);
-    softmaxLseShape->MutableDims() = {dims.shape_t, dims.shape_n1, Symbol(1)};
+    SymbolicInferUtil::SetSymbolDims(*softmaxLseShape, {dims.shape_t, dims.shape_n1, Symbol(1)});
   } else {
     GetQueryBSND(queryShape, queryLayout, numHeads, dims);
-    softmaxLseShape->MutableDims() = {dims.shape_b, dims.shape_n1, dims.shape_s1, Symbol(1)};
+    SymbolicInferUtil::SetSymbolDims(*softmaxLseShape, {dims.shape_b, dims.shape_n1, dims.shape_s1, Symbol(1)});
   }
   return ge::GRAPH_SUCCESS;
 }

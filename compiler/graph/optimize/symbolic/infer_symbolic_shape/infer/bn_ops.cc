@@ -36,16 +36,16 @@ graphStatus GetOutputShapeFromOriginFormat(size_t dim_num, ge::Format origin_for
   if (origin_format == FORMAT_NHWC) {
     GE_ASSERT(dim_num == kFormatNHWCDimSize, "Input x rank[%zu] can only support 4 when NHWC", dim_num);
     sum_shape->AppendDim(x_shape->GetDim(kFormatNHWCCDimIdx));  // index of C is 3
-    squaresum_shape->MutableDims() = sum_shape->GetDims();
+    SymbolicInferUtil::SetSymbolDims(*squaresum_shape, SymbolicInferUtil::GetSymbolDims(*sum_shape));
   } else if (origin_format == FORMAT_NCHW) {
     GE_ASSERT(dim_num >= kFormatNCHWDimMinSize && dim_num <= kFormatNCHWDimMaxSize,
               "Input x rank[%zu] can only support 2 3 4 when NCHW", dim_num);
     sum_shape->AppendDim(x_shape->GetDim(kFormatNCHWCDimIdx));  // index of C is 1
-    squaresum_shape->MutableDims() = sum_shape->GetDims();
+    SymbolicInferUtil::SetSymbolDims(*squaresum_shape, SymbolicInferUtil::GetSymbolDims(*sum_shape));
   } else if (origin_format == FORMAT_NDHWC) {
     GE_ASSERT(dim_num == kFormatNDHWCDimSize, "Input x rank[%zu] can only support 5 when NDHWC", dim_num);
     sum_shape->AppendDim(x_shape->GetDim(kFormatNDHWCCDimIdx));  // index of C is 4
-    squaresum_shape->MutableDims() = sum_shape->GetDims();
+    SymbolicInferUtil::SetSymbolDims(*squaresum_shape, SymbolicInferUtil::GetSymbolDims(*sum_shape));
   } else if (origin_format == FORMAT_NDC1HWC0) {
     GE_ASSERT(dim_num == kFormatNDC1HWC0DimSize, "Input x rank[%zu] can only support 6 when NDC1HWC0", dim_num);
     sum_shape->AppendDim(ge::kSymbolOne);
@@ -54,11 +54,11 @@ graphStatus GetOutputShapeFromOriginFormat(size_t dim_num, ge::Format origin_for
     sum_shape->AppendDim(ge::kSymbolOne);
     sum_shape->AppendDim(ge::kSymbolOne);
     sum_shape->AppendDim(x_shape->GetDim(kFormatNDC1HWC0C0DimIdx));  // index of C0 is 5
-    squaresum_shape->MutableDims() = sum_shape->GetDims();
+    SymbolicInferUtil::SetSymbolDims(*squaresum_shape, SymbolicInferUtil::GetSymbolDims(*sum_shape));
   } else if (origin_format == FORMAT_NCDHW) {
     GE_ASSERT(dim_num == kFormatNCDHWDimSize, "Input x rank[%zu] can only support 5 when NCDHW", dim_num);
     sum_shape->AppendDim(x_shape->GetDim(kFormatNCDHWCDimIdx));  // index of C is 1
-    squaresum_shape->MutableDims() = sum_shape->GetDims();
+    SymbolicInferUtil::SetSymbolDims(*squaresum_shape, SymbolicInferUtil::GetSymbolDims(*sum_shape));
   } else {
     GELOGE(GRAPH_FAILED, "origin_format only support NCHW, NHWC, NDHWC, NCDHW, NDC1HWC0, current origin_format %d",
            origin_format);
@@ -125,7 +125,7 @@ graphStatus InferShape4BatchNorm(gert::InferSymbolShapeContext *context) {
     if (i == 0U) {
       *output_shape = *x_shape;
     } else if (i == kBatchNormOutputNum - 1U) {
-      output_shape->MutableDims() = {ge::kSymbolOne};
+      SymbolicInferUtil::SetSymbolDims(*output_shape, {ge::kSymbolOne});
     } else {
       *output_shape = *scale_shape;
     }

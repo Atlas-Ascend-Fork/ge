@@ -83,10 +83,10 @@ graphStatus InferShape4TopKV2(gert::InferSymbolShapeContext *context) {
   // 获取k的值
   auto k_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(k_tensor);
-  auto k_value = k_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(k_value);
-  GE_ASSERT_TRUE(k_value->size() == 1, "k must be a scalar");
-  auto k = (*k_value)[0];
+  GE_UNSUPPORTED_IF(!k_tensor->HasValue());
+  const auto k_value = SymbolicInferUtil::GetSymbolicValues(*k_tensor);
+  GE_ASSERT_TRUE(k_value.size() == 1, "k must be a scalar");
+  auto k = (k_value)[0];
 
   // 获取属性
   auto attrs = context->GetAttrs();

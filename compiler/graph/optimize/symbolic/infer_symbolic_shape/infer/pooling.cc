@@ -82,11 +82,11 @@ graphStatus InferShape4Pool2D(gert::InferSymbolShapeContext *context) {
   const auto kernel_h = Symbol(ksize_data[h_idx]);
   const auto kernel_w = Symbol(ksize_data[w_idx]);
   if (std::string(padding) == "SAME") {
-    y_shape->MutableDims()[h_idx] = sym::Ceiling(input_h / stride_h);
-    y_shape->MutableDims()[w_idx] = sym::Ceiling(input_w / stride_w);
+    y_shape->SetDim(h_idx, sym::Ceiling(input_h / stride_h));
+    y_shape->SetDim(w_idx, sym::Ceiling(input_w / stride_w));
   } else {
-    y_shape->MutableDims()[h_idx] = sym::Floor((input_h - kernel_h + stride_h) / stride_h);
-    y_shape->MutableDims()[w_idx] = sym::Floor((input_w - kernel_w + stride_w) / stride_w);
+    y_shape->SetDim(h_idx, sym::Floor((input_h - kernel_h + stride_h) / stride_h));
+    y_shape->SetDim(w_idx, sym::Floor((input_w - kernel_w + stride_w) / stride_w));
   }
   return ge::GRAPH_SUCCESS;
 }
@@ -171,11 +171,11 @@ graphStatus InferShape4MaxPoolWithArgmax(gert::InferSymbolShapeContext *context)
   const auto stride_h = Symbol(strides_data[h_idx]);
   const auto stride_w = Symbol(strides_data[w_idx]);
   if (std::string(padding) == "SAME") {
-    y_shape->MutableDims()[h_idx] = sym::Ceiling(input_h / stride_h);
-    y_shape->MutableDims()[w_idx] = sym::Ceiling(input_w / stride_w);
+    y_shape->SetDim(h_idx, sym::Ceiling(input_h / stride_h));
+    y_shape->SetDim(w_idx, sym::Ceiling(input_w / stride_w));
   } else {
-    y_shape->MutableDims()[h_idx] = sym::Floor((input_h - kernel_h + stride_h) / stride_h);
-    y_shape->MutableDims()[w_idx] = sym::Floor((input_w - kernel_w + stride_w) / stride_w);
+    y_shape->SetDim(h_idx, sym::Floor((input_h - kernel_h + stride_h) / stride_h));
+    y_shape->SetDim(w_idx, sym::Floor((input_w - kernel_w + stride_w) / stride_w));
   }
   *argmax_shape = *y_shape;
   return ge::GRAPH_SUCCESS;

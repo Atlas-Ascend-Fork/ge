@@ -57,7 +57,7 @@ class UtestDim1TransposeToSqueezePass : public Test {
           Symbol("s1"),
       });
       const auto attr = data_tensor_desc.GetOrCreateAttrsGroup<SymbolicDescAttr>();
-      attr->symbolic_tensor.SetSymbolShape(symbol_shape);
+      attr->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
     }
     OpDescUtils::SetWeights(data_op_desc, data_tensor);
     data_op_desc->AddOutputDesc(data_tensor_desc);
@@ -128,7 +128,7 @@ class UtestDim1TransposeToSqueezePass : public Test {
           Symbol("s1"),
       });
       const auto attr = data_tensor_desc.GetOrCreateAttrsGroup<SymbolicDescAttr>();
-      attr->symbolic_tensor.SetSymbolShape(symbol_shape);
+      attr->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
     }
     OpDescUtils::SetWeights(data_op_desc, data_tensor);
     data_op_desc->AddOutputDesc(data_tensor_desc);

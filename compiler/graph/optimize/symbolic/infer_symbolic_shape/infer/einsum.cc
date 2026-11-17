@@ -145,7 +145,7 @@ graphStatus MergeBroadcastDim(const Expression &new_dim, Expression &cur_dim) {
     cur_dim = new_dim;
     return GRAPH_SUCCESS;
   }
-  GELOGE(PARAM_INVALID, "Cannot broadcast dim[%s] with dim[%s].", cur_dim.Serialize().get(), new_dim.Serialize().get());
+  GELOGE(PARAM_INVALID, "Cannot broadcast dim[%s] with dim[%s].", cur_dim.Str().get(), new_dim.Str().get());
   return PARAM_INVALID;
 }
 
@@ -158,7 +158,7 @@ graphStatus MergeEqualDim(const Expression &new_dim, Expression &cur_dim) {
     }
     return GRAPH_SUCCESS;
   }
-  GELOGE(PARAM_INVALID, "Dim[%s] does not match dim[%s].", cur_dim.Serialize().get(), new_dim.Serialize().get());
+  GELOGE(PARAM_INVALID, "Dim[%s] does not match dim[%s].", cur_dim.Str().get(), new_dim.Str().get());
   return PARAM_INVALID;
 }
 
@@ -344,7 +344,7 @@ graphStatus InferShape4Einsum(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_GRAPH_SUCCESS(MergeEllipsisDims(ellipsis_inputs, ellipsis_output));
   const auto output_shape = context->GetOutputSymbolShape(kOutputIdxEinsum);
   GE_ASSERT_NOTNULL(output_shape);
-  output_shape->MutableDims().clear();
+  output_shape->Clear();
   // 输出有 ellipsis 时，要求输入也必须能得到 ellipsis 维度。
   if (HasEllipsis(output_equation)) {
     AppendOutputWithEllipsis(output_shape, output_equation, label_map, ellipsis_output);

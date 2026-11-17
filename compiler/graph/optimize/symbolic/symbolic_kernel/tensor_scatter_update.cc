@@ -50,13 +50,13 @@ struct ScatterInputs {
   std::vector<int64_t> x_dims;
   std::vector<int64_t> indices_dims;
   std::vector<int64_t> updates_dims;
-  const std::vector<Expression> *x_values = nullptr;
-  const std::vector<Expression> *indices_values = nullptr;
-  const std::vector<Expression> *updates_values = nullptr;
+  std::vector<Expression> x_values;
+  std::vector<Expression> indices_values;
+  std::vector<Expression> updates_values;
 };
 
 graphStatus GetInput(const gert::InferSymbolComputeContext *context, size_t index, std::vector<int64_t> &dims,
-                     const std::vector<Expression> *&values) {
+                     std::vector<Expression> &values) {
   if (!context->GetConstInputDims(index, dims)) {
     GELOGW("TensorScatterUpdate symbolic compute unsupported: input[%zu] Shape is not constant, node %s[%s].", index,
            context->GetNodeName(), context->GetNodeType());
@@ -64,8 +64,8 @@ graphStatus GetInput(const gert::InferSymbolComputeContext *context, size_t inde
   }
   auto tensor = context->GetInputSymbolTensor(index);
   GE_UNSUPPORTED_IF_NULL(tensor);
-  values = tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(values);
+  values = SymbolicInferUtil::GetSymbolicValues(*tensor);
+  GE_UNSUPPORTED_IF(!tensor->HasValue());
   return GRAPH_SUCCESS;
 }
 
@@ -82,18 +82,13 @@ graphStatus GetScatterInputs(const gert::InferSymbolComputeContext *context, Sca
 }
 
 graphStatus ValidateScatterInputs(const gert::InferSymbolComputeContext *context, const ScatterInputs &inputs) {
-  if ((inputs.x_values == nullptr) || (inputs.indices_values == nullptr) || (inputs.updates_values == nullptr)) {
-    GELOGW("TensorScatterUpdate symbolic compute unsupported: input SymbolicValue is null, node %s[%s].",
-           context->GetNodeName(), context->GetNodeType());
-    return UNSUPPORTED;
-  }
   const int64_t x_count = ElementCount(inputs.x_dims);
   const int64_t indices_count = ElementCount(inputs.indices_dims);
   const int64_t updates_count = ElementCount(inputs.updates_dims);
   if (x_count <= 0L || x_count > kMaxSymbolicValueSize || indices_count < 0L || updates_count < 0L ||
-      inputs.x_values->size() != static_cast<size_t>(x_count) ||
-      inputs.indices_values->size() != static_cast<size_t>(indices_count) ||
-      inputs.updates_values->size() != static_cast<size_t>(updates_count) || inputs.indices_dims.empty()) {
+      inputs.x_values.size() != static_cast<size_t>(x_count) ||
+      inputs.indices_values.size() != static_cast<size_t>(indices_count) ||
+      inputs.updates_values.size() != static_cast<size_t>(updates_count) || inputs.indices_dims.empty()) {
     GELOGW(
         "TensorScatterUpdate symbolic compute unsupported: input Shape or SymbolicValue size is invalid, node %s[%s].",
         context->GetNodeName(), context->GetNodeType());
@@ -120,8 +115,8 @@ graphStatus ValidateScatterInputs(const gert::InferSymbolComputeContext *context
 
 graphStatus ApplyScatterUpdates(const gert::InferSymbolComputeContext *context, const ScatterInputs &inputs,
                                 std::vector<Expression> &output) {
-  const auto &indices = *inputs.indices_values;
-  const auto &updates = *inputs.updates_values;
+  const auto &indices = inputs.indices_values;
+  const auto &updates = inputs.updates_values;
   const auto x_strides = MakeStrides(inputs.x_dims);
   const std::vector<int64_t> suffix_dims(inputs.updates_dims.begin() + inputs.indices_dims.size() - 1,
                                          inputs.updates_dims.end());
@@ -181,15 +176,13 @@ graphStatus TensorScatterUpdateSymbolicKernelCompute(gert::InferSymbolComputeCon
 
   auto output_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output_tensor);
-  output_tensor->MutableOriginSymbolShape() = context->GetInputSymbolTensor(kXIndex)->GetOriginSymbolShape();
-  auto output_values = output_tensor->MutableSymbolicValue();
-  GE_ASSERT_NOTNULL(output_values);
-  *output_values = *inputs.x_values;
-
-  ret = ApplyScatterUpdates(context, inputs, *output_values);
+  output_tensor->SetOriginSymbolShape(context->GetInputSymbolTensor(kXIndex)->GetOriginSymbolShape());
+  std::vector<Expression> output_values = inputs.x_values;
+  ret = ApplyScatterUpdates(context, inputs, output_values);
   if (ret != GRAPH_SUCCESS) {
     return ret;
   }
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, output_values);
   return GRAPH_SUCCESS;
 }
 

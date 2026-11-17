@@ -53,9 +53,9 @@ graphStatus InferShape4LayerNorm(gert::InferSymbolShapeContext *context) {
   *mean_shape = *x_shape;
   for (size_t i = 0; i < x_shape->GetDimNum(); ++i) {
     if (static_cast<int64_t>(i) >= begin_norm_axis_val) {
-      mean_shape->MutableDims()[i] = Symbol(1);
+      mean_shape->SetDim(i, Symbol(1));
     } else {
-      mean_shape->MutableDims()[i] = x_shape->GetDim(i);
+      mean_shape->SetDim(i, x_shape->GetDim(i));
     }
   }
   *var_shape = *mean_shape;
@@ -90,7 +90,7 @@ graphStatus InferShape4AddLayerNorm(gert::InferSymbolShapeContext *context) {
   auto shape(*x1_shape);
   const auto norm_begin = shape.GetDimNum() - gamma_shape->GetDimNum();
   for (size_t i = norm_begin; i < shape.GetDimNum(); ++i) {
-    shape.MutableDims()[i] = ge::kSymbolOne;
+    shape.SetDim(i, ge::kSymbolOne);
   }
   *mean_shape = shape;
   *rstd_shape = shape;
@@ -192,7 +192,7 @@ graphStatus InferShape4RmsNorm(gert::InferSymbolShapeContext *context) {
   *rstd_shape = *x_shape;
   const auto norm_begin = x_dim_num - gamma_dim_num;
   for (size_t i = norm_begin; i < x_dim_num; ++i) {
-    rstd_shape->MutableDims()[i] = Symbol(1);
+    rstd_shape->SetDim(i, Symbol(1));
   }
   return GRAPH_SUCCESS;
 }
@@ -228,7 +228,7 @@ graphStatus InferShape4AddRmsNorm(gert::InferSymbolShapeContext *context) {
   *rstd_shape = *x1_shape;
   const auto norm_begin = x_dim_num - gamma_dim_num;
   for (size_t i = norm_begin; i < x_dim_num; ++i) {
-    rstd_shape->MutableDims()[i] = ge::kSymbolOne;
+    rstd_shape->SetDim(i, ge::kSymbolOne);
   }
   return GRAPH_SUCCESS;
 }

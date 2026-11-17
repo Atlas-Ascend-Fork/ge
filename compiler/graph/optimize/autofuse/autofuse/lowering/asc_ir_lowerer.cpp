@@ -55,11 +55,11 @@ graphStatus CompleteStaticSymbolicShapeForConv(const ComputeGraphPtr &graph) {
       }
       const auto sym_attr = output_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>();
       GE_ASSERT_NOTNULL(sym_attr);
-      auto &dims = sym_attr->symbolic_tensor.MutableOriginSymbolShape().MutableDims();
-      dims.reserve(shape.GetDimNum());
+      gert::SymbolShape origin_symbol_shape;
       for (const auto dim : shape.GetDims()) {
-        dims.emplace_back(Symbol(dim));
+        origin_symbol_shape.AppendDim(Symbol(dim));
       }
+      sym_attr->symbolic_tensor.SetOriginSymbolShape(origin_symbol_shape);
     }
   }
   return GRAPH_SUCCESS;

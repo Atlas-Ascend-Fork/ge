@@ -412,12 +412,12 @@ TEST_F(EsFacadeScenarioTest, SetOriginSymbolShape_DeepReadback) {
   ASSERT_NE(nullptr, td);
   auto *symbolic = td->GetAttrsGroup<ge::SymbolicDescAttr>();
   ASSERT_NE(nullptr, symbolic);
-  const auto &dims = symbolic->symbolic_tensor.MutableOriginSymbolShape().MutableDims();
-  ASSERT_EQ(2U, dims.size());
-  auto str0 = dims[0].Str();
+  const auto &symbol_shape = symbolic->symbolic_tensor.GetOriginSymbolShape();
+  ASSERT_EQ(2U, symbol_shape.GetDimNum());
+  auto str0 = symbol_shape.GetDim(0U).Str();
   ASSERT_NE(nullptr, str0.get());
   EXPECT_STREQ("-1", str0.get());
-  auto str1 = dims[1].Str();
+  auto str1 = symbol_shape.GetDim(1U).Str();
   ASSERT_NE(nullptr, str1.get());
   EXPECT_STREQ("32", str1.get());
 }

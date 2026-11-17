@@ -11,13 +11,11 @@
 #include <limits>
 
 #include "common/checker.h"
-#include "common/plugin/ge_make_unique_util.h"
 #include "framework/common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "graph/optimize/symbolic/symbol_compute_context.h"
 #include "graph/optimize/symbolic/symbolic_kernel_factory.h"
 #include "graph_metadef/common/ge_common/util.h"
-#include "common/util/mem_utils.h"
 
 namespace ge {
 namespace {
@@ -37,7 +35,7 @@ graphStatus GetShapeValueWithHint(const Expression &expr, int64_t &value, bool &
     if (SymbolicInferUtil::TryGetConstInt(expr, value) == GRAPH_SUCCESS) {
       return GRAPH_SUCCESS;
     }
-    GELOGW("Reshape symbolic compute unsupported: const shape %s is not integral.", expr.Serialize().get());
+    GELOGW("Reshape symbolic compute unsupported: const shape %s is not integral.", expr.Str().get());
     return UNSUPPORTED;
   }
   if (!expr.GetHint(value)) {
@@ -69,9 +67,9 @@ graphStatus FinalizeReshapeDims(const gert::InferSymbolComputeContext *context, 
 
 graphStatus BuildReshapeDims(gert::InferSymbolComputeContext *context, const gert::SymbolTensor *shape_tensor,
                              std::vector<Expression> &dims) {
-  const auto values = shape_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(values);
-  if (values->empty()) {
+  GE_UNSUPPORTED_IF(!shape_tensor->HasValue());
+  const auto values = SymbolicInferUtil::GetSymbolicValues(*shape_tensor);
+  if (values.empty()) {
     GELOGW("Reshape symbolic compute unsupported: shape symbolic value is empty, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -79,10 +77,10 @@ graphStatus BuildReshapeDims(gert::InferSymbolComputeContext *context, const ger
   const auto input_shape = context->GetInputSymbolTensor(kDataIndex)->GetOriginSymbolShape();
   size_t unknown = std::numeric_limits<size_t>::max();
   Expression known(Symbol(1));
-  for (size_t i = 0U; i < values->size(); ++i) {
+  for (size_t i = 0U; i < values.size(); ++i) {
     int64_t dim = 0L;
     bool is_hint_value = false;
-    const auto &dim_expr = values->at(i);
+    const auto &dim_expr = values.at(i);
     const graphStatus ret = GetShapeValueWithHint(dim_expr, dim, is_hint_value);
     if (ret != GRAPH_SUCCESS) {
       // hint 不可得的维度不再乘进 known 做符号除法（Rational 分数表达式在 symengine
@@ -111,7 +109,7 @@ graphStatus BuildReshapeDims(gert::InferSymbolComputeContext *context, const ger
       // 第二个及以后的 -1（算子语义非法，兼容 TF 约定 at most one -1）或非法维度值
       // （负数/0 越界），直接报错
       GE_ASSERT_TRUE(false, "Reshape symbolic compute: invalid reshape dimension %s, node %s[%s].",
-                     dim_expr.Serialize().get(), context->GetNodeName(), context->GetNodeType());
+                     dim_expr.Str().get(), context->GetNodeName(), context->GetNodeType());
     }
   }
   return FinalizeReshapeDims(context, input_shape.GetSymbolShapeSize(), known, unknown, dims);
@@ -146,12 +144,9 @@ graphStatus ReshapeSymbolicKernelCompute(gert::InferSymbolComputeContext *contex
 
   auto output_tensor = context->GetOutputSymbolTensor(0U);
   GE_ASSERT_NOTNULL(output_tensor);
-  output_tensor->MutableOriginSymbolShape().MutableDims() = std::move(output_dims);
-  const auto input_values = input_tensor->GetSymbolicValue();
-  if (input_values != nullptr) {
-    auto output_values = ge::MakeUnique<std::vector<Expression>>(*input_values);
-    GE_ASSERT_NOTNULL(output_values);
-    output_tensor->SetSymbolicValue(std::move(output_values));
+  SymbolicInferUtil::SetSymbolDims(*output_tensor, output_dims);
+  if (input_tensor->HasValue()) {
+    SymbolicInferUtil::SetSymbolicValues(*output_tensor, SymbolicInferUtil::GetSymbolicValues(*input_tensor));
   }
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_tensor).c_str());
@@ -171,11 +166,8 @@ static graphStatus ShapeSymbolicKernelCompute(gert::InferSymbolComputeContext *c
   const auto dims = input_tensor->GetOriginSymbolShape();
   auto symbolic_tensor = context->GetOutputSymbolTensor(0U);
   GE_ASSERT_NOTNULL(symbolic_tensor);
-  auto symbolic_value_unique = ge::MakeUnique<std::vector<ge::Expression>>(dims.GetDims());
-  if (symbolic_value_unique != nullptr) {
-    symbolic_tensor->SetSymbolicValue(std::move(symbolic_value_unique));
-  }
-  symbolic_tensor->MutableOriginSymbolShape().MutableDims() = {ge::Symbol(dims.GetDimNum())};
+  SymbolicInferUtil::SetSymbolicValues(*symbolic_tensor, SymbolicInferUtil::GetSymbolDims(dims));
+  SymbolicInferUtil::SetSymbolDims(*symbolic_tensor, {ge::Symbol(dims.GetDimNum())});
 
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());

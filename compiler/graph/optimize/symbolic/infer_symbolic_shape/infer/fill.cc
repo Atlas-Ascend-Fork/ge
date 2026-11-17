@@ -29,22 +29,22 @@ constexpr size_t kOne = 1U;
 graphStatus InferShape4Fill(gert::InferSymbolShapeContext *context) {
   const auto dims = context->GetInputSymbolTensor(0);
   GE_UNSUPPORTED_IF_NULL(dims);
-  const auto dims_value = dims->GetSymbolicValue();
-  if (dims_value == nullptr) {
+  const auto dims_value = SymbolicInferUtil::GetSymbolicValues(*dims);
+  if (dims_value.empty()) {
     GELOGW("Symbol Infer unsupported, get symbolic value is nullptr, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
   }
-  const auto dims_size = dims_value->size();
+  const auto dims_size = dims_value.size();
   GE_ASSERT_TRUE(dims_size > 0, "Invalid dims %d, must be non-empty", dims_size);
 
   const auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
 
-  out_shape->MutableDims().clear();
+  out_shape->Clear();
   for (int i = 0; i < static_cast<int>(dims_size); i++) {
-    auto dim = dims_value->at(i);
-    out_shape->MutableDims().emplace_back(dim);
+    auto dim = dims_value.at(i);
+    out_shape->AppendDim(dim);
   }
   return ge::GRAPH_SUCCESS;
 }
@@ -70,8 +70,8 @@ bool CheckValid(const gert::SymbolTensor *symbol_tensor) {
   if (symbol_tensor == nullptr) {
     return false;
   }
-  auto value_symbol = symbol_tensor->GetSymbolicValue();
-  if (value_symbol == nullptr || value_symbol->empty()) {
+  const auto value_symbol = SymbolicInferUtil::GetSymbolicValues(*symbol_tensor);
+  if (value_symbol.empty()) {
     return false;
   }
   return true;
@@ -92,16 +92,16 @@ graphStatus InferShape4Range(gert::InferSymbolShapeContext *context) {
   bool valid_delta = CheckValid(delta_tensor);
   if (valid_start && valid_limit && valid_delta) {
     // 当三个输入都有值，按照正常情况计算
-    start = start_tensor->GetSymbolicValue()->at(0);
-    limit = limit_tensor->GetSymbolicValue()->at(0);
-    delta = delta_tensor->GetSymbolicValue()->at(0);
+    start = start_tensor->GetValue(0);
+    limit = limit_tensor->GetValue(0);
+    delta = delta_tensor->GetValue(0);
   } else if (valid_start && valid_limit && !valid_delta) {
     // 当有且只有第一个与第二个输入有值，第一个值视作start，第二个值视作limit，delta采用默认值
-    start = start_tensor->GetSymbolicValue()->at(0);
-    limit = limit_tensor->GetSymbolicValue()->at(0);
+    start = start_tensor->GetValue(0);
+    limit = limit_tensor->GetValue(0);
   } else if (valid_start && !valid_limit && !valid_delta) {
     // 当有且只有第一个输入有值，第一个值视作limit，其余采用默认值
-    limit = start_tensor->GetSymbolicValue()->at(0);
+    limit = start_tensor->GetValue(0);
   } else {
     GELOGW("SymbolicKernel compute unsupported, reason: Get symbolic value [%d%d%d], node %s[%s].", valid_start,
            valid_limit, valid_delta, context->GetNodeName(), context->GetNodeType());

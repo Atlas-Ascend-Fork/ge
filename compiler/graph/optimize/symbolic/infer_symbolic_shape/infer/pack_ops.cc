@@ -60,7 +60,7 @@ graphStatus InferShape4Pack(gert::InferSymbolShapeContext *context) {
       ASSERT_SYMBOL_EQ(input_i_shape->GetDim(i), fst_in_shape->GetDim(i));
     }
   }
-  if (out_shape->IsScalar()) {
+  if (out_shape->GetDimNum() == 0U) {
     // scalar to shape[1]
     out_shape->AppendDim(Symbol(num));
     return GRAPH_SUCCESS;
@@ -73,8 +73,12 @@ graphStatus InferShape4Pack(gert::InferSymbolShapeContext *context) {
   if (axis < 0) {
     axis += output_dim_size;
   }
-  auto dims = &out_shape->MutableDims();
-  dims->insert(dims->begin() + axis, Symbol(num));
+  const size_t dim_num = out_shape->GetDimNum();
+  out_shape->SetDimNum(dim_num + 1U);
+  for (size_t i = dim_num; i > static_cast<size_t>(axis); --i) {
+    out_shape->SetDim(i, out_shape->GetDim(i - 1U));
+  }
+  out_shape->SetDim(static_cast<size_t>(axis), Symbol(num));
   return GRAPH_SUCCESS;
 }
 

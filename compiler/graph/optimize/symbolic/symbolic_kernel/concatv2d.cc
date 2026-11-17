@@ -7,9 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "common/plugin/ge_make_unique_util.h"
 #include "framework/common/framework_types_internal.h"
-#include "common/util/mem_utils.h"
 #include "common/util.h"
 #include "common/checker.h"
 #include "attribute_group/attr_group_symbolic_desc.h"
@@ -24,8 +22,8 @@ graphStatus BuildOutWithOneInput(const gert::InferSymbolComputeContext *context,
   std::vector<int64_t> input_dims;
   auto symbol_tensor = context->GetInputSymbolTensor(input_idx);
   GE_UNSUPPORTED_IF_NULL(symbol_tensor);
-  auto symbolic_value = symbol_tensor->GetSymbolicValue();
-  if (symbolic_value == nullptr) {
+  const auto symbolic_value = SymbolicInferUtil::GetSymbolicValues(*symbol_tensor);
+  if (!symbol_tensor->HasValue()) {
     GELOGW("SymbolicKernel compute unsupported, reason: no symbolic value, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -39,8 +37,8 @@ graphStatus BuildOutWithOneInput(const gert::InferSymbolComputeContext *context,
   for (auto dim : input_dims) {
     out_dims.push_back(Symbol(dim));
   }
-  out_tesnor.SetSymbolicValue(MakeUnique<std::vector<Expression>>(*symbolic_value));
-  out_tesnor.MutableOriginSymbolShape().MutableDims() = out_dims;
+  SymbolicInferUtil::SetSymbolicValues(out_tesnor, symbolic_value);
+  SymbolicInferUtil::SetSymbolDims(out_tesnor, out_dims);
   return SUCCESS;
 }
 
@@ -56,8 +54,8 @@ graphStatus GetInputsValueAndShape(const gert::InferSymbolComputeContext *contex
     const size_t input_idx = i + input_offset;
     std::vector<int64_t> input_dims;
     GE_UNSUPPORTED_IF_NULL(context->GetInputSymbolTensor(input_idx));
-    auto input_sym_values = context->GetInputSymbolTensor(input_idx)->GetSymbolicValue();
-    if (input_sym_values == nullptr) {
+    const auto input_sym_values = SymbolicInferUtil::GetSymbolicValues(*context->GetInputSymbolTensor(input_idx));
+    if (!context->GetInputSymbolTensor(input_idx)->HasValue()) {
       GELOGW("SymbolicKernel compute unsupported, reason: no symbolic value, node %s[%s].", context->GetNodeName(),
              context->GetNodeType());
       return UNSUPPORTED;
@@ -68,13 +66,13 @@ graphStatus GetInputsValueAndShape(const gert::InferSymbolComputeContext *contex
       return UNSUPPORTED;
     }
     GELOGD("input_dims = %s", SymbolicInferUtil::VectorToStr(input_dims).c_str());
-    GELOGD("input_sym_values = %s", SymbolicInferUtil::VectorExpressionToStr(*input_sym_values).c_str());
+    GELOGD("input_sym_values = %s", SymbolicInferUtil::VectorExpressionToStr(input_sym_values).c_str());
     if (i == 0) {
       dim_num = input_dims.size();
     } else {
       GE_ASSERT_EQ(dim_num, input_dims.size());
     }
-    inputs_values.push_back(*input_sym_values);
+    inputs_values.push_back(input_sym_values);
     inputs_dims.push_back(input_dims);
   }
   return SUCCESS;
@@ -87,8 +85,8 @@ graphStatus BuildOutWithScalarInput(const std::vector<std::vector<Expression>> &
     out_values.insert(out_values.end(), input_values.begin(), input_values.end());
   }
   std::vector<Expression> out_dims = {Symbol(attr_N)};
-  out_tesnor.SetSymbolicValue(MakeUnique<std::vector<Expression>>(out_values));
-  out_tesnor.MutableOriginSymbolShape().MutableDims() = out_dims;
+  SymbolicInferUtil::SetSymbolicValues(out_tesnor, out_values);
+  SymbolicInferUtil::SetSymbolDims(out_tesnor, out_dims);
   return SUCCESS;
 }
 
@@ -114,7 +112,7 @@ graphStatus CalOutShape(const std::vector<std::vector<int64_t>> &inputs_dims, co
   for (auto dim : out_dims) {
     out_sym_dims.push_back(Symbol(dim));
   }
-  out_tensor.MutableOriginSymbolShape().MutableDims() = out_sym_dims;
+  SymbolicInferUtil::SetSymbolDims(out_tensor, out_sym_dims);
   return SUCCESS;
 }
 
@@ -153,7 +151,7 @@ Status CalOutValue(const std::vector<std::vector<Expression>> &inputs_values,
       out_dims.insert(out_dims.end(), input_values.begin() + begin_idx, input_values.begin() + end_idx);
     }
   }
-  out_tensor.SetSymbolicValue(MakeUnique<std::vector<Expression>>(out_dims));
+  SymbolicInferUtil::SetSymbolicValues(out_tensor, out_dims);
   return GRAPH_SUCCESS;
 }
 }  // namespace
@@ -226,15 +224,14 @@ namespace {
 graphStatus GetConcatDimFromInput(const gert::InferSymbolComputeContext *context, size_t axis_input_idx,
                                   int64_t &concat_dim) {
   auto axis_tensor = context->GetInputSymbolTensor(axis_input_idx);
-  if (axis_tensor == nullptr || axis_tensor->GetSymbolicValue() == nullptr ||
-      axis_tensor->GetSymbolicValue()->size() != 1UL) {
+  if (axis_tensor == nullptr || !axis_tensor->HasValue() || axis_tensor->GetValueCount() != 1UL) {
     GELOGW(
         "SymbolicKernel compute unsupported, reason: concat_dim input[%zu] symbolic value is unavailable, node "
         "%s[%s].",
         axis_input_idx, context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
-  if (!axis_tensor->GetSymbolicValue()->front().GetConstValue(concat_dim)) {
+  if (!axis_tensor->GetValue(0).GetConstValue(concat_dim)) {
     GELOGW("SymbolicKernel compute unsupported, reason: get concat_dim const value failed, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;

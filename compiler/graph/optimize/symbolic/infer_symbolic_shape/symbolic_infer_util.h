@@ -36,6 +36,15 @@ constexpr int64_t kMaxSymbolizeValueElemNum = 200;
     }                                                                             \
   } while (false)
 
+#define GE_UNSUPPORTED_IF(exp, ...)                                               \
+  do {                                                                            \
+    if (exp) {                                                                    \
+      auto msg = CreateErrorMsg(__VA_ARGS__);                                     \
+      GELOGW("unsupported assert failed: %s", (msg.empty() ? #exp : msg.data())); \
+      return ge::UNSUPPORTED;                                                     \
+    }                                                                             \
+  } while (false)
+
 class SymbolicInferUtil {
  public:
   // 非断言版常量整数取值：仅当表达式确为整数常量时成功，否则返回 UNSUPPORTED 由调用方降级。
@@ -54,7 +63,7 @@ class SymbolicInferUtil {
   static graphStatus ReduceDimsWithoutKeepDims(const gert::SymbolShape *x_shape, const std::vector<T> &axes_dims,
                                                const size_t axes_size, gert::SymbolShape *output_shape) {
     T dim_num = x_shape->GetDimNum();
-    output_shape->MutableDims().clear();
+    output_shape->Clear();
     for (T j = 0; j < dim_num; ++j) {
       bool reduce_flag = false;
       for (size_t i = 0; i < axes_size; ++i) {
@@ -92,7 +101,7 @@ class SymbolicInferUtil {
         return PARAM_INVALID;
       }
       T dim = axes_dims[i] < 0 ? axes_dims[i] + dim_num : axes_dims[i];
-      output_shape->MutableDims().at(dim) = Symbol(1);
+      output_shape->SetDim(dim, Symbol(1));
     }
     GELOGD("ReduceDimsWithKeepDims is SUCCESS");
     return GRAPH_SUCCESS;
@@ -101,7 +110,7 @@ class SymbolicInferUtil {
   template <typename T>
   static graphStatus ReduceDims(const gert::SymbolShape *x_shape, const gert::SymbolTensor *axes_tensor,
                                 size_t axes_size, const bool keep_dims, gert::SymbolShape *output_shape) {
-    auto exps = *axes_tensor->GetSymbolicValue();
+    const auto exps = GetSymbolicValues(*axes_tensor);
     std::vector<T> axes_dims_const;
     axes_dims_const.resize(axes_size);
     for (size_t i = 0; i < axes_size; ++i) {
@@ -114,6 +123,52 @@ class SymbolicInferUtil {
     }
     return ReduceDimsWithoutKeepDims<T>(x_shape, axes_dims_const, axes_size, output_shape);
   }
+
+  // 拷出符号值的整体副本；无符号值时返回空vector（SymbolTensor公开面只提供逐元素接口）
+  static std::vector<ge::Expression> GetSymbolicValues(const gert::SymbolTensor &tensor) {
+    std::vector<ge::Expression> values;
+    const size_t value_num = tensor.GetValueCount();
+    values.reserve(value_num);
+    for (size_t i = 0U; i < value_num; ++i) {
+      values.push_back(tensor.GetValue(i));
+    }
+    return values;
+  }
+
+  // 拷出符号Shape的所有维度（SymbolShape公开面只提供逐元素接口）
+  static std::vector<ge::Expression> GetSymbolDims(const gert::SymbolShape &shape) {
+    std::vector<ge::Expression> dims;
+    const size_t dim_num = shape.GetDimNum();
+    dims.reserve(dim_num);
+    for (size_t i = 0U; i < dim_num; ++i) {
+      dims.push_back(shape.GetDim(i));
+    }
+    return dims;
+  }
+
+  // 将维度整体拷入符号Shape
+  static void SetSymbolDims(gert::SymbolShape &shape, const std::vector<ge::Expression> &dims) {
+    shape.SetDimNum(dims.size());
+    for (size_t i = 0U; i < dims.size(); ++i) {
+      shape.SetDim(i, dims[i]);
+    }
+  }
+
+  // 将维度整体拷入符号张量的符号Shape
+  static void SetSymbolDims(gert::SymbolTensor &tensor, const std::vector<ge::Expression> &dims) {
+    gert::SymbolShape shape;
+    SetSymbolDims(shape, dims);
+    tensor.SetOriginSymbolShape(shape);
+  }
+
+  // 将符号值整体拷入；values为空时写入显式空值（HasValue为true且个数为0），与无符号值区分
+  static void SetSymbolicValues(gert::SymbolTensor &tensor, const std::vector<ge::Expression> &values) {
+    tensor.SetValueCount(values.size());
+    for (size_t i = 0U; i < values.size(); ++i) {
+      tensor.SetValue(i, values[i]);
+    }
+  }
+
   static std::string VectorExpressionToStr(const std::vector<ge::Expression> &vec) {
     std::string result = "[";
     for (size_t i = 0; i < vec.size(); ++i) {

@@ -66,9 +66,9 @@ graphStatus InferShape4MatMul(gert::InferSymbolShapeContext *context) {
   ASSERT_SYMBOL_EQ(k_a, k_b);
 
   // 设置输出shape
-  out_shape->MutableDims().clear();
-  out_shape->MutableDims().emplace_back(in_shape1->GetDim(idx_m));
-  out_shape->MutableDims().emplace_back(in_shape2->GetDim(idx_n));
+  out_shape->Clear();
+  out_shape->AppendDim(in_shape1->GetDim(idx_m));
+  out_shape->AppendDim(in_shape2->GetDim(idx_n));
   return ge::GRAPH_SUCCESS;
 }
 
@@ -104,7 +104,7 @@ Status CalBatchOutShape(gert::SymbolShape *out_shape, const gert::SymbolShape &s
       out_shape->AppendDim(dim_long);
     } else {
       GELOGE(ge::FAILED, "Symbol input0[%zu]:%s is not equal to input1[%zu]:%s which cannot broadcast.", i,
-             dim_long.Serialize().get(), (i - valid_offset), dim_short.Serialize().get());
+             dim_long.Str().get(), (i - valid_offset), dim_short.Str().get());
       return FAILED;
     }
   }
@@ -180,9 +180,9 @@ graphStatus InferShape4SparseTensorDenseMatMul(gert::InferSymbolShapeContext *co
   GE_ASSERT(x2_shape->GetDimNum() == kX2Rank, "SparseTensorDenseMatMul x2 must be a 2D matrix");
   const auto x1_shape_tensor = context->GetInputSymbolTensor(kX1ShapeIdx);
   GE_UNSUPPORTED_IF_NULL(x1_shape_tensor);
-  const auto x1_shape_value = x1_shape_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(x1_shape_value);
-  GE_ASSERT(x1_shape_value->size() == kX1ShapeSize, "SparseTensorDenseMatMul x1_shape must have 2 elements");
+  GE_UNSUPPORTED_IF(!x1_shape_tensor->HasValue());
+  const auto x1_shape_value = SymbolicInferUtil::GetSymbolicValues(*x1_shape_tensor);
+  GE_ASSERT(x1_shape_value.size() == kX1ShapeSize, "SparseTensorDenseMatMul x1_shape must have 2 elements");
 
   const auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
@@ -193,9 +193,9 @@ graphStatus InferShape4SparseTensorDenseMatMul(gert::InferSymbolShapeContext *co
 
   const auto y_shape = context->GetOutputSymbolShape(kOutputIdx);
   GE_ASSERT_NOTNULL(y_shape);
-  y_shape->MutableDims().clear();
-  y_shape->MutableDims().push_back(*adjoint_a ? x1_shape_value->at(1) : x1_shape_value->at(0));
-  y_shape->MutableDims().push_back(*adjoint_b ? x2_shape->GetDim(0) : x2_shape->GetDim(1));
+  y_shape->Clear();
+  y_shape->AppendDim(*adjoint_a ? x1_shape_value.at(1) : x1_shape_value.at(0));
+  y_shape->AppendDim(*adjoint_b ? x2_shape->GetDim(0) : x2_shape->GetDim(1));
   return ge::GRAPH_SUCCESS;
 }
 

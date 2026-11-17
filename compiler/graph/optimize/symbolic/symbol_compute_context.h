@@ -40,9 +40,9 @@ class InferSymbolComputeContext : public InferSymbolShapeContext {
     if (shape == nullptr) {
       return false;
     }
-    for (const auto &s : shape->GetDims()) {
+    for (size_t i = 0U; i < shape->GetDimNum(); ++i) {
       int64_t dim = 0;
-      if (!s.GetConstValue(dim)) {
+      if (!shape->GetDim(i).GetConstValue(dim)) {
         dims.clear();
         return false;
       }

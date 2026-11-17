@@ -35,8 +35,10 @@ graphStatus InferShape4BroadcastCommon(gert::InferSymbolShapeContext *context) {
   auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
 
-  GE_ASSERT_SUCCESS(
-      SymbolicInferUtil::Broadcast({in_shape1->GetDims(), in_shape2->GetDims()}, out_shape->MutableDims()));
+  std::vector<Expression> out_dims;
+  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(
+      {SymbolicInferUtil::GetSymbolDims(*in_shape1), SymbolicInferUtil::GetSymbolDims(*in_shape2)}, out_dims));
+  SymbolicInferUtil::SetSymbolDims(*out_shape, out_dims);
   return ge::GRAPH_SUCCESS;
 }
 
@@ -53,13 +55,14 @@ graphStatus InferShape4BroadcastGrad(gert::InferSymbolShapeContext *context) {
   auto in_shape2 = context->GetInputSymbolShape(2);
   GE_UNSUPPORTED_IF_NULL(in_shape2);
   std::vector<Expression> broadcast_dims;
-  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast({in_shape1->GetDims(), in_shape2->GetDims()}, broadcast_dims));
+  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(
+      {SymbolicInferUtil::GetSymbolDims(*in_shape1), SymbolicInferUtil::GetSymbolDims(*in_shape2)}, broadcast_dims));
   auto out_shape1 = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape1);
   auto out_shape2 = context->GetOutputSymbolShape(1);
   GE_ASSERT_NOTNULL(out_shape2);
-  out_shape1->MutableDims() = broadcast_dims;
-  out_shape2->MutableDims() = std::move(broadcast_dims);
+  SymbolicInferUtil::SetSymbolDims(*out_shape1, broadcast_dims);
+  SymbolicInferUtil::SetSymbolDims(*out_shape2, broadcast_dims);
   return ge::GRAPH_SUCCESS;
 }
 
@@ -79,8 +82,12 @@ graphStatus InferShape4Lerp(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(weight_shape);
   const auto y_shape = context->GetOutputSymbolShape(kLerpOutputIdx);
   GE_ASSERT_NOTNULL(y_shape);
+  std::vector<Expression> y_dims;
   GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(
-      {start_shape->GetDims(), end_shape->GetDims(), weight_shape->GetDims()}, y_shape->MutableDims()));
+      {SymbolicInferUtil::GetSymbolDims(*start_shape), SymbolicInferUtil::GetSymbolDims(*end_shape),
+       SymbolicInferUtil::GetSymbolDims(*weight_shape)},
+      y_dims));
+  SymbolicInferUtil::SetSymbolDims(*y_shape, y_dims);
   return ge::GRAPH_SUCCESS;
 }
 
@@ -101,8 +108,12 @@ graphStatus InferShape4Addcmul(gert::InferSymbolShapeContext *context) {
   const auto y_shape = context->GetOutputSymbolShape(kAddcmulOutputIdx);
   GE_ASSERT_NOTNULL(y_shape);
 
+  std::vector<Expression> y_dims;
   GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(
-      {input_data_shape->GetDims(), x1_shape->GetDims(), x2_shape->GetDims()}, y_shape->MutableDims()));
+      {SymbolicInferUtil::GetSymbolDims(*input_data_shape), SymbolicInferUtil::GetSymbolDims(*x1_shape),
+       SymbolicInferUtil::GetSymbolDims(*x2_shape)},
+      y_dims));
+  SymbolicInferUtil::SetSymbolDims(*y_shape, y_dims);
   return ge::GRAPH_SUCCESS;
 }
 
@@ -111,12 +122,14 @@ graphStatus InferShape4BroadcastInputThree(gert::InferSymbolShapeContext *contex
   for (size_t i = 0; i < kClipByValueInputSize; i++) {
     auto in_shape = context->GetInputSymbolShape(i);
     GE_UNSUPPORTED_IF_NULL(in_shape);
-    shapes.emplace_back(in_shape->GetDims());
+    shapes.emplace_back(SymbolicInferUtil::GetSymbolDims(*in_shape));
   }
   std::vector<bool> need_broadcasts;
   auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
-  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(shapes, out_shape->MutableDims()));
+  std::vector<Expression> out_dims;
+  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(shapes, out_dims));
+  SymbolicInferUtil::SetSymbolDims(*out_shape, out_dims);
   return ge::GRAPH_SUCCESS;
 }
 
@@ -125,12 +138,14 @@ graphStatus InferShape4MultiInput(gert::InferSymbolShapeContext *context, const 
   for (size_t i = 0; i < num; i++) {
     auto in_shape = context->GetInputSymbolShape(i);
     GE_UNSUPPORTED_IF_NULL(in_shape);
-    shapes.emplace_back(in_shape->GetDims());
+    shapes.emplace_back(SymbolicInferUtil::GetSymbolDims(*in_shape));
   }
 
   auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
-  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(shapes, out_shape->MutableDims()));
+  std::vector<Expression> out_dims;
+  GE_ASSERT_SUCCESS(SymbolicInferUtil::Broadcast(shapes, out_dims));
+  SymbolicInferUtil::SetSymbolDims(*out_shape, out_dims);
   return ge::GRAPH_SUCCESS;
 }
 

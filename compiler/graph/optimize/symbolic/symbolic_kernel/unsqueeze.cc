@@ -7,7 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "common/plugin/ge_make_unique_util.h"
 #include "framework/common/framework_types_internal.h"
 #include "common/util/mem_utils.h"
 #include "common/util.h"
@@ -66,17 +65,14 @@ static graphStatus UnsqueezeSymbolicKernelCompute(gert::InferSymbolComputeContex
 
   auto symbol_tensor = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(symbol_tensor);
-  auto symbol_values = symbol_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(symbol_values);
+  GE_UNSUPPORTED_IF(!symbol_tensor->HasValue());
+  const auto symbol_values = SymbolicInferUtil::GetSymbolicValues(*symbol_tensor);
   auto out_symbol_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(out_symbol_tensor);
   std::vector<Expression> output_shape;
   GE_ASSERT_SUCCESS(CalOutShape(symbol_tensor->GetOriginSymbolShape(), axes, output_shape));
-  auto symbolic_value_unique = ge::MakeUnique<std::vector<ge::Expression>>(*symbol_values);
-  if (symbolic_value_unique != nullptr) {
-    out_symbol_tensor->SetSymbolicValue(std::move(symbolic_value_unique));
-  }
-  out_symbol_tensor->MutableOriginSymbolShape().MutableDims() = output_shape;
+  SymbolicInferUtil::SetSymbolicValues(*out_symbol_tensor, symbol_values);
+  SymbolicInferUtil::SetSymbolDims(*out_symbol_tensor, output_shape);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*out_symbol_tensor).c_str());
 
@@ -87,11 +83,11 @@ static graphStatus UnsqueezeV3SymbolicKernelCompute(gert::InferSymbolComputeCont
   GE_ASSERT_NOTNULL(context);
   auto axes_tensor = context->GetInputSymbolTensor(kAxesInputIndex);
   GE_UNSUPPORTED_IF_NULL(axes_tensor);
-  auto axes_values = axes_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(axes_values);
+  GE_UNSUPPORTED_IF(!axes_tensor->HasValue());
+  const auto axes_values = SymbolicInferUtil::GetSymbolicValues(*axes_tensor);
   std::vector<int64_t> axes;
-  axes.reserve(axes_values->size());
-  for (const auto &symbol : *axes_values) {
+  axes.reserve(axes_values.size());
+  for (const auto &symbol : axes_values) {
     int64_t axis = 0L;
     if (!symbol.GetConstValue(axis)) {
       GELOGW("UnsqueezeV3 symbolic kernel unsupported: axis is not constant, node %s[%s].", context->GetNodeName(),
@@ -103,14 +99,14 @@ static graphStatus UnsqueezeV3SymbolicKernelCompute(gert::InferSymbolComputeCont
 
   auto input = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(input);
-  auto input_values = input->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_values);
+  GE_UNSUPPORTED_IF(!input->HasValue());
+  const auto input_values = SymbolicInferUtil::GetSymbolicValues(*input);
   auto output = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output);
   std::vector<Expression> output_shape;
   GE_ASSERT_SUCCESS(CalOutShape(input->GetOriginSymbolShape(), axes, output_shape));
-  output->MutableOriginSymbolShape().MutableDims() = output_shape;
-  output->SetSymbolicValue(ge::MakeUnique<std::vector<Expression>>(*input_values));
+  SymbolicInferUtil::SetSymbolDims(*output, output_shape);
+  SymbolicInferUtil::SetSymbolicValues(*output, input_values);
   return SUCCESS;
 }
 

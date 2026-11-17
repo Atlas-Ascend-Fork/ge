@@ -1396,8 +1396,7 @@ static Status SetAttrsGroup(const NodePtr &node) {
     } else {
       symbol_shape = symbol_shape1;
     }
-    output_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape() =
-        symbol_shape;
+    output_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
   }
   for (const auto in_anchor : node->GetAllInDataAnchorsPtr()) {
     GE_ASSERT_NOTNULL(in_anchor);
@@ -1419,8 +1418,8 @@ static Status SetAttrsGroup(const NodePtr &node) {
     const auto attr_group = output_tensor_desc->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>();
     GE_ASSERT_NOTNULL(attr_group);
 
-    input_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape() =
-        attr_group->symbolic_tensor.MutableOriginSymbolShape();
+    input_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(
+        attr_group->symbolic_tensor.GetOriginSymbolShape());
   }
   // 给节点添加origin_input_names和origin_output_names
   if (node->GetType() == kAscBackendType) {

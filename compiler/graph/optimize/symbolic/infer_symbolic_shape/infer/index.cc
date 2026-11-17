@@ -93,7 +93,7 @@ graphStatus ComputeBroadcastShape(const std::vector<gert::SymbolShape> &indices_
                                   std::vector<Expression> &broadcast_dims) {
   std::vector<std::vector<Expression>> indices_dims_list;
   for (const auto &shape : indices_shape_list) {
-    indices_dims_list.push_back(shape.GetDims());
+    indices_dims_list.push_back(SymbolicInferUtil::GetSymbolDims(shape));
   }
 
   if (SymbolicInferUtil::Broadcast(indices_dims_list, broadcast_dims) != SUCCESS) {
@@ -124,7 +124,7 @@ graphStatus ComputeOutputShape(gert::InferSymbolShapeContext *context, const ger
 
   if (!indices_contiguous) {
     // 情况1：索引维度不连续，先添加广播形状，然后添加非索引维度
-    output_shape->MutableDims() = broadcast_dims;
+    SymbolicInferUtil::SetSymbolDims(*output_shape, broadcast_dims);
     for (size_t i = 0; i < x_dim_num; i++) {
       if (!IsIndexedDimension(sizes_value, i)) {
         output_shape->AppendDim(x_shape.GetDim(i));
@@ -185,12 +185,12 @@ graphStatus InferShape4Index(gert::InferSymbolShapeContext *context) {
   // Get sizes input
   auto sizes_tensor = context->GetInputSymbolTensor(IDX_SIZES);
   GE_UNSUPPORTED_IF_NULL(sizes_tensor);
-  auto sizes_value = sizes_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(sizes_value);
+  GE_UNSUPPORTED_IF(!sizes_tensor->HasValue());
+  const auto sizes_value = SymbolicInferUtil::GetSymbolicValues(*sizes_tensor);
 
   // Collect indices shapes
   std::vector<gert::SymbolShape> indices_shape_list;
-  auto ret = CollectIndicesShapes(context, x_dim_num, *sizes_value, indices_shape_list);
+  auto ret = CollectIndicesShapes(context, x_dim_num, sizes_value, indices_shape_list);
   if (ret != GRAPH_SUCCESS) {
     GELOGE(ret, "Failed to collect indices shapes. node %s[%s]", context->GetNodeName(), context->GetNodeType());
     return ret;
@@ -214,7 +214,7 @@ graphStatus InferShape4Index(gert::InferSymbolShapeContext *context) {
   }
 
   // Compute output shape
-  ComputeOutputShape(context, *x_shape, *sizes_value, broadcast_dims);
+  ComputeOutputShape(context, *x_shape, sizes_value, broadcast_dims);
 
   GELOGD("index symbol infershape is end. node %s[%s]", context->GetNodeName(), context->GetNodeType());
   return GRAPH_SUCCESS;
@@ -238,8 +238,8 @@ graphStatus InferShape4LinearIndex(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_NOTNULL(index_shape);
 
   if (*combine) {
-    index_shape->MutableDims().clear();
-    index_shape->MutableDims().push_back(indices_shape->GetSymbolShapeSize());
+    index_shape->Clear();
+    index_shape->AppendDim(indices_shape->GetSymbolShapeSize());
   } else {
     *index_shape = *indices_shape;
   }
@@ -286,7 +286,7 @@ graphStatus CollectIndexedDims(const gert::InferSymbolShapeContext *context,
     has_index = true;
     const auto *index_shape = context->GetDynamicInputSymbolShape(1U, index_dims.size());
     GE_UNSUPPORTED_IF_NULL(index_shape);
-    index_dims.emplace_back(index_shape->GetDims());
+    index_dims.emplace_back(SymbolicInferUtil::GetSymbolDims(*index_shape));
   }
   if (context->GetDynamicInputSymbolShape(1U, index_dims.size()) != nullptr) {
     GELOGW("IndexByTensor symbolic infer unsupported: extra index input, node %s[%s].", context->GetNodeName(),
@@ -306,7 +306,7 @@ graphStatus BuildIndexedOutputShape(gert::InferSymbolShapeContext *context, cons
   GE_ASSERT_NOTNULL(output_shape);
   output_shape->Clear();
   if (!AreIndexedDimsContiguous(mask, rank)) {
-    output_shape->MutableDims() = broadcast_dims;
+    SymbolicInferUtil::SetSymbolDims(*output_shape, broadcast_dims);
     for (size_t i = 0U; i < rank; ++i) {
       if (!IsIndexed(mask, i)) {
         output_shape->AppendDim(x_shape->GetDim(i));
@@ -345,7 +345,7 @@ graphStatus InferShape4IndexByTensor(gert::InferSymbolShapeContext *context) {
     }
     auto *output_shape = context->GetOutputSymbolShape(0U);
     GE_ASSERT_NOTNULL(output_shape);
-    output_shape->MutableDims() = x_shape->GetDims();
+    SymbolicInferUtil::SetSymbolDims(*output_shape, SymbolicInferUtil::GetSymbolDims(*x_shape));
     return GRAPH_SUCCESS;
   }
   if (mask->GetSize() > rank) {
@@ -363,7 +363,7 @@ graphStatus InferShape4IndexByTensor(gert::InferSymbolShapeContext *context) {
   if (!has_index) {
     auto *output_shape = context->GetOutputSymbolShape(0U);
     GE_ASSERT_NOTNULL(output_shape);
-    output_shape->MutableDims() = x_shape->GetDims();
+    SymbolicInferUtil::SetSymbolDims(*output_shape, SymbolicInferUtil::GetSymbolDims(*x_shape));
     return GRAPH_SUCCESS;
   }
 

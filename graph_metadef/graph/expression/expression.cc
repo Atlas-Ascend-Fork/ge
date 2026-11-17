@@ -13,6 +13,7 @@
 #include <map>
 #include <symengine/rational.h>
 #include "graph/symbolizer/symbolic.h"
+#include "graph/symbolizer/expression_ext.h"
 #include "attribute_group/attr_group_shape_env.h"
 #include "expression_impl.h"
 #include "graph_metadef/graph/debug/ge_util.h"
@@ -67,17 +68,23 @@ std::unique_ptr<char_t[]> Expression::Str(const StrType type) const {
   return nullptr;
 }
 
-Expression Expression::Parse(const char_t *str) {
+namespace expr_ext {
+namespace {
+// 借助派生类构造函数访问 Expression 的 protected ExpressionImplPtr 构造，实现 impl 到 Expression 的封装
+class ExpressionBuilder final : public Expression {
+ public:
+  explicit ExpressionBuilder(ExpressionImplPtr &&impl) : Expression(std::move(impl)) {}
+};
+}  // namespace
+
+Expression Parse(const char_t *str) {
   if (str == nullptr) {
     GELOGE(FAILED, "Parse expression str is nullptr");
-    return Expression(nullptr);
+    return ExpressionBuilder(nullptr);
   }
-  return Expression(ExpressionImpl::Parse(str));
+  return ExpressionBuilder(ExpressionImpl::Parse(str));
 }
-
-std::unique_ptr<char_t[]> Expression::Serialize() const {
-  return Str(StrType::kStrCpp);
-}
+}  // namespace expr_ext
 
 Expression Expression::Deserialize(const ge::char_t *str) {
   return Expression(ExpressionImpl::Deserialize(str));
@@ -105,13 +112,6 @@ ExprType Expression::GetExprType() const {
 bool Expression::IsConstExpr() const {
   if (impl_ != nullptr) {
     return impl_->IsConstExpr();
-  }
-  return false;
-}
-
-bool Expression::IsVariableExpr() const {
-  if (impl_ != nullptr) {
-    return impl_->IsVariableExpr();
   }
   return false;
 }
@@ -154,15 +154,6 @@ std::vector<Expression> Expression::FreeSymbols() const {
     return ret;
   }
   return {};
-}
-
-graphStatus Expression::GetResult(const std::vector<std::pair<Expression, Expression>> &vars_value,
-                                  double &result) const {
-  Expression replace_expr = Replace(vars_value);
-  if ((replace_expr.impl_ != nullptr) && (replace_expr.impl_->GetResult(result))) {
-    return GRAPH_SUCCESS;
-  }
-  return GRAPH_FAILED;
 }
 
 bool Expression::IsValid() const {
@@ -228,13 +219,6 @@ Expression Expression::Simplify() const {
   return Expression(nullptr);
 }
 
-bool Expression::ContainVar(const Expression &e) const {
-  if (impl_ != nullptr) {
-    return impl_->ContainVar(e.impl_.get());
-  }
-  return false;
-}
-
 void Expression::AsNumerDenom(Expression &numer, Expression &denom) const {
   if (impl_ != nullptr) {
     ExpressionImplPtr impl_numer;
@@ -259,24 +243,10 @@ bool Expression::operator!=(const Expression &e) const {
   return !(*this == e);
 }
 
-std::ostream &operator<<(std::ostream &os, const Expression &e) {
-  if (e.impl_ != nullptr) {
-    os << *e.impl_;
-  }
-  return os;
-}
-
 Expression::Expression(ExpressionImplPtr &&e) : impl_(std::move(e)) {}
 
 Expression::Expression() {
   impl_ = ge::ComGraphMakeUnique<ExpressionImpl>("");
-}
-
-Expression Expression::CanonicalizeBoolExpr() const {
-  if (impl_ != nullptr) {
-    return Expression(impl_->CanonicalizeBoolExpr());
-  }
-  return Expression(nullptr);
 }
 
 Symbol::Symbol(ExpressionImplPtr &&e) : Expression(std::move(e)) {}
@@ -302,21 +272,6 @@ Symbol::Symbol(const char_t *name) {
   impl_ = ge::ComGraphMakeUnique<ExpressionImpl>(name);
 }
 
-std::unique_ptr<char_t[]> Symbol::GetName() const {
-  if (impl_ != nullptr) {
-    auto str = impl_->GetName();
-    if (str.empty()) {
-      return nullptr;
-    }
-    auto uni_ptr = ComGraphMakeUnique<char_t[]>(str.size() + 1U);
-    IF_NULL_RETURN_NULL(uni_ptr);
-    // 当src size < dst size时，strncpy_s会在末尾str.size()位置添加'\0'
-    GE_ASSERT_EOK(strncpy_s(uni_ptr.get(), str.size() + 1, str.c_str(), str.size()));
-    return uni_ptr;
-  }
-  return nullptr;
-}
-
 template <typename T>
 typename std::enable_if<std::is_integral<T>::value || std::is_floating_point<T>::value, bool>::type
 Expression::ComputeHint(T &hint) const {
@@ -324,7 +279,7 @@ Expression::ComputeHint(T &hint) const {
     return GetConstValue(hint);
   }
   if (GetCurShapeEnvContext() == nullptr) {
-    GELOGW("Shape env is nullptr, cannot compute hint, expr: %s", Serialize().get());
+    GELOGW("Shape env is nullptr, cannot compute hint, expr: %s", Str().get());
     return false;
   }
   return GetCurShapeEnvContext()->EvaluateExpr(*this).GetConstValue(hint);

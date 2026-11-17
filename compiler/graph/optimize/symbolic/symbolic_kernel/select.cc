@@ -22,9 +22,12 @@ namespace ge {
 namespace {
 const size_t kSelectInputNum = 3U;
 const size_t kSelectOutputNum = 1U;
-const std::vector<ge::Expression> *GetInputSymbolicValue(const gert::InferSymbolComputeContext *context, size_t index) {
+std::vector<ge::Expression> GetInputSymbolicValue(const gert::InferSymbolComputeContext *context, size_t index) {
   auto symbol_tensor = context->GetInputSymbolTensor(index);
-  return symbol_tensor == nullptr ? nullptr : symbol_tensor->GetSymbolicValue();
+  if (symbol_tensor == nullptr) {
+    return {};
+  }
+  return SymbolicInferUtil::GetSymbolicValues(*symbol_tensor);
 }
 
 bool GetShapeValue(const std::vector<Expression> &symbol_shape, std::vector<int64_t> &shape_value) {
@@ -88,7 +91,7 @@ bool CalOutputValue(const std::vector<Expression> &condition, const std::vector<
     bool take_then = false;
     if (!GetConditionBranch(condition[i], take_then)) {
       GELOGW("Select/SelectV2 symbolic compute unsupported: condition hint is unavailable, expr: %s.",
-             condition[i].Serialize().get());
+             condition[i].Str().get());
       return false;
     }
     output.emplace_back(take_then ? x1[i] : x2[i]);
@@ -96,10 +99,9 @@ bool CalOutputValue(const std::vector<Expression> &condition, const std::vector<
   return true;
 }
 
-bool CheckInputsValue(const std::vector<ge::Expression> *condition_value, const std::vector<ge::Expression> *x1_value,
-                      const std::vector<ge::Expression> *x2_value) {
-  return condition_value != nullptr && !condition_value->empty() && x1_value != nullptr && !x1_value->empty() &&
-         x2_value != nullptr && !x2_value->empty();
+bool CheckInputsValue(const std::vector<ge::Expression> &condition_value, const std::vector<ge::Expression> &x1_value,
+                      const std::vector<ge::Expression> &x2_value) {
+  return !condition_value.empty() && !x1_value.empty() && !x2_value.empty();
 }
 
 std::vector<int64_t> AlignShape(const std::vector<int64_t> &src, const std::vector<int64_t> &dst) {
@@ -202,8 +204,9 @@ graphStatus PrepareSelectV2(gert::InferSymbolComputeContext *context, std::vecto
   GE_UNSUPPORTED_IF_NULL(condition_shape);
   GE_UNSUPPORTED_IF_NULL(then_shape);
   GE_UNSUPPORTED_IF_NULL(else_shape);
-  if (!GetShapeValue(condition_shape->GetDims(), condition_dims) || !GetShapeValue(then_shape->GetDims(), then_dims) ||
-      !GetShapeValue(else_shape->GetDims(), else_dims)) {
+  if (!GetShapeValue(SymbolicInferUtil::GetSymbolDims(*condition_shape), condition_dims) ||
+      !GetShapeValue(SymbolicInferUtil::GetSymbolDims(*then_shape), then_dims) ||
+      !GetShapeValue(SymbolicInferUtil::GetSymbolDims(*else_shape), else_dims)) {
     GELOGW("SelectV2 symbolic compute unsupported: input Shape contains non-constant dimensions, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
@@ -216,9 +219,9 @@ graphStatus PrepareSelectV2(gert::InferSymbolComputeContext *context, std::vecto
   std::vector<Expression> condition_broadcast;
   std::vector<Expression> then_broadcast;
   std::vector<Expression> else_broadcast;
-  if (!Broadcast(*condition, condition_dims, output_dims, condition_broadcast) ||
-      !Broadcast(*then_value, then_dims, output_dims, then_broadcast) ||
-      !Broadcast(*else_value, else_dims, output_dims, else_broadcast)) {
+  if (!Broadcast(condition, condition_dims, output_dims, condition_broadcast) ||
+      !Broadcast(then_value, then_dims, output_dims, then_broadcast) ||
+      !Broadcast(else_value, else_dims, output_dims, else_broadcast)) {
     GELOGW("SelectV2 symbolic compute unsupported: input SymbolicValue broadcast failed, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
@@ -235,8 +238,8 @@ graphStatus SetSelectOutput(gert::InferSymbolComputeContext *context, const std:
                             const std::vector<Expression> &value) {
   auto output = context->GetOutputSymbolTensor(0U);
   GE_ASSERT_NOTNULL(output);
-  output->MutableOriginSymbolShape().MutableDims() = shape;
-  output->SetSymbolicValue(ge::MakeUnique<std::vector<Expression>>(value));
+  SymbolicInferUtil::SetSymbolDims(*output, shape);
+  SymbolicInferUtil::SetSymbolicValues(*output, value);
   GELOGD("%s[%s] kernel success, output ori shape: %s, output value %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::VectorExpressionToStr(shape).c_str(),
          SymbolicInferUtil::VectorExpressionToStr(value).c_str());
@@ -292,9 +295,9 @@ static graphStatus SelectSymbolicKernelCompute(gert::InferSymbolComputeContext *
   GE_ASSERT_EQ(context->GetComputeNodeInputNum(), kSelectInputNum);
   GE_ASSERT_EQ(context->GetComputeNodeOutputNum(), kSelectOutputNum);
 
-  const std::vector<ge::Expression> *condition_value = GetInputSymbolicValue(context, 0);
-  const std::vector<ge::Expression> *x1_value = GetInputSymbolicValue(context, 1);
-  const std::vector<ge::Expression> *x2_value = GetInputSymbolicValue(context, 2);
+  const std::vector<ge::Expression> condition_value = GetInputSymbolicValue(context, 0);
+  const std::vector<ge::Expression> x1_value = GetInputSymbolicValue(context, 1);
+  const std::vector<ge::Expression> x2_value = GetInputSymbolicValue(context, 2);
   if (!CheckInputsValue(condition_value, x1_value, x2_value)) {
     GELOGW("Select is not supported, inputs symbol value is empty.");
     return UNSUPPORTED;
@@ -308,33 +311,33 @@ static graphStatus SelectSymbolicKernelCompute(gert::InferSymbolComputeContext *
   GE_UNSUPPORTED_IF_NULL(x2_shape);
   if (*x1_shape != *x2_shape) {
     GELOGW("Select is not supported, check inputs shape failed, x1_shape: %s, x2_shape: %s.",
-           SymbolicInferUtil::VectorExpressionToStr(x1_shape->GetDims()).c_str(),
-           SymbolicInferUtil::VectorExpressionToStr(x2_shape->GetDims()).c_str());
+           SymbolicInferUtil::VectorExpressionToStr(SymbolicInferUtil::GetSymbolDims(*x1_shape)).c_str(),
+           SymbolicInferUtil::VectorExpressionToStr(SymbolicInferUtil::GetSymbolDims(*x2_shape)).c_str());
     return UNSUPPORTED;
   }
 
   std::vector<int64_t> cond_shape_value;
   std::vector<int64_t> x1_shape_value;
-  if (!(GetShapeValue(condition_shape->GetDims(), cond_shape_value)) ||
-      !(GetShapeValue(x1_shape->GetDims(), x1_shape_value))) {
+  if (!(GetShapeValue(SymbolicInferUtil::GetSymbolDims(*condition_shape), cond_shape_value)) ||
+      !(GetShapeValue(SymbolicInferUtil::GetSymbolDims(*x1_shape), x1_shape_value))) {
     GELOGW("Select is not supported, get condition_shape value: %s or x1_shape value: %s failed.",
-           SymbolicInferUtil::VectorExpressionToStr(condition_shape->GetDims()).c_str(),
-           SymbolicInferUtil::VectorExpressionToStr(x1_shape->GetDims()).c_str());
+           SymbolicInferUtil::VectorExpressionToStr(SymbolicInferUtil::GetSymbolDims(*condition_shape)).c_str(),
+           SymbolicInferUtil::VectorExpressionToStr(SymbolicInferUtil::GetSymbolDims(*x1_shape)).c_str());
     return UNSUPPORTED;
   }
   std::vector<Expression> after_bc_condition;
-  if (!Broadcast(*condition_value, cond_shape_value, x1_shape_value, after_bc_condition)) {
+  if (!Broadcast(condition_value, cond_shape_value, x1_shape_value, after_bc_condition)) {
     GELOGW("Select is not supported, broadcast failed.");
     return UNSUPPORTED;
   }
 
   std::vector<Expression> output_value;
-  if (!(CalOutputValue(after_bc_condition, *x1_value, *x2_value, output_value))) {
+  if (!(CalOutputValue(after_bc_condition, x1_value, x2_value, output_value))) {
     GELOGW("Select is not supported, cal output value failed.");
     return UNSUPPORTED;
   }
 
-  const auto ret = SetSelectOutput(context, x1_shape->GetDims(), output_value);
+  const auto ret = SetSelectOutput(context, SymbolicInferUtil::GetSymbolDims(*x1_shape), output_value);
   if (ret != GRAPH_SUCCESS) {
     return ret;
   }

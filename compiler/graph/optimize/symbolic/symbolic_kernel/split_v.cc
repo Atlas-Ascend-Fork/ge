@@ -26,12 +26,12 @@ constexpr size_t kSplitDimInputIndex = 2U;
 constexpr size_t kNumSplitAttrIndex = 0U;
 
 bool GetConstValues(const gert::SymbolTensor *tensor, std::vector<int64_t> &values) {
-  if (tensor == nullptr || tensor->GetSymbolicValue() == nullptr) {
+  if (tensor == nullptr || !tensor->HasValue()) {
     return false;
   }
   values.clear();
-  values.reserve(tensor->GetSymbolicValue()->size());
-  for (const auto &expr : *tensor->GetSymbolicValue()) {
+  values.reserve(tensor->GetValueCount());
+  for (auto &expr : SymbolicInferUtil::GetSymbolicValues(*tensor)) {
     int64_t value = 0;
     if (!expr.GetConstValue<int64_t>(value)) {
       values.clear();
@@ -48,7 +48,7 @@ bool GetConstShape(const gert::SymbolShape *shape, std::vector<int64_t> &dims) {
   }
   dims.clear();
   dims.reserve(shape->GetDimNum());
-  for (const auto &expr : shape->GetDims()) {
+  for (const auto &expr : SymbolicInferUtil::GetSymbolDims(*shape)) {
     int64_t dim = 0;
     if (!expr.GetConstValue<int64_t>(dim) || dim < 0) {
       dims.clear();
@@ -124,8 +124,8 @@ graphStatus ResolveSplitSizes(const int64_t split_dim_size, std::vector<int64_t>
 
 graphStatus PrepareSplitInput(const gert::InferSymbolComputeContext *context, const size_t x_input_index,
                               int64_t &split_dim, std::vector<int64_t> &split_sizes, const gert::SymbolShape *&x_shape,
-                              const std::vector<Expression> *&x_values, std::vector<int64_t> &x_dims,
-                              size_t &inner_count, size_t &outer_count) {
+                              std::vector<Expression> &x_values, std::vector<int64_t> &x_dims, size_t &inner_count,
+                              size_t &outer_count) {
   GE_ASSERT_NOTNULL(context);
   GE_ASSERT_TRUE(context->GetComputeNodeInputNum() >= 1U);
 
@@ -133,8 +133,8 @@ graphStatus PrepareSplitInput(const gert::InferSymbolComputeContext *context, co
   GE_UNSUPPORTED_IF_NULL(x);
   x_shape = context->GetInputSymbolShape(x_input_index);
   GE_UNSUPPORTED_IF_NULL(x_shape);
-  x_values = x->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(x_values);
+  x_values = SymbolicInferUtil::GetSymbolicValues(*x);
+  GE_UNSUPPORTED_IF(!x->HasValue());
 
   const auto rank = static_cast<int64_t>(x_shape->GetDimNum());
   split_dim = split_dim < 0 ? split_dim + rank : split_dim;
@@ -151,7 +151,7 @@ graphStatus PrepareSplitInput(const gert::InferSymbolComputeContext *context, co
 
   size_t x_element_count = 0U;
   GE_ASSERT_TRUE(SafeProduct(x_dims, 0U, x_dims.size(), x_element_count));
-  if (x_values->size() != x_element_count) {
+  if (x_values.size() != x_element_count) {
     GELOGW("Split symbolic kernel unsupported: symbolic value size does not match input shape, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
@@ -163,7 +163,7 @@ graphStatus PrepareSplitInput(const gert::InferSymbolComputeContext *context, co
 }
 
 graphStatus SetSplitOutputs(gert::InferSymbolComputeContext *context, const gert::SymbolShape *x_shape,
-                            const std::vector<Expression> *x_values, const int64_t num_split, const int64_t split_dim,
+                            const std::vector<Expression> &x_values, const int64_t num_split, const int64_t split_dim,
                             const int64_t split_dim_size, const std::vector<int64_t> &split_sizes,
                             const size_t inner_count, const size_t outer_count) {
   size_t split_offset = 0U;
@@ -171,9 +171,9 @@ graphStatus SetSplitOutputs(gert::InferSymbolComputeContext *context, const gert
     const size_t split_size = static_cast<size_t>(split_sizes[static_cast<size_t>(output_index)]);
     auto output = context->GetOutputSymbolTensor(static_cast<size_t>(output_index));
     GE_ASSERT_NOTNULL(output);
-    output->MutableOriginSymbolShape().MutableDims() = x_shape->GetDims();
-    output->MutableOriginSymbolShape().MutableDims()[static_cast<size_t>(split_dim)] =
-        Symbol(split_sizes[static_cast<size_t>(output_index)]);
+    std::vector<ge::Expression> output_dims = SymbolicInferUtil::GetSymbolDims(*x_shape);
+    output_dims[static_cast<size_t>(split_dim)] = Symbol(split_sizes[static_cast<size_t>(output_index)]);
+    SymbolicInferUtil::SetSymbolDims(*output, output_dims);
 
     auto output_values = ge::MakeUnique<std::vector<Expression>>();
     GE_ASSERT_NOTNULL(output_values);
@@ -181,10 +181,10 @@ graphStatus SetSplitOutputs(gert::InferSymbolComputeContext *context, const gert
     for (size_t outer = 0U; outer < outer_count; ++outer) {
       const size_t source_offset =
           outer * static_cast<size_t>(split_dim_size) * inner_count + split_offset * inner_count;
-      output_values->insert(output_values->end(), x_values->begin() + source_offset,
-                            x_values->begin() + source_offset + split_size * inner_count);
+      output_values->insert(output_values->end(), x_values.begin() + source_offset,
+                            x_values.begin() + source_offset + split_size * inner_count);
     }
-    output->SetSymbolicValue(std::move(output_values));
+    SymbolicInferUtil::SetSymbolicValues(*output, *output_values);
     split_offset += split_size;
   }
   return SUCCESS;
@@ -193,7 +193,7 @@ graphStatus SetSplitOutputs(gert::InferSymbolComputeContext *context, const gert
 graphStatus ComputeSplit(gert::InferSymbolComputeContext *context, const size_t x_input_index, const int64_t num_split,
                          int64_t split_dim, std::vector<int64_t> split_sizes) {
   const gert::SymbolShape *x_shape = nullptr;
-  const std::vector<Expression> *x_values = nullptr;
+  std::vector<Expression> x_values;
   std::vector<int64_t> x_dims;
   size_t inner_count = 0U;
   size_t outer_count = 0U;

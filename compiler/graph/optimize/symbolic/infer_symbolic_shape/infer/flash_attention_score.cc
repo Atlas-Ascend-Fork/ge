@@ -133,14 +133,14 @@ ge::graphStatus SetAttentionOutShape(gert::InferSymbolShapeContext *context, con
   *attention_out_shape = *query_shape;
   if (input_layout == kLayoutBSND || input_layout == kLayoutBNSD) {
     // For BSND or BNSD layout, use the same layout as input
-    attention_out_shape->MutableDim(kThree) = value_shape->GetDim(kThree);
+    attention_out_shape->SetDim(kThree, value_shape->GetDim(kThree));
   } else if (input_layout == kLayoutTND) {
     // For TND layout: [T, N, D]
-    attention_out_shape->MutableDim(kTwo) = value_shape->GetDim(kTwo);
+    attention_out_shape->SetDim(kTwo, value_shape->GetDim(kTwo));
   } else if (input_layout == kLayoutBSH || input_layout == kLayoutSBH) {
     // For BSH or SBH layout, use the same layout as input
     if (head_num == 0) {
-      attention_out_shape->MutableDim(kTwo) = Symbol(0);
+      attention_out_shape->SetDim(kTwo, Symbol(0));
       return ge::GRAPH_SUCCESS;
     }
 
@@ -148,18 +148,18 @@ ge::graphStatus SetAttentionOutShape(gert::InferSymbolShapeContext *context, con
 
     auto d1 = query_shape->GetDim(kTwo) / n1;
     if (EXPECT_SYMBOL_EQ(d1, kSymbolZero)) {
-      attention_out_shape->MutableDim(kTwo) = Symbol(0);
+      attention_out_shape->SetDim(kTwo, Symbol(0));
       return ge::GRAPH_SUCCESS;
     }
 
     auto n2 = key_shape->GetDim(kTwo) / d1;
     if (EXPECT_SYMBOL_EQ(n2, kSymbolZero)) {
-      attention_out_shape->MutableDim(kTwo) = d1 * n1;
+      attention_out_shape->SetDim(kTwo, d1 * n1);
       return ge::GRAPH_SUCCESS;
     }
 
     auto d2 = value_shape->GetDim(kTwo) / n2;
-    attention_out_shape->MutableDim(kTwo) = d2 * n1;
+    attention_out_shape->SetDim(kTwo, d2 * n1);
   }
   return ge::GRAPH_SUCCESS;
 }

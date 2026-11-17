@@ -20,7 +20,7 @@ namespace ge {
 namespace {
 template <typename T>
 graphStatus TransposeInferCommon(gert::InferSymbolShapeContext *context, const gert::SymbolShape *in_shape,
-                                 std::vector<Expression> &exprs, gert::SymbolShape *out_shape) {
+                                 const std::vector<Expression> &exprs, gert::SymbolShape *out_shape) {
   auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
   int64_t inserted_by_fe = 0;
@@ -35,7 +35,7 @@ graphStatus TransposeInferCommon(gert::InferSymbolShapeContext *context, const g
     for (auto &expr : exprs) {
       int64_t perm_value = 0;
       if (SymbolicInferUtil::TryGetConstInt(expr, perm_value) != GRAPH_SUCCESS) {
-        GELOGW("Symbol Infer unsupported, perm value is not an integer const: %s, node %s[%s]", expr.Serialize().get(),
+        GELOGW("Symbol Infer unsupported, perm value is not an integer const: %s, node %s[%s]", expr.Str().get(),
                context->GetNodeName(), context->GetNodeType());
         return UNSUPPORTED;
       }
@@ -67,14 +67,14 @@ graphStatus InferShape4Transpose(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto perm_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(perm_tensor);
-  if (perm_tensor->GetSymbolicValue() == nullptr) {
+  if (!perm_tensor->HasValue()) {
     GELOGW("Symbol Infer unsupported, get perm_tensor symbolic value is nullptr, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
   }
   auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
-  auto perm_tensor_exprs = *perm_tensor->GetSymbolicValue();
+  const auto perm_tensor_exprs = SymbolicInferUtil::GetSymbolicValues(*perm_tensor);
   int64_t perm_size = perm_tensor_exprs.size();
   size_t input_dim_size = in_shape->GetDimNum();
   GE_ASSERT_EQ(static_cast<int64_t>(input_dim_size), perm_size);

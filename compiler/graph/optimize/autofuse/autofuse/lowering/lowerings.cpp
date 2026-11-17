@@ -469,8 +469,9 @@ OpDescPtr LoweringManager::BuildOpDescForKernelBox(loop::KernelBox &kernel_box,
   GE_ASSERT_NOTNULL(asc_desc->MutableOutputDesc(0));
   const auto sym_attr = asc_desc->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
   GE_ASSERT_NOTNULL(sym_attr);
-  GE_ASSERT_GRAPH_SUCCESS(
-      loop::GetBufferShape(anchor, sym_attr->symbolic_tensor.MutableOriginSymbolShape().MutableDims()));
+  std::vector<ge::Expression> buffer_dims;
+  GE_ASSERT_GRAPH_SUCCESS(loop::GetBufferShape(anchor, buffer_dims));
+  AutofuseUtils::SetSymbolDims(sym_attr->symbolic_tensor, buffer_dims);
 
   GE_WARN_ASSERT_GRAPH_SUCCESS(LoweringUtils::AssembleConcreteEdges(kernel_box, *fuse_attrs, origin_inputs),
                                "Fall back lowering for node scope: %s. As failed to assemble concrete edges.",

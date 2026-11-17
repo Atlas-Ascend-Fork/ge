@@ -51,7 +51,7 @@ graphStatus GatherCommonInfer(gert::InferSymbolShapeContext *context, const gert
   for (int64_t i = 0; i < in_real_dim_cnt; i++) {
     real_in_shape.AppendDim(in_shape->GetDim(i));
   }
-  if (in_shape->IsScalar()) {
+  if (in_shape->GetDimNum() == 0U) {
     GELOGD("GatherCommInfer in_shape is scalar, set it's shape to (1,)");
     real_in_shape.AppendDim(Symbol(1));
     in_real_dim_cnt = 1;
@@ -95,11 +95,11 @@ graphStatus InferShape4GatherV2(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(indies_shape);
   const auto axes_tensor = context->GetInputSymbolTensor(axes_idx);
   GE_UNSUPPORTED_IF_NULL(axes_tensor);
-  const auto axes_value = axes_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(axes_value);
-  GE_ASSERT_EQ(axes_value->size(), 1UL);
+  GE_UNSUPPORTED_IF(!axes_tensor->HasValue());
+  const auto axes_value = SymbolicInferUtil::GetSymbolicValues(*axes_tensor);
+  GE_ASSERT_EQ(axes_value.size(), 1UL);
   int64_t axis = 0;
-  if (SymbolicInferUtil::TryGetConstInt(axes_value->at(0), axis) != GRAPH_SUCCESS) {
+  if (SymbolicInferUtil::TryGetConstInt(axes_value.at(0), axis) != GRAPH_SUCCESS) {
     GELOGW("Symbol Infer unsupported, axis is not an integer const, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -165,7 +165,7 @@ graphStatus InferShape4GatherEles(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(in_shape);
   const auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
-  out_shape->MutableDims() = in_shape->GetDims();
+  SymbolicInferUtil::SetSymbolDims(*out_shape, SymbolicInferUtil::GetSymbolDims(*in_shape));
   return SUCCESS;
 }
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(GatherElements).InferSymbolShape(InferShape4GatherEles);
@@ -208,16 +208,15 @@ graphStatus InferShapeForDynamicStitch(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_TRUE(attr_n != nullptr && *attr_n >= 1);
   const auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
-  auto &out_shape_dims = out_shape->MutableDims();
-  out_shape_dims.clear();
+  std::vector<Expression> out_shape_dims;
 
   for (int32_t i = 0U; i < *attr_n; ++i) {
     const auto indices_shape = context->GetDynamicInputSymbolShape(0, i);
     GE_UNSUPPORTED_IF_NULL(indices_shape);
-    const auto indices_dims = indices_shape->GetDims();
+    const auto indices_dims = SymbolicInferUtil::GetSymbolDims(*indices_shape);
     const auto x_shape = context->GetDynamicInputSymbolShape(1, i);
     GE_UNSUPPORTED_IF_NULL(x_shape);
-    const auto x_dims = x_shape->GetDims();
+    const auto x_dims = SymbolicInferUtil::GetSymbolDims(*x_shape);
     GE_ASSERT_TRUE(x_dims.size() >= indices_dims.size(), "Op %s: x rank %zu is smaller than indices rank %zu.",
                    context->GetNodeName(), x_dims.size(), indices_dims.size());
     for (size_t j = 0U; j < indices_dims.size(); ++j) {
@@ -234,14 +233,15 @@ graphStatus InferShapeForDynamicStitch(gert::InferSymbolShapeContext *context) {
 
     const auto indices_tensor = context->GetDynamicInputSymbolTensor(0, i);
     GE_UNSUPPORTED_IF_NULL(indices_tensor);
-    const auto indices_tensor_val = indices_tensor->GetSymbolicValue();
-    GE_UNSUPPORTED_IF_NULL(indices_tensor_val);
-    for (const auto &tensor : *indices_tensor_val) {
+    GE_UNSUPPORTED_IF(!indices_tensor->HasValue());
+    const auto indices_tensor_val = SymbolicInferUtil::GetSymbolicValues(*indices_tensor);
+    for (const auto &tensor : indices_tensor_val) {
       out_shape_dims[0] = sym::Max(out_shape_dims[0], tensor);
     }
   }
 
   out_shape_dims[0] = out_shape_dims[0] + kSymbolOne;
+  SymbolicInferUtil::SetSymbolDims(*out_shape, out_shape_dims);
   return ge::GRAPH_SUCCESS;
 }
 

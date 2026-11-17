@@ -12,6 +12,7 @@
 #define AIR_CXX_COMPILER_GRAPH_EAGER_STYLE_GRAPH_BUILDER_ESB_TENSOR_H_
 #include "graph/node.h"
 #include "graph/symbolizer/symbolic.h"
+#include "graph/symbolizer/expression_ext.h"
 #include "attribute_group/attr_group_symbolic_desc.h"
 class EsbGraph;
 class EsbTensor {
@@ -45,7 +46,12 @@ class EsbTensor {
     GE_ASSERT_NOTNULL(td);
     const auto attr = td->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>();
     GE_ASSERT_NOTNULL(attr);
-    attr->symbolic_tensor.MutableOriginSymbolShape().MutableDims() = shape;
+    gert::SymbolShape origin_symbol_shape;
+    origin_symbol_shape.SetDimNum(shape.size());
+    for (size_t i = 0UL; i < shape.size(); ++i) {
+      origin_symbol_shape.SetDim(i, shape[i]);
+    }
+    attr->symbolic_tensor.SetOriginSymbolShape(origin_symbol_shape);
     return ge::SUCCESS;
   }
   ge::Status SetInputOriginSymbolShape(const std::vector<ge::Expression> &shape) {
@@ -53,7 +59,12 @@ class EsbTensor {
     GE_ASSERT_NOTNULL(input_td);
     const auto input_attr = input_td->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>();
     GE_ASSERT_NOTNULL(input_attr);
-    input_attr->symbolic_tensor.MutableOriginSymbolShape().MutableDims() = shape;
+    gert::SymbolShape input_origin_symbol_shape;
+    input_origin_symbol_shape.SetDimNum(shape.size());
+    for (size_t i = 0UL; i < shape.size(); ++i) {
+      input_origin_symbol_shape.SetDim(i, shape[i]);
+    }
+    input_attr->symbolic_tensor.SetOriginSymbolShape(input_origin_symbol_shape);
     return ge::SUCCESS;
   }
   ge::Status SetSymbolShape(const std::vector<ge::Expression> &shape) {
@@ -68,7 +79,7 @@ class EsbTensor {
     std::vector<ge::Expression> shape;
     shape.reserve(shape_str_num);
     for (int64_t i = 0; i < shape_str_num; ++i) {
-      shape.emplace_back(ge::Expression::Parse(shape_str[i]));
+      shape.emplace_back(ge::expr_ext::Parse(shape_str[i]));
     }
     return SetSymbolShape(shape);
   }
@@ -76,7 +87,7 @@ class EsbTensor {
     std::vector<ge::Expression> shape;
     shape.reserve(shape_str_num);
     for (int64_t i = 0; i < shape_str_num; ++i) {
-      shape.emplace_back(ge::Expression::Parse(shape_str[i]));
+      shape.emplace_back(ge::expr_ext::Parse(shape_str[i]));
     }
     return SetInputSymbolShape(shape);
   }

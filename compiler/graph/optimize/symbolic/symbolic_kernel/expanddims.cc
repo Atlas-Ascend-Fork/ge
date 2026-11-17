@@ -7,9 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "common/plugin/ge_make_unique_util.h"
 #include "framework/common/framework_types_internal.h"
-#include "common/util/mem_utils.h"
 #include "common/checker.h"
 #include "attribute_group/attr_group_symbolic_desc.h"
 #include "graph/optimize/symbolic/symbol_compute_context.h"
@@ -34,11 +32,8 @@ graphStatus BuildOutTensor(const std::vector<Expression> &input_symbol_value, co
   for (size_t i = axis; i < input_shape.GetDimNum(); ++i) {
     out_dims.push_back(input_shape.GetDim(i));
   }
-  auto symbolic_value_unique = ge::MakeUnique<std::vector<ge::Expression> >(input_symbol_value);
-  if (symbolic_value_unique != nullptr) {
-    out_tensor.SetSymbolicValue(std::move(symbolic_value_unique));
-  }
-  out_tensor.MutableOriginSymbolShape().MutableDims() = out_dims;
+  SymbolicInferUtil::SetSymbolicValues(out_tensor, input_symbol_value);
+  SymbolicInferUtil::SetSymbolDims(out_tensor, out_dims);
   return SUCCESS;
 }
 }  // namespace
@@ -51,8 +46,8 @@ static graphStatus ExpandDimsSymbolicKernelCompute(gert::InferSymbolComputeConte
 
   auto input_symbol_tensor = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_symbol_tensor);
-  const std::vector<Expression> *input_symbol_value = input_symbol_tensor->GetSymbolicValue();
-  if (input_symbol_value == nullptr) {
+  const auto input_symbol_value = SymbolicInferUtil::GetSymbolicValues(*input_symbol_tensor);
+  if (!input_symbol_tensor->HasValue()) {
     GELOGW("SymbolicKernel compute unsupported, reason: get input symbolic value failed, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
@@ -62,23 +57,23 @@ static graphStatus ExpandDimsSymbolicKernelCompute(gert::InferSymbolComputeConte
   int64_t axis_value;
   auto axis_symbol_tensor = context->GetInputSymbolTensor(kAxisInputIndex);
   GE_UNSUPPORTED_IF_NULL(axis_symbol_tensor);
-  auto axis_symbols = axis_symbol_tensor->GetSymbolicValue();
-  if (axis_symbols == nullptr) {
+  const auto axis_symbols = SymbolicInferUtil::GetSymbolicValues(*axis_symbol_tensor);
+  if (axis_symbols.empty()) {
     GELOGW("SymbolicKernel compute unsupported, reason: get Axis input symbolic value failed, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
   // 0元素axis输入是非法语义(ExpandDims的axis必须为标量)，直接assert报错；
   // 同时防止空值向量begin()解引用end迭代器的UB
-  GE_ASSERT_TRUE(!axis_symbols->empty(), "SymbolicKernel compute failed, reason: axis input is empty, node %s[%s].",
+  GE_ASSERT_TRUE(!axis_symbols.empty(), "SymbolicKernel compute failed, reason: axis input is empty, node %s[%s].",
                  context->GetNodeName(), context->GetNodeType());
-  if (!axis_symbols->begin()->GetConstValue(axis_value)) {
+  if (!axis_symbols.begin()->GetConstValue(axis_value)) {
     GELOGW("SymbolicKernel compute unsupported, reason: get Axis input symbolic value failed, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
-  GELOGD("axis_symbols size = %zu", axis_symbols->size());
-  GE_ASSERT_EQ(axis_symbols->size(), static_cast<size_t>(1));
+  GELOGD("axis_symbols size = %zu", axis_symbols.size());
+  GE_ASSERT_EQ(axis_symbols.size(), static_cast<size_t>(1));
 
   auto input_shape = context->GetInputSymbolShape(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_shape);
@@ -92,7 +87,7 @@ static graphStatus ExpandDimsSymbolicKernelCompute(gert::InferSymbolComputeConte
 
   auto symbolic_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(symbolic_tensor);
-  auto ret = BuildOutTensor(*input_symbol_value, *input_shape, axis_value, *symbolic_tensor);
+  auto ret = BuildOutTensor(input_symbol_value, *input_shape, axis_value, *symbolic_tensor);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
   return ret;

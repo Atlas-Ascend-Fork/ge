@@ -56,22 +56,22 @@ graphStatus CheckCastInputs(const gert::InferSymbolComputeContext *context) {
 }
 
 graphStatus SetCastOutput(gert::InferSymbolComputeContext *context, const gert::SymbolTensor *input_tensor,
-                          const std::vector<Expression> *input_values) {
+                          const std::vector<Expression> input_values) {
   int64_t input_element_num = 0;
   if (input_tensor->GetOriginSymbolShape().GetSymbolShapeSize().GetConstValue(input_element_num) &&
-      input_element_num >= 0 && static_cast<uint64_t>(input_element_num) != input_values->size()) {
+      input_element_num >= 0 && static_cast<uint64_t>(input_element_num) != input_values.size()) {
     GELOGW(
         "Cast symbolic compute unsupported, symbolic value size[%zu] does not match input element size[%ld], node "
         "%s[%s].",
-        input_values->size(), input_element_num, context->GetNodeName(), context->GetNodeType());
+        input_values.size(), input_element_num, context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
   const auto output_tensor = context->GetOutputSymbolTensor(0);
   GE_ASSERT_NOTNULL(output_tensor);
-  output_tensor->MutableOriginSymbolShape() = input_tensor->GetOriginSymbolShape();
-  auto output_values = ge::MakeUnique<std::vector<Expression>>(*input_values);
+  output_tensor->SetOriginSymbolShape(input_tensor->GetOriginSymbolShape());
+  auto output_values = ge::MakeUnique<std::vector<Expression>>(input_values);
   GE_ASSERT_NOTNULL(output_values);
-  output_tensor->SetSymbolicValue(std::move(output_values));
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, *output_values);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_tensor).c_str());
   return GRAPH_SUCCESS;
@@ -94,8 +94,8 @@ graphStatus CastSymbolicKernelCompute(gert::InferSymbolComputeContext *context) 
 
   const auto input_tensor = context->GetInputSymbolTensor(0);
   GE_UNSUPPORTED_IF_NULL(input_tensor);
-  const auto input_values = input_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_values);
+  GE_UNSUPPORTED_IF(!input_tensor->HasValue());
+  const auto input_values = SymbolicInferUtil::GetSymbolicValues(*input_tensor);
   const auto ret = CheckCastInputs(context);
   if (ret != GRAPH_SUCCESS) {
     return ret;
@@ -120,15 +120,15 @@ graphStatus IdentitySymbolicKernelCompute(gert::InferSymbolComputeContext *conte
 
   const auto input_tensor = context->GetInputSymbolTensor(0U);
   GE_UNSUPPORTED_IF_NULL(input_tensor);
-  const auto input_values = input_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_values);
+  GE_UNSUPPORTED_IF(!input_tensor->HasValue());
+  const auto input_values = SymbolicInferUtil::GetSymbolicValues(*input_tensor);
   const auto output_tensor = context->GetOutputSymbolTensor(0U);
   GE_ASSERT_NOTNULL(output_tensor);
 
-  output_tensor->MutableOriginSymbolShape() = input_tensor->GetOriginSymbolShape();
-  auto output_values = ge::MakeUnique<std::vector<Expression>>(*input_values);
+  output_tensor->SetOriginSymbolShape(input_tensor->GetOriginSymbolShape());
+  auto output_values = ge::MakeUnique<std::vector<Expression>>(input_values);
   GE_ASSERT_NOTNULL(output_values);
-  output_tensor->SetSymbolicValue(std::move(output_values));
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, *output_values);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_tensor).c_str());
   return GRAPH_SUCCESS;

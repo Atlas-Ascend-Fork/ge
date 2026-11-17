@@ -434,8 +434,8 @@ static Status PrepareVerticalFallbackAttrs(const ComputeGraphPtr &graph) {
       GE_ASSERT_NOTNULL(out_anchor);
       auto output_desc = op_desc->MutableOutputDesc(out_anchor->GetIdx());
       GE_ASSERT_NOTNULL(output_desc);
-      output_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape() =
-          gert::SymbolShape({Symbol(1), Symbol(2), Symbol(3), Symbol(4)});
+      output_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(
+          gert::SymbolShape({Symbol(1), Symbol(2), Symbol(3), Symbol(4)}));
     }
   }
   for (const auto &node : graph->GetAllNodes()) {
@@ -453,8 +453,8 @@ static Status PrepareVerticalFallbackAttrs(const ComputeGraphPtr &graph) {
       GE_ASSERT_NOTNULL(peer_desc);
       auto input_desc = op_desc->MutableInputDesc(in_anchor->GetIdx());
       GE_ASSERT_NOTNULL(input_desc);
-      input_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape() =
-          peer_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape();
+      input_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(
+          peer_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.GetOriginSymbolShape());
     }
     if (node->GetType() == kAscBackendType) {
       std::vector<std::pair<std::string, int32_t>> input_names;

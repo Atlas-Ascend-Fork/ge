@@ -8,6 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <algorithm>
+
 #include "attribute_group/attr_group_shape_env.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 #include "graph/detail/attributes_holder.h"
@@ -48,8 +50,8 @@ graphStatus ShapeEnvAttr::SerializeSymbolInfo(proto::ShapeEnvAttrGroupsDef *shap
   for (const auto &iter : symbol_to_value_) {
     GE_ASSERT_TRUE(!iter.first.IsConstExpr(),
                    "Symbol in symbol_to_value of shape env attr should be a variable, but get: %s",
-                   iter.first.Serialize().get());
-    symbol_to_value_def->insert({iter.first.Serialize().get(), iter.second});
+                   iter.first.Str().get());
+    symbol_to_value_def->insert({iter.first.Str().get(), iter.second});
   }
   auto value_to_symbol_def = shape_env_group->mutable_value_to_symbol();
   GE_ASSERT_NOTNULL(value_to_symbol_def);
@@ -59,8 +61,8 @@ graphStatus ShapeEnvAttr::SerializeSymbolInfo(proto::ShapeEnvAttrGroupsDef *shap
     for (const auto &sym_iter : iter.second) {
       GE_ASSERT_TRUE(!sym_iter.IsConstExpr(),
                      "Symbol in value_to_symbol of shape env attr should be a variable, but get: %s",
-                     sym_iter.Serialize().get());
-      symbol_infos.add_symbols(sym_iter.Serialize().get());
+                     sym_iter.Str().get());
+      symbol_infos.add_symbols(sym_iter.Str().get());
     }
     value_to_symbol_def->insert({iter.first, symbol_infos});
   }
@@ -76,14 +78,14 @@ graphStatus ShapeEnvAttr::SerializeSymbolCheckInfos(proto::ShapeEnvAttrGroupsDef
   auto replacements_def = shape_env_group->mutable_replacements();
   for (const auto &iter : replacements_) {
     proto::ReplacementDef rep_def;
-    rep_def.set_replace_expr(iter.second.replace_expr.Serialize().get());
+    rep_def.set_replace_expr(iter.second.replace_expr.Str().get());
     rep_def.set_rank(iter.second.rank);
-    replacements_def->insert({iter.first.Serialize().get(), rep_def});
+    replacements_def->insert({iter.first.Str().get(), rep_def});
   }
   shape_env_group->clear_symbol_check_infos();
   for (const auto &iter : symbol_check_infos_) {
     proto::SymbolCheckInfoDef *symbol_check_info_def = shape_env_group->add_symbol_check_infos();
-    symbol_check_info_def->set_expr(iter.expr.Serialize().get());
+    symbol_check_info_def->set_expr(iter.expr.Str().get());
     symbol_check_info_def->set_file(iter.file);
     symbol_check_info_def->set_line(iter.line);
     symbol_check_info_def->set_dfx(iter.dfx_info);
@@ -91,7 +93,7 @@ graphStatus ShapeEnvAttr::SerializeSymbolCheckInfos(proto::ShapeEnvAttrGroupsDef
   shape_env_group->clear_symbol_assert_infos();
   for (const auto &iter : symbol_assert_infos_) {
     proto::SymbolCheckInfoDef *symbol_assert_info_def = shape_env_group->add_symbol_assert_infos();
-    symbol_assert_info_def->set_expr(iter.expr.Serialize().get());
+    symbol_assert_info_def->set_expr(iter.expr.Str().get());
     symbol_assert_info_def->set_file(iter.file);
     symbol_assert_info_def->set_line(iter.line);
     symbol_assert_info_def->set_dfx(iter.dfx_info);
@@ -207,7 +209,7 @@ std::unique_ptr<AttrGroupsBase> ShapeEnvAttr::Clone() {
 }
 
 bool ShapeEnvAttr::HasSymbolCheckInfo(const ge::Expression &e) const {
-  auto expr = e.CanonicalizeBoolExpr();
+  auto expr = CanonicalizeBoolExpr(e);
   if (symbol_check_infos_.find(SymbolCheckInfo(expr)) != symbol_check_infos_.end()) {
     return true;
   }
@@ -215,7 +217,7 @@ bool ShapeEnvAttr::HasSymbolCheckInfo(const ge::Expression &e) const {
 }
 
 bool ShapeEnvAttr::HasSymbolAssertInfo(const ge::Expression &e) const {
-  auto expr = e.CanonicalizeBoolExpr();
+  auto expr = CanonicalizeBoolExpr(e);
   if (symbol_assert_infos_.find(SymbolCheckInfo(expr)) != symbol_assert_infos_.end()) {
     return true;
   }
@@ -266,7 +268,7 @@ void ShapeEnvAttr::SimplifySymbolCheckInfo(
     std::set<SymbolCheckInfo, SymbolCheckInfoKeyLess> &symbol_check_infos) const {
   std::vector<SymbolCheckInfo> simplify_symbol_check_info;
   for (auto &iter : symbol_check_infos) {
-    const auto simple_expr = iter.expr.Simplify().CanonicalizeBoolExpr();
+    const auto simple_expr = CanonicalizeBoolExpr(iter.expr.Simplify());
     if (simple_expr.IsConstExpr()) {
       continue;
     }
@@ -289,7 +291,7 @@ ge::Expression ShapeEnvAttr::Simplify(const ge::Expression &expr) {
   }
   for (const auto &sym : expr.FreeSymbols()) {
     auto replace_expr = FindReplacements(sym);
-    if ((!replace_expr.IsVariableExpr()) || (replace_expr != sym)) {
+    if ((replace_expr.GetExprType() != ExprType::kExprVariable) || (replace_expr != sym)) {
       var_replacements.emplace_back(std::make_pair(sym, replace_expr));
     }
   }
@@ -316,7 +318,7 @@ ge::Expression ShapeEnvAttr::EvaluateExpr(const ge::Expression &expr) {
 }
 
 TriBool ShapeEnvAttr::HasSymbolInfo(const Expression &expr) const {
-  Expression e = expr.CanonicalizeBoolExpr();
+  Expression e = CanonicalizeBoolExpr(expr);
   if (HasSymbolCheckInfo(e) || HasSymbolAssertInfo(e)) {
     return TriBool::kTrue;
   }
@@ -357,8 +359,8 @@ bool Replacement::operator<=(const Replacement &other) {
     }
     return false;
   }
-  if (replace_expr.IsVariableExpr()) {
-    if (other.replace_expr.IsVariableExpr()) {
+  if (replace_expr.GetExprType() == ExprType::kExprVariable) {
+    if (other.replace_expr.GetExprType() == ExprType::kExprVariable) {
       return rank <= other.rank;
     }
     return true;
@@ -366,7 +368,7 @@ bool Replacement::operator<=(const Replacement &other) {
   if (other.replace_expr.IsConstExpr()) {
     return true;
   }
-  if (other.replace_expr.IsVariableExpr()) {
+  if (other.replace_expr.GetExprType() == ExprType::kExprVariable) {
     return false;
   }
   return rank <= other.rank;
@@ -409,7 +411,7 @@ graphStatus ShapeEnvAttr::AppendReplacement(const ge::Expression &target, const 
   }
   ge::Expression expr1 = target;
   ge::Expression expr2 = replacement;
-  auto expr = sym::Eq(target, replacement).CanonicalizeBoolExpr();
+  auto expr = CanonicalizeBoolExpr(sym::Eq(target, replacement));
   std::vector<Expression> args = expr.GetArgs();
   if (args.size() == kSizeTwo) {
     expr1 = args[0];
@@ -421,13 +423,13 @@ graphStatus ShapeEnvAttr::AppendReplacement(const ge::Expression &target, const 
 
   // 仅支持 符号->常量，符号->表达式，符号->符号 映射
   if (expr1.IsConstExpr()) {
-    if (!expr2.IsVariableExpr()) {
+    if (expr2.GetExprType() != ExprType::kExprVariable) {
       GELOGW("Unsupported append replacement %s to %s", SymbolicUtils::ToString(expr1).c_str(),
              SymbolicUtils::ToString(expr2).c_str());
       return GRAPH_SUCCESS;
     }
-  } else if (!expr1.IsVariableExpr()) {
-    if (!expr2.IsVariableExpr()) {
+  } else if (expr1.GetExprType() != ExprType::kExprVariable) {
+    if (expr2.GetExprType() != ExprType::kExprVariable) {
       GELOGW("Unsupported append replacement %s to %s", SymbolicUtils::ToString(expr1).c_str(),
              SymbolicUtils::ToString(expr2).c_str());
       return GRAPH_SUCCESS;
@@ -457,7 +459,7 @@ graphStatus ShapeEnvAttr::AppendSymbolAssertInfo(const ge::Expression &expr, con
   GE_ASSERT_TRUE(expr.IsBooleanExpr(), "Assert expr: %s should be boolean", SymbolicUtils::ToString(expr).c_str());
   if (!expr.IsConstExpr()) {
     (void)symbol_assert_infos_.emplace(
-        SymbolCheckInfo(expr.CanonicalizeBoolExpr(), file, line, GetGuardDfxContextInfo()));
+        SymbolCheckInfo(CanonicalizeBoolExpr(expr), file, line, GetGuardDfxContextInfo()));
   }
   return GRAPH_SUCCESS;
 }
@@ -467,7 +469,7 @@ graphStatus ShapeEnvAttr::AppendSymbolCheckInfo(const ge::Expression &expr, cons
   GE_ASSERT_TRUE(expr.IsBooleanExpr(), "Check expr: %s should be boolean", SymbolicUtils::ToString(expr).c_str());
   if (!expr.IsConstExpr()) {
     (void)symbol_check_infos_.emplace(
-        SymbolCheckInfo(expr.CanonicalizeBoolExpr(), file, line, GetGuardDfxContextInfo()));
+        SymbolCheckInfo(CanonicalizeBoolExpr(expr), file, line, GetGuardDfxContextInfo()));
   }
   return GRAPH_SUCCESS;
 }
@@ -482,6 +484,13 @@ void ShapeEnvAttr::ClearGuardDfxContextInfo() const {
 
 std::string ShapeEnvAttr::GetGuardDfxContextInfo() const {
   return guard_dfx_info_;
+}
+
+Expression ShapeEnvAttr::CanonicalizeBoolExpr(const Expression &expr) {
+  if (expr.impl_ != nullptr) {
+    return Expression(expr.impl_->CanonicalizeBoolExpr());
+  }
+  return Expression(nullptr);
 }
 
 bool ShapeEnvAttr::CheckReplacementCycle(const Expression &expr1, const Expression &expr2) const {
@@ -521,9 +530,10 @@ bool ShapeEnvAttr::CheckReplacementCycle(const Expression &expr1, const Expressi
       }
       // 根表达式包含对方根的自由符号时构成间接环：如已有 s3 == Min(2, s2) 时再建立
       // s2 == (s0+s3)*Ceil(s1)，替换链闭合出 s2 -> 复合 -> s3 -> Min(2, s2) 的环
-      // （ContainVar 仅接受无参表达式，复合根需逐自由符号检查）
+      // （按自由符号集合精确匹配，复合根需逐自由符号检查）
+      const auto root_symbols = symbol_root.FreeSymbols();
       for (const auto &target_sym : target_root.FreeSymbols()) {
-        if (symbol_root.ContainVar(target_sym)) {
+        if (std::count(root_symbols.begin(), root_symbols.end(), target_sym) > 0) {
           return true;
         }
       }

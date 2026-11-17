@@ -26,52 +26,52 @@ graphStatus ExpandShapeInference(const gert::SymbolShape *input_shape, const std
 
   if (target_dim < input_dim) {
     for (size_t i = 0; i < diff; ++i) {
-      output_shape->MutableDims().emplace_back(input_shape->GetDim(i));
+      output_shape->AppendDim(input_shape->GetDim(i));
     }
     for (size_t i = diff; i < input_dim; i++) {
       auto dim = target_dims[i - diff];
       if (dim == 0) {
-        output_shape->MutableDims().emplace_back(dim);
+        output_shape->AppendDim(dim);
         continue;
       }
 
       if (EXPECT_SYMBOL_EQ(input_shape->GetDim(i), Symbol(1))) {
-        output_shape->MutableDims().emplace_back(dim);
+        output_shape->AppendDim(dim);
       } else if (EXPECT_SYMBOL_EQ(dim, Symbol(1))) {
-        output_shape->MutableDims().emplace_back(input_shape->GetDim(i));
+        output_shape->AppendDim(input_shape->GetDim(i));
       } else if (EXPECT_SYMBOL_EQ(input_shape->GetDim(i), dim)) {
-        output_shape->MutableDims().emplace_back(dim);
+        output_shape->AppendDim(dim);
       } else {
         GELOGE(GRAPH_PARAM_INVALID,
                "[InferSymbolShape4Expand], input dims cannot expand to target's dim, when input dim is %s, target dim "
                "is %s",
-               input_shape->GetDim(i).Serialize().get(), dim.Serialize().get());
+               input_shape->GetDim(i).Str().get(), dim.Str().get());
         return GRAPH_PARAM_INVALID;
       }
     }
   } else {
     for (size_t i = 0; i < diff; ++i) {
-      output_shape->MutableDims().emplace_back(target_dims[i]);
+      output_shape->AppendDim(target_dims[i]);
     }
 
     for (size_t i = diff; i < target_dim; i++) {
       auto dim = target_dims[i];
       if (dim == 0) {
-        output_shape->MutableDims().emplace_back(dim);
+        output_shape->AppendDim(dim);
         continue;
       }
 
       if (EXPECT_SYMBOL_EQ(input_shape->GetDim(i - diff), Symbol(1))) {
-        output_shape->MutableDims().emplace_back(dim);
+        output_shape->AppendDim(dim);
       } else if (EXPECT_SYMBOL_EQ(dim, Symbol(1))) {
-        output_shape->MutableDims().emplace_back(input_shape->GetDim(i - diff));
+        output_shape->AppendDim(input_shape->GetDim(i - diff));
       } else if (EXPECT_SYMBOL_EQ(input_shape->GetDim(i - diff), dim)) {
-        output_shape->MutableDims().emplace_back(input_shape->GetDim(i - diff));
+        output_shape->AppendDim(input_shape->GetDim(i - diff));
       } else {
         GELOGE(GRAPH_PARAM_INVALID,
                "[InferSymbolShape4Expand], input dims cannot expand to target's dim, when input dim is %s, target dim "
                "is %s",
-               input_shape->GetDim(i - diff).Serialize().get(), dim.Serialize().get());
+               input_shape->GetDim(i - diff).Str().get(), dim.Str().get());
         return GRAPH_PARAM_INVALID;
       }
     }
@@ -84,14 +84,14 @@ graphStatus InferShape4Expand(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(input_shape);
   auto target_shape = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(target_shape);
-  const auto target_value = target_shape->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(target_value);
+  GE_UNSUPPORTED_IF(!target_shape->HasValue());
+  const auto target_value = SymbolicInferUtil::GetSymbolicValues(*target_shape);
   auto output_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(output_shape);
 
-  output_shape->MutableDims().clear();
+  output_shape->Clear();
 
-  auto ret = ExpandShapeInference(input_shape, *target_value, output_shape);
+  auto ret = ExpandShapeInference(input_shape, target_value, output_shape);
   if (ret != GRAPH_SUCCESS) {
     return ret;
   }
@@ -116,7 +116,7 @@ graphStatus InferShape4ExpandD(gert::InferSymbolShapeContext *context) {
   auto output_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(output_shape);
 
-  output_shape->MutableDims().clear();
+  output_shape->Clear();
   std::vector<Expression> target_dims;
   target_dims.reserve(target_attr->GetSize());
   for (size_t i = 0; i < target_attr->GetSize(); ++i) {
@@ -128,9 +128,9 @@ graphStatus InferShape4ExpandD(gert::InferSymbolShapeContext *context) {
 graphStatus InferShape4BroadcastTo(gert::InferSymbolShapeContext *context) {
   auto shape_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(shape_tensor);
-  auto shape_value = shape_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(shape_value);
-  auto shape_size = shape_value->size();
+  GE_UNSUPPORTED_IF(!shape_tensor->HasValue());
+  const auto shape_value = SymbolicInferUtil::GetSymbolicValues(*shape_tensor);
+  auto shape_size = shape_value.size();
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto in_dims_num = in_shape->GetDimNum();
@@ -138,12 +138,12 @@ graphStatus InferShape4BroadcastTo(gert::InferSymbolShapeContext *context) {
                  shape_size, in_dims_num);
   auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
-  out_shape->MutableDims() = *shape_value;
+  SymbolicInferUtil::SetSymbolDims(*out_shape, shape_value);
   auto diff = static_cast<int32_t>(shape_size - in_dims_num);
   for (int32_t i = shape_size - 1; i >= 0; i--) {
     // -1 表示沿用输入对应维度；常量直接取值，值符号化来源的非常量按 hint 取值（运行时真实数据）。
     // hint 来源的 -1 需登记 guard 固化假设：其它档位该位取其它合法值时按广播规则重推
-    const auto &dim_expr = shape_value->at(i);
+    const auto &dim_expr = shape_value.at(i);
     int64_t dim_value = -2;
     const bool has_dim_value = dim_expr.IsConstExpr()
                                    ? SymbolicInferUtil::TryGetConstInt(dim_expr, dim_value) == ge::GRAPH_SUCCESS
@@ -153,9 +153,9 @@ graphStatus InferShape4BroadcastTo(gert::InferSymbolShapeContext *context) {
         (void)EXPECT_SYMBOL_EQ(dim_expr, Symbol(-1));
       }
       if (i >= diff) {
-        out_shape->MutableDim(i) = in_shape->GetDim(i - diff);
+        out_shape->SetDim(i, in_shape->GetDim(i - diff));
       } else {
-        out_shape->MutableDim(i) = kSymbolOne;
+        out_shape->SetDim(i, kSymbolOne);
       }
     }
     if (i < diff) {
