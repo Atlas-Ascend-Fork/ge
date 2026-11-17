@@ -417,6 +417,8 @@ ConstantFoldingPass / DimensionComputePass
 
 加载路径为 `libconstant_folding_ops.so`，由 OPP（Operator Package）提供，包含更广泛的算子实现。`compiler/engines/cpu_engine/cpu_engine/constant_folding_stub/constant_folding_ops_stub.cpp` 是编译期的桩库（无实际实现），运行时由真正的 OPP 库替换。
 
+SO 路径解析优先级：先通过 `OpsDeliverablesParser`（`graph_metadef/base/common/plugin/ops_deliverables_parser.cc`，编入 graph_base）解析 `${ASCEND_OPP_PATH}/conf/ops_deliverables.json` 中的 `constant-folding-ops` 条目（`HostCpuEngine` 侧另有 `ops-host-cpu` 条目对应 `libops_host_cpu.so`），路径模板中的 `{ASCEND_OPP_PATH}` 占位符由调用方传入的变量表替换；配置缺失、条目未定义或解析出的路径无效时，回退到 OPP 目录下的硬编码路径。
+
 `HostCpuEngine` 负责：
 - 加载 `libconstant_folding_ops.so` 动态库
 - 通过 `OpKernelRegistry` 创建算子实例

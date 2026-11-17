@@ -88,3 +88,12 @@ target_link_libraries(ut_ops_deliverables PRIVATE ops_deliverables_test_support 
     GTestShared::gtest GTestShared::gtest_main slog_stub slog_common c_sec)
 add_test(NAME ut_ops_deliverables COMMAND ut_ops_deliverables)
 set_tests_properties(ut_ops_deliverables PROPERTIES LABELS "ut;ops_deliverables")
+
+# The parser lives in graph_base, so this focused test links graph_base directly.
+add_executable(ut_ops_deliverables_parser testcase/ops_deliverables_parser_unittest.cc)
+target_compile_options(ut_ops_deliverables_parser PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(ut_ops_deliverables_parser PRIVATE graph_base ge_metadef_headers intf_llt_pub
+    unified_dlog slog_stub slog_common GTestShared::gtest GTestShared::gtest_main c_sec json error_manager
+    ascend_protobuf -lrt -ldl)
+add_test(NAME ut_ops_deliverables_parser COMMAND ut_ops_deliverables_parser)
+set_tests_properties(ut_ops_deliverables_parser PROPERTIES LABELS "ut;ops_deliverables")

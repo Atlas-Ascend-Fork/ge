@@ -90,6 +90,7 @@ set(GRAPH_BASE_SOURCE_LIST
     "${GE_METADEF_DIR}/base/utils/file_utils.cc"
     "${GE_METADEF_DIR}/base/utils/aligned_ptr.cc"
     "${GE_METADEF_DIR}/base/common/plugin/plugin_manager.cc"
+    "${GE_METADEF_DIR}/base/common/plugin/ops_deliverables_parser.cc"
     "normal_graph/custom_op_load_context.cc"
 )
 
