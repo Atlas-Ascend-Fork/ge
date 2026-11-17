@@ -273,6 +273,57 @@ ge::GeRootModelPtr BuildDualBodyRootForExecutorUt() {
 }  // namespace
 
 namespace {
+ge::GeRootModelPtr BuildDualBodyRootWithBadFallbackForExecutorUt() {
+  auto graph = ShareGraph::BuildSingleNodeGraph();
+  graph->TopologicalSorting();
+  auto root = GeModelBuilder(graph)
+                  .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                  .FakeTbeBin({"Add"})
+                  .BuildGeRootModel();
+  auto fallback_graph = std::make_shared<ge::ComputeGraph>(std::string(ge::kFallbackSubgraphPrefix) + "bad");
+  if (ge::GraphUtils::CopyComputeGraph(graph, fallback_graph) != ge::SUCCESS) {
+    return nullptr;
+  }
+  auto fallback_root = GeModelBuilder(fallback_graph)
+                           .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                           .FakeTbeBin({"Add"})
+                           .BuildGeRootModel();
+  if (fallback_root == nullptr) {
+    return nullptr;
+  }
+  for (const auto &kv : fallback_root->GetSubgraphInstanceNameToModel()) {
+    root->SetSubgraphInstanceNameToModel(kv.first, kv.second);
+  }
+  (void)ge::AttrUtils::SetBool(root->GetRootGraph(), ge::kDualBodyAttr, true);
+  return root;
+}
+
+ge::GeRootModelPtr BuildRootModelWithEmptyPreprocessSoForExecutorUt() {
+  auto graph = ShareGraph::BuildSingleNodeGraph();
+  graph->TopologicalSorting();
+  auto root = GeModelBuilder(graph)
+                  .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                  .FakeTbeBin({"Add"})
+                  .BuildGeRootModel();
+  if (root == nullptr) {
+    return nullptr;
+  }
+  const auto iter = root->GetSubgraphInstanceNameToModel().find(graph->GetName());
+  if ((iter == root->GetSubgraphInstanceNameToModel().end()) || (iter->second == nullptr)) {
+    return nullptr;
+  }
+  auto task_def = ge::MakeShared<domi::ModelTaskDef>();
+  if (task_def == nullptr) {
+    return nullptr;
+  }
+  auto *task = task_def->add_task();
+  task->set_type(static_cast<uint32_t>(ge::ModelTaskType::MODEL_TASK_PREPROCESS_KERNEL));
+  iter->second->SetModelTaskDef(task_def);
+  return root;
+}
+}  // namespace
+
+namespace {
 class DummyGuardCheckerForUt : public gert::GuardChecker {
  public:
   bool Match(const std::vector<gert::Tensor *> &, char_t *, size_t) const override {
@@ -364,6 +415,77 @@ TEST_F(ExecutorUnitTest, LoadExecutorSetFromModelDataWithFallbackAndInvalidGuard
   EXPECT_NE(executor_set.fallback, nullptr);
   EXPECT_EQ(executor_set.guard, nullptr);
   EXPECT_FALSE(executor_set.weights_identical);
+}
+
+/*
+ * 场景：模型根图为不支持 lowering 的 Enter 节点，主执行体转换失败。
+ * 期望：LoadExecutorSetFromModelData 返回失败，main/fallback 均未构建。
+ */
+TEST_F(ExecutorUnitTest, LoadExecutorSetFromModelDataFailsWhenMainLoweringFails) {
+  ScopedDeterministicOptions deterministic_options(false);
+  auto graph = ShareGraph::BuildSingleNodeGraph("Enter");
+  ASSERT_NE(graph, nullptr);
+  graph->TopologicalSorting();
+  auto root = GeModelBuilder(graph).BuildGeRootModel();
+  ASSERT_NE(root, nullptr);
+  auto model_data = ModelDataFaker().GeRootModel(root).BuildUnknownShape();
+  LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_NE(LoadExecutorSetFromModelData(model_data.Get(), args, executor_set), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(executor_set.main, nullptr);
+  EXPECT_EQ(executor_set.fallback, nullptr);
+}
+
+/*
+ * 场景：模型中存在 so_name 为空的 PREPROCESS_KERNEL 任务，model id 分配时
+ *       CheckAndSetOpMasterDevice 校验失败。
+ * 期望：LoadExecutorSetFromModelData 返回失败，main/fallback 均未构建。
+ */
+TEST_F(ExecutorUnitTest, LoadExecutorSetFromModelDataFailsWhenAssignModelIdFails) {
+  ScopedDeterministicOptions deterministic_options(false);
+  auto root = BuildRootModelWithEmptyPreprocessSoForExecutorUt();
+  ASSERT_NE(root, nullptr);
+  auto model_data = ModelDataFaker().GeRootModel(root).BuildUnknownShape();
+  LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_NE(LoadExecutorSetFromModelData(model_data.Get(), args, executor_set), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(executor_set.main, nullptr);
+  EXPECT_EQ(executor_set.fallback, nullptr);
+}
+
+/*
+ * 场景：模型中存在 so_name 为空的 PREPROCESS_KERNEL 任务，单执行体接口
+ *       model id 分配失败。
+ * 期望：error_code 为非成功状态，返回的 executor 为空。
+ */
+TEST_F(ExecutorUnitTest, LoadExecutorFromModelDataWithLoadArgsFailsWhenAssignModelIdFails) {
+  ScopedDeterministicOptions deterministic_options(false);
+  auto root = BuildRootModelWithEmptyPreprocessSoForExecutorUt();
+  ASSERT_NE(root, nullptr);
+  auto model_data = ModelDataFaker().GeRootModel(root).BuildUnknownShape();
+  LoadExecutorArgs args{nullptr, {}};
+  ge::graphStatus error_code = ge::GRAPH_SUCCESS;
+  auto executor = LoadExecutorFromModelData(model_data.Get(), args, error_code);
+  EXPECT_NE(error_code, ge::GRAPH_SUCCESS);
+  EXPECT_EQ(executor, nullptr);
+}
+
+/*
+ * 场景：双执行体模型中兜底体仅有 __fallback_sub__ 前缀子图、缺少兜底根
+ *       (__fallback__)，兜底执行体 lowering 失败。
+ * 期望：主执行体构建成功，兜底执行体构建失败，LoadExecutorSetFromModelData
+ *       返回失败且 fallback 为空。
+ */
+TEST_F(ExecutorUnitTest, LoadExecutorSetFromModelDataFailsWhenFallbackLoweringFails) {
+  ScopedDeterministicOptions deterministic_options(false);
+  auto root = BuildDualBodyRootWithBadFallbackForExecutorUt();
+  ASSERT_NE(root, nullptr);
+  auto model_data = ModelDataFaker().GeRootModel(root).BuildUnknownShape();
+  LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_NE(LoadExecutorSetFromModelData(model_data.Get(), args, executor_set), ge::GRAPH_SUCCESS);
+  EXPECT_NE(executor_set.main, nullptr);
+  EXPECT_EQ(executor_set.fallback, nullptr);
 }
 
 TEST_F(ExecutorUnitTest, LoadStreamExecutorFromModelDataDoesNotCheckProcessDeterministicConfig) {

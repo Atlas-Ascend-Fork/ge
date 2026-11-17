@@ -247,9 +247,17 @@ ge::graphStatus LoadToModelV2ExecutorBuilder(const ge::ModelData &model_data, co
   // todo： 当前单算子是一个临时方案， 后续考虑与图流程归一
   ge::ModelHelper model_helper;
   ge::GeRootModelPtr root_model = nullptr;
-  GE_ASSERT_SUCCESS(LoadRootModelForExecutor(model_data, model_helper, root_model, check_global_deterministic_config));
+  auto ret = LoadRootModelForExecutor(model_data, model_helper, root_model, check_global_deterministic_config);
+  if (ret != ge::GRAPH_SUCCESS) {
+    GELOGE(ret, "load root model failed, ret[%u].", static_cast<uint32_t>(ret));
+    return ret;
+  }
 
-  GE_ASSERT_SUCCESS(AssignModelIdForExecutor(root_model));
+  ret = AssignModelIdForExecutor(root_model);
+  if (ret != ge::GRAPH_SUCCESS) {
+    GELOGE(ret, "assign model id failed, ret[%u].", static_cast<uint32_t>(ret));
+    return ret;
+  }
 
   // autofuse 离线双执行体：单执行体接口只返回主执行体，先摘出兜底 sub-model。
   const auto fallback_models = ExtractFallbackModels(root_model);
@@ -270,20 +278,39 @@ ge::graphStatus LoadExecutorSetFromModelData(const ge::ModelData &model_data, co
                                              ExecutorSet &executor_set) {
   ge::ModelHelper model_helper;
   ge::GeRootModelPtr root_model = nullptr;
-  GE_ASSERT_SUCCESS(LoadRootModelForExecutor(model_data, model_helper, root_model, true));
-  GE_ASSERT_SUCCESS(AssignModelIdForExecutor(root_model));
+  auto ret = LoadRootModelForExecutor(model_data, model_helper, root_model, true);
+  if (ret != ge::GRAPH_SUCCESS) {
+    GELOGE(ret, "load root model failed, ret[%u].", static_cast<uint32_t>(ret));
+    return ret;
+  }
+  ret = AssignModelIdForExecutor(root_model);
+  if (ret != ge::GRAPH_SUCCESS) {
+    GELOGE(ret, "assign model id failed, ret[%u].", static_cast<uint32_t>(ret));
+    return ret;
+  }
 
   const auto fallback_models = ExtractFallbackModels(root_model);
   GE_ASSERT_SUCCESS(LoadHostInputIndexesForExecutor(root_model->GetRootGraph(), executor_set));
   FillDualBodyWeightInfo(root_model->GetRootGraph(), root_model, fallback_models, executor_set);
   ModelConverter::Args converter_args{{}, nullptr, nullptr, nullptr, &args.file_constant_mems};
-  GE_ASSERT_SUCCESS(BuildMainExecutor(model_data, converter_args, args.rt_session, root_model, executor_set));
+  ret = BuildMainExecutor(model_data, converter_args, args.rt_session, root_model, executor_set);
+  if (ret != ge::GRAPH_SUCCESS) {
+    GELOGE(ret, "build main executor failed, ret[%u].", static_cast<uint32_t>(ret));
+    return ret;
+  }
   if (!fallback_models.empty()) {
-    GE_ASSERT_SUCCESS(
-        BuildFallbackExecutor(model_data, converter_args, args.rt_session, root_model, fallback_models, executor_set));
+    ret = BuildFallbackExecutor(model_data, converter_args, args.rt_session, root_model, fallback_models, executor_set);
+    if (ret != ge::GRAPH_SUCCESS) {
+      GELOGE(ret, "build fallback executor failed, ret[%u].", static_cast<uint32_t>(ret));
+      return ret;
+    }
   }
   if (executor_set.fallback != nullptr) {
-    GE_ASSERT_SUCCESS(LoadGuardForExecutor(root_model->GetRootGraph(), executor_set));
+    ret = LoadGuardForExecutor(root_model->GetRootGraph(), executor_set);
+    if (ret != ge::GRAPH_SUCCESS) {
+      GELOGE(ret, "load guard for executor failed, ret[%u].", static_cast<uint32_t>(ret));
+      return ret;
+    }
   }
   GELOGI("load executor set success, has_fallback=%d, weights_identical=%d.",
          static_cast<int32_t>(executor_set.fallback != nullptr), static_cast<int32_t>(executor_set.weights_identical));
