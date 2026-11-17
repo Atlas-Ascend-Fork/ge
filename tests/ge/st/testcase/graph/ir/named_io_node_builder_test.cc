@@ -320,4 +320,55 @@ TEST_F(NamedIoNodeBuilderSTTest, BuildMultipleNodesOnSameGraph) {
   EXPECT_EQ(compute_graph->GetDirectNodesSize(), 2U);
 }
 
+/**
+ * 用例描述：使用 NamedIoNodeBuilder 构建连边图，验证动态端口查询的两类异常。
+ * 预置条件：使用现有运行环境和 STTestDynamicForIRBuilder 算子。
+ * 测试步骤：构建源节点和动态端口节点并连边，查询不存在的名称，再更新端口名称映射模拟索引不连续。
+ * 预期结果：不存在的输入、输出名称及索引不连续的输入、输出查询均返回 GRAPH_FAILED。
+ */
+TEST_F(NamedIoNodeBuilderSTTest, QueryInvalidDynamicPortsInGraph) {
+  Graph graph("st_test_graph");
+  AscendString error_msg;
+  auto source = NamedIoNodeBuilder(graph)
+                    .Type("STTestDynamicForIRBuilder")
+                    .Name("source")
+                    .AddOutput("y0")
+                    .AddOutput("y1")
+                    .AddOutput("y2")
+                    .Build(error_msg);
+  ASSERT_NE(source, nullptr);
+  auto dynamic = NamedIoNodeBuilder(graph)
+                     .Type("STTestDynamicForIRBuilder")
+                     .Name("dynamic_node")
+                     .AddInput("x0")
+                     .AddInput("x1")
+                     .AddInput("x2")
+                     .AddOutput("y0")
+                     .AddOutput("y1")
+                     .AddOutput("y2")
+                     .Build(error_msg);
+  ASSERT_NE(dynamic, nullptr);
+  for (int32_t i = 0; i < 3; ++i) {
+    ASSERT_EQ(graph.AddDataEdge(*source, i, *dynamic, i), GRAPH_SUCCESS);
+  }
+  const std::vector<std::pair<GNode, int32_t>> outputs{{*dynamic, 0}, {*dynamic, 1}, {*dynamic, 2}};
+  ASSERT_EQ(graph.SetOutputs(outputs), GRAPH_SUCCESS);
+  auto node = graph.FindNodeByName("dynamic_node");
+  ASSERT_NE(node, nullptr);
+
+  std::vector<int32_t> input_indexes;
+  std::vector<int32_t> output_indexes;
+  EXPECT_EQ(node->GetDynamicInputIndexesByName("missing", input_indexes), GRAPH_FAILED);
+  EXPECT_EQ(node->GetDynamicOutputIndexesByName("missing", output_indexes), GRAPH_FAILED);
+
+  const auto node_ptr = NodeAdapter::GNode2Node(*node);
+  ASSERT_NE(node_ptr, nullptr);
+  const auto op_desc = node_ptr->GetOpDesc();
+  ASSERT_NE(op_desc, nullptr);
+  ASSERT_TRUE(op_desc->UpdateInputName({{"x0", 0U}, {"x1", 2U}, {"x2", 1U}}));
+  ASSERT_TRUE(op_desc->UpdateOutputName({{"y0", 0U}, {"y1", 2U}, {"y2", 1U}}));
+  EXPECT_EQ(node->GetDynamicInputIndexesByName("x", input_indexes), GRAPH_FAILED);
+  EXPECT_EQ(node->GetDynamicOutputIndexesByName("y", output_indexes), GRAPH_FAILED);
+}
+
 }  // namespace ge
