@@ -2078,7 +2078,7 @@ static void MakeInt64PrivateDef(void *&privateDefPtr, uint32_t &privateDefLen) {
   memcpy(reinterpret_cast<int64_t *>(reinterpret_cast<char *>(privateDefPtr) + sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF)),
          offset, sizeof(offset));
   memcpy(reinterpret_cast<int64_t *>(reinterpret_cast<char *>(privateDefPtr) + sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF) +
-                                    sizeof(offset)),
+                                     sizeof(offset)),
          size, sizeof(size));
   privateDefLen = (uint32_t)tensorInfoSize;
 }
