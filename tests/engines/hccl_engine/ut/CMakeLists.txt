@@ -78,6 +78,14 @@ set(hcce_ut_llt_stub
     ${CMAKE_CURRENT_SOURCE_DIR}/../stub/llt_hccl_stub_hccl.cc
 )
 
+# aarch64 上 mockcpp 跳板为 32 字节, 而 stub 函数体仅约 28 字节且紧邻排布:
+# hook 低地址桩时, 跳板尾部指令会越界覆写相邻桩的入口(首指令被替换为 ret),
+# 后续对该桩的调用直接返回寄存器残留值(垃圾值), 造成用例在 arm 上不稳定失败。
+# 桩函数入口按 64 字节对齐后, 32 字节跳板只落入函数间填充区, 不再越界破坏相邻桩。
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+    set_source_files_properties(${hcce_ut_llt_stub} PROPERTIES COMPILE_OPTIONS "-falign-functions=64")
+endif()
+
 set(hccl_engine_src_test_file
     ${CMAKE_CURRENT_SOURCE_DIR}/ut_main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ut_hcom_plugin.cc
