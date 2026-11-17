@@ -62,6 +62,7 @@
 - 动态 shape 多流开关 `ENABLE_DYNAMIC_SHAPE_MULTI_STREAM=1` 与上述拆分/关系优化互斥；不得在多流路径删除 Launch-to-Free 边。
 - **唯一 memory worker 活性尚未解决。** 如果已激活 Launch 仍有排在阻塞 memory task 之后的未完成 memory-worker 前驱，当前阻塞等待可能形成闭环。任务 1.1、1.2、4.6、7.4 由用户选择延期，当前实现不得宣称保证该场景活性。生产验收前必须增加保守证明门禁，对无法证明安全的关系保留原边，或采用不占用唯一 memory worker 的非阻塞 continuation。
 - 不得修改 `EnsureNodeExeInOrderInSubgraph`、`IsCopyAsyncNode`、zero-copy 和地址复用的既有保序语义。
+- 保序补边必须做反向直连检查：相邻优先级组的 end/start 节点间若已存在 start→end 的反向真实边（如 atomic 算子场景 Copy Launch 指向优先级下调后的 atomic Launch 的 order-holder 控制边），必须跳过 end→start 补边并打印告警，防止与真实边构成环导致多线程执行器死锁；该跳过以真实边为唯一保序约束，不构成对既有保序语义的修改。
 
 ---
 

@@ -62,6 +62,7 @@
 - `ENABLE_DYNAMIC_SHAPE_MULTI_STREAM=1` is mutually exclusive with this split/relation optimization; Launch-to-Free edges must not be removed on the multi-stream path.
 - **Liveness with a sole memory worker is not solved.** If an activated Launch still has an unfinished memory-worker predecessor queued behind a blocked memory task, the blocking wait can form a cycle. Tasks 1.1, 1.2, 4.6, and 7.4 remain deferred by user choice, and the current implementation must not claim liveness for this scenario. Production acceptance requires either a conservative proof gate that retains the original edge whenever safety cannot be proven, or a non-blocking continuation that does not occupy the sole memory worker.
 - Existing `EnsureNodeExeInOrderInSubgraph`, `IsCopyAsyncNode`, zero-copy, and address-reuse ordering semantics must not be changed.
+- Strict-order additional edges must pass a reverse direct-connectivity check: when a start→end reverse real edge already exists between the end/start nodes of adjacent priority groups (e.g., the atomic-op order-holder control edge from a Copy Launch to the priority-decreased atomic Launch), the end→start additional edge must be skipped with a warning to prevent a cycle that deadlocks the multi-thread executor. The skip leaves the real edge as the sole ordering constraint and does not constitute a change of the existing ordering semantics.
 
 ---
 

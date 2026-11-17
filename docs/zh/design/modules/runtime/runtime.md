@@ -483,6 +483,8 @@ CalcCopyFlowAllocSizes -> AllocCopyFlowHbm -> PrepareCopyFlowResult -> LaunchCop
 
 当源节点存在 `kComputeNodeIndex` 时，`LaunchH2DCopy` 和 `LaunchCopyFlowH2D` 继承该索引。它们不属于 `IsLaunchNode` 定义的计算 Launch，但会通过注册的 `kKernelLaunch` 被 `IsLaunchOrHasSubGraphNode` 识别，参与 priority 计算和 strict-order 保序。DataDump 直接复用 `IsLaunchNode`，因此会自然跳过这两类内部 helper，避免同一计算算子被重复推进；真实 Consumer Launch 仍是 dump 边界。
 
+`EnsureNodeExeInOrderInSubgraph` 在相邻优先级组间补保序边时必须做双向直连检查：若存在 start→end 的反向真实边（如 atomic 算子的 order-holder 控制边由 Copy Launch 指向优先级被下调 5 的 atomic Launch），必须跳过补边并打印告警，否则与真实边构成 2 节点环导致多线程执行器死锁；反向真实边本身即 topo 序约束，运行期经 `StopGenWatcher` 完成时延迟扣减正确触发，跳过补边不改变既有保序语义。
+
 #### 4.6.2 Launch-to-Free 删除与 ExecutionData
 
 `RemoveLaunchFreeEdge` 按 Free 独立判定资格：目标必须是有 hold-address 变体的设备 Free，`ReleaseResourceIndex` 指向的直接 producer 必须位于非 Host 内存路径并注册为 `kKernelUseMemory`。对同一 Launch，Pass 先补齐全部 eligible producer 与全部 eligible Free 的笛卡尔积顺序；已有数据或控制依赖不重复添加。随后按 owner graph 记录并去重精确 `(Free*, Launch*)` 关系，替换 hold-address Free，最后才删除目标边。

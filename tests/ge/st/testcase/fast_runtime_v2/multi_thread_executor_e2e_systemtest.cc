@@ -9,6 +9,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <map>
+#include <queue>
+#include <set>
 #include "faker/fake_value.h"
 #include "common/share_graph.h"
 #include "faker/global_data_faker.h"
@@ -24,6 +27,10 @@
 #include "op_impl/data_flow_op_impl.h"
 #include "lowering/model_converter.h"
 #include "graph/utils/op_desc_utils.h"
+#include "graph/utils/attr_utils.h"
+#include "graph/utils/execute_graph_utils.h"
+#include "graph/utils/fast_node_utils.h"
+#include "core/builder/node_types.h"
 #include "register/op_tiling/op_tiling_constants.h"
 #include "register/kernel_registry.h"
 #include "faker/magic_ops.h"
@@ -509,4 +516,176 @@ TEST_F(MultiThreadExecutorE2ESystemTest, schedule_by_kernel_and_profiling_succes
   ProfilingTestUtil::Instance().Clear();
   ge::diagnoseSwitch::MutableProfiling().SetEnableFlag(0);
 }
+
+namespace {
+struct AdjacentGroupPair {
+  ge::FastNode *lower_priority_node{nullptr};
+  ge::FastNode *higher_priority_node{nullptr};
+};
+
+struct LstmpReverseEdgeModel {
+  ge::GeRootModelPtr root_model;
+  ge::ExecuteGraphPtr exe_graph;
+  std::string name_a;
+  std::string name_b;
+  std::string type_a;
+  std::string type_b;
+};
+
+bool IsNodeReachable(ge::FastNode *src, ge::FastNode *dst) {
+  std::set<ge::FastNode *> seen;
+  std::queue<ge::FastNode *> pending;
+  pending.push(src);
+  while (!pending.empty()) {
+    auto *curr = pending.front();
+    pending.pop();
+    for (auto *out : curr->GetAllOutNodes()) {
+      if (out == dst) {
+        return true;
+      }
+      if (seen.insert(out).second) {
+        pending.push(out);
+      }
+    }
+  }
+  return false;
+}
+
+// 按priority分组(与EnsureNodeExeInOrderInSubgraph一致), 选取相邻单节点组(A低值组, B高值组)且A到B无可达路径的一对
+AdjacentGroupPair FindAdjacentGroupPairWithoutPath(const ge::ExecuteGraph *main_graph) {
+  std::map<int64_t, std::vector<ge::FastNode *>> priority_groups;
+  for (auto *node : main_graph->GetDirectNode()) {
+    if (!IsLaunchOrHasSubGraphNode(node)) {
+      continue;
+    }
+    int64_t priority = -1;
+    (void)ge::AttrUtils::GetInt(node->GetOpDescBarePtr(), "priority", priority);
+    priority_groups[priority].push_back(node);
+  }
+  AdjacentGroupPair group_pair;
+  for (auto it = priority_groups.begin(); it != priority_groups.end() && group_pair.lower_priority_node == nullptr;
+       ++it) {
+    auto next_it = std::next(it);
+    if (next_it == priority_groups.end() || it->second.size() != 1UL || next_it->second.size() != 1UL) {
+      continue;
+    }
+    if (IsNodeReachable(it->second[0], next_it->second[0])) {
+      continue;
+    }
+    group_pair.lower_priority_node = it->second[0];
+    group_pair.higher_priority_node = next_it->second[0];
+  }
+  return group_pair;
+}
+
+// 执行节点命名规则: <kernel类型>_<计算节点名>_<id>, 提取计算节点名用于ess断言, 不匹配时返回空串
+std::string ComputeNodeNameOfLaunch(const ge::FastNode *node) {
+  const std::string name = node->GetName();
+  const std::string prefix = std::string(node->GetType()) + "_";
+  const auto last_sep = name.find_last_of('_');
+  if (name.compare(0, prefix.size(), prefix) != 0 || last_sep <= prefix.size()) {
+    return "";
+  }
+  return name.substr(prefix.size(), last_sep - prefix.size());
+}
+
+// 构造LSTMP网络并lowering, 在相邻优先级组间注入反向真实控制边B->A(模拟atomic算子order-holder边与优先级序反向)
+LstmpReverseEdgeModel PrepareLstmpWithReverseCtrlEdge() {
+  LstmpReverseEdgeModel model;
+  auto graph = ShareGraph::LstmpGraph();
+  graph->TopologicalSorting();
+  GeModelBuilder builder(graph);
+  model.root_model =
+      builder
+          .AddTaskDef("TransData",
+                      AiCoreTaskDefFaker(TransDataStubName).AtomicStubNum(DynamicAtomicStubName).WithHandle())
+          .AddTaskDef("DynamicRNNV3", AiCoreTaskDefFaker(DynamicRnnv3StubName))
+          .BuildGeRootModel();
+  bg::ValueHolder::PopGraphFrame();  // 不需要BgTest自带的Frame
+  model.exe_graph = ModelConverter().ConvertGeModelToExecuteGraph(model.root_model);
+  if (model.exe_graph == nullptr) {
+    return model;
+  }
+  auto main_node = ge::ExecuteGraphUtils::FindFirstNodeMatchType(model.exe_graph.get(), "Main");
+  auto main_graph = (main_node == nullptr) ? nullptr : ge::FastNodeUtils::GetSubgraphFromNode(main_node, 0);
+  if (main_graph == nullptr) {
+    return model;
+  }
+  auto group_pair = FindAdjacentGroupPairWithoutPath(main_graph);
+  if (group_pair.lower_priority_node == nullptr || group_pair.higher_priority_node == nullptr) {
+    return model;
+  }
+  if (!IsNodeReachable(group_pair.higher_priority_node, group_pair.lower_priority_node) &&
+      main_graph->AddEdge(group_pair.higher_priority_node, ge::kControlEdgeIndex, group_pair.lower_priority_node,
+                          ge::kControlEdgeIndex) == nullptr) {
+    return model;
+  }
+  model.name_a = ComputeNodeNameOfLaunch(group_pair.lower_priority_node);
+  model.name_b = ComputeNodeNameOfLaunch(group_pair.higher_priority_node);
+  model.type_a = group_pair.lower_priority_node->GetType();
+  model.type_b = group_pair.higher_priority_node->GetType();
+  return model;
+}
+}  // namespace
+
+/**
+ * 用例描述： 相邻优先级组间存在反向真实控制边(高优先级值launch指向低优先级值launch, 模拟atomic算子
+ *       order-holder边场景)时, 多线程执行器构建期的保序补边跳过该组对, 不与真实边构成环, 全图完整执行
+ *
+ * 预置条件：
+ * 1. Fake LSTMP网络中算子的整套实现(TransData带AtomicClean原子kernel、DynamicRNNV3)
+ * 2. fixture 已设置 MAX_RUNTIME_CORE_NUMBER=3, 走多线程执行器
+ *
+ * 测试步骤：
+ * 1. 构造LSTMP网络, lowering成执行图, 在相邻优先级组间注入反向真实控制边B->A
+ * 2. 创建多线程执行器, 挂接ess, Load后执行两轮
+ * 3. 校验A/B每轮的执行次数与执行顺序
+ *
+ * 预期结果：
+ * 1. Load/Execute均成功
+ * 2. A、B每轮各执行1次, 且B先于A执行(反向真实边是有效的topo序约束, 运行期由StopGenWatcher正确处理)
+ * 3. 保序补边因B->A反向直连边存在而跳过A->B补边; 若不跳过(修复回退), A->B与B->A构成2节点环,
+ *    A/B及下游静默不执行, 执行次数为0, 本用例失败
+ */
+TEST_F(MultiThreadExecutorE2ESystemTest, reverse_ctrl_edge_skip_additional_order_edge) {
+  auto model = PrepareLstmpWithReverseCtrlEdge();
+  ASSERT_NE(model.exe_graph, nullptr);
+  ASSERT_FALSE(model.name_a.empty());
+  ASSERT_FALSE(model.name_b.empty());
+
+  GertRuntimeStub runtime_stub;
+  runtime_stub.GetKernelStub().StubTiling();
+  auto option = MultiThreadExecutorOption(kThreadNum);
+  auto model_executor = ModelV2Executor::Create(model.exe_graph, option, model.root_model);
+  ASSERT_NE(model_executor, nullptr);
+  auto ess = StartExecutorStatistician(model_executor);
+
+  auto allocator = memory::CachingMemAllocator::GetAllocator();
+  auto mem_block = allocator->Malloc(2048 * 2);
+  memset_s(const_cast<void *>(mem_block->GetAddr()), mem_block->GetSize(), 0, 2048 * 2);
+  ASSERT_EQ(model_executor->Load(), ge::GRAPH_SUCCESS);
+  auto outputs = FakeTensors({2048}, 3, const_cast<void *>(mem_block->GetAddr()));
+  auto inputs =
+      FakeTensors({2048}, 3, const_cast<void *>(mem_block->GetAddr()), kOnHost, ge::FORMAT_ND, ge::DT_FLOAT16);
+  rtStream_t stream;
+  ASSERT_EQ(aclrtCreateStreamWithConfig(&stream, static_cast<uint32_t>(RT_STREAM_PRIORITY_DEFAULT), 0), RT_ERROR_NONE);
+  auto i3 = FakeValue<uint64_t>(reinterpret_cast<uint64_t>(stream));
+
+  for (size_t round = 0; round < 2; ++round) {
+    ess->Clear();
+    ASSERT_EQ(model_executor->Execute({i3.value}, inputs.GetTensorList(), inputs.size(),
+                                      reinterpret_cast<Tensor **>(outputs.GetAddrList()), outputs.size()),
+              ge::GRAPH_SUCCESS);
+    ASSERT_EQ(ess->GetExecuteCountByNodeNameAndKernelType(model.name_a, model.type_a), 1);
+    ASSERT_EQ(ess->GetExecuteCountByNodeNameAndKernelType(model.name_b, model.type_b), 1);
+    ASSERT_LT(ess->GetExecuteIndexByNodeNameAndKernelType(model.name_b, model.type_b),
+              ess->GetExecuteIndexByNodeNameAndKernelType(model.name_a, model.type_a));
+  }
+
+  ASSERT_EQ(model_executor->UnLoad(), ge::GRAPH_SUCCESS);
+  ASSERT_TRUE(runtime_stub.CheckLaunchWhenStubTiling());
+  aclrtDestroyStream(stream);
+  mem_block->Free();
+}
+
 }  // namespace gert
