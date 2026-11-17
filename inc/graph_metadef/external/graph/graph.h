@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "graph/c_types.h"
 #include "graph/operator.h"
 #include "graph/gnode.h"
 
@@ -28,8 +29,8 @@ class GraphImpl;
 class GraphBuffer;
 
 /* 图后端类别枚举 C_GraphKind（C_GRAPH_COMPUTE = 0 计算图，C_GRAPH_EXECUTE = 1 执行图）统一定义在
-   metadef 公共头 graph/c_types.h 中；ge 侧完成依赖切换前，GraphKind 暂用整型别名，取值与该枚举一致。 */
-using GraphKind = int32_t;
+   metadef 公共头 graph/c_types.h 中（C/C++ 共用），ge::GraphKind 为其别名。 */
+using GraphKind = C_GraphKind;
 
 using GraphImplPtr = std::shared_ptr<GraphImpl>;
 using GraphPtr = std::shared_ptr<Graph>;

@@ -62,6 +62,7 @@ add_executable(graph_engine_test
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_profiling_start_node.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_iterator_flow_ctrl.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_framework_dummy.cc"
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_graph_building_facade.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_tensor_move.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_transdata_fusion_optimize.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_ge_opt_info.cc"

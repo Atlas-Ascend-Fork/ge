@@ -35,18 +35,20 @@ class OperatorGraphBuilder {
   }
 
   graphStatus GenerateNode(const OperatorImplPtr &op_impl) {
-    NodeType node;
-    const graphStatus ret = AddNode(op_impl, node);
-    if (ret != GRAPH_SUCCESS) {
-      return ret;
-    }
-    return WalkAllSubgraphs(node, op_impl);
+    GE_ASSERT_NOTNULL(graph_);
+    GE_ASSERT_NOTNULL(op_impl);
+    NodeType node = GraphOps::CreateNode(graph_, op_impl->GetOpDescImpl());
+    GE_ASSERT_NOTNULL(node);
+    (void)all_nodes_info_.emplace(op_impl, node);
+    (void)stable_all_nodes_info_.emplace(op_impl, node);
+    GE_ASSERT_SUCCESS(WalkAllSubgraphs(node, op_impl));
+    return GRAPH_SUCCESS;
   }
 
   graphStatus WalkAllOperators(const std::vector<OperatorImplPtr> &inputs) {
     if (graph_ == nullptr) {
-      REPORT_INNER_ERR_MSG("E18888", "graph_ is nullptr, check invalid.");
       GELOGE(GRAPH_FAILED, "[Check][Param] graph_ is null.");
+      REPORT_INNER_ERR_MSG("E18888", "graph_ is nullptr, check invalid.");
       return GRAPH_FAILED;
     }
     std::queue<std::vector<OperatorImplPtr>> pending;
@@ -56,8 +58,8 @@ class OperatorGraphBuilder {
       pending.pop();
       for (const auto &op_impl : operators) {
         if (op_impl == nullptr) {
-          REPORT_INNER_ERR_MSG("E18888", "op_impl is nullptr, check invalid.");
           GELOGE(GRAPH_FAILED, "[Check][Param] Operator Impl is null.");
+          REPORT_INNER_ERR_MSG("E18888", "op_impl is nullptr, check invalid.");
           return GRAPH_FAILED;
         }
         if (all_nodes_info_.find(op_impl) != all_nodes_info_.end()) {
@@ -93,7 +95,7 @@ class OperatorGraphBuilder {
         }
       }
     }
-    return GRAPH_SUCCESS;
+    return GraphOps::MoveSubgraphToRoot(0, graph_);
   }
 
   graphStatus AddEdges() {
@@ -106,16 +108,16 @@ class OperatorGraphBuilder {
       const auto out_links = op_impl->output_links_;
       const auto desc = op_impl->GetOpDescImpl();
       if (desc == nullptr) {
-        REPORT_INNER_ERR_MSG("E18888", "Src operator impl's op_desc is nullptr, check invalid.");
         GELOGE(GRAPH_FAILED, "[Check][Param] Src operator impl's op_desc is null.");
+        REPORT_INNER_ERR_MSG("E18888", "Src operator impl's op_desc is nullptr, check invalid.");
         return GRAPH_FAILED;
       }
       for (const auto &output : out_links) {
         const auto index = desc->GetOutputIndexByName(output.first);
         if (index < 0) {
+          GELOGE(GRAPH_FAILED, "[Get][Index] Find output index by name:%s failed", output.first.c_str());
           REPORT_INNER_ERR_MSG("E18888", "Find output index by name:%s in op:%s failed", output.first.c_str(),
                                desc->GetNamePtr());
-          GELOGE(GRAPH_FAILED, "[Get][Index] Find output index by name:%s failed", output.first.c_str());
           return GRAPH_FAILED;
         }
         const auto output_ret = GraphOps::CheckDataOutput(src, index);
@@ -125,8 +127,8 @@ class OperatorGraphBuilder {
         for (const auto &peer : output.second) {
           const auto dst = all_nodes_info_.find(peer.GetOwner());
           if (dst == all_nodes_info_.end()) {
-            REPORT_INNER_ERR_MSG("E18888", "Find Dst node failed, op:%s.", desc->GetNamePtr());
             GELOGE(GRAPH_FAILED, "[Check][Param] Find Dst node failed.");
+            REPORT_INNER_ERR_MSG("E18888", "Find Dst node failed, op:%s.", desc->GetNamePtr());
             return GRAPH_FAILED;
           }
           if (dst->second == nullptr) {
@@ -163,8 +165,8 @@ class OperatorGraphBuilder {
     GE_ASSERT_NOTNULL(op_impl);
     node = GraphOps::CreateNode(graph_, op_impl->GetOpDescImpl());
     if (node == nullptr) {
-      REPORT_INNER_ERR_MSG("E18888", "add node failed.");
       GELOGE(GRAPH_FAILED, "[Add][Node] failed.");
+      REPORT_INNER_ERR_MSG("E18888", "add node failed.");
       return GRAPH_FAILED;
     }
     (void)all_nodes_info_.emplace(op_impl, node);
@@ -174,14 +176,15 @@ class OperatorGraphBuilder {
 
   graphStatus WalkAllSubgraphs(const NodeType &node, const OperatorImplPtr &op_impl) {
     // Keep the source slot ordering and indexes, including dynamic slots such as branches10.
+    const std::string name = node->GetName();
     for (const auto &slot : op_impl->GetOpDescImpl()->GetSubgraphNameIndexes()) {
       const auto builder = op_impl->GetSubgraphBuilder(slot.first);
       if (builder == nullptr) {
-        GELOGW("[Check][Param] Node %s has no builder", op_impl->GetName().c_str());
+        GELOGW("[Check][Param] Node %s has no builder", name.c_str());
         continue;
       }
       const Graph subgraph = builder();
-      const auto ret = GraphOps::MountSubgraph(graph_, node, slot.first, slot.second, subgraph);
+      const auto ret = GraphOps::MountSubgraph(graph_, node, name, slot.first, slot.second, subgraph);
       if (ret != GRAPH_SUCCESS) {
         return ret;
       }

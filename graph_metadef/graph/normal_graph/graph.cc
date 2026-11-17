@@ -69,14 +69,17 @@ Graph::Graph(const char_t *name) {
 }
 
 Graph::Graph(const char_t *name, GraphKind kind) {
-  if ((name == nullptr) || ((kind != 0) && (kind != 1))) {
+  if ((name == nullptr) || ((kind != C_GRAPH_COMPUTE) && (kind != C_GRAPH_EXECUTE))) {
     GELOGE(GRAPH_PARAM_INVALID, "[GertGraph][Parameter] Invalid graph name or backend kind.");
     return;
   }
-  if (kind == 1) {
+  if (kind == C_GRAPH_EXECUTE) {
     impl_ = ComGraphMakeShared<ExecuteGraphBackend>(name);
   } else {
     impl_ = ComGraphMakeShared<ComputeGraphBackend>(name);
+  }
+  if (impl_ == nullptr) {
+    GELOGW("[Check][Impl] Make graph impl failed");
   }
 }
 
@@ -414,6 +417,9 @@ graphStatus Graph::GetName(AscendString &name) const {
 }
 
 graphStatus Graph::CopyFrom(const Graph &src_graph) {
+  AscendString target_name;
+  (void)GetName(
+      target_name);  // 对调用方目标取名探测：空 impl 时上报 impl is nullptr，与改写前 CopyGraph 对原目标的取名行为一致
   Graph copied_graph;
   const auto res = impl_ != nullptr ? impl_->CopyFrom(src_graph, copied_graph)
                                     : ComputeGraphBackend::CopyFrom(src_graph, "", copied_graph);

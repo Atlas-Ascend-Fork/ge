@@ -11,6 +11,8 @@
 #include "normal_graph/graph_impl.h"
 #include "graph/op_desc.h"
 #include "graph/utils/op_desc_utils.h"
+#include "graph/utils/graph_utils_ex.h"
+#include "fast_graph/execute_graph.h"
 
 namespace ge {
 GNode GraphImpl::AddNodeByOp(const Operator &op) {
@@ -50,15 +52,22 @@ graphStatus GraphImpl::ResolveEdgeNodes(const GNode &src, const GNode &dst, Node
   }
   const char *const owner_word = IsComputeGraphKind() ? "compute graph" : "execute graph";
   if (!src_context.HasOwner()) {
-    REPORT_INNER_ERR_MSG("E18888", "src node[%s] owner %s is nullptr.", src_context.name.c_str(), owner_word);
-    GELOGE(GRAPH_FAILED, "[Get][Graph] src node[%s] owner %s is nullptr.", src_context.name.c_str(), owner_word);
+    const std::string node_name = GetNodeName(src_context);
+    REPORT_INNER_ERR_MSG("E18888", "src node[%s] owner %s is nullptr.", node_name.c_str(), owner_word);
+    GELOGE(GRAPH_FAILED, "[Get][Graph] src node[%s] owner %s is nullptr.", node_name.c_str(), owner_word);
     return GRAPH_FAILED;
   }
   if (!dst_context.HasOwner()) {
-    REPORT_INNER_ERR_MSG("E18888", "dst node[%s] owner %s is nullptr.", dst_context.name.c_str(), owner_word);
-    GELOGE(GRAPH_FAILED, "[Get][Graph] dst node[%s] owner %s is nullptr.", dst_context.name.c_str(), owner_word);
+    const std::string node_name = GetNodeName(dst_context);
+    REPORT_INNER_ERR_MSG("E18888", "dst node[%s] owner %s is nullptr.", node_name.c_str(), owner_word);
+    GELOGE(GRAPH_FAILED, "[Get][Graph] dst node[%s] owner %s is nullptr.", node_name.c_str(), owner_word);
     return GRAPH_FAILED;
   }
+  // 计算图侧：判空通过后释放 owner 强引用，恢复改写前"仅判空表达式中短暂持有"的语义
+  // （compute_node 独立持有节点强引用，后续边操作安全）。
+  // 执行图侧：execute_node 为裸指针，其存活依赖 execute_owner 保活，须在整个边编辑期间持有。
+  src_context.compute_owner.reset();
+  dst_context.compute_owner.reset();
   return GRAPH_SUCCESS;
 }
 
@@ -72,10 +81,10 @@ graphStatus GraphImpl::AddDataEdge(GNode &src_node, const int32_t src_port_index
 
   const graphStatus res = LinkDataEdge(src_context, src_port_index, dst_context, dst_port_index);
   if (res != GRAPH_SUCCESS) {
-    REPORT_INNER_ERR_MSG("E18888", "add data edge from %s(%d) to %s(%d) failed.", src_context.name.c_str(),
-                         src_port_index, dst_context.name.c_str(), dst_port_index);
-    GELOGE(GRAPH_FAILED, "[Add][DataEdge] from %s(%d) to %s(%d) failed.", src_context.name.c_str(), src_port_index,
-           dst_context.name.c_str(), dst_port_index);
+    REPORT_INNER_ERR_MSG("E18888", "add data edge from %s(%d) to %s(%d) failed.", GetNodeName(src_context).c_str(),
+                         src_port_index, GetNodeName(dst_context).c_str(), dst_port_index);
+    GELOGE(GRAPH_FAILED, "[Add][DataEdge] from %s(%d) to %s(%d) failed.", GetNodeName(src_context).c_str(),
+           src_port_index, GetNodeName(dst_context).c_str(), dst_port_index);
     return GRAPH_FAILED;
   }
 
@@ -91,10 +100,10 @@ graphStatus GraphImpl::AddControlEdge(GNode &src_node, GNode &dst_node) {
 
   const graphStatus res = LinkControlEdge(src_context, dst_context);
   if (res != GRAPH_SUCCESS) {
-    REPORT_INNER_ERR_MSG("E18888", "add control edge from %s to %s failed.", src_context.name.c_str(),
-                         dst_context.name.c_str());
-    GELOGE(GRAPH_FAILED, "[Add][ControlEdge] from %s to %s failed.", src_context.name.c_str(),
-           dst_context.name.c_str());
+    REPORT_INNER_ERR_MSG("E18888", "add control edge from %s to %s failed.", GetNodeName(src_context).c_str(),
+                         GetNodeName(dst_context).c_str());
+    GELOGE(GRAPH_FAILED, "[Add][ControlEdge] from %s to %s failed.", GetNodeName(src_context).c_str(),
+           GetNodeName(dst_context).c_str());
     return GRAPH_FAILED;
   }
 
@@ -116,10 +125,10 @@ graphStatus GraphImpl::RemoveEdge(GNode &src_node, const int32_t src_port_index,
   }
 
   if (UnlinkEdge(src_context, src_port_index, dst_context, dst_port_index) != GRAPH_SUCCESS) {
-    REPORT_INNER_ERR_MSG("E18888", "remove edge between %s(%d) and %s(%d) failed.", src_context.name.c_str(),
-                         src_port_index, dst_context.name.c_str(), dst_port_index);
-    GELOGE(GRAPH_FAILED, "[Remove][Edge] between %s(%d) and %s(%d) failed.", src_context.name.c_str(), src_port_index,
-           dst_context.name.c_str(), dst_port_index);
+    REPORT_INNER_ERR_MSG("E18888", "remove edge between %s(%d) and %s(%d) failed.", GetNodeName(src_context).c_str(),
+                         src_port_index, GetNodeName(dst_context).c_str(), dst_port_index);
+    GELOGE(GRAPH_FAILED, "[Remove][Edge] between %s(%d) and %s(%d) failed.", GetNodeName(src_context).c_str(),
+           src_port_index, GetNodeName(dst_context).c_str(), dst_port_index);
     return GRAPH_FAILED;
   }
 
@@ -144,19 +153,23 @@ graphStatus GraphImpl::RemoveNode(GNode &node, bool contain_subgraph) {
     return PARAM_INVALID;
   }
   if (!IsNodeInScope(context, contain_subgraph)) {
+    const std::string node_name = GetNodeName(context);
     if (contain_subgraph) {
-      REPORT_INNER_ERR_MSG("E18888", "node[%s] is not in the graph[%s] or not in subgraph.", context.name.c_str(),
-                           GetName().c_str());
+      REPORT_INNER_ERR_MSG("E18888", "node[%s] is not in the graph[%s] or not in subgraph.", node_name.c_str(),
+                           GetNativeName().c_str());
     } else {
-      REPORT_INNER_ERR_MSG("E18888", "node[%s] is not in the graph[%s].", context.name.c_str(), GetName().c_str());
+      REPORT_INNER_ERR_MSG("E18888", "node[%s] is not in the graph[%s].", node_name.c_str(), GetNativeName().c_str());
     }
-    GELOGE(GRAPH_FAILED, "[Check][Param] node[%s] is not in the graph[%s].", context.name.c_str(), GetName().c_str());
+    GELOGE(GRAPH_FAILED, "[Check][Param] node[%s] is not in the graph[%s].", node_name.c_str(),
+           GetNativeName().c_str());
     return GRAPH_FAILED;
   }
   UnlinkNode(context);
   if (EraseNode(context) != GRAPH_SUCCESS) {
-    REPORT_INNER_ERR_MSG("E18888", "graph:%s remove node:%s failed", context.owner_name.c_str(), context.name.c_str());
-    GELOGE(GRAPH_FAILED, "[Remove][Node] %s from graph:%s failed.", context.name.c_str(), context.owner_name.c_str());
+    REPORT_INNER_ERR_MSG("E18888", "graph:%s remove node:%s failed", context.owner_name.c_str(),
+                         GetNodeName(context).c_str());
+    GELOGE(GRAPH_FAILED, "[Remove][Node] %s from graph:%s failed.", GetNodeName(context).c_str(),
+           context.owner_name.c_str());
     return GRAPH_FAILED;
   }
   ClearNodeOwner(context);
@@ -195,11 +208,22 @@ graphStatus GraphImpl::AddSubGraph(const Graph &subgraph) {
     return PARAM_INVALID;
   }
   if (RegisterSubgraph(subgraph) != GRAPH_SUCCESS) {
-    REPORT_INNER_ERR_MSG("E18888", "graph:%s add subgraph:%s failed", GetName().c_str(), subgraph.GetName().c_str());
-    GELOGE(GRAPH_FAILED, "[Add][Subgraph] %s to graph:%s failed.", subgraph.GetName().c_str(), GetName().c_str());
+    const std::string native_name = GetNativeName();
+    const std::string sub_native_name = GetSubgraphNativeName(subgraph);
+    REPORT_INNER_ERR_MSG("E18888", "graph:%s add subgraph:%s failed", native_name.c_str(), sub_native_name.c_str());
+    GELOGE(GRAPH_FAILED, "[Add][Subgraph] %s to graph:%s failed.", sub_native_name.c_str(), native_name.c_str());
     return GRAPH_FAILED;
   }
   return GRAPH_SUCCESS;
+}
+
+std::string GraphImpl::GetSubgraphNativeName(const Graph &subgraph) const {
+  if (IsComputeGraphKind()) {
+    const auto native = GraphUtilsEx::GetComputeGraph(subgraph);
+    return native != nullptr ? native->GetName() : subgraph.GetName();
+  }
+  const auto native = GraphUtilsEx::Graph2ExecuteGraph(subgraph);
+  return native != nullptr ? native->GetName() : subgraph.GetName();
 }
 
 graphStatus GraphImpl::SetOutputs(const std::vector<Operator> &outputs) {
@@ -245,8 +269,7 @@ graphStatus GraphImpl::SetOutputs(const std::vector<std::pair<Operator, std::vec
     SetUserDefinedOutput(*output_names);
   }
   SetOutputSize(static_cast<uint32_t>(output_indexes.size()));
-  GE_ASSERT_SUCCESS(SetGraphOutNodesInfo(output_nodes));
-  return GRAPH_SUCCESS;
+  return SetGraphOutNodesInfo(output_nodes);
 }
 
 graphStatus GraphImpl::SetOutputs(const std::vector<std::pair<Operator, std::string>> &outputs) {
@@ -270,7 +293,10 @@ graphStatus GraphImpl::SetOutputs(const std::vector<std::pair<Operator, std::str
   }
   FinalizeUserOutputNames();
   SetOutputSize(static_cast<uint32_t>(outputs.size()));
-  GE_ASSERT_SUCCESS(SetGraphOutNodesInfo(output_nodes));
+  const graphStatus out_ret = SetGraphOutNodesInfo(output_nodes);
+  if (out_ret != GRAPH_SUCCESS) {
+    return out_ret;
+  }
   GELOGI("********************SetOutputs Success***********************");
   const auto *output_names = GetUserOutputNames();
   if ((output_names != nullptr) && !output_names->empty()) {
@@ -301,8 +327,7 @@ graphStatus GraphImpl::SetOutputs(const std::vector<std::pair<GNode, int32_t>> &
     return PARAM_INVALID;
   }
   PrepareSetOutputs();
-  GE_ASSERT_SUCCESS(SetGraphOutNodesInfo(outputs));
-  return GRAPH_SUCCESS;
+  return SetGraphOutNodesInfo(outputs);
 }
 
 graphStatus GraphImpl::AppendUserOutput(const Operator &output, const std::vector<size_t> &indexes,
@@ -356,11 +381,11 @@ graphStatus GraphImpl::AppendNamedUserOutput(const Operator &output, const std::
   const auto node = FindDirectNode(out_name, found);
   if (!found) {
     REPORT_INNER_ERR_MSG("E18888", "designated out_node (%s) does not exist in graph:%s, this out_node ignored!",
-                         out_name.GetString(), GetName().c_str());
+                         out_name.GetString(), GetNativeName().c_str());
     GELOGE(GRAPH_FAILED,
            "[Check][Param] Warning, user designated out_node (%s) does not exist in graph:%s, "
            "this out_node ignored!",
-           out_name.GetString(), GetName().c_str());
+           out_name.GetString(), GetNativeName().c_str());
     return GRAPH_FAILED;
   }
   if (node == nullptr) {
@@ -386,11 +411,11 @@ graphStatus GraphImpl::AppendNamedUserOutput(const Operator &output, const std::
     if (index < 0) {
       REPORT_INNER_ERR_MSG("E18888",
                            "user designated out_node (%s):(%s) does not exist in graph:%s, this out_node ignored!",
-                           out_name.GetString(), output_name.c_str(), GetName().c_str());
+                           out_name.GetString(), output_name.c_str(), GetNativeName().c_str());
       GELOGE(GRAPH_FAILED,
              "[Check][Param] Warning, user designated out_node (%s):(%s) does not exist in graph:%s, "
              "this out_node ignored!",
-             out_name.GetString(), output_name.c_str(), GetName().c_str());
+             out_name.GetString(), output_name.c_str(), GetNativeName().c_str());
       return GRAPH_FAILED;
     }
     AppendUserOutputName(out_name, static_cast<size_t>(index));

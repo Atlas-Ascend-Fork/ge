@@ -264,11 +264,16 @@ struct ExecuteGraphBuildOps {
     return GRAPH_SUCCESS;
   }
 
-  static graphStatus MountSubgraph(const GraphPtr &owner, NodeType node, const std::string &name, uint32_t,
-                                   const Graph &graph) {
+  static graphStatus MountSubgraph(const GraphPtr &owner, NodeType node, const std::string &, const std::string &name,
+                                   uint32_t, const Graph &graph) {
     const auto subgraph = GraphUtilsEx::Graph2ExecuteGraph(graph);
     GE_ASSERT_NOTNULL(subgraph, "Execution node only accepts execution subgraphs");
     return ExecuteNodeBackend::MountSubgraph(owner, node, AscendString(name.c_str()), subgraph);
+  }
+
+  // 执行图无子图归根概念：对齐模板尾部的公共流程，no-op 保持既有行为
+  static graphStatus MoveSubgraphToRoot(const int32_t, const GraphPtr &) {
+    return GRAPH_SUCCESS;
   }
 };
 

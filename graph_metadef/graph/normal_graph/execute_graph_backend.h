@@ -35,6 +35,7 @@ class ExecuteGraphBackend : public GraphImpl {
   // 按真实图树递归枚举；节点引用按所属底层图共享，与单独查询保持一致。
   std::vector<GNode> GetAllNodes() const override;
   const std::string &GetName() const override;
+  std::string GetNativeName() const override;
   bool IsValid() const override;
   // Unsupported capabilities are rejected by the backend, not the public routing layer.
   graphStatus SetTargets(const std::vector<Operator> &targets) override;
@@ -67,6 +68,7 @@ class ExecuteGraphBackend : public GraphImpl {
 
  protected:
   bool ResolveNode(const GNode &node, NodeContext &context) const override;
+  std::string GetNodeName(const NodeContext &context) const override;
   GNode AddNodeFromDesc(const OpDescPtr &desc) override;
   graphStatus LinkDataEdge(const NodeContext &src, int32_t out, const NodeContext &dst, int32_t in) override;
   graphStatus LinkControlEdge(const NodeContext &src, const NodeContext &dst) override;
@@ -88,6 +90,8 @@ class ExecuteGraphBackend : public GraphImpl {
  private:
   std::vector<GNode> WrapNodes(const std::vector<FastNode *> &nodes) const;
   FastNode *FindDirectNodeByName(const AscendString &name) const;
+  // 转成ComputeGraph门面用于只读dump，转换结果复用原图OpDesc对象
+  GraphPtr ConvertToComputeGraphFacade() const;
   std::string name_;
   std::shared_ptr<ExecuteGraph> graph_;
 };

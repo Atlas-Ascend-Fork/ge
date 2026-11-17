@@ -52,9 +52,9 @@
 
 namespace ge {
 namespace {
-// GraphKind 依赖切换期暂为整型别名（0=计算图，1=执行图），用例内以常量指代
-constexpr GraphKind kComputeGraphKind = static_cast<GraphKind>(0);
-constexpr GraphKind kExecGraphKind = static_cast<GraphKind>(1);
+// 图类别取值统一来自 metadef c_types.h 的 C_GraphKind 枚举，用例内以常量指代
+constexpr GraphKind kComputeGraphKind = C_GRAPH_COMPUTE;
+constexpr GraphKind kExecGraphKind = C_GRAPH_EXECUTE;
 // NamedIoNodeBuilder 用：注册原型（本测试二进制内全局注册，命名唯一）。
 REG_OP(EsFocusPlainOp)
     .INPUT(x1, TensorType({DT_FLOAT}))
@@ -588,7 +588,7 @@ TEST_F(EsFacadeComputeScenarioTest, Dump_AllFormatsBothModes) {
 
   const std::vector<Graph::DumpFormat> formats = {Graph::DumpFormat::kOnnx, Graph::DumpFormat::kTxt,
                                                   Graph::DumpFormat::kReadable};
-  for (auto *graph : {&compute_graph}) {
+  for (auto *graph : {&compute_graph, &execute_graph}) {
     for (const auto format : formats) {
       std::stringstream ss;
       EXPECT_EQ(GRAPH_SUCCESS, graph->Dump(format, ss)) << "format " << static_cast<uint32_t>(format);
@@ -598,11 +598,6 @@ TEST_F(EsFacadeComputeScenarioTest, Dump_AllFormatsBothModes) {
     std::stringstream readable;
     ASSERT_EQ(GRAPH_SUCCESS, graph->Dump(Graph::DumpFormat::kReadable, readable));
     EXPECT_NE(std::string::npos, readable.str().find("dump_node")) << readable.str();
-  }
-  // 当前实现：执行图 Dump 显式拒绝。
-  for (const auto format : formats) {
-    std::stringstream ss;
-    EXPECT_NE(GRAPH_SUCCESS, execute_graph.Dump(format, ss)) << "format " << static_cast<uint32_t>(format);
   }
   // 快照不回写：执行图输出后仍可继续构图。
   auto extra = execute_graph.AddNodeByOp(MakePortOp("extra", "PlainOp", 0U, 1U));

@@ -112,15 +112,10 @@ class NodeImpl {
     std::shared_ptr<Node> compute_node;
     std::shared_ptr<ExecuteGraph> execute_owner;
     FastNode *execute_node = nullptr;
-    OpDescPtr op_desc;
 
     bool IsValid() const;
-    OpDescPtr GetOpDesc() const {
-      return op_desc;
-    }
-    OpDesc *GetOpDescBarePtr() const {
-      return op_desc.get();
-    }
+    // 按需延迟取描述：高频名字/类型查询不触发 OpDescPtr 引用计数（定义见 .cc，Node/FastNode 此处不完整）
+    OpDescPtr GetOpDesc() const;
     std::string GetName() const;
     std::string GetType() const;
     const char *GetNamePtr() const;

@@ -95,11 +95,17 @@ graphStatus GraphUtilsEx::CopyGraph(const Graph &src_graph, Graph &dst_graph) {
   if (dst_graph.GetName(ascend_name) == GRAPH_SUCCESS) {
     graph_name = std::string((ascend_name.GetString() != nullptr) ? ascend_name.GetString() : "");
   }
-  if (graph_name.empty() && (src_graph.GetName(ascend_name) == GRAPH_SUCCESS)) {
-    graph_name = std::string((ascend_name.GetString() != nullptr) ? ascend_name.GetString() : "");
+  return CopyGraph(src_graph, graph_name, dst_graph);
+}
+
+graphStatus GraphUtilsEx::CopyGraph(const Graph &src_graph, const std::string &graph_name, Graph &dst_graph) {
+  std::string new_graph_name = graph_name;
+  AscendString ascend_name;
+  if (new_graph_name.empty() && (src_graph.GetName(ascend_name) == GRAPH_SUCCESS)) {
+    new_graph_name = std::string((ascend_name.GetString() != nullptr) ? ascend_name.GetString() : "");
   }
 
-  ComputeGraphPtr new_compute_graph = MakeShared<ComputeGraph>(graph_name);
+  ComputeGraphPtr new_compute_graph = MakeShared<ComputeGraph>(new_graph_name);
   GE_CHECK_NOTNULL(new_compute_graph);
   const ComputeGraphPtr src_compute_graph = GraphUtilsEx::GetComputeGraph(src_graph);
   GE_CHECK_NOTNULL(src_compute_graph);

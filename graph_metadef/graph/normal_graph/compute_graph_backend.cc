@@ -54,6 +54,10 @@ const std::string &ComputeGraphBackend::GetName() const {
   return name_;
 }
 
+std::string ComputeGraphBackend::GetNativeName() const {
+  return compute_graph_ != nullptr ? compute_graph_->GetName() : name_;
+}
+
 graphStatus ComputeGraphBackend::InitGraph() {
   GE_WARN_ASSERT(compute_graph_ == nullptr, "No need to init again");
   compute_graph_ = ge::ComGraphMakeSharedAndThrow<ComputeGraph>(name_);
@@ -106,12 +110,15 @@ bool ComputeGraphBackend::ResolveNode(const GNode &node, NodeContext &context) c
   if (context.compute_node == nullptr) {
     return false;
   }
-  context.name = context.compute_node->GetName();
   context.compute_owner = context.compute_node->GetOwnerComputeGraph();
   if (context.compute_owner != nullptr) {
     context.owner_name = context.compute_owner->GetName();
   }
   return true;
+}
+
+std::string ComputeGraphBackend::GetNodeName(const NodeContext &context) const {
+  return context.compute_node != nullptr ? context.compute_node->GetName() : "";
 }
 
 GNode ComputeGraphBackend::AddNodeFromDesc(const OpDescPtr &desc) {
@@ -170,7 +177,8 @@ graphStatus ComputeGraphBackend::SetGraphOutNodesInfo(const std::vector<std::pai
   for (const auto &item : outputs) {
     output_nodes.emplace_back(NodeAdapter::GNode2Node(item.first), item.second);
   }
-  return compute_graph_->SetGraphOutNodesInfo(output_nodes);
+  GE_ASSERT_SUCCESS(compute_graph_->SetGraphOutNodesInfo(output_nodes));
+  return GRAPH_SUCCESS;
 }
 
 graphStatus ComputeGraphBackend::SetTargets(const std::vector<Operator> &targets) {
@@ -383,13 +391,7 @@ graphStatus ComputeGraphBackend::CopyFrom(const Graph &src_graph, Graph &copied_
 }
 
 graphStatus ComputeGraphBackend::CopyFrom(const Graph &src_graph, const std::string &graph_name, Graph &copied_graph) {
-  Graph tmp_graph(graph_name);
-  const auto ret = GraphUtilsEx::CopyGraph(src_graph, tmp_graph);
-  if (ret != GRAPH_SUCCESS) {
-    return ret;
-  }
-  copied_graph = std::move(tmp_graph);
-  return GRAPH_SUCCESS;
+  return GraphUtilsEx::CopyGraph(src_graph, graph_name, copied_graph);
 }
 
 graphStatus ComputeGraphBackend::CopyOperatorsTo(GraphImpl &dst_impl,

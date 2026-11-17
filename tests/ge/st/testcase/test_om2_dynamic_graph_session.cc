@@ -81,7 +81,7 @@ class Om2ExecuteGraphSessionTest : public Om2OnlineModelExecutorTest {
     const auto inner = session_->impl_->GetInnerSession();
     ASSERT_NE(inner, nullptr);
     node = std::make_shared<GraphNode>(id);
-    node->SetGraph(std::make_shared<Graph>("execute_session_st", static_cast<GraphKind>(1)));
+    node->SetGraph(std::make_shared<Graph>("execute_session_st", C_GRAPH_EXECUTE));
     inner->graph_manager_.AddGraphNode(id, node);
     inner->graph_manager_.IncreaseGraphCount(id);
     inner->graph_manager_.SetAddGraphCondition(id, 2U);

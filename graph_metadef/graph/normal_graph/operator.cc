@@ -2890,9 +2890,9 @@ struct ComputeGraphBuildOps {
 
   static graphStatus CheckDataOutput(const NodeType &node, int32_t index) {
     if (node->GetOutDataAnchor(index) == nullptr) {
+      GELOGE(GRAPH_FAILED, "[Get][OutDataAnchor] failed, index:%d.", index);
       REPORT_INNER_ERR_MSG("E18888", "GetOutDataAnchor failed, index:%d, op:%s.", index,
                            node->GetOpDesc()->GetNamePtr());
-      GELOGE(GRAPH_FAILED, "[Get][OutDataAnchor] failed, index:%d.", index);
       return GRAPH_FAILED;
     }
     return GRAPH_SUCCESS;
@@ -2903,17 +2903,17 @@ struct ComputeGraphBuildOps {
     const auto src_anchor = src->GetOutDataAnchor(src_index);
     const auto dst_anchor = dst->GetInDataAnchor(dst_index);
     if (dst_anchor == nullptr) {
+      GELOGE(GRAPH_FAILED, "GetInDataAnchor failed, index:%d", dst_index);
       REPORT_INNER_ERR_MSG("E18888", "GetInDataAnchor failed, index:%d, op:%s", dst_index,
                            src->GetOpDesc()->GetNamePtr());
-      GELOGE(GRAPH_FAILED, "GetInDataAnchor failed, index:%d", dst_index);
       return GRAPH_FAILED;
     }
     const auto ret = GraphUtils::AddEdge(src_anchor, dst_anchor);
     if (ret != GRAPH_SUCCESS) {
-      REPORT_INNER_ERR_MSG("E18888", "add edge from node[%s][%d] to node[%s][%d] failed.", src->GetNamePtr(),
-                           src_anchor->GetIdx(), dst->GetNamePtr(), dst_anchor->GetIdx());
       GELOGE(GRAPH_FAILED, "[Add][Edge] from node[%s][%d] to node[%s][%d] failed.", src->GetNamePtr(),
              src_anchor->GetIdx(), dst->GetNamePtr(), dst_anchor->GetIdx());
+      REPORT_INNER_ERR_MSG("E18888", "add edge from node[%s][%d] to node[%s][%d] failed.", src->GetNamePtr(),
+                           src_anchor->GetIdx(), dst->GetNamePtr(), dst_anchor->GetIdx());
       return GRAPH_FAILED;
     }
     return ret;
@@ -2931,12 +2931,12 @@ struct ComputeGraphBuildOps {
     return ret;
   }
 
-  static graphStatus MountSubgraph(const GraphPtr &owner, const NodeType &node, const std::string &, uint32_t index,
-                                   const Graph &graph) {
+  static graphStatus MountSubgraph(const GraphPtr &owner, const NodeType &node, const std::string &node_name,
+                                   const std::string &, uint32_t index, const Graph &graph) {
     const auto subgraph = GraphUtilsEx::GetComputeGraph(graph);
     if (subgraph == nullptr) {
-      REPORT_INNER_ERR_MSG("E18888", "Node: %s, Build graph failed.", node->GetNamePtr());
-      GELOGE(GRAPH_FAILED, "[Get][Graph] Node: %s, Build graph failed.", node->GetNamePtr());
+      GELOGE(GRAPH_FAILED, "[Get][Graph] Node: %s, Build graph failed.", node_name.c_str());
+      REPORT_INNER_ERR_MSG("E18888", "Node: %s, Build graph failed.", node_name.c_str());
       return GRAPH_FAILED;
     }
     subgraph->SetParentNode(node);
@@ -3039,9 +3039,6 @@ class GraphBuilderImpl {
     auto ret = builder_.WalkAllOperators(vec_inputs);
     GE_CHK_BOOL_EXEC(ret == GRAPH_SUCCESS, return nullptr, "[Call][WalkAllOperators] failed, ret:%d.", ret);
 
-    ret = ComputeGraphBuildOps::MoveSubgraphToRoot(0, graph_);
-    GE_CHK_BOOL_EXEC(ret == GRAPH_SUCCESS, return nullptr, "[Call][MoveSubgraphToRoot] failed, ret:%d.", ret);
-
     ret = builder_.AddEdges();
     GE_CHK_BOOL_EXEC(ret == GRAPH_SUCCESS, return nullptr, "[Add][Edge] failed, ret:%d.", ret);
 
@@ -3056,11 +3053,11 @@ class GraphBuilderImpl {
       if (OpTypeUtils::IsDataNode(op_type.GetString())) {
         input_size++;
       }
-      GE_ASSERT_SUCCESS(builder_.GenerateNode(op.operator_impl_));
+      GE_ASSERT_SUCCESS(GenerateNodeFromOperator(op));
     }
-    GE_ASSERT_SUCCESS(builder_.AddEdges());
+    GE_ASSERT_SUCCESS(AddEdge());
     const int32_t start_recursion_depth = 0;
-    GE_ASSERT_SUCCESS(ComputeGraphBuildOps::MoveSubgraphToRoot(start_recursion_depth, graph_));
+    GE_ASSERT_SUCCESS(MoveSubgraphToRoot(start_recursion_depth, graph_));
     graph_->SetInputSize(input_size);
     return graph_;
   }
@@ -3070,6 +3067,19 @@ class GraphBuilderImpl {
   }
 
  private:
+  // 保留历史入口名：断言失败文本与改写前保持一致
+  graphStatus GenerateNodeFromOperator(const Operator &op) {
+    return builder_.GenerateNode(op.operator_impl_);
+  }
+
+  graphStatus AddEdge() {
+    return builder_.AddEdges();
+  }
+
+  graphStatus MoveSubgraphToRoot(const int32_t recursion_depth, const ComputeGraphPtr &graph) const {
+    return ComputeGraphBuildOps::MoveSubgraphToRoot(recursion_depth, graph);
+  }
+
   ComputeGraphPtr graph_ = nullptr;
   OperatorGraphBuilder<ComputeGraphBuildOps> builder_;
 };

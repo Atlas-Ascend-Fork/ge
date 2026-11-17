@@ -102,12 +102,12 @@ EsCGraphBuilder *EsCreateGraphBuilderWithKind(const char *name, int32_t kind) {
   if (name == nullptr) {
     name = kDefaultGraphName;
   }
-  if ((kind != 0) && (kind != 1)) {
+  if ((kind != C_GRAPH_COMPUTE) && (kind != C_GRAPH_EXECUTE)) {
     GELOGE(ge::GRAPH_PARAM_INVALID, "[GertGraph][Parameter] Invalid graph kind %d.", kind);
     return nullptr;
   }
-  // kind 为整型直传（0 = 计算图，1 = 执行图），取值与 metadef c_types.h 中 C_GraphKind 枚举一致。
-  return new EsCGraphBuilder(name, kind);
+  // C 接口按整型直传类别值，取值与 metadef c_types.h 中 C_GraphKind 枚举一致。
+  return new EsCGraphBuilder(name, static_cast<ge::GraphKind>(kind));
 }
 
 void EsDestroyGraphBuilder(EsCGraphBuilder *graph) {
