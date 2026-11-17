@@ -261,10 +261,29 @@ graphStatus PadSliceOptimizePass::PostProcess(const ComputeGraphPtr &graph, cons
     original_offsets_values.push_back(offsets_value);
   }
 
+  const auto pad_input_anchor = node->GetInDataAnchor(0);
+  GE_CHECK_NOTNULL(pad_input_anchor);
+  const auto src_anchor = pad_input_anchor->GetPeerOutAnchor();
+  GE_CHECK_NOTNULL(src_anchor);
+  const auto src_node = src_anchor->GetOwnerNode();
+  GE_CHECK_NOTNULL(src_node);
+  GE_CHECK_NOTNULL(src_node->GetOpDesc());
+  const auto src_desc = src_node->GetOpDesc()->GetOutputDescPtr(src_anchor->GetIdx());
+  GE_CHECK_NOTNULL(src_desc);
+  const auto pad_input_desc = node->GetOpDesc()->GetInputDesc(0U);
+  const auto src_shape = src_desc->GetShape();
+  const auto src_origin_shape = src_desc->GetOriginShape();
+
   std::set<NodePtr> processed_offsets_nodes;
+  std::vector<GeTensorDescPtr> slice_input_descs;
   for (size_t out_idx = 0U; out_idx < output_size; ++out_idx) {
     auto node_after_pad = node->GetOutNodes().at(out_idx);
     GE_CHECK_NOTNULL(node_after_pad);
+    auto op_desc = node_after_pad->GetOpDesc();
+    GE_CHECK_NOTNULL(op_desc);
+    auto slice_input_desc = op_desc->MutableInputDesc(0U);
+    GE_CHECK_NOTNULL(slice_input_desc);
+    slice_input_descs.push_back(slice_input_desc);
 
     auto offsets_const_node = node_after_pad->GetInDataNodes().at(1U);
     if (processed_offsets_nodes.find(offsets_const_node) != processed_offsets_nodes.end()) {
@@ -273,15 +292,17 @@ graphStatus PadSliceOptimizePass::PostProcess(const ComputeGraphPtr &graph, cons
     } else {
       DataType offsets_dtype = DT_INT32;
       GE_ASSERT_SUCCESS(ExtractConstNodeDtype(node_after_pad, offsets_dtype));
-      auto op_desc = node_after_pad->GetOpDesc();
-      GE_CHECK_NOTNULL(op_desc);
-      *op_desc->MutableInputDesc(0U) = node->GetOpDesc()->GetInputDesc(0U);
       GE_ASSERT_SUCCESS(
           RefreshOffsetsValue(node_after_pad, before_paddings_value, offsets_dtype, original_offsets_values[out_idx]));
       processed_offsets_nodes.insert(offsets_const_node);
     }
   }
   GE_ASSERT_SUCCESS(AutofuseUtils::DelOneNodeInGraph(graph, node));
+  for (const auto &slice_input_desc : slice_input_descs) {
+    *slice_input_desc = pad_input_desc;
+    slice_input_desc->SetShape(src_shape);
+    slice_input_desc->SetOriginShape(src_origin_shape);
+  }
   GELOGI("Success to delete pad node %s", node->GetNamePtr());
   return GRAPH_SUCCESS;
 }
