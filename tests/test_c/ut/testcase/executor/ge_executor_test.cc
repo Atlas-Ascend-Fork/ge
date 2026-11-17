@@ -9,8 +9,9 @@
  */
 
 #include <gtest/gtest.h>
-#include <memory>
+#include <cstring>
 #include <fstream>
+#include <memory>
 #include <string>
 #include "ge_executor.h"
 #include "exe_model_builder.h"
@@ -21,6 +22,7 @@
 #include "gmock_stub/ascend_rt_stub.h"
 #include "vector.h"
 #include "model_loader.h"
+#include "model_manager.h"
 #include "common/tlv/tlv.h"
 #include "common/tlv/nano_common_desc.h"
 #include <securec.h>
@@ -2892,6 +2894,132 @@ TEST_F(UtestGEExecutorTest, GeExecutorCaseModelExecIoAddrRealloc) {
     mmFree(outputData.io_addr_host);
   }
   outputData.ioa_size = 0;
+  GeFinalize();
+}
+
+namespace {
+constexpr uint32_t kFifoReallocWorkspaceSize = 100U;
+constexpr uint32_t kFifoReallocWeightSize = 103U;
+constexpr uint32_t kFifoReallocBaseIoaNum = 2U;
+constexpr uint32_t kFifoReallocFifoNum = 2U;
+constexpr uint32_t kFifoReallocTotalIoaNum = 4U;
+
+struct FifoExecContext {
+  uint32_t input_value = 1U;
+  uint32_t output_value = 2U;
+  DataBuffer input_buffer = {};
+  DataBuffer output_buffer = {};
+  DataBlob input_blob = {};
+  DataBlob output_blob = {};
+  InputData input_data = {};
+  OutputData output_data = {};
+  ExecHandleDesc exec_desc = {};
+  uint8_t workspace[kFifoReallocWorkspaceSize] = {};
+};
+
+void BuildFifoReallocModel(ExeModelBuilder &modelBuilder) {
+  std::vector<uint64_t> dims = {1, 2, 3};
+  std::vector<uint64_t> emptyDims;
+  std::vector<std::pair<uint64_t, uint64_t>> shapeRange = {{1, 2}, {2, 5}};
+  modelBuilder
+      .AddPartition(PRE_MODEL_DESC,
+                    [](std::vector<uint8_t> &model) {
+                      ModelDesc desc = {
+                          .task_num = 1,
+                          .workspace_size = kFifoReallocWorkspaceSize,
+                          .weight_size = kFifoReallocWeightSize,
+                          .weight_type = 0,
+                          .profile_enable = 0,
+                          .model_interrupt = 0,
+                      };
+                      std::copy_n(reinterpret_cast<uint8_t *>(&desc), sizeof(ModelDesc), std::back_inserter(model));
+                    })
+      .AddInputDesc("op1", 10, FORMAT_CHWN, DT_FLOAT, dims, emptyDims, shapeRange)
+      .AddOutputDesc("op2", 8, FORMAT_CHWN, DT_FLOAT, dims, emptyDims, shapeRange)
+      .Build();
+}
+
+void InitFifoExecContext(FifoExecContext &ctx) {
+  ctx.input_buffer = {&ctx.input_value, sizeof(ctx.input_value)};
+  ctx.output_buffer = {&ctx.output_value, sizeof(ctx.output_value)};
+  ctx.input_blob = {&ctx.input_buffer};
+  ctx.output_blob = {&ctx.output_buffer};
+  InitVector(&ctx.input_data.blobs, sizeof(DataBlob));
+  EmplaceBackVector(&ctx.input_data.blobs, &ctx.input_blob);
+  InitVector(&ctx.output_data.blobs, sizeof(DataBlob));
+  EmplaceBackVector(&ctx.output_data.blobs, &ctx.output_blob);
+  ctx.exec_desc.workPtr = ctx.workspace;
+  ctx.exec_desc.workSize = sizeof(ctx.workspace);
+}
+
+void ExpectFifoModelExec() {
+  EXPECT_CALL(RtStubMock::GetInstance(), rtStreamGetSqid(_, _)).Times(2).WillRepeatedly(Return(RT_ERROR_NONE));
+  EXPECT_CALL(RtStubMock::GetInstance(), rtNanoModelExecute(_)).Times(2).WillRepeatedly(Return(RT_ERROR_NONE));
+  EXPECT_CALL(RtStubMock::GetInstance(), rtMemcpy(_, _, _, _, RT_MEMCPY_HOST_TO_DEVICE))
+      .Times(2)
+      .WillRepeatedly(Invoke([](void *dst, uint64_t dest_max, const void *src, uint64_t cnt, rtMemcpyKind_t) {
+        return static_cast<rtError_t>(memcpy_s(dst, dest_max, src, cnt));
+      }));
+}
+
+void SetModelFifoInfo(uint32_t model_id, uint64_t *fifo_addr, uint32_t fifo_num) {
+  GeModelDesc *model_desc = GetModelDescRef(model_id);
+  if (model_desc == nullptr) {
+    return;
+  }
+  model_desc->fifoInfo.fifoNum = fifo_num;
+  model_desc->fifoInfo.fifoAllAddr = fifo_addr;
+  ReleaseModelDescRef(model_desc);
+}
+
+void ExpectIoAddrTable(const OutputData &output_data, const uint64_t *expected, uint32_t size) {
+  ASSERT_NE(output_data.io_addr_host, nullptr);
+  ASSERT_NE(output_data.io_addr, nullptr);
+  for (uint32_t i = 0; i < size; ++i) {
+    EXPECT_EQ(output_data.io_addr_host[i], expected[i]);
+    EXPECT_EQ(output_data.io_addr[i], expected[i]);
+  }
+}
+}  // namespace
+
+TEST_F(UtestGEExecutorTest, GeExecutorCaseModelExecIoAddrReallocWithFifo) {
+  ExeModelBuilder modelBuilder;
+  BuildFifoReallocModel(modelBuilder);
+  EXPECT_EQ(GeInitialize(), SUCCESS);
+
+  uint32_t model_id = 0;
+  ModelData model_data = {};
+  model_data.modelData = modelBuilder.ModelData();
+  model_data.modelLen = modelBuilder.ModelLen();
+  EXPECT_CALL(RtStubMock::GetInstance(), rtNanoModelLoad(_, _)).Times(1).WillOnce(Return(RT_ERROR_NONE));
+  EXPECT_CALL(RtStubMock::GetInstance(), rtNanoModelDestroy(_)).Times(1).WillOnce(Return(RT_ERROR_NONE));
+  ASSERT_EQ(GeLoadModelFromData(&model_id, &model_data), SUCCESS);
+
+  FifoExecContext ctx;
+  InitFifoExecContext(ctx);
+  ExpectFifoModelExec();
+  ASSERT_EQ(ExecModel(model_id, &ctx.exec_desc, true, &ctx.input_data, &ctx.output_data), SUCCESS);
+  ASSERT_EQ(ctx.output_data.ioa_size, kFifoReallocBaseIoaNum);
+
+  uint64_t fifo_addr[kFifoReallocFifoNum] = {0x1000, 0x1008};
+  SetModelFifoInfo(model_id, fifo_addr, kFifoReallocFifoNum);
+  EXPECT_CALL(MmpaStubMock::GetInstance(), mmMalloc(kFifoReallocTotalIoaNum * sizeof(uint64_t)))
+      .Times(1)
+      .WillOnce(Invoke(mmMalloc_Normal_Invoke));
+  ASSERT_EQ(ExecModel(model_id, &ctx.exec_desc, true, &ctx.input_data, &ctx.output_data), SUCCESS);
+  ASSERT_EQ(ctx.output_data.ioa_size, kFifoReallocTotalIoaNum);
+
+  const uint64_t expected_addr[kFifoReallocTotalIoaNum] = {reinterpret_cast<uintptr_t>(&ctx.input_value),
+                                                           reinterpret_cast<uintptr_t>(&ctx.output_value), fifo_addr[0],
+                                                           fifo_addr[1]};
+  ExpectIoAddrTable(ctx.output_data, expected_addr, kFifoReallocTotalIoaNum);
+
+  SetModelFifoInfo(model_id, nullptr, 0);
+  EXPECT_EQ(UnloadModel(model_id), SUCCESS);
+  DeInitVector(&ctx.input_data.blobs);
+  DeInitVector(&ctx.output_data.blobs);
+  (void)aclrtFree(ctx.output_data.io_addr);
+  (void)mmFree(ctx.output_data.io_addr_host);
   GeFinalize();
 }
 
