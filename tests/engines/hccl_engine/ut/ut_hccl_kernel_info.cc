@@ -121,9 +121,6 @@ class HcomKernelInfoTest : public testing::Test {
     std::cout << "A Test SetUP" << std::endl;
   }
   virtual void TearDown() {
-    // 每个用例结束时拆除mock hook, 防止活跃hook跨用例泄漏:
-    // 后续用例重新MOCKER同一函数时会静默复用旧桩, 或真实路径踩到残留跳板, 污染后续用例。
-    GlobalMockObject::reset();
     std::cout << "A Test TearDown" << std::endl;
   }
 };
