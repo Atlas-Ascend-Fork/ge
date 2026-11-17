@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <chrono>
 #include "ge_graph_dsl/graph_dsl.h"
 #include "es_ge_test_ops.h"
 #include "graph/utils/graph_utils_ex.h"
@@ -548,6 +549,60 @@ TEST_F(UserGraphControlUT, RunGraphAsync_StaticShape_MultiThread_Success) {
   }
   for (auto &fut : futs) {
     EXPECT_EQ(fut.get(), SUCCESS);
+  }
+
+  EXPECT_EQ(ctrl->Finalize(), SUCCESS);
+  EXPECT_EQ(graph_manager.Finalize(), SUCCESS);
+}
+
+/**
+ * 测试调度线程的两个唤醒来源，保证不会因漏唤醒导致任务不执行：
+ * 1. 无空闲执行器时提交任务，新增执行器后应被唤醒调度；
+ * 2. 执行器忙时提交的任务，在 executor 归还空闲后应被继续调度。
+ * 预期：2 个 callback 均被调用（超时保护仅用于避免用例挂死）。
+ */
+TEST_F(UserGraphControlUT, RunGraphAsync_DispatcherWakeup_NoTaskLost) {
+  // 覆盖两处唤醒来源需初始化 GraphManager/ModelExecutor 并串行执行 2 个任务，CI 环境耗时超过默认 1000ms 阈值
+  // slow_test_limit = 2000
+  ModelExecutor model_executor;
+  model_executor.Initialize({}, 0);
+  GraphManager graph_manager;
+  EXPECT_EQ(graph_manager.Initialize({}, &model_executor), SUCCESS);
+  uint32_t user_graph_id = 0u;
+  auto graph = JitShareGraph::AllNormalNodes();
+  auto compute_graph = GraphUtilsEx::GetComputeGraph(*graph.get());
+  CompileContext compile_context(graph_manager);
+
+  std::map<std::string, std::string> graph_options;
+  auto ctrl = MakeUnique<UserGraphControl>(user_graph_id, compute_graph, compile_context, graph_manager, graph_options);
+  EXPECT_NE(ctrl, nullptr);
+
+  constexpr size_t kTaskNum = 2U;
+  std::vector<std::vector<gert::Tensor>> gert_inputs_holder(kTaskNum);
+  std::vector<std::future<Status>> futures;
+  const auto submit_task = [&](size_t index) {
+    gert_inputs_holder[index].resize(1U);
+    TensorCheckUtils::ConstructGertTensor(gert_inputs_holder[index][0], {2, 3, 3, 2}, DT_FLOAT, FORMAT_NCHW);
+    auto promise_ptr = std::make_shared<std::promise<Status>>();
+    futures.emplace_back(promise_ptr->get_future());
+    const RunAsyncCallbackV2 callback = [promise_ptr](Status status, std::vector<gert::Tensor> &outputs) {
+      EXPECT_EQ(status, SUCCESS);
+      EXPECT_EQ(outputs.size(), 1U);
+      promise_ptr->set_value(status);
+      return SUCCESS;
+    };
+    auto task = MakeUnique<UserGraphExecution>(user_graph_id, gert_inputs_holder[index], callback, 0);
+    ctrl->RunGraphAsync(task);
+  };
+
+  // 场景1：先提交任务，此时没有空闲执行器，调度线程应等待；AddGraphInstance 后需被唤醒
+  submit_task(0U);
+  EXPECT_EQ(ctrl->AddGraphInstance(), SUCCESS);
+  // 场景2：单执行器忙时继续提交任务，executor 归还空闲后需被唤醒
+  submit_task(1U);
+  for (auto &future : futures) {
+    ASSERT_EQ(future.wait_for(std::chrono::seconds(10U)), std::future_status::ready);
+    EXPECT_EQ(future.get(), SUCCESS);
   }
 
   EXPECT_EQ(ctrl->Finalize(), SUCCESS);
