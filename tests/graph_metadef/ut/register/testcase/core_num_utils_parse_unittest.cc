@@ -232,13 +232,15 @@ TEST_F(ParseAicoreNumFromOptionUT, PairCompatibleWritesBothKeys) {
     std::string input;
     std::string expect_aicore;
     std::string expect_vectorcore;
+    bool expect_derive;
   };
-  for (const auto &item : std::vector<PairCase>{{"6|6", "6", "6"},
-                                                {"6|12", "6", "12"},
-                                                {"6|", "6", ""},
-                                                {"|6", "", "6"},
-                                                {"6|0", "6", "0"},
-                                                {"|", "", ""}}) {
+  for (const auto &item : std::vector<PairCase>{{"6|6", "6", "6", false},
+                                                {"6|12", "6", "12", false},
+                                                {"6|", "6", "12", true},
+                                                {"|6", "", "6", false},
+                                                {"6|0", "6", "12", true},
+                                                {"|0", "", "0", false},
+                                                {"|", "", "", false}}) {
     SCOPED_TRACE(item.input);
     log_->Clear();
     auto options = SingleValueOptions(item.input);
@@ -246,6 +248,139 @@ TEST_F(ParseAicoreNumFromOptionUT, PairCompatibleWritesBothKeys) {
     EXPECT_EQ(options[AICORE_NUM], item.expect_aicore);
     EXPECT_EQ(GetVectorCoreNum(options), item.expect_vectorcore);
     EXPECT_FALSE(log_->Contains("Invalid format for ge.aicoreNum"));
+    EXPECT_EQ(log_->CountContains("Derive ge.vectorcoreNum"), item.expect_derive ? 1U : 0U);
+  }
+}
+
+TEST_F(ParseAicoreNumFromOptionUT, PairEmptySideMatchesSingleValue) {
+  struct SpecCase {
+    uint32_t ai_core_cnt;
+    uint32_t cube_core_cnt;
+    uint32_t vector_core_cnt;
+    std::string expect_vectorcore;
+  };
+  const std::vector<SpecCase> specs{{20U, 20U, 40U, "12"}, {6U, 6U, 6U, "6"}};
+  for (const auto &spec : specs) {
+    mmpa_->SetCores(spec.ai_core_cnt, spec.cube_core_cnt, spec.vector_core_cnt);
+    auto single = SingleValueOptions("6");
+    log_->Clear();
+    EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(single), GRAPH_SUCCESS);
+    const std::string single_vector = GetVectorCoreNum(single);
+    const size_t single_derive_logs = log_->CountContains("Derive ge.vectorcoreNum");
+    for (const std::string &input : {"6", "6|", "6|0"}) {
+      SCOPED_TRACE(input);
+      log_->Clear();
+      auto options = SingleValueOptions(input);
+      EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(options), GRAPH_SUCCESS);
+      EXPECT_EQ(options[AICORE_NUM], "6");
+      EXPECT_EQ(GetVectorCoreNum(options), spec.expect_vectorcore);
+      EXPECT_EQ(GetVectorCoreNum(options), single_vector);
+      EXPECT_EQ(log_->CountContains("Derive ge.vectorcoreNum"), single_derive_logs);
+      EXPECT_FALSE(log_->Contains("Invalid format for ge.aicoreNum"));
+    }
+  }
+}
+
+TEST_F(ParseAicoreNumFromOptionUT, PairEmptySideExplicitSemanticsMatchSingleValue) {
+  mmpa_->SetCores(20U, 20U, 40U);
+  for (const std::string &explicit_value : {"8", "12", "", "0", "abc"}) {
+    SCOPED_TRACE(explicit_value);
+    auto single = SingleValueOptions("6");
+    single[kVectorCoreNum] = explicit_value;
+    log_->Clear();
+    EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(single), GRAPH_SUCCESS);
+    const std::string single_vector = GetVectorCoreNum(single);
+    const size_t single_derive_logs = log_->CountContains("Derive ge.vectorcoreNum");
+    for (const std::string &input : {"6|", "6|0"}) {
+      SCOPED_TRACE(input);
+      log_->Clear();
+      auto options = SingleValueOptions(input);
+      options[kVectorCoreNum] = explicit_value;
+      EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(options), GRAPH_SUCCESS);
+      EXPECT_EQ(options[AICORE_NUM], "6");
+      EXPECT_EQ(GetVectorCoreNum(options), single_vector);
+      EXPECT_EQ(log_->CountContains("Derive ge.vectorcoreNum"), single_derive_logs);
+    }
+  }
+}
+
+TEST_F(ParseAicoreNumFromOptionUT, PairEmptySideExplicitContextSemanticsMatchSingleValue) {
+  mmpa_->SetCores(20U, 20U, 40U);
+  for (const std::string &explicit_value : {"8", "", "abc"}) {
+    SCOPED_TRACE(explicit_value);
+    GetThreadLocalContext().SetGlobalOption({{kVectorCoreNum, explicit_value}});
+    auto single = SingleValueOptions("6");
+    log_->Clear();
+    EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(single), GRAPH_SUCCESS);
+    const std::string single_vector = GetVectorCoreNum(single);
+    for (const std::string &input : {"6|", "6|0"}) {
+      SCOPED_TRACE(input);
+      log_->Clear();
+      auto options = SingleValueOptions(input);
+      EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(options), GRAPH_SUCCESS);
+      EXPECT_EQ(GetVectorCoreNum(options), single_vector);
+    }
+    ClearContextOptions();
+  }
+}
+
+TEST_F(ParseAicoreNumFromOptionUT, PairEmptySideUnsupportedRatioMatchesSingleValue) {
+  mmpa_->SetCores(10U, 10U, 8U);
+  auto single = SingleValueOptions("6");
+  log_->Clear();
+  EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(single), GRAPH_SUCCESS);
+  EXPECT_EQ(GetVectorCoreNum(single), kAbsent);
+  EXPECT_EQ(log_->CountContains("skip deriving ge.vectorcoreNum"), 1U);
+  for (const std::string &input : {"6|", "6|0"}) {
+    SCOPED_TRACE(input);
+    log_->Clear();
+    auto options = SingleValueOptions(input);
+    EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(options), GRAPH_SUCCESS);
+    EXPECT_EQ(GetVectorCoreNum(options), kAbsent);
+    EXPECT_EQ(log_->CountContains("skip deriving ge.vectorcoreNum"), 1U);
+  }
+}
+
+TEST_F(ParseAicoreNumFromOptionUT, PairZeroRightWithInvalidLeftMatchesSingleValue) {
+  mmpa_->SetCores(20U, 20U, 40U);
+  for (const std::string &left : {"0", "abc", "21", "+6", "06"}) {
+    SCOPED_TRACE(left);
+    auto single = SingleValueOptions(left);
+    log_->Clear();
+    EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(single), GRAPH_SUCCESS);
+    const std::string single_vector = GetVectorCoreNum(single);
+    const size_t single_invalid_logs = log_->CountContains("Invalid format for ge.aicoreNum");
+    const size_t single_derive_logs = log_->CountContains("Derive ge.vectorcoreNum");
+    auto pair = SingleValueOptions(left + "|0");
+    log_->Clear();
+    EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(pair), GRAPH_SUCCESS);
+    EXPECT_EQ(pair[AICORE_NUM], left);
+    EXPECT_EQ(GetVectorCoreNum(pair), single_vector);
+    EXPECT_EQ(log_->CountContains("Invalid format for ge.aicoreNum"), single_invalid_logs);
+    EXPECT_EQ(log_->CountContains("Derive ge.vectorcoreNum"), single_derive_logs);
+  }
+}
+
+TEST_F(ParseAicoreNumFromOptionUT, PairZeroRightWithExtraCharactersStillSplits) {
+  mmpa_->SetCores(20U, 20U, 40U);
+  struct PairCase {
+    std::string input;
+    std::string expect_aicore;
+    std::string expect_vectorcore;
+  };
+  for (const auto &item : std::vector<PairCase>{{"6|00", "6", "00"},
+                                                {"6| 0", "6", " 0"},
+                                                {"6|0 ", "6", "0 "},
+                                                {"6||0", "6", "|0"},
+                                                {"6|0|1", "6", "0|1"},
+                                                {"6|+0", "6", "+0"},
+                                                {"6||", "6", "|"}}) {
+    SCOPED_TRACE(item.input);
+    log_->Clear();
+    auto options = SingleValueOptions(item.input);
+    EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(options), GRAPH_SUCCESS);
+    EXPECT_EQ(options[AICORE_NUM], item.expect_aicore);
+    EXPECT_EQ(GetVectorCoreNum(options), item.expect_vectorcore);
     EXPECT_FALSE(log_->Contains("Derive ge.vectorcoreNum"));
   }
 }
@@ -337,6 +472,15 @@ TEST_F(ParseAicoreNumFromOptionUT, PairConflictWithExplicitValueReturnsParamInva
   mmpa_->SetCores(20U, 20U, 40U);
   auto options = SingleValueOptions("6|12");
   options[kVectorCoreNum] = "8";
+  EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(options), PARAM_INVALID);
+  EXPECT_EQ(log_->CountContains("Conflict: ge.vectorcoreNum is set to"), 1U);
+  EXPECT_EQ(log_->CountContains("E10001"), 1U);
+}
+
+TEST_F(ParseAicoreNumFromOptionUT, PairPositiveRightWithConflictingExplicitValueReturnsParamInvalid) {
+  mmpa_->SetCores(20U, 20U, 40U);
+  auto options = SingleValueOptions("6|8");
+  options[kVectorCoreNum] = "12";
   EXPECT_EQ(CoreNumUtils::ParseAicoreNumFromOption(options), PARAM_INVALID);
   EXPECT_EQ(log_->CountContains("Conflict: ge.vectorcoreNum is set to"), 1U);
   EXPECT_EQ(log_->CountContains("E10001"), 1U);
