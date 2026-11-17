@@ -2135,6 +2135,10 @@ std:
 
   MOCKER_CPP(&ge::GEThreadLocalContext::GetOption).stubs().will(invoke(FakeGetOption));
 
+  // 桩环境全链路均为成功桩, LoadTask 无自然失败来源; 固定注入 HcomAllReduce 失败,
+  // 经 HCCLOpsKernel 报错按 LoadTask 既有错误映射返回 INTERNAL_ERROR, 使断言有确定来源
+  MOCKER(HcomAllReduce).stubs().will(returnValue(HCCL_E_PARA));
+
   ge_ret = opsKernerInfoStorePtr->LoadTask(task);
   EXPECT_EQ(ge_ret, ge::INTERNAL_ERROR);
 
