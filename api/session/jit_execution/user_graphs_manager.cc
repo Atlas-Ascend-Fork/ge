@@ -25,6 +25,13 @@ Status UserGraphsManager::IsExecuteGraph(uint32_t user_graph_id, bool &is_execut
       return SUCCESS;
     }
   }
+
+  // 增加判断graphId是否有注册对应的graphNode，避免直接调用GetGraphNode报ERROR日志
+  if (!graph_manager_.HasGraphNode(user_graph_id)) {
+    is_execute_graph = false;
+    return GE_GRAPH_GRAPH_NOT_EXIST;
+  }
+
   GraphNodePtr graph_node;
   const auto ret = graph_manager_.GetGraphNode(user_graph_id, graph_node);
   if (ret == SUCCESS) {

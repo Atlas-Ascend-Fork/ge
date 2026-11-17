@@ -219,70 +219,103 @@ using CustomOpCreateFunc = ge::BaseCustomOp *(*)();
  * 注意：构造函数在对外头文件中声明为弱符号，无法在构造前判空，兼容性判断由注册宏完成
  * （先探测 GE 版本，不满足时跳过构造）。因此必须通过上述注册宏使用，禁止直接构造本类对象；
  * 其它场景需要判断兼容性时，请参考注册宏中的版本判断方式。
+ * @since 9.1.0(2026-06)
  */
 class CustomOpCreatorRegister {
  public:
   GE_CUSTOM_OP_CTOR_WEAK CustomOpCreatorRegister(const AscendString &operator_type, const BaseOpCreator &op_creator);
+  /**
+   * 指定算子类型与 backend 注册创建器。
+   * @since 9.2.0(2026-07)
+   */
   GE_CUSTOM_OP_CTOR_WEAK CustomOpCreatorRegister(const AscendString &operator_type, OpBackend backend,
                                                  const BaseOpCreator &op_creator);
+  /**
+   * 在 backend 基础上额外指定注册优先级与引擎。
+   * @since 9.2.0(2026-07)
+   */
   GE_CUSTOM_OP_CTOR_WEAK CustomOpCreatorRegister(const AscendString &operator_type, OpBackend backend,
                                                  OpRegistrationPriority priority, OpEngine engine,
                                                  const BaseOpCreator &op_creator);
   GE_CUSTOM_OP_CTOR_WEAK CustomOpCreatorRegister(const AscendString &operator_type,
                                                  const CustomOpCreateFunc op_creator);
+  /**
+   * 指定算子类型与 backend 注册创建器（函数指针形态）。
+   * @since 9.2.0(2026-07)
+   */
   GE_CUSTOM_OP_CTOR_WEAK CustomOpCreatorRegister(const AscendString &operator_type, OpBackend backend,
                                                  const CustomOpCreateFunc op_creator);
+  /**
+   * 在 backend 基础上额外指定注册优先级与引擎（函数指针形态）。
+   * @since 9.2.0(2026-07)
+   */
   GE_CUSTOM_OP_CTOR_WEAK CustomOpCreatorRegister(const AscendString &operator_type, OpBackend backend,
                                                  OpRegistrationPriority priority, OpEngine engine,
                                                  const CustomOpCreateFunc op_creator);
   ~CustomOpCreatorRegister() = default;
 };
 
-namespace custom_op_detail {
-// ACL 版本查询接口，弱引用：环境未提供时为空，调用方据此跳过注册。
-extern "C" int aclsysGetVersionNum(char *pkg_name, int32_t *version_num) __attribute__((weak));
-
-// 获取 ge-executor 子包版本号，获取失败返回 0；仅供注册宏内部使用。
-inline int32_t GetGeVersion() {
-  char pkg_name[] = "ge-executor";
-  int32_t version_num = 0;
-  if ((aclsysGetVersionNum == nullptr) || (aclsysGetVersionNum(pkg_name, &version_num) != 0)) {
-    return 0;
-  }
-  return version_num;
-}
-
-}  // namespace custom_op_detail
-
 }  // namespace ge
 
 #define REG_JOIN(g_register, y) g_register##y
+/**
+ * 以算子类名作为算子类型注册自定义算子（backend 固定为 kDevice）。
+ * 低于 9.2.0 的 GE 环境上跳过注册，仅保证算子库可加载。
+ * @since 9.2.0(2026-07)
+ */
 #define REG_AUTO_MAPPING_OP(custom_op_class) REG_AUTO_MAPPING_OP_UNIQ(__COUNTER__, custom_op_class)
 #define REG_AUTO_MAPPING_OP_UNIQ(ctr, custom_op_class) \
   REG_OP_BACKEND_UNIQ(ctr, custom_op_class, #custom_op_class, ge::OpBackend::kDevice)
+/**
+ * 注册自定义算子，指定算子类型与执行 backend。
+ * 低于 9.2.0 的 GE 环境上跳过注册，仅保证算子库可加载。
+ * @since 9.2.0(2026-07)
+ */
 #define REG_OP_BACKEND(custom_op_class, op_type, backend) \
   REG_OP_BACKEND_UNIQ(__COUNTER__, custom_op_class, op_type, backend)
-#define REG_OP_BACKEND_UNIQ(ctr, custom_op_class, op_type, backend)                                       \
-  static ge::BaseCustomOp *REG_JOIN(custom_op_pull_creator, ctr)() {                                      \
-    return new custom_op_class();                                                                         \
-  }                                                                                                       \
-  static const std::unique_ptr<ge::CustomOpCreatorRegister> REG_JOIN(custom_op_register, ctr) =           \
-      (ge::custom_op_detail::GetGeVersion() >= 90200000 /* 9.2.0 */)                                      \
-          ? std::unique_ptr<ge::CustomOpCreatorRegister>(                                                 \
-                new ge::CustomOpCreatorRegister(op_type, backend, REG_JOIN(custom_op_pull_creator, ctr))) \
-          : nullptr
+// 版本判断用于兼容 9.1（无 3/5 参构造、弱符号为空）：以命名空间级 static 别名 + weakref 弱引用
+// 实现（别名按 __COUNTER__ 唯一且不进符号表，目标按符号名字符串引用，不受宏展开位置影响，
+// 匿名命名空间内展开亦保持弱引用），不暴露任何可供外部引用的具名实体；
+// 最低兼容运行版本提升到 9.2.0 后删除判断恢复无条件构造，别名声明同批回收
+#define REG_OP_BACKEND_UNIQ(ctr, custom_op_class, op_type, backend)                                                  \
+  static ge::BaseCustomOp *REG_JOIN(custom_op_pull_creator, ctr)() {                                                 \
+    return new custom_op_class();                                                                                    \
+  }                                                                                                                  \
+  static int REG_JOIN(custom_op_probe_, ctr)(char *, int32_t *) __attribute__((weakref("aclsysGetVersionNum")));     \
+  static const std::unique_ptr<ge::CustomOpCreatorRegister> REG_JOIN(custom_op_register, ctr) = []() {               \
+    char pkg_name[] = "ge-executor";                                                                                 \
+    int32_t version_num = 0;                                                                                         \
+    const bool supported = (REG_JOIN(custom_op_probe_, ctr) != nullptr) &&                                           \
+                           (REG_JOIN(custom_op_probe_, ctr)(pkg_name, &version_num) == 0) &&                         \
+                           (version_num >= 90200000 /* 9.2.0 */);                                                    \
+    return supported ? std::unique_ptr<ge::CustomOpCreatorRegister>(                                                 \
+                           new ge::CustomOpCreatorRegister(op_type, backend, REG_JOIN(custom_op_pull_creator, ctr))) \
+                     : nullptr;                                                                                      \
+  }()
 
+/**
+ * 注册自定义算子，在 REG_OP_BACKEND 基础上额外指定注册优先级与引擎。
+ * 低于 9.2.0 的 GE 环境上跳过注册，仅保证算子库可加载。
+ * @since 9.2.0(2026-07)
+ */
 #define REG_OP_WITH_PRIORITY(custom_op_class, op_type, backend, priority, engine) \
   REG_OP_WITH_PRIORITY_UNIQ(__COUNTER__, custom_op_class, op_type, backend, priority, engine)
-#define REG_OP_WITH_PRIORITY_UNIQ(ctr, custom_op_class, op_type, backend, priority, engine)     \
-  static ge::BaseCustomOp *REG_JOIN(custom_op_pull_creator, ctr)() {                            \
-    return new custom_op_class();                                                               \
-  }                                                                                             \
-  static const std::unique_ptr<ge::CustomOpCreatorRegister> REG_JOIN(custom_op_register, ctr) = \
-      (ge::custom_op_detail::GetGeVersion() >= 90200000 /* 9.2.0 */)                            \
-          ? std::unique_ptr<ge::CustomOpCreatorRegister>(new ge::CustomOpCreatorRegister(       \
-                op_type, backend, priority, engine, REG_JOIN(custom_op_pull_creator, ctr)))     \
-          : nullptr
+// 版本判断机制与 REG_OP_BACKEND_UNIQ 相同（共用其上方注释说明），回收条件亦同
+#define REG_OP_WITH_PRIORITY_UNIQ(ctr, custom_op_class, op_type, backend, priority, engine)                      \
+  static ge::BaseCustomOp *REG_JOIN(custom_op_pull_creator, ctr)() {                                             \
+    return new custom_op_class();                                                                                \
+  }                                                                                                              \
+  static int REG_JOIN(custom_op_probe_, ctr)(char *, int32_t *) __attribute__((weakref("aclsysGetVersionNum"))); \
+  static const std::unique_ptr<ge::CustomOpCreatorRegister> REG_JOIN(custom_op_register, ctr) = []() {           \
+    char pkg_name[] = "ge-executor";                                                                             \
+    int32_t version_num = 0;                                                                                     \
+    const bool supported = (REG_JOIN(custom_op_probe_, ctr) != nullptr) &&                                       \
+                           (REG_JOIN(custom_op_probe_, ctr)(pkg_name, &version_num) == 0) &&                     \
+                           (version_num >= 90200000 /* 9.2.0 */);                                                \
+    return supported ? std::unique_ptr<ge::CustomOpCreatorRegister>(new ge::CustomOpCreatorRegister(             \
+                           op_type, backend, priority, engine, REG_JOIN(custom_op_pull_creator, ctr)))           \
+                     : nullptr;                                                                                  \
+  }()
 
 #undef GE_CUSTOM_OP_CTOR_WEAK
 

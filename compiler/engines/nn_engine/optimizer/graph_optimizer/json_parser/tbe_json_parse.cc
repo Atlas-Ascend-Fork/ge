@@ -10,6 +10,7 @@
 
 #include "graph_optimizer/json_parser/tbe_json_parse.h"
 #include <fstream>
+#include <map>
 #include <memory>
 #include "common/fe_log.h"
 #include "common/fe_utils.h"
@@ -27,6 +28,7 @@
 #include "ops_store/ops_kernel_manager.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 #include "register/op_ext_gentask_registry.h"
+#include "graph/utils/op_desc_utils.h"
 #include "graph/utils/op_type_utils.h"
 #include "common/fe_gentask_utils.h"
 
@@ -48,6 +50,83 @@ bool IsThirdClassOp(const ge::OpDescPtr &op_desc) {
   int32_t unknown_shape_type_val = 0;
   (void)ge::AttrUtils::GetInt(op_desc, ge::ATTR_NAME_UNKNOWN_SHAPE_TYPE, unknown_shape_type_val);
   return static_cast<ge::UnknowShapeOpType>(unknown_shape_type_val) == ge::DEPEND_SHAPE_RANGE;
+}
+
+// 将 IR 定义排布的输入/输出段重排为有效实例排布（去除未传值的 Optional 输入占位）。
+// 返回 false 表示无法安全重排（映射表为空或实例总数与期望不一致、IR 下标越界），
+// 调用方应放弃整段重排，避免输入/输出段口径不一致。
+bool RerangeIrIoParams(const std::vector<int64_t> &ir_params,
+                       const std::map<size_t, std::pair<size_t, size_t>> &ir_2_instance, size_t expected_instance_num,
+                       std::vector<int64_t> &valid_params) {
+  if (ir_2_instance.empty()) {
+    // 空映射可能代表"输入原型为空"这种合法场景,这时输入段为空、不需要也不会发生重排，但输出段仍需继续归一化。
+    if (ir_params.size() != expected_instance_num) {
+      FE_LOGW("IR io params size[%zu] mismatch with instance num[%zu], give up rerange.", ir_params.size(),
+              expected_instance_num);
+      return false;
+    }
+    valid_params = ir_params;
+    return true;
+  }
+  size_t total_instance = 0U;
+  for (const auto &item : ir_2_instance) {
+    total_instance += item.second.second;
+  }
+  if (total_instance != expected_instance_num) {
+    FE_LOGW("IR io instance num[%zu] mismatch with expected instance num[%zu], give up rerange.", total_instance,
+            expected_instance_num);
+    return false;
+  }
+  valid_params.assign(total_instance, 0);
+  for (const auto &item : ir_2_instance) {
+    const size_t instance_start = item.second.first;
+    const size_t instance_num = item.second.second;
+    if (item.first >= ir_params.size()) {
+      FE_LOGW("IR index[%zu] out of range[%zu], give up rerange.", item.first, ir_params.size());
+      return false;
+    }
+    const int64_t val = ir_params[item.first];
+    for (size_t k = 0U; k < instance_num; ++k) {
+      if ((instance_start + k) < valid_params.size()) {
+        valid_params[instance_start + k] = val;
+      }
+    }
+  }
+  return true;
+}
+
+// IR 算子（AscendC 编译）的 parameters 按 IR 定义排布（含 optional 输入占位），
+// 下游均按有效值（is_ir=false）排布处理，此处将 input/output 段归一化为有效值排布。
+void NormalizeIrParametersIndex(const ge::OpDescPtr &op_desc, std::vector<int64_t> &parameters_index) {
+  const size_t ir_input_num = op_desc->GetIrInputsSize();
+  const size_t ir_output_num = op_desc->GetIrOutputs().size();
+  const size_t output_start = ir_input_num;
+  const size_t workspace_start = ir_input_num + ir_output_num;
+  if (parameters_index.size() < workspace_start) {
+    return;
+  }
+  const std::vector<int64_t> ir_input_params(parameters_index.begin(), parameters_index.begin() + output_start);
+  const std::vector<int64_t> ir_output_params(parameters_index.begin() + output_start,
+                                              parameters_index.begin() + workspace_start);
+  const std::vector<int64_t> tail_params(parameters_index.begin() + workspace_start, parameters_index.end());
+
+  const auto input_ir_map = ge::OpDescUtils::GetInputIrIndexes2InstanceIndexesPairMap(op_desc);
+  const auto output_ir_map = ge::OpDescUtils::GetOutputIrIndexes2InstanceIndexesPairMap(op_desc);
+
+  std::vector<int64_t> valid_input_params;
+  if (!RerangeIrIoParams(ir_input_params, input_ir_map, op_desc->GetInputsSize(), valid_input_params)) {
+    return;
+  }
+  std::vector<int64_t> valid_output_params;
+  if (!RerangeIrIoParams(ir_output_params, output_ir_map, op_desc->GetOutputsSize(), valid_output_params)) {
+    return;
+  }
+
+  std::vector<int64_t> normalized;
+  normalized.insert(normalized.end(), valid_input_params.begin(), valid_input_params.end());
+  normalized.insert(normalized.end(), valid_output_params.begin(), valid_output_params.end());
+  normalized.insert(normalized.end(), tail_params.begin(), tail_params.end());
+  parameters_index = std::move(normalized);
 }
 
 bool IsCustomGenTaskOp(const ge::OpDescPtr &op_desc) {
@@ -575,10 +654,16 @@ void TbeJsonFileParse::GetWorkspaceAtomicFlagAndOutputIndexFlag(
 }
 
 Status TbeJsonFileParse::SetAtomicInfo(std::vector<int64_t> &parameters_index, AtomicInitInfo &atomic_init_info) {
-  // need modify
   std::vector<int64_t> output_index;
   std::vector<int64_t> workspace_index;
   NodeBaseInfo node_base_info;
+  std::string ops_path_name_prefix;
+  (void)ge::AttrUtils::GetStr(op_desc_, OPS_PATH_NAME_PREFIX, ops_path_name_prefix);
+  // 非 ops_legacy 信息库（AscendC 算子）的 parameters 按算子原型排布，需归一化为有效值排布；
+  // ops_legacy 信息库（tbe 算子）的 parameters 按有效值排布，不归一化。
+  const bool is_ir = (ops_path_name_prefix != kOpsPathNamePrefixLegacy);
+  FE_LOGD("Op[%s] ops_path_name_prefix:[%s], ir_inputs_num:%zu, ir_outputs_num:%zu, is_ir:%d.", op_desc_->GetNamePtr(),
+          ops_path_name_prefix.c_str(), op_desc_->GetIrInputs().size(), op_desc_->GetIrOutputs().size(), is_ir);
   node_base_info.input_num = op_desc_->GetInputsSize();
   node_base_info.workspace_num = op_desc_->GetWorkspaceBytes().size();
   node_base_info.output_num = op_desc_->GetOutputsSize();
@@ -589,6 +674,9 @@ Status TbeJsonFileParse::SetAtomicInfo(std::vector<int64_t> &parameters_index, A
   (void)ge::AttrUtils::GetBool(op_desc_, kAttrIntercoreSync, inter_core_sync);
   if (mode == 1 || inter_core_sync) {
     node_base_info.offset_index = 1;
+  }
+  if (is_ir) {
+    NormalizeIrParametersIndex(op_desc_, parameters_index);
   }
   size_t total_size = node_base_info.input_num + node_base_info.output_num + node_base_info.workspace_num;
   bool is_support_dynamic_shape = false;

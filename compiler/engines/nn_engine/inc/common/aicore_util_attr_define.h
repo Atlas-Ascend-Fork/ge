@@ -217,6 +217,8 @@ const std::string CUSTOM_OP_FILE_PATH = "custom_op_file_path";
 
 const std::string OPS_PATH_NAME_PREFIX = "ops_path_name_prefix";
 
+constexpr char kOpsPathNamePrefixLegacy[] = "ops_legacy";
+
 const std::string ATTR_KEY_ATOMIC_KERNEL_NAME = "_atomic_kernelname";
 
 const std::string ATTR_NAME_UB_FUSION_SPACE_SIZE = "_ub_fusion_space_size";

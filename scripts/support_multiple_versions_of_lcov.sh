@@ -57,6 +57,12 @@ get_lcov_parallel_params() {
         thread_count=4
     fi
 
+    # 并发封顶 8：不透传构建 -jN(CI 为 -j20)。geninfo 并行子进程峰值内存随
+    # 并发线性放大，容器内存紧张时会被 OOM killer SIGKILL，导致覆盖率数据丢失
+    if [ "$thread_count" -gt 8 ] 2>/dev/null; then
+        thread_count=8
+    fi
+
     if check_lcov_version_ge 2 3; then
         # lcov 2.3 使用 --parallel N 格式
         # lcov 2.4+ 使用 --parallel --thread-count N 格式
@@ -100,7 +106,11 @@ get_lcov_parallel_ignore_errors() {
     if [ "$major" -ge 2 ] 2>/dev/null; then
         if [ "$minor" -ge 3 ] 2>/dev/null; then
             # lcov 2.3+ 并行模式：包含 child 和 empty
-            echo "--ignore-errors child,inconsistent,negative,mismatch,empty"
+            # fork/parallel: 容器内存紧张时 geninfo 并行子进程被内核 OOM SIGKILL(fork)
+            #   或个别 segment 子进程失败退出(parallel)；source: 覆盖率数据引用的源文件
+            #   缺失(如 build_ut/proto 下生成头文件)。不忽略会使 geninfo 非零退出，
+            #   在 set -e 下中止脚本，导致用例已全过的 UT/ST job 误判失败
+            echo "--ignore-errors child,inconsistent,negative,mismatch,empty,fork,parallel,source"
         else
             # lcov 2.0-2.2：不含 child，包含 empty
             echo "--ignore-errors inconsistent,negative,mismatch,empty"

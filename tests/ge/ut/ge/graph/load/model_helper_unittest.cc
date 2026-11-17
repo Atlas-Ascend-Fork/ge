@@ -1130,10 +1130,19 @@ TEST_F(UtestModelHelper, SaveDualBodyRootModelSuccessTest) {
   auto main_root = build_body_root("main_graph", "sub_graph", "sub_graph");
   auto fallback_root =
       build_body_root(kFallbackModelKey, std::string(kFallbackSubgraphPrefix) + "sub_graph", "sub_graph");
+  std::unique_ptr<char_t[]> so_data(new char_t[1]);
+  so_data[0] = 'x';
+  const OpSoBinPtr fallback_so = std::make_shared<OpSoBin>("libFallbackHostCpu.so", "host_cpu_fusion",
+                                                           std::move(so_data), 1U, SoBinType::kCustomOp);
+  const std::map<std::string, OpSoBinPtr> fallback_buffer{{"host_cpu_fusion/libFallbackHostCpu.so", fallback_so}};
+  ASSERT_TRUE(fallback_root->GetRootGraph()->SetExtAttr("bin_file_buffer", fallback_buffer));
   ModelHelper model_helper;
   model_helper.SetSaveMode(false);
   ModelBufferData model;
   EXPECT_EQ(model_helper.SaveDualBodyRootModel(main_root, fallback_root, "dual_body", model, true), SUCCESS);
+  const std::vector<OpSoBinPtr> saved_bins = model_helper.op_so_store_.GetSoBin();
+  EXPECT_NE(std::find(saved_bins.begin(), saved_bins.end(), fallback_so), saved_bins.end());
+  EXPECT_TRUE(OpSoStoreUtils::IsSoBinType(main_root->GetSoInOmFlag(), SoBinType::kCustomOp));
   bool dual_body = false;
   EXPECT_TRUE(AttrUtils::GetBool(main_root->GetRootGraph(), kDualBodyAttr, dual_body));
   EXPECT_TRUE(dual_body);
@@ -1187,9 +1196,43 @@ class TestableModelHelperForDualBodyUt : public ModelHelper {
  public:
   using ModelHelper::ClearTilingIds;
   using ModelHelper::IsUnfoldShellRoot;
+  using ModelHelper::MergeFallbackCustomOpSo;
   using ModelHelper::MergeFallbackTiling;
   using ModelHelper::SaveBodyModelGroups;
 };
+
+TEST_F(UtestModelHelper, MergeFallbackCustomOpSoPreservesBothBodiesAndRejectsConflicts) {
+  TestableModelHelperForDualBodyUt helper;
+  const auto main_graph = std::make_shared<ComputeGraph>("main");
+  const auto fallback_graph = std::make_shared<ComputeGraph>("fallback");
+  const auto main_root = std::make_shared<GeRootModel>();
+  const auto fallback_root = std::make_shared<GeRootModel>();
+  ASSERT_EQ(main_root->Initialize(main_graph), SUCCESS);
+  ASSERT_EQ(fallback_root->Initialize(fallback_graph), SUCCESS);
+  const auto make_bin = [](const char value, const SoBinType type) {
+    std::unique_ptr<char_t[]> data(new char_t[1]);
+    data[0] = value;
+    return std::make_shared<OpSoBin>("libfused.so", "host_cpu_fusion", std::move(data), 1U, type);
+  };
+  const OpSoBinPtr main_bin = make_bin('a', SoBinType::kCustomOp);
+  const OpSoBinPtr fallback_bin = make_bin('b', SoBinType::kCustomOp);
+  const std::map<std::string, OpSoBinPtr> main_buffer{{"main", main_bin}};
+  std::map<std::string, OpSoBinPtr> fallback_buffer{{"fallback", fallback_bin},
+                                                    {"main", make_bin('a', SoBinType::kCustomOp)},
+                                                    {"autofuse", make_bin('c', SoBinType::kAutofuse)}};
+  ASSERT_TRUE(main_graph->SetExtAttr("bin_file_buffer", main_buffer));
+  ASSERT_TRUE(fallback_graph->SetExtAttr("bin_file_buffer", fallback_buffer));
+  ASSERT_EQ(helper.MergeFallbackCustomOpSo(main_root, fallback_root), SUCCESS);
+  const auto merged = main_graph->GetExtAttr<std::map<std::string, OpSoBinPtr>>("bin_file_buffer");
+  ASSERT_NE(merged, nullptr);
+  ASSERT_EQ(merged->size(), 2U);
+  EXPECT_EQ(merged->at("main"), main_bin);
+  EXPECT_EQ(merged->at("fallback"), fallback_bin);
+  fallback_buffer["main"] = make_bin('x', SoBinType::kCustomOp);
+  ASSERT_TRUE(fallback_graph->SetExtAttr("bin_file_buffer", fallback_buffer));
+  EXPECT_NE(helper.MergeFallbackCustomOpSo(main_root, fallback_root), SUCCESS);
+  EXPECT_EQ((main_graph->GetExtAttr<std::map<std::string, OpSoBinPtr>>("bin_file_buffer")->at("main")), main_bin);
+}
 
 TEST_F(UtestModelHelper, DualBodyHelpersBoundaryTest) {
   TestableModelHelperForDualBodyUt helper;

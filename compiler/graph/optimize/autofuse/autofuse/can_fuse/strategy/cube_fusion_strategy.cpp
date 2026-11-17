@@ -71,6 +71,47 @@ bool IsIndirectLinksWithoutBatchBroadcast(const NodePtr &node1, const NodePtr &n
   return true;
 }
 
+bool IsDirectLinksWithInnerBroadcast(const NodePtr &node1, const NodePtr &node2,
+                                     const std::vector<std::pair<int32_t, int32_t>> &direct_links) {
+  TensorAttrInfo temp_graph_attr;
+  auto asc_graph = BackendUtils::GetNodeFusedAscGraph(node1);
+  GE_ASSERT_NOTNULL(asc_graph);
+  GE_ASSERT_SUCCESS(BackendUtils::GetGraphAttrInfo(*asc_graph, temp_graph_attr));
+  GE_ASSERT_TRUE(temp_graph_attr.axis.size() < static_cast<uint32_t>(std::numeric_limits<int32_t>::max()));
+  auto axis_size = static_cast<int32_t>(temp_graph_attr.axis.size());
+  for (const auto &link : direct_links) {
+    std::vector<ViewOpAttrInfo> attr_infos;
+    // 第4参传false：跳过显式Broadcast节点检查（GeFallback在can_fuse前已将broadcast编码展开为
+    // 显式Broadcast节点挂在Load后），与间接路径检查同构，通过Load输出属性与图轴反推view信息
+    (void)BackendUtils::CurNodeInputIsSimplestLoad(node2, link.second, attr_infos, false);
+    bool has_view = false;
+    bool only_inner_broadcast = true;
+    for (const auto &attr_info : attr_infos) {
+      // 后端不支持融合包含 transpose 或 slice 的 view。
+      if ((!attr_info.transpose_info.empty()) || attr_info.slice_info.two_slice_node_flag) {
+        has_view = true;
+        only_inner_broadcast = false;
+        break;
+      }
+      has_view = has_view || !attr_info.broadcast_info.empty();
+    }
+    // 允许无 view 的 Load 直连或仅沿 M/N 轴广播。transpose、slice 和 batch 轴广播不支持融合。
+    if (has_view && (!only_inner_broadcast || HasBatchBroadcast(axis_size, attr_infos, node2))) {
+      GELOGI(
+          "node1 %s(%s) and node2 %s(%s) cannot fuse, the reason is[%s] [node1 is Cube, node2 is Pointwise but "
+          "node2 input, which link to node1 has view op].",
+          node1->GetNamePtr(), node1->GetType().c_str(), node2->GetNamePtr(), node2->GetType().c_str(),
+          ge::NotFuseReasonCode(ge::NotFuseReason::kCubeCanNotFuseWithViewElementwise));
+      return false;
+    }
+    if (has_view) {
+      GELOGI("node1 %s(%s) and node2 %s(%s) can fuse, node2 input, which link to node1 has inner axis broadcast.",
+             node1->GetNamePtr(), node1->GetType().c_str(), node2->GetNamePtr(), node2->GetType().c_str());
+    }
+  }
+  return true;
+}
+
 bool CanFuseWithElementwise(const NodePtr &node1, const NodePtr &node2) {
   const auto attr1 = BackendUtils::GetNodeAutoFuseAttr(node1);
   GE_ASSERT_NOTNULL(attr1);
@@ -85,19 +126,11 @@ bool CanFuseWithElementwise(const NodePtr &node1, const NodePtr &node2) {
         ge::NotFuseReasonCode(ge::NotFuseReason::kCubeCanNotFuseHoriZontal));
     return false;
   }
-  // node1与node2（elewisement有view只能是broadcast）直连路径中不能包含broadcast，否则后端没法算vector内存占用
+  // 直连路径允许 M/N 轴广播，后端通过广播重铺或零步长读取估算向量内存用量。
   NodeFuseInfo node_fuse_info;
   GE_ASSERT_SUCCESS(node_fuse_info.UpdateNodeFuseInfo(node1, node2));
-  for (const auto &subgraph_link : node_fuse_info.GetNode1ToNode2LinkMap()) {
-    std::vector<ViewOpAttrInfo> attr_infos;
-    if (!BackendUtils::CurNodeInputIsSimplestLoad(node2, subgraph_link.second, attr_infos)) {
-      GELOGI(
-          "node1 %s(%s) and node2 %s(%s) cannot fuse, the reason is[%s] [node1 is Cube, node2 is Pointwise but "
-          "node2 input, which link to node1 has view op].",
-          node1->GetNamePtr(), node1->GetType().c_str(), node2->GetNamePtr(), node2->GetType().c_str(),
-          ge::NotFuseReasonCode(ge::NotFuseReason::kCubeCanNotFuseWithViewElementwise));
-      return false;
-    }
+  if (!IsDirectLinksWithInnerBroadcast(node1, node2, node_fuse_info.GetNode1ToNode2LinkMap())) {
+    return false;
   }
   // node1和node2非直连路径中包含batch轴和broadcast，后端暂不支持融合
   if (!IsIndirectLinksWithoutBatchBroadcast(node1, node2, node_fuse_info.GetNode1ToNode2LinkMap())) {

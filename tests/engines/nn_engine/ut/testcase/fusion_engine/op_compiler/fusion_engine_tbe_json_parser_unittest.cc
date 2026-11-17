@@ -1353,3 +1353,111 @@ TEST_F(UTEST_FE_TBE_JSON_PARSER, read_bytes_from_binary_file_exceeds_limit) {
   Status ret = tbe_json_file_parse_impl.ReadBytesFromBinaryFile(file_path, buffer);
   EXPECT_EQ(ret, fe::FAILED);
 }
+
+static OpDescPtr CreateIrOpDescForParameters(const vector<pair<string, IrInputType>> &ir_inputs,
+                                             const vector<string> &input_names,
+                                             const vector<pair<string, IrOutputType>> &ir_outputs,
+                                             const vector<string> &output_names) {
+  OpDescPtr op_desc = make_shared<OpDesc>("ir_params_node", "TestIrParams");
+  vector<int64_t> dims = {1, 2, 3, 4};
+  GeShape shape(dims);
+  GeTensorDesc tensor_desc(shape);
+  tensor_desc.SetFormat(FORMAT_NCHW);
+  tensor_desc.SetDataType(DT_FLOAT16);
+  for (const auto &name : input_names) {
+    (void)op_desc->AddInputDesc(name, tensor_desc);
+  }
+  for (const auto &name : output_names) {
+    (void)op_desc->AddOutputDesc(name, tensor_desc);
+  }
+  for (const auto &ir_input : ir_inputs) {
+    op_desc->AppendIrInput(ir_input.first, ir_input.second);
+  }
+  for (const auto &ir_output : ir_outputs) {
+    op_desc->AppendIrOutput(ir_output.first, ir_output.second);
+  }
+  return op_desc;
+}
+
+static vector<int64_t> GetParametersIndexAttr(const OpDescPtr &op_desc) {
+  vector<int64_t> parameters_index;
+  (void)ge::AttrUtils::GetListInt(op_desc, "ub_atomic_params", parameters_index);
+  return parameters_index;
+}
+
+// tbe_json_parse.cc: NormalizeIrParametersIndex - IR 排布重排为有效实例排布，Optional 输入未传值时跳过其占位
+TEST_F(UTEST_FE_TBE_JSON_PARSER, test_set_atomic_info_ir_rerange_optional_input_not_passed) {
+  OpDescPtr op_desc = CreateIrOpDescForParameters({{"x", kIrInputRequired}, {"bias", kIrInputOptional}}, {"x"},
+                                                  {{"y", kIrOutputRequired}}, {"y"});
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test");
+  NodePtr node = graph->AddNode(op_desc);
+  TbeJsonFileParse json_file_parse(*node);
+  vector<int64_t> parameters_index = {10, 20, 30};
+  AtomicInitInfo atomic_init_info;
+  EXPECT_EQ(json_file_parse.SetAtomicInfo(parameters_index, atomic_init_info), fe::SUCCESS);
+  EXPECT_EQ(GetParametersIndexAttr(op_desc), vector<int64_t>({10, 30}));
+}
+
+// tbe_json_parse.cc: RerangeIrIoParams - IR 输入实例总数与期望不一致时放弃重排
+TEST_F(UTEST_FE_TBE_JSON_PARSER, test_set_atomic_info_ir_input_instance_mismatch) {
+  OpDescPtr op_desc =
+      CreateIrOpDescForParameters({{"x", kIrInputRequired}}, {"x", "z"}, {{"y", kIrOutputRequired}}, {"y"});
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test");
+  NodePtr node = graph->AddNode(op_desc);
+  TbeJsonFileParse json_file_parse(*node);
+  vector<int64_t> parameters_index = {10, 20, 30};
+  AtomicInitInfo atomic_init_info;
+  EXPECT_EQ(json_file_parse.SetAtomicInfo(parameters_index, atomic_init_info), fe::SUCCESS);
+  EXPECT_EQ(GetParametersIndexAttr(op_desc), vector<int64_t>({10, 20, 30}));
+}
+
+// tbe_json_parse.cc: RerangeIrIoParams - IR 输出实例总数与期望不一致时放弃重排
+TEST_F(UTEST_FE_TBE_JSON_PARSER, test_set_atomic_info_ir_output_instance_mismatch) {
+  OpDescPtr op_desc =
+      CreateIrOpDescForParameters({{"x", kIrInputRequired}}, {"x"}, {{"y", kIrOutputRequired}}, {"y", "z"});
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test");
+  NodePtr node = graph->AddNode(op_desc);
+  TbeJsonFileParse json_file_parse(*node);
+  vector<int64_t> parameters_index = {10, 20, 30};
+  AtomicInitInfo atomic_init_info;
+  EXPECT_EQ(json_file_parse.SetAtomicInfo(parameters_index, atomic_init_info), fe::SUCCESS);
+  EXPECT_EQ(GetParametersIndexAttr(op_desc), vector<int64_t>({10, 20, 30}));
+}
+
+// tbe_json_parse.cc: NormalizeIrParametersIndex - parameters 长度不足 input+output 时直接返回
+TEST_F(UTEST_FE_TBE_JSON_PARSER, test_set_atomic_info_ir_params_size_too_small) {
+  OpDescPtr op_desc = CreateIrOpDescForParameters({{"x", kIrInputRequired}}, {"x"}, {{"y", kIrOutputRequired}}, {"y"});
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test");
+  NodePtr node = graph->AddNode(op_desc);
+  TbeJsonFileParse json_file_parse(*node);
+  vector<int64_t> parameters_index = {5};
+  AtomicInitInfo atomic_init_info;
+  EXPECT_EQ(json_file_parse.SetAtomicInfo(parameters_index, atomic_init_info), fe::SUCCESS);
+  EXPECT_EQ(GetParametersIndexAttr(op_desc), vector<int64_t>({5, 0}));
+}
+
+// tbe_json_parse.cc: RerangeIrIoParams - 无 IR 输入输出时映射表为空且实例数匹配，原样保留
+TEST_F(UTEST_FE_TBE_JSON_PARSER, test_set_atomic_info_ir_no_ir_input_output) {
+  OpDescPtr op_desc = CreateIrOpDescForParameters({}, {}, {}, {});
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test");
+  NodePtr node = graph->AddNode(op_desc);
+  TbeJsonFileParse json_file_parse(*node);
+  vector<int64_t> parameters_index = {9};
+  AtomicInitInfo atomic_init_info;
+  EXPECT_EQ(json_file_parse.SetAtomicInfo(parameters_index, atomic_init_info), fe::SUCCESS);
+  EXPECT_EQ(GetParametersIndexAttr(op_desc), vector<int64_t>({9}));
+}
+
+// tbe_json_parse.cc: SetAtomicInfo - ops_legacy 信息库（tbe 算子）不做 IR 排布归一化
+TEST_F(UTEST_FE_TBE_JSON_PARSER, test_set_atomic_info_legacy_prefix_skip_normalize) {
+  OpDescPtr op_desc = CreateIrOpDescForParameters({{"x", kIrInputRequired}, {"bias", kIrInputOptional}}, {"x"},
+                                                  {{"y", kIrOutputRequired}}, {"y"});
+  (void)ge::AttrUtils::SetStr(op_desc, OPS_PATH_NAME_PREFIX, kOpsPathNamePrefixLegacy);
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test");
+  NodePtr node = graph->AddNode(op_desc);
+  TbeJsonFileParse json_file_parse(*node);
+  vector<int64_t> parameters_index = {10, 20, 30};
+  AtomicInitInfo atomic_init_info;
+  EXPECT_EQ(json_file_parse.SetAtomicInfo(parameters_index, atomic_init_info), fe::SUCCESS);
+  EXPECT_EQ(GetParametersIndexAttr(op_desc), vector<int64_t>({10, 20, 30}));
+}

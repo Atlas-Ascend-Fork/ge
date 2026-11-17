@@ -399,10 +399,6 @@ Status InnerSession::LoadGraph(const uint32_t graph_id, const std::map<AscendStr
 Status InnerSession::AddGraphWithCopy(uint32_t graph_id, const Graph &graph,
                                       const std::map<std::string, std::string> &options) {
   std::lock_guard<std::mutex> lock(resource_mutex_);
-  bool is_execute_graph = false;
-  if ((IsExecuteGraph(graph_id, is_execute_graph) == SUCCESS) && is_execute_graph) {
-    return GE_GRAPH_GRAPH_ALREADY_EXIST;
-  }
   GE_ASSERT_SUCCESS(SetSessionGraphId(graph, session_id_, graph_id));
   PrintOptionsWithLengthLimit(options, "AddGraphWithCopy option");
   UpdateGlobalSessionContext();
