@@ -53,7 +53,9 @@ class Tensor:
         self._owns_handle = False
         self._owner = None
         if shape is not None:
-            if not isinstance(shape, list) or not all(isinstance(dim, int) for dim in shape):
+            if not isinstance(shape, list) or not all(
+                isinstance(dim, int) for dim in shape
+            ):
                 raise TypeError("Shape must be a list of integers")
         if not isinstance(placement, Placement):
             raise TypeError("Placement must be a Placement")
@@ -84,7 +86,7 @@ class Tensor:
             DataType.DT_INT8: ctypes.c_int8,
             DataType.DT_UINT8: ctypes.c_uint8,
         }
-        if all(isinstance(x, bool) for x in data):
+        if data_type == DataType.DT_BOOL and all(isinstance(x, bool) for x in data):
             return ctypes.c_bool, [bool(x) for x in data]
 
         if data_type in int_type_map:
@@ -97,9 +99,13 @@ class Tensor:
             return ctypes.c_uint16, float_list_to_fp16_bits([float(x) for x in data])
 
         if data_type == DataType.DT_DOUBLE:
-            raise RuntimeError("DT_DOUBLE is not supported in python Tensor constructor")
+            raise RuntimeError(
+                "DT_DOUBLE is not supported in python Tensor constructor"
+            )
 
-        raise RuntimeError("Failed to create Tensor with data type: {}".format(data_type))
+        raise RuntimeError(
+            "Failed to create Tensor with data type: {}".format(data_type)
+        )
 
     def _create_from_data(
         self,
@@ -117,7 +123,9 @@ class Tensor:
 
         dim_num = len(shape) if shape is not None else 0
         c_dims_array = (ctypes.c_int64 * dim_num)(*shape) if dim_num > 0 else None
-        self._handle = esb_lib.EsCreateEsCTensor(c_data_array, c_dims_array, dim_num, data_type, format)
+        self._handle = esb_lib.EsCreateEsCTensor(
+            c_data_array, c_dims_array, dim_num, data_type, format
+        )
 
     def _create_from_file(
         self,
@@ -130,12 +138,16 @@ class Tensor:
         dim_num = len(shape) if shape is not None else 0
         c_dims_array = (ctypes.c_int64 * dim_num)(*shape) if dim_num > 0 else None
         file_path_bytes = file_path.encode("utf-8")
-        self._handle = esb_lib.EsCreateEsCTensorFromFile(file_path_bytes, c_dims_array, dim_num, data_type, format)
+        self._handle = esb_lib.EsCreateEsCTensorFromFile(
+            file_path_bytes, c_dims_array, dim_num, data_type, format
+        )
 
     def __del__(self) -> None:
         """Clean up resources."""
         if self._owns_handle:
-            graph_lib.GeApiWrapper_Tensor_DestroyEsCTensor(self._handle)  # _handle must be valid
+            graph_lib.GeApiWrapper_Tensor_DestroyEsCTensor(
+                self._handle
+            )  # _handle must be valid
             self._handle = None
 
     def __copy__(self) -> None:
@@ -192,7 +204,9 @@ class Tensor:
         """
         if self._owner is not None:
             raise RuntimeError(
-                "Tensor already has an new owner builder :{}, cannot transfer ownership again".format(self._owner.name)
+                "Tensor already has an new owner builder :{}, cannot transfer ownership again".format(
+                    self._owner.name
+                )
             )
         self._owns_handle = False
         self._owner = new_owner  # Keep reference to prevent premature GC
@@ -313,7 +327,9 @@ class Tensor:
         """
         dims_num = ctypes.c_size_t()
         dims_arr = ctypes.POINTER(ctypes.c_int64)()
-        ret = graph_lib.GeApiWrapper_Tensor_GetShape(self._handle, ctypes.byref(dims_arr), ctypes.byref(dims_num))
+        ret = graph_lib.GeApiWrapper_Tensor_GetShape(
+            self._handle, ctypes.byref(dims_arr), ctypes.byref(dims_num)
+        )
 
         if ret != 0:  # GRAPH_SUCCESS
             raise RuntimeError("Failed to get shape of tensor")
@@ -387,6 +403,8 @@ def unflatten_tensor_data(tensor_data: str, shape: List[int]) -> "TensorLike":
     tensor_data_list = _parse_str_list(tensor_data)
     if len(shape) == 0:
         if len(tensor_data_list) != 1:
-            raise ValueError(f"Scalar tensor should contain exactly one element, got {len(tensor_data_list)}")
+            raise ValueError(
+                f"Scalar tensor should contain exactly one element, got {len(tensor_data_list)}"
+            )
         return tensor_data_list[0]
     return _unflatten(tensor_data_list, shape)
