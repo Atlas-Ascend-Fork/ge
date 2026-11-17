@@ -168,6 +168,10 @@ struct ModelIoEntry {
   bool is_addr_refreshable{true};
   int64_t addr_offset{0};
   int64_t memory_size{0};  // 拷贝模式下的 ModelIo 区大小（拷贝越界防护）
+  uint32_t allocation_id{UINT32_MAX};
+  uint32_t copy_allocation_id{UINT32_MAX};
+  uint64_t copy_offset{0};
+  bool use_active_copy_src{false};
 };
 
 struct ModelIoSemantic {
@@ -382,6 +386,8 @@ struct ArgsTableSemantic {
   std::vector<uint32_t> output_index_to_allocation_ids;
 
   std::vector<std::pair<uint32_t, uint32_t>> refreshable_fm_index_and_allocation_ids;
+
+  std::vector<uint64_t> allocation_base_offsets;
 };
 
 struct Om2CodegenModel {

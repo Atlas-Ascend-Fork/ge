@@ -86,6 +86,16 @@ class ModelAdapter {
     return refreshable_fm_index_and_allocation_ids_;
   }
 
+  const std::map<uint32_t, MemAllocationSlice> &GetOutputIndexesToCopyInfo() const {
+    return output_indexes_to_copy_info_;
+  }
+
+  const std::unordered_set<uint32_t> &GetCopyHostInputIndexes() const {
+    return copy_host_input_indexes_;
+  }
+
+  std::vector<uint64_t> GetAllocationBaseOffsets() const;
+
  private:
   void PrintNoFrozenInputIndexes();
 

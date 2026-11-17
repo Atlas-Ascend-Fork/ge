@@ -26,6 +26,8 @@ class ArgsManagerFileCodeGenerator : public CodeGeneratorBase {
   MethodDef *BuildGetHostArgAddrMethod() const;
   MethodDef *BuildRefreshMapFeatureMethod();
   MethodDef *BuildUpdateHostArgsMethod();
+  MethodDef *BuildResolveActiveBasesMethod() const;
+  MethodDef *BuildResolveActiveSrcMethod() const;
   MethodDef *BuildCopyArgsToDeviceMethod(const Om2CodegenModel &codegen_model) const;
 
  private:
@@ -57,6 +59,8 @@ class ArgsManagerFileCodeGenerator : public CodeGeneratorBase {
   VarRef input_index_to_allocation_ids_;
   VarRef output_index_to_allocation_ids_;
   VarRef allocation_ids_to_model_args_refresh_infos_addr_all_;
+  VarRef active_base_init_offsets_;
+  VarRef allocation_ids_to_active_base_addr_all_;
   //
 };
 }  // namespace ge

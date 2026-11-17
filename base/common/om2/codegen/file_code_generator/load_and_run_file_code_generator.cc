@@ -392,7 +392,16 @@ void LoadAndRunFileCodeGenerator::BuildRunBodyCopyOutputs(std::vector<BodyItem> 
     const std::string addr_var_name = "dev_output" + std::to_string(entry.index) + "_ptr";
     auto tensor = ast_.Var("auto", tensor_var_name);
     auto dev_addr = ast_.Var("auto", addr_var_name);
-    body.push_back(ast_.VarDecl(dev_addr, GetAddr(ast_.Var("void *", "total_dev_mem_ptr_"), entry.memory_offset)));
+    if (entry.use_active_copy_src) {
+      body.push_back(ast_.VarDecl(dev_addr, args_table_.Attr("ResolveActiveSrc")(ast_.UInt(entry.copy_allocation_id),
+                                                                                 ast_.ULong(entry.copy_offset))));
+      body.push_back(ast_.If(
+          dev_addr == nullptr,
+          {ast_.Call("OM2_LOGE", {ast_.Str("resolve active copy src failed, output index=%u"), ast_.UInt(entry.index)}),
+           ast_.Return("ACL_ERROR_FAILURE")}));
+    } else {
+      body.push_back(ast_.VarDecl(dev_addr, GetAddr(ast_.Var("void *", "total_dev_mem_ptr_"), entry.memory_offset)));
+    }
     // 拷贝越界防护：用户输出 tensor 不得超出模型输出区（避免超读相邻模型内存）
     if (entry.memory_size > 0) {
       body.push_back(

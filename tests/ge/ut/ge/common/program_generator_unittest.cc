@@ -1550,6 +1550,11 @@ aclError Om2ArgsTable::Init() {
   allocation_ids_to_model_args_refresh_infos_addr_all_.clear();
   allocation_ids_to_model_args_refresh_infos_addr_all_.resize(3);
   allocation_ids_to_model_args_refresh_infos_addr_all_ = {{{0, 1024, 0}, {8, 1024, 0}, {16, 1024, 0}, {24, 0, 0}}, {}, {{32, 0, 0}, {40, 0, 0}, {48, 0, 0}, {56, 0, 0}, {64, 0, 0}, {72, 0, 0}, {80, 0, 0}, {88, 0, 0}, {96, 0, 0}, {104, 0, 0}, {112, 0, 0}, {120, 0, 0}, {128, 0, 0}, {136, 0, 0}, {144, 0, 0}, {152, 0, 0}}};
+  active_base_init_offsets_.clear();
+  active_base_init_offsets_.resize(3);
+  active_base_init_offsets_ = {0UL, 3072UL, 0UL};
+  allocation_ids_to_active_base_addr_all_.clear();
+  allocation_ids_to_active_base_addr_all_.resize(3);
   return ACL_SUCCESS;
 }
 
@@ -1585,6 +1590,7 @@ void * Om2ArgsTable::GetHostArgAddr(size_t offset, int32_t args_type) {
 aclError Om2ArgsTable::RefreshFeatureMap(const uintptr_t base_addr) {
   for (const auto&allocation_id : refreshable_fm_index_to_allocation_ids_) {
     const auto&infos = allocation_ids_to_model_args_refresh_infos_addr_all_.at(allocation_id);
+    allocation_ids_to_active_base_addr_all_[allocation_id] = base_addr;
     const uint8_t*base_ptr = reinterpret_cast<const uint8_t*>(base_addr);
     for (const auto&info : infos) {
       void *host_addr = GET_ADDR(host_args_[info.args_type].data(), info.args_offset);
@@ -1599,6 +1605,7 @@ aclError Om2ArgsTable::UpdateHostArgs(int32_t type, size_t index, const uintptr_
   if (type == 0) {
     int32_t allocation_id = input_index_to_allocation_ids_.at(index);
     const auto&infos = allocation_ids_to_model_args_refresh_infos_addr_all_.at(allocation_id);
+    allocation_ids_to_active_base_addr_all_[allocation_id] = addr;
     const uint8_t*base_ptr = reinterpret_cast<const uint8_t*>(addr);
     for (const auto&info : infos) {
       void *host_addr = GET_ADDR(host_args_[info.args_type].data(), info.args_offset);
@@ -1609,6 +1616,7 @@ aclError Om2ArgsTable::UpdateHostArgs(int32_t type, size_t index, const uintptr_
   if (type == 1) {
     int32_t allocation_id = output_index_to_allocation_ids_.at(index);
     const auto&infos = allocation_ids_to_model_args_refresh_infos_addr_all_.at(allocation_id);
+    allocation_ids_to_active_base_addr_all_[allocation_id] = addr;
     const uint8_t*base_ptr = reinterpret_cast<const uint8_t*>(addr);
     for (const auto&info : infos) {
       void *host_addr = GET_ADDR(host_args_[info.args_type].data(), info.args_offset);
@@ -1617,6 +1625,21 @@ aclError Om2ArgsTable::UpdateHostArgs(int32_t type, size_t index, const uintptr_
     }
   }
   return ACL_SUCCESS;
+}
+
+aclError Om2ArgsTable::ResolveActiveBases(void *total_dev_mem_ptr) {
+  for (size_t i = 0; (i < allocation_ids_to_active_base_addr_all_.size()); i++) {
+    allocation_ids_to_active_base_addr_all_[i] = (reinterpret_cast<uintptr_t>(total_dev_mem_ptr) + active_base_init_offsets_[i]);
+  }
+  return ACL_SUCCESS;
+}
+
+void * Om2ArgsTable::ResolveActiveSrc(size_t allocation_id, uint64_t offset) {
+  if (allocation_id >= allocation_ids_to_active_base_addr_all_.size()) {
+    OM2_LOGE("active base id %zu is out of range %zu", allocation_id, allocation_ids_to_active_base_addr_all_.size());
+    return nullptr;
+  }
+  return reinterpret_cast<void *>((allocation_ids_to_active_base_addr_all_[allocation_id] + offset));
 }
 
 aclError Om2ArgsTable::CopyArgsToDevice(void *stream, bool is_async) {
@@ -1773,6 +1796,7 @@ aclError Om2Model::InitResources(int32_t priority, uint64_t reuse_zero_copy, con
   OM2_CHK_STATUS(aclmdlRIBindStream(model_handle_, stream_list_[0], bind0_flag));
   is_stream_list_bind_ = true;
   args_table_.Init();
+  OM2_CHK_STATUS(args_table_.ResolveActiveBases(total_dev_mem_ptr_));
   OM2_LOGI("InitResources done");
   return ACL_SUCCESS;
 }
@@ -2194,6 +2218,8 @@ class Om2ArgsTable {
     void * GetHostArgAddr(size_t offset, int32_t args_type);
     aclError RefreshFeatureMap(const uintptr_t base_addr);
     aclError UpdateHostArgs(int32_t type, size_t index, const uintptr_t addr);
+    aclError ResolveActiveBases(void *total_dev_mem_ptr);
+    void * ResolveActiveSrc(size_t allocation_id, uint64_t offset);
     aclError CopyArgsToDevice(void *stream, bool is_async);
   private:
     std::array<int64_t,  static_cast<size_t>(3)> args_sizes_{};
@@ -2205,6 +2231,8 @@ class Om2ArgsTable {
     std::vector<uint32_t> input_index_to_allocation_ids_;
     std::vector<uint32_t> output_index_to_allocation_ids_;
     std::vector<std::vector<ArgsRefreshInfo>> allocation_ids_to_model_args_refresh_infos_addr_all_;
+    std::vector<uint64_t> active_base_init_offsets_;
+    std::vector<uintptr_t> allocation_ids_to_active_base_addr_all_;
 };
 
 enum OpDispatchType : uint32_t {
@@ -3323,8 +3351,10 @@ aclError Om2Model::RunAsync(aclrtStream &exe_stream, size_t input_count, gert::T
   auto input_data_0_tensor = input_data[0];
   auto input_data_1_tensor = input_data[1];
   auto output_data_0_tensor = output_data[0];
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 0, reinterpret_cast<uintptr_t>(input_data_0_tensor->GetAddr())));
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 1, reinterpret_cast<uintptr_t>(input_data_1_tensor->GetAddr())));
+  auto dev_input0_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpyAsync(dev_input0_ptr, input_data_0_tensor->GetSize(), input_data_0_tensor->GetAddr(), input_data_0_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE, exe_stream));
+  auto dev_input1_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpyAsync(dev_input1_ptr, input_data_1_tensor->GetSize(), input_data_1_tensor->GetAddr(), input_data_1_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE, exe_stream));
   OM2_CHK_STATUS(args_table_.UpdateHostArgs(1, 0, reinterpret_cast<uintptr_t>(output_data_0_tensor->GetAddr())));
   if ((run_callbacks != nullptr) && (run_callbacks->report_run_info_preprocess != nullptr)) {
     GertModelRunReportInfo _r = {sizeof(GertModelRunReportInfo), model_id_, exe_stream, 1ULL};
@@ -3350,8 +3380,10 @@ aclError Om2Model::Run(size_t input_count, gert::Tensor **input_data, size_t out
   auto input_data_0_tensor = input_data[0];
   auto input_data_1_tensor = input_data[1];
   auto output_data_0_tensor = output_data[0];
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 0, reinterpret_cast<uintptr_t>(input_data_0_tensor->GetAddr())));
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 1, reinterpret_cast<uintptr_t>(input_data_1_tensor->GetAddr())));
+  auto dev_input0_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpy(dev_input0_ptr, input_data_0_tensor->GetSize(), input_data_0_tensor->GetAddr(), input_data_0_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE));
+  auto dev_input1_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpy(dev_input1_ptr, input_data_1_tensor->GetSize(), input_data_1_tensor->GetAddr(), input_data_1_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE));
   OM2_CHK_STATUS(args_table_.UpdateHostArgs(1, 0, reinterpret_cast<uintptr_t>(output_data_0_tensor->GetAddr())));
   if ((run_callbacks != nullptr) && (run_callbacks->report_run_info_preprocess != nullptr)) {
     GertModelRunReportInfo _r = {sizeof(GertModelRunReportInfo), model_id_, nullptr, 0ULL};
@@ -4018,8 +4050,10 @@ aclError Om2Model::RunAsync(aclrtStream &exe_stream, size_t input_count, gert::T
   auto input_data_0_tensor = input_data[0];
   auto input_data_1_tensor = input_data[1];
   auto output_data_0_tensor = output_data[0];
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 0, reinterpret_cast<uintptr_t>(input_data_0_tensor->GetAddr())));
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 1, reinterpret_cast<uintptr_t>(input_data_1_tensor->GetAddr())));
+  auto dev_input0_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpyAsync(dev_input0_ptr, input_data_0_tensor->GetSize(), input_data_0_tensor->GetAddr(), input_data_0_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE, exe_stream));
+  auto dev_input1_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpyAsync(dev_input1_ptr, input_data_1_tensor->GetSize(), input_data_1_tensor->GetAddr(), input_data_1_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE, exe_stream));
   OM2_CHK_STATUS(args_table_.UpdateHostArgs(1, 0, reinterpret_cast<uintptr_t>(output_data_0_tensor->GetAddr())));
   if ((run_callbacks != nullptr) && (run_callbacks->report_run_info_preprocess != nullptr)) {
     GertModelRunReportInfo _r = {sizeof(GertModelRunReportInfo), model_id_, exe_stream, 1ULL};
@@ -4045,8 +4079,10 @@ aclError Om2Model::Run(size_t input_count, gert::Tensor **input_data, size_t out
   auto input_data_0_tensor = input_data[0];
   auto input_data_1_tensor = input_data[1];
   auto output_data_0_tensor = output_data[0];
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 0, reinterpret_cast<uintptr_t>(input_data_0_tensor->GetAddr())));
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 1, reinterpret_cast<uintptr_t>(input_data_1_tensor->GetAddr())));
+  auto dev_input0_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpy(dev_input0_ptr, input_data_0_tensor->GetSize(), input_data_0_tensor->GetAddr(), input_data_0_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE));
+  auto dev_input1_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpy(dev_input1_ptr, input_data_1_tensor->GetSize(), input_data_1_tensor->GetAddr(), input_data_1_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE));
   OM2_CHK_STATUS(args_table_.UpdateHostArgs(1, 0, reinterpret_cast<uintptr_t>(output_data_0_tensor->GetAddr())));
   if ((run_callbacks != nullptr) && (run_callbacks->report_run_info_preprocess != nullptr)) {
     GertModelRunReportInfo _r = {sizeof(GertModelRunReportInfo), model_id_, nullptr, 0ULL};
@@ -4803,8 +4839,10 @@ aclError Om2Model::RunAsync(aclrtStream &exe_stream, size_t input_count, gert::T
   auto input_data_0_tensor = input_data[0];
   auto input_data_1_tensor = input_data[1];
   auto output_data_0_tensor = output_data[0];
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 0, reinterpret_cast<uintptr_t>(input_data_0_tensor->GetAddr())));
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 1, reinterpret_cast<uintptr_t>(input_data_1_tensor->GetAddr())));
+  auto dev_input0_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpyAsync(dev_input0_ptr, input_data_0_tensor->GetSize(), input_data_0_tensor->GetAddr(), input_data_0_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE, exe_stream));
+  auto dev_input1_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpyAsync(dev_input1_ptr, input_data_1_tensor->GetSize(), input_data_1_tensor->GetAddr(), input_data_1_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE, exe_stream));
   OM2_CHK_STATUS(args_table_.UpdateHostArgs(1, 0, reinterpret_cast<uintptr_t>(output_data_0_tensor->GetAddr())));
   if ((run_callbacks != nullptr) && (run_callbacks->report_run_info_preprocess != nullptr)) {
     GertModelRunReportInfo _r = {sizeof(GertModelRunReportInfo), model_id_, exe_stream, 1ULL};
@@ -4830,8 +4868,10 @@ aclError Om2Model::Run(size_t input_count, gert::Tensor **input_data, size_t out
   auto input_data_0_tensor = input_data[0];
   auto input_data_1_tensor = input_data[1];
   auto output_data_0_tensor = output_data[0];
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 0, reinterpret_cast<uintptr_t>(input_data_0_tensor->GetAddr())));
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 1, reinterpret_cast<uintptr_t>(input_data_1_tensor->GetAddr())));
+  auto dev_input0_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpy(dev_input0_ptr, input_data_0_tensor->GetSize(), input_data_0_tensor->GetAddr(), input_data_0_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE));
+  auto dev_input1_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpy(dev_input1_ptr, input_data_1_tensor->GetSize(), input_data_1_tensor->GetAddr(), input_data_1_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE));
   OM2_CHK_STATUS(args_table_.UpdateHostArgs(1, 0, reinterpret_cast<uintptr_t>(output_data_0_tensor->GetAddr())));
   if ((run_callbacks != nullptr) && (run_callbacks->report_run_info_preprocess != nullptr)) {
     GertModelRunReportInfo _r = {sizeof(GertModelRunReportInfo), model_id_, nullptr, 0ULL};
@@ -5518,8 +5558,10 @@ aclError Om2Model::RunAsync(aclrtStream &exe_stream, size_t input_count, gert::T
   auto input_data_0_tensor = input_data[0];
   auto input_data_1_tensor = input_data[1];
   auto output_data_0_tensor = output_data[0];
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 0, reinterpret_cast<uintptr_t>(input_data_0_tensor->GetAddr())));
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 1, reinterpret_cast<uintptr_t>(input_data_1_tensor->GetAddr())));
+  auto dev_input0_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpyAsync(dev_input0_ptr, input_data_0_tensor->GetSize(), input_data_0_tensor->GetAddr(), input_data_0_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE, exe_stream));
+  auto dev_input1_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpyAsync(dev_input1_ptr, input_data_1_tensor->GetSize(), input_data_1_tensor->GetAddr(), input_data_1_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE, exe_stream));
   OM2_CHK_STATUS(args_table_.UpdateHostArgs(1, 0, reinterpret_cast<uintptr_t>(output_data_0_tensor->GetAddr())));
   if ((run_callbacks != nullptr) && (run_callbacks->report_run_info_preprocess != nullptr)) {
     GertModelRunReportInfo _r = {sizeof(GertModelRunReportInfo), model_id_, exe_stream, 1ULL};
@@ -5545,8 +5587,10 @@ aclError Om2Model::Run(size_t input_count, gert::Tensor **input_data, size_t out
   auto input_data_0_tensor = input_data[0];
   auto input_data_1_tensor = input_data[1];
   auto output_data_0_tensor = output_data[0];
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 0, reinterpret_cast<uintptr_t>(input_data_0_tensor->GetAddr())));
-  OM2_CHK_STATUS(args_table_.UpdateHostArgs(0, 1, reinterpret_cast<uintptr_t>(input_data_1_tensor->GetAddr())));
+  auto dev_input0_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpy(dev_input0_ptr, input_data_0_tensor->GetSize(), input_data_0_tensor->GetAddr(), input_data_0_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE));
+  auto dev_input1_ptr = GET_ADDR(total_dev_mem_ptr_, 1024);
+  OM2_CHK_STATUS(aclrtMemcpy(dev_input1_ptr, input_data_1_tensor->GetSize(), input_data_1_tensor->GetAddr(), input_data_1_tensor->GetSize(), ACL_MEMCPY_DEVICE_TO_DEVICE));
   OM2_CHK_STATUS(args_table_.UpdateHostArgs(1, 0, reinterpret_cast<uintptr_t>(output_data_0_tensor->GetAddr())));
   if ((run_callbacks != nullptr) && (run_callbacks->report_run_info_preprocess != nullptr)) {
     GertModelRunReportInfo _r = {sizeof(GertModelRunReportInfo), model_id_, nullptr, 0ULL};

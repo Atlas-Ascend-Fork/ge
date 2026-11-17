@@ -135,6 +135,9 @@ ClassDecl *InterfaceFileCodeGenerator::BuildOm2ArgsTableClass() {
       ast_.DeclareMethod(
           "UpdateHostArgs",
           {ast_.Var("int32_t", "type"), ast_.Var("size_t", "index"), ast_.Var("const uintptr_t", "addr")}, "aclError"),
+      ast_.DeclareMethod("ResolveActiveBases", {ast_.Var("void *", "total_dev_mem_ptr")}, "aclError"),
+      ast_.DeclareMethod("ResolveActiveSrc", {ast_.Var("size_t", "allocation_id"), ast_.Var("uint64_t", "offset")},
+                         "void *"),
       ast_.DeclareMethod("CopyArgsToDevice", {ast_.Var("void *", "stream"), ast_.Var("bool", "is_async")}, "aclError"),
       ast_.Private(),
       // sqe会合并到hbm中
@@ -147,6 +150,8 @@ ClassDecl *InterfaceFileCodeGenerator::BuildOm2ArgsTableClass() {
       ast_.Field("std::vector<uint32_t>", "input_index_to_allocation_ids_"),
       ast_.Field("std::vector<uint32_t>", "output_index_to_allocation_ids_"),
       ast_.Field("std::vector<std::vector<ArgsRefreshInfo>>", "allocation_ids_to_model_args_refresh_infos_addr_all_"),
+      ast_.Field("std::vector<uint64_t>", "active_base_init_offsets_"),
+      ast_.Field("std::vector<uintptr_t>", "allocation_ids_to_active_base_addr_all_"),
       //
   };
   return ast_.Class("Om2ArgsTable", items);

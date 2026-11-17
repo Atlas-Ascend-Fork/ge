@@ -278,7 +278,7 @@ Status ModelAdapter::GenSliceOutputMemAllocations(const std::vector<OpDescPtr> &
           actual_output_size);
     }
 
-    output_index_to_allocation_ids_.resize(actual_output_size, UINT32_MAX);
+    output_index_to_allocation_ids_.resize(output_index + actual_output_size, UINT32_MAX);
     for (size_t i = 0UL; i < actual_output_size; ++i) {
       const uint64_t logical_addr = virtual_addr_list[i];
       const int64_t offset = v_input_offset[i];
@@ -574,6 +574,20 @@ Status ModelAdapter::GetMemAllocationByLogicAddr(const uint64_t addr, MemAllocat
     }
   }
   return INTERNAL_ERROR;
+}
+
+std::vector<uint64_t> ModelAdapter::GetAllocationBaseOffsets() const {
+  std::vector<uint64_t> base_offsets;
+  base_offsets.reserve(logical_mem_allocations_.size());
+  const uint64_t mem_base = runtime_param_.mem_base;
+  for (const auto &allocation : logical_mem_allocations_) {
+    if ((allocation.type == MemAllocation::Type::ABSOLUTE) || (allocation.logical_addr < mem_base)) {
+      base_offsets.emplace_back(0U);
+      continue;
+    }
+    base_offsets.emplace_back(allocation.logical_addr - mem_base);
+  }
+  return base_offsets;
 }
 
 void ModelAdapter::SetInputDimsInfo(const std::vector<int64_t> &input_dims, const Format format,
