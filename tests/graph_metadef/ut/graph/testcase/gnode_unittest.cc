@@ -218,6 +218,19 @@ TEST_F(GNodeTest, GetDynamicInputIndexesByName_Failed) {
   ASSERT_EQ(gnode.GetDynamicInputIndexesByName("in_node", input_indexes), GRAPH_FAILED);
 }
 
+TEST_F(GNodeTest, GetDynamicInputIndexesByName_IndexesNotContinuous) {
+  auto builder = ut::GraphBuilder("graph");
+  const auto &node = builder.AddNode("node", "node", 0, 0);
+  const auto op_desc = node->GetOpDesc();
+  ASSERT_EQ(op_desc->AddInputDesc("in_node0", GeTensorDesc()), GRAPH_SUCCESS);
+  ASSERT_EQ(op_desc->AddInputDesc("other", GeTensorDesc()), GRAPH_SUCCESS);
+  ASSERT_EQ(op_desc->AddInputDesc("in_node1", GeTensorDesc()), GRAPH_SUCCESS);
+
+  auto gnode = NodeAdapter::Node2GNode(node);
+  std::vector<int32_t> input_indexes;
+  ASSERT_EQ(gnode.GetDynamicInputIndexesByName("in_node", input_indexes), GRAPH_FAILED);
+}
+
 TEST_F(GNodeTest, GetDynamicInputIndexesByName_Success) {
   auto builder = ut::GraphBuilder("graph");
   const auto &node = builder.AddNode("node", "node", 3, 1);
@@ -266,6 +279,19 @@ TEST_F(GNodeTest, GetDynamicOutputIndexesByName_Failed) {
   gnode.impl_ = nullptr;
   ASSERT_EQ(gnode.GetDynamicOutputIndexesByName("out_node", output_indexes), GRAPH_FAILED);
   gnode = NodeAdapter::Node2GNode(out_node);
+  ASSERT_EQ(gnode.GetDynamicOutputIndexesByName("out_node", output_indexes), GRAPH_FAILED);
+}
+
+TEST_F(GNodeTest, GetDynamicOutputIndexesByName_IndexesNotContinuous) {
+  auto builder = ut::GraphBuilder("graph");
+  const auto &node = builder.AddNode("node", "node", 0, 0);
+  const auto op_desc = node->GetOpDesc();
+  ASSERT_EQ(op_desc->AddOutputDesc("out_node0", GeTensorDesc()), GRAPH_SUCCESS);
+  ASSERT_EQ(op_desc->AddOutputDesc("other", GeTensorDesc()), GRAPH_SUCCESS);
+  ASSERT_EQ(op_desc->AddOutputDesc("out_node1", GeTensorDesc()), GRAPH_SUCCESS);
+
+  auto gnode = NodeAdapter::Node2GNode(node);
+  std::vector<int32_t> output_indexes;
   ASSERT_EQ(gnode.GetDynamicOutputIndexesByName("out_node", output_indexes), GRAPH_FAILED);
 }
 

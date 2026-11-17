@@ -23,7 +23,10 @@ ArgsManagerFileCodeGenerator::ArgsManagerFileCodeGenerator(AstBuildContext &ast)
       input_index_to_allocation_ids_(ast_.Var("std::vector<uint32_t>", "input_index_to_allocation_ids_")),
       output_index_to_allocation_ids_(ast_.Var("std::vector<uint32_t>", "output_index_to_allocation_ids_")),
       allocation_ids_to_model_args_refresh_infos_addr_all_(ast_.Var(
-          "std::vector<std::vector<ArgsRefreshInfo>>", "allocation_ids_to_model_args_refresh_infos_addr_all_")) {}
+          "std::vector<std::vector<ArgsRefreshInfo>>", "allocation_ids_to_model_args_refresh_infos_addr_all_")),
+      active_base_init_offsets_(ast_.Var("std::vector<uint64_t>", "active_base_init_offsets_")),
+      allocation_ids_to_active_base_addr_all_(
+          ast_.Var("std::vector<uintptr_t>", "allocation_ids_to_active_base_addr_all_")) {}
 
 MethodDef *ArgsManagerFileCodeGenerator::BuildInitMethod(const Om2CodegenModel &codegen_model) {
   std::vector<Arg> args_size_items;
@@ -54,6 +57,11 @@ std::vector<BodyItem> ArgsManagerFileCodeGenerator::BuildInitMethodBody(
     const std::vector<Arg> &refreshable_fm_index_to_allocation_ids_items,
     const std::vector<Arg> &allocation_ids_to_model_args_refresh_infos_items) {
   auto i = ast_.Var("size_t", "i");
+  std::vector<Arg> active_base_init_offsets_items;
+  active_base_init_offsets_items.reserve(codegen_model.args_table.allocation_base_offsets.size());
+  for (const auto offset : codegen_model.args_table.allocation_base_offsets) {
+    active_base_init_offsets_items.push_back(ast_.ULong(offset));
+  }
   return {
       ast_.Assign(args_sizes_, args_size_items),
       ast_.Assign(args_types_, args_type_items),
@@ -87,6 +95,12 @@ std::vector<BodyItem> ArgsManagerFileCodeGenerator::BuildInitMethodBody(
           codegen_model.args_table.allocation_ids_to_model_args_refresh_infos_addr_all_semantic.size()),
       ast_.Assign(allocation_ids_to_model_args_refresh_infos_addr_all_,
                   allocation_ids_to_model_args_refresh_infos_items),
+
+      active_base_init_offsets_.Clear(),
+      active_base_init_offsets_.Resize(codegen_model.args_table.allocation_base_offsets.size()),
+      ast_.Assign(active_base_init_offsets_, active_base_init_offsets_items),
+      allocation_ids_to_active_base_addr_all_.Clear(),
+      allocation_ids_to_active_base_addr_all_.Resize(codegen_model.args_table.allocation_base_offsets.size()),
       //
       ast_.Return("ACL_SUCCESS"),
   };
@@ -201,6 +215,7 @@ MethodDef *ArgsManagerFileCodeGenerator::BuildRefreshMapFeatureMethod() {
               allocation_id, refreshable_fm_index_to_allocation_ids_,
               {
                   BodyItem(ast_.VarDecl(infos, allocation_ids_to_model_args_refresh_infos_addr_all_.At(allocation_id))),
+                  BodyItem(ast_.Assign(allocation_ids_to_active_base_addr_all_[allocation_id], base_addr)),
                   BodyItem(ast_.VarDecl(base_ptr, ast_.ReinterpretCast("const uint8_t*", base_addr))),
                   BodyItem(ast_.RangeFor(
                       info, infos,
@@ -236,6 +251,7 @@ MethodDef *ArgsManagerFileCodeGenerator::BuildUpdateHostArgsMethod() {
               {
                   ast_.VarDecl(allocation_id, input_index_to_allocation_ids_.At(index)),
                   ast_.VarDecl(infos, allocation_ids_to_model_args_refresh_infos_addr_all_.At(allocation_id)),
+                  ast_.Assign(allocation_ids_to_active_base_addr_all_[allocation_id], addr),
                   ast_.VarDecl(base_ptr, ast_.ReinterpretCast("const uint8_t*", addr)),
                   ast_.RangeFor(info, infos,
                                 {
@@ -251,6 +267,7 @@ MethodDef *ArgsManagerFileCodeGenerator::BuildUpdateHostArgsMethod() {
               {
                   ast_.VarDecl(allocation_id, output_index_to_allocation_ids_.At(index)),
                   ast_.VarDecl(infos, allocation_ids_to_model_args_refresh_infos_addr_all_.At(allocation_id)),
+                  ast_.Assign(allocation_ids_to_active_base_addr_all_[allocation_id], addr),
                   ast_.VarDecl(base_ptr, ast_.ReinterpretCast("const uint8_t*", addr)),
                   ast_.RangeFor(info, infos,
                                 {
@@ -262,6 +279,37 @@ MethodDef *ArgsManagerFileCodeGenerator::BuildUpdateHostArgsMethod() {
                                 }),
               }),
           ast_.Return("ACL_SUCCESS"),
+      });
+}
+
+MethodDef *ArgsManagerFileCodeGenerator::BuildResolveActiveBasesMethod() const {
+  auto total_dev_mem_ptr = ast_.Var("void *", "total_dev_mem_ptr");
+  auto i = ast_.Var("size_t", "i");
+  return ast_.DefineMethod(
+      "Om2ArgsTable", "ResolveActiveBases", {total_dev_mem_ptr}, "aclError",
+      {
+          ast_.For(ast_.VarDecl(i, 0), i < allocation_ids_to_active_base_addr_all_.Size(), ast_.PostInc(i),
+                   {
+                       ast_.Assign(allocation_ids_to_active_base_addr_all_[i],
+                                   ast_.ReinterpretCast("uintptr_t", total_dev_mem_ptr) + active_base_init_offsets_[i]),
+                   }),
+          ast_.Return("ACL_SUCCESS"),
+      });
+}
+
+MethodDef *ArgsManagerFileCodeGenerator::BuildResolveActiveSrcMethod() const {
+  auto allocation_id = ast_.Var("size_t", "allocation_id");
+  auto offset = ast_.Var("uint64_t", "offset");
+  return ast_.DefineMethod(
+      "Om2ArgsTable", "ResolveActiveSrc", {allocation_id, offset}, "void *",
+      {
+          ast_.If(allocation_id >= allocation_ids_to_active_base_addr_all_.Size(),
+                  {
+                      ast_.Call("OM2_LOGE", {ast_.Str("active base id %zu is out of range %zu"), allocation_id,
+                                             allocation_ids_to_active_base_addr_all_.Size()}),
+                      ast_.Return(nullptr),
+                  }),
+          ast_.Return(ast_.ReinterpretCast("void *", allocation_ids_to_active_base_addr_all_[allocation_id] + offset)),
       });
 }
 

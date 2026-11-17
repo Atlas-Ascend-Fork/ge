@@ -87,6 +87,10 @@ class ModelArgsManager {
 
   Status GenerateArgsDataForProgramGenerator(Om2CodegenModel &codegen_model);
 
+  ModelAdapter &GetModelAdapter() {
+    return model_adapter_;
+  }
+
  private:
   struct OneTaskUpdateData {
     UpdateHostArgsArg update_data;

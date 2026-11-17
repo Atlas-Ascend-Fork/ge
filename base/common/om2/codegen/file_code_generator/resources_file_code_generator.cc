@@ -147,6 +147,7 @@ MethodDef *ResourcesFileCodeGenerator::BuildInitResourcesMethod(
   }
   BuildInitSessionScopeMemory(body, runtime);
   (void)body.emplace_back(args_table_.Attr("Init")());
+  (void)body.emplace_back(ChkStatus(args_table_.Attr("ResolveActiveBases")(total_dev_mem_ptr_)));
   (void)body.emplace_back(ast_.Call("OM2_LOGI", {ast_.Str("InitResources done")}));
   (void)body.emplace_back(ast_.Return("ACL_SUCCESS"));
   return ast_.DefineMethod("Om2Model", "InitResources", {priority, reuse_zero_copy, external_resources}, "aclError",

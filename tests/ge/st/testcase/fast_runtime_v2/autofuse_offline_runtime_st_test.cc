@@ -81,6 +81,27 @@ GeRootModelPtr BuildSimpleRootSt(const ComputeGraphPtr &graph) {
       .BuildGeRootModel();
 }
 
+GeRootModelPtr BuildRootWithEmptyPreprocessSoSt() {
+  auto graph = gert::ShareGraph::BuildSingleNodeGraph();
+  (void)graph->TopologicalSorting();
+  auto root = BuildSimpleRootSt(graph);
+  if (root == nullptr) {
+    return nullptr;
+  }
+  const auto iter = root->GetSubgraphInstanceNameToModel().find(graph->GetName());
+  if ((iter == root->GetSubgraphInstanceNameToModel().end()) || (iter->second == nullptr)) {
+    return nullptr;
+  }
+  auto task_def = ge::MakeShared<domi::ModelTaskDef>();
+  if (task_def == nullptr) {
+    return nullptr;
+  }
+  auto *task = task_def->add_task();
+  task->set_type(static_cast<uint32_t>(ge::ModelTaskType::MODEL_TASK_PREPROCESS_KERNEL));
+  iter->second->SetModelTaskDef(task_def);
+  return root;
+}
+
 DualBodyStModels BuildSimpleDualBodyStModels() {
   DualBodyStModels result;
   auto main_graph = gert::ShareGraph::BuildSingleNodeGraph();
@@ -392,6 +413,109 @@ TEST_F(AutofuseOfflineRuntimeSt, CheckLoadSingleExecutorFromDualBody) {
   auto executor = gert::LoadExecutorFromModelData(model_data, args, error_code);
   EXPECT_EQ(error_code, GRAPH_SUCCESS);
   EXPECT_NE(executor, nullptr);
+}
+
+/*
+ * 场景：加载根图为不支持 lowering 的 Enter 节点的模型，主执行体转换失败。
+ * 期望：LoadExecutorSetFromModelData 返回失败，main/fallback 均未构建。
+ */
+TEST_F(AutofuseOfflineRuntimeSt, CheckLoadExecutorSetFailsWhenMainLoweringFails) {
+  auto main_graph = gert::ShareGraph::BuildSingleNodeGraph("Enter");
+  ASSERT_NE(main_graph, nullptr);
+  (void)main_graph->TopologicalSorting();
+  auto main_root = gert::GeModelBuilder(main_graph).BuildGeRootModel();
+  ASSERT_NE(main_root, nullptr);
+  ModelHelper save_helper;
+  save_helper.SetSaveMode(false);
+  ModelBufferData model_buff;
+  ASSERT_EQ(save_helper.SaveToOmRootModel(main_root, "main_lowering_fail_exec", model_buff, true), SUCCESS);
+  ModelData model_data;
+  model_data.model_data = model_buff.data.get();
+  model_data.model_len = static_cast<uint32_t>(model_buff.length);
+  (void)GetThreadLocalContext().SetGlobalOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", GetHostArchSt()}});
+  gert::LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_NE(gert::LoadExecutorSetFromModelData(model_data, args, executor_set), GRAPH_SUCCESS);
+  EXPECT_EQ(executor_set.main, nullptr);
+  EXPECT_EQ(executor_set.fallback, nullptr);
+}
+
+/*
+ * 场景：加载含 so_name 为空 PREPROCESS_KERNEL 任务的模型，双执行体接口
+ *       model id 分配校验失败。
+ * 期望：LoadExecutorSetFromModelData 返回失败，main/fallback 均未构建。
+ */
+TEST_F(AutofuseOfflineRuntimeSt, CheckLoadExecutorSetFailsWhenAssignModelIdFails) {
+  auto main_root = BuildRootWithEmptyPreprocessSoSt();
+  ASSERT_NE(main_root, nullptr);
+  ModelHelper save_helper;
+  save_helper.SetSaveMode(false);
+  ModelBufferData model_buff;
+  ASSERT_EQ(save_helper.SaveToOmRootModel(main_root, "empty_preprocess_so_exec", model_buff, true), SUCCESS);
+  ModelData model_data;
+  model_data.model_data = model_buff.data.get();
+  model_data.model_len = static_cast<uint32_t>(model_buff.length);
+  (void)GetThreadLocalContext().SetGlobalOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", GetHostArchSt()}});
+  gert::LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_NE(gert::LoadExecutorSetFromModelData(model_data, args, executor_set), GRAPH_SUCCESS);
+  EXPECT_EQ(executor_set.main, nullptr);
+  EXPECT_EQ(executor_set.fallback, nullptr);
+}
+
+/*
+ * 场景：加载含 so_name 为空 PREPROCESS_KERNEL 任务的模型，单执行体接口
+ *       model id 分配校验失败。
+ * 期望：error_code 为非成功状态，返回的 executor 为空。
+ */
+TEST_F(AutofuseOfflineRuntimeSt, CheckLoadSingleExecutorFailsWhenAssignModelIdFails) {
+  auto main_root = BuildRootWithEmptyPreprocessSoSt();
+  ASSERT_NE(main_root, nullptr);
+  ModelHelper save_helper;
+  save_helper.SetSaveMode(false);
+  ModelBufferData model_buff;
+  ASSERT_EQ(save_helper.SaveToOmRootModel(main_root, "empty_preprocess_so_single_exec", model_buff, true), SUCCESS);
+  ModelData model_data;
+  model_data.model_data = model_buff.data.get();
+  model_data.model_len = static_cast<uint32_t>(model_buff.length);
+  (void)GetThreadLocalContext().SetGlobalOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", GetHostArchSt()}});
+  gert::LoadExecutorArgs args{nullptr, {}};
+  ge::graphStatus error_code = GRAPH_SUCCESS;
+  auto executor = gert::LoadExecutorFromModelData(model_data, args, error_code);
+  EXPECT_NE(error_code, GRAPH_SUCCESS);
+  EXPECT_EQ(executor, nullptr);
+}
+
+/*
+ * 场景：双执行体模型中兜底体仅有 __fallback_sub__ 前缀子图、缺少兜底根
+ *       (__fallback__)，兜底执行体 lowering 失败。
+ * 期望：主执行体构建成功，兜底执行体构建失败，LoadExecutorSetFromModelData
+ *       返回失败且 fallback 为空。
+ */
+TEST_F(AutofuseOfflineRuntimeSt, CheckLoadExecutorSetFailsWhenFallbackLoweringFails) {
+  auto main_graph = gert::ShareGraph::BuildSingleNodeGraph();
+  ASSERT_NE(main_graph, nullptr);
+  (void)main_graph->TopologicalSorting();
+  auto main_root = BuildSimpleRootSt(main_graph);
+  ASSERT_NE(main_root, nullptr);
+  auto fallback_graph = std::make_shared<ComputeGraph>(std::string(kFallbackSubgraphPrefix) + "bad");
+  ASSERT_EQ(GraphUtils::CopyComputeGraph(main_root->GetRootGraph(), fallback_graph), SUCCESS);
+  auto fallback_root = BuildSimpleRootSt(fallback_graph);
+  ASSERT_NE(fallback_root, nullptr);
+  ModelHelper save_helper;
+  save_helper.SetSaveMode(false);
+  ModelBufferData model_buff;
+  ASSERT_EQ(save_helper.SaveDualBodyRootModel(main_root, fallback_root, "bad_fallback_exec", model_buff, true),
+            SUCCESS);
+  ModelData model_data;
+  model_data.model_data = model_buff.data.get();
+  model_data.model_len = static_cast<uint32_t>(model_buff.length);
+  (void)GetThreadLocalContext().SetGlobalOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", GetHostArchSt()}});
+  gert::LoadExecutorArgs args{nullptr, {}};
+  gert::ExecutorSet executor_set;
+  EXPECT_NE(gert::LoadExecutorSetFromModelData(model_data, args, executor_set), GRAPH_SUCCESS);
+  EXPECT_NE(executor_set.main, nullptr);
+  EXPECT_EQ(executor_set.fallback, nullptr);
 }
 
 }  // namespace ge

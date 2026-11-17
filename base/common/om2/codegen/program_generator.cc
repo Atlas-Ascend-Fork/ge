@@ -192,6 +192,8 @@ Status ProgramGenerator::GenerateArgsManagerSource(Om2CodePrinter &code_printer)
                          args_manager_handler.BuildGetHostArgAddrMethod(),
                          args_manager_handler.BuildRefreshMapFeatureMethod(),
                          args_manager_handler.BuildUpdateHostArgsMethod(),
+                         args_manager_handler.BuildResolveActiveBasesMethod(),
+                         args_manager_handler.BuildResolveActiveSrcMethod(),
                          args_manager_handler.BuildCopyArgsToDeviceMethod(codegen_model_),
                      }),
   });

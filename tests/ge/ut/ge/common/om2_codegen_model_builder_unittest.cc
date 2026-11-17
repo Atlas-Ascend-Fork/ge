@@ -1276,19 +1276,20 @@ TEST_F(Om2CodegenModelBuilderUt, BuildModelIoSemantic_Aicore_Ok) {
   EXPECT_EQ(doc.model_io.entries[0].memory_offset, 1024);
   EXPECT_EQ(doc.model_io.entries[0].update_host_args_index, 0U);
   EXPECT_TRUE(doc.model_io.entries[0].is_input);
-  EXPECT_TRUE(doc.model_io.entries[0].is_addr_refreshable);
+  EXPECT_FALSE(doc.model_io.entries[0].is_addr_refreshable);
 
   EXPECT_EQ(doc.model_io.entries[1].index, 1U);
   EXPECT_EQ(doc.model_io.entries[1].memory_offset, 1024);
   EXPECT_EQ(doc.model_io.entries[1].update_host_args_index, 1U);
   EXPECT_TRUE(doc.model_io.entries[1].is_input);
-  EXPECT_TRUE(doc.model_io.entries[1].is_addr_refreshable);
+  EXPECT_FALSE(doc.model_io.entries[1].is_addr_refreshable);
 
   EXPECT_EQ(doc.model_io.entries[2].index, 0U);
   EXPECT_EQ(doc.model_io.entries[2].memory_offset, 3072);
   EXPECT_EQ(doc.model_io.entries[2].update_host_args_index, 0U);
   EXPECT_FALSE(doc.model_io.entries[2].is_input);
   EXPECT_TRUE(doc.model_io.entries[2].is_addr_refreshable);
+  EXPECT_EQ(doc.model_io.entries[2].allocation_id, 1U);
 }
 
 // 直连通信算子的模型输入/输出走拷贝模式（need_refresh=0 直址 + 数据在固定地址），
@@ -1309,6 +1310,153 @@ TEST_F(Om2CodegenModelBuilderUt, BuildModelIoSemantic_HcclDirectIo_UsesCopyMode)
   auto *hccl_builder = FindTaskBuilder<HcclTaskCodeBuilder>(task_builders);
   ASSERT_NE(hccl_builder, nullptr);
   EXPECT_EQ(hccl_builder->build_data_.need_refresh, 0U);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, BuildModelIoSemantic_OutputInFmRange_UsesCopyMode) {
+  GeRootModelPtr ge_root_model = CreateGeRootModelWithAicoreOp();
+  ASSERT_NE(ge_root_model, nullptr);
+  const auto &compute_graph = ge_root_model->GetRootGraph();
+  for (const auto &node : compute_graph->GetDirectNode()) {
+    auto op_desc = node->GetOpDesc();
+    if ((op_desc != nullptr) && (op_desc->GetType() == NETOUTPUT)) {
+      op_desc->SetInputOffset({1024});
+    }
+  }
+
+  Om2CodegenModel doc;
+  ASSERT_EQ(BuildCodegenModel(ge_root_model, doc), SUCCESS);
+
+  ASSERT_EQ(doc.model_io.entries.size(), 3U);
+  EXPECT_FALSE(doc.model_io.entries[2].is_input);
+  EXPECT_FALSE(doc.model_io.entries[2].is_addr_refreshable);
+  EXPECT_TRUE(doc.model_io.entries[2].use_active_copy_src);
+  EXPECT_NE(doc.model_io.entries[2].copy_allocation_id, UINT32_MAX);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, ReviseIoRefreshability_FlipsInvalidAllocationId) {
+  Om2CodegenModelBuilder builder;
+  auto &model_adapter = builder.args_manager_.GetModelAdapter();
+  auto &logical_mem_allocations = model_adapter.GetLogicalMemAllocation();
+  logical_mem_allocations = {
+      om2::MemAllocation{0U, 0x1000UL, 64UL, om2::MemAllocation::Type::INPUT, 0U, 0UL, 0UL, 0UL},
+      om2::MemAllocation{1U, 0x1000UL, 2048UL, om2::MemAllocation::Type::FEATURE_MAP, 0U, 0UL, 0UL, 0UL},
+  };
+  model_adapter.GetInputIndexToAllocationIds() = {UINT32_MAX, 1U};
+  model_adapter.GetOutputIndexToAllocationIds() = {UINT32_MAX, 2U};
+  model_adapter.output_indexes_to_copy_info_[0U] = {1U, 0UL, 64UL};
+
+  Om2CodegenModel doc;
+  doc.model_io.entries = {
+      ModelIoEntry{0U, 1024, 0U, true, true, 0, 0},
+      ModelIoEntry{1U, 2048, 1U, true, true, 0, 0},
+      ModelIoEntry{0U, 1024, 0U, false, true, 0, 0},
+      ModelIoEntry{1U, 2048, 1U, false, true, 0, 0},
+  };
+  ASSERT_EQ(builder.ReviseIoRefreshability(doc), SUCCESS);
+  EXPECT_FALSE(doc.model_io.entries[0].is_addr_refreshable);
+  EXPECT_TRUE(doc.model_io.entries[1].is_addr_refreshable);
+  EXPECT_EQ(doc.model_io.entries[1].allocation_id, 1U);
+  EXPECT_FALSE(doc.model_io.entries[2].is_addr_refreshable);
+  EXPECT_TRUE(doc.model_io.entries[3].is_addr_refreshable);
+  EXPECT_EQ(doc.model_io.entries[3].allocation_id, 2U);
+  EXPECT_TRUE(doc.model_io.entries[2].use_active_copy_src);
+  EXPECT_EQ(doc.model_io.entries[2].copy_allocation_id, 1U);
+  EXPECT_EQ(doc.model_io.entries[2].copy_offset, 0UL);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, ReviseIoRefreshability_InputBackedOutput_UsesActiveSrc) {
+  Om2CodegenModelBuilder builder;
+  auto &model_adapter = builder.args_manager_.GetModelAdapter();
+  auto &logical_mem_allocations = model_adapter.GetLogicalMemAllocation();
+  logical_mem_allocations = {
+      om2::MemAllocation{0U, 0x1000UL, 64UL, om2::MemAllocation::Type::INPUT, 0U, 0UL, 0UL, 0UL},
+  };
+  model_adapter.GetOutputIndexToAllocationIds() = {UINT32_MAX};
+  model_adapter.output_indexes_to_copy_info_[0U] = {0U, 16UL, 64UL};
+
+  Om2CodegenModel doc;
+  doc.model_io.entries = {ModelIoEntry{0U, 1024, 0U, false, true, 0, 0}};
+  ASSERT_EQ(builder.ReviseIoRefreshability(doc), SUCCESS);
+  EXPECT_FALSE(doc.model_io.entries[0].is_addr_refreshable);
+  EXPECT_TRUE(doc.model_io.entries[0].use_active_copy_src);
+  EXPECT_EQ(doc.model_io.entries[0].copy_allocation_id, 0U);
+  EXPECT_EQ(doc.model_io.entries[0].copy_offset, 16UL);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, ReviseIoRefreshability_OutputBackedOutput_UsesActiveSrc) {
+  Om2CodegenModelBuilder builder;
+  auto &model_adapter = builder.args_manager_.GetModelAdapter();
+  auto &logical_mem_allocations = model_adapter.GetLogicalMemAllocation();
+  logical_mem_allocations = {
+      om2::MemAllocation{0U, 0x1000UL, 64UL, om2::MemAllocation::Type::OUTPUT, 0U, 0UL, 0UL, 0UL},
+  };
+  model_adapter.GetOutputIndexToAllocationIds() = {UINT32_MAX};
+  model_adapter.output_indexes_to_copy_info_[0U] = {0U, 0UL, 64UL};
+
+  Om2CodegenModel doc;
+  doc.model_io.entries = {ModelIoEntry{0U, 1024, 0U, false, true, 0, 0}};
+  ASSERT_EQ(builder.ReviseIoRefreshability(doc), SUCCESS);
+  EXPECT_FALSE(doc.model_io.entries[0].is_addr_refreshable);
+  EXPECT_TRUE(doc.model_io.entries[0].use_active_copy_src);
+  EXPECT_EQ(doc.model_io.entries[0].copy_allocation_id, 0U);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, ReviseIoRefreshability_MissingCopyInfoFailed) {
+  Om2CodegenModelBuilder builder;
+  auto &model_adapter = builder.args_manager_.GetModelAdapter();
+  model_adapter.GetOutputIndexToAllocationIds() = {UINT32_MAX};
+
+  Om2CodegenModel doc;
+  doc.model_io.entries = {ModelIoEntry{0U, 1024, 0U, false, true, 0, 0}};
+  EXPECT_NE(builder.ReviseIoRefreshability(doc), SUCCESS);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, ReviseIoRefreshability_NonContiguousInputIndex_Ok) {
+  Om2CodegenModelBuilder builder;
+  auto &model_adapter = builder.args_manager_.GetModelAdapter();
+  model_adapter.GetInputIndexToAllocationIds() = {UINT32_MAX, 7U};
+
+  Om2CodegenModel doc;
+  doc.model_io.entries = {
+      ModelIoEntry{0U, 1024, 0U, true, true, 0, 0},
+      ModelIoEntry{2U, 2048, 1U, true, true, 0, 0},
+  };
+  ASSERT_EQ(builder.ReviseIoRefreshability(doc), SUCCESS);
+  EXPECT_FALSE(doc.model_io.entries[0].is_addr_refreshable);
+  EXPECT_TRUE(doc.model_io.entries[1].is_addr_refreshable);
+  EXPECT_EQ(doc.model_io.entries[1].allocation_id, 7U);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, ReviseIoRefreshability_VarMemOutputFailed) {
+  Om2CodegenModelBuilder builder;
+  auto &model_adapter = builder.args_manager_.GetModelAdapter();
+  model_adapter.GetOutputIndexToAllocationIds() = {UINT32_MAX};
+  model_adapter.output_indexes_to_copy_info_[0U] = {UINT32_MAX, 0UL, 64UL};
+
+  Om2CodegenModel doc;
+  doc.model_io.entries = {ModelIoEntry{0U, 1024, 0U, false, true, 0, 0}};
+  EXPECT_NE(builder.ReviseIoRefreshability(doc), SUCCESS);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, ReviseIoRefreshability_HostInputFailed) {
+  Om2CodegenModelBuilder builder;
+  auto &model_adapter = builder.args_manager_.GetModelAdapter();
+  model_adapter.GetInputIndexToAllocationIds() = {UINT32_MAX};
+  model_adapter.copy_host_input_indexes_.insert(0U);
+
+  Om2CodegenModel doc;
+  doc.model_io.entries = {ModelIoEntry{0U, 1024, 0U, true, true, 0, 0}};
+  EXPECT_NE(builder.ReviseIoRefreshability(doc), SUCCESS);
+}
+
+TEST_F(Om2CodegenModelBuilderUt, ReviseIoRefreshability_IndexOutOfRangeFailed) {
+  Om2CodegenModelBuilder builder;
+  auto &model_adapter = builder.args_manager_.GetModelAdapter();
+  model_adapter.GetInputIndexToAllocationIds() = {1U};
+
+  Om2CodegenModel doc;
+  doc.model_io.entries = {ModelIoEntry{0U, 1024, 5U, true, true, 0, 0}};
+  EXPECT_NE(builder.ReviseIoRefreshability(doc), SUCCESS);
 }
 
 TEST_F(Om2CodegenModelBuilderUt, BuildModelIoSemantic_WithoutDataAttrIndex_Ok) {

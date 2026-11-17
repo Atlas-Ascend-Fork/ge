@@ -324,6 +324,7 @@ Status Om2CodegenModelBuilder::Build(const GeModelPtr &model, const std::vector<
   GE_ASSERT_SUCCESS(BuildVarInputs(model, var_metas));
   GE_ASSERT_SUCCESS(BuildKernelRegistry(model, task_builders, codegen_model));
   GE_ASSERT_SUCCESS(GenerateArgsData(model, task_builders, codegen_model));
+  GE_ASSERT_SUCCESS(ReviseIoRefreshability(codegen_model));
   GE_ASSERT_SUCCESS(BuildTaskSemantics(model, task_builders, codegen_model));
   GE_ASSERT_SUCCESS(AggregateArgsTable(task_builders, codegen_model));
   GE_ASSERT_SUCCESS(BuildVA2PAInfo(codegen_model));
@@ -1114,6 +1115,48 @@ Status Om2CodegenModelBuilder::GenerateArgsData(const GeModelPtr &model,
 
   GE_ASSERT_SUCCESS(args_manager_.GenerateArgsDataForProgramGenerator(codegen_model));
 
+  return SUCCESS;
+}
+
+Status Om2CodegenModelBuilder::ReviseIoRefreshability(Om2CodegenModel &codegen_model) {
+  auto &model_adapter = args_manager_.GetModelAdapter();
+  const auto &input_index_to_allocation_ids = model_adapter.GetInputIndexToAllocationIds();
+  const auto &output_index_to_allocation_ids = model_adapter.GetOutputIndexToAllocationIds();
+  const auto &output_indexes_to_copy_info = model_adapter.GetOutputIndexesToCopyInfo();
+  const auto &copy_host_input_indexes = model_adapter.GetCopyHostInputIndexes();
+  const auto &logical_mem_allocations = model_adapter.GetLogicalMemAllocation();
+  for (auto &entry : codegen_model.model_io.entries) {
+    const auto &index_to_allocation_ids =
+        entry.is_input ? input_index_to_allocation_ids : output_index_to_allocation_ids;
+    const uint32_t table_index = entry.is_input ? entry.update_host_args_index : entry.index;
+    GE_ASSERT_TRUE(table_index < index_to_allocation_ids.size(),
+                   "[OM2] io index %u is out of range, allocation ids size %zu", table_index,
+                   index_to_allocation_ids.size());
+    const uint32_t allocation_id = index_to_allocation_ids[table_index];
+    if (allocation_id != UINT32_MAX) {
+      entry.allocation_id = allocation_id;
+      continue;
+    }
+    if (!entry.is_input) {
+      const auto copy_info_it = output_indexes_to_copy_info.find(entry.index);
+      GE_ASSERT_TRUE(copy_info_it != output_indexes_to_copy_info.end(),
+                     "[OM2] output index %u has no copy info, copy mode is not supported", entry.index);
+      const auto &copy_info = copy_info_it->second;
+      GE_ASSERT_TRUE(copy_info.id < logical_mem_allocations.size(),
+                     "[OM2] output index %u copy info id %u is invalid, allocation size %zu", entry.index, copy_info.id,
+                     logical_mem_allocations.size());
+      GELOGI("[OM2] output index %u uses active copy src, allocation id %u, offset %lu.", entry.index, copy_info.id,
+             copy_info.offset);
+      entry.copy_allocation_id = copy_info.id;
+      entry.copy_offset = copy_info.offset;
+      entry.use_active_copy_src = true;
+    } else {
+      GE_ASSERT_TRUE(copy_host_input_indexes.count(entry.index) == 0U,
+                     "[OM2] host input index %u does not support copy mode", entry.index);
+    }
+    entry.is_addr_refreshable = false;
+    GELOGI("[OM2] io index %u is not addr refreshable, use copy mode.", entry.index);
+  }
   return SUCCESS;
 }
 
