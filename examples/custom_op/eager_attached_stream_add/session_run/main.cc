@@ -16,7 +16,7 @@
  * 验证点：
  *   1. 模型加载（LoadGraph -> DoTaskSink -> Execute）中辅流申请成功
  *   2. 模型重放后输出精度正确（z = x + y）
- *   3. 多轮重放稳定（辅流上的 kernel task 重复执行）
+ *   3. 每轮更换输入后重放，输出随输入更新（辅流上的 kernel task 重复执行）
  */
 
 #include <cmath>
@@ -41,10 +41,9 @@ constexpr int64_t kDim = 8192;  // 8K 元素，8 个 block
 constexpr int64_t kNumElements = kDim;
 constexpr size_t kDataSizeBytes = static_cast<size_t>(kNumElements) * sizeof(float);
 constexpr uint32_t kGraphId = 0U;
-constexpr int kWarmupIters = 3;
-constexpr int kRunIters = 10;
+constexpr uint32_t kRunIters = 2U;  // 两轮推理，每轮更换输入
 constexpr int kNumInputs = 2;
-constexpr int kRandomSeed = 42;
+constexpr uint32_t kRandomSeed = 42U;
 constexpr float kErrorTolerance = 1e-5f;
 
 std::unique_ptr<ge::Graph> BuildGraph(const char *name) {
@@ -105,18 +104,23 @@ struct IoBuffers {
   void *dev_z{nullptr};
 
   void Init() {
-    std::mt19937 gen(kRandomSeed);
-    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
     host_x.resize(kNumElements);
     host_y.resize(kNumElements);
+
+    dev_x = AllocDeviceMemory();
+    dev_y = AllocDeviceMemory();
+    dev_z = AllocDeviceMemory();
+  }
+
+  /// 生成一套随机输入并搬到设备，每轮推理前调用以更换输入
+  void FillInput(uint32_t seed) {
+    std::mt19937 gen(seed);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
     for (int64_t i = 0; i < kNumElements; ++i) {
       host_x[i] = dist(gen);
       host_y[i] = dist(gen);
     }
 
-    dev_x = AllocDeviceMemory();
-    dev_y = AllocDeviceMemory();
-    dev_z = AllocDeviceMemory();
     aclrtMemcpy(dev_x, kDataSizeBytes, host_x.data(), kDataSizeBytes, ACL_MEMCPY_HOST_TO_DEVICE);
     aclrtMemcpy(dev_y, kDataSizeBytes, host_y.data(), kDataSizeBytes, ACL_MEMCPY_HOST_TO_DEVICE);
   }
@@ -167,12 +171,13 @@ bool SetupGraph(ge::Session &session, const ge::Graph &graph, aclrtStream stream
 }
 
 /**
- * @brief 预热 + 多轮重放，每轮重放后校验输出精度
+ * @brief 两轮重放：每轮更换输入后执行，并校验输出精度
  */
-bool RunAndCheck(ge::Session &session, aclrtStream stream, const IoBuffers &buffers) {
+bool RunAndCheck(ge::Session &session, aclrtStream stream, IoBuffers &buffers) {
   const auto input_tensors = buffers.BuildInputTensors();
   auto output_tensors = buffers.BuildOutputTensors();
-  for (int iter = 0; iter < kWarmupIters + kRunIters; ++iter) {
+  for (uint32_t iter = 0U; iter < kRunIters; ++iter) {
+    buffers.FillInput(kRandomSeed + iter);
     const auto ret = session.ExecuteGraphWithStreamAsync(kGraphId, stream, input_tensors, output_tensors);
     if (ret != ge::SUCCESS) {
       LOG_ERROR("ExecuteGraphWithStreamAsync failed at iter=", iter, ", ret=", ret);
@@ -180,9 +185,6 @@ bool RunAndCheck(ge::Session &session, aclrtStream stream, const IoBuffers &buff
     }
     aclrtSynchronizeStream(stream);
 
-    if (iter < kWarmupIters) {
-      continue;
-    }
     std::vector<float> host_z(kNumElements);
     aclrtMemcpy(host_z.data(), kDataSizeBytes, buffers.dev_z, kDataSizeBytes, ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CheckResult(buffers.host_x, buffers.host_y, host_z, "online")) {
@@ -222,7 +224,7 @@ int main() {
     if (!SetupGraph(session, *graph, main_stream)) {
       ret_code = 1;
     } else {
-      // 4. 准备输入输出，预热 + 多轮执行 + 精度校验
+      // 4. 准备输入输出，两轮更换输入的执行 + 精度校验
       buffers.Init();
       if (RunAndCheck(session, main_stream, buffers)) {
         LOG_INFO("========== Eager AttachedStream Online E2E: ALL PASS ==========");

@@ -96,8 +96,9 @@ class EagerAttachedStreamAddOp : public EagerExecuteOp, public ShapeInferOp {
     }
 
     // 主辅流 event 同步：辅流与主流并发启动（HEAD 绑定），执行顺序必须由算子用 event 保证
-    //   主流： [输入搬运(Identity)] → record(ev_in) → wait(ev_out) → [输出搬运(Identity)]
-    //   辅流： wait(ev_in) → kernel → record(ev_out)
+    //   主流： [输入搬运(Identity)] → record(ev_in) → wait(ev_out) → reset(ev_out) → [输出搬运]
+    //   辅流： wait(ev_in) → reset(ev_in) → kernel → record(ev_out)
+    // reset 与 wait 在同一条流上，为下一次模型重放重新武装 event
     const auto main_stream = static_cast<aclrtStream>(ctx->GetStream());
     if (EnsureSyncEvents() != GRAPH_SUCCESS || SyncMainToAux(main_stream, aux_stream) != GRAPH_SUCCESS) {
       return GRAPH_FAILED;
@@ -162,7 +163,8 @@ class EagerAttachedStreamAddOp : public EagerExecuteOp, public ShapeInferOp {
     return GRAPH_SUCCESS;
   }
 
-  // (a) 主流录制 ev_in：位于输入搬运任务之后；(b) 辅流等待 ev_in：保证 kernel 在输入搬运完成后执行
+  // (a) 主流录制 ev_in：位于输入搬运任务之后；(b) 辅流等待 ev_in：保证 kernel 在输入搬运完成后执行；
+  // (b') 辅流紧接着在同一条流上 reset ev_in：为下一次模型重放重新武装该 event
   graphStatus SyncMainToAux(aclrtStream main_stream, gert::rtStream aux_stream) {
     aclError ret = aclrtRecordEvent(ev_main_to_aux_, main_stream);
     if (ret != ACL_SUCCESS) {
@@ -174,10 +176,16 @@ class EagerAttachedStreamAddOp : public EagerExecuteOp, public ShapeInferOp {
       LOG_ERROR("aclrtStreamWaitEvent(aux, ev_in) failed, ret=", ret);
       return GRAPH_FAILED;
     }
+    ret = aclrtResetEvent(ev_main_to_aux_, static_cast<aclrtStream>(aux_stream));
+    if (ret != ACL_SUCCESS) {
+      LOG_ERROR("aclrtResetEvent(ev_in, aux) failed, ret=", ret);
+      return GRAPH_FAILED;
+    }
     return GRAPH_SUCCESS;
   }
 
-  // (c) 辅流录制 ev_out：kernel 完成后；(d) 主流等待 ev_out：保证输出搬运在 kernel 完成后执行
+  // (c) 辅流录制 ev_out：kernel 完成后；(d) 主流等待 ev_out：保证输出搬运在 kernel 完成后执行；
+  // (d') 主流紧接着在同一条流上 reset ev_out：为下一次模型重放重新武装该 event
   graphStatus SyncAuxToMain(aclrtStream main_stream, gert::rtStream aux_stream) {
     aclError ret = aclrtRecordEvent(ev_aux_to_main_, static_cast<aclrtStream>(aux_stream));
     if (ret != ACL_SUCCESS) {
@@ -187,6 +195,11 @@ class EagerAttachedStreamAddOp : public EagerExecuteOp, public ShapeInferOp {
     ret = aclrtStreamWaitEvent(main_stream, ev_aux_to_main_);
     if (ret != ACL_SUCCESS) {
       LOG_ERROR("aclrtStreamWaitEvent(main, ev_out) failed, ret=", ret);
+      return GRAPH_FAILED;
+    }
+    ret = aclrtResetEvent(ev_aux_to_main_, main_stream);
+    if (ret != ACL_SUCCESS) {
+      LOG_ERROR("aclrtResetEvent(ev_out, main) failed, ret=", ret);
       return GRAPH_FAILED;
     }
     return GRAPH_SUCCESS;

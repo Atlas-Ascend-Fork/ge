@@ -37,7 +37,7 @@ rtStream RequestAttachedStream(const ge::AscendString &key, uint32_t flags)
 
 ## 约束说明
 
-- 主辅流之间的执行顺序由算子自行管理，如：通过 event（`aclrtRecordEvent`/`aclrtStreamWaitEvent`）自行同步，框架不保证执行顺序。
+- 主辅流之间的执行顺序由算子自行管理，如：通过 event（`aclrtRecordEvent`/`aclrtStreamWaitEvent`/`aclrtResetEvent`）自行同步，框架不保证执行顺序。
 - 算子必须在[`Execute`](../../ge/EagerExecuteOp/Execute.md)返回前把辅流上的工作 join 回`GetStream()`返回的执行流（辅流 record event、执行流 wait event）。RT2 链路的内存回收只感知框架逻辑流，若不 join 就返回，本轮分配的 args 与输出内存可能在辅流 kernel 执行完成前被回收复用。
 - 流的生命周期由框架管理，算子不得销毁返回的辅流（禁止调用`aclrtDestroyStream`）。
 - 此接口不支持并发调用。
@@ -69,6 +69,11 @@ ge::graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
   if (ret != ACL_SUCCESS) {
     return ge::GRAPH_FAILED;
   }
+  // wait 之后必须在同一条流上 reset
+  ret = aclrtResetEvent(ev_main_to_aux, static_cast<aclrtStream>(aux_stream));
+  if (ret != ACL_SUCCESS) {
+    return ge::GRAPH_FAILED;
+  }
 
   // 将 kernel 下发到辅流（而非主流）上执行
   ret = aclrtLaunchKernelV2(func_handle, num_blocks, dev_args, sizeof(args), nullptr,
@@ -83,6 +88,10 @@ ge::graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
     return ge::GRAPH_FAILED;
   }
   ret = aclrtStreamWaitEvent(main_stream, ev_aux_to_main);
+  if (ret != ACL_SUCCESS) {
+    return ge::GRAPH_FAILED;
+  }
+  ret = aclrtResetEvent(ev_aux_to_main, main_stream);
   if (ret != ACL_SUCCESS) {
     return ge::GRAPH_FAILED;
   }
