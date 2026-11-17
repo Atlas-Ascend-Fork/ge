@@ -622,7 +622,7 @@ TEST_F(GraphConverterUT, MultiStream_LoweringTwoNodeCrossStream) {
   ASSERT_EQ(FastNodeTopoChecker(access_cross_stream_relu).StrictConnectFrom({{"AllocMemHbm", 0}, {"Const", 0}}, true),
             "success");
   ASSERT_EQ(
-      FastNodeTopoChecker(access_cross_stream_relu).StrictConnectTo(0, {{"LaunchKernelV2", 17}, {"FreeMemory", 0}}),
+      FastNodeTopoChecker(access_cross_stream_relu).StrictConnectTo(0, {{"LaunchKernelV2", 12}, {"FreeMemory", 0}}),
       "success");
   ASSERT_EQ(FastNodeTopoChecker(access_cross_stream_relu).StrictConnectTo(-1, {{"FreeMemory", -1}}), "success");
   // check SendEvent connection

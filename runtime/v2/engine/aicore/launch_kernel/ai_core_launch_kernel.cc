@@ -18,7 +18,6 @@
 #include "adump_pub.h"
 #include "adump_api.h"
 #include "graph/error_codes.h"
-#include "common/kernel_handles_manager/aicore_kernel_handles_manager.h"
 #include "exe_graph/runtime/tiling_data.h"
 #include "graph/def_types.h"
 #include "register/kernel_registry.h"
@@ -55,40 +54,22 @@ constexpr uint32_t k2BitsMask = 0x00000003U;
 constexpr uint8_t kProfilingDisabled = 0U;
 constexpr uint8_t kProfilingEnabled = 1U;
 constexpr size_t kEnableProfilingAttrIdx = 4UL;
+constexpr uint32_t kMaxStackPlaceHolderNum = 8U;
 enum class MixKernel { kMixArgs, kNotifyIds };
 
 struct LaunchCommonInputs {
   void *stream{nullptr};
-  aclrtBinHandle bin_handle{nullptr};
-  size_t tiling_key{0};
-  char *kernel_name{nullptr};
+  aclrtFuncHandle func_handle{nullptr};
   const uint32_t *block_dim{nullptr};
   RtKernelLaunchArgsEx *args{nullptr};
   aclrtLaunchKernelAttr *cfg_attrs{nullptr};
   aclrtLaunchKernelCfg *cfg{nullptr};
   uint32_t schedule_mode{0};
   uint32_t local_mem_size{0};
-  uint32_t with_handle_flag{0};
 };
 static_assert(std::is_standard_layout<RtKernelLaunchArgsEx>::value, "The class RtKernelLaunchArgsEx must be a POD");
 
-aclrtBinHandle GetBinHandle(const char *kernel_bin_id, uint32_t magic, ge::KernelBinPtr *kernel_bin_ptr) {
-  static ge::AicoreKernelHandlesManager aicore_kernel_handles_manager;
-  GE_ASSERT_NOTNULL(kernel_bin_id);
-  GE_ASSERT_NOTNULL(kernel_bin_ptr);
-  auto kernel_bin = *kernel_bin_ptr;
-  GE_ASSERT_NOTNULL(kernel_bin);
-  ge::AicoreRegisterInfo register_info;
-  register_info.kernel_bin_name = std::string(kernel_bin_id);
-  register_info.magic = magic;
-  register_info.kernel_bin = kernel_bin;
-  ge::KernelRegisterInfo info = register_info;
-  const auto bin_name = aicore_kernel_handles_manager.GenerateKey(info);
-  return aicore_kernel_handles_manager.GetOrRegisterKernel(info, bin_name);
-}
-
-ge::graphStatus UpdatePlaceHolderInfo(std::vector<aclrtPlaceHolderInfo> &infos, RtKernelLaunchArgsEx *args,
-                                      bool has_tiling) {
+ge::graphStatus UpdatePlaceHolderInfo(aclrtPlaceHolderInfo *infos, RtKernelLaunchArgsEx *args, bool has_tiling) {
   for (size_t idx = 0U; idx < args->GetBase()->hostInputInfoNum; ++idx) {
     infos[idx].addrOffset = args->GetBase()->hostInputInfoPtr[idx].addrOffset;
     infos[idx].dataOffset = args->GetBase()->hostInputInfoPtr[idx].dataOffset;
@@ -106,16 +87,8 @@ LaunchCommonInputs GetLaunchCommonInputs(KernelContext *context) {
   if (inputs.stream == nullptr) {
     GELOGW("[Launch_kernel] inputs.stream is nullptr, it will be treated as default stream when executing.");
   }
-  auto kernel_bin_id = context->GetInputValue<char *>(static_cast<int32_t>(InputCommon::kKernelBinId));
-  FE_ASSERT_NOTNULL(kernel_bin_id);
-  auto magic = context->GetInputValue<uint32_t>(static_cast<int32_t>(InputCommon::kMagic));
-  auto kernel_bin_ptr = context->GetInputValue<ge::KernelBinPtr *>(static_cast<int32_t>(InputCommon::kKernelBin));
-  FE_ASSERT_NOTNULL(kernel_bin_ptr);
-  inputs.bin_handle = GetBinHandle(kernel_bin_id, magic, kernel_bin_ptr);
-  FE_ASSERT_NOTNULL(inputs.bin_handle);
-  inputs.tiling_key = context->GetInputValue<size_t>(static_cast<int32_t>(InputCommon::kTilingKey));
-  inputs.kernel_name = context->GetInputValue<char *>(static_cast<int32_t>(InputCommon::kKernelName));
-  FE_ASSERT_NOTNULL(inputs.kernel_name);
+  inputs.func_handle = context->GetInputValue<void *>(static_cast<int32_t>(InputCommon::kFuncHandle));
+  FE_ASSERT_NOTNULL(inputs.func_handle);
   inputs.block_dim = context->GetInputPointer<uint32_t>(static_cast<int32_t>(InputCommon::kBlockDim));
   FE_ASSERT_NOTNULL(inputs.block_dim);
   inputs.args = context->MutableInputPointer<RtKernelLaunchArgsEx>(static_cast<size_t>(InputCommon::kRtArg));
@@ -126,12 +99,10 @@ LaunchCommonInputs GetLaunchCommonInputs(KernelContext *context) {
   FE_ASSERT_NOTNULL(inputs.cfg);
   inputs.schedule_mode = context->GetInputValue<uint32_t>(static_cast<uint32_t>(InputCommon::kScheduleMode));
   inputs.local_mem_size = context->GetInputValue<uint32_t>(static_cast<uint32_t>(InputCommon::kLocalMemSize));
-  inputs.with_handle_flag = context->GetInputValue<uint32_t>(static_cast<uint32_t>(InputCommon::kWithHandleFlag));
   return inputs;
 }
 
-uint8_t GetEnableProfiling(const KernelContext *context) {
-  const auto compute_node_info = static_cast<const ComputeNodeInfo *>(context->GetComputeNodeExtend());
+uint8_t GetEnableProfiling(const ComputeNodeInfo *compute_node_info) {
   if ((compute_node_info != nullptr) && GlobalProfilingWrapper::GetInstance()->IsEnabled(ProfilingType::kScale)) {
     const char *op_type = compute_node_info->GetNodeType();
     const bool enabled = MsprofCheckOpSwitch(0U, op_type, strlen(op_type));
@@ -141,7 +112,7 @@ uint8_t GetEnableProfiling(const KernelContext *context) {
   return kProfilingEnabled;
 }
 
-ge::graphStatus PrepareLaunchConfig(KernelContext *context, LaunchCommonInputs &inputs) {
+ge::graphStatus PrepareLaunchConfig(const ComputeNodeInfo *compute_node_info, LaunchCommonInputs &inputs) {
   if (inputs.cfg_attrs == nullptr) {
     GELOGE(ge::FAILED, "cfg_attrs is nullptr");
     return ge::GRAPH_FAILED;
@@ -154,7 +125,7 @@ ge::graphStatus PrepareLaunchConfig(KernelContext *context, LaunchCommonInputs &
   inputs.cfg_attrs[1].value.dynUBufSize = inputs.local_mem_size;
   inputs.cfg->attrs = inputs.cfg_attrs;
   if (inputs.cfg->numAttrs > kEnableProfilingAttrIdx) {
-    const uint8_t enable_profiling = GetEnableProfiling(context);
+    const uint8_t enable_profiling = GetEnableProfiling(compute_node_info);
     if (enable_profiling != kProfilingDisabled) {
       inputs.cfg_attrs[kEnableProfilingAttrIdx].id = ACL_RT_LAUNCH_KERNEL_ATTR_ENABLE_PROFILING;
       inputs.cfg_attrs[kEnableProfilingAttrIdx].value.enableProfiling = enable_profiling;
@@ -188,9 +159,15 @@ ge::Status LaunchKernelWithPlaceHolder(aclrtFuncHandle funcHandle, uint32_t bloc
     aclrtPlaceHolderInfo without_info = {};
     return aclrtLaunchKernelWithHostArgs(funcHandle, block_dim, stream, cfg, hostArgs, argsSize, &without_info, 0U);
   }
-  std::vector<aclrtPlaceHolderInfo> infos(info.place_holder_num);
+  aclrtPlaceHolderInfo stack_infos[kMaxStackPlaceHolderNum];
+  aclrtPlaceHolderInfo *infos = stack_infos;
+  std::vector<aclrtPlaceHolderInfo> large_infos;
+  if (info.place_holder_num > kMaxStackPlaceHolderNum) {
+    large_infos.resize(info.place_holder_num);
+    infos = large_infos.data();
+  }
   (void)UpdatePlaceHolderInfo(infos, args, info.has_tiling);
-  return aclrtLaunchKernelWithHostArgs(funcHandle, block_dim, stream, cfg, hostArgs, argsSize, infos.data(),
+  return aclrtLaunchKernelWithHostArgs(funcHandle, block_dim, stream, cfg, hostArgs, argsSize, infos,
                                        info.place_holder_num);
 }
 const char *kLaunchArgsTypeName[static_cast<uint32_t>(RtKernelLaunchArgsEx::ArgsType::kArgsTypeEnd)] = {
@@ -335,8 +312,6 @@ void PrintHostData(const RtKernelLaunchArgsEx *args, std::vector<std::string> &m
 }
 std::vector<std::string> PrintLaunchArgs(const KernelContext *context) {
   auto stream = context->GetInputValue<void *>(static_cast<int32_t>(InputCommon::kStream));
-  auto kernel_bin_id = context->GetInputValue<char *>(static_cast<int32_t>(InputCommon::kKernelBinId));
-  FE_ASSERT_NOTNULL(kernel_bin_id);
   auto block_dim = context->GetInputPointer<uint32_t>(static_cast<int32_t>(InputCommon::kBlockDim));
   FE_ASSERT_NOTNULL(block_dim);
   auto schedule_mode = context->GetInputValue<uint32_t>(static_cast<int32_t>(InputCommon::kScheduleMode));
@@ -346,9 +321,8 @@ std::vector<std::string> PrintLaunchArgs(const KernelContext *context) {
   std::vector<std::string> msgs;
   std::stringstream ss;
   ss << "Launch function arguments: "
-     << "KernelBinId " << kernel_bin_id << ", block dim " << *block_dim << ", args " << args->GetBase() << ", stream "
-     << stream << ", schedule mode: " << std::to_string(schedule_mode)
-     << ", local mem size: " << std::to_string(local_mem_size);
+     << "block dim " << *block_dim << ", args " << args->GetBase() << ", stream " << stream
+     << ", schedule mode: " << std::to_string(schedule_mode) << ", local mem size: " << std::to_string(local_mem_size);
   msgs.emplace_back(ss.str());
   msgs.emplace_back(PrintStreamIdAndTaskId());
   msgs.emplace_back(PrintArgsGeneralInfo(args));
@@ -608,23 +582,6 @@ ge::graphStatus UpdateAtomicArgs(const KernelContext *context, const int32_t add
   return ge::GRAPH_SUCCESS;
 }
 
-aclrtFuncHandle GetFuncHandle(const aclrtBinHandle &bin_handle, const uint64_t &tiling_key, const char_t *kernel_name,
-                              uint32_t with_handle_flag) {
-  GE_ASSERT_NOTNULL(bin_handle);
-  aclrtFuncHandle func_handle = nullptr;
-  if (with_handle_flag != 0U) {
-    GELOGD("Get func handle by tiling key: %lu", tiling_key);
-    GE_ASSERT_RT_OK(aclrtBinaryGetFunctionByEntry(bin_handle, tiling_key, &func_handle),
-                    "Get func handle by tiling key [%lu] failed.", tiling_key);
-  } else {
-    GELOGD("Get func handle by kernel name: %s", kernel_name);
-    GE_ASSERT_RT_OK(aclrtBinaryGetFunction(bin_handle, kernel_name, &func_handle),
-                    "Get func handle by kernel name [%s] failed.", kernel_name);
-  }
-  FE_ASSERT_NOTNULL(func_handle, "Failed to get func handle.");
-  return func_handle;
-}
-
 ge::graphStatus AicoreHandleUpdateGeExceptionDumpInfo(const KernelContext *context,
                                                       gert::ExceptionDumpInfoWrapper &wrapper) {
   auto workspace = context->MutableInputPointer<ContinuousVector>(static_cast<size_t>(InputCommon::kWorkspaceAddr));
@@ -784,18 +741,22 @@ ge::graphStatus FillAtomicAiCoreProfilingInfo(const KernelContext *context, Prof
 
 ge::graphStatus AiCoreLaunchMixKernelV2(KernelContext *context) {
   LaunchCommonInputs inputs = GetLaunchCommonInputs(context);
-  FE_RETURN_IF_ERROR(PrepareLaunchConfig(context, inputs));
-  int32_t addr_start = static_cast<int32_t>(WithArgs::kIoAddrs);
-  FE_RETURN_IF_ERROR(UpdateArgs(context, addr_start, *inputs.args));
-  auto funcHandle = GetFuncHandle(inputs.bin_handle, inputs.tiling_key, inputs.kernel_name, inputs.with_handle_flag);
   const auto compute_node_info = static_cast<const ComputeNodeInfo *>(context->GetComputeNodeExtend());
   FE_ASSERT_NOTNULL(compute_node_info);
+  FE_RETURN_IF_ERROR(PrepareLaunchConfig(compute_node_info, inputs));
+  int32_t addr_start = static_cast<int32_t>(WithArgs::kIoAddrs);
+  FE_RETURN_IF_ERROR(UpdateArgs(context, addr_start, *inputs.args));
+  auto funcHandle = inputs.func_handle;
   PlaceHolderInfo place_holder_info = GetPlaceHolderInfo(inputs.args);
-  std::vector<aclrtPlaceHolderInfo> infos(place_holder_info.place_holder_num);
-  aclrtPlaceHolderInfo *place_holder_ptr = nullptr;
+  aclrtPlaceHolderInfo stack_infos[kMaxStackPlaceHolderNum];
+  aclrtPlaceHolderInfo *place_holder_ptr = stack_infos;
+  std::vector<aclrtPlaceHolderInfo> large_infos;
+  if (place_holder_info.place_holder_num > kMaxStackPlaceHolderNum) {
+    large_infos.resize(place_holder_info.place_holder_num);
+    place_holder_ptr = large_infos.data();
+  }
   if (place_holder_info.place_holder_num > 0U) {
-    UpdatePlaceHolderInfo(infos, inputs.args, place_holder_info.has_tiling);
-    place_holder_ptr = infos.data();
+    (void)UpdatePlaceHolderInfo(place_holder_ptr, inputs.args, place_holder_info.has_tiling);
   } else {
     static aclrtPlaceHolderInfo without_info = {};
     place_holder_ptr = &without_info;
@@ -809,7 +770,8 @@ ge::graphStatus AiCoreLaunchMixKernelV2(KernelContext *context) {
     GELOGE(ret, "LaunchMixKernelV2 failed. Node: %s.", compute_node_info->GetNodeName());
     return ret;
   }
-  return AICoreDfxPrintProc(context, inputs.stream);
+  const ge::graphStatus status = AICoreDfxPrintProc(context, inputs.stream);
+  return status;
 }
 REGISTER_KERNEL(LaunchMixKernelV2)
     .RunFunc(AiCoreLaunchMixKernelV2)
@@ -820,21 +782,22 @@ REGISTER_KERNEL(LaunchMixKernelV2)
 
 ge::graphStatus AiCoreLaunchKernelV2(KernelContext *context) {
   LaunchCommonInputs inputs = GetLaunchCommonInputs(context);
-  FE_RETURN_IF_ERROR(PrepareLaunchConfig(context, inputs));
+  const auto compute_node_info = static_cast<const ComputeNodeInfo *>(context->GetComputeNodeExtend());
+  FE_ASSERT_NOTNULL(compute_node_info);
+  FE_RETURN_IF_ERROR(PrepareLaunchConfig(compute_node_info, inputs));
   int32_t addr_start = static_cast<int32_t>(WithArgs::kIoAddrs);
   FE_RETURN_IF_ERROR(UpdateArgs(context, addr_start, *inputs.args));
-  auto funcHandle = GetFuncHandle(inputs.bin_handle, inputs.tiling_key, inputs.kernel_name, inputs.with_handle_flag);
+  auto funcHandle = inputs.func_handle;
   PlaceHolderInfo place_holder_info = GetPlaceHolderInfo(inputs.args);
   ge::Status ret =
       LaunchKernelWithPlaceHolder(funcHandle, *inputs.block_dim, inputs.stream, inputs.cfg, inputs.args->GetArgBase(),
                                   inputs.args->GetBase()->argsSize, inputs.args, place_holder_info);
-  const auto compute_node_info = static_cast<const ComputeNodeInfo *>(context->GetComputeNodeExtend());
-  FE_ASSERT_NOTNULL(compute_node_info);
   if (ret != RT_ERROR_NONE) {
     GELOGE(ret, "LaunchKernelV2 failed. Node: %s.", compute_node_info->GetNodeName());
     return ret;
   }
-  return AICoreDfxPrintProc(context, inputs.stream);
+  const ge::graphStatus status = AICoreDfxPrintProc(context, inputs.stream);
+  return status;
 }
 REGISTER_KERNEL(LaunchKernelV2)
     .RunFunc(AiCoreLaunchKernelV2)
@@ -843,9 +806,11 @@ REGISTER_KERNEL(LaunchKernelV2)
 
 ge::graphStatus AtomicAiCoreLaunchKernelV2(KernelContext *context) {
   LaunchCommonInputs inputs = GetLaunchCommonInputs(context);
-  FE_RETURN_IF_ERROR(PrepareLaunchConfig(context, inputs));
+  const auto compute_node_info = static_cast<const ComputeNodeInfo *>(context->GetComputeNodeExtend());
+  FE_ASSERT_NOTNULL(compute_node_info);
+  FE_RETURN_IF_ERROR(PrepareLaunchConfig(compute_node_info, inputs));
   FE_RETURN_IF_ERROR(UpdateAtomicArgs(context, static_cast<int32_t>(WithAtomic::kIoAddrs), *inputs.args));
-  auto funcHandle = GetFuncHandle(inputs.bin_handle, inputs.tiling_key, inputs.kernel_name, inputs.with_handle_flag);
+  auto funcHandle = inputs.func_handle;
   aclrtPlaceHolderInfo info = {};
   uint32_t placeHolderNum = 0;
   if (inputs.args->GetTilingDataOffset() < inputs.args->GetBase()->argsSize) {
@@ -856,8 +821,6 @@ ge::graphStatus AtomicAiCoreLaunchKernelV2(KernelContext *context) {
   auto ret =
       aclrtLaunchKernelWithHostArgs(funcHandle, *inputs.block_dim, inputs.stream, inputs.cfg, inputs.args->GetArgBase(),
                                     inputs.args->GetBase()->argsSize, &info, placeHolderNum);
-  const auto compute_node_info = static_cast<const ComputeNodeInfo *>(context->GetComputeNodeExtend());
-  FE_ASSERT_NOTNULL(compute_node_info);
   if (ret != RT_ERROR_NONE) {
     GELOGE(ret, "AtomicLaunchKernelV2 failed. Node: %s.", compute_node_info->GetNodeName());
     return ret;

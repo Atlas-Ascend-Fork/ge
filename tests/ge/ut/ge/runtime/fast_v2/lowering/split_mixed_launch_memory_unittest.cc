@@ -153,23 +153,18 @@ std::vector<ValueHolderPtr> CreateTiling() {
 std::vector<ValueHolderPtr> CreateLaunchKernelV2CommonInputs() {
   auto tiling_out = CreateTiling();
   std::vector<ValueHolderPtr> inputs = {
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
-      tiling_out[TilingContext::kOutputBlockDim],
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
-      tiling_out[TilingContext::kOutputScheduleMode],
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
-      tiling_out[static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)],
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),
+      ValueHolder::CreateFeed(0),                                            // kStream
+      tiling_out[TilingContext::kOutputBlockDim],                            // kBlockDim
+      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kWorkspaceAddr
+      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kShapeBufferAddr
+      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kCfgAttrs
+      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kCfg
+      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kIoNum
+      tiling_out[TilingContext::kOutputScheduleMode],                        // kScheduleMode
+      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kDfxArgs
+      tiling_out[static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)],  // kRtArg
+      ValueHolder::CreateFeed(0),                                            // kLocalMemSize
+      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kFuncHandle
   };
   return inputs;
 }
@@ -180,23 +175,18 @@ std::vector<ValueHolderPtr> CreateLaunchKernelV2CommonFeedInputs() {
   auto tiling_out =
       ValueHolder::CreateDataOutput("Tiling", tiling_inputs, static_cast<size_t>(kernel::TilingExOutputIndex::kNum));
   std::vector<ValueHolderPtr> inputs = {
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateFeed(0),
-      tiling_out[TilingContext::kOutputBlockDim],
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateFeed(0),
-      tiling_out[TilingContext::kOutputScheduleMode],
-      ValueHolder::CreateFeed(0),
-      tiling_out[static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)],
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateFeed(0),
-      ValueHolder::CreateFeed(0),
+      ValueHolder::CreateFeed(0),                                            // kStream
+      tiling_out[TilingContext::kOutputBlockDim],                            // kBlockDim
+      ValueHolder::CreateFeed(0),                                            // kWorkspaceAddr
+      ValueHolder::CreateFeed(0),                                            // kShapeBufferAddr
+      ValueHolder::CreateFeed(0),                                            // kCfgAttrs
+      ValueHolder::CreateFeed(0),                                            // kCfg
+      ValueHolder::CreateFeed(0),                                            // kIoNum
+      tiling_out[TilingContext::kOutputScheduleMode],                        // kScheduleMode
+      ValueHolder::CreateFeed(0),                                            // kDfxArgs
+      tiling_out[static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)],  // kRtArg
+      ValueHolder::CreateFeed(0),                                            // kLocalMemSize
+      ValueHolder::CreateFeed(0),                                            // kFuncHandle
   };
   return inputs;
 }

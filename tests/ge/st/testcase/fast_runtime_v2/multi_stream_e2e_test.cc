@@ -675,9 +675,6 @@ TEST_F(GraphExecutorMultiStreamSystemTest, Case05_TwoStream_RefMemAccessCrossStr
   ASSERT_EQ(assign_launch_node.size(), 1U);
   EXPECT_EQ(FastNodeTopoChecker(assign_launch_node.at(0))
                 .StrictConnectFrom({{"SplitRtStreams", 1},
-                                    {"InnerData", 0},
-                                    {"InnerData", 0},
-                                    {"InnerData", 0},
                                     {"CacheableTiling", 1},
                                     {"AllocBatchHbm", 0},
                                     {"InnerData", 0},
@@ -688,9 +685,7 @@ TEST_F(GraphExecutorMultiStreamSystemTest, Case05_TwoStream_RefMemAccessCrossStr
                                     {"InnerData", 0},
                                     {"CacheableTiling", 11},
                                     {"CacheableTiling", 7},
-                                    {"CacheableTiling", 0},
-                                    {"InnerData", 0},
-                                    {"InnerData", 0},
+                                    {"ResolveKernelFuncHandle", 0},
                                     {"AccessMemCrossStream", 0},
                                     {"AccessMemCrossStream", 0},
                                     {"AccessMemCrossStream", 0},

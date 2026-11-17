@@ -1248,15 +1248,25 @@ TEST_F(GraphExecutorWithCopyFlowLaunchKernelUnitTest, SingleHostCopyToTwoAiCoreN
   }
   EXPECT_NE(relu_launch_kernel, nullptr);
   FastNodeTopoChecker topo_checker1(relu_launch_kernel);
-  EXPECT_EQ(
-      topo_checker1.StrictConnectFrom({
-          {"SplitRtStreams", 0},      {"InnerData", 0},  {"InnerData", 0},      {"InnerData", 0}, {"InnerData", 0},
-          {"AllocBatchHbm", 0},       {"InnerData", 0},  {"InnerData", 0},      {"InnerData", 0}, {"InnerData", 0},
-          {"InnerData", 0},           {"InnerData", 0},  {"InnerData", 0},      {"InnerData", 0}, {"InnerData", 0},
-          {"InnerData", 0},           {"InnerData", 0},  {"CopyFlowLaunch", 0},  // only one copy flow
-          {"AllocModelOutTensor", 0}, {"InferShape", 0}, {"InnerData", 0},
-      }),
-      "success");
+  EXPECT_EQ(topo_checker1.StrictConnectFrom({
+                {"SplitRtStreams", 0},
+                {"InnerData", 0},
+                {"AllocBatchHbm", 0},
+                {"InnerData", 0},
+                {"InnerData", 0},
+                {"InnerData", 0},
+                {"InnerData", 0},
+                {"InnerData", 0},
+                {"InnerData", 0},
+                {"InnerData", 0},
+                {"InnerData", 0},
+                {"InnerData", 0},
+                {"CopyFlowLaunch", 0},
+                {"AllocModelOutTensor", 0},
+                {"InferShape", 0},
+                {"InnerData", 0},
+            }),
+            "success");
   aclrtDestroyStream(stream);
   dlog_setlevel(GE_MODULE_NAME, 3, 0);
 }

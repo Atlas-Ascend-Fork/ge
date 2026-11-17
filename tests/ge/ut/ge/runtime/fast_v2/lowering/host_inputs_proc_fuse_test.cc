@@ -310,7 +310,7 @@ TEST_F(HostInputsProcFuseUT, TestAicoreStaticGraph) {
                                         {"FreeMemory", 4},
                                         {"FreeTensorMemory", 1},
                                         {"InferShape", 1},
-                                        {"InnerData", 34},
+                                        {"InnerData", 29},
                                         {"LaunchKernelV2", 1},
                                         {"NetOutput", 1},
                                         {"OutputData", 1},

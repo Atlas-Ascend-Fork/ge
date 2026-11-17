@@ -21,9 +21,6 @@ const size_t kMixNotifyIdNum = 2;
 std::vector<ValueHolderPtr> BuildLaunchCommonHead(const CommonLaunchArg &launch_arg, const size_t &io_num) {
   std::vector<ValueHolderPtr> inputs;
   inputs.emplace_back(launch_arg.stream);
-  inputs.emplace_back(launch_arg.kernel_bin_id_holder);
-  inputs.emplace_back(launch_arg.magic_holder);
-  inputs.emplace_back(launch_arg.kernel_bin_holder);
   inputs.emplace_back(launch_arg.block_dim);
   inputs.emplace_back(launch_arg.workspace_addrs);
   inputs.emplace_back(launch_arg.shapebuffer_addr);
@@ -34,9 +31,7 @@ std::vector<ValueHolderPtr> BuildLaunchCommonHead(const CommonLaunchArg &launch_
   inputs.emplace_back(launch_arg.dfx_holder);
   inputs.emplace_back(launch_arg.rt_arg);
   inputs.emplace_back(launch_arg.local_mem_size);
-  inputs.emplace_back(launch_arg.tiling_key);
-  inputs.emplace_back(launch_arg.kernel_name);
-  inputs.emplace_back(launch_arg.with_handle_flag);
+  inputs.emplace_back(launch_arg.func_handle);
   return inputs;
 }
 enum class CoreNumType { ALL_CORE, AI_CORE, VECTOR_CORE, TYPE_NUM };

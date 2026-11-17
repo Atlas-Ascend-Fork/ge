@@ -62,9 +62,6 @@ std::vector<ValueHolderPtr> CreateLaunchKernelCommonInputs(const vector<ValueHol
   size_t io_num = 0;
   std::vector<ValueHolderPtr> common_inputs = {
       ValueHolder::CreateFeed(0),                                            // kStream
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kKernelBinId
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kMagic
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kKernelBin
       tiling_out[TilingContext::kOutputBlockDim],                            // kBlockDim
       ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kWorkspaceAddr
       ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kShapeBufferAddr
@@ -75,9 +72,7 @@ std::vector<ValueHolderPtr> CreateLaunchKernelCommonInputs(const vector<ValueHol
       ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kDfxArgs
       tiling_out[static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)],  // kRtArg
       ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kLocalMemSize
-      tiling_out[TilingContext::kOutputTilingKey],                           // kTilingKey
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kKernelName
-      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kWithHandleFlag
+      ValueHolder::CreateSingleDataOutput("InnerData", {}),                  // kFuncHandle
   };
 
   return common_inputs;
@@ -212,7 +207,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_1H1D_MakeSureTensorAtDevice) {
                                         {"Const", 2},
                                         {"Data", 8},
                                         {"FreeMemory", 1},
-                                        {"InnerData", 16},
+                                        {"InnerData", 12},
                                         {"LaunchKernelV2", 1},
                                         {"MakeSureTensorAtDevice", 1},
                                         {"SplitTensor", 1},
@@ -231,7 +226,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_1H1D_MakeSureTensorAtDevice) {
                                         {"CopyFlowLaunch", 1},
                                         {"Data", 8},
                                         {"FreeMemory", 1},
-                                        {"InnerData", 16},
+                                        {"InnerData", 12},
                                         {"LaunchKernelV2", 1},
                                         {"SplitTensor", 1},
                                         {"NetOutput", 1},
@@ -296,7 +291,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2H1D_ForStaticOp) {
                                         {"Const", 3},
                                         {"Data", 10},
                                         {"FreeMemory", 2},
-                                        {"InnerData", 18},
+                                        {"InnerData", 14},
                                         {"LaunchKernelV2", 1},
                                         {"MakeSureTensorAtDevice", 2},
                                         {"NetOutput", 1},
@@ -316,7 +311,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2H1D_ForStaticOp) {
                     {"CopyFlowLaunch", 1},
                     {"Data", 10},
                     {"FreeMemory", 2},
-                    {"InnerData", 18},
+                    {"InnerData", 14},
                     {"LaunchKernelV2", 1},
                     {"NetOutput", 1},
                     {"SplitTensor", 2},
@@ -382,7 +377,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_1H1D) {
                                         {"Const", 2},
                                         {"Data", 8},
                                         {"FreeMemory", 1},
-                                        {"InnerData", 16},
+                                        {"InnerData", 12},
                                         {"LaunchKernelV2", 1},
                                         {"MakeSureTensorAtDevice", 1},
                                         {"NetOutput", 1},
@@ -402,7 +397,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_1H1D) {
                     {"CopyFlowLaunch", 1},
                     {"Data", 8},
                     {"FreeMemory", 1},
-                    {"InnerData", 16},
+                    {"InnerData", 12},
                     {"LaunchKernelV2", 1},
                     {"NetOutput", 1},
                     {"SplitTensor", 1},
@@ -469,7 +464,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2H1D) {
                                         {"MakeSureTensorAtDevice", 2},
                                         {"Data", 10},
                                         {"FreeMemory", 2},
-                                        {"InnerData", 18},
+                                        {"InnerData", 14},
                                         {"LaunchKernelV2", 1},
                                         {"SplitTensor", 2},
                                         {"Tiling", 1},
@@ -487,7 +482,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2H1D) {
                                         {"CopyFlowLaunch", 1},
                                         {"Data", 10},
                                         {"FreeMemory", 2},
-                                        {"InnerData", 18},
+                                        {"InnerData", 14},
                                         {"LaunchKernelV2", 1},
                                         {"SplitTensor", 2},
                                         {"Tiling", 1},
@@ -569,7 +564,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel) {
                                         {"MakeSureTensorAtDevice", 2},
                                         {"Data", 16},
                                         {"FreeMemory", 2},
-                                        {"InnerData", 32},
+                                        {"InnerData", 24},
                                         {"LaunchKernelV2", 2},
                                         {"SplitTensor", 2},
                                         {"Tiling", 2},
@@ -589,7 +584,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel) {
                                         {"CopyFlowLaunch", 2},
                                         {"Data", 16},
                                         {"FreeMemory", 3},
-                                        {"InnerData", 32},
+                                        {"InnerData", 24},
                                         {"LaunchKernelV2", 2},
                                         {"SplitTensor", 2},
                                         {"Tiling", 2},
@@ -611,9 +606,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel) {
   EXPECT_EQ(topo_checker1.ConnectFromByType({"CopyFlowLaunch"}), true);
   EXPECT_EQ(topo_checker1.StrictConnectFrom({
                 {"Data", 0},
-                {"InnerData", 0},
-                {"InnerData", 0},
-                {"InnerData", 0},
                 {"Tiling", TilingContext::kOutputBlockDim},
                 {"InnerData", 0},
                 {"InnerData", 0},
@@ -623,8 +615,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel) {
                 {"Tiling", TilingContext::kOutputScheduleMode},
                 {"InnerData", 0},
                 {"Tiling", static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)},
-                {"InnerData", 0},
-                {"Tiling", TilingContext::kOutputTilingKey},
                 {"InnerData", 0},
                 {"InnerData", 0},
                 {"CopyFlowLaunch", 0},
@@ -635,9 +625,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel) {
   FastNodeTopoChecker topo_checker2(launch_kernel2);
   EXPECT_EQ(topo_checker2.StrictConnectFrom({
                 {"Data", 0},
-                {"InnerData", 0},
-                {"InnerData", 0},
-                {"InnerData", 0},
                 {"Tiling", TilingContext::kOutputBlockDim},
                 {"InnerData", 0},
                 {"InnerData", 0},
@@ -647,8 +634,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel) {
                 {"Tiling", TilingContext::kOutputScheduleMode},
                 {"InnerData", 0},
                 {"Tiling", static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)},
-                {"InnerData", 0},
-                {"Tiling", TilingContext::kOutputTilingKey},
                 {"InnerData", 0},
                 {"InnerData", 0},
                 {"CopyFlowLaunch", 0},
@@ -722,7 +707,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_3LaunchKernel) {
                                         {"MakeSureTensorAtDevice", 1},
                                         {"Data", 20},
                                         {"FreeMemory", 1},
-                                        {"InnerData", 44},
+                                        {"InnerData", 32},
                                         {"LaunchKernelV2", 3},
                                         {"SplitTensor", 1},
                                         {"Tiling", 3},
@@ -746,7 +731,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_3LaunchKernel) {
                                         {"CopyFlowLaunch", 3},
                                         {"Data", 20},
                                         {"FreeMemory", 3},
-                                        {"InnerData", 44},
+                                        {"InnerData", 32},
                                         {"LaunchKernelV2", 3},
                                         {"SplitTensor", 1},
                                         {"Tiling", 3},
@@ -766,9 +751,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_3LaunchKernel) {
   EXPECT_EQ(topo_checker1.ConnectFromByType({"CopyFlowLaunch"}), true);
   EXPECT_EQ(topo_checker1.StrictConnectFrom({
                 {"Data", 0},
-                {"InnerData", 0},
-                {"InnerData", 0},
-                {"InnerData", 0},
                 {"Tiling", TilingContext::kOutputBlockDim},
                 {"InnerData", 0},
                 {"InnerData", 0},
@@ -779,8 +761,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_3LaunchKernel) {
                 {"InnerData", 0},
                 {"Tiling", static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)},
                 {"InnerData", 0},
-                {"Tiling", TilingContext::kOutputTilingKey},
-                {"InnerData", 0},
                 {"InnerData", 0},
                 {"CopyFlowLaunch", 0},
                 {"AllocBatchHbm", 0},
@@ -789,9 +769,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_3LaunchKernel) {
 
   FastNodeTopoChecker topo_checker2(launch_kernel2);
   EXPECT_EQ(topo_checker2.StrictConnectFrom({{"Data", 0},
-                                             {"InnerData", 0},
-                                             {"InnerData", 0},
-                                             {"InnerData", 0},
                                              {"Tiling", TilingContext::kOutputBlockDim},
                                              {"InnerData", 0},
                                              {"InnerData", 0},
@@ -801,8 +778,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_3LaunchKernel) {
                                              {"Tiling", TilingContext::kOutputScheduleMode},
                                              {"InnerData", 0},
                                              {"Tiling", static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)},
-                                             {"InnerData", 0},
-                                             {"Tiling", TilingContext::kOutputTilingKey},
                                              {"InnerData", 0},
                                              {"InnerData", 0},
                                              {"CopyFlowLaunch", 0},
@@ -860,7 +835,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2H1D_2) {
                                         {"MakeSureTensorAtDevice", 1},
                                         {"Data", 8},
                                         {"FreeMemory", 1},
-                                        {"InnerData", 16},
+                                        {"InnerData", 12},
                                         {"LaunchKernelV2", 1},
                                         {"SplitTensor", 1},
                                         {"Tiling", 1},
@@ -878,7 +853,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2H1D_2) {
                                         {"CopyFlowLaunch", 1},
                                         {"Data", 8},
                                         {"FreeMemory", 1},
-                                        {"InnerData", 16},
+                                        {"InnerData", 12},
                                         {"LaunchKernelV2", 1},
                                         {"SplitTensor", 1},
                                         {"Tiling", 1},
@@ -946,7 +921,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_1H1D_H2D) {
                                         {"Data", 8},
                                         {"Tiling", 1},
                                         {"FreeMemory", 1},
-                                        {"InnerData", 16},
+                                        {"InnerData", 12},
                                         {"LaunchKernelV2", 1},
                                         {"SplitTensor", 1},
                                         {"NetOutput", 1}}),
@@ -964,7 +939,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_1H1D_H2D) {
                                         {"Data", 8},
                                         {"Tiling", 1},
                                         {"FreeMemory", 1},
-                                        {"InnerData", 16},
+                                        {"InnerData", 12},
                                         {"LaunchKernelV2", 1},
                                         {"SplitTensor", 1},
                                         {"NetOutput", 1}}),
@@ -1049,7 +1024,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel_H2D) {
                                         {"CopyH2D", 1},
                                         {"Data", 16},
                                         {"FreeMemory", 2},
-                                        {"InnerData", 32},
+                                        {"InnerData", 24},
                                         {"LaunchKernelV2", 2},
                                         {"SplitTensor", 2},
                                         {"Tiling", 2},
@@ -1067,7 +1042,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel_H2D) {
                                         {"CopyFlowLaunch", 2},
                                         {"Data", 16},
                                         {"FreeMemory", 3},
-                                        {"InnerData", 32},
+                                        {"InnerData", 24},
                                         {"LaunchKernelV2", 2},
                                         {"SplitTensor", 2},
                                         {"Tiling", 2},
@@ -1087,9 +1062,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel_H2D) {
   EXPECT_EQ(topo_checker1.ConnectFromByType({"CopyFlowLaunch"}), true);
   EXPECT_EQ(topo_checker1.StrictConnectFrom({
                 {"Data", 0},
-                {"InnerData", 0},
-                {"InnerData", 0},
-                {"InnerData", 0},
                 {"Tiling", TilingContext::kOutputBlockDim},
                 {"InnerData", 0},
                 {"InnerData", 0},
@@ -1099,8 +1071,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel_H2D) {
                 {"Tiling", TilingContext::kOutputScheduleMode},
                 {"InnerData", 0},
                 {"Tiling", static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)},
-                {"InnerData", 0},
-                {"Tiling", TilingContext::kOutputTilingKey},
                 {"InnerData", 0},
                 {"InnerData", 0},
                 {"CopyFlowLaunch", 0},
@@ -1111,9 +1081,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel_H2D) {
   FastNodeTopoChecker topo_checker2(launch_kernel2);
   EXPECT_EQ(topo_checker2.StrictConnectFrom({
                 {"Data", 0},
-                {"InnerData", 0},
-                {"InnerData", 0},
-                {"InnerData", 0},
                 {"Tiling", TilingContext::kOutputBlockDim},
                 {"InnerData", 0},
                 {"InnerData", 0},
@@ -1123,8 +1090,6 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_2LaunchKernel_H2D) {
                 {"Tiling", TilingContext::kOutputScheduleMode},
                 {"InnerData", 0},
                 {"Tiling", static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)},
-                {"InnerData", 0},
-                {"Tiling", TilingContext::kOutputTilingKey},
                 {"InnerData", 0},
                 {"InnerData", 0},
                 {"CopyFlowLaunch", 0},
@@ -1182,7 +1147,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_1H1D_MEMCHECK) {
                                         {"MakeSureTensorAtDevice", 1},
                                         {"Data", 8},
                                         {"FreeMemory", 1},
-                                        {"InnerData", 16},
+                                        {"InnerData", 12},
                                         {"LaunchKernelV2", 1},
                                         {"SplitTensor", 1},
                                         {"Tiling", 1},
@@ -1202,7 +1167,7 @@ TEST_F(CopyFlowLaunchFuseUT, TestLaunchKernelV2_1H1D_MEMCHECK) {
                                         {"CopyFlowLaunch", 1},
                                         {"Data", 8},
                                         {"FreeMemory", 1},
-                                        {"InnerData", 16},
+                                        {"InnerData", 12},
                                         {"LaunchKernelV2", 1},
                                         {"SplitTensor", 1},
                                         {"Tiling", 1},

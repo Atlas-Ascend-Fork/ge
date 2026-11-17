@@ -1072,7 +1072,7 @@ TEST_F(CannProfilerST, CannHostProfiling_ReportApi_EnableAlwaysZeroCopy) {
   ge::diagnoseSwitch::EnableProfiling({ProfilingType::kCannHost});
   ge::EXPECT_DefaultProfilingTestWithExpectedCallTimes(CannProfilerST::TestProfilingWhenZeroCpy1, 1, 0, 0, 0);
   ge::diagnoseSwitch::EnableProfiling({ProfilingType::kCannHostL1, ProfilingType::kCannHost});
-  ge::EXPECT_DefaultProfilingTestWithExpectedCallTimes(CannProfilerST::TestProfilingWhenZeroCpy1, 18, 0, 0, 0);
+  ge::EXPECT_DefaultProfilingTestWithExpectedCallTimes(CannProfilerST::TestProfilingWhenZeroCpy1, 19, 0, 0, 0);
 }
 /**
  * 用例描述：单算子用例执行时打开profiling的task_time和host profiling开关，统计上报信息数量
