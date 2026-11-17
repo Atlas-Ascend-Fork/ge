@@ -7189,8 +7189,8 @@ TEST_F(SymbolicShapeInferenceST, InferShapeForAddLayerNorm) {
   auto beta = builder_->CreateInput(3, "beta");
   x1.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
   x2.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
-  gamma.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
-  beta.SetOriginSymbolShape(std::vector<const char *>({"s0", "s1", "s2"}));
+  gamma.SetOriginSymbolShape(std::vector<const char *>({"s1", "s2"}));
+  beta.SetOriginSymbolShape(std::vector<const char *>({"s1", "s2"}));
   ASSERT_NE(x1.GetCTensorHolder(), nullptr);
   ASSERT_NE(x2.GetCTensorHolder(), nullptr);
   ASSERT_NE(gamma.GetCTensorHolder(), nullptr);
@@ -7226,8 +7226,8 @@ TEST_F(SymbolicShapeInferenceST, InferShapeForAddLayerNorm) {
   ASSERT_NE(attr3, nullptr);
 
   EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s0, s1, s2}).GetDims());
-  EXPECT_EQ(attr1->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s0, s1, kone}).GetDims());
-  EXPECT_EQ(attr2->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s0, s1, kone}).GetDims());
+  EXPECT_EQ(attr1->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s0, kone, kone}).GetDims());
+  EXPECT_EQ(attr2->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s0, kone, kone}).GetDims());
   EXPECT_EQ(attr3->symbolic_tensor.GetOriginSymbolShape().GetDims(), gert::SymbolShape({s0, s1, s2}).GetDims());
 }
 

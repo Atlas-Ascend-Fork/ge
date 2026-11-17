@@ -69,6 +69,8 @@ graphStatus InferShape4AddLayerNorm(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(gamma_shape);
   auto beta_shape = context->GetInputSymbolShape(3);
   GE_UNSUPPORTED_IF_NULL(beta_shape);
+  GE_ASSERT(gamma_shape->GetDimNum() <= x1_shape->GetDimNum(), "AddLayerNorm gamma rank[%zu] exceeds x1 rank[%zu]",
+            gamma_shape->GetDimNum(), x1_shape->GetDimNum());
   GE_ASSERT(gamma_shape->GetDimNum() == beta_shape->GetDimNum());
   for (size_t i = 0U; i < gamma_shape->GetDimNum(); i++) {
     ASSERT_SYMBOL_EQ(gamma_shape->GetDim(i), beta_shape->GetDim(i));
@@ -86,8 +88,9 @@ graphStatus InferShape4AddLayerNorm(gert::InferSymbolShapeContext *context) {
   *y_shape = *x1_shape;
   *x_shape = *x1_shape;
   auto shape(*x1_shape);
-  if (shape.GetDimNum() > 0U) {
-    shape.MutableDims()[shape.GetDimNum() - 1U] = ge::kSymbolOne;
+  const auto norm_begin = shape.GetDimNum() - gamma_shape->GetDimNum();
+  for (size_t i = norm_begin; i < shape.GetDimNum(); ++i) {
+    shape.MutableDims()[i] = ge::kSymbolOne;
   }
   *mean_shape = shape;
   *rstd_shape = shape;

@@ -6850,8 +6850,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAddLayerNorm) {
   InferSymbolShapeContextTestBuilder builder("AddLayerNorm", "addlayernorm");
   auto x1_shape = gert::SymbolShape({s0, s1, s2});
   auto x2_shape = gert::SymbolShape({s0, s1, s2});
-  auto gamma_shape = gert::SymbolShape({s0, s1, s2});
-  auto beta_shape = gert::SymbolShape({s0, s1, s2});
+  auto gamma_shape = gert::SymbolShape({s1, s2});
+  auto beta_shape = gert::SymbolShape({s1, s2});
   auto op_descPtr = builder.GetOrCreateOpDescPtr();
   auto infer_context = builder.AppendInputSymbolTensor(x1_shape)
                            .AppendInputSymbolTensor(x2_shape)
@@ -6864,8 +6864,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAddLayerNorm) {
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape1 = gert::SymbolShape({s0, s1, s2});
-  auto expect_shape2 = gert::SymbolShape({s0, s1, Symbol(1)});
-  auto expect_shape3 = gert::SymbolShape({s0, s1, Symbol(1)});
+  auto expect_shape2 = gert::SymbolShape({s0, Symbol(1), Symbol(1)});
+  auto expect_shape3 = gert::SymbolShape({s0, Symbol(1), Symbol(1)});
   auto expect_shape4 = gert::SymbolShape({s0, s1, s2});
   ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape1.GetDims());
   ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape2.GetDims());

@@ -19,6 +19,7 @@
 #include "graph/utils/graph_utils.h"
 #include "graph/utils/graph_utils_ex.h"
 #include "lowering/asc_lowerer/loop_api.h"
+#include "lowering/asc_lowerer/asc_overrides.h"
 #include "lowering/lowerings.h"
 #include "lowering/op_lowering_impl/lowering_impl.h"
 #include "utils/auto_fuse_config.h"
@@ -44,6 +45,50 @@ class LoopNodeLoweringUT : public testing::Test {
     RegisterAllOpCreator();
   }
   void TearDown() override {}
+  void BuildDynamicRmsNorm() {
+    auto x = es_graph_->CreateInput(0, "x", nullptr);
+    auto gamma = es_graph_->CreateInput(1, "gamma", nullptr);
+    x.SetSymbolShape({"s0", "s1", "s2"});
+    gamma.SetSymbolShape({"s1", "s2"});
+    auto norm = es::RmsNorm(x, gamma, 0.001F);
+    norm.y.SetSymbolShape({"s0", "s1", "s2"});
+    norm.rstd.SetSymbolShape({"s0", "1", "1"});
+    es_graph_->SetOutput(norm.y, 0);
+  }
+  void BuildDynamicBatchNorm() {
+    auto x = es_graph_->CreateInput(0, "x", nullptr);
+    auto scale = es_graph_->CreateInput(1, "scale", nullptr);
+    auto offset = es_graph_->CreateInput(2, "offset", nullptr);
+    auto mean = es_graph_->CreateInput(3, "mean", nullptr);
+    auto variance = es_graph_->CreateInput(4, "variance", nullptr);
+    x.SetSymbolShape({"s0", "s1", "s2", "s3"});
+    for (auto *input : {&scale, &offset, &mean, &variance}) {
+      input->SetSymbolShape({"s1"});
+    }
+    auto norm = es::BatchNorm(x, scale, offset, mean, variance);
+    norm.y.SetSymbolShape({"s0", "s1", "s2", "s3"});
+    norm.batch_mean.SetSymbolShape({"s1"});
+    norm.batch_variance.SetSymbolShape({"s1"});
+    norm.reserve_space_1.SetSymbolShape({"s1"});
+    norm.reserve_space_2.SetSymbolShape({"s1"});
+    norm.reserve_space_3.SetSymbolShape({"1"});
+    es_graph_->SetOutput(norm.y, 0);
+  }
+  static void ExpectDynamicBatchNormInference(const NodePtr &node, const GeTensorDescPtr &x_desc) {
+    for (const auto dtype : {DT_FLOAT, DT_FLOAT16, DT_BF16}) {
+      x_desc->SetDataType(dtype);
+      node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(dtype);
+      ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+      auto kernel = loop::GetKernelBox(node->GetOutDataAnchor(0));
+      EXPECT_TRUE(kernel.IsSupport());
+      EXPECT_FALSE(kernel.IsReduction());
+      if (dtype == DT_BF16) {
+        EXPECT_NE(kernel.Readable().find(", DT_FLOAT)"), string::npos);
+        EXPECT_NE(kernel.Readable().find(", DT_BFLOAT16)"), string::npos);
+      }
+      EXPECT_NE(kernel.Realize<loop::AscOverrides>("dynamic_batchnorm_inference"), nullptr);
+    }
+  }
   std::unique_ptr<es::Graph> es_graph_;
 };
 
@@ -4303,4 +4348,367 @@ TEST_P(LoopInt64LogicalLoweringUT, BroadcastLogicalCastDoesNotFallback) {
 }
 
 INSTANTIATE_TEST_SUITE_P(Int64, LoopInt64LogicalLoweringUT, testing::Combine(testing::Bool(), testing::Bool()));
+TEST_F(LoopNodeLoweringUT, LoweringLogSoftmaxV2DtypeAndAxes) {
+  const auto origin = autofuse::AutoFuseConfig::LoweringConfig().experimental_lowering_reduce;
+  GE_MAKE_GUARD(
+      config, [origin]() { autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = origin; });
+  autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = true;
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "logits", nullptr);
+    x.SetSymbolShape({"2", "3", "4"});
+    auto y = es::LogSoftmaxV2(x, {-2, -1});
+    y.SetSymbolShape({"2", "3", "4"});
+    es_graph_->SetOutput(y, 0);
+  }();
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("LogSoftmaxV2_0");
+  ASSERT_NE(node, nullptr);
+  auto source = node->GetInDataAnchor(0)->GetPeerOutAnchor();
+  ASSERT_NE(source, nullptr);
+  auto input_desc = source->GetOwnerNode()->GetOpDesc()->MutableOutputDesc(source->GetIdx());
+  auto output_desc = node->GetOpDesc()->MutableOutputDesc(0);
+  ASSERT_NE(input_desc, nullptr);
+  ASSERT_NE(output_desc, nullptr);
+  for (const auto dtype : {DT_FLOAT, DT_FLOAT16, DT_BF16, DT_DOUBLE}) {
+    input_desc->SetDataType(dtype);
+    output_desc->SetDataType(dtype);
+    ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+    auto kernel = loop::GetKernelBox(node->GetOutDataAnchor(0));
+    EXPECT_EQ(kernel.IsSupport(), dtype != DT_DOUBLE);
+    const auto readable = kernel.Readable();
+    EXPECT_NE(readable.find("ops.Max"), string::npos);
+    EXPECT_NE(readable.find("ops.Exp"), string::npos);
+    EXPECT_NE(readable.find("ops.Sum"), string::npos);
+    EXPECT_NE(readable.find("ops.Ln"), string::npos);
+    if (dtype == DT_FLOAT16 || dtype == DT_BF16) {
+      EXPECT_NE(readable.find("ops.Cast"), string::npos);
+    }
+  }
+  input_desc->SetDataType(DT_INT32);
+  output_desc->SetDataType(DT_INT32);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  input_desc->SetDataType(DT_FLOAT16);
+  output_desc->SetDataType(DT_FLOAT);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  input_desc->SetDataType(DT_FLOAT);
+  ASSERT_TRUE(AttrUtils::SetListInt(node->GetOpDesc(), "axes", {1, -2}));
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  ASSERT_TRUE(AttrUtils::SetListInt(node->GetOpDesc(), "axes", {3}));
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringLogSoftmaxV2DynamicShape) {
+  const auto origin = autofuse::AutoFuseConfig::LoweringConfig().experimental_lowering_reduce;
+  GE_MAKE_GUARD(
+      config, [origin]() { autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = origin; });
+  autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = true;
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "logits", nullptr);
+    x.SetSymbolShape({"s0", "s1", "s2"});
+    auto y = es::LogSoftmaxV2(x, {0, -1});
+    y.SetSymbolShape({"s0", "s1", "s2"});
+    es_graph_->SetOutput(y, 0);
+  }();
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("LogSoftmaxV2_0");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  auto kernel = loop::GetKernelBox(node->GetOutDataAnchor(0));
+  ASSERT_FALSE(kernel.IsExternKernel());
+  ASSERT_TRUE(kernel.IsSupport());
+  ASSERT_TRUE(kernel.IsReduction());
+  const auto readable = kernel.Readable();
+  EXPECT_NE(readable.find("ops.Max"), string::npos);
+  EXPECT_NE(readable.find("ops.Sum"), string::npos);
+  EXPECT_NE(readable.find("ops.Ln"), string::npos);
+  EXPECT_NE(kernel.Realize<loop::AscOverrides>("dynamic_logsoftmax"), nullptr);
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringLogSoftmaxV2UnmatchedDynamicShapeRejected) {
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "logits", nullptr);
+    x.SetSymbolShape({"s0", "s1"});
+    auto y = es::LogSoftmaxV2(x, {-1});
+    y.SetSymbolShape({"s0", "s2"});
+    es_graph_->SetOutput(y, 0);
+  }();
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("LogSoftmaxV2_0");
+  ASSERT_NE(node, nullptr);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+}
+TEST_F(LoopNodeLoweringUT, LayerNormMixedDtypeAndInvalidStatisticsDtype) {
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "x", nullptr);
+    auto gamma = es_graph_->CreateInput(1, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(2, "beta", nullptr);
+    x.SetSymbolShape({"2", "4"});
+    gamma.SetSymbolShape({"4"});
+    beta.SetSymbolShape({"4"});
+    auto norm = es::LayerNorm(x, gamma, beta, 1, 1, 0.001F);
+    norm.y.SetSymbolShape({"2", "4"});
+    norm.mean.SetSymbolShape({"2", "1"});
+    norm.variance.SetSymbolShape({"2", "1"});
+    es_graph_->SetOutput(norm.y, 0);
+  }();
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("LayerNorm_0");
+  ASSERT_NE(node, nullptr);
+  auto input = node->GetInDataAnchor(0)->GetPeerOutAnchor();
+  ASSERT_NE(input, nullptr);
+  ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  EXPECT_EQ(loop::GetKernelBox(node->GetOutDataAnchor(0)).Readable().find("ops.Cast"), string::npos);
+  input->GetOwnerNode()->GetOpDesc()->MutableOutputDesc(input->GetIdx())->SetDataType(DT_FLOAT16);
+  ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  EXPECT_NE(loop::GetKernelBox(node->GetOutDataAnchor(0)).Readable().find("ops.Cast"), string::npos);
+  node->GetOpDesc()->MutableOutputDesc(1)->SetDataType(DT_INT32);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+}
+TEST_F(LoopNodeLoweringUT, AddLayerNormMixedDtypeAndAdditionalOutput) {
+  [this]() {
+    auto x1 = es_graph_->CreateInput(0, "x1", nullptr);
+    auto x2 = es_graph_->CreateInput(1, "x2", nullptr);
+    auto gamma = es_graph_->CreateInput(2, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(3, "beta", nullptr);
+    x1.SetSymbolShape({"2", "4"});
+    x2.SetSymbolShape({"2", "4"});
+    gamma.SetSymbolShape({"4"});
+    beta.SetSymbolShape({"4"});
+    auto norm = es::AddLayerNorm(x1, x2, gamma, beta, nullptr, 0.001F, false);
+    norm.y.SetSymbolShape({"2", "4"});
+    norm.mean.SetSymbolShape({"2", "1"});
+    norm.rstd.SetSymbolShape({"2", "1"});
+    norm.x.SetSymbolShape({"2", "4"});
+    es_graph_->SetOutput(norm.y, 0);
+  }();
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("AddLayerNorm_0");
+  ASSERT_NE(node, nullptr);
+  auto input = node->GetInDataAnchor(0)->GetPeerOutAnchor();
+  ASSERT_NE(input, nullptr);
+  input->GetOwnerNode()->GetOpDesc()->MutableOutputDesc(input->GetIdx())->SetDataType(DT_FLOAT16);
+  ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  ASSERT_TRUE(AttrUtils::SetBool(node->GetOpDesc(), "additional_output", true));
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  ASSERT_TRUE(AttrUtils::SetBool(node->GetOpDesc(), "additional_output", false));
+  node->GetOpDesc()->MutableOutputDesc(2)->SetDataType(DT_FLOAT16);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+}
+TEST_F(LoopNodeLoweringUT, AddLayerNormCastsOnlyLowPrecisionInputs) {
+  [this]() {
+    auto x1 = es_graph_->CreateInput(0, "x1", nullptr);
+    auto x2 = es_graph_->CreateInput(1, "x2", nullptr);
+    auto gamma = es_graph_->CreateInput(2, "gamma", nullptr);
+    auto beta = es_graph_->CreateInput(3, "beta", nullptr);
+    auto bias = es_graph_->CreateInput(4, "bias", nullptr);
+    x1.SetSymbolShape({"2", "4"});
+    x2.SetSymbolShape({"2", "4"});
+    gamma.SetSymbolShape({"4"});
+    beta.SetSymbolShape({"4"});
+    bias.SetSymbolShape({"4"});
+    auto norm = es::AddLayerNorm(x1, x2, gamma, beta, bias, 0.001F, false);
+    norm.y.SetSymbolShape({"2", "4"});
+    norm.mean.SetSymbolShape({"2", "1"});
+    norm.rstd.SetSymbolShape({"2", "1"});
+    norm.x.SetSymbolShape({"2", "4"});
+    es_graph_->SetOutput(norm.y, 0);
+  }();
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("AddLayerNorm_0");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  EXPECT_EQ(loop::GetKernelBox(node->GetOutDataAnchor(0)).Readable().find("ops.Cast"), string::npos);
+  for (int i = 0; i < 5; ++i) {
+    auto source = node->GetInDataAnchor(i)->GetPeerOutAnchor();
+    ASSERT_NE(source, nullptr);
+    auto input_desc = source->GetOwnerNode()->GetOpDesc()->MutableOutputDesc(source->GetIdx());
+    ASSERT_NE(input_desc, nullptr);
+    input_desc->SetDataType(DT_FLOAT16);
+    ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+    auto kernel = loop::GetKernelBox(node->GetOutDataAnchor(0));
+    std::set<const loop::LoopOp *> cast_ops;
+    ASSERT_EQ(loop::LoopOp::Dfs(kernel.Var().Op().get(),
+                                [&cast_ops](const loop::LoopOp *op) {
+                                  if (op->Type() == "ops.Cast") {
+                                    cast_ops.insert(op);
+                                  }
+                                  return GRAPH_SUCCESS;
+                                }),
+              GRAPH_SUCCESS);
+    ASSERT_EQ(cast_ops.size(), 1U);
+    const auto &cast_inputs = (*cast_ops.begin())->Inputs();
+    ASSERT_EQ(cast_inputs.size(), 1U);
+    EXPECT_NE(cast_inputs[0]->Readable().find(source->GetOwnerNode()->GetName()), string::npos);
+    input_desc->SetDataType(DT_FLOAT);
+  }
+}
+TEST_F(LoopNodeLoweringUT, LoweringRmsNormDynamicShapeAndDtypes) {
+  const auto origin = autofuse::AutoFuseConfig::LoweringConfig().experimental_lowering_reduce;
+  GE_MAKE_GUARD(
+      config, [origin]() { autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = origin; });
+  autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = true;
+  BuildDynamicRmsNorm();
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("RmsNorm_0");
+  ASSERT_NE(node, nullptr);
+  auto x_src = node->GetInDataAnchor(0)->GetPeerOutAnchor();
+  auto gamma_src = node->GetInDataAnchor(1)->GetPeerOutAnchor();
+  ASSERT_NE(x_src, nullptr);
+  ASSERT_NE(gamma_src, nullptr);
+  auto x_desc = x_src->GetOwnerNode()->GetOpDesc()->MutableOutputDesc(x_src->GetIdx());
+  auto gamma_desc = gamma_src->GetOwnerNode()->GetOpDesc()->MutableOutputDesc(gamma_src->GetIdx());
+  auto y_desc = node->GetOpDesc()->MutableOutputDesc(0);
+  auto rstd_desc = node->GetOpDesc()->MutableOutputDesc(1);
+  ASSERT_NE(x_desc, nullptr);
+  ASSERT_NE(gamma_desc, nullptr);
+  ASSERT_NE(y_desc, nullptr);
+  ASSERT_NE(rstd_desc, nullptr);
+  rstd_desc->SetDataType(DT_FLOAT);
+  for (const auto dtype : {DT_FLOAT, DT_FLOAT16, DT_BF16}) {
+    x_desc->SetDataType(dtype);
+    gamma_desc->SetDataType(dtype);
+    y_desc->SetDataType(dtype);
+    ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+    auto kernel = loop::GetKernelBox(node->GetOutDataAnchor(0));
+    ASSERT_FALSE(kernel.IsExternKernel());
+    EXPECT_TRUE(kernel.IsSupport());
+    EXPECT_TRUE(kernel.IsReduction());
+    EXPECT_NE(kernel.Readable().find("ops.Mean"), string::npos);
+    EXPECT_NE(kernel.Readable().find("ops.Rsqrt"), string::npos);
+    EXPECT_NE(kernel.Realize<loop::AscOverrides>("dynamic_rmsnorm"), nullptr);
+    if (dtype == DT_FLOAT) {
+      EXPECT_EQ(kernel.Readable().find("ops.Cast"), string::npos);
+    } else {
+      EXPECT_NE(kernel.Readable().find("ops.Cast"), string::npos);
+    }
+  }
+  rstd_desc->SetDataType(DT_FLOAT16);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  rstd_desc->SetDataType(DT_FLOAT);
+  gamma_desc->SetDataType(DT_INT32);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringRmsNormRstdConsumerFallback) {
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "x", nullptr);
+    auto gamma = es_graph_->CreateInput(1, "gamma", nullptr);
+    x.SetSymbolShape({"2", "4"});
+    gamma.SetSymbolShape({"4"});
+    auto norm = es::RmsNorm(x, gamma, 0.001F);
+    norm.y.SetSymbolShape({"2", "4"});
+    norm.rstd.SetSymbolShape({"2", "1"});
+    auto consumer = es::Abs(norm.rstd);
+    consumer.SetSymbolShape({"2", "1"});
+    es_graph_->SetOutput(norm.y, 0);
+    es_graph_->SetOutput(consumer, 1);
+  }();
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("RmsNorm_0");
+  ASSERT_NE(node, nullptr);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringRmsNormRejectsUnprovenGammaShape) {
+  [this]() {
+    auto x = es_graph_->CreateInput(0, "x", nullptr);
+    auto gamma = es_graph_->CreateInput(1, "gamma", nullptr);
+    x.SetSymbolShape({"s0", "s1"});
+    gamma.SetSymbolShape({"s2"});
+    auto norm = es::RmsNorm(x, gamma, 0.001F);
+    norm.y.SetSymbolShape({"s0", "s1"});
+    norm.rstd.SetSymbolShape({"s0", "1"});
+    es_graph_->SetOutput(norm.y, 0);
+  }();
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("RmsNorm_0");
+  ASSERT_NE(node, nullptr);
+  node->GetOpDesc()->MutableOutputDesc(1)->SetDataType(DT_FLOAT);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+}
+TEST_F(LoopNodeLoweringUT, LoweringBatchNormDynamicShape) {
+  const auto origin = autofuse::AutoFuseConfig::LoweringConfig().experimental_lowering_reduce;
+  GE_MAKE_GUARD(
+      config, [origin]() { autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = origin; });
+  autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = true;
+  BuildDynamicBatchNorm();
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("BatchNorm_0");
+  ASSERT_NE(node, nullptr);
+  ASSERT_TRUE(AttrUtils::SetStr(node->GetOpDesc(), "data_format", "NCHW"));
+  ASSERT_TRUE(AttrUtils::SetBool(node->GetOpDesc(), "is_training", false));
+  auto x_desc = node->GetInDataAnchor(0)->GetPeerOutAnchor()->GetOwnerNode()->GetOpDesc()->MutableOutputDesc(0);
+  ASSERT_NO_FATAL_FAILURE(ExpectDynamicBatchNormInference(node, x_desc));
+  x_desc->SetDataType(DT_FLOAT);
+  node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(DT_FLOAT);
+  ASSERT_TRUE(AttrUtils::SetBool(node->GetOpDesc(), "is_training", true));
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  for (size_t i = 3U; i < 5U; ++i) {
+    auto in = node->GetInDataAnchor(i);
+    ASSERT_EQ(GraphUtils::RemoveEdge(in->GetPeerOutAnchor(), in), GRAPH_SUCCESS);
+  }
+  for (const auto dtype : {DT_FLOAT, DT_FLOAT16, DT_BF16}) {
+    x_desc->SetDataType(dtype);
+    node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(dtype);
+    ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+    auto kernel = loop::GetKernelBox(node->GetOutDataAnchor(0));
+    EXPECT_TRUE(kernel.IsSupport());
+    EXPECT_TRUE(kernel.IsReduction());
+    if (dtype == DT_BF16) {
+      EXPECT_NE(kernel.Readable().find(", DT_FLOAT)"), string::npos);
+      EXPECT_NE(kernel.Readable().find(", DT_BFLOAT16)"), string::npos);
+    }
+    EXPECT_NE(kernel.Realize<loop::AscOverrides>("dynamic_batchnorm_training"), nullptr);
+  }
+  auto scale_desc = node->GetInDataAnchor(1)->GetPeerOutAnchor()->GetOwnerNode()->GetOpDesc()->MutableOutputDesc(0);
+  scale_desc->SetDataType(DT_FLOAT16);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+}
+
+TEST_F(LoopNodeLoweringUT, LoweringBatchNormStatisticsConsumerFallback) {
+  auto x = es_graph_->CreateInput(0, "x", nullptr);
+  auto scale = es_graph_->CreateInput(1, "scale", nullptr);
+  auto offset = es_graph_->CreateInput(2, "offset", nullptr);
+  auto mean = es_graph_->CreateInput(3, "mean", nullptr);
+  auto variance = es_graph_->CreateInput(4, "variance", nullptr);
+  x.SetSymbolShape({"2", "4", "4", "3"});
+  for (auto *input : {&scale, &offset, &mean, &variance}) {
+    input->SetSymbolShape({"3"});
+  }
+  auto norm = es::BatchNorm(x, scale, offset, mean, variance);
+  norm.y.SetSymbolShape({"2", "4", "4", "3"});
+  norm.batch_mean.SetSymbolShape({"3"});
+  norm.batch_variance.SetSymbolShape({"3"});
+  norm.reserve_space_1.SetSymbolShape({"3"});
+  norm.reserve_space_2.SetSymbolShape({"3"});
+  norm.reserve_space_3.SetSymbolShape({"1"});
+  auto consumer = es::Abs(norm.batch_mean);
+  consumer.SetSymbolShape({"3"});
+  es_graph_->SetOutput(norm.y, 0);
+  es_graph_->SetOutput(consumer, 1);
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("BatchNorm_0");
+  ASSERT_NE(node, nullptr);
+  ASSERT_TRUE(AttrUtils::SetStr(node->GetOpDesc(), "data_format", "NHWC"));
+  ASSERT_TRUE(AttrUtils::SetBool(node->GetOpDesc(), "is_training", false));
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  const auto peers = node->GetOutDataAnchor(1)->GetPeerInDataAnchors();
+  ASSERT_FALSE(peers.empty());
+  ASSERT_EQ(GraphUtils::RemoveEdge(node->GetOutDataAnchor(1), *peers.begin()), GRAPH_SUCCESS);
+  ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  auto kernel = loop::GetKernelBox(node->GetOutDataAnchor(0));
+  EXPECT_TRUE(kernel.IsSupport());
+  EXPECT_NE(kernel.Realize<loop::AscOverrides>("static_batchnorm_inference"), nullptr);
+}
 }  // namespace ge
