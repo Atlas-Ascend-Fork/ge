@@ -63,6 +63,9 @@ Status StreamActiveTaskInfo::Init(const domi::TaskDef &task_def, DavinciModel *c
 
   active_stream_ = davinci_model_->GetStreamList()[static_cast<size_t>(active_stream_index_list[internal_index])];
   active_stream_id_ = stream_active_def.active_stream_id();
+  // 仅 IteratorCtrl 循环激活 op 追加执行期登记流；label 激活（同名 op 的其它 task）与
+  // StreamExitActive（退出激活，名字不含本子串）语义不同，不追加
+  is_loop_active_task_ = (op_desc->GetName().find("IteratorCtrl_StreamSwitch_StreamActive") != std::string::npos);
 
   GELOGI(
       "InitStreamActiveTaskInfo Init Success, index:%zu, active stream: %p, active stream id: %u, "
@@ -81,6 +84,22 @@ Status StreamActiveTaskInfo::Distribute() {
     REPORT_INNER_ERR_MSG("E19999", "Call aclrtActiveStream failed, ret:%d", rt_ret);
     GELOGE(RT_FAILED, "[Call][aclrtActiveStream] failed, ret:%d", rt_ret);
     return RT_ERROR_TO_GE_STATUS(rt_ret);
+  }
+
+  if (is_loop_active_task_ && davinci_model_->TryClaimLoopActiveAppend()) {
+    // 循环图重放（第二遍迭代起）时激活执行期（自定义算子）申请的 attach 流：
+    // 与编译期目标流同载体（stream_），SQE 随载体流每遍重放，attach 流每遍恰好被激活一次
+    // （CAS 防重：循环激活 op 的多个 task 中仅首个 Distribute 负责录制追加 SQE）
+    for (const auto &appended_stream : davinci_model_->GetLoopActiveStreams()) {
+      const auto append_ret = aclrtActiveStream(appended_stream, stream_);
+      if (append_ret != ACL_SUCCESS) {
+        REPORT_INNER_ERR_MSG("E19999", "Call aclrtActiveStream for appended stream failed, ret:%d", append_ret);
+        GELOGE(RT_FAILED, "[Call][aclrtActiveStream] for appended stream failed, ret:%d", append_ret);
+        return RT_ERROR_TO_GE_STATUS(append_ret);
+      }
+      GELOGI("Loop active task op %s also activates appended stream: %p on carrier stream: %p.", op_desc_->GetNamePtr(),
+             appended_stream, stream_);
+    }
   }
 
   if (!domi::GetContext().is_online_model) {

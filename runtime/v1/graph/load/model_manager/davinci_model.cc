@@ -1600,6 +1600,8 @@ Status DavinciModel::InitRuntimeResource() {
   attached_stream_collection_.Initialize(rt_model_handle_, priority_,
                                          stream_flag_list_.empty() ? RT_STREAM_DEFAULT : stream_flag_list_[0]);
 
+  attached_stream_collection_.SetOnStreamCreated([this](rtStream_t stream) { PushLoopActiveStream(stream); });
+
   uint32_t i = 0U;
   if (runtime_param_.notify_types.empty()) {
     runtime_param_.notify_types.resize(runtime_param_.notify_num, ACL_RT_NOTIFY_EXPORT_FLAG_DEFAULT);
@@ -6046,6 +6048,11 @@ void DavinciModel::UnbindAndDestroyAttachedStreams() {
   }
   // 内部已清空缓存并置空 model 句柄，重复调用无副作用
   attached_stream_collection_.UnbindAndDestroy();
+  {
+    const std::lock_guard<std::mutex> lk(loop_active_stream_list_mutex_);
+    loop_active_stream_list_.clear();
+    loop_active_append_done_ = false;
+  }
   GELOGD("Npu model: %u success to unbind and destroy attached streams.", model_id_);
 }
 
@@ -8649,6 +8656,25 @@ uint32_t DavinciModel::GetFlowctrlIndex(const uint32_t op_index) {
 void DavinciModel::PushHcclStream(aclrtStream const hccl_stream) {
   const std::lock_guard<std::mutex> lk(all_hccl_stream_list_mutex_);
   all_hccl_stream_list_.push_back(hccl_stream);
+}
+
+void DavinciModel::PushLoopActiveStream(rtStream_t stream) {
+  const std::lock_guard<std::mutex> lk(loop_active_stream_list_mutex_);
+  loop_active_stream_list_.push_back(stream);
+}
+
+std::vector<rtStream_t> DavinciModel::GetLoopActiveStreams() const {
+  const std::lock_guard<std::mutex> lk(loop_active_stream_list_mutex_);
+  return loop_active_stream_list_;
+}
+
+bool DavinciModel::TryClaimLoopActiveAppend() {
+  const std::lock_guard<std::mutex> lk(loop_active_stream_list_mutex_);
+  if (loop_active_append_done_) {
+    return false;
+  }
+  loop_active_append_done_ = true;
+  return true;
 }
 
 void DavinciModel::SetHcclTaskStream(aclrtStream const hccl_stream) {

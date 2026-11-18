@@ -35,6 +35,10 @@ class AclRuntimeStubImpl : public ge::AclRuntimeStub {
     aclrtDevResLimitType type;
     uint32_t value;
   };
+  struct ActiveStreamRecord {
+    aclrtStream active_stream;
+    aclrtStream carrier_stream;
+  };
   const std::map<const void *, HandleArgsPtrList> &GetLaunchWithHandleArgs();
   void Clear();
   AclRuntimeStubImpl();
@@ -66,6 +70,9 @@ class AclRuntimeStubImpl : public ge::AclRuntimeStub {
   const std::vector<aclrtStream> &GetNotUseStreamResRecords() const {
     return not_use_stream_res_records_;
   }
+  const std::vector<ActiveStreamRecord> &GetActiveStreamRecords() const {
+    return active_stream_records_;
+  }
 
   const std::vector<uintptr_t> &GetLiteEceptionArgs() const {
     return lite_exception_args_;
@@ -96,6 +103,8 @@ class AclRuntimeStubImpl : public ge::AclRuntimeStub {
   aclError aclrtCreateStream(aclrtStream *stream) override;
 
   aclError aclrtCreateStreamWithConfig(aclrtStream *stream, uint32_t priority, uint32_t flag) override;
+
+  aclError aclrtActiveStream(aclrtStream activeStream, aclrtStream stream) override;
 
   aclError aclrtDestroyStream(aclrtStream stream) override;
 
@@ -177,6 +186,7 @@ class AclRuntimeStubImpl : public ge::AclRuntimeStub {
   std::unordered_map<void *, MemoryInfo> addrs_to_mem_info_;
   std::list<ge::GeLaunchSqeUpdateTaskArgs> all_launch_sqe_update_records_;
   std::vector<StreamResLimitRecord> stream_res_limit_records_;
+  std::vector<ActiveStreamRecord> active_stream_records_;
   std::vector<aclrtStream> use_stream_res_records_;
   std::vector<aclrtStream> not_use_stream_res_records_;
   std::mutex mtx_;

@@ -32,6 +32,7 @@ class StreamActiveTaskInfo : public TaskInfo {
  private:
   aclrtStream active_stream_{nullptr};
   uint32_t active_stream_id_{0U};
+  bool is_loop_active_task_{false};
   uint32_t op_index_{0U};
   OpDescPtr op_desc_{nullptr};
   DavinciModel *davinci_model_{nullptr};

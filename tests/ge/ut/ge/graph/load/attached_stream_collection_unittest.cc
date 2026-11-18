@@ -191,6 +191,70 @@ TEST(AttachedStreamCollectionTest, CreateFailureReturnsNullptrWithoutBindOrDestr
   AclRuntimeStub::Reset();
 }
 
+// OnStreamCreated 回调：仅新建流触发一次；key 复用命中不重复登记（flags 只影响新建）
+TEST(AttachedStreamCollectionTest, OnStreamCreatedInvokedOnlyForNewStreams) {
+  auto runtime = std::make_shared<RuntimeForAttachedStreamTest>();
+  auto acl = std::make_shared<AclForAttachedStreamTest>();
+  RuntimeStub::SetInstance(runtime);
+  AclRuntimeStub::SetInstance(acl);
+
+  AttachedStreamCollection collection(reinterpret_cast<rtModel_t>(0x55U), RT_STREAM_PRIORITY_DEFAULT,
+                                      RT_STREAM_DEFAULT);
+  std::vector<rtStream_t> created;
+  collection.SetOnStreamCreated([&created](rtStream_t stream) { created.push_back(stream); });
+
+  const auto first = collection.RequestAttachedStream(AscendString("loop_aux"), 0U);
+  const auto reused = collection.RequestAttachedStream(AscendString("loop_aux"), 0U);
+  const auto second = collection.RequestAttachedStream(AscendString("loop_aux_2"), 0U);
+  ASSERT_NE(first, nullptr);
+  EXPECT_EQ(first, reused);
+  ASSERT_NE(second, nullptr);
+  ASSERT_EQ(created.size(), 2U);
+  EXPECT_EQ(created[0], first);
+  EXPECT_EQ(created[1], second);
+
+  collection.UnbindAndDestroy();
+  RuntimeStub::Reset();
+  AclRuntimeStub::Reset();
+}
+
+// 失败路径（建流失败/绑定失败回滚）不触发回调：半成品流不得进入循环激活登记表，
+// 否则循环激活 task 会把激活 SQE 录到已销毁的流句柄上
+TEST(AttachedStreamCollectionTest, OnStreamCreatedSkippedOnFailurePaths) {
+  {
+    auto runtime = std::make_shared<RuntimeForAttachedStreamTest>();
+    auto acl = std::make_shared<AclForAttachedStreamTest>();
+    runtime->create_fail = true;
+    RuntimeStub::SetInstance(runtime);
+    AclRuntimeStub::SetInstance(acl);
+
+    AttachedStreamCollection collection(reinterpret_cast<rtModel_t>(0x55U), RT_STREAM_PRIORITY_DEFAULT,
+                                        RT_STREAM_DEFAULT);
+    size_t created_count = 0U;
+    collection.SetOnStreamCreated([&created_count](rtStream_t) { ++created_count; });
+    EXPECT_EQ(collection.RequestAttachedStream(AscendString("create_fail"), 0U), nullptr);
+    EXPECT_EQ(created_count, 0U);
+    RuntimeStub::Reset();
+    AclRuntimeStub::Reset();
+  }
+  {
+    auto runtime = std::make_shared<RuntimeForAttachedStreamTest>();
+    auto acl = std::make_shared<AclForAttachedStreamTest>();
+    acl->bind_success = false;
+    RuntimeStub::SetInstance(runtime);
+    AclRuntimeStub::SetInstance(acl);
+
+    AttachedStreamCollection collection(reinterpret_cast<rtModel_t>(0x55U), RT_STREAM_PRIORITY_DEFAULT,
+                                        RT_STREAM_DEFAULT);
+    size_t created_count = 0U;
+    collection.SetOnStreamCreated([&created_count](rtStream_t) { ++created_count; });
+    EXPECT_EQ(collection.RequestAttachedStream(AscendString("bind_fail"), 0U), nullptr);
+    EXPECT_EQ(created_count, 0U);
+    RuntimeStub::Reset();
+    AclRuntimeStub::Reset();
+  }
+}
+
 TEST(AttachedStreamCollectionTest, DistinctKeysGetDistinctStreams) {
   auto runtime = std::make_shared<RuntimeForAttachedStreamTest>();
   auto acl = std::make_shared<AclForAttachedStreamTest>();

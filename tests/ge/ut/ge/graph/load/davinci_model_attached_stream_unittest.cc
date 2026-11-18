@@ -123,5 +123,32 @@ TEST(DavinciModelAttachedStreamTest, DestructorSkipsAttachedStreamCleanupWhenCon
   RuntimeStub::Reset();
   AclRuntimeStub::Reset();
 }
+// 循环激活登记语义：Push/Get 往返、TryClaimLoopActiveAppend 一次性认领、
+// UnbindAndDestroyAttachedStreams 清理时同步复位登记表与认领标志
+TEST(DavinciModelAttachedStreamTest, LoopActiveStreamRegistryAndClaimSemantics) {
+  auto runtime = std::make_shared<RuntimeForModelAttachedStreamTest>();
+  auto acl = std::make_shared<AclForModelAttachedStreamTest>();
+  RuntimeStub::SetInstance(runtime);
+  AclRuntimeStub::SetInstance(acl);
+
+  DavinciModel model(0, nullptr);
+  const rtStream_t stream_a = reinterpret_cast<rtStream_t>(0x9001U);
+  const rtStream_t stream_b = reinterpret_cast<rtStream_t>(0x9002U);
+  model.PushLoopActiveStream(stream_a);
+  model.PushLoopActiveStream(stream_b);
+  EXPECT_EQ(model.GetLoopActiveStreams(), (std::vector<rtStream_t>{stream_a, stream_b}));
+
+  // CAS：首个调用者认领成功；循环激活 op 的其余 task（label 激活等同名 task）不得重复追加
+  EXPECT_TRUE(model.TryClaimLoopActiveAppend());
+  EXPECT_FALSE(model.TryClaimLoopActiveAppend());
+
+  model.UnbindAndDestroyAttachedStreams();
+  // 登记表与认领标志必须一并复位：登记表残留会让重加载路径追加已销毁的流句柄
+  EXPECT_TRUE(model.GetLoopActiveStreams().empty());
+  EXPECT_TRUE(model.TryClaimLoopActiveAppend());
+
+  RuntimeStub::Reset();
+  AclRuntimeStub::Reset();
+}
 }  // namespace
 }  // namespace ge

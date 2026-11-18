@@ -12,6 +12,7 @@
 #define GE_RUNTIME_V1_GRAPH_LOAD_MODEL_MANAGER_ATTACHED_STREAM_COLLECTION_H_
 
 #include <map>
+#include <functional>
 #include <string>
 
 #include "framework/runtime/attached_stream_provider.h"
@@ -32,6 +33,12 @@ class AttachedStreamCollection final : public gert::AttachedStreamProvider {
     stream_flags_ = stream_flags;
   }
 
+  // 循环图(IteratorCtrl)场景下，执行期创建的辅流需登记进运行期循环激活集合
+  // 否则模型重放（第二遍迭代起）无人激活该流，其上任务永不执行。回调由 DavinciModel 设置。
+  void SetOnStreamCreated(const std::function<void(rtStream_t)> &on_stream_created) {
+    on_stream_created_ = on_stream_created;
+  }
+
   gert::rtStream RequestAttachedStream(const AscendString &key, uint32_t flags) override;
   void UnbindAndDestroy();
 
@@ -41,6 +48,7 @@ class AttachedStreamCollection final : public gert::AttachedStreamProvider {
   int32_t priority_{RT_STREAM_PRIORITY_DEFAULT};
   uint32_t stream_flags_{RT_STREAM_DEFAULT};
   std::map<std::string, rtStream_t> streams_;
+  std::function<void(rtStream_t)> on_stream_created_{nullptr};
 };
 }  // namespace ge
 

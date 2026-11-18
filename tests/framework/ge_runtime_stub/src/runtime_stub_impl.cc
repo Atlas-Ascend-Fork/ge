@@ -392,6 +392,7 @@ void AclRuntimeStubImpl::Clear() {
   stream_res_limit_records_.clear();
   use_stream_res_records_.clear();
   not_use_stream_res_records_.clear();
+  active_stream_records_.clear();
   events_to_record_records_.clear();
   const std::lock_guard<std::mutex> lk(global_mtx_);
   launch_with_handle_args_.clear();
@@ -540,6 +541,12 @@ aclError AclRuntimeStubImpl::aclrtCreateStream(aclrtStream *stream) {
 
 aclError AclRuntimeStubImpl::aclrtCreateStreamWithConfig(aclrtStream *stream, uint32_t priority, uint32_t flag) {
   stream_stub_.CreateStream(stream);
+  return ACL_SUCCESS;
+}
+
+aclError AclRuntimeStubImpl::aclrtActiveStream(aclrtStream activeStream, aclrtStream stream) {
+  const std::lock_guard<std::mutex> lk(mtx_);
+  active_stream_records_.push_back(ActiveStreamRecord{activeStream, stream});
   return ACL_SUCCESS;
 }
 

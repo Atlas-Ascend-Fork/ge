@@ -160,6 +160,7 @@ set(DISTINCT_GRAPH_LOAD_TEST_FILES
     "graph/load/profiler_trace_task_info_unittest.cc"
     "graph/load/graph_loader_unittest.cc"
     "graph/load/stream_switch_task_info_unittest.cc"
+    "graph/load/stream_active_task_info_unittest.cc"
     "graph/load/scattered_collection_unittest.cc"
     "graph/load/sink_only_allocator_unittest.cc"
     "graph/load/custom_task_info_unittest.cc"
