@@ -37,6 +37,8 @@
 #include "graph/utils/tensor_utils.h"
 #include "graph_metadef/graph/utils/file_utils.h"
 #include "graph/custom_op_factory.h"
+#include "graph/custom_op/args_refresh.h"
+#include "graph/custom_op/cast.h"
 #include "common/helper/visual_json_converter.h"
 #include "graph/ge_context.h"
 #include "graph/manager/graph_var_manager.h"
@@ -988,6 +990,93 @@ Status Om2PackageHelper::BuildManifest(gert::GertModelData &model_data, const Ge
   return SUCCESS;
 }
 
+namespace {
+// OM2 构建期拦截暂不支持的 Custom Op 能力（Python 离线序列化、AnnotatedArgs 声明式模式、
+// eager 辅流申报、HCCL Custom 路由）。只读扫描节点与模型属性，
+// 不重跑用户资源申报回调，不试执行 Execute 探测能力。
+Status CheckCustomNodeCapabilities(const OpDescPtr &op_desc, std::vector<std::string> &custom_node_names) {
+  // 仅检查最终路由到 custom store 的节点
+  if (op_desc->GetOpKernelLibName() != kCustomOpKernelLibName) {
+    return SUCCESS;
+  }
+  (void)custom_node_names.emplace_back(op_desc->GetName());
+  // HCCL Custom Op（custom store + DNN_HCCL 最终路由）暂不支持
+  const std::string engine_name = op_desc->GetOpEngineName();
+  GE_CHK_BOOL_EXEC(engine_name != kEngineNameDnnHccl, return UNSUPPORTED,
+                   "[OM2][CapabilityCheck] HCCL custom op is not supported, node:%s, op_type:%s, engine:%s, lib:%s.",
+                   op_desc->GetNamePtr(), op_desc->GetTypePtr(), engine_name.c_str(),
+                   op_desc->GetOpKernelLibName().c_str());
+  // AnnotatedArgs 声明式模式暂不支持，按编译期写入的策略属性直判
+  int64_t args_mode = 0;
+  if (AttrUtils::GetInt(op_desc, ATTR_NAME_CUSTOM_TASK_ARGS_MODE, args_mode)) {
+    GE_CHK_BOOL_EXEC(static_cast<CustomTaskArgsMode>(args_mode) != CustomTaskArgsMode::kAnnotatedArgs,
+                     return UNSUPPORTED,
+                     "[OM2][CapabilityCheck] AnnotatedArgs custom op is not supported, node:%s, op_type:%s, "
+                     "args_mode:%" PRId64 ".",
+                     op_desc->GetNamePtr(), op_desc->GetTypePtr(), args_mode);
+  }
+  // Python 运行实现暂不支持：生产实现中仅 PythonCustomOpAdapter 继承
+  // CustomOpCapabilityProvider，provider 命中即识别为 Python 路径
+  const AscendString op_type(op_desc->GetTypePtr());
+  auto *const runtime_impl = CustomOpFactory::CreateOrGetCustomOp(op_type, OpBackend::kDevice, OpEngine::kCustom);
+  // 实现获取失败按错误处理，不将空指针当成非 Python 放行
+  GE_CHK_BOOL_EXEC(runtime_impl != nullptr, return FAILED,
+                   "[OM2][CapabilityCheck] fetch custom op runtime impl failed, node:%s, op_type:%s.",
+                   op_desc->GetNamePtr(), op_desc->GetTypePtr());
+  GE_CHK_BOOL_EXEC(dynamic_cast<const CustomOpCapabilityProvider *>(runtime_impl) == nullptr, return UNSUPPORTED,
+                   "[OM2][CapabilityCheck] python custom op offline restore and execute is not supported, "
+                   "node:%s, op_type:%s.",
+                   op_desc->GetNamePtr(), op_desc->GetTypePtr());
+  return SUCCESS;
+}
+
+Status CheckModelCustomCapabilities(const GeModelPtr &ge_model) {
+  std::vector<std::string> custom_node_names;
+  const auto &graph = ge_model->GetGraph();
+  if (graph != nullptr) {
+    for (const auto &node : graph->GetAllNodes()) {
+      GE_ASSERT_NOTNULL(node);
+      const auto &op_desc = node->GetOpDesc();
+      GE_ASSERT_NOTNULL(op_desc);
+      GE_CHK_STATUS_RET_NOLOG(CheckCustomNodeCapabilities(op_desc, custom_node_names));
+    }
+  }
+  // 编译期已申报的 eager Custom Op 辅流需求暂不支持；
+  // 属性缺失（未统计）或统计为 0 不因本项拒绝
+  int64_t eager_stream_num = 0;
+  if (AttrUtils::GetInt(ge_model, ATTR_MODEL_EAGER_CUSTOM_OP_STREAM_NUM, eager_stream_num) && (eager_stream_num > 0)) {
+    std::string custom_nodes;
+    for (const auto &name : custom_node_names) {
+      custom_nodes += name + " ";
+    }
+    GELOGE(UNSUPPORTED,
+           "[OM2][CapabilityCheck] eager custom op attached stream is not supported, model:%s, "
+           "declared_stream_num:%" PRId64 ", custom nodes:%s.",
+           ge_model->GetName().c_str(), eager_stream_num, custom_nodes.c_str());
+    return UNSUPPORTED;
+  }
+  return SUCCESS;
+}
+
+// 统一检查入口：扫描实际交付的根图/子模型（含游离子图），
+// 在 Serialize、实现 SO 收集和代码生成之前失败
+Status CheckCustomKernelCapabilities(const GeModelPtr &ge_model, const GeRootModelPtr &ge_root_model) {
+  GE_ASSERT_NOTNULL(ge_root_model, "[OM2][CapabilityCheck] ge_root_model is nullptr");
+  std::set<const GeModel *> visited_models;
+  const auto check_one_model = [&visited_models](const GeModelPtr &model) -> Status {
+    if ((model == nullptr) || (!visited_models.insert(model.get()).second)) {
+      return SUCCESS;
+    }
+    return CheckModelCustomCapabilities(model);
+  };
+  GE_CHK_STATUS_RET_NOLOG(check_one_model(ge_model));
+  for (const auto &subgraph_pair : ge_root_model->GetSubgraphInstanceNameToModel()) {
+    GE_CHK_STATUS_RET_NOLOG(check_one_model(subgraph_pair.second));
+  }
+  return SUCCESS;
+}
+}  // namespace
+
 Status Om2PackageHelper::BuildOm2ModelData(const GeModelPtr &ge_model, gert::GertModelData &model_data,
                                            const GeRootModelPtr &ge_root_model) const {
   GE_ASSERT_NOTNULL(ge_model, "[OM2] ge_model is nullptr");
@@ -1013,6 +1102,10 @@ Status Om2PackageHelper::BuildOm2ModelData(const GeModelPtr &ge_model, gert::Ger
     GELOGW("[OM2] Ge model set opp version unsuccessful!");
   }
 
+  GE_CHK_STATUS_RET(CheckCustomKernelCapabilities(ge_model, ge_root_model),
+                    "[OM2] custom kernel capability check "
+                    "failed, model:%s.",
+                    ge_model->GetName().c_str());
   GE_ASSERT_SUCCESS(BuildCustomKernelBinaries(ge_root_model, model_data));
   GE_ASSERT_SUCCESS(BuildCustomSharedLibs(ge_root_model, model_data));
   GE_ASSERT_SUCCESS(BuildProgramBody(ge_model, model_data, unit, model_data.variables->var_weight_data[0], 0UL));
