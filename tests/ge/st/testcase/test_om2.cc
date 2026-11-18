@@ -4566,6 +4566,43 @@ TEST_F(Om2St, BundleBuild_Fail_LessThanTwoGraphsRejected) {
 }
 
 /**
+ * 用例描述：aclgrphBundleBuildModel 拒绝各子图 ge.offlineMode 不一致的输入
+ * 预置条件：
+ *   1. 无（参数校验先于编译流程执行）
+ * 测试步骤：
+ *   1. graph[0] 设 ge.offlineMode=7（OM2）、graph[1] 不设（默认 OM1），调用 aclgrphBundleBuildModel
+ *   2. 交换两图的 offlineMode 后再次调用
+ *   3. ge.offlineMode=7 与 40（mobile）混用后再次调用
+ * 预期结果：
+ *   1. 三次调用均返回 GRAPH_PARAM_INVALID，且不产出模型缓冲
+ */
+TEST_F(Om2St, BundleBuild_Fail_MixedOfflineModeRejected) {
+  const std::map<AscendString, AscendString> om2_options = {{AscendString(ir_option::OFFLINE_MODE), AscendString("7")}};
+  const std::map<AscendString, AscendString> mobile_options = {
+      {AscendString(ir_option::OFFLINE_MODE), AscendString("40")}};
+  const std::map<AscendString, AscendString> default_options;
+  const auto make_graphs = [](const std::map<AscendString, AscendString> &first,
+                              const std::map<AscendString, AscendString> &second) {
+    std::vector<GraphWithOptions> graphs;
+    graphs.emplace_back(GraphWithOptions{Graph("bundle_mix_mode_graph_0"), first});
+    graphs.emplace_back(GraphWithOptions{Graph("bundle_mix_mode_graph_1"), second});
+    return graphs;
+  };
+
+  ModelBufferData model{};
+  auto graphs = make_graphs(om2_options, default_options);
+  EXPECT_EQ(aclgrphBundleBuildModel(graphs, model), GRAPH_PARAM_INVALID);
+  EXPECT_EQ(model.data, nullptr);
+  EXPECT_EQ(model.length, 0U);
+
+  graphs = make_graphs(default_options, om2_options);
+  EXPECT_EQ(aclgrphBundleBuildModel(graphs, model), GRAPH_PARAM_INVALID);
+
+  graphs = make_graphs(om2_options, mobile_options);
+  EXPECT_EQ(aclgrphBundleBuildModel(graphs, model), GRAPH_PARAM_INVALID);
+}
+
+/**
  * 用例描述：OM2 Bundle 归档经 GetOm2BundleInfo 查询资源规格，两个子模型按 index 加载并各执行两轮
  * 预置条件：
  *   1. 通过 CMake 编译 fake runtime so（实现 GertModel C ABI，要求 2 输入 1 输出）
