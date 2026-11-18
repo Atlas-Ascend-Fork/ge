@@ -82,6 +82,7 @@ class Om2ExecuteGraphSessionTest : public Om2OnlineModelExecutorTest {
     ASSERT_NE(inner, nullptr);
     node = std::make_shared<GraphNode>(id);
     node->SetGraph(std::make_shared<Graph>("execute_session_st", C_GRAPH_EXECUTE));
+    node->SetOptions({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
     inner->graph_manager_.AddGraphNode(id, node);
     inner->graph_manager_.IncreaseGraphCount(id);
     inner->graph_manager_.SetAddGraphCondition(id, 2U);
@@ -109,7 +110,7 @@ class Om2ExecuteGraphSessionTest : public Om2OnlineModelExecutorTest {
     return inputs;
   }
 
-  EnvValueGuard om2_env_guard_{"ENABLE_RUNTIME_OM2"};
+  GraphOptionsGuard om2_options_guard_;
   std::unique_ptr<GeSession> session_;
   std::array<float, 4> input_data_{{1.0F, 2.0F, 3.0F, 4.0F}};
 };

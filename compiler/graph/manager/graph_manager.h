@@ -448,7 +448,7 @@ class GraphManager {
 
   Status SetStagesOptions(uint32_t graph_id);
 
-  Status UnloadModel(GeRootModelPtr ge_root_model, uint32_t graph_id);
+  Status UnloadModel(GeRootModelPtr ge_root_model, uint32_t graph_id, bool is_execute_graph = false);
 
   void SetSessionGraphId(ComputeGraphPtr compute_graph, uint32_t graph_id) const;
   void SetSessionGraphId(const std::shared_ptr<ExecuteGraph> &execute_graph, uint32_t graph_id) const;

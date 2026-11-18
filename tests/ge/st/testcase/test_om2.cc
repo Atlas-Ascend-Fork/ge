@@ -23,6 +23,7 @@
 #include "generator/ge_generator.h"
 #include "ge/ge_ir_build.h"
 #include "api/aclgrph/option_utils.h"
+#include "common/helper/om2/om2_utils.h"
 #include "api/atc/main_impl.h"
 #include "file_utils.h"
 #include "runtime/om2/om2_rt_var_manager.h"
@@ -2885,7 +2886,7 @@ static GeRootModelPtr PrepareHvdNodeOm2(const std::string &output_file) {
 }
 
 static GeRootModelPtr PrepareHcclOnlineOm2(const std::string &output_file) {
-  const ScopedEnvVar om2_env("ENABLE_RUNTIME_OM2", "1");
+  const ScopedGraphOptions om2_options({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
   const auto ge_root_model = BuildHcclGeRootModel("HcomAllReduce", false);
   if (ge_root_model == nullptr) {
     return nullptr;
@@ -3115,9 +3116,9 @@ TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithHvdNode) {
 }
 
 /**
- * 用例描述：在线 session 模式（ENABLE_RUNTIME_OM2=1）下 HCCL 任务不再拦截，转换打包成功
+ * 用例描述：在线 session 模式（ge.modelFormat=7）下 HCCL 任务不再拦截，转换打包成功
  * 预置条件：
- *   1. 与 HcomAllReduce 离线用例同构图与任务，预构建期设置 ENABLE_RUNTIME_OM2=1
+ *   1. 与 HcomAllReduce 离线用例同构图与任务，预构建期设置 ge.modelFormat=7
  * 测试步骤：
  *   1. Om2PackageHelper::SaveToOmRootModel 在在线模式下转换打包为 .om2
  *   2. 解包检查生成代码与编译产物
@@ -4396,7 +4397,7 @@ class Om2BundleSt : public Om2St {
     ASSERT_NE(root_g2_, nullptr);
     SyncKernelNameForAllModels(root_g1_);
     SyncKernelNameForAllModels(root_g2_);
-    // 离线场景（不依赖 ENABLE_RUNTIME_OM2）经 EnsureGertModelData 显式构建并挂载，与 bundle 编译链路同源
+    // 离线场景经 EnsureGertModelData 显式构建并挂载，与 bundle 编译链路同源
     ASSERT_EQ(Om2PackageHelper::EnsureGertModelData(root_g1_), SUCCESS);
     ASSERT_EQ(Om2PackageHelper::EnsureGertModelData(root_g2_), SUCCESS);
     std::vector<std::shared_ptr<gert::GertModelData>> sub_models;
@@ -4489,7 +4490,7 @@ TEST_F(Om2BundleSt, GenOm2Bundle_Ok_TwoSubModelsArchiveLayout) {
 }
 
 /**
- * 用例描述：EnsureGertModelData 在离线场景（不依赖 ENABLE_RUNTIME_OM2）显式挂载 GertModelData，且重复调用幂等
+ * 用例描述：EnsureGertModelData 在离线场景显式挂载 GertModelData，且重复调用幂等
  * 预置条件：
  *   1. 套件初始化时 root_g1_/root_g2_ 已经由 EnsureGertModelData 构建并挂载 GertModelData
  * 测试步骤：

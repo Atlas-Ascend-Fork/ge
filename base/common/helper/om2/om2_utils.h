@@ -12,17 +12,29 @@
 #define BASE_COMMON_HELPER_OM2_OM2_UTILS
 
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
+#include <map>
 #include <string>
+#include "common/ge_common/ge_types.h"
 #include "common/opskernel/ops_kernel_info_types.h"
 #include "common/om2/codegen/om2_codegen_types.h"
 #include "ge_common/ge_common_api_types.h"
+#include "graph/ge_local_context.h"
 
 namespace ge {
-inline bool IsOm2OnlineMode() {
-  const char *env = std::getenv("ENABLE_RUNTIME_OM2");
-  return env != nullptr && std::strcmp(env, "1") == 0;
+constexpr int32_t MODEL_FORMAT_OM = 0;
+constexpr int32_t MODEL_FORMAT_OM2 = 7;
+
+inline bool IsOm2OnlineMode(const std::map<std::string, std::string> &options, const bool is_execute_graph) {
+  if (is_execute_graph) {
+    return true;
+  }
+  const auto iter = options.find(OPTION_MODEL_FORMAT);
+  return iter != options.end() && iter->second == std::to_string(MODEL_FORMAT_OM2);
+}
+
+inline bool IsOm2OnlineMode(const bool is_execute_graph = false) {
+  const auto options = GetThreadLocalContext().GetAllGraphOptions();
+  return IsOm2OnlineMode(options, is_execute_graph);
 }
 
 struct Om2CompileInfo {

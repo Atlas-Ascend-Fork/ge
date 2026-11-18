@@ -588,9 +588,9 @@ void GraphManager::UpdateDynamicParams(std::string &input_shape, std::string &dy
   dynamic_node_type = dynamic_node_type == -1 ? options_.dynamic_node_type : dynamic_node_type;
 }
 
-Status GraphManager::UnloadModel(GeRootModelPtr ge_root_model, uint32_t graph_id) {
+Status GraphManager::UnloadModel(GeRootModelPtr ge_root_model, uint32_t graph_id, bool is_execute_graph) {
   GE_CHECK_NOTNULL(executor_);
-  const auto ret = executor_->UnloadGraph(ge_root_model, graph_id);
+  const auto ret = executor_->UnloadGraph(ge_root_model, graph_id, is_execute_graph);
   RemoveExecuteGraphAllocators(graph_id);
   return ret;
 }
@@ -619,7 +619,8 @@ Status GraphManager::Finalize() {
     // unload model
     auto ge_root_model = graph_node->GetGeRootModel();
     if (CheckModelLoad(ge_root_model, graph_node->GetLoadFlag())) {
-      Status ret = UnloadModel(ge_root_model, iter->first);
+      const bool is_execute_graph = GraphUtilsEx::IsExecuteGraph(*graph_node->GetGraph());
+      Status ret = UnloadModel(ge_root_model, iter->first, is_execute_graph);
       if (ret != SUCCESS) {
         unload_model_ret = ret;
         GELOGW("[GraphManager] unload model failed, graph_id=%u.", iter->first);
@@ -887,6 +888,7 @@ void GraphManager::WarningForDeprecatedOptions(const std::map<std::string, std::
 Status GraphManager::CheckOptionsValid(const ComputeGraphPtr &compute_graph,
                                        const std::map<std::string, std::string> &options) const {
   WarningForDeprecatedOptions(options);
+  GE_ASSERT_SUCCESS(CheckModelFormatOptionValid(options));
   GE_ASSERT_SUCCESS(CheckOptionValidValues(options, OPTION_FEATURE_BASE_REFRESHABLE, kFeatureMapRefreshOptions));
   GE_ASSERT_SUCCESS(CheckOptionValidValues(options, OPTION_CONST_LIFECYCLE, kConstLifecycleOptions));
   GE_ASSERT_SUCCESS(CheckIoReuseMemIndexesOption(compute_graph, options));
@@ -2172,6 +2174,7 @@ Status GraphManager::ExecuteGraphWithStreamAsync(const GraphId &graph_id, const 
   graph_node->SetIsSpecificStream(true);
 
   GE_CHECK_NOTNULL(executor_);
+  GetThreadLocalContext().SetGraphOption(graph_node->GetOptions());
   gert::Allocators *allocators = nullptr;
   if (IsOm2OnlineMode()) {
     GE_ASSERT_SUCCESS(GetExecuteGraphAllocators(graph_id, stream, allocators));
@@ -2622,7 +2625,8 @@ Status GraphManager::TryUnloadModel(GraphId graph_id, const GraphNodePtr &graph_
       graph_node->SetFeatureMemBlock(nullptr);
     }
 
-    Status middle_ret = UnloadModel(ge_root_model, graph_id);
+    const bool is_execute_graph = GraphUtilsEx::IsExecuteGraph(*graph_node->GetGraph());
+    Status middle_ret = UnloadModel(ge_root_model, graph_id, is_execute_graph);
     if (middle_ret != SUCCESS) {
       REPORT_INNER_ERR_MSG("E19999", "UnloadModel for graph:%u failed, check invalid", graph_id);
       GELOGE(middle_ret, "[Unload][Model] model failed, graph_id=%u.", graph_id);

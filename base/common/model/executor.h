@@ -59,6 +59,10 @@ class Executor {
    * @return Status result of function
    */
   virtual Status UnloadGraph(const GeRootModelPtr &root_model, const uint32_t graph_id) = 0;
+  virtual Status UnloadGraph(const GeRootModelPtr &root_model, const uint32_t graph_id, const bool is_execute_graph) {
+    (void)is_execute_graph;
+    return UnloadGraph(root_model, graph_id);
+  }
 
   /**
    * @ingroup ge

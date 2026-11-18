@@ -159,6 +159,7 @@ void SetDefaultHostEnvOsAndHostEnvCpu(std::string &host_env_os, std::string &hos
 Status CheckOm2HostEnvValid(const std::string &host_env_os, const std::string &host_env_cpu);
 Status CheckOptionValidValues(const std::map<std::string, std::string> &options, const std::string &key,
                               const std::unordered_set<std::string> &valid_values);
+Status CheckModelFormatOptionValid(const std::map<std::string, std::string> &options);
 Status CheckOptionValidThreshold(const std::map<std::string, std::string> &options, const std::string &str);
 Status CheckValidValueRange(const std::string &key, const std::string &value, const int64_t min, const int64_t max);
 Status CheckIoReuseMemIndexesOption(const ComputeGraphPtr &compute_graph,

@@ -98,7 +98,8 @@ TEST_F(ControlFlowCodegenUT, GeneratedNestedBranchesPreserveInitValueAcrossRuns)
 }
 
 TEST(ControlFlowCollectorBoundaryUT, RejectsOfflineKnownSubgraphProcessLocalModel) {
-  ge::om2_test::ScopedEnvVar mode("ENABLE_RUNTIME_OM2", "0");
+  const auto graph_options = ge::GetThreadLocalContext().GetAllGraphOptions();
+  ge::GetThreadLocalContext().SetGraphOption({{ge::OPTION_MODEL_FORMAT, std::to_string(ge::MODEL_FORMAT_OM)}});
   GertRuntimeStub runtime_stub;
   ge::ExecuteGraph graph("offline_known_subgraph");
   auto *node = graph.AddNode(std::make_shared<ge::OpDesc>("known_create", "DavinciModelCreate"));
@@ -113,7 +114,9 @@ TEST(ControlFlowCollectorBoundaryUT, RejectsOfflineKnownSubgraphProcessLocalMode
   EXPECT_NE(runtime_stub.GetSlogStub().FindLog(DLOG_ERROR,
                                                "OM2 DavinciModelCreate known_create is only supported in online mode"),
             -1);
+  ge::GetThreadLocalContext().SetGraphOption(graph_options);
 }
+
 }  // namespace
 }  // namespace om2
 }  // namespace gert

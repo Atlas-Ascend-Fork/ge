@@ -10,67 +10,40 @@
 
 #include <gtest/gtest.h>
 
+#include <map>
+#include <string>
+
 #include "common/helper/om2/om2_utils.h"
 
 namespace ge {
 namespace {
 
-class Om2UtilsTest : public testing::Test {
- protected:
-  void SetUp() override {
-    // Save original value
-    const char *old = std::getenv("ENABLE_RUNTIME_OM2");
-    if (old != nullptr) {
-      has_old_value_ = true;
-      old_value_ = old;
-    }
-  }
+class Om2UtilsTest : public testing::Test {};
 
-  void TearDown() override {
-    // Restore original value
-    if (has_old_value_) {
-      (void)setenv("ENABLE_RUNTIME_OM2", old_value_.c_str(), 1);
-    } else {
-      (void)unsetenv("ENABLE_RUNTIME_OM2");
-    }
-  }
-
- private:
-  bool has_old_value_{false};
-  std::string old_value_;
-};
-
-TEST_F(Om2UtilsTest, EnvNotSet_ReturnsFalse) {
-  (void)unsetenv("ENABLE_RUNTIME_OM2");
-  EXPECT_FALSE(IsOm2OnlineMode());
+TEST_F(Om2UtilsTest, OptionNotSet_ReturnsFalse) {
+  EXPECT_FALSE(IsOm2OnlineMode({}));
 }
 
-TEST_F(Om2UtilsTest, EnvSetTo1_ReturnsTrue) {
-  (void)setenv("ENABLE_RUNTIME_OM2", "1", 1);
+TEST_F(Om2UtilsTest, ModelFormatOm_ReturnsFalse) {
+  EXPECT_FALSE(IsOm2OnlineMode({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM)}}, false));
+}
+
+TEST_F(Om2UtilsTest, ModelFormatOm2_ReturnsTrue) {
+  EXPECT_TRUE(IsOm2OnlineMode({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}}, false));
+}
+
+TEST_F(Om2UtilsTest, InvalidModelFormat_ReturnsFalse) {
+  EXPECT_FALSE(IsOm2OnlineMode({{OPTION_MODEL_FORMAT, "invalid"}}, false));
+}
+
+TEST_F(Om2UtilsTest, ExecuteGraph_ReturnsTrue) {
+  EXPECT_TRUE(IsOm2OnlineMode({}, true));
+}
+
+TEST_F(Om2UtilsTest, ThreadLocalModelFormatOm2_ReturnsTrue) {
+  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
   EXPECT_TRUE(IsOm2OnlineMode());
-}
-
-TEST_F(Om2UtilsTest, EnvSetTo0_ReturnsFalse) {
-  (void)setenv("ENABLE_RUNTIME_OM2", "0", 1);
-  EXPECT_FALSE(IsOm2OnlineMode());
-}
-
-TEST_F(Om2UtilsTest, EnvSetToYes_ReturnsFalse) {
-  (void)setenv("ENABLE_RUNTIME_OM2", "yes", 1);
-  EXPECT_FALSE(IsOm2OnlineMode());
-}
-
-TEST_F(Om2UtilsTest, EnvSetToEmpty_ReturnsFalse) {
-  (void)setenv("ENABLE_RUNTIME_OM2", "", 1);
-  EXPECT_FALSE(IsOm2OnlineMode());
-}
-
-TEST_F(Om2UtilsTest, DynamicSwitch) {
-  (void)setenv("ENABLE_RUNTIME_OM2", "1", 1);
-  EXPECT_TRUE(IsOm2OnlineMode());
-
-  (void)setenv("ENABLE_RUNTIME_OM2", "0", 1);
-  EXPECT_FALSE(IsOm2OnlineMode());
+  GetThreadLocalContext().SetGraphOption({});
 }
 
 }  // namespace

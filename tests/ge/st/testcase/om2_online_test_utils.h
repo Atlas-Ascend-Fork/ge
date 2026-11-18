@@ -53,32 +53,22 @@
 
 namespace ge {
 namespace om2_test {
-class EnvValueGuard {
+class GraphOptionsGuard {
  public:
-  explicit EnvValueGuard(const char *name) : name_(name) {
-    const char *value = std::getenv(name_.c_str());
-    if (value != nullptr) {
-      old_value_ = value;
-      had_value_ = true;
-    }
+  GraphOptionsGuard() {
+    graph_options_ = GetThreadLocalContext().GetAllGraphOptions();
   }
 
-  ~EnvValueGuard() {
-    if (had_value_) {
-      (void)setenv(name_.c_str(), old_value_.c_str(), 1);
-    } else {
-      (void)unsetenv(name_.c_str());
-    }
+  ~GraphOptionsGuard() {
+    GetThreadLocalContext().SetGraphOption(graph_options_);
   }
 
  private:
-  std::string name_;
-  std::string old_value_;
-  bool had_value_ = false;
+  std::map<std::string, std::string> graph_options_;
 };
 
 inline void EnableOm2OnlineMode() {
-  ASSERT_EQ(setenv("ENABLE_RUNTIME_OM2", "1", 1), 0);
+  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
 }
 
 inline const std::string fake_om2_so_src = R"(
@@ -232,7 +222,7 @@ inline gert::GertModelData MakeOm2ModelDataWithFakeSo(const std::string &so_path
 }  // namespace om2_test
 
 using om2_test::EnableOm2OnlineMode;
-using om2_test::EnvValueGuard;
+using om2_test::GraphOptionsGuard;
 using om2_test::MakeFakeOm2SoSource;
 using om2_test::MakeOm2ModelDataWithFakeSo;
 
@@ -257,10 +247,6 @@ class Om2OnlineModelExecutorTest : public testing::Test {
   static void TearDownTestSuite() {
     unsetenv("ASCEND_WORK_PATH");
     EnvPath().RemoveRfCaseTmpPath("Om2OnlineModelExecutorTest");
-  }
-
-  void TearDown() override {
-    unsetenv("ENABLE_RUNTIME_OM2");
   }
 
   inline static std::string test_work_dir_;

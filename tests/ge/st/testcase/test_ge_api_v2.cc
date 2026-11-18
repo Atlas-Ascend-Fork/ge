@@ -27,6 +27,7 @@
 #include "common/path_utils.h"
 #include "macro_utils/dt_public_scope.h"
 #include "common/plugin/ge_make_unique_util.h"
+#include "common/helper/om2/om2_utils.h"
 #include "proto/ge_ir.pb.h"
 #include "ge/ge_api_v2.h"
 #include "easy_graph/builder/graph_dsl.h"
@@ -225,6 +226,58 @@ TEST_F(GeApiV2Test, ge_init_option_invalid) {
   options["ge.optionInvalid"] = "invalid";
   EXPECT_EQ(GEInitializeV2(options), SUCCESS);
   GEFinalizeV2();
+}
+
+/**
+ * 用例描述：测试 GeSession::AddGraph 对 ge.modelFormat option 的合法性校验
+ * 预置条件：GE V2 接口初始化成功，使用仅包含 Data 节点的执行图
+ * 测试步骤：分别传入缺省、OM、OM2 和非法 model format 作为 AddGraph 的 Graph option
+ * 预期结果：缺省、OM、OM2 配置添加成功，非法配置返回 FAILED
+ */
+TEST_F(GeApiV2Test, GeSessionAddGraphModelFormatOptionValidation) {
+  std::map<AscendString, AscendString> init_options;
+  ASSERT_EQ(GEInitializeV2(init_options), SUCCESS);
+  GeSession session(init_options);
+
+  const std::vector<std::pair<std::string, Status>> cases = {{"", SUCCESS},
+                                                             {std::to_string(MODEL_FORMAT_OM), SUCCESS},
+                                                             {std::to_string(MODEL_FORMAT_OM2), SUCCESS},
+                                                             {"-1", FAILED},
+                                                             {"6", FAILED},
+                                                             {"8", FAILED},
+                                                             {"invalid", FAILED}};
+  uint32_t graph_id = 100U;
+  for (const auto &[model_format, expected_status] : cases) {
+    const auto graph = gert::ShareGraph::OnlyDataGraph({1}, {1});
+    std::map<AscendString, AscendString> graph_options;
+    if (!model_format.empty()) {
+      graph_options.emplace(OPTION_MODEL_FORMAT, AscendString(model_format.c_str()));
+    }
+    EXPECT_EQ(session.AddGraph(graph_id++, graph, graph_options), expected_status);
+  }
+  EXPECT_EQ(GEFinalizeV2(), SUCCESS);
+}
+
+/**
+ * 用例描述：测试 GeSession 在非法 ge.modelFormat 被拒后仍可继续添加合法图
+ * 预置条件：GE V2 接口初始化成功
+ * 测试步骤：先以非法 model format 添加图，再以 OM2 option 添加另一张图
+ * 预期结果：非法配置返回 FAILED，合法 OM2 配置返回 SUCCESS
+ */
+TEST_F(GeApiV2Test, GeSessionAddGraphModelFormatInvalidThenValid) {
+  std::map<AscendString, AscendString> init_options;
+  ASSERT_EQ(GEInitializeV2(init_options), SUCCESS);
+  GeSession session(init_options);
+
+  const auto invalid_graph = gert::ShareGraph::OnlyDataGraph({1}, {1});
+  const std::map<AscendString, AscendString> invalid_options{{OPTION_MODEL_FORMAT, AscendString("invalid")}};
+  EXPECT_EQ(session.AddGraph(200U, invalid_graph, invalid_options), FAILED);
+
+  const auto valid_graph = gert::ShareGraph::OnlyDataGraph({1}, {1});
+  const std::map<AscendString, AscendString> valid_options{
+      {OPTION_MODEL_FORMAT, AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())}};
+  EXPECT_EQ(session.AddGraph(201U, valid_graph, valid_options), SUCCESS);
+  EXPECT_EQ(GEFinalizeV2(), SUCCESS);
 }
 
 TEST_F(GeApiV2Test, api_not_init_failed) {

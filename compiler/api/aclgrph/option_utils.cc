@@ -1839,6 +1839,19 @@ Status CheckOptionValidValues(const std::map<std::string, std::string> &options,
   return SUCCESS;
 }
 
+Status CheckModelFormatOptionValid(const std::map<std::string, std::string> &options) {
+  const auto iter = options.find(OPTION_MODEL_FORMAT);
+  if (iter == options.cend()) {
+    return SUCCESS;
+  }
+
+  if ((iter->second != std::to_string(MODEL_FORMAT_OM)) && (iter->second != std::to_string(MODEL_FORMAT_OM2))) {
+    GELOGE(PARAM_INVALID, "[Check][Param] Unsupported model format: %s.", iter->second.c_str());
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
+
 Status CheckValidValueRange(const std::string &key, const std::string &value, const int64_t min, const int64_t max) {
   std::regex remove_brackets("-?\\b[0-9]+\\b");
   std::smatch match_result;

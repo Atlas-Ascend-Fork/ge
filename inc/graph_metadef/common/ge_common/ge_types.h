@@ -587,6 +587,7 @@ constexpr const char_t *const OPTION_NUMA_CONFIG = "ge.numaConfig";
 
 // 7: config format mode(expirimental option)
 constexpr const char_t *const OPTION_EXEC_FORMAT_MODEL = "ge.exec.formatMode";
+constexpr const char_t *const OPTION_MODEL_FORMAT = "ge.modelFormat";
 
 // 8: config build graph mode(online or offline)
 constexpr const char_t *const OPTION_BUILD_GRAPH_MODE = "ge.buildGraphMode";
