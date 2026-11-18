@@ -617,7 +617,7 @@ TEST_F(TestCanfusePass, test_canfuse_red_and_red_horizontal_fusion) {
  * 用例描述：reduce和reduce垂直融合
  * 预置条件：开启自动融合
  * 测试步骤：
- * 预期结果:lowering生成的两个AscBc 在lifting 成reduceNode
+ * 预期结果:lowering生成的两个Reduce融合为一个AscBackend
  */
 TEST_F(TestCanfusePass, test_canfuse_red_and_red_vertical_fusion_1) {
   auto infer_data = ELMTWISE_INFER_SHAPEANDTYPE("x", "y");
@@ -641,10 +641,9 @@ TEST_F(TestCanfusePass, test_canfuse_red_and_red_vertical_fusion_1) {
   // 通过 CompileGraph 触发真实编译，融合结果在 GEP 编译副本上
   session.CompileGraph(1);
 
-  // lifting AscBackend中单节点还原为原节点
   CHECK_GRAPH(AutofuseOptimize_Exit) {
     std::map<std::string, size_t> node_types_to_count0;
-    node_types_to_count0.emplace("AscBackend", 2);
+    node_types_to_count0.emplace("AscBackend", 1);
     node_types_to_count0.emplace("Data", 1);
     node_types_to_count0.emplace("Const", 2);
     node_types_to_count0.emplace("NetOutput", 1);
@@ -1173,7 +1172,7 @@ TEST_F(TestCanfusePass, test_canfuse_red_and_red_vertical_fusion_2) {
     std::map<std::string, size_t> node_types_to_count0;
     node_types_to_count0.emplace("Data", 1);
     node_types_to_count0.emplace("Const", 2);
-    node_types_to_count0.emplace("AscBackend", 2);
+    node_types_to_count0.emplace("AscBackend", 1);
     node_types_to_count0.emplace("NetOutput", 1);
     std::string str = gert::SummaryChecker(graph).StrictDirectNodeTypes(node_types_to_count0);
     EXPECT_EQ(str, "success");
@@ -1192,6 +1191,7 @@ TEST_F(TestCanfusePass, test_canfuse_red_and_red_vertical_fusion_2) {
   node_types_to_count.emplace("Load", 1);
   node_types_to_count.emplace("Abs", 1);
   node_types_to_count.emplace("Max", 1);
+  node_types_to_count.emplace("Sum", 1);
   node_types_to_count.emplace("Store", 1);
   node_types_to_count.emplace("Output", 1);
   std::string str = gert::SummaryChecker(fused_graph).StrictDirectNodeTypes(node_types_to_count);
