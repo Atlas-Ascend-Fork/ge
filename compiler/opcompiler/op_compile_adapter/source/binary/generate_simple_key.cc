@@ -176,6 +176,10 @@ std::string GenerateSimpleKey::GenerateImplMode(const std::string implMode) cons
 }
 
 bool GenerateSimpleKey::FormatNormalize(const int index, const DtypeFormatMode &mode, std::string &format) const {
+  if (!withFormatAgnostic_) {
+    // Skip format generalization and keep the original format for simplified key matching
+    return true;
+  }
   std::string formatMode = mode.formatMode[index];
   if (formatMode == FORMAT_MODE_NORMAL) {
     return true;
@@ -363,6 +367,12 @@ std::string GenerateSimpleKey::GenerateDetermin(const std::string deterministic)
   return determinStr;
 }
 
+std::string GenerateSimpleKey::GenerateDeterminLevel() const {
+  std::string determinLevelStr = ",dt=" + deterministicLevel_;
+  TE_DBGLOG("determinLevelStr = [%s].", determinLevelStr.c_str());
+  return determinLevelStr;
+}
+
 std::string GenerateSimpleKey::GenerateAttrs(const std::vector<TbeAttrValue> &attrValues) const {
   std::string attrsStr;
   for (auto &attr : attrValues) {
@@ -417,6 +427,9 @@ bool GenerateSimpleKey::CheckParamSetDefaultVal() {
     TE_WARNLOG("opType [%s] deterministic [%s] is not supported.", opType_.c_str(), deterministic_.c_str());
     return false;
   }
+  if (deterministicLevel_.empty()) {
+    deterministicLevel_ = "0";
+  }
   return true;
 }
 
@@ -460,10 +473,32 @@ bool GenerateSimpleKey::GenerateCustomizeSimplifiedKey(std::string &simpleKeystr
   return true;
 }
 
-bool GenerateSimpleKey::GenerateSimpleKeyStr(std::string &simpleKeystr) {
+bool GenerateSimpleKey::GenerateSimpleKeyCandidates(std::vector<std::string> &simpleKeys) {
+  std::string simpleKeystr;
+  if (!GenerateSimpleKeyStr(simpleKeystr)) {
+    return false;
+  }
+  simpleKeys.emplace_back(simpleKeystr);
+  // Compatible with legacy binaries, fall back in order of {deterministic level, format agnostic}:
+  // first drop the deterministic level, then drop format agnostic to use the original format, and finally drop both
+  const std::pair<bool, bool> fallbackOptions[] = {{false, true}, {true, false}, {false, false}};
+  for (const auto &option : fallbackOptions) {
+    std::string fallbackKey;
+    if (!GenerateSimpleKeyStr(fallbackKey, option.first, option.second) ||
+        std::find(simpleKeys.begin(), simpleKeys.end(), fallbackKey) != simpleKeys.end()) {
+      continue;
+    }
+    simpleKeys.emplace_back(fallbackKey);
+  }
+  return true;
+}
+
+bool GenerateSimpleKey::GenerateSimpleKeyStr(std::string &simpleKeystr, bool withDeterministicLevel,
+                                             bool withFormatAgnostic) {
   if (!CheckParamSetDefaultVal()) {
     return false;
   }
+  withFormatAgnostic_ = withFormatAgnostic;
   std::string determiStr = GenerateDetermin(deterministic_);
   std::string implModeStr = GenerateImplMode(implMode_);
 
@@ -472,6 +507,9 @@ bool GenerateSimpleKey::GenerateSimpleKeyStr(std::string &simpleKeystr) {
   simpleKeystr.append(determiStr);
   simpleKeystr.append(",");
   simpleKeystr.append(implModeStr);
+  if (withDeterministicLevel) {
+    simpleKeystr.append(GenerateDeterminLevel());
+  }
   if (simpleKeyMode_ == SimpleKeyModeType::CUSTOM_MODE) {
     if (!GenerateCustomizeSimplifiedKey(simpleKeystr)) {
       return false;

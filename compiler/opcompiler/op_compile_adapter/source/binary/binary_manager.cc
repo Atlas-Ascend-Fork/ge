@@ -1411,6 +1411,14 @@ bool BinaryManager::GenerateAndMatchSimpleKey(const ge::Node *opNode, const TbeO
     TE_DBGLOG("Node[%s] _deterministic attr [%s] is not null.", opNode->GetName().c_str(), deterministic.c_str());
     deterministic = (deterministicStr == "1") ? STR_TRUE : STR_FALSE;
   }
+  std::string deterministicLevel = TeContextUtils::GetDeterministicLevel();
+  std::string deterministicLevelStr;
+  (void)ge::AttrUtils::GetStr(opNode->GetOpDesc(), kDeterministicLevel, deterministicLevelStr);
+  if (deterministicLevelStr != "") {
+    TE_DBGLOG("Node[%s] _deterministic_level attr [%s] is not null.", opNode->GetName().c_str(),
+              deterministicLevelStr.c_str());
+    deterministicLevel = deterministicLevelStr;
+  }
   const std::vector<TbeOpParam> &inputs = opInfo->GetInputs();
   const std::vector<TbeOpParam> &outputs = opInfo->GetOutputs();
   const std::vector<TbeAttrValue> &attrValues = opInfo->GetAttrValues();
@@ -1426,22 +1434,32 @@ bool BinaryManager::GenerateAndMatchSimpleKey(const ge::Node *opNode, const TbeO
     TE_WARNLOG("Node[%s], opType[%s] get simpleKeyMode failed.", opNode->GetName().c_str(), opType.c_str());
     return false;
   }
-  TE_DBGLOG("opType = [%s], simpleKeyMode = [%d], opImplMode = [%s], deterministic = [%s]", opType.c_str(),
-            simpleKeyMode, opImplMode.c_str(), deterministic.c_str());
-  GenerateSimpleKey generateKey = {opType, simpleKeyMode, opImplMode, deterministic, isUnknowShape};
+  TE_DBGLOG("opType = [%s], simpleKeyMode = [%d], opImplMode = [%s], deterministic = [%s], deterministicLevel = [%s]",
+            opType.c_str(), simpleKeyMode, opImplMode.c_str(), deterministic.c_str(), deterministicLevel.c_str());
+  GenerateSimpleKey generateKey = {opType, simpleKeyMode, opImplMode, deterministic, isUnknowShape, deterministicLevel};
   generateKey.SetInputs(inputs);
   generateKey.SetOutputs(outputs);
   generateKey.SetAttrs(attrValues);
   generateKey.SetBinaryInfoPtr(binaryInfoPtr);
   generateKey.SetOpInfoPtr(opInfo);
-  std::string simpleKeystr;
-  if (!generateKey.GenerateSimpleKeyStr(simpleKeystr)) {
+  std::vector<std::string> simpleKeys;
+  if (!generateKey.GenerateSimpleKeyCandidates(simpleKeys)) {
     TE_WARNLOG("Node[%s] generate simplified key failed.", opNode->GetName().c_str());
     return false;
   }
-  if (!binaryInfoPtr->MatchSimpleKey(opType, simpleKeystr, jsonFilePath)) {
+  bool matched = false;
+  for (const auto &simpleKey : simpleKeys) {
+    if (!binaryInfoPtr->MatchSimpleKey(opType, simpleKey, jsonFilePath)) {
+      continue;
+    }
+    TE_DBGLOG("Node[%s], opType[%s] MatchSimpleKey succeeded, simpleKey = [%s].", opNode->GetName().c_str(),
+              opType.c_str(), simpleKey.c_str());
+    matched = true;
+    break;
+  }
+  if (!matched) {
     TE_WARNLOG("Node[%s], opType[%s] MatchSimpleKey failed. current simpleKey = [%s].", opNode->GetName().c_str(),
-               opType.c_str(), simpleKeystr.c_str());
+               opType.c_str(), simpleKeys.front().c_str());
     return false;
   }
   if (isSuperKernel) {

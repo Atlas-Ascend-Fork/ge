@@ -1,0 +1,40 @@
+{
+  "Add": {
+    "dynamicRankSupport": true,
+    "simplifiedKeyMode": 0,
+    "params": {
+      "inputs": [
+        {
+          "name": "x1",
+          "index": 0,
+          "paramType": "required",
+          "formatMode": "agnostic"
+        },
+        {
+          "name": "x2",
+          "index": 1,
+          "paramType": "required",
+          "formatMode": "agnostic"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "index": 0,
+          "paramType": "required",
+          "formatMode": "agnostic"
+        }
+      ]
+    },
+    "binaryList": [
+      {
+        "simplifiedKey": [
+          "Add/d=1,p=1/0,2/0,2/0,2",
+          "Add/d=0,p=1/0,2/0,2/0,2"
+        ],
+        "binPath": "ascend910/add/Add_ee98c6628030785f610b924ab1557b31_high_performance.o",
+        "jsonPath": "ascend910/add/Add_ee98c6628030785f610b924ab1557b31_high_performance.json"
+      }
+    ]
+  }
+}

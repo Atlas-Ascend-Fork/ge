@@ -3597,3 +3597,185 @@ TEST(TeFusionBinarySTest, test_generate_simple_key_list_004) {
   BinaryInfoBasePtr binaryInfo = nullptr;
   binaryInfo->GenerateSimpleKeyList(opType, binaryList, simpleKeyInfoMap);
 }
+
+static BinaryInfoBasePtr CreateBinaryInfoPtrForSimpleKey() {
+  MOCKER_CPP(&te::fusion::BinaryInfoBase::GetBinaryInfoConfigPath,
+             bool (te::fusion::BinaryInfoBase::*)(const string &, std::string &, const bool &, const string &) const)
+      .stubs()
+      .will(invoke(GetBinaryInfoConfigPath_Stub));
+  BinaryManager::Instance().binaryConfigPathMap_ = {{6, ""}};
+  BinaryManager::Instance().ParseAllBinaryInfoConfigPath();
+  return BinaryManager::Instance().binaryInfoPtrMap_[6];
+}
+
+TEST(TeFusionBinarySTest, test_GenerateSimpleKeyCandidatesWithDeterministicLevel) {
+  BinaryInfoBasePtr binaryInfoPtr = CreateBinaryInfoPtrForSimpleKey();
+  ASSERT_NE(binaryInfoPtr, nullptr);
+
+  std::vector<std::pair<int64_t, int64_t>> range = {{1, 10}, {1, 10}};
+  TbeOpInfo opInfo("abs", "", "Abs", "AIcoreEngine");
+  TbeOpInfoPtr pTbeOp = std::make_shared<TbeOpInfo>(opInfo);
+  AddOpParamToTbeOpInfoPtr({-1, -1}, "float32", "NCHW", "x", range, true, pTbeOp, TT_REQ);
+  AddOpParamToTbeOpInfoPtr({-1, -1}, "float32", "NCHW", "y", range, false, pTbeOp, TT_REQ);
+  TbeOpInfoCache::Instance().tbeOpInfoMap_.clear();
+  TbeOpInfoCache::Instance().UpdateTbeOpInfo("abs", pTbeOp);
+  std::vector<TbeOpParam> inputs;
+  std::vector<TbeOpParam> outputs;
+  pTbeOp->GetInputs(inputs);
+  pTbeOp->GetOutputs(outputs);
+
+  GenerateSimpleKey generateKey = {"Abs", SimpleKeyModeType::SIMPLE_MODE, "default", "false", true, "2"};
+  generateKey.SetInputs(inputs);
+  generateKey.SetOutputs(outputs);
+  generateKey.SetBinaryInfoPtr(binaryInfoPtr);
+
+  std::vector<std::string> simpleKeys;
+  bool res = generateKey.GenerateSimpleKeyCandidates(simpleKeys);
+  EXPECT_EQ(res, true);
+  ASSERT_EQ(simpleKeys.size(), 4);
+  // 首个候选为完整 key，其后依次为去掉确定性等级、使用原始 format、两者都回退的 key
+  EXPECT_EQ(simpleKeys[0], "Abs/d=0,p=0,dt=2/0,2/0,2");
+  EXPECT_EQ(simpleKeys[1], "Abs/d=0,p=0/0,2/0,2");
+  EXPECT_EQ(simpleKeys[2], "Abs/d=0,p=0,dt=2/0,0/0,0");
+  EXPECT_EQ(simpleKeys[3], "Abs/d=0,p=0/0,0/0,0");
+
+  // 带确定性等级的 key 在历史二进制中不存在，回退到不带等级的 key 匹配成功
+  std::string jsonFilePath;
+  EXPECT_EQ(binaryInfoPtr->MatchSimpleKey("Abs", simpleKeys[0], jsonFilePath), false);
+  EXPECT_EQ(binaryInfoPtr->MatchSimpleKey("Abs", simpleKeys[1], jsonFilePath), true);
+  EXPECT_EQ(jsonFilePath, "ascend910/abs/Abs_5c5e58e043224cccf51a06108010ae13_high_performance.json");
+}
+
+TEST(TeFusionBinarySTest, test_GenerateSimpleKeyWithoutFormatAgnostic) {
+  BinaryInfoBasePtr binaryInfoPtr = CreateBinaryInfoPtrForSimpleKey();
+  ASSERT_NE(binaryInfoPtr, nullptr);
+
+  std::vector<std::pair<int64_t, int64_t>> range = {{1, 10}, {1, 10}};
+  TbeOpInfo opInfo("abs", "", "Abs", "AIcoreEngine");
+  TbeOpInfoPtr pTbeOp = std::make_shared<TbeOpInfo>(opInfo);
+  AddOpParamToTbeOpInfoPtr({-1, -1}, "float32", "NCHW", "x", range, true, pTbeOp, TT_REQ);
+  AddOpParamToTbeOpInfoPtr({-1, -1}, "float32", "NCHW", "y", range, false, pTbeOp, TT_REQ);
+  TbeOpInfoCache::Instance().tbeOpInfoMap_.clear();
+  TbeOpInfoCache::Instance().UpdateTbeOpInfo("abs", pTbeOp);
+  std::vector<TbeOpParam> inputs;
+  std::vector<TbeOpParam> outputs;
+  pTbeOp->GetInputs(inputs);
+  pTbeOp->GetOutputs(outputs);
+
+  GenerateSimpleKey generateKey = {"Abs", SimpleKeyModeType::SIMPLE_MODE, "default", "false", true};
+  generateKey.SetInputs(inputs);
+  generateKey.SetOutputs(outputs);
+  generateKey.SetBinaryInfoPtr(binaryInfoPtr);
+
+  // formatMode 为 static_nd_agnostic，动态 shape 场景下 NCHW 被泛化为 ND
+  std::string agnosticKey;
+  EXPECT_EQ(generateKey.GenerateSimpleKeyStr(agnosticKey), true);
+  EXPECT_EQ(agnosticKey, "Abs/d=0,p=0,dt=0/0,2/0,2");
+
+  // 关闭 format 泛化后，使用节点原始 format 生成 simplified key
+  std::string originFormatKey;
+  EXPECT_EQ(generateKey.GenerateSimpleKeyStr(originFormatKey, true, false), true);
+  EXPECT_EQ(originFormatKey, "Abs/d=0,p=0,dt=0/0,0/0,0");
+}
+
+static BinaryInfoBasePtr CreateAgnosticNoDt3BinaryInfo() {
+  std::string configFilePath = GetCodeDir() +
+                               "/tests/engines/te_fusion/st/testcase/op_compile_adapter/stub/binary_stub/"
+                               "binary_info_config_agnostic_no_dt3.json";
+  std::string realConfigPath = te::fusion::RealPath(configFilePath);
+  if (realConfigPath.empty()) {
+    configFilePath =
+        "../../../../../../../../../llt/atc/opcompiler/te_fusion/st/stub/binary_stub/"
+        "binary_info_config_agnostic_no_dt3.json";
+    realConfigPath = te::fusion::RealPath(configFilePath);
+  }
+  if (realConfigPath.empty()) {
+    return nullptr;
+  }
+
+  nlohmann::json binaryInfoConfig;
+  if (!te::fusion::TeFileUtils::GetJsonValueFromJsonFile(realConfigPath, binaryInfoConfig)) {
+    return nullptr;
+  }
+  BinaryInfoBasePtr binaryInfoPtr = std::make_shared<BinaryInfoBase>();
+  if (!binaryInfoPtr->GenerateBinaryInfo(binaryInfoConfig)) {
+    return nullptr;
+  }
+  return binaryInfoPtr;
+}
+
+static void CreateNchwAddOpForSimpleKey(const BinaryInfoBasePtr &binaryInfoPtr, OpDescPtr &opDesc, NodePtr &nodePtr,
+                                        TbeOpInfoPtr &pTbeOp) {
+  ComputeGraphPtr ownerGraph = std::make_shared<ComputeGraph>("te");
+  opDesc = std::make_shared<OpDesc>("add", "Add");
+  std::vector<std::pair<int64_t, int64_t>> range = {{1, 16}, {1, 16}};
+  AddTensorToOpDesc(true, "x1", {1, 16, 4, 4}, FORMAT_NCHW, DT_FLOAT, range, opDesc);
+  AddTensorToOpDesc(true, "x2", {1, 16, 4, 4}, FORMAT_NCHW, DT_FLOAT, range, opDesc);
+  AddTensorToOpDesc(false, "y", {1, 16, 4, 4}, FORMAT_NCHW, DT_FLOAT, range, opDesc);
+  ge::AttrUtils::SetInt(opDesc, "_fe_imply_type", 6);
+  ge::AttrUtils::SetStr(opDesc, "_deterministic_level", "3");
+  nodePtr = ownerGraph->AddNode(opDesc);
+
+  pTbeOp = std::make_shared<TbeOpInfo>(TbeOpInfo("add", "", "Add", "AIcoreEngine"));
+  pTbeOp->SetOpImplMode("default");
+  AddOpParamToTbeOpInfoPtr({1, 16, 4, 4}, "float32", "NCHW", "x1", range, true, pTbeOp, TT_REQ);
+  AddOpParamToTbeOpInfoPtr({1, 16, 4, 4}, "float32", "NCHW", "x2", range, true, pTbeOp, TT_REQ);
+  AddOpParamToTbeOpInfoPtr({1, 16, 4, 4}, "float32", "NCHW", "y", range, false, pTbeOp, TT_REQ);
+  pTbeOp->SetNode(nodePtr);
+
+  TbeOpInfoCache::Instance().tbeOpInfoMap_.clear();
+  TbeOpInfoCache::Instance().secondTbeOpInfoMap_.clear();
+  TbeOpInfoCache::Instance().UpdateTbeOpInfo("add", pTbeOp);
+  BinaryManager::Instance().binaryInfoPtrMap_.clear();
+  BinaryManager::Instance().binaryInfoPtrMap_[6] = binaryInfoPtr;
+}
+
+TEST(TeFusionBinarySTest, test_simplified_key_dt3_nchw_agnostic_online_compile) {
+  // Add 只支持 NCHW，formatMode 为 agnostic（format_match_mode=formatagnostic），
+  // 且发布物中不存在 d=0,p=0（以及带 dt=3）的 simplified key
+  BinaryInfoBasePtr binaryInfoPtr = CreateAgnosticNoDt3BinaryInfo();
+  ASSERT_NE(binaryInfoPtr, nullptr);
+
+  // 构造只支持 NCHW 的 Add 节点，并将算子的 deterministic_level 设置为 3
+  OpDescPtr opDesc = nullptr;
+  NodePtr nodePtr = nullptr;
+  TbeOpInfoPtr pTbeOp = nullptr;
+  CreateNchwAddOpForSimpleKey(binaryInfoPtr, opDesc, nodePtr, pTbeOp);
+  ASSERT_NE(nodePtr, nullptr);
+
+  // 查看 deterministic_level=3 + format agnostic 生成的 simplified key 列表
+  std::vector<TbeOpParam> inputs;
+  std::vector<TbeOpParam> outputs;
+  pTbeOp->GetInputs(inputs);
+  pTbeOp->GetOutputs(outputs);
+  GenerateSimpleKey generateKey = {"Add", SimpleKeyModeType::SIMPLE_MODE, "default", "false", false, "3"};
+  generateKey.SetInputs(inputs);
+  generateKey.SetOutputs(outputs);
+  generateKey.SetBinaryInfoPtr(binaryInfoPtr);
+
+  std::vector<std::string> simpleKeys;
+  ASSERT_TRUE(generateKey.GenerateSimpleKeyCandidates(simpleKeys));
+  ASSERT_EQ(simpleKeys.size(), 4U);
+  for (const auto &simpleKey : simpleKeys) {
+    printf("simplified key candidate: %s \r\n", simpleKey.c_str());
+  }
+  // 首个候选为完整 key（NCHW 被 agnostic 泛化为 ND=2），
+  // 之后依次为去掉确定性等级、使用原始 NCHW 格式、两者都回退
+  EXPECT_EQ(simpleKeys[0], "Add/d=0,p=0,dt=3/0,2/0,2/0,2");
+  EXPECT_EQ(simpleKeys[1], "Add/d=0,p=0/0,2/0,2/0,2");
+  EXPECT_EQ(simpleKeys[2], "Add/d=0,p=0,dt=3/0,0/0,0/0,0");
+  EXPECT_EQ(simpleKeys[3], "Add/d=0,p=0/0,0/0,0/0,0");
+
+  // 所有候选 key 都没有发布对应二进制 json，匹配失败后需要在线编译
+  std::string jsonFilePath;
+  for (const auto &simpleKey : simpleKeys) {
+    EXPECT_FALSE(binaryInfoPtr->MatchSimpleKey("Add", simpleKey, jsonFilePath));
+  }
+
+  std::vector<ge::Node *> teGraphNode = {nodePtr.get()};
+  auto opTask =
+      std::make_shared<OpBuildTask>(OpBuildTask{100, 1, 1, teGraphNode, opDesc, OP_TASK_STATUS::OP_TASK_PENDING});
+  EXPECT_FALSE(BinaryManager::Instance().MatchSimplifiedKey(opTask, jsonFilePath));
+  // 未设置二进制复用结果，说明该节点走在线编译
+  EXPECT_EQ(opTask->opRes, nullptr);
+}

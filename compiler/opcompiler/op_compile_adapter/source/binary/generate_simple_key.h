@@ -22,17 +22,20 @@ namespace fusion {
 class GenerateSimpleKey {
  public:
   GenerateSimpleKey(std::string opType, SimpleKeyModeType simpleKeyMode, std::string implMode,
-                    std::string deterministic, bool isUnknowShape)
+                    std::string deterministic, bool isUnknowShape, std::string deterministicLevel = "")
       : opType_(opType),
         simpleKeyMode_(simpleKeyMode),
         implMode_(implMode),
         deterministic_(deterministic),
+        deterministicLevel_(deterministicLevel),
         isUnknowShape_(isUnknowShape) {}
   GenerateSimpleKey(const GenerateSimpleKey &) = delete;
   GenerateSimpleKey &operator=(const GenerateSimpleKey &) = delete;
   ~GenerateSimpleKey() {}
 
-  bool GenerateSimpleKeyStr(std::string &simpleKeystr);
+  bool GenerateSimpleKeyStr(std::string &simpleKeystr, bool withDeterministicLevel = true,
+                            bool withFormatAgnostic = true);
+  bool GenerateSimpleKeyCandidates(std::vector<std::string> &simpleKeys);
   void SetInputs(const std::vector<TbeOpParam> &inputs);
   void SetOutputs(const std::vector<TbeOpParam> &outputs);
   void SetAttrs(const std::vector<TbeAttrValue> &attrs);
@@ -48,6 +51,7 @@ class GenerateSimpleKey {
   bool Normalization(const int index, std::string putsType, std::string &format, std::string &dtype) const;
   bool MatchInOutPutCnt(const std::vector<TbeOpParam> &inOutPuts, const std::string &putsType) const;
   std::string GenerateDetermin(const std::string deterministic) const;
+  std::string GenerateDeterminLevel() const;
   std::string GenerateAttrs(const std::vector<TbeAttrValue> &attrValues) const;
   bool CheckParamSetDefaultVal();
   bool GenerateCustomizeSimplifiedKey(std::string &simpleKeystr) const;
@@ -56,7 +60,9 @@ class GenerateSimpleKey {
   const SimpleKeyModeType simpleKeyMode_;
   std::string implMode_;
   std::string deterministic_;
+  std::string deterministicLevel_;
   bool isUnknowShape_;
+  bool withFormatAgnostic_{true};
   std::vector<TbeOpParam> inputs_;
   std::vector<TbeOpParam> outputs_;
   std::vector<TbeAttrValue> attrs_;
