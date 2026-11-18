@@ -276,6 +276,12 @@
     - [aclskScopeBegin](c/super_kernel/aclskScopeBegin.md)
     - [aclskScopeEnd](c/super_kernel/aclskScopeEnd.md)
 
+  - [模型常量化编译接口](c/specialization/specialization_interface.md)
+    - [aclmdlRISpecOptimize](c/specialization/aclmdlRISpecOptimize.md)
+    - [aclmdlRISpecOptimizeByFlag](c/specialization/aclmdlRISpecOptimizeByFlag.md)
+    - [aclmdlRISpecScopeBegin](c/specialization/aclmdlRISpecScopeBegin.md)
+    - [aclmdlRISpecScopeEnd](c/specialization/aclmdlRISpecScopeEnd.md)
+
   - [图基础数据结构和接口](cpp/ge/graph_basic_data_structure_and_interface.md)
     - [AnnotatedArgsContext](cpp/gert/AnnotatedArgsContext/AnnotatedArgsContext.md)
       - [简介](cpp/gert/AnnotatedArgsContext/overview.md)
