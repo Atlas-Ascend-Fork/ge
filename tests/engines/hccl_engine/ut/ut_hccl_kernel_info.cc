@@ -2018,54 +2018,43 @@ TEST_F(HcomKernelInfoTest, ut_SaveReduceDumpTask) {
 }
 
 #define HCCL_COM_DATA_SIZE 1024
-TEST_F(HcomKernelInfoTest, ut_hcom_loadtask_int64) {
-  nlohmann::json rank_table = rank_table_910_1server_1rank;
-
-  char file_name_t[] = "./ut_hcom_loadtask_int64.json";
-  std::ofstream outfile(file_name_t, std::ios::out | std::ios::trunc | std::ios::binary);
-
+// ut_hcom_loadtask_int64 用例构造段: 写 rank_table 文件、准备 buf 与 stream、初始化 ops store、
+// 构造 int64 task 及资源清理, 令用例主体聚焦 mock 注入与断言
+static void WriteInt64RankTableFile(const char *fileName) {
+  std::ofstream outfile(fileName, std::ios::out | std::ios::trunc | std::ios::binary);
   if (outfile.is_open()) {
-    outfile << std::setw(1) << rank_table << std::endl;
-    HCCL_INFO("open %s success", file_name_t);
+    outfile << std::setw(1) << rank_table_910_1server_1rank << std::endl;
+    HCCL_INFO("open %s success", fileName);
   } else {
-    HCCL_ERROR("open %s failed", file_name_t);
+    HCCL_ERROR("open %s failed", fileName);
   }
-
   outfile.close();
+}
 
-  int ret = HCCL_SUCCESS;
-  s8 *sendbuf;
-  s8 *recvbuf;
-  void *dumpbuf;
-  s32 rank = 0;
-  s32 errors = 0;
-  s32 count = HCCL_COM_DATA_SIZE;
-  ret = hrtSetDevice(0);
+static void CreateInt64Buffers(rtStream_t &stream, s8 *&sendbuf, s8 *&recvbuf, s32 count) {
+  int ret = hrtSetDevice(0);
   EXPECT_EQ(ret, HCCL_SUCCESS);
 
   sendbuf = (s8 *)sal_malloc(count);
   sal_memset(sendbuf, count, 0, count);
   recvbuf = (s8 *)sal_malloc(count);
   sal_memset(recvbuf, count, 0, count);
-
   for (int j = 0; j < count; j++) {
     sendbuf[j] = 2;
   }
 
-  rtStream_t stream;
   aclError rt_ret = aclrtCreateStreamWithConfig(&stream, 5, 0);
   EXPECT_EQ(rt_ret, RT_ERROR_NONE);
+}
 
-  ge ::Status ge_ret;
-  std::map<std::string, std::string> options;
-
+static OpsKernelInfoStorePtr InitInt64OpsStore(std::map<std::string, std::string> &options) {
   options.insert(pair<string, string>(ge::OPTION_EXEC_RANK_TABLE_FILE, "./ut_hcom_loadtask_int64.json"));
   options.insert(pair<string, string>(ge::OPTION_EXEC_RANK_ID, "0"));
   options.insert(pair<string, string>(ge::OPTION_EXEC_DEPLOY_MODE, "0"));
   options.insert(pair<string, string>(ge::OPTION_GRAPH_RUN_MODE, "1"));
   options.insert(pair<string, string>(ge::OPTION_EXEC_ENABLE_DUMP_DEBUG, "1"));
   options.insert(pair<string, string>(ge::OPTION_EXEC_PROFILING_MODE, "0"));
-  ret = Initialize(options);
+  int ret = Initialize(options);
   EXPECT_EQ(ret, ge::SUCCESS);
 
   std::map<string, OpsKernelInfoStorePtr> opKernInfos;
@@ -2073,29 +2062,12 @@ TEST_F(HcomKernelInfoTest, ut_hcom_loadtask_int64) {
   GetOpsKernelInfoStores(opKernInfos);
   GetGraphOptimizerObjs(graphOptimizers);
   OpsKernelInfoStorePtr opsKernerInfoStorePtr = opKernInfos.at(HCCL_OPS_LIB_NAME);
-  ge_ret = opsKernerInfoStorePtr->Initialize(options);
+  ge::Status ge_ret = opsKernerInfoStorePtr->Initialize(options);
   EXPECT_EQ(ge_ret, ge::SUCCESS);
+  return opsKernerInfoStorePtr;
+}
 
-  ge::NodePtr nodeptr(new NodeTest);
-  std::string reason;
-  std::string type = HCCL_KERNEL_OP_TYPE_ALLREDUCE;
-  nodeptr->GetOpDesc()->SetType(type);
-  bool bRet = opsKernerInfoStorePtr->CheckSupported(nodeptr->GetOpDesc(), reason);
-  EXPECT_EQ(bRet, true);
-
-  HCCL_INFO("test GetAllOpsKernelInfo.");
-  std::map<string, ge::OpInfo> infos;
-  opsKernerInfoStorePtr->GetAllOpsKernelInfo(infos);
-
-  dumpbuf = sal_malloc(10 * sizeof(s8));
-  sal_memset(dumpbuf, 10 * sizeof(s8), 0, 10 * sizeof(s8));
-std:
-  vector<void *> globalWorkSpaceAddr;
-  globalWorkSpaceAddr.push_back(dumpbuf);
-
-  ge::GETaskInfo task;
-  ge::GETaskKernelHcclInfo hcclInfo;
-  task.kernelHcclInfo.push_back(hcclInfo);
+static void MakeInt64PrivateDef(void *&privateDefPtr, uint32_t &privateDefLen) {
   HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
   strcpy_s((char *)privateDefBuf.group, 128, "hccl_world_group");
   privateDefBuf.nodeNameHash = 123456;
@@ -2104,14 +2076,11 @@ std:
   privateDefBuf.tensorNum = 3;
   privateDefBuf.privateDefSize = sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF);
   privateDefBuf.aivCoreLimit = 48;
-  task.id = 4;
-  task.type = ACL_RT_MODEL_TASK_HCCL;
-  task.stream = stream;
 
   std::int64_t offset[privateDefBuf.tensorNum] = {16, 32, 64};
   std::int64_t size[privateDefBuf.tensorNum] = {8, 8, 9};
   size_t tensorInfoSize = sizeof(hcclKernelInfoPrivateDef) + privateDefBuf.tensorNum * sizeof(int64_t) * 2;
-  void *privateDefPtr = sal_malloc(tensorInfoSize);
+  privateDefPtr = sal_malloc(tensorInfoSize);
   memset(privateDefPtr, 0, tensorInfoSize);
   memcpy(privateDefPtr, (void *)&privateDefBuf.group[0], sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF));
   memcpy(reinterpret_cast<int64_t *>(reinterpret_cast<char *>(privateDefPtr) + sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF)),
@@ -2119,9 +2088,22 @@ std:
   memcpy(reinterpret_cast<int64_t *>(reinterpret_cast<char *>(privateDefPtr) + sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF) +
                                      sizeof(offset)),
          size, sizeof(size));
+  privateDefLen = (uint32_t)tensorInfoSize;
+}
 
-  task.privateDef = privateDefPtr;
-  task.privateDefLen = (uint32_t)tensorInfoSize;
+static void FillInt64Task(ge::GETaskInfo &task, rtStream_t stream, s8 *sendbuf, s8 *recvbuf, s32 count) {
+  void *dumpbuf = sal_malloc(10 * sizeof(s8));
+  sal_memset(dumpbuf, 10 * sizeof(s8), 0, 10 * sizeof(s8));
+  std::vector<void *> globalWorkSpaceAddr;
+  globalWorkSpaceAddr.push_back(dumpbuf);
+
+  ge::GETaskKernelHcclInfo hcclInfo;
+  task.kernelHcclInfo.push_back(hcclInfo);
+  task.id = 4;
+  task.type = ACL_RT_MODEL_TASK_HCCL;
+  task.stream = stream;
+  MakeInt64PrivateDef(task.privateDef, task.privateDefLen);
+
   task.kernelHcclInfo[0].count = count;
   task.kernelHcclInfo[0].dataType = HCCL_DATA_TYPE_INT64;
   task.kernelHcclInfo[0].hccl_type = HCCL_KERNEL_OP_TYPE_ALLREDUCE;
@@ -2136,31 +2118,60 @@ std:
   DeviceMem workSpaceMem = DeviceMem::alloc(memSize);
   task.kernelHcclInfo[0].workSpaceAddr = workSpaceMem.ptr();
   task.kernelHcclInfo[0].workSpaceMemSize = workSpaceMem.size();
-  MOCKER(InitGroup).stubs().will(returnValue(HCCL_SUCCESS));
+}
 
-  MOCKER_CPP(&ge::GEThreadLocalContext::GetOption).stubs().will(invoke(FakeGetOption));
-
-  ge_ret = opsKernerInfoStorePtr->LoadTask(task);
-  EXPECT_EQ(ge_ret, ge::INTERNAL_ERROR);
-
-  rt_ret = rtStreamSynchronize(stream);
+static void CleanupInt64Task(rtStream_t stream, s8 *sendbuf, s8 *recvbuf, ge::GETaskInfo &task,
+                             OpsKernelInfoStorePtr store, const char *fileName) {
+  aclError rt_ret = rtStreamSynchronize(stream);
   EXPECT_EQ(rt_ret, RT_ERROR_NONE);
 
   sal_free(sendbuf);
   sal_free(recvbuf);
-  sal_free(dumpbuf);
-  sal_free(privateDefPtr);
+  sal_free(task.kernelHcclInfo[0].global_workspace_addr[0]);
+  sal_free(task.privateDef);
   rt_ret = aclrtDestroyStream(stream);
   EXPECT_EQ(rt_ret, RT_ERROR_NONE);
 
-  ge_ret = opsKernerInfoStorePtr->Finalize();
+  ge::Status ge_ret = store->Finalize();
   EXPECT_EQ(ge_ret, ge::SUCCESS);
-
   ge_ret = Finalize();
   EXPECT_EQ(ge_ret, ge::SUCCESS);
+  remove(fileName);
+}
 
-  remove(file_name_t);
+TEST_F(HcomKernelInfoTest, ut_hcom_loadtask_int64) {
+  const char *file_name_t = "./ut_hcom_loadtask_int64.json";
+  WriteInt64RankTableFile(file_name_t);
 
+  rtStream_t stream = nullptr;
+  s8 *sendbuf = nullptr;
+  s8 *recvbuf = nullptr;
+  CreateInt64Buffers(stream, sendbuf, recvbuf, HCCL_COM_DATA_SIZE);
+
+  std::map<std::string, std::string> options;
+  OpsKernelInfoStorePtr opsKernerInfoStorePtr = InitInt64OpsStore(options);
+
+  ge::NodePtr nodeptr(new NodeTest);
+  std::string reason;
+  nodeptr->GetOpDesc()->SetType(HCCL_KERNEL_OP_TYPE_ALLREDUCE);
+  bool bRet = opsKernerInfoStorePtr->CheckSupported(nodeptr->GetOpDesc(), reason);
+  EXPECT_EQ(bRet, true);
+  std::map<string, ge::OpInfo> infos;
+  opsKernerInfoStorePtr->GetAllOpsKernelInfo(infos);
+
+  ge::GETaskInfo task;
+  FillInt64Task(task, stream, sendbuf, recvbuf, HCCL_COM_DATA_SIZE);
+
+  MOCKER(InitGroup).stubs().will(returnValue(HCCL_SUCCESS));
+  MOCKER_CPP(&ge::GEThreadLocalContext::GetOption).stubs().will(invoke(FakeGetOption));
+  // 桩环境全链路均为成功桩, LoadTask 无自然失败来源; 固定注入 HcomAllReduce 失败,
+  // 经 HCCLOpsKernel 报错按 LoadTask 既有错误映射返回 INTERNAL_ERROR, 使断言有确定来源
+  MOCKER(HcomAllReduce).stubs().will(returnValue(HCCL_E_PARA));
+
+  ge::Status ge_ret = opsKernerInfoStorePtr->LoadTask(task);
+  EXPECT_EQ(ge_ret, ge::INTERNAL_ERROR);
+
+  CleanupInt64Task(stream, sendbuf, recvbuf, task, opsKernerInfoStorePtr, file_name_t);
   GlobalMockObject::verify();
 }
 
