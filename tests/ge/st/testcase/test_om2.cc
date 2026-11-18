@@ -2084,6 +2084,29 @@ class Om2St : public testing::Test {
 
 class Om2CallbackSt : public Om2St {};
 
+/**
+ * 用例描述：离线 OM2 动态 shape 模型的文件和内存 buffer 导出均被拒绝。
+ * 预置条件：构造 GeRootModel，并标记根图为 unknown shape。
+ * 测试步骤：分别设置文件和 buffer 保存模式，调用 SaveToOmRootModel。
+ * 预期结果：返回 FAILED，不生成模型 buffer 或 OM2 文件。
+ */
+TEST_F(Om2St, RejectUnknownShapeFileAndBufferExport) {
+  const auto root = CreateGeRootModelWithAicoreOp();
+  ASSERT_NE(root, nullptr);
+  root->GetRootGraph()->SetGraphUnknownFlag(true);
+  const std::string output_file = PathUtils::Join({test_work_dir, "unsupported_dynamic.om2"});
+  Om2PackageHelper helper;
+  for (const bool save_to_file : {false, true}) {
+    helper.SetSaveMode(save_to_file);
+    ModelBufferData model{};
+    EXPECT_EQ(helper.SaveToOmRootModel(root, output_file, model, true), FAILED);
+    EXPECT_EQ(model.data, nullptr);
+    EXPECT_EQ(model.length, 0U);
+    EXPECT_FALSE(std::ifstream(output_file).good());
+  }
+  EXPECT_EQ(root->GetOm2ModelData(), nullptr);
+}
+
 // ===== Suite 预构建函数：各用例的"构建图 + 属性/节点设置 + 打包"搬移至此，一次构建全 suite 复用 =====
 static GeRootModelPtr PrepareAicoreNodeOm2(const std::string &output_file) {
   const auto ge_root_model = CreateGeRootModelWithAicoreOp();

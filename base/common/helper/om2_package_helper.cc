@@ -648,9 +648,13 @@ Status Om2PackageHelper::SaveToOmRootModel(const GeRootModelPtr &ge_root_model, 
     return SaveToOmModel(model_root, output_file, model, ge_root_model);
   }
 
-  GE_ASSERT_SUCCESS(EnsureGertModelData(ge_root_model));
-  const auto &model_data = ge_root_model->GetOm2ModelData();
-  return SerializeModelData(*model_data, ge_root_model->GetModelName(), output_file, model);
+  // Both ATC file export and aclgrphBuildModel buffer export use this entry.
+  // Online dynamic models are built separately through EnsureGertModelData.
+  GELOGE(FAILED, "[OM2] Unknown shape models are not supported for offline .om2 format conversion");
+  (void)REPORT_PREDEFINED_ERR_MSG(
+      "E10055", std::vector<const char *>({"reason"}),
+      std::vector<const char *>({"Unknown shape models are not supported for offline .om2 format conversion"}));
+  return FAILED;
 }
 
 Status Om2PackageHelper::SaveToOmModel(const GeModelPtr &ge_model, const std::string &output_file,

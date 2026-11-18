@@ -83,8 +83,6 @@ class GE_FUNC_VISIBILITY Om2PackageHelper : public ModelSaveHelper {
   static Status BuildSharedLibraries(const GeRootModelPtr &ge_root_model, const GeModelPtr &ge_model,
                                      gert::GertModelDataSoBins *shared_libraries);
   static Status DeduplicateKernelBinaries(gert::GertModelData &model_data);
-  Status SerializeModelData(const gert::GertModelData &model_data, const std::string &model_name,
-                            const std::string &output_file, ModelBufferData &model) const;
   static Status BuildCustomOpResources(const GeRootModelPtr &ge_root_model, gert::GertModelData &model_data);
   static Status CompileAndPackageOm2(const std::shared_ptr<ExecuteGraph> &graph, const std::string &model_name,
                                      uint32_t graph_id, gert::GertModelData &model_data);

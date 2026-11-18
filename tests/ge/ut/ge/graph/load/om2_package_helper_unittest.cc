@@ -1676,21 +1676,23 @@ TEST_F(Om2PackageHelperUt, ConvertOm2Model_WithoutAipp_NoAippSectionInJson) {
   EXPECT_EQ(model_meta_json_noaipp.find("\"aipp\""), std::string::npos);
 }
 
-TEST_F(Om2PackageHelperUt, SaveToOmRootModel_UnknownShapeReusesAttachedGertModelData) {
+TEST_F(Om2PackageHelperUt, SaveToOmRootModel_UnknownShapeRejectsFileAndBufferExport) {
   Om2PackageHelper helper;
-  helper.SetSaveMode(false);
   const auto root = CreateGeRootModelWithAicoreOp();
   ASSERT_NE(root, nullptr);
   root->GetRootGraph()->SetGraphUnknownFlag(true);
   auto *cached = SuiteModelData("aicore");
   ASSERT_NE(cached, nullptr);
-  // The suite owns these compiled artifacts; exercise the save route without regenerating a pbody.
+  // Even attached model data must not bypass the offline export restriction.
   root->SetOm2ModelData(std::shared_ptr<gert::GertModelData>(cached, [](gert::GertModelData *) {}));
-  ModelBufferData model;
   const std::string output_file = PathUtils::Join({test_work_dir, "test_unknown_shape.om2"});
-  ASSERT_EQ(helper.SaveToOmRootModel(root, output_file, model, true), SUCCESS);
-  EXPECT_NE(model.data, nullptr);
-  EXPECT_GT(model.length, 0U);
+  for (const bool save_to_file : {false, true}) {
+    helper.SetSaveMode(save_to_file);
+    ModelBufferData model{};
+    EXPECT_EQ(helper.SaveToOmRootModel(root, output_file, model, true), FAILED);
+    EXPECT_EQ(model.data, nullptr);
+    EXPECT_EQ(model.length, 0U);
+  }
   EXPECT_EQ(root->GetOm2ModelData().get(), cached);
 }
 
