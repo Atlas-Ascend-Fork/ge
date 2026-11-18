@@ -2251,7 +2251,7 @@ Status ModelHelper::RefreshAndGetAddrMapping(const ComputeGraphPtr &graph, const
       const auto &op_desc = node->GetOpDesc();
       GE_CHECK_NOTNULL(op_desc);
       const auto &output_offsets = op_desc->GetOutputOffset();
-      GE_CHK_BOOL_RET_STATUS(!output_offsets.empty(), FAILED, "Node:%s output offsets is empty",
+      GE_CHK_BOOL_RET_STATUS(!output_offsets.empty(), FAILED, "Node:%s output offsets are empty",
                              node->GetName().c_str());
       (void)unrefreshed_offsets.emplace(output_offsets[0U], node);
       if (node_type == VARIABLE) {

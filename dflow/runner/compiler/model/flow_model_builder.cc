@@ -646,7 +646,7 @@ Status FlowModelBuilder::BuildDataFlowGraph(const ComputeGraphPtr &root_graph,
   GE_CHK_STATUS_RET(MergeDataFlowLoadedModel(data_flow_graph, flow_model),
                     "Failed to merge data flow loaded models, graph: %s", root_graph->GetName().c_str());
   GE_CHK_BOOL_RET_STATUS(!data_flow_graph.GetAllSubgraphs().empty(), FAILED,
-                         "The subgraphs is empty, please check your graph.");
+                         "The subgraphs are empty, please check your graph.");
   GE_CHK_STATUS_RET(BuildDataFlowSubGraphs(data_flow_graph, options, flow_model, cache_param),
                     "Failed to build data flow graph[%s].", root_graph->GetName().c_str());
   // graph options may be changed by subgraph option, need reset root graph options

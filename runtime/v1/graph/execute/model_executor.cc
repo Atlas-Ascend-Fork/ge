@@ -1104,7 +1104,7 @@ Status ModelExecutor::GetOm2ModelTensorDesc(const GraphNodePtr &graph_node,
   GE_CHECK_NOTNULL(ge_root_model);
   const auto &model_data = ge_root_model->GetOm2ModelData();
   GE_ASSERT_NOTNULL(model_data, "[OM2][Check] Missing GertModelData.");
-  GE_ASSERT_TRUE(!model_data->models.empty(), "[OM2][Check] models is empty.");
+  GE_ASSERT_TRUE(!model_data->models.empty(), "[OM2][Check] models are empty.");
   const auto &model_meta = *model_data->models[0]->model_meta;
   input_desc = &model_meta.input_desc;
   output_desc = &model_meta.output_desc;

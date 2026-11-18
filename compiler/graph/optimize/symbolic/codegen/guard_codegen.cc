@@ -237,7 +237,7 @@ void DebugCodeGenResult(const CodePrinter &printer) {
   size_t current_index = 0U;
   while (current_index < msg.size()) {
     auto sub_str = msg.substr(current_index, max_log_len);
-    GELOGI("\n%s", sub_str.c_str());
+    GELOGD("\n%s", sub_str.c_str());
     current_index += max_log_len;
   }
   GELOGI("Guard Func End");

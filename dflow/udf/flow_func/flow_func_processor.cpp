@@ -478,7 +478,7 @@ bool FlowFuncProcessor::PrepareInputs() {
     // ReadMessage callback may change status.
     reader_->ReadMessage();
     if (!reader_->StatusOk()) {
-      UDF_LOG_ERROR("reader status is error, flow_func_info=%s.", flow_func_info_.c_str());
+      UDF_LOG_ERROR("reader status is invalid, flow_func_info=%s.", flow_func_info_.c_str());
       status_ = FlowFuncProcessorStatus::kProcError;
       return false;
     }

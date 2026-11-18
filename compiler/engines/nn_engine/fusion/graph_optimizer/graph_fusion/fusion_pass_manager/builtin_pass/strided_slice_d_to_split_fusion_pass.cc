@@ -118,13 +118,14 @@ bool StridedSliceDToSplitFusionPass::CheckEvenlySlice(const ge::OpDescPtr &strid
                                                       std::vector<int64_t> &begins, std::vector<int64_t> &ends,
                                                       SplitInfo &split_info) {
   // modify begin and end
-  FE_LOGD("Node[%s]: the begins is %s, and the ends is %s.", strided_slice_d_desc->GetName().c_str(),
+  FE_LOGD("Node[%s]: the begin indices are %s, and the end indices are %s.", strided_slice_d_desc->GetName().c_str(),
           StringUtils::IntegerVecToString(begins).c_str(), StringUtils::IntegerVecToString(ends).c_str());
   if (ModifyBeginAndEnd(strided_slice_d_desc, ori_shape, begins, ends) != SUCCESS) {
     return false;
   }
-  FE_LOGD("Node[%s]: after modify, the begins is %s, and the ends is %s.", strided_slice_d_desc->GetName().c_str(),
-          StringUtils::IntegerVecToString(begins).c_str(), StringUtils::IntegerVecToString(ends).c_str());
+  FE_LOGD("Node[%s]: after modify, the begin indices are %s, and the end indices are %s.",
+          strided_slice_d_desc->GetName().c_str(), StringUtils::IntegerVecToString(begins).c_str(),
+          StringUtils::IntegerVecToString(ends).c_str());
   // evenly slice check
   int64_t slice_dim_cnt = 0;
   for (size_t i = 0; i < begins.size(); ++i) {

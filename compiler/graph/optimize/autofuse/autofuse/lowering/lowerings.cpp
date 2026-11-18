@@ -428,7 +428,7 @@ OpDescPtr LoweringManager::BuildOpDescForKernelBox(loop::KernelBox &kernel_box,
   auto *anchor = const_cast<ge::OutDataAnchor *>(kernel_box.TargetBuffer());
   GE_ASSERT_NOTNULL(anchor);
   std::string graph_name = loop::BufferName(anchor) + "_graph";
-  GELOGI("Realize AscendC IR graph %s for kernel box %s, loop graph:\n%s", graph_name.c_str(),
+  GELOGD("Realize AscendC IR graph %s for kernel box %s, loop graph:\n%s", graph_name.c_str(),
          kernel_box.DebugString().c_str(), kernel_box.Readable().c_str());
   auto asc_graph = kernel_box.Realize<loop::AscOverrides>(graph_name, true /*do cse*/);
   GE_WARN_ASSERT(asc_graph != nullptr,

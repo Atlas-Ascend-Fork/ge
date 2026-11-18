@@ -941,7 +941,7 @@ void HeterogeneousModelExecutor::FindGroupEntryIndexBySchedule(
     } else {
       GELOGI(
           "DynamicSched search group entry info: entry logic id=%d, entry index=%d dst endpoint index=%d,"
-          " queue_depth=%d, device_id=%d, uuid=%u, device_type=%d, pre time=%llu.",
+          " queue_depth=%d, device_id=%d, uuid=%u, device_type=%d, previous scheduling time=%llu ns.",
           group_info.routes[i].entry_index, i, group_info.routes[i].endpoint_index, iter->second.first.queue_depth,
           iter->second.first.device_id, iter->second.first.model_uuid, iter->second.first.device_type,
           iter->second.second);

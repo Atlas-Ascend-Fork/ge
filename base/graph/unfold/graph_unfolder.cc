@@ -383,7 +383,7 @@ ge::Status GraphUnfolder::UnfoldSubGraphPartitioncall(const ge::ComputeGraphPtr 
   for (auto &node : partiticall_nodes) {
     ge::ComputeGraphPtr partiticall_sub_graph = ge::NodeUtils::GetSubgraph(*node, kHybridSubgraphIndex);
     if (partiticall_sub_graph == nullptr) {
-      GELOGW("Node[%s][%s] subgraph not exists.", node->GetNamePtr(), node->GetTypePtr());
+      GELOGW("Node[%s][%s] subgraph does not exist.", node->GetNamePtr(), node->GetTypePtr());
       continue;
     }
 

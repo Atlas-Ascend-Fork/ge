@@ -66,7 +66,7 @@ bool CheckSupportedInput(const DvppOpInfo &dvpp_op_info, const ge::NodePtr &node
   auto input = op_desc_ptr->GetInputDesc(index);
   auto input_dims = input.GetShape().GetDims();
   DVPP_CHECK_IF_THEN_DO(input_dims.empty(), unsupported_reason = "op[" + op_desc_ptr->GetType() + "] input[" +
-                                                                 std::to_string(index) + "] dims is empty";
+                                                                 std::to_string(index) + "] dimensions are empty";
                         DVPP_ENGINE_LOG_EVENT("%s", unsupported_reason.c_str()); return false);
 
   auto input_data_format = input.GetFormat();
@@ -84,7 +84,7 @@ bool CheckSupportedOutput(const DvppOpInfo &dvpp_op_info, const ge::NodePtr &nod
   auto output = op_desc_ptr->GetOutputDesc(index);
   auto output_dims = output.GetShape().GetDims();
   DVPP_CHECK_IF_THEN_DO(output_dims.empty(), unsupported_reason = "op[" + op_desc_ptr->GetType() + "] output[" +
-                                                                  std::to_string(index) + "] dims is empty";
+                                                                  std::to_string(index) + "] dimensions are empty";
                         DVPP_ENGINE_LOG_EVENT("%s", unsupported_reason.c_str()); return false);
 
   auto output_data_format = output.GetFormat();

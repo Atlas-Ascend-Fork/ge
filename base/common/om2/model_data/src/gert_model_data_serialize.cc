@@ -519,7 +519,7 @@ ge::Status SerializeManifest(const gert::GertModelData &model_data,
 
 ge::Status SerializeGertModelData(const GertModelData &model_data, ge::ModelBufferData &model, const bool is_offline,
                                   const std::string &writer_path) {
-  GE_ASSERT_TRUE(!model_data.models.empty(), "[OM2] models is empty, nothing to serialize.");
+  GE_ASSERT_TRUE(!model_data.models.empty(), "[OM2] models are empty, nothing to serialize.");
   GELOGI(
       "[OM2] Begin to serialize GertModelData to ZIP, model_name:%s, "
       "inputs:%zu, outputs:%zu, kernels:%zu, custom kernels: %zu, weight_size:%zu",

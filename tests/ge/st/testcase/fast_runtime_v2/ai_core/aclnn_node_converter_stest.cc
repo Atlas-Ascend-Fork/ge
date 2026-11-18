@@ -12,6 +12,8 @@
 #include "base/registry/op_impl_space_registry_v2.h"
 #undef private
 #include "engine/aicore/converter/aclnn_node_converter.h"
+#include "faker/kernel_run_context_facker.h"
+#include "stub/gert_runtime_stub.h"
 #include "engine/node_converter_utils.h"
 #include <gtest/gtest.h>
 #include "engine/aicore/fe_rt2_common.h"
@@ -281,4 +283,43 @@ TEST_F(AclnnNodeConverterST, TestBuildOpInputTensors_LoweringResultShapeIsNull) 
   auto add_ret = LoweringAclnnNode(add_node, add_input);
   ASSERT_FALSE(add_ret.result.IsSuccess());
 }
+
+TEST(AclnnMissingImplementationSt, SinglePhaseLookupRejectsUnimplementedOperation) {
+  GertRuntimeStub runtime_stub;
+  auto space_registry = ge::MakeShared<OpImplSpaceRegistryV2>();
+  ASSERT_NE(space_registry, nullptr);
+  const std::string node_type = "MissingSinglePhaseDiagnostic";
+  auto functions = space_registry->CreateOrGetOpImpl(node_type.c_str());
+  ASSERT_NE(functions, nullptr);
+  ASSERT_EQ(functions->op_execute_func, nullptr);
+  auto context_holder = BuildKernelRunContext(3, 1);
+  context_holder.value_holder[0].Set(const_cast<char *>(node_type.c_str()), nullptr);
+  context_holder.value_holder[1].Set(space_registry.get(), nullptr);
+  const auto *kernel = KernelRegistry::GetInstance().FindKernelFuncs("FindOpExeFunc");
+  ASSERT_NE(kernel, nullptr);
+  EXPECT_EQ(kernel->run_func(context_holder), ge::GRAPH_FAILED);
+  EXPECT_EQ(context_holder.value_holder[3].GetValue<void *>(), nullptr);
+  EXPECT_GE(runtime_stub.GetSlogStub().FindLog(DLOG_ERROR, "op impl function list is nullptr"), 0);
+}
+
+TEST(AclnnMissingImplementationSt, TwoPhaseLookupRejectsUnimplementedOperation) {
+  GertRuntimeStub runtime_stub;
+  auto space_registry = ge::MakeShared<OpImplSpaceRegistryV2>();
+  ASSERT_NE(space_registry, nullptr);
+  const std::string node_type = "MissingTwoPhaseDiagnostic";
+  auto functions = space_registry->CreateOrGetOpImpl(node_type.c_str());
+  ASSERT_NE(functions, nullptr);
+  ASSERT_EQ(functions->op_execute_prepare_func, nullptr);
+  ASSERT_EQ(functions->op_execute_launch_func, nullptr);
+  auto context_holder = BuildKernelRunContext(3, 2);
+  context_holder.value_holder[0].Set(const_cast<char *>(node_type.c_str()), nullptr);
+  context_holder.value_holder[1].Set(space_registry.get(), nullptr);
+  const auto *kernel = KernelRegistry::GetInstance().FindKernelFuncs("FindOpExe2PhaseFunc");
+  ASSERT_NE(kernel, nullptr);
+  EXPECT_EQ(kernel->run_func(context_holder), ge::GRAPH_FAILED);
+  EXPECT_EQ(context_holder.value_holder[3].GetValue<void *>(), nullptr);
+  EXPECT_EQ(context_holder.value_holder[4].GetValue<void *>(), nullptr);
+  EXPECT_GE(runtime_stub.GetSlogStub().FindLog(DLOG_ERROR, "op impl function list is nullptr"), 0);
+}
+
 }  // namespace gert

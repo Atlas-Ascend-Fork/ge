@@ -107,7 +107,7 @@ ge::graphStatus FindOpExeFunc(KernelContext *context) {
     return ge::GRAPH_FAILED;
   }
   if (functions->op_execute_func == nullptr || op_fun_ptr == nullptr) {
-    GELOGE(ge::PARAM_INVALID, "Failed to find op execute func, op impl functions is nullptr");
+    GELOGE(ge::PARAM_INVALID, "Failed to find op execute func, op impl function list is nullptr");
     return ge::GRAPH_FAILED;
   }
   *op_fun_ptr = functions->op_execute_func;
@@ -120,7 +120,7 @@ ge::graphStatus FindOpExe2PhaseFunc(KernelContext *context) {
   auto functions = GetOpImplFunctions(context);
   if (functions == nullptr || functions->op_execute_prepare_func == nullptr ||
       functions->op_execute_launch_func == nullptr || op_prepare_fun_ptr == nullptr || op_launch_fun_ptr == nullptr) {
-    GELOGE(ge::PARAM_INVALID, "Failed to find op execute func, op impl functions is nullptr");
+    GELOGE(ge::PARAM_INVALID, "Failed to find op execute func, op impl function list is nullptr");
     return ge::GRAPH_FAILED;
   }
   *op_prepare_fun_ptr = functions->op_execute_prepare_func;

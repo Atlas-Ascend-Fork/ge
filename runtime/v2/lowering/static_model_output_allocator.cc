@@ -47,7 +47,7 @@ ge::Status GetDataNodes(const ge::ComputeGraph &graph, std::map<int64_t, int32_t
         GE_ASSERT(ge::AttrUtils::GetInt(op_desc, ge::ATTR_NAME_INDEX, index));
       }
       const auto logic_address = op_desc->GetOutputOffset();
-      GE_ASSERT_TRUE(!logic_address.empty(), "data node[%s] output offsets is empty", node->GetNamePtr(),
+      GE_ASSERT_TRUE(!logic_address.empty(), "data node[%s] output offsets are empty", node->GetNamePtr(),
                      logic_address.size());
       GE_ASSERT(ordered_data_nodes.emplace(index, logic_address[0U]).second, "Duplicated data index %d on graph %s",
                 index, graph.GetName().c_str());
@@ -69,7 +69,7 @@ ge::Status GetVarNodes(const ge::ComputeGraph &graph, std::map<int64_t, ge::Node
       const auto op_desc = node->GetOpDescBarePtr();
       GE_ASSERT_NOTNULL(op_desc);
       const auto logic_address = op_desc->GetOutputOffset();
-      GE_ASSERT_TRUE(!logic_address.empty(), "node[%s] output offsets is empty", node->GetNamePtr(),
+      GE_ASSERT_TRUE(!logic_address.empty(), "node[%s] output offsets are empty", node->GetNamePtr(),
                      logic_address.size());
       address_2_node.emplace(logic_address[0], node);
     }

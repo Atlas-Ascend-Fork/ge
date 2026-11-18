@@ -1933,7 +1933,7 @@ Status TbeOpStoreAdapter::InitializeInner(const std::map<std::string, std::strin
 
   FE_MAKE_SHARED(plugin_manager_ptr = std::make_shared<PluginManager>(plugin_mgr_name), return FAILED);
   FE_CHECK(plugin_manager_ptr == nullptr,
-           REPORT_FE_ERROR("[GraphOpt][InitializeInner][InitTbeFunc]pluginManagerPtr is nullptr."), return FAILED);
+           REPORT_FE_ERROR("[GraphOpt][InitializeInner][InitTbeFunc] pluginManagerPtr is nullptr."), return FAILED);
 
   if (plugin_manager_ptr->OpenPlugin(real_path) != SUCCESS) {
     REPORT_FE_ERROR("[FEInit][OpPluginSo] Failed to open plugin so.");

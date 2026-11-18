@@ -14,6 +14,7 @@
 """Runtime utilities for dynamically discovering and loading ES plugins."""
 
 import importlib
+import logging
 import sys
 from types import ModuleType
 from typing import Any, Dict, List
@@ -39,9 +40,7 @@ def debug_print(level: str, message: str, *args):
         message: Message format string
         *args: Arguments for message formatting
     """
-    module_name = __name__
-    formatted_message = message % args if args else message
-    print(f"[{level}] [{module_name}] {formatted_message}")
+    logging.getLogger(__name__).log(getattr(logging, level), message, *args)
 
 
 def _iter_plugin_entry_points() -> List[Any]:
@@ -118,7 +117,9 @@ def load_all_plugins() -> Dict[str, ModuleType]:
             # Add to plugin dictionary
             plugins[name] = module
 
-            debug_print(LOG_LEVEL_INFO, "ES plugin '%s' loaded: %s", name, module.__name__)
+            debug_print(
+                LOG_LEVEL_INFO, "ES plugin '%s' loaded: %s", name, module.__name__
+            )
 
         except AttributeError as err:
             debug_print(

@@ -952,3 +952,25 @@ TEST_F(HcomKernelBuilderTest, st_SetPrivateDefWithTensorInfo) {
   HcclResult result = hcomOpsKernelInfoStore_.SetPrivateDefWithTensorInfo(*nodeptr, privateDefBuf, taskDef);
   EXPECT_EQ(result, HCCL_SUCCESS);
 }
+
+TEST_F(HcomKernelBuilderTest, st_GetCountsFromOpDesc_When_AllGatherVCountsEmpty) {
+  HcomOpsKernelBuilder builder;
+  ge::NodePtr node(new NodeTest);
+  std::vector<int64_t> counts;
+  MOCKER(&HcomOpUtils::GetAllGatherVCountsDispl).expects(once()).will(returnValue(HCCL_SUCCESS));
+
+  EXPECT_EQ(builder.GetCountsFromOpDesc(*node, counts, HcclCMDType::HCCL_CMD_ALLGATHER_V), HCCL_E_PTR);
+  EXPECT_TRUE(counts.empty());
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomKernelBuilderTest, st_GetCountsFromOpDesc_When_ReduceScatterVCountsEmpty) {
+  HcomOpsKernelBuilder builder;
+  ge::NodePtr node(new NodeTest);
+  std::vector<int64_t> counts;
+  MOCKER(&HcomOpUtils::GetReduceScatterVCountsDispl).expects(once()).will(returnValue(HCCL_SUCCESS));
+
+  EXPECT_EQ(builder.GetCountsFromOpDesc(*node, counts, HcclCMDType::HCCL_CMD_REDUCE_SCATTER_V), HCCL_SUCCESS);
+  EXPECT_TRUE(counts.empty());
+  GlobalMockObject::verify();
+}

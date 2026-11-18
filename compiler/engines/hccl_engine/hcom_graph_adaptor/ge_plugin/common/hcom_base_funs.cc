@@ -312,7 +312,7 @@ bool IsSocVersion91093(std::string socVersion) {
 void SetThreadName(const std::string &threadStr) {
   // 线程名应限制在15个字符内，防止被截断
   s32 sRet = pthread_setname_np(pthread_self(), threadStr.c_str());
-  CHK_PRT_CONT(sRet != 0, HCCL_WARNING("err[%d] link[%s] nameSet failed.", sRet, threadStr.c_str()));
+  CHK_PRT_CONT(sRet != 0, HCCL_WARNING("err[%d] link[%s] Setting thread name failed.", sRet, threadStr.c_str()));
 }
 
 // 字符串转换成整型

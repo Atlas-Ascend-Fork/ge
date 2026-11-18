@@ -166,7 +166,7 @@ std::vector<VersionMeta> HistoryRegistryReader::SelectWindowVersions(const std::
                                                                      const std::string &current_version,
                                                                      int window_days) {
   if (all_versions.empty()) {
-    std::cout << "Ops history registry versions is empty." << std::endl;
+    std::cout << "Ops history registry versions are empty." << std::endl;
     return {};
   }
 

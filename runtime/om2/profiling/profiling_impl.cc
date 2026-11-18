@@ -109,7 +109,7 @@ void AppendTensorInfo(const GertModelTaskIoEntry *entries, uint64_t entry_num, c
                       std::vector<std::vector<int64_t>> &shapes) {
   if (entries == nullptr) {
     if (entry_num != 0U) {
-      GELOGW("Task io entries is null, op_name=%s, entry_num=%llu", op_name,
+      GELOGW("Task io entries are null, op_name=%s, entry_num=%llu", op_name,
              static_cast<unsigned long long>(entry_num));
     }
     return;

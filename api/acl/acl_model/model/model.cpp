@@ -791,7 +791,7 @@ static aclError RuntimeV2ModelExecute(const uint32_t modelId, const aclmdlDatase
     const auto dataBuffer = input->blobs[i].dataBuf;
     if (dataBuffer == nullptr) {
       ACL_LOG_ERROR(
-          "[Check][dataBuffer]input dataset blobs is null, "
+          "[Check][dataBuffer]input dataset blobs are null, "
           "modelId[%d], index[%zu]",
           modelId, i);
       acl::AclErrorLogManager::ReportInputError(acl::INVALID_NULL_POINTER_MSG, std::vector<const char *>({"param"}),
@@ -835,7 +835,7 @@ static aclError RuntimeV2ModelExecute(const uint32_t modelId, const aclmdlDatase
   for (size_t i = 0UL; i < output->blobs.size(); ++i) {
     const auto dataBuffer = output->blobs[i].dataBuf;
     if (dataBuffer == nullptr) {
-      ACL_LOG_ERROR("[Check][Databuffer]output dataset blobs is null, modelId[%d], index[%zu]", modelId, i);
+      ACL_LOG_ERROR("[Check][Databuffer]output dataset blobs are null, modelId[%d], index[%zu]", modelId, i);
       acl::AclErrorLogManager::ReportInputError(acl::INVALID_NULL_POINTER_MSG, std::vector<const char *>({"param"}),
                                                 std::vector<const char *>({"dataBuffer"}));
       return ACL_ERROR_INVALID_PARAM;
@@ -947,7 +947,7 @@ static aclError ModelExecute(const uint32_t modelId, const aclmdlDataset *const 
     const auto dataBuffer = input->blobs[i].dataBuf;
     if (dataBuffer == nullptr) {
       ACL_LOG_ERROR(
-          "[Check][dataBuffer]input dataset blobs is null, "
+          "[Check][dataBuffer]input dataset blobs are null, "
           "modelId[%d], index[%zu]",
           modelId, i);
       acl::AclErrorLogManager::ReportInputError(acl::INVALID_NULL_POINTER_MSG, std::vector<const char *>({"param"}),
@@ -973,7 +973,7 @@ static aclError ModelExecute(const uint32_t modelId, const aclmdlDataset *const 
     ge::DataBuffer &outputBuffer = outputData.blobs[i];
     const auto dataBuffer = output->blobs[i].dataBuf;
     if (dataBuffer == nullptr) {
-      ACL_LOG_ERROR("[Check][Databuffer]output dataset blobs is null, modelId[%d], index[%zu]", modelId, i);
+      ACL_LOG_ERROR("[Check][Databuffer]output dataset blobs are null, modelId[%d], index[%zu]", modelId, i);
       acl::AclErrorLogManager::ReportInputError(acl::INVALID_NULL_POINTER_MSG, std::vector<const char *>({"param"}),
                                                 std::vector<const char *>({"dataBuffer"}));
       return ACL_ERROR_INVALID_PARAM;

@@ -105,7 +105,7 @@ ge::Status LoweringGraphPostProc(const LowerResult *graph_result, const std::vec
                                  const std::vector<bg::ValueHolderPtr> &free_vec,
                                  const std::vector<bg::ValueHolderPtr> &alloc_vec) {
   if (task_ret.size() != static_cast<size_t>(TaskProcKey::kNUM)) {
-    GELOGE(ge::FAILED, "Task launch return num[%zu] is error", task_ret.size());
+    GELOGE(ge::FAILED, "Task launch return num[%zu] is invalid", task_ret.size());
     return ge::FAILED;
   }
   if (graph_result == nullptr || graph_result->order_holders.empty()) {

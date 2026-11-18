@@ -238,7 +238,7 @@ Status NoPaddingContinuousOutputNodeSizeChecker(const NodeCheckerParam &param) {
                          "nopadding continuous output node memory size check failed. valid memory range: "
                          "[%" PRId64 ", %" PRId64 "), last PhonySplit: %s, out_index: %d, out_offset: %" PRId64
                          ", out_offset_end: "
-                         "%" PRId64 ", first PhonySplit input node: %s,  out_index: %d",
+                         "%" PRId64 ", first PhonySplit input node: %s, out_index: %d",
                          continuous_mem_start, continuous_mem_end,
                          NodeCheckerUtils::NodeName(last_ps_out_anchor->GetOwnerNodeBarePtr()).c_str(),
                          last_ps_out_anchor->GetIdx(), out_offset, out_offset_end,
@@ -249,7 +249,7 @@ Status NoPaddingContinuousOutputNodeSizeChecker(const NodeCheckerParam &param) {
            ", "
            "%" PRId64 "), last  PhonySplit: %s, out_index: %d, out_offset: %" PRId64 ", out_offset_end: %" PRId64
            ","
-           " first PhonySplit input node: %s,  out_index: %d",
+           " first PhonySplit input node: %s, out_index: %d",
            continuous_mem_start, continuous_mem_end,
            NodeCheckerUtils::NodeName(last_ps_out_anchor->GetOwnerNodeBarePtr()).c_str(), last_ps_out_anchor->GetIdx(),
            out_offset, out_offset_end,

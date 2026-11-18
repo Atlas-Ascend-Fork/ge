@@ -413,7 +413,7 @@ Status UdfExecutorClient::ClearModelRunningData(uint32_t model_id, int32_t type,
       GE_CHK_STATUS_RET(client->SendRequest(executor_request, executor_response, kRspWaitTimeInSec),
                         "[Send][ControlMessage] failed to executor, pid = %d", pid);
       if (executor_response.error_code() != SUCCESS) {
-        GELOGE(FAILED, "[Control][Message] get from pid = %d is failed, error_message = %s", pid,
+        GELOGE(FAILED, "[Control][Message] get from pid = %d failed, error_message = %s", pid,
                executor_response.error_message().c_str());
         return FAILED;
       }

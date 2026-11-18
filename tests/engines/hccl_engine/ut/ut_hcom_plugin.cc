@@ -935,3 +935,12 @@ TEST_F(HcomPluginTest, ut_ConfigHcclDeterministic_When_OptionNotSet_Expect_Retur
 
   GlobalMockObject::verify();
 }
+
+TEST_F(HcomPluginTest, ut_GetOpsKernelInfoStores_When_Uninitialized_Expect_NoStore) {
+  HcomPlugin plugin;
+  std::map<std::string, OpsKernelInfoStorePtr> stores;
+
+  plugin.GetOpsKernelInfoStores(stores);
+
+  EXPECT_TRUE(stores.empty());
+}

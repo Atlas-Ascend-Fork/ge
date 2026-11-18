@@ -188,7 +188,7 @@ Status PackKernel::CopyOutputData(const GeShape &final_shape, const std::vector<
   for (int64_t i = 0; i < axis_; i++) {
     times *= final_shape.GetDim(static_cast<size_t>(i));
   }
-  GELOGD("Copy output data times is %ld, unit is %ld.", times, unit);
+  GELOGD("Output data copy count is %ld, unit is %ld.", times, unit);
 
   uint32_t data_size = GetSizeByDataType(data_type_);
   // assume output shape is [A,N,B,C], time=A,unit=B*C

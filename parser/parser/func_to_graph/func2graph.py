@@ -360,7 +360,7 @@ def usage():
         the input file directory.
         The name of the sub graph is same as the name of the corresponding functionDef.
 
-        Usage: func2grpah.py <command>
+        Usage: func2graph.py <command>
 
         Available commands:
           model (-m)              Input model file.
