@@ -41,6 +41,7 @@
 #include "graph/utils/tensor_adapter.h"
 #include "graph/label/label_maker.h"
 #include "api/gelib/gelib.h"
+#include "common/option_supportion_checker/option_supportion_checker.h"
 #include "graph/build/stream/stream_utils.h"
 #include "register/register_custom_pass.h"
 #include "graph/optimize/symbolic/shape_env_guarder.h"
@@ -595,6 +596,13 @@ TEST_F(UtestGeApi, AddGraph_test) {
   Status ret = session.AddGraph(graph_id, graph, option);
   EXPECT_EQ(ret, SUCCESS);
   EXPECT_EQ(GEFinalize(), SUCCESS);
+}
+
+TEST_F(UtestGeApi, H2DOverlapOptionIsSupportedByGEAPILevels) {
+  const std::map<std::string, std::string> options = {{"ge.compile.h2dOverlappedWithCompute", "1"}};
+  EXPECT_EQ(GEAPICheckSupportedGlobalOptions(options), SUCCESS);
+  EXPECT_EQ(GEAPICheckSupportedSessionOptions(options), SUCCESS);
+  EXPECT_EQ(GEAPICheckSupportedGraphOptions(options), SUCCESS);
 }
 
 TEST_F(UtestGeApi, AddGraph_test_fail) {
