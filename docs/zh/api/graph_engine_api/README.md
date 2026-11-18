@@ -170,6 +170,7 @@
     - [EsCreateEsCTensor](c/esb_funcs/EsCreateEsCTensor.md)
     - [EsCreateEsCTensorFromFile](c/esb_funcs/EsCreateEsCTensorFromFile.md)
     - [EsCreateGraphBuilder](c/esb_funcs/EsCreateGraphBuilder.md)
+    - [EsCreateGraphBuilderWithKind](c/esb_funcs/EsCreateGraphBuilderWithKind.md)
     - [EsCreateGraphInputWithDetails](c/esb_funcs/EsCreateGraphInputWithDetails.md)
     - [EsCreateGraphInput](c/esb_funcs/EsCreateGraphInput.md)
     - [EsCreateConstInt64](c/esb_funcs/EsCreateConstInt64.md)

@@ -39,4 +39,4 @@ EsCTensorHolder *AddGraphInput(int32_t index, const ge::char_t *name = nullptr, 
 
 ## 约束说明
 
-无
+- 当构建器以执行图类别创建（[EsCGraphBuilder](EsCGraphBuilder_constructor_and_destructor.md)构造时`kind`为`C_GRAPH_EXECUTE`）时，输入类型`type`仅支持Data、AippData、ConstData三种。

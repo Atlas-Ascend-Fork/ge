@@ -12,6 +12,7 @@
 
 ```c++
 explicit EsGraphBuilder(const char *name);
+EsGraphBuilder(const char *name, GraphKind kind);
 template <typename T>
 std::unique_ptr<Tensor> CreateTensor(const std::vector<T> &value, const std::vector<int64_t> &dims, DataType dt,Format format = FORMAT_ND);
 std::unique_ptr<Tensor> CreateBoolTensor(const std::vector<bool> &value, const std::vector<int64_t> &dims, Format format = FORMAT_ND);

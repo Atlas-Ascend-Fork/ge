@@ -39,4 +39,5 @@ graphStatus GetAllOpName(std::vector<AscendString> &names) const
 
 ## 约束说明
 
-此接口为非必需接口，与[AddOp](AddOp.md)搭配使用。
+- 此接口为非必需接口，与[AddOp](AddOp.md)搭配使用。
+- 仅计算图支持该接口：当Graph以执行图类别构造（`Graph(name, C_GRAPH_EXECUTE)`）时，调用该接口返回GRAPH_FAILED，并上报错误码E18888。

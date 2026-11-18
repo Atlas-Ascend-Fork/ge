@@ -36,7 +36,7 @@ static GraphPtr ConstructFromInputs(const std::vector<Operator> &inputs, const A
 
 ## 约束说明
 
-无
+- 仅生成计算图类别的Graph对象；如需构造执行图，请使用`Graph(name, C_GRAPH_EXECUTE)`构造后经[SetInputs](SetInputs.md)导入。
 
 ## 调用示例
 

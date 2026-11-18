@@ -13,6 +13,7 @@ C风格的图构建器结构体，C、C++的内部实现类，C用户构图调�
 ```c++
 EsCGraphBuilder()
 explicit EsCGraphBuilder(const char *name)
+EsCGraphBuilder(const char *name, ge::GraphKind kind)
 ~EsCGraphBuilder()
 EsCGraphBuilder(EsCGraphBuilder &&) noexcept
 EsCGraphBuilder &operator=(EsCGraphBuilder &&) noexcept

@@ -58,7 +58,7 @@
 
 ## 约束说明
 
-无
+- 当图构建器以执行图类别创建（[EsGraphBuilder](EsGraphBuilder_constructor.md)构造时`kind`为`C_GRAPH_EXECUTE`）时，输入类型`type`仅支持Data、AippData、ConstData三种。
 
 ## 调用示例
 

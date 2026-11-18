@@ -37,4 +37,5 @@ graphStatus SaveToFile(const char_t *file_name) const
 
 ## 约束说明
 
-保存的文件格式为air格式，可以通过[LoadFromFile](LoadFromFile.md)接口还原为graph对象。
+- 保存的文件格式为air格式，可以通过[LoadFromFile](LoadFromFile.md)接口还原为graph对象。
+- 仅计算图支持该接口：当Graph以执行图类别构造（`Graph(name, C_GRAPH_EXECUTE)`）时，调用该接口返回GRAPH_FAILED，并上报错误码E18888。执行图不支持序列化保存，如需查看图结构，可使用[Dump](Dump.md)或[DumpToFile](DumpToFile.md)接口。
