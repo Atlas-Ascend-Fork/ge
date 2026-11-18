@@ -11,7 +11,6 @@
 #include <list>
 #include "framework/common/framework_types_internal.h"
 #include "common/util.h"
-#include "common/plugin/ge_make_unique_util.h"
 #include "graph/optimize/symbolic/symbol_compute_context.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "graph/optimize/symbolic/symbolic_kernel_factory.h"
@@ -35,22 +34,22 @@ graphStatus GetMultiplesDims(const gert::InferSymbolComputeContext *context, std
 
   auto input_tensor = context->GetInputSymbolTensor(kMultiplesInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_tensor);
-  auto multiples_symbols = input_tensor->GetSymbolicValue();
-  if (multiples_symbols == nullptr) {
+  const auto multiples_symbols = SymbolicInferUtil::GetSymbolicValues(*input_tensor);
+  if (multiples_symbols.empty()) {
     GELOGW("SymbolicKernel compute unsupported, reason: get %zu input symbolic value failed, node %s[%s].",
            kMultiplesInputIndex, context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
-  if (multiples_symbols->size() > kMaxSupportDim) {
+  if (multiples_symbols.size() > kMaxSupportDim) {
     GELOGW("SymbolicKernel compute unsupported, reason: multiples_symbols size(%zu) over limit(%zu), node %s[%s].",
-           multiples_symbols->size(), kMaxSupportDim, context->GetNodeName(), context->GetNodeType());
+           multiples_symbols.size(), kMaxSupportDim, context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
 
   multiples_dims.clear();
-  for (size_t i = 0UL; i < multiples_symbols->size(); i++) {
+  for (size_t i = 0UL; i < multiples_symbols.size(); i++) {
     int64_t dim = 0L;
-    if (!(*multiples_symbols)[i].GetConstValue(dim)) {
+    if (!(multiples_symbols)[i].GetConstValue(dim)) {
       GELOGW("SymbolicKernel compute unsupported, reason: get %zu input const value failed, node %s[%s].", i,
              context->GetNodeName(), context->GetNodeType());
       return UNSUPPORTED;
@@ -161,8 +160,8 @@ static graphStatus TileSymbolicKernelCompute(gert::InferSymbolComputeContext *co
   GELOGI("Input x shape dims: %s, multiples dims: %s.", SymbolicInferUtil::VectorToStr(x_dims).c_str(),
          SymbolicInferUtil::VectorToStr(multiples_dims).c_str());
   // 获取value的值
-  auto x_symbols = context->GetInputSymbolTensor(kXInputIndex)->GetSymbolicValue();
-  if (x_symbols == nullptr) {
+  const auto x_symbols = SymbolicInferUtil::GetSymbolicValues(*context->GetInputSymbolTensor(kXInputIndex));
+  if (x_symbols.empty()) {
     GELOGW("SymbolicKernel compute unsupported, reason: get input symbolic value failed, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
@@ -171,16 +170,16 @@ static graphStatus TileSymbolicKernelCompute(gert::InferSymbolComputeContext *co
   // 负multiples等非法输入的ErrorResult由驱动打挂推导）
   auto output_symbols = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output_symbols);
-  auto output_symbols_value = output_symbols->MutableSymbolicValue();
-  GE_ASSERT_NOTNULL(output_symbols_value);
-  const auto tile_ret = TileInputXSymbols(x_dims, multiples_dims, *x_symbols, *output_symbols_value);
+  std::vector<Expression> output_symbols_value;
+  const auto tile_ret = TileInputXSymbols(x_dims, multiples_dims, x_symbols, output_symbols_value);
   if (tile_ret != SUCCESS) {
     return tile_ret;
   }
   // 计算输出shape
   std::vector<Expression> output_shape_symbols;
   GE_ASSERT_SUCCESS(CalcOutputShapeSymbols(x_dims, multiples_dims, output_shape_symbols));
-  output_symbols->MutableOriginSymbolShape().MutableDims() = output_shape_symbols;
+  SymbolicInferUtil::SetSymbolDims(*output_symbols, output_shape_symbols);
+  SymbolicInferUtil::SetSymbolicValues(*output_symbols, output_symbols_value);
 
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_symbols).c_str());
@@ -197,19 +196,19 @@ graphStatus GetBroadcastTargetDims(const gert::InferSymbolComputeContext *contex
                                    std::vector<int64_t> &target_dims) {
   auto shape_tensor = context->GetInputSymbolTensor(kShapeInputIndex);
   GE_UNSUPPORTED_IF_NULL(shape_tensor);
-  auto shape_symbols = shape_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(shape_symbols);
-  if (shape_symbols->empty() || shape_symbols->size() > kMaxSupportDim) {
+  GE_UNSUPPORTED_IF(!shape_tensor->HasValue());
+  const auto shape_symbols = SymbolicInferUtil::GetSymbolicValues(*shape_tensor);
+  if (shape_symbols.empty() || shape_symbols.size() > kMaxSupportDim) {
     GELOGW("SymbolicKernel compute unsupported, reason: target shape rank(%zu) invalid, node %s[%s].",
-           shape_symbols->size(), context->GetNodeName(), context->GetNodeType());
+           shape_symbols.size(), context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
 
   target_dims.clear();
-  const int64_t diff = static_cast<int64_t>(shape_symbols->size() - x_dims.size());
-  for (size_t i = 0UL; i < shape_symbols->size(); i++) {
+  const int64_t diff = static_cast<int64_t>(shape_symbols.size() - x_dims.size());
+  for (size_t i = 0UL; i < shape_symbols.size(); i++) {
     int64_t dim = 0L;
-    if (!(*shape_symbols)[i].GetConstValue(dim)) {
+    if (!shape_symbols[i].GetConstValue(dim)) {
       GELOGW("SymbolicKernel compute unsupported, reason: target dim(%zu) is not constant, node %s[%s].", i,
              context->GetNodeName(), context->GetNodeType());
       return UNSUPPORTED;
@@ -336,10 +335,10 @@ static graphStatus BroadcastToSymbolicKernelCompute(gert::InferSymbolComputeCont
   // 获取x的SymbolicValue并广播
   auto x_tensor = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(x_tensor);
-  auto x_symbols = x_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(x_symbols);
+  GE_UNSUPPORTED_IF(!x_tensor->HasValue());
+  const auto x_symbols = SymbolicInferUtil::GetSymbolicValues(*x_tensor);
   std::vector<Expression> output_values;
-  GE_ASSERT_SUCCESS(BroadcastInputXSymbols(*x_symbols, x_dims, target_dims, output_values));
+  GE_ASSERT_SUCCESS(BroadcastInputXSymbols(x_symbols, x_dims, target_dims, output_values));
 
   // 写入输出Shape和SymbolicValue
   auto output_tensor = context->GetOutputSymbolTensor(kOutputIndex);
@@ -348,11 +347,8 @@ static graphStatus BroadcastToSymbolicKernelCompute(gert::InferSymbolComputeCont
   for (auto dim : target_dims) {
     output_shape_symbols.emplace_back(Symbol(dim));
   }
-  output_tensor->MutableOriginSymbolShape().MutableDims() = output_shape_symbols;
-  auto output_values_unique = MakeUnique<std::vector<Expression>>(std::move(output_values));
-  if (output_values_unique != nullptr) {
-    output_tensor->SetSymbolicValue(std::move(output_values_unique));
-  }
+  SymbolicInferUtil::SetSymbolDims(*output_tensor, output_shape_symbols);
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, output_values);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_tensor).c_str());
   return SUCCESS;

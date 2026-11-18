@@ -13,20 +13,20 @@
 namespace ge {
 bool ExpectNodeInfo::ExpectShapeCheck(const gert::SymbolShape &real_shape) const {
   if (GetExpectSymbolOutputShape().empty()) {
-    GE_ASSERT_TRUE(real_shape.IsScalar());
+    GE_ASSERT_TRUE(real_shape.GetDimNum() == 0U);
   }
   GE_ASSERT_EQ(real_shape.GetDimNum(), GetExpectSymbolOutputShape().size());
-  if (real_shape.GetDims() != GetExpectSymbolOutputShape()) {
+  if (SymbolicInferUtil::GetSymbolDims(real_shape) != GetExpectSymbolOutputShape()) {
     std::string real_str, expect_str;
     for (size_t i = 0; i < real_shape.GetDimNum(); i++) {
-      real_str += std::string(real_shape.GetDim(i).Serialize().get()) + (i + 1 < real_shape.GetDimNum() ? ", " : "");
-      expect_str += std::string(GetExpectSymbolOutputShape()[i].Serialize().get()) +
+      real_str += std::string(real_shape.GetDim(i).Str().get()) + (i + 1 < real_shape.GetDimNum() ? ", " : "");
+      expect_str += std::string(GetExpectSymbolOutputShape()[i].Str().get()) +
                     (i + 1 < GetExpectSymbolOutputShape().size() ? ", " : "");
     }
     GELOGE(ge::FAILED, "ExpectShapeCheck FAIL: node=%s, actual=[%s], expected=[%s]", GetNodeName().c_str(),
            real_str.c_str(), expect_str.c_str());
   }
-  GE_ASSERT_TRUE(real_shape.GetDims() == GetExpectSymbolOutputShape());
+  GE_ASSERT_TRUE(SymbolicInferUtil::GetSymbolDims(real_shape) == GetExpectSymbolOutputShape());
   return true;
 }
 bool ExpectNodeInfo::ExpectGuardInfoCheck(const std::vector<SymbolCheckInfo> real_guard) const {
@@ -35,7 +35,7 @@ bool ExpectNodeInfo::ExpectGuardInfoCheck(const std::vector<SymbolCheckInfo> rea
   }
   GE_ASSERT_EQ(real_guard.size(), GetExpectGuardInfos().size());
   for (auto &iter : real_guard) {
-    GE_ASSERT_TRUE(GetExpectGuardInfos().find(std::string(iter.expr.Serialize().get())) != GetExpectGuardInfos().end());
+    GE_ASSERT_TRUE(GetExpectGuardInfos().find(std::string(iter.expr.Str().get())) != GetExpectGuardInfos().end());
   }
   return true;
 }
@@ -46,8 +46,7 @@ bool ExpectNodeInfo::ExpectAssertInfoCheck(const std::vector<SymbolCheckInfo> re
   }
   GE_ASSERT_EQ(real_assert.size(), GetExpectAssertInfos().size());
   for (auto &iter : real_assert) {
-    GE_ASSERT_TRUE(GetExpectAssertInfos().find(std::string(iter.expr.Serialize().get())) !=
-                   GetExpectAssertInfos().end());
+    GE_ASSERT_TRUE(GetExpectAssertInfos().find(std::string(iter.expr.Str().get())) != GetExpectAssertInfos().end());
   }
   return true;
 }
@@ -93,8 +92,8 @@ Status RunSymbolInferenceTest(const ComputeGraphPtr &cg, const std::vector<Expec
       GE_ASSERT_TRUE(node.ExpectGuardInfoCheck(guard_infos));
       const auto assert_infos = shape_env_attr->GetAllSymbolAssertInfos();
       GE_ASSERT_TRUE(node.ExpectAssertInfoCheck(assert_infos));
-      const auto symbol_value = attr->symbolic_tensor.GetSymbolicValue();
-      GE_ASSERT_TRUE(node.ExpectSymbolValCheck(symbol_value));
+      const auto symbol_value = SymbolicInferUtil::GetSymbolicValues(attr->symbolic_tensor);
+      GE_ASSERT_TRUE(node.ExpectSymbolValCheck(&symbol_value));
     }
   }
   return SUCCESS;

@@ -53,7 +53,7 @@ graphStatus InferShape4XopWithSymbolInfer(gert::InferSymbolShapeContext *context
   GE_ASSERT_NOTNULL(input_shape);
   auto output_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(output_shape);
-  output_shape->MutableDims() = input_shape->GetDims();
+  *output_shape = *input_shape;
   return ge::GRAPH_SUCCESS;
 }
 

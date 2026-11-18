@@ -27,6 +27,7 @@ constexpr int32_t kSizeTwo = 2;
 
 class ExpressionImpl;
 using ExpressionImplPtr = std::unique_ptr<ExpressionImpl>;
+std::ostream &operator<<(std::ostream &os, const ExpressionImpl &e);
 using RelationalFunc = std::function<SymEngine::RCP<const SymEngine::Basic>(
     const SymEngine::RCP<const SymEngine::Basic> &, const SymEngine::RCP<const SymEngine::Basic> &)>;
 
@@ -77,19 +78,15 @@ class ExpressionImpl {
   static ExpressionImplPtr Deserialize(const std::string &expr_str);
   ExprType GetExprType() const;
   bool IsConstExpr() const;
-  bool IsVariableExpr() const;
   bool IsBooleanExpr() const;
   ExpressionImplPtr Replace(const std::map<ExpressionImpl *, ExpressionImpl *> &replace_vars) const;
   ExpressionImplPtr Subs(const std::map<ExpressionImpl *, ExpressionImpl *> &subs_vars) const;
   void AsNumerDenom(ExpressionImplPtr &numer, ExpressionImplPtr &denom) const;
 
   ExpressionImplPtr Simplify() const;
-  bool ContainVar(const ExpressionImpl *e) const;
   bool operator==(const ExpressionImpl &e) const;
   std::vector<ExpressionImplPtr> FreeSymbols() const;
   OperationType GetOpType() const;
-  std::string GetName() const;
-  bool GetResult(double &result) const;
   uint64_t Hash() const;
   int64_t Compare(const ExpressionImpl &e) const;
 
@@ -172,7 +169,6 @@ ExpressionImplPtr Coeff(const ExpressionImplPtr &b, const ExpressionImplPtr &x, 
 ExpressionImplPtr Ceiling(const ExpressionImplPtr &a);
 ExpressionImplPtr Floor(const ExpressionImplPtr &a);
 ExpressionImplPtr Rational(const ExpressionImplPtr &a, const ExpressionImplPtr &b);
-std::ostream &operator<<(std::ostream &os, const ExpressionImpl &e);
 ExpressionImplPtr Eq(const ExpressionImplPtr &a, const ExpressionImplPtr &b);
 ExpressionImplPtr Ne(const ExpressionImplPtr &a, const ExpressionImplPtr &b);
 ExpressionImplPtr Lt(const ExpressionImplPtr &a, const ExpressionImplPtr &b);

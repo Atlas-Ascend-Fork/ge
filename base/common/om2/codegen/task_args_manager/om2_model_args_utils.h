@@ -122,6 +122,8 @@ class ModelUtils {
   static std::vector<uint64_t> GetOutputDataAddrsValue(const RuntimeParam &model_param, const ConstOpDescPtr &op_desc);
   static std::vector<uint64_t> GetOutputDataAddrsValue(const RuntimeParam &model_param, const ConstOpDescPtr &op_desc,
                                                        std::vector<uint64_t> &mem_type);
+  static std::vector<uint64_t> GetOutputDataAddrsValue(const RuntimeParam &model_param, const ConstOpDescPtr &op_desc,
+                                                       std::vector<uint64_t> &mem_type, const bool has_optional_addr);
 
   static Status GetInputOutputDescAddrs(const RuntimeParam &model_param, const ConstOpDescPtr &op_desc,
                                         const OpDesc::Vistor<GeTensorDescPtr> &tensor_desc_visitor,

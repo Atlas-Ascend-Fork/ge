@@ -423,6 +423,13 @@ std::vector<uint64_t> ModelUtils::GetOutputDataAddrsValue(const RuntimeParam &mo
   return VPtrToValue(GetOutputDataAddrs(model_param, op_desc, mem_type));
 }
 
+std::vector<uint64_t> ModelUtils::GetOutputDataAddrsValue(const RuntimeParam &model_param,
+                                                          const ConstOpDescPtr &op_desc,
+                                                          std::vector<uint64_t> &mem_type,
+                                                          const bool has_optional_addr) {
+  return VPtrToValue(GetOutputDataAddrs(model_param, op_desc, mem_type, has_optional_addr));
+}
+
 std::vector<void *> ModelUtils::GetOutputDataAddrs(const RuntimeParam &model_param, const ConstOpDescPtr &op_desc) {
   std::vector<uint64_t> mem_type;
   return GetOutputDataAddrs(model_param, op_desc, mem_type);

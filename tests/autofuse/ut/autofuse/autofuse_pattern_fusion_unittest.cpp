@@ -47,7 +47,7 @@ static void SetOutputSymbolicShape(const NodePtr &node) {
   node->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
 }
 
 REG_OP(ConcatV2D)
@@ -211,7 +211,7 @@ REG_OP(ConcatV2D)
   ConcatNode2_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
 
   ConcatNode3_1->GetOpDesc()->UpdateInputDesc(0, ConcatNode2_1->GetOpDesc()->GetOutputDesc(0));
   ConcatNode3_1->GetOpDesc()->UpdateInputDesc(1, node_cast3->GetOpDesc()->GetOutputDesc(0));
@@ -221,7 +221,7 @@ REG_OP(ConcatV2D)
   ConcatNode3_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   SetOutputSymbolicShape(node_switch1);
   SetOutputSymbolicShape(node_switch2);
   SetOutputSymbolicShape(node_switch3);
@@ -376,11 +376,11 @@ TEST_F(PatternFusionBeforeAutoFuseUT, SplitCombineProcess) {
   SplitNode1_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   SplitNode1_1->GetOpDesc()
       ->MutableOutputDesc(1)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
 
   SplitNode2_1->GetOpDesc()->UpdateInputDesc(0, SplitNode1_1->GetOpDesc()->GetOutputDesc(0));
   SplitNode2_1->GetOpDesc()->UpdateOutputDesc(0, tensor_desc_c);
@@ -499,11 +499,11 @@ TEST_F(PatternFusionBeforeAutoFuseUT, SplitVDCombineProcess) {
   SplitNode1_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   SplitNode1_1->GetOpDesc()
       ->MutableOutputDesc(1)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
 
   SplitNode2_1->GetOpDesc()->UpdateInputDesc(0, SplitNode1_1->GetOpDesc()->GetOutputDesc(0));
   SplitNode2_1->GetOpDesc()->UpdateOutputDesc(0, tensor_desc_c);
@@ -664,11 +664,11 @@ TEST_F(PatternFusionBeforeAutoFuseUT, SplitCombineProcessNoSplitD) {
   SplitNode1_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   SplitNode1_1->GetOpDesc()
       ->MutableOutputDesc(1)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
 
   SplitNode2_1->GetOpDesc()->UpdateInputDesc(0, SplitNode1_1->GetOpDesc()->GetOutputDesc(0));
   SplitNode2_1->GetOpDesc()->UpdateOutputDesc(0, tensor_desc_c);
@@ -824,11 +824,11 @@ TEST_F(PatternFusionBeforeAutoFuseUT, SplitVCombineProcess) {
   SplitNode1_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   SplitNode1_1->GetOpDesc()
       ->MutableOutputDesc(1)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
 
   SplitNode2_1->GetOpDesc()->UpdateInputDesc(0, SplitNode1_1->GetOpDesc()->GetOutputDesc(0));
   SplitNode2_1->GetOpDesc()->UpdateOutputDesc(0, tensor_desc_c);
@@ -996,7 +996,7 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_env_not_enabled) {
   ConcatNode2_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
 
   ConcatNode3_1->GetOpDesc()->UpdateInputDesc(0, ConcatNode2_1->GetOpDesc()->GetOutputDesc(0));
   ConcatNode3_1->GetOpDesc()->UpdateInputDesc(1, node_cast3->GetOpDesc()->GetOutputDesc(0));
@@ -1006,7 +1006,7 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_env_not_enabled) {
   ConcatNode3_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   SetOutputSymbolicShape(node_switch1);
   SetOutputSymbolicShape(node_switch2);
   SetOutputSymbolicShape(node_switch3);
@@ -1179,7 +1179,7 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_2) {
   ConcatNode2_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
 
   ConcatNode3_1->GetOpDesc()->UpdateInputDesc(0, ConcatNode2_1->GetOpDesc()->GetOutputDesc(0));
   ConcatNode3_1->GetOpDesc()->UpdateInputDesc(1, node_cast3->GetOpDesc()->GetOutputDesc(0));
@@ -1190,7 +1190,7 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_2) {
   ConcatNode3_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   SetOutputSymbolicShape(node_switch1);
   SetOutputSymbolicShape(node_switch2);
   SetOutputSymbolicShape(node_switch3);
@@ -1369,7 +1369,7 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_3) {
   ConcatNode2_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   GraphUtils::AddEdge(node_switch1->GetOutControlAnchor(), ConcatNode2_1->GetInControlAnchor());
 
   ConcatNode3_1->GetOpDesc()->UpdateInputDesc(0, ConcatNode2_1->GetOpDesc()->GetOutputDesc(0));
@@ -1381,7 +1381,7 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_3) {
   ConcatNode3_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   SetOutputSymbolicShape(node_switch1);
   SetOutputSymbolicShape(node_switch2);
   SetOutputSymbolicShape(node_switch3);
@@ -1607,7 +1607,7 @@ REG_OP(ConcatV2)
   ConcatNode2_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   GraphUtils::AddEdge(node_switch1->GetOutControlAnchor(), ConcatNode2_1->GetInControlAnchor());
 
   ConcatNode3_1->GetOpDesc()->UpdateInputDesc(0, ConcatNode2_1->GetOpDesc()->GetOutputDesc(0));
@@ -1619,7 +1619,7 @@ REG_OP(ConcatV2)
   ConcatNode3_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   SetOutputSymbolicShape(node_switch1);
   SetOutputSymbolicShape(node_switch2);
   SetOutputSymbolicShape(node_switch3);
@@ -1833,7 +1833,7 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_5) {
   ConcatNode2_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   GraphUtils::AddEdge(node_switch1->GetOutControlAnchor(), ConcatNode2_1->GetInControlAnchor());
 
   ConcatNode3_1->GetOpDesc()->UpdateInputDesc(0, ConcatNode2_1->GetOpDesc()->GetOutputDesc(0));
@@ -1845,7 +1845,7 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_5) {
   ConcatNode2_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   graph->TopologicalSorting();
   FlattenConcatPass multiConcatFusionPro;
   auto result = multiConcatFusionPro.Run(graph);
@@ -2049,7 +2049,7 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_6) {
   ConcatNode2_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   GraphUtils::AddEdge(node_switch1->GetOutControlAnchor(), ConcatNode2_1->GetInControlAnchor());
 
   ConcatNode3_1->GetOpDesc()->UpdateInputDesc(0, ConcatNode2_1->GetOpDesc()->GetOutputDesc(0));
@@ -2061,7 +2061,7 @@ TEST_F(PatternFusionBeforeAutoFuseUT, ConcatCombineProcess_6) {
   ConcatNode3_1->GetOpDesc()
       ->MutableOutputDesc(0)
       ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+      ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   SetOutputSymbolicShape(node_switch1);
   SetOutputSymbolicShape(node_switch2);
   SetOutputSymbolicShape(node_switch3);

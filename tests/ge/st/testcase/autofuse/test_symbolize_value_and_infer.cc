@@ -13,6 +13,7 @@
 #include "graph/utils/graph_utils_ex.h"
 #include "es_ge_test_ops_c.h"
 #include "compiler/graph/optimize/symbolic/infer_symbolic_shape/symbolic_shape_inference.h"
+#include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "compiler/graph/passes/feature/auto_fuse_pass.h"
 #include "framework/common/framework_types_internal.h"
 #include "faker/space_registry_faker.h"
@@ -156,19 +157,19 @@ graphStatus TestRepeatInferSymbolShapeFunc(gert::InferSymbolShapeContext *contex
   GE_ASSERT_NOTNULL(input0);
   auto input1 = context->GetInputSymbolTensor(1);
   GE_ASSERT_NOTNULL(input1);
-  auto symbol_value = input1->GetSymbolicValue();
-  if (symbol_value == nullptr) {
+  const auto symbol_value = SymbolicInferUtil::GetSymbolicValues(*input1);
+  if (symbol_value.empty()) {
     GELOGW("Infer Symbol shape failed, symbol_value is nullptr!");
     return UNSUPPORTED;
   }
   auto output = context->GetOutputSymbolShape(0);
   *output = *input0;
   Expression expr(Symbol(0));
-  for (const auto &sym : *symbol_value) {
+  for (const auto &sym : symbol_value) {
     expr = expr + sym;
   }
-  GE_ASSERT_TRUE(!output->GetDims().empty());
-  output->MutableDim(0) = expr;
+  GE_ASSERT_TRUE(!SymbolicInferUtil::GetSymbolDims(*output).empty());
+  output->SetDim(0, expr);
   return ge::SUCCESS;
 }
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Repeat).InferSymbolShape(TestRepeatInferSymbolShapeFunc);

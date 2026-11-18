@@ -26,7 +26,6 @@ class Expression;
 class ExpressionImpl;
 class ShapeEnvAttr;
 using ExpressionImplPtr = std::unique_ptr<ExpressionImpl>;
-std::ostream &operator<<(std::ostream &os, const Expression &e);
 
 enum class ExprType : uint32_t {
   kExprConstantInteger = 0,
@@ -60,18 +59,11 @@ class Expression {
    * @brief 获取表达式转换成字符串
    */
   std::unique_ptr<char_t[]> Str(const StrType type = StrType::kStrCpp) const;
-  /**
-   * @brief 将字符串转换成表达式，与Str接口匹配
-   */
-  static Expression Parse(const char_t *str);
-  /**
-   * @brief 序列化，将表达式转换成字符串
-   */
-  std::unique_ptr<char_t[]> Serialize() const;
 
   /**
    * @brief
-   * 反序列化，与Serialize接口匹配，将字符串转换成表达式，同时会校验字符串格式是否为序列化接口序列化出的字符串，如果不是则会报错
+   * 反序列化，与Str接口（StrType::kStrCpp 格式）匹配，将字符串转换成表达式，同时会校验字符串格式
+   * 是否为该格式序列化出的字符串，如果不是则会报错
    */
   static Expression Deserialize(const char_t *str);
 
@@ -87,11 +79,6 @@ class Expression {
    * @brief 是否是ConstExpr类型
    */
   bool IsConstExpr() const;
-
-  /**
-   * @brief 是否是Symbol类型
-   */
-  bool IsVariableExpr() const;
 
   /**
    * @brief 是否是Bool类型
@@ -117,11 +104,6 @@ class Expression {
    * @brief 对当前表达式进行化简。例如2+x+4 -> 6+x
    */
   Expression Simplify() const;
-
-  /**
-   * @brief 判断当前表达式字符串中是否含有表达式e的子字符串，例如max((x+2), (4*y)) 含有 x和y
-   */
-  bool ContainVar(const Expression &e) const;
 
   /**
    * @brief 获取表达式的分子和分母，例如表达式Rational(2, 3) * s1，分子numer=2*s1，分母denom=3
@@ -155,11 +137,6 @@ class Expression {
    * @brief 获取表达式最基础的元素。例如x - (y * z)，返回{x, y, z}, 注意该接口没有依据字符去重
    */
   std::vector<Expression> FreeSymbols() const;
-
-  /**
-   * @brief 获取表达式的值
-   */
-  graphStatus GetResult(const std::vector<std::pair<Expression, Expression>> &vars_value, double &result) const;
 
   /**
    * @brief 判断表达式是否合法，成员变量impl_为null则不合法
@@ -219,7 +196,6 @@ class Expression {
   friend Expression sym::Floor(const Expression &arg);
   friend Expression sym::Align(const Expression &arg, uint32_t alignment);
   friend Expression sym::AlignWithPositiveInteger(const Expression &arg, uint32_t alignment);
-  friend std::ostream &operator<<(std::ostream &os, const Expression &e);
   friend Expression sym::Eq(const Expression &a, const Expression &b);  // ==
   friend Expression sym::Ne(const Expression &a, const Expression &b);  // !=
   friend Expression sym::Ge(const Expression &a, const Expression &b);  // >=
@@ -238,9 +214,6 @@ class Expression {
   typename std::enable_if<std::is_integral<T>::value || std::is_floating_point<T>::value, bool>::type ComputeHint(
       T &hint) const;
   ExpressionImplPtr impl_;
-
- private:
-  Expression CanonicalizeBoolExpr() const;
 };
 
 class Symbol : public Expression {
@@ -263,10 +236,6 @@ class Symbol : public Expression {
    */
   explicit Symbol(const char_t *name = "");
 
-  /**
-   * @brief 获取symbol的name，返回值是一个unique_ptr，需要用户自己释放
-   */
-  std::unique_ptr<char_t[]> GetName() const;
   friend class ShapeEnvAttr;
 
  private:
@@ -295,29 +264,5 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY inline TypeId GetTypeId<Expressio
   return reinterpret_cast<TypeId>(1024);
 }
 
-// 目的是构建以Expression作为key值的map、set、与unordered_map
-// todoo：后续考虑挪到symbolic_utils.h或symbolic_dict.h中
-struct ExpressionHash {
-  //! Returns the hashed value.
-  uint64_t operator()(const Expression &k) const {
-    return k.Hash();
-  }
-};
-struct ExpressionKeyEq {
-  //! Comparison Operator `==`
-  bool operator()(const Expression &x, const Expression &y) const {
-    return x == y;
-  }
-};
-struct ExpressionKeyLess {
-  //! true if `x < y`, false otherwise
-  bool operator()(const Expression &x, const Expression &y) const {
-    int64_t xh = x.Hash();
-    int64_t yh = y.Hash();
-    if (xh != yh) return xh < yh;
-    if (x == y) return false;
-    return x.Compare(y) == -1;
-  }
-};
 }  // namespace ge
 #endif

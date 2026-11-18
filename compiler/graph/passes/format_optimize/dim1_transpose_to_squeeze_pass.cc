@@ -239,7 +239,8 @@ Status Dim1TransposeToSqueezePass::SetShapeForSymbolic(const GeTensorDescPtr &in
     squeeze_output_shape.emplace_back(input_x_desc->GetShape().GetDim(i));
     squeeze_output_shape_symbolic.AppendDim(data_symbol_shape.GetDim(i));
   }
-  tensor->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetSymbolShape(squeeze_output_shape_symbolic);
+  tensor->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(
+      squeeze_output_shape_symbolic);
   return SUCCESS;
 }
 

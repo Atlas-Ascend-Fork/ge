@@ -35,6 +35,7 @@
 #include "graph/ge_local_context.h"
 #include "graph/fast_graph/execute_graph.h"
 #include "graph/debug/ge_attr_define.h"
+#include "graph/custom_op/args_refresh.h"
 #include "graph/custom_op_factory.h"
 #include "graph/custom_op.h"
 #include "graph/op_kernel_bin.h"
@@ -258,6 +259,48 @@ GeRootModelPtr CreateGeRootModelWithCustomOp() {
   return ge_root_model;
 }
 
+// Callback 变体：与 CreateGeRootModelWithCustomOp 的唯一差异是策略属性与 args_format。
+// kUpdateCallback 路径下 FillBasicCustomKernelTask 不设 args_format，故此处不传 ArgsFormat，
+// 使 args_size 为 0、普通区不占位，reserved 段独立累计——这正是真实 Callback 模型的形态。
+// 该变体经 BuildOm2ModelData -> Om2CodegenAndCompile 触发对生成 SO 的真实 g++ 编译，
+// 是 Callback 门控分支产物可编译性的唯一常驻防护。
+GeRootModelPtr CreateGeRootModelWithCustomOpCallback() {
+  auto graph = BuildCustomOpGraph();
+
+  gert::GeModelBuilder builder(graph);
+  auto ge_root_model = builder.AddTaskDef("custom_op", gert::CustomTaskDefFaker("custom_op_stub"))
+                           .FakeTbeBin({"custom_op"})
+                           .BuildGeRootModel();
+  auto &compute_graph = ge_root_model->GetRootGraph();
+  compute_graph->SetGraphUnknownFlag(false);
+  for (const auto &node : compute_graph->GetDirectNode()) {
+    auto op_desc = node->GetOpDesc();
+    if (op_desc == nullptr) {
+      return nullptr;
+    }
+    if (op_desc->GetType() == DATA) {
+      op_desc->SetOutputOffset({1024});
+    } else if (op_desc->GetType() == NETOUTPUT) {
+      op_desc->SetInputOffset({3072});
+    } else {
+      op_desc->SetInputOffset(std::vector<int64_t>(op_desc->GetInputsSize(), 1024));
+      op_desc->SetOutputOffset(std::vector<int64_t>(op_desc->GetOutputsSize(), 1024));
+      // B1 输入：编译期由 CustomOpsKernelBuilder 写入的有效策略属性
+      (void)AttrUtils::SetInt(op_desc, ATTR_NAME_CUSTOM_TASK_ARGS_MODE,
+                              static_cast<int64_t>(CustomTaskArgsMode::kUpdateCallback));
+    }
+  }
+
+  const auto ge_model = ge_root_model->GetSubgraphInstanceNameToModel().begin()->second;
+  std::vector<uint8_t> weights_value(512, 1U);
+  ge_model->SetWeight(Buffer::CopyFrom(weights_value.data(), weights_value.size()));
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 2048);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, weights_value.size());
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
+
+  return ge_root_model;
+}
+
 int WriteBinFile(const char *file_name, const std::string &text) {
   std::ofstream outFile(file_name, std::ios::out | std::ios::binary);
   if (!outFile.is_open()) {
@@ -375,6 +418,10 @@ class Om2PackageHelperUt : public testing::Test {
       CustomOpFactory::RegisterCustomOpCreator(
           kOpType, []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<TestPortableCustomOp>(); });
       BuildSuiteVariant("custom_op", CreateGeRootModelWithCustomOp());
+      // Callback 变体：触发对含 reserved 池 / CustomTaskState / 桥接 / 逐轮更新接线的生成 SO
+      // 做真实 g++ 编译。这些代码路径全部门控在 has_reserved_args_table 上，
+      // 仅靠文本断言无法发现生成代码自身的编译错误。
+      BuildSuiteVariant("custom_op_callback", CreateGeRootModelWithCustomOpCallback());
     }
   }
 
@@ -1408,6 +1455,51 @@ TEST_F(Om2PackageHelperUt, Om2CodegenAndCompile_Success) {
     }
   }
   EXPECT_TRUE(found_so);
+}
+
+// Callback 变体的生成 SO 必须能真实编译通过。该变体的产物含 reserved 池、CustomTaskState、
+// AllocateOm2ArgsBuffer 桥接与 UpdateCustomOpHostArgs 逐轮更新接线，全部是本次新增且门控发射的代码，
+// 文本断言无法发现其自身的编译错误（例如类型擦除句柄的 Deleter 若用裸函数指针，
+// std::vector::resize 会因 unique_ptr 缺少默认构造函数而编译失败）。
+TEST_F(Om2PackageHelperUt, Om2CodegenAndCompile_CustomOpArgsRefreshCallback_Success) {
+  const auto *model_data = SuiteModelData("custom_op_callback");
+  ASSERT_NE(model_data, nullptr);
+  ASSERT_FALSE(model_data->models.empty());
+  ASSERT_NE(model_data->models[0]->runtime, nullptr);
+  EXPECT_FALSE(model_data->models[0]->runtime->source_artifacts.empty());
+
+  bool found_so = false;
+  bool found_reserved_pool = false;
+  bool found_task_state = false;
+  bool found_refresh_entry = false;
+  for (const auto &artifact : model_data->models[0]->runtime->source_artifacts) {
+    const std::string name = gert::GertGetStr(artifact.file_name);
+    if (name.find(".so") != std::string::npos) {
+      found_so = true;
+      EXPECT_TRUE(artifact.data);
+      EXPECT_GT(artifact.data_size, 0U);
+      continue;
+    }
+    if ((artifact.data == nullptr) || (artifact.data_size == 0U)) {
+      continue;
+    }
+    const std::string content(reinterpret_cast<const char *>(artifact.data.get()), artifact.data_size);
+    if (content.find("std::array<ReservedSegmentRuntime, static_cast<size_t>(3)> reserved_segments_") !=
+        std::string::npos) {
+      found_reserved_pool = true;
+    }
+    if (content.find("struct CustomTaskState") != std::string::npos) {
+      found_task_state = true;
+    }
+    if (content.find("aclError Om2Model::UpdateCustomOpHostArgs(") != std::string::npos) {
+      found_refresh_entry = true;
+    }
+  }
+  EXPECT_TRUE(found_so);
+  // 门控确实生效：Callback 模型必须发出这三处新增接线，否则说明策略未被识别
+  EXPECT_TRUE(found_reserved_pool);
+  EXPECT_TRUE(found_task_state);
+  EXPECT_TRUE(found_refresh_entry);
 }
 
 TEST_F(Om2PackageHelperUt, Om2CodegenAndCompile_InvalidModel_Fail) {

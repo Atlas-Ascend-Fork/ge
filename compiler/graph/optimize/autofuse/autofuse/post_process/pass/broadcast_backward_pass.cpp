@@ -284,7 +284,7 @@ std::vector<std::string> SerializeExprs(const std::vector<af::Expression> &exprs
   std::vector<std::string> serialized_exprs;
   serialized_exprs.reserve(exprs.size());
   for (const auto &expr : exprs) {
-    const auto serialized_expr = expr.Serialize();
+    const auto serialized_expr = expr.Str();
     serialized_exprs.emplace_back(serialized_expr.get());
   }
   return serialized_exprs;

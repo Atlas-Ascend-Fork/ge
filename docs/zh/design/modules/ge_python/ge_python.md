@@ -195,6 +195,8 @@ graph TB
 
 **功能**: 张量数据类
 
+`Tensor` 构造数据的存储宽度遵循声明的 `DataType`：Python bool 值仅在 `DT_BOOL` 下使用 `c_bool`，在其他支持的数据类型下沿已有数值转换路径打包，保证缓冲区类型与传入 C API 的 dtype 一致。
+
 **主要方法**:
 - `set_format(format)` - 设置格式
 - `get_format()` - 获取格式

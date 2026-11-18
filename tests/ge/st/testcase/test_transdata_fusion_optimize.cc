@@ -548,7 +548,7 @@ TEST_F(TransopFusionOptimizeTest, test_framework_dim1_transpose_noreplace) {
           Symbol(10),
       });
       const auto attr = node->GetOpDesc()->MutableInputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
-      attr->symbolic_tensor.SetSymbolShape(symbol_shape);
+      attr->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
     }
   }
   std::shared_ptr<Dim1TransposeToSqueezePass> pass = std::make_shared<Dim1TransposeToSqueezePass>();
@@ -610,7 +610,7 @@ TEST_F(TransopFusionOptimizeTest, test_framework_dim1_transpose_replace_squeeze_
           Symbol(10),
       });
       const auto attr = node->GetOpDesc()->MutableInputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
-      attr->symbolic_tensor.SetSymbolShape(symbol_shape);
+      attr->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
     }
   }
   std::shared_ptr<Dim1TransposeToSqueezePass> pass = std::make_shared<Dim1TransposeToSqueezePass>();

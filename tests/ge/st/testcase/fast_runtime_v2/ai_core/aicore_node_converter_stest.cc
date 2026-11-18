@@ -386,7 +386,7 @@ TEST_F(AicoreNodeConverterST, ConvertStaticNodeReuseBinary) {
   EXPECT_EQ(checker.StrictConnectFrom(
                 std::vector<FastSrcNode>({{"SelectL2Allocator", 0}, {"CalcTensorSizeFromStorage", 0}}), true),
             "success");
-  EXPECT_EQ(checker.StrictConnectTo(0, std::vector<FastSrcNode>({{"FreeMemory", 0}, {"LaunchKernelV2", 19}})),
+  EXPECT_EQ(checker.StrictConnectTo(0, std::vector<FastSrcNode>({{"FreeMemory", 0}, {"LaunchKernelV2", 14}})),
             "success");
   EXPECT_EQ(checker.InChecker().DataFromByType("CalcTensorSizeFromStorage").DataFromByType("Const").Result(),
             "success");

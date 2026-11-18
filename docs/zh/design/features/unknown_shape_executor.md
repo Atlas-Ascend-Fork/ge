@@ -314,6 +314,8 @@ CalcCopyFlowAllocSizes -> AllocCopyFlowHbm -> PrepareCopyFlowResult -> LaunchCop
 
 当源元数据存在时，两类内部 Copy helper 都继承 `kComputeNodeIndex`。它们不属于 `IsLaunchNode` 定义的计算 Launch，但会通过注册的 `kKernelLaunch` 被 `IsLaunchOrHasSubGraphNode` 识别，参与 priority 和 strict-order 保序。`ExecutorDumper` 的 compute-op range FSM 与 launch-name 收集直接复用 `IsLaunchNode`，因此会自然跳过这些 helper，避免同一计算算子被重复推进；真实 Consumer Launch 仍作为 DataDump 边界。
 
+`EnsureNodeExeInOrderInSubgraph` 在相邻优先级组间补保序控制边时必须做双向直连检查：同向已连通的不重复添加；若存在 start→end 的反向真实边则跳过补边并打印告警。典型反向场景是 atomic 算子的 order-holder 控制边：Copy Launch（优先级 `id*10+9`）指向优先级被下调为 `id*10+4` 的 atomic Launch，经 `CopyFlowLaunchFuse`/`SplitMixedLaunchMemory` 两次 `CopyOutCtrlEdges` 继承后落在 `LaunchCopyFlowH2D`/`LaunchH2DCopy` 上。此时补出 end→start 边会与真实边构成 2 节点环，导致多线程执行器死锁且被调度器静默吞掉；反向真实边本身即 topo 序约束，运行期经 `StopGenWatcher` 的完成时延迟扣减机制正确触发，跳过补边不改变既有保序语义。
+
 `RemoveLaunchFreeEdge` 按 Free 独立判定：只处理具有 hold-address 变体的设备 Free，且其 `ReleaseResourceIndex` 直接 producer 必须属于非 Host 内存路径并注册为 `kKernelUseMemory`。对每个 Launch，Pass 先建立全部 eligible producer 与全部 eligible Free 的笛卡尔积顺序，已有数据/控制依赖不重复添加；再按 owner graph 记录并去重精确 `(Free*, Launch*)` 关系，替换 hold-address Free，最后删除边。Host、normal、launch、未注册或缺失 producer，以及 `FreeTensorMemory` 均保留原 Free 类型和全部 Launch-to-Free 边；zero-copy、`EnsureNodeExeInOrderInSubgraph` 和 `IsCopyAsyncNode` 的地址复用保序行为不变。
 
 #### 5.1.2 NodeConverter 注册机制

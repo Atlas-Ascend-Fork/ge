@@ -116,6 +116,16 @@ enum class StablePartId : uint8_t {
   kOm2LogMacros,
   kCreateClassCustomOpFactory,
   kCustomTaskHelpers,
+  // Callback 参数刷新的运行期状态类型（Om2ArgsHandlerDeleter / CustomTaskState）。发射进
+  // load_and_run.cpp 的匿名命名空间（紧随 kCustomTaskHelpers，因其按值持有 CustKernelContextHolder），
+  // 仅在模型含 Callback 任务时发射。Om2Model 侧经类型擦除的 CustomTaskStatePtr 持有，
+  // 故 resources.cpp 中的 ~Om2Model 无需见到完整定义。
+  kCustomTaskStateTypes,
+  // SO 侧 GertOm2ArgsAllocFunc 的实现（桥接适配层），仅在模型含 Callback 任务时发射。
+  kAllocateOm2ArgsBuffer,
+  // Om2Model::UpdateCustomOpHostArgs 的定义。它是 Om2Model 成员，须落在 namespace om2（非匿名），
+  // 但与 kOpDefs / CustomTaskState 同处一个编译单元，故仍能访问匿名命名空间内的实体。
+  kUpdateCustomOpHostArgs,
   kVarMgrDecls,
   kVarTransAdapter,
   kCustomKernelDeserializer,

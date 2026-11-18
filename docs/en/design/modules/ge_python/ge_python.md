@@ -205,6 +205,8 @@ graph TB
 
 **Function**: Tensor data class
 
+`Tensor` constructor storage follows the declared `DataType`: Python boolean values use `c_bool` only for `DT_BOOL`. Other supported types use the existing numeric conversions so the buffer element type agrees with the dtype passed to the C API.
+
 **Main Methods**:
 
 - `set_format(format)` - Set format

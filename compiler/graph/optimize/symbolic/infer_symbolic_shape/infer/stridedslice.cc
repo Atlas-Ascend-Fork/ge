@@ -124,8 +124,7 @@ Status CalculateSymbolicIndexValue(const Expression &index_input, const Expressi
     // 禁止无 guard 的原始索引进入输出 shape（曾引发下游符号污染事故）。
     bool negative_hint = false;
     GE_ASSERT_TRUE(ge::sym::Lt(index_input, kSymbolZero).GetHint(negative_hint),
-                   "StridedSlice symbolic infer: index sign hint is unavailable, index=%s.",
-                   index_input.Serialize().get());
+                   "StridedSlice symbolic infer: index sign hint is unavailable, index=%s.", index_input.Str().get());
     normalized = EXPECT_SYMBOL_LT(index_input, kSymbolZero) ? (index_input + input_dim) : index_input;
   }
   const auto below_lower = SymbolicUtils::StaticCheckLt(normalized, lower);
@@ -138,7 +137,7 @@ Status CalculateSymbolicIndexValue(const Expression &index_input, const Expressi
     bool below_lower_hint = false;
     GE_ASSERT_TRUE(ge::sym::Lt(normalized, lower).GetHint(below_lower_hint),
                    "StridedSlice symbolic infer: index lower bound hint is unavailable, index=%s.",
-                   normalized.Serialize().get());
+                   normalized.Str().get());
     if (EXPECT_SYMBOL_LT(normalized, lower)) {
       index_value = lower;
       return SUCCESS;
@@ -154,7 +153,7 @@ Status CalculateSymbolicIndexValue(const Expression &index_input, const Expressi
     bool above_upper_hint = false;
     GE_ASSERT_TRUE(ge::sym::Lt(upper, normalized).GetHint(above_upper_hint),
                    "StridedSlice symbolic infer: index upper bound hint is unavailable, index=%s.",
-                   normalized.Serialize().get());
+                   normalized.Str().get());
     index_value = EXPECT_SYMBOL_LT(upper, normalized) ? upper : normalized;
     return SUCCESS;
   }
@@ -553,13 +552,9 @@ graphStatus GetValueFromSymbolValue(const gert::InferSymbolShapeContext *context
                                     const gert::SymbolTensor *input_tensor, std::vector<Expression> &dims) {
   GE_ASSERT_NOTNULL(context);
   GE_UNSUPPORTED_IF_NULL(input_tensor);
-  const auto symbols = input_tensor->GetSymbolicValue();
-  if (symbols == nullptr) {
-    GELOGW("Symbolic infer shape unsupported, reason: get symbolic value failed, node %s[%s].", context->GetNodeName(),
-           context->GetNodeType());
-    return UNSUPPORTED;
-  }
-  for (const auto &symbol : *symbols) {
+  GE_UNSUPPORTED_IF(!input_tensor->HasValue());
+  const auto symbols = SymbolicInferUtil::GetSymbolicValues(*input_tensor);
+  for (const auto &symbol : symbols) {
     if (!symbol.IsConstExpr()) {
       dims.emplace_back(symbol);
       continue;
@@ -605,13 +600,13 @@ Status ConstructAxis(const gert::InferSymbolShapeContext *context, int64_t input
     return SUCCESS;
   }
 
-  const auto symbols = axes_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(symbols);
-  if (symbols->empty()) {
+  GE_UNSUPPORTED_IF(!axes_tensor->HasValue());
+  const auto symbols = SymbolicInferUtil::GetSymbolicValues(*axes_tensor);
+  if (symbols.empty()) {
     GELOGI("Set axes to default for node %s.", context->GetNodeName());
     return SUCCESS;
   }
-  for (const auto &symbol : *symbols) {
+  for (const auto &symbol : symbols) {
     int64_t value = 0;
     if (!symbol.GetConstValue(value)) {
       GELOGW("StridedSlice symbolic infer unsupported: axis value for node %s is not constant.",
@@ -673,7 +668,7 @@ Status ApplyV2Axes(const std::vector<int64_t> &axes, const std::vector<Expressio
 Status GetStridedSliceV2IndexInput(const gert::InferSymbolShapeContext *context, StrdedSliceIndexInputs &index_input) {
   const auto x_shape = context->GetInputSymbolShape(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(x_shape);
-  const std::vector<ge::Expression> x_dims = x_shape->GetDims();
+  const std::vector<ge::Expression> x_dims = SymbolicInferUtil::GetSymbolDims(*x_shape);
   std::vector<Expression> begin_values;
   Status ret = GetValueFromInputData(context, kStartInputIndex, begin_values);
   if (ret != SUCCESS) {
@@ -792,7 +787,7 @@ graphStatus InferShape4StridedSlice(gert::InferSymbolShapeContext *context) {
   std::vector<Expression> input_x_dims;
   const auto x_shape = context->GetInputSymbolShape(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(x_shape);
-  for (const auto &s : x_shape->GetDims()) {
+  for (const auto &s : SymbolicInferUtil::GetSymbolDims(*x_shape)) {
     input_x_dims.push_back(s);
   }
   HandleMaskConflict(strided_slice_attr);
@@ -816,7 +811,7 @@ graphStatus InferShape4StridedSlice(gert::InferSymbolShapeContext *context) {
   std::vector<Expression> output_symbols_shape;
   GE_ASSERT_SUCCESS(
       CalcOutputShape(strided_slice_attr.shrink_axis_mask, ellipsis_mask_range, index_input, output_symbols_shape));
-  shape_output->MutableDims() = output_symbols_shape;
+  SymbolicInferUtil::SetSymbolDims(*shape_output, output_symbols_shape);
   return SUCCESS;
 }
 
@@ -857,7 +852,7 @@ Status ResolveV3IndexValue(const Expression &index, const Expression &cur_axis_i
     }
     bool hint = false;
     GE_ASSERT_TRUE(ge::sym::Lt(index, kSymbolZero).GetHint(hint),
-                   "StridedSliceV3 symbolic index hint is unavailable, index=%s.", index.Serialize().get());
+                   "StridedSliceV3 symbolic index hint is unavailable, index=%s.", index.Str().get());
   }
   value = is_begin ? CalculateBeginValue(index, cur_axis_input_size, negative_step)
                    : CalculateEndValue(index, cur_axis_input_size, negative_step);
@@ -902,8 +897,7 @@ Status CalculateOutputDimsForV3(const std::vector<int64_t> &axes, const std::vec
       cur_out_size = kSymbolZero;
     }
     GELOGD("Axe index %zu, begin symbol %s, end symbol %s, step symbol %s, outdim symbol %s", i,
-           begin_value.Serialize().get(), end_value.Serialize().get(), step_value.Serialize().get(),
-           cur_out_size.Serialize().get());
+           begin_value.Str().get(), end_value.Str().get(), step_value.Str().get(), cur_out_size.Str().get());
     output_dims[axis_value] = cur_out_size;
   }
   return SUCCESS;
@@ -916,7 +910,7 @@ Status InferShape4StridedSliceV3(gert::InferSymbolShapeContext *context) {
   std::vector<Expression> input_x_dims;
   const auto x_shape = context->GetInputSymbolShape(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(x_shape);
-  for (const auto &s : x_shape->GetDims()) {
+  for (const auto &s : SymbolicInferUtil::GetSymbolDims(*x_shape)) {
     input_x_dims.push_back(s);
   }
 
@@ -935,8 +929,10 @@ Status InferShape4StridedSliceV3(gert::InferSymbolShapeContext *context) {
     axes.resize(input_x_dims.size());
     std::iota(axes.begin(), axes.end(), 0);
   }
-  shape_output->MutableDims() = input_x_dims;
-  const auto dims_ret = CalculateOutputDimsForV3(axes, input_x_dims, index_input, shape_output->MutableDims());
+  // CalculateOutputDimsForV3 按轴就地覆写，需以输入维度预填
+  std::vector<Expression> shape_output_dims = input_x_dims;
+  const auto dims_ret = CalculateOutputDimsForV3(axes, input_x_dims, index_input, shape_output_dims);
+  SymbolicInferUtil::SetSymbolDims(*shape_output, shape_output_dims);
   if (dims_ret != SUCCESS) {
     return dims_ret;
   }

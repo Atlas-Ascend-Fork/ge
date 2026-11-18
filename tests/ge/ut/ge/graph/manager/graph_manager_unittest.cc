@@ -6253,7 +6253,7 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_AddOwnsFacadeWithoutCreatingComputeRe
 }
 
 TEST_F(UtestGraphManagerTest, AddGraph_RejectsDifferentGraphTypeForRegisteredIdWithoutIncreasingCounts) {
-  for (const auto existing_kind : {static_cast<GraphKind>(0), static_cast<GraphKind>(1)}) {
+  for (const auto existing_kind : {C_GRAPH_COMPUTE, C_GRAPH_EXECUTE}) {
     GraphManager manager;
     const GraphId graph_id = 76U;
     auto original = std::make_shared<GraphNode>(graph_id);
@@ -6263,8 +6263,7 @@ TEST_F(UtestGraphManagerTest, AddGraph_RejectsDifferentGraphTypeForRegisteredIdW
     manager.IncreaseGraphCount(graph_id);
     manager.SetAddGraphCondition(graph_id, kDoneAdded);
     const auto load_count = original->load_count_;
-    const auto incoming_kind =
-        existing_kind == static_cast<GraphKind>(0) ? static_cast<GraphKind>(1) : static_cast<GraphKind>(0);
+    const auto incoming_kind = existing_kind == C_GRAPH_COMPUTE ? C_GRAPH_EXECUTE : C_GRAPH_COMPUTE;
     Graph incoming("incoming", incoming_kind);
 
     bool is_added = false;
@@ -6568,7 +6567,7 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_StreamAllocatorIsRetainedUntilGraphRe
 }
 
 TEST_F(UtestGraphManagerTest, RunGraphModeGetAndSetUseSameBehaviorForBothGraphKinds) {
-  for (const auto kind : {static_cast<GraphKind>(0), static_cast<GraphKind>(1)}) {
+  for (const auto kind : {C_GRAPH_COMPUTE, C_GRAPH_EXECUTE}) {
     GraphManager manager;
     const GraphId graph_id = 77U;
     auto node = std::make_shared<GraphNode>(graph_id);

@@ -16,6 +16,7 @@
 #include "utils/not_fuse_reason_code.h"
 #include "graph/symbolizer/symbolic_utils.h"
 #include "graph/attribute_group/attr_group_symbolic_desc.h"
+#include "utils/autofuse_utils.h"
 
 namespace ge {
 namespace {
@@ -108,7 +109,7 @@ graphStatus GetNodeSymbolicOutputShape(const NodePtr &node, std::vector<ge::Expr
   GE_WARN_ASSERT(output_desc != nullptr, "node %s output_desc is nullptr", node->GetName().c_str());
   const auto sym_attr = output_desc->GetAttrsGroup<SymbolicDescAttr>();
   GE_WARN_ASSERT(sym_attr != nullptr, "node %s sym_attr is nullptr", node->GetName().c_str());
-  shape = sym_attr->symbolic_tensor.GetOriginSymbolShape().GetDims();
+  shape = AutofuseUtils::GetSymbolDims(sym_attr->symbolic_tensor.GetOriginSymbolShape());
   return GRAPH_SUCCESS;
 }
 

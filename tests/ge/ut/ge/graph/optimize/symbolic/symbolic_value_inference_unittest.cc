@@ -498,7 +498,7 @@ TEST_F(SymbolicValueInferenceUT, hint_input_symbolized_when_on_host) {
 
     auto attr = cg->FindNode("data0")->GetOpDesc()->MutableOutputDesc(0)->GetAttrsGroup<SymbolicDescAttr>();
     ASSERT_NE(attr, nullptr);
-    EXPECT_NE(attr->symbolic_tensor.GetSymbolicValue(), nullptr);
+    EXPECT_NE(attr->symbolic_tensor.GetValueCount(), 0U);
   }
 }
 

@@ -454,14 +454,7 @@ struct AiKernelLaunchContext {
   }
 
   void InitCommonInput(uint64_t add_num) {
-    kernel_bin_ptr_store = kernel_bin_ptr;
     context.value_holder[static_cast<size_t>(kernel::InputCommon::kStream)].Set(stream, nullptr);
-    context.value_holder[static_cast<size_t>(kernel::InputCommon::kKernelBinId)].Set(
-        reinterpret_cast<void *>(const_cast<char *>(kernel_bin_id.c_str())), nullptr);
-    context.value_holder[static_cast<size_t>(kernel::InputCommon::kMagic)].Set(reinterpret_cast<void *>(&magic),
-                                                                               nullptr);
-    context.value_holder[static_cast<size_t>(kernel::InputCommon::kKernelBin)].Set(
-        reinterpret_cast<void *>(&kernel_bin_ptr_store), nullptr);
     context.value_holder[static_cast<size_t>(kernel::InputCommon::kBlockDim)].Set(
         reinterpret_cast<void *>(&t_block_dim), nullptr);
     context.value_holder[static_cast<size_t>(kernel::InputCommon::kWorkspaceAddr)].Set(work_space.get(), nullptr);
@@ -479,12 +472,7 @@ struct AiKernelLaunchContext {
         reinterpret_cast<void *>(launch_args.get()), nullptr);
     context.value_holder[static_cast<size_t>(kernel::InputCommon::kLocalMemSize)].Set(
         reinterpret_cast<void *>(&local_mem_size), nullptr);
-    context.value_holder[static_cast<size_t>(kernel::InputCommon::kTilingKey)].Set(
-        reinterpret_cast<void *>(&tiling_key), nullptr);
-    context.value_holder[static_cast<size_t>(kernel::InputCommon::kKernelName)].Set(
-        reinterpret_cast<void *>(const_cast<char *>(kernel_name.c_str())), nullptr);
-    context.value_holder[static_cast<size_t>(kernel::InputCommon::kWithHandleFlag)].Set(
-        reinterpret_cast<void *>(&with_handle_flag), nullptr);
+    context.value_holder[static_cast<size_t>(kernel::InputCommon::kFuncHandle)].Set(handle, nullptr);
   }
   gert::memory::CachingMemAllocator stub_allocator{0, 1};
 
@@ -936,5 +924,32 @@ TEST_F(AiKernelLaunchUT, mix_launch_kernel_v2_profiling_attr_absent_when_op_filt
   EXPECT_EQ(context.cfg.numAttrs, 4UL);
   ge::ProfilingTestUtil::Instance().check_op_func_ = nullptr;
   SetScaleProfilingSwitch(false);
+}
+
+// placeholder 个数超过栈上数组容量时走动态扩容分支
+TEST_F(AiKernelLaunchUT, AiCoreLaunchKernelV2_large_place_holder_num) {
+  AiKernelLaunchContext context(1, 1, 0x11, Shape({2, 2, 3}));
+  GertRuntimeStub runtime_stub(std::make_unique<RuntimeStubImpl>(), true,
+                               std::unique_ptr<AclRuntimeStubImpl>(new FakeRuntimeGetFuncValue()));
+  rtHostInputInfo_t host_infos[9] = {};
+  auto *launch_args_ex = reinterpret_cast<RtKernelLaunchArgsEx *>(context.launch_args.get());
+  launch_args_ex->GetBase()->hostInputInfoPtr = host_infos;
+  launch_args_ex->GetBase()->hostInputInfoNum = 9U;
+  ASSERT_EQ(kernel::AiCoreLaunchKernelV2(context.WithFlag()), ge::GRAPH_SUCCESS);
+  auto launch_args =
+      runtime_stub.GetAclRuntimeStub().PopCpuLaunchArgsByKernelName("cpu_new_args_launch_with_place_holder");
+  ASSERT_NE(launch_args, nullptr);
+  EXPECT_EQ(launch_args->GetStream(), context.stream);
+}
+
+TEST_F(AiKernelLaunchUT, AiCoreLaunchMixKernelV2_large_place_holder_num) {
+  AiKernelLaunchContext context(1, 1, 0x11, Shape({2, 2, 3}), true);
+  GertRuntimeStub runtime_stub(std::make_unique<RuntimeStubImpl>(), true,
+                               std::unique_ptr<AclRuntimeStubImpl>(new FakeRuntimeGetFuncValue()));
+  rtHostInputInfo_t host_infos[9] = {};
+  auto *launch_args_ex = reinterpret_cast<RtKernelLaunchArgsEx *>(context.launch_args.get());
+  launch_args_ex->GetBase()->hostInputInfoPtr = host_infos;
+  launch_args_ex->GetBase()->hostInputInfoNum = 9U;
+  ASSERT_EQ(kernel::AiCoreLaunchMixKernelV2(context.WithFlag(15)), ge::GRAPH_SUCCESS);
 }
 }  // namespace gert

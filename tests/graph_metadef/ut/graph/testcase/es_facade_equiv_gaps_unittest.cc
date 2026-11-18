@@ -53,8 +53,8 @@
 
 namespace ge {
 namespace {
-// GraphKind 依赖切换期暂为整型别名（0=计算图，1=执行图），用例内以常量指代
-constexpr GraphKind kExecGraphKind = static_cast<GraphKind>(1);
+// 图类别取值统一来自 metadef c_types.h 的 C_GraphKind 枚举，用例内以常量指代
+constexpr GraphKind kExecGraphKind = C_GRAPH_EXECUTE;
 Operator MakePortOp(const char_t *name, const char_t *type, uint32_t in_cnt, uint32_t out_cnt) {
   Operator op(name, type);
   if (in_cnt != 0U) {

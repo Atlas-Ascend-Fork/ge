@@ -51,12 +51,19 @@ std::string UserGraphExecutionToString(const std::unique_ptr<UserGraphExecution>
 }  // namespace
 Status JitExecutorPool::AddJitExecutor(unique_ptr<JitExecutor> &jit_executor) {
   auto idle_executor = jit_executor.get();
-  std::lock_guard<std::mutex> locker(executors_mutex_);
-  executors.emplace_back(std::move(jit_executor));
-
-  std::lock_guard<std::mutex> idle_locker(idle_mutex_);
-  idle_executors.push(idle_executor);
-  GELOGD("Add new jit executor, total num is %zu.", executors.size());
+  size_t total_num = 0U;
+  {
+    std::lock_guard<std::mutex> locker(executors_mutex_);
+    executors.emplace_back(std::move(jit_executor));
+    total_num = executors.size();
+  }
+  {
+    std::lock_guard<std::mutex> idle_locker(idle_mutex_);
+    idle_executors.push(idle_executor);
+    idle_executor_count_.fetch_add(1U);
+  }
+  GELOGD("Add new jit executor, total num is %zu.", total_num);
+  NotifyIdle();
   return SUCCESS;
 }
 
@@ -67,12 +74,31 @@ JitExecutor *JitExecutorPool::GetIdleExecutor() {
   }
   auto idle_executor = idle_executors.top();
   idle_executors.pop();
+  idle_executor_count_.fetch_sub(1U);
   return idle_executor;
 }
 
 void JitExecutorPool::BackToIdle(JitExecutor *jit_executor) {
-  std::lock_guard<std::mutex> locker(idle_mutex_);
-  idle_executors.push(jit_executor);
+  {
+    std::lock_guard<std::mutex> locker(idle_mutex_);
+    idle_executors.push(jit_executor);
+    idle_executor_count_.fetch_add(1U);
+  }
+  NotifyIdle();
+}
+
+size_t JitExecutorPool::GetIdleExecutorCount() const {
+  return idle_executor_count_.load();
+}
+
+void JitExecutorPool::SetIdleNotifier(const std::function<void()> &notifier) {
+  idle_notifier_ = notifier;
+}
+
+void JitExecutorPool::NotifyIdle() {
+  if (idle_notifier_) {
+    idle_notifier_();
+  }
 }
 
 Status JitExecutorPool::Finalize() {
@@ -211,8 +237,11 @@ Status UserGraphControl::AddGraphInstance() {
 
 void UserGraphControl::RunGraphAsync(std::unique_ptr<UserGraphExecution> &task) {
   GELOGI("RunGraphAsync USER_GRAPH[%u] with %s", user_graph_id_, UserGraphExecutionToString(task).c_str());
-  std::lock_guard<std::mutex> lock(add_execution_mutex_);
-  executions_.push(std::move(task));
+  {
+    std::lock_guard<std::mutex> lock(add_execution_mutex_);
+    executions_.push(std::move(task));
+  }
+  exe_cv_.notify_one();
 }
 
 void UserGraphControl::SetLoadOptions(const std::map<AscendString, AscendString> &load_options) {
@@ -417,7 +446,11 @@ Status UserGraphControl::ExecuteGraphWithStreamAsync(std::unique_ptr<UserGraphEx
 }
 
 void UserGraphControl::StopQueue() {
-  thread_is_stopped_.store(true);
+  {
+    std::lock_guard<std::mutex> locker(add_execution_mutex_);
+    thread_is_stopped_.store(true);
+  }
+  exe_cv_.notify_all();
   if (user_graph_exe_thread_.joinable()) {
     user_graph_exe_thread_.join();
   }
@@ -425,21 +458,25 @@ void UserGraphControl::StopQueue() {
 }
 
 void UserGraphControl::ExecuteUserGraph() {
-  while (!thread_is_stopped_) {
-    if (executions_.empty()) {
-      continue;
+  std::unique_lock<std::mutex> lock(add_execution_mutex_);
+  while (true) {
+    // 阻塞等待"有任务且有空闲执行器"，避免空闲时自旋空跑占 CPU
+    exe_cv_.wait(lock, [this]() {
+      return thread_is_stopped_.load() || (!executions_.empty() && (jit_executor_pool_.GetIdleExecutorCount() > 0U));
+    });
+    if (thread_is_stopped_.load()) {
+      break;
     }
     auto jit_executor = jit_executor_pool_.GetIdleExecutor();
     if (jit_executor == nullptr) {
-      // 当前没有可用执行器，task要等等
+      // 执行器可能刚被同步接口抢走，继续等待下一次通知
       continue;
     }
-    std::unique_lock<std::mutex> lock(add_execution_mutex_);
     std::shared_ptr<UserGraphExecution> exe_task = std::move(executions_.front());
     executions_.pop();
     GELOGD("Start to commit user graph execution task");
-    lock.unlock();
     auto ge_context = ge::GetThreadLocalContext();
+    lock.unlock();
     auto fut = jit_exe_thread_pool_.commit(
         [pool = &jit_executor_pool_, executor = jit_executor, task = std::move(exe_task), ge_context]() -> Status {
           GELOGI("Start to commit user graph execution task in thread");
@@ -448,13 +485,16 @@ void UserGraphControl::ExecuteUserGraph() {
           GE_ASSERT_SUCCESS(executor->RunWithCallback(std::move(*task)));
           return SUCCESS;
         });
-    std::lock_guard<std::mutex> futs_lock(jit_futures_mutex_);
-    if (!fut.valid()) {
-      GELOGE(GRAPH_FAILED, "Failed to commit new task.");
-      StopQueue();
-      return;
+    {
+      std::lock_guard<std::mutex> futs_lock(jit_futures_mutex_);
+      if (!fut.valid()) {
+        GELOGE(GRAPH_FAILED, "Failed to commit new task.");
+        StopQueue();
+        return;
+      }
+      jit_futures_.emplace(std::move(fut));
     }
-    jit_futures_.emplace(std::move(fut));
+    lock.lock();
   }
 }
 

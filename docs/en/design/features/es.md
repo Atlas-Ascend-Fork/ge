@@ -296,6 +296,9 @@ For the complete rule table and scenario analysis, see the "IR Semantic Compatib
 ### 6.6 Python Wrapping and Plugin Mechanism
 
 - **ctypes wrapping**: `api/python/ge/ge/_capi/pyes_graph_builder_wrapper.py` declares function prototypes (argtypes/restype) for `libesb` (the base structure library) and each generated library (such as `libes_math`); `GraphBuilder`/`TensorHolder` only hold handles and forward method calls;
+
+  `Tensor` constructor storage follows the declared `DataType`: Python boolean values use `c_bool` only for `DT_BOOL`. Other supported types use the existing numeric conversions so the buffer element type agrees with the dtype passed to the C API.
+
 - **Ownership inversion**: the Python-layer `TensorHolder` strongly references the `GraphBuilder` (`_builder` field), opposite to the C++ layer's "builder holds Holder" direction, preventing dangling underlying handles after the builder is garbage collected. For design analysis, see [ownership_analysis.md](../modules/es_graph/design/ownership_analysis.md);
 - **Plugin loading**: `_plugin_loader.py` discovers and loads ES Python packages released by operator sub-packages (such as `es_math`, `es_nn`) via `ge.es.plugins` entry points, dynamically mounting them into the `ge.es` namespace; users `import ge.es` to obtain the graph building functions of all installed operators;
 - **Scope syntactic sugar**: `GraphBuilder` provides `attr_scope` (node-level private attribute batching) and `control_dependencies` (control dependency scope) context managers, supporting nested stacking.

@@ -40,7 +40,7 @@ const std::regex kSafePathRegex(R"(^(?!.*\.{2})[A-Za-z0-9./+\-_]+$)");  // ÂÖÅËÆ
 
 Status GenCheckInfos(CodePrinter &printer, const std::vector<SymbolCheckInfo> &symbol_check_infos) {
   for (const auto &iter : symbol_check_infos) {
-    printer.AddLine(k2Space + "check_result = " + std::string(iter.expr.Serialize().get()) + ";");
+    printer.AddLine(k2Space + "check_result = " + std::string(iter.expr.Str().get()) + ";");
     printer.AddLine(k2Space + "check_results.emplace_back(check_result);");
   }
   GELOGI("GenCheckInfos, symbol_check_infos size: %zu", symbol_check_infos.size());
@@ -160,7 +160,7 @@ private:
 Status GenErrorInfos(CodePrinter &printer, const std::vector<SymbolCheckInfo> &symbol_check_infos) {
   for (const auto &iter : symbol_check_infos) {
     printer.AddLine(k2Space + "err_msgs.emplace_back(\"[" + iter.file + ":" + std::to_string(iter.line) +
-                    "] Check Symbol Check Expression: " + std::string(iter.expr.Serialize().get()) +
+                    "] Check Symbol Check Expression: " + std::string(iter.expr.Str().get()) +
                     " Context Info: " + iter.dfx_info + " missed.\");");
   }
   return SUCCESS;
@@ -180,7 +180,7 @@ Status GenGetErrorMsg(CodePrinter &printer, const ge::ShapeEnvAttr *shape_env_at
 Status GenGetCheckResults(CodePrinter &printer, ge::ShapeEnvAttr *shape_env_attr) {
   GE_ASSERT_NOTNULL(shape_env_attr);
   for (const auto &sym_to_source : shape_env_attr->GetAllSym2Src()) {
-    printer.AddLine(k2Space + "const auto " + std::string(sym_to_source.first.Serialize().get()) + " = " +
+    printer.AddLine(k2Space + "const auto " + std::string(sym_to_source.first.Str().get()) + " = " +
                     sym_to_source.second->GetSourceStr() + ";");
   }
   printer.AddLine(k2Space + "std::vector<uint8_t> check_results;");

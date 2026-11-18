@@ -267,7 +267,7 @@ TEST_F(GatherForwardFusionPassTest, SkipPointwiseWithDifferentSymbolicShapes) {
   const auto nodes = BuildGatherGraph(BuildOptions{});
   auto input_attr = nodes.first_pointwise->GetOpDesc()->MutableInputDesc(0)->GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(input_attr, nullptr);
-  input_attr->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("different_s0"), Symbol("s1"), Symbol("s2")};
+  input_attr->symbolic_tensor.SetOriginSymbolShape({Symbol("different_s0"), Symbol("s1"), Symbol("s2")});
 
   ASSERT_EQ(GatherForwardFusionPass().Run(nodes.graph), GRAPH_SUCCESS);
   EXPECT_EQ(nodes.gather->GetInDataAnchor(0)->GetPeerOutAnchor()->GetOwnerNode(), nodes.first_pointwise);

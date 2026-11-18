@@ -18,6 +18,7 @@
 #include "operator_reg.h"
 #include "common/checker.h"
 #include "debug/ge_util.h"
+#include "utils/autofuse_utils.h"
 
 namespace ge {
 namespace {
@@ -343,7 +344,7 @@ NodePtr CreateReshapeNode(const ComputeGraphPtr &graph, const NodePtr &input, co
   for (const auto dim : target_shape) {
     symbolic_shape.emplace_back(Symbol(dim));
   }
-  symbolic_attr->symbolic_tensor.MutableOriginSymbolShape().MutableDims() = symbolic_shape;
+  AutofuseUtils::SetSymbolDims(symbolic_attr->symbolic_tensor, symbolic_shape);
 
   // Reshape 有两个输入：数据 x 和目标 shape。创建目标 shape 常量并连接到第二个输入。
   const auto shape_tensor = ComGraphMakeShared<GeTensor>();

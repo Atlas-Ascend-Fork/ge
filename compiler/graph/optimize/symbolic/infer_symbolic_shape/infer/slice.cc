@@ -22,7 +22,7 @@ namespace {
  */
 graphStatus CheckAndInfer4Slice(const gert::SymbolShape *in_shape, const gert::SymbolTensor *offsets_tensor,
                                 const gert::SymbolTensor *size_tensor, gert::SymbolShape *out_shape) {
-  const auto &dims = in_shape->GetDims();
+  const auto &dims = SymbolicInferUtil::GetSymbolDims(*in_shape);
 
   /* 校验参数：
    * 1. 每个轴的 起始位置(offsets) ∈ [0, dim]，其中offsets[i]dim，表示整个轴都不要。
@@ -31,8 +31,8 @@ graphStatus CheckAndInfer4Slice(const gert::SymbolShape *in_shape, const gert::S
    */
   for (size_t i = 0U; i < dims.size(); ++i) {
     // todo 增加guard校验
-    ASSERT_SYMBOL_GE(offsets_tensor->GetSymbolicValue()->at(i), Symbol(0));
-    ASSERT_SYMBOL_LE(offsets_tensor->GetSymbolicValue()->at(i), dims[i]);
+    ASSERT_SYMBOL_GE(offsets_tensor->GetValue(i), Symbol(0));
+    ASSERT_SYMBOL_LE(offsets_tensor->GetValue(i), dims[i]);
   }
   /* 计算输出shape，逻辑为：
    * 若 size[i] = -1, 表示取i轴从起点开始剩下的全部元素，则out_shape[i] = in_shape[i] - offsets[i]
@@ -40,10 +40,10 @@ graphStatus CheckAndInfer4Slice(const gert::SymbolShape *in_shape, const gert::S
    */
   out_shape->Clear();
   for (size_t i = 0U; i < dims.size(); ++i) {
-    if (EXPECT_SYMBOL_EQ(size_tensor->GetSymbolicValue()->at(i), Symbol(-1))) {
-      out_shape->AppendDim(in_shape->GetDim(i) - offsets_tensor->GetSymbolicValue()->at(i));
+    if (EXPECT_SYMBOL_EQ(size_tensor->GetValue(i), Symbol(-1))) {
+      out_shape->AppendDim(in_shape->GetDim(i) - offsets_tensor->GetValue(i));
     } else {
-      out_shape->AppendDim(size_tensor->GetSymbolicValue()->at(i));
+      out_shape->AppendDim(size_tensor->GetValue(i));
     }
   }
   return GRAPH_SUCCESS;
@@ -68,7 +68,7 @@ graphStatus InferShape4Slice(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto offsets_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(offsets_tensor);
-  if (offsets_tensor->GetSymbolicValue() == nullptr) {
+  if (!offsets_tensor->HasValue()) {
     GELOGW("Symbol Infer unsupported, get offset symbolic value is nullptr, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -76,7 +76,7 @@ graphStatus InferShape4Slice(gert::InferSymbolShapeContext *context) {
 
   auto size_tensor = context->GetInputSymbolTensor(2);
   GE_UNSUPPORTED_IF_NULL(size_tensor);
-  if (size_tensor->GetSymbolicValue() == nullptr) {
+  if (!size_tensor->HasValue()) {
     GELOGW("Symbol Infer unsupported, get size symbolic value is nullptr, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -85,8 +85,8 @@ graphStatus InferShape4Slice(gert::InferSymbolShapeContext *context) {
   auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
   // 校验offsets、size的轴数应该与输入一致
-  GE_ASSERT_EQ(in_shape->GetDimNum(), offsets_tensor->GetSymbolicValue()->size());
-  GE_ASSERT_EQ(in_shape->GetDimNum(), size_tensor->GetSymbolicValue()->size());
+  GE_ASSERT_EQ(in_shape->GetDimNum(), offsets_tensor->GetValueCount());
+  GE_ASSERT_EQ(in_shape->GetDimNum(), size_tensor->GetValueCount());
   // 校验offsets、size的数据类型
   auto offsets_desc = context->GetInputDesc(1);
   GE_ASSERT_NOTNULL(offsets_desc);
@@ -106,7 +106,7 @@ graphStatus InferShape4Slice(gert::InferSymbolShapeContext *context) {
 graphStatus CheckAndInfer4SliceD(const gert::SymbolShape *in_shape,
                                  const gert::TypedContinuousVector<int64_t> *offsets_list,
                                  const gert::TypedContinuousVector<int64_t> *size_list, gert::SymbolShape *out_shape) {
-  const auto &dims = in_shape->GetDims();
+  const auto &dims = SymbolicInferUtil::GetSymbolDims(*in_shape);
   /* 校验参数：
    * 1. 每个轴的 起始位置(offsets) ∈ [0, dim]，其中offsets[i]dim，表示整个轴都不要。
    * 2. 每个轴的 切片大小(size) ∈ [-1, dim]。其中size[i]为-1时，表示整个轴都要。

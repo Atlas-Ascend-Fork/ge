@@ -14,6 +14,7 @@
 /****************************************************/
 // 这部分头文件是符号化能力引入的对内头文件，符号化能力暂时无法对外
 #include "graph/symbolizer/symbolic.h"
+#include "graph/symbolizer/expression_ext.h"
 #include "attribute_group/attr_group_symbolic_desc.h"
 #include "graph/utils/node_adapter.h"
 #include "graph/utils/graph_utils_ex.h"
@@ -34,13 +35,18 @@ struct EsCTensorHolder::EsCTensorHolderImpl {
     std::vector<ge::Expression> shape;
     shape.reserve(shape_str_num);
     for (int64_t i = 0; i < shape_str_num; ++i) {
-      shape.emplace_back(ge::Expression::Parse(shape_str[i]));
+      shape.emplace_back(ge::expr_ext::Parse(shape_str[i]));
     }
     const auto td = GetInnerTd(producer_, producer_out_index_);
     GE_ASSERT_NOTNULL(td);
     const auto attr = td->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>();
     GE_ASSERT_NOTNULL(attr);
-    attr->symbolic_tensor.MutableOriginSymbolShape().MutableDims() = shape;
+    gert::SymbolShape origin_symbol_shape;
+    origin_symbol_shape.SetDimNum(shape.size());
+    for (size_t i = 0UL; i < shape.size(); ++i) {
+      origin_symbol_shape.SetDim(i, shape[i]);
+    }
+    attr->symbolic_tensor.SetOriginSymbolShape(origin_symbol_shape);
     return ge::SUCCESS;
   }
   ge::Status SetFormat(const ge::Format format) {

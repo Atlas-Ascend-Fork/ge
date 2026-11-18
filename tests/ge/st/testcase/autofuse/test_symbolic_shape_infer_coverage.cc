@@ -47,9 +47,11 @@ class InferContextBuilder {
 
   InferContextBuilder &Input(const gert::SymbolShape &shape) {
     auto holder = ge::ComGraphMakeUnique<gert::SymbolTensor>();
+    gert::SymbolShape input_origin_symbol_shape;
     for (size_t i = 0U; i < shape.GetDimNum(); ++i) {
-      holder->MutableOriginSymbolShape().AppendDim(shape.GetDim(i));
+      input_origin_symbol_shape.AppendDim(shape.GetDim(i));
     }
+    holder->SetOriginSymbolShape(input_origin_symbol_shape);
     inputs_.emplace_back(std::move(holder));
     return *this;
   }
@@ -144,7 +146,8 @@ TEST_F(SymbolicShapeInferCoverageST, IndexByTensorPaths) {
       .Outputs(1U);
   auto *context = contiguous.Build();
   ASSERT_EQ(infer(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{x0, Symbol("i0"), Symbol("i1"), x3}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{x0, Symbol("i0"), Symbol("i1"), x3}));
 
   InferContextBuilder non_contiguous("IndexByTensor", "index_non_contiguous");
   desc = non_contiguous.GetOrCreateOpDesc();
@@ -156,7 +159,8 @@ TEST_F(SymbolicShapeInferCoverageST, IndexByTensorPaths) {
       .Outputs(1U);
   context = non_contiguous.Build();
   ASSERT_EQ(infer(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{Symbol("j0"), x1}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{Symbol("j0"), x1}));
 
   InferContextBuilder no_index("IndexByTensor", "index_identity");
   desc = no_index.GetOrCreateOpDesc();
@@ -165,7 +169,7 @@ TEST_F(SymbolicShapeInferCoverageST, IndexByTensorPaths) {
   no_index.Input(gert::SymbolShape({x0, x1, x2})).Outputs(1U);
   context = no_index.Build();
   ASSERT_EQ(infer(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{x0, x1, x2}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)), (std::vector<Expression>{x0, x1, x2}));
 
   InferContextBuilder empty_mask("IndexByTensor", "index_empty");
   desc = empty_mask.GetOrCreateOpDesc();

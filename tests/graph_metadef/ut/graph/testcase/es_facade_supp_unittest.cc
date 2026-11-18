@@ -57,9 +57,9 @@
 
 namespace ge {
 namespace {
-// GraphKind 依赖切换期暂为整型别名（0=计算图，1=执行图），用例内以常量指代
-constexpr GraphKind kComputeGraphKind = static_cast<GraphKind>(0);
-constexpr GraphKind kExecGraphKind = static_cast<GraphKind>(1);
+// 图类别取值统一来自 metadef c_types.h 的 C_GraphKind 枚举，用例内以常量指代
+constexpr GraphKind kComputeGraphKind = C_GRAPH_COMPUTE;
+constexpr GraphKind kExecGraphKind = C_GRAPH_EXECUTE;
 Operator MakePortOp(const char_t *name, const char_t *type, uint32_t in_cnt, uint32_t out_cnt) {
   Operator op(name, type);
   if (in_cnt != 0U) {
@@ -173,10 +173,10 @@ TEST_F(EsFacadeSuppTest, Graph_DumpToFile_BothModes) {
 
   Graph execute_graph("supp_dtf_e", kExecGraphKind);
   (void)execute_graph.AddNodeByOp(MakePortOp("dump_node_e", "PlainOp", 1U, 1U));
-  // 当前实现：执行图 DumpToFile 显式拒绝。
-  EXPECT_NE(GRAPH_SUCCESS, execute_graph.DumpToFile(Graph::DumpFormat::kReadable, AscendString(suffix.c_str())));
-  // 未知格式拒绝。
-  EXPECT_NE(GRAPH_SUCCESS, execute_graph.DumpToFile(static_cast<Graph::DumpFormat>(7U), AscendString(suffix.c_str())));
+  // 执行图 dump 为只读快照，转 ComputeGraph 复用计算图 dump 链路（内容级断言见 EsFacadeDumpTest）。
+  EXPECT_EQ(GRAPH_SUCCESS, execute_graph.DumpToFile(Graph::DumpFormat::kReadable, AscendString(suffix.c_str())));
+  // 未知格式与计算图口径一致（不落盘、返回成功）。
+  EXPECT_EQ(GRAPH_SUCCESS, execute_graph.DumpToFile(static_cast<Graph::DumpFormat>(7U), AscendString(suffix.c_str())));
   system(("rm -rf " + ascend_work_path).c_str());
   unsetenv("DUMP_GRAPH_PATH");
 }

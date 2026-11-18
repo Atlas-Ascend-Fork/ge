@@ -274,8 +274,7 @@ static Status SetAttrsGroup(const NodePtr &node) {
     } else {
       symbol_shape = symbol_shape1;
     }
-    output_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape() =
-        symbol_shape;
+    output_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
   }
   for (const auto in_anchor : node->GetAllInDataAnchorsPtr()) {
     GE_ASSERT_NOTNULL(in_anchor);
@@ -297,8 +296,8 @@ static Status SetAttrsGroup(const NodePtr &node) {
     const auto attr_group = output_tensor_desc->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>();
     GE_ASSERT_NOTNULL(attr_group);
 
-    input_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.MutableOriginSymbolShape() =
-        attr_group->symbolic_tensor.MutableOriginSymbolShape();
+    input_tensor_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(
+        attr_group->symbolic_tensor.GetOriginSymbolShape());
   }
   // 给节点添加origin_input_names和origin_output_names
   if (node->GetType() == kAscBackendType) {
@@ -362,11 +361,8 @@ TEST_F(AutofuseUtilsTest, ConvertAscBackendNodeToAscGraphNode_ok1) {
   auto op_desc1 = node1->GetOpDescBarePtr();
   ASSERT_NE(op_desc1, nullptr);
   // 测试符号序列化
-  op_desc1->MutableOutputDesc(0)
-      ->GetAttrsGroup<ge::SymbolicDescAttr>()
-      ->symbolic_tensor.MutableOriginSymbolShape()
-      .MutableDims()
-      .push_back(Symbol("s1"));
+  op_desc1->MutableOutputDesc(0)->GetAttrsGroup<ge::SymbolicDescAttr>()->symbolic_tensor.SetOriginSymbolShape(
+      {Symbol("s1")});
 
   auto shape_env_attr = graph->GetOrCreateAttrsGroup<ShapeEnvAttr>();
   ASSERT_NE(shape_env_attr, nullptr);

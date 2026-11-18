@@ -296,6 +296,9 @@ flowchart LR
 ### 6.6 Python 封装与插件机制
 
 - **ctypes 封装**：`api/python/ge/ge/_capi/pyes_graph_builder_wrapper.py` 对 `libesb`（基础结构库）与各生成库（如 `libes_math`）声明函数原型（argtypes/restype），`GraphBuilder`/`TensorHolder` 仅做句柄持有与方法转发；
+
+  `Tensor` 构造数据的存储宽度遵循声明的 `DataType`：Python bool 值仅在 `DT_BOOL` 下使用 `c_bool`，在其他支持的数据类型下沿已有数值转换路径打包，保证缓冲区类型与传入 C API 的 dtype 一致。
+
 - **所有权反转**：Python 层 `TensorHolder` 强引用 `GraphBuilder`（`_builder` 字段），与 C++ 层"构建器持有 Holder"的方向相反，用于防止构建器被 GC 后底层句柄悬空。设计分析见 [ownership_analysis.md](../modules/es_graph/design/ownership_analysis.md)；
 - **插件加载**：`_plugin_loader.py` 通过 `ge.es.plugins` entry points 发现并加载算子分包发布的 ES Python 包（如 `es_math`、`es_nn`），动态挂载到 `ge.es` 命名空间，用户 `import ge.es` 即获得全部已安装算子的构图函数；
 - **作用域语法糖**：`GraphBuilder` 提供 `attr_scope`（节点级私有属性批处理）与 `control_dependencies`（控制依赖作用域）上下文管理器，支持嵌套叠加。

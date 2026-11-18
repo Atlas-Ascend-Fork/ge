@@ -56,7 +56,7 @@ ge::Status InitFuseGraphOpTensor(const ge::ComputeGraphPtr &graph) {
       GE_ASSERT_NOTNULL(input_desc);
       auto input_attr = input_desc->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>();
       GE_ASSERT_NOTNULL(input_attr);
-      input_attr->symbolic_tensor.MutableOriginSymbolShape() = symbol_shape;
+      input_attr->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
       input_desc->SetDataType(ge::DT_INT8);
     }
 
@@ -65,7 +65,7 @@ ge::Status InitFuseGraphOpTensor(const ge::ComputeGraphPtr &graph) {
       GE_ASSERT_NOTNULL(output_desc);
       auto output_attr = output_desc->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>();
       GE_ASSERT_NOTNULL(output_attr);
-      output_attr->symbolic_tensor.MutableOriginSymbolShape() = symbol_shape;
+      output_attr->symbolic_tensor.SetOriginSymbolShape(symbol_shape);
       output_desc->SetDataType(ge::DT_INT8);
     }
   }

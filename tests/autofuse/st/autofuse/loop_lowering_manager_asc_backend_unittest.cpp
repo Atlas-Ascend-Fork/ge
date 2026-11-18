@@ -21,6 +21,7 @@
 #include "lowering/lowerings.h"
 #include "lowering/op_lowering_impl/lowering_impl.h"
 #include "fusion/autofuse_attrs.h"
+#include "can_fuse/fusion_strategy_solver.h"
 #include "utils/auto_fuse_config.h"
 #include "common/autofuse_backend_spec_api.h"
 #include "common/autofuse_platform_api.h"
@@ -2472,14 +2473,61 @@ tmp5 = ascir.Output(Output_0, [tmp4])
 )");
 }
 
+TEST_F(LoopLoweringToAscBackendUT, AddLayerNormMultiAxesFuseAbs) {
+  RegisterVecInputTypeOpCreatorV2(
+      "AddLayerNorm", {"x1", "x2", "gamma", "beta", "bias"},
+      {kIrInputRequired, kIrInputRequired, kIrInputRequired, kIrInputRequired, kIrInputOptional},
+      {"y", "mean", "rstd", "x"}, kIrOutputRequired, {"epsilon", "additional_output"});
+  const auto origin = autofuse::AutoFuseConfig::LoweringConfig().experimental_lowering_reduce;
+  GE_MAKE_GUARD(
+      config, [origin]() { autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = origin; });
+  autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = true;
+  auto x1 = es_graph_->CreateInput(0, "x1", nullptr);
+  auto x2 = es_graph_->CreateInput(1, "x2", nullptr);
+  auto gamma = es_graph_->CreateInput(2, "gamma", nullptr);
+  auto beta = es_graph_->CreateInput(3, "beta", nullptr);
+  x1.SetSymbolShape({"2", "3", "4"});
+  x2.SetSymbolShape({"2", "3", "4"});
+  gamma.SetSymbolShape({"3", "4"});
+  beta.SetSymbolShape({"3", "4"});
+  auto norm = es::AddLayerNorm(x1, x2, gamma, beta, nullptr, 0.001F, false);
+  norm.y.SetSymbolShape({"2", "3", "4"});
+  norm.mean.SetSymbolShape({"2", "1", "1"});
+  norm.rstd.SetSymbolShape({"2", "1", "1"});
+  norm.x.SetSymbolShape({"2", "3", "4"});
+  auto abs = es::Abs(norm.y);
+  abs.SetSymbolShape({"2", "3", "4"});
+  es_graph_->SetOutput(abs, 0);
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  ASSERT_EQ(LoweringManager::FusedLoopToAscBackendOp(cg), GRAPH_SUCCESS);
+  FusionStrategySolver solver;
+  ASSERT_EQ(solver.Fuse(cg), SUCCESS);
+  bool found_fused = false;
+  for (const auto &node : cg->GetDirectNode()) {
+    const auto attr = node->GetOpDesc()->GetAttrsGroup<AutoFuseAttrs>();
+    if (attr == nullptr || attr->GetAscGraph() == nullptr) {
+      continue;
+    }
+    const auto readable = ReadableAscGraph(*attr->GetAscGraph());
+    if (readable.find("ascir.Abs(") != std::string::npos && readable.find("ascir.Mean(") != std::string::npos) {
+      found_fused = true;
+    }
+  }
+  EXPECT_TRUE(found_fused);
+}
+
 TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxLikeExample) {
   [this]() {
     auto data = es_graph_->CreateInput(0, "data0", nullptr);
-    data.SetSymbolShape({"s0", "s1"});
+    data.SetSymbolShape({"2", "4"});
     auto softmax = es::SoftmaxV2(data, {-1});
-    softmax.SetSymbolShape({"s0", "s1"});
+    softmax.SetSymbolShape({"2", "4"});
     auto abs = es::Abs(softmax);
-    abs.SetSymbolShape({"s0", "s1"});
+    abs.SetSymbolShape({"2", "4"});
     es_graph_->SetOutput(abs, 0);
   }();
 
@@ -2497,24 +2545,24 @@ TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxLikeExample) {
   ASSERT_NE(fuse_attr, nullptr);
   EXPECT_EQ(fuse_attr->GetFuseType(), loop::FuseType::kReduction);
   EXPECT_EQ(ReadableAscGraph(*fuse_attr->GetAscGraph()),
-            R"(AscGraph(SoftmaxV2_0_out0_graph, axis=[0:s0, 1:s1])
+            R"(AscGraph(SoftmaxV2_0_out0_graph, axis=[0:2, 1:4])
 tmp0 = ascir.Data(Data_0, [])
-tmp0.attr = {axis = [0, 1], repeats = [s0, s1], strides = [s1, 1]}
+tmp0.attr = {axis = [0, 1], repeats = [2, 4], strides = [4, 1]}
 tmp1 = ascir.Load(Load_0, [tmp0])
-tmp1.attr = {axis = [0, 1], repeats = [s0, s1], strides = [s1, 1]}
+tmp1.attr = {axis = [0, 1], repeats = [2, 4], strides = [4, 1]}
 tmp2 = ascir.Max(Max_0, [tmp1])
-tmp2.attr = {axis = [0, 1], repeats = [s0, 1], strides = [1, 0]}
+tmp2.attr = {axis = [0, 1], repeats = [2, 1], strides = [1, 0]}
 tmp3 = ascir.Broadcast(Broadcast_0, [tmp2])
-tmp3.attr = {axis = [0, 1], repeats = [s0, s1], strides = [s1, 1]}
+tmp3.attr = {axis = [0, 1], repeats = [2, 4], strides = [4, 1]}
 tmp4 = ascir.Sub(Sub_0, [tmp1, tmp3])
 tmp5 = ascir.Exp(Exp_0, [tmp4])
 tmp6 = ascir.Sum(Sum_0, [tmp5])
-tmp6.attr = {axis = [0, 1], repeats = [s0, 1], strides = [1, 0]}
+tmp6.attr = {axis = [0, 1], repeats = [2, 1], strides = [1, 0]}
 tmp7 = ascir.Broadcast(Broadcast_1, [tmp6])
-tmp7.attr = {axis = [0, 1], repeats = [s0, s1], strides = [s1, 1]}
-tmp8 = ascir.Div(Div_0, [tmp5, tmp7])
+tmp7.attr = {axis = [0, 1], repeats = [2, 4], strides = [4, 1]}
+tmp8 = ascir.TrueDiv(TrueDiv_0, [tmp5, tmp7])
 tmp9 = ascir.Store(Store_0, [tmp8])
-tmp9.attr = {axis = [0, 1], repeats = [s0, s1], strides = [s1, 1]}
+tmp9.attr = {axis = [0, 1], repeats = [2, 4], strides = [4, 1]}
 tmp10 = ascir.Output(Output_0, [tmp9])
 )");
 }
@@ -2522,9 +2570,9 @@ tmp10 = ascir.Output(Output_0, [tmp9])
 TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2MultiAxes) {
   [this]() {
     auto data = es_graph_->CreateInput(0, "data0", nullptr);
-    data.SetSymbolShape({"s0", "s1", "s2"});
+    data.SetSymbolShape({"2", "3", "4"});
     auto softmax = es::SoftmaxV2(data, {0, 2});
-    softmax.SetSymbolShape({"s0", "s1", "s2"});
+    softmax.SetSymbolShape({"2", "3", "4"});
     es_graph_->SetOutput(softmax, 0);
   }();
 
@@ -2544,16 +2592,16 @@ TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2MultiAxes) {
   EXPECT_NE(readable.find("ascir.Max(Max_1"), std::string::npos);
   EXPECT_NE(readable.find("ascir.Sum(Sum_0"), std::string::npos);
   EXPECT_NE(readable.find("ascir.Sum(Sum_1"), std::string::npos);
-  EXPECT_NE(readable.find("repeats = [1, s1, s2]"), std::string::npos);
-  EXPECT_NE(readable.find("repeats = [s0, s1, 1]"), std::string::npos);
+  EXPECT_NE(readable.find("repeats = [1, 3, 4]"), std::string::npos);
+  EXPECT_NE(readable.find("repeats = [2, 3, 1]"), std::string::npos);
 }
 
 TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2HalfToFloat) {
   [this]() {
     auto data = es_graph_->CreateInput(0, "data0", nullptr);
-    data.SetSymbolShape({"s0", "s1"});
+    data.SetSymbolShape({"2", "4"});
     auto softmax = es::SoftmaxV2(data, {-1}, true);
-    softmax.SetSymbolShape({"s0", "s1"});
+    softmax.SetSymbolShape({"2", "4"});
     es_graph_->SetOutput(softmax, 0);
   }();
 
@@ -2580,15 +2628,15 @@ TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2HalfToFloat) {
   const auto readable = ReadableAscGraph(asc_graph->Graph());
   EXPECT_NE(readable.find("ascir.Cast(Cast_0"), std::string::npos);
   EXPECT_NE(readable.find("ascir.Max(Max_0"), std::string::npos);
-  EXPECT_NE(readable.find("ascir.Div(Div_0"), std::string::npos);
+  EXPECT_NE(readable.find("ascir.TrueDiv(TrueDiv_0"), std::string::npos);
 }
 
 TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2InvalidAxesFallback) {
   [this]() {
     auto data = es_graph_->CreateInput(0, "data0", nullptr);
-    data.SetSymbolShape({"s0", "s1"});
+    data.SetSymbolShape({"2", "4"});
     auto softmax = es::SoftmaxV2(data, {0, 0});
-    softmax.SetSymbolShape({"s0", "s1"});
+    softmax.SetSymbolShape({"2", "4"});
     es_graph_->SetOutput(softmax, 0);
   }();
 
@@ -2600,33 +2648,20 @@ TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2InvalidAxesFallback) {
   EXPECT_TRUE(ge::loop::GetKernelBox(softmax->GetOutDataAnchor(0)).IsExternKernel());
 }
 
-TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxWithStableAttributes) {
+TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2DynamicShapeFallback) {
   [this]() {
     auto data = es_graph_->CreateInput(0, "data0", nullptr);
-    data.SetSymbolShape({"s0", "s1", "s2"});
+    data.SetSymbolShape({"s0", "4"});
     auto softmax = es::SoftmaxV2(data, {-1});
-    softmax.SetSymbolShape({"s0", "s1", "s2"});
+    softmax.SetSymbolShape({"s0", "4"});
     es_graph_->SetOutput(softmax, 0);
   }();
-
   auto graph = es_graph_->Build();
   auto cg = GraphUtilsEx::GetComputeGraph(*graph);
-  auto softmax = cg->FindNode("SoftmaxV2_0");
-  ASSERT_NE(softmax, nullptr);
-  auto op_desc = softmax->GetOpDesc();
-  ASSERT_NE(op_desc, nullptr);
-  op_desc->SetType("Softmax");
-  AttrUtils::SetInt(op_desc, "axis", 1L);
-  AttrUtils::SetInt(op_desc, "algo", 1L);
-  AttrUtils::SetFloat(op_desc, "alpha", 1.0F);
-  AttrUtils::SetFloat(op_desc, "beta", 0.0F);
-
+  auto node = cg->FindNode("SoftmaxV2_0");
+  ASSERT_NE(node, nullptr);
   ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
-  loop::KernelBox asc_kernel = ge::loop::GetKernelBox(softmax->GetOutDataAnchor(0));
-  ASSERT_TRUE(asc_kernel.IsReduction());
-  const auto asc_graph = asc_kernel.Realize<loop::AscOverrides>("graph");
-  ASSERT_NE(asc_graph, nullptr);
-  EXPECT_NE(ReadableAscGraph(asc_graph->Graph()).find("repeats = [s0, 1, s2]"), std::string::npos);
+  EXPECT_TRUE(loop::GetKernelBox(node->GetOutDataAnchor(0)).IsExternKernel());
 }
 
 TEST_F(LoopLoweringToAscBackendUT, AutoConvertInputBoolToUint8) {

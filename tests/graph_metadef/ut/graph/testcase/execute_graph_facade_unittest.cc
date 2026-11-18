@@ -55,6 +55,7 @@
 #include "normal_graph/execute_node_backend.h"
 #include "normal_graph/graph_impl.h"
 #include "normal_graph/operator_impl.h"
+#include "mmpa/mmpa_api.h"
 
 extern "C" EsCTensorHolder *EsAdd(const EsCTensorHolder *x1, const EsCTensorHolder *x2);
 extern "C" void GeApiWrapper_RenameAllNodes(void *graph_ptr, const char *prefix);
@@ -113,7 +114,7 @@ namespace {
 // 4.1：构造一个执行子图并挂到父节点上。
 GraphPtr MountExecuteSubgraph(Graph &parent, const Operator &parent_op, const char_t *ir_name, const char_t *sub_name) {
   auto node = parent.AddNodeByOp(parent_op);
-  auto subgraph = std::make_shared<Graph>(sub_name, 1);
+  auto subgraph = std::make_shared<Graph>(sub_name, C_GRAPH_EXECUTE);
   subgraph->AddNodeByOp(MakeExecuteOp("sub_inner", "PlainOp", 0U, 1U));
   if (node.SetSubgraph(AscendString(ir_name), *subgraph) != GRAPH_SUCCESS) {
     return nullptr;
@@ -123,7 +124,7 @@ GraphPtr MountExecuteSubgraph(Graph &parent, const Operator &parent_op, const ch
 
 // 12.11：建一张空的执行子图，内容由调用方按需填充。
 GraphPtr MakeExecuteSubgraph(const char_t *name) {
-  auto graph = std::make_shared<Graph>(name, 1);
+  auto graph = std::make_shared<Graph>(name, C_GRAPH_EXECUTE);
   (void)graph->SetValid();
   return graph;
 }
@@ -152,7 +153,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphLoadOverloadsRejectComputeSerializati
       [&buffer](Graph &graph) { return graph.LoadFromMem(buffer.GetData(), buffer.GetSize()); },
       [&buffer](Graph &graph) { return graph.LoadFromSerializedModelArray(buffer.GetData(), buffer.GetSize()); }};
   for (const auto &load : loaders) {
-    Graph execute("execute", 1);
+    Graph execute("execute", C_GRAPH_EXECUTE);
     ASSERT_EQ(GRAPH_SUCCESS, execute.SetValid());
     const auto old_execute_impl = execute.impl_;
     EXPECT_EQ(GRAPH_FAILED, load(execute));
@@ -170,7 +171,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphBuilderRejectsDuplicateOperatorNames)
 
 // 2.1/2.3：执行模式构图不创建 ComputeGraph/Node；计算图默认行为不受影响（IsValid 语义）。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddNodeByOpDoesNotCreateComputeGraph) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   ASSERT_FALSE(graph.IsValid());
   ASSERT_EQ(nullptr, GraphUtilsEx::Graph2ExecuteGraph(graph));
   auto node = graph.AddNodeByOp(MakeExecuteOp("node1", "PlainOp", 1U, 1U));
@@ -193,7 +194,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddNodeByOpDoesNotCreateComputeGraph)
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphQueriesDoNotInitializeGraph) {
-  Graph graph("lazy_execute", 1);
+  Graph graph("lazy_execute", C_GRAPH_EXECUTE);
   EXPECT_TRUE(GraphUtilsEx::IsExecuteGraph(graph));
   EXPECT_EQ("lazy_execute", graph.GetName());
   EXPECT_TRUE(graph.GetDirectNode().empty());
@@ -222,13 +223,13 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsRejectsInitializedEmptyGraph
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsReturnGraphFailedForEmptyInputs) {
-  Graph graph("empty_inputs", 1);
+  Graph graph("empty_inputs", C_GRAPH_EXECUTE);
   EXPECT_EQ(GRAPH_FAILED, graph.impl_->SetInputs({}));
   EXPECT_FALSE(graph.IsValid());
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphImplSetInputsPreservesFailureRetryAndInitializationOrder) {
-  Graph graph("inputs", 1);
+  Graph graph("inputs", C_GRAPH_EXECUTE);
   GraphImpl &impl = *graph.impl_;
   EXPECT_EQ(GRAPH_FAILED, impl.SetInputs({}));
   EXPECT_FALSE(graph.IsValid());
@@ -266,13 +267,13 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphConstructorRejectsInvalidKindAndName)
   Graph invalid_kind_graph("invalid_kind", invalid_kind);
   ASSERT_FALSE(invalid_kind_graph.IsValid());
 
-  Graph null_name_graph(nullptr, 1);
+  Graph null_name_graph(nullptr, C_GRAPH_EXECUTE);
   ASSERT_FALSE(null_name_graph.IsValid());
 }
 
 // 2.1：计算图专用入口在执行模式下统一报错，不静默降级。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRejectsComputeOnlyEntryPoints) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   Operator op = MakeExecuteOp("node1", "PlainOp", 1U, 1U);
   (void)graph.AddNodeByOp(op);
 
@@ -288,7 +289,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRejectsComputeOnlyEntryPoints) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddNodeByOpAcceptDuplicateAndEmptyNames) {
-  Graph graph("names", 1);
+  Graph graph("names", C_GRAPH_EXECUTE);
   auto first = graph.AddNodeByOp(MakeExecuteOp("same", "PlainOp", 0U, 1U));
   auto second = graph.AddNodeByOp(MakeExecuteOp("same", "PlainOp", 0U, 1U));
   auto empty_op = OpDescUtils::CreateOperatorFromOpDesc(std::make_shared<OpDesc>("", "PlainOp"));
@@ -306,8 +307,8 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddNodeByOpAcceptDuplicateAndEmptyNam
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddNodeByOpSharesOperatorDesc) {
   auto op = MakeExecuteOp("shared", "PlainOp", 0U, 1U);
   const auto desc = OpDescUtils::GetOpDescFromOperator(op);
-  Graph first_graph("first", 1);
-  Graph second_graph("second", 1);
+  Graph first_graph("first", C_GRAPH_EXECUTE);
+  Graph second_graph("second", C_GRAPH_EXECUTE);
   auto first = first_graph.AddNodeByOp(op);
   auto second = second_graph.AddNodeByOp(op);
   auto *first_node = NodeAdapter::GNode2ExecuteNode(first);
@@ -322,7 +323,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddNodeByOpSharesOperatorDesc) {
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddNodeByOpRejectMissingDescBeforeInitializingGraph) {
   auto missing_desc = MakeExecuteOp("missing_desc", "PlainOp", 0U, 1U);
   missing_desc.operator_impl_->op_desc_.reset();
-  Graph graph("invalid_op", 1);
+  Graph graph("invalid_op", C_GRAPH_EXECUTE);
   for (const auto &op : std::vector<Operator>{Operator(), missing_desc}) {
     auto node = graph.AddNodeByOp(op);
     AscendString name;
@@ -333,7 +334,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddNodeByOpRejectMissingDescBeforeIni
 
 // 2.3：执行图上的加节点/连边/枚举/查找/删节点闭环。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphImplNodeEditingPreservesBackendBehavior) {
-  Graph graph("edit", 1);
+  Graph graph("edit", C_GRAPH_EXECUTE);
   GraphImpl &impl = *graph.impl_;
   auto source_op = MakeExecuteOp("source", "PlainOp", 0U, 1U);
   auto source = impl.AddNodeByOp(source_op);
@@ -366,8 +367,8 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphImplNodeEditingPreservesBackendBehavi
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphImplEdgesPreserveBackendSpecificCrossGraphRules) {
-  Graph first("first", 1);
-  Graph second("second", 1);
+  Graph first("first", C_GRAPH_EXECUTE);
+  Graph second("second", C_GRAPH_EXECUTE);
   auto source = first.AddNodeByOp(MakeExecuteOp("source", "PlainOp", 0U, 1U));
   auto target = second.AddNodeByOp(MakeExecuteOp("target", "PlainOp", 1U, 0U));
   GraphImpl &impl = *first.impl_;
@@ -382,7 +383,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphImplEdgesPreserveBackendSpecificCross
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphImplAttributesPreserveInitializationAndEmptyNameSemantics) {
-  Graph graph("attrs", 1);
+  Graph graph("attrs", C_GRAPH_EXECUTE);
   GraphImpl &impl = *graph.impl_;
   AttrValue value;
   ASSERT_EQ(GRAPH_SUCCESS, value.SetAttrValue(static_cast<int64_t>(7)));
@@ -400,7 +401,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphImplAttributesPreserveInitializationA
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphBuildAndEditNodesAndEdges) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto node1 = graph.AddNodeByOp(MakeExecuteOp("node1", "PlainOp", 2U, 1U));
   auto node2 = graph.AddNodeByOp(MakeExecuteOp("node2", "PlainOp", 1U, 2U));
   auto node3 = graph.AddNodeByOp(MakeExecuteOp("node3", "PlainOp", 1U, 1U));
@@ -437,8 +438,8 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphBuildAndEditNodesAndEdges) {
 
 // 2.2：跨图/跨后端节点不能互相操作（owner 校验）。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRejectsCrossGraphNodes) {
-  Graph graph_a("graph_a", 1);
-  Graph graph_b("graph_b", 1);
+  Graph graph_a("graph_a", C_GRAPH_EXECUTE);
+  Graph graph_b("graph_b", C_GRAPH_EXECUTE);
   auto node_a1 = graph_a.AddNodeByOp(MakeExecuteOp("node_a1", "PlainOp", 1U, 1U));
   auto node_a2 = graph_a.AddNodeByOp(MakeExecuteOp("node_a2", "PlainOp", 1U, 1U));
   auto node_b1 = graph_b.AddNodeByOp(MakeExecuteOp("node_b1", "PlainOp", 1U, 1U));
@@ -462,7 +463,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNodeInvalidAfterGraphDestroyed) {
   GNode dangling_node;
   GNodePtr dangling_node_ptr;
   {
-    Graph graph("execute_graph", 1);
+    Graph graph("execute_graph", C_GRAPH_EXECUTE);
     auto node1 = graph.AddNodeByOp(MakeExecuteOp("node1", "PlainOp", 1U, 1U));
     auto node2 = graph.AddNodeByOp(MakeExecuteOp("node2", "PlainOp", 1U, 1U));
     EXPECT_EQ(GRAPH_SUCCESS, graph.AddDataEdge(node1, 0, node2, 0));
@@ -481,7 +482,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNodeInvalidAfterGraphDestroyed) {
 // 3.2：SetInputs 导入 Operator 连接关系——数据/控制边、输入顺序、共享前驱。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsImportsOperatorLinks) {
   ExecuteOperatorChain chain;
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   ASSERT_FALSE(graph.IsValid());
   // 控制关系也随导入保留：dst 在 src 之后执行。
   chain.dst.AddControlInput(chain.src);
@@ -528,7 +529,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsImportsOperatorLinks) {
 // 3.2：重复输入沿用计算图行为，同一 Operator 只创建一个节点。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsDeduplicatesNodeCreation) {
   ExecuteOperatorChain chain;
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   (void)graph.SetInputs({chain.src, chain.src});
   ASSERT_TRUE(graph.IsValid());
   EXPECT_EQ(4U, graph.GetAllNodes().size());
@@ -545,7 +546,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsDiscardsFailedGraph) {
   Operator consumer = MakeNamedExecuteOp("dup", "PlainOp", {"out"}, {"in0"});
   consumer.SetInput("in0", producer, "out");
 
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   (void)graph.SetInputs({producer});
   EXPECT_FALSE(graph.IsValid());
   EXPECT_TRUE(graph.GetAllNodes().empty());
@@ -563,7 +564,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsDiscardsFailedGraph) {
 // 3.2：与显式 AddNodeByOp 路径不隐式合并——已建节点的图上再导入被拒绝。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsRejectedAfterAddNodeByOp) {
   ExecuteOperatorChain chain;
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   (void)graph.AddNodeByOp(MakeExecuteOp("existing", "PlainOp", 0U, 1U));
   (void)graph.SetInputs({chain.src});
   EXPECT_EQ(1U, graph.GetAllNodes().size());
@@ -571,7 +572,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsRejectedAfterAddNodeByOp) {
 
 // 3.3：多输出节点的使用者查询按输出槽分别返回，不能串。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMultiOutputConsumerQueryIsolated) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto src = graph.AddNodeByOp(MakeExecuteOp("src", "PlainOp", 0U, 2U));
   auto c0 = graph.AddNodeByOp(MakeExecuteOp("c0", "PlainOp", 1U, 0U));
   auto c1 = graph.AddNodeByOp(MakeExecuteOp("c1", "PlainOp", 1U, 0U));
@@ -609,10 +610,10 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMultiOutputConsumerQueryIsolated) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddDataEdgeUsesEndpointOwnerGraph) {
-  Graph owner("owner", 1);
+  Graph owner("owner", C_GRAPH_EXECUTE);
   auto src = owner.AddNodeByOp(MakeExecuteOp("src", "PlainOp", 0U, 1U));
   auto dst = owner.AddNodeByOp(MakeExecuteOp("dst", "PlainOp", 1U, 0U));
-  Graph caller("caller", 1);
+  Graph caller("caller", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, caller.SetValid());
   const auto native_owner = GraphUtilsEx::Graph2ExecuteGraph(owner);
   const auto native_caller = GraphUtilsEx::Graph2ExecuteGraph(caller);
@@ -627,7 +628,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddDataEdgeUsesEndpointOwnerGraph) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddDataEdgeAllowSelfLoop) {
-  Graph graph("self_loop", 1);
+  Graph graph("self_loop", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 1U, 1U));
   ASSERT_EQ(GRAPH_SUCCESS, graph.AddDataEdge(node, 0, node, 0));
   EXPECT_EQ(1U, node.GetOutDataNodesAndPortIndexs(0).size());
@@ -642,7 +643,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddDataEdgeAllowSelfLoop) {
 
 // 3.3：非法端口三种形态都被拒绝，且拒绝后邻接表未被破坏。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRejectsInvalidPorts) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto src = graph.AddNodeByOp(MakeExecuteOp("src", "PlainOp", 0U, 1U));
   auto dst = graph.AddNodeByOp(MakeExecuteOp("dst", "PlainOp", 1U, 0U));
 
@@ -669,7 +670,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRejectsInvalidPorts) {
 
 // 3.3：重复占用同一输入槽被拒绝，且原有边保持不变（失败无部分修改）。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRejectsOccupiedInputSlot) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto a = graph.AddNodeByOp(MakeExecuteOp("a", "PlainOp", 0U, 1U));
   auto b = graph.AddNodeByOp(MakeExecuteOp("b", "PlainOp", 0U, 1U));
   auto dst = graph.AddNodeByOp(MakeExecuteOp("dst", "PlainOp", 1U, 0U));
@@ -689,7 +690,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRejectsOccupiedInputSlot) {
 
 // 3.3：控制边两端都是 -1；允许重复添加，每次断边删除一条。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphControlEdgeConvention) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto a = graph.AddNodeByOp(MakeExecuteOp("a", "PlainOp", 0U, 0U));
   auto b = graph.AddNodeByOp(MakeExecuteOp("b", "PlainOp", 0U, 0U));
 
@@ -714,10 +715,10 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphControlEdgeConvention) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddControlEdgeUsesEndpointOwnerGraph) {
-  Graph owner("owner", 1);
+  Graph owner("owner", C_GRAPH_EXECUTE);
   auto src = owner.AddNodeByOp(MakeExecuteOp("src", "PlainOp", 0U, 0U));
   auto dst = owner.AddNodeByOp(MakeExecuteOp("dst", "PlainOp", 0U, 0U));
-  Graph caller("caller", 1);
+  Graph caller("caller", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, caller.SetValid());
   const auto native_owner = GraphUtilsEx::Graph2ExecuteGraph(owner);
   const auto native_caller = GraphUtilsEx::Graph2ExecuteGraph(caller);
@@ -740,7 +741,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddControlEdgeUsesEndpointOwnerGraph)
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddControlEdgeAllowSelfLoopAndDuplicates) {
-  Graph graph("self_loop", 1);
+  Graph graph("self_loop", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 0U, 0U));
   ASSERT_EQ(GRAPH_SUCCESS, graph.AddControlEdge(node, node));
   ASSERT_EQ(GRAPH_SUCCESS, graph.AddControlEdge(node, node));
@@ -756,7 +757,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddControlEdgeAllowSelfLoopAndDuplica
 
 // 3.4：删除节点后入边/出边/邻居邻接表都清理干净，旧句柄失效，存活节点不受影响。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveNodeCleansNeighbors) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto a = graph.AddNodeByOp(MakeExecuteOp("a", "PlainOp", 0U, 1U));
   auto b = graph.AddNodeByOp(MakeExecuteOp("b", "PlainOp", 1U, 1U));
   auto c = graph.AddNodeByOp(MakeExecuteOp("c", "PlainOp", 1U, 0U));
@@ -782,7 +783,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveNodeCleansNeighbors) {
 
 // 12.3：删除挂有子图的节点时，子图树、根登记和旧句柄一并清理；邻居不受影响。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveNodeWithSubgraph) {
-  Graph graph("root", 1);
+  Graph graph("root", C_GRAPH_EXECUTE);
   auto keep = graph.AddNodeByOp(MakeExecuteOp("keep", "PlainOp", 1U, 1U));
   auto owner = graph.AddNodeByOp(MakeExecuteOp("owner", "IfOp", 1U, 1U));
   auto tail = graph.AddNodeByOp(MakeExecuteOp("tail", "PlainOp", 1U, 0U));
@@ -791,9 +792,9 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveNodeWithSubgraph) {
   ASSERT_EQ(GRAPH_SUCCESS, graph.AddControlEdge(keep, owner));
 
   // owner -> then_branch -> level2，两层子图。
-  auto branch = std::make_shared<Graph>("then_branch", 1);
+  auto branch = std::make_shared<Graph>("then_branch", C_GRAPH_EXECUTE);
   auto branch_inner = branch->AddNodeByOp(MakeExecuteOp("branch_inner", "IfOp", 1U, 1U));
-  auto level2 = std::make_shared<Graph>("level2", 1);
+  auto level2 = std::make_shared<Graph>("level2", C_GRAPH_EXECUTE);
   level2->AddNodeByOp(MakeExecuteOp("level2_inner", "PlainOp", 0U, 1U));
   ASSERT_EQ(GRAPH_SUCCESS, branch_inner.SetSubgraph(AscendString("then"), *level2));
   ASSERT_EQ(GRAPH_SUCCESS, owner.SetSubgraph(AscendString("then"), *branch));
@@ -837,8 +838,8 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveNodeWithSubgraph) {
 
 // 12.3：跨图节点（既非本图也非其后代）在两种模式下都被拒绝，无部分修改。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveNodeRejectsForeignNodes) {
-  Graph graph("root", 1);
-  Graph other("other", 1);
+  Graph graph("root", C_GRAPH_EXECUTE);
+  Graph other("other", C_GRAPH_EXECUTE);
   (void)graph.AddNodeByOp(MakeExecuteOp("mine", "PlainOp", 0U, 1U));
   auto foreign = other.AddNodeByOp(MakeExecuteOp("foreign", "PlainOp", 0U, 1U));
   GNode foreign_node = foreign;
@@ -857,7 +858,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveNodeRejectsForeignNodes) {
 
 // 3.4：删除已登记为图输出的节点后，输出登记同步清理。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveOutputNodeClearsRegistration) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto a = graph.AddNodeByOp(MakeExecuteOp("a", "PlainOp", 0U, 1U));
   auto b = graph.AddNodeByOp(MakeExecuteOp("b", "PlainOp", 1U, 1U));
   ASSERT_EQ(GRAPH_SUCCESS, graph.SetOutputs({{b, 0}}));
@@ -887,7 +888,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveOutputNodeClearsRegistration) {
 
 // 3.4：新建替换节点、转接数据边和控制边、删除旧节点后图保持一致。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphReplaceNodeKeepsGraphConsistent) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto a = graph.AddNodeByOp(MakeExecuteOp("a", "PlainOp", 0U, 1U));
   auto old_b = graph.AddNodeByOp(MakeExecuteOp("old_b", "PlainOp", 1U, 1U));
   auto c = graph.AddNodeByOp(MakeExecuteOp("c", "PlainOp", 1U, 1U));
@@ -924,7 +925,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphReplaceNodeKeepsGraphConsistent) {
 
 // 3.4：按"新建替换节点 -> 转接数据边 -> 删除旧节点"的顺序改图，节点数、邻接及输出登记保持一致。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphReplaceNodeByTransferringEdges) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto a = graph.AddNodeByOp(MakeExecuteOp("a", "PlainOp", 0U, 1U));
   auto b = graph.AddNodeByOp(MakeExecuteOp("b", "PlainOp", 1U, 1U));
   auto c = graph.AddNodeByOp(MakeExecuteOp("c", "PlainOp", 1U, 0U));
@@ -959,14 +960,14 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphReplaceNodeByTransferringEdges) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveEdgeUsesEndpointOwnerGraph) {
-  Graph owner("owner", 1);
+  Graph owner("owner", C_GRAPH_EXECUTE);
   auto src = owner.AddNodeByOp(MakeExecuteOp("src", "PlainOp", 0U, 1U));
   auto dst = owner.AddNodeByOp(MakeExecuteOp("dst", "PlainOp", 1U, 0U));
   ASSERT_EQ(GRAPH_SUCCESS, owner.AddDataEdge(src, 0, dst, 0));
   ASSERT_EQ(GRAPH_SUCCESS, owner.AddControlEdge(src, dst));
   ASSERT_EQ(GRAPH_SUCCESS, owner.AddControlEdge(src, dst));
   const auto native = GraphUtilsEx::Graph2ExecuteGraph(owner);
-  Graph caller("caller", 1);
+  Graph caller("caller", C_GRAPH_EXECUTE);
   GNode invalid;
   EXPECT_EQ(GRAPH_FAILED, caller.RemoveEdge(invalid, 0, dst, 0));
   EXPECT_EQ(GRAPH_FAILED, caller.RemoveEdge(src, 0, invalid, 0));
@@ -994,7 +995,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveEdgeUsesEndpointOwnerGraph) {
 
 // 3.3：断边入口同样校验端口，三类非法端口被拒绝且原边不受影响。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveEdgeRejectsInvalidPorts) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto src = graph.AddNodeByOp(MakeExecuteOp("src", "PlainOp", 0U, 1U));
   auto dst = graph.AddNodeByOp(MakeExecuteOp("dst", "PlainOp", 1U, 0U));
   ASSERT_EQ(GRAPH_SUCCESS, graph.AddDataEdge(src, 0, dst, 0));
@@ -1015,7 +1016,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveEdgeRejectsInvalidPorts) {
 
 // 3.3：AddDataEdge 不接受 -1/-1；该组合属于控制边约定，必须拒绝而不是静默建控制边。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddDataEdgeRejectsControlPorts) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto src = graph.AddNodeByOp(MakeExecuteOp("src", "PlainOp", 0U, 1U));
   auto dst = graph.AddNodeByOp(MakeExecuteOp("dst", "PlainOp", 1U, 0U));
 
@@ -1032,7 +1033,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddDataEdgeRejectsControlPorts) {
 
 // 3.5：图级 AttrValue 属性读写（A22），执行图后端使用自身图属性表，不依赖计算图。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGraphAttrsRoundTrip) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 1U, 1U));
 
   AttrValue int_value;
@@ -1081,7 +1082,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGraphAttrsRoundTrip) {
 
 // 重名在实际登记时失败，已写入的实例槽位保留，原根登记不被覆盖。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountDuplicateNamePreservesOriginalRegistration) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto parent = root.AddNodeByOp(MakeExecuteOp("if", "IfOp", 1U, 1U));
   auto first = MakeExecuteSubgraph("dup");
   first->AddNodeByOp(MakeExecuteOp("first_inner", "PlainOp", 0U, 1U));
@@ -1119,7 +1120,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountDuplicateNamePreservesOriginalRe
 
 // 批量挂载第二项登记失败时，第一项已完成的修改保留。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountSubgraphsPreservesCompletedItemsOnFailure) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto parent = root.AddNodeByOp(MakeExecuteOp("case", "CaseOp", 1U, 1U));
   auto taken = MakeExecuteSubgraph("taken");
   taken->AddNodeByOp(MakeExecuteOp("taken_inner", "PlainOp", 0U, 1U));
@@ -1153,7 +1154,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountSubgraphsPreservesCompletedItems
 
 // 12.11：子图不能挂到自己的后代节点上，父子指针不成环。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountRejectsAncestorCycle) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto subgraph = MountExecuteSubgraph(root, MakeExecuteOp("l1", "IfOp", 1U, 1U), "then", "level1");
   ASSERT_NE(nullptr, subgraph);
   auto inner = subgraph->AddNodeByOp(MakeExecuteOp("inner", "IfOp", 1U, 1U));
@@ -1174,7 +1175,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountRejectsAncestorCycle) {
 
 // 12.11：先在子图里建好嵌套层，再整体挂到根上；根登记表包含两层。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountPrebuiltTreeRegistersEveryLevel) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto parent = root.AddNodeByOp(MakeExecuteOp("if", "IfOp", 1U, 1U));
   auto level1 = MakeExecuteSubgraph("level1");
   auto level1_if = level1->AddNodeByOp(MakeExecuteOp("level1_if", "IfOp", 1U, 1U));
@@ -1218,7 +1219,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountPrebuiltTreeRegistersEveryLevel)
 
 // 12.3：contain_subgraph=false 只删本图节点；true 允许删后代图节点并在实际 owner 删除。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveNodeSubgraphOwnershipScope) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto subgraph = MountExecuteSubgraph(root, MakeExecuteOp("l1", "IfOp", 1U, 1U), "then", "level1");
   ASSERT_NE(nullptr, subgraph);
   auto nested = MountExecuteSubgraph(*subgraph, MakeExecuteOp("l2", "IfOp", 1U, 1U), "then", "level2");
@@ -1243,7 +1244,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveNodeSubgraphOwnershipScope) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteNodeGetAllSubgraphsUsesRootRegistryAndAppendsResults) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto observer = root.AddNodeByOp(MakeExecuteOp("observer", "PlainOp", 0U, 0U));
   std::vector<GraphPtr> graphs;
   EXPECT_EQ(GRAPH_FAILED, observer.GetALLSubgraphs(graphs));
@@ -1270,7 +1271,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteNodeGetAllSubgraphsUsesRootRegistryAndAppe
 
 // 4.1：子图挂载、查询、父子关系与解除（A08/A23/A24/A25）。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphUserSubgraphLifecycle) {
-  Graph graph("root", 1);
+  Graph graph("root", C_GRAPH_EXECUTE);
   auto parent = graph.AddNodeByOp(MakeExecuteOp("parent", "IfOp", 1U, 1U));
   auto subgraph = MountExecuteSubgraph(graph, MakeExecuteOp("parent2", "IfOp", 1U, 1U), "then", "then_branch");
   ASSERT_NE(nullptr, subgraph);
@@ -1317,7 +1318,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphUserSubgraphLifecycle) {
 
 // 删除登记保留父关系、槽位和节点句柄，重新登记后查询恢复。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveSubgraphPreservesParentSlotsAndNodeHandles) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto node = root.AddNodeByOp(MakeExecuteOp("if", "IfOp", 1U, 1U));
   auto branch = MakeExecuteSubgraph("branch");
   auto inner = branch->AddNodeByOp(MakeExecuteOp("branch_inner", "PlainOp", 0U, 1U));
@@ -1339,7 +1340,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveSubgraphPreservesParentSlotsAnd
 
 // 删除只作用于当前登记表中的指定名称，不委托根图或递归删除。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveSubgraphOnlyChangesLocalRegistry) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto level1 = MountExecuteSubgraph(root, MakeExecuteOp("l1", "IfOp", 1U, 1U), "then", "level1");
   ASSERT_NE(nullptr, level1);
   auto level2 = MountExecuteSubgraph(*level1, MakeExecuteOp("l2", "IfOp", 1U, 1U), "then", "level2");
@@ -1364,7 +1365,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveSubgraphOnlyChangesLocalRegistr
 
 // 登记删除和恢复影响新的查询，已有图门面仍可使用。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveSubgraphUpdatesLookupsAndAllowsReregistration) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto node = root.AddNodeByOp(MakeExecuteOp("if", "IfOp", 1U, 1U));
   auto branch = MakeExecuteSubgraph("branch");
   branch->AddNodeByOp(MakeExecuteOp("branch_inner", "PlainOp", 0U, 1U));
@@ -1392,7 +1393,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveSubgraphUpdatesLookupsAndAllows
 
 // 删除登记不解除父关系，后续挂载可以迁移登记并更新父关系。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemovedSubgraphKeepsContentsAndParentRelations) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto branch = MountExecuteSubgraph(root, MakeExecuteOp("l1", "IfOp", 1U, 1U), "then", "branch");
   ASSERT_NE(nullptr, branch);
   ASSERT_EQ(GRAPH_SUCCESS, root.RemoveSubgraph("branch"));
@@ -1402,7 +1403,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemovedSubgraphKeepsContentsAndParent
   EXPECT_EQ(nullptr, branch->GetSubGraph("branch"));
   EXPECT_TRUE(root.GetAllSubgraphs().empty());
   EXPECT_NE(nullptr, branch->GetParentGraph());
-  Graph other("other", 1);
+  Graph other("other", C_GRAPH_EXECUTE);
   auto other_node = other.AddNodeByOp(MakeExecuteOp("other_if", "IfOp", 1U, 1U));
   ASSERT_EQ(GRAPH_SUCCESS, other_node.SetSubgraph(AscendString("then"), *branch));
   EXPECT_NE(nullptr, other.GetSubGraph("branch"));
@@ -1412,7 +1413,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemovedSubgraphKeepsContentsAndParent
 
 // 12.10：GetAllNodes 递归到用户子图，GetDirectNode 仍只返回本层。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGetAllNodesCoversSubgraphs) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   (void)root.AddNodeByOp(MakeExecuteOp("root_a", "PlainOp", 0U, 1U));
   auto level1 = MountExecuteSubgraph(root, MakeExecuteOp("l1", "IfOp", 1U, 1U), "then", "level1");
   ASSERT_NE(nullptr, level1);
@@ -1438,7 +1439,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGetAllNodesCoversSubgraphs) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGetAllNodesFollowsNodeSubgraphSlotsInDepthFirstOrder) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   root.AddNodeByOp(MakeExecuteOp("before", "PlainOp", 0U, 1U));
   auto parent = root.AddNodeByOp(MakeExecuteOp("parent", "If", 0U, 1U));
   root.AddNodeByOp(MakeExecuteOp("after", "PlainOp", 0U, 1U));
@@ -1487,7 +1488,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGetAllNodesOnUninitializedGraphReturn
 
 // 12.10：不同层级的同名节点各自保留，枚举出的句柄按 owner 区分且可直接改边。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGetAllNodesKeepsSameNamePerLevel) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   (void)root.AddNodeByOp(MakeExecuteOp("same", "PlainOp", 0U, 1U));
   auto root_dst = root.AddNodeByOp(MakeExecuteOp("root_dst", "PlainOp", 1U, 0U));
   auto subgraph = MountExecuteSubgraph(root, MakeExecuteOp("l1", "IfOp", 1U, 1U), "then", "level1");
@@ -1532,7 +1533,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGetAllNodesKeepsSameNamePerLevel) {
 
 // 4.1：嵌套子图逐层保持父子关系；跨类别子图被拒绝。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNestedSubgraphAndCrossKindRejection) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto subgraph = MountExecuteSubgraph(root, MakeExecuteOp("l1", "IfOp", 1U, 1U), "then", "level1");
   ASSERT_NE(nullptr, subgraph);
 
@@ -1560,7 +1561,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNestedSubgraphAndCrossKindRejection) 
 
 // 4.2：CopyFrom 深复制结构，副本与源图相互独立（A27）。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromIsIndependent) {
-  Graph src("src", 1);
+  Graph src("src", C_GRAPH_EXECUTE);
   auto a = src.AddNodeByOp(MakeExecuteOp("a", "PlainOp", 0U, 1U));
   auto b = src.AddNodeByOp(MakeExecuteOp("b", "PlainOp", 1U, 1U));
   ASSERT_EQ(GRAPH_SUCCESS, src.AddDataEdge(a, 0, b, 0));
@@ -1570,7 +1571,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromIsIndependent) {
   ASSERT_EQ(GRAPH_SUCCESS, src_attr.SetAttrValue(AscendString("init")));
   ASSERT_EQ(GRAPH_SUCCESS, a.SetAttr(AscendString("stage"), src_attr));
 
-  Graph dst("dst", 1);
+  Graph dst("dst", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, dst.CopyFrom(src));
 
   // 结构一致：节点数、边与输出登记都被复制。
@@ -1606,7 +1607,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromIsIndependent) {
 
 // 12.13：三级图树的 CopyFrom 逐层重建父图/父节点，副本完全脱离源图。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromRelinksEveryLevel) {
-  Graph src("src", 1);
+  Graph src("src", C_GRAPH_EXECUTE);
   auto level1 = MountExecuteSubgraph(src, MakeExecuteOp("l1", "IfOp", 1U, 1U), "then", "level1");
   ASSERT_NE(nullptr, level1);
   auto level2 = MountExecuteSubgraph(*level1, MakeExecuteOp("l2", "IfOp", 1U, 1U), "then", "level2");
@@ -1616,7 +1617,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromRelinksEveryLevel) {
   // 根 l1；level1 有 sub_inner + l2；level2 有 sub_inner + l3；level3 有 sub_inner。
   ASSERT_EQ(6U, src.GetAllNodes().size());
 
-  Graph dst("dst", 1);
+  Graph dst("dst", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, dst.CopyFrom(src));
 
   // 三层子图都在副本里，且副本的父子指针逐层指向副本自身，不再指向源图。
@@ -1662,14 +1663,14 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromRelinksEveryLevel) {
 
 // 12.13：不同层级出现同名节点时，副本仍按层级重建父节点，不会串到别的层。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromKeepsSameNamePerLevel) {
-  Graph src("src", 1);
+  Graph src("src", C_GRAPH_EXECUTE);
   auto level1 = MountExecuteSubgraph(src, MakeExecuteOp("cond", "IfOp", 1U, 1U), "then", "level1");
   ASSERT_NE(nullptr, level1);
   // level1 里同名的 "cond" 节点，mount 出 level2。
   auto level2 = MountExecuteSubgraph(*level1, MakeExecuteOp("cond", "IfOp", 1U, 1U), "then", "level2");
   ASSERT_NE(nullptr, level2);
 
-  Graph dst("dst", 1);
+  Graph dst("dst", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, dst.CopyFrom(src));
   auto copied_l1 = dst.GetSubGraph("level1");
   auto copied_l2 = dst.GetSubGraph("level2");
@@ -1697,9 +1698,9 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromKeepsSameNamePerLevel) {
 
 // 12.13：源图销毁后副本仍可查询和构图，副本修改不影响源图。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromSurvivesSourceDestroyed) {
-  Graph dst("dst", 1);
+  Graph dst("dst", C_GRAPH_EXECUTE);
   {
-    Graph src("src", 1);
+    Graph src("src", C_GRAPH_EXECUTE);
     auto level1 = MountExecuteSubgraph(src, MakeExecuteOp("l1", "IfOp", 1U, 1U), "then", "level1");
     ASSERT_NE(nullptr, level1);
     auto level2 = MountExecuteSubgraph(*level1, MakeExecuteOp("l2", "IfOp", 1U, 1U), "then", "level2");
@@ -1723,11 +1724,11 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromSurvivesSourceDestroyed) {
 
 // 4.2：拒绝跨类别、无效源图及非根源图，失败时不初始化目标。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromRejectsInvalidCases) {
-  Graph src("src", 1);
+  Graph src("src", C_GRAPH_EXECUTE);
   src.AddNodeByOp(MakeExecuteOp("a", "PlainOp", 0U, 1U));
 
   Graph compute_src("compute_src");
-  Graph dst("dst", 1);
+  Graph dst("dst", C_GRAPH_EXECUTE);
   EXPECT_NE(GRAPH_SUCCESS, dst.CopyFrom(compute_src));
 
   Graph compute_dst("compute_dst");
@@ -1746,7 +1747,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromRejectsInvalidCases) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromSupportSelfCopyAndOverwrite) {
-  Graph src("src", 1);
+  Graph src("src", C_GRAPH_EXECUTE);
   src.AddNodeByOp(MakeExecuteOp("a", "PlainOp", 0U, 1U));
   Graph old_src = src;
   ASSERT_EQ(GRAPH_SUCCESS, src.CopyFrom(src));
@@ -1754,7 +1755,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromSupportSelfCopyAndOverwrite) 
   EXPECT_NE(nullptr, src.FindNodeByName(AscendString("a")));
   EXPECT_NE(nullptr, old_src.FindNodeByName(AscendString("a")));
 
-  Graph nonempty("nonempty", 1);
+  Graph nonempty("nonempty", C_GRAPH_EXECUTE);
   auto old_node = nonempty.AddNodeByOp(MakeExecuteOp("x", "PlainOp", 0U, 1U));
   Graph alias = nonempty;
   ASSERT_EQ(GRAPH_SUCCESS, nonempty.CopyFrom(src));
@@ -1771,13 +1772,13 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFromSupportSelfCopyAndOverwrite) 
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFailurePreservesExistingDestination) {
-  Graph src("source", 1);
+  Graph src("source", C_GRAPH_EXECUTE);
   auto producer = src.AddNodeByOp(MakeExecuteOp("producer", "PlainOp", 0U, 1U));
   auto consumer = src.AddNodeByOp(MakeExecuteOp("consumer", "PlainOp", 1U, 0U));
   ASSERT_EQ(GRAPH_SUCCESS, src.AddDataEdge(producer, 0, consumer, 0));
   auto native_src = GraphUtilsEx::Graph2ExecuteGraph(src);
   auto *edge = native_src->GetAllEdges()[0];
-  Graph dst("destination", 1);
+  Graph dst("destination", C_GRAPH_EXECUTE);
   auto keep = dst.AddNodeByOp(MakeExecuteOp("keep", "PlainOp", 0U, 1U));
   const auto original_impl = dst.impl_;
   // 源图含有越界端口，复制边时失败；此前已复制的节点不能提交到目标。
@@ -1793,12 +1794,12 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyFailurePreservesExistingDestinati
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyPreservesEmptyAndRepeatedOutputSlots) {
-  Graph src("source", 1);
+  Graph src("source", C_GRAPH_EXECUTE);
   auto gone = src.AddNodeByOp(MakeExecuteOp("gone", "PlainOp", 0U, 1U));
   auto keep = src.AddNodeByOp(MakeExecuteOp("keep", "PlainOp", 0U, 2U));
   ASSERT_EQ(GRAPH_SUCCESS, src.SetOutputs({{gone, 0}, {keep, 1}, {keep, 0}, {gone, 0}}));
   ASSERT_EQ(GRAPH_SUCCESS, src.RemoveNode(gone));
-  Graph copied("", 1);
+  Graph copied("", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, copied.CopyFrom(src));
   EXPECT_EQ("source", copied.GetName());
   auto native = GraphUtilsEx::Graph2ExecuteGraph(copied);
@@ -1822,7 +1823,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyPreservesEmptyAndRepeatedOutputSl
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyPreservesInputSlotsAndGraphMetadata) {
-  Graph src("source", 1);
+  Graph src("source", C_GRAPH_EXECUTE);
   auto first = src.AddNodeByOp(MakeExecuteOp("first", "Data", 0U, 1U));
   auto second = src.AddNodeByOp(MakeExecuteOp("second", "Data", 0U, 1U));
   const auto native_src = GraphUtilsEx::Graph2ExecuteGraph(src);
@@ -1833,7 +1834,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyPreservesInputSlotsAndGraphMetada
   AttrValue value;
   ASSERT_EQ(GRAPH_SUCCESS, value.SetAttrValue(AscendString("value")));
   ASSERT_EQ(GRAPH_SUCCESS, src.SetAttr(AscendString("key"), value));
-  Graph copied("copy", 1);
+  Graph copied("copy", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, copied.CopyFrom(src));
   auto native = GraphUtilsEx::Graph2ExecuteGraph(copied);
   EXPECT_EQ(42U, native->GetGraphId());
@@ -1852,7 +1853,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyPreservesInputSlotsAndGraphMetada
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyPreservesNodeSymbolsAndHostFlag) {
-  Graph src("source", 1);
+  Graph src("source", C_GRAPH_EXECUTE);
   auto node = src.AddNodeByOp(MakeExecuteOp("symbols", "PlainOp", 2U, 2U));
   auto *source_info = NodeAdapter::GNode2ExecuteNode(node)->GetExtendInfo();
   source_info->SetHostNode(true);
@@ -1860,7 +1861,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyPreservesNodeSymbolsAndHostFlag) 
     ASSERT_EQ(GRAPH_SUCCESS, source_info->SetInputSymbol(i, 10U + i));
     ASSERT_EQ(GRAPH_SUCCESS, source_info->SetOutputSymbol(i, 20U + i));
   }
-  Graph copied("copy", 1);
+  Graph copied("copy", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, copied.CopyFrom(src));
   auto copied_node = copied.FindNodeByName(AscendString("symbols"));
   ASSERT_NE(nullptr, copied_node);
@@ -1875,19 +1876,24 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyPreservesNodeSymbolsAndHostFlag) 
   EXPECT_EQ(20U, source_info->GetOutputSymbol(0U));
 }
 
-// 执行图诊断接口留待独立方案实现。
+// 执行图 dump 为只读快照：转 ComputeGraph 复用计算图 dump 链路（快照不回写）。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphDumpToStream) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 0U, 1U));
   std::stringstream readable;
-  EXPECT_NE(GRAPH_SUCCESS, graph.Dump(Graph::DumpFormat::kReadable, readable));
-  EXPECT_TRUE(readable.str().empty());
+  EXPECT_EQ(GRAPH_SUCCESS, graph.Dump(Graph::DumpFormat::kReadable, readable));
+  EXPECT_NE(std::string::npos, readable.str().find("%node")) << readable.str();
   EXPECT_EQ(1U, graph.GetDirectNode().size());
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphDumpToFile) {
-  Graph graph("execute_graph", 1);
-  EXPECT_NE(GRAPH_SUCCESS, graph.DumpToFile(Graph::DumpFormat::kReadable, AscendString("")));
+  const std::string ascend_work_path = "./test_ge_graph_path";
+  (void)mmSetEnv("DUMP_GRAPH_PATH", ascend_work_path.c_str(), 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
+  graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 0U, 1U));
+  EXPECT_EQ(GRAPH_SUCCESS, graph.DumpToFile(Graph::DumpFormat::kReadable, AscendString("execute_dump")));
+  system(("rm -rf " + ascend_work_path).c_str());
+  unsetenv("DUMP_GRAPH_PATH");
 }
 
 // 5.1：ES 构建器透传后端类别——执行图构建不调用 NormalizeEsToGe，也不产生 ComputeGraph。
@@ -1902,7 +1908,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsBuilderKindPassthrough) {
     EXPECT_EQ(nullptr, GraphUtilsEx::Graph2ExecuteGraph(*graph));
   }
   {
-    ge::es::EsGraphBuilder execute_builder("es_execute", 1);
+    ge::es::EsGraphBuilder execute_builder("es_execute", C_GRAPH_EXECUTE);
     auto input = execute_builder.CreateInput(0);
     ASSERT_NE(nullptr, input.GetCTensorHolder());
     auto graph = execute_builder.BuildAndReset({input});
@@ -1918,7 +1924,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsBuilderKindPassthrough) {
 // 阶段属性只作为普通节点属性保存，取值、分组和校验统一在 GERT 拆图入口处理。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsInputsUseGlobalIndexes) {
   {
-    ge::es::EsGraphBuilder builder("es_execute_global_index", 1);
+    ge::es::EsGraphBuilder builder("es_execute_global_index", C_GRAPH_EXECUTE);
     auto load_input = builder.CreateInput(0, "load_input");
     ASSERT_NE(nullptr, load_input.GetCTensorHolder());
     // 阶段属性由 ES 原样保存，不参与输入编号判定。
@@ -1936,14 +1942,14 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsInputsUseGlobalIndexes) {
   }
   {
     // 输入序号不从 0 开始被拒绝。
-    ge::es::EsGraphBuilder builder("es_execute_bad_start", 1);
+    ge::es::EsGraphBuilder builder("es_execute_bad_start", C_GRAPH_EXECUTE);
     auto load_input = builder.CreateInput(1, "load_input");
     ASSERT_NE(nullptr, load_input.GetCTensorHolder());
     EXPECT_EQ(nullptr, builder.BuildAndReset({load_input}));
   }
   {
     // 输入序号不连续被拒绝。
-    ge::es::EsGraphBuilder builder("es_execute_gap", 1);
+    ge::es::EsGraphBuilder builder("es_execute_gap", C_GRAPH_EXECUTE);
     auto input0 = builder.CreateInput(0, "input0");
     auto input2 = builder.CreateInput(2, "input2");
     ASSERT_NE(nullptr, input0.GetCTensorHolder());
@@ -1954,7 +1960,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsInputsUseGlobalIndexes) {
 
 // 12.0：自动追加的输入沿用全局序号，序号在整张图内递增。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsAppendInputUsesGlobalIndex) {
-  ge::es::EsGraphBuilder builder("es_execute_append", 1);
+  ge::es::EsGraphBuilder builder("es_execute_append", C_GRAPH_EXECUTE);
   auto load_input = builder.CreateInput(0, "load_input");
   ASSERT_NE(nullptr, load_input.GetCTensorHolder());
   ASSERT_EQ(SUCCESS, load_input.SetAttrForNode(gert::attr::kStage, gert::attr::kStageInit));
@@ -1972,7 +1978,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsAppendInputUsesGlobalIndex) {
 
 // 5.3：类型化常量读回保持 dtype/长度；消费节点可经公共 GNode 读取常量输入。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphTypedConstReadableFromConsumer) {
-  Graph graph("const_consumer", 1);
+  Graph graph("const_consumer", C_GRAPH_EXECUTE);
   auto const_node = graph.AddNodeByOp(MakeExecuteOp("const", "Const", 0U, 1U));
   auto consumer = graph.AddNodeByOp(MakeExecuteOp("consumer", "PlainOp", 1U, 1U));
   ASSERT_NE(nullptr, graph.FindNodeByName(AscendString("const")));
@@ -2049,7 +2055,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphConstInputFollowsInnerDataIndexWithou
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphConstInputRejectsInvalidInnerDataMappingsWithoutChangingTensor) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto constant = root.AddNodeByOp(MakeExecuteOp("constant", "Const", 0U, 1U));
   const int32_t value = 42;
   Tensor tensor(TensorDesc(Shape({1}), FORMAT_ND, DT_INT32));
@@ -2087,7 +2093,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphConstInputRejectsInvalidInnerDataMapp
 
 // 5.3：复制后常量载荷仍然有效，且副本与源图互不影响。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphConstSurvivesCopy) {
-  Graph src("const_src", 1);
+  Graph src("const_src", C_GRAPH_EXECUTE);
   auto const_node = src.AddNodeByOp(MakeExecuteOp("const", "Const", 0U, 1U));
   auto consumer = src.AddNodeByOp(MakeExecuteOp("consumer", "PlainOp", 1U, 1U));
   const std::vector<float> values{1.5F, 2.5F};
@@ -2098,7 +2104,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphConstSurvivesCopy) {
   ASSERT_EQ(GRAPH_SUCCESS, const_node.SetAttr(AscendString("value"), input));
   ASSERT_EQ(GRAPH_SUCCESS, src.AddDataEdge(const_node, 0, consumer, 0));
 
-  Graph dst("const_dst", 1);
+  Graph dst("const_dst", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, dst.CopyFrom(src));
   auto dst_consumer = dst.FindNodeByName(AscendString("consumer"));
   ASSERT_NE(nullptr, dst_consumer);
@@ -2122,7 +2128,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphConstSurvivesCopy) {
 
 // 5.4：收尾按声明组装逻辑 NetOutput，图移交后 Builder 不可再用。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsBuildHandsOverOnce) {
-  ge::es::EsGraphBuilder builder("es_execute_handover", 1);
+  ge::es::EsGraphBuilder builder("es_execute_handover", C_GRAPH_EXECUTE);
   auto input = builder.CreateInput(0);
   ASSERT_NE(nullptr, input.GetCTensorHolder());
   auto graph = builder.BuildAndReset({input});
@@ -2142,7 +2148,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsBuildHandsOverOnce) {
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsAllowsRepeatedOutputValue) {
   {
     // [a, a]：同一个值同时作为 0、1 号输出。
-    ge::es::EsGraphBuilder builder("es_execute_repeat_aa", 1);
+    ge::es::EsGraphBuilder builder("es_execute_repeat_aa", C_GRAPH_EXECUTE);
     auto input = builder.CreateInput(0);
     ASSERT_NE(nullptr, input.GetCTensorHolder());
     auto graph = builder.BuildAndReset({input, input});
@@ -2161,7 +2167,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsAllowsRepeatedOutputValue) {
   }
   {
     // [a, b, a]：重复值与非重复值交错，顺序保持。
-    ge::es::EsGraphBuilder builder("es_execute_repeat_aba", 1);
+    ge::es::EsGraphBuilder builder("es_execute_repeat_aba", C_GRAPH_EXECUTE);
     auto input_a = builder.CreateInput(0, "a");
     auto input_b = builder.CreateInput(1, "b");
     ASSERT_NE(nullptr, input_a.GetCTensorHolder());
@@ -2176,7 +2182,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsAllowsRepeatedOutputValue) {
   }
   {
     // 多端口输出：同一个节点的不同端口视为不同值，不触发去重。
-    Graph graph("es_execute_multi_port", 1);
+    Graph graph("es_execute_multi_port", C_GRAPH_EXECUTE);
     auto node = graph.AddNodeByOp(MakeExecuteOp("multi", "PlainOp", 1U, 2U));
     ASSERT_NE(nullptr, graph.FindNodeByName(AscendString("multi")));
     std::vector<std::pair<GNode, int32_t>> outputs{{node, 0}, {node, 1}, {node, 0}};
@@ -2193,8 +2199,8 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsAllowsRepeatedOutputValue) {
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsRejectsInvalidOutputs) {
   {
     // 输出登记跟随 Holder 所属构建器：用 A 的 Holder 经 B 登记，实际记到 A。
-    ge::es::EsGraphBuilder builder("es_execute_owner_a", 1);
-    ge::es::EsGraphBuilder other("es_execute_owner_b", 1);
+    ge::es::EsGraphBuilder builder("es_execute_owner_a", C_GRAPH_EXECUTE);
+    ge::es::EsGraphBuilder other("es_execute_owner_b", C_GRAPH_EXECUTE);
     auto input = builder.CreateInput(0);
     ASSERT_NE(nullptr, input.GetCTensorHolder());
     ASSERT_EQ(SUCCESS, other.SetOutput(input, 0));
@@ -2208,7 +2214,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsRejectsInvalidOutputs) {
   }
   {
     // 槽位冲突：两个值抢同一槽位时后一次登记被拒绝，不影响后续收尾。
-    ge::es::EsGraphBuilder builder("es_execute_slot_conflict", 1);
+    ge::es::EsGraphBuilder builder("es_execute_slot_conflict", C_GRAPH_EXECUTE);
     auto input = builder.CreateInput(0);
     ASSERT_NE(nullptr, input.GetCTensorHolder());
     ASSERT_EQ(SUCCESS, builder.SetOutput(input, 0));
@@ -2219,7 +2225,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsRejectsInvalidOutputs) {
   }
   {
     // 已删除 producer：后端连边失败，收尾返回空，Builder 仍持有工作图。
-    ge::es::EsGraphBuilder builder("es_execute_deleted_producer", 1);
+    ge::es::EsGraphBuilder builder("es_execute_deleted_producer", C_GRAPH_EXECUTE);
     auto input0 = builder.CreateInput(0);
     ASSERT_NE(nullptr, input0.GetCTensorHolder());
     ASSERT_EQ(SUCCESS, builder.SetOutput(input0, 0));
@@ -2232,7 +2238,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsRejectsInvalidOutputs) {
 
 // 5.4：输入输出序号校验在改图前执行，补齐序号后可继续收尾。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsIndexValidationFailureKeepsGraph) {
-  ge::es::EsGraphBuilder builder("es_execute_retry", 1);
+  ge::es::EsGraphBuilder builder("es_execute_retry", C_GRAPH_EXECUTE);
   auto input0 = builder.CreateInput(0);
   auto input1 = builder.CreateInput(1);
   ASSERT_NE(nullptr, input0.GetCTensorHolder());
@@ -2264,7 +2270,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsBuilderRejectsInvalidKind) {
 
 // 12.18.2：三级子树先独立建好再整体挂到根上，逐层登记与父子关系都成立。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountPrebuiltThreeLevelTree) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto parent = root.AddNodeByOp(MakeExecuteOp("if", "IfOp", 1U, 1U));
   auto level1 = MakeExecuteSubgraph("level1");
   auto level1_if = level1->AddNodeByOp(MakeExecuteOp("level1_if", "IfOp", 1U, 1U));
@@ -2317,7 +2323,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountPrebuiltThreeLevelTree) {
 
 // 深层名称冲突在逐项登记时发现，保留前面已经完成的根登记。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountDeepNameConflictPreservesCompletedRegistrations) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto parent = root.AddNodeByOp(MakeExecuteOp("if", "IfOp", 1U, 1U));
   auto taken = MakeExecuteSubgraph("taken");
   taken->AddNodeByOp(MakeExecuteOp("taken_inner", "PlainOp", 0U, 1U));
@@ -2354,7 +2360,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountDeepNameConflictPreservesComplet
 
 // 批次不预检去重；重复对象可以占多个槽位，不同对象重名由实际登记拒绝。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountSubgraphsReusesObjectsAndSlots) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto parent = root.AddNodeByOp(MakeExecuteOp("case", "CaseOp", 1U, 1U));
   auto branch = MakeExecuteSubgraph("same_branch");
   branch->AddNodeByOp(MakeExecuteOp("same_branch_inner", "PlainOp", 0U, 1U));
@@ -2386,7 +2392,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphMountSubgraphsReusesObjectsAndSlots) 
 
 // 删除外层登记不影响后代登记、父子关系和节点句柄。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveOuterRegistrationPreservesDescendantsAndHandles) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto outer = root.AddNodeByOp(MakeExecuteOp("outer", "If", 0U, 1U));
   auto a = MakeExecuteSubgraph("a");
   auto a_if = a->AddNodeByOp(MakeExecuteOp("a_if", "If", 0U, 1U));
@@ -2418,7 +2424,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemoveOuterRegistrationPreservesDesce
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRenameAllNodesRejectsExecuteGraph) {
-  Graph graph("rename_execute", 1);
+  Graph graph("rename_execute", C_GRAPH_EXECUTE);
   (void)graph.AddNodeByOp(MakeExecuteOp("keep_name", "PlainOp", 0U, 1U));
   GeApiWrapper_RenameAllNodes(&graph, "prefix");
   // 执行图不参与重命名，节点名保持原样。
@@ -2429,16 +2435,16 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRenameAllNodesRejectsExecuteGraph) {
 // 12.17：图类别取值与 metadef c_types.h 中 C_GraphKind 枚举一致：0 为计算图，1 为执行图。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphKindMatchesCEquivalent) {
   // 两条公开构造路径按同一数值建出同一类别的图。
-  Graph compute_graph("kind_compute", 0);
+  Graph compute_graph("kind_compute", C_GRAPH_COMPUTE);
   EXPECT_EQ(nullptr, GraphUtilsEx::Graph2ExecuteGraph(compute_graph));
-  Graph execute_graph("kind_execute", 1);
+  Graph execute_graph("kind_execute", C_GRAPH_EXECUTE);
   EXPECT_TRUE(GraphUtilsEx::IsExecuteGraph(execute_graph));
   EXPECT_EQ(nullptr, GraphUtilsEx::Graph2ExecuteGraph(execute_graph));
 }
 
 // 12.17：提取和包装底层执行图，不对工具接口暴露 Backend。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphWrapperPreservesUnderlyingGraph) {
-  Graph execute_graph("wrapped_execute", 1);
+  Graph execute_graph("wrapped_execute", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, execute_graph.SetValid());
   const auto native_graph = GraphUtilsEx::Graph2ExecuteGraph(execute_graph);
   ASSERT_NE(nullptr, native_graph);
@@ -2455,7 +2461,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphWrapperPreservesUnderlyingGraph) {
 
 // 12.17：门面包装同一底层图，重复查询子图得到的节点归属不变。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphFacadeWrapperKeepsGraphIdentity) {
-  Graph root("wrap_root", 1);
+  Graph root("wrap_root", C_GRAPH_EXECUTE);
   auto parent = root.AddNodeByOp(MakeExecuteOp("wrap_if", "IfOp", 1U, 1U));
   auto sub = MakeExecuteSubgraph("wrap_sub");
   auto inner = sub->AddNodeByOp(MakeExecuteOp("wrap_inner", "PlainOp", 0U, 1U));
@@ -2480,7 +2486,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphFacadeWrapperKeepsGraphIdentity) {
 
 // 预构子树整体挂载后，底层查询、枚举和解除必须使用同一份根登记。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphPrebuiltTreeUsesRootRegistry) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto outer = root.AddNodeByOp(MakeExecuteOp("outer", "IfOp", 0U, 1U));
   auto a = MakeExecuteSubgraph("a");
   auto a_if = a->AddNodeByOp(MakeExecuteOp("a_if", "IfOp", 0U, 1U));
@@ -2523,7 +2529,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphPrebuiltTreeUsesRootRegistry) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGetSubGraphUsesRootRegistryFromAnyLevel) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto left = MountExecuteSubgraph(root, MakeExecuteOp("left_parent", "If", 0U, 1U), "then", "left");
   auto right = MountExecuteSubgraph(root, MakeExecuteOp("right_parent", "If", 0U, 1U), "then", "right");
   ASSERT_NE(nullptr, left);
@@ -2538,7 +2544,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGetSubGraphUsesRootRegistryFromAnyLev
     }
     EXPECT_EQ(nullptr, scope->GetSubGraph("missing"));
   }
-  Graph unrelated("unrelated", 1);
+  Graph unrelated("unrelated", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, unrelated.SetValid());
   EXPECT_EQ(nullptr, unrelated.GetSubGraph("left"));
 }
@@ -2549,7 +2555,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemovedRegistrationDoesNotTransferDes
   std::weak_ptr<ExecuteGraph> weak_a;
   std::weak_ptr<ExecuteGraph> weak_b;
   {
-    Graph root("root", 1);
+    Graph root("root", C_GRAPH_EXECUTE);
     auto a = MountExecuteSubgraph(root, MakeExecuteOp("outer", "If", 0U, 1U), "then", "a");
     ASSERT_NE(nullptr, a);
     auto b = MountExecuteSubgraph(*a, MakeExecuteOp("inner", "If", 0U, 1U), "then", "b");
@@ -2572,7 +2578,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphRemovedRegistrationDoesNotTransferDes
 
 // 不同待挂子树的后代重名时，保留已完成挂载和登记，修复名称后可以重试。
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphBatchPreservesProgressOnNamesAcrossSubtrees) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto parent = root.AddNodeByOp(MakeExecuteOp("parent", "IfOp", 0U, 1U));
   auto a = MakeExecuteSubgraph("a");
   auto b = MakeExecuteSubgraph("b");
@@ -2598,9 +2604,9 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphBatchPreservesProgressOnNamesAcrossSu
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphImplAddSubGraphPreservesRegistrationAndFailureSemantics) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto parent = root.AddNodeByOp(MakeExecuteOp("parent", "If", 0U, 1U));
-  Graph child("child", 1);
+  Graph child("child", C_GRAPH_EXECUTE);
   child.AddNodeByOp(MakeExecuteOp("inner", "PlainOp", 0U, 1U));
 
   auto native_child = GraphUtilsEx::Graph2ExecuteGraph(child);
@@ -2614,13 +2620,13 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphImplAddSubGraphPreservesRegistrationA
   EXPECT_EQ(GRAPH_FAILED, impl.AddSubGraph(child));
   EXPECT_EQ(1U, root.GetAllSubgraphs().size());
 
-  Graph wrong_kind("wrong_kind", 0);
+  Graph wrong_kind("wrong_kind", C_GRAPH_COMPUTE);
   ASSERT_EQ(GRAPH_SUCCESS, wrong_kind.SetValid());
   EXPECT_NE(GRAPH_SUCCESS, impl.AddSubGraph(wrong_kind));
   EXPECT_NE(GRAPH_SUCCESS, wrong_kind.impl_->AddSubGraph(root));
   Graph invalid;
   EXPECT_NE(GRAPH_SUCCESS, impl.AddSubGraph(invalid));
-  Graph missing_parent("missing_parent", 1);
+  Graph missing_parent("missing_parent", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, missing_parent.SetValid());
   EXPECT_EQ(GRAPH_FAILED, impl.AddSubGraph(missing_parent));
   EXPECT_EQ(1U, root.GetAllSubgraphs().size());
@@ -2630,7 +2636,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphImplAddSubGraphPreservesRegistrationA
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddSubGraphRegistersOnlyPreparedSubgraph) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto parent = root.AddNodeByOp(MakeExecuteOp("parent", "If", 0U, 1U));
   auto a = MakeExecuteSubgraph("a");
   auto b = MountExecuteSubgraph(*a, MakeExecuteOp("a_if", "IfOp", 0U, 1U), "then", "b");
@@ -2644,7 +2650,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddSubGraphRegistersOnlyPreparedSubgr
   EXPECT_EQ(nullptr, a->GetParentGraph());
   ExecuteGraphBackendUtils::SetParentGraph(native_a.get(), native_root);
   EXPECT_EQ(GRAPH_FAILED, root.AddSubGraph(*a));
-  Graph wrong_owner("wrong_owner", 1);
+  Graph wrong_owner("wrong_owner", C_GRAPH_EXECUTE);
   auto wrong_parent = wrong_owner.AddNodeByOp(MakeExecuteOp("wrong_parent", "If", 0U, 1U));
   native_a->SetParentNode(NodeAdapter::GNode2ExecuteNode(wrong_parent));
   EXPECT_EQ(GRAPH_FAILED, root.AddSubGraph(*a));
@@ -2665,7 +2671,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphAddSubGraphRegistersOnlyPreparedSubgr
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphBackendNameAndOperatorOutputs) {
-  Graph graph("backend_name", 1);
+  Graph graph("backend_name", C_GRAPH_EXECUTE);
   EXPECT_EQ("backend_name", graph.GetName());
   auto op = MakeNamedExecuteOp("producer", "PlainOp", {"left", "right"}, {});
   graph.AddNodeByOp(op);
@@ -2703,7 +2709,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteNodeConversionUsesOwnerGraphAndSharesRefer
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNodeSurvivesTemporaryFacade) {
-  Graph graph("root", 1);
+  Graph graph("root", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 0U, 1U));
   auto facade = GraphUtilsEx::ExecuteGraph2Graph(GraphUtilsEx::Graph2ExecuteGraph(graph));
   ASSERT_NE(nullptr, facade);
@@ -2717,7 +2723,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNodeSurvivesTemporaryFacade) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphOutputOverloadsUseUnderlyingGraph) {
-  Graph graph("outputs", 1);
+  Graph graph("outputs", C_GRAPH_EXECUTE);
   auto op = MakeNamedExecuteOp("producer", "PlainOp", {"left", "right"}, {});
   auto node = graph.AddNodeByOp(op);
   auto backend = std::make_shared<ExecuteGraphBackend>(GraphUtilsEx::Graph2ExecuteGraph(graph));
@@ -2754,7 +2760,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphImplSetOutputsSharesSelectionRules) {
   using NamedOutputs = std::vector<std::pair<Operator, std::string>>;
   using AscendNamedOutputs = std::vector<std::pair<Operator, AscendString>>;
   using NodeOutputs = std::vector<std::pair<GNode, int32_t>>;
-  Graph graph("outputs", 1);
+  Graph graph("outputs", C_GRAPH_EXECUTE);
   auto op = MakeNamedExecuteOp("producer", "PlainOp", {"left", "middle", "right"}, {});
   auto node = graph.AddNodeByOp(op);
   auto alias = MakeExecuteOp("producer", "OtherType", 0U, 0U);
@@ -2799,7 +2805,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphOperatorOutputsRejectInvalidGraphBefo
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEmptyOperatorOutputsKeepExistingOutputs) {
-  Graph graph("outputs", 1);
+  Graph graph("outputs", C_GRAPH_EXECUTE);
   auto op = MakeExecuteOp("producer", "PlainOp", 0U, 2U);
   graph.AddNodeByOp(op);
   auto native_graph = GraphUtilsEx::Graph2ExecuteGraph(graph);
@@ -2823,7 +2829,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphIndexedOutputsRejectInvalidGraphBefor
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphIndexedOutputsResolveNamesAndSkipInvalidEntries) {
   using IndexedOutputs = std::vector<std::pair<Operator, std::vector<size_t>>>;
-  Graph graph("outputs", 1);
+  Graph graph("outputs", C_GRAPH_EXECUTE);
   auto producer = MakeExecuteOp("producer", "PlainOp", 0U, 3U);
   auto other = MakeExecuteOp("other", "PlainOp", 0U, 1U);
   graph.AddNodeByOp(producer);
@@ -2858,7 +2864,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphIndexedOutputsResolveNamesAndSkipInva
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNativeOutputsValidateBeforeReplacingEndpoints) {
-  Graph graph("outputs", 1);
+  Graph graph("outputs", C_GRAPH_EXECUTE);
   auto producer = graph.AddNodeByOp(MakeExecuteOp("producer", "PlainOp", 0U, 2U));
   auto native_graph = GraphUtilsEx::Graph2ExecuteGraph(graph);
   auto *node = NodeAdapter::GNode2ExecuteNode(producer);
@@ -2870,7 +2876,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNativeOutputsValidateBeforeReplacingE
   EXPECT_NE(GRAPH_SUCCESS, native_graph->SetGraphOutNodesInfo({{node, 2}}));
   EXPECT_EQ(outputs, ExecuteGraphUtils::GetGraphOutputs(native_graph.get()));
   EXPECT_EQ(3U, node->GetExtendInfo()->GetOutputIndex().size());
-  Graph other("other", 1);
+  Graph other("other", C_GRAPH_EXECUTE);
   auto foreign = other.AddNodeByOp(MakeExecuteOp("foreign", "PlainOp", 0U, 1U));
   EXPECT_NE(GRAPH_SUCCESS, native_graph->SetGraphOutNodesInfo({{NodeAdapter::GNode2ExecuteNode(foreign), 0}}));
   EXPECT_EQ(outputs, ExecuteGraphUtils::GetGraphOutputs(native_graph.get()));
@@ -2880,7 +2886,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNativeOutputsValidateBeforeReplacingE
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphOutputsCreateAndUpdateNetOutputDataEdgesAndDescriptors) {
-  Graph graph("outputs", 1);
+  Graph graph("outputs", C_GRAPH_EXECUTE);
   auto op = MakeExecuteOp("producer", "PlainOp", 0U, 2U);
   auto desc = OpDescUtils::GetOpDescFromOperator(op);
   ASSERT_EQ(GRAPH_SUCCESS, desc->UpdateOutputDesc(1U, GeTensorDesc(GeShape({2, 3}), FORMAT_ND, DT_INT32)));
@@ -2925,7 +2931,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphOutputsCreateAndUpdateNetOutputDataEd
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphOutputsReusePreviouslyConstructedNetOutput) {
-  Graph graph("es_style", 1);
+  Graph graph("es_style", C_GRAPH_EXECUTE);
   auto producer = graph.AddNodeByOp(MakeExecuteOp("producer", "PlainOp", 0U, 2U));
   auto net_output = graph.AddNodeByOp(MakeExecuteOp("NetOutput_es_style", "NetOutput", 2U, 0U));
   ASSERT_EQ(GRAPH_SUCCESS, graph.AddDataEdge(producer, 0, net_output, 0));
@@ -2941,9 +2947,9 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphOutputsReusePreviouslyConstructedNetO
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSubgraphOutputsFollowParentRelationsRatherThanRegistration) {
-  Graph root("root", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
   auto parent = root.AddNodeByOp(MakeExecuteOp("parent", "If", 0U, 1U));
-  Graph branch("branch", 1);
+  Graph branch("branch", C_GRAPH_EXECUTE);
   auto input = branch.AddNodeByOp(MakeExecuteOp("input", "Data", 0U, 1U));
   ASSERT_EQ(GRAPH_SUCCESS, branch.SetOutputs({{input, 0}}));
   auto native = GraphUtilsEx::Graph2ExecuteGraph(branch);
@@ -2962,7 +2968,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSubgraphOutputsFollowParentRelationsR
   ASSERT_EQ(GRAPH_SUCCESS, root.RemoveNode(parent));
   EXPECT_EQ(sink, ExecuteGraphUtils::FindFirstNodeMatchType(native.get(), "NetOutput"));
   {
-    Graph temporary_root("temporary_root", 1);
+    Graph temporary_root("temporary_root", C_GRAPH_EXECUTE);
     auto temporary_parent = temporary_root.AddNodeByOp(MakeExecuteOp("temporary_parent", "If", 0U, 1U));
     ASSERT_EQ(GRAPH_SUCCESS, temporary_parent.SetSubgraph(AscendString("then"), branch));
   }
@@ -2980,7 +2986,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNamedOutputsRejectInvalidGraphBeforeC
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNamedOutputsResolvePortsAndKeepOutputsOnLookupFailure) {
   using NamedOutputs = std::vector<std::pair<Operator, std::string>>;
-  Graph graph("outputs", 1);
+  Graph graph("outputs", C_GRAPH_EXECUTE);
   auto producer = MakeNamedExecuteOp("producer", "PlainOp", {"left", "right"}, {});
   graph.AddNodeByOp(producer);
   auto native = GraphUtilsEx::Graph2ExecuteGraph(graph);
@@ -3017,7 +3023,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNamedOutputsResolvePortsAndKeepOutput
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGNodeOutputsRejectInvalidEndpointsBeforeUpdatingNetOutput) {
   using NodeOutputs = std::vector<std::pair<GNode, int32_t>>;
-  Graph graph("outputs", 1);
+  Graph graph("outputs", C_GRAPH_EXECUTE);
   auto producer = graph.AddNodeByOp(MakeExecuteOp("producer", "PlainOp", 0U, 2U));
   auto native = GraphUtilsEx::Graph2ExecuteGraph(graph);
   ExecuteGraphBackend backend(native);
@@ -3025,7 +3031,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGNodeOutputsRejectInvalidEndpointsBef
   const auto original = ExecuteGraphUtils::GetGraphOutputs(native.get());
   auto *sink = ExecuteGraphUtils::FindFirstNodeMatchType(native.get(), "NetOutput");
   ASSERT_NE(nullptr, sink);
-  Graph foreign_graph("foreign", 1);
+  Graph foreign_graph("foreign", C_GRAPH_EXECUTE);
   auto foreign = foreign_graph.AddNodeByOp(MakeExecuteOp("foreign", "PlainOp", 0U, 1U));
   Graph compute_graph("compute");
   auto compute = compute_graph.AddNodeByOp(MakeExecuteOp("compute", "PlainOp", 0U, 1U));
@@ -3048,8 +3054,8 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphGNodeOutputsRejectInvalidEndpointsBef
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsRejectsInitializedSubgraphWithoutChangingState) {
-  Graph root("root", 1);
-  Graph branch("branch", 1);
+  Graph root("root", C_GRAPH_EXECUTE);
+  Graph branch("branch", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, root.SetValid());
   ASSERT_EQ(GRAPH_SUCCESS, branch.SetValid());
   auto parent = root.AddNodeByOp(MakeExecuteOp("parent", "If", 0U, 1U));
@@ -3071,7 +3077,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsRejectsInitializedSubgraphWi
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphValidityAndNameUseBackendState) {
-  Graph graph("created_name", 1);
+  Graph graph("created_name", C_GRAPH_EXECUTE);
   const auto &name = graph.GetName();
   ASSERT_FALSE(graph.IsValid());
   EXPECT_EQ("created_name", name);
@@ -3095,10 +3101,10 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphValidityAndNameUseBackendState) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyPreservesRepeatedOutputSlots) {
-  Graph graph("source", 1);
+  Graph graph("source", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("producer", "PlainOp", 0U, 2U));
   ASSERT_EQ(GRAPH_SUCCESS, graph.SetOutputs(std::vector<std::pair<GNode, int32_t>>{{node, 1}, {node, 0}, {node, 1}}));
-  Graph copied("copy", 1);
+  Graph copied("copy", C_GRAPH_EXECUTE);
   EXPECT_FALSE(copied.IsValid());
   ASSERT_EQ(GRAPH_SUCCESS, copied.CopyFrom(graph));
   EXPECT_TRUE(copied.IsValid());
@@ -3127,7 +3133,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNodeLifetimeFollowsUnderlyingGraph) {
   GNode node;
   std::shared_ptr<ExecuteGraph> underlying;
   {
-    Graph graph("graph", 1);
+    Graph graph("graph", C_GRAPH_EXECUTE);
     node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 0U, 1U));
     underlying = GraphUtilsEx::Graph2ExecuteGraph(graph);
   }
@@ -3139,9 +3145,9 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphNodeLifetimeFollowsUnderlyingGraph) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyReplacesImportedDestinationBeforeAnyNodeQuery) {
-  Graph source("source", 1);
+  Graph source("source", C_GRAPH_EXECUTE);
   source.AddNodeByOp(MakeExecuteOp("source_node", "PlainOp", 0U, 1U));
-  Graph destination("destination", 1);
+  Graph destination("destination", C_GRAPH_EXECUTE);
   destination.SetInputs({MakeExecuteOp("imported", "Data", 0U, 1U)});
   Graph alias = destination;
   ASSERT_EQ(GRAPH_SUCCESS, destination.CopyFrom(source));
@@ -3151,11 +3157,11 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphCopyReplacesImportedDestinationBefore
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphChildDoesNotDereferenceDestroyedParent) {
-  Graph child("child", 1);
+  Graph child("child", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, child.SetValid());
   GNode node;
   {
-    Graph root("root", 1);
+    Graph root("root", C_GRAPH_EXECUTE);
     node = root.AddNodeByOp(MakeExecuteOp("parent", "IfOp", 0U, 1U));
     ASSERT_EQ(GRAPH_SUCCESS, node.SetSubgraph(AscendString("then"), child));
   }
@@ -3163,7 +3169,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphChildDoesNotDereferenceDestroyedParen
   EXPECT_EQ(nullptr, child.GetParentNode());
   EXPECT_TRUE(child.GetAllSubgraphs().empty());
   EXPECT_TRUE(child.GetAllNodes().empty());
-  Graph next("next", 1);
+  Graph next("next", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, next.SetValid());
   auto next_parent = next.AddNodeByOp(MakeExecuteOp("next_parent", "If", 0U, 1U));
   ASSERT_EQ(GRAPH_SUCCESS, next_parent.SetSubgraph(AscendString("body"), child));
@@ -3171,7 +3177,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphChildDoesNotDereferenceDestroyedParen
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsPreservesInputOrderAfterFailedBuild) {
-  Graph graph("ordered", 1);
+  Graph graph("ordered", C_GRAPH_EXECUTE);
   graph.SetInputs({MakeExecuteOp("plain", "ConstData", 0U, 1U), MakeExecuteOp("data", "Data", 0U, 1U)});
   auto plain = NodeAdapter::GNode2ExecuteNode(*graph.FindNodeByName(AscendString("plain")));
   auto data = NodeAdapter::GNode2ExecuteNode(*graph.FindNodeByName(AscendString("data")));
@@ -3179,7 +3185,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsPreservesInputOrderAfterFail
   ASSERT_NE(nullptr, data);
   EXPECT_EQ(0, plain->GetExtendInfo()->GetInputIndex());
   EXPECT_EQ(1, data->GetExtendInfo()->GetInputIndex());
-  Graph retry("retry", 1);
+  Graph retry("retry", C_GRAPH_EXECUTE);
   retry.SetInputs({MakeExecuteOp("dup", "Data", 0U, 1U), MakeExecuteOp("dup", "Data", 0U, 1U)});
   EXPECT_TRUE(retry.GetDirectNode().empty());
   retry.SetInputs({MakeExecuteOp("only", "Data", 0U, 1U)});
@@ -3205,15 +3211,15 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsBuildsNestedOperatorSubgraph
     desc->RegisterSubgraphIrName("body", kStatic);
     inner.SubgraphCountRegister("body", 1U);
     inner.SetSubgraphBuilder("body", 0U, []() {
-      Graph leaf("leaf", 1);
+      Graph leaf("leaf", C_GRAPH_EXECUTE);
       leaf.SetInputs({MakeExecuteOp("leaf_input", "Data", 0U, 1U)});
       return leaf;
     });
-    Graph branch("branch", 1);
+    Graph branch("branch", C_GRAPH_EXECUTE);
     branch.SetInputs({branch_input});
     return branch;
   });
-  Graph graph("root", 1);
+  Graph graph("root", C_GRAPH_EXECUTE);
   graph.SetInputs({input});
   auto root = GraphUtilsEx::Graph2ExecuteGraph(graph);
   ASSERT_NE(nullptr, root);
@@ -3232,7 +3238,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsBuildsNestedOperatorSubgraph
   EXPECT_TRUE(branch->GetAllSubgraphs().empty());
   EXPECT_EQ("branch", branch->GetParentNodeBarePtr()->GetOpDescBarePtr()->GetSubgraphInstanceName(0));
   EXPECT_TRUE(source_desc->GetSubgraphInstanceName(0).empty());
-  Graph other("other", 1);
+  Graph other("other", C_GRAPH_EXECUTE);
   other.SetInputs({input});
   ASSERT_TRUE(other.IsValid());
   EXPECT_EQ(2U, calls);
@@ -3249,12 +3255,12 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsPreservesDynamicSubgraphSlot
   for (uint32_t i = 0U; i < 12U; ++i) {
     parent.SetSubgraphBuilder("branches", i, [i]() {
       const auto name = "branch_" + std::to_string(i);
-      Graph branch(name.c_str(), 1);
+      Graph branch(name.c_str(), C_GRAPH_EXECUTE);
       branch.SetInputs({MakeExecuteOp("input", "Data", 0U, 1U)});
       return branch;
     });
   }
-  Graph graph("root", 1);
+  Graph graph("root", C_GRAPH_EXECUTE);
   graph.SetInputs({input});
   auto root = GraphUtilsEx::Graph2ExecuteGraph(graph);
   ASSERT_NE(nullptr, root);
@@ -3282,7 +3288,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsRejectsComputeSubgraphBuilde
     (void)branch.SetValid();
     return branch;
   });
-  Graph graph("root", 1);
+  Graph graph("root", C_GRAPH_EXECUTE);
   graph.SetInputs({input});
   EXPECT_FALSE(graph.IsValid());
   EXPECT_TRUE(desc->GetSubgraphInstanceName(0).empty());
@@ -3293,7 +3299,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsChecksSourceTypes) {
     SCOPED_TRACE(type);
     const bool allowed = std::string(type) == "Data" || std::string(type) == "AippData" ||
                          std::string(type) == "ConstData" || std::string(type) == "Const";
-    Graph graph("root", 1);
+    Graph graph("root", C_GRAPH_EXECUTE);
     graph.SetInputs({MakeExecuteOp("source", type, 0U, 1U)});
     EXPECT_EQ(allowed, graph.IsValid());
     EXPECT_EQ(allowed ? 1U : 0U, graph.GetDirectNode().size());
@@ -3303,7 +3309,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsChecksSourceTypes) {
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphSetInputsRejectsMixedSourceTypesWithoutPublishingGraph) {
   auto input = MakeExecuteOp("input", "Data", 0U, 1U);
   auto invalid = MakeExecuteOp("invalid", "PlainOp", 0U, 1U);
-  Graph graph("root", 1);
+  Graph graph("root", C_GRAPH_EXECUTE);
   graph.SetInputs({input, invalid});
   EXPECT_FALSE(graph.IsValid());
   EXPECT_TRUE(graph.GetDirectNode().empty());
@@ -3318,7 +3324,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsCreateInputChecksFeedTypesBeforeRes
     SCOPED_TRACE(type);
     const bool allowed =
         std::string(type) == "Data" || std::string(type) == "AippData" || std::string(type) == "ConstData";
-    ge::es::EsGraphBuilder builder("es_inputs", 1);
+    ge::es::EsGraphBuilder builder("es_inputs", C_GRAPH_EXECUTE);
     auto input = builder.CreateInput(0, "input", type);
     EXPECT_EQ(allowed, input.GetCTensorHolder() != nullptr);
     if (!allowed) {
@@ -3329,7 +3335,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphEsCreateInputChecksFeedTypesBeforeRes
 }
 
 TEST_F(ExecuteGraphFacadeTest, EsExecuteVariableReportsExternalErrorWithoutCreatingNode) {
-  ge::es::EsGraphBuilder builder("es_execute_variable", 1);
+  ge::es::EsGraphBuilder builder("es_execute_variable", C_GRAPH_EXECUTE);
   auto *graph = builder.GetCGraphBuilder()->GetGraph();
   (void)ErrorManager::GetInstance().GetErrorMessage();
   EXPECT_EQ(nullptr, EsCreateVariable(builder.GetCGraphBuilder(), 0, "variable"));
@@ -3345,7 +3351,7 @@ TEST_F(ExecuteGraphFacadeTest, EsExecuteVariableReportsExternalErrorWithoutCreat
 }
 
 TEST_F(ExecuteGraphFacadeTest, EsExecuteOriginSymbolShapeReportsExternalError) {
-  ge::es::EsGraphBuilder builder("es_execute_symbolic", 1);
+  ge::es::EsGraphBuilder builder("es_execute_symbolic", C_GRAPH_EXECUTE);
   auto input = builder.CreateInput(0);
   ASSERT_NE(nullptr, input.GetCTensorHolder());
   const char *dims[] = {"s0"};
@@ -3362,7 +3368,7 @@ TEST_F(ExecuteGraphFacadeTest, EsExecuteOriginSymbolShapeReportsExternalError) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, EsGeneratedArithmeticBuildsExecuteNodes) {
-  ge::es::EsGraphBuilder builder("es_execute_arithmetic", 1);
+  ge::es::EsGraphBuilder builder("es_execute_arithmetic", C_GRAPH_EXECUTE);
   auto left = builder.CreateInput(0);
   auto right = builder.CreateInput(1);
   ASSERT_NE(nullptr, left.GetCTensorHolder());
@@ -3401,7 +3407,7 @@ TEST_F(ExecuteGraphFacadeTest, EsGeneratedArithmeticBuildsExecuteNodes) {
 }
 
 TEST_F(ExecuteGraphFacadeTest, EsExecuteTensorDescSettersRejectWithoutMutation) {
-  ge::es::EsGraphBuilder builder("execute_desc_setters", 1);
+  ge::es::EsGraphBuilder builder("execute_desc_setters", C_GRAPH_EXECUTE);
   auto input = builder.CreateInput(0, "input", DT_FLOAT, FORMAT_ND, {2, 3});
   auto *holder = input.GetCTensorHolder();
   ASSERT_NE(nullptr, holder);
@@ -3435,7 +3441,7 @@ TEST_F(ExecuteGraphFacadeTest, EsExecuteTensorDescSettersRejectWithoutMutation) 
 }
 
 TEST_F(ExecuteGraphFacadeTest, EsExecuteCppTensorDescSettersRejectWithoutMutation) {
-  ge::es::EsGraphBuilder builder("execute_cpp_desc_setters", 1);
+  ge::es::EsGraphBuilder builder("execute_cpp_desc_setters", C_GRAPH_EXECUTE);
   auto input = builder.CreateInput(0, "input", DT_FLOAT, FORMAT_ND, {2, 3});
   ASSERT_NE(nullptr, input.GetCTensorHolder());
   const std::vector<std::pair<const char *, std::function<void()>>> setters = {
@@ -3458,7 +3464,7 @@ TEST_F(ExecuteGraphFacadeTest, EsExecuteCppTensorDescSettersRejectWithoutMutatio
 }
 
 TEST_F(ExecuteGraphFacadeTest, EsExecuteConstructionKeepsTensorDescInitialization) {
-  ge::es::EsGraphBuilder builder("execute_desc_initialization", 1);
+  ge::es::EsGraphBuilder builder("execute_desc_initialization", C_GRAPH_EXECUTE);
   auto input = builder.CreateInput(0);
   auto detailed = builder.CreateInput(1, "detailed", DT_INT32, FORMAT_NCHW, {2, 3});
   auto constant = builder.CreateConst(std::vector<int64_t>{1, 2}, {2});
@@ -3484,7 +3490,7 @@ TEST_F(ExecuteGraphFacadeTest, EsExecuteConstructionKeepsTensorDescInitializatio
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteNodeInvalidAfterNativeRemovalAndAddressReuse) {
-  Graph graph("native_reuse", 1);
+  Graph graph("native_reuse", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, graph.SetValid());
   const auto native = GraphUtilsEx::Graph2ExecuteGraph(graph);
   auto desc = std::make_shared<OpDesc>("node", "PlainOp");
@@ -3527,8 +3533,8 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteNodeInvalidAfterNativeRemovalAndAddressReu
 }
 
 TEST_F(ExecuteGraphFacadeTest, ExecuteNodeInvalidAfterNativeMoveAndReturn) {
-  Graph source("source", 1);
-  Graph destination("destination", 1);
+  Graph source("source", C_GRAPH_EXECUTE);
+  Graph destination("destination", C_GRAPH_EXECUTE);
   ASSERT_EQ(GRAPH_SUCCESS, destination.SetValid());
   auto node = source.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 0U, 1U));
   auto native_source = GraphUtilsEx::Graph2ExecuteGraph(source);
@@ -3546,7 +3552,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteNodeInvalidAfterNativeMoveAndReturn) {
 
 // 2.2：执行节点的名称/类型/端口计数/属性读写经 ExecuteNodeBackend 正确返回（A01/A06）。
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodeQueriesAndAttrs) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto src = graph.AddNodeByOp(MakeExecuteOp("src", "SrcOp", 1U, 1U));
   auto dst = graph.AddNodeByOp(MakeExecuteOp("dst", "DstOp", 1U, 1U));
   ASSERT_EQ(GRAPH_SUCCESS, graph.AddDataEdge(src, 0, dst, 0));
@@ -3584,7 +3590,7 @@ TEST_F(ExecuteNodeFacadeTest, ExecuteNodeQueriesAndAttrs) {
 }
 
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodeNamedAndDynamicPortIndexes) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 2U, 2U));
   int32_t index = -1;
   ASSERT_EQ(GRAPH_SUCCESS, node.GetInputIndexByName("x1", index));
@@ -3608,7 +3614,7 @@ TEST_F(ExecuteNodeFacadeTest, ExecuteNodeNamedAndDynamicPortIndexes) {
 }
 
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodeBatchAttrsReplaceExistingEntriesAndFilterInternalAttrs) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 0U, 0U));
   AttrValue value;
   ASSERT_EQ(GRAPH_SUCCESS, value.SetAttrValue(int64_t{42}));
@@ -3633,7 +3639,7 @@ TEST_F(ExecuteNodeFacadeTest, ExecuteNodeBatchAttrsReplaceExistingEntriesAndFilt
 
 // 2.2：节点删除后其所有句柄失效（A16 后置条件）。
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodeInvalidAfterRemoveNode) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto node1 = graph.AddNodeByOp(MakeExecuteOp("node1", "PlainOp", 1U, 1U));
   auto node2 = graph.AddNodeByOp(MakeExecuteOp("node2", "PlainOp", 1U, 1U));
   auto removed = node2;
@@ -3656,14 +3662,14 @@ TEST_F(ExecuteNodeFacadeTest, ExecuteNodeInvalidAfterRemoveNode) {
 
 // 2.2：执行节点不能被换装成计算节点使用（NodeAdapter 防线）。
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodeRejectsComputeNodeAdapter) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 1U, 1U));
   EXPECT_EQ(nullptr, NodeAdapter::GNode2Node(node));
 }
 
 // 3.1：CompliantNodeBuilder 组合到 AddNodeByOp——无原型节点、多端口、创建时属性。
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodeCompliantBuilderWithoutPrototype) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   AttrValue default_alpha;
   ASSERT_EQ(GRAPH_SUCCESS, default_alpha.SetAttrValue(static_cast<int64_t>(7)));
   es::CompliantNodeBuilder builder(&graph);
@@ -3711,7 +3717,7 @@ TEST_F(ExecuteNodeFacadeTest, ExecuteNodeCompliantBuilderWithoutPrototype) {
 
 // 3.1：零端口节点可创建，且可作为控制边目标（清理类 Kernel）。
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodeCompliantBuilderZeroPorts) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   es::CompliantNodeBuilder builder(&graph);
   builder.OpType("CleanupOp").Name("cleanup");
   auto cleanup = builder.Build();
@@ -3728,7 +3734,7 @@ TEST_F(ExecuteNodeFacadeTest, ExecuteNodeCompliantBuilderZeroPorts) {
 
 // CompliantNodeBuilder 沿用 AddNodeByOp 的重复名称行为，两个节点保持独立。
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodeCompliantBuilderAllowsDuplicateNames) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   es::CompliantNodeBuilder first(&graph);
   first.OpType("PlainOp").Name("dup");
   ASSERT_NE(nullptr, NodeAdapter::GNode2ExecuteNode(first.Build()));
@@ -3741,7 +3747,7 @@ TEST_F(ExecuteNodeFacadeTest, ExecuteNodeCompliantBuilderAllowsDuplicateNames) {
 
 // 3.5：基线属性类型（标量/字符串/Tensor/列表/字节）经公共门面写入后读回一致（A06）。
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodeAttributeTypesRoundTrip) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 1U, 1U));
 
   AttrValue int_value;
@@ -3787,7 +3793,7 @@ TEST_F(ExecuteNodeFacadeTest, ExecuteNodeAttributeTypesRoundTrip) {
 }
 
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodeStringAttrsRejectEmptyEntriesAndAppendReads) {
-  Graph graph("strings", 1);
+  Graph graph("strings", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 0U, 0U));
   AscendString value("text");
   ASSERT_EQ(GRAPH_SUCCESS, node.SetAttr(AscendString("scalar"), value));
@@ -3814,7 +3820,7 @@ TEST_F(ExecuteNodeFacadeTest, ExecuteNodeStringAttrsRejectEmptyEntriesAndAppendR
 
 // 3.5：端口描述的可选读写与端口范围校验（A07）。
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodePortDescReadWrite) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 1U, 1U));
 
   TensorDesc input_desc;
@@ -3846,7 +3852,7 @@ TEST_F(ExecuteNodeFacadeTest, ExecuteNodePortDescReadWrite) {
 
 // 3.5：端口属性读写与 RefFrom 输出引用协议（A07/A09）。
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodePortAttrsAndRefFrom) {
-  Graph graph("execute_graph", 1);
+  Graph graph("execute_graph", C_GRAPH_EXECUTE);
   auto src = graph.AddNodeByOp(MakeExecuteOp("src", "PlainOp", 0U, 2U));
   auto ref = graph.AddNodeByOp(MakeExecuteOp("ref", "PlainOp", 1U, 1U));
 
@@ -3886,7 +3892,7 @@ TEST_F(ExecuteNodeFacadeTest, ExecuteNodePortAttrsAndRefFrom) {
 }
 TEST_F(ExecuteGraphFacadeTest, ExecuteGraphUnsupportedOperatorInterfacesPreserveState) {
   for (const bool initialize : {false, true}) {
-    Graph graph("unsupported_ops", 1);
+    Graph graph("unsupported_ops", C_GRAPH_EXECUTE);
     auto op = MakeExecuteOp("node", "PlainOp", 0U, 1U);
     if (initialize) {
       graph.AddNodeByOp(op);
@@ -3928,7 +3934,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphUnsupportedSaveOverloadsPreserveFileB
     stream << "sentinel";
   }
   for (const bool initialize : {false, true}) {
-    Graph graph("unsupported_save", 1);
+    Graph graph("unsupported_save", C_GRAPH_EXECUTE);
     if (initialize) {
       graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 0U, 1U));
     }
@@ -3952,7 +3958,7 @@ TEST_F(ExecuteGraphFacadeTest, ExecuteGraphUnsupportedSaveOverloadsPreserveFileB
 }
 
 TEST_F(ExecuteNodeFacadeTest, ExecuteNodeAllAttributeOverloadsRoundTrip) {
-  Graph graph("all_attrs", 1);
+  Graph graph("all_attrs", C_GRAPH_EXECUTE);
   auto node = graph.AddNodeByOp(MakeExecuteOp("node", "PlainOp", 0U, 0U));
   const auto check = [&node](const char *name, auto value) {
     decltype(value) read{};

@@ -73,8 +73,8 @@ static graphStatus UnpackSymbolicKernelCompute(gert::InferSymbolComputeContext *
   }
 
   // 获取输入的值
-  auto input_symbols = context->GetInputSymbolTensor(kInputIndex)->GetSymbolicValue();
-  if (input_symbols == nullptr) {
+  const auto input_symbols = SymbolicInferUtil::GetSymbolicValues(*context->GetInputSymbolTensor(kInputIndex));
+  if (input_symbols.empty()) {
     GELOGW("SymbolicKernel compute unsupported, reason: get input symbolic value failed, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
@@ -96,7 +96,7 @@ static graphStatus UnpackSymbolicKernelCompute(gert::InferSymbolComputeContext *
   // 计算输出（原样透传：空tensor/异常axis维的UNSUPPORTED由外层降级，
   // 非法block_size等ErrorResult由驱动打挂推导）
   std::vector<std::vector<Expression>> output_symbols;
-  const auto unpack_ret = UnpackInputSymbolsValue(input_dims, *input_symbols, axis_dim, output_symbols);
+  const auto unpack_ret = UnpackInputSymbolsValue(input_dims, input_symbols, axis_dim, output_symbols);
   if (unpack_ret != SUCCESS) {
     return unpack_ret;
   }
@@ -109,10 +109,10 @@ static graphStatus UnpackSymbolicKernelCompute(gert::InferSymbolComputeContext *
     GE_ASSERT_NOTNULL(symbolic_tensor);
     auto symbolic_value_unique = ge::MakeUnique<std::vector<ge::Expression>>(output_symbols[i]);
     if (symbolic_value_unique != nullptr) {
-      symbolic_tensor->SetSymbolicValue(std::move(symbolic_value_unique));
+      SymbolicInferUtil::SetSymbolicValues(*symbolic_tensor, *symbolic_value_unique);
     }
 
-    symbolic_tensor->MutableOriginSymbolShape().MutableDims() = output_shape_symbols;
+    SymbolicInferUtil::SetSymbolDims(*symbolic_tensor, output_shape_symbols);
     GELOGD("%s[%s] kernel success, output[%zu] %s", context->GetNodeName(), context->GetNodeType(), i,
            SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
   }

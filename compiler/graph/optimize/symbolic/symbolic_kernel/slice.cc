@@ -28,11 +28,11 @@ constexpr size_t kSizeIndex = 2U;
 constexpr size_t kMaxSymbolicValueSize = 200U;
 
 bool GetIndexValues(const gert::SymbolTensor *tensor, std::vector<int64_t> &values) {
-  if (tensor == nullptr || tensor->GetSymbolicValue() == nullptr) {
+  if (tensor == nullptr || !tensor->HasValue()) {
     return false;
   }
   values.clear();
-  for (const auto &expr : *tensor->GetSymbolicValue()) {
+  for (auto &expr : SymbolicInferUtil::GetSymbolicValues(*tensor)) {
     int64_t value = 0L;
     if (!expr.GetConstValue(value)) {
       return false;
@@ -46,11 +46,11 @@ bool GetIndexValues(const gert::SymbolTensor *tensor, std::vector<int64_t> &valu
 
 graphStatus GetSliceInputs(const gert::InferSymbolComputeContext *context, std::vector<int64_t> &x_dims,
                            std::vector<int64_t> &offsets, std::vector<int64_t> &sizes,
-                           const std::vector<Expression> *&x_values) {
+                           std::vector<Expression> &x_values) {
   const auto x_tensor = context->GetInputSymbolTensor(kXIndex);
   GE_UNSUPPORTED_IF_NULL(x_tensor);
-  x_values = x_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(x_values);
+  x_values = SymbolicInferUtil::GetSymbolicValues(*x_tensor);
+  GE_UNSUPPORTED_IF(!x_tensor->HasValue());
   if (!context->GetConstInputDims(kXIndex, x_dims)) {
     GELOGW("Slice symbolic compute unsupported: input shape is not constant, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
@@ -90,7 +90,7 @@ graphStatus BuildSliceShape(const gert::InferSymbolComputeContext *context, cons
 
 graphStatus BuildSliceValues(const gert::InferSymbolComputeContext *context, const std::vector<int64_t> &x_dims,
                              const std::vector<int64_t> &offsets, const std::vector<int64_t> &output_dims,
-                             const std::vector<Expression> *x_values, std::vector<Expression> &output_values) {
+                             const std::vector<Expression> &x_values, std::vector<Expression> &output_values) {
   int64_t output_size = 1L;
   for (const auto dim : output_dims) {
     if (dim != 0L && output_size > static_cast<int64_t>(kMaxSymbolicValueSize) / dim) {
@@ -119,12 +119,12 @@ graphStatus BuildSliceValues(const gert::InferSymbolComputeContext *context, con
     for (size_t i = 0U; i < output_dims.size(); ++i) {
       source_index += ((output_index / output_strides[i]) % output_dims[i] + offsets[i]) * input_strides[i];
     }
-    if (source_index < 0L || static_cast<size_t>(source_index) >= x_values->size()) {
+    if (source_index < 0L || static_cast<size_t>(source_index) >= x_values.size()) {
       GELOGW("Slice symbolic compute unsupported: calculated source index[%ld] is out of range, node %s[%s].",
              source_index, context->GetNodeName(), context->GetNodeType());
       return UNSUPPORTED;
     }
-    output_values.emplace_back(x_values->at(static_cast<size_t>(source_index)));
+    output_values.emplace_back(x_values.at(static_cast<size_t>(source_index)));
   }
   return GRAPH_SUCCESS;
 }
@@ -146,7 +146,7 @@ graphStatus SliceSymbolicKernelCompute(gert::InferSymbolComputeContext *context)
   std::vector<int64_t> x_dims;
   std::vector<int64_t> offsets;
   std::vector<int64_t> sizes;
-  const std::vector<Expression> *x_values = nullptr;
+  std::vector<Expression> x_values;
   auto ret = GetSliceInputs(context, x_dims, offsets, sizes, x_values);
   if (ret != GRAPH_SUCCESS) {
     return ret;
@@ -163,13 +163,13 @@ graphStatus SliceSymbolicKernelCompute(gert::InferSymbolComputeContext *context)
 
   auto output_tensor = context->GetOutputSymbolTensor(0U);
   GE_ASSERT_NOTNULL(output_tensor);
-  output_tensor->MutableOriginSymbolShape().MutableDims() = std::move(output_shape);
-  auto output_values = output_tensor->MutableSymbolicValue();
-  GE_ASSERT_NOTNULL(output_values);
-  ret = BuildSliceValues(context, x_dims, offsets, output_dims, x_values, *output_values);
+  SymbolicInferUtil::SetSymbolDims(*output_tensor, output_shape);
+  std::vector<Expression> output_values;
+  ret = BuildSliceValues(context, x_dims, offsets, output_dims, x_values, output_values);
   if (ret != GRAPH_SUCCESS) {
     return ret;
   }
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, output_values);
   return GRAPH_SUCCESS;
 }
 

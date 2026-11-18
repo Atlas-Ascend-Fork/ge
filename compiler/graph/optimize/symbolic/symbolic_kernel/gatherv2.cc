@@ -35,13 +35,13 @@ graphStatus GetInputDimsAndValue(gert::InferSymbolComputeContext *context, const
   }
   auto input_tensor = context->GetInputSymbolTensor(index);
   GE_UNSUPPORTED_IF_NULL(input_tensor);
-  auto value_symbols = input_tensor->GetSymbolicValue();
-  if (value_symbols == nullptr) {
+  const auto value_symbols = SymbolicInferUtil::GetSymbolicValues(*input_tensor);
+  if (value_symbols.empty()) {
     GELOGW("SymbolicKernel compute unsupported, reason: Get input[%zu] symbolic value failed, node %s[%s].", index,
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
-  values = *value_symbols;
+  values = value_symbols;
   return GRAPH_SUCCESS;
 }
 
@@ -64,16 +64,16 @@ graphStatus GetIndicesValue(gert::InferSymbolComputeContext *context,
 graphStatus GetAxis(gert::InferSymbolComputeContext *context, int64_t &axis) {
   auto axis_tensor = context->GetInputSymbolTensor(kAxisIndex);
   GE_UNSUPPORTED_IF_NULL(axis_tensor);
-  auto axis_symbols = axis_tensor->GetSymbolicValue();
-  if (axis_symbols == nullptr) {
+  const auto axis_symbols = SymbolicInferUtil::GetSymbolicValues(*axis_tensor);
+  if (axis_symbols.empty()) {
     GELOGW("SymbolicKernel compute unsupported, reason: Get axis symbolic value failed, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
-  GE_ASSERT_TRUE(axis_symbols->size() == 1UL,
+  GE_ASSERT_TRUE(axis_symbols.size() == 1UL,
                  "SymbolicKernel compute failed, reason: axis num should be 1, but get:%zu, node %s[%s].",
-                 axis_symbols->size(), context->GetNodeName(), context->GetNodeType());
-  if (!axis_symbols->front().GetConstValue(axis)) {
+                 axis_symbols.size(), context->GetNodeName(), context->GetNodeType());
+  if (!axis_symbols.front().GetConstValue(axis)) {
     GELOGW("SymbolicKernel compute unsupported, reason: get dim sym const value failed, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
@@ -221,17 +221,18 @@ graphStatus GatherCompute(gert::InferSymbolComputeContext *context, int64_t axis
   GE_ASSERT_SUCCESS(NormalizeInput(context, indice_dims, param_dims, axis, batch_dims));
   auto symbolic_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(symbolic_tensor);
-  GE_ASSERT_SUCCESS(CalOutputSymbolShape(context, param_dims, indice_dims, axis, batch_dims,
-                                         symbolic_tensor->MutableOriginSymbolShape()));
-  auto output_symbol_values = symbolic_tensor->MutableSymbolicValue();
-  GE_ASSERT_NOTNULL(output_symbol_values);
+  gert::SymbolShape output_symbol_shape;
+  GE_ASSERT_SUCCESS(CalOutputSymbolShape(context, param_dims, indice_dims, axis, batch_dims, output_symbol_shape));
+  symbolic_tensor->SetOriginSymbolShape(output_symbol_shape);
   // 原样透传：空tensor/溢出的UNSUPPORTED由外层降级到传统推导，indices越界等非法输入的
   // ErrorResult(断言)传出后由驱动打挂推导，不可统一转UNSUPPORTED吞掉报错
+  std::vector<Expression> output_symbol_values;
   const auto value_ret =
-      CalOutputSymbolValue(context, param_dims, param_values, indice_values, axis, batch_dims, *output_symbol_values);
+      CalOutputSymbolValue(context, param_dims, param_values, indice_values, axis, batch_dims, output_symbol_values);
   if (value_ret != SUCCESS) {
     return value_ret;
   }
+  SymbolicInferUtil::SetSymbolicValues(*symbolic_tensor, output_symbol_values);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
   return SUCCESS;
@@ -368,17 +369,18 @@ static graphStatus GatherElementsSymbolicKernelCompute(gert::InferSymbolComputeC
   }
   auto symbolic_tensor = context->GetOutputSymbolTensor(kElementsOutputIdx);
   GE_ASSERT_NOTNULL(symbolic_tensor);
-  symbolic_tensor->MutableOriginSymbolShape().Clear();
+  gert::SymbolShape origin_symbol_shape;
   for (const auto d : index_dims) {
-    symbolic_tensor->MutableOriginSymbolShape().AppendDim(Symbol(d));
+    origin_symbol_shape.AppendDim(Symbol(d));
   }
-  auto output_symbol_values = symbolic_tensor->MutableSymbolicValue();
-  GE_ASSERT_NOTNULL(output_symbol_values);
+  symbolic_tensor->SetOriginSymbolShape(origin_symbol_shape);
+  std::vector<ge::Expression> output_symbol_values;
   const graphStatus value_ret =
-      CalGatherElementsOutValue(context, x_dims, index_dims, x_values, index_values, dim, *output_symbol_values);
+      CalGatherElementsOutValue(context, x_dims, index_dims, x_values, index_values, dim, output_symbol_values);
   if (value_ret != SUCCESS) {
     return value_ret;
   }
+  SymbolicInferUtil::SetSymbolicValues(*symbolic_tensor, output_symbol_values);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
   return SUCCESS;
@@ -445,17 +447,16 @@ static graphStatus GatherNdSymbolicKernelCompute(gert::InferSymbolComputeContext
 
   auto symbolic_tensor = context->GetOutputSymbolTensor(kElementsOutputIdx);
   GE_ASSERT_NOTNULL(symbolic_tensor);
-  symbolic_tensor->MutableOriginSymbolShape().Clear();
+  gert::SymbolShape origin_symbol_shape;
   for (size_t i = 0UL; i + 1UL < indices_dims.size(); i++) {
-    symbolic_tensor->MutableOriginSymbolShape().AppendDim(Symbol(indices_dims[i]));
+    origin_symbol_shape.AppendDim(Symbol(indices_dims[i]));
   }
   for (int64_t i = idx_rank; i < x_rank; i++) {
-    symbolic_tensor->MutableOriginSymbolShape().AppendDim(Symbol(x_dims[static_cast<size_t>(i)]));
+    origin_symbol_shape.AppendDim(Symbol(x_dims[static_cast<size_t>(i)]));
   }
-  auto output_symbol_values = symbolic_tensor->MutableSymbolicValue();
-  GE_ASSERT_NOTNULL(output_symbol_values);
-  output_symbol_values->clear();
-  output_symbol_values->reserve(static_cast<size_t>(prefix_total * tail_size));
+  symbolic_tensor->SetOriginSymbolShape(origin_symbol_shape);
+  std::vector<ge::Expression> output_symbol_values;
+  output_symbol_values.reserve(static_cast<size_t>(prefix_total * tail_size));
   for (int64_t p = 0L; p < prefix_total; p++) {
     // 逐前缀位置解析 idx_rank 个坐标并映射 x 扁平偏移（前缀偏移 * 尾部长度）
     int64_t offset = 0L;
@@ -470,9 +471,10 @@ static graphStatus GatherNdSymbolicKernelCompute(gert::InferSymbolComputeContext
     }
     const int64_t base = offset * tail_size;
     for (int64_t t = 0L; t < tail_size; t++) {
-      output_symbol_values->emplace_back(x_values[static_cast<size_t>(base + t)]);
+      output_symbol_values.emplace_back(x_values[static_cast<size_t>(base + t)]);
     }
   }
+  SymbolicInferUtil::SetSymbolicValues(*symbolic_tensor, output_symbol_values);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
   return SUCCESS;

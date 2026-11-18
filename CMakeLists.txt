@@ -369,6 +369,7 @@ if ((CMAKE_BUILD_TYPE MATCHES GCOV) OR ENABLE_GE_DT OR ENGINE_DT)
 
         if (ENABLE_GE_ST)
             add_dependencies(select_targets graph_engine_test
+                    st_ops_deliverables_parser
                     graphtuner_executor)
         endif ()
 

@@ -47,11 +47,11 @@ graphStatus InferShape4UnsortedSegment(gert::InferSymbolShapeContext *context) {
 
   auto output_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(output_shape);
-  const auto num_segments_value = num_segments_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(num_segments_value);
-  GE_ASSERT_EQ(num_segments_value->size(), 1UL);
+  GE_UNSUPPORTED_IF(!num_segments_tensor->HasValue());
+  const auto num_segments_value = SymbolicInferUtil::GetSymbolicValues(*num_segments_tensor);
+  GE_ASSERT_EQ(num_segments_value.size(), 1UL);
   int64_t num_segments = 0L;
-  if (SymbolicInferUtil::TryGetConstInt(num_segments_value->at(0), num_segments) != GRAPH_SUCCESS) {
+  if (SymbolicInferUtil::TryGetConstInt(num_segments_value.at(0), num_segments) != GRAPH_SUCCESS) {
     GELOGW("Symbol Infer unsupported, num_segments is not an integer const, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -61,14 +61,14 @@ graphStatus InferShape4UnsortedSegment(gert::InferSymbolShapeContext *context) {
 
 graphStatus BuildSegmentOutputShape(const gert::SymbolShape *x_shape, const gert::SymbolTensor *segment_ids_tensor,
                                     gert::SymbolShape *y_shape) {
-  const auto segment_ids_value = segment_ids_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(segment_ids_value);
-  GE_ASSERT(segment_ids_value->size() > 0, "segment_ids must not be empty");
-  y_shape->MutableDims().clear();
-  const auto max_segment_id = segment_ids_value->back();
-  y_shape->MutableDims().push_back(max_segment_id + kSymbolOne);
+  GE_UNSUPPORTED_IF(!segment_ids_tensor->HasValue());
+  const auto segment_ids_value = SymbolicInferUtil::GetSymbolicValues(*segment_ids_tensor);
+  GE_ASSERT(segment_ids_value.size() > 0, "segment_ids must not be empty");
+  y_shape->Clear();
+  const auto max_segment_id = segment_ids_value.back();
+  y_shape->AppendDim(max_segment_id + kSymbolOne);
   for (size_t i = 1U; i < x_shape->GetDimNum(); ++i) {
-    y_shape->MutableDims().push_back(x_shape->GetDim(i));
+    y_shape->AppendDim(x_shape->GetDim(i));
   }
   return ge::GRAPH_SUCCESS;
 }

@@ -396,7 +396,7 @@ class LoweringAndCanfuseUT : public testing::Test {
         if (BackendUtils::IsEqOne(tensor_desc.repeats[i])) {
           EXPECT_TRUE(BackendUtils::IsEqZero(tensor_desc.strides[i]))
               << "Node " << asc_node->GetName() << " axis " << i
-              << " repeats=1 but strides=" << tensor_desc.strides[i].Serialize().get() << " (expected 0)";
+              << " repeats=1 but strides=" << tensor_desc.strides[i].Str().get() << " (expected 0)";
         }
       }
     }
@@ -1076,13 +1076,12 @@ void VerifyStridedSliceV3Lowering(const ge::ComputeGraphPtr &cg) {
           continue;
         }
 
-        auto p = std::make_unique<std::vector<ge::Expression>>();
         auto syms = (name == "begin") ? std::vector<const char *>{"s0", "s1", "s2"}
                                       : std::vector<const char *>{"s3", "s4", "s5"};
-        for (auto n : syms) {
-          p->emplace_back(Symbol(n));
+        attr->symbolic_tensor.SetValueCount(syms.size());
+        for (size_t i = 0UL; i < syms.size(); ++i) {
+          attr->symbolic_tensor.SetValue(i, Symbol(syms[i]));
         }
-        attr->symbolic_tensor.SetSymbolicValue(std::move(p));
       }
     }
   }

@@ -63,7 +63,7 @@ Expression GetXLogicalM(const gert::SymbolShape &x, bool transpose_x) {
 
 void BuildMatmulShape(const gert::SymbolShape &x, const gert::SymbolShape &weight, bool transpose_x,
                       bool transpose_weight, std::vector<Expression> &output) {
-  output = x.GetDims();
+  output = SymbolicInferUtil::GetSymbolDims(x);
   if (output.size() < 2UL || weight.GetDimNum() < 2UL) {
     output.clear();
     return;
@@ -74,29 +74,32 @@ void BuildMatmulShape(const gert::SymbolShape &x, const gert::SymbolShape &weigh
   }
 }
 
-const std::vector<Expression> *GetGroupListValue(const gert::InferSymbolShapeContext *context) {
+std::vector<Expression> GetGroupListValue(const gert::InferSymbolShapeContext *context) {
   const auto group_list = context->GetOptionalInputSymbolTensor(kGroupListIndex);
-  return group_list == nullptr ? nullptr : group_list->GetSymbolicValue();
+  if (group_list == nullptr) {
+    return {};
+  }
+  return SymbolicInferUtil::GetSymbolicValues(*group_list);
 }
 
 graphStatus InferSplitMOutputShape(gert::InferSymbolShapeContext *context, size_t output_index,
                                    const gert::SymbolShape &weight, int64_t group_list_type,
                                    std::vector<Expression> &output) {
   const auto values = GetGroupListValue(context);
-  if (values == nullptr) {
+  if (values.empty()) {
     GELOGW("GroupedMatmul symbolic shape inference unsupported: group_list value is missing, node %s[%s].",
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
   const size_t value_index = group_list_type == kGroupListSparse ? output_index * 2UL + 1UL : output_index;
-  if (value_index >= values->size()) {
+  if (value_index >= values.size()) {
     GELOGW(
         "GroupedMatmul symbolic shape inference unsupported: group_list index[%zu] exceeds value size[%zu], node "
         "%s[%s].",
-        value_index, values->size(), context->GetNodeName(), context->GetNodeType());
+        value_index, values.size(), context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
-  output = {(*values)[value_index], GetWeightN(weight, false)};
+  output = {values[value_index], GetWeightN(weight, false)};
   return GRAPH_SUCCESS;
 }
 }  // namespace
@@ -119,7 +122,7 @@ graphStatus SetSplitKOutputs(gert::InferSymbolShapeContext *context, size_t outp
   for (size_t i = 0UL; i < output_count; ++i) {
     auto output = context->GetOutputSymbolShape(i);
     GE_UNSUPPORTED_IF_NULL(output);
-    output->MutableDims() = {group_num, x_m, GetWeightN(weight, transpose_weight)};
+    SymbolicInferUtil::SetSymbolDims(*output, {group_num, x_m, GetWeightN(weight, transpose_weight)});
   }
   return GRAPH_SUCCESS;
 }
@@ -177,7 +180,7 @@ graphStatus InferGroupedMatmulSymbolShape(gert::InferSymbolShapeContext *context
         return UNSUPPORTED;
       }
     }
-    output->MutableDims() = std::move(output_dims);
+    SymbolicInferUtil::SetSymbolDims(*output, output_dims);
   }
   return GRAPH_SUCCESS;
 }

@@ -69,15 +69,15 @@ graphStatus InferShape4Squeeze(gert::InferSymbolShapeContext *context) {
   return ProcessSqueezeAxes(in_shape, out_shape, axes_vec);
 }
 
-graphStatus GetAxesFromTensor(const std::vector<Expression> *axes, std::vector<int64_t> &axes_vec) {
+graphStatus GetAxesFromTensor(const std::vector<Expression> axes, std::vector<int64_t> &axes_vec) {
   axes_vec.clear();
-  if (axes == nullptr) {
+  if (axes.empty()) {
     return GRAPH_SUCCESS;
   }
-  axes_vec.reserve(axes->size());
-  for (size_t i = 0; i < axes->size(); i++) {
+  axes_vec.reserve(axes.size());
+  for (size_t i = 0; i < axes.size(); i++) {
     int64_t raw_axis;
-    if (!axes->at(i).GetConstValue<int64_t>(raw_axis)) {
+    if (!axes.at(i).GetConstValue<int64_t>(raw_axis)) {
       GELOGW("GetAxesFromTensor failed, axis[%zu] is not const value", i);
       return UNSUPPORTED;
     }
@@ -97,9 +97,9 @@ graphStatus InferShape4SqueezeV3(gert::InferSymbolShapeContext *context) {
     GELOGD("SqueezeV3: axes is empty, squeeze all dims with value 1. node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
   } else {
-    GE_UNSUPPORTED_IF_NULL(axes_tensor->GetSymbolicValue());
-    const auto axes = axes_tensor->GetSymbolicValue();
-    GELOGD("SqueezeV3: axes is not empty, squeeze dims with axes. axes size: %ld. node %s[%s]", axes->size(),
+    GE_UNSUPPORTED_IF(!axes_tensor->HasValue());
+    const auto axes = SymbolicInferUtil::GetSymbolicValues(*axes_tensor);
+    GELOGD("SqueezeV3: axes is not empty, squeeze dims with axes. axes size: %ld. node %s[%s]", axes.size(),
            context->GetNodeName(), context->GetNodeType());
     auto ret = GetAxesFromTensor(axes, axes_vec);
     if (ret != GRAPH_SUCCESS) {
@@ -126,12 +126,12 @@ graphStatus ProcessUnsqueezeAxes(const gert::SymbolShape *in_shape, gert::Symbol
     GE_ASSERT(real_axis >= 0 && real_axis < out_dim_num_signed,
               "unsqueeze failed, as axes val[%zu] is out of range[-%zu, %zu].", axes[i], out_dim_num, out_dim_num);
     GE_ASSERT(out_shape->GetDim(real_axis) != 1, "unsqueeze failed, axis repeated");
-    out_shape->MutableDim(real_axis) = ge::Symbol(1);
+    out_shape->SetDim(real_axis, ge::Symbol(1));
   }
   size_t in_index = 0;
   for (size_t i = 0; i < out_dim_num; i++) {
     if (out_shape->GetDim(i) != 1) {
-      out_shape->MutableDim(i) = in_shape->GetDim(in_index++);
+      out_shape->SetDim(i, in_shape->GetDim(in_index++));
     }
   }
   return ge::GRAPH_SUCCESS;
@@ -165,9 +165,9 @@ graphStatus InferShape4UnsqueezeV3(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_NOTNULL(out_shape);
   const auto axes_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(axes_tensor);
-  const auto axes = axes_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(axes);
-  if (axes->empty()) {
+  GE_UNSUPPORTED_IF(!axes_tensor->HasValue());
+  const auto axes = SymbolicInferUtil::GetSymbolicValues(*axes_tensor);
+  if (axes.empty()) {
     GELOGD("UnsqueezeV3: axes is empty, out shape is same as input shape. node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     *out_shape = *in_shape;
@@ -186,7 +186,7 @@ template <typename T>
 graphStatus ExpandDimsInferShapeImpl(const gert::InferSymbolShapeContext *context, const gert::SymbolShape *x_shape,
                                      const gert::SymbolTensor *axis_tensor, gert::SymbolShape *output_shape) {
   T axis_data;
-  if (axis_tensor->GetSymbolicValue()->at(0).GetConstValue<T>(axis_data) == false) {
+  if (axis_tensor->GetValue(0).GetConstValue<T>(axis_data) == false) {
     GELOGW("Symbol Infer unsupported, axis value is not constvalue, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -198,8 +198,12 @@ graphStatus ExpandDimsInferShapeImpl(const gert::InferSymbolShapeContext *contex
     return GRAPH_FAILED;
   }
   *output_shape = *x_shape;
-  auto &dims = output_shape->MutableDims();
-  dims.insert(dims.begin() + axis_data, Symbol(1));
+  const size_t dim_num = output_shape->GetDimNum();
+  output_shape->SetDimNum(dim_num + 1U);
+  for (size_t i = dim_num; i > static_cast<size_t>(axis_data); --i) {
+    output_shape->SetDim(i, output_shape->GetDim(i - 1U));
+  }
+  output_shape->SetDim(static_cast<size_t>(axis_data), Symbol(1));
   return GRAPH_SUCCESS;
 }
 
@@ -208,7 +212,7 @@ graphStatus InferShape4ExpandDims(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto axes_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(axes_tensor);
-  if (axes_tensor->GetSymbolicValue() == nullptr) {
+  if (!axes_tensor->HasValue()) {
     GELOGW("Symbol Infer unsupported, get symbolic value is nullptr, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -216,7 +220,7 @@ graphStatus InferShape4ExpandDims(gert::InferSymbolShapeContext *context) {
   auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
 
-  auto axes_size = static_cast<int32_t>(axes_tensor->GetSymbolicValue()->size());
+  auto axes_size = static_cast<int32_t>(axes_tensor->GetValueCount());
   if (axes_size != 1) {
     GELOGE(PARAM_INVALID, "expand dims failed, axis input must be a tensor with a single value, actually rank = %d",
            axes_size);

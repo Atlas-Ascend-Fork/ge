@@ -46,7 +46,7 @@ static thread_local af::AscGraph *g_current_asc_graph = nullptr;
 
 namespace af {
 Axis &AscGraph::CreateAxis(const std::string &name, const Expression &size) {
-  const auto serialized_expr = size.Serialize();
+  const auto serialized_expr = size.Str();
   const auto axis_id = AscGraphCreateAxisBySerializedExpr(*this, name.c_str(), serialized_expr.get());
   auto axis = FindAxis(axis_id);
   return *axis;

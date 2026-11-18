@@ -53,9 +53,9 @@ graphStatus RsqrtSymbolicKernelCompute(gert::InferSymbolComputeContext *context)
 
   const auto input_tensor = context->GetInputSymbolTensor(kInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_tensor);
-  const auto input_values = input_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_values);
-  if (input_values->empty()) {
+  GE_UNSUPPORTED_IF(input_tensor->GetValueCount() == 0U);
+  const auto input_values = SymbolicInferUtil::GetSymbolicValues(*input_tensor);
+  if (input_values.empty()) {
     GELOGW("Rsqrt symbolic compute unsupported: input symbolic value is empty, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -63,14 +63,14 @@ graphStatus RsqrtSymbolicKernelCompute(gert::InferSymbolComputeContext *context)
 
   auto output_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output_tensor);
-  output_tensor->MutableOriginSymbolShape() = input_tensor->GetOriginSymbolShape();
-  auto output_values = output_tensor->MutableSymbolicValue();
-  GE_ASSERT_NOTNULL(output_values);
-  output_values->reserve(input_values->size());
-  for (const auto &input_value : *input_values) {
+  output_tensor->SetOriginSymbolShape(input_tensor->GetOriginSymbolShape());
+  std::vector<Expression> output_values;
+  output_values.reserve(input_values.size());
+  for (const auto &input_value : input_values) {
     ASSERT_SYMBOL_GT(input_value, kSymbolZero);
-    output_values->emplace_back(sym::Pow(input_value, sym::Rational(-1, rsqrtDen)));
+    output_values.emplace_back(sym::Pow(input_value, sym::Rational(-1, rsqrtDen)));
   }
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, output_values);
 
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_tensor).c_str());

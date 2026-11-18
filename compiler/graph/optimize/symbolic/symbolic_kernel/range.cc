@@ -27,41 +27,44 @@ constexpr size_t kDeltaIndex = 2U;
 constexpr int64_t kMaxSymbolicValueSize = 200L;
 const std::set<DataType> kRangeSupportedTypes = {DT_INT32, DT_FLOAT, DT_DOUBLE, DT_INT64};
 
-const Expression *GetScalarValue(const gert::InferSymbolComputeContext *context, size_t index) {
+bool GetScalarValue(const gert::InferSymbolComputeContext *context, size_t index, Expression &value) {
   const auto input_tensor = context->GetInputSymbolTensor(index);
   if (input_tensor == nullptr) {
-    return nullptr;
+    return false;
   }
-  const auto values = input_tensor->GetSymbolicValue();
-  if (values == nullptr || values->empty()) {
-    return nullptr;
+  if (input_tensor->GetValueCount() == 0U) {
+    return false;
   }
-  return &values->front();
+  value = input_tensor->GetValue(0U);
+  return true;
 }
 
 }  // namespace
 
 bool ResolveRangeValues(gert::InferSymbolComputeContext *context, Expression &start, Expression &limit,
                         Expression &delta) {
-  const auto start_value = GetScalarValue(context, kStartIndex);
-  const auto limit_value = GetScalarValue(context, kLimitIndex);
-  const auto delta_value = GetScalarValue(context, kDeltaIndex);
+  Expression start_value;
+  Expression limit_value;
+  Expression delta_value;
+  const auto has_start = GetScalarValue(context, kStartIndex, start_value);
+  const auto has_limit = GetScalarValue(context, kLimitIndex, limit_value);
+  const auto has_delta = GetScalarValue(context, kDeltaIndex, delta_value);
   start = Expression(Symbol(0));
   limit = start;
   delta = Expression(Symbol(1));
-  if (start_value != nullptr && limit_value != nullptr && delta_value != nullptr) {
-    start = *start_value;
-    limit = *limit_value;
-    delta = *delta_value;
+  if (has_start && has_limit && has_delta) {
+    start = start_value;
+    limit = limit_value;
+    delta = delta_value;
     return true;
   }
-  if (start_value != nullptr && limit_value != nullptr && delta_value == nullptr) {
-    start = *start_value;
-    limit = *limit_value;
+  if (has_start && has_limit && !has_delta) {
+    start = start_value;
+    limit = limit_value;
     return true;
   }
-  if (start_value != nullptr && limit_value == nullptr && delta_value == nullptr) {
-    limit = *start_value;
+  if (has_start && !has_limit && !has_delta) {
+    limit = start_value;
     return true;
   }
   return false;
@@ -123,7 +126,7 @@ graphStatus RangeSymbolicKernelCompute(gert::InferSymbolComputeContext *context)
 
   auto output_tensor = context->GetOutputSymbolTensor(0U);
   GE_ASSERT_NOTNULL(output_tensor);
-  output_tensor->MutableOriginSymbolShape().MutableDims() = {range_num};
+  SymbolicInferUtil::SetSymbolDims(*output_tensor, {range_num});
   std::vector<Expression> values;
   values.reserve(static_cast<size_t>(range_num_hint));
   for (int64_t i = 0L; i < range_num_hint; ++i) {
@@ -131,7 +134,7 @@ graphStatus RangeSymbolicKernelCompute(gert::InferSymbolComputeContext *context)
   }
   auto values_unique = ge::MakeUnique<std::vector<Expression>>(std::move(values));
   GE_ASSERT_NOTNULL(values_unique);
-  output_tensor->SetSymbolicValue(std::move(values_unique));
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, *values_unique);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_tensor).c_str());
   return GRAPH_SUCCESS;

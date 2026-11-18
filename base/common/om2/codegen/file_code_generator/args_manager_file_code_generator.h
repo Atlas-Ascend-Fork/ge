@@ -29,10 +29,13 @@ class ArgsManagerFileCodeGenerator : public CodeGeneratorBase {
   MethodDef *BuildResolveActiveBasesMethod() const;
   MethodDef *BuildResolveActiveSrcMethod() const;
   MethodDef *BuildCopyArgsToDeviceMethod(const Om2CodegenModel &codegen_model) const;
+  // Custom Task Callback 私有参数区的 bump 分配。仅在模型含 Callback 任务时生成。
+  MethodDef *BuildAllocateArgsBufferMethod() const;
 
  private:
   void BuildInitArgsItems(const Om2CodegenModel &codegen_model, std::vector<Arg> &args_size_items,
                           std::vector<Arg> &args_type_items, std::vector<Arg> &args_info_items) const;
+  void BuildInitReservedSegmentItems(const Om2CodegenModel &codegen_model, std::vector<Arg> &reserved_items) const;
   void BuildInitAllocationItems(const Om2CodegenModel &codegen_model,
                                 std::vector<Arg> &input_index_to_allocation_ids_items,
                                 std::vector<Arg> &output_index_to_allocation_ids_items,
@@ -45,7 +48,8 @@ class ArgsManagerFileCodeGenerator : public CodeGeneratorBase {
                                             const std::vector<Arg> &input_index_to_allocation_ids_items,
                                             const std::vector<Arg> &output_index_to_allocation_ids_items,
                                             const std::vector<Arg> &refreshable_fm_index_to_allocation_ids_items,
-                                            const std::vector<Arg> &allocation_ids_to_model_args_refresh_infos_items);
+                                            const std::vector<Arg> &allocation_ids_to_model_args_refresh_infos_items,
+                                            const std::vector<Arg> &reserved_segment_items);
   ExprRef GetHostArgAddr(Arg offset, Arg args_type) const;
   ExprRef GetDevArgAddr(Arg offset, Arg args_type) const;
 
@@ -61,6 +65,7 @@ class ArgsManagerFileCodeGenerator : public CodeGeneratorBase {
   VarRef allocation_ids_to_model_args_refresh_infos_addr_all_;
   VarRef active_base_init_offsets_;
   VarRef allocation_ids_to_active_base_addr_all_;
+  VarRef reserved_segments_;
   //
 };
 }  // namespace ge

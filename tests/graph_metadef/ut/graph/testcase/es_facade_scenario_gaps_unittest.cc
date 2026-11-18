@@ -55,9 +55,9 @@
 
 namespace ge {
 namespace {
-// GraphKind 依赖切换期暂为整型别名（0=计算图，1=执行图），用例内以常量指代
-constexpr GraphKind kComputeGraphKind = static_cast<GraphKind>(0);
-constexpr GraphKind kExecGraphKind = static_cast<GraphKind>(1);
+// 图类别取值统一来自 metadef c_types.h 的 C_GraphKind 枚举，用例内以常量指代
+constexpr GraphKind kComputeGraphKind = C_GRAPH_COMPUTE;
+constexpr GraphKind kExecGraphKind = C_GRAPH_EXECUTE;
 Operator MakePortOp(const char_t *name, const char_t *type, uint32_t in_cnt, uint32_t out_cnt) {
   Operator op(name, type);
   if (in_cnt != 0U) {
@@ -412,12 +412,12 @@ TEST_F(EsFacadeScenarioTest, SetOriginSymbolShape_DeepReadback) {
   ASSERT_NE(nullptr, td);
   auto *symbolic = td->GetAttrsGroup<ge::SymbolicDescAttr>();
   ASSERT_NE(nullptr, symbolic);
-  const auto &dims = symbolic->symbolic_tensor.MutableOriginSymbolShape().MutableDims();
-  ASSERT_EQ(2U, dims.size());
-  auto str0 = dims[0].Str();
+  const auto &symbol_shape = symbolic->symbolic_tensor.GetOriginSymbolShape();
+  ASSERT_EQ(2U, symbol_shape.GetDimNum());
+  auto str0 = symbol_shape.GetDim(0U).Str();
   ASSERT_NE(nullptr, str0.get());
   EXPECT_STREQ("-1", str0.get());
-  auto str1 = dims[1].Str();
+  auto str1 = symbol_shape.GetDim(1U).Str();
   ASSERT_NE(nullptr, str1.get());
   EXPECT_STREQ("32", str1.get());
 }

@@ -15,9 +15,6 @@ namespace gert {
 namespace kernel {
 enum class InputCommon {
   kStream,
-  kKernelBinId,
-  kMagic,
-  kKernelBin,
   kBlockDim,
   kWorkspaceAddr,
   kShapeBufferAddr,
@@ -28,9 +25,7 @@ enum class InputCommon {
   kDfxArgs,
   kRtArg,
   kLocalMemSize,
-  kTilingKey,
-  kKernelName,
-  kWithHandleFlag,
+  kFuncHandle,
   kNum
 };
 enum class WithArgs { kIoAddrs = static_cast<int32_t>(InputCommon::kNum), kNum };

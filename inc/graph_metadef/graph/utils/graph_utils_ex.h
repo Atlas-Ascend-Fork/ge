@@ -57,6 +57,8 @@ class GraphUtilsEx {
   static void BreakConnect(const std::map<OperatorImplPtr, NodePtr> &all_nodes_infos);
   static graphStatus RecoverGraphOperators(const Graph &graph);
   static graphStatus CopyGraph(const Graph &src_graph, Graph &dst_graph);
+  // graph_name 显式指定新图名，为空时回退源图名；避免调用方仅为传名创建临时 backend
+  static graphStatus CopyGraph(const Graph &src_graph, const std::string &graph_name, Graph &dst_graph);
   __attribute__((weak)) static Operator CreateOperator(const char_t *const operator_name,
                                                        const char_t *const operator_type);
 

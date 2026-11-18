@@ -304,7 +304,7 @@ TEST(Om2AbiStructCompatibility, TaskLaunchInfoLayoutIsFrozen) {
 }
 
 TEST(Om2AbiStructCompatibility, CallbackAndRunInfoLayoutsAreFrozen) {
-  EXPECT_STRUCT_LAYOUT(GertModelLoadCallbacks, 72U, 8U);
+  EXPECT_STRUCT_LAYOUT(GertModelLoadCallbacks, 88U, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, struct_size, uint64_t, 0U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, report_model_base_info, ReportModelBaseInfoFunc, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, launch_func, GertModelLaunchFunc, 16U);
@@ -315,15 +315,19 @@ TEST(Om2AbiStructCompatibility, CallbackAndRunInfoLayoutsAreFrozen) {
   EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, release_bin_handle_from_store, ReleaseBinHandleFromStoreFunc, 56U);
   // HCCL 宿主服务：尾部追加（前缀 7 字段偏移冻结）
   EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, hccl_load_task, HcclLoadTaskFunc, 64U);
-  EXPECT_NO_IMPLICIT_PADDING(GertModelLoadCallbacks, sizeof(GertModelLoadCallbacks::struct_size) +
-                                                         sizeof(GertModelLoadCallbacks::report_model_base_info) +
-                                                         sizeof(GertModelLoadCallbacks::launch_func) +
-                                                         sizeof(GertModelLoadCallbacks::lock_bin_handle_store) +
-                                                         sizeof(GertModelLoadCallbacks::unlock_bin_handle_store) +
-                                                         sizeof(GertModelLoadCallbacks::query_bin_handle_from_store) +
-                                                         sizeof(GertModelLoadCallbacks::save_bin_handle_to_store) +
-                                                         sizeof(GertModelLoadCallbacks::release_bin_handle_from_store) +
-                                                         sizeof(GertModelLoadCallbacks::hccl_load_task));
+  // Callback 参数服务：尾部追加（前缀 9 字段偏移冻结，首个新字段 offsetof(72) >= 旧版 sizeof(72)）
+  EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, create_args_handler, CreateArgsHandlerFunc, 72U);
+  EXPECT_MEMBER_LAYOUT(GertModelLoadCallbacks, destroy_args_handler, DestroyArgsHandlerFunc, 80U);
+  EXPECT_NO_IMPLICIT_PADDING(
+      GertModelLoadCallbacks,
+      sizeof(GertModelLoadCallbacks::struct_size) + sizeof(GertModelLoadCallbacks::report_model_base_info) +
+          sizeof(GertModelLoadCallbacks::launch_func) + sizeof(GertModelLoadCallbacks::lock_bin_handle_store) +
+          sizeof(GertModelLoadCallbacks::unlock_bin_handle_store) +
+          sizeof(GertModelLoadCallbacks::query_bin_handle_from_store) +
+          sizeof(GertModelLoadCallbacks::save_bin_handle_to_store) +
+          sizeof(GertModelLoadCallbacks::release_bin_handle_from_store) +
+          sizeof(GertModelLoadCallbacks::hccl_load_task) + sizeof(GertModelLoadCallbacks::create_args_handler) +
+          sizeof(GertModelLoadCallbacks::destroy_args_handler));
 
   EXPECT_STRUCT_LAYOUT(GertModelRunReportInfo, 32U, 8U);
   EXPECT_MEMBER_LAYOUT(GertModelRunReportInfo, struct_size, uint64_t, 0U);

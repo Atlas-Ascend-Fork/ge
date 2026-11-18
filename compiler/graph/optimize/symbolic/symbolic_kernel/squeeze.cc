@@ -72,8 +72,8 @@ static graphStatus SqueezeSymbolicKernelCompute(gert::InferSymbolComputeContext 
   }
   auto symbol_tensor = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(symbol_tensor);
-  auto symbol_values = symbol_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(symbol_values);
+  GE_UNSUPPORTED_IF(!symbol_tensor->HasValue());
+  const auto symbol_values = SymbolicInferUtil::GetSymbolicValues(*symbol_tensor);
   auto input_shape = context->GetInputSymbolTensor(kXInputIndex)->GetOriginSymbolShape();
   auto output_desc = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output_desc);
@@ -82,11 +82,11 @@ static graphStatus SqueezeSymbolicKernelCompute(gert::InferSymbolComputeContext 
   if (ret != SUCCESS) {
     return ret;
   }
-  auto symbolic_value_unique = ge::MakeUnique<std::vector<ge::Expression>>(*symbol_values);
+  auto symbolic_value_unique = ge::MakeUnique<std::vector<ge::Expression>>(symbol_values);
   if (symbolic_value_unique != nullptr) {
-    output_desc->SetSymbolicValue(std::move(symbolic_value_unique));
+    SymbolicInferUtil::SetSymbolicValues(*output_desc, *symbolic_value_unique);
   }
-  output_desc->MutableOriginSymbolShape().MutableDims() = output_shape;
+  SymbolicInferUtil::SetSymbolDims(*output_desc, output_shape);
 
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_desc).c_str());
@@ -97,16 +97,16 @@ static graphStatus SqueezeV3SymbolicKernelCompute(gert::InferSymbolComputeContex
   GE_ASSERT_NOTNULL(context);
   auto input = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(input);
-  auto input_values = input->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_values);
+  GE_UNSUPPORTED_IF(!input->HasValue());
+  const auto input_values = SymbolicInferUtil::GetSymbolicValues(*input);
 
   std::vector<int64_t> axes;
   auto axes_tensor = context->GetOptionalInputSymbolTensor(kAxesInputIndex);
   if (axes_tensor != nullptr) {
-    auto axes_values = axes_tensor->GetSymbolicValue();
-    GE_UNSUPPORTED_IF_NULL(axes_values);
-    axes.reserve(axes_values->size());
-    for (const auto &symbol : *axes_values) {
+    GE_UNSUPPORTED_IF(!axes_tensor->HasValue());
+    const auto axes_values = SymbolicInferUtil::GetSymbolicValues(*axes_tensor);
+    axes.reserve(axes_values.size());
+    for (const auto &symbol : axes_values) {
       int64_t axis = 0L;
       if (!symbol.GetConstValue(axis)) {
         GELOGW("SqueezeV3 symbolic kernel unsupported: axis is not constant, node %s[%s].", context->GetNodeName(),
@@ -121,8 +121,8 @@ static graphStatus SqueezeV3SymbolicKernelCompute(gert::InferSymbolComputeContex
   GE_ASSERT_NOTNULL(output);
   std::vector<Expression> output_shape;
   GE_ASSERT_SUCCESS(CalSqueezeOutShape(input->GetOriginSymbolShape(), axes, output_shape));
-  output->MutableOriginSymbolShape().MutableDims() = output_shape;
-  output->SetSymbolicValue(ge::MakeUnique<std::vector<Expression>>(*input_values));
+  SymbolicInferUtil::SetSymbolDims(*output, output_shape);
+  SymbolicInferUtil::SetSymbolicValues(*output, input_values);
   return SUCCESS;
 }
 

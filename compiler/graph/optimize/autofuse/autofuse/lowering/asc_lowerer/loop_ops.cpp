@@ -187,7 +187,7 @@ CseVar LoadOp::Compute(const LoopCtx &ctx) const {
     std::string buffer = BufferName(src_);
     Ops()->SetBufferSrc(buffer, src_);
     auto &god_spec = god_spec_iter->second;
-    GELOGD("god_spec.load_offset: %s", god_spec.load_offset.Serialize().get());
+    GELOGD("god_spec.load_offset: %s", god_spec.load_offset.Str().get());
     return Ops()->Load(buffer, god_spec.data_loop, god_spec.load_loop, god_spec.load_offset);
   }
 
@@ -203,7 +203,7 @@ CseVar LoadOp::Compute(const LoopCtx &ctx) const {
   const auto sym_attr = desc->GetAttrsGroup<SymbolicDescAttr>();
   GE_CHK_BOOL_RET_SPECIAL_STATUS(sym_attr == nullptr, CseVar(), "LoadOp %s symbolic desc attr is null",
                                  owner_node->GetNamePtr());
-  const auto &dims = sym_attr->symbolic_tensor.GetOriginSymbolShape().GetDims();
+  const auto dims = AutofuseUtils::GetSymbolDims(sym_attr->symbolic_tensor.GetOriginSymbolShape());
   GE_WARN_ASSERT(dims.size() == index.size());
 
   std::vector<Expression> strides = ContiguousStrides(dims);

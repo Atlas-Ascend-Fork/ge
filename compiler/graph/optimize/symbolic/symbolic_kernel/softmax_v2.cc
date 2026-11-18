@@ -111,15 +111,15 @@ graphStatus SoftmaxV2SymbolicKernelCompute(gert::InferSymbolComputeContext *cont
   }
   auto input_tensor = context->GetInputSymbolTensor(kInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_tensor);
-  auto input_values = input_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_values);
+  GE_UNSUPPORTED_IF(!input_tensor->HasValue());
+  const auto input_values = SymbolicInferUtil::GetSymbolicValues(*input_tensor);
   int64_t element_count = std::accumulate(dims.begin(), dims.end(), 1L, std::multiplies<int64_t>());
   if (element_count <= 0L || element_count > kMaxSymbolicValueSize ||
-      input_values->size() != static_cast<size_t>(element_count)) {
+      input_values.size() != static_cast<size_t>(element_count)) {
     GELOGW(
         "SoftmaxV2 symbolic compute unsupported: input element count[%lld] or SymbolicValue size[%zu] is invalid, "
         "node %s[%s].",
-        element_count, input_values->size(), context->GetNodeName(), context->GetNodeType());
+        element_count, input_values.size(), context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
 
@@ -136,14 +136,14 @@ graphStatus SoftmaxV2SymbolicKernelCompute(gert::InferSymbolComputeContext *cont
   }
   auto output_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output_tensor);
-  output_tensor->MutableOriginSymbolShape() = input_tensor->GetOriginSymbolShape();
-  auto output_values = output_tensor->MutableSymbolicValue();
-  GE_ASSERT_NOTNULL(output_values);
-  output_values->reserve(input_values->size());
-  ret = BuildSoftmaxValues(dims, axes, *input_values, *output_values);
+  output_tensor->SetOriginSymbolShape(input_tensor->GetOriginSymbolShape());
+  std::vector<Expression> output_values;
+  output_values.reserve(input_values.size());
+  ret = BuildSoftmaxValues(dims, axes, input_values, output_values);
   if (ret != GRAPH_SUCCESS) {
     return ret;
   }
+  SymbolicInferUtil::SetSymbolicValues(*output_tensor, output_values);
   return GRAPH_SUCCESS;
 }
 

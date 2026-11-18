@@ -31,13 +31,12 @@ NodeImpl::NodeContext ExecuteNodeBackend::ResolveNode() const {
   if (fast_node != nullptr) {
     node.execute_owner = owner;
     node.execute_node = fast_node;
-    node.op_desc = fast_node->GetOpDescPtr();
   }
   return node;
 }
 
 Operator ExecuteNodeBackend::CreateOperator(const NodeContext &node) const {
-  return OpDescUtils::CreateOperatorFromOpDesc(node.op_desc);
+  return OpDescUtils::CreateOperatorFromOpDesc(node.GetOpDesc());
 }
 
 NodeImpl::GraphContext ExecuteNodeBackend::LookupSubgraph(const NodeContext &node, uint32_t index) const {
@@ -293,7 +292,6 @@ graphStatus ExecuteNodeBackend::ResolveConstInput(const NodeContext &node, int32
   }
   source.execute_node = input_data_node;
   source.execute_owner = input_data_node->GetExtendInfo()->GetOwnerGraphBarePtr()->shared_from_this();
-  source.op_desc = input_data_node->GetOpDescPtr();
   return GRAPH_SUCCESS;
 }
 

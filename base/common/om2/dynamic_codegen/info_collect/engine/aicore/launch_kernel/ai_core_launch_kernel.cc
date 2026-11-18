@@ -33,9 +33,6 @@ REGISTER_KERNEL_CODE_BUILDER("ReportRollbackError", ReportRollbackErrorKernelCod
 
 std::vector<KernelInputPortInfo> MakeLaunchV2Inputs() {
   return {{"stream", Om2ValueType::kRtStreamTPtr},
-          {"kernel_bin_id", Om2ValueType::kCStringPtr},
-          {"magic", Om2ValueType::kUInt32T},
-          {"kernel_bin", Om2ValueType::kGeKernelBinPtr},
           {"block_dim", Om2ValueType::kUInt32T},
           {"workspace_data", Om2ValueType::kGertTensorDataVectorPtr},
           {"shape_buffer_data", Om2ValueType::kGertTensorDataPtr},
@@ -46,9 +43,7 @@ std::vector<KernelInputPortInfo> MakeLaunchV2Inputs() {
           {"dfx_arg", Om2ValueType::kGertDfxExeArgPtr},
           {"rt_arg", Om2ValueType::kGertRtKernelLaunchArgsExPtr},
           {"local_memory_size", Om2ValueType::kUInt32T},
-          {"tiling_key", Om2ValueType::kSizeT},
-          {"kernel_name", Om2ValueType::kCStringPtr},
-          {"with_handle_flag", Om2ValueType::kUInt32T}};
+          {"func_handle", Om2ValueType::kVoidPtr}};
 }
 
 class LaunchKernelV2KernelCodeBuilder : public KernelCodeBuilder {

@@ -389,9 +389,15 @@ ge::graphStatus GraphNode::EnsureNodeExeInOrderInSubgraph(const ge::ExecuteGraph
     }
     for (auto &end_node : group_end_nodes) {
       for (auto &start_node : group_start_nodes) {
-        if (!IsNodeConnected(end_node, start_node)) {
-          GE_ASSERT_GRAPH_SUCCESS(AddAdditionalInfo(end_node, start_node));
+        if (IsNodeConnected(end_node, start_node)) {
+          continue;
         }
+        if (IsNodeConnected(start_node, end_node)) {
+          GELOGW("Skip additional order edge from node[%s] to node[%s], the reverse edge already exists",
+                 end_node->GetNamePtr(), start_node->GetNamePtr());
+          continue;
+        }
+        GE_ASSERT_GRAPH_SUCCESS(AddAdditionalInfo(end_node, start_node));
       }
     }
   }

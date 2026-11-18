@@ -26,7 +26,9 @@ ArgsManagerFileCodeGenerator::ArgsManagerFileCodeGenerator(AstBuildContext &ast)
           "std::vector<std::vector<ArgsRefreshInfo>>", "allocation_ids_to_model_args_refresh_infos_addr_all_")),
       active_base_init_offsets_(ast_.Var("std::vector<uint64_t>", "active_base_init_offsets_")),
       allocation_ids_to_active_base_addr_all_(
-          ast_.Var("std::vector<uintptr_t>", "allocation_ids_to_active_base_addr_all_")) {}
+          ast_.Var("std::vector<uintptr_t>", "allocation_ids_to_active_base_addr_all_")),
+      reserved_segments_(ast_.Var("std::array<ReservedSegmentRuntime, static_cast<size_t>(3)>", "reserved_segments_")) {
+}
 
 MethodDef *ArgsManagerFileCodeGenerator::BuildInitMethod(const Om2CodegenModel &codegen_model) {
   std::vector<Arg> args_size_items;
@@ -36,17 +38,19 @@ MethodDef *ArgsManagerFileCodeGenerator::BuildInitMethod(const Om2CodegenModel &
   std::vector<Arg> output_index_to_allocation_ids_items;
   std::vector<Arg> refreshable_fm_index_to_allocation_ids_items;
   std::vector<Arg> allocation_ids_to_model_args_refresh_infos_items;
+  std::vector<Arg> reserved_segment_items;
   BuildInitArgsItems(codegen_model, args_size_items, args_type_items, args_info_items);
   BuildInitAllocationItems(codegen_model, input_index_to_allocation_ids_items, output_index_to_allocation_ids_items,
                            refreshable_fm_index_to_allocation_ids_items,
                            allocation_ids_to_model_args_refresh_infos_items);
+  BuildInitReservedSegmentItems(codegen_model, reserved_segment_items);
 
   return ast_.DefineMethod(
       "Om2ArgsTable", "Init", {}, "aclError",
       BuildInitMethodBody(codegen_model, args_size_items, args_type_items, args_info_items,
                           input_index_to_allocation_ids_items, output_index_to_allocation_ids_items,
                           refreshable_fm_index_to_allocation_ids_items,
-                          allocation_ids_to_model_args_refresh_infos_items));
+                          allocation_ids_to_model_args_refresh_infos_items, reserved_segment_items));
 }
 
 std::vector<BodyItem> ArgsManagerFileCodeGenerator::BuildInitMethodBody(
@@ -55,28 +59,42 @@ std::vector<BodyItem> ArgsManagerFileCodeGenerator::BuildInitMethodBody(
     const std::vector<Arg> &input_index_to_allocation_ids_items,
     const std::vector<Arg> &output_index_to_allocation_ids_items,
     const std::vector<Arg> &refreshable_fm_index_to_allocation_ids_items,
-    const std::vector<Arg> &allocation_ids_to_model_args_refresh_infos_items) {
+    const std::vector<Arg> &allocation_ids_to_model_args_refresh_infos_items,
+    const std::vector<Arg> &reserved_segment_items) {
   auto i = ast_.Var("size_t", "i");
   std::vector<Arg> active_base_init_offsets_items;
   active_base_init_offsets_items.reserve(codegen_model.args_table.allocation_base_offsets.size());
   for (const auto offset : codegen_model.args_table.allocation_base_offsets) {
     active_base_init_offsets_items.push_back(ast_.ULong(offset));
   }
-  return {
+  // 含 Callback 任务时主 args 块按"普通区 + reserved 段"整块申请。args_sizes_ 语义保持
+  // "普通区长度"不变，reserved 段容量只经 reserved_segments_[i].total_size 表达。
+  const bool has_reserved = codegen_model.args_table.has_reserved_args_table;
+  ExprRef alloc_size = args_sizes_[i];
+  if (has_reserved) {
+    alloc_size = args_sizes_[i] + reserved_segments_[i].Attr("total_size");
+  }
+  std::vector<BodyItem> body = {
       ast_.Assign(args_sizes_, args_size_items),
       ast_.Assign(args_types_, args_type_items),
-      ast_.For(ast_.VarDecl(i, 0), i < args_sizes_.Size(), ast_.PostInc(i),
-               {
-                   ast_.If(args_sizes_[i] > 0,
-                           {
-                               host_args_[i].Clear(),
-                               host_args_[i].Resize(args_sizes_[i]),
-                               ChkStatus(AclrtMallocHelper(dev_args_[i].Addr(), args_sizes_[i], args_types_[i],
-                                                           GE_MODULE_NAME_U16)),
-                           }),
-               }),
-      ast_.Assign(args_info_, args_info_items),
+  };
+  if (has_reserved) {
+    // reserved 段描述必须在分配循环之前赋值：分配总量依赖 total_size
+    body.push_back(ast_.Assign(reserved_segments_, reserved_segment_items));
+  }
+  body.push_back(ast_.For(
+      ast_.VarDecl(i, 0), i < args_sizes_.Size(), ast_.PostInc(i),
+      {
+          ast_.If(alloc_size > 0,
+                  {
+                      host_args_[i].Clear(),
+                      host_args_[i].Resize(alloc_size),
+                      ChkStatus(AclrtMallocHelper(dev_args_[i].Addr(), alloc_size, args_types_[i], GE_MODULE_NAME_U16)),
+                  }),
+      }));
+  body.push_back(ast_.Assign(args_info_, args_info_items));
 
+  const std::vector<BodyItem> tail = {
       refreshable_fm_index_to_allocation_ids_.Clear(),
       refreshable_fm_index_to_allocation_ids_.Resize(
           codegen_model.args_table.refreshable_fm_index_and_allocation_ids.size()),
@@ -104,6 +122,8 @@ std::vector<BodyItem> ArgsManagerFileCodeGenerator::BuildInitMethodBody(
       //
       ast_.Return("ACL_SUCCESS"),
   };
+  (void)body.insert(body.end(), tail.begin(), tail.end());
+  return body;
 }
 
 void ArgsManagerFileCodeGenerator::BuildInitArgsItems(const Om2CodegenModel &codegen_model,
@@ -321,21 +341,103 @@ MethodDef *ArgsManagerFileCodeGenerator::BuildCopyArgsToDeviceMethod(const Om2Co
     (void)copy_body.emplace_back(ast_.IgnoreOutput(ast_.Var("(void)", "is_async")));
   }
 
+  // 含 Callback 任务时，上传范围为"普通区 + reserved 段已用部分"。reserved 段已用长度不新增缓存
+  // 字段，每槽现算 current_offset（bump 游标，加载期起只增不减）。目标块上限为整块申请长度。
+  // current_offset 是相对主块起点的绝对偏移（初值 = start_offset = 普通区长度，已含 built_in），
+  // 故上传长度即 current_offset 本身，不可再加 args_sizes_[i]（否则重复计入普通区）。
+  const bool has_reserved = codegen_model.args_table.has_reserved_args_table;
+  ExprRef block_len = args_sizes_[i];
+  ExprRef upload_len = args_sizes_[i];
+  if (has_reserved) {
+    block_len = args_sizes_[i] + reserved_segments_[i].Attr("total_size");
+    upload_len = reserved_segments_[i].Attr("current_offset");
+  }
+
   std::vector<BodyItem> copy_args_body = {
-      ChkStatus(
-          AclrtMemcpy(dev_args_[i], args_sizes_[i], host_args_[i].Data(), args_sizes_[i], "ACL_MEMCPY_HOST_TO_DEVICE")),
+      ChkStatus(AclrtMemcpy(dev_args_[i], block_len, host_args_[i].Data(), upload_len, "ACL_MEMCPY_HOST_TO_DEVICE")),
   };
   if (codegen_model.is_need_va2pa) {
-    (void)copy_args_body.emplace_back(
-        ChkStatus(RtDevVA2PA(ast_.CCast("uint64_t", dev_args_[i]), args_sizes_[i], ast_.Var("void *", "stream"),
-                             ast_.Var("bool", "is_async"))));
+    (void)copy_args_body.emplace_back(ChkStatus(RtDevVA2PA(
+        ast_.CCast("uint64_t", dev_args_[i]), upload_len, ast_.Var("void *", "stream"), ast_.Var("bool", "is_async"))));
   }
   const std::vector<BodyItem> empty_body;
   (void)copy_body.emplace_back(ast_.For(ast_.VarDecl(i, 0), i < args_sizes_.Size(), ast_.PostInc(i),
-                                        {ast_.If(args_sizes_[i] > 0, copy_args_body, empty_body)}));
+                                        {ast_.If(upload_len > 0, copy_args_body, empty_body)}));
   (void)copy_body.emplace_back(ast_.Return("ACL_SUCCESS"));
   return ast_.DefineMethod("Om2ArgsTable", "CopyArgsToDevice",
                            {ast_.Var("void *", "stream"), ast_.Var("bool", "is_async")}, "aclError", copy_body);
+}
+
+void ArgsManagerFileCodeGenerator::BuildInitReservedSegmentItems(const Om2CodegenModel &codegen_model,
+                                                                 std::vector<Arg> &reserved_items) const {
+  if (!codegen_model.args_table.has_reserved_args_table) {
+    return;
+  }
+  // 与 args_sizes_/args_types_ 同序：均按 model_args_semantic 的插入序，故存储槽下标天然对齐。
+  std::vector<Arg> segment_items;
+  segment_items.reserve(codegen_model.args_table.model_args_semantic.size());
+  for (const auto &model_arg : codegen_model.args_table.model_args_semantic) {
+    // current_offset 是加载期起的 bump 游标，与 start_offset/total_size 同为相对主块起点的
+    // 绝对偏移，故初值 = start_offset（= 普通区长度），与 AllocateArgsBuffer 的
+    // "current_offset >= start_offset" 守卫及 CopyArgsToDevice 的上传口径一致。
+    segment_items.push_back(
+        ast_.DesignatedInit({{"start_offset", static_cast<int64_t>(model_arg.reserved_start_offset)},
+                             {"total_size", static_cast<int64_t>(model_arg.reserved_total_size)},
+                             {"current_offset", static_cast<int64_t>(model_arg.reserved_start_offset)}},
+                            true));
+  }
+  reserved_items.push_back(segment_items);
+}
+
+MethodDef *ArgsManagerFileCodeGenerator::BuildAllocateArgsBufferMethod() const {
+  auto size = ast_.Var("size_t", "size");
+  auto args_type = ast_.Var("int32_t", "args_type");
+  auto result = ast_.Var("ArgsInfo &", "result");
+  auto seg = ast_.Var("auto &", "seg");
+  auto capacity = ast_.Var("const size_t", "capacity");
+  auto begin = ast_.Var("const uint64_t", "begin");
+
+  // 单级 reserved bump 分配：请求不拆分、不对齐、不搬迁。槽通用（按 args_type 索引），
+  // 首期适配层恒传 HBM 槽。出参用既有 ArgsInfo，与桥接层 GertOm2ArgsAllocFunc 的两个 void **
+  // 签名不同，转换由适配层负责。
+  return ast_.DefineMethod(
+      "Om2ArgsTable", "AllocateArgsBuffer", {size, args_type, result}, "aclError",
+      {
+          ast_.Assign(result, ast_.InitList({ast_.Var("", "nullptr"), ast_.Var("", "nullptr"), ast_.UInt(0)}, true)),
+          ast_.If((args_type < 0) || (args_type >= ast_.CCast("int32_t", reserved_segments_.Size())),
+                  {
+                      ast_.Call("OM2_LOGE", {ast_.Str("[OM2] AllocateArgsBuffer: invalid args_type %d"), args_type}),
+                      ast_.Return("ACL_ERROR_INVALID_PARAM"),
+                  }),
+          ast_.VarDecl(seg, reserved_segments_[ast_.CCast("size_t", args_type)]),
+          ast_.VarDecl(capacity, host_args_[ast_.CCast("size_t", args_type)].Size()),
+          // 不变量：reserved 段必须落在已申请的 host 块内。构建期按 built_in + reserved 整块申请，
+          // 二者若不一致说明容量申报与分配路径出现分歧，此处响亮失败而非越界写。
+          ast_.If((seg.Attr("start_offset") + seg.Attr("total_size")) > capacity,
+                  {
+                      ast_.Call("OM2_LOGE",
+                                {ast_.Str("[OM2] AllocateArgsBuffer: reserved segment out of block, args_type=%d, "
+                                          "start=%lu, total=%lu, capacity=%zu"),
+                                 args_type, seg.Attr("start_offset"), seg.Attr("total_size"), capacity}),
+                      ast_.Return("ACL_ERROR_FAILURE"),
+                  }),
+          // 游标与容量同为相对主块起点的绝对偏移口径，故剩余量须扣除 start_offset
+          ast_.If((seg.Attr("current_offset") < seg.Attr("start_offset")) ||
+                      (size > (seg.Attr("start_offset") + seg.Attr("total_size") - seg.Attr("current_offset"))),
+                  {
+                      ast_.Call("OM2_LOGE",
+                                {ast_.Str("[OM2] AllocateArgsBuffer: reserved exhausted, args_type=%d, request=%zu, "
+                                          "used=%lu, total=%lu"),
+                                 args_type, size, seg.Attr("current_offset"), seg.Attr("total_size")}),
+                      ast_.Return("ACL_ERROR_FAILURE"),
+                  }),
+          ast_.VarDecl(begin, seg.Attr("current_offset")),
+          ast_.Assign(result.Attr("host_addr"), GetAddr(host_args_[ast_.CCast("size_t", args_type)].Data(), begin)),
+          ast_.Assign(result.Attr("dev_addr"), GetAddr(dev_args_[ast_.CCast("size_t", args_type)], begin)),
+          ast_.Assign(result.Attr("size"), size),
+          ast_.Assign(seg.Attr("current_offset"), begin + size),
+          ast_.Return("ACL_SUCCESS"),
+      });
 }
 
 ExprRef ArgsManagerFileCodeGenerator::GetHostArgAddr(Arg offset, Arg args_type) const {

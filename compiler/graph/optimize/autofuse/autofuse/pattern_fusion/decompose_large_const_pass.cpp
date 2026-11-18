@@ -23,6 +23,7 @@
 #include "debug/ge_attr_define.h"
 #include "lowering/lowerings.h"
 #include "util/mem_utils.h"
+#include "utils/autofuse_utils.h"
 
 namespace ge {
 namespace {
@@ -137,7 +138,7 @@ Status UpdateSymShape(const NodePtr &node, const GeShape &shape) {
   for (const auto &dim : shape.GetDims()) {
     new_shape.emplace_back(ge::Symbol(dim));
   }
-  sym_attr->symbolic_tensor.MutableOriginSymbolShape().MutableDims() = new_shape;
+  AutofuseUtils::SetSymbolDims(sym_attr->symbolic_tensor, new_shape);
   return SUCCESS;
 }
 

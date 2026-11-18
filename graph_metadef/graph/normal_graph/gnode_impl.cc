@@ -19,6 +19,7 @@
 #include "graph/op_desc.h"
 #include "graph/operator.h"
 #include "graph/utils/tensor_adapter.h"
+#include "fast_graph/fast_node.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 
 namespace ge {
@@ -26,20 +27,27 @@ bool NodeImpl::NodeContext::IsValid() const {
   return compute_node != nullptr || execute_owner != nullptr;
 }
 
+ge::OpDescPtr NodeImpl::NodeContext::GetOpDesc() const {
+  if (compute_node != nullptr) {
+    return compute_node->GetOpDesc();
+  }
+  return execute_node != nullptr ? execute_node->GetOpDescPtr() : nullptr;
+}
+
 std::string NodeImpl::NodeContext::GetName() const {
-  return compute_node != nullptr ? compute_node->GetName() : op_desc->GetName();
+  return compute_node != nullptr ? compute_node->GetName() : GetOpDesc()->GetName();
 }
 
 std::string NodeImpl::NodeContext::GetType() const {
-  return compute_node != nullptr ? compute_node->GetType() : op_desc->GetType();
+  return compute_node != nullptr ? compute_node->GetType() : GetOpDesc()->GetType();
 }
 
 const char *NodeImpl::NodeContext::GetNamePtr() const {
-  return compute_node != nullptr ? compute_node->GetNamePtr() : op_desc->GetNamePtr();
+  return compute_node != nullptr ? compute_node->GetNamePtr() : GetOpDesc()->GetNamePtr();
 }
 
 const char *NodeImpl::NodeContext::GetTypePtr() const {
-  return compute_node != nullptr ? compute_node->GetTypePtr() : op_desc->GetTypePtr();
+  return compute_node != nullptr ? compute_node->GetTypePtr() : GetOpDesc()->GetTypePtr();
 }
 
 // 通用类型属性访问沿用计算节点的属性转换和返回值语义。
@@ -145,7 +153,7 @@ graphStatus NodeImpl::GetInputIndexByName(const AscendString &name, int32_t &ind
     return GRAPH_FAILED;
   }
 
-  const auto op_desc = node.GetOpDescBarePtr();
+  const OpDescPtr op_desc = node.GetOpDesc();
   if (op_desc == nullptr) {
     REPORT_INNER_ERR_MSG("E18888", "get Op desc of node[%s] failed.", node.GetName().c_str());
     GELOGE(GRAPH_FAILED, "[Get][OpDesc] of node[%s] failed.", node.GetName().c_str());
@@ -167,7 +175,7 @@ graphStatus NodeImpl::GetOutputIndexByName(const AscendString &name, int32_t &in
     return GRAPH_FAILED;
   }
 
-  const auto op_desc = node.GetOpDescBarePtr();
+  const OpDescPtr op_desc = node.GetOpDesc();
   if (op_desc == nullptr) {
     REPORT_INNER_ERR_MSG("E18888", "Get op desc of node[%s] failed.", node.GetName().c_str());
     GELOGE(GRAPH_FAILED, "[Get][OpDesc] of node[%s] failed.", node.GetName().c_str());
@@ -189,7 +197,7 @@ graphStatus NodeImpl::GetDynamicInputIndexesByName(const AscendString &name, std
     return GRAPH_FAILED;
   }
 
-  const auto op_desc = node.GetOpDescBarePtr();
+  const OpDescPtr op_desc = node.GetOpDesc();
   if (op_desc == nullptr) {
     REPORT_INNER_ERR_MSG("E18888", "get op desc of node[%s] failed.", node.GetName().c_str());
     GELOGE(GRAPH_FAILED, "[Get][OpDesc] of node[%s] failed.", node.GetName().c_str());
@@ -217,7 +225,7 @@ graphStatus NodeImpl::GetDynamicOutputIndexesByName(const AscendString &name, st
     return GRAPH_FAILED;
   }
 
-  const auto op_desc = node.GetOpDescBarePtr();
+  const OpDescPtr op_desc = node.GetOpDesc();
   if (op_desc == nullptr) {
     REPORT_INNER_ERR_MSG("E18888", "get op desc of node[%s] failed.", node.GetName().c_str());
     GELOGE(GRAPH_FAILED, "[Get][OpDesc] of node[%s] failed.", node.GetName().c_str());

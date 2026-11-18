@@ -16,9 +16,6 @@ namespace gert {
 namespace bg {
 struct CommonLaunchArg {
   ValueHolderPtr stream;
-  ValueHolderPtr kernel_bin_id_holder;
-  ValueHolderPtr magic_holder;
-  ValueHolderPtr kernel_bin_holder;
   ValueHolderPtr block_dim;
   ValueHolderPtr schedule_mode;
   ValueHolderPtr local_mem_size;
@@ -32,9 +29,7 @@ struct CommonLaunchArg {
   LoweringGlobalData *global_data;
   ValueHolderPtr dfx_holder;
   ValueHolderPtr rt_arg;
-  ValueHolderPtr tiling_key;
-  ValueHolderPtr kernel_name;
-  ValueHolderPtr with_handle_flag;
+  ValueHolderPtr func_handle;
 };
 
 struct AtomicLoweringArg {

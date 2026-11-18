@@ -266,6 +266,44 @@ using SaveBinHandleToStoreFunc = int32_t (*)(const char *bin_id, aclrtBinHandle 
 using ReleaseBinHandleFromStoreFunc = int32_t (*)(const char *bin_id, uint8_t *need_unload);
 
 /**
+ * @brief SO 侧参数分配回调：从模型参数池 reserved 段划出 host/device 成对子区间。
+ *
+ * 方向：由模型 SO 实现，GE 运行库调用（反向回调）。
+ * @param args_table 输入，create_args_handler 传入的池对象地址；SO 内部转回其私有池类型，GE 不解释其内容。
+ * @param size 输入，请求字节数。请求不拆分、不对齐、不搬迁；容量不足即整体失败。
+ * @param host_addr 输出，host 侧子区间首地址。入函数即被置 nullptr，仅在返回 ACL_SUCCESS 时填写。
+ * @param device_addr 输出，device 侧子区间首地址。可空性与 host_addr 一致。
+ * @return ACL_SUCCESS 表示分配成功；容量不足或入参非法返回非 0，此时两个输出参数保持 nullptr。
+ * @note 时机：仅在 GE 调用 create_args_handler 期间同步调用，即模型加载期内；运行期不得调用。
+ * @note 内存归属：划出的子区间属于 SO 参数池，生命周期与池一致；GE 不得单独释放。
+ */
+using GertOm2ArgsAllocFunc = int32_t (*)(void *args_table, uint64_t size, void **host_addr, void **device_addr);
+
+/**
+ * @brief GE 侧创建自定义算子 Callback 参数服务 Handler。
+ *
+ * 方向：由 GE 运行库实现并注入，模型 SO 调用。
+ * @param args_table 输入，SO 参数池对象地址；GE 不解释其内容，仅在调用 allocate_args_buffer 时原样回传。
+ * @param allocate_args_buffer 输入，SO 侧分配回调；不可为 nullptr。
+ * @param handler 输出，gert::ArgsHandler 基类地址形式的不透明句柄。入函数即被置 nullptr，
+ *                仅在返回 ACL_SUCCESS 时填写。
+ * @return ACL_SUCCESS 表示创建成功；入参非法或内部失败返回非 0，此时 *handler 保持 nullptr。
+ * @note 时机：只能在 GertModelLoad 内调用；运行期不得调用。
+ * @note 所有权：句柄由 GE 创建，只能经 destroy_args_handler 由 GE 销毁，SO 不得直接 delete。
+ */
+using CreateArgsHandlerFunc = int32_t (*)(void *args_table, GertOm2ArgsAllocFunc allocate_args_buffer, void **handler);
+
+/**
+ * @brief GE 侧销毁 Handler 与其两端登记表。
+ *
+ * 方向：由 GE 运行库实现并注入，模型 SO 调用。
+ * @param handler 输入，create_args_handler 输出的句柄；为 nullptr 时为空操作。
+ * @note 不释放 SO 参数池中已划出的字节——那些字节随池整体释放。
+ * @note 时机：必须在设备结束引用参数之后、模型 SO 卸载之前调用。
+ */
+using DestroyArgsHandlerFunc = void (*)(void *handler);
+
+/**
  * @brief 模型加载期由执行器提供给模型 SO 的回调集合。
  * @note 变量相关的回调不在此处，见 GertModelVarContext。
  */
@@ -279,6 +317,11 @@ struct GertModelLoadCallbacks {
   SaveBinHandleToStoreFunc save_bin_handle_to_store = nullptr;            // 写入缓存。
   ReleaseBinHandleFromStoreFunc release_bin_handle_from_store = nullptr;  // 释放缓存。
   HcclLoadTaskFunc hccl_load_task = nullptr;  // 下发 HCCL 任务（store 获取内化 + Prepare+LoadTask）。
+  // ── 以下为尾部追加字段，前 9 字段偏移冻结（hccl_load_task@64）──
+  // nullptr 表示宿主未提供该服务；SO 须先按 struct_size 判断字段是否在调用方提供的内存范围内，
+  // 再判空。旧结构体（struct_size == 72）不含这两个字段，不得因此被拒绝加载。
+  CreateArgsHandlerFunc create_args_handler = nullptr;    // 创建 Callback 参数服务 Handler。
+  DestroyArgsHandlerFunc destroy_args_handler = nullptr;  // 销毁 Handler 与其两端登记表。
 };
 
 using ReportModelRunFunc = int32_t (*)(void *instance_handle, const struct GertModelRunReportInfo *info);

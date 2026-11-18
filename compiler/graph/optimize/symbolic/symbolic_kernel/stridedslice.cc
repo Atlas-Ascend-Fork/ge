@@ -61,15 +61,11 @@ graphStatus GetValueFromInputConstData(const gert::InferSymbolComputeContext *co
                                        std::vector<int64_t> &dims) {
   auto symbol_tensor = context->GetInputSymbolTensor(index);
   GE_UNSUPPORTED_IF_NULL(symbol_tensor);
-  auto symbols = symbol_tensor->GetSymbolicValue();
-  if (symbols == nullptr) {
-    GELOGW("SymbolicKernel compute unsupported, reason: get %zu input symbolic value failed, node %s[%s].", index,
-           context->GetNodeName(), context->GetNodeType());
-    return UNSUPPORTED;
-  }
-  for (size_t i = 0UL; i < symbols->size(); i++) {
+  GE_UNSUPPORTED_IF(!symbol_tensor->HasValue());
+  const auto symbols = SymbolicInferUtil::GetSymbolicValues(*symbol_tensor);
+  for (size_t i = 0UL; i < symbols.size(); i++) {
     int64_t dim = 0L;
-    if (!(*symbols)[i].GetConstValue(dim)) {
+    if (!(symbols)[i].GetConstValue(dim)) {
       GELOGW("SymbolicKernel compute unsupported, reason: get %zu input const value failed, node %s[%s].", i,
              context->GetNodeName(), context->GetNodeType());
       return UNSUPPORTED;
@@ -500,9 +496,9 @@ Status HandleMaskAttr(const std::pair<int64_t, int64_t> &ellipsis_mask_range,
 Status GetV2AxesValues(gert::InferSymbolComputeContext *context, const int64_t rank, std::vector<int64_t> &axes) {
   auto axes_tensor = context->GetInputSymbolTensor(kAxesV2InputIndex);
   if (axes_tensor != nullptr) {
-    auto axes_symbols = axes_tensor->GetSymbolicValue();
-    GE_UNSUPPORTED_IF_NULL(axes_symbols);
-    for (const auto &symbol : *axes_symbols) {
+    GE_UNSUPPORTED_IF(!axes_tensor->HasValue());
+    const auto axes_symbols = SymbolicInferUtil::GetSymbolicValues(*axes_tensor);
+    for (const auto &symbol : axes_symbols) {
       int64_t val = 0L;
       if (!symbol.GetConstValue(val)) {
         GELOGW("StridedSliceV2 symbolic kernel unsupported: axis is not constant, node %s[%s].", context->GetNodeName(),
@@ -534,10 +530,10 @@ Status GetV2StrideValues(gert::InferSymbolComputeContext *context, const size_t 
   if (strides_tensor == nullptr) {
     return SUCCESS;
   }
-  auto stride_symbols = strides_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(stride_symbols);
+  GE_UNSUPPORTED_IF(!strides_tensor->HasValue());
+  const auto stride_symbols = SymbolicInferUtil::GetSymbolicValues(*strides_tensor);
   std::vector<int64_t> input_values;
-  for (const auto &symbol : *stride_symbols) {
+  for (const auto &symbol : stride_symbols) {
     int64_t val = 0L;
     if (!symbol.GetConstValue(val)) {
       GELOGW("StridedSliceV2 symbolic kernel unsupported: stride is not constant, node %s[%s].", context->GetNodeName(),
@@ -600,7 +596,7 @@ Status ConstructV2IndexInput(gert::InferSymbolComputeContext *context, const std
 }
 graphStatus ComputeStridedSliceOutput(gert::InferSymbolComputeContext *context, StrdedSliceIndexInputs &index_input,
                                       const std::vector<int64_t> &input_x_dims,
-                                      const std::vector<Expression> *input_x_symbols) {
+                                      const std::vector<Expression> input_x_symbols) {
   StridedSliceAttr strided_slice_attr;
   GE_ASSERT_SUCCESS(GetStridedSliceMaskAttr(context, strided_slice_attr));
   HandleMaskConflict(strided_slice_attr);
@@ -618,14 +614,14 @@ graphStatus ComputeStridedSliceOutput(gert::InferSymbolComputeContext *context, 
   std::vector<Expression> output_symbols_shape;
   GE_ASSERT_SUCCESS(
       CalcOutputShape(strided_slice_attr.shrink_axis_mask, ellipsis_mask_range, index_input, output_symbols_shape));
-  GE_ASSERT_NOTNULL(out_symbols_tensor->MutableSymbolicValue());
-  out_symbols_tensor->MutableOriginSymbolShape().MutableDims() = output_symbols_shape;
-  auto output_symbols_value = out_symbols_tensor->MutableSymbolicValue();
+  SymbolicInferUtil::SetSymbolDims(*out_symbols_tensor, output_symbols_shape);
+  std::vector<Expression> output_symbols_value;
   // StridedSliceOutputSymbolsValue对空tensor(后缀维为0)/溢出返回UNSUPPORTED，需透传降级
-  if (StridedSliceOutputSymbolsValue(*input_x_symbols, input_append_axis_shape, index_input, *output_symbols_value) !=
+  if (StridedSliceOutputSymbolsValue(input_x_symbols, input_append_axis_shape, index_input, output_symbols_value) !=
       SUCCESS) {
     return UNSUPPORTED;
   }
+  SymbolicInferUtil::SetSymbolicValues(*out_symbols_tensor, output_symbols_value);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*out_symbols_tensor).c_str());
   return SUCCESS;
@@ -655,8 +651,8 @@ static graphStatus StridedSliceSymbolicKernelCompute(gert::InferSymbolComputeCon
   }
   auto input_x = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_x);
-  auto input_x_symbols = input_x->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_x_symbols);
+  GE_UNSUPPORTED_IF(!input_x->HasValue());
+  const auto input_x_symbols = SymbolicInferUtil::GetSymbolicValues(*input_x);
   return ComputeStridedSliceOutput(context, index_input, input_x_dims, input_x_symbols);
 }
 REGISTER_SYMBOLIC_KERNEL(StridedSlice, StridedSliceSymbolicKernelCompute);
@@ -673,8 +669,8 @@ static graphStatus StridedSliceV2SymbolicKernelCompute(gert::InferSymbolComputeC
   }
   auto input_x = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_x);
-  auto input_x_symbols = input_x->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(input_x_symbols);
+  GE_UNSUPPORTED_IF(!input_x->HasValue());
+  const auto input_x_symbols = SymbolicInferUtil::GetSymbolicValues(*input_x);
 
   StrdedSliceIndexInputs index_input;
   auto ret = ConstructV2IndexInput(context, input_x_dims, index_input);
@@ -698,7 +694,8 @@ static graphStatus StridedSliceV3SymbolicKernelCompute(gert::InferSymbolComputeC
   }
   auto input_x = context->GetInputSymbolTensor(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(input_x);
-  auto input_x_symbols = input_x->GetSymbolicValue();
+  const bool input_x_has_value = input_x->HasValue();
+  const auto input_x_symbols = SymbolicInferUtil::GetSymbolicValues(*input_x);
 
   StrdedSliceIndexInputs index_input;
   auto ret = ConstructV2IndexInput(context, input_x_dims, index_input);
@@ -724,15 +721,15 @@ static graphStatus StridedSliceV3SymbolicKernelCompute(gert::InferSymbolComputeC
   for (auto dim : output_dims) {
     output_symbols_shape.emplace_back(Symbol(dim));
   }
-  GE_ASSERT_NOTNULL(out_symbols_tensor->MutableSymbolicValue());
-  out_symbols_tensor->MutableOriginSymbolShape().MutableDims() = output_symbols_shape;
-  if (input_x_symbols != nullptr) {
-    auto output_symbols_value = out_symbols_tensor->MutableSymbolicValue();
+  SymbolicInferUtil::SetSymbolDims(*out_symbols_tensor, output_symbols_shape);
+  std::vector<Expression> output_symbols_value;
+  if (input_x_has_value) {
     // StridedSliceOutputSymbolsValue对空tensor(后缀维为0)/溢出返回UNSUPPORTED，需透传降级
-    if (StridedSliceOutputSymbolsValue(*input_x_symbols, input_x_dims, index_input, *output_symbols_value) != SUCCESS) {
+    if (StridedSliceOutputSymbolsValue(input_x_symbols, input_x_dims, index_input, output_symbols_value) != SUCCESS) {
       return UNSUPPORTED;
     }
   }
+  SymbolicInferUtil::SetSymbolicValues(*out_symbols_tensor, output_symbols_value);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*out_symbols_tensor).c_str());
   return SUCCESS;

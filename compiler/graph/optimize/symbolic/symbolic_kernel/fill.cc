@@ -7,9 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "common/plugin/ge_make_unique_util.h"
 #include "framework/common/framework_types_internal.h"
-#include "common/util/mem_utils.h"
 #include "common/checker.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "graph/optimize/symbolic/symbol_compute_context.h"
@@ -70,24 +68,24 @@ static graphStatus FillSymbolicKernelCompute(gert::InferSymbolComputeContext *co
 
   auto dims_input_tensor = context->GetInputSymbolTensor(kDimsInputIndex);
   GE_UNSUPPORTED_IF_NULL(dims_input_tensor);
-  auto dims_symbols = dims_input_tensor->GetSymbolicValue();
-  if (dims_symbols == nullptr) {
+  const auto dims_symbols = SymbolicInferUtil::GetSymbolicValues(*dims_input_tensor);
+  if (!dims_input_tensor->HasValue()) {
     GELOGW("SymbolicKernel compute unsupported, reason: no symbolic value, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
   }
-  if (dims_symbols->size() > kMaxSupportDim) {
-    GELOGW("SymbolicKernel compute unsupported, reason: dim size %zu over limit %zu, node %s[%s].",
-           dims_symbols->size(), kMaxSupportDim, context->GetNodeName(), context->GetNodeType());
+  if (dims_symbols.size() > kMaxSupportDim) {
+    GELOGW("SymbolicKernel compute unsupported, reason: dim size %zu over limit %zu, node %s[%s].", dims_symbols.size(),
+           kMaxSupportDim, context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
 
   auto symbolic_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(symbolic_tensor);
-  symbolic_tensor->MutableOriginSymbolShape().MutableDims() = *dims_symbols;
+  SymbolicInferUtil::SetSymbolDims(*symbolic_tensor, dims_symbols);
   // 获取value个数（原样透传：合法不支持的UNSUPPORTED降级，非法dim的ErrorResult由驱动打挂推导）
   int64_t element_num = 1L;
-  const auto element_ret = GetElementNum(*dims_symbols, element_num, context);
+  const auto element_ret = GetElementNum(dims_symbols, element_num, context);
   if (element_ret != GRAPH_SUCCESS) {
     return element_ret;
   }
@@ -95,20 +93,17 @@ static graphStatus FillSymbolicKernelCompute(gert::InferSymbolComputeContext *co
   // 获取value的值
   auto value_input_tensor = context->GetInputSymbolTensor(kValueInputIndex);
   GE_UNSUPPORTED_IF_NULL(value_input_tensor);
-  auto value_symbols = value_input_tensor->GetSymbolicValue();
-  if (value_symbols == nullptr) {
+  const auto value_symbols = SymbolicInferUtil::GetSymbolicValues(*value_input_tensor);
+  if (value_symbols.empty()) {
     GELOGW("SymbolicKernel compute unsupported, reason: get %zu symbolic value failed, node %s[%s].", kValueInputIndex,
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
-  GE_ASSERT_TRUE(value_symbols->size() == 1UL,
+  GE_ASSERT_TRUE(value_symbols.size() == 1UL,
                  "Value of input: %zu of node: %s should only have one element, but get: %zu", kValueInputIndex,
-                 context->GetNodeName(), value_symbols->size());
-  auto symbol_value = std::vector<Expression>(element_num, value_symbols->front());
-  auto symbol_value_unique = ge::MakeUnique<std::vector<ge::Expression> >(symbol_value);
-  if (symbol_value_unique != nullptr) {
-    symbolic_tensor->SetSymbolicValue(std::move(symbol_value_unique));
-  }
+                 context->GetNodeName(), value_symbols.size());
+  auto symbol_value = std::vector<Expression>(element_num, value_symbols.front());
+  SymbolicInferUtil::SetSymbolicValues(*symbolic_tensor, symbol_value);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*symbolic_tensor).c_str());
   return SUCCESS;

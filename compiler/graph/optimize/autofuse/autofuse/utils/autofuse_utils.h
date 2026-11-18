@@ -13,6 +13,7 @@
 #include <sstream>
 #include "ge_common/ge_common_api_types.h"
 #include "graph/symbolizer/symbolic.h"
+#include "attribute_group/attr_group_symbolic_desc.h"
 #include "graph/utils/op_type_utils.h"
 #include "graph/node.h"
 #include "graph/operator_reg.h"
@@ -69,6 +70,15 @@ class AutofuseUtils {
  public:
   static int64_t GenUniqueNumber();
   static void ClearUniqueNumber();
+
+  // 拷出符号Shape的所有维度（SymbolShape公开面只提供逐元素接口）
+  static std::vector<ge::Expression> GetSymbolDims(const gert::SymbolShape &shape);
+
+  // 将维度整体拷入符号Shape
+  static void SetSymbolDims(gert::SymbolShape &shape, const std::vector<ge::Expression> &dims);
+
+  // 将维度整体拷入符号张量的符号Shape
+  static void SetSymbolDims(gert::SymbolTensor &tensor, const std::vector<ge::Expression> &dims);
 
   template <typename Container>
   static std::string VectorPairToStr(const Container &vec) {

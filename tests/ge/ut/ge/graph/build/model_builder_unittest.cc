@@ -1224,6 +1224,58 @@ TEST_F(UtestModelBuilderTest, PrepareInputH2DOverlap_ConfigRejectsInvalidManualS
   }
 }
 
+static void BuildInputH2DOverlapManualConfigGraph(ComputeGraphPtr &graph) {
+  graph = std::make_shared<ComputeGraph>("input_h2d_model_builder_rejected_manual_config");
+  auto data0 = AddInputH2DOverlapDataNode(graph, "data0", 0, 128, 64);
+  auto relu0 = AddInputH2DOverlapOpNode(graph, "relu0", "Relu", 1U, 1U, 0, 64);
+  auto relu1 = AddInputH2DOverlapOpNode(graph, "relu1", "Relu", 1U, 1U, 1, 64);
+  auto netoutput = AddInputH2DOverlapOpNode(graph, "netoutput", NETOUTPUT, 2U, 0U, 0);
+
+  ASSERT_EQ(GraphUtils::AddEdge(data0->GetOutDataAnchor(0), relu0->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  ASSERT_EQ(GraphUtils::AddEdge(data0->GetOutDataAnchor(0), relu1->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  ASSERT_EQ(GraphUtils::AddEdge(relu0->GetOutDataAnchor(0), netoutput->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  ASSERT_EQ(GraphUtils::AddEdge(relu1->GetOutDataAnchor(0), netoutput->GetInDataAnchor(1)), GRAPH_SUCCESS);
+  ASSERT_EQ(graph->TopologicalSorting(), GRAPH_SUCCESS);
+}
+
+static Status RunPrepareInputH2DOverlapWithManualConfig(const std::string &manual_config) {
+  ComputeGraphPtr graph;
+  BuildInputH2DOverlapManualConfigGraph(graph);
+
+  Graph2SubGraphInfoList subgraphs;
+  std::map<std::string, int32_t> stream_max_parallel_num;
+  ModelBuilder builder(0U, graph, subgraphs, stream_max_parallel_num, false);
+  builder.mem_type_to_mem_offset_[RT_MEMORY_HBM] = 512U;
+  builder.zero_copy_mem_size_ = 0U;
+
+  const auto old_graph_options = ge::GetThreadLocalContext().GetAllGraphOptions();
+  auto graph_options = old_graph_options;
+  graph_options["ge.compile.h2dOverlappedWithCompute"] = manual_config;
+  ge::GetThreadLocalContext().SetGraphOption(graph_options);
+  const auto build_ret = builder.PrepareInputH2DOverlap();
+  ge::GetThreadLocalContext().SetGraphOption(old_graph_options);
+  return build_ret;
+}
+
+TEST_F(UtestModelBuilderTest, PrepareInputH2DOverlap_ConfigRejectsNonIncreasingBoundaries) {
+  for (const auto &manual_config : std::vector<std::string>{"2,1", "44,44"}) {
+    SCOPED_TRACE(manual_config);
+    ASSERT_EQ(RunPrepareInputH2DOverlapWithManualConfig(manual_config), PARAM_INVALID);
+  }
+}
+
+TEST_F(UtestModelBuilderTest, PrepareInputH2DOverlap_ConfigRejectsBoundaryOutOfRange) {
+  for (const auto &manual_config : std::vector<std::string>{"3,5", "1,5"}) {
+    SCOPED_TRACE(manual_config);
+    ASSERT_EQ(RunPrepareInputH2DOverlapWithManualConfig(manual_config), PARAM_INVALID);
+  }
+}
+
+TEST_F(UtestModelBuilderTest, PrepareInputH2DOverlap_ConfigRejectsBoundaryIndexOverflow) {
+  const auto build_ret = RunPrepareInputH2DOverlapWithManualConfig("1,99999999999999999999999");
+  ASSERT_EQ(build_ret, PARAM_INVALID);
+}
+
 TEST_F(UtestModelBuilderTest, PrepareInputH2DOverlap_ConfigBoundaryKeepsWholeInputWaitSet) {
   auto graph = std::make_shared<ComputeGraph>("input_h2d_model_builder_manual_boundary_wait_set");
   auto data0 = AddInputH2DOverlapDataNode(graph, "data0", 0, 128, 64);

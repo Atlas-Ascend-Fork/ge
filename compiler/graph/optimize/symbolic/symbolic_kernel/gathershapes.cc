@@ -61,10 +61,10 @@ graphStatus GatherShapesSymbolicKernelCompute(gert::InferSymbolComputeContext *c
 
   auto output = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output);
-  output->MutableOriginSymbolShape().MutableDims() = {Symbol(static_cast<int64_t>(axes_size))};
+  SymbolicInferUtil::SetSymbolDims(*output, {Symbol(static_cast<int64_t>(axes_size))});
   auto output_value = ge::MakeUnique<std::vector<Expression>>(std::move(output_values));
   GE_ASSERT_NOTNULL(output_value);
-  output->SetSymbolicValue(std::move(output_value));
+  SymbolicInferUtil::SetSymbolicValues(*output, *output_value);
 
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output).c_str());

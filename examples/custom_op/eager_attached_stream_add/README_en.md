@@ -17,7 +17,7 @@ The sample operator (`EagerAttachedStreamAddOp`) performs the following verifica
 |---|-------------------|----------------|
 | ① | Request an attached stream by key | `RequestAttachedStream("eager_aux", 0U)` returns a non-null pointer |
 | ② | Kernel launch on the attached stream | `aclrtLaunchKernelV2(..., attached stream)` succeeds |
-| ③ | Replay precision | z = x + y is correct in all rounds of model replay |
+| ③ | Replay precision | z = x + y is correct in each replay round, with the inputs refreshed per round |
 
 > Interface semantics such as same-key reuse and different-key isolation are covered by unit tests, see
 > `tests/ge/ut/ge/graph/load/attached_stream_collection_unittest.cc`.
@@ -57,7 +57,7 @@ On success, the terminal output is:
 |------|-------------|
 | `ge/custom_op.cpp` | `EagerAttachedStreamAddOp`: requests the attached stream and launches the kernel in Execute |
 | `ge/add_custom.h` | Operator proto registration (REG_OP) |
-| `session_run/main.cc` | Graph construction + Session execution + multi-round precision checks |
+| `session_run/main.cc` | Graph construction + Session execution + precision checks over two rounds with refreshed inputs |
 | `add_custom_kernel/add_custom.asc` | Ascend C Add kernel source |
 | `ge/utils/rtc_kernel_loader.cpp` | RTC compiles and loads the kernel |
 

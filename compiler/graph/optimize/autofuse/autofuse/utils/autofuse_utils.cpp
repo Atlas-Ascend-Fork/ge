@@ -451,6 +451,29 @@ void AutofuseUtils::ClearUniqueNumber() {
   number = 0;
 }
 
+std::vector<ge::Expression> AutofuseUtils::GetSymbolDims(const gert::SymbolShape &shape) {
+  std::vector<ge::Expression> dims;
+  const size_t dim_num = shape.GetDimNum();
+  dims.reserve(dim_num);
+  for (size_t i = 0UL; i < dim_num; ++i) {
+    dims.emplace_back(shape.GetDim(i));
+  }
+  return dims;
+}
+
+void AutofuseUtils::SetSymbolDims(gert::SymbolShape &shape, const std::vector<ge::Expression> &dims) {
+  shape.SetDimNum(dims.size());
+  for (size_t i = 0UL; i < dims.size(); ++i) {
+    shape.SetDim(i, dims[i]);
+  }
+}
+
+void AutofuseUtils::SetSymbolDims(gert::SymbolTensor &tensor, const std::vector<ge::Expression> &dims) {
+  gert::SymbolShape shape;
+  SetSymbolDims(shape, dims);
+  tensor.SetOriginSymbolShape(shape);
+}
+
 Status AutofuseUtils::AddOperatorPrototypeAttrs(const OpDescPtr &op_desc) {
   std::vector<std::string> input_name_list;
   std::vector<int64_t> input_type_list;
@@ -606,15 +629,15 @@ Status AutofuseUtils::SerializeAndPackComputeGraph(const ComputeGraphPtr &comput
     const auto node_attr = output_desc->GetAttrsGroup<ge::SymbolicDescAttr>();
     GE_ASSERT_NOTNULL(node_attr);
     std::vector<std::string> ori_symbols;
-    for (const auto &ori_symbol : node_attr->symbolic_tensor.GetOriginSymbolShape().GetDims()) {
-      ori_symbols.emplace_back(ori_symbol.Serialize().get());
+    for (const auto &ori_symbol : AutofuseUtils::GetSymbolDims(node_attr->symbolic_tensor.GetOriginSymbolShape())) {
+      ori_symbols.emplace_back(ori_symbol.Str().get());
     }
     output_attr_array.push_back(ori_symbols);
   }
 
   if (shape_env_attr != nullptr) {
     for (const auto &sym_2_src : shape_env_attr->GetAllSym2Src()) {
-      std::string sym_str(sym_2_src.first.Serialize().get());
+      std::string sym_str(sym_2_src.first.Str().get());
       symbol_info[sym_str.c_str()] = sym_2_src.second->GetSourceStr();
       GELOGD("Serial symbol_to_source, symbol: %s, source: %s", sym_str.c_str(),
              sym_2_src.second->GetSourceStr().c_str());
@@ -702,11 +725,12 @@ Status CompleteSymbolicAttrForCopyGraph(NodePtr &node, const ComputeGraphPtr &gr
     const auto origin_attr = origin_output_desc.GetAttrsGroup<ge::SymbolicDescAttr>();
     auto dst_attr = output_desc->GetOrCreateAttrsGroup<SymbolicDescAttr>();
     GE_ASSERT_NOTNULL(dst_attr);
-    dst_attr->symbolic_tensor.MutableOriginSymbolShape() = origin_attr->symbolic_tensor.GetOriginSymbolShape();
-    if (origin_attr->symbolic_tensor.GetSymbolicValue() != nullptr) {
-      auto symbolic_value = std::make_unique<std::vector<Expression>>(*origin_attr->symbolic_tensor.GetSymbolicValue());
-      if (symbolic_value != nullptr) {
-        dst_attr->symbolic_tensor.SetSymbolicValue(std::move(symbolic_value));
+    dst_attr->symbolic_tensor.SetOriginSymbolShape(origin_attr->symbolic_tensor.GetOriginSymbolShape());
+    if (origin_attr->symbolic_tensor.HasValue()) {
+      const auto value_num = origin_attr->symbolic_tensor.GetValueCount();
+      dst_attr->symbolic_tensor.SetValueCount(value_num);
+      for (size_t i = 0UL; i < value_num; ++i) {
+        dst_attr->symbolic_tensor.SetValue(i, origin_attr->symbolic_tensor.GetValue(i));
       }
     }
   }
@@ -1006,11 +1030,16 @@ std::vector<ge::Expression> AutofuseUtils::GetSymbolicOrConstFallback(const Node
   GELOGD("fetched 'SymbolicDescAttr' successfully for '%s'.", name.c_str());
 
   // 5. 获取SymbolicValue
-  const auto sym_val_ptr = sym_attr->symbolic_tensor.GetSymbolicValue();
-  GE_WARN_ASSERT(sym_val_ptr != nullptr, "GetSymbolicValue() IS NULL for '%s'!", name.c_str());
+  GE_WARN_ASSERT(sym_attr->symbolic_tensor.HasValue(), "SymbolicValue IS NULL for '%s'!", name.c_str());
+  const auto value_num = sym_attr->symbolic_tensor.GetValueCount();
 
-  GELOGD("Found expressions for '%s', size: %zu", name.c_str(), sym_val_ptr->size());
-  return *sym_val_ptr;
+  GELOGD("Found expressions for '%s', size: %zu", name.c_str(), value_num);
+  std::vector<ge::Expression> res_exprs;
+  res_exprs.reserve(value_num);
+  for (size_t i = 0UL; i < value_num; ++i) {
+    res_exprs.push_back(sym_attr->symbolic_tensor.GetValue(i));
+  }
+  return res_exprs;
 }
 
 }  // namespace ge

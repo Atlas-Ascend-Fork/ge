@@ -18,6 +18,7 @@
 #include "graph/symbolizer/symbolic.h"
 #include "symbolizer/symbolic_utils.h"
 #include "loop_common.h"
+#include "utils/autofuse_utils.h"
 
 namespace ge {
 namespace loop {
@@ -62,7 +63,7 @@ graphStatus GetBufferShape(const OutDataAnchor *buffer, std::vector<Expression> 
     GELOGW("GetAttrsGroup attr is null");
     return GRAPH_FAILED;
   }
-  dims = sym_attr->symbolic_tensor.GetOriginSymbolShape().GetDims();
+  dims = AutofuseUtils::GetSymbolDims(sym_attr->symbolic_tensor.GetOriginSymbolShape());
   return GRAPH_SUCCESS;
 }
 

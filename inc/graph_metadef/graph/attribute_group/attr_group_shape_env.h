@@ -75,7 +75,7 @@ struct HashSymbol {
         GE_ASSERT_TRUE(e.GetConstValue(value_float));
         return std::hash<double>()(value_float);
       default:
-        return std::hash<std::string>()(std::string(e.Serialize().get()));
+        return std::hash<std::string>()(std::string(e.Str().get()));
     }
   }
 };
@@ -152,7 +152,7 @@ class ShapeEnvAttr : public AttrGroupsBase {
       const auto &iter = value_to_symbol_.find(hint_int64);
       if (iter != value_to_symbol_.end()) {
         GE_ASSERT_TRUE(!iter->second.empty());
-        return Symbol(iter->second.front().Serialize().get());
+        return Symbol(iter->second.front().Str().get());
       }
     }
     auto global_index = unique_sym_id_++;
@@ -210,9 +210,23 @@ class ShapeEnvAttr : public AttrGroupsBase {
   graphStatus DeserializeSymbolCheckInfos(const proto::ShapeEnvAttrGroupsDef &shape_env_group);
   std::string GetGuardDfxContextInfo() const;
   bool CheckReplacementCycle(const Expression &expr1, const Expression &expr2) const;
-  using UMapExprReplacement = std::unordered_map<ge::Expression, ge::Replacement, ExpressionHash, ExpressionKeyEq>;
-  using UMapExprInt = std::unordered_map<ge::Expression, int64_t, ExpressionHash, ExpressionKeyEq>;
-  using UMapExprSource = std::unordered_map<ge::Expression, SourcePtr, ExpressionHash, ExpressionKeyEq>;
+  static Expression CanonicalizeBoolExpr(const Expression &expr);
+  // 就地定义容器 traits（不依赖发布头 symbolic.h 中的 ExpressionHash/KeyEq，
+  // 为后续 metadef 发布头收敛做准备）
+  struct LocalExpressionHash {
+    uint64_t operator()(const ge::Expression &k) const {
+      return k.Hash();
+    }
+  };
+  struct LocalExpressionKeyEq {
+    bool operator()(const ge::Expression &x, const ge::Expression &y) const {
+      return x == y;
+    }
+  };
+  using UMapExprReplacement =
+      std::unordered_map<ge::Expression, ge::Replacement, LocalExpressionHash, LocalExpressionKeyEq>;
+  using UMapExprInt = std::unordered_map<ge::Expression, int64_t, LocalExpressionHash, LocalExpressionKeyEq>;
+  using UMapExprSource = std::unordered_map<ge::Expression, SourcePtr, LocalExpressionHash, LocalExpressionKeyEq>;
   UMapExprReplacement replacements_;
   UMapExprInt symbol_to_value_;
   UMapExprSource symbol_to_source_;

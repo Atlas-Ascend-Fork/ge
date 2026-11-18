@@ -411,4 +411,55 @@ TEST_F(GraphNodeUT, EnsureNodeExeInOrder_RegistryLaunchStartsNextPriorityGroup) 
   EXPECT_EQ(graph_node.additional_add_info[previous_launch->GetFastNode()][0], copy_launch->GetFastNode());
   EXPECT_EQ(graph_node.additional_indegree_info[copy_launch->GetFastNode()], 1);
 }
+
+/*
+ * main graph:
+ *
+ *              NetOutput
+ *              /       \
+ *   copy_launch(2)   atomic_launch(1)
+ *          |               ▲
+ *          +-----ctrl------+   (真实控制边与优先级序反向: 2 → 1)
+ */
+// 模拟atomic算子场景: 真实控制边从高优先级值节点指向低优先级值节点(如LaunchCopyFlowH2D->MemSet),
+// 此时补保序边atomic_launch->copy_launch会与真实边构成环, 必须跳过
+TEST_F(GraphNodeUT, EnsureNodeExeInOrder_ReverseCtrlEdge_SkipAdditional) {
+  auto atomic_launch = bg::ValueHolder::CreateSingleDataOutput("AtomicLaunchKernelV2", {});
+  ge::AttrUtils::SetInt(bg::ValueHolderUtils::GetNodeOpDescBarePtr(atomic_launch), "priority", 1);
+  auto copy_launch = bg::ValueHolder::CreateSingleDataOutput("LaunchH2DCopy", {});
+  ge::AttrUtils::SetInt(bg::ValueHolderUtils::GetNodeOpDescBarePtr(copy_launch), "priority", 2);
+  bg::ValueHolder::AddDependency(copy_launch, atomic_launch);
+  auto main_frame = bg::ValueHolder::PopGraphFrame({atomic_launch, copy_launch}, {}, "NetOutput");
+
+  GraphNode graph_node;
+  ASSERT_EQ(graph_node.EnsureNodeExeInOrder(main_frame->GetExecuteGraph().get()), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(graph_node.additional_add_info[atomic_launch->GetFastNode()].size(), 0);
+  EXPECT_EQ(graph_node.additional_add_info[copy_launch->GetFastNode()].size(), 0);
+  EXPECT_EQ(graph_node.additional_indegree_info[atomic_launch->GetFastNode()], 0);
+  EXPECT_EQ(graph_node.additional_indegree_info[copy_launch->GetFastNode()], 0);
+}
+
+/*
+ * main graph:
+ *
+ *              NetOutput
+ *              /       \
+ *   copy_launch(2)   atomic_launch(1)   (两节点间无任何连边)
+ */
+// 正向对照: 无反向真实边时, 相邻优先级组间的保序边仍需正常补出
+TEST_F(GraphNodeUT, EnsureNodeExeInOrder_NoReverseEdge_AdditionalAdded) {
+  auto atomic_launch = bg::ValueHolder::CreateSingleDataOutput("AtomicLaunchKernelV2", {});
+  ge::AttrUtils::SetInt(bg::ValueHolderUtils::GetNodeOpDescBarePtr(atomic_launch), "priority", 1);
+  auto copy_launch = bg::ValueHolder::CreateSingleDataOutput("LaunchH2DCopy", {});
+  ge::AttrUtils::SetInt(bg::ValueHolderUtils::GetNodeOpDescBarePtr(copy_launch), "priority", 2);
+  auto main_frame = bg::ValueHolder::PopGraphFrame({atomic_launch, copy_launch}, {}, "NetOutput");
+
+  GraphNode graph_node;
+  ASSERT_EQ(graph_node.EnsureNodeExeInOrder(main_frame->GetExecuteGraph().get()), ge::GRAPH_SUCCESS);
+  ASSERT_EQ(graph_node.additional_add_info[atomic_launch->GetFastNode()].size(), 1U);
+  EXPECT_EQ(graph_node.additional_add_info[atomic_launch->GetFastNode()][0], copy_launch->GetFastNode());
+  EXPECT_EQ(graph_node.additional_indegree_info[copy_launch->GetFastNode()], 1);
+  EXPECT_EQ(graph_node.additional_add_info[copy_launch->GetFastNode()].size(), 0);
+  EXPECT_EQ(graph_node.additional_indegree_info[atomic_launch->GetFastNode()], 0);
+}
 }  // namespace gert

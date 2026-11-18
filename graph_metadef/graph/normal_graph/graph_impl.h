@@ -38,6 +38,8 @@ class GraphImpl {
 
   virtual bool IsValid() const = 0;
   virtual const std::string &GetName() const = 0;
+  // 诊断用底层图名：底层图在包装后可能被改名，与缓存名不同
+  virtual std::string GetNativeName() const = 0;
   // 首次建图：创建空 ComputeGraph（原 GraphImpl::InitComputeGraph）
   virtual graphStatus InitGraph() = 0;
   // 惰性建图模板方法（非虚）：组合 IsValid/InitGraph 虚原语，Graph::SetValid 与后端建图路径共用
@@ -111,19 +113,23 @@ class GraphImpl {
 
  protected:
   GraphImpl() = default;
-  // Typed references retain native nodes and owner graphs for the whole edit operation.
+  // Typed references retain native nodes for the whole edit operation. Compute owners are only held
+  // for the resolve-time emptiness check and released before edge edits (compute nodes keep their
+  // own strong references, matching the pre-refactor behavior); execute owners stay held for the
+  // whole edit to keep the raw execute_node pointer alive.
   struct NodeContext {
     NodePtr compute_node;
     ComputeGraphPtr compute_owner;
     FastNode *execute_node = nullptr;
     std::shared_ptr<ExecuteGraph> execute_owner;
-    std::string name;
     std::string owner_name;
     bool HasOwner() const {
       return compute_owner != nullptr || execute_owner != nullptr;
     }
   };
   virtual bool ResolveNode(const GNode &node, NodeContext &context) const = 0;
+  // 诊断用节点名：延迟到诊断发生时读取，避免成功路径提前触发 GetName 的 OpDesc 空校验日志
+  virtual std::string GetNodeName(const NodeContext &context) const = 0;
   virtual GNode AddNodeFromDesc(const OpDescPtr &desc) = 0;
   virtual void RegisterAddedOperator(const Operator &) {}
   virtual graphStatus LinkDataEdge(const NodeContext &src, int32_t out, const NodeContext &dst, int32_t in) = 0;
@@ -151,6 +157,7 @@ class GraphImpl {
   virtual void SetOutputSize(uint32_t) {}
 
  private:
+  std::string GetSubgraphNativeName(const Graph &subgraph) const;
   graphStatus ResolveEdgeNodes(const GNode &src, const GNode &dst, NodeContext &src_context,
                                NodeContext &dst_context) const;
   graphStatus AppendUserOutput(const Operator &output, const std::vector<size_t> &indexes,

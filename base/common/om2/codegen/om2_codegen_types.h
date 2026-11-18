@@ -181,6 +181,21 @@ struct ModelIoSemantic {
   uint32_t output_count{0U};
 };
 
+// Custom Task Callback 刷新：运行期 Tensor 地址来源的最小描述，每项对应一个持久 Tensor。
+// 构建期已消解 allocation_id，数组按"全部实际输入、全部实际输出"排列，workspace 不进入该数组。
+enum class TensorRefreshSource : uint32_t {
+  KeepInitial = 0,  // 保留加载期地址
+  ModelInput,       // source_index = 用户输入索引
+  ModelOutput,      // source_index = 用户输出索引
+  FeatureMap,       // source_index 不使用，offset 相对整块 FM 基址
+};
+
+struct TensorRefreshInfo {
+  TensorRefreshSource source_type{TensorRefreshSource::KeepInitial};
+  uint32_t source_index{0U};  // 用户 I/O 索引；KeepInitial 和 FeatureMap 不使用
+  uint64_t offset{0U};        // 相对用户 Tensor 或整块 FM 起点，单位字节
+};
+
 struct Om2TensorInfo {
   uint64_t args_offset{0U};
   uint64_t size{0U};
@@ -388,6 +403,10 @@ struct ArgsTableSemantic {
   std::vector<std::pair<uint32_t, uint32_t>> refreshable_fm_index_and_allocation_ids;
 
   std::vector<uint64_t> allocation_base_offsets;
+
+  // 模型是否含 Custom Task Callback 任务。生成器据此条件输出 reserved 池字段、CustomTaskState 集合、
+  // 桥接调用与逐轮更新代码；为 false 时生成结果与改动前逐字节一致。
+  bool has_reserved_args_table{false};
 };
 
 struct Om2CodegenModel {
@@ -492,6 +511,8 @@ struct TaskSemanticContributeContext {
   uint64_t *next_args_table_index{nullptr};
   uint64_t *next_host_args_offset{nullptr};
   uint32_t *aicpu_task_count{nullptr};
+  const ArgsTableSemantic *args_table{nullptr};  // 只读，供 Custom Task 查询 reserved 段与 allocation 映射
+  uint32_t task_index{0U};                       // kOpDefs 稳定下标，运行期按同下标读只读描述
 };
 
 }  // namespace ge

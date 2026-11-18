@@ -11,6 +11,7 @@
 #include "engine/aicore/converter/aicore_node_converter.h"
 #include "engine/node_converter_utils.h"
 #include <gtest/gtest.h>
+#include <thread>
 #include "engine/aicore/fe_rt2_common.h"
 #include "ge_graph_dsl/graph_dsl.h"
 #include "engine/gelocal/inputs_converter.h"
@@ -440,7 +441,7 @@ TEST_F(AicoreNodeConverterUT, ConvertStaticNode) {
   EXPECT_EQ(checker.StrictConnectFrom(
                 std::vector<FastSrcNode>({{"SelectL2Allocator", 0}, {"CalcTensorSizeFromStorage", 0}}), true),
             "success");
-  EXPECT_EQ(checker.StrictConnectTo(0, std::vector<FastSrcNode>({{"FreeMemory", 0}, {"LaunchKernelV2", 19}})),
+  EXPECT_EQ(checker.StrictConnectTo(0, std::vector<FastSrcNode>({{"FreeMemory", 0}, {"LaunchKernelV2", 14}})),
             "success");
   EXPECT_EQ(checker.InChecker().DataFromByType("CalcTensorSizeFromStorage").DataFromByType("Const").Result(),
             "success");
@@ -1222,7 +1223,7 @@ TEST_F(AicoreNodeConverterUT, ConvertStaticNodeReuseBinary) {
   EXPECT_EQ(checker.StrictConnectFrom(
                 std::vector<FastSrcNode>({{"SelectL2Allocator", 0}, {"CalcTensorSizeFromStorage", 0}}), true),
             "success");
-  EXPECT_EQ(checker.StrictConnectTo(0, std::vector<FastSrcNode>({{"FreeMemory", 0}, {"LaunchKernelV2", 19}})),
+  EXPECT_EQ(checker.StrictConnectTo(0, std::vector<FastSrcNode>({{"FreeMemory", 0}, {"LaunchKernelV2", 14}})),
             "success");
   EXPECT_EQ(checker.InChecker().DataFromByType("CalcTensorSizeFromStorage").DataFromByType("Const").Result(),
             "success");
@@ -1237,5 +1238,32 @@ TEST_F(AicoreNodeConverterUT, ConvertEnableVectorNode) {
   TestAicoreNodeConvert(5);
   TestAicoreNodeConvert(6);
   TestAicoreNodeConvert(7);
+}
+
+TEST_F(AicoreNodeConverterUT, CreateResolvedBinHandleHolderWithoutKernelBin) {
+  auto graph = std::make_shared<ge::ComputeGraph>("resolved_bin_handle_graph");
+  auto op_desc = std::make_shared<ge::OpDesc>("no_kernel_bin_node", "Relu");
+  op_desc->AddInputDesc("x", ge::GeTensorDesc());
+  op_desc->AddOutputDesc("y", ge::GeTensorDesc());
+  auto node = graph->AddNode(op_desc);
+  ASSERT_NE(node, nullptr);
+  EXPECT_EQ(CreateResolvedBinHandleHolder(node, false), nullptr);
+}
+
+TEST_F(AicoreNodeConverterUT, GetOrCreateResolveFuncHandleNodeWithoutExecuteGraph) {
+  // 当前执行图为 thread_local，在独立线程中构造以保证为空
+  std::thread worker([]() {
+    auto graph = std::make_shared<ge::ComputeGraph>("resolve_func_handle_graph");
+    auto op_desc = std::make_shared<ge::OpDesc>("resolve_func_handle_node", "Relu");
+    op_desc->AddInputDesc("x", ge::GeTensorDesc());
+    op_desc->AddOutputDesc("y", ge::GeTensorDesc());
+    auto node = graph->AddNode(op_desc);
+    EXPECT_NE(node, nullptr);
+    LoweringGlobalData global_data;
+    EXPECT_EQ(GetOrCreateResolveFuncHandleNode(node, global_data, "bin_id", 0U, nullptr, nullptr, nullptr, nullptr,
+                                               "_kernelname", false),
+              nullptr);
+  });
+  worker.join();
 }
 }  // namespace gert

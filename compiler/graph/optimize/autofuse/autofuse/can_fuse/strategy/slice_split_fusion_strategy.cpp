@@ -15,6 +15,7 @@
 #include "utils/not_fuse_reason_code.h"
 #include "slice_split_fusion_strategy.h"
 #include "common/autofuse_backend_spec_api.h"
+#include "utils/autofuse_utils.h"
 
 namespace ge {
 namespace {
@@ -109,10 +110,10 @@ bool CheckIfSliceEndDimIsOne(const NodePtr &node1) {
   GE_ASSERT_NOTNULL(desc);
   const auto sym_attr = desc->GetAttrsGroup<SymbolicDescAttr>();
   GE_ASSERT_NOTNULL(sym_attr);
-  std::vector<Expression> output_dims = sym_attr->symbolic_tensor.GetOriginSymbolShape().GetDims();
+  std::vector<Expression> output_dims = AutofuseUtils::GetSymbolDims(sym_attr->symbolic_tensor.GetOriginSymbolShape());
   GE_ASSERT_TRUE(!output_dims.empty(), "node [%s] output end dim is 0.", node1->GetName().c_str());
   auto index = output_dims.size() - 1UL;
-  GELOGI("slice op output end dim is %s.", output_dims[index].Serialize().get());
+  GELOGI("slice op output end dim is %s.", output_dims[index].Str().get());
   if (BackendUtils::IsEqOne(output_dims[index])) {
     return true;
   }

@@ -17,7 +17,7 @@
 |---|--------|---------|
 | ① | 按key申请辅流 | `RequestAttachedStream("eager_aux", 0U)`返回非nullptr |
 | ② | 辅流 kernel 下发 | `aclrtLaunchKernelV2(..., 辅流)` 成功 |
-| ③ | 重放精度 | 模型重放多轮后 z = x + y 全部正确 |
+| ③ | 重放精度 | 每轮更换输入后重放，z = x + y 全部正确 |
 
 > 同 key 复用、不同 key 隔离等接口语义由单元测试覆盖，见
 > `tests/ge/ut/ge/graph/load/attached_stream_collection_unittest.cc`。
@@ -57,7 +57,7 @@ bash run.sh
 |------|------|
 | `ge/custom_op.cpp` | `EagerAttachedStreamAddOp`：Execute 中申请辅流并下发 kernel |
 | `ge/add_custom.h` | 算子 proto 注册（REG_OP） |
-| `session_run/main.cc` | 构图 + Session 执行 + 多轮精度校验 |
+| `session_run/main.cc` | 构图 + Session 执行 + 两轮更换输入的精度校验 |
 | `add_custom_kernel/add_custom.asc` | Ascend C Add kernel 源码 |
 | `ge/utils/rtc_kernel_loader.cpp` | RTC 编译和加载 kernel |
 

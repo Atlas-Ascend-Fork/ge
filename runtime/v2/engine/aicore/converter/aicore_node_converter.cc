@@ -47,11 +47,9 @@
 #include "kernel/common_kernel_impl/tiling.h"
 #include "base/err_msg.h"
 #include "common/opskernel/ops_kernel_info_types.h"
+#include "common/kernel_handles_manager/aicore_kernel_handles_manager.h"
 
 namespace gert {
-std::mutex g_kernel_bin_store_lock;
-std::map<std::string, ge::OpKernelBinPtr> g_kernel_bin_store;
-
 namespace {
 constexpr const size_t max_launch_cfg_num = 5UL;
 constexpr size_t const AtomicTaskdefMinNum = 2;
@@ -87,9 +85,6 @@ struct AicoreProcContext {
   std::vector<bg::ValueHolderPtr> output_sizes;
   std::vector<bg::DevMemValueHolderPtr> output_addrs;
   bg::ValueHolderPtr atomic_launch_holder;
-  bg::ValueHolderPtr kernel_bin_id_holder;
-  bg::ValueHolderPtr magic_holder;
-  bg::ValueHolderPtr kernel_bin_holder;
   std::pair<bg::ValueHolderPtr, bg::ValueHolderPtr> qos_pair;
 };
 
@@ -97,6 +92,7 @@ struct LaunchKernelParams {
   bg::ValueHolderPtr tiling_key;
   bg::ValueHolderPtr kernel_name_holder;
   bg::ValueHolderPtr with_handle_flag_holder;
+  bg::ValueHolderPtr func_handle;
 };
 
 static std::vector<bg::DevMemValueHolderPtr> LaunchAicoreKernelAndProcess(
@@ -108,9 +104,6 @@ static std::vector<bg::DevMemValueHolderPtr> LaunchAicoreKernelAndProcess(
   auto launch_holder = bg::LaunchKernelV2(
       {
           lower_input.global_data->GetStream(),
-          ctx.kernel_bin_id_holder,
-          ctx.magic_holder,
-          ctx.kernel_bin_holder,
           proc_arg.tiling_ret[TilingContext::kOutputBlockDim],
           proc_arg.tiling_ret[TilingContext::kOutputScheduleMode],
           proc_arg.tiling_ret[TilingContext::kOutputLocalMemorySize],
@@ -124,9 +117,7 @@ static std::vector<bg::DevMemValueHolderPtr> LaunchAicoreKernelAndProcess(
           lower_input.global_data,
           dfx_holder,
           proc_arg.tiling_ret[static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)],
-          params.tiling_key,
-          params.kernel_name_holder,
-          params.with_handle_flag_holder,
+          params.func_handle,
       },
       lower_input.input_addrs, ctx.output_addrs);
   FE_ASSERT_NOTNULL(launch_holder);
@@ -176,33 +167,6 @@ constexpr char const *kTbeOpAtomicInt64Values = "tbe_op_atomic_int64_values";
 constexpr char const *kTbeOpAtomicFloatValues = "tbe_op_atomic_float_values";
 constexpr char const *kRawKernelNameKey = "_kernelname";
 constexpr char const *kRawAtomicKernelNameKey = "_atomic_kernelname";
-
-bg::ValueHolderPtr CreateKernelBinIdHolder(const ge::NodePtr &node, const bool is_atomic_node) {
-  auto op_desc = node->GetOpDesc();
-  std::string kernel_bin_id;
-  GE_ASSERT_SUCCESS(GetTbeKernelId(op_desc, is_atomic_node, kernel_bin_id));
-  return bg::ValueHolder::CreateConst(kernel_bin_id.c_str(), kernel_bin_id.size() + 1, true);
-}
-
-bg::ValueHolderPtr CreateMagicHolder(const ge::NodePtr &node, const bool is_atomic_node) {
-  auto op_desc = node->GetOpDesc();
-  uint32_t magic{0};
-  GE_ASSERT_SUCCESS(GetBinaryMagic(op_desc, is_atomic_node, magic));
-  return bg::ValueHolder::CreateConst(&magic, sizeof(magic), false);
-}
-
-bg::ValueHolderPtr CreateKernelBinHolder(const ge::NodePtr &node, const bool is_atomic_node) {
-  auto op_desc = node->GetOpDesc();
-  auto kernel_bin = GetTbeKernelBin(op_desc, is_atomic_node);
-  GE_ASSERT_NOTNULL(kernel_bin, "Node[%s] kernel_bin is nullptr, is_atomic_node=%d", node->GetNamePtr(),
-                    is_atomic_node);
-  std::string kernel_bin_id;
-  GE_ASSERT_SUCCESS(GetTbeKernelId(op_desc, is_atomic_node, kernel_bin_id));
-  std::unique_lock<std::mutex> lk(g_kernel_bin_store_lock);
-  auto emplace_result = g_kernel_bin_store.emplace(kernel_bin_id, kernel_bin);
-  ge::KernelBinPtr *kernel_bin_ptr = &(emplace_result.first->second);
-  return bg::ValueHolder::CreateConst(&kernel_bin_ptr, sizeof(kernel_bin_ptr));
-}
 
 bg::ValueHolderPtr CreateKernelNameHolder(const ge::NodePtr &node, const std::string &key_suffix) {
   std::string kernel_name_str;
@@ -316,6 +280,66 @@ RunCfg CollectRunConfig(const ge::NodePtr &node, const LowerInput &lower_input, 
   return run_cfg;
 }
 }  // namespace
+
+namespace {
+ge::AicoreKernelHandlesManager &GetAicoreKernelHandlesManager() {
+  static ge::AicoreKernelHandlesManager aicore_kernel_handles_manager;
+  return aicore_kernel_handles_manager;
+}
+}  // namespace
+
+bg::ValueHolderPtr CreateResolvedBinHandleHolder(const ge::NodePtr &node, bool is_atomic_node) {
+  auto op_desc = node->GetOpDesc();
+  auto kernel_bin = GetTbeKernelBin(op_desc, is_atomic_node);
+  GE_ASSERT_NOTNULL(kernel_bin, "Node[%s] kernel_bin is nullptr, is_atomic_node=%d", node->GetNamePtr(),
+                    is_atomic_node);
+  std::string kernel_bin_id;
+  GE_ASSERT_SUCCESS(GetTbeKernelId(op_desc, is_atomic_node, kernel_bin_id));
+  uint32_t magic{0};
+  GE_ASSERT_SUCCESS(GetBinaryMagic(op_desc, is_atomic_node, magic));
+  ge::AicoreRegisterInfo register_info;
+  register_info.kernel_bin_name = kernel_bin_id;
+  register_info.magic = magic;
+  register_info.kernel_bin = kernel_bin;
+  ge::KernelRegisterInfo info = register_info;
+  const auto bin_name = GetAicoreKernelHandlesManager().GenerateKey(info);
+  auto bin_handle = GetAicoreKernelHandlesManager().GetOrRegisterKernel(info, bin_name);
+  GE_ASSERT_NOTNULL(bin_handle, "Get aicore bin handle failed, bin_name: %s", bin_name.c_str());
+  auto holder = bg::ValueHolder::CreateConst(&bin_handle, sizeof(bin_handle));
+  GE_ASSERT_NOTNULL(holder, "Create bin handle holder failed.");
+  return holder;
+}
+
+bg::ValueHolderPtr GetOrCreateResolveFuncHandleNode(const ge::NodePtr &node, LoweringGlobalData &global_data,
+                                                    const std::string &bin_id, uint32_t with_handle_flag,
+                                                    const bg::ValueHolderPtr &bin_handle_holder,
+                                                    const bg::ValueHolderPtr &tiling_key_holder,
+                                                    const bg::ValueHolderPtr &kernel_name_holder,
+                                                    const bg::ValueHolderPtr &with_handle_flag_holder,
+                                                    const std::string &kernel_name_key_suffix, bool use_per_node_key) {
+  // 同一内核名可能在不同 GraphFrame（如 If/Loop 的兄弟分支子图）中被 lowering，缓存键必须带上当前 GraphFrame 的图标识，
+  // 否则会复用到兄弟子图里的 holder，连边时判定“src node 不在当前图及其父图上”而失败。
+  const auto current_graph = bg::ValueHolder::GetCurrentExecuteGraph();
+  GE_ASSERT_NOTNULL(current_graph, "Node[%s] get current execute graph failed.", node->GetNamePtr());
+  std::string key = "ResolveFuncHandle_" + bin_id + "_" + std::to_string(reinterpret_cast<uint64_t>(current_graph));
+  if ((with_handle_flag != 0U) || use_per_node_key) {
+    key += "_by_entry_" + node->GetName();
+  } else {
+    std::string kernel_name_str;
+    if (!ge::AttrUtils::GetStr(node->GetOpDesc(), node->GetName() + kernel_name_key_suffix, kernel_name_key_suffix,
+                               kernel_name_str)) {
+      GELOGD("Kernel name is empty for node: %s, unable to retrieve.", node->GetName().c_str());
+    }
+    key += "_by_name_" + kernel_name_str;
+  }
+  auto builder = [bin_handle_holder, tiling_key_holder, kernel_name_holder, with_handle_flag_holder]() {
+    return bg::ValueHolder::CreateSingleDataOutput(
+        "ResolveKernelFuncHandle", {bin_handle_holder, tiling_key_holder, kernel_name_holder, with_handle_flag_holder});
+  };
+  auto func_handle_holder = global_data.GetOrCreateUniqueValueHolder(key, builder);
+  GE_ASSERT_NOTNULL(func_handle_holder, "Get or create resolve func handle node failed, key: %s", key.c_str());
+  return func_handle_holder;
+}
 
 bool IsSingleOpScene(const ge::NodePtr &node) {
   const auto owner_graph = node->GetOwnerComputeGraph();
@@ -730,15 +754,24 @@ static bg::ValueHolderPtr LaunchAtomic(const ge::NodePtr &node, const LowerInput
                                                       *(lower_input.global_data));
   gert::GertTensorData *tensor_data = nullptr;
   auto shapebuffer_addr = bg::ValueHolder::CreateConst(&tensor_data, sizeof(gert::GertTensorData *));
-  auto kernel_bin_id_holder = CreateKernelBinIdHolder(node, true);
-  auto magic_holder = CreateMagicHolder(node, true);
-  auto kernel_bin_holder = CreateKernelBinHolder(node, true);
   auto qos_pair = PrepareQosPair(ctx->task_def, ctx->atomic_node);
   if (qos_pair.second == nullptr) {
     return nullptr;
   }
   auto kernel_name_holder = CreateKernelNameHolder(node, kRawAtomicKernelNameKey);
   auto with_handle_flag_holder = CreateWithHandleFlagHolder(with_handle_flag);
+  std::string kernel_bin_id;
+  GE_ASSERT_SUCCESS(GetTbeKernelId(node->GetOpDesc(), true, kernel_bin_id));
+  auto bin_handle_holder = CreateResolvedBinHandleHolder(node, true);
+  if (bin_handle_holder == nullptr) {
+    GELOGE(ge::FAILED, "Node[%s] create resolved bin handle holder failed.", node->GetNamePtr());
+    return nullptr;
+  }
+  auto func_handle =
+      GetOrCreateResolveFuncHandleNode(node, *(lower_input.global_data), kernel_bin_id, with_handle_flag,
+                                       bin_handle_holder, atomic_tiling_ret[TilingContext::kOutputTilingKey],
+                                       kernel_name_holder, with_handle_flag_holder, kRawAtomicKernelNameKey, true);
+  GE_ASSERT_NOTNULL(func_handle);
   std::vector<int64_t> workspace_indexes;
   ge::AttrUtils::GetListInt(atomic_op_desc, "WorkspaceIndexes", workspace_indexes);
   DfxExeArg dfx_exe_arg = GetOpDfxExeArg(ctx->atomic_node);
@@ -746,9 +779,6 @@ static bg::ValueHolderPtr LaunchAtomic(const ge::NodePtr &node, const LowerInput
   auto launch_arg = bg::AtomicLaunchKernelV2(
       {
           lower_input.global_data->GetStream(),
-          kernel_bin_id_holder,
-          magic_holder,
-          kernel_bin_holder,
           atomic_tiling_ret[TilingContext::kOutputBlockDim],
           atomic_tiling_ret[TilingContext::kOutputScheduleMode],
           atomic_tiling_ret[TilingContext::kOutputLocalMemorySize],
@@ -762,9 +792,7 @@ static bg::ValueHolderPtr LaunchAtomic(const ge::NodePtr &node, const LowerInput
           lower_input.global_data,
           dfx_holder,
           atomic_tiling_ret[static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)],
-          atomic_tiling_ret[TilingContext::kOutputTilingKey],
-          kernel_name_holder,
-          with_handle_flag_holder,
+          func_handle,
       },
       CreateVectorHolder(workspace_indexes), ctx->output_clean_addrs, atomic_lowering_arg.workspaces_addrs);
   auto free_holder = bg::FreeWorkspaceMem(kOnDeviceHbm, atomic_workspaces_addr);
@@ -786,9 +814,6 @@ static bg::ValueHolderPtr LaunchStaticAtomic(const ge::NodePtr &node, const Lowe
   }
   auto rt_arg = bg::AllocRtArg(node, ctx->task_def->kernel(), bg::kMaxAtomicCleanTilingSize);
   CHECK_HOLDERS_ALL_OK_RET(rt_arg, static_cast<size_t>(AllocLaunchArgOutputs::kNum), return nullptr);
-  auto kernel_bin_id_holder = CreateKernelBinIdHolder(node, true);
-  auto magic_holder = CreateMagicHolder(node, true);
-  auto kernel_bin_holder = CreateKernelBinHolder(node, true);
   auto block_dim_value = ctx->task_def->kernel().block_dim();
   auto block_dim = bg::ValueHolder::CreateConst(&block_dim_value, sizeof(block_dim_value));
   auto schedule_mode_value = ctx->task_def->kernel().schedule_mode();
@@ -811,6 +836,17 @@ static bg::ValueHolderPtr LaunchStaticAtomic(const ge::NodePtr &node, const Lowe
   auto tiling_key_holder = CreateTilingKeyHolder();
   auto kernel_name_holder = CreateKernelNameHolder(node, kRawAtomicKernelNameKey);
   auto with_handle_flag_holder = CreateWithHandleFlagHolder(0U);
+  std::string kernel_bin_id;
+  GE_ASSERT_SUCCESS(GetTbeKernelId(node->GetOpDesc(), true, kernel_bin_id));
+  auto bin_handle_holder = CreateResolvedBinHandleHolder(node, true);
+  if (bin_handle_holder == nullptr) {
+    GELOGE(ge::FAILED, "Node[%s] create resolved bin handle holder failed.", node->GetNamePtr());
+    return nullptr;
+  }
+  auto func_handle = GetOrCreateResolveFuncHandleNode(node, *(lower_input.global_data), kernel_bin_id, 0U,
+                                                      bin_handle_holder, tiling_key_holder, kernel_name_holder,
+                                                      with_handle_flag_holder, kRawAtomicKernelNameKey, true);
+  GE_ASSERT_NOTNULL(func_handle);
 
   std::vector<int64_t> workspace_indexes;
   ge::AttrUtils::GetListInt(ctx->atomic_node->GetOpDesc(), "WorkspaceIndexes", workspace_indexes);
@@ -818,9 +854,6 @@ static bg::ValueHolderPtr LaunchStaticAtomic(const ge::NodePtr &node, const Lowe
   DfxExeArg dfx_exe_arg = GetOpDfxExeArg(ctx->atomic_node);
   auto dfx_holder = bg::ValueHolder::CreateConst(&dfx_exe_arg, sizeof(dfx_exe_arg));
   auto launch_arg = bg::AtomicLaunchKernelV2({stream,
-                                              kernel_bin_id_holder,
-                                              magic_holder,
-                                              kernel_bin_holder,
                                               block_dim,
                                               schedule_mode,
                                               local_mem_size,
@@ -834,9 +867,7 @@ static bg::ValueHolderPtr LaunchStaticAtomic(const ge::NodePtr &node, const Lowe
                                               lower_input.global_data,
                                               dfx_holder,
                                               rt_arg[static_cast<size_t>(AllocLaunchArgOutputs::kRtArg)],
-                                              tiling_key_holder,
-                                              kernel_name_holder,
-                                              with_handle_flag_holder},
+                                              func_handle},
                                              CreateVectorHolder(workspace_indexes), ctx->output_clean_addrs,
                                              atomic_lowering_arg.workspaces_addrs);
   return launch_arg;
@@ -873,9 +904,6 @@ static std::optional<AicoreProcContext> PrepareAicoreProcContext(const ge::NodeP
   ctx.atomic_launch_holder = LaunchAtomicByType(
       node, lower_input, compile_result,
       {proc_arg.tiling_ret[TilingContext::kOutputWorkspace], ctx.workspaces_addr, ctx.output_sizes, ctx.output_addrs});
-  ctx.kernel_bin_id_holder = CreateKernelBinIdHolder(node, false);
-  ctx.magic_holder = CreateMagicHolder(node, false);
-  ctx.kernel_bin_holder = CreateKernelBinHolder(node, false);
   ctx.qos_pair = PrepareQosPair(task_def, node);
   if (ctx.qos_pair.second == nullptr) {
     return std::nullopt;
@@ -918,10 +946,38 @@ static std::vector<bg::DevMemValueHolderPtr> RollbackAiCpuProc(const ge::NodePtr
   return ret;
 }
 
+static ge::Status GetAicoreLaunchKernelParams(const ge::NodePtr &node, const LowerInput &lower_input,
+                                              const bg::ValueHolderPtr &tiling_key, uint32_t with_handle_flag,
+                                              LaunchKernelParams &params) {
+  params.tiling_key = tiling_key;
+  params.kernel_name_holder = CreateKernelNameHolder(node, kRawKernelNameKey);
+  params.with_handle_flag_holder = CreateWithHandleFlagHolder(with_handle_flag);
+  std::string kernel_bin_id;
+  const auto ret = GetTbeKernelId(node->GetOpDesc(), false, kernel_bin_id);
+  if (ret != ge::SUCCESS) {
+    GELOGE(ret, "Node[%s] get tbe kernel id failed.", node->GetNamePtr());
+    return ret;
+  }
+  auto bin_handle_holder = CreateResolvedBinHandleHolder(node, false);
+  if (bin_handle_holder == nullptr) {
+    GELOGE(ge::FAILED, "Node[%s] create resolved bin handle holder failed.", node->GetNamePtr());
+    return ge::FAILED;
+  }
+  params.func_handle = GetOrCreateResolveFuncHandleNode(
+      node, *(lower_input.global_data), kernel_bin_id, with_handle_flag, bin_handle_holder, params.tiling_key,
+      params.kernel_name_holder, params.with_handle_flag_holder, kRawKernelNameKey, false);
+  if (params.func_handle == nullptr) {
+    GELOGE(ge::FAILED, "Node[%s] get resolve func handle failed.", node->GetNamePtr());
+    return ge::FAILED;
+  }
+  return ge::SUCCESS;
+}
+
 static std::vector<bg::DevMemValueHolderPtr> AicoreProcWithHandle(const ge::NodePtr &node,
                                                                   const LowerInput &lower_input,
                                                                   std::vector<bg::ValueHolderPtr> &output_shapes,
-                                                                  ProcArgs &proc_arg) {
+                                                                  ProcArgs &proc_arg,
+                                                                  const LaunchKernelParams &params) {
   auto compile_result = lower_input.global_data->FindCompiledResult(node);
   const domi::TaskDef *task_def = GetTaskDef(node, compile_result, TaskDefType::kAICore);
   if (task_def == nullptr) {
@@ -932,12 +988,50 @@ static std::vector<bg::DevMemValueHolderPtr> AicoreProcWithHandle(const ge::Node
     return {};
   }
 
-  LaunchKernelParams params;
-  params.tiling_key = proc_arg.tiling_ret[TilingContext::kOutputTilingKey];
-  params.kernel_name_holder = CreateKernelNameHolder(node, kRawKernelNameKey);
-  params.with_handle_flag_holder = CreateWithHandleFlagHolder(1U);
-
   return LaunchAicoreKernelAndProcess(node, lower_input, *ctx, output_shapes, proc_arg, params);
+}
+
+// fallible tiling 后按 tiling 状态二选一：成功走 aicore launch，失败回滚 AiCpu。
+template <typename AicoreProc>
+static std::vector<bg::DevMemValueHolderPtr> LoweringWithFallibleTiling(
+    const ge::NodePtr &node, const LowerInput &lower_input, ProcArgs &proc_arg,
+    std::vector<bg::ValueHolderPtr> &output_shapes, const bg::ValueHolderPtr &platform_info_holder,
+    uint32_t with_handle_flag, AicoreProc aicore_proc) {
+  proc_arg.tiling_ret = bg::FallibleTiling(
+      node, lower_input.input_shapes, output_shapes,
+      {platform_info_holder, *(lower_input.global_data),
+       proc_arg.launch_arg[static_cast<size_t>(AllocLaunchArgOutputs::kRtArg)], lower_input.input_addrs});
+  CHECK_HOLDERS_ALL_OK_RET(proc_arg.tiling_ret,
+                           static_cast<size_t>(kernel::FallibleTilingExOutputIndex::kFallibleOutputNum), return {});
+  bg::ValueHolderPtr tiling_key;
+  if (with_handle_flag != 0U) {
+    tiling_key = proc_arg.tiling_ret[TilingContext::kOutputTilingKey];
+  } else {
+    tiling_key = CreateTilingKeyHolder();
+  }
+  LaunchKernelParams params;
+  if (GetAicoreLaunchKernelParams(node, lower_input, tiling_key, with_handle_flag, params) != ge::SUCCESS) {
+    GELOGE(ge::FAILED, "Node %s get aicore launch kernel params failed.", node->GetNamePtr());
+    return {};
+  }
+  auto output_addrs = bg::If<bg::DevMemValueHolder>(
+      proc_arg.tiling_ret[static_cast<size_t>(kernel::FallibleTilingExOutputIndex::kTilingStatus)],
+      [&node, &lower_input, &output_shapes, &proc_arg, &params, aicore_proc]() -> std::vector<bg::ValueHolderPtr> {
+        auto result = aicore_proc(node, lower_input, output_shapes, proc_arg, params);
+        return std::vector<bg::ValueHolderPtr>(result.begin(), result.end());
+      },
+      [&node, &lower_input, &output_shapes]() -> std::vector<bg::ValueHolderPtr> {
+        auto result = RollbackAiCpuProc(node, lower_input, output_shapes);
+        return std::vector<bg::ValueHolderPtr>(result.begin(), result.end());
+      },
+      node->GetOpDesc()->GetStreamId());
+  if (output_addrs.empty()) {
+    GELOGE(ge::INTERNAL_ERROR, "Node %s lowering with rollback aicpu failed.", node->GetName().c_str());
+    return output_addrs;
+  }
+  proc_arg.ordered_holders.clear();
+  proc_arg.ordered_holders.emplace_back(output_addrs[0]);
+  return output_addrs;
 }
 
 static std::vector<bg::DevMemValueHolderPtr> LoweringWithHandleProc(const ge::NodePtr &node,
@@ -961,34 +1055,17 @@ static std::vector<bg::DevMemValueHolderPtr> LoweringWithHandleProc(const ge::No
                    {platform_info, *(lower_input.global_data),
                     proc_arg.launch_arg[static_cast<size_t>(AllocLaunchArgOutputs::kRtArg)], lower_input.input_addrs});
     CHECK_HOLDERS_ALL_OK_RET(proc_arg.tiling_ret, static_cast<size_t>(kernel::TilingExOutputIndex::kNum), return {});
-    output_addrs = AicoreProcWithHandle(node, lower_input, output_shapes, proc_arg);
+    LaunchKernelParams params;
+    if (GetAicoreLaunchKernelParams(node, lower_input, proc_arg.tiling_ret[TilingContext::kOutputTilingKey], 1U,
+                                    params) != ge::SUCCESS) {
+      GELOGE(ge::FAILED, "Node %s get aicore launch kernel params failed.", node->GetNamePtr());
+      return {};
+    }
+    output_addrs = AicoreProcWithHandle(node, lower_input, output_shapes, proc_arg, params);
   } else {
     GELOGD("Lowering with rollback of aicpu.");
-    proc_arg.tiling_ret = bg::FallibleTiling(
-        node, lower_input.input_shapes, output_shapes,
-        {platform_info, *(lower_input.global_data),
-         proc_arg.launch_arg[static_cast<size_t>(AllocLaunchArgOutputs::kRtArg)], lower_input.input_addrs});
-    CHECK_HOLDERS_ALL_OK_RET(proc_arg.tiling_ret,
-                             static_cast<size_t>(kernel::FallibleTilingExOutputIndex::kFallibleOutputNum), return {});
-    output_addrs = bg::If<bg::DevMemValueHolder>(
-        proc_arg.tiling_ret[static_cast<size_t>(kernel::FallibleTilingExOutputIndex::kTilingStatus)],
-        [&node, &lower_input, &output_shapes, &proc_arg]() -> std::vector<bg::ValueHolderPtr> {
-          auto result = AicoreProcWithHandle(node, lower_input, output_shapes, proc_arg);
-          std::vector<bg::ValueHolderPtr> ret(result.begin(), result.end());
-          return ret;
-        },
-        [&node, &lower_input, &output_shapes]() -> std::vector<bg::ValueHolderPtr> {
-          auto result = RollbackAiCpuProc(node, lower_input, output_shapes);
-          std::vector<bg::ValueHolderPtr> ret(result.begin(), result.end());
-          return ret;
-        },
-        node->GetOpDesc()->GetStreamId());
-    if (output_addrs.empty()) {
-      GELOGE(ge::INTERNAL_ERROR, "Node %s lowering with rollback aicpu failed.", node->GetName().c_str());
-      return output_addrs;
-    }
-    proc_arg.ordered_holders.clear();
-    proc_arg.ordered_holders.emplace_back(output_addrs[0]);
+    output_addrs =
+        LoweringWithFallibleTiling(node, lower_input, proc_arg, output_shapes, platform_info, 1U, AicoreProcWithHandle);
   }
   FE_ASSERT_TRUE(!proc_arg.tiling_ret.empty());
   FE_ASSERT_NOTNULL(proc_arg.tiling_ret[TilingContext::kOutputTilingData]);
@@ -1055,7 +1132,7 @@ static LowerResult LoweringAiCoreNodeWithHandle(const ge::NodePtr &node, const L
 
 static std::vector<bg::DevMemValueHolderPtr> AicoreProcWithFlag(const ge::NodePtr &node, const LowerInput &lower_input,
                                                                 std::vector<bg::ValueHolderPtr> &output_shapes,
-                                                                ProcArgs &proc_arg) {
+                                                                ProcArgs &proc_arg, const LaunchKernelParams &params) {
   auto compile_result = lower_input.global_data->FindCompiledResult(node);
   const domi::TaskDef *task_def = GetTaskDef(node, compile_result, TaskDefType::kAICore);
   if (task_def == nullptr) {
@@ -1065,11 +1142,6 @@ static std::vector<bg::DevMemValueHolderPtr> AicoreProcWithFlag(const ge::NodePt
   if (!ctx.has_value()) {
     return {};
   }
-
-  LaunchKernelParams params;
-  params.tiling_key = CreateTilingKeyHolder();
-  params.kernel_name_holder = CreateKernelNameHolder(node, kRawKernelNameKey);
-  params.with_handle_flag_holder = CreateWithHandleFlagHolder(0U);
 
   return LaunchAicoreKernelAndProcess(node, lower_input, *ctx, output_shapes, proc_arg, params);
 }
@@ -1125,34 +1197,16 @@ static std::vector<bg::DevMemValueHolderPtr> LoweringWithFlagProc(const ge::Node
   }
   if (!NodeSupportRollback(node)) {
     proc_arg.tiling_ret = WithFlagTilingProc(node, lower_input, output_shapes, platform_info, proc_arg);
-    output_addrs = AicoreProcWithFlag(node, lower_input, output_shapes, proc_arg);
+    LaunchKernelParams params;
+    if (GetAicoreLaunchKernelParams(node, lower_input, CreateTilingKeyHolder(), 0U, params) != ge::SUCCESS) {
+      GELOGE(ge::FAILED, "Node %s get aicore launch kernel params failed.", node->GetNamePtr());
+      return {};
+    }
+    output_addrs = AicoreProcWithFlag(node, lower_input, output_shapes, proc_arg, params);
   } else {
     GELOGD("Lowering with rollback of aicpu.");
-    proc_arg.tiling_ret = bg::FallibleTiling(
-        node, lower_input.input_shapes, output_shapes,
-        {platform_info, *(lower_input.global_data),
-         proc_arg.launch_arg[static_cast<size_t>(AllocLaunchArgOutputs::kRtArg)], lower_input.input_addrs});
-    CHECK_HOLDERS_ALL_OK_RET(proc_arg.tiling_ret,
-                             static_cast<size_t>(kernel::FallibleTilingExOutputIndex::kFallibleOutputNum), return {});
-    output_addrs = bg::If<bg::DevMemValueHolder>(
-        proc_arg.tiling_ret[static_cast<size_t>(kernel::FallibleTilingExOutputIndex::kTilingStatus)],
-        [&node, &lower_input, &output_shapes, &proc_arg]() -> std::vector<bg::ValueHolderPtr> {
-          auto result = AicoreProcWithFlag(node, lower_input, output_shapes, proc_arg);
-          std::vector<bg::ValueHolderPtr> ret(result.begin(), result.end());
-          return ret;
-        },
-        [&node, &lower_input, &output_shapes]() -> std::vector<bg::ValueHolderPtr> {
-          auto result = RollbackAiCpuProc(node, lower_input, output_shapes);
-          std::vector<bg::ValueHolderPtr> ret(result.begin(), result.end());
-          return ret;
-        },
-        node->GetOpDesc()->GetStreamId());
-    if (output_addrs.empty()) {
-      GELOGE(ge::INTERNAL_ERROR, "Node %s lowering with rollback aicpu failed.", node->GetName().c_str());
-      return output_addrs;
-    }
-    proc_arg.ordered_holders.clear();
-    proc_arg.ordered_holders.emplace_back(output_addrs[0]);
+    output_addrs =
+        LoweringWithFallibleTiling(node, lower_input, proc_arg, output_shapes, platform_info, 0U, AicoreProcWithFlag);
   }
   FE_ASSERT_TRUE(!proc_arg.tiling_ret.empty());
   if (!node->GetOpDesc()->HasAttr(optiling::COMPILE_INFO_JSON)) {
@@ -1189,9 +1243,6 @@ struct StaticAicoreContext {
   bg::DevMemValueHolderPtr workspaces_addr;
   RunCfg run_cfg;
   bg::ValueHolderPtr atomic_launch_holder;
-  bg::ValueHolderPtr kernel_bin_id_holder;
-  bg::ValueHolderPtr magic_holder;
-  bg::ValueHolderPtr kernel_bin_holder;
   std::pair<bg::ValueHolderPtr, bg::ValueHolderPtr> qos_pair;
 };
 
@@ -1206,9 +1257,6 @@ static std::optional<StaticAicoreContext> InitStaticAicoreContext(
   ctx.output_sizes = bg::CalcTensorSize(node, ctx.output_shapes);
   ctx.output_addrs =
       bg::AllocOutputMemory(kOnDeviceHbm, node, ctx.output_sizes, lower_input.input_addrs, *(lower_input.global_data));
-  ctx.kernel_bin_id_holder = CreateKernelBinIdHolder(node, false);
-  ctx.magic_holder = CreateMagicHolder(node, false);
-  ctx.kernel_bin_holder = CreateKernelBinHolder(node, false);
   gert::GertTensorData *tensor_data = nullptr;
   ctx.shapebuffer_addr = bg::ValueHolder::CreateConst(&tensor_data, sizeof(gert::GertTensorData *));
   ctx.run_cfg = CollectRunConfig(node, lower_input, task_def, ctx.output_shapes, ctx.launch_arg);
@@ -1238,27 +1286,33 @@ static LowerResult LaunchStaticAicoreKernel(const ge::NodePtr &node, const Lower
   }
   DfxExeArg dfx_exe_arg = GetOpDfxExeArg(node);
   auto dfx_holder = bg::ValueHolder::CreateConst(&dfx_exe_arg, sizeof(dfx_exe_arg));
-  auto launch_holder = bg::LaunchKernelV2({lower_input.global_data->GetStream(),
-                                           ctx.kernel_bin_id_holder,
-                                           ctx.magic_holder,
-                                           ctx.kernel_bin_holder,
-                                           ctx.run_cfg.block_dim,
-                                           ctx.run_cfg.schedule_mode,
-                                           ctx.run_cfg.local_mem_size,
-                                           ctx.workspaces_addr,
-                                           ctx.shapebuffer_addr,
-                                           qos_pair.first,
-                                           qos_pair.second,
-                                           lower_input.input_shapes,
-                                           ctx.output_shapes,
-                                           node,
-                                           lower_input.global_data,
-                                           dfx_holder,
-                                           ctx.run_cfg.tiling_input_launch_arg,
-                                           CreateTilingKeyHolder(),
-                                           CreateKernelNameHolder(node, kRawKernelNameKey),
-                                           CreateWithHandleFlagHolder(0U)},
-                                          lower_input.input_addrs, ctx.output_addrs);
+  auto tiling_key_holder = CreateTilingKeyHolder();
+  auto kernel_name_holder = CreateKernelNameHolder(node, kRawKernelNameKey);
+  auto with_handle_flag_holder = CreateWithHandleFlagHolder(0U);
+  std::string kernel_bin_id;
+  const auto ret = GetTbeKernelId(node->GetOpDesc(), false, kernel_bin_id);
+  if (ret != ge::SUCCESS) {
+    GELOGE(ret, "Node[%s] get tbe kernel id failed.", node->GetNamePtr());
+    return {HyperStatus::ErrorStatus(static_cast<const char *>("Get tbe kernel id failed.")), {}, {}, {}};
+  }
+  auto bin_handle_holder = CreateResolvedBinHandleHolder(node, false);
+  if (bin_handle_holder == nullptr) {
+    GELOGE(ge::FAILED, "Node[%s] create resolved bin handle holder failed.", node->GetNamePtr());
+    return {HyperStatus::ErrorStatus(static_cast<const char *>("Create bin handle holder failed.")), {}, {}, {}};
+  }
+  auto func_handle = GetOrCreateResolveFuncHandleNode(node, *(lower_input.global_data), kernel_bin_id, 0U,
+                                                      bin_handle_holder, tiling_key_holder, kernel_name_holder,
+                                                      with_handle_flag_holder, kRawKernelNameKey, false);
+  if (func_handle == nullptr) {
+    GELOGE(ge::FAILED, "Node[%s] get resolve func handle failed.", node->GetNamePtr());
+    return {HyperStatus::ErrorStatus(static_cast<const char *>("Get func handle failed.")), {}, {}, {}};
+  }
+  auto launch_holder =
+      bg::LaunchKernelV2({lower_input.global_data->GetStream(), ctx.run_cfg.block_dim, ctx.run_cfg.schedule_mode,
+                          ctx.run_cfg.local_mem_size, ctx.workspaces_addr, ctx.shapebuffer_addr, qos_pair.first,
+                          qos_pair.second, lower_input.input_shapes, ctx.output_shapes, node, lower_input.global_data,
+                          dfx_holder, ctx.run_cfg.tiling_input_launch_arg, func_handle},
+                         lower_input.input_addrs, ctx.output_addrs);
   std::vector<bg::ValueHolderPtr> order_holders = {launch_holder};
   auto free_holder = bg::FreeWorkspaceMem(kOnDeviceHbm, ctx.workspaces_addr);
   if (ctx.atomic_launch_holder != nullptr) {

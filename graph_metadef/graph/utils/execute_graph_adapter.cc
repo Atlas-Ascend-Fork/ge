@@ -86,10 +86,16 @@ graphStatus ExecuteGraphAdapter::CopyOpAndSubgraph(ExecuteGraph *src_graph, cons
     for (size_t subgrah_idx = 0U; subgrah_idx < subgraph_num; ++subgrah_idx) {
       const auto &subgraph_name = subgraph_names[subgraph_num - 1U - subgrah_idx];
       const auto src_subgraph = src_root_graph->GetSubGraph(subgraph_name);
-      if ((src_subgraph == nullptr) && subgraph_name.empty()) {
+      if (src_subgraph == nullptr) {
+        if (subgraph_name.empty()) {
+          continue;
+        }
+        // RemoveSubgraph 后节点子图槽位保留（支持重新登记口径），注册表缺失的实例名按现状跳过，
+        // 保证该图状态可 dump/转换；不视为错误。
+        GELOGW("[Convert][Subgraph] subgraph %s of node %s is not registered, skip.", subgraph_name.c_str(),
+               op_desc->GetName().c_str());
         continue;
       }
-      GE_ASSERT_NOTNULL(src_subgraph);
       const auto dst_subgraph = ComGraphMakeShared<ComputeGraph>(src_subgraph->GetName());
       GE_ASSERT_NOTNULL(dst_subgraph);
       dst_subgraph->SetParentGraph(dst_root_graph);
@@ -160,12 +166,13 @@ graphStatus ExecuteGraphAdapter::CopyMembers(ExecuteGraph *src_graph, const Comp
   // copy info of output nodes from old graph to new graph.
   const auto &out_nodes_info = src_graph->graph_shared_->GetAllOutNodeInfo();
   std::vector<std::pair<NodePtr, int32_t>> new_out_nodes_info;
-  // ExecuteGraph未开放OutNodeInfo的接口，只是预埋了实现，以下流程暂时业务流程走不到
+  // ES 构建器 SetOutput 登记后 OutNodeInfo 非空，此路径已被执行图 dump/转换触发。
+  // 节点所有权在 dst_graph 节点表，这里必须经 shared_from_this 别名共享，裸指针再包装会造成双重释放。
   for (const auto &info : out_nodes_info) {
     GE_ASSERT_NOTNULL(info.first);
     const auto it = all_new_nodes.find(info.first);
     if (it != all_new_nodes.end()) {
-      new_out_nodes_info.emplace_back(std::shared_ptr<ge::Node>(it->second), info.second);
+      new_out_nodes_info.emplace_back(it->second->shared_from_this(), info.second);
     }
   }
   GE_ASSERT_SUCCESS(dst_graph->SetGraphOutNodesInfo(new_out_nodes_info));

@@ -354,8 +354,9 @@ TEST_F(InputH2DOverlapCompileSt, ManualBoundaryWithTrailingCommaPlansTailGroups)
 }
 
 TEST_F(InputH2DOverlapCompileSt, InvalidManualBoundaryConfigFails) {
-  const std::vector<std::string> invalid_options = {"2",     "-1", std::string("\xEF\xBC\x8C") + "44",
-                                                    "5,4,3", "44", "1,,2"};
+  const std::vector<std::string> invalid_options = {
+      "2",   "-1",    std::string("\xEF\xBC\x8C") + "44", "5,4,3", "44", "1,,2", "4,5",
+      "0,5", "0,1,5", "0,1,99999999999999999999999"};
   for (const auto &option : invalid_options) {
     auto root_graph = BuildInputH2DOverlapCompileGraph();
     ASSERT_NE(root_graph, nullptr);

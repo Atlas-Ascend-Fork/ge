@@ -378,7 +378,7 @@ graphStatus BroadCastByInDataAnchors(const NodePtr &node, const vector<InDataAnc
     auto sym_attr = desc->GetAttrsGroup<SymbolicDescAttr>();
     LOWERING_WARN_RECORD_REASON(sym_attr != nullptr, in_anchor->GetOwnerNode(), "No symbolic desc attr for node %s",
                                 in_anchor->GetOwnerNode()->GetName().c_str());
-    indices.emplace_back(sym_attr->symbolic_tensor.GetOriginSymbolShape().GetDims());
+    indices.emplace_back(AutofuseUtils::GetSymbolDims(sym_attr->symbolic_tensor.GetOriginSymbolShape()));
   }
   LOWERING_WARN_RECORD_REASON(Broadcast(indices, broadcasted) == GRAPH_SUCCESS, node,
                               "Failed to apply broadcast input");
@@ -665,7 +665,7 @@ graphStatus LowerPointwise(const NodePtr &node,
     GE_ASSERT_NOTNULL(desc);
     auto sym_attr = desc->GetAttrsGroup<SymbolicDescAttr>();
     LOWERING_WARN_RECORD_REASON(sym_attr != nullptr, node, "No symbolic desc attr");
-    indices.emplace_back(sym_attr->symbolic_tensor.GetOriginSymbolShape().GetDims());
+    indices.emplace_back(AutofuseUtils::GetSymbolDims(sym_attr->symbolic_tensor.GetOriginSymbolShape()));
     dtypes.emplace_back(desc->GetDataType());
   }
 
@@ -764,7 +764,7 @@ graphStatus LowerReduction(const NodePtr &node, loop::ReduceType reduce_type) {
   return GRAPH_SUCCESS;
 }
 
-struct SoftmaxInfo {
+struct SoftmaxV2Info {
   InDataAnchorPtr input;
   OutDataAnchorPtr output;
   std::vector<int64_t> reduce_axes;
@@ -772,99 +772,82 @@ struct SoftmaxInfo {
 };
 
 bool IsSoftmaxComputeDtype(const DataType dtype) {
-  return (dtype == DT_FLOAT16) || (dtype == DT_FLOAT) || (dtype == DT_BF16);
+  return (dtype == DT_FLOAT16) || (dtype == DT_FLOAT) || (dtype == DT_BF16) || (dtype == DT_DOUBLE);
 }
 
-graphStatus NormalizeSoftmaxInfo(const NodePtr &node, SoftmaxInfo &info) {
+graphStatus NormalizeSoftmaxV2Info(const NodePtr &node, SoftmaxV2Info &info) {
   GE_ASSERT_NOTNULL(node);
   const auto op_desc = node->GetOpDesc();
   GE_ASSERT_NOTNULL(op_desc);
-  LOWERING_WARN_RECORD_REASON((node->GetType() == "Softmax") || (node->GetType() == "SoftmaxV2"), node,
-                              "Unsupported softmax type %s", node->GetTypePtr());
-  LOWERING_WARN_RECORD_REASON(node->GetAllInDataAnchorsSize() == 1U, node, "Softmax must have exactly one data input");
+  LOWERING_WARN_RECORD_REASON(node->GetAllInDataAnchorsSize() == 1U, node,
+                              "SoftmaxV2 must have exactly one data input");
   LOWERING_WARN_RECORD_REASON(node->GetAllOutDataAnchorsSize() == 1U, node,
-                              "Softmax must have exactly one data output");
+                              "SoftmaxV2 must have exactly one data output");
 
   info.input = node->GetInDataAnchor(0);
   info.output = node->GetOutDataAnchor(0);
   LOWERING_WARN_RECORD_REASON((info.input != nullptr) && (info.input->GetPeerOutAnchor() != nullptr), node,
-                              "Softmax input is not connected");
-  LOWERING_WARN_RECORD_REASON(info.output != nullptr, node, "Softmax output is null");
-
+                              "SoftmaxV2 input is not connected");
   const auto input_anchor = info.input->GetPeerOutAnchor();
-  GE_ASSERT_NOTNULL(input_anchor);
   const auto input_desc = loop::GetBufferDesc(input_anchor.get());
   const auto output_desc = loop::GetBufferDesc(info.output.get());
   LOWERING_WARN_RECORD_REASON((input_desc != nullptr) && (output_desc != nullptr), node,
-                              "Softmax input or output TensorDesc is null");
+                              "SoftmaxV2 input or output TensorDesc is null");
 
   bool reuse_input = false;
   LOWERING_WARN_RECORD_REASON(TensorUtils::GetReuseInput(*output_desc, reuse_input) == GRAPH_SUCCESS, node,
                               "Failed to get output reuse-input flag");
-  LOWERING_WARN_RECORD_REASON(!reuse_input, node, "Softmax output reuses an input");
+  LOWERING_WARN_RECORD_REASON(!reuse_input, node, "SoftmaxV2 output reuses an input");
 
   std::vector<Expression> input_shape;
   std::vector<Expression> output_shape;
   LOWERING_WARN_RECORD_REASON(loop::GetBufferShape(info.input, input_shape) == GRAPH_SUCCESS, node,
-                              "Softmax input has no symbolic shape");
+                              "SoftmaxV2 input has no symbolic shape");
   LOWERING_WARN_RECORD_REASON(loop::GetBufferShape(info.output, output_shape) == GRAPH_SUCCESS, node,
-                              "Softmax output has no symbolic shape");
-  LOWERING_WARN_RECORD_REASON(!input_shape.empty(), node, "Softmax rank must be greater than zero");
-  LOWERING_WARN_RECORD_REASON(input_shape.size() == output_shape.size(), node, "Softmax input and output ranks differ");
+                              "SoftmaxV2 output has no symbolic shape");
+  LOWERING_WARN_RECORD_REASON(!input_shape.empty(), node, "SoftmaxV2 rank must be greater than zero");
+  LOWERING_WARN_RECORD_REASON(input_shape.size() == output_shape.size(), node,
+                              "SoftmaxV2 input and output ranks differ");
   for (size_t i = 0U; i < input_shape.size(); ++i) {
+    LOWERING_WARN_RECORD_REASON(input_shape[i].IsConstExpr(), node, "SoftmaxV2 only supports static shape");
     LOWERING_WARN_RECORD_REASON(SymbolicUtils::StaticCheckEq(input_shape[i], output_shape[i]) == TriBool::kTrue, node,
-                                "Softmax input and output shapes differ at dim %zu", i);
+                                "SoftmaxV2 input and output shapes differ at dim %zu", i);
   }
 
   std::vector<int64_t> axes;
-  if (node->GetType() == "SoftmaxV2") {
-    LOWERING_WARN_RECORD_REASON(AttrUtils::GetListInt(op_desc, "axes", axes), node, "SoftmaxV2 has no axes attribute");
-    LOWERING_WARN_RECORD_REASON(AttrUtils::GetBool(op_desc, "half_to_float", info.need_fp16_to_fp32_cast), node,
-                                "SoftmaxV2 has no half_to_float attribute");
-  } else {
-    int64_t axis = 0L;
-    int64_t algo = 1L;
-    float alpha = 1.0F;
-    float beta = 0.0F;
-    LOWERING_WARN_RECORD_REASON(AttrUtils::GetInt(op_desc, "axis", axis), node, "Softmax has no axis attribute");
-    LOWERING_WARN_RECORD_REASON(AttrUtils::GetInt(op_desc, "algo", algo) && (algo == 1L), node,
-                                "Softmax algo is not stable forward softmax");
-    LOWERING_WARN_RECORD_REASON(AttrUtils::GetFloat(op_desc, "alpha", alpha) && (std::fabs(alpha - 1.0F) < 1e-6F), node,
-                                "Softmax alpha is not one");
-    LOWERING_WARN_RECORD_REASON(AttrUtils::GetFloat(op_desc, "beta", beta) && (std::fabs(beta) < 1e-6F), node,
-                                "Softmax beta is not zero");
-    axes.emplace_back(axis);
-  }
+  LOWERING_WARN_RECORD_REASON(AttrUtils::GetListInt(op_desc, "axes", axes), node, "SoftmaxV2 has no axes attribute");
+  LOWERING_WARN_RECORD_REASON(AttrUtils::GetBool(op_desc, "half_to_float", info.need_fp16_to_fp32_cast), node,
+                              "SoftmaxV2 has no half_to_float attribute");
 
-  LOWERING_WARN_RECORD_REASON(!axes.empty(), node, "Softmax axes is empty");
+  LOWERING_WARN_RECORD_REASON(!axes.empty(), node, "SoftmaxV2 axes is empty");
   std::set<int64_t> normalized_axes;
   for (auto axis : axes) {
     if (axis < 0) {
       axis += static_cast<int64_t>(input_shape.size());
     }
     LOWERING_WARN_RECORD_REASON((axis >= 0) && (static_cast<size_t>(axis) < input_shape.size()), node,
-                                "Softmax axis %ld is out of range for rank %zu", axis, input_shape.size());
-    LOWERING_WARN_RECORD_REASON(normalized_axes.insert(axis).second, node, "Softmax axis %ld is duplicated", axis);
+                                "SoftmaxV2 axis %ld is out of range for rank %zu", axis, input_shape.size());
+    LOWERING_WARN_RECORD_REASON(normalized_axes.insert(axis).second, node, "SoftmaxV2 axis %ld is duplicated", axis);
     info.reduce_axes.emplace_back(axis);
   }
 
   const auto input_dtype = input_desc->GetDataType();
   const auto output_dtype = output_desc->GetDataType();
   if (info.need_fp16_to_fp32_cast) {
-    LOWERING_WARN_RECORD_REASON(node->GetType() == "SoftmaxV2", node, "Only SoftmaxV2 supports half_to_float");
     LOWERING_WARN_RECORD_REASON((input_dtype == DT_FLOAT16) && (output_dtype == DT_FLOAT), node,
                                 "SoftmaxV2 half_to_float requires FLOAT16 input and FLOAT output");
   } else {
-    LOWERING_WARN_RECORD_REASON(input_dtype == output_dtype, node, "Softmax input and output dtypes must be the same");
+    LOWERING_WARN_RECORD_REASON(input_dtype == output_dtype, node,
+                                "SoftmaxV2 input and output dtypes must be the same");
     LOWERING_WARN_RECORD_REASON(IsSoftmaxComputeDtype(input_dtype), node,
-                                "Softmax dtype is not FLOAT16, FLOAT or BF16");
+                                "SoftmaxV2 dtype does not match the source OP");
   }
   return GRAPH_SUCCESS;
 }
 
-graphStatus LowerSoftmax(const NodePtr &node) {
-  SoftmaxInfo info;
-  GE_WARN_ASSERT(NormalizeSoftmaxInfo(node, info) == GRAPH_SUCCESS);
+graphStatus LowerSoftmaxV2(const NodePtr &node) {
+  SoftmaxV2Info info;
+  GE_WARN_ASSERT(NormalizeSoftmaxV2Info(node, info) == GRAPH_SUCCESS);
 
   auto x = loop::Load(info.input);
   if (info.need_fp16_to_fp32_cast) {
@@ -879,7 +862,72 @@ graphStatus LowerSoftmax(const NodePtr &node) {
   for (const auto axis : info.reduce_axes) {
     sum = loop::ReduceThenBroadcast(loop::ReduceType::SUM, sum, axis);
   }
-  (void)loop::Store(info.output, loop::Div(exp, sum));
+  (void)loop::Store(info.output, loop::TrueDiv(exp, sum));
+  return GRAPH_SUCCESS;
+}
+
+graphStatus LowerLogSoftmax(const NodePtr &node) {
+  GE_ASSERT_NOTNULL(node);
+  const auto desc = node->GetOpDesc();
+  GE_ASSERT_NOTNULL(desc);
+  LOWERING_WARN_RECORD_REASON(node->GetAllInDataAnchorsSize() == 1U && node->GetAllOutDataAnchorsSize() == 1U, node,
+                              "LogSoftmaxV2 requires one input and one output");
+  const auto input = node->GetInDataAnchor(0);
+  const auto output = node->GetOutDataAnchor(0);
+  LOWERING_WARN_RECORD_REASON(input != nullptr && input->GetPeerOutAnchor() != nullptr && output != nullptr, node,
+                              "LogSoftmaxV2 input or output is not available");
+  const auto input_desc = loop::GetBufferDesc(input->GetPeerOutAnchor().get());
+  const auto output_desc = loop::GetBufferDesc(output.get());
+  LOWERING_WARN_RECORD_REASON(input_desc != nullptr && output_desc != nullptr, node, "LogSoftmaxV2 TensorDesc is null");
+  const auto dtype = input_desc->GetDataType();
+  LOWERING_WARN_RECORD_REASON(IsSoftmaxComputeDtype(dtype) && output_desc->GetDataType() == dtype, node,
+                              "LogSoftmaxV2 requires matching FLOAT16, BF16, FLOAT or DOUBLE input/output");
+  bool reuse_input = false;
+  LOWERING_WARN_RECORD_REASON(TensorUtils::GetReuseInput(*output_desc, reuse_input) == GRAPH_SUCCESS && !reuse_input,
+                              node, "LogSoftmaxV2 output reuses an input");
+  std::vector<Expression> input_shape;
+  std::vector<Expression> output_shape;
+  LOWERING_WARN_RECORD_REASON(loop::GetBufferShape(input, input_shape) == GRAPH_SUCCESS &&
+                                  loop::GetBufferShape(output, output_shape) == GRAPH_SUCCESS,
+                              node, "LogSoftmaxV2 shape is unavailable");
+  LOWERING_WARN_RECORD_REASON(!input_shape.empty() && input_shape.size() == output_shape.size(), node,
+                              "LogSoftmaxV2 input/output ranks differ or are zero");
+  for (size_t i = 0U; i < input_shape.size(); ++i) {
+    LOWERING_WARN_RECORD_REASON(SymbolicUtils::StaticCheckEq(input_shape[i], output_shape[i]) == TriBool::kTrue, node,
+                                "LogSoftmaxV2 input/output shapes differ at dim %zu", i);
+  }
+  std::vector<int64_t> axes;
+  LOWERING_WARN_RECORD_REASON(AttrUtils::GetListInt(desc, "axes", axes) && !axes.empty(), node,
+                              "LogSoftmaxV2 axes are missing or empty");
+  std::set<int64_t> seen_axes;
+  for (auto &axis : axes) {
+    if (axis < 0) {
+      axis += static_cast<int64_t>(input_shape.size());
+    }
+    LOWERING_WARN_RECORD_REASON(axis >= 0 && static_cast<size_t>(axis) < input_shape.size(), node,
+                                "LogSoftmaxV2 axis %ld is out of range", axis);
+    LOWERING_WARN_RECORD_REASON(seen_axes.insert(axis).second, node, "LogSoftmaxV2 axis %ld is duplicated", axis);
+  }
+
+  auto x = loop::Load(input);
+  const bool promote = dtype == DT_FLOAT16 || dtype == DT_BF16;
+  if (promote) {
+    x = loop::Cast(x, DT_FLOAT);
+  }
+  auto max = x;
+  for (const auto axis : axes) {
+    max = loop::ReduceThenBroadcast(loop::ReduceType::MAX, max, axis);
+  }
+  auto shifted = loop::Sub(x, max);
+  auto sum = loop::Exp(shifted);
+  for (const auto axis : axes) {
+    sum = loop::ReduceThenBroadcast(loop::ReduceType::SUM, sum, axis);
+  }
+  auto y = loop::Sub(shifted, loop::Ln(sum));
+  if (promote) {
+    y = loop::Cast(y, dtype);
+  }
+  (void)loop::Store(output, y);
   return GRAPH_SUCCESS;
 }
 
@@ -1543,6 +1591,207 @@ graphStatus InnerLowerConv2D(const NodePtr &node, bool is_extend_conv2d) {
   return GRAPH_SUCCESS;
 }
 
+bool IsNormDtype(const DataType dtype) {
+  return dtype == DT_FLOAT16 || dtype == DT_BF16 || dtype == DT_FLOAT;
+}
+
+graphStatus LowerBatchNorm(const NodePtr &node) {
+  constexpr size_t kInferenceMeanInputIndex = 3U;
+  constexpr size_t kInferenceVarianceInputIndex = 4U;
+  constexpr size_t kInputCount = 5U;
+  constexpr size_t kFirstStatisticsOutputIndex = 1U;
+  constexpr size_t kOutputCount = 6U;
+  constexpr size_t kRank4D = 4U;
+  constexpr size_t kRank5D = 5U;
+  GE_ASSERT_NOTNULL(node);
+  LOWERING_WARN_RECORD_REASON(
+      node->GetAllInDataAnchorsSize() == kInputCount && node->GetAllOutDataAnchorsSize() == kOutputCount, node,
+      "BatchNorm requires five input slots and six outputs");
+  bool training = false;
+  float epsilon = 0.0F;
+  std::string format;
+  const auto desc = node->GetOpDesc();
+  GE_ASSERT_NOTNULL(desc);
+  LOWERING_WARN_RECORD_REASON(AttrUtils::GetBool(desc, "is_training", training) &&
+                                  AttrUtils::GetFloat(desc, "epsilon", epsilon) && std::isfinite(epsilon) &&
+                                  epsilon >= 0.0F && AttrUtils::GetStr(desc, "data_format", format),
+                              node, "BatchNorm attributes are invalid");
+  // 对训练态和推理态的三个必选输入进行校验
+  for (size_t i = 0U; i < kInferenceMeanInputIndex; ++i) {
+    const auto anchor = node->GetInDataAnchor(i);
+    LOWERING_WARN_RECORD_REASON(anchor != nullptr && anchor->GetPeerOutAnchor() != nullptr, node,
+                                "BatchNorm required input %zu is missing", i);
+  }
+  // 推理态要求连接 mean 和 variance；训练态要求这两个输入不连接。
+  for (size_t i = kInferenceMeanInputIndex; i < kInputCount; ++i) {
+    const auto anchor = node->GetInDataAnchor(i);
+    LOWERING_WARN_RECORD_REASON(anchor != nullptr && (anchor->GetPeerOutAnchor() != nullptr) != training, node,
+                                "BatchNorm statistics inputs do not match training mode");
+  }
+  // 对非y的输出进行校验，确保没有消费者
+  for (size_t i = kFirstStatisticsOutputIndex; i < kOutputCount; ++i) {
+    const auto anchor = node->GetOutDataAnchor(i);
+    LOWERING_WARN_RECORD_REASON(anchor->GetPeerInDataNodesSize() == 0U, node,
+                                "BatchNorm statistics output %zu has consumers", i);
+  }
+  const auto x_anchor = node->GetInDataAnchor(0);
+  const auto x_desc = loop::GetBufferDesc(x_anchor->GetPeerOutAnchor().get());
+  const auto y_desc = loop::GetBufferDesc(node->GetOutDataAnchor(0).get());
+  LOWERING_WARN_RECORD_REASON(x_desc != nullptr && y_desc != nullptr && IsNormDtype(x_desc->GetDataType()) &&
+                                  y_desc->GetDataType() == x_desc->GetDataType(),
+                              node, "BatchNorm x/y dtype is unsupported");
+  std::vector<Expression> x_dims;
+  std::vector<Expression> y_dims;
+  LOWERING_WARN_RECORD_REASON(loop::GetBufferShape(x_anchor, x_dims) == GRAPH_SUCCESS &&
+                                  loop::GetBufferShape(node->GetOutDataAnchor(0), y_dims) == GRAPH_SUCCESS &&
+                                  (x_dims.size() == kRank4D || x_dims.size() == kRank5D) &&
+                                  y_dims.size() == x_dims.size(),
+                              node, "BatchNorm x/y rank is invalid");
+  const bool channel_last =
+      (x_dims.size() == kRank4D && format == "NHWC") || (x_dims.size() == kRank5D && format == "NDHWC");
+  const bool channel_first =
+      (x_dims.size() == kRank4D && format == "NCHW") || (x_dims.size() == kRank5D && format == "NCDHW");
+  LOWERING_WARN_RECORD_REASON(channel_last || channel_first, node, "BatchNorm data_format is invalid for rank");
+  const size_t channel = channel_last ? x_dims.size() - 1U : 1U;
+  for (size_t i = 0U; i < x_dims.size(); ++i) {
+    LOWERING_WARN_RECORD_REASON(SymbolicUtils::StaticCheckEq(x_dims[i], y_dims[i]) == TriBool::kTrue, node,
+                                "BatchNorm y shape differs from x at dim %zu", i);
+  }
+  for (size_t i = 1U; i < (training ? kInferenceMeanInputIndex : kInputCount); ++i) {
+    const auto anchor = node->GetInDataAnchor(i);
+    const auto input_desc = loop::GetBufferDesc(anchor->GetPeerOutAnchor().get());
+    std::vector<Expression> dims;
+    LOWERING_WARN_RECORD_REASON(input_desc != nullptr && input_desc->GetDataType() == DT_FLOAT &&
+                                    loop::GetBufferShape(anchor, dims) == GRAPH_SUCCESS && dims.size() == 1U &&
+                                    SymbolicUtils::StaticCheckEq(dims[0], x_dims[channel]) == TriBool::kTrue,
+                                node, "BatchNorm input %zu dtype or shape is invalid", i);
+  }
+  for (size_t i = kFirstStatisticsOutputIndex; i < kOutputCount; ++i) {
+    const auto anchor = node->GetOutDataAnchor(i);
+    const auto output_desc = loop::GetBufferDesc(anchor.get());
+    std::vector<Expression> dims;
+    LOWERING_WARN_RECORD_REASON(
+        output_desc != nullptr && output_desc->GetDataType() == DT_FLOAT &&
+            loop::GetBufferShape(anchor, dims) == GRAPH_SUCCESS && dims.size() == 1U &&
+            SymbolicUtils::StaticCheckEq(dims[0], i == 5U ? Symbol(1) : x_dims[channel]) == TriBool::kTrue,
+        node, "BatchNorm output %zu dtype or shape is invalid", i);
+  }
+  auto x = loop::Load(x_anchor);
+  if (x_desc->GetDataType() != DT_FLOAT) {
+    x = loop::Cast(x, DT_FLOAT);
+  }
+  std::vector<loop::BroadcastOp::DimKind> broadcast(x_dims.size(), loop::BroadcastOp::DimKind::NEW_AXIS);
+  broadcast[channel] = loop::BroadcastOp::DimKind::NORMAL;
+  auto scale = loop::Broadcast(loop::Load(node->GetInDataAnchor(1)), broadcast);
+  auto offset = loop::Broadcast(loop::Load(node->GetInDataAnchor(2)), broadcast);
+  loop::LoopVar mean;
+  loop::LoopVar variance;
+  if (training) {
+    std::vector<int64_t> axes;
+    for (size_t i = 0U; i < x_dims.size(); ++i) {
+      if (i != channel) {
+        axes.emplace_back(static_cast<int64_t>(i));
+      }
+    }
+    mean = loop::ReduceThenBroadcast(loop::ReduceType::MEAN, x, axes);
+    auto centered = loop::Sub(x, mean);
+    variance = loop::ReduceThenBroadcast(loop::ReduceType::MEAN, loop::Mul(centered, centered), axes);
+  } else {
+    mean = loop::Broadcast(loop::Load(node->GetInDataAnchor(kInferenceMeanInputIndex)), broadcast);
+    variance = loop::Broadcast(loop::Load(node->GetInDataAnchor(kInferenceVarianceInputIndex)), broadcast);
+  }
+  auto eps = ScalarBroadcast2Size(ToPrecString(epsilon, 20), DT_FLOAT, x_dims.size());
+  auto y = loop::Add(loop::Mul(loop::Mul(loop::Sub(x, mean), loop::Rsqrt(loop::Add(variance, eps))), scale), offset);
+  if (y_desc->GetDataType() != DT_FLOAT) {
+    y = loop::Cast(y, y_desc->GetDataType());
+  }
+  (void)loop::Store(node->GetOutDataAnchor(0), y);
+  for (size_t i = kFirstStatisticsOutputIndex; i < kOutputCount; ++i) {
+    (void)loop::StoreIgnoredOutput(node->GetOutDataAnchor(i));
+  }
+  return GRAPH_SUCCESS;
+}
+
+graphStatus LowerRmsNorm(const NodePtr &node) {
+  GE_ASSERT_NOTNULL(node);
+  const auto desc = node->GetOpDesc();
+  GE_ASSERT_NOTNULL(desc);
+  LOWERING_WARN_RECORD_REASON(node->GetAllInDataAnchorsSize() == 2U && node->GetAllOutDataAnchorsSize() == 2U, node,
+                              "RmsNorm requires two inputs and two outputs");
+  const auto x_anchor = node->GetInDataAnchor(0);
+  const auto gamma_anchor = node->GetInDataAnchor(1);
+  const auto y_anchor = node->GetOutDataAnchor(0);
+  const auto rstd_anchor = node->GetOutDataAnchor(1);
+  LOWERING_WARN_RECORD_REASON(x_anchor != nullptr && gamma_anchor != nullptr && y_anchor != nullptr &&
+                                  rstd_anchor != nullptr && x_anchor->GetPeerOutAnchor() != nullptr &&
+                                  gamma_anchor->GetPeerOutAnchor() != nullptr,
+                              node, "RmsNorm input or output is not available");
+  LOWERING_WARN_RECORD_REASON(rstd_anchor->GetPeerInDataNodesSize() == 0U, node, "RmsNorm rstd output has consumers");
+  const auto x_desc = loop::GetBufferDesc(x_anchor->GetPeerOutAnchor().get());
+  const auto gamma_desc = loop::GetBufferDesc(gamma_anchor->GetPeerOutAnchor().get());
+  const auto y_desc = loop::GetBufferDesc(y_anchor.get());
+  const auto rstd_desc = loop::GetBufferDesc(rstd_anchor.get());
+  LOWERING_WARN_RECORD_REASON(x_desc != nullptr && gamma_desc != nullptr && y_desc != nullptr && rstd_desc != nullptr,
+                              node, "RmsNorm TensorDesc is null");
+  LOWERING_WARN_RECORD_REASON(IsNormDtype(x_desc->GetDataType()) && IsNormDtype(gamma_desc->GetDataType()) &&
+                                  IsNormDtype(y_desc->GetDataType()) && rstd_desc->GetDataType() == DT_FLOAT,
+                              node, "RmsNorm dtype does not match GE OP Proto");
+  float epsilon = 0.0F;
+  LOWERING_WARN_RECORD_REASON(
+      AttrUtils::GetFloat(desc, "epsilon", epsilon) && std::isfinite(epsilon) && epsilon >= 0.0F, node,
+      "RmsNorm epsilon must be finite and non-negative");
+
+  std::vector<Expression> x_dims;
+  std::vector<Expression> gamma_dims;
+  std::vector<Expression> y_dims;
+  std::vector<Expression> rstd_dims;
+  LOWERING_WARN_RECORD_REASON(loop::GetBufferShape(x_anchor, x_dims) == GRAPH_SUCCESS &&
+                                  loop::GetBufferShape(gamma_anchor, gamma_dims) == GRAPH_SUCCESS &&
+                                  loop::GetBufferShape(y_anchor, y_dims) == GRAPH_SUCCESS &&
+                                  loop::GetBufferShape(rstd_anchor, rstd_dims) == GRAPH_SUCCESS,
+                              node, "RmsNorm symbolic shape is unavailable");
+  LOWERING_WARN_RECORD_REASON(!x_dims.empty() && !gamma_dims.empty() && gamma_dims.size() <= x_dims.size() &&
+                                  y_dims.size() == x_dims.size() && rstd_dims.size() == x_dims.size(),
+                              node, "RmsNorm rank is invalid");
+  const auto norm_axis = x_dims.size() - gamma_dims.size();
+  for (size_t i = 0U; i < x_dims.size(); ++i) {
+    LOWERING_WARN_RECORD_REASON(SymbolicUtils::StaticCheckEq(x_dims[i], y_dims[i]) == TriBool::kTrue, node,
+                                "RmsNorm y shape differs from x at dim %zu", i);
+    const auto expected = i < norm_axis ? x_dims[i] : Symbol(1);
+    LOWERING_WARN_RECORD_REASON(SymbolicUtils::StaticCheckEq(expected, rstd_dims[i]) == TriBool::kTrue, node,
+                                "RmsNorm rstd shape is invalid at dim %zu", i);
+  }
+  for (size_t i = 0U; i < gamma_dims.size(); ++i) {
+    LOWERING_WARN_RECORD_REASON(SymbolicUtils::StaticCheckEq(gamma_dims[i], x_dims[norm_axis + i]) == TriBool::kTrue ||
+                                    SymbolicUtils::StaticCheckEq(gamma_dims[i], Symbol(1)) == TriBool::kTrue,
+                                node, "RmsNorm gamma cannot broadcast to x at dim %zu", i);
+  }
+
+  auto x = loop::Load(x_anchor);
+  if (x_desc->GetDataType() != DT_FLOAT) {
+    x = loop::Cast(x, DT_FLOAT);
+  }
+  auto gamma = loop::Load(gamma_anchor);
+  if (gamma_desc->GetDataType() != DT_FLOAT) {
+    gamma = loop::Cast(gamma, DT_FLOAT);
+  }
+  std::vector<int64_t> axes;
+  for (size_t i = norm_axis; i < x_dims.size(); ++i) {
+    axes.emplace_back(static_cast<int64_t>(i));
+  }
+  auto mean_sq = loop::ReduceThenBroadcast(loop::ReduceType::MEAN, loop::Mul(x, x), axes);
+  auto eps = ScalarBroadcast2Size(ToPrecString(epsilon, 20), DT_FLOAT, x_dims.size());
+  auto rstd = loop::Rsqrt(loop::Add(mean_sq, eps));
+  gamma = loop::Broadcast(gamma, gamma_dims, x_dims);
+  auto y = loop::Mul(loop::Mul(x, rstd), gamma);
+  if (y_desc->GetDataType() != DT_FLOAT) {
+    y = loop::Cast(y, y_desc->GetDataType());
+  }
+  (void)loop::Store(y_anchor, y);
+  (void)loop::StoreIgnoredOutput(rstd_anchor);
+  return GRAPH_SUCCESS;
+}
+
 graphStatus LowerLayerNorm(const NodePtr &node) {
   constexpr size_t kXInputIndex = 0U;
   constexpr size_t kGammaInputIndex = 1U;
@@ -1671,20 +1920,21 @@ graphStatus LowerLayerNorm(const NodePtr &node) {
   const auto gamma_desc = gamma_src->GetOwnerNode()->GetOpDesc()->GetOutputDescPtr(gamma_src->GetIdx());
   const auto beta_desc = beta_src->GetOwnerNode()->GetOpDesc()->GetOutputDescPtr(beta_src->GetIdx());
   const auto y_desc = op_desc->GetOutputDescPtr(kYOutputIndex);
+  const auto mean_desc = op_desc->GetOutputDescPtr(kMeanOutputIndex);
+  const auto variance_desc = op_desc->GetOutputDescPtr(kVarianceOutputIndex);
   GE_ASSERT_NOTNULL(x_desc);
   GE_ASSERT_NOTNULL(gamma_desc);
   GE_ASSERT_NOTNULL(beta_desc);
   GE_ASSERT_NOTNULL(y_desc);
-  const auto compute_dtype = x_desc->GetDataType();
-  // 本期基础图不引入额外的 Cast；同 dtype 才能直接保持原 LayerNorm 的 y dtype 语义。
-  LOWERING_WARN_RECORD_REASON(gamma_desc->GetDataType() == compute_dtype && beta_desc->GetDataType() == compute_dtype &&
-                                  y_desc->GetDataType() == compute_dtype,
-                              node, "LayerNorm only supports x/gamma/beta/y with the same dtype");
-  constexpr uint64_t kFp16MaxFiniteInteger = 65504U;
-  LOWERING_WARN_RECORD_REASON(compute_dtype != DT_FLOAT16 || reduce_count <= kFp16MaxFiniteInteger, node,
-                              "LayerNorm reduce element count cannot be represented by FP16 scalar");
+  LOWERING_WARN_RECORD_REASON(IsNormDtype(x_desc->GetDataType()) && IsNormDtype(gamma_desc->GetDataType()) &&
+                                  IsNormDtype(beta_desc->GetDataType()) && IsNormDtype(y_desc->GetDataType()) &&
+                                  IsNormDtype(mean_desc->GetDataType()) && IsNormDtype(variance_desc->GetDataType()),
+                              node, "LayerNorm dtype does not match GE OP Proto");
 
   auto x = loop::Load(x_anchor);
+  if (x_desc->GetDataType() != DT_FLOAT) {
+    x = loop::Cast(x, DT_FLOAT);
+  }
   std::vector<int64_t> reduce_axes;
   reduce_axes.reserve(x_dims.size() - norm_axis);
   for (size_t axis = norm_axis; axis < x_dims.size(); ++axis) {
@@ -1695,13 +1945,24 @@ graphStatus LowerLayerNorm(const NodePtr &node) {
   auto square = loop::Mul(centered, centered);
   auto m2_bcast = loop::ReduceThenBroadcast(loop::ReduceType::SUM, square, reduce_axes);
   const auto rank = x_dims.size();
-  auto reduce_count_bcast = ScalarBroadcast2Size(std::to_string(reduce_count), compute_dtype, rank);
-  auto epsilon_bcast = ScalarBroadcast2Size(ToPrecString(epsilon, 20), compute_dtype, rank);
+  auto reduce_count_bcast = ScalarBroadcast2Size(std::to_string(reduce_count), DT_FLOAT, rank);
+  auto epsilon_bcast = ScalarBroadcast2Size(ToPrecString(epsilon, 20), DT_FLOAT, rank);
   auto variance_bcast = loop::Div(m2_bcast, reduce_count_bcast);
   auto rstd = loop::Rsqrt(loop::Add(variance_bcast, epsilon_bcast));
-  auto gamma = loop::Broadcast(loop::Load(gamma_anchor), gamma_symbol_dims, x_symbol_dims);
-  auto beta = loop::Broadcast(loop::Load(beta_anchor), beta_symbol_dims, x_symbol_dims);
+  auto gamma = loop::Load(gamma_anchor);
+  if (gamma_desc->GetDataType() != DT_FLOAT) {
+    gamma = loop::Cast(gamma, DT_FLOAT);
+  }
+  gamma = loop::Broadcast(gamma, gamma_symbol_dims, x_symbol_dims);
+  auto beta = loop::Load(beta_anchor);
+  if (beta_desc->GetDataType() != DT_FLOAT) {
+    beta = loop::Cast(beta, DT_FLOAT);
+  }
+  beta = loop::Broadcast(beta, beta_symbol_dims, x_symbol_dims);
   auto y = loop::Add(loop::Mul(loop::Mul(centered, rstd), gamma), beta);
+  if (y_desc->GetDataType() != DT_FLOAT) {
+    y = loop::Cast(y, y_desc->GetDataType());
+  }
   (void)loop::Store(y_anchor, y);
   (void)loop::StoreIgnoredOutput(mean_anchor);
   (void)loop::StoreIgnoredOutput(variance_anchor);
@@ -1822,9 +2083,11 @@ REGISTER_LOWERING_WITH_EXISTED(ExtendConv2D, LowerExtendConv2D);
 
 REGISTER_LOWERING_WITH_EXISTED(LayerNorm, LowerLayerNorm);
 REGISTER_LOWERING_WITH_EXISTED(LayerNormV3, LowerLayerNorm);
+REGISTER_LOWERING_WITH_EXISTED(RmsNorm, LowerRmsNorm);
+REGISTER_LOWERING_WITH_EXISTED(BatchNorm, LowerBatchNorm);
 
-REGISTER_LOWERING_WITH_EXISTED(Softmax, LowerSoftmax);
-REGISTER_LOWERING_WITH_EXISTED(SoftmaxV2, LowerSoftmax);
+REGISTER_LOWERING_WITH_EXISTED(SoftmaxV2, LowerSoftmaxV2);
+REGISTER_LOWERING_WITH_EXISTED(LogSoftmaxV2, LowerLogSoftmax);
 
 REGISTER_LOWERING(ClipByValue) {
   loop::Index broadcasted;
@@ -2000,7 +2263,7 @@ REGISTER_LOWERING(AddN) {
     GE_ASSERT_NOTNULL(desc);
     auto sym_attr = desc->GetAttrsGroup<SymbolicDescAttr>();
     LOWERING_WARN_RECORD_REASON(sym_attr != nullptr, node, "No symbolic desc attr.");
-    indices.emplace_back(sym_attr->symbolic_tensor.GetOriginSymbolShape().GetDims());
+    indices.emplace_back(AutofuseUtils::GetSymbolDims(sym_attr->symbolic_tensor.GetOriginSymbolShape()));
   }
   LOWERING_WARN_RECORD_REASON(Broadcast(indices, broadcasted) == GRAPH_SUCCESS, node,
                               "Failed to apply input broadcast");
@@ -2137,15 +2400,6 @@ REGISTER_LOWERING(AddLayerNorm) {
   const auto mean_anchor = node->GetOutDataAnchor(kMeanOutputIndex);
   const auto rstd_anchor = node->GetOutDataAnchor(kRstdOutputIndex);
   const auto x_anchor = node->GetOutDataAnchor(kXOutputIndex);
-  GE_ASSERT_NOTNULL(x1_anchor);
-  GE_ASSERT_NOTNULL(x2_anchor);
-  GE_ASSERT_NOTNULL(gamma_anchor);
-  GE_ASSERT_NOTNULL(beta_anchor);
-  GE_ASSERT_NOTNULL(bias_anchor);
-  GE_ASSERT_NOTNULL(y_anchor);
-  GE_ASSERT_NOTNULL(mean_anchor);
-  GE_ASSERT_NOTNULL(rstd_anchor);
-  GE_ASSERT_NOTNULL(x_anchor);
 
   // mean、rstd 和 x 无法由 ignored-output 代替真实数据输出时，整节点保持原路径。
   LOWERING_WARN_RECORD_REASON(mean_anchor->GetPeerInDataNodesSize() == 0U, node,
@@ -2211,11 +2465,18 @@ REGISTER_LOWERING(AddLayerNorm) {
   GE_WARN_ASSERT(check_same_dims(x1_dims, y_dims, "y") == GRAPH_SUCCESS);
   GE_WARN_ASSERT(check_same_dims(x1_dims, x_dims, "x") == GRAPH_SUCCESS);
   GE_WARN_ASSERT(check_same_dims(gamma_dims, beta_dims, "gamma/beta") == GRAPH_SUCCESS);
-  LOWERING_WARN_RECORD_REASON(gamma_dims.size() == 1U && gamma_dims[0] == x1_dims.back(), node,
-                              "AddLayerNorm gamma/beta must match the last dimension of x1");
+  LOWERING_WARN_RECORD_REASON(gamma_dims.size() <= x1_dims.size(), node,
+                              "AddLayerNorm gamma/beta rank cannot exceed x1 rank");
+  const auto norm_axis = x1_dims.size() - gamma_dims.size();
+  for (size_t i = 0U; i < gamma_dims.size(); ++i) {
+    LOWERING_WARN_RECORD_REASON(gamma_dims[i] == x1_dims[norm_axis + i], node,
+                                "AddLayerNorm gamma/beta must match x1's trailing norm dimensions");
+  }
 
   std::vector<int64_t> expected_stat_dims = x1_dims;
-  expected_stat_dims.back() = 1L;
+  for (size_t i = norm_axis; i < expected_stat_dims.size(); ++i) {
+    expected_stat_dims[i] = 1L;
+  }
   GE_WARN_ASSERT(check_same_dims(mean_dims, expected_stat_dims, "mean") == GRAPH_SUCCESS);
   GE_WARN_ASSERT(check_same_dims(rstd_dims, expected_stat_dims, "rstd") == GRAPH_SUCCESS);
   if (has_bias) {
@@ -2262,49 +2523,56 @@ REGISTER_LOWERING(AddLayerNorm) {
   GE_ASSERT_NOTNULL(mean_desc);
   GE_ASSERT_NOTNULL(rstd_desc);
   GE_ASSERT_NOTNULL(x_desc);
-  const auto input_dtype = x1_desc->GetDataType();
-  LOWERING_WARN_RECORD_REASON((input_dtype == DT_FLOAT16) || (input_dtype == DT_BF16) || (input_dtype == DT_FLOAT),
-                              node, "AddLayerNorm input dtype is not FLOAT16, BF16 or FLOAT");
-  LOWERING_WARN_RECORD_REASON(x2_desc->GetDataType() == input_dtype && gamma_desc->GetDataType() == input_dtype &&
-                                  beta_desc->GetDataType() == input_dtype && y_desc->GetDataType() == input_dtype &&
-                                  x_desc->GetDataType() == input_dtype && mean_desc->GetDataType() == DT_FLOAT &&
-                                  rstd_desc->GetDataType() == DT_FLOAT,
-                              node, "AddLayerNorm input/output dtypes do not match the supported signature");
+  LOWERING_WARN_RECORD_REASON(IsNormDtype(x1_desc->GetDataType()) && IsNormDtype(x2_desc->GetDataType()) &&
+                                  IsNormDtype(gamma_desc->GetDataType()) && IsNormDtype(beta_desc->GetDataType()) &&
+                                  IsNormDtype(y_desc->GetDataType()) && IsNormDtype(x_desc->GetDataType()) &&
+                                  mean_desc->GetDataType() == DT_FLOAT && rstd_desc->GetDataType() == DT_FLOAT,
+                              node, "AddLayerNorm dtype does not match GE OP Proto");
   if (has_bias) {
     const auto bias_desc = bias_src->GetOwnerNode()->GetOpDesc()->GetOutputDescPtr(bias_src->GetIdx());
     GE_ASSERT_NOTNULL(bias_desc);
-    LOWERING_WARN_RECORD_REASON(bias_desc->GetDataType() == input_dtype, node,
-                                "AddLayerNorm bias dtype does not match x1");
+    LOWERING_WARN_RECORD_REASON(IsNormDtype(bias_desc->GetDataType()), node, "AddLayerNorm bias dtype is unsupported");
   }
 
   auto x1 = loop::Load(x1_anchor);
-  auto x2 = loop::Load(x2_anchor);
-  auto gamma = loop::Load(gamma_anchor);
-  auto beta = loop::Load(beta_anchor);
-  if (input_dtype != DT_FLOAT) {
+  if (x1_desc->GetDataType() != DT_FLOAT) {
     x1 = loop::Cast(x1, DT_FLOAT);
+  }
+  auto x2 = loop::Load(x2_anchor);
+  if (x2_desc->GetDataType() != DT_FLOAT) {
     x2 = loop::Cast(x2, DT_FLOAT);
+  }
+  auto gamma = loop::Load(gamma_anchor);
+  if (gamma_desc->GetDataType() != DT_FLOAT) {
     gamma = loop::Cast(gamma, DT_FLOAT);
+  }
+  auto beta = loop::Load(beta_anchor);
+  if (beta_desc->GetDataType() != DT_FLOAT) {
     beta = loop::Cast(beta, DT_FLOAT);
   }
   auto z = loop::Add(x1, x2);
   if (has_bias) {
     auto bias = loop::Load(bias_anchor);
-    if (input_dtype != DT_FLOAT) {
+    const auto bias_desc = bias_src->GetOwnerNode()->GetOpDesc()->GetOutputDescPtr(bias_src->GetIdx());
+    if (bias_desc->GetDataType() != DT_FLOAT) {
       bias = loop::Cast(bias, DT_FLOAT);
     }
     z = loop::Add(z, loop::Broadcast(bias, bias_symbol_dims, x1_symbol_dims));
   }
-  auto mean_bcast = loop::ReduceThenBroadcast(loop::ReduceType::MEAN, z, -1L);
+  std::vector<int64_t> reduce_axes;
+  for (size_t i = norm_axis; i < x1_dims.size(); ++i) {
+    reduce_axes.emplace_back(static_cast<int64_t>(i));
+  }
+  auto mean_bcast = loop::ReduceThenBroadcast(loop::ReduceType::MEAN, z, reduce_axes);
   auto centered = loop::Sub(z, mean_bcast);
-  auto variance_bcast = loop::ReduceThenBroadcast(loop::ReduceType::MEAN, loop::Mul(centered, centered), -1L);
+  auto variance_bcast = loop::ReduceThenBroadcast(loop::ReduceType::MEAN, loop::Mul(centered, centered), reduce_axes);
   const auto epsilon_bcast = ScalarBroadcast2Size(ToPrecString(epsilon, 20), DT_FLOAT, x1_dims.size());
   auto rstd = loop::Rsqrt(loop::Add(variance_bcast, epsilon_bcast));
   gamma = loop::Broadcast(gamma, gamma_symbol_dims, x1_symbol_dims);
   beta = loop::Broadcast(beta, beta_symbol_dims, x1_symbol_dims);
   auto y = loop::Add(loop::Mul(loop::Mul(centered, rstd), gamma), beta);
-  if (input_dtype != DT_FLOAT) {
-    y = loop::Cast(y, input_dtype);
+  if (y_desc->GetDataType() != DT_FLOAT) {
+    y = loop::Cast(y, y_desc->GetDataType());
   }
   (void)loop::Store(y_anchor, y);
   (void)loop::StoreIgnoredOutput(mean_anchor);

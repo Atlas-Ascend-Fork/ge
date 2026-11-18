@@ -14,6 +14,9 @@
 #include <queue>
 #include <stack>
 #include <memory>
+#include <atomic>
+#include <condition_variable>
+#include <functional>
 
 #include "exe_graph/runtime/runtime_tensor.h"
 #include "ge/ge_api_types.h"
@@ -39,12 +42,19 @@ class JitExecutorPool {
   Status Finalize();
   size_t Size();
   bool IsGraphNeedRebuild();
+  size_t GetIdleExecutorCount() const;
+  // 注册执行器归还空闲时的通知回调，用于唤醒等待空闲执行器的调度线程
+  void SetIdleNotifier(const std::function<void()> &notifier);
 
  private:
+  void NotifyIdle();
+
   std::mutex executors_mutex_;
   std::vector<std::unique_ptr<JitExecutor>> executors;
   std::mutex idle_mutex_;
   std::stack<JitExecutor *> idle_executors;
+  std::atomic<size_t> idle_executor_count_{0U};
+  std::function<void()> idle_notifier_;
 };
 class UserGraphControl {
  public:
@@ -58,6 +68,11 @@ class UserGraphControl {
         graph_manager_(graph_manager),
         jit_exe_thread_pool_("jit_exe", kDefaultJitExeThreadPoolSize, true),
         cmc_(user_graph_id_, compile_context_, graph_manager_) {
+    // 归一化"队列有任务 + 有空闲执行器"这一可推进条件：任务入队与执行器归还均在此通知
+    jit_executor_pool_.SetIdleNotifier([this]() {
+      std::lock_guard<std::mutex> locker(add_execution_mutex_);
+      exe_cv_.notify_one();
+    });
     auto ge_context = ge::GetThreadLocalContext();
     user_graph_exe_thread_ = std::thread([this, ge_context]() mutable {
       ge::GetThreadLocalContext() = ge_context;
@@ -115,6 +130,7 @@ class UserGraphControl {
   std::mutex compile_mutex_;
 
   std::mutex add_execution_mutex_;
+  std::condition_variable exe_cv_;
   std::atomic_bool thread_is_stopped_{false};
   UserGraphExecutionQueue executions_;
   std::thread user_graph_exe_thread_;

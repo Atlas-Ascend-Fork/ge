@@ -507,14 +507,24 @@ Status AddInputH2DOverlapMergedRange(const InputH2DOverlapCopyGroupPlan &group_p
   return SUCCESS;
 }
 
+Status ReportInvalidManualBoundary(const std::string &value, const char_t *reason, const std::string &log) {
+  REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
+                            std::vector<const char *>({kInputH2DOverlapOptionName, value.c_str(), reason}));
+  GELOGE(PARAM_INVALID, "%s", log.c_str());
+  return PARAM_INVALID;
+}
+
 Status ApplyInputH2DOverlapManualPlan(const std::string &graph_name, const InputH2DOverlapConfig &config,
                                       InputH2DOverlapCopyGroupPlan &group_plan) {
   const size_t before_group_count = group_plan.groups.size();
   const size_t before_input_count = group_plan.InputCount();
   const size_t before_wait_point_count = group_plan.WaitPointCount();
   const auto &boundaries = config.boundaries;
-  GE_ASSERT_TRUE(!boundaries.empty(), "[Check][InputH2DOverlapManualPlan] empty manual boundary, graph:%s.",
-                 graph_name.c_str());
+  if (boundaries.empty()) {
+    return ReportInvalidManualBoundary(
+        "", "manual boundaries are empty",
+        "[Check][InputH2DOverlapManualPlan] empty manual boundary, graph:" + graph_name + ".");
+  }
 
   std::vector<InputH2DOverlapCopyGroup> planned_groups;
   planned_groups.reserve(boundaries.size());
@@ -522,14 +532,20 @@ Status ApplyInputH2DOverlapManualPlan(const std::string &graph_name, const Input
   planned_ranges.reserve(boundaries.size());
 
   size_t range_begin = boundaries.front();
-  GE_ASSERT_TRUE(range_begin <= before_group_count,
-                 "[Check][InputH2DOverlapManualPlan] boundary:%zu exceeds base_group_count:%zu, graph:%s.", range_begin,
-                 before_group_count, graph_name.c_str());
+  if (range_begin > before_group_count) {
+    return ReportInvalidManualBoundary(std::to_string(range_begin), "manual boundary exceeds base group count",
+                                       "[Check][InputH2DOverlapManualPlan] boundary:" + std::to_string(range_begin) +
+                                           " exceeds base_group_count:" + std::to_string(before_group_count) +
+                                           ", graph:" + graph_name + ".");
+  }
   for (size_t i = 1U; i < boundaries.size(); ++i) {
     const size_t range_end = boundaries[i];
-    GE_ASSERT_TRUE(range_end <= before_group_count,
-                   "[Check][InputH2DOverlapManualPlan] boundary:%zu exceeds base_group_count:%zu, graph:%s.", range_end,
-                   before_group_count, graph_name.c_str());
+    if (range_end > before_group_count) {
+      return ReportInvalidManualBoundary(std::to_string(range_end), "manual boundary exceeds base group count",
+                                         "[Check][InputH2DOverlapManualPlan] boundary:" + std::to_string(range_end) +
+                                             " exceeds base_group_count:" + std::to_string(before_group_count) +
+                                             ", graph:" + graph_name + ".");
+    }
     GE_CHK_STATUS_RET(AddInputH2DOverlapMergedRange(group_plan, range_begin, range_end, planned_ranges, planned_groups),
                       "[Add][InputH2DOverlapManualRange] failed.");
     range_begin = range_end;

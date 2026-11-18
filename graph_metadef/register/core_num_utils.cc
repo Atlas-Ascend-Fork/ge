@@ -380,12 +380,20 @@ graphStatus CoreNumUtils::ParseAicoreNumFromOption(std::map<std::string, std::st
   if (iter == options.end()) {
     return GRAPH_SUCCESS;
   }
-  const std::string aicore_num_option_str = iter->second;
+  std::string aicore_num_option_str = iter->second;
+  // 右侧为空或 0 表示只显式配置 AI Core，按单值写法处理，保证 "6"、"6|"、"6|0" 结果一致；
+  // 多分隔符、非精确 0（如 "00"、" 0"）等仍按原成对逻辑拆分。
+  auto delimiter_pos = aicore_num_option_str.find('|');
+  const bool only_aicore = (delimiter_pos != std::string::npos) && (delimiter_pos > 0U) &&
+                           ((delimiter_pos + 1U == aicore_num_option_str.size()) ||
+                            (aicore_num_option_str.substr(delimiter_pos + 1U) == "0"));
+  aicore_num_option_str = only_aicore ? aicore_num_option_str.substr(0U, delimiter_pos) : aicore_num_option_str;
+  delimiter_pos = aicore_num_option_str.find('|');
+  options[AICORE_NUM] = aicore_num_option_str;
   if (aicore_num_option_str.empty()) {
     return GRAPH_SUCCESS;
   }
 
-  const auto delimiter_pos = aicore_num_option_str.find('|');
   if (delimiter_pos != std::string::npos) {
     GELOGI("origin ge.aicoreNum in options, value: %s.", aicore_num_option_str.c_str());
     const std::string aicore_num_str = aicore_num_option_str.substr(0U, delimiter_pos);

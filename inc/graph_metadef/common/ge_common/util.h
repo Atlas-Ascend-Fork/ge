@@ -14,6 +14,7 @@
 #include <cmath>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -231,6 +232,37 @@ namespace ge {
  */
 constexpr int32_t OM_PROTO_VERSION = 2;
 
+template <typename...>
+struct GeMakeVoid {
+  using type = void;
+};
+
+template <typename... Ts>
+using GeVoidT = typename GeMakeVoid<Ts...>::type;
+
+template <typename T, typename = void>
+struct HasExpressionString : std::false_type {};
+
+template <typename T>
+struct HasExpressionString<T, GeVoidT<decltype(std::declval<const T &>().Str())>> : std::true_type {};
+
+template <typename T>
+std::string ToStringElementImpl(const T &value, std::false_type) {
+  std::stringstream ss;
+  ss << value;
+  return ss.str();
+}
+
+template <typename T>
+std::string ToStringElementImpl(const T &value, std::true_type) {
+  return std::string(value.Str().get());
+}
+
+template <typename T>
+std::string ToStringElement(const T &value) {
+  return ToStringElementImpl(value, std::integral_constant<bool, HasExpressionString<T>::value>());
+}
+
 /// @ingroup domi_common
 /// @brief onverts Vector of a number to a string.
 /// @param [in] v  Vector of a number
@@ -243,9 +275,9 @@ GE_FUNC_VISIBILITY std::string ToString(const std::vector<T> &v) {
   for (const T &x : v) {
     if (first) {
       first = false;
-      ss << x;
+      ss << ToStringElement(x);
     } else {
-      ss << ", " << x;
+      ss << ", " << ToStringElement(x);
     }
   }
   ss << "]";

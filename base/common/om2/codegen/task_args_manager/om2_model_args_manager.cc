@@ -277,8 +277,13 @@ Status ModelArgsManager::AllocModelArgs(const ModelArgsLayoutPlannedResult &layo
       GE_ASSERT_TRUE(!AddOverflow(len, partition_len, len));
     }
     const size_t built_in_len = static_cast<size_t>(len);
-    constexpr size_t reserved_len = 0UL;
-    if (built_in_len == 0UL) {
+    // Custom Task Callback 私有参数区紧接普通区尾部。reserved 段不参与普通区布局规划，
+    // 故其 start_offset 即 built_in_len。
+    const size_t reserved_len = reserved_segments_[pli].total_size;
+    reserved_segments_[pli].start_offset = built_in_len;
+    // built_in 为空但 reserved 非空时仍须建槽：纯 Callback 模型不向普通区压 args_descs，
+    // 若沿用"built_in 为空即跳过"会使 reserved 无处安放。
+    if ((built_in_len == 0UL) && (reserved_len == 0UL)) {
       continue;
     }
     size_t total_len = 0UL;
@@ -598,6 +603,22 @@ Status ModelArgsManager::ParseModelTaskDef(domi::ModelTaskDef &model_task_def,
                       "[OM2] task index %zu occurred multiple placement, task_type is %d", i, task_def->type());
     has_args_ = (has_args_) || (!task_indexes_to_run_param[i].args_descs.empty());
 
+    // Custom Task Callback 私有参数区容量累计。独立于 args_descs，故不参与 ModelArgsLayoutPlanner
+    // 的普通区分区规划，也不占用普通 args 区。
+    const auto &run_param = task_indexes_to_run_param[i];
+    if (run_param.reserved_args_len > 0UL) {
+      const size_t pls_index = static_cast<size_t>(run_param.reserved_args_placement);
+      GE_ASSERT_TRUE(pls_index < reserved_segments_.size(), "[OM2] task index %zu reserved placement %zu out of range",
+                     i, pls_index);
+      auto &segment = reserved_segments_[pls_index];
+      GE_ASSERT_TRUE(!AddOverflow(segment.total_size, run_param.reserved_args_len, segment.total_size),
+                     "[OM2] task index %zu reserved args len %" PRIu64 " overflows total %" PRIu64, i,
+                     run_param.reserved_args_len, segment.total_size);
+      has_reserve_args_table_ = true;
+      GELOGI("[OM2] task index:%zu reserved_args_len:%" PRIu64 ", placement:%s, accumulated total:%" PRIu64, i,
+             run_param.reserved_args_len, GetArgsPlacementStr(run_param.reserved_args_placement), segment.total_size);
+    }
+
     GE_ASSERT_SUCCESS(task_node_map.AddRelation(i, op_index));
 
     if (need_log) {
@@ -634,9 +655,15 @@ Status ModelArgsManager::GenerateArgsDataForProgramGenerator(Om2CodegenModel &co
   model_args_semantic.clear();
   model_args_semantic.reserve(model_args_.size());
   for (size_t i = 0UL; i < model_args_.size(); ++i) {
-    (void)model_args_semantic.emplace_back(
-        ModelArgsSemantic{model_args_[i].placement, model_args_len_[i], model_args_[i].model_args_partitions});
+    // model_args_ 按插入序（仅含未跳过的 placement），reserved_segments_ 按 placement 索引，须经 placement 映射
+    const size_t pls_index = static_cast<size_t>(model_args_[i].placement);
+    const auto &reserved =
+        (pls_index < reserved_segments_.size()) ? reserved_segments_[pls_index] : ReservedSegmentInfo{};
+    (void)model_args_semantic.emplace_back(ModelArgsSemantic{model_args_[i].placement, model_args_len_[i],
+                                                             model_args_[i].model_args_partitions,
+                                                             reserved.start_offset, reserved.total_size});
   }
+  args_table.has_reserved_args_table = has_reserve_args_table_;
 
   // 根据task_indexes_to_args_,组装每个task的args数据结构(task_indexes_to_args_semantic),按task index序排列
   auto &task_args_semantic = args_table.task_indexes_to_args_semantic;

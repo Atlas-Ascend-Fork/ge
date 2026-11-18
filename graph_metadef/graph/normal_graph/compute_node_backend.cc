@@ -29,9 +29,6 @@ namespace ge {
 NodeImpl::NodeContext ComputeNodeBackend::ResolveNode() const {
   NodeContext node;
   node.compute_node = node_ptr_.lock();
-  if (node.compute_node != nullptr) {
-    node.op_desc = node.compute_node->GetOpDesc();
-  }
   return node;
 }
 
@@ -77,7 +74,6 @@ graphStatus ComputeNodeBackend::ResolveConstInput(const NodeContext &node, int32
   if (source.compute_node == nullptr) {
     return GRAPH_NODE_WITHOUT_CONST_INPUT;
   }
-  source.op_desc = source.compute_node->GetOpDesc();
   return GRAPH_SUCCESS;
 }
 

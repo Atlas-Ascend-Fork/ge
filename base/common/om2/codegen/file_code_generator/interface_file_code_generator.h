@@ -25,9 +25,12 @@ class InterfaceFileCodeGenerator : public CodeGeneratorBase {
   StructDecl *BuildTfAiCpuExInfoStruct();
   StructDecl *BuildArgsInfoStruct();
   StructDecl *BuildArgsRefreshInfoStruct() const;
+  // Custom Task Callback 私有参数区的运行期段描述。仅在模型含 Callback 任务时发射，
+  // 保证不含 Callback 的模型生成结果逐字节不变。
+  StructDecl *BuildReservedSegmentRuntimeStruct() const;
   DeclNode *BuildHcclFollowStreamCountMap(const Om2CodegenModel &codegen_model) const;
   FunctionDef *BuildAclrtMallocFunction() const;
-  ClassDecl *BuildOm2ArgsTableClass();
+  ClassDecl *BuildOm2ArgsTableClass(bool has_reserved_args_table);
   ClassDecl *BuildOm2ModelClass(const Om2CodegenModel &codegen_model);
   std::vector<DeclNode *> BuildRtForwardDecls() const;
 

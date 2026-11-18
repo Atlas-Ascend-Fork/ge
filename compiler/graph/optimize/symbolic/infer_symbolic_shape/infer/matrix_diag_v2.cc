@@ -39,16 +39,15 @@ graphStatus ValidateInputShapes(const gert::SymbolShape *diagonal_shape, const g
   return GRAPH_SUCCESS;
 }
 
-graphStatus ExtractDiagIndices(const std::vector<Expression> *k_value, int32_t &lower_diag_index,
+graphStatus ExtractDiagIndices(const std::vector<Expression> k_value, int32_t &lower_diag_index,
                                int32_t &upper_diag_index) {
-  const size_t num_elements = k_value->size();
+  const size_t num_elements = k_value.size();
 
   GE_ASSERT_TRUE(num_elements >= kSingleDiagIndexNum && num_elements <= kMaxDiagIndexNum,
                  "[InferSymbolShape4MatrixDiagV2] input[k] must be scalar or a vector with one or two elements");
   int64_t lower_value = 0;
-  if (SymbolicInferUtil::TryGetConstInt(k_value->at(0), lower_value) != GRAPH_SUCCESS) {
-    GELOGW("Symbol Infer unsupported, MatrixDiagV2 k_value[0] is not an integer const: %s",
-           k_value->at(0).Serialize().get());
+  if (SymbolicInferUtil::TryGetConstInt(k_value.at(0), lower_value) != GRAPH_SUCCESS) {
+    GELOGW("Symbol Infer unsupported, MatrixDiagV2 k_value[0] is not an integer const: %s", k_value.at(0).Str().get());
     return UNSUPPORTED;
   }
   lower_diag_index = static_cast<int32_t>(lower_value);
@@ -57,9 +56,9 @@ graphStatus ExtractDiagIndices(const std::vector<Expression> *k_value, int32_t &
     upper_diag_index = lower_diag_index;
   } else {
     int64_t upper_value = 0;
-    if (SymbolicInferUtil::TryGetConstInt(k_value->at(1), upper_value) != GRAPH_SUCCESS) {
+    if (SymbolicInferUtil::TryGetConstInt(k_value.at(1), upper_value) != GRAPH_SUCCESS) {
       GELOGW("Symbol Infer unsupported, MatrixDiagV2 k_value[1] is not an integer const: %s",
-             k_value->at(1).Serialize().get());
+             k_value.at(1).Str().get());
       return UNSUPPORTED;
     }
     upper_diag_index = static_cast<int32_t>(upper_value);
@@ -91,44 +90,44 @@ void ComputeMinDimensions(const std::vector<Expression> &diagonal_dims, size_t d
   min_num_rows = max_diag_len - Symbol(std::min(lower_diag_index, 0));
   min_num_cols = max_diag_len + Symbol(std::max(upper_diag_index, 0));
 
-  GELOGI("max_diag_len %s, min_num_rows %s, min_num_cols %s", max_diag_len.Serialize().get(),
-         min_num_rows.Serialize().get(), min_num_cols.Serialize().get());
+  GELOGI("max_diag_len %s, min_num_rows %s, min_num_cols %s", max_diag_len.Str().get(), min_num_rows.Str().get(),
+         min_num_cols.Str().get());
 }
 
 graphStatus ProcessNumRowsCols(const gert::SymbolTensor *num_rows_tensor, const gert::SymbolTensor *num_cols_tensor,
                                const Expression &min_num_rows, const Expression &min_num_cols, Expression &num_rows,
                                Expression &num_cols) {
-  auto num_rows_value = num_rows_tensor->GetSymbolicValue();
-  auto num_cols_value = num_cols_tensor->GetSymbolicValue();
+  const auto num_rows_value = SymbolicInferUtil::GetSymbolicValues(*num_rows_tensor);
+  const auto num_cols_value = SymbolicInferUtil::GetSymbolicValues(*num_cols_tensor);
 
-  if (num_rows_value != nullptr) {
-    num_rows = num_rows_value->at(0);
+  if (!num_rows_value.empty()) {
+    num_rows = num_rows_value.at(0);
   }
-  if (num_cols_value != nullptr) {
-    num_cols = num_cols_value->at(0);
+  if (!num_cols_value.empty()) {
+    num_cols = num_cols_value.at(0);
   }
 
-  if (num_rows_value == nullptr && num_cols_value == nullptr) {
+  if (num_rows_value.empty() && num_cols_value.empty()) {
     num_rows = ge::sym::Max(min_num_rows, min_num_cols);
     num_cols = num_rows;
-  } else if (num_rows_value == nullptr) {
+  } else if (num_rows_value.empty()) {
     num_rows = min_num_rows;
   } else if (EXPECT_SYMBOL_LE(num_rows, Symbol(0))) {
     num_rows = min_num_rows;
   } else {
     GELOGI("[InferSymbolShape4MatrixDiagV2] num_rows%s is invalid, it must be greater than or equal to min_num_rows %s",
-           num_rows.Serialize().get(), min_num_rows.Serialize().get());
+           num_rows.Str().get(), min_num_rows.Str().get());
     ASSERT_SYMBOL_GE(num_rows, min_num_rows);
   }
 
-  if (num_cols_value == nullptr) {
+  if (num_cols_value.empty()) {
     num_cols = min_num_cols;
   } else if (EXPECT_SYMBOL_LE(num_cols, Symbol(0))) {
     num_cols = min_num_cols;
-    GELOGI("num_cols is <= 0, use min_num_cols %s", min_num_cols.Serialize().get());
+    GELOGI("num_cols is <= 0, use min_num_cols %s", min_num_cols.Str().get());
   } else {
     GELOGI("[InferSymbolShape4MatrixDiagV2] num_cols%s is invalid, it must be greater than or equal to min_num_cols %s",
-           num_cols.Serialize().get(), min_num_cols.Serialize().get());
+           num_cols.Str().get(), min_num_cols.Str().get());
     ASSERT_SYMBOL_GE(num_cols, min_num_cols);
   }
 
@@ -140,18 +139,18 @@ void BuildOutputShape(const std::vector<Expression> &diagonal_dims, size_t diago
                       gert::SymbolShape *output_shape) {
   if (lower_diag_index == upper_diag_index) {
     for (size_t i = 0; i < diagonal_rank - 1; i++) {
-      output_shape->MutableDims().push_back(diagonal_dims[i]);
+      output_shape->AppendDim(diagonal_dims[i]);
     }
-    output_shape->MutableDims().push_back(num_rows);
-    output_shape->MutableDims().push_back(num_cols);
+    output_shape->AppendDim(num_rows);
+    output_shape->AppendDim(num_cols);
   } else {
     for (size_t i = 0; i < diagonal_rank; i++) {
       if (i == diagonal_rank - kMatrixDimsNum) {
-        output_shape->MutableDims().push_back(num_rows);
+        output_shape->AppendDim(num_rows);
       } else if (i == diagonal_rank - 1) {
-        output_shape->MutableDims().push_back(num_cols);
+        output_shape->AppendDim(num_cols);
       } else {
-        output_shape->MutableDims().push_back(diagonal_dims[i]);
+        output_shape->AppendDim(diagonal_dims[i]);
       }
     }
   }
@@ -170,12 +169,12 @@ graphStatus InferShape4MatrixDiagV2(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(num_cols_tensor);
   auto output_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(output_shape);
-  output_shape->MutableDims().clear();
+  output_shape->Clear();
 
   GE_ASSERT_GRAPH_SUCCESS(ValidateInputShapes(diagonal_shape, k_shape));
 
-  auto k_value = k_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(k_value);
+  GE_UNSUPPORTED_IF(!k_tensor->HasValue());
+  const auto k_value = SymbolicInferUtil::GetSymbolicValues(*k_tensor);
 
   int32_t lower_diag_index = 0;
   int32_t upper_diag_index = 0;
@@ -186,7 +185,7 @@ graphStatus InferShape4MatrixDiagV2(gert::InferSymbolShapeContext *context) {
     return extract_ret;
   }
 
-  auto diagonal_dims = diagonal_shape->GetDims();
+  auto diagonal_dims = SymbolicInferUtil::GetSymbolDims(*diagonal_shape);
   size_t diagonal_rank = diagonal_shape->GetDimNum();
 
   if (lower_diag_index < upper_diag_index) {
@@ -220,8 +219,8 @@ graphStatus InferShape4MatrixDiag(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_TRUE(input_shape->GetDimNum() >= 1, "MatrixDiag input rank must be at least 1");
   const auto output_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(output_shape);
-  output_shape->MutableDims() = input_shape->GetDims();
-  output_shape->MutableDims().push_back(input_shape->GetDim(input_shape->GetDimNum() - 1));
+  SymbolicInferUtil::SetSymbolDims(*output_shape, SymbolicInferUtil::GetSymbolDims(*input_shape));
+  output_shape->AppendDim(input_shape->GetDim(input_shape->GetDimNum() - 1));
   return GRAPH_SUCCESS;
 }
 
@@ -248,7 +247,7 @@ graphStatus InferShape4Eye(gert::InferSymbolShapeContext *context) {
   GE_ASSERT(batch_shape->GetSize() == 0U || batch_dims != nullptr, "Eye batch_shape data is null");
   GE_ASSERT(*num_rows > 0, "Eye num_rows must be greater than 0, actual value[%ld]", *num_rows);
 
-  out_shape->MutableDims().clear();
+  out_shape->Clear();
   for (size_t i = 0U; i < batch_shape->GetSize(); ++i) {
     GE_ASSERT(batch_dims[i] > 0, "Eye batch_shape must be greater than 0, actual value[%ld]", batch_dims[i]);
     out_shape->AppendDim(Symbol(batch_dims[i]));
@@ -264,7 +263,7 @@ graphStatus InferShape4DiagPartD(gert::InferSymbolShapeContext *context) {
   const auto assist_shape = context->GetInputSymbolShape(1);
   GE_UNSUPPORTED_IF_NULL(assist_shape);
   GE_ASSERT_EQ(input_x_shape->GetDimNum(), assist_shape->GetDimNum());
-  for (size_t i = 0UL; i < input_x_shape->GetDims().size(); ++i) {
+  for (size_t i = 0UL; i < input_x_shape->GetDimNum(); ++i) {
     ASSERT_SYMBOL_EQ(input_x_shape->GetDim(i), assist_shape->GetDim(i));
   }
 

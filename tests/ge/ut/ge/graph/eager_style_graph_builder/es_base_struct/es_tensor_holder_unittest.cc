@@ -14,6 +14,7 @@
 #include "es_c_tensor_holder.h"
 #include "graph/utils/node_adapter.h"
 #include "graph/symbolizer/symbolic.h"
+#include "graph/symbolizer/expression_ext.h"
 #include "attribute_group/attr_group_symbolic_desc.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 using namespace ge::es;
@@ -61,8 +62,8 @@ TEST_F(EsTensorHolderLLT, SetSymbolShape) {
   tensor.SetOriginSymbolShape(sym_shape);
   auto attr_group_sym = EsTensorToGeTensorDesc(tensor)->GetAttrsGroup<ge::SymbolicDescAttr>();
   EXPECT_NE(attr_group_sym, nullptr);
-  std::vector<ge::Expression> golden = {ge::Expression::Parse(sym_shape[0]), ge::Expression::Parse(sym_shape[1])};
-  EXPECT_EQ(attr_group_sym->symbolic_tensor.GetOriginSymbolShape().GetDims(), golden);
+  const gert::SymbolShape golden = {ge::expr_ext::Parse(sym_shape[0]), ge::expr_ext::Parse(sym_shape[1])};
+  EXPECT_EQ(attr_group_sym->symbolic_tensor.GetOriginSymbolShape(), golden);
 }
 
 TEST_F(EsTensorHolderLLT, GetCTensorHolder) {

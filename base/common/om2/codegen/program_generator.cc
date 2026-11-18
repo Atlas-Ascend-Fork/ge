@@ -96,6 +96,7 @@ std::vector<DeclNode *> ProgramGenerator::BuildInterfaceHeaderIncludes() const {
       ast_.Include("cstdint", IncludeDecl::Kind::kAngle),
       ast_.Include("type_traits", IncludeDecl::Kind::kAngle),
       ast_.Include("array", IncludeDecl::Kind::kAngle),
+      ast_.Include("memory", IncludeDecl::Kind::kAngle),
       ast_.Include("acl/acl.h"),
       ast_.Include("acl/acl_base.h"),
       ast_.Include("exe_graph/runtime/runtime_tensor.h"),
@@ -131,9 +132,15 @@ Status ProgramGenerator::GenerateInterfaceHeader(Om2CodePrinter &code_printer) {
       interface_handler.BuildTfAiCpuExInfoStruct(),
       interface_handler.BuildArgsRefreshInfoStruct(),
       ast_.StablePart(StablePartId::kScopeGuard, StablePartPlacement::kNamespace),
-      interface_handler.BuildOm2ArgsTableClass(),
-      ast_.StablePart(StablePartId::kOpDefStructs, StablePartPlacement::kNamespace),
   };
+  // Custom Task Callback 私有参数区：仅在模型含 Callback 任务时发射 ReservedSegmentRuntime 与
+  // Om2ArgsTable 的 reserved 成员/方法，保证不含 Callback 的模型生成结果逐字节不变。
+  const bool has_reserved = codegen_model_.args_table.has_reserved_args_table;
+  if (has_reserved) {
+    om2_items.push_back(interface_handler.BuildReservedSegmentRuntimeStruct());
+  }
+  om2_items.push_back(interface_handler.BuildOm2ArgsTableClass(has_reserved));
+  om2_items.push_back(ast_.StablePart(StablePartId::kOpDefStructs, StablePartPlacement::kNamespace));
   if (!codegen_model_.runtime.hccl_follow_stream_counts.empty()) {
     om2_items.push_back(interface_handler.BuildHcclFollowStreamCountMap(codegen_model_));
   }
@@ -179,23 +186,28 @@ Status ProgramGenerator::GenerateResourcesSource(Om2CodePrinter &code_printer) {
 
 Status ProgramGenerator::GenerateArgsManagerSource(Om2CodePrinter &code_printer) {
   ArgsManagerFileCodeGenerator args_manager_handler(ast_);
+  std::vector<DeclNode *> args_manager_items = {
+      args_manager_handler.BuildInitMethod(codegen_model_),
+      args_manager_handler.BuildDestructor(),
+      args_manager_handler.BuildGetArgsInfoMethod(),
+      args_manager_handler.BuildGetDevArgAddrMethod(),
+      args_manager_handler.BuildGetHostArgAddrMethod(),
+      args_manager_handler.BuildRefreshMapFeatureMethod(),
+      args_manager_handler.BuildUpdateHostArgsMethod(),
+      args_manager_handler.BuildResolveActiveBasesMethod(),
+      args_manager_handler.BuildResolveActiveSrcMethod(),
+      args_manager_handler.BuildCopyArgsToDeviceMethod(codegen_model_),
+  };
+  // Custom Task Callback 私有参数区的 bump 分配入口，仅在模型含 Callback 任务时生成，
+  // 与内部头中 Om2ArgsTable 的方法声明同判据。
+  if (codegen_model_.args_table.has_reserved_args_table) {
+    args_manager_items.push_back(args_manager_handler.BuildAllocateArgsBufferMethod());
+  }
   auto *translation_unit = ast_.File({
       ast_.Include(codegen_model_.artifact_name + "_internal.h"),
       ast_.Include("securec.h"),
       ast_.Space(),
-      ast_.Namespace("om2",
-                     {
-                         args_manager_handler.BuildInitMethod(codegen_model_),
-                         args_manager_handler.BuildDestructor(),
-                         args_manager_handler.BuildGetArgsInfoMethod(),
-                         args_manager_handler.BuildGetDevArgAddrMethod(),
-                         args_manager_handler.BuildGetHostArgAddrMethod(),
-                         args_manager_handler.BuildRefreshMapFeatureMethod(),
-                         args_manager_handler.BuildUpdateHostArgsMethod(),
-                         args_manager_handler.BuildResolveActiveBasesMethod(),
-                         args_manager_handler.BuildResolveActiveSrcMethod(),
-                         args_manager_handler.BuildCopyArgsToDeviceMethod(codegen_model_),
-                     }),
+      ast_.Namespace("om2", args_manager_items),
   });
   GE_ASSERT_SUCCESS(EmitFile(GeneratedFileIndex::kArgsManagerFile, translation_unit, code_printer));
   GELOGD("[OM2] Args Manager source file code is generated.");
@@ -236,7 +248,19 @@ Status ProgramGenerator::GenerateKernelRegSource(Om2CodePrinter &code_printer) {
 Status ProgramGenerator::GenerateLoadAndRunSource(Om2CodePrinter &code_printer) {
   LoadAndRunFileCodeGenerator load_and_run_handler(ast_);
   load_and_run_handler.SetHasCustomKernel(has_custom_kernel_);
+  load_and_run_handler.SetHasReservedArgsTable(codegen_model_.args_table.has_reserved_args_table);
   auto anonymous_items = load_and_run_handler.BuildAnonymousNamespaceItems(codegen_model_, task_code_builder_list_);
+  // 插入顺序与最终排列相反（均插在 begin）：目标排列为
+  // [kLoadAndRunDumpHelpers, kCustomTaskHelpers, kCustomTaskStateTypes, kAllocateOm2ArgsBuffer, ...]，
+  // 故须按 AllocBuffer → StateTypes → Helpers 的顺序插入。StateTypes 必须落在 kCustomTaskHelpers
+  // 之后：CustomTaskState 按值持有 CustKernelContextHolder 并持 unique_ptr<SinkOnlyAllocator>。
+  const bool has_reserved = codegen_model_.args_table.has_reserved_args_table;
+  if (has_custom_kernel_ && has_reserved) {
+    (void)anonymous_items.insert(anonymous_items.begin(), ast_.StablePart(StablePartId::kAllocateOm2ArgsBuffer,
+                                                                          StablePartPlacement::kNamespace));
+    (void)anonymous_items.insert(anonymous_items.begin(),
+                                 ast_.StablePart(StablePartId::kCustomTaskStateTypes, StablePartPlacement::kNamespace));
+  }
   if (has_custom_kernel_) {
     (void)anonymous_items.insert(anonymous_items.begin(),
                                  ast_.StablePart(StablePartId::kCustomTaskHelpers, StablePartPlacement::kNamespace));
@@ -256,15 +280,24 @@ Status ProgramGenerator::GenerateLoadAndRunSource(Om2CodePrinter &code_printer) 
         "ge", {ast_.StablePart(StablePartId::kCreateClassCustomOpFactory, StablePartPlacement::kNamespace)}));
     (void)body_items.emplace_back(ast_.Space());
   }
-  (void)body_items.emplace_back(
-      ast_.Namespace("om2", {
-                                ast_.Namespace("", anonymous_items),
-                                load_and_run_handler.BuildGetRtModelHandleMethod(),
-                                load_and_run_handler.BuildRefreshFeatureMapMethod(),
-                                load_and_run_handler.BuildLoadMethod(codegen_model_, task_code_builder_list_),
-                                load_and_run_handler.BuildRunAsyncMethod(codegen_model_),
-                                load_and_run_handler.BuildRunMethod(codegen_model_),
-                            }));
+  if (has_custom_kernel_ && has_reserved) {
+    (void)body_items.emplace_back(ast_.Include("exe_graph/runtime/update_args_context.h"));
+    (void)body_items.emplace_back(ast_.Space());
+  }
+  std::vector<DeclNode *> om2_method_items = {
+      ast_.Namespace("", anonymous_items),
+      load_and_run_handler.BuildGetRtModelHandleMethod(),
+      load_and_run_handler.BuildRefreshFeatureMapMethod(codegen_model_),
+      load_and_run_handler.BuildLoadMethod(codegen_model_, task_code_builder_list_),
+      load_and_run_handler.BuildRunAsyncMethod(codegen_model_),
+      load_and_run_handler.BuildRunMethod(codegen_model_),
+  };
+  if (has_custom_kernel_ && has_reserved) {
+    // X2+X3 逐轮更新。放在匿名命名空间之后：它是 Om2Model 成员定义，须处于 namespace om2，
+    // 但同编译单元内仍可访问匿名命名空间里的 kOpDefs 与 CustomTaskState。
+    om2_method_items.push_back(ast_.StablePart(StablePartId::kUpdateCustomOpHostArgs, StablePartPlacement::kNamespace));
+  }
+  (void)body_items.emplace_back(ast_.Namespace("om2", om2_method_items));
   (void)body_items.emplace_back(ast_.StablePart(StablePartId::kLoadAndRunExternalApis));
   (void)body_items.emplace_back(ast_.ExternBlock("C", load_and_run_handler.BuildQueryResourceApis(codegen_model_)));
   auto *translation_unit = ast_.File(body_items);

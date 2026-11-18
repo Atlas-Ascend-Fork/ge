@@ -425,6 +425,8 @@ As GE built-in Kernel supplement, through AICPU engine execute operators. `HostC
 
 Load path is `libconstant_folding_ops.so`, provided by OPP (Operator Package), contains wider operator implementations. `compiler/engines/cpu_engine/cpu_engine/constant_folding_stub/constant_folding_ops_stub.cpp` is compilation stub library (no actual implementation), runtime replaced by real OPP library.
 
+SO path resolution priority: first resolve the `constant-folding-ops` entry (HostCpuEngine side has additional `ops-host-cpu` entry for `libops_host_cpu.so`) in `${ASCEND_OPP_PATH}/conf/ops_deliverables.json` through `OpsDeliverablesParser` (`graph_metadef/base/common/plugin/ops_deliverables_parser.cc`, compiled into graph_base), `{ASCEND_OPP_PATH}` placeholder in path templates is replaced by the variable map supplied by callers; when configuration is missing, entry is undefined, or resolved path is invalid, fall back to hardcoded paths under OPP directory.
+
 `HostCpuEngine` responsible for:
 
 - Loading `libconstant_folding_ops.so` dynamic library

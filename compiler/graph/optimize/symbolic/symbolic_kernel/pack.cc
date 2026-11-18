@@ -25,21 +25,21 @@ graphStatus GetInputSymbolsValue(const gert::InferSymbolComputeContext *context,
   for (size_t i = 0UL; i < context->GetComputeNodeInputNum(); i++) {
     auto symbol_tensor = context->GetInputSymbolTensor(i);
     GE_UNSUPPORTED_IF_NULL(symbol_tensor);
-    auto symbolic_value = symbol_tensor->GetSymbolicValue();
-    if (symbolic_value == nullptr) {
+    const auto symbolic_value = SymbolicInferUtil::GetSymbolicValues(*symbol_tensor);
+    if (symbolic_value.empty()) {
       GELOGW("SymbolicKernel compute unsupported, reason: Get input symbolic value failed, node %s[%s].",
              context->GetNodeName(), context->GetNodeType());
       return UNSUPPORTED;
     }
-    if (!input_symbols_value.empty() && input_symbols_value[0].size() != symbolic_value->size()) {
+    if (!input_symbols_value.empty() && input_symbols_value[0].size() != symbolic_value.size()) {
       GELOGW(
           "SymbolicKernel compute is not supported, reason: Get input symbolic value failed, node %s[%s], size not "
           "match "
           "%zu vs %zu",
-          context->GetNodeName(), context->GetNodeType(), input_symbols_value[0].size(), symbolic_value->size());
+          context->GetNodeName(), context->GetNodeType(), input_symbols_value[0].size(), symbolic_value.size());
       return UNSUPPORTED;
     }
-    input_symbols_value.emplace_back(*symbolic_value);
+    input_symbols_value.emplace_back(symbolic_value);
   }
   return SUCCESS;
 }
@@ -117,14 +117,14 @@ static graphStatus PackSymbolicKernelCompute(gert::InferSymbolComputeContext *co
   // 计算输出的symbolsValue
   auto output_symbol_tensor = context->GetOutputSymbolTensor(kOutputIndex);
   GE_ASSERT_NOTNULL(output_symbol_tensor);
-  auto output_symbols_value = output_symbol_tensor->MutableSymbolicValue();
-  GE_ASSERT_NOTNULL(output_symbols_value);
-  GE_ASSERT_SUCCESS(PackInputSymbolsValue(input_symbols_value, input_dims, axis_dim, *output_symbols_value));
+  std::vector<Expression> output_symbols_value;
+  GE_ASSERT_SUCCESS(PackInputSymbolsValue(input_symbols_value, input_dims, axis_dim, output_symbols_value));
 
   // 计算输出shape的symbols
   std::vector<Expression> output_symbols_shape;
   CalcOutputShapeSymbols(input_dims, axis_dim, static_cast<int64_t>(input_symbols_value.size()), output_symbols_shape);
-  output_symbol_tensor->MutableOriginSymbolShape().MutableDims() = output_symbols_shape;
+  SymbolicInferUtil::SetSymbolDims(*output_symbol_tensor, output_symbols_shape);
+  SymbolicInferUtil::SetSymbolicValues(*output_symbol_tensor, output_symbols_value);
   GELOGD("%s[%s] kernel success, %s", context->GetNodeName(), context->GetNodeType(),
          SymbolicInferUtil::DumpSymbolTensor(*output_symbol_tensor).c_str());
   return SUCCESS;

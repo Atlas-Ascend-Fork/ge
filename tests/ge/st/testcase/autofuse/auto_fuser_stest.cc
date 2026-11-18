@@ -144,9 +144,9 @@ TEST_F(AutofuserUT, Symbolic_AllConstDimValue_AllConstSymbol) {
   ASSERT_NE(attr0, nullptr);
   auto input_symbol_shape0 = attr0->symbolic_tensor.GetOriginSymbolShape();
   ASSERT_EQ(input_symbol_shape0.GetDimNum(), 3);
-  EXPECT_EQ(std::string(input_symbol_shape0.GetDim(0).Serialize().get()), "s3");
-  EXPECT_EQ(std::string(input_symbol_shape0.GetDim(1).Serialize().get()), "s4");
-  EXPECT_EQ(std::string(input_symbol_shape0.GetDim(2).Serialize().get()), "s5");
+  EXPECT_EQ(std::string(input_symbol_shape0.GetDim(0).Str().get()), "s3");
+  EXPECT_EQ(std::string(input_symbol_shape0.GetDim(1).Str().get()), "s4");
+  EXPECT_EQ(std::string(input_symbol_shape0.GetDim(2).Str().get()), "s5");
 
   auto data1 = graph->FindNode("input_1");
   ASSERT_NE(data1, nullptr);
@@ -154,9 +154,9 @@ TEST_F(AutofuserUT, Symbolic_AllConstDimValue_AllConstSymbol) {
   ASSERT_NE(attr1, nullptr);
   auto input_symbol_shape1 = attr1->symbolic_tensor.GetOriginSymbolShape();
   ASSERT_EQ(input_symbol_shape1.GetDimNum(), 3);
-  EXPECT_EQ(std::string(input_symbol_shape1.GetDim(0).Serialize().get()), "s3");
-  EXPECT_EQ(std::string(input_symbol_shape1.GetDim(1).Serialize().get()), "s4");
-  EXPECT_EQ(std::string(input_symbol_shape1.GetDim(2).Serialize().get()), "s5");
+  EXPECT_EQ(std::string(input_symbol_shape1.GetDim(0).Str().get()), "s3");
+  EXPECT_EQ(std::string(input_symbol_shape1.GetDim(1).Str().get()), "s4");
+  EXPECT_EQ(std::string(input_symbol_shape1.GetDim(2).Str().get()), "s5");
 }
 
 TEST_F(AutofuserUT, Symbolic_DynamicShapeTest_InputIsEmpty_Unsupported) {

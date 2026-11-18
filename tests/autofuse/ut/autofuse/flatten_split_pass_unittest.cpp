@@ -85,7 +85,7 @@ void SetupSplitOutputs(const NodePtr &split_node, const GeTensorDesc &out_desc) 
     split_node->GetOpDesc()
         ->MutableOutputDesc(i)
         ->GetOrCreateAttrsGroup<ge::SymbolicDescAttr>()
-        ->symbolic_tensor.MutableOriginSymbolShape() = {Symbol("s0"), Symbol("s1")};
+        ->symbolic_tensor.SetOriginSymbolShape({Symbol("s0"), Symbol("s1")});
   }
 }
 

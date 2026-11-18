@@ -28,7 +28,7 @@ graphStatus InferShape4Tile(gert::InferSymbolShapeContext *context) {
   GE_UNSUPPORTED_IF_NULL(in_shape);
   const auto multiples = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(multiples);
-  if (multiples->GetSymbolicValue() == nullptr) {
+  if (!multiples->HasValue()) {
     GELOGW("Symbol Infer unsupported, get symbolic value is nullptr, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -36,11 +36,11 @@ graphStatus InferShape4Tile(gert::InferSymbolShapeContext *context) {
   const auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
   const size_t in_shape_len = in_shape->GetDimNum();
-  const size_t multiples_len = multiples->GetSymbolicValue()->size();
+  const size_t multiples_len = multiples->GetValueCount();
   const size_t max_len = in_shape_len > multiples_len ? in_shape_len : multiples_len;
   int64_t diff_len = static_cast<int64_t>(in_shape_len) - static_cast<int64_t>(multiples_len);
   out_shape->Clear();
-  const auto multiples_value = *multiples->GetSymbolicValue();
+  const auto multiples_value = SymbolicInferUtil::GetSymbolicValues(*multiples);
   int32_t in_shape_index = 0;
   int32_t multiples_index = 0;
   for (size_t i = 0; i < max_len; ++i) {

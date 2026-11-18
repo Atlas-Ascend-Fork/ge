@@ -11,6 +11,7 @@
 #include "normal_graph/execute_graph_backend.h"
 #include "common/checker.h"
 #include "graph_metadef/graph/debug/ge_util.h"
+#include "graph/utils/execute_graph_adapter.h"
 #include "graph/utils/fast_node_utils.h"
 #include "graph/utils/graph_utils_ex.h"
 #include "graph/utils/node_adapter.h"
@@ -148,6 +149,10 @@ const std::string &ExecuteGraphBackend::GetName() const {
   return name_;
 }
 
+std::string ExecuteGraphBackend::GetNativeName() const {
+  return graph_ != nullptr ? graph_->GetName() : name_;
+}
+
 bool ExecuteGraphBackend::IsValid() const {
   return graph_ != nullptr;
 }
@@ -187,13 +192,16 @@ bool ExecuteGraphBackend::ResolveNode(const GNode &node, NodeContext &context) c
   if (context.execute_node == nullptr) {
     return false;
   }
-  context.name = context.execute_node->GetName();
   auto *owner = context.execute_node->GetExtendInfo()->GetOwnerGraphBarePtr();
   context.execute_owner = owner != nullptr ? owner->weak_from_this().lock() : nullptr;
   if (context.execute_owner != nullptr) {
     context.owner_name = context.execute_owner->GetName();
   }
   return true;
+}
+
+std::string ExecuteGraphBackend::GetNodeName(const NodeContext &context) const {
+  return context.execute_node != nullptr ? context.execute_node->GetName() : "";
 }
 
 GNode ExecuteGraphBackend::AddNodeFromDesc(const OpDescPtr &desc) {
@@ -251,7 +259,8 @@ graphStatus ExecuteGraphBackend::SetGraphOutNodesInfo(const std::vector<std::pai
     GE_ASSERT_NOTNULL(node);
     output_nodes.emplace_back(node, item.second);
   }
-  return graph_->SetGraphOutNodesInfo(output_nodes);
+  GE_ASSERT_GRAPH_SUCCESS(graph_->SetGraphOutNodesInfo(output_nodes));
+  return GRAPH_SUCCESS;
 }
 
 graphStatus ExecuteGraphBackend::SetTargets(const std::vector<Operator> &targets) {
@@ -291,18 +300,27 @@ void ExecuteGraphBackend::SetNeedIteration(bool need_iteration) {
   GE_REPORT_UNSUPPORTED_EXECUTE_OPERATION("Graph::SetNeedIteration");
 }
 
+// 执行图dump为只读快照：转成ComputeGraph后复用计算图dump链路，OpDesc复用原图对象。
+GraphPtr ExecuteGraphBackend::ConvertToComputeGraphFacade() const {
+  GE_ASSERT_TRUE(IsValid(), "Graph %s is invalid.", name_.c_str());
+  ExecuteGraphBackendUtils::NormalizeParentChain(graph_.get());
+  const auto compute_graph = ExecuteGraphAdapter::ConvertExecuteGraphToComputeGraph(graph_.get());
+  GE_ASSERT_NOTNULL(compute_graph, "Convert execute graph %s to compute graph failed.", name_.c_str());
+  const auto facade = GraphUtilsEx::CreateGraphPtrFromComputeGraph(compute_graph);
+  GE_ASSERT_NOTNULL(facade);
+  return facade;
+}
+
 graphStatus ExecuteGraphBackend::Dump(Graph::DumpFormat format, std::ostream &stream) const {
-  (void)format;
-  (void)stream;
-  GE_REPORT_UNSUPPORTED_EXECUTE_OPERATION("Graph::Dump");
-  return GRAPH_FAILED;
+  const auto facade = ConvertToComputeGraphFacade();
+  GE_ASSERT_NOTNULL(facade);
+  return facade->Dump(format, stream);
 }
 
 graphStatus ExecuteGraphBackend::DumpToFile(Graph::DumpFormat format, const AscendString &suffix) const {
-  (void)format;
-  (void)suffix;
-  GE_REPORT_UNSUPPORTED_EXECUTE_OPERATION("Graph::DumpToFile");
-  return GRAPH_FAILED;
+  const auto facade = ConvertToComputeGraphFacade();
+  GE_ASSERT_NOTNULL(facade);
+  return facade->DumpToFile(format, suffix);
 }
 
 graphStatus ExecuteGraphBackend::SaveToFile(const std::string &file_name) const {

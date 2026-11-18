@@ -965,10 +965,10 @@ TEST_F(UtestGeApiV2, CompileGraph_with_hint_option_test) {
   ASSERT_NE(data_symbol_attr0, nullptr);
   auto symbol_shape0 = data_symbol_attr0->symbolic_tensor.GetOriginSymbolShape();
   ASSERT_EQ(symbol_shape0.GetDimNum(), 4);
-  EXPECT_EQ(std::string(symbol_shape0.GetDim(0).Serialize().get()), "s0");
-  EXPECT_EQ(std::string(symbol_shape0.GetDim(1).Serialize().get()), "s1");
-  EXPECT_EQ(std::string(symbol_shape0.GetDim(2).Serialize().get()), "s2");
-  EXPECT_EQ(std::string(symbol_shape0.GetDim(3).Serialize().get()), "s3");
+  EXPECT_EQ(std::string(symbol_shape0.GetDim(0).Str().get()), "s0");
+  EXPECT_EQ(std::string(symbol_shape0.GetDim(1).Str().get()), "s1");
+  EXPECT_EQ(std::string(symbol_shape0.GetDim(2).Str().get()), "s2");
+  EXPECT_EQ(std::string(symbol_shape0.GetDim(3).Str().get()), "s3");
 
   const auto data1_node = cg->FindNode("data1");
   ASSERT_NE(data1_node, nullptr);
@@ -978,10 +978,10 @@ TEST_F(UtestGeApiV2, CompileGraph_with_hint_option_test) {
   ASSERT_NE(data_symbol_attr1, nullptr);
   auto symbol_shape1 = data_symbol_attr1->symbolic_tensor.GetOriginSymbolShape();
   ASSERT_EQ(symbol_shape1.GetDimNum(), 4);
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(0).Serialize().get()), "s4");
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(1).Serialize().get()), "s5");
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(2).Serialize().get()), "s6");
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(3).Serialize().get()), "s7");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(0).Str().get()), "s4");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(1).Str().get()), "s5");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(2).Str().get()), "s6");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(3).Str().get()), "s7");
   EXPECT_EQ(GEFinalizeV2(), SUCCESS);
   unsetenv("AUTOFUSE_FLAGS");
   mmSetEnv("ASCEND_OPP_PATH", old_opp_path_env, 1);
@@ -1031,8 +1031,8 @@ TEST_F(UtestGeApiV2, CompileGraph_unknown_rank_with_hint_option_test) {
   ASSERT_NE(data_symbol_attr0, nullptr);
   auto symbol_shape0 = data_symbol_attr0->symbolic_tensor.GetOriginSymbolShape();
   ASSERT_EQ(symbol_shape0.GetDimNum(), 2);
-  EXPECT_EQ(std::string(symbol_shape0.GetDim(0).Serialize().get()), "s1");
-  EXPECT_EQ(std::string(symbol_shape0.GetDim(1).Serialize().get()), "s2");
+  EXPECT_EQ(std::string(symbol_shape0.GetDim(0).Str().get()), "s1");
+  EXPECT_EQ(std::string(symbol_shape0.GetDim(1).Str().get()), "s2");
 
   const auto data1_node = cg->FindNode("data1");
   ASSERT_NE(data1_node, nullptr);
@@ -1042,10 +1042,10 @@ TEST_F(UtestGeApiV2, CompileGraph_unknown_rank_with_hint_option_test) {
   ASSERT_NE(data_symbol_attr1, nullptr);
   auto symbol_shape1 = data_symbol_attr1->symbolic_tensor.GetOriginSymbolShape();
   ASSERT_EQ(symbol_shape1.GetDimNum(), 4);
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(0).Serialize().get()), "s3");
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(1).Serialize().get()), "s4");
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(2).Serialize().get()), "s5");
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(3).Serialize().get()), "s6");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(0).Str().get()), "s3");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(1).Str().get()), "s4");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(2).Str().get()), "s5");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(3).Str().get()), "s6");
 
   EXPECT_EQ(GEFinalizeV2(), SUCCESS);
   unsetenv("AUTOFUSE_FLAGS");
@@ -1100,8 +1100,8 @@ TEST_F(UtestGeApiV2, CompileGraph_scalar_with_hint_option_test) {
   ASSERT_NE(data_symbol_attr1, nullptr);
   auto symbol_shape1 = data_symbol_attr1->symbolic_tensor.GetOriginSymbolShape();
   ASSERT_EQ(symbol_shape1.GetDimNum(), 2);
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(0).Serialize().get()), "s0");
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(1).Serialize().get()), "s1");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(0).Str().get()), "s0");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(1).Str().get()), "s1");
   EXPECT_EQ(GEFinalizeV2(), SUCCESS);
   unsetenv("AUTOFUSE_FLAGS");
   mmSetEnv("ASCEND_OPP_PATH", old_opp_path_env, 1);
@@ -1143,8 +1143,8 @@ TEST_F(UtestGeApiV2, CompileGraph_static_with_hint_option_test) {
   ASSERT_NE(data_symbol_attr0, nullptr);
   auto symbol_shape0 = data_symbol_attr0->symbolic_tensor.GetOriginSymbolShape();
   ASSERT_EQ(symbol_shape0.GetDimNum(), 2);
-  EXPECT_EQ(std::string(symbol_shape0.GetDim(0).Serialize().get()), "2");
-  EXPECT_EQ(std::string(symbol_shape0.GetDim(1).Serialize().get()), "3");
+  EXPECT_EQ(std::string(symbol_shape0.GetDim(0).Str().get()), "2");
+  EXPECT_EQ(std::string(symbol_shape0.GetDim(1).Str().get()), "3");
 
   const auto data1_node = cg->FindNode("data1");
   ASSERT_NE(data1_node, nullptr);
@@ -1154,8 +1154,8 @@ TEST_F(UtestGeApiV2, CompileGraph_static_with_hint_option_test) {
   ASSERT_NE(data_symbol_attr1, nullptr);
   auto symbol_shape1 = data_symbol_attr1->symbolic_tensor.GetOriginSymbolShape();
   ASSERT_EQ(symbol_shape1.GetDimNum(), 2);
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(0).Serialize().get()), "2");
-  EXPECT_EQ(std::string(symbol_shape1.GetDim(1).Serialize().get()), "3");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(0).Str().get()), "2");
+  EXPECT_EQ(std::string(symbol_shape1.GetDim(1).Str().get()), "3");
   EXPECT_EQ(GEFinalizeV2(), SUCCESS);
   unsetenv("AUTOFUSE_FLAGS");
   mmSetEnv("ASCEND_OPP_PATH", old_opp_path_env, 1);

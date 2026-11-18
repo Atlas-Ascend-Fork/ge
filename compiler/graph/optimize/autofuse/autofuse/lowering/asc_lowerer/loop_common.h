@@ -49,7 +49,7 @@ struct LoopAxis {
   friend std::ostream &operator<<(std::ostream &os, const LoopAxis &obj) {
     os << "[";
     for (size_t i = 0U; i < obj.axis.size(); i++) {
-      os << obj.axis[i];
+      os << obj.axis[i].Str().get();
       if (i + 1U < obj.axis.size()) {
         os << ", ";
       }
@@ -89,14 +89,14 @@ struct TensorLoopDesc {
     os << "Loop{";
     os << "repeats=[";
     for (size_t i = 0U; i < obj.repeats.size(); i++) {
-      os << obj.repeats[i];
+      os << obj.repeats[i].Str().get();
       if (i + 1U < obj.repeats.size()) {
         os << ", ";
       }
     }
     os << "], strides=[";
     for (size_t i = 0U; i < obj.strides.size(); i++) {
-      os << obj.strides[i];
+      os << obj.strides[i].Str().get();
       if (i + 1U < obj.strides.size()) {
         os << ", ";
       }

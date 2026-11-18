@@ -64,16 +64,18 @@ class InferSymbolShapeContextTestBuilder {
       GELOGE(GRAPH_FAILED, "Failed to malloc input holder.");
       return *this;
     }
+    gert::SymbolShape input_origin_symbol_shape;
     for (size_t i = 0U; i < shape.GetDimNum(); ++i) {
-      input_holder->MutableOriginSymbolShape().AppendDim(shape.GetDim(i));
+      input_origin_symbol_shape.AppendDim(shape.GetDim(i));
     }
+    input_holder->SetOriginSymbolShape(input_origin_symbol_shape);
     if (is_data_dependent) {
       if (symbol_value == nullptr) {
         GELOGE(GRAPH_FAILED, "symbol_value is nullptr while is_data_dependent is true!.");
       } else {
         auto symbolic_value_unique = ge::MakeUnique<std::vector<ge::Expression>>(*symbol_value);
         if (symbolic_value_unique != nullptr) {
-          input_holder->SetSymbolicValue(std::move(symbolic_value_unique));
+          SymbolicInferUtil::SetSymbolicValues(*input_holder, *symbolic_value_unique);
         }
       }
     }
@@ -82,7 +84,11 @@ class InferSymbolShapeContextTestBuilder {
   }
 
   InferSymbolShapeContextTestBuilder &AppendInputSymbolTensor(const gert::SymbolTensor &tensor) {
-    return this->AppendInputSymbolTensor(tensor.GetOriginSymbolShape(), true, tensor.GetSymbolicValue());
+    if (tensor.HasValue()) {
+      auto symbol_value = SymbolicInferUtil::GetSymbolicValues(tensor);
+      return this->AppendInputSymbolTensor(tensor.GetOriginSymbolShape(), true, &symbol_value);
+    }
+    return this->AppendInputSymbolTensor(tensor.GetOriginSymbolShape(), true, nullptr);
   }
 
   InferSymbolShapeContextTestBuilder &OutputNum(size_t num) {
@@ -448,7 +454,7 @@ class SymbolicShapeInferFuncUT : public testing::Test {
         builder.AppendInputSymbolTensor(input_shape0).AppendInputSymbolTensor(input_shape1).OutputNum(1).Build(); \
     ASSERT_TRUE(func.first != nullptr);                                                                           \
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);                                                      \
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_output_shape.GetDims());                  \
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_output_shape);                                      \
   }
 
 #define RUN_ClipByValue_TEST(input_shape0, input_shape1, input_shape2, expect_output_shape, exp_status) \
@@ -462,7 +468,7 @@ class SymbolicShapeInferFuncUT : public testing::Test {
     ASSERT_TRUE(func.first != nullptr);                                                                 \
     ASSERT_EQ(func.first(infer_context), exp_status);                                                   \
     if (exp_status == ge::GRAPH_SUCCESS) {                                                              \
-      ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_output_shape.GetDims());      \
+      ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_output_shape);                          \
     }                                                                                                   \
   }
 
@@ -500,59 +506,59 @@ class SymbolicShapeInferFuncUT : public testing::Test {
     }                                                                                                    \
   }
 
-#define RUN_REDUCE_TEST(input_shape, symbol_axes, keep_dims, expect_output_shape, status)          \
-  {                                                                                                \
-    InferSymbolShapeContextTestBuilder builder(op_type, op_name);                                  \
-    auto op_descPtr = builder.GetOrCreateOpDescPtr();                                              \
-    op_descPtr->AppendIrAttrName("keep_dims");                                                     \
-    AttrUtils::SetBool(op_descPtr, "keep_dims", keep_dims);                                        \
-    op_descPtr->AddInputDesc(GeTensorDesc());                                                      \
-    op_descPtr->AddInputDesc(GeTensorDesc(GeShape(), FORMAT_ND, DT_INT32));                        \
-    auto infer_context = builder.AppendInputSymbolTensor(input_shape)                              \
-                             .AppendInputSymbolTensor(gert::SymbolShape({}), true, symbol_axes)    \
-                             .OutputNum(1)                                                         \
-                             .Build();                                                             \
-    ASSERT_TRUE(func.first != nullptr);                                                            \
-    ASSERT_EQ(func.first(infer_context), status);                                                  \
-    if (status == ge::GRAPH_SUCCESS) {                                                             \
-      ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_output_shape.GetDims()); \
-    }                                                                                              \
+#define RUN_REDUCE_TEST(input_shape, symbol_axes, keep_dims, expect_output_shape, status)       \
+  {                                                                                             \
+    InferSymbolShapeContextTestBuilder builder(op_type, op_name);                               \
+    auto op_descPtr = builder.GetOrCreateOpDescPtr();                                           \
+    op_descPtr->AppendIrAttrName("keep_dims");                                                  \
+    AttrUtils::SetBool(op_descPtr, "keep_dims", keep_dims);                                     \
+    op_descPtr->AddInputDesc(GeTensorDesc());                                                   \
+    op_descPtr->AddInputDesc(GeTensorDesc(GeShape(), FORMAT_ND, DT_INT32));                     \
+    auto infer_context = builder.AppendInputSymbolTensor(input_shape)                           \
+                             .AppendInputSymbolTensor(gert::SymbolShape({}), true, symbol_axes) \
+                             .OutputNum(1)                                                      \
+                             .Build();                                                          \
+    ASSERT_TRUE(func.first != nullptr);                                                         \
+    ASSERT_EQ(func.first(infer_context), status);                                               \
+    if (status == ge::GRAPH_SUCCESS) {                                                          \
+      ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_output_shape);                  \
+    }                                                                                           \
   }
 
-#define RUN_REDUCE_D_TEST(input_shape, axes, keep_dims, expect_output_shape, status)               \
-  {                                                                                                \
-    InferSymbolShapeContextTestBuilder builder(op_type, op_name);                                  \
-    auto op_descPtr = builder.GetOrCreateOpDescPtr();                                              \
-    op_descPtr->AppendIrAttrName("axes");                                                          \
-    AttrUtils::SetListInt(op_descPtr, "axes", axes);                                               \
-    op_descPtr->AppendIrAttrName("keep_dims");                                                     \
-    AttrUtils::SetBool(op_descPtr, "keep_dims", keep_dims);                                        \
-    auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();        \
-    ASSERT_TRUE(func.first != nullptr);                                                            \
-    ASSERT_EQ(func.first(infer_context), status);                                                  \
-    if (status == ge::GRAPH_SUCCESS) {                                                             \
-      ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_output_shape.GetDims()); \
-    }                                                                                              \
+#define RUN_REDUCE_D_TEST(input_shape, axes, keep_dims, expect_output_shape, status)        \
+  {                                                                                         \
+    InferSymbolShapeContextTestBuilder builder(op_type, op_name);                           \
+    auto op_descPtr = builder.GetOrCreateOpDescPtr();                                       \
+    op_descPtr->AppendIrAttrName("axes");                                                   \
+    AttrUtils::SetListInt(op_descPtr, "axes", axes);                                        \
+    op_descPtr->AppendIrAttrName("keep_dims");                                              \
+    AttrUtils::SetBool(op_descPtr, "keep_dims", keep_dims);                                 \
+    auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build(); \
+    ASSERT_TRUE(func.first != nullptr);                                                     \
+    ASSERT_EQ(func.first(infer_context), status);                                           \
+    if (status == ge::GRAPH_SUCCESS) {                                                      \
+      ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_output_shape);              \
+    }                                                                                       \
   }
 
-#define RUN_LPNORMV2_TEST(input_shape, axes, keepdim, expect_output_shape, status)                 \
-  {                                                                                                \
-    InferSymbolShapeContextTestBuilder builder(op_type, op_name);                                  \
-    auto op_descPtr = builder.GetOrCreateOpDescPtr();                                              \
-    op_descPtr->AppendIrAttrName("p");                                                             \
-    AttrUtils::SetFloat(op_descPtr, "p", 2.0f);                                                    \
-    op_descPtr->AppendIrAttrName("axes");                                                          \
-    AttrUtils::SetListInt(op_descPtr, "axes", axes);                                               \
-    op_descPtr->AppendIrAttrName("keepdim");                                                       \
-    AttrUtils::SetBool(op_descPtr, "keepdim", keepdim);                                            \
-    op_descPtr->AppendIrAttrName("epsilon");                                                       \
-    AttrUtils::SetFloat(op_descPtr, "epsilon", 1e-12f);                                            \
-    auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();        \
-    ASSERT_TRUE(func.first != nullptr);                                                            \
-    ASSERT_EQ(func.first(infer_context), status);                                                  \
-    if (status == ge::GRAPH_SUCCESS) {                                                             \
-      ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_output_shape.GetDims()); \
-    }                                                                                              \
+#define RUN_LPNORMV2_TEST(input_shape, axes, keepdim, expect_output_shape, status)          \
+  {                                                                                         \
+    InferSymbolShapeContextTestBuilder builder(op_type, op_name);                           \
+    auto op_descPtr = builder.GetOrCreateOpDescPtr();                                       \
+    op_descPtr->AppendIrAttrName("p");                                                      \
+    AttrUtils::SetFloat(op_descPtr, "p", 2.0f);                                             \
+    op_descPtr->AppendIrAttrName("axes");                                                   \
+    AttrUtils::SetListInt(op_descPtr, "axes", axes);                                        \
+    op_descPtr->AppendIrAttrName("keepdim");                                                \
+    AttrUtils::SetBool(op_descPtr, "keepdim", keepdim);                                     \
+    op_descPtr->AppendIrAttrName("epsilon");                                                \
+    AttrUtils::SetFloat(op_descPtr, "epsilon", 1e-12f);                                     \
+    auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build(); \
+    ASSERT_TRUE(func.first != nullptr);                                                     \
+    ASSERT_EQ(func.first(infer_context), status);                                           \
+    if (status == ge::GRAPH_SUCCESS) {                                                      \
+      ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_output_shape);              \
+    }                                                                                       \
   }
 
 #define EXPECT_RUN_UNPACK_TEST(input_shapes, attr_value, output_shapes, exp_status)                      \
@@ -598,15 +604,15 @@ static void TestForSoftmax(const std::string &op_name, const std::string &op_typ
   auto func = GetInferFunc(op_type);
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape1.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), input_shape1.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape1);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), input_shape1);
 
   const std::vector<SymbolCheckInfo> guard_infos = shape_env.GetAllSymbolCheckInfos();
   ASSERT_EQ(guard_infos.size(), 4);
   const std::set<std::string> expect_guard = {"ExpectLt(s3, s4)", "ExpectLt(s2, s3)", "ExpectLt(s1, s2)",
                                               "ExpectLt(s0, s1)"};
   for (auto &iter : guard_infos) {
-    EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+    EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
   }
 }
 
@@ -630,15 +636,15 @@ static void TestForSoftmaxbig(const std::string &op_name, const std::string &op_
   auto func = GetInferFunc(op_type);
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape0.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), input_shape0.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape0);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), input_shape0);
 
   const std::vector<SymbolCheckInfo> guard_infos = shape_env.GetAllSymbolCheckInfos();
   ASSERT_EQ(guard_infos.size(), 4);
   const std::set<std::string> expect_guard = {"ExpectLe(s3, s4)", "ExpectLe(s2, s3)", "ExpectLe(s1, s2)",
                                               "ExpectLe(s0, s1)"};
   for (auto &iter : guard_infos) {
-    EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+    EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
   }
 }
 
@@ -661,13 +667,13 @@ static void TestForSoftmax2(const std::string &op_name, const std::string &op_ty
   auto func = GetInferFunc(op_type);
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape2.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), input_shape1.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape2);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), input_shape1);
 
   const std::vector<SymbolCheckInfo> guard_infos = shape_env.GetAllSymbolCheckInfos();
   ASSERT_EQ(guard_infos.size(), 2);
-  EXPECT_EQ(std::string(guard_infos[0].expr.Serialize().get()), "ExpectLt(s0, s1)");
-  EXPECT_EQ(std::string(guard_infos[1].expr.Serialize().get()), "ExpectLt(s1, s2)");
+  EXPECT_EQ(std::string(guard_infos[0].expr.Str().get()), "ExpectLt(s0, s1)");
+  EXPECT_EQ(std::string(guard_infos[1].expr.Str().get()), "ExpectLt(s1, s2)");
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSoftmaxCrossEntropyWithLogits2) {
@@ -689,13 +695,13 @@ static void TestForSoftmax2big(const std::string &op_name, const std::string &op
   auto func = GetInferFunc(op_type);
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape2.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), input_shape0.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape2);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), input_shape0);
 
   const std::vector<SymbolCheckInfo> guard_infos = shape_env.GetAllSymbolCheckInfos();
   ASSERT_EQ(guard_infos.size(), 2);
-  EXPECT_EQ(std::string(guard_infos[0].expr.Serialize().get()), "ExpectLe(s0, s1)");
-  EXPECT_EQ(std::string(guard_infos[1].expr.Serialize().get()), "ExpectLe(s1, s2)");
+  EXPECT_EQ(std::string(guard_infos[0].expr.Str().get()), "ExpectLe(s0, s1)");
+  EXPECT_EQ(std::string(guard_infos[1].expr.Str().get()), "ExpectLe(s1, s2)");
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSoftmaxCrossEntropyWithLogits2big) {
@@ -713,7 +719,7 @@ static void TestForElementWise(const std::string &op_name, const std::string &op
   auto func = GetInferFunc(op_type);
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape0.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape0);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRelu) {
@@ -821,7 +827,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLinearIndex) {
   auto infer_context =
       builder.AppendInputSymbolTensor(indices_shape).AppendInputSymbolTensor(shape_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b * s}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b * s}));
 }
 
 /**
@@ -845,7 +851,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForIRFFT) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, Symbol(5)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, Symbol(5)}));
 }
 
 /**
@@ -869,7 +875,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRFFT) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, Symbol(6)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, Symbol(6)}));
 }
 
 /**
@@ -887,7 +893,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRandomStandardNormal) {
   const std::vector<Expression> shape_value = {s2, s3, s4};
   auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape(), true, &shape_value).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({s2, s3, s4}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({s2, s3, s4}));
 }
 
 /**
@@ -911,7 +917,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSegmentSum) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(4), d}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(4), d}));
 }
 
 /**
@@ -939,8 +945,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSort) {
   InferSymbolShapeContextTestBuilder builder("Sort", "sort");
   auto infer_context = builder.AppendInputSymbolTensor(x_shape).OutputNum(2).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), x_shape.GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), x_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), x_shape);
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), x_shape);
 }
 
 /**
@@ -961,8 +967,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSortWithIndex) {
   auto infer_context =
       builder.AppendInputSymbolTensor(x_shape).AppendInputSymbolTensor(index_shape).OutputNum(2).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), x_shape.GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), x_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), x_shape);
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), x_shape);
 }
 
 /**
@@ -988,7 +994,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSparseSegmentMean) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(4), d}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(4), d}));
 }
 
 /**
@@ -1021,7 +1027,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSparseTensorDenseMatMul) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(3), n}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(3), n}));
 }
 
 /**
@@ -1047,9 +1053,9 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTransformBiasRescaleQkv) {
       builder.AppendInputSymbolTensor(qkv_shape).AppendInputSymbolTensor(qkv_bias_shape).OutputNum(3).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   const auto expected = gert::SymbolShape({b, Symbol(4), t, d / Symbol(3) / Symbol(4)});
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expected.GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expected.GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), expected.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), expected);
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), expected);
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(2), expected);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSquare) {
@@ -1208,7 +1214,7 @@ static void TestForBroadCast(const std::string &op_name, const std::string &op_t
                                                 "ExpectNe(1, s2)",  "ExpectNe(1, s4)", "ExpectNe(s0, s3)",
                                                 "ExpectNe(s1, s4)", "ExpectNe(1, s0)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
   }
 }
@@ -1257,7 +1263,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForIndexByTensor) {
                      .OutputNum(1U)
                      .Build();
   ASSERT_EQ(func.first(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{x0, i0, i1, x3}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{x0, i0, i1, x3}));
 
   // A short mask leaves the uncovered trailing dimensions unindexed.
   builder.Destroy();
@@ -1273,7 +1280,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForIndexByTensor) {
                 .OutputNum(1U)
                 .Build();
   ASSERT_EQ(func.first(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{i0, x1}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)), (std::vector<Expression>{i0, x1}));
 
   // An empty mask with no indices is an identity on x.
   builder.Destroy();
@@ -1286,7 +1293,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForIndexByTensor) {
   AttrUtils::SetListInt(op_desc, "indices_mask", {});
   context = builder.AppendInputSymbolTensor(gert::SymbolShape({x0, x1})).OutputNum(1U).Build();
   ASSERT_EQ(func.first(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{x0, x1}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)), (std::vector<Expression>{x0, x1}));
 
   // A mask longer than x rank and a mismatched index count are rejected.
   builder.Destroy();
@@ -1345,9 +1352,10 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMoeRouting) {
                      .OutputNum(3U)
                      .Build();
   ASSERT_EQ(func_v2.first(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{sym::Min(n * k, Symbol(8)), h}));
-  EXPECT_EQ(context->GetOutputSymbolShape(1)->GetDims(), (std::vector<Expression>{n * k}));
-  EXPECT_EQ(context->GetOutputSymbolShape(2)->GetDims(), (std::vector<Expression>{Symbol(2)}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{sym::Min(n * k, Symbol(8)), h}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(1)), (std::vector<Expression>{n * k}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(2)), (std::vector<Expression>{Symbol(2)}));
 
   InferSymbolShapeContextTestBuilder builder_v3("MoeInitRoutingV3", "moe_init_v3");
   op_desc = builder_v3.GetOrCreateOpDescPtr();
@@ -1368,10 +1376,12 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMoeRouting) {
                 .OutputNum(4U)
                 .Build();
   ASSERT_EQ(func_v3.first(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{sym::Min(n * k, Symbol(8)), h}));
-  EXPECT_EQ(context->GetOutputSymbolShape(1)->GetDims(), (std::vector<Expression>{n * k}));
-  EXPECT_EQ(context->GetOutputSymbolShape(2)->GetDims(), (std::vector<Expression>{Symbol(2), Symbol(2)}));
-  EXPECT_EQ(context->GetOutputSymbolShape(3)->GetDims(),
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{sym::Min(n * k, Symbol(8)), h}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(1)), (std::vector<Expression>{n * k}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(2)),
+            (std::vector<Expression>{Symbol(2), Symbol(2)}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(3)),
             (std::vector<Expression>{n * k, sym::Ceiling(h / Symbol(256)), Symbol(2)}));
 
   // FP4 uses active rows and one scale value per 64 hidden elements, regardless of drop-pad mode.
@@ -1394,9 +1404,10 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMoeRouting) {
                 .OutputNum(4U)
                 .Build();
   ASSERT_EQ(func_v3.first(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{Symbol(2), Symbol(4), h}));
-  EXPECT_EQ(context->GetOutputSymbolShape(1)->GetDims(), (std::vector<Expression>{n * k}));
-  EXPECT_EQ(context->GetOutputSymbolShape(3)->GetDims(),
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{Symbol(2), Symbol(4), h}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(1)), (std::vector<Expression>{n * k}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(3)),
             (std::vector<Expression>{sym::Min(n * k, Symbol(8)), sym::Ceiling(h / Symbol(64)), Symbol(2)}));
 
   // V2 drop-pad additionally exposes before-capacity counts.
@@ -1417,9 +1428,10 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMoeRouting) {
                 .OutputNum(4U)
                 .Build();
   ASSERT_EQ(func_v2.first(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{Symbol(2), Symbol(4), h}));
-  EXPECT_EQ(context->GetOutputSymbolShape(1)->GetDims(), (std::vector<Expression>{n * k}));
-  EXPECT_EQ(context->GetOutputSymbolShape(3)->GetDims(), (std::vector<Expression>{Symbol(2)}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{Symbol(2), Symbol(4), h}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(1)), (std::vector<Expression>{n * k}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(3)), (std::vector<Expression>{Symbol(2)}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMoeFinalizeRoutingV2) {
@@ -1437,7 +1449,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMoeFinalizeRoutingV2) {
                      .OutputNum(1U)
                      .Build();
   ASSERT_EQ(func.first(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{rows, h}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)), (std::vector<Expression>{rows, h}));
 
   builder.Destroy();
   op_desc = builder.GetOrCreateOpDescPtr();
@@ -1448,7 +1460,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMoeFinalizeRoutingV2) {
                 .OutputNum(1U)
                 .Build();
   ASSERT_EQ(func.first(context), GRAPH_SUCCESS);
-  EXPECT_EQ(context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{rows, h}));
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(*context->GetOutputSymbolShape(0)), (std::vector<Expression>{rows, h}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMoeFinalizeRoutingV2InvalidPaths) {
@@ -1753,7 +1765,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceMissingEndDoes
   ASSERT_EQ(output_shape->GetDimNum(), 2);
   EXPECT_EQ(output_shape->GetDim(1), s1);
   for (const auto &guard_info : shape_env.GetAllSymbolCheckInfos()) {
-    EXPECT_EQ(std::string(guard_info.expr.Serialize().get()).find("s1"), std::string::npos);
+    EXPECT_EQ(std::string(guard_info.expr.Str().get()).find("s1"), std::string::npos);
   }
 }
 
@@ -1985,7 +1997,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMatrixDiag) {
   InferSymbolShapeContextTestBuilder builder("MatrixDiag", "matrix_diag");
   auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({b, m, n})).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, m, n, n}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, m, n, n}));
 }
 
 /**
@@ -2022,8 +2034,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMaxPoolWithArgmax) {
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   const auto expected = gert::SymbolShape(
       {n, sym::Floor((h - Symbol(2) + Symbol(2)) / Symbol(2)), sym::Floor((w - Symbol(2) + Symbol(2)) / Symbol(2)), c});
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expected.GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expected.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), expected);
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), expected);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForApplyGradientDescent) {
@@ -2056,7 +2068,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAddcmul) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_data_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), input_data_shape);
 }
 
 /**
@@ -2095,7 +2107,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForArgMaxV2) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, s}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, s}));
 }
 
 /**
@@ -2117,8 +2129,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAsStrided) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(),
-            gert::SymbolShape({Symbol(2), Symbol(3), Symbol(4)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(2), Symbol(3), Symbol(4)}));
 }
 
 /**
@@ -2140,7 +2151,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAtan2) {
   InferSymbolShapeContextTestBuilder builder("Atan2", "atan2");
   auto infer_context = builder.AppendInputSymbolTensor(x1_shape).AppendInputSymbolTensor(x2_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), x1_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), x1_shape);
 }
 
 /**
@@ -2166,7 +2177,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLerp) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), start_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), start_shape);
 }
 
 /**
@@ -2189,7 +2200,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForPRelu) {
   auto infer_context =
       builder.AppendInputSymbolTensor(x_shape).AppendInputSymbolTensor(weight_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), x_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), x_shape);
 }
 
 /**
@@ -2216,7 +2227,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRepeatInterleave) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, s * Symbol(2)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, s * Symbol(2)}));
 }
 
 /**
@@ -2245,10 +2256,10 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAvgPool) {
   ge::AttrUtils::SetStr(op_desc, "data_format", "NHWC");
   auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({n, h, w, c})).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(),
-            gert::SymbolShape({n, sym::Floor((h - Symbol(2) + Symbol(2)) / Symbol(2)),
-                               sym::Floor((w - Symbol(2) + Symbol(2)) / Symbol(2)), c})
-                .GetDims());
+  EXPECT_EQ(
+      SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)),
+      SymbolicInferUtil::GetSymbolDims(gert::SymbolShape({n, sym::Floor((h - Symbol(2) + Symbol(2)) / Symbol(2)),
+                                                          sym::Floor((w - Symbol(2) + Symbol(2)) / Symbol(2)), c})));
 }
 
 /**
@@ -2277,10 +2288,10 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMaxPool) {
   ge::AttrUtils::SetStr(op_desc, "data_format", "NHWC");
   auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({n, h, w, c})).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(),
-            gert::SymbolShape({n, sym::Floor((h - Symbol(2) + Symbol(2)) / Symbol(2)),
-                               sym::Floor((w - Symbol(2) + Symbol(2)) / Symbol(2)), c})
-                .GetDims());
+  EXPECT_EQ(
+      SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)),
+      SymbolicInferUtil::GetSymbolDims(gert::SymbolShape({n, sym::Floor((h - Symbol(2) + Symbol(2)) / Symbol(2)),
+                                                          sym::Floor((w - Symbol(2) + Symbol(2)) / Symbol(2)), c})));
 }
 
 /**
@@ -2308,7 +2319,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForIndexPutV2) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, s, h}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, s, h}));
 }
 
 /**
@@ -2358,8 +2369,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForEye) {
   ge::AttrUtils::SetInt(op_desc, "dtype", 0);
   auto infer_context = builder.OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(),
-            gert::SymbolShape({Symbol(2), Symbol(3), Symbol(4)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(2), Symbol(3), Symbol(4)}));
 }
 
 /**
@@ -2386,8 +2396,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForForeachNorm) {
                            .OutputNum(2)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(1)}).GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({Symbol(1)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(1)}));
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({Symbol(1)}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAssignAdd) {
@@ -2653,7 +2663,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSplitV) {
     ASSERT_EQ(assert_infos.size(), 1);
     const std::set<std::string> assert_guard = {"ExpectLe(3, s1)"};
     for (auto &iter : assert_infos) {
-      EXPECT_NE(assert_guard.find(std::string(iter.expr.Serialize().get())), assert_guard.end());
+      EXPECT_NE(assert_guard.find(std::string(iter.expr.Str().get())), assert_guard.end());
     }
   }
   {
@@ -2692,8 +2702,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSplitVConcreteSizes) {
                            .OutputNum(2)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(2), Symbol(1)}).GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({Symbol(2), Symbol(3)}).GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(2), Symbol(1)}));
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({Symbol(2), Symbol(3)}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForFill) {
@@ -2712,7 +2722,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForFill) {
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
 
   auto output_shape = infer_context->GetOutputSymbolShape(0);
-  ASSERT_EQ(output_shape->GetDims(), gert::SymbolShape({s3, s3, s4, s5}).GetDims());
+  ASSERT_EQ(*output_shape, gert::SymbolShape({s3, s3, s4, s5}));
 
   builder.Destroy();
   infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape(), true, nullptr).OutputNum(1).Build();
@@ -2905,7 +2915,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRange) {
     ASSERT_EQ(guard_infos.size(), 1);
     const std::set<std::string> expect_guard = {"ExpectLt(s0, s1)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
     const std::vector<SymbolCheckInfo> assert_infos = shape_env.GetAllSymbolAssertInfos();
     ASSERT_EQ(assert_infos.size(), 0);
@@ -2936,7 +2946,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRange) {
     ASSERT_EQ(guard_infos.size(), 1);
     const std::set<std::string> expect_guard = {"ExpectLt(0, s0)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
     const std::vector<SymbolCheckInfo> assert_infos = shape_env.GetAllSymbolAssertInfos();
     ASSERT_EQ(assert_infos.size(), 0);
@@ -2955,13 +2965,13 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRange) {
     ASSERT_EQ(guard_infos.size(), 2);
     const std::set<std::string> expect_guard = {"ExpectLt(s1, s0)", "ExpectLe(s1, s0)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
     const std::vector<SymbolCheckInfo> assert_infos = shape_env.GetAllSymbolAssertInfos();
     ASSERT_EQ(assert_infos.size(), 2);
     const std::set<std::string> assert_guard = {"ExpectNe(0, s2)", "ExpectLt(s2, 0)"};
     for (auto &iter : assert_infos) {
-      EXPECT_NE(assert_guard.find(std::string(iter.expr.Serialize().get())), assert_guard.end());
+      EXPECT_NE(assert_guard.find(std::string(iter.expr.Str().get())), assert_guard.end());
     }
   }
 }
@@ -3127,13 +3137,13 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSelect) {
                              .OutputNum(1)
                              .Build();
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape0.GetDims());
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape0);
     const std::vector<SymbolCheckInfo> guard_infos = shape_env.GetAllSymbolAssertInfos();
     ASSERT_EQ(guard_infos.size(), 4);
     const std::set<std::string> expect_guard = {"ExpectEq(s1, s5)", "ExpectEq(s0, s4)", "ExpectEq(s3, s5)",
                                                 "ExpectEq(s2, s4)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
   }
   {
@@ -3156,12 +3166,12 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSelect) {
                              .OutputNum(1)
                              .Build();
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape0.GetDims());
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape0);
     const std::vector<SymbolCheckInfo> guard_infos = shape_env.GetAllSymbolAssertInfos();
     ASSERT_EQ(guard_infos.size(), 3);
     const std::set<std::string> expect_guard = {"ExpectEq(s0, s4)", "ExpectEq(s3, s5)", "ExpectEq(s2, s4)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
   }
   {
@@ -3184,12 +3194,12 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSelect) {
                              .OutputNum(1)
                              .Build();
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape0.GetDims());
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape0);
     const std::vector<SymbolCheckInfo> guard_infos = shape_env.GetAllSymbolAssertInfos();
     ASSERT_EQ(guard_infos.size(), 2);
     const std::set<std::string> expect_guard = {"ExpectEq(s3, s5)", "ExpectEq(s2, s4)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
   }
   {
@@ -3218,7 +3228,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSelect) {
     ASSERT_EQ(guard_infos.size(), 3);
     const std::set<std::string> expect_guard = {"ExpectEq(s2, s5)", "ExpectEq(s3, s6)", "ExpectEq(s4, s7)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
   }
 }
@@ -3244,7 +3254,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTile) {
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0 * ge::Symbol(2), s1 * ge::Symbol(3)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 场景2：输入shape大于重复次数大小
   // 输入shape{s0, s1, s2}, 重复次数[2, 3]
@@ -3258,7 +3268,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTile) {
                       .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   expect_shape = gert::SymbolShape({s0 * ge::Symbol(1), s1 * ge::Symbol(2), s2 * ge::Symbol(3)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 场景2：输入shape小于重复次数大小
   // 输入shape{s0, s1}, 重复次数[2, 3, 4]
@@ -3272,7 +3282,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTile) {
                       .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   expect_shape = gert::SymbolShape({ge::Symbol(1) * ge::Symbol(2), s0 * ge::Symbol(3), s1 * ge::Symbol(4)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // test no symbol value
   builder.Destroy();
@@ -3307,7 +3317,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTileD) {
   auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0 * ge::Symbol(2), s1 * ge::Symbol(3)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 场景2：输入shape大于重复次数大小
   // 输入shape{s0, s1, s2}, 重复次数[2, 3]
@@ -3321,7 +3331,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTileD) {
   infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   expect_shape = gert::SymbolShape({s0 * ge::Symbol(1), s1 * ge::Symbol(2), s2 * ge::Symbol(3)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 场景3：输入shape小于重复次数大小
   // 输入shape{s0, s1}, 重复次数[2, 3, 4]
@@ -3335,7 +3345,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTileD) {
   infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   expect_shape = gert::SymbolShape({ge::Symbol(1) * ge::Symbol(2), s0 * ge::Symbol(3), s1 * ge::Symbol(4)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTranpose) {
@@ -3611,7 +3621,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSqueeze) {
   auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0, s1});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 正常场景2：传入axis且所要压缩的维度值等于1
   // input_shape={s0, 1, s1, 1}  axis={1，3}
@@ -3623,7 +3633,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSqueeze) {
   infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   expect_shape = gert::SymbolShape({s0, s1});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 异常场景1：传入axis, 要压缩的维度值不等于1
   // input_shape={s0, 1, s1, 2}  axis={3}
@@ -3654,7 +3664,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSqueezeV3) {
   auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0, s1});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 正常场景2：传入axis且所要压缩的维度值等于1
   // 入参input_shape={s0, 1, s1, 1}  axes={3}
@@ -3668,7 +3678,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSqueezeV3) {
                       .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   expect_shape = gert::SymbolShape({s0, ge::Symbol(1), s1});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 异常场景1：传入axis, 要压缩的维度值不等于1
   // 入参input_shape={s0, 1, s1, 2}  axes={3}
@@ -3738,7 +3748,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForUnSqueeze) {
   auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0, s1, s2});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 正常场景2：传入axis, 在对应维度上扩展新的维度1
   // input_shape={s0, s1, s2}, axis={1，3}
@@ -3751,7 +3761,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForUnSqueeze) {
   infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   expect_shape = gert::SymbolShape({s0, ge::Symbol(1), s1, ge::Symbol(1), s2});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 异常场景1：传入axis，axis的值超过输入的shape dim num + axis 的size
   // input_shape={s0, s1, s2}, axis={5}
@@ -3786,7 +3796,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForUnsqueezeV3) {
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0, s1, s2});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 正常场景2：传入axes, 在对应维度上扩展新的维度1
   // 入参input_shape={s0, s1, s2}, axes={1，3}
@@ -3800,7 +3810,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForUnsqueezeV3) {
                       .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   expect_shape = gert::SymbolShape({s0, ge::Symbol(1), s1, ge::Symbol(1), s2});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 异常场景1：传入axes，axes的值超过输入的shape dim num + axes 的size
   // 入参input_shape={s0, s1, s2}, axes={5}
@@ -4138,7 +4148,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForPad) {
 
   auto expect_shape = gert::SymbolShape(
       {s0 + ge::Symbol(1) + ge::Symbol(2), s1 + ge::Symbol(2) + ge::Symbol(1), s2 + ge::Symbol(3) + ge::Symbol(3)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 异常场景1：paddings为空
   builder.Destroy();
@@ -4199,7 +4209,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMirrorPad) {
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   const auto expect_shape =
       gert::SymbolShape({s0 + Symbol(1) + Symbol(2), s1 + Symbol(2) + Symbol(1), s2 + Symbol(3) + Symbol(3)});
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 }
 
 static void BuildStridedSliceInferContext(InferSymbolShapeContextTestBuilder &builder,
@@ -4318,7 +4328,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSlice_1) {
         "ExpectLe(s2, 5)", "ExpectLe(s3, 5)", "ExpectLe(s3, 3)", "ExpectLt(0, s0)", "ExpectLt(1, s1)",
         "ExpectLt(2, s2)", "ExpectLt(4, s4)", "ExpectLt(5, s4)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
     const std::vector<SymbolCheckInfo> assert_guard_infos = shape_env.GetAllSymbolAssertInfos();
     ASSERT_EQ(assert_guard_infos.size(), 0);
@@ -4560,7 +4570,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSlice_1) {
         "ExpectLe(s3, 3)", "ExpectLe(s3, 5)", "ExpectLt(0, s0)", "ExpectLt(1, s0)", "ExpectLt(1, s1)",
         "ExpectLt(2, s2)", "ExpectLt(2, s4)", "ExpectLt(4, s4)", "ExpectLt(5, s4)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
     // Non-negativity guards now register as check infos (EXPECT clamp form) instead of
     // assert infos; the assert set stays empty under the full-range-aware clamp.
@@ -4630,7 +4640,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceNegativeStride
   BuildStridedSliceInferContext(builder, {Symbol(5)}, {Symbol(4)}, {Symbol(-1)}, {Symbol(-1)});
   auto infer_context = builder.Build();
   ASSERT_EQ(func.first(infer_context), SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), std::vector<Expression>{Symbol(0)});
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)),
+            std::vector<Expression>{Symbol(0)});
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceNegativeStrideEndMask) {
@@ -4640,7 +4651,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceNegativeStride
   BuildStridedSliceInferContext(builder, {Symbol(5)}, {Symbol(4)}, {Symbol(-1)}, {Symbol(-1)}, 0, 1);
   auto infer_context = builder.Build();
   ASSERT_EQ(func.first(infer_context), SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), std::vector<Expression>{Symbol(5)});
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)),
+            std::vector<Expression>{Symbol(5)});
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceEmptyRange) {
@@ -4650,7 +4662,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceEmptyRange) {
   BuildStridedSliceInferContext(builder, {Symbol(5)}, {Symbol(4)}, {Symbol(2)}, {Symbol(1)});
   auto infer_context = builder.Build();
   ASSERT_EQ(func.first(infer_context), SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), std::vector<Expression>{Symbol(0)});
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)),
+            std::vector<Expression>{Symbol(0)});
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceZeroDimEllipsis) {
@@ -4662,7 +4675,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceZeroDimEllipsi
                                 {Symbol(1), Symbol(1), Symbol(1), Symbol(1)}, 0, 0, 0b0010, 0b0001);
   auto infer_context = builder.Build();
   ASSERT_EQ(func.first(infer_context), SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(),
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)),
             (std::vector<Expression>{Symbol(1), Symbol(4), Symbol(4)}));
 }
 
@@ -4714,7 +4727,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceV3OnlyStrides)
 
   auto infer_context = builder.Build();
   ASSERT_EQ(func.first(infer_context), SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{Symbol(3), Symbol(4)}));
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{Symbol(3), Symbol(4)}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceV3OnlyAxes) {
@@ -4727,7 +4741,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceV3OnlyAxes) {
 
   auto infer_context = builder.Build();
   ASSERT_EQ(func.first(infer_context), SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{Symbol(4), Symbol(8)}));
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{Symbol(4), Symbol(8)}));
 }
 
 /**
@@ -4749,7 +4764,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceV3SymbolicBegi
 
   auto infer_context = builder.Build();
   ASSERT_EQ(func.first(infer_context), SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{dim - begin}));
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{dim - begin}));
 }
 
 // begin 为无 hint 的裸符号：无法选择符号/clip 分支，断言 PARAM_INVALID
@@ -4831,13 +4847,13 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBatchMatMulV2) {
     ASSERT_EQ(guard_infos.size(), 3);
     const std::set<std::string> expect_guard = {"ExpectEq(1, s0)", "ExpectNe(1, s2)", "ExpectNe(s0, s2)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
     const std::vector<SymbolCheckInfo> assert_infos = shape_env.GetAllSymbolAssertInfos();
     ASSERT_EQ(assert_infos.size(), 1);
     const std::set<std::string> assert_guard = {"ExpectEq(s1, s3)"};
     for (auto &iter : assert_infos) {
-      EXPECT_NE(assert_guard.find(std::string(iter.expr.Serialize().get())), assert_guard.end());
+      EXPECT_NE(assert_guard.find(std::string(iter.expr.Str().get())), assert_guard.end());
     }
   }
 }
@@ -4845,8 +4861,12 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBatchMatMulV2) {
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeTestCommon) {
   int64_t value = 0;
   gert::SymbolTensor tensor;
-  tensor.MutableSymbolicValue()->push_back(ge::Symbol(1));
-  EXPECT_EQ(ge::SymbolicInferUtil::TryGetConstInt(tensor.GetSymbolicValue()->at(0), value), ge::GRAPH_SUCCESS);
+  tensor.SetValueCount(1UL);
+  tensor.SetValue(0UL, ge::Symbol(1));
+  EXPECT_EQ(ge::SymbolicInferUtil::TryGetConstInt(tensor.GetValue(0), value), ge::GRAPH_SUCCESS);
+  // 非整数常量（如 DT_FLOAT 符号化的 RealDouble/Rational）降级而非断言
+  tensor.SetValue(0UL, ge::Expression(ge::Symbol(1.5F)));
+  EXPECT_NE(ge::SymbolicInferUtil::TryGetConstInt(tensor.GetValue(0), value), ge::GRAPH_SUCCESS);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMatmulV2) {
@@ -4908,7 +4928,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForPadD) {
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape(
       {s0 + ge::Symbol(1) + ge::Symbol(2), s1 + ge::Symbol(2) + ge::Symbol(1), s2 + ge::Symbol(3) + ge::Symbol(3)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
   //
   // 异常场景1：paddings为空
   builder.Destroy();
@@ -5112,9 +5132,9 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNorm) {
   auto expect_shape1 = gert::SymbolShape({s0, s1, s2});
   auto expect_shape2 = gert::SymbolShape({s0, s1, Symbol(1)});
   auto expect_shape3 = gert::SymbolShape({s0, s1, Symbol(1)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape1.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape2.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), expect_shape3.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape1);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape2);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(2), expect_shape3);
   // 异常场景：axis,不在范围内
   builder.Destroy();
   op_descPtr = builder.GetOrCreateOpDescPtr();
@@ -5376,7 +5396,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceD) {
         "ExpectLt(2, s2)", "ExpectLt(2, s4)", "ExpectLt(3, s1)", "ExpectLt(3, s3)", "ExpectLt(4, s4)",
         "ExpectLt(5, s1)", "ExpectLt(5, s2)", "ExpectLt(5, s3)", "ExpectLt(5, s4)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
     // Non-negativity guards now register as check infos (EXPECT clamp form) instead of
     // assert infos; the assert set stays empty under the full-range-aware clamp.
@@ -5542,7 +5562,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBiasAddGrad) {
   auto func = GetInferFunc("BiasAddGrad");
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({s2}).GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({s2}));
 
   builder.Destroy();
   op_desc = builder.GetOrCreateOpDescPtr();
@@ -5557,7 +5577,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBiasAddGrad) {
   AttrUtils::SetStr(op_desc, "data_format", "NCHW");
   infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({s0}).GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({s0}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBroadcastTo) {
@@ -5575,7 +5595,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBroadcastTo) {
   auto func = GetInferFunc("BroadcastTo");
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), symbol_value);
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)), symbol_value);
 
   // 异常场景1 shape小于input_shape
   builder.Destroy();
@@ -5638,8 +5658,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBroadcastToMinusOneHintGua
   bool has_minus_one_guard = false;
   const auto guards = shape_env.GetAllSymbolCheckInfos();
   for (const auto &guard : guards) {
-    const std::string guard_str(guard.expr.Serialize().get());
-    if (guard_str.find(minus_one.Serialize().get()) != std::string::npos) {
+    const std::string guard_str(guard.expr.Str().get());
+    if (guard_str.find(minus_one.Str().get()) != std::string::npos) {
       has_minus_one_guard = true;
     }
   }
@@ -5672,8 +5692,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormBetaGammaBackprop
   auto func = GetInferFunc("LayerNormBetaGammaBackpropV2");
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({kone, s1, kone}).GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({kone, s1, kone}).GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({kone, s1, kone}));
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({kone, s1, kone}));
 
   builder.Destroy();
   gamma_shape = {2};
@@ -5683,8 +5703,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormBetaGammaBackprop
   infer_context =
       builder.AppendInputSymbolTensor(dy_shape).AppendInputSymbolTensor(res_for_gamma_shape).OutputNum(2).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({ktwo}).GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({ktwo}).GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({ktwo}));
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({ktwo}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormV3) {
@@ -5711,9 +5731,9 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormV3) {
   auto func = GetInferFunc("LayerNormV3");
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), x_shape.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({s0, s1, kone}).GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), gert::SymbolShape({s0, s1, kone}).GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), x_shape);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({s0, s1, kone}));
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(2), gert::SymbolShape({s0, s1, kone}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormXBackpropV3) {
@@ -5737,8 +5757,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormXBackpropV3) {
   auto func = GetInferFunc("LayerNormXBackpropV3");
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape1.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), input_shape1.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape1);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), input_shape1);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormXBackpropV2) {
@@ -5762,8 +5782,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormXBackpropV2) {
   auto func = GetInferFunc("LayerNormXBackpropV2");
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape1.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), input_shape1.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape1);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), input_shape1);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormV4) {
@@ -5791,9 +5811,9 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormV4) {
   auto expect_shape1 = gert::SymbolShape({s0, s1, s2});
   auto expect_shape2 = gert::SymbolShape({s0, kone, kone});
   auto expect_shape3 = gert::SymbolShape({s0, kone, kone});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape1.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape2.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), expect_shape3.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape1);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape2);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(2), expect_shape3);
 
   // 正常场景2：norm_shape为scalar，norm_shape_len=1
   // x_shape={s0, s1, s2} norm_shape shape={}
@@ -5805,9 +5825,9 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForLayerNormV4) {
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   expect_shape2 = gert::SymbolShape({s0, s1, kone});
   expect_shape3 = gert::SymbolShape({s0, s1, kone});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape1.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape2.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), expect_shape3.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape1);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape2);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(2), expect_shape3);
 
   // 异常场景1：norm_shape的维度数 > 1
   // x_shape={s0, s1, s2} norm_shape shape={2, 3}
@@ -6656,7 +6676,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForExtendConv2DY1FeedsNextX) 
   ASSERT_NE(y_shape, nullptr);
   ASSERT_NE(y1_shape, nullptr);
   ASSERT_EQ(y1_shape->GetDimNum(), 4U);
-  ASSERT_EQ(y1_shape->GetDims(), y_shape->GetDims());
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*y1_shape), SymbolicInferUtil::GetSymbolDims(*y_shape));
   ASSERT_EQ(y1_shape->GetDim(0), s0);
   ASSERT_EQ(y1_shape->GetDim(3), s7);
 
@@ -6672,7 +6692,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForExtendConv2DY1FeedsNextX) 
   ASSERT_NE(next_y_shape, nullptr);
   ASSERT_NE(next_y1_shape, nullptr);
   ASSERT_EQ(next_y_shape->GetDimNum(), 4U);
-  ASSERT_EQ(next_y1_shape->GetDims(), next_y_shape->GetDims());
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*next_y1_shape), SymbolicInferUtil::GetSymbolDims(*next_y_shape));
   ASSERT_EQ(next_y_shape->GetDim(0), s0);
   ASSERT_EQ(next_y_shape->GetDim(3), s8);
   first_builder.Destroy();
@@ -6850,8 +6870,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAddLayerNorm) {
   InferSymbolShapeContextTestBuilder builder("AddLayerNorm", "addlayernorm");
   auto x1_shape = gert::SymbolShape({s0, s1, s2});
   auto x2_shape = gert::SymbolShape({s0, s1, s2});
-  auto gamma_shape = gert::SymbolShape({s0, s1, s2});
-  auto beta_shape = gert::SymbolShape({s0, s1, s2});
+  auto gamma_shape = gert::SymbolShape({s1, s2});
+  auto beta_shape = gert::SymbolShape({s1, s2});
   auto op_descPtr = builder.GetOrCreateOpDescPtr();
   auto infer_context = builder.AppendInputSymbolTensor(x1_shape)
                            .AppendInputSymbolTensor(x2_shape)
@@ -6864,13 +6884,13 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAddLayerNorm) {
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape1 = gert::SymbolShape({s0, s1, s2});
-  auto expect_shape2 = gert::SymbolShape({s0, s1, Symbol(1)});
-  auto expect_shape3 = gert::SymbolShape({s0, s1, Symbol(1)});
+  auto expect_shape2 = gert::SymbolShape({s0, Symbol(1), Symbol(1)});
+  auto expect_shape3 = gert::SymbolShape({s0, Symbol(1), Symbol(1)});
   auto expect_shape4 = gert::SymbolShape({s0, s1, s2});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape1.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape2.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), expect_shape3.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(3)->GetDims(), expect_shape4.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape1);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape2);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(2), expect_shape3);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(3), expect_shape4);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForApplyAdagradD) {
@@ -6898,8 +6918,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForApplyAdagradD) {
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape1 = gert::SymbolShape({s0, s1, s2});
   auto expect_shape2 = gert::SymbolShape({s0, s1, s2});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape1.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape2.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape1);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape2);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForApplyAdamD) {
@@ -6924,9 +6944,9 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForApplyAdamD) {
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0, s1, s2});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(2), expect_shape);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAssign) {
@@ -6947,7 +6967,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAssign) {
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape1 = gert::SymbolShape({s0, s1, s2});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape1.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape1);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBNTrainingUpdate) {
@@ -6976,11 +6996,11 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBNTrainingUpdate) {
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape1 = gert::SymbolShape({s0, s1, s2});
   auto expect_shape2 = gert::SymbolShape({s0, s1});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape1.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape2.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), expect_shape2.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(3)->GetDims(), expect_shape2.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(4)->GetDims(), expect_shape2.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape1);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape2);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(2), expect_shape2);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(3), expect_shape2);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(4), expect_shape2);
 }
 
 /**
@@ -7011,9 +7031,9 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBatchNormV3) {
   const auto func = GetInferFunc("BatchNormV3");
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), x_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), x_shape);
   for (size_t i = 1U; i < 5U; ++i) {
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(i)->GetDims(), parameter_shape.GetDims());
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(i), parameter_shape);
   }
 }
 
@@ -7046,11 +7066,11 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBatchNorm) {
   const auto func = GetInferFunc("BatchNorm");
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), x_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), x_shape);
   for (size_t i = 1U; i < 5U; ++i) {
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(i)->GetDims(), parameter_shape.GetDims());
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(i), parameter_shape);
   }
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(5)->GetDims(), gert::SymbolShape({Symbol(1)}).GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(5), gert::SymbolShape({Symbol(1)}));
 }
 
 /**
@@ -7110,7 +7130,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSelectV2) {
                              .OutputNum(1)
                              .Build();
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape0.GetDims());
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape0);
   }
   {
     // condition维度数量为1且等于输入的第0维度
@@ -7129,7 +7149,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSelectV2) {
                              .OutputNum(1)
                              .Build();
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape0.GetDims());
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape0);
   }
   {
     // condition维度数量为0
@@ -7149,7 +7169,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSelectV2) {
                              .OutputNum(1)
                              .Build();
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape0.GetDims());
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape0);
   }
   {
     // condition维度数量不为0或1且维度数量不等于后面的输入
@@ -7173,7 +7193,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSelectV2) {
                              .OutputNum(1)
                              .Build();
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape0.GetDims());
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape0);
   }
   {
     // condition维度数量大于后面的输入可以进行广播
@@ -7197,7 +7217,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSelectV2) {
                              .OutputNum(1)
                              .Build();
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({s0, s1, s4, s5}).GetDims());
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({s0, s1, s4, s5}));
   }
   {
     // condition和输入的维度不同且无法广播
@@ -7247,8 +7267,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBNTrainingUpdateGrad) {
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s3});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForGatherShapes) {
@@ -7274,7 +7294,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForGatherShapes) {
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = std::vector<Expression>{Symbol(axes.size())};
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape);
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)), expect_shape);
 
   // 校验axes异常
   builder.Destroy();
@@ -7338,7 +7358,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSparseToDense) {
   const auto func = GetInferFunc("SparseToDense");
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), symbol_value);
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)), symbol_value);
 
   // SymbolicValue为空
   builder.Destroy();
@@ -7390,7 +7410,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForDiagPartD) {
   ASSERT_TRUE(func.first != nullptr);
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0, s1});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 }
 
 static void RunMatrixDiagV2InferSymbolShapeTest(const gert::SymbolShape &diagonal_shape,
@@ -7413,7 +7433,7 @@ static void RunMatrixDiagV2InferSymbolShapeTest(const gert::SymbolShape &diagona
   ASSERT_TRUE(func.first != nullptr);
   if (expect_status == ge::GRAPH_SUCCESS) {
     ASSERT_EQ(func.first(infer_context), expect_status);
-    ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+    ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
   } else {
     ASSERT_NE(func.first(infer_context), ge::GRAPH_SUCCESS);
   }
@@ -7517,7 +7537,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForPadV3) {
 
   auto expect_shape = gert::SymbolShape(
       {s0 + ge::Symbol(1) + ge::Symbol(2), s1 + ge::Symbol(2) + ge::Symbol(1), s2 + ge::Symbol(3) + ge::Symbol(3)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 正常场景2：paddings_contiguous为false
   builder.Destroy();
@@ -7537,7 +7557,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForPadV3) {
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   expect_shape = gert::SymbolShape(
       {s0 + ge::Symbol(1) + ge::Symbol(1), s1 + ge::Symbol(2) + ge::Symbol(3), s2 + ge::Symbol(2) + ge::Symbol(3)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 异常场景1：the paddings type is not int32 or int64
   builder.Destroy();
@@ -7612,7 +7632,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForUnsortedSegmentMin) {
                            .Build();
 
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(5), s1, s2}).GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(5), s1, s2}));
 
   // 异常场景1：segment_num 无值（非数据依赖常量），符号化推导不支持，返回 UNSUPPORTED 走 fallback
   builder.Destroy();
@@ -7650,7 +7670,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForUnsortedSegmentMinScalarNu
   auto input_shape = gert::SymbolShape({s0, s1, s2});
   auto segment_ids = gert::SymbolShape({s0});
   auto segment_val = std::vector<Expression>{Symbol(5)};
-  const auto expect_output = gert::SymbolShape({Symbol(5), s1, s2}).GetDims();
+  const auto expect_output = SymbolicInferUtil::GetSymbolDims(gert::SymbolShape({Symbol(5), s1, s2}));
 
   // Destroy 后 OpDesc 会被重置，每个场景需重建输入 desc
   auto rebuild_desc = [&builder]() {
@@ -7670,7 +7690,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForUnsortedSegmentMinScalarNu
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_output);
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)), expect_output);
 
   // 场景2：num_segments 为 rank 2（如 [1,1]），单元素值，应推导成功
   rebuild_desc();
@@ -7681,7 +7701,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForUnsortedSegmentMinScalarNu
                       .OutputNum(1)
                       .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_output);
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)), expect_output);
 
   // 场景3：value 多元素（无论 rank）仍应拒绝
   rebuild_desc();
@@ -7772,8 +7792,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForSparseSoftmaxCrossEntropyW
   auto infer_context = builder.AppendInputSymbolTensor(input_shape).AppendInputSymbolTensor(label).OutputNum(2).Build();
 
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({s0}).GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({s0, s1}).GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({s0}));
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({s0, s1}));
 }
 
 // set flattenV2 attrs
@@ -7805,7 +7825,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForFlattenV2) {
   auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0, s1 * s2});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 正常场景2：传入axis和end_axis值，展平所有维度
   // input_shape={s0, s1, s2, s3}  axis=2, end_axis=3
@@ -7817,7 +7837,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForFlattenV2) {
   infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   expect_shape = gert::SymbolShape({s0, s1, s2 * s3});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 
   // 异常场景1：axis值超出范围
   builder.Destroy();
@@ -7912,13 +7932,13 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBatchMatMulV3) {
     ASSERT_EQ(guard_infos.size(), 3);
     const std::set<std::string> expect_guard = {"ExpectEq(1, s0)", "ExpectNe(1, s2)", "ExpectNe(s0, s2)"};
     for (auto &iter : guard_infos) {
-      EXPECT_NE(expect_guard.find(std::string(iter.expr.Serialize().get())), expect_guard.end());
+      EXPECT_NE(expect_guard.find(std::string(iter.expr.Str().get())), expect_guard.end());
     }
     const std::vector<SymbolCheckInfo> assert_infos = shape_env.GetAllSymbolAssertInfos();
     ASSERT_EQ(assert_infos.size(), 1);
     const std::set<std::string> assert_guard = {"ExpectEq(s1, s3)"};
     for (auto &iter : assert_infos) {
-      EXPECT_NE(assert_guard.find(std::string(iter.expr.Serialize().get())), assert_guard.end());
+      EXPECT_NE(assert_guard.find(std::string(iter.expr.Str().get())), assert_guard.end());
     }
   }
 }
@@ -7949,7 +7969,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForEmbeddingHashTableLookupOr
       builder.AppendInputSymbolTensor(table_handle_shape).AppendInputSymbolTensor(keys_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s1 * s2 * s3, Symbol(3)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTopKV2) {
@@ -7981,8 +8001,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTopKV2) {
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0, s1, Symbol(2), s3});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape);
 
   // 正常场景2：使用负维度
   // x_shape={s0, s1, s2, s3} k=2 dim=-1
@@ -7999,8 +8019,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTopKV2) {
                             .Build();
   ASSERT_EQ(func.first(infer_context2), ge::GRAPH_SUCCESS);
   auto expect_shape2 = gert::SymbolShape({s0, s1, s2, Symbol(2)});
-  ASSERT_EQ(infer_context2->GetOutputSymbolShape(0)->GetDims(), expect_shape2.GetDims());
-  ASSERT_EQ(infer_context2->GetOutputSymbolShape(1)->GetDims(), expect_shape2.GetDims());
+  ASSERT_EQ(*infer_context2->GetOutputSymbolShape(0), expect_shape2);
+  ASSERT_EQ(*infer_context2->GetOutputSymbolShape(1), expect_shape2);
 
   // 异常场景1：维度越界
   // x_shape={s0, s1, s2, s3} k=2 dim=4 (超出维度范围)
@@ -8057,8 +8077,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForArgMaxWithValue) {
   auto infer_context = builder.AppendInputSymbolTensor(x_shape).OutputNum(2).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0, s1, s3});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape);
 
   // 正常场景2：keep_dims=true
   // x_shape={s0, s1, s2, s3} dimension=2 keep_dims=true
@@ -8072,8 +8092,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForArgMaxWithValue) {
   auto infer_context2 = builder.AppendInputSymbolTensor(x_shape).OutputNum(2).Build();
   ASSERT_EQ(func.first(infer_context2), ge::GRAPH_SUCCESS);
   auto expect_shape2 = gert::SymbolShape({s0, s1, kSymbolOne, s3});
-  ASSERT_EQ(infer_context2->GetOutputSymbolShape(0)->GetDims(), expect_shape2.GetDims());
-  ASSERT_EQ(infer_context2->GetOutputSymbolShape(1)->GetDims(), expect_shape2.GetDims());
+  ASSERT_EQ(*infer_context2->GetOutputSymbolShape(0), expect_shape2);
+  ASSERT_EQ(*infer_context2->GetOutputSymbolShape(1), expect_shape2);
 
   // 正常场景3：使用负维度
   // x_shape={s0, s1, s2, s3} dimension=-1 keep_dims=false
@@ -8086,8 +8106,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForArgMaxWithValue) {
   AttrUtils::SetBool(op_desc, "keep_dims", false);
   auto infer_context3 = builder.AppendInputSymbolTensor(x_shape).OutputNum(2).Build();
   ASSERT_EQ(func.first(infer_context3), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context3->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({s0, s1, s2}).GetDims());
-  ASSERT_EQ(infer_context3->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({s0, s1, s2}).GetDims());
+  ASSERT_EQ(*infer_context3->GetOutputSymbolShape(0), gert::SymbolShape({s0, s1, s2}));
+  ASSERT_EQ(*infer_context3->GetOutputSymbolShape(1), gert::SymbolShape({s0, s1, s2}));
 
   // 异常场景：维度越界
   // x_shape={s0, s1, s2, s3} dimension=4 (超出维度范围)
@@ -8126,8 +8146,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForArgMinWithValue) {
   auto infer_context = builder.AppendInputSymbolTensor(x_shape).OutputNum(2).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape({s0, s1, s3});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape);
 
   // 正常场景2：keep_dims=true
   // x_shape={s0, s1, s2, s3} dimension=2 keep_dims=true
@@ -8141,8 +8161,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForArgMinWithValue) {
   auto infer_context2 = builder.AppendInputSymbolTensor(x_shape).OutputNum(2).Build();
   ASSERT_EQ(func.first(infer_context2), ge::GRAPH_SUCCESS);
   auto expect_shape2 = gert::SymbolShape({s0, s1, kSymbolOne, s3});
-  ASSERT_EQ(infer_context2->GetOutputSymbolShape(0)->GetDims(), expect_shape2.GetDims());
-  ASSERT_EQ(infer_context2->GetOutputSymbolShape(1)->GetDims(), expect_shape2.GetDims());
+  ASSERT_EQ(*infer_context2->GetOutputSymbolShape(0), expect_shape2);
+  ASSERT_EQ(*infer_context2->GetOutputSymbolShape(1), expect_shape2);
 
   // 正常场景3：使用负维度
   // x_shape={s0, s1, s2, s3} dimension=-1 keep_dims=false
@@ -8155,8 +8175,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForArgMinWithValue) {
   AttrUtils::SetBool(op_desc, "keep_dims", false);
   auto infer_context3 = builder.AppendInputSymbolTensor(x_shape).OutputNum(2).Build();
   ASSERT_EQ(func.first(infer_context3), ge::GRAPH_SUCCESS);
-  ASSERT_EQ(infer_context3->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({s0, s1, s2}).GetDims());
-  ASSERT_EQ(infer_context3->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({s0, s1, s2}).GetDims());
+  ASSERT_EQ(*infer_context3->GetOutputSymbolShape(0), gert::SymbolShape({s0, s1, s2}));
+  ASSERT_EQ(*infer_context3->GetOutputSymbolShape(1), gert::SymbolShape({s0, s1, s2}));
 
   // 异常场景：维度越界
   // x_shape={s0, s1, s2, s3} dimension=4 (超出维度范围)
@@ -8204,7 +8224,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForIndexNormalCases) {
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto out_shape = infer_context->GetOutputSymbolShape(0);
-  ASSERT_EQ(out_shape->GetDims(), x_shape.GetDims());
+  ASSERT_EQ(*out_shape, x_shape);
 
   // 正常场景2：有不连续索引张量，且indices需要广播
   // x_shape={s0, s1, s2, s3, s4, s5} sizes=[1, 0, 1, 0, 1, 0] 索引形状=[s4, 1], [1, s5], [s4, s5]
@@ -8222,7 +8242,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForIndexNormalCases) {
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   out_shape = infer_context->GetOutputSymbolShape(0);
   auto expect_shape2 = gert::SymbolShape({s4, s5, s1, s3, s5});
-  ASSERT_EQ(out_shape->GetDims(), expect_shape2.GetDims());
+  ASSERT_EQ(*out_shape, expect_shape2);
 
   // 正常场景3：有连续索引张量，indices不需要广播
   // x_shape={s0, s1, s2, s3, s4, s5} sizes=[0, 1, 1, 1, 0, 0] 索引形状=[s4, 1], [1, s5], [s4, s5]
@@ -8240,7 +8260,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForIndexNormalCases) {
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   out_shape = infer_context->GetOutputSymbolShape(0);
   auto expect_shape3 = gert::SymbolShape({s0, s4, s5, s4, s5});
-  ASSERT_EQ(out_shape->GetDims(), expect_shape3.GetDims());
+  ASSERT_EQ(*out_shape, expect_shape3);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForIndexExceptionCases) {
@@ -8340,13 +8360,13 @@ void TestFlashAttentionScoreLayout(InferSymbolShapeContextTestBuilder &builder, 
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
 
   // Check output shapes
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expected_softmax_shape.GetDims());
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expected_softmax_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expected_softmax_shape);
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(1), expected_softmax_shape);
 
   auto expected_softmax_out_shape = gert::SymbolShape({Symbol(0), Symbol(0), Symbol(0), Symbol(0)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), expected_softmax_out_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(2), expected_softmax_out_shape);
 
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(3)->GetDims(), expected_attention_out_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(3), expected_attention_out_shape);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForFlashAttentionScore) {
@@ -8980,7 +9000,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForFlatten) {
   AttrUtils::SetInt(op_desc, "axis", 1);
   auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({s0, s1 * s2}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({s0, s1 * s2}));
 
   builder.Destroy();
   op_desc = builder.GetOrCreateOpDescPtr();
@@ -8988,7 +9008,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForFlatten) {
   AttrUtils::SetInt(op_desc, "axis", -1);
   infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({s0 * s1, s2}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({s0 * s1, s2}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForShape) {
@@ -9002,12 +9022,12 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForShape) {
   InferSymbolShapeContextTestBuilder builder("Shape", "shape");
   auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({s0, s1})).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(2)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(2)}));
 
   builder.Destroy();
   infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape()).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(0)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(0)}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRmsNorm) {
@@ -9026,8 +9046,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRmsNorm) {
   auto infer_context =
       builder.AppendInputSymbolTensor(x_shape).AppendInputSymbolTensor(gamma_shape).OutputNum(2).Build();
   ASSERT_EQ(func.first(infer_context), GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), x_shape.GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({s0, s1, Symbol(1)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), x_shape);
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({s0, s1, Symbol(1)}));
 
   builder.Destroy();
   infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({s0, s1, s2}))
@@ -9035,7 +9055,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRmsNorm) {
                       .OutputNum(2)
                       .Build();
   ASSERT_EQ(func.first(infer_context), GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({s0, Symbol(1), Symbol(1)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({s0, Symbol(1), Symbol(1)}));
 }
 
 /**
@@ -9062,9 +9082,9 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAddRmsNorm) {
                            .OutputNum(3)
                            .Build();
   ASSERT_EQ(func.first(infer_context), GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), x_shape.GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({b, s, Symbol(1)}).GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), x_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), x_shape);
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({b, s, Symbol(1)}));
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(2), x_shape);
 
   builder.Destroy();
   infer_context = builder.AppendInputSymbolTensor(x_shape)
@@ -9073,7 +9093,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAddRmsNorm) {
                       .OutputNum(3)
                       .Build();
   ASSERT_EQ(func.first(infer_context), GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({b, Symbol(1), Symbol(1)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({b, Symbol(1), Symbol(1)}));
 }
 
 /**
@@ -9133,7 +9153,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForGroupedMatmul) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, m, n}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, m, n}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForApplyRotaryPosEmb) {
@@ -9158,8 +9178,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForApplyRotaryPosEmb) {
                            .OutputNum(2)
                            .Build();
   ASSERT_EQ(func.first(infer_context), GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), query_shape.GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), key_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), query_shape);
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), key_shape);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTensorScatterUpdate) {
@@ -9174,7 +9194,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTensorScatterUpdate) {
   InferSymbolShapeContextTestBuilder builder("TensorScatterUpdate", "tensor_scatter_update");
   auto infer_context = builder.AppendInputSymbolTensor(input_shape).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), input_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), input_shape);
 }
 
 // StridedSlice 符号索引符号性未知时按 hint 归一化：hint 可得则折叠并登记 guard
@@ -9191,7 +9211,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceSymbolicIndexN
   auto infer_context = builder.Build();
   ASSERT_EQ(func.first(infer_context), SUCCESS);
   // begin 归一化为 begin_sym + dim（hint=-3<0），输出维度 6-(begin_sym+dim)
-  const auto out_dims = infer_context->GetOutputSymbolShape(0)->GetDims();
+  const auto out_dims = SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0));
   ASSERT_EQ(out_dims.size(), 1UL);
   // begin 归一化为 begin_sym + dim（hint=-3<0），end 常量 6 经上界比较折叠为 dim，
   // 输出维度 dim - (begin_sym + dim)
@@ -9200,8 +9220,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceSymbolicIndexN
   const auto guards = shape_env.GetAllSymbolCheckInfos();
   bool has_begin_negative_guard = false;
   for (const auto &guard : guards) {
-    const std::string guard_str(guard.expr.Serialize().get());
-    if (guard_str.find(begin_sym.Serialize().get()) != std::string::npos) {
+    const std::string guard_str(guard.expr.Str().get());
+    if (guard_str.find(begin_sym.Str().get()) != std::string::npos) {
       has_begin_negative_guard = true;
     }
   }
@@ -9222,15 +9242,16 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForStridedSliceSymbolicIndexA
   auto infer_context = builder.Build();
   ASSERT_EQ(func.first(infer_context), SUCCESS);
   // begin(hint=10) > dim(hint=6)：按 hint clamp 到 upper=dim，输出维度 6-6=0
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{Symbol(0)}));
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{Symbol(0)}));
   // 符号性/下界/上界三处比较各登记一条 guard，上界那条同时含 dim 与 begin
   const auto guards = shape_env.GetAllSymbolCheckInfos();
   ASSERT_EQ(guards.size(), 3UL);
   bool has_above_upper_guard = false;
   for (const auto &guard : guards) {
-    const std::string guard_str(guard.expr.Serialize().get());
-    if (guard_str.find(dim.Serialize().get()) != std::string::npos &&
-        guard_str.find(begin_sym.Serialize().get()) != std::string::npos) {
+    const std::string guard_str(guard.expr.Str().get());
+    if (guard_str.find(dim.Str().get()) != std::string::npos &&
+        guard_str.find(begin_sym.Str().get()) != std::string::npos) {
       has_above_upper_guard = true;
     }
   }
@@ -9260,12 +9281,13 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForReshapeMinusOneHintGuardRe
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   // hint 整除求解：(4*3)/(2*1) = 6
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), (std::vector<Expression>{Symbol(2), Symbol(6)}));
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(*infer_context->GetOutputSymbolShape(0)),
+            (std::vector<Expression>{Symbol(2), Symbol(6)}));
   // -1 假设登记为 guard
   const auto guards = shape_env.GetAllSymbolCheckInfos();
   ASSERT_EQ(guards.size(), 1UL);
-  const std::string guard_str(guards.front().expr.Serialize().get());
-  EXPECT_NE(guard_str.find(minus_one.Serialize().get()), std::string::npos);
+  const std::string guard_str(guards.front().expr.Str().get());
+  EXPECT_NE(guard_str.find(minus_one.Str().get()), std::string::npos);
 }
 
 // Reshape 含 -1 但总元素量不能被已知维度整除：回退 UNSUPPORTED（不产生分数维度）
@@ -9314,7 +9336,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForPadV2) {
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   auto expect_shape = gert::SymbolShape(
       {s0 + ge::Symbol(1) + ge::Symbol(2), s1 + ge::Symbol(2) + ge::Symbol(1), s2 + ge::Symbol(3) + ge::Symbol(3)});
-  ASSERT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
+  ASSERT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForArgMaxV2NonIntegerDim) {
@@ -9415,7 +9437,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRFFTZeroLength) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, Symbol(0)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, Symbol(0)}));
 }
 
 TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRFFTNonIntegerLength) {
@@ -9492,8 +9514,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTopKD) {
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   const auto expect_shape = gert::SymbolShape({s0, s1, Symbol(2), s3});
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape);
 }
 
 /**
@@ -9524,8 +9546,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTopKDNegativeDim) {
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   const auto expect_shape = gert::SymbolShape({s0, Symbol(1)});
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape);
 }
 
 /**
@@ -9558,8 +9580,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTopKV2D) {
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
   const auto expect_shape = gert::SymbolShape({s0, s1, Symbol(2), s3});
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), expect_shape.GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), expect_shape.GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), expect_shape);
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), expect_shape);
 }
 
 /**
@@ -9596,7 +9618,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForElementWiseVariants) {
     }
     auto infer_context = builder.AppendInputSymbolTensor(x_shape).OutputNum(1).Build();
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS) << variant.first;
-    EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), x_shape.GetDims()) << variant.first;
+    EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), x_shape) << variant.first;
   }
 }
 
@@ -9619,7 +9641,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForScatterSub) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, s}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, s}));
 }
 
 /**
@@ -9642,7 +9664,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForAxpyV2) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, s, h}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, s, h}));
 }
 
 /**
@@ -9665,7 +9687,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForClipByValueV2) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, s, h}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, s, h}));
 }
 
 /**
@@ -9687,7 +9709,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForGatherElementsV2) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, n}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, n}));
 }
 
 /**
@@ -9713,7 +9735,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForTransposeV2) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({h, b, s}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({h, b, s}));
 }
 
 /**
@@ -9742,10 +9764,9 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMaxPoolExt2) {
   ge::AttrUtils::SetStr(op_desc, "data_format", "NHWC");
   auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({n, h, w, c})).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(),
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0),
             gert::SymbolShape({n, sym::Floor((h - Symbol(2) + Symbol(2)) / Symbol(2)),
-                               sym::Floor((w - Symbol(2) + Symbol(2)) / Symbol(2)), c})
-                .GetDims());
+                               sym::Floor((w - Symbol(2) + Symbol(2)) / Symbol(2)), c}));
 }
 
 /**
@@ -9765,7 +9786,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMatrixDiagD) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({s0, s0}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({s0, s0}));
 }
 
 /**
@@ -9790,7 +9811,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForGatherV2D) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({s0, s2, s2}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({s0, s2, s2}));
 }
 
 /**
@@ -9810,7 +9831,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForExpandD) {
   AttrUtils::SetListInt(op_desc, "shape", {2, 2});
   auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({Symbol(1), s1})).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(2), s1}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(2), s1}));
 }
 
 /**
@@ -9837,8 +9858,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForPadV3D) {
   AttrUtils::SetBool(op_desc, "paddings_contiguous", true);
   auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({s0, s1})).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(),
-            gert::SymbolShape({s0 + Symbol(2), s1 + Symbol(4)}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({s0 + Symbol(2), s1 + Symbol(4)}));
 }
 
 /**
@@ -9861,7 +9881,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForUnsortedSegmentSumD) {
                            .OutputNum(1)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(3), s1}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(3), s1}));
 }
 
 /**
@@ -9884,9 +9904,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRandomV2Variants) {
                              .OutputNum(2)
                              .Build();
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS) << op_type;
-    EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({Symbol(2), Symbol(3)}).GetDims())
-        << op_type;
-    EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({Symbol(1)}).GetDims()) << op_type;
+    EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({Symbol(2), Symbol(3)})) << op_type;
+    EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({Symbol(1)})) << op_type;
   }
 }
 
@@ -9909,7 +9928,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForArgMaxD) {
   AttrUtils::SetInt(op_desc, "dimension", 1);
   auto infer_context = builder.AppendInputSymbolTensor(gert::SymbolShape({b, s, h})).OutputNum(1).Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, h}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, h}));
 
   InferSymbolShapeContextTestBuilder neg_builder("ArgMaxD", "arg_max_d_neg");
   auto neg_desc = neg_builder.GetOrCreateOpDescPtr();
@@ -9917,7 +9936,7 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForArgMaxD) {
   AttrUtils::SetInt(neg_desc, "dimension", -1);
   auto neg_context = neg_builder.AppendInputSymbolTensor(gert::SymbolShape({b, s, h})).OutputNum(1).Build();
   ASSERT_EQ(func.first(neg_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(neg_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, s}).GetDims());
+  EXPECT_EQ(*neg_context->GetOutputSymbolShape(0), gert::SymbolShape({b, s}));
 }
 
 /**
@@ -9943,9 +9962,9 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForBNTrainingUpdateV2) {
                            .OutputNum(3)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({n, c, h, w}).GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({c}).GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), gert::SymbolShape({c}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({n, c, h, w}));
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({c}));
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(2), gert::SymbolShape({c}));
 }
 
 /**
@@ -9969,8 +9988,8 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForMaximumMinimumGrad) {
                              .OutputNum(2)
                              .Build();
     ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS) << op_type;
-    EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, s, h}).GetDims()) << op_type;
-    EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({b, s, h}).GetDims()) << op_type;
+    EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, s, h})) << op_type;
+    EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({b, s, h})) << op_type;
   }
 }
 
@@ -9994,9 +10013,9 @@ TEST_F(SymbolicShapeInferFuncUT, InferSymbolicShapeForRotaryPositionEmbeddingGra
                            .OutputNum(3)
                            .Build();
   ASSERT_EQ(func.first(infer_context), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(0)->GetDims(), gert::SymbolShape({b, s, h}).GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(1)->GetDims(), gert::SymbolShape({Symbol(1), s, h}).GetDims());
-  EXPECT_EQ(infer_context->GetOutputSymbolShape(2)->GetDims(), gert::SymbolShape({Symbol(1), s, h}).GetDims());
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(0), gert::SymbolShape({b, s, h}));
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(1), gert::SymbolShape({Symbol(1), s, h}));
+  EXPECT_EQ(*infer_context->GetOutputSymbolShape(2), gert::SymbolShape({Symbol(1), s, h}));
 }
 
 }  // namespace ge

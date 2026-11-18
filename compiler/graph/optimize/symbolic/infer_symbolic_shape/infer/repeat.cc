@@ -21,29 +21,29 @@ namespace {
 graphStatus InferShape4Repeat(gert::InferSymbolShapeContext *context) {
   auto input_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(input_shape);
-  if (input_shape->IsScalar()) {
+  if (input_shape->GetDimNum() == 0U) {
     GELOGW("Symbol Infer unsupported, reason get: input_shape is scalar, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return ge::UNSUPPORTED;
   }
   auto repeat_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(repeat_tensor);
-  auto repeat_num_values = repeat_tensor->GetSymbolicValue();
-  if (repeat_num_values == nullptr) {
+  const auto repeat_num_values = SymbolicInferUtil::GetSymbolicValues(*repeat_tensor);
+  if (repeat_num_values.empty()) {
     GELOGW("Symbol Infer unsupported, reason get: symbolic_value_is_nullptr, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return ge::UNSUPPORTED;
   }
-  const auto repeat_size = repeat_num_values->size();
+  const auto repeat_size = repeat_num_values.size();
   GE_ASSERT(repeat_size > 0U, "Invalid repeat_num, must be non-empty!");
   ge::Expression total_repeat(Symbol(0));
-  for (const auto &val : *repeat_num_values) {
+  for (const auto &val : repeat_num_values) {
     total_repeat = total_repeat + val;
   }
   auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
   *out_shape = *input_shape;
-  out_shape->MutableDim(0) = total_repeat;
+  out_shape->SetDim(0, total_repeat);
   return ge::SUCCESS;
 }
 
@@ -62,8 +62,8 @@ graphStatus InferShape4RepeatInterleave(gert::InferSymbolShapeContext *context) 
   GE_UNSUPPORTED_IF_NULL(x_shape);
   const auto repeats_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(repeats_tensor);
-  const auto repeats_value = repeats_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(repeats_value);
+  GE_UNSUPPORTED_IF(!repeats_tensor->HasValue());
+  const auto repeats_value = SymbolicInferUtil::GetSymbolicValues(*repeats_tensor);
   const auto y_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(y_shape);
   const auto attrs = context->GetAttrs();
@@ -79,21 +79,21 @@ graphStatus InferShape4RepeatInterleave(gert::InferSymbolShapeContext *context) 
     axis += x_dim_num;
   }
 
-  const auto repeats_size = repeats_value->size();
+  const auto repeats_size = repeats_value.size();
   GE_ASSERT(repeats_size > 0, "RepeatInterleave repeats must be non-empty");
 
   Expression out_axis_dim;
   if (repeats_size == 1UL) {
-    out_axis_dim = x_shape->GetDim(axis) * repeats_value->at(0);
+    out_axis_dim = x_shape->GetDim(axis) * repeats_value.at(0);
   } else {
-    out_axis_dim = repeats_value->at(0);
+    out_axis_dim = repeats_value.at(0);
     for (size_t i = 1UL; i < repeats_size; ++i) {
-      out_axis_dim = out_axis_dim + repeats_value->at(i);
+      out_axis_dim = out_axis_dim + repeats_value.at(i);
     }
   }
 
   *y_shape = *x_shape;
-  y_shape->MutableDims()[static_cast<size_t>(axis)] = out_axis_dim;
+  y_shape->SetDim(static_cast<size_t>(axis), out_axis_dim);
   return GRAPH_SUCCESS;
 }
 

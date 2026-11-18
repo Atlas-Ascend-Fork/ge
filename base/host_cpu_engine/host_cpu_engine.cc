@@ -8,6 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <cstdlib>
+#include <map>
+#include <string>
+
 #include "graph/utils/op_desc_utils.h"
 #include "graph/utils/tensor_adapter.h"
 #include "graph/utils/node_utils.h"
@@ -15,6 +19,7 @@
 #include "register/host_cpu_context.h"
 #include "graph_metadef/common/ge_common/util.h"
 #include "common/plugin/ge_make_unique_util.h"
+#include "graph_metadef/common/plugin/ops_deliverables_parser.h"
 #include "graph_metadef/common/plugin/plugin_manager.h"
 #include "common/math/ge_math_util.h"
 #include "base/err_msg.h"
@@ -26,6 +31,8 @@ const std::string kConstantFoldingName = "libconstant_folding_ops.so";
 const std::string kOpsHostCpuName = "libops_host_cpu.so";
 const std::string kOpConstantFoldingName = "libopconstant_folding.so";
 constexpr char kAicpuHostFindFunc[] = "AicpuHostFindFunc";
+constexpr char kConstantFoldingOpsKey[] = "constant-folding-ops";
+constexpr char kOpsHostCpuKey[] = "ops-host-cpu";
 
 const std::set<DataType> kHostCpuOutputDtypeWhiteList = {
     DT_BOOL,          DT_INT8,        DT_INT16,       DT_INT32,       DT_INT64,      DT_UINT8,
@@ -95,6 +102,28 @@ Status CreateOutputByDataType(const ConstOpDescPtr &op_desc, const GeTensorDesc 
   (void)named_outputs.emplace(tensor_name, tensor);
   return ret;
 }
+
+// ops_deliverables.json has a higher priority than the legacy hardcoded HostCPU library paths; keys that stay
+// unresolved keep the legacy discovery result.
+void UpdateLibPathsFromDeliverables(std::string &constant_folding_name, std::string &ops_host_cpu_name) {
+  OpsDeliverablesParser parser;
+  std::string reason;
+  if (!parser.Load(reason)) {
+    GELOGI("Use legacy host cpu lib discovery, reason: %s", reason.c_str());
+    return;
+  }
+  const char *opp_path = std::getenv("ASCEND_OPP_PATH");
+  const std::map<std::string, std::string> variables{{"ASCEND_OPP_PATH", opp_path == nullptr ? "" : opp_path}};
+  std::string path;
+  if (parser.GetPath(kConstantFoldingOpsKey, variables, path)) {
+    constant_folding_name = path;
+    GELOGI("Get [%s] lib path from ops deliverables: %s", kConstantFoldingOpsKey, path.c_str());
+  }
+  if (parser.GetPath(kOpsHostCpuKey, variables, path)) {
+    ops_host_cpu_name = path;
+    GELOGI("Get [%s] lib path from ops deliverables: %s", kOpsHostCpuKey, path.c_str());
+  }
+}
 }  // namespace
 
 HostCpuEngine &HostCpuEngine::GetInstance() {
@@ -112,11 +141,13 @@ ge::Status HostCpuEngine::Initialize(const std::string &path_base) {
   GE_CHK_STATUS_RET_NOLOG(PluginManager::GetConstantFoldingOpsPath(path_base, lib_dir));
 
   std::string constant_folding_name = lib_dir + "/" + kConstantFoldingName;
+  std::string ops_host_cpu_name = lib_dir + "/" + kOpsHostCpuName;
+  UpdateLibPathsFromDeliverables(constant_folding_name, ops_host_cpu_name);
+
   if (GetEngineRealPath(constant_folding_name) == SUCCESS) {
     (void)LoadLib(constant_folding_name);
   }
 
-  std::string ops_host_cpu_name = lib_dir + "/" + kOpsHostCpuName;
   if (GetEngineRealPath(ops_host_cpu_name) == SUCCESS) {
     (void)LoadLib(ops_host_cpu_name, true);
   }

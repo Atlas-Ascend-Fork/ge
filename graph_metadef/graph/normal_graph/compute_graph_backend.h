@@ -55,6 +55,7 @@ class ComputeGraphBackend : public GraphImpl {
     return true;
   }
   const std::string &GetName() const override;
+  std::string GetNativeName() const override;
   // 首次建图：创建空 ComputeGraph（原 GraphImpl::InitComputeGraph）
   graphStatus InitGraph() override;
   // 桥接入口整体挂入既有计算图（原 compute_graph_ 直赋值语义）
@@ -109,6 +110,7 @@ class ComputeGraphBackend : public GraphImpl {
 
  protected:
   bool ResolveNode(const GNode &node, NodeContext &context) const override;
+  std::string GetNodeName(const NodeContext &context) const override;
   GNode AddNodeFromDesc(const OpDescPtr &desc) override;
   graphStatus LinkDataEdge(const NodeContext &src, int32_t out, const NodeContext &dst, int32_t in) override;
   graphStatus LinkControlEdge(const NodeContext &src, const NodeContext &dst) override;

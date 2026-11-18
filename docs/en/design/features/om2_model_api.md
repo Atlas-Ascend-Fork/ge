@@ -89,6 +89,8 @@ int32_t GertModelLoad(const GertModelLoadConfig *config, GertModelHandle *model_
 | save_bin_handle_to_store | SaveBinHandleToStoreFunc | Saves a handle to the cache; see 3.5 |
 | release_bin_handle_from_store | ReleaseBinHandleFromStoreFunc | Releases a cached handle; see 3.6 |
 | hccl_load_task | HcclLoadTaskFunc | Launches an HCCL communication task (HCOM/HVD); see 3.8 |
+| create_args_handler | CreateArgsHandlerFunc | Creates the args-service handler for custom operators in Callback mode; see 3.12 |
+| destroy_args_handler | DestroyArgsHandlerFunc | Destroys the handler and its registration tables on both ends; see 3.13 |
 
 - **Parameter structure GertModelLoadOutput**:
 
@@ -369,7 +371,7 @@ int32_t GertModelGetNotifyDesc(uint64_t *notify_flags, uint64_t notify_num, void
 
 Callbacks are implemented by the Executor and injected into pbody through `GertModelLoadConfig::callbacks` (load time) and `GertModelRunConfig::run_callbacks` (execution time). All callbacks return `int32_t`; handling of return values is described for each callback. Except for the binary handle cache callbacks (3.3–3.6), the first argument is always `void *instance_handle`, whose value is passed back unchanged from `GertModelLoadConfig::instance_handle` so the Executor can identify its instance. Callbacks execute synchronously on the current calling thread; RunAsync makes device execution asynchronous, not callback execution on a background thread.
 
-Nullability depends on usage: `GertModelLoadConfig::callbacks` itself must not be null. The lock/unlock/query/save/release callbacks used by the binary cache path must be supplied because current generated code calls them directly. `report_model_base_info` may be null, in which case reporting is skipped; `launch_func` may be null, in which case generated code launches tasks directly. `run_callbacks` and its pre/post-execution callbacks may be null, in which case they are skipped. Callback arguments are prepared by the model SO; fields to be populated by the Executor are identified in the descriptions.
+Nullability depends on usage: `GertModelLoadConfig::callbacks` itself must not be null. The lock/unlock/query/save/release callbacks used by the binary cache path must be supplied because current generated code calls them directly. `report_model_base_info` may be null, in which case reporting is skipped; `launch_func` may be null, in which case generated code launches tasks directly. `create_args_handler` / `destroy_args_handler` may be null for models without Callback custom tasks; a model containing Callback custom tasks must provide both, and `GertModelLoad` fails with a prompt to upgrade the Executor when either is null (see 3.12/3.13). `run_callbacks` and its pre/post-execution callbacks may be null, in which case they are skipped. Callback arguments are prepared by the model SO; fields to be populated by the Executor are identified in the descriptions.
 
 #### 3.1 report_model_base_info (ReportModelBaseInfoFunc)
 
@@ -827,6 +829,67 @@ int32_t (*CommitVarDataFunc)(void *var_manager_handle, struct GertVarCommit *com
 
 - **Return value**: `0` on success; non-`0` means the commit failed. When `host_data_size` exceeds the variable size recorded by the container, an error is returned and nothing is written.
 - **Notes**: Execution thread, aclrt context, memory ownership and thread-safety semantics are the same as `GetVarAddrFunc`. Committing the same variable more than once is not an error.
+
+#### 3.12 create_args_handler (CreateArgsHandlerFunc)
+
+- **Description**: Creation entry of the args service for custom operators in Callback mode. During model loading, when the generated code dispatches a custom task declared as Callback (args refresh mode `kUpdateCallback`), it calls this callback with the SO args-pool object address and the SO-side allocation callback `allocate_args_buffer` (see 3.14). The GE runtime creates a `gert::ArgsHandler` and returns it as an opaque handle; subsequent private args-area requests of the operator are registered on both ends (the GE-side handler and the SO-side args pool) through this handle. This callback is implemented and injected by the GE runtime and called by the model SO.
+- **Version requirement**: A model containing Callback custom tasks requires `callbacks->struct_size` to cover the `create_args_handler` and `destroy_args_handler` fields (that is, not less than `offsetof(GertModelLoadCallbacks, destroy_args_handler) + sizeof(DestroyArgsHandlerFunc)`); otherwise `GertModelLoad` fails immediately with a prompt to upgrade the Executor. Both callbacks are mandatory for models containing Callback custom tasks and fail when either is null. The offsets of the first 9 fields are frozen (`hccl_load_task` at offset 64); an old structure (`struct_size == 72`) does not contain these two fields, which must not cause a model without Callback tasks to be rejected.
+- **Prototype**:
+
+```c
+int32_t (*CreateArgsHandlerFunc)(void *args_table, GertOm2ArgsAllocFunc allocate_args_buffer, void **handler);
+```
+
+- **Parameters**:
+
+| Parameter | Type | In/Out | Description |
+|------|------|----------|------|
+| args_table | void * | In | SO args-pool object address; GE does not interpret its content and passes it back unchanged when calling `allocate_args_buffer` |
+| allocate_args_buffer | GertOm2ArgsAllocFunc | In | SO-side args allocation callback, see 3.14; must not be nullptr |
+| handler | void ** | Out | Opaque handle in the form of a `gert::ArgsHandler` base-class address; set to nullptr on entry and populated only when `ACL_SUCCESS` is returned |
+
+- **Return value**: `0` (`ACL_SUCCESS`) on success; invalid arguments or internal failure return non-`0`, in which case `*handler` remains nullptr.
+- **Notes**: May only be called inside `GertModelLoad` (during model loading), never at run time. The handle is created by GE and may only be destroyed by GE through `destroy_args_handler`; the SO must not delete it directly.
+
+#### 3.13 destroy_args_handler (DestroyArgsHandlerFunc)
+
+- **Description**: Destroys the handler created by `create_args_handler` together with its registration tables on both ends (the GE-side handler and the registration entries of the SO-side args pool). Implemented and injected by the GE runtime and called by the model SO during unload/cleanup.
+- **Version requirement**: Provided in pairs with `create_args_handler`; see 3.12.
+- **Prototype**:
+
+```c
+void (*DestroyArgsHandlerFunc)(void *handler);
+```
+
+- **Parameters**:
+
+| Parameter | Type | In/Out | Description |
+|------|------|----------|------|
+| handler | void * | In | Handle produced by `create_args_handler`; a no-op when nullptr |
+
+- **Return value**: None.
+- **Notes**: Does not release bytes already carved out of the SO args pool — those bytes are released with the pool as a whole. Must be called after the device has finished referencing the args and before the model SO is unloaded.
+
+#### 3.14 allocate_args_buffer (GertOm2ArgsAllocFunc)
+
+- **Description**: SO-side args allocation callback: carves a paired host/device sub-range out of the reserved segment of the model args pool. Direction is opposite to the other callbacks in this section — implemented by the model SO (the `AllocateArgsBuffer` bridge in generated code) and called by the GE runtime when the handler serves operator requests; `args_table` is passed back unchanged and its content is not interpreted by GE.
+- **Prototype**:
+
+```c
+int32_t (*GertOm2ArgsAllocFunc)(void *args_table, uint64_t size, void **host_addr, void **device_addr);
+```
+
+- **Parameters**:
+
+| Parameter | Type | In/Out | Description |
+|------|------|----------|------|
+| args_table | void * | In | Pool object address passed to `create_args_handler`; converted back to the SO-private pool type inside the SO |
+| size | uint64_t | In | Requested byte count; a request is never split, aligned or relocated, and fails as a whole when capacity is insufficient |
+| host_addr | void ** | Out | Start address of the host-side sub-range; set to nullptr on entry and populated only when `ACL_SUCCESS` is returned |
+| device_addr | void ** | Out | Start address of the device-side sub-range; nullability identical to host_addr |
+
+- **Return value**: `0` (`ACL_SUCCESS`) on success; insufficient capacity or invalid arguments return non-`0`, in which case both output parameters remain nullptr.
+- **Notes**: Called synchronously only while GE is inside `create_args_handler` (during model loading), never at run time. The carved sub-range belongs to the SO args pool and lives as long as the pool; GE must not release it separately.
 
 ## Part II: OM2 Model Data
 

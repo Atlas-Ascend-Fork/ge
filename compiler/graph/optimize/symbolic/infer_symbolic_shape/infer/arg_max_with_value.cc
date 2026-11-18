@@ -98,21 +98,21 @@ graphStatus InferShape4ArgMaxV2(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_NOTNULL(y_shape);
 
   if (x_shape->GetDimNum() <= 1U) {
-    y_shape->MutableDims().clear();
+    y_shape->Clear();
     return GRAPH_SUCCESS;
   }
 
   const auto dimension_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(dimension_tensor);
-  const auto dimension_value = dimension_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(dimension_value);
-  if (dimension_value->size() != 1U) {
-    GELOGW("ArgMaxV2 dimension must contain exactly one value, actual size[%zu]", dimension_value->size());
+  GE_UNSUPPORTED_IF(!dimension_tensor->HasValue());
+  const auto dimension_value = SymbolicInferUtil::GetSymbolicValues(*dimension_tensor);
+  if (dimension_value.size() != 1U) {
+    GELOGW("ArgMaxV2 dimension must contain exactly one value, actual size[%zu]", dimension_value.size());
     return ge::UNSUPPORTED;
   }
 
   int64_t dimension = 0;
-  if (SymbolicInferUtil::TryGetConstInt(dimension_value->at(0), dimension) != GRAPH_SUCCESS) {
+  if (SymbolicInferUtil::TryGetConstInt(dimension_value.at(0), dimension) != GRAPH_SUCCESS) {
     GELOGW("Symbol Infer unsupported, ArgMaxV2 dimension is not an integer const, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -139,7 +139,7 @@ graphStatus InferShape4ArgMaxD(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_NOTNULL(y_shape);
 
   if (x_shape->GetDimNum() <= 1U) {
-    y_shape->MutableDims().clear();
+    y_shape->Clear();
     return GRAPH_SUCCESS;
   }
 

@@ -849,8 +849,8 @@ bool BackendUtils::SliceHasSameLoad(const NodePtr &node1, const NodePtr &node2,
                      (node2_slice_info.pre_load_offsets.size() != 0));
       if (node1_slice_info.pre_load_offsets[0] != node2_slice_info.pre_load_offsets[0]) {
         GELOGD("two slice offset is not equal: node1 %s(%s). node2 %s(%s).", node1->GetNamePtr(),
-               node1_slice_info.pre_load_offsets[0].Serialize().get(), node2->GetNamePtr(),
-               node2_slice_info.pre_load_offsets[0].Serialize().get());
+               node1_slice_info.pre_load_offsets[0].Str().get(), node2->GetNamePtr(),
+               node2_slice_info.pre_load_offsets[0].Str().get());
         slice_has_nosame_load_flag = true;
         break;
       }
@@ -942,7 +942,7 @@ Status BackendUtils::BackSteppingViewOpSlice(TensorAttrInfo &temp_data_attr, Ten
   attr_info.slice_info.two_slice_node_flag = true;
   if (is_fuse) {
     GE_ASSERT_SUCCESS(SliceGetNodeOffset(load_node, pre_load_offset, pre_node_slice_op_flag));
-    GELOGD("pre load offset is:%s. load node name is:%s.", pre_load_offset.Serialize().get(), load_node->GetNamePtr());
+    GELOGD("pre load offset is:%s. load node name is:%s.", pre_load_offset.Str().get(), load_node->GetNamePtr());
     GE_ASSERT_SUCCESS(SlicePreLoadDataNodePro(temp_data_attr, temp_load_attr, attr_info, pre_load_offset));
   }
 
@@ -1093,7 +1093,7 @@ Status ApplyViewOpSliceLoad(const NodePtr &load_node, ViewOpAttrInfo &attr_info)
   GELOGD("slice load node apply view op before, node %s(%s) output repeats:%s strides:%s offset:%s.",
          load_node->GetNamePtr(), load_node->GetType().c_str(),
          AutofuseUtils::VectorToStr(output_attr->repeats).c_str(),
-         AutofuseUtils::VectorToStr(output_attr->strides).c_str(), offset_origin.Serialize().get());
+         AutofuseUtils::VectorToStr(output_attr->strides).c_str(), offset_origin.Str().get());
 
   auto &slice_info = attr_info.slice_info;
   for (auto index = 0U; index < slice_info.backend_strides.size(); index++) {
@@ -1104,7 +1104,7 @@ Status ApplyViewOpSliceLoad(const NodePtr &load_node, ViewOpAttrInfo &attr_info)
   GELOGD("slice load node apply view op after, node %s(%s) output repeats:%s strides:%s offset:%s.",
          load_node->GetNamePtr(), load_node->GetType().c_str(),
          AutofuseUtils::VectorToStr(output_attr->repeats).c_str(),
-         AutofuseUtils::VectorToStr(output_attr->strides).c_str(), slice_info.offset_backend.Serialize().get());
+         AutofuseUtils::VectorToStr(output_attr->strides).c_str(), slice_info.offset_backend.Str().get());
   return SUCCESS;
 }
 
@@ -1391,7 +1391,7 @@ Status BackendUtils::TransferOutputTensorToOtherNode(const NodePtr &src_node, co
     auto src_node_attr_ptr = dynamic_cast<ascir_op::Load::AscLoadIrAttrDef *>(src_node_attr->ir_attr.get());
     GE_ASSERT_NOTNULL(src_node_attr_ptr);
     Expression offset;
-    GELOGD("src node offset: %s.", offset.Serialize().get());
+    GELOGD("src node offset: %s.", offset.Str().get());
     if (src_node_attr_ptr->GetOffset(offset) == SUCCESS) {
       node_attr_ptr->SetOffset(offset);
     }

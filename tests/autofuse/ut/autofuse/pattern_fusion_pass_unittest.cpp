@@ -980,8 +980,8 @@ TEST_F(PatternFusionPassTest, SliceForwardMultiInputElemwise) {
                 input_desc->CopyAttrsFrom(*relu_input_desc);
               }
             } else {
-              input_attr->symbolic_tensor.MutableOriginSymbolShape() =
-                  relu_output_attr->symbolic_tensor.GetOriginSymbolShape();
+              input_attr->symbolic_tensor.SetOriginSymbolShape(
+                  relu_output_attr->symbolic_tensor.GetOriginSymbolShape());
             }
           }
           for (const auto &output_desc : node->GetOpDesc()->GetAllOutputsDescPtr()) {
@@ -990,8 +990,8 @@ TEST_F(PatternFusionPassTest, SliceForwardMultiInputElemwise) {
               auto relu_output_desc = relu_node->GetOpDesc()->MutableOutputDesc(0);
               output_desc->CopyAttrsFrom(*relu_output_desc);
             } else {
-              output_attr->symbolic_tensor.MutableOriginSymbolShape() =
-                  relu_output_attr->symbolic_tensor.GetOriginSymbolShape();
+              output_attr->symbolic_tensor.SetOriginSymbolShape(
+                  relu_output_attr->symbolic_tensor.GetOriginSymbolShape());
             }
           }
         }
@@ -1090,8 +1090,8 @@ TEST_F(PatternFusionPassTest, SliceForwardMultiInputElemwiseWithChain) {
                 input_desc->CopyAttrsFrom(*relu_input_desc);
               }
             } else {
-              input_attr->symbolic_tensor.MutableOriginSymbolShape() =
-                  relu_output_attr->symbolic_tensor.GetOriginSymbolShape();
+              input_attr->symbolic_tensor.SetOriginSymbolShape(
+                  relu_output_attr->symbolic_tensor.GetOriginSymbolShape());
             }
           }
           for (size_t i = 0; i < node->GetOpDesc()->GetOutputsSize(); ++i) {
@@ -1101,8 +1101,8 @@ TEST_F(PatternFusionPassTest, SliceForwardMultiInputElemwiseWithChain) {
               auto relu_output_desc = relu_node->GetOpDesc()->MutableOutputDesc(0);
               output_desc->CopyAttrsFrom(*relu_output_desc);
             } else {
-              output_attr->symbolic_tensor.MutableOriginSymbolShape() =
-                  relu_output_attr->symbolic_tensor.GetOriginSymbolShape();
+              output_attr->symbolic_tensor.SetOriginSymbolShape(
+                  relu_output_attr->symbolic_tensor.GetOriginSymbolShape());
             }
           }
         }

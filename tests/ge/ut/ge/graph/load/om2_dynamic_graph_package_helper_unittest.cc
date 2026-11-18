@@ -44,7 +44,7 @@ TEST(Om2GraphPackageHelperUT, GraphFacadeRejectsInvalidAndComputeGraphs) {
   gert::GertModelData data;
   data.manifest = std::make_unique<gert::GertModelDataManifest>();
   const auto *original = data.manifest.get();
-  Graph invalid("invalid_execute", 1);
+  Graph invalid("invalid_execute", C_GRAPH_EXECUTE);
   EXPECT_NE(Om2PackageHelper().BuildGertModelDataFromGraph(invalid, data), SUCCESS);
   Graph compute("compute");
   ASSERT_EQ(compute.SetValid(), GRAPH_SUCCESS);

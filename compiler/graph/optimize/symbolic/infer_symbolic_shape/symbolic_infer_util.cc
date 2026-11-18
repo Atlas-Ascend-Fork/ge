@@ -155,17 +155,17 @@ Status SymbolicInferUtil::Broadcast(const std::vector<std::vector<Expression>> &
             b_shape[dim] = s;
           }
           GELOGI("Symbol input0[%zu]:%s is equal to input1[%zu]:%s, no need broadcast.", true_idx,
-                 b_shape[dim].Serialize().get(), true_idx, s.Serialize().get());
+                 b_shape[dim].Str().get(), true_idx, s.Str().get());
         } else if (EXPECT_SYMBOL_EQ(s, Symbol(1))) {
           GELOGI("Symbol input1[%zu]:%s is equal to symbol(1), should broadcast to input0[%zu]:%s.", true_idx,
-                 s.Serialize().get(), true_idx, b_shape[dim].Serialize().get());
+                 s.Str().get(), true_idx, b_shape[dim].Str().get());
         } else if (EXPECT_SYMBOL_EQ(b_shape[dim], Symbol(1))) {
           GELOGI("Symbol input0[%zu]:%s is equal to symbol(1), should broadcast to input1[%zu]:%s.", true_idx,
-                 b_shape[dim].Serialize().get(), true_idx, s.Serialize().get());
+                 b_shape[dim].Str().get(), true_idx, s.Str().get());
           b_shape[dim] = s;
         } else {
           GELOGE(ge::FAILED, "Symbol input0[%zu]:%s is not equal to input1[%zu]:%s which cannot broadcast.", true_idx,
-                 b_shape[dim].Serialize().get(), true_idx, s.Serialize().get());
+                 b_shape[dim].Str().get(), true_idx, s.Str().get());
           return FAILED;
         }
       }
@@ -176,10 +176,11 @@ Status SymbolicInferUtil::Broadcast(const std::vector<std::vector<Expression>> &
 
 std::string SymbolicInferUtil::DumpSymbolTensor(const gert::SymbolTensor &symbolic_tensor) {
   std::string debug_msg = "origin symbol shape: ";
-  debug_msg += SymbolicInferUtil::VectorExpressionToStr(symbolic_tensor.GetOriginSymbolShape().GetDims());
+  debug_msg += SymbolicInferUtil::VectorExpressionToStr(
+      SymbolicInferUtil::GetSymbolDims(symbolic_tensor.GetOriginSymbolShape()));
   debug_msg += ", symbolic value: ";
-  if (symbolic_tensor.GetSymbolicValue() != nullptr) {
-    debug_msg += SymbolicInferUtil::VectorExpressionToStr(*symbolic_tensor.GetSymbolicValue());
+  if (symbolic_tensor.HasValue()) {
+    debug_msg += SymbolicInferUtil::VectorExpressionToStr(SymbolicInferUtil::GetSymbolicValues(symbolic_tensor));
   } else {
     debug_msg += "None";
   }

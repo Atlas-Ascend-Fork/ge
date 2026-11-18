@@ -53,7 +53,7 @@ Status GetCseKeyOffset(const NodePtr &node, std::stringstream &ss) {
   GE_ASSERT_NOTNULL(load_attr);
   Expression load_offset;
   if (ge::GRAPH_SUCCESS == (load_attr->GetOffset(load_offset))) {
-    ss << "-offset-" << load_offset.Serialize().get();
+    ss << "-offset-" << load_offset.Str().get();
   } else {
     GELOGW("CseKey offset from node(%s %s) is null", node->GetName().c_str(), node->GetType().c_str());
   }

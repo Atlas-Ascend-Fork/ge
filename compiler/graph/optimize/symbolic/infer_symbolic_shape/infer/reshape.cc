@@ -35,17 +35,17 @@ graphStatus FinalizeReshapeSize(const gert::InferSymbolShapeContext *context, co
            context->GetNodeType());
     return UNSUPPORTED;
   }
-  out_shape->MutableDims()[unknown_dim_idx] = dynamic_dim;
+  out_shape->SetDim(unknown_dim_idx, dynamic_dim);
   return ge::GRAPH_SUCCESS;
 }
 
 graphStatus ReshapeInferCommon(const gert::InferSymbolShapeContext *context, const gert::SymbolShape *in_shape,
                                gert::SymbolShape *out_shape, const gert::SymbolTensor *shape_tensor) {
-  auto reshape_dim_num = shape_tensor->GetSymbolicValue()->size();
+  auto reshape_dim_num = shape_tensor->GetValueCount();
   size_t unknown_dim_idx = std::numeric_limits<size_t>::max();
   // expr可能是常量或者符号
   for (size_t i = 0; i < reshape_dim_num; i++) {
-    auto dim_expr = shape_tensor->GetSymbolicValue()->at(i);
+    auto dim_expr = shape_tensor->GetValue(i);
     // 常量维度直接取值；非常量维度尝试按 hint 取值（运行时真实数据），hint 不可得
     // 时保留符号维度原样传播（合法：符号维度本就可存在于 shape 中，不构成值污染）。
     int64_t dim = -2;
@@ -117,7 +117,7 @@ graphStatus InferShape4Reshape(gert::InferSymbolShapeContext *context) {
   auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
   // 输入为空列表不需要进行reshape
-  if (shape_tensor->GetSymbolicValue() == nullptr || shape_tensor->GetSymbolicValue()->empty()) {
+  if (!shape_tensor->HasValue() || shape_tensor->GetValueCount() == 0U) {
     GELOGW("Symbol Infer unsupported, get symbolic value is nullptr or empty, node %s[%s]", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
@@ -135,13 +135,13 @@ graphStatus InferShape4Reshape(gert::InferSymbolShapeContext *context) {
 graphStatus InferShape4AsStrided(gert::InferSymbolShapeContext *context) {
   const auto size_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(size_tensor);
-  const auto size_value = size_tensor->GetSymbolicValue();
-  GE_UNSUPPORTED_IF_NULL(size_value);
+  GE_UNSUPPORTED_IF(!size_tensor->HasValue());
+  const auto size_value = SymbolicInferUtil::GetSymbolicValues(*size_tensor);
   const auto out_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(out_shape);
 
-  out_shape->MutableDims().clear();
-  for (const auto &dim : *size_value) {
+  out_shape->Clear();
+  for (const auto &dim : size_value) {
     int64_t dim_value = 0;
     if (SymbolicInferUtil::TryGetConstInt(dim, dim_value) != GRAPH_SUCCESS) {
       GELOGW("Symbol Infer unsupported, AsStrided size is not an integer const, node %s[%s].", context->GetNodeName(),

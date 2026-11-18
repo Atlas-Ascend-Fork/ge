@@ -992,7 +992,7 @@ TEST_F(UtestInnerSession, IsGraphNeedRebuild_WithInit_CovEnhance2) {
 TEST_F(UtestInnerSession, RunGraphModeUsesSessionMapForBothGraphKinds) {
   InnerSession session(1U, {});
   uint32_t graph_id = 1U;
-  for (const auto kind : {static_cast<GraphKind>(0), static_cast<GraphKind>(1)}) {
+  for (const auto kind : {C_GRAPH_COMPUTE, C_GRAPH_EXECUTE}) {
     auto node = std::make_shared<GraphNode>(graph_id);
     node->SetGraph(std::make_shared<Graph>("graph", kind));
     session.graph_manager_.AddGraphNode(graph_id, node);

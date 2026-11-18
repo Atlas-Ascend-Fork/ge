@@ -14,13 +14,7 @@
 #include "engine/aicore/converter/bg_kernel_launch.h"
 #include "register/node_converter_registry.h"
 #include "engine/aicore/fe_rt2_common.h"
-#include <mutex>
-#include <map>
-#include <string>
-#include "graph/op_kernel_bin.h"
 namespace gert {
-extern std::mutex g_kernel_bin_store_lock;
-extern std::map<std::string, ge::OpKernelBinPtr> g_kernel_bin_store;
 LowerResult LoweringAiCoreNode(const ge::NodePtr &node, const LowerInput &lower_input);
 std::vector<bg::ValueHolderPtr> InferAiCoreStorageShape(const ge::NodePtr &node,
                                                         const std::vector<bg::ValueHolderPtr> &input_shapes,
@@ -43,5 +37,13 @@ bool IsSingleOpScene(const ge::NodePtr &node);
 DfxExeArg GetOpDfxExeArg(const ge::NodePtr &node);
 ge::Status AddDataNodeForAtomic(ge::ComputeGraphPtr &graph, ge::NodePtr &clean_node, size_t output_size);
 LowerResult LoweringStaticAicoreNode(const ge::NodePtr &node, const LowerInput &lower_input);
+bg::ValueHolderPtr CreateResolvedBinHandleHolder(const ge::NodePtr &node, bool is_atomic_node);
+bg::ValueHolderPtr GetOrCreateResolveFuncHandleNode(const ge::NodePtr &node, LoweringGlobalData &global_data,
+                                                    const std::string &bin_id, uint32_t with_handle_flag,
+                                                    const bg::ValueHolderPtr &bin_handle_holder,
+                                                    const bg::ValueHolderPtr &tiling_key_holder,
+                                                    const bg::ValueHolderPtr &kernel_name_holder,
+                                                    const bg::ValueHolderPtr &with_handle_flag_holder,
+                                                    const std::string &kernel_name_key_suffix, bool use_per_node_key);
 }  // namespace gert
 #endif  // AIR_CXX_RUNTIME_V2_NODE_CONVERTER_AICORE_NODE_CONVERTER_H_

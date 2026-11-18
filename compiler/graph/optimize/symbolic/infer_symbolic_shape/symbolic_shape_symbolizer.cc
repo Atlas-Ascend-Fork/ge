@@ -218,7 +218,7 @@ std::vector<Expression> CreateSymbolValueElement(const GeTensor &tensor, int32_t
     GELOGT(TRACE_RUNNING,
            "symbolize value from data, data_index %d, elem_idx %zu, value %lld, symbol name %s, "
            "source str is %s",
-           data_index, i, static_cast<int64_t>(data[i]), symbol.GetName().get(), source->GetSourceStr().c_str());
+           data_index, i, static_cast<int64_t>(data[i]), symbol.Str().get(), source->GetSourceStr().c_str());
   }
   return result;
 }
@@ -265,7 +265,7 @@ std::vector<Expression> SymbolizeValueFromHint(const GeTensor &tensor, int32_t d
     auto symbol = shape_env_attr->CreateSymbol<int64_t>(hint_values[elem_idx], source);
     result.emplace_back(symbol);
     GELOGD("symbolize value from option, data_index %d, elem_idx %zu, value %lld, symbol name %s, source str is %s",
-           data_index, elem_idx, hint_values[elem_idx], symbol.GetName().get(), source->GetSourceStr().c_str());
+           data_index, elem_idx, hint_values[elem_idx], symbol.Str().get(), source->GetSourceStr().c_str());
   }
   return result;
 }
@@ -273,7 +273,7 @@ std::vector<Expression> SymbolizeValueFromHint(const GeTensor &tensor, int32_t d
 // 值符号化：优先取真实 host 数据，其次取 ge.inputHintValue 兜底
 Status SymbolizeInputValue(const GeTensor &tensor, int32_t data_index, const NodePtr &data_node,
                            const ValueSymbolizeContext &ctx, SymbolicDescAttr *symbolic_desc_attr) {
-  if (symbolic_desc_attr->symbolic_tensor.GetSymbolicValue() != nullptr) {
+  if (symbolic_desc_attr->symbolic_tensor.HasValue()) {
     return SUCCESS;
   }
   std::vector<Expression> sym_value;
@@ -290,7 +290,7 @@ Status SymbolizeInputValue(const GeTensor &tensor, int32_t data_index, const Nod
     sym_value = SymbolizeValueFromHint(tensor, data_index, hint_it->second, ctx.shape_env_attr);
   }
   if (!sym_value.empty()) {
-    symbolic_desc_attr->symbolic_tensor.SetSymbolicValue(ge::MakeUnique<std::vector<Expression>>(std::move(sym_value)));
+    SymbolicInferUtil::SetSymbolicValues(symbolic_desc_attr->symbolic_tensor, sym_value);
   }
   return SUCCESS;
 }
@@ -301,8 +301,7 @@ Status SymbolizeInputValueSum(const GeTensor &tensor, int32_t data_index, OpDesc
   int64_t symbolize_value_type = SYMBOLIZE_VALUE_TYPE_NONE;
   if (!AttrUtils::GetInt(op_desc, kSymbolizeValueType, symbolize_value_type) ||
       symbolize_value_type != static_cast<int64_t>(SYMBOLIZE_VALUE_TYPE_SUM) ||
-      !SupportSymbolizeValue(tensor, op_desc->GetNamePtr()) ||
-      symbolic_desc_attr->symbolic_tensor.GetSymbolicValue() != nullptr) {
+      !SupportSymbolizeValue(tensor, op_desc->GetNamePtr()) || symbolic_desc_attr->symbolic_tensor.HasValue()) {
     return SUCCESS;
   }
   GELOGI("Symbolize value sum for node %s[%s]", op_desc->GetNamePtr(), op_desc->GetTypePtr());
@@ -319,9 +318,10 @@ Status SymbolizeInputValueSum(const GeTensor &tensor, int32_t data_index, OpDesc
         }
       });
   GE_ASSERT_NOTNULL(value);
-  symbolic_desc_attr->symbolic_tensor.SetSymbolicValue(std::move(value));
-  GELOGI("Symbolize value success, %s",
-         SymbolicInferUtil::VectorExpressionToStr(*symbolic_desc_attr->symbolic_tensor.GetSymbolicValue()).c_str());
+  SymbolicInferUtil::SetSymbolicValues(symbolic_desc_attr->symbolic_tensor, *value);
+  GELOGI("Symbolize value success, %s", SymbolicInferUtil::VectorExpressionToStr(
+                                            SymbolicInferUtil::GetSymbolicValues(symbolic_desc_attr->symbolic_tensor))
+                                            .c_str());
   return GRAPH_SUCCESS;
 }
 
@@ -409,12 +409,12 @@ Status SymbolizeMultiBatchSubGraph(const ComputeGraphPtr &graph) {
                      sub_graph->GetName().c_str(), node->GetNamePtr());
       auto symbol_attr = op_desc->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
       GE_ASSERT_NOTNULL(symbol_attr);
-      auto &origin_symbol_shape = symbol_attr->symbolic_tensor.MutableOriginSymbolShape().MutableDims();
-      origin_symbol_shape.clear();
+      gert::SymbolShape origin_symbol_shape;
       for (size_t i = 0; i < shape.GetDimNum(); i++) {
         GuardDfxContext dfx_context("node name:" + op_desc->GetName() + " index:" + to_string(i));
-        origin_symbol_shape.push_back(Symbol(shape.GetDim(i)));
+        origin_symbol_shape.AppendDim(Symbol(shape.GetDim(i)));
       }
+      symbol_attr->symbolic_tensor.SetOriginSymbolShape(origin_symbol_shape);
     }
   }
   return SUCCESS;
@@ -445,13 +445,12 @@ Status SymbolizeShape(const DataSymbolizeInfo &info, const OpDesc *op_desc, Shap
                  data_index, op_desc->GetName().c_str(), ge_shape.GetDimNum(), input_origin_shape.GetDimNum());
 
   GE_ASSERT_NOTNULL(symbolic_desc_attr);
-  auto &origin_symbol_shape = symbolic_desc_attr->symbolic_tensor.MutableOriginSymbolShape().MutableDims();
-  origin_symbol_shape.clear();
+  gert::SymbolShape origin_symbol_shape;
   for (size_t i = 0UL; i < ge_shape.GetDimNum(); ++i) {
     GuardDfxContext dfx_context("node name:" + op_desc->GetName() + " index:" + to_string(i));
     auto dim_value = ge_shape.GetDim(i);
     if (dim_value >= 0) {
-      origin_symbol_shape.push_back(Symbol(dim_value));
+      origin_symbol_shape.AppendDim(Symbol(dim_value));
       continue;
     }
     dim_value = input_origin_shape.GetDim(i);
@@ -460,10 +459,11 @@ Status SymbolizeShape(const DataSymbolizeInfo &info, const OpDesc *op_desc, Shap
     Symbol symbol = shape_env_attr->CreateSymbol(dim_value, input_source);
     // 需要生成符号是否是0的guard，判断输入是否是空tensor
     EXPECT_SYMBOL_EQ(symbol, Symbol(0));
-    origin_symbol_shape.emplace_back(symbol);
+    origin_symbol_shape.AppendDim(symbol);
     GELOGI("Symbolize data node %s, index %zu, value %lld, symbol name %s, source str is %s",
-           op_desc->GetName().c_str(), i, dim_value, symbol.GetName().get(), input_source->GetSourceStr().c_str());
+           op_desc->GetName().c_str(), i, dim_value, symbol.Str().get(), input_source->GetSourceStr().c_str());
   }
+  symbolic_desc_attr->symbolic_tensor.SetOriginSymbolShape(origin_symbol_shape);
   return SUCCESS;
 }
 

@@ -109,10 +109,10 @@ class BroadcastReduceEliminationPassTest : public testing::Test {
     EXPECT_EQ(output_desc.GetOriginShape().GetDims(), expected_shape);
     const auto symbolic_attr = output_desc.GetAttrsGroup<SymbolicDescAttr>();
     ASSERT_NE(symbolic_attr, nullptr);
-    const auto &symbolic_dims = symbolic_attr->symbolic_tensor.GetOriginSymbolShape().GetDims();
-    ASSERT_EQ(symbolic_dims.size(), expected_shape.size());
+    const auto &symbolic_shape = symbolic_attr->symbolic_tensor.GetOriginSymbolShape();
+    ASSERT_EQ(symbolic_shape.GetDimNum(), expected_shape.size());
     for (size_t i = 0; i < expected_shape.size(); ++i) {
-      EXPECT_EQ(symbolic_dims[i], Symbol(expected_shape[i]));
+      EXPECT_EQ(symbolic_shape.GetDim(i), Symbol(expected_shape[i]));
     }
 
     const auto data_node = graph->FindNode("data");

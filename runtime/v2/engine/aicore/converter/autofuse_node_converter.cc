@@ -48,21 +48,8 @@ bg::ValueHolderPtr AutofuseLaunch(const ge::NodePtr &node, const LowerInput &low
   auto op_desc = node->GetOpDesc();
   std::string kernel_bin_id;
   GE_ASSERT_SUCCESS(GetTbeKernelId(op_desc, false, kernel_bin_id));
-  auto kernel_bin_id_holder = bg::ValueHolder::CreateConst(kernel_bin_id.c_str(), kernel_bin_id.size() + 1, true);
-  // magic
-  uint32_t magic{0};
-  GE_ASSERT_SUCCESS(GetBinaryMagic(op_desc, false, magic));
-  auto magic_holder = bg::ValueHolder::CreateConst(&magic, sizeof(magic), false);
-  // kernel_bin_data
-  auto kernel_bin = GetTbeKernelBin(op_desc, false);
-  GE_ASSERT_NOTNULL(kernel_bin, "Node[%s] kernel_bin is nullptr.", node->GetNamePtr());
-  bg::ValueHolderPtr kernel_bin_holder;
-  {
-    std::unique_lock<std::mutex> lk(g_kernel_bin_store_lock);
-    auto emplace_result = g_kernel_bin_store.emplace(kernel_bin_id, kernel_bin);
-    ge::KernelBinPtr *kernel_bin_ptr = &(emplace_result.first->second);
-    kernel_bin_holder = bg::ValueHolder::CreateConst(&kernel_bin_ptr, sizeof(kernel_bin_ptr));
-  }
+  auto bin_handle_holder = CreateResolvedBinHandleHolder(node, false);
+  GE_ASSERT_NOTNULL(bin_handle_holder);
   // shapebuffer_addr
   auto shapebuffer_addr = bg::AllocShapeBufferMem(kOnDeviceHbm, node, *(global_data));
   // get qos attrs
@@ -87,12 +74,15 @@ bg::ValueHolderPtr AutofuseLaunch(const ge::NodePtr &node, const LowerInput &low
   DfxExeArg dfx_exe_arg = GetOpDfxExeArg(node);
   auto dfx_holder = bg::ValueHolder::CreateConst(&dfx_exe_arg, sizeof(dfx_exe_arg));
 
+  auto func_handle =
+      GetOrCreateResolveFuncHandleNode(node, *(global_data), kernel_bin_id, with_handle_flag, bin_handle_holder,
+                                       tiling_results[TilingContext::kOutputTilingKey], kernel_name_holder,
+                                       with_handle_flag_holder, "_kernelname", false);
+  GE_ASSERT_NOTNULL(func_handle);
+
   auto launch_arg_ref = bg::LaunchKernelV2(
       {
           global_data->GetStream(),
-          kernel_bin_id_holder,
-          magic_holder,
-          kernel_bin_holder,
           tiling_results[static_cast<size_t>(TilingContext::kOutputBlockDim)],
           tiling_results[TilingContext::kOutputScheduleMode],
           tiling_results[TilingContext::kOutputLocalMemorySize],
@@ -106,9 +96,7 @@ bg::ValueHolderPtr AutofuseLaunch(const ge::NodePtr &node, const LowerInput &low
           global_data,
           dfx_holder,
           tiling_results[static_cast<size_t>(kernel::TilingExOutputIndex::kRtArg)],
-          tiling_results[TilingContext::kOutputTilingKey],
-          kernel_name_holder,
-          with_handle_flag_holder,
+          func_handle,
       },
       lower_input.input_addrs, output_addrs);
   FE_ASSERT_NOTNULL(launch_arg_ref);

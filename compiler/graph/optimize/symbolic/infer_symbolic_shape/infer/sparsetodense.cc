@@ -56,7 +56,7 @@ graphStatus InferShape4SparseToDense(gert::InferSymbolShapeContext *context) {
 
   auto input1_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(input1_tensor);
-  if (input1_tensor->GetSymbolicValue() == nullptr || input1_tensor->GetSymbolicValue()->empty()) {
+  if (!input1_tensor->HasValue() || input1_tensor->GetValueCount() == 0U) {
     GELOGW("Symbol Infer unsupported, get symbolic value is nullptr or empty, node %s", context->GetNodeName());
     return UNSUPPORTED;
   }
@@ -81,12 +81,12 @@ graphStatus InferShape4SparseToDense(gert::InferSymbolShapeContext *context) {
     return ret;
   }
   dim_num = (dim_num > 0) ? dim_num : 1;
-  auto value_num = input1_tensor->GetSymbolicValue()->size();
+  auto value_num = input1_tensor->GetValueCount();
   GE_ASSERT(static_cast<size_t>(dim_num) <= value_num, "dim_num[%ld] should be less than value_num[%zu], node %s",
             dim_num, value_num, context->GetNodeName());
 
   for (int64_t i = 0; i < dim_num; i++) {
-    auto dim_expr = input1_tensor->GetSymbolicValue()->at(i);
+    auto dim_expr = input1_tensor->GetValue(i);
     if (dim_expr.IsConstExpr()) {
       int64_t dim = -2;
       auto ret = GetConstInt(dim_expr, dt, dim);

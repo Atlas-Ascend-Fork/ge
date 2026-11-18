@@ -8,6 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <map>
+
 #include "aicpu_resource_manager.h"
 #include "framework/common/debug/ge_log.h"
 #include "exe_graph/runtime/kernel_context.h"
@@ -23,6 +25,7 @@
 #include "mmpa/mmpa_api.h"
 #include "graph/load/model_manager/model_manager.h"
 #include "common/aclrt_malloc_helper.h"
+#include "graph_metadef/common/plugin/ops_deliverables_parser.h"
 
 namespace gert {
 namespace {
@@ -34,6 +37,7 @@ void FreeHbmMem(void *p) {
 
 const std::string kHostCpuLibRelativePathOld = "/op_impl/built-in/host_cpu/libconstant_folding_ops.so";
 const std::string kHostCpuLibRelativePath = "/built-in/op_impl/host_cpu/libconstant_folding_ops.so";
+constexpr char kConstantFoldingOpsKey[] = "constant-folding-ops";
 
 ge::graphStatus GetRealPath(std::string &path) {
   const std::string real_path = ge::RealPath(path.c_str());
@@ -42,18 +46,37 @@ ge::graphStatus GetRealPath(std::string &path) {
   return ge::GRAPH_SUCCESS;
 }
 
+// ops_deliverables.json has a higher priority than the legacy hardcoded library paths.
+bool GetLibPathFromDeliverables(const std::string &opp_path, std::string &lib_path) {
+  ge::OpsDeliverablesParser parser;
+  std::string reason;
+  if (!parser.Load(reason)) {
+    GELOGI("Use legacy host cpu lib discovery, reason: %s", reason.c_str());
+    return false;
+  }
+  const std::map<std::string, std::string> variables{{"ASCEND_OPP_PATH", opp_path}};
+  return parser.GetPath(kConstantFoldingOpsKey, variables, lib_path);
+}
+
 ge::graphStatus GetLibPath(std::string &lib_path) {
   GELOGI("Start to get host cpu lib path.");
   const char_t *path_env = nullptr;
   MM_SYS_GET_ENV(MM_ENV_ASCEND_OPP_PATH, path_env);
   GE_ASSERT_TRUE(path_env != nullptr);
 
-  lib_path = std::string(path_env);
-  GE_ASSERT_TRUE(!lib_path.empty());
+  const std::string opp_path(path_env);
+  GE_ASSERT_TRUE(!opp_path.empty());
 
-  lib_path += kHostCpuLibRelativePath;
+  std::string config_path;
+  if (GetLibPathFromDeliverables(opp_path, config_path)) {
+    lib_path = config_path;
+    GELOGI("Get host cpu so path from ops deliverables: %s", lib_path.c_str());
+    return ge::GRAPH_SUCCESS;
+  }
+
+  lib_path = opp_path + kHostCpuLibRelativePath;
   if (GetRealPath(lib_path) != ge::GRAPH_SUCCESS) {
-    lib_path = std::string(path_env) + kHostCpuLibRelativePathOld;
+    lib_path = opp_path + kHostCpuLibRelativePathOld;
     if (GetRealPath(lib_path) != ge::GRAPH_SUCCESS) {
       REPORT_INNER_ERR_MSG("E19999", "GetLibPath failed, lib_path = %s", lib_path.c_str());
       GELOGE(ge::INTERNAL_ERROR, "[Invoke][GetLibPath] failed. path = %s", lib_path.c_str());

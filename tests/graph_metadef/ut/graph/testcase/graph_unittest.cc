@@ -44,8 +44,10 @@
 #include "es_graph_builder.h"
 #include "es_c_graph_builder.h"
 #include "error_manager.h"
+#include "base/err_mgr.h"
 #include "normal_graph/graph_impl.h"
 #include "normal_graph/operator_impl.h"
+#include "normal_graph/operator_graph_builder.h"
 
 #include "mmpa/mmpa_api.h"
 #include <debug/ge_attr_define.h>
@@ -2203,13 +2205,13 @@ Operator MakeTestOp(const char_t *name, const char_t *type, uint32_t in_cnt, uin
 }  // namespace
 
 TEST_F(UtestGraph, ComputeGraphSetInputsReturnGraphFailedForEmptyInputs) {
-  Graph graph("empty_inputs", 0);
+  Graph graph("empty_inputs", C_GRAPH_COMPUTE);
   EXPECT_EQ(GRAPH_FAILED, graph.impl_->SetInputs({}));
   EXPECT_FALSE(graph.IsValid());
 }
 
 TEST_F(UtestGraph, ComputeGraphImplSetInputsPreservesFailureRetryAndInitializationOrder) {
-  Graph graph("inputs", 0);
+  Graph graph("inputs", C_GRAPH_COMPUTE);
   GraphImpl &impl = *graph.impl_;
   EXPECT_EQ(GRAPH_FAILED, impl.SetInputs({}));
   EXPECT_FALSE(graph.IsValid());
@@ -2242,7 +2244,7 @@ TEST_F(UtestGraph, CreateGraphsFromOperatorRejectInvalidInputs) {
 }
 
 TEST_F(UtestGraph, ComputeGraphAddNodeByOpAcceptDuplicateAndEmptyNames) {
-  Graph graph("names", 0);
+  Graph graph("names", C_GRAPH_COMPUTE);
   auto first = graph.AddNodeByOp(MakeTestOp("same", "PlainOp", 0U, 1U));
   auto second = graph.AddNodeByOp(MakeTestOp("same", "PlainOp", 0U, 1U));
   auto empty_op = OpDescUtils::CreateOperatorFromOpDesc(std::make_shared<OpDesc>("", "PlainOp"));
@@ -2260,7 +2262,7 @@ TEST_F(UtestGraph, ComputeGraphAddNodeByOpAcceptDuplicateAndEmptyNames) {
 TEST_F(UtestGraph, ComputeGraphAddNodeByOpRejectMissingDescBeforeInitializingGraph) {
   auto missing_desc = MakeTestOp("missing_desc", "PlainOp", 0U, 1U);
   missing_desc.operator_impl_->op_desc_.reset();
-  Graph graph("invalid_op", 0);
+  Graph graph("invalid_op", C_GRAPH_COMPUTE);
   for (const auto &op : std::vector<Operator>{Operator(), missing_desc}) {
     auto node = graph.AddNodeByOp(op);
     AscendString name;
@@ -2271,7 +2273,7 @@ TEST_F(UtestGraph, ComputeGraphAddNodeByOpRejectMissingDescBeforeInitializingGra
 
 // 计算图上的加节点、连边、枚举、查找和删节点闭环。
 TEST_F(UtestGraph, ComputeGraphImplNodeEditingPreservesBackendBehavior) {
-  Graph graph("edit", 0);
+  Graph graph("edit", C_GRAPH_COMPUTE);
   GraphImpl &impl = *graph.impl_;
   auto source_op = MakeTestOp("source", "PlainOp", 0U, 1U);
   auto source = impl.AddNodeByOp(source_op);
@@ -2306,8 +2308,8 @@ TEST_F(UtestGraph, ComputeGraphImplNodeEditingPreservesBackendBehavior) {
 }
 
 TEST_F(UtestGraph, ComputeGraphImplEdgesPreserveBackendSpecificCrossGraphRules) {
-  Graph first("first", 0);
-  Graph second("second", 0);
+  Graph first("first", C_GRAPH_COMPUTE);
+  Graph second("second", C_GRAPH_COMPUTE);
   auto source = first.AddNodeByOp(MakeTestOp("source", "PlainOp", 0U, 1U));
   auto target = second.AddNodeByOp(MakeTestOp("target", "PlainOp", 1U, 0U));
   GraphImpl &impl = *first.impl_;
@@ -2323,7 +2325,7 @@ TEST_F(UtestGraph, ComputeGraphImplEdgesPreserveBackendSpecificCrossGraphRules) 
 }
 
 TEST_F(UtestGraph, ComputeGraphImplAttributesPreserveInitializationAndEmptyNameSemantics) {
-  Graph graph("attrs", 0);
+  Graph graph("attrs", C_GRAPH_COMPUTE);
   GraphImpl &impl = *graph.impl_;
   AttrValue value;
   ASSERT_EQ(GRAPH_SUCCESS, value.SetAttrValue(static_cast<int64_t>(7)));
@@ -2354,10 +2356,33 @@ Operator MakeNamedTestOp(const char_t *name, const char_t *type, const std::vect
   return op;
 }
 
+// 清理错误管理器中残留的上报信息，避免用例间互相干扰。
+void DrainErrorManager() {
+  (void)error_message::ErrMgrInit(error_message::ErrorMessageMode::INTERNAL_MODE);
+  (void)error_message::GetErrMgrRawErrorMessages();
+}
+
+// 在已取回的上报列表中校验存在指定错误码、且消息文本包含指定前缀的条目。
+// 注意 GetErrMgrRawErrorMessages 每次调用会清空上下文，一次用例中只允许取回一次。
+bool HasReportedError(const std::vector<error_message::ErrMsgRawItem> &raw_errors, const std::string &error_code,
+                      const std::string &msg_text) {
+  for (const auto &item : raw_errors) {
+    if ((item.error_id == nullptr) || (item.error_message == nullptr)) {
+      continue;
+    }
+    const std::string id(item.error_id.get());
+    const std::string message(item.error_message.get());
+    if ((id == error_code) && (message.find(msg_text) != std::string::npos)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 TEST_F(UtestGraph, ComputeGraphAddDataEdgeAllowSelfLoop) {
-  Graph graph("self_loop", 0);
+  Graph graph("self_loop", C_GRAPH_COMPUTE);
   auto node = graph.AddNodeByOp(MakeTestOp("node", "PlainOp", 1U, 1U));
   ASSERT_EQ(GRAPH_SUCCESS, graph.AddDataEdge(node, 0, node, 0));
   EXPECT_EQ(1U, node.GetOutDataNodesAndPortIndexs(0).size());
@@ -2371,7 +2396,7 @@ TEST_F(UtestGraph, ComputeGraphAddDataEdgeAllowSelfLoop) {
 }
 
 TEST_F(UtestGraph, ComputeGraphAddControlEdgeAllowSelfLoopAndDuplicates) {
-  Graph graph("self_loop", 0);
+  Graph graph("self_loop", C_GRAPH_COMPUTE);
   auto node = graph.AddNodeByOp(MakeTestOp("node", "PlainOp", 0U, 0U));
   ASSERT_EQ(GRAPH_SUCCESS, graph.AddControlEdge(node, node));
   ASSERT_EQ(GRAPH_SUCCESS, graph.AddControlEdge(node, node));
@@ -2386,7 +2411,7 @@ TEST_F(UtestGraph, ComputeGraphAddControlEdgeAllowSelfLoopAndDuplicates) {
 }
 
 TEST_F(UtestGraph, ComputeGraphCopyFromSupportSelfCopyAndOverwrite) {
-  Graph src("src", 0);
+  Graph src("src", C_GRAPH_COMPUTE);
   src.AddNodeByOp(MakeTestOp("a", "PlainOp", 0U, 1U));
   Graph old_src = src;
   ASSERT_EQ(GRAPH_SUCCESS, src.CopyFrom(src));
@@ -2394,7 +2419,7 @@ TEST_F(UtestGraph, ComputeGraphCopyFromSupportSelfCopyAndOverwrite) {
   EXPECT_NE(nullptr, src.FindNodeByName(AscendString("a")));
   EXPECT_NE(nullptr, old_src.FindNodeByName(AscendString("a")));
 
-  Graph nonempty("nonempty", 0);
+  Graph nonempty("nonempty", C_GRAPH_COMPUTE);
   auto old_node = nonempty.AddNodeByOp(MakeTestOp("x", "PlainOp", 0U, 1U));
   Graph alias = nonempty;
   ASSERT_EQ(GRAPH_SUCCESS, nonempty.CopyFrom(src));
@@ -2446,9 +2471,9 @@ TEST_F(UtestGraph, ComputeGraphRenameAllNodesPreservesBehavior) {
 }
 
 TEST_F(UtestGraph, ComputeGraphImplAddSubGraphPreservesRegistrationAndFailureSemantics) {
-  Graph root("root", 0);
+  Graph root("root", C_GRAPH_COMPUTE);
   auto parent = root.AddNodeByOp(MakeTestOp("parent", "If", 0U, 1U));
-  Graph child("child", 0);
+  Graph child("child", C_GRAPH_COMPUTE);
   child.AddNodeByOp(MakeTestOp("inner", "PlainOp", 0U, 1U));
 
   auto native_child = GraphUtilsEx::GetComputeGraph(child);
@@ -2464,7 +2489,7 @@ TEST_F(UtestGraph, ComputeGraphImplAddSubGraphPreservesRegistrationAndFailureSem
 
   Graph invalid;
   EXPECT_NE(GRAPH_SUCCESS, impl.AddSubGraph(invalid));
-  Graph missing_parent("missing_parent", 0);
+  Graph missing_parent("missing_parent", C_GRAPH_COMPUTE);
   ASSERT_EQ(GRAPH_SUCCESS, missing_parent.SetValid());
   EXPECT_EQ(GRAPH_FAILED, impl.AddSubGraph(missing_parent));
   EXPECT_EQ(1U, root.GetAllSubgraphs().size());
@@ -2984,7 +3009,7 @@ TEST_F(UtestGraph, ComputeGraphImplSetOutputsSharesSelectionRules) {
   using NamedOutputs = std::vector<std::pair<Operator, std::string>>;
   using AscendNamedOutputs = std::vector<std::pair<Operator, AscendString>>;
   using NodeOutputs = std::vector<std::pair<GNode, int32_t>>;
-  Graph graph("outputs", 0);
+  Graph graph("outputs", C_GRAPH_COMPUTE);
   auto op = MakeNamedTestOp("producer", "PlainOp", {"left", "middle", "right"}, {});
   auto node = graph.AddNodeByOp(op);
   auto alias = MakeTestOp("producer", "OtherType", 0U, 0U);
@@ -3087,6 +3112,50 @@ TEST_F(UtestGraph, ComputeOperatorBuilderPreservesStableOrderDescriptorsAndSubgr
   ASSERT_EQ(2U, graph->GetAllSubgraphs().size());
   EXPECT_EQ(node, graph->GetSubgraph("z")->GetParentNode());
   EXPECT_EQ(graph, graph->GetSubgraph("a")->GetParentGraph());
+}
+
+// 稳定构图子图构建失败：builder 返回未 SetValid 的 Graph 时，MountSubgraph 失败，
+// GenerateNode 内层 GE_ASSERT_SUCCESS(WalkAllSubgraphs(...)) 需上报 E19999 并使构图整体返回空。
+TEST_F(UtestGraph, ComputeOperatorBuilderStableTopoSubgraphMountFailedReportsInnerAssert) {
+  auto parent = MakeNamedTestOp("parent", "PlainOp", {"out"}, {});
+  auto desc = OpDescUtils::GetOpDescFromOperator(parent);
+  desc->RegisterSubgraphIrName("broken", kStatic);
+  parent.SubgraphCountRegister("broken", 1U);
+  parent.SetSubgraphBuilder("broken", 0U, []() {
+    Graph branch("broken");
+    return branch;
+  });
+  DrainErrorManager();
+  const auto graph = GraphUtilsEx::CreateComputeGraphFromOperatorWithStableTopo("stable_mount_failed", {parent});
+  EXPECT_EQ(nullptr, graph);
+  const auto raw_errors = error_message::GetErrMgrRawErrorMessages();
+  EXPECT_TRUE(HasReportedError(raw_errors, "E18888", "Node: parent, Build graph failed."));
+  EXPECT_TRUE(
+      HasReportedError(raw_errors, "E19999", "Assert ((WalkAllSubgraphs(node, op_impl)) == ge::SUCCESS) failed"));
+}
+
+// 稳定构图建点失败：CreateNode 返回空时，GenerateNode 内层 GE_ASSERT_NOTNULL(node)
+// 需上报 E19999 并以错误返回，而非静默跳过子图构建。
+TEST_F(UtestGraph, ComputeOperatorBuilderGenerateNodeCreateNodeNullReportsInnerAssert) {
+  struct NullCreateNodeOps {
+    using GraphPtr = ComputeGraphPtr;
+    using NodeType = NodePtr;
+    static NodeType CreateNode(const GraphPtr &, const OpDescPtr &) {
+      return nullptr;
+    }
+    static graphStatus MountSubgraph(const GraphPtr &, const NodeType &, const std::string &, const std::string &,
+                                     uint32_t, const Graph &) {
+      return GRAPH_SUCCESS;
+    }
+  };
+  auto op = MakeNamedTestOp("bad", "PlainOp", {"out"}, {});
+  const ComputeGraphPtr graph = std::make_shared<ComputeGraph>("stable_create_failed");
+  OperatorGraphBuilder<NullCreateNodeOps> builder(graph);
+  DrainErrorManager();
+  const auto ret = builder.GenerateNode(op.operator_impl_);
+  EXPECT_NE(GRAPH_SUCCESS, ret);
+  const auto raw_errors = error_message::GetErrMgrRawErrorMessages();
+  EXPECT_TRUE(HasReportedError(raw_errors, "E19999", "Assert ((node) != nullptr) failed"));
 }
 
 TEST_F(UtestGraph, ComputeGraphEsCreateInputKeepsExistingTypeRules) {
