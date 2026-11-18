@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 PA场景下，通过block列表的方式拷贝KV Cache。支持D2D，D2H，H2D的拷贝。
 
@@ -43,7 +43,7 @@ Status CopyKvBlocks(const Cache &src_cache,
 Status ret = llm_datadist.CopyKvBlocks(src_cache, dst_cache, {1,2}, {{1,2},{3,4}});
 ```
 
-## 返回值
+## 返回值说明
 
 - LLM\_SUCCESS：成功
 - LLM\_PARAM\_INVALID：参数错误

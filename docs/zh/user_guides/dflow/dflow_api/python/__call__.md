@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 调用FlowNode进行计算。
 
@@ -25,7 +25,7 @@ __call__(*inputs)
 | --- | --- | --- |
 | *inputs | Union[FlowData, FlowOutput] | 动态参数，类型为[FlowData](dataflow-FlowData.md)或者[FlowOutput](dataflow-FlowOutput.md)。 |
 
-## 返回值
+## 返回值说明
 
 一个输出时返回FlowOutput对象，多个输出时返回FlowOutput元组。
 

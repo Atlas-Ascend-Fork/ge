@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 拷贝KV Cache。
 
@@ -40,7 +40,7 @@ copy_cache(dst: KvCache, src: KvCache, dst_batch_index: int = 0, src_batch_index
 kv_cache_manager.copy_cache(dst_cache, src_cache, 0, 1, 0, 128)
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

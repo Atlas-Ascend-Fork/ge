@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 设置LLM-DataDist的角色。建议仅在使用PagedAttention的场景使用。
 
@@ -35,7 +35,7 @@ Status SetRole(LlmRole role, const std::map<AscendString, AscendString> &options
 | --- | --- | --- |
 | OPTION_LISTEN_IP_INFO | 切换至Pormpt必选 | 设置为Device的IP地址和端口，如"192.168.1.1:26000" |
 
-## 返回值
+## 返回值说明
 
 - LLM\_SUCCESS：设置角色成功
 - LLM\_PARAM\_INVALID：参数错误

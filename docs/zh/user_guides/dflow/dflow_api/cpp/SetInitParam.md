@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FunctionPp的初始化参数，返回设置好的FunctionPp。
 
@@ -37,7 +37,7 @@ FunctionPp &SetInitParam(const char_t *attr_name, const std::vector<ge::DataType
 | attr_name | 输入 | 初始化参数名。 |
 | value | 输入 | 初始化参数值。 |
 
-## 返回值
+## 返回值说明
 
 返回设置好的FunctionPp。
 

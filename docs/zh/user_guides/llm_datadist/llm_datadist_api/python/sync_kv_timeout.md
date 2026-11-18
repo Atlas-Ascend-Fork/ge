@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 配置一系列接口的超时时间对应底层llm.SyncKvCacheWaitTime配置项。
 
@@ -36,7 +36,7 @@ llm_config = LLMConfig()
 llm_config.sync_kv_timeout = 1000
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

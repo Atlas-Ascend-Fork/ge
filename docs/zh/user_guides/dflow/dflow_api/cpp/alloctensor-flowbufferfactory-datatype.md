@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据shape、data type和对齐大小申请Tensor。
 
@@ -27,7 +27,7 @@ std::shared_ptr<Tensor> AllocTensor(const std::vector<int64_t> &shape, DataType 
 | data_type | 输入 | Tensor的DataType 。 |
 | align | 输入 | 申请内存地址对齐大小，取值范围【32、64、128、256、512、1024】，当前为预留参数。 |
 
-## 返回值
+## 返回值说明
 
 申请的Tensor指针。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置均衡分发亲和性。
 
@@ -25,7 +25,7 @@ void SetAffinityPolicy(AffinityPolicy affinityPolicy) = 0
 | --- | --- | --- |
 | affinityPolicy | 输入 | 亲和性。<br>enum class AffinityPolicy : int32_t {<br>NO_AFFINITY = 0,  // 不需要亲和<br>ROW_AFFINITY = 1,  // 按行亲和<br>COL_AFFINITY = 2,  //  按列亲和<br>}; |
 
-## 返回值
+## 返回值说明
 
 无。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 CountBatch功能是指基于UDF为计算处理点将多个数据按batch\_size组成batch。该功能应用于dataflow异步场景，具体如下。
 
@@ -31,7 +31,7 @@ CountBatch(batch_size=0, slide_stride=0, timeout=0, padding=False)
 | padding | Bool | 只有设置了batch_size和timeout时，该参数才生效。<br>不足batch时，是否padding。默认值false，表示不padding。 |
 | slide_stride | int64_t | 只有设置了batch_size时，该参数才生效。<br>滑窗步长，取值范围[0,batch_size]。<br><br>  - >0,<batch_size时表示启用滑窗方式组batch。<br>  - 不设置，等于0，等于batch_size时按照未设置滑窗步长方式组batch。<br>  - >batch_size时报错。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

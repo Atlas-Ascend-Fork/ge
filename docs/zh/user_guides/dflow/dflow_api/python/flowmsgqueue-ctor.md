@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 FlowMsgQueue构造函数和析构函数。
 
@@ -25,7 +25,7 @@ __init__(self, flow_msg_queue: flowfunc_wrapper.FlowMsgQueue) -> None
 | --- | --- | --- |
 | flowfunc_wrapper.FlowMsgQueue | 输入 | flowfunc_wrapper模块中定义的FlowMsgQueue。实际执行时由C++代码传入，通过pybind11的绑定关系映射成flowfunc_wrapper的FlowMsgQueue对象。 |
 
-## 返回值
+## 返回值说明
 
 返回FlowMsgQueue类型的对象。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 GraphProcessPoint构造函数，返回一个GraphProcessPoint对象。
 
@@ -38,7 +38,7 @@ GraphProcessPoint(framework, graph_file, load_params={}, compile_config_path="",
 | inputs_tensor_desc.data_type | 可选 | 字符串类型。<br>取值为Graph中的data_type对应字符串。 |
 | inputs_tensor_desc.shape | 可选 | 值为整数类型的列表。<br>取值为Graph中的shape。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

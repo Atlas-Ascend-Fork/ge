@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置指定index的output的tensor。
 
@@ -27,7 +27,7 @@ set_output(self, index, output: Union[FlowMsg, np.ndarray, fw.FlowMsg], balance_
 | output | 输入 | 指定输出的Msg。 |
 | balance_config | 输入 | 可选。输出均衡分发相关配置。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS
 - other：FAILED，具体请参考[UDF错误码](udf-error-code.md)。

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置输出数据对应权重矩阵中的位置。
 
@@ -25,7 +25,7 @@ void SetDataPos(const std::vector<std::pair<int32_t, int32_t>> &dataPos) = 0
 | --- | --- | --- |
 | dataPos | 输入 | 输出数据对应的权重矩阵位置。 |
 
-## 返回值
+## 返回值说明
 
 无。
 

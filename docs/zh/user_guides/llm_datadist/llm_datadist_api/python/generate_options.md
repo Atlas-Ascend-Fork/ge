@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 生成配置项字典。
 
@@ -35,7 +35,7 @@ llm_config = LLMConfig()
 engine_options = llm_config.generate_options()
 ```
 
-## 返回值
+## 返回值说明
 
 返回配置项字典。
 

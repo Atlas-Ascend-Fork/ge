@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置节点balance scatter属性，具有balance scatter属性的UDF可以使用balance options设置负载均衡输出。
 
@@ -23,7 +23,7 @@ set_balance_scatter(self) -> None
 
 无
 
-## 返回值
+## 返回值说明
 
 返回None。
 

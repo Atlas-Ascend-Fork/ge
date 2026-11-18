@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 PagedAttention场景下，根据BlocksCacheKey，通过block列表的方式从对应的Prompt节点拉取KV到本地KV Cache，仅当LLMRole为DECODER时可调用。
 
@@ -51,7 +51,7 @@ kv_cache_manager.pull_blocks(prompt_cache_key, kv_cache, [0, 1], [2, 3])
 kv_cache_manager.pull_blocks(prompt_cache_key, kv_cache, [0, 1], [2, 3], src_layer_range=range(2), dst_layer_range=range(2))
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

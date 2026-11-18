@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取内部配置对象，被[set\_output](set_output.md)或者[set\_multi\_outputs](set_multi_outputs.md)调用。
 
@@ -23,7 +23,7 @@ get_inner_config(self)
 
 无
 
-## 返回值
+## 返回值说明
 
 内部配置对象。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FlowMsg消息头中的结束时间戳。
 
@@ -25,7 +25,7 @@ set_end_time(self, end_time : int) -> None
 | --- | --- | --- |
 | endTime | 输入 | 结束时间戳。 |
 
-## 返回值
+## 返回值说明
 
 无
 

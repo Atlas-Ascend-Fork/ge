@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 按索引获取图输出数据。
 
@@ -29,7 +29,7 @@ Status FetchDataFlowGraph(uint32_t graph_id, const std::vector<uint32_t> &indexe
 | info | 输出 | 输出数据流标志（flow flag）。具体请参考[DataFlowInfo数据类型](dataflowinfo-datatype.md)。 |
 | timeout | 输入 | 数据提取超时时间，单位：ms，取值为-1时表示从不超时。 |
 
-## 返回值
+## 返回值说明
 
 函数状态结果如下。
 

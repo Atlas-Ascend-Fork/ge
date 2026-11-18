@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 TimeBatch功能是基于UDF为前提的。
 
@@ -31,7 +31,7 @@ TimeBatch(time_window=0, batch_dim=0, drop_remainder=False)
 | batch_dim | int64_t | 只有设置了time_window时，该参数才生效。取值范围[-1,shape维度]。<br><br>  - 默认为-1表示数据输出shape会在第0维添加一个batch维。<br>  - shape维度>batch_dim>=0时表示按某个维度组batch。<br>  - batch_dim>shape维度或者<-1时报错。 |
 | drop_remainder | Bool | 只有设置了time_window时，该参数才生效。<br>仅在time_window>0时生效，选择不足time_window时是否丢弃，默认false不丢弃。true则丢弃。举例如下：<br>假如time_window=5ms，输入数据时长为3ms，则：<br><br>  - drop_remainder不配置或者配置为false时，不丢弃输入数据。<br>  - drop_remainder配置为true时如果输入数据未携带EOS或者SEG，会一直等待，不丢弃数据。如果输入数据只携带了SEG，则丢弃数据。如果输入数据携带了EOS标记，则丢弃输入数据，只传递EOS标记。<br>  - 如果输入数据未携带EOS或者SEG，会一直等待，不丢弃数据。<br>  - 如果输入数据只携带了SEG，则丢弃数据。<br>  - 如果输入数据携带了EOS标记，则丢弃输入数据，只传递EOS标记。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取string类型的属性值。
 
@@ -25,7 +25,7 @@ int32_t GetVal(AscendString &value) const = 0
 | --- | --- | --- |
 | value | 输出 | 获取的AscendString类型属性值。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS。
 - 其他返回值请参考[UDF错误码](udf-error-code.md)。

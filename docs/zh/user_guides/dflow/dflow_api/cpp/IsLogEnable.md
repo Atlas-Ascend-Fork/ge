@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 查询对应级别和类型的日志是否开启。
 
@@ -25,7 +25,7 @@ virtual bool IsLogEnable(FlowFuncLogLevel level) = 0
 | --- | --- | --- |
 | level | 输入 | 日志级别取值类型为FlowFuncLogLevel。<br>enum class FLOW_FUNC_VISIBILITY FlowFuncLogLevel {<br>DEBUG = 0,<br>INFO = 1,<br>WARN = 2,<br>ERROR = 3<br>}; |
 
-## 返回值
+## 返回值说明
 
 日志级别是否可记录。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FunctionPp的json配置文件名字和路径，该配置文件用于将FunctionPp和UDF进行映射。
 
@@ -214,7 +214,7 @@ buf\_cfg的json配置内容示例如下所示。
     endif()
     ```
 
-## 返回值
+## 返回值说明
 
 返回设置好的FunctionPp。
 

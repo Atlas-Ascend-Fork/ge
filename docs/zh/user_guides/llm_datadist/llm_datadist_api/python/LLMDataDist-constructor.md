@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 构造LLMDataDist。
 
@@ -36,7 +36,7 @@ from llm_datadist import LLMDataDist, LLMRole
 llm_datadist = LLMDataDist(LLMRole.DECODER, 0)
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下返回LLMDataDist的实例。
 

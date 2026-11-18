@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置用户异常捕获功能是否开启。
 
@@ -25,7 +25,7 @@ FlowGraph &SetExceptionCatch(bool enable_exception_catch)
 | --- | --- | --- |
 | enable_exception_catch | 输入 | 是否启用用户异常捕获功能。取值如下：<br><br>  - true：是，开启异常功能。<br>  - false：否，关闭异常功能。<br><br>默认值：false。 |
 
-## 返回值
+## 返回值说明
 
 返回当前对象。
 

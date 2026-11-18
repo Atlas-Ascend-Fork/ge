@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 断链。
 
@@ -48,7 +48,7 @@ for cluster_i in range(len(rets)):
         print(f"{cluster_i} unlink failed.")
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下返回两个值的元组，第一个值是接口的返回值，类型是[LLMStatusCode](LLMStatusCode.md)，第二个是每个集群建链结果的列表，类型是[LLMStatusCode](LLMStatusCode.md)。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 注册MetaFlowFunc的实现类。
 
@@ -26,7 +26,7 @@ REGISTER_FLOW_FUNC(name, clazz)
 | Name | 输入 | 用户自定义的函数名。 |
 | clazz | 输入 | MetaFlowFunc类实现的类名。 |
 
-## 返回值
+## 返回值说明
 
 无。
 

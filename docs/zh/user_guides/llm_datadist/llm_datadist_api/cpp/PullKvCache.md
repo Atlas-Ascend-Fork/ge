@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 从远端节点拉取Cache到本地Cache，仅当角色为Decoder时可调用。
 
@@ -46,7 +46,7 @@ cache_index.batch_index = 0;
 Status ret = llm_datadist.PullKvCache(cache_index, cache);
 ```
 
-## 返回值
+## 返回值说明
 
 - LLM\_SUCCESS：成功
 - LLM\_PARAM\_INVALID：参数错误

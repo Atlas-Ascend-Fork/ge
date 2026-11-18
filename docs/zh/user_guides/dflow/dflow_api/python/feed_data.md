@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 将数据输入到Graph。
 
@@ -28,7 +28,7 @@ feed_data(feed_dict, flow_info=None, timeout=-1, partial_inputs = False) -> int
 | timeout | int | 数据输入超时时间，单位：ms，取值范围[0, 2147483647),取值为-1时表示从不超时。 |
 | partial_inputs | bool | 每次调用feed_data接口时，feed_dict是否支持模型的部分输入，取值如下。<br><br>  - True：feed_dict中可以只包含模型的部分输入。<br>  - False：feed_dict中必须包含模型所有的输入。<br><br>默认为False。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回0。
 

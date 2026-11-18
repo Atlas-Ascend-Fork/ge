@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 Tensor的构造函数。
 
@@ -26,7 +26,7 @@ Tensor(data, *, tensor_desc: TensorDesc=None)
 | data | Any | tensor的数据，可以是Python的list，也可以是numpy。 |
 | tensor_desc | TensorDesc | 表示tensor的描述，当指定时，如果传入的data的dtype与tensor_desc的dtype不一致，会尝试强转到tensor_desc的dtype的类型，如果传入的data的shape与tensor_desc的shape不一致，会报错。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

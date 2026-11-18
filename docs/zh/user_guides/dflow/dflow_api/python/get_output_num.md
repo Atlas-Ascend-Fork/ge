@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取Flowfunc的输出个数。
 
@@ -23,7 +23,7 @@ get_output_num(self) -> int
 
 无
 
-## 返回值
+## 返回值说明
 
 返回Flowfunc的输出个数。
 

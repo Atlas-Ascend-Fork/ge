@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FlowGraph中的GraphPp的Builder是否异步执行。
 
@@ -25,7 +25,7 @@ void SetGraphPpBuilderAsync(bool graphpp_builder_async)
 | --- | --- | --- |
 | graphpp_builder_async | 输入 | FlowGraph中的GraphPp的Builder是否异步执行。取值如下：<br><br>  - true：是<br>  - false：否<br><br>默认值：false |
 
-## 返回值
+## 返回值说明
 
 无
 

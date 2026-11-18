@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FlowGraph是否包含n\_mapping节点。n\_mapping节点指存在以下任意一种情况。
 
@@ -29,7 +29,7 @@ set_contains_n_mapping_node(self, contains_n_mapping_node: bool)
 | --- | --- | --- |
 | contains_n_mapping_node | bool | 是否包含n_mapping节点。<br>图中只要有一个n_mapping处理节点，则设置为True，默认为False。 |
 
-## 返回值
+## 返回值说明
 
 无。
 

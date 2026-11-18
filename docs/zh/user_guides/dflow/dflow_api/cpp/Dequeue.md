@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置均衡分发亲和性。
 
@@ -26,7 +26,7 @@ virtual int32_t Dequeue(std::shared_ptr<FlowMsg> &flowMsg, int32_t timeout = -1)
 | flowMsg | 输出 | 出队的FlowMsg。 |
 | timeout | 输入 | 出队超时时间，单位为ms，默认值为-1，表示一直阻塞当前线程，直到队列中有元素可以取出。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS。
 - other：FAILED，具体请参考[UDF错误码](udf-error-code.md)。

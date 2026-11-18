@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 创建输入类型为[FlowMsgQueue](flowmsgqueue-class.md)的多func处理对象和处理函数，框架内部使用，用户不直接使用。
 
@@ -29,7 +29,7 @@ std::map<AscendString, PROC_FUNC_WITH_CONTEXT_Q> &procFuncWithQMap) const
 | multiFunc | 输出 | 多func实例对象 |
 | procFuncWithQMap | 输出 | 输入类型为FlowMsgQueue的多flow func的处理函数。 |
 
-## 返回值
+## 返回值说明
 
 - FLOW\_FUNC\_SUCCESS：成功
 - 其他表示失败

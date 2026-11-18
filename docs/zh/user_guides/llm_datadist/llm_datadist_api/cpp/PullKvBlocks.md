@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 传输Blocks Cache场景下，通过block列表的方式，从远端节点拉取Cache到本地Cache，仅当角色为Decoder时可调用。
 
@@ -48,7 +48,7 @@ auto ret = llm_datadist.PullKvBlocks(cache_key,
                                      decoder_blocks);
 ```
 
-## 返回值
+## 返回值说明
 
 - LLM\_SUCCESS：成功
 - LLM\_PARAM\_INVALID：参数错误

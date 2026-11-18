@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 同步执行指定的模型。
 
@@ -27,7 +27,7 @@ run_flow_model(self, model_key:str, input_msgs: List[FlowMsg], timeout: int) -> 
 | input_msgs | 输入 | 提供给模型的输入。 |
 | timeout | 输入 | 等待模型执行超时时间，单位ms，-1表示永不超时。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS
 - other：FAILED，具体请参考[UDF错误码](udf-error-code.md)。

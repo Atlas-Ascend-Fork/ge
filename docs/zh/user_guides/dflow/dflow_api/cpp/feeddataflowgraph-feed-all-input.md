@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 将数据输入到Graph图。
 
@@ -28,7 +28,7 @@ Status FeedDataFlowGraph(uint32_t graph_id, const std::vector<Tensor> &inputs, c
 | info | 输入 | 输入数据流标志（flow flag）。具体请参考[DataFlowInfo数据类型](dataflowinfo-datatype.md)。 |
 | timeout | 输入 | 数据输入超时时间，单位：ms，取值为-1时表示从不超时。 |
 
-## 返回值
+## 返回值说明
 
 | 参数名 | 类型 | 描述 |
 | --- | --- | --- |

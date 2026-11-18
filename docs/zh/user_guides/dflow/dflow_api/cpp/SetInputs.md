@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FlowGraph的输入节点，会自动根据节点的输出连接关系构建出一张FlowGraph图，并返回该图。
 
@@ -25,7 +25,7 @@ FlowGraph &SetInputs(const std::vector<FlowOperator> &inputs)
 | --- | --- | --- |
 | inputs | 输入 | 输入的节点集。 |
 
-## 返回值
+## 返回值说明
 
 返回构建好输入节点的FlowGraph图。
 

@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 切换当前LLMDataDist的角色，建议仅在使用PagedAttention的场景使用。
 
@@ -39,7 +39,7 @@ switch_options = { 'llm.listenIpInfo': '127.0.0.1:26000' }
 llm_datadist.switch_role(LLMRole.PROMPT, switch_options)
 ```
 
-## 返回值
+## 返回值说明
 
 - 正常情况下无返回值。
 - 传入数据类型错误情况下会抛出TypeError或ValueError异常。

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 ProcessPoint的序列化方法。由ProcessPoint的子类去实现该方法的功能。
 
@@ -25,7 +25,7 @@ virtual void Serialize(ge::AscendString &str) const = 0
 | --- | --- | --- |
 | str | 输出 | ProcessPoint序列化的字符串。 |
 
-## 返回值
+## 返回值说明
 
 无。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取指定名称的string数组类型的属性值。
 
@@ -25,7 +25,7 @@ get_attr_str_list(self, name: str) -> Tuple[int, List[str]]
 | --- | --- | --- |
 | name | 输入 | 属性名。 |
 
-## 返回值
+## 返回值说明
 
 获取返回码及string数组类型的属性值。
 

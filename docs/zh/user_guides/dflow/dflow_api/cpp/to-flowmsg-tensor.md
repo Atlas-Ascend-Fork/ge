@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据输入的Tensor转换成用于承载Tensor的FlowMsg。
 
@@ -25,7 +25,7 @@ FlowMsgPtr ToFlowMsg(const Tensor &tensor)
 | --- | --- | --- |
 | tensor | 输入 | Tensor对象。 |
 
-## 返回值
+## 返回值说明
 
 转换的FlowMsg指针。
 

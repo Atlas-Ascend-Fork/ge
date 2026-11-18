@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 注册多flow func处理函数，结合[MetaMultiFunc注册函数宏](metamultifunc-register-func-macro.md)来注册flow func。
 
@@ -34,7 +34,7 @@
 | flowFuncName | 输入 | flow func的名称。不可以设置为NULL，必须以“\0”结尾。 |
 | func | 输入 | 多flow func的处理函数，处理函数原型为<br>`using CUSTOM_PROC_FUNC = std::function<int32_t(<br>T *, const std::shared_ptr<MetaRunContext> &, const std::vector<std::shared_ptr<FlowMsg>> &)>;`<br>或<br>`using CUSTOM_PROC_FUNC_WITH_Q = std::function<int32_t(<br>T*, const std::shared_ptr<MetaRunContext> &, const std::vector<std::shared_ptr<FlowMsgQueue>> &)>;` |
 
-## 返回值
+## 返回值说明
 
 返回当前的FlowFuncRegistrar类对象
 

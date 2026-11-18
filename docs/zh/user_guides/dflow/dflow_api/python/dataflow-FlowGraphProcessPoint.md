@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 FlowGraphProcessPoint构造函数，返回一个FlowGraphProcessPoint对象。
 
@@ -27,7 +27,7 @@ FlowGraphProcessPoint(flow_graph, compile_config_path="", name=None)
 | compile_config_path | str | 编译FlowGraph时的配置文件路径，缺省不设。 |
 | name | str | 处理点名称，框架会自动保证名称唯一，不设置时会自动生成FlowGraphProcessPoint, FlowGraphProcessPoint_1, FlowGraphProcessPoint_2,...的名称。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

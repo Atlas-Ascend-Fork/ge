@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取正在运行的实例ID。
 
@@ -23,7 +23,7 @@ int32_t GetRunningInstanceId() const
 
 无
 
-## 返回值
+## 返回值说明
 
 返回运行的实例ID。
 

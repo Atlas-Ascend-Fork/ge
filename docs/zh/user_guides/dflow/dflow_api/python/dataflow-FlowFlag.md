@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FlowMsg消息头中的flags。
 
@@ -24,7 +24,7 @@
 - FlowFlag.DATA\_FLOW\_FLAG\_EOS
 - FlowFlag.DATA\_FLOW\_FLAG\_SEG
 
-## 返回值
+## 返回值说明
 
 无
 

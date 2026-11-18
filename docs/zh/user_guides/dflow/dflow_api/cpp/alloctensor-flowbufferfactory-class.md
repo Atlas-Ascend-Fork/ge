@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 为了减少输入输出的拷贝耗时，提供了构建使用共享内存的类型的类FlowBufferFactory 。
 
@@ -29,7 +29,7 @@ std::shared_ptr<Tensor> AllocTensor(const std::vector<int64_t> &shape, TensorDat
 | dataType | 输入 | Tensor的dataType。 |
 | align | 输入 | 申请内存地址对齐大小，取值范围【32、64、128、256、512、1024】。 |
 
-## 返回值
+## 返回值说明
 
 申请的Tensor指针。
 

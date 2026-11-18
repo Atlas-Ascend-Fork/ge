@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 进行Device间断链。
 
@@ -31,7 +31,7 @@ Status UnlinkLlmClusters(const std::vector<ClusterInfo> &clusters, std::vector<S
 | timeout_in_millis | 输入 | 断链超时时间，单位ms。默认超时1000。 |
 | force_flag | 输入 | 是否为强制断链。默认为否。<br>强制断链仅强制拆除本端链接，两端都要调用。<br>非强制断链在Decode发起，无故障时两端链路都会拆除，在链路故障场景会耗时较久，且需要在Prompt端也发起调用。 |
 
-## 返回值
+## 返回值说明
 
 - SUCCESS：只有所有clusters断链成功，接口才会返回成功。
 - 其他：执行断链失败，需要查看rets每个cluster的断链结果。

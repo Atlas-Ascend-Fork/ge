@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FlowGraph中的输入对齐属性。
 
@@ -27,7 +27,7 @@ FlowGraph &SetInputsAlignAttrs(uint32_t align_max_cache_num, int32_t align_timeo
 | align_timeout | 输入 | 每组数据对齐等待超时时间，单位ms。<br>-1表示永不超时，配置需要大于0并不超过600 * 1000ms(10分钟)。 |
 | dropout_when_not_align | 输入 | 超时或超过缓存最大数之后没有对齐的数据是否要丢弃。<br><br>  - true：是<br>  - false：否<br><br>默认为false。 |
 
-## 返回值
+## 返回值说明
 
 返回设置了对齐属性的FlowGraph图。
 

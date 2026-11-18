@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 从序列化的pickle文件进行反序列化恢复Python对象。
 
@@ -26,7 +26,7 @@ deserialize_from_file(pkl_file, work_path=None)
 | pkl_file | str | 序列化的pickle文件路径。 |
 | work_path | str | 序列化时的工作路径。 |
 
-## 返回值
+## 返回值说明
 
 反序列化恢复的Python对象。
 

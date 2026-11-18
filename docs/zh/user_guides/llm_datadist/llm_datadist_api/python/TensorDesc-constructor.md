@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 构造TensorDesc。
 
@@ -29,7 +29,7 @@ __init__(dtype: DataType, shape: Union[List[int], Tuple[int]])
 | dtype | [DataType](DataType.md) | 表示Tensor数据类型。 |
 | shape | Union[List[int], Tuple[int]] | 表示Tensor的shape的描述。 |
 
-## 返回值
+## 返回值说明
 
 正常情况下返回TensorDesc的实例。
 

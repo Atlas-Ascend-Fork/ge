@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 BalanceConfig构造函数。
 
@@ -27,7 +27,7 @@ __init__(self, row_num: int, col_num: int, affinity_policy: AffinityPolicy = Aff
 | col_num | 输入 | 权重矩阵列数 |
 | affinity_policy | 输入 | 亲和策略，默认非亲和 |
 
-## 返回值
+## 返回值说明
 
 返回BalanceConfig类型的对象。
 

@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 分配Cache。
 
@@ -40,7 +40,7 @@ Cache cache;
 Status ret = llm_datadist.AllocateCache(kv_desc, cache);
 ```
 
-## 返回值
+## 返回值说明
 
 - LLM\_SUCCESS：成功
 - LLM\_PARAM\_INVALID：参数错误

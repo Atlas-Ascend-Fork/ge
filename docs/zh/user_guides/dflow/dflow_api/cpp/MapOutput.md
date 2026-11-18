@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 给FlowNode映射输出，表示将ProcessPoint的第pp\_output\_index个输出给到FlowNode的第node\_output\_index个输出，返回映射好的FlowNode节点。
 
@@ -29,7 +29,7 @@ FlowNode &MapOutput(uint32_t node_output_index, const ProcessPoint &pp, uint32_t
 | pp | 输入 | FlowNode节点映射的ProcessPoint。 |
 | pp_output_index | 输入 | ProcessPoint的输出index。 |
 
-## 返回值
+## 返回值说明
 
 返回映射好输出的FlowNode节点。
 

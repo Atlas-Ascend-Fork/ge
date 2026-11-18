@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 拷贝KV Cache。支持D2D，D2H的拷贝。
 
@@ -48,7 +48,7 @@ Status CopyKvCache(const Cache &src_cache,
 Status ret = llm_datadist.CopyKvCache(src_cache, dst_cache, 0, 0);
 ```
 
-## 返回值
+## 返回值说明
 
 - LLM\_SUCCESS：成功
 - LLM\_PARAM\_INVALID：参数错误

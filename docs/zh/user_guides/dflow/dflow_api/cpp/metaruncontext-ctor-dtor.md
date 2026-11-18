@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 MetaRunContext构造函数和析构函数。
 
@@ -24,7 +24,7 @@ MetaRunContext()
 
 无。
 
-## 返回值
+## 返回值说明
 
 返回MetaRunContext类型的对象。
 

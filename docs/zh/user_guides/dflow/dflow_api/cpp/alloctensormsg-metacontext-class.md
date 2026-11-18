@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据shape和data type申请Tensor类型的msg。该函数供[Proc](Proc.md)调用。
 
@@ -26,7 +26,7 @@ std::shared_ptr<FlowMsg> AllocTensorMsg(const std::vector<int64_t> &shape, Tenso
 | Shape | 输入 | Tensor的Shape。 |
 | dataType | 输入 | Tensor的dataType。 |
 
-## 返回值
+## 返回值说明
 
 申请的Tensor指针。
 

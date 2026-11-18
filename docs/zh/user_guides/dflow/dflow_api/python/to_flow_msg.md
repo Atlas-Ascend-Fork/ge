@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 将dataflow Tensor转换成FlowMsg。
 
@@ -25,7 +25,7 @@ to_flow_msg(self, tensor)
 | --- | --- | --- |
 | tensor | 输入 | 待转换的dataflow Tensor。 |
 
-## 返回值
+## 返回值说明
 
 正常返回FlowMsg的实例。失败返回None。
 

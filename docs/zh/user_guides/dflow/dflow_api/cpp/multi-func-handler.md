@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 用户自定义的多flow func处理函数。
 
@@ -34,7 +34,7 @@
 | runContext | 输入 | 处理函数的上下文信息。 |
 | FlowMsg/FlowMsgQueue | 输入 | 函数的入参/输入队列。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS。
 - other：FAILED，具体请参考[UDF错误码](udf-error-code.md)。

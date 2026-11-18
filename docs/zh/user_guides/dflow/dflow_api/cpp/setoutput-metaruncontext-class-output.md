@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置指定index和options的输出，该函数供func函数调用。
 
@@ -27,7 +27,7 @@ int32_t SetOutput(uint32_t outIdx, std::shared_ptr<FlowMsg> outMsg, const OutOpt
 | outMsg | 输入 | 输出信息。 |
 | options | 输入 | 输出对应的OutOptions。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS。
 - other：FAILED，具体请参考[UDF错误码](udf-error-code.md)。

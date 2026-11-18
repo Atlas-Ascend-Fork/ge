@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 在故障恢复场景下，快速重置FlowFunc为初始化状态。
 
@@ -25,7 +25,7 @@ int32_t ResetFlowFuncState(const std::shared_ptr<MetaParams> &params)
 | --- | --- | --- |
 | params | 输入 | 多func重置状态参数信息。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS。
 - other：FAILED，具体请参考[UDF错误码](udf-error-code.md)。

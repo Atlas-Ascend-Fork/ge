@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 用户自定义flow func的处理函数。
 
@@ -25,7 +25,7 @@ int32_t Proc(const std::vector<std::shared_ptr<FlowMsg>> &inputMsgs)
 | --- | --- | --- |
 | inputMsgs | 输入 | 算子的输入参数列表。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS。
 - other：FAILED，具体请参考[UDF错误码](udf-error-code.md)。

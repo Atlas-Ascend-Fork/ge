@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 进行Device间建链。
 
@@ -30,7 +30,7 @@ Status LinkLlmClusters(const std::vector<ClusterInfo> &clusters, std::vector<Sta
 | rets | 输出 | 每个cluster建链结果。 |
 | timeout_in_millis | 输入 | 建链超时时间，单位ms。默认超时1000。 |
 
-## 返回值
+## 返回值说明
 
 - LLM\_SUCCESS：只有所有clusters建链成功，接口才会返回成功。
 - 其他：建链失败，需要查看rets每个cluster的建链结果。

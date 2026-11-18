@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 Tensor的描述函数。
 
@@ -26,7 +26,7 @@ TensorDesc(dtype: DType, shape: Union[List[int], Tuple[int]])
 | dtype | DType | 表示[Tensor](dataflow-Tensor.md)的数据类型的描述。 |
 | shape | Union[List[int], Tuple[int]] | 表示Tensor的shape的描述，shape中的每个元素需要>=0的数值。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

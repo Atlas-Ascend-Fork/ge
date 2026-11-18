@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 对cpu\_cache和npu\_cache进行换入换出。
 
@@ -47,7 +47,7 @@ kv_cache_manager.swap_blocks(cpu_cache, npu_cache, {1:2, 3:4})
 kv_cache_manager.swap_blocks(npu_cache, cpu_cache, {1:2, 3:4})
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

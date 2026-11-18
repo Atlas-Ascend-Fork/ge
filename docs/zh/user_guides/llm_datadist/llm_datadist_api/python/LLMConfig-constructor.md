@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 构造LLMConfig，调用[init](init.md)接口需要传入一个配置项字典，为了简化配置，可以通过此类来构造该配置项字典。
 
@@ -33,7 +33,7 @@ from llm_datadist import LLMConfig
 llm_config = LLMConfig()
 ```
 
-## 返回值
+## 返回值说明
 
 返回LLMConfig的实例。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 支持将函数作为pipeline任务在本地或者远端运行。为此，需使用@pyflow装饰函数，以表达需要使用pipeline方式运行此函数。当用户的类或者函数被@pyflow装饰后，会自动添加fnode的构图方法，使用方式参考[调用示例](#调用示例)。
 
@@ -30,7 +30,7 @@
 | visible_device_enable | bool | 开启后，UDF进程会根据用户配置num_npus资源自动设置ASCEND_RT_VISIBLE_DEVICES，调用get_running_device_id接口获取对应的逻辑ID，当前num_npus仅支持1，因此该场景下get_running_device_id结果为0。 |
 | env_hook_func | function | 此钩子函数用于给用户自行扩展在Python UDF初始化之前必要的Python环境准备或import操作。<br>钩子函数仅支持无输入无输出类型。 |
 
-## 返回值
+## 返回值说明
 
 装饰后的类或者函数。
 

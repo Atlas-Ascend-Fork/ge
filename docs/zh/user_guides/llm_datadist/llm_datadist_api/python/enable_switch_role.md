@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 配置是否支持角色平滑切换，对应底层llm.EnableSwitchRole配置项。
 
@@ -36,7 +36,7 @@ llm_config = LLMConfig()
 llm_config.enable_switch_role = True
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

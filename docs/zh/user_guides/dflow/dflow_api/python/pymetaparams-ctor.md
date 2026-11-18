@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 PyMetaParams构造函数。
 
@@ -23,7 +23,7 @@ __init__(self, meta_params: fw.MetaParams) -> None
 
 无
 
-## 返回值
+## 返回值说明
 
 返回PyMetaParams类型的对象。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据FlowGraph生成指定部署位置的option:"ge.experiment.data\_flow\_deploy\_info\_path"所需要的文件的模板。
 
@@ -26,7 +26,7 @@ generate_deploy_template(graph, file_path)
 | graph | FlowGraph | 构造完成的FlowGraph图。 |
 | file_path | str | 生成用于指定部署信息的文件路径（包含文件名）。 |
 
-## 返回值
+## 返回值说明
 
 无。
 

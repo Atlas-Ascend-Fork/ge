@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置用户信息。
 
@@ -26,7 +26,7 @@ set_user_data(self, user_data: bytearray, offset: int = 0)
 | user_data | bytearray | 用户自定义数据。 |
 | offset | int | 用户数据的偏移值，需要遵循如下约束。<br>[0, 64), size + offset <= 64 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

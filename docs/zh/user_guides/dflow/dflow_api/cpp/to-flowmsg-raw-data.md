@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据输入的raw data转换成用于承载raw data的FlowMsg。
 
@@ -25,7 +25,7 @@ FlowMsgPtr ToFlowMsg(const RawData &raw_data)
 | --- | --- | --- |
 | raw_data | 输入 | RawData对象。 |
 
-## 返回值
+## 返回值说明
 
 转换的FlowMsg指针。
 

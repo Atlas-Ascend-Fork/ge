@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置GraphPp的json配置文件路径和文件名。配置文件用于AscendGraph的描述和编译。
 
@@ -36,7 +36,7 @@ GraphPp &SetCompileConfig(const char_t *json_file_path)
 | inputs_tensor_desc.data_type | 可选 | 字符串类型。<br>取值为Ascend Graph中的data_type对应字符串。 |
 | inputs_tensor_desc.shape | 可选 | 值为整数类型的列表<br>取值为Ascend Graph中的shape。 |
 
-## 返回值
+## 返回值说明
 
 返回设置好的GraphPp。
 

@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 用户指定内存档位配置，提高内存申请性能和使用率。
 
@@ -42,7 +42,7 @@ llm_config = LLMConfig()
 llm_config.buf_pool_cfg= '{"buf_cfg": [{"total_size":2097152,"blk_size":256,"max_buf_size":8192},{"total_size": 10485760,"blk_size": 8192,"max_buf_size": 8388608},{"total_size": 69206016,"blk_size": 8192,"max_buf_size": 67108864}]}'
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

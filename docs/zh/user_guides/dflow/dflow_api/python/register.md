@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 注册自定义类型对应的序列化、反序列化、计算size的函数，可结合feed，fetch接口使用，用于feed/fetch任意Python类型。
 
@@ -29,7 +29,7 @@ register(msg_type, clz, serialize_func, deserialize_func, size_func=None)
 | deserialize_func | function | 反序列化函数，输入类型为bytes，表示要反序列化的字节流，输出为被反序列化的对象。可以是任何Python对象类型。 |
 | size_func | function | 计算序列化后内存大小的函数，单位字节，预留字段。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

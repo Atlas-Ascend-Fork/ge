@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 UDF获取其他UDF节点上报的异常。
 
@@ -23,7 +23,7 @@ get_exception(self) -> tuple
 
 无
 
-## 返回值
+## 返回值说明
 
 返回tuple\(bool, int, int\)，元组中各元素含义如下。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 给FlowNode映射输入，表示将FlowNode的第node\_input\_index个输入给到ProcessPoint的第pp\_input\_index个输入，并且给ProcessPoint的该输入设置上attr里的所有属性。该函数可选，不被调用时会默认按顺序去映射FlowNode和ProcessPoint的输入。
 
@@ -28,7 +28,7 @@ map_input(node_input_index, pp, pp_input_index, input_attrs=[])
 | pp_input_index | int | pp的输入index。 |
 | input_attrs | List[Union[TimeBatch, CountBatch]] | 属性集，当前支持[TimeBatch](dataflow-TimeBatch.md)和[CountBatch](dataflow-CountBatch.md)。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

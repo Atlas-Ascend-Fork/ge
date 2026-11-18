@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 获取cache tensor。
 
@@ -35,7 +35,7 @@ get_cache_tensors(cache: KvCache, tensor_index: int = 0) -> List[Tensor]
 tensors = kv_cache_manager.get_cache_tensors(kv_cache, 0)
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下返回List\[Tensor\]。
 

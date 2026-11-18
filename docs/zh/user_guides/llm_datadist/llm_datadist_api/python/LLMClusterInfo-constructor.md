@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 构造LLMClusterInfo，用于[link\_clusters](link_clusters.md)和[unlink\_clusters](unlink_clusters.md)接口的参数类型。
 
@@ -33,7 +33,7 @@ from llm_datadist import LLMClusterInfo
 llm_cluster = LLMClusterInfo()
 ```
 
-## 返回值
+## 返回值说明
 
 返回LLMClusterInfo的实例。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据shape、data type和对齐大小申请Tensor类型的FlowMsg，与[AllocTensorMsg](alloctensormsg-metacontext-class.md)函数区别是AllocTensorMsg默认申请以64字节对齐，此函数可以指定对齐大小，方便性能调优。
 
@@ -27,7 +27,7 @@ std::shared_ptr<FlowMsg> AllocTensorMsgWithAlign(const std::vector<int64_t> &sha
 | dataType | 输入 | Tensor的dataType。 |
 | align | 输入 | 申请内存地址对齐大小，取值范围【32、64、128、256、512、1024】。 |
 
-## 返回值
+## 返回值说明
 
 申请的Tensor指针。
 

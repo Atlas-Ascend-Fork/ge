@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 获取KvCache的地址。
 
@@ -36,7 +36,7 @@ kv_cache = kv_cache_manager.allocate_cache(cache_desc, cache_keys)
 print(kv_cache.per_device_tensor_addrs[0])
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况返回类型为KVCache的地址。
 

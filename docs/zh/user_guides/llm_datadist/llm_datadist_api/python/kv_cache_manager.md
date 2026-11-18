@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 获取KvCacheManager实例。
 
@@ -36,7 +36,7 @@ llm_datadist.init(engine_options)
 kv_cache_manager = llm_datadist.kv_cache_manager
 ```
 
-## 返回值
+## 返回值说明
 
 返回KvCacheManager实例。
 

@@ -14,7 +14,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 等待模型指定层执行完成，用户需要继承LayerSynchronizer并实现该接口。
 
@@ -37,7 +37,7 @@ synchronize_layer(layer_index: int, timeout_in_millis: Optional[int]) -> bool
 
 该接口不由用户直接调用，而是作为回调由[KvCacheManager](transfer_cache_async.md)调用。
 
-## 返回值
+## 返回值说明
 
 正常情况下返回是否同步成功。
 

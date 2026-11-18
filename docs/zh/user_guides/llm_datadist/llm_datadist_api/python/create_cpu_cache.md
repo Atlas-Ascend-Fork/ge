@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 创建cpu cache。
 
@@ -39,7 +39,7 @@ cpu_addrs = []
 cpu_cache = KvCache.create_cpu_cache(cpu_cache_desc, cpu_addrs) # cpu_addrs来自创建的cpu tensors
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况返回类型为KvCache的cpu\_cache。
 

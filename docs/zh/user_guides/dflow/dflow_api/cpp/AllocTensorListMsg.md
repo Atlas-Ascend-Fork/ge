@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据输入的dtype shapes数组分配一块连续内存，用于承载Tensor数组。
 
@@ -27,7 +27,7 @@ virtual std::shared_ptr<FlowMsg> AllocTensorListMsg(const std::vector<std::vecto
 | dataTypes | 输入 | Tensor List的dataType列表。 |
 | align | 输入 | 申请内存地址对齐大小，取值范围【32、64、128、256、512、1024】。 |
 
-## 返回值
+## 返回值说明
 
 申请的FlowMsg指针。
 
