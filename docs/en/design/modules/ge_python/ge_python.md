@@ -751,6 +751,8 @@ The native binding calls the corresponding `InferShapeUtil` overload according t
 - Specify Pass file or directory path through environment variable `ASCEND_GE_PY_PASS_PATH`
 - `bootstrap.py` responsible for scanning path and dynamically loading Python modules
 - Supports single `.py` file and Python package containing `__init__.py`
+- A file plugin temporarily adds its parent directory to `sys.path` for explicit sibling imports; the path is restored after successful or failed loading.
+- Modules imported while loading a file plugin are cached in `sys.modules` for the process lifetime, so same-named dependencies across different file plugin directories are not isolated; a plugin loaded later reuses the cached module.
 
 **Usage Example**:
 

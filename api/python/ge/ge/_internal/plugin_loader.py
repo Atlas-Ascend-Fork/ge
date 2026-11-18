@@ -66,6 +66,22 @@ def load_module_from_file(
     return module
 
 
+def _load_file_plugin(
+    path: Path, *, module_prefix: str, plugin_kind: str
+) -> ModuleType:
+    parent_path = str(path.parent)
+    inserted = parent_path not in sys.path
+    if inserted:
+        sys.path.insert(0, parent_path)
+    try:
+        return load_module_from_file(
+            path, module_prefix=module_prefix, plugin_kind=plugin_kind
+        )
+    finally:
+        if inserted:
+            sys.path.remove(parent_path)
+
+
 def scan_modules_from_path(
     path_item: str, *, module_prefix: str, plugin_kind: str
 ) -> List[ModuleType]:
@@ -76,7 +92,7 @@ def scan_modules_from_path(
         if path.suffix != ".py":
             raise ValueError(f"{plugin_kind} file must end with .py: {path}")
         return [
-            load_module_from_file(
+            _load_file_plugin(
                 path, module_prefix=module_prefix, plugin_kind=plugin_kind
             )
         ]

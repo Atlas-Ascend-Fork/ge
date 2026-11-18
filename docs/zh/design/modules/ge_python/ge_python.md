@@ -675,6 +675,8 @@ native binding根据`source`类型调用`InferShapeUtil`的对应重载，先将
 - 通过环境变量`ASCEND_GE_PY_PASS_PATH`指定Pass文件或目录路径
 - `bootstrap.py`负责扫描路径并动态加载Python模块
 - 支持单个`.py`文件和包含`__init__.py`的Python包
+- 加载单文件插件时临时将其父目录加入`sys.path`，供插件显式导入同目录依赖；成功或失败后均恢复路径。
+- 单文件插件加载期间导入的模块按Python标准规则写入`sys.modules`并随进程保留，因此不同单文件插件目录下的同名依赖不保证隔离，后加载的插件会复用已缓存的模块。
 
 **使用示例**:
 ```python
