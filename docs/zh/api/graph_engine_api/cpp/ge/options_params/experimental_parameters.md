@@ -156,6 +156,47 @@ Atlas训练系列产品
 
 **生效级别**：全局/session
 
+## ge.modelFormat
+
+**调试功能扩展参数，暂不支持应用于生产环境，后续版本会作为正式功能更新发布。**
+
+指定模型执行所使用的路径，用于选择OM或OM2执行路径。
+
+**参数取值：**
+
+- 0：（默认值）按OM路径执行。
+- 7：按OM2路径执行。
+
+**配置示例：**
+
+```c++
+{"ge.modelFormat", "7"};
+```
+
+**使用约束：**
+
+`ge.modelFormat`取值为7时，不能与如下配置项同时配置：
+
+1. [ge.inputHintShape](dynamic_shape.md#geinputhintshape)
+2. [ge.inputHintValue](dynamic_shape.md#geinputhintvalue)
+3. [ac_parallel_enable](dynamic_shape.md#ac_parallel_enable)
+4. [ge.tiling_schedule_optimize](performance_tuning.md#getiling_schedule_optimize)
+5. [ge.compile.h2dOverlappedWithCompute](operator_and_graph_compilation.md#gecompileh2doverlappedwithcompute)
+6. [ge.exec.static_model_ops_lower_limit](dynamic_shape.md#geexecstatic_model_ops_lower_limit)
+7. [op_name_map](../aclgrphBuildModel_config_params/basic_functions.md#op_name_map)
+8. [ge.quant_dumpable](../aclgrphBuildModel_config_params/precision_comparison.md#quant_dumpable)
+9. [ge.build_inner_model](../aclgrphBuildModel_config_params/experimental_parameters.md#build_inner_model)
+10. [ge.exec.dataInputsShapeRange](deprecated_config_for_future_versions.md#geexecdatainputsshaperange)
+11. [ge.shape_generalized_build_mode](deprecated_config_for_future_versions.md#geshape_generalized_build_mode)
+12. [ge.host_env_os](../aclgrphBuildInitialize_config_params/basic_functions.md#option_host_env_os)
+13. [ge.host_env_cpu](../aclgrphBuildInitialize_config_params/basic_functions.md#option_host_env_cpu)
+14. [ge.virtual_type](../aclgrphBuildInitialize_config_params/basic_functions.md#virtual_type)
+15. [ge.exec.tuneDeviceIds](../aclgrphBuildInitialize_config_params/experimental_parameters.md#tune_device_ids)
+
+**必选/可选**：可选
+
+**生效级别**：全局/session/graph
+
 ## ge.oo.constantFolding
 
 **调试功能扩展参数，暂不支持应用于生产环境，后续版本会作为正式功能更新发布。**

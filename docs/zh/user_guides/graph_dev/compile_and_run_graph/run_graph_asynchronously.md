@@ -6,7 +6,14 @@
 
 ### 功能介绍
 
-构建完Graph之后，如果您希望**编译并异步运行Graph，获得Graph的运行结果**，请参考本节内容。涉及的主要接口为：
+构建完Graph之后，如果您希望**编译并异步运行Graph，获得Graph的运行结果**，请参考本节内容。涉及的主要接口如下。
+
+在OM2场景下：
+
+- 如果传入的是计算图，需要配置`ge.modelFormat = "7"`，使用OM2执行路径。
+- 如果传入的是执行图，则直接使用OM2执行路径。
+
+具体配置方法请参考[experimental_parameters](../../../api/graph_engine_api/cpp/ge/options_params/experimental_parameters.md)。
 
 ![图示](../figures/feature_intro_4.png)
 
@@ -45,6 +52,12 @@
     ```
 
     可以通过config配置传入GE运行的初始化信息，配置参数ge.exec.deviceId和ge.graphRunMode，分别用于指定GE实例运行设备，图执行模式（在线推理请配置为0，训练请配置为1）。更多配置请参考[options参数说明](../../../api/graph_engine_api/cpp/ge/options_params/options_parameters_description.md)。
+
+    OM2场景下，如果传入的是计算图，需要在调用`GEInitializeV2`时配置`ge.modelFormat`为`"7"`，使用OM2执行路径。配置代码如下：
+
+    ```c++
+    std::map<AscendString, AscendString> config = {{"ge.modelFormat", "7"}};
+    ```
 
     > [!NOTE]说明
     >
