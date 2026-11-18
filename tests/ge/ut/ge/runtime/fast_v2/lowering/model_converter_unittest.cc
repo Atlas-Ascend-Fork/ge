@@ -398,4 +398,38 @@ TEST_F(ModelConverterUT, ConvertDoesNotValidateProcessDeterministicConfig) {
   EXPECT_EQ(ge::GetMutableGlobalOptions().at(ge::DETERMINISTIC_LEVEL), "2");
   gert::DestroyVersionInfo();
 }
+TEST_F(ModelConverterUT, ConvertMainBodyIgnoresFallbackStreamResource) {
+  gert::CreateVersionInfo();
+  auto main_graph = ShareGraph::BuildTwoAddNodeGraph();
+  ASSERT_NE(main_graph, nullptr);
+  main_graph->TopologicalSorting();
+  auto main_root = GeModelBuilder(main_graph)
+                       .SetRootModelStreamNum(2)
+                       .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                       .FakeTbeBin({"Add"})
+                       .BuildGeRootModel();
+  ASSERT_NE(main_root, nullptr);
+
+  auto fallback_graph = std::make_shared<ge::ComputeGraph>(ge::kFallbackModelKey);
+  ASSERT_EQ(ge::GraphUtils::CopyComputeGraph(main_root->GetRootGraph(), fallback_graph), ge::SUCCESS);
+  auto fallback_root = GeModelBuilder(fallback_graph)
+                           .SetRootModelStreamNum(10)
+                           .AddTaskDef("Add", AiCoreTaskDefFaker("AddStubBin").WithHandle())
+                           .FakeTbeBin({"Add"})
+                           .BuildGeRootModel();
+  ASSERT_NE(fallback_root, nullptr);
+  for (const auto &kv : fallback_root->GetSubgraphInstanceNameToModel()) {
+    main_root->SetSubgraphInstanceNameToModel(kv.first, kv.second);
+  }
+  ge::AttrUtils::SetBool(main_graph, ge::kDualBodyAttr, true);
+
+  StreamAllocator stream_allocator;
+  EventAllocator event_allocator;
+  NotifyAllocator notify_allocator;
+  ModelConverter::Args args{{}, &stream_allocator, &event_allocator, &notify_allocator, nullptr};
+  auto exe_graph = ModelConverter().ConvertGeModelToExecuteGraph(main_root, args);
+  EXPECT_NE(exe_graph, nullptr);
+  gert::DestroyVersionInfo();
+}
+
 }  // namespace gert

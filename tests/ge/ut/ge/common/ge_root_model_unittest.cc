@@ -520,4 +520,35 @@ TEST_F(UtestGeRootModel, ForkWithKernelBinariesAndWeightData) {
   EXPECT_EQ(forked_data->kernels->binaries[0]->data.get()[0], 0x11);
 }
 
+TEST_F(UtestGeRootModel, ExtractFallbackModelsFromMainRoot) {
+  auto root_graph = std::make_shared<ComputeGraph>("root_graph");
+  auto root_model = std::make_shared<GeRootModel>();
+  ASSERT_EQ(root_model->Initialize(root_graph), SUCCESS);
+  auto main_model = std::make_shared<GeModel>();
+  auto fallback_model = std::make_shared<GeModel>();
+  auto fallback_sub_model = std::make_shared<GeModel>();
+  root_model->SetSubgraphInstanceNameToModel("root_graph", main_model);
+  root_model->SetSubgraphInstanceNameToModel(kFallbackModelKey, fallback_model);
+  root_model->SetSubgraphInstanceNameToModel(std::string(kFallbackSubgraphPrefix) + "sub", fallback_sub_model);
+  AttrUtils::SetBool(root_graph, kDualBodyAttr, true);
+
+  const auto fallback_models = root_model->ExtractFallbackModels();
+  EXPECT_EQ(fallback_models.size(), 2U);
+  EXPECT_EQ(root_model->GetSubgraphInstanceNameToModel().size(), 1U);
+  EXPECT_EQ(root_model->GetSubgraphInstanceNameToModel().find(kFallbackModelKey),
+            root_model->GetSubgraphInstanceNameToModel().end());
+}
+
+TEST_F(UtestGeRootModel, ExtractFallbackModelsSkipsFallbackRoot) {
+  auto fallback_graph = std::make_shared<ComputeGraph>(kFallbackModelKey);
+  auto root_model = std::make_shared<GeRootModel>();
+  ASSERT_EQ(root_model->Initialize(fallback_graph), SUCCESS);
+  auto fallback_model = std::make_shared<GeModel>();
+  root_model->SetSubgraphInstanceNameToModel(kFallbackModelKey, fallback_model);
+  AttrUtils::SetBool(fallback_graph, kDualBodyAttr, true);
+
+  EXPECT_TRUE(root_model->ExtractFallbackModels().empty());
+  EXPECT_EQ(root_model->GetSubgraphInstanceNameToModel().size(), 1U);
+}
+
 }  // namespace ge

@@ -112,12 +112,6 @@ bool HasEmbeddedCustomOpSo(const ComputeGraphPtr &root_graph) {
   return false;
 }
 
-bool IsFallbackModelName(const std::string &name) {
-  const std::string root_key = kFallbackModelKey;
-  const std::string sub_prefix = kFallbackSubgraphPrefix;
-  return (name == root_key) || (name.compare(0U, sub_prefix.size(), sub_prefix) == 0U);
-}
-
 bool IsDualBodyGraph(const ComputeGraphPtr &graph) {
   bool dual_body = false;
   return (graph != nullptr) && ge::AttrUtils::GetBool(graph, kDualBodyAttr, dual_body) && dual_body;
@@ -1589,7 +1583,7 @@ Status ModelHelper::GenerateGeModel(const OmFileLoadHelper &om_load_helper, GeMo
       return SUCCESS;
     }
   } else if (IsPartitionedGraph(cur_model) && gert::GraphUnfolder::IsGraphNeedUnfold(cur_model->GetGraph()) &&
-             IsFallbackModelName(cur_model->GetGraph()->GetName()) && IsDualBodyGraph(cur_model->GetGraph())) {
+             ge::IsFallbackModelName(cur_model->GetGraph()->GetName()) && IsDualBodyGraph(cur_model->GetGraph())) {
     // autofuse 离线双执行体：兜底 unfold 空壳根位于 index > 0，只读 MODEL_DEF，不加载 weights/task/tbe/cust。
     // 限定兜底 key，避免把旧 OM 中普通分区子图误判为空壳根。
     return SUCCESS;

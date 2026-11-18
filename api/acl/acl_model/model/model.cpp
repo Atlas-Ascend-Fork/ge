@@ -675,7 +675,7 @@ static bool SyncStreamForHostCopy(const uint32_t modelId, const bool isAsync, co
     return true;
   }
   const auto sync_ret = aclrtSynchronizeStream(stream);
-  if (sync_ret != ACL_ERROR_NONE) {
+  if (sync_ret != ACL_SUCCESS) {
     ACL_LOG_WARN("synchronize stream before host input copy failed, result[%d], modelId[%u].",
                  static_cast<int32_t>(sync_ret), modelId);
     return false;

@@ -245,6 +245,33 @@ void GeRootModel::RemoveInstanceSubgraphModel(const std::string &instance_name) 
   (void)subgraph_instance_name_to_model_.erase(instance_name);
 }
 
+std::map<std::string, GeModelPtr> GeRootModel::ExtractFallbackModels() {
+  std::map<std::string, GeModelPtr> fallback_models;
+  if (root_graph_ == nullptr) {
+    return fallback_models;
+  }
+  bool dual_body = false;
+  if ((!AttrUtils::GetBool(root_graph_, kDualBodyAttr, dual_body)) || (!dual_body) ||
+      IsFallbackModelName(root_graph_->GetName())) {
+    return fallback_models;
+  }
+  std::vector<std::string> fallback_keys;
+  for (const auto &kv : subgraph_instance_name_to_model_) {
+    if (IsFallbackModelName(kv.first)) {
+      fallback_keys.emplace_back(kv.first);
+    }
+  }
+  for (const auto &key : fallback_keys) {
+    fallback_models[key] = subgraph_instance_name_to_model_.at(key);
+    RemoveInstanceSubgraphModel(key);
+  }
+  if (!fallback_models.empty()) {
+    GELOGI("Extract %zu fallback sub model(s) from main root %s.", fallback_models.size(),
+           root_graph_->GetName().c_str());
+  }
+  return fallback_models;
+}
+
 Status GeRootModel::CheckIsUnknownShape(bool &is_dynamic_shape) const {
   if (root_graph_ == nullptr) {
     return FAILED;

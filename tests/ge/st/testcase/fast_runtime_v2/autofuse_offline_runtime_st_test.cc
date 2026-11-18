@@ -518,4 +518,33 @@ TEST_F(AutofuseOfflineRuntimeSt, CheckLoadExecutorSetFailsWhenFallbackLoweringFa
   EXPECT_EQ(executor_set.fallback, nullptr);
 }
 
+TEST_F(AutofuseOfflineRuntimeSt, CheckSingleExecutorIgnoresFallbackStreamResource) {
+  auto models = BuildSimpleDualBodyStModels();
+  ASSERT_NE(models.main_root, nullptr);
+  ASSERT_NE(models.fallback_root, nullptr);
+  const auto &main_models = models.main_root->GetSubgraphInstanceNameToModel();
+  const auto main_model = main_models.at(models.main_graph_name);
+  ASSERT_NE(main_model, nullptr);
+  AttrUtils::SetInt(main_model, ATTR_MODEL_STREAM_NUM, 2);
+  const auto &fallback_models = models.fallback_root->GetSubgraphInstanceNameToModel();
+  const auto fallback_model = fallback_models.at(kFallbackModelKey);
+  ASSERT_NE(fallback_model, nullptr);
+  AttrUtils::SetInt(fallback_model, ATTR_MODEL_STREAM_NUM, 10);
+
+  ModelHelper save_helper;
+  save_helper.SetSaveMode(false);
+  ModelBufferData model_buff;
+  ASSERT_EQ(save_helper.SaveDualBodyRootModel(models.main_root, models.fallback_root, "dual_body_fallback_stream",
+                                              model_buff, true),
+            SUCCESS);
+  ModelData model_data;
+  model_data.model_data = model_buff.data.get();
+  model_data.model_len = static_cast<uint32_t>(model_buff.length);
+  gert::LoadExecutorArgs args{nullptr, {}};
+  ge::graphStatus error_code = GRAPH_FAILED;
+  auto executor = gert::LoadExecutorFromModelData(model_data, args, error_code);
+  EXPECT_EQ(error_code, GRAPH_SUCCESS);
+  EXPECT_NE(executor, nullptr);
+}
+
 }  // namespace ge
