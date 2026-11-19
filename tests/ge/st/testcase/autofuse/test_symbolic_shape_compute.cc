@@ -2035,6 +2035,52 @@ TEST_F(SymbolicShapeComputeST, test_stridedslice_with_ellipsis_mask_with_begin_m
   EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues(attr->symbolic_tensor), expect_symbolic_value);
 }
 
+// 测试场景：ellipsis 零维位于稀疏规格首位时，符号化计算应按物理轴对齐，
+//           不能被 ellipsis 槽位占用（回归 ops-math 语义）。
+// 测试输入：x=[[0,1,2],[3,4,5],[6,7,8],[9,10,11]]（{4,3}），begin={0,1,0}，end={0,3,0}，
+//           strides={1,1,1}，ellipsis_mask=1、begin_mask=4、end_mask=4。
+// 期望输出：shape={2,3}，value={3,4,5,6,7,8}（axis0 取 [1,3)，axis1 取整维）。
+TEST_F(SymbolicShapeComputeST, test_stridedslice_ellipsis_zero_dim_at_front_compute) {
+  std::vector<int32_t> const_data0;
+  for (int32_t i = 0; i < 12; i++) {
+    const_data0.emplace_back(i);
+  }
+  std::vector<int64_t> const_dim0 = {4, 3};
+  auto const_node0 = builder_->CreateConst(const_data0, const_dim0);
+  std::vector<int32_t> const_data1 = {0, 1, 0};
+  std::vector<int64_t> const_dim1 = {3};
+  auto const_node1 = builder_->CreateConst(const_data1, const_dim1);
+  std::vector<int32_t> const_data2 = {0, 3, 0};
+  std::vector<int64_t> const_dim2 = {3};
+  auto const_node2 = builder_->CreateConst(const_data2, const_dim2);
+  std::vector<int32_t> const_data3 = {1, 1, 1};
+  std::vector<int64_t> const_dim3 = {3};
+  auto const_node3 = builder_->CreateConst(const_data3, const_dim3);
+  auto strided_slice = es::StridedSlice(const_node0, const_node1, const_node2, const_node3, 0b100, 0b100, 0b001, 0, 0);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(strided_slice, 0), 0);
+  auto graph = builder_->BuildAndReset();
+
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  auto strided_slice_node = cg->FindFirstNodeMatchType(STRIDEDSLICE);
+  ASSERT_NE(strided_slice_node, nullptr);
+  auto op_desc = strided_slice_node->GetOpDesc();
+  op_desc->MutableInputDesc(0)->SetShape(GeShape({4, 3}));
+  op_desc->MutableInputDesc(1)->SetShape(GeShape({3}));
+  op_desc->MutableInputDesc(2)->SetShape(GeShape({3}));
+  op_desc->MutableInputDesc(3)->SetShape(GeShape({3}));
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  std::vector<Expression> expect_symbolic_shape = {Symbol(2), Symbol(3)};
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(attr->symbolic_tensor.GetOriginSymbolShape()), expect_symbolic_shape);
+  std::vector<Expression> expect_symbolic_value = {Symbol(3), Symbol(4), Symbol(5), Symbol(6), Symbol(7), Symbol(8)};
+  EXPECT_NE(attr->symbolic_tensor.GetValueCount(), 0U);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues(attr->symbolic_tensor), expect_symbolic_value);
+}
+
 TEST_F(SymbolicShapeComputeST, test_stridedslice_with_ellipsis_mask_with_new_axis_mask) {
   std::vector<int32_t> const_data0;
   for (int32_t i = 0; i < 24; i++) {

@@ -151,6 +151,12 @@ Status FreeInputsAllocByJit(std::vector<MemBlock *> &input_blocks) {
   return SUCCESS;
 }
 
+// cond输入索引缓存(按图缓存)与其锁绑定传递，避免函数入参超过5个
+struct CondInputCache {
+  std::map<ComputeGraph *, std::set<size_t>> &data;
+  std::mutex &mutex;
+};
+
 Status GetAllCondInputData(const ComputeGraphPtr &graph, std::set<size_t> &data_idx,
                            std::map<ComputeGraph *, std::set<size_t>> &cache) {
   GE_ASSERT_NOTNULL(graph);
@@ -176,14 +182,20 @@ Status GetAllCondInputData(const ComputeGraphPtr &graph, std::set<size_t> &data_
   return SUCCESS;
 }
 
-// 输入准备(唯一收口)：对"需要值符号化的输入"(SymbolicInferUtil::NeedSymbolizeValueDataNode 唯一判据)，
-// 非host时统一 D2H 到 host(guard匹配/符号化/静态图随路拷贝都要求 host)；
-// 处理完成后对处于host的输入Data节点统一打 ATTR_NAME_HOST_TENSOR_AS_MODEL_INPUT，
-// 下游只读该属性，不再重复判断 placement
-Status PrepareGraphInputs(const ComputeGraphPtr &graph, std::vector<gert::Tensor> &inputs) {
+// 输入准备(唯一收口)：cond输入与"需要值符号化的输入"(SymbolicInferUtil::NeedSymbolizeValueDataNode
+// 唯一判据)中位于device的索引，在一次Data节点遍历中统一收集，集合非空时单次同步流后批量D2H
+// (guard匹配/符号化/静态图随路拷贝都要求 host)。这些输入可能来自前序EP在stream上异步写入的
+// device输出，而同步aclrtMemcpy不感知任何stream、与流上已发射未完成的任务无序，读前必须等流；
+// 一次同步即可覆盖全部拷贝(同步后至拷贝完成，本线程不再向stream入队新任务，同步memcpy不占流)；
+// 集合为空表示无D2H需求，不做任何同步。
+// 交给下游前必然位于host的输入(cond/值符号化成员，或本已在host)在同一遍遍历中统一打
+// ATTR_NAME_HOST_TENSOR_AS_MODEL_INPUT，下游只读该属性，不再重复判断 placement。
+Status PrepareGraphInputs(const ComputeGraphPtr &graph, std::vector<gert::Tensor> &inputs,
+                          const std::set<size_t> &cond_input_idxs, rtStream_t stream) {
   GE_ASSERT_NOTNULL(graph);
   std::set<size_t> need_symbolize_value_idxs;
   GE_ASSERT_SUCCESS(SymbolicInferUtil::GetNeedSymbolizeValueInputIdxs(graph, need_symbolize_value_idxs));
+  std::set<size_t> d2h_idxs;
   for (const auto &node : graph->GetDirectNode()) {
     if (node == nullptr || !OpTypeUtils::IsDataNode(node->GetType())) {
       continue;
@@ -195,17 +207,25 @@ Status PrepareGraphInputs(const ComputeGraphPtr &graph, std::vector<gert::Tensor
     if (data_index < 0 || static_cast<size_t>(data_index) >= inputs.size()) {
       continue;
     }
-    auto &tensor = inputs[static_cast<size_t>(data_index)];
-    if (need_symbolize_value_idxs.count(static_cast<size_t>(data_index)) > 0U &&
-        !gert::TensorPlacementUtils::IsOnHost(tensor.GetPlacement())) {
-      GELOGI("input[%d] need copy data to host.", data_index);
-      gert::Tensor host_tensor;
-      GE_ASSERT_SUCCESS(TensorTransUtils::TransGertTensorToHost(tensor, host_tensor));
-      tensor = std::move(host_tensor);
+    const size_t data_idx = static_cast<size_t>(data_index);
+    const bool need_host = (cond_input_idxs.count(data_idx) > 0U) || (need_symbolize_value_idxs.count(data_idx) > 0U);
+    const bool on_host = gert::TensorPlacementUtils::IsOnHost(inputs[data_idx].GetPlacement());
+    if (need_host && !on_host) {
+      d2h_idxs.insert(data_idx);
     }
-    if (gert::TensorPlacementUtils::IsOnHost(tensor.GetPlacement())) {
+    if (need_host || on_host) {
       (void)AttrUtils::SetBool(op_desc, ATTR_NAME_HOST_TENSOR_AS_MODEL_INPUT, true);
       GELOGI("mark data node input index %d as host tensor.", data_index);
+    }
+  }
+  if (!d2h_idxs.empty()) {
+    GELOGI("synchronize stream before D2H, input_count[%zu].", d2h_idxs.size());
+    GE_ASSERT_RT_OK(aclrtSynchronizeStream(stream));
+    for (const size_t data_idx : d2h_idxs) {
+      GELOGI("input[%zu] need copy data to host.", data_idx);
+      gert::Tensor host_tensor;
+      GE_ASSERT_SUCCESS(TensorTransUtils::TransGertTensorToHost(inputs[data_idx], host_tensor));
+      inputs[data_idx] = std::move(host_tensor);
     }
   }
   return SUCCESS;
@@ -253,28 +273,16 @@ Status FastPathInputsOnHost(const ComputeGraphPtr &graph, const std::vector<gert
 }
 
 Status BuildCompileInputs(const std::vector<gert::Tensor> &ori_inputs, const ComputeGraphPtr &graph,
-                          std::vector<gert::Tensor> &compile_inputs,
-                          std::map<ComputeGraph *, std::set<size_t>> &cond_input_cache, std::mutex &cache_mutex) {
+                          std::vector<gert::Tensor> &compile_inputs, const CondInputCache &cond_cache,
+                          rtStream_t stream) {
   compile_inputs = TensorTransUtils::ShareFromGertTenosrs(ori_inputs);
   // cond输入机制不变：强制置于host
   std::set<size_t> cond_input_idxs;
   {
-    std::lock_guard<std::mutex> locker(cache_mutex);
-    GE_ASSERT_SUCCESS(GetAllCondInputData(graph, cond_input_idxs, cond_input_cache));
+    std::lock_guard<std::mutex> locker(cond_cache.mutex);
+    GE_ASSERT_SUCCESS(GetAllCondInputData(graph, cond_input_idxs, cond_cache.data));
   }
-  for (size_t data_idx : cond_input_idxs) {
-    GE_ASSERT_TRUE(data_idx < compile_inputs.size());
-    if (gert::TensorPlacementUtils::IsOnHost(compile_inputs[data_idx].GetPlacement())) {
-      GELOGI("input[%zu] already on host, skip copy.", data_idx);
-      continue;
-    }
-    GELOGI("input[%zu] need copy data to host.", data_idx);
-    gert::Tensor host_tensor;
-    GE_ASSERT_SUCCESS(TensorTransUtils::TransGertTensorToHost(compile_inputs[data_idx], host_tensor));
-    compile_inputs[data_idx] = std::move(host_tensor);
-  }
-  // 需要值符号化的输入：非host统一D2H到host；并对处于host的输入统一打标
-  GE_ASSERT_SUCCESS(PrepareGraphInputs(graph, compile_inputs));
+  GE_ASSERT_SUCCESS(PrepareGraphInputs(graph, compile_inputs, cond_input_idxs, stream));
   return SUCCESS;
 }
 
@@ -569,7 +577,7 @@ Status JitExecutor::ProcessAndExecuteGraphAsync(UserGraphExecution &task, const 
                                                 bool need_malloc_output) {
   // BuildCompileInputs 内部完成：cond 与需要值符号化的输入非 host 时统一 D2H 到 host，
   // 并统一打 ATTR_NAME_HOST_TENSOR_AS_MODEL_INPUT；下游编译/执行/静态图随路拷贝只读该属性，
-  // 不再重复判断 placement
+  // 不再重复判断 placement。D2H 前会先同步 stream，保证读到前序 EP 已写完的输出
   std::vector<gert::Tensor> compile_inputs;
   GuardedExecutionInfo execution_info;
   {
@@ -577,8 +585,8 @@ Status JitExecutor::ProcessAndExecuteGraphAsync(UserGraphExecution &task, const 
     // 读写与 GEP 编译(编译期间 CopyComputeGraph 读图，与属性写并发会破坏 protobuf)。
     // 设备执行(ExecuteGraphWithStreamAsync)与流同步在锁外，保留并发度。
     std::lock_guard<std::mutex> locker(mutex_);
-    GE_ASSERT_SUCCESS(BuildCompileInputs(inputs, ep->GetSlicedGraph(), compile_inputs, cond_input_data_cache_,
-                                         cond_input_cache_mutex_));
+    GE_ASSERT_SUCCESS(BuildCompileInputs(inputs, ep->GetSlicedGraph(), compile_inputs,
+                                         {cond_input_data_cache_, cond_input_cache_mutex_}, stream));
     // BuildCompileInputs -> PrepareGraphInputs 已基于 compile_inputs 统一完成 host 打标
     GE_ASSERT_SUCCESS(GetOrCompileGuardedExecutionPoint(task, compile_inputs, ep, stream, execution_info));
     GELOGD("ExecuteGraphWithStreamAsync GEP[ins_id:%u] of EP[%ld] USER_GRAPH[%u].", execution_info.instance_id,
