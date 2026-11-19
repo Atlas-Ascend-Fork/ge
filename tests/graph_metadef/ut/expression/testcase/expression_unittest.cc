@@ -16,19 +16,19 @@
 #include <symengine/real_double.h>
 #include <symengine/parser.h>
 #include <iostream>
+#include <sstream>
 #include <cmath>
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
 #include "graph/symbolizer/expression_ext.h"
 #include "expression/expression_impl.h"
 #include "expression/expr_parser.h"
 
 #include <util/mem_utils.h>
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "faker/kernel_run_context_faker.h"
 #include "attribute_group/attr_group_shape_env.h"
 #include "graph/symbolizer/symbolic_utils.h"
-#include "graph/symbolizer/symbol_checker.h"
+#include "graph/symbolizer/symbolic.h"
 #include "source_stub.h"
 namespace ge {
 class UtestExpression : public testing::Test {
@@ -84,6 +84,19 @@ void ExpectParseAndSerialize(const std::string &parse_str, const std::string &ex
   EXPECT_EQ(std::string(expr.Str().get()), expect_str);
 }
 }  // namespace
+
+TEST_F(UtestExpression, PublishedSerializationAndStreamOutput) {
+  const auto expression = Symbol(3) + Symbol(4);
+  const auto serialized = expression.Serialize();
+  const auto printed = expression.Str();
+  ASSERT_NE(serialized, nullptr);
+  ASSERT_NE(printed, nullptr);
+  EXPECT_STREQ(serialized.get(), printed.get());
+  EXPECT_EQ(Expression::Deserialize(serialized.get()), expression);
+  std::ostringstream stream;
+  stream << expression;
+  EXPECT_EQ(stream.str(), "7");
+}
 
 TEST_F(UtestExpression, TestBasic) {
   auto symbol2 = Symbol(2);
@@ -537,10 +550,7 @@ TEST_F(UtestExpression, SymbolCheckWithoutContext) {
   auto var_b = Symbol("b");
   auto ret = EXPECT_SYMBOL_EQ(var_b, var_a);
   EXPECT_EQ(ret, false);
-  bool guard_res0 = [&var_a, &var_b]() -> bool {
-    ASSERT_SYMBOL_EQ(var_a, var_b);
-    return true;
-  }();
+  bool guard_res0 = [&var_a, &var_b]() -> bool { return ge::sym::AssertSymbolEq(var_a, var_b, __FILE__, __LINE__); }();
   EXPECT_EQ(guard_res0, false);
   EXPECT_EQ(SymbolicUtils::StaticCheckEq(var_a, var_b), TriBool::kUnknown);
 }
@@ -787,7 +797,7 @@ TEST_F(UtestExpression, TestAlignWithPositiveInteger_Succ) {
   SetCurShapeEnvContext(nullptr);
 }
 
-Status InferAddSymbolShapeStub(gert::InferSymbolShapeContext *context) {
+Status InferAddSymbolShapeStub(gert::InferSymbolContext *context) {
   auto input_shape0 = context->GetInputSymbolShape(0);
   GE_ASSERT_NOTNULL(input_shape0);
   auto input_shape1 = context->GetInputSymbolShape(1);
@@ -930,7 +940,7 @@ TEST_F(UtestExpression, SymbolCheckBroadCast_Succ) {
                             .Inputs({&in_shape0, &in_shape1})
                             .Outputs({&out_shape})
                             .Build();
-  auto context = context_holder.GetContext<gert::InferSymbolShapeContext>();
+  auto context = context_holder.GetContext<gert::InferSymbolContext>();
   EXPECT_EQ(InferAddSymbolShapeStub(context), GRAPH_SUCCESS);
   auto output_shape = context->GetOutputSymbolShape(0);
   EXPECT_NE(output_shape, nullptr);
@@ -960,45 +970,30 @@ TEST_F(UtestExpression, SymbolAssertCheck_Succ) {
   Symbol sym5 = shape_env.CreateSymbol(6, MakeShared<GraphInputShapeSourceStub>(0, 5));
   Symbol sym6 = shape_env.CreateSymbol(7, MakeShared<GraphInputShapeSourceStub>(0, 6));
 
-  EXPECT_EQ(([&sym1]() -> bool {
-              ASSERT_SYMBOL_EQ(sym::Rational(4, 2), sym1);
-              return true;
-            }()),
+  EXPECT_EQ(([&sym1]() -> bool { return ge::sym::AssertSymbolEq(sym::Rational(4, 2), sym1, __FILE__, __LINE__); }()),
             true);
-  EXPECT_EQ(([&sym1, &sym2]() -> bool {
-              ASSERT_SYMBOL_EQ(sym2, sym1);
-              return true;
-            }()),
-            false);
+  EXPECT_EQ(([&sym1, &sym2]() -> bool { return ge::sym::AssertSymbolEq(sym2, sym1, __FILE__, __LINE__); }()), false);
   EXPECT_EQ(([&sym0, &sym2]() -> bool {
-              ASSERT_SYMBOL_NE(sym::Ceiling(sym0), sym2);
-              return true;
+              return ge::sym::AssertSymbolBool(sym::Ne(sym::Ceiling(sym0), sym2), __FILE__, __LINE__);
             }()),
             true);
   EXPECT_EQ(([&sym1, &sym4]() -> bool {
-              ASSERT_SYMBOL_LT(sym::Log(sym1, sym1), sym4);
-              return true;
+              return ge::sym::AssertSymbolBool(sym::Lt(sym::Log(sym1, sym1), sym4), __FILE__, __LINE__);
             }()),
             true);
   EXPECT_EQ(([&sym4, &sym3, &sym0]() -> bool {
-              ASSERT_SYMBOL_LE(sym4 - sym3, sym0);
-              return true;
+              return ge::sym::AssertSymbolBool(sym::Le(sym4 - sym3, sym0), __FILE__, __LINE__);
             }()),
             true);
   EXPECT_EQ(([&sym4, &sym5, &sym1, &sym2]() -> bool {
-              ASSERT_SYMBOL_GT(sym::Pow(sym1, sym2), sym::Max(sym5, sym4));
-              return true;
+              return ge::sym::AssertSymbolBool(sym::Gt(sym::Pow(sym1, sym2), sym::Max(sym5, sym4)), __FILE__, __LINE__);
             }()),
             true);
   EXPECT_EQ(([&sym6, &sym1, &sym2]() -> bool {
-              ASSERT_SYMBOL_GE(sym::Min(sym1, sym2), sym::Abs(sym6));
-              return true;
+              return ge::sym::AssertSymbolBool(sym::Ge(sym::Min(sym1, sym2), sym::Abs(sym6)), __FILE__, __LINE__);
             }()),
             false);
-  EXPECT_EQ(([]() -> bool {
-              ASSERT_SYMBOL_GE(Symbol(5), Symbol(2));
-              return true;
-            }()),
+  EXPECT_EQ(([]() -> bool { return ge::sym::AssertSymbolBool(sym::Ge(Symbol(5), Symbol(2)), __FILE__, __LINE__); }()),
             true);
 
   EXPECT_EQ(shape_env.HasSymbolAssertInfo(sym::Eq(sym::Rational(4, 2), sym1)), true);
@@ -1017,7 +1012,7 @@ TEST_F(UtestExpression, SymbolAssertCheck_Succ) {
   SetCurShapeEnvContext(nullptr);
 }
 
-Status InferMatmulSymbolShapeStub(gert::InferSymbolShapeContext *context) {
+Status InferMatmulSymbolShapeStub(gert::InferSymbolContext *context) {
   auto input_shape0 = context->GetInputSymbolShape(0);
   GE_ASSERT_NOTNULL(input_shape0);
   auto input_shape1 = context->GetInputSymbolShape(1);
@@ -1052,7 +1047,7 @@ TEST_F(UtestExpression, SymbolAssertMatmul_Succ) {
                             .Inputs({&in_shape0, &in_shape1})
                             .Outputs({&out_shape})
                             .Build();
-  auto context = context_holder.GetContext<gert::InferSymbolShapeContext>();
+  auto context = context_holder.GetContext<gert::InferSymbolContext>();
   EXPECT_EQ(InferMatmulSymbolShapeStub(context), GRAPH_SUCCESS);
   auto output_shape = context->GetOutputSymbolShape(0);
   EXPECT_NE(output_shape, nullptr);

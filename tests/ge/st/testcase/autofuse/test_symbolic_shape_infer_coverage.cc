@@ -16,7 +16,7 @@
 
 #include "common/plugin/ge_make_unique_util.h"
 #include "exe_graph/lowering/kernel_run_context_builder.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "graph/compute_graph.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "register/op_impl_registry.h"
@@ -79,13 +79,13 @@ class InferContextBuilder {
     return op_desc_;
   }
 
-  gert::InferSymbolShapeContext *Build() {
+  gert::InferSymbolContext *Build() {
     auto holder = gert::KernelRunContextBuilder()
                       .Inputs(GetVoidPtr<gert::SymbolTensor>(inputs_))
                       .Outputs(GetVoidPtr<gert::SymbolShape>(outputs_))
                       .Build(op_desc_);
     context_holder_ = std::move(holder);
-    return reinterpret_cast<gert::InferSymbolShapeContext *>(context_holder_.context_);
+    return reinterpret_cast<gert::InferSymbolContext *>(context_holder_.context_);
   }
 
   void Destroy() {
@@ -108,9 +108,9 @@ class InferContextBuilder {
   gert::KernelContextHolder context_holder_;
 };
 
-gert::OpImplKernelRegistry::InferSymbolShapeKernelFunc GetInferFunc(const char *op_type) {
+gert::OpImplKernelRegistry::InferSymbolKernelFunc GetInferFunc(const char *op_type) {
   const auto &impl = gert::OpImplInferSymbolShapeRegistry::GetInstance().GetOpImpl(op_type);
-  return impl == nullptr ? nullptr : impl->infer_symbol_shape;
+  return impl;
 }
 
 class SymbolicShapeInferCoverageST : public testing::Test {

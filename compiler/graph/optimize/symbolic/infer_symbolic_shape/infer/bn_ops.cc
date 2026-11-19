@@ -9,7 +9,7 @@
  */
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -67,7 +67,7 @@ graphStatus GetOutputShapeFromOriginFormat(size_t dim_num, ge::Format origin_for
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4BNTrainingReduce(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4BNTrainingReduce(gert::InferSymbolContext *context) {
   auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto sum_shape = context->GetOutputSymbolShape(0);
@@ -84,7 +84,7 @@ graphStatus InferShape4BNTrainingReduce(gert::InferSymbolShapeContext *context) 
   return GetOutputShapeFromOriginFormat(dim_num, origin_format, x_shape, sum_shape, squaresum_shape);
 }
 
-graphStatus InferShape4BNTrainingUpdate(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4BNTrainingUpdate(gert::InferSymbolContext *context) {
   auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto scale_shape = context->GetInputSymbolShape(3);
@@ -113,7 +113,7 @@ graphStatus InferShape4BNTrainingUpdate(gert::InferSymbolShapeContext *context) 
  * 【举例】x=[N,C,H,W]、scale=[C] 时，y=[N,C,H,W]，batch_mean/batch_variance/reserve_space_1/reserve_space_2=[C]，
  *         reserve_space_3=[1]。
  */
-graphStatus InferShape4BatchNorm(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4BatchNorm(gert::InferSymbolContext *context) {
   auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto scale_shape = context->GetInputSymbolShape(1);
@@ -140,7 +140,7 @@ graphStatus InferShape4BatchNorm(gert::InferSymbolShapeContext *context) {
  * 【推导逻辑】y 继承 x 的 Shape；running_mean、running_var、save_mean、save_rstd 均继承 weight 的 Shape。
  * 【举例】x=[N,C,H,W]、weight=[C] 时，y=[N,C,H,W]，running_mean/running_var/save_mean/save_rstd=[C]。
  */
-graphStatus InferShape4BatchNormV3(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4BatchNormV3(gert::InferSymbolContext *context) {
   auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto weight_shape = context->GetInputSymbolShape(1);
@@ -169,7 +169,7 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BNTrainingUpdateV3).InferSymbolShape(InferShape
  * 【推导逻辑】输出 y 取 x 的 Shape；batch_mean/batch_variance 取 scale（输入 3）的 Shape。
  * 【举例】x=[N,C,H,W]、scale=[C] 时，y=[N,C,H,W]，batch_mean=batch_variance=[C]。
  */
-graphStatus InferShape4BNTrainingUpdateV2(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4BNTrainingUpdateV2(gert::InferSymbolContext *context) {
   auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto scale_shape = context->GetInputSymbolShape(3);

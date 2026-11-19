@@ -10,8 +10,9 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "common/checker.h"
+#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -32,7 +33,7 @@ namespace {
  *      2. 以第一个输入的shape为基础，校验其他输入合法
  *      3. 设置拼接轴所在维度的值为输入个数（代表以该轴合并输入的所有张量）
  */
-graphStatus InferShape4Pack(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4Pack(gert::InferSymbolContext *context) {
   auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
   const auto *axis_ptr = attrs->GetAttrPointer<int64_t>(0);  // 拼接维度
@@ -82,7 +83,7 @@ graphStatus InferShape4Pack(gert::InferSymbolShapeContext *context) {
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4Unpack(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4Unpack(gert::InferSymbolContext *context) {
   auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
   const auto *num = attrs->GetAttrPointer<int64_t>(0);

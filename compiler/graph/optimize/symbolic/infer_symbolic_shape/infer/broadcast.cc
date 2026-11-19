@@ -10,7 +10,7 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -27,7 +27,7 @@ constexpr size_t kAddcmulX2Idx = 2U;
 constexpr size_t kAddcmulOutputIdx = 0U;
 constexpr size_t kClipByValueInputSize = 3;
 
-graphStatus InferShape4BroadcastCommon(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4BroadcastCommon(gert::InferSymbolContext *context) {
   auto in_shape1 = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape1);
   auto in_shape2 = context->GetInputSymbolShape(1);
@@ -49,7 +49,7 @@ graphStatus InferShape4BroadcastCommon(gert::InferSymbolShapeContext *context) {
  * 【推导逻辑】双输出均为 broadcast(x1, x2)。
  * 【举例】x1=[B,S]、x2=[S] 时，y1=y2=[B,S]。
  */
-graphStatus InferShape4BroadcastGrad(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4BroadcastGrad(gert::InferSymbolContext *context) {
   auto in_shape1 = context->GetInputSymbolShape(1);
   GE_UNSUPPORTED_IF_NULL(in_shape1);
   auto in_shape2 = context->GetInputSymbolShape(2);
@@ -73,7 +73,7 @@ graphStatus InferShape4BroadcastGrad(gert::InferSymbolShapeContext *context) {
  * 【推导逻辑】读取三个输入的符号 Shape，使用公共 Broadcast 逻辑计算广播结果，并将结果写入输出 y。
  * 【举例】start=[B,S,H]、end=[1,S,H]、weight=[H] 时，y=[B,S,H]。
  */
-graphStatus InferShape4Lerp(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4Lerp(gert::InferSymbolContext *context) {
   const auto start_shape = context->GetInputSymbolShape(kLerpStartIdx);
   GE_UNSUPPORTED_IF_NULL(start_shape);
   const auto end_shape = context->GetInputSymbolShape(kLerpEndIdx);
@@ -98,7 +98,7 @@ graphStatus InferShape4Lerp(gert::InferSymbolShapeContext *context) {
  * 【推导逻辑】读取 input_data、x1 和 x2 的符号 Shape，使用公共 Broadcast 逻辑计算三者的广播结果，并写入 y。
  * 【举例】input_data=[B,S,H]、x1=[1,S,H]、x2=[H] 时，y=[B,S,H]。
  */
-graphStatus InferShape4Addcmul(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4Addcmul(gert::InferSymbolContext *context) {
   const auto input_data_shape = context->GetInputSymbolShape(kAddcmulInputDataIdx);
   GE_UNSUPPORTED_IF_NULL(input_data_shape);
   const auto x1_shape = context->GetInputSymbolShape(kAddcmulX1Idx);
@@ -117,7 +117,7 @@ graphStatus InferShape4Addcmul(gert::InferSymbolShapeContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4BroadcastInputThree(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4BroadcastInputThree(gert::InferSymbolContext *context) {
   std::vector<std::vector<Expression>> shapes;
   for (size_t i = 0; i < kClipByValueInputSize; i++) {
     auto in_shape = context->GetInputSymbolShape(i);
@@ -133,7 +133,7 @@ graphStatus InferShape4BroadcastInputThree(gert::InferSymbolShapeContext *contex
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4MultiInput(gert::InferSymbolShapeContext *context, const size_t num) {
+graphStatus InferShape4MultiInput(gert::InferSymbolContext *context, const size_t num) {
   std::vector<std::vector<Expression>> shapes;
   for (size_t i = 0; i < num; i++) {
     auto in_shape = context->GetInputSymbolShape(i);
@@ -149,7 +149,7 @@ graphStatus InferShape4MultiInput(gert::InferSymbolShapeContext *context, const 
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4DynamicBroadcast(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4DynamicBroadcast(gert::InferSymbolContext *context) {
   auto attr = context->GetAttrs();
   GE_ASSERT_NOTNULL(attr);
   const auto *N = attr->GetAttrPointer<int64_t>(0);

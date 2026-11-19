@@ -15,7 +15,7 @@
 #include "graph/optimize/symbolic/symbolic_kernel_factory.h"
 #include "common/plugin/ge_make_unique_util.h"
 #include "graph_metadef/common/ge_common/util.h"
-#include "graph/symbolizer/symbol_checker.h"
+#include "graph/symbolizer/symbolic.h"
 #include <algorithm>
 
 namespace ge {

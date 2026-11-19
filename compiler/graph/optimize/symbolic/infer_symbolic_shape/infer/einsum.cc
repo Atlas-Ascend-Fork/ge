@@ -16,7 +16,7 @@
 #include <vector>
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "graph/compute_graph.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -303,7 +303,7 @@ void AppendOutputWithEllipsis(gert::SymbolShape *output_shape, const std::string
  *      举例：输入equation="ab,bc->ac"，input0_shape=(2,3)，input1_shape=(3,4)，
  *            则output_shape=(2,4)
  */
-graphStatus InferShape4Einsum(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4Einsum(gert::InferSymbolContext *context) {
   GE_ASSERT_NOTNULL(context);
   const auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);

@@ -9,10 +9,11 @@
  */
 
 #include "common/checker.h"
+#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/compute_graph.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 
 namespace ge {
 namespace {
@@ -31,7 +32,7 @@ constexpr size_t kOutputIdx = 0U;
 constexpr size_t kX2Rank = 2U;
 constexpr size_t kX1ShapeSize = 2U;
 
-graphStatus InferShape4MatMul(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4MatMul(gert::InferSymbolContext *context) {
   auto in_shape1 = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape1);
   auto in_shape2 = context->GetInputSymbolShape(1);
@@ -111,7 +112,7 @@ Status CalBatchOutShape(gert::SymbolShape *out_shape, const gert::SymbolShape &s
   return SUCCESS;
 }
 // todo tensorflow只有x1, x2, adj_x1, adj_x2四个入参，没有bias参数，因此暂不考虑
-graphStatus InferShape4BatchMatMulV2(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4BatchMatMulV2(gert::InferSymbolContext *context) {
   auto shape_x1 = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(shape_x1);
   auto dim_num_x1 = shape_x1->GetDimNum();
@@ -174,7 +175,7 @@ graphStatus InferShape4BatchMatMulV2(gert::InferSymbolShapeContext *context) {
  * 【推导逻辑】输出首维取 x1_shape[adjoint_a ? 1 : 0]，次维取 x2[adjoint_b ? 0 : 1]。
  * 【举例】x1_shape=[M,K]、x2=[K,N]、adjoint 均为 false 时，y=[M,N]。
  */
-graphStatus InferShape4SparseTensorDenseMatMul(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4SparseTensorDenseMatMul(gert::InferSymbolContext *context) {
   const auto x2_shape = context->GetInputSymbolShape(kX2Idx);
   GE_UNSUPPORTED_IF_NULL(x2_shape);
   GE_ASSERT(x2_shape->GetDimNum() == kX2Rank, "SparseTensorDenseMatMul x2 must be a 2D matrix");

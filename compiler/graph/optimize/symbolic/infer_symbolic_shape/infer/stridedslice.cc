@@ -19,7 +19,7 @@
 #include "graph/optimize/symbolic/strided_slice_common.h"
 #include "graph/symbolizer/symbolic_utils.h"
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 
 namespace ge {
 namespace {
@@ -517,7 +517,7 @@ Status CalcOutputShape(const int64_t shrink_axis_mask, const std::pair<int64_t, 
   return SUCCESS;
 }
 
-Status GetStridedSliceDIndexInput(const gert::InferSymbolShapeContext *context, StrdedSliceIndexInputs &index_input) {
+Status GetStridedSliceDIndexInput(const gert::InferSymbolContext *context, StrdedSliceIndexInputs &index_input) {
   GE_CHECK_NOTNULL(context);
   const auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
@@ -548,8 +548,8 @@ Status GetStridedSliceDIndexInput(const gert::InferSymbolShapeContext *context, 
   return SUCCESS;
 }
 
-graphStatus GetValueFromSymbolValue(const gert::InferSymbolShapeContext *context,
-                                    const gert::SymbolTensor *input_tensor, std::vector<Expression> &dims) {
+graphStatus GetValueFromSymbolValue(const gert::InferSymbolContext *context, const gert::SymbolTensor *input_tensor,
+                                    std::vector<Expression> &dims) {
   GE_ASSERT_NOTNULL(context);
   GE_UNSUPPORTED_IF_NULL(input_tensor);
   GE_UNSUPPORTED_IF(!input_tensor->HasValue());
@@ -570,12 +570,12 @@ graphStatus GetValueFromSymbolValue(const gert::InferSymbolShapeContext *context
   return SUCCESS;
 }
 
-graphStatus GetValueFromInputData(const gert::InferSymbolShapeContext *context, const size_t index,
+graphStatus GetValueFromInputData(const gert::InferSymbolContext *context, const size_t index,
                                   std::vector<Expression> &dims) {
   return GetValueFromSymbolValue(context, context->GetInputSymbolTensor(index), dims);
 }
 
-Status GetStridedSliceIndexInput(const gert::InferSymbolShapeContext *context, StrdedSliceIndexInputs &index_input,
+Status GetStridedSliceIndexInput(const gert::InferSymbolContext *context, StrdedSliceIndexInputs &index_input,
                                  size_t stride_index, bool is_stride_optional = false) {
   auto ret = GetValueFromInputData(context, kStartInputIndex, index_input.start_indexes);
   if (ret != SUCCESS) {
@@ -593,7 +593,7 @@ Status GetStridedSliceIndexInput(const gert::InferSymbolShapeContext *context, S
   return GetValueFromSymbolValue(context, strides_tensor, index_input.strides_indexes);
 }
 
-Status ConstructAxis(const gert::InferSymbolShapeContext *context, int64_t input_dim_num, std::vector<int64_t> &axes) {
+Status ConstructAxis(const gert::InferSymbolContext *context, int64_t input_dim_num, std::vector<int64_t> &axes) {
   const auto axes_tensor = context->GetOptionalInputSymbolTensor(kAxesV2InputIndex);
   if (axes_tensor == nullptr) {
     GELOGI("Set axes to default for node %s.", context->GetNodeName());
@@ -624,7 +624,7 @@ Status ConstructAxis(const gert::InferSymbolShapeContext *context, int64_t input
   return SUCCESS;
 }
 
-Status GetV2StrideValues(const gert::InferSymbolShapeContext *context, const size_t begin_size,
+Status GetV2StrideValues(const gert::InferSymbolContext *context, const size_t begin_size,
                          std::vector<Expression> &stride_values, bool &strides_default) {
   stride_values.assign(begin_size, Symbol(1));
   const auto strides_tensor = context->GetOptionalInputSymbolTensor(kStridesV2InputIndex);
@@ -665,7 +665,7 @@ Status ApplyV2Axes(const std::vector<int64_t> &axes, const std::vector<Expressio
   return SUCCESS;
 }
 
-Status GetStridedSliceV2IndexInput(const gert::InferSymbolShapeContext *context, StrdedSliceIndexInputs &index_input) {
+Status GetStridedSliceV2IndexInput(const gert::InferSymbolContext *context, StrdedSliceIndexInputs &index_input) {
   const auto x_shape = context->GetInputSymbolShape(kXInputIndex);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   const std::vector<ge::Expression> x_dims = SymbolicInferUtil::GetSymbolDims(*x_shape);
@@ -705,7 +705,7 @@ Status GetStridedSliceV2IndexInput(const gert::InferSymbolShapeContext *context,
   return ApplyV2Axes(axes, x_dims, begin_values, end_values, stride_values, index_input);
 }
 
-Status GetStridedSliceMaskAttr(const gert::InferSymbolShapeContext *context, StridedSliceAttr &strided_slice_attr) {
+Status GetStridedSliceMaskAttr(const gert::InferSymbolContext *context, StridedSliceAttr &strided_slice_attr) {
   GE_ASSERT_NOTNULL(context);
   const auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
@@ -727,7 +727,7 @@ Status GetStridedSliceMaskAttr(const gert::InferSymbolShapeContext *context, Str
   return SUCCESS;
 }
 
-Status GetStridedSliceDMaskAttr(const gert::InferSymbolShapeContext *context, StridedSliceAttr &strided_slice_attr) {
+Status GetStridedSliceDMaskAttr(const gert::InferSymbolContext *context, StridedSliceAttr &strided_slice_attr) {
   GE_ASSERT_NOTNULL(context);
   const auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
@@ -764,7 +764,7 @@ Status HandleMaskAttr(const std::pair<int64_t, int64_t> &ellipsis_mask_range,
   return SUCCESS;
 }
 
-graphStatus InferShape4StridedSlice(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4StridedSlice(gert::InferSymbolContext *context) {
   StrdedSliceIndexInputs index_input;
   StridedSliceAttr strided_slice_attr;
   Status retinput = PARAM_INVALID;
@@ -903,7 +903,7 @@ Status CalculateOutputDimsForV3(const std::vector<int64_t> &axes, const std::vec
   return SUCCESS;
 }
 
-Status InferShape4StridedSliceV3(gert::InferSymbolShapeContext *context) {
+Status InferShape4StridedSliceV3(gert::InferSymbolContext *context) {
   GE_ASSERT_NOTNULL(context);
   const auto shape_output = context->GetOutputSymbolShape(kOutputIndex);
   GE_ASSERT_NOTNULL(shape_output);

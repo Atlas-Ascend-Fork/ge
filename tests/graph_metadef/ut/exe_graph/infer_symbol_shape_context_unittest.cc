@@ -9,9 +9,9 @@
  */
 
 #include <gtest/gtest.h>
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "faker/kernel_run_context_faker.h"
-#include "exe_graph/runtime/symbolic_tensor.h"
+#include "exe_graph/runtime/symbolic_types.h"
 
 namespace gert {
 class InferSymbolShapeContextUT : public testing::Test {};
@@ -32,7 +32,7 @@ TEST_F(InferSymbolShapeContextUT, GetInputShapeOk) {
                             .Inputs({&in_tensor1, &in_tensor2})
                             .Outputs({&out_shape})
                             .Build();
-  auto context = context_holder.GetContext<InferSymbolShapeContext>();
+  auto context = context_holder.GetContext<InferSymbolContext>();
   ASSERT_NE(context, nullptr);
 
   ASSERT_NE(context->GetInputSymbolShape(0), nullptr);
@@ -71,7 +71,7 @@ TEST_F(InferSymbolShapeContextUT, GetDynamicInputShapeOk) {
                             .Inputs({&in_tensor1, &in_tensor2, &in_tensor3, &in_tensor4})
                             .Outputs({&out_shape})
                             .Build();
-  auto context = context_holder.GetContext<InferSymbolShapeContext>();
+  auto context = context_holder.GetContext<InferSymbolContext>();
   ASSERT_NE(context, nullptr);
 
   ASSERT_NE(context->GetOptionalInputSymbolShape(0), nullptr);
@@ -108,7 +108,7 @@ TEST_F(InferSymbolShapeContextUT, GetOutShapeOk) {
                             .Inputs({&in_shape1, &in_shape2})
                             .Outputs({&out_shape})
                             .Build();
-  auto context = context_holder.GetContext<InferSymbolShapeContext>();
+  auto context = context_holder.GetContext<InferSymbolContext>();
   ASSERT_NE(context, nullptr);
 
   ASSERT_NE(context->GetOutputSymbolShape(0), nullptr);
@@ -132,7 +132,7 @@ TEST_F(InferSymbolShapeContextUT, GetOptionalInputTensorFailed_NotSetOptionalInp
                             .NodeIoNum(1, 0)
                             .Inputs({&in_shape1, infer_shape_func_addr})
                             .Build();
-  auto context = context_holder.GetContext<InferSymbolShapeContext>();
+  auto context = context_holder.GetContext<InferSymbolContext>();
   ASSERT_NE(context, nullptr);
 
   ASSERT_NE(context->GetInputSymbolTensor(0), nullptr);
@@ -157,7 +157,7 @@ TEST_F(InferSymbolShapeContextUT, GetInputSymbolTensorValueOK) {
                             .NodeIoNum(2, 0)
                             .Inputs({reinterpret_cast<void *>(&in_tensor1), reinterpret_cast<void *>(&in_tensor2)})
                             .Build();
-  auto context = context_holder.GetContext<InferSymbolShapeContext>();
+  auto context = context_holder.GetContext<InferSymbolContext>();
   ASSERT_NE(context, nullptr);
 
   ASSERT_NE(context->GetInputSymbolShape(0), nullptr);
@@ -188,7 +188,7 @@ TEST_F(InferSymbolShapeContextUT, GetOptionalInputTensorOK_SetOptionalInput) {
           .Inputs({reinterpret_cast<void *>(&in_tensor1),
                    reinterpret_cast<void *>(&in_tensor2)})  // 接口内部会在末尾填充一个infershape的函数地址
           .Build();
-  auto context = context_holder.GetContext<InferSymbolShapeContext>();
+  auto context = context_holder.GetContext<InferSymbolContext>();
   ASSERT_NE(context, nullptr);
 
   ASSERT_NE(context->GetInputSymbolShape(0), nullptr);
@@ -228,7 +228,7 @@ TEST_F(InferSymbolShapeContextUT, GetRequiredInputTensorOk) {
                                      reinterpret_cast<void *>(&in_tensor3), reinterpret_cast<void *>(&in_tensor4)})
                             .Outputs({&symbol_shape})
                             .Build();
-  auto context = context_holder.GetContext<InferSymbolShapeContext>();
+  auto context = context_holder.GetContext<InferSymbolContext>();
   ASSERT_NE(context, nullptr);
 
   // 第一个输入是必选输入，获取到shape

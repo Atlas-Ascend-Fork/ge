@@ -30,7 +30,7 @@
 #include "attribute_group/attr_group_symbolic_desc.h"
 #include "stub/gert_runtime_stub.h"
 #include "expect_node_info_check_test.h"
-#include "graph/symbolizer/symbol_operator.h"
+#include "graph/symbolizer/symbolic.h"
 
 namespace ge {
 class SymbolicShapeComputeUT : public testing::Test {

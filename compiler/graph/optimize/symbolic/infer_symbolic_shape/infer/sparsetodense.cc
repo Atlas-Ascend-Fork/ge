@@ -9,7 +9,7 @@
  */
 
 #include <cstdlib>
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -41,7 +41,7 @@ graphStatus GetConstInt(const Expression &expr, DataType dt, int64_t &value) {
  *      1. 按照算子约束校验名为output_shape的输入是否满足符号化推导
  *      2. 获取到值依赖的SymbolicValue,按照shape的长度将存储的dim值作为输出shape
  */
-graphStatus InferShape4SparseToDense(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4SparseToDense(gert::InferSymbolContext *context) {
   auto input1_shape = context->GetInputSymbolShape(1);
   GE_UNSUPPORTED_IF_NULL(input1_shape);
 
@@ -101,7 +101,7 @@ graphStatus InferShape4SparseToDense(gert::InferSymbolShapeContext *context) {
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferShapeSparseSoftmaxCrossEntropyWithLogits(gert::InferSymbolShapeContext *context) {
+graphStatus InferShapeSparseSoftmaxCrossEntropyWithLogits(gert::InferSymbolContext *context) {
   const auto features = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(features);
   const auto labels = context->GetInputSymbolShape(1);

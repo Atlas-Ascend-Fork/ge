@@ -12,7 +12,7 @@
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 
 namespace ge {
 namespace {
@@ -268,7 +268,7 @@ ge::graphStatus InferLseOutShape(const std::string &inputLayout, gert::SymbolSha
  *      举例：输入query_shape=(2,32,8,64)，value_shape=(2,48,8,128)，input_layout=BSND，
  *            numHeads=8，则attention_out_shape=(2,32,8,128)，softmax_lse_shape=(2,8,32,1)
  */
-ge::graphStatus InferShape4FusedInferAttentionScore(gert::InferSymbolShapeContext *context) {
+ge::graphStatus InferShape4FusedInferAttentionScore(gert::InferSymbolContext *context) {
   // Get input symbol shapes
   auto query_shape = context->GetInputSymbolShape(kQueryIdx);
   GE_UNSUPPORTED_IF_NULL(query_shape);

@@ -12,7 +12,7 @@
 
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
 namespace ge {
@@ -36,7 +36,7 @@ constexpr size_t kArgmaxDataFormatAttrIdx = 5U;
  * 【举例】NHWC 输入 x=[N,H,W,C]、ksize=[1,2,2,1]、strides=[1,2,2,1]、padding=VALID 时，
  *        y=[N,floor((H-1)/2),floor((W-1)/2),C]。
  */
-graphStatus InferShape4Pool2D(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4Pool2D(gert::InferSymbolContext *context) {
   const auto x_shape = context->GetInputSymbolShape(kXIdx);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   GE_ASSERT(x_shape->GetDimNum() == 4U, "Pool2D input rank must be 4, actual rank[%zu]", x_shape->GetDimNum());
@@ -100,7 +100,7 @@ graphStatus InferShape4Pool2D(gert::InferSymbolShapeContext *context) {
  * 【举例】NHWC 输入 x=[N,H,W,C]、ksize=[1,2,2,1]、strides=[1,2,2,1]、padding=VALID 时，
  *        y=[N,floor((H-1)/2),floor((W-1)/2),C]。
  */
-graphStatus InferShape4AvgPool(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4AvgPool(gert::InferSymbolContext *context) {
   return InferShape4Pool2D(context);
 }
 
@@ -113,7 +113,7 @@ graphStatus InferShape4AvgPool(gert::InferSymbolShapeContext *context) {
  * 【举例】NHWC 输入 x=[N,H,W,C]、ksize=[1,2,2,1]、strides=[1,2,2,1]、padding=VALID 时，
  *        y=[N,floor((H-1)/2),floor((W-1)/2),C]。
  */
-graphStatus InferShape4MaxPool(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4MaxPool(gert::InferSymbolContext *context) {
   return InferShape4Pool2D(context);
 }
 
@@ -127,7 +127,7 @@ graphStatus InferShape4MaxPool(gert::InferSymbolShapeContext *context) {
  * 【举例】NHWC 输入 x=[N,H,W,C]、ksize=[1,2,2,1]、strides=[1,2,2,1]、padding=VALID 时，y 和 argmax 均为
  *        [N,floor((H-1)/2),floor((W-1)/2),C]。
  */
-graphStatus InferShape4MaxPoolWithArgmax(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4MaxPoolWithArgmax(gert::InferSymbolContext *context) {
   const auto x_shape = context->GetInputSymbolShape(kXIdx);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   GE_ASSERT(x_shape->GetDimNum() == 4U, "MaxPoolWithArgmax input rank must be 4");

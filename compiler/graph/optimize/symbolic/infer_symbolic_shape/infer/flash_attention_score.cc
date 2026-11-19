@@ -12,7 +12,7 @@
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 
 namespace ge {
 namespace {
@@ -54,7 +54,7 @@ struct FlashAttentionDims {
 };
 
 // Calculate dimensions based on input layout
-ge::graphStatus CalculateDimensions(const gert::InferSymbolShapeContext *context, const std::string &input_layout,
+ge::graphStatus CalculateDimensions(const gert::InferSymbolContext *context, const std::string &input_layout,
                                     FlashAttentionDims &dims) {
   auto query_shape = context->GetInputSymbolShape(kQueryIdx);
   GE_UNSUPPORTED_IF_NULL(query_shape);
@@ -74,8 +74,8 @@ ge::graphStatus CalculateDimensions(const gert::InferSymbolShapeContext *context
 }
 
 // Set softmax shapes
-ge::graphStatus SetSoftmaxShapes(gert::InferSymbolShapeContext *context, const std::string &input_layout,
-                                 bool is_hifloat8, int64_t head_num, const FlashAttentionDims &dims) {
+ge::graphStatus SetSoftmaxShapes(gert::InferSymbolContext *context, const std::string &input_layout, bool is_hifloat8,
+                                 int64_t head_num, const FlashAttentionDims &dims) {
   auto softmax_max_shape = context->GetOutputSymbolShape(kSoftmaxMaxIdx);
   GE_ASSERT_NOTNULL(softmax_max_shape);
   auto softmax_sum_shape = context->GetOutputSymbolShape(kSoftmaxSumIdx);
@@ -120,7 +120,7 @@ ge::graphStatus SetSoftmaxShapes(gert::InferSymbolShapeContext *context, const s
 }
 
 // Set attention_out shape
-ge::graphStatus SetAttentionOutShape(gert::InferSymbolShapeContext *context, const std::string &input_layout,
+ge::graphStatus SetAttentionOutShape(gert::InferSymbolContext *context, const std::string &input_layout,
                                      int64_t head_num) {
   auto query_shape = context->GetInputSymbolShape(kQueryIdx);
   auto key_shape = context->GetInputSymbolShape(kKeyIdx);
@@ -184,7 +184,7 @@ ge::graphStatus SetAttentionOutShape(gert::InferSymbolShapeContext *context, con
  *            softmax_max_shape=(2,8,32,8)，softmax_sum_shape=(2,8,32,8)，
  *            softmax_out_shape=(0,0,0,0)，attention_out_shape=(2,32,8,128)
  */
-ge::graphStatus InferShape4FlashAttentionScore(gert::InferSymbolShapeContext *context) {
+ge::graphStatus InferShape4FlashAttentionScore(gert::InferSymbolContext *context) {
   // Get input symbol shapes
   auto query_shape = context->GetInputSymbolShape(kQueryIdx);
   GE_UNSUPPORTED_IF_NULL(query_shape);
