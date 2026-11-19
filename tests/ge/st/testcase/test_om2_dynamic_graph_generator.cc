@@ -362,7 +362,7 @@ TEST_F(Om2DynamicGraphGeneratorST, UnsupportedWhileIsRejectedWithoutPublishingMo
 
 TEST_F(Om2DynamicGraphGeneratorST, OfflineKnownSubgraphIsRejectedWithoutPublishingModel) {
   const auto graph_options = ge::GetThreadLocalContext().GetAllGraphOptions();
-  ge::GetThreadLocalContext().SetGraphOption({{ge::OPTION_MODEL_FORMAT, std::to_string(ge::MODEL_FORMAT_OM)}});
+  ge::GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(ge::MODEL_FORMAT_OM)}});
   // DavinciModelCreate restores input 0 as a process-local GeModel pointer, so the route has
   // to give it a real Const producer; a node without that input is rejected for a missing
   // const input before the offline-mode check under test is reached.

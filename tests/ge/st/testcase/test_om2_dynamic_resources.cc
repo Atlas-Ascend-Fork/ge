@@ -30,7 +30,7 @@ class Om2DynamicResourcesST : public om2_test::DynamicPackageTest {
   void SetUp() override {
     DynamicPackageTest::SetUp();
     GetThreadLocalContext().SetGraphOption(
-        {{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)},
+        {{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)},
          {"ge.buildConfig", "make -s CXXFLAGS='-std=c++17 -fPIC -O0 -D_GLIBCXX_USE_CXX11_ABI=0'"}});
   }
 };

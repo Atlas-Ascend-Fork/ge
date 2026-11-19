@@ -38,10 +38,10 @@ class Om2DynamicOnlineST : public om2_test::DynamicPackageTest {
   void SetUp() override {
     DynamicPackageTest::SetUp();
     GetThreadLocalContext().SetGraphOption(
-        {{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)},
+        {{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)},
          {"ge.buildConfig", "make -s CXXFLAGS='-std=c++17 -fPIC -O0 -D_GLIBCXX_USE_CXX11_ABI=0'"}});
     const std::map<AscendString, AscendString> options{
-        {OPTION_MODEL_FORMAT, AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())}};
+        {"ge.modelFormat", AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())}};
     ASSERT_EQ(GEInitializeV2(options), SUCCESS);
     session_ = std::make_unique<GeSession>(options);
   }
@@ -56,7 +56,7 @@ class Om2DynamicOnlineST : public om2_test::DynamicPackageTest {
     auto facade = GraphUtilsEx::ExecuteGraph2Graph(graph);
     ASSERT_NE(facade, nullptr);
     const std::map<AscendString, AscendString> options{
-        {OPTION_MODEL_FORMAT, AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())},
+        {"ge.modelFormat", AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())},
         {"ge.buildConfig", "make -s CXXFLAGS='-std=c++17 -fPIC -O0 -D_GLIBCXX_USE_CXX11_ABI=0'"}};
     ASSERT_EQ(session_->AddGraph(id, *facade, options), SUCCESS);
     ASSERT_EQ(session_->CompileGraph(id), SUCCESS);
@@ -199,8 +199,8 @@ TEST_F(Om2DynamicOnlineST, GeGeneratedModelRunsThroughDynamicOnlineExecutor) {
   } cleanup{executor};
   auto node = std::make_shared<GraphNode>(705U);
   node->SetGeRootModel(root);
-  node->SetOptions({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   ASSERT_EQ(executor.LoadGraph(root, node), SUCCESS);
   const auto loaded = Om2ModelManager::GetInstance().GetModelExecutor(root->GetModelId());
   ASSERT_NE(loaded, nullptr);

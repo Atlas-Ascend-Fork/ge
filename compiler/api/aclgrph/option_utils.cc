@@ -1840,7 +1840,7 @@ Status CheckOptionValidValues(const std::map<std::string, std::string> &options,
 }
 
 Status CheckModelFormatOptionValid(const std::map<std::string, std::string> &options) {
-  const auto iter = options.find(OPTION_MODEL_FORMAT);
+  const auto iter = options.find("ge.modelFormat");
   if (iter == options.cend()) {
     return SUCCESS;
   }

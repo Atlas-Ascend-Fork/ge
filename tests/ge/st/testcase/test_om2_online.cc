@@ -99,7 +99,7 @@ TEST_F(Om2OnlineSessionTest, Om2ModeDetection) {
   GetThreadLocalContext().SetGraphOption({});
   EXPECT_FALSE(IsOm2OnlineMode());
 
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   EXPECT_TRUE(IsOm2OnlineMode());
 
   GetThreadLocalContext().SetGraphOption({});
@@ -649,7 +649,7 @@ TEST_F(Om2OnlineModelExecutorTest, GetCompiledModel_Om2Mode_Success) {
 
   auto graph_node = std::make_shared<GraphNode>(graph_id);
   graph_node->SetGeRootModel(ge_root_model);
-  graph_node->SetOptions({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_node->SetBuildFlag(true);
   graph_manager.AddGraphNode(graph_id, graph_node);
 

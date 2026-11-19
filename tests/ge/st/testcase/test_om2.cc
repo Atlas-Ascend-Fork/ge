@@ -2918,7 +2918,7 @@ static GeRootModelPtr PrepareHvdNodeOm2(const std::string &output_file) {
 }
 
 static GeRootModelPtr PrepareHcclOnlineOm2(const std::string &output_file) {
-  const ScopedGraphOptions om2_options({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  const ScopedGraphOptions om2_options({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   const auto ge_root_model = BuildHcclGeRootModel("HcomAllReduce", false);
   if (ge_root_model == nullptr) {
     return nullptr;

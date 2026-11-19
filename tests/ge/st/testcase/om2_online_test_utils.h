@@ -68,7 +68,7 @@ class GraphOptionsGuard {
 };
 
 inline void EnableOm2OnlineMode() {
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
 }
 
 inline const std::string fake_om2_so_src = R"(

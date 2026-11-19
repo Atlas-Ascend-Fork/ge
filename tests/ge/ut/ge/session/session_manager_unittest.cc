@@ -22,7 +22,7 @@ using namespace std;
 namespace ge {
 namespace {
 void EnableOm2OnlineMode() {
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
 }
 
 }  // namespace

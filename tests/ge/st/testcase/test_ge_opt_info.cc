@@ -123,7 +123,7 @@ TEST_F(STEST_opt_info, v1_session_add_graph_model_format_validation) {
   const auto invalid_graph = ToGeGraph(g1);
   std::map<std::string, std::string> session_options;
   Session session(session_options);
-  const std::map<std::string, std::string> invalid_options{{OPTION_MODEL_FORMAT, "invalid"}};
+  const std::map<std::string, std::string> invalid_options{{"ge.modelFormat", "invalid"}};
   EXPECT_NE(session.AddGraph(50U, invalid_graph, invalid_options), SUCCESS);
 
   DEF_GRAPH(g2) {
@@ -131,7 +131,7 @@ TEST_F(STEST_opt_info, v1_session_add_graph_model_format_validation) {
     CHAIN(NODE("data2", DATA)->NODE("add"));
   };
   const auto valid_graph = ToGeGraph(g2);
-  const std::map<std::string, std::string> valid_options{{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}};
+  const std::map<std::string, std::string> valid_options{{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}};
   EXPECT_EQ(session.AddGraph(51U, valid_graph, valid_options), SUCCESS);
 }
 

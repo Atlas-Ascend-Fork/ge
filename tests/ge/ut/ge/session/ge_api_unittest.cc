@@ -91,7 +91,7 @@ class EnvValueGuard {
 };
 
 void EnableOm2OnlineMode() {
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
 }
 
 bool test_callback_called = false;
@@ -2016,7 +2016,7 @@ TEST_F(UtestGeApi, LoadGraph_NotCompiled_ReportE10062) {
 
 TEST_F(UtestGeApi, PaRemapped_ReturnsUnsupportedInOm2Mode) {
   std::map<AscendString, AscendString> options;
-  options.emplace(OPTION_MODEL_FORMAT, AscendString(std::to_string(MODEL_FORMAT_OM2).c_str()));
+  options.emplace("ge.modelFormat", AscendString(std::to_string(MODEL_FORMAT_OM2).c_str()));
   EXPECT_EQ(GEInitialize(options), SUCCESS);
   Session session(options);
   EnableOm2OnlineMode();
@@ -2026,7 +2026,7 @@ TEST_F(UtestGeApi, PaRemapped_ReturnsUnsupportedInOm2Mode) {
 
 TEST_F(UtestGeApi, GraphDebugJSONPrint_ReturnsFailureInOm2Mode) {
   std::map<AscendString, AscendString> options;
-  options.emplace(OPTION_MODEL_FORMAT, AscendString(std::to_string(MODEL_FORMAT_OM2).c_str()));
+  options.emplace("ge.modelFormat", AscendString(std::to_string(MODEL_FORMAT_OM2).c_str()));
   EXPECT_EQ(GEInitialize(options), SUCCESS);
   Session session(options);
   EnableOm2OnlineMode();
@@ -2037,7 +2037,7 @@ TEST_F(UtestGeApi, GraphDebugJSONPrint_ReturnsFailureInOm2Mode) {
 
 TEST_F(UtestGeApi, ExternalAllocatorRegistration_RemainsSuccessInOm2Mode) {
   std::map<AscendString, AscendString> options;
-  options.emplace(OPTION_MODEL_FORMAT, AscendString(std::to_string(MODEL_FORMAT_OM2).c_str()));
+  options.emplace("ge.modelFormat", AscendString(std::to_string(MODEL_FORMAT_OM2).c_str()));
   EXPECT_EQ(GEInitialize(options), SUCCESS);
   Session session(options);
   EnableOm2OnlineMode();
@@ -2050,7 +2050,7 @@ TEST_F(UtestGeApi, ExternalAllocatorRegistration_RemainsSuccessInOm2Mode) {
 
 TEST_F(UtestGeApi, ShardAndSaveApis_KeepOriginalFailureInOm2Mode) {
   std::map<AscendString, AscendString> options;
-  options.emplace(OPTION_MODEL_FORMAT, AscendString(std::to_string(MODEL_FORMAT_OM2).c_str()));
+  options.emplace("ge.modelFormat", AscendString(std::to_string(MODEL_FORMAT_OM2).c_str()));
   EXPECT_EQ(GEInitialize(options), SUCCESS);
   Session session(options);
   EnableOm2OnlineMode();
@@ -2527,7 +2527,7 @@ TEST_F(UtestGeApi, session_destructor_after_finalize_v2) {
 }
 
 TEST_F(UtestGeApi, AddGraph_ModelFormatOm2_SetsThreadGraphOption) {
-  const std::map<std::string, std::string> options{{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}};
+  const std::map<std::string, std::string> options{{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}};
   ASSERT_EQ(GEInitialize(options), SUCCESS);
   Session session(options);
   const auto graph = gert::ShareGraph::OnlyDataGraph({1}, {1});

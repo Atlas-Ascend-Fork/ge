@@ -82,7 +82,7 @@ class Om2ExecuteGraphSessionTest : public Om2OnlineModelExecutorTest {
     ASSERT_NE(inner, nullptr);
     node = std::make_shared<GraphNode>(id);
     node->SetGraph(std::make_shared<Graph>("execute_session_st", C_GRAPH_EXECUTE));
-    node->SetOptions({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+    node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
     inner->graph_manager_.AddGraphNode(id, node);
     inner->graph_manager_.IncreaseGraphCount(id);
     inner->graph_manager_.SetAddGraphCondition(id, 2U);

@@ -135,7 +135,7 @@ class EnvValueGuard {
 };
 
 void EnableOm2OnlineMode() {
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
 }
 
 constexpr size_t kMaxSleepTimes = 15U;
@@ -3095,7 +3095,7 @@ TEST_F(UtestGeApiV2ExecuteGraph, CompileOverloadsAndImplicitLoadFailureLeaveGrap
 
 TEST_F(UtestGeApiV2, AddGraph_ModelFormatOm2_SetsThreadGraphOption) {
   const std::map<AscendString, AscendString> options{
-      {OPTION_MODEL_FORMAT, AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())}};
+      {"ge.modelFormat", AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())}};
   ASSERT_EQ(GEInitializeV2(options), SUCCESS);
   GeSession session(options);
   const auto graph = gert::ShareGraph::OnlyDataGraph({1}, {1});

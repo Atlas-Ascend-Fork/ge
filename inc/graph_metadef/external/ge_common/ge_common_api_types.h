@@ -182,6 +182,7 @@ const char_t *const OPTION_EXTERNAL_WEIGHT_DIR = "ge.externalWeightDir";
 const char_t *const OPTION_H2D_OVERLAPPED_WITH_COMPUTE = "ge.compile.h2dOverlappedWithCompute";
 
 // option for experimental
+const char_t *const OPTION_MODEL_FORMAT = "ge.modelFormat";
 const char_t *const OPTION_STATIC_MODEL_OPS_LOWER_LIMIT = "ge.exec.static_model_ops_lower_limit";
 
 namespace configure_option {

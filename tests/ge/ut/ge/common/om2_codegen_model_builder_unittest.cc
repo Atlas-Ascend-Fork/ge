@@ -3016,7 +3016,7 @@ TEST_F(Om2CodegenModelBuilderUt, CreateTaskCodeBuilders_HcclTask_OnlineModeOk) {
   ASSERT_NE(task_def, nullptr);
   task_def->set_type(static_cast<uint32_t>(ModelTaskType::MODEL_TASK_HCCL));
 
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   std::vector<TaskCodeBuilderPtr> task_builders;
   Om2CodegenModel doc;
   EXPECT_EQ(

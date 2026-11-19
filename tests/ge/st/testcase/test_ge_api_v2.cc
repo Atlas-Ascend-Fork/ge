@@ -251,7 +251,7 @@ TEST_F(GeApiV2Test, GeSessionAddGraphModelFormatOptionValidation) {
     const auto graph = gert::ShareGraph::OnlyDataGraph({1}, {1});
     std::map<AscendString, AscendString> graph_options;
     if (!model_format.empty()) {
-      graph_options.emplace(OPTION_MODEL_FORMAT, AscendString(model_format.c_str()));
+      graph_options.emplace("ge.modelFormat", AscendString(model_format.c_str()));
     }
     EXPECT_EQ(session.AddGraph(graph_id++, graph, graph_options), expected_status);
   }
@@ -270,12 +270,12 @@ TEST_F(GeApiV2Test, GeSessionAddGraphModelFormatInvalidThenValid) {
   GeSession session(init_options);
 
   const auto invalid_graph = gert::ShareGraph::OnlyDataGraph({1}, {1});
-  const std::map<AscendString, AscendString> invalid_options{{OPTION_MODEL_FORMAT, AscendString("invalid")}};
+  const std::map<AscendString, AscendString> invalid_options{{"ge.modelFormat", AscendString("invalid")}};
   EXPECT_EQ(session.AddGraph(200U, invalid_graph, invalid_options), FAILED);
 
   const auto valid_graph = gert::ShareGraph::OnlyDataGraph({1}, {1});
   const std::map<AscendString, AscendString> valid_options{
-      {OPTION_MODEL_FORMAT, AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())}};
+      {"ge.modelFormat", AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())}};
   EXPECT_EQ(session.AddGraph(201U, valid_graph, valid_options), SUCCESS);
   EXPECT_EQ(GEFinalizeV2(), SUCCESS);
 }

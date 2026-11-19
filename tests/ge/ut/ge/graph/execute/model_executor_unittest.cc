@@ -58,7 +58,7 @@ class GraphOptionsGuard {
 };
 
 void EnableOm2OnlineMode() {
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
 }
 
 static const std::string fake_om2_so_src = R"(
@@ -1850,7 +1850,7 @@ TEST_F(UtestModelExecutorTest, Om2Mode_OptionNotSet_IsFalse) {
 }
 
 TEST_F(UtestModelExecutorTest, Om2Mode_ModelFormatOm2_IsTrue) {
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   EXPECT_TRUE(IsOm2OnlineMode());
   GetThreadLocalContext().SetGraphOption({});
 }
@@ -1859,7 +1859,7 @@ TEST_F(UtestModelExecutorTest, Om2Mode_DynamicSwitch) {
   GetThreadLocalContext().SetGraphOption({});
   EXPECT_FALSE(IsOm2OnlineMode());
 
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   EXPECT_TRUE(IsOm2OnlineMode());
 
   GetThreadLocalContext().SetGraphOption({});
@@ -1867,7 +1867,7 @@ TEST_F(UtestModelExecutorTest, Om2Mode_DynamicSwitch) {
 }
 
 TEST_F(UtestModelExecutorTest, Om2Mode_ModelFormatOm_IsFalse) {
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM)}});
   EXPECT_FALSE(IsOm2OnlineMode());
   GetThreadLocalContext().SetGraphOption({});
 }

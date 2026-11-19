@@ -130,7 +130,7 @@ class PcieEnvGuard {
 };
 
 void EnableOm2OnlineMode() {
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
 }
 
 Graph BuildHCCLGraph() {
@@ -4744,13 +4744,13 @@ TEST_F(UtestGraphManagerTest, test_CheckModelFormatOptionValid) {
   std::map<std::string, std::string> options;
   EXPECT_EQ(CheckModelFormatOptionValid(options), SUCCESS);
 
-  options.emplace(OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM));
+  options.emplace("ge.modelFormat", std::to_string(MODEL_FORMAT_OM));
   EXPECT_EQ(CheckModelFormatOptionValid(options), SUCCESS);
 
-  options[OPTION_MODEL_FORMAT] = std::to_string(MODEL_FORMAT_OM2);
+  options["ge.modelFormat"] = std::to_string(MODEL_FORMAT_OM2);
   EXPECT_EQ(CheckModelFormatOptionValid(options), SUCCESS);
 
-  options[OPTION_MODEL_FORMAT] = "invalid";
+  options["ge.modelFormat"] = "invalid";
   EXPECT_EQ(CheckModelFormatOptionValid(options), PARAM_INVALID);
 }
 
@@ -5680,7 +5680,7 @@ TEST_F(UtestGraphManagerTest, SetConstAndFeatureMemoryBase_RecordForOm2Load) {
   GraphNodePtr graph_node;
   GeModelPtr ge_model;
   CreateSummaryCompiledModel(graph_node, ge_model);
-  graph_node->SetOptions({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_node->SetBuildFlag(true);
   graph_node->SetCompiledFlag(true);
@@ -5707,7 +5707,7 @@ TEST_F(UtestGraphManagerTest, SetFixedFeatureMemoryBase_ReturnsUnsupportedInOm2M
   GraphNodePtr graph_node;
   GeModelPtr ge_model;
   CreateSummaryCompiledModel(graph_node, ge_model);
-  graph_node->SetOptions({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_node->SetBuildFlag(true);
   graph_node->SetCompiledFlag(true);
@@ -5728,7 +5728,7 @@ TEST_F(UtestGraphManagerTest, UpdateRefreshableFeatureMemoryBase_ReturnsUnsuppor
   GraphNodePtr graph_node;
   GeModelPtr ge_model;
   CreateSummaryCompiledModel(graph_node, ge_model);
-  graph_node->SetOptions({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_node->SetBuildFlag(true);
   graph_node->SetCompiledFlag(true);
@@ -5748,7 +5748,7 @@ TEST_F(UtestGraphManagerTest, GetCompiledModel_SerializesOm2ModelDataInOm2Mode) 
   GraphNodePtr graph_node;
   GeModelPtr ge_model;
   CreateSummaryCompiledModel(graph_node, ge_model);
-  graph_node->SetOptions({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_node->SetBuildFlag(true);
   graph_node->SetCompiledFlag(true);
@@ -5784,7 +5784,7 @@ TEST_F(UtestGraphManagerTest, RunGraphAsync_Om2ComputeGraphReturnsUnsupported) {
   GeModelPtr ge_model;
   CreateSummaryCompiledModel(graph_node, ge_model);
   graph_node->SetGraph(MakeShared<Graph>("compute_graph"));
-  graph_node->SetOptions({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM2)}});
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_node->SetBuildFlag(true);
   graph_node->SetCompiledFlag(true);
@@ -6395,10 +6395,10 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileReusesArtifactRegardlessOfOm2O
   node->SetBuildFlag(true);
   manager.AddGraphNode(75U, node);
 
-  GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(MODEL_FORMAT_OM)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM)}});
   EXPECT_EQ(manager.CompileGraph(75U, 1U, {}), SUCCESS);
   for (const auto model_format : {MODEL_FORMAT_OM, MODEL_FORMAT_OM2}) {
-    GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(model_format)}});
+    GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(model_format)}});
     EXPECT_EQ(manager.CompileGraph(75U, 1U, {}), SUCCESS);
   }
   EXPECT_TRUE(node->GetBuildFlag());
@@ -6411,7 +6411,7 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileReusesArtifactRegardlessOfOm2O
 TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileValidatesModelRegardlessOfOm2OnlineMode) {
   GraphOptionsGuard env_guard;
   for (const auto model_format : {MODEL_FORMAT_OM, MODEL_FORMAT_OM2}) {
-    GetThreadLocalContext().SetGraphOption({{OPTION_MODEL_FORMAT, std::to_string(model_format)}});
+    GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(model_format)}});
     GraphManager manager;
     manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
     ASSERT_EQ(manager.AddGraph(77U, MakeSessionExecuteGraph("execute"), {}, OmgContext{}), SUCCESS);

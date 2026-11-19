@@ -28,7 +28,7 @@ inline bool IsOm2OnlineMode(const std::map<std::string, std::string> &options, c
   if (is_execute_graph) {
     return true;
   }
-  const auto iter = options.find(OPTION_MODEL_FORMAT);
+  const auto iter = options.find("ge.modelFormat");
   return iter != options.end() && iter->second == std::to_string(MODEL_FORMAT_OM2);
 }
 

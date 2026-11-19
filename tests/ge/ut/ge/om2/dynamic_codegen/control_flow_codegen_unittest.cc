@@ -99,7 +99,7 @@ TEST_F(ControlFlowCodegenUT, GeneratedNestedBranchesPreserveInitValueAcrossRuns)
 
 TEST(ControlFlowCollectorBoundaryUT, RejectsOfflineKnownSubgraphProcessLocalModel) {
   const auto graph_options = ge::GetThreadLocalContext().GetAllGraphOptions();
-  ge::GetThreadLocalContext().SetGraphOption({{ge::OPTION_MODEL_FORMAT, std::to_string(ge::MODEL_FORMAT_OM)}});
+  ge::GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(ge::MODEL_FORMAT_OM)}});
   GertRuntimeStub runtime_stub;
   ge::ExecuteGraph graph("offline_known_subgraph");
   auto *node = graph.AddNode(std::make_shared<ge::OpDesc>("known_create", "DavinciModelCreate"));
