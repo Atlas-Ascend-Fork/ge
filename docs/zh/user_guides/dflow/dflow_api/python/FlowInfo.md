@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 DataFlow的flow信息。
 
@@ -28,7 +28,7 @@ FlowInfo(start_time=0, end_time=0, flow_flags=0, transaction_id=0)
 | flow_flags | int | dataflow.FlowFlag，具体请参见[dataflow.FlowFlag](dataflow-FlowFlag.md)。 |
 | transaction_id | int | DataFlow数据传输使用的事务ID，非0时有效。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

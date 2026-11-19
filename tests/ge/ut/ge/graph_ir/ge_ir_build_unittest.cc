@@ -1974,6 +1974,38 @@ TEST(UtestIrBuild, aclgrphBuildModelOfflineModeInvalidTest) {
   EXPECT_EQ(ge::aclgrphBuildModel(graph, build_options, model), ge::PARAM_INVALID);
 }
 
+TEST(UtestIrBuild, aclgrphBundleBuildModelOfflineModeMixedTest) {
+  const std::map<AscendString, AscendString> om2_options = {{AscendString(ir_option::OFFLINE_MODE), AscendString("7")}};
+  const std::map<AscendString, AscendString> mobile_options = {
+      {AscendString(ir_option::OFFLINE_MODE), AscendString("40")}};
+  const std::map<AscendString, AscendString> invalid_options = {
+      {AscendString(ir_option::OFFLINE_MODE), AscendString("8")}};
+  const std::map<AscendString, AscendString> default_options;
+  const auto make_graphs = [](const std::map<AscendString, AscendString> &first,
+                              const std::map<AscendString, AscendString> &second) {
+    std::vector<GraphWithOptions> graphs;
+    graphs.emplace_back(GraphWithOptions{BuildIrGraph1(), first});
+    graphs.emplace_back(GraphWithOptions{BuildIrGraph1(), second});
+    return graphs;
+  };
+
+  ModelBufferData model{};
+  auto graphs = make_graphs(om2_options, default_options);
+  EXPECT_EQ(aclgrphBundleBuildModel(graphs, model), GRAPH_PARAM_INVALID);
+  EXPECT_EQ(model.data, nullptr);
+  EXPECT_EQ(model.length, 0U);
+
+  graphs = make_graphs(default_options, om2_options);
+  EXPECT_EQ(aclgrphBundleBuildModel(graphs, model), GRAPH_PARAM_INVALID);
+
+  graphs = make_graphs(om2_options, mobile_options);
+  EXPECT_EQ(aclgrphBundleBuildModel(graphs, model), GRAPH_PARAM_INVALID);
+
+  // 各图一致但取值非法时不再静默回退 OM1，参数错误原样透传
+  graphs = make_graphs(invalid_options, invalid_options);
+  EXPECT_NE(aclgrphBundleBuildModel(graphs, model), GRAPH_SUCCESS);
+}
+
 TEST(UtestIrBuild, aclgrphBuildModelOm2UnsupportedBuildOptionTest) {
   Graph graph = BuildIrGraph1();
   const std::vector<std::string> unsupported_options = {

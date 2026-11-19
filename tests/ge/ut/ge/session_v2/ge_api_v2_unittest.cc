@@ -56,6 +56,7 @@
 #include "ge_graph_dsl/graph_dsl.h"
 #include "graph_metadef/depends/checker/tensor_check_utils.h"
 #include "api/aclgrph/option_utils.h"
+#include "common/helper/om2/om2_utils.h"
 using namespace std;
 
 static bool g_fail_nothrow_new = false;
@@ -114,6 +115,7 @@ class EnvValueGuard {
       old_value_ = value;
       had_value_ = true;
     }
+    graph_options_ = GetThreadLocalContext().GetAllGraphOptions();
   }
 
   ~EnvValueGuard() {
@@ -122,16 +124,18 @@ class EnvValueGuard {
     } else {
       (void)unsetenv(name_.c_str());
     }
+    GetThreadLocalContext().SetGraphOption(graph_options_);
   }
 
  private:
   std::string name_;
   std::string old_value_;
   bool had_value_ = false;
+  std::map<std::string, std::string> graph_options_;
 };
 
 void EnableOm2OnlineMode() {
-  ASSERT_EQ(setenv("ENABLE_RUNTIME_OM2", "1", 1), 0);
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
 }
 
 constexpr size_t kMaxSleepTimes = 15U;
@@ -2384,7 +2388,6 @@ TEST_F(UtestGeApiV2, QuerySameVersionIr) {
 }
 
 TEST_F(UtestGeApiV2, RunGraphAsync_ReturnsUnsupportedInOm2Mode) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   std::map<AscendString, AscendString> options;
@@ -2403,7 +2406,6 @@ TEST_F(UtestGeApiV2, RunGraphAsync_ReturnsUnsupportedInOm2Mode) {
 }
 
 TEST_F(UtestGeApiV2, GraphDebugJSONPrint_ReturnsFailureInOm2Mode) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   std::map<AscendString, AscendString> options;
@@ -3053,7 +3055,6 @@ TEST_F(UtestGeApiV2ExecuteGraph, AddAcceptsOptionsWhileUnsupportedCallsDoNotCons
 }
 
 TEST_F(UtestGeApiV2ExecuteGraph, LoadOptionsDoNotBypassModelValidation) {
-  EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
   ASSERT_EQ(session_->AddGraph(67U, MakeSessionExecuteGraph("execute")), SUCCESS);
   ASSERT_EQ(session_->AddGraph(68U, MakeSessionExecuteGraph("execute_with_options")), SUCCESS);
@@ -3079,7 +3080,6 @@ TEST_F(UtestGeApiV2ExecuteGraph, AsyncExecuteGraphIsUnsupportedWithoutCallbackOr
 }
 
 TEST_F(UtestGeApiV2ExecuteGraph, CompileOverloadsAndImplicitLoadFailureLeaveGraphRemovable) {
-  EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
   ASSERT_EQ(session_->AddGraph(66U, MakeSessionExecuteGraph("invalid_execute")), SUCCESS);
   EXPECT_NE(session_->CompileGraph(66U), SUCCESS);
@@ -3091,6 +3091,17 @@ TEST_F(UtestGeApiV2ExecuteGraph, CompileOverloadsAndImplicitLoadFailureLeaveGrap
   EXPECT_TRUE(is_execute_graph);
   EXPECT_EQ(session_->RemoveGraph(66U), SUCCESS);
   EXPECT_EQ(session_->AddGraph(66U, MakeSessionExecuteGraph("replacement")), SUCCESS);
+}
+
+TEST_F(UtestGeApiV2, AddGraph_ModelFormatOm2_SetsThreadGraphOption) {
+  const std::map<AscendString, AscendString> options{
+      {"ge.modelFormat", AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())}};
+  ASSERT_EQ(GEInitializeV2(options), SUCCESS);
+  GeSession session(options);
+  const auto graph = gert::ShareGraph::OnlyDataGraph({1}, {1});
+  ASSERT_EQ(session.AddGraph(1U, graph, options), SUCCESS);
+  EXPECT_TRUE(IsOm2OnlineMode());
+  EXPECT_EQ(GEFinalizeV2(), SUCCESS);
 }
 
 }  // namespace ge

@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 构造BlocksCacheKey，通常在KvCacheManager的[allocate\_blocks\_cache](allocate_blocks_cache.md)、[pull\_blocks](pull_blocks.md)接口中作为参数类型使用。
 
@@ -36,7 +36,7 @@ from llm_datadist import BlocksCacheKey
 blocks_cache_key = BlocksCacheKey(0, 0)
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下返回BlocksCacheKey的实例。
 

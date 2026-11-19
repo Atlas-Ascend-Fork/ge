@@ -33,4 +33,4 @@ ge::Status SetStorageShape(const ge::Shape &shape)
 
 ## 约束说明
 
-无
+- 仅计算图支持该接口：当张量所属的图构建器以执行图类别创建（[EsCGraphBuilder](../EsCGraphBuilder/EsCGraphBuilder_constructor_and_destructor.md)构造时`kind`为`C_GRAPH_EXECUTE`）时，调用该接口失败，并上报错误码E10062。

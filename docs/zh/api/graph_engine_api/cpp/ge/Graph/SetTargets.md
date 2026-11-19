@@ -35,4 +35,5 @@ Graph &SetTargets(const std::vector<Operator> &targets)
 
 ## 约束说明
 
-该接口调用需要放在构图流程的最后一步，若在调用该接口后对Outputs或者Targets节点进行删除操作，可能导致异常。
+- 该接口调用需要放在构图流程的最后一步，若在调用该接口后对Outputs或者Targets节点进行删除操作，可能导致异常。
+- 仅计算图支持该接口：当Graph以执行图类别构造（`Graph(name, C_GRAPH_EXECUTE)`）时，调用该接口不生效（返回值仍为当前Graph对象引用，无法通过返回值感知失败），并上报错误码E18888。

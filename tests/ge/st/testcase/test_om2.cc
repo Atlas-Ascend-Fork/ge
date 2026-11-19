@@ -23,6 +23,7 @@
 #include "generator/ge_generator.h"
 #include "ge/ge_ir_build.h"
 #include "api/aclgrph/option_utils.h"
+#include "common/helper/om2/om2_utils.h"
 #include "api/atc/main_impl.h"
 #include "file_utils.h"
 #include "runtime/om2/om2_rt_var_manager.h"
@@ -65,6 +66,9 @@
 
 #include "graph/custom_op_factory.h"
 #include "graph/custom_op.h"
+#include "graph/custom_op/args_refresh.h"
+#include "graph/custom_op/cast.h"
+#include "common/ge_common/ge_types.h"
 #include <cinttypes>
 #include <securec.h>
 #include <sys/stat.h>
@@ -1911,7 +1915,19 @@ class TestPortableCustomOp : public PortableOp, public EagerExecuteOp {
   }
 };
 
-static ComputeGraphPtr BuildCustomOpGraph() {
+// Python 门禁拒绝对照：模拟 Python adapter 形态——经继承 CustomOpCapabilityProvider 表达能力
+class TestCapabilityProviderCustomOp : public EagerExecuteOp, public CustomOpCapabilityProvider {
+ public:
+  bool HasCapability(CustomOpCapability capability) const override {
+    return capability == CustomOpCapability::kEagerExecute;
+  }
+
+  graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
+    return SUCCESS;
+  }
+};
+
+static ComputeGraphPtr BuildCustomOpGraph(const std::string &custom_op_type = "TestPortableOp") {
   auto graph = std::make_shared<ComputeGraph>("custom_op_om2_graph");
   GeTensorDesc tensor_desc(GeShape({2, 2, 2}), FORMAT_ND, DT_FLOAT);
 
@@ -1927,7 +1943,7 @@ static ComputeGraphPtr BuildCustomOpGraph() {
   AttrUtils::SetInt(data1_desc, ATTR_NAME_INDEX, 1);
   auto data1 = graph->AddNode(data1_desc);
 
-  auto custom_op_desc = std::make_shared<OpDesc>("custom_op", "TestPortableOp");
+  auto custom_op_desc = std::make_shared<OpDesc>("custom_op", custom_op_type);
   (void)custom_op_desc->AddInputDesc("x0", tensor_desc);
   (void)custom_op_desc->AddInputDesc("x1", tensor_desc);
   (void)custom_op_desc->AddOutputDesc("y", tensor_desc);
@@ -1949,8 +1965,8 @@ static ComputeGraphPtr BuildCustomOpGraph() {
   return graph;
 }
 
-GeRootModelPtr CreateGeRootModelWithCustomOp() {
-  auto graph = BuildCustomOpGraph();
+GeRootModelPtr CreateGeRootModelWithCustomOp(const std::string &custom_op_type = "TestPortableOp") {
+  auto graph = BuildCustomOpGraph(custom_op_type);
 
   gert::GeModelBuilder builder(graph);
   auto ge_root_model =
@@ -1974,6 +1990,11 @@ GeRootModelPtr CreateGeRootModelWithCustomOp() {
     } else {
       op_desc->SetInputOffset(std::vector<int64_t>(op_desc->GetInputsSize(), 1024));
       op_desc->SetOutputOffset(std::vector<int64_t>(op_desc->GetOutputsSize(), 1024));
+      // 能力门禁放行对照：最终路由指向 custom store、显式策略 kNone、实现不继承 provider
+      op_desc->SetOpKernelLibName(kCustomOpKernelLibName);
+      op_desc->SetOpEngineName(kEngineNameCustom);
+      (void)AttrUtils::SetInt(op_desc, ATTR_NAME_CUSTOM_TASK_ARGS_MODE,
+                              static_cast<int64_t>(CustomTaskArgsMode::kNone));
     }
   }
 
@@ -1983,8 +2004,20 @@ GeRootModelPtr CreateGeRootModelWithCustomOp() {
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 2048);
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, weights_value.size());
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
+  // 辅流申报放行对照：统计为 0 不因辅流申报项拒绝
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_EAGER_CUSTOM_OP_STREAM_NUM, 0);
 
   return ge_root_model;
+}
+
+static OpDescPtr FindCustomOpDesc(const GeRootModelPtr &ge_root_model, const std::string &op_type) {
+  for (const auto &node : ge_root_model->GetRootGraph()->GetDirectNode()) {
+    const auto &op_desc = node->GetOpDesc();
+    if ((op_desc != nullptr) && (op_desc->GetType() == op_type)) {
+      return op_desc;
+    }
+  }
+  return nullptr;
 }
 
 // build_config 校验/注入 ST：通过 SetGraphOption 注入 ge.buildConfig（RAII 恢复）
@@ -2083,6 +2116,29 @@ class Om2St : public testing::Test {
 };
 
 class Om2CallbackSt : public Om2St {};
+
+/**
+ * 用例描述：离线 OM2 动态 shape 模型的文件和内存 buffer 导出均被拒绝。
+ * 预置条件：构造 GeRootModel，并标记根图为 unknown shape。
+ * 测试步骤：分别设置文件和 buffer 保存模式，调用 SaveToOmRootModel。
+ * 预期结果：返回 FAILED，不生成模型 buffer 或 OM2 文件。
+ */
+TEST_F(Om2St, RejectUnknownShapeFileAndBufferExport) {
+  const auto root = CreateGeRootModelWithAicoreOp();
+  ASSERT_NE(root, nullptr);
+  root->GetRootGraph()->SetGraphUnknownFlag(true);
+  const std::string output_file = PathUtils::Join({test_work_dir, "unsupported_dynamic.om2"});
+  Om2PackageHelper helper;
+  for (const bool save_to_file : {false, true}) {
+    helper.SetSaveMode(save_to_file);
+    ModelBufferData model{};
+    EXPECT_EQ(helper.SaveToOmRootModel(root, output_file, model, true), FAILED);
+    EXPECT_EQ(model.data, nullptr);
+    EXPECT_EQ(model.length, 0U);
+    EXPECT_FALSE(std::ifstream(output_file).good());
+  }
+  EXPECT_EQ(root->GetOm2ModelData(), nullptr);
+}
 
 // ===== Suite 预构建函数：各用例的"构建图 + 属性/节点设置 + 打包"搬移至此，一次构建全 suite 复用 =====
 static GeRootModelPtr PrepareAicoreNodeOm2(const std::string &output_file) {
@@ -2862,7 +2918,7 @@ static GeRootModelPtr PrepareHvdNodeOm2(const std::string &output_file) {
 }
 
 static GeRootModelPtr PrepareHcclOnlineOm2(const std::string &output_file) {
-  const ScopedEnvVar om2_env("ENABLE_RUNTIME_OM2", "1");
+  const ScopedGraphOptions om2_options({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   const auto ge_root_model = BuildHcclGeRootModel("HcomAllReduce", false);
   if (ge_root_model == nullptr) {
     return nullptr;
@@ -3092,9 +3148,9 @@ TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithHvdNode) {
 }
 
 /**
- * 用例描述：在线 session 模式（ENABLE_RUNTIME_OM2=1）下 HCCL 任务不再拦截，转换打包成功
+ * 用例描述：在线 session 模式（ge.modelFormat=7）下 HCCL 任务不再拦截，转换打包成功
  * 预置条件：
- *   1. 与 HcomAllReduce 离线用例同构图与任务，预构建期设置 ENABLE_RUNTIME_OM2=1
+ *   1. 与 HcomAllReduce 离线用例同构图与任务，预构建期设置 ge.modelFormat=7
  * 测试步骤：
  *   1. Om2PackageHelper::SaveToOmRootModel 在在线模式下转换打包为 .om2
  *   2. 解包检查生成代码与编译产物
@@ -4373,7 +4429,7 @@ class Om2BundleSt : public Om2St {
     ASSERT_NE(root_g2_, nullptr);
     SyncKernelNameForAllModels(root_g1_);
     SyncKernelNameForAllModels(root_g2_);
-    // 离线场景（不依赖 ENABLE_RUNTIME_OM2）经 EnsureGertModelData 显式构建并挂载，与 bundle 编译链路同源
+    // 离线场景经 EnsureGertModelData 显式构建并挂载，与 bundle 编译链路同源
     ASSERT_EQ(Om2PackageHelper::EnsureGertModelData(root_g1_), SUCCESS);
     ASSERT_EQ(Om2PackageHelper::EnsureGertModelData(root_g2_), SUCCESS);
     std::vector<std::shared_ptr<gert::GertModelData>> sub_models;
@@ -4466,7 +4522,7 @@ TEST_F(Om2BundleSt, GenOm2Bundle_Ok_TwoSubModelsArchiveLayout) {
 }
 
 /**
- * 用例描述：EnsureGertModelData 在离线场景（不依赖 ENABLE_RUNTIME_OM2）显式挂载 GertModelData，且重复调用幂等
+ * 用例描述：EnsureGertModelData 在离线场景显式挂载 GertModelData，且重复调用幂等
  * 预置条件：
  *   1. 套件初始化时 root_g1_/root_g2_ 已经由 EnsureGertModelData 构建并挂载 GertModelData
  * 测试步骤：
@@ -4506,6 +4562,43 @@ TEST_F(Om2St, BundleBuild_Fail_LessThanTwoGraphsRejected) {
   Graph graph("bundle_single_graph");
   std::map<AscendString, AscendString> options;
   graphs.emplace_back(GraphWithOptions{graph, options});
+  EXPECT_EQ(aclgrphBundleBuildModel(graphs, model), GRAPH_PARAM_INVALID);
+}
+
+/**
+ * 用例描述：aclgrphBundleBuildModel 拒绝各子图 ge.offlineMode 不一致的输入
+ * 预置条件：
+ *   1. 无（参数校验先于编译流程执行）
+ * 测试步骤：
+ *   1. graph[0] 设 ge.offlineMode=7（OM2）、graph[1] 不设（默认 OM1），调用 aclgrphBundleBuildModel
+ *   2. 交换两图的 offlineMode 后再次调用
+ *   3. ge.offlineMode=7 与 40（mobile）混用后再次调用
+ * 预期结果：
+ *   1. 三次调用均返回 GRAPH_PARAM_INVALID，且不产出模型缓冲
+ */
+TEST_F(Om2St, BundleBuild_Fail_MixedOfflineModeRejected) {
+  const std::map<AscendString, AscendString> om2_options = {{AscendString(ir_option::OFFLINE_MODE), AscendString("7")}};
+  const std::map<AscendString, AscendString> mobile_options = {
+      {AscendString(ir_option::OFFLINE_MODE), AscendString("40")}};
+  const std::map<AscendString, AscendString> default_options;
+  const auto make_graphs = [](const std::map<AscendString, AscendString> &first,
+                              const std::map<AscendString, AscendString> &second) {
+    std::vector<GraphWithOptions> graphs;
+    graphs.emplace_back(GraphWithOptions{Graph("bundle_mix_mode_graph_0"), first});
+    graphs.emplace_back(GraphWithOptions{Graph("bundle_mix_mode_graph_1"), second});
+    return graphs;
+  };
+
+  ModelBufferData model{};
+  auto graphs = make_graphs(om2_options, default_options);
+  EXPECT_EQ(aclgrphBundleBuildModel(graphs, model), GRAPH_PARAM_INVALID);
+  EXPECT_EQ(model.data, nullptr);
+  EXPECT_EQ(model.length, 0U);
+
+  graphs = make_graphs(default_options, om2_options);
+  EXPECT_EQ(aclgrphBundleBuildModel(graphs, model), GRAPH_PARAM_INVALID);
+
+  graphs = make_graphs(om2_options, mobile_options);
   EXPECT_EQ(aclgrphBundleBuildModel(graphs, model), GRAPH_PARAM_INVALID);
 }
 
@@ -5274,6 +5367,72 @@ TEST_F(Om2St, ConvertOm2Model_Ok_GenOm2WithCustomOp) {
     }
   }
   EXPECT_TRUE(has_custom_kernel_bin) << "OM2 archive should contain custom op kernel binary";
+}
+
+// ===== OM2 Custom Op 能力门禁（Python/AnnotatedArgs/辅流申报/HCCL Custom 路由）=====
+// 构建期拒绝位于 Serialize/codegen 之前，无产物落盘
+
+TEST_F(Om2St, BuildOm2ModelData_AnnotatedArgsModeNode_Rejected) {
+  auto root = CreateGeRootModelWithCustomOp();
+  ASSERT_NE(root, nullptr);
+  const auto op_desc = FindCustomOpDesc(root, "TestPortableOp");
+  ASSERT_NE(op_desc, nullptr);
+  // AnnotatedArgs 声明式模式：编译期策略属性直判，显式 kAnnotatedArgs 拒绝（先于实例解析命中，无需注册实现）
+  (void)AttrUtils::SetInt(op_desc, ATTR_NAME_CUSTOM_TASK_ARGS_MODE,
+                          static_cast<int64_t>(CustomTaskArgsMode::kAnnotatedArgs));
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  gert::GertModelData data;
+  EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), UNSUPPORTED);
+}
+
+TEST_F(Om2St, BuildOm2ModelData_HcclCustomRouting_Rejected) {
+  auto root = CreateGeRootModelWithCustomOp();
+  ASSERT_NE(root, nullptr);
+  const auto op_desc = FindCustomOpDesc(root, "TestPortableOp");
+  ASSERT_NE(op_desc, nullptr);
+  // HCCL Custom Op：custom store + DNN_HCCL 最终路由拒绝
+  op_desc->SetOpEngineName(kEngineNameDnnHccl);
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  gert::GertModelData data;
+  EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), UNSUPPORTED);
+}
+
+TEST_F(Om2St, BuildOm2ModelData_PythonRuntimeImpl_Rejected) {
+  // Python 运行实现：继承 CustomOpCapabilityProvider（Python adapter 形态）即拒绝
+  const AscendString kProviderOpType("TestProviderCustomOp");
+  ASSERT_EQ(CustomOpFactory::RegisterCustomOpCreator(
+                kProviderOpType,
+                []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<TestCapabilityProviderCustomOp>(); }),
+            GRAPH_SUCCESS);
+  auto root = CreateGeRootModelWithCustomOp("TestProviderCustomOp");
+  ASSERT_NE(root, nullptr);
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  gert::GertModelData data;
+  EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), UNSUPPORTED);
+  CustomOpFactory::RemoveCustomOps({kProviderOpType});
+}
+
+TEST_F(Om2St, BuildOm2ModelData_RuntimeImplNotFound_Failed) {
+  // Python 运行实现：解析空指针按实现获取错误处理，不当成非 Python 放行
+  auto root = CreateGeRootModelWithCustomOp("TestNeverRegisteredOp");
+  ASSERT_NE(root, nullptr);
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  gert::GertModelData data;
+  EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), FAILED);
+}
+
+TEST_F(Om2St, BuildOm2ModelData_EagerCustomOpStreamDeclared_Rejected) {
+  const AscendString kOpType("TestPortableOp");
+  CustomOpFactory::RegisterCustomOpCreator(
+      kOpType, []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<TestPortableCustomOp>(); });
+  auto root = CreateGeRootModelWithCustomOp();
+  ASSERT_NE(root, nullptr);
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  // eager 辅流申报：节点扫描放行（实现已注册且非 provider）后，已申报数大于0触发拒绝，覆盖节点归因诊断
+  (void)AttrUtils::SetInt(model, ATTR_MODEL_EAGER_CUSTOM_OP_STREAM_NUM, 2);
+  gert::GertModelData data;
+  EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), UNSUPPORTED);
+  CustomOpFactory::RemoveCustomOps({kOpType});
 }
 
 TEST_F(Om2CallbackSt, KernelLaunchThroughExecutor) {

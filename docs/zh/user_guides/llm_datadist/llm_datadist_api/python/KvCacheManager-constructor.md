@@ -12,6 +12,6 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 KvCacheManager的实例应该通过[kv\_cache\_manager](kv_cache_manager.md)返回。

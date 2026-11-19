@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取RawData类型的数据对应的数据指针和数据大小。
 
@@ -26,7 +26,7 @@ virtual Status GetRawData(void *&dataPtr, uint64_t &dataSize) const
 | dataPtr | 输出 | RawData的数据指针 |
 | dataSize | 输出 | RawData的数据大小 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS。
 - other：FAILED，具体请参考错误码。

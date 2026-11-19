@@ -88,6 +88,20 @@ GE提供了两种构图方式：
 
     ![CANN架构图](../figures/cann_architecture.png)
 
+### 计算图与执行图
+
+GE中的图按所处阶段和表达内容的不同，分为计算图（ComputeGraph）和执行图（ExecuteGraph）两类：
+
+- **计算图（ComputeGraph）**：编译阶段看到的图，表达用户的逻辑计算语义，图中节点与用户构图时使用的算子一一对应，前文的图构建与图编译优化均基于计算图进行。
+- **执行图（ExecuteGraph）**：执行阶段看到的图。对于动态Shape模型，由于输入Tensor的Shape在执行时才能确定，无法在编译期完成整图的任务下发，GE在编译期通过Lowering机制将计算图转换为执行图。在动态Shape模型的执行图中，一个算子的下发被拆分为多个Host执行单元，每个执行单元称为Host Kernel，每个Host Kernel负责完成一项独立的运算或下发任务（如形状推导、Tiling计算、内存分配、算子下发等），执行图上的节点与Host Kernel一一对应。动态Shape模型在执行时，通过依次执行执行图上的Host Kernel完成整个图的下发。
+
+以一个单输入单输出AI Core算子为例，其在计算图与执行图中的表达如下图所示。计算图中，该算子对应一个AI Core节点；执行图中，该算子的下发被拆分为InferShape（形状推导）、Tiling（Tiling计算）、AllocMemHbm（Device内存分配）、Launch（算子下发）等多个Host Kernel，这些Host Kernel根据执行图上的顺序在Host侧依次执行。
+
+**图 3**  单输入单输出AI Core算子对应的执行图
+![单输入单输出AI Core算子对应的执行图](../figures/execute_graph.png "单输入单输出AI Core算子对应的执行图")
+
+由于计算图到执行图的转换在编译期完成，运行时仅需按执行图依次调度Host Kernel，无需再做图的“翻译”，因此动态Shape模型可以以更低的开销执行。执行图同时也是GE外部构图接口支持的图类别之一，用户可通过图引擎接口直接构建执行图类别的Graph（如`Graph(name, C_GRAPH_EXECUTE)`），接口约束请参见[Graph构造函数和析构函数](../../../api/graph_engine_api/cpp/ge/Graph/Graph_constructor_and_destructor.md)。
+
 ### 图加载与图执行
 
 加载编译生成的离线模型文件，完成真实运行资源分配，并将stream/task下发到Device上执行，主要过程包括：

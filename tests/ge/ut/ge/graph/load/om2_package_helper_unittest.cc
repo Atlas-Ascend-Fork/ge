@@ -36,8 +36,11 @@
 #include "graph/fast_graph/execute_graph.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/custom_op/args_refresh.h"
+#include "graph/custom_op/cast.h"
+#include "graph/custom_op/framework_hosted_op.h"
 #include "graph/custom_op_factory.h"
 #include "graph/custom_op.h"
+#include "common/ge_common/ge_types.h"
 #include "graph/op_kernel_bin.h"
 #include "graph/utils/tensor_utils.h"
 #include "graph/utils/file_utils.h"
@@ -183,7 +186,40 @@ class TestPortableCustomOp : public PortableOp, public EagerExecuteOp {
   }
 };
 
-static ComputeGraphPtr BuildCustomOpGraph() {
+// Python 门禁拒绝对照：模拟 Python adapter 形态——经继承 CustomOpCapabilityProvider 表达能力。
+// 来源门禁只看 provider 命中，不看能力位组合
+class TestCapabilityProviderCustomOp : public EagerExecuteOp, public CustomOpCapabilityProvider {
+ public:
+  bool HasCapability(CustomOpCapability capability) const override {
+    return capability == CustomOpCapability::kEagerExecute;
+  }
+
+  graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
+    return SUCCESS;
+  }
+};
+
+// Python 门禁放行对照：继承 FrameworkHostedOp（不继承 provider）的 C++ 宿主实现，不得被 Python 门禁拒绝。
+// 同时实现 PortableOp 且 Serialize 非空：非 Portable/空 Serialize 形态会命中 has_custom_kernel
+// 按 binaries 非空推导的既有辅助代码遗漏（另行修复），不在本对照的验证范围
+class TestFrameworkHostedCustomOp : public EagerExecuteOp, public PortableOp, public FrameworkHostedOp {
+ public:
+  graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
+    return SUCCESS;
+  }
+
+  graphStatus Serialize(std::vector<uint8_t> &buffer) override {
+    const std::string payload = "test_framework_hosted_custom_op_kernel_bin";
+    buffer.assign(payload.begin(), payload.end());
+    return GRAPH_SUCCESS;
+  }
+
+  graphStatus Deserialize(const std::vector<uint8_t> &buffer) override {
+    return GRAPH_SUCCESS;
+  }
+};
+
+static ComputeGraphPtr BuildCustomOpGraph(const std::string &custom_op_type = "TestPortableOp") {
   auto graph = std::make_shared<ComputeGraph>("custom_op_om2_graph");
   GeTensorDesc tensor_desc(GeShape({2, 2, 2}), FORMAT_ND, DT_FLOAT);
 
@@ -199,7 +235,7 @@ static ComputeGraphPtr BuildCustomOpGraph() {
   AttrUtils::SetInt(data1_desc, ATTR_NAME_INDEX, 1);
   auto data1 = graph->AddNode(data1_desc);
 
-  auto custom_op_desc = std::make_shared<OpDesc>("custom_op", "TestPortableOp");
+  auto custom_op_desc = std::make_shared<OpDesc>("custom_op", custom_op_type);
   (void)custom_op_desc->AddInputDesc("x0", tensor_desc);
   (void)custom_op_desc->AddInputDesc("x1", tensor_desc);
   (void)custom_op_desc->AddOutputDesc("y", tensor_desc);
@@ -246,6 +282,11 @@ GeRootModelPtr CreateGeRootModelWithCustomOp() {
     } else {
       op_desc->SetInputOffset(std::vector<int64_t>(op_desc->GetInputsSize(), 1024));
       op_desc->SetOutputOffset(std::vector<int64_t>(op_desc->GetOutputsSize(), 1024));
+      // 能力门禁放行对照：最终路由指向 custom store、显式策略 kNone、实现不继承 provider
+      op_desc->SetOpKernelLibName(kCustomOpKernelLibName);
+      op_desc->SetOpEngineName(kEngineNameCustom);
+      (void)AttrUtils::SetInt(op_desc, ATTR_NAME_CUSTOM_TASK_ARGS_MODE,
+                              static_cast<int64_t>(CustomTaskArgsMode::kNone));
     }
   }
 
@@ -255,6 +296,8 @@ GeRootModelPtr CreateGeRootModelWithCustomOp() {
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 2048);
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, weights_value.size());
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
+  // 辅流申报放行对照：统计为 0 不因辅流申报项拒绝
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_EAGER_CUSTOM_OP_STREAM_NUM, 0);
 
   return ge_root_model;
 }
@@ -298,6 +341,69 @@ GeRootModelPtr CreateGeRootModelWithCustomOpCallback() {
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, weights_value.size());
   (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
 
+  return ge_root_model;
+}
+
+static OpDescPtr FindCustomOpDesc(const GeRootModelPtr &ge_root_model, const std::string &op_type) {
+  for (const auto &node : ge_root_model->GetRootGraph()->GetDirectNode()) {
+    const auto &op_desc = node->GetOpDesc();
+    if ((op_desc != nullptr) && (op_desc->GetType() == op_type)) {
+      return op_desc;
+    }
+  }
+  return nullptr;
+}
+
+// 能力门禁用例基础模型：custom 节点已置最终路由（custom store + kCustom 引擎），
+// 策略属性与模型级属性由各用例按需设置；拒绝路径在 codegen 之前失败，无动态编译开销
+GeRootModelPtr CreateCapabilityCheckRootModel(const std::string &custom_op_type) {
+  auto graph = BuildCustomOpGraph(custom_op_type);
+
+  gert::GeModelBuilder builder(graph);
+  auto ge_root_model = builder.AddTaskDef("custom_op", gert::CustomTaskDefFaker("custom_op_stub"))
+                           .FakeTbeBin({"custom_op"})
+                           .BuildGeRootModel();
+  auto &compute_graph = ge_root_model->GetRootGraph();
+  compute_graph->SetGraphUnknownFlag(false);
+  for (const auto &node : compute_graph->GetDirectNode()) {
+    auto op_desc = node->GetOpDesc();
+    if (op_desc == nullptr) {
+      return nullptr;
+    }
+    if (op_desc->GetType() == DATA) {
+      op_desc->SetOutputOffset({1024});
+    } else if (op_desc->GetType() == NETOUTPUT) {
+      op_desc->SetInputOffset({3072});
+    } else {
+      op_desc->SetInputOffset(std::vector<int64_t>(op_desc->GetInputsSize(), 1024));
+      op_desc->SetOutputOffset(std::vector<int64_t>(op_desc->GetOutputsSize(), 1024));
+      op_desc->SetOpKernelLibName(kCustomOpKernelLibName);
+      op_desc->SetOpEngineName(kEngineNameCustom);
+    }
+  }
+
+  const auto ge_model = ge_root_model->GetSubgraphInstanceNameToModel().begin()->second;
+  std::vector<uint8_t> weights_value(512, 1U);
+  ge_model->SetWeight(Buffer::CopyFrom(weights_value.data(), weights_value.size()));
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_MEMORY_SIZE, 2048);
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_WEIGHT_SIZE, weights_value.size());
+  (void)AttrUtils::SetInt(ge_model, ATTR_MODEL_STREAM_NUM, 1);
+
+  return ge_root_model;
+}
+
+// Python 门禁放行对照变体：仅继承 FrameworkHostedOp 的 C++ 宿主实现（显式策略 kNone），
+// 经套件级完整 BuildOm2ModelData（含真实 g++ 编译）验证不被 Python 门禁拒绝
+GeRootModelPtr CreateGeRootModelWithHostedCustomOp() {
+  auto ge_root_model = CreateCapabilityCheckRootModel("TestHostedOp");
+  if (ge_root_model == nullptr) {
+    return nullptr;
+  }
+  const auto op_desc = FindCustomOpDesc(ge_root_model, "TestHostedOp");
+  if (op_desc == nullptr) {
+    return nullptr;
+  }
+  (void)AttrUtils::SetInt(op_desc, ATTR_NAME_CUSTOM_TASK_ARGS_MODE, static_cast<int64_t>(CustomTaskArgsMode::kNone));
   return ge_root_model;
 }
 
@@ -366,6 +472,14 @@ static void BuildSuiteVariant(const std::string &key, const GeRootModelPtr &ge_r
   SuiteModelDataMap()[key] = std::move(data);
 }
 
+// Python 门禁放行对照变体：继承 FrameworkHostedOp（不继承 provider）的 C++ 宿主实现不被 Python 门禁拒绝
+static void BuildHostedCustomOpSuiteVariant() {
+  CustomOpFactory::RegisterCustomOpCreator(AscendString("TestHostedOp"), []() -> std::unique_ptr<BaseCustomOp> {
+    return std::make_unique<TestFrameworkHostedCustomOp>();
+  });
+  BuildSuiteVariant("custom_op_hosted", CreateGeRootModelWithHostedCustomOp());
+}
+
 class Om2PackageHelperUt : public testing::Test {
  public:
   static void SetUpTestSuite() {
@@ -422,12 +536,14 @@ class Om2PackageHelperUt : public testing::Test {
       // 做真实 g++ 编译。这些代码路径全部门控在 has_reserved_args_table 上，
       // 仅靠文本断言无法发现生成代码自身的编译错误。
       BuildSuiteVariant("custom_op_callback", CreateGeRootModelWithCustomOpCallback());
+      BuildHostedCustomOpSuiteVariant();
     }
   }
 
   static void TearDownTestSuite() {
     SuiteModelDataMap().clear();
     SuiteRootModels().clear();
+    CustomOpFactory::RemoveCustomOps({AscendString("TestHostedOp")});
     unsetenv("ASCEND_HOME_PATH");
     unsetenv("ASCEND_WORK_PATH");
     unsetenv("ASAN_OPTIONS");
@@ -1676,21 +1792,23 @@ TEST_F(Om2PackageHelperUt, ConvertOm2Model_WithoutAipp_NoAippSectionInJson) {
   EXPECT_EQ(model_meta_json_noaipp.find("\"aipp\""), std::string::npos);
 }
 
-TEST_F(Om2PackageHelperUt, SaveToOmRootModel_UnknownShapeReusesAttachedGertModelData) {
+TEST_F(Om2PackageHelperUt, SaveToOmRootModel_UnknownShapeRejectsFileAndBufferExport) {
   Om2PackageHelper helper;
-  helper.SetSaveMode(false);
   const auto root = CreateGeRootModelWithAicoreOp();
   ASSERT_NE(root, nullptr);
   root->GetRootGraph()->SetGraphUnknownFlag(true);
   auto *cached = SuiteModelData("aicore");
   ASSERT_NE(cached, nullptr);
-  // The suite owns these compiled artifacts; exercise the save route without regenerating a pbody.
+  // Even attached model data must not bypass the offline export restriction.
   root->SetOm2ModelData(std::shared_ptr<gert::GertModelData>(cached, [](gert::GertModelData *) {}));
-  ModelBufferData model;
   const std::string output_file = PathUtils::Join({test_work_dir, "test_unknown_shape.om2"});
-  ASSERT_EQ(helper.SaveToOmRootModel(root, output_file, model, true), SUCCESS);
-  EXPECT_NE(model.data, nullptr);
-  EXPECT_GT(model.length, 0U);
+  for (const bool save_to_file : {false, true}) {
+    helper.SetSaveMode(save_to_file);
+    ModelBufferData model{};
+    EXPECT_EQ(helper.SaveToOmRootModel(root, output_file, model, true), FAILED);
+    EXPECT_EQ(model.data, nullptr);
+    EXPECT_EQ(model.length, 0U);
+  }
   EXPECT_EQ(root->GetOm2ModelData().get(), cached);
 }
 
@@ -2713,6 +2831,77 @@ TEST_F(Om2PackageHelperUt, StaticBuildPreservesExistingOutputAndOriginalWeightSl
   EXPECT_EQ(data.constants->constants_data[1], nullptr);
   EXPECT_EQ(data.so_bins.get(), original_libraries);
   EXPECT_EQ(data.manifest->model_num, 2U);
+}
+
+// ===== OM2 Custom Op 暂不支持能力门禁（Python/AnnotatedArgs/辅流申报/HCCL Custom 路由）=====
+// 拒绝路径均在 BuildCustomKernelBinaries/Serialize/codegen 之前失败，无成功产物、无动态编译开销
+
+TEST_F(Om2PackageHelperUt, BuildOm2ModelData_AnnotatedArgsModeNode_Rejected) {
+  auto root = CreateCapabilityCheckRootModel("TestPortableOp");
+  ASSERT_NE(root, nullptr);
+  const auto op_desc = FindCustomOpDesc(root, "TestPortableOp");
+  ASSERT_NE(op_desc, nullptr);
+  // AnnotatedArgs 声明式模式：编译期策略属性直判，显式 kAnnotatedArgs 拒绝
+  (void)AttrUtils::SetInt(op_desc, ATTR_NAME_CUSTOM_TASK_ARGS_MODE,
+                          static_cast<int64_t>(CustomTaskArgsMode::kAnnotatedArgs));
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  gert::GertModelData data;
+  EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), UNSUPPORTED);
+}
+
+TEST_F(Om2PackageHelperUt, BuildOm2ModelData_HcclCustomRouting_Rejected) {
+  // HCCL Custom Op：按最终路由（custom store + DNN_HCCL）判断，先于实例解析命中，算子类型无需注册
+  auto root = CreateCapabilityCheckRootModel("TestHcclCustomOp");
+  ASSERT_NE(root, nullptr);
+  const auto op_desc = FindCustomOpDesc(root, "TestHcclCustomOp");
+  ASSERT_NE(op_desc, nullptr);
+  op_desc->SetOpEngineName(kEngineNameDnnHccl);
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  gert::GertModelData data;
+  EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), UNSUPPORTED);
+}
+
+TEST_F(Om2PackageHelperUt, BuildOm2ModelData_PythonRuntimeImpl_Rejected) {
+  // Python 运行实现：继承 CustomOpCapabilityProvider（Python adapter 形态）即拒绝
+  const AscendString kProviderOpType("TestProviderCustomOp");
+  ASSERT_EQ(CustomOpFactory::RegisterCustomOpCreator(
+                kProviderOpType,
+                []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<TestCapabilityProviderCustomOp>(); }),
+            GRAPH_SUCCESS);
+  auto root = CreateCapabilityCheckRootModel("TestProviderCustomOp");
+  ASSERT_NE(root, nullptr);
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  gert::GertModelData data;
+  EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), UNSUPPORTED);
+  CustomOpFactory::RemoveCustomOps({kProviderOpType});
+}
+
+TEST_F(Om2PackageHelperUt, BuildOm2ModelData_RuntimeImplNotFound_Failed) {
+  // Python 运行实现：解析空指针按实现获取错误处理，不当成非 Python 放行
+  auto root = CreateCapabilityCheckRootModel("TestNeverRegisteredOp");
+  ASSERT_NE(root, nullptr);
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  gert::GertModelData data;
+  EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), FAILED);
+}
+
+TEST_F(Om2PackageHelperUt, BuildOm2ModelData_EagerCustomOpStreamDeclared_Rejected) {
+  // eager 辅流申报：已申报数量大于0即拒绝；属性仅在存在上报节点时写入，无需模型含 custom 节点
+  auto root = CreateGeRootModelWithAicoreOp();
+  ASSERT_NE(root, nullptr);
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  (void)AttrUtils::SetInt(model, ATTR_MODEL_EAGER_CUSTOM_OP_STREAM_NUM, 2);
+  gert::GertModelData data;
+  EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), UNSUPPORTED);
+}
+
+TEST_F(Om2PackageHelperUt, BuildOm2ModelData_HostedCustomOpVariant_Built) {
+  // Python 门禁放行对照：仅 FrameworkHostedOp 的 C++ 宿主实现经套件级完整构建（含真实 g++ 编译）未被拒绝；
+  // custom_op 变体（显式 kNone + 统计为0 + 非 provider 实现）与 custom_op_callback 变体
+  // （kUpdateCallback）同为放行对照，构建失败会在 SetUpTestSuite 中 ADD_FAILURE
+  EXPECT_NE(SuiteModelData("custom_op_hosted"), nullptr);
+  EXPECT_NE(SuiteModelData("custom_op"), nullptr);
+  EXPECT_NE(SuiteModelData("custom_op_callback"), nullptr);
 }
 
 }  // namespace ge

@@ -33,7 +33,7 @@ Status StreamMergeOp::Init() {
 
 Status StreamMergeOp::Run(vector<TaskDef> &tasks) {
   if (v_output_data_addr_.empty()) {
-    RTS_REPORT_CALL_ERROR("Stream merge op run failed, thers is no output data address!");
+    RTS_REPORT_CALL_ERROR("Stream merge op run failed, there is no output data address!");
     return INTERNAL_ERROR;
   }
 

@@ -838,6 +838,9 @@ class BackendUtils {
   // 检查节点是否仅包含pointwise（reshape被视为低优先级的pointwise）
   static bool IsOnlyPointwise(const NodePtr &node);
 
+  // 检查节点是否仅包含 pointwise、reshape 和 reduction。
+  static bool IsOnlyPointwiseAndReduce(const NodePtr &node);
+
   // 获取AscBackend节点对应Ascgraph中除data, load, store, output节点之外的节点数
   static size_t GetComputeNodeNumInAscgraph(const NodePtr &node);
 

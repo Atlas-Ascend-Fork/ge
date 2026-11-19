@@ -14,6 +14,8 @@
 #include "framework/common/framework_types_internal.h"
 #include "graph/ge_local_context.h"
 
+#include "common/ge_common/ge_types.h"
+#include "common/helper/om2/om2_utils.h"
 #include "ge_graph_dsl/graph_dsl.h"
 #include "ge_common/ge_common_api_types.h"
 #include "api/aclgrph/option_utils.h"
@@ -105,6 +107,32 @@ TEST_F(STEST_opt_info, get_opt_info_success) {
   itr = graph_options.find("opt_module.op_tune");
   EXPECT_NE(itr, graph_options.end());
   EXPECT_EQ(itr->second, "ALL");
+}
+
+/**
+ * 用例描述：测试 V1 Session::AddGraph 对 ge.modelFormat option 的校验
+ * 预置条件：构造包含两个 Data 节点和一个 Add 节点的简单计算图
+ * 测试步骤：分别传入非法值和 OM2 值调用 V1 Session::AddGraph
+ * 预期结果：非法配置添加失败，合法 OM2 配置添加成功
+ */
+TEST_F(STEST_opt_info, v1_session_add_graph_model_format_validation) {
+  DEF_GRAPH(g1) {
+    CHAIN(NODE("data1", DATA)->NODE("add", ADD));
+    CHAIN(NODE("data2", DATA)->NODE("add"));
+  };
+  const auto invalid_graph = ToGeGraph(g1);
+  std::map<std::string, std::string> session_options;
+  Session session(session_options);
+  const std::map<std::string, std::string> invalid_options{{"ge.modelFormat", "invalid"}};
+  EXPECT_NE(session.AddGraph(50U, invalid_graph, invalid_options), SUCCESS);
+
+  DEF_GRAPH(g2) {
+    CHAIN(NODE("data1", DATA)->NODE("add", ADD));
+    CHAIN(NODE("data2", DATA)->NODE("add"));
+  };
+  const auto valid_graph = ToGeGraph(g2);
+  const std::map<std::string, std::string> valid_options{{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}};
+  EXPECT_EQ(session.AddGraph(51U, valid_graph, valid_options), SUCCESS);
 }
 
 TEST_F(STEST_opt_info, parse_hint_input_shape_empty_element) {

@@ -514,7 +514,7 @@ void DFlowSessionImpl::UpdateGlobalSessionContext() const {
 void DFlowSessionImpl::UpdateThreadContext(uint32_t graph_id) {
   auto options = dflow_graph_manager_.GetGraphOptions(graph_id);
   if (options == nullptr) {
-    GELOGW("graph level options is null.");
+    GELOGW("graph level options are null.");
     UpdateThreadContext(std::map<std::string, std::string>{});
   } else {
     UpdateThreadContext(*options);

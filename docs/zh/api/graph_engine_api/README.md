@@ -170,6 +170,7 @@
     - [EsCreateEsCTensor](c/esb_funcs/EsCreateEsCTensor.md)
     - [EsCreateEsCTensorFromFile](c/esb_funcs/EsCreateEsCTensorFromFile.md)
     - [EsCreateGraphBuilder](c/esb_funcs/EsCreateGraphBuilder.md)
+    - [EsCreateGraphBuilderWithKind](c/esb_funcs/EsCreateGraphBuilderWithKind.md)
     - [EsCreateGraphInputWithDetails](c/esb_funcs/EsCreateGraphInputWithDetails.md)
     - [EsCreateGraphInput](c/esb_funcs/EsCreateGraphInput.md)
     - [EsCreateConstInt64](c/esb_funcs/EsCreateConstInt64.md)
@@ -275,6 +276,12 @@
     - [aclskOptimize](c/super_kernel/aclskOptimize.md)
     - [aclskScopeBegin](c/super_kernel/aclskScopeBegin.md)
     - [aclskScopeEnd](c/super_kernel/aclskScopeEnd.md)
+
+  - [模型常量化编译接口](c/specialization/specialization_interface.md)
+    - [aclmdlRISpecOptimize](c/specialization/aclmdlRISpecOptimize.md)
+    - [aclmdlRISpecOptimizeByFlag](c/specialization/aclmdlRISpecOptimizeByFlag.md)
+    - [aclmdlRISpecScopeBegin](c/specialization/aclmdlRISpecScopeBegin.md)
+    - [aclmdlRISpecScopeEnd](c/specialization/aclmdlRISpecScopeEnd.md)
 
   - [图基础数据结构和接口](cpp/ge/graph_basic_data_structure_and_interface.md)
     - [AnnotatedArgsContext](cpp/gert/AnnotatedArgsContext/AnnotatedArgsContext.md)

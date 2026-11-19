@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置指定index的output的tensor。该函数供[Proc](Proc.md)调用。
 
@@ -26,7 +26,7 @@ int32_t SetOutput(uint32_t outIdx, std::shared_ptr<FlowMsg> outMsg)
 | outIdx | 输入 | 指定输出的index。 |
 | outMsg | 输入 | 指定输出的Msg。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS。
 - other：FAILED，具体请参考[UDF错误码](udf-error-code.md)。

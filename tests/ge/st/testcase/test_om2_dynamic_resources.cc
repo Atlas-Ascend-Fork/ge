@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include "framework/common/helper/om2_package_helper.h"
+#include "common/helper/om2/om2_utils.h"
 #include "framework/runtime/rt_session.h"
 #include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/utils/execute_graph_utils.h"
@@ -29,7 +30,8 @@ class Om2DynamicResourcesST : public om2_test::DynamicPackageTest {
   void SetUp() override {
     DynamicPackageTest::SetUp();
     GetThreadLocalContext().SetGraphOption(
-        {{"ge.buildConfig", "make -s CXXFLAGS='-std=c++17 -fPIC -O0 -D_GLIBCXX_USE_CXX11_ABI=0'"}});
+        {{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)},
+         {"ge.buildConfig", "make -s CXXFLAGS='-std=c++17 -fPIC -O0 -D_GLIBCXX_USE_CXX11_ABI=0'"}});
   }
 };
 
@@ -120,7 +122,6 @@ void RunKnownOutputs(om2_test::GeneratedModelRunner &runner, const float first) 
 TEST_F(Om2DynamicResourcesST, OnlineKnownSubgraphPreservesInputAndWeightAcrossRuns) {
   // slow_test_limit = 4000
   gert::GertRuntimeStub stub;
-  om2_test::ScopedEnvVar online("ENABLE_RUNTIME_OM2", "1");
   GeRootModelPtr root;
   ASSERT_NO_FATAL_FAILURE(BuildKnownRoot(root));
   gert::GertModelData generated;

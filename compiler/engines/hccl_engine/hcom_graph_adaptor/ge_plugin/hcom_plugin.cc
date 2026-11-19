@@ -103,7 +103,7 @@ void HcomPlugin::GetOpsKernelInfoStores(map<string, OpsKernelInfoStorePtr> &opKe
   if (hcomOpsKernelInfoStoreInfoPtr_ != nullptr) {
     opKernInfos.insert(std::make_pair(HCCL_OPS_LIB_NAME, hcomOpsKernelInfoStoreInfoPtr_));
   } else {
-    HCCL_ERROR("[Get][OpsKernelget hcom ops kernel info stores ptr failed for nullptr.");
+    HCCL_ERROR("[Get][OpsKernel] Get hcom ops kernel info stores ptr failed: nullptr.");
   }
   HCCL_INFO("get hccl kernel info store finished.");
   return;

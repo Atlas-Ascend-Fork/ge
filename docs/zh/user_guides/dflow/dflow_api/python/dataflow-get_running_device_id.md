@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 UDF执行时获取当前UDF的运行device\_id，该信息来源于data\_flow\_deploy\_info.json中的logic\_device\_list配置。
 
@@ -23,7 +23,7 @@ get_running_device_id()
 
 无
 
-## 返回值
+## 返回值说明
 
 返回当前UDF的运行device\_id，数据类型为int。
 

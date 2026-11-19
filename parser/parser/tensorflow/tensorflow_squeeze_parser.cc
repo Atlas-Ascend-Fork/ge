@@ -84,7 +84,7 @@ Status TensorFlowSqueezeParser::ParseParams(const Message *op_src, ge::OpDescPtr
   if (has_axis && has_dims) {
     REPORT_INNER_ERR_MSG("E19999", "In NodeDef %s, Attr %s or %s does not exist, check invalid", node->name().c_str(),
                          SQUEEZE_ATTR_AXIS.c_str(), SQUEEZE_ATTR_DIMS.c_str());
-    GELOGE(FAILED, "In NodeDef %s dim and axis is error.", node->name().c_str());
+    GELOGE(FAILED, "In NodeDef %s dim and axis is invalid.", node->name().c_str());
     return domi::PARAM_INVALID;
   }
 

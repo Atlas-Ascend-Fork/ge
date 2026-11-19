@@ -22,6 +22,7 @@
 
 #include "framework/common/gert_model_data_utils.h"
 #include "common/om2/codegen/om2_codegen_utils.h"
+#include "common/helper/om2/om2_utils.h"
 #include "common/om2/codegen/om2_codegen_model_builder.h"
 #include "common/om2/codegen/emitter/cpp_emitter.h"
 #include "common/om2/codegen/ast/ast_build_context.h"
@@ -45,6 +46,7 @@
 #include "ge_runtime_stub/include/faker/hccl_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/ge_model_builder.h"
 #include "graph/debug/ge_attr_define.h"
+#include "graph/ge_local_context.h"
 #include "graph/utils/attr_utils.h"
 #include "graph/utils/graph_utils.h"
 #include "graph/utils/tensor_utils.h"
@@ -3003,7 +3005,6 @@ TEST_F(Om2CodegenModelBuilderUt, BuildTaskSemantics_CustomTaskRejectsCustomData)
 }
 
 TEST_F(Om2CodegenModelBuilderUt, CreateTaskCodeBuilders_HcclTask_OnlineModeOk) {
-  constexpr char kEnableRuntimeOm2[] = "ENABLE_RUNTIME_OM2";
   GeRootModelPtr ge_root_model = CreateGeRootModelWithAicoreOp();
   ASSERT_NE(ge_root_model, nullptr);
   const auto &name_to_model = ge_root_model->GetSubgraphInstanceNameToModel();
@@ -3015,7 +3016,7 @@ TEST_F(Om2CodegenModelBuilderUt, CreateTaskCodeBuilders_HcclTask_OnlineModeOk) {
   ASSERT_NE(task_def, nullptr);
   task_def->set_type(static_cast<uint32_t>(ModelTaskType::MODEL_TASK_HCCL));
 
-  ASSERT_EQ(setenv(kEnableRuntimeOm2, "1", 1), 0);
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   std::vector<TaskCodeBuilderPtr> task_builders;
   Om2CodegenModel doc;
   EXPECT_EQ(
@@ -3024,7 +3025,7 @@ TEST_F(Om2CodegenModelBuilderUt, CreateTaskCodeBuilders_HcclTask_OnlineModeOk) {
   EXPECT_EQ(doc.runtime.has_hccl, true);
   EXPECT_EQ(task_builders.size(), 1U);
   EXPECT_NE(task_builders[0U], nullptr);
-  ASSERT_EQ(unsetenv(kEnableRuntimeOm2), 0);
+  GetThreadLocalContext().SetGraphOption({});
 
   std::vector<TaskCodeBuilderPtr> offline_builders;
   Om2CodegenModel offline_doc;

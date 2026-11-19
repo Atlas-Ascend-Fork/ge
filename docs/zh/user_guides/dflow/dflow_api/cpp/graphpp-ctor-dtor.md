@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 GraphPp构造函数和析构函数，构造函数会返回一个GraphPp对象。
 
@@ -27,7 +27,7 @@ GraphPp(const char_t *pp_name, const GraphBuilder &builder)
 | pp_name | 输入 | GraphPp的名称，需要全图唯一。 |
 | builder | 输入 | GE Graph的构建方法：`std::function<ge::Graph()`><br>GE Graph的构建具体请参考《图模式开发指南》。 |
 
-## 返回值
+## 返回值说明
 
 返回一个GraphPp对象。
 

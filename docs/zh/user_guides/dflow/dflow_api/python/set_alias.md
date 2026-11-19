@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置节点别名，使用option:ge.experiment.data\_flow\_deploy\_info\_path指定节点部署位置时，flow\_node\_list字段可使用别名进行指定。
 
@@ -25,7 +25,7 @@ def set_alias(self, name) -> FlowNode
 | --- | --- | --- |
 | name | str | FlowNode的别名。 |
 
-## 返回值
+## 返回值说明
 
 返回当前FlowNode。
 

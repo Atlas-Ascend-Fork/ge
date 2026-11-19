@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 初始化LLM-DataDist。
 
@@ -53,7 +53,7 @@ Status Initialize(const std::map<AscendString, AscendString> &options)
 | blk_size | 必选 | 当前档位一次可以申请的最小内存值，单位byte。<br> 说明： 要求满足2^n，且在(0,2M]之间，小于或等于max_buf_size。 |
 | max_buf_size | 必选 | 当前档位一次可以申请的最大内存值，单位byte。<br> 说明： 小于total_size，max_buf_size必须保持严格递增。 |
 
-## 返回值
+## 返回值说明
 
 - LLM\_SUCCESS：成功
 - LLM\_PARAM\_INVALID：参数错误

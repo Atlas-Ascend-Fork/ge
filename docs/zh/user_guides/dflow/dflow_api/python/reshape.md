@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 对tensor进行Reshape操作，不改变tensor的内容。
 
@@ -25,7 +25,7 @@ def reshape(self, shape: Union[List[int], Tuple[int]])
 | --- | --- | --- |
 | shape | 输入 | 要改变的目标shape。<br>要求shape元素个数必须和原来shape的个数一致。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS
 - other：FAILED，具体请参考[UDF错误码](udf-error-code.md)。

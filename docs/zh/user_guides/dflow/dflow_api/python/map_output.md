@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 给FlowNode映射输出，表示将pp的第pp\_output\_index个输出给到FlowNode的第node\_output\_index个输出。
 
@@ -29,7 +29,7 @@ map_output(node_output_index, pp, pp_output_index)
 | pp | Union[GraphProcessPoint, FuncProcessPoint] | FlowNode节点映射的pp。可以是[GraphProcessPoint](dataflow-GraphProcessPoint.md)或者[FuncProcessPoint](dataflow-FuncProcessPoint.md)。 |
 | pp_output_index | int | pp的输出index。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

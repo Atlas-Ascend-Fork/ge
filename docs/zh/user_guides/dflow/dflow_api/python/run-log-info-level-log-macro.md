@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 运行日志Info级别日志宏。
 
@@ -26,7 +26,7 @@ run_info(self, message: str, *args: tuple) -> None
 | message | 输入 | 日志格式化控制字符串。<br>取值范围：非空。 |
 | args | 输入 | 可选参数<br>与message匹配的参数。 |
 
-## 返回值
+## 返回值说明
 
 无
 

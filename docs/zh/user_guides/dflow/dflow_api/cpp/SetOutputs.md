@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FlowGraph的输出节点，并返回该图。
 
@@ -25,7 +25,7 @@ FlowGraph &SetOutputs(const std::vector<FlowOperator> &outputs)
 | --- | --- | --- |
 | outputs | 输出 | 输出的节点集。 |
 
-## 返回值
+## 返回值说明
 
 返回设置了输出节点的FlowGraph图。
 

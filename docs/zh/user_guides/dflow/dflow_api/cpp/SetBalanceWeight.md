@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置均衡分发权重信息。
 
@@ -25,7 +25,7 @@ void SetBalanceWeight(const BalanceWeight &balanceWeight) = 0
 | --- | --- | --- |
 | balanceWeight | 输入 | 均衡分发权重信息。<br>struct BalanceWeight {<br>int32_t rowNum = 0;  // 权重矩阵行数<br>int32_t colNum = 0;  // 权重矩阵列数<br>const int32_t *matrix = nullptr;  // 权重矩阵，有rowNum行、colNum列的数组，如果值为null，表示是值全为1的矩阵<br>}; |
 
-## 返回值
+## 返回值说明
 
 无。
 

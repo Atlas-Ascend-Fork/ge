@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 设置当前进程Device ID，对应底层ge.exec.deviceId配置项。
 
@@ -39,7 +39,7 @@ llm_config.device_id = 0
 # llm_config.device_id = [0, 1]
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

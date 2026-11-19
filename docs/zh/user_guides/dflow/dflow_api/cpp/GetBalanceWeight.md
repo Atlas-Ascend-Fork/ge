@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取均衡分发权重信息。
 
@@ -23,7 +23,7 @@ const BalanceWeight &GetBalanceWeight() const = 0
 
 无
 
-## 返回值
+## 返回值说明
 
 均衡分发权重信息。
 

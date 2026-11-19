@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 AscendString构造函数和析构函数。
 
@@ -26,7 +26,7 @@ AscendString(const char * const name, size_t length)
 
 无
 
-## 返回值
+## 返回值说明
 
 AscendString构造函数返回AscendString类型的对象。
 

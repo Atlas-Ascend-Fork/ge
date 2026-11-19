@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据属性名获取AttrValue类型的指针。该函数供[Init（MetaFlowFunc类）](init-metaflowfunc-class.md)调用。
 
@@ -25,7 +25,7 @@ std::shared_ptr<const AttrValue> GetAttr(const char  *attrName) const
 | --- | --- | --- |
 | attrname | 输入 | 属性名。 |
 
-## 返回值
+## 返回值说明
 
 获取到的AttrValue类型的指针。
 

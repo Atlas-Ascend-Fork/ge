@@ -414,6 +414,8 @@ Main differences are in development experience and delivery method:
 
 If just adding one rule and verifying effect, suggest first write in Python. After rule stabilizes, if have delivery form or performance requirements, then consider C++ implementation.
 
+When a Python Pass is delivered as a single `.py` file, the loader temporarily adds its parent directory for explicit sibling imports and restores `sys.path` after successful or failed loading. Modules imported during plugin loading stay in `sys.modules` per Python rules, so same-named dependencies across different plugin directories are not isolated.
+
 ## 10. Pre-development Checklist
 
 Answer these questions before writing pass:

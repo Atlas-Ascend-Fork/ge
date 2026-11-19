@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 通过配置block列表的方式，从本地节点推送Cache到远端节点，仅当角色为Prompt时可调用。
 
@@ -55,7 +55,7 @@ std::vector<uint64_t> decoder_blocks = {3, 2, 1, 0};
 Status ret = llm_datadist.PushKvBlocks(cache, dst_cache_key, prompt_blocks, decoder_blocks , ext_param);
 ```
 
-## 返回值
+## 返回值说明
 
 - LLM\_SUCCESS：成功
 - LLM\_PARAM\_INVALID：参数错误

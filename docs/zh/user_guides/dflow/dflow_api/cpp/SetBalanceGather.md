@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置节点balance gather属性，具有balance gather属性的UDF可以使用balance options设置负载均衡亲和输出。
 
@@ -23,7 +23,7 @@ FlowNode &SetBalanceGather()
 
 无。
 
-## 返回值
+## 返回值说明
 
 返回设置完属性的FlowNode节点。
 

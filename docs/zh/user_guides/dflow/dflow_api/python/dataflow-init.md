@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 初始化dataflow时的options。
 
@@ -25,7 +25,7 @@ init(flow_options)
 | --- | --- | --- |
 | flow_options | Dict[str, str] | 初始化dataflow时的options。options当前支持全局和session级别的。<br>其中的配置示例请按照Python语言进行适配。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

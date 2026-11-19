@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据输入的size申请一块连续内存，用于承载raw data类型的数据。
 
@@ -26,7 +26,7 @@ FlowMsgPtr AllocRawDataMsg(size_t size, uint32_t align = 512U)
 | size | 输入 | 申请内存大小。 |
 | align | 输入 | 申请内存地址对齐大小，取值范围【32、64、128、256、512、1024】。<br>当前为预留参数，不进行参数值校验。 |
 
-## 返回值
+## 返回值说明
 
 申请的FlowMsg指针。
 

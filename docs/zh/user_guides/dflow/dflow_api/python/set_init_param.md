@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FuncProcessPoint的初始化参数。
 
@@ -26,7 +26,7 @@ set_init_param(attr_name, attr_value)
 | attr_name | str | 初始化参数名。 |
 | attr_value | Union[str,List[str],int,List[int],List[List[int]],float,List[float],bool,List[bool],DType,List[DType]] | 初始化参数值。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

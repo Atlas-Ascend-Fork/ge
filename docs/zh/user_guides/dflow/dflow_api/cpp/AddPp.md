@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 给FlowNode添加映射的ProcessPoint，当前一个FlowNode仅能添加一个ProcessPoint，添加后会默认将FlowNode的输入输出和ProcessPoint的输入输出按顺序进行映射。
 
@@ -25,7 +25,7 @@ FlowNode &AddPp(const ProcessPoint &pp)
 | --- | --- | --- |
 | pp | 输入 | FlowNode节点映射的ProcessPoint。ProcessPoint可以是[FunctionPp类](functionpp-class.md)或者[ProcessPoint类](processpoint-class.md)。 |
 
-## 返回值
+## 返回值说明
 
 返回一个FlowNode节点。
 

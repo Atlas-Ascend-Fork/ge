@@ -1143,3 +1143,25 @@ TEST_F(HcomKernelBuilderTest, ut_SetOpMemAttr_When_NotBroadcast_Expect_ReturnSuc
   ret = hcomKernelInfo.SetOpMemAttr(*nodeptr, type, opMemSize);
   EXPECT_EQ(ret, HCCL_SUCCESS);
 }
+
+TEST_F(HcomKernelBuilderTest, ut_GetCountsFromOpDesc_When_AllGatherVCountsEmpty) {
+  HcomOpsKernelBuilder builder;
+  ge::NodePtr node(new NodeTest);
+  std::vector<int64_t> counts;
+  MOCKER(&HcomOpUtils::GetAllGatherVCountsDispl).expects(once()).will(returnValue(HCCL_SUCCESS));
+
+  EXPECT_EQ(builder.GetCountsFromOpDesc(*node, counts, HcclCMDType::HCCL_CMD_ALLGATHER_V), HCCL_E_PTR);
+  EXPECT_TRUE(counts.empty());
+  GlobalMockObject::verify();
+}
+
+TEST_F(HcomKernelBuilderTest, ut_GetCountsFromOpDesc_When_ReduceScatterVCountsEmpty) {
+  HcomOpsKernelBuilder builder;
+  ge::NodePtr node(new NodeTest);
+  std::vector<int64_t> counts;
+  MOCKER(&HcomOpUtils::GetReduceScatterVCountsDispl).expects(once()).will(returnValue(HCCL_SUCCESS));
+
+  EXPECT_EQ(builder.GetCountsFromOpDesc(*node, counts, HcclCMDType::HCCL_CMD_REDUCE_SCATTER_V), HCCL_SUCCESS);
+  EXPECT_TRUE(counts.empty());
+  GlobalMockObject::verify();
+}

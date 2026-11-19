@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 UDF主动上报异常。
 
@@ -26,7 +26,7 @@ raise_exception(self, exception_code: int, user_context_id: int)
 | exception_code | 输入 | 用户自定义的异常的错误码。 |
 | user_context_id | 输入 | 用户自定义的异常的上下文ID，用于标识该上报的异常，保证其他UDF获取捕捉到异常后可以根据该ID值感知到具体产生异常的数据批次。 |
 
-## 返回值
+## 返回值说明
 
 无
 

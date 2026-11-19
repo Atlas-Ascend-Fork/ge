@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取FlowMsg消息中的事务ID，事务ID从1开始计数，每feed一批数据，事务ID会加一，可用于识别哪一批数据。
 
@@ -23,7 +23,7 @@ virtual uint64_t GetTransactionId() const
 
 无
 
-## 返回值
+## 返回值说明
 
 事务ID。
 

@@ -53,6 +53,10 @@ gert::rtStream AttachedStreamCollection::RequestAttachedStream(const AscendStrin
     return nullptr;
   }
   (void)streams_.emplace(value, stream);
+  if (on_stream_created_ != nullptr) {
+    // 登记：HEAD 绑定只保证首轮直接启动，重放轮的激活由 DavinciModel 的循环激活 task 补齐
+    on_stream_created_(stream);
+  }
   return stream;
 }
 

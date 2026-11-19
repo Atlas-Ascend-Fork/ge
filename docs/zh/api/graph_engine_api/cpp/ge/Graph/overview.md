@@ -13,6 +13,7 @@
 ```c++
 explicit Graph(const std::string& name)
 explicit Graph(const char *name)
+Graph(const char *name, GraphKind kind)
 Graph()
 ~Graph()
 graphStatus AddControlEdge(GNode &src_node, GNode &dst_node)

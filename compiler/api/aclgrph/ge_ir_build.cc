@@ -197,6 +197,17 @@ graphStatus ReportOm2UnsupportedOption(const std::string &option, const std::str
   return GRAPH_PARAM_INVALID;
 }
 
+graphStatus ReportBundleOfflineModeConflict(const size_t index, const int32_t offline_mode,
+                                            const int32_t bundle_offline_mode) {
+  const std::string value = std::to_string(offline_mode);
+  const std::string reason = "all graphs in a bundle must use the same offline_mode, graph[" + std::to_string(index) +
+                             "] is " + value + " but graph[0] is " + std::to_string(bundle_offline_mode) + ".";
+  REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char_t *>({"parameter", "value", "reason"}),
+                            std::vector<const char_t *>({kOfflineModeOption.c_str(), value.c_str(), reason.c_str()}));
+  GELOGE(GRAPH_PARAM_INVALID, "[Check][Bundle] %s", reason.c_str());
+  return GRAPH_PARAM_INVALID;
+}
+
 graphStatus CheckOm2UnsupportedOptions(const std::map<std::string, std::string> &options) {
   for (const auto &option : options) {
     if (kOm2UnsupportedOptions.count(option.first) > 0U) {
@@ -1500,8 +1511,9 @@ graphStatus CheckVarDesc(const vector<ge::GraphWithOptions> &graph_with_options,
 static graphStatus ConvertBundleBuildOptions(const std::vector<ge::GraphWithOptions> &graph_with_options,
                                              std::vector<std::map<std::string, std::string>> &converted_options,
                                              bool &all_requested_om2) {
-  all_requested_om2 = true;
+  all_requested_om2 = false;
   converted_options.reserve(graph_with_options.size());
+  int32_t bundle_offline_mode = kOfflineModeOm;
   for (size_t i = 0UL; i < graph_with_options.size(); ++i) {
     converted_options.emplace_back();
     auto &options = converted_options.back();
@@ -1513,10 +1525,19 @@ static graphStatus ConvertBundleBuildOptions(const std::vector<ge::GraphWithOpti
       options[key] = val;
     }
     int32_t offline_mode = kOfflineModeOm;
-    if ((ParseOfflineMode(options, offline_mode) != GRAPH_SUCCESS) || !IsOm2BuildMode(offline_mode)) {
-      GELOGI("Graph[%zu] offline_mode[%d] is not OM2 mode, bundle falls back to OM1.", i, offline_mode);
-      all_requested_om2 = false;
-      break;
+    const auto parse_ret = ParseOfflineMode(options, offline_mode);
+    if (parse_ret != GRAPH_SUCCESS) {
+      GELOGE(parse_ret, "[Check][Bundle] graph[%zu] option[%s] is invalid.", i, kOfflineModeOption.c_str());
+      return parse_ret;
+    }
+    if (i == 0UL) {
+      bundle_offline_mode = offline_mode;
+      all_requested_om2 = IsOm2BuildMode(offline_mode);
+      continue;
+    }
+    // 子模型格式由整个 Bundle 容器决定，混用会产出 OM1 容器内嵌 OM2 ZIP 的损坏包，此处直接拒绝
+    if (offline_mode != bundle_offline_mode) {
+      return ReportBundleOfflineModeConflict(i, offline_mode, bundle_offline_mode);
     }
   }
   return GRAPH_SUCCESS;
@@ -1611,6 +1632,13 @@ graphStatus aclgrphBundleBuildModel(const std::vector<ge::GraphWithOptions> &gra
     return GRAPH_PARAM_INVALID;
   }
   GELOGI("aclgrphBundleBuildModel graph_num:%zu.", graph_with_options.size());
+  bool all_requested_om2 = false;
+  std::vector<std::map<std::string, std::string>> converted_options;
+  const auto convert_ret = ConvertBundleBuildOptions(graph_with_options, converted_options, all_requested_om2);
+  if (convert_ret != GRAPH_SUCCESS) {
+    return convert_ret;
+  }
+  GELOGI("Bundle build mode:%s.", all_requested_om2 ? "OM2" : "OM1");
   SessionId session_id = SessionIdManager::GetNextSessionId();
   auto graph_rebuild_state_ctrl = MakeShared<GraphRebuildStateCtrl>();
   GE_ASSERT_NOTNULL(graph_rebuild_state_ctrl);
@@ -1620,10 +1648,6 @@ graphStatus aclgrphBundleBuildModel(const std::vector<ge::GraphWithOptions> &gra
     VarManagerPool::Instance().RemoveVarManager(session_id);
   });
 
-  bool all_requested_om2 = false;
-  std::vector<std::map<std::string, std::string>> converted_options;
-  GE_ASSERT_SUCCESS(ConvertBundleBuildOptions(graph_with_options, converted_options, all_requested_om2));
-  GELOGI("Bundle build mode:%s.", all_requested_om2 ? "OM2" : "OM1");
   return all_requested_om2
              ? BuildOm2BundleModel(graph_with_options, converted_options, session_id, graph_rebuild_state_ctrl, model)
              : BuildOm1BundleModel(graph_with_options, session_id, graph_rebuild_state_ctrl, model);

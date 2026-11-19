@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置数据中的flags。
 
@@ -25,7 +25,7 @@ void SetFlowFlags(const uint32_t flow_flags)
 | --- | --- | --- |
 | flow_flags | 输入 | 消息头中的flags标志。<br>flags可以取如下枚举值：<br>enum class FlowFlag : uint32_t {<br>   FLOW_FLAG_EOS = (1U << 0U),  // 数据流结束标志<br>   FLOW_FLAG_SEG = (1U << 1U)  // 非连续数据的分段标志<br>}; |
 
-## 返回值
+## 返回值说明
 
 无。
 

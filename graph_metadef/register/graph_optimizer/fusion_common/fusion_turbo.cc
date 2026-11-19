@@ -653,7 +653,7 @@ Status FusionTurbo::LinkInput(Relations &input_relations, const ge::NodePtr &dst
   const auto dst_op_desc = dst_node->GetOpDesc();
   const auto &in_relations = input_relations.GetInRelations();
   if (in_relations.empty()) {
-    GELOGD("dst_node %s's input relations is empty.", dst_node->GetName().c_str());
+    GELOGD("dst_node %s's input relations are empty.", dst_node->GetName().c_str());
     return PARAM_INVALID;
   }
 
@@ -700,7 +700,7 @@ Status FusionTurbo::LinkOutput(Relations &output_relations, const ge::NodePtr &s
   const auto dst_op_desc = src_node->GetOpDesc();
   const auto &out_relations = output_relations.GetOutRelations();
   if (out_relations.empty()) {
-    GELOGD("src_node %s's output relations is empty.", src_node->GetName().c_str());
+    GELOGD("src_node %s's output relations are empty.", src_node->GetName().c_str());
     return PARAM_INVALID;
   }
 
@@ -930,7 +930,7 @@ Status FusionTurbo::MultiInOne(const ge::NodePtr &new_node, Relations &input_rel
   }
 
   if (output_relations.GetOutRelations().empty()) {
-    GELOGD("[FusionTurbo][MultiInOne][LnkOut] Output relations is empty, skip for node %s.",
+    GELOGD("[FusionTurbo][MultiInOne][LnkOut] Output relations are empty, skip for node %s.",
            new_node->GetName().c_str());
   } else if (LinkOutput(output_relations, new_node, UPDATE_THIS) != SUCCESS) {
     GELOGE(FAILED, "[FusionTurbo][MultiInOne][LnkOut]Failed to link output for node %s.", new_node->GetName().c_str());

@@ -48,7 +48,7 @@ bool IsL1ExceptionDumpEnabled() {
 
 Status GetL0InputSize(const GertModelTaskDesc &task_info, const GertModelArgSlotInfo &slot, uint64_t &size) {
   if ((task_info.input_num > 0U) && (task_info.inputs == nullptr)) {
-    GELOGE(PARAM_INVALID, "[Check][Param] OM2 task input entries is null, input_num=%u.", task_info.input_num);
+    GELOGE(PARAM_INVALID, "[Check][Param] OM2 task input entries are null, input_num=%u.", task_info.input_num);
     return PARAM_INVALID;
   }
   for (uint64_t i = 0U; i < task_info.input_num; ++i) {
@@ -64,7 +64,7 @@ Status GetL0InputSize(const GertModelTaskDesc &task_info, const GertModelArgSlot
 
 Status GetL0OutputSize(const GertModelTaskDesc &task_info, const GertModelArgSlotInfo &slot, uint64_t &size) {
   if ((task_info.output_num > 0U) && (task_info.outputs == nullptr)) {
-    GELOGE(PARAM_INVALID, "[Check][Param] OM2 task output entries is null, output_num=%u.", task_info.output_num);
+    GELOGE(PARAM_INVALID, "[Check][Param] OM2 task output entries are null, output_num=%u.", task_info.output_num);
     return PARAM_INVALID;
   }
   for (uint32_t i = 0U; i < task_info.output_num; ++i) {
@@ -287,7 +287,7 @@ Status ExceptionDumpImpl::SaveOpInfo(const GertModelTaskDesc &task_info) {
 
   // 保存输入输出张量信息
   if ((task_info.input_num > 0U) && (task_info.inputs == nullptr)) {
-    GELOGE(PARAM_INVALID, "[Check][Param] OM2 task input entries is null, input_num=%u.", task_info.input_num);
+    GELOGE(PARAM_INVALID, "[Check][Param] OM2 task input entries are null, input_num=%u.", task_info.input_num);
     return PARAM_INVALID;
   }
   for (uint32_t i = 0; i < task_info.input_num; ++i) {
@@ -309,7 +309,7 @@ Status ExceptionDumpImpl::SaveOpInfo(const GertModelTaskDesc &task_info) {
   }
 
   if ((task_info.output_num > 0U) && (task_info.outputs == nullptr)) {
-    GELOGE(PARAM_INVALID, "[Check][Param] OM2 task output entries is null, output_num=%u.", task_info.output_num);
+    GELOGE(PARAM_INVALID, "[Check][Param] OM2 task output entries are null, output_num=%u.", task_info.output_num);
     return PARAM_INVALID;
   }
   for (uint32_t i = 0; i < task_info.output_num; ++i) {

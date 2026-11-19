@@ -35,7 +35,7 @@ EsCTensorHolder *EsCreateVariable(EsCGraphBuilder *graph, int32_t index, const c
 
 ## 约束说明
 
-无
+- 仅计算图支持该接口：当图构建器以执行图类别创建（[EsCreateGraphBuilderWithKind](EsCreateGraphBuilderWithKind.md)中`kind`为`C_GRAPH_EXECUTE`）时，调用该接口返回nullptr，并上报错误码E10062。
 
 ## 调用示例
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取日志实现类。
 
@@ -25,7 +25,7 @@ static FlowFuncLogger &GetLogger(FlowFuncLogType type)
 | --- | --- | --- |
 | type | 输入 | 日志类型取值为FlowFuncLogType<br>enum class FLOW_FUNC_VISIBILITY FlowFuncLogType {<br>DEBUG_LOG = 0, // 调试日志<br>RUN_LOG = 1  // 运行日志<br>}; |
 
-## 返回值
+## 返回值说明
 
 日志实现类。
 

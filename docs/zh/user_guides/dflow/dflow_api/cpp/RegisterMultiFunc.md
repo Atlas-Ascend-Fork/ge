@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 注册多flow func。
 
@@ -36,7 +36,7 @@
 | flowFuncName | 输入 | flow func的名称。不可以设置为NULL，必须以“\0”结尾。 |
 | funcCreator/funcWithQCreator | 输入 | 多flow func的创建函数。 |
 
-## 返回值
+## 返回值说明
 
 - true
 - false

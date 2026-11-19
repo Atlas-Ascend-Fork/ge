@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 由Client单侧发起建链。由于动态扩缩的部分大部分是Decode侧，因此将P定义为Server端，D定义为Client端，建链过程实现由D向P发起建链的流程。
 
@@ -47,7 +47,7 @@ for cluster_i in range(len(rets)):
         print(f"{cluster_i} link failed.")
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下返回两个值的元组，第一个值是接口的返回值，类型是[LLMStatusCode](LLMStatusCode.md)，第二个是每个集群建链结果的列表，类型是[LLMStatusCode](LLMStatusCode.md)。
 

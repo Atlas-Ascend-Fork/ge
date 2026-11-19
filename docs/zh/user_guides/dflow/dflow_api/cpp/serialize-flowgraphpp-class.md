@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 FlowGraphPp的序列化方法。
 
@@ -25,7 +25,7 @@ void Serialize(ge::AscendString &str) const override
 | --- | --- | --- |
 | str | 输出 | FlowGraphPp序列化的字符串。 |
 
-## 返回值
+## 返回值说明
 
 无。
 

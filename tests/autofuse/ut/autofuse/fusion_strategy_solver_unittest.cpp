@@ -30,6 +30,7 @@
 #include "lowering/op_helper/lower_concat_helper.h"
 #include "lowering/op_helper/lower_split_helper.h"
 #include "can_fuse/strategy/concat_fusion_strategy.h"
+#include "can_fuse/strategy/reduce_fusion_strategy.h"
 #include "can_fuse/autofuse_graph_manager.h"
 #include "op_creator_register.h"
 #include "all_ops_cpp.h"
@@ -5645,75 +5646,99 @@ TEST_F(UtestFusionStrategySolver, FuseBatchMatmulBaisMulRelu) {
   AutoFuseConfig::MutableConfig().GetMutableFusionStrategySolver().max_fuse_rounds = 10U;
   ASSERT_EQ(ret, SUCCESS);
 }
-TEST_F(UtestFusionStrategySolver, Reduce_Can_Only_Fuse_At_Most_3_Elementwise) {
+static OpDescPtr CreateReduceFusionTestNode(const std::string &name, const std::string &type, int input_count) {
+  return OP_CFG(type)
+      .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
+      .InCnt(input_count)
+      .OutCnt(1)
+      .InNames({"x"})
+      .OutNames({"y"})
+      .Build(name);
+}
+
+static void CheckReduceFusionTypes(const NodePtr &reduce, const NodePtr &next, const NodePtr &horizontal) {
+  auto next_attr = BackendUtils::GetNodeAutoFuseAttr(next);
+  auto horizontal_attr = BackendUtils::GetNodeAutoFuseAttr(horizontal);
+  ASSERT_NE(next_attr, nullptr);
+  ASSERT_NE(horizontal_attr, nullptr);
+  ReduceFusionStrategy strategy;
+  next_attr->SetFuseType(loop::FuseType::kPointwise);
+  EXPECT_TRUE(strategy.CanFuse(reduce, next));
+  next_attr->SetFuseType(loop::FuseType::kReduction);
+  EXPECT_TRUE(strategy.CanFuse(reduce, next));
+  horizontal_attr->SetFuseType(loop::FuseType::kPointwise);
+  EXPECT_TRUE(strategy.CanFuse(reduce, horizontal));
+  EXPECT_TRUE(strategy.CanFuse(horizontal, reduce));
+  horizontal_attr->SetFuseType(loop::FuseType::kReduction);
+  EXPECT_TRUE(strategy.CanFuse(reduce, horizontal));
+  next_attr->SetFuseType(loop::FuseType::kReshape);
+  EXPECT_TRUE(strategy.CanFuse(reduce, next));
+  horizontal_attr->SetFuseType(loop::FuseType::kReshape);
+  EXPECT_TRUE(strategy.CanFuse(reduce, horizontal));
+  next_attr->SetFuseType(loop::FuseType::kReduction);
+  next_attr->GetMutableInterAttrs().fuse_type |= 1UL << static_cast<uint64_t>(loop::FuseType::kReshape);
+  EXPECT_TRUE(strategy.CanFuse(reduce, next));
+  horizontal_attr->SetFuseType(loop::FuseType::kReduction);
+  horizontal_attr->GetMutableInterAttrs().fuse_type |= 1UL << static_cast<uint64_t>(loop::FuseType::kReshape);
+  EXPECT_TRUE(strategy.CanFuse(reduce, horizontal));
+  EXPECT_TRUE(BackendUtils::IsOnlyPointwiseAndReduce(horizontal));
+  horizontal_attr->GetMutableInterAttrs().fuse_type |= 1UL << static_cast<uint64_t>(loop::FuseType::kGather);
+  EXPECT_FALSE(BackendUtils::IsOnlyPointwiseAndReduce(horizontal));
+  EXPECT_FALSE(strategy.CanFuse(reduce, horizontal));
+  next_attr->GetMutableInterAttrs().fuse_type |= 1UL << static_cast<uint64_t>(loop::FuseType::kGather);
+  EXPECT_FALSE(strategy.CanFuse(reduce, next));
+  for (const auto type : {loop::FuseType::kGather, loop::FuseType::kConcat, loop::FuseType::kCube,
+                          loop::FuseType::kSplit, loop::FuseType::kTranspose}) {
+    next_attr->SetFuseType(type);
+    horizontal_attr->SetFuseType(type);
+    EXPECT_FALSE(strategy.CanFuse(reduce, next));
+    EXPECT_FALSE(strategy.CanFuse(reduce, horizontal));
+  }
+}
+
+TEST_F(UtestFusionStrategySolver, ReduceFusionStrategyPointwiseAndReduce) {
+  auto input = OP_CFG("Data").TensorDesc(FORMAT_ND, DT_FLOAT, {2, 4}).InCnt(0).OutCnt(1).Build("input");
+  auto first = OP_CFG(kAscBackendType).TensorDesc(FORMAT_ND, DT_FLOAT, {2, 4}).InCnt(1).OutCnt(1).Build("first");
+  auto second = OP_CFG(kAscBackendType).TensorDesc(FORMAT_ND, DT_FLOAT, {2, 4}).InCnt(2).OutCnt(1).Build("second");
+  auto sibling = OP_CFG(kAscBackendType).TensorDesc(FORMAT_ND, DT_FLOAT, {2, 4}).InCnt(1).OutCnt(1).Build("sibling");
+  DEF_GRAPH(g1) {
+    CHAIN(NODE(input)->EDGE(0, 0)->NODE(first)->EDGE(0, 0)->NODE(second));
+    CHAIN(NODE(input)->EDGE(0, 1)->NODE(second));
+    CHAIN(NODE(input)->EDGE(0, 0)->NODE(sibling));
+  };
+  auto graph = ToComputeGraph(g1);
+  auto reduce = graph->FindNode("first");
+  auto next = graph->FindNode("second");
+  auto horizontal = graph->FindNode("sibling");
+  ASSERT_NE(reduce, nullptr);
+  ASSERT_NE(next, nullptr);
+  ASSERT_NE(horizontal, nullptr);
+  auto reduce_attr = GetOrCreateAutoFuseAttrs(reduce->GetOpDescBarePtr());
+  auto next_attr = GetOrCreateAutoFuseAttrs(next->GetOpDescBarePtr());
+  auto horizontal_attr = GetOrCreateAutoFuseAttrs(horizontal->GetOpDescBarePtr());
+  ASSERT_NE(reduce_attr, nullptr);
+  ASSERT_NE(next_attr, nullptr);
+  ASSERT_NE(horizontal_attr, nullptr);
+  reduce_attr->SetFuseType(loop::FuseType::kReduction);
+  reduce_attr->SetReduceFusedElementwiseNodeNum(100U);
+  CheckReduceFusionTypes(reduce, next, horizontal);
+}
+
+TEST_F(UtestFusionStrategySolver, ReduceCanFuseMoreThanThreeElementwise) {
   class MockFusionDecider : public AscBackendFusionDecider {
     NodePtr Fuse(const NodePtr &node1, const NodePtr &node2, const CounterPtr &counter) {
       return AscBackendFusionDecider::Fuse(node1, node2, counter);
     }
   };
-  auto data1 = OP_CFG("Data")
-                   .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-                   .InCnt(0)
-                   .OutCnt(1)
-                   .InNames({"x"})
-                   .OutNames({"y"})
-                   .Build("data1");
-  auto data2 = OP_CFG("Data")
-                   .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-                   .InCnt(0)
-                   .OutCnt(1)
-                   .InNames({"x"})
-                   .OutNames({"y"})
-                   .Build("data2");
-  auto gather = OP_CFG(kAscBackendType)
-                    .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-                    .InCnt(2)
-                    .OutCnt(1)
-                    .InNames({"x"})
-                    .OutNames({"y"})
-                    .Build("Gather");
-  auto reduce = OP_CFG(kAscBackendType)
-                    .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-                    .InCnt(1)
-                    .OutCnt(1)
-                    .InNames({"x"})
-                    .OutNames({"y"})
-                    .Build("Reduce");
-  auto d = OP_CFG(kAscBackendType)
-               .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-               .InCnt(1)
-               .OutCnt(1)
-               .InNames({"x"})
-               .OutNames({"y"})
-               .Build("D");
-  auto a = OP_CFG(kAscBackendType)
-               .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-               .InCnt(1)
-               .OutCnt(1)
-               .InNames({"x"})
-               .OutNames({"y"})
-               .Build("A");
-  auto r = OP_CFG(kAscBackendType)
-               .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-               .InCnt(1)
-               .OutCnt(1)
-               .InNames({"x"})
-               .OutNames({"y"})
-               .Build("R");
-  auto r1 = OP_CFG(kAscBackendType)
-                .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-                .InCnt(1)
-                .OutCnt(1)
-                .InNames({"x"})
-                .OutNames({"y"})
-                .Build("R1");
-  auto e1 = OP_CFG(kAscBackendType)
-                .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-                .InCnt(1)
-                .OutCnt(1)
-                .InNames({"x"})
-                .OutNames({"y"})
-                .Build("E1");
+  auto data1 = CreateReduceFusionTestNode("data1", "Data", 0);
+  auto data2 = CreateReduceFusionTestNode("data2", "Data", 0);
+  auto gather = CreateReduceFusionTestNode("Gather", kAscBackendType, 2);
+  auto reduce = CreateReduceFusionTestNode("Reduce", kAscBackendType, 1);
+  auto d = CreateReduceFusionTestNode("D", kAscBackendType, 1);
+  auto a = CreateReduceFusionTestNode("A", kAscBackendType, 1);
+  auto r = CreateReduceFusionTestNode("R", kAscBackendType, 1);
+  auto r1 = CreateReduceFusionTestNode("R1", kAscBackendType, 1);
+  auto e1 = CreateReduceFusionTestNode("E1", kAscBackendType, 1);
   DEF_GRAPH(g1) {
     CHAIN(NODE(data1)->EDGE(0, 0)->NODE(gather));
     CHAIN(NODE(data2)->EDGE(0, 1)->NODE(gather));
@@ -5730,46 +5755,16 @@ TEST_F(UtestFusionStrategySolver, Reduce_Can_Only_Fuse_At_Most_3_Elementwise) {
   FusionStrategySolver fusion_strategy_solver;
   EXPECT_EQ(fusion_strategy_solver.Fuse(graph), SUCCESS);
   const auto post_nodes_size = graph->GetAllNodesSize();
-  // Reduce, D, A, R, R1融合在一起
-  EXPECT_EQ(pre_nodes_size - 4U, post_nodes_size);
+  // Reduce 与后续五个 elementwise 融合。
+  EXPECT_EQ(pre_nodes_size - 5U, post_nodes_size);
 }
 
-TEST_F(UtestFusionStrategySolver, Reduce_Can_Not_Fuse_With_Elementwise_Which_Has_More_Than_3_Compute_Nodes) {
-  auto data1 = OP_CFG("Data")
-                   .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-                   .InCnt(0)
-                   .OutCnt(1)
-                   .InNames({"x"})
-                   .OutNames({"y"})
-                   .Build("data1");
-  auto data2 = OP_CFG("Data")
-                   .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-                   .InCnt(0)
-                   .OutCnt(1)
-                   .InNames({"x"})
-                   .OutNames({"y"})
-                   .Build("data2");
-  auto gather = OP_CFG(kAscBackendType)
-                    .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-                    .InCnt(2)
-                    .OutCnt(1)
-                    .InNames({"x"})
-                    .OutNames({"y"})
-                    .Build("Gather");
-  auto reduce = OP_CFG(kAscBackendType)
-                    .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-                    .InCnt(1)
-                    .OutCnt(1)
-                    .InNames({"x"})
-                    .OutNames({"y"})
-                    .Build("Reduce");
-  auto d = OP_CFG(kAscBackendType)
-               .TensorDesc(FORMAT_ND, DT_FLOAT, {1, 2, 3, 4})
-               .InCnt(1)
-               .OutCnt(1)
-               .InNames({"x"})
-               .OutNames({"y"})
-               .Build("D");
+TEST_F(UtestFusionStrategySolver, ReduceElementwiseFusionIgnoresPreviousLimit) {
+  auto data1 = CreateReduceFusionTestNode("data1", "Data", 0);
+  auto data2 = CreateReduceFusionTestNode("data2", "Data", 0);
+  auto gather = CreateReduceFusionTestNode("Gather", kAscBackendType, 2);
+  auto reduce = CreateReduceFusionTestNode("Reduce", kAscBackendType, 1);
+  auto d = CreateReduceFusionTestNode("D", kAscBackendType, 1);
   DEF_GRAPH(g1) {
     CHAIN(NODE(data1)->EDGE(0, 0)->NODE(gather));
     CHAIN(NODE(data2)->EDGE(0, 1)->NODE(gather));
@@ -5787,7 +5782,7 @@ TEST_F(UtestFusionStrategySolver, Reduce_Can_Not_Fuse_With_Elementwise_Which_Has
   FusionStrategySolver fusion_strategy_solver;
   EXPECT_EQ(fusion_strategy_solver.Fuse(graph), SUCCESS);
   const auto post_nodes_size = graph->GetAllNodesSize();
-  EXPECT_EQ(pre_nodes_size, post_nodes_size);
+  EXPECT_EQ(pre_nodes_size - 1U, post_nodes_size);
   AutoFuseConfig::MutableConfig().GetMutableFusionStrategySolver().max_reduce_can_fuse_elementwise_nums =
       old_max_reduce_can_fuse_elementwise_nums;
 }

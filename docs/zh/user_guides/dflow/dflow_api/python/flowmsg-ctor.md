@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 FlowMsg的构造函数。
 
@@ -23,7 +23,7 @@ __init__(self, flow_msg: flowfunc_wrapper.FlowMsg) -> None
 
 flowfunc\_wrapper模块中定义的FlowMsg。实际执行时由C++代码传入，通过pybind11的绑定关系映射成flowfunc\_wrapper的FlowMsg对象。
 
-## 返回值
+## 返回值说明
 
 返回FlowMsg类型的对象。
 

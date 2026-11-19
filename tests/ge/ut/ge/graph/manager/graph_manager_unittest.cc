@@ -12,6 +12,7 @@
 
 #include <fstream>
 #include <memory>
+#include <cstdlib>
 #include <stdlib.h>
 #include <pthread.h>
 #include <algorithm>
@@ -38,6 +39,7 @@
 #include "graph/passes/variable_optimize/variable_op_pass.h"
 #include "graph/utils/tensor_adapter.h"
 #include "api/aclgrph/option_utils.h"
+#include "common/helper/om2/om2_utils.h"
 #include "formats/utils/formats_trans_utils.h"
 #include "graph/passes/graph_builder_utils.h"
 #include "graph/ops_stub.h"
@@ -89,9 +91,23 @@ const uint32_t kDoneAdded = 2;
 
 namespace ge {
 namespace {
-class EnvValueGuard {
+class GraphOptionsGuard {
  public:
-  explicit EnvValueGuard(const char *name) : name_(name) {
+  GraphOptionsGuard() {
+    graph_options_ = GetThreadLocalContext().GetAllGraphOptions();
+  }
+
+  ~GraphOptionsGuard() {
+    GetThreadLocalContext().SetGraphOption(graph_options_);
+  }
+
+ private:
+  std::map<std::string, std::string> graph_options_;
+};
+
+class PcieEnvGuard {
+ public:
+  explicit PcieEnvGuard(const char *name) : name_(name) {
     const char *value = std::getenv(name_.c_str());
     if (value != nullptr) {
       old_value_ = value;
@@ -99,7 +115,7 @@ class EnvValueGuard {
     }
   }
 
-  ~EnvValueGuard() {
+  ~PcieEnvGuard() {
     if (had_value_) {
       (void)setenv(name_.c_str(), old_value_.c_str(), 1);
     } else {
@@ -114,7 +130,7 @@ class EnvValueGuard {
 };
 
 void EnableOm2OnlineMode() {
-  ASSERT_EQ(setenv("ENABLE_RUNTIME_OM2", "1", 1), 0);
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
 }
 
 Graph BuildHCCLGraph() {
@@ -4724,6 +4740,20 @@ TEST_F(UtestGraphManagerTest, test_checkIoReuseMemIndexesOption1) {
   EXPECT_EQ(CheckOptionValidThreshold(options, OPTION_HOST_SCHEDULING_MAX_THRESHOLD), SUCCESS);
 }
 
+TEST_F(UtestGraphManagerTest, test_CheckModelFormatOptionValid) {
+  std::map<std::string, std::string> options;
+  EXPECT_EQ(CheckModelFormatOptionValid(options), SUCCESS);
+
+  options.emplace("ge.modelFormat", std::to_string(MODEL_FORMAT_OM));
+  EXPECT_EQ(CheckModelFormatOptionValid(options), SUCCESS);
+
+  options["ge.modelFormat"] = std::to_string(MODEL_FORMAT_OM2);
+  EXPECT_EQ(CheckModelFormatOptionValid(options), SUCCESS);
+
+  options["ge.modelFormat"] = "invalid";
+  EXPECT_EQ(CheckModelFormatOptionValid(options), PARAM_INVALID);
+}
+
 TEST_F(UtestGraphManagerTest, test_CheckOutputReuseInputMemIndexesOption) {
   auto graph1 = gert::ShareGraph::BuildSwitchMergeGraph();
   auto compute_graph1 = GraphUtilsEx::GetComputeGraph(graph1);
@@ -5640,7 +5670,7 @@ TEST_F(UtestGraphManagerTest, test_compile_graph_need_rebuild) {
   EXPECT_EQ(graph_manager.CompileGraph(graph_id, 0U, inputs), ge::PARAM_INVALID);
 }
 TEST_F(UtestGraphManagerTest, SetConstAndFeatureMemoryBase_RecordForOm2Load) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   GraphId graph_id = 1;
@@ -5650,6 +5680,7 @@ TEST_F(UtestGraphManagerTest, SetConstAndFeatureMemoryBase_RecordForOm2Load) {
   GraphNodePtr graph_node;
   GeModelPtr ge_model;
   CreateSummaryCompiledModel(graph_node, ge_model);
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_node->SetBuildFlag(true);
   graph_node->SetCompiledFlag(true);
@@ -5666,7 +5697,7 @@ TEST_F(UtestGraphManagerTest, SetConstAndFeatureMemoryBase_RecordForOm2Load) {
 }
 
 TEST_F(UtestGraphManagerTest, SetFixedFeatureMemoryBase_ReturnsUnsupportedInOm2Mode) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   GraphId graph_id = 1;
@@ -5676,6 +5707,7 @@ TEST_F(UtestGraphManagerTest, SetFixedFeatureMemoryBase_ReturnsUnsupportedInOm2M
   GraphNodePtr graph_node;
   GeModelPtr ge_model;
   CreateSummaryCompiledModel(graph_node, ge_model);
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_node->SetBuildFlag(true);
   graph_node->SetCompiledFlag(true);
@@ -5686,7 +5718,7 @@ TEST_F(UtestGraphManagerTest, SetFixedFeatureMemoryBase_ReturnsUnsupportedInOm2M
 }
 
 TEST_F(UtestGraphManagerTest, UpdateRefreshableFeatureMemoryBase_ReturnsUnsupportedInOm2Mode) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   GraphId graph_id = 1;
@@ -5696,6 +5728,7 @@ TEST_F(UtestGraphManagerTest, UpdateRefreshableFeatureMemoryBase_ReturnsUnsuppor
   GraphNodePtr graph_node;
   GeModelPtr ge_model;
   CreateSummaryCompiledModel(graph_node, ge_model);
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_node->SetBuildFlag(true);
   graph_node->SetCompiledFlag(true);
@@ -5705,7 +5738,7 @@ TEST_F(UtestGraphManagerTest, UpdateRefreshableFeatureMemoryBase_ReturnsUnsuppor
 }
 
 TEST_F(UtestGraphManagerTest, GetCompiledModel_SerializesOm2ModelDataInOm2Mode) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   GraphId graph_id = 1;
@@ -5715,6 +5748,7 @@ TEST_F(UtestGraphManagerTest, GetCompiledModel_SerializesOm2ModelDataInOm2Mode) 
   GraphNodePtr graph_node;
   GeModelPtr ge_model;
   CreateSummaryCompiledModel(graph_node, ge_model);
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_node->SetBuildFlag(true);
   graph_node->SetCompiledFlag(true);
@@ -5739,7 +5773,7 @@ TEST_F(UtestGraphManagerTest, GetCompiledModel_SerializesOm2ModelDataInOm2Mode) 
 }
 
 TEST_F(UtestGraphManagerTest, RunGraphAsync_Om2ComputeGraphReturnsUnsupported) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   GraphId graph_id = 1;
@@ -5750,6 +5784,7 @@ TEST_F(UtestGraphManagerTest, RunGraphAsync_Om2ComputeGraphReturnsUnsupported) {
   GeModelPtr ge_model;
   CreateSummaryCompiledModel(graph_node, ge_model);
   graph_node->SetGraph(MakeShared<Graph>("compute_graph"));
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_manager.AddGraphNode(graph_id, graph_node);
   graph_node->SetBuildFlag(true);
   graph_node->SetCompiledFlag(true);
@@ -6013,7 +6048,7 @@ TEST_F(UtestGraphManagerTest, test_ParseHintInputShape_invalid_pattern) {
 }
 
 TEST_F(UtestGraphManagerTest, ProcessPcieThrough_SkipWhenDisabledByOption) {
-  EnvValueGuard env_guard("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE");
+  PcieEnvGuard env_guard("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE");
   (void)setenv("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE", "1", 1);
   auto back_options = ge::GetThreadLocalContext().GetAllGlobalOptions();
   auto global_options = back_options;
@@ -6033,7 +6068,7 @@ TEST_F(UtestGraphManagerTest, ProcessPcieThrough_SkipWhenDisabledByOption) {
 }
 
 TEST_F(UtestGraphManagerTest, ProcessPcieThrough_SkipWhenPlatformNotSupport) {
-  EnvValueGuard env_guard("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE");
+  PcieEnvGuard env_guard("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE");
   (void)setenv("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE", "1", 1);
   auto graph = CreateGraphWithNullOutput();
   GraphManager graph_manager;
@@ -6046,7 +6081,7 @@ TEST_F(UtestGraphManagerTest, ProcessPcieThrough_SkipWhenPlatformNotSupport) {
 }
 
 TEST_F(UtestGraphManagerTest, ProcessPcieThrough_SetsFlagWhenSupported) {
-  EnvValueGuard env_guard("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE");
+  PcieEnvGuard env_guard("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE");
   (void)setenv("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE", "1", 1);
   SetPcieThroughPartialSupport(true);
   gert::SpaceRegistryFaker::CreateDefaultSpaceRegistryImpl2(true);
@@ -6077,7 +6112,7 @@ TEST_F(UtestGraphManagerTest, ProcessPcieThrough_SetsFlagWhenSupported) {
 }
 
 TEST_F(UtestGraphManagerTest, ProcessPcieThrough_SkipWhenEnvVarNotSet) {
-  EnvValueGuard env_guard("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE");
+  PcieEnvGuard env_guard("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE");
   (void)unsetenv("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE");
   SetPcieThroughPartialSupport(true);
   gert::SpaceRegistryFaker::CreateDefaultSpaceRegistryImpl2(true);
@@ -6101,7 +6136,7 @@ TEST_F(UtestGraphManagerTest, ProcessPcieThrough_SkipWhenEnvVarNotSet) {
 }
 
 TEST_F(UtestGraphManagerTest, ProcessPcieThrough_SkipWhenEnvVarZero) {
-  EnvValueGuard env_guard("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE");
+  PcieEnvGuard env_guard("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE");
   (void)setenv("OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE", "0", 1);
   SetPcieThroughPartialSupport(true);
   gert::SpaceRegistryFaker::CreateDefaultSpaceRegistryImpl2(true);
@@ -6330,7 +6365,7 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_AddPreservesOptionsAndRejectsClone) {
 }
 
 TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileFailureDoesNotPublishOrKeepBusyState) {
-  EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard env_guard;
   EnableOm2OnlineMode();
   GraphManager manager;
   manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
@@ -6350,7 +6385,7 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileFailureDoesNotPublishOrKeepBus
 }
 
 TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileReusesArtifactRegardlessOfOm2OnlineMode) {
-  EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard env_guard;
   GraphManager manager;
   manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
   auto node = std::make_shared<GraphNode>(75U);
@@ -6360,10 +6395,10 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileReusesArtifactRegardlessOfOm2O
   node->SetBuildFlag(true);
   manager.AddGraphNode(75U, node);
 
-  ASSERT_EQ(unsetenv("ENABLE_RUNTIME_OM2"), 0);
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM)}});
   EXPECT_EQ(manager.CompileGraph(75U, 1U, {}), SUCCESS);
-  for (const char *value : {"0", "true", "1"}) {
-    ASSERT_EQ(setenv("ENABLE_RUNTIME_OM2", value, 1), 0);
+  for (const auto model_format : {MODEL_FORMAT_OM, MODEL_FORMAT_OM2}) {
+    GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(model_format)}});
     EXPECT_EQ(manager.CompileGraph(75U, 1U, {}), SUCCESS);
   }
   EXPECT_TRUE(node->GetBuildFlag());
@@ -6374,13 +6409,9 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileReusesArtifactRegardlessOfOm2O
 }
 
 TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileValidatesModelRegardlessOfOm2OnlineMode) {
-  EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
-  for (const char *value : {static_cast<const char *>(nullptr), "0", "true", "1"}) {
-    if (value == nullptr) {
-      ASSERT_EQ(unsetenv("ENABLE_RUNTIME_OM2"), 0);
-    } else {
-      ASSERT_EQ(setenv("ENABLE_RUNTIME_OM2", value, 1), 0);
-    }
+  GraphOptionsGuard env_guard;
+  for (const auto model_format : {MODEL_FORMAT_OM, MODEL_FORMAT_OM2}) {
+    GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(model_format)}});
     GraphManager manager;
     manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();
     ASSERT_EQ(manager.AddGraph(77U, MakeSessionExecuteGraph("execute"), {}, OmgContext{}), SUCCESS);
@@ -6398,7 +6429,7 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileValidatesModelRegardlessOfOm2O
 }
 
 TEST_F(UtestGraphManagerTest, ExecuteGraph_CompileChecksBusyAndRebuildStateBeforeReusingArtifact) {
-  EnvValueGuard env_guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard env_guard;
   EnableOm2OnlineMode();
   GraphManager manager;
   manager.graph_rebuild_state_ctrl_ = std::make_shared<GraphRebuildStateCtrl>();

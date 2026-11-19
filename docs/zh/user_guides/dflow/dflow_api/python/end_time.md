@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 以属性方法读取和设置FlowInfo的结束时间。
 
@@ -28,7 +28,7 @@ def end_time(self, new_value)
 | --- | --- | --- |
 | new_value | int | 要设置的FlowInfo结束时间的值。 |
 
-## 返回值
+## 返回值说明
 
 end\_time属性。
 

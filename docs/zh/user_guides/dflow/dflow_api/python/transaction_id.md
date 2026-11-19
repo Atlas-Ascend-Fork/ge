@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 以属性方式读写事务ID。
 
@@ -28,7 +28,7 @@ def transaction_id(self, new_value)
 | --- | --- | --- |
 | new_value | int | 设置的事务ID的新值，设置为0时表示不使用自定义的transId，内部会采用自增的方式自动生成transId。 |
 
-## 返回值
+## 返回值说明
 
 transaction\_id的属性。
 

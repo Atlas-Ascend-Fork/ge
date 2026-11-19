@@ -737,7 +737,7 @@ HcclResult HcomOpsKernelBuilder::GetCountsFromOpDesc(const ge::Node &node, std::
     // 不能通过是否为空来判断是否成功获取到数据量，因为根据vector标准库的定义，
     // 就算vector没有元素，其指针可能为空也可能不为空，需要根据recvCounts的size来判断是否成功获取到数据量
     if (counts.empty()) {
-      HCCL_ERROR("[TaskDefSetNumBlocks][GetCountsFromOpDesc], counts is empty");
+      HCCL_ERROR("[TaskDefSetNumBlocks][GetCountsFromOpDesc], counts are empty");
       return HCCL_E_PTR;
     }
   } else if (opType == HcclCMDType::HCCL_CMD_REDUCE_SCATTER_V) {
@@ -746,7 +746,7 @@ HcclResult HcomOpsKernelBuilder::GetCountsFromOpDesc(const ge::Node &node, std::
     // reducescatterV的counts代表sendCount，因为算子是散射操作，是send给所有ranks
     HcomOpUtils::GetReduceScatterVCountsDispl(const_cast<ge::Node &>(node), counts, sendDispls, recvCount);
     if (counts.empty()) {
-      HCCL_WARNING("[TaskDefSetNumBlocks][GetCountsFromOpDesc], counts is empty");
+      HCCL_WARNING("[TaskDefSetNumBlocks][GetCountsFromOpDesc], counts are empty");
       return HCCL_SUCCESS;
     }
   }

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 判断消息类型ID是否被注册过
 
@@ -25,7 +25,7 @@ registered(msg_type)
 | --- | --- | --- |
 | msg_type | int | 注册的类型ID。 |
 
-## 返回值
+## 返回值说明
 
 bool，True表示注册过，False表示没有注册
 

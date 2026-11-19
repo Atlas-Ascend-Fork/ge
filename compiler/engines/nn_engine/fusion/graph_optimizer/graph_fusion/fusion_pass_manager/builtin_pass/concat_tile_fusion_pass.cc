@@ -394,7 +394,7 @@ Status ConcatTileFusionPass::InsertConcatOp(ge::OpDescPtr &new_concat_op_desc, c
   FE_CHECK(GetConcatValueByConcatdim(inputs, concat_shape_dim, concat_ori_shape_dim, new_concat_op_desc) != SUCCESS,
            FE_LOGE("New concat node couldn't get concat value"), return FAILED);
 
-  FE_LOGD("New concat_tile op[%s, %s] with inputs is [%zu].", new_concat_op_desc->GetNamePtr(),
+  FE_LOGD("New concat_tile op[%s, %s] with input count [%zu].", new_concat_op_desc->GetNamePtr(),
           new_concat_op_desc->GetTypePtr(), inputs.size());
   ge::AttrUtils::SetInt(new_concat_op_desc, "N", static_cast<int64_t>(inputs.size()));
   // add concat dim for new concat_node
@@ -587,7 +587,7 @@ Status ConcatTileFusionPass::ReplaceConcatNodeAddInputs(
     concat_node_peer_output_anchors.emplace_back(peer_out_node_info.second.first);
     indx++;
   }
-  FE_LOGD("Replace concat node[%s] with inputs is [%zu].", replace_concat_node->GetNamePtr(),
+  FE_LOGD("Replace concat node[%s] with input count [%zu].", replace_concat_node->GetNamePtr(),
           concat_node_peer_output_info.size());
   ge::AttrUtils::SetInt(replace_concat_node, "N", static_cast<int64_t>(concat_node_peer_output_info.size()));
   return SUCCESS;
@@ -615,7 +615,7 @@ Status ConcatTileFusionPass::ReplaceConcatNodeAddOutputs(
   }
   int64_t concat_input_num = 0;
   (void)ge::AttrUtils::GetInt(replace_concat_node, "N", concat_input_num);
-  FE_LOGD("The current input_size is[%lld], anchors is [%zu].", concat_input_num,
+  FE_LOGD("The current input_size is[%lld], anchor count is [%zu].", concat_input_num,
           concat_node_peer_output_anchors.size());
   if (concat_input_num == 1) {
     FE_LOGD("Starting to fuse node->output.");

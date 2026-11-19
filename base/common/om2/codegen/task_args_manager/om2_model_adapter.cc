@@ -823,7 +823,7 @@ Status ModelAdapter::ParseHostInputIndexOption(const size_t input_num) {
   string copy_host_inputs;
   (void)ge::GetContext().GetOption(OPTION_EXEC_HOST_INPUT_INDEXES, copy_host_inputs);
   if (copy_host_inputs.empty()) {
-    GELOGI("[OM2] host input indexes is empty.");
+    GELOGI("[OM2] host input indexes are empty.");
     return SUCCESS;
   }
 

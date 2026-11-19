@@ -27,9 +27,9 @@ class CustomOpFactory {
   static graphStatus RegisterCustomOpCreator(const AscendString &op_type, const BaseOpCreator &op_creator);
   static graphStatus RegisterCustomOpCreator(const AscendString &op_type, OpBackend backend,
                                              const BaseOpCreator &op_creator);
-  static graphStatus RegisterCustomOpCreator(const AscendString &op_type, OpBackend backend,
-                                             OpRegistrationPriority priority, OpEngine engine,
-                                             const BaseOpCreator &op_creator);
+  __attribute__((weak)) static graphStatus RegisterCustomOpCreator(const AscendString &op_type, OpBackend backend,
+                                                                   OpRegistrationPriority priority, OpEngine engine,
+                                                                   const BaseOpCreator &op_creator);
 
   static BaseCustomOp *CreateOrGetCustomOp(const AscendString &op_type);
   static BaseCustomOp *CreateOrGetCustomOp(const AscendString &op_type, OpBackend backend);

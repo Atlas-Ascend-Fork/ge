@@ -295,6 +295,26 @@ TEST_F(GeApiTest, AddGraph_test_fail) {
   ReInitGe();
 }
 
+TEST_F(GeApiTest, AddGraphWithH2DOverlapOptionSucceeds) {
+  std::map<std::string, std::string> options;
+  EXPECT_EQ(GEInitialize(options), SUCCESS);
+
+  Session session(options);
+  std::map<AscendString, AscendString> h2d_options = {
+      {AscendString("ge.compile.h2dOverlappedWithCompute"), AscendString("1")}};
+  const auto compute_graph = MakeShared<ComputeGraph>("test_graph");
+  Graph graph = GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph);
+  EXPECT_EQ(session.AddGraph(1U, graph, h2d_options), SUCCESS);
+
+  std::map<AscendString, AscendString> h2d_manual_options = {
+      {AscendString("ge.compile.h2dOverlappedWithCompute"), AscendString("0,1")}};
+  const auto compute_graph_manual = MakeShared<ComputeGraph>("test_graph_manual");
+  Graph graph_manual = GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph_manual);
+  EXPECT_EQ(session.AddGraph(2U, graph_manual, h2d_manual_options), SUCCESS);
+  EXPECT_EQ(GEFinalize(), SUCCESS);
+  ReInitGe();
+}
+
 TEST_F(GeApiTest, run_graph_with_device_tensor) {
   vector<std::string> engine_list = {"AIcoreEngine"};
   auto add1 = OP_CFG(ADD).TensorDesc(FORMAT_NCHW, DT_FLOAT, {1, 1, 224, 224});

@@ -511,12 +511,6 @@ Status Om2PackageHelper::BuildDynamicManifest(gert::GertModelData &model_data, c
   return SUCCESS;
 }
 
-Status Om2PackageHelper::SerializeModelData(const gert::GertModelData &model_data, const std::string &model_name,
-                                            const std::string &output_file, ModelBufferData &model) const {
-  const std::string writer_path = (!is_offline_ && !model_name.empty()) ? model_name : output_file;
-  return gert::SerializeGertModelData(model_data, model, is_offline_, writer_path);
-}
-
 Status Om2PackageHelper::CollectSoBinaries(const GeRootModelPtr &ge_root_model, const GeModelPtr &root_model,
                                            std::vector<OpSoBinPtr> &so_bins) {
   GE_ASSERT_NOTNULL(ge_root_model);

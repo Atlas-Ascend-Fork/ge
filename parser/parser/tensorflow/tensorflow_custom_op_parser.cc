@@ -530,7 +530,7 @@ namespace ge {
     op_ss += reg_op_string;
     std::string reg_op_custom_string;
     ConstructRegCustomOpString(opdef, *node_def, reg_op_custom_string);
-    GELOGI("Generated REGISTER_CUSTOM_OP:\n%s", reg_op_custom_string.c_str());
+    GELOGD("Generated REGISTER_CUSTOM_OP:\n%s", reg_op_custom_string.c_str());
     custom_ss += reg_op_custom_string;
   }
   op_ss += "}\n";

@@ -3275,6 +3275,16 @@ bool BackendUtils::IsOnlyPointwise(const NodePtr &node) {
   return (all_fuse_type & ~mask) == 0;
 }
 
+bool BackendUtils::IsOnlyPointwiseAndReduce(const NodePtr &node) {
+  const auto attr = BackendUtils::GetNodeAutoFuseAttr(node);
+  GE_ASSERT_NOTNULL(attr);
+
+  constexpr uint64_t mask = (1UL << static_cast<uint64_t>(loop::FuseType::kPointwise)) |
+                            (1UL << static_cast<uint64_t>(loop::FuseType::kReshape)) |
+                            (1UL << static_cast<uint64_t>(loop::FuseType::kReduction));
+  return (attr->GetAllFuseType() & ~mask) == 0U;
+}
+
 void BackendUtils::SetReduceOriginalAxisInfo(AutofuseInnerAttrs &attr_new, const AutofuseInnerAttrs &attr1,
                                              const AutofuseInnerAttrs &attr2) {
   attr_new.reduce_original_axis_infos = attr1.reduce_original_axis_infos;

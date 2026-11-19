@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 根据CacheKey，从对应的Prompt节点拉取KV到本地KV Cache，仅当LLMRole为DECODER时可调用。
 
@@ -55,7 +55,7 @@ kv_cache_manager.pull_cache(cache_keys[1], cache, 1, src_layer_range=range(0,2),
 kv_cache_manager.pull_cache(cache_keys[1], cache, src_cache_offset=0, dst_cache_offset=0)
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

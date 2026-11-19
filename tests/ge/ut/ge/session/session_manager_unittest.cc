@@ -10,7 +10,6 @@
 
 #include <gtest/gtest.h>
 
-#include <cstdlib>
 #include <string>
 
 #include "macro_utils/dt_public_scope.h"
@@ -22,32 +21,8 @@ using namespace std;
 
 namespace ge {
 namespace {
-class EnvValueGuard {
- public:
-  explicit EnvValueGuard(const char *name) : name_(name) {
-    const char *value = std::getenv(name_.c_str());
-    if (value != nullptr) {
-      old_value_ = value;
-      had_value_ = true;
-    }
-  }
-
-  ~EnvValueGuard() {
-    if (had_value_) {
-      (void)setenv(name_.c_str(), old_value_.c_str(), 1);
-    } else {
-      (void)unsetenv(name_.c_str());
-    }
-  }
-
- private:
-  std::string name_;
-  std::string old_value_;
-  bool had_value_ = false;
-};
-
 void EnableOm2OnlineMode() {
-  ASSERT_EQ(setenv("ENABLE_RUNTIME_OM2", "1", 1), 0);
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
 }
 
 }  // namespace
@@ -115,7 +90,7 @@ TEST_F(Utest_SessionManager, GetSession_not_exits) {
 }
 
 TEST_F(Utest_SessionManager, GetVariables_Om2Mode_ReturnsUnsupported) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  const auto graph_options = GetThreadLocalContext().GetAllGraphOptions();
   EnableOm2OnlineMode();
 
   auto sm = std::make_shared<SessionManager>();
@@ -123,6 +98,7 @@ TEST_F(Utest_SessionManager, GetVariables_Om2Mode_ReturnsUnsupported) {
   std::vector<std::string> var_names;
   std::vector<ge::Tensor> var_values;
   EXPECT_EQ(sm->GetVariables(0, var_names, var_values), GE_GRAPH_UNSUPPORTED);
+  GetThreadLocalContext().SetGraphOption(graph_options);
 }
 
 }  // namespace ge

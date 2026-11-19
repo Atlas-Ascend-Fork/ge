@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 添加FuncProcessPoint调用的GraphProcessPoint或FlowGraphProcessPoint。
 
@@ -28,7 +28,7 @@ add_invoked_closure(graph_key, flow_graph_pp)
 | graph_pp | [GraphProcessPoint](dataflow-GraphProcessPoint.md) | 调用的GraphProcessPoint，具体请参见[dataflow.GraphProcessPoint](dataflow-GraphProcessPoint.md)。 |
 | flow_graph_pp | [FlowGraphProcessPoint](dataflow-FlowGraphProcessPoint.md) | 调用的FlowGraphProcessPoint，具体请参见[dataflow.FlowGraphProcessPoint](dataflow-FlowGraphProcessPoint.md)。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

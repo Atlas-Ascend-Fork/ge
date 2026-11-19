@@ -2728,7 +2728,7 @@ TEST(TeFusionBinaryUTest, test_ParseBinaryInfo) {
   std::string simpleKeystr;
   res = generateKey.GenerateSimpleKeyStr(simpleKeystr);
   EXPECT_EQ(res, true);
-  EXPECT_EQ(simpleKeystr, "PadV2/d=0,p=1/9,2/3,2/6,2/2,2/reflect");
+  EXPECT_EQ(simpleKeystr, "PadV2/d=0,p=1,dt=0/9,2/3,2/6,2/2,2/reflect");
 
   TbeOpInfoPtr pTbeOp1 = std::make_shared<TbeOpInfo>(opInfo);
   AddOpParamToTbeOpInfoPtr({-1, -1}, "int8", "ND", "input0", range, true, pTbeOp1, TT_REQ);
@@ -2749,7 +2749,7 @@ TEST(TeFusionBinaryUTest, test_ParseBinaryInfo) {
   std::string simpleKeystr1;
   res = generateKey1.GenerateSimpleKeyStr(simpleKeystr1);
   EXPECT_EQ(res, true);
-  EXPECT_EQ(simpleKeystr1, "PadV2/d=0,p=1/2,2/3,2/2,2/2,2/reflect");
+  EXPECT_EQ(simpleKeystr1, "PadV2/d=0,p=1,dt=0/2,2/3,2/2,2/2,2/reflect");
 }
 
 TEST(TeFusionBinaryUTest, test_GetSimplifiedKey) {
@@ -3482,4 +3482,168 @@ TEST(TeFusionBinaryUTest, test_generate_simple_key_list_004) {
   std::unordered_map<std::string, std::string> simpleKeyInfoMap;
   BinaryInfoBasePtr binaryInfo = nullptr;
   binaryInfo->GenerateSimpleKeyList(opType, binaryList, simpleKeyInfoMap);
+}
+
+static BinaryInfoBasePtr CreateBinaryInfoPtrForSimpleKeyTest() {
+  MOCKER_CPP(&te::fusion::BinaryInfoBase::GetBinaryInfoConfigPath,
+             bool (te::fusion::BinaryInfoBase::*)(const std::string &, std::string &, const bool &, const std::string &)
+                 const)
+      .stubs()
+      .will(invoke(GetBinaryInfoConfigPath_Stub));
+  TeConfigInfo::Instance().config_str_item_vec_[static_cast<size_t>(TeConfigInfo::ConfigStrItem::ShortSocVersion)] =
+      "910B";
+  BinaryInfoBasePtr binaryInfoPtr = std::make_shared<BinaryInfoBase>();
+  std::string configJsonPath = "";
+  if (!binaryInfoPtr->ParseBinaryInfoFile(configJsonPath, false)) {
+    return nullptr;
+  }
+  return binaryInfoPtr;
+}
+
+static void CreateAbsOpInfoForSimpleKeyTest(const std::string &format, TbeOpInfoPtr &pTbeOp) {
+  std::vector<std::pair<int64_t, int64_t>> range = {{1, 10}, {1, 10}};
+  TbeOpInfo opInfo("abs", "", "Abs", "AIcoreEngine");
+  pTbeOp = std::make_shared<TbeOpInfo>(opInfo);
+  AddOpParamToTbeOpInfoPtr({-1, -1}, "float32", format, "x", range, true, pTbeOp, TT_REQ);
+  AddOpParamToTbeOpInfoPtr({-1, -1}, "float32", format, "y", range, false, pTbeOp, TT_REQ);
+  TbeOpInfoCache::Instance().tbeOpInfoMap_.clear();
+  TbeOpInfoCache::Instance().UpdateTbeOpInfo("abs", pTbeOp);
+}
+
+TEST(TeFusionBinaryUTest, test_GenerateSimpleKeyWithDeterministicLevel) {
+  BinaryInfoBasePtr binaryInfoPtr = CreateBinaryInfoPtrForSimpleKeyTest();
+  ASSERT_NE(binaryInfoPtr, nullptr);
+
+  TbeOpInfoCache::Instance().secondTbeOpInfoMap_.clear();
+  std::vector<std::pair<int64_t, int64_t>> range = {{1, 10}, {1, 10}};
+  TbeOpInfo opInfo("padV2", "", "PadV2", "AIcoreEngine");
+  TbeOpInfoPtr pTbeOp = std::make_shared<TbeOpInfo>(opInfo);
+  AddOpParamToTbeOpInfoPtr({-1, -1}, "int64", "ND", "input0", range, true, pTbeOp, TT_REQ);
+  AddOpParamToTbeOpInfoPtr({-1, -1}, "int32", "ND", "input1", range, true, pTbeOp, TT_DYN);
+  AddOpParamToTbeOpInfoPtr({-1, -1}, "int16", "ND", "input2", range, true, pTbeOp, TT_OPT);
+  AddOpParamToTbeOpInfoPtr({-1, -1}, "int8", "ND", "output", range, false, pTbeOp, TT_OPT);
+  TbeOpInfoCache::Instance().tbeOpInfoMap_.clear();
+  TbeOpInfoCache::Instance().UpdateTbeOpInfo("padV2", pTbeOp);
+  std::string strVal = "reflect";
+  TbeAttrValue attr_var("mode", strVal);
+  pTbeOp->AddAttrValue(attr_var);
+  std::vector<TbeOpParam> inputs;
+  std::vector<TbeOpParam> outputs;
+  std::vector<TbeAttrValue> attrValues;
+  pTbeOp->GetInputs(inputs);
+  pTbeOp->GetOutputs(outputs);
+  pTbeOp->GetAttrValues(attrValues);
+
+  // 确定性等级为 2 时，等级以 dt=2 的形式追加在 impl mode 之后
+  GenerateSimpleKey generateKey = {"PadV2", SimpleKeyModeType::COMPATIBLE_MODE, "high_performance", "false", true, "2"};
+  generateKey.SetInputs(inputs);
+  generateKey.SetOutputs(outputs);
+  generateKey.SetAttrs(attrValues);
+  generateKey.SetBinaryInfoPtr(binaryInfoPtr);
+  std::string simpleKeystr;
+  EXPECT_EQ(generateKey.GenerateSimpleKeyStr(simpleKeystr), true);
+  EXPECT_EQ(simpleKeystr, "PadV2/d=0,p=1,dt=2/9,2/3,2/6,2/2,2/reflect");
+
+  // 确定性等级为 0 时同样生成 dt=0
+  GenerateSimpleKey generateKeyWithoutLevel = {
+      "PadV2", SimpleKeyModeType::COMPATIBLE_MODE, "high_performance", "false", true, "0"};
+  generateKeyWithoutLevel.SetInputs(inputs);
+  generateKeyWithoutLevel.SetOutputs(outputs);
+  generateKeyWithoutLevel.SetAttrs(attrValues);
+  generateKeyWithoutLevel.SetBinaryInfoPtr(binaryInfoPtr);
+  std::string simpleKeystrWithoutLevel;
+  EXPECT_EQ(generateKeyWithoutLevel.GenerateSimpleKeyStr(simpleKeystrWithoutLevel), true);
+  EXPECT_EQ(simpleKeystrWithoutLevel, "PadV2/d=0,p=1,dt=0/9,2/3,2/6,2/2,2/reflect");
+
+  // 关闭确定性等级后生成历史格式的 key，用于匹配未携带 dt 的旧二进制
+  std::string simpleKeystrNoLevel;
+  EXPECT_EQ(generateKeyWithoutLevel.GenerateSimpleKeyStr(simpleKeystrNoLevel, false), true);
+  EXPECT_EQ(simpleKeystrNoLevel, "PadV2/d=0,p=1/9,2/3,2/6,2/2,2/reflect");
+}
+
+TEST(TeFusionBinaryUTest, test_GenerateSimpleKeyWithFormatAgnostic) {
+  BinaryInfoBasePtr binaryInfoPtr = CreateBinaryInfoPtrForSimpleKeyTest();
+  ASSERT_NE(binaryInfoPtr, nullptr);
+
+  TbeOpInfoPtr pTbeOp = nullptr;
+  CreateAbsOpInfoForSimpleKeyTest("NCHW", pTbeOp);
+  ASSERT_NE(pTbeOp, nullptr);
+  std::vector<TbeOpParam> inputs;
+  std::vector<TbeOpParam> outputs;
+  pTbeOp->GetInputs(inputs);
+  pTbeOp->GetOutputs(outputs);
+
+  GenerateSimpleKey generateKey = {"Abs", SimpleKeyModeType::SIMPLE_MODE, "default", "false", true};
+  generateKey.SetInputs(inputs);
+  generateKey.SetOutputs(outputs);
+  generateKey.SetBinaryInfoPtr(binaryInfoPtr);
+
+  // formatMode 为 static_nd_agnostic，动态 shape 场景下 NCHW 被泛化为 ND
+  std::string agnosticKey;
+  EXPECT_EQ(generateKey.GenerateSimpleKeyStr(agnosticKey), true);
+  EXPECT_EQ(agnosticKey, "Abs/d=0,p=0,dt=0/0,2/0,2");
+
+  // 关闭 format 泛化后，使用节点原始 format 生成 simplified key
+  std::string originFormatKey;
+  EXPECT_EQ(generateKey.GenerateSimpleKeyStr(originFormatKey, true, false), true);
+  EXPECT_EQ(originFormatKey, "Abs/d=0,p=0,dt=0/0,0/0,0");
+}
+
+TEST(TeFusionBinaryUTest, test_GenerateSimpleKeyCandidatesWithFallback) {
+  BinaryInfoBasePtr binaryInfoPtr = CreateBinaryInfoPtrForSimpleKeyTest();
+  ASSERT_NE(binaryInfoPtr, nullptr);
+
+  TbeOpInfoPtr pTbeOp = nullptr;
+  CreateAbsOpInfoForSimpleKeyTest("NCHW", pTbeOp);
+  ASSERT_NE(pTbeOp, nullptr);
+  std::vector<TbeOpParam> inputs;
+  std::vector<TbeOpParam> outputs;
+  pTbeOp->GetInputs(inputs);
+  pTbeOp->GetOutputs(outputs);
+
+  GenerateSimpleKey generateKey = {"Abs", SimpleKeyModeType::SIMPLE_MODE, "default", "false", true, "2"};
+  generateKey.SetInputs(inputs);
+  generateKey.SetOutputs(outputs);
+  generateKey.SetBinaryInfoPtr(binaryInfoPtr);
+
+  std::vector<std::string> simpleKeys;
+  EXPECT_EQ(generateKey.GenerateSimpleKeyCandidates(simpleKeys), true);
+  ASSERT_EQ(simpleKeys.size(), 4);
+  EXPECT_EQ(simpleKeys[0], "Abs/d=0,p=0,dt=2/0,2/0,2");
+  EXPECT_EQ(simpleKeys[1], "Abs/d=0,p=0/0,2/0,2");
+  EXPECT_EQ(simpleKeys[2], "Abs/d=0,p=0,dt=2/0,0/0,0");
+  EXPECT_EQ(simpleKeys[3], "Abs/d=0,p=0/0,0/0,0");
+
+  // 带确定性等级的 key 在历史二进制中不存在，回退到不带等级的 key 匹配成功
+  std::string jsonFilePath;
+  EXPECT_EQ(binaryInfoPtr->MatchSimpleKey("Abs", simpleKeys[0], jsonFilePath), false);
+  EXPECT_EQ(binaryInfoPtr->MatchSimpleKey("Abs", simpleKeys[1], jsonFilePath), true);
+  EXPECT_EQ(jsonFilePath, "ascend910/abs/Abs_5c5e58e043224cccf51a06108010ae13_high_performance.json");
+  // 历史二进制中没有原始 format 的 key，原始 format 的候选匹配失败
+  EXPECT_EQ(binaryInfoPtr->MatchSimpleKey("Abs", simpleKeys[3], jsonFilePath), false);
+}
+
+TEST(TeFusionBinaryUTest, test_GenerateSimpleKeyCandidatesWithoutFallback) {
+  BinaryInfoBasePtr binaryInfoPtr = CreateBinaryInfoPtrForSimpleKeyTest();
+  ASSERT_NE(binaryInfoPtr, nullptr);
+
+  // 原始 format 即为 ND，format 泛化不产生新的候选，仅保留不带 dt 的历史格式回退 key
+  TbeOpInfoPtr pTbeOp = nullptr;
+  CreateAbsOpInfoForSimpleKeyTest("ND", pTbeOp);
+  ASSERT_NE(pTbeOp, nullptr);
+  std::vector<TbeOpParam> inputs;
+  std::vector<TbeOpParam> outputs;
+  pTbeOp->GetInputs(inputs);
+  pTbeOp->GetOutputs(outputs);
+
+  GenerateSimpleKey generateKey = {"Abs", SimpleKeyModeType::SIMPLE_MODE, "default", "false", true, "0"};
+  generateKey.SetInputs(inputs);
+  generateKey.SetOutputs(outputs);
+  generateKey.SetBinaryInfoPtr(binaryInfoPtr);
+
+  std::vector<std::string> simpleKeys;
+  EXPECT_EQ(generateKey.GenerateSimpleKeyCandidates(simpleKeys), true);
+  ASSERT_EQ(simpleKeys.size(), 2);
+  EXPECT_EQ(simpleKeys[0], "Abs/d=0,p=0,dt=0/0,2/0,2");
+  EXPECT_EQ(simpleKeys[1], "Abs/d=0,p=0/0,2/0,2");
 }

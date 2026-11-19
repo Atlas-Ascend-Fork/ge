@@ -161,7 +161,7 @@ void DataDumpImpl::InitDumpInfo(const GertModelTaskDesc &task_info, ModelTaskTyp
 Status DataDumpImpl::CopyTaskIoEntries(const GertModelTaskIoEntry *entries, uint32_t entry_num,
                                        std::vector<InnerTensorInfo> &inner_tensors) const {
   if ((entry_num > 0U) && (entries == nullptr)) {
-    GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io entries is null, entry_num=%u.", entry_num);
+    GELOGE(PARAM_INVALID, "[Check][Param] OM2 task io entries are null, entry_num=%u.", entry_num);
     return PARAM_INVALID;
   }
   inner_tensors.reserve(entry_num);

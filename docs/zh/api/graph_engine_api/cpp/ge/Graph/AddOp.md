@@ -33,4 +33,5 @@ graphStatus AddOp(const ge::Operator &op)
 
 ## 约束说明
 
-此接口为非必须接口。主要用于用户在多个函数间切换时，operator对象可能因为是局部变量而无法被多个函数获取，此时operator可以注册在graph中，通过graph获取先前创建的operator对象，但注册到graph后，此operator对象除非graph销毁，否则一直存在。
+- 此接口为非必须接口。主要用于用户在多个函数间切换时，operator对象可能因为是局部变量而无法被多个函数获取，此时operator可以注册在graph中，通过graph获取先前创建的operator对象，但注册到graph后，此operator对象除非graph销毁，否则一直存在。
+- 仅计算图支持该接口：当Graph以执行图类别构造（`Graph(name, C_GRAPH_EXECUTE)`）时，调用该接口返回GRAPH_FAILED，并上报错误码E18888。

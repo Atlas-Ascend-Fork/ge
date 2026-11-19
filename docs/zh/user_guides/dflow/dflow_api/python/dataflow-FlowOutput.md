@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 描述FlowNode的输出。
 
@@ -28,7 +28,7 @@ FlowOutput(node, index)
 | node | FlowNode | FlowNode节点，具体请参见[dataflow.FlowNode](dataflow-FlowNode.md)。 |
 | index | int | FlowNode节点的输出index |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

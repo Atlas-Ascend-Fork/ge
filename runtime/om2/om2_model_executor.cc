@@ -479,7 +479,7 @@ class Om2ModelExecutor::Impl {
     weight_buf.reset(nullptr);
     kernel_bin_info.clear();
 
-    GE_ASSERT_TRUE(!om2_data.models.empty(), "[OM2] models is empty");
+    GE_ASSERT_TRUE(!om2_data.models.empty(), "[OM2] models are empty");
     const auto &unit = *om2_data.models[0];
     GE_ASSERT_NOTNULL(unit.model_meta, "[OM2] model_meta is null");
     GE_ASSERT_NOTNULL(unit.runtime, "[OM2] program_body is null");
@@ -724,7 +724,7 @@ class Om2ModelExecutor::Impl {
       bin_sizes[i] = kernel_bin_info[i].data_size;
     }
     session_id_ = session_id;
-    GE_ASSERT_TRUE(!model_data.models.empty(), "[OM2] models is empty");
+    GE_ASSERT_TRUE(!model_data.models.empty(), "[OM2] models are empty");
     GE_CHK_STATUS_RET(
         PrepareConstantsFromStruct(*model_data.models[0]->constants_config, weight_buf, load_arg, constants),
         "[OM2][Call]PrepareConstantsFromStruct failed.");
@@ -1525,7 +1525,7 @@ ge::Status Om2ModelExecutor::Load(ge::ModelData &model_data, const Om2ModelLoadA
 
 ge::Status Om2ModelExecutor::Load(const gert::GertModelData &model_data, const Om2ModelLoadArg &load_arg,
                                   const uint64_t session_id) const {
-  GE_ASSERT_TRUE(!model_data.models.empty(), "[OM2] models is empty");
+  GE_ASSERT_TRUE(!model_data.models.empty(), "[OM2] models are empty");
   GE_ASSERT_NOTNULL(model_data.models[0]);
   const auto execution_type = GetGertModelExecutionType(*model_data.models[0]);
   GE_ASSERT_TRUE(execution_type == GertModelExecutionType::kStatic ||
@@ -1874,14 +1874,14 @@ ge::Status QueryMemAndWeightSizeFromData(const void *model_data, const size_t mo
       gert::DeserializeGertModelMeta(static_cast<const uint8_t *>(model_data), model_size, &meta_data);
   GE_ASSERT_TRUE(meta_ret == 0U, "[OM2][Query] Deserialize model meta failed, ret = %u.", meta_ret);
   GE_CHK_STATUS_RET_NOLOG(RejectBundleArchiveForSingleModelQuery(meta_data));
-  GE_ASSERT_TRUE(!meta_data.models.empty(), "[OM2][Query] models is empty");
+  GE_ASSERT_TRUE(!meta_data.models.empty(), "[OM2][Query] models are empty");
   work_size = static_cast<size_t>(meta_data.models[0]->model_meta->work_size);
 
   gert::GertModelData config_data;
   const uint32_t config_ret =
       gert::DeserializeGertConstantsConfig(static_cast<const uint8_t *>(model_data), model_size, &config_data);
   GE_ASSERT_TRUE(config_ret == 0U, "[OM2][Query] Deserialize constants config failed, ret = %u.", config_ret);
-  GE_ASSERT_TRUE(!config_data.models.empty(), "[OM2][Query] models is empty");
+  GE_ASSERT_TRUE(!config_data.models.empty(), "[OM2][Query] models are empty");
   internal_weight_size = static_cast<size_t>(config_data.models[0]->constants_config->internal_weight_size);
   return ge::SUCCESS;
 }
@@ -1894,7 +1894,7 @@ ge::Status QueryWorkspaceSizeFromData(const void *model_data, const size_t model
   const uint32_t ret = gert::DeserializeGertModelMeta(static_cast<const uint8_t *>(model_data), model_size, &om2_data);
   GE_ASSERT_TRUE(ret == 0U, "[OM2][Query] Deserialize model meta failed, ret = %u.", ret);
   GE_CHK_STATUS_RET_NOLOG(RejectBundleArchiveForSingleModelQuery(om2_data));
-  GE_ASSERT_TRUE(!om2_data.models.empty(), "[OM2][Query] models is empty");
+  GE_ASSERT_TRUE(!om2_data.models.empty(), "[OM2][Query] models are empty");
   work_size = static_cast<size_t>(om2_data.models[0]->model_meta->work_size);
   zero_copy_size = query_zero_copy_size ? static_cast<size_t>(om2_data.models[0]->model_meta->zero_copy_size) : 0U;
   if (zero_copy_size > work_size) {
@@ -1915,7 +1915,7 @@ ge::Status QueryModelMetadataFromData(const void *model_data, const size_t model
   const uint32_t ret = gert::DeserializeGertModelMeta(static_cast<const uint8_t *>(model_data), model_size, &om2_data);
   GE_ASSERT_TRUE(ret == 0U, "[OM2][Query] Deserialize model meta failed, ret = %u.", ret);
   GE_CHK_STATUS_RET_NOLOG(RejectBundleArchiveForSingleModelQuery(om2_data));
-  GE_ASSERT_TRUE(!om2_data.models.empty(), "[OM2][Query] models is empty");
+  GE_ASSERT_TRUE(!om2_data.models.empty(), "[OM2][Query] models are empty");
   input_desc = std::move(om2_data.models[0]->model_meta->input_desc);
   input_desc_v2 = std::move(om2_data.models[0]->model_meta->input_desc_v2);
   output_desc = std::move(om2_data.models[0]->model_meta->output_desc);

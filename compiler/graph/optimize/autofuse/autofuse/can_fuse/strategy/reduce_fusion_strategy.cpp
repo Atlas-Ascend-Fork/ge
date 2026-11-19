@@ -13,7 +13,6 @@
 #include "fusion/autofuse_attrs.h"
 #include "can_fuse/strategy/fusion_strategy_registry.h"
 #include "utils/not_fuse_reason_code.h"
-#include "utils/auto_fuse_config.h"
 #include "can_fuse/backend/asc_graph_axis_mapping.h"
 
 namespace ge {
@@ -57,8 +56,8 @@ bool ReduceFusionStrategy::CanFuse(const NodePtr &node1, const NodePtr &node2) {
     return true;
   }
 
-  // reduce不支持水平融合
-  if (BackendUtils::IsHorizontal(node1, node2)) {
+  if (BackendUtils::IsHorizontal(node1, node2) &&
+      (!BackendUtils::IsOnlyPointwiseAndReduce(node1) || !BackendUtils::IsOnlyPointwiseAndReduce(node2))) {
     GELOGI(
         "node1 %s(%s) and node2 %s(%s) cannot fuse, the reason is [%s][node1 and node2 have horizontal link, and one "
         "node is Reduce]",
@@ -68,23 +67,10 @@ bool ReduceFusionStrategy::CanFuse(const NodePtr &node1, const NodePtr &node2) {
   }
 
   if (attr1->HasFuseType(loop::FuseType::kReduction)) {
-    // 不支持reduce后融合 非 elementwise
-    if (!BackendUtils::IsOnlyPointwise(node2)) {
+    if (!BackendUtils::IsOnlyPointwiseAndReduce(node2)) {
       GELOGI(
           "node1 %s(%s) and node2 %s(%s) cannot fuse, the reason is [%s][Reduce can only backward fuse with "
-          "elementwise nodes]",
-          node1->GetNamePtr(), node1->GetType().c_str(), node2->GetNamePtr(), node2->GetType().c_str(),
-          ge::NotFuseReasonCode(ge::NotFuseReason::kReduceCanOnlyBackwardFuse3Elementwise));
-      return false;
-    }
-    // reduce最多只能向后融合3个elementwise（非AscBackend数量，而是AscBackend内部的elementwise数量）
-    const auto config = autofuse::AutoFuseConfig::Config().GetFusionStrategySolver();
-    if (attr1->GetReduceFusedElementwiseNodeNum() + BackendUtils::GetComputeNodeNumInAscgraph(node2) >
-        config
-            .max_reduce_can_fuse_elementwise_nums) {  // reduce已后融合的elementwise数量+将要融合的elementwise数量不大于3
-      GELOGI(
-          "node1 %s(%s) and node2 %s(%s) cannot fuse, the reason is [%s][Reduce can only backward fuse with at most"
-          " 3 elementwise nodes]",
+          "pointwise, reshape or reduce nodes]",
           node1->GetNamePtr(), node1->GetType().c_str(), node2->GetNamePtr(), node2->GetType().c_str(),
           ge::NotFuseReasonCode(ge::NotFuseReason::kReduceCanOnlyBackwardFuse3Elementwise));
       return false;

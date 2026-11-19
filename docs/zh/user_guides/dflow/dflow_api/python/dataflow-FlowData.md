@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 DataFlow Graph中的数据节点，每个FlowData对应一个输入。
 
@@ -27,7 +27,7 @@ FlowData(data_cls=Tensor, schema:Optional[TensorDesc]=None, name=None)
 | schema | Optional[TensorDesc] | 对数据data_cls的描述，由于当前data_cls只支持Tensor，所以schema取值为TensorDesc。 |
 | name | str | 节点名称，框架会自动保证名称唯一，不设置时会自动生成FlowData, FlowData_1, FlowData_2,...的名称。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

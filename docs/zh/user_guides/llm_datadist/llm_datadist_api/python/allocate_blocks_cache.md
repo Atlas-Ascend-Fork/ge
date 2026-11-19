@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 PagedAttention场景下，分配多个blocks的Cache，Cache分配成功后，可通过[deallocate\_cache](deallocate_cache.md)释放内存。
 
@@ -39,7 +39,7 @@ blocks_cache_key = BlocksCacheKey(0, 0)
 kv_cache = kv_cache_manager.allocate_blocks_cache(cache_desc, blocks_cache_key)
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下返回KvCache。
 

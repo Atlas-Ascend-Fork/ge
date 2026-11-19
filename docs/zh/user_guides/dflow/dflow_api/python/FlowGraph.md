@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 DataFlow的graph，由输入节点FlowData和计算节点FlowNode构成。
 
@@ -28,7 +28,7 @@ FlowGraph(outputs, graph_options={}, name=None, graphpp_builder_async = False)
 | name | str | 图名称，框架会自动保证名称唯一，不设置时会自动生成FlowGraph, FlowGra, FlowGra,...的名称。 |
 | graphpp_builder_async | bool | FlowGraph中的GraphProcessPoint的构建器是否异步执行。取值如下：<br><br>  - True：是<br>  - False：否<br><br>默认值：False |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

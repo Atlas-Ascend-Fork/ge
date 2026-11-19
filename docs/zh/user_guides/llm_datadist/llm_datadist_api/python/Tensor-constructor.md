@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 构造Tensor。
 
@@ -36,7 +36,7 @@ from llm_datadist import Tensor
 tensor = Tensor(numpy.array([1]))
 ```
 
-## 返回值
+## 返回值说明
 
 正确情况下返回Tensor的实例。
 

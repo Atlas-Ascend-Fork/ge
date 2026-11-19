@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 添加FunctionPp调用的GraphPp，返回添加好的FunctionPp。
 
@@ -26,7 +26,7 @@ FunctionPp &AddInvokedClosure(const char_t *name, const GraphPp &graph_pp)
 | name | 输入 | 调用的GraphPp的唯一标识，需要全图唯一。 |
 | graph_pp | 输入 | 调用的GraphPp。 |
 
-## 返回值
+## 返回值说明
 
 返回设置好的FunctionPp。
 

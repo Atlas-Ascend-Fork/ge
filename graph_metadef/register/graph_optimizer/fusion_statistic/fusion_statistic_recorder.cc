@@ -60,7 +60,7 @@ void FusionStatisticRecorder::UpdateBufferFusionMatchTimes(const FusionInfo &fus
   }
   GELOGD("Updated match time of pass [%s] for graph [%s] and session [%lu].", fusion_info.GetPassName().c_str(),
          fusion_info.GetGraphId().c_str(), fusion_info.GetSessionId());
-  GELOGD("Match times is [%d] and repo match times is [%d].",
+  GELOGD("Match count is [%d] and repository match count is [%d].",
          buffer_fusion_info_map_[session_graph_id][fusion_info.GetPassName()].GetMatchTimes(),
          buffer_fusion_info_map_[session_graph_id][fusion_info.GetPassName()].GetRepoHitTimes());
 }

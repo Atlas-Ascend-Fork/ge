@@ -49,8 +49,11 @@ class ModelExecutor : public Executor {
   /// @brief Unload mode for graph.
   /// @param [in] ge_root_model: root model of graph compiled.
   /// @param [in] graph_id: graph identifier.
+  /// @param [in] is_execute_graph: whether the graph is an execute graph.
   /// @return Status result of function
   Status UnloadGraph(const GeRootModelPtr &ge_root_model, const uint32_t graph_id) override;
+  Status UnloadGraph(const GeRootModelPtr &ge_root_model, const uint32_t graph_id,
+                     const bool is_execute_graph) override;
 
   /// @brief Push model execution params to queue.
   /// @param [in] RunArgs of for model execution.

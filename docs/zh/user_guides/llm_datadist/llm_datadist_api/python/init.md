@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 初始化LLMDataDist。通过单边建链，即Client向Server发起建链，Prompt作为Server，Decode作为Client；限制只能从Decode往Prompt拉取KV。
 
@@ -40,7 +40,7 @@ engine_options = llm_config.generate_options()
 llm_datadist.init(engine_options)
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

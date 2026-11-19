@@ -34,4 +34,5 @@ graphStatus LoadFromSerializedModelArray(const void *serialized_model, size_t si
 
 ## 约束说明
 
-仅支持读取air格式的文件。
+- 仅支持读取air格式的文件。
+- 仅计算图支持该接口：当Graph以执行图类别构造（`Graph(name, C_GRAPH_EXECUTE)`）时，调用该接口返回GRAPH_FAILED，并上报错误码E18888。

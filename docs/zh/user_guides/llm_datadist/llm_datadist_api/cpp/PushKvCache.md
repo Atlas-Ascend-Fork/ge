@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 推送Cache到远端节点，仅当角色为Prompt时可调用。
 
@@ -53,7 +53,7 @@ ext_param.tensor_num_per_layer = 1;
 Status ret = llm_datadist.PushKvCache(cache, dst_cache_key, 3, -1, ext_param);
 ```
 
-## 返回值
+## 返回值说明
 
 - LLM\_SUCCESS：成功
 - LLM\_PARAM\_INVALID：参数错误

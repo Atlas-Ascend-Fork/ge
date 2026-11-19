@@ -615,6 +615,10 @@ ge::ExecuteGraphPtr ModelConverter::ConvertGeModelToExecuteGraph(const ge::GeRoo
   if ((root_model == nullptr) || (root_model->GetRootGraph() == nullptr)) {
     return nullptr;
   }
+  // 主执行体转换前统一摘除 fallback 子模型；fallback root 自己转换时保留其子模型。
+  if (!is_fallback) {
+    (void)root_model->ExtractFallbackModels();
+  }
 
   // 与 HybridModel::Init 对齐：lowering 前确保运行平台缓存已初始化（所有 V2 加载入口共享）；
   // 无设备时跳过，由 ResolveCustomOpCoreNum 查询失败降级为未设置

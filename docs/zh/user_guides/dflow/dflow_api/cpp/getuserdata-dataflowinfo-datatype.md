@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取用户信息。
 
@@ -27,7 +27,7 @@ Status GetUserData(void *data, size_t size, size_t offset = 0U) const
 | size | 输入 | 用户数据长度。取值范围(0, 64]。 |
 | offset | 输入 | 用户数据的偏移值，需要遵循如下约束。<br>[0, 64), size + offset <= 64 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS。
 - other：FAILED。

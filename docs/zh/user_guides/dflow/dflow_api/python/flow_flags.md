@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 以属性方法读取和设置FlowInfo的flow\_flags。
 
@@ -28,7 +28,7 @@ def flow_flags(self, new_value)
 | --- | --- | --- |
 | new_value | int | 重新设置的flow_flags的新值。 |
 
-## 返回值
+## 返回值说明
 
 flow\_flags属性。
 

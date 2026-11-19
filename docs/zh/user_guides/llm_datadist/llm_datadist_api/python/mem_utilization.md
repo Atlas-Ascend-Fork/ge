@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 配置ge.flowGraphMemMaxSize内存的利用率。默认值0.95。
 
@@ -36,7 +36,7 @@ llm_config = LLMConfig()
 llm_config.mem_utilization = 0.95
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

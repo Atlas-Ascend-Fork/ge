@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 获取dtype属性值。
 
@@ -32,7 +32,7 @@ dtype()
 dtype = tensor_desc.dtype
 ```
 
-## 返回值
+## 返回值说明
 
 返回dtype。
 

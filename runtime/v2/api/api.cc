@@ -81,28 +81,6 @@ ge::Status CheckGlobalDeterministicConfig(const ge::ComputeGraphPtr &root_graph)
   return ge::SUCCESS;
 }
 
-std::map<std::string, ge::GeModelPtr> ExtractFallbackModels(const ge::GeRootModelPtr &root_model) {
-  std::map<std::string, ge::GeModelPtr> fallback_models;
-  bool dual_body = false;
-  if ((root_model->GetRootGraph() == nullptr) ||
-      (!ge::AttrUtils::GetBool(root_model->GetRootGraph(), ge::kDualBodyAttr, dual_body)) || (!dual_body)) {
-    return fallback_models;
-  }
-  const std::string fb_root_key = ge::kFallbackModelKey;
-  const std::string fb_sub_prefix = ge::kFallbackSubgraphPrefix;
-  std::vector<std::string> fb_keys;
-  for (const auto &kv : root_model->GetSubgraphInstanceNameToModel()) {
-    if ((kv.first == fb_root_key) || (kv.first.compare(0U, fb_sub_prefix.size(), fb_sub_prefix) == 0U)) {
-      fb_keys.emplace_back(kv.first);
-    }
-  }
-  for (const auto &key : fb_keys) {
-    fallback_models[key] = root_model->GetSubgraphInstanceNameToModel().at(key);
-    root_model->RemoveInstanceSubgraphModel(key);
-  }
-  return fallback_models;
-}
-
 size_t SumModelWeightSize(const std::map<std::string, ge::GeModelPtr> &models) {
   size_t total = 0U;
   for (const auto &kv : models) {
@@ -259,12 +237,6 @@ ge::graphStatus LoadToModelV2ExecutorBuilder(const ge::ModelData &model_data, co
     return ret;
   }
 
-  // autofuse 离线双执行体：单执行体接口只返回主执行体，先摘出兜底 sub-model。
-  const auto fallback_models = ExtractFallbackModels(root_model);
-  if (!fallback_models.empty()) {
-    GELOGI("model contains %zu fallback sub model(s), ignored by single-executor API.", fallback_models.size());
-  }
-
   auto graph = ModelConverter().ConvertGeModelToExecuteGraph(root_model, args);
   GE_ASSERT_NOTNULL(graph, "Failed to lowering to execute graph");
 
@@ -289,7 +261,7 @@ ge::graphStatus LoadExecutorSetFromModelData(const ge::ModelData &model_data, co
     return ret;
   }
 
-  const auto fallback_models = ExtractFallbackModels(root_model);
+  const auto fallback_models = root_model->ExtractFallbackModels();
   GE_ASSERT_SUCCESS(LoadHostInputIndexesForExecutor(root_model->GetRootGraph(), executor_set));
   FillDualBodyWeightInfo(root_model->GetRootGraph(), root_model, fallback_models, executor_set);
   ModelConverter::Args converter_args{{}, nullptr, nullptr, nullptr, &args.file_constant_mems};

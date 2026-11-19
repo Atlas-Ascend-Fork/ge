@@ -53,6 +53,8 @@
 #include "graph/ge_context.h"
 #include "engines/local_engine/ops_kernel_store/ge_local_ops_kernel_builder.h"
 #include "register/ops_kernel_builder_registry.h"
+#include "register/graph_optimizer/fusion_common/fusion_turbo.h"
+#include "register/graph_optimizer/fusion_common/fusion_statistic_recorder.h"
 #include "ge_running_env/ge_running_env_faker.h"
 #include "ge_running_env/fake_graph_optimizer.h"
 #include "ge_running_env/tensor_utils.h"
@@ -7837,4 +7839,66 @@ TEST_F(GraphCompilerTest, test_UpdateInputWithHintShape_hint_shape_error) {
   inputs.emplace_back(tensor);
   inputs.emplace_back(tensor);
   EXPECT_NE(graph_manager.UpdateInputWithHintShape(hint_shape, inputs), SUCCESS);
+}
+
+TEST(GraphFusionDiagnosticsSt, EmptyRelationsLeaveGraphUnchanged) {
+  gert::GertRuntimeStub runtime_stub;
+  runtime_stub.GetSlogStub().SetLevelDebug();
+  auto graph = std::make_shared<ComputeGraph>("empty_relations");
+  auto desc = std::make_shared<OpDesc>("target", "Relu");
+  ASSERT_EQ(desc->AddInputDesc(GeTensorDesc()), GRAPH_SUCCESS);
+  ASSERT_EQ(desc->AddOutputDesc(GeTensorDesc()), GRAPH_SUCCESS);
+  auto node = graph->AddNode(desc);
+  ASSERT_NE(node, nullptr);
+  fe::FusionTurbo fusion(graph);
+  fe::Relations inputs;
+  fe::Relations outputs;
+  EXPECT_EQ(fusion.LinkInput(inputs, node), fe::PARAM_INVALID);
+  EXPECT_EQ(fusion.LinkOutput(outputs, node), fe::PARAM_INVALID);
+  EXPECT_EQ(graph->GetDirectNodesSize(), 1U);
+  EXPECT_EQ(node->GetInDataAnchor(0)->GetPeerOutAnchor(), nullptr);
+  EXPECT_TRUE(node->GetOutDataAnchor(0)->GetPeerInDataAnchors().empty());
+  EXPECT_GE(runtime_stub.GetSlogStub().FindLog(DLOG_DEBUG, "input relations are empty"), 0);
+  EXPECT_GE(runtime_stub.GetSlogStub().FindLog(DLOG_DEBUG, "output relations are empty"), 0);
+}
+
+TEST(GraphFusionDiagnosticsSt, FusionWithoutConsumersKeepsProducerConnection) {
+  gert::GertRuntimeStub runtime_stub;
+  runtime_stub.GetSlogStub().SetLevelDebug();
+  auto graph = std::make_shared<ComputeGraph>("fusion_without_consumers");
+  auto source_desc = std::make_shared<OpDesc>("source", "Data");
+  ASSERT_EQ(source_desc->AddOutputDesc(GeTensorDesc()), GRAPH_SUCCESS);
+  auto source = graph->AddNode(source_desc);
+  auto fused_desc = std::make_shared<OpDesc>("fused", "Relu");
+  ASSERT_EQ(fused_desc->AddInputDesc(GeTensorDesc()), GRAPH_SUCCESS);
+  ASSERT_EQ(fused_desc->AddOutputDesc(GeTensorDesc()), GRAPH_SUCCESS);
+  auto fused = graph->AddNode(fused_desc);
+  ASSERT_NE(source, nullptr);
+  ASSERT_NE(fused, nullptr);
+  fe::FusionTurbo fusion(graph);
+  fe::Relations inputs(0, {source, 0});
+  fe::Relations outputs;
+  ASSERT_EQ(fusion.MultiInOne(fused, inputs, outputs, {}, false), fe::SUCCESS);
+  EXPECT_EQ(fused->GetInDataAnchor(0)->GetPeerOutAnchor(), source->GetOutDataAnchor(0));
+  EXPECT_TRUE(fused->GetOutDataAnchor(0)->GetPeerInDataAnchors().empty());
+  EXPECT_EQ(graph->GetDirectNodesSize(), 2U);
+  EXPECT_GE(runtime_stub.GetSlogStub().FindLog(DLOG_DEBUG, "Output relations are empty, skip"), 0);
+}
+
+TEST(GraphFusionDiagnosticsSt, BufferFusionStatisticsPreserveMatchAndRepositoryCounts) {
+  gert::GertRuntimeStub runtime_stub;
+  runtime_stub.GetSlogStub().SetLevelDebug();
+  auto &recorder = fe::FusionStatisticRecorder::Instance();
+  const std::string key = "8129_log_diagnostics";
+  recorder.ClearFusionInfo(key);
+  const fe::FusionInfo info(8129U, "log_diagnostics", "fusion_pass", 3, 0, 2);
+  recorder.UpdateBufferFusionMatchTimes(info);
+  std::map<std::string, fe::FusionInfo> graph_info;
+  std::map<std::string, fe::FusionInfo> buffer_info;
+  recorder.GetAndClearFusionInfo(key, graph_info, buffer_info);
+  ASSERT_EQ(buffer_info.count("fusion_pass"), 1U);
+  EXPECT_EQ(buffer_info.at("fusion_pass").GetMatchTimes(), 3);
+  EXPECT_EQ(buffer_info.at("fusion_pass").GetRepoHitTimes(), 2);
+  EXPECT_TRUE(graph_info.empty());
+  EXPECT_GE(runtime_stub.GetSlogStub().FindLog(DLOG_DEBUG, "Match count is [3] and repository match count is [2]"), 0);
 }

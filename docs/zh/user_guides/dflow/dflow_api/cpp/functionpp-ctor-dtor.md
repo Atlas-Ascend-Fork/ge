@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 FunctionPp的构造函数和析构函数，构造函数会返回一个FunctionPp对象。
 
@@ -26,7 +26,7 @@ FunctionPp(const char_t *pp_name)
 | --- | --- | --- |
 | pp_name | 输入 | FunctionPp的名称，需要全图唯一。 |
 
-## 返回值
+## 返回值说明
 
 返回一个FunctionPp对象。
 

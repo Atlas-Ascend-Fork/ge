@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 给FlowNode添加映射的pp，当前一个FlowNode仅能添加一个pp，添加后会默认将FlowNode的输入输出和pp的输入输出按顺序进行映射。
 
@@ -25,7 +25,7 @@ add_process_point(pp)
 | --- | --- | --- |
 | pp | Union[GraphProcessPoint, FuncProcessPoint] | FlowNode节点映射的处理点，可以是[GraphProcessPoint](dataflow-GraphProcessPoint.md)或者[FuncProcessPoint](dataflow-FuncProcessPoint.md)。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

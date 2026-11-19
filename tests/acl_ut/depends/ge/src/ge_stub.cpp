@@ -2473,6 +2473,6 @@ namespace ge {
 Status TensorTransUtils::TransGertTensorToHost(const gert::Tensor &device_tensor, gert::Tensor &host_tensor) {
   (void)device_tensor;
   host_tensor.SetPlacement(gert::kOnHost);
-  return aclrtMemcpy(nullptr, 0U, nullptr, 0U, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_ERROR_NONE ? SUCCESS : FAILED;
+  return aclrtMemcpy(nullptr, 0U, nullptr, 0U, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS ? SUCCESS : FAILED;
 }
 }  // namespace ge

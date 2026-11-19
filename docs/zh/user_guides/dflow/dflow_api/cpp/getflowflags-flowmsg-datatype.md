@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取FlowMsg消息头中的flags。
 
@@ -23,7 +23,7 @@ uint32_t GetFlowFlags() const
 
 无。
 
-## 返回值
+## 返回值说明
 
 返回FlowMsg消息中的flags。
 

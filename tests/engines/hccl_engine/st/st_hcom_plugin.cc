@@ -801,3 +801,12 @@ TEST_F(HcomPluginTest, st_GetOpsKernelInfoPtr_ShouldReturnValidPtr_WhenPtrIsNotN
 
   GlobalMockObject::verify();
 }
+
+TEST_F(HcomPluginTest, st_GetOpsKernelInfoStores_When_Uninitialized_Expect_NoStore) {
+  HcomPlugin plugin;
+  std::map<std::string, OpsKernelInfoStorePtr> stores;
+
+  plugin.GetOpsKernelInfoStores(stores);
+
+  EXPECT_TRUE(stores.empty());
+}

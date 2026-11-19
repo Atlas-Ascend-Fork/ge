@@ -89,7 +89,7 @@ HeterogeneousDeployPlanner::HeterogeneousDeployPlanner(std::vector<FlowModelPtr>
       device_list_(std::move(device_list)) {}
 
 Status HeterogeneousDeployPlanner::PrepareModelsAndRelation(ModelRelation &model_relation) {
-  GE_CHK_BOOL_RET_STATUS(!models_.empty(), PARAM_INVALID, "models is empty");
+  GE_CHK_BOOL_RET_STATUS(!models_.empty(), PARAM_INVALID, "models are empty");
   std::map<std::string, PneModelPtr> name_to_models;
   if (models_.size() == 1U) {
     GELOGD("start to build deploy plan for single model");

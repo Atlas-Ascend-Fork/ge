@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取正在运行的设备ID。该函数供[Init（MetaFlowFunc类）](init-metaflowfunc-class.md)调用。
 
@@ -23,7 +23,7 @@ virtual int32_t GetRunningDeviceId() const = 0
 
 无
 
-## 返回值
+## 返回值说明
 
 返回运行的设备ID。
 

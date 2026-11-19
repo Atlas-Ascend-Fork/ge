@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 分配Cache，分配成功后，会同时被cache\_id与cache\_keys引用，只有当这些引用都解除后，cache所占用的资源才会实际释放。
 
@@ -45,7 +45,7 @@ cache_keys = [CacheKey(prompt_cluster_id=0, req_id=1)]
 kv_cache = kv_cache_manager.allocate_cache(cache_desc, cache_keys)
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下返回KvCache。
 

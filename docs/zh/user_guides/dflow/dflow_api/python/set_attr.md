@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FlowNode的属性。
 
@@ -26,7 +26,7 @@ set_attr(attr_name, attr_value)
 | attr_name | str | 属性名称<br>当前支持如下三种：<br><br>  - _flow_attr：BOOL类型属性，可以配置为true或false，true表示存在flow属性，false表示不存在flow属性。<br>  -_flow_attr_depth：INT类型属性，指定了队列的深度，范围：大于等于2，若不配置，默认深度为128。<br>  -_flow_attr_enqueue_policy：STRING类型属性，指定的入队的策略，仅支持"FIFO"和"OVERWRITE"，"FIFO"表示队列数据顺序入队，队列满的时候会等待dequeue，"OVERWRITE"表示入队不会等待，数据会循环覆盖，若不配置，默认策略为FIFO。 |
 | attr_value | Union[bool, str, int] | 属性值。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

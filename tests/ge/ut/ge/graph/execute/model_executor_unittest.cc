@@ -46,32 +46,19 @@ using namespace std;
 
 namespace ge {
 namespace {
-class EnvValueGuard {
+class GraphOptionsGuard {
  public:
-  explicit EnvValueGuard(const char *name) : name_(name) {
-    const char *value = std::getenv(name_.c_str());
-    if (value != nullptr) {
-      old_value_ = value;
-      had_value_ = true;
-    }
-  }
-
-  ~EnvValueGuard() {
-    if (had_value_) {
-      (void)setenv(name_.c_str(), old_value_.c_str(), 1);
-    } else {
-      (void)unsetenv(name_.c_str());
-    }
+  GraphOptionsGuard() : graph_options_(GetThreadLocalContext().GetAllGraphOptions()) {}
+  ~GraphOptionsGuard() {
+    GetThreadLocalContext().SetGraphOption(graph_options_);
   }
 
  private:
-  std::string name_;
-  std::string old_value_;
-  bool had_value_ = false;
+  std::map<std::string, std::string> graph_options_;
 };
 
 void EnableOm2OnlineMode() {
-  ASSERT_EQ(setenv("ENABLE_RUNTIME_OM2", "1", 1), 0);
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
 }
 
 static const std::string fake_om2_so_src = R"(
@@ -1857,39 +1844,32 @@ TEST_F(UtestModelExecutorTest, MallocAndFreeFixedFeatureMemoryIfNeed_UserHasSetF
 // OM2 Online Mode Tests
 // ============================================================================
 
-TEST_F(UtestModelExecutorTest, Om2Mode_EnvNotSet_IsFalse) {
-  unsetenv("ENABLE_RUNTIME_OM2");
+TEST_F(UtestModelExecutorTest, Om2Mode_OptionNotSet_IsFalse) {
+  GetThreadLocalContext().SetGraphOption({});
   EXPECT_FALSE(IsOm2OnlineMode());
 }
 
-TEST_F(UtestModelExecutorTest, Om2Mode_EnvSetToOne_IsTrue) {
-  setenv("ENABLE_RUNTIME_OM2", "1", 1);
+TEST_F(UtestModelExecutorTest, Om2Mode_ModelFormatOm2_IsTrue) {
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   EXPECT_TRUE(IsOm2OnlineMode());
-  unsetenv("ENABLE_RUNTIME_OM2");
+  GetThreadLocalContext().SetGraphOption({});
 }
 
 TEST_F(UtestModelExecutorTest, Om2Mode_DynamicSwitch) {
-  unsetenv("ENABLE_RUNTIME_OM2");
+  GetThreadLocalContext().SetGraphOption({});
   EXPECT_FALSE(IsOm2OnlineMode());
 
-  setenv("ENABLE_RUNTIME_OM2", "1", 1);
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   EXPECT_TRUE(IsOm2OnlineMode());
 
-  unsetenv("ENABLE_RUNTIME_OM2");
+  GetThreadLocalContext().SetGraphOption({});
   EXPECT_FALSE(IsOm2OnlineMode());
 }
 
-TEST_F(UtestModelExecutorTest, Om2Mode_NonOneValues_AreFalse) {
-  setenv("ENABLE_RUNTIME_OM2", "0", 1);
+TEST_F(UtestModelExecutorTest, Om2Mode_ModelFormatOm_IsFalse) {
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM)}});
   EXPECT_FALSE(IsOm2OnlineMode());
-
-  setenv("ENABLE_RUNTIME_OM2", "true", 1);
-  EXPECT_FALSE(IsOm2OnlineMode());
-
-  setenv("ENABLE_RUNTIME_OM2", "", 1);
-  EXPECT_FALSE(IsOm2OnlineMode());
-
-  unsetenv("ENABLE_RUNTIME_OM2");
+  GetThreadLocalContext().SetGraphOption({});
 }
 
 TEST_F(UtestModelExecutorTest, RunGraphWithStreamOm2_ConvertsCallerOutputsToGertOutputs) {
@@ -1909,7 +1889,7 @@ TEST_F(UtestModelExecutorTest, RunGraphWithStreamOm2_ConvertsCallerOutputsToGert
 }
 
 TEST_F(UtestModelExecutorTest, DumpDebugJSONPrint_ReturnsUnsupportedInOm2Mode) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
   ModelExecutor model_executor;
   AscendString json_result;
@@ -1939,19 +1919,15 @@ class UtestModelExecutorOm2Test : public testing::Test {
     EnvPath().RemoveRfCaseTmpPath("UtestModelExecutorOm2");
   }
 
-  void TearDown() override {
-    unsetenv("ENABLE_RUNTIME_OM2");
-  }
-
   static std::string test_work_dir_;
   static std::string fake_so_path_;
+  GraphOptionsGuard graph_options_guard_;
 };
 
 std::string UtestModelExecutorOm2Test::test_work_dir_;
 std::string UtestModelExecutorOm2Test::fake_so_path_;
 
 TEST_F(UtestModelExecutorOm2Test, RunGraph_HostInput_Success) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -1994,7 +1970,6 @@ TEST_F(UtestModelExecutorOm2Test, RunGraph_HostInput_Success) {
 }
 
 TEST_F(UtestModelExecutorOm2Test, RunGraph_NotLoaded_ReturnsGraphNotExist) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -2023,7 +1998,6 @@ TEST_F(UtestModelExecutorOm2Test, RunGraph_NotLoaded_ReturnsGraphNotExist) {
 }
 
 TEST_F(UtestModelExecutorOm2Test, UnloadGraph_NotLoaded_ReturnsSuccess) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -2040,7 +2014,6 @@ TEST_F(UtestModelExecutorOm2Test, UnloadGraph_NotLoaded_ReturnsSuccess) {
 }
 
 TEST_F(UtestModelExecutorOm2Test, RunGraph_EmptyOutputs_PrepareOm2Outputs) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -2079,7 +2052,6 @@ TEST_F(UtestModelExecutorOm2Test, RunGraph_EmptyOutputs_PrepareOm2Outputs) {
 }
 
 TEST_F(UtestModelExecutorOm2Test, LoadAndUnload_Success) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -2107,7 +2079,6 @@ TEST_F(UtestModelExecutorOm2Test, LoadAndUnload_Success) {
 }
 
 TEST_F(UtestModelExecutorOm2Test, LoadGraph_ExternalConstAndFeatureMemory_Success) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -2145,7 +2116,6 @@ TEST_F(UtestModelExecutorOm2Test, UnloadOm2Graph_UnknownGraph_ReturnsSuccess) {
 }
 
 TEST_F(UtestModelExecutorOm2Test, RunGraphWithStream_Om2Mode_Success) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -2182,7 +2152,6 @@ TEST_F(UtestModelExecutorOm2Test, RunGraphWithStream_Om2Mode_Success) {
 }
 
 TEST_F(UtestModelExecutorOm2Test, PaRemapped_ReturnsUnsupported) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -2198,7 +2167,6 @@ TEST_F(UtestModelExecutorOm2Test, PaRemapped_ReturnsUnsupported) {
 }
 
 TEST_F(UtestModelExecutorOm2Test, RunThread_Om2Mode_ReturnsUnsupportedWithCallback) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -2252,7 +2220,6 @@ TEST_F(UtestModelExecutorOm2Test, RunThread_Om2Mode_ReturnsUnsupportedWithCallba
 }
 
 TEST_F(UtestModelExecutorOm2Test, ExecuteGraphWithStream_Om2Mode_Success) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -2294,7 +2261,6 @@ TEST_F(UtestModelExecutorOm2Test, ExecuteGraphWithStream_Om2Mode_Success) {
 }
 
 TEST_F(UtestModelExecutorOm2Test, ExternalExecuteGraphLoadsWithoutRootComputeGraph) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
   EnableOm2OnlineMode();
   ModelExecutor model_executor;
   ASSERT_EQ(model_executor.Initialize({}, 0), SUCCESS);

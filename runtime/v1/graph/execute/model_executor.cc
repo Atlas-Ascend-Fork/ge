@@ -12,6 +12,7 @@
 #include <sstream>
 #include "base/err_mgr.h"
 #include "graph/ge_context.h"
+#include "graph/utils/graph_utils_ex.h"
 #include "common/compile_profiling/ge_call_wrapper.h"
 #include "common/model/external_allocator_manager.h"
 #include "framework/om2/model_data/gert_model_data.h"
@@ -146,7 +147,8 @@ Status ModelExecutor::LoadGraph(const GeRootModelPtr &ge_root_model, const Graph
                                 const aclrtStream stream, gert::Allocators *external_allocators) {
   GE_CHECK_NOTNULL(graph_node);
   GE_CHECK_NOTNULL(ge_root_model);
-  if (IsOm2OnlineMode()) {
+  const auto graph = graph_node->GetGraph();
+  if (IsOm2OnlineMode(graph != nullptr && GraphUtilsEx::IsExecuteGraph(*graph))) {
     return LoadOm2Graph(ge_root_model, graph_node, stream, external_allocators);
   }
   return ModelLoad(ge_root_model, graph_node, stream);
@@ -157,14 +159,20 @@ Status ModelExecutor::LoadGraph(const GeRootModelPtr &ge_root_model, const Graph
 /// @brief Unload mode for graph.
 /// @param [in] GeRootModel: root model of graph compiled.
 /// @param [in] graph_id: graph identifier.
+/// @param [in] is_execute_graph: whether the graph is an execute graph.
 /// @return Status result of function
 ///
 Status ModelExecutor::UnloadGraph(const GeRootModelPtr &ge_root_model, const uint32_t graph_id) {
+  return UnloadGraph(ge_root_model, graph_id, false);
+}
+
+Status ModelExecutor::UnloadGraph(const GeRootModelPtr &ge_root_model, const uint32_t graph_id,
+                                  const bool is_execute_graph) {
   GE_CHECK_NOTNULL(ge_root_model);
   GE_CHK_ACL_RET(aclrtSetDevice(static_cast<int32_t>(GetContext().DeviceId())));
 
   Status unload_ret;
-  if (IsOm2OnlineMode()) {
+  if (IsOm2OnlineMode(is_execute_graph)) {
     unload_ret = UnloadOm2Graph(ge_root_model, graph_id);
   } else {
     unload_ret = UnloadModel(ge_root_model, graph_id);
@@ -302,7 +310,8 @@ Status ModelExecutor::RunGraph(const GraphNodePtr &graph_node, const GraphId gra
                                gert::Allocators *external_allocators) {
   const auto ge_root_model = graph_node->GetGeRootModel();
   GE_CHECK_NOTNULL(ge_root_model);
-  if (IsOm2OnlineMode()) {
+  const auto graph = graph_node->GetGraph();
+  if (IsOm2OnlineMode(graph != nullptr && GraphUtilsEx::IsExecuteGraph(*graph))) {
     if (outputs.empty()) {
       GE_ASSERT_SUCCESS(PrepareOm2Outputs(graph_node, outputs));
     }
@@ -331,7 +340,8 @@ Status ModelExecutor::RunGraphWithStream(const GraphNodePtr &graph_node, const G
                                          std::vector<GeTensor> &outputs, gert::Allocators *external_allocators) {
   const auto ge_root_model = graph_node->GetGeRootModel();
   GE_CHECK_NOTNULL(ge_root_model);
-  if (IsOm2OnlineMode()) {
+  const auto graph = graph_node->GetGraph();
+  if (IsOm2OnlineMode(graph != nullptr && GraphUtilsEx::IsExecuteGraph(*graph))) {
     std::vector<gert::Tensor> gert_inputs;
     GE_ASSERT_SUCCESS(TensorTransUtils::GeTensors2GertTensors(inputs, gert_inputs));
     std::vector<gert::Tensor> gert_outputs;
@@ -1094,7 +1104,7 @@ Status ModelExecutor::GetOm2ModelTensorDesc(const GraphNodePtr &graph_node,
   GE_CHECK_NOTNULL(ge_root_model);
   const auto &model_data = ge_root_model->GetOm2ModelData();
   GE_ASSERT_NOTNULL(model_data, "[OM2][Check] Missing GertModelData.");
-  GE_ASSERT_TRUE(!model_data->models.empty(), "[OM2][Check] models is empty.");
+  GE_ASSERT_TRUE(!model_data->models.empty(), "[OM2][Check] models are empty.");
   const auto &model_meta = *model_data->models[0]->model_meta;
   input_desc = &model_meta.input_desc;
   output_desc = &model_meta.output_desc;

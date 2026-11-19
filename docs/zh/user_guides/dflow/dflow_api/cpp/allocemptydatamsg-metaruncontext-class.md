@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 申请空数据的MsgType类型的message。
 
@@ -25,7 +25,7 @@ std::shared_ptr<FlowMsg> AllocEmptyDataMsg(MsgType msgType)
 | --- | --- | --- |
 | msgType | 输入 | 要申请空数据的消息类型。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS。
 - other：FAILED，具体请参考[UDF错误码](udf-error-code.md)。

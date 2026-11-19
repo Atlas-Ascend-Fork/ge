@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置route的标签。
 
@@ -25,7 +25,7 @@ virtual void SetRouteLabel(uint32_t routeLabel) = 0
 | --- | --- | --- |
 | routeLabel | 输入 | route的标签，取值为0表示不使用。 |
 
-## 返回值
+## 返回值说明
 
 无。
 

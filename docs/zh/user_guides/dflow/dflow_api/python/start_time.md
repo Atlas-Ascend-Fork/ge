@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 以属性方式读取和设置FlowInfo的开始时间。
 
@@ -28,7 +28,7 @@ def start_time(self, new_value)
 | --- | --- | --- |
 | new_value | int | 要设置的FlowInfo开始时间的值。 |
 
-## 返回值
+## 返回值说明
 
 start\_time属性。
 

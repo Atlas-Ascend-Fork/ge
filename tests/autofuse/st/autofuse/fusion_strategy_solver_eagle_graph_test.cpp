@@ -137,7 +137,7 @@ TEST_F(FusionStrategySolverST, ConcatAndReduceCanNotfuse) {
   for (const auto &node : cg->GetAllNodes()) {
     std::cout << node->GetName() << std::endl;
   }
-  ASSERT_EQ(cg->GetAllNodesSize(), 5U);
+  ASSERT_EQ(cg->GetAllNodesSize(), 4U);
 }
 
 /*      data

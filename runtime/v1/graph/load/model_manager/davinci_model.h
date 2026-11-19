@@ -476,6 +476,15 @@ class DavinciModel {
 
   void PushHcclStream(aclrtStream const hccl_stream);
 
+  // 执行期（自定义算子申请 attach 流）创建、需随模型重放每遍激活的流登记。
+  // 仅 IteratorCtrl 循环图下由循环激活 task 消费；静态图登记无副作用。
+  void PushLoopActiveStream(rtStream_t stream);
+
+  std::vector<rtStream_t> GetLoopActiveStreams() const;
+
+  // CAS 语义：首个调用者返回 true，负责追加激活 SQE 的一次性录制，保证每遍恰好一条
+  bool TryClaimLoopActiveAppend();
+
   void SetHcclTaskStream(aclrtStream const hccl_stream);
 
   CustAICPUKernelPtr GetCustAICPUKernel(const OpDescPtr &op_desc) const;
@@ -1647,6 +1656,12 @@ class DavinciModel {
 
   std::mutex all_hccl_stream_list_mutex_;
   std::vector<aclrtStream> all_hccl_stream_list_;  // hccl 从流
+
+  // 执行期创建、需随循环重放激活的流（自定义算子 attach 流），与 hccl 从流语义分离：
+  // hccl 从流每遍销毁重建（HcclTaskInfo 主线路径），不可被循环激活
+  mutable std::mutex loop_active_stream_list_mutex_;
+  std::vector<rtStream_t> loop_active_stream_list_;
+  bool loop_active_append_done_{false};
 
   // for reuse hccl_follow_stream
   std::mutex capacity_of_stream_mutex_;

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 将Tensor转换到numpy的ndarray。
 
@@ -25,7 +25,7 @@ numpy(copy=False)
 | --- | --- | --- |
 | copy | bool | 默认值为False，表示从tensor转换到numpy.ndarray，且数据不做拷贝，如果取值为True，则表示需要对数据进行拷贝。<br>如果tensor是string类型的数据，该参数需要用户设置成True，否则会抛出异常。 |
 
-## 返回值
+## 返回值说明
 
 返回numpy.array。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取Flowfunc的工作路径。该函数供[Init（MetaFlowFunc类）](init-metaflowfunc-class.md)调用。
 
@@ -23,7 +23,7 @@ const char *GetWorkPath() const
 
 无
 
-## 返回值
+## 返回值说明
 
 返回Flowfunc的工作路径。
 

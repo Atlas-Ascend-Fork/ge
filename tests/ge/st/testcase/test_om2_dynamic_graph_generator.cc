@@ -26,6 +26,7 @@
 #include "framework/common/gert_model_data_serialize.h"
 #include "framework/common/gert_model_data_utils.h"
 #include "framework/common/helper/om2_package_helper.h"
+#include "common/helper/om2/om2_utils.h"
 #include "graph/fast_graph/execute_graph.h"
 #include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/debug/ge_attr_define.h"
@@ -360,12 +361,14 @@ TEST_F(Om2DynamicGraphGeneratorST, UnsupportedWhileIsRejectedWithoutPublishingMo
 }
 
 TEST_F(Om2DynamicGraphGeneratorST, OfflineKnownSubgraphIsRejectedWithoutPublishingModel) {
-  ge::om2_test::ScopedEnvVar offline("ENABLE_RUNTIME_OM2", "0");
+  const auto graph_options = ge::GetThreadLocalContext().GetAllGraphOptions();
+  ge::GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(ge::MODEL_FORMAT_OM)}});
   // DavinciModelCreate restores input 0 as a process-local GeModel pointer, so the route has
   // to give it a real Const producer; a node without that input is rejected for a missing
   // const input before the offline-mode check under test is reached.
   ExpectUnsupportedControlNode("DavinciModelCreate",
                                "OM2 DavinciModelCreate unsupported_control is only supported in online mode", 1U);
+  ge::GetThreadLocalContext().SetGraphOption(graph_options);
 }
 
 }  // namespace

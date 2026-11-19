@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 将数据输入到Graph图。
 
@@ -27,7 +27,7 @@ Status FeedDataFlowGraph(uint32_t graph_id, const std::vector<FlowMsgPtr> &input
 | inputs | 输入 | 计算图输入FlowMsg的指针，为Host上分配的共享内存。 |
 | timeout | 输入 | 数据输入超时时间，单位：ms，取值为-1时表示从不超时。 |
 
-## 返回值
+## 返回值说明
 
 函数状态结果如下。
 

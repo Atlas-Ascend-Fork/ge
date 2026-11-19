@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置用户异常捕获功能是否开启。
 
@@ -25,7 +25,7 @@ set_exception_catch(self, enable_exception_catch: bool = False)
 | --- | --- | --- |
 | enable_exception_catch | bool | 是否启用用户异常捕获功能。取值如下：<br><br>  - True：是，开启异常功能。<br>  - False：否，关闭异常功能。<br><br>默认值：False。 |
 
-## 返回值
+## 返回值说明
 
 无。
 

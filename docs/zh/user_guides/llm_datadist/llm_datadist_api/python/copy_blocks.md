@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 PagedAttention场景下，拷贝block。
 
@@ -37,7 +37,7 @@ from llm_datadist import *
 kv_cache_manager.copy_blocks(kv_cache, {1: [2,3]})
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

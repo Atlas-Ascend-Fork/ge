@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据shape、data type以及对齐大小申请Tensor类型的FlowMsg。
 
@@ -27,7 +27,7 @@ alloc_tensor_msg(self, shape: Union[List[int], Tuple[int]], dtype, align:Optiona
 | dtype | 输入 | Tensor的data type。 |
 | align | 输入 | 申请内存地址对齐大小，取值范围【32、64、128、256、512、1024】，默认值为64。 |
 
-## 返回值
+## 返回值说明
 
 返回FlowMsg的实例。
 

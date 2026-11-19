@@ -438,8 +438,9 @@ TEST(Om2ConstValueCoverage, MemoryOffsetsAndFileConstantVectorsPreserveEntriesAn
   EXPECT_TRUE(
       CollectValue(Type::kContinuousVectorFileConstantNameAndMemPtr, VectorBytes<kernel::FileConstantNameAndMem>({}))
           .file_constant_name_and_mems.empty());
+  const kernel::FileConstantNameAndMem empty_file{"", nullptr, 0U};
   ExpectInvalid(Type::kContinuousVectorFileConstantNameAndMemPtr,
-                VectorBytes<kernel::FileConstantNameAndMem>({{"", nullptr, 0U}}));
+                VectorBytes<kernel::FileConstantNameAndMem>({empty_file}));
 }
 CustomConstRestoreDescriptor CollectCustom(const Type type, const Bytes &bytes, const char *name) {
   ConstantGraph fixture;

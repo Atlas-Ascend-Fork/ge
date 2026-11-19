@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 移除CacheKey，仅当LLMRole为PROMPT时可调用。
 
@@ -37,7 +37,7 @@ cache_keys = [CacheKey(prompt_cluster_id=0, req_id=1)]
 kv_cache_manager.remove_cache_key(cache_keys[0])
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下无返回值。
 

@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 FuncProcessPoint的构造函数，返回一个FuncProcessPoint对象。
 
@@ -215,7 +215,7 @@ CMakeLists文件相关内容如下：
     endif()
     ```
 
-## 返回值
+## 返回值说明
 
 正常场景下返回None。
 

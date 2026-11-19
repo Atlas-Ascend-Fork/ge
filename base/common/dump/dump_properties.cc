@@ -87,7 +87,7 @@ Status DumpProperties::CheckDumpStep(const std::string &dump_step) const {
           std::vector<const char *>({ge::GetContext().GetReadableName("ge.exec.dumpStep").c_str(), dump_step.c_str(),
                                      "Incorrect parameter format. Valid format: '0|5|10|50-100'."}));
       GELOGE(PARAM_INVALID,
-             "[Check][Param] get dump_step value:%s, dump_step std::string style is error, "
+             "[Check][Param] get dump_step value:%s, dump_step std::string style is invalid, "
              "correct example:'0|5|10|50-100'.",
              dump_step.c_str());
       ret = PARAM_INVALID;

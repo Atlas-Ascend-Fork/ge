@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FlowMsg消息中的事务ID，事务ID从1开始计数，可用于识别哪一批数据，设置为0时表示不使用自定义的transaction\_id，内部会采用自增的方式自动生成transaction\_id。
 
@@ -25,7 +25,7 @@ virtual void SetTransactionId(uint64_t transactionId)
 | --- | --- | --- |
 | transactionId | 输入 | 消息的事务ID |
 
-## 返回值
+## 返回值说明
 
 无。
 

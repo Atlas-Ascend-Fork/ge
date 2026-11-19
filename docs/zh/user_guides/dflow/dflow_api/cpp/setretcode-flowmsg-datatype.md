@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FlowMsg中的错误码。
 
@@ -25,7 +25,7 @@ void SetRetCode(int32_t ret_code)
 | --- | --- | --- |
 | ret_code | 输入 | 错误返回码。 |
 
-## 返回值
+## 返回值说明
 
 无。
 

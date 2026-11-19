@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 给FlowNode映射输入，表示将FlowNode的第node\_input\_index个输入给到ProcessPoint的第pp\_input\_index个输入，并且给ProcessPoint的该输入设置上attrs里的所有属性，返回映射好的FlowNode节点。该函数可选，不被调用时会默认按顺序映射FlowNode和ProcessPoint的输入。
 
@@ -28,7 +28,7 @@ FlowNode &MapInput(uint32_t node_input_index, const ProcessPoint &pp, uint32_t p
 | pp_input_index | 输入 | ProcessPoint的输入index。 |
 | attrs | 输入 | 属性集。属性取值请参考[DataFlowInputAttr结构体](dataflowinputattr-struct.md)。 |
 
-## 返回值
+## 返回值说明
 
 返回已经映射输入的FlowNode节点。
 

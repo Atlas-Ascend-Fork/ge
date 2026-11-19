@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 FlowGraph构造函数和析构函数，构造函数会返回一张空的FlowGraph图。
 
@@ -26,7 +26,7 @@ FlowGraph(const char *name)
 | --- | --- | --- |
 | name | 输入 | FlowGraph的名称。 |
 
-## 返回值
+## 返回值说明
 
 返回一张空的FlowGraph图。
 

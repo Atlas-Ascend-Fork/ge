@@ -14,7 +14,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 获取异常的error-code。error-code列表详见[LLMStatusCode](LLMStatusCode.md)。
 
@@ -40,7 +40,7 @@ except LLMException as exe:
     print(exe.status_code)
 ```
 
-## 返回值
+## 返回值说明
 
 返回error-code。
 

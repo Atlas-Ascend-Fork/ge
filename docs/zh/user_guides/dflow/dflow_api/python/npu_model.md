@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 如果UDF部署在host侧，执行时数据需要从device拷贝到本地进行运算。对于PyTorch场景，如果计算全在device侧，输入输出也是在device侧，执行时数据需要从device拷贝到host，执行后PyTorch再将数据搬到device侧，影响执行性能，使用npu\_model可以优化为不搬移数据（即直接下沉到device执行）的方式触发执行。
 
@@ -30,7 +30,7 @@
 | env_hook_func | function | 此钩子函数用于给用户自行扩展在Python UDF初始化之前必要的Python环境准备或import操作。 |
 | visible_device_enable | bool | 开启后，UDF进程会根据用户配置num_npus资源自动设置ASCEND_RT_VISIBLE_DEVICES，调用get_running_device_id接口获取对应的逻辑ID，当前num_npus仅支持1，因此该场景下get_running_device_id结果为0。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回被装饰的函数。
 

@@ -2390,7 +2390,7 @@ Status ModelManager::GetModelMemAndWeightSize(const ModelData &model, size_t &me
         "The model cannot be executed. For static models, the table number must be greater than 1";
     REPORT_PREDEFINED_ERR_MSG("E10055", std::vector<const char_t *>({"reason"}),
                               std::vector<const char_t *>({reason.c_str()}));
-    GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[Check][Param] om model is error, please use executable om model");
+    GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[Check][Param] om model is invalid, please use executable om model");
     return ACL_ERROR_GE_PARAM_INVALID;
   }
   // query weight size

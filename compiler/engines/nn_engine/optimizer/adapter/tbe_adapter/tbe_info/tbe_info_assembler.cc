@@ -1035,7 +1035,7 @@ Status TbeInfoAssembler::ConvertInputsToTbeOpInfo(const ge::NodePtr &node, Index
   for (size_t index_in_op_kernel = 0; index_in_op_kernel < input_size_in_op_kernel; index_in_op_kernel++) {
     auto input_info_ptr = input_info_in_opkernel.at(index_in_op_kernel);
     FE_CHECK(input_info_ptr == nullptr,
-             REPORT_FE_ERROR("[SubGraphOpt][PreCompileOp][AssembleConstVal]inputInfoPtr is nullptr."), return FAILED);
+             REPORT_FE_ERROR("[SubGraphOpt][PreCompileOp][AssembleConstVal] inputInfoPtr is nullptr."), return FAILED);
     string input_name_in_op_kernel = input_info_ptr->GetName();
 
     vector<uint32_t> specific_input_index_vec_in_op_desc;

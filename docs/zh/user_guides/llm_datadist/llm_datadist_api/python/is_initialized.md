@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 查询KvCacheManager实例是否已初始化。
 
@@ -37,7 +37,7 @@ kv_cache_manager = llm_datadist.kv_cache_manager
 is_initialized = kv_cache_manager.is_initialized()
 ```
 
-## 返回值
+## 返回值说明
 
 如果LLMDataDist已初始化，则返回True。
 

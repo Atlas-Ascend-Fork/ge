@@ -267,3 +267,32 @@ TEST_F(STestFusionConfigParser, fusion_switch_07) {
   vector<string> close_ub_fusion_vec;
   fusionConfigParserPtr->GetFusionPassNameBySwitch("UBFusion", false, close_ub_fusion_vec);
 }
+
+/**
+ * 用例描述：自定义融合配置包含非法顶层键或优先级层级时拒绝加载，并能恢复加载合法配置。
+ * 预置条件：使用测试内置融合配置和分别含非法键的两个自定义 JSON 配置。
+ * 测试步骤：解析非法配置，校验未应用开关和优先级，再切换至合法配置重新解析。
+ * 预期结果：非法配置返回 FAILED 且配置映射为空；合法配置解析成功并应用指定开关。
+ */
+TEST_F(STestFusionConfigParser, RejectInvalidConfigKeysAndLoadValidConfig) {
+  auto &configuration = Configuration::Instance(fe::AI_CORE_NAME);
+  const auto original_config = configuration.content_map_["fusion.config.built-in.file"];
+  const auto original_options = ge::GetThreadLocalContext().graph_options_;
+  configuration.content_map_["fusion.config.built-in.file"] = "fusion_config2.json";
+  const string config_dir = GetCodeDir() + "/tests/engines/nn_engine/st/testcase/fusion_config_manager/custom_config/";
+  for (const auto &invalid_file : {"invalid_top_level_key.json", "invalid_priority_level.json"}) {
+    SCOPED_TRACE(invalid_file);
+    FusionConfigParser parser(fe::AI_CORE_NAME);
+    ge::GetThreadLocalContext().graph_options_[ge::FUSION_SWITCH_FILE] = config_dir + invalid_file;
+    EXPECT_EQ(parser.ParseFusionConfigFile(), FAILED);
+    EXPECT_TRUE(parser.fusion_switch_map_.empty());
+    EXPECT_TRUE(parser.fusion_priority_map_.empty());
+
+    ge::GetThreadLocalContext().graph_options_[ge::FUSION_SWITCH_FILE] = config_dir + "fusion_config1.json";
+    EXPECT_EQ(parser.ParseFusionConfigFile(), SUCCESS);
+    EXPECT_FALSE(parser.GetFusionSwitchByName("CUSTOM_PASS1", "GraphFusion"));
+    EXPECT_TRUE(parser.GetFusionSwitchByName("BUILTIN_PASS1", "GraphFusion"));
+  }
+  configuration.content_map_["fusion.config.built-in.file"] = original_config;
+  ge::GetThreadLocalContext().graph_options_ = original_options;
+}

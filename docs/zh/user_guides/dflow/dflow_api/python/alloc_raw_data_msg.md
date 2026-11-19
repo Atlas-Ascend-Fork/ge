@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据输入的size申请一块连续内存，用于承载raw data类型的FlowMsg。
 
@@ -26,7 +26,7 @@ alloc_raw_data_msg(self, size, align:Optional[int] = 64) -> FlowMsg
 | size | 输入 | 申请内存大小，单位字节。 |
 | align | 输入 | 申请内存地址对齐大小，取值范围【32、64、128、256、512、1024】，默认值为64。 |
 
-## 返回值
+## 返回值说明
 
 正常返回FlowMsg的实例。申请失败返回None。
 

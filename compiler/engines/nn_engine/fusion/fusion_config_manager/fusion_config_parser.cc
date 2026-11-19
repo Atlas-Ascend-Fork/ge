@@ -666,7 +666,7 @@ Status FusionConfigParser::CheckLastLayerFormatForPriorityPart(string type_elem,
     string level_elem_string = StringUtils::Trim(level_elem);
 
     if (level_elem_string != kPriorityTop && level_elem_string != kPriorityMain && level_elem_string != kPriorityDown) {
-      REPORT_FE_ERROR("[%s] The third level key [%s] of json file[%s] is error, which should be top/main/down.",
+      REPORT_FE_ERROR("[%s] The third level key [%s] of json file[%s] is invalid, which should be top/main/down.",
                       kStatgeChkLstLyrFmt.c_str(), level_elem.c_str(), owner_type.c_str());
       return FAILED;
     }
@@ -763,7 +763,7 @@ Status FusionConfigParser::CheckFusionConfigJsonFormat(nlohmann::json pass_switc
       continue;
     }
     if (type_elem_string != kSwitchType && type_elem_string != kPriorityType) {
-      REPORT_FE_ERROR("[%s] The first level key [%s] of [%s] json file is error, which should be Switch or Priority.",
+      REPORT_FE_ERROR("[%s] The first level key [%s] of [%s] json file is invalid, which should be Switch or Priority.",
                       kStatgeChkFusCfgJsLyrFmt.c_str(), type_elem.c_str(), owner_type.c_str());
       return FAILED;
     }
@@ -780,7 +780,7 @@ Status FusionConfigParser::CheckFusionConfigJsonFormat(nlohmann::json pass_switc
       string fusion_elem_string = StringUtils::Trim(fusion_elem);
       if (fusion_elem_string != GRAPH_FUSION && fusion_elem_string != UB_FUSION) {
         REPORT_FE_ERROR(
-            "[%s] The second level key [%s] of json file[%s] is error, which should be GraphFusion or UBFusion.",
+            "[%s] The second level key [%s] of json file[%s] is invalid, which should be GraphFusion or UBFusion.",
             kStatgeChkFusCfgJsLyrFmt.c_str(), fusion_elem.c_str(), owner_type.c_str());
         return FAILED;
       }

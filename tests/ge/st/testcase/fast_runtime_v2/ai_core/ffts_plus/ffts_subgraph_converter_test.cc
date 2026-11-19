@@ -15,6 +15,8 @@
 #include "engine/node_converter_utils.h"
 #include "engine/aicore/fe_rt2_common.h"
 #include "engine/ffts_plus/converter/ffts_plus_proto_transfer.h"
+#include "engine/ffts_plus/converter/ffts_plus_common.h"
+#include "stub/gert_runtime_stub.h"
 #include "graph/utils/graph_utils.h"
 #include "graph/utils/op_desc_utils_ex.h"
 #include "common/share_graph.h"
@@ -302,4 +304,14 @@ TEST_F(FFTSGraphLoweringST, ffts_plus_proto_trans_aicpu_test) {
   auto trans_task_info = ffts_proto_transfer.Transfer(conv_desc, ffts_plus_task_def, total_size);
   ASSERT_NE(trans_task_info, nullptr);
 }
+
+TEST(FftsLoweringDiagnosticsSt, RejectsIncompleteTaskLaunchResults) {
+  GertRuntimeStub runtime_stub;
+  const LowerResult graph_result{};
+  const std::vector<bg::ValueHolderPtr> missing_task_results;
+  EXPECT_EQ(LoweringGraphPostProc(&graph_result, missing_task_results, {}, {}), ge::FAILED);
+  EXPECT_TRUE(graph_result.order_holders.empty());
+  EXPECT_GE(runtime_stub.GetSlogStub().FindLog(DLOG_ERROR, "Task launch return num[0] is invalid"), 0);
+}
+
 }  // namespace gert

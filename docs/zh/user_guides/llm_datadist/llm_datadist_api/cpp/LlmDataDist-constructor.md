@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 创建LLM-DataDist对象。
 
@@ -29,7 +29,7 @@ LlmDataDist(uint64_t cluster_id, LlmRole role)
 | cluster_id | 输入 | 集群ID。LlmDataDist标识，在所有参与建链的范围内需要确保唯一。 |
 | role | 输入 | 类型是[LlmRole](LlmRole.md)，用于标识当前角色。 |
 
-## 返回值
+## 返回值说明
 
 无
 

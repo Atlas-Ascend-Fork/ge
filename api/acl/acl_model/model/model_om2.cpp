@@ -136,7 +136,7 @@ aclError PrepareOm2Tensor(std::vector<gert::Tensor> &tensor, std::vector<gert::T
   for (size_t i = 0UL; i < inputNum; ++i) {
     const auto dataBuffer = dataset->blobs[i].dataBuf;
     if (dataBuffer == nullptr) {
-      ACL_LOG_ERROR("[Check][dataBuffer]input dataset blobs is null, modelId[%d], index[%zu]", modelId, i);
+      ACL_LOG_ERROR("[Check][dataBuffer]input dataset blobs are null, modelId[%d], index[%zu]", modelId, i);
       return ACL_ERROR_INVALID_PARAM;
     }
     tensor[i].MutableTensorData().SetPlacement(gert::kOnDeviceHbm);

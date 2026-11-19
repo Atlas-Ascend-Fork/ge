@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 记录Warn级别日志。
 
@@ -26,7 +26,7 @@ virtual void Warn(const char *fmt, ...) __attribute__((format(printf, 2, 3))) = 
 | fmt | 输入 | 日志格式化控制字符串。<br>取值范围：非空。 |
 | ... | 输入 | 可选参数<br>与fmt匹配的参数。 |
 
-## 返回值
+## 返回值说明
 
 无。
 

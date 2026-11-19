@@ -12,7 +12,7 @@
 - Atlas A2训练系列产品：不支持
 <!-- end id3 -->
 
-## 函数功能
+## 功能说明
 
 获取KvCache描述。
 
@@ -35,7 +35,7 @@ kv_cache = kv_cache_manager.allocate_cache(cache_desc, cache_keys)
 print(kv_cache.cache_desc.num_tensors)
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况返回类型为KvCache的cache描述。
 

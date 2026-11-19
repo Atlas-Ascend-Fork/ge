@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 #include <array>
 #include <memory>
+#include <string>
 #include <vector>
 #include "ge/ge_api_v2.h"
 #include "init_ge.h"
@@ -20,6 +21,7 @@
 #include "graph/manager/graph_manager.h"
 #include "graph/utils/graph_utils_ex.h"
 #include "framework/common/helper/om2_package_helper.h"
+#include "common/helper/om2/om2_utils.h"
 #include "framework/runtime/om2_model_executor.h"
 #include "framework/common/gert_model_data_utils.h"
 #include "graph/utils/op_desc_utils_ex.h"
@@ -35,10 +37,11 @@ class Om2DynamicOnlineST : public om2_test::DynamicPackageTest {
  protected:
   void SetUp() override {
     DynamicPackageTest::SetUp();
-    mode_ = std::make_unique<om2_test::ScopedEnvVar>("ENABLE_RUNTIME_OM2", "1");
     GetThreadLocalContext().SetGraphOption(
-        {{"ge.buildConfig", "make -s CXXFLAGS='-std=c++17 -fPIC -O0 -D_GLIBCXX_USE_CXX11_ABI=0'"}});
-    const std::map<AscendString, AscendString> options;
+        {{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)},
+         {"ge.buildConfig", "make -s CXXFLAGS='-std=c++17 -fPIC -O0 -D_GLIBCXX_USE_CXX11_ABI=0'"}});
+    const std::map<AscendString, AscendString> options{
+        {"ge.modelFormat", AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())}};
     ASSERT_EQ(GEInitializeV2(options), SUCCESS);
     session_ = std::make_unique<GeSession>(options);
   }
@@ -53,6 +56,7 @@ class Om2DynamicOnlineST : public om2_test::DynamicPackageTest {
     auto facade = GraphUtilsEx::ExecuteGraph2Graph(graph);
     ASSERT_NE(facade, nullptr);
     const std::map<AscendString, AscendString> options{
+        {"ge.modelFormat", AscendString(std::to_string(MODEL_FORMAT_OM2).c_str())},
         {"ge.buildConfig", "make -s CXXFLAGS='-std=c++17 -fPIC -O0 -D_GLIBCXX_USE_CXX11_ABI=0'"}};
     ASSERT_EQ(session_->AddGraph(id, *facade, options), SUCCESS);
     ASSERT_EQ(session_->CompileGraph(id), SUCCESS);
@@ -99,7 +103,6 @@ class Om2DynamicOnlineST : public om2_test::DynamicPackageTest {
     return ret;
   }
   gert::GertRuntimeStub stub_;
-  std::unique_ptr<om2_test::ScopedEnvVar> mode_;
   std::unique_ptr<GeSession> session_;
 };
 
@@ -196,6 +199,8 @@ TEST_F(Om2DynamicOnlineST, GeGeneratedModelRunsThroughDynamicOnlineExecutor) {
   } cleanup{executor};
   auto node = std::make_shared<GraphNode>(705U);
   node->SetGeRootModel(root);
+  node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   ASSERT_EQ(executor.LoadGraph(root, node), SUCCESS);
   const auto loaded = Om2ModelManager::GetInstance().GetModelExecutor(root->GetModelId());
   ASSERT_NE(loaded, nullptr);

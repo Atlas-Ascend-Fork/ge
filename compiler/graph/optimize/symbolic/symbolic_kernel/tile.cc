@@ -77,7 +77,7 @@ Status TileInputXSymbols(const std::vector<int64_t> &x_dims, const std::vector<i
                          const std::vector<Expression> &x_symbols, std::vector<Expression> &output_symbols) {
   // scalar x(TF合法图内容，秩-0参与Tile)或空multiples不支持值传播，降级到传统推导而非打挂
   if (x_dims.empty() || multiples_dims.empty()) {
-    GELOGW("SymbolicKernel compute unsupported, reason: x dims or multiples dims is empty.");
+    GELOGW("SymbolicKernel compute unsupported, reason: x dims or multiples dimensions are empty.");
     return UNSUPPORTED;
   }
   // multiples=0(TF合法repeats=0，输出为空tensor)不支持值传播，降级；负值是非法shape语义直接assert报错；

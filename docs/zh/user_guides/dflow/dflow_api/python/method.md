@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 对于复杂场景支持将类作为pipeline任务在本地或者远端运行。为此，需使用@pyflow装饰类，同时使用@method装饰类中的函数，以表达需要使用pipeline方式运行此函数，支持一个类中存在多个被@method修饰的函数，以表达可同时接受输入进行执行，同时被@method修饰的函数均需要参与进行构造FlowGraph图。不直接作为pipeline执行的函数不能使用@method进行装饰，比如内部函数。
 
@@ -27,7 +27,7 @@
 | stream_input | str | 用于表示当前func的输入为流式输入（即函数入参为队列），当前只支持"Queue"类型，用户可自行从输入队列中取数据。 |
 | choice_output | function | 表示当前func为可选输出，只有满足条件的输出才会返回（条件为用户自定义的function）。例如：<br>choice_output=lambda e: e is not None<br>该例子表示只有非None的输出才会返回。 |
 
-## 返回值
+## 返回值说明
 
 正常场景下返回被装饰的函数。
 

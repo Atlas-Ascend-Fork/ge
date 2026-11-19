@@ -446,7 +446,7 @@ ge::graphStatus GetFftsPlusTaskDef(const ge::NodePtr &node, const FFTSLowerInput
     return ge::GRAPH_FAILED;
   }
   if (compile_result->task_defs.empty()) {
-    GELOGE(ge::PARAM_INVALID, "Task defs is empty.");
+    GELOGE(ge::PARAM_INVALID, "Task definitions are empty.");
     return ge::GRAPH_FAILED;
   }
   const domi::TaskDef &task_def = compile_result->task_defs.at(0U);
@@ -470,7 +470,7 @@ std::vector<bg::DevMemValueHolderPtr> AicpuFftsCalAndAllocMem(
   }
 
   if (level_one_mem_addrs.empty()) {
-    GELOGW("Level one memory addrs is empty.");
+    GELOGW("Level one memory addresses are empty.");
   }
   return output_addrs;
 }

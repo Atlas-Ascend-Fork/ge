@@ -463,7 +463,7 @@ static Status ConvertDumpCfg(CJsonObj *json, DumpConfig *dumpCfg) {
 Status HandleDumpConfig(const char *configPath, DumpConfig *dumpCfg) {
   CJsonObj *obj = CJsonFileParse(configPath);
   if (obj == NULL) {
-    GELOGW("json config file is error.");
+    GELOGW("json config file is invalid.");
     return ACL_GE_INVALID_DUMP_CONFIG;
   }
   CJsonObj *dump = GetCJsonSubObj(obj, DBG_DUMP);

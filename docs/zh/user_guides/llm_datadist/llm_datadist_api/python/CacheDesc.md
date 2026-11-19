@@ -1,6 +1,6 @@
 # CacheDesc
 
-## 函数功能
+## 功能说明
 
 构造CacheDesc，通常在KvCacheManager的[allocate\_cache](allocate_cache.md)接口中作为参数类型使用。
 
@@ -36,7 +36,7 @@ from llm_datadist import CacheDesc
 cache_desc = CacheDesc(80, [4, 2048, 1, 128], DataType.DT_FLOAT16)
 ```
 
-## 返回值
+## 返回值说明
 
 正常情况下返回CacheDesc的实例。
 

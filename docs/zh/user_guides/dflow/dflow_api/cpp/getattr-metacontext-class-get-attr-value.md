@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 根据属性名获取对应的属性值。该函数供[Init（MetaFlowFunc类）](init-metaflowfunc-class.md)调用。
 
@@ -26,7 +26,7 @@ int32_t GetAttr(const char *attrName, T &value) const
 | attrName | 输入 | 属性名。 |
 | value | 输出 | 属性值。 |
 
-## 返回值
+## 返回值说明
 
 - 0：SUCCESS。
 - other：FAILED，具体请参考[UDF错误码](udf-error-code.md)。

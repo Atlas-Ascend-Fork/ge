@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取图输出数据。
 
@@ -27,7 +27,7 @@ Status FetchDataFlowGraph(uint32_t graph_id, std::vector<FlowMsgPtr> &outputs, i
 | outputs | 输出 | 计算图输出FlowMsg指针，用户无需分配内存空间，执行完成后GE会分配内存并赋值。 |
 | timeout | 输入 | 数据提取超时时间，单位：ms，取值为-1时表示从不超时。 |
 
-## 返回值
+## 返回值说明
 
 函数状态结果如下。
 

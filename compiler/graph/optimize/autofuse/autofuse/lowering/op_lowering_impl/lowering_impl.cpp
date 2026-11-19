@@ -819,7 +819,7 @@ graphStatus NormalizeSoftmaxV2Info(const NodePtr &node, SoftmaxV2Info &info) {
   LOWERING_WARN_RECORD_REASON(AttrUtils::GetBool(op_desc, "half_to_float", info.need_fp16_to_fp32_cast), node,
                               "SoftmaxV2 has no half_to_float attribute");
 
-  LOWERING_WARN_RECORD_REASON(!axes.empty(), node, "SoftmaxV2 axes is empty");
+  LOWERING_WARN_RECORD_REASON(!axes.empty(), node, "SoftmaxV2 axes are empty");
   std::set<int64_t> normalized_axes;
   for (auto axis : axes) {
     if (axis < 0) {
@@ -1051,7 +1051,7 @@ graphStatus ParseV3IndexInputs(const NodePtr &node, const std::vector<ge::Expres
 
   // strides缺省时，按照begin的长度补1
   if (stride_expr_list.empty() && !begin_expr_list.empty()) {
-    GELOGI("stridedslicev3 strides is empty, populating with 1s, size: %zu", begin_expr_list.size());
+    GELOGI("stridedslicev3 strides are empty, populating with 1s, size: %zu", begin_expr_list.size());
     stride_expr_list.assign(begin_expr_list.size(), ge::Symbol(1));
   }
 

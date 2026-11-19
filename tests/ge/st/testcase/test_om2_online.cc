@@ -10,13 +10,10 @@
 
 #include <gtest/gtest.h>
 
-#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <future>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -35,6 +32,8 @@
 #include "graph/manager/graph_manager.h"
 #include "graph/manager/graph_manager_utils.h"
 #include "graph/utils/graph_utils.h"
+#include "graph/utils/graph_utils_ex.h"
+#include "graph/fast_graph/execute_graph.h"
 #include "graph/graph.h"
 #include "graph/op_desc.h"
 #include "graph/utils/file_utils.h"
@@ -52,31 +51,6 @@
 
 namespace ge {
 namespace {
-
-class ScopedEnvVar {
- public:
-  ScopedEnvVar(const char *name, const char *value) : name_(name) {
-    const char *old_value = getenv(name);
-    if (old_value != nullptr) {
-      old_value_ = old_value;
-      has_old_value_ = true;
-    }
-    (void)setenv(name, value, 1);
-  }
-
-  ~ScopedEnvVar() {
-    if (has_old_value_) {
-      (void)setenv(name_.c_str(), old_value_.c_str(), 1);
-      return;
-    }
-    (void)unsetenv(name_.c_str());
-  }
-
- private:
-  std::string name_;
-  std::string old_value_;
-  bool has_old_value_ = false;
-};
 
 GeRootModelPtr CreateSimpleGeRootModel() {
   auto compute_graph = std::make_shared<ComputeGraph>("test_graph");
@@ -112,7 +86,7 @@ class Om2OnlineSessionTest : public testing::Test {
   void TearDown() override {
     unsetenv("ASCEND_WORK_PATH");
     unsetenv("ASCEND_HOME_PATH");
-    unsetenv("ENABLE_RUNTIME_OM2");
+    GetThreadLocalContext().SetGraphOption({});
     std::error_code ec;
     (void)std::filesystem::remove_all(test_work_dir_, ec);
   }
@@ -120,15 +94,15 @@ class Om2OnlineSessionTest : public testing::Test {
   std::string test_work_dir_;
 };
 
-// Test: OM2 online mode detection via env var
+// Test: OM2 online mode detection via graph option
 TEST_F(Om2OnlineSessionTest, Om2ModeDetection) {
-  unsetenv("ENABLE_RUNTIME_OM2");
+  GetThreadLocalContext().SetGraphOption({});
   EXPECT_FALSE(IsOm2OnlineMode());
 
-  setenv("ENABLE_RUNTIME_OM2", "1", 1);
+  GetThreadLocalContext().SetGraphOption({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   EXPECT_TRUE(IsOm2OnlineMode());
 
-  unsetenv("ENABLE_RUNTIME_OM2");
+  GetThreadLocalContext().SetGraphOption({});
   EXPECT_FALSE(IsOm2OnlineMode());
 }
 
@@ -279,7 +253,7 @@ TEST_F(Om2OnlineSessionTest, Om2ModelData_SharedPtrFork) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, LoadAndUnload_Success) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -306,7 +280,7 @@ TEST_F(Om2OnlineModelExecutorTest, LoadAndUnload_Success) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, RunGraph_Success) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -349,7 +323,7 @@ TEST_F(Om2OnlineModelExecutorTest, RunGraph_Success) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, RunGraph_EmptyOutputs_PrepareOm2Outputs) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -388,7 +362,7 @@ TEST_F(Om2OnlineModelExecutorTest, RunGraph_EmptyOutputs_PrepareOm2Outputs) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, RunGraph_HostInput_Success) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -431,7 +405,7 @@ TEST_F(Om2OnlineModelExecutorTest, RunGraph_HostInput_Success) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, RunGraph_NotLoaded_ReturnsGraphNotExist) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -460,7 +434,7 @@ TEST_F(Om2OnlineModelExecutorTest, RunGraph_NotLoaded_ReturnsGraphNotExist) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, UnloadGraph_NotLoaded_ReturnsSuccess) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -477,7 +451,7 @@ TEST_F(Om2OnlineModelExecutorTest, UnloadGraph_NotLoaded_ReturnsSuccess) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, DumpDebugJSONPrint_ReturnsUnsupported) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -486,7 +460,7 @@ TEST_F(Om2OnlineModelExecutorTest, DumpDebugJSONPrint_ReturnsUnsupported) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, PaRemapped_ReturnsUnsupported) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -501,7 +475,7 @@ TEST_F(Om2OnlineModelExecutorTest, PaRemapped_ReturnsUnsupported) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, RunGraphWithStream_Om2Mode_Success) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -538,7 +512,7 @@ TEST_F(Om2OnlineModelExecutorTest, RunGraphWithStream_Om2Mode_Success) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, ExecuteGraphWithStream_Om2Mode_Success) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -580,7 +554,7 @@ TEST_F(Om2OnlineModelExecutorTest, ExecuteGraphWithStream_Om2Mode_Success) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, RunThread_Om2ModeReportsUnsupportedThroughCallback) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -633,7 +607,7 @@ TEST_F(Om2OnlineModelExecutorTest, RunThread_Om2ModeReportsUnsupportedThroughCal
 }
 
 TEST_F(Om2OnlineModelExecutorTest, LoadGraph_ExternalConstAndFeatureMemory) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   ModelExecutor model_executor;
@@ -665,7 +639,7 @@ TEST_F(Om2OnlineModelExecutorTest, LoadGraph_ExternalConstAndFeatureMemory) {
 }
 
 TEST_F(Om2OnlineModelExecutorTest, GetCompiledModel_Om2Mode_Success) {
-  EnvValueGuard guard("ENABLE_RUNTIME_OM2");
+  GraphOptionsGuard guard;
   EnableOm2OnlineMode();
 
   GraphManager graph_manager;
@@ -675,6 +649,7 @@ TEST_F(Om2OnlineModelExecutorTest, GetCompiledModel_Om2Mode_Success) {
 
   auto graph_node = std::make_shared<GraphNode>(graph_id);
   graph_node->SetGeRootModel(ge_root_model);
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
   graph_node->SetBuildFlag(true);
   graph_manager.AddGraphNode(graph_id, graph_node);
 

@@ -172,7 +172,7 @@ void CompiledTarget::UpdateGraphOpTaskSize(ge::mobile::proto::ModelDef &mobile_m
     auto *attr = op->mutable_attr();
     const std::string graphop_task_size_str = "graphop_task_size";
     (*attr)[graphop_task_size_str].set_i(static_cast<int64_t>(GetSize()));
-    GELOGI("[Mobile] base_addr:  0x%llx", model_task_->base_addr());
+    GELOGI("[Mobile] base_addr: 0x%llx", model_task_->base_addr());
     GELOGI("[Mobile] weight_addr: 0x%llx", model_task_->weight_addr());
     is_update = true;
   };

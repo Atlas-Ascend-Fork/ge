@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 设置FlowMsg消息头中的flags。
 
@@ -25,7 +25,7 @@ set_flow_flags(self, flow_flags: int) -> None
 | --- | --- | --- |
 | flow_flags | 输入 | 消息头中的flags标志。<br>Flags可以取如下值：<br>dataflow.flow_func.flow_func.FLOW_FLAG_EOS  // 数据流结束标志<br>dataflow.flow_func.flow_func.FLOW_FLAG_SEG  // 非连续数据的分段标志 |
 
-## 返回值
+## 返回值说明
 
 无
 

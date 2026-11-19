@@ -837,7 +837,7 @@ Status Configuration::GetCustomOppPathFromOppConfigFile(std::vector<string> &cus
       ErrorMessageDetail err_msg(
           EM_INVALID_CONTENT, {"load_priority", real_opp_config_file_path, "Line:\"" + line + "\" not contain \"=\"."});
       ReportErrorMessage(err_msg);
-      REPORT_FE_ERROR("[GraphOpt][LoadOppConfigFile] Config format is error.");
+      REPORT_FE_ERROR("[GraphOpt][LoadOppConfigFile] Config format is invalid.");
       return INVALID_FILE_PATH;
     }
     string value = line.substr(pos_of_equal + 1);
@@ -1911,7 +1911,7 @@ bool Configuration::InitFirstLayerQuantization(const std::map<string, string> &o
     ErrorMessageDetail err_msg(EM_INPUT_OPTION_INVALID,
                                {file_path, ge::COMPRESSION_OPTIMIZE_CONF, "Line:\"" + line + "\" not contain \":\""});
     ReportErrorMessage(err_msg);
-    REPORT_FE_ERROR("[Configuration][InitFirstLayerQuantization]Config [%s] format is error.", line.c_str());
+    REPORT_FE_ERROR("[Configuration][InitFirstLayerQuantization]Config [%s] format is invalid.", line.c_str());
     return false;
   }
   string value = line.substr(pos_of_equal + 1);

@@ -38,7 +38,7 @@ graphStatus FillLikeSymbolicKernelCompute(gert::InferSymbolComputeContext *conte
     return UNSUPPORTED;
   }
   if (x_dims.empty()) {
-    GELOGW("SymbolicKernel compute unsupported, reason: x dims is empty, node %s[%s].", context->GetNodeName(),
+    GELOGW("SymbolicKernel compute unsupported, reason: x dimensions are empty, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
     return UNSUPPORTED;
   }

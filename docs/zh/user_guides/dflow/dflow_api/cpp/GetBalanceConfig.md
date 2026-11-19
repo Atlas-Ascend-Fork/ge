@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 获取BalanceConfig。
 
@@ -23,7 +23,7 @@ const BalanceConfig *GetBalanceConfig() const
 
 无
 
-## 返回值
+## 返回值说明
 
 返回null表示没有BalanceConfig配置。
 

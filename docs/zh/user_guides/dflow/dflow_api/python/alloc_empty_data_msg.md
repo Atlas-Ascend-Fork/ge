@@ -9,7 +9,7 @@
 - Atlas A2系列产品：支持
 <!-- end id2 -->
 
-## 函数功能
+## 功能说明
 
 申请空数据的MsgType类型的message。
 
@@ -23,7 +23,7 @@ alloc_empty_data_msg(self) -> FlowMsg
 
 无
 
-## 返回值
+## 返回值说明
 
 返回FlowMsg的实例。
 

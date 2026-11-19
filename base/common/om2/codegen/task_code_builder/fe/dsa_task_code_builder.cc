@@ -81,7 +81,7 @@ Status DSATaskCodeBuilder::InitSqe(const domi::DSATaskDef &dsa_task) {
 
 Status DSATaskCodeBuilder::InitHbmArgsTable(TaskSemanticContributeContext &context) {
   const std::vector<int64_t> workspace_bytes = context.op_desc->GetWorkspaceBytes();
-  GE_ASSERT_TRUE(!workspace_bytes.empty(), "[OM2][Check][Param] DSA op %s workspace bytes is empty",
+  GE_ASSERT_TRUE(!workspace_bytes.empty(), "[OM2][Check][Param] DSA op %s workspace byte list is empty",
                  header_.op_name.c_str());
   const size_t wks_count = workspace_addrs_.size();
   GE_ASSERT_TRUE((wks_count > 0U) && (workspace_bytes.size() >= wks_count),

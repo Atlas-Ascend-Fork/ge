@@ -156,7 +156,7 @@ aclError aclblasGemmEx(aclTransType transA, aclTransType transB, aclTransType tr
 
   if ((transA < ACL_TRANS_N) || (transA >= ACL_TRANS_NZ_T) || (transB < ACL_TRANS_N) || (transB >= ACL_TRANS_NZ_T)) {
     ACL_LOG_ERROR(
-        "[Check][Params]transA or transB is error. "
+        "[Check][Params]transA or transB is invalid. "
         "only support ACL_TRANS_N, ACL_TRANS_T and ACL_TRANS_NZ");
     acl::AclErrorLogManager::ReportInputError(
         acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
@@ -165,7 +165,7 @@ aclError aclblasGemmEx(aclTransType transA, aclTransType transB, aclTransType tr
   }
 
   if ((transC != ACL_TRANS_N) && (transC != ACL_TRANS_NZ)) {
-    ACL_LOG_ERROR("[Check][Trans]transC is error, only support ACL_TRANS_N and ACL_TRANS_NZ");
+    ACL_LOG_ERROR("[Check][Trans]transC is invalid, only support ACL_TRANS_N and ACL_TRANS_NZ");
     acl::AclErrorLogManager::ReportInputError(
         acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
         std::vector<const char *>({"transC", "", "only support ACL_TRANS_N and ACL_TRANS_NZ"}));
@@ -173,7 +173,7 @@ aclError aclblasGemmEx(aclTransType transA, aclTransType transB, aclTransType tr
   }
 
   if ((lda != -1) || (ldb != -1) || (ldc != -1)) {
-    ACL_LOG_ERROR("[Check][Params]lda, ldb(incx) or ldc(incy) is error, only support -1.");
+    ACL_LOG_ERROR("[Check][Params]lda, ldb(incx) or ldc(incy) is invalid, only support -1.");
     const std::string values = acl::AclErrorLogManager::FormatStr("lda = %d, ldb = %d, ldc = %d", lda, ldb, ldc);
     acl::AclErrorLogManager::ReportInputError(
         acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
@@ -182,7 +182,7 @@ aclError aclblasGemmEx(aclTransType transA, aclTransType transB, aclTransType tr
   }
 
   if (type != ACL_COMPUTE_HIGH_PRECISION) {
-    ACL_LOG_ERROR("[Check][Type]precision type is error, only support ACL_COMPUTE_HIGH_PRECISION");
+    ACL_LOG_ERROR("[Check][Type]precision type is invalid, only support ACL_COMPUTE_HIGH_PRECISION");
     acl::AclErrorLogManager::ReportInputError(
         acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
         std::vector<const char *>({"type", "", "only support ACL_COMPUTE_HIGH_PRECISION"}));
@@ -211,7 +211,7 @@ aclError aclblasCreateHandleForGemmEx(aclTransType transA, aclTransType transB, 
 
   if ((transA < ACL_TRANS_N) || (transA >= ACL_TRANS_NZ_T) || (transB < ACL_TRANS_N) || (transB >= ACL_TRANS_NZ_T)) {
     ACL_LOG_ERROR(
-        "[Check][Params]transA, transB is error. "
+        "[Check][Params]transA, transB is invalid. "
         "only support ACL_TRANS_N, ACL_TRANS_T and ACL_TRANS_NZ");
     acl::AclErrorLogManager::ReportInputError(
         acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
@@ -220,7 +220,7 @@ aclError aclblasCreateHandleForGemmEx(aclTransType transA, aclTransType transB, 
   }
 
   if ((transC != ACL_TRANS_N) && (transC != ACL_TRANS_NZ)) {
-    ACL_LOG_ERROR("[Check][transC]transC is error, only support ACL_TRANS_N and ACL_TRANS_NZ");
+    ACL_LOG_ERROR("[Check][transC]transC is invalid, only support ACL_TRANS_N and ACL_TRANS_NZ");
     acl::AclErrorLogManager::ReportInputError(
         acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
         std::vector<const char *>({"transC", "", "only support ACL_TRANS_N and ACL_TRANS_NZ"}));
@@ -228,7 +228,7 @@ aclError aclblasCreateHandleForGemmEx(aclTransType transA, aclTransType transB, 
   }
 
   if (type != ACL_COMPUTE_HIGH_PRECISION) {
-    ACL_LOG_ERROR("[Check][Type]precision type is error, only support ACL_COMPUTE_HIGH_PRECISION");
+    ACL_LOG_ERROR("[Check][Type]precision type is invalid, only support ACL_COMPUTE_HIGH_PRECISION");
     acl::AclErrorLogManager::ReportInputError(
         acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
         std::vector<const char *>({"type", "", "only support ACL_COMPUTE_HIGH_PRECISION"}));

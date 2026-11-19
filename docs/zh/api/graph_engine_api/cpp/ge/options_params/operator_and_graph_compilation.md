@@ -4,42 +4,17 @@
 
 用于配置算子编译时使用的AI Core核数。
 
-**参数取值：**"整数1|整数2"，中间使用“|”分隔：
+**参数取值：**"整数1|整数2"（中间使用“|”分隔）或"整数1"，参数值的含义只取决于取值形式，以及AI处理器本身的Cube:Vector核数比例。整数1表示算子编译时使用的AI Core中的Cube Core核数。整数2表示算子编译时使用的Vector Core核数。
 
-<!-- npu="950,A3,910b" id1 -->
-- **场景1**：针对如下产品，整数1表示算子编译时使用的AI Core中的Cube Core核数，整数2表示算子编译时使用的AI Core中的Vector Core核数，整数1与整数2都需要大于等于0，小于等于AI处理器包含的最大Cube Core和Vector Core数量：
+- 取值场景1（成对写法）："整数1|整数2"形式，直接按配置分配，不做派生；整数1和整数2要满足1:1或者1:2关系。
 
-    <!-- npu="950" id5 -->
-    Ascend 950PR&950DT系列产品
-    <!-- end id5 -->
+- 取值场景2（单值）："整数1"，只显示配置AI Core核数，Vector Core核数由GE按AI处理器的Cube:Vector核数比例自动派生：
+  - Cube:Vector比例为1:2时，Vector Core核数=2*整数1。
+  - Cube:Vector比例为1:1时，Vector Core核数=整数1。
 
-    <!-- npu="A3" id6 -->
-    Atlas A3系列产品
-    <!-- end id6 -->
+  "整数1"与"整数1|"、"整数1|0"等价，都会参与上述派生。
 
-    <!-- npu="910b" id7 -->
-    Atlas A2系列产品
-    <!-- end id7 -->
-    <!-- end id1 -->
-
-<!-- npu="910,310p" id2 -->
-- **场景2**：针对如下产品，仅需配置整数1，配置格式为："整数1|"，配置整数2不会生效，表示算子编译时使用的AI Core核数：
-
-    <!-- npu="310p" id3 -->
-    Atlas推理系列产品
-    <!-- end id3 -->
-
-    <!-- npu="910" id4 -->
-    Atlas训练系列产品
-    <!-- end id4 -->
-<!-- end id2 -->
-
-**使用约束：**
-
-<!-- npu="950,A3,910b" id8 -->
-- 针对参数值中的场景1：
-
-    不同AI处理器包含的最大Cube Core与Vector Core的数量可从`${INSTALL_DIR}/<arch>-linux/data/platform_config/xxx.ini`文件查看，如下所示，说明AI处理器上存在24个Cube Core，存在48个Vector Core。
+AI处理器的Cube:Vector核数比例可从`${INSTALL_DIR}/<arch>-linux/data/platform_config/xxx.ini`文件查看：
 
     ```ini
     [SoCInfo]
@@ -48,26 +23,17 @@
     cube_core_cnt=24
     vector_core_cnt=48
     ```
-    <!-- end id8 -->
+如上所示，说明AI处理器上最大存在24个Cube Core，48个Vector Core，Cube:Vector核数比例为1:2，按照取值场景2，"整数1"配置为12时，派生24个Vector Core核数，若未配置`cube_core_cnt`，则以`ai_core_cnt`作为Cube Core数量计算比例。
 
-<!-- npu="910,310p" id9 -->
-- 针对参数值中的场景2：
+**参数值约束：**
 
-    不同AI处理器包含的最大AI Core数量可从`${INSTALL_DIR}/<arch>-linux/data/platform_config/xxx.ini`文件查看，如下所示，说明AI处理器上存在10个AI Core。
-
-    ```ini
-    [SoCInfo]
-    # AI Core默认值，默认值即为最大值
-    ai_core_cnt=10
-    vector_core_cnt=8
-    ```
-<!-- end id9 -->
-- 配置为0不会报错，但会被当作未配置处理，不产生控核效果，如配置“整数1|0”，等同于配置“整数1|”。
+- 成对写法中右侧配置为0（如"整数1|0"）或留空（如"整数1|"）时，等同于只配置整数1，会按单值写法参与Vector Core核数派生；只配置"0"（单值0）时等同于不配置该参数，不做派生。
+- 整个参数值需大于等于0、小于等于对应核数的最大值；单值写法的取值范围为1~最大Cube Core核数（无独立Cube Core的产品为最大AI Core核数）。超出范围或格式非法（如带“+”、前导零、空格、小数、非数字、溢出）时，解析阶段仅打印告警、不派生，初始化阶段上报参数非法（E10001）。
+- 若同时通过[ge.vectorcoreNum](#gevectorcorenum)显示配置了正整数，则以显示值为准，不做派生；显示值与成对写法中的整数2冲突时，初始化阶段上报参数非法（E10001）。
 - 如果配置该参数的同时启用了算子编译缓存功能（ge.op\_compiler\_cache\_mode参数配置为“enable”或者“force”，默认为“enable”），此参数仅在首次编译时生效。若您想在非首次编译时生效该参数，需要清理编译磁盘的缓存。
 
 其中，$\{INSTALL\_DIR\}请替换为CANN软件安装后文件存储路径。以root用户安装为例，安装后文件默认存储路径为：/usr/local/Ascend/cann。<arch\>表示具体操作系统架构，xxx请根据实际产品进行选择。
 
-<!-- npu="950,A3,910b" id10 -->
 **配置示例：**
 
 - 场景1配置示例：
@@ -75,9 +41,7 @@
     ```c++
     {"ge.aicoreNum", "24|48"};
     ```
-<!-- end id10 -->
 
-<!-- npu="910,310p" id11 -->
 - 场景2配置示例
 
     ```c++
@@ -85,7 +49,6 @@
     或
     {"ge.aicoreNum", "10"};
     ```
-<!-- end id11 -->
 
 **必选/可选**：可选
 
@@ -186,7 +149,7 @@
 
 如果profiling trace中显示模型计算存在明显的H2D等待，说明被等待的拷贝组过长，此时可手动调整分组边界，减少本组的拷贝数量。
 
-> 注：GE INFO日志通过环境变量`ASCEND_GLOBAL_LOG_LEVEL`设置，取值为`1`表示INFO级别（0=DEBUG，1=INFO，2=WARN，3=ERROR），详细说明请参见《[环境变量参考](https://gitcode.com/cann/docs/blob/master/docs/zh/env-vars/README.md)》。
+> 注：GE INFO日志通过环境变量`ASCEND_GLOBAL_LOG_LEVEL`设置，取值为`1`表示INFO级别（0=DEBUG，1=INFO，2=WARN，3=ERROR），详细说明请参见《[环境变量参考](https://gitcode.com/cann/docs/blob/master/docs/en/env-vars/README.md)》。
 
 **配置示例：**
 
@@ -362,3 +325,32 @@
 **必选/可选**：可选
 
 **生效级别**：全局/session/graph
+
+## ge.vectorcoreNum
+
+用于配置算子编译时使用的Vector Core核数。
+
+与[ge.aicoreNum](#geaicorenum)配套使用：ge.aicoreNum支持“AI Core数\|Vector Core数”成对写法；当ge.aicoreNum仅配置单值（或成对写法右侧为空、0）时，GE按AI处理器Cube:Vector比例自动派生本参数并写回options；显式配置本参数时优先生效，ge.aicoreNum不再触发派生覆盖。
+
+**参数取值：**
+
+- 正整数n：1~AI处理器包含的最大Vector Core核数（`${INSTALL_DIR}/<arch>-linux/data/platform_config/xxx.ini`文件中的`vector_core_cnt`取值）。
+- 0或空：表示未配置，按默认的`vector_core_cnt`生效。
+
+**参数值约束：**
+
+- 仅支持非负十进制数字字符串，不支持前导零、空格、正负号、小数点等；格式非法报E10001。
+- 显式配置的取值优先于ge.aicoreNum派生：ge.aicoreNum单值写法（含"6\|"、"6\|0"）不再派生覆盖；ge.aicoreNum成对写法右侧为空或0时保留本参数显式值。
+- ge.aicoreNum成对写法中的Vector数与本参数均配置为正整数且不相等时，报E10001（PARAM_INVALID）。
+- 自动派生仅在AI处理器Cube:Vector比例为1:1或1:2时进行，比例为1:1时派生值等于AI Core数，为1:2时派生值为AI Core数的2倍；比例不支持、AI处理器无独立Vector Core、AI Core数超过Cube核数时不派生，仅打印告警信息。
+- 核数生效优先级：算子级属性`_op_vectorcore_num` > 本参数 > 默认`vector_core_cnt`。
+
+**配置示例：**
+
+```c++
+{"ge.vectorcoreNum", "12"};
+```
+
+**必选/可选**：可选
+
+**生效级别**：全局/session

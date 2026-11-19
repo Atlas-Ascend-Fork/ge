@@ -432,7 +432,8 @@ void AutomaticBufferFusion::CalcSliceInfo(const ge::ComputeGraph &graph,
     }
   }
 
-  FE_LOGD("Finish auto-ub-fusion for graph %s. Total fused times is %zu.", graph.GetName().c_str(), scope_nodes.size());
+  FE_LOGD("Finish auto-ub-fusion for graph %s. Total fusion count is %zu.", graph.GetName().c_str(),
+          scope_nodes.size());
   bool set_slice_info = true;
   (void)ge::AttrUtils::GetBool(graph, kNeedSetSliceInfo, set_slice_info);
   if (set_slice_info) {

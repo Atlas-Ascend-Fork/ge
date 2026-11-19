@@ -10,52 +10,17 @@
 
 ## 参数取值
 
-**参数值：**"整数1|整数2"，中间使用“|”分隔。
+**参数值：**"整数1|整数2"（中间使用“|”分隔）或"整数1"，参数值的含义只取决于取值形式，以及AI处理器本身的Cube:Vector核数比例。整数1表示算子编译时使用的AI Core中的Cube Core核数。整数2表示算子编译时使用的Vector Core核数。
 
-<!-- npu="950,A3,910b" id11 -->
-- **场景1**：针对如下产品，整数1表示算子编译时使用的AI Core中的Cube Core核数，整数2表示算子编译时使用的AI Core中的Vector Core核数，整数1与整数2都需要大于等于0，小于等于AI处理器包含的最大Cube Core和Vector Core数量：
+- 取值场景1（成对写法）："整数1|整数2"形式，直接按配置分配，不做派生；整数1和整数2要满足1:1或者1:2关系。
 
-    <!-- npu="950" id1 -->
-    Ascend 950PR&950DT系列产品
-    <!-- end id1 -->
+- 取值场景2（单值）："整数1"，只显示配置AI Core核数，Vector Core核数由GE按AI处理器的Cube:Vector核数比例自动派生：
+  - Cube:Vector比例为1:2时，Vector Core核数=2*整数1。
+  - Cube:Vector比例为1:1时，Vector Core核数=整数1。
 
-    <!-- npu="A3" id2 -->
-    Atlas A3系列产品
-    <!-- end id2 -->
+  "整数1"与"整数1|"、"整数1|0"等价，都会参与上述派生。
 
-    <!-- npu="910b" id3 -->
-    Atlas A2系列产品
-    <!-- end id3 -->
-<!-- end id11 -->
-
-<!-- npu="910,310p,310b,IPV350" id12 -->
-- **场景2**：针对如下产品，仅需配置整数1，配置格式为："整数1|"，配置整数2不会生效，表示算子编译时使用的AI Core核数：
-
-    <!-- npu="310b" id4 -->
-    Atlas 200I/500 A2推理产品
-    <!-- end id4 -->
-
-    <!-- npu="310p" id5 -->
-    Atlas推理系列产品
-    <!-- end id5 -->
-
-    <!-- npu="910" id6 -->
-    Atlas训练系列产品
-    <!-- end id6 -->
-
-    <!-- npu="IPV350" id7 -->
-    IPV350
-    <!-- end id7 -->
-<!-- end id12 -->
-
-<!-- @ref: ge/res/docs/zh/user_guides/atc_tools/CLI_options/--aicore_num_res.md#id1 -->
-
-**参数值约束**：
-
-<!-- npu="950,A3,910b" id13 -->
-- 针对参数值中的场景1：
-
-    不同AI处理器包含的最大Cube Core与Vector Core的数量可从`${INSTALL_DIR}/<arch>-linux/data/platform_config/xxx.ini`文件查看，如下所示，说明AI处理器上存在24个Cube Core，存在48个Vector Core。
+AI处理器的Cube:Vector核数比例可从`${INSTALL_DIR}/<arch>-linux/data/platform_config/xxx.ini`文件查看：
 
     ```ini
     [SoCInfo]
@@ -64,23 +29,13 @@
     cube_core_cnt=24
     vector_core_cnt=48
     ```
-<!-- end id13 -->
+如上所示，说明AI处理器上最大存在24个Cube Core，48个Vector Core，Cube:Vector核数比例为1:2，按照取值场景2，"整数1"配置为12时，派生24个Vector Core核数，若未配置`cube_core_cnt`，则以`ai_core_cnt`作为Cube Core数量计算比例。
 
-<!-- npu="910,310p,310b,IPV350" id14 -->
-- 针对参数值中的场景2：
+**参数值约束**：
 
-    不同AI处理器包含的最大AI Core数量可从`${INSTALL_DIR}/<arch>-linux/data/platform_config/xxx.ini`文件查看，如下所示，说明AI处理器上存在10个AI Core。
-
-    ```ini
-    [SoCInfo]
-    # AI Core默认值，默认值即为最大值
-    ai_core_cnt=10
-    vector_core_cnt=8
-    ```
-<!-- end id14 -->
-
-<!-- @ref: ge/res/docs/zh/user_guides/atc_tools/CLI_options/--aicore_num_res.md#id2 -->
-- 配置为0不会报错，但会被当作未配置处理，不产生控核效果，如配置“整数1|0”，等同于配置“整数1|”。
+- [--mode](./--mode.md)取值为7时，仅支持静态shape场景的核数控制。
+- 成对写法中右侧配置为0（如"整数1|0"）或留空（如"整数1|"）时，等同于只配置整数1，会按单值写法参与Vector Core核数派生；只配置"0"（单值0）时等同于不配置该参数，不做派生。
+- 整个参数值需大于等于0、小于等于对应核数的最大值；单值写法的取值范围为1~最大Cube Core核数（无独立Cube Core的产品为最大AI Core核数）。超出范围或格式非法（如带“+”、前导零、空格、小数、非数字、溢出）时，解析阶段仅打印告警、不派生，初始化阶段上报参数非法（E10001）。
 - 如果配置该参数的同时启用了算子编译缓存功能（[--op\_compiler\_cache\_mode](--op_compiler_cache_mode.md)参数配置为“enable”或者“force”），此参数仅在首次编译时生效。若您想在非首次编译时生效该参数，需要清理编译磁盘的缓存。
 
 其中，$\{INSTALL\_DIR\}请替换为CANN软件安装后文件存储路径。以root用户安装为例，安装后文件默认存储路径为：/usr/local/Ascend/cann。<arch\>表示具体操作系统架构，xxx请根据实际产品进行选择。
@@ -91,25 +46,19 @@
 
 ## 示例
 
-<!-- npu="950,A3,910b" id15 -->
 - 场景1配置示例：
 
     ```bash
     atc --aicore_num="24|48" ...
     ```
-<!-- end id15 -->
 
-<!-- npu="910,310p,310b,IPV350" id16 -->
-- 场景2配置示例
+- 场景2配置示例：
 
     ```bash
     atc --aicore_num="10|" ...
     或
     atc --aicore_num="10" ...
     ```
-<!-- end id16 -->
-
-<!-- @ref: ge/res/docs/zh/user_guides/atc_tools/CLI_options/--aicore_num_res.md#id3 -->
 
 ## 了解AI Core、Cube Core、Vector Core的关系
 
