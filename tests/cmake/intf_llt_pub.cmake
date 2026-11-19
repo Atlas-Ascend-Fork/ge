@@ -7,6 +7,11 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+# 本模块会被多处 include()（tests/、tests/engines/、tests/acl_ut/ 等），而 include() 不产生新的作用域，
+# 重复 add_library 同名 target 会触发 CMP0002 错误使 configure 失败。故整体加 NOT TARGET 保护，
+# 让本模块幂等；调用方无论是否自带 if (NOT TARGET ...) 都可安全 include。
+if (NOT TARGET intf_llt_pub)
+
 add_library(intf_llt_pub INTERFACE)
 
 target_include_directories(intf_llt_pub INTERFACE
@@ -47,3 +52,5 @@ target_link_libraries(intf_llt_pub INTERFACE
         -ldl
         -lrt
         )
+
+endif()

@@ -970,7 +970,15 @@ void Append(Bytes &to, const Bytes &from) {
 }
 Bytes Tlv(uint16_t tag, const Bytes &payload) {
   Bytes result = Le(tag, 2U);
-  Append(result, Le(payload.size(), 2U));  // 记录头 length 为 u16
+  Append(result, Varint(payload.size()));  // 记录头 length 为规范 LEB128 varint（变宽）
+  Append(result, payload);
+  return result;
+}
+
+// 用调用方给定的原始 length 字节构造帧（不做规范编码），专用于畸形 length 样本
+Bytes TlvWithRawLength(uint16_t tag, const Bytes &raw_length, const Bytes &payload) {
+  Bytes result = Le(tag, 2U);
+  Append(result, raw_length);
   Append(result, payload);
   return result;
 }
@@ -987,11 +995,12 @@ Bytes WithTask(const Bytes &task) {
   return Wire(records, 2U);
 }
 
-// 场景：空 DumpTransportInfo（无 TASK、MODEL 全不设）。校验 20B golden 与魔术字，以及解码/Clear 后的字段缺省行为。
+// 场景：空 DumpTransportInfo（无 TASK、MODEL 全不设）。校验 19B golden 与魔术字，以及解码/Clear 后的字段缺省行为。
 TEST(DumpTransportInfoTest, DumpTransInfo_ShouldMatchMagicAndDumpInfo_WhenNoModelAndTask) {
-  // 公共头16B(magic4+version2+header_size2+total_size4+record_count4) + MODEL记录(tag2+length2=4B)，total_size=20。
-  // MODEL 记录载荷为空即"全部字段未上线"的证据：未 Set 的 explicit 字段与 implicit 字段都不占任何字节
-  const Bytes golden = {1, 0x54, 0x4c, 0x56, 1, 0, 16, 0, 20, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
+  // 公共头16B(magic4+version2+header_size2+total_size4+record_count4) + MODEL记录(tag2+varint(0)=1B 共3B)，
+  // total_size=19。MODEL 记录载荷为空即"全部字段未上线"的证据：未 Set 的 explicit 字段与 implicit 字段
+  // 都不占任何字节
+  const Bytes golden = {1, 0x54, 0x4c, 0x56, 1, 0, 16, 0, 19, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0};
   DumpTransportInfo info;
   Bytes bytes{99};
   ASSERT_EQ(info.Serialize(bytes), DumpTransStatus::kOk);
@@ -1035,10 +1044,10 @@ void BuildCanonicalInfo(DumpTransportInfo &info) {
   input.SetDataType(-1);
 }
 
-// golden 逐条推导（帧头 tag:u16+length:u16 定宽小端；标量为规范 LEB128 varint，有符号先 zigzag；字符串裸字节）：
-//   DumpPath "/home/test/dump_path"  implicit 非默认值 → 0x0101: tag2+len2+裸字节20 = 24B
-//   ModelName ""       EXPLICIT presence(单成员 oneof 语义)：Set 过即上线 → 0x0102: tag2+len2(=0)+空串0B = 4B
-//   ModelId 0x12345678 EXPLICIT 非默认值 → 0x0103: tag2+len2+varint5 = 9B
+// golden 逐条推导（帧头 = tag:u16 定宽小端 + length:varint；标量为规范 LEB128 varint，有符号先 zigzag；字符串裸字节）：
+//   DumpPath "/home/test/dump_path"  implicit 非默认值 → 0x0101: tag2 + varint(20) + 裸字节20
+//   ModelName ""       EXPLICIT presence(单成员 oneof 语义)：Set 过即上线 → 0x0102: tag2 + varint(0) + 空串
+//   ModelId 0x12345678 EXPLICIT 非默认值 → 0x0103: tag2 + varint(5) + varint(0x12345678)
 //   EndGraph(false)/TaskType(kAiCore=0) 为 implicit 且值等于类型默认值 → 不上线，0 字节
 Bytes BuildCanonicalModel() {
   // 字符串字段的线上形态是裸字节（长度由所在记录 length 给出），golden 直接取字符字节
@@ -1054,9 +1063,8 @@ Bytes BuildCanonicalTask() {
   Append(task_bytes, Tlv(0x0202, Varint(889U)));
   // DataType=-1 走 zigzag:zigzag(-1)=1,单字节(定宽时代为 4 字节补码)
   Bytes input_bytes = Tlv(0x1001, ZzVarint(-1));
-  // shape=[UINT64_MAX, 2] 的线上语义即 [-1, 2]:count varint + 每维 zigzag varint
-  Bytes shape = Varint(2U);
-  Append(shape, ZzVarint(-1));
+  // shape=[UINT64_MAX, 2] 的线上语义即 [-1, 2]:每维 zigzag varint 直拼（无 count 前缀）
+  Bytes shape = ZzVarint(-1);
   Append(shape, ZzVarint(2));
   Append(input_bytes, Tlv(0x1003, shape));
   Append(task_bytes, Tlv(0x0010, input_bytes));
@@ -1423,18 +1431,24 @@ void AddFrameMalformedCases(std::vector<MalformedCase> &cases) {
   cases.push_back({WithTask(Tlv(0x0205, {2})), DumpTransStatus::kInvalidFormat});
 }
 
-// 维度集合:count 超出剩余字节可容纳的维数 → 长度溢出;尾部多余字节 → 格式非法
+// 维度数组（无 count，元素 zigzag varint 自终止）:唯一畸形形态是元素 varint 自身的
+// 截断/非规范/超宽（count 时代的"count 超剩余字节"与"尾部多余字节"两种形态已随 count 取消而不存在）
 void AddCollectionMalformedCases(std::vector<MalformedCase> &cases) {
-  cases.push_back({WithTask(Tlv(0x0010, Tlv(0x1003, Varint(1U)))), DumpTransStatus::kLengthOverflow});
-  cases.push_back({WithTask(Tlv(0x0010, Tlv(0x1003, Varint(UINT32_MAX)))), DumpTransStatus::kLengthOverflow});
-  Bytes bad_shape = Varint(1U);
-  Append(bad_shape, ZzVarint(2));
-  bad_shape.push_back(0U);
-  cases.push_back({WithTask(Tlv(0x0010, Tlv(0x1003, bad_shape))), DumpTransStatus::kInvalidFormat});
+  cases.push_back({WithTask(Tlv(0x0010, Tlv(0x1003, Bytes{0x80U}))), DumpTransStatus::kInvalidFormat});
+  cases.push_back({WithTask(Tlv(0x0010, Tlv(0x1003, Bytes{0x80U, 0x00U}))), DumpTransStatus::kInvalidFormat});
+  cases.push_back({WithTask(Tlv(0x0010, Tlv(0x1003, Bytes(11U, 0x81U)))), DumpTransStatus::kInvalidFormat});
   // 层次校验:Input 内不含 DimRange;Output 内 DimRange 的字段值为截断 varint
   cases.push_back({WithTask(Tlv(0x0010, Tlv(0x0018, {}))), DumpTransStatus::kInvalidFormat});
   cases.push_back({WithTask(Tlv(0x0011, Tlv(0x0018, Tlv(0x1801, Bytes{0x80U})))), DumpTransStatus::kInvalidFormat});
-  cases.push_back({WithTask({0x10, 0, 255, 255, 255, 255}), DumpTransStatus::kInvalidFormat});
+  // 记录 length 声明超出父记录剩余边界。length 变宽后不能再用定宽字节凑，显式给出 raw length varint
+  cases.push_back({WithTask(TlvWithRawLength(0x10, Bytes{0x09U}, {})), DumpTransStatus::kInvalidFormat});
+  // length varint 自身被截断（首字节置续位后无后继字节）
+  cases.push_back({WithTask(TlvWithRawLength(0x10, Bytes{0x80U}, {})), DumpTransStatus::kInvalidFormat});
+  // length 的非规范（overlong）编码：0x80 0x00 表示 0，规范写法应为单字节 0x00
+  cases.push_back({WithTask(TlvWithRawLength(0x10, Bytes{0x80U, 0x00U}, {})), DumpTransStatus::kInvalidFormat});
+  // length 超出 u32 值域（0xFF×5+0x01 = 2^35），与公共头 total_size:u32 对齐
+  cases.push_back({WithTask(TlvWithRawLength(0x10, Bytes{0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0x01U}, {})),
+                   DumpTransStatus::kInvalidFormat});
 }
 
 // 场景：帧与层次类畸形（公共头版本非法、任意前缀截断、重复 MODEL、非法记录 tag、跨层次标签、非法 bool）。
@@ -1495,9 +1509,15 @@ TEST(DumpTransportInfoTest, DumpTransModelInfo_ShouldRoundTripExplicitDefaults_W
   FillExplicitDefaults(info);
   Bytes encoded;
   ASSERT_EQ(info.Serialize(encoded), DumpTransStatus::kOk);
-  // 证据一：比空 MODEL（16B 公共头 + 4B 空记录帧头）多出 24B = 空串 4B + 4×(4B 帧头 + 1B varint(0))；
-  // 3 个 Set 成默认值的 implicit 字段贡献 0 字节
-  EXPECT_EQ(encoded.size(), wire::kHeaderSize + wire::kRecordHeaderSize + 4U + 5U + 5U + 5U + 5U);
+  // 证据一：5 个 explicit 字段各为一条字段记录。ModelName 空串 = tag2 + varint(0) + 空串 = 3B；
+  // ModelId/StepIdAddr/IterationsPerLoopAddr/LoopCondAddr 四条 varint(0) 记录各 = tag2 + varint(1) + 1B = 4B，
+  // 合计 MODEL 负载 3 + 16 = 19B。对照组 3 个 implicit 字段（DumpPath/Flag/DumpData）Set 成默认值贡献 0 字节。
+  // 空 MODEL 与满载 MODEL 的公共头(16B)、MODEL 帧头(3B) 完全相同（两种负载的 length varint 都是 1B），
+  // 故差值恒等于 MODEL 负载本身的 19B；空 MODEL 基线运行时算出，不写死（帧头已变宽）
+  DumpTransportInfo empty_info;
+  Bytes empty_encoded;
+  ASSERT_EQ(empty_info.Serialize(empty_encoded), DumpTransStatus::kOk);
+  EXPECT_EQ(encoded.size(), empty_encoded.size() + 3U + 4U * 4U);
   // 证据二：MODEL(0x0001) 记录内线上 tag 仅 5 个 explicit 字段，不含 implicit 的 0x0101/0x0107/0x0109
   std::vector<uint16_t> model_tags;
   const auto scan = wire::ProcessRecords(
@@ -1580,15 +1600,18 @@ TEST(DumpTransportInfoTest, DumpWireSchema_ShouldRegisterEveryEncodedTag_WhenAll
 // case1~case4；dump 根目录/用例名/模型名已替换为等长示意串）。字段存在性与生产路径一致：
 // loop_cond/iterations_per_loop 真机为 0 不设置，其余默认值字段两侧都不上线，对比的是同语义载荷。
 // io 的 format 字段为 CANN 私有格式编码：0x5000000 基址 + 公共枚举序号（3=NC1HWC0、4=FRACTAL_Z），透传自真机日志。
-// 汇总（golden 长度 + analyze_wire.py 逐字节归类，①~④合计与 diff 精确相符）：
-//   case    proto    tlv    diff   tlv/proto  ①公共头  ②默认值  ③头开销差  ④值编码差
-//   case1   1871B  2591B  +720B    ≈138%      +16B     +0B     +724B     -20B
-//   case2   1614B  2005B  +391B    ≈124%      +16B     +0B     +387B     -12B
-//   case3   2463B  3415B  +952B    ≈139%      +16B     +0B     +980B     -44B
-//   case4   2456B  3408B  +952B    ≈139%      +16B     +0B     +980B     -44B
-// 结论：TLV 大 24%~39%，几乎全部来自③（每字段 4B 定宽头 vs pb 1~3B tag+len）；④恒为小幅负值
-// （Shape 以"count+zigzag 维度"内联，省 pb packed 子消息的 tag+len）；②恒为 0（explicit 与 pb
-// oneof 严格对称，无缺省值多上线）。字符串占比越高相对开销越低；diff 随 io 字段数线性增长。
+// 汇总（tlv 为实测 golden；proto 数不随 wire_tlv.h 改造变化，恒为 pb 序列化产物）。
+// 本表为「length varint 化 + dims 数组去 count」后的最新口径：去 count 使每例再省
+// 「shape 帧数 × 1B（每帧一个 count 字节）+ 1B（某帧负载缩过 128B 界、length varint 宽 2B→1B 的联动）」。
+// 旧 ①②③④ 分项拆解基于离线 analyze_wire.py 归类口径（脚本不在仓内且口径已变），不再列出：
+//   case    proto    tlv     diff    tlv/proto  记录数  shape帧
+//   case1   1871B   2292B   +421B   ≈123%      182     20
+//   case2   1614B   1837B   +223B   ≈114%      155     12
+//   case3   2463B   2987B   +524B   ≈121%      383     44
+//   case4   2456B   2980B   +524B   ≈121%      383     44
+// 结论：TLV 大 14%~23%（u16 定宽时代为 24%~39%），差额主因仍是帧头开销：**tag 定宽 2B**
+// （DumpWireSchema 的 tag 走分段编号 0x0101/0x1001…，全部 ≥256，即使 varint 也仍占 2B，无法压到 1B）
+// 对比 pb 的 tag+len 1~3B；缺省值类差异恒为 0（explicit 与 pb oneof 严格对称，无缺省值多上线）。
 struct BbitIo {
   uint64_t addr = 0U;
   uint64_t size = 0U;
@@ -2004,33 +2027,36 @@ BbitCase BuildBbitCase3LikeCase4(const char *scene, const char *case_dir, const 
   return c;
 }
 
-// 场景：BBIT 真机 case1（15 任务、33 个输入、无输出），体积对比。golden：proto=1871B tlv=2591B diff=+720B。
-// 归类：③+724B（33 输入×4 标量字段 +396B 为大头）、④-20B（20 处 Shape）；长 op_name 使 pb Op 子消息前缀升 2B
+// 场景：BBIT 真机 case1（15 任务、33 个输入、无输出），体积对比。golden：proto=1871B tlv=2292B diff=+421B。
+// dims 去 count 后较 varint 时代（2313B）再省 21B：20 个 Shape 帧各省 1 个 count 字节，另有 1B 为
+// 某帧负载缩过 128B 界、length varint 宽度 2B→1B 的联动缩减；差额大头仍是帧头开销（182 条记录 tag 定宽 2B）
 TEST(Om2DumpWireBbitTest, DumpPayload_ShouldCompareProtoAndTlvSizes_WhenBbitCase1InputOnlyDump) {
   const BbitCase c = BuildBbitCase1();
   ASSERT_EQ(c.tasks.size(), 15U);
   WireSizes sizes{};
   RunBbitCase(c, sizes);
   EXPECT_EQ(sizes.proto, 1871U);
-  EXPECT_EQ(sizes.tlv, 2591U);
-  EXPECT_EQ(sizes.tlv - sizes.proto, 720U);
+  EXPECT_EQ(sizes.tlv, 2292U);
+  EXPECT_EQ(sizes.tlv - sizes.proto, 421U);
 }
 
 // 场景：BBIT 真机 case2（13 任务每任务 1 输出、stats+dump_step 非空），体积对比。golden：proto=1614B
-// tlv=2005B diff=+391B，占比 4 例最低（≈124%）：io 字段少、长 op_name 字符串占比高摊薄定宽头劣势。
-// 归类：③+387B、④-12B；dump_data/dump_step 两侧对称上线不构成差异
+// tlv=1837B diff=+223B，占比 4 例最低（≈114%）：io 字段少、长 op_name 字符串占比高摊薄帧头劣势。
+// dims 去 count 后较 varint 时代（1850B）再省 13B：12 个 Shape 帧各省 1 个 count + 1B 联动宽度缩减；
+// dump_data/dump_step 两侧对称上线不构成差异
 TEST(Om2DumpWireBbitTest, DumpPayload_ShouldCompareProtoAndTlvSizes_WhenBbitCase2OutputStatsDump) {
   const BbitCase c = BuildBbitCase2();
   ASSERT_EQ(c.tasks.size(), 13U);
   WireSizes sizes{};
   RunBbitCase(c, sizes);
   EXPECT_EQ(sizes.proto, 1614U);
-  EXPECT_EQ(sizes.tlv, 2005U);
-  EXPECT_EQ(sizes.tlv - sizes.proto, 391U);
+  EXPECT_EQ(sizes.tlv, 1837U);
+  EXPECT_EQ(sizes.tlv - sizes.proto, 223U);
 }
 
 // 场景：BBIT 真机 case3（21 任务、24 输入+20 输出全 io、双流 60/61），体积对比。golden：proto=2463B
-// tlv=3415B diff=+952B，4 例中载荷最大；io 字段翻倍后 diff 近翻倍（vs case1），随字段数线性增长。③+980B ④-44B
+// tlv=2987B diff=+524B，4 例中载荷最大；io 字段翻倍后 diff 近翻倍（vs case1），随字段数线性增长。
+// dims 去 count 后较 varint 时代（3032B）再省 45B：44 个 Shape 帧各省 1 个 count + 1B 联动宽度缩减
 TEST(Om2DumpWireBbitTest, DumpPayload_ShouldCompareProtoAndTlvSizes_WhenBbitCase3FullIoDump) {
   const BbitCase c = BuildBbitCase3LikeCase4("case3", "ut_sample_model_dump_case_name_0004/om2_dump/20261016144154/0/",
                                              "ut_sample_model_dump_case_name_0004_model2", 446792U, 60U, 61U);
@@ -2038,13 +2064,13 @@ TEST(Om2DumpWireBbitTest, DumpPayload_ShouldCompareProtoAndTlvSizes_WhenBbitCase
   WireSizes sizes{};
   RunBbitCase(c, sizes);
   EXPECT_EQ(sizes.proto, 2463U);
-  EXPECT_EQ(sizes.tlv, 3415U);
-  EXPECT_EQ(sizes.tlv - sizes.proto, 952U);
+  EXPECT_EQ(sizes.tlv, 2987U);
+  EXPECT_EQ(sizes.tlv - sizes.proto, 524U);
 }
 
-// 场景：BBIT 真机 case4（与 case3 同构、主副流对调 61/60），体积对比。golden：proto=2456B tlv=3408B
-// diff=+952B。比 case3 各小 7B = model_name 短 7 字符，字符串增量两格式相同、逐字节平移；归类与 case3
-// 一致（③+980B ④-44B），验证同构输入下差异归类的稳定性
+// 场景：BBIT 真机 case4（与 case3 同构、主副流对调 61/60），体积对比。golden：proto=2456B tlv=2980B
+// diff=+524B。比 case3 各小 7B = model_name 短 7 字符，字符串增量两格式相同、逐字节平移；差异构成与
+// case3 一致（44 个 Shape 帧去 count + 1B 联动宽度缩减），验证同构输入下差异构成的稳定性
 TEST(Om2DumpWireBbitTest, DumpPayload_ShouldCompareProtoAndTlvSizes_WhenBbitCase4FullIoDumpVariant) {
   const BbitCase c = BuildBbitCase3LikeCase4("case4", "ut_sample_model_dump_case_name_0005/om2_dump/20261016144358/0/",
                                              "ut_sample_model_dump_case_name_0005", 452163U, 61U, 60U);
@@ -2052,8 +2078,8 @@ TEST(Om2DumpWireBbitTest, DumpPayload_ShouldCompareProtoAndTlvSizes_WhenBbitCase
   WireSizes sizes{};
   RunBbitCase(c, sizes);
   EXPECT_EQ(sizes.proto, 2456U);
-  EXPECT_EQ(sizes.tlv, 3408U);
-  EXPECT_EQ(sizes.tlv - sizes.proto, 952U);
+  EXPECT_EQ(sizes.tlv, 2980U);
+  EXPECT_EQ(sizes.tlv - sizes.proto, 524U);
 }
 
 }  // namespace
