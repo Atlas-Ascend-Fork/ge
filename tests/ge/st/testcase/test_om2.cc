@@ -1544,8 +1544,7 @@ void ExpectGeneratedMakefileSupportsEnvCompiler(const gert::ZipArchiveReader &ar
   EXPECT_NE(makefile.find("ifndef CPPFLAGS"), std::string::npos);
   EXPECT_NE(makefile.find("CPPFLAGS :="), std::string::npos);
   EXPECT_NE(makefile.find("ifndef CXXFLAGS"), std::string::npos);
-  EXPECT_NE(makefile.find("CXXFLAGS := -std=c++17 -O2 -fPIC -fstack-protector-all -D_FORTIFY_SOURCE=2"),
-            std::string::npos);
+  EXPECT_NE(makefile.find("CXXFLAGS := -std=c++17 -O0 -fPIC"), std::string::npos);
   EXPECT_NE(makefile.find("ifndef LDFLAGS"), std::string::npos);
   EXPECT_NE(makefile.find(
                 "LDFLAGS := -shared -L$(LIB_PATH) -Wl,--no-as-needed -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -s"),

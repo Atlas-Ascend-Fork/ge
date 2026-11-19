@@ -229,6 +229,10 @@ FunctionDef *KernelExTaskCodeBuilder::RenderAssembleTfAicpuArgs() const {
        ChkStatus(MemcpyS(tmp_args.Data(), target_args_len, kernel_ex_args, kernel_ex_args_len)),
        ChkStatus(MemcpyS(tmp_args.Data() + ast_.Sizeof("uint32_t") * 2, ast_.Sizeof("uint64_t"),
                          tf_ai_cpu_ex_info.Arrow("sessionID").Addr(), ast_.Sizeof("uint64_t"))),
+       ast_.If(tf_ai_cpu_ex_info.Arrow("stepIDAddr") != "0U",
+               {ChkStatus(MemcpyS(tmp_args.Data() + ast_.Sizeof("uint32_t") * 2 + ast_.Sizeof("uint64_t") * 1,
+                                  ast_.Sizeof("uint64_t"), tf_ai_cpu_ex_info.Arrow("stepIDAddr").Addr(),
+                                  ast_.Sizeof("uint64_t")))}),
        ChkStatus(MemcpyS(tmp_args.Data() + ast_.Sizeof("uint32_t") * 2 + ast_.Sizeof("uint64_t") * 2,
                          ast_.Sizeof("uint64_t"), tf_ai_cpu_ex_info.Arrow("kernelID").Addr(), ast_.Sizeof("uint64_t"))),
        ChkStatus(MemcpyS(tmp_args.Data() + ast_.Sizeof("uint32_t") * 2 + ast_.Sizeof("uint64_t") * 9,
@@ -517,6 +521,8 @@ Status KernelExTaskCodeBuilder::RenderDispatchFuncAssembleExInfo(std::vector<Bod
 
   (void)body.emplace_back(ChkStatus(
       ast_.Call("AssembleTfAicpuExKernelIdInfo", {ctx.Attr("kernel_id"), ast_.Var("", "tf_ai_cpu_ex_info").Addr()})));
+
+  (void)body.emplace_back(ast_.Assign(ast_.Var("", "tf_ai_cpu_ex_info").Attr("stepIDAddr"), ctx.Attr("step_id_addr")));
 
   (void)body.emplace_back(
       ChkStatus(ast_.Call("AssembleTfAicpuExWorkSpaceAddrInfo",

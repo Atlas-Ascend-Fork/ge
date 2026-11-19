@@ -23,8 +23,6 @@
 
 namespace ge {
 namespace {
-constexpr uint64_t kDefaultMemBlockSize = 2UL * 1024UL * 1024UL;
-constexpr uint64_t kTsMemBlockSize = 4UL * 1024UL;
 constexpr uint64_t kMemAlignSize = 512UL;
 
 const std::map<std::string, std::vector<OpDispatchType::Value>> &GetDispatchFuncNameMap() {
@@ -168,7 +166,8 @@ Status LoadAndRunFileCodeGenerator::BuildLoadBody(std::vector<BodyItem> &body, c
                                       main_follow_stream_mapping_,
                                       create_args_handler,
                                       destroy_args_handler,
-                                      custom_tasks_arg});
+                                      custom_tasks_arg,
+                                      ast_.Call("PtrToValue", {step_id_dev_addr_})});
 
   auto ctx_var = ast_.Var("DispatchOpContext", "ctx");
   auto loop_var = ast_.Var("uint32_t", "_op_idx");
@@ -288,6 +287,17 @@ Status LoadAndRunFileCodeGenerator::BuildRunBodyImpl(std::vector<BodyItem> &body
   body.push_back(ast_.If((input_count != "om2::INPUT_NUM") || (output_count != "om2::OUTPUT_NUM"),
                          {ast_.Return("ACL_ERROR_FAILURE")}));
 
+  if (is_async) {
+    body.push_back(
+        ChkStatus(AclrtMemcpyAsync(step_id_dev_addr_, ast_.Sizeof("uint64_t"), step_id_.Addr(), ast_.Sizeof("uint64_t"),
+                                   "ACL_MEMCPY_HOST_TO_BUF_TO_DEVICE", exe_stream)));
+  } else {
+    body.push_back(ChkStatus(AclrtMemcpy(step_id_dev_addr_, ast_.Sizeof("uint64_t"), step_id_.Addr(),
+                                         ast_.Sizeof("uint64_t"), "ACL_MEMCPY_HOST_TO_DEVICE")));
+  }
+  body.push_back(
+      ast_.Call("OM2_LOGD", {ast_.Str("stepId=%lu refreshed to device, addr=%p"), step_id_, step_id_dev_addr_}));
+
   // Phase 1: InputCopy
   BuildRunBodyPhaseInputCopy(body, codegen_model.model_io.entries, exe_stream, is_async);
 
@@ -297,6 +307,7 @@ Status LoadAndRunFileCodeGenerator::BuildRunBodyImpl(std::vector<BodyItem> &body
   // Phase 3: OutputCopy
   BuildRunBodyPhaseOutputCopy(body, codegen_model.model_io.entries, exe_stream, is_async);
 
+  body.push_back(ast_.PreInc(step_id_));
   body.push_back(ast_.BlankLine());
   auto done_item = is_async ? ast_.Str("RunAsync done") : ast_.Str("Run done");
   body.push_back(ast_.Call("OM2_LOGI", {done_item}));
@@ -479,8 +490,6 @@ Status LoadAndRunFileCodeGenerator::BuildCommonHelperFunctions(std::vector<DeclN
   auto size = ast_.Var("const size_t", "size");
   auto mem_type = ast_.Var("const uint32_t", "mem_type");
   auto mem_ptrs = ast_.Var("std::vector<void *> &", "mem_ptrs");
-  auto block_size = ast_.Var("uint64_t", "block_size");
-  auto aligned_size = ast_.Var("const auto", "aligned_size");
   auto final_block_size = ast_.Var("const auto", "final_block_size");
   auto rt_ret = ast_.Var("const auto", "rt_ret");
 
@@ -488,19 +497,13 @@ Status LoadAndRunFileCodeGenerator::BuildCommonHelperFunctions(std::vector<DeclN
   items.push_back(ast_.DefineFunction(
       "MallocDeviceMemory", {dev_ptr, size, mem_type, mem_ptrs}, "aclError",
       {
-          ast_.VarDecl(block_size, kDefaultMemBlockSize),
-          ast_.If(mem_type == "RT_MEMORY_TS",
-                  {
-                      ast_.Assign(block_size, kTsMemBlockSize),
-                  }),
-          ast_.VarDecl(aligned_size, ((size + kMemAlignSize) - 1) / kMemAlignSize * kMemAlignSize),
-          ast_.VarDecl(final_block_size, ((aligned_size + block_size) - 1) / block_size * block_size),
+          ast_.VarDecl(final_block_size, ((size + kMemAlignSize) - 1) / kMemAlignSize * kMemAlignSize),
           ast_.VarDecl(rt_ret, AclrtMallocHelper(dev_ptr.Addr(), final_block_size, mem_type, "GE_MODULE_NAME_U16")),
           ast_.If((rt_ret != "ACL_SUCCESS") || (dev_ptr == nullptr),
                   {
                       ast_.Return("ACL_ERROR_FAILURE"),
                   }),
-          ChkStatus(AclrtMemset(dev_ptr, block_size, 0, block_size)),
+          ChkStatus(AclrtMemset(dev_ptr, final_block_size, 0, final_block_size)),
           mem_ptrs.PushBack(dev_ptr),
           ast_.Return("ACL_SUCCESS"),
       }));

@@ -50,6 +50,9 @@ class Om2Utils {
                                         const bool is_release = true);
   static std::string EscapeArtifactName(const std::string &model_name);
   static std::string NormalizeCpuArch(const std::string &cpu);
+  static Status GetCrossBuildConfigs(std::map<std::string, std::string> &configs);
+  static std::string GetBuildConfigValue(const std::map<std::string, std::string> &configs, const std::string &key,
+                                         const std::string &fallback);
 };
 }  // namespace ge
 

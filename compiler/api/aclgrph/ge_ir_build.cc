@@ -94,9 +94,7 @@ constexpr int32_t kOfflineModeMobile = 40;
 const std::unordered_set<std::string> kSupportedOfflineMode = {"0", "7", "40"};
 constexpr size_t kZipMagicSize = 4U;
 const uint8_t kZipLocalFileHeaderMagic[kZipMagicSize] = {0x50U, 0x4BU, 0x03U, 0x04U};
-const std::set<std::string> kOm2UnsupportedOptions = {ge::ir_option::OP_NAME_MAP,
-                                                      ge::ir_option::AC_PARALLEL_ENABLE,
-                                                      ge::ir_option::QUANT_DUMPABLE,
+const std::set<std::string> kOm2UnsupportedOptions = {ge::ir_option::AC_PARALLEL_ENABLE,
                                                       ge::ir_option::TILING_SCHEDULE_OPTIMIZE,
                                                       ge::ir_option::BUILD_INNER_MODEL,
                                                       ge::ir_option::INPUT_SHAPE_RANGE,

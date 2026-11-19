@@ -350,7 +350,6 @@ TEST_F(ControlTaskCodeGeneratorUt, GenerateControlTaskFiles_Ok) {
   EXPECT_NE(load_file.find("DispatchLabelGotoEx"), std::string::npos);
   EXPECT_NE(load_file.find("return DispatchLabelGotoEx(op, ctx)"), std::string::npos);
   EXPECT_NE(load_file.find("MallocDeviceMemory"), std::string::npos);
-  EXPECT_NE(load_file.find("if (mem_type == RT_MEMORY_TS)"), std::string::npos);
   EXPECT_NE(load_file.find("OM2_CHK_STATUS(aclrtMemcpy"), std::string::npos);
 
   [[maybe_unused]] const std::string expected_header = R"(#include <cstddef>

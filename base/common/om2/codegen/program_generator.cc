@@ -9,7 +9,9 @@
  */
 
 #include "program_generator.h"
+#include <map>
 #include <string_view>
+#include "common/helper/om2/om2_utils.h"
 #include "common/om2/codegen/ast/ast_nodes.h"
 #include "common/om2/codegen/emitter/cpp_emitter.h"
 #include "common/om2/codegen/file_code_generator/args_manager_file_code_generator.h"
@@ -51,7 +53,6 @@ Status ProgramGenerator::GenerateProgram(Om2CodePrinter &code_printer) {
   GE_ASSERT_SUCCESS(GenerateResourcesSource(code_printer));
   GE_ASSERT_SUCCESS(GenerateLoadAndRunSource(code_printer));
   GE_ASSERT_SUCCESS(GenerateArgsManagerSource(code_printer));
-  // 必须在 GenerateMakeFile 之前：磁盘 Makefile 的 SRC_FILES 要按是否生成条件追加
   GE_ASSERT_SUCCESS(GenerateVarMgrSource(code_printer));
   GE_ASSERT_SUCCESS(GenerateMakeFile(code_printer));
   return SUCCESS;
@@ -306,50 +307,73 @@ Status ProgramGenerator::GenerateLoadAndRunSource(Om2CodePrinter &code_printer) 
   return SUCCESS;
 }
 
-Status ProgramGenerator::GenerateMakeFile(Om2CodePrinter &code_printer) {
-  const std::string &artifact_name = codegen_model_.artifact_name;
-  const std::string lib_name = artifact_name + "_om2";
-  // 磁盘 Makefile 的 SRC_FILES 是硬编码的，须与实际产物集合一致，否则用户离线重编会缺文件
-  const std::string var_mgr_src = has_var_mgr_file_ ? (" " + artifact_name + "_var_mgr.cpp") : "";
-  std::string cmakelists_content = R"(CANN_ROOT ?= $(ASCEND_HOME_PATH)
-USE_STUB_LIB ?= 1
-MAKEFLAGS += -j$(shell nproc)
-
-ifeq ($(origin CXX),default)
-CXX := c++
-endif
-CXX ?= c++
-
-TARGET := ../lib)" + lib_name + R"(.so
-SRC_FILES := )" + artifact_name + R"(_resources.cpp )" +
-                                   artifact_name + R"(_kernel_reg.cpp )" + artifact_name + R"(_load_and_run.cpp )" +
-                                   artifact_name + R"(_args_manager.cpp)" + var_mgr_src + R"(
-
-ifndef CPPFLAGS
-CPPFLAGS := \
+MakefileParams ProgramGenerator::ResolveMakefileParams(const std::map<std::string, std::string> &build_configs) const {
+  MakefileParams params;
+  params.cxx = Om2Utils::GetBuildConfigValue(build_configs, "CXX", "c++");
+  params.cppflags = Om2Utils::GetBuildConfigValue(build_configs, "CPPFLAGS", R"(\
   -I$(CANN_ROOT)/include \
   -I$(CANN_ROOT)/include/external \
   -I$(CANN_ROOT)/pkg_inc \
   -I$(CANN_ROOT)/pkg_inc/base \
   -I$(CANN_ROOT)/pkg_inc/runtime \
-  -I$(CURDIR)/include
+  -I$(CURDIR)/include)");
+  params.cxxflags = Om2Utils::GetBuildConfigValue(build_configs, "CXXFLAGS",
+                                                  "-std=c++17 -O2 -fPIC -fstack-protector-all -D_FORTIFY_SOURCE=2");
+  params.ldflags = Om2Utils::GetBuildConfigValue(build_configs, "LDFLAGS",
+                                                 "-shared -L$(LIB_PATH) -Wl,--no-as-needed -Wl,-z,relro -Wl,-z,now "
+                                                 "-Wl,-z,noexecstack -s");
+  params.ldlibs = Om2Utils::GetBuildConfigValue(build_configs, "LDLIBS", "-lacl_rt -Wl,--as-needed");
+  params.lib_path = Om2Utils::GetBuildConfigValue(build_configs, "LIB_PATH", "");
+  return params;
+}
+
+std::string ProgramGenerator::BuildMakefileContent(const MakefileParams &params) const {
+  const std::string &artifact_name = codegen_model_.artifact_name;
+  const std::string lib_name = artifact_name + "_om2";
+  // 磁盘 Makefile 的 SRC_FILES 是硬编码的，须与实际产物集合一致，否则用户离线重编会缺文件
+  const std::string var_mgr_src = has_var_mgr_file_ ? (" " + artifact_name + "_var_mgr.cpp") : "";
+  const std::string cross_lib_path_line = params.lib_path.empty() ? "" : ("LIB_PATH ?= " + params.lib_path + "\n\n");
+  return R"(CANN_ROOT ?= $(ASCEND_HOME_PATH)
+USE_STUB_LIB ?= 1
+MAKEFLAGS += -j$(shell nproc)
+
+ifeq ($(origin CXX),default)
+CXX := )" +
+         params.cxx + R"(
+endif
+CXX ?= )" +
+         params.cxx + R"(
+
+TARGET := ../lib)" +
+         lib_name + R"(.so
+SRC_FILES := )" +
+         artifact_name + R"(_resources.cpp )" + artifact_name + R"(_kernel_reg.cpp )" + artifact_name +
+         R"(_load_and_run.cpp )" + artifact_name + R"(_args_manager.cpp)" + var_mgr_src + R"(
+
+ifndef CPPFLAGS
+CPPFLAGS := )" +
+         params.cppflags + R"(
 endif
 
 ifndef CXXFLAGS
-CXXFLAGS := -std=c++17 -O2 -fPIC -fstack-protector-all -D_FORTIFY_SOURCE=2
+CXXFLAGS := )" +
+         params.cxxflags + R"(
 endif
 
-ifeq ($(USE_STUB_LIB),1)
+)" + cross_lib_path_line +
+         R"(ifeq ($(USE_STUB_LIB),1)
 LIB_PATH ?= $(CANN_ROOT)/devlib
 else
 LIB_PATH ?= $(CANN_ROOT)/lib64
 endif
 
 ifndef LDFLAGS
-LDFLAGS := -shared -L$(LIB_PATH) -Wl,--no-as-needed -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -s
+LDFLAGS := )" +
+         params.ldflags + R"(
 endif
 ifndef LDLIBS
-LDLIBS := -lacl_rt -Wl,--as-needed
+LDLIBS := )" +
+         params.ldlibs + R"(
 endif
 
 .PHONY: all clean
@@ -362,7 +386,16 @@ $(TARGET): $(SRC_FILES)
   clean:
 	@rm -f $(TARGET)
 )";
-  code_printer.AddContent(GeneratedFileIndex::kCMakeListsFile, cmakelists_content + "\n");
+}
+
+Status ProgramGenerator::GenerateMakeFile(Om2CodePrinter &code_printer) {
+  std::map<std::string, std::string> build_configs;
+  GE_ASSERT_SUCCESS(Om2Utils::GetCrossBuildConfigs(build_configs));
+
+  const MakefileParams params = ResolveMakefileParams(build_configs);
+
+  const std::string makefile_content = BuildMakefileContent(params);
+  code_printer.AddContent(GeneratedFileIndex::kCMakeListsFile, makefile_content + "\n");
   GELOGD("[OM2] Makefile code is generated.");
   return SUCCESS;
 }

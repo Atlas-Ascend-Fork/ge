@@ -15,76 +15,43 @@
 namespace ge {
 Status ResolveStablePart(StablePartId id, std::string &output) {
   switch (id) {
-    case StablePartId::kChkStatusMacro:
-      output =
-          "#define OM2_CHK_STATUS(expr, ...)            \\\n"
-          "do {                                       \\\n"
-          "  const aclError _chk_status = (expr);     \\\n"
-          "  if (_chk_status != ACL_SUCCESS) {        \\\n"
-          "    return _chk_status;                    \\\n"
-          "  }                                        \\\n"
-          "} while (false)\n";
-      return SUCCESS;
-    case StablePartId::kChkNotNullMacro:
-      output =
-          "#define OM2_CHK_NOTNULL(ptr, ...)            \\\n"
-          "do {                                       \\\n"
-          "  if ((ptr) == nullptr) {                  \\\n"
-          "    return ACL_ERROR_FAILURE;              \\\n"
-          "  }                                        \\\n"
-          "} while (false)\n";
-      return SUCCESS;
-    case StablePartId::kChkTrueMacro:
-      output =
-          "#define OM2_CHK_TRUE(expr, ...)              \\\n"
-          "do {                                       \\\n"
-          "  if (!(expr)) {                           \\\n"
-          "    return ACL_ERROR_FAILURE;              \\\n"
-          "  }                                        \\\n"
-          "} while (false)\n";
-      return SUCCESS;
-    case StablePartId::kGetAddrMacro:
-      output =
-          "#define GET_ADDR(mem_ptr, offset)   \\\n"
-          "(reinterpret_cast<void *>(                 \\\n"
-          "  reinterpret_cast<uintptr_t>(mem_ptr) +   \\\n"
-          "  static_cast<uintptr_t>(offset)))\n";
-      return SUCCESS;
-    case StablePartId::kMakeGuardMacro:
-      output = "#define OM2_MAKE_GUARD(var, callback) const ::om2::ScopeGuard const_guard_##var(callback)\n";
-      return SUCCESS;
     case StablePartId::kInterfaceMacros:
       output =
-          "#define OM2_CHK_STATUS(expr, ...)            \\\n"
+          "#define OM2_CHK_STATUS(expr, ...)          \\\n"
           "do {                                       \\\n"
           "  const aclError _chk_status = (expr);     \\\n"
           "  if (_chk_status != ACL_SUCCESS) {        \\\n"
-          "    OM2_LOGE(__VA_ARGS__);                 \\\n"
+          "    OM2_LOGE(\"call [\" #expr \"] failed, ret:%d.\", _chk_status); \\\n"
+          "    Om2LogExtra(__VA_ARGS__);             \\\n"
           "    return _chk_status;                    \\\n"
           "  }                                        \\\n"
           "} while (false)\n"
           "\n"
-          "#define OM2_CHK_NOTNULL(ptr, ...)            \\\n"
+          "#define OM2_CHK_NOTNULL(ptr, ...)          \\\n"
           "do {                                       \\\n"
           "  if ((ptr) == nullptr) {                  \\\n"
-          "    OM2_LOGE(__VA_ARGS__);                 \\\n"
+          "    OM2_LOGE(\"check [\" #ptr \"] notnull failed.\"); \\\n"
+          "    Om2LogExtra(__VA_ARGS__);             \\\n"
           "    return ACL_ERROR_FAILURE;              \\\n"
           "  }                                        \\\n"
           "} while (false)\n"
           "\n"
-          "#define OM2_CHK_TRUE(expr, ...)              \\\n"
+          "#define OM2_CHK_TRUE(expr, ...)            \\\n"
           "do {                                       \\\n"
           "  if (!(expr)) {                           \\\n"
-          "    OM2_LOGE(__VA_ARGS__);                 \\\n"
+          "    OM2_LOGE(\"check [\" #expr \"] failed.\"); \\\n"
+          "    Om2LogExtra(__VA_ARGS__);             \\\n"
           "    return ACL_ERROR_FAILURE;              \\\n"
           "  }                                        \\\n"
           "} while (false)\n"
           "\n"
-          "#define OM2_CHK_RT(expr, ...)               \\\n"
+          "#define OM2_CHK_RT(expr, ...)             \\\n"
           "do {                                       \\\n"
           "  const rtError_t _rt_err = (expr);        \\\n"
           "  if (_rt_err != RT_ERROR_NONE) {          \\\n"
-          "    OM2_LOGE(__VA_ARGS__);                 \\\n"
+          "    OM2_LOGE(\"call [\" #expr \"] failed, rt ret:%d.\", \\\n"
+          "              static_cast<int32_t>(_rt_err)); \\\n"
+          "    Om2LogExtra(__VA_ARGS__);             \\\n"
           "    return ACL_ERROR_FAILURE;              \\\n"
           "  }                                        \\\n"
           "} while (false)\n"
@@ -95,27 +62,6 @@ Status ResolveStablePart(StablePartId id, std::string &output) {
           "  static_cast<uintptr_t>(offset)))\n"
           "\n"
           "#define OM2_MAKE_GUARD(var, callback) const ::om2::ScopeGuard const_guard_##var(callback)\n";
-      return SUCCESS;
-    case StablePartId::kPointerHelpers:
-      output =
-          "template<typename T>\n"
-          "inline T *PtrAdd(T *const ptr, const size_t max_buf_len, const size_t idx) {\n"
-          "  if ((ptr != nullptr) && (idx < max_buf_len)) {\n"
-          "    return reinterpret_cast<T *>(ptr + idx);\n"
-          "  }\n"
-          "  return nullptr;\n"
-          "}\n"
-          "template<typename TI, typename TO>\n"
-          "inline TO *PtrToPtr(TI *const ptr) {\n"
-          "  return reinterpret_cast<TO *>(ptr);\n"
-          "}\n"
-          "inline uint64_t PtrToValue(const void *const ptr) {\n"
-          "  return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(ptr));\n"
-          "}\n"
-          "inline void *ValueToPtr(const uint64_t value) {\n"
-          "  return reinterpret_cast<void *>(static_cast<uintptr_t>(value));\n"
-          "}\n"
-          "\n";
       return SUCCESS;
     case StablePartId::kInterfacePointerHelpers:
       output =
@@ -159,29 +105,6 @@ Status ResolveStablePart(StablePartId id, std::string &output) {
           "  return GET_ADDR(base_ptr, offset);\n"
           "}\n"
           "\n"
-          "template<typename... Args>\n"
-          "inline std::vector<uint64_t> FlattenHostArgs(Args&&... args) {\n"
-          "  std::vector<uint64_t> buf;\n"
-          "  auto append_arg = [&](auto&& arg) {\n"
-          "    using T = std::decay_t<decltype(arg)>;\n"
-          "    if constexpr (std::is_pointer_v<T>) {\n"
-          "      buf.push_back(reinterpret_cast<uint64_t>(arg));\n"
-          "    } else if constexpr (std::is_same_v<T, gert::Tensor>) {\n"
-          "      buf.push_back(reinterpret_cast<uint64_t>(arg.GetAddr()));\n"
-          "    } else if constexpr (std::is_same_v<T, std::vector<int64_t>>) {\n"
-          "      for (auto d : arg) buf.push_back(static_cast<uint64_t>(d));\n"
-          "    } else if constexpr (std::is_integral_v<T>) {\n"
-          "      buf.push_back(static_cast<uint64_t>(arg));\n"
-          "    } else {\n"
-          "      static_assert(sizeof(T) == 0, \"Unsupported type in FlattenHostArgs\");\n"
-          "    }\n"
-          "  };\n"
-          "  (append_arg(std::forward<Args>(args)), ...);\n"
-          "  return buf;\n"
-          "}\n";
-      return SUCCESS;
-    case StablePartId::kFlattenHostArgs:
-      output =
           "template<typename... Args>\n"
           "inline std::vector<uint64_t> FlattenHostArgs(Args&&... args) {\n"
           "  std::vector<uint64_t> buf;\n"
@@ -886,6 +809,7 @@ Status ResolveStablePart(StablePartId id, std::string &output) {
                "  // 用指针而非引用：DispatchOpContext 无条件发射，而 Om2Model::custom_tasks_ 仅在模型含\n"
                "  // Callback 任务时生成，故非 Callback 模型传 nullptr。仅用于分发定位，TaskState 不反向保存集合。\n"
                "  std::vector<CustomTaskStatePtr> *custom_tasks;\n"
+               "  uint64_t step_id_addr;   // SO 自维护的 stepId 设备内存地址值（InitResources 分配）\n"
                "};\n"
                "\n";
       return SUCCESS;
@@ -937,7 +861,17 @@ Status ResolveStablePart(StablePartId id, std::string &output) {
           "      DlogRecord(OM2_MODULE_NAME, DLOG_ERROR, \"[%s:%d] %\" PRIu64 \" [%s] %s: \" fmt, \\\n"
           "                 DLOG_FILE_NAME, __LINE__, Om2GetTid(), OM2_LOG_HEADER, __FUNCTION__, ##__VA_ARGS__); \\\n"
           "    } \\\n"
-          "  } while (false)\n";
+          "  } while (false)\n"
+          "\n"
+          "static inline void Om2LogExtra() {}\n"
+          "template <typename... Args>\n"
+          "static inline void Om2LogExtra(const char *fmt, Args &&... args) {\n"
+          "  if (Om2IsLogEnable(DLOG_ERROR)) {\n"
+          "    DlogRecord(OM2_MODULE_NAME, DLOG_ERROR, \"[%s:%d] %\" PRIu64 \" [%s] %s: %s\",\n"
+          "               DLOG_FILE_NAME, __LINE__, Om2GetTid(), OM2_LOG_HEADER, __FUNCTION__, fmt,\n"
+          "               std::forward<Args>(args)...);\n"
+          "  }\n"
+          "}\n";
       return SUCCESS;
     case StablePartId::kCreateClassCustomOpFactory:
     case StablePartId::kCreateDynamicClassCustomOpFactory:

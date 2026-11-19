@@ -2009,9 +2009,7 @@ TEST(UtestIrBuild, aclgrphBundleBuildModelOfflineModeMixedTest) {
 TEST(UtestIrBuild, aclgrphBuildModelOm2UnsupportedBuildOptionTest) {
   Graph graph = BuildIrGraph1();
   const std::vector<std::string> unsupported_options = {
-      ge::ir_option::OP_NAME_MAP,
       ge::ir_option::AC_PARALLEL_ENABLE,
-      ge::ir_option::QUANT_DUMPABLE,
       ge::ir_option::TILING_SCHEDULE_OPTIMIZE,
       ge::ir_option::BUILD_INNER_MODEL,
       ge::ir_option::INPUT_SHAPE_RANGE,
@@ -2064,6 +2062,23 @@ TEST(UtestIrBuild, aclgrphBuildModelOm2InsertOpFileNotBlockedByUnsupportedCheck)
   // unsupported-options blacklist.
   auto ret = ge::aclgrphBuildModel(graph, build_options, model);
   EXPECT_NE(ret, ge::GRAPH_SUCCESS);
+}
+
+TEST(UtestIrBuild, aclgrphBuildModelOm2OpNameMapQuantDumpableNotBlockedByUnsupportedCheck) {
+  Graph graph = BuildIrGraph1();
+  ModelBufferData model;
+  const std::vector<std::string> released_options = {
+      ge::ir_option::OP_NAME_MAP,
+      ge::ir_option::QUANT_DUMPABLE,
+  };
+  for (const auto &option : released_options) {
+    const std::map<std::string, std::string> build_options = {
+        {"ge.offlineMode", "7"},
+        {option, "1"},
+    };
+    auto ret = ge::aclgrphBuildModel(graph, build_options, model);
+    EXPECT_NE(ret, ge::GRAPH_SUCCESS) << option;
+  }
 }
 
 TEST(UtestIrCommon, CheckDynamicBatchSizeInputShapeValidTest) {
