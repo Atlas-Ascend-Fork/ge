@@ -118,7 +118,7 @@
         {
           "black-list": {
              "to-add": ["A"]
-          }
+          },
           "white-list": {
              "to-remove": ["A"]
           }

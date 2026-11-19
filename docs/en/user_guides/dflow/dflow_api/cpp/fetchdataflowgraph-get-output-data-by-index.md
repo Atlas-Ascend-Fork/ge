@@ -1,0 +1,44 @@
+# FetchDataFlowGraph (Obtaining Output Data by Index)
+
+<!-- md-trans-meta sourceCommit=688a734ba16efd86f64585d92b25babcec3a2576 translatedAt=2026-11-13T10:23:38.047Z pushedAt=2026-11-16T06:11:08.741Z nl=2 -->
+
+## Applicable Products
+
+<!-- npu="A3" id1 -->
+- Atlas A3 products: Supported
+<!-- end id1 -->
+<!-- npu="910b" id2 -->
+- Atlas A2 products: Supported
+<!-- end id2 -->
+
+## Function
+
+Obtains the graph output data by index.
+
+## Prototype
+
+```cpp
+Status FetchDataFlowGraph(uint32_t graph_id, const std::vector<uint32_t> &indexes, std::vector<Tensor> &outputs, DataFlowInfo &info, int32_t timeout)
+```
+
+## Parameters
+
+| Parameter | Input/Output | Description |
+| --- | --- | --- |
+| graph_id | Input | ID of the graph to be executed. |
+| indexes | Input | Indexes of the output data. They must not be duplicated. The value range is [0, N-1], where N indicates the number of output data items. One or more indexes are supported.<br>Example: {0,2} indicates obtaining the first and third output data items. |
+| outputs | Output | Output tensor of the compute graph. You do not need to allocate memory. After execution, GE allocates memory and assigns values. |
+| info | Output | Output data flow flag. For details, see [DataFlowInfo Data Type](dataflowinfo-datatype.md). |
+| timeout | Input | Data extraction timeout period, in ms. The value -1 indicates that it never times out. |
+
+## Return Value
+
+The function status results are as follows.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| - | Status | - SUCCESS: Data obtained successfully.<br>  - FAILED: Failed to obtain data.<br>  - For other error codes, see [UDF Error Codes](udf-error-code.md). |
+
+## Constraints
+
+None

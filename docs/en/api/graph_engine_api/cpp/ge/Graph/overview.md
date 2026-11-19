@@ -1,0 +1,60 @@
+# Overview
+
+<!-- md-trans-meta sourceCommit=84719ef8084affb0771904e2525c615132365471 translatedAt=2026-10-16T14:21:26.376Z pushedAt=2026-10-28T07:40:22.757Z nl=2 -->
+
+A class for constructing graph-related objects.
+
+## Required Header Files
+
+```c++
+#include <graph/graph.h>
+```
+
+## Public Member Functions
+
+```c++
+explicit Graph(const std::string& name)
+explicit Graph(const char *name)
+Graph()
+~Graph()
+graphStatus AddControlEdge(GNode &src_node, GNode &dst_node)
+graphStatus AddDataEdge(GNode &src_node, const int32_t src_port_index, GNode &dst_node, const int32_t dst_port_index)
+GNode AddNodeByOp(const Operator &op)
+graphStatus AddOp(const ge::Operator &op)
+graphStatus Graph::CopyFrom(const Graph &src_graph)
+static GraphPtr ConstructFromInputs(const std::vector<Operator> &inputs, const AscendString &name)
+graphStatus Dump(DumpFormat format, std::ostream &o_stream) const
+graphStatus DumpToFile(DumpFormat format, const AscendString &suffix) const
+graphStatus FindOpByName(const std::string &name, ge::Operator &op) const
+graphStatus FindOpByName(const char_t *name, ge::Operator &op) const
+graphStatus FindOpByType(const std::string &type, std::vector<ge::Operator> &ops) const
+graphStatus FindOpByType(const char_t *type, std::vector<ge::Operator> &ops) const
+std::vector<GNode> GetAllNodes() const
+graphStatus GetAttr(const AscendString &name, AttrValue &attr_value) const
+graphStatus GetAttr(const AscendString &name, AttrValue &attr_value) const
+graphStatus GetAllOpName(std::vector<std::string> &op_name) const
+graphStatus GetAllOpName(std::vector<AscendString> &names) const
+std::vector<GNode> GetDirectNode() const
+const std::string &Graph::GetName() const
+graphStatus GetName(AscendString &name) const
+bool IsValid() const
+graphStatus LoadFromFile(const std::string &file_name)
+graphStatus LoadFromFile(const char_t *file_name)
+graphStatus LoadFromMem(const GraphBuffer &graph_buffer)
+graphStatus LoadFromMem(const uint8_t *data, const size_t len)
+graphStatus LoadFromSerializedModelArray(const void *serialized_model, size_t size)
+graphStatus RemoveEdge(GNode &src_node, const int32_t src_port_index, GNode &dst_node, const int32_t dst_port_index)
+graphStatus RemoveNode(GNode &node)
+graphStatus RemoveNode(GNode &node, bool contain_subgraph)
+graphStatus SaveToFile(const std::string &file_name) const
+graphStatus SaveToFile(const char_t *file_name) const
+graphStatus SaveToMem(GraphBuffer &graph_buffer) const
+graphStatus SetAttr(const AscendString &name, const AttrValue &attr_value)
+Graph &SetInputs(const std::vector<Operator> &inputs)
+void SetNeedIteration(bool need_iteration)
+Graph &SetOutputs(const std::vector<Operator>& outputs)
+Graph &SetOutputs(const std::vector<std::pair<Operator, std::vector<size_t>>> &output_indexs)
+Graph &SetOutputs(const std::vector<std::pair<ge::Operator, std::string> > &outputs)
+Graph &SetOutputs(const std::vector<std::pair<ge::Operator, AscendString>> &outputs)
+Graph &SetTargets(const std::vector<Operator> &targets)
+```

@@ -1,0 +1,50 @@
+# aclmdlCreateAIPP
+
+<!-- md-trans-meta sourceCommit=fcba9ddddeed35cd2a7a0ade347fab638d62fcb2 translatedAt=2026-11-17T14:03:34.587Z pushedAt=2026-11-18T03:19:07.870Z nl=2 -->
+
+## Product Support
+
+<!-- npu="950" id29 -->
+- Ascend 950PR&950DT products: Supported
+<!-- end id29 -->
+<!-- npu="A3" id30 -->
+- Atlas A3 products: Supported
+<!-- end id30 -->
+<!-- npu="910b" id31 -->
+- Atlas A2 products: Supported
+<!-- end id31 -->
+<!-- npu="310b" id32 -->
+- Atlas 200I/500 A2 inference product: Supported
+<!-- end id32 -->
+<!-- npu="310p" id33 -->
+- Atlas inference products: Supported
+<!-- end id33 -->
+<!-- npu="910" id34 -->
+- Atlas training products: Supported
+<!-- end id34 -->
+<!-- npu="IPV350" id35 -->
+- IPV350: not supported
+<!-- end id35 -->
+<!-- @ref: ge/res/docs/zh/api/graph_engine_api/c/acl/aclmdlCreateAIPP_res.md#id1 -->
+
+## Function Description
+
+In dynamic AIPP scenarios, creates data of the aclmdlAIPP type based on the batch size supported by the om/om2 model to store dynamic AIPP parameters.
+
+To destroy data of the aclmdlAIPP type, see [aclmdlDestroyAIPP](aclmdlDestroyAIPP.md).
+
+## Prototype
+
+```c
+aclmdlAIPP *aclmdlCreateAIPP(uint64_t batchSize)
+```
+
+## Parameters
+
+| Parameter | Input/Output | Description |
+| --- | --- | --- |
+| batchSize | Input | Batch size of the original model. |
+
+## Return Value
+
+Returns a pointer of the aclmdlAIPP type.
