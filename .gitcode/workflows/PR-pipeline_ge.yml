@@ -1316,12 +1316,10 @@ stages:
                 export SK=${{secrets.SK}}
                 export obs_smoke_path=${{ env.obs_smoke_path }}
                 # A5 冒烟镜像(pre_mindspore_A5_conda)缺少 GE 运行期(tbe/AOE InitCannKB)所需 python 依赖,
-                # 缺失时 GEInitialize 报 Environment_Error_Import_Python_Module_Failed(EC0010), 故先补齐
-                pip3 install numpy decorator sympy scipy attrs psutil
-                # A5 冒烟不拦截合入: 失败时用 || 兜底使步骤退出码为 0, A5 job 状态保持 COMPLETED,
-                # 避免 query-pipeline 按 job 状态打 ci-pipeline-failed (GitCode 的 step/job 级
-                # continue-on-error 均无法阻止该拦截); 失败详情见本步骤日志与已上传的 plog
-                bash ${{ steps.process_checkout.outputs.path }}/pre_smoke.sh || echo "[PreSmoke_A5] A5 冒烟失败, 但已配置为不拦截合入(详见步骤日志与 plog)"
+                # 缺失时 GEInitialize 报 Environment_Error_Import_Python_Module_Failed(EC0010), 故先补齐;
+                # 安装失败视为环境异常正常拦截(不加 || 兜底), 以重试降低瞬时故障误杀
+                pip3 install --retries 3 --timeout 60 numpy decorator sympy scipy attrs psutil
+                bash ${{ steps.process_checkout.outputs.path }}/pre_smoke.sh
           - name: upload
             uses: obs-upload
             if: ${{ always() }}
