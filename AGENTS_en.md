@@ -103,6 +103,7 @@ rm -rf build_ut/ build_st/ output/ build/ build_out/ cov/ build_cmake_gcov/
 | [`stream_allocator.md`](docs/en/design/features/stream_allocator.md) | Stream allocation, stream, multi-stream, stream reuse, event synchronization, stream activation | `compiler/graph/build/stream/` |
 | [`infer_shape.md`](docs/en/design/features/infer_shape.md) | InferShape, Shape inference, OriginShape, StorageShape, dynamic Shape, symbolic inference | `*infer_shape*`, `*symbolic_shape*` |
 | [`infer_format.md`](docs/en/design/features/infer_format.md) | Format inference, Format inference, InferFormat, OriginFormat, StorageFormat, TransData, format propagation | `*format_refiner*`, `*format_optimize*` |
+| [`dflow.md`](docs/en/design/modules/dflow/dflow.md) | DataFlow, dflow, flow graph, FlowGraph, FlowNode, ProcessPoint, FlowData, asynchronous pipeline, data-driven, multi-model chaining, model sinking, UDF, user-defined function, FuncProcessPoint, FunctionPp, GraphPp, PNE engine, ProcessNodeEngine, FlowMsg, rtMbuf, pyflow, pydflow, multi-instance deployment, logic_device_id | `dflow/` |
 
 | Key Feature Design Principles and Software Constraints | Trigger Words | Involved Directories |
 |------|----------------|----------|
