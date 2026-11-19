@@ -23,6 +23,16 @@ bool NeedRegisterLocalCreator(const OpRegistrationPriority priority, const OpEng
 }
 }  // namespace
 
+// .a 侧 1参 BaseOpCreator 链接锚：强引用触发 ld 提取本 .o 成员（含 pull ABI）
+#ifdef CUSTOM_OP_REGISTRY_STATIC
+CustomOpCreatorRegister::CustomOpCreatorRegister(const AscendString &operator_type, const BaseOpCreator &op_creator) {
+  if (!op_creator || IsOfflineCustomOpSoLoading()) {
+    return;
+  }
+  CustomOpFactory::RegisterCustomOpCreator(operator_type, op_creator);
+}
+#endif
+
 CustomOpCreatorRegister::CustomOpCreatorRegister(const AscendString &operator_type, const CustomOpCreateFunc op_creator)
     : CustomOpCreatorRegister(operator_type, OpBackend::kDevice, op_creator) {}
 

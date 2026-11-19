@@ -1735,4 +1735,17 @@ TEST_F(CustomOpFactoryStTest, check_need_load_python_custom_ops_skips_missing_no
   EXPECT_FALSE(need_load);
 }
 
+// 覆盖 custom_op_registry_static.a 中 1参 BaseOpCreator 构造器（链接锚实现），
+// 确保该路径的 ST 增量覆盖率达标
+TEST_F(CustomOpFactoryStTest, base_op_creator_ctor_empty_skips_registration) {
+  const CustomOpCreatorRegister anchor("StCovEmptyCreatorOp", BaseOpCreator());
+  EXPECT_FALSE(CustomOpFactory::IsExistOp("StCovEmptyCreatorOp"));
+}
+
+TEST_F(CustomOpFactoryStTest, base_op_creator_ctor_non_empty_registers) {
+  const CustomOpCreatorRegister register_op("StCovRealCreatorOp",
+                                            []() -> std::unique_ptr<BaseCustomOp> { return nullptr; });
+  EXPECT_TRUE(CustomOpFactory::IsExistOp("StCovRealCreatorOp"));
+}
+
 }  // namespace ge

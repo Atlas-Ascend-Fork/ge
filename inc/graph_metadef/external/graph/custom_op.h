@@ -223,7 +223,7 @@ using CustomOpCreateFunc = ge::BaseCustomOp *(*)();
  */
 class CustomOpCreatorRegister {
  public:
-  GE_CUSTOM_OP_CTOR_WEAK CustomOpCreatorRegister(const AscendString &operator_type, const BaseOpCreator &op_creator);
+  CustomOpCreatorRegister(const AscendString &operator_type, const BaseOpCreator &op_creator);
   /**
    * 指定算子类型与 backend 注册创建器。
    * @since 9.2.0(2026-07)
@@ -271,6 +271,16 @@ class CustomOpCreatorRegister {
  * 低于 9.2.0 的 GE 环境上跳过注册，仅保证算子库可加载。
  * @since 9.2.0(2026-07)
  */
+// 链接锚：强引用触发 .a 提取 pull ABI 符号
+#define GE_LINK_ANCHOR(ctr, op_type)                                                                                  \
+  static uint32_t REG_JOIN(ge_pull_probe_, ctr)() __attribute__((weakref("GetRegisteredCustomOpCreatorAbiVersion"))); \
+  static const bool REG_JOIN(ge_link_anchor_, ctr) = []() {                                                           \
+    if (REG_JOIN(ge_pull_probe_, ctr) != nullptr) {                                                                   \
+      const ge::CustomOpCreatorRegister REG_JOIN(ge_anchor_obj_, ctr)((op_type), ge::BaseOpCreator());                \
+    }                                                                                                                 \
+    return true;                                                                                                      \
+  }()
+
 #define REG_OP_BACKEND(custom_op_class, op_type, backend) \
   REG_OP_BACKEND_UNIQ(__COUNTER__, custom_op_class, op_type, backend)
 // 版本判断用于兼容 9.1（无 3/5 参构造、弱符号为空）：以命名空间级 static 别名 + weakref 弱引用
@@ -281,6 +291,7 @@ class CustomOpCreatorRegister {
   static ge::BaseCustomOp *REG_JOIN(custom_op_pull_creator, ctr)() {                                                 \
     return new custom_op_class();                                                                                    \
   }                                                                                                                  \
+  GE_LINK_ANCHOR(ctr, op_type);                                                                                      \
   static int REG_JOIN(custom_op_probe_, ctr)(char *, int32_t *) __attribute__((weakref("aclsysGetVersionNum")));     \
   static const std::unique_ptr<ge::CustomOpCreatorRegister> REG_JOIN(custom_op_register, ctr) = []() {               \
     char pkg_name[] = "ge-executor";                                                                                 \
@@ -305,6 +316,7 @@ class CustomOpCreatorRegister {
   static ge::BaseCustomOp *REG_JOIN(custom_op_pull_creator, ctr)() {                                             \
     return new custom_op_class();                                                                                \
   }                                                                                                              \
+  GE_LINK_ANCHOR(ctr, op_type);                                                                                  \
   static int REG_JOIN(custom_op_probe_, ctr)(char *, int32_t *) __attribute__((weakref("aclsysGetVersionNum"))); \
   static const std::unique_ptr<ge::CustomOpCreatorRegister> REG_JOIN(custom_op_register, ctr) = []() {           \
     char pkg_name[] = "ge-executor";                                                                             \

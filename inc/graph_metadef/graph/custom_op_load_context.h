@@ -20,7 +20,7 @@ class ScopedOfflineCustomOpSoLoadGuard {
   ScopedOfflineCustomOpSoLoadGuard &operator=(const ScopedOfflineCustomOpSoLoadGuard &) = delete;
 };
 
-bool IsOfflineCustomOpSoLoading();
+__attribute__((weak)) bool IsOfflineCustomOpSoLoading();
 }  // namespace ge
 
 #endif  // CANN_GRAPH_ENGINE_CUSTOM_OP_LOAD_CONTEXT_H

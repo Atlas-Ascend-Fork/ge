@@ -302,7 +302,7 @@ add_library(custom_op_registry_static STATIC
 target_compile_options(custom_op_registry_static PRIVATE
     $<$<STREQUAL:${TARGET_SYSTEM_NAME},Linux>:-fPIC -fvisibility=hidden -fvisibility-inlines-hidden>
 )
-target_compile_definitions(custom_op_registry_static PRIVATE GE_API_EXPORTS)
+target_compile_definitions(custom_op_registry_static PRIVATE CUSTOM_OP_REGISTRY_STATIC GE_API_EXPORTS)
 
 target_include_directories(custom_op_registry_static PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}

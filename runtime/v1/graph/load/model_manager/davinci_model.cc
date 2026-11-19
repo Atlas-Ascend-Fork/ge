@@ -854,7 +854,14 @@ Status DavinciModel::CreateHcclGroupOrderedEvent() {
   return SUCCESS;
 }
 
+// 弱引用：仅新版本 runtime 提供，老版本无此符号时判空跳过
+extern "C" __attribute__((weak)) rtError_t rtModelGetHcclStream(rtModel_t model, rtStream_t *streams,
+                                                                uint32_t *num_streams);
+
 Status DavinciModel::AppendExternalHcclStreams() {
+  if (rtModelGetHcclStream == nullptr) {
+    return SUCCESS;
+  }
   // 取回算子经 rtModelAddHcclStream 绑定到本模型的外部 hccl 单算子流（无注册时返回0条）
   uint32_t stream_num = 0U;
   // 首轮传空数组仅查询数量，再按实际数量取回
