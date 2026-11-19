@@ -93,6 +93,8 @@ V1 functions include:
 - `HostCpuOpExecutionContext` supports host output queries, host output allocation, and Ref outputs.
 - `declare_launch_args` binds inputs and outputs as positional arguments and attributes as keyword-only arguments from canonical IR. The callback uses `get_declare_launch_args_ctx()` to create an argument builder, allocate workspace, and add kernel launches. The index passed to `append_input` / `append_output` is the flattened input/output instance index of the compute node.
 - `compile` assembles inputs, outputs, and attributes from canonical IR, queries compile options through `get_compile_ctx()`, and queries platform resources, core counts, and SoC information through `get_compile_platform_info()`. This callback is used only during graph compilation; model loading and execution do not invoke it.
+- `declare_launch_args` can request a **logical attached stream ID** through `AnnotatedArgsContext.request_attached_stream(key)`, and can declare predecessor dependencies through the optional `predecessors` argument of `add_launch(info, args, predecessors)`. The method **always returns a valid token**: omitting `predecessors`, passing `None`, and passing `[]` are equivalent, and the native binding always calls the C++ three-argument overload, so every launch can be depended upon by a later one. `predecessors` only carries the input semantics "who are my predecessors" and no longer also decides the output semantics "can I be depended upon". The `stream_id` check is relaxed from "must equal the main stream ID" to "the main stream ID, or an attached stream ID requested from this context", and the check still runs before `args` is consumed.
+- `execute` can request a framework-managed **physical attached stream** by key through `EagerOpExecutionContext.request_attached_stream(key, flags=0)`, which returns a raw handle as `Optional[int]` where `None` is the degradable branch. Ordering between the execution stream and the attached stream is established by the op itself with `acl.rt` events. V1 and RT2 share the same C++ path, so the Python binding has no branch.
 - `ASCEND_CUSTOM_OPP_PATH` carries both the existing C++ custom op OPP paths and the Python custom op file or package paths.
 - GE initialization and `GraphManager::PreRun()` idempotently load Python custom ops when needed, so that the corresponding op type is visible before `OpsKernelInfo` is refreshed.
 
@@ -111,14 +113,10 @@ V1 functions include:
 - The instance cache and common-capability lookup converge at the priority dimension: within the same `op_type` and priority, registrations of the same dynamic type share one instance across engines/backends. `GetCustomOpCommonCapability` enforces a unique provider across the whole priority subtree and ignores the engine dimension; distinct implementation classes providing the same common capability under one priority make the lookup fail with an error.
 - A schema-bound callback obtains the current context through `get_execute_ctx()`, `get_compile_ctx()`, or `get_declare_launch_args_ctx()`. The binding is valid only in the dynamic scope of that callback.
 - The Python custom op native/bridge is related to the Python ABI at build time. Cross-Python minor version compatibility is not guaranteed.
-- The bridge C ABI is upgraded to v2. It adds
-  the `serialize`/`deserialize` callbacks, separately typed device/host `execute` context callbacks, and the
-  four function-table pointers appended at the end — `collect_deployment_artifacts`/`restore_model_scope`/
-  `collect_model_scope_proto_op_types`/`close_model_scope` — serving
-  the load-side restoration of Python source packaging into OM; see
-  `docs/en/design/features/so_in_om.md`. When `kPortable` is declared, both callbacks
-  in `PythonCustomOpAdapterCallbacks` must be non-null. The `serialize`/`deserialize` callbacks pass only the
-  holder and the `bytes` buffer without passing a context. The bridge queries
+- The bridge C ABI is upgraded to v2. It adds the `serialize`/`deserialize` callbacks, separately typed device/host `execute` context callbacks, and the four function-table pointers appended at the end — `collect_deployment_artifacts`/`restore_model_scope`/`collect_model_scope_proto_op_types`/`close_model_scope` — serving the load-side restoration of Python source packaging into OM; see `docs/en/design/features/so_in_om.md`. When `kPortable` is declared, both callbacks in `PythonCustomOpAdapterCallbacks` must be non-null. The `serialize`/`deserialize` callbacks pass only the holder and the `bytes` buffer without passing a context. The bridge queries
+- Attached stream handles **must not be cached across callbacks**: `CustomOpFactory::CreateOrGetCustomOp` caches op instances by `(op_type, backend, priority, engine)`, so one Python implementation instance serves every node of the same op type across all models and executors, while the attached stream container is per-`DavinciModel` (V1) / per-`ModelV2Executor` (RT2). Caching would yield the physical stream of another execution instance, or even a dangling handle.
+- The op owns its pyACL events. Captured tasks continue to reference the events during model replay. Destroy an event only after all tasks that reference it have completed and no further model replays will use it. When an op implementation serves multiple model execution instances, manage events independently for each instance. Serial host callbacks do not guarantee that device tasks run without overlap.
+- The new bindings **do not release the GIL**: consistent with the existing bindings under `api/python/ge/` (a full grep for `gil_scoped_release|call_guard` in that directory yields zero hits, P-5). The C++ attached stream container is lock-free, and its safety relies on V1 being serial during model sinking and on RT2's single memory worker; releasing the GIL would let users spawn Python threads inside `execute` to request streams concurrently and break that assumption. On the declarative side, `declare_launch_args` is invoked serially per node at compile time, so it introduces no new concurrency assumption either.
   canonical IR through the public run-package API instead of passing a private ABI projection.
 
 ### 2.5 Assumptions and Dependencies
@@ -537,7 +535,7 @@ The current public Python interfaces are as follows:
 | `deserialize` | User-implemented Portable state restore method, with signature `deserialize(self, data: bytes) -> None` |
 | `register_kernel` | Declares the `device` or `host` backend for same-named `execute` functions |
 | `OpBackend` | Backend enum used by `register_kernel`, with members `DEVICE` and `HOST` |
-| `EagerOpExecutionContext` | Execution context borrowed view |
+| `EagerOpExecutionContext` | Execution context borrowed view; `request_attached_stream(key, flags=0)` requests a framework-managed physical attached stream |
 | `HostCpuOpExecutionContext` | Host CPU execution context borrowed view |
 | `get_execute_ctx` | Obtains the execution context of the active schema-bound callback |
 | `register_op` | Declares and collects a Python custom operator prototype |
@@ -625,7 +623,9 @@ output query, allocation, and Ref APIs.
 
 #### BorrowedAnnotatedArgsContext
 
-The native binding holds a `gert::AnnotatedArgsContext *` and an independent validity flag. After `declare_launch_args` returns or raises, `_invalidate()` expires the context, workspace addresses, kernel-argument builders, and their derived borrowed tensors.
+The native binding holds a `gert::AnnotatedArgsContext *` and an independent validity flag. After `declare_launch_args` returns or raises, `_invalidate()` expires the context, workspace addresses, kernel-argument builders, and their derived borrowed tensors, and clears the logical attached stream IDs recorded by the context.
+
+This view additionally holds `std::vector<uint32_t> attached_stream_ids_`, which records the logical attached stream IDs that this context obtained through `request_attached_stream` and serves as the `stream_id` allow-list of `add_launch`. The allow-list is a **necessary but not sufficient** condition: on the C++ side `AddLaunchWithDependencies` only checks `stream_id != UINT32_MAX`, and the authoritative ownership decision is `registry->Contains()` in `FinalizeDeclarativeAttachedStreams`. The Python allow-list exists only to give a precise diagnosis before `args` is consumed. A single node usually requests only a few attached streams, so a linear search is used instead of `std::set`.
 
 ### 6.2 Key Technologies and Algorithms
 
@@ -824,12 +824,8 @@ The implementation follows the existing Python pass and GE runtime style:
 - The `PYTHON_CUSTOM_OPS` partition of a new OM (partition type 27) is not recognized by older versions. The Python custom op execution capability cannot be assumed to be reproducible on older versions.
 - New OMs carry `_custom_task_args_mode`, the AnnotatedArgs `args_format`, and the Python implementation source snapshot. A new runtime uses the explicit mode as the source of truth; only an old OM without the attribute falls back to registry lookup and then a non-empty `args_format`.
 - The Python custom op depends on matching versions of `ge_py`, bridge/native SO, and the Python ABI in the runtime environment.
-- The callback POD adds a Host CPU function pointer, so the bridge ABI becomes v2; the Portable
-  `serialize`/`deserialize` function pointers and the four model-level scope restore pointers at the
-  end of the function table (load-side restoration of Python source packaging into OM) added by this feature
-  are folded into **v2 without bumping the version number** — existing v2 bridge SOs are only build products
-  of the dev/test environment built together with the load-side header. Artifacts of different ABI versions
-  are not mixed, and the load side matches exactly.
+- The callback POD adds a Host CPU function pointer, so the bridge ABI becomes v2; the Portable `serialize`/`deserialize` function pointers and the four model-level scope restore pointers at the end of the function table (load-side restoration of Python source packaging into OM) added by this feature are folded into **v2 without bumping the version number** — existing v2 bridge SOs are only build products of the dev/test environment built together with the load-side header. Artifacts of different ABI versions are not mixed, and the load side matches exactly.
+- The return type of `add_launch` changes from `None` to `int`: it **always returns a valid token**, and omitting `predecessors`, passing `None`, and passing `[]` are equivalent. This is a **relaxing** change — all three in-repo example call sites (`python_compilable_add_custom.py:242`, online `annotated_add_custom.py:183`, offline `:169`) call it as a statement and ignore the return value, so existing ops are unaffected. The `stream_id` check is likewise relaxing and does not affect any call that previously succeeded. The C++ two-argument overload is left untouched (it is a metadef public interface bound by the zero-change constraint P-1); only the Python binding stops calling it.
 - `ASCEND_CUSTOM_OPP_PATH` is an existing environment variable. Adding Python file and package recognition does not affect C++ OPP paths that have no Python entries.
 - Python classes without `serialize`/`deserialize` keep their existing behavior. A plain class with a legal paired combination gains the `portable` capability, which is the expected new behavior. A class with only one of the two methods changes from being possibly ignored to failing registration, so that an unrecoverable state is avoided.
 - `portable` can be combined with the `eager_execute`, `host_cpu_execute`, `compilable`, and `annotated_args` capabilities; other interface signatures and behaviors are unchanged.

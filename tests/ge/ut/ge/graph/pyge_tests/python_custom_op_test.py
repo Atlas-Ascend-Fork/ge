@@ -1107,3 +1107,36 @@ def test_load_custom_op_plugins_rejects_missing_path(monkeypatch):
 
     with pytest.raises(FileNotFoundError, match="python custom op path does not exist"):
         bridge.load_and_get_op_impl_descriptors()
+
+
+def test_eager_request_attached_stream_exposes_flags_and_optional_result():
+    """特性2 的公开契约：flags 可选、结果为 Optional[int]（native 层存在性与存根一致性）。"""
+
+    native_module = getattr(importlib.import_module("ge.custom_op._native"), "_native")
+    assert hasattr(native_module.EagerOpExecutionContext, "request_attached_stream")
+    stub_text = (
+        Path(custom_op.__file__)
+        .with_name("_ge_custom_op_native.pyi")
+        .read_text(encoding="utf-8")
+    )
+    assert (
+        "def request_attached_stream(self, key: str, flags: int = 0) -> Optional[int]"
+        in stub_text
+    )
+    eager_stub = (
+        " ".join(
+            stub_text.split("class EagerOpExecutionContext:", 1)[1]
+            .split("class HostCpuOpExecutionContext:")[0]
+            .split()
+        )
+        .replace("**", "")
+        .replace("``", "")
+    )
+    # 存根只保留最易被误用的两条契约；flags 取值示例、acl.rt 用法、CANN-FMK- 前缀约定
+    # 与 flags 复用命中即忽略等细节由 API 文档承载
+    # （docs/zh/api/graph_engine_api/python/ge/custom_op/EagerOpExecutionContext/request_attached_stream.md）
+    for required in (
+        "must not be cached",
+        "must not be destroyed by Python code",
+    ):
+        assert required in eager_stub, required

@@ -18,10 +18,13 @@
 #include "runtime_attrs_binding.h"
 #include "runtime/native_bindings/runtime_type_wrappers.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -31,6 +34,9 @@ namespace ge {
 namespace python_custom_op_native {
 namespace {
 namespace runtime_native = ::ge::python_runtime_native;
+
+// add_launch 省略 predecessors 时使用的空依赖列表
+const std::vector<uint32_t> kNoPredecessors;
 
 class BorrowedEagerOpExecutionContext {
  public:
@@ -114,6 +120,18 @@ class BorrowedEagerOpExecutionContext {
 
   uintptr_t GetStream() const {
     return reinterpret_cast<uintptr_t>(Get()->GetStream());
+  }
+
+  // 按 key 申请框架托管辅流并返回其地址；key 为空抛 ValueError，链路不支持或建流失败返回 None
+  py::object RequestAttachedStream(const std::string &key, uint32_t flags) const {
+    if (key.empty()) {
+      throw std::invalid_argument("attached stream key must not be empty");
+    }
+    const auto stream = Get()->RequestAttachedStream(ge::AscendString(key.c_str()), flags);
+    if (stream == nullptr) {
+      return py::none();
+    }
+    return py::cast(reinterpret_cast<uintptr_t>(stream));
   }
 
   void Invalidate() {
@@ -679,15 +697,37 @@ class BorrowedAnnotatedArgsContext {
     return NativeAnnotatedKernelArgs(Get(), active_);
   }
 
-  void AddLaunch(const NativeAnnotatedKernelLaunchInfo &launch_info, NativeAnnotatedKernelArgs &args) const {
+  // 按 key 申请编译期逻辑辅流，返回的 ID 记入白名单供 AddLaunch 校验
+  uint32_t RequestAttachedStream(const std::string &key) {
+    if (key.empty()) {
+      throw std::invalid_argument("attached stream key must not be empty");
+    }
+    const auto stream_id = Get()->RequestAttachedStream(ge::AscendString(key.c_str()));
+    if (stream_id == std::numeric_limits<uint32_t>::max()) {
+      throw std::runtime_error("Failed to request attached stream, key=" + key);
+    }
+    attached_stream_ids_.emplace_back(stream_id);
+    return stream_id;
+  }
+
+  // 提交 launch 并返回其依赖 token；省略 predecessors、传 None、传 [] 三者等价
+  uint32_t AddLaunch(const NativeAnnotatedKernelLaunchInfo &launch_info, NativeAnnotatedKernelArgs &args,
+                     const std::optional<std::vector<uint32_t>> &predecessors) const {
     auto *ctx = Get();
-    if (launch_info.GetStreamId() != ctx->GetStreamId()) {
-      throw std::invalid_argument("launch stream_id does not match current context stream_id");
+    // 校验必须在 args.Take() 之前：args 一旦传入即视为被消费
+    if (!IsAllowedStreamId(ctx->GetStreamId(), launch_info.GetStreamId())) {
+      throw std::invalid_argument("launch stream_id " + std::to_string(launch_info.GetStreamId()) +
+                                  " is neither the context stream_id nor an attached stream requested "
+                                  "from this context");
     }
     auto native_args = args.Take();
-    if (ctx->AddLaunch(launch_info.GetView(), std::move(native_args)) != GRAPH_SUCCESS) {
-      throw std::runtime_error("Failed to add annotated kernel launch");
+    const auto &deps = predecessors.has_value() ? *predecessors : kNoPredecessors;
+    const auto token = ctx->AddLaunch(launch_info.GetView(), std::move(native_args), deps);
+    if (token == std::numeric_limits<uint32_t>::max()) {
+      throw std::runtime_error("Failed to add annotated kernel launch, predecessor count=" +
+                               std::to_string(deps.size()));
     }
+    return token;
   }
 
   void Invalidate() {
@@ -695,6 +735,7 @@ class BorrowedAnnotatedArgsContext {
       *active_ = false;
     }
     ctx_ = nullptr;
+    attached_stream_ids_.clear();
   }
 
  private:
@@ -717,8 +758,19 @@ class BorrowedAnnotatedArgsContext {
     return CastTensor(tensor);
   }
 
+  // stream_id 须为 context 自身或本 context 申请过的辅流 ID
+  bool IsAllowedStreamId(uint32_t context_stream_id, uint32_t stream_id) const {
+    if (stream_id == context_stream_id) {
+      return true;
+    }
+    return std::find(attached_stream_ids_.cbegin(), attached_stream_ids_.cend(), stream_id) !=
+           attached_stream_ids_.cend();
+  }
+
   gert::AnnotatedArgsContext *ctx_{nullptr};
   std::shared_ptr<bool> active_;
+  // 本 context 申请到的逻辑辅流 ID
+  std::vector<uint32_t> attached_stream_ids_;
 };
 
 BorrowedAnnotatedArgsContext BorrowAnnotatedArgsContext(const py::capsule &ctx_handle) {
@@ -761,6 +813,8 @@ void BindEagerOpExecutionContext(py::module_ &m) {
       .def("malloc_workspace", &BorrowedEagerOpExecutionContext::MallocWorkSpace, py::arg("size"))
       .def("get_output_tensor", &BorrowedEagerOpExecutionContext::GetOutputTensor, py::arg("index"))
       .def("get_stream", &BorrowedEagerOpExecutionContext::GetStream)
+      .def("request_attached_stream", &BorrowedEagerOpExecutionContext::RequestAttachedStream, py::arg("key"),
+           py::arg("flags") = 0U)
       .def("_invalidate", &BorrowedEagerOpExecutionContext::Invalidate);
   m.def("_borrow_eager_op_execution_context", &BorrowEagerOpExecutionContext, py::arg("ctx_handle"));
 }
@@ -816,7 +870,9 @@ void BindAnnotatedArgsContext(py::module_ &m) {
       .def("malloc_workspace", &BorrowedAnnotatedArgsContext::MallocWorkspace, py::arg("size"))
       .def("get_stream_id", &BorrowedAnnotatedArgsContext::GetStreamId)
       .def("create_kernel_args", &BorrowedAnnotatedArgsContext::CreateKernelArgs)
-      .def("add_launch", &BorrowedAnnotatedArgsContext::AddLaunch, py::arg("launch_info"), py::arg("args"))
+      .def("request_attached_stream", &BorrowedAnnotatedArgsContext::RequestAttachedStream, py::arg("key"))
+      .def("add_launch", &BorrowedAnnotatedArgsContext::AddLaunch, py::arg("launch_info"), py::arg("args"),
+           py::arg("predecessors") = std::nullopt)
       .def("_invalidate", &BorrowedAnnotatedArgsContext::Invalidate);
   m.def("_borrow_annotated_args_context", &BorrowAnnotatedArgsContext, py::arg("ctx_handle"));
 }

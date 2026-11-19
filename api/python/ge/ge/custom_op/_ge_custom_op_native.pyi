@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from ge.graph.types import DataType
 from ge.runtime import StorageFormat, StorageShape, Tensor
@@ -88,6 +88,20 @@ class EagerOpExecutionContext:
 
     def get_stream(self) -> int:
         """Return the execution stream address as an integer."""
+        ...
+
+    def request_attached_stream(self, key: str, flags: int = 0) -> Optional[int]:
+        """Request a framework-managed attached stream by key and return its address.
+
+        The same key returns the same handle within one execution instance. The handle must
+        not be cached beyond the current callback and must not be destroyed by Python code:
+        the framework owns the stream. ``flags`` is the raw RTS stream-creation flag value,
+        applied only when a new stream is created; pass ``0`` for the framework default.
+
+        Returns ``None`` when attached streams are unsupported or the stream cannot be
+        created, in which case callers may degrade to ``get_stream()``. Raises ``ValueError``
+        if ``key`` is empty and ``RuntimeError`` if this borrowed context has expired.
+        """
         ...
 
     def _invalidate(self) -> None:
@@ -226,8 +240,36 @@ class AnnotatedArgsContext:
 
     def create_kernel_args(self) -> AnnotatedKernelArgs: ...
 
+    def request_attached_stream(self, key: str) -> int:
+        """Request a reusable compile-time logical attached stream by key.
+
+        The key is scoped to the compiled subgraph owning the op. The returned value is a
+        compile-time logical id, not a runtime stream handle: it may only be passed as
+        ``AnnotatedKernelLaunchInfo(stream_id=...)`` of this context and must not be cached
+        beyond the current ``declare_launch_args`` callback.
+
+        Raises ``ValueError`` if ``key`` is empty, and ``RuntimeError`` if the request fails
+        or this borrowed context has expired.
+        """
+        ...
+
     def add_launch(
         self,
         launch_info: AnnotatedKernelLaunchInfo,
         args: AnnotatedKernelArgs,
-    ) -> None: ...
+        predecessors: Optional[Sequence[int]] = None,
+    ) -> int:
+        """Submit a launch and return this launch's dependency token.
+
+        Omitting ``predecessors``, passing ``None`` and passing ``[]`` are equivalent: every
+        launch returns a valid token and can be depended upon by a later one. Tokens increase
+        from 0 in submission order and are valid only within the current callback; each element
+        must be a token previously returned in this same callback.
+
+        ``launch_info.stream_id`` must be ``get_stream_id()`` or an id returned by
+        ``request_attached_stream`` of this context; any other value raises ``ValueError``
+        before ``args`` is consumed. Once the check passes, ``args`` is consumed whether or not
+        the submit succeeds and must not be reused. Raises ``RuntimeError`` if the submit fails
+        or if this context or ``args`` has expired.
+        """
+        ...

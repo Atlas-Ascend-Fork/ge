@@ -1053,6 +1053,7 @@
       - [create\_kernel\_args](python/ge/custom_op/AnnotatedArgsContext/create_kernel_args.md)
       - [get\_stream\_id](python/ge/custom_op/AnnotatedArgsContext/get_stream_id.md)
       - [malloc\_workspace](python/ge/custom_op/AnnotatedArgsContext/malloc_workspace.md)
+      - [request\_attached\_stream](python/ge/custom_op/AnnotatedArgsContext/request_attached_stream.md)
 
     - [EagerOpExecutionContext](python/ge/custom_op/EagerOpExecutionContext/EagerOpExecutionContext.md)
       - [简介](python/ge/custom_op/EagerOpExecutionContext/overview.md)
@@ -1061,6 +1062,7 @@
       - [malloc\_workspace](python/ge/custom_op/EagerOpExecutionContext/malloc_workspace.md)
       - [get\_output\_tensor](python/ge/custom_op/EagerOpExecutionContext/get_output_tensor.md)
       - [get\_stream](python/ge/custom_op/EagerOpExecutionContext/get_stream.md)
+      - [request\_attached\_stream](python/ge/custom_op/EagerOpExecutionContext/request_attached_stream.md)
 
     - [HostCpuOpExecutionContext](python/ge/custom_op/HostCpuOpExecutionContext/HostCpuOpExecutionContext.md)
       - [简介](python/ge/custom_op/HostCpuOpExecutionContext/overview.md)

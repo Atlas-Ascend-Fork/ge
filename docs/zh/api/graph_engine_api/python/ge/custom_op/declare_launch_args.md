@@ -36,6 +36,8 @@ GE按Ascend IR算子原型绑定参数，顺序如下：
 - `get_declare_launch_args_ctx()`只能在当前同步`declare_launch_args`回调内调用。返回的`AnnotatedArgsContext`、`AnnotatedKernelArgs`、`WorkspaceAddr`及其派生的借用对象只能在当前回调内使用，回调返回或抛出异常后失效。
 - `AnnotatedKernelArgs.append_input`和`append_output`的`instance_index`使用当前计算节点输入、输出的实例平铺索引；动态输入或输出展开后的实例使用连续索引。
 - 调用`AnnotatedArgsContext.add_launch`后，传入的`AnnotatedKernelArgs`会被消费，不能再次使用。
+- 需要辅流时，通过[AnnotatedArgsContext.request_attached_stream](AnnotatedArgsContext/request_attached_stream.md)按key申请逻辑辅流ID，并将其作为`AnnotatedKernelLaunchInfo`的`stream_id`；通过[add_launch](AnnotatedArgsContext/add_launch.md)的`predecessors`声明前驱依赖。
+- 至少要有一个位于主流（`get_stream_id()`返回值）的launch。通过`predecessors`声明流间任务的依赖路径，确保辅流任务在本算子结束前汇合到主流。GE根据已声明的跨流依赖生成Event任务，不会自动补齐缺失的汇合依赖。
 
 ## 调用示例
 
