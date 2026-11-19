@@ -161,6 +161,8 @@ void RegisterTrainingAndOptOps() {
   RegisterOpCreatorV2("FusedMulAddN", {"x1", "x2", "x3"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("BNTrainingUpdate", {"x1", "x2", "x3", "x4", "x5", "x6", "x7"}, ge::kIrInputRequired,
                       {"y1", "y2", "y3", "y4", "y5"}, kIrOutputRequired, {});
+  RegisterOpCreatorV2("BNTrainingUpdateV3", {"x", "sum", "square_sum", "scale", "offset"}, ge::kIrInputRequired,
+                      {"y", "batch_mean", "batch_variance", "reserve_1", "reserve_2"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("BNTrainingReduce", {"x"}, ge::kIrInputRequired, {"y1", "y2"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("ApplyGradientDescent", {"x1", "x2", "x3"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
   RegisterOpCreatorV2("ApplyAdagrad", {"x1", "x2", "x3", "x4"}, ge::kIrInputRequired, {"y"}, kIrOutputRequired, {});
