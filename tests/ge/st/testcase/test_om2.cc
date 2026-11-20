@@ -14,6 +14,7 @@
 #include "framework/common/zip_archive_reader.h"
 #include "framework/common/zip_archive_writer.h"
 #include "framework/common/json_file.h"
+#include "framework/common/scope_guard.h"
 #include "framework/om2/model_data/om2_package_contants.h"
 #include "common/util/error_manager/error_manager.h"
 #include "framework/omg/omg.h"
@@ -79,6 +80,7 @@
 #include "aicpu_task_struct.h"
 #include "engine/aicpu/kernel/aicpu_ext_info_handle.h"
 #include "depends/ascendcl/src/ascendcl_stub.h"
+#include "depends/mmpa/src/mmpa_stub.h"
 #include "framework/common/gert_model_data_utils.h"
 
 namespace ge {
@@ -288,6 +290,23 @@ class ScopedTempDir {
 
  private:
   std::string path_;
+};
+
+class RootPathOpenStub : public MmpaStubApiGe {
+ public:
+  RootPathOpenStub(const std::string &expected_path, const std::string &saved_path)
+      : expected_path_(expected_path), saved_path_(saved_path) {}
+
+  INT32 Open2(const CHAR *path, INT32 flags, MODE mode) override {
+    opened_path = path;
+    return opened_path == expected_path_ ? MmpaStubApiGe::Open2(saved_path_.c_str(), flags, mode) : EN_ERROR;
+  }
+
+  std::string opened_path;
+
+ private:
+  const std::string expected_path_;
+  const std::string saved_path_;
 };
 
 static void SyncKernelNameFromOpDesc(const GeModelPtr &ge_model) {
@@ -3681,6 +3700,51 @@ TEST_F(Om2St, SaveOm2Model_Ok_SaveOnlineBufferWithAclgrphSaveModel) {
   ASSERT_TRUE(archive.IsGood());
   const auto file_names = archive.ListFiles();
   EXPECT_NE(std::find(file_names.begin(), file_names.end(), "g1/manifest.json"), file_names.end());
+}
+
+/**
+ * 用例描述：通过 aclgrphSaveModel 保存目标父目录为根目录的 OM2 模型。
+ * 预置条件：构造内存 OM2 归档，打桩打开文件接口，将根目录目标重定向至临时目录。
+ * 测试步骤：分别传入 /om2_root_path_test 和临时目录下的绝对路径调用 aclgrphSaveModel。
+ * 预期结果：打开 /om2_root_path_test.om2，写出的归档保留原 manifest，临时目录内的模型按指定路径保存。
+ */
+TEST(Om2SaveSt, SaveOm2Model_Ok_PreservesRootDirectory) {
+  const std::string output_prefix = "/om2_root_path_test";
+  const std::string expected_path = output_prefix + ".om2";
+  const ScopedTempDir temp_dir(EnvPath().GetOrCreateTestRootPath());
+  ASSERT_TRUE(temp_dir.IsValid());
+  const std::string saved_path = temp_dir.Path("om2_root_path_test.om2");
+
+  gert::ZipArchiveWriter writer(expected_path);
+  ASSERT_TRUE(writer.IsMemFileOpened());
+  const std::string manifest = R"({"archive_version":"1.0","model_num":1})";
+  ASSERT_TRUE(writer.WriteBytes("manifest.json", manifest.data(), manifest.size(), false));
+  gert::GertBuffer buffer;
+  ASSERT_TRUE(writer.SaveModelData(buffer, false));
+  const ModelBufferData model{buffer.data, buffer.length};
+
+  {
+    const auto stub = std::make_shared<RootPathOpenStub>(expected_path, saved_path);
+    MmpaStub::GetInstance().SetImpl(stub);
+    GE_MAKE_GUARD(reset_mmpa, []() { MmpaStub::GetInstance().Reset(); });
+    const auto status = aclgrphSaveModel(output_prefix.c_str(), model);
+    EXPECT_EQ(stub->opened_path, expected_path);
+    ASSERT_EQ(status, SUCCESS);
+  }
+
+  uint32_t saved_size = 0;
+  const auto saved_model = GetBinDataFromFile(saved_path, saved_size);
+  ASSERT_NE(saved_model, nullptr);
+  gert::ZipArchiveReader archive(reinterpret_cast<const uint8_t *>(saved_model.get()), saved_size);
+  ASSERT_TRUE(archive.IsGood());
+  size_t manifest_size = 0U;
+  const auto manifest_data = archive.ExtractToMem("om2_root_path_test/manifest.json", manifest_size);
+  ASSERT_NE(manifest_data, nullptr);
+  EXPECT_EQ(std::string(reinterpret_cast<const char *>(manifest_data.get()), manifest_size), manifest);
+
+  const auto absolute_prefix = temp_dir.Path("om2_absolute_path_test");
+  ASSERT_EQ(aclgrphSaveModel(absolute_prefix, model), SUCCESS);
+  EXPECT_EQ(mmAccess2((absolute_prefix + ".om2").c_str(), M_F_OK), EN_OK);
 }
 
 JsonFile::json BuildRelocateExternalWeightConsts(const std::string &old_weight_path) {

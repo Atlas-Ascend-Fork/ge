@@ -294,10 +294,13 @@ graphStatus SaveBinToFile(const char *const data, size_t length, const std::stri
   if ((!dir_path.empty()) && (!meta_file_exist)) {
     GE_ASSERT_TRUE((CreateDir(dir_path) == kFileSuccess), "Create direct failed, path: %s.", file_path.c_str());
   }
-  // 当dir_path为空时，默认使用当前路径
-  std::string real_path = RealPath(dir_path.empty() ? "." : dir_path.c_str());
-  GE_ASSERT_TRUE(!real_path.empty(), "Path: %s is empty", file_path.c_str());
-  real_path = real_path + "/" + file_name;
+  // Keep the original path when the only separator is the leading slash.
+  std::string real_path = file_path;
+  if (!dir_path.empty() || file_path.find('/') != 0U) {
+    real_path = RealPath(dir_path.empty() ? "." : dir_path.c_str());
+    GE_ASSERT_TRUE(!real_path.empty(), "Path: %s is empty", file_path.c_str());
+    real_path += "/" + file_name;
+  }
   // Open file
   constexpr mmMode_t mode = static_cast<mmMode_t>(static_cast<uint32_t>(M_IRUSR) | static_cast<uint32_t>(M_IWUSR));
   constexpr int32_t open_flag = static_cast<int32_t>(static_cast<uint32_t>(M_RDWR) | static_cast<uint32_t>(M_CREAT) |
