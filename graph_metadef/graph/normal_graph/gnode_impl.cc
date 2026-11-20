@@ -700,8 +700,7 @@ graphStatus NodeImpl::GetInputConstData(const int32_t index, Tensor &data) const
   NodeContext source;
   const graphStatus ret = ResolveConstInput(node, index, source);
   if (ret == GRAPH_NODE_WITHOUT_CONST_INPUT) {
-    REPORT_INNER_ERR_MSG("E18888", "Node[%s] has no const input.", node.GetName().c_str());
-    GELOGE(GRAPH_NODE_WITHOUT_CONST_INPUT, "[Check][Param] Node[%s] has no const input.", node.GetName().c_str());
+    GELOGW("Node[%s] input[%d] has no const data.", node.GetNamePtr(), index);
     return GRAPH_NODE_WITHOUT_CONST_INPUT;
   }
   if (ret != GRAPH_SUCCESS) {
