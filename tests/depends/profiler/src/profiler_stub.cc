@@ -68,6 +68,13 @@ int32_t MsprofReportCompactInfo(uint32_t agingFlag, const VOID_PTR data, uint32_
                                                        length);
 }
 int32_t MsprofRegisterCallback(uint32_t moduleId, ProfCommandHandle handle) {
+  const char *const kEnvRecordPath = "MS_PROF_REGISTER_CALLBACK_FAIL";
+  char record_path[MMPA_MAX_PATH] = {};
+  (void)mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
+
+  if (std::string(&record_path[0]).find("mock_fail") != std::string::npos) {
+    return -1;
+  }
   return 0;
 }
 

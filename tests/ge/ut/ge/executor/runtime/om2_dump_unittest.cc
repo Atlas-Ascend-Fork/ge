@@ -27,6 +27,7 @@
 #include "framework/runtime/gert_model/gert_model_executor_callbacks.h"
 #include "framework/runtime/om2_model_executor.h"
 #include "common/debug/ge_log.h"
+#include "mmpa/mmpa_api.h"
 #include "depends/profiler/src/dump_stub.h"
 #include "depends/runtime/src/runtime_stub.h"
 #include "aprof_pub.h"
@@ -1730,6 +1731,18 @@ TEST_F(ProfilingConfigTest, RejectsInvalidInput) {
   ret = ProfilingCallbackManager::ProfilingCtrlCallback(RT_PROF_CTRL_SWITCH, &cmd, 0U);
   EXPECT_EQ(ret, static_cast<rtError_t>(-1));
   EXPECT_TRUE(ProfilingConfig::Instance().IsEnabled());
+}
+
+// GlobalInit 将 OM2 profiling ctrl 回调独立注册到 msprof（GE 组件，追加式多回调，不依赖 OM1 转发）
+TEST_F(ProfilingConfigTest, GlobalInitRegistersCallbackToMsprof) {
+  EXPECT_EQ(ProfilingCallbackManager::GlobalInit(), SUCCESS);
+}
+
+// msprof 注册失败时 GlobalInit 返回 FAILED（对齐 OM1 注册失败语义，经 Om2DfxApi::GlobalInit 上抛阻断 aclInit）
+TEST_F(ProfilingConfigTest, GlobalInitRegisterCallbackFailed) {
+  mmSetEnv("MS_PROF_REGISTER_CALLBACK_FAIL", "mock_fail", 1);
+  EXPECT_EQ(ProfilingCallbackManager::GlobalInit(), FAILED);
+  unsetenv("MS_PROF_REGISTER_CALLBACK_FAIL");
 }
 
 // =========================================================================

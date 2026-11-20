@@ -312,6 +312,36 @@ ProfilerCollector::RecordEnd(stream) 记录模型结束
 
 `ProfilerCollector::RecordEnd` 方法在模型执行结束时调用，上报 StepTrace End Tag、`kModelExecute` 事件以及 graph_id 到 model_id 的映射关系，最后 step_id 自增。
 
+### 4.7 OM2 Profiling（独立注册）
+
+OM2 执行器（`runtime/om2/`）的 profiling 控制回调独立注册到 msprof，不依赖 OM1 转发。msprof 对同一组件（GE）支持追加式多回调注册：OM1 的 `ProfCtrlHandle` 与 OM2 的 `ProfilingCtrlCallback` 各自收到命令广播，互不影响。
+
+**注册链路**：
+
+```
+aclInit（acl init 回调，api/acl/acl_model/model/init_callback_register_om2.cpp）
+    ↓
+Om2DfxApi::GlobalInit（runtime/om2/om2_dfx_loader.cc）
+    ↓
+ProfilingCallbackManager::GlobalInit（runtime/om2/profiling/profiling_callback_manager.cc）
+    ↓
+MsprofRegisterCallback(GE, &ProfilingCtrlCallback)   ← 注册失败返回 FAILED，上抛阻断 aclInit
+```
+
+**命令处理链路**：
+
+```
+msprof 下发 ctrl 命令（prof_start/pro_stop/pro_finalize）
+    ↓
+ProfilingCallbackManager::ProfilingCtrlCallback（RT_PROF_CTRL_SWITCH 之外的 ctrl type 跳过）
+    ↓
+HandleCtrlSwitch → ProfilingConfig::Enable(options) / Disable()
+```
+
+**执行期数据采集**：`ProfilingImpl`（`runtime/om2/profiling/profiling_impl.cc`）按 `ProfilingConfig` 开关直接调用 `MsprofReportEvent`/`MsprofReportAdditionalInfo` 上报模型加载耗时、GraphIdMap、task_id 与算子名映射、StepTrace 与 launch 耗时，数据流不经 OM1。
+
+该设计与 OM2 dump 侧 `DumpCallbackManager::GlobalInit` 直接调用 `Adx::AdumpRegisterCallback` 的独立注册模式对称，保持 OM2 与 OM1 的 DFX 能力解耦。
+
 ---
 
 ## 5. Profiling 数据流全景

@@ -114,12 +114,12 @@ bool ResolveDumpApi(void *lib, Om2DumpApi &dump_api) {
   } while (false)
 
 int32_t Om2DfxApi::GlobalInit(void) {
-  // 1. 执行 dump 的初始化
+  // 1. 初始化 Profiling 的 Callback
+  GE_ASSERT_SUCCESS(ge::dump::ProfilingCallbackManager::GlobalInit());
+
+  // 2. 执行 dump 的初始化
   CHECK_DUMP_API(dump_so_exist, dump_api_.dump_global_init, ge::SUCCESS, ge::FAILED);
   GE_ASSERT_SUCCESS(dump_api_.dump_global_init());
-
-  // 2. 初始化 Profiling 的 Callback
-  GE_ASSERT_SUCCESS(ge::dump::ProfilingCallbackManager::GlobalInit());
 
   return ge::SUCCESS;
 }

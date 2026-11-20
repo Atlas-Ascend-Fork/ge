@@ -12,10 +12,9 @@
 
 #include <string>
 
+#include "aprof_pub.h"
 #include "framework/common/debug/ge_log.h"
 #include "framework/runtime/dump/profiling_config.h"
-
-extern "C" void RegisterOm2ProfilingCommandNotifier(void (*notifier)(const void *, uint32_t)) __attribute__((weak));
 
 namespace ge {
 namespace dump {
@@ -68,16 +67,12 @@ ProfilingCallbackManager &ProfilingCallbackManager::GetInstance() {
 }
 
 Status ProfilingCallbackManager::GlobalInit() {
-  GELOGD("ProfilingCallbackManager initialized, registering to OM1 profiling notifier.");
-  if (::RegisterOm2ProfilingCommandNotifier != nullptr) {
-    ::RegisterOm2ProfilingCommandNotifier(
-        [](const void *data, uint32_t len) { ProfilingCallbackManager::NotifyProfilingCommand(data, len); });
-    GELOGD("Register OM2 profiling notifier to OM1 succeeded.");
-  } else {
-    GELOGD(
-        "RegisterOm2ProfilingCommandNotifier is not available, "
-        "OM2 profiling config will not be forwarded from OM1.");
+  const int32_t ret = MsprofRegisterCallback(GE, &ProfilingCtrlCallback);
+  if (ret != MSPROF_ERROR_NONE) {
+    GELOGE(FAILED, "[Register][Om2ProfCtrlCallback]Register OM2 profiling ctrl callback failed, ret=%d", ret);
+    return FAILED;
   }
+  GELOGD("ProfilingCallbackManager initialized, OM2 profiling ctrl callback registered to msprof.");
   return SUCCESS;
 }
 
@@ -95,14 +90,6 @@ rtError_t ProfilingCallbackManager::ProfilingCtrlCallback(const uint32_t ctrl_ty
   }
   GetInstance().HandleCtrlSwitch(ctrl_data, data_len);
   return RT_ERROR_NONE;
-}
-
-void ProfilingCallbackManager::NotifyProfilingCommand(const void *ctrl_data, uint32_t data_len) {
-  if ((ctrl_data == nullptr) || (data_len < sizeof(MsprofCommandHandle))) {
-    GELOGW("[Notify][ProfilingCommand]Invalid ctrl data or length: %u", data_len);
-    return;
-  }
-  GetInstance().HandleCtrlSwitch(ctrl_data, data_len);
 }
 
 void ProfilingCallbackManager::HandleCtrlSwitch(const void *ctrl_data, uint32_t data_len) const {
