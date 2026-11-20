@@ -1854,3 +1854,87 @@ TEST(UTEST_ge_model_serialize, IncCov_SeparateModelDefEmptyWeight) {
   ModelSerializeImp imp;
   EXPECT_TRUE(imp.SeparateModelDef(buffer, "test_path", model_def));
 }
+
+TEST(UTEST_ge_model_serialize, RebuildOwnershipRejectsSelfReference) {
+  ModelSerializeImp imp;
+  auto root = std::make_shared<ComputeGraph>("root_graph");
+  auto op_desc = std::make_shared<OpDesc>();
+  op_desc->AddSubgraphName("root_graph");
+  op_desc->SetSubgraphInstanceName(0, "root_graph");
+  (void)root->AddNode(op_desc);
+  std::map<std::string, ComputeGraphPtr> subgraphs{{"root_graph", root}};
+  EXPECT_FALSE(imp.RebuildOwnership(root, subgraphs));
+}
+
+TEST(UTEST_ge_model_serialize, RebuildOwnershipRejectsMutualReference) {
+  ModelSerializeImp imp;
+  auto graph_a = std::make_shared<ComputeGraph>("graph_a");
+  auto op_a = std::make_shared<OpDesc>();
+  op_a->AddSubgraphName("graph_b");
+  op_a->SetSubgraphInstanceName(0, "graph_b");
+  (void)graph_a->AddNode(op_a);
+  auto graph_b = std::make_shared<ComputeGraph>("graph_b");
+  auto op_b = std::make_shared<OpDesc>();
+  op_b->AddSubgraphName("graph_a");
+  op_b->SetSubgraphInstanceName(0, "graph_a");
+  (void)graph_b->AddNode(op_b);
+  std::map<std::string, ComputeGraphPtr> subgraphs{{"graph_a", graph_a}, {"graph_b", graph_b}};
+  EXPECT_FALSE(imp.RebuildOwnership(graph_a, subgraphs));
+}
+
+TEST(UTEST_ge_model_serialize, RebuildOwnershipRejectsThreeGraphCycle) {
+  ModelSerializeImp imp;
+  auto graph_a = std::make_shared<ComputeGraph>("cycle_graph_a");
+  auto op_a = std::make_shared<OpDesc>();
+  op_a->AddSubgraphName("cycle_graph_b");
+  op_a->SetSubgraphInstanceName(0, "cycle_graph_b");
+  (void)graph_a->AddNode(op_a);
+  auto graph_b = std::make_shared<ComputeGraph>("cycle_graph_b");
+  auto op_b = std::make_shared<OpDesc>();
+  op_b->AddSubgraphName("cycle_graph_c");
+  op_b->SetSubgraphInstanceName(0, "cycle_graph_c");
+  (void)graph_b->AddNode(op_b);
+  auto graph_c = std::make_shared<ComputeGraph>("cycle_graph_c");
+  auto op_c = std::make_shared<OpDesc>();
+  op_c->AddSubgraphName("cycle_graph_a");
+  op_c->SetSubgraphInstanceName(0, "cycle_graph_a");
+  (void)graph_c->AddNode(op_c);
+  std::map<std::string, ComputeGraphPtr> subgraphs{
+      {"cycle_graph_a", graph_a}, {"cycle_graph_b", graph_b}, {"cycle_graph_c", graph_c}};
+  EXPECT_FALSE(imp.RebuildOwnership(graph_a, subgraphs));
+}
+
+TEST(UTEST_ge_model_serialize, RebuildOwnershipRejectsRepeatedSubgraphReference) {
+  ModelSerializeImp imp;
+  auto root = std::make_shared<ComputeGraph>("root_graph");
+  auto op_first = std::make_shared<OpDesc>();
+  op_first->AddSubgraphName("sub_graph");
+  op_first->SetSubgraphInstanceName(0, "sub_graph");
+  (void)root->AddNode(op_first);
+  auto op_second = std::make_shared<OpDesc>();
+  op_second->AddSubgraphName("sub_graph");
+  op_second->SetSubgraphInstanceName(0, "sub_graph");
+  (void)root->AddNode(op_second);
+  auto sub_graph = std::make_shared<ComputeGraph>("sub_graph");
+  std::map<std::string, ComputeGraphPtr> subgraphs{{"root_graph", root}, {"sub_graph", sub_graph}};
+  EXPECT_FALSE(imp.RebuildOwnership(root, subgraphs));
+}
+
+TEST(UTEST_ge_model_serialize, RebuildOwnershipOkWithNestedSubgraphs) {
+  ModelSerializeImp imp;
+  auto root = std::make_shared<ComputeGraph>("root_graph");
+  auto op_root = std::make_shared<OpDesc>();
+  op_root->AddSubgraphName("sub_graph_1");
+  op_root->SetSubgraphInstanceName(0, "sub_graph_1");
+  (void)root->AddNode(op_root);
+  auto sub_graph_1 = std::make_shared<ComputeGraph>("sub_graph_1");
+  auto op_sub1 = std::make_shared<OpDesc>();
+  op_sub1->AddSubgraphName("sub_graph_2");
+  op_sub1->SetSubgraphInstanceName(0, "sub_graph_2");
+  (void)sub_graph_1->AddNode(op_sub1);
+  auto sub_graph_2 = std::make_shared<ComputeGraph>("sub_graph_2");
+  std::map<std::string, ComputeGraphPtr> subgraphs{
+      {"root_graph", root}, {"sub_graph_1", sub_graph_1}, {"sub_graph_2", sub_graph_2}};
+  EXPECT_TRUE(imp.RebuildOwnership(root, subgraphs));
+  EXPECT_EQ(root->GetAllSubgraphs().size(), 2UL);
+}
