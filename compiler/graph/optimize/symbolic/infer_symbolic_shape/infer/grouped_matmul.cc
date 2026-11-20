@@ -12,7 +12,7 @@
 #include <vector>
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
 namespace ge {
@@ -29,11 +29,11 @@ constexpr int64_t kSplitM = 0L;
 constexpr int64_t kSplitK = 2L;
 constexpr int64_t kGroupListSparse = 2L;
 
-const gert::SymbolShape *GetDynamicShape(const gert::InferSymbolContext *context, size_t index, size_t offset) {
+const gert::SymbolShape *GetDynamicShape(const gert::InferSymbolShapeContext *context, size_t index, size_t offset) {
   return context->GetDynamicInputSymbolShape(index, offset);
 }
 
-bool GetBoolAttr(const gert::InferSymbolContext *context, size_t index, bool default_value) {
+bool GetBoolAttr(const gert::InferSymbolShapeContext *context, size_t index, bool default_value) {
   const auto attrs = context->GetAttrs();
   if (attrs == nullptr) {
     return default_value;
@@ -42,7 +42,7 @@ bool GetBoolAttr(const gert::InferSymbolContext *context, size_t index, bool def
   return value == nullptr ? default_value : *value;
 }
 
-int64_t GetIntAttr(const gert::InferSymbolContext *context, size_t index, int64_t default_value) {
+int64_t GetIntAttr(const gert::InferSymbolShapeContext *context, size_t index, int64_t default_value) {
   const auto attrs = context->GetAttrs();
   if (attrs == nullptr) {
     return default_value;
@@ -74,7 +74,7 @@ void BuildMatmulShape(const gert::SymbolShape &x, const gert::SymbolShape &weigh
   }
 }
 
-std::vector<Expression> GetGroupListValue(const gert::InferSymbolContext *context) {
+std::vector<Expression> GetGroupListValue(const gert::InferSymbolShapeContext *context) {
   const auto group_list = context->GetOptionalInputSymbolTensor(kGroupListIndex);
   if (group_list == nullptr) {
     return {};
@@ -82,7 +82,7 @@ std::vector<Expression> GetGroupListValue(const gert::InferSymbolContext *contex
   return SymbolicInferUtil::GetSymbolicValues(*group_list);
 }
 
-graphStatus InferSplitMOutputShape(gert::InferSymbolContext *context, size_t output_index,
+graphStatus InferSplitMOutputShape(gert::InferSymbolShapeContext *context, size_t output_index,
                                    const gert::SymbolShape &weight, int64_t group_list_type,
                                    std::vector<Expression> &output) {
   const auto values = GetGroupListValue(context);
@@ -104,7 +104,7 @@ graphStatus InferSplitMOutputShape(gert::InferSymbolContext *context, size_t out
 }
 }  // namespace
 
-size_t GetDynamicInputCount(gert::InferSymbolContext *context, size_t index) {
+size_t GetDynamicInputCount(gert::InferSymbolShapeContext *context, size_t index) {
   size_t count = 0UL;
   while (GetDynamicShape(context, index, count) != nullptr) {
     ++count;
@@ -112,7 +112,7 @@ size_t GetDynamicInputCount(gert::InferSymbolContext *context, size_t index) {
   return count;
 }
 
-graphStatus SetSplitKOutputs(gert::InferSymbolContext *context, size_t output_count, size_t weight_count,
+graphStatus SetSplitKOutputs(gert::InferSymbolShapeContext *context, size_t output_count, size_t weight_count,
                              const gert::SymbolShape &x, const gert::SymbolShape &weight, bool transpose_x,
                              bool transpose_weight) {
   const auto x_m = GetXLogicalM(x, transpose_x);
@@ -138,7 +138,7 @@ graphStatus SetSplitKOutputs(gert::InferSymbolContext *context, size_t output_co
  * 【举例】x=[M,K]、weight=[K,N]且group_type=-1时，输出为[M,N]；x=[M,K]、两个
  *          weight=[K,N]且group_type=2时，输出为[2,M,N]。
  */
-graphStatus InferGroupedMatmulSymbolShape(gert::InferSymbolContext *context) {
+graphStatus InferGroupedMatmulSymbolShape(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_NOTNULL(context);
   const auto x0 = GetDynamicShape(context, kXIndex, 0UL);
   const auto weight0 = GetDynamicShape(context, kWeightIndex, 0UL);

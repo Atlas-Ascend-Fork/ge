@@ -46,7 +46,7 @@
 
 namespace ge {
 namespace {
-graphStatus InferShape4FooTest(gert::InferSymbolContext *context) {
+graphStatus InferShape4FooTest(gert::InferSymbolShapeContext *context) {
   auto shape0 = context->GetInputSymbolShape(0);
   GE_ASSERT_NOTNULL(shape0);
   auto shape1 = context->GetInputSymbolShape(1);

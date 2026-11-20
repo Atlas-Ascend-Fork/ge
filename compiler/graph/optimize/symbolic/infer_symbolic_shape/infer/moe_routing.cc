@@ -11,10 +11,10 @@
 #include <algorithm>
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "graph/compute_graph.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
-#include "graph/symbolizer/symbolic.h"
+#include "graph/symbolizer/symbol_operator.h"
 
 namespace ge {
 namespace {
@@ -68,7 +68,7 @@ constexpr int64_t kQuantModePerTokenAlt = 13;
 constexpr int64_t kDropPadModeDropless = 0;
 constexpr int64_t kDropPadModePadded = 1;
 
-const gert::RuntimeAttrs *Attrs(const gert::InferSymbolContext *context) {
+const gert::RuntimeAttrs *Attrs(const gert::InferSymbolShapeContext *context) {
   return context->GetAttrs();
 }
 
@@ -88,7 +88,7 @@ bool BoolAttr(const gert::RuntimeAttrs *attrs, size_t index, bool default_value)
   return value == nullptr ? default_value : *value;
 }
 
-graphStatus GetMoeInputDims(const gert::InferSymbolContext *context, Expression &n, Expression &h, Expression &k) {
+graphStatus GetMoeInputDims(const gert::InferSymbolShapeContext *context, Expression &n, Expression &h, Expression &k) {
   const auto *x = context->GetInputSymbolShape(kMoeX);
   const auto *expert_idx = context->GetInputSymbolShape(kMoeExpertIdx);
   GE_UNSUPPORTED_IF_NULL(x);
@@ -112,7 +112,7 @@ graphStatus GetMoeInputDims(const gert::InferSymbolContext *context, Expression 
   return GRAPH_SUCCESS;
 }
 
-void SetShape(gert::InferSymbolContext *context, size_t index, std::initializer_list<Expression> dims) {
+void SetShape(gert::InferSymbolShapeContext *context, size_t index, std::initializer_list<Expression> dims) {
   auto *shape = context->GetOutputSymbolShape(index);
   if (shape == nullptr) {
     return;
@@ -123,7 +123,7 @@ void SetShape(gert::InferSymbolContext *context, size_t index, std::initializer_
   }
 }
 
-graphStatus InferMoeInitRoutingV2(gert::InferSymbolContext *context) {
+graphStatus InferMoeInitRoutingV2(gert::InferSymbolShapeContext *context) {
   Expression n;
   Expression h;
   Expression k;
@@ -191,7 +191,7 @@ bool TryAppendBlockQuantScale(gert::SymbolShape *scale, const int64_t quant_mode
 // Sets output 3 (expanded_scale) according to the quant mode. The first
 // dimension uses expanded rows, active rows, or padded rows to match the
 // operator implementation.
-graphStatus InferInitRoutingV3Scale(gert::InferSymbolContext *context, const int64_t quant_mode,
+graphStatus InferInitRoutingV3Scale(gert::InferSymbolShapeContext *context, const int64_t quant_mode,
                                     const int64_t drop_pad_mode, const Expression &h, const Expression &active_rows,
                                     const Expression &expanded_rows, const Expression &padded_rows) {
   auto *scale = context->GetOutputSymbolShape(3U);
@@ -225,7 +225,7 @@ graphStatus InferInitRoutingV3Scale(gert::InferSymbolContext *context, const int
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferMoeInitRoutingV3(gert::InferSymbolContext *context) {
+graphStatus InferMoeInitRoutingV3(gert::InferSymbolShapeContext *context) {
   Expression n;
   Expression h;
   Expression k;
@@ -301,7 +301,7 @@ graphStatus ResolveFinalizeRoutingRows(const gert::SymbolShape *row_idx, const g
 // Checks the optional inputs (skip1/skip2/bias/expert_idx): rank-2 shapes,
 // hidden dim equal to h, expert dim equal to k, and a consistent row count
 // across all present optional inputs.
-graphStatus CheckFinalizeRoutingOptionalInputs(const gert::InferSymbolContext *context, const Expression &h,
+graphStatus CheckFinalizeRoutingOptionalInputs(const gert::InferSymbolShapeContext *context, const Expression &h,
                                                const Expression &k, const gert::SymbolShape *scales) {
   const auto *skip1 = context->GetOptionalInputSymbolShape(2U);
   const auto *skip2 = context->GetOptionalInputSymbolShape(3U);
@@ -344,7 +344,7 @@ graphStatus CheckFinalizeRoutingOptionalInputs(const gert::InferSymbolContext *c
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferMoeFinalizeRoutingV2(gert::InferSymbolContext *context) {
+graphStatus InferMoeFinalizeRoutingV2(gert::InferSymbolShapeContext *context) {
   const auto *expanded_x = context->GetInputSymbolShape(0U);
   const auto *row_idx = context->GetInputSymbolShape(1U);
   GE_UNSUPPORTED_IF_NULL(expanded_x);

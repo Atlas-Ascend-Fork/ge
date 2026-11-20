@@ -18,7 +18,7 @@
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "graph/optimize/symbolic/symbol_compute_context.h"
 #include "graph/optimize/symbolic/symbolic_kernel_factory.h"
-#include "graph/symbolizer/symbolic.h"
+#include "graph/symbolizer/symbol_operator.h"
 
 namespace ge {
 namespace {

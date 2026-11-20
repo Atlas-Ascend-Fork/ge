@@ -11,12 +11,12 @@
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 
 namespace ge {
 namespace {
 constexpr size_t kConv2dDimSizeLimit = 4U;
-graphStatus InferShapeForConv2DBackpropD(gert::InferSymbolContext *context) {
+graphStatus InferShapeForConv2DBackpropD(gert::InferSymbolShapeContext *context) {
   const auto op_name = context->GetNodeName();
   auto y_shape = context->GetOutputSymbolShape(0);
   GE_ASSERT_NOTNULL(y_shape);

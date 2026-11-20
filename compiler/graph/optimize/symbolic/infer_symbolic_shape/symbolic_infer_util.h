@@ -13,8 +13,7 @@
 #include <set>
 
 #include "ge_common/ge_common_api_types.h"
-#include "graph/symbolizer/symbolic.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
 #include "op_impl_infer_symbol_shape.h"
 #include "framework/common/util.h"
@@ -204,7 +203,7 @@ class SymbolicInferUtil {
   static bool IsSupportCondNode(const NodePtr &node);
   static NodePtr GetCondInput(const NodePtr &node);
   // 唯一的输入值依赖判断(op输入级)，点亮/推导/切图三方共用：
-  // ①space_registry 中的 InputsDataDependency 声明；
+  // ①InferSymbolShape注册表InputsDataDependency声明(默认registry为底、space_registry优先覆盖；
   // ir map为空或instance->ir映射失败时①不参与判定，不打挂) ‖ ②op_infer_depends声明，
   // 任一命中即为值依赖，均不满足视为非值依赖
   static bool IsInputValueDependent(const OpDescPtr &op_desc, size_t instance_index);

@@ -11,7 +11,6 @@
 #include <limits>
 
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
 #include "framework/common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "graph/optimize/symbolic/symbol_compute_context.h"

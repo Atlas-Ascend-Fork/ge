@@ -8,9 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -24,7 +23,7 @@ namespace {
  * 【推导逻辑】读取输入符号 Shape，分别透传给两个输出 y1 和 y2。
  * 【举例】x=[B,S] 时，y1=[B,S]，y2=[B,S]。
  */
-graphStatus InferShape4Sort(gert::InferSymbolContext *context) {
+graphStatus InferShape4Sort(gert::InferSymbolShapeContext *context) {
   const auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   const auto y1_shape = context->GetOutputSymbolShape(0);
@@ -43,7 +42,7 @@ graphStatus InferShape4Sort(gert::InferSymbolContext *context) {
  * 【推导逻辑】读取 x 与 index 的符号 Shape，逐维校验两者一致后，分别透传给 y 和 sorted_index。
  * 【举例】x=[B,S]、index=[B,S] 时，y=[B,S]，sorted_index=[B,S]。
  */
-graphStatus InferShape4SortWithIndex(gert::InferSymbolContext *context) {
+graphStatus InferShape4SortWithIndex(gert::InferSymbolShapeContext *context) {
   const auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   const auto index_shape = context->GetInputSymbolShape(1);
@@ -75,7 +74,7 @@ graphStatus InferShape4SortWithIndex(gert::InferSymbolContext *context) {
  *      4. 构建输出形状：将操作维度替换为k，其他维度保持不变
  *      举例：输入x_shape=(2,5,4)，k=3，dim=1，则values_shape=(2,3,4)，indices_shape=(2,3,4)
  */
-graphStatus InferShape4TopKV2(gert::InferSymbolContext *context) {
+graphStatus InferShape4TopKV2(gert::InferSymbolShapeContext *context) {
   // 获取输入形状
   auto shape_x = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(shape_x);
@@ -140,7 +139,7 @@ graphStatus InferShape4TopKV2(gert::InferSymbolContext *context) {
  * 【推导逻辑】与 TopKV2 一致：获取输入x的形状与属性k/dim，将操作维度替换为k，其他维度保持不变
  *      举例：输入x_shape=(2,5,4)，k=3，dim=1，则values_shape=(2,3,4)，indices_shape=(2,3,4)
  */
-graphStatus InferShape4TopKD(gert::InferSymbolContext *context) {
+graphStatus InferShape4TopKD(gert::InferSymbolShapeContext *context) {
   // 获取输入形状（输入1为assist_seq辅助序列，不参与shape推导）
   auto shape_x = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(shape_x);

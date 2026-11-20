@@ -9,7 +9,7 @@
  */
 
 #include <gtest/gtest.h>
-#include "exe_graph/runtime/symbolic_types.h"
+#include "exe_graph/runtime/symbolic_tensor.h"
 #include "graph/symbolizer/symbolic.h"
 #include "expression/const_values.h"
 #include "graph/ge_tensor.h"

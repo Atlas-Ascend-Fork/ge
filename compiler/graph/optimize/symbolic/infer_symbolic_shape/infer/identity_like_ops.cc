@@ -11,12 +11,12 @@
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
 namespace ge {
 namespace {
-graphStatus InferShape4Assign(gert::InferSymbolContext *context) {
+graphStatus InferShape4Assign(gert::InferSymbolShapeContext *context) {
   auto value_shape = context->GetInputSymbolShape(1);
   GE_UNSUPPORTED_IF_NULL(value_shape);
 
@@ -27,14 +27,14 @@ graphStatus InferShape4Assign(gert::InferSymbolContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4L2Loss(gert::InferSymbolContext *context) {
+graphStatus InferShape4L2Loss(gert::InferSymbolShapeContext *context) {
   auto out_shape = context->GetOutputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(out_shape);
   out_shape->Clear();
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferSymbolicShapeFunc(gert::InferSymbolContext *context) {
+graphStatus InferSymbolicShapeFunc(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_NOTNULL(context);
   const auto in_tensor = context->GetInputSymbolTensor(0);
   GE_UNSUPPORTED_IF_NULL(in_tensor);
@@ -52,7 +52,7 @@ graphStatus InferSymbolicShapeFunc(gert::InferSymbolContext *context) {
  * 【推导逻辑】读取 shape 输入的 SymbolicValue，逐元素写入输出 Shape。
  * 【举例】shape=[2,3,4] 时，输出 y=[2,3,4]。
  */
-graphStatus InferShape4RandomStandardNormal(gert::InferSymbolContext *context) {
+graphStatus InferShape4RandomStandardNormal(gert::InferSymbolShapeContext *context) {
   const auto shape_tensor = context->GetInputSymbolTensor(0);
   GE_UNSUPPORTED_IF_NULL(shape_tensor);
   GE_UNSUPPORTED_IF(!shape_tensor->HasValue());
@@ -73,7 +73,7 @@ graphStatus InferShape4RandomStandardNormal(gert::InferSymbolContext *context) {
  * 【推导逻辑】输出 y 的 Shape 取 shape 输入的 SymbolicValue；输出 offset 恒为 [1]。
  * 【举例】shape=[2,3] 时，y=[2,3]，offset=[1]。
  */
-graphStatus InferShape4RandomV2(gert::InferSymbolContext *context) {
+graphStatus InferShape4RandomV2(gert::InferSymbolShapeContext *context) {
   const auto shape_tensor = context->GetInputSymbolTensor(0);
   GE_UNSUPPORTED_IF_NULL(shape_tensor);
   GE_UNSUPPORTED_IF(!shape_tensor->HasValue());

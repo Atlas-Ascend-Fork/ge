@@ -10,7 +10,7 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -23,7 +23,7 @@ namespace {
  * 1. input shape维度数大于multiples数组大小, 先以当前维度 * 1； 例如 {2, 3, 4} * [3, 2] --> {2, 3, 4} * [1, 3, 2]
  * 2. input shape维度数小于multiples数组大小, 在shape前添加一个维度1； 例如 {2, 3} * [3, 2, 1] --> {1, 2, 3} * [3, 2, 1]
  */
-graphStatus InferShape4Tile(gert::InferSymbolContext *context) {
+graphStatus InferShape4Tile(gert::InferSymbolShapeContext *context) {
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   const auto multiples = context->GetInputSymbolTensor(1);
@@ -62,7 +62,7 @@ constexpr size_t kTileAttrIndexMultiples = 0U;
 constexpr size_t kZero = 0U;
 constexpr size_t kMaxDimNum = 8U;
 
-graphStatus InferShape4TileD(gert::InferSymbolContext *context) {
+graphStatus InferShape4TileD(gert::InferSymbolShapeContext *context) {
   auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
   auto multiples = attrs->GetListInt(kTileAttrIndexMultiples);

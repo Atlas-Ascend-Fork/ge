@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -29,7 +29,7 @@ constexpr size_t kQkvRank = 3U;
  * 【推导逻辑】输出 q/k/v 均为 [batch, num_heads, token, dim_per_head]，其中 dim_per_head = qkv_dim2 / 3 / num_heads。
  * 【举例】qkv=[B,T,3*N*D]、num_heads=N 时，q=k=v=[B,N,T,D]。
  */
-graphStatus InferShape4TransformBiasRescaleQkv(gert::InferSymbolContext *context) {
+graphStatus InferShape4TransformBiasRescaleQkv(gert::InferSymbolShapeContext *context) {
   const auto qkv_shape = context->GetInputSymbolShape(kQkvIdx);
   GE_UNSUPPORTED_IF_NULL(qkv_shape);
   GE_ASSERT(qkv_shape->GetDimNum() == kQkvRank, "TransformBiasRescaleQkv qkv must be a 3D tensor");

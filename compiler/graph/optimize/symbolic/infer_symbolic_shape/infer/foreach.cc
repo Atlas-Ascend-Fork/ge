@@ -10,7 +10,7 @@
 
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/op_impl_infer_symbol_shape.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -25,7 +25,7 @@ namespace {
  * 【推导逻辑】按动态输出实例数为每个输出清空原 Shape 后写入单元素 Shape [1]。
  * 【举例】x=[x0:[B,S], x1:[H]]、scalar=[1] 时，y=[y0:[1], y1:[1]]。
  */
-graphStatus InferShape4ForeachNorm(gert::InferSymbolContext *context) {
+graphStatus InferShape4ForeachNorm(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_NOTNULL(context);
   const size_t input_num = context->GetComputeNodeInputNum();
   GE_ASSERT(input_num >= 1U, "ForeachNorm input num must be at least 1 (scalar)");

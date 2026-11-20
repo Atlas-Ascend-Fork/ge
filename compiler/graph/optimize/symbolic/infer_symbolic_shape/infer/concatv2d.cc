@@ -10,9 +10,8 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -36,7 +35,7 @@ constexpr size_t DIM_NUM = 2U;
  *      2. 以第一个输入的shape为基础，将其他输入的拼接轴维数dim往第一个输入的拼接轴上累加
  *      3. 将累加结果作为输出
  */
-graphStatus InferShape4ConcatV2Common(gert::InferSymbolContext *context, int64_t concat_dim, bool is_d,
+graphStatus InferShape4ConcatV2Common(gert::InferSymbolShapeContext *context, int64_t concat_dim, bool is_d,
                                       size_t start_shape_idx = 0U) {
   auto fst_in_shape = context->GetInputSymbolShape(start_shape_idx);  // 第一个输入的shape
   GE_UNSUPPORTED_IF_NULL(fst_in_shape);
@@ -100,7 +99,7 @@ graphStatus InferShape4ConcatV2Common(gert::InferSymbolContext *context, int64_t
   return GRAPH_SUCCESS;
 }
 
-graphStatus GetConcatDimValue(const gert::InferSymbolContext *context, size_t dim_index, int64_t &concat_dim) {
+graphStatus GetConcatDimValue(const gert::InferSymbolShapeContext *context, size_t dim_index, int64_t &concat_dim) {
   auto concat_dim_tensor = context->GetInputSymbolTensor(dim_index);
   GE_UNSUPPORTED_IF_NULL(concat_dim_tensor);
   const auto concat_dim_value = SymbolicInferUtil::GetSymbolicValues(*concat_dim_tensor);
@@ -118,7 +117,7 @@ graphStatus GetConcatDimValue(const gert::InferSymbolContext *context, size_t di
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4ConcatV2D(gert::InferSymbolContext *context) {
+graphStatus InferShape4ConcatV2D(gert::InferSymbolShapeContext *context) {
   auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
   const auto *concat_dim = attrs->GetAttrPointer<int64_t>(0);  // 拼接维度
@@ -127,7 +126,7 @@ graphStatus InferShape4ConcatV2D(gert::InferSymbolContext *context) {
   return InferShape4ConcatV2Common(context, *concat_dim, true);
 }
 
-graphStatus InferShape4ConcatV2(gert::InferSymbolContext *context) {
+graphStatus InferShape4ConcatV2(gert::InferSymbolShapeContext *context) {
   const auto num = context->GetComputeNodeInputNum();
   auto dim_index = num - 1;
 
@@ -140,7 +139,7 @@ graphStatus InferShape4ConcatV2(gert::InferSymbolContext *context) {
   return InferShape4ConcatV2Common(context, concat_dim, false);
 }
 
-graphStatus InferShape4Concat(gert::InferSymbolContext *context) {
+graphStatus InferShape4Concat(gert::InferSymbolShapeContext *context) {
   int64_t concat_dim;
   auto status = GetConcatDimValue(context, 0U, concat_dim);
   if (status == UNSUPPORTED) {
@@ -159,7 +158,7 @@ graphStatus InferShape4Concat(gert::InferSymbolContext *context) {
  * 4. 则output(0)的shape为{batchsize，15}，其中15=slice_size(2)+slice_size(3)+slice_size(4)+slice_size(5)
  *
  */
-graphStatus InferShape4MultisliceConcat(gert::InferSymbolContext *context) {
+graphStatus InferShape4MultisliceConcat(gert::InferSymbolShapeContext *context) {
   GE_CHECK_NOTNULL(context);
   auto input_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(input_shape);

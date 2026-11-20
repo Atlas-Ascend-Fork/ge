@@ -12,7 +12,7 @@
 
 #include <algorithm>
 #include <vector>
-#include "graph/symbolizer/symbolic.h"
+#include "graph/symbolizer/symbol_checker.h"
 #include "graph/utils/node_utils.h"
 #include "graph/utils/op_desc_utils.h"
 #include "graph/utils/attr_utils.h"
@@ -219,8 +219,14 @@ bool SymbolicInferUtil::IsInputValueDependent(const OpDescPtr &op_desc, size_t i
   if (op_desc == nullptr) {
     return false;
   }
+  const auto *funcs = gert::OpImplInferSymbolShapeRegistry::GetInstance().GetOpImpl(op_desc->GetType().c_str());
   const auto space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-  const auto *funcs = space_registry == nullptr ? nullptr : space_registry->GetOpImpl(op_desc->GetType().c_str());
+  if (space_registry != nullptr) {
+    const auto *space_funcs = space_registry->GetOpImpl(op_desc->GetType().c_str());
+    if (space_funcs != nullptr) {
+      funcs = space_funcs;
+    }
+  }
   if ((funcs != nullptr) && !ge::OpDescUtils::GetInputIrIndexes2InstanceIndexesPairMap(op_desc).empty()) {
     size_t ir_index;
     if ((ge::OpDescUtils::GetInputIrIndexByInstanceIndex(op_desc, instance_index, ir_index) == GRAPH_SUCCESS) &&

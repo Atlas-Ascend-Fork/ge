@@ -10,9 +10,8 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -34,7 +33,7 @@ constexpr size_t PAIR = 2UL;
  *      paddings = [[1, 2], [2, 1], [3, 3]]
  *      out_shape = [1+2+2, 2+3+1, 3+2+3]
  */
-graphStatus InferShape4Pad(gert::InferSymbolContext *context) {
+graphStatus InferShape4Pad(gert::InferSymbolShapeContext *context) {
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
 
@@ -67,7 +66,7 @@ graphStatus InferShape4Pad(gert::InferSymbolContext *context) {
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4PadD(gert::InferSymbolContext *context) {
+graphStatus InferShape4PadD(gert::InferSymbolShapeContext *context) {
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   const auto out_shape = context->GetOutputSymbolShape(0);
@@ -97,7 +96,7 @@ graphStatus InferShape4PadD(gert::InferSymbolContext *context) {
   return GRAPH_SUCCESS;
 }
 
-graphStatus PadV3InferShape(const gert::InferSymbolContext *context, const gert::SymbolShape *x_shape,
+graphStatus PadV3InferShape(const gert::InferSymbolShapeContext *context, const gert::SymbolShape *x_shape,
                             const gert::SymbolTensor *paddings_tensor, gert::SymbolShape *y_shape) {
   GE_UNSUPPORTED_IF(!paddings_tensor->HasValue());
   const auto paddings_value = SymbolicInferUtil::GetSymbolicValues(*paddings_tensor);
@@ -126,7 +125,7 @@ graphStatus PadV3InferShape(const gert::InferSymbolContext *context, const gert:
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4PadV3(gert::InferSymbolContext *context) {
+graphStatus InferShape4PadV3(gert::InferSymbolShapeContext *context) {
   const auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto y_shape = context->GetOutputSymbolShape(0);
@@ -148,7 +147,7 @@ graphStatus InferShape4PadV3(gert::InferSymbolContext *context) {
  * 【推导逻辑】与 Pad 一致，输出每维等于输入维 + 该维前后填充量之和。
  * 【举例】x=[4,2,5]、paddings=[[1,2],[2,1],[3,3]] 时，y=[7,5,11]。
  */
-graphStatus InferShape4MirrorPad(gert::InferSymbolContext *context) {
+graphStatus InferShape4MirrorPad(gert::InferSymbolShapeContext *context) {
   return InferShape4Pad(context);
 }
 
@@ -160,7 +159,7 @@ graphStatus InferShape4MirrorPad(gert::InferSymbolContext *context) {
  * 【推导逻辑】从 attr 0 读常量 paddings，按 contiguous 布局取每轴前后补元数，输出维 = 输入维 + pad_front + pad_end。
  * 【举例】x=[2,3]、paddings=[1,1,2,2] 时，y=[4,7]。
  */
-graphStatus InferShape4PadV3D(gert::InferSymbolContext *context) {
+graphStatus InferShape4PadV3D(gert::InferSymbolShapeContext *context) {
   const auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto y_shape = context->GetOutputSymbolShape(0);

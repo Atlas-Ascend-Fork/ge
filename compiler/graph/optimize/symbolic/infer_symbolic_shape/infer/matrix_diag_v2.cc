@@ -10,9 +10,8 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/utils/type_utils.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -157,7 +156,7 @@ void BuildOutputShape(const std::vector<Expression> &diagonal_dims, size_t diago
   }
 }
 
-graphStatus InferShape4MatrixDiagV2(gert::InferSymbolContext *context) {
+graphStatus InferShape4MatrixDiagV2(gert::InferSymbolShapeContext *context) {
   auto diagonal_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(diagonal_shape);
   auto k_shape = context->GetInputSymbolShape(1);
@@ -214,7 +213,7 @@ graphStatus InferShape4MatrixDiagV2(gert::InferSymbolContext *context) {
  * 【推导逻辑】读取输入符号 Shape，依次复制输入维度，再追加输入最后一维作为矩阵列维度。
  * 【举例】输入 x=[B,M,N] 时，输出 y=[B,M,N,N]。
  */
-graphStatus InferShape4MatrixDiag(gert::InferSymbolContext *context) {
+graphStatus InferShape4MatrixDiag(gert::InferSymbolShapeContext *context) {
   const auto input_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(input_shape);
   GE_ASSERT_TRUE(input_shape->GetDimNum() >= 1, "MatrixDiag input rank must be at least 1");
@@ -233,7 +232,7 @@ graphStatus InferShape4MatrixDiag(gert::InferSymbolContext *context) {
  *            生成输出 Shape。
  * 【举例】num_rows=3、num_columns=4、batch_shape=[2] 时，输出 y 的符号 Shape 为 [2,3,4]。
  */
-graphStatus InferShape4Eye(gert::InferSymbolContext *context) {
+graphStatus InferShape4Eye(gert::InferSymbolShapeContext *context) {
   const auto out_shape = context->GetOutputSymbolShape(kEyeOutputIdx);
   GE_ASSERT_NOTNULL(out_shape);
   const auto attrs = context->GetAttrs();
@@ -258,7 +257,7 @@ graphStatus InferShape4Eye(gert::InferSymbolContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4DiagPartD(gert::InferSymbolContext *context) {
+graphStatus InferShape4DiagPartD(gert::InferSymbolShapeContext *context) {
   const auto input_x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(input_x_shape);
   const auto assist_shape = context->GetInputSymbolShape(1);

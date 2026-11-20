@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -25,7 +25,7 @@ namespace {
  *             fft_length 为 0 时最后一维为 0。
  * 【举例】input=[B,N]、fft_length=[10] 时，y=[B,6]。
  */
-graphStatus InferShape4RFFT(gert::InferSymbolContext *context) {
+graphStatus InferShape4RFFT(gert::InferSymbolShapeContext *context) {
   const auto input_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(input_shape);
   GE_ASSERT(input_shape->GetDimNum() >= 1, "RFFT input rank must be at least 1");
@@ -62,7 +62,7 @@ graphStatus InferShape4RFFT(gert::InferSymbolContext *context) {
  * 【推导逻辑】输出 Shape 继承输入 x 的 Shape，仅将最后一维替换为 fft_length 的常量值。
  * 【举例】x=[B,N]、fft_length=[L] 时，y=[B,L]。
  */
-graphStatus InferShape4IRFFT(gert::InferSymbolContext *context) {
+graphStatus InferShape4IRFFT(gert::InferSymbolShapeContext *context) {
   const auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   GE_ASSERT(x_shape->GetDimNum() >= 1, "IRFFT input rank must be at least 1");

@@ -11,7 +11,7 @@
 #include "framework/common/framework_types_internal.h"
 #include "common/util/mem_utils.h"
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
+#include "graph/symbolizer/symbol_operator.h"
 #include "graph/optimize/symbolic/symbol_compute_context.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "graph/optimize/symbolic/symbolic_kernel_factory.h"

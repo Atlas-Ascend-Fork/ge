@@ -13,7 +13,7 @@
 
 #include "ge_common/ge_common_api_types.h"
 #include "graph/gnode.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "attribute_group/attr_group_shape_env.h"
 
 namespace ge {

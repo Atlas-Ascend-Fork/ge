@@ -10,14 +10,14 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
 namespace ge {
 namespace {
-graphStatus InferShape4ElementWise(gert::InferSymbolContext *context) {
+graphStatus InferShape4ElementWise(gert::InferSymbolShapeContext *context) {
   auto in_shape1 = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape1);
   auto out_shape = context->GetOutputSymbolShape(0);

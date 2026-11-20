@@ -10,7 +10,7 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -31,7 +31,7 @@ namespace {
  *      3. 输出shape为[keys总元素数, embedding_dim]
  *      举例：输入keys_shape=(2,3)，embedding_dim=128，则输出=(6,128)
  */
-graphStatus InferShape4EmbeddingHashTableLookupOrInsert(gert::InferSymbolContext *context) {
+graphStatus InferShape4EmbeddingHashTableLookupOrInsert(gert::InferSymbolShapeContext *context) {
   const auto in_table_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_table_shape);
   const auto in_keys_shape = context->GetInputSymbolShape(1);

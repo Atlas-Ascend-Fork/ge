@@ -15,11 +15,22 @@
 #include <cstdint>
 #include <type_traits>
 #include <vector>
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/runtime_attrs.h"
+#include "exe_graph/runtime/symbolic_tensor.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 
 namespace gert {
-class InferSymbolComputeContext : public InferSymbolContext {
+class InferSymbolComputeContext : public InferSymbolShapeContext {
  public:
+  /**
+   * 根据输出index，获取输出符号化Symbolshape指针，该接口仅在编译态使用；
+   * @param index 输出index；
+   * @return 输出符号化Symbolshape指针，index非法时，返回空指针。
+   */
+  SymbolTensor *GetOutputSymbolTensor(const size_t index) {
+    return GetOutputPointer<SymbolTensor>(index);
+  }
+
   bool GetConstInputDims(const size_t index, std::vector<int64_t> &dims) const {
     if (GetNodeName() == nullptr || GetNodeType() == nullptr) {
       return false;

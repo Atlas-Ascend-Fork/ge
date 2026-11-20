@@ -14,7 +14,6 @@
 #include "attribute_group/attr_group_symbolic_desc.h"
 #include "attribute_group/attr_group_shape_env.h"
 #include "exe_graph/lowering/kernel_run_context_builder.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
 #include "framework/common/framework_types_internal.h"
 #include "graph/utils/op_desc_utils.h"
 #include "graph/utils/type_utils.h"
@@ -32,8 +31,24 @@
 #include "graph/symbolizer/guard_dfx_context.h"
 #include <algorithm>
 
+namespace gert {
+class InferSymbolContext;
+}
+
 namespace ge {
 namespace {
+
+using InferSymbolFunc = UINT32 (*)(gert::InferSymbolContext *);
+
+InferSymbolFunc GetInferSymbolFunc(const gert::OpImplKernelRegistry::OpImplFunctionsV2 *func) {
+  if (func == nullptr) {
+    return nullptr;
+  }
+  const auto *reserved = reinterpret_cast<const uint8_t *>(func->reserved_);
+  InferSymbolFunc infer_symbol = nullptr;
+  (void)memcpy_s(&infer_symbol, sizeof(infer_symbol), reserved + sizeof(uint64_t), sizeof(infer_symbol));
+  return infer_symbol;
+}
 
 template <typename T>
 ge::Symbol CreateSymbol(const uint8_t *ptr, size_t i) {
@@ -321,7 +336,7 @@ std::vector<void *> GetVoidPtr(const std::vector<std::unique_ptr<T>> &outputs_ho
   return outputs;
 }
 
-Status UpdateOpDescOutSymbolShape(const ge::OpDescPtr &op_desc, gert::InferSymbolContext *infer_symbol_shape_ctx) {
+Status UpdateOpDescOutShape(const ge::OpDescPtr &op_desc, gert::InferSymbolShapeContext *infer_symbol_shape_ctx) {
   GE_ASSERT_NOTNULL(op_desc);
   GE_ASSERT_NOTNULL(infer_symbol_shape_ctx);
   for (size_t index = 0UL; index < op_desc->GetOutputsSize(); index++) {
@@ -334,8 +349,7 @@ Status UpdateOpDescOutSymbolShape(const ge::OpDescPtr &op_desc, gert::InferSymbo
   return ge::GRAPH_SUCCESS;
 }
 
-template <typename T>
-Status UpdateOpDescOutShape(const ge::OpDescPtr &op_desc, T *infer_symbol_shape_ctx) {
+Status UpdateOpDescOutShape(const ge::OpDescPtr &op_desc, gert::InferSymbolComputeContext *infer_symbol_shape_ctx) {
   GE_ASSERT_NOTNULL(op_desc);
   GE_ASSERT_NOTNULL(infer_symbol_shape_ctx);
   for (size_t index = 0UL; index < op_desc->GetOutputsSize(); index++) {
@@ -441,19 +455,12 @@ Status DoComputeAndUpdate(const NodePtr &node) {
   return ge::GRAPH_SUCCESS;
 }
 
-Status DoCustomInferAndUpdate(const NodePtr &node) {
+Status DoInferSymbolAndUpdate(const NodePtr &node, const gert::OpImplKernelRegistry::OpImplFunctionsV2 *func) {
+  GE_ASSERT_NOTNULL(func);
+  const auto infer_symbol = GetInferSymbolFunc(func);
+  GE_ASSERT_NOTNULL(infer_symbol);
   const auto op_desc = node->GetOpDesc();
   GE_ASSERT_NOTNULL(op_desc);
-  const auto space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry(
-      static_cast<gert::OppImplVersionTag>(op_desc->GetOppImplVersion()));
-  if (space_registry == nullptr) {
-    return UNSUPPORTED;
-  }
-  const auto functions = space_registry->GetOpImpl(op_desc->GetType().c_str());
-  if (functions == nullptr || functions->infer_symbol == nullptr) {
-    return UNSUPPORTED;
-  }
-  const auto infer_symbol = functions->infer_symbol;
   std::vector<std::unique_ptr<gert::SymbolTensor>> inputs_holder;
   std::vector<std::unique_ptr<gert::SymbolTensor>> outputs_holder;
   inputs_holder.reserve(op_desc->GetAllInputsDescPtr().size());
@@ -469,18 +476,30 @@ Status DoCustomInferAndUpdate(const NodePtr &node) {
            op_desc->GetType().c_str());
     return ge::GRAPH_FAILED;
   }
-  auto infer_symbol_ctx = reinterpret_cast<gert::InferSymbolContext *>(kernel_context_holder.context_);
-  const auto infer_ret = infer_symbol(infer_symbol_ctx);
-  if (infer_ret == ge::GRAPH_NOT_CHANGED) {
-    return ge::UNSUPPORTED;
-  }
+  auto infer_symbol_compute_ctx = reinterpret_cast<gert::InferSymbolComputeContext *>(kernel_context_holder.context_);
+  const auto infer_ret = infer_symbol(reinterpret_cast<gert::InferSymbolContext *>(infer_symbol_compute_ctx));
   if (infer_ret != ge::GRAPH_SUCCESS) {
     GELOGE(infer_ret, "Custom infer symbol failed, op_desc[%s], ret[%u]", op_desc->GetName().c_str(), infer_ret);
     return infer_ret;
   }
-  GE_ASSERT_GRAPH_SUCCESS(UpdateOpDescOutShape(op_desc, infer_symbol_ctx));
+  GE_ASSERT_GRAPH_SUCCESS(UpdateOpDescOutShape(op_desc, infer_symbol_compute_ctx));
   GE_ASSERT_GRAPH_SUCCESS(PrintSymbolShapeInfo(op_desc, "After_Custom_Infer_Symbol"));
   return ge::GRAPH_SUCCESS;
+}
+
+Status DoCustomInferAndUpdate(const NodePtr &node) {
+  const auto op_desc = node->GetOpDesc();
+  GE_ASSERT_NOTNULL(op_desc);
+  const auto space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry(
+      static_cast<gert::OppImplVersionTag>(op_desc->GetOppImplVersion()));
+  if (space_registry == nullptr) {
+    return UNSUPPORTED;
+  }
+  const auto functions = space_registry->GetOpImpl(op_desc->GetType().c_str());
+  if (GetInferSymbolFunc(functions) == nullptr) {
+    return UNSUPPORTED;
+  }
+  return DoInferSymbolAndUpdate(node, functions);
 }
 
 Status UseStaticShapeIfWeCan(const OpDescPtr &op_desc) {
@@ -507,8 +526,9 @@ Status UseStaticShapeIfWeCan(const OpDescPtr &op_desc) {
   return ge::GRAPH_SUCCESS;
 }
 
-Status DoInferAndUpdate(const NodePtr &node, gert::OpImplKernelRegistry::InferSymbolKernelFunc func) {
+Status DoInferAndUpdate(const NodePtr &node, const gert::OpImplKernelRegistry::OpImplFunctionsV2 *func) {
   GE_ASSERT_NOTNULL(func);
+  GE_ASSERT_NOTNULL(func->infer_symbol_shape);
   const auto op_desc = node->GetOpDesc();
   GE_ASSERT_NOTNULL(op_desc);
   std::vector<std::unique_ptr<gert::SymbolTensor>> inputs_holder;
@@ -533,15 +553,15 @@ Status DoInferAndUpdate(const NodePtr &node, gert::OpImplKernelRegistry::InferSy
     GELOGW("Build kernel context failed, node %s[%s].", op_desc->GetName().c_str(), op_desc->GetType().c_str());
     return UNSUPPORTED;
   }
-  auto infer_symbol_shape_ctx = reinterpret_cast<gert::InferSymbolContext *>(kernel_context_holder.context_);
-  auto infer_ret = func(infer_symbol_shape_ctx);
+  auto infer_symbol_shape_ctx = reinterpret_cast<gert::InferSymbolShapeContext *>(kernel_context_holder.context_);
+  auto infer_ret = func->infer_symbol_shape(infer_symbol_shape_ctx);
   GE_ASSERT_TRUE((infer_ret == SUCCESS) || (infer_ret == UNSUPPORTED),
                  "[Call][InferSymbolShapeFunc] failed, op_desc[%s], ret[%d]", op_desc->GetName().c_str());
   if (infer_ret == UNSUPPORTED) {
     GELOGW("Symbol infer unsupported, node %s[%s].", op_desc->GetName().c_str(), op_desc->GetType().c_str());
     return UNSUPPORTED;
   }
-  GE_ASSERT_GRAPH_SUCCESS(UpdateOpDescOutSymbolShape(op_desc, infer_symbol_shape_ctx));
+  GE_ASSERT_GRAPH_SUCCESS(UpdateOpDescOutShape(op_desc, infer_symbol_shape_ctx));
   GE_ASSERT_GRAPH_SUCCESS(PrintSymbolShapeInfo(op_desc, "After_Infer_Symbol"));
   return ge::GRAPH_SUCCESS;
 }
@@ -550,12 +570,21 @@ Status DoInferShapeAndUpdate(const NodePtr &node) {
   const auto op_desc = node->GetOpDesc();
   GE_ASSERT_NOTNULL(op_desc);
   auto functions = gert::OpImplInferSymbolShapeRegistry::GetInstance().GetOpImpl(op_desc->GetType().c_str());
-  if (functions == nullptr) {
+  if (functions == nullptr || functions->infer_symbol_shape == nullptr) {
     GELOGW("Symbolic infershape callback for node %s[%s] is not implemented.", op_desc->GetName().c_str(),
            op_desc->GetType().c_str());
     return UNSUPPORTED;
   }
-  return DoInferAndUpdate(node, functions);
+  auto space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+  GE_ASSERT_NOTNULL(space_registry);
+  auto function_new = const_cast<gert::OpImplKernelRegistry::OpImplFunctionsV2 *>(
+      space_registry->GetOpImpl(op_desc->GetType().c_str()));
+  if (function_new != nullptr) {
+    function_new->infer_symbol_shape = functions->infer_symbol_shape;
+  } else {
+    function_new = const_cast<gert::OpImplKernelRegistry::OpImplFunctionsV2 *>(functions);
+  }
+  return DoInferAndUpdate(node, function_new);
 }
 
 Status SimplifyTensorSymbol(const GeTensorDescPtr &ge_tensor_desc) {

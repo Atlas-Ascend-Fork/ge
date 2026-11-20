@@ -60,8 +60,9 @@ target_link_libraries(ut_exe_graph PRIVATE
         ge_metadef_headers
         graph
         graph_base
-        unified_dlog
-        aihac_symbolizer
+		unified_dlog
+		aihac_symbolizer
+        -Wl,--as-needed
         )
 
 add_test(NAME ut_exe_graph COMMAND ut_exe_graph --gtest_output=xml:${CMAKE_INSTALL_PREFIX}/report/ut/ut_exe_graph.xml)

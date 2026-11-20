@@ -11,9 +11,8 @@
 #include <cstdlib>
 #include "graph/compute_graph.h"
 #include "graph/utils/type_utils.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -53,7 +52,7 @@ graphStatus ProcessSqueezeAxes(const gert::SymbolShape *in_shape, gert::SymbolSh
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4Squeeze(gert::InferSymbolContext *context) {
+graphStatus InferShape4Squeeze(gert::InferSymbolShapeContext *context) {
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   const auto out_shape = context->GetOutputSymbolShape(0);
@@ -87,7 +86,7 @@ graphStatus GetAxesFromTensor(const std::vector<Expression> axes, std::vector<in
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4SqueezeV3(gert::InferSymbolContext *context) {
+graphStatus InferShape4SqueezeV3(gert::InferSymbolShapeContext *context) {
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   const auto out_shape = context->GetOutputSymbolShape(0);
@@ -138,7 +137,7 @@ graphStatus ProcessUnsqueezeAxes(const gert::SymbolShape *in_shape, gert::Symbol
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4UnSqueeze(gert::InferSymbolContext *context) {
+graphStatus InferShape4UnSqueeze(gert::InferSymbolShapeContext *context) {
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   const auto out_shape = context->GetOutputSymbolShape(0);
@@ -159,7 +158,7 @@ graphStatus InferShape4UnSqueeze(gert::InferSymbolContext *context) {
   return ProcessUnsqueezeAxes(in_shape, out_shape, axes_vec);
 }
 
-graphStatus InferShape4UnsqueezeV3(gert::InferSymbolContext *context) {
+graphStatus InferShape4UnsqueezeV3(gert::InferSymbolShapeContext *context) {
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   const auto out_shape = context->GetOutputSymbolShape(0);
@@ -184,7 +183,7 @@ graphStatus InferShape4UnsqueezeV3(gert::InferSymbolContext *context) {
 }
 
 template <typename T>
-graphStatus ExpandDimsInferShapeImpl(const gert::InferSymbolContext *context, const gert::SymbolShape *x_shape,
+graphStatus ExpandDimsInferShapeImpl(const gert::InferSymbolShapeContext *context, const gert::SymbolShape *x_shape,
                                      const gert::SymbolTensor *axis_tensor, gert::SymbolShape *output_shape) {
   T axis_data;
   if (axis_tensor->GetValue(0).GetConstValue<T>(axis_data) == false) {
@@ -208,7 +207,7 @@ graphStatus ExpandDimsInferShapeImpl(const gert::InferSymbolContext *context, co
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4ExpandDims(gert::InferSymbolContext *context) {
+graphStatus InferShape4ExpandDims(gert::InferSymbolShapeContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto axes_tensor = context->GetInputSymbolTensor(1);

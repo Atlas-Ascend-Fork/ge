@@ -48,7 +48,7 @@ void RegisterLoweringForTest(const std::string &op_type) {
 }
 
 namespace {
-graphStatus InferShape4XopWithSymbolInfer(gert::InferSymbolContext *context) {
+graphStatus InferShape4XopWithSymbolInfer(gert::InferSymbolShapeContext *context) {
   auto input_shape = context->GetInputSymbolShape(0);
   GE_ASSERT_NOTNULL(input_shape);
   auto output_shape = context->GetOutputSymbolShape(0);

@@ -10,7 +10,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -18,7 +18,7 @@
 
 namespace ge {
 namespace {
-graphStatus InferShape4Repeat(gert::InferSymbolContext *context) {
+graphStatus InferShape4Repeat(gert::InferSymbolShapeContext *context) {
   auto input_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(input_shape);
   if (input_shape->GetDimNum() == 0U) {
@@ -57,7 +57,7 @@ graphStatus InferShape4Repeat(gert::InferSymbolContext *context) {
  * 【举例】x=[B,S]、repeats=[2]、axis=1 时，y=[B,S*2]；x=[B,S]、repeats=[1,2,3]（与 S=3 对应）、axis=1 时，
  *        y=[B,6]。
  */
-graphStatus InferShape4RepeatInterleave(gert::InferSymbolContext *context) {
+graphStatus InferShape4RepeatInterleave(gert::InferSymbolShapeContext *context) {
   const auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   const auto repeats_tensor = context->GetInputSymbolTensor(1);

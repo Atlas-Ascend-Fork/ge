@@ -10,9 +10,8 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 namespace ge {
@@ -24,7 +23,7 @@ namespace {
  * t：一个张量，当condition为True时，从这个张量中选择元素。
  * e：一个张量，当condition为False时，从这个张量中选择元素。
  */
-graphStatus InferShape4Select(gert::InferSymbolContext *context) {
+graphStatus InferShape4Select(gert::InferSymbolShapeContext *context) {
   const auto condition_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(condition_shape);
   const auto in_shape1 = context->GetInputSymbolShape(1);
@@ -60,7 +59,7 @@ graphStatus InferShape4Select(gert::InferSymbolContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4SelectV2(gert::InferSymbolContext *context) {
+graphStatus InferShape4SelectV2(gert::InferSymbolShapeContext *context) {
   const auto condition_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(condition_shape);
   const auto in_shape1 = context->GetInputSymbolShape(1);

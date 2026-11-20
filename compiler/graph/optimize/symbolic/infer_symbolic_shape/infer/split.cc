@@ -11,9 +11,8 @@
 #include <cstdlib>
 #include <cstdint>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 namespace ge {
@@ -34,7 +33,7 @@ namespace {
  * {5, 2, 4}
  */
 template <typename T>
-graphStatus GetInputSymbolTensorValue(gert::InferSymbolContext *context, const size_t tensor_index,
+graphStatus GetInputSymbolTensorValue(gert::InferSymbolShapeContext *context, const size_t tensor_index,
                                       const size_t expr_index, T &value) {
   auto tensor = context->GetInputSymbolTensor(tensor_index);
   if (tensor == nullptr) {
@@ -65,7 +64,7 @@ graphStatus GetInputSymbolTensorValue(gert::InferSymbolContext *context, const s
   return SUCCESS;
 }
 
-graphStatus InferShape4Split(gert::InferSymbolContext *context) {
+graphStatus InferShape4Split(gert::InferSymbolShapeContext *context) {
   // 获取split_dim，存储在input0中
   int32_t split_dim = 0;
   if (GetInputSymbolTensorValue(context, 0, 0, split_dim) == UNSUPPORTED) {
@@ -116,8 +115,8 @@ graphStatus InferShape4Split(gert::InferSymbolContext *context) {
  * {2(10-3-5), 3, 5}
  * {5, 3, 5}
  */
-graphStatus GetSplitVInput(gert::InferSymbolContext *context, int64_t &num_split, int64_t &split_dim, size_t dim_num,
-                           std::vector<int64_t> &size_splits) {
+graphStatus GetSplitVInput(gert::InferSymbolShapeContext *context, int64_t &num_split, int64_t &split_dim,
+                           size_t dim_num, std::vector<int64_t> &size_splits) {
   auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
   auto numSplit = attrs->GetAttrPointer<int64_t>(0);
@@ -158,7 +157,7 @@ graphStatus GetSplitVInput(gert::InferSymbolContext *context, int64_t &num_split
   }
   return SUCCESS;
 }
-graphStatus InferShape4SplitV(gert::InferSymbolContext *context) {
+graphStatus InferShape4SplitV(gert::InferSymbolShapeContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   int64_t num_split = 0L;
@@ -203,7 +202,7 @@ graphStatus InferShape4SplitV(gert::InferSymbolContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4SplitD(gert::InferSymbolContext *context) {
+graphStatus InferShape4SplitD(gert::InferSymbolShapeContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
 
@@ -238,7 +237,7 @@ graphStatus InferShape4SplitD(gert::InferSymbolContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4SplitVD(gert::InferSymbolContext *context) {
+graphStatus InferShape4SplitVD(gert::InferSymbolShapeContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto attrs = context->GetAttrs();

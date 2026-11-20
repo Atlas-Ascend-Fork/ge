@@ -11,7 +11,7 @@
 #include <algorithm>
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
 namespace ge {
@@ -66,7 +66,7 @@ graphStatus BroadcastShape(const gert::SymbolShape &input, const gert::SymbolSha
  * 【举例】query=[B,Nq,S,8]、key=[B,Nk,S,8]、cos=[1,1,S,4]时，输出分别为
  *          query_out=[B,Nq,S,8]、key_out=[B,Nk,S,8]。
  */
-graphStatus ApplyRotaryPosEmbInferSymbolShape(gert::InferSymbolContext *context) {
+graphStatus ApplyRotaryPosEmbInferSymbolShape(gert::InferSymbolShapeContext *context) {
   GE_ASSERT_NOTNULL(context);
   const auto query = context->GetInputSymbolShape(kQueryIndex);
   const auto key = context->GetInputSymbolShape(kKeyIndex);
@@ -100,7 +100,7 @@ namespace {
  * 【推导逻辑】三个输出分别透传 dy、cos、sin 的符号 Shape。
  * 【举例】dy=[B,S,H]、cos=[B,S,H]、sin=[B,S,H] 时，dx=dcos=dsin=[B,S,H]。
  */
-graphStatus InferShape4RotaryPositionEmbeddingGrad(gert::InferSymbolContext *context) {
+graphStatus InferShape4RotaryPositionEmbeddingGrad(gert::InferSymbolShapeContext *context) {
   constexpr size_t kDyIdx = 0UL;
   constexpr size_t kCosIdx = 1UL;
   constexpr size_t kSinIdx = 2UL;

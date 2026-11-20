@@ -11,9 +11,8 @@
 #include <cstdlib>
 #include <cstdint>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -21,7 +20,7 @@ namespace ge {
 namespace {
 // Reshape 尺寸约束收尾：无未知维度(-1)时登记总量一致 guard；有未知维度时按 hint
 // 整除性求解（见 ResolveIntegralDim）并回填该维度
-graphStatus FinalizeReshapeSize(const gert::InferSymbolContext *context, const gert::SymbolShape *in_shape,
+graphStatus FinalizeReshapeSize(const gert::InferSymbolShapeContext *context, const gert::SymbolShape *in_shape,
                                 gert::SymbolShape *out_shape, size_t unknown_dim_idx) {
   Expression in_shape_size = in_shape->GetSymbolShapeSize();
   Expression out_shape_size = out_shape->GetSymbolShapeSize();
@@ -40,7 +39,7 @@ graphStatus FinalizeReshapeSize(const gert::InferSymbolContext *context, const g
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus ReshapeInferCommon(const gert::InferSymbolContext *context, const gert::SymbolShape *in_shape,
+graphStatus ReshapeInferCommon(const gert::InferSymbolShapeContext *context, const gert::SymbolShape *in_shape,
                                gert::SymbolShape *out_shape, const gert::SymbolTensor *shape_tensor) {
   auto reshape_dim_num = shape_tensor->GetValueCount();
   size_t unknown_dim_idx = std::numeric_limits<size_t>::max();
@@ -110,7 +109,7 @@ graphStatus ReshapeInferCommon(const gert::InferSymbolContext *context, const ge
  * dim3 = (2 * 3 * 4) / (1 * 3 * 2) = 4
  * {1, 3, 4, 2}
  */
-graphStatus InferShape4Reshape(gert::InferSymbolContext *context) {
+graphStatus InferShape4Reshape(gert::InferSymbolShapeContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto shape_tensor = context->GetInputSymbolTensor(1);
@@ -133,7 +132,7 @@ graphStatus InferShape4Reshape(gert::InferSymbolContext *context) {
  * 【推导逻辑】读取 size 的符号值，将每个常量值作为输出 Shape 的对应维度；stride 和 storage_offset 不改变输出 Shape。
  * 【举例】x=[N,C,H,W]、size=[N,H,W]、stride=[H*W,W,1]、storage_offset=[0] 时，y=[N,H,W]。
  */
-graphStatus InferShape4AsStrided(gert::InferSymbolContext *context) {
+graphStatus InferShape4AsStrided(gert::InferSymbolShapeContext *context) {
   const auto size_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(size_tensor);
   GE_UNSUPPORTED_IF(!size_tensor->HasValue());
@@ -163,7 +162,7 @@ graphStatus InferShape4AsStrided(gert::InferSymbolContext *context) {
  *          该推导只处理Shape，不展开输入Tensor的元素值，输出SymbolicValue由对应符号计算阶段生成。
  * 【举例】输入Shape=[s0,s1,s2]时，输出Shape为[3]。
  */
-graphStatus InferShape4Shape(gert::InferSymbolContext *context) {
+graphStatus InferShape4Shape(gert::InferSymbolShapeContext *context) {
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   const auto out_shape = context->GetOutputSymbolShape(0);

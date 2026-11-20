@@ -10,7 +10,7 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -27,7 +27,7 @@ namespace {
  * 【举例】输入Shape=[B,S,H,W]、axis=1时，输出Shape=[B,S*H*W]；输入Shape=[2,3,4]、axis=-1时，
  *          输出Shape=[6,4]。
  */
-graphStatus InferShape4Flatten(gert::InferSymbolContext *context) {
+graphStatus InferShape4Flatten(gert::InferSymbolShapeContext *context) {
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   const auto out_shape = context->GetOutputSymbolShape(0);
@@ -67,7 +67,7 @@ graphStatus InferShape4Flatten(gert::InferSymbolContext *context) {
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4FlattenV2(gert::InferSymbolContext *context) {
+graphStatus InferShape4FlattenV2(gert::InferSymbolShapeContext *context) {
   auto const in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto const out_shape = context->GetOutputSymbolShape(0);

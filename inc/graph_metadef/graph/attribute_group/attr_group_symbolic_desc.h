@@ -14,7 +14,7 @@
 #include "graph/error_codes.h"
 #include "attribute_group/attr_group_base.h"
 #include "graph/tensor.h"
-#include "exe_graph/runtime/symbolic_types.h"
+#include "exe_graph/runtime/symbolic_tensor.h"
 
 namespace ge {
 namespace proto {

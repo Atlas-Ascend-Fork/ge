@@ -9,9 +9,8 @@
  */
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
-#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -27,7 +26,7 @@ constexpr size_t kOne = 1U;
  *
  * 数据依赖 dims：一个1-D张量，表示输出张量的形状，类型为int32或int64，非负整数 ()
  */
-graphStatus InferShape4Fill(gert::InferSymbolContext *context) {
+graphStatus InferShape4Fill(gert::InferSymbolShapeContext *context) {
   const auto dims = context->GetInputSymbolTensor(0);
   GE_UNSUPPORTED_IF_NULL(dims);
   const auto dims_value = SymbolicInferUtil::GetSymbolicValues(*dims);
@@ -78,7 +77,7 @@ bool CheckValid(const gert::SymbolTensor *symbol_tensor) {
   return true;
 }
 
-graphStatus InferShape4Range(gert::InferSymbolContext *context) {
+graphStatus InferShape4Range(gert::InferSymbolShapeContext *context) {
   auto start_tensor = context->GetInputSymbolTensor(0);
   GE_UNSUPPORTED_IF_NULL(start_tensor);
   auto limit_tensor = context->GetInputSymbolTensor(1);

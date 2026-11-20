@@ -10,7 +10,7 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_context.h"
+#include "exe_graph/runtime/infer_symbol_shape_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/utils/type_utils.h"
@@ -19,7 +19,7 @@
 namespace ge {
 namespace {
 template <typename T>
-graphStatus TransposeInferCommon(gert::InferSymbolContext *context, const gert::SymbolShape *in_shape,
+graphStatus TransposeInferCommon(gert::InferSymbolShapeContext *context, const gert::SymbolShape *in_shape,
                                  const std::vector<Expression> &exprs, gert::SymbolShape *out_shape) {
   auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
@@ -62,7 +62,7 @@ graphStatus TransposeInferCommon(gert::InferSymbolContext *context, const gert::
  * perm为[2, 0, 1]
  * 转置后的张量为{3, 1, 2}
  */
-graphStatus InferShape4Transpose(gert::InferSymbolContext *context) {
+graphStatus InferShape4Transpose(gert::InferSymbolShapeContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto perm_tensor = context->GetInputSymbolTensor(1);
@@ -106,7 +106,7 @@ constexpr size_t kOne = 1U;
  * perm为[2, 0, 1]， perm_num=3
  * 转置后的张量为{3, 1, 2}
  */
-graphStatus InferShape4TransposeD(gert::InferSymbolContext *context) {
+graphStatus InferShape4TransposeD(gert::InferSymbolShapeContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto out_shape = context->GetOutputSymbolShape(0);
