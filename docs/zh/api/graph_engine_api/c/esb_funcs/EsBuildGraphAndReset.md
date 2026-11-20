@@ -33,7 +33,7 @@ EsCGraph *EsBuildGraphAndReset(EsCGraphBuilder *graph)
 
 ## 约束说明
 
-- 图构建器以执行图类别创建（[EsCreateGraphBuilderWithKind](EsCreateGraphBuilderWithKind.md)中`kind`为`C_GRAPH_EXECUTE`）时，本接口构建并返回执行图类别的ge::Graph对象，图类别与构建器类别一致；执行图类别下不执行计算图归一化。
+图构建器以执行图类别创建（[EsCreateGraphBuilderWithKind](EsCreateGraphBuilderWithKind.md)中`kind`为`C_GRAPH_EXECUTE`）时，本接口构建并返回执行图类别的ge::Graph对象，图类别与构建器类别一致；执行图类别下不执行计算图归一化。
 
 ## 调用示例
 

@@ -35,4 +35,4 @@ graphStatus AddSubGraph(const Graph &subgraph)
 
 ## 约束说明
 
-- 子图与当前Graph对象的图类别必须一致：计算图仅支持添加计算图子图，执行图仅支持添加执行图子图，跨类别添加（如将执行图挂载到计算图下）返回PARAM_INVALID。
+子图与当前Graph对象的图类别必须一致：计算图仅支持添加计算图子图，执行图仅支持添加执行图子图，跨类别添加（如将执行图挂载到计算图下）返回PARAM_INVALID。

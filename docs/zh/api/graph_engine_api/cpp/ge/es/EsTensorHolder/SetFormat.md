@@ -33,7 +33,7 @@ EsTensorHolder &SetFormat(const ge::Format format)
 
 ## 约束说明
 
-- 仅计算图支持该接口：当图构建器以执行图类别创建（[EsGraphBuilder](../EsGraphBuilder/EsGraphBuilder_constructor.md)构造时`kind`为`C_GRAPH_EXECUTE`）时，设置不生效，并上报错误码E10062。
+仅计算图支持该接口：当图构建器以执行图类别创建（[EsGraphBuilder](../EsGraphBuilder/EsGraphBuilder_constructor.md)构造时`kind`为`C_GRAPH_EXECUTE`）时，设置不生效，并上报错误码E10062。
 
 ## 调用示例
 

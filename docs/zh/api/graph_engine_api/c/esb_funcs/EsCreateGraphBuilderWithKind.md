@@ -24,7 +24,7 @@ EsCGraphBuilder *EsCreateGraphBuilderWithKind(const char *name, int32_t kind)
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | name | 输入 | 可选，图的名字，如果为空则默认为"graph"。 |
-| kind | 输入 | 图类别，按整型直传`C_GraphKind`枚举取值（定义于`graph/c_types.h`头文件）：`C_GRAPH_COMPUTE`为计算图，`C_GRAPH_EXECUTE`为执行图。 |
+| kind | 输入 | 图后端类别，取值为[C\_GraphKind](https://gitcode.com/cann/metadef/blob/master/docs/zh/api/c_api/C_GraphKind.md)枚举（`ge::GraphKind`为其别名）：`C_GRAPH_COMPUTE`（计算图，取值为0）、`C_GRAPH_EXECUTE`（执行图，取值为1）。 |
 
 ## 返回值说明
 
@@ -41,7 +41,6 @@ EsCGraphBuilder *EsCreateGraphBuilderWithKind(const char *name, int32_t kind)
 ## 调用示例
 
 ```c
-#include "c_types.h" // 包含C_GraphKind枚举定义
 // 创建执行图类别的图构建器
 EsCGraphBuilder *builder = EsCreateGraphBuilderWithKind("graph_name", C_GRAPH_EXECUTE);
 ```

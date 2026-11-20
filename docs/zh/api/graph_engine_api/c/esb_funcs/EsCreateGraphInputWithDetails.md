@@ -26,7 +26,7 @@ EsCTensorHolder *EsCreateGraphInputWithDetails(EsCGraphBuilder *graph, int64_t i
 | graph | 输入 | 图构建器指针。 |
 | index | 输入 | 第几个图的输入，从0开始计数。 |
 | name | 输入 | 输入的名字，如果为空则默认为input_{index}。 |
-| type | 输入 | 输入的类型，如果为空则默认为Data。 |
+| type | 输入 | 输入的类型，如果为空则默认为Data。取值：计算图类别下支持Data、RefData、AippData、AnyData；执行图类别下支持Data、AippData、ConstData。 |
 | data_type | 输入 | 数据类型。 |
 | format | 输入 | 格式类型。 |
 | shape | 输入 | shape信息，shape如果为空则为标量。 |
@@ -40,7 +40,7 @@ EsCTensorHolder *EsCreateGraphInputWithDetails(EsCGraphBuilder *graph, int64_t i
 
 ## 约束说明
 
-- 当图构建器以执行图类别创建（[EsCreateGraphBuilderWithKind](EsCreateGraphBuilderWithKind.md)中`kind`为`C_GRAPH_EXECUTE`）时，输入类型`type`仅支持Data、AippData、ConstData三种。
+当图构建器以执行图类别创建（[EsCreateGraphBuilderWithKind](EsCreateGraphBuilderWithKind.md)中`kind`为`C_GRAPH_EXECUTE`）时，输入类型`type`仅支持Data、AippData、ConstData三种。
 
 ## 调用示例
 

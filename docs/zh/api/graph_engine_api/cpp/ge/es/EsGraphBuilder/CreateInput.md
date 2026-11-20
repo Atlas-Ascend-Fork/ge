@@ -45,7 +45,7 @@
 | --- | --- | --- |
 | index | 输入 | 输入节点的索引，从0开始计数。 |
 | name | 输入 | 输入节点的名称，如果为nullptr则使用默认名称input_{index}。 |
-| type | 输入 | 输入节点的类型字符串，如果为nullptr则默认为Data。 |
+| type | 输入 | 输入节点的类型字符串，如果为nullptr则默认为Data。取值：计算图类别下支持Data、RefData、AippData、AnyData；执行图类别下支持Data、AippData、ConstData。 |
 | format | 输入 | 张量格式。 |
 | data_type | 输入 | 数据类型。 |
 | shape | 输入 | 张量形状向量，如果为空则创建标量。 |
@@ -58,7 +58,7 @@
 
 ## 约束说明
 
-- 当图构建器以执行图类别创建（[EsGraphBuilder](EsGraphBuilder_constructor.md)构造时`kind`为`C_GRAPH_EXECUTE`）时，输入类型`type`仅支持Data、AippData、ConstData三种。
+当图构建器以执行图类别创建（[EsGraphBuilder](EsGraphBuilder_constructor.md)构造时`kind`为`C_GRAPH_EXECUTE`）时，输入类型`type`仅支持Data、AippData、ConstData三种。
 
 ## 调用示例
 
