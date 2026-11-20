@@ -14,7 +14,6 @@
 #include "common/om2/codegen/om2_codegen_types.h"
 #include "graph/manager/graph_var_manager.h"
 #include "graph/op_desc.h"
-#include "graph/utils/attr_utils.h"
 
 namespace ge {
 struct TaskSemanticContributeContext;

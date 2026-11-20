@@ -121,7 +121,7 @@ void VisitNode(ge::FastNode *const node, std::unordered_map<ge::FastNode *, size
 
 ge::graphStatus ExecutionOrderCollector::Collect(ge::ExecuteGraph &execute_graph,
                                                  const std::vector<VirtualDependency> &virtual_dependencies,
-                                                 const ExecutionOrderPolicy policy,
+                                                 ExecutionOrderPolicy policy,
                                                  std::vector<ge::FastNode *> &ordered_nodes) const {
   ordered_nodes.clear();
   ReadyNodes ready_nodes(policy);

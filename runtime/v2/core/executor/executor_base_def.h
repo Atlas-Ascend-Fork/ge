@@ -10,6 +10,8 @@
 
 #ifndef AIR_CXX_RUNTIME_V2_CORE_EXECUTOR_EXECUTOR_BASE_DEF_H_
 #define AIR_CXX_RUNTIME_V2_CORE_EXECUTOR_EXECUTOR_BASE_DEF_H_
+
+#include <stddef.h>
 #include "exe_graph/runtime/base_type.h"
 #include "exe_graph/runtime/kernel_run_context.h"
 #ifdef __cplusplus

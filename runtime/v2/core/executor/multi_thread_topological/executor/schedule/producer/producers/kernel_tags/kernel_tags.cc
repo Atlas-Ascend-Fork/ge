@@ -37,22 +37,22 @@ void KernelTags::Reset(size_t node_num, size_t thread_num) {
 
 ExecTaskType KernelTags::UpdateTag(const Node *kernel) {
   const auto extend_context = reinterpret_cast<const ExtendedKernelContext *>(&kernel->context);
-  const auto &node_type = extend_context->GetKernelType();
-  node_tags_[kernel->node_id] = ClassifyKernelTask(node_type, thread_num_);
+  const auto &kernel_type = extend_context->GetKernelType();
+  node_tags_[kernel->node_id] = ClassifyKernelTask(kernel_type, thread_num_);
   return node_tags_[kernel->node_id];
 }
 
-ExecTaskType ClassifyKernelTask(const char *const node_type, const size_t thread_num) {
+ExecTaskType ClassifyKernelTask(const char *kernel_type, size_t thread_num) {
   auto task_type = ExecTaskType::NORMAL;
-  if (node_type == nullptr) {
+  if (kernel_type == nullptr) {
     return ExecTaskType::NORMAL;
   }
 
-  const auto kernel_info = KernelRegistry::GetInstance().FindKernelInfo(node_type);
+  const auto kernel_info = KernelRegistry::GetInstance().FindKernelInfo(kernel_type);
   if (kernel_info == nullptr) {
     return ExecTaskType::NORMAL;
   }
-  if (IsLaunchNode(node_type)) {
+  if (IsLaunchNode(kernel_type)) {
     task_type = ExecTaskType::LAUNCH;
   }
   const auto iter = critical_to_types.find(kernel_info->critical_section);
@@ -60,10 +60,10 @@ ExecTaskType ClassifyKernelTask(const char *const node_type, const size_t thread
     task_type = iter->second;
   }
   // 断流水的内存线程上的kernel只能在线程数为3时放到普通线程上
-  if (IsBrokenNormalToMemoryWaterFlowNode(node_type) && (thread_num == 3U)) {
+  if (IsBrokenNormalToMemoryWaterFlowNode(kernel_type) && (thread_num == 3U)) {
     task_type = ExecTaskType::NORMAL;
   }
-  if (IsMemoryToNormalWaterFlowNode(node_type)) {
+  if (IsMemoryToNormalWaterFlowNode(kernel_type)) {
     task_type = ExecTaskType::MEMORY;
   }
   return task_type;

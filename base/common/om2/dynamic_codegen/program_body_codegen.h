@@ -19,7 +19,6 @@
 #include "common/om2/codegen/emitter/cpp_emitter.h"
 #include "common/om2/dynamic_codegen/info_collect/program_info.h"
 #include "framework/om2/model_data/gert_model_data.h"
-#include "ge_common/ge_common_api_types.h"
 
 namespace gert {
 namespace om2 {

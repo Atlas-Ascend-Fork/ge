@@ -13,7 +13,6 @@
 
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "exe_graph/lowering/buffer_pool.h"

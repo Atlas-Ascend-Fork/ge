@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "framework/common/framework_types_internal.h"
-#include "common/util.h"
 #include "common/checker.h"
 #include "graph/optimize/symbolic/symbol_compute_context.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"

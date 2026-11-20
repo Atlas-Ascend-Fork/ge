@@ -82,7 +82,7 @@ ExecTaskType GetWorkerType(const size_t worker_index, const size_t thread_num) {
 }  // namespace
 
 bool BuildMultiThreadProgramPlan(const ProgramBlock &program, const std::vector<ExecTaskType> &kernel_types,
-                                 const size_t thread_num, MultiThreadProgramPlan &plan) {
+                                 size_t thread_num, MultiThreadProgramPlan &plan) {
   plan = {};
   if ((thread_num < 2U) ||
       ((program.plan_type != ProgramPlanType::kSequential) &&

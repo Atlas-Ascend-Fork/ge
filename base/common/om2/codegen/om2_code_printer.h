@@ -12,7 +12,6 @@
 #define AIR_CXX_BASE_COMMON_OM2_CODEGEN_OM2_CODE_PRINTER_H_
 #include <string>
 #include <sstream>
-#include "ge_common/ge_api_error_codes.h"
 #include "common/om2/codegen/om2_codegen_types.h"
 
 namespace ge {

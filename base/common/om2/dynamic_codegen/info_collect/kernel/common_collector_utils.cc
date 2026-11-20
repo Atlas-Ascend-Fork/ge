@@ -49,8 +49,8 @@ ge::graphStatus SetPortInfos(const std::vector<uint32_t> &chain_indices,
 }
 }  // namespace
 
-ge::graphStatus InitKernelProgramInfo(const KernelCollectContext &context, const OutputCreatePolicy output_policy,
-                                      const bool require_compute_node_info, KernelProgramInfo &kernel_info) {
+ge::graphStatus InitKernelProgramInfo(const KernelCollectContext &context, OutputCreatePolicy output_policy,
+                                      bool require_compute_node_info, KernelProgramInfo &kernel_info) {
   kernel_info.execution_node_name = context.node.GetNamePtr();
   kernel_info.kernel_type = context.node.GetTypePtr();
   kernel_info.output_policy = output_policy;
@@ -118,7 +118,7 @@ ge::graphStatus SetOutputPortInfos(const KernelCollectContext &context,
   return SetPortInfos(context.output_chain_indices, port_infos, kernel_info.outputs);
 }
 
-std::vector<std::string> MakeIndexedPortNames(const char *const prefix, const size_t count) {
+std::vector<std::string> MakeIndexedPortNames(const char *prefix, size_t count) {
   std::vector<std::string> names;
   names.reserve(count);
   for (size_t i = 0U; i < count; ++i) {

@@ -10,6 +10,8 @@
 
 #ifndef AIR_CXX_RUNTIME_V2_KERNEL_PLATFORM_H_
 #define AIR_CXX_RUNTIME_V2_KERNEL_PLATFORM_H_
+
+#include <cstdint>
 #include "exe_graph/runtime/kernel_context.h"
 #include "graph/error_codes.h"
 

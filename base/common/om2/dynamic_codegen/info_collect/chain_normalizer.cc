@@ -158,7 +158,7 @@ ge::graphStatus ChainNormalizer::Normalize(ge::ExecuteGraph &execute_graph, std:
   return ge::GRAPH_SUCCESS;
 }
 
-const ge::FastNode *ChainNormalizer::FindConstProducer(const uint32_t chain_index) const {
+const ge::FastNode *ChainNormalizer::FindConstProducer(uint32_t chain_index) const {
   const auto iter = const_producers_.find(chain_index);
   return iter == const_producers_.cend() ? nullptr : iter->second;
 }
@@ -300,8 +300,8 @@ ge::graphStatus ChainNormalizer::GetOutputChainIndices(const ge::FastNode &node,
   return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ChainNormalizer::GetChainIndex(const ge::FastNode &node, const uint32_t index,
-                                               const EndpointDirection direction, uint32_t &chain_index) const {
+ge::graphStatus ChainNormalizer::GetChainIndex(const ge::FastNode &node, uint32_t index, EndpointDirection direction,
+                                               uint32_t &chain_index) const {
   GE_ASSERT_NOTNULL(node.GetExtendInfo());
   const bool is_output = direction == EndpointDirection::kOutput;
   const auto endpoint_count = is_output ? node.GetDataOutNum() : node.GetDataInNum();

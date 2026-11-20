@@ -12,7 +12,6 @@
 #define AIR_CXX_RUNTIME_V2_LOWERING_GERT_GRAPH_ATTRS_H_
 
 #include "framework/common/ge_visibility.h"
-#include <cstdint>
 #include <string>
 #include <vector>
 

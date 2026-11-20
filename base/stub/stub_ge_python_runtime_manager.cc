@@ -34,5 +34,7 @@ Status GePythonRuntimeManager::ShutdownProcess() {
   return SUCCESS;
 }
 
-void GePythonRuntimeManager::SetInterpreterFinalizer(void (*)()) {}
+void GePythonRuntimeManager::SetInterpreterFinalizer(void (*finalizer)()) {
+  (void)finalizer;
+}
 }  // namespace ge

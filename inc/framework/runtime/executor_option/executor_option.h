@@ -11,6 +11,8 @@
 #ifndef AIR_CXX_EXECUTOR_OPTION_H
 #define AIR_CXX_EXECUTOR_OPTION_H
 
+#include "framework/common/ge_visibility.h"
+
 namespace gert {
 enum class ExecutorType {
   // 顺序优先级执行器，基于优先级完成拓扑排序后，使用基于拓扑排序后的结果执行，

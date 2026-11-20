@@ -18,7 +18,6 @@
 #include "graph/op_desc.h"
 #include "graph/utils/args_format_desc_utils.h"
 #include "register/op_tiling_registry.h"
-#include "exe_graph/runtime/shape.h"
 
 namespace optiling {
 enum class ArgsRole : int32_t {

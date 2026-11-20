@@ -16,7 +16,6 @@
 #include "common/checker.h"
 #include "framework/common/debug/ge_log.h"
 #include "exe_graph/runtime/continuous_vector.h"
-#include "exe_graph/runtime/runtime_attrs.h"
 #include "graph/any_value.h"
 #include "graph/def_types.h"
 #include "graph_metadef/graph/debug/ge_util.h"
