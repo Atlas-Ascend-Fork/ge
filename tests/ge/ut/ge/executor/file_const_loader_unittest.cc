@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <vector>
 
 #include "common/env_path.h"
@@ -255,6 +256,80 @@ TEST_F(FileConstLoaderUt, prepare_individual_from_file_ok) {
   ASSERT_NE(const_addr, nullptr);
   ASSERT_EQ(owned_buffers.size(), 1U);
   EXPECT_EQ(*(static_cast<uint8_t *>(const_addr)), 12U);
+  (void)aclrtFree(owned_buffers[0]);
+}
+
+TEST_F(FileConstLoaderUt, prepare_individual_rejects_offset_size_wraparound_from_user_mem) {
+  std::vector<uint8_t> user_mem{7U, 8U, 9U, 10U};
+  std::vector<ge::FileConstantMem> mems{{"fc.bin", user_mem.data(), user_mem.size()}};
+  std::map<std::string, ge::FileConstantMem> file_name_to_mem;
+  ASSERT_EQ(gert::BuildUserFileConstMemMap(mems, file_name_to_mem), SUCCESS);
+  gert::Om2ConstItem const_item;
+  const_item.type = "INDIVIDUAL";
+  const_item.file_name = "fc.bin";
+  const_item.offset = std::numeric_limits<size_t>::max() - 3U;
+  const_item.size = 4U;
+  gert::FileConstContext ctx;
+  ctx.user_file_const_mems = &file_name_to_mem;
+  void *const_addr = nullptr;
+  EXPECT_NE(gert::PrepareIndividualConst(const_item, ctx, const_addr), SUCCESS);
+  EXPECT_EQ(const_addr, nullptr);
+}
+
+TEST_F(FileConstLoaderUt, prepare_individual_rejects_wrapped_size_from_user_mem) {
+  std::vector<uint8_t> user_mem{7U, 8U, 9U, 10U};
+  std::vector<ge::FileConstantMem> mems{{"fc.bin", user_mem.data(), user_mem.size()}};
+  std::map<std::string, ge::FileConstantMem> file_name_to_mem;
+  ASSERT_EQ(gert::BuildUserFileConstMemMap(mems, file_name_to_mem), SUCCESS);
+  gert::Om2ConstItem const_item;
+  const_item.type = "INDIVIDUAL";
+  const_item.file_name = "fc.bin";
+  const_item.offset = 2U;
+  const_item.size = std::numeric_limits<size_t>::max() - 1U;
+  gert::FileConstContext ctx;
+  ctx.user_file_const_mems = &file_name_to_mem;
+  void *const_addr = nullptr;
+  EXPECT_NE(gert::PrepareIndividualConst(const_item, ctx, const_addr), SUCCESS);
+  EXPECT_EQ(const_addr, nullptr);
+}
+
+TEST_F(FileConstLoaderUt, prepare_individual_rejects_offset_size_wraparound_from_file) {
+  const auto weight_dir = PathUtils::Join({test_dir_, "weight"});
+  const auto file_path = PathUtils::Join({weight_dir, "fc.bin"});
+  WriteBinaryFile(file_path, {11U, 12U, 13U, 14U});
+  gert::Om2ConstItem const_item;
+  const_item.type = "INDIVIDUAL";
+  const_item.file_name = "fc.bin";
+  const_item.offset = std::numeric_limits<size_t>::max() - 3U;
+  const_item.size = 4U;
+  std::vector<void *> owned_buffers;
+  gert::FileConstContext ctx;
+  ctx.weight_dir = weight_dir + "/";
+  ctx.owned_buffers = &owned_buffers;
+  void *const_addr = nullptr;
+  EXPECT_NE(gert::PrepareIndividualConst(const_item, ctx, const_addr), SUCCESS);
+  EXPECT_EQ(const_addr, nullptr);
+  EXPECT_TRUE(owned_buffers.empty());
+}
+
+TEST_F(FileConstLoaderUt, prepare_individual_ok_with_full_range_offset_size) {
+  const auto weight_dir = PathUtils::Join({test_dir_, "weight"});
+  const auto file_path = PathUtils::Join({weight_dir, "fc.bin"});
+  WriteBinaryFile(file_path, {11U, 12U, 13U, 14U});
+  gert::Om2ConstItem const_item;
+  const_item.type = "INDIVIDUAL";
+  const_item.file_name = "fc.bin";
+  const_item.offset = 0U;
+  const_item.size = 4U;
+  std::vector<void *> owned_buffers;
+  gert::FileConstContext ctx;
+  ctx.weight_dir = weight_dir + "/";
+  ctx.owned_buffers = &owned_buffers;
+  void *const_addr = nullptr;
+  ASSERT_EQ(gert::PrepareIndividualConst(const_item, ctx, const_addr), SUCCESS);
+  ASSERT_NE(const_addr, nullptr);
+  ASSERT_EQ(owned_buffers.size(), 1U);
+  EXPECT_EQ(*(static_cast<uint8_t *>(const_addr)), 11U);
   (void)aclrtFree(owned_buffers[0]);
 }
 

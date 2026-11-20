@@ -128,8 +128,8 @@ OM2 为 ZIP 归档。以下路径均相对包内根前缀 `<base_name>/`：在�
 | `consts.<key>.type` | string | 是 | 常量来源类型；`ClassifyConstItems` 将 `INTERNAL`、`COMBINED`、`INDIVIDUAL` 分流到内置权重、合并外置权重、独立外置权重准备接口，未知类型导致加载失败 |
 | `consts.<key>.file_name` | string | 是 | 数据源文件名；`FindInternalWeightBuf` 用于匹配包内常量文件，`PrepareCombinedConsts` / `PrepareIndividualConsts` 用于匹配外置权重文件或用户提供的文件常量内存；关联 `aclmdlSetExternalWeightAddress` 配置 |
 | `consts.<key>.file_path` | string | 否（非离线序列化、非 INTERNAL 且路径非空时写入） | `RepackOm2ModelData` 的 `RewriteOm2ConstantsConfig` 在模型保存时用于外置权重搬迁并移除此字段；执行器 `ParseConstItems` 不读取该成员，不作为 ACL 离线加载的路径来源 |
-| `consts.<key>.offset` | integer | 是 | int64 语义的数据源内字节偏移；各类 `Prepare*Consts` 用于定位内置权重地址、外置权重切片或用户文件常量内存中的数据 |
-| `consts.<key>.size` | integer | 是 | int64 语义的常量字节数；各类 `Prepare*Consts` 用于权重边界和用户内存大小校验，以及外置权重读取、分配和拷贝 |
+| `consts.<key>.offset` | integer | 是 | int64 语义的数据源内字节偏移；各类 `Prepare*Consts` 用于定位内置权重地址、外置权重切片或用户文件常量内存中的数据；加载时 `ParseConstItems` 校验其非负，非法则加载失败返回 `ACL_ERROR_GE_PARAM_INVALID` |
+| `consts.<key>.size` | integer | 是 | int64 语义的常量字节数；各类 `Prepare*Consts` 用于权重边界和用户内存大小校验，以及外置权重读取、分配和拷贝；加载时与 `offset` 一并经减法式边界检查（`offset <= limit && size <= limit - offset`，不因整数回绕失效）确认落在数据源范围内，非法则加载失败返回 `ACL_ERROR_GE_PARAM_INVALID` |
 
 ### 2.5 variables_config.json
 

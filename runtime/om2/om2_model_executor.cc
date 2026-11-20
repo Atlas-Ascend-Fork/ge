@@ -1418,7 +1418,8 @@ class Om2ModelExecutor::Impl {
     GE_ASSERT_SUCCESS(RtMemcpyH2D(device_weight_base, internal_weight_size, host_weight_base, internal_weight_size));
     auto *device_weight_bytes = static_cast<uint8_t *>(device_weight_base);
     for (const auto &const_item : const_items) {
-      GE_ASSERT_TRUE((const_item.offset + const_item.size) <= internal_weight_size,
+      GE_ASSERT_TRUE(const_item.offset <= internal_weight_size, "[OM2][Check] Invalid INTERNAL const offset or size.");
+      GE_ASSERT_TRUE(const_item.size <= (internal_weight_size - const_item.offset),
                      "[OM2][Check] Invalid INTERNAL const offset or size.");
       constants[const_item.index] = device_weight_bytes + const_item.offset;
     }

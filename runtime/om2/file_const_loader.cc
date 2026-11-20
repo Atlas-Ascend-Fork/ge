@@ -105,7 +105,8 @@ ge::Status ReadFileSlice(const std::string &file_path, size_t offset, size_t siz
   const auto end_pos = ifs.tellg();
   GE_ASSERT_TRUE(end_pos >= 0, "[OM2][Check] Failed to get file const file size.");
   const auto file_size = static_cast<size_t>(end_pos);
-  GE_ASSERT_TRUE((offset + size) <= file_size, "[OM2][Check] Invalid file const offset or size.");
+  GE_ASSERT_TRUE(offset <= file_size, "[OM2][Check] Invalid file const offset or size.");
+  GE_ASSERT_TRUE(size <= (file_size - offset), "[OM2][Check] Invalid file const offset or size.");
   (void)ifs.seekg(static_cast<std::streamoff>(offset), std::ifstream::beg);
   buffer.resize(size);
   ifs.read(reinterpret_cast<char *>(buffer.data()), static_cast<std::streamsize>(size));
@@ -264,7 +265,9 @@ ge::Status PrepareIndividualConst(const Om2ConstItem &const_item, const FileCons
     const auto iter = ctx.user_file_const_mems->find(const_item.file_name);
     GE_ASSERT_TRUE(iter != ctx.user_file_const_mems->end(), "[OM2][Check] User file const memory not found.");
     GE_ASSERT_TRUE(iter->second.device_mem != nullptr, "[OM2][Check] User file const device memory is nullptr.");
-    GE_ASSERT_TRUE(iter->second.mem_size >= (const_item.offset + const_item.size),
+    GE_ASSERT_TRUE(const_item.offset <= iter->second.mem_size,
+                   "[OM2][Check] User file const device memory size is invalid.");
+    GE_ASSERT_TRUE(const_item.size <= (iter->second.mem_size - const_item.offset),
                    "[OM2][Check] User file const device memory size is invalid.");
     const_addr = static_cast<uint8_t *>(const_cast<void *>(iter->second.device_mem)) + const_item.offset;
     return ge::SUCCESS;
