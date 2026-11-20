@@ -44,6 +44,16 @@ Status UserGraphsManager::IsExecuteGraph(uint32_t user_graph_id, bool &is_execut
   return ret;
 }
 
+bool UserGraphsManager::IsGraphIdRegistered(uint32_t graph_id) const {
+  {
+    std::lock_guard<std::mutex> locker(user_graph_ctrl_mutex_);
+    if (ids_to_user_graph_ctrl_.find(graph_id) != ids_to_user_graph_ctrl_.end()) {
+      return true;
+    }
+  }
+  return graph_manager_.HasGraphNode(graph_id);
+}
+
 Status UserGraphsManager::AddGraph(uint32_t user_graph_id, const Graph &graph,
                                    const std::map<std::string, std::string> &options) {
   const bool is_execute_graph = GraphUtilsEx::IsExecuteGraph(graph);

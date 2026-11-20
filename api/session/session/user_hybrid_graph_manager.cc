@@ -53,13 +53,21 @@ void SetDynamicShapeOptions(const std::map<std::string, std::string> &origin_opt
 void UserHybridGraphManager::SetDynamicGraphId(const uint32_t user_graph_id) {
   const std::lock_guard<std::mutex> locker(dynamic_graph_id_mu_);
   const auto it = dynamic_graph_id_map_.find(user_graph_id);
-  const uint32_t dynamic_gear_graph_id = inner_graph_id_cnt_++;
-  const uint32_t dynamic_shape_graph_id = inner_graph_id_cnt_++;
-  if (it == dynamic_graph_id_map_.end()) {
-    dynamic_graph_id_map_[user_graph_id] = std::make_pair(dynamic_gear_graph_id, dynamic_shape_graph_id);
-    GELOGI("set user graph id %u map, inner dynamic gear graph id %u, dynamic shape graph id %u", user_graph_id,
-           dynamic_gear_graph_id, dynamic_shape_graph_id);
+  if (it != dynamic_graph_id_map_.end()) {
+    return;
   }
+  const uint32_t dynamic_gear_graph_id = AllocateInnerGraphId();
+  const uint32_t dynamic_shape_graph_id = AllocateInnerGraphId();
+  dynamic_graph_id_map_[user_graph_id] = std::make_pair(dynamic_gear_graph_id, dynamic_shape_graph_id);
+  GELOGI("set user graph id %u map, inner dynamic gear graph id %u, dynamic shape graph id %u", user_graph_id,
+         dynamic_gear_graph_id, dynamic_shape_graph_id);
+}
+
+uint32_t UserHybridGraphManager::AllocateInnerGraphId() {
+  while (user_graph_manager_.IsGraphIdRegistered(inner_graph_id_cnt_)) {
+    --inner_graph_id_cnt_;
+  }
+  return inner_graph_id_cnt_--;
 }
 
 bool UserHybridGraphManager::TryGetDynamicGraphId(const uint32_t user_graph_id, uint32_t &dynamic_gear_graph_id,

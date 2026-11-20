@@ -2585,6 +2585,37 @@ TEST_F(UtestGeApiV2, SliceSchedule_UnsupportedPaths) {
   EXPECT_EQ(GEFinalizeV2(), SUCCESS);
 }
 
+/**
+ * @brief AutoFuse 下混合图内部图 id 不得复用已注册用户图的 control
+ * @details 场景：开启 AutoFuse，先 AddGraph(0, 普通图)，再 AddGraph(42, 混合图)，随后依次删除；
+ *          期望：两次 AddGraph 均成功，RemoveGraph(42) 后普通图 0 仍可被正常删除
+ */
+TEST_F(UtestGeApiV2, HybridGraphInnerIdNotReuseUserGraph) {
+  AutoFuseStubGuard auto_fuse_stub_guard;
+  EnvValueGuard guard("AUTOFUSE_FLAGS");
+  setenv("AUTOFUSE_FLAGS", "--enable_autofuse=true", 1);
+
+  std::map<AscendString, AscendString> init_options;
+  EXPECT_EQ(GEInitializeV2(init_options), SUCCESS);
+  GeSession session(init_options);
+
+  const auto regular_compute_graph = MakeShared<ComputeGraph>("regular_graph");
+  Graph regular_graph = GraphUtilsEx::CreateGraphFromComputeGraph(regular_compute_graph);
+  EXPECT_EQ(session.AddGraph(0U, regular_graph), SUCCESS);
+
+  std::map<AscendString, AscendString> hybrid_options = {{"ge.compileHybridMode", "1"},
+                                                         {"ge.inputShape", "data0:-1,3,3"},
+                                                         {"ge.dynamicDims", "1,1;10,10"},
+                                                         {"ge.dynamicNodeType", "1"}};
+  const auto hybrid_compute_graph = MakeShared<ComputeGraph>("hybrid_graph");
+  Graph hybrid_graph = GraphUtilsEx::CreateGraphFromComputeGraph(hybrid_compute_graph);
+  EXPECT_EQ(session.AddGraph(42U, hybrid_graph, hybrid_options), SUCCESS);
+
+  EXPECT_EQ(session.RemoveGraph(42U), SUCCESS);
+  EXPECT_EQ(session.RemoveGraph(0U), SUCCESS);
+  EXPECT_EQ(GEFinalizeV2(), SUCCESS);
+}
+
 TEST_F(UtestGeApiV2, SliceScheduleMemoryBaseUnsupported) {
   AutoFuseStubGuard auto_fuse_stub_guard;
   EnvValueGuard guard("AUTOFUSE_FLAGS");
