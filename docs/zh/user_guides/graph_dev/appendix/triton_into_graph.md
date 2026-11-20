@@ -136,18 +136,18 @@ REGISTER_KERNEL_BUILDER(Name("AddCustom").Device(DEVICE_CPU), AddCustomOp);
 
 ```bash
 #! /bin/bash
-SCRIPT_DIR=$(dirname "(realpath "$0")")
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
 cd $SCRIPT_DIR || exit
 
 rm -rf outputs
 mkdir outputs
 
-TF_CFLAGS=( $(python3 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))') )    // 获取TensorFlow编译选项
-TF_LFLAGS=( $(python3 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )       // 获取TensorFlow链接选项
+TF_CFLAGS=( $(python3 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))') )    # 获取TensorFlow编译选项
+TF_LFLAGS=( $(python3 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )       # 获取TensorFlow链接选项
 
-SOURCE_FILES=$(find . -name '*.cc')                                                                         // 包含TensorFlow算子注册和CPU内核实现的cc文件
+SOURCE_FILES=$(find . -name '*.cc')                                                                         # 包含TensorFlow算子注册和CPU内核实现的cc文件
 
-g++ -std=c++14 -shared $SOURCE_FILES -o outputs/libcustom_ops.so -fPIC ${TF_CFLAGS[@]} ${TF_LFLAGS[@]} -O2  // 编译命令，产物为libcustom_ops.so，TensorFlow即可通过load_op_library加载该so为python模块，调用自定义算子
+g++ -std=c++14 -shared $SOURCE_FILES -o outputs/libcustom_ops.so -fPIC ${TF_CFLAGS[@]} ${TF_LFLAGS[@]} -O2  # 编译命令，产物为libcustom_ops.so，TensorFlow即可通过load_op_library加载该so为python模块，调用自定义算子
 ```
 
 ### 开发入GE图交付件

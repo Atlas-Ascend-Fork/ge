@@ -133,6 +133,11 @@ MethodDef *ResourcesFileCodeGenerator::BuildInitResourcesMethod(
           ast_.Comment("2. 获取overflow地址"),
           ChkStatus(AclrtCtxGetFloatOverflowAddr(overflow_addr_.Addr())),
           ast_.BlankLine(),
+          ChkStatus(AclrtMallocHelper(step_id_dev_addr_.Addr(), ast_.Sizeof("uint64_t"), "RT_MEMORY_HBM", 0U)),
+          ChkStatus(AclrtMemset(step_id_dev_addr_, ast_.Sizeof("uint64_t"), 0, ast_.Sizeof("uint64_t"))),
+          ast_.Call("OM2_LOGI", {ast_.Str("model_id=%u, InitResources: stepId mem allocated, addr=%p"), model_id_,
+                                 step_id_dev_addr_}),
+          ast_.BlankLine(),
           ast_.Comment("3. 创建其他资源"),
       });
   const auto &runtime = codegen_model.runtime;
@@ -407,6 +412,8 @@ MethodDef *ResourcesFileCodeGenerator::BuildReleaseResourcesMethod(const Om2Code
   (void)body.emplace_back(ast_.If(session_scope_mem_ptr_ != nullptr, {
                                                                          ChkStatus(AclrtFree(session_scope_mem_ptr_)),
                                                                      }));
+  (void)body.emplace_back(ast_.If(step_id_dev_addr_ != nullptr, {ChkStatus(AclrtFree(step_id_dev_addr_))}));
+  (void)body.emplace_back(ast_.Assign(step_id_dev_addr_, nullptr));
   (void)body.emplace_back(
       ast_.For(ast_.VarDecl(i, 0), i < dev_ext_info_mem_ptrs_.Size(), ast_.PostInc(i),
                {

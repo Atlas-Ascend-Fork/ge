@@ -37,6 +37,8 @@ class Om2ModelClassGeneratorBase : public CodeGeneratorBase {
   VarRef bin_info_map_;
   VarRef args_table_;
   VarRef session_id_;
+  VarRef step_id_dev_addr_;
+  VarRef step_id_;
   VarRef model_id_;
   VarRef instance_handle_;
   VarRef callbacks_;

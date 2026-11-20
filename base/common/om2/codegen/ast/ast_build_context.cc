@@ -60,16 +60,8 @@ std::string BuildLambdaCapture(const LambdaCaptureSpec &capture) {
 
 StablePartRole InferStablePartRole(StablePartId id) {
   switch (id) {
-    case StablePartId::kChkStatusMacro:
-    case StablePartId::kChkNotNullMacro:
-    case StablePartId::kChkTrueMacro:
-    case StablePartId::kGetAddrMacro:
-    case StablePartId::kMakeGuardMacro:
-      return StablePartRole::kMacroGroup;
     case StablePartId::kInterfaceMacros:
       return StablePartRole::kMacroGroup;
-    case StablePartId::kPointerHelpers:
-    case StablePartId::kFlattenHostArgs:
     case StablePartId::kInterfacePointerHelpers:
     case StablePartId::kReadBinaryFileToBuffer:
     case StablePartId::kGenerateJsonFile:

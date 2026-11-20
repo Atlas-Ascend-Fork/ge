@@ -515,6 +515,15 @@ struct TaskSemanticContributeContext {
   uint32_t task_index{0U};                       // kOpDefs 稳定下标，运行期按同下标读只读描述
 };
 
+struct MakefileParams {
+  std::string cxx;
+  std::string cppflags;
+  std::string cxxflags;
+  std::string ldflags;
+  std::string ldlibs;
+  std::string lib_path;
+};
+
 }  // namespace ge
 
 #endif  // AIR_CXX_BASE_COMMON_OM2_CODEGEN_TYPES_H_

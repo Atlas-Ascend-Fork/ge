@@ -11,6 +11,7 @@
 #ifndef AIR_CXX_BASE_COMMON_OM2_CODEGEN_PROGRAM_GENERATOR_H_
 #define AIR_CXX_BASE_COMMON_OM2_CODEGEN_PROGRAM_GENERATOR_H_
 
+#include <map>
 #include <set>
 #include <string>
 #include <unordered_set>
@@ -45,6 +46,9 @@ class ProgramGenerator {
   Status GenerateLoadAndRunSource(Om2CodePrinter &code_printer);
   Status GenerateVarMgrSource(Om2CodePrinter &code_printer);
   Status GenerateMakeFile(Om2CodePrinter &code_printer);
+
+  MakefileParams ResolveMakefileParams(const std::map<std::string, std::string> &build_configs) const;
+  std::string BuildMakefileContent(const MakefileParams &params) const;
 
   AstBuildContext &ast_;
   std::vector<TaskCodeBuilderPtr> task_code_builder_list_;

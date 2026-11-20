@@ -1595,6 +1595,135 @@ bool IsNormDtype(const DataType dtype) {
   return dtype == DT_FLOAT16 || dtype == DT_BF16 || dtype == DT_FLOAT;
 }
 
+graphStatus ValidateBNTrainingUpdateV3Inputs(const NodePtr &node, float &epsilon) {
+  constexpr size_t kBNTrainingUpdateV3Count = 5U;
+  GE_ASSERT_NOTNULL(node);
+  const auto op = node->GetOpDesc();
+  GE_ASSERT_NOTNULL(op);
+  LOWERING_WARN_RECORD_REASON(node->GetAllInDataAnchorsSize() == kBNTrainingUpdateV3Count &&
+                                  node->GetAllOutDataAnchorsSize() == kBNTrainingUpdateV3Count,
+                              node, "BNTrainingUpdateV3 requires five inputs and outputs");
+  LOWERING_WARN_RECORD_REASON(AttrUtils::GetFloat(op, "epsilon", epsilon) && std::isfinite(epsilon), node,
+                              "BNTrainingUpdateV3 epsilon is invalid");
+  for (size_t i = 0; i < kBNTrainingUpdateV3Count; ++i) {
+    const auto input = node->GetInDataAnchor(i);
+    LOWERING_WARN_RECORD_REASON(
+        input != nullptr && input->GetPeerOutAnchor() != nullptr && node->GetOutDataAnchor(i) != nullptr, node,
+        "BNTrainingUpdateV3 input or output %zu is unavailable", i);
+    const auto out_desc = loop::GetBufferDesc(node->GetOutDataAnchor(i).get());
+    bool reuse_input = false;
+    LOWERING_WARN_RECORD_REASON(
+        out_desc != nullptr && TensorUtils::GetReuseInput(*out_desc, reuse_input) == GRAPH_SUCCESS && !reuse_input,
+        node, "BNTrainingUpdateV3 output %zu reuses an input", i);
+  }
+  return GRAPH_SUCCESS;
+}
+
+graphStatus ValidateBNTrainingUpdateV3Shape(const NodePtr &node, std::vector<Expression> &dims, size_t &channel,
+                                            int64_t &count) {
+  const auto x_anchor = node->GetInDataAnchor(0);
+  const auto x_desc = loop::GetBufferDesc(x_anchor->GetPeerOutAnchor().get());
+  const auto y_desc = loop::GetBufferDesc(node->GetOutDataAnchor(0).get());
+  LOWERING_WARN_RECORD_REASON(x_desc != nullptr && y_desc != nullptr, node,
+                              "BNTrainingUpdateV3 x/y descriptor is invalid");
+  const auto x_dtype = x_desc->GetDataType();
+  LOWERING_WARN_RECORD_REASON(
+      (x_dtype == DT_FLOAT16 || x_dtype == DT_BF16 || x_dtype == DT_FLOAT) && x_dtype == y_desc->GetDataType(), node,
+      "BNTrainingUpdateV3 x/y dtype is invalid");
+  const auto format = x_desc->GetOriginFormat();
+  const auto storage_format = x_desc->GetFormat();
+  LOWERING_WARN_RECORD_REASON(
+      (storage_format == FORMAT_ND || storage_format == FORMAT_NCHW || storage_format == FORMAT_NHWC) &&
+          (format == FORMAT_ND || format == FORMAT_NCHW || format == FORMAT_NHWC),
+      node, "BNTrainingUpdateV3 origin format is unsupported");
+  std::vector<Expression> y_dims;
+  LOWERING_WARN_RECORD_REASON(loop::GetBufferShape(x_anchor, dims) == GRAPH_SUCCESS &&
+                                  loop::GetBufferShape(node->GetOutDataAnchor(0), y_dims) == GRAPH_SUCCESS &&
+                                  dims.size() >= 2U && dims.size() <= 8U && dims.size() == y_dims.size(),
+                              node, "BNTrainingUpdateV3 x/y shape is invalid");
+  channel = format == FORMAT_NHWC ? dims.size() - 1U : 1U;
+  for (size_t i = 0; i < dims.size(); ++i) {
+    int64_t dim = 0;
+    LOWERING_WARN_RECORD_REASON(dims[i].IsConstExpr() && dims[i].GetConstValue(dim) && dim > 0 &&
+                                    SymbolicUtils::StaticCheckEq(dims[i], y_dims[i]) == TriBool::kTrue,
+                                node, "BNTrainingUpdateV3 requires matching positive static shapes");
+    if (i != channel) {
+      LOWERING_WARN_RECORD_REASON(count <= std::numeric_limits<int64_t>::max() / dim, node,
+                                  "BNTrainingUpdateV3 element count overflows");
+      count *= dim;
+    }
+  }
+  return GRAPH_SUCCESS;
+}
+
+graphStatus ValidateBNTrainingUpdateV3Stats(const NodePtr &node, const Expression &channel_dim) {
+  constexpr size_t kBNTrainingUpdateV3Count = 5U;
+  for (size_t i = 1; i < kBNTrainingUpdateV3Count; ++i) {
+    const auto input = node->GetInDataAnchor(i);
+    const auto input_desc = loop::GetBufferDesc(input->GetPeerOutAnchor().get());
+    const auto output = node->GetOutDataAnchor(i);
+    const auto output_desc = loop::GetBufferDesc(output.get());
+    std::vector<Expression> input_dims;
+    std::vector<Expression> output_dims;
+    LOWERING_WARN_RECORD_REASON(
+        input_desc != nullptr && output_desc != nullptr && input_desc->GetDataType() == DT_FLOAT &&
+            output_desc->GetDataType() == DT_FLOAT && loop::GetBufferShape(input, input_dims) == GRAPH_SUCCESS &&
+            loop::GetBufferShape(output, output_dims) == GRAPH_SUCCESS && input_dims.size() == 1U &&
+            output_dims.size() == 1U && SymbolicUtils::StaticCheckEq(input_dims[0], channel_dim) == TriBool::kTrue &&
+            SymbolicUtils::StaticCheckEq(output_dims[0], channel_dim) == TriBool::kTrue,
+        node, "BNTrainingUpdateV3 statistics shape or dtype is invalid");
+  }
+  return GRAPH_SUCCESS;
+}
+
+graphStatus LowerBNTrainingUpdateV3(const NodePtr &node) {
+  constexpr size_t kSumInput = 1U;
+  constexpr size_t kSquareSumInput = 2U;
+  constexpr size_t kScaleInput = 3U;
+  constexpr size_t kOffsetInput = 4U;
+  constexpr size_t kYOutput = 0U;
+  constexpr size_t kBatchMeanOutput = 1U;
+  constexpr size_t kBatchVarianceOutput = 2U;
+  constexpr size_t kReserveMeanOutput = 3U;
+  constexpr size_t kReserveVarianceOutput = 4U;
+  float epsilon = 0.0F;
+  std::vector<Expression> dims;
+  size_t channel = 0U;
+  int64_t count = 1;
+  GE_WARN_ASSERT_GRAPH_SUCCESS(ValidateBNTrainingUpdateV3Inputs(node, epsilon));
+  GE_WARN_ASSERT_GRAPH_SUCCESS(ValidateBNTrainingUpdateV3Shape(node, dims, channel, count));
+  GE_WARN_ASSERT_GRAPH_SUCCESS(ValidateBNTrainingUpdateV3Stats(node, dims[channel]));
+  const auto x_dtype = loop::GetBufferDesc(node->GetInDataAnchor(0)->GetPeerOutAnchor().get())->GetDataType();
+  const auto recip = static_cast<float>(1.0 / static_cast<double>(count));
+  const auto correction =
+      count == 1 ? 0.0F : static_cast<float>(static_cast<double>(count) / static_cast<double>(count - 1));
+  const auto r = ScalarBroadcast2Size(ToPrecString(recip, 20), DT_FLOAT, 1U);
+  const auto q = ScalarBroadcast2Size(ToPrecString(correction, 20), DT_FLOAT, 1U);
+  const auto eps = ScalarBroadcast2Size(ToPrecString(epsilon, 20), DT_FLOAT, 1U);
+  const auto mean = loop::Mul(loop::Load(node->GetInDataAnchor(kSumInput)), r);
+  const auto variance =
+      loop::Sub(loop::Mul(loop::Load(node->GetInDataAnchor(kSquareSumInput)), r), loop::Mul(mean, mean));
+  const auto multiplier =
+      loop::TrueDiv(loop::Load(node->GetInDataAnchor(kScaleInput)), loop::Sqrt(loop::Add(variance, eps)));
+  const auto addend = loop::Sub(loop::Load(node->GetInDataAnchor(kOffsetInput)), loop::Mul(multiplier, mean));
+  std::vector<loop::BroadcastOp::DimKind> broadcast(dims.size(), loop::BroadcastOp::DimKind::NEW_AXIS);
+  broadcast[channel] = loop::BroadcastOp::DimKind::NORMAL;
+  auto x = loop::Load(node->GetInDataAnchor(0));
+  if (x_dtype != DT_FLOAT) {
+    x = loop::Cast(x, DT_FLOAT);
+  }
+  auto y = loop::Add(loop::Mul(x, loop::Broadcast(multiplier, broadcast)), loop::Broadcast(addend, broadcast));
+  if (x_dtype != DT_FLOAT) {
+    y = loop::Cast(y, x_dtype);
+  }
+  (void)loop::Store(node->GetOutDataAnchor(kYOutput), y);
+  (void)loop::Store(node->GetOutDataAnchor(kBatchMeanOutput), mean);
+  (void)loop::Store(node->GetOutDataAnchor(kBatchVarianceOutput), loop::Mul(variance, q));
+  (void)loop::Store(node->GetOutDataAnchor(kReserveMeanOutput), mean);
+  (void)loop::Store(node->GetOutDataAnchor(kReserveVarianceOutput), variance);
+  return GRAPH_SUCCESS;
+}
+
 graphStatus LowerBatchNorm(const NodePtr &node) {
   constexpr size_t kInferenceMeanInputIndex = 3U;
   constexpr size_t kInferenceVarianceInputIndex = 4U;
@@ -2085,6 +2214,7 @@ REGISTER_LOWERING_WITH_EXISTED(LayerNorm, LowerLayerNorm);
 REGISTER_LOWERING_WITH_EXISTED(LayerNormV3, LowerLayerNorm);
 REGISTER_LOWERING_WITH_EXISTED(RmsNorm, LowerRmsNorm);
 REGISTER_LOWERING_WITH_EXISTED(BatchNorm, LowerBatchNorm);
+REGISTER_LOWERING_WITH_EXISTED(BNTrainingUpdateV3, LowerBNTrainingUpdateV3);
 
 REGISTER_LOWERING_WITH_EXISTED(SoftmaxV2, LowerSoftmaxV2);
 REGISTER_LOWERING_WITH_EXISTED(LogSoftmaxV2, LowerLogSoftmax);

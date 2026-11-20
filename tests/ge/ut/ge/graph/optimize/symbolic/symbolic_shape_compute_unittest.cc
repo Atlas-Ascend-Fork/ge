@@ -6054,6 +6054,88 @@ TEST_F(SymbolicShapeComputeUT, InferShapeForAddsWithConstValue) {
   ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
 }
 
+// 测试场景：ellipsis 零维位于稀疏规格首位时，物化计算（symbolic kernel）也必须按物理轴
+//           对齐，不能被 ellipsis 槽位占用。
+// 测试输入：x=[[0,1,2],[3,4,5],[6,7,8],[9,10,11]]（{4,3}），begin={0,1,0}，end={0,3,0}，
+//           strides={1,1,1}，ellipsis_mask=1、begin_mask=4、end_mask=4。
+// 期望输出：shape={2,3}，value={3,4,5,6,7,8}（axis0 取 [1,3)，axis1 取整维）。
+TEST_F(SymbolicShapeComputeUT, test_stridedslice_ellipsis_zero_dim_at_front_value) {
+  std::vector<int32_t> const_data0 = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+  std::vector<int64_t> const_dim0 = {4, 3};
+  auto const_node0 = EsCreateConstInt32(graph_, const_data0.data(), const_dim0.data(), const_dim0.size());
+  std::vector<int32_t> const_data1 = {0, 1, 0};
+  std::vector<int64_t> const_dim1 = {3};
+  auto const_node1 = EsCreateConstInt32(graph_, const_data1.data(), const_dim1.data(), const_dim1.size());
+  std::vector<int32_t> const_data2 = {0, 3, 0};
+  std::vector<int64_t> const_dim2 = {3};
+  auto const_node2 = EsCreateConstInt32(graph_, const_data2.data(), const_dim2.data(), const_dim2.size());
+  std::vector<int32_t> const_data3 = {1, 1, 1};
+  std::vector<int64_t> const_dim3 = {3};
+  auto const_node3 = EsCreateConstInt32(graph_, const_data3.data(), const_dim3.data(), const_dim3.size());
+  auto strided_slice = EsStridedSlice(const_node0, const_node1, const_node2, const_node3, 4, 4, 1, 0, 0);
+  ASSERT_EQ(EsSetGraphOutput(strided_slice, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  auto strided_slice_node = cg->FindFirstNodeMatchType(STRIDEDSLICE);
+  ASSERT_NE(strided_slice_node, nullptr);
+  auto op_desc = strided_slice_node->GetOpDesc();
+  op_desc->MutableInputDesc(0)->SetShape(GeShape({4, 3}));
+  op_desc->MutableInputDesc(1)->SetShape(GeShape({3}));
+  op_desc->MutableInputDesc(2)->SetShape(GeShape({3}));
+  op_desc->MutableInputDesc(3)->SetShape(GeShape({3}));
+
+  std::vector<Expression> expect_symbolic_shape = {Symbol(2), Symbol(3)};
+  std::vector<Expression> expect_symbolic_value = {Symbol(3), Symbol(4), Symbol(5), Symbol(6), Symbol(7), Symbol(8)};
+  ExpectNodeInfo expect_node(STRIDEDSLICE, expect_symbolic_shape, {}, {}, expect_symbolic_value);
+  std::vector<ExpectNodeInfo> expect_node_vec;
+  expect_node_vec.push_back(expect_node);
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_node_vec, {}), SUCCESS);
+}
+
+// 测试场景：零宽 ellipsis 与 new_axis 共存（spec_len = rank + popcount(new_axis) + 1）时，
+//           物化计算（symbolic kernel）侧 AppendNewAxis 必须跳过零宽 ellipsis 占用的 mask
+//           槽位，new_axis 按其规格位置插入（S@0、E@1(零宽)、N@2、S@3 → [d0, 1, d1]），
+//           不能掉到输出尾部。
+// 测试输入：x={0..5}（{2,3}），begin={0,0,0,0}，end={2,3,3,3}，strides={1,1,1,1}，
+//           ellipsis_mask=0b0010、new_axis_mask=0b0100、begin_mask=0、end_mask=0b1001。
+// 期望输出：shape={2,1,3}，value={0,1,2,3,4,5}（两个普通切片取整维，size-1 插在中间）。
+TEST_F(SymbolicShapeComputeUT, test_stridedslice_ellipsis_zero_dim_with_new_axis_aligns_mask_pos_value) {
+  std::vector<int32_t> const_data0 = {0, 1, 2, 3, 4, 5};
+  std::vector<int64_t> const_dim0 = {2, 3};
+  auto const_node0 = EsCreateConstInt32(graph_, const_data0.data(), const_dim0.data(), const_dim0.size());
+  std::vector<int32_t> const_data1 = {0, 0, 0, 0};
+  std::vector<int64_t> const_dim1 = {4};
+  auto const_node1 = EsCreateConstInt32(graph_, const_data1.data(), const_dim1.data(), const_dim1.size());
+  std::vector<int32_t> const_data2 = {2, 3, 3, 3};
+  std::vector<int64_t> const_dim2 = {4};
+  auto const_node2 = EsCreateConstInt32(graph_, const_data2.data(), const_dim2.data(), const_dim2.size());
+  std::vector<int32_t> const_data3 = {1, 1, 1, 1};
+  std::vector<int64_t> const_dim3 = {4};
+  auto const_node3 = EsCreateConstInt32(graph_, const_data3.data(), const_dim3.data(), const_dim3.size());
+  auto strided_slice = EsStridedSlice(const_node0, const_node1, const_node2, const_node3, 0, 9, 2, 4, 0);
+  ASSERT_EQ(EsSetGraphOutput(strided_slice, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  auto strided_slice_node = cg->FindFirstNodeMatchType(STRIDEDSLICE);
+  ASSERT_NE(strided_slice_node, nullptr);
+  auto op_desc = strided_slice_node->GetOpDesc();
+  op_desc->MutableInputDesc(0)->SetShape(GeShape({2, 3}));
+  op_desc->MutableInputDesc(1)->SetShape(GeShape({4}));
+  op_desc->MutableInputDesc(2)->SetShape(GeShape({4}));
+  op_desc->MutableInputDesc(3)->SetShape(GeShape({4}));
+
+  std::vector<Expression> expect_symbolic_shape = {Symbol(2), Symbol(1), Symbol(3)};
+  std::vector<Expression> expect_symbolic_value = {Symbol(0), Symbol(1), Symbol(2), Symbol(3), Symbol(4), Symbol(5)};
+  ExpectNodeInfo expect_node(STRIDEDSLICE, expect_symbolic_shape, {}, {}, expect_symbolic_value);
+  std::vector<ExpectNodeInfo> expect_node_vec;
+  expect_node_vec.push_back(expect_node);
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_node_vec, {}), SUCCESS);
+}
+
 TEST_F(SymbolicShapeComputeUT, InferShapeForFillWithEmptyDims) {
   const int32_t dummy = 0;
   auto dims = EsCreateVectorInt32(graph_, &dummy, 0);

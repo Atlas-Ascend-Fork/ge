@@ -30,6 +30,8 @@ Om2ModelClassGeneratorBase::Om2ModelClassGeneratorBase(AstBuildContext &ast)
       bin_info_map_(ast.Var("std::unordered_map<std::string, BinDataInfo>", "bin_info_map_")),
       args_table_(ast.Var("Om2ArgsTable", "args_table_")),
       session_id_(ast.Var("uint64_t *", "session_id_")),
+      step_id_dev_addr_(ast.Var("void *", "step_id_dev_addr_")),
+      step_id_(ast.Var("uint64_t", "step_id_")),
       model_id_(ast.Var("uint32_t", "model_id_")),
       instance_handle_(ast.Var("void *", "instance_handle_")),
       callbacks_(ast.Var("GertModelLoadCallbacks", "callbacks_")),

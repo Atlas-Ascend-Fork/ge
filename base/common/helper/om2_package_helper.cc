@@ -415,8 +415,8 @@ Status SerializeCustomOpToBinary(const std::string &op_type, PortableOp *seriali
     return ret;
   }
   if (buffer.empty()) {
-    GELOGW("[OM2] serialized buffer is empty, skip, op_type:%s", op_type.c_str());
-    return SUCCESS;
+    GELOGE(FAILED, "[OM2][CUSTOM OP] serialized buffer is empty, op_type:%s", op_type.c_str());
+    return FAILED;
   }
   auto bin_data = new (std::nothrow) uint8_t[buffer.size()];
   if (bin_data == nullptr) {

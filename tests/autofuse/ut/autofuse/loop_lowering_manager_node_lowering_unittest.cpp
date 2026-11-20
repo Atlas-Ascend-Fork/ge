@@ -4711,4 +4711,64 @@ TEST_F(LoopNodeLoweringUT, LoweringBatchNormStatisticsConsumerFallback) {
   EXPECT_TRUE(kernel.IsSupport());
   EXPECT_NE(kernel.Realize<loop::AscOverrides>("static_batchnorm_inference"), nullptr);
 }
+TEST_F(LoopNodeLoweringUT, BNTrainingUpdateV3OutputsAndFallback) {
+  auto x = es_graph_->CreateInput(0, "x", nullptr);
+  auto sum = es_graph_->CreateInput(1, "sum", nullptr);
+  auto square_sum = es_graph_->CreateInput(2, "square_sum", nullptr);
+  auto scale = es_graph_->CreateInput(3, "scale", nullptr);
+  auto offset = es_graph_->CreateInput(4, "offset", nullptr);
+  x.SetSymbolShape({"2", "3", "4", "5"});
+  for (auto *input : {&sum, &square_sum, &scale, &offset}) {
+    input->SetSymbolShape({"3"});
+  }
+  auto result = es::BNTrainingUpdateV3(x, sum, square_sum, scale, offset, 0.001F);
+  result.y.SetSymbolShape({"2", "3", "4", "5"});
+  result.batch_mean.SetSymbolShape({"3"});
+  result.batch_variance.SetSymbolShape({"3"});
+  result.reserve_1.SetSymbolShape({"3"});
+  result.reserve_2.SetSymbolShape({"3"});
+  es_graph_->SetOutput(result.y, 0);
+  es_graph_->SetOutput(result.batch_mean, 1);
+  es_graph_->SetOutput(result.batch_variance, 2);
+  es_graph_->SetOutput(result.reserve_1, 3);
+  es_graph_->SetOutput(result.reserve_2, 4);
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("BNTrainingUpdateV3_0");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+  for (size_t i = 0; i < 5U; ++i) {
+    auto kernel = loop::GetKernelBox(node->GetOutDataAnchor(i));
+    EXPECT_FALSE(kernel.IsExternKernel());
+    EXPECT_TRUE(kernel.IsSupport());
+  }
+  EXPECT_NE(loop::GetKernelBox(node->GetOutDataAnchor(4)).Readable().find("ops.Sub"), string::npos);
+  node->GetOpDesc()->MutableOutputDesc(4)->SetDataType(DT_INT32);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+}
+
+TEST_F(LoopNodeLoweringUT, BNTrainingUpdateV3DynamicShapeFallback) {
+  auto x = es_graph_->CreateInput(0, "x", nullptr);
+  auto sum = es_graph_->CreateInput(1, "sum", nullptr);
+  auto square_sum = es_graph_->CreateInput(2, "square_sum", nullptr);
+  auto scale = es_graph_->CreateInput(3, "scale", nullptr);
+  auto offset = es_graph_->CreateInput(4, "offset", nullptr);
+  x.SetSymbolShape({"s0", "3", "4", "5"});
+  for (auto *input : {&sum, &square_sum, &scale, &offset}) {
+    input->SetSymbolShape({"3"});
+  }
+  auto result = es::BNTrainingUpdateV3(x, sum, square_sum, scale, offset, 0.001F);
+  result.y.SetSymbolShape({"s0", "3", "4", "5"});
+  result.batch_mean.SetSymbolShape({"3"});
+  result.batch_variance.SetSymbolShape({"3"});
+  result.reserve_1.SetSymbolShape({"3"});
+  result.reserve_2.SetSymbolShape({"3"});
+  es_graph_->SetOutput(result.y, 0);
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("BNTrainingUpdateV3_0");
+  ASSERT_NE(node, nullptr);
+  EXPECT_NE(LoweringManager::Lowering(node), GRAPH_SUCCESS);
+}
+
 }  // namespace ge

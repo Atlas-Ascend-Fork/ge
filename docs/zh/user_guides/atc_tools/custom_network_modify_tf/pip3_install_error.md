@@ -41,7 +41,7 @@
     ```ini
     [global]
     #可用的源，请根据实际情况进行替换。
-    index-url=http://xxx
+    index-url=https://xxx
     [install]
     #可信主机，请根据实际情况进行替换。
     trusted-host=xxx

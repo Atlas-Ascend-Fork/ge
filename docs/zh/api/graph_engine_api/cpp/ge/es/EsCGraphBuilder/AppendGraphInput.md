@@ -24,7 +24,7 @@ EsCTensorHolder *AppendGraphInput(const ge::char_t *name = nullptr, const ge::ch
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | name | 输入 | 输入名称，可选。 |
-| type | 输入 | 输入类型，可选。 |
+| type | 输入 | 输入类型，可选，如果为空则默认为Data。取值：计算图类别下支持Data、RefData、AippData、AnyData；执行图类别下支持Data、AippData、ConstData。 |
 
 ## 返回值说明
 
@@ -34,4 +34,4 @@ EsCTensorHolder *AppendGraphInput(const ge::char_t *name = nullptr, const ge::ch
 
 ## 约束说明
 
-- 当构建器以执行图类别创建（[EsCGraphBuilder](EsCGraphBuilder_constructor_and_destructor.md)构造时`kind`为`C_GRAPH_EXECUTE`）时，输入类型`type`仅支持Data、AippData、ConstData三种。
+当构建器以执行图类别创建（[EsCGraphBuilder](EsCGraphBuilder_constructor_and_destructor.md)构造时`kind`为`C_GRAPH_EXECUTE`）时，输入类型`type`仅支持Data、AippData、ConstData三种。

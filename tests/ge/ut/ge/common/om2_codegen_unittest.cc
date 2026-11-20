@@ -424,7 +424,7 @@ TEST_F(Om2CodegenUt, AstNodes_AllPublicInterfaces_Ok) {
   auto *extern_decl = ExternBlockDecl::Create(ctx, "C", {function_decl});
   auto *namespace_decl =
       NamespaceDecl::Create(ctx, "om2", {class_decl, struct_decl, function_def, method_def, extern_decl});
-  auto *stable_part = StablePartDecl::Create(ctx, StablePartId::kChkStatusMacro, StablePartRole::kMacroGroup,
+  auto *stable_part = StablePartDecl::Create(ctx, StablePartId::kInterfaceMacros, StablePartRole::kMacroGroup,
                                              StablePartPlacement::kTranslationUnit);
   auto *include_decl = IncludeDecl::Create(ctx, "vector", IncludeDecl::Kind::kAngle);
   auto *space_decl = SpaceDecl::Create(ctx);
@@ -442,7 +442,7 @@ TEST_F(Om2CodegenUt, AstNodes_AllPublicInterfaces_Ok) {
   ASSERT_EQ(struct_decl->GetItems().Size(), 1U);
   ASSERT_EQ(extern_decl->GetItems().Size(), 1U);
   ASSERT_EQ(namespace_decl->GetItems().Size(), 5U);
-  ASSERT_EQ(stable_part->GetId(), StablePartId::kChkStatusMacro);
+  ASSERT_EQ(stable_part->GetId(), StablePartId::kInterfaceMacros);
   ASSERT_EQ(stable_part->GetRole(), StablePartRole::kMacroGroup);
   ASSERT_EQ(stable_part->GetPlacement(), StablePartPlacement::kTranslationUnit);
   ASSERT_EQ(include_decl->GetKind(), IncludeDecl::Kind::kAngle);
@@ -1202,6 +1202,27 @@ $(TARGET): $(SRC_FILES)
   return artifacts;
 }
 
+static std::vector<gert::GertModelDataFile> MakeCrossCompileTestArtifacts(const std::string &model_name,
+                                                                          const std::string &cxx_path,
+                                                                          const std::string &lib_path) {
+  auto artifacts = MakeBuildConfigTestArtifacts(model_name);
+  for (auto &a : artifacts) {
+    if (std::string(gert::GertGetStr(a.file_name)) != "Makefile") {
+      continue;
+    }
+    const std::string data_content =
+        "ifeq ($(origin CXX),default)\nCXX := " + cxx_path + "\nendif\nCXX ?= " + cxx_path +
+        "\nLIB_PATH ?= " + lib_path +
+        "\n\nTARGET := libbc_test_om2.so\n"
+        "SRC_FILES := bc_test_load_and_run.cpp\n\n"
+        "CXXFLAGS := -std=c++17 -fPIC\nLDFLAGS := -shared -L$(LIB_PATH)\n\n"
+        "all: $(TARGET)\n\n$(TARGET): $(SRC_FILES)\n\t$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)\n";
+    a.data = gert::GertMakeFileData(data_content.data(), data_content.size());
+    a.data_size = data_content.size();
+  }
+  return artifacts;
+}
+
 TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_ArbitraryHeadersAndNestedIncludes_Ok) {
   // slow_test_limit = 6000
   // Allow for real shared-library compilation and CI compiler load fluctuations.
@@ -1317,6 +1338,22 @@ bool PrepareFakeCompiler(ScopedTempDir &temp_dir, const std::string &relative_pa
   }
   const std::string script =
       "#!/bin/sh\nexport PATH=" + ShellQuote(path_env) + "\nexec " + ShellQuote(cxx) + " \"$@\"\n";
+  return temp_dir.WriteFile(relative_path, script, 0755);
+}
+
+bool PrepareMarkingFakeCompiler(ScopedTempDir &temp_dir, const std::string &relative_path,
+                                const std::string &marker_relative_path) {
+  std::string cxx = FindExecutable("c++");
+  if (cxx.empty()) {
+    cxx = FindExecutable("g++");
+  }
+  const char *path_env = getenv("PATH");
+  if ((cxx.empty()) || (path_env == nullptr)) {
+    return false;
+  }
+  const std::string script = "#!/bin/sh\nexport PATH=" + ShellQuote(path_env) + "\ntouch " +
+                             ShellQuote(temp_dir.Path(marker_relative_path)) + "\nexec " + ShellQuote(cxx) +
+                             " \"$@\"\n";
   return temp_dir.WriteFile(relative_path, script, 0755);
 }
 
@@ -1573,117 +1610,120 @@ TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_HostEnvNonArmTarget_Ok) {
   EXPECT_TRUE(so_artifact.data);
 }
 
-TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_CrossCompileSystemCompiler_Ok) {
+TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_MakefileBakedCrossConfigs_Ok) {
   // slow_test_limit = 2000
   // so 编译耗时较大
   if (GetNativeMachine() != "x86_64") {
-    GTEST_SKIP() << "cross-compiler injection coverage runs on x86_64 host";
+    GTEST_SKIP() << "cross-config coverage runs on x86_64 host";
   }
   ScopedEnvVar asan_guard("ASAN_OPTIONS", "detect_leaks=0:halt_on_error=0");
   ScopedEnvVar lsan_guard("LSAN_OPTIONS", "exitcode=0");
-  ScopedGraphOptions graph_guard;
   ScopedTempDir temp_dir;
   ASSERT_TRUE(temp_dir.CreateDir("bin"));
   ASSERT_TRUE(temp_dir.CreateDir("ascend/devlib/linux/aarch64"));
   ASSERT_TRUE(PrepareMakeRuntime(temp_dir, "bin"));
-  ASSERT_TRUE(PrepareFakeCompiler(temp_dir, "bin/aarch64-linux-gnu-g++"));
+  ASSERT_TRUE(PrepareMarkingFakeCompiler(temp_dir, "bin/aarch64-linux-gnu-g++", "used_baked_cxx"));
 
   ScopedEnvVar path_guard("PATH", temp_dir.Path("bin").c_str());
-  ScopedEnvVar ascend_home_guard("ASCEND_HOME_PATH", temp_dir.Path("ascend").c_str());
-  GetThreadLocalContext().SetGraphOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", "aarch64"}});
 
-  EXPECT_EQ(CompileBuildConfigArtifacts("cross_system_compiler"), SUCCESS);
+  const std::string model_name = "cross_baked_makefile";
+  gert::GertModelDataFile so_artifact;
+  EXPECT_EQ(Om2Utils::CompileGeneratedCppToSo(
+                MakeCrossCompileTestArtifacts(model_name, temp_dir.Path("bin/aarch64-linux-gnu-g++"),
+                                              temp_dir.Path("ascend/devlib/linux/aarch64")),
+                Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
+            SUCCESS);
+  EXPECT_TRUE(so_artifact.data != nullptr);
+  EXPECT_EQ(access(temp_dir.Path("used_baked_cxx").c_str(), F_OK), 0);
 }
 
-TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_CrossCompileCannCompiler_Ok) {
+// Makefile 产物未固化交叉配置（CXX := c++）时，默认 make 命令应通过命令行变量注入交叉编译器
+TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_DefaultCommandInjectsCrossConfig_Ok) {
   // slow_test_limit = 2000
   // so 编译耗时较大
   if (GetNativeMachine() != "x86_64") {
-    GTEST_SKIP() << "cross-compiler injection coverage runs on x86_64 host";
+    GTEST_SKIP() << "cross-config coverage runs on x86_64 host";
   }
   ScopedEnvVar asan_guard("ASAN_OPTIONS", "detect_leaks=0:halt_on_error=0");
   ScopedEnvVar lsan_guard("LSAN_OPTIONS", "exitcode=0");
-  ScopedGraphOptions graph_guard;
   ScopedTempDir temp_dir;
-  ASSERT_TRUE(temp_dir.CreateDir("empty_bin"));
-  ASSERT_TRUE(temp_dir.CreateDir("ascend/tools/hcc/bin"));
+  ASSERT_TRUE(temp_dir.CreateDir("bin"));
   ASSERT_TRUE(temp_dir.CreateDir("ascend/devlib/linux/aarch64"));
-  ASSERT_TRUE(PrepareMakeRuntime(temp_dir, "empty_bin"));
-  ASSERT_TRUE(PrepareFakeCompiler(temp_dir, "ascend/tools/hcc/bin/aarch64-target-linux-gnu-g++"));
+  ASSERT_TRUE(PrepareMakeRuntime(temp_dir, "bin"));
+  ASSERT_TRUE(PrepareMarkingFakeCompiler(temp_dir, "bin/aarch64-linux-gnu-g++", "used_injected_cxx"));
 
-  ScopedEnvVar path_guard("PATH", temp_dir.Path("empty_bin").c_str());
+  ScopedEnvVar path_guard("PATH", temp_dir.Path("bin").c_str());
   ScopedEnvVar ascend_home_guard("ASCEND_HOME_PATH", temp_dir.Path("ascend").c_str());
-  GetThreadLocalContext().SetGraphOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", "arm64"}});
+  ScopedGraphOptions graph_guard;
+  GetThreadLocalContext().SetGraphOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", "aarch64"}});
 
-  EXPECT_EQ(CompileBuildConfigArtifacts("cross_cann_compiler"), SUCCESS);
+  const std::string model_name = "cross_injected_command";
+  gert::GertModelDataFile so_artifact;
+  EXPECT_EQ(Om2Utils::CompileGeneratedCppToSo(MakeBuildConfigTestArtifacts(model_name),
+                                              Om2CompileInfo{model_name, model_name, 0U}, so_artifact, false),
+            SUCCESS);
+  EXPECT_TRUE(so_artifact.data != nullptr);
+  EXPECT_EQ(access(temp_dir.Path("used_injected_cxx").c_str(), F_OK), 0);
 }
 
-TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_CrossCompileCompilerMissing_Rejected) {
+TEST_F(Om2CodegenUt, GetCrossBuildConfigs_CrossCompilerMissing_Rejected) {
   if (GetNativeMachine() != "x86_64") {
-    GTEST_SKIP() << "cross-compiler injection coverage runs on x86_64 host";
+    GTEST_SKIP() << "cross-config coverage runs on x86_64 host";
   }
-  ScopedEnvVar asan_guard("ASAN_OPTIONS", "detect_leaks=0:halt_on_error=0");
-  ScopedEnvVar lsan_guard("LSAN_OPTIONS", "exitcode=0");
-  ScopedGraphOptions graph_guard;
   ScopedTempDir temp_dir;
   ASSERT_TRUE(temp_dir.CreateDir("empty_bin"));
   ASSERT_TRUE(temp_dir.CreateDir("ascend/devlib/linux/aarch64"));
-  ASSERT_TRUE(PrepareMakeRuntime(temp_dir, "empty_bin"));
 
   ScopedEnvVar path_guard("PATH", temp_dir.Path("empty_bin").c_str());
   ScopedEnvVar ascend_home_guard("ASCEND_HOME_PATH", temp_dir.Path("ascend").c_str());
+  ScopedGraphOptions graph_guard;
   GetThreadLocalContext().SetGraphOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", "aarch64"}});
   (void)ErrorManager::GetInstance().GetErrorMessage();
 
-  EXPECT_NE(CompileBuildConfigArtifacts("cross_compiler_missing"), SUCCESS);
+  std::map<std::string, std::string> configs;
+  EXPECT_NE(Om2Utils::GetCrossBuildConfigs(configs), SUCCESS);
   const std::string error_message = ErrorManager::GetInstance().GetErrorMessage();
   EXPECT_NE(error_message.find("E10001"), std::string::npos);
-  EXPECT_EQ(error_message.find("E19999"), std::string::npos);
   EXPECT_NE(error_message.find("cross-compiler not found"), std::string::npos);
 }
 
-TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_CrossCompileDevlibMissing_Rejected) {
+TEST_F(Om2CodegenUt, GetCrossBuildConfigs_CrossDevlibMissing_Rejected) {
   if (GetNativeMachine() != "x86_64") {
-    GTEST_SKIP() << "cross-compiler injection coverage runs on x86_64 host";
+    GTEST_SKIP() << "cross-config coverage runs on x86_64 host";
   }
-  ScopedEnvVar asan_guard("ASAN_OPTIONS", "detect_leaks=0:halt_on_error=0");
-  ScopedEnvVar lsan_guard("LSAN_OPTIONS", "exitcode=0");
-  ScopedGraphOptions graph_guard;
   ScopedTempDir temp_dir;
   ASSERT_TRUE(temp_dir.CreateDir("bin"));
   ASSERT_TRUE(temp_dir.CreateDir("ascend"));
-  ASSERT_TRUE(PrepareMakeRuntime(temp_dir, "bin"));
   ASSERT_TRUE(PrepareFakeCompiler(temp_dir, "bin/aarch64-linux-gnu-g++"));
 
   ScopedEnvVar path_guard("PATH", temp_dir.Path("bin").c_str());
   ScopedEnvVar ascend_home_guard("ASCEND_HOME_PATH", temp_dir.Path("ascend").c_str());
+  ScopedGraphOptions graph_guard;
   GetThreadLocalContext().SetGraphOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", "aarch64"}});
   (void)ErrorManager::GetInstance().GetErrorMessage();
 
-  EXPECT_NE(CompileBuildConfigArtifacts("cross_devlib_missing"), SUCCESS);
+  std::map<std::string, std::string> configs;
+  EXPECT_NE(Om2Utils::GetCrossBuildConfigs(configs), SUCCESS);
   const std::string error_message = ErrorManager::GetInstance().GetErrorMessage();
   EXPECT_NE(error_message.find("E10001"), std::string::npos);
-  EXPECT_EQ(error_message.find("E19999"), std::string::npos);
   EXPECT_NE(error_message.find("devlib not found"), std::string::npos);
 }
 
-TEST_F(Om2CodegenUt, CompileGeneratedCppToSo_CrossCompileAscendHomeMissing_Rejected) {
+TEST_F(Om2CodegenUt, GetCrossBuildConfigs_CrossAscendHomeMissing_Rejected) {
   if (GetNativeMachine() != "x86_64") {
-    GTEST_SKIP() << "cross-compiler injection coverage runs on x86_64 host";
+    GTEST_SKIP() << "cross-config coverage runs on x86_64 host";
   }
-  ScopedEnvVar asan_guard("ASAN_OPTIONS", "detect_leaks=0:halt_on_error=0");
-  ScopedEnvVar lsan_guard("LSAN_OPTIONS", "exitcode=0");
-  ScopedGraphOptions graph_guard;
   ScopedTempDir temp_dir;
   ASSERT_TRUE(temp_dir.CreateDir("bin"));
-  ASSERT_TRUE(PrepareMakeRuntime(temp_dir, "bin"));
   ASSERT_TRUE(PrepareFakeCompiler(temp_dir, "bin/aarch64-linux-gnu-g++"));
 
   ScopedEnvVar path_guard("PATH", temp_dir.Path("bin").c_str());
   ScopedUnsetEnvVar ascend_home_guard("ASCEND_HOME_PATH");
+  ScopedGraphOptions graph_guard;
   GetThreadLocalContext().SetGraphOption({{"ge.host_env_os", "linux"}, {"ge.host_env_cpu", "aarch64"}});
 
-  EXPECT_NE(CompileBuildConfigArtifacts("cross_ascend_home_missing"), SUCCESS);
+  std::map<std::string, std::string> configs;
+  EXPECT_NE(Om2Utils::GetCrossBuildConfigs(configs), SUCCESS);
 }
 
 TEST_F(Om2CodegenUt, StablePartProvider_CustomOpDeserializerIsShared) {
@@ -1700,14 +1740,7 @@ TEST_F(Om2CodegenUt, StablePartProvider_CustomOpDeserializerIsShared) {
 
 TEST_F(Om2CodegenUt, StablePartProvider_AllIds_Ok) {
   const std::vector<std::pair<StablePartId, std::string>> cases = {
-      {StablePartId::kChkStatusMacro, "#define OM2_CHK_STATUS"},
-      {StablePartId::kChkNotNullMacro, "#define OM2_CHK_NOTNULL"},
-      {StablePartId::kChkTrueMacro, "#define OM2_CHK_TRUE"},
-      {StablePartId::kGetAddrMacro, "#define GET_ADDR"},
-      {StablePartId::kMakeGuardMacro, "#define OM2_MAKE_GUARD"},
       {StablePartId::kInterfaceMacros, "#define OM2_CHK_STATUS"},
-      {StablePartId::kPointerHelpers, "inline uint64_t PtrToValue"},
-      {StablePartId::kFlattenHostArgs, "inline std::vector<uint64_t> FlattenHostArgs"},
       {StablePartId::kInterfacePointerHelpers, "inline std::vector<uint64_t> FlattenHostArgs"},
       {StablePartId::kScopeGuard, "class ScopeGuard"},
       {StablePartId::kReadBinaryFileToBuffer, "BinaryBuffer ReadBinaryFileToBuffer"},

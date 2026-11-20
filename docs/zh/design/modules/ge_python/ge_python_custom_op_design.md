@@ -93,6 +93,8 @@ V1 功能包括：
 - `HostCpuOpExecutionContext` 支持 Host 输出查询、Host 输出分配和 Ref 输出。
 - `declare_launch_args` 支持按 canonical IR 将输入和输出组装为位置参数，并将属性组装为 keyword-only 参数；回调通过 `get_declare_launch_args_ctx()` 创建参数 builder、申请 workspace、添加 kernel launch。`append_input` / `append_output` 的 index 使用计算节点输入输出的实例平铺 index。
 - `compile` 按 canonical IR 组装输入、输出和属性，通过 `get_compile_ctx()` 查询编译option，通过 `get_compile_platform_info()` 查询平台资源、核数和SoC信息；该回调只用于图编译，模型加载和执行阶段不调用。
+- `declare_launch_args` 可通过 `AnnotatedArgsContext.request_attached_stream(key)` 申请**逻辑辅流 ID**，并用 `add_launch(info, args, predecessors)` 的可选 `predecessors` 声明前驱依赖。该方法**恒返回有效 token**：省略 / `None` / `[]` 三者等价，native 绑定一律调 C++ 三参重载，故每个 launch 都可被后续 launch 依赖——`predecessors` 只表达输入语义「我的前驱是谁」，不兼带决定输出语义「我能否被依赖」。`stream_id` 校验由"必须等于主流 ID"放宽为"主流 ID 或本 context 申请到的辅流 ID"，且校验仍在消费 `args` 之前。
+- `execute` 可通过 `EagerOpExecutionContext.request_attached_stream(key, flags=0)` 按 key 申请框架托管的**物理辅流**（返回 `Optional[int]` 裸句柄，`None` 为可降级分支），主辅流同步由算子用 `acl.rt` event 完成；V1 与 RT2 共用同一 C++ 通路，Python 绑定零分支。
 - `ASCEND_CUSTOM_OPP_PATH` 同时承载现有 C++ custom op OPP 路径和 Python custom op 文件/包路径。
 - GE 初始化和 `GraphManager::PreRun()` 会在需要时幂等加载 Python custom op，使 `OpsKernelInfo` 刷新前能看到对应 op type。
 
@@ -111,9 +113,11 @@ V1 功能包括：
 - 实例缓存与公共能力查询以 priority 为收敛域：同 `op_type` 同 priority 下，动态类型相同的实现跨 engine/backend 共享同一实例；`GetCustomOpCommonCapability` 在 priority 子树内做唯一 provider 检查，engine 维度不参与筛选——不同实现类在同一 priority 下同时提供同一公共能力时查询失败并报错。
 - schema-bound 回调分别通过 `get_execute_ctx()`、`get_compile_ctx()` 或 `get_declare_launch_args_ctx()` 获取当前 context；该绑定只在当前回调动态作用域内有效。
 - Python custom op native/bridge 与构建时 Python ABI 相关，不提供跨 Python minor version 兼容承诺。
-- bridge C ABI 升级为 v2。新增 `serialize`/`deserialize` callback、device/host `execute` 的差异化 context callback，并在函数表末尾追加四个模型级 scope 恢复指针——`collect_deployment_artifacts`/`restore_model_scope`/`collect_model_scope_proto_op_types`/`close_model_scope`，服务 Python 源码打包进 OM 的加载侧恢复，见 `docs/zh/design/features/so_in_om.md`。声明 `kPortable` 时要求 `PythonCustomOpAdapterCallbacks` 的两个 callback 均非空。
-  `serialize`/`deserialize` 回调只传 holder 与 `bytes` buffer，不传递 context。canonical IR 由
-  bridge 通过 run 包公共接口查询，不通过私有 ABI 投影传递。
+- bridge C ABI 升级为 v2。新增 `serialize`/`deserialize` callback、device/host `execute` 的差异化 context callback，并在函数表末尾追加四个模型级 scope 恢复指针——`collect_deployment_artifacts`/`restore_model_scope`/`collect_model_scope_proto_op_types`/`close_model_scope`，服务 Python 源码打包进 OM 的加载侧恢复，见 `docs/zh/design/features/so_in_om.md`。声明 `kPortable` 时要求 `PythonCustomOpAdapterCallbacks` 的两个 callback 均非空。 `serialize`/`deserialize` 回调只传 holder 与 `bytes` buffer，不传递 context。canonical IR 由bridge 通过 run 包公共接口查询，不通过私有 ABI 投影传递。
+- 辅流句柄**不得跨回调缓存**：`CustomOpFactory::CreateOrGetCustomOp` 按 `(op_type, backend, priority, engine)` 缓存算子实例，同一 Python 实现类实例服务全部同类型节点、全部模型与执行器；而辅流容器是 per-`DavinciModel`（V1）/ per-`ModelV2Executor`（RT2）的，缓存会拿到别的执行实例的物理流甚至悬垂句柄。
+- pyACL Event 由算子管理。模型重放时，录制的任务仍会引用 Event。只有在引用 Event 的任务全部完成且模型无需再重放时，才能销毁 Event。同一算子实现服务多个模型执行实例时，应为各执行实例分别管理 Event。宿主侧回调串行执行无法保证设备任务互不重叠。
+- 新增绑定**不释放 GIL**：与 `api/python/ge/` 既有绑定一致（该目录全量 grep `gil_scoped_release|call_guard` 零命中，P-5）。C++ 侧辅流容器无锁，其安全性依赖 V1 下沉期串行与 RT2 唯一 memory worker 串行；释放 GIL 会允许用户在 `execute` 内起 Python 线程并发申请，破坏该前提。声明式侧的 `declare_launch_args` 在编译期逐节点串行调用，同样不引入新的并发前提。
+
 
 ### 2.5 假设和依赖关系
 
@@ -527,7 +531,7 @@ Python 对外 API 见 `docs/zh/api/graph_engine_api/python/ge/custom_op/`。当�
 | `deserialize` | 用户实现的 Portable 状态恢复方法，签名为 `deserialize(self, data: bytes) -> None` |
 | `register_kernel` | 为同名 `execute` 显式声明 `device` 或 `host` backend |
 | `OpBackend` | `register_kernel` 使用的 backend 枚举，成员为 `DEVICE`、`HOST` |
-| `EagerOpExecutionContext` | 执行上下文 borrowed view |
+| `EagerOpExecutionContext` | 执行上下文 borrowed view；`request_attached_stream(key, flags=0)` 申请框架托管物理辅流 |
 | `HostCpuOpExecutionContext` | Host CPU 执行上下文 borrowed view |
 | `get_execute_ctx` | 获取当前 schema-bound 回调的执行上下文 |
 | `register_op` | 声明并收集 Python 自定义算子原型 |
@@ -613,7 +617,9 @@ native binding 保存 `gert::HostCpuOpExecutionContext *` 和共享 validity 标
 
 #### BorrowedAnnotatedArgsContext
 
-native binding 保存 `gert::AnnotatedArgsContext *` 和独立 validity 标记。`declare_launch_args` 返回或抛异常后，`_invalidate()` 使 context、workspace 地址、kernel 参数 builder 及其派生 borrowed tensor 失效。
+native binding 保存 `gert::AnnotatedArgsContext *` 和独立 validity 标记。`declare_launch_args` 返回或抛异常后，`_invalidate()` 使 context、workspace 地址、kernel 参数 builder 及其派生 borrowed tensor 失效，并清空该 context 记录的逻辑辅流 ID。
+
+该 view 额外持有 `std::vector<uint32_t> attached_stream_ids_`，记录本 context 通过 `request_attached_stream` 申请到的逻辑辅流 ID，作为 `add_launch` 的 `stream_id` 白名单。白名单是**必要非充分**条件：C++ 侧 `AddLaunchWithDependencies` 只校验 `stream_id != UINT32_MAX`，registry 归属的真正裁决在 `FinalizeDeclarativeAttachedStreams` 的 `registry->Contains()`；Python 白名单只为在消费 `args` 之前给出精确定位。单节点辅流数通常为个位数，故用线性查找而非 `std::set`。
 
 ### 6.2 关键技术与算法
 
@@ -808,8 +814,8 @@ PythonCustomOpAdapter::Deserialize(vector)
 - 新 OM 的 `PYTHON_CUSTOM_OPS` 分区（分区类型 27）不被老版本识别，不能假设在老版本上复现 Python custom op 执行能力。
 - 新 OM 携带 `_custom_task_args_mode`、AnnotatedArgs `args_format` 和 Python 实现源码快照；新运行时以显式模式为第一事实来源。只有没有该属性的旧 OM 才先查询 registry，再按非空 `args_format` 兼容兜底。
 - Python custom op 依赖运行环境中匹配版本的 `ge_py`、bridge/native SO 和 Python ABI。
-- callback POD 增加 Host CPU 函数指针后 bridge ABI 升级到 v2；本特性新增的 Portable `serialize`/`deserialize`
-  函数指针与函数表末尾四个模型级 scope 恢复指针（Python 源码打包进 OM 的加载侧恢复）并入 **v2 而不递增版本号**——现存 v2 bridge SO 仅在开发/测试环境与加载侧头文件同批构建；不同 ABI 版本的 artifact 不混用，加载侧精确匹配。
+- callback POD 增加 Host CPU 函数指针后 bridge ABI 升级到 v2；本特性新增的 Portable `serialize`/`deserialize` 函数指针与函数表末尾四个模型级 scope 恢复指针（Python 源码打包进 OM 的加载侧恢复）并入 **v2 而不递增版本号**——现存 v2 bridge SO 仅在开发/测试环境与加载侧头文件同批构建；不同 ABI 版本的 artifact 不混用，加载侧精确匹配。
+- `add_launch` 返回类型由 `None` 变为 `int`：**恒返回有效 token**，省略 / `None` / `[]` 三者等价。属**放宽型**变化——仓库内 3 处 example 调用（`python_compilable_add_custom.py:242`、online `annotated_add_custom.py:183`、offline `:169`）全部以语句形式忽略返回值，故既有算子不受影响；`stream_id` 校验同为放宽型，不影响任何原本成功的调用。C++ 两参重载保留不动（metadef 对外接口，受 P-1 零改动约束），仅 Python 绑定不再调用它。
 - `ASCEND_CUSTOM_OPP_PATH` 已是既有环境变量，新增 Python 文件/包识别不会影响没有 Python 入口的 C++ OPP 路径。
 - 没有 `serialize`/`deserialize` 的 Python 类行为不变；同时存在合法配对方法的普通类新增 `portable` capability，属于预期新增行为。只存在单边同名方法的类由过去可能被忽略变为注册失败，以避免不可恢复状态。
 - `portable` 可与 `eager_execute`、`host_cpu_execute`、`compilable`、`annotated_args` 等 capability 组合，其他接口签名和行为不变。

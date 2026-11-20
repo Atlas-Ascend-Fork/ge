@@ -202,6 +202,13 @@ Status AppendNewAxis(const std::pair<int64_t, int64_t> &ellipsis_mask_range, con
   }
   int64_t mask_pos = 0L;
   for (size_t i = 0UL; i < input_dims.size();) {
+    // A zero-width ellipsis occupies one mask position but no physical axis. Skip its
+    // slot so following new_axis bits are evaluated at their spec positions; otherwise
+    // they drift one axis late or fall into the trailing loop at the wrong place.
+    if (ellipsis_mask_range.first == ellipsis_mask_range.second && mask_pos == ellipsis_mask_range.first) {
+      mask_pos++;
+      continue;
+    }
     if ((static_cast<size_t>(new_axis_mask) & (1ULL << mask_pos)) > 0) {
       if (IsInEllipsisMaskRange(ellipsis_mask_range, static_cast<int64_t>(input_append_axis_shape.size()))) {
         input_append_axis_shape.emplace_back(input_dims[i++]);
@@ -247,19 +254,27 @@ std::pair<int64_t, int64_t> GetEllipsisMaskRange(const StridedSliceAttr &strided
   return std::make_pair(pos, pos + ellipsis_mask_num);
 }
 
-Status HandleEllipsisMask(const int64_t ellipsis_mask_index, const std::vector<Expression> &input_dims,
-                          StrdedSliceIndexInputs &index_input) {
+Status HandleEllipsisMask(const std::pair<int64_t, int64_t> &ellipsis_mask_range,
+                          const std::vector<Expression> &input_dims, StrdedSliceIndexInputs &index_input) {
   GE_ASSERT_TRUE(index_input.start_indexes.size() == index_input.end_indexes.size(),
                  "start_index size: %zu should equal to end_index size:%zu", index_input.start_indexes.size(),
                  index_input.end_indexes.size());
   GE_ASSERT_TRUE(index_input.start_indexes.size() == index_input.strides_indexes.size(),
                  "start_index size: %zu should equal to strides_index size:%zu", index_input.start_indexes.size(),
                  index_input.strides_indexes.size());
+  // No ellipsis, or an ellipsis that expands to zero axes: its sparse slot consumes a
+  // mask position only, not a physical axis. Rewriting it here (or indexing input_dims
+  // with it) would misalign every following slice entry.
+  if (ellipsis_mask_range.first < 0L || ellipsis_mask_range.first >= ellipsis_mask_range.second ||
+      static_cast<size_t>(ellipsis_mask_range.first) >= input_dims.size()) {
+    return SUCCESS;
+  }
+  const auto ellipsis_mask_index = ellipsis_mask_range.first;
   for (size_t i = 0UL; i < index_input.start_indexes.size(); i++) {
     if (static_cast<int64_t>(i) == ellipsis_mask_index) {
-      index_input.start_indexes[i] = Symbol(0);
+      index_input.start_indexes[i] = kSymbolZero;
       index_input.end_indexes[i] = input_dims[i];
-      index_input.strides_indexes[i] = Symbol(1);
+      index_input.strides_indexes[i] = kSymbolOne;
       break;
     }
   }
@@ -276,10 +291,18 @@ void GetShrinkAxisIndex(const int64_t shrink_axis_mask, const std::pair<int64_t,
                         const int64_t index_size, std::set<int64_t> &shrink_axis_indexes) {
   int64_t bit_pos = 0L;
   for (int64_t i = 0L; i < index_size; i++) {
-    if ((static_cast<size_t>(shrink_axis_mask) & (1 << static_cast<size_t>(bit_pos))) > 0) {
-      if (IsInEllipsisMaskRange(ellipsis_mask_range, i)) {
-        continue;
+    // An ellipsis covers a whole physical range but occupies only one mask bit.
+    if (IsInEllipsisMaskRange(ellipsis_mask_range, i)) {
+      if (i == ellipsis_mask_range.first) {
+        bit_pos++;
       }
+      continue;
+    }
+    // A zero-width ellipsis occupies one mask bit but no physical axis.
+    if (ellipsis_mask_range.first == ellipsis_mask_range.second && i == ellipsis_mask_range.first) {
+      bit_pos++;
+    }
+    if ((static_cast<uint64_t>(shrink_axis_mask) & (1ULL << static_cast<uint64_t>(bit_pos))) > 0) {
       shrink_axis_indexes.insert(i);
     }
     bit_pos++;
@@ -361,10 +384,10 @@ Status PadSparseSpecToRank(const std::vector<Expression> &input_dims, StrdedSlic
 bool TryAppendNonSpecAxis(const size_t i, const std::pair<int64_t, int64_t> &ellipsis_mask_range,
                           const std::vector<Expression> &input_dims, StrdedSliceIndexInputs &index_input,
                           int64_t &start_index_pos) {
-  // A zero-width ellipsis still occupies one position in the sparse
-  // specification when it is not the first entry.
-  if (ellipsis_mask_range.first == ellipsis_mask_range.second && ellipsis_mask_range.first > 0L &&
-      static_cast<int64_t>(i) == ellipsis_mask_range.first) {
+  // A zero-width ellipsis occupies one sparse/mask position but no physical axis,
+  // so its slot must be skipped even when it is the first entry. Otherwise the
+  // following slice entries would be applied to the wrong axes.
+  if (ellipsis_mask_range.first == ellipsis_mask_range.second && static_cast<int64_t>(i) == ellipsis_mask_range.first) {
     start_index_pos++;
   }
   if (IsInEllipsisMaskRange(ellipsis_mask_range, static_cast<int64_t>(i))) {
@@ -446,6 +469,11 @@ Status HandleBeginEndMask(const StridedSliceAttr &strided_slice_attr, const std:
                           const std::pair<int64_t, int64_t> &ellipsis_mask_range, StrdedSliceIndexInputs &index_input) {
   uint64_t mask_pos = 0ULL;
   for (size_t i = 0UL; i < index_input.start_indexes.size(); i++) {
+    // A zero-width ellipsis occupies one mask position but no physical axis.
+    if (ellipsis_mask_range.first == ellipsis_mask_range.second &&
+        static_cast<int64_t>(i) == ellipsis_mask_range.first) {
+      mask_pos++;
+    }
     if (IsInEllipsisMaskRange(ellipsis_mask_range, static_cast<int64_t>(i))) {
       if (static_cast<int64_t>(i) == ellipsis_mask_range.first) {
         mask_pos++;
@@ -753,7 +781,7 @@ Status HandleMaskAttr(const std::pair<int64_t, int64_t> &ellipsis_mask_range,
                       const std::vector<Expression> &input_append_axis_shape,
                       const StridedSliceAttr &strided_slice_attr, StrdedSliceIndexInputs &index_input) {
   // 处理ellipsis_mask
-  GE_ASSERT_SUCCESS(HandleEllipsisMask(ellipsis_mask_range.first, input_append_axis_shape, index_input));
+  GE_ASSERT_SUCCESS(HandleEllipsisMask(ellipsis_mask_range, input_append_axis_shape, index_input));
   // 补充缺省的index维度
   const auto fill_ret = FillMissionIndex(ellipsis_mask_range, input_append_axis_shape, index_input);
   if (fill_ret != SUCCESS) {

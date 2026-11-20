@@ -249,6 +249,8 @@ ClassDecl *InterfaceFileCodeGenerator::BuildOm2ModelClass(const Om2CodegenModel 
     items.push_back(ast_.Field("uintptr_t", "fm_base_current_", ast_.ULong(0)));
   }
   items.push_back(ast_.Field("uint64_t *", "session_id_"));
+  items.push_back(ast_.Field("void *", "step_id_dev_addr_", nullptr));
+  items.push_back(ast_.Field("uint64_t", "step_id_", ast_.ULong(0)));
   items.push_back(ast_.Field("uint32_t", "model_id_"));
   items.push_back(ast_.Field("void *", "instance_handle_"));
   items.push_back(ast_.Field("GertModelLoadCallbacks", "callbacks_"));

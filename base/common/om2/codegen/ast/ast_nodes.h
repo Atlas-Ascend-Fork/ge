@@ -95,14 +95,7 @@ class TranslationUnit final : public DeclNode {
 };
 
 enum class StablePartId : uint8_t {
-  kChkStatusMacro = 0,
-  kChkNotNullMacro,
-  kChkTrueMacro,
-  kGetAddrMacro,
-  kMakeGuardMacro,
-  kInterfaceMacros,
-  kPointerHelpers,
-  kFlattenHostArgs,
+  kInterfaceMacros = 0,
   kInterfacePointerHelpers,
   kScopeGuard,
   kReadBinaryFileToBuffer,

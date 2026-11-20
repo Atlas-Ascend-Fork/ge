@@ -3293,6 +3293,64 @@ TEST_F(SymbolicShapeInferenceST, test_stridedslicev3_infershape_no_optional_inpu
   ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(out_shape), expect_shape);
 }
 
+// 测试场景：ellipsis 位于稀疏规格首位且展开 0 维时，真实图层面的符号推导应按物理轴
+//           对齐（pos1 -> axis0，pos2 -> axis1），回归 ops-math 语义。
+// 测试输入：data_0 实际 {516,256}（符号 {s0,s1}），begin={0,0,0}，end={0,514,0}，
+//           strides={1,1,1}，ellipsis_mask=1、begin_mask=6、end_mask=4。
+// 期望输出：{514, s1}。
+TEST_F(SymbolicShapeInferenceST, test_stridedslice_ellipsis_zero_dim_at_front_infershape) {
+  auto data0 = builder_->CreateInput(0, "data_0");
+  // begin
+  std::vector<int64_t> begin_value = {0, 0, 0};
+  auto begin = builder_->CreateVector(begin_value);
+  // end
+  std::vector<int64_t> end_value = {0, 514, 0};
+  auto end = builder_->CreateVector(end_value);
+  // strides
+  std::vector<int64_t> strides_value = {1, 1, 1};
+  auto strides = builder_->CreateVector(strides_value);
+
+  auto strided_slice =
+      es::StridedSlice(data0, begin, end, strides, static_cast<int64_t>(0b0110), static_cast<int64_t>(0b0100),
+                       static_cast<int64_t>(0b0001), static_cast<int64_t>(0), static_cast<int64_t>(0));
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(strided_slice, 0), 0);
+
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  auto strided_slice_node = cg->FindFirstNodeMatchType("StridedSlice");
+  ASSERT_NE(strided_slice_node, nullptr);
+  auto op_desc = strided_slice_node->GetOpDesc();
+  // 跳过hostcompute
+  auto data_node0 = cg->FindNode("data_0");
+  ASSERT_NE(data_node0, nullptr);
+  auto data_op_desc0 = data_node0->GetOpDesc();
+  ge::AttrUtils::SetInt(data_op_desc0, "index", 0);
+  data_op_desc0->MutableInputDesc(0)->SetShape(GeShape({-1, -1}));
+  data_op_desc0->MutableInputDesc(0)->SetOriginShape(GeShape({-1, -1}));
+  data_op_desc0->MutableInputDesc(0)->SetDataType(DT_FLOAT);
+  data_op_desc0->MutableOutputDesc(0)->SetShape(GeShape({-1, -1}));
+  data_op_desc0->MutableOutputDesc(0)->SetOriginShape(GeShape({-1, -1}));
+  data_op_desc0->MutableOutputDesc(0)->SetDataType(DT_FLOAT);
+
+  std::vector<ge::GeTensor> input_vec;
+  std::vector<int64_t> dims_vec0 = {516, 256};
+  ge::Shape shape0({dims_vec0});
+  ge::TensorDesc td0{shape0, ge::FORMAT_ND, DT_FLOAT};
+  td0.SetOriginShape(shape0);
+  ge::Tensor tensor0{td0};
+  input_vec.emplace_back(ge::TensorAdapter::AsGeTensor(tensor0));
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(SymbolicShapeSymbolizer::Symbolize(cg, input_vec), ge::SUCCESS);
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  auto out_shape = attr->symbolic_tensor.GetOriginSymbolShape();
+  const std::vector<ge::Expression> expect_shape = {Symbol(514), Symbol("s1")};
+  ASSERT_EQ(SymbolicInferUtil::GetSymbolDims(out_shape), expect_shape);
+}
+
 /*
    (2, 1, 4, 3)   (1, 3, 1, 3)       (8, 3)
     Data        Data      Data

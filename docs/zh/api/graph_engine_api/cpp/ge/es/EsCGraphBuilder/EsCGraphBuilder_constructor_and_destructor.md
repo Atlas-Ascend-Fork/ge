@@ -29,7 +29,7 @@ EsCGraphBuilder &operator=(EsCGraphBuilder &&) noexcept
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | name | 输入 | 图名称，按照指定的名称构造图构建器。 |
-| kind | 输入 | 图后端类别，取值为`ge::GraphKind`（即`C_GraphKind`枚举，定义于`graph/c_types.h`头文件）：`C_GRAPH_COMPUTE`（计算图）、`C_GRAPH_EXECUTE`（执行图）。 |
+| kind | 输入 | 图后端类别，取值为[C\_GraphKind](https://gitcode.com/cann/metadef/blob/master/docs/zh/api/c_api/C_GraphKind.md)枚举（`ge::GraphKind`为其别名）：`C_GRAPH_COMPUTE`（计算图，取值为0）、`C_GRAPH_EXECUTE`（执行图，取值为1）。 |
 
 ## 返回值说明
 

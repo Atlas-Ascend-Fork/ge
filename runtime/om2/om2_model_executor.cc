@@ -911,10 +911,11 @@ class Om2ModelExecutor::Impl {
     struct GertModelRunOutput output = {.struct_size = sizeof(GertModelRunOutput)};
     // 执行前把当前 step（从 0 开始）刷入 dump step 设备内存，供 AICPU dump kernel 计算 step 落盘目录
     if (dump_manager_handle_ != nullptr) {
-      GE_ASSERT_SUCCESS(Om2DfxApi::Instance().UpdateStepId(dump_manager_handle_, step_id_ - 1U, nullptr));
+      GE_ASSERT_SUCCESS(Om2DfxApi::Instance().UpdateStepId(dump_manager_handle_, step_id_, nullptr));
     }
     GE_ASSERT_SUCCESS(run_model_info_.run_func(run_model_info_.model_handle, &config, &output));
     ++step_id_;
+    GELOGD("[OM2][Step] model run done, model_id=%u, next step_id=%" PRIu64 ".", model_id_, step_id_);
     return ge::GRAPH_SUCCESS;
   }
 
@@ -929,10 +930,11 @@ class Om2ModelExecutor::Impl {
     // 执行前在模型流上异步刷新当前 step（从 0 开始）到 dump step 设备内存，
     // 与后续模型任务保序，供 AICPU dump kernel 计算 step 落盘目录
     if (dump_manager_handle_ != nullptr) {
-      GE_ASSERT_SUCCESS(Om2DfxApi::Instance().UpdateStepId(dump_manager_handle_, step_id_ - 1U, stream));
+      GE_ASSERT_SUCCESS(Om2DfxApi::Instance().UpdateStepId(dump_manager_handle_, step_id_, stream));
     }
     GE_ASSERT_SUCCESS(run_model_info_.run_async_func(run_model_info_.model_handle, stream, &config, &output));
     ++step_id_;
+    GELOGD("[OM2][Step] model run async done, model_id=%u, next step_id=%" PRIu64 ".", model_id_, step_id_);
     return ge::GRAPH_SUCCESS;
   }
 
@@ -1485,7 +1487,7 @@ class Om2ModelExecutor::Impl {
   int32_t device_id_ = -1;
   uint64_t session_id_ = 0U;
   bool has_model_ = false;
-  uint64_t step_id_ = 1U;
+  uint64_t step_id_ = 0U;
   // 静态模型借用的 allocator 集合保活至模型资源释放完成。
   std::shared_ptr<Allocators> load_allocators_;
   void *dynamic_context_ = nullptr;

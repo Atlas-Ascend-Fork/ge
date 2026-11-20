@@ -518,6 +518,43 @@ def test_python_artifact_uses_bridge_abi_v2():
     assert artifact_utils.BRIDGE_ABI_VERSION == 2
 
 
+def test_annotated_context_exposes_attached_stream_and_dependency_methods():
+    native_module = getattr(importlib.import_module("ge.custom_op._native"), "_native")
+    context_type = native_module.AnnotatedArgsContext
+    assert hasattr(context_type, "request_attached_stream")
+    assert hasattr(context_type, "add_launch")
+    # 带依赖形态通过 add_launch 的可选 predecessors 参数提供，不引入第二个公开方法名
+    assert not hasattr(context_type, "add_launch_with_dependencies")
+
+    stub_text = (
+        Path(custom_op.__file__)
+        .with_name("_ge_custom_op_native.pyi")
+        .read_text(encoding="utf-8")
+    )
+    assert "def request_attached_stream(self, key: str) -> int" in stub_text
+    # 方案 D：add_launch 只有单一签名、恒返回 token，省略 / None / [] 三者等价，
+    # 故存根不得再出现 @overload 两形态（否则无法表达运行时合法的 predecessors=None）
+    assert "predecessors: Optional[Sequence[int]] = None" in stub_text
+    assert stub_text.count("def add_launch(") == 1
+    assert "@overload" not in stub_text
+
+
+def test_annotated_attached_stream_stub_documents_key_scope_and_no_caching():
+    stub_text = (
+        Path(custom_op.__file__)
+        .with_name("_ge_custom_op_native.pyi")
+        .read_text(encoding="utf-8")
+    )
+    # docstring 按 100 列折行，先归一空白再做语义断言，避免因排版调整而误报
+    annotated_stub = " ".join(
+        stub_text.split("class AnnotatedArgsContext:", 1)[1].split()
+    )
+    # key 作用域为编译子图；返回的是编译期逻辑 ID，不是运行时句柄，且不得缓存到回调外
+    assert "compiled subgraph" in annotated_stub
+    assert "not a runtime stream handle" in annotated_stub.replace("**", "")
+    assert "must not be cached beyond the current" in annotated_stub
+
+
 def test_launch_info_owns_and_validates_fields():
     info = custom_op.AnnotatedKernelLaunchInfo(
         kernel_name="add_custom",

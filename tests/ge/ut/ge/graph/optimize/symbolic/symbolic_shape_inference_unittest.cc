@@ -5933,7 +5933,93 @@ TEST_F(SymbolicShapeInferenceUT, test_stridedslice_ellipsis_zero_dim_with_end_ma
     input_vec.emplace_back(ge::TensorAdapter::AsGeTensor(tensor));
   }
 
-  const std::vector<Expression> expect_output_shape = {Symbol("s0")};
+  // The zero-width ellipsis is skipped, so slice entry 1 applies to axis 0:
+  // begin=1 and end_mask expands the end to the whole dimension -> dim - 1.
+  const std::vector<Expression> expect_output_shape = {Symbol("s0") - Symbol(1)};
+  ExpectNodeInfo expect_node(STRIDEDSLICE, expect_output_shape, {}, {}, {});
+  ASSERT_EQ(RunSymbolInferenceTest(cg, {expect_node}, input_vec), SUCCESS);
+}
+
+// 测试场景：ellipsis 位于稀疏规格首位且展开 0 个维度时，后续切片项应按物理轴对齐
+//           （pos1 -> axis0，pos2 -> axis1），不能被 ellipsis 槽位占用或错位。
+// 测试输入：x 符号维度 {s0,s1}（实际 {516,256}），begin={0,0,0}，end={0,514,0}，
+//           strides={1,1,1}，ellipsis_mask=1、begin_mask=6、end_mask=4。
+// 期望输出：{514, s1}：axis0 由 pos1 切出 [0,514) = 514，axis1 由 pos2 的 end_mask 取整维。
+TEST_F(SymbolicShapeInferenceUT, test_stridedslice_ellipsis_zero_dim_at_front_aligns_axis) {
+  auto data0 = EsCreateGraphInputWithDetails(graph_, 0, "data_0", nullptr, C_DataType::C_DT_FLOAT,
+                                             C_Format::C_FORMAT_ND, nullptr, 0);
+  ASSERT_EQ(EsSetOriginSymbolShape(data0, std::vector<const char *>({"s0", "s1"}).data(), 2), 0);
+
+  std::vector<int64_t> begin_value = {0, 0, 0};
+  auto data1 = EsCreateVectorInt64(graph_, begin_value.data(), 3);
+  std::vector<int64_t> end_value = {0, 514, 0};
+  auto data2 = EsCreateVectorInt64(graph_, end_value.data(), 3);
+  std::vector<int64_t> strides_value = {1, 1, 1};
+  auto data3 = EsCreateVectorInt64(graph_, strides_value.data(), 3);
+
+  auto strided_slice = EsStridedSlice(data0, data1, data2, data3, 6, 4, 1, 0, 0);
+  ASSERT_EQ(EsSetGraphOutput(strided_slice, 0), 0);
+
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+
+  DataInfo di0 = {ge::FORMAT_ND, DT_FLOAT, {-1, -1}};
+  SetNoStorage(cg, "data_0", di0, 0);
+
+  std::vector<ge::GeTensor> input_vec;
+  {
+    ge::Shape shape({516, 256});
+    ge::TensorDesc td{shape, ge::FORMAT_ND, DT_FLOAT};
+    td.SetOriginShape(shape);
+    ge::Tensor tensor{td};
+    input_vec.emplace_back(ge::TensorAdapter::AsGeTensor(tensor));
+  }
+
+  const std::vector<Expression> expect_output_shape = {Symbol(514), Symbol("s1")};
+  ExpectNodeInfo expect_node(STRIDEDSLICE, expect_output_shape, {}, {}, {});
+  ASSERT_EQ(RunSymbolInferenceTest(cg, {expect_node}, input_vec), SUCCESS);
+}
+
+// 测试场景：零宽 ellipsis 与 new_axis 共存（spec_len = rank + popcount(new_axis) + 1）时，
+//           AppendNewAxis 必须跳过零宽 ellipsis 占用的 mask 槽位，new_axis 按其规格位置
+//           插入（S@0、E@1(零宽)、N@2、S@3 → [s0, 1, s1]），不能掉到输出尾部。
+// 测试输入：data_0 符号维度 {s0,s1}（实际 {2,3}），begin={0,0,0,0}，end={2,3,3,3}，
+//           strides={1,1,1,1}，ellipsis_mask=0b0010、new_axis_mask=0b0100、
+//           begin_mask=0、end_mask=0b1001（两个普通切片取整维）。
+// 期望输出：{s0, 1, s1}：axis0 由 S@0 整维保留，axis1 由 N@2 插入 size-1，axis2 由 S@3 整维保留。
+TEST_F(SymbolicShapeInferenceUT, test_stridedslice_ellipsis_zero_dim_with_new_axis_aligns_mask_pos) {
+  auto data0 = EsCreateGraphInputWithDetails(graph_, 0, "data_0", nullptr, C_DataType::C_DT_FLOAT,
+                                             C_Format::C_FORMAT_ND, nullptr, 0);
+  ASSERT_EQ(EsSetOriginSymbolShape(data0, std::vector<const char *>({"s0", "s1"}).data(), 2), 0);
+
+  std::vector<int64_t> begin_value = {0, 0, 0, 0};
+  auto data1 = EsCreateVectorInt64(graph_, begin_value.data(), 4);
+  std::vector<int64_t> end_value = {2, 3, 3, 3};
+  auto data2 = EsCreateVectorInt64(graph_, end_value.data(), 4);
+  std::vector<int64_t> strides_value = {1, 1, 1, 1};
+  auto data3 = EsCreateVectorInt64(graph_, strides_value.data(), 4);
+
+  auto strided_slice = EsStridedSlice(data0, data1, data2, data3, 0, 9, 2, 4, 0);
+  ASSERT_EQ(EsSetGraphOutput(strided_slice, 0), 0);
+
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+
+  DataInfo di0 = {ge::FORMAT_ND, DT_FLOAT, {-1, -1}};
+  SetNoStorage(cg, "data_0", di0, 0);
+
+  std::vector<ge::GeTensor> input_vec;
+  {
+    ge::Shape shape({2, 3});
+    ge::TensorDesc td{shape, ge::FORMAT_ND, DT_FLOAT};
+    td.SetOriginShape(shape);
+    ge::Tensor tensor{td};
+    input_vec.emplace_back(ge::TensorAdapter::AsGeTensor(tensor));
+  }
+
+  const std::vector<Expression> expect_output_shape = {Symbol("s0"), Symbol(1), Symbol("s1")};
   ExpectNodeInfo expect_node(STRIDEDSLICE, expect_output_shape, {}, {}, {});
   ASSERT_EQ(RunSymbolInferenceTest(cg, {expect_node}, input_vec), SUCCESS);
 }

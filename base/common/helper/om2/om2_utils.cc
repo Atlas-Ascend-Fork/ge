@@ -34,6 +34,8 @@
 namespace ge {
 namespace {
 constexpr const char_t *kOptionBuildConfig = "ge.buildConfig";
+constexpr size_t kQuoteCharSize = 1U;
+constexpr size_t kQuotePairSize = 2U;
 
 struct MemFdFile {
   int32_t fd = -1;
@@ -238,6 +240,17 @@ bool IsAllowedBuildConfigVariable(const std::string &key) {
   return kAllowedVariables.count(key) > 0;
 }
 
+// 值被成对同类引号包裹时剥离首尾引号，如 CXXFLAGS="-O2 -fPIC"
+void StripQuotes(std::string &value) {
+  if ((value.size() < kQuotePairSize) || (value.front() != value.back())) {
+    return;
+  }
+  const char_t quote = value.front();
+  if ((quote == '\'') || (quote == '"')) {
+    value = value.substr(kQuoteCharSize, value.size() - kQuotePairSize);
+  }
+}
+
 Status AddGeneratedMakefileOption(const std::string &makefile_path, std::string &command) {
   std::vector<std::string> tokens;
   GE_ASSERT_SUCCESS(SplitCommandTokens(command, tokens));
@@ -332,7 +345,9 @@ std::string FindAarch64Devlib() {
   return "";
 }
 
-Status AppendCrossCompilerIfNeeded(std::string &command) {
+Status ResolveCrossCompileConfig(std::string &cxx, std::string &lib_path) {
+  cxx.clear();
+  lib_path.clear();
   std::string host_env_os;
   std::string host_env_cpu;
   const bool has_os = (ge::GetContext().GetOption(OPTION_HOST_ENV_OS, host_env_os) == GRAPH_SUCCESS);
@@ -369,10 +384,6 @@ Status AppendCrossCompilerIfNeeded(std::string &command) {
     GELOGE(FAILED, "[OM2] %s", reason.c_str());
     return FAILED;
   }
-  // 注入 CXX
-  command += " CXX=" + compiler;
-  GELOGI("[OM2] Cross-compiler injected: CXX=%s", compiler.c_str());
-  // 查找并注入 LIB_PATH
   const std::string devlib = FindAarch64Devlib();
   if (devlib.empty()) {
     const std::string value = "--host_env_os=" + host_env_os + ", --host_env_cpu=" + host_env_cpu;
@@ -385,9 +396,8 @@ Status AppendCrossCompilerIfNeeded(std::string &command) {
     GELOGE(FAILED, "[OM2] %s", reason.c_str());
     return FAILED;
   }
-  command += " LIB_PATH=" + devlib;
-  GELOGI("[OM2] LIB_PATH overridden for cross-compilation: %s", devlib.c_str());
-
+  cxx = compiler;
+  lib_path = devlib;
   return SUCCESS;
 }
 
@@ -406,9 +416,14 @@ std::string GetBuildConfig() {
 Status BuildMakeCommand(const std::string &makefile_path, const bool is_release, const std::string &build_config,
                         std::string &command) {
   if (build_config.empty()) {
-    // 默认路径：构建 make 命令，交叉编译时自动注入 CXX 和 LIB_PATH
     command = BuildDefaultMakeCommand(makefile_path);
-    GE_ASSERT_SUCCESS(AppendCrossCompilerIfNeeded(command));
+    // 与 GetCrossBuildConfigs 固化进 Makefile 的逻辑保持一致：命令行变量优先级最高，Makefile 未固化时也能生效
+    std::string cxx;
+    std::string lib_path;
+    GE_ASSERT_SUCCESS(ResolveCrossCompileConfig(cxx, lib_path));
+    if (!cxx.empty()) {
+      command += " CXX=" + cxx + " LIB_PATH=" + lib_path;
+    }
   } else {
     // 自定义路径：校验字符集、首 token 必须是 make、变量名在白名单内，并注入 -f
     GE_ASSERT_SUCCESS(CheckBuildConfigValue(build_config));
@@ -598,6 +613,52 @@ std::string Om2Utils::NormalizeCpuArch(const std::string &cpu) {
     return "aarch64";
   }
   return cpu;
+}
+
+Status Om2Utils::GetCrossBuildConfigs(std::map<std::string, std::string> &configs) {
+  configs.clear();
+  const std::string build_config = GetBuildConfig();
+  if (!build_config.empty()) {
+    GE_ASSERT_SUCCESS(CheckBuildConfigValue(build_config));
+    std::vector<std::string> tokens;
+    GE_ASSERT_SUCCESS(SplitCommandTokens(build_config, tokens));
+    GE_IF_BOOL_EXEC(tokens.empty(), return ReportInvalidBuildConfig(build_config, "build_config is empty."));
+    GE_IF_BOOL_EXEC(!IsMakeCommand(tokens[0]),
+                    return ReportInvalidBuildConfig(build_config, "build_config must start with make command."));
+    for (auto iter = tokens.begin() + 1U; iter != tokens.end(); ++iter) {
+      GE_IF_BOOL_EXEC(IsMakefileOption(*iter),
+                      return ReportInvalidBuildConfig(build_config, "custom Makefile options are not supported."));
+      if (!iter->empty() && (*iter)[0] == '-') {
+        continue;
+      }
+      const auto eq_pos = iter->find('=');
+      if (eq_pos == std::string::npos) {
+        return ReportInvalidBuildConfig(build_config, "build_config contains an unexpected token: " + *iter + ".");
+      }
+      const std::string key = iter->substr(0, eq_pos);
+      GE_IF_BOOL_EXEC(!IsAllowedBuildConfigVariable(key),
+                      return ReportInvalidBuildConfig(build_config, "variable " + key + " is not supported."));
+      std::string value = iter->substr(eq_pos + 1U);
+      StripQuotes(value);
+      configs[key] = value;
+    }
+    return SUCCESS;
+  }
+  std::string cxx;
+  std::string lib_path;
+  GE_ASSERT_SUCCESS(ResolveCrossCompileConfig(cxx, lib_path));
+  if (cxx.empty()) {
+    return SUCCESS;
+  }
+  configs["CXX"] = cxx;
+  configs["LIB_PATH"] = lib_path;
+  return SUCCESS;
+}
+
+std::string Om2Utils::GetBuildConfigValue(const std::map<std::string, std::string> &configs, const std::string &key,
+                                          const std::string &fallback) {
+  const auto it = configs.find(key);
+  return (it == configs.end()) ? fallback : it->second;
 }
 
 Status Om2Utils::CompileGeneratedCppToSo(const std::vector<gert::GertModelDataFile> &artifacts,

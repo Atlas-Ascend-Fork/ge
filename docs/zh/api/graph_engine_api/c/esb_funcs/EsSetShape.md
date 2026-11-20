@@ -35,7 +35,7 @@ uint32_t EsSetShape(EsCTensorHolder *tensor, const int64_t *shape, int64_t dim_n
 
 ## 约束说明
 
-- 仅计算图支持该接口：当张量所属的图构建器以执行图类别创建（[EsCreateGraphBuilderWithKind](EsCreateGraphBuilderWithKind.md)中`kind`为`C_GRAPH_EXECUTE`）时，调用该接口失败返回非0值，并上报错误码E10062。
+仅计算图支持该接口：当张量所属的图构建器以执行图类别创建（[EsCreateGraphBuilderWithKind](EsCreateGraphBuilderWithKind.md)中`kind`为`C_GRAPH_EXECUTE`）时，调用该接口失败返回非0值，并上报错误码E10062。
 
 ## 调用示例
 
