@@ -70,7 +70,7 @@ ge::graphStatus DfxPrintProc(KernelContext *context, rtStream_t stream) {
 
 ge::graphStatus FFTSPlusTaskLaunch(KernelContext *context) {
   (void)context;
-  GELOGW("[Launch_kernel][FFTSPlusTaskLaunch]Not used interface call.");
+  GELOGW("[Launch_kernel][FFTSPlusTaskLaunch]Not used interface call!");
   return ge::GRAPH_SUCCESS;
 }
 REGISTER_KERNEL(LaunchFFTSPlusTask).RunFunc(FFTSPlusTaskLaunch).ConcurrentCriticalSectionKey(kKernelLaunch);

@@ -14,7 +14,6 @@
 #include <map>
 #include <memory>
 #include <string>
-#include <thread>
 #include <utility>
 #include "engine/aicore/kernel/resolve_func_handle_kernel.h"
 #include "faker/kernel_run_context_facker.h"
@@ -25,14 +24,6 @@ namespace gert {
 namespace {
 class ResolveAclStub : public AclRuntimeStubImpl {
  public:
-  aclError aclrtGetCurrentContext(aclrtContext *context) override {
-    if (fail_ctx_) {
-      return ACL_ERROR_RT_INTERNAL_ERROR;
-    }
-    *context = ctx_;
-    return ACL_SUCCESS;
-  }
-
   aclError aclrtBinaryGetFunction(const aclrtBinHandle, const char *kernel_name,
                                   aclrtFuncHandle *func_handle) override {
     if (fail_by_name_) {
@@ -51,9 +42,6 @@ class ResolveAclStub : public AclRuntimeStubImpl {
     return ACL_SUCCESS;
   }
 
-  void SetFailCtx(bool fail) {
-    fail_ctx_ = fail;
-  }
   void SetFailByName(bool fail) {
     fail_by_name_ = fail;
   }
@@ -62,15 +50,13 @@ class ResolveAclStub : public AclRuntimeStubImpl {
   }
 
  private:
-  aclrtContext ctx_{reinterpret_cast<aclrtContext>(0x1000)};
-  bool fail_ctx_{false};
   bool fail_by_name_{false};
   bool fail_by_entry_{false};
   std::map<std::string, uint8_t> by_name_handles_;
   std::map<uint64_t, uint8_t> by_entry_handles_;
 };
 
-// bin handle 只作为缓存键使用，不会被解引用；用递增地址保证各用例（及 TLS 缓存）互不干扰。
+// bin handle 不会被解引用；用递增地址保证各用例互不干扰。
 void *UniqueBinHandle() {
   static std::atomic<uint64_t> counter{0x10000U};
   return reinterpret_cast<void *>(counter.fetch_add(0x10U));
@@ -113,18 +99,6 @@ class ResolveFuncHandleKernelUT : public testing::Test {
 };
 }  // namespace
 
-// 首次按内核名解析走 aclrt，第二次命中线程内 L1 缓存。
-TEST_F(ResolveFuncHandleKernelUT, ResolveByNameMissThenTlsHit) {
-  void *bin = UniqueBinHandle();
-  aclrtFuncHandle first = nullptr;
-  ASSERT_EQ(RunResolve(bin, "ut_resolve_kernel_a", 11U, 0U, &first), ge::GRAPH_SUCCESS);
-  ASSERT_NE(first, nullptr);
-
-  aclrtFuncHandle second = nullptr;
-  ASSERT_EQ(RunResolve(bin, "ut_resolve_kernel_a", 11U, 0U, &second), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(second, first);
-}
-
 // 同一 bin 下不同内核名分别解析，返回不同的函数句柄。
 TEST_F(ResolveFuncHandleKernelUT, ResolveByNameDifferentNamesSameBin) {
   void *bin = UniqueBinHandle();
@@ -137,67 +111,12 @@ TEST_F(ResolveFuncHandleKernelUT, ResolveByNameDifferentNamesSameBin) {
   EXPECT_NE(handle_b, handle_c);
 }
 
-// 超长内核名不进 L1 缓存，第二次通过 L2 全局缓存命中。
-TEST_F(ResolveFuncHandleKernelUT, ResolveByNameLongKernelNameSkipsTls) {
+// 按 tiling key 解析成功，返回非空句柄。
+TEST_F(ResolveFuncHandleKernelUT, ResolveByEntrySuccess) {
   void *bin = UniqueBinHandle();
-  const std::string long_name(200U, 'x');
-  aclrtFuncHandle first = nullptr;
-  ASSERT_EQ(RunResolve(bin, long_name.c_str(), 14U, 0U, &first), ge::GRAPH_SUCCESS);
-  ASSERT_NE(first, nullptr);
-  aclrtFuncHandle second = nullptr;
-  ASSERT_EQ(RunResolve(bin, long_name.c_str(), 14U, 0U, &second), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(second, first);
-}
-
-// 另一个线程写入 L2 后，本线程 L1 未命中，回退 L2 读锁命中。
-TEST_F(ResolveFuncHandleKernelUT, ResolveByNameL2HitInAnotherThread) {
-  void *bin = UniqueBinHandle();
-  aclrtFuncHandle first = nullptr;
-  std::thread worker([&]() {
-    ge::AclRuntimeStub::Install(acl_);
-    EXPECT_EQ(RunResolve(bin, "ut_resolve_kernel_l2_name", 15U, 0U, &first), ge::GRAPH_SUCCESS);
-    ge::AclRuntimeStub::UnInstall(acl_);
-  });
-  worker.join();
-  ASSERT_NE(first, nullptr);
-
-  aclrtFuncHandle second = nullptr;
-  ASSERT_EQ(RunResolve(bin, "ut_resolve_kernel_l2_name", 15U, 0U, &second), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(second, first);
-}
-
-// with_handle 场景按 tiling key 解析：首次走 aclrt，第二次命中 L1，改 key 后重新解析。
-TEST_F(ResolveFuncHandleKernelUT, ResolveByEntryMissThenTlsHit) {
-  void *bin = UniqueBinHandle();
-  aclrtFuncHandle first = nullptr;
-  ASSERT_EQ(RunResolve(bin, "ut_resolve_entry", 0x1234U, 1U, &first), ge::GRAPH_SUCCESS);
-  ASSERT_NE(first, nullptr);
-
-  aclrtFuncHandle second = nullptr;
-  ASSERT_EQ(RunResolve(bin, "ut_resolve_entry", 0x1234U, 1U, &second), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(second, first);
-
-  aclrtFuncHandle other_key = nullptr;
-  ASSERT_EQ(RunResolve(bin, "ut_resolve_entry", 0x5678U, 1U, &other_key), ge::GRAPH_SUCCESS);
-  ASSERT_NE(other_key, nullptr);
-  EXPECT_NE(other_key, first);
-}
-
-// 另一个线程写入 L2 后，本线程 L1 未命中，回退 L2 读锁命中（entry 路线）。
-TEST_F(ResolveFuncHandleKernelUT, ResolveByEntryL2HitInAnotherThread) {
-  void *bin = UniqueBinHandle();
-  aclrtFuncHandle first = nullptr;
-  std::thread worker([&]() {
-    ge::AclRuntimeStub::Install(acl_);
-    EXPECT_EQ(RunResolve(bin, "ut_resolve_entry_l2", 0x2233U, 1U, &first), ge::GRAPH_SUCCESS);
-    ge::AclRuntimeStub::UnInstall(acl_);
-  });
-  worker.join();
-  ASSERT_NE(first, nullptr);
-
-  aclrtFuncHandle second = nullptr;
-  ASSERT_EQ(RunResolve(bin, "ut_resolve_entry_l2", 0x2233U, 1U, &second), ge::GRAPH_SUCCESS);
-  EXPECT_EQ(second, first);
+  aclrtFuncHandle func_handle = nullptr;
+  ASSERT_EQ(RunResolve(bin, "ut_resolve_entry_success", 0x1234U, 1U, &func_handle), ge::GRAPH_SUCCESS);
+  EXPECT_NE(func_handle, nullptr);
 }
 
 // 按名解析失败时返回失败。
@@ -218,18 +137,18 @@ TEST_F(ResolveFuncHandleKernelUT, ResolveByEntryAclFailure) {
   EXPECT_EQ(func_handle, nullptr);
 }
 
-// 拿不到当前 ctx 时跳过 L1/L2 缓存，直接解析句柄，不因缺 ctx 而失败。在独立线程中执行，确保无历史缓存。
-TEST_F(ResolveFuncHandleKernelUT, ResolveWithoutCtxSkipCache) {
-  acl_->SetFailCtx(true);
-  std::thread worker([&]() {
-    ge::AclRuntimeStub::Install(acl_);
-    void *bin = UniqueBinHandle();
-    aclrtFuncHandle func_handle = nullptr;
-    EXPECT_EQ(RunResolve(bin, "ut_resolve_kernel_no_ctx", 17U, 0U, &func_handle), ge::GRAPH_SUCCESS);
-    EXPECT_NE(func_handle, nullptr);
-    ge::AclRuntimeStub::UnInstall(acl_);
-  });
-  worker.join();
-  acl_->SetFailCtx(false);
+// bin handle 为空时直接返回失败，不进入解析流程。
+TEST_F(ResolveFuncHandleKernelUT, ResolveBinHandleNull) {
+  aclrtFuncHandle func_handle = nullptr;
+  EXPECT_NE(RunResolve(nullptr, "ut_resolve_kernel_null_bin", 17U, 0U, &func_handle), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(func_handle, nullptr);
+}
+
+// kernel name 为空时直接返回失败，不进入解析流程。
+TEST_F(ResolveFuncHandleKernelUT, ResolveKernelNameNull) {
+  void *bin = UniqueBinHandle();
+  aclrtFuncHandle func_handle = nullptr;
+  EXPECT_NE(RunResolve(bin, nullptr, 18U, 0U, &func_handle), ge::GRAPH_SUCCESS);
+  EXPECT_EQ(func_handle, nullptr);
 }
 }  // namespace gert
