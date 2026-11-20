@@ -23,7 +23,7 @@ Atlas A2系列产品
 
 ### 实现原理
 
-当检测到用户进行了手动标定时，系统将按照用户标定的范围进行SuperKernel融合。在SuperKernel生成策略上，系统将根据其标记集合进行分组。具有完全相同标记集合的算子将被归为一组，进入后续的Super Kernel融合流程。工作流程为：
+当检测到用户进行了手动标定时，系统将按照用户标定的范围进行SuperKernel融合。在SuperKernel生成策略上，系统将根据其标记集合进行分组。具有完全相同标记集合的算子将被归为一组，进入后续的SuperKernel融合流程。工作流程为：
 
 ![](figures/network_topo_example.png)
 

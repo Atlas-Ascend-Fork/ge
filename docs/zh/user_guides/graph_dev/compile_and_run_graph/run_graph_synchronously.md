@@ -94,7 +94,7 @@
     }
     ```
 
-    用户可以通过传入options配置图运行相关配置信息，相关配置请参考[Session构造函数](../../../api/graph_engine_api/cpp/ge/GeSession/GESession.md)。
+    用户可以通过传入options配置图运行相关配置信息，相关配置请参考[GESession构造函数](../../../api/graph_engine_api/cpp/ge/GeSession/GESession.md)。
 
     其中图运行完之后的数据保存在Tensor output\_cov中。
 

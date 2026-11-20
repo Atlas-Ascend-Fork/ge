@@ -6,7 +6,7 @@
 |--|--|
 |Ascend IR|Ascend Intermediate Representation，昇腾AI处理器专用的、用于表达计算流程的抽象数据结构。在本文档中，若无特殊说明，IR默认指代Ascend IR。|
 |Block|Block在不同场景下具有多种含义，通常情况下指AI Core的逻辑核。典型场景有：AI Core逻辑核：一个Block表示一个AI Core的逻辑核，其BlockID是以0为起始的逻辑编号。DataBlock：一个DataBlock表示一条NPU矢量计算指令处理的数据单元，大小通常为32字节，一条指令可同时处理多个DataBlock。基本块：表示一次计算需要的典型数据块大小。|
-|Broadcast|广播，一种张量操作机制。通过广播，较小的张量可以自动扩展以匹配较大的张量的形状。|
+|Broadcast|广播，一种张量操作机制。通过广播，较小的张量可以自动扩展以匹配较大张量的形状。|
 |Device|Device指安装了昇腾AI处理器的硬件设备，利用PCIe接口与主机Host侧连接，为Host提供神经网络计算能力。若存在多个Device，多个Device之间的内存资源不能共享。|
 |Host|指与设备端Device相连接的X86服务器、ARM服务器，会利用Device提供的NN（Neural-Network ）计算能力，完成业务。|
 |Global Memory/GM|设备端的主内存，AI Core的外部存储，用于存储大规模数据，但需要优化访问模式以提升性能。|

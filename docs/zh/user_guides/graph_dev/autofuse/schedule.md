@@ -96,7 +96,7 @@ add.y.strides = {1};
 
 > [!NOTE]说明
 >
->引入xgroup、ygroup、rgroup的核心原因是为了支持复杂场景下的“双切分”需求。例如，在包含reduce混合的计算图中，ygroup控制elementwise的循环切分，rgroup中的轴控制reduce方向的循环切分。
+>引入xgroup、ygroup、rgroup的核心原因是为了支持复杂场景下的“双切分”需求。例如，在包含reduce混合的计算图中，ygroup控制Elementwise的循环切分，rgroup中的轴控制reduce方向的循环切分。
 
 在完成单算子的轴分组后，需通过预设的合并规则（Merge）对计算图中所有算子的分组策略进行合并。合并结果将作为适用于全图所有算子的统一切分策略，为后续解空间生成提供基础。
 
@@ -135,12 +135,12 @@ max.y.size = [s0, 1]  # 对z1轴进行reduce操作
 max.y.strides = [1, 0]
 ```
 
-abs是一个elewise算子，每个轴在计算上并无差异，因此只要内存连续，可以将多根轴合并成一根轴进行切分：例如[图2](#fig2)所示，先在轴上做block切分，15被分到3个block上，block0为紫色的部分，在block0内再进行tiling分块，此时tiling块未占满block0分配的部分，因此还需要在block内加一个for循环。
+abs是一个Elementwise算子，每个轴在计算上并无差异，因此只要内存连续，可以将多根轴合并成一根轴进行切分：例如[图2](#fig2)所示，先在轴上做block切分，15被分到3个block上，block0为紫色的部分，在block0内再进行tiling分块，此时tiling块未占满block0分配的部分，因此还需要在block内加一个for循环。
 
-**图 2**  elewise类算子切分<a id="fig2"></a>
-![图2](../figures/elewise_op_split.png "elewise类算子切分")
+**图 2**  Elementwise类算子切分<a id="fig2"></a>
+![图2](../figures/elewise_op_split.png "Elementwise类算子切分")
 
-reduce类的切分较为复杂，实现上需要双切分：行方向上是elewise轴，列方向上是reduce轴；首先在行方向上分block，block内写循环，然后在列方向上再加一层for循环。
+reduce类的切分较为复杂，实现上需要双切分：行方向上是elementwise轴，列方向上是reduce轴；首先在行方向上分block，block内写循环，然后在列方向上再加一层for循环。
 
 **图 3**  reduce类算子切分
 ![图3](../figures/reduce_op_split.png "reduce类算子切分")
@@ -240,7 +240,7 @@ Inplace复用后只需要2块内存：
 **图 5**  内存复用后
 ![图5](../figures/memory_reuse_after.png "内存复用后")
 
-## 多模版生成
+## 多模板生成
 
 针对一张计算图，可能存在多种实现方式。以尾轴concat为例，可以在UB上将多个小包做ub\_concat先组成大包再完整搬出，也可以直接转成非连续搬运在GM（Global Memory，全局内存）上完成重排。前者在小shape场景可以显著提高MTE（Memory Transfer Engine，AI Core的数据传递引擎）搬运效率，从而获得更好的性能优势。但ub\_concat也存在需要内轴全载的限制，导致某些场景下无法使用。在Schedule阶段无法确定选择哪个模板时，通常会生成一个适用于任意shape的通用模板，以及特定场景下的性能优化模板，由Auto Tiling模块在tiling阶段决定具体使用哪个模板。
 

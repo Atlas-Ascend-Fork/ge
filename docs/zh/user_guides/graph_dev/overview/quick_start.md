@@ -4,7 +4,7 @@
 
 本节介绍如何使用ATC命令转换.onnx格式的模型文件，并在AI处理器上执行推理。
 
-对于PyTorch、TensorFlow、MindSpore等前端框架导出的模型文件，GE提供了模型转换的能力，支持通过ATC命令行工具将模型转化为适配AI处理器的离线模型，并基于图模式执行推理。ATC目前已支持：
+对于PyTorch、TensorFlow、MindSpore等前端框架导出的模型文件，GE提供了模型转换的能力，支持通过ATC命令行工具将模型转换成适配AI处理器的离线模型，并基于图模式执行推理。ATC目前已支持：
 
 - \*.onnx格式的模型转换成\*.om格式的模型
 - \*.pb格式的模型转换成\*.om格式的模型
@@ -80,11 +80,11 @@
   ret = aclmdlUnload(modelId);
   ```
 
-## 使用接口全新构建Graph
+## 使用接口构建Graph
 
 GE的C++图引擎接口提供了两种构图方式：
 
-- **使用图引擎接口全新构建Graph**：用户通过图引擎接口，逐个将算子添加到计算图中，构建成Ascend IR表示的计算图。
+- **使用图引擎接口构建Graph**：用户通过图引擎接口，逐个将算子添加到计算图中，构建成Ascend IR表示的计算图。
 - **使用Parser接口将原始模型解析为Graph**：用户通过Parser接口，将框架模型文件（如\*.onnx和\*.pb等格式）解析成Ascend IR表示的计算图。
 
 本章节综合上述两种场景，为您介绍如何构建一个Graph，构建完Graph后，可以根据自身需要修改Graph，然后将该Graph编译为适配AI处理器的离线模型。整体流程如下：
@@ -94,14 +94,14 @@ GE的C++图引擎接口提供了两种构图方式：
 流程说明如下：
 
 1. 进行构建Graph操作之前，先进行环境搭建，安装相应的CANN软件包，并进行网络结构分析；如果有不支持的算子，则开发对应算子，并部署到硬件环境。
-    1. 如果**使用图引擎接口全新构建Graph**，需要根据原始网络，明确如下信息：
+    1. 如果**使用图引擎接口构建Graph**，需要根据原始网络，明确如下信息：
         1. 网络中包含哪些算子，以及这些算子的输入、输出、属性等信息。
         2. 网络中算子之间的关联关系。
         3. 确认原始网络中的算子在AI处理器是否支持，当前支持的算子请参见《[算子库](https://hiascend.com/document/redirect/CannCommunityOplist)》中的“Ascend IR算子规格说明”章节。如果不支持或不满足实际需要，开发者可以《[Ascend C算子开发](https://gitcode.com/cann/asc-devkit/blob/master/docs/zh/guide/index.md)》自定义Ascend C算子，或者参见《[TBE&AI CPU算子开发](https://hiascend.com/document/redirect/CannCommunityOpdevWizard)》自定义TBE算子，选定一种方式后，将算子部署到硬件环境即可。
 
     2. 如果**使用Parser接口将原始模型解析为Graph**，需要确认原始网络中的算子在AI处理器是否支持，当前支持的算子请参见《[算子库](https://hiascend.com/document/redirect/CannCommunityOplist)》中的“Ascend IR算子规格说明”章节。如果不支持或不满足实际需要，可参见《[Ascend C算子开发](https://gitcode.com/cann/asc-devkit/blob/master/docs/zh/guide/index.md)》自定义Ascend C算子，或者参见《[TBE&AI CPU算子开发](https://hiascend.com/document/redirect/CannCommunityOpdevWizard)》自定义TBE算子，选定一种方式后，将算子部署至硬件环境即可。
 
-2. 构建Graph，开发者可以使用图引擎接口全新构建Graph，也可以使用Parser接口将原始模型解析为Graph。
+2. 构建Graph，开发者可以使用图引擎接口构建Graph，也可以使用Parser接口将原始模型解析为Graph。
 3. 修改Graph，如果开发者想要优化Graph结构，则可以基于构建好的Graph直接将Graph修改为期望的结构。
 4. 编译和运行Graph，开发者可以将修改后的Graph编译成适配AI处理器的离线模型，然后通过模型加载接口加载后上板推理；也可以直接运行Graph，得到Graph的运行结果。
 
@@ -115,7 +115,7 @@ GE的C++图引擎接口提供了两种构图方式：
 ├── Makefile                    // 编译脚本
 ├── CMakeLists.txt              // 编译脚本
 ├── data
-│   ├──data_generate.py        // 使用图引擎接口全新构建Graph时，用于生成Graph所需要的数据信息，例如权重、偏置等数据
+│   ├──data_generate.py        // 使用图引擎接口构建Graph时，用于生成Graph所需要的数据信息，例如权重、偏置等数据
 │   ├──tensorflow_generate.py  // 使用Parser接口将TensorFlow原始模型解析为Graph时，用于生成.pb格式的TensorFlow模型
 │   ├──caffe_generate.py       // 使用Parser接口将Caffe原始模型解析为Graph时，用于生成.pbtxt格式的Caffe模型与.caffemodel格式的权重文件
 ├── scripts
@@ -126,7 +126,7 @@ GE的C++图引擎接口提供了两种构图方式：
 该样例主要包括如下功能：
 
 1. 构建Graph。
-    - **使用图引擎接口全新构建Graph**
+    - **使用图引擎接口构建Graph**
 
         本样例构造的Graph结构如下：
 
@@ -154,7 +154,7 @@ GE的C++图引擎接口提供了两种构图方式：
 
 1. 准备环境。
     - 参见[环境准备](environment_setup.md)搭建环境，并配置环境变量。
-    - 如果将TensorFlow框架原始模型解析为Graph，需要搭建TensorFlow1.15.0环境，如下为root用户在x86架构安装示例：
+    - 如果将TensorFlow框架原始模型解析为Graph，需要搭建TensorFlow 1.15.0环境，如下为root用户在x86架构安装示例：
 
         ```python
         pip3 install tensorflow-cpu==1.15
@@ -163,7 +163,7 @@ GE的C++图引擎接口提供了两种构图方式：
         如果为非root用户安装，需要在上述命令末尾增加--user参数；如果为aarch64架构，安装方法请参见《[TensorFlow 1.15模型迁移](https://hiascend.com/document/redirect/tfcommunityguide)》 \> 安装开源框架TensorFlow 1.15。
 
 2. 准备构图数据。
-    - **使用图引擎接口全新构建Graph**。
+    - **使用图引擎接口构建Graph**。
 
         在data目录执行数据生成脚本，命令如下：
 
@@ -203,7 +203,7 @@ GE的C++图引擎接口提供了两种构图方式：
 
 4. 运行代码。
 
-    - **使用图引擎接口全新构建Graph**。
+    - **使用图引擎接口构建Graph**。
 
         在out文件夹下执行如下命令：
 
@@ -258,7 +258,7 @@ GE的C++图引擎接口提供了两种构图方式：
     {
         // 1.构建Graph
         Graph graph1("IrGraph1");
-           // 1.1使用图引擎接口全新构建Graph
+           // 1.1使用图引擎接口构建Graph
             ret = GenGraph(graph1);
 
            // 1.2使用Parser接口将原始模型解析为Graph

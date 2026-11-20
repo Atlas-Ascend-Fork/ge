@@ -54,7 +54,7 @@ batch\_size即每次模型推理处理的图片数，对于每次推理图片数
 
 - 如果用户设置了动态batch\_size，同时又通过**INSERT\_OP\_FILE**参数设置了动态AIPP功能：
 
-    实际推理时，调用[aclmdlSetInputAIPP](../../../api/graph_engine_api/c/acl/aclmdlSetInputAIPP.md)接口设置动态AIPP相关参数值时，需确保batch\_size要设置为最大Batch数。
+    实际推理时，调用[aclmdlSetInputAIPP](../../../api/graph_engine_api/c/acl/aclmdlSetInputAIPP.md)接口设置动态AIPP相关参数值时，需确保batch\_size设置为最大Batch数。
 
 - 某些场景下，通过该参数设置动态batch\_size特性后，生成的离线模型网络结构会与固定batch\_size场景下的不同，推理性能可能存在差异。
 - 如果用户设置的档位数值过大或档位过多，在运行环境执行推理时，建议执行**swapoff -a**命令关闭swap交换空间作为内存的功能，防止出现由于内存不足，将swap交换空间作为内存继续调用，导致运行环境异常缓慢的情况。

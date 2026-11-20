@@ -2,7 +2,7 @@
 
 ## 简介
 
-AscendC IR（如下简称AscIR）是一套基于Ascend C语言定义的IR，专门负责自动融合软件栈的后端工作，AscIR与[Ascend C API](https://gitcode.com/cann/asc-devkit/blob/master/docs/zh/api/README.md)一一对应：AscIR的类型（type）用于区分对应的Ascend C API；AscIR定义中的输入、输出、属性等内容，分别映射到Ascend C API的各类参数。
+AscendC IR（以下简称AscIR）是一套基于Ascend C语言定义的IR，专门负责自动融合软件栈的后端工作，AscIR与[Ascend C API](https://gitcode.com/cann/asc-devkit/blob/master/docs/zh/api/README.md)一一对应：AscIR的类型（type）用于区分对应的Ascend C API；AscIR定义中的输入、输出、属性等内容，分别映射到Ascend C API的各类参数。
 
 从[融合原理](../autofuse/overview.md)中得知，如果融合范围用FusedGraph来表达，FusedGraph内部包含\>=1个AscBackend节点，一个AscBackend节点对应一个AscGraph，而一个AscGraph内包含多个AscIR节点。下面分别介绍AscIR和AscGraph。
 
@@ -67,7 +67,7 @@ AscGraph表达多层循环中的多步计算：每一步计算对应图中的一
     节点的完整计算语义由如下几部分共同组成：
 
   - **节点类型**：节点的计算类型，如Add代表加法。
-  - **节点属性**：用于补充描述计算逻辑的必要信息。例如，Cast节点的dst\_type属性指明输入数据需要转换的目标数据类型。
+  - **节点属性**：用于补充描述计算逻辑的必要信息。例如，Cast节点的dst\_dtype属性指明输入数据需要转换的目标数据类型。
   - **输入、输出的描述**：有些节点需要输入输出的上述信息共同描述计算逻辑，例如Broadcast需要借助输入输出的repeats和axis确定在哪个轴发生了广播，Cast需要借助输出的dtype确定要将输入转换为哪种数据类型。
 
 - **节点的属性**
@@ -175,7 +175,7 @@ AscGraph通过特定类型的节点表达输入和输出，其对应的AscIR：
 
 ### HintGraph
 
-HintGraph对应后端入口的阶段，准确来说，HintGraph是Auto Schedule模块输入的规范。在HintGraph阶段，认为所有内存是无限的（包括UB与GM）内存，每个节点是个独立循环，完成对输入的处理；同时，HintGraph阶段不考虑分核，认为所有算子在一个核上完成计算。比如，有如下HintGraph：
+HintGraph对应后端入口的阶段，准确来说，HintGraph是Auto Schedule模块输入的规范。在HintGraph阶段，认为所有内存是无限的（包括UB与GM），每个节点是个独立循环，完成对输入的处理；同时，HintGraph阶段不考虑分核，认为所有算子在一个核上完成计算。比如，有如下HintGraph：
 
 ![图示](../figures/hintgraph.png)
 
@@ -185,7 +185,7 @@ HintGraph阶段，对AscGraph增加了一些要求和约定，当这些约定无
 
 #### 连续性约定
 
-- 显式Broadcast：如果计算发生Broadcast操作，需要显示表达出，即必须在构图中加上Broadcast的算子。
+- 显式Broadcast：如果计算发生Broadcast操作，需要显式表达出，即必须在构图中加上Broadcast的算子。
 - 集中Broadcast：如果发生这种操作，需要在load后不做任何其他运算，立即进行。
 - 单轴Broadcast：如果发生多轴广播，那么每个Broadcast节点最多广播一根轴。
 
@@ -193,7 +193,7 @@ HintGraph阶段，对AscGraph增加了一些要求和约定，当这些约定无
 
 一张AscGraph图上，只能有一套循环轴，即图上的所有节点，sched.axis必须相同。
 
-#### Reduction总是keep\_dim
+#### Reduction总是keep\_dims
 
 Reduction类操作，不存在keep\_dims参数，总是认为keep\_dims=true。
 
@@ -218,7 +218,7 @@ Reduction类操作，不存在keep\_dims参数，总是认为keep\_dims=true。
 
 在轴属性上，有如下字段表达轴的变换关系：
 
-- **axis.type**：表示本轴由哪种轴变换类型产生，如果产生一根轴经历了多次变换，那么本type仅保存最后一次的变换类型。
+- **axis.type**：表示本轴由哪种轴变换类型产生，如果一根轴经历了多次变换，那么本type仅保存最后一次的变换类型。
   - **kAxisTypeOriginal**：原始轴，未做过拆分或合并。
   - **kAxisTypeBlockOuter**：Block切分后的外轴。
   - **kAxisTypeBlockInner**：Block切分后的内轴。

@@ -68,7 +68,7 @@ ONNX前端与PyTorch不同：GE的ONNX Parser不识别的op type会直接报错�
     | 方法 | 用途 |
     | --- | --- |
     | .FrameworkType(domi::ONNX) | 声明为ONNX框架插件 |
-    | .OriginOpType("domain::ver::Type") | 指定ONNX op type（支持列表，覆盖多版本） |
+    | .OriginOpType("domain::version::Type") | 指定ONNX op type（支持列表，覆盖多版本） |
     | .ParseParamsFn(fn) | 属性解析函数（Message* → Operator&） |
     | .ParseParamsByOperatorFn(fn) | 自动映射路径的属性解析（Operator → Operator） |
     | .ParseOpToGraphFn(fn) | 将单个算子展开为子图（可选） |

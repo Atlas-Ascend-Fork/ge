@@ -100,7 +100,7 @@ class KernelBox {
 
 ### 单输出多引用
 
-对于单输出多引用的算子，可能出现多个计算对其输出的加载方式不一致的情况。GraphLowering会基于重计算进行Lowering，即对于一个可以继续融合的节点，如果其输出被多个节点使用，例如下面例子中的第一个Abs，那么在使用该输出的每个节点对应的KernelBox中，均会包含第一个Abs的计算。通过重计算，能够处理同一份数据按照不同方式进行搬运的场景。
+对于单输出多引用的算子，可能出现多个计算对其输出的加载方式不一致的情况。Graph Lowering会基于重计算进行Lowering，即对于一个可以继续融合的节点，如果其输出被多个节点使用，例如下面例子中的第一个Abs，那么在使用该输出的每个节点对应的KernelBox中，均会包含第一个Abs的计算。通过重计算，能够处理同一份数据按照不同方式进行搬运的场景。
 
 图中CSE（Common Subexpression Elimination，公共表达式消除） 是编译器优化、代码生成以及数学计算中常用的一种优化技术，其核心目标是识别并复用表达式中重复出现的子表达式，以减少冗余计算，提升效率。
 
@@ -119,7 +119,7 @@ class KernelBox {
 6. KernelBox所属的节点的stream label信息与使用KernelBox作为输入的节点的stream label不一致。（如果任意一方未标记，则认为一致）。
 7. 遇到Exp算子会立即Realize。
 8. 控核scope不同核的算子不会融合到同一个融合算子。
-9. 没有使用到的输入会被提前Realize。例如Zeroslike。
+9. 没有使用到的输入会被提前Realize。例如ZerosLike。
 10. 如果算子带有\_super\_kernel\_scope属性，会直接跳过。
 11. 带有\_disable\_autofuse\_scope会跳过Lowering。
 12. 实际属性和算子IR不一致。
