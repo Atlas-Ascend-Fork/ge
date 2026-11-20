@@ -1074,6 +1074,7 @@
 
     - [AnnotatedKernelArgs](python/ge/custom_op/AnnotatedKernelArgs/AnnotatedKernelArgs.md)
       - [简介](python/ge/custom_op/AnnotatedKernelArgs/overview.md)
+      - [append\_custom\_data\_block](python/ge/custom_op/AnnotatedKernelArgs/append_custom_data_block.md)
       - [append\_input](python/ge/custom_op/AnnotatedKernelArgs/append_input.md)
       - [append\_output](python/ge/custom_op/AnnotatedKernelArgs/append_output.md)
       - [append\_scalar](python/ge/custom_op/AnnotatedKernelArgs/append_scalar.md)

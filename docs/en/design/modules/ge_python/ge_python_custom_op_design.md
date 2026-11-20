@@ -337,7 +337,9 @@ The bridge layer injects the Python borrowed view at the execution entry.
 bound as bridge-internal `_get_*` APIs that stay out of the public API and type stubs. `get_stream` and
 `malloc_workspace` are not provided.
 
-`AnnotatedArgsContext` exposes workspace allocation, stream-id query, kernel-argument builder creation, and launch addition. Its input/output tensor and attribute queries are used by the internal schema-bound assembly logic. `AnnotatedKernelArgs` exposes `append_input`, `append_output`, `append_workspace`, and `append_scalar`.
+`AnnotatedArgsContext` exposes workspace allocation, stream-id query, kernel-argument builder creation, and launch addition. Its input/output tensor and attribute queries are used by the internal schema-bound assembly logic. `AnnotatedKernelArgs` exposes `append_input`, `append_output`, `append_workspace`, `append_scalar`, and `append_custom_data_block`.
+
+`AnnotatedKernelArgs.append_custom_data_block(data: bytes)` deep-copies nonempty bytes through C++ `CustomDataBlock` into a read-only device data block pointer. The binding uses `std::string` to pass the data with its original byte length, preserving any zero bytes. Length is not passed to the kernel. Empty data raises `ValueError`, non-bytes raises `TypeError`, and expired or consumed builders raise `RuntimeError`. C++ size limits and the restrictions on .omc and OM2 apply.
 
 `RuntimeAttrs` is a bridge-internal runtime attribute borrowed view. It provides the following typed readers by attribute IR index; the bridge selects one according to the canonical IR attribute type, and it is not exported through `ge.custom_op`:
 
