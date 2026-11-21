@@ -878,6 +878,18 @@ bool ModelSerializeImp::UnserializeModel(Model &model, proto::ModelDef &model_pr
   // Model属性组反序列化
   GE_ASSERT_GRAPH_SUCCESS(AttrGroupSerialize::DeserializeAllAttr(model_proto.attr_groups(), &model));
   auto &graphs_proto = *model_proto.mutable_graph();
+  // 图名为 map 键：重名图会使多线程反序列化并发写同一 ComputeGraphPtr 槽位（数据竞争），
+  // 并导致根图选取与子图挂接失真，此处先做唯一性校验
+  std::set<std::string> graph_names;
+  for (const auto &graph_proto : graphs_proto) {
+    if (!graph_names.insert(graph_proto.name()).second) {
+      REPORT_INNER_ERR_MSG("E18888", "Model [%s] has duplicate graph name [%s], graph num:%zu.",
+                           model_proto.name().c_str(), graph_proto.name().c_str(), graph_names.size());
+      GELOGE(GRAPH_FAILED, "[Check][Param] Model [%s] has duplicate graph name [%s], graph num:%zu.",
+             model_proto.name().c_str(), graph_proto.name().c_str(), graph_names.size());
+      return false;
+    }
+  }
   std::map<std::string, ComputeGraphPtr> graphs;
   if (is_enable_multi_thread) {
     GE_ASSERT_SUCCESS(ParallelUnserializeGraph(graphs, graphs_proto));
