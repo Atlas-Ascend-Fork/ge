@@ -1148,3 +1148,19 @@ TEST_F(InferAndFoldingTest, test_If_InferShape_change_rank_in_branch) {
   runtime_stub.Clear();
   GeRunningEnvFaker().InstallDefault();
 }
+
+TEST_F(InferAndFoldingTest, test_operator_get_subgraph_names_null_impl) {
+  ge::Operator null_op(static_cast<const char_t *>(nullptr));
+  ASSERT_TRUE(null_op.IsEmpty());
+  EXPECT_TRUE(null_op.GetSubgraphNames().empty());
+  std::vector<AscendString> subgraph_names;
+  EXPECT_EQ(null_op.GetSubgraphNames(subgraph_names), GRAPH_FAILED);
+  EXPECT_TRUE(subgraph_names.empty());
+
+  ge::Operator valid_op("st_subgraph_op", "If");
+  valid_op.SubgraphRegister("then_branch", false);
+  EXPECT_EQ(valid_op.GetSubgraphNames().size(), 1UL);
+  EXPECT_EQ(valid_op.GetSubgraphNames(subgraph_names), GRAPH_SUCCESS);
+  ASSERT_EQ(subgraph_names.size(), 1UL);
+  EXPECT_STREQ(subgraph_names[0].GetString(), "then_branch");
+}
