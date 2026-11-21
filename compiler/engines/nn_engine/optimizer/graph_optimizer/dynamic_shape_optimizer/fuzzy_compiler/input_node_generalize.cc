@@ -77,7 +77,8 @@ std::vector<ge::ComputeGraphPtr> InputNodeGeneralize::GetSubgraphsByCurNode(cons
   const auto root_graph = ge::GraphUtils::FindRootGraph(node_ptr->GetOwnerComputeGraph());
   FE_CHECK(root_graph == nullptr,
            FE_LOGW("[GraphOpt][Prepare][GetSubgraphsByCurNode] "
-                   "node[%s] cannot find the root graph"),
+                   "node[%s] cannot find the root graph",
+                   op_name.c_str()),
            return cur_node_subgraph);
   for (const auto &name : sub_graph_names) {
     if (name.empty()) {
