@@ -23,7 +23,7 @@ def generate_constant_pb():
         orig_input_shape = tf.constant(
             np.array([1, 1, 3, 3, 3]).astype("int32"),
         )
-        op = tf.raw_ops.AvgPool3DGrad(
+        tf.raw_ops.AvgPool3DGrad(
             orig_input_shape=orig_input_shape,
             grad=grads,
             ksize=[1, 1, 2, 2, 2],
@@ -32,7 +32,9 @@ def generate_constant_pb():
             data_format="NCDHW",
             name="AvgPool3DGrad",
         )
-        tf.io.write_graph(sess.graph, logdir="./", name="test_constant.pb", as_text=False)
+        tf.io.write_graph(
+            sess.graph, logdir="./", name="test_constant.pb", as_text=False
+        )
 
 
 if __name__ == "__main__":

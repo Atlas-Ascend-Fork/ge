@@ -17,8 +17,12 @@ import onnx
 def gen_onnx():
     X = onnx.helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, [5])
     Y = onnx.helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [5])
-    then_out = onnx.helper.make_tensor_value_info("then_out", onnx.TensorProto.FLOAT, [5])
-    else_out = onnx.helper.make_tensor_value_info("else_out", onnx.TensorProto.FLOAT, [5])
+    then_out = onnx.helper.make_tensor_value_info(
+        "then_out", onnx.TensorProto.FLOAT, [5]
+    )
+    else_out = onnx.helper.make_tensor_value_info(
+        "else_out", onnx.TensorProto.FLOAT, [5]
+    )
 
     const_out_node = onnx.helper.make_node("Constant", inputs=[], outputs=["Y"])
 
@@ -29,7 +33,9 @@ def gen_onnx():
 
     else_body = onnx.helper.make_graph([else_const_node], "else_body", [], [else_out])
 
-    if_node = onnx.helper.make_node("If", inputs=["X"], outputs=[], then_branch=then_body, else_branch=else_body)
+    if_node = onnx.helper.make_node(
+        "If", inputs=["X"], outputs=[], then_branch=then_body, else_branch=else_body
+    )
 
     graph_def = onnx.helper.make_graph([if_node, const_out_node], "if_model", [X], [Y])
 

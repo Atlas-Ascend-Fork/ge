@@ -134,7 +134,9 @@ class TestGraphConstruction:
         assert add_in1_port == 0
 
         # 验证 NetOutput 的输入连接到 Add
-        netoutput_in_node, netoutput_in_port = netoutput_node.get_in_data_nodes_and_port_indexes(0)
+        netoutput_in_node, netoutput_in_port = (
+            netoutput_node.get_in_data_nodes_and_port_indexes(0)
+        )
         assert netoutput_in_node.name == add_node.name
         assert netoutput_in_port == 0
 
@@ -170,7 +172,7 @@ class TestGraphConstruction:
             builder,
             value=Tensor([1, 2, 3, 4, 5], data_type=DataType.DT_UINT32, shape=[5]),
         )
-        constuint16 = Const(
+        Const(
             builder,
             value=Tensor([1, 2, 3, 4, 5], data_type=DataType.DT_UINT16, shape=[5]),
         )
@@ -184,10 +186,16 @@ class TestGraphConstruction:
         )
         constfloat16 = Const(
             builder,
-            value=Tensor([1.0, 2.0, 3.0, 4.0, 5.0], data_type=DataType.DT_FLOAT16, shape=[5]),
+            value=Tensor(
+                [1.0, 2.0, 3.0, 4.0, 5.0], data_type=DataType.DT_FLOAT16, shape=[5]
+            ),
         )
-        input_tensor1 = Add(Add(Add(Add(input_tensor, const), constint32), constint16), constint8)
-        input_tensor2 = Add(Add(Add(Add(input_tensor, const), constuint64), constuint32), constuint8)
+        input_tensor1 = Add(
+            Add(Add(Add(input_tensor, const), constint32), constint16), constint8
+        )
+        input_tensor2 = Add(
+            Add(Add(Add(input_tensor, const), constuint64), constuint32), constuint8
+        )
         input_tensor3 = Add(constfloat32, constfloat16)
         input_tensor1 = Add(input_tensor1, input_tensor2)
         input_tensor1 = Add(input_tensor1, input_tensor3)
@@ -257,7 +265,9 @@ class TestGraphConstruction:
         )
 
         # 2. 零值（exponent < -24，下溢到0）
-        zero_fp16 = Const(builder, value=Tensor([0.0], data_type=DataType.DT_FLOAT16, shape=[1]))
+        zero_fp16 = Const(
+            builder, value=Tensor([0.0], data_type=DataType.DT_FLOAT16, shape=[1])
+        )
 
         # 3. 负数（覆盖符号位）
         negative_fp16 = Const(
@@ -267,21 +277,31 @@ class TestGraphConstruction:
 
         # 4. 非常大的数（exponent > 15，溢出到无穷大）
         # FP16 最大正常值约为 65504，超过这个值会溢出
-        large_fp16 = Const(builder, value=Tensor([70000.0], data_type=DataType.DT_FLOAT16, shape=[1]))
+        large_fp16 = Const(
+            builder, value=Tensor([70000.0], data_type=DataType.DT_FLOAT16, shape=[1])
+        )
 
         # 5. 非常小的数（exponent < -24，下溢到0）
         # 2^-25 约为 2.98e-8，小于这个值会下溢
-        tiny_fp16 = Const(builder, value=Tensor([1e-9], data_type=DataType.DT_FLOAT16, shape=[1]))
+        tiny_fp16 = Const(
+            builder, value=Tensor([1e-9], data_type=DataType.DT_FLOAT16, shape=[1])
+        )
 
         # 6. 非规格化数（-24 <= exponent < -14），不需要舍入
         # 2^-15 约为 3.05e-5，在非规格化范围内
-        denormal_fp16 = Const(builder, value=Tensor([2e-5], data_type=DataType.DT_FLOAT16, shape=[1]))
+        denormal_fp16 = Const(
+            builder, value=Tensor([2e-5], data_type=DataType.DT_FLOAT16, shape=[1])
+        )
 
         # 7. 非规格化数需要舍入的情况（round_bit and ((shifted & 0x1) or remainder)）
-        denormal_round_fp16 = Const(builder, value=Tensor([1.5e-5], data_type=DataType.DT_FLOAT16, shape=[1]))
+        denormal_round_fp16 = Const(
+            builder, value=Tensor([1.5e-5], data_type=DataType.DT_FLOAT16, shape=[1])
+        )
 
         # 8. 规格化数需要舍入（round_bits > 0x1000）
-        round_up_fp16 = Const(builder, value=Tensor([1.0001], data_type=DataType.DT_FLOAT16, shape=[1]))
+        round_up_fp16 = Const(
+            builder, value=Tensor([1.0001], data_type=DataType.DT_FLOAT16, shape=[1])
+        )
 
         # 9. 偶数舍入的情况（round_bits == 0x1000 and half_mant & 0x1）
         # 这个值需要精确构造：mantissa 的低13位是 0x1000，且 half_mant 是奇数
@@ -309,7 +329,9 @@ class TestGraphConstruction:
         # 12. 舍入后指数溢出（half_exp == 0x1F after rounding）
         # FP16 最大指数是 15，对应 FP32 指数是 30
         # 需要构造一个接近最大值且需要舍入的值，使得 half_exp 变成 0x1F
-        max_round_fp16 = Const(builder, value=Tensor([65503.0], data_type=DataType.DT_FLOAT16, shape=[1]))
+        max_round_fp16 = Const(
+            builder, value=Tensor([65503.0], data_type=DataType.DT_FLOAT16, shape=[1])
+        )
 
         # 13. 正无穷大（exponent == 255, mantissa == 0）
         pos_inf_fp16 = Const(
@@ -420,7 +442,9 @@ class TestGraphConstruction:
 
         # 统计 Const 节点数量，应该至少有 15 个（每个测试场景一个）
         const_nodes = [node for node in nodes if node.type == "Const"]
-        assert len(const_nodes) >= 15, f"Expected at least 15 Const nodes, got {len(const_nodes)}"
+        assert len(const_nodes) >= 15, (
+            f"Expected at least 15 Const nodes, got {len(const_nodes)}"
+        )
 
         # 验证包含正常值（normal_fp16 包含 1.0, 2.0, 3.0）
         assert "1.000000" in graph_str or "1.0" in graph_str or "[1" in graph_str
@@ -481,7 +505,9 @@ class TestGraphConstruction:
         assert "Add" in node_types
         assert "NetOutput" in node_types
 
-    def test_all_optional_inputs_graph_construction_with_input_and_owner_graph(self, builder):
+    def test_all_optional_inputs_graph_construction_with_input_and_owner_graph(
+        self, builder
+    ):
         """测试所有输入都是可选的构图功能：所有输入都提供，传递 owner_graph"""
         input1 = builder.create_input(
             index=0,
@@ -555,16 +581,20 @@ class TestGraphConstruction:
         assert "phony_3opi_1o" in node_types5
         assert "NetOutput" in node_types5
 
-    def test_all_optional_inputs_graph_construction_without_input_and_owner_graph(self, builder):
+    def test_all_optional_inputs_graph_construction_without_input_and_owner_graph(
+        self, builder
+    ):
         """测试所有输入都是可选的构图功能：不提供输入，不传递 owner_graph"""
         # 调用C接口返回空，构造返回值时跑异常
         with pytest.raises(
             ValueError,
             match="Please ensure at least one input tensor or an explicit owner_builder is provided when supported",
         ):
-            out4 = phony_3opi_1o()
+            phony_3opi_1o()
 
-    def test_one_optional_input_graph_construction_with_numeric_input_and_owner_graph(self, builder):
+    def test_one_optional_input_graph_construction_with_numeric_input_and_owner_graph(
+        self, builder
+    ):
         """测试只有一个输入是可选的构图功能：输入为数值，显式传递 owner_graph"""
         out = phony_1opi_1o(1, owner_builder=builder, flag=False)
         assert isinstance(out, TensorHolder)
@@ -773,7 +803,9 @@ def build_while02_body_graph():
 def build_if_then_branch_graph():
     then_builder = GraphBuilder("then_branch")
     then_input = then_builder.create_input(0)
-    then_while_output = While([then_input], 2, build_while01_cond_graph(), build_while01_body_graph())
+    then_while_output = While(
+        [then_input], 2, build_while01_cond_graph(), build_while01_body_graph()
+    )
     then_builder.set_graph_output(then_while_output[0], 0)
     then_builder.set_graph_output(then_while_output[1], 1)
     return then_builder.build_and_reset()
@@ -782,7 +814,9 @@ def build_if_then_branch_graph():
 def build_if_else_branch_graph():
     else_builder = GraphBuilder("else_branch")
     else_input = else_builder.create_input(0)
-    else_while_output = While([else_input], 2, build_while02_cond_graph(), build_while02_body_graph())
+    else_while_output = While(
+        [else_input], 2, build_while02_cond_graph(), build_while02_body_graph()
+    )
     else_builder.set_graph_output(else_while_output[0], 0)
     else_builder.set_graph_output(else_while_output[1], 1)
     return else_builder.build_and_reset()

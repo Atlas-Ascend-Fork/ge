@@ -598,3 +598,8 @@ class LlmEngineV2St(unittest.TestCase):
             get_python_dtype_from_wrapper_dtype(-1)
         with self.assertRaises(ValueError):
             get_python_dtype_from_wrapper_dtype(999)
+
+    def test_cluster_config_not_init(self):
+        engine = LLMDataDist(LLMRole.PROMPT, 0)
+        with self.assertRaises(LLMException):
+            engine._cluster_config()

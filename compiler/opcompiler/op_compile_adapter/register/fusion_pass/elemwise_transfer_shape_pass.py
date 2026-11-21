@@ -46,15 +46,24 @@ def trans_shape_by_pattern(graph_info, pattern):
             continue
         max_input_dim = 0
         for input_info in op_info.get_input_list():
-            peer_output_info = graph_info.get_peer_output_by_id(input_info.get_edge_id())
+            peer_output_info = graph_info.get_peer_output_by_id(
+                input_info.get_edge_id()
+            )
             if peer_output_info is not None:
                 max_input_dim = max(len(peer_output_info.get_shape()), max_input_dim)
         for input_info in op_info.get_input_list():
-            peer_data_output_info = graph_info.get_data_output_by_id(input_info.get_edge_id())
-            if peer_data_output_info is not None and not peer_data_output_info.is_shape_null():
+            peer_data_output_info = graph_info.get_data_output_by_id(
+                input_info.get_edge_id()
+            )
+            if (
+                peer_data_output_info is not None
+                and not peer_data_output_info.is_shape_null()
+            ):
                 data_shape_size = len(peer_data_output_info.get_shape())
                 if data_shape_size <= 1:
-                    new_shape = [1] * (max_input_dim - data_shape_size) + peer_data_output_info.get_shape()
+                    new_shape = [1] * (
+                        max_input_dim - data_shape_size
+                    ) + peer_data_output_info.get_shape()
                     peer_data_output_info.set_shape(new_shape)
 
 
@@ -79,7 +88,9 @@ def trans_shape_input_bias(op_info, graph_info):
     peer_output_x = graph_info.get_peer_output_by_id(input_x.get_edge_id())
     peer_output_bias = graph_info.get_peer_output_by_id(input_bias.get_edge_id())
     attr_data_format = op_info.get_attr_by_name("data_format")
-    is_param_invalid = peer_output_x is None or peer_output_bias is None or attr_data_format is None
+    is_param_invalid = (
+        peer_output_x is None or peer_output_bias is None or attr_data_format is None
+    )
     if is_param_invalid:
         return
     shape_x = peer_output_x.get_shape()
@@ -166,7 +177,9 @@ def trans_shape_of_requant_s16(graph_info):
             if input_info.get_edge_type() != "Data":
                 continue
             if idx in [0, 2]:
-                peer_output_info = graph_info.get_peer_output_by_id(input_info.get_edge_id())
+                peer_output_info = graph_info.get_peer_output_by_id(
+                    input_info.get_edge_id()
+                )
                 if peer_output_info is None:
                     continue
                 peer_shape = peer_output_info.get_shape()
@@ -199,7 +212,9 @@ def trans_shape_of_bninference(graph_info):
         if op_info.get_op_type() != "BNInferenceD":
             continue
         for idx, input_info in enumerate(op_info.get_input_list()):
-            peer_output_info = graph_info.get_data_output_by_id(input_info.get_edge_id())
+            peer_output_info = graph_info.get_data_output_by_id(
+                input_info.get_edge_id()
+            )
             if peer_output_info is None:
                 continue
             peer_shape = peer_output_info.get_shape()

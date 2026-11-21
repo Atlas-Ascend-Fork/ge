@@ -25,9 +25,17 @@ class MsgTypeRegister:
 
     def register(self, msg_type, clz, serialize_func, deserialize_func, size_func=None):
         int_msg_type = int(msg_type)
-        if int_msg_type in self._registered_msg and self._registered_msg[int_msg_type] != clz:
-            raise utils.DfException(f"msg_type:{msg_type} has been registered, class:{clz}.")
-        if clz in self._registered_clz_to_msg_type and int_msg_type != self._registered_clz_to_msg_type[clz]:
+        if (
+            int_msg_type in self._registered_msg
+            and self._registered_msg[int_msg_type] != clz
+        ):
+            raise utils.DfException(
+                f"msg_type:{msg_type} has been registered, class:{clz}."
+            )
+        if (
+            clz in self._registered_clz_to_msg_type
+            and int_msg_type != self._registered_clz_to_msg_type[clz]
+        ):
             raise utils.DfException(
                 f"class:{clz} has been registered, msg_type:{self._registered_clz_to_msg_type[clz]}."
             )

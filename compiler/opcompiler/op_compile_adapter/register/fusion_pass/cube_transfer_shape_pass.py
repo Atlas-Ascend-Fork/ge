@@ -42,7 +42,9 @@ def trans_shape_of_conv3d(graph_info):
             input_info = op_info.get_input_list()[1]
             if not input_info.is_data_edge():
                 continue
-            peer_output_info = graph_info.get_peer_output_by_id(input_info.get_edge_id())
+            peer_output_info = graph_info.get_peer_output_by_id(
+                input_info.get_edge_id()
+            )
             if peer_output_info is None:
                 continue
             peer_out_shape = peer_output_info.get_shape()

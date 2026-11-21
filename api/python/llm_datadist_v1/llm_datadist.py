@@ -56,7 +56,6 @@ class LLMDataDist(object):
         self._enable_local_comm_res = False
 
     def _check_flow_graph_max_size(self, options: Dict[str, str]) -> None:
-        mem_utilization = float(options.get("llm.MemoryUtilization", "0.95"))
         value = options.get("ge.flowGraphMemMaxSize", None)
         if value is None:
             return
@@ -88,14 +87,20 @@ class LLMDataDist(object):
         self._enable_local_comm_res = "llm.LocalCommRes" in options
         if self._enable_local_comm_res and "llm.EnableCacheManager" not in options:
             self._engine_options["llm.EnableCacheManager"] = "1"
-        if self._enable_local_comm_res and "llm.EnableRemoteCacheAccessible" not in options:
+        if (
+            self._enable_local_comm_res
+            and "llm.EnableRemoteCacheAccessible" not in options
+        ):
             self._engine_options["llm.EnableRemoteCacheAccessible"] = "1"
         self._enable_cache_mgr = (
-            "llm.EnableCacheManager" in self._engine_options and self._engine_options["llm.EnableCacheManager"] == "1"
+            "llm.EnableCacheManager" in self._engine_options
+            and self._engine_options["llm.EnableCacheManager"] == "1"
         )
         log.info("options = %s", self._engine_options)
         self._llm_datadist = llm_wrapper
-        EngineConfig.gen_cluster_info_if_not_exist(self._cluster_id, self._role, self._engine_options)
+        EngineConfig.gen_cluster_info_if_not_exist(
+            self._cluster_id, self._role, self._engine_options
+        )
         ret = self._llm_datadist.initialize(self._cluster_id, self._engine_options)
         handle_llm_status(
             ret,
@@ -134,7 +139,9 @@ class LLMDataDist(object):
 
     def _cluster_config(self):
         if self._engine_config is None:
-            self._engine_config = EngineConfig.from_engine_options(self._role == LLMRole.PROMPT, self._engine_options)
+            self._engine_config = EngineConfig.from_engine_options(
+                self._role == LLMRole.PROMPT, self._engine_options
+            )
         return self._engine_config.cluster_config
 
     def check_link_status(self, remote_cluster_id: int):
@@ -142,10 +149,14 @@ class LLMDataDist(object):
         self._check_is_not_cache_mgr_mode("check_link_status")
         check_uint64("remote_cluster_id", remote_cluster_id)
         ret = self._llm_datadist.check_link_status(remote_cluster_id)
-        handle_llm_status(ret, "[check_link_status]", f"remote_cluster_id is {remote_cluster_id}")
+        handle_llm_status(
+            ret, "[check_link_status]", f"remote_cluster_id is {remote_cluster_id}"
+        )
         log.info("[check_link_status] success")
 
-    def link_clusters(self, clusters: Union[List[LLMClusterInfo], Tuple[LLMClusterInfo]], timeout=3000):
+    def link_clusters(
+        self, clusters: Union[List[LLMClusterInfo], Tuple[LLMClusterInfo]], timeout=3000
+    ):
         self._check_is_inited()
         check_int32("timeout", timeout)
         raise_if_false(timeout > 0, "Param timeout should be greater than 0.")
@@ -186,12 +197,16 @@ class LLMDataDist(object):
         ret, rets = self._llm_datadist.unlink_clusters(cluster_list, timeout, force)
         return code_2_status(ret), [code_2_status(cluster_ret) for cluster_ret in rets]
 
-    def switch_role(self, role: LLMRole, switch_options: Optional[Dict[str, str]] = None):
+    def switch_role(
+        self, role: LLMRole, switch_options: Optional[Dict[str, str]] = None
+    ):
         self._check_is_inited()
         check_isinstance("role", role, LLMRole)
         raise_if_false(self._role != role, f"role not changed, role = {role.name}")
         role_str = self._role_to_str(role)
-        log.info(f"[switch_role] [{self._role.name}->{role.name}] start, switch_options = {switch_options}")
+        log.info(
+            f"[switch_role] [{self._role.name}->{role.name}] start, switch_options = {switch_options}"
+        )
         check_isinstance("switch_options", switch_options, dict)
         options = switch_options.copy() if switch_options is not None else {}
         if role == LLMRole.PROMPT:

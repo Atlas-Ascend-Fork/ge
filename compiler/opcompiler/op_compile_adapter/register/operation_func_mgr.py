@@ -68,7 +68,11 @@ def cast_in_to_fp32(ori_inputs):
                 else:
                     new_input.append(_input)
             inputs.append(new_input)
-        elif isinstance(ori_input, dict) and "dtype" in ori_input and ori_input["dtype"] == "bfloat16":
+        elif (
+            isinstance(ori_input, dict)
+            and "dtype" in ori_input
+            and ori_input["dtype"] == "bfloat16"
+        ):
             new_input = ori_input.copy()
             new_input["dtype"] = "float32"
             inputs.append(new_input)
@@ -284,10 +288,14 @@ def register_classify_processor(pattern=None, op_type=None, support_type="input"
         decorator to register classify func
     """
     if pattern is None and op_type is None:
-        raise RuntimeError("Register op classify processor failed, pattern or op_type is none!")
+        raise RuntimeError(
+            "Register op classify processor failed, pattern or op_type is none!"
+        )
     support_types = ("input", "all")
     if support_type not in support_types:
-        raise RuntimeError("Unsupported type, it must be one of ('input', 'all') and the data type must be string ")
+        raise RuntimeError(
+            "Unsupported type, it must be one of ('input', 'all') and the data type must be string "
+        )
     global _op_pattern_classifys
     global _op_type_classifys
 
@@ -310,7 +318,9 @@ def get_classify_processor(pattern, op_type):
     :return:
     """
     if pattern is None and op_type is None:
-        raise RuntimeError("Get op classify processor failed, pattern or op_type is none")
+        raise RuntimeError(
+            "Get op classify processor failed, pattern or op_type is none"
+        )
 
     classify_func = None
     if op_type is not None:

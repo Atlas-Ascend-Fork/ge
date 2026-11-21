@@ -14,26 +14,32 @@
 tbe register
 """
 
-from tbe.common.register.class_manager import FusionPassItem, InvokeStage, OpCompute, Operator, Priority
+from tbe.common.register.class_manager import (
+    FusionPassItem as FusionPassItem,
+    InvokeStage as InvokeStage,
+    OpCompute as OpCompute,
+    Operator as Operator,
+    Priority as Priority,
+)
 from tbe.common.register.register_api import (
-    get_all_fusion_pass,
-    get_fusion_buildcfg,
-    get_op_compute,
-    get_op_register_pattern,
-    get_operator,
-    get_param_generalization,
-    get_tune_param_check_supported,
-    get_tune_space,
-    register_fusion_pass,
-    register_op_compute,
-    register_op_param_pass,
-    register_operator,
-    register_param_generalization,
-    register_pass_for_fusion,
-    register_tune_param_check_supported,
-    register_tune_space,
-    reset,
-    set_fusion_buildcfg,
+    get_all_fusion_pass as get_all_fusion_pass,
+    get_fusion_buildcfg as get_fusion_buildcfg,
+    get_op_compute as get_op_compute,
+    get_op_register_pattern as get_op_register_pattern,
+    get_operator as get_operator,
+    get_param_generalization as get_param_generalization,
+    get_tune_param_check_supported as get_tune_param_check_supported,
+    get_tune_space as get_tune_space,
+    register_fusion_pass as register_fusion_pass,
+    register_op_compute as register_op_compute,
+    register_op_param_pass as register_op_param_pass,
+    register_operator as register_operator,
+    register_param_generalization as register_param_generalization,
+    register_pass_for_fusion as register_pass_for_fusion,
+    register_tune_param_check_supported as register_tune_param_check_supported,
+    register_tune_space as register_tune_space,
+    reset as reset,
+    set_fusion_buildcfg as set_fusion_buildcfg,
 )
 
-from . import fusion_pass
+from . import fusion_pass as fusion_pass

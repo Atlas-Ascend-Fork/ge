@@ -96,7 +96,9 @@ def get_next_op(op_list, current_op):
             if op_node.get(TYPE_STR) == DATA:
                 continue
             for input_desc in op_node.get(INPUT_DESC, []):
-                if output_desc.get(NAME_STR) is not None and output_desc.get(NAME_STR) == input_desc.get(NAME_STR):
+                if output_desc.get(NAME_STR) is not None and output_desc.get(
+                    NAME_STR
+                ) == input_desc.get(NAME_STR):
                     return op_node
     return {}
 
@@ -154,7 +156,10 @@ def is_tail_op(op_list, current_op):
             if op_node.get(TYPE_STR) == DATA:
                 continue
             for input_desc in op_node.get(INPUT_DESC, []):
-                if output_desc.get(NAME_STR) is not None and output_desc[NAME_STR] == input_desc[NAME_STR]:
+                if (
+                    output_desc.get(NAME_STR) is not None
+                    and output_desc[NAME_STR] == input_desc[NAME_STR]
+                ):
                     tail_op_flag = False
     return tail_op_flag
 
@@ -194,14 +199,23 @@ def validity_pre_check(op_list, current_op, strided_read_flag, tail_op, tail_op_
     for output_desc in current_op.get(OUTPUT_DESC, []):
         if not output_desc:
             continue
-        if L1_FUSION_TYPE in output_desc and output_desc[L1_FUSION_TYPE] != L1_FUSION_DISABLE:
+        if (
+            L1_FUSION_TYPE in output_desc
+            and output_desc[L1_FUSION_TYPE] != L1_FUSION_DISABLE
+        ):
             return RET_FALSE
     if current_op.get(TYPE_STR) == DATA:
         return RET_CONTINUE
-    if current_op.get(PATTERN_STR) == ELTWISE_PATTERN and len(current_op.get(INPUT_DESC, [])) > ELTWISE_INPUT_SIZE_MAX:
+    if (
+        current_op.get(PATTERN_STR) == ELTWISE_PATTERN
+        and len(current_op.get(INPUT_DESC, [])) > ELTWISE_INPUT_SIZE_MAX
+    ):
         return RET_FALSE
     if len(current_op.get(OUTPUT_DESC, [])) == OUTPUT_DESC_SIZE_MAX:
-        if current_op.get(PATTERN_STR, INVALID_PATTERN) not in double_output_oplist or strided_read_flag:
+        if (
+            current_op.get(PATTERN_STR, INVALID_PATTERN) not in double_output_oplist
+            or strided_read_flag
+        ):
             return RET_FALSE
         tail_op_list.append(current_op)
         if is_tail_op(op_list, current_op):
@@ -230,7 +244,10 @@ def validity_final_check(head_struct_oplist, tail_op_list, strided_write_flag):
     head_oplist = (CONV, STRIDED_READ)
     if strided_write_flag and len(tail_op_list) == DOUBLE_OUTPUT:
         return False
-    if len(head_struct_oplist) == HEAD_STRUCT_OP_SIZE_ONE and head_struct_oplist[0].get(TYPE_STR) == CONV:
+    if (
+        len(head_struct_oplist) == HEAD_STRUCT_OP_SIZE_ONE
+        and head_struct_oplist[0].get(TYPE_STR) == CONV
+    ):
         return True
     if (
         len(head_struct_oplist) == HEAD_STRUCT_OP_SIZE_TWO
@@ -269,7 +286,9 @@ def total_struct_check(op_list, head_op, tail_op, tail_op_list):
     head_struct_oplist = []
     for op in op_list:
         if OUTPUT_DESC in op:
-            ret = validity_pre_check(op_list, op, strided_read_flag, tail_op, tail_op_list)
+            ret = validity_pre_check(
+                op_list, op, strided_read_flag, tail_op, tail_op_list
+            )
             if ret == RET_CONTINUE:
                 continue
             if ret == RET_FALSE:
@@ -286,7 +305,10 @@ def total_struct_check(op_list, head_op, tail_op, tail_op_list):
                 head_op.update(op)
                 head_struct_oplist.append(op)
             if not next_op:
-                if op.get(PATTERN_STR, INVALID_PATTERN) not in tail_oplist and op.get(TYPE_STR) != TRANS_DATA:
+                if (
+                    op.get(PATTERN_STR, INVALID_PATTERN) not in tail_oplist
+                    and op.get(TYPE_STR) != TRANS_DATA
+                ):
                     return False
                 if op.get(PATTERN_STR, INVALID_PATTERN) == STRIDED_WRITE_PATTERN:
                     strided_write_flag = True
@@ -321,7 +343,9 @@ def pattern1_match(op_list, head_op, tail_op):
         next_op = get_next_op(op_list, head_op)
         if not next_op or next_op.get(PATTERN_STR, INVALID_PATTERN) != ELTWISE_PATTERN:
             return False
-        if next_op.get(NAME_STR) is not None and next_op.get(NAME_STR) == tail_op.get(NAME_STR):
+        if next_op.get(NAME_STR) is not None and next_op.get(NAME_STR) == tail_op.get(
+            NAME_STR
+        ):
             return True
         head_op = next_op
 
@@ -352,7 +376,9 @@ def pattern2_match(op_list, head_op, tail_op):
             and next_op.get(PATTERN_STR, INVALID_PATTERN) != QUANT_PATTERN
         ):
             return False
-        if next_op.get(NAME_STR) is not None and next_op.get(NAME_STR) == tail_op.get(NAME_STR):
+        if next_op.get(NAME_STR) is not None and next_op.get(NAME_STR) == tail_op.get(
+            NAME_STR
+        ):
             return True
         head_op = next_op
 
@@ -387,7 +413,9 @@ def pattern3_match(op_list, head_op, tail_op):
             and next_op.get(PATTERN_STR, INVALID_PATTERN) != QUANT_PATTERN
         ):
             return False
-        if next_op.get(NAME_STR) is not None and next_op.get(NAME_STR) == tail_op.get(NAME_STR):
+        if next_op.get(NAME_STR) is not None and next_op.get(NAME_STR) == tail_op.get(
+            NAME_STR
+        ):
             return True
         head_op = next_op
 
@@ -447,7 +475,10 @@ def can_user_define_compute(op_list, tail_op_list):
             next_op = get_next_op(op_list, head_op)
             if next_op.get(PATTERN_STR, INVALID_PATTERN) == DEQUANT_PATTERN:
                 head_op = next_op
-        if tail_op and tail_op.get(PATTERN_STR, INVALID_PATTERN) == STRIDED_WRITE_PATTERN:
+        if (
+            tail_op
+            and tail_op.get(PATTERN_STR, INVALID_PATTERN) == STRIDED_WRITE_PATTERN
+        ):
             tail_op = get_pre_op(op_list, tail_op)
 
         if len(tail_op_list) == SINGLE_OUTPUT:
@@ -523,8 +554,12 @@ def add_rm_op_in_op_list(op_list, tail_op_list):
                     if output_desc.get(NAME_STR).find(MULTI_REFERED_FLAG) == -1:
                         output_desc[NAME_STR] = NAME_SUFFIX_FORMAT_STR.format(name)
                     else:
-                        _, name_suffix = output_desc.get(NAME_STR).split(MULTI_REFERED_FLAG, 1)
-                        output_desc[NAME_STR] = MULTI_REFERED_FLAG_FORMAT_STR.format(name, name_suffix)
+                        _, name_suffix = output_desc.get(NAME_STR).split(
+                            MULTI_REFERED_FLAG, 1
+                        )
+                        output_desc[NAME_STR] = MULTI_REFERED_FLAG_FORMAT_STR.format(
+                            name, name_suffix
+                        )
                     rm_op[INPUT_DESC][0][NAME_STR] = output_desc[NAME_STR]
                 last_op_desc_flag = True
         else:

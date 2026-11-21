@@ -135,7 +135,7 @@ class MetaRunContextTest(unittest.TestCase):
         self.assertEqual(tensor1.get_shape(), [1, 3])
         self.assertEqual(tensor1.get_data_type(), np.int32)
         self.assertRaises(TypeError, context.alloc_tensor_msg, [2, 3], 1)
-        msg3 = context.alloc_empty_data_msg()
+        context.alloc_empty_data_msg()
         print(context)
 
     def test_set_output(self):
@@ -163,8 +163,12 @@ class MetaRunContextTest(unittest.TestCase):
         cfg.set_data_pos([(1, 2)])
         msg1 = context.alloc_tensor_msg([2, 3], dt.DT_FLOAT16)
         out = np.array([[1, 2]], dtype=np.int32)
-        self.assertEqual(context.set_multi_outputs(0, [msg1, out], cfg), ff.FLOW_FUNC_SUCCESS)
-        self.assertRaises(TypeError, context.set_multi_outputs, 0, [msg1, out, cfg], cfg)
+        self.assertEqual(
+            context.set_multi_outputs(0, [msg1, out], cfg), ff.FLOW_FUNC_SUCCESS
+        )
+        self.assertRaises(
+            TypeError, context.set_multi_outputs, 0, [msg1, out, cfg], cfg
+        )
 
     def test_run_flow_model(self):
         orig_context = fw.MetaRunContext()

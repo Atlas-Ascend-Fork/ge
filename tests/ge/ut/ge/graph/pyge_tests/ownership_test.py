@@ -38,7 +38,9 @@ class TestOwnershipTransfer:
     def test_graph_builder_build_ownership(self, builder):
         """测试 GraphBuilder.build_and_reset() 返回的 Graph 对象拥有所有权"""
         # 创建输入和常量
-        input_tensor = builder.create_input(0, data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224])
+        input_tensor = builder.create_input(
+            0, data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224]
+        )
 
         # 设置输出
         builder.set_graph_output(input_tensor, 0)

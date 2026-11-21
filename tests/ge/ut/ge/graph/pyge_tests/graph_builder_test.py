@@ -71,9 +71,13 @@ class TestGraphBuilder:
 
     def test_create_inputs_invalid_args(self, builder):
         """测试创建多个简单输入无效参数"""
-        with pytest.raises(TypeError, match="Number of inputs must be a positive integer"):
+        with pytest.raises(
+            TypeError, match="Number of inputs must be a positive integer"
+        ):
             builder.create_inputs(0)
-        with pytest.raises(TypeError, match="Start index must be a non-negative integer"):
+        with pytest.raises(
+            TypeError, match="Start index must be a non-negative integer"
+        ):
             builder.create_inputs(1, start_index=-1)
 
     def test_create_input_with_details(self, builder):
@@ -112,7 +116,9 @@ class TestGraphBuilder:
 
     def test_create_const_int64_invalid_value(self, builder):
         """测试无效值创建 int64 常量"""
-        with pytest.raises(TypeError, match="Value must be an integer or list of integers"):
+        with pytest.raises(
+            TypeError, match="Value must be an integer or list of integers"
+        ):
             builder.create_const_int64("invalid")
 
     def test_create_const_int64_shape_mismatch(self, builder):
@@ -411,7 +417,7 @@ class TestGraphBuilder:
         graph = builder.build_and_reset()
         assert graph.get_attr("int_attr") == 42
         assert graph.get_attr("str_attr") == "hello"
-        assert graph.get_attr("bool_attr") == True
+        assert graph.get_attr("bool_attr") is True
 
     def test_set_graph_attributes_invalid_args(self, builder):
         """测试无效参数设置图属性"""
@@ -445,7 +451,7 @@ class TestGraphBuilder:
 
         # 测试设置 bool 属性
         builder.set_tensor_attr_bool(tensor, "bool_attr", True)
-        assert producer.get_output_attr("bool_attr", 0) == True
+        assert producer.get_output_attr("bool_attr", 0) is True
 
     def test_set_tensor_attributes_invalid_args(self, builder):
         """测试无效参数设置tensor属性"""
@@ -483,7 +489,7 @@ class TestGraphBuilder:
 
         # 测试设置 bool 属性
         builder.set_node_attr_bool(tensor, "bool_attr", True)
-        assert producer.get_attr("bool_attr") == True
+        assert producer.get_attr("bool_attr") is True
 
     def test_set_node_attributes_invalid_args(self, builder):
         """测试无效参数设置节点属性"""
@@ -550,7 +556,9 @@ class TestGraphBuilder:
 
     def test_deepcopy_not_supported(self, builder):
         """测试深复制不支持"""
-        with pytest.raises(RuntimeError, match="GraphBuilder does not support deepcopy"):
+        with pytest.raises(
+            RuntimeError, match="GraphBuilder does not support deepcopy"
+        ):
             builder.__deepcopy__({})
 
     @pytest.mark.parametrize(
@@ -583,7 +591,9 @@ class TestGraphBuilder:
         input_tensor = builder.create_input(0, format=format)
         assert isinstance(input_tensor, TensorHolder)
 
-    @pytest.mark.parametrize("shape", [[1], [1, 2], [1, 2, 3], [1, 2, 3, 4], [224, 224, 3]])
+    @pytest.mark.parametrize(
+        "shape", [[1], [1, 2], [1, 2, 3], [1, 2, 3, 4], [224, 224, 3]]
+    )
     def test_create_input_with_different_shapes(self, builder, shape):
         """测试使用不同形状创建输入"""
         input_tensor = builder.create_input(0, shape=shape)
@@ -609,14 +619,14 @@ class TestGraphBuilder:
 
         # 创建常量
         const1 = builder.create_const_float(1.0)
-        const2 = builder.create_const_float(2.0)
+        builder.create_const_float(2.0)
 
         # 创建标量和向量
-        scalar = builder.create_scalar_int64(100)
-        vector = builder.create_vector_int64([1, 2, 3, 4])
+        builder.create_scalar_int64(100)
+        builder.create_vector_int64([1, 2, 3, 4])
 
         # 创建变量
-        variable = builder.create_variable(0, "my_var")
+        builder.create_variable(0, "my_var")
 
         # 设置图属性
         builder.set_graph_attr_string("graph_name", "complex_graph")
@@ -667,7 +677,7 @@ class TestGraphBuilder:
             # 验证属性已设置
             assert producer2.get_attr("node_type") == "custom_node"
             assert producer2.get_attr("priority") == 100
-            assert producer2.get_attr("enabled") == True
+            assert producer2.get_attr("enabled") is True
             assert producer2.get_attr("description") == "test node"
             assert producer2.get_attr("dimensions") == [1, 2, 3]
             assert producer2.get_attr("flags") == [True, False, True]
@@ -700,7 +710,7 @@ class TestGraphBuilder:
             assert producer1.get_attr("outer_attr") == "outer_value"
             assert producer1.get_attr("common_attr") == "outer_common"
             assert producer1.get_attr("outer_int") == 10
-            assert producer1.get_attr("outer_bool") == True
+            assert producer1.get_attr("outer_bool") is True
 
             # 内层作用域
             with attr_scope(
@@ -720,10 +730,10 @@ class TestGraphBuilder:
                 assert producer2.get_attr("outer_attr") == "outer_value"
                 assert producer2.get_attr("common_attr") == "inner_common"  # 被覆盖
                 assert producer2.get_attr("outer_int") == 10
-                assert producer2.get_attr("outer_bool") == True
+                assert producer2.get_attr("outer_bool") is True
                 assert producer2.get_attr("inner_attr") == "inner_value"
                 assert producer2.get_attr("inner_int") == 20
-                assert producer2.get_attr("inner_bool") == False
+                assert producer2.get_attr("inner_bool") is False
                 assert producer2.get_attr("inner_list") == [1, 2, 3, 4]
 
             # 回到外层作用域，创建新的tensor
@@ -734,7 +744,7 @@ class TestGraphBuilder:
             assert producer3.get_attr("outer_attr") == "outer_value"
             assert producer3.get_attr("common_attr") == "outer_common"  # 恢复原值
             assert producer3.get_attr("outer_int") == 10
-            assert producer3.get_attr("outer_bool") == True
+            assert producer3.get_attr("outer_bool") is True
 
             # 内层属性应该不存在
             try:
@@ -771,7 +781,7 @@ class TestGraphBuilder:
 
                 # 基本类型
                 assert producer.get_attr("int_attr") == 42
-                assert producer.get_attr("bool_attr") == True
+                assert producer.get_attr("bool_attr") is True
                 assert producer.get_attr("string_attr") == "hello world"
 
                 # 列表类型
@@ -781,7 +791,9 @@ class TestGraphBuilder:
                 expected_float_list = [1.1, 2.2, 3.3]
                 assert len(float_list) == len(expected_float_list)
                 for expected, actual in zip(expected_float_list, float_list):
-                    assert abs(expected - actual) < 1e-6, f"Float list mismatch: expected {expected}, got {actual}"
+                    assert abs(expected - actual) < 1e-6, (
+                        f"Float list mismatch: expected {expected}, got {actual}"
+                    )
                 assert producer.get_attr("bool_list") == [True, False, True, False]
                 assert producer.get_attr("string_list") == ["a", "b", "c"]
 
@@ -994,7 +1006,7 @@ class TestGraphBuilder:
         from ge._capi.pygeapi_wrapper import get_geapi_lib, is_geapi_lib_loaded
 
         # 检查库是否加载
-        assert is_geapi_lib_loaded() == True
+        assert is_geapi_lib_loaded() is True
         # 获取库句柄
         lib = get_geapi_lib()
         assert lib is not None
@@ -1003,7 +1015,7 @@ class TestGraphBuilder:
         from ge._capi.pysession_wrapper import get_session_lib, is_session_lib_loaded
 
         # 检查库是否加载
-        assert is_session_lib_loaded() == True
+        assert is_session_lib_loaded() is True
         # 获取库句柄
         lib = get_session_lib()
         assert lib is not None

@@ -107,15 +107,25 @@ class KvCacheManager(object):
         """
         check_isinstance("cache_desc", cache_desc, CacheDesc)
         check_isinstance("blocks_cache_key", blocks_cache_key, BlocksCacheKey)
-        raise_if_false(cache_desc.num_tensors > 0, "num_tensors should be bigger than zero.")
+        raise_if_false(
+            cache_desc.num_tensors > 0, "num_tensors should be bigger than zero."
+        )
         raise_if_false(
             cache_desc.placement == Placement.DEVICE,
             "Only support allocate device cache",
         )
         if self._role == LLMRole.DECODER:
-            raise_if_false(blocks_cache_key is None, "blocks_cache_key is not supported by DECODER")
-        wrapped_cache_keys = [pack_block_cache_key(blocks_cache_key)] if blocks_cache_key is not None else []
-        ret, cache_id_and_addr = self._llm_engine.allocate_cache(pack_cache_desc(cache_desc), wrapped_cache_keys)
+            raise_if_false(
+                blocks_cache_key is None, "blocks_cache_key is not supported by DECODER"
+            )
+        wrapped_cache_keys = (
+            [pack_block_cache_key(blocks_cache_key)]
+            if blocks_cache_key is not None
+            else []
+        )
+        ret, cache_id_and_addr = self._llm_engine.allocate_cache(
+            pack_cache_desc(cache_desc), wrapped_cache_keys
+        )
         handle_llm_status(ret, "[allocate_blocks_cache]", f"cache_desc = {cache_desc}")
         kv_cache = KvCache(cache_id_and_addr[0], cache_desc, cache_id_and_addr[1], self)
         log.info("[allocate_blocks_cache] success, cache_id = %d", kv_cache.cache_id)
@@ -171,7 +181,9 @@ class KvCacheManager(object):
         """
         check_isinstance("cache_desc", cache_desc, CacheDesc)
         check_isinstance("cache_keys", cache_keys, [list, tuple], CacheKey)
-        raise_if_false(cache_desc.num_tensors > 0, "num_tensors should be bigger than zero.")
+        raise_if_false(
+            cache_desc.num_tensors > 0, "num_tensors should be bigger than zero."
+        )
         raise_if_false(
             cache_desc.placement == Placement.DEVICE,
             "Only support allocate device cache",
@@ -188,7 +200,9 @@ class KvCacheManager(object):
                 self._role.name,
             )
         wrapped_cache_keys = [pack_cache_key(cache_key) for cache_key in cache_keys]
-        ret, cache_id_and_addr = self._llm_engine.allocate_cache(pack_cache_desc(cache_desc), wrapped_cache_keys)
+        ret, cache_id_and_addr = self._llm_engine.allocate_cache(
+            pack_cache_desc(cache_desc), wrapped_cache_keys
+        )
         handle_llm_status(ret, "[allocate_cache]", f"cache_desc = {cache_desc}")
         kv_cache = KvCache(cache_id_and_addr[0], cache_desc, cache_id_and_addr[1], self)
         log.info("[allocate_cache] success, cache_id = %d", kv_cache.cache_id)
@@ -254,7 +268,9 @@ class KvCacheManager(object):
         """
         src_layer_range = kwargs.get("src_layer_range")
         dst_layer_range = kwargs.get("dst_layer_range")
-        tensor_num_per_layer = kwargs.get("tensor_num_per_layer", _NUM_TENSORS_PER_LAYER)
+        tensor_num_per_layer = kwargs.get(
+            "tensor_num_per_layer", _NUM_TENSORS_PER_LAYER
+        )
         self._check_role("[pull_blocks]", LLMRole.DECODER)
         check_isinstance("prompt_cache_key", prompt_cache_key, BlocksCacheKey)
         check_isinstance("decoder_kv_cache", decoder_kv_cache, KvCache)
@@ -298,8 +314,12 @@ class KvCacheManager(object):
             -1,
             tensor_num_per_layer,
         )
-        ret = self._llm_engine.pull_cache(decoder_kv_cache.cache_id, pack_block_cache_key(prompt_cache_key), param)
-        handle_llm_status(ret, "[pull_blocks]", f"prompt_cache_key = {prompt_cache_key}")
+        ret = self._llm_engine.pull_cache(
+            decoder_kv_cache.cache_id, pack_block_cache_key(prompt_cache_key), param
+        )
+        handle_llm_status(
+            ret, "[pull_blocks]", f"prompt_cache_key = {prompt_cache_key}"
+        )
         log.info("[pull_blocks] success")
 
     def pull_cache(
@@ -345,7 +365,9 @@ class KvCacheManager(object):
         dst_layer_range = kwargs.get("dst_layer_range")
         src_cache_offset = kwargs.get("src_cache_offset")
         dst_cache_offset = kwargs.get("dst_cache_offset")
-        tensor_num_per_layer = kwargs.get("tensor_num_per_layer", _NUM_TENSORS_PER_LAYER)
+        tensor_num_per_layer = kwargs.get(
+            "tensor_num_per_layer", _NUM_TENSORS_PER_LAYER
+        )
         self._check_role("[pull_cache]", LLMRole.DECODER)
         check_isinstance("cache_key", cache_key, [CacheKey, CacheKeyByIdAndIndex])
         check_isinstance("kv_cache", kv_cache, KvCache)
@@ -357,8 +379,12 @@ class KvCacheManager(object):
             "[pull_cache] param check failed, size ({0}) is invalid, should be = -1 or > 0",
             size,
         )
-        src_cache_offset = check_positive_or_set_default("src_cache_offset", src_cache_offset)
-        dst_cache_offset = check_positive_or_set_default("dst_cache_offset", dst_cache_offset)
+        src_cache_offset = check_positive_or_set_default(
+            "src_cache_offset", src_cache_offset
+        )
+        dst_cache_offset = check_positive_or_set_default(
+            "dst_cache_offset", dst_cache_offset
+        )
         if check_type(cache_key, CacheKey):
             KvCacheManager.check_cache_key(cache_key)
             packed_cache_key = pack_cache_key(cache_key)
@@ -595,7 +621,9 @@ class KvCacheManager(object):
         tensors = [Tensor.from_tensor_tuple(output) for output in outputs]
         return tensors
 
-    def swap_blocks(self, src: KvCache, dst: KvCache, src_to_dst: Dict[int, int]) -> None:
+    def swap_blocks(
+        self, src: KvCache, dst: KvCache, src_to_dst: Dict[int, int]
+    ) -> None:
         """
         交换blocks
 
@@ -607,8 +635,12 @@ class KvCacheManager(object):
         self._verify_caches(src, dst, src_to_dst)
         src_placement = src.cache_desc.placement
         dst_placement = dst.cache_desc.placement
-        is_swap_in = (src_placement == Placement.HOST) and (dst_placement == Placement.DEVICE)
-        is_swap_out = (src_placement == Placement.DEVICE) and (dst_placement == Placement.HOST)
+        is_swap_in = (src_placement == Placement.HOST) and (
+            dst_placement == Placement.DEVICE
+        )
+        is_swap_out = (src_placement == Placement.DEVICE) and (
+            dst_placement == Placement.HOST
+        )
         raise_if_false(
             is_swap_in or is_swap_out,
             f"swap src placement:{src_placement} to dst placement:{dst_placement} is not support",
@@ -657,7 +689,9 @@ class KvCacheManager(object):
         )
 
     def _check_role(self, func_name, role: LLMRole) -> None:
-        raise_if_false(self._role == role, "{0} is not supported by {1}", func_name, self._role)
+        raise_if_false(
+            self._role == role, "{0} is not supported by {1}", func_name, self._role
+        )
 
     def _switch_role(self, role: LLMRole) -> None:
         log.info(f"[switch_role] [{self._role.name}->{role.name}] success")

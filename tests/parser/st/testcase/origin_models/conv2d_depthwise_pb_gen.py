@@ -41,4 +41,6 @@ with tf.compat.v1.Session(graph=tf.Graph()) as sess:
         dilations=[1, 1, 1, 1],
     )
 
-    tf.io.write_graph(sess.graph, logdir="./", name="test_depth_wise_conv2d.pb", as_text=False)
+    tf.io.write_graph(
+        sess.graph, logdir="./", name="test_depth_wise_conv2d.pb", as_text=False
+    )

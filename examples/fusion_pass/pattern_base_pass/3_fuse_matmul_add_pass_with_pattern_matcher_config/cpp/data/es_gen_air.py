@@ -11,7 +11,7 @@
 # ----------------------------------------------------------------------------
 import numpy as np
 from ge.es import GraphBuilder
-from ge.es.all import *
+from ge.es.all import Add, Const, MatMul
 from ge.graph import Tensor
 from ge.graph.types import DataType, Format
 
@@ -27,7 +27,9 @@ def build_matmul_add_graph():
         Format.FORMAT_ND,
         [2, 2],
     )
-    matmul_tensor_holder = MatMul(input1, input2, None, transpose_x1=False, transpose_x2=False)
+    matmul_tensor_holder = MatMul(
+        input1, input2, None, transpose_x1=False, transpose_x2=False
+    )
     add_tensor_holder = Add(matmul_tensor_holder, Const(builder, value=input3))
     builder.set_graph_output(add_tensor_holder, 0)
     return builder.build_and_reset()

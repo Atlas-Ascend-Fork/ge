@@ -95,12 +95,16 @@ def register_pass_for_fusion(match_condition, stage, priority):
     """
 
     if stage is None or priority is None:
-        raise RuntimeError("Fail to register fusion pass, stage or priority should not be none.")
+        raise RuntimeError(
+            "Fail to register fusion pass, stage or priority should not be none."
+        )
 
     op_type = match_condition.get("op_type")
     op_pattern = match_condition.get("op_pattern")
     if op_type is None and op_pattern is None:
-        raise RuntimeError("Fail to register fusion pass, match condition should contain op type or op pattern")
+        raise RuntimeError(
+            "Fail to register fusion pass, match condition should contain op type or op pattern"
+        )
 
     global g_fusion_pass_list
 
@@ -158,7 +162,9 @@ def get_fusion_pass_list_by_stage(stage=InvokeStage.STAGE_BUILD):
     pass_list.sort(key=lambda item: item.get_priority())
     import tbe.common.utils.log as logger
 
-    logger.info("Get fusion pass list, size of stage[%s] is [%d].", stage, len(pass_list))
+    logger.info(
+        "Get fusion pass list, size of stage[%s] is [%d].", stage, len(pass_list)
+    )
     return pass_list
 
 
@@ -185,7 +191,9 @@ def register_op_param_pass(match_condition, stage):
     op_type = match_condition.get("op_type")
     op_pattern = match_condition.get("op_pattern")
     if op_type is None and op_pattern is None:
-        raise RuntimeError("Fail to register op param pass, match condition should contain op type or op pattern")
+        raise RuntimeError(
+            "Fail to register op param pass, match condition should contain op type or op pattern"
+        )
 
     if op_type is not None and get_op_param_pass_cond(op_type, None, stage) is not None:
         raise RuntimeError(
@@ -194,7 +202,10 @@ def register_op_param_pass(match_condition, stage):
             stage,
         )
 
-    if op_pattern is not None and get_op_param_pass_cond(None, op_pattern, stage) is not None:
+    if (
+        op_pattern is not None
+        and get_op_param_pass_cond(None, op_pattern, stage) is not None
+    ):
         raise RuntimeError(
             "This pass will not be registered for op pattern[%s] stage[%s] has already been registered.",
             op_pattern,
@@ -265,7 +276,10 @@ def get_op_param_pass_cond(op_type, op_pattern, stage=InvokeStage.STAGE_BUILD):
 
     if op_pattern is not None:
         for pass_item in g_op_param_pass_list:
-            if pass_item.get_stage() == stage and pass_item.get_op_pattern() == op_pattern:
+            if (
+                pass_item.get_stage() == stage
+                and pass_item.get_op_pattern() == op_pattern
+            ):
                 logger.debug(
                     "Op param pass is found by op pattern[%s] and stage[%s].",
                     op_pattern,

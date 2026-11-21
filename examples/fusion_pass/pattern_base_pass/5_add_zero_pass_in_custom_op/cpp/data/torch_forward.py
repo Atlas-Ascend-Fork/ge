@@ -30,7 +30,9 @@ def npu_add_custom_meta(x, y):
 
 # 实现Converter
 @register_fx_node_ge_converter(torch.ops.npu.npu_add_custom.default)
-def convert_npu_add_custom(x: Tensor, y: Tensor, z: Tensor = None, meta_outputs: Any = None):
+def convert_npu_add_custom(
+    x: Tensor, y: Tensor, z: Tensor = None, meta_outputs: Any = None
+):
     return torchair.ge.custom_op(
         "AddCustom",
         inputs={

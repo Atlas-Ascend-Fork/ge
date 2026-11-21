@@ -24,7 +24,9 @@ def proc_wrapper(func_list=None):
         if func_list is not None:
             module_name = inspect.getmodule(func).__name__
             clz_name = func.__qualname__.split(".")[0]
-            FlowFuncRegister.register_flow_func(module_name, clz_name, func.__name__, func_list)
+            FlowFuncRegister.register_flow_func(
+                module_name, clz_name, func.__name__, func_list
+            )
 
         @functools.wraps(func)
         def proc_func(self, run_context, input_flow_msgs):

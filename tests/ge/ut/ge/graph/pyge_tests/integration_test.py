@@ -40,10 +40,12 @@ class TestIntegration:
     def test_graph_builder_to_graph_integration(self, builder):
         """测试 GraphBuilder 到 Graph 的基本集成"""
         # 创建输入
-        input_tensor = builder.create_input(index=0, name="input", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224])
+        input_tensor = builder.create_input(
+            index=0, name="input", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224]
+        )
 
         # 创建常量
-        const_tensor = builder.create_const_float(1.0)
+        builder.create_const_float(1.0)
 
         # 设置输出
         builder.set_graph_output(input_tensor, 0)
@@ -58,10 +60,12 @@ class TestIntegration:
     def test_graph_nodes_validation(self, builder):
         """测试图中节点的验证"""
         # 创建输入
-        input_tensor = builder.create_input(index=0, name="input", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224])
+        input_tensor = builder.create_input(
+            index=0, name="input", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224]
+        )
 
         # 创建常量
-        const_tensor = builder.create_const_float(1.0)
+        builder.create_const_float(1.0)
 
         # 设置输出
         builder.set_graph_output(input_tensor, 0)
@@ -84,13 +88,14 @@ class TestIntegration:
 
         # 验证特定节点（如果存在）
         node_names = [node.name for node in nodes]
-        node_types = [node.type for node in nodes]
 
         # 检查是否包含预期的节点名称
         if "input" in node_names:
             input_node = next(node for node in nodes if node.name == "input")
             assert input_node.type is not None
-            print(f"Found input node: name='{input_node.name}', type='{input_node.type}'")
+            print(
+                f"Found input node: name='{input_node.name}', type='{input_node.type}'"
+            )
 
         # 打印所有节点信息用于调试
         print(f"Graph contains {len(nodes)} nodes:")
@@ -100,10 +105,12 @@ class TestIntegration:
     def test_graph_dump_to_onnx(self, builder):
         """测试图dump到ONNX功能"""
         # 创建输入
-        input_tensor = builder.create_input(index=0, name="input", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224])
+        input_tensor = builder.create_input(
+            index=0, name="input", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224]
+        )
 
         # 创建常量
-        const_tensor = builder.create_const_float(1.0)
+        builder.create_const_float(1.0)
 
         # 设置输出
         builder.set_graph_output(input_tensor, 0)
@@ -124,13 +131,19 @@ class TestIntegration:
                 graph.dump_to_file(format=DumpFormat.kOnnx, suffix=test_suffix)
 
                 # 在指定目录中查找文件
-                temp_dir_files = [f for f in os.listdir(temp_dir) if f.startswith("ge_onnx_") and f.endswith(".pbtxt")]
+                temp_dir_files = [
+                    f
+                    for f in os.listdir(temp_dir)
+                    if f.startswith("ge_onnx_") and f.endswith(".pbtxt")
+                ]
                 assert len(temp_dir_files) > 0, (
                     f"Expected ge_onnx_*.pbtxt file not found in {temp_dir}. Found: {os.listdir(temp_dir)}"
                 )
 
                 # 验证文件名格式（包含suffix）
-                expected_pattern_with_suffix = r"ge_onnx_\d+_graph_\d+_" + re.escape(test_suffix) + r"\.pbtxt$"
+                expected_pattern_with_suffix = (
+                    r"ge_onnx_\d+_graph_\d+_" + re.escape(test_suffix) + r"\.pbtxt$"
+                )
                 found_valid_file_with_suffix = False
                 for file in temp_dir_files:
                     if re.match(expected_pattern_with_suffix, file):
@@ -211,11 +224,21 @@ class TestIntegration:
     def test_data_type_integration(self, builder):
         """测试 DataType 集成"""
         # 测试不同数据类型创建输入
-        float_input = builder.create_input(0, data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224])
-        int32_input = builder.create_input(1, data_type=DataType.DT_INT32, shape=[1, 3, 224, 224])
-        int64_input = builder.create_input(2, data_type=DataType.DT_INT64, shape=[1, 3, 224, 224])
-        bool_input = builder.create_input(3, data_type=DataType.DT_BOOL, shape=[1, 3, 224, 224])
-        string_input = builder.create_input(4, data_type=DataType.DT_STRING, shape=[1, 3, 224, 224])
+        float_input = builder.create_input(
+            0, data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224]
+        )
+        int32_input = builder.create_input(
+            1, data_type=DataType.DT_INT32, shape=[1, 3, 224, 224]
+        )
+        int64_input = builder.create_input(
+            2, data_type=DataType.DT_INT64, shape=[1, 3, 224, 224]
+        )
+        bool_input = builder.create_input(
+            3, data_type=DataType.DT_BOOL, shape=[1, 3, 224, 224]
+        )
+        string_input = builder.create_input(
+            4, data_type=DataType.DT_STRING, shape=[1, 3, 224, 224]
+        )
 
         # 验证输入创建成功
         assert isinstance(float_input, TensorHolder)
@@ -232,14 +255,20 @@ class TestIntegration:
     def test_complex_graph_construction(self, builder):
         """测试复杂图构建"""
         # 创建多个输入
-        input1 = builder.create_input(0, name="input1", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224])
-        input2 = builder.create_input(1, name="input2", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224])
-        input3 = builder.create_input(2, name="input3", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224])
+        input1 = builder.create_input(
+            0, name="input1", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224]
+        )
+        input2 = builder.create_input(
+            1, name="input2", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224]
+        )
+        input3 = builder.create_input(
+            2, name="input3", data_type=DataType.DT_FLOAT, shape=[1, 3, 224, 224]
+        )
 
         # 创建常量
-        const1 = builder.create_const_float(1.0)
-        const2 = builder.create_const_float(2.0)
-        const3 = builder.create_const_float(3.0)
+        builder.create_const_float(1.0)
+        builder.create_const_float(2.0)
+        builder.create_const_float(3.0)
 
         # 设置输出
         builder.set_graph_output(input1, 0)
@@ -325,9 +354,13 @@ class TestIntegration:
 
         # 测试无效参数类型
         with pytest.raises(TypeError):
-            graph.dump_to_file(format=123, suffix="test_suffix")  # format 应该是 DumpFormat 枚举类型
+            graph.dump_to_file(
+                format=123, suffix="test_suffix"
+            )  # format 应该是 DumpFormat 枚举类型
         with pytest.raises(TypeError):
-            graph.dump_to_file(format=DumpFormat.kOnnx, suffix=123)  # suffix 应该是字符串
+            graph.dump_to_file(
+                format=DumpFormat.kOnnx, suffix=123
+            )  # suffix 应该是字符串
 
         original_handle = graph._handle
         graph._handle = None
@@ -379,8 +412,12 @@ class TestIntegration:
             graph.save_to_air(filename)
 
             # 在指定目录中查找文件
-            temp_dir_files = [f for f in os.listdir(temp_dir) if f.endswith("ut_graph1.txt")]
-            assert len(temp_dir_files) > 0, f"Expected file not found in {temp_dir}. Found: {os.listdir(temp_dir)}"
+            temp_dir_files = [
+                f for f in os.listdir(temp_dir) if f.endswith("ut_graph1.txt")
+            ]
+            assert len(temp_dir_files) > 0, (
+                f"Expected file not found in {temp_dir}. Found: {os.listdir(temp_dir)}"
+            )
             # 验证文件内容不为空
             with open(filename, "rb") as f:
                 content = f.read()
@@ -402,8 +439,12 @@ class TestIntegration:
             graph.save_to_air(filename)
 
             # 在指定目录中查找文件
-            temp_dir_files = [f for f in os.listdir(temp_dir) if f.endswith("ut_graph2.txt")]
-            assert len(temp_dir_files) > 0, f"Expected file not found in {temp_dir}. Found: {os.listdir(temp_dir)}"
+            temp_dir_files = [
+                f for f in os.listdir(temp_dir) if f.endswith("ut_graph2.txt")
+            ]
+            assert len(temp_dir_files) > 0, (
+                f"Expected file not found in {temp_dir}. Found: {os.listdir(temp_dir)}"
+            )
             with open(filename, "rb") as f:
                 content = f.read()
                 assert len(content) > 0, "Dumped AIR file should not be empty"

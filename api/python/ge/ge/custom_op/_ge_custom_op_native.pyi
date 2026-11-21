@@ -26,7 +26,6 @@ __all__: List[str] = [
     "WorkspaceAddr",
 ]
 
-
 class EagerOpExecutionContext:
     """Eager op execution context (Python view of ``gert::EagerOpExecutionContext``).
 
@@ -111,7 +110,6 @@ class EagerOpExecutionContext:
         """
         ...
 
-
 class HostCpuOpExecutionContext:
     """Host CPU op execution context (Python view of ``gert::HostCpuOpExecutionContext``).
 
@@ -173,38 +171,28 @@ class HostCpuOpExecutionContext:
         """
         ...
 
-
 class OpCompileContext:
     """Borrowed read-only view of ``gert::OpCompileContext``."""
 
     def get_option(self, option_key: str) -> str: ...
-
     def _get_platform_info(self) -> CompilePlatformInfo: ...
-
 
 class CompilePlatformInfo:
     """Borrowed platform information view available during ``compile``."""
 
     def get_platform_resource(self, group: str, key: str) -> str: ...
-
     def get_platform_resource_group(self, group: str) -> dict[str, str]: ...
-
     def get_core_num(self, core_type: Optional[str] = None) -> int: ...
-
     def get_soc_version(self) -> str: ...
-
     def get_ai_core_num(self) -> int: ...
-
 
 class WorkspaceAddr:
     """Borrowed workspace address allocated by ``AnnotatedArgsContext``."""
 
     @property
     def index(self) -> int: ...
-
     @property
     def addr(self) -> int: ...
-
 
 class AnnotatedKernelLaunchInfo:
     """Owned kernel launch metadata used by ``AnnotatedArgsContext.add_launch``."""
@@ -218,18 +206,13 @@ class AnnotatedKernelLaunchInfo:
         stream_id: int,
     ) -> None: ...
 
-
 class AnnotatedKernelArgs:
     """Borrowed builder for one annotated kernel launch's argument sequence."""
 
     def append_input(self, instance_index: int, tensor: Tensor) -> None: ...
-
     def append_output(self, instance_index: int, tensor: Tensor) -> None: ...
-
     def append_workspace(self, workspace: WorkspaceAddr) -> None: ...
-
     def append_scalar(self, value: int) -> None: ...
-
     def append_custom_data_block(self, data: bytes) -> None:
         """Deep-copy nonempty bytes into a read-only device data block.
 
@@ -239,16 +222,12 @@ class AnnotatedKernelArgs:
         """
         ...
 
-
 class AnnotatedArgsContext:
     """Borrowed declaration context available only in ``declare_launch_args``."""
 
     def malloc_workspace(self, size: int) -> WorkspaceAddr: ...
-
     def get_stream_id(self) -> int: ...
-
     def create_kernel_args(self) -> AnnotatedKernelArgs: ...
-
     def request_attached_stream(self, key: str) -> int:
         """Request a reusable compile-time logical attached stream by key.
 

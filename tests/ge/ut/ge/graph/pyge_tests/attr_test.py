@@ -99,7 +99,9 @@ class TestAttrValue:
         result_float_list = attr_value.get_list_float()
         assert len(result_float_list) == len(test_float_list)
         for i, (expected, actual) in enumerate(zip(test_float_list, result_float_list)):
-            assert abs(expected - actual) < 1e-6, f"Index {i}: expected {expected}, got {actual}"
+            assert abs(expected - actual) < 1e-6, (
+                f"Index {i}: expected {expected}, got {actual}"
+            )
 
         # 测试布尔列表
         test_bool_list = [True, False, True, False]
@@ -207,8 +209,6 @@ class TestAttrValue:
 
     def test_value_type_property(self, attr_value):
         """测试 value_type 属性"""
-        # 初始状态
-        initial_type = attr_value.value_type
 
         # 设置字符串后检查类型
         attr_value.set_string("test")
@@ -305,7 +305,9 @@ class TestAttrValueParametrized:
         attr_value.set_string(test_string)
         assert attr_value.get_string() == test_string
 
-    @pytest.mark.parametrize("test_int", [0, 1, -1, 42, -100, 2**31 - 1, -(2**31), 2**63 - 1, -(2**63)])
+    @pytest.mark.parametrize(
+        "test_int", [0, 1, -1, 42, -100, 2**31 - 1, -(2**31), 2**63 - 1, -(2**63)]
+    )
     def test_int_values(self, attr_value, test_int):
         """参数化测试各种整数值"""
         attr_value.set_int(test_int)

@@ -94,7 +94,9 @@ def collect_acl_model_outputs(model_desc, output_data):
             )
             output_bytes = acl.util.ptr_to_bytes(host_buffer, item["size"])
         finally:
-            check_ret(f"acl.rt.free_host(output_{index})", acl.rt.free_host(host_buffer))
+            check_ret(
+                f"acl.rt.free_host(output_{index})", acl.rt.free_host(host_buffer)
+            )
 
         dims, ret = acl.mdl.get_output_dims(model_desc, index)
         check_ret(f"acl.mdl.get_output_dims(output_{index})", ret)
@@ -124,8 +126,12 @@ def build_add_graph():
     from ge.graph.types import DataType
 
     builder = GraphBuilder("OfflineAddGraph")
-    input_x = builder.create_input(index=0, name="input_x", data_type=DataType.DT_FLOAT, shape=[2, 3])
-    input_y = builder.create_input(index=1, name="input_y", data_type=DataType.DT_FLOAT, shape=[2, 3])
+    input_x = builder.create_input(
+        index=0, name="input_x", data_type=DataType.DT_FLOAT, shape=[2, 3]
+    )
+    input_y = builder.create_input(
+        index=1, name="input_y", data_type=DataType.DT_FLOAT, shape=[2, 3]
+    )
     builder.set_graph_output(input_x + input_y, 0)
     return builder.build_and_reset()
 
@@ -135,8 +141,12 @@ def build_mul_graph():
     from ge.graph.types import DataType
 
     builder = GraphBuilder("OfflineMulGraph")
-    input_x = builder.create_input(index=0, name="input_x", data_type=DataType.DT_FLOAT, shape=[2, 3])
-    input_y = builder.create_input(index=1, name="input_y", data_type=DataType.DT_FLOAT, shape=[2, 3])
+    input_x = builder.create_input(
+        index=0, name="input_x", data_type=DataType.DT_FLOAT, shape=[2, 3]
+    )
+    input_y = builder.create_input(
+        index=1, name="input_y", data_type=DataType.DT_FLOAT, shape=[2, 3]
+    )
     builder.set_graph_output(input_x * input_y, 0)
     return builder.build_and_reset()
 

@@ -81,7 +81,10 @@ class TestPluginLoader:
     def test_coerce_to_module_with_callable(self):
         """测试 _coerce_to_module() 传入可调用对象"""
         mock_module = types.ModuleType("test_module")
-        callable_obj = lambda: mock_module
+
+        def callable_obj():
+            return mock_module
+
         result = _coerce_to_module(callable_obj, "test")
         assert result is mock_module
 
@@ -90,7 +93,10 @@ class TestPluginLoader:
         with patch("importlib.import_module") as mock_import:
             mock_module = types.ModuleType("test_module")
             mock_import.return_value = mock_module
-            callable_obj = lambda: "test.module"
+
+            def callable_obj():
+                return "test.module"
+
             result = _coerce_to_module(callable_obj, "test")
             assert result is mock_module
             mock_import.assert_called_once_with("test.module")
@@ -164,7 +170,9 @@ class TestPluginLoader:
             assert isinstance(plugins, dict)
             mock_debug_print.assert_called()
             # 检查是否调用了 WARNING 级别的日志
-            assert any(call[0][0] == "WARNING" for call in mock_debug_print.call_args_list)
+            assert any(
+                call[0][0] == "WARNING" for call in mock_debug_print.call_args_list
+            )
 
     @patch("ge.es._plugin_loader._iter_plugin_entry_points")
     def test_load_all_plugins_attribute_error(self, mock_iter):
@@ -178,7 +186,9 @@ class TestPluginLoader:
             assert isinstance(plugins, dict)
             mock_debug_print.assert_called()
             # 检查是否调用了 ERROR 级别的日志
-            assert any(call[0][0] == "ERROR" for call in mock_debug_print.call_args_list)
+            assert any(
+                call[0][0] == "ERROR" for call in mock_debug_print.call_args_list
+            )
 
     @patch("ge.es._plugin_loader._iter_plugin_entry_points")
     def test_load_all_plugins_import_error(self, mock_iter):
@@ -192,7 +202,9 @@ class TestPluginLoader:
             assert isinstance(plugins, dict)
             mock_debug_print.assert_called()
             # 检查是否调用了 ERROR 级别的日志
-            assert any(call[0][0] == "ERROR" for call in mock_debug_print.call_args_list)
+            assert any(
+                call[0][0] == "ERROR" for call in mock_debug_print.call_args_list
+            )
 
     @patch("ge.es._plugin_loader._iter_plugin_entry_points")
     def test_load_all_plugins_general_exception(self, mock_iter):
@@ -206,7 +218,9 @@ class TestPluginLoader:
             assert isinstance(plugins, dict)
             mock_debug_print.assert_called()
             # 检查是否调用了 ERROR 级别的日志
-            assert any(call[0][0] == "ERROR" for call in mock_debug_print.call_args_list)
+            assert any(
+                call[0][0] == "ERROR" for call in mock_debug_print.call_args_list
+            )
 
     @patch("ge.es._plugin_loader._iter_plugin_entry_points")
     def test_load_all_plugins_success(self, mock_iter):
@@ -225,4 +239,6 @@ class TestPluginLoader:
                 assert plugins["test_plugin"] is mock_module
                 mock_debug_print.assert_called()
                 # 检查是否调用了 INFO 级别的日志
-                assert any(call[0][0] == "INFO" for call in mock_debug_print.call_args_list)
+                assert any(
+                    call[0][0] == "INFO" for call in mock_debug_print.call_args_list
+                )

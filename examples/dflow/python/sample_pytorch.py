@@ -82,7 +82,9 @@ def postprocess(input_image):
 
 
 if __name__ == "__main__":
-    options = {"ge.experiment.data_flow_deploy_info_path": "./config/sample_pytorch_deploy_info.json"}
+    options = {
+        "ge.experiment.data_flow_deploy_info_path": "./config/sample_pytorch_deploy_info.json"
+    }
     df.init(options)
 
     ############## FlowGraph构图 ##############

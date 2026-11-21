@@ -76,7 +76,9 @@ class Tensor(object):
 
     @staticmethod
     def from_tensor_tuple(tensor_tuple: Tuple[int, int, List[int]]):
-        tensor_desc = TensorDesc(_dwrapper_dtype_to_python_dtype[tensor_tuple[1]], tensor_tuple[2])
+        tensor_desc = TensorDesc(
+            _dwrapper_dtype_to_python_dtype[tensor_tuple[1]], tensor_tuple[2]
+        )
         return Tensor(tensor_tuple[0], tensor_desc)
 
     def _init_by_ndarray(self, data: np.ndarray, tensor_desc: TensorDesc = None):
@@ -91,16 +93,23 @@ class Tensor(object):
                     f"The dtype of data:{data.dtype} is not same as tensor_desc dtype:{tensor_desc.dtype}"
                 )
         else:
-            if data.dtype not in data_type.valid_np_dtypes and not self._is_origin_dtype_str(data.dtype):
+            if (
+                data.dtype not in data_type.valid_np_dtypes
+                and not self._is_origin_dtype_str(data.dtype)
+            ):
                 raise RuntimeError(
                     f"The dtype of data:{data.dtype} is not valid, only support {data_type.valid_np_dtypes}"
                 )
         if tensor_desc:
             self._tensor_desc = tensor_desc
         elif self._is_origin_dtype_str(data.dtype):
-            self._tensor_desc = TensorDesc(data_type.DataType.DT_STRING, list(data.shape))
+            self._tensor_desc = TensorDesc(
+                data_type.DataType.DT_STRING, list(data.shape)
+            )
         else:
-            self._tensor_desc = TensorDesc(data_type.np_dtype_to_dtype[data.dtype], list(data.shape))
+            self._tensor_desc = TensorDesc(
+                data_type.np_dtype_to_dtype[data.dtype], list(data.shape)
+            )
         if self._is_origin_dtype_str(data.dtype):
             data = self._convert_raw_str_data(data)
         if not data.flags.c_contiguous:
@@ -118,7 +127,10 @@ class Tensor(object):
         return np.issubdtype(dtype, np.str_) or np.issubdtype(dtype, np.bytes_)
 
     def _is_inner_dtype_str(self):
-        return self._tensor_desc is not None and self._tensor_desc.dtype == data_type.DataType.DT_STRING
+        return (
+            self._tensor_desc is not None
+            and self._tensor_desc.dtype == data_type.DataType.DT_STRING
+        )
 
     def _convert_raw_str_data(self, data):
         format_data = data.astype(np.bytes_)
@@ -138,8 +150,12 @@ class Tensor(object):
         utils.check_isinstance("copy", copy, bool)
         if self._is_inner_dtype_str():
             if not copy:
-                raise RuntimeError("String tensor only support when param copy is True.")
-            return np.array(llm_wrapper.get_string_tensor(self._tensor_id)).reshape(self._tensor_desc.shape)
+                raise RuntimeError(
+                    "String tensor only support when param copy is True."
+                )
+            return np.array(llm_wrapper.get_string_tensor(self._tensor_id)).reshape(
+                self._tensor_desc.shape
+            )
         ret, tensor = llm_wrapper.tensor_get_buffer(self._tensor_id)
         handle_llm_status(ret, "Tensor.numpy", "Failed to get tensor buffer")
         if self._tensor_desc.dtype == data_type.DataType.DT_BF16:

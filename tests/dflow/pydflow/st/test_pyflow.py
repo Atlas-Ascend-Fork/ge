@@ -24,7 +24,9 @@ import dataflow.utils.utils as utils
 import numpy as np
 
 
-@df.pyflow(resources={"memory": 100, "num_cpus": 1, "num_npus": 1}, visible_device_enable=True)
+@df.pyflow(
+    resources={"memory": 100, "num_cpus": 1, "num_npus": 1}, visible_device_enable=True
+)
 class Foo:
     def __init__(self, name, val):
         self.name = name
@@ -56,8 +58,8 @@ class SomeClass:
 
 @df.pyflow(stream_input="Queue")
 def func_with_stream_input(queue0, queue1):
-    in0 = queue0.get()
-    in1 = queue1.get()
+    queue0.get()
+    queue1.get()
     return 1
 
 
@@ -65,7 +67,7 @@ def func_with_stream_input(queue0, queue1):
 class MyClass:
     @df.method(stream_input="Queue")
     def func_with_stream_input(self, queue0):
-        in0 = queue0.get()
+        queue0.get()
         return df.alloc_tensor([2, 3], dt.DT_FLOAT16)
 
     @df.method(choice_output=lambda e: e is not None)
@@ -103,7 +105,9 @@ class TestPyFlow(unittest.TestCase):
         foo = Foo.fnode("some_name", 1).set_alias("Foo")
         sub1_out = foo.sub_1(data0)
         add1_out0, add1_out1 = foo.add_1(data1)
-        func_out0, func_out1 = some_func.fnode().set_alias("some_func")(add1_out0, add1_out1)
+        func_out0, func_out1 = some_func.fnode().set_alias("some_func")(
+            add1_out0, add1_out1
+        )
         graph = df.FlowGraph([sub1_out, func_out0, func_out1])
         self.assertEqual(Path("./some_func_fnode_ws").exists(), True)
         self.assertEqual(Path(foo.name + "_ws").exists(), True)
@@ -159,12 +163,16 @@ class TestPyFlow(unittest.TestCase):
         self.assertEqual(ret, 0)
 
     def test_pyflow_run_with_stream_input(self):
-        ret = func_with_stream_input(fw.MetaRunContext(), [fw.FlowMsgQueue(), fw.FlowMsgQueue()])
+        ret = func_with_stream_input(
+            fw.MetaRunContext(), [fw.FlowMsgQueue(), fw.FlowMsgQueue()]
+        )
         self.assertEqual(ret, 0)
         fnode0 = MyClass.fnode()
         with open(fnode0.name + "_ws/src_python/MyClass.pkl", "rb") as f:
             my_class = cloudpickle.loads(f.read())
-            ret = my_class.func_with_stream_input(fw.MetaRunContext(), [fw.FlowMsgQueue()])
+            ret = my_class.func_with_stream_input(
+                fw.MetaRunContext(), [fw.FlowMsgQueue()]
+            )
             self.assertEqual(ret, 0)
         os.system("rm -rf ./*_fnode_ws")
 
@@ -182,7 +190,9 @@ class TestPyFlow(unittest.TestCase):
         ret = func_with_stream_ouput(fw.MetaRunContext(), [fw.FlowMsg(), fw.FlowMsg()])
         self.assertEqual(ret, 0)
         fnode0 = MyClassWithStreamOutput.fnode()
-        with open(fnode0.name + "_ws/src_python/MyClassWithStreamOutput.pkl", "rb") as f:
+        with open(
+            fnode0.name + "_ws/src_python/MyClassWithStreamOutput.pkl", "rb"
+        ) as f:
             my_class = cloudpickle.loads(f.read())
             ret = my_class.func_with_stream_ouput(fw.MetaRunContext(), [fw.FlowMsg()])
             self.assertEqual(ret, 0)

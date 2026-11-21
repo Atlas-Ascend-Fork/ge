@@ -26,7 +26,9 @@ _MAX_UINT64 = ctypes.c_uint64(2**64 - 1).value
 def check_inner(arg_name, arg_value, inner_class):
     for val in arg_value:
         if not check_type(val, inner_class):
-            raise TypeError(f"{arg_name} inner type only support {[inner_class]}, but got {format(type(val))}.")
+            raise TypeError(
+                f"{arg_name} inner type only support {[inner_class]}, but got {format(type(val))}."
+            )
 
 
 def check_type(obj, cls):
@@ -42,9 +44,13 @@ def check_type(obj, cls):
 def check_dict(arg_name, arg_value: dict, k_class, v_class, v_inner_class=None):
     for k, v in arg_value.items():
         if not check_type(k, k_class):
-            raise TypeError(f"{arg_name} dict key only support {k_class}, but got {format(type(k))}.")
+            raise TypeError(
+                f"{arg_name} dict key only support {k_class}, but got {format(type(k))}."
+            )
         if not check_type(v, v_class):
-            raise TypeError(f"{arg_name} dict value only support {v_class}, but got {format(type(v))}.")
+            raise TypeError(
+                f"{arg_name} dict value only support {v_class}, but got {format(type(v))}."
+            )
         elif v_inner_class is not None:
             check_inner("dict value", v, v_inner_class)
 
@@ -79,20 +85,26 @@ def check_isinstance(
 def check_uint64(arg_name, arg_value):
     check_isinstance(arg_name, arg_value, [int], allow_none=False)
     if arg_value < 0 or arg_value > _MAX_UINT64:
-        raise ValueError(f"{arg_name}'s value is out of range,{arg_value} is not a uint64 value.")
+        raise ValueError(
+            f"{arg_name}'s value is out of range,{arg_value} is not a uint64 value."
+        )
 
 
 def check_int64(arg_name, arg_value):
     check_isinstance(arg_name, arg_value, [int], allow_none=False)
     if arg_value < _MIN_INT64 or arg_value > _MAX_INT64:
-        raise ValueError(f"{arg_name}'s value is out of range,{arg_value} is not a int64 value.")
+        raise ValueError(
+            f"{arg_name}'s value is out of range,{arg_value} is not a int64 value."
+        )
 
 
 def check_positive_or_set_default(arg_name, arg_value, default=-1):
     if arg_value is not None:
         check_int64(arg_name, arg_value)
         if arg_value < 0:
-            raise ValueError(f"{arg_name}'s value:{arg_value} is invalid, should be >= 0")
+            raise ValueError(
+                f"{arg_name}'s value:{arg_value} is invalid, should be >= 0"
+            )
     else:
         arg_value = default
     return arg_value
@@ -101,13 +113,17 @@ def check_positive_or_set_default(arg_name, arg_value, default=-1):
 def check_int32(arg_name, arg_value):
     check_isinstance(arg_name, arg_value, [int], allow_none=False)
     if arg_value < _MIN_INT32 or arg_value > _MAX_INT32:
-        raise ValueError(f"{arg_name}'s value is out of range,{arg_value} is not a int32 value.")
+        raise ValueError(
+            f"{arg_name}'s value is out of range,{arg_value} is not a int32 value."
+        )
 
 
 def check_uint32(arg_name, arg_value):
     check_isinstance(arg_name, arg_value, [int], allow_none=False)
     if arg_value < 0 or arg_value > _MAX_UINT32:
-        raise ValueError(f"{arg_name}'s value is out of range,{arg_value} is not a uint32 value.")
+        raise ValueError(
+            f"{arg_name}'s value is out of range,{arg_value} is not a uint32 value."
+        )
 
 
 def check_list_int32(arg_name, arg_value):
@@ -128,10 +144,14 @@ def check_list_uint64(arg_name, arg_value):
 def check_uint16(arg_name, arg_value):
     check_isinstance(arg_name, arg_value, [int], allow_none=False)
     if arg_value < 0 or arg_value > _MAX_UINT16:
-        raise ValueError(f"{arg_name}'s value is out of range,{arg_value} is not a uint16 value.")
+        raise ValueError(
+            f"{arg_name}'s value is out of range,{arg_value} is not a uint16 value."
+        )
 
 
 def check_uint8(arg_name, arg_value):
     check_isinstance(arg_name, arg_value, [int], allow_none=False)
     if arg_value < 0 or arg_value > _MAX_UINT8:
-        raise ValueError(f"{arg_name}'s value is out of range,{arg_value} is not a uint8 value.")
+        raise ValueError(
+            f"{arg_name}'s value is out of range,{arg_value} is not a uint8 value."
+        )

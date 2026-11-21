@@ -117,7 +117,9 @@ def _normalize_bundle_options(
     normalized_items = []
     for item in graph_with_options:
         if not isinstance(item, GraphWithOptions):
-            raise TypeError("Each item in graph_with_options must be a GraphWithOptions")
+            raise TypeError(
+                "Each item in graph_with_options must be a GraphWithOptions"
+            )
         normalized_items.append(item)
     return normalized_items
 
@@ -236,7 +238,9 @@ def save_model(output_file: str, model: ModelBuffer) -> None:
         raise TypeError("output_file must be a string")
     if not isinstance(model, ModelBuffer):
         raise TypeError("model must be a ModelBuffer")
-    ret = offline_compile_lib.GeApiWrapper_OfflineCompile_SaveModel(output_file.encode("utf-8"), model._handle)
+    ret = offline_compile_lib.GeApiWrapper_OfflineCompile_SaveModel(
+        output_file.encode("utf-8"), model._handle
+    )
     if ret != 0:
         raise_ge_error("SaveModel", ret, output_file=output_file)
 
@@ -259,7 +263,9 @@ def bundle_build_model(graph_with_options: List[GraphWithOptions]) -> ModelBuffe
     """
     normalized_items = _normalize_bundle_options(graph_with_options)
     graph_count = len(normalized_items)
-    graph_handles = (ctypes.c_void_p * graph_count)(*[item.graph._handle for item in normalized_items])
+    graph_handles = (ctypes.c_void_p * graph_count)(
+        *[item.graph._handle for item in normalized_items]
+    )
     size_array = (ctypes.c_int * graph_count)()
     # Hold references to each graph's option ctypes arrays so pointers in keys/values stay valid for the C call.
     option_buffers: List[Tuple[Optional[ctypes.Array], Optional[ctypes.Array]]] = []
@@ -305,6 +311,8 @@ def bundle_save_model(output_file: str, model: ModelBuffer) -> None:
         raise TypeError("output_file must be a string")
     if not isinstance(model, ModelBuffer):
         raise TypeError("model must be a ModelBuffer")
-    ret = offline_compile_lib.GeApiWrapper_OfflineCompile_BundleSaveModel(output_file.encode("utf-8"), model._handle)
+    ret = offline_compile_lib.GeApiWrapper_OfflineCompile_BundleSaveModel(
+        output_file.encode("utf-8"), model._handle
+    )
     if ret != 0:
         raise_ge_error("BundleSaveModel", ret, output_file=output_file)

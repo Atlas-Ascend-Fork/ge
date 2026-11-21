@@ -20,7 +20,7 @@ try:
     import ge._capi.pyge_utils_wrapper as wrapper
     import ge.utils.ge_utils as ge_utils_module
     from ge.es.graph_builder import GraphBuilder
-    from ge.graph import Graph, Node
+    from ge.graph import Graph
     from ge.utils import GeUtils
 except (ImportError, OSError) as exc:
     pytest.skip(f"无法导入 ge 模块: {exc}", allow_module_level=True)
@@ -65,14 +65,20 @@ class TestGeUtils:
         builder.set_graph_output(const_tensor, 0)
         graph = builder.build_and_reset()
         node = next(node for node in graph.get_all_nodes() if node.type == "Const")
-        reason_buffer = ctypes.create_string_buffer("mock unsupported reason".encode("utf-8"))
+        reason_buffer = ctypes.create_string_buffer(
+            "mock unsupported reason".encode("utf-8")
+        )
         freed_reasons = []
 
-        def mock_check_node_support_on_aicore(node_handle, is_supported, unsupported_reason):
+        def mock_check_node_support_on_aicore(
+            node_handle, is_supported, unsupported_reason
+        ):
             assert node_handle == node._handle
             ctypes.cast(is_supported, ctypes.POINTER(ctypes.c_bool))[0] = False
             reason_ptr = ctypes.cast(reason_buffer, ctypes.POINTER(ctypes.c_char))
-            ctypes.cast(unsupported_reason, ctypes.POINTER(ctypes.POINTER(ctypes.c_char)))[0] = reason_ptr
+            ctypes.cast(
+                unsupported_reason, ctypes.POINTER(ctypes.POINTER(ctypes.c_char))
+            )[0] = reason_ptr
             return 0
 
         def mock_free_string(reason_ptr):

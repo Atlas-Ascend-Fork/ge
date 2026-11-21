@@ -26,10 +26,14 @@ def generate_tensorflow_graph():
 
     input_shape = [3]
     input1 = tf.compat.v1.placeholder(tf.float32, shape=input_shape, name="Placeholder")
-    input2 = tf.compat.v1.placeholder(tf.float32, shape=input_shape, name="Placeholder_1")
-    output = tf.add(input1, input2, name="add")
-    with tf.compat.v1.Session() as sess:
-        tf.io.write_graph(tf.compat.v1.get_default_graph(), current_dir, "add.pb", as_text=False)
+    input2 = tf.compat.v1.placeholder(
+        tf.float32, shape=input_shape, name="Placeholder_1"
+    )
+    tf.add(input1, input2, name="add")
+    with tf.compat.v1.Session():
+        tf.io.write_graph(
+            tf.compat.v1.get_default_graph(), current_dir, "add.pb", as_text=False
+        )
         print(f"tensor model saved to {graph_path}", flush=True)
 
 

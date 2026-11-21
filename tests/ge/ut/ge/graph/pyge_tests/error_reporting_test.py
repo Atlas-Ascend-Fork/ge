@@ -44,8 +44,12 @@ class FakeRuntimeWrapper:
         self.GeApiWrapper_GEFinalize = FakeCFunc()
         self.GeApiWrapper_GEGetErrorMsg = FakeCFunc(lambda: b"E10062: invalid input")
 
-        self.GeApiWrapper_Session_CreateSession = FakeCFunc(lambda: ctypes.c_void_p(0x1234))
-        self.GeApiWrapper_Session_CreateSessionWithOptions = FakeCFunc(lambda *_args: ctypes.c_void_p(0x1234))
+        self.GeApiWrapper_Session_CreateSession = FakeCFunc(
+            lambda: ctypes.c_void_p(0x1234)
+        )
+        self.GeApiWrapper_Session_CreateSessionWithOptions = FakeCFunc(
+            lambda *_args: ctypes.c_void_p(0x1234)
+        )
         self.GeApiWrapper_Session_AddGraph = FakeCFunc()
         self.GeApiWrapper_Session_AddGraphWithOptions = FakeCFunc()
         self.GeApiWrapper_Session_RemoveGraph = FakeCFunc()
@@ -210,7 +214,9 @@ def test_run_graph_failure_uses_status_return_value(fake_runtime_wrapper):
 def test_run_graph_with_stream_async_failure_uses_status_return_value(
     fake_runtime_wrapper,
 ):
-    fake_runtime_wrapper.GeApiWrapper_Session_RunGraphWithStreamAsync.impl = lambda *_args: 145000
+    fake_runtime_wrapper.GeApiWrapper_Session_RunGraphWithStreamAsync.impl = (
+        lambda *_args: 145000
+    )
     error_mod = importlib.import_module("ge.error")
     session_mod = importlib.import_module("ge.session.session")
 
@@ -221,11 +227,16 @@ def test_run_graph_with_stream_async_failure_uses_status_return_value(
     ):
         session.run_graph_with_stream_async(3, 0x1111, [])
 
-    assert len(fake_runtime_wrapper.GeApiWrapper_Session_RunGraphWithStreamAsync.calls[0]) == 7
+    assert (
+        len(fake_runtime_wrapper.GeApiWrapper_Session_RunGraphWithStreamAsync.calls[0])
+        == 7
+    )
 
 
 def test_run_graph_success_accepts_empty_output_list(fake_runtime_wrapper):
-    def run_graph_success(_session, _graph_id, _inputs, _input_num, _outputs, tensor_num):
+    def run_graph_success(
+        _session, _graph_id, _inputs, _input_num, _outputs, tensor_num
+    ):
         tensor_num._obj.value = 0
         return 0
 
@@ -240,8 +251,12 @@ def test_run_graph_success_accepts_empty_output_list(fake_runtime_wrapper):
 def test_run_graph_success_frees_output_tensor_array(fake_runtime_wrapper):
     output_array = (ctypes.c_void_p * 2)(0x111, 0x222)
 
-    def run_graph_success(_session, _graph_id, _inputs, _input_num, outputs, tensor_num):
-        output_ptr = ctypes.cast(outputs, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))
+    def run_graph_success(
+        _session, _graph_id, _inputs, _input_num, outputs, tensor_num
+    ):
+        output_ptr = ctypes.cast(
+            outputs, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))
+        )
         output_ptr[0] = ctypes.cast(output_array, ctypes.POINTER(ctypes.c_void_p))
         tensor_num._obj.value = 2
         return 0

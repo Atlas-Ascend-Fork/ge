@@ -140,7 +140,9 @@ class CacheDescParser(object):
                 f"but got {kv_shape[1:].count(-1)}, shape = {kv_shape}",
             )
             seq_len_dim_index = kv_shape[1:].index(-1) + 1
-            log.info(f"seq_len_dim_index inferred by shape, value = {seq_len_dim_index}")
+            log.info(
+                f"seq_len_dim_index inferred by shape, value = {seq_len_dim_index}"
+            )
         else:
             seq_len_dim_index = -1
             log.info(
@@ -227,7 +229,7 @@ def pack_mem_info(mem_info: MemInfo) -> Tuple[int, int, int]:
 
 @dataclass
 class TransferCacheParameters:
-    src_cache: "Union[Cache, KvCache]"
+    src_cache: "KvCache"
     transfer_configs: Union[
         List[Union[TransferConfig, TransferWithCacheKeyConfig]],
         Tuple[Union[TransferConfig, TransferWithCacheKeyConfig]],
@@ -272,11 +274,17 @@ class TransferCacheJob:
 
     def transfer_layers(self):
         for layer_i, src_layer_index in enumerate(range(self._num_layers)):
-            to_transfer = [config for config in self._transfer_configs if src_layer_index in config.src_layer_range]
+            to_transfer = [
+                config
+                for config in self._transfer_configs
+                if src_layer_index in config.src_layer_range
+            ]
             if not to_transfer:
                 log.info("src_layer %d sends to no destination", src_layer_index)
                 continue
-            if not self._layer_synchronizer.synchronize_layer(src_layer_index, self._timeout_in_millis):
+            if not self._layer_synchronizer.synchronize_layer(
+                src_layer_index, self._timeout_in_millis
+            ):
                 log.error(f"Failed to synchronize layer {src_layer_index}")
                 for config in to_transfer:
                     # 错误码待添加
@@ -284,17 +292,25 @@ class TransferCacheJob:
                 return
             for config in to_transfer:
                 dst_layer_index = (
-                    src_layer_index if config.dst_layer_range is None else list(config.dst_layer_range)[layer_i]
+                    src_layer_index
+                    if config.dst_layer_range is None
+                    else list(config.dst_layer_range)[layer_i]
                 )
                 ret = self.transfer_layer(src_layer_index, dst_layer_index, config)
                 if ret != LLMStatusCode.LLM_SUCCESS:
-                    log.error(f"Failed to transfer layer {src_layer_index} to dst_cluster_id={config.dst_cluster_id}")
+                    log.error(
+                        f"Failed to transfer layer {src_layer_index} to dst_cluster_id={config.dst_cluster_id}"
+                    )
                     self._rets[config.dst_cluster_id] = ret
                     return
-                log.info(f"transfer layer {src_layer_index} to dst_cluster_id={config.dst_cluster_id} success")
+                log.info(
+                    f"transfer layer {src_layer_index} to dst_cluster_id={config.dst_cluster_id} success"
+                )
                 if src_layer_index == config.src_layer_range.stop - 1:
                     self._rets[config.dst_cluster_id] = LLMStatusCode.LLM_SUCCESS
-                    log.info(f"transfer all layers to dst_cluster_id={config.dst_cluster_id} finished")
+                    log.info(
+                        f"transfer all layers to dst_cluster_id={config.dst_cluster_id} finished"
+                    )
         log.info("transfer all layers finished")
 
     def transfer_layer(
@@ -306,7 +322,8 @@ class TransferCacheJob:
         if check_type(transfer_config, TransferConfig):
             dst_layer_index = src_layer_index - transfer_config.src_layer_range.start
             dst_addrs = transfer_config.dst_addrs[
-                dst_layer_index * _NUM_TENSORS_PER_LAYER : dst_layer_index * _NUM_TENSORS_PER_LAYER
+                dst_layer_index * _NUM_TENSORS_PER_LAYER : dst_layer_index
+                * _NUM_TENSORS_PER_LAYER
                 + _NUM_TENSORS_PER_LAYER
             ]
             transfer_config = (
@@ -349,15 +366,21 @@ class TransferCacheJob:
                     2,
                 )
         block_config = (
-            self._dst_block_memory_size if self._dst_block_memory_size is not None else 0,
+            self._dst_block_memory_size
+            if self._dst_block_memory_size is not None
+            else 0,
             self._src_block_indices if self._src_block_indices is not None else [],
             self._dst_block_indices if self._dst_block_indices is not None else [],
         )
-        ret = self._transfer_cache_func(TransferCacheJob.task_id, transfer_config, block_config)
+        ret = self._transfer_cache_func(
+            TransferCacheJob.task_id, transfer_config, block_config
+        )
         TransferCacheJob.task_id += 1
         return code_2_status(ret)
 
-    def check_transfer_config(self, transfer_config: Union[TransferConfig, TransferWithCacheKeyConfig]):
+    def check_transfer_config(
+        self, transfer_config: Union[TransferConfig, TransferWithCacheKeyConfig]
+    ):
         if self._src_block_indices:
             raise_if_false(
                 transfer_config.src_batch_index == 0,
@@ -371,7 +394,10 @@ class TransferCacheJob:
                 self._cache_desc.batch_size,
             )
         raise_if_false(
-            0 <= transfer_config.src_layer_range.start < transfer_config.src_layer_range.stop <= self._num_layers,
+            0
+            <= transfer_config.src_layer_range.start
+            < transfer_config.src_layer_range.stop
+            <= self._num_layers,
             "src_layer_range: {0} out of range, src_layer_num = {1}",
             transfer_config.src_layer_range,
             self._num_layers,
@@ -400,7 +426,9 @@ class TransferCacheJob:
 
 
 class TransferAsyncThread(Thread):
-    def __init__(self, transfer_job: TransferCacheJob, default_err_code=LLMStatusCode.LLM_TIMEOUT):
+    def __init__(
+        self, transfer_job: TransferCacheJob, default_err_code=LLMStatusCode.LLM_TIMEOUT
+    ):
         super().__init__()
         self._transfer_job = transfer_job
         self._rets = []
@@ -444,7 +472,9 @@ def transfer_cache_async(
     if params.dst_block_memory_size is not None:
         check_uint64("dst_block_memory_size", params.dst_block_memory_size)
     if params.src_block_indices:  # src is blocks
-        raise_if_false(params.dst_block_indices, "transfer from blocks to cache is not supported")
+        raise_if_false(
+            params.dst_block_indices, "transfer from blocks to cache is not supported"
+        )
         raise_if_false(
             len(params.src_block_indices) == len(params.dst_block_indices),
             "num_block_indices mismatches, src_num = {0}, dst_num = {1}",
@@ -453,7 +483,8 @@ def transfer_cache_async(
         )
     else:  # src is cache
         raise_if_true(
-            (transfer_cache_func == llm_wrapper.transfer_cache) and (params.dst_block_indices is not None),
+            (transfer_cache_func == llm_wrapper.transfer_cache)
+            and (params.dst_block_indices is not None),
             "transfer from cache to blocks is not supported",
         )
         if params.dst_block_indices:
@@ -461,7 +492,9 @@ def transfer_cache_async(
                 params.dst_block_memory_size is not None,
                 "dst_block_memory_size must be set when transfer from cache to blocks",
             )
-    check_isinstance("layer_synchronizer", layer_synchronizer, LayerSynchronizer, allow_none=False)
+    check_isinstance(
+        "layer_synchronizer", layer_synchronizer, LayerSynchronizer, allow_none=False
+    )
     if not enable_remote_cache:
         check_isinstance(
             "transfer_configs",
@@ -493,7 +526,9 @@ def transfer_cache_async(
     return cache_task
 
 
-def layer_range_to_tensor_indices(src_layer_range: range, dst_layer_range: range, tensor_num_per_layer: int = 2):
+def layer_range_to_tensor_indices(
+    src_layer_range: range, dst_layer_range: range, tensor_num_per_layer: int = 2
+):
     check_isinstance("src_layer_range", src_layer_range, range)
     check_isinstance("dst_layer_range", dst_layer_range, range)
     raise_if_true(

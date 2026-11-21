@@ -62,7 +62,9 @@ def get_logger():
         log_level = os.getenv("ASCEND_GLOBAL_LOG_LEVEL")
         logger.setLevel(_log_level.get(log_level, logging.ERROR))
         handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(logging.Formatter(DATA_FLOW_LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"))
+        handler.setFormatter(
+            logging.Formatter(DATA_FLOW_LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
+        )
         logger.addHandler(handler)
         _global_logger = logger
         if log_level is not None:
