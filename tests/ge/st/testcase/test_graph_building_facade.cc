@@ -99,7 +99,12 @@ TEST_F(GraphBuildingFacadeTest, SetInputsBuildsGraphFromDataOperator) {
   EXPECT_NE(nullptr, GraphUtilsEx::GetComputeGraph(graph));
 }
 
-// 边编辑语义：成功建边/删边走通，端口越界、重复删边触发带节点名的失败上报。
+/**
+ * 用例描述：图连边编辑及节点查询的成功、失败语义。
+ * 预置条件：通过公共构图接口创建具有固定端口的非常量生产者和消费者。
+ * 测试步骤：建边后查询非常量输入，再校验端口越界、控制边、删边和端口索引查询。
+ * 预期结果：非常量输入查询返回 GRAPH_NODE_WITHOUT_CONST_INPUT，合法边操作成功，非法操作失败。
+ */
 TEST_F(GraphBuildingFacadeTest, GraphEdgeEditingReportsFailuresWithNodeNames) {
   Graph graph("edges_sem");
   auto producer = MakeFacadeOp("producer", "PlainOp", {"out"}, {});
@@ -107,6 +112,8 @@ TEST_F(GraphBuildingFacadeTest, GraphEdgeEditingReportsFailuresWithNodeNames) {
   GNode src = graph.AddNodeByOp(producer);
   GNode dst = graph.AddNodeByOp(consumer);
   EXPECT_EQ(GRAPH_SUCCESS, graph.AddDataEdge(src, 0, dst, 0));
+  Tensor data;
+  EXPECT_EQ(GRAPH_NODE_WITHOUT_CONST_INPUT, dst.GetInputConstData(0, data));
   EXPECT_EQ(GRAPH_FAILED, graph.AddDataEdge(src, 99, dst, 0));
   EXPECT_EQ(GRAPH_SUCCESS, graph.AddControlEdge(src, dst));
   EXPECT_EQ(GRAPH_SUCCESS, graph.RemoveEdge(src, 0, dst, 0));

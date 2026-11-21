@@ -567,3 +567,11 @@ def test_launch_info_owns_and_validates_fields():
         custom_op.AnnotatedKernelLaunchInfo(
             kernel_name="", kernel_bin=b"\x01", block_dim=1, stream_id=0
         )
+
+
+def test_native_kernel_args_exposes_custom_data_contract():
+    assert hasattr(custom_op.AnnotatedKernelArgs, "append_custom_data_block")
+    stub = Path(custom_op.__file__).with_name("_ge_custom_op_native.pyi")
+    assert (
+        "def append_custom_data_block(self, data: bytes) -> None:" in stub.read_text()
+    )

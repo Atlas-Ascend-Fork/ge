@@ -597,6 +597,15 @@ class NativeAnnotatedKernelArgs {
     Append(value, "append scalar");
   }
 
+  void AppendCustomDataBlock(const py::bytes &data) {
+    (void)GetContext();
+    const std::string buffer = data;
+    if (buffer.empty()) {
+      throw std::invalid_argument("custom data must not be empty");
+    }
+    Append(gert::CustomDataBlock{buffer.data(), buffer.size()}, "append custom data");
+  }
+
   gert::AnnotatedKernelArgs Take() {
     (void)GetContext();
     consumed_ = true;
@@ -854,7 +863,8 @@ void BindAnnotatedArgsContext(py::module_ &m) {
       .def("append_input", &NativeAnnotatedKernelArgs::AppendInput, py::arg("instance_index"), py::arg("tensor"))
       .def("append_output", &NativeAnnotatedKernelArgs::AppendOutput, py::arg("instance_index"), py::arg("tensor"))
       .def("append_workspace", &NativeAnnotatedKernelArgs::AppendWorkspace, py::arg("workspace"))
-      .def("append_scalar", &NativeAnnotatedKernelArgs::AppendScalar, py::arg("value"));
+      .def("append_scalar", &NativeAnnotatedKernelArgs::AppendScalar, py::arg("value"))
+      .def("append_custom_data_block", &NativeAnnotatedKernelArgs::AppendCustomDataBlock, py::arg("data").noconvert());
 
   py::class_<BorrowedAnnotatedArgsContext>(m, "AnnotatedArgsContext", "Borrowed view of gert::AnnotatedArgsContext")
       .def("_get_required_input_tensor", &BorrowedAnnotatedArgsContext::GetRequiredInputTensor, py::arg("ir_index"))

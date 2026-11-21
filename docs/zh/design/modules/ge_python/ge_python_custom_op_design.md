@@ -334,7 +334,9 @@ Python custom op 使用 `@register_op_impl(op_type=...)` 装饰器注册实现�
 参数，输入/属性/输出查询接口与 Eager 一致绑定为内部 `_get_*` 接口，不进入公共 API 和类型桩；不提供
 `get_stream` 和 `malloc_workspace`。
 
-`AnnotatedArgsContext` 暴露 workspace 申请、stream id 查询、kernel 参数 builder 创建和 launch 添加能力；输入输出 tensor 与属性查询由内部 schema-bound 组装逻辑使用。`AnnotatedKernelArgs` 暴露 `append_input`、`append_output`、`append_workspace` 和 `append_scalar`。
+`AnnotatedArgsContext` 暴露 workspace 申请、stream id 查询、kernel 参数 builder 创建和 launch 添加能力；输入输出 tensor 与属性查询由内部 schema-bound 组装逻辑使用。`AnnotatedKernelArgs` 暴露 `append_input`、`append_output`、`append_workspace`、`append_scalar` 和 `append_custom_data_block`。
+
+`AnnotatedKernelArgs.append_custom_data_block(data: bytes)`深拷贝非空字节串，通过C++ `CustomDataBlock`追加只读device数据块指针。绑定层用 `std::string` 按原始字节长度传递数据，保留其中的零字节。长度不会自动传给kernel；空数据抛出`ValueError`，非bytes抛出`TypeError`，失效或已消费对象抛出`RuntimeError`。沿用C++的数据大小限制及.omc、OM2不支持约束。
 
 `RuntimeAttrs` 为桥接层内部的运行时属性 borrowed view，按属性 IR index 提供以下 typed reader，由桥接层根据 canonical IR 属性类型选择，不通过 `ge.custom_op` 对外导出：
 

@@ -13,7 +13,6 @@
 
 #include <stdlib.h>
 #include "ring_queue.h"
-#include "exe_graph/runtime/kernel_run_context.h"
 #include "executor/executor_base_def.h"
 #include "executor/topological/execution_data/topological_execution_data.h"
 #ifdef __cplusplus

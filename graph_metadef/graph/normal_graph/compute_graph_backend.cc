@@ -276,7 +276,7 @@ std::vector<GNode> ComputeGraphBackend::GetDirectNode() const {
 }
 
 graphStatus ComputeGraphBackend::RemoveEdgeByAnchor(const NodePtr &src_node_ptr, const int32_t src_port_index,
-                                                    const NodePtr &dst_node_ptr, const int32_t dst_port_index) {
+                                                    const NodePtr &dst_node_ptr, const int32_t dst_port_index) const {
   if ((src_port_index == -1) && (dst_port_index == -1)) {
     return RemoveControlEdgeByAnchor(src_node_ptr, dst_node_ptr);
   }
@@ -394,18 +394,16 @@ graphStatus ComputeGraphBackend::CopyFrom(const Graph &src_graph, const std::str
   return GraphUtilsEx::CopyGraph(src_graph, graph_name, copied_graph);
 }
 
-graphStatus ComputeGraphBackend::CopyOperatorsTo(GraphImpl &dst_impl,
-                                                 const std::map<ConstNodePtr, NodePtr> &node_old_2_new,
+graphStatus ComputeGraphBackend::CopyOperatorsTo(GraphImpl &dst, const std::map<ConstNodePtr, NodePtr> &node_old_2_new,
                                                  const std::map<ConstOpDescPtr, OpDescPtr> &op_desc_old_2_new) const {
   // CopyGraphImpl 工具入口也可直接调用，需在访问计算图状态前检查目标后端。
-  auto *dst_backend = dynamic_cast<ComputeGraphBackend *>(&dst_impl);
+  auto *dst_backend = dynamic_cast<ComputeGraphBackend *>(&dst);
   GE_ASSERT_NOTNULL(dst_backend, "CopyOperatorsTo requires a compute graph destination");
-  auto &dst = *dst_backend;
-  std::map<std::string, ge::Operator> &dst_op_list = dst.op_list_;
+  std::map<std::string, ge::Operator> &dst_op_list = dst_backend->op_list_;
   const std::map<std::string, ge::Operator> &src_op_list = op_list_;
-  auto &dst_compute_graph = dst.compute_graph_;
+  auto &dst_compute_graph = dst_backend->compute_graph_;
 
-  dst.output_name_ = output_name_;
+  dst_backend->output_name_ = output_name_;
 
   auto ret = OpDescUtils::CopyOperators(dst_compute_graph, node_old_2_new, op_desc_old_2_new, src_op_list, dst_op_list);
   if (ret != GRAPH_SUCCESS) {

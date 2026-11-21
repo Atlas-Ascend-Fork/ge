@@ -78,7 +78,7 @@ export AUTOFUSE_DFX_FLAGS="--codegen_compile_debug=true;--debug_dir=/path/to/dum
 
 | 环境变量                             | 说明                                                         | 使用方式                                      |
 | :----------------------------------- | :----------------------------------------------------------- | :-------------------------------------------- |
-| `TORCH_COMPILE_DEBUG`                | 开启PyTorch编译调试信息，并将编译中间产物保存到当前目录的`torch_compile_debug` 目录。以`autofused_`为前缀的目录通常表示 AscendC 后端生成的融合算子产物。 | `export TORCH_COMPILE_DEBUG=1`                |
+| `TORCH_COMPILE_DEBUG`                | 开启PyTorch编译调试信息，并将编译中间产物保存到当前目录的`torch_compile_debug` 目录。以`autofused_`为前缀的目录通常表示Ascend C后端生成的融合算子产物。 | `export TORCH_COMPILE_DEBUG=1`                |
 | `TORCHINDUCTOR_FORCE_DISABLE_CACHES` | 禁用Inductor缓存，强制每次执行都重新编译。该配置会增加编译和图启动耗时，仅用于调试。 | `export TORCHINDUCTOR_FORCE_DISABLE_CACHES=1` |
 | `TORCHINDUCTOR_NPU_BACKEND`          | 该环境变量用于选择Ascend C后端。                             | `export TORCHINDUCTOR_NPU_BACKEND="ascendc"`  |
 | `ASCEND_LAUNCH_BLOCKING`             | 使Ascend Kernel同步执行，便于定位首个报错的Kernel。该配置会降低执行性能，仅建议在问题定位时使用。 | `export ASCEND_LAUNCH_BLOCKING=1`             |
@@ -116,14 +116,14 @@ export AUTOFUSE_DFX_FLAGS="--codegen_compile_debug=true;--debug_dir=/path/to/dum
 
 #### --autofuse\_disable\_pass
 
-控制拓展融合能力是否关闭。
+控制扩展融合能力是否关闭。
 
 **取值：**
 
 - reduce：控制Reduce类算子融合能力关闭。
 - concat：控制Concat类算子融合能力关闭。
 
-配置多个取值时使用英文逗号分割，默认为空，Reduce类、Concat类算子的融合能力目前默认不开启。
+配置多个取值时使用英文逗号分隔，默认为空，Reduce类、Concat类算子的融合能力目前默认不开启。
 
 **配置示例：**
 
@@ -137,14 +137,14 @@ export AUTOFUSE_DFX_FLAGS="--codegen_compile_debug=true;--debug_dir=/path/to/dum
 
 #### --autofuse\_enable\_pass
 
-控制拓展融合能力是否开启。
+控制扩展融合能力是否开启。
 
 **取值：**
 
 - reduce：控制Reduce融合能力开启。
 - concat：控制Concat融合能力开启。
 
-配置多个取值时使用英文逗号分割，默认为空，Reduce类、Concat类算子的融合能力目前默认不开启。
+配置多个取值时使用英文逗号分隔，默认为空，Reduce类、Concat类算子的融合能力目前默认不开启。
 
 **配置示例：**
 
@@ -222,7 +222,7 @@ PGO调优是通过预上板采样，选取表现相对更好的Tiling以提升�
 如下场景不支持切图：
 
 - 动态分档场景。
-- 图上包含资源类算子（输入或者输入的类型是DT\_RESOURCE，如TensorArrayWrite）。
+- 图上包含资源类算子（输入或者输出的类型是DT\_RESOURCE，如TensorArrayWrite）。
 - 图上包含V1版本控制算子（如："Switch","StreamSwitch","Merge","StreamMerge","Enter","Exit","LoopCond","NextIteration"）。
 - 开启数据预处理下沉场景。
 - 开启AOE调优的场景。
@@ -501,7 +501,7 @@ PGO调优是通过预上板采样，选取表现相对更好的Tiling以提升�
 
 #### --skip\_node\_names\_cfg
 
-设置跳过融合的算子名字或算子类型。
+设置跳过融合的算子名称或算子类型。
 
 **取值：**
 设置了算子名称或者算子类型的配置文件（.ini格式）路径以及文件名，每个算子单独一行，支持同时设置算子名称或者算子类型，算子类型必须为基于Ascend IR定义的算子的类型。

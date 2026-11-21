@@ -21,7 +21,7 @@
 1. 调用《[Runtime运行时API](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md)》中的“初始化和去初始化 \> aclInit”接口，初始化acl，调用《Runtime运行时API》中的“Device管理 \> aclrtSetDevice”指定运行的Device。
 2. 构建ModelInference实例并初始化特性开关：开启批量H2D功能、配置AICore控核策略、使用多实例并行。
 3. ModelInference初始化：
-    1. 调用[Session构造函数](../../../api/graph_engine_api/cpp/ge/Session/Session.md)创建Session类对象，申请Session资源，Session中的options中配置ge.aicoreNum参数。
+    1. 调用[Session构造函数](../../../api/graph_engine_api/cpp/ge/Session/Session.md)创建Session类对象，申请Session资源，Session的options中配置ge.aicoreNum参数。
     2. 调用[GEInitialize](../../../api/graph_engine_api/cpp/ge/Session/GEInitialize.md)进行系统初始化。
     3. 调用[aclgrphParseTensorFlow](../../../api/graph_engine_api/cpp/ge/aclgrphParseTensorFlow.md)解析模型，获取Graph。
     4. 调用[AddGraph](../../../api/graph_engine_api/cpp/ge/Session/AddGraph.md)在Session类对象中添加定义好的图。

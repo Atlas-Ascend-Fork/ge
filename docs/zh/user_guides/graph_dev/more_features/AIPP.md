@@ -88,7 +88,7 @@ AIPP（Artificial Intelligence Pre-Processing）人工智能预处理，用于�
 - 如果用户设置了**动态**AIPP功能，同时又通过INPUT\_SHAPE设置了动态shape范围参数，则AIPP输出的宽和高要在INPUT\_SHAPE所设置的范围内。
 - 如果用户设置了**动态AIPP**功能，同时又通过DYNAMIC\_BATCH\_SIZE设置了动态batch\_size：
 
-    实际推理时，调用[aclmdlSetInputAIPP](../../../api/graph_engine_api/c/acl/aclmdlSetInputAIPP.md)接口，设置动态AIPP相关参数值时，需确保batch\_size要设置为最大Batch数。
+    实际推理时，调用[aclmdlSetInputAIPP](../../../api/graph_engine_api/c/acl/aclmdlSetInputAIPP.md)接口，设置动态AIPP相关参数值时，需确保batch\_size设置为最大Batch数。
 
 - 如果用户设置了**动态AIPP**功能，同时又通过DYNAMIC\_IMAGE\_SIZE设置了动态分辨率（输入图片的宽和高不确定）：
 

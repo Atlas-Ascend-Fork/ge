@@ -11,7 +11,6 @@
 #ifndef AIR_CXX_BASE_COMMON_OM2_DYNAMIC_CODEGEN_INFO_COLLECT_KERNEL_COLLECT_CONTEXT_H_
 #define AIR_CXX_BASE_COMMON_OM2_DYNAMIC_CODEGEN_INFO_COLLECT_KERNEL_COLLECT_CONTEXT_H_
 
-#include <cstdint>
 #include <vector>
 
 #include "exe_graph/runtime/kernel_context.h"

@@ -66,7 +66,7 @@ class GraphImpl {
   // ---- IR 构图（Operator 系） ----
   graphStatus SetInputs(const std::vector<Operator> &inputs);
   graphStatus SetOutputs(const std::vector<Operator> &outputs);
-  graphStatus SetOutputs(const std::vector<std::pair<Operator, std::vector<size_t>>> &output_indexs);
+  graphStatus SetOutputs(const std::vector<std::pair<Operator, std::vector<size_t>>> &output_indexes);
   graphStatus SetOutputs(const std::vector<std::pair<Operator, std::string>> &outputs);
   graphStatus SetOutputs(const std::vector<std::pair<Operator, AscendString>> &outputs);
   graphStatus SetOutputs(const std::vector<std::pair<GNode, int32_t>> &outputs);

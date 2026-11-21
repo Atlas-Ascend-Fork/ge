@@ -4,8 +4,7 @@
 
 Ascend IR（Ascend Intermediate Representation，昇腾中间表示）是AI处理器专用的抽象数据结构，用于表达计算流程。基于GE图引擎能力，PyTorch、TensorFlow、MindSpore、PaddlePaddle等主流AI框架的算法模型可以统一转换为使用Ascend IR表示的计算图，同时也支持用户自定义构建计算图，后续的编译加速优化均基于该计算图完成。
 
-**图 1**  使用Ascend IR表示的计算图
-![IR表示的计算图](../figures/ascend_ir_compute_graph.png "使用Ascend-IR表示的计算图")
+![IR表示的计算图](../figures/ascend_ir_compute_graph.png "使用Ascend IR表示的计算图")
 
 Ascend IR主要包括张量（Tensor）、Node（Operator）、Graph三个维度的信息。
 
@@ -36,7 +35,8 @@ Node（Operator）包括算子的name、type、输入、输出、属性等信息
 |输出（output）|算子的输出Tensor数据。|
 |属性（Attributes）|定义算子行为和功能，常见的算子属性包括轴（Axis）、权重（Weight）、偏差（Bias）。|
 
-**图 2**  算子名称表示的计算图
+下图为算子名称表示的计算图：
+
 ![名称表示的计算图](../figures/op_name_compute_graph.png "算子名称表示的计算图")
 
 ### Graph
@@ -58,19 +58,17 @@ Graph包括name、算子列表、输入算子、输出算子等信息。
 
 GE提供了两种构图方式：
 
-- onnx/pb等模型图构建：用户通过ATC命令行工具或者C++语言的Parser接口，通过前端框架算子逐一映射成CANN算子，从而将框架模型文件（如\*.onnx和\*.pb等格式）解析成Ascend IR表示的计算图。
+- onnx/pb等模型图构建：用户通过ATC命令行工具或者C++语言的Parser接口，将前端框架算子逐一映射成CANN算子，从而将框架模型文件（如\*.onnx和\*.pb等格式）解析成Ascend IR表示的计算图。Parser解析计算图如下所示：
 
-    **图 1**  Parser解析计算图
     ![Parser解析计算图](../figures/parser_parse_compute_graph.png "Parser解析计算图")
 
     ATC命令行工具详细说明请参见《[ATC离线模型编译工具](../../atc_tools/README.md)》。
 
     使用Parser接口构建图请参见[使用Parser接口将原始模型解析为Graph](../construct_graph/parse_model_to_graph_using_parser.md)。
 
-- 使用图引擎接口全新构建Graph：用户通过图引擎接口，将计算函数（算子）进行组合，构建成Ascend IR表示的计算图。下图展示了图构建的基本过程，详细过程可参考[使用图引擎接口全新构建Graph](../construct_graph/construct_graph_using_ge_api.md)。
+- 使用图引擎接口构建Graph：用户通过图引擎接口，将计算函数（算子）进行组合，构建成Ascend IR表示的计算图。下图展示了图构建的基本过程，详细过程可参考[使用图引擎接口构建Graph](../construct_graph/construct_graph_using_ge_api.md)。
 
-    **图 2**  全新构建计算图
-    ![全新构建计算图](../figures/build_compute_graph_new.png "全新构建计算图")
+    ![构建计算图](../figures/build_compute_graph_new.png "构建计算图")
 
 ### 图编译与图优化
 
@@ -97,7 +95,6 @@ GE中的图按所处阶段和表达内容的不同，分为计算图（ComputeGr
 
 以一个单输入单输出AI Core算子为例，其对应的执行图如下图所示。在执行图中，该算子的下发被拆分为InferShape（形状推导）、Tiling（Tiling计算）、AllocMemHbm（Device内存分配）、Launch（算子下发）等多个Host Kernel，这些Host Kernel根据执行图上的顺序在Host侧依次执行。
 
-**图 3**  单输入单输出AI Core算子对应的执行图
 ![单输入单输出AI Core算子对应的执行图](../figures/execute_graph.png "单输入单输出AI Core算子对应的执行图")
 
 由于计算图到执行图的转换在编译期完成，运行时仅需按执行图依次调度Host Kernel，无需再做图的“翻译”，因此动态Shape模型可以以更低的开销执行。执行图同时也是GE外部构图接口支持的图类别之一，用户可通过图引擎接口直接构建执行图类别的Graph（如`Graph(name, C_GRAPH_EXECUTE)`），接口约束请参见[Graph构造函数和析构函数](../../../api/graph_engine_api/cpp/ge/Graph/Graph_constructor_and_destructor.md)。
@@ -117,12 +114,10 @@ GE中的图按所处阶段和表达内容的不同，分为计算图（ComputeGr
 
 Host CPU将模型中的算子依次下发到Device执行（如下图中的标号①所示），每一个算子在执行流上以1个或多个Task的形式存在，昇腾AI处理器依次拉取执行流上的Task执行。这种Host调度带来的问题是，需要Host和Device频繁交互，在实际的训练或推理场景中，模型会运行多次，每次运行都会触发Host把模型上的所有算子遍历下发一遍。
 
-**图 1**  Host调度示意图
 ![Host调度示意图](../figures/host_scheduling_diagram.png "Host调度示意图")
 
-对于输入tensor shape固定不变的静态shape的模型，在编译时即可确定所有算子的输入输出shape，结合昇腾内存复用算法，可完成模型级内存编排；静态shape模型在编译时还可提前完成所有算子的Tiling计算等Host侧计算。因此，GE提供了静态图下沉调度模式，让模型中的算子在加载阶段提前以整图的形式下发到Device上，在执行时，只需在Host侧下发一个模型执行的Task即可触发模型在Device上调度执行。相比于Host调度模式，下沉调度模式可大大降低Host侧调度开销，有效减少Host和Device之间的交互。
+对于输入tensor shape固定不变的静态shape的模型，在编译时即可确定所有算子的输入输出shape，结合昇腾内存复用算法，可完成模型级内存编排；静态shape模型在编译时还可提前完成所有算子的Tiling计算等Host侧计算。因此，GE提供了静态图下沉调度模式，让模型中的算子在加载阶段提前以整图的形式下发到Device上，在执行时，只需在Host侧下发一个模型执行的Task即可触发模型在Device上调度执行。相比于Host调度模式，下沉调度模式可大大降低Host侧调度开销，有效减少Host和Device之间的交互。静态图下沉调度示意图如下所示：
 
-**图 2**  静态图下沉调度示意图
 ![静态图下沉调度示意图](../figures/static_graph_scheduling_diagram.png "静态图下沉调度示意图")
 
 ### 实现原理

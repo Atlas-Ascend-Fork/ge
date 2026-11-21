@@ -56,7 +56,7 @@
     }
     ```
 
-    可以通过传入**options**参数配置离线模型编译配置信息，当前支持的配置参数请参见[aclgrphBuildModel支持的配置参数](../../../api/graph_engine_api/cpp/ge/aclgrphBuildModel_config_params/aclgrphbuildmodel_config_params.md)。配置举例：
+    可以通过传入**options**参数配置离线模型编译信息，当前支持的配置参数请参见[aclgrphBuildModel支持的配置参数](../../../api/graph_engine_api/cpp/ge/aclgrphBuildModel_config_params/aclgrphbuildmodel_config_params.md)。配置举例：
 
     ```c++
     void PrepareOptions(std::map<AscendString, AscendString>& options) {

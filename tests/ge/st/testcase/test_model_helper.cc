@@ -47,6 +47,8 @@
 #include "common/env_path.h"
 #include "graph_metadef/common/ge_common/util.h"
 #include "nlohmann/json.hpp"
+#include "graph/model.h"
+#include "proto/ge_ir.pb.h"
 
 namespace ge {
 using namespace gert;
@@ -745,6 +747,107 @@ TEST_F(ModelHelperTest, VisualJsonFromGeModelKeepsStructuredSubgraphAndBytesAttr
   ASSERT_TRUE(graphs.is_array());
   ASSERT_GE(graphs.size(), 2U);
   ExpectStructuredSubgraphVisualJson(graphs, bytes_payload);
+}
+
+static proto::ModelDef MakeSubgraphCycleModel() {
+  proto::ModelDef model_def;
+  model_def.set_name("st_subgraph_cycle_model");
+  auto *root_def = model_def.add_graph();
+  root_def->set_name("root_graph");
+  auto *root_op = root_def->add_op();
+  root_op->set_name("root_op");
+  root_op->set_type("Data");
+  root_op->add_subgraph_name("root_graph");
+  auto *other_def = model_def.add_graph();
+  other_def->set_name("other_graph");
+  auto *other_op = other_def->add_op();
+  other_op->set_name("other_op");
+  other_op->set_type("Data");
+  return model_def;
+}
+
+TEST_F(ModelHelperTest, LoadRejectsSubgraphSelfReference) {
+  const auto model_def = MakeSubgraphCycleModel();
+  const auto model_buffer = model_def.SerializeAsString();
+  ASSERT_GT(model_buffer.size(), 0U);
+
+  Model model;
+  EXPECT_EQ(Model::Load(reinterpret_cast<const uint8_t *>(model_buffer.data()), model_buffer.size(), model),
+            GRAPH_FAILED);
+}
+
+TEST_F(ModelHelperTest, LoadRejectsSubgraphMutualReference) {
+  proto::ModelDef model_def;
+  model_def.set_name("st_mutual_ref_model");
+  auto *graph_a_def = model_def.add_graph();
+  graph_a_def->set_name("graph_a");
+  auto *op_a = graph_a_def->add_op();
+  op_a->set_name("op_a");
+  op_a->set_type("Data");
+  op_a->add_subgraph_name("graph_b");
+  auto *graph_b_def = model_def.add_graph();
+  graph_b_def->set_name("graph_b");
+  auto *op_b = graph_b_def->add_op();
+  op_b->set_name("op_b");
+  op_b->set_type("Data");
+  op_b->add_subgraph_name("graph_a");
+  const auto model_buffer = model_def.SerializeAsString();
+  ASSERT_GT(model_buffer.size(), 0U);
+
+  Model model;
+  EXPECT_EQ(Model::Load(reinterpret_cast<const uint8_t *>(model_buffer.data()), model_buffer.size(), model),
+            GRAPH_FAILED);
+}
+
+TEST_F(ModelHelperTest, LoadRejectsRepeatedSubgraphReference) {
+  proto::ModelDef model_def;
+  model_def.set_name("st_repeated_ref_model");
+  auto *root_def = model_def.add_graph();
+  root_def->set_name("root_graph");
+  auto *first_op = root_def->add_op();
+  first_op->set_name("first_op");
+  first_op->set_type("Data");
+  first_op->add_subgraph_name("sub_graph");
+  auto *second_op = root_def->add_op();
+  second_op->set_name("second_op");
+  second_op->set_type("Data");
+  second_op->add_subgraph_name("sub_graph");
+  auto *sub_def = model_def.add_graph();
+  sub_def->set_name("sub_graph");
+  auto *sub_op = sub_def->add_op();
+  sub_op->set_name("sub_op");
+  sub_op->set_type("Data");
+  const auto model_buffer = model_def.SerializeAsString();
+  ASSERT_GT(model_buffer.size(), 0U);
+
+  Model model;
+  EXPECT_EQ(Model::Load(reinterpret_cast<const uint8_t *>(model_buffer.data()), model_buffer.size(), model),
+            GRAPH_FAILED);
+}
+
+TEST_F(ModelHelperTest, LoadOkWithValidSubgraphReference) {
+  proto::ModelDef model_def;
+  model_def.set_name("st_valid_ref_model");
+  auto *root_def = model_def.add_graph();
+  root_def->set_name("root_graph");
+  auto *root_op = root_def->add_op();
+  root_op->set_name("root_op");
+  root_op->set_type("Data");
+  root_op->add_subgraph_name("sub_graph");
+  auto *sub_def = model_def.add_graph();
+  sub_def->set_name("sub_graph");
+  auto *sub_op = sub_def->add_op();
+  sub_op->set_name("sub_op");
+  sub_op->set_type("Data");
+  const auto model_buffer = model_def.SerializeAsString();
+  ASSERT_GT(model_buffer.size(), 0U);
+
+  Model model;
+  EXPECT_EQ(Model::Load(reinterpret_cast<const uint8_t *>(model_buffer.data()), model_buffer.size(), model),
+            GRAPH_SUCCESS);
+  ASSERT_NE(model.GetGraph(), nullptr);
+  EXPECT_EQ(model.GetGraph()->GetName(), "root_graph");
+  EXPECT_EQ(model.GetGraph()->GetAllSubgraphs().size(), 1U);
 }
 
 }  // namespace ge

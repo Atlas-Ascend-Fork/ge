@@ -12,6 +12,7 @@
 #define USER_HYBRID_GRAPH_MANAGER_H
 
 #include <cstdint>
+#include <limits>
 #include <map>
 
 #include "graph/graph.h"
@@ -44,6 +45,7 @@ class UserHybridGraphManager {
  private:
   bool IsHybridMode(const std::map<std::string, std::string> &options) const;
   void SetDynamicGraphId(const uint32_t user_graph_id);
+  uint32_t AllocateInnerGraphId();
   bool TryGetDynamicGraphId(const uint32_t user_graph_id, uint32_t &dynamic_gear_graph_id,
                             uint32_t &dynamic_shape_graph_id);
   Status RecordDynamicGearInfo(const uint32_t graph_id);
@@ -58,7 +60,9 @@ class UserHybridGraphManager {
   std::map<uint32_t, std::pair<uint32_t, uint32_t>> dynamic_graph_id_map_;
   std::mutex dynamic_dims_info_mu_;
   std::map<uint32_t, HybridDynamicDimsInfo> dynamic_dims_info_map_;
-  uint32_t inner_graph_id_cnt_{0U};
+  // 内部图 id 从 0x7FFFFFFF 向下分配，与用户常用的小 id（0、1、42 等）天然隔离；
+  // 0xFFFFFFFF 是 INVALID_GRAPH_ID 哨兵，且保持在 int32 正区间，规避有符号转换。
+  uint32_t inner_graph_id_cnt_{std::numeric_limits<uint32_t>::max() / 2U};
 };
 using UserHybridGraphManagerPtr = std::shared_ptr<UserHybridGraphManager>;
 }  // namespace ge

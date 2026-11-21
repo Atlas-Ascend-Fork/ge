@@ -12,7 +12,6 @@
 #define AIR_CXX_RUNTIME_V2_LOWERING_GERT_METADATA_PREPARER_H_
 
 #include "framework/common/ge_visibility.h"
-#include "exe_graph/lowering/buffer_pool.h"
 #include "graph/error_codes.h"
 
 namespace ge {

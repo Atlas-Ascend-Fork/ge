@@ -24,7 +24,6 @@ class ProfilingCallbackManager {
   static ProfilingCallbackManager &GetInstance();
   static Status GlobalInit();
   static rtError_t ProfilingCtrlCallback(const uint32_t ctrl_type, void *const ctrl_data, const uint32_t data_len);
-  static void NotifyProfilingCommand(const void *ctrl_data, uint32_t data_len);
 
  private:
   ProfilingCallbackManager() = default;

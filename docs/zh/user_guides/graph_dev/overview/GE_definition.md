@@ -77,8 +77,8 @@ GE面向不同的用户场景，提供了不同的对接方案，便于用户更
 
         具体使用方法为：
 
-        1. 将原始PyTorch网络迁移到昇腾平台，详细迁移过程请参见《传统模型迁移调优指南》。
-        2. 通过TorchAir实现图模式推理，详细配置方法具体请参见《TorchAir使用指南》。
+        1. 将原始PyTorch网络迁移到昇腾平台，详细迁移过程请参见《[传统模型迁移调优指南](https://www.hiascend.com/document/detail/zh/ModelZoo/traditional_model_train/PyTorch/docs/zh/migration_process.md)》。
+        2. 通过TorchAir实现图模式推理，详细配置方法请参见《[TorchAir使用指南](https://gitcode.com/Ascend/torchair/blob/master/docs/zh/_menu_torchair.md)》。
 
     - TensorFlow框架接入GE
 
@@ -99,8 +99,8 @@ GE面向不同的用户场景，提供了不同的对接方案，便于用户更
 
         详细使用方法请参见《[PaddlePaddle教程文档](https://www.paddlepaddle.org.cn/documentation/docs/zh/develop/hardware_support/npu/install_cn.html)》。
 
-  - 对于其他三方框架，GE提供了统一的C++图引擎接口支持用户自行完成适配动作。详情请参见[使用图引擎接口全新构建Graph](../construct_graph/construct_graph_using_ge_api.md)。
+  - 对于其他三方框架，GE提供了统一的C++图引擎接口支持用户自行完成适配动作。详情请参见[使用图引擎接口构建Graph](../construct_graph/construct_graph_using_ge_api.md)。
 
-- **使用图引擎接口全新构建网络**
-  - GE提供了统一的C++图引擎接口支持用户自定义图结构，并在AI处理器基于图引擎执行。详情请参见：[使用图引擎接口全新构建Graph](../construct_graph/construct_graph_using_ge_api.md)。
+- **使用图引擎接口构建网络**
+  - GE提供了统一的C++图引擎接口支持用户自定义图结构，并在AI处理器基于图引擎执行。详情请参见：[使用图引擎接口构建Graph](../construct_graph/construct_graph_using_ge_api.md)。
   - GE提供了一套函数风格的极简构图API，可以使用更少的代码量来构图，提升构图易用性的同时兼顾了一定的防呆能力。详情请参见：[ES构图](../es_graph/README.md)。

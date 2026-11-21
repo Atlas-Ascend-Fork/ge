@@ -312,6 +312,36 @@ ProfilerCollector::RecordEnd(stream) record model end
 
 `ProfilerCollector::RecordEnd` method is called at model execution end, reports StepTrace End Tag, `kModelExecute` event and graph_id to model_id mapping relationship, finally step_id increments.
 
+### 4.7 OM2 Profiling (Independent Registration)
+
+The profiling control callback of the OM2 executor (`runtime/om2/`) is registered to msprof independently, without relying on OM1 forwarding. msprof supports append-mode multi-callback registration for the same component (GE): OM1's `ProfCtrlHandle` and OM2's `ProfilingCtrlCallback` each receive the command broadcast without affecting each other.
+
+**Registration chain**:
+
+```
+aclInit (acl init callback, api/acl/acl_model/model/init_callback_register_om2.cpp)
+    ↓
+Om2DfxApi::GlobalInit (runtime/om2/om2_dfx_loader.cc)
+    ↓
+ProfilingCallbackManager::GlobalInit (runtime/om2/profiling/profiling_callback_manager.cc)
+    ↓
+MsprofRegisterCallback(GE, &ProfilingCtrlCallback)   ← returns FAILED on registration failure, blocking aclInit
+```
+
+**Command processing chain**:
+
+```
+msprof sends ctrl commands (prof_start/pro_stop/pro_finalize)
+    ↓
+ProfilingCallbackManager::ProfilingCtrlCallback (ctrl types other than RT_PROF_CTRL_SWITCH are skipped)
+    ↓
+HandleCtrlSwitch → ProfilingConfig::Enable(options) / Disable()
+```
+
+**Runtime data collection**: `ProfilingImpl` (`runtime/om2/profiling/profiling_impl.cc`) directly calls `MsprofReportEvent`/`MsprofReportAdditionalInfo` according to the `ProfilingConfig` switches, reporting model load duration, GraphIdMap, task_id to op name mapping, StepTrace and launch duration. The data flow does not pass through OM1.
+
+This design is symmetric with the independent registration pattern of the OM2 dump side, where `DumpCallbackManager::GlobalInit` directly calls `Adx::AdumpRegisterCallback`, keeping the DFX capabilities of OM2 and OM1 decoupled.
+
 ---
 
 ## 5. Profiling Data Flow Panorama

@@ -144,7 +144,7 @@ class ComputeGraphBackend : public GraphImpl {
 
  private:
   graphStatus RemoveEdgeByAnchor(const NodePtr &src_node_ptr, const int32_t src_port_index, const NodePtr &dst_node_ptr,
-                                 const int32_t dst_port_index);
+                                 const int32_t dst_port_index) const;
   graphStatus RemoveControlEdgeByAnchor(const NodePtr &src_node_ptr, const NodePtr &dst_node_ptr) const;
   graphStatus RemoveDataControlEdgeByAnchor(const NodePtr &src_node_ptr, const int32_t src_port_index,
                                             const NodePtr &dst_node_ptr) const;

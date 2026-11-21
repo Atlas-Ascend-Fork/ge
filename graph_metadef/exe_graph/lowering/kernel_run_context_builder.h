@@ -14,6 +14,8 @@
 #include "graph/node.h"
 #include "exe_graph/runtime/kernel_context.h"
 #include "exe_graph/lowering/buffer_pool.h"
+#include "graph/error_codes.h"
+#include "graph/gnode.h"
 
 namespace gert {
 class KernelContextHolder {

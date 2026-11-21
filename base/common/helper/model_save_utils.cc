@@ -97,8 +97,7 @@ Status GetOppVersion(std::string &version) {
   return SUCCESS;
 }
 
-Status LoadOppSoBinaries(const std::unordered_set<std::string> &op_so_set, const SoBinType so_bin_type,
-                         OpSoStore &so_store) {
+Status LoadOppSoBinaries(const std::unordered_set<std::string> &op_so_set, SoBinType so_bin_type, OpSoStore &so_store) {
   for (const auto &op_so : op_so_set) {
     uint32_t bin_len = 0U;
     auto op_so_bin = GetBinDataFromFile(op_so, bin_len);

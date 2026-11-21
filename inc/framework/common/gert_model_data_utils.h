@@ -23,7 +23,6 @@
 #include <memory>
 #include <string>
 #include "common/checker.h"
-#include "common/ge_inner_error_codes.h"
 
 namespace gert {
 

@@ -13,7 +13,6 @@
 
 #include <cstddef>
 
-#include "framework/common/ge_visibility.h"
 #include "framework/runtime/executor_option/executor_option.h"
 #include "graph/fast_graph/execute_graph.h"
 #include "core/builder/node_types.h"

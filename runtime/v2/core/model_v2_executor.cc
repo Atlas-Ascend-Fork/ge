@@ -19,7 +19,6 @@
 #include "register/kernel_registry.h"
 #include "common/model/ge_root_model.h"
 #include "common/multi_stream_tuning/step_recorder.h"
-#include "core/executor/exec_ctx_cache.h"
 #include "core/utils/rt2_tensor_utils.h"
 #include "executor_error_code.h"
 #include "framework/runtime/gert_const_types.h"
@@ -414,7 +413,6 @@ ModelV2Executor::ModelV2Executor()
     : resource_guard_(), graphs_(), model_desc_(nullptr), default_stream_(nullptr), subscribers_() {}
 
 ge::graphStatus ExeGraphExecutor::Execute() const {
-  gert::ExecCtxScopeGuard ctx_scope_guard;
   auto ret = execute_func_(execution_data_);
   if (ret != kStatusSuccess) {
     return ret;
@@ -422,7 +420,6 @@ ge::graphStatus ExeGraphExecutor::Execute() const {
   return ge::GRAPH_SUCCESS;
 }
 ge::graphStatus ExeGraphExecutor::Execute(SubExeGraphType sub_graph_type, ExecutorSubscriber *callback) const {
-  gert::ExecCtxScopeGuard ctx_scope_guard;
   auto ret = execute_with_callback_func_(sub_graph_type, execution_data_, callback);
   if (ret != kStatusSuccess) {
     return ret;

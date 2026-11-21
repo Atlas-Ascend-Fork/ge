@@ -192,10 +192,10 @@ static ge::Status DynamicCreate(const Om2DynamicCreateInput *input, Om2DynamicCr
   }
 }
 
-static ge::Status DynamicPrepareConstants(void *context, void **constants, uint64_t constant_count) {
+static ge::Status DynamicPrepareConstants(const void *context, void **constants, uint64_t constant_count) {
   try {
     GE_ASSERT_NOTNULL(context);
-    const auto &host_constants = static_cast<DynamicContext *>(context)->host_constants;
+    const auto &host_constants = static_cast<const DynamicContext *>(context)->host_constants;
     if (!host_constants.empty()) {
       GE_ASSERT_NOTNULL(constants);
       GE_ASSERT_TRUE(host_constants.rbegin()->first < constant_count);
@@ -210,13 +210,13 @@ static ge::Status DynamicPrepareConstants(void *context, void **constants, uint6
   }
 }
 
-static ge::Status DynamicPrepareLoad(void *context, GertModelLoadConfig *config) {
+static ge::Status DynamicPrepareLoad(const void *context, GertModelLoadConfig *config) {
   try {
     GE_ASSERT_NOTNULL(context);
     GE_ASSERT_NOTNULL(config);
     GE_ASSERT_TRUE(config->struct_size >=
                    offsetof(GertModelLoadConfig, dynamic_config) + sizeof(config->dynamic_config));
-    const auto &dynamic = *static_cast<DynamicContext *>(context);
+    const auto &dynamic = *static_cast<const DynamicContext *>(context);
     config->external_allocator = dynamic.allocators.get();
     config->dynamic_config = &dynamic.load_config;
     return ge::SUCCESS;
@@ -226,7 +226,7 @@ static ge::Status DynamicPrepareLoad(void *context, GertModelLoadConfig *config)
   }
 }
 
-static ge::Status DynamicPrepareRun(void *context, void *external_allocator, GertModelRunConfig *config) {
+static ge::Status DynamicPrepareRun(const void *context, void *external_allocator, GertModelRunConfig *config) {
   try {
     GE_ASSERT_NOTNULL(context);
     GE_ASSERT_NOTNULL(config);

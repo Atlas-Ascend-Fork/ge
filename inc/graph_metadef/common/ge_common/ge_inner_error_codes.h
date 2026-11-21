@@ -13,7 +13,6 @@
 #define INC_COMMON_GE_INNER_ERROR_CODES_H_
 
 #include <string>
-#include "external/ge_common/ge_api_error_codes.h"
 #include "common/ge_common/error_codes_define.h"
 
 namespace ge {

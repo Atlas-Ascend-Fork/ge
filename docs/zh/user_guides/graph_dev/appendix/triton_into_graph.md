@@ -31,7 +31,7 @@ Triton-Ascend是面向昇腾平台构建的Triton编译框架，旨在让Triton�
 - **CANN软件包安装**：参见[环境准备](../overview/environment_setup.md)安装CANN软件包，并设置环境变量。
 - **Triton-Ascend 安装**：参见[Triton-Ascend安装指南](https://gitcode.com/Ascend/triton-ascend/blob/master/docs/sources/getting-started/installation.md)进行安装。
 
-详细Sample示例请单击[Triton自定义算子入图样例](../../../../../examples/custom_op/triton_add_custom/README.md)获取。
+详细示例请单击[Triton自定义算子入图样例](../../../../../examples/custom_op/triton_add_custom/README.md)获取。
 
 ### 生成npubin文件
 

@@ -11,6 +11,7 @@
 #include <string.h>
 #include "graph_metadef/graph/utils/file_utils.h"
 #include <gtest/gtest.h>
+#include "depends/mmpa/src/mmpa_stub.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 
 namespace ge {
@@ -154,6 +155,27 @@ TEST_F(UtestFileUtils, WriteBinToFileFdNullData) {
 TEST_F(UtestFileUtils, WriteBinToFileFdZeroLen) {
   char data[4] = {'1', '2', '3'};
   ASSERT_EQ(WriteBinToFile(1, reinterpret_cast<char_t *>(data), 0), GRAPH_FAILED);
+}
+
+TEST_F(UtestFileUtils, SaveBinToFileKeepsRootDirectory) {
+  class CaptureOpenPath : public MmpaStubApiGe {
+   public:
+    INT32 Open2(const CHAR *path_name, INT32, MODE) override {
+      opened_path = path_name;
+      return EN_ERROR;
+    }
+
+    std::string opened_path;
+  };
+
+  const auto mmpa = std::make_shared<CaptureOpenPath>();
+  MmpaStub::GetInstance().SetImpl(mmpa);
+  const std::string output_path = "/save_bin_to_file_root_test.bin";
+  const auto ret = SaveBinToFile("123", 3U, output_path);
+  MmpaStub::GetInstance().Reset();
+
+  EXPECT_NE(ret, GRAPH_SUCCESS);
+  EXPECT_EQ(mmpa->opened_path, output_path);
 }
 
 TEST_F(UtestFileUtils, SaveBinToFileNullData) {

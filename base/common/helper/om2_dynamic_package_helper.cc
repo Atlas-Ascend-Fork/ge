@@ -717,7 +717,7 @@ Status Om2PackageHelper::BuildDynamicGertModelData(const GeRootModelPtr &ge_root
   online->graph_id = root_graph->GetGraphID();
   online->prepare_ge_variables = true;
   std::set<NodePtr> visited;
-  const auto collect = [&](const ComputeGraphPtr &graph) -> Status {
+  const auto collect = [&online, &visited](const ComputeGraphPtr &graph) -> Status {
     GE_ASSERT_NOTNULL(graph);
     online->graphs.emplace_back(graph);
     for (const auto &node : graph->GetAllNodes()) {
@@ -816,7 +816,7 @@ Status Om2PackageHelper::DeduplicateKernelBinaries(gert::GertModelData &model_da
   return SUCCESS;
 }
 
-Status Om2PackageHelper::CompileDynamicProgramBody(const std::string &model_name, const uint32_t graph_id,
+Status Om2PackageHelper::CompileDynamicProgramBody(const std::string &model_name, uint32_t graph_id,
                                                    std::vector<gert::GertModelDataFile> &&artifacts,
                                                    gert::GertModelDataRuntime &runtime) {
   GE_ASSERT_TRUE(!artifacts.empty(), "[OM2] Dynamic source artifacts are empty");
@@ -828,7 +828,7 @@ Status Om2PackageHelper::CompileDynamicProgramBody(const std::string &model_name
 // 两路在各自完成模型元信息和资源装配后汇合，此处共用 Codegen 和 SO 编译。
 // 模型元信息和资源的提取、装配仍保留在各自的准备函数中。
 Status Om2PackageHelper::CompileAndPackageOm2(const std::shared_ptr<ExecuteGraph> &graph, const std::string &model_name,
-                                              const uint32_t graph_id, gert::GertModelData &model_data) {
+                                              uint32_t graph_id, gert::GertModelData &model_data) {
   GE_ASSERT_NOTNULL(graph);
   // 1. 从最终执行图收集代码生成所需的信息。
   gert::om2::ProgramInfo program_info;

@@ -135,6 +135,89 @@ TEST_F(UserHybridGraphManagerlUT, AddGraph_RemoveGraph_Success) {
   EXPECT_EQ(graph_manager.Finalize(), SUCCESS);
 }
 
+/**
+ * @brief 混合图内部图 id 需跳过会话中已注册的用户图 id
+ * @details 场景：先 AddGraph(0, 普通图)，再 AddGraph(42, 混合图)；
+ *          期望：42 的内部 id 均不为 0，RemoveGraph(42) 后普通图 0 仍处于注册状态
+ */
+TEST_F(UserHybridGraphManagerlUT, HybridInnerIdSkipsRegisteredUserGraph) {
+  uint64_t session_id = 0;
+  ModelExecutor model_executor;
+  model_executor.Initialize({}, session_id);
+  GraphManager graph_manager;
+  graph_manager.Initialize({}, &model_executor);
+  UserGraphsManager user_graph_manager(graph_manager);
+  UserHybridGraphManager user_hybrid_graph_manager(user_graph_manager);
+
+  const auto regular_compute_graph = MakeShared<ComputeGraph>("regular_graph");
+  Graph regular_graph = GraphUtilsEx::CreateGraphFromComputeGraph(regular_compute_graph);
+  ASSERT_EQ(user_hybrid_graph_manager.AddGraph(0U, regular_graph, {}), SUCCESS);
+
+  std::map<std::string, std::string> options;
+  options["ge.inputShape"] = "data1:-1,-1,-1;data2:-1,-1,-1";
+  options["ge.dynamicDims"] = "1,1,1,1,1,1;3,3,3,3,3,3;5,5,5,5,5,5";
+  options["ge.dynamicNodeType"] = "1";
+  options["ge.compileHybridMode"] = "1";
+  const auto hybrid_compute_graph = MakeShared<ComputeGraph>("hybrid_graph");
+  Graph hybrid_graph = GraphUtilsEx::CreateGraphFromComputeGraph(hybrid_compute_graph);
+  ASSERT_EQ(user_hybrid_graph_manager.AddGraph(42U, hybrid_graph, options), SUCCESS);
+
+  uint32_t gear_graph_id = 0U;
+  uint32_t shape_graph_id = 0U;
+  ASSERT_TRUE(user_hybrid_graph_manager.TryGetDynamicGraphId(42U, gear_graph_id, shape_graph_id));
+  EXPECT_NE(gear_graph_id, 0U);
+  EXPECT_NE(shape_graph_id, 0U);
+
+  ASSERT_EQ(user_hybrid_graph_manager.RemoveGraph(42U), SUCCESS);
+  EXPECT_TRUE(user_graph_manager.IsGraphIdRegistered(0U));
+
+  EXPECT_EQ(user_hybrid_graph_manager.Finalize(), SUCCESS);
+  EXPECT_EQ(user_graph_manager.Finalize(), SUCCESS);
+  EXPECT_EQ(graph_manager.Finalize(), SUCCESS);
+}
+
+/**
+ * @brief 内部图 id 高位分配时需跳过用户已占用的高位 id
+ * @details 场景：先用 0x7FFFFFFF 注册普通图，再添加混合图 42（内部 id 从 0x7FFFFFFF 起向下取）；
+ *          期望：42 的内部 id 均不为 0x7FFFFFFF，且 RemoveGraph(42) 后该普通图仍处于注册状态
+ */
+TEST_F(UserHybridGraphManagerlUT, HybridInnerIdSkipsRegisteredHighId) {
+  uint64_t session_id = 0;
+  ModelExecutor model_executor;
+  model_executor.Initialize({}, session_id);
+  GraphManager graph_manager;
+  graph_manager.Initialize({}, &model_executor);
+  UserGraphsManager user_graph_manager(graph_manager);
+  UserHybridGraphManager user_hybrid_graph_manager(user_graph_manager);
+
+  const uint32_t reserved_graph_id = 0x7FFFFFFFU;
+  const auto regular_compute_graph = MakeShared<ComputeGraph>("regular_graph");
+  Graph regular_graph = GraphUtilsEx::CreateGraphFromComputeGraph(regular_compute_graph);
+  ASSERT_EQ(user_hybrid_graph_manager.AddGraph(reserved_graph_id, regular_graph, {}), SUCCESS);
+
+  std::map<std::string, std::string> options;
+  options["ge.inputShape"] = "data1:-1,-1,-1;data2:-1,-1,-1";
+  options["ge.dynamicDims"] = "1,1,1,1,1,1;3,3,3,3,3,3;5,5,5,5,5,5";
+  options["ge.dynamicNodeType"] = "1";
+  options["ge.compileHybridMode"] = "1";
+  const auto hybrid_compute_graph = MakeShared<ComputeGraph>("hybrid_graph");
+  Graph hybrid_graph = GraphUtilsEx::CreateGraphFromComputeGraph(hybrid_compute_graph);
+  ASSERT_EQ(user_hybrid_graph_manager.AddGraph(42U, hybrid_graph, options), SUCCESS);
+
+  uint32_t gear_graph_id = 0U;
+  uint32_t shape_graph_id = 0U;
+  ASSERT_TRUE(user_hybrid_graph_manager.TryGetDynamicGraphId(42U, gear_graph_id, shape_graph_id));
+  EXPECT_NE(gear_graph_id, reserved_graph_id);
+  EXPECT_NE(shape_graph_id, reserved_graph_id);
+
+  ASSERT_EQ(user_hybrid_graph_manager.RemoveGraph(42U), SUCCESS);
+  EXPECT_TRUE(user_graph_manager.IsGraphIdRegistered(reserved_graph_id));
+
+  EXPECT_EQ(user_hybrid_graph_manager.Finalize(), SUCCESS);
+  EXPECT_EQ(user_graph_manager.Finalize(), SUCCESS);
+  EXPECT_EQ(graph_manager.Finalize(), SUCCESS);
+}
+
 TEST_F(UserHybridGraphManagerlUT, SelectExecuteGraph_MatchDynamicGear) {
   uint64_t session_id = 0;
   ModelExecutor model_executor;

@@ -1149,6 +1149,51 @@ std::string MakeDenseConstIndexConfigJson() {
   })";
 }
 
+std::string MakeConstBoundaryOffsetSizeConfigJson() {
+  return R"({
+    "internal_weight_size": 16,
+    "consts": {
+      "fc0_weight": {
+        "file_name": "constant_0",
+        "index": 0,
+        "type": "INTERNAL",
+        "offset": 8,
+        "size": 8
+      }
+    }
+  })";
+}
+
+std::string MakeNegativeConstOffsetConfigJson() {
+  return R"({
+    "internal_weight_size": 16,
+    "consts": {
+      "fc0_weight": {
+        "file_name": "constant_0",
+        "index": 0,
+        "type": "INTERNAL",
+        "offset": -8,
+        "size": 9
+      }
+    }
+  })";
+}
+
+std::string MakeNegativeConstSizeConfigJson() {
+  return R"({
+    "internal_weight_size": 16,
+    "consts": {
+      "fc0_weight": {
+        "file_name": "constant_0",
+        "index": 0,
+        "type": "INTERNAL",
+        "offset": 0,
+        "size": -1
+      }
+    }
+  })";
+}
+
 static std::string MakeEmptyOpAttrJson() {
   return "{}";
 }
@@ -2545,6 +2590,30 @@ TEST_F(Om2ModelExecutorUt, load_ok_with_dense_const_index) {
   ASSERT_EQ(setenv("OM2_EXPECT_CONST0_FIRST_BYTE", "1", 1), 0);
   ASSERT_EQ(setenv("OM2_EXPECT_CONST1_MODE", "NON_NULL", 1), 0);
   ASSERT_EQ(setenv("OM2_EXPECT_CONST1_FIRST_BYTE", "9", 1), 0);
+  EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
+}
+
+TEST_F(Om2ModelExecutorUt, load_rejects_negative_const_offset) {
+  auto model_data_holder = MakeConstantsArchiveModelData("neg_offset", MakeNegativeConstOffsetConfigJson());
+  gert::Om2ModelExecutor executor;
+  auto load_arg = MakeOm2LoadArg();
+  EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), ge::PARAM_INVALID);
+}
+
+TEST_F(Om2ModelExecutorUt, load_rejects_negative_const_size) {
+  auto model_data_holder = MakeConstantsArchiveModelData("neg_size", MakeNegativeConstSizeConfigJson());
+  gert::Om2ModelExecutor executor;
+  auto load_arg = MakeOm2LoadArg();
+  EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), ge::PARAM_INVALID);
+}
+
+TEST_F(Om2ModelExecutorUt, load_ok_with_boundary_internal_const_offset_size) {
+  auto model_data_holder =
+      MakeConstantsArchiveModelData("boundary_offset_size", MakeConstBoundaryOffsetSizeConfigJson());
+  gert::Om2ModelExecutor executor;
+  auto load_arg = MakeOm2LoadArg();
+  ASSERT_EQ(setenv("OM2_EXPECT_CONST0_MODE", "NON_NULL", 1), 0);
+  ASSERT_EQ(setenv("OM2_EXPECT_CONST0_FIRST_BYTE", "9", 1), 0);
   EXPECT_EQ(executor.Load(model_data_holder.model_data, load_arg, 1U), SUCCESS);
 }
 

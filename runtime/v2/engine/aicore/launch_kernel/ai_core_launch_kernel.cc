@@ -491,7 +491,7 @@ static ge::graphStatus UpdateEachArgsInfo(const KernelContext *context, const ge
     FE_ASSERT_NOTNULL(tensor_data);
     FE_RETURN_IF_ERROR(args.SetIoAddr(io_arg->arg_offset, tensor_data->GetAddr()));
     const_cast<IoArgsInfo::IoArg *>(io_arg)->data_size = tensor_data->GetSize();
-    GELOGD("Arg id[%zu] set addr[%lx] with offset[%zu]. Tensor size is [%zu].", args_info_idx, tensor_data->GetAddr(),
+    GELOGD("Arg id[%zu] set addr[%lx] with offset[%zu]. Tensor size is [%zu]!", args_info_idx, tensor_data->GetAddr(),
            io_arg->arg_offset, tensor_data->GetSize());
     if (io_arg->is_need_merged_copy) {
       auto io_shape = context->GetInputValue<StorageShape *>(addr_start + io_num + input_i);
@@ -612,7 +612,7 @@ ge::graphStatus AicoreHandleUpdateGeExceptionDumpInfo(const KernelContext *conte
 
 MixTaskPara CalcMixTaskParaByType(const MixLaunchArgs &launch_args, const MixCoreArgs *mix_args) {
   MixTaskPara para;
-  GELOGD("Before calc mix-type[%u], blk[%ld], ai_core[%ld], all_core[%ld].", mix_args->mix_type, launch_args.block_dim,
+  GELOGD("Before calc mix-type[%u], blk[%ld], ai_core[%ld], all_core[%ld]", mix_args->mix_type, launch_args.block_dim,
          mix_args->ai_core_num, mix_args->all_core_num);
   if (launch_args.block_dim <= mix_args->ai_core_num) {
     para.need_sub_task = false;
@@ -632,7 +632,7 @@ MixTaskPara CalcMixTaskParaByType(const MixLaunchArgs &launch_args, const MixCor
   }
   mix_prof_data.main_blk_dim = para.main_blk_dim;
   mix_prof_data.sub_blk_dim = para.sub_blk_dim;
-  GELOGD("After calculating sub_offset[%ld], main_blk_dim[%ld], sub_blk_dim[%ld].", para.sub_offset, para.main_blk_dim,
+  GELOGD("After calculating sub_offset[%ld], main_blk_dim[%ld], sub_blk_dim[%ld]", para.sub_offset, para.main_blk_dim,
          para.sub_blk_dim);
   return para;
 }
@@ -728,7 +728,7 @@ ge::graphStatus FillMixVectorProfilingInfo(const KernelContext *context, Profili
                                gert::NodeProfInfoType::kOriginalNode);
   prof_info.SetLaunchTimeStamp(mix_prof_data.sub_begin_time, mix_prof_data.sub_end_time,
                                gert::NodeProfInfoType::kMixVectorCore);
-  GELOGI("Mix vector core report profiling data success");
+  GELOGI("Mix vector core report profiling data success.");
   return ge::GRAPH_SUCCESS;
 }
 
@@ -793,7 +793,7 @@ ge::graphStatus AiCoreLaunchKernelV2(KernelContext *context) {
       LaunchKernelWithPlaceHolder(funcHandle, *inputs.block_dim, inputs.stream, inputs.cfg, inputs.args->GetArgBase(),
                                   inputs.args->GetBase()->argsSize, inputs.args, place_holder_info);
   if (ret != RT_ERROR_NONE) {
-    GELOGE(ret, "LaunchKernelV2 failed. Node: %s.", compute_node_info->GetNodeName());
+    GELOGE(ret, "LaunchKernelV2 failed! Node: %s.", compute_node_info->GetNodeName());
     return ret;
   }
   const ge::graphStatus status = AICoreDfxPrintProc(context, inputs.stream);

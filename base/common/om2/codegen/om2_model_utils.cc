@@ -18,6 +18,7 @@
 #include "common/ge_common/debug/ge_log.h"
 #include "common/math/ge_math_util.h"
 #include "graph/ge_context.h"
+#include "graph/utils/attr_utils.h"
 #include "graph/utils/tensor_utils.h"
 #include "graph/debug/ge_attr_define.h"
 #include "framework/common/framework_types_internal.h"

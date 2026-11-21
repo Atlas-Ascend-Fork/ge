@@ -48,25 +48,7 @@ constexpr uint64_t PROF_OP_MASK = 0x0000200000000ULL;
 using namespace ge;
 using namespace std;
 
-extern "C" void RegisterOm2ProfilingCommandNotifier(void (*notifier)(const void *, uint32_t));
-
 namespace {
-uint32_t g_om2_notifier_called_count = 0U;
-MsprofCommandHandle g_om2_notified_command{};
-uint32_t g_om2_notified_len = 0U;
-
-void ResetOm2NotifierState() {
-  g_om2_notifier_called_count = 0U;
-  g_om2_notified_command = {};
-  g_om2_notified_len = 0U;
-}
-
-void Om2ProfilingNotifier(const void *data, uint32_t len) {
-  ++g_om2_notifier_called_count;
-  g_om2_notified_command = *static_cast<const MsprofCommandHandle *>(data);
-  g_om2_notified_len = len;
-}
-
 enum ProfCommandHandleType {
   kProfCommandhandleInit = 0,
   kProfCommandhandleStart,
@@ -613,45 +595,4 @@ TEST_F(UtestGeProfilingManager, ProfilerCollector_Ok_RecordEnd) {
   EXPECT_EQ(profiler_collector.RecordEnd((void *)0x01), ge::SUCCESS);
   EXPECT_EQ(records, 3);
   ge::diagnoseSwitch::DisableProfiling();
-}
-
-TEST_F(UtestGeProfilingManager, Om2ProfilingNotifier_ReplaysCachedCommand) {
-  RegisterOm2ProfilingCommandNotifier(nullptr);
-  ResetOm2NotifierState();
-  MsprofCommandHandle command{};
-  command.type = 6U;
-  command.modelId = 123U;
-  command.profSwitch = 0x1234U;
-
-  EXPECT_EQ(ProfCtrlHandle(RT_PROF_CTRL_SWITCH, &command, sizeof(command)), TMP_ERROR);
-  EXPECT_EQ(g_om2_notifier_called_count, 0U);
-
-  RegisterOm2ProfilingCommandNotifier(Om2ProfilingNotifier);
-
-  EXPECT_EQ(g_om2_notifier_called_count, 1U);
-  EXPECT_EQ(g_om2_notified_len, sizeof(MsprofCommandHandle));
-  EXPECT_EQ(g_om2_notified_command.type, command.type);
-  EXPECT_EQ(g_om2_notified_command.modelId, command.modelId);
-  EXPECT_EQ(g_om2_notified_command.profSwitch, command.profSwitch);
-  RegisterOm2ProfilingCommandNotifier(nullptr);
-  ResetOm2NotifierState();
-}
-
-TEST_F(UtestGeProfilingManager, Om2ProfilingNotifier_NotifiesRegisteredCallback) {
-  RegisterOm2ProfilingCommandNotifier(Om2ProfilingNotifier);
-  ResetOm2NotifierState();
-
-  MsprofCommandHandle command{};
-  command.type = 6U;
-  command.modelId = 456U;
-  command.profSwitch = 0x5678U;
-  EXPECT_EQ(ProfCtrlHandle(RT_PROF_CTRL_SWITCH, &command, sizeof(command)), TMP_ERROR);
-
-  EXPECT_EQ(g_om2_notifier_called_count, 1U);
-  EXPECT_EQ(g_om2_notified_len, sizeof(MsprofCommandHandle));
-  EXPECT_EQ(g_om2_notified_command.type, command.type);
-  EXPECT_EQ(g_om2_notified_command.modelId, command.modelId);
-  EXPECT_EQ(g_om2_notified_command.profSwitch, command.profSwitch);
-  RegisterOm2ProfilingCommandNotifier(nullptr);
-  ResetOm2NotifierState();
 }

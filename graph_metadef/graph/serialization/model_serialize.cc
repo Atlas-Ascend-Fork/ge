@@ -11,6 +11,7 @@
 #include "graph/model_serialize.h"
 #include <google/protobuf/text_format.h>
 #include <queue>
+#include <set>
 #include <thread>
 #include <atomic>
 #include <google/protobuf/io/coded_stream.h>
@@ -748,6 +749,10 @@ bool ModelSerializeImp::HandleNodeNameRef() {
 bool ModelSerializeImp::RebuildOwnership(ComputeGraphPtr &compute_graph,
                                          std::map<std::string, ComputeGraphPtr> &subgraphs) const {
   std::queue<ComputeGraphPtr> all_graphs;
+  // 已访问集合：子图名自引用/图间互指/重复引用会使同一图被无终止重新入队（无限循环），
+  // 且自引用时 AddSubgraph 会把图自身加入自身 sub_graph_ 形成 shared_ptr 自环，此处检测并快速失败
+  std::set<const ComputeGraph *> visited_graphs;
+  (void)visited_graphs.insert(compute_graph.get());
   all_graphs.emplace(compute_graph);
   while (!all_graphs.empty()) {
     const ComputeGraphPtr graph = all_graphs.front();
@@ -770,9 +775,18 @@ bool ModelSerializeImp::RebuildOwnership(ComputeGraphPtr &compute_graph,
 
         ComputeGraphPtr &subgraph = it->second;
         GE_ASSERT_NOTNULL(subgraph);
+        if (!visited_graphs.insert(subgraph.get()).second) {
+          REPORT_INNER_ERR_MSG("E18888", "Graph:%s, Subgraph:%s referenced repeatedly or has a cycle, visited num:%zu.",
+                               graph->GetName().c_str(), name.c_str(), visited_graphs.size());
+          GELOGE(GRAPH_FAILED,
+                 "[Check][Param] Graph:%s, Subgraph:%s referenced repeatedly or has a cycle, visited num:%zu.",
+                 graph->GetName().c_str(), name.c_str(), visited_graphs.size());
+          return false;
+        }
         subgraph->SetParentGraph(graph);
         subgraph->SetParentNode(node);
-        (void)compute_graph->AddSubgraph(subgraph->GetName(), subgraph);
+        GE_ASSERT_GRAPH_SUCCESS(compute_graph->AddSubgraph(subgraph->GetName(), subgraph),
+                                "[Add][Subgraph] Subgraph:%s add failed.", name.c_str());
         all_graphs.emplace(subgraph);
       }
     }

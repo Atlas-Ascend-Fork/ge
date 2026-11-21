@@ -2320,4 +2320,31 @@ TEST_F(GeApiTest, CustomOpLibPath_EmptyAndInitializedOnce) {
                 DLOG_INFO, "end to call custom_op_lib_st init func, tmp_dir is [/tmp/ge_custom_op_lib_st]"),
             0);
 }
+
+/**
+ * @brief 混合图内部图 id 不得占用会话中已注册的用户图 id
+ * @details 场景：同一 session 先 AddGraph(0, 普通图)、再 AddGraph(42, 混合图)，随后依次删除；
+ *          期望：两次 AddGraph 与 RemoveGraph(42) 均成功，且 RemoveGraph(0) 仍成功
+ */
+TEST_F(GeApiTest, hybrid_graph_inner_id_skips_user_graph) {
+  ReInitGe();
+  {
+    std::map<AscendString, AscendString> options;
+    Session session(options);
+    auto regular_compute_graph = std::make_shared<ComputeGraph>("regular_graph");
+    Graph regular_graph = GraphUtilsEx::CreateGraphFromComputeGraph(regular_compute_graph);
+    ASSERT_EQ(session.AddGraph(0U, regular_graph), SUCCESS);
+
+    std::map<AscendString, AscendString> hybrid_options = {{"ge.compileHybridMode", "1"},
+                                                           {"ge.inputShape", "data0:-1,3,3"},
+                                                           {"ge.dynamicDims", "1,1;10,10"},
+                                                           {"ge.dynamicNodeType", "1"}};
+    auto hybrid_compute_graph = std::make_shared<ComputeGraph>("hybrid_graph");
+    Graph hybrid_graph = GraphUtilsEx::CreateGraphFromComputeGraph(hybrid_compute_graph);
+    ASSERT_EQ(session.AddGraph(42U, hybrid_graph, hybrid_options), SUCCESS);
+
+    EXPECT_EQ(session.RemoveGraph(42U), SUCCESS);
+    EXPECT_EQ(session.RemoveGraph(0U), SUCCESS);
+  }
+}
 }  // namespace ge

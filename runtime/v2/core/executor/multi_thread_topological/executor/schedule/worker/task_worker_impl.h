@@ -17,7 +17,6 @@
 #include <algorithm>
 #include "task_worker.h"
 #include "task_thread.h"
-#include "core/executor/exec_ctx_cache.h"
 #include "core/executor/multi_thread_topological/executor/schedule/config/task_worker_config.h"
 #include "core/executor/multi_thread_topological/executor/schedule/task/task_package.h"
 #include "core/executor/multi_thread_topological/executor/schedule/task/exec_task.h"
@@ -204,10 +203,6 @@ class TaskWorkerImpl : public TaskWorker {
             if (rtErr != ACL_SUCCESS) {
               GELOGW("Failed to set current context, ret %d", rtErr);
               REPORT_INNER_ERR_MSG("E19999", "Set context failed, ret %d", rtErr);
-            } else {
-              // 绑定本线程的 ctx 缓存：worker 生命周期内 ctx 恒定；此后若在 worker 上直接
-              // 调用 aclrtSetCurrentContext（临时切换 device 等），必须同步重新 BindExecCtx。
-              gert::BindExecCtx(ctx);
             }
             ge::GetThreadLocalContext() = ge_context;
             error_message::SetErrMgrContext(error_context);

@@ -2,7 +2,7 @@
 
 ## 案例介绍
 
-本节面向推荐模型的推理场景，通过一个完整的代码示例，结合推理阶段的Profiling数据，分析并定位影响模型吞吐性能的关键瓶颈，并给出相应的优化策略。内容涵盖多实例并行、AICore控核策略以及批量H2D（Host-to-Device）传输等技术的实现方法，并介绍这些技术对推理吞吐性能的影响。其中：
+本节面向推荐模型的推理场景，通过一个完整的代码示例，结合推理阶段的Profiling数据，分析并定位影响模型吞吐性能的关键瓶颈，并给出相应的优化策略。内容涵盖多实例并行、AI Core控核策略以及批量H2D（Host-to-Device）传输等技术的实现方法，并介绍这些技术对推理吞吐性能的影响。其中：
 
 - AI Core控核：通过配置[算子编译与图编译](../../../api/graph_engine_api/cpp/ge/options_params/operator_and_graph_compilation.md)中的“ge.aicoreNum”参数，配置算子编译时使用的AI Core核数。
 - 批量H2D：通过调用接口aclrtMemcpyBatch来实现批量内存复制功能。

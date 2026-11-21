@@ -28,16 +28,22 @@ std::vector<uint32_t> KernelCodeBuilder::GetCustomRestoreConstInputIndices() con
   return {};
 }
 
-ge::graphStatus KernelCodeBuilder::RestoreConstInput(const KernelCollectContext &, const uint32_t,
-                                                     CustomConstRestoreDescriptor &) const {
+ge::graphStatus KernelCodeBuilder::RestoreConstInput(const KernelCollectContext &context, uint32_t input_index,
+                                                     CustomConstRestoreDescriptor &descriptor) const {
+  (void)context;
+  (void)input_index;
+  (void)descriptor;
   return ge::GRAPH_PARAM_INVALID;
 }
 
-ge::graphStatus KernelCodeBuilder::GenerateKernelCode(const std::string &, std::string &) const {
+ge::graphStatus KernelCodeBuilder::GenerateKernelCode(const std::string &function_symbol, std::string &code) const {
+  (void)function_symbol;
+  (void)code;
   return ge::GRAPH_PARAM_INVALID;
 }
 
-ge::graphStatus KernelCodeBuilder::GenerateOutputsCreatorCode(std::string &) const {
+ge::graphStatus KernelCodeBuilder::GenerateOutputsCreatorCode(std::string &code) const {
+  (void)code;
   return ge::GRAPH_PARAM_INVALID;
 }
 
@@ -46,7 +52,7 @@ KernelCodeBuilderFactory &KernelCodeBuilderFactory::GetInstance() {
   return factory;
 }
 
-ge::graphStatus KernelCodeBuilderFactory::Register(const char *const kernel_type, Creator creator) {
+ge::graphStatus KernelCodeBuilderFactory::Register(const char *kernel_type, Creator creator) {
   if ((kernel_type == nullptr) || !creator) {
     return ge::GRAPH_PARAM_INVALID;
   }
@@ -58,7 +64,7 @@ ge::graphStatus KernelCodeBuilderFactory::Register(const char *const kernel_type
   return ge::GRAPH_SUCCESS;
 }
 
-std::shared_ptr<KernelCodeBuilder> KernelCodeBuilderFactory::Create(const char *const kernel_type) const {
+std::shared_ptr<KernelCodeBuilder> KernelCodeBuilderFactory::Create(const char *kernel_type) const {
   if (kernel_type == nullptr) {
     return nullptr;
   }
@@ -74,7 +80,7 @@ std::shared_ptr<KernelCodeBuilder> KernelCodeBuilderFactory::Create(const char *
   return creator();
 }
 
-KernelCodeBuilderRegistrar::KernelCodeBuilderRegistrar(const char *const kernel_type,
+KernelCodeBuilderRegistrar::KernelCodeBuilderRegistrar(const char *kernel_type,
                                                        KernelCodeBuilderFactory::Creator creator) {
   const auto ret = KernelCodeBuilderFactory::GetInstance().Register(kernel_type, std::move(creator));
   if (ret != ge::GRAPH_SUCCESS) {

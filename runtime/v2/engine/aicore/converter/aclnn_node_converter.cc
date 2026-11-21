@@ -328,7 +328,7 @@ bg::ValueHolderPtr Op2PhaseExecute(const ge::NodePtr &node, const LowerInput &lo
 }  // namespace
 
 LowerResult LoweringAclnnNode(const ge::NodePtr &node, const LowerInput &lower_input) {
-  GELOGI("Begin to do lowering for aclnn node[%s, %s]", node->GetNamePtr(), node->GetTypePtr());
+  GELOGI("Begin to do lowering for aclnn node[%s, %s].", node->GetNamePtr(), node->GetTypePtr());
   HyperStatus ret = CheckLowerInput(lower_input);
   if (!ret.IsSuccess()) {
     return {ret, {}, {}, {}};

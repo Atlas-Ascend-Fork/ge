@@ -240,8 +240,8 @@ struct ExecutionPlanCollector::CanonicalIfAnalysis {
 };
 
 ge::graphStatus ExecutionPlanCollector::Collect(ge::ExecuteGraph &execute_graph,
-                                                const ChainNormalizer &chain_normalizer,
-                                                const ProgramPlanType plan_type, ProgramBlock &program_block) const {
+                                                const ChainNormalizer &chain_normalizer, ProgramPlanType plan_type,
+                                                ProgramBlock &program_block) const {
   program_block = {};
   program_block.plan_type = plan_type;
   program_block.root_region_index = 0U;
@@ -462,8 +462,8 @@ ge::graphStatus ExecutionPlanCollector::CollectKernel(const ge::FastNode &node, 
 }
 
 ge::graphStatus ExecutionPlanCollector::CollectRegion(ge::ExecuteGraph &execute_graph,
-                                                      const ChainNormalizer &chain_normalizer,
-                                                      const uint32_t region_index, ProgramBlock &program_block) const {
+                                                      const ChainNormalizer &chain_normalizer, uint32_t region_index,
+                                                      ProgramBlock &program_block) const {
   std::unordered_map<ge::FastNode *, CanonicalIfAnalysis> if_analyses;
   std::vector<VirtualDependency> virtual_dependencies;
   for (auto *const node : execute_graph.GetDirectNode()) {
@@ -531,8 +531,8 @@ ge::graphStatus ExecutionPlanCollector::CollectRegion(ge::ExecuteGraph &execute_
 }
 
 ge::graphStatus ExecutionPlanCollector::AppendKernel(const ge::FastNode &node, const ChainNormalizer &chain_normalizer,
-                                                     const uint32_t region_index, ProgramBlock &program_block,
-                                                     uint32_t *const appended_kernel_index) const {
+                                                     uint32_t region_index, ProgramBlock &program_block,
+                                                     uint32_t *appended_kernel_index) const {
   if (appended_kernel_index != nullptr) {
     *appended_kernel_index = kInvalidProgramIndex;
   }
@@ -648,7 +648,7 @@ ge::graphStatus ExecutionPlanCollector::AnalyzeIf(ge::FastNode &node, CanonicalI
 }
 
 ge::graphStatus ExecutionPlanCollector::AppendIf(ge::FastNode &node, const ChainNormalizer &chain_normalizer,
-                                                 const CanonicalIfAnalysis &analysis, const uint32_t region_index,
+                                                 const CanonicalIfAnalysis &analysis, uint32_t region_index,
                                                  ProgramBlock &program_block) const {
   std::vector<uint32_t> input_chain_indices;
   GE_ASSERT_GRAPH_SUCCESS(chain_normalizer.GetInputChainIndices(node, input_chain_indices));

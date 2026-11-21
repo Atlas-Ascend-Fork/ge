@@ -1740,7 +1740,7 @@ static Status RenameFallbackSubgraphs(const ComputeGraphPtr &fallback_graph) {
       GELOGE(FAILED, "rename fallback subgraph conflict, new name[%s] already exists.", new_name.c_str());
       return FAILED;
     }
-    const auto parent_node = sub_graph->GetParentNode();
+    const auto *parent_node = sub_graph->GetParentNodeBarePtr();
     if (parent_node != nullptr) {
       const auto parent_desc = parent_node->GetOpDesc();
       if (parent_desc != nullptr) {

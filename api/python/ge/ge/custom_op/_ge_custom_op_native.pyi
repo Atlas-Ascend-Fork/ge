@@ -230,6 +230,15 @@ class AnnotatedKernelArgs:
 
     def append_scalar(self, value: int) -> None: ...
 
+    def append_custom_data_block(self, data: bytes) -> None:
+        """Deep-copy nonempty bytes into a read-only device data block.
+
+        Adds one pointer slot; the byte length is not passed to the kernel.
+        Raises ValueError for empty data, TypeError for non-bytes data, and
+        RuntimeError if this builder has expired, was consumed, or append fails.
+        """
+        ...
+
 
 class AnnotatedArgsContext:
     """Borrowed declaration context available only in ``declare_launch_args``."""
