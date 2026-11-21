@@ -32,6 +32,12 @@
 #include "framework/common/gert_model_data_utils.h"
 
 namespace ge {
+
+bool IsOm2OnlineMode(const bool is_execute_graph) {
+  const auto options = GetThreadLocalContext().GetAllGraphOptions();
+  return IsOm2OnlineMode(options, is_execute_graph);
+}
+
 namespace {
 constexpr const char_t *kOptionBuildConfig = "ge.buildConfig";
 constexpr size_t kQuoteCharSize = 1U;

@@ -148,7 +148,16 @@ Status ModelExecutor::LoadGraph(const GeRootModelPtr &ge_root_model, const Graph
   GE_CHECK_NOTNULL(graph_node);
   GE_CHECK_NOTNULL(ge_root_model);
   const auto graph = graph_node->GetGraph();
-  if (IsOm2OnlineMode(graph != nullptr && GraphUtilsEx::IsExecuteGraph(*graph))) {
+  const bool is_om2_online = IsOm2OnlineMode(graph != nullptr && GraphUtilsEx::IsExecuteGraph(*graph));
+  if (is_om2_online) {
+    bool is_dynamic_shape = true;
+    const Status check_ret = ge_root_model->CheckIsUnknownShape(is_dynamic_shape);
+    if (check_ret != SUCCESS) {
+      GELOGW("[LoadGraph] Failed to check unknown shape, skip static model validation.");
+    } else if (!is_dynamic_shape) {
+      GELOGW("[LoadGraph] OM2 online model only supports dynamic shape models.");
+      return GE_GRAPH_UNSUPPORTED;
+    }
     return LoadOm2Graph(ge_root_model, graph_node, stream, external_allocators);
   }
   return ModelLoad(ge_root_model, graph_node, stream);
@@ -169,10 +178,21 @@ Status ModelExecutor::UnloadGraph(const GeRootModelPtr &ge_root_model, const uin
 Status ModelExecutor::UnloadGraph(const GeRootModelPtr &ge_root_model, const uint32_t graph_id,
                                   const bool is_execute_graph) {
   GE_CHECK_NOTNULL(ge_root_model);
+  const bool is_om2_online = IsOm2OnlineMode(is_execute_graph);
+  if (is_om2_online) {
+    bool is_dynamic_shape = true;
+    const Status check_ret = ge_root_model->CheckIsUnknownShape(is_dynamic_shape);
+    if (check_ret != SUCCESS) {
+      GELOGW("[UnloadGraph] Failed to check unknown shape, skip static model validation.");
+    } else if (!is_dynamic_shape) {
+      GELOGW("[UnloadGraph] OM2 online model only supports dynamic shape models.");
+      return GE_GRAPH_UNSUPPORTED;
+    }
+  }
   GE_CHK_ACL_RET(aclrtSetDevice(static_cast<int32_t>(GetContext().DeviceId())));
 
   Status unload_ret;
-  if (IsOm2OnlineMode(is_execute_graph)) {
+  if (is_om2_online) {
     unload_ret = UnloadOm2Graph(ge_root_model, graph_id);
   } else {
     unload_ret = UnloadModel(ge_root_model, graph_id);

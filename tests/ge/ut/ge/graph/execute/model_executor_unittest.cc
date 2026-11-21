@@ -1941,6 +1941,7 @@ TEST_F(UtestModelExecutorOm2Test, RunGraph_HostInput_Success) {
   ge_model->SetGraph(compute_graph);
   ge_root_model->SetSubgraphInstanceNameToModel(compute_graph->GetName(), ge_model);
 
+  compute_graph->SetGraphUnknownFlag(true);
   GraphId graph_id = 2001;
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
   graph_node->SetGeRootModel(ge_root_model);
@@ -1986,6 +1987,7 @@ TEST_F(UtestModelExecutorOm2Test, RunGraph_NotLoaded_ReturnsGraphNotExist) {
   auto model_data = std::make_shared<gert::GertModelData>(MakeOm2ModelDataWithFakeSo(fake_so_path_));
   ge_root_model->SetOm2ModelData(model_data);
 
+  compute_graph->SetGraphUnknownFlag(true);
   GraphId graph_id = 3001;
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
   graph_node->SetGeRootModel(ge_root_model);
@@ -2007,6 +2009,7 @@ TEST_F(UtestModelExecutorOm2Test, UnloadGraph_NotLoaded_ReturnsSuccess) {
   GeRootModelPtr ge_root_model = MakeShared<GeRootModel>();
   EXPECT_EQ(ge_root_model->Initialize(compute_graph), SUCCESS);
 
+  compute_graph->SetGraphUnknownFlag(true);
   GraphId graph_id = 3002;
   EXPECT_EQ(model_executor.UnloadGraph(ge_root_model, graph_id), SUCCESS);
 
@@ -2027,6 +2030,7 @@ TEST_F(UtestModelExecutorOm2Test, RunGraph_EmptyOutputs_PrepareOm2Outputs) {
   ge_model->SetGraph(compute_graph);
   ge_root_model->SetSubgraphInstanceNameToModel(compute_graph->GetName(), ge_model);
 
+  compute_graph->SetGraphUnknownFlag(true);
   GraphId graph_id = 3006;
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
   graph_node->SetGeRootModel(ge_root_model);
@@ -2065,6 +2069,7 @@ TEST_F(UtestModelExecutorOm2Test, LoadAndUnload_Success) {
   ge_model->SetGraph(compute_graph);
   ge_root_model->SetSubgraphInstanceNameToModel(compute_graph->GetName(), ge_model);
 
+  compute_graph->SetGraphUnknownFlag(true);
   GraphId graph_id = 3007;
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
   graph_node->SetGeRootModel(ge_root_model);
@@ -2075,6 +2080,36 @@ TEST_F(UtestModelExecutorOm2Test, LoadAndUnload_Success) {
   EXPECT_EQ(model_executor.LoadGraph(ge_root_model, graph_node), SUCCESS);
   EXPECT_EQ(model_executor.UnloadGraph(ge_root_model, graph_id), SUCCESS);
 
+  EXPECT_EQ(model_executor.Finalize(), SUCCESS);
+}
+
+TEST_F(UtestModelExecutorOm2Test, LoadGraph_StaticModel_ReturnsUnsupported) {
+  EnableOm2OnlineMode();
+
+  ModelExecutor model_executor;
+  ASSERT_EQ(model_executor.Initialize({}, 0), SUCCESS);
+
+  auto compute_graph = MakeShared<ComputeGraph>("static_graph");
+  auto ge_root_model = MakeShared<GeRootModel>();
+  ASSERT_EQ(ge_root_model->Initialize(compute_graph), SUCCESS);
+  auto graph_node = MakeShared<GraphNode>(3014U);
+  graph_node->SetGeRootModel(ge_root_model);
+
+  EXPECT_EQ(model_executor.LoadGraph(ge_root_model, graph_node), GE_GRAPH_UNSUPPORTED);
+  EXPECT_EQ(model_executor.Finalize(), SUCCESS);
+}
+
+TEST_F(UtestModelExecutorOm2Test, UnloadGraph_StaticModel_ReturnsUnsupported) {
+  EnableOm2OnlineMode();
+
+  ModelExecutor model_executor;
+  ASSERT_EQ(model_executor.Initialize({}, 0), SUCCESS);
+
+  auto compute_graph = MakeShared<ComputeGraph>("static_graph");
+  auto ge_root_model = MakeShared<GeRootModel>();
+  ASSERT_EQ(ge_root_model->Initialize(compute_graph), SUCCESS);
+
+  EXPECT_EQ(model_executor.UnloadGraph(ge_root_model, 3015U), GE_GRAPH_UNSUPPORTED);
   EXPECT_EQ(model_executor.Finalize(), SUCCESS);
 }
 
@@ -2092,6 +2127,7 @@ TEST_F(UtestModelExecutorOm2Test, LoadGraph_ExternalConstAndFeatureMemory_Succes
   ge_model->SetGraph(compute_graph);
   ge_root_model->SetSubgraphInstanceNameToModel(compute_graph->GetName(), ge_model);
 
+  compute_graph->SetGraphUnknownFlag(true);
   GraphId graph_id = 3011;
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
   graph_node->SetGeRootModel(ge_root_model);
@@ -2129,6 +2165,7 @@ TEST_F(UtestModelExecutorOm2Test, RunGraphWithStream_Om2Mode_Success) {
   ge_model->SetGraph(compute_graph);
   ge_root_model->SetSubgraphInstanceNameToModel(compute_graph->GetName(), ge_model);
 
+  compute_graph->SetGraphUnknownFlag(true);
   GraphId graph_id = 3013;
   GraphNodePtr graph_node = MakeShared<ge::GraphNode>(graph_id);
   graph_node->SetGeRootModel(ge_root_model);
@@ -2185,6 +2222,7 @@ TEST_F(UtestModelExecutorOm2Test, RunThread_Om2Mode_ReturnsUnsupportedWithCallba
   };
 
   auto compute_graph = MakeShared<ComputeGraph>("test_graph");
+  compute_graph->SetGraphUnknownFlag(true);
   GeRootModelPtr ge_root_model = MakeShared<GeRootModel>();
   EXPECT_EQ(ge_root_model->Initialize(compute_graph), SUCCESS);
 
@@ -2226,6 +2264,7 @@ TEST_F(UtestModelExecutorOm2Test, ExecuteGraphWithStream_Om2Mode_Success) {
   EXPECT_EQ(model_executor.Initialize({}, 0), SUCCESS);
 
   auto compute_graph = MakeShared<ComputeGraph>("test_graph");
+  compute_graph->SetGraphUnknownFlag(true);
   GeRootModelPtr ge_root_model = MakeShared<GeRootModel>();
   EXPECT_EQ(ge_root_model->Initialize(compute_graph), SUCCESS);
 
