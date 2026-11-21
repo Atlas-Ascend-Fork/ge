@@ -76,7 +76,11 @@ class BasePartitioner {
     root_graph_ = root_graph;
   }
   const std::shared_ptr<BaseCluster> &GetCluster(const NodePtr &node) {
-    return node_2_cluster_[node];
+    // 未分配的节点返回空 cluster，不能用 operator[] 隐式插入空条目，
+    // 否则“未分配”和“已分配为空”无法区分，还会污染 node_2_cluster_。
+    static const std::shared_ptr<BaseCluster> kNoCluster;
+    const auto iter = node_2_cluster_.find(node);
+    return (iter == node_2_cluster_.end()) ? kNoCluster : iter->second;
   }
   void SetCluster(const NodePtr &node, const shared_ptr<BaseCluster> &cluster) {
     node_2_cluster_[node] = cluster;

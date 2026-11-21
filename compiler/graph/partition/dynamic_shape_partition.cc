@@ -672,10 +672,17 @@ Status DynamicShapePartitioner::InitClusters() {
       auto &control_node = control_nodes_[group_index];
       control_node.emplace_back(node);
     }
-
-    // Already sorted topologically, so access to the parent cluster is safe
+  }
+  // 先完成所有节点的 cluster 分配，再统一连边。拓扑序不保证父节点一定排在子节点之前
+  // （例如被 GetInEdgeSize 豁免的流控回边），逐个节点查找父 cluster 会拿到空指针。
+  for (const auto &node : graph->GetDirectNode()) {
+    const auto &cluster = GetCluster(node);
+    GE_ASSERT_NOTNULL(cluster, "[Get][Cluster] node:%s has no cluster.", node->GetNamePtr());
     for (const auto &parent : node->GetInAllNodes()) {
-      cluster->AddInput(GetCluster(parent));
+      const auto &parent_cluster = GetCluster(parent);
+      GE_ASSERT_NOTNULL(parent_cluster, "[Check][ClusterInput] node:%s parent:%s has no cluster.", node->GetNamePtr(),
+                        parent->GetNamePtr());
+      cluster->AddInput(parent_cluster);
     }
   }
   for (const auto &node : graph->GetDirectNode()) {
@@ -703,6 +710,10 @@ Status DynamicShapePartitioner::MergeClustersUnknownShape() {
       continue;
     }
     for (const auto &base_in_cluster : cluster->Inputs()) {
+      if (base_in_cluster == nullptr) {
+        GELOGW("[Check][ClusterInput] cluster:%zu has null input cluster, skip.", cluster->Id());
+        continue;
+      }
       const auto &in_cluster = std::dynamic_pointer_cast<DynamicShapeCluster>(base_in_cluster->shared_from_this());
       GE_ASSERT_NOTNULL(in_cluster, "[Check][ClusterInput] failed.");
       if (!in_cluster->IsUnknownShape()) {

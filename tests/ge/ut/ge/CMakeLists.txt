@@ -575,6 +575,7 @@ set(MULTI_PARTS_TEST_FILES
     "graph/manager/session_scope_mem_allocator_unittest.cc"
     "graph/manager/run_graph_unittest.cc"
     "graph/partition/dynamic_shape_partition_unittest.cc"
+    "graph/partition/dynamic_shape_init_clusters_unittest.cc"
     "graph/partition/engine_place_unittest.cc"
     "graph/partition/graph_partition_unittest.cc"
     "graph/partition/stage_partition_unittest.cc"
