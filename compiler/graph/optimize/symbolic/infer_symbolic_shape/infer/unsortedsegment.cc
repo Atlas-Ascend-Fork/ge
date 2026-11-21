@@ -10,8 +10,9 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "common/checker.h"
+#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -37,7 +38,7 @@ graphStatus UnsortedSegmentInferShapeImpl(const int64_t &first_dim, const gert::
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4UnsortedSegment(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4UnsortedSegment(gert::InferSymbolContext *context) {
   const auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   const auto segment_ids_shape = context->GetInputSymbolShape(1);
@@ -80,7 +81,7 @@ graphStatus BuildSegmentOutputShape(const gert::SymbolShape *x_shape, const gert
  * 【推导逻辑】输出首维为 max(segment_ids)+1，其余维继承 x 去掉首维后的全部维度。
  * 【举例】x=[N,D]，segment_ids 最大值为 K-1 时，y=[K,D]。
  */
-graphStatus InferShape4SegmentSum(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4SegmentSum(gert::InferSymbolContext *context) {
   const auto x_shape = context->GetInputSymbolShape(kXIdx);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   GE_ASSERT(x_shape->GetDimNum() >= 1, "SegmentSum input x must be at least 1-D");
@@ -100,7 +101,7 @@ graphStatus InferShape4SegmentSum(gert::InferSymbolShapeContext *context) {
  * 【推导逻辑】输出首维为 max(segment_ids)+1，其余维继承 x 去掉首维后的全部维度。
  * 【举例】x=[N,D]，segment_ids 最大值为 K-1 时，y=[K,D]。
  */
-graphStatus InferShape4SparseSegmentMean(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4SparseSegmentMean(gert::InferSymbolContext *context) {
   const auto x_shape = context->GetInputSymbolShape(kXIdx);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   GE_ASSERT(x_shape->GetDimNum() >= 1, "SparseSegmentMean input x must be at least 1-D");
@@ -128,7 +129,7 @@ graphStatus InferShape4SparseSegmentMean(gert::InferSymbolShapeContext *context)
  *          其余维取 x 对应维。
  * 【举例】x=[4,2]、segment_ids=[4]、num_segments=3 时，y=[3,2]。
  */
-graphStatus InferShape4UnsortedSegmentD(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4UnsortedSegmentD(gert::InferSymbolContext *context) {
   const auto x_shape = context->GetInputSymbolShape(kXIdx);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   const auto segment_ids_shape = context->GetInputSymbolShape(kSegmentIdsIdx);

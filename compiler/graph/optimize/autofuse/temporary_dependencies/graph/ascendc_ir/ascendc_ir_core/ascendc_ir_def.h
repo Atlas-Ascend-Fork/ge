@@ -15,6 +15,7 @@
 #include <memory>
 #include "attr_store.h"
 #include "graph/symbolizer/symbolic.h"
+#include "graph/type_id.h"
 #include "graph/expression/const_values.h"
 #include "ascendc_ir/ascendc_ir_core/debug/ge_util.h"
 #include "graph/error_codes.h"
@@ -34,6 +35,17 @@ using AscGraphAttrGroupsDef = af::proto::AscGraphAttrGroupsDef;
 using AscTensorAttrGroupsDef = af::proto::AscTensorAttrGroupsDef;
 }  // namespace proto
 }  // namespace ascendc_ir
+
+#ifdef AUTOFUSE_USE_GE_METADEF
+namespace ge {
+// GE and GAF have separate Expression implementations; AscIR serialization requires the legacy stable type id.
+template <>
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY inline TypeId GetTypeId<Expression>() {
+  return reinterpret_cast<TypeId>(1024);
+}
+}  // namespace ge
+#endif
+
 namespace af {
 #ifdef AUTOFUSE_USE_GE_METADEF
 using AfAttrGroupsBase = af::AttrGroupsBase;

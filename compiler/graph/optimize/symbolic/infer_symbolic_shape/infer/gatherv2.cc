@@ -10,8 +10,9 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "common/checker.h"
+#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -34,7 +35,7 @@ bool CheckAndUpdateAxis(int64_t &axis, const int64_t shape_dim_num) {
   return check_res;
 }
 
-graphStatus GatherCommonInfer(gert::InferSymbolShapeContext *context, const gert::SymbolShape *in_shape,
+graphStatus GatherCommonInfer(gert::InferSymbolContext *context, const gert::SymbolShape *in_shape,
                               const gert::SymbolShape *indies_shape, const GatherInfo &gather_info) {
   const auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
@@ -86,7 +87,7 @@ graphStatus GatherCommonInfer(gert::InferSymbolShapeContext *context, const gert
  * 【算子约束】
  * 【推导逻辑】
  */
-graphStatus InferShape4GatherV2(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4GatherV2(gert::InferSymbolContext *context) {
   constexpr size_t axes_idx = 2U;
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
@@ -108,7 +109,7 @@ graphStatus InferShape4GatherV2(gert::InferSymbolShapeContext *context) {
   return GatherCommonInfer(context, in_shape, indies_shape, gather_info);
 }
 
-graphStatus InferShape4Gather(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4Gather(gert::InferSymbolContext *context) {
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   // 可能是标量、向量或者张量
@@ -126,7 +127,7 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(Gather).InferSymbolShape(InferShape4Gather);
  * GatherNd: 对于维度为r≥1的输入张量self，和维度q≥1的输入张量indices，将数据切片收集到输出张量out中
  * out的shape为[indices_shape[0:q-1], self_shape[c:r]]
  */
-graphStatus InferShape4GatherNd(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4GatherNd(gert::InferSymbolContext *context) {
   GE_ASSERT_NOTNULL(context);
   const auto data_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(data_shape);
@@ -159,7 +160,7 @@ graphStatus InferShape4GatherNd(gert::InferSymbolShapeContext *context) {
 }
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(GatherNd).InferSymbolShape(InferShape4GatherNd);
 
-graphStatus InferShape4GatherEles(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4GatherEles(gert::InferSymbolContext *context) {
   GE_ASSERT_NOTNULL(context);
   const auto in_shape = context->GetInputSymbolShape(1);
   GE_UNSUPPORTED_IF_NULL(in_shape);
@@ -178,7 +179,7 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(GatherElementsV2).InferSymbolShape(InferShape4G
  * 【推导逻辑】从 attr 0 读 axis，复用 GatherCommonInfer（batch_dims 缺省 0）。
  * 【举例】x=[2,3]、indices=[2,2]、axis=1 时，y=[2,2]。
  */
-graphStatus InferShape4GatherV2D(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4GatherV2D(gert::InferSymbolContext *context) {
   const auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   const auto indies_shape = context->GetInputSymbolShape(1);
@@ -199,7 +200,7 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(GatherV2D).InferSymbolShape(InferShape4GatherV2
 // 1. 输出shape第一维为所有indices中的最大值+1
 // 2. 输出shape其余维度与输入x的shape除去indices维度后的部分相同
 // 3. 验证所有输入x的shape除去indices维度后的部分一致
-graphStatus InferShapeForDynamicStitch(gert::InferSymbolShapeContext *context) {
+graphStatus InferShapeForDynamicStitch(gert::InferSymbolContext *context) {
   GE_ASSERT_NOTNULL(context);
   GE_UNSUPPORTED_IF_NULL(context->GetInputSymbolShape(0));
   const auto attrs = context->GetAttrs();
@@ -259,7 +260,7 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(DynamicStitch).InferSymbolShape(InferShapeForDy
  *      1. 按照算子约束校验输入和axes属性
  *      2. 属性axes的size作为输出shape
  */
-graphStatus InferShape4GatherShapes(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4GatherShapes(gert::InferSymbolContext *context) {
   auto input_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(input_shape);
   auto input_num = context->GetComputeNodeInputNum();

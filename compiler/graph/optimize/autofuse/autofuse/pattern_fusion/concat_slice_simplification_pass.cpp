@@ -15,7 +15,7 @@
 #include "node_utils.h"
 #include "op_desc_utils.h"
 #include "lowering/asc_lowerer/loop_common.h"
-#include "symbolizer/symbolic.h"
+#include "graph/symbolizer/symbolic.h"
 #include "utils/autofuse_utils.h"
 #include "flatten_concat_pass.h"
 #include "graph_utils.h"

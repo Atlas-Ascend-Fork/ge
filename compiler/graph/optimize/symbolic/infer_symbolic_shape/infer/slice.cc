@@ -10,8 +10,9 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "common/checker.h"
+#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 namespace ge {
@@ -63,7 +64,7 @@ graphStatus CheckAndInfer4Slice(const gert::SymbolShape *in_shape, const gert::S
  *      2. 默认将size的数值设置为输出shape，因为这个参数的明确含义就是切片大小
  *      3. 若size中包含-1，则对应轴的输出dim等于对应轴的输入dim - 起点，也就是上述所说的从起点开始，剩下的数据都要
  */
-graphStatus InferShape4Slice(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4Slice(gert::InferSymbolContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto offsets_tensor = context->GetInputSymbolTensor(1);
@@ -148,7 +149,7 @@ graphStatus CheckAndInfer4SliceD(const gert::SymbolShape *in_shape,
  *      2. 默认将size的数值设置为输出shape，因为这个参数的明确含义就是切片大小
  *      3. 若size中包含-1，则对应轴的输出dim等于对应轴的输入dim - 起点，也就是上述所说的从起点开始，剩下的数据都要
  */
-graphStatus InferShape4SliceD(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4SliceD(gert::InferSymbolContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto attrs = context->GetAttrs();

@@ -68,6 +68,10 @@ std::unique_ptr<char_t[]> Expression::Str(const StrType type) const {
   return nullptr;
 }
 
+std::unique_ptr<char_t[]> Expression::Serialize() const {
+  return Str(StrType::kStrCpp);
+}
+
 namespace expr_ext {
 namespace {
 // 借助派生类构造函数访问 Expression 的 protected ExpressionImplPtr 构造，实现 impl 到 Expression 的封装
@@ -241,6 +245,13 @@ bool Expression::operator==(const Expression &e) const {
 
 bool Expression::operator!=(const Expression &e) const {
   return !(*this == e);
+}
+
+std::ostream &operator<<(std::ostream &os, const Expression &e) {
+  if (e.impl_ != nullptr) {
+    os << *e.impl_;
+  }
+  return os;
 }
 
 Expression::Expression(ExpressionImplPtr &&e) : impl_(std::move(e)) {}

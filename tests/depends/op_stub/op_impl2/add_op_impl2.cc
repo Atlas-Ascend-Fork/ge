@@ -10,9 +10,30 @@
 
 #include "register/op_impl_registry.h"
 #include "exe_graph/runtime/tiling_parse_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
+#include "graph/symbolizer/symbolic.h"
 #include "common/checker.h"
 using namespace gert;
 namespace ops {
+ge::graphStatus InferSymbolFromCustomSo(InferSymbolContext *context) {
+  const auto input = context->GetInputSymbolTensor(0U);
+  const auto output = context->GetOutputSymbolTensor(0U);
+  if (input == nullptr || output == nullptr) {
+    return ge::GRAPH_FAILED;
+  }
+  const auto &input_shape = input->GetOriginSymbolShape();
+  if (input_shape.GetDimNum() != 1U) {
+    return ge::GRAPH_NOT_CHANGED;
+  }
+  SymbolShape output_shape;
+  output_shape.AppendDim(input_shape.GetDim(0U) + ge::Symbol(1));
+  output->SetOriginSymbolShape(output_shape);
+  output->SetValueCount(1U).SetValue(0U, input_shape.GetDim(0U));
+  return ge::GRAPH_SUCCESS;
+}
+
+IMPL_OP_INFERSYMBOL(CustomSymbolFromSo).InferSymbol(InferSymbolFromCustomSo);
+
 ge::graphStatus InferShapeForAdd2(InferShapeContext *context) {
   GELOGD("InferShapeForAdd2");
   auto input_shape_0 = *context->GetInputShape(0);

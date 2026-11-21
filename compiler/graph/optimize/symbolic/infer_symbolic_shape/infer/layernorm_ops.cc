@@ -8,8 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "common/checker.h"
+#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 
@@ -28,7 +29,7 @@ constexpr size_t kAddRmsNormYIdx = 0U;
 constexpr size_t kAddRmsNormRstdIdx = 1U;
 constexpr size_t kAddRmsNormXIdx = 2U;
 
-graphStatus InferShape4LayerNorm(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4LayerNorm(gert::InferSymbolContext *context) {
   auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto y_shape = context->GetOutputSymbolShape(0);
@@ -62,7 +63,7 @@ graphStatus InferShape4LayerNorm(gert::InferSymbolShapeContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4AddLayerNorm(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4AddLayerNorm(gert::InferSymbolContext *context) {
   auto x1_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x1_shape);
   auto gamma_shape = context->GetInputSymbolShape(2);
@@ -97,7 +98,7 @@ graphStatus InferShape4AddLayerNorm(gert::InferSymbolShapeContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4LayerNormXBackpropCommon(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4LayerNormXBackpropCommon(gert::InferSymbolContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto out_shape = context->GetOutputSymbolShape(0);
@@ -110,7 +111,7 @@ graphStatus InferShape4LayerNormXBackpropCommon(gert::InferSymbolShapeContext *c
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4SoftmaxCrossEntropyWithLogits(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4SoftmaxCrossEntropyWithLogits(gert::InferSymbolContext *context) {
   auto in_shape = context->GetInputSymbolShape(kZero);
   auto in1_shape = context->GetInputSymbolShape(kOne);
   GE_UNSUPPORTED_IF_NULL(in_shape);
@@ -172,7 +173,7 @@ graphStatus InferShape4SoftmaxCrossEntropyWithLogits(gert::InferSymbolShapeConte
  *          起始位置，将rstd的对应维度替换为1，其余前置维度保持x的符号维度不变，分别写回两个输出。
  * 【举例】x=[B,S,H]、gamma=[H]时，y=[B,S,H]，rstd=[B,S,1]。
  */
-graphStatus InferShape4RmsNorm(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4RmsNorm(gert::InferSymbolContext *context) {
   const auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   const auto gamma_shape = context->GetInputSymbolShape(1);
@@ -205,7 +206,7 @@ graphStatus InferShape4RmsNorm(gert::InferSymbolShapeContext *context) {
  *             将 rstd 对应维度替换为 1，其余前置维度保留 x1 的符号维度。
  * 【举例】x1=[B,S,H]、x2=[B,S,H]、gamma=[H] 时，y=[B,S,H]、rstd=[B,S,1]、x=[B,S,H]。
  */
-graphStatus InferShape4AddRmsNorm(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4AddRmsNorm(gert::InferSymbolContext *context) {
   const auto x1_shape = context->GetInputSymbolShape(kAddRmsNormX1Idx);
   GE_UNSUPPORTED_IF_NULL(x1_shape);
   const auto gamma_shape = context->GetInputSymbolShape(kAddRmsNormGammaIdx);

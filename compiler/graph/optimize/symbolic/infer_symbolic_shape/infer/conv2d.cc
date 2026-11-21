@@ -10,9 +10,10 @@
 #include "graph/compute_graph.h"
 #include <string>
 #include "common/checker.h"
+#include "graph/symbolizer/symbolic.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 
 namespace ge {
 namespace {
@@ -86,7 +87,7 @@ struct Conv2DAttrs {
   Expression padr{kSymbolZero};
 };
 
-ge::graphStatus GetConv2DXShapeDim(const gert::InferSymbolShapeContext *context, Conv2DInputShapes &x_shapes) {
+ge::graphStatus GetConv2DXShapeDim(const gert::InferSymbolContext *context, Conv2DInputShapes &x_shapes) {
   // Get x format
   GE_CHECK_NOTNULL(context);
   const gert::CompileTimeTensorDesc *x_desc_ptr = context->GetInputDesc(kXIdxConv2d);
@@ -115,7 +116,7 @@ ge::graphStatus GetConv2DXShapeDim(const gert::InferSymbolShapeContext *context,
   return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GetConv2DWShapeDim(const gert::InferSymbolShapeContext *context, Conv2DInputShapes &w_shapes) {
+ge::graphStatus GetConv2DWShapeDim(const gert::InferSymbolContext *context, Conv2DInputShapes &w_shapes) {
   // Get w format
   GE_CHECK_NOTNULL(context);
   const gert::CompileTimeTensorDesc *w_desc_ptr = context->GetInputDesc(kWIdxConv2d);
@@ -162,7 +163,7 @@ ge::graphStatus CheckGroupsAndOutChannel(const Expression &out_channel, const Ex
   return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckConv2DGroups(const gert::InferSymbolShapeContext *context, const Conv2DInputShapes &x_shapes,
+ge::graphStatus CheckConv2DGroups(const gert::InferSymbolContext *context, const Conv2DInputShapes &x_shapes,
                                   const Conv2DInputShapes &w_shapes) {
   GE_CHECK_NOTNULL(context);
   const auto attrs = context->GetAttrs();
@@ -218,7 +219,7 @@ ge::graphStatus CheckConv2DGroups(const gert::InferSymbolShapeContext *context, 
   return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GetConv2DStrides(const gert::InferSymbolShapeContext *context, Conv2DAttrs &conv2d_attrs) {
+ge::graphStatus GetConv2DStrides(const gert::InferSymbolContext *context, Conv2DAttrs &conv2d_attrs) {
   GE_CHECK_NOTNULL(context);
   const auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
@@ -250,7 +251,7 @@ ge::graphStatus GetConv2DStrides(const gert::InferSymbolShapeContext *context, C
   return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GetConv2DDilations(const gert::InferSymbolShapeContext *context, Conv2DAttrs &conv2d_attrs) {
+ge::graphStatus GetConv2DDilations(const gert::InferSymbolContext *context, Conv2DAttrs &conv2d_attrs) {
   const gert::RuntimeAttrs *attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
   const auto *dilations_ptr = attrs->GetAttrPointer<gert::ContinuousVector>(kDilationsIdxConv2d);
@@ -416,7 +417,7 @@ ge::graphStatus InferConv2DPadsWithPadding(const size_t pad_size, const Conv2DIn
   return ge::PARAM_INVALID;
 }
 
-ge::graphStatus GetConv2DPads(const gert::InferSymbolShapeContext *context, const Conv2DInputShapes &x_shapes,
+ge::graphStatus GetConv2DPads(const gert::InferSymbolContext *context, const Conv2DInputShapes &x_shapes,
                               const Conv2DInputShapes &w_shapes, Conv2DAttrs &conv2d_attrs) {
   GE_ASSERT_NOTNULL(context);
   const gert::RuntimeAttrs *attrs = context->GetAttrs();
@@ -486,7 +487,7 @@ ge::graphStatus AppendConv2DOutputDims(gert::SymbolShape *shape, const ge::Forma
 
 // 输出 origin format 已是 NCHW/NHWC 时用它决定维序。仍是 ND 时说明调用方没单独设置，
 // 沿用输入 x 的 origin format，避免把历史图里未填的输出 format 判成失败。
-ge::graphStatus ResolveConv2DOutputFormat(const gert::InferSymbolShapeContext *context, const size_t index,
+ge::graphStatus ResolveConv2DOutputFormat(const gert::InferSymbolContext *context, const size_t index,
                                           ge::Format &format) {
   GE_ASSERT_NOTNULL(context);
   const auto *desc = context->GetOutputDesc(index);
@@ -508,9 +509,8 @@ ge::graphStatus ResolveConv2DOutputFormat(const gert::InferSymbolShapeContext *c
 }
 
 // index 0 是 y，必须存在。ExtendConv2D 的 y1 是 index 1；Conv2D/Conv2DV2 没有输出 1，指针为空则跳过。
-ge::graphStatus SetConv2DOutputSymbolShape(gert::InferSymbolShapeContext *context, const size_t index,
-                                           const Expression &n, const Expression &c, const Expression &h,
-                                           const Expression &w) {
+ge::graphStatus SetConv2DOutputSymbolShape(gert::InferSymbolContext *context, const size_t index, const Expression &n,
+                                           const Expression &c, const Expression &h, const Expression &w) {
   GE_ASSERT_NOTNULL(context);
   auto *shape = context->GetOutputSymbolShape(index);
   if (shape == nullptr) {
@@ -585,7 +585,7 @@ ge::graphStatus CheckFcKcEqualInZeroTensor(const Conv2DInputShapes &x_shapes, co
  *      举例：输入x_shape=(2,3,28,28)，filter_shape=(16,3,3,3)，strides=[1,1,1,1]，padding=SAME，
  *            则y_shape=(2,16,28,28)
  */
-graphStatus InferShape4Conv2D(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4Conv2D(gert::InferSymbolContext *context) {
   // 主流程（先归一化，再公式化）：
   // 1) 解析 x/filter 逻辑维度；
   // 2) 处理 groups 语义并落约束；

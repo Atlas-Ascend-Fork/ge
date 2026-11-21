@@ -12,7 +12,7 @@
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "graph/utils/type_utils.h"
 
@@ -22,7 +22,7 @@ constexpr size_t kLpNormAxesAttrIdx = 1U;
 
 constexpr size_t kLpNormKeepdimAttrIdx = 2U;
 
-graphStatus InferShape4ReduceCommon(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4ReduceCommon(gert::InferSymbolContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto axes_tensor = context->GetInputSymbolTensor(1);
@@ -56,7 +56,7 @@ graphStatus InferShape4ReduceCommon(gert::InferSymbolShapeContext *context) {
   return SymbolicInferUtil::ReduceDims<int64_t>(in_shape, axes_tensor, axes_size, *keep_dims, out_shape);
 }
 
-graphStatus InferShape4ReduceDCommon(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4ReduceDCommon(gert::InferSymbolContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto out_shape = context->GetOutputSymbolShape(0);
@@ -101,7 +101,7 @@ graphStatus InferShape4ReduceDCommon(gert::InferSymbolShapeContext *context) {
  *           输入 x_shape=(2,3,4)，axes={2}，keepdim=false → y_shape=(2,3)；
  *           输入 x_shape=(2,3,4)，axes={}，keepdim=false → y_shape=()。
  */
-graphStatus InferShape4LpNormV2(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4LpNormV2(gert::InferSymbolContext *context) {
   auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto out_shape = context->GetOutputSymbolShape(0);
@@ -133,7 +133,7 @@ graphStatus InferShape4LpNormV2(gert::InferSymbolShapeContext *context) {
   return SymbolicInferUtil::ReduceDimsWithoutKeepDims<int64_t>(x_shape, reduce_axes, reduce_axes.size(), out_shape);
 }
 
-graphStatus InferShape4BiasAddGrad(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4BiasAddGrad(gert::InferSymbolContext *context) {
   auto in_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(in_shape);
   auto out_shape = context->GetOutputSymbolShape(0);
@@ -166,7 +166,7 @@ graphStatus InferShape4BiasAddGrad(gert::InferSymbolShapeContext *context) {
   return SymbolicInferUtil::ReduceDimsWithoutKeepDims<int64_t>(in_shape, reduce_axes, reduce_axes.size(), out_shape);
 }
 
-graphStatus InferShape4LayerNormBetaGammaBackpropV2(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4LayerNormBetaGammaBackpropV2(gert::InferSymbolContext *context) {
   auto attrs = context->GetAttrs();
   GE_ASSERT_NOTNULL(attrs);
   auto dy_shape = context->GetInputSymbolShape(0);
@@ -217,7 +217,7 @@ graphStatus InferShape4LayerNormBetaGammaBackpropV2(gert::InferSymbolShapeContex
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4LayerNormV3(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4LayerNormV3(gert::InferSymbolContext *context) {
   auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto gamma_shape = context->GetInputSymbolShape(1);
@@ -278,7 +278,7 @@ graphStatus InferShape4LayerNormV3(gert::InferSymbolShapeContext *context) {
  *      举例：输入x_shape=(2,3,4,5)，norm_shape=(4,5)，则y_shape=(2,3,4,5)，
  *            mean_shape=(2,3,1,1)，rstd_shape=(2,3,1,1)
  */
-graphStatus InferShape4LayerNormV4(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4LayerNormV4(gert::InferSymbolContext *context) {
   auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   auto norm_shape_shape = context->GetInputSymbolShape(1);
@@ -324,7 +324,7 @@ graphStatus InferShape4LayerNormV4(gert::InferSymbolShapeContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShapeForBNTrainingUpdateGrad(gert::InferSymbolShapeContext *context) {
+graphStatus InferShapeForBNTrainingUpdateGrad(gert::InferSymbolContext *context) {
   const auto input_batch_mean_shape = context->GetInputSymbolShape(2);
   GE_UNSUPPORTED_IF_NULL(input_batch_mean_shape);
   auto output_diff_scale_shape = context->GetOutputSymbolShape(0);

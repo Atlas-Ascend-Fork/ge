@@ -152,7 +152,7 @@ REG_OP(Repeat)
 
         IMPL_OP(Repeat)
     .InputsDataDependency({1});  // repeat归属自定义二类算子，符号化推导需要获取
-graphStatus TestRepeatInferSymbolShapeFunc(gert::InferSymbolShapeContext *context) {
+graphStatus TestRepeatInferSymbolShapeFunc(gert::InferSymbolContext *context) {
   auto input0 = context->GetInputSymbolShape(0);
   GE_ASSERT_NOTNULL(input0);
   auto input1 = context->GetInputSymbolTensor(1);
