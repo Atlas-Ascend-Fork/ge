@@ -17,7 +17,7 @@ namespace gert {
 namespace om2_test {
 ge::FastNode *AddNode(ge::ExecuteGraph &graph, const char *name, const char *type,
                       const std::vector<ge::GeTensorDesc> &inputs, const std::vector<ge::GeTensorDesc> &outputs);
-std::shared_ptr<ge::ExecuteGraph> AffineGraph(bool embedded_weight, bool fail_run = false);
+std::shared_ptr<ge::ExecuteGraph> AffineGraph(bool load_bound_parameters, bool fail_run = false);
 }  // namespace om2_test
 }  // namespace gert
 #endif

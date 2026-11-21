@@ -28,56 +28,37 @@ extern "C" {
 #define GERT_STAGE_MAIN "main"
 #define GERT_STAGE_DEINIT "deinit"
 
-/* 输入类别键：tensor 表示已有 RT2 Tensor 对象地址，pointer 表示消费 Kernel 解释的借用指针。 */
-#define GERT_ATTR_INPUT_KIND "gert.input.kind"
-#define GERT_INPUT_KIND_TENSOR "tensor"
-#define GERT_INPUT_KIND_POINTER "pointer"
-
 /* 图输入的序号键，沿用 ES 既有 index 协议。 */
 #define GERT_ATTR_INDEX "index"
 
-/* 模型用户 IO 描述：list Tensor（无数据，TensorDesc 携带描述）与同序的 list string 名称。 */
+/* 模型用户 IO 描述：list Tensor，按模型 IO 顺序排列，每个 TensorDesc 携带名称和描述。 */
 #define GERT_ATTR_MODEL_INPUTS "gert.model.inputs"
 #define GERT_ATTR_MODEL_OUTPUTS "gert.model.outputs"
-#define GERT_ATTR_MODEL_INPUT_NAMES "gert.model.input_names"
-#define GERT_ATTR_MODEL_OUTPUT_NAMES "gert.model.output_names"
-
-/* 逻辑算子拓扑序号：list int64，以下标对应序列化 CNI 池索引。 */
-#define GERT_ATTR_COMPUTE_NODE_TOPO_IDS "gert.compute_node_topo_ids"
 
 /* 统一资源槽数：int64。 */
 #define GERT_ATTR_MODEL_STREAM_COUNT "gert.model.stream_count"
 #define GERT_ATTR_MODEL_EVENT_COUNT "gert.model.event_count"
 #define GERT_ATTR_MODEL_NOTIFY_COUNT "gert.model.notify_count"
-
-/* 加载配置：device_id 必填；stream 可缺省，由内部创建。 */
-#define GERT_ATTR_DEVICE_ID "gert.device_id"
-#define GERT_ATTR_STREAM "gert.stream"
+#define GERT_ATTR_MODEL_ATTACHED_STREAM_COUNT "gert.model.attached_stream_count"
 
 /* 输出执行值引用协议：节点名（字符串）+ 输出索引（非负 int64）成对设置。 */
 #define GERT_ATTR_REF_FROM_NODE "RefFromNode"
 #define GERT_ATTR_REF_FROM_INDEX "RefFromIndex"
 
-/* 来源算子描述：ID 列表 + 按 ID 分组的字段。ID 为 [A-Za-z0-9_-]+，仅在同图同类表内唯一。 */
-#define GERT_ATTR_SOURCE_IDS "gert.source.ids"
-#define GERT_ATTR_SOURCE_ID "gert.source.id"
-/* 以下前缀后接 "<id>.<字段>"，字段含义见设计 3.5.4。 */
-#define GERT_ATTR_SOURCE_PREFIX "gert.source."
+/* 来源算子描述：执行节点上的版本化 JSON 字符串。 */
+#define GERT_ATTR_SOURCE_OP "gert.source_op"
 
-/* SO 资源：用途区分 space_registry / kernel / tiling / custom，未知用途报错。 */
-#define GERT_ATTR_SO_IDS "gert.so.ids"
-#define GERT_ATTR_SO_PREFIX "gert.so."
-#define GERT_ATTR_NODE_SO_IDS "gert.so.ids"
-
-/* 设备二进制（.o）：名称 + 内容，内部核对生成代码的 binary key。 */
+/* 设备二进制（.o）：gert.binary.ids 枚举 ID，每个 ID 对应 gert.binary.<id>.name 和
+ * gert.binary.<id>.content。后续可优化按 ID 组织资源属性的方式。
+ */
 #define GERT_ATTR_BINARY_IDS "gert.binary.ids"
 #define GERT_ATTR_BINARY_PREFIX "gert.binary."
-#define GERT_ATTR_NODE_BINARY_ID "gert.binary.id"
 
-/* 权重资源：内置 / 外置文件 / 外置内存，与 Init/Main 阶段无关。 */
-#define GERT_ATTR_WEIGHT_IDS "gert.weight.ids"
-#define GERT_ATTR_WEIGHT_PREFIX "gert.weight."
-#define GERT_ATTR_NODE_WEIGHT_ID "gert.weight.id"
+/* Custom Kernel registration metadata. */
+#define GERT_ATTR_CUSTOM_KERNEL_NAME "_custom_kernel_name"
+#define GERT_ATTR_CUSTOM_KERNEL_SO_PATH "_custom_kernel_so_path"
+#define GERT_ATTR_CUSTOM_RUN_FUNC_SYMBOL "_custom_run_func_symbol"
+#define GERT_ATTR_CUSTOM_OUTPUTS_CREATOR_SYMBOL "_custom_outputs_creator_symbol"
 
 #ifdef __cplusplus
 }
@@ -93,41 +74,53 @@ constexpr const char *kStageInit = GERT_STAGE_INIT;
 constexpr const char *kStageMain = GERT_STAGE_MAIN;
 constexpr const char *kStageDeInit = GERT_STAGE_DEINIT;
 
-constexpr const char *kInputKind = GERT_ATTR_INPUT_KIND;
-constexpr const char *kInputKindTensor = GERT_INPUT_KIND_TENSOR;
-constexpr const char *kInputKindPointer = GERT_INPUT_KIND_POINTER;
-
 constexpr const char *kIndex = GERT_ATTR_INDEX;
 
 constexpr const char *kModelInputs = GERT_ATTR_MODEL_INPUTS;
 constexpr const char *kModelOutputs = GERT_ATTR_MODEL_OUTPUTS;
-constexpr const char *kModelInputNames = GERT_ATTR_MODEL_INPUT_NAMES;
-constexpr const char *kModelOutputNames = GERT_ATTR_MODEL_OUTPUT_NAMES;
-constexpr const char *kComputeNodeTopoIds = GERT_ATTR_COMPUTE_NODE_TOPO_IDS;
 constexpr const char *kModelStreamCount = GERT_ATTR_MODEL_STREAM_COUNT;
 constexpr const char *kModelEventCount = GERT_ATTR_MODEL_EVENT_COUNT;
 constexpr const char *kModelNotifyCount = GERT_ATTR_MODEL_NOTIFY_COUNT;
-
-constexpr const char *kDeviceId = GERT_ATTR_DEVICE_ID;
-constexpr const char *kStream = GERT_ATTR_STREAM;
+constexpr const char *kModelAttachedStreamCount = GERT_ATTR_MODEL_ATTACHED_STREAM_COUNT;
 
 constexpr const char *kRefFromNode = GERT_ATTR_REF_FROM_NODE;
 constexpr const char *kRefFromIndex = GERT_ATTR_REF_FROM_INDEX;
 
-constexpr const char *kSourceIds = GERT_ATTR_SOURCE_IDS;
-constexpr const char *kSourceId = GERT_ATTR_SOURCE_ID;
-constexpr const char *kSourcePrefix = GERT_ATTR_SOURCE_PREFIX;
-
-constexpr const char *kSoIds = GERT_ATTR_SO_IDS;
-constexpr const char *kSoPrefix = GERT_ATTR_SO_PREFIX;
+constexpr const char *kSourceOp = GERT_ATTR_SOURCE_OP;
 
 constexpr const char *kBinaryIds = GERT_ATTR_BINARY_IDS;
 constexpr const char *kBinaryPrefix = GERT_ATTR_BINARY_PREFIX;
-constexpr const char *kNodeBinaryId = GERT_ATTR_NODE_BINARY_ID;
 
-constexpr const char *kWeightIds = GERT_ATTR_WEIGHT_IDS;
-constexpr const char *kWeightPrefix = GERT_ATTR_WEIGHT_PREFIX;
-constexpr const char *kNodeWeightId = GERT_ATTR_NODE_WEIGHT_ID;
+constexpr const char *kCustomKernelName = GERT_ATTR_CUSTOM_KERNEL_NAME;
+constexpr const char *kCustomKernelSoPath = GERT_ATTR_CUSTOM_KERNEL_SO_PATH;
+constexpr const char *kCustomRunFuncSymbol = GERT_ATTR_CUSTOM_RUN_FUNC_SYMBOL;
+constexpr const char *kCustomOutputsCreatorSymbol = GERT_ATTR_CUSTOM_OUTPUTS_CREATOR_SYMBOL;
+
+// 外部执行图属性是否无条件必填。资源前缀表示按 ID 展开的属性族。
+enum class Presence { kRequired, kOptional };
+struct AttrSpec {
+  const char *key;
+  Presence presence;
+};
+
+constexpr AttrSpec kGraphAttrs[] = {
+    {kModelInputs, Presence::kRequired},      {kModelOutputs, Presence::kRequired},
+    {kModelStreamCount, Presence::kOptional}, {kModelEventCount, Presence::kOptional},
+    {kModelNotifyCount, Presence::kOptional}, {kModelAttachedStreamCount, Presence::kOptional},
+    {kBinaryIds, Presence::kOptional},        {kBinaryPrefix, Presence::kOptional},
+};
+
+constexpr AttrSpec kNodeAttrs[] = {
+    {kStage, Presence::kOptional},
+    {kIndex, Presence::kOptional},
+    {kSourceOp, Presence::kOptional},
+    {kRefFromNode, Presence::kOptional},  // 输出 TensorDesc 上的引用属性。
+    {kRefFromIndex, Presence::kOptional},
+    {kCustomKernelName, Presence::kOptional},
+    {kCustomKernelSoPath, Presence::kOptional},
+    {kCustomRunFuncSymbol, Presence::kOptional},
+    {kCustomOutputsCreatorSymbol, Presence::kOptional},
+};
 }  // namespace attr
 }  // namespace gert
 #endif  // __cplusplus

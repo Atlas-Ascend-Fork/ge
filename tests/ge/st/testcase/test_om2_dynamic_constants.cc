@@ -9,16 +9,19 @@
  */
 
 #include <gtest/gtest.h>
+#include <array>
 #include "securec.h"
 #include <string>
 #include <vector>
 #include "acl/acl_rt.h"
 #include "common/om2/dynamic_codegen/info_collect/kernel_code_builder.h"
 #include "common/om2/dynamic_codegen/info_collect/kernel/common_collector_utils.h"
+#include "ge/eager_style_graph_builder/cpp/es_graph_builder.h"
 #include "engine/aicore/kernel/aclnn_op_execute_kernel.h"
 #include "engine/aicore/launch_kernel/ai_core_launch_kernel.h"
 #include "exe_graph/lowering/exe_graph_attrs.h"
 #include "exe_graph/runtime/continuous_vector.h"
+#include "exe_graph/runtime/gert_tensor_data.h"
 #include "exe_graph/runtime/kernel_context.h"
 #include "exe_graph/runtime/runtime_tensor.h"
 #include "framework/common/gert_model_data_deserialize.h"
@@ -377,17 +380,35 @@ bool AddConstants(ge::ExecuteGraph &graph, ge::FastNode *consumer, const std::ve
   return true;
 }
 
-bool SetConstantGraphMetadata(ge::ExecuteGraph &graph, ge::FastNode *output, const ge::GeTensorDesc &input_desc,
-                              const ge::GeTensorDesc &output_desc) {
+bool SetConstantGraphMetadata(ge::ExecuteGraph &graph, ge::FastNode *output, ge::GeTensorDesc input_desc,
+                              ge::GeTensorDesc output_desc) {
+  input_desc.SetName("seed");
+  output_desc.SetName("restored_values");
   return ge::AttrUtils::SetListTensor(graph, attr::kModelInputs, {ge::GeTensor(input_desc)}) &&
-         ge::AttrUtils::SetListStr(graph, attr::kModelInputNames, {"seed"}) &&
          ge::AttrUtils::SetListTensor(graph, attr::kModelOutputs, {ge::GeTensor(output_desc)}) &&
-         ge::AttrUtils::SetListStr(graph, attr::kModelOutputNames, {"restored_values"}) &&
          ge::ExecuteGraphUtils::SetGraphOutputs(&graph, {{output, 0}}) == ge::GRAPH_SUCCESS;
 }
 
-std::shared_ptr<ge::ExecuteGraph> ConstantsGraph(const std::vector<ConstantData> &constants) {
-  auto graph = std::make_shared<ge::ExecuteGraph>("restored_constants");
+std::shared_ptr<ge::ExecuteGraph> ConstantsGraph(const std::vector<ConstantData> &constants, bool use_es = false) {
+  ge::es::EsGraphBuilder builder("restored_constants", static_cast<ge::GraphKind>(1));
+  std::vector<ge::GNode> es_constants;
+  if (use_es) {
+    for (const auto &constant : constants) {
+      auto temporary = constant.bytes;
+      auto holder = builder.CreateConstV2(temporary, {static_cast<int64_t>(temporary.size())}, ge::DT_UINT8);
+      if (holder.GetProducer() == nullptr) {
+        return nullptr;
+      }
+      es_constants.push_back(*holder.GetProducer());
+      std::fill(temporary.begin(), temporary.end(), 0U);
+    }
+  }
+  auto *es_graph = builder.GetCGraphBuilder()->GetGraph();
+  auto graph = use_es ? ge::GraphUtilsEx::Graph2ExecuteGraph(*es_graph)
+                      : std::make_shared<ge::ExecuteGraph>("restored_constants");
+  if (graph == nullptr) {
+    return nullptr;
+  }
   const ge::GeTensorDesc input_desc(ge::GeShape({1}), ge::FORMAT_ND, ge::DT_INT64);
   const ge::GeTensorDesc output_desc(ge::GeShape({static_cast<int64_t>(ExpectedConstants(0).size())}), ge::FORMAT_ND,
                                      ge::DT_INT64);
@@ -395,12 +416,24 @@ std::shared_ptr<ge::ExecuteGraph> ConstantsGraph(const std::vector<ConstantData>
   auto *output = om2_test::AddNode(*graph, "output", "OutputData", {}, {output_desc});
   auto *read = om2_test::AddNode(*graph, "read_constants", "Om2ReadRestoredConstants",
                                  std::vector<ge::GeTensorDesc>(constants.size() + 2U, input_desc), {});
-  if (input == nullptr || output == nullptr || read == nullptr || !AddConstants(*graph, read, constants)) {
+  if (input == nullptr || output == nullptr || read == nullptr) {
     return nullptr;
   }
-  if (!ge::AttrUtils::SetInt(input->GetOpDescPtr(), attr::kIndex, 0) ||
-      !ge::AttrUtils::SetStr(input->GetOpDescPtr(), attr::kInputKind, attr::kInputKindTensor) ||
-      graph->AddEdge(output, 0, read, 0) == nullptr || graph->AddEdge(input, 0, read, 1) == nullptr ||
+  if (use_es) {
+    auto target = es_graph->FindNodeByName("read_constants");
+    if (target == nullptr) {
+      return nullptr;
+    }
+    for (size_t i = 0U; i < es_constants.size(); ++i) {
+      if (es_graph->AddDataEdge(es_constants[i], 0, *target, static_cast<int32_t>(i + 2U)) != ge::GRAPH_SUCCESS) {
+        return nullptr;
+      }
+    }
+  } else if (!AddConstants(*graph, read, constants)) {
+    return nullptr;
+  }
+  if (!ge::AttrUtils::SetInt(input->GetOpDescPtr(), attr::kIndex, 0) || graph->AddEdge(output, 0, read, 0) == nullptr ||
+      graph->AddEdge(input, 0, read, 1) == nullptr ||
       !SetConstantGraphMetadata(*graph, output, input_desc, output_desc)) {
     return nullptr;
   }
@@ -432,11 +465,10 @@ void CheckRestoredConstants(ge::om2_test::GeneratedModelRunner &runner, int64_t 
  * 测试步骤：构图并打包、序列化往返、Load，使用不同 seed 连续 Run 两次，最后 Unload。
  * 预期结果：有符号/无符号值、窄标量扩展、字符串转义、二进制、向量、结构字段逐项保持，输出匹配参考。
  */
-TEST_F(Om2DynamicConstantsST, MultipleConstantTypesSurvivePackageRoundTripAndExecution) {
-  // slow_test_limit = 3000
+void CompileAndCheckRestoredConstants(bool use_es) {
   ge::GetThreadLocalContext().SetGraphOption(
       {{"ge.buildConfig", "make -s CXXFLAGS='-std=c++17 -fPIC -O0 -D_GLIBCXX_USE_CXX11_ABI=0'"}});
-  auto graph = ConstantsGraph(ConstantValues());
+  auto graph = ConstantsGraph(ConstantValues(), use_es);
   ASSERT_NE(graph, nullptr);
   auto facade = ge::GraphUtilsEx::ExecuteGraph2Graph(graph);
   ASSERT_NE(facade, nullptr);
@@ -456,6 +488,149 @@ TEST_F(Om2DynamicConstantsST, MultipleConstantTypesSurvivePackageRoundTripAndExe
   CheckRestoredConstants(runner, 123);
   CheckRestoredConstants(runner, -456);
   EXPECT_EQ(runner.Unload(), ACL_SUCCESS);
+}
+
+TEST_F(Om2DynamicConstantsST, MultipleConstantTypesSurvivePackageRoundTripAndExecution) {
+  // slow_test_limit = 3000
+  CompileAndCheckRestoredConstants(false);
+}
+
+/**
+ * 用例描述：ES 自动命名的 Tensor 常量使用与 Buffer 路径相同的恢复与执行断言。
+ * 预置条件：每个源字节数组在构图结束前覆写，ES builder 在编译前析构。
+ * 测试步骤：用 CreateConstV2 创建相同载荷，经公开构建入口生成模型并重复执行。
+ * 预期结果：标量、零字节和复杂对象字段在两轮执行中匹配 Buffer 路径的参考值。
+ */
+TEST_F(Om2DynamicConstantsST, EsConstantsSurviveBuilderLifetimeAndPackageRoundTrip) {
+  // slow_test_limit = 3000
+  CompileAndCheckRestoredConstants(true);
+}
+
+ge::graphStatus Om2ReadBuildRefHost(KernelContext *context) {
+  const auto *tensor = context->GetInputPointer<Tensor>(0U);
+  auto *output = context->MutableInputPointer<Tensor>(1U);
+  if (tensor == nullptr || output == nullptr || tensor->GetOriginShape() != Shape({1, 3}) ||
+      tensor->GetStorageShape() != Shape({3}) || tensor->GetPlacement() != kOnHost ||
+      tensor->GetDataType() != ge::DT_INT64 || tensor->GetSize() != 3U * sizeof(int64_t)) {
+    return ge::GRAPH_FAILED;
+  }
+  return memcpy_s(output->GetData<int64_t>(), output->GetSize(), tensor->GetData<int64_t>(), tensor->GetSize()) == EOK
+             ? ge::GRAPH_SUCCESS
+             : ge::GRAPH_FAILED;
+}
+REGISTER_KERNEL(Om2ReadBuildRefHost).RunFunc(Om2ReadBuildRefHost);
+
+class ReadBuildRefHostCollector final : public om2::KernelCodeBuilder {
+ public:
+  ge::graphStatus Collect(const om2::KernelCollectContext &context, om2::KernelProgramInfo &info) override {
+    const auto status = om2::InitKernelProgramInfo(context, om2::OutputCreatePolicy::kGraphBound, false, info);
+    return status == ge::GRAPH_SUCCESS
+               ? om2::SetInputPortInfos(
+                     context, {{"tensor", ValueType::kGertTensorPtr}, {"output", ValueType::kGertTensorPtr}}, info)
+               : status;
+  }
+};
+REGISTER_KERNEL_CODE_BUILDER("Om2ReadBuildRefHost", ReadBuildRefHostCollector);
+
+void AttachHostConstants(ge::es::EsGraphBuilder &builder, ge::Graph &facade, ge::ExecuteGraph &graph, ge::FastNode &ref,
+                         ge::GNode &target, const std::array<std::vector<uint8_t>, 3U> &constants,
+                         const ge::GeTensorDesc &tensor_desc, bool use_es) {
+  for (size_t port = 0U; port < constants.size(); ++port) {
+    const auto &bytes = constants[port];
+    if (use_es) {
+      auto holder = builder.CreateConstV2(bytes, {static_cast<int64_t>(bytes.size())}, ge::DT_UINT8);
+      ASSERT_NE(holder.GetProducer(), nullptr);
+      ASSERT_EQ(facade.AddDataEdge(*holder.GetProducer(), 0, target, static_cast<int32_t>(port)), ge::GRAPH_SUCCESS);
+    } else {
+      const auto name = "old_value_" + std::to_string(port);
+      auto *node = om2_test::AddNode(graph, name.c_str(), "Const", {}, {tensor_desc});
+      ASSERT_NE(node, nullptr);
+      ASSERT_TRUE(ge::AttrUtils::SetZeroCopyBytes(node->GetOpDescBarePtr(), kConstValue,
+                                                  ge::Buffer::CopyFrom(bytes.data(), bytes.size())));
+      ASSERT_NE(graph.AddEdge(node, 0, &ref, static_cast<int32_t>(port)), nullptr);
+    }
+  }
+}
+
+void RunHostConstantGraph(ge::om2_test::GeneratedModelRunner &runner, std::array<int64_t, 3U> &result) {
+  GertModelLoadConfig load;
+  ASSERT_EQ(runner.Load(load), ACL_SUCCESS);
+  Tensor result_tensor({{3}, {3}}, {ge::FORMAT_ND, ge::FORMAT_ND, {}}, kOnHost, ge::DT_INT64, result.data());
+  result_tensor.SetSize(sizeof(result));
+  Tensor *outputs[]{&result_tensor};
+  GertModelRunConfig run;
+  run.output_count = 1U;
+  run.output_data = outputs;
+  ASSERT_EQ(runner.Run(run), ACL_SUCCESS);
+  ASSERT_EQ(runner.Unload(), ACL_SUCCESS);
+}
+
+void CheckHostConstantResults(const std::array<int64_t, 3U> &result, const std::array<int64_t, 3U> &host_values,
+                              std::array<int64_t, 3U> &legacy_result, bool use_es) {
+  EXPECT_EQ(result, host_values);
+  if (use_es) {
+    EXPECT_EQ(result, legacy_result);
+  } else {
+    legacy_result = result;
+  }
+}
+
+/**
+ * 用例描述：BuildRefTensor 从自动命名的 ES Const 恢复动态 shape 列表及 Host 数据。
+ * 预置条件：注册只读 Host probe，使用真实 BuildRefTensor 和生成的 OM2 SO，ACL 调用使用桩。
+ * 测试步骤：用 Buffer 和 ES Tensor 两种载体构图，生成、加载并执行 SO。
+ * 预期结果：两条路径的 origin/storage shape、placement、dtype 和数据逐项一致。
+ */
+TEST_F(Om2DynamicConstantsST, BuildRefTensorRestoresHostShapeListFromEsConstants) {
+  // slow_test_limit = 7000
+  ge::GetThreadLocalContext().SetGraphOption(
+      {{"ge.buildConfig", "make -s CXXFLAGS='-std=c++17 -fPIC -O0 -D_GLIBCXX_USE_CXX11_ABI=0'"}});
+  std::array<int64_t, 3U> host_values{-1, 17, 29};
+  GertTensorData host_data;
+  ASSERT_EQ(host_data.MutableTensorData().SetAddr(host_values.data(), nullptr), ge::GRAPH_SUCCESS);
+  host_data.SetPlacement(kOnHost);
+  host_data.SetSize(sizeof(host_values));
+  const std::array<std::vector<uint8_t>, 3U> constants{
+      ObjectBytes(StorageShape{{1, 3}, {3}}), ObjectBytes(host_data),
+      ObjectBytes(kernel::BuildTensorAttr{kOnHost, ge::DT_INT64, {ge::FORMAT_ND, ge::FORMAT_ND, {}}})};
+  std::array<int64_t, 3U> legacy_result{};
+  for (const bool use_es : {false, true}) {
+    SCOPED_TRACE(use_es ? "ES Tensor" : "Buffer");
+    ge::es::EsGraphBuilder builder("build_ref_host", static_cast<ge::GraphKind>(1));
+    auto *facade = builder.GetCGraphBuilder()->GetGraph();
+    ASSERT_NE(facade, nullptr);
+    auto graph = ge::GraphUtilsEx::Graph2ExecuteGraph(*facade);
+    ASSERT_NE(graph, nullptr);
+    const ge::GeTensorDesc tensor_desc(ge::GeShape({3}), ge::FORMAT_ND, ge::DT_INT64);
+    auto *ref = om2_test::AddNode(*graph, "build_ref", "BuildRefTensor", {tensor_desc, tensor_desc, tensor_desc},
+                                  {tensor_desc});
+    auto *output = om2_test::AddNode(*graph, "output", "OutputData", {}, {tensor_desc});
+    auto *probe = om2_test::AddNode(*graph, "read_host", "Om2ReadBuildRefHost", {tensor_desc, tensor_desc}, {});
+    ASSERT_NE(ref, nullptr);
+    ASSERT_NE(output, nullptr);
+    ASSERT_NE(probe, nullptr);
+    auto target = facade->FindNodeByName("build_ref");
+    ASSERT_NE(target, nullptr);
+    ASSERT_NO_FATAL_FAILURE(
+        AttachHostConstants(builder, *facade, *graph, *ref, *target, constants, tensor_desc, use_es));
+    ASSERT_NE(graph->AddEdge(ref, 0, probe, 0), nullptr);
+    ASSERT_NE(graph->AddEdge(output, 0, probe, 1), nullptr);
+    ASSERT_TRUE(ge::AttrUtils::SetListTensor(*graph, attr::kModelInputs, std::vector<ge::GeTensor>{}));
+    ge::GeTensor output_tensor(tensor_desc);
+    output_tensor.MutableTensorDesc().SetName("host_shape_list");
+    ASSERT_TRUE(ge::AttrUtils::SetListTensor(*graph, attr::kModelOutputs, {output_tensor}));
+    ASSERT_EQ(ge::ExecuteGraphUtils::SetGraphOutputs(graph.get(), {{output, 0}}), ge::GRAPH_SUCCESS);
+
+    GertModelData model;
+    ASSERT_EQ(ge::Om2PackageHelper().BuildGertModelDataFromGraph(*facade, model), ge::SUCCESS);
+    ASSERT_EQ(model.models.size(), 1U);
+    ASSERT_NE(model.models[0]->runtime, nullptr);
+    ge::om2_test::GeneratedModelRunner runner;
+    ASSERT_TRUE(runner.Open(model.models[0]->runtime->so_artifact)) << runner.Error();
+    std::array<int64_t, 3U> result{};
+    ASSERT_NO_FATAL_FAILURE(RunHostConstantGraph(runner, result));
+    CheckHostConstantResults(result, host_values, legacy_result, use_es);
+  }
 }
 
 struct InvalidConstant {

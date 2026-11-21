@@ -58,8 +58,7 @@ namespace ge {
 namespace {
 struct GraphPostProcessResult {
   gert::GertModelDescInfo model_info;
-  gert::GertResourceTable resources;
-  gert::GertResourceImages images;
+  std::vector<gert::GertBinaryImage> binaries;
 };
 
 Status CopyResource(const std::string &name, const std::vector<uint8_t> &bytes, gert::GertModelDataFile &file) {
@@ -91,129 +90,27 @@ Status BuildGraphIo(const std::vector<gert::ModelIoEntry> &entries, std::vector<
   return SUCCESS;
 }
 
-Status ValidateNodeSoReferences(const FastNode &node, const gert::GertResourceImages &images) {
-  std::vector<std::string> so_ids;
-  GE_ASSERT_SUCCESS(gert::GetNodeSoIds(node, so_ids));
-  for (const auto &id : so_ids) {
-    GE_ASSERT_TRUE(images.so_ids.count(id) != 0U, "Unknown SO resource %s", id.c_str());
-  }
-  return SUCCESS;
-}
-
-Status ValidateNodeBinaryReference(const FastNode &node, const gert::GertResourceImages &images) {
-  std::string binary_id;
-  GE_ASSERT_SUCCESS(gert::GetNodeBinaryId(node, binary_id));
-  GE_ASSERT_TRUE(binary_id.empty() || images.binary_ids.count(binary_id) != 0U, "Unknown binary resource %s",
-                 binary_id.c_str());
-  return SUCCESS;
-}
-
-// 资源 ID 只在接入时使用，Const 的最终权重编号和偏移使用既有 codegen 协议。
-Status BindNodeWeightReference(FastNode &node, const gert::GertResourceImages &images) {
-  gert::GertNodeWeightRef ref;
-  GE_ASSERT_SUCCESS(gert::GetNodeWeightRef(node, ref));
-  if (ref.id.empty()) {
-    return SUCCESS;
-  }
-  GE_ASSERT_TRUE(node.GetDataOutNum() == 1U && std::string(node.GetTypePtr()) == "Const",
-                 "Weight reference requires a single-output Tensor Const: %s", node.GetNamePtr());
-  gert::GertWeightSlice slice;
-  GE_ASSERT_SUCCESS(gert::ResolveWeightSlice(ref, images.weights, slice));
-  auto desc = node.GetOpDescPtr();
-  auto output_desc = desc->GetOutputDesc(0U);
-  GE_ASSERT_TRUE(AttrUtils::SetInt(output_desc, "om2_weight_index", slice.weight_index));
-  TensorUtils::SetDataOffset(output_desc, slice.offset);
-  GE_ASSERT_TRUE(AttrUtils::SetListInt(output_desc, ATTR_NAME_GRAPH_FLATTEN_OFFSET, {slice.offset, slice.length}));
-  GE_ASSERT_SUCCESS(desc->UpdateOutputDesc(0U, output_desc));
-  ConstGeTensorPtr tensor;
-  if (AttrUtils::GetTensor(desc, "value", tensor) && tensor != nullptr) {
-    auto copy = std::make_shared<GeTensor>(*tensor);
-    GE_ASSERT_NOTNULL(copy);
-    auto &tensor_desc = copy->MutableTensorDesc();
-    GE_ASSERT_TRUE(AttrUtils::SetInt(tensor_desc, "om2_weight_index", slice.weight_index));
-    TensorUtils::SetDataOffset(tensor_desc, slice.offset);
-    GE_ASSERT_TRUE(AttrUtils::SetListInt(tensor_desc, ATTR_NAME_GRAPH_FLATTEN_OFFSET, {slice.offset, slice.length}));
-    GE_ASSERT_TRUE(AttrUtils::SetTensor(desc, "value", copy));
-  }
-  return SUCCESS;
-}
-
-Status BindGraphResources(ExecuteGraph &graph, const gert::GertResourceImages &images) {
-  for (auto *node : graph.GetAllNodes()) {
-    GE_ASSERT_NOTNULL(node);
-    // 校验当前节点的 SO 资源引用。
-    GE_ASSERT_SUCCESS(ValidateNodeSoReferences(*node, images));
-    // 校验当前节点的设备 Kernel 二进制引用。
-    GE_ASSERT_SUCCESS(ValidateNodeBinaryReference(*node, images));
-    // 解析权重切片并回写当前节点的权重编号及偏移。
-    GE_ASSERT_SUCCESS(BindNodeWeightReference(*node, images));
-  }
-  return SUCCESS;
-}
-
-Status BuildGraphConstants(const gert::GertResourceImages &images, gert::GertModelData &built) {
-  auto &unit = *built.models[0];
-  unit.constants_config = std::make_unique<gert::GertModelDataConstantsConfig>();
-  auto &config = *unit.constants_config;
-  // om2动态当前限制：临时方案，权重处理方案需要后续单独考虑。动态权重逐块保存为 Host INTERNAL const。
-  for (size_t i = 0U; i < images.weights.entries.size(); ++i) {
-    const auto &weight = images.weights.entries[i];
-    GE_ASSERT_TRUE(!weight.device_placement && weight.size >= 0 &&
-                   static_cast<uint64_t>(weight.size) == weight.data.size());
-    const std::string name = "constant_" + std::to_string(i);
-    auto file = std::make_unique<gert::GertModelDataFile>();
-    GE_ASSERT_SUCCESS(CopyResource(name, weight.data, *file));
-    built.constants->constants_data.emplace_back(std::move(file));
-    auto meta = std::make_unique<gert::GertModelDataConstMeta>();
-    meta->index = i;
-    meta->type = gert::GertMakeStr("INTERNAL");
-    meta->file_name = gert::GertMakeStr(name);
-    meta->op_name = gert::GertMakeStr(weight.id);
-    meta->placement = gert::GertModelDataConstPlacement::kHost;
-    meta->size = weight.size;
-    GE_ASSERT_TRUE(static_cast<uint64_t>(weight.size) <=
-                   std::numeric_limits<uint64_t>::max() - config.internal_weight_size);
-    config.internal_weight_size += static_cast<uint64_t>(weight.size);
-    config.consts.emplace_back(std::move(meta));
-  }
-  return SUCCESS;
-}
-
-Status BuildGraphLibraries(const gert::GertResourceTable &table, const gert::GertResourceImages &images,
-                           gert::GertModelData &built) {
-  // 保留调用方声明顺序；需要前置的依赖必须在表中先声明，避免悄悄改变加载顺序。
-  std::set<std::string> loaded_ids;
-  std::set<std::string> loaded_names;
-  for (const auto &so : table.sos) {
-    for (const auto &dependency : so.dependencies) {
-      GE_ASSERT_TRUE(loaded_ids.count(dependency) != 0U, "SO %s dependency %s must precede it", so.id.c_str(),
-                     dependency.c_str());
-    }
-    loaded_ids.insert(so.id);
-    if (!loaded_names.insert(so.name).second) {
-      continue;
-    }
-    if (so.purpose == gert::GertSoPurpose::kCustom) {
-      auto file = std::make_unique<gert::GertModelDataFile>();
-      GE_ASSERT_SUCCESS(CopyResource(so.name, so.content, *file));
-      built.custom_ops->libraries.emplace_back(std::move(file));
-      continue;
-    }
-    // 当前动态 pbody 仅消费 SpaceRegistry；不能把普通 kernel/tiling SO 冒充另一种 SoBinType。
-    GE_ASSERT_TRUE(so.purpose == gert::GertSoPurpose::kSpaceRegistry, "Unsupported shared library purpose for %s",
-                   so.name.c_str());
-    auto bin = std::make_unique<gert::GertModelDataSoBin>();
-    bin->binary = std::make_unique<gert::GertModelDataFile>();
-    GE_ASSERT_SUCCESS(CopyResource(so.name, so.content, *bin->binary));
-    bin->so_name = gert::GertMakeStr(so.name);
-    bin->vendor_name = gert::GertMakeStr(so.vendor);
-    bin->so_bin_type = static_cast<uint64_t>(SoBinType::kSpaceRegistry);
-    built.so_bins->libraries.emplace_back(std::move(bin));
-  }
-  for (const auto &binary : images.binaries) {
+Status BuildGraphBinaries(const std::vector<gert::GertBinaryImage> &binaries, gert::GertModelData &built) {
+  for (const auto &binary : binaries) {
     auto file = std::make_unique<gert::GertModelDataFile>();
     GE_ASSERT_SUCCESS(CopyResource(binary.name, binary.content, *file));
     built.kernels->binaries.emplace_back(std::move(file));
+  }
+  return SUCCESS;
+}
+
+Status ValidateRequiredExecutionAttrs(const ExecuteGraph &graph) {
+  for (const auto &attr : gert::attr::kGraphAttrs) {
+    GE_ASSERT_TRUE(attr.presence != gert::attr::Presence::kRequired || graph.HasAttr(attr.key),
+                   "Missing required execution graph attribute %s", attr.key);
+  }
+  for (const auto &attr : gert::attr::kNodeAttrs) {
+    if (attr.presence == gert::attr::Presence::kRequired) {
+      for (const auto *node : graph.GetAllNodes()) {
+        GE_ASSERT_TRUE(node->GetOpDescBarePtr()->HasAttr(attr.key), "Node %s is missing required attribute %s",
+                       node->GetNamePtr(), attr.key);
+      }
+    }
   }
   return SUCCESS;
 }
@@ -222,27 +119,6 @@ Status ParseGraphModelInfo(const ExecuteGraph &source_graph, const std::vector<s
                            gert::GertModelDescInfo &model_info) {
   GE_ASSERT_SUCCESS(gert::ParseGertModelDesc(source_graph, model_info));
   GE_ASSERT_TRUE(outputs.size() == model_info.outputs.size(), "Model output descriptions do not match outputs");
-  return SUCCESS;
-}
-
-Status ValidateGraphResources(const gert::GertResourceTable &resources) {
-  for (const auto &weight : resources.weights) {
-    GE_ASSERT_TRUE(weight.mode == gert::GertWeightMode::kEmbedded && !weight.device_placement,
-                   "Dynamic graph currently requires embedded Host weights");
-  }
-  return SUCCESS;
-}
-
-Status PrepareGraphResources(ExecuteGraph &graph, gert::GertResourceTable &resources,
-                             gert::GertResourceImages &images) {
-  // 解析传入资源描述及内容。
-  GE_ASSERT_SUCCESS(gert::ParseGertResources(graph, resources));
-  // 校验当前支持的资源使用方式。
-  GE_ASSERT_SUCCESS(ValidateGraphResources(resources));
-  // 生成资源镜像及内部编号。
-  GE_ASSERT_SUCCESS(gert::BuildGertResourceImages(resources, images));
-  // 校验最终节点的资源引用并绑定权重切片。
-  GE_ASSERT_SUCCESS(BindGraphResources(graph, images));
   return SUCCESS;
 }
 
@@ -260,27 +136,18 @@ Status ValidateStageGraphOutputs(const ExecuteGraph &graph,
   return SUCCESS;
 }
 
-Status ValidateStageInputBindings(const StageSplitter &splitter, const gert::GertModelDescInfo &model_info) {
-  GE_ASSERT_TRUE(splitter.GetInputBindings(StageKind::kInit, StageInputClass::kLoad).empty(),
-                 "User load-time inputs require a load binding contract");
-  GE_ASSERT_TRUE(
-      splitter.GetInputBindings(StageKind::kMain, StageInputClass::kExecute).size() == model_info.inputs.size(),
-      "Model input descriptions do not match execution inputs");
-  return SUCCESS;
-}
-
-Status SplitGraphStages(ExecuteGraph &graph, const std::vector<std::pair<FastNode *, int32_t>> &outputs,
-                        const gert::GertModelDescInfo &model_info) {
+Status SplitGraphStages(ExecuteGraph &graph, const std::vector<std::pair<FastNode *, int32_t>> &outputs) {
   // 分析节点阶段。
   StagePlan plan;
   GE_ASSERT_SUCCESS(StageAnalyzer(graph).Analyze(plan));
   // 校验节点名称及输出归属。
   GE_ASSERT_SUCCESS(ValidateStageGraphOutputs(graph, outputs));
   // 拆分阶段、桥接跨阶段值并登记收尾目标，内部校验拆分结果。
-  StageSplitter splitter(graph);
+  StageSplitter splitter(graph, /*defer_data_bindings=*/true);
   GE_ASSERT_SUCCESS(splitter.Split(plan, outputs));
-  // 校验加载输入限制及执行输入数量。
-  GE_ASSERT_SUCCESS(ValidateStageInputBindings(splitter, model_info));
+  for (const auto &binding : splitter.GetInputBindings(StageKind::kInit, StageInputClass::kLoad)) {
+    GE_ASSERT_TRUE(binding.index >= 0 && binding.index <= 2, "Unsupported load feed slot %" PRId64, binding.index);
+  }
   return SUCCESS;
 }
 
@@ -293,38 +160,17 @@ Status ReorderGraphNodes(ExecuteGraph &graph) {
   return SUCCESS;
 }
 
-Status ReadComputeNodeTopoIds(const ExecuteGraph &graph, std::vector<int64_t> &topo_ids) {
-  if (!graph.HasAttr(gert::attr::kComputeNodeTopoIds)) {
-    return SUCCESS;
-  }
-  GE_ASSERT_TRUE(AttrUtils::GetListInt(graph, gert::attr::kComputeNodeTopoIds, topo_ids),
-                 "Attribute %s must be a list of logical compute-node topo IDs", gert::attr::kComputeNodeTopoIds);
-  GE_ASSERT_TRUE(!topo_ids.empty(), "Attribute %s must not be empty", gert::attr::kComputeNodeTopoIds);
-  for (const auto id : topo_ids) {
-    // NodePriorityCalculator computes id * 10 + 9 using int64_t.
-    GE_ASSERT_TRUE(id >= 0 && id <= (std::numeric_limits<int64_t>::max() - 9) / 10,
-                   "Invalid logical compute-node topo ID %" PRId64, id);
-  }
-  for (const auto *node : graph.GetAllNodes()) {
-    GE_ASSERT_NOTNULL(node);
-    const auto *desc = node->GetOpDescBarePtr();
-    GE_ASSERT_NOTNULL(desc);
-    int64_t index = 0;
-    if (AttrUtils::GetInt(desc, gert::kComputeNodeIndex, index)) {
-      GE_ASSERT_TRUE(index >= 0 && static_cast<size_t>(index) < topo_ids.size(),
-                     "Node %s compute node index %" PRId64 " exceeds explicit topo mapping size %zu",
-                     node->GetNamePtr(), index, topo_ids.size());
-    }
-  }
-  GELOGI("Using %zu explicit compute-node topo IDs for execute graph %s", topo_ids.size(), graph.GetName().c_str());
-  return SUCCESS;
+bool HasNodeSourceOp(const ExecuteGraph &graph) {
+  const auto nodes = graph.GetAllNodes();
+  return std::any_of(nodes.begin(), nodes.end(), [](const FastNode *node) {
+    return AttrUtils::HasAttr(node->GetOpDescBarePtr(), gert::attr::kSourceOp);
+  });
 }
 
 Status PrepareExecuteGraph(ExecuteGraph &graph) {
   // 执行优化、拓扑排序及优先级计算。
   gert::ExecuteGraphPrepareInput input;
   gert::ExecuteGraphPrepareResult prepared;
-  GE_ASSERT_SUCCESS(ReadComputeNodeTopoIds(graph, input.indexes_to_compute_node_id));
   GE_ASSERT_SUCCESS(gert::PrepareExecuteGraph(graph, gert::LoweringOption{}, input, prepared));
   // 恢复执行依赖，并在补边后重新排序。
   GE_ASSERT_SUCCESS(gert::om2::RestoreLaunchFreeDependencies(graph));
@@ -335,24 +181,34 @@ Status PrepareExecuteGraph(ExecuteGraph &graph) {
 
 Status PostProcessGraph(const std::shared_ptr<ExecuteGraph> &source_graph, GraphPostProcessResult &result) {
   GE_ASSERT_NOTNULL(source_graph);
+  GE_ASSERT_SUCCESS(ValidateRequiredExecutionAttrs(*source_graph));
+  GE_ASSERT_SUCCESS(gert::NormalizeExecuteGraphConstants(*source_graph));
   DumpGraph(source_graph.get(), "ExecuteGraphBeforeStageSplit");
   const auto outputs = ExecuteGraphUtils::GetGraphOutputs(source_graph.get());
-  // 1. 解析模型 IO 描述，供拆图后的输入数量校验使用。
+  // 1. 解析模型 IO 描述，供模型装配和代码生成使用。
   GE_ASSERT_SUCCESS(ParseGraphModelInfo(*source_graph, outputs, result.model_info));
   GE_ASSERT_TRUE(source_graph->GetParentNodeBarePtr() == nullptr, "Stage split requires a root execution graph");
 
+  // External execution graphs supply source descriptions, never pool indices.
+  for (auto *const node : source_graph->GetAllNodes()) {
+    auto *const desc = node->GetOpDescBarePtr();
+    if (desc->HasAttr(gert::kComputeNodeIndex)) {
+      GE_ASSERT_SUCCESS(desc->DelAttr(gert::kComputeNodeIndex));
+    }
+  }
+
   // 2. 三阶段拆分，包含阶段分析与拆分结果校验。
-  GE_ASSERT_SUCCESS(SplitGraphStages(*source_graph, outputs, result.model_info));
+  GE_ASSERT_SUCCESS(SplitGraphStages(*source_graph, outputs));
   DumpGraph(source_graph.get(), "ExecuteGraphAfterStageSplit");
 
   // 3. 执行图准备，包含优化、依赖整理、排序与优先级计算。
   GE_ASSERT_SUCCESS(PrepareExecuteGraph(*source_graph));
 
-  // 4. 在最终图上解析并绑定传入资源，不再修改图拓扑。
-  GE_ASSERT_SUCCESS(PrepareGraphResources(*source_graph, result.resources, result.images));
+  // 4. 解析图声明的设备二进制。
+  GE_ASSERT_SUCCESS(gert::ParseGertBinaries(*source_graph, result.binaries));
 
   // 5. 准备执行图元信息。
-  GE_ASSERT_SUCCESS(gert::PrepareExecuteGraphMetadata(*source_graph));
+  GE_ASSERT_SUCCESS(gert::PrepareExecuteGraphMetadata(*source_graph, result.model_info));
   return SUCCESS;
 }
 
@@ -360,7 +216,6 @@ Status PostProcessGraph(const std::shared_ptr<ExecuteGraph> &source_graph, Graph
 // 与 GE 路线 PrepareDynamicModelData 的归一待资源及元信息的统一表示方案明确后处理。
 Status PrepareGraphModelData(const std::string &model_name, const GraphPostProcessResult &prepared,
                              gert::GertModelData &model_data) {
-  model_data.so_bins = std::make_unique<gert::GertModelDataSoBins>();
   // 外部构图不生成 visual json：不挂空的 debug 单元，公共序列化器按 debug 是否为空决定是否
   // 写入该条目，避免用空内容触发归档写入失败。GE 路线仍由 BuildDebugInfo 填入真实内容。
   model_data.models[0]->debug = nullptr;
@@ -369,11 +224,7 @@ Status PrepareGraphModelData(const std::string &model_name, const GraphPostProce
   meta.model_name = gert::GertMakeStr(model_name);
   GE_ASSERT_SUCCESS(BuildGraphIo(prepared.model_info.inputs, meta.input_desc, meta.input_desc_v2));
   GE_ASSERT_SUCCESS(BuildGraphIo(prepared.model_info.outputs, meta.output_desc, meta.output_desc_v2));
-  // 装配常量数据及描述。
-  GE_ASSERT_SUCCESS(BuildGraphConstants(prepared.images, model_data));
-  // 装配共享库和设备 Kernel 二进制。
-  GE_ASSERT_SUCCESS(BuildGraphLibraries(prepared.resources, prepared.images, model_data));
-  return SUCCESS;
+  return BuildGraphBinaries(prepared.binaries, model_data);
 }
 
 Status GenerateDynamicProgramBody(const gert::om2::ProgramInfo &program_info, const std::string &model_name,
@@ -828,11 +679,12 @@ Status Om2PackageHelper::CompileDynamicProgramBody(const std::string &model_name
 // 两路在各自完成模型元信息和资源装配后汇合，此处共用 Codegen 和 SO 编译。
 // 模型元信息和资源的提取、装配仍保留在各自的准备函数中。
 Status Om2PackageHelper::CompileAndPackageOm2(const std::shared_ptr<ExecuteGraph> &graph, const std::string &model_name,
-                                              uint32_t graph_id, gert::GertModelData &model_data) {
+                                              uint32_t graph_id, gert::GertModelData &model_data,
+                                              bool defer_data_bindings) {
   GE_ASSERT_NOTNULL(graph);
   // 1. 从最终执行图收集代码生成所需的信息。
   gert::om2::ProgramInfo program_info;
-  GE_ASSERT_SUCCESS(gert::om2::ProgramInfoCollector().Collect(*graph, program_info));
+  GE_ASSERT_SUCCESS(gert::om2::ProgramInfoCollector().Collect(*graph, program_info, defer_data_bindings));
 
   // 2. 生成模型源码。
   gert::om2::ProgramBodyCodegenResult result;
@@ -846,8 +698,14 @@ Status Om2PackageHelper::CompileAndPackageOm2(const std::shared_ptr<ExecuteGraph
 }
 
 Status Om2PackageHelper::BuildGertModelDataFromGraph(const Graph &graph, gert::GertModelData &model_data) const {
-  const auto execute_graph = GraphUtilsEx::Graph2ExecuteGraph(graph);
+  auto execute_graph = GraphUtilsEx::Graph2ExecuteGraph(graph);
   GE_ASSERT_NOTNULL(execute_graph, "Expected a valid execution graph");
+  if (HasNodeSourceOp(*execute_graph)) {
+    // Split and optimization mutate the graph. Keep the caller's node handles valid for correction and retry.
+    auto work_graph = std::make_shared<ExecuteGraph>(execute_graph->GetName());
+    GE_ASSERT_SUCCESS(ExecuteGraphUtils::CopyGraph(*execute_graph, *work_graph));
+    execute_graph = std::move(work_graph);
+  }
   // 1. 图后处理。
   GraphPostProcessResult prepared;
   GE_ASSERT_SUCCESS(PostProcessGraph(execute_graph, prepared));
@@ -861,7 +719,7 @@ Status Om2PackageHelper::BuildGertModelDataFromGraph(const Graph &graph, gert::G
   GE_ASSERT_SUCCESS(PrepareGraphModelData(name, prepared, built));
 
   // 3. 共用 OM2 编译打包流程，仅成功时发布结果。
-  GE_ASSERT_SUCCESS(CompileAndPackageOm2(execute_graph, name, 0U, built));
+  GE_ASSERT_SUCCESS(CompileAndPackageOm2(execute_graph, name, 0U, built, /*defer_data_bindings=*/true));
   GE_ASSERT_SUCCESS(BuildManifestCommonFields(built));
   built.online_prepare_data = std::make_shared<gert::Om2OnlinePrepareData>();
   model_data = std::move(built);

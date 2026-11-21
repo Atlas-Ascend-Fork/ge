@@ -450,7 +450,6 @@ set(BASE_COMMON_TEST_FILES
     "om2/dynamic_codegen/prepare/gert_graph_attrs_unittest.cc"
     "om2/dynamic_codegen/prepare/gert_metadata_preparer_unittest.cc"
     "om2/dynamic_codegen/prepare/gert_resources_unittest.cc"
-    "om2/dynamic_codegen/prepare/gert_source_info_unittest.cc"
     "om2/dynamic_codegen/program_info_collector_unittest.cc"
     "om2/dynamic_codegen/execution_plan_coverage_unittest.cc"
     "om2/dynamic_codegen/const_value_coverage_unittest.cc"

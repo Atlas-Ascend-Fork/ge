@@ -76,6 +76,7 @@ class GetOrCreateWeightMemKernelCodeBuilder final : public KernelCodeBuilder {
                                                {"appointed_weight", Om2ValueType::kOuterWeightMemPtr},
                                                {"allocator", Om2ValueType::kGertAllocatorPtr}},
                                               info));
+    RequestInputBinding(context, 1U, ChainBindingKind::kOuterWeightMem, ChainBindingPhase::kLoad, info);
     return SetOutputPortNames(context, {"tensor_data"}, info);
   }
 };

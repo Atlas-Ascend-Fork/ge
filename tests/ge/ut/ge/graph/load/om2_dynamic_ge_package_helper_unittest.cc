@@ -246,52 +246,68 @@ TEST_F(Om2DynamicGePackageHelperUt, BuildDynamicGertModelDataFailurePreservesOut
   EXPECT_EQ(data.manifest.get(), original_manifest);
 }
 
-TEST_F(Om2DynamicGePackageHelperUt, PostLoweringCollectorFailurePreservesPublishedOutput) {
-  // G-01: the supported Rank faker lowers normally, but its FakeExecuteNode has no OM2 collector.
+TEST_F(Om2DynamicGePackageHelperUt, CompileFailurePreservesPublishedDynamicModelData) {
   gert::GertRuntimeStub runtime_stub;
   runtime_stub.StubByNodeTypes({"Rank"});
   auto graph = gert::ShareGraph::BuildRankGraph();
   ASSERT_EQ(graph->TopologicalSorting(), GRAPH_SUCCESS);
   auto root = gert::GeModelBuilder(graph).BuildGeRootModel();
   ASSERT_NE(root, nullptr);
-  ASSERT_NE(gert::ModelConverter().ConvertGeModelToExecuteGraph(root), nullptr);
-  gert::GertModelData prepared;
-  gert::InitGertModelData(prepared);
-  gert::InitGertModelDataUnit(prepared);
-  prepared.models[0]->execution_type = gert::GertModelExecutionType::kDynamic;
-  ASSERT_EQ(Om2PackageHelper::PrepareDynamicModelData(root, prepared), SUCCESS);
 
   gert::GertModelData data;
   gert::InitGertModelData(data);
   gert::InitGertModelDataUnit(data);
   data.manifest->model_num = 17U;
-  auto *const manifest = data.manifest.get();
-  auto *const unit = data.models[0].get();
-  auto *const constants = data.constants.get();
-  gert::GertModelDataFile artifact;
-  artifact.file_name = gert::GertMakeStr("published_source");
-  const std::string contents = "published content";
-  artifact.data = gert::GertMakeFileData(contents.data(), contents.size());
-  artifact.data_size = contents.size();
-  data.models[0]->runtime->source_artifacts.push_back(std::move(artifact));
-  auto *const published_bytes = data.models[0]->runtime->source_artifacts[0].data.get();
+  data.models[0]->execution_type = gert::GertModelExecutionType::kDynamic;
+  const auto *const model = data.models[0].get();
+  const auto *const manifest = data.manifest.get();
 
-  runtime_stub.GetSlogStub().Clear();
+  const auto fail_compile = +[](const std::vector<gert::GertModelDataFile> &sources, const Om2CompileInfo &info,
+                                gert::GertModelDataFile &so, bool) -> Status {
+    EXPECT_FALSE(sources.empty());
+    EXPECT_FALSE(info.artifact_name.empty());
+    const uint8_t partial[] = {0x7f, 'E', 'L', 'F'};
+    so.data = gert::GertMakeFileData(partial, sizeof(partial));
+    so.data_size = sizeof(partial);
+    return FAILED;
+  };
+  MOCKER(Om2Utils::CompileGeneratedCppToSo).expects(once()).will(invoke(fail_compile));
   EXPECT_NE(Om2PackageHelper().BuildDynamicGertModelData(root, data), SUCCESS);
-  EXPECT_NE(runtime_stub.GetSlogStub().FindLog(DLOG_ERROR,
-                                               "No OM2 kernel code builder registered for kernel FakeExecuteNode"),
-            -1);
-  EXPECT_EQ(data.manifest.get(), manifest);
-  EXPECT_EQ(data.manifest->model_num, 17U);
+  EXPECT_NO_THROW(GlobalMockObject::verify());
+  GlobalMockObject::reset();
+
   ASSERT_EQ(data.models.size(), 1U);
-  EXPECT_EQ(data.models[0].get(), unit);
-  EXPECT_EQ(data.constants.get(), constants);
-  ASSERT_EQ(data.models[0]->runtime->source_artifacts.size(), 1U);
-  const auto &published = data.models[0]->runtime->source_artifacts[0];
-  EXPECT_STREQ(gert::GertGetStr(published.file_name), "published_source");
-  EXPECT_EQ(published.data.get(), published_bytes);
-  ASSERT_EQ(published.data_size, contents.size());
-  EXPECT_EQ(std::memcmp(published.data.get(), contents.data(), contents.size()), 0);
+  EXPECT_EQ(data.models[0].get(), model);
+  EXPECT_EQ(gert::GetGertModelExecutionType(*data.models[0]), gert::GertModelExecutionType::kDynamic);
+  ASSERT_EQ(data.manifest.get(), manifest);
+  EXPECT_EQ(data.manifest->model_num, 17U);
+}
+
+TEST_F(Om2DynamicGePackageHelperUt, PackagesRegisteredKernelWithoutSpecializedCollector) {
+  gert::GertRuntimeStub runtime_stub;
+  runtime_stub.StubByNodeTypes({"Rank"});
+  om2_test::Om2CompileStub compiler;
+  auto graph = gert::ShareGraph::BuildRankGraph();
+  ASSERT_EQ(graph->TopologicalSorting(), GRAPH_SUCCESS);
+  auto root = gert::GeModelBuilder(graph).BuildGeRootModel();
+  ASSERT_NE(root, nullptr);
+
+  gert::GertModelData data;
+  gert::InitGertModelData(data);
+  gert::InitGertModelDataUnit(data);
+  data.manifest->model_num = 17U;
+  ASSERT_EQ(Om2PackageHelper().BuildDynamicGertModelData(root, data), SUCCESS);
+  ASSERT_NE(data.manifest, nullptr);
+  EXPECT_NE(data.manifest->model_num, 17U);
+  ASSERT_EQ(data.models.size(), 1U);
+  ASSERT_NE(data.models[0]->runtime, nullptr);
+  EXPECT_GT(data.models[0]->runtime->so_artifact.data_size, 0U);
+  const auto &sources = data.models[0]->runtime->source_artifacts;
+  EXPECT_TRUE(std::any_of(sources.begin(), sources.end(), [](const auto &source) {
+    return source.data_size != 0U &&
+           std::string(reinterpret_cast<const char *>(source.data.get()), source.data_size).find("FakeExecuteNode") !=
+               std::string::npos;
+  }));
 }
 
 class Om2DynamicPackageHelperUt : public Om2DynamicGePackageHelperUt, public testing::WithParamInterface<bool> {

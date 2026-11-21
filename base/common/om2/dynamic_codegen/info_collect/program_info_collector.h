@@ -19,7 +19,8 @@ namespace gert {
 namespace om2 {
 class ProgramInfoCollector {
  public:
-  ge::graphStatus Collect(ge::ExecuteGraph &execute_graph, ProgramInfo &program_info) const;
+  ge::graphStatus Collect(ge::ExecuteGraph &execute_graph, ProgramInfo &program_info,
+                          bool defer_data_bindings = false) const;
 
  private:
   ge::graphStatus CollectModelResources(const ge::ExecuteGraph &execute_graph, ModelResourceInfo &resources) const;

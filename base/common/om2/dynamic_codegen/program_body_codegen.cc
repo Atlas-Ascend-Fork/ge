@@ -40,6 +40,7 @@
 #include "common/om2/codegen/emitter/stable_parts/stable_part_provider.h"
 #include "common/om2/dynamic_codegen/info_collect/kernel_code_builder.h"
 #include "common/om2/dynamic_codegen/multithread_program_plan.h"
+#include "common/om2/dynamic_codegen/prepare/compute_node_info_validation.h"
 #include "core/executor/multi_thread_topological/executor/schedule/producer/producers/kernel_tags/kernel_tags.h"
 
 namespace ge {
@@ -326,28 +327,6 @@ bool ResolveBufferString(const gert::ContinuousBuffer &buffer, const size_t id, 
   return true;
 }
 
-bool ValidateRuntimeAttrs(const uint8_t *const attrs, const size_t attrs_size) {
-  if ((attrs == nullptr) || (attrs_size < sizeof(RuntimeAttrsDef))) {
-    return false;
-  }
-  const auto *const attrs_def = reinterpret_cast<const RuntimeAttrsDef *>(attrs);
-  size_t offsets_size = 0U;
-  if (ge::MulOverflow(attrs_def->attr_num, sizeof(size_t), offsets_size) ||
-      ge::AddOverflow(sizeof(RuntimeAttrsDef), offsets_size, offsets_size) || (offsets_size > attrs_size)) {
-    return false;
-  }
-  const size_t payload_start = offsets_size;
-  size_t previous_offset = payload_start;
-  for (size_t index = 0U; index < attrs_def->attr_num; ++index) {
-    const size_t offset = attrs_def->offset[index];
-    if ((offset < payload_start) || (offset >= attrs_size) || (offset < previous_offset)) {
-      return false;
-    }
-    previous_offset = offset;
-  }
-  return true;
-}
-
 TensorDescCodegenInfo CollectTensorDesc(const gert::CompileTimeTensorDesc &desc) {
   const auto expand_dims_type = desc.GetExpandDimsType();
   uint64_t mask = 0U;
@@ -413,7 +392,7 @@ bool BuildStructuredResources(const ModelResourceInfo &resources, StructuredReso
   for (size_t i = 0U; i < compute_infos->GetNum(); ++i) {
     size_t record_size = 0U;
     const auto *info = compute_infos->Get<gert::ComputeNodeInfo>(i, record_size);
-    if (info == nullptr) {
+    if (info == nullptr || record_size < sizeof(gert::ComputeNodeInfo)) {
       return false;
     }
     ComputeNodeCodegenInfo codegen_info;
@@ -425,17 +404,11 @@ bool BuildStructuredResources(const ModelResourceInfo &resources, StructuredReso
     }
     codegen_info.ir_input_num = info->GetIrInputsNum();
     codegen_info.ir_output_num = info->GetIrOutputsNum();
-    size_t base_size = 0U;
-    if (gert::ComputeNodeInfo::CalcSize(info->GetIrInputsNum(), info->GetIrOutputsNum(), info->GetInputsNum(),
-                                        info->GetOutputsNum(), base_size) != ge::GRAPH_SUCCESS ||
-        record_size < base_size) {
+    size_t attrs_size = 0U;
+    if (!ValidateComputeNodeInfo(*info, record_size, attrs_size)) {
       return false;
     }
-    const size_t attrs_size = record_size - base_size;
     const auto *const attrs = reinterpret_cast<const uint8_t *>(info->GetAttrs());
-    if (!ValidateRuntimeAttrs(attrs, attrs_size)) {
-      return false;
-    }
     codegen_info.attrs.assign(attrs, attrs + attrs_size);
     codegen_info.input_instances.reserve(codegen_info.ir_input_num);
     codegen_info.output_instances.reserve(codegen_info.ir_output_num);
@@ -486,16 +459,21 @@ bool BuildStructuredResources(const ModelResourceInfo &resources, StructuredReso
     output.kernel_extend_infos.emplace_back(std::move(codegen_info));
   }
 
-  const auto *model_desc = model_desc_buffer->Get<RawModelDesc>(model_desc_buffer->GetNum() - 1U);
-  if (model_desc == nullptr) {
+  size_t model_desc_size = 0U;
+  const auto *model_desc = model_desc_buffer->Get<RawModelDesc>(model_desc_buffer->GetNum() - 1U, model_desc_size);
+  if (model_desc == nullptr || model_desc_size < sizeof(RawModelDesc)) {
+    return false;
+  }
+  const size_t max_io_count = (model_desc_size - sizeof(RawModelDesc)) / sizeof(RawModelIoDesc);
+  if (model_desc->input_num > max_io_count || model_desc->output_num > max_io_count - model_desc->input_num) {
     return false;
   }
   output.model_desc.reusable_stream_num = model_desc->reusable_stream_num;
   output.model_desc.reusable_event_num = model_desc->reusable_event_num;
   output.model_desc.reusable_notify_num = model_desc->reusable_notify_num;
   output.model_desc.attached_stream_num = model_desc->attached_stream_num;
-  const auto *io_descs =
-      reinterpret_cast<const RawModelIoDesc *>(reinterpret_cast<const uint8_t *>(model_desc) + sizeof(RawModelDesc));
+  // The first descriptor starts at the ContinuousVector's inline element slot.
+  const auto *io_descs = reinterpret_cast<const RawModelIoDesc *>(model_desc->model_io_descs.elements);
   output.model_desc.inputs.reserve(model_desc->input_num);
   output.model_desc.outputs.reserve(model_desc->output_num);
   for (size_t i = 0U; i < model_desc->input_num; ++i) {
@@ -1098,6 +1076,42 @@ aclError InitRawBytesConst(gert::Chain &chain, const void *definition) {
   return kOk;
 }
 
+aclError InitModelBufferDataConst(gert::Chain &chain, const void *definition) {
+  if (definition == nullptr) {
+    return kFailed;
+  }
+  const auto &payload = *static_cast<const GeneratedArrayRef<uint8_t> *>(definition);
+  if ((payload.size > static_cast<size_t>(std::numeric_limits<uint64_t>::max())) ||
+      (payload.size > 0U && payload.data == nullptr)) {
+    return kFailed;
+  }
+  auto *const model_buffer = new (std::nothrow) ge::ModelBufferData();
+  if (model_buffer == nullptr) {
+    return kFailed;
+  }
+  model_buffer->length = static_cast<uint64_t>(payload.size);
+  if (payload.size != 0U) {
+    auto *const data = new (std::nothrow) uint8_t[payload.size];
+    if (data == nullptr) {
+      delete model_buffer;
+      return kFailed;
+    }
+    if (memcpy_s(data, payload.size, payload.data, payload.size) != EOK) {
+      delete[] data;
+      delete model_buffer;
+      return kFailed;
+    }
+    try {
+      model_buffer->data = std::shared_ptr<uint8_t>(data, std::default_delete<uint8_t[]>());
+    } catch (...) {
+      delete model_buffer;
+      return kFailed;
+    }
+  }
+  chain.SetWithDefaultDeleter(model_buffer);
+  return kOk;
+}
+
 aclError InitProcessLocalPointerConst(gert::Chain &chain, const void *definition) {
   if (definition == nullptr) {
     return kFailed;
@@ -1510,7 +1524,7 @@ std::string EmitTypedConstChainRef(const DynamicProgramModel &program_model) {
   }
   for (const auto &chain : program_model.const_chains) {
     if (chain.custom) {
-      if (chain.initializer.empty() || chain.payload.empty() ||
+      if (chain.initializer.empty() || (chain.payload.empty() && chain.initializer != "model_buffer_data") ||
           (chain.payload_is_string && (chain.payload.back() != 0U))) {
         GELOGE(ge::GRAPH_PARAM_INVALID, "OM2 custom const chain %u has invalid initializer payload", chain.chain_index);
         return {};
@@ -1651,6 +1665,8 @@ std::string EmitTypedConstChainRef(const DynamicProgramModel &program_model) {
           initializer_ref = "&InitGertTensorDataConst, ";
         } else if (chain.initializer == "gert_tensor_data_object") {
           initializer_ref = "&InitTensorDataObjectConst, ";
+        } else if (chain.initializer == "model_buffer_data") {
+          initializer_ref = "&InitModelBufferDataConst, ";
         } else if (chain.initializer == "process_local_pointer") {
           initializer_ref = "&InitProcessLocalPointerConst, ";
         } else if (chain.initializer == "null_pointer") {
@@ -1659,7 +1675,9 @@ std::string EmitTypedConstChainRef(const DynamicProgramModel &program_model) {
           initializer_ref = "&" + chain.initializer + ", ";
         }
         ss << initializer_ref;
-        if (chain.initializer == "gert_tensor_data") {
+        if (chain.initializer == "model_buffer_data") {
+          ss << "(const GeneratedArrayRef<uint8_t>[]){ " << emit_byte_ref(chain.payload) << " }";
+        } else if (chain.initializer == "gert_tensor_data") {
           if (!chain.payload_is_string || chain.payload.empty() || chain.payload.back() != 0U) {
             GELOGE(ge::GRAPH_PARAM_INVALID, "OM2 GertTensorData chain %u has invalid payload", chain.chain_index);
             return {};
@@ -2190,7 +2208,7 @@ std::string EmitRuntimeBindingInitializer(
     const std::vector<BinaryBindingCodegenInfo> &binary_bindings, const std::vector<uint32_t> &outer_weight_mem_chains,
     const std::vector<HostTensorBindingCodegenInfo> &host_tensor_bindings,
     const std::vector<uint32_t> &session_id_chains, const std::vector<uint32_t> &notify_chains,
-    const std::vector<uint32_t> &rt_session_chains) {
+    const std::vector<uint32_t> &event_chains, const std::vector<uint32_t> &rt_session_chains) {
   std::ostringstream ss;
   ss << "{\n"
      << "  " << EmitIndexRef(stream_chains) << ",\n"
@@ -2223,6 +2241,7 @@ std::string EmitRuntimeBindingInitializer(
   }
   ss << "  " << EmitIndexRef(session_id_chains) << ",\n"
      << "  " << EmitIndexRef(notify_chains) << ",\n"
+     << "  " << EmitIndexRef(event_chains) << ",\n"
      << "  " << EmitIndexRef(rt_session_chains) << "\n}";
   return ss.str();
 }
@@ -3245,6 +3264,8 @@ std::string BuildExecutableSource(const DynamicProgramModel &program_model, cons
     return {};
   }
   const auto notify_chains = CollectBindingChains(program_model, ChainBindingKind::kNotifies, ChainBindingPhase::kRun);
+  const auto event_chains =
+      CollectBindingChains(program_model, ChainBindingKind::kRuntimeEvents, ChainBindingPhase::kRun);
   const auto binary_bindings = CollectBinaryBindings(program_model);
   const bool has_ge_kernel_bins = std::any_of(binary_bindings.cbegin(), binary_bindings.cend(),
                                               [](const auto &binding) { return binding.is_ge_kernel_bin; });
@@ -3434,6 +3455,7 @@ std::string BuildExecutableSource(const DynamicProgramModel &program_model, cons
 #include "graph/custom_op.h"
 #include "graph/error_codes.h"
 #include "graph/types.h"
+#include "ge/ge_ir_build.h"
 #include "graph/utils/type_utils.h"
 #include "base/runtime/runtime_attrs_def.h"
 #include "register/kernel_registry.h"
@@ -3652,6 +3674,7 @@ struct RuntimeBindingDef {
   GeneratedArrayRef<HostTensorBinding> host_tensors;
   GeneratedArrayRef<uint32_t> session_ids;
   GeneratedArrayRef<uint32_t> notifies;
+  GeneratedArrayRef<uint32_t> events;
   GeneratedArrayRef<uint32_t> rt_sessions;
 };
 
@@ -3729,10 +3752,11 @@ struct Om2ModelDef {
 )";
   ss << "static const Om2ModelDef kOm2Model = {\n  " << metadata_initializer << ",\n  {\n    "
      << program_model.chains.size() << "U,\n    " << const_chain_ref << ",\n    "
-     << EmitRuntimeBindingInitializer(
-            stream_chains, external_allocator_chains, model_desc_chains, space_registry_chains,
-            custom_op_registry_chains, binary_bindings, outer_weight_mem_chains, host_tensor_bindings,
-            CollectSourceChains(program_model, ChainSourceKind::kSessionId), notify_chains, rt_session_chains)
+     << EmitRuntimeBindingInitializer(stream_chains, external_allocator_chains, model_desc_chains,
+                                      space_registry_chains, custom_op_registry_chains, binary_bindings,
+                                      outer_weight_mem_chains, host_tensor_bindings,
+                                      CollectSourceChains(program_model, ChainSourceKind::kSessionId), notify_chains,
+                                      event_chains, rt_session_chains)
      << "\n  },\n  " << EmitProgramInitializer(program_model) << "\n};\n";
   ss << R"(
 
@@ -3903,7 +3927,8 @@ class StreamNotifyResources {
     Release();
   }
 
-  aclError Initialize(aclrtStream load_stream, const size_t stream_num, const size_t notify_num) {
+  aclError Initialize(aclrtStream load_stream, const size_t stream_num, const size_t notify_num,
+                      const size_t event_num) {
     if (load_stream_ != nullptr) {
       return kFailed;
     }
@@ -3916,7 +3941,8 @@ class StreamNotifyResources {
     }
     streams_ = CreateVector<aclrtStream>(stream_num);
     notifies_ = CreateVector<aclrtNotify>(notify_num);
-    if ((streams_ == nullptr) || (notifies_ == nullptr)) {
+    events_ = CreateVector<aclrtEvent>(event_num);
+    if ((streams_ == nullptr) || (notifies_ == nullptr) || (events_ == nullptr)) {
       return kFailed;
     }
     auto *streams = Streams();
@@ -3930,6 +3956,12 @@ class StreamNotifyResources {
     for (size_t i = 0U; i < notify_num; ++i) {
       // Keep the existing RT2 NotifyAllocator creation flags.
       OM2_ASSERT_SUCCESS(aclrtCreateNotify(&notifies->MutableData()[i], 0U));
+    }
+    auto *events = Events();
+    for (size_t i = 0U; i < event_num; ++i) {
+      aclrtEvent event = nullptr;
+      OM2_ASSERT_SUCCESS(aclrtCreateEventExWithFlag(&event, ACL_EVENT_SYNC));
+      events->MutableData()[i] = event;
     }
     return kOk;
   }
@@ -3953,6 +3985,10 @@ class StreamNotifyResources {
 
   gert::TypedContinuousVector<aclrtNotify> *Notifies() const {
     return reinterpret_cast<gert::TypedContinuousVector<aclrtNotify> *>(notifies_.get());
+  }
+
+  gert::TypedContinuousVector<aclrtEvent> *Events() const {
+    return reinterpret_cast<gert::TypedContinuousVector<aclrtEvent> *>(events_.get());
   }
 
   aclError Synchronize() const {
@@ -3981,6 +4017,15 @@ class StreamNotifyResources {
   // Caller synchronizes before releasing chains that can retain asynchronous task data.
   // Null-initialized slots also make partial creation failures safe to clean up.
   void Release() {
+    const auto *events = Events();
+    if (events != nullptr) {
+      for (size_t i = 0U; i < events->GetSize(); ++i) {
+        if (events->GetData()[i] != nullptr) {
+          (void)aclrtDestroyEvent(events->GetData()[i]);
+        }
+      }
+    }
+    events_.reset();
     auto *notifies = Notifies();
     if (notifies != nullptr) {
       for (size_t i = 0U; i < notifies->GetSize(); ++i) {
@@ -4025,6 +4070,7 @@ class StreamNotifyResources {
   bool owns_load_stream_{false};
   std::unique_ptr<uint8_t[]> streams_;
   std::unique_ptr<uint8_t[]> notifies_;
+  std::unique_ptr<uint8_t[]> events_;
 };
 
 bool IsSafeSoName(const char *name) {
@@ -4451,7 +4497,14 @@ aclError MaterializeSoFiles(const std::vector<const SharedLibraryView *> &sos, s
                                   : std::max<size_t>(1U, resource_desc.reusable_stream_num +
                                                             resource_desc.attached_stream_num);
     const size_t notify_num = bindings.notifies.size == 0U ? 0U : resource_desc.reusable_notify_num;
-    OM2_ASSERT_SUCCESS(stream_notify_resources_.Initialize(stream, stream_num, notify_num));
+    const size_t event_num = resource_desc.reusable_event_num;
+    OM2_ASSERT_SUCCESS(stream_notify_resources_.Initialize(stream, stream_num, notify_num, event_num));
+    for (const auto chain_index : bindings.events) {
+      if (!is_valid_chain(chain_index)) {
+        return kFailed;
+      }
+      chains_[chain_index].Set(stream_notify_resources_.Events(), nullptr);
+    }
     for (const auto chain_index : bindings.streams) {
       if (!is_valid_chain(chain_index)) {
         return kFailed;
@@ -4610,6 +4663,9 @@ aclError MaterializeSoFiles(const std::vector<const SharedLibraryView *> &sos, s
 
   void BindRunValues(const ParsedRunConfig &config) {
     // Rebind graph arguments for every main invocation, as RT2 SpecifyArgsInputs does.
+    for (const auto chain_index : kOm2Model.chains.runtime_bindings.events) {
+      chains_[chain_index].Set(stream_notify_resources_.Events(), nullptr);
+    }
     for (const auto chain_index : kOm2Model.chains.runtime_bindings.external_allocators) {
       chains_[chain_index].Set(config.external_allocators, nullptr);
     }

@@ -223,10 +223,22 @@ TEST_F(ProgramInfoCollectorUT, SharesFanoutAndStageBridgesWithoutMergingIndepend
   EXPECT_EQ(info.chains.at(stream_chain).binding_phase, ChainBindingPhase::kLoad);
 }
 
-TEST_F(ProgramInfoCollectorUT, RejectsUnsupportedKernelInsteadOfSilentlyOmittingIt) {
-  left_->GetOpDescBarePtr()->SetType("UnsupportedOm2CollectorTestKernel");
+TEST_F(ProgramInfoCollectorUT, DefaultCollectorKeepsKernelForRuntimeResolution) {
+  constexpr char type[] = "UnregisteredOm2CollectorTestKernel";
+  left_->GetOpDescBarePtr()->SetType(type);
   ProgramInfo info;
-  EXPECT_NE(ProgramInfoCollector().Collect(graph_, info), ge::GRAPH_SUCCESS);
+  ASSERT_EQ(ProgramInfoCollector().Collect(graph_, info), ge::GRAPH_SUCCESS);
+  const auto index = FindKernelIndex(info.main, "left");
+  ASSERT_LT(index, info.main.kernels.size());
+  const auto &kernel = info.main.kernels[index];
+  EXPECT_EQ(kernel.kernel_type, type);
+  EXPECT_EQ(kernel.impl_type, KernelImplType::kRunFuncImpl);
+  EXPECT_EQ(kernel.output_policy, OutputCreatePolicy::kGraphBound);
+  EXPECT_FALSE(kernel.require_compute_node_info);
+  ASSERT_EQ(kernel.inputs.size(), 1U);
+  ASSERT_EQ(kernel.outputs.size(), 1U);
+  EXPECT_EQ(kernel.inputs[0].value_type, Om2ValueType::kBytePtr);
+  EXPECT_EQ(kernel.outputs[0].value_type, Om2ValueType::kBytePtr);
 }
 
 TEST_F(ProgramInfoCollectorUT, RejectsMissingGraphResource) {

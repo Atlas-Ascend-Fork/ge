@@ -38,6 +38,7 @@ class CreateNotifiesKernelCodeBuilder final : public KernelCodeBuilder {
         }(),
         i));
     GE_ASSERT_TRUE(c.input_chain_indices.size() == 2U);
+    RequestInputBinding(c, 0U, ChainBindingKind::kNotifies, ChainBindingPhase::kRun, i);
     notifies_ = c.input_chain_indices[0U];
     count_ = c.input_chain_indices[1U];
     outputs_ = c.output_chain_indices;

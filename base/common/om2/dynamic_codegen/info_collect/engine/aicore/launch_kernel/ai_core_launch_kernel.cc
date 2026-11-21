@@ -10,7 +10,12 @@
 
 #include "common/om2/dynamic_codegen/info_collect/kernel_code_builder.h"
 
+#include "securec.h"
+
 #include "common/checker.h"
+#include "exe_graph/lowering/exe_graph_attrs.h"
+#include "exe_graph/runtime/gert_tensor_data.h"
+#include "graph/utils/attr_utils.h"
 #include "common/om2/dynamic_codegen/info_collect/kernel/common_collector_utils.h"
 #include "engine/aicore/launch_kernel/ai_core_launch_kernel.h"
 
@@ -46,6 +51,27 @@ std::vector<KernelInputPortInfo> MakeLaunchV2Inputs() {
           {"func_handle", Om2ValueType::kVoidPtr}};
 }
 
+ge::graphStatus ValidateLaunchIoConst(const KernelCollectContext &context, size_t port, bool is_address,
+                                      Om2ValueType &type) {
+  const auto &edges = context.node.GetAllInDataEdgesRef();
+  const auto *edge = port < edges.size() ? edges[port] : nullptr;
+  if (edge == nullptr || edge->src->GetType() != "Const") {
+    return ge::GRAPH_SUCCESS;
+  }
+  ge::Buffer value;
+  GE_ASSERT_TRUE(ge::AttrUtils::GetZeroCopyBytes(edge->src->GetOpDescPtr(), kConstValue, value));
+  const auto expected_size = is_address ? sizeof(gert::GertTensorData) : sizeof(gert::StorageShape);
+  if (value.GetSize() == expected_size) {
+    type = is_address ? Om2ValueType::kGertTensorDataPtr : Om2ValueType::kGertStorageShapePtr;
+    return ge::GRAPH_SUCCESS;
+  }
+  const auto legacy_size = is_address ? sizeof(gert::TensorData) : sizeof(gert::Tensor);
+  GE_ASSERT_TRUE(value.GetSize() == sizeof(void *) || value.GetSize() == legacy_size,
+                 "Invalid constant %s size %zu at launch %s input %zu", edge->src->GetNamePtr(), value.GetSize(),
+                 context.node.GetNamePtr(), port);
+  return ge::GRAPH_SUCCESS;
+}
+
 class LaunchKernelV2KernelCodeBuilder : public KernelCodeBuilder {
  public:
   ge::graphStatus Collect(const KernelCollectContext &context, KernelProgramInfo &info) override {
@@ -70,10 +96,14 @@ class LaunchKernelV2KernelCodeBuilder : public KernelCodeBuilder {
     auto inputs = MakeLaunchV2Inputs();
     GE_ASSERT_TRUE(inputs.size() == kPrefixCount);
     for (const auto &name : MakeIndexedPortNames("io_address_", io_num)) {
-      inputs.push_back({name, Om2ValueType::kGertTensorDataPtr});
+      auto type = Om2ValueType::kGertTensorDataPtr;
+      GE_ASSERT_GRAPH_SUCCESS(ValidateLaunchIoConst(context, inputs.size(), true, type));
+      inputs.push_back({name, type});
     }
     for (const auto &name : MakeIndexedPortNames("io_shape_", io_num)) {
-      inputs.push_back({name, Om2ValueType::kGertStorageShapePtr});
+      auto type = Om2ValueType::kGertStorageShapePtr;
+      GE_ASSERT_GRAPH_SUCCESS(ValidateLaunchIoConst(context, inputs.size(), false, type));
+      inputs.push_back({name, type});
     }
     const std::vector<KernelInputPortInfo> tail = {{"mix_args", Om2ValueType::kGertMixCoreArgsPtr},
                                                    {"sub_stream", Om2ValueType::kRtStreamTPtr},
@@ -150,6 +180,31 @@ class LaunchKernelWithHandleKernelCodeBuilder final : public KernelCodeBuilder {
 };
 REGISTER_KERNEL_CODE_BUILDER("LaunchKernelWithHandle", LaunchKernelWithHandleKernelCodeBuilder);
 
+ge::graphStatus AppendLaunchIoPorts(const KernelCollectContext &context, size_t io_value_count,
+                                    std::vector<KernelInputPortInfo> &ports) {
+  constexpr size_t kIoNumPort = 6U;
+  const auto &edges = context.node.GetAllInDataEdgesRef();
+  const auto *count_edge = kIoNumPort < edges.size() ? edges[kIoNumPort] : nullptr;
+  size_t io_num = 0U;
+  ge::Buffer count;
+  if (count_edge != nullptr && count_edge->src->GetType() == "Const" &&
+      ge::AttrUtils::GetZeroCopyBytes(count_edge->src->GetOpDescPtr(), kConstValue, count)) {
+    GE_ASSERT_TRUE(count.GetSize() == sizeof(io_num), "Invalid IO count on %s", context.node.GetNamePtr());
+    GE_ASSERT_TRUE(memcpy_s(&io_num, sizeof(io_num), count.GetData(), sizeof(io_num)) == EOK);
+    GE_ASSERT_TRUE(io_num <= io_value_count && io_value_count - io_num == io_num,
+                   "Launch IO count does not match the address and shape ports on %s", context.node.GetNamePtr());
+  }
+  const auto first_port = ports.size();
+  for (size_t i = 0U; i < io_value_count; ++i) {
+    auto type = Om2ValueType::kVoidPtr;
+    if (io_num != 0U) {
+      GE_ASSERT_GRAPH_SUCCESS(ValidateLaunchIoConst(context, first_port + i, i < io_num, type));
+    }
+    ports.push_back({"io_address_or_shape_" + std::to_string(i), type});
+  }
+  return ge::GRAPH_SUCCESS;
+}
+
 class LaunchKernelWithFlagKernelCodeBuilder final : public KernelCodeBuilder {
  public:
   ge::graphStatus Collect(const KernelCollectContext &context, KernelProgramInfo &info) override {
@@ -169,9 +224,8 @@ class LaunchKernelWithFlagKernelCodeBuilder final : public KernelCodeBuilder {
                                                {"dfx_arg", Om2ValueType::kGertDfxExeArgPtr},
                                                {"rt_arg", Om2ValueType::kGertRtKernelLaunchArgsExPtr},
                                                {"local_memory_size", Om2ValueType::kUInt32T}};
-    for (size_t i = kFixedInputCount; i < context.input_chain_indices.size(); ++i) {
-      inputs.push_back({"io_address_or_shape_" + std::to_string(i - kFixedInputCount), Om2ValueType::kVoidPtr});
-    }
+    GE_ASSERT_GRAPH_SUCCESS(
+        AppendLaunchIoPorts(context, context.input_chain_indices.size() - kFixedInputCount, inputs));
     GE_ASSERT_GRAPH_SUCCESS(SetInputPortInfos(context, inputs, info));
     return SetOutputPortNames(context, {}, info);
   }
@@ -298,9 +352,7 @@ class MixLaunchKernelWithFlagKernelCodeBuilder final : public KernelCodeBuilder 
                                                {"rt_arg", Om2ValueType::kGertRtKernelLaunchArgsExPtr},
                                                {"local_memory_size", Om2ValueType::kUInt32T}};
     const size_t io_value_count = context.input_chain_indices.size() - kPrefixInputCount - kTailInputCount;
-    for (size_t i = 0U; i < io_value_count; ++i) {
-      inputs.push_back({"io_address_or_shape_" + std::to_string(i), Om2ValueType::kVoidPtr});
-    }
+    GE_ASSERT_GRAPH_SUCCESS(AppendLaunchIoPorts(context, io_value_count, inputs));
     inputs.insert(inputs.end(), {{"mix_args", Om2ValueType::kGertMixCoreArgsPtr},
                                  {"sub_stream", Om2ValueType::kRtStreamTPtr},
                                  {"notify_0", Om2ValueType::kVoidPtr},

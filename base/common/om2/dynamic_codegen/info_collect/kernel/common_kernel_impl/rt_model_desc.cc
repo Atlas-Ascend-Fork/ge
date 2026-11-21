@@ -26,6 +26,7 @@ class GetSpaceRegistryKernelCodeBuilder final : public KernelCodeBuilder {
                                                // though the lowering holder stores the enum's 32-bit representation.
                                                {"opp_impl_version", Om2ValueType::kSizeT}},
                                               info));
+    RequestInputBinding(context, 0U, ChainBindingKind::kModelDesc, ChainBindingPhase::kLoad, info);
     return SetOutputPortNames(context, {"space_registry"}, info);
   }
 };
@@ -36,6 +37,7 @@ class GetSpaceRegistriesKernelCodeBuilder final : public KernelCodeBuilder {
   ge::graphStatus Collect(const KernelCollectContext &context, KernelProgramInfo &info) override {
     GE_ASSERT_GRAPH_SUCCESS(InitKernelProgramInfo(context, OutputCreatePolicy::kGraphBound, false, info));
     GE_ASSERT_GRAPH_SUCCESS(SetInputPortInfos(context, {{"model_desc", Om2ValueType::kGertModelDescPtr}}, info));
+    RequestInputBinding(context, 0U, ChainBindingKind::kModelDesc, ChainBindingPhase::kLoad, info);
     return SetOutputPortNames(context, {"space_registries"}, info);
   }
 };
@@ -46,6 +48,7 @@ class GetFileConstantWeightDirKernelCodeBuilder final : public KernelCodeBuilder
   ge::graphStatus Collect(const KernelCollectContext &context, KernelProgramInfo &info) override {
     GE_ASSERT_GRAPH_SUCCESS(InitKernelProgramInfo(context, OutputCreatePolicy::kGraphBound, false, info));
     GE_ASSERT_GRAPH_SUCCESS(SetInputPortInfos(context, {{"model_desc", Om2ValueType::kGertModelDescPtr}}, info));
+    RequestInputBinding(context, 0U, ChainBindingKind::kModelDesc, ChainBindingPhase::kLoad, info);
     return SetOutputPortNames(context, {"file_constant_weight_dir"}, info);
   }
 };

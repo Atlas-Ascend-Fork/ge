@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "graph/fast_graph/execute_graph.h"
@@ -22,7 +23,9 @@ namespace gert {
 namespace om2 {
 class ChainNormalizer {
  public:
-  ge::graphStatus Normalize(ge::ExecuteGraph &execute_graph, std::vector<ChainInfo> &chains);
+  ge::graphStatus Normalize(ge::ExecuteGraph &execute_graph, std::vector<ChainInfo> &chains,
+                            bool defer_data_bindings = false);
+  bool IsUnresolvedFeed(uint32_t chain_index) const;
   ge::graphStatus GetInputChainIndices(const ge::FastNode &node, std::vector<uint32_t> &indices) const;
   ge::graphStatus GetOutputChainIndices(const ge::FastNode &node, std::vector<uint32_t> &indices) const;
   // CEM may replace a Const edge with an InnerData edge when a lifecycle constant is
@@ -35,10 +38,12 @@ class ChainNormalizer {
 
   ge::graphStatus AllocateChainIndices(ge::ExecuteGraph &execute_graph, std::vector<ChainInfo> &chains);
   ge::graphStatus AllocateGraphChains(const std::vector<ge::FastNode *> &nodes, std::vector<ChainInfo> &chains);
-  ge::graphStatus RecordChainSources(const std::vector<ge::FastNode *> &nodes, std::vector<ChainInfo> &chains) const;
+  ge::graphStatus RecordChainSources(const std::vector<ge::FastNode *> &nodes, std::vector<ChainInfo> &chains,
+                                     bool defer_data_bindings);
   ge::graphStatus GetChainIndex(const ge::FastNode &node, uint32_t index, EndpointDirection direction,
                                 uint32_t &chain_index) const;
 
+  std::unordered_set<uint32_t> unresolved_feeds_;
   std::unordered_map<uint64_t, uint32_t> symbols_to_chain_indices_;
   std::unordered_map<uint32_t, const ge::FastNode *> const_producers_;
 };

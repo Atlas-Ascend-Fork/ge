@@ -68,6 +68,7 @@ class KernelCodeBuilderRegistrar {
                                                                                __COUNTER__)(                  \
       kernel_type,                                                                                            \
       []() -> std::shared_ptr<::gert::om2::KernelCodeBuilder> { return std::make_shared<builder_type>(); })
+
 }  // namespace om2
 }  // namespace gert
 

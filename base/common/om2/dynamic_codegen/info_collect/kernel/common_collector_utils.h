@@ -25,6 +25,10 @@ struct KernelInputPortInfo {
   Om2ValueType value_type = Om2ValueType::kUnknown;
 };
 
+// Requests a lifecycle binding if this input chain originates at an external Data.
+void RequestInputBinding(const KernelCollectContext &context, uint32_t port, ChainBindingKind kind,
+                         ChainBindingPhase phase, KernelProgramInfo &info);
+
 ge::graphStatus InitKernelProgramInfo(const KernelCollectContext &context, OutputCreatePolicy output_policy,
                                       bool require_compute_node_info, KernelProgramInfo &kernel_info);
 ge::graphStatus SetInputPortNames(const KernelCollectContext &context, const std::vector<std::string> &names,

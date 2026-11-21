@@ -37,21 +37,13 @@ size_t GetGeTensorSize(const ge::GeTensor &tensor) {
   if (dt == ge::DT_STRING) {
     return tensor.GetData().GetSize();
   }
-  auto shape_size = tensor.GetTensorDesc().GetShape().GetShapeSize();
+  const auto shape_size = tensor.GetTensorDesc().GetShape().GetShapeSize();
   return static_cast<size_t>(ge::GetSizeInBytes(shape_size, dt));
 }
-bool AppendTensorAttr(const ge::AnyValue &attr, std::vector<std::vector<uint8_t>> &attrs) {
-  auto val = attr.Get<ge::GeTensor>();
-  GE_ASSERT_NOTNULL(val);
-  auto &tensor_desc = val->GetTensorDesc();
-  auto shape_size = tensor_desc.GetShape().GetShapeSize();
-  if (shape_size < 0) {
-    GELOGE(ge::PARAM_INVALID, "Failed to append tensor attr, shape size less than 0");
-    return false;
-  }
+bool AppendTensorBytes(const ge::GeTensor &value, const size_t tensor_size, std::vector<std::vector<uint8_t>> &attrs) {
+  const auto &tensor_desc = value.GetTensorDesc();
   size_t total_size;
-  size_t tensor_size = GetGeTensorSize(*val);
-  auto tensor_holder = Tensor::CreateFollowing(val->GetTensorDesc().GetDataType(), tensor_size, total_size);
+  auto tensor_holder = Tensor::CreateFollowing(tensor_desc.GetDataType(), tensor_size, total_size);
   GE_ASSERT_NOTNULL(tensor_holder);
   auto tensor = ge::PtrToPtr<uint8_t, Tensor>(tensor_holder.get());
   GeShapeToGertShape(tensor_desc.GetShape(), tensor->MutableStorageShape());
@@ -64,9 +56,9 @@ bool AppendTensorAttr(const ge::AnyValue &attr, std::vector<std::vector<uint8_t>
   }
   const auto copy_len = total_size - sizeof(Tensor);
   if (copy_len != 0U) {
-    GE_CHECK_GE(val->GetData().size(), total_size - sizeof(Tensor));
+    GE_CHECK_GE(value.GetData().size(), total_size - sizeof(Tensor));
     const auto ret_copy = ge::GeMemcpy(tensor->GetData<uint8_t>(), total_size - sizeof(Tensor),
-                                       val->GetData().GetData(), total_size - sizeof(Tensor));
+                                       value.GetData().GetData(), total_size - sizeof(Tensor));
     GE_ASSERT_TRUE((ret_copy == ge::SUCCESS), "memcpy_s failed, copy size is %zu", (total_size - sizeof(Tensor)));
   }
 
@@ -79,13 +71,26 @@ bool AppendTensorAttr(const ge::AnyValue &attr, std::vector<std::vector<uint8_t>
 
 bool AppendAttrTensor(const ge::AnyValue &attr, std::vector<std::vector<uint8_t>> &attrs) {
   switch (attr.GetValueType()) {
-    case ge::AnyValue::VT_TENSOR:
-      return AppendTensorAttr(attr, attrs);
+    case ge::AnyValue::VT_TENSOR: {
+      const auto *value = attr.Get<ge::GeTensor>();
+      GE_ASSERT_NOTNULL(value);
+      if (value->GetTensorDesc().GetShape().GetShapeSize() < 0) {
+        GELOGE(ge::PARAM_INVALID, "Failed to append tensor attr, shape size less than 0");
+        return false;
+      }
+      return AppendTensorBytes(*value, GetGeTensorSize(*value), attrs);
+    }
     default:
       return AppendAttr(attr, attrs);
   }
 }
+
 }  // namespace
+
+bool AppendAttrTensorWithSize(const ge::GeTensor &tensor, size_t validated_size,
+                              std::vector<std::vector<uint8_t>> &attrs) {
+  return AppendTensorBytes(tensor, validated_size, attrs);
+}
 
 bool GetAllIrAttrs(const ge::NodePtr &node, std::vector<std::vector<uint8_t>> &runtime_attrs) {
   const auto op_desc = node->GetOpDescBarePtr();

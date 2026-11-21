@@ -53,7 +53,8 @@ struct StageOutputBinding {
 //                 消费容器输入端口 = 消费子图 InnerData 的 index。
 class StageSplitter {
  public:
-  explicit StageSplitter(ExecuteGraph &work_graph) : work_graph_(work_graph) {}
+  explicit StageSplitter(ExecuteGraph &work_graph, bool defer_data_bindings = false)
+      : work_graph_(work_graph), defer_data_bindings_(defer_data_bindings) {}
   ~StageSplitter() = default;
 
   // 按 plan 拆分。user_outputs 是用户在图上的有序输出登记，拆分后成为 Main NetOutput 的输入顺序。
@@ -117,6 +118,7 @@ class StageSplitter {
   int32_t ExportPortOf(StageKind stage, const ValueKey &value) const;
 
   ExecuteGraph &work_graph_;
+  const bool defer_data_bindings_;
   // 拆分一旦开始改动图就不允许重来，否则上一次残留的阶段结果会与本次混用。
   bool split_started_{false};
   std::map<const FastNode *, FastNode *> node_map_;

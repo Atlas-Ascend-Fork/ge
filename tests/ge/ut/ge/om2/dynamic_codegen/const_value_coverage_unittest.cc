@@ -24,6 +24,8 @@
 #include "exe_graph/runtime/gert_tensor_data.h"
 #include "exe_graph/runtime/op_execute_context.h"
 #include "exe_graph/runtime/runtime_tensor.h"
+#include "ge/ge_ir_build.h"
+#include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/utils/attr_utils.h"
 #include "graph/utils/tensor_utils.h"
 #include "kernel/known_subgraph/davinci_model_kernel.h"
@@ -79,7 +81,7 @@ REGISTER_KERNEL_CODE_BUILDER("Om2ConstantCoverageConsumer", ConstantConsumer);
 
 class ConstantGraph {
  public:
-  void Prepare(const Type type, const Bytes &bytes, const char *name = "value") {
+  void Prepare(const Type type, const Bytes &bytes, const char *name = "value", bool custom_consumer = false) {
     auto producer = std::make_shared<ge::OpDesc>(name, "Const");
     ASSERT_EQ(producer->AddOutputDesc(ge::GeTensorDesc()), ge::GRAPH_SUCCESS);
     ASSERT_TRUE(
@@ -88,6 +90,9 @@ class ConstantGraph {
     auto consumer = std::make_shared<ge::OpDesc>("consumer", "Om2ConstantCoverageConsumer");
     ASSERT_EQ(consumer->AddInputDesc(ge::GeTensorDesc()), ge::GRAPH_SUCCESS);
     ASSERT_TRUE(ge::AttrUtils::SetInt(consumer, "test_value_type", static_cast<int64_t>(type)));
+    if (custom_consumer) {
+      ASSERT_TRUE(ge::AttrUtils::SetStr(consumer, attr::kCustomKernelName, consumer->GetType()));
+    }
     auto *node = graph.AddNode(consumer);
     ASSERT_NE(constant, nullptr);
     ASSERT_NE(node, nullptr);
@@ -138,6 +143,19 @@ Om2ConstValue CollectValue(const Type type, const Bytes &bytes) {
   EXPECT_EQ(fixture.info.const_chains[0].producer_name, "value");
   EXPECT_TRUE(fixture.info.custom_const_chains.empty());
   return fixture.info.const_chains[0].value;
+}
+
+TEST(Om2ConstValueCoverage, CustomConsumerRejectsMalformedModelBufferHandles) {
+  ge::ModelBufferData missing_payload{};
+  missing_payload.length = 1U;
+  const ge::ModelBufferData *null_handle = nullptr;
+  for (const auto &bytes : {Bytes{0U}, ObjectBytes(null_handle), ObjectBytes(&missing_payload)}) {
+    ConstantGraph fixture;
+    ASSERT_NO_FATAL_FAILURE(fixture.Prepare(Type::kBytePtr, bytes, "model_buffer", true));
+    EXPECT_NE(fixture.Collect(), ge::GRAPH_SUCCESS);
+    EXPECT_TRUE(fixture.info.custom_const_chains.empty());
+    EXPECT_TRUE(fixture.info.const_chains.empty());
+  }
 }
 
 TEST(Om2ConstValueCoverage, ScalarsPreserveSignednessWidthsAndBooleanConversions) {

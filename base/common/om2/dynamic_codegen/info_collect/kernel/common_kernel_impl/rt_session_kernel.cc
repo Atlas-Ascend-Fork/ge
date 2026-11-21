@@ -21,6 +21,7 @@ class GetSessionIdKernelCodeBuilder final : public KernelCodeBuilder {
   ge::graphStatus Collect(const KernelCollectContext &context, KernelProgramInfo &info) override {
     GE_ASSERT_TRUE((context.input_chain_indices.size() == 1U) && (context.output_chain_indices.size() == 1U));
     GE_ASSERT_GRAPH_SUCCESS(InitKernelProgramInfo(context, OutputCreatePolicy::kGraphBound, false, info));
+    RequestInputBinding(context, 0U, ChainBindingKind::kRtSession, ChainBindingPhase::kLoad, info);
     info.chain_updates.push_back({context.output_chain_indices[0U], ChainSourceKind::kSessionId,
                                   ChainBindingPhase::kLoad, ChainBindingKind::kNone, kInvalidChainSourceIndex});
     return ge::GRAPH_SUCCESS;

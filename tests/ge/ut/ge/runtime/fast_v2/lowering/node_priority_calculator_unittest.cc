@@ -19,6 +19,8 @@
 #include "core/builder/node_types.h"
 #include "lowering/graph_converter.h"
 #include "exe_graph/lowering/value_holder.h"
+#include "exe_graph/lowering/exe_graph_attrs.h"
+#include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/utils/graph_utils.h"
 #include "common/checker.h"
 #include "graph_builder/bg_condition.h"
@@ -429,6 +431,32 @@ TEST_F(NodePriorityCalculatorUT, CalcPriority_PriorityCorrect_ThreeLaunch) {
   CheckFreeNodeLowestPriority(graph.get());
   CheckAllNodesHasPriority(graph.get());
 }
+TEST_F(NodePriorityCalculatorUT, SourceOpPreservesExistingLaunchPriorityRules) {
+  ge::ExecuteGraph graph("source_op_order");
+  auto *first = graph.AddNode(ge::MakeShared<ge::OpDesc>("first", "LaunchKernelV2"));
+  auto *second = graph.AddNode(ge::MakeShared<ge::OpDesc>("second", "LaunchKernelV2"));
+  ASSERT_NE(first, nullptr);
+  ASSERT_NE(second, nullptr);
+  constexpr auto kSource = R"({"version":1,"name":"shared","type":"MatMul","inputs":[],"outputs":[],
+      "ir_inputs":[],"ir_outputs":[],"attrs":[{"name":"axis","type":"int64","value":1}]})";
+  std::string other_source(kSource);
+  other_source.replace(other_source.find(R"("value":1)"), sizeof(R"("value":1)") - 1U, R"("value":2)");
+  ASSERT_TRUE(ge::AttrUtils::SetStr(first->GetOpDescBarePtr(), attr::kSourceOp, kSource));
+  ASSERT_TRUE(ge::AttrUtils::SetStr(second->GetOpDescBarePtr(), attr::kSourceOp, other_source));
+  ASSERT_EQ(graph.TopologicalSorting(), ge::GRAPH_SUCCESS);
+  const auto nodes = graph.GetAllNodes();
+  ASSERT_EQ(nodes.size(), 2U);
+  ASSERT_EQ(bg::NodePriorityCalculator(std::vector<int64_t>{}).CalcNodeExecutionPriorities(nodes, nodes.size()),
+            ge::GRAPH_SUCCESS);
+  EXPECT_LT(GetPriority(nodes[0]), GetPriority(nodes[1]));
+
+  ASSERT_TRUE(ge::AttrUtils::SetInt(first->GetOpDescBarePtr(), kComputeNodeIndex, 0));
+  ASSERT_TRUE(ge::AttrUtils::SetInt(second->GetOpDescBarePtr(), kComputeNodeIndex, 1));
+  ASSERT_EQ(bg::NodePriorityCalculator(std::vector<int64_t>{10, 2}).CalcNodeExecutionPriorities(nodes, nodes.size()),
+            ge::GRAPH_SUCCESS);
+  EXPECT_GT(GetPriority(first), GetPriority(second));
+}
+
 TEST_F(NodePriorityCalculatorUT, CalcPriority_ForcePriorityCorrect_ThreeLaunchDoesNotHaveEdge) {
   auto frame = BuildGraph2();
   auto graph = frame->GetExecuteGraph();

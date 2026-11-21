@@ -126,7 +126,7 @@ bool HasGeneratedText(const GertModelData &data, const std::string &needle) {
   return false;
 }
 
-void CheckRepeatedRuns(ge::om2_test::GeneratedModelRunner &runner, const bool embedded_weight,
+void CheckRepeatedRuns(ge::om2_test::GeneratedModelRunner &runner, const bool load_bound_parameters,
                        std::vector<std::vector<float>> *collected = nullptr) {
   const std::vector<std::vector<float>> values{{1.0F, -2.0F, 0.5F}, {4.0F, 0.0F, -1.0F, 3.5F, -7.0F}};
   for (const auto &value : values) {
@@ -141,7 +141,7 @@ void CheckRepeatedRuns(ge::om2_test::GeneratedModelRunner &runner, const bool em
     Tensor *inputs[] = {&input, &parameters};
     Tensor *outputs[] = {&output};
     GertModelRunConfig config;
-    config.input_count = embedded_weight ? 1U : 2U;
+    config.input_count = load_bound_parameters ? 1U : 2U;
     config.input_data = inputs;
     config.output_count = 1U;
     config.output_data = outputs;
@@ -198,33 +198,33 @@ void CheckGeneratedModel(const GertModelData &built, const bool expect_fusion, c
   }
 }
 
-void RunRestoredModel(const GertModelData &restored, const bool embedded_weight, const bool fail_run,
+void RunRestoredModel(const GertModelData &restored, const bool load_bound_parameters, const bool fail_run,
                       std::vector<std::vector<float>> *collected) {
-  std::vector<void *> constants;
-  if (embedded_weight) {
+  std::vector<float> weights{1234.0F, 2.0F, -3.0F, -5678.0F};
+  void *constants[]{weights.data()};
+  if (load_bound_parameters) {
     ASSERT_NE(restored.constants, nullptr);
     ASSERT_EQ(restored.constants->constants_data.size(), 1U);
-    const auto &weight = restored.constants->constants_data[0];
-    ASSERT_NE(weight, nullptr);
-    EXPECT_EQ(weight->data_size, 4U * sizeof(float));
-    constants.push_back(const_cast<uint8_t *>(weight->data.get()));
+    EXPECT_EQ(restored.constants->constants_data.front(), nullptr);
+    ASSERT_NE(restored.models[0]->constants_config, nullptr);
+    EXPECT_EQ(restored.models[0]->constants_config->internal_weight_size, 0U);
   }
   ge::om2_test::GeneratedModelRunner runner;
   ASSERT_TRUE(runner.Open(restored.models[0]->runtime->so_artifact)) << runner.Error();
   GertModelLoadConfig load;
-  load.constants = constants.empty() ? nullptr : constants.data();
+  load.constants = load_bound_parameters ? constants : nullptr;
   ASSERT_EQ(runner.Load(load), ACL_SUCCESS);
-  ASSERT_NO_FATAL_FAILURE(CheckRepeatedRuns(runner, embedded_weight, collected));
+  ASSERT_NO_FATAL_FAILURE(CheckRepeatedRuns(runner, load_bound_parameters, collected));
   if (fail_run) {
     ASSERT_NO_FATAL_FAILURE(CheckControlledRunFailure(runner));
-    ASSERT_NO_FATAL_FAILURE(CheckRepeatedRuns(runner, embedded_weight));
+    ASSERT_NO_FATAL_FAILURE(CheckRepeatedRuns(runner, load_bound_parameters));
   }
   ASSERT_EQ(runner.Unload(), ACL_SUCCESS);
 }
 
-void GenerateRoundTripAndRun(const bool embedded_weight, const bool fail_run = false,
+void GenerateRoundTripAndRun(const bool load_bound_parameters, const bool fail_run = false,
                              std::vector<std::vector<float>> *collected = nullptr, const bool expect_workers = false) {
-  auto graph = AffineGraph(embedded_weight, fail_run);
+  auto graph = AffineGraph(load_bound_parameters, fail_run);
   ASSERT_NE(graph, nullptr);
   if (collected != nullptr) {
     ASSERT_NO_FATAL_FAILURE(InsertFusableTensorForwards(*graph));
@@ -246,19 +246,19 @@ void GenerateRoundTripAndRun(const bool embedded_weight, const bool fail_run = f
   ASSERT_NE(restored.models[0], nullptr);
   EXPECT_EQ(GetGertModelExecutionType(*restored.models[0]), GertModelExecutionType::kStatic);
   ASSERT_NE(restored.models[0]->runtime, nullptr);
-  ASSERT_NO_FATAL_FAILURE(RunRestoredModel(restored, embedded_weight, fail_run, collected));
+  ASSERT_NO_FATAL_FAILURE(RunRestoredModel(restored, load_bound_parameters, fail_run, collected));
 }
 
 /**
- * 用例描述：SE-02 Init Host 权重切片跨阶段参与多次动态 shape 计算。
- * 预置条件：Host INTERNAL 权重含四个 float，Init Const 只引用中间两个作为 scale/bias，
+ * 用例描述：SE-02 加载期绑定的 Host 权重切片跨阶段参与多次动态 shape 计算。
+ * 预置条件：调用方提供的 Host 权重含四个 float，Init Const 只引用中间两个作为 scale/bias，
  *           首尾故意放置不同数值；仅运算 Kernel 为测试替身，整条生成/打包流水线真实。
- * 测试步骤：外部构图、阶段拆分、生成编译、归档往返；传入反序列化权重，Load 一次后
+ * 测试步骤：外部构图、阶段拆分、生成编译、归档往返；在 Load 时绑定调用方权重，随后
  *           连续运行长度 3/5 的两组输入，再 Unload。
  * 预期结果：实际结果按权重切片中的 2/-3 计算，shape/type 与本轮输入一致，
  *           未消费首尾权重，也没有复用上一轮输出或重新编译模型。
  */
-TEST_F(Om2DynamicGraphGeneratorST, InitHostWeightSliceIsConsumedAcrossRepeatedDynamicShapes) {
+TEST_F(Om2DynamicGraphGeneratorST, LoadBoundHostWeightSliceIsConsumedAcrossRepeatedDynamicShapes) {
   // slow_test_limit = 3000
   // End-to-end execution includes compiling generated model SOs.
   ge::GetThreadLocalContext().SetGraphOption(

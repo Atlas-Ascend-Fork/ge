@@ -32,7 +32,7 @@ struct GertModelDescInfo {
 };
 
 // 从执行图的公开属性解析模型 IO 描述和资源槽数。
-// 校验：IO 列表与名称列表等长、名称非空且唯一、Tensor 列表可解出 TensorDesc、计数非负且不溢出。
+// 从 TensorDesc 读取 IO 名称，校验同侧名称非空且唯一，并校验资源计数。
 // 失败时不产生半成品：输出参数只在全部校验通过后写入。
 VISIBILITY_EXPORT ge::graphStatus ParseGertModelDesc(const ge::ExecuteGraph &graph, GertModelDescInfo &info);
 }  // namespace gert

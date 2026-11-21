@@ -180,11 +180,18 @@ target_link_libraries(graph_engine_test
 
 ################################################################################
 # build st_om2_test
+add_library(om2_custom_kernel_st_plugin MODULE om2_custom_kernel_st_plugin.cc)
+target_link_libraries(om2_custom_kernel_st_plugin PRIVATE intf_llt_pub)
+target_include_directories(om2_custom_kernel_st_plugin PRIVATE ${ASCEND_INSTALL_PATH}/include)
+set_source_files_properties(test_om2_custom_kernel.cc PROPERTIES
+    COMPILE_DEFINITIONS "OM2_CUSTOM_TEST_PLUGIN=\"$<TARGET_FILE:om2_custom_kernel_st_plugin>\""
+)
 add_executable(st_om2_test
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_ge_generator.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_graph_generator.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_constants.cc"
+    "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_custom_kernel.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_kernel_pipeline.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_resources.cc"
     "${AIR_CODE_DIR}/tests/ge/st/testcase/test_om2_dynamic_online.cc"
@@ -197,6 +204,7 @@ add_executable(st_om2_test
 )
 
 add_dependencies(st_om2_test
+    om2_custom_kernel_st_plugin
     mdat fmk_parser engine optimizer_priority_pbtxt
 )
 
