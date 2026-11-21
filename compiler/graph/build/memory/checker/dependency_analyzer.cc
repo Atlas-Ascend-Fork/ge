@@ -326,6 +326,7 @@ DependencyAnalyzer::DependencyAnalyzer(ComputeGraphPtr &graph, AnchorToSymbol &a
 Status DependencyAnalyzer::Init() {
   const auto start_time = GetCurrentTimestamp();
   GELOGI("init start.");
+  GE_CHECK_NOTNULL(compute_graph_);
   root_graph_ = compute_graph_;
   while (root_graph_->GetParentGraph() != root_graph_) {
     root_graph_ = root_graph_->GetParentGraph();
