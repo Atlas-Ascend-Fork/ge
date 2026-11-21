@@ -26,7 +26,7 @@ const Expression kSymbolOne{Symbol(1)};
 const Expression kSymbolTwo{Symbol(2)};
 // 值符号化仅针对shape/索引类小tensor，值符号化/推导的size准入与值依赖前向触发共用的
 // 元素数上限，超限不符号化、不产生D2H与host输入契约开销
-constexpr int64_t kMaxSymbolizeValueElemNum = 200;
+constexpr int64_t kMaxSymbolizeValueElemNum = 400;
 
 #define GE_UNSUPPORTED_IF_NULL(exp, ...)                                          \
   do {                                                                            \

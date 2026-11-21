@@ -116,7 +116,8 @@ graphStatus TransposeSymbolicKernelCompute(gert::InferSymbolComputeContext *cont
   for (const auto dim : output_dims) {
     output_size *= dim;
   }
-  if (output_size < 0L || static_cast<size_t>(output_size) != x_values.size() || output_size > 200L) {
+  if (output_size < 0L || static_cast<size_t>(output_size) != x_values.size() ||
+      output_size > kMaxSymbolizeValueElemNum) {
     GELOGW(
         "Transpose symbolic compute unsupported: output size[%ld] is invalid, mismatched, or exceeds limit, node "
         "%s[%s].",

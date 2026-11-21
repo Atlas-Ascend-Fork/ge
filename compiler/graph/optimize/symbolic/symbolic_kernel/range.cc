@@ -24,7 +24,7 @@ constexpr size_t kRangeOutputNum = 1U;
 constexpr size_t kStartIndex = 0U;
 constexpr size_t kLimitIndex = 1U;
 constexpr size_t kDeltaIndex = 2U;
-constexpr int64_t kMaxSymbolicValueSize = 200L;
+constexpr int64_t kMaxSymbolicValueSize = kMaxSymbolizeValueElemNum;
 const std::set<DataType> kRangeSupportedTypes = {DT_INT32, DT_FLOAT, DT_DOUBLE, DT_INT64};
 
 bool GetScalarValue(const gert::InferSymbolComputeContext *context, size_t index, Expression &value) {

@@ -25,7 +25,7 @@ constexpr size_t kSliceOutputNum = 1U;
 constexpr size_t kXIndex = 0U;
 constexpr size_t kOffsetsIndex = 1U;
 constexpr size_t kSizeIndex = 2U;
-constexpr size_t kMaxSymbolicValueSize = 200U;
+constexpr size_t kMaxSymbolicValueSize = static_cast<size_t>(kMaxSymbolizeValueElemNum);
 
 bool GetIndexValues(const gert::SymbolTensor *tensor, std::vector<int64_t> &values) {
   if (tensor == nullptr || !tensor->HasValue()) {
