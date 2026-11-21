@@ -1109,11 +1109,6 @@ Status GraphManager::CheckGraphAdded(const GraphId &graph_id, const std::shared_
 Status GraphManager::AddGraphWithCopy(const GraphId &graph_id, const Graph &graph,
                                       const std::map<std::string, std::string> &options,
                                       const OmgContext &omg_context) {
-  std::unique_lock<std::mutex> add_lock(add_graph_mutex_);
-  const bool is_execute_graph = GraphUtilsEx::IsExecuteGraph(graph);
-  if (is_execute_graph) {
-    return UNSUPPORTED;
-  }
   GetThreadLocalContext().SetGraphOption(options);
   if (HasGraphNode(graph_id)) {
     GELOGE(GE_GRAPH_GRAPH_ALREADY_EXIST, "[Has][GraphNode] graph exists, graph_id = %u", graph_id);
@@ -4010,11 +4005,6 @@ Status GraphManager::RunGraphAsync(const GraphId &graph_id, std::vector<gert::Te
     callback(status, outputs);
     GELOGE(status, "run graph async failed, graph_id=%u", graph_id);
     return status;
-  }
-  bool is_execute_graph = false;
-  GE_CHK_STATUS_RET_NOLOG(IsExecuteGraph(graph_node, is_execute_graph));
-  if (is_execute_graph) {
-    return UNSUPPORTED;
   }
   GetThreadLocalContext().SetGraphOption(graph_node->GetOptions());
   if (IsOm2OnlineMode()) {

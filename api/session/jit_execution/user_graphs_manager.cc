@@ -29,7 +29,7 @@ Status UserGraphsManager::IsExecuteGraph(uint32_t user_graph_id, bool &is_execut
   // 增加判断graphId是否有注册对应的graphNode，避免直接调用GetGraphNode报ERROR日志
   if (!graph_manager_.HasGraphNode(user_graph_id)) {
     is_execute_graph = false;
-    return GE_GRAPH_GRAPH_NOT_EXIST;
+    return SUCCESS;
   }
 
   GraphNodePtr graph_node;

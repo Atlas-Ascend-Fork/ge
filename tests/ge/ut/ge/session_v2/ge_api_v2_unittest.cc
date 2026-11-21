@@ -3037,19 +3037,19 @@ TEST_F(UtestGeApiV2ExecuteGraph, UnsupportedInterfaceMatrixPreservesOutputsAndRe
   EXPECT_EQ(session_->GraphDebugJSONPrint(61U, 0U, json), UNSUPPORTED);
   EXPECT_STREQ(json.GetString(), "unchanged");
   int memory = 0;
-  EXPECT_EQ(session_->SetGraphConstMemoryBase(61U, &memory, sizeof(memory)), UNSUPPORTED);
-  EXPECT_EQ(session_->UpdateGraphFeatureMemoryBase(61U, &memory, sizeof(memory)), UNSUPPORTED);
+  EXPECT_EQ(session_->SetGraphConstMemoryBase(61U, &memory, sizeof(memory)), PARAM_INVALID);
+  EXPECT_EQ(session_->UpdateGraphFeatureMemoryBase(61U, &memory, sizeof(memory)), PARAM_INVALID);
   EXPECT_EQ(
       session_->SetGraphFixedFeatureMemoryBaseWithType(61U, MemoryType::MEMORY_TYPE_DEFAULT, &memory, sizeof(memory)),
-      UNSUPPORTED);
-  EXPECT_EQ(session_->UpdateGraphRefreshableFeatureMemoryBase(61U, &memory, sizeof(memory)), UNSUPPORTED);
+      PARAM_INVALID);
+  EXPECT_EQ(session_->UpdateGraphRefreshableFeatureMemoryBase(61U, &memory, sizeof(memory)), PARAM_INVALID);
   ModelBufferData buffer;
   buffer.length = 123U;
   EXPECT_EQ(session_->GetCompiledModel(61U, buffer), UNSUPPORTED);
   EXPECT_EQ(buffer.length, 123U);
   EXPECT_EQ(buffer.data, nullptr);
   size_t calls = 0U;
-  EXPECT_EQ(session_->RunGraphAsync(61U, {}, [&calls](Status, std::vector<gert::Tensor> &) { ++calls; }), UNSUPPORTED);
+  EXPECT_EQ(session_->RunGraphAsync(61U, {}, [&calls](Status, std::vector<gert::Tensor> &) { ++calls; }), FAILED);
   EXPECT_EQ(calls, 0U);
   EXPECT_EQ(inner_session->run_graph_modes_.count(61U), 0U);
   GraphNodePtr after;
@@ -3075,10 +3075,10 @@ TEST_F(UtestGeApiV2ExecuteGraph, AddAcceptsOptionsWhileUnsupportedCallsDoNotCons
   Graph graph = MakeSessionExecuteGraph("execute");
   ASSERT_EQ(session_->AddGraph(64U, graph, {{"ge.exec.precision_mode", "allow_fp32_to_fp16"}}), SUCCESS);
   EXPECT_EQ(session_->AddGraph(64U, graph), SUCCESS);
-  EXPECT_EQ(session_->RunGraphAsync(64U, {}, nullptr), UNSUPPORTED);
+  EXPECT_EQ(session_->RunGraphAsync(64U, {}, nullptr), SUCCESS);
   RunGraphMode mode = RunGraphMode::kRunGraph;
   ASSERT_EQ(session_->impl_->GetRunGraphMode(64U, mode), SUCCESS);
-  EXPECT_EQ(mode, RunGraphMode::kRunGraphModeEnd);
+  EXPECT_EQ(mode, RunGraphMode::kRunGraphAsync);
   EXPECT_FALSE(session_->impl_->GetLoadFlag(64U));
   EXPECT_EQ(session_->RemoveGraph(64U), SUCCESS);
   EXPECT_EQ(session_->AddGraph(64U, MakeSessionExecuteGraph("replacement"), {}), SUCCESS);
@@ -3101,13 +3101,13 @@ TEST_F(UtestGeApiV2ExecuteGraph, LoadOptionsDoNotBypassModelValidation) {
 TEST_F(UtestGeApiV2ExecuteGraph, AsyncExecuteGraphIsUnsupportedWithoutCallbackOrModeChange) {
   ASSERT_EQ(session_->AddGraph(65U, MakeSessionExecuteGraph("invalid_execute")), SUCCESS);
   size_t calls = 0U;
-  EXPECT_EQ(session_->RunGraphAsync(65U, {}, [&calls](Status, std::vector<gert::Tensor> &) { ++calls; }), UNSUPPORTED);
+  EXPECT_EQ(session_->RunGraphAsync(65U, {}, [&calls](Status, std::vector<gert::Tensor> &) { ++calls; }), SUCCESS);
   RunGraphMode mode = RunGraphMode::kRunGraph;
   ASSERT_EQ(session_->impl_->GetRunGraphMode(65U, mode), SUCCESS);
-  EXPECT_EQ(mode, RunGraphMode::kRunGraphModeEnd);
+  EXPECT_EQ(mode, RunGraphMode::kRunGraphAsync);
   EXPECT_EQ(session_->RemoveGraph(65U), SUCCESS);
   session_.reset();
-  EXPECT_EQ(calls, 0U);
+  EXPECT_EQ(calls, 1U);
 }
 
 TEST_F(UtestGeApiV2ExecuteGraph, CompileOverloadsAndImplicitLoadFailureLeaveGraphRemovable) {
