@@ -374,6 +374,10 @@ class StubKernelInfoStore : public ge::OpsKernelInfoStore {
   }
   bool CheckAccuracySupported(const OpDescPtr &opDescPtr, std::string &un_supported_reason,
                               bool realQuery = false) const override {
+    // This candidate is supported from the subgraph Data, but not when moved before the root Cast.
+    if (opDescPtr->GetName() == "tmp_cache_path_trans_y") {
+      return opDescPtr->GetInputDesc(0).GetDataType() == DT_FLOAT16;
+    }
     if ((opDescPtr->GetType() == TRANSDATA) && (opDescPtr->GetInputDesc(0).GetDataType() == DT_INT16)) {
       std::cout << std::endl << "transdata not support new datatype" << std::endl;
       return false;
@@ -518,6 +522,76 @@ static void CreateGraph(ComputeGraphPtr &graph) {
   ge::GraphUtils::AddEdge(node_data->GetOutDataAnchor(0), node_cast_2->GetInDataAnchor(0));
   ge::GraphUtils::AddEdge(node_cast_2->GetOutDataAnchor(0), node_transdata_2->GetInDataAnchor(0));
   ge::GraphUtils::AddEdge(node_transdata_2->GetOutDataAnchor(0), node_sinh_2->GetInDataAnchor(0));
+}
+
+TEST_F(UtestGraphPassesSameTransdataBreadthFusionPass, RecomputeCompareInfoForSubgraphHead) {
+  const auto sub_data = OP_CFG(DATA).ParentNodeIndex(0).TensorDesc(FORMAT_NCHW, DT_FLOAT16, {2, 16, 2, 2});
+  const auto sub_trans = OP_CFG(TRANSDATA).TensorDesc(FORMAT_NCHW, DT_FLOAT16, {2, 16, 2, 2});
+  const auto root_cast = OP_CFG(CAST).TensorDesc(FORMAT_NCHW, DT_FLOAT, {2, 16, 2, 2});
+  DEF_GRAPH(cache_path_sub) {
+    CHAIN(NODE("cache_path_sub_data", sub_data)
+              ->NODE("cache_path_trans_x", sub_trans)
+              ->NODE("cache_path_use_x", RELU)
+              ->EDGE(0, 0)
+              ->NODE("cache_path_sub_output", NETOUTPUT));
+    CHAIN(NODE("cache_path_sub_data", sub_data)
+              ->NODE("cache_path_trans_y", sub_trans)
+              ->NODE("cache_path_use_y", RELU)
+              ->EDGE(0, 1)
+              ->NODE("cache_path_sub_output", NETOUTPUT));
+  };
+  DEF_GRAPH(cache_path_root) {
+    CHAIN(NODE("cache_path_root_data", DATA)
+              ->NODE("cache_path_cast", root_cast)
+              ->NODE("cache_path_call", PARTITIONEDCALL, cache_path_sub)
+              ->EDGE(0, 0)
+              ->NODE("cache_path_root_output", NETOUTPUT));
+    CHAIN(NODE("cache_path_root_data", DATA)
+              ->NODE("cache_path_trans_z", TRANSDATA)
+              ->EDGE(0, 1)
+              ->NODE("cache_path_root_output", NETOUTPUT));
+    CHAIN(NODE("cache_path_call")->EDGE(1, 2)->NODE("cache_path_root_output", NETOUTPUT));
+    CHAIN(NODE("cache_path_ctrl_data", DATA)->NODE("cache_path_identity", IDENTITY));
+  };
+
+  auto graph = ToComputeGraph(cache_path_root);
+  ASSERT_NE(graph, nullptr);
+  ASSERT_TRUE(SetTransDataTensorDesc(graph, {"cache_path_trans_x", "cache_path_trans_y", "cache_path_trans_z"}));
+  NetoutputParentIndexes output_indexes{{"cache_path_sub_output", {0, 1}}};
+  ASSERT_TRUE(AddParentIndexForNetoutput(graph, output_indexes));
+  const auto cast = graph->FindNode("cache_path_cast");
+  const auto identity = graph->FindNode("cache_path_identity");
+  const auto trans_z = graph->FindNode("cache_path_trans_z");
+  ASSERT_NE(cast, nullptr);
+  ASSERT_NE(identity, nullptr);
+  ASSERT_NE(trans_z, nullptr);
+  const auto cast_output = cast->GetOpDesc()->MutableOutputDesc(0U);
+  ASSERT_NE(cast_output, nullptr);
+  cast_output->SetDataType(DT_FLOAT16);
+  cast_output->SetOriginDataType(DT_FLOAT16);
+  ASSERT_TRUE(AttrUtils::SetStr(trans_z->GetOpDesc(), ATTR_NAME_STREAM_LABEL, "cache_path_other_stream"));
+  ASSERT_EQ(GraphUtils::AddEdge(identity->GetOutControlAnchor(), cast->GetInControlAnchor()), GRAPH_SUCCESS);
+
+  // X is compared with Z at the root head. Only the root path to X includes the Identity dependency.
+  // At the subgraph head the direct paths to X and Y are equivalent and should fuse.
+  SameTransdataBreadthFusionPass pass;
+  ASSERT_EQ(pass.Run(graph), GRAPH_SUCCESS);
+  const auto subgraph = graph->GetSubgraph("cache_path_sub");
+  ASSERT_NE(subgraph, nullptr);
+  const auto use_x = subgraph->FindNode("cache_path_use_x");
+  const auto use_y = subgraph->FindNode("cache_path_use_y");
+  ASSERT_NE(use_x, nullptr);
+  ASSERT_NE(use_y, nullptr);
+  const auto peer_x = use_x->GetInDataAnchor(0)->GetPeerOutAnchor();
+  const auto peer_y = use_y->GetInDataAnchor(0)->GetPeerOutAnchor();
+  ASSERT_NE(peer_x, nullptr);
+  EXPECT_EQ(peer_x, peer_y);
+  EXPECT_EQ(peer_x->GetOwnerNode()->GetType(), TRANSDATA);
+  const bool has_x = subgraph->FindNode("cache_path_trans_x") != nullptr;
+  const bool has_y = subgraph->FindNode("cache_path_trans_y") != nullptr;
+  EXPECT_NE(has_x, has_y);
+  EXPECT_EQ(graph->FindNode("cache_path_trans_z"), trans_z);
+  EXPECT_TRUE(identity->GetOutControlAnchor()->IsLinkedWith(cast->GetInControlAnchor()));
 }
 
 /*

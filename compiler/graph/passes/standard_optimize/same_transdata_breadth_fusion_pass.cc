@@ -646,29 +646,29 @@ graphStatus SameTransdataBreadthFusionPass::FuseTransdata(Paths &paths) {
 
 graphStatus SameTransdataBreadthFusionPass::GetSameTransdataPath(Paths &paths,
                                                                  std::vector<Paths> &same_transdata_paths_groups) {
-  while (paths.size() > 1U) {
-    auto iter = paths.begin();
+  // Reuse compare info only for the same candidate path in this head's grouping.
+  std::vector<CompareInfo> infos(paths.size());
+  for (size_t i = 0U; i < paths.size(); ++i) {
+    GE_ASSERT_SUCCESS(GetCompareInfo(paths[i], paths[i].back(), infos[i]));
+  }
+
+  std::vector<bool> grouped(paths.size(), false);
+  for (size_t i = 0U; i < paths.size(); ++i) {
+    if (grouped[i]) {
+      continue;
+    }
     Paths same_transdata_paths;
-    same_transdata_paths.emplace_back(std::move(*iter));
-    const auto &first_path = same_transdata_paths.front();
-
-    iter = paths.erase(iter);
-    LinkNode first_transdata = first_path.back();
-    CompareInfo first_info;
-    GE_ASSERT_SUCCESS(GetCompareInfo(first_path, first_transdata, first_info));
-
-    while (iter != paths.end()) {
-      auto &another_path = *iter;
-      LinkNode another_transdata = another_path.back();
-      CompareInfo another_info;
-      GE_ASSERT_SUCCESS(GetCompareInfo(another_path, another_transdata, another_info));
-      if (IsSame(first_info, another_info)) {
-        same_transdata_paths.emplace_back(std::move(another_path));
-        iter = paths.erase(iter);
+    same_transdata_paths.emplace_back(std::move(paths[i]));
+    for (size_t j = i + 1U; j < paths.size(); ++j) {
+      if (grouped[j]) {
+        continue;
+      }
+      if (IsSame(infos[i], infos[j])) {
+        same_transdata_paths.emplace_back(std::move(paths[j]));
+        grouped[j] = true;
       } else {
-        GELOGI("%s is different from %s", another_transdata.in_anchor->GetOwnerNode()->GetNamePtr(),
-               first_transdata.in_anchor->GetOwnerNode()->GetNamePtr());
-        iter++;
+        GELOGI("%s is different from %s", paths[j].back().in_anchor->GetOwnerNodeBarePtr()->GetNamePtr(),
+               same_transdata_paths.front().back().in_anchor->GetOwnerNodeBarePtr()->GetNamePtr());
       }
     }
     if (same_transdata_paths.size() > 1U) {
@@ -883,12 +883,6 @@ graphStatus SameTransdataBreadthFusionPass::RemoveUnSupportedPath(Paths &paths_w
 graphStatus SameTransdataBreadthFusionPass::GetCompareInfo(const Path &path, const LinkNode &link_node,
                                                            CompareInfo &info) {
   const auto &node = link_node.in_anchor->GetOwnerNode();
-  const auto &iter = node_to_info_map_.find(node);
-  if (iter != node_to_info_map_.end()) {
-    info = iter->second;
-    return GRAPH_SUCCESS;
-  }
-
   // 前面流程保证这里op_desc不为空
   const auto &op_desc = node->GetOpDesc();
   (void)AttrUtils::GetStr(op_desc, ATTR_NAME_STREAM_LABEL, info.stream_label);
@@ -897,7 +891,6 @@ graphStatus SameTransdataBreadthFusionPass::GetCompareInfo(const Path &path, con
   GE_ASSERT_NOTNULL(info.input_tensor_desc);
   info.output_tensor_desc = op_desc->GetOutputDescPtr(0);
   GE_ASSERT_NOTNULL(info.output_tensor_desc);
-  node_to_info_map_[node] = info;
   PrintCompareInfo(node, info);
   return GRAPH_SUCCESS;
 }

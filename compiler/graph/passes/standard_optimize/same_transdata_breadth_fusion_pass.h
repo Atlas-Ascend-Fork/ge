@@ -27,6 +27,7 @@ struct LinkNode {
 };
 struct CompareInfo {
   std::string stream_label;
+  // Depends on the candidate path, not just its terminal TransData.
   std::set<std::string> in_ctrl_nodes;
   ConstGeTensorDescPtr input_tensor_desc;
   ConstGeTensorDescPtr output_tensor_desc;
@@ -88,7 +89,6 @@ class SameTransdataBreadthFusionPass : public GraphPass {
 
   ComputeGraphPtr root_graph_;
   OrderedGraphToNodes graph_nodes_;
-  std::map<NodePtr, CompareInfo> node_to_info_map_;
 };
 }  // namespace ge
 
