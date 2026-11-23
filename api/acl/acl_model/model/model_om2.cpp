@@ -827,11 +827,11 @@ aclError aclmdlGetDescImplOm2(aclmdlDesc *modelDesc, uint32_t modelId) {
     std::map<std::string, std::map<std::string, std::string>> opAttrMap;
     ge::Status attrRet = executor->GetOpAttr(opAttrMap);
     if (attrRet != ge::SUCCESS) {
-      ACL_LOG_ERROR("[OM2] GetOpAttr failed, ret=%u, modelId=%u", attrRet, modelId);
-    } else {
-      modelDesc->opAttrValueMap = std::move(opAttrMap);
-      ACL_LOG_INFO("[OM2] successfully populated opAttrValueMap, modelId[%u]", modelId);
+      ACL_LOG_CALL_ERROR("[Get][OpAttr]get om2 op attr failed, ge result[%u], modelId[%u]", attrRet, modelId);
+      return ACL_GET_ERRCODE_GE(static_cast<int32_t>(attrRet));
     }
+    modelDesc->opAttrValueMap = std::move(opAttrMap);
+    ACL_LOG_INFO("[OM2] successfully populated opAttrValueMap, modelId[%u]", modelId);
   }
 
   // Populate dynamic bucketing metadata

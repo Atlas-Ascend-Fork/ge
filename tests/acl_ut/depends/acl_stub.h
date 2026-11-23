@@ -141,6 +141,7 @@ class aclStub {
   virtual ge::Status GetModelAttr(uint32_t model_id, std::vector<std::string> &dynamic_output_shape_info);
   virtual ge::Status GetOpAttr(uint32_t model_id, const std::string &op_name, const std::string &attr_name,
                                std::string &attr_value);
+  virtual ge::Status GetOm2OpAttr(std::map<std::string, std::map<std::string, std::string>> &op_attr_map);
   virtual ge::Status GetAIPPInfo(uint32_t model_id, uint32_t index, AippConfigInfo &aipp_params);
   virtual ge::Status GetAippInfo(const uint32_t index, ge::AippConfigInfo &aipp_info);
   virtual ge::Status GetBatchInfoSize(uint32_t model_id, size_t &shape_count);
@@ -418,6 +419,7 @@ class MockFunctionTest : public aclStub {
   MOCK_METHOD2(GetModelAttr, ge::Status(uint32_t model_id, std::vector<std::string> &dynamic_output_shape_info));
   MOCK_METHOD4(GetOpAttr, ge::Status(uint32_t model_id, const std::string &op_name, const std::string &attr_name,
                                      std::string &attr_value));
+  MOCK_METHOD1(GetOm2OpAttr, ge::Status(std::map<std::string, std::map<std::string, std::string>> &op_attr_map));
   MOCK_METHOD3(GetAIPPInfo, ge::Status(uint32_t model_id, uint32_t index, AippConfigInfo &aipp_params));
   MOCK_METHOD2(GetAippInfo, ge::Status(const uint32_t index, ge::AippConfigInfo &aipp_info));
   MOCK_METHOD2(GetBatchInfoSize, ge::Status(uint32_t model_id, size_t &shape_count));
