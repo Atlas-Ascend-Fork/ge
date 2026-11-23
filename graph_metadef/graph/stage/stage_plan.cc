@@ -21,8 +21,6 @@
 
 namespace ge {
 namespace {
-constexpr size_t kMaxClosureDepth = 10000U;
-
 std::string NodeName(const FastNode &node) {
   const auto desc = node.GetOpDescPtr();
   return (desc == nullptr) ? std::string() : desc->GetName();
@@ -106,11 +104,9 @@ graphStatus StageAnalyzer::CloseInitPredecessors(StagePlan &plan) const {
     pending.emplace_back(node);
   }
   std::set<const FastNode *> visited(pending.begin(), pending.end());
-  size_t processed = 0U;
   while (!pending.empty()) {
     const auto *node = pending.front();
     pending.pop_front();
-    GE_ASSERT_TRUE(++processed <= kMaxClosureDepth, "Init predecessor closure exceeds %zu nodes", kMaxClosureDepth);
     for (const auto *edge : node->GetAllInDataEdgesRef()) {
       // 断边后槽位为 nullptr，按 FastNode 约定跳过。
       if ((edge == nullptr) || (edge->src == nullptr)) {

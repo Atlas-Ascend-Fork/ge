@@ -2171,7 +2171,8 @@ Status GraphManager::ExecuteGraphWithStreamAsync(const GraphId &graph_id, const 
   GE_CHECK_NOTNULL(executor_);
   GetThreadLocalContext().SetGraphOption(graph_node->GetOptions());
   gert::Allocators *allocators = nullptr;
-  if (IsOm2OnlineMode()) {
+  const auto graph = graph_node->GetGraph();
+  if (IsOm2OnlineMode(graph != nullptr && GraphUtilsEx::IsExecuteGraph(*graph))) {
     GE_ASSERT_SUCCESS(GetExecuteGraphAllocators(graph_id, stream, allocators));
   }
   return executor_->ExecuteGraphWithStream(graph_node, graph_id, stream, inputs, outputs, allocators);

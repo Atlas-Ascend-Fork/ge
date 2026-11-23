@@ -2299,8 +2299,8 @@ TEST_F(UtestModelExecutorOm2Test, ExecuteGraphWithStream_Om2Mode_Success) {
   EXPECT_EQ(model_executor.Finalize(), SUCCESS);
 }
 
-TEST_F(UtestModelExecutorOm2Test, ExternalExecuteGraphLoadsWithoutRootComputeGraph) {
-  EnableOm2OnlineMode();
+TEST_F(UtestModelExecutorOm2Test, ExternalExecuteGraphLoadsAndExecutesWithoutModelFormat) {
+  GetThreadLocalContext().SetGraphOption({});
   ModelExecutor model_executor;
   ASSERT_EQ(model_executor.Initialize({}, 0), SUCCESS);
   auto root = MakeShared<GeRootModel>();
@@ -2310,8 +2310,17 @@ TEST_F(UtestModelExecutorOm2Test, ExternalExecuteGraphLoadsWithoutRootComputeGra
   node->SetGeRootModel(root);
   root->SetOm2ModelData(std::make_shared<gert::GertModelData>(MakeOm2ModelDataWithFakeSo(fake_so_path_)));
   ASSERT_EQ(root->GetRootGraph(), nullptr);
-  EXPECT_EQ(model_executor.LoadGraph(root, node), SUCCESS);
-  EXPECT_EQ(model_executor.UnloadGraph(root, graph_id), SUCCESS);
+  ASSERT_EQ(model_executor.LoadGraph(root, node), SUCCESS);
+  std::vector<uint8_t> data(16U, 0U);
+  std::vector<gert::Tensor> inputs(1U);
+  std::vector<gert::Tensor> outputs(1U);
+  inputs[0].SetPlacement(gert::kOnDeviceHbm);
+  inputs[0].SetData(gert::TensorData(data.data(), nullptr, data.size(), gert::kOnDeviceHbm));
+  outputs[0].SetPlacement(gert::kOnDeviceHbm);
+  outputs[0].SetData(gert::TensorData(data.data(), nullptr, data.size(), gert::kOnDeviceHbm));
+  int stream_token = 0;
+  EXPECT_EQ(model_executor.ExecuteGraphWithStream(node, graph_id, &stream_token, inputs, outputs), SUCCESS);
+  EXPECT_EQ(model_executor.UnloadGraph(root, graph_id, true), SUCCESS);
   EXPECT_EQ(model_executor.Finalize(), SUCCESS);
 }
 
