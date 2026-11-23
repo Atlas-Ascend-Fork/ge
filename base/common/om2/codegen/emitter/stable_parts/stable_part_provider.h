@@ -14,6 +14,7 @@
 #include <string>
 
 #include "common/om2/codegen/ast/ast_nodes.h"
+#include "ge_common/ge_common_api_types.h"
 
 namespace ge {
 Status ResolveStablePart(StablePartId id, std::string &output);

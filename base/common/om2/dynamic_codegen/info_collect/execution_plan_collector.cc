@@ -382,8 +382,8 @@ bool HasControlEdge(const ge::FastNode &src, const ge::FastNode &dst) {
   return false;
 }
 
-void AddVirtualDependency(std::vector<VirtualDependency> &dependencies, ge::FastNode *const src,
-                          ge::FastNode *const dst) {
+void AddVirtualDependency(std::vector<VirtualDependency> &dependencies, const ge::FastNode *const src,
+                          const ge::FastNode *const dst) {
   if ((src == nullptr) || (dst == nullptr) || (src == dst)) {
     return;
   }
@@ -436,7 +436,7 @@ ge::graphStatus ExecutionPlanCollector::Collect(ge::ExecuteGraph &execute_graph,
 ge::graphStatus ExecutionPlanCollector::CollectSequential(ge::ExecuteGraph &execute_graph,
                                                           const ChainNormalizer &chain_normalizer,
                                                           ProgramBlock &program_block) const {
-  std::vector<ge::FastNode *> ordered_nodes;
+  std::vector<const ge::FastNode *> ordered_nodes;
   std::unordered_map<const ge::FastNode *, uint32_t> nodes_to_kernel_indices;
   std::unordered_map<uint32_t, uint32_t> output_chains_to_kernel_indices;
   std::set<std::pair<uint32_t, uint32_t>> dependencies;
@@ -671,7 +671,7 @@ ge::graphStatus ExecutionPlanCollector::CollectKernel(const ge::FastNode &node, 
 ge::graphStatus ExecutionPlanCollector::CollectRegion(ge::ExecuteGraph &execute_graph,
                                                       const ChainNormalizer &chain_normalizer, uint32_t region_index,
                                                       ProgramBlock &program_block) const {
-  std::unordered_map<ge::FastNode *, CanonicalIfAnalysis> if_analyses;
+  std::unordered_map<const ge::FastNode *, CanonicalIfAnalysis> if_analyses;
   std::vector<VirtualDependency> virtual_dependencies;
   for (auto *const node : execute_graph.GetDirectNode()) {
     if (!IsConditionalNode(node->GetTypePtr())) {
@@ -693,7 +693,7 @@ ge::graphStatus ExecutionPlanCollector::CollectRegion(ge::ExecuteGraph &execute_
     if_analyses.emplace(node, std::move(analysis));
   }
 
-  std::vector<ge::FastNode *> ordered_nodes;
+  std::vector<const ge::FastNode *> ordered_nodes;
   GE_ASSERT_GRAPH_SUCCESS(ExecutionOrderCollector().Collect(
       execute_graph, virtual_dependencies, GetExecutionOrderPolicy(program_block.plan_type), ordered_nodes));
   std::unordered_map<const ge::FastNode *, uint32_t> nodes_to_kernel_indices;
@@ -854,7 +854,7 @@ ge::graphStatus ExecutionPlanCollector::AnalyzeIf(ge::FastNode &node, CanonicalI
   return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ExecutionPlanCollector::AppendIf(ge::FastNode &node, const ChainNormalizer &chain_normalizer,
+ge::graphStatus ExecutionPlanCollector::AppendIf(const ge::FastNode &node, const ChainNormalizer &chain_normalizer,
                                                  const CanonicalIfAnalysis &analysis, uint32_t region_index,
                                                  ProgramBlock &program_block) const {
   std::vector<uint32_t> input_chain_indices;

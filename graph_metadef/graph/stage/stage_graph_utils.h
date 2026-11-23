@@ -19,7 +19,7 @@ namespace ge {
 // 递归收集根图下的全部子图（含嵌套层级），不含根图自身。
 // 用树遍历而不是按名查找：CompleteCopy 会把内层子图登记在中间图自己的表里，
 // 而 ExecuteGraph::GetSubGraph 在子图上会委托根图查找，根表里没有内层子图。
-std::vector<ExecuteGraph *> CollectSubgraphTree(ExecuteGraph &root);
+std::vector<ExecuteGraph *> CollectSubgraphTree(const ExecuteGraph &root);
 
 // 按父节点的子图实例序号解析用户子图。先查根图登记，再逐层遍历兜底。
 // 实例名缺失、越界或登记被解除时返回 nullptr，由调用方决定报错还是跳过。
@@ -34,7 +34,7 @@ graphStatus ValidateRefEndpoints(const ExecuteGraph &root);
 // 使整棵执行图的 symbol 数组失效（全部置为 kInvalidSymbol）。
 // symbol 由运行期按端点等价类重新推导，拆图/改图后旧的端点划分已不成立，
 // 沿用旧值会把过期符号当成已算出的结果。
-graphStatus ResetDerivedSymbols(const ExecuteGraph &root);
+graphStatus ResetDerivedSymbols(ExecuteGraph &root);
 }  // namespace ge
 
 #endif  // METADEF_GRAPH_STAGE_STAGE_GRAPH_UTILS_H_

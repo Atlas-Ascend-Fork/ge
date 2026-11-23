@@ -583,14 +583,14 @@ graphStatus ConvertComputeGraphToProto(Graph::DumpFormat format, const ComputeGr
   switch (format) {
     case Graph::DumpFormat::kOnnx: {
       model.SetName(compute_graph->GetName());
-      auto *model_proto = reinterpret_cast<onnx::ModelProto *>(proto);
+      auto *model_proto = static_cast<onnx::ModelProto *>(proto);
       GE_ASSERT_NOTNULL(model_proto);
       GE_ASSERT_TRUE(OnnxUtils::ConvertGeModelToModelProto(model, *model_proto, DumpLevel::DUMP_WITH_OUT_DESC),
                      "[Convert][GeModel] DumpGEGraphToOnnx failed.");
       break;
     }
     case Graph::DumpFormat::kTxt: {
-      auto *model_proto = reinterpret_cast<ge::proto::ModelDef *>(proto);
+      auto *model_proto = static_cast<ge::proto::ModelDef *>(proto);
       GE_ASSERT_NOTNULL(model_proto);
       GE_ASSERT_GRAPH_SUCCESS(model.Save(*model_proto, true));
       break;

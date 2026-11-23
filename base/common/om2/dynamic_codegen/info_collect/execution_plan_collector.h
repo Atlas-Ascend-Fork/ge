@@ -34,7 +34,7 @@ class ExecutionPlanCollector {
   ge::graphStatus AppendKernel(const ge::FastNode &node, const ChainNormalizer &chain_normalizer, uint32_t region_index,
                                ProgramBlock &program_block, uint32_t *appended_kernel_index = nullptr) const;
   ge::graphStatus AnalyzeIf(ge::FastNode &node, CanonicalIfAnalysis &analysis) const;
-  ge::graphStatus AppendIf(ge::FastNode &node, const ChainNormalizer &chain_normalizer,
+  ge::graphStatus AppendIf(const ge::FastNode &node, const ChainNormalizer &chain_normalizer,
                            const CanonicalIfAnalysis &analysis, uint32_t region_index,
                            ProgramBlock &program_block) const;
   ge::graphStatus AppendWhile(const ge::FastNode &node, const ge::ExecuteGraph &execute_graph) const;

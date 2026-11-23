@@ -113,6 +113,7 @@ bool ExecuteGraphBackendUtils::IsNodeInGraphRecursively(const ExecuteGraph *grap
 graphStatus ExecuteGraphBackendUtils::RemoveNodeWithoutRelink(ExecuteGraph *graph, FastNode *node) {
   // 删除父节点前解除直接子图的裸父指针；子图内仍存活的节点和下级父子关系保持有效。
   auto *root_graph = ExecuteGraphUtils::FindRootGraph(graph);
+  GE_ASSERT_NOTNULL(root_graph);
   for (const auto &name : node->GetOpDescBarePtr()->GetSubgraphInstanceNames()) {
     auto *subgraph = root_graph->GetSubGraph(name);
     if (subgraph != nullptr) {

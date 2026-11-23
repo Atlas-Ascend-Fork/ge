@@ -10,6 +10,8 @@
 
 #ifndef AIR_CXX_RUNTIME_V2_CORE_OM2_MODEL_EXECUTOR_H_
 #define AIR_CXX_RUNTIME_V2_CORE_OM2_MODEL_EXECUTOR_H_
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>

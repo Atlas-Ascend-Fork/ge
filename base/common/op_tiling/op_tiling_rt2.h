@@ -12,6 +12,10 @@
 #define GE_COMMON_TILING_OP_TILING_RT2_H_
 
 #include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "graph/operator.h"
 #include "graph/op_desc.h"

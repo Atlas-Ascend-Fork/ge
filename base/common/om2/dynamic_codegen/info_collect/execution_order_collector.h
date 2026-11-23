@@ -21,14 +21,15 @@ namespace om2 {
 enum class ExecutionOrderPolicy : uint8_t { kFifo, kPriority };
 
 struct VirtualDependency {
-  ge::FastNode *src = nullptr;
-  ge::FastNode *dst = nullptr;
+  const ge::FastNode *src = nullptr;
+  const ge::FastNode *dst = nullptr;
 };
 
 class ExecutionOrderCollector {
  public:
-  ge::graphStatus Collect(ge::ExecuteGraph &execute_graph, const std::vector<VirtualDependency> &virtual_dependencies,
-                          ExecutionOrderPolicy policy, std::vector<ge::FastNode *> &ordered_nodes) const;
+  ge::graphStatus Collect(const ge::ExecuteGraph &execute_graph,
+                          const std::vector<VirtualDependency> &virtual_dependencies, ExecutionOrderPolicy policy,
+                          std::vector<const ge::FastNode *> &ordered_nodes) const;
 };
 }  // namespace om2
 }  // namespace gert

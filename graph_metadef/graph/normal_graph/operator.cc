@@ -2912,6 +2912,8 @@ struct ComputeGraphBuildOps {
                                  int32_t dst_index) {
     const auto src_anchor = src->GetOutDataAnchor(src_index);
     const auto dst_anchor = dst->GetInDataAnchor(dst_index);
+    GE_ASSERT_NOTNULL(src_anchor, "GetOutDataAnchor failed, index:%d, op:%s", src_index,
+                      src->GetOpDesc()->GetNamePtr());
     if (dst_anchor == nullptr) {
       GELOGE(GRAPH_FAILED, "GetInDataAnchor failed, index:%d", dst_index);
       REPORT_INNER_ERR_MSG("E18888", "GetInDataAnchor failed, index:%d, op:%s", dst_index,

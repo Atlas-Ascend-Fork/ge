@@ -121,6 +121,7 @@ ge::graphStatus ConvertFromContextToRunInfo(gert::KernelContext *kernel_context,
   run_info.SetAicpuBlockDim(tiling_context->GetAicpuBlockDim());
   run_info.SetClearAtomic(tiling_context->NeedAtomic());
   auto tiling_data = tiling_context->GetRawTilingData();
+  GE_ASSERT_NOTNULL(tiling_data);
   run_info.AddTilingData(reinterpret_cast<ge::char_t *>(tiling_data->GetData()), tiling_data->GetDataSize());
   auto ws = kernel_context->GetOutputPointer<gert::ContinuousVector>(gert::TilingContext::kOutputWorkspace);
   GE_ASSERT_NOTNULL(ws);
@@ -806,6 +807,7 @@ static ge::graphStatus HandleCubeTilingCallback(gert::KernelContext *kernel_cont
   run_info.SetAicpuBlockDim(tiling_context->GetAicpuBlockDim());
   run_info.SetClearAtomic(tiling_context->NeedAtomic());
   auto tiling_data = tiling_context->GetRawTilingData();
+  GE_ASSERT_NOTNULL(tiling_data);
   run_info.AddTilingData(reinterpret_cast<ge::char_t *>(tiling_data->GetData()), tiling_data->GetDataSize());
   return ge::GRAPH_SUCCESS;
 }
