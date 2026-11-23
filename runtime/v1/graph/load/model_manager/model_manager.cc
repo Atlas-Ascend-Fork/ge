@@ -307,8 +307,12 @@ Status MallocFeatureMemory(const GraphId &graph_id, const uint32_t model_id, con
   GE_ASSERT((memory != nullptr), "Get feature address failed by external allocator, graph_id:%u.", graph_id);
 
   if (graph_node->GetLoadFlag()) {
-    GE_ASSERT_SUCCESS(ModelManager::GetInstance().UpdateFeatureMemoryBase(model_id, PtrToValue(memory), size),
-                      "Failed to update feature memory base, graph_id = %u, model_id = %u", graph_id, model_id);
+    const Status ret = ModelManager::GetInstance().UpdateFeatureMemoryBase(model_id, PtrToValue(memory), size);
+    if (ret != SUCCESS) {
+      GELOGE(ret, "Failed to update feature memory base, graph_id = %u, model_id = %u", graph_id, model_id);
+      mem_block->Free();
+      return ret;
+    }
   }
   if (graph_node->GetRefreshableFeatureMemoryBase().first != nullptr) {
     graph_node->SetRefreshableFeatureMemoryBase(memory, size);
@@ -1289,6 +1293,7 @@ Status ModelManager::HandleDumpCommand(const Command &cmd_info) {
 
   auto &ref_dump_properties = ModelManager::GetInstance().dump_properties_;
   if ((dump_status == "off") || (dump_status == "OFF")) {
+    const std::lock_guard<std::mutex> lk(ModelManager::GetInstance().dump_properties_mutex_);
     ref_dump_properties.DeletePropertyValue(dump_model);
     return SUCCESS;
   }
@@ -1318,9 +1323,12 @@ Status ModelManager::HandleDumpCommand(const Command &cmd_info) {
   }
   GELOGI("dump mode = %s", dump_mode.c_str());
 
-  ref_dump_properties.AddPropertyValue(dump_model, dump_layers);
-  ref_dump_properties.SetDumpPath(dump_path);
-  ref_dump_properties.SetDumpMode(dump_mode);
+  {
+    const std::lock_guard<std::mutex> lk(ModelManager::GetInstance().dump_properties_mutex_);
+    ref_dump_properties.AddPropertyValue(dump_model, dump_layers);
+    ref_dump_properties.SetDumpPath(dump_path);
+    ref_dump_properties.SetDumpMode(dump_mode);
+  }
   return SUCCESS;
 }
 
@@ -1711,7 +1719,12 @@ void ModelManager::SetDumpProperties(const std::shared_ptr<DavinciModel> &davinc
   if (DumpManager::GetInstance().GetDumpProperties(kOfflineSessionId).IsDumpOpen()) {
     davinci_model->SetDumpProperties(DumpManager::GetInstance().GetDumpProperties(kOfflineSessionId));
   } else {
-    davinci_model->SetDumpProperties(dump_properties_);
+    DumpProperties dump_properties;
+    {
+      const std::lock_guard<std::mutex> lk(dump_properties_mutex_);
+      dump_properties = dump_properties_;
+    }
+    davinci_model->SetDumpProperties(dump_properties);
   }
 }
 
@@ -1740,7 +1753,12 @@ Status ModelManager::LoadModelWithoutQ(uint32_t &model_id, const GeRootModelPtr 
 
   GenModelId(model_id);
   davinci_model->SetId(model_id);
-  davinci_model->SetDumpProperties(dump_properties_);
+  DumpProperties dump_properties;
+  {
+    const std::lock_guard<std::mutex> lk(dump_properties_mutex_);
+    dump_properties = dump_properties_;
+  }
+  davinci_model->SetDumpProperties(dump_properties);
   davinci_model->SetNeedModelConfig(true);
   int32_t device_id = -1;
   GE_CHK_ACL_RET(aclrtGetDevice(&device_id));
@@ -2472,8 +2490,18 @@ Status ModelManager::SyncExecuteHybridModel(const uint32_t model_id, const std::
 
 Status ModelManager::GetOpDescInfo(const uint32_t device_id, const uint32_t stream_id, const uint32_t task_id,
                                    OpDescInfo &desc_info) const {
-  for (const auto &model : model_map_) {
-    const auto davinci_model = model.second;
+  std::vector<std::shared_ptr<DavinciModel>> davinci_models;
+  std::vector<std::shared_ptr<hybrid::HybridDavinciModel>> hybrid_models;
+  {
+    const std::lock_guard<std::recursive_mutex> lk(map_mutex_);
+    for (const auto &model : model_map_) {
+      davinci_models.push_back(model.second);
+    }
+    for (const auto &model : hybrid_model_map_) {
+      hybrid_models.push_back(model.second);
+    }
+  }
+  for (const auto &davinci_model : davinci_models) {
     if (davinci_model->GetDeviceId() == device_id) {
       GELOGI("[Get][OpDescInfo] Start to GetOpDescInfo of device_id %u in davinci model.", device_id);
       if (davinci_model->GetOpDescInfo(stream_id, task_id, desc_info)) {
@@ -2483,8 +2511,7 @@ Status ModelManager::GetOpDescInfo(const uint32_t device_id, const uint32_t stre
       }
     }
   }
-  for (const auto &model : hybrid_model_map_) {
-    const auto hybrid_model = model.second;
+  for (const auto &hybrid_model : hybrid_models) {
     if (hybrid_model->GetDeviceId() == device_id) {
       GELOGI("[Get][OpDescInfo] Start to GetOpDescInfo of device_id %u in hybrid model.", device_id);
       if (hybrid_model->GetOpDescInfo(stream_id, task_id, desc_info)) {
@@ -2614,6 +2641,13 @@ Status ModelManager::LaunchKernelCheckAicpuOp(const std::vector<std::string> &ai
   const uint64_t res_op_nums = op_check_info_res.opListNum;
   GELOGI("Check aicpu type, is without json: %d, res op num: %" PRIu64 ".",
          static_cast<int32_t>(op_check_info_res.isWithoutJson), res_op_nums);
+  if (res_op_nums > static_cast<uint64_t>(op_nums)) {
+    REPORT_INNER_ERR_MSG("E19999", "res_op_nums %" PRIu64 " is greater than requested op_nums %zu, check invalid",
+                         res_op_nums, op_nums);
+    GELOGE(FAILED, "[Check][Param] Aicpu checkOpType response op nums %" PRIu64 " is greater than requested %zu.",
+           res_op_nums, op_nums);
+    return FAILED;
+  }
   if (res_op_nums != 0U) {
     std::vector<ReturnCode> res_ret_code_list(res_op_nums);
     std::vector<SysOpInfo> res_aicpu_op_info_list(res_op_nums);
@@ -2795,8 +2829,15 @@ void ModelManager::getDevMsgCallback(const char_t *const msg, const uint32_t len
 
 Status ModelManager::LoadTaskForDavinciModel(const DumpProperties &dump_properties) {
   const std::lock_guard<std::mutex> lk(dump_regis_mutex_);
-  for (const auto &model : model_map_) {
-    const auto davinci_model = model.second;
+  std::vector<std::shared_ptr<DavinciModel>> davinci_models;
+  {
+    const std::lock_guard<std::recursive_mutex> map_lk(map_mutex_);
+    davinci_models.reserve(model_map_.size());
+    for (const auto &model : model_map_) {
+      davinci_models.push_back(model.second);
+    }
+  }
+  for (const auto &davinci_model : davinci_models) {
     davinci_model->SetDumpProperties(dump_properties);
     davinci_model->ReLoadDumpInfo();
   }
@@ -2806,8 +2847,15 @@ Status ModelManager::LoadTaskForDavinciModel(const DumpProperties &dump_properti
 Status ModelManager::UnloadTaskForDavinciModel(const DumpProperties &dump_properties) {
   (void)dump_properties;
   const std::lock_guard<std::mutex> lk(dump_regis_mutex_);
-  for (const auto &model : model_map_) {
-    const auto davinci_model = model.second;
+  std::vector<std::shared_ptr<DavinciModel>> davinci_models;
+  {
+    const std::lock_guard<std::recursive_mutex> map_lk(map_mutex_);
+    davinci_models.reserve(model_map_.size());
+    for (const auto &model : model_map_) {
+      davinci_models.push_back(model.second);
+    }
+  }
+  for (const auto &davinci_model : davinci_models) {
     int32_t device_id = 0;
     bool is_set = false;
     if ((aclrtGetDevice(&device_id) != ACL_SUCCESS) || (device_id < 0)) {

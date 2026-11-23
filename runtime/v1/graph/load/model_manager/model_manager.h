@@ -432,7 +432,7 @@ class ModelManager {
   std::map<uint32_t, ScalableAllocatorManager> model_built_allocator_;
   std::map<std::string, std::vector<uint64_t>> model_aicpu_kernel_;
   std::atomic<uint32_t> max_model_id_ = 1U;
-  std::recursive_mutex map_mutex_;
+  mutable std::recursive_mutex map_mutex_;
   std::map<uint64_t, std::set<uint32_t>> sess_id_to_device_ids_;
   std::mutex cust_aicpu_mutex_;
   std::map<uintptr_t, std::map<std::string, AICPUKernelHolder>> cust_aicpu_so_;
