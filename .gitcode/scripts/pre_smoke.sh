@@ -43,17 +43,34 @@ arm_package_dflow="cann-dflow_linux-aarch64.run"
 arm_package_compiler="cann-ge-compiler_linux-aarch64.run"
 arm_package_executor="cann-ge-executor_linux-aarch64.run"
 
-wget -nv -O "${arm_package_dflow}"     "${dflow_url}" || true
-wget -nv -O "${arm_package_compiler}"  "${compiler_url}" || true
-wget -nv -O "${arm_package_executor}"  "${executor_url}" || true
-
-if { [ ! -f "${arm_package_dflow}" ] || [ ! -s "${arm_package_dflow}" ]; } && \
-   { [ ! -f "${arm_package_compiler}" ] || [ ! -s "${arm_package_compiler}" ]; } && \
-   { [ ! -f "${arm_package_executor}" ] || [ ! -s "${arm_package_executor}" ]; }; then
-    echo "No custom package found, This PR no need execute smoke."
-    rm -f ${arm_package_dflow} ${arm_package_compiler} ${arm_package_executor}
-    exit 0
+# compile 阶段跳过时(仅改 md/docs 等文件, build.sh 返回 200), ge_compile.sh 会上传
+# 0 字节的 empty.run 占位包。以 empty.run 为显式跳过标记: 三包全为占位则跳过冒烟;
+# URL 为空/部分占位属 compile 产出链异常, 走下方下载失败分支 exit 1。
+skip_count=0
+for url in "${dflow_url:-}" "${compiler_url:-}" "${executor_url:-}"; do
+  [ "$(basename "${url}")" = "empty.run" ] && skip_count=$((skip_count + 1))
+done
+if [ "${skip_count}" -eq 3 ]; then
+  echo "[PreSmoke] Compile stage skipped (only md/docs changed, empty.run placeholder), no need to execute smoke."
+  exit 0
 fi
+
+download_package() {
+  local url="$1" package="$2"
+  echo "Downloading ${package} from ${url}"
+  if [ -z "${url}" ] || ! wget -nv --tries=3 --timeout=60 -O "${package}" "${url}"; then
+    echo "[PreSmoke] ERROR: failed to download ${package} (url: ${url:-<empty>})" >&2
+    return 1
+  fi
+  if [ ! -s "${package}" ]; then
+    echo "[PreSmoke] ERROR: downloaded ${package} is empty (url: ${url})" >&2
+    return 1
+  fi
+}
+
+download_package "${dflow_url:-}" "${arm_package_dflow}" || exit 1
+download_package "${compiler_url:-}" "${arm_package_compiler}" || exit 1
+download_package "${executor_url:-}" "${arm_package_executor}" || exit 1
 
 chmod +x "${arm_package_dflow}"
 echo "y" | bash "${arm_package_dflow}" --full --install-path=/usr/local/Ascend --quiet
