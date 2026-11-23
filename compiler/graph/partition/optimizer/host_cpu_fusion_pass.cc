@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <future>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -20,12 +21,14 @@
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "framework/common/debug/ge_log.h"
 #include "framework/common/host_cpu_fusion_attr.h"
 #include "common/ge_common/ge_types.h"
 #include "common/helper/custom_op_registry_builder.h"
 #include "common/helper/custom_op_so_loader.h"
+#include "common/thread_pool/thread_pool.h"
 #include "common/util/mem_utils.h"
 #include "host_cpu_engine/host_cpu_engine.h"
 #include "graph/custom_op_factory.h"
@@ -34,11 +37,17 @@
 #include "graph/utils/attr_utils.h"
 #include "graph/utils/graph_utils.h"
 #include "graph/utils/node_utils.h"
+#include "register/pass_option_utils.h"
 
 namespace ge {
 namespace {
 constexpr size_t kMaxGeneratedSoSize = 10U * 1024U * 1024U;
+// 多链 JIT 并行编译线程数上限：单链编译即占满一个核，超过物理核数无收益且加剧内存峰值。
+constexpr uint32_t kMaxJitCompileThreads = 8U;
+// 跨区域分量合并后的节点数上限：生成源码规模随节点数增长，留出裕量避免触碰 kMaxGeneratedSourceSize。
+constexpr size_t kMaxMergedRegionNodes = 64U;
 constexpr char kHostCpuEngineName[] = "DNN_VM_HOST_CPU";
+constexpr char kHostCpuFusionPassName[] = "HostCpuFusionPass";
 constexpr char kHostCpuKernelLibName[] = "DNN_VM_HOST_CPU_OP_STORE";
 constexpr char kSmallShapeHostCpu[] = "SmallShapeHostcpu";
 constexpr char kResourceListAttr[] = "_resource_list";
@@ -442,7 +451,8 @@ bool HasNewNpuDependency(const HostCpuFusionRegion &region) {
     }
     const OpDescPtr op_desc = current->GetOpDesc();
     if ((op_desc != nullptr) &&
-        ((op_desc->GetOpEngineName() == kEngineNameAiCore) || (op_desc->GetOpEngineName() == kEngineNameVectorCore))) {
+        ((op_desc->GetOpEngineName() == kEngineNameAiCore) || (op_desc->GetOpEngineName() == kEngineNameVectorCore) ||
+         (op_desc->GetOpEngineName() == kEngineNameAiCpu) || (op_desc->GetOpEngineName() == kEngineNameAiCpuTf))) {
       std::deque<NodePtr> ancestors_pending{current};
       std::unordered_set<const Node *> ancestors;
       while (!ancestors_pending.empty()) {
@@ -572,6 +582,27 @@ Status BuildComponentRegions(const ComputeGraphPtr &graph, const std::vector<Nod
   if (std::any_of(regions.cbegin(), regions.cend(), HasNewNpuDependency)) {
     GELOGW("Skip HostCPU fusion component[%zu]: fusion would add a prerequisite to an NPU node.", component_index);
     return NOT_CHANGED;
+  }
+  if (regions.size() > 1U) {
+    SinkAncestorGroup combined_group;
+    for (const auto &region : regions) {
+      for (const auto &node : region.nodes) {
+        combined_group.ancestors.emplace(node.get());
+      }
+    }
+    if (combined_group.ancestors.size() <= kMaxMergedRegionNodes) {
+      auto combined = BuildRegionForSinkGroup(topological_nodes, combined_group);
+      for (const auto &region : regions) {
+        combined.external_outputs.insert(combined.external_outputs.end(), region.external_outputs.begin(),
+                                         region.external_outputs.end());
+      }
+      if (!HasPathLeavingAndReenteringRegion(combined) && !HasNewNpuDependency(combined)) {
+        // Branch regions can contain the same ancestors. Execute them once when their union is safe.
+        GELOGI("HostCPU fusion combines %zu branch regions into %zu unique nodes.", regions.size(),
+               combined.nodes.size());
+        regions = {std::move(combined)};
+      }
+    }
   }
   return FinalizeComponentRegions(graph, component_index, regions);
 }
@@ -1073,6 +1104,61 @@ Status BuildHostCpuFusionComponent(const ComputeGraphPtr &graph, const std::vect
   return region_status;
 }
 
+// 合并单区域分量以减少自定义算子入口；输出物化和释放仍按输出保留。
+// 候选分量之间可能经过非候选节点间接相连，联合区域必须重新检查回入和设备依赖。
+// 多区域分量可能重复包含共享祖先，不参与合并；节点总数超过上限时保持独立。
+void MergeSingleRegionComponents(const ComputeGraphPtr &graph,
+                                 std::vector<std::vector<HostCpuFusionRegion>> &component_regions) {
+  if (component_regions.size() < 2U) {
+    return;
+  }
+  std::vector<size_t> mergeable;
+  size_t merged_nodes = 0U;
+  for (size_t index = 0U; index < component_regions.size(); ++index) {
+    if (component_regions[index].size() != 1U) {
+      continue;
+    }
+    const size_t node_count = component_regions[index][0].nodes.size();
+    if ((merged_nodes + node_count) > kMaxMergedRegionNodes) {
+      continue;
+    }
+    merged_nodes += node_count;
+    mergeable.emplace_back(index);
+  }
+  if (mergeable.size() < 2U) {
+    return;
+  }
+  HostCpuFusionRegion merged;
+  std::unordered_set<const OutDataAnchor *> seen_inputs;
+  for (const size_t index : mergeable) {
+    const auto &region = component_regions[index][0];
+    merged.nodes.insert(merged.nodes.end(), region.nodes.begin(), region.nodes.end());
+    for (const auto &input : region.external_inputs) {
+      if ((input != nullptr) && seen_inputs.emplace(input.get()).second) {
+        merged.external_inputs.emplace_back(input);
+      }
+    }
+    merged.external_outputs.insert(merged.external_outputs.end(), region.external_outputs.begin(),
+                                   region.external_outputs.end());
+  }
+  if (HasPathLeavingAndReenteringRegion(merged) || HasNewNpuDependency(merged)) {
+    GELOGI("Keep HostCPU fusion components separate: merged region changes external dependencies.");
+    return;
+  }
+  merged.chain_id = MakeChainId(graph->GetName(), merged.nodes, 0U, 0U);
+  GELOGI("HostCPU fusion merged %zu single-region components into chain[%s]: nodes=%zu, inputs=%zu, outputs=%zu.",
+         mergeable.size(), merged.chain_id.c_str(), merged.nodes.size(), merged.external_inputs.size(),
+         merged.external_outputs.size());
+  std::vector<std::vector<HostCpuFusionRegion>> result;
+  result.emplace_back(std::vector<HostCpuFusionRegion>{std::move(merged)});
+  for (size_t index = 0U; index < component_regions.size(); ++index) {
+    if (std::find(mergeable.begin(), mergeable.end(), index) == mergeable.end()) {
+      result.emplace_back(std::move(component_regions[index]));
+    }
+  }
+  component_regions = std::move(result);
+}
+
 Status HostCpuFusionPass::BuildFusionRegions(const ComputeGraphPtr &graph,
                                              std::vector<std::vector<HostCpuFusionRegion>> &component_regions,
                                              bool *has_unsafe_region) const {
@@ -1112,6 +1198,7 @@ Status HostCpuFusionPass::BuildFusionRegions(const ComputeGraphPtr &graph,
       return status;
     }
   }
+  MergeSingleRegionComponents(graph, component_regions);
   if (component_regions.empty()) {
     GELOGD("HostCPU fusion found no fusible components: graph[%s], candidates=%zu.", graph->GetName().c_str(),
            candidates.size());
@@ -1125,27 +1212,61 @@ Status PrepareHostCpuFusionGraph(const PlannedGraphFusion &plan, const std::shar
                                  bool &preparation_failed) {
   preparation_failed = false;
   prepared_graph.graph = plan.graph;
+  // 先按序完成全部区域的源码生成（轻量），再统一编译；区域顺序保持不变，提交结果与串行实现一致。
+  std::vector<PreparedFusionRegion> prepared_regions;
   for (const auto &regions : plan.components) {
     for (const auto &region : regions) {
       PreparedFusionRegion prepared;
       prepared.region = region;
-      Status status = codegen.Generate(region, prepared.codegen);
-      if (status == SUCCESS) {
-        status = compiler->Compile(prepared.codegen.source, prepared.codegen.so_data);
-      }
-      if ((status != SUCCESS) || !IsValidFusedHostCpuSoElf(prepared.codegen.so_data)) {
-        GELOGW("Skip HostCPU fusion chain[%s]: graph[%s], status=%u, source_size=%zu, so_size=%zu, elf_valid=%d.",
-               region.chain_id.c_str(), plan.graph->GetName().c_str(), status, prepared.codegen.source.size(),
-               prepared.codegen.so_data.size(),
-               static_cast<int32_t>(IsValidFusedHostCpuSoElf(prepared.codegen.so_data)));
+      const Status gen_status = codegen.Generate(region, prepared.codegen);
+      if (gen_status != SUCCESS) {
+        GELOGW("Skip HostCPU fusion chain[%s]: graph[%s], codegen status=%u, source_size=%zu.", region.chain_id.c_str(),
+               plan.graph->GetName().c_str(), gen_status, prepared.codegen.source.size());
         preparation_failed = true;
         return NOT_CHANGED;
       }
-      GELOGD("HostCPU fusion prepared chain[%s]: graph[%s], source_size=%zu, so_size=%zu.", region.chain_id.c_str(),
-             plan.graph->GetName().c_str(), prepared.codegen.source.size(), prepared.codegen.so_data.size());
-      prepared_graph.regions.emplace_back(std::move(prepared));
+      prepared_regions.emplace_back(std::move(prepared));
     }
   }
+
+  std::vector<Status> compile_results(prepared_regions.size(), SUCCESS);
+  if (prepared_regions.size() == 1U) {
+    compile_results[0] = compiler->Compile(prepared_regions[0].codegen.source, prepared_regions[0].codegen.so_data);
+  } else if (!prepared_regions.empty()) {
+    // 多链 JIT 编译并行化：单链 g++ 编译为 CPU 密集操作（秒级），多 host 链大图的编译耗时不再随链数线性累加。
+    const uint32_t thread_num = static_cast<uint32_t>(std::min<size_t>(prepared_regions.size(), kMaxJitCompileThreads));
+    ThreadPool jit_pool("hc_fusion_jit", thread_num, true);
+    std::vector<std::future<Status>> futures;
+    futures.reserve(prepared_regions.size());
+    for (auto &prepared : prepared_regions) {
+      futures.emplace_back(jit_pool.commit(
+          [&prepared, compiler]() { return compiler->Compile(prepared.codegen.source, prepared.codegen.so_data); }));
+    }
+    for (size_t i = 0U; i < futures.size(); ++i) {
+      if (!futures[i].valid()) {
+        GELOGE(FAILED, "HostCPU fusion JIT compile task[%zu] future is invalid.", i);
+        compile_results[i] = FAILED;
+        continue;
+      }
+      compile_results[i] = futures[i].get();
+    }
+  }
+
+  for (size_t i = 0U; i < prepared_regions.size(); ++i) {
+    const auto &prepared = prepared_regions[i];
+    if ((compile_results[i] != SUCCESS) || !IsValidFusedHostCpuSoElf(prepared.codegen.so_data)) {
+      GELOGW("Skip HostCPU fusion chain[%s]: graph[%s], status=%u, source_size=%zu, so_size=%zu, elf_valid=%d.",
+             prepared.region.chain_id.c_str(), plan.graph->GetName().c_str(), compile_results[i],
+             prepared.codegen.source.size(), prepared.codegen.so_data.size(),
+             static_cast<int32_t>(IsValidFusedHostCpuSoElf(prepared.codegen.so_data)));
+      preparation_failed = true;
+      return NOT_CHANGED;
+    }
+    GELOGD("HostCPU fusion prepared chain[%s]: graph[%s], source_size=%zu, so_size=%zu.",
+           prepared.region.chain_id.c_str(), plan.graph->GetName().c_str(), prepared.codegen.source.size(),
+           prepared.codegen.so_data.size());
+  }
+  prepared_graph.regions = std::move(prepared_regions);
   return SUCCESS;
 }
 
@@ -1154,6 +1275,14 @@ Status HostCpuFusionPass::Run(const ComputeGraphPtr &graph, NodeEngineMap &node_
   if (graph == nullptr) {
     GELOGE(PARAM_INVALID, "HostCPU fusion Run received null graph.");
     return PARAM_INVALID;
+  }
+
+  // 显式开关：通过 ge.optimizationSwitch 配置 "HostCpuFusionPass:off" 时跳过融合（引擎切换结果保留），
+  // 用于 A/B 性能对比与非劣化验证；未配置时保持原有行为（继续融合）。
+  bool fusion_enabled = false;
+  if ((PassOptionUtils::CheckIsPassEnabled(kHostCpuFusionPassName, fusion_enabled) == SUCCESS) && !fusion_enabled) {
+    GELOGI("HostCPU fusion is disabled by optimization switch, skip graph[%s].", graph->GetName().c_str());
+    return NOT_CHANGED;
   }
 
   std::vector<ComputeGraphPtr> graphs{graph};

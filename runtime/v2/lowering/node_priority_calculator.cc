@@ -228,7 +228,8 @@ ge::graphStatus NodePriorityCalculator::CalcNodeExecutionPriorities(const std::v
   int64_t launch_priority = 0;
   for (const auto node : main_graph_nodes) {
     GE_ASSERT_TRUE(CheckNodeIdValid(node, root_all_nodes_cnt));
-    if (IsLaunchOrHasSubGraphNode(node)) {
+    // Give generated Host fusion its compute priority before Free nodes propagate device priorities to it.
+    if (IsLaunchOrHasSubGraphNode(node) || (strcmp(node->GetTypePtr(), "ExecuteHostCustomOpAndSplit") == 0)) {
       // 只收集if case
       if (IsIfOrCaseType(node->GetTypePtr())) {
         if_sub_graph_nodes.push_back(node);

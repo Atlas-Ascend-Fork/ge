@@ -70,6 +70,7 @@ REGISTER_PROF_TYPE(LaunchMixKernelV2);
 REGISTER_PROF_TYPE(ExecuteCustomOp);
 REGISTER_PROF_TYPE(ExecuteCustomOpWithInferShape);
 REGISTER_PROF_TYPE(ExecuteHostCustomOp);
+REGISTER_PROF_TYPE(ExecuteHostCustomOpAndSplit);
 REGISTER_PROF_TYPE(ExecuteHostCustomOpWithInferShape);
 REGISTER_PROF_NON_LAUNCH_TYPE(AICoreUpdateContext);
 REGISTER_PROF_NON_LAUNCH_TYPE(AICpuUpdateContext);

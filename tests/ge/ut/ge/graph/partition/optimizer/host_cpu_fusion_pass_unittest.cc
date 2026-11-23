@@ -321,13 +321,79 @@ void ExpectExistingFusedNodeRollsBack(const bool with_existing_so) {
 
 TEST(HostCpuFusionPassTest, KeepsSharedAncestorBranchesInSingleRegion) {
   const auto graph = BuildSplitGraph();
+  const auto left = graph->FindNode("left");
+  const auto left_out = graph->FindNode("left_out");
+  const auto tail = AddNode(graph, "left_tail", "HostTail", 1U, 1U);
+  MarkHostCpuCandidate(tail);
+  ASSERT_EQ(GraphUtils::RemoveEdge(left->GetOutDataAnchor(0), left_out->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  Connect(left, 0U, tail, 0U);
+  Connect(tail, 0U, left_out, 0U);
+
   HostCpuFusionPass pass(std::make_shared<MinimalCustomOpCompiler>(), SupportAll);
   std::vector<std::vector<HostCpuFusionRegion>> components;
   ASSERT_EQ(pass.BuildFusionRegions(graph, components), SUCCESS);
   ASSERT_EQ(components.size(), 1U);
   ASSERT_EQ(components[0].size(), 1U);
-  EXPECT_EQ(components[0][0].nodes.size(), 5U);
-  EXPECT_EQ(components[0][0].external_outputs.size(), 2U);
+  const auto &region = components[0][0];
+  EXPECT_EQ(region.nodes.size(), 6U);
+  EXPECT_EQ(std::count(region.nodes.begin(), region.nodes.end(), graph->FindNode("first")), 1);
+  EXPECT_EQ(region.external_inputs, (std::vector<OutDataAnchorPtr>{graph->FindNode("data")->GetOutDataAnchor(0)}));
+  ASSERT_EQ(region.external_outputs.size(), 2U);
+  EXPECT_TRUE(
+      std::any_of(region.external_outputs.begin(), region.external_outputs.end(),
+                  [&tail](const HostCpuFusionOutput &output) { return output.source == tail->GetOutDataAnchor(0); }));
+}
+
+TEST(HostCpuFusionPassTest, MergesIndependentComponentsWithSharedInput) {
+  const auto graph = std::make_shared<ComputeGraph>("independent_components");
+  const auto data = AddNode(graph, "data", "Data", 0U, 1U);
+  const auto output = AddNode(graph, "output", "NetOutput", 2U, 0U);
+  constexpr size_t kNodesPerChain = 5U;
+  std::vector<NodePtr> expected_nodes;
+  for (size_t chain = 0U; chain < 2U; ++chain) {
+    auto previous = data;
+    for (size_t index = 0U; index < kNodesPerChain; ++index) {
+      const auto node = AddNode(graph, "host_" + std::to_string(chain) + "_" + std::to_string(index), "HostOp", 1U, 1U);
+      MarkHostCpuCandidate(node);
+      Connect(previous, 0U, node, 0U);
+      expected_nodes.emplace_back(node);
+      previous = node;
+    }
+    Connect(previous, 0U, output, chain);
+  }
+
+  HostCpuFusionPass pass(std::make_shared<MinimalCustomOpCompiler>(), SupportAll);
+  std::vector<std::vector<HostCpuFusionRegion>> components;
+  ASSERT_EQ(pass.BuildFusionRegions(graph, components), SUCCESS);
+  ASSERT_EQ(components.size(), 1U);
+  ASSERT_EQ(components.front().size(), 1U);
+  const auto &merged = components.front().front();
+  EXPECT_EQ(merged.nodes, expected_nodes);
+  EXPECT_EQ(merged.external_inputs, (std::vector<OutDataAnchorPtr>{data->GetOutDataAnchor(0)}));
+  ASSERT_EQ(merged.external_outputs.size(), 2U);
+  for (size_t chain = 0U; chain < 2U; ++chain) {
+    EXPECT_EQ(merged.external_outputs[chain].source,
+              expected_nodes[(chain + 1U) * kNodesPerChain - 1U]->GetOutDataAnchor(0));
+    EXPECT_EQ(merged.external_outputs[chain].consumers,
+              (std::vector<InDataAnchorPtr>{output->GetInDataAnchor(static_cast<int32_t>(chain))}));
+  }
+
+  const auto bridge = AddNode(graph, "bridge", "Identity", 1U, 1U);
+  const auto &first_tail = expected_nodes[kNodesPerChain - 1U];
+  const auto &second_head = expected_nodes[kNodesPerChain];
+  ASSERT_EQ(GraphUtils::RemoveEdge(data->GetOutDataAnchor(0), second_head->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  Connect(first_tail, 0U, bridge, 0U);
+  Connect(bridge, 0U, second_head, 0U);
+
+  ASSERT_EQ(pass.BuildFusionRegions(graph, components), SUCCESS);
+  ASSERT_EQ(components.size(), 2U);
+  ASSERT_EQ(components[0].size(), 1U);
+  ASSERT_EQ(components[1].size(), 1U);
+  EXPECT_EQ(components[0][0].nodes.size(), kNodesPerChain);
+  EXPECT_EQ(components[0][0].nodes.back(), first_tail);
+  EXPECT_EQ(components[1][0].nodes.size(), kNodesPerChain);
+  EXPECT_EQ(components[1][0].nodes.front(), second_head);
+  EXPECT_EQ(components[1][0].external_inputs, (std::vector<OutDataAnchorPtr>{bridge->GetOutDataAnchor(0)}));
 }
 
 TEST(HostCpuFusionPassTest, RejectsComponentsBelowFiveCandidateNodes) {

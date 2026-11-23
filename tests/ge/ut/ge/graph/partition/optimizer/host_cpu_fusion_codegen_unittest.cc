@@ -18,6 +18,7 @@
 
 #include "graph/ge_local_context.h"
 #include "graph/partition/optimizer/host_cpu_fusion_codegen.h"
+#include "graph/utils/attr_utils.h"
 #include "graph/utils/graph_utils.h"
 
 namespace ge {
@@ -45,8 +46,8 @@ std::string GetToolkitOpp(const std::string &home) {
 }
 
 NodePtr AddNode(const ComputeGraphPtr &graph, const std::string &name, const std::string &type,
-                const size_t input_count, const size_t output_count) {
-  const GeTensorDesc desc(GeShape({2}), FORMAT_ND, DT_INT64);
+                const size_t input_count, const size_t output_count,
+                const GeTensorDesc &desc = GeTensorDesc(GeShape({2}), FORMAT_ND, DT_INT64)) {
   auto op_desc = std::make_shared<OpDesc>(name, type);
   for (size_t i = 0U; i < input_count; ++i) {
     EXPECT_EQ(op_desc->AddInputDesc("input" + std::to_string(i), desc), GRAPH_SUCCESS);
@@ -192,6 +193,69 @@ TEST(HostCpuFusionCodegenTest, GeneratesCurrentCustomOpSourceAndInternalBindings
   EXPECT_NE(result.source.find("first\\n\\\""), std::string::npos);
 }
 
+TEST(HostCpuFusionCodegenTest, GeneratesScalarGatherAndBranchedArithmetic) {
+  auto graph = std::make_shared<ComputeGraph>("scalar_branch");
+  const GeTensorDesc scalar(GeShape(), FORMAT_ND, DT_INT64);
+  const GeTensorDesc scalar_index(GeShape(), FORMAT_ND, DT_INT32);
+  const GeTensorDesc vector(GeShape({3}), FORMAT_ND, DT_INT64);
+  const auto params = AddNode(graph, "params", "Data", 0U, 1U, vector);
+  const auto indices = AddNode(graph, "indices", "Data", 0U, 1U, scalar_index);
+  const auto axis = AddNode(graph, "axis", "Data", 0U, 1U, scalar);
+  const auto operand = AddNode(graph, "operand", "Data", 0U, 1U, scalar);
+  const auto gather = AddNode(graph, "gather", "GatherV2", 3U, 1U, scalar);
+  const auto add = AddNode(graph, "add", "Add", 2U, 1U, scalar);
+  const auto mul = AddNode(graph, "mul", "Mul", 2U, 1U, scalar);
+  const auto output = AddNode(graph, "output", "NetOutput", 2U, 0U, scalar);
+  ASSERT_EQ(gather->GetOpDesc()->UpdateInputDesc(0U, vector), GRAPH_SUCCESS);
+  ASSERT_EQ(gather->GetOpDesc()->UpdateInputDesc(1U, scalar_index), GRAPH_SUCCESS);
+  ASSERT_TRUE(AttrUtils::SetInt(gather->GetOpDesc(), "batch_dims", 0));
+  AddEdge(params, 0U, gather, 0U);
+  AddEdge(indices, 0U, gather, 1U);
+  AddEdge(axis, 0U, gather, 2U);
+  AddEdge(gather, 0U, add, 0U);
+  AddEdge(operand, 0U, add, 1U);
+  AddEdge(gather, 0U, mul, 0U);
+  AddEdge(operand, 0U, mul, 1U);
+  AddEdge(add, 0U, output, 0U);
+  AddEdge(mul, 0U, output, 1U);
+
+  HostCpuFusionRegion region;
+  region.chain_id = "scalar_branch";
+  region.nodes = {gather, add, mul};
+  region.external_inputs = {params->GetOutDataAnchor(0), indices->GetOutDataAnchor(0), axis->GetOutDataAnchor(0),
+                            operand->GetOutDataAnchor(0)};
+  region.external_outputs = {{add->GetOutDataAnchor(0), {output->GetInDataAnchor(0)}},
+                             {mul->GetOutDataAnchor(0), {output->GetInDataAnchor(1)}}};
+  HostCpuFusionCodegenResult result;
+  ASSERT_EQ(HostCpuFusionCodegen().Generate(region, result), SUCCESS);
+  EXPECT_NE(result.source.find("TryScalarGather<int64_t, int32_t, int64_t>(TensorView(external_input_0)"),
+            std::string::npos);
+  EXPECT_NE(result.source.find("__builtin_add_overflow(scalar_value_0, scalar_input_3, &scalar_value_1)"),
+            std::string::npos);
+  EXPECT_NE(result.source.find("__builtin_mul_overflow(scalar_value_0, scalar_input_3, &scalar_value_2)"),
+            std::string::npos);
+  EXPECT_NE(result.source.find("std::memcpy(external_output_0->GetAddr(), &scalar_value_1"), std::string::npos);
+  EXPECT_NE(result.source.find("std::memcpy(external_output_1->GetAddr(), &scalar_value_2"), std::string::npos);
+
+  ASSERT_TRUE(AttrUtils::SetInt(gather->GetOpDesc(), "batch_dims", 1));
+  ASSERT_EQ(HostCpuFusionCodegen().Generate(region, result), SUCCESS);
+  EXPECT_EQ(result.source.find("TryScalarGather<int64_t, int32_t, int64_t>"), std::string::npos);
+  EXPECT_NE(result.source.find("LocalKernelContext<3U, 1U> kernel_context_0"), std::string::npos);
+}
+
+TEST(HostCpuFusionCodegenTest, SelectsHeapStorageForLargeInternalTensor) {
+  auto graph = std::make_shared<ComputeGraph>("large_internal_tensor");
+  const auto region = BuildValidRegion(graph);
+  const GeTensorDesc large_desc(GeShape({8193}), FORMAT_ND, DT_INT64);
+  ASSERT_EQ(region.nodes[0]->GetOpDesc()->UpdateOutputDesc(0U, large_desc), GRAPH_SUCCESS);
+  ASSERT_EQ(region.nodes[1]->GetOpDesc()->UpdateInputDesc(0U, large_desc), GRAPH_SUCCESS);
+
+  HostCpuFusionCodegenResult result;
+  ASSERT_EQ(HostCpuFusionCodegen().Generate(region, result), SUCCESS);
+  EXPECT_NE(result.source.find("std::unique_ptr<unsigned char[]> internal_storage("), std::string::npos);
+  EXPECT_NE(result.source.find("internal_storage_data + 0U, 65544U"), std::string::npos);
+}
+
 TEST(HostCpuFusionCodegenTest, CoversRegionValidationAndTensorFailures) {
   HostCpuFusionCodegen codegen;
   HostCpuFusionCodegenResult result;
@@ -270,12 +334,16 @@ TEST(HostCpuFusionCodegenTest, CompilesSourceAndRejectsInvalidSource) {
   std::vector<uint8_t> so_data;
   EXPECT_EQ(compiler.Compile("", so_data), UNSUPPORTED);
   EXPECT_TRUE(so_data.empty());
-  ASSERT_EQ(compiler.Compile("extern \"C\" int codegen_test() { return 0; }", so_data), SUCCESS);
+  const std::string source = "extern \"C\" int codegen_test() { return 0; }";
+  ASSERT_EQ(compiler.Compile(source, so_data), SUCCESS);
   ASSERT_FALSE(so_data.empty());
   EXPECT_EQ(so_data[0], 0x7FU);
   EXPECT_EQ(so_data[1], 'E');
   EXPECT_EQ(so_data[2], 'L');
   EXPECT_EQ(so_data[3], 'F');
+  std::vector<uint8_t> cached_so_data;
+  ASSERT_EQ(compiler.Compile(source, cached_so_data), SUCCESS);
+  EXPECT_EQ(cached_so_data, so_data);
   EXPECT_EQ(compiler.Compile("this is not valid C++;", so_data), UNSUPPORTED);
   EXPECT_TRUE(so_data.empty());
   {
