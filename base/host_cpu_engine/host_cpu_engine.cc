@@ -335,6 +335,7 @@ Status HostCpuEngine::LoadLib(const std::string &lib_path, bool invoke_init) {
     return INTERNAL_ERROR;
   }
   if (invoke_init && InvokeLibInitialize(handle, lib_path) != SUCCESS) {
+    (void)mmDlclose(handle);
     return INTERNAL_ERROR;
   }
   GELOGI("Lib: %s has been opened", lib_path.c_str());
