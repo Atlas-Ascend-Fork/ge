@@ -1849,12 +1849,11 @@ graphStatus ComputeGraphImpl::AddCtrlEdgeForTargets(const ge::NodePtr &net_out_n
 
 graphStatus ComputeGraphImpl::AddInOutForNetOutputOp(const ge::OpDescPtr &net_output_desc,
                                                      std::vector<ge::ComputeGraphImpl::RetvalInfo> &output_nodes_info) {
+  GE_ASSERT_NOTNULL(net_output_desc);
   std::vector<bool> is_input_const;
   for (auto iter = output_nodes_info.begin(); iter != output_nodes_info.end();) {
     NodePtr src_node = iter->output_node;
-    if (src_node == nullptr) {
-      continue;
-    }
+    GE_ASSERT_NOTNULL(src_node, "NetOutput source node is null for output index %d", iter->node_output_index);
     // if src_node is in targets_, no need to Add in and out for netoutput
     const auto it = targets_.find(src_node);
     if (it != targets_.end()) {
@@ -1862,10 +1861,9 @@ graphStatus ComputeGraphImpl::AddInOutForNetOutputOp(const ge::OpDescPtr &net_ou
       GELOGD("node [%s] is in processed targets, do not add inout for netoutput!", src_node->GetName().c_str());
       continue;
     }
-    GE_ASSERT_TRUE((src_node != nullptr) && (src_node->GetOpDesc() != nullptr) && (net_output_desc != nullptr),
-                   "Param output_nodes_info has RetvalInfo item, whose src_node is invalid; "
-                   "or Param net_output_desc is nullptr, check invalid");
-    is_input_const.push_back(ConstantUtils::IsRealConst(src_node->GetOpDesc()));
+    const auto src_desc = src_node->GetOpDesc();
+    GE_ASSERT_NOTNULL(src_desc);
+    is_input_const.push_back(ConstantUtils::IsRealConst(src_desc));
     ++iter;
   }
   net_output_desc->SetIsInputConst(is_input_const);

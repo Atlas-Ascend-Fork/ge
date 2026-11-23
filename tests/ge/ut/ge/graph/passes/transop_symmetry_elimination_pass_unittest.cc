@@ -134,6 +134,30 @@ TEST_F(UtestTransopSymmetryEliminationPass, keep_symm_but_not_continous_transdat
   EXPECT_EQ(graph->GetAllNodesSize(), 4);
 }
 
+TEST_F(UtestTransopSymmetryEliminationPass, KeepTransdataWithInvalidDestinationInputDesc) {
+  auto graph = BuildGraphTransDataNotSymm();
+  auto src = graph->FindNode("transdata1");
+  const auto dst = graph->FindNode("transdata2");
+  const auto data = graph->FindNode("data");
+  const auto output = graph->FindNode("netoutput");
+  ASSERT_NE(src, nullptr);
+  ASSERT_NE(dst, nullptr);
+  ASSERT_NE(data, nullptr);
+  ASSERT_NE(output, nullptr);
+  const GeTensorDesc invalid_desc(GeShape(), FORMAT_RESERVED, DT_UNDEFINED);
+  ASSERT_EQ(dst->GetOpDesc()->UpdateInputDesc(0, invalid_desc), GRAPH_SUCCESS);
+  ASSERT_EQ(dst->GetOpDesc()->GetInputDescPtr(0), nullptr);
+
+  TransOpSymmetryEliminationPass pass;
+  EXPECT_EQ(pass.Run(src), SUCCESS);
+  EXPECT_EQ(graph->GetDirectNodesSize(), 4U);
+  EXPECT_EQ(graph->FindNode("transdata1"), src);
+  EXPECT_EQ(graph->FindNode("transdata2"), dst);
+  EXPECT_EQ(src->GetInDataAnchor(0)->GetPeerOutAnchor(), data->GetOutDataAnchor(0));
+  EXPECT_EQ(dst->GetInDataAnchor(0)->GetPeerOutAnchor(), src->GetOutDataAnchor(0));
+  EXPECT_EQ(output->GetInDataAnchor(0)->GetPeerOutAnchor(), dst->GetOutDataAnchor(0));
+}
+
 TEST_F(UtestTransopSymmetryEliminationPass, test_transposed) {
   auto builder = ut::GraphBuilder("test1");
   auto data = builder.AddNode("data", DATA, 0, 1);

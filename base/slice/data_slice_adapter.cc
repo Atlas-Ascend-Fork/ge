@@ -302,15 +302,27 @@ std::vector<int64_t> DataSliceAdapter::TransAxisToNZ(const GeTensorDescPtr &tens
 
 bool DataSliceAdapter::CheckReshape(const GeTensorDescPtr &tensor, const std::string &reshape_type, int64_t axis,
                                     int64_t &format_match_axis) {
-  if (axis >= static_cast<int64_t>(reshape_type.size())) {
-    GELOGW("The axis [%ld] >= reshape_type size [%zu]", axis, reshape_type.size());
+  if (tensor == nullptr) {
+    return false;
+  }
+  if (axis < 0 || static_cast<size_t>(axis) >= reshape_type.size()) {
+    GELOGW("Axis [%ld] is out of range for reshape_type size [%zu]", axis, reshape_type.size());
     return false;
   }
   const auto format = tensor->GetOriginFormat();
-  auto iter = FORMAT_MAP.find(format);
-  const std::vector<std::string> format_vec = iter->second;
-  const std::string reshape_char = reshape_type.substr(axis, 1);
-  format_match_axis = std::find(format_vec.cbegin(), format_vec.cend(), reshape_char) - format_vec.cbegin();
+  const auto iter = FORMAT_MAP.find(format);
+  if (iter == FORMAT_MAP.cend()) {
+    GELOGW("Cannot find origin format [%d] in FORMAT_MAP", static_cast<int>(format));
+    return false;
+  }
+  const auto &format_vec = iter->second;
+  const auto reshape_char = reshape_type.substr(static_cast<size_t>(axis), 1U);
+  const auto match = std::find(format_vec.cbegin(), format_vec.cend(), reshape_char);
+  if (match == format_vec.cend()) {
+    GELOGW("Cannot map reshape axis [%s] in origin format [%d]", reshape_char.c_str(), static_cast<int>(format));
+    return false;
+  }
+  format_match_axis = match - format_vec.cbegin();
   return true;
 }
 
@@ -325,20 +337,22 @@ bool DataSliceAdapter::CheckRank(size_t rank, size_t dim_num, const std::string 
 
 std::vector<int64_t> DataSliceAdapter::TransAxisForSplit(const GeTensorDescPtr &tensor, const int64_t axis,
                                                          size_t dim_num) {
+  if (tensor == nullptr) {
+    return {};
+  }
   const auto ori_shape = tensor->GetOriginShape();
   const size_t rank = ori_shape.GetDims().size();
   std::string reshape_type;
   (void)AttrUtils::GetStr(tensor, ATTR_NAME_RESHAPE_INFER_TYPE, reshape_type);
-  std::vector<int64_t> axis_vec;
   if (!(CheckRank(rank, dim_num, reshape_type))) {
     GELOGW("Failed to CheckRank rank = %zu, dim_num = %zu, reshape_type = %s", rank, dim_num, reshape_type.c_str());
-    return axis_vec;
+    return {};
   }
 
   int64_t format_match_axis = axis;
   if (rank != dim_num && !CheckReshape(tensor, reshape_type, axis, format_match_axis)) {
     GELOGW("Failed to CheckReshape");
-    return axis_vec;
+    return {};
   }
 
   const auto ori_format = tensor->GetOriginFormat();
@@ -348,57 +362,65 @@ std::vector<int64_t> DataSliceAdapter::TransAxisForSplit(const GeTensorDescPtr &
   if (iter == FORMAT_MAP.cend() || iter_dst == FORMAT_MAP.cend()) {
     GELOGW("Cannot find ori_format[%d] or format[%d] in FORMAT_MAP", static_cast<int>(ori_format),
            static_cast<int>(format));
-    return axis_vec;
+    return {};
   }
 
-  const std::vector<std::string> ori_format_vec = iter->second;
-  if (format_match_axis >= static_cast<int64_t>(ori_format_vec.size())) {
+  const auto &ori_format_vec = iter->second;
+  if (format_match_axis < 0 || static_cast<size_t>(format_match_axis) >= ori_format_vec.size()) {
     GELOGW("format_match_axis[%ld] is out of range of format_vec_size[%zu]", format_match_axis, ori_format_vec.size());
-    return axis_vec;
+    return {};
   }
-  const std::string format_char = ori_format_vec[format_match_axis];
+  const auto &format_char = ori_format_vec[static_cast<size_t>(format_match_axis)];
   if (format_char == "C") {
-    const std::vector<int64_t> vec_4d = {AXIS_INDEX_1, AXIS_INDEX_4};
-    const std::vector<int64_t> vec_5d = {AXIS_INDEX_2, AXIS_INDEX_5};
-    axis_vec = (dim_num == DIM_NUM_4) ? vec_4d : vec_5d;
-    return axis_vec;
+    return (dim_num == DIM_NUM_4) ? std::vector<int64_t>{AXIS_INDEX_1, AXIS_INDEX_4}
+                                  : std::vector<int64_t>{AXIS_INDEX_2, AXIS_INDEX_5};
   }
 
-  std::vector<std::string> dst_fmt_vec = iter_dst->second;
-  axis_vec.push_back(std::find(dst_fmt_vec.cbegin(), dst_fmt_vec.cend(), format_char) - dst_fmt_vec.cbegin());
-  return axis_vec;
+  const auto &dst_fmt_vec = iter_dst->second;
+  const auto match = std::find(dst_fmt_vec.cbegin(), dst_fmt_vec.cend(), format_char);
+  if (match == dst_fmt_vec.cend()) {
+    GELOGW("Cannot map axis [%s] in storage format [%d]", format_char.c_str(), static_cast<int>(format));
+    return {};
+  }
+  return {match - dst_fmt_vec.cbegin()};
 }
 
 std::vector<int64_t> DataSliceAdapter::TransAxisForNoSplit(const GeTensorDescPtr &tensor, const int64_t axis,
                                                            size_t dim_num) {
+  if (tensor == nullptr) {
+    return {};
+  }
   const auto ori_shape = tensor->GetOriginShape();
   const size_t rank = ori_shape.GetDims().size();
-  std::vector<int64_t> axis_vec;
   if (rank != dim_num) {
     GELOGW("rank[%zu] != to dim_num[%zu] in non_split_axis scene", rank, dim_num);
-    return axis_vec;
+    return {};
   }
   const auto ori_format = tensor->GetOriginFormat();
   auto iter = FORMAT_MAP.find(ori_format);
   if (iter == FORMAT_MAP.cend()) {
     GELOGW("Cannot find ori_format[%d] in FORMAT_MAP", static_cast<int>(ori_format));
-    return axis_vec;
+    return {};
   }
-  const std::vector<std::string> ori_format_vec = iter->second;
-  if (axis >= static_cast<int64_t>(ori_format_vec.size())) {
+  const auto &ori_format_vec = iter->second;
+  if (axis < 0 || static_cast<size_t>(axis) >= ori_format_vec.size()) {
     GELOGW("axis[%ld] is out of range of format_vec_size[%zu]", axis, ori_format_vec.size());
-    return axis_vec;
+    return {};
   }
-  const std::string format_char = ori_format_vec[axis];
+  const auto &format_char = ori_format_vec[static_cast<size_t>(axis)];
   auto format = static_cast<Format>(GetPrimaryFormat(tensor->GetFormat()));
   auto iter_dst = FORMAT_MAP.find(format);
   if (iter_dst == FORMAT_MAP.cend()) {
     GELOGW("Cannot find format[%d] in FORMAT_MAP", format);
-    return axis_vec;
+    return {};
   }
-  std::vector<std::string> dst_fmt_vec = iter_dst->second;
-  axis_vec.push_back(std::find(dst_fmt_vec.cbegin(), dst_fmt_vec.cend(), format_char) - dst_fmt_vec.cbegin());
-  return axis_vec;
+  const auto &dst_fmt_vec = iter_dst->second;
+  const auto match = std::find(dst_fmt_vec.cbegin(), dst_fmt_vec.cend(), format_char);
+  if (match == dst_fmt_vec.cend()) {
+    GELOGW("Cannot map axis [%s] in storage format [%d]", format_char.c_str(), static_cast<int>(format));
+    return {};
+  }
+  return {match - dst_fmt_vec.cbegin()};
 }
 
 bool DataSliceAdapter::IsFormatInSet(const Format format, const std::set<Format> &format_set) {
@@ -407,6 +429,9 @@ bool DataSliceAdapter::IsFormatInSet(const Format format, const std::set<Format>
 }
 
 std::vector<int64_t> DataSliceAdapter::TransAxis(const GeTensorDescPtr &tensor, int64_t ori_axis) {
+  if (tensor == nullptr || ori_axis < 0) {
+    return {};
+  }
   std::vector<int64_t> axis_vec;
   auto ori_format = tensor->GetOriginFormat();
   auto format = static_cast<Format>(GetPrimaryFormat(tensor->GetFormat()));

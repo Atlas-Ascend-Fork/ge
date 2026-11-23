@@ -67,6 +67,25 @@ TEST_F(BgIrAttrsUT, ShapeSmallerThanSizeOfTensorAttr) {
     EXPECT_EQ(gert_tensor_ptr[i], static_cast<uint16_t>(i % std::numeric_limits<uint16_t>::max()));
   }
 }
+TEST_F(BgIrAttrsUT, RejectTensorAttrWithInsufficientData) {
+  auto op_desc = std::make_shared<ge::OpDesc>("node", "TestOp");
+  op_desc->AppendIrAttrName("first");
+  op_desc->AppendIrAttrName("tensor");
+  op_desc->AppendIrAttrName("last");
+  ASSERT_TRUE(ge::AttrUtils::SetInt(op_desc, "first", 1));
+  ge::GeTensor tensor(ge::GeTensorDesc(ge::GeShape({2, 3}), ge::FORMAT_ND, ge::DT_FLOAT));
+  ASSERT_TRUE(ge::AttrUtils::SetTensor(op_desc, "tensor", tensor));
+  ASSERT_TRUE(ge::AttrUtils::SetInt(op_desc, "last", 2));
+  auto node = ge::NodeUtils::CreatNodeWithoutGraph(op_desc);
+  ASSERT_NE(node, nullptr);
+
+  std::vector<std::vector<uint8_t>> runtime_attrs;
+  EXPECT_FALSE(bg::GetAllIrAttrs(node, runtime_attrs));
+  EXPECT_EQ(runtime_attrs.size(), 1U);
+  size_t attr_size = 0U;
+  EXPECT_EQ(bg::CreateAttrBuffer(node, attr_size), nullptr);
+}
+
 TEST_F(BgIrAttrsUT, CreateDataTypeAttrBuffer) {
   auto op_desc = std::make_shared<ge::OpDesc>("foo", "Foo");
   op_desc->AppendIrAttrName("dtype");

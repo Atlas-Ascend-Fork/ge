@@ -56,10 +56,11 @@ bool AppendTensorBytes(const ge::GeTensor &value, const size_t tensor_size, std:
   }
   const auto copy_len = total_size - sizeof(Tensor);
   if (copy_len != 0U) {
-    GE_CHECK_GE(value.GetData().size(), total_size - sizeof(Tensor));
-    const auto ret_copy = ge::GeMemcpy(tensor->GetData<uint8_t>(), total_size - sizeof(Tensor),
-                                       value.GetData().GetData(), total_size - sizeof(Tensor));
-    GE_ASSERT_TRUE((ret_copy == ge::SUCCESS), "memcpy_s failed, copy size is %zu", (total_size - sizeof(Tensor)));
+    const auto src_size = value.GetData().size();
+    GE_ASSERT_TRUE(src_size >= copy_len, "Tensor attribute data size %zu is less than required size %zu", src_size,
+                   copy_len);
+    const auto ret_copy = ge::GeMemcpy(tensor->GetData<uint8_t>(), copy_len, value.GetData().GetData(), copy_len);
+    GE_ASSERT_TRUE((ret_copy == ge::SUCCESS), "memcpy_s failed, copy size is %zu", copy_len);
   }
 
   std::vector<uint8_t> buf(total_size);

@@ -129,6 +129,7 @@ class SpanLayerQuickLut : public SpanLayerLut {
   void Recycle(SpanAllocator &span_allocator, DeviceAllocator &device) override {
     for (auto layer_idIter = span_layer_ids_.begin(); layer_idIter != span_layer_ids_.end();) {
       if ((*layer_idIter >= span_layers_.size()) || (span_layers_[*layer_idIter] == nullptr)) {
+        layer_idIter = span_layer_ids_.erase(layer_idIter);
         continue;
       }
 

@@ -823,6 +823,51 @@ TEST_F(DataSlice, Cov_TransAxis_UnsupportedFormat) {
   EXPECT_TRUE(result.empty());
 }
 
+TEST_F(DataSlice, TransAxisRejectsNullTensorAndNegativeAxes) {
+  EXPECT_TRUE(DataSliceAdapter::TransAxis(nullptr, 0).empty());
+  EXPECT_TRUE(DataSliceAdapter::TransAxisForSplit(nullptr, 0, 4U).empty());
+  EXPECT_TRUE(DataSliceAdapter::TransAxisForNoSplit(nullptr, 0, 4U).empty());
+  auto tensor = std::make_shared<GeTensorDesc>(GeShape({1, 2, 3, 4}), FORMAT_NCHW);
+  tensor->SetOriginFormat(FORMAT_NCHW);
+  tensor->SetOriginShape(GeShape({1, 2, 3, 4}));
+  EXPECT_TRUE(DataSliceAdapter::TransAxis(tensor, -1).empty());
+  tensor->SetFormat(FORMAT_FRACTAL_NZ);
+  EXPECT_TRUE(DataSliceAdapter::TransAxis(tensor, -1).empty());
+  tensor->SetFormat(FORMAT_NC1HWC0);
+  EXPECT_TRUE(DataSliceAdapter::TransAxisForSplit(tensor, -1, 4U).empty());
+  tensor->SetFormat(FORMAT_NHWC);
+  EXPECT_TRUE(DataSliceAdapter::TransAxisForNoSplit(tensor, -1, 4U).empty());
+}
+
+TEST_F(DataSlice, TransAxisChecksReshapeMappingBeforeSplitting) {
+  auto tensor = std::make_shared<GeTensorDesc>(GeShape({1, 1, 3, 4, 16}), FORMAT_NC1HWC0);
+  tensor->SetOriginFormat(FORMAT_ND);
+  tensor->SetOriginShape(GeShape({2, 3, 4}));
+  ASSERT_TRUE(AttrUtils::SetStr(tensor, ATTR_NAME_RESHAPE_INFER_TYPE, "CHW"));
+  EXPECT_TRUE(DataSliceAdapter::TransAxis(tensor, 0).empty());
+
+  tensor->SetOriginFormat(FORMAT_NCHW);
+  int64_t mapped_axis = 42;
+  EXPECT_FALSE(DataSliceAdapter::CheckReshape(nullptr, "CHW", 0, mapped_axis));
+  EXPECT_FALSE(DataSliceAdapter::CheckReshape(tensor, "CHW", -1, mapped_axis));
+  EXPECT_FALSE(DataSliceAdapter::CheckReshape(tensor, "DHW", 0, mapped_axis));
+  EXPECT_EQ(mapped_axis, 42);
+  EXPECT_EQ(DataSliceAdapter::TransAxis(tensor, 0), (std::vector<int64_t>{1, 4}));
+}
+
+TEST_F(DataSlice, TransAxisDoesNotReturnMissingStorageAxis) {
+  auto tensor = std::make_shared<GeTensorDesc>(GeShape({1, 1, 3, 4, 16}), FORMAT_NC1HWC0);
+  tensor->SetOriginFormat(FORMAT_NCDHW);
+  tensor->SetOriginShape(GeShape({2, 2, 3, 4}));
+  ASSERT_TRUE(AttrUtils::SetStr(tensor, ATTR_NAME_RESHAPE_INFER_TYPE, "CDHW"));
+  EXPECT_TRUE(DataSliceAdapter::TransAxis(tensor, 2).empty());
+
+  tensor->SetFormat(FORMAT_NCDHW);
+  tensor->SetOriginFormat(FORMAT_NC1HWC0);
+  tensor->SetOriginShape(GeShape({1, 1, 3, 4, 16}));
+  EXPECT_TRUE(DataSliceAdapter::TransAxis(tensor, 1).empty());
+}
+
 TEST_F(DataSlice, Cov_TransAxisForSplit_CheckRankFail) {
   auto tensor = std::make_shared<GeTensorDesc>(GeShape({1, 2, 3, 4, 5, 6}), FORMAT_NC1HWC0);
   tensor->SetOriginFormat(FORMAT_NCHW);
