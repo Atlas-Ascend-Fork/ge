@@ -11,6 +11,9 @@
 #include "host_kernels/elewise_calculation_ops/floordiv_kernel.h"
 
 #include <cfloat>
+#include <cmath>
+#include <limits>
+#include <type_traits>
 
 #include <memory>
 #include <set>
@@ -104,14 +107,20 @@ void FloorDivKernel::ShapeCal(const std::vector<ge::ConstGeTensorPtr> &input, Ge
 }
 
 template <typename T>
-T FloorDivKernel::DivCal(const T &x_i, const T &y_i) {
-  if ((x_i < static_cast<T>(0)) != (y_i < static_cast<T>(0))) {
-    T abs_x_i = x_i < 0 ? -x_i : x_i;
-    T abs_y_i = y_i < 0 ? -y_i : y_i;
-    return static_cast<T>(static_cast<int32_t>(-(abs_x_i + abs_y_i - 1) / abs_y_i));
+Status FloorDivKernel::DivCal(const T &x_i, const T &y_i, T &result) {
+  if constexpr (std::is_floating_point<T>::value) {
+    result = std::floor(x_i / y_i);
   } else {
-    return static_cast<T>(static_cast<int32_t>(x_i / y_i));
+    if (std::is_signed<T>::value && x_i == std::numeric_limits<T>::min() && y_i == static_cast<T>(-1)) {
+      GELOGW("FloorDiv quotient cannot be represented in the input data type.");
+      return PARAM_INVALID;
+    }
+    result = x_i / y_i;
+    if (((x_i < 0) != (y_i < 0)) && x_i % y_i != 0) {
+      --result;
+    }
   }
+  return SUCCESS;
 }
 
 template <typename T>
@@ -162,7 +171,9 @@ Status FloorDivKernel::DataCalBroadcast(const T &x, const T &y, size_t num_x, si
       return PARAM_INVALID;
     }
     for (size_t i = 0; i < num_x; ++i) {
-      buf[i] = DivCal<T>((&x)[i], y);
+      if (DivCal<T>((&x)[i], y, buf[i]) != SUCCESS) {
+        return PARAM_INVALID;
+      }
     }
   } else {
     for (size_t i = 0; i < num_y; ++i) {
@@ -170,7 +181,9 @@ Status FloorDivKernel::DataCalBroadcast(const T &x, const T &y, size_t num_x, si
         GELOGE(PARAM_INVALID, "The divisor of FloorDiv cannot be zero.");
         return PARAM_INVALID;
       }
-      buf[i] = DivCal<T>(x, (&y)[i]);
+      if (DivCal<T>(x, (&y)[i], buf[i]) != SUCCESS) {
+        return PARAM_INVALID;
+      }
     }
   }
   if (output_ptr->SetData(reinterpret_cast<uint8_t *>(buf.get()), data_num * sizeof(T)) != GRAPH_SUCCESS) {
@@ -210,7 +223,9 @@ Status FloorDivKernel::DataCal(const std::vector<ConstGeTensorPtr> &input, GeTen
         GELOGE(PARAM_INVALID, "The divisor of FloorDiv cannot be zero.");
         return PARAM_INVALID;
       }
-      buf[i] = DivCal<T>(x[i], y[i]);
+      if (DivCal<T>(x[i], y[i], buf[i]) != SUCCESS) {
+        return PARAM_INVALID;
+      }
     }
     if (output_ptr->SetData(reinterpret_cast<uint8_t *>(buf.get()), data_num_x * sizeof(T)) != GRAPH_SUCCESS) {
       GELOGE(PARAM_INVALID, "set data failed");

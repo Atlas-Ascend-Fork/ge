@@ -162,6 +162,8 @@ GEPass::Run(names_to_passes) {
 
 Optimization Pass may modify graph structure (add/delete nodes), causing subsequent nodes to see a graph different from before. `BaseNodePass`'s `AddRePassNode` and `AddImmediateRePassNode` methods allow Pass to declare "this new node needs to be processed again by other Passes", and `GEPass` framework is responsible for handling these repass requests. The "immediate re-traversal" (ImmediateRePass) capability enables certain modifications to be immediately seen by subsequent Passes in the current round, avoiding performance overhead of multiple rounds of iteration.
 
+Host `FloorDiv` preserves the input precision and skips folding if the integer quotient is unrepresentable. See the [built-in Host Kernel](../../features/constant_folding.md#451-ge-built-in-host-kernel) section.
+
 ### 2.2 Organization of Optimization Passes
 
 GE's optimization Passes execute in multiple batches, distributed at different stages. Core Passes include:

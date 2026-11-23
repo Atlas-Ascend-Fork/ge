@@ -411,6 +411,8 @@ ConstantFoldingPass / DimensionComputePass
 
 每个 Kernel 通过 `REGISTER_COMPUTE_NODE_KERNEL` 宏注册到 `KernelFactory`，运行时按算子类型查找。
 
+内置 `FloorDiv` 的浮点输入按 `floor(x / y)` 求值；整数使用原类型的商和余数，异号且有余数时将商减一，不经浮点转换或窄化。对于整数最小值除以 `-1` 的不可表示结果，返回 `NOT_CHANGED` 且不发布输出；原有零/近零除数回退规则保持不变。
+
 #### 4.5.2 AICPU Host CPU 引擎
 
 作为 GE 内置 Kernel 的补充，通过 AICPU 引擎执行算子。`HostCpuEngine` 实现位于 `base/host_cpu_engine/`（`host_cpu_engine.h`），运行时路径 `runtime/v2/engine/aicpu/kernel/aicpu_resource_manager.cc` 也引用了该 SO。

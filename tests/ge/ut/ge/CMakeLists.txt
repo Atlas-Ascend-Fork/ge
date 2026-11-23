@@ -321,6 +321,7 @@ set(KERNEL_TEST_FILES
     "graph/passes/folding_kernel/maximum_kernel_unittest.cc"
     "graph/passes/folding_kernel/floormod_kernel_unittest.cc"
     "graph/passes/folding_kernel/floordiv_kernel_unittest.cc"
+    "graph/passes/folding_kernel/floordiv_arithmetic_unittest.cc"
     "graph/passes/folding_kernel/range_kernel_unittest.cc"
     "graph/passes/folding_kernel/mul_kernel_unittest.cc"
     "graph/passes/folding_kernel/shape_kernel_unittest.cc"

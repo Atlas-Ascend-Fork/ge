@@ -419,6 +419,8 @@ Registered Host Kernel distributed by category:
 
 Each Kernel registers to `KernelFactory` through `REGISTER_COMPUTE_NODE_KERNEL` macro, runtime lookup by operator type.
 
+For floating-point inputs, `FloorDiv` computes `floor(x / y)`. For integers it uses the quotient and remainder at the original input width and subtracts one from the quotient if the signs differ and the remainder is nonzero. Dividing the minimum signed integer by -1 returns `NOT_CHANGED` without producing an output. The existing fallback for zero or near-zero divisors still applies.
+
 #### 4.5.2 AICPU Host CPU Engine
 
 As GE built-in Kernel supplement, through AICPU engine execute operators. `HostCpuEngine` implementation located at `base/host_cpu_engine/` (`host_cpu_engine.h`), runtime path `runtime/v2/engine/aicpu/kernel/aicpu_resource_manager.cc` also references this SO.
