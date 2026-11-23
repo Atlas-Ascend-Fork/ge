@@ -859,12 +859,14 @@ Status FusionTaskInfo::InitKernel(const domi::TaskDef &task_def, const PisToArgs
                          hcom_group.c_str());
           void *const context = hcom_context_addrs_[context_index];
           GE_ASSERT_NOTNULL(context);
-          void *comm = nullptr;
-          GE_ASSERT_SUCCESS(HcclDllHcomMgr::GetInstance().HcomGetCommHandleByGroupFunc(hcom_group, comm));
-          GE_ASSERT_NOTNULL(comm);
-          mc2_ccu_resources_.emplace_back(comm, context);
-          GELOGI("[GE_MC2_CCU] resource ready, op[%s], group[%s], contextIndex[%zu], comm[%p], context[%p].",
-                 op_desc_->GetNamePtr(), hcom_group.c_str(), context_index, comm, context);
+          const auto stream_ids = op_desc_->GetAttachedStreamIds();
+          const auto &streams = davinci_model_->GetStreamList();
+          GE_ASSERT_TRUE(stream_ids.size() == 1U);
+          GE_ASSERT_TRUE(stream_ids[0] >= 0 && static_cast<size_t>(stream_ids[0]) < streams.size());
+          auto *const ccu_stream = streams[static_cast<size_t>(stream_ids[0])];
+          GE_ASSERT_NOTNULL(ccu_stream);
+          GE_ASSERT_TRUE(ccu_stream != stream_);
+          mc2_ccu_resources_.push_back({context, ccu_stream});
           continue;
         }
         rt_fusion_task_.subTask[index].type =
@@ -883,6 +885,24 @@ Status FusionTaskInfo::InitKernel(const domi::TaskDef &task_def, const PisToArgs
     index++;
   }
 
+  for (auto &resource : mc2_ccu_resources_) {
+    GE_CHK_ACL_RET(aclrtCreateNotify(&resource.start, static_cast<uint32_t>(ACL_NOTIFY_DEFAULT)));
+    GE_CHK_ACL_RET(aclrtCreateNotify(&resource.done, static_cast<uint32_t>(ACL_NOTIFY_DEFAULT)));
+  }
+  return SUCCESS;
+}
+
+Status FusionTaskInfo::Release() {
+  for (auto &resource : mc2_ccu_resources_) {
+    if (resource.start != nullptr) {
+      GE_CHK_ACL_RET(aclrtDestroyNotify(resource.start));
+      resource.start = nullptr;
+    }
+    if (resource.done != nullptr) {
+      GE_CHK_ACL_RET(aclrtDestroyNotify(resource.done));
+      resource.done = nullptr;
+    }
+  }
   return SUCCESS;
 }
 
@@ -958,9 +978,13 @@ Status FusionTaskInfo::LaunchMc2Ccu() {
   args.argsSize = args_size_;
   args.isNoNeedH2DCopy = 1U;
   for (const auto &resource : mc2_ccu_resources_) {
-    GELOGI("[GE_MC2_CCU] CCU launch begin, op[%s], comm[%p], context[%p].", op_desc_->GetNamePtr(), resource.first,
-           resource.second);
-    GE_ASSERT_SUCCESS(HcclDllHcomMgr::GetInstance().CcuKernelLaunchFunc(resource.first, resource.second));
+    // Both launches and their synchronization belong to the model and replay on every step.
+    GE_CHK_ACL_RET(aclrtRecordNotify(resource.start, stream_));
+    GE_CHK_ACL_RET(aclrtWaitAndResetNotify(resource.start, resource.stream, UINT32_MAX));
+    GELOGI("[GE_MC2_CCU] CCU launch begin, op[%s], stream[%p], context[%p].", op_desc_->GetNamePtr(), resource.stream,
+           resource.context);
+    GE_ASSERT_SUCCESS(HcclDllHcomMgr::GetInstance().CcuKernelLaunchFunc(resource.stream, resource.context));
+    GE_CHK_ACL_RET(aclrtRecordNotify(resource.done, resource.stream));
     GELOGI("[GE_MC2_CCU] CCU launch end, op[%s].", op_desc_->GetNamePtr());
   }
   const auto &aicore_info = rt_fusion_task_.subTask[0].task.aicoreInfo;
@@ -1003,6 +1027,10 @@ Status FusionTaskInfo::Distribute() {
   call_save_dump_ = true;
 
   UpdateTaskId();
+  // Args refresh and DFX must refer to AICORE, rather than the following notify wait.
+  for (const auto &resource : mc2_ccu_resources_) {
+    GE_CHK_ACL_RET(aclrtWaitAndResetNotify(resource.done, stream_, UINT32_MAX));
+  }
   GELOGI("FusionTaskInfo Distribute Success, op: %s, taskid: %d, stub func: %p, tiling key: %" PRIu64
          ", "
          "streamid: %u, stream: %p, dump_flag: %u",

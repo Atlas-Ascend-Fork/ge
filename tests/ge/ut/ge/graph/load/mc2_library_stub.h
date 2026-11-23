@@ -94,7 +94,7 @@ class Mc2LibraryStub {
       return reinterpret_cast<void *>(&GetComm);
     }
     EXPECT_EQ(handle, &self.mc2_handle_);
-    EXPECT_STREQ(name, "CcuKernelLaunch");
+    EXPECT_STREQ(name, "Mc2CcKernelLaunch");
     return reinterpret_cast<void *>(&Launch);
   }
 
@@ -105,9 +105,11 @@ class Mc2LibraryStub {
     return self.query_result;
   }
 
-  static uint32_t Launch(void *comm, void *context) {
+  static uint32_t Launch(void *stream, void *context, uint32_t size) {
     auto &self = *Active();
-    self.launches.emplace_back(comm, context);
+    EXPECT_NE(stream, nullptr);
+    EXPECT_EQ(size, UINT32_MAX);
+    self.launches.emplace_back(stream, context);
     if (self.on_launch) {
       self.on_launch();
     }

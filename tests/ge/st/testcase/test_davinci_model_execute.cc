@@ -6081,7 +6081,7 @@ class Mc2FusionModelLoadTest : public DavinciModelTest, public testing::WithPara
     if (GetParam() == Mc2LoadCase::Mc2OpenRetry) {
       libraries_->missing_library = "libmc2_client.so";
     } else if (GetParam() == Mc2LoadCase::Mc2SymbolRetry) {
-      libraries_->missing_symbol = "CcuKernelLaunch";
+      libraries_->missing_symbol = "Mc2CcKernelLaunch";
     }
     if (!libraries_->missing_library.empty() || !libraries_->missing_symbol.empty()) {
       EXPECT_EQ(mgr.CcuKernelLaunchFunc(comm, &contexts_[1]), HCCL_E_INTERNAL);
@@ -6181,7 +6181,9 @@ class Mc2FusionModelLoadTest : public DavinciModelTest, public testing::WithPara
     op_desc->UpdateInputDesc(2, desc);
     op_desc->UpdateInputDesc(3, desc);
     op_desc->UpdateInputDesc(4, desc);
-    AttrUtils::SetInt(op_desc, ATTR_NAME_ATTACHED_STREAM_ID, 0);
+    ASSERT_TRUE(AttrUtils::SetListNamedAttrs(op_desc, ATTR_NAME_ATTACHED_STREAM_INFO_LIST, std::vector<NamedAttrs>(1)));
+    op_desc->SetAttachedStreamIds({1});
+    ASSERT_EQ(op_desc->GetAttachedStreamIds(), (std::vector<int64_t>{1}));
 
     op_desc->MutableAllInputName() = {{"x1", 0}, {"bias", 1}, {"k0", 2}, {"k1", 3}, {"a", 4}};
     op_desc->MutableAllOutputName() = {{"y", 0}, {"gather_out", 1}, {"z0", 2}, {"z1", 3}, {"m", 4}, {"n", 5}};
@@ -6199,7 +6201,6 @@ class Mc2FusionModelLoadTest : public DavinciModelTest, public testing::WithPara
     op_desc->AppendIrOutput("n", IrOutputType::kIrOutputRequired);
 
     op_desc->MutableInputDesc(1) = nullptr;
-    AttrUtils::SetInt(op_desc, ATTR_NAME_ATTACHED_STREAM_ID, 0);
     AttrUtils::SetInt(op_desc, RECV_ATTR_NOTIFY_ID, 0);
 
     auto output_desc_ptr = op_desc->MutableOutputDesc(5);
@@ -6294,6 +6295,18 @@ class Mc2FusionModelLoadTest : public DavinciModelTest, public testing::WithPara
     auto *sub3 = fusion->add_fusion_sub_task_info();
     sub3->set_type(domi::FusionSubTaskInfo::CCU);
     sub3->mutable_task()->mutable_ccu_task_group()->add_group("group_1");
+
+    // Mirror the compiler's attached-stream completion event before NetOutput.
+    auto *record = model_task_def.add_task();
+    record->set_type(static_cast<uint32_t>(ModelTaskType::MODEL_TASK_EVENT_RECORD));
+    record->set_stream_id(1U);
+    record->set_event_id(0U);
+    record->mutable_event_ex()->set_op_index(op_desc->GetId());
+    auto *wait = model_task_def.add_task();
+    wait->set_type(static_cast<uint32_t>(ModelTaskType::MODEL_TASK_EVENT_WAIT));
+    wait->set_stream_id(0U);
+    wait->set_event_id(0U);
+    wait->mutable_event_ex()->set_op_index(op_desc->GetId());
   }
 
   void BuildMc2Model(const ComputeGraphPtr &root_graph, GeModelPtr &ge_model) {
@@ -6365,10 +6378,10 @@ class Mc2FusionModelLoadTest : public DavinciModelTest, public testing::WithPara
         EXPECT_TRUE(libraries_->launches.empty());
         EXPECT_TRUE(runtime_.calls.empty());
       } else {
-        EXPECT_EQ(libraries_->groups, (std::vector<std::string>{"test_second"}));
+        EXPECT_TRUE(libraries_->groups.empty());
         ASSERT_EQ(libraries_->launches.size(), 1U);
-        EXPECT_EQ(libraries_->launches[0],
-                  std::make_pair(static_cast<void *>(&comm_), static_cast<void *>(&contexts_[1])));
+        EXPECT_NE(libraries_->launches[0].first, nullptr);
+        EXPECT_EQ(libraries_->launches[0].second, &contexts_[1]);
         const auto expected = GetParam() == Mc2LoadCase::CcuFailure ? std::vector<std::string>{"ccu"}
                                                                     : std::vector<std::string>{"ccu", "aicore"};
         EXPECT_EQ(runtime_.calls, expected);
