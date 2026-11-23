@@ -860,6 +860,9 @@ ge::Status UpdateOffsetsByOffsetListAttr(const NodePtr &node, const int64_t inpu
         GE_ASSERT_TRUE(peer_in_data_anchor->GetIdx() < static_cast<int32_t>(offset_list.size()),
                        "Peer node:[%s] anchor_index:[%d] is out of range:[%u]", peer_op_desc->GetName().c_str(),
                        peer_in_data_anchor->GetIdx(), offset_list.size());
+        GE_ASSERT_TRUE(out_data_anchor->GetIdx() < static_cast<int32_t>(origin_output_list.size()),
+                       "Node:[%s] output anchor_index:[%d] is out of range:[%zu]", op_desc->GetName().c_str(),
+                       out_data_anchor->GetIdx(), origin_output_list.size());
         GE_ASSERT_TRUE(!AddOverflow(input_offset, offset_list[peer_in_data_anchor->GetIdx()],
                                     origin_output_list[out_data_anchor->GetIdx()]));
         // 如果input_offset是变量内存逻辑地址，将'input_offset+偏移'作为算子输入输出offset，也需要给这个算子设置inner_offset，
@@ -912,6 +915,9 @@ ge::Status UpdateNoPaddingContinousOutputOffsets(const NodePtr &node, const int6
   const bool input_offset_is_var = ge::VarManager::Instance(session_id)->IsVarAddr(input_offset - origin_inner_offset);
   for (const auto &out_data_anchor : node->GetAllOutDataAnchors()) {
     GE_CHECK_NOTNULL(out_data_anchor);
+    GE_ASSERT_TRUE(out_data_anchor->GetIdx() < static_cast<int32_t>(origin_output_list.size()),
+                   "Node %s output anchor index %d out of range %zu.", node->GetNamePtr(), out_data_anchor->GetIdx(),
+                   origin_output_list.size());
     origin_output_list[out_data_anchor->GetIdx()] = output_offset;
 
     // 如果input_offset是变量内存逻辑地址，将'input_offset+偏移'作为算子输入输出offset，也需要给这个算子设置inner_offset，
@@ -1148,6 +1154,9 @@ Status GraphMemoryAssigner::SetMemOffset(const ge::NodePtr &node, const InDataAn
         GELOGE(FAILED, "[Get][OutputOffset] empty is invalid, node:%s", node->GetName().c_str());
         return FAILED;
       }
+      GE_ASSERT_TRUE(out2ins.begin()->first < static_cast<int32_t>(output_list_this.size()),
+                     "Node:[%s] ref out index:[%d] is out of range:[%zu]", op_desc->GetName().c_str(),
+                     out2ins.begin()->first, output_list_this.size());
       auto peer_output_offset = output_list.at(peer_out_data_anchor->GetIdx());
       output_list.at(peer_out_data_anchor->GetIdx()) = output_list_this.at(out2ins.begin()->first);
       peer_op_desc->SetOutputOffset(output_list);
@@ -1155,8 +1164,10 @@ Status GraphMemoryAssigner::SetMemOffset(const ge::NodePtr &node, const InDataAn
              node->GetName().c_str(), out2ins.begin()->first, out2ins.begin()->second, peer_op_desc->GetName().c_str(),
              output_list_this.at(out2ins.begin()->first), peer_output_offset);
     } else {
-      GELOGD("Node %s out %d ref in %d input node %s with total ref numbers %zu.", node->GetName().c_str(),
-             out2ins.begin()->first, out2ins.begin()->second, peer_op_desc->GetName().c_str(), out2ins.size());
+      if (!out2ins.empty()) {
+        GELOGD("Node %s out %d ref in %d input node %s with total ref numbers %zu.", node->GetName().c_str(),
+               out2ins.begin()->first, out2ins.begin()->second, peer_op_desc->GetName().c_str(), out2ins.size());
+      }
     }
     // first input is beginning offset
     mem_offset = output_list.at(peer_out_data_anchor->GetIdx());
@@ -1854,10 +1865,12 @@ ge::Status GraphMemoryAssigner::UpdateOpInputOffset(const NodePtr &node, std::ve
         auto input_size = tmp_op_desc->GetInputsSize();
         auto ori_input_offset_list_size = origin_input_list.size();
         auto mem_type_size = memory_type.size();
-        if ((input_size != mem_type_size) || (input_size != ori_input_offset_list_size)) {
+        if ((input_size != mem_type_size) || (input_size != ori_input_offset_list_size) ||
+            (valid_input_index >= static_cast<int64_t>(input_size))) {
           std::string error = "Node" + FmtToStr(tmp_op_desc->GetName()) + +" input_size" + FmtToStr(input_size) +
                               " diff from memory_type_size" + FmtToStr(mem_type_size) +
-                              " from ori_input_offset_list_size" + FmtToStr(ori_input_offset_list_size);
+                              " from ori_input_offset_list_size" + FmtToStr(ori_input_offset_list_size) +
+                              " or valid_input_index" + FmtToStr(valid_input_index) + " out of range";
           GE_ERRORLOG_AND_ERRORMSG(ge::FAILED, error.c_str());
           return ge::FAILED;
         }
@@ -2112,7 +2125,8 @@ bool GraphMemoryAssigner::IsAssignContinuousInputMemoryDirectly(
       return true;
     }
     std::map<NodePtr, uint32_t>::const_iterator iter = node_2_continuous_type.find(in_node);
-    // In node's topo order in the front, so function cannot be exception
+    GE_ASSERT_TRUE(iter != node_2_continuous_type.end(), "Node %s not found in node_2_continuous_type.",
+                   in_node->GetName().c_str());
     auto continuous_type = iter->second;
     bool continuous_input = ((continuous_type & ContinuousType::kTypeInput) != 0) ||
                             ((continuous_type & ContinuousType::kTypeInputNoPadding) != 0);
@@ -2389,7 +2403,9 @@ void GraphMemoryAssigner::MarkNodeDistanceAttr(
     GE_IF_BOOL_EXEC(peer_out_node == nullptr, continue);
 
     GE_IF_BOOL_EXEC(peer_out_node->GetOpDesc() == nullptr, continue);
-    auto matched_mem_offset = peer_out_node->GetOpDesc()->GetOutputOffset().at(peer_out_anchor->GetIdx());
+    const auto &peer_output_offset_list = peer_out_node->GetOpDesc()->GetOutputOffset();
+    GE_IF_BOOL_EXEC(peer_out_anchor->GetIdx() >= static_cast<int32_t>(peer_output_offset_list.size()), continue);
+    auto matched_mem_offset = peer_output_offset_list.at(peer_out_anchor->GetIdx());
 
     bool is_need_calc_distance = false;
     CheckNeedCalcDistAndUpdateVisitInfo(peer_out_node, peer_out_anchor, matched_mem_offset, mem_block_visit_info,
