@@ -4,7 +4,7 @@ description: "评测 CANN 代码的日志打印质量。依据 references/log-ru
 license: MIT
 metadata:
   author: CANN-Tools
-  version: "4.2.0"
+  version: "4.2.1"
 ---
 
 # CANN 日志规范评测
@@ -44,6 +44,15 @@ Markdown 是默认且唯一的正式交付格式；`--excel` 可额外生成可�
 ## 输出
 
 最终交付是 Markdown 报告：`output/cann-log-evaluation-report-YYYYMMDD.md`（唯一报告）。
+CI 或外部流水线需要固定文件名时，可加 `--report-name`：
+
+```bash
+python3 scripts/run_local.py --input <代码路径> \
+  --out ./operators/pr-{pr_number} \
+  --report-name {pr_number}_log_check_summary.md
+```
+
+报告路径为 `./operators/pr-{pr_number}/{pr_number}_log_check_summary.md`。
 顶部为管理摘要（10 分制总评分、总 DI、按来源分类、每类问题示例），其后为评测概览
 （严重级分布、完整性告警）、27 项量化评估指标和完整问题明细
 （代码位置、源码行、原因、建议、发现时间、所属分队）。
