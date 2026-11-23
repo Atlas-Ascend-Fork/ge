@@ -60,6 +60,7 @@
 #include "common/model/ge_model.h"
 #include "framework/executor/ge_executor.h"
 #include "common/model/external_allocator_manager.h"
+#include "framework/runtime/mem_allocator.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/runtime/src/runtime_stub.h"
 #include "host_kernels/kernel_factory.h"
@@ -6213,6 +6214,7 @@ class ExecuteGraphDispatchStub : public StubExecutor {
                                 const std::vector<gert::Tensor> &inputs, std::vector<gert::Tensor> &outputs,
                                 gert::Allocators *external_allocators = nullptr) override {
     ++stream_runs;
+    execution_allocators = external_allocators;
     execution_stream = stream;
     EXPECT_EQ(node, loaded_node);
     EXPECT_EQ(graph_id, node->GetGraphId());
@@ -6227,6 +6229,7 @@ class ExecuteGraphDispatchStub : public StubExecutor {
   GraphNodePtr loaded_node;
   aclrtStream loaded_stream = nullptr;
   rtStream_t execution_stream = nullptr;
+  gert::Allocators *execution_allocators = nullptr;
 };
 }  // namespace
 
@@ -6549,7 +6552,13 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_StreamRunDispatchPreservesStreamAndSy
   auto stream = static_cast<rtStream_t>(&stream_token);
   std::vector<gert::Tensor> outputs;
   const auto original_mode = node->GetRunGraphMode();
+  auto allocator = MakeShared<ExternalAllocatorUtStub>();
+  ExternalAllocatorManager::SetExternalAllocator(stream, allocator);
   EXPECT_EQ(manager.ExecuteGraphWithStreamAsync(49U, stream, {}, outputs), PARAM_INVALID);
+  ExternalAllocatorManager::DeleteExternalAllocator(stream);
+  ASSERT_NE(executor.execution_allocators, nullptr);
+  const auto usage = static_cast<size_t>(gert::AllocatorUsage::kAllocNodeOutput);
+  EXPECT_EQ(executor.execution_allocators->GetAllocator(gert::kOnDeviceHbm, usage), allocator.get());
   EXPECT_EQ(executor.stream_runs, 1U);
   EXPECT_EQ(executor.execution_stream, stream);
   EXPECT_FALSE(node->GetRunFlag());

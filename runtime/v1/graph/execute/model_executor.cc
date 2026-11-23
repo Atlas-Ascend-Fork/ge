@@ -392,7 +392,8 @@ Status ModelExecutor::ExecuteGraphWithStream(const GraphNodePtr &graph_node, con
                                              std::vector<gert::Tensor> &outputs,
                                              gert::Allocators *external_allocators) {
   GE_CHECK_NOTNULL(graph_node);
-  if (IsOm2OnlineMode()) {
+  const auto graph = graph_node->GetGraph();
+  if (IsOm2OnlineMode(graph != nullptr && GraphUtilsEx::IsExecuteGraph(*graph))) {
     return RunOm2Graph(graph_node, graph_id, stream, inputs, outputs, external_allocators);
   }
   auto ge_root_model = graph_node->GetGeRootModel();
