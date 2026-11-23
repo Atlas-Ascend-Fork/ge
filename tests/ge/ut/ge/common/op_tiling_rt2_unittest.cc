@@ -220,8 +220,8 @@ ge::ComputeGraphPtr BuildCubeSubgraph(const std::string &graph_name, const std::
 }
 
 ge::ComputeGraphPtr BuildExtendConvSubgraph() {
-  auto subgraph = BuildCubeSubgraph("conv_subgraph", "ExtendConv2D");
-  auto extend_conv_node = subgraph->FindNode("ExtendConv2D");
+  auto subgraph = BuildCubeSubgraph("conv_subgraph", "ActExtendConv2D");
+  auto extend_conv_node = subgraph->FindNode("ActExtendConv2D");
   EXPECT_NE(extend_conv_node, nullptr);
   if (extend_conv_node == nullptr) {
     return subgraph;
@@ -649,14 +649,14 @@ TEST_F(RegisterOpTilingRT2UT, AutofuseNodeWithMatmulTilingUseVecFuncSuccess) {
 }
 
 TEST_F(RegisterOpTilingRT2UT, AutofuseNodeWithConvTilingUseVecFuncSuccess) {
-  auto op_impl_guard = RegisterCubeTiling("Conv2DV2");
+  auto op_impl_guard = RegisterCubeTiling("ActConv2DV2");
   auto graph = ShareGraph::AutoFuseNodeGraph();
   auto autofuse_node = graph->FindNode("fused_graph");
   std::string cmake_binary_path = CMAKE_BINARY_DIR;
   auto autofuse_stub_so = cmake_binary_path + "/tests/depends/op_stub/libautofuse_stub.so";
 
   (void)ge::AttrUtils::SetStr(autofuse_node->GetOpDesc(), "bin_file_path", autofuse_stub_so);
-  (void)autofuse_node->GetOpDesc()->SetExtAttr("conv_subgraph", BuildCubeSubgraph("conv_subgraph", "Conv2DV2"));
+  (void)autofuse_node->GetOpDesc()->SetExtAttr("conv_subgraph", BuildCubeSubgraph("conv_subgraph", "ActConv2DV2"));
   utils::OpRunInfo run_info;
   auto op = ge::OpDescUtils::CreateOperatorFromNode(autofuse_node);
   fe::PlatFormInfos platform_infos;
@@ -673,9 +673,9 @@ TEST_F(RegisterOpTilingRT2UT, AutofuseNodeWithConvTilingUseVecFuncSuccess) {
 }
 
 TEST_F(RegisterOpTilingRT2UT, AutofuseNodeWithExtendConvTilingAttrsSuccess) {
-  auto op_impl_guard = RegisterCubeTiling("ExtendConv2D");
+  auto op_impl_guard = RegisterCubeTiling("ActExtendConv2D");
   auto op_impl_func =
-      gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->CreateOrGetOpImpl("ExtendConv2D");
+      gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->CreateOrGetOpImpl("ActExtendConv2D");
   op_impl_func->private_attrs.emplace_back(ge::AscendString("fixed_shift_value"),
                                            ge::AnyValue::CreateFrom(static_cast<int64_t>(0)));
   check_extend_conv_attrs = true;
