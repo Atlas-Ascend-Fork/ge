@@ -1,6 +1,6 @@
 # 简介
 
-用于做子图匹配的工具类，该类接收一个Pattern定义和待匹配的Graph。将使用Pattern对Graph进行匹配，提供MatchNext接口逐一返回匹配结果。
+用于子图匹配的工具类，该类接收一个Pattern定义和待匹配的Graph。将使用Pattern对Graph进行匹配，提供MatchNext接口逐一返回匹配结果。
 
 ## 需要包含的头文件
 

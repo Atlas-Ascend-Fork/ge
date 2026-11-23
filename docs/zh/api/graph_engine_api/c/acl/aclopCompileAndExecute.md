@@ -74,10 +74,10 @@ aclrtStream stream)
 ## 约束说明
 
 - 多线程场景下，不支持调用本接口时指定同一个Stream或使用默认Stream，否则可能任务执行异常。
-- 每个算子的输入、输出、属性不同，需要应用在调用时严格按照算子输入、输出、属性来组织算子，用户在调用aclopCompileAndExecute时，根据optype、输入tensor的描述、输出tensor的描述、attr等信息查找对应的任务，再编译、执行算子。
+- 每个算子的输入、输出、属性不同，需要在调用时严格按照算子输入、输出、属性来组织算子，用户在调用aclopCompileAndExecute时，根据optype、输入tensor的描述、输出tensor的描述、attr等信息查找对应的任务，再编译、执行算子。
 - 编译、执行有可选输入的算子时，如果可选输入不使用，则：
-    - 需调用aclCreateTensorDesc(ACL\_DT\_UNDEFINED, 0, nullptr, ACL\_FORMAT\_UNDEFINED)接口创建aclTensorDesc类型的数据，将数据类型设置为ACL\_DT\_UNDEFINED，将Format设置为ACL\_FORMAT\_UNDEFINED，将Shape信息设置为nullptr。
-    - 需调用aclCreateDataBuffer(nullptr, 0)接口创建aclDataBuffer类型的数据，同时aclDataBuffer中的数据不需要释放，因为是空指针。
+  - 需调用aclCreateTensorDesc(ACL\_DT\_UNDEFINED, 0, nullptr, ACL\_FORMAT\_UNDEFINED)接口创建aclTensorDesc类型的数据，将数据类型设置为ACL\_DT\_UNDEFINED，将Format设置为ACL\_FORMAT\_UNDEFINED，将Shape信息设置为nullptr。
+  - 需调用aclCreateDataBuffer(nullptr, 0)接口创建aclDataBuffer类型的数据，同时aclDataBuffer中的数据不需要释放，因为是空指针。
 
 - 编译、执行有constant输入的算子时，需要先调用[aclSetTensorConst](aclSetTensorConst.md)接口设置constant输入。
 

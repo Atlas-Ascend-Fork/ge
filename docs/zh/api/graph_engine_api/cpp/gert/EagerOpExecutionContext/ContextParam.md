@@ -29,7 +29,7 @@ enum class ContextParam : uint32_t
 | kNodeId | 当前算子节点在图内的节点id，图内唯一。 |
 | kVectorCoreNum | 当前算子节点可用的vector core数量。算子属性未配置时按全局选项 > 平台默认回退；各来源均不可用时查询失败。 |
 | kAiCoreNum | 当前算子节点可用的AI Core数量。算子属性未配置时按全局选项 > 平台默认回退；各来源均不可用时查询失败。 |
-| kAiCpuNum | 当前算子节点可用的AICPU核数量。未配置或获取失败时查询失败。 |
+| kAiCpuNum | 当前算子节点可用的AI CPU核数量。未配置或获取失败时查询失败。 |
 | kNum | 预留，不作为查询key使用。 |
 
 ## 约束说明

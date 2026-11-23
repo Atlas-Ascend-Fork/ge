@@ -160,7 +160,7 @@ Replace **$\{INSTALL\_DIR\}** in the preceding path with the file storage path a
 <!-- end id3 -->
 <!-- @ref: ge/res/docs/en/api/graph_engine_api/cpp/ge/aclgrphBuildInitialize_config_params/precision_tuning_res.md#id1 -->
 
-- This parameter prioritizes performance by default, which may cause precision overflow issues during subsequent inference. If precision issues occur during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in *[Application Development](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md)* for troubleshooting.
+- This parameter prioritizes performance by default, which may cause precision overflow issues during subsequent inference. If precision issues occur during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in *[Application Development](https://gitcode.com/cann/docs/blob/master/docs/en/app-dev/c/00_acl_cpp_dev.md)* for troubleshooting.
 - If users focus on precision issues, they can change it to other values, such as **must\_keep\_origin\_dtype.**
 
 **Configuration example:**
@@ -271,7 +271,7 @@ Replace **$\{INSTALL\_DIR\}** in the preceding path with the file storage path a
     Ascend 950PR&950DT series products
 <!-- end id13 -->
 
-- This parameter defaults to performance-first, which may cause precision overflow issues during subsequent inference. If precision issues occur during inference, see "Model Inference \> Precision/Performance Optimization \> Model Inference Precision Improvement Suggestions" in [*Application Development*](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
+- This parameter defaults to performance-first, which may cause precision overflow issues during subsequent inference. If precision issues occur during inference, see "Model Inference \> Precision/Performance Optimization \> Model Inference Precision Improvement Suggestions" in [*Application Development*](https://gitcode.com/cann/docs/blob/master/docs/en/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
 - If users focus on precision issues, they can change it to another value, such as **origin.**
 
 **Configuration example:**

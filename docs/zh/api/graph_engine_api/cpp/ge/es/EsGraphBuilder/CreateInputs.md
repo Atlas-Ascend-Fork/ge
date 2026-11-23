@@ -22,14 +22,13 @@
     std::array<EsTensorHolder, inputs_num> CreateInputs(size_t start_index = 0)
     ```
 
--   创建指定数量的输入节点，返回容器，适用于运行时动态绑定
+- 创建指定数量的输入节点，返回容器，适用于运行时动态绑定
 
-    ```
+    ```c++
     std::vector<EsTensorHolder> CreateInputs(size_t inputs_num, size_t start_index = 0)
     ```
 
 ## 参数说明
-
 
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
@@ -38,11 +37,10 @@
 
 ## 返回值说明
 
-
 | 参数名 | 类型 | 说明 |
 | --- | --- | --- |
 | - | std::array<EsTensorHolder, inputs_num> | 返回创建的输入张量持有者数组。 |
-| - | std::vector<EsTensorHolder> | 返回创建的输入张量持有者容器。 |
+| - | std::vector\<EsTensorHolder> | 返回创建的输入张量持有者容器。 |
 
 ## 约束说明
 
@@ -50,7 +48,7 @@
 
 ## 调用示例
 
--   创建指定数量的输入节点，返回数组，适用于编译时的结构化绑定
+- 创建指定数量的输入节点，返回数组，适用于编译时的结构化绑定
 
     ```c++
     // 1. 创建图构建器（EsGraphBuilder）
@@ -59,7 +57,7 @@
     EsTensorHolder [data0, data1] = builder.CreateInputs<2>();
     ```
 
--   创建指定数量的输入节点，返回容器，适用于运行时动态绑定
+- 创建指定数量的输入节点，返回容器，适用于运行时动态绑定
 
     ```
     // 1. 创建图构建器（EsGraphBuilder）

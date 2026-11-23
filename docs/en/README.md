@@ -2,15 +2,15 @@
 
 ## Documentation
 
-- [Graph Development Guide](../zh/user_guides/graph_dev/README.md)
+- [Graph Development Guide](../en/user_guides/graph_dev/README.md)
 
   Designed for single-card graph compilation and execution, providing GE basic concepts, principles, and how to use GE graph engine interfaces for graph construction, compilation and execution.
 
-- [DataFlow Development Guide](../zh/user_guides/dflow/index.md)
+- [DataFlow Development Guide](../en/user_guides/dflow/index.md)
 
   Designed for heterogeneous and cluster graph compilation and execution, introducing how to build, modify, compile and execute computation graphs through DataFlow interfaces.
 
-- [LLM DataDist Development Guide](../zh/user_guides/llm_datadist/index.md)
+- [LLM DataDist Development Guide](../en/user_guides/llm_datadist/index.md)
 
   Designed for large models, introducing how to use LLM-DataDist interfaces to implement data transmission between clusters and build large model inference disaggregated frameworks.
 
@@ -36,7 +36,7 @@
 
     Introduces key technologies for Host scheduling optimization and how to improve heterogeneous system resource utilization through these technologies.
 
-- [Automatic Fusion](../zh/user_guides/graph_dev/autofuse/README.md)
+- [Automatic Fusion](../en/user_guides/graph_dev/autofuse/README.md)
 
     Introduces the implementation principles and enabling methods of automatic fusion, and how to shorten model E2E time through this technology.
 
@@ -44,11 +44,11 @@
 
 - GraphEngine API
 - DataFlow API
-  - [C++ Interface](../zh/user_guides/dflow/dflow_api/README_cpp.md)
-  - [Python Interface](../zh/user_guides/dflow/dflow_api/README_python.md)
+  - [C++ Interface](../en/user_guides/dflow/dflow_api/README_cpp.md)
+  - [Python Interface](../en/user_guides/dflow/dflow_api/README_python.md)
 - LLM DataDist API
-  - [C++ Interface](../zh/user_guides/llm_datadist/llm_datadist_api/README_cpp.md)
-  - [Python Interface](../zh/user_guides/llm_datadist/llm_datadist_api/README_python.md)
+  - [C++ Interface](../en/user_guides/llm_datadist/llm_datadist_api/README_cpp.md)
+  - [Python Interface](../en/user_guides/llm_datadist/llm_datadist_api/README_python.md)
 
 ## Architecture and Development Guide
 

@@ -18,7 +18,7 @@ std::map<ge::AscendString, ge::AscendString> ge_options = {{"ge.exec.deviceId", 
 - 对于标量输入，也需要填入shape范围，表示方法为：\[\]。
 - 对于多输入场景，例如有三个输入时，如果只有第二个第三个输入具有shape范围，第一个输入为固定输入时，仍需要将固定输入shape填入options字段内，例如：
 
-    \{"ge.exec.dataInputsShapeRange", "\[3,3,4,10\], \[-1,3,2\~1000,-1\],\[-1,-1,-1,-1\]"\}\};
+    \{"ge.exec.dataInputsShapeRange", "\[3,3,4,10\], \[-1,3,2\~1000,-1\],\[-1,-1,-1,-1\]"\};
 
 > [!NOTE]说明
 >

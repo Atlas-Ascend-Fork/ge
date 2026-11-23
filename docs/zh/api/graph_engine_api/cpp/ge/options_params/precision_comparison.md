@@ -96,7 +96,7 @@
 **参数取值：**
 
 - aicore\_overflow：AI Core算子溢出检测，检测在算子输入数据正常的情况下，输出是否不正常的极大值（如float16下65500,38400,51200这些值）。一旦检测出这类问题，需要根据网络实际需求和算子逻辑来分析溢出原因并修改算子实现。
-- atomic\_overflow：Atomic Add溢出检测，即除了AICore之外，还有其他涉及浮点计算的模块，比如SDMA，检测这些部分出现的溢出问题。
+- atomic\_overflow：Atomic Add溢出检测，即除了AI Core之外，还有其他涉及浮点计算的模块，比如SDMA，检测这些部分出现的溢出问题。
 - all：同时进行AI Core算子溢出检测和Atomic Add溢出检测。
 
 <!-- npu="A3,910b" id1 -->

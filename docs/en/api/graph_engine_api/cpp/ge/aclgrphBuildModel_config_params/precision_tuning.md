@@ -151,7 +151,7 @@ In the preceding path, replace **$\{INSTALL\_DIR\}** with the file storage path 
     Ascend 950PR&950DT series products
 <!-- end id3 -->
 
-- This parameter defaults to performance priority, which may cause precision overflow during subsequent inference. If a precision issue occurs during inference, see "Model inference \> Precision/Performance optimization \> Suggestions for improving model inference precision" in [*Application Development*](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
+- This parameter defaults to performance priority, which may cause precision overflow during subsequent inference. If a precision issue occurs during inference, see "Model inference \> Precision/Performance optimization \> Suggestions for improving model inference precision" in [*Application Development*](https://gitcode.com/cann/docs/blob/master/docs/en/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
 - If users focus on precision issues, they can change it to other values, such as **must\_keep\_origin\_dtype.**
 
 **Configuration example:**
@@ -268,7 +268,7 @@ Replace **$\{INSTALL\_DIR\}** in the preceding path with the file storage path a
   Ascend 950PR&950DT series products
 <!-- end id8 -->
 
-- This parameter defaults to performance-first, which may cause precision overflow issues during subsequent inference. If precision issues occur during inference, see "Model inference \> Precision/Performance optimization \> Model inference precision improvement suggestions" in [*Application Development*](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
+- This parameter defaults to performance-first, which may cause precision overflow issues during subsequent inference. If precision issues occur during inference, see "Model inference \> Precision/Performance optimization \> Model inference precision improvement suggestions" in [*Application Development*](https://gitcode.com/cann/docs/blob/master/docs/en/app-dev/c/00_acl_cpp_dev.md) for troubleshooting.
 - If users focus on precision issues, they can change it to other values, such as **origin.**
 
 **Configuration example:**

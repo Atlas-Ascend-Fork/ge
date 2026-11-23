@@ -11,7 +11,7 @@
 
 ## 功能说明
 
-将Match Result序列化为字符串。
+将MatchResult序列化为字符串。
 
 ## 函数原型
 
@@ -27,7 +27,7 @@ AscendString ToAscendString() const
 
 | 参数名 | 类型 | 说明 |
 | --- | --- | --- |
-| - | AscendString | 以字符串的形式描述Match Result的Pattern name，及Pattern Node和Match Node name的对应关系。 |
+| - | AscendString | 以字符串的形式描述MatchResult的Pattern name，及Pattern Node和Match Node name的对应关系。 |
 
 ## 约束说明
 

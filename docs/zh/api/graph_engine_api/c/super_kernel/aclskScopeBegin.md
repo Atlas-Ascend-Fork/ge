@@ -53,5 +53,5 @@ aclError aclskScopeBegin(const char* scopeName, aclrtStream stream)
 ## 约束说明
 
 - 与[aclskScopeEnd](aclskScopeEnd.md)成对使用，传入的scopeName与aclskScopeEnd一致。
-- scope name名称不超过256B字节（注：scopeName入参类型是char，scopeName实际有效名称长度不超过255字节）。
+- scopeName名称不超过256B字节（注：scopeName入参类型是char，scopeName实际有效名称长度不超过255字节）。
 - 全局支持的scopename（不同）数量不超过256个。

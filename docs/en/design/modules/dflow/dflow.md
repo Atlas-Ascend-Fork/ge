@@ -11,8 +11,9 @@ This document is for dflow developers, describing the architecture design, core 
 Covered modules: `flow_graph/`, `pydflow/`, `runner/` (including `session/`, `compiler/`, `executor/`), `base/`, `deployer/`, `udf/`. Does not cover the `llm_datadist` submodule (large model data distribution is an independent feature).
 
 Related documents:
+
 - [udf.md](udf.md) -- UDF submodule independent document
-- [docs/zh/user_guides/dflow](../../../../zh/user_guides/dflow/index.md) -- User development guide
+- [docs/en/user_guides/dflow](../../../../en/user_guides/dflow/index.md) -- User development guide
 - [examples/dflow](../../../../../examples/dflow) -- Sample code
 
 ---
@@ -26,7 +27,7 @@ When the traditional inference pipeline concatenates multiple models, each model
 GE's IR graph construction (`ComputeGraph`) adopts **synchronous data flow** -- one input corresponds to one output between operators in the graph, expressing serial synchronous execution. This model is suitable for operator orchestration within a single model, but not suitable for "multi-model orchestration + asynchronous pipeline" scenarios:
 
 | Dimension | IR Graph Construction | DataFlow |
-|-----------|----------------------|----------|
+| ----------- | ---------------------- | ---------- |
 | Data flow | Synchronous, one input one output | Asynchronous, supports one input multiple outputs / multiple inputs one output |
 | Execution model | Serial synchronous | Parallel asynchronous, fully utilizing resources |
 | Host-device interaction | Each model requires host participation | GraphPp fully sinks to device, adjacent nodes transfer device-device |
@@ -79,7 +80,7 @@ flowchart TD
 ```
 
 | Module | Core Responsibility |
-|--------|---------------------|
+| -------- | --------------------- |
 | `flow_graph/` | C++ graph construction API: FlowGraph/FlowNode/FlowData/ProcessPoint system |
 | `pydflow/` | Python wrapper, @pyflow decorator, PyTorch integration, UDF project auto-generation |
 | `runner/session/` | DFlowSession API entry, coordination hub for compilation, deployment, and execution |
@@ -100,7 +101,7 @@ The most typical scenario: two models (such as an ONNX model and a PB model) con
 **Important**: UDF can execute on either the host or the device, depending on the UDF type, compilation output, and user deployment configuration (refer to [Section 4.6](#46-udf-execution-location-and-multi-instance-deployment)):
 
 | UDF Type | Execution Location | Reason |
-|----------|-------------------|--------|
+| ---------- | ------------------- | -------- |
 | Python UDF | Host only | Device has no Python executor, CMake template rejects Ascend target compilation |
 | C++ UDF (supports both host/device compilation) | Device by default | When compilation output includes Ascend, device is selected by default |
 | C++ UDF (host compilation only) | Host only | Compilation output does not include Ascend |
@@ -186,7 +187,7 @@ classDiagram
 The three externally provided ProcessPoint types correspond to different computation logic sources:
 
 | ProcessPoint | Purpose | Compilation Engine |
-|--------------|---------|-------------------|
+| -------------- | --------- | ------------------- |
 | `FunctionPp` | UDF user defined function | UDF engine (compiles user SO) |
 | `GraphPp` | IR graph defined computation logic | NPU engine (model sinking) |
 | `FlowGraphPp` | Nested FlowGraph as PP | NPU engine (recursive compilation) |
@@ -209,7 +210,7 @@ After graph construction, compile and run through `DFlowSession` (`runner/sessio
 The Python side provides three layers of wrapping (`pydflow/python/dataflow/`); for mechanism details refer to [Section 4.5](#45-python-interface-layer):
 
 | Layer | File | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | High-level API | `dataflow.py` | Graph construction and runtime interfaces such as FlowGraph/FlowNode/FlowData/Tensor/feed/fetch |
 | General UDF decorator | `pyflow.py` | `@df.pyflow` (function/class auto-convert to PP), `@df.method` (in-class method marker), see [Section 4.5.1](#451-dfpyflow-general-python-udf-decorator) |
 | PyTorch integration | `plugin/torch/torch_plugin.py` | `@df.npu_model` (PyTorch zero-copy sinking), see [Section 4.5.2](#452-dfnpu_model-pytorch-zero-copy-sinking-decorator) |
@@ -223,7 +224,7 @@ In addition, `pydflow/wrapper/` provides pybind11 C++ extension modules: `dflow_
 DataFlow runtime data uses **FlowMsg** as the core carrier (`executor/flow_msg.cc`); three subclasses cover all data types:
 
 | Type | Layout | Purpose |
-|------|--------|---------|
+| ------ | -------- | --------- |
 | `TensorFlowMsg` | `[RuntimeTensorDesc][TensorData]` | Tensor data, zero-copy |
 | `RawDataFlowMsg` | `[raw bytes]` | Arbitrary binary data |
 | `EmptyDataFlowMsg` | `[RuntimeTensorDesc]` (no data body) | Empty data message, used for notifications such as end-of-sequence |
@@ -270,7 +271,7 @@ Key-value pairs in `build_options` are **passed through to the GE compiler** as 
 dflow private configuration, describing tensor metadata per input, overriding subgraph Data node tensor desc at compilation time. **When the original graph Data node's dtype/format/shape is inconsistent with the expected compilation** (for example, the original graph shape is static but needs to be changed to dynamic dimensions, or dtype needs correction), override to correct values through `inputs_tensor_desc`. If the original graph Data node description is already correct, no setting is needed. Each element contains:
 
 | Item | Meaning | Value | Default |
-|------|---------|-------|---------|
+| ------ | --------- | ------- | --------- |
 | `data_type` | Tensor data type | Serialization string of `DataType` enum, such as `"DT_FLOAT"`, `"DT_INT32"` | `DT_FLOAT` |
 | `shape` | Tensor shape | Integer list, dynamic dimensions set to `-1`, such as `[1,3,-1,-1]` | Not set means no override |
 | `format` | Format | `"NCHW"` / `"NHWC"` / `"ND"` | `ND` |
@@ -334,7 +335,7 @@ flowchart TD
 **The PNE engine mechanism** is the core abstraction of the compilation layer (`pne/process_node_engine.h`). `ProcessNodeEngine` defines the unified interface for "how to compile a ProcessPoint subgraph"; three engine implementations use different compilation strategies:
 
 | Engine | Compilation Method | Output |
-|--------|-------------------|--------|
+| -------- | ------------------- | -------- |
 | NPUProcessNodeEngine | Delegates to `GeSession` for compilation (model sinking) | GraphModel (OM) |
 | CPUProcessNodeEngine | Inherits NPU; FlowModelBuilder injects `EXEC_PLACEMENT=HOST` when compiling CPU subgraphs | GraphModel (OM) |
 | UdfProcessNodeEngine | `UdfModelBuilder` builds UdfModelDef + cmake/make compiles user SO | UdfModel |
@@ -344,6 +345,7 @@ The CPU engine inherits the NPU engine and only overrides `GetEngineName`; the c
 Engines are registered through `REGISTER_PROCESS_NODE_ENGINE` macro + SO plugin mechanism (`pne/process_node_engine_manager.cc`), loaded at runtime from the `plugin/pnecompiler/` directory. Each `DflowGraphManager` creates independent engine instances through `CloneEngine`.
 
 **Two compilation passes** (`data_flow_graph/`):
+
 - `DataFlowGraphPrunePass`: Reverse BFS from outputs to prune isolated nodes, reducing compilation volume
 - `ConvertBatchAttrToUdfPass`: Converts TimeBatch/CountBatch attributes to built-in UDF nodes, reusing the UDF compilation and execution mechanism
 
@@ -383,7 +385,7 @@ classDiagram
 **OM serialization** adopts a three-partition structure (`base/model/flow_model_om_saver.cc`):
 
 | Partition | Content |
-|-----------|---------|
+| ----------- | --------- |
 | MODEL_DEF | Root graph structure (ge::Model) |
 | FLOW_MODEL | FlowModel metadata (ModelRelation, sub-model list, scheduling priority) |
 | FLOW_SUBMODEL | Each sub-model compilation product (multi-thread parallel loading) |
@@ -445,7 +447,7 @@ graph TD
 Role responsibilities at each level:
 
 | Role | Process/Location | Responsibility | Description |
-|------|-----------------|----------------|-------------|
+| ------ | ----------------- | ---------------- | ------------- |
 | Application head node | User application process | Compilation, orchestration deployment, Feed/Fetch | `MasterModelDeployer` runs in-process through dlopen, `LocalDeployer` directly handles local node deployment |
 | Slave scheduling node | `deployer_daemon` | gRPC server, client management | Independently started daemon process on remote nodes, forks one sub_deployer per head node connection. Does **not load models** itself (no `GeExecutor`), is a lightweight dispatcher |
 | Sub-slave scheduling node | `sub_deployer` | Model loading, fork executor | Daemon child process, attaches to daemon's MemoryGroup, initializes `GeExecutor` with model loading capability. Communicates with daemon through message queue; abnormalities are detected by the head node through heartbeat detection |
@@ -469,7 +471,7 @@ The two modes are distinguished by `ExecutorKey.is_proxy`: when `device_type != 
 Different communication methods are used between levels:
 
 | Level | Communication Method | Description |
-|-------|---------------------|-------------|
+| ------- | --------------------- | ------------- |
 | Head node to slave scheduling node | gRPC | `RemoteDeployer` to daemon gRPC service |
 | Slave scheduling node to sub-slave scheduling node | Message queue (rtMemQueue) | `DeployerDaemonClient` to sub_deployer `MessageServer` |
 | Sub-slave scheduling node/head node to executor | Message queue | `PneExecutorClient` to executor `MessageServer` |
@@ -528,16 +530,19 @@ After executor process startup: attach MemoryGroup to initialize `MessageServer`
 After executor processes load models, they adopt different execution methods based on model type and deployment location:
 
 **Host model execution** (host_cpu_executor process):
+
 - Driven by `DynamicModelExecutor(is_host=true)`, using `libhost_aicpu_scheduler.so`
 - `CpuSchedEventDispatcher` receives AICPU activation events, triggering `ExecuteAsync` to submit execution tasks
 - The model executes on the host CPU, applicable to CPU-side GraphPp
 
 **NPU static model execution** (npu_executor process):
+
 - Directly loaded through `GeExecutor::LoadModelWithQueueParam`; the AICPU scheduler automatically handles input dequeue and output enqueue
 - Does not involve `DynamicModelExecutor`; the model sinks to the NPU for task sink execution
 - Applicable to static shape GraphPp
 
 **NPU dynamic model execution** (npu_executor process):
+
 - Uses `ProxyDynamicModelExecutor` (inheriting `DynamicModelExecutor`)
 - AICPU dequeues data from input queues on the NPU side and sends data description information (address, shape, and so on) to npu_executor through req_msg_queue
 - The npu_executor dispatcher thread dequeues request mbufs from req_msg_queue, parses input addresses, and calls `aclmdlExecute` to execute the dynamic model
@@ -553,7 +558,7 @@ The core task of deployment planning is to translate the logical connection rela
 Three roles are formed after deployment, each with clear responsibility boundaries:
 
 | Role | Responsibility | Queue interaction |
-|------|---------------|-------------------|
+| ------ | --------------- | ------------------- |
 | Application head node | Overall entry and exit point for user Feed/Fetch | Enqueues to input queues on Feed, dequeues from output queues on Fetch |
 | Model executor | Executes model computation (NPU models, UDFs, etc.) | Only dequeues from its input queues and enqueues to its output queues, unaware of how data arrives |
 | flowGW | Data distribution middleware (one per device; whether the host side is deployed is determined by runtime capability detection) | Dequeues from source queues and distributes to target queues |
@@ -684,7 +689,7 @@ The example above embodies 6 edge types, each using a different communication me
 **One-to-one queue reuse**: for one-to-one connections with both ends deployed on the same node, the source model's output queue and the target model's input queue are reused as the same physical queue, without creating two queues and doing an extra enqueue/dequeue round trip. A host CPU model and an NPU model on the same node are also reused (the physical queue resides on the NPU side).
 
 | Connection | Reused queue | Description |
-|------------|--------------|-------------|
+| ------------ | -------------- | ------------- |
 | FlowData1 -> A.in1 | Q2 | Input queue serves directly as A's input |
 | A.out1 -> C.in1 | Q5 | A's output queue is C's input queue |
 | D.out0 -> E.in0 | Q15 | D's output queue is E's input queue |
@@ -821,7 +826,7 @@ When instance counts differ, `CheckSkipBinding` returns false, no trimming, esta
 **Multi-instance edge strategy summary**:
 
 | Scenario | Instance count | Edge strategy | Trimming | Core code |
-|----------|----------------|---------------|----------|-----------|
+| ---------- | ---------------- | --------------- | ---------- | ----------- |
 | One-to-many | 1->N | Target instance access points form a destination group, select-one delivery (load balancing) | Not involved | `IsOutputMultiConnected` |
 | Many-to-one | M->1 | Sources form the target's source group, ordered consumption | Not involved | `IsInputMultiConnected` |
 | Many-to-many (same instance count) | N->N | Same-index diagonal connections, degenerating to pure one-to-one (no group needed) | Trims N squared minus N | `CheckSkipBinding` |
@@ -862,6 +867,7 @@ sequenceDiagram
 ```
 
 **DataFlowDataAligner** (`executor/data_flow_data_aligner.cc`). In normal scenarios, flowGW aligns by trans_id in order, and model processing order can be guaranteed without additional alignment. However, in the following two special scenarios, trans_id may be non-continuous or data may be discarded, requiring users to enable the data aligner through `SetInputsAlignAttrs`:
+
 - **Exception handling enabled**: Enabled through `FlowGraph::SetExceptionCatch(true)`; exception data may be discarded causing non-continuous trans_id
 - **Contains N-Mapping nodes** (nodes whose input and output counts are not one-to-one mapped; users can declare them through `FlowGraph::SetContainsNMappingNode(true)`, and batch attribute conversion and streaming-input UDFs are also automatically marked by the framework at compile time): such as batch aggregation (multiple data groups merged into one) or data splitting (one data group split into multiple), causing non-continuous trans_id
 
@@ -888,7 +894,7 @@ The two core decorators on the Python side, `@df.pyflow` and `@df.npu_model`, sh
 **Two decoration targets** (`_make_pyflow` in `pyflow.py`):
 
 | Decoration Target | Product | Graph Construction |
-|------------------|---------|-------------------|
+| ------------------ | --------- | ------------------- |
 | Function | `PyFunctionProcessPoint` | `function.fnode()` creates the node; the input count is derived from the function signature, and the output count is determined by the return type annotation or the `num_returns` option |
 | Class | `PyActorProcessPoint` | `Class.fnode()`; `_df_from_class` dynamically derives a subclass, methods marked with `@df.method()` are collected at `fnode()` time, and node method invocation is edge connection (e.g., `node.forward(x)`) |
 
@@ -963,7 +969,7 @@ The AICPU scheduling model runs in an entry/next dual-stream loop (`CreateSchedT
 **Common points**: the same base class system (function/class decoration targets, `fnode()` graph construction, `FlowFuncRegister` registration); the same project generation chain (cloudpickle + C++ wrapper + `func_*.json`, all with `heavy_load=True`); the same scheduling and execution mechanism (UdfModel -> FlowFuncProcessor state machine, see [udf.md](udf.md)).
 
 | Dimension | `@df.pyflow` | `@df.npu_model` |
-|-----------|--------------|-----------------|
+| ----------- | -------------- | ----------------- |
 | Positioning | General Python UDF | PyTorch zero-copy sinking |
 | Input | Deserialized into Python objects (numpy/registered types/cloudpickle), data copied | AICPU relays data descriptions, tensors rebuilt from description + device address, zero-copy |
 | Output | Serialized data itself written into mbuf | Output descriptions returned to the AICPU, which rebuilds standard mbufs for downstream |
@@ -983,7 +989,7 @@ The AICPU scheduling model runs in an entry/next dual-stream loop (`CreateSchedT
 The final UDF execution location is determined by the compilation-time attribute chain; the core logic is in `DataFlowGraphAutoDeployer::SelectResourceType` (`runner/compiler/data_flow_graph/data_flow_graph_auto_deployer.cc`):
 
 | Attribute | Meaning | Setting Location |
-|-----------|---------|-----------------|
+| ----------- | --------- | ----------------- |
 | `_dflow_runnable_resource` | Set of resource types UDF successfully compiled to (Ascend/X86/Aarch) | `SetCompileResultToNode` in `process_point_loader.cc` |
 | `_dflow_heavy_load` | Whether heavy-load (heavy-load must be host) | `SetUserFunctionProcessPointAttrs` in `process_point_loader.cc` |
 | `_dflow_final_location` | Final resource type selected by auto deployer | `AutoDeployDataFlowGraph` in `data_flow_graph_auto_deployer.cc` |
@@ -1024,7 +1030,7 @@ Users pass the deployment configuration JSON file through the compilation option
 **Logical device ID format** is `cluster_id:server_id:device_id:numaid` (4 segments; 3 segments will have numaid defaulted to 0):
 
 | Notation | Meaning |
-|----------|---------|
+| ---------- | --------- |
 | `0:0:0:0` | cluster 0 / server 0 / device 0 / numaid 0 |
 | `0:0:0~3:0` | device 0~3, 4 instances total |
 | `0:1~3:0~1` | server 1~3 x device 0~1, 6 instances total (numaid defaults to 0) |
@@ -1102,7 +1108,7 @@ Throughout the entire flow, the compilation, deployment, and execution phases ar
 ## Appendix: Key File Index
 
 | Module | Core Files | Responsibility |
-|--------|-----------|----------------|
+| -------- | ----------- | ---------------- |
 | flow_graph | `flow_graph.cc`, `process_point.cc` | C++ graph construction core |
 | pydflow | `dataflow.py`, `pyflow.py`, `torch_plugin.py`, `wrapper/flow_func_wrapper.cpp` | Python interface (including pybind11 extensions and RuntimeTensorDesc layout) |
 | session | `dflow_api.h`, `dflow_api.cc` | DFlowSession API entry |

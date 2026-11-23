@@ -11,7 +11,7 @@
 
 在调用本接口前，必须先调用[CompileGraph](./CompileGraph.md)接口进行图编译；内存大小从[GetCompiledGraphSummary](./GetCompiledGraphSummary.md)\>**GetRefreshableFeatureMemorySize**接口中获取。
 
-如果图中存在Fixed内存，且用户没有调用[SetGraphFixedFeatureMemoryBaseWithType](./SetGraphFixedFeatureMemoryBaseWithType.md)接口设置默认内存类型的Fixed Feature内存基地址，则会自动默认申请Fixed内存。
+如果图中存在Fixed内存，且用户没有调用[SetGraphFixedFeatureMemoryBaseWithType](./SetGraphFixedFeatureMemoryBaseWithType.md)接口设置默认内存类型的Fixed Feature内存基地址，则会默认申请Fixed内存。
 
 Feature内存指的是模型执行过程中所需要的中间内存（比如中间节点的输入输出等内存）。
 

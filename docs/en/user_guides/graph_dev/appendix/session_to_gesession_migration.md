@@ -234,7 +234,7 @@ The following describes the lifecycle of **gert::Tensor** and how to construct a
     }
     ```
 
-For details about APIs such as **aclrtMallocHost**, **aclrtMalloc**, **aclrtFreeHost**, and **aclrtFree**, see **Memory Management** in [Runtime APIs](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md).
+For details about APIs such as **aclrtMallocHost**, **aclrtMalloc**, **aclrtFreeHost**, and **aclrtFree**, see **Memory Management** in [Runtime APIs](https://gitcode.com/cann/runtime/blob/master/docs/en/api_ref/README.md).
 
 ## Compilation and Runtime API Changes
 

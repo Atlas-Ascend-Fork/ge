@@ -11,7 +11,7 @@
 
 ## 功能说明
 
-创建一个类型为[kCustomValue](../ArgDescType.md)（自定义参数类型）的ArgDescInfo对象，表示此块Args地址用来存储自定义内容 。
+创建一个类型为[kCustomValue](../ArgDescType.md)（自定义参数类型）的ArgDescInfo对象，表示此块Args地址用来存储自定义内容。
 
 ## 函数原型
 

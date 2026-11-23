@@ -24,7 +24,7 @@ Status GetCapturedTensor(size_t capture_idx, NodeIo &node_output) const
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | capture_idx | 输入 | 捕获的索引ID。 |
-| node_output | 输出 | 配到的Tensor。 |
+| node_output | 输出 | 匹配到的Tensor。 |
 
 ## 返回值说明
 

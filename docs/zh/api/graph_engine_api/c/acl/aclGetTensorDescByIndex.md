@@ -40,7 +40,7 @@ aclTensorDesc *aclGetTensorDescByIndex(aclTensorDesc *desc, size_t index)
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | desc | 输入 | aclTensorDesc类型的指针。<br>调用[aclmdlCreateAndGetOpDesc](aclmdlCreateAndGetOpDesc.md)接口获取算子所有输入/输出的tensor描述，作为本接口的输入。 |
-| index | 输入 | 指定获取第几个输入/输出的tensor描述，index值从0开始。<br>用户调用[aclmdlCreateAndGetOpDesc](aclmdlCreateAndGetOpDesc.md)接口获取的算子输入/输出的数量后，这个Index的取值范围：[0, (算子输入/输出的数量-1)]。 |
+| index | 输入 | 指定获取第几个输入/输出的tensor描述，index值从0开始。<br>用户调用[aclmdlCreateAndGetOpDesc](aclmdlCreateAndGetOpDesc.md)接口获取算子输入/输出的数量后，这个Index的取值范围：[0, (算子输入/输出的数量-1)]。 |
 
 ## 返回值说明
 

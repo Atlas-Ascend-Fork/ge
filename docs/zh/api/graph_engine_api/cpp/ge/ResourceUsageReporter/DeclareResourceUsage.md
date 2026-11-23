@@ -77,4 +77,5 @@ class MyEagerOp : public ge::EagerExecuteOp, public ge::ResourceUsageReporter {
   }
 };
 ```
+
 上述示例中，运行期`RequestAttachedStream`与编译期`ReportAttachedStream`共用同一key生成逻辑，保证申报与运行期请求一致；两个输入shape分别为1024和2048的节点，模型统计值为2。

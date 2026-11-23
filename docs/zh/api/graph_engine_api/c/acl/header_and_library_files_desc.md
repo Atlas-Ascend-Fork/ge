@@ -25,7 +25,7 @@ acl接口的头文件在“$\{INSTALL\_DIR\}/include/”目录下，库文件在
 | 定义接口的头文件 | 用途 | 对应的库文件 |
 | --- | --- | --- |
 | acl/acl_mdl.h | 用于定义模型管理接口。 | libacl_mdl.so<br>说明：为了兼容旧版本，旧版本中支持使用libascendcl.so，但后续版本这种方式会废弃，建议使用libacl_mdl.so，防止后续版本出现兼容性问题。 |
-| acl/acl_op.h<br>acl/acl_op_compiler.h | 用于定义单算子调用接口（仅包含单算模型执行接口）。 | libacl_op_executor.so<br>libacl_op_compiler.so<br>说明：为了兼容旧版本，旧版本中支持使用libascendcl.so，但后续版本这种方式会废弃，建议使用libacl_op_executor.so和libacl_op_compiler.so，防止后续版本出现兼容性问题。 |
+| acl/acl_op.h<br>acl/acl_op_compiler.h | 用于定义单算子调用接口（仅包含单算子模型执行接口）。 | libacl_op_executor.so<br>libacl_op_compiler.so<br>说明：为了兼容旧版本，旧版本中支持使用libascendcl.so，但后续版本这种方式会废弃，建议使用libacl_op_executor.so和libacl_op_compiler.so，防止后续版本出现兼容性问题。 |
 | acl/ops/acl_cblas.h | 用于定义CBLAS接口。 | libacl_cblas.so |
 
 **注意：**

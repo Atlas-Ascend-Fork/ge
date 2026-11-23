@@ -68,7 +68,7 @@ The following uses the conversion of a model in the \*.onnx format into a model 
 
 4. Follow-up operations.
 
-   After the model is converted into an \*.om offline model, you can call the model loading API to load the converted \*.om offline model, and then call the model execution API for inference. The following is a brief process of loading a model file from a file and performing inference. For details about model loading and inference, see the "Model Inference" section in [Application Development](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md).
+   After the model is converted into an \*.om offline model, you can call the model loading API to load the converted \*.om offline model, and then call the model execution API for inference. The following is a brief process of loading a model file from a file and performing inference. For details about model loading and inference, see the "Model Inference" section in [Application Development](https://gitcode.com/cann/docs/blob/master/docs/en/app-dev/c/00_acl_cpp_dev.md).
 
   ```c++
   // 1. Specify the model path.
@@ -99,9 +99,9 @@ The process is described as follows:
     1. If you **use graph engine APIs to construct a new graph**, determine the following information based on the original network:
         1. The operators contained in the network, as well as the inputs, outputs, attributes, and other information of these operators.
         2. The relationships between operators in the network.
-        3. Check whether the operators in the original network are supported by the AI processor. For the currently supported operators, see the "Ascend IR Operator Specifications" section in [Operator Library](https://hiascend.com/document/redirect/CannCommunityOplist). If an operator is not supported or does not meet the actual requirements, developers can customize an Ascend C operator by referring to [Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/master/docs/zh/guide/index.md), or customize a TBE operator by referring to [TBE & AI CPU Operator Development](https://hiascend.com/document/redirect/CannCommunityOpdevWizard). After selecting one of the methods, deploy the operator to the hardware environment.
+        3. Check whether the operators in the original network are supported by the AI processor. For the currently supported operators, see the "Ascend IR Operator Specifications" section in [Operator Library](https://hiascend.com/document/redirect/CannCommunityOplist). If an operator is not supported or does not meet the actual requirements, developers can customize an Ascend C operator by referring to [Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/master/docs/en/guide/index.md), or customize a TBE operator by referring to [TBE & AI CPU Operator Development](https://hiascend.com/document/redirect/CannCommunityOpdevWizard). After selecting one of the methods, deploy the operator to the hardware environment.
 
-    2. If **the Parser API is used to parse the original model into a Graph**, check whether the operators in the original network are supported by the AI processor. For the currently supported operators, see the "Ascend IR Operator Specifications" section in [Operator Library](https://hiascend.com/document/redirect/CannCommunityOplist). If an operator is not supported or does not meet the actual requirements, customize an Ascend C operator by referring to [Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/master/docs/zh/guide/index.md), or customize a TBE operator by referring to [TBE & AI CPU Operator Development](https://hiascend.com/document/redirect/CannCommunityOpdevWizard). After selecting one of the methods, deploy the operator to the hardware environment.
+    2. If **the Parser API is used to parse the original model into a Graph**, check whether the operators in the original network are supported by the AI processor. For the currently supported operators, see the "Ascend IR Operator Specifications" section in [Operator Library](https://hiascend.com/document/redirect/CannCommunityOplist). If an operator is not supported or does not meet the actual requirements, customize an Ascend C operator by referring to [Ascend C Operator Development](https://gitcode.com/cann/asc-devkit/blob/master/docs/en/guide/index.md), or customize a TBE operator by referring to [TBE & AI CPU Operator Development](https://hiascend.com/document/redirect/CannCommunityOpdevWizard). After selecting one of the methods, deploy the operator to the hardware environment.
 
 2. Build a Graph. Developers can build a Graph from scratch using the graph engine API, or parse the original model into a Graph using the Parser API.
 3. Modify the Graph. If developers want to optimize the Graph structure, they can directly modify the built Graph into the desired structure.
@@ -245,7 +245,7 @@ The sample provides the following functions:
 
 5. Follow-up operations.
 
-    After the model is converted into an \*.om offline model, you can call the model loading API to load the converted \*.om offline model, and then call the model execution API for inference. For details about model loading and inference, see "Model Inference" in [Application Development](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md).
+    After the model is converted into an \*.om offline model, you can call the model loading API to load the converted \*.om offline model, and then call the model execution API for inference. For details about model loading and inference, see "Model Inference" in [Application Development](https://gitcode.com/cann/docs/blob/master/docs/en/app-dev/c/00_acl_cpp_dev.md).
 
 ### Code Analysis
 

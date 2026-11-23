@@ -12,7 +12,7 @@
 
 封装算子的Common\_InferShape函数。
 
-与[IMPLEMT\_INFERFUNC](IMPLEMT_INFERFUNC.md)的区别是，此函数自动生成的一个类型为Operator类的对象op，可直接调用[Operator](./Operator/overview.md)接口进行InferShape的实现。若InferShape方法具有通用性，可被多个算子的原型实现调用，可选择此接口实现。
+与[IMPLEMT\_INFERFUNC](IMPLEMT_INFERFUNC.md)的区别是，此函数自动生成一个类型为Operator类的对象op，可直接调用[Operator](./Operator/overview.md)接口进行InferShape的实现。若InferShape方法具有通用性，可被多个算子的原型实现调用，可选择此接口实现。
 
 ## 函数原型
 

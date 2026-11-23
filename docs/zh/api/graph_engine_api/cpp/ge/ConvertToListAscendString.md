@@ -22,7 +22,7 @@ template<typename T> std::vector<ge::AscendString> ConvertToListAscendString(T s
 
 - template<\> inline std::vector\<ge::AscendString\> ConvertToListAscendString\(std::vector\<std::string\> strs\)
 
-    对于std::vectorstd::string类型的字符串列表，先将其转换为std::vector\<const char \*\>类型，然后再进行转换。
+    对于std::vector\<std::string\>类型的字符串列表，先将其转换为std::vector\<const char \*\>类型，然后再进行转换。
 
 - template<\> inline std::vector\<ge::AscendString\> ConvertToListAscendString\(std::vector\<ge::AscendString\> strs\)
 

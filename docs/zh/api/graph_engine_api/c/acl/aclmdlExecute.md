@@ -70,6 +70,6 @@ aclError aclmdlExecute(uint32_t modelId, const aclmdlDataset *input, aclmdlDatas
 ```c
 aclDataBuffer *dataBuffer = aclmdlGetDatasetBuffer(output, 0); // 根据index获取对应的dataBuffer
 void *data = aclGetDataBufferAddr(dataBuffer);  // 获取data的Device指针
-aclrtFree(data ); // 释放Device内存
+aclrtFree(data); // 释放Device内存
 aclUpdateDataBuffer(dataBuffer, nullptr, 0); // 重置dataBuffer里面内容，以便下次推理
 ```

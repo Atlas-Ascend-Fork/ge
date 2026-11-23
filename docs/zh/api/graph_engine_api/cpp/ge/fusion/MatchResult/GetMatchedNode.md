@@ -11,7 +11,7 @@
 
 ## 功能说明
 
-根据Pattern Node获取到匹配到的Target Node。
+根据Pattern Node获取匹配到的Target Node。
 
 ## 函数原型
 

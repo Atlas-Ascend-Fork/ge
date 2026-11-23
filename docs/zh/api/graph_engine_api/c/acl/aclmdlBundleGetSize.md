@@ -42,7 +42,7 @@ aclError aclmdlBundleGetSize(const aclmdlBundleQueryInfo *queryInfo, size_t inde
 | queryInfo | 输入 | 需提前调用[aclmdlBundleCreateQueryInfo](aclmdlBundleCreateQueryInfo.md)接口创建aclmdlBundleQueryInfo类型的数据。 |
 | index | 输入 | 索引。<br>用户调用[aclmdlBundleGetQueryModelNum](aclmdlBundleGetQueryModelNum.md)接口获取模型中的图总数后，这个index的取值范围：[0, (图总数-1)]。 |
 | workSize | 输出 | 图执行时所需的工作内存大小的指针，单位Byte。<br>此处的内存为Device内存，而且需要用户申请和释放。 |
-| weightSize | 输出 | 图执行时所需权值内存大小的指针，单位Byte。<br>此处的内存为Device内存，而且需要用户申请和释放。 |
+| constWeightSize | 输出 | 图执行时所需权值内存大小的指针，单位Byte。<br>此处的内存为Device内存，而且需要用户申请和释放。 |
 
 ## 返回值说明
 

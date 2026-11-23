@@ -10,7 +10,7 @@ In the traditional graph building system of GE (Graph Engine), users build compu
 - **Errors hard to detect**: connection and attribute errors are often deferred until the graph compilation stage;
 - **No compatibility guarantee**: C++ interfaces have no ABI compatibility commitment, nor forward/backward compatibility design.
 
-Mainstream graph building interfaces in the industry (PyTorch Eager, etc.) generally adopt a **functional style** — expressing edge connections between nodes directly through function calls, which is simple and exposes errors at compile time. GE therefore introduced the **ES (Eager Style) graph building API**: a set of **functional-style graph building interfaces** with syntax similar to PyTorch Eager scripts, whose core philosophy is **expressing edge connections and IR information passing directly through function calls**. For the definition and positioning of ES, see [ES_definition.md](../../../zh/user_guides/graph_dev/es_graph/ES_definition.md) (Chinese).
+Mainstream graph building interfaces in the industry (PyTorch Eager, etc.) generally adopt a **functional style** — expressing edge connections between nodes directly through function calls, which is simple and exposes errors at compile time. GE therefore introduced the **ES (Eager Style) graph building API**: a set of **functional-style graph building interfaces** with syntax similar to PyTorch Eager scripts, whose core philosophy is **expressing edge connections and IR information passing directly through function calls**. For the definition and positioning of ES, see [ES_definition.md](../../../en/user_guides/graph_dev/es_graph/ES_definition.md) (Chinese).
 
 ### 1.2 Design Philosophy: Faithful to IR, Generated Rather Than Handwritten
 
@@ -171,7 +171,7 @@ Defined in the `api/python/ge/ge/es/` directory:
 
 ### 4.5 Generated Operator Graph Building APIs
 
-Each IR prototype maps as follows (see the mapping chapter of [ES_definition.md](../../../zh/user_guides/graph_dev/es_graph/ES_definition.md) for details):
+Each IR prototype maps as follows (see the mapping chapter of [ES_definition.md](../../../en/user_guides/graph_dev/es_graph/ES_definition.md) for details):
 
 - **Function name**: the IR type name (`Foo` for C++/Python, `EsFoo` for C);
 - **Parameters**: inputs (`EsTensorHolder`/`EsTensorLike`) followed by attributes (C++ expresses optional attributes via default parameters; Python expresses them via keyword arguments);
