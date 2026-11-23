@@ -24,6 +24,7 @@
 #include "framework/om2/model_data/om2_package_contants.h"
 #include "framework/common/zip_archive_reader.h"
 #include "common/checker.h"
+#include "graph/def_types.h"
 #include "framework/common/gert_model_data_deserialize.h"
 #include "framework/common/gert_model_data_utils.h"
 #include "framework/common/om2_feature_list.h"
@@ -649,7 +650,8 @@ ge::Status DeserializeOpAttr(const gert::ZipArchiveReader &archive, const std::s
   GE_ASSERT_NOTNULL(buff_data, "[OM2] Failed to extract %s", full_path.c_str());
   GE_ASSERT_TRUE(buff_size > 0U);
   // 原文直存，由 executor 侧解析（与主线 develop 行为一致）
-  unit.op_attr_json = gert::GertMakeStr(std::string(reinterpret_cast<const char *>(buff_data.get()), buff_size));
+  unit.op_attr_json =
+      gert::GertMakeStr(std::string(ge::PtrToPtr<const uint8_t, const char>(buff_data.get()), buff_size));
   return ge::SUCCESS;
 }
 
@@ -803,7 +805,8 @@ ge::Status DeserializeVisualJson(const gert::ZipArchiveReader &archive, const st
   const auto buffer = archive.ExtractToMem(visual_path, buffer_size);
   GE_ASSERT_NOTNULL(buffer, "[OM2] Failed to extract entry %s", visual_path.c_str());
   GE_ASSERT_TRUE(buffer_size > 0U, "[OM2] Empty archive entry %s", visual_path.c_str());
-  unit.debug->visual_json = gert::GertMakeStr(std::string(reinterpret_cast<const char *>(buffer.get()), buffer_size));
+  unit.debug->visual_json =
+      gert::GertMakeStr(std::string(ge::PtrToPtr<const uint8_t, const char>(buffer.get()), buffer_size));
   return ge::SUCCESS;
 }
 

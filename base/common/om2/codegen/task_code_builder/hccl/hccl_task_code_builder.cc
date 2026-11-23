@@ -233,10 +233,10 @@ Status HcclTaskCodeBuilder::ParseHcclReduceOp(const OpDescPtr &op_desc) {
                    ATTR_HOROVOD_ATTR_REDUCE_TYPE.c_str());
     return MapToHcclReduceOp(reduce_op, build_data_.hccl_reduce_op);
   }
-  std::string reduce_op;
-  GE_ASSERT_TRUE(AttrUtils::GetStr(op_desc, HCOM_ATTR_REDUCE_TYPE, reduce_op),
-                 "[OM2] HCCL op [%s] get attr [%s] failed.", op_desc->GetName().c_str(), HCOM_ATTR_REDUCE_TYPE.c_str());
-  return MapToHcclReduceOp(reduce_op, build_data_.hccl_reduce_op);
+  const std::string *const reduce_op = AttrUtils::GetStr(op_desc, HCOM_ATTR_REDUCE_TYPE);
+  GE_ASSERT_NOTNULL(reduce_op, "[OM2] HCCL op [%s] get attr [%s] failed.", op_desc->GetNamePtr(),
+                    HCOM_ATTR_REDUCE_TYPE.c_str());
+  return MapToHcclReduceOp(*reduce_op, build_data_.hccl_reduce_op);
 }
 
 Status HcclTaskCodeBuilder::ComputeHcclCount(const OpDescPtr &op_desc) {
