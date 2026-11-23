@@ -28,7 +28,7 @@ void AttrRegister(const char_t *name, const AttrValue &attr_value)
 
 ## 返回值说明
 
-graphStatus类型：成功，返回GRAPH\_SUCCESS，否则，返回GRAPH\_FAILED。
+无
 
 ## 约束说明
 

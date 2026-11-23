@@ -30,7 +30,7 @@ void AttrRegister(const char_t *name, const AttrValue &attr_value)
 
 ## Return Value
 
-**graphStatus** type: Returns **GRAPH\_SUCCESS** on success; otherwise, returns **GRAPH\_FAILED**.
+None
 
 ## Constraints
 
