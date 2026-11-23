@@ -32,6 +32,7 @@
 #include "graph/load/model_manager/davinci_model.h"
 #include "graph/load/model_manager/model_utils.h"
 #include "rt_error_codes.h"
+#include "securec.h"
 
 namespace ge {
 namespace {
@@ -59,6 +60,18 @@ using AclrtPointerGetAttributesFunc = aclError (*)(const void *, aclrtPtrAttribu
 
 uint64_t GetElapsedUs(const SteadyClock::time_point &begin, const SteadyClock::time_point &end) {
   return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count());
+}
+
+AclrtPointerGetAttributesFunc LoadAclrtPointerGetAttributesFunc() {
+  const void *symbol = dlsym(RTLD_DEFAULT, "aclrtPointerGetAttributes");
+  AclrtPointerGetAttributesFunc func = nullptr;
+  if (symbol != nullptr) {
+    const errno_t memcpy_ret = memcpy_s(&func, sizeof(func), &symbol, sizeof(symbol));
+    if (memcpy_ret != EOK) {
+      func = nullptr;
+    }
+  }
+  return func;
 }
 
 struct InputH2DOverlapPointerAttrSummary {
@@ -116,8 +129,7 @@ struct InputH2DOverlapCopyRequest {
 
 void UpdateInputH2DOverlapPointerAttrSummary(const void *const data, const uint32_t input_index,
                                              const uint32_t model_id, InputH2DOverlapPointerAttrSummary &summary) {
-  static const auto pointer_get_attributes =
-      reinterpret_cast<AclrtPointerGetAttributesFunc>(dlsym(RTLD_DEFAULT, "aclrtPointerGetAttributes"));
+  static const auto pointer_get_attributes = LoadAclrtPointerGetAttributesFunc();
   const auto attr_begin = SteadyClock::now();
   ++summary.query_count;
   if (pointer_get_attributes == nullptr) {

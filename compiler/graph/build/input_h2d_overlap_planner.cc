@@ -274,7 +274,7 @@ Status ParseInputH2DOverlapManualIndex(const std::string &token, size_t &index) 
              trimmed_token.c_str());
       return PARAM_INVALID;
     }
-    const uint64_t digit = static_cast<uint64_t>(ch - '0');
+    const uint64_t digit = static_cast<uint64_t>(ch) - static_cast<uint64_t>('0');
     if (parsed > ((std::numeric_limits<uint64_t>::max() - digit) / 10U)) {
       REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
                                 std::vector<const char *>({kInputH2DOverlapOptionName, trimmed_token.c_str(),

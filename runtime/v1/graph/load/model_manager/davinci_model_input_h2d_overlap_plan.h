@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "acl/acl_rt.h"
+#include "external/ge_common/ge_common_api_types.h"
 #include "ge/ge_api_types.h"
 
 namespace domi {

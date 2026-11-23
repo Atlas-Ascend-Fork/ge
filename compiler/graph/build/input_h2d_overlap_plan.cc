@@ -119,11 +119,11 @@ void EnqueuePeerNodes(const OutDataAnchor *const out_anchor, std::deque<NodePtr>
     if (peer_in_anchor == nullptr) {
       continue;
     }
-    const auto peer_node = peer_in_anchor->GetOwnerNode();
+    const auto peer_node = peer_in_anchor->GetOwnerNodeBarePtr();
     if (peer_node == nullptr) {
       continue;
     }
-    pending_nodes.emplace_back(peer_node);
+    pending_nodes.emplace_back(peer_node->shared_from_this());
   }
 }
 
