@@ -173,13 +173,13 @@ Status GraphLoader::LoadModelWithQueueParam(uint32_t &model_id, const ModelData 
 /// @param [in] model_id  model id
 /// @param [in] stream   stream to execute model on
 /// @param [in] async_mode  is asynchronize mode.
-/// @param [in] input_data  model input data
+/// @param [in] input_data  model input data, blobs may be adjusted during execution
 /// @param [in] input_desc  description of model input data
 /// @param [out] output_data  model output data
 /// @param [out] output_desc  description of model output data
 ///
 Status GraphLoader::ExecuteModel(const uint32_t model_id, aclrtStream const stream, const bool async_mode,
-                                 const InputData &input_data, const std::vector<GeTensorDesc> &input_desc,
+                                 InputData &input_data, const std::vector<GeTensorDesc> &input_desc,
                                  OutputData &output_data, std::vector<GeTensorDesc> &output_desc) {
   const auto ret = ModelManager::GetInstance().ExecuteModel(model_id, stream, async_mode, input_data, input_desc,
                                                             output_data, output_desc, {}, {});

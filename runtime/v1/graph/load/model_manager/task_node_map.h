@@ -11,8 +11,8 @@
 #ifndef AIR_CXX_EXECUTOR_GRAPH_LOAD_MODEL_MANAGER_TASK_NODE_MAP_H_
 #define AIR_CXX_EXECUTOR_GRAPH_LOAD_MODEL_MANAGER_TASK_NODE_MAP_H_
 #include <cstdint>
+#include "ge_common/ge_common_api_types.h"
 #include "graph/node.h"
-#include "ge_common/ge_api_error_codes.h"
 namespace ge {
 class TaskNodeMap {
  public:
