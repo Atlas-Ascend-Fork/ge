@@ -19,13 +19,16 @@
 namespace ge {
 class PassOptionUtils {
  public:
+  // 查询 GE 优化选项：同名 on/off 优先，否则按 Pass 绑定的注册选项判定。
+  // 未找到有效的绑定不等同于关闭，此时返回错误且不修改 is_enabled。不检查开关文件或 PassSwitch。
   static graphStatus CheckIsPassEnabled(const std::string &pass_name, bool &is_enabled);
 
+  // 只读取有效选项表中的同名 on/off；没有显式开关时返回 GRAPH_FAILED，不修改 is_enabled。
   static graphStatus CheckIsPassEnabledByOption(const std::string &pass_name, bool &is_enabled);
 
   /**
-   * 综合运行时配置和注册默认值，判断pass是否执行
-   * 优先级：graph option > JSON精确匹配 > JSON ALL通配 > 注册默认值
+   * 决定自定义 Pass 是否执行，不检查分级编译或 Pass 绑定的注册选项。
+   * 优先级：显式 on/off > JSON 精确匹配 > JSON ALL 通配 > 注册默认值。
    * @param pass_name_2_switches JSON开关配置map
    * @param pass_name pass名称
    * @param default_switch 注册时声明的默认开关状态

@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <vector>
 #include "common/share_graph.h"
+#include "common/plugin/ops_deliverables_manager.h"
 #include "common/python_runtime/python_artifact_utils.h"
 #include "common/python_runtime/python_bridge_loader_utils.h"
 #include "common/python_runtime/python_fallback_codegen_helper.h"
@@ -868,6 +869,23 @@ Status RunPythonFusionBasePassHolderForUt(const void *holder, GraphPtr &graph, C
   g_python_fusion_base_runtime_snapshot.last_graph_name = graph->GetName();
   return g_python_fusion_base_runtime_snapshot.run_status;
 }
+
+int32_t &BuiltinFusionPassSwitchRunCount() {
+  static int32_t run_count = 0;
+  return run_count;
+}
+
+class BuiltinFusionPassSwitchPass : public FusionBasePass {
+ public:
+  Status Run(GraphPtr &, CustomPassContext &) override {
+    ++BuiltinFusionPassSwitchRunCount();
+    return SUCCESS;
+  }
+};
+
+FusionBasePass *CreateBuiltinFusionPassSwitchPass() {
+  return new (std::nothrow) BuiltinFusionPassSwitchPass();
+}
 }  // namespace
 using namespace ge::es;
 class UtestFusionPassExecutor : public testing::Test {
@@ -891,6 +909,7 @@ class UtestFusionPassExecutor : public testing::Test {
     PreparePythonPathForSt();
     (void)unsetenv(kEnvPythonPassPath);
     PassRegistry::GetInstance().name_2_fusion_pass_regs_.clear();
+    PassRegistry::GetInstance().pass_name_to_origins_.clear();
     PassRegistry::GetInstance().descriptor_key_2_python_pass_descs_.clear();
     PassRegistry::GetInstance().pass_name_2_python_pass_create_contexts_.clear();
     ClearCurrentPythonPassCreateContext();
@@ -913,6 +932,7 @@ class UtestFusionPassExecutor : public testing::Test {
     }
     (void)unsetenv(kEnvPythonPassPath);
     PassRegistry::GetInstance().name_2_fusion_pass_regs_.clear();
+    PassRegistry::GetInstance().pass_name_to_origins_.clear();
     PassRegistry::GetInstance().descriptor_key_2_python_pass_descs_.clear();
     PassRegistry::GetInstance().pass_name_2_python_pass_create_contexts_.clear();
     ClearCurrentPythonPassCreateContext();
@@ -2747,6 +2767,109 @@ TEST_F(UtestFusionPassExecutor, PassOptionUtils_IsPassEnable_FourLayerPriority) 
   // 第2层优先于第3层：精确匹配 on + ALL off → on
   std::map<std::string, bool> mixed_switches = {{"TargetPass", true}, {"ALL", false}};
   EXPECT_TRUE(PassOptionUtils::IsPassEnable(mixed_switches, "TargetPass", PassSwitch::kOff));
+
+  // 显式 on/off 优先于文件配置。
+  const std::map<std::string, std::string> options = {{OPTIMIZATION_SWITCH, "TargetPass:on;DisabledPass:off"}};
+  ASSERT_EQ(GetThreadLocalContext().GetOo().Initialize(options, OptionRegistry::GetInstance().GetRegisteredOptTable()),
+            GRAPH_SUCCESS);
+  EXPECT_TRUE(PassOptionUtils::IsPassEnable(json_switches_off, "TargetPass", PassSwitch::kOff));
+  EXPECT_FALSE(PassOptionUtils::IsPassEnable(all_switches, "DisabledPass", PassSwitch::kOn));
+}
+
+TEST_F(UtestFusionPassExecutor, BuiltinFusionPass_RespectsOptimizationLevel_CustomPassDoesNot) {
+  constexpr const char *kBuiltinPassName = "BuiltinFusionPassForOptimizationLevel";
+  constexpr const char *kCustomPassName = "CustomFusionPassForOptimizationLevel";
+  // The same factory and execution stage do not imply the same origin.
+  FusionPassRegistrationData custom_reg_data(kCustomPassName);
+  custom_reg_data.Stage(CustomPassStage::kAfterInferShape).CreatePassFn(CreateBuiltinFusionPassSwitchPass);
+  FusionPassRegistrationData builtin_reg_data(kBuiltinPassName);
+  builtin_reg_data.Stage(CustomPassStage::kAfterInferShape).CreatePassFn(CreateBuiltinFusionPassSwitchPass);
+  EXPECT_FALSE(ScopedOppLibraryLoad::IsBuiltin());
+  {
+    const ScopedOppLibraryLoad builtin_load(ScopedOppLibraryLoad::Origin::kBuiltin);
+    {
+      const ScopedOppLibraryLoad custom_load(ScopedOppLibraryLoad::Origin::kExternal);
+      PassRegistrar custom_registrar(custom_reg_data);
+    }
+    PassRegistrar builtin_registrar(builtin_reg_data);
+  }
+  EXPECT_FALSE(ScopedOppLibraryLoad::IsBuiltin());
+
+  EXPECT_TRUE(PassRegistry::GetInstance().IsBuiltinFusionPass(kBuiltinPassName));
+  EXPECT_FALSE(PassRegistry::GetInstance().IsBuiltinFusionPass(kCustomPassName));
+
+  std::map<std::string, std::string> oo_options = {{OO_LEVEL, "O1"}};
+  auto &oo = GetThreadLocalContext().GetOo();
+  ASSERT_EQ(oo.Initialize(oo_options, OptionRegistry::GetInstance().GetRegisteredOptTable()), GRAPH_SUCCESS);
+  bool is_enabled = true;
+  ASSERT_EQ(PassOptionUtils::CheckIsPassEnabled(kBuiltinPassName, is_enabled), GRAPH_SUCCESS);
+  EXPECT_FALSE(is_enabled);
+  EXPECT_TRUE(PassOptionUtils::IsPassEnable({}, kCustomPassName, PassSwitch::kOn));
+  BuiltinFusionPassSwitchRunCount() = 0;
+  FusionPassExecutor o1_executor;
+  auto graph = std::make_shared<ComputeGraph>("fusion_origin_o1");
+  ASSERT_EQ(o1_executor.RunPasses(graph, CustomPassStage::kAfterInferShape), SUCCESS);
+  EXPECT_EQ(BuiltinFusionPassSwitchRunCount(), 1);
+
+  oo_options[OO_LEVEL] = "O3";
+  ASSERT_EQ(oo.Initialize(oo_options, OptionRegistry::GetInstance().GetRegisteredOptTable()), GRAPH_SUCCESS);
+  ASSERT_EQ(PassOptionUtils::CheckIsPassEnabled(kBuiltinPassName, is_enabled), GRAPH_SUCCESS);
+  EXPECT_TRUE(is_enabled);
+  // O3 的注册值是分级判定，不是显式 on/off。
+  EXPECT_EQ(PassOptionUtils::CheckIsPassEnabledByOption(kBuiltinPassName, is_enabled), GRAPH_FAILED);
+  EXPECT_TRUE(is_enabled);
+}
+
+TEST_F(UtestFusionPassExecutor, BuiltinFusionPassSwitchPriority) {
+  constexpr const char *kPassName = "BuiltinFusionPassSwitchPriority";
+  FusionPassRegistrationData reg_data(kPassName);
+  reg_data.Stage(CustomPassStage::kAfterInferShape).CreatePassFn(CreateBuiltinFusionPassSwitchPass);
+  {
+    const ScopedOppLibraryLoad load_scope(ScopedOppLibraryLoad::Origin::kBuiltin);
+    PassRegistrar registrar(reg_data);
+  }
+  ASSERT_TRUE(PassRegistry::GetInstance().IsBuiltinFusionPass(kPassName));
+
+  const std::string switch_file = GetCodeDir() + "/builtin_fusion_pass_switch_priority.json";
+  const auto run_pass = [&](const std::string &level, const std::string &json, const std::string &optimization_switch) {
+    BuiltinFusionPassSwitchRunCount() = 0;
+    std::map<std::string, std::string> oo_options = {{OO_LEVEL, level}};
+    if (!optimization_switch.empty()) {
+      oo_options.emplace(OPTIMIZATION_SWITCH, optimization_switch);
+    }
+    EXPECT_EQ(
+        GetThreadLocalContext().GetOo().Initialize(oo_options, OptionRegistry::GetInstance().GetRegisteredOptTable()),
+        GRAPH_SUCCESS);
+    if (json.empty()) {
+      GetThreadLocalContext().SetGlobalOption({});
+    } else {
+      std::ofstream json_file(switch_file);
+      json_file << json << std::endl;
+      GetThreadLocalContext().SetGlobalOption({{FUSION_SWITCH_FILE, switch_file}});
+    }
+    FusionPassExecutor pass_executor;
+    auto target_compute_graph = gert::ShareGraph::LstmpGraph();
+    EXPECT_EQ(pass_executor.RunPasses(target_compute_graph, CustomPassStage::kAfterInferShape), SUCCESS);
+    if (!json.empty()) {
+      (void)remove(switch_file.c_str());
+    }
+    return BuiltinFusionPassSwitchRunCount();
+  };
+
+  EXPECT_EQ(run_pass("O1", "", ""), 0);
+  EXPECT_GT(run_pass("O3", "", ""), 0);
+  EXPECT_GT(run_pass("O1", "", "BuiltinFusionPassSwitchPriority:on"), 0);
+  EXPECT_EQ(run_pass("O3", "", "BuiltinFusionPassSwitchPriority:off"), 0);
+  EXPECT_EQ(run_pass("O1", R"({"Switch":{"GraphFusion":{"BuiltinFusionPassSwitchPriority":"on"}}})", ""), 0);
+  EXPECT_GT(run_pass("O3", R"({"Switch":{"GraphFusion":{"BuiltinFusionPassSwitchPriority":"on"}}})", ""), 0);
+  EXPECT_EQ(run_pass("O1", R"({"Switch":{"GraphFusion":{"BuiltinFusionPassSwitchPriority":"off"}}})",
+                     "BuiltinFusionPassSwitchPriority:off"),
+            0);
+  EXPECT_GT(run_pass("O1", R"({"Switch":{"GraphFusion":{"BuiltinFusionPassSwitchPriority":"off"}}})",
+                     "BuiltinFusionPassSwitchPriority:on"),
+            0);
+  EXPECT_EQ(run_pass("O1", R"({"Switch":{"GraphFusion":{"ALL":"on"}}})", ""), 0);
+  EXPECT_EQ(run_pass("O3", R"({"Switch":{"GraphFusion":{"ALL":"off"}}})", ""), 0);
 }
 
 TEST_F(UtestFusionPassExecutor, FusionPassRegistrationData_GetDefaultSwitch_NullImpl) {

@@ -10,6 +10,8 @@
 #include "common/plugin/ops_deliverables_manager.h"
 
 namespace ge {
+thread_local ScopedOppLibraryLoad::Origin ScopedOppLibraryLoad::current_ = ScopedOppLibraryLoad::Origin::kExternal;
+
 bool OpsDeliverablesManager::Load(std::vector<OpsDeliverable> &deliverables, std::string &reason) {
   (void)deliverables;
   (void)reason;

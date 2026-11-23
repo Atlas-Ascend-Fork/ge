@@ -522,7 +522,7 @@ class CommonLinkInterfaceTest(unittest.TestCase):
                 """cmake_minimum_required(VERSION 3.16)
 project(ge_common_interface LANGUAGES CXX)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-foreach(dep ge_intf_pub msprof_headers runtime_headers static_mmpa graph ge_common_base
+foreach(dep ge_intf_pub msprof_headers runtime_headers static_mmpa graph register ge_common_base
             ascend_protobuf c_sec error_manager unified_dlog platform json air_headers ge_metadef_headers)
     add_library(${dep} INTERFACE)
 endforeach()

@@ -331,18 +331,23 @@ On the Python side, the same capability can be called via `ge.passes.infer_shape
 
 ### 8.1 Why Default Switch Is Needed
 
-Fusion pass execution is controlled by a four-layer switch mechanism (priority from high to low):
+GE sets a thread-local built-in origin while loading `opgraph` and `ophost` libraries declared in the OPP deliverables manifest. The GE fusion pass registry records the origin at registration time. Vendor libraries, custom pass plugins, and registrations without a built-in marker retain the custom pass switch rules. The legacy OPP discovery path does not mark passes as built-in. The origin does not depend on the library path, registration macro, or execution stage, and does not affect FE registration or scheduling.
+
+`FusionPassExecutor` uses the following priority for built-in fusion passes:
 
 | Priority | Source | Description |
 |----------|--------|-------------|
 | 1 (highest) | graph option | `PassName:on/off` in `ge.optimizationSwitch`, takes effect at runtime |
-| 2 | JSON exact match | `true`/`false` for this pass name in `fusion_switch_file` JSON |
-| 3 | JSON ALL wildcard | `"ALL": true/false` in JSON, applies to all passes not exactly matched |
-| 4 (lowest) | Registration default | `PassSwitch` declared at pass registration time, defaults to `kOn` if not declared |
+| 2 | Optimization level | Built-in GE fusion passes are registered at O3 by default and skipped at O1 unless explicitly enabled by name in `ge.optimizationSwitch` |
+| 3 | JSON exact match | `"on"` or `"off"` for this pass name in `fusion_switch_file` |
+| 4 | JSON ALL wildcard | `"on"` or `"off"` for `"ALL"` in `fusion_switch_file`, used only if there is no exact match |
+| 5 (lowest) | Registration default | `PassSwitch` declared at pass registration time, defaults to `kOn` if not declared |
 
-Layer 4 was a fixed `return true` before 9.3.0(2026-09), meaning all passes execute by default. This forced passes with precision risk or performance regression to only be guarded via conditional judgment in `MeetRequirements`, which is not intuitive and cannot skip pass instance creation at initialization phase.
+Custom `REG_FUSION_PASS` and `REGISTER_CUSTOM_PASS` passes are not built-in GE fusion passes and are not controlled by the optimization-level layer; they continue to follow runtime switches and the registration default.
 
-The `PassSwitch` enum (`register_custom_pass.h`, @since 9.3.0/2026-09) replaces layer 4 with a registration-time declared default value:
+The registration default was a fixed `return true` before 9.3.0(2026-09), meaning all passes execute by default. This forced passes with precision risk or performance regression to only be guarded via conditional judgment in `MeetRequirements`, which is not intuitive and cannot skip pass instance creation at initialization phase.
+
+The `PassSwitch` enum (`register_custom_pass.h`, @since 9.3.0/2026-09) defines the registration default state:
 
 | Enum Value | Semantics |
 |------------|-----------|
@@ -371,7 +376,9 @@ Both registration data classes (`FusionPassRegistrationData`, `PassRegistrationD
 
 ### 8.3 Runtime Configuration Overrides Registration Default
 
-A pass registered as `kOff` can still be enabled by the top three runtime layers. The judgment logic is uniformly implemented by `PassOptionUtils::IsPassEnable`, shared by `FusionPassExecutor::InitPassesIfNeed` and `CustomPassHelper::Run` (new overload with switch map). The stream allocation pass entry point `StreamUtils::RunCustomStreamPass` is also adapted, calling the 4-parameter overload with switch config to ensure consistent switch behavior between stream allocation passes and regular custom passes:
+For custom passes, `PassOptionUtils::IsPassEnable` checks the explicit `on/off` override, the switch file, and the registration default, in that order. `FusionPassExecutor` handles built-in fusion passes separately: if there is no explicit override, it checks the optimization level before consulting the switch file or the registration default.
+
+The following table applies to custom passes and to built-in fusion passes that are allowed at the selected optimization level:
 
 | Registration Default | Runtime Config | Result |
 |----------------------|----------------|--------|

@@ -322,7 +322,7 @@ Python 层会自动创建 ES `GraphBuilder`、图输入、图输出和 pattern c
 多个 pattern；旧的显式 `patterns(self)` 仍兼容，但不能和 `@pattern` 方法混用。
 这层封装只改变 Python 侧易用性，不改变 C++ pass 执行流程和匹配语义。
 
-面向开发者的机制说明和开发步骤见 [融合 Pattern Pass 机制](../../features/fusion_pattern_pass.md)。
+实例化 Pass 前，`FusionPassExecutor` 按来源选择开关判断方式：内置融合 Pass 检查编译级别，自定义 Pass 由 `PassOptionUtils::IsPassEnable` 按运行时开关和注册默认值判定。优先级和开发步骤见[融合 Pattern Pass 机制](../../features/fusion_pattern_pass.md)。
 
 为了降低自定义 `FusionBasePass` 的接入成本，`ge/fusion/graph_fuse_inspector_utils.h` 增加了 `GraphFuseInspectorUtils` 对外工具类。它将原来分散在 `ComputeGraph::IsSupportFuse`、`FusionUtils::WillCauseCycleIfFuse`、`FusionUtils::UpdateToCycleDetector` 与融合统计逻辑中的关键步骤收敛成两个开放能力：
 

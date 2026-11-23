@@ -21,6 +21,7 @@
 #include "register/pass_option_utils.h"
 #include "framework/common/debug/ge_log.h"
 #include "graph_metadef/graph/debug/ge_util.h"
+#include "graph_metadef/common/plugin/ops_deliverables_manager.h"
 #include "graph_metadef/common/plugin/plugin_manager.h"
 #include "register/custom_pass_context_impl.h"
 #include "graph/utils/graph_utils_ex.h"
@@ -421,7 +422,11 @@ Status CustomPassHelper::Load() {
 
   // 逐个 dlopen
   for (const auto &so_file : so_files) {
-    void *handle = dlopen(so_file.c_str(), RTLD_NOW | RTLD_LOCAL);
+    void *handle = nullptr;
+    {
+      const ScopedOppLibraryLoad load_scope(ScopedOppLibraryLoad::Origin::kExternal);
+      handle = dlopen(so_file.c_str(), RTLD_NOW | RTLD_LOCAL);
+    }
     if (handle == nullptr) {
       const char *error = dlerror();
       (void)REPORT_PREDEFINED_ERR_MSG("E13029", std::vector<const char_t *>({"passlibname", "reason"}),

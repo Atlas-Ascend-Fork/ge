@@ -382,6 +382,7 @@ target_link_libraries(ge_common
         static_mmpa
         -Wl,--no-as-needed
         graph
+        register
         ge_common_base
         ascend_protobuf
         c_sec
@@ -678,6 +679,7 @@ target_link_libraries(ge_common
         ascend_protobuf_static
         -Wl,--no-as-needed
         graph
+        register
         ge_common_base
         c_sec
         acl_rt

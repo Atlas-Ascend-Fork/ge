@@ -331,18 +331,23 @@ Python 侧可通过 `ge.passes.infer_shape`（[API 文档](../../api/graph_engin
 
 ### 8.1 为什么需要默认开关
 
-融合 Pass 的执行受四层开关控制（优先级从高到低）：
+GE 加载 OPP 交付清单中的内置 `opgraph` / `ophost` 库时，在线程上下文中标记内置来源。GE 融合 Pass 注册表在注册时保存此标记。厂商库、自定义 Pass 插件和尚无来源标记的注册沿用自定义 Pass 的开关规则；切换到旧 OPP 发现流程时不判为内置。来源不由库路径、注册宏或执行阶段决定，也不影响 FE 注册和调度。
+
+`FusionPassExecutor` 对内置融合 Pass 按以下优先级判断是否执行：
 
 | 优先级 | 来源 | 说明 |
 |--------|------|------|
 | 1（最高） | graph option | `ge.optimizationSwitch` 中 `PassName:on/off`，运行时即时生效 |
-| 2 | JSON 精确匹配 | `fusion_switch_file` JSON 中该 pass 名对应的 `true`/`false` |
-| 3 | JSON ALL 通配 | JSON 中 `"ALL": true/false`，对所有未精确命中的 pass 生效 |
-| 4（最低） | 注册默认值 | pass 注册时声明的 `PassSwitch`，未声明时为 `kOn` |
+| 2 | 编译级别 | GE 内置融合 Pass 默认注册在 O3；O1 下跳过，只有 `ge.optimizationSwitch` 中的同名 `on` 可以覆盖 |
+| 3 | JSON 精确匹配 | `fusion_switch_file` 中该 Pass 名对应的 `"on"` 或 `"off"` |
+| 4 | JSON ALL 通配 | `fusion_switch_file` 中 `"ALL"` 对应的 `"on"` 或 `"off"`，仅在没有同名配置时生效 |
+| 5（最低） | 注册默认值 | pass 注册时声明的 `PassSwitch`，未声明时为 `kOn` |
 
-第 4 层在 9.3.0(2026-09) 之前是代码中固定 `return true`，即所有 pass 默认执行。这导致存在精度风险或性能回退的 pass 只能在 `MeetRequirements` 中做条件判断规避，不够直观，也无法在 pass 初始化阶段就跳过实例创建。
+自定义 `REG_FUSION_PASS` 和 `REGISTER_CUSTOM_PASS` 不属于 GE 内置融合 Pass，不受上述编译级别层控制，仍按运行时开关和注册默认值执行。
 
-`PassSwitch` 枚举（`register_custom_pass.h`，@since 9.3.0/2026-09）将第 4 层改为注册时声明的默认值：
+注册默认值在 9.3.0(2026-09) 之前是代码中固定 `return true`，即所有 pass 默认执行。这导致存在精度风险或性能回退的 pass 只能在 `MeetRequirements` 中做条件判断规避，不够直观，也无法在 pass 初始化阶段就跳过实例创建。
+
+`PassSwitch` 枚举（`register_custom_pass.h`，@since 9.3.0/2026-09）将注册默认值改为注册时声明的状态：
 
 | 枚举值 | 语义 |
 |--------|------|
@@ -371,7 +376,9 @@ REGISTER_CUSTOM_PASS("RiskyCustomPass").DefaultSwitch(PassSwitch::kOff).Stage(Cu
 
 ### 8.3 运行时配置覆盖注册默认值
 
-注册为 `kOff` 的 pass 仍可被前三层运行时配置开启。判断逻辑由 `PassOptionUtils::IsPassEnable` 统一实现，`FusionPassExecutor::InitPassesIfNeed` 和 `CustomPassHelper::Run`（新增带 switch map 的重载）共用。流分配 Pass 的执行入口 `StreamUtils::RunCustomStreamPass` 也已适配，调用 4 参重载传入 switch 配置，确保流分配 Pass 与普通自定义 Pass 的开关行为一致：
+`PassOptionUtils::IsPassEnable` 按显式 `on/off`、开关文件、注册默认值的顺序判断自定义 Pass 是否执行。`FusionPassExecutor` 单独处理内置融合 Pass：没有显式 `on/off` 时，先检查编译级别，通过后才考虑开关文件和注册默认值。
+
+下表适用于自定义 Pass，以及编译级别允许执行的内置融合 Pass：
 
 | 注册默认值 | 运行时配置 | 结果 |
 |-----------|-----------|------|

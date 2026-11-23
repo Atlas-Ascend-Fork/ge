@@ -16,6 +16,30 @@
 #include "graph/error_codes.h"
 
 namespace ge {
+// Propagates the origin to synchronous registration callbacks during dlopen.
+class ScopedOppLibraryLoad {
+ public:
+  enum class Origin { kExternal, kBuiltin };
+
+  explicit ScopedOppLibraryLoad(Origin origin) : previous_(current_) {
+    current_ = origin;
+  }
+  ~ScopedOppLibraryLoad() {
+    current_ = previous_;
+  }
+  ScopedOppLibraryLoad(const ScopedOppLibraryLoad &) = delete;
+  ScopedOppLibraryLoad &operator=(const ScopedOppLibraryLoad &) = delete;
+
+  static bool IsBuiltin() {
+    return current_ == Origin::kBuiltin;
+  }
+
+ private:
+  // Defined in libregister so the loader and GE registry share the same TLS.
+  static thread_local Origin current_;
+  Origin previous_;
+};
+
 struct OpsDeliverable {
   std::string name;
   std::string type;

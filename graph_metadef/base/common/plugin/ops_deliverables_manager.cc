@@ -30,6 +30,8 @@
 #include "platform/platform_infos_def.h"
 
 namespace ge {
+thread_local ScopedOppLibraryLoad::Origin ScopedOppLibraryLoad::current_ = ScopedOppLibraryLoad::Origin::kExternal;
+
 namespace {
 constexpr char kConfigRelativePath[] = "/conf/ops_deliverables.json";
 
@@ -303,15 +305,16 @@ void AppendCustomLibraries(const std::map<std::string, std::string> &variables, 
   }
 }
 
-graphStatus RegisterLibraries(const std::vector<std::string> &paths) {
+void OpenOppLibraries(const std::vector<std::string> &paths, ScopedOppLibraryLoad::Origin origin,
+                      std::vector<AscendString> &so_paths) {
   static std::map<std::string, void *> handles;
-  if (paths.empty()) {
-    return GRAPH_SUCCESS;
-  }
-  std::vector<AscendString> so_paths;
   for (const auto &path : paths) {
     if (handles.find(path) == handles.end()) {
-      void *handle = mmDlopen(path.c_str(), MMPA_RTLD_NOW | MMPA_RTLD_GLOBAL);
+      void *handle = nullptr;
+      {
+        const ScopedOppLibraryLoad load_scope(origin);
+        handle = mmDlopen(path.c_str(), MMPA_RTLD_NOW | MMPA_RTLD_GLOBAL);
+      }
       if (handle == nullptr) {
         const auto error = mmDlerror();
         GELOGE(GRAPH_FAILED, "Configured SO load failed [%s]: %s. Skipping this library.", path.c_str(),
@@ -322,6 +325,13 @@ graphStatus RegisterLibraries(const std::vector<std::string> &paths) {
     }
     so_paths.emplace_back(path.c_str());
   }
+}
+
+graphStatus RegisterLibraries(const std::vector<std::string> &custom_paths,
+                              const std::vector<std::string> &builtin_paths) {
+  std::vector<AscendString> so_paths;
+  OpenOppLibraries(custom_paths, ScopedOppLibraryLoad::Origin::kExternal, so_paths);
+  OpenOppLibraries(builtin_paths, ScopedOppLibraryLoad::Origin::kBuiltin, so_paths);
   if (so_paths.empty()) {
     return GRAPH_SUCCESS;
   }
@@ -441,6 +451,7 @@ graphStatus OpsDeliverablesManager::LoadOppPackages(const std::map<std::string, 
   std::string reason;
   if (!Load(deliverables, reason)) {
     GELOGI("[OpsDeliverables] Use legacy opgraph/ophost discovery, reason: %s", reason.c_str());
+    const ScopedOppLibraryLoad load_scope(ScopedOppLibraryLoad::Origin::kExternal);
     return gert::OppPackageUtils::LoadAllOppPackage();
   }
   const auto variables = MakeVariables(options);
@@ -448,12 +459,12 @@ graphStatus OpsDeliverablesManager::LoadOppPackages(const std::map<std::string, 
   if (!ResolvePaths(deliverables, variables, built_in, reason)) {
     (void)InvalidConfig(GetConfigPath(), reason, reason);
     GELOGI("[OpsDeliverables] Use legacy opgraph/ophost discovery, reason: %s", reason.c_str());
+    const ScopedOppLibraryLoad load_scope(ScopedOppLibraryLoad::Origin::kExternal);
     return gert::OppPackageUtils::LoadAllOppPackage();
   }
   GELOGI("[OpsDeliverables] Load opgraph/ophost from %s, count: %zu", GetConfigPath().c_str(), built_in.size());
-  std::vector<std::string> paths;
-  AppendCustomLibraries(variables, paths);
-  paths.insert(paths.end(), built_in.begin(), built_in.end());
-  return RegisterLibraries(paths);
+  std::vector<std::string> custom_paths;
+  AppendCustomLibraries(variables, custom_paths);
+  return RegisterLibraries(custom_paths, built_in);
 }
 }  // namespace ge
