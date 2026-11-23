@@ -38,7 +38,7 @@ The model file here is an exeom model file. For details about how to obtain an e
 ## Prototype
 
 ```c
-aclError aclmdlQueryExeOMDesc(const char *fileName, [aclmdlExeOMDesc](aclmdlExeOMDesc.md) *mdlPartitionSize)
+aclError aclmdlQueryExeOMDesc(const char *fileName, aclmdlExeOMDesc *mdlPartitionSize)
 ```
 
 ## Parameters
