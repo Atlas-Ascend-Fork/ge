@@ -62,7 +62,9 @@ void UpdateShapeAndDType(const GeTensorDescPtr &src, const GeTensorDescPtr &dst)
   std::vector<std::pair<int64_t, int64_t>> src_shape_range;
   src->GetShapeRange(src_shape_range);
   dst->SetShapeRange(src_shape_range);
-  dst->SetOriginShapeRange(src_shape_range);
+  std::vector<std::pair<int64_t, int64_t>> src_origin_shape_range;
+  src->GetOriginShapeRange(src_origin_shape_range);
+  dst->SetOriginShapeRange(src_origin_shape_range);
   ge::TensorUtils::SetRealDimCnt(*dst, static_cast<uint32_t>(src->GetShape().GetDims().size()));
 }
 std::string GetResourceOpName(const std::string &graph_name, const std::string &op_name) {
