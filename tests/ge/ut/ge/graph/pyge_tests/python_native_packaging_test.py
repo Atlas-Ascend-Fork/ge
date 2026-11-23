@@ -250,9 +250,9 @@ class PassFallbackHeadersTest(unittest.TestCase):
 
             # The public API is supplied by the installed toolkit in production.
             # Only its Status typedef is needed to compile this private header.
-            public = root / "cann/include/ge"
+            public = root / "cann/include/ge_common"
             public.mkdir(parents=True)
-            (public / "ge_api_error_codes.h").write_text(
+            (public / "ge_common_api_types.h").write_text(
                 "namespace ge { using Status = unsigned int; }\n"
             )
             probe = root / "probe.cc"

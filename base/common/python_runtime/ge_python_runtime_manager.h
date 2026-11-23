@@ -13,7 +13,7 @@
 
 #include <mutex>
 
-#include "ge/ge_api_error_codes.h"
+#include "ge_common/ge_common_api_types.h"
 
 namespace ge {
 
