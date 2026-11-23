@@ -9,7 +9,7 @@
  */
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -17,7 +17,7 @@
 namespace ge {
 namespace {
 
-graphStatus InferShape4ApplyAdagradD(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4ApplyAdagradD(gert::InferSymbolContext *context) {
   auto var_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(var_shape);
   auto accum_shape = context->GetInputSymbolShape(1);
@@ -33,7 +33,7 @@ graphStatus InferShape4ApplyAdagradD(gert::InferSymbolShapeContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4ApplyAdamD(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4ApplyAdamD(gert::InferSymbolContext *context) {
   auto var_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(var_shape);
   auto m_shape = context->GetInputSymbolShape(1);
@@ -58,7 +58,7 @@ graphStatus InferShape4ApplyAdamD(gert::InferSymbolShapeContext *context) {
  * SquareSumV1算子 infer shape函数实现
  *
  */
-graphStatus InferShape4SquareSumV1(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4SquareSumV1(gert::InferSymbolContext *context) {
   auto input_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(input_shape);
 

@@ -27,7 +27,9 @@ MSG_TYPE_PICKLED_MSG = 65535
 
 
 class FuncWsCreator:
-    def __init__(self, funcs_param, clz_name="", ws_dir="", flow_func_infos: Optional = None) -> None:
+    def __init__(
+        self, funcs_param, clz_name="", ws_dir="", flow_func_infos: Optional = None
+    ) -> None:
         if ws_dir != "":
             self.ws_dir = os.path.abspath(ws_dir)
         else:
@@ -75,7 +77,9 @@ class FuncWsCreator:
                     import cloudpickle
 
                     cloudpickle.register_pickle_by_value(module)
-                serialized_data = serialize_func(self.flow_func_infos.get_env_hook_func())
+                serialized_data = serialize_func(
+                    self.flow_func_infos.get_env_hook_func()
+                )
                 with open(env_hook_func_file_name, "wb") as f:
                     f.write(serialized_data)
         else:
@@ -86,7 +90,10 @@ class FuncWsCreator:
         return os.path.join(self.ws_dir, self.cfg_name)
 
     def _has_func_object(self):
-        return self.flow_func_infos is not None and self.flow_func_infos.get_func_object() is not None
+        return (
+            self.flow_func_infos is not None
+            and self.flow_func_infos.get_func_object() is not None
+        )
 
     def _extract_func_indexes(self, funcs_param):
         self.func_names = []
@@ -154,7 +161,11 @@ class FuncWsCreator:
                 func_obj = self.flow_func_infos.get_func_object()
                 clz_name = func_obj._clz_name
                 py_module_name = func_obj._module_name
-            f.write(gen_wrapper_code(clz_name, self.func_names, py_module_name, self.stream_inputs))
+            f.write(
+                gen_wrapper_code(
+                    clz_name, self.func_names, py_module_name, self.stream_inputs
+                )
+            )
         log.info("create cpp file %s end", f_path)
         f_path = os.path.join(self.ws_dir, self.py_src_dir)
         if not os.path.exists(f_path):

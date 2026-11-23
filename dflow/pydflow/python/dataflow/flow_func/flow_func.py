@@ -90,7 +90,9 @@ class FlowFuncLogger:
         location_message = ("[{}:{}][{}]").format(filename, line_number, func_name)
         return location_message
 
-    def is_log_enable(self, log_type: fw.FlowFuncLogType, log_level: fw.FlowFuncLogLevel) -> bool:
+    def is_log_enable(
+        self, log_type: fw.FlowFuncLogType, log_level: fw.FlowFuncLogLevel
+    ) -> bool:
         if not isinstance(log_type, fw.FlowFuncLogType):
             return False
         if not isinstance(log_level, fw.FlowFuncLogLevel):
@@ -172,7 +174,11 @@ class FlowMsg:
         return self._flow_msg.set_msg_type(msg_type)
 
     def get_tensor(self):
-        return None if self._flow_msg.get_tensor() is None else df.Tensor(self._flow_msg.get_tensor())
+        return (
+            None
+            if self._flow_msg.get_tensor() is None
+            else df.Tensor(self._flow_msg.get_tensor())
+        )
 
     def get_raw_data(self):
         return self._flow_msg.get_raw_data()
@@ -389,7 +395,9 @@ class MetaRunContext:
     def __repr__(self):
         return self._context.__repr__()
 
-    def alloc_tensor_msg(self, shape: Union[List[int], Tuple[int]], dtype, align: Optional[int] = 64) -> FlowMsg:
+    def alloc_tensor_msg(
+        self, shape: Union[List[int], Tuple[int]], dtype, align: Optional[int] = 64
+    ) -> FlowMsg:
         if isinstance(dtype, dt.DType):
             dtype = dtype.dtype
         elif dtype in df._support_np_dtype:
@@ -425,7 +433,9 @@ class MetaRunContext:
         if balance_config is None:
             return self._context.set_output(index, output)
         else:
-            return self._context.set_output(index, output, balance_config.get_inner_config())
+            return self._context.set_output(
+                index, output, balance_config.get_inner_config()
+            )
 
     def set_multi_outputs(
         self,
@@ -450,12 +460,16 @@ class MetaRunContext:
                 output_msgs[i] = output._flow_msg
             else:
                 raise TypeError(f"The outputs:{i} type {type(output)} is unsupported.")
-        return self._context.set_multi_outputs(index, output_msgs, balance_config.get_inner_config())
+        return self._context.set_multi_outputs(
+            index, output_msgs, balance_config.get_inner_config()
+        )
 
     def alloc_empty_data_msg(self) -> FlowMsg:
         return FlowMsg(self._context.alloc_empty_msg(fw.MsgType.MSG_TYPE_TENSOR_DATA))
 
-    def run_flow_model(self, model_key: str, input_msgs: List[FlowMsg], timeout: int) -> Tuple[int, List[FlowMsg]]:
+    def run_flow_model(
+        self, model_key: str, input_msgs: List[FlowMsg], timeout: int
+    ) -> Tuple[int, List[FlowMsg]]:
         wrapper_flow_msg = [msg._flow_msg for msg in input_msgs]
         outputs = self._context.run_flow_model(model_key, wrapper_flow_msg, timeout)
         return outputs

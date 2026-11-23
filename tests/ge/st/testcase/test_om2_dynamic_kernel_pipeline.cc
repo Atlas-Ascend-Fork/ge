@@ -197,12 +197,14 @@ class PipelineRtsStub : public gert::RuntimeStubImpl {
 
 class ScopedPipelineHostKernel {
  public:
-  ScopedPipelineHostKernel()
+  explicit ScopedPipelineHostKernel(size_t &calls)
       : manager_(gert::AicpuResourceManager::GetInstance()),
         run_(manager_.run_cpu_kernel_),
         find_(manager_.aicpu_host_find_func_) {
-    // HostCC lowering requires these library symbols before the collector rejects its unsupported kernel.
-    manager_.run_cpu_kernel_ = [](void *) -> uint32_t { return 1U; };
+    manager_.run_cpu_kernel_ = [&calls](void *) -> uint32_t {
+      ++calls;
+      return 1U;
+    };
     manager_.aicpu_host_find_func_ = [](std::string) -> gert::AicpuHostProcFunc { return nullptr; };
   }
   ~ScopedPipelineHostKernel() {
@@ -328,7 +330,8 @@ class PipelinePackage {
   om2_test::GeneratedModelRunner runner;
 };
 
-void RunPipelineAdd(PipelinePackage &package, const int64_t count, const gert::TensorPlacement placement) {
+void RunPipelineAdd(PipelinePackage &package, const int64_t count, const gert::TensorPlacement placement,
+                    bool expect_host_failure = false) {
   observation->elements = static_cast<size_t>(count);
   const size_t launches_before = observation->launches;
   std::vector<float> left(count, 1.25F);
@@ -354,6 +357,10 @@ void RunPipelineAdd(PipelinePackage &package, const int64_t count, const gert::T
   run.input_data = inputs;
   run.output_count = 1U;
   run.output_data = outputs;
+  if (expect_host_failure) {
+    EXPECT_NE(package.runner.Run(run), ACL_SUCCESS);
+    return;
+  }
   ASSERT_EQ(package.runner.Run(run), ACL_SUCCESS);
   EXPECT_EQ(observation->launches, launches_before + 1U);
   EXPECT_EQ(outputs[0U]->GetOriginShape(), gert::Shape({count}));
@@ -407,15 +414,15 @@ TEST_F(Om2DynamicKernelPipelineST, AicoreTilingWorkspaceAndLaunchSurvivePackageR
 }
 
 /**
- * 用例描述：动态 AICPU CC 参数和 extinfo 经模型生成、归档及加载后跨轮刷新，并验证 HostCC 边界。
- * 预置条件：CC 仅接管 RTS/ACL launch；HostCC 注入库符号供 lowering 使用，不执行 host kernel。
- * 测试步骤：CC 构建并加载一次，运行长度 3/7 的输入，检查 launch 现场，再卸载；构建 HostCC。
+ * 用例描述：动态 AICPU CC 参数和 extinfo 经模型生成、归档及加载后跨轮刷新，并验证 HostCC 执行失败的传播。
+ * 预置条件：CC 仅接管 RTS/ACL launch；HostCC 注册返回错误的库函数桩。
+ * 测试步骤：CC 构建并加载一次，运行长度 3/7 的输入，检查 launch 现场，再卸载；构建、加载并运行 HostCC。
  * 预期结果：每轮 ioAddrNum 为 3，extinfo 的两个输入 shape 均为本轮长度；输出等于 CPU Add；
- *           CC 两轮复用初始化资源且 Unload 成功；HostCC 因缺少 AicpuHostCompute builder 明确拒绝，
- *           不发布半成品。未覆盖 TF、依赖输出值的四类算子及自定义二进制。
+ *           CC 两轮复用初始化资源且 Unload 成功；HostCC 经默认 collector 调到库函数桩并报告失败，
+ *           未覆盖 TF、依赖输出值的四类算子及自定义二进制。
  */
-TEST_F(Om2DynamicKernelPipelineST, AicpuCcRefreshesArgsAndRejectsUnsupportedHostCcPipeline) {
-  // slow_test_limit = 3000
+TEST_F(Om2DynamicKernelPipelineST, AicpuCcRefreshesArgsAndHostCcPropagatesRunFailure) {
+  // slow_test_limit = 5000
   observed_.cpu = true;
   gert::GertRuntimeStub stub(std::make_unique<PipelineRtsStub>(), true, std::make_unique<PipelineAclStub>());
   const auto root = BuildKernelRoot(true, false);
@@ -426,15 +433,14 @@ TEST_F(Om2DynamicKernelPipelineST, AicpuCcRefreshesArgsAndRejectsUnsupportedHost
   ASSERT_NO_FATAL_FAILURE(RunPipelineAdd(package, 7, gert::kOnDeviceHbm));
   EXPECT_EQ(observed_.ext_shapes, (std::vector<int64_t>{3, 7}));
   ASSERT_EQ(package.runner.Unload(), ACL_SUCCESS);
-  ScopedPipelineHostKernel host_kernel;
+  size_t host_calls = 0U;
+  ScopedPipelineHostKernel host_kernel(host_calls);
   const auto host_root = BuildKernelRoot(true, true);
   ASSERT_NE(host_root, nullptr);
-  gert::GertModelData rejected;
-  stub.GetSlogStub().Clear();
-  EXPECT_NE(Om2PackageHelper().BuildDynamicGertModelData(host_root, rejected), SUCCESS);
-  EXPECT_NE(stub.GetSlogStub().FindLog(DLOG_ERROR, "No OM2 kernel code builder registered for kernel AicpuHostCompute"),
-            -1);
-  EXPECT_TRUE(rejected.models.empty());
+  PipelinePackage host_package;
+  ASSERT_NO_FATAL_FAILURE(host_package.BuildAndLoad(host_root));
+  ASSERT_NO_FATAL_FAILURE(RunPipelineAdd(host_package, 3, gert::kOnHost, true));
+  EXPECT_EQ(host_calls, 1U);
 }
 }  // namespace
 }  // namespace ge

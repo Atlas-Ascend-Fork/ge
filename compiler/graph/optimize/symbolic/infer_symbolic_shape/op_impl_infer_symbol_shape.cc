@@ -12,14 +12,13 @@
 #include "framework/common/debug/ge_log.h"
 
 namespace gert {
-OpImplInferSymbolShape &OpImplInferSymbolShape::InferSymbolShape(
-    OpImplKernelRegistry::InferSymbolShapeKernelFunc func) {
-  auto funcs = OpImplInferSymbolShapeRegistry::GetInstance().CreateOrGetOpImpl(op_type.GetString());
+OpImplInferSymbolShape &OpImplInferSymbolShape::InferSymbolShape(OpImplKernelRegistry::InferSymbolKernelFunc func) {
+  auto &registered = OpImplInferSymbolShapeRegistry::GetInstance().types_to_impl_[op_type];
   GELOGI("Register infer symbol shape for %s.", op_type.GetString());
-  if (funcs->infer_symbol_shape != nullptr) {
+  if (registered != nullptr) {
     GELOGW("[%s] infer_symbol_shape already registered, will using new function.", op_type.GetString());
   }
-  funcs->infer_symbol_shape = func;
+  registered = func;
   return *this;
 }
 
@@ -28,18 +27,13 @@ OpImplInferSymbolShapeRegistry &OpImplInferSymbolShapeRegistry::GetInstance() {
   return instance;
 }
 
-const OpImplKernelRegistry::OpImplFunctionsV2 *OpImplInferSymbolShapeRegistry::GetOpImpl(
-    const ge::char_t *op_type) const {
+OpImplKernelRegistry::InferSymbolKernelFunc OpImplInferSymbolShapeRegistry::GetOpImpl(const ge::char_t *op_type) const {
   const auto iter = types_to_impl_.find(op_type);
   if (iter == types_to_impl_.cend()) {
     GELOGW("[%s] infer_symbol_shape is not registered, get the func failed.", op_type);
     return nullptr;
   }
-  return &iter->second;
-}
-
-OpImplKernelRegistry::OpImplFunctionsV2 *OpImplInferSymbolShapeRegistry::CreateOrGetOpImpl(const ge::char_t *op_type) {
-  return &types_to_impl_[op_type];
+  return iter->second;
 }
 
 }  // namespace gert

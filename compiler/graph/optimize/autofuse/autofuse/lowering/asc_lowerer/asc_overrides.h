@@ -337,11 +337,11 @@ class AscOverrides final : public OpOverrides {
     CseVar var;
     GE_WARN_ASSERT(src.Get<AscVar>() != nullptr);
     const auto node = MakeRawNode<ascir_op::Split>(ToVector(src), {}, {}, {1});
+    GE_WARN_ASSERT(node != nullptr);
     GET_IR_ATTR(Split, node)->SetIndex(output_idx);
     GET_IR_ATTR(Split, node)->SetGid(global_id);
     GELOGI("ascir node: %s(%s), output index: %zu, global id: %zu", node->GetType().c_str(), node->GetName().c_str(),
            output_idx, global_id);
-    GE_WARN_ASSERT(node != nullptr);
     CseVar ret;
 
     auto split_out = AscVar(node);

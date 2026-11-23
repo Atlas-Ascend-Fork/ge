@@ -30,7 +30,7 @@
 #include "attribute_group/attr_group_symbolic_desc.h"
 #include "stub/gert_runtime_stub.h"
 #include "expect_node_info_check_test.h"
-#include "graph/symbolizer/symbol_operator.h"
+#include "graph/symbolizer/symbolic.h"
 
 namespace ge {
 class SymbolicShapeComputeUT : public testing::Test {
@@ -5070,6 +5070,28 @@ TEST_F(SymbolicShapeComputeUT, test_identity_and_cast_symbolic_value) {
   ASSERT_EQ(RunSymbolInferenceTest(cg, {identity_expect, cast_expect}, {}), SUCCESS);
 }
 
+TEST_F(SymbolicShapeComputeUT, test_cast_bool_symbolic_value) {
+  auto input = EsCreateGraphInputWithDetails(graph_, 0, "input", nullptr, C_DataType::C_DT_BOOL, C_Format::C_FORMAT_ND,
+                                             nullptr, 0);
+  auto cast = EsCast(input, DT_INT32);
+  ASSERT_EQ(EsSetGraphOutput(cast, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  DataInfo data_info = {FORMAT_ND, DT_BOOL, {2}};
+  ASSERT_EQ(SetNoStorage(cg, "input", data_info, 0), SUCCESS);
+  auto input_attr = cg->FindNode("input")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(input_attr, nullptr);
+  input_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol(2)}));
+  SymbolicInferUtil::SetSymbolicValues(input_attr->symbolic_tensor, std::vector<Expression>{Symbol(0), Symbol(1)});
+  auto cast_node = cg->FindFirstNodeMatchType("Cast");
+  ASSERT_NE(cast_node, nullptr);
+  cast_node->GetOpDesc()->MutableInputDesc(0)->SetDataType(DT_BOOL);
+  cast_node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(DT_INT32);
+  ExpectNodeInfo cast_expect("Cast", {Symbol(2)}, {}, {}, {Symbol(0), Symbol(1)});
+  ASSERT_EQ(RunSymbolInferenceTest(cg, {cast_expect}, {}), SUCCESS);
+}
+
 TEST_F(SymbolicShapeComputeUT, test_range_symbolic_value) {
   auto start = EsCreateScalarInt64(graph_, 2);
   auto limit = EsCreateScalarInt64(graph_, 8);
@@ -5811,6 +5833,128 @@ TEST_F(SymbolicShapeComputeUT, InferShapeForFloorModWithConstValue) {
   expect_nodes.push_back(ExpectNodeInfo("FloorMod", std::vector<Expression>{Symbol(2), Symbol(2)}, {}, {},
                                         std::vector<Expression>{Symbol(1), Symbol(2), Symbol(0), Symbol(1)}));
   ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+TEST_F(SymbolicShapeComputeUT, InferShapeForModWithConstValue) {
+  const std::vector<int32_t> x1_value = {7, 8, 9, 10};
+  const std::vector<int64_t> x1_dims = {2, 2};
+  auto x1 = EsCreateConstInt32(graph_, x1_value.data(), x1_dims.data(), x1_dims.size());
+  ASSERT_NE(x1, nullptr);
+  const std::vector<int32_t> x2_value = {3, 3};
+  const std::vector<int64_t> x2_dims = {1, 2};
+  auto x2 = EsCreateConstInt32(graph_, x2_value.data(), x2_dims.data(), x2_dims.size());
+  ASSERT_NE(x2, nullptr);
+  auto mod = EsMod(x1, x2);
+  ASSERT_NE(mod, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(mod, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("Mod", std::vector<Expression>{Symbol(2), Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(1), Symbol(2), Symbol(0), Symbol(1)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+TEST_F(SymbolicShapeComputeUT, InferShapeForBitwiseXorWithConstValue) {
+  const std::vector<int32_t> x1_value = {-1, 7, 8, 9};
+  const std::vector<int64_t> x1_dims = {2, 2};
+  auto x1 = EsCreateConstInt32(graph_, x1_value.data(), x1_dims.data(), x1_dims.size());
+  ASSERT_NE(x1, nullptr);
+  const std::vector<int32_t> x2_value = {1, 3};
+  const std::vector<int64_t> x2_dims = {1, 2};
+  auto x2 = EsCreateConstInt32(graph_, x2_value.data(), x2_dims.data(), x2_dims.size());
+  ASSERT_NE(x2, nullptr);
+  auto bitwise_xor = EsBitwiseXor(x1, x2);
+  ASSERT_NE(bitwise_xor, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(bitwise_xor, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  std::vector<ExpectNodeInfo> expect_nodes;
+  expect_nodes.push_back(ExpectNodeInfo("BitwiseXor", std::vector<Expression>{Symbol(2), Symbol(2)}, {}, {},
+                                        std::vector<Expression>{Symbol(-2), Symbol(4), Symbol(9), Symbol(10)}));
+  ASSERT_EQ(RunSymbolInferenceTest(cg, expect_nodes, {}), SUCCESS);
+}
+
+TEST_F(SymbolicShapeComputeUT, InferShapeForBitwiseXorWithSymbolicIdentityAndBoolValue) {
+  auto x1 = EsCreateGraphInputWithDetails(graph_, 0, "x1", nullptr, C_DataType::C_DT_INT32, C_Format::C_FORMAT_ND,
+                                          nullptr, 0);
+  auto x2 = EsCreateGraphInputWithDetails(graph_, 1, "x2", nullptr, C_DataType::C_DT_INT32, C_Format::C_FORMAT_ND,
+                                          nullptr, 0);
+  auto bitwise_xor = EsBitwiseXor(x1, x2);
+  ASSERT_NE(bitwise_xor, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(bitwise_xor, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  const DataInfo data_info = {FORMAT_ND, DT_INT32, {3}};
+  ASSERT_EQ(SetNoStorage(cg, "x1", data_info, 0), SUCCESS);
+  ASSERT_EQ(SetNoStorage(cg, "x2", data_info, 1), SUCCESS);
+  auto x1_attr = cg->FindNode("x1")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+  auto x2_attr = cg->FindNode("x2")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(x1_attr, nullptr);
+  ASSERT_NE(x2_attr, nullptr);
+  x1_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol(3)}));
+  x2_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol(3)}));
+  const auto predicate = sym::Lt(Symbol("a"), Symbol("b"));
+  SymbolicInferUtil::SetSymbolicValues(x1_attr->symbolic_tensor,
+                                       std::vector<Expression>{Symbol(0), predicate, Symbol("z")});
+  SymbolicInferUtil::SetSymbolicValues(x2_attr->symbolic_tensor,
+                                       std::vector<Expression>{Symbol("y"), Symbol(1), Symbol(0)});
+  const std::vector<Expression> expected = {Symbol("y"), sym::Not(predicate), Symbol("z")};
+  ExpectNodeInfo expect_node("BitwiseXor", {Symbol(3)}, {}, {}, expected);
+  ASSERT_EQ(RunSymbolInferenceTest(cg, {expect_node}, {}), SUCCESS);
+}
+
+TEST_F(SymbolicShapeComputeUT, InferShapeForBitwiseXorBroadcastOutputOverLimitDegrades) {
+  auto x1 = EsCreateGraphInputWithDetails(graph_, 0, "x1", nullptr, C_DataType::C_DT_INT32, C_Format::C_FORMAT_ND,
+                                          nullptr, 0);
+  auto x2 = EsCreateGraphInputWithDetails(graph_, 1, "x2", nullptr, C_DataType::C_DT_INT32, C_Format::C_FORMAT_ND,
+                                          nullptr, 0);
+  auto bitwise_xor = EsBitwiseXor(x1, x2);
+  ASSERT_NE(bitwise_xor, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(bitwise_xor, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  ASSERT_EQ(SetNoStorage(cg, "x1", {FORMAT_ND, DT_INT32, {1, 400}}, 0), SUCCESS);
+  ASSERT_EQ(SetNoStorage(cg, "x2", {FORMAT_ND, DT_INT32, {400, 1}}, 1), SUCCESS);
+  auto x1_attr = cg->FindNode("x1")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+  auto x2_attr = cg->FindNode("x2")->GetOpDesc()->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(x1_attr, nullptr);
+  ASSERT_NE(x2_attr, nullptr);
+  x1_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol(1), Symbol(400)}));
+  x2_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol(400), Symbol(1)}));
+  SymbolicInferUtil::SetSymbolicValues(x1_attr->symbolic_tensor, std::vector<Expression>(400, Symbol(1)));
+  SymbolicInferUtil::SetSymbolicValues(x2_attr->symbolic_tensor, std::vector<Expression>(400, Symbol(1)));
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), SUCCESS);
+  auto xor_node = cg->FindFirstNodeMatchType("BitwiseXor");
+  ASSERT_NE(xor_node, nullptr);
+  auto attr = xor_node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
+}
+
+TEST_F(SymbolicShapeComputeUT, InferShapeForModUnsafeValueDegrades) {
+  const std::vector<int32_t> lhs_value = {-1, 7};
+  const std::vector<int32_t> rhs_value = {3, 0};
+  const std::vector<int64_t> dims = {2};
+  auto lhs = EsCreateConstInt32(graph_, lhs_value.data(), dims.data(), dims.size());
+  auto rhs = EsCreateConstInt32(graph_, rhs_value.data(), dims.data(), dims.size());
+  auto mod = EsMod(lhs, rhs);
+  ASSERT_NE(mod, nullptr);
+  ASSERT_EQ(EsSetGraphOutput(mod, 0), 0);
+  auto graph = std::unique_ptr<Graph>(reinterpret_cast<Graph *>(EsBuildGraphAndReset(graph_)));
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  ASSERT_EQ(RunSymbolInferenceTest(cg, {}, {}), SUCCESS);
+  auto mod_node = cg->FindFirstNodeMatchType("Mod");
+  ASSERT_NE(mod_node, nullptr);
+  auto attr = mod_node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
 }
 
 // ┌───────────────┐ (0,0) ┌───────┐ (0,0) ┌──────────┐ (0,0) ┌─────────────┐

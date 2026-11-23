@@ -19,7 +19,6 @@ def generate_deploy_template(graph, file_path):
     # extract input FlowData
     added_nodes = set()
     used_nodes = []
-    input_datas = set()
     batch_deploy_info = []
 
     for _, output in enumerate(graph._outputs):
@@ -34,7 +33,9 @@ def generate_deploy_template(graph, file_path):
         deploy_node_name = node.name
         if node.alias is not None:
             deploy_node_name = node.alias
-        batch_deploy_info.append({"flow_node_list": [deploy_node_name], "logic_device_list": "0:0:0:0"})
+        batch_deploy_info.append(
+            {"flow_node_list": [deploy_node_name], "logic_device_list": "0:0:0:0"}
+        )
         for anchor in node._input_anchors:
             if not isinstance(anchor, df.FlowData):
                 used_nodes.append(anchor.node)

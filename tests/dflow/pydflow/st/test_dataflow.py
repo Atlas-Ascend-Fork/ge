@@ -90,7 +90,9 @@ class TestDataFlow(unittest.TestCase):
         self.assertEqual(t._tensor_desc, tensor_desc)
         print(t)
         a = np.array([[1, 0, 2, 4]], dtype=np.int32)
-        strided_array = np.lib.stride_tricks.as_strided(a, shape=(1, 2), strides=(16, 8))
+        strided_array = np.lib.stride_tricks.as_strided(
+            a, shape=(1, 2), strides=(16, 8)
+        )
         self.assertRaises(df.DfException, df.Tensor, strided_array)
         try:
             df.Tensor(strided_array)
@@ -111,7 +113,7 @@ class TestDataFlow(unittest.TestCase):
         # construct by single string
         t = df.Tensor("test_string")
         try:
-            a = t.numpy(True)
+            t.numpy(True)
         except df.DfException as e:
             self.assertEqual(e.error_code, PARAM_INVALID)
         # construct by dwrapper.TestTensor
@@ -120,10 +122,10 @@ class TestDataFlow(unittest.TestCase):
         t = df.Tensor(ti)
         t.numpy(True)
         # construct by df tensor
-        df_t = df.Tensor(t)
+        df.Tensor(t)
         t.numpy(True)
         # construct by numpy
-        dt_np = df.Tensor(tmp_value)
+        df.Tensor(tmp_value)
         t.numpy(True)
 
     def test_create_flow_data_with_invalid_params(self):
@@ -140,8 +142,12 @@ class TestDataFlow(unittest.TestCase):
 
     def test_dataflow(self):
         df_log.set_log_level(df_log.INFO)
-        data = df.FlowData(name="test_flow_graph_data", schema=df.TensorDesc(df.DT_FLOAT16, []))
-        data1 = df.FlowData(name="test_flow_graph_data1", schema=df.TensorDesc(df.DT_FLOAT16, []))
+        data = df.FlowData(
+            name="test_flow_graph_data", schema=df.TensorDesc(df.DT_FLOAT16, [])
+        )
+        data1 = df.FlowData(
+            name="test_flow_graph_data1", schema=df.TensorDesc(df.DT_FLOAT16, [])
+        )
         flow_node = df.FlowNode(2, 1, "test_flow_graph_node")
         compile_config_path = "./func.json"
         func_pp = df.FuncProcessPoint(compile_config_path, "funcxxx")
@@ -152,13 +158,11 @@ class TestDataFlow(unittest.TestCase):
 
         data2 = df.FlowData(name="test_flow_graph_data2")
         data3 = df.FlowData(name="test_flow_graph_data3")
-        flow_node1 = df.FlowNode(2, 1, "test_flow_graph_node1")
+        df.FlowNode(2, 1, "test_flow_graph_node1")
         output1 = flow_node(data2, data3)
         self.assertRaises(df.DfException, df.FlowGraph, [output1])
         try:
             df.FlowGraph([output1])
-            print(e)
-            print(e.__repr__())
         except df.DfException as e:
             self.assertEqual(e.error_code, NOT_INIT)
         flow_options = {"ge.exec.deviceId": "0"}
@@ -204,7 +208,9 @@ class TestDataFlow(unittest.TestCase):
         self.assertEqual(ret, 0)
         ret = graph.feed_data({data: np.array(1, dtype=np.float16)})
         self.assertEqual(ret, 0)
-        ret = graph.feed_data({data: df.Tensor(1, tensor_desc=df.TensorDesc(df.DT_FLOAT16, []))})
+        ret = graph.feed_data(
+            {data: df.Tensor(1, tensor_desc=df.TensorDesc(df.DT_FLOAT16, []))}
+        )
         self.assertEqual(ret, 0)
         self.assertRaises(df.DfException, df.TensorDesc, "", [])
         try:

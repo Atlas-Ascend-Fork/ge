@@ -45,7 +45,9 @@ class TransferWithCacheKeyConfigSt(unittest.TestCase):
         cache_key = CacheKeyByIdAndIndex(1, 1)
         src_layer_range = range(1, 5)
         dst_layer_range = range(1, 5)
-        self._twckc = TransferWithCacheKeyConfig(cache_key, src_layer_range, dst_layer_range)
+        self._twckc = TransferWithCacheKeyConfig(
+            cache_key, src_layer_range, dst_layer_range
+        )
 
     def tearDown(self) -> None:
         print("End ", self._testMethodName)

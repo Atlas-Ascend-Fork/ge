@@ -16,6 +16,7 @@
 #include "common/checker.h"
 #include "exe_graph/lowering/exe_graph_attrs.h"
 #include "common/util/mem_utils.h"
+#include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/utils/fast_node_utils.h"
 #include "graph/utils/execute_graph_utils.h"
 #include "graph/utils/graph_dump_utils.h"
@@ -496,11 +497,16 @@ ge::graphStatus FuseCopyNodes(ge::FastNode *const launch_node, std::vector<CopyN
   auto copy_flow_launch_node = CreateCopyFlowLaunchNode(graph, copy_nodes);
   GE_ASSERT_NOTNULL(copy_flow_launch_node);
 
+  const auto *const source = copy_nodes[0].consumer_launch_node->GetOpDescBarePtr();
+  auto *const target = copy_flow_launch_node->GetOpDescBarePtr();
   int64_t compute_node_index;
-  if (ge::AttrUtils::GetInt(copy_nodes[0].consumer_launch_node->GetOpDescBarePtr(), kComputeNodeIndex,
-                            compute_node_index)) {
-    GE_ASSERT_TRUE(
-        ge::AttrUtils::SetInt(copy_flow_launch_node->GetOpDescBarePtr(), kComputeNodeIndex, compute_node_index));
+  if (ge::AttrUtils::GetInt(source, kComputeNodeIndex, compute_node_index)) {
+    GE_ASSERT_TRUE(ge::AttrUtils::SetInt(target, kComputeNodeIndex, compute_node_index));
+  }
+  if (source->HasAttr(attr::kSourceOp)) {
+    ge::AnyValue value;
+    GE_ASSERT_SUCCESS(source->GetAttr(attr::kSourceOp, value));
+    GE_ASSERT_SUCCESS(target->SetAttr(attr::kSourceOp, value));
   }
 
   std::vector<std::vector<int32_t>> host_inputs_addr_index;

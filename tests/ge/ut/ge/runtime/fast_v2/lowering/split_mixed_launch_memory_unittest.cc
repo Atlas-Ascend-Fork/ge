@@ -27,6 +27,7 @@
 #include "exe_graph/lowering/value_holder.h"
 #include "faker/exe_graph_model_level_data_faker.h"
 #include "framework/runtime/executor_option/multi_thread_executor_option.h"
+#include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/utils/execute_graph_utils.h"
 #include "graph/utils/fast_node_utils.h"
 #include "kernel/common_kernel_impl/memory_copy.h"
@@ -615,6 +616,14 @@ TEST_F(SplitMixedLaunchMemoryUT, SplitLegacyCopyFlowLaunchWhenPassRuns) {
   EXPECT_EQ(ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(graph.get(), "PrepareCopyFlowResult").size(), 0UL);
   EXPECT_EQ(ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(graph.get(), "LaunchCopyFlowH2D").size(), 0UL);
 
+  const auto consumers = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(graph.get(), "LaunchKernelV2");
+  const auto copies = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(graph.get(), "CopyH2D");
+  ASSERT_EQ(consumers.size(), 1U);
+  ASSERT_EQ(copies.size(), 1U);
+  constexpr auto kSource = R"({"version":1,"name":"launch_source","type":"MatMul","inputs":[],
+    "outputs":[],"ir_inputs":[],"ir_outputs":[],"attrs":[]})";
+  ASSERT_TRUE(ge::AttrUtils::SetStr(consumers[0]->GetOpDescBarePtr(), attr::kSourceOp, kSource));
+  ASSERT_TRUE(ge::AttrUtils::SetStr(copies[0]->GetOpDescBarePtr(), attr::kSourceOp, "copy source"));
   bool changed = false;
   ASSERT_EQ(CopyFlowLaunchFuse().Run(graph.get(), changed), ge::GRAPH_SUCCESS);
   EXPECT_TRUE(changed);
@@ -623,6 +632,9 @@ TEST_F(SplitMixedLaunchMemoryUT, SplitLegacyCopyFlowLaunchWhenPassRuns) {
   auto legacy_copy_flow_nodes =
       ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(graph.get(), kernel::kCopyFlowLaunch);
   ASSERT_EQ(legacy_copy_flow_nodes.size(), 1UL);
+  std::string source;
+  ASSERT_TRUE(ge::AttrUtils::GetStr(legacy_copy_flow_nodes[0]->GetOpDescBarePtr(), attr::kSourceOp, source));
+  EXPECT_EQ(source, kSource);
   constexpr int64_t kComputeIndex = 17;
   ASSERT_TRUE(ge::AttrUtils::SetInt(legacy_copy_flow_nodes[0]->GetOpDescBarePtr(), kComputeNodeIndex, kComputeIndex));
   EXPECT_EQ(ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(graph.get(), "PrepareCopyFlowResult").size(), 0UL);
@@ -650,6 +662,13 @@ TEST_F(SplitMixedLaunchMemoryUT, SplitLegacyCopyFlowLaunchWhenPassRuns) {
   auto launch_copy_nodes = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(graph.get(), "LaunchCopyFlowH2D");
   ASSERT_EQ(prepare_nodes.size(), 1UL);
   ASSERT_EQ(launch_copy_nodes.size(), 1UL);
+  for (const auto *node : {prepare_nodes[0], launch_copy_nodes[0]}) {
+    ASSERT_TRUE(ge::AttrUtils::GetStr(node->GetOpDescBarePtr(), attr::kSourceOp, source));
+    EXPECT_EQ(source, kSource);
+  }
+  for (const auto *node : {calc_nodes[0], alloc_nodes[0]}) {
+    EXPECT_FALSE(node->GetOpDescBarePtr()->HasAttr(attr::kSourceOp));
+  }
   int64_t prepare_count = 0;
   int64_t launch_count = 0;
   ASSERT_TRUE(ge::AttrUtils::GetInt(prepare_nodes[0]->GetOpDescBarePtr(), kernel::kCopyFlowCountAttr, prepare_count));
@@ -667,6 +686,83 @@ TEST_F(SplitMixedLaunchMemoryUT, SplitLegacyCopyFlowLaunchWhenPassRuns) {
   EXPECT_EQ(FastNodeTopoChecker(prepare_nodes[0]).OutChecker().DataToByType("LaunchKernelV2").Result(), "success");
   EXPECT_EQ(FastNodeTopoChecker(launch_copy_nodes[0]).OutChecker().CtrlToByType("LaunchKernelV2").Result(), "success");
   EXPECT_EQ(launch_copy_nodes[0]->GetDataOutNum(), 0U);
+}
+
+void SetInheritedSource(ge::OpDesc &desc, bool json, bool index, const char *source_json, int64_t source_index) {
+  if (json) {
+    ASSERT_TRUE(ge::AttrUtils::SetStr(&desc, attr::kSourceOp, source_json));
+  }
+  if (index) {
+    ASSERT_TRUE(ge::AttrUtils::SetInt(&desc, kComputeNodeIndex, source_index));
+  }
+}
+
+void CheckInheritedSource(ge::ExecuteGraph &graph, const char *type, bool json, bool index, const char *source_json,
+                          int64_t source_index) {
+  const auto nodes = ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(&graph, type);
+  ASSERT_EQ(nodes.size(), 1U) << type;
+  const auto *desc = nodes[0]->GetOpDescBarePtr();
+  std::string source;
+  int64_t compute_index = -1;
+  EXPECT_EQ(ge::AttrUtils::GetStr(desc, attr::kSourceOp, source), json) << type;
+  EXPECT_EQ(ge::AttrUtils::GetInt(desc, kComputeNodeIndex, compute_index), index) << type;
+  if (json) {
+    EXPECT_EQ(source, source_json) << type;
+  }
+  if (index) {
+    EXPECT_EQ(compute_index, source_index) << type;
+  }
+}
+
+TEST_F(SplitMixedLaunchMemoryUT, InheritsSourceJsonAndComputeIndexIndependently) {
+  SetRt2MultiThreadEnabled();
+  ASSERT_NE(ValueHolder::PopGraphFrame(), nullptr);
+  constexpr auto kSource = R"({"version":1,"name":"source","type":"MatMul","inputs":[],
+    "outputs":[],"ir_inputs":[],"ir_outputs":[],"attrs":[]})";
+  constexpr int64_t kIndex = 23;
+
+  for (const bool fuse : {true, false}) {
+    for (const bool json : {true, false}) {
+      for (const bool index : {true, false}) {
+        SCOPED_TRACE(testing::Message() << "fuse=" << fuse << " json=" << json << " index=" << index);
+        ASSERT_NE(ValueHolder::PushGraphFrame(), nullptr);
+        auto graph = fuse ? BuildCopyToLaunchGraph() : BuildCopyToConsumerGraph();
+        ASSERT_NE(graph, nullptr);
+        const auto sources =
+            ge::ExecuteGraphUtils::FindNodesByTypeFromAllNodes(graph.get(), fuse ? "LaunchKernelV2" : "CopyH2D");
+        ASSERT_EQ(sources.size(), 1U);
+        auto *desc = sources[0]->GetOpDescBarePtr();
+        ASSERT_NE(desc, nullptr);
+        ASSERT_NO_FATAL_FAILURE(SetInheritedSource(*desc, json, index, kSource, kIndex));
+
+        bool changed = false;
+        if (fuse) {
+          ASSERT_EQ(CopyFlowLaunchFuse().Run(graph.get(), changed), ge::GRAPH_SUCCESS);
+          ASSERT_TRUE(changed);
+          ASSERT_NO_FATAL_FAILURE(CheckInheritedSource(*graph, kernel::kCopyFlowLaunch, json, index, kSource, kIndex));
+        }
+        changed = false;
+        ASSERT_EQ(SplitMixedLaunchMemory().Run(graph.get(), changed), ge::GRAPH_SUCCESS);
+        ASSERT_TRUE(changed);
+        if (fuse) {
+          ASSERT_NO_FATAL_FAILURE(
+              CheckInheritedSource(*graph, kernel::kPrepareCopyFlowResult, json, index, kSource, kIndex));
+          ASSERT_NO_FATAL_FAILURE(
+              CheckInheritedSource(*graph, kernel::kLaunchCopyFlowH2D, json, index, kSource, kIndex));
+          ASSERT_NO_FATAL_FAILURE(
+              CheckInheritedSource(*graph, kernel::kCalcCopyFlowAllocSizes, false, false, kSource, kIndex));
+          ASSERT_NO_FATAL_FAILURE(
+              CheckInheritedSource(*graph, kernel::kAllocCopyFlowHbm, false, false, kSource, kIndex));
+        } else {
+          ASSERT_NO_FATAL_FAILURE(CheckInheritedSource(*graph, "LaunchH2DCopy", json, index, kSource, kIndex));
+          ASSERT_NO_FATAL_FAILURE(CheckInheritedSource(*graph, "CalcDeviceCopySizes", false, false, kSource, kIndex));
+          ASSERT_NO_FATAL_FAILURE(CheckInheritedSource(*graph, "AllocMemHbm", false, false, kSource, kIndex));
+          ASSERT_NO_FATAL_FAILURE(
+              CheckInheritedSource(*graph, kernel::kShareH2DCopyResult, false, false, kSource, kIndex));
+        }
+      }
+    }
+  }
 }
 
 TEST_F(SplitMixedLaunchMemoryUT, OfflineOptimizerPropagatesComputeNodeIndexThroughLegacyCopyFlow) {

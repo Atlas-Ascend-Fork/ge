@@ -128,7 +128,9 @@ class Graph:
         instance._owner = owner
         return instance
 
-    def _transfer_ownership_when_pass_as_subgraph(self, new_owner: "GraphBuilder") -> None:
+    def _transfer_ownership_when_pass_as_subgraph(
+        self, new_owner: "GraphBuilder"
+    ) -> None:
         """Transfer ownership of the C++ resource to new_owner.
 
         After calling this method, Python will no longer destroy the underlying
@@ -181,7 +183,9 @@ class Graph:
             List of Node objects.
         """
         node_num = ctypes.c_size_t()
-        nodes = graph_lib.GeApiWrapper_Graph_GetAllNodes(self._handle, ctypes.byref(node_num))
+        nodes = graph_lib.GeApiWrapper_Graph_GetAllNodes(
+            self._handle, ctypes.byref(node_num)
+        )
         if not nodes:
             return []
 
@@ -197,7 +201,9 @@ class Graph:
             List of Node objects.
         """
         node_num = ctypes.c_size_t()
-        nodes = graph_lib.GeApiWrapper_Graph_GetDirectNode(self._handle, ctypes.byref(node_num))
+        nodes = graph_lib.GeApiWrapper_Graph_GetDirectNode(
+            self._handle, ctypes.byref(node_num)
+        )
         if not nodes:
             return []
 
@@ -225,9 +231,13 @@ class Graph:
         attr_value = _AttrValue()
         key_bytes = key.encode("utf-8")
 
-        ret = graph_lib.GeApiWrapper_Graph_GetAttr(self._handle, key_bytes, attr_value._av_ptr)
+        ret = graph_lib.GeApiWrapper_Graph_GetAttr(
+            self._handle, key_bytes, attr_value._av_ptr
+        )
         if ret != 0:  # GRAPH_SUCCESS
-            raise RuntimeError(f"Failed to get attribute '{key}' from Graph {self.name}")
+            raise RuntimeError(
+                f"Failed to get attribute '{key}' from Graph {self.name}"
+            )
         return attr_value.get_value()
 
     def set_attr(self, key: str, value: Any) -> None:
@@ -247,11 +257,15 @@ class Graph:
         key_bytes = key.encode("utf-8")
         attr_value = _AttrValue()
         attr_value.set_value(value)
-        ret = graph_lib.GeApiWrapper_Graph_SetAttr(self._handle, key_bytes, attr_value._av_ptr)
+        ret = graph_lib.GeApiWrapper_Graph_SetAttr(
+            self._handle, key_bytes, attr_value._av_ptr
+        )
         if ret != 0:  # GRAPH_SUCCESS
             raise RuntimeError(f"Failed to set attribute '{key}' on Graph {self.name}")
 
-    def dump_to_file(self, format: DumpFormat = DumpFormat.kReadable, suffix: str = "") -> None:
+    def dump_to_file(
+        self, format: DumpFormat = DumpFormat.kReadable, suffix: str = ""
+    ) -> None:
         """Dump graph to file.
 
         Args:
@@ -270,12 +284,18 @@ class Graph:
             raise TypeError("Suffix must be a string")
 
         if format not in [DumpFormat.kOnnx, DumpFormat.kTxt, DumpFormat.kReadable]:
-            raise TypeError("Format must be in [DumpFormat.kOnnx, DumpFormat.kTxt, DumpFormat.kReadable]")
+            raise TypeError(
+                "Format must be in [DumpFormat.kOnnx, DumpFormat.kTxt, DumpFormat.kReadable]"
+            )
 
         suffix_bytes = suffix.encode("utf-8")
-        ret = graph_lib.GeApiWrapper_Graph_Dump_To_File(self._handle, format.value, suffix_bytes)
+        ret = graph_lib.GeApiWrapper_Graph_Dump_To_File(
+            self._handle, format.value, suffix_bytes
+        )
         if ret != 0:
-            raise RuntimeError(f"Failed to dump graph: {self.name} to file format {format} with suffix {suffix}")
+            raise RuntimeError(
+                f"Failed to dump graph: {self.name} to file format {format} with suffix {suffix}"
+            )
 
     def dump_to_stream(self, format: DumpFormat = DumpFormat.kReadable) -> str:
         """Dump graph to stream.
@@ -287,7 +307,9 @@ class Graph:
             Stream of the graph.
         """
         if format not in [DumpFormat.kOnnx, DumpFormat.kTxt, DumpFormat.kReadable]:
-            raise TypeError("Format must be in [DumpFormat.kOnnx, DumpFormat.kTxt, DumpFormat.kReadable]")
+            raise TypeError(
+                "Format must be in [DumpFormat.kOnnx, DumpFormat.kTxt, DumpFormat.kReadable]"
+            )
 
         c_str = graph_lib.GeApiWrapper_Graph_Dump_To_Stream(self._handle, format.value)
         if not c_str:
@@ -310,7 +332,9 @@ class Graph:
         """
         if not isinstance(file_path, str):
             raise TypeError("file_path must be a string")
-        ret = graph_lib.GeApiWrapper_Graph_SaveToAir(self._handle, file_path.encode("utf-8"))
+        ret = graph_lib.GeApiWrapper_Graph_SaveToAir(
+            self._handle, file_path.encode("utf-8")
+        )
         if ret != 0:
             raise RuntimeError("Failed to save graph to AIR format")
 
@@ -326,7 +350,9 @@ class Graph:
         """
         if not isinstance(file_path, str):
             raise TypeError("file_path must be a string")
-        ret = graph_lib.GeApiWrapper_Graph_LoadFromAir(self._handle, file_path.encode("utf-8"))
+        ret = graph_lib.GeApiWrapper_Graph_LoadFromAir(
+            self._handle, file_path.encode("utf-8")
+        )
         if ret != 0:
             raise RuntimeError("Failed to load graph from AIR format")
 
@@ -344,9 +370,13 @@ class Graph:
             raise TypeError("node must be a Node")
         ret = graph_lib.GeApiWrapper_Graph_RemoveNode(self._handle, node._handle)
         if ret != 0:  # GRAPH_SUCCESS
-            raise RuntimeError(f"Failed to remove Node {node.name} from Graph {self.name}")
+            raise RuntimeError(
+                f"Failed to remove Node {node.name} from Graph {self.name}"
+            )
 
-    def remove_edge(self, src_node: Node, src_port_index: int, dst_node: Node, dst_port_index: int) -> None:
+    def remove_edge(
+        self, src_node: Node, src_port_index: int, dst_node: Node, dst_port_index: int
+    ) -> None:
         """Remove edge.
 
         Args:
@@ -385,7 +415,9 @@ class Graph:
                 f"Failed to remove Edge from Node {src_node.name}, Port Index {src_port_index} to Node {dst_node.name}, Port Index {dst_port_index}"
             )
 
-    def add_data_edge(self, src_node: Node, src_port_index: int, dst_node: Node, dst_port_index: int) -> None:
+    def add_data_edge(
+        self, src_node: Node, src_port_index: int, dst_node: Node, dst_port_index: int
+    ) -> None:
         """Add data edge.
 
         Args:
@@ -437,9 +469,13 @@ class Graph:
         if not isinstance(dst_node, Node):
             raise TypeError("dst_node must be a Node")
 
-        ret = graph_lib.GeApiWrapper_Graph_AddControlEdge(self._handle, src_node._handle, dst_node._handle)
+        ret = graph_lib.GeApiWrapper_Graph_AddControlEdge(
+            self._handle, src_node._handle, dst_node._handle
+        )
         if ret != 0:  # GRAPH_SUCCESS
-            raise RuntimeError(f"Failed to add Control from Node {src_node.name} to Node {dst_node.name}")
+            raise RuntimeError(
+                f"Failed to add Control from Node {src_node.name} to Node {dst_node.name}"
+            )
 
     def find_node_by_name(self, name: str) -> Node:
         """Find node by name
@@ -459,7 +495,9 @@ class Graph:
 
         name_bytes = name.encode("utf-8")
         node = ctypes.c_void_p()
-        ret = graph_lib.GeApiWrapper_Graph_FindNodeByName(self._handle, name_bytes, ctypes.byref(node))
+        ret = graph_lib.GeApiWrapper_Graph_FindNodeByName(
+            self._handle, name_bytes, ctypes.byref(node)
+        )
         if ret != 0:  # GRAPH_SUCCESS
             raise RuntimeError(f"Failed to find Node name {name}")
         return Node._create_from(node)
@@ -471,7 +509,9 @@ class Graph:
             List of Graph objects representing subgraphs.
         """
         subgraph_num = ctypes.c_size_t()
-        subgraphs = graph_lib.GeApiWrapper_Graph_GetAllSubgraphs(self._handle, ctypes.byref(subgraph_num))
+        subgraphs = graph_lib.GeApiWrapper_Graph_GetAllSubgraphs(
+            self._handle, ctypes.byref(subgraph_num)
+        )
         if not subgraphs:
             return []
 
@@ -497,7 +537,9 @@ class Graph:
             raise TypeError("name must be a string")
 
         name_bytes = name.encode("utf-8")
-        subgraph_handle = graph_lib.GeApiWrapper_Graph_GetSubGraph(self._handle, name_bytes)
+        subgraph_handle = graph_lib.GeApiWrapper_Graph_GetSubGraph(
+            self._handle, name_bytes
+        )
         if not subgraph_handle:
             return None
 
@@ -521,7 +563,9 @@ class Graph:
 
         ret = graph_lib.GeApiWrapper_Graph_AddSubGraph(self._handle, subgraph._handle)
         if ret != 0:  # GRAPH_SUCCESS
-            raise RuntimeError(f"Failed to add subgraph '{subgraph.name}' to graph '{self.name}'")
+            raise RuntimeError(
+                f"Failed to add subgraph '{subgraph.name}' to graph '{self.name}'"
+            )
 
     def remove_subgraph(self, name: str) -> None:
         """Remove subgraph by name.
@@ -539,4 +583,6 @@ class Graph:
         name_bytes = name.encode("utf-8")
         ret = graph_lib.GeApiWrapper_Graph_RemoveSubgraph(self._handle, name_bytes)
         if ret != 0:  # GRAPH_SUCCESS
-            raise RuntimeError(f"Failed to remove subgraph '{name}' from graph '{self.name}'")
+            raise RuntimeError(
+                f"Failed to remove subgraph '{name}' from graph '{self.name}'"
+            )

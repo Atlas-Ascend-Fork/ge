@@ -18,6 +18,7 @@
 
 #include "common/checker.h"
 #include "framework/common/debug/ge_log.h"
+#include "framework/runtime/event_allocator.h"
 #include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/fast_graph/execute_graph.h"
 #include "graph/utils/attr_utils.h"
@@ -25,20 +26,11 @@
 namespace gert {
 namespace {
 // 一条 IO 描述由「无数据 Tensor 列表」承载：TensorDesc 即描述本身，载荷不参与解析。
-ge::graphStatus ReadIoDescs(const ge::ExecuteGraph &graph, const char *descs_attr, const char *names_attr,
-                            const char *side, std::vector<ModelIoEntry> &entries) {
-  GE_ASSERT_TRUE(graph.HasAttr(descs_attr), "Model %s description attribute %s is required", side, descs_attr);
+ge::graphStatus ReadIoDescs(const ge::ExecuteGraph &graph, const char *descs_attr, const char *side,
+                            std::vector<ModelIoEntry> &entries) {
   std::vector<ge::ConstGeTensorPtr> tensors;
   GE_ASSERT_TRUE(ge::AttrUtils::GetListTensor(graph, descs_attr, tensors),
                  "Model %s description attribute %s is not a Tensor list", side, descs_attr);
-  std::vector<std::string> names;
-  GE_ASSERT_TRUE(graph.HasAttr(names_attr), "Model %s name attribute %s is required", side, names_attr);
-  GE_ASSERT_TRUE(ge::AttrUtils::GetListStr(graph, names_attr, names), "Model %s name attribute %s is not a string list",
-                 side, names_attr);
-  // 名称与描述一一对应：长度不等就无法确定某个槽位的对外名称。
-  GE_ASSERT_TRUE(names.size() == tensors.size(), "Model %s description has %zu entries but %zu names", side,
-                 tensors.size(), names.size());
-
   std::set<std::string> seen;
   std::vector<ModelIoEntry> parsed;
   parsed.reserve(tensors.size());
@@ -49,7 +41,7 @@ ge::graphStatus ReadIoDescs(const ge::ExecuteGraph &graph, const char *descs_att
     }
     ModelIoEntry entry;
     entry.desc = tensors[i]->GetTensorDesc();
-    entry.name = names[i];
+    entry.name = entry.desc.GetName();
     if (entry.name.empty()) {
       GELOGE(ge::GRAPH_PARAM_INVALID, "Model %s description entry %zu has an empty name", side, i);
       return ge::GRAPH_PARAM_INVALID;
@@ -65,40 +57,41 @@ ge::graphStatus ReadIoDescs(const ge::ExecuteGraph &graph, const char *descs_att
   return ge::GRAPH_SUCCESS;
 }
 
-// 资源槽数：缺省 1/0/0；声明了就按声明校验，负数与 overflow 一律拒绝。
-ge::graphStatus ReadResourceCount(const ge::ExecuteGraph &graph, const char *attr, int64_t default_value,
-                                  const char *label, int64_t &value) {
-  value = default_value;
-  if (!graph.HasAttr(attr)) {
-    return ge::GRAPH_SUCCESS;
+ge::graphStatus ReadResourceCount(const ge::ExecuteGraph &graph, const char *attr, int64_t &value) {
+  if (graph.HasAttr(attr)) {
+    GE_ASSERT_TRUE(ge::AttrUtils::GetInt(graph, attr, value), "Model resource attribute %s is not an int64", attr);
   }
-  int64_t parsed = 0;
-  GE_ASSERT_TRUE(ge::AttrUtils::GetInt(graph, attr, parsed), "Model resource attribute %s is not an int64", attr);
-  GE_ASSERT_TRUE(parsed >= 0, "Model %s count %" PRId64 " is negative", label, parsed);
-  value = parsed;
+  GE_ASSERT_TRUE(value >= 0, "Model resource attribute %s count %" PRId64 " is negative", attr, value);
   return ge::GRAPH_SUCCESS;
 }
+
+ge::graphStatus ReadGertModelIo(const ge::ExecuteGraph &graph, GertModelDescInfo &info) {
+  GE_ASSERT_SUCCESS(ReadIoDescs(graph, attr::kModelInputs, "input", info.inputs),
+                    "Failed to parse model input descriptions");
+  GE_ASSERT_SUCCESS(ReadIoDescs(graph, attr::kModelOutputs, "output", info.outputs),
+                    "Failed to parse model output descriptions");
+  return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus ReadGertModelResourceCounts(const ge::ExecuteGraph &graph, ModelDescResources &resources) {
+  GE_ASSERT_SUCCESS(ReadResourceCount(graph, attr::kModelStreamCount, resources.reusable_stream_num));
+  GE_ASSERT_SUCCESS(ReadResourceCount(graph, attr::kModelEventCount, resources.reusable_event_num));
+  GE_ASSERT_SUCCESS(ReadResourceCount(graph, attr::kModelNotifyCount, resources.reusable_notify_num));
+  GE_ASSERT_SUCCESS(ReadResourceCount(graph, attr::kModelAttachedStreamCount, resources.attached_stream_num));
+  GE_ASSERT_TRUE(resources.reusable_stream_num > 0 || !graph.HasAttr(attr::kModelStreamCount),
+                 "Model stream count must reserve at least the caller stream");
+  GE_ASSERT_TRUE(static_cast<uint64_t>(resources.reusable_event_num) <= EventAllocator::kMaxEventNum,
+                 "Invalid %s: count exceeds %zu", attr::kModelEventCount,
+                 static_cast<size_t>(EventAllocator::kMaxEventNum));
+  return ge::GRAPH_SUCCESS;
+}
+
 }  // namespace
 
 ge::graphStatus ParseGertModelDesc(const ge::ExecuteGraph &graph, GertModelDescInfo &info) {
   GertModelDescInfo parsed;
-  GE_ASSERT_SUCCESS(ReadIoDescs(graph, gert::attr::kModelInputs, gert::attr::kModelInputNames, "input", parsed.inputs),
-                    "Failed to parse model input descriptions");
-  GE_ASSERT_SUCCESS(
-      ReadIoDescs(graph, gert::attr::kModelOutputs, gert::attr::kModelOutputNames, "output", parsed.outputs),
-      "Failed to parse model output descriptions");
-  GE_ASSERT_SUCCESS(ReadResourceCount(graph, gert::attr::kModelStreamCount, ModelDescResources::kDefaultStreamNum,
-                                      "stream", parsed.resources.reusable_stream_num),
-                    "Failed to parse model stream count");
-  GE_ASSERT_SUCCESS(ReadResourceCount(graph, gert::attr::kModelEventCount, ModelDescResources::kDefaultEventNum,
-                                      "event", parsed.resources.reusable_event_num),
-                    "Failed to parse model event count");
-  GE_ASSERT_SUCCESS(ReadResourceCount(graph, gert::attr::kModelNotifyCount, ModelDescResources::kDefaultNotifyNum,
-                                      "notify", parsed.resources.reusable_notify_num),
-                    "Failed to parse model notify count");
-  // stream 包含调用方主流，0 流意味着 Init 无处下发。
-  GE_ASSERT_TRUE(parsed.resources.reusable_stream_num > 0,
-                 "Model stream count must reserve at least the caller stream");
+  GE_ASSERT_SUCCESS(ReadGertModelIo(graph, parsed));
+  GE_ASSERT_SUCCESS(ReadGertModelResourceCounts(graph, parsed.resources));
   info = std::move(parsed);
   return ge::GRAPH_SUCCESS;
 }

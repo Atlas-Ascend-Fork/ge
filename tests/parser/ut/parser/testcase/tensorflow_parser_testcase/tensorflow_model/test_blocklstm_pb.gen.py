@@ -66,7 +66,9 @@ def generate_case_0():
             use_peephole=False,
             name="blockLSTM",
         )
-        tf.io.write_graph(sess.graph, logdir="./", name="blocklstm_case.pb", as_text=False)
+        tf.io.write_graph(
+            sess.graph, logdir="./", name="blocklstm_case.pb", as_text=False
+        )
 
 
 if __name__ == "__main__":

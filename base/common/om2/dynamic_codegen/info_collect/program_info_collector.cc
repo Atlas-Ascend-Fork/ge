@@ -10,7 +10,9 @@
 
 #include "program_info_collector.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "common/checker.h"
@@ -18,6 +20,7 @@
 #include "core/builder/executor_selection_policy.h"
 #include "exe_graph/lowering/exe_graph_attrs.h"
 #include "execution_plan_collector.h"
+#include "core/builder/node_types.h"
 #include "framework/common/debug/ge_log.h"
 #include "graph/utils/attr_utils.h"
 #include "graph/utils/execute_graph_utils.h"
@@ -51,10 +54,10 @@ bool IsSupportedBinding(const ChainBindingKind binding_kind) {
     case ChainBindingKind::kGeKernelBinary:
     case ChainBindingKind::kOuterWeightMem:
     case ChainBindingKind::kNotifies:
+    case ChainBindingKind::kRuntimeEvents:
     case ChainBindingKind::kRtSession:
       return true;
     case ChainBindingKind::kNone:
-    case ChainBindingKind::kRuntimeEvents:
       return false;
   }
   return false;
@@ -138,11 +141,101 @@ ge::graphStatus ApplyChainUpdate(const ChainUpdate &update, std::vector<ChainInf
   return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ApplyKernelChainUpdates(const ProgramBlock &block, std::vector<ChainInfo> &chains) {
-  for (const auto &kernel : block.kernels) {
+ge::graphStatus ApplyKernelChainUpdates(ProgramBlock &block, std::vector<ChainInfo> &chains) {
+  for (auto &kernel : block.kernels) {
     for (const auto &update : kernel.chain_updates) {
-      GE_ASSERT_GRAPH_SUCCESS(ApplyChainUpdate(update, chains));
+      if (update.source_kind != ChainSourceKind::kInputBindingRequest) {
+        GE_ASSERT_GRAPH_SUCCESS(ApplyChainUpdate(update, chains));
+      }
     }
+    // Both input requests and source updates are local to collection.
+    kernel.chain_updates.clear();
+  }
+  return ge::GRAPH_SUCCESS;
+}
+
+struct FeedConsumer {
+  const char *name;
+  int64_t port;
+  ChainBindingKind kind;
+  ChainBindingPhase phase;
+};
+
+ge::graphStatus RecordFeedConsumer(std::unordered_map<uint32_t, FeedConsumer> &consumers, uint32_t chain,
+                                   const FeedConsumer &consumer) {
+  const auto inserted = consumers.emplace(chain, consumer);
+  const auto &previous = inserted.first->second;
+  GE_ASSERT_TRUE(previous.kind == consumer.kind && previous.phase == consumer.phase,
+                 "OM2 feed chain %u has conflicting contracts: %s[%ld] kind %u, %s[%ld] kind %u", chain, previous.name,
+                 previous.port, static_cast<unsigned>(previous.kind), consumer.name, consumer.port,
+                 static_cast<unsigned>(consumer.kind));
+  return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus ResolveExternalFeeds(const ge::ExecuteGraph &main_graph, const ChainNormalizer &normalizer,
+                                     ProgramInfo &program_info) {
+  std::unordered_map<uint32_t, FeedConsumer> consumers;
+  for (const auto *block : {&program_info.init, &program_info.main, &program_info.deinit}) {
+    for (const auto &kernel : block->kernels) {
+      for (const auto &request : kernel.chain_updates) {
+        if (request.source_kind == ChainSourceKind::kInputBindingRequest &&
+            normalizer.IsUnresolvedFeed(request.chain_index)) {
+          GE_ASSERT_GRAPH_SUCCESS(RecordFeedConsumer(
+              consumers, request.chain_index,
+              {kernel.execution_node_name.c_str(), request.input_port, request.binding_kind, request.binding_phase}));
+        }
+      }
+    }
+    for (const auto &region : block->regions) {
+      for (const auto &step : region.steps) {
+        const auto chain = step.kind == ProgramStepKind::kIf      ? step.if_info.selector_chain_index
+                           : step.kind == ProgramStepKind::kWhile ? step.while_info.condition_chain_index
+                                                                  : kInvalidProgramIndex;
+        if (normalizer.IsUnresolvedFeed(chain)) {
+          GE_ASSERT_GRAPH_SUCCESS(RecordFeedConsumer(
+              consumers, chain, {"control-flow selector", 0, ChainBindingKind::kNone, ChainBindingPhase::kNone}));
+        }
+      }
+    }
+  }
+
+  std::unordered_set<uint32_t> main_feeds;
+  std::vector<uint32_t> outputs;
+  for (const auto *node : main_graph.GetDirectNode()) {
+    if (IsFeedType(node->GetTypePtr())) {
+      GE_ASSERT_GRAPH_SUCCESS(normalizer.GetOutputChainIndices(*node, outputs));
+      main_feeds.insert(outputs.cbegin(), outputs.cend());
+    }
+  }
+  std::vector<ChainInfo *> model_inputs;
+  for (auto &chain : program_info.chains) {
+    if (chain.source_kind != ChainSourceKind::kUnresolvedFeed) {
+      continue;
+    }
+    const auto consumer = consumers.find(chain.index);
+    if (consumer != consumers.cend() && consumer->second.kind != ChainBindingKind::kNone) {
+      chain.source_kind = ChainSourceKind::kRuntimeBinding;
+      SetResourceBinding(chain, consumer->second.kind, consumer->second.phase);
+      GE_ASSERT_TRUE(chain.binding_phase != ChainBindingPhase::kNone && IsSupportedBinding(chain.binding_kind),
+                     "OM2 input chain %u requests an unsupported binding", chain.index);
+      continue;
+    }
+    GE_ASSERT_TRUE(main_feeds.count(chain.index) != 0U, "OM2 user feed %ld is outside Main and has no resource binding",
+                   chain.source_index);
+    chain.source_kind = ChainSourceKind::kModelInput;
+    chain.binding_phase = ChainBindingPhase::kRun;
+    model_inputs.push_back(&chain);
+  }
+  // The caller's model I/O descriptions and execution parameters are parallel
+  // arrays in feed-index order, with lifecycle resources omitted.
+  std::sort(model_inputs.begin(), model_inputs.end(),
+            [](const ChainInfo *lhs, const ChainInfo *rhs) { return lhs->source_index < rhs->source_index; });
+  for (size_t i = 0U; i < model_inputs.size(); ++i) {
+    GE_ASSERT_TRUE(i == 0U || model_inputs[i]->source_index > model_inputs[i - 1U]->source_index,
+                   "OM2 has duplicate external model feed index %ld", model_inputs[i]->source_index);
+  }
+  for (size_t i = 0U; i < model_inputs.size(); ++i) {
+    model_inputs[i]->source_index = static_cast<int64_t>(i);
   }
   return ge::GRAPH_SUCCESS;
 }
@@ -164,10 +257,11 @@ ProgramPlanType GetMainPlanType(const ge::ExecuteGraph &main_graph) {
 
 }  // namespace
 
-ge::graphStatus ProgramInfoCollector::Collect(ge::ExecuteGraph &execute_graph, ProgramInfo &program_info) const {
+ge::graphStatus ProgramInfoCollector::Collect(ge::ExecuteGraph &execute_graph, ProgramInfo &program_info,
+                                              bool defer_data_bindings) const {
   program_info = {};
   ChainNormalizer chain_normalizer;
-  GE_ASSERT_GRAPH_SUCCESS(chain_normalizer.Normalize(execute_graph, program_info.chains));
+  GE_ASSERT_GRAPH_SUCCESS(chain_normalizer.Normalize(execute_graph, program_info.chains, defer_data_bindings));
   GE_ASSERT_GRAPH_SUCCESS(CollectModelResources(execute_graph, program_info.resources));
 
   auto *const init_graph = GetLifecycleGraph(execute_graph, "Init");
@@ -181,6 +275,9 @@ ge::graphStatus ProgramInfoCollector::Collect(ge::ExecuteGraph &execute_graph, P
       execution_plan_collector.Collect(*main_graph, chain_normalizer, main_plan_type, program_info.main));
   GE_ASSERT_GRAPH_SUCCESS(execution_plan_collector.Collect(*deinit_graph, chain_normalizer,
                                                            ProgramPlanType::kSequential, program_info.deinit));
+  if (defer_data_bindings) {
+    GE_ASSERT_GRAPH_SUCCESS(ResolveExternalFeeds(*main_graph, chain_normalizer, program_info));
+  }
   GE_ASSERT_GRAPH_SUCCESS(ApplyKernelChainUpdates(program_info.init, program_info.chains));
   GE_ASSERT_GRAPH_SUCCESS(ApplyKernelChainUpdates(program_info.main, program_info.chains));
   GE_ASSERT_GRAPH_SUCCESS(ApplyKernelChainUpdates(program_info.deinit, program_info.chains));

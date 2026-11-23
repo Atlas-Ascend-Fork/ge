@@ -43,9 +43,13 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"args: functions={args.functions}, clz_name={args.clz_name}, workspace={args.workspace}")
+    print(
+        f"args: functions={args.functions}, clz_name={args.clz_name}, workspace={args.workspace}"
+    )
     path = os.path.abspath(args.workspace)
-    confirmation = input(f"will create workspace in path '{path}', please enter Yes(y) to confirm:")
+    confirmation = input(
+        f"will create workspace in path '{path}', please enter Yes(y) to confirm:"
+    )
     if confirmation.lower() == "yes" or confirmation.lower() == "y":
         print("create function workspace begin")
         creator = FuncWsCreator(args.functions, args.clz_name, args.workspace)

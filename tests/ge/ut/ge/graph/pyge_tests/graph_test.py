@@ -499,3 +499,14 @@ class TestGraph:
         """测试移除子图时类型错误"""
         with pytest.raises(TypeError, match="name must be a string"):
             graph.remove_subgraph(123)
+
+    def test_get_attr_not_exist(self, graph):
+        """测试获取不存在的属性"""
+        with pytest.raises(RuntimeError, match="Failed to get attribute"):
+            graph.get_attr("attr_not_exist")
+
+    def test_remove_node_not_in_graph(self, graph, graph_with_data):
+        """测试移除不属于当前图的节点"""
+        node = graph_with_data.find_node_by_name("test_input")
+        with pytest.raises(RuntimeError, match="Failed to remove Node"):
+            graph.remove_node(node)

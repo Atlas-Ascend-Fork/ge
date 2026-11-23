@@ -38,7 +38,9 @@ enum class ChainSourceKind : uint8_t {
   kModelOutput,
   kRuntimeBinding,
   kKernelOutput,
-  kSessionId
+  kSessionId,
+  kUnresolvedFeed,
+  kInputBindingRequest
 };
 
 // A chain can be initialized either from an embedded constant, from the model invocation, or
@@ -77,7 +79,11 @@ struct ChainUpdate {
   ChainSourceKind source_kind = ChainSourceKind::kUninitialized;
   ChainBindingPhase binding_phase = ChainBindingPhase::kNone;
   ChainBindingKind binding_kind = ChainBindingKind::kNone;
-  int64_t source_index = kInvalidChainSourceIndex;
+  union {
+    int64_t source_index = kInvalidChainSourceIndex;
+    // Active for kInputBindingRequest, which is resolved during collection.
+    int64_t input_port;
+  };
 };
 
 struct CustomConstRestoreDescriptor {

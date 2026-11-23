@@ -11,7 +11,7 @@
 #ifndef OP_IMPL_INFER_SYMBOL_SHAPE_H
 #define OP_IMPL_INFER_SYMBOL_SHAPE_H
 
-#include "graph/any_value.h"
+#include <map>
 #include "register/op_impl_kernel_registry.h"
 
 namespace gert {
@@ -19,14 +19,14 @@ class OpImplInferSymbolShape {
  public:
   OpImplInferSymbolShape() = default;
   explicit OpImplInferSymbolShape(const ge::char_t *op_type_param) : op_type(op_type_param) {}
-  OpImplInferSymbolShape &InferSymbolShape(OpImplKernelRegistry::InferSymbolShapeKernelFunc func);
+  OpImplInferSymbolShape &InferSymbolShape(OpImplKernelRegistry::InferSymbolKernelFunc func);
   OpImplRegisterV2::OpType op_type;
 };
 
 class OpImplInferSymbolShapeRegistry {
  public:
   static OpImplInferSymbolShapeRegistry &GetInstance();
-  const OpImplKernelRegistry::OpImplFunctionsV2 *GetOpImpl(const ge::char_t *op_type) const;
+  OpImplKernelRegistry::InferSymbolKernelFunc GetOpImpl(const ge::char_t *op_type) const;
 
  private:
   friend class OpImplInferSymbolShape;
@@ -35,8 +35,7 @@ class OpImplInferSymbolShapeRegistry {
   OpImplInferSymbolShapeRegistry(const OpImplInferSymbolShapeRegistry &single) = delete;
   OpImplInferSymbolShapeRegistry &operator=(const OpImplInferSymbolShapeRegistry &single) = delete;
 
-  OpImplKernelRegistry::OpImplFunctionsV2 *CreateOrGetOpImpl(const ge::char_t *op_type);
-  std::map<OpImplRegisterV2::OpType, OpImplKernelRegistry::OpImplFunctionsV2> types_to_impl_;
+  std::map<OpImplRegisterV2::OpType, OpImplKernelRegistry::InferSymbolKernelFunc> types_to_impl_;
 };
 
 #define IMPL_OP_INFER_SYMBOL_SHAPE_INNER_COUNTER(op_type, name, counter) \

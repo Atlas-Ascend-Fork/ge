@@ -49,7 +49,9 @@ then_body = onnx.helper.make_graph([then_identity_node], "then_body", [], [then_
 
 else_body = onnx.helper.make_graph([else_identity_node], "else_body", [], [else_out])
 
-if_node = onnx.helper.make_node("If", inputs=["cond"], outputs=["res"], then_branch=then_body, else_branch=else_body)
+if_node = onnx.helper.make_node(
+    "If", inputs=["cond"], outputs=["res"], then_branch=then_body, else_branch=else_body
+)
 
 add_if_node = onnx.helper.make_node(
     "Add",

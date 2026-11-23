@@ -15,7 +15,14 @@ import json
 import os
 import unittest
 
-from llm_datadist_v1 import LLMConfig, LLMDataDist, LLMException, LLMRole
+from llm_datadist_v1 import (
+    LLMClusterInfo,
+    LLMConfig,
+    LLMDataDist,
+    LLMException,
+    LLMRole,
+    LLMStatusCode,
+)
 from llm_datadist_v1.data_type import get_python_dtype_from_wrapper_dtype
 from llm_datadist_v1.llm_datadist import _shutdown_handler
 
@@ -104,3 +111,35 @@ class LlmEngineV2Ut(unittest.TestCase):
             get_python_dtype_from_wrapper_dtype(-1)
         with self.assertRaises(ValueError):
             get_python_dtype_from_wrapper_dtype(999)
+
+    def test_cluster_config_not_init(self):
+        engine = LLMDataDist(LLMRole.PROMPT, 0)
+        with self.assertRaises(LLMException):
+            engine._cluster_config()
+
+    def test_check_link_status(self):
+        cluster_id = 0
+        llm_engine = LLMDataDist(LLMRole.DECODER, cluster_id)
+        cluster_info = {"cluster_id": 1, "logic_device_id": ["0:0:0:0"]}
+        engine_options = {"llm.ClusterInfo": json.dumps(cluster_info)}
+        llm_engine.init(engine_options)
+
+        cluster = LLMClusterInfo()
+        cluster.remote_cluster_id = 1
+        cluster.append_local_ip_info(1, 26000)
+        cluster.append_remote_ip_info(1, 26000)
+        ret, rets = llm_engine.link_clusters([cluster], 5000)
+        self.assertEqual(ret, LLMStatusCode.LLM_SUCCESS)
+        ret, rets = llm_engine.unlink_clusters([cluster], 5000)
+        self.assertEqual(ret, LLMStatusCode.LLM_SUCCESS)
+        llm_engine.check_link_status(1)
+
+    def test_switch_role_failed_option_not_set(self):
+        engine = LLMDataDist(LLMRole.MIX, 0)
+        options = {"ge.exec.deviceId": "0"}
+        engine.init(options)
+        with self.assertRaises(LLMException) as context:
+            engine.switch_role(LLMRole.DECODER)
+        self.assertEqual(
+            context.exception.status_code, LLMStatusCode.LLM_FEATURE_NOT_ENABLED
+        )

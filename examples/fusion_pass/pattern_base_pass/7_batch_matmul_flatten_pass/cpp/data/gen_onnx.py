@@ -32,7 +32,9 @@ def convert():
     w = helper.make_tensor_value_info("w", TensorProto.FLOAT, [k, n])
     y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [batch, m, n])
 
-    matmul_node = helper.make_node("MatMul", inputs=["x", "w"], outputs=["y"], name="batch_matmul")
+    matmul_node = helper.make_node(
+        "MatMul", inputs=["x", "w"], outputs=["y"], name="batch_matmul"
+    )
 
     graph = helper.make_graph([matmul_node], "BatchMatMulModel", [x, w], [y])
     model = helper.make_model(graph, producer_name="batch_matmul_flatten_pass")

@@ -749,6 +749,41 @@ TEST_F(ModelHelperTest, VisualJsonFromGeModelKeepsStructuredSubgraphAndBytesAttr
   ExpectStructuredSubgraphVisualJson(graphs, bytes_payload);
 }
 
+TEST_F(ModelHelperTest, LoadRejectsDuplicateGraphName) {
+  proto::ModelDef model_def;
+  model_def.set_name("st_dup_graph_model");
+  auto *graph_def1 = model_def.add_graph();
+  graph_def1->set_name("same_graph");
+  auto *graph_def2 = model_def.add_graph();
+  graph_def2->set_name("same_graph");
+  const auto model_buffer = model_def.SerializeAsString();
+  ASSERT_GT(model_buffer.size(), 0U);
+
+  Model model;
+  EXPECT_EQ(Model::Load(reinterpret_cast<const uint8_t *>(model_buffer.data()), model_buffer.size(), model),
+            GRAPH_FAILED);
+  EXPECT_EQ(
+      Model::LoadWithMultiThread(reinterpret_cast<const uint8_t *>(model_buffer.data()), model_buffer.size(), model),
+      GRAPH_FAILED);
+}
+
+TEST_F(ModelHelperTest, LoadOkWithUniqueGraphNames) {
+  proto::ModelDef model_def;
+  model_def.set_name("st_unique_graph_model");
+  auto *graph_def1 = model_def.add_graph();
+  graph_def1->set_name("graph_main");
+  auto *graph_def2 = model_def.add_graph();
+  graph_def2->set_name("graph_sub");
+  const auto model_buffer = model_def.SerializeAsString();
+  ASSERT_GT(model_buffer.size(), 0U);
+
+  Model model;
+  EXPECT_EQ(Model::Load(reinterpret_cast<const uint8_t *>(model_buffer.data()), model_buffer.size(), model),
+            GRAPH_SUCCESS);
+  ASSERT_NE(model.GetGraph(), nullptr);
+  EXPECT_EQ(model.GetGraph()->GetName(), "graph_main");
+}
+
 static proto::ModelDef MakeSubgraphCycleModel() {
   proto::ModelDef model_def;
   model_def.set_name("st_subgraph_cycle_model");

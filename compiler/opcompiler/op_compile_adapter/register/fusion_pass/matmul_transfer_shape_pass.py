@@ -28,7 +28,9 @@ def reshape_bias_shape(shape_bias):
     bias_length = 1
     for i in shape_bias:
         bias_length *= i
-    support_out2l1_nd2nz = platform_info.intrinsic_check_support("Intrinsic_data_move_out2l1_nd2nz")
+    support_out2l1_nd2nz = platform_info.intrinsic_check_support(
+        "Intrinsic_data_move_out2l1_nd2nz"
+    )
     if not support_out2l1_nd2nz:
         return [(bias_length + 15) // 16 * 16]
     return [bias_length]
@@ -118,7 +120,9 @@ def trans_batch_matmul_shape(graph_info):
             for idx, input_info in enumerate(op_info.get_input_list()):
                 if idx > 3:
                     continue
-                peer_output_info = graph_info.get_data_output_by_id(input_info.get_edge_id())
+                peer_output_info = graph_info.get_data_output_by_id(
+                    input_info.get_edge_id()
+                )
                 if peer_output_info is None:
                     continue
                 peer_out_shape = peer_output_info.get_shape()
@@ -126,7 +130,9 @@ def trans_batch_matmul_shape(graph_info):
                 shape_len = 3 if peer_out_format == "ND" else 5
                 if len(peer_out_shape) > shape_len:
                     new_shape = [
-                        functools.reduce(lambda x, y: x * y, peer_out_shape[: -(shape_len - 1)])
+                        functools.reduce(
+                            lambda x, y: x * y, peer_out_shape[: -(shape_len - 1)]
+                        )
                     ] + peer_out_shape[-(shape_len - 1) :]
                     peer_output_info.set_shape(new_shape)
                     peer_output_info.set_only_update_data()
@@ -146,7 +152,9 @@ def trans_shape_of_transdata(op_info, graph_info):
         return
     peer_out_shape = peer_output_info.get_shape()
     if len(peer_out_shape) > 3:
-        new_shape = [functools.reduce(lambda x, y: x * y, peer_out_shape[:-2])] + peer_out_shape[-2:]
+        new_shape = [
+            functools.reduce(lambda x, y: x * y, peer_out_shape[:-2])
+        ] + peer_out_shape[-2:]
         peer_output_info.set_shape(new_shape)
 
 
@@ -162,7 +170,9 @@ def trans_shape_of_fixpipe(op_info, graph_info):
             continue
         peer_out_shape = peer_output_info.get_shape()
         if len(peer_out_shape) > 5:
-            new_shape = [functools.reduce(lambda x, y: x * y, peer_out_shape[:-4])] + peer_out_shape[-4:]
+            new_shape = [
+                functools.reduce(lambda x, y: x * y, peer_out_shape[:-4])
+            ] + peer_out_shape[-4:]
             peer_output_info.set_shape(new_shape)
 
 

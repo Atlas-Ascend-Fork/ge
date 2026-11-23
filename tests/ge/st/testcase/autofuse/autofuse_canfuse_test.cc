@@ -1336,4 +1336,8 @@ TEST_F(TestCanfusePass, test_fuse_host_chain_when_no_host_anchor) {
   EXPECT_NE(graph->FindFirstNodeMatchType("AscBackend"), nullptr);
   dlog_setlevel(0, 3, 0);
 }
+
+TEST(AscIrExpressionTypeIdTest, StableForAscIrSerialization) {
+  EXPECT_EQ(GetTypeId<Expression>(), reinterpret_cast<TypeId>(1024));
+}
 }  // namespace ge

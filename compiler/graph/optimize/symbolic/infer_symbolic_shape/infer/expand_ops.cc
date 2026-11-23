@@ -10,7 +10,7 @@
 
 #include <cstdlib>
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/utils/type_utils.h"
@@ -79,7 +79,7 @@ graphStatus ExpandShapeInference(const gert::SymbolShape *input_shape, const std
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4Expand(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4Expand(gert::InferSymbolContext *context) {
   auto input_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(input_shape);
   auto target_shape = context->GetInputSymbolTensor(1);
@@ -106,7 +106,7 @@ graphStatus InferShape4Expand(gert::InferSymbolShapeContext *context) {
  * 【推导逻辑】从 attr 0 读取常量目标维，复用 ExpandShapeInference。
  * 【举例】x=[1,3]、shape=[2,3] 时，y=[2,3]。
  */
-graphStatus InferShape4ExpandD(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4ExpandD(gert::InferSymbolContext *context) {
   auto input_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(input_shape);
   const auto attrs = context->GetAttrs();
@@ -125,7 +125,7 @@ graphStatus InferShape4ExpandD(gert::InferSymbolShapeContext *context) {
   return ExpandShapeInference(input_shape, target_dims, output_shape);
 }
 
-graphStatus InferShape4BroadcastTo(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4BroadcastTo(gert::InferSymbolContext *context) {
   auto shape_tensor = context->GetInputSymbolTensor(1);
   GE_UNSUPPORTED_IF_NULL(shape_tensor);
   GE_UNSUPPORTED_IF(!shape_tensor->HasValue());

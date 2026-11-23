@@ -15,7 +15,12 @@ tbe register API:
 To make it easy to manage operator registration information, TBE provides a set of register APIs.
 """
 
-from tbe.common.register import auto_tune_func_mgr, fusion_build_config_mgr, fusion_pass_mgr, operation_func_mgr
+from tbe.common.register import (
+    auto_tune_func_mgr,
+    fusion_build_config_mgr,
+    fusion_pass_mgr,
+    operation_func_mgr,
+)
 from tbe.common.register.class_manager import InvokeStage, Priority
 
 
@@ -108,7 +113,9 @@ def register_op_compute(op_type, op_mode="dynamic", support_fusion=True, **kwarg
         decorator to return output_tensor
     """
 
-    return operation_func_mgr.register_op_compute(op_type, op_mode, support_fusion, **kwargs)
+    return operation_func_mgr.register_op_compute(
+        op_type, op_mode, support_fusion, **kwargs
+    )
 
 
 def get_op_compute(op_type, op_mode="dynamic"):
@@ -236,7 +243,9 @@ def get_all_fusion_pass():
     return fusion_pass_mgr.get_all_fusion_pass()
 
 
-def register_pass_for_fusion(match_condition, stage=InvokeStage.STAGE_BUILD, priority=Priority.NORMAL):
+def register_pass_for_fusion(
+    match_condition, stage=InvokeStage.STAGE_BUILD, priority=Priority.NORMAL
+):
     return fusion_pass_mgr.register_pass_for_fusion(match_condition, stage, priority)
 
 
@@ -313,7 +322,9 @@ def register_classify_processor(pattern=None, op_type=None, support_type="input"
     decorator : decorator
         decorator to register classify func
     """
-    return operation_func_mgr.register_classify_processor(pattern, op_type, support_type)
+    return operation_func_mgr.register_classify_processor(
+        pattern, op_type, support_type
+    )
 
 
 def get_classify_processor(pattern=None, op_type=None):

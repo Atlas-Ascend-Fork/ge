@@ -64,6 +64,7 @@ class SelectL1AllocatorKernelCodeBuilder final : public KernelCodeBuilder {
                                                {"created_allocator", Om2ValueType::kGeAllocatorPtr},
                                                {"stream", Om2ValueType::kRtStreamTPtr}},
                                               info));
+    RequestInputBinding(context, 1U, ChainBindingKind::kExternalAllocator, ChainBindingPhase::kLoad, info);
     return SetOutputPortNames(context, {"l1_allocator"}, info);
   }
 };

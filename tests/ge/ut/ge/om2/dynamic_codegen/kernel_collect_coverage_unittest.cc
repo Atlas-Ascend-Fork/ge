@@ -15,6 +15,7 @@
 #include "engine/aicore/launch_kernel/ai_core_launch_kernel.h"
 #include "framework/common/taskdown_common.h"
 #include "exe_graph/lowering/exe_graph_attrs.h"
+#include "exe_graph/runtime/gert_tensor_data.h"
 #include "exe_graph/runtime/runtime_tensor.h"
 #include "graph/fast_graph/execute_graph.h"
 #include "graph/op_kernel_bin.h"
@@ -1151,14 +1152,14 @@ const std::vector<CollectContract> kFrameworkContracts = {
      {{"compile_info"}}},
     {"BuildTensor",
      P::kOutputsCreator,
-     true,
+     false,
      {{"shape", V::kGertStorageShapePtr},
       {"tensor_data", V::kGertTensorDataPtr},
       {"tensor_attr", V::kGertBuildTensorAttrPtr}},
      {{"tensor"}}},
     {"BuildRefTensor",
      P::kOutputsCreator,
-     true,
+     false,
      {{"shape", V::kGertStorageShapePtr},
       {"tensor_data", V::kGertTensorDataPtr},
       {"tensor_attr", V::kGertBuildTensorAttrPtr}},
@@ -1232,6 +1233,64 @@ TEST_F(Om2KernelCollectCoverageUT, FrameworkContractsKeepControlScalarsAndTensor
     ASSERT_NE(builder, nullptr);
     EXPECT_EQ(builder->GetRestoreConstInputIndices(), (std::vector<uint32_t>{2U}));
   }
+  auto ref_builder = KernelCodeBuilderFactory::GetInstance().Create("BuildRefTensor");
+  ASSERT_NE(ref_builder, nullptr);
+  auto *ref_node = Node("BuildRefTensor");
+  ASSERT_NE(ref_node, nullptr);
+  const std::vector<uint32_t> ref_inputs{31U, 37U, 41U}, ref_outputs{43U};
+  KernelCollectContext ref_context(*ref_node, ref_inputs, ref_outputs);
+  KernelProgramInfo ref_info;
+  ASSERT_EQ(ref_builder->Collect(ref_context, ref_info), ge::GRAPH_SUCCESS);
+  ASSERT_EQ(ref_info.inputs.size(), 3U);
+  EXPECT_EQ(ref_info.inputs[0].value_type, V::kGertStorageShapePtr);
+  EXPECT_EQ(ref_info.inputs[0].chain_index, 31U);
+  EXPECT_EQ(ref_info.inputs[1].value_type, V::kGertTensorDataPtr);
+  EXPECT_EQ(ref_info.inputs[1].chain_index, 37U);
+}
+
+TEST_F(Om2KernelCollectCoverageUT, BuildRefTensorValidatesConstPortPayloadsWithoutCni) {
+  const ge::GeTensorDesc desc;
+  auto ref_desc = std::make_shared<ge::OpDesc>("ref", "BuildRefTensor");
+  for (size_t i = 0U; i < 3U; ++i) {
+    ASSERT_EQ(ref_desc->AddInputDesc(desc), ge::GRAPH_SUCCESS);
+  }
+  ASSERT_EQ(ref_desc->AddOutputDesc(desc), ge::GRAPH_SUCCESS);
+  auto *ref = graph_.AddNode(ref_desc);
+  ASSERT_NE(ref, nullptr);
+
+  const auto add_const = [&](const char *name) {
+    auto constant = std::make_shared<ge::OpDesc>(name, "Const");
+    EXPECT_EQ(constant->AddOutputDesc(desc), ge::GRAPH_SUCCESS);
+    return graph_.AddNode(constant);
+  };
+  auto *shape = add_const("shape");
+  auto *data = add_const("data");
+  ASSERT_NE(shape, nullptr);
+  ASSERT_NE(data, nullptr);
+  ASSERT_NE(graph_.AddEdge(shape, 0, ref, 0), nullptr);
+  ASSERT_NE(graph_.AddEdge(data, 0, ref, 1), nullptr);
+  const auto set_bytes = [](ge::FastNode &node, size_t size) {
+    const std::vector<uint8_t> payload(size, 0U);
+    return ge::AttrUtils::SetZeroCopyBytes(node.GetOpDescBarePtr(), kConstValue,
+                                           ge::Buffer::CopyFrom(payload.data(), payload.size()));
+  };
+  auto builder = KernelCodeBuilderFactory::GetInstance().Create("BuildRefTensor");
+  ASSERT_NE(builder, nullptr);
+  const std::vector<uint32_t> inputs{31U, 37U, 41U}, outputs{43U};
+  const KernelCollectContext context(*ref, inputs, outputs);
+  ASSERT_TRUE(set_bytes(*data, sizeof(GertTensorData)));
+  KernelProgramInfo missing;
+  EXPECT_NE(builder->Collect(context, missing), ge::GRAPH_SUCCESS);
+  for (const size_t shape_size : {sizeof(StorageShape), sizeof(Tensor)}) {
+    SCOPED_TRACE(shape_size);
+    ASSERT_TRUE(set_bytes(*shape, shape_size));
+    KernelProgramInfo info;
+    ASSERT_EQ(builder->Collect(context, info), ge::GRAPH_SUCCESS);
+    EXPECT_FALSE(info.require_compute_node_info);
+  }
+  ASSERT_TRUE(set_bytes(*data, 1U));
+  KernelProgramInfo malformed;
+  EXPECT_NE(builder->Collect(context, malformed), ge::GRAPH_SUCCESS);
 }
 
 TEST_F(Om2KernelCollectCoverageUT, IdentityAndShapeBuildersPreserveParallelPortGroups) {
@@ -1303,8 +1362,14 @@ TEST_F(Om2KernelCollectCoverageUT, SessionBindingAndShapeSelectorKeepLoadAndRunC
   EXPECT_EQ(builder->GetImplType(), KernelImplType::kEmptyImpl);
   EXPECT_TRUE(info.inputs.empty());
   EXPECT_TRUE(info.outputs.empty());
-  ASSERT_EQ(info.chain_updates.size(), 1U);
-  const auto &update = info.chain_updates[0U];
+  ASSERT_EQ(info.chain_updates.size(), 2U);
+  const auto &request = info.chain_updates[0U];
+  EXPECT_EQ(request.chain_index, 11U);
+  EXPECT_EQ(request.source_kind, ChainSourceKind::kInputBindingRequest);
+  EXPECT_EQ(request.binding_kind, ChainBindingKind::kRtSession);
+  EXPECT_EQ(request.binding_phase, ChainBindingPhase::kLoad);
+  EXPECT_EQ(request.input_port, 0);
+  const auto &update = info.chain_updates[1U];
   EXPECT_EQ(update.chain_index, 101U);
   EXPECT_EQ(update.source_kind, ChainSourceKind::kSessionId);
   EXPECT_EQ(update.binding_phase, ChainBindingPhase::kLoad);

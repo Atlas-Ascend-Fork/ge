@@ -74,3 +74,13 @@ class TensorUt(unittest.TestCase):
         self.assertTrue(res.flags.writeable)
         arr1[0, 0] = 999.0
         self.assertNotEqual(res[0, 0], 999.0)
+
+    def test_from_tensor_tuple(self):
+        tensor = Tensor.from_tensor_tuple((0, DataType.DT_FLOAT.value, [2, 3]))
+        self.assertIsInstance(tensor, Tensor)
+
+    def test_str_tensor_numpy_copy_false(self):
+        arr1 = np.array([["aaaa", "bbbb"], ["ccc", "ddd"]])
+        tensor = Tensor(arr1)
+        with self.assertRaises(RuntimeError):
+            tensor.numpy(False)

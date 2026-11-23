@@ -6351,7 +6351,7 @@ TEST_F(UtestGraphManagerTest, ExecuteGraph_DuplicateIdReusesRegisteredGraphAndIn
 TEST_F(UtestGraphManagerTest, ExecuteGraph_AddPreservesOptionsAndRejectsClone) {
   GraphManager manager;
   Graph graph = MakeSessionExecuteGraph("execute");
-  EXPECT_EQ(manager.AddGraphWithCopy(44U, graph, {}, OmgContext{}), UNSUPPORTED);
+  EXPECT_EQ(manager.AddGraphWithCopy(44U, graph, {}, OmgContext{}), PARAM_INVALID);
   EXPECT_FALSE(manager.HasGraphNode(44U));
   const std::map<std::string, std::string> options{{"ge.exec.precision_mode", "allow_fp32_to_fp16"}};
   ASSERT_EQ(manager.AddGraph(44U, graph, options, OmgContext{}), SUCCESS);

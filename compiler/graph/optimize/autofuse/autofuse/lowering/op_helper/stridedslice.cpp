@@ -12,7 +12,7 @@
 #include "common/util/mem_utils.h"
 #include "common/checker.h"
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "register/op_impl_registry.h"
 
 #include "stridedslice.h"

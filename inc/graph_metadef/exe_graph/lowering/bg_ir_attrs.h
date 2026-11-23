@@ -14,6 +14,9 @@
 #include "value_holder.h"
 namespace gert {
 namespace bg {
+// Serializes the RT2 tensor layout with a payload length already checked by the caller.
+bool AppendAttrTensorWithSize(const ge::GeTensor &tensor, size_t validated_size,
+                              std::vector<std::vector<uint8_t>> &attrs);
 bool GetAllIrAttrs(const ge::NodePtr &node, std::vector<std::vector<uint8_t>> &runtime_attrs);
 std::unique_ptr<uint8_t[]> CreateAttrBuffer(const ge::NodePtr &node, size_t &size);
 std::unique_ptr<uint8_t[]> CreateAttrBuffer(const ge::NodePtr &node,

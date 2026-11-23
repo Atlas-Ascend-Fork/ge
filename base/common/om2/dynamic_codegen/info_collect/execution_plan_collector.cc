@@ -12,8 +12,11 @@
 
 #include <algorithm>
 #include <cstring>
+#include <dlfcn.h>
 #include <map>
+#include <mutex>
 #include <set>
+#include <string>
 #include <unordered_set>
 #include <unordered_map>
 #include <utility>
@@ -23,18 +26,41 @@
 #include "common/ge_inner_attrs.h"
 #include "common/om2/om2_kernel_binary_utils.h"
 #include "core/builder/node_types.h"
+#include "exe_graph/runtime/context_extend.h"
 #include "execution_order_collector.h"
 #include "framework/common/debug/ge_log.h"
 #include "framework/common/scope_guard.h"
+#include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/utils/attr_utils.h"
 #include "graph/utils/fast_node_utils.h"
 #include "graph/op_kernel_bin.h"
+#include "kernel/common_collector_utils.h"
 #include "kernel_code_builder.h"
 #include "register/kernel_registry.h"
 
 namespace gert {
 namespace om2 {
 namespace {
+bool HasModelValueContract(Om2ValueType type) {
+  switch (type) {
+    case Om2ValueType::kGertTensorPtr:
+    case Om2ValueType::kGertTensorDataPtr:
+    case Om2ValueType::kGertTensorDataObjectPtr:
+    case Om2ValueType::kGertShapePtr:
+    case Om2ValueType::kGertStorageShapePtr:
+    case Om2ValueType::kInt32T:
+    case Om2ValueType::kInt64T:
+    case Om2ValueType::kUInt32T:
+    case Om2ValueType::kUInt64T:
+    case Om2ValueType::kSizeT:
+    case Om2ValueType::kBool:
+      return true;
+    default:
+      // Opaque handles and untyped ports do not establish ownership of a feed.
+      return false;
+  }
+}
+
 struct KernelBinDataView {
   uint32_t magic;
   uint32_t version;
@@ -42,6 +68,128 @@ struct KernelBinDataView {
   uint64_t length;
   uint64_t placeholder;
 };
+
+using CustomOutputsCreator = ge::graphStatus (*)(KernelContext *);
+
+struct LoadedCustomKernel {
+  void *so_handle;
+  KernelRegistry::KernelFunc run_func;
+  CustomOutputsCreator outputs_creator;
+  std::string so_path;
+  std::string run_func_symbol;
+  std::string outputs_creator_symbol;
+};
+
+std::mutex &CustomKernelMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::unordered_map<std::string, LoadedCustomKernel> &LoadedCustomKernels() {
+  static std::unordered_map<std::string, LoadedCustomKernel> kernels;
+  return kernels;
+}
+
+UINT32 CreateCustomKernelOutputs(const ge::FastNode *node, KernelContext *context) {
+  if (context == nullptr) {
+    return static_cast<UINT32>(ge::GRAPH_PARAM_INVALID);
+  }
+  const char *kernel_type = nullptr;
+  const auto *run_context = context->GetContext();
+  if (run_context != nullptr && run_context->kernel_extend_info != nullptr) {
+    const auto *const extend_info = reinterpret_cast<const gert::KernelExtendInfo *>(run_context->kernel_extend_info);
+    kernel_type = extend_info->GetKernelType();
+  }
+  if (kernel_type == nullptr && node != nullptr) {
+    kernel_type = node->GetTypePtr();
+  }
+  if (kernel_type == nullptr) {
+    GELOGE(ge::GRAPH_PARAM_INVALID, "Custom OutputsCreator has no kernel type in context or node");
+    return static_cast<UINT32>(ge::GRAPH_PARAM_INVALID);
+  }
+  CustomOutputsCreator outputs_creator = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(CustomKernelMutex());
+    const auto iter = LoadedCustomKernels().find(kernel_type);
+    if (iter != LoadedCustomKernels().end()) {
+      outputs_creator = iter->second.outputs_creator;
+    }
+  }
+  if (outputs_creator == nullptr) {
+    GELOGE(ge::GRAPH_FAILED, "Custom OutputsCreator is not loaded for kernel type %s", kernel_type);
+    return static_cast<UINT32>(ge::GRAPH_FAILED);
+  }
+  return static_cast<UINT32>(outputs_creator(context));
+}
+
+ge::graphStatus RegisterCustomKernel(const ge::FastNode &node) {
+  auto *const op_desc = node.GetOpDescBarePtr();
+  if (op_desc == nullptr) {
+    return ge::GRAPH_SUCCESS;
+  }
+  std::string kernel_name;
+  if (!ge::AttrUtils::GetStr(op_desc, gert::attr::kCustomKernelName, kernel_name)) {
+    return ge::GRAPH_SUCCESS;
+  }
+  std::string so_path;
+  std::string run_func_symbol;
+  std::string outputs_creator_symbol;
+  GE_ASSERT_TRUE(ge::AttrUtils::GetStr(op_desc, gert::attr::kCustomKernelSoPath, so_path),
+                 "Custom kernel %s is missing its shared library path", kernel_name.c_str());
+  GE_ASSERT_TRUE(ge::AttrUtils::GetStr(op_desc, gert::attr::kCustomRunFuncSymbol, run_func_symbol),
+                 "Custom kernel %s is missing its RunFunc symbol", kernel_name.c_str());
+  (void)ge::AttrUtils::GetStr(op_desc, gert::attr::kCustomOutputsCreatorSymbol, outputs_creator_symbol);
+  GE_ASSERT_TRUE(kernel_name == node.GetTypePtr(), "Custom kernel attr %s does not match node type %s",
+                 kernel_name.c_str(), node.GetTypePtr());
+
+  std::lock_guard<std::mutex> lock(CustomKernelMutex());
+  auto &loaded_kernels = LoadedCustomKernels();
+  auto loaded = loaded_kernels.find(kernel_name);
+  if (loaded == loaded_kernels.end()) {
+    void *const so_handle = dlopen(so_path.c_str(), RTLD_NOW | RTLD_LOCAL);
+    GE_ASSERT_NOTNULL(so_handle, "Failed to load custom kernel library %s: %s", so_path.c_str(), dlerror());
+    auto *const run_symbol = dlsym(so_handle, run_func_symbol.c_str());
+    if (run_symbol == nullptr) {
+      GELOGE(ge::GRAPH_FAILED, "Failed to resolve custom RunFunc %s in %s: %s", run_func_symbol.c_str(),
+             so_path.c_str(), dlerror());
+      (void)dlclose(so_handle);
+      return ge::GRAPH_FAILED;
+    }
+    CustomOutputsCreator outputs_creator = nullptr;
+    if (!outputs_creator_symbol.empty()) {
+      auto *const outputs_symbol = dlsym(so_handle, outputs_creator_symbol.c_str());
+      if (outputs_symbol == nullptr) {
+        GELOGE(ge::GRAPH_FAILED, "Failed to resolve custom OutputsCreator %s in %s: %s", outputs_creator_symbol.c_str(),
+               so_path.c_str(), dlerror());
+        (void)dlclose(so_handle);
+        return ge::GRAPH_FAILED;
+      }
+      outputs_creator = reinterpret_cast<CustomOutputsCreator>(outputs_symbol);
+    }
+    loaded = loaded_kernels
+                 .emplace(kernel_name,
+                          LoadedCustomKernel{so_handle, reinterpret_cast<KernelRegistry::KernelFunc>(run_symbol),
+                                             outputs_creator, so_path, run_func_symbol, outputs_creator_symbol})
+                 .first;
+  } else if ((loaded->second.so_path != so_path) || (loaded->second.run_func_symbol != run_func_symbol) ||
+             (loaded->second.outputs_creator_symbol != outputs_creator_symbol)) {
+    GELOGE(ge::GRAPH_FAILED, "Conflicting custom registration metadata for kernel %s", kernel_name.c_str());
+    return ge::GRAPH_FAILED;
+  }
+
+  // FXRT 显式自定义 kernel 通过进程级注册表供 pbody 按名查找。同进程混跑原生 GE 时，
+  // 若与内置 kernel 同名且实现不同，此处会覆盖原条目，影响 RT2 后续按名查找。
+  const auto *const existing = KernelRegistry::GetInstance().FindKernelFuncs(kernel_name);
+  if ((existing == nullptr) || (existing->run_func != loaded->second.run_func)) {
+    KernelRegistry::KernelFuncs funcs{};
+    funcs.run_func = loaded->second.run_func;
+    funcs.outputs_creator = loaded->second.outputs_creator == nullptr ? nullptr : CreateCustomKernelOutputs;
+    KernelRegistry::GetInstance().RegisterKernel(kernel_name, {funcs, ""});
+  }
+  GE_ASSERT_NOTNULL(KernelRegistry::GetInstance().FindKernelFuncs(kernel_name),
+                    "KernelRegistry does not accept custom kernel %s", kernel_name.c_str());
+  return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus MaterializeConstOutput(const ge::FastNode &producer, gert::Chain &output_chain) {
   const auto *const kernel_funcs = KernelRegistry::GetInstance().FindKernelFuncs(producer.GetTypePtr());
@@ -71,6 +219,27 @@ std::string GetBinaryResourceKey(const gert::Chain &chain, const Om2ValueType va
     return {};
   }
   return ::gert::om2::GetKernelBinaryKey(&bin_data->placeholder, static_cast<size_t>(bin_data->length));
+}
+
+ge::graphStatus CollectDefaultKernel(const KernelCollectContext &context, KernelProgramInfo &kernel_info) {
+  const auto *const kernel_funcs = KernelRegistry::GetInstance().FindKernelFuncs(context.node.GetTypePtr());
+  const auto output_policy = kernel_funcs != nullptr && kernel_funcs->outputs_creator != nullptr
+                                 ? OutputCreatePolicy::kOutputsCreator
+                                 : OutputCreatePolicy::kGraphBound;
+  GE_ASSERT_GRAPH_SUCCESS(InitKernelProgramInfo(context, output_policy, false, kernel_info));
+
+  std::vector<KernelInputPortInfo> input_ports;
+  input_ports.reserve(context.input_chain_indices.size());
+  for (size_t i = 0U; i < context.input_chain_indices.size(); ++i) {
+    input_ports.push_back({"input_" + std::to_string(i), Om2ValueType::kBytePtr});
+  }
+  std::vector<KernelInputPortInfo> output_ports;
+  output_ports.reserve(context.output_chain_indices.size());
+  for (size_t i = 0U; i < context.output_chain_indices.size(); ++i) {
+    output_ports.push_back({"output_" + std::to_string(i), Om2ValueType::kBytePtr});
+  }
+  GE_ASSERT_GRAPH_SUCCESS(SetInputPortInfos(context, input_ports, kernel_info));
+  return SetOutputPortInfos(context, output_ports, kernel_info);
 }
 
 bool IsExecutableKernel(const ge::FastNode &node) {
@@ -321,15 +490,11 @@ ge::graphStatus ExecutionPlanCollector::CollectSequential(ge::ExecuteGraph &exec
 
 ge::graphStatus ExecutionPlanCollector::CollectKernel(const ge::FastNode &node, const ChainNormalizer &chain_normalizer,
                                                       ProgramBlock &program_block, uint32_t &kernel_index) const {
+  GE_ASSERT_GRAPH_SUCCESS(RegisterCustomKernel(node));
   // om2动态当前限制：Compare CustomOp partitioning/lowering with experiments and define collector support
   // for direct ExecuteCustomOp/ExecuteHostCustomOp paths. Missing collectors here do not imply
   // that CustomOps executed through DavinciModel static subgraphs are unsupported.
   auto builder = KernelCodeBuilderFactory::GetInstance().Create(node.GetTypePtr());
-  if (builder == nullptr) {
-    GELOGE(ge::GRAPH_FAILED, "No OM2 kernel code builder registered for kernel %s, execution node %s",
-           node.GetTypePtr(), node.GetNamePtr());
-    return ge::GRAPH_FAILED;
-  }
   std::vector<uint32_t> input_chain_indices;
   std::vector<uint32_t> output_chain_indices;
   GE_ASSERT_GRAPH_SUCCESS(chain_normalizer.GetInputChainIndices(node, input_chain_indices));
@@ -369,8 +534,10 @@ ge::graphStatus ExecutionPlanCollector::CollectKernel(const ge::FastNode &node, 
                    "OM2 Const producer %s has invalid output index %d", producer->GetNamePtr(), producer_output);
     return MaterializeConstOutput(*producer, input_chains[input_index]);
   };
-  const auto ordinary_restore_input_indices = builder->GetRestoreConstInputIndices();
-  const auto custom_restore_input_indices = builder->GetCustomRestoreConstInputIndices();
+  const auto ordinary_restore_input_indices =
+      builder == nullptr ? std::vector<uint32_t>{} : builder->GetRestoreConstInputIndices();
+  const auto custom_restore_input_indices =
+      builder == nullptr ? std::vector<uint32_t>{} : builder->GetCustomRestoreConstInputIndices();
   std::vector<uint32_t> restore_input_indices = ordinary_restore_input_indices;
   for (const auto custom_input_index : custom_restore_input_indices) {
     GE_ASSERT_TRUE((custom_input_index != kKernelLastInputIndex) || (node.GetDataInNum() > 0U),
@@ -391,8 +558,16 @@ ge::graphStatus ExecutionPlanCollector::CollectKernel(const ge::FastNode &node, 
   }
   KernelProgramInfo kernel_info;
   const KernelCollectContext context{node, input_chain_indices, output_chain_indices, input_chains, output_chains};
-  GE_ASSERT_GRAPH_SUCCESS(builder->Collect(context, kernel_info), "Failed to collect OM2 kernel %s type %s",
-                          node.GetNamePtr(), node.GetTypePtr());
+  if (builder != nullptr) {
+    GE_ASSERT_GRAPH_SUCCESS(builder->Collect(context, kernel_info), "Failed to collect OM2 kernel %s type %s",
+                            node.GetNamePtr(), node.GetTypePtr());
+    GE_ASSERT_TRUE(!kernel_info.require_compute_node_info || kernel_info.compute_node_index != kInvalidProgramIndex,
+                   "OM2 kernel %s type %s requires CNI: missing gert.source_op on external graphs or internal binding",
+                   node.GetNamePtr(), node.GetTypePtr());
+  } else {
+    GE_ASSERT_GRAPH_SUCCESS(CollectDefaultKernel(context, kernel_info),
+                            "Failed to collect default OM2 kernel %s type %s", node.GetNamePtr(), node.GetTypePtr());
+  }
   for (size_t input_index = 0U; input_index < kernel_info.inputs.size(); ++input_index) {
     auto &port = kernel_info.inputs[input_index];
     if ((port.value_type != Om2ValueType::kGertKernelBinDataPtr) &&
@@ -438,7 +613,39 @@ ge::graphStatus ExecutionPlanCollector::CollectKernel(const ge::FastNode &node, 
                    resolved_index);
     kernel_info.custom_const_restore_descriptors.emplace_back(std::move(descriptor));
   }
-  kernel_info.impl_type = builder->GetImplType();
+  kernel_info.impl_type = builder == nullptr ? KernelImplType::kRunFuncImpl : builder->GetImplType();
+  // The existing custom collector exposes this port's allocator type but comes
+  // from a separate library and does not emit an input binding request.
+  if (kernel_info.kernel_type == "FxGetExternalAllocators" && input_chain_indices.size() == 1U &&
+      kernel_info.inputs.size() == 1U && kernel_info.inputs[0].value_type == Om2ValueType::kGertAllocatorsPtr &&
+      kernel_info.inputs[0].chain_index == input_chain_indices[0] &&
+      chain_normalizer.IsUnresolvedFeed(input_chain_indices[0])) {
+    RequestInputBinding(context, 0U, ChainBindingKind::kExternalAllocator, ChainBindingPhase::kLoad, kernel_info);
+  }
+  for (const auto &update : kernel_info.chain_updates) {
+    if (update.source_kind != ChainSourceKind::kInputBindingRequest) {
+      continue;
+    }
+    GE_ASSERT_TRUE(update.input_port >= 0 && static_cast<uint64_t>(update.input_port) < input_chain_indices.size() &&
+                       input_chain_indices[update.input_port] == update.chain_index,
+                   "Invalid binding port on OM2 kernel %s", node.GetNamePtr());
+  }
+  if (kernel_info.impl_type != KernelImplType::kEmptyImpl) {
+    for (uint32_t port = 0U; port < kernel_info.inputs.size() && port < input_chain_indices.size(); ++port) {
+      const auto &input = kernel_info.inputs[port];
+      if (input.chain_index != input_chain_indices[port] || !chain_normalizer.IsUnresolvedFeed(input.chain_index) ||
+          !HasModelValueContract(input.value_type)) {
+        continue;
+      }
+      const auto has_request = std::any_of(
+          kernel_info.chain_updates.cbegin(), kernel_info.chain_updates.cend(), [port](const ChainUpdate &update) {
+            return update.source_kind == ChainSourceKind::kInputBindingRequest && update.input_port == port;
+          });
+      if (!has_request) {
+        RequestInputBinding(context, port, ChainBindingKind::kNone, ChainBindingPhase::kNone, kernel_info);
+      }
+    }
+  }
   kernel_info.code_builder = builder;
   if (kernel_info.impl_type == KernelImplType::kCodegenImpl) {
     kernel_info.compile_time_const_chain_indices.reserve(ordinary_restore_input_indices.size());

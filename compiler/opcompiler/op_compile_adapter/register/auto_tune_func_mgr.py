@@ -95,7 +95,9 @@ def register_tune_param_check_supported(op_type):
     """
 
     if op_type is None:
-        raise RuntimeError("register tune param check supported failed, op_type is none")
+        raise RuntimeError(
+            "register tune param check supported failed, op_type is none"
+        )
 
     def decorator(func):
         """
@@ -136,5 +138,7 @@ def get_tune_param_check_supported(op_type):
     """
 
     if op_type is None:
-        raise RuntimeError("register tune param check supported failed, op_type is none")
+        raise RuntimeError(
+            "register tune param check supported failed, op_type is none"
+        )
     return _tune_param_check.get(op_type)

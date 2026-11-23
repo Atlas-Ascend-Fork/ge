@@ -1114,6 +1114,8 @@ def prepare_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         raise AutotuneError(
             "--repeat/--min-steps must be greater than 0, --drop-first cannot be negative."
         )
+    if args.timeout < 0:
+        raise AutotuneError("--timeout cannot be negative; use 0 for no timeout.")
     prepare_mode_args(args)
     args.main_graph = parse_main_graph(args.main_graph)
     args.output_dir = Path(args.output_dir).expanduser().resolve()

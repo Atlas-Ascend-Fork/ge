@@ -97,7 +97,8 @@ ge::graphStatus UpdateChainSource(ChainInfo &chain, const ChainSourceKind source
                        chain.index);
         GE_ASSERT_TRUE(chain.binding_kind == binding_kind, "OM2 chain %u has conflicting runtime binding kinds",
                        chain.index);
-      } else if ((source_kind == ChainSourceKind::kModelInput) || (source_kind == ChainSourceKind::kModelOutput)) {
+      } else if (source_kind == ChainSourceKind::kModelInput || source_kind == ChainSourceKind::kModelOutput ||
+                 source_kind == ChainSourceKind::kUnresolvedFeed) {
         GE_ASSERT_TRUE(chain.source_index == source_index, "OM2 chain %u has conflicting model IO indices",
                        chain.index);
       }
@@ -123,6 +124,9 @@ ge::graphStatus UpdateChainSource(ChainInfo &chain, const ChainSourceKind source
       chain.binding_phase = ChainBindingPhase::kLoad;
       chain.binding_kind = ChainBindingKind::kNone;
       break;
+    case ChainSourceKind::kInputBindingRequest:
+      return ge::GRAPH_PARAM_INVALID;
+    case ChainSourceKind::kUnresolvedFeed:
     case ChainSourceKind::kUninitialized:
     case ChainSourceKind::kConstant:
     case ChainSourceKind::kKernelOutput:
@@ -134,14 +138,16 @@ ge::graphStatus UpdateChainSource(ChainInfo &chain, const ChainSourceKind source
 }
 }  // namespace
 
-ge::graphStatus ChainNormalizer::Normalize(ge::ExecuteGraph &execute_graph, std::vector<ChainInfo> &chains) {
+ge::graphStatus ChainNormalizer::Normalize(ge::ExecuteGraph &execute_graph, std::vector<ChainInfo> &chains,
+                                           bool defer_data_bindings) {
+  unresolved_feeds_.clear();
   symbols_to_chain_indices_.clear();
   const_producers_.clear();
   chains.clear();
   EquivalentDataEdges equivalent_data_edges;
   GE_ASSERT_GRAPH_SUCCESS(equivalent_data_edges.UpdateEquivalentEdges(&execute_graph));
   GE_ASSERT_GRAPH_SUCCESS(AllocateChainIndices(execute_graph, chains));
-  GE_ASSERT_GRAPH_SUCCESS(RecordChainSources(execute_graph.GetAllNodes(), chains));
+  GE_ASSERT_GRAPH_SUCCESS(RecordChainSources(execute_graph.GetAllNodes(), chains, defer_data_bindings));
   for (const auto *const node : execute_graph.GetAllNodes()) {
     if ((node == nullptr) || !IsConstType(node->GetTypePtr())) {
       continue;
@@ -156,6 +162,10 @@ ge::graphStatus ChainNormalizer::Normalize(ge::ExecuteGraph &execute_graph, std:
     }
   }
   return ge::GRAPH_SUCCESS;
+}
+
+bool ChainNormalizer::IsUnresolvedFeed(uint32_t chain_index) const {
+  return unresolved_feeds_.count(chain_index) != 0U;
 }
 
 const ge::FastNode *ChainNormalizer::FindConstProducer(uint32_t chain_index) const {
@@ -217,7 +227,7 @@ ge::graphStatus ChainNormalizer::AllocateGraphChains(const std::vector<ge::FastN
 }
 
 ge::graphStatus ChainNormalizer::RecordChainSources(const std::vector<ge::FastNode *> &nodes,
-                                                    std::vector<ChainInfo> &chains) const {
+                                                    std::vector<ChainInfo> &chains, bool defer_data_bindings) {
   // Legacy GE graphs use OutputData itself as the model-output marker. FXRT
   // graphs add an explicit Output/NetOutput node and use OutputData as tensor
   // shells. Select the convention per graph to preserve both routes.
@@ -237,9 +247,12 @@ ge::graphStatus ChainNormalizer::RecordChainSources(const std::vector<ge::FastNo
     } else if (IsFeedType(node->GetTypePtr())) {
       GE_ASSERT_TRUE(ge::AttrUtils::GetInt(op_desc, kFeedIndex, source_index), "OM2 Data node %s has no feed index",
                      node->GetNamePtr());
-      // Non-negative Data indices are model IO.  Negative values are the public ExecuteArgIndex
-      // contract and must remain runtime bindings rather than being mistaken for model inputs.
+      // Legacy negative indices encode ExecuteArgIndex. External nonnegative
+      // feeds keep their original index until their consumers have been collected.
       source_kind = (source_index < 0) ? ChainSourceKind::kRuntimeBinding : ChainSourceKind::kModelInput;
+      if (defer_data_bindings && source_kind == ChainSourceKind::kModelInput) {
+        source_kind = ChainSourceKind::kUnresolvedFeed;
+      }
       if (source_kind == ChainSourceKind::kRuntimeBinding) {
         binding_phase = GetExecuteArgBindingPhase(source_index);
         binding_kind = GetExecuteArgBindingKind(source_index);
@@ -273,6 +286,9 @@ ge::graphStatus ChainNormalizer::RecordChainSources(const std::vector<ge::FastNo
       GE_ASSERT_GRAPH_SUCCESS(GetChainIndex(*node, static_cast<uint32_t>(i), EndpointDirection::kOutput, chain_index));
       auto &chain = chains[chain_index];
       GE_ASSERT_GRAPH_SUCCESS(UpdateChainSource(chain, source_kind, source_index, binding_phase, binding_kind));
+      if (source_kind == ChainSourceKind::kUnresolvedFeed) {
+        unresolved_feeds_.insert(chain_index);
+      }
     }
   }
   return ge::GRAPH_SUCCESS;

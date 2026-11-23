@@ -32,10 +32,7 @@ inline bool IsOm2OnlineMode(const std::map<std::string, std::string> &options, c
   return iter != options.end() && iter->second == std::to_string(MODEL_FORMAT_OM2);
 }
 
-inline bool IsOm2OnlineMode(const bool is_execute_graph = false) {
-  const auto options = GetThreadLocalContext().GetAllGraphOptions();
-  return IsOm2OnlineMode(options, is_execute_graph);
-}
+bool IsOm2OnlineMode(const bool is_execute_graph = false);
 
 struct Om2CompileInfo {
   std::string model_name;

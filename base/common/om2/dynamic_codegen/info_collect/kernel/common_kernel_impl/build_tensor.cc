@@ -11,6 +11,10 @@
 #include "common/om2/dynamic_codegen/info_collect/kernel_code_builder.h"
 
 #include "common/checker.h"
+#include "exe_graph/lowering/exe_graph_attrs.h"
+#include "exe_graph/runtime/gert_tensor_data.h"
+#include "exe_graph/runtime/tensor.h"
+#include "graph/utils/attr_utils.h"
 #include "common/om2/dynamic_codegen/info_collect/kernel/common_collector_utils.h"
 
 namespace gert {
@@ -19,7 +23,9 @@ namespace {
 class BuildTensorKernelCodeBuilder : public KernelCodeBuilder {
  public:
   ge::graphStatus Collect(const KernelCollectContext &context, KernelProgramInfo &info) override {
-    GE_ASSERT_GRAPH_SUCCESS(InitKernelProgramInfo(context, OutputCreatePolicy::kOutputsCreator, true, info));
+    // BuildTensor and BuildRefTensor use their input ports for shape, storage and format.
+    // Their shared output creator allocates an empty Tensor without reading source metadata.
+    GE_ASSERT_GRAPH_SUCCESS(InitKernelProgramInfo(context, OutputCreatePolicy::kOutputsCreator, false, info));
     GE_ASSERT_GRAPH_SUCCESS(SetInputPortInfos(context,
                                               {{"shape", Om2ValueType::kGertStorageShapePtr},
                                                {"tensor_data", Om2ValueType::kGertTensorDataPtr},
@@ -34,7 +40,28 @@ class BuildTensorKernelCodeBuilder : public KernelCodeBuilder {
 };
 REGISTER_KERNEL_CODE_BUILDER("BuildTensor", BuildTensorKernelCodeBuilder);
 
-class BuildRefTensorKernelCodeBuilder final : public BuildTensorKernelCodeBuilder {};
+class BuildRefTensorKernelCodeBuilder final : public BuildTensorKernelCodeBuilder {
+ public:
+  ge::graphStatus Collect(const KernelCollectContext &context, KernelProgramInfo &info) override {
+    GE_ASSERT_GRAPH_SUCCESS(BuildTensorKernelCodeBuilder::Collect(context, info));
+    constexpr int32_t kShapePort = 0;
+    constexpr int32_t kTensorDataPort = 1;
+    for (const int32_t port : {kShapePort, kTensorDataPort}) {
+      const auto *edge = context.node.GetInDataEdgeByIndex(port);
+      if (edge == nullptr || edge->src->GetType() != "Const") {
+        continue;
+      }
+      ge::Buffer value;
+      GE_ASSERT_TRUE(ge::AttrUtils::GetZeroCopyBytes(edge->src->GetOpDescPtr(), kConstValue, value));
+      const bool valid_size = port == kShapePort
+                                  ? value.GetSize() == sizeof(StorageShape) || value.GetSize() == sizeof(Tensor)
+                                  : value.GetSize() == sizeof(GertTensorData);
+      GE_ASSERT_TRUE(valid_size, "Invalid Const %s size %zu at BuildRefTensor %s input %d", edge->src->GetNamePtr(),
+                     value.GetSize(), context.node.GetNamePtr(), port);
+    }
+    return ge::GRAPH_SUCCESS;
+  }
+};
 REGISTER_KERNEL_CODE_BUILDER("BuildRefTensor", BuildRefTensorKernelCodeBuilder);
 
 class SplitDataTensorKernelCodeBuilder final : public KernelCodeBuilder {

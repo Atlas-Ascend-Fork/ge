@@ -23,6 +23,7 @@ class SplitRtStreamsKernelCodeBuilder final : public KernelCodeBuilder {
     GE_ASSERT_GRAPH_SUCCESS(SetInputPortInfos(
         context, {{"streams", Om2ValueType::kTypedContinuousVectorRtStreamTPtr}, {"stream_num", Om2ValueType::kInt64T}},
         info));
+    RequestInputBinding(context, 0U, ChainBindingKind::kStream, ChainBindingPhase::kLoad, info);
     return SetOutputPortNames(context, MakeIndexedPortNames("stream_", context.output_chain_indices.size()), info);
   }
 };

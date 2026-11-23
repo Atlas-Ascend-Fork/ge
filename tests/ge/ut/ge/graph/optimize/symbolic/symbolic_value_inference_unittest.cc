@@ -467,26 +467,53 @@ TEST_F(SymbolicValueInferenceUT, execute_path_computed_shape_by_op_infer_depends
   EXPECT_EQ(hint, 20);
 }
 
-// 声明制值依赖但静态shape超限(>200)：尺寸准入与点亮共用同一上限，不点亮(不产生无谓D2H)
+// 声明制值依赖但静态shape超限(>400)：尺寸准入与点亮共用同一上限，不点亮(不产生无谓D2H)
 TEST_F(SymbolicValueInferenceUT, value_dependent_declared_oversize_not_lit_up) {
-  auto oversize = CreateDeclaredValueDependentGraph(201);
+  auto oversize = CreateDeclaredValueDependentGraph(401);
   ASSERT_NE(oversize, nullptr);
   std::set<size_t> oversize_idxs;
   ASSERT_EQ(SymbolicInferUtil::GetNeedSymbolizeValueInputIdxs(oversize, oversize_idxs), SUCCESS);
   EXPECT_EQ(oversize_idxs.count(0U), 0U);
 
-  // 边界对照：恰好200仍按声明制点亮
-  auto at_limit = CreateDeclaredValueDependentGraph(200);
+  // 边界对照：恰好400仍按声明制点亮
+  auto at_limit = CreateDeclaredValueDependentGraph(400);
   ASSERT_NE(at_limit, nullptr);
   std::set<size_t> at_limit_idxs;
   ASSERT_EQ(SymbolicInferUtil::GetNeedSymbolizeValueInputIdxs(at_limit, at_limit_idxs), SUCCESS);
   EXPECT_EQ(at_limit_idxs.count(0U), 1U);
 }
 
+TEST_F(SymbolicValueInferenceUT, host_value_symbolization_accepts400_rejects401) {
+  auto at_limit = CreateDeclaredValueDependentGraph(400);
+  ASSERT_NE(at_limit, nullptr);
+  std::vector<int64_t> at_limit_values(400, 1);
+  std::vector<GeTensor> at_limit_inputs;
+  at_limit_inputs.emplace_back(BuildGeTensor<int64_t, DT_INT64>({400}, at_limit_values));
+  at_limit_inputs.emplace_back(BuildGeTensor<int64_t, DT_INT64>({2}, {1, 1}));
+  GetThreadLocalContext().SetGraphOption({});
+  ASSERT_EQ(SymbolicShapeSymbolizer::Symbolize(at_limit, at_limit_inputs), SUCCESS);
+  auto at_limit_attr =
+      at_limit->FindNode("data0")->GetOpDesc()->MutableOutputDesc(0)->GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(at_limit_attr, nullptr);
+  EXPECT_EQ(at_limit_attr->symbolic_tensor.GetValueCount(), 400U);
+
+  auto oversize = CreateDeclaredValueDependentGraph(401);
+  ASSERT_NE(oversize, nullptr);
+  std::vector<int64_t> oversize_values(401, 1);
+  std::vector<GeTensor> oversize_inputs;
+  oversize_inputs.emplace_back(BuildGeTensor<int64_t, DT_INT64>({401}, oversize_values));
+  oversize_inputs.emplace_back(BuildGeTensor<int64_t, DT_INT64>({2}, {1, 1}));
+  ASSERT_EQ(SymbolicShapeSymbolizer::Symbolize(oversize, oversize_inputs), SUCCESS);
+  auto oversize_attr =
+      oversize->FindNode("data0")->GetOpDesc()->MutableOutputDesc(0)->GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(oversize_attr, nullptr);
+  EXPECT_EQ(oversize_attr->symbolic_tensor.GetValueCount(), 0U);
+}
+
 // hint输入按host准入：host且带hint即符号化，与tensor元素数无关
 // (尺寸准入只约束需要值符号化的输入集合，hint输入不在该集合内)
 TEST_F(SymbolicValueInferenceUT, hint_input_symbolized_when_on_host) {
-  for (const int64_t dim : {201L, 200L}) {
+  for (const int64_t dim : {401L, 400L}) {
     auto cg = CreateDeclaredValueDependentGraph(dim);
     ASSERT_NE(cg, nullptr);
     std::vector<GeTensor> graph_inputs;

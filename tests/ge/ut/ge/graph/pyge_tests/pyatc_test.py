@@ -89,7 +89,9 @@ class TestPyAtc:
         assert argv[1] == b"--help"
 
     @staticmethod
-    def test_python_module_entry_uses_executable_module_argv0(monkeypatch, fake_pyatc_lib):
+    def test_python_module_entry_uses_executable_module_argv0(
+        monkeypatch, fake_pyatc_lib
+    ):
         monkeypatch.setattr(pyatc_main, "pyatc_lib", fake_pyatc_lib)
         monkeypatch.setattr(sys, "executable", "/opt/myenv/bin/python")
         monkeypatch.setattr(sys, "argv", ["/pkg/ge/pyatc/__main__.py", "--help"])

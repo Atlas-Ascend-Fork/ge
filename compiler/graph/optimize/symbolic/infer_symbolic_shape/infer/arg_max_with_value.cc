@@ -12,7 +12,7 @@
 #include "common/framework_types_internal.h"
 #include "graph/compute_graph.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 
 namespace ge {
 namespace {
@@ -36,7 +36,7 @@ namespace {
  *      4. 索引张量和值张量具有相同的输出shape
  *      举例：输入shape=(2,3,4)，dimension=-2，keep_dims=false，则输出=(2,4)
  */
-graphStatus InferShape4ArgWithValue(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4ArgWithValue(gert::InferSymbolContext *context) {
   // 获取输入形状
   auto shape_x = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(shape_x);
@@ -91,7 +91,7 @@ graphStatus InferShape4ArgWithValue(gert::InferSymbolShapeContext *context) {
  * 【推导逻辑】读取 x 的符号 Shape 和 dimension 的符号值，解析负轴后删除 x 中对应维度，其他维度保持原有Expression。
  * 【举例】x=[B,S,H]、dimension=-1 时，y=[B,S]；x=[B,S,H]、dimension=1 时，y=[B,H]。
  */
-graphStatus InferShape4ArgMaxV2(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4ArgMaxV2(gert::InferSymbolContext *context) {
   const auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   const auto y_shape = context->GetOutputSymbolShape(0);
@@ -132,7 +132,7 @@ IMPL_OP_INFER_SYMBOL_SHAPE_INNER(ArgMaxV2).InferSymbolShape(InferShape4ArgMaxV2)
  * 【推导逻辑】从 attr 0 读 dimension，复用 ReduceDimsWithoutKeepDims 去 axis 维。
  * 【举例】x=[2,3,4]、dimension=1 时，y=[2,4]。
  */
-graphStatus InferShape4ArgMaxD(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4ArgMaxD(gert::InferSymbolContext *context) {
   const auto x_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   const auto y_shape = context->GetOutputSymbolShape(0);

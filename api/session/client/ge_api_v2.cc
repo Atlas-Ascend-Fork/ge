@@ -861,7 +861,6 @@ Status GeSession::RunGraphAsync(uint32_t graph_id, const std::vector<gert::Tenso
   }
 
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
-  GE_CHK_STATUS_RET_NOLOG(CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "RunGraphAsync", graph_id));
   RunGraphMode cur_mode = RunGraphMode::kRunGraphModeEnd;
   const auto get_mode_ret = impl_->GetRunGraphMode(graph_id, cur_mode);
   ReportIfGraphNotExist("RunGraphAsync", graph_id, get_mode_ret);
@@ -986,7 +985,6 @@ Status GeSession::SetGraphConstMemoryBase(uint32_t graph_id, const void *const m
     return FAILED;
   }
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
-  GE_CHK_STATUS_RET_NOLOG(CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "SetGraphConstMemoryBase", graph_id));
   if (EnableSliceSchedule()) {
     GELOGE(UNSUPPORTED,
            "[Construct][GeSession]SetGraphConstMemoryBase does not support slice schedule currently, session_id:%lu, "
@@ -1017,8 +1015,6 @@ Status GeSession::UpdateGraphFeatureMemoryBase(uint32_t graph_id, const void *co
     return FAILED;
   }
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
-  GE_CHK_STATUS_RET_NOLOG(
-      CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "UpdateGraphFeatureMemoryBase", graph_id));
   if (EnableSliceSchedule()) {
     GELOGE(UNSUPPORTED,
            "[Construct][GeSession]UpdateGraphFeatureMemoryBase does not support slice schedule currently, "
@@ -1051,8 +1047,6 @@ Status GeSession::SetGraphFixedFeatureMemoryBaseWithType(uint32_t graph_id, Memo
     return FAILED;
   }
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
-  GE_CHK_STATUS_RET_NOLOG(
-      CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "SetGraphFixedFeatureMemoryBaseWithType", graph_id));
   if (EnableSliceSchedule()) {
     GELOGE(UNSUPPORTED,
            "[Construct][GeSession]SetGraphFixedFeatureMemoryBaseWithType does not support slice schedule currently, "
@@ -1086,8 +1080,6 @@ Status GeSession::UpdateGraphRefreshableFeatureMemoryBase(uint32_t graph_id, con
     return FAILED;
   }
   GE_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "GeSession construction incomplete (null impl pointer)");
-  GE_CHK_STATUS_RET_NOLOG(
-      CheckExecuteGraphUnsupported(impl_->GetInnerSession(), "UpdateGraphRefreshableFeatureMemoryBase", graph_id));
   if (EnableSliceSchedule()) {
     GELOGE(UNSUPPORTED,
            "[Construct][GeSession]UpdateGraphRefreshableFeatureMemoryBase does not support slice schedule currently, "

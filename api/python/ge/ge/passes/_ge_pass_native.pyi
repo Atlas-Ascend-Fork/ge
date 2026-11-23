@@ -37,9 +37,7 @@ __all__: list[str] = [
     "infer_shape",
 ]
 
-
 GE_LOG_SOURCE_SUPPORTED: bool
-
 
 def emit_ge_log(
     level: int, message: str, filename: str = "", lineno: int = 0, funcname: str = ""
@@ -50,11 +48,9 @@ def emit_ge_log(
     """
     ...
 
-
 def can_fuse(nodes: typing.Iterable[Node]) -> tuple[bool, str]:
     """Check whether nodes can be safely fused into one node."""
     ...
-
 
 def report_fuse(
     nodes_before: typing.Iterable[Node],
@@ -64,7 +60,6 @@ def report_fuse(
     """Report a completed graph fusion rewrite."""
     ...
 
-
 def report_match(
     matched_nodes: typing.Iterable[Node],
     context: PassContext,
@@ -72,14 +67,12 @@ def report_match(
     """Report one structure match regardless of whether fusion conditions pass."""
     ...
 
-
 def infer_shape(
     replacement: Graph,
     source: typing.Union[MatchResult, Node, SubgraphBoundary],
 ) -> None:
     """Infer shape, data type, and format for a replacement graph from a matched source."""
     ...
-
 
 class PassContext:
     """Compile-time pass context (Python view of C++ ``CustomPassContext``).
@@ -130,7 +123,6 @@ class PassContext:
         **Constraints**: The key must exist and be readable; otherwise ``RuntimeError``.
         """
         ...
-
 
 class StreamPassContext(PassContext):
     """Context supplied to a stream pass.
@@ -185,7 +177,6 @@ class PatternMatcherConfig:
         """Return whether IR attribute matching is enabled."""
         ...
 
-
 class PatternMatcherConfigBuilder:
     """Fluent builder for ``PatternMatcherConfig``."""
 
@@ -207,7 +198,6 @@ class PatternMatcherConfigBuilder:
         **Constraints**: Raises ``RuntimeError`` if the C++ build fails.
         """
         ...
-
 
 class Pattern:
     """Pattern graph wrapper used to match a subgraph in the target graph.
@@ -239,7 +229,9 @@ class Pattern:
         """Construct from a pattern graph (the original ``graph`` handle is invalidated)."""
         ...
 
-    def capture_tensor(self, source: TensorHolder | Node | NodeIo, index: int | None = None) -> Pattern:
+    def capture_tensor(
+        self, source: TensorHolder | Node | NodeIo, index: int | None = None
+    ) -> Pattern:
         """Record a captured tensor for lookup by index in ``replacement``.
 
         Returns ``self`` for chaining.
@@ -260,7 +252,6 @@ class Pattern:
         **Constraints**: Successful ``release`` must happen at most once per instance.
         """
         ...
-
 
 class MatchResult:
     """Result of one pattern match (borrowed C++ ``MatchResult``; lifetime owned by engine/bridge).
@@ -302,7 +293,6 @@ class MatchResult:
         """Return the pattern graph name."""
         ...
 
-
 class SubgraphInput:
     """One logical boundary input: a set of main-graph anchors (many-to-one allowed)."""
 
@@ -324,7 +314,6 @@ class SubgraphInput:
         """Append an input anchor (node output index); return internal index (``uint32`` semantics)."""
         ...
 
-
 class SubgraphOutput:
     """One logical boundary output: a single main-graph node output anchor."""
 
@@ -341,7 +330,6 @@ class SubgraphOutput:
     def set_output(self, node: Node, out_index: int) -> int:
         """Set the output anchor; return internal status (``uint32`` semantics)."""
         ...
-
 
 class SubgraphBoundary:
     """Input/output boundary of the subgraph to replace in the main graph.
@@ -361,7 +349,6 @@ class SubgraphBoundary:
     def add_output(self, index: int, output: SubgraphOutput) -> int:
         """Bind the ``index``-th boundary output to ``SubgraphOutput``."""
         ...
-
 
 class SubgraphRewriter:
     """Apply whole-subgraph replacement on the main graph."""
@@ -392,7 +379,9 @@ class SubgraphRewriter:
 
     @staticmethod
     @typing.overload
-    def replace(boundary: SubgraphBoundary, replacement: Graph, *, context: PassContext) -> None:
+    def replace(
+        boundary: SubgraphBoundary, replacement: Graph, *, context: PassContext
+    ) -> None:
         """Replace a subgraph with automatic fusion inspection and reporting.
 
         Raises ``RuntimeError`` when fusion inspection, replacement, or reporting fails.

@@ -24,7 +24,7 @@ constexpr size_t kXIndex = 0U;
 constexpr size_t kIndicesIndex = 1U;
 constexpr size_t kUpdatesIndex = 2U;
 constexpr size_t kOutputIndex = 0U;
-constexpr int64_t kMaxSymbolicValueSize = 200L;
+constexpr int64_t kMaxSymbolicValueSize = kMaxSymbolizeValueElemNum;
 
 int64_t ElementCount(const std::vector<int64_t> &dims) {
   return std::accumulate(dims.begin(), dims.end(), 1L, std::multiplies<int64_t>());

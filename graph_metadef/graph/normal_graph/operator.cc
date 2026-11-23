@@ -2721,10 +2721,20 @@ void Operator::SetSubgraphBuilder(const char_t *ir_name, uint32_t index, const S
 }
 
 std::vector<std::string> Operator::GetSubgraphNames() const {
+  if (operator_impl_ == nullptr) {
+    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid.");
+    GELOGE(GRAPH_FAILED, "[Check][Param] operator impl is nullptr.");
+    return {};
+  }
   return operator_impl_->GetSubgraphNames();
 }
 
 graphStatus Operator::GetSubgraphNames(std::vector<AscendString> &names) const {
+  if (operator_impl_ == nullptr) {
+    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid.");
+    GELOGE(GRAPH_FAILED, "[Check][Param] operator impl is nullptr.");
+    return GRAPH_FAILED;
+  }
   const std::vector<std::string> subgraph_names = operator_impl_->GetSubgraphNames();
   for (auto &subgraph_name : subgraph_names) {
     names.emplace_back(subgraph_name.c_str());

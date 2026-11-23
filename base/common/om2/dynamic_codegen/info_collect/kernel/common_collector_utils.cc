@@ -49,6 +49,17 @@ ge::graphStatus SetPortInfos(const std::vector<uint32_t> &chain_indices,
 }
 }  // namespace
 
+void RequestInputBinding(const KernelCollectContext &context, uint32_t port, ChainBindingKind kind,
+                         ChainBindingPhase phase, KernelProgramInfo &info) {
+  ChainUpdate request;
+  request.chain_index = context.input_chain_indices[port];
+  request.source_kind = ChainSourceKind::kInputBindingRequest;
+  request.binding_phase = phase;
+  request.binding_kind = kind;
+  request.input_port = port;
+  info.chain_updates.push_back(request);
+}
+
 ge::graphStatus InitKernelProgramInfo(const KernelCollectContext &context, OutputCreatePolicy output_policy,
                                       bool require_compute_node_info, KernelProgramInfo &kernel_info) {
   kernel_info.execution_node_name = context.node.GetNamePtr();
@@ -61,8 +72,9 @@ ge::graphStatus InitKernelProgramInfo(const KernelCollectContext &context, Outpu
   const bool has_compute_node =
       ge::AttrUtils::GetInt(context.node.GetOpDescBarePtr(), kComputeNodeIndex, compute_node_index);
   if (require_compute_node_info && !has_compute_node) {
-    GELOGE(ge::GRAPH_PARAM_INVALID, "OM2 kernel %s type %s has no ComputeNodeIndex", context.node.GetNamePtr(),
-           context.node.GetTypePtr());
+    GELOGE(ge::GRAPH_PARAM_INVALID,
+           "OM2 kernel %s type %s requires CNI: missing gert.source_op on external graphs or internal binding",
+           context.node.GetNamePtr(), context.node.GetTypePtr());
     return ge::GRAPH_PARAM_INVALID;
   }
   if (has_compute_node) {

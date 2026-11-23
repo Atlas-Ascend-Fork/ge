@@ -172,7 +172,7 @@ class ShapeEnvAttr : public AttrGroupsBase {
     }
     // 静态场景需要增加一个s == hint的Assert信息
     if (shape_env_setting_.dynamic_mode == DynamicMode::kStatic) {
-      ASSERT_SYMBOL_EQ(sym, Symbol(hint_int64));
+      (void)ge::sym::AssertSymbolEq(sym, Symbol(hint_int64), __FILE__, __LINE__);
     }
     return sym;
   }
@@ -211,8 +211,6 @@ class ShapeEnvAttr : public AttrGroupsBase {
   std::string GetGuardDfxContextInfo() const;
   bool CheckReplacementCycle(const Expression &expr1, const Expression &expr2) const;
   static Expression CanonicalizeBoolExpr(const Expression &expr);
-  // 就地定义容器 traits（不依赖发布头 symbolic.h 中的 ExpressionHash/KeyEq，
-  // 为后续 metadef 发布头收敛做准备）
   struct LocalExpressionHash {
     uint64_t operator()(const ge::Expression &k) const {
       return k.Hash();

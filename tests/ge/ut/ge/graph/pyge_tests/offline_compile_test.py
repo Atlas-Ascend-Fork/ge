@@ -27,11 +27,9 @@ try:
         is_offline_compile_lib_loaded,
     )
     from ge.graph import Graph
-    from ge.graph.types import DataType
     from ge.offline_compile import (
         GraphWithOptions,
         ModelBuffer,
-        build_finalize,
         build_initialize,
         build_model,
         bundle_build_model,
@@ -87,12 +85,16 @@ class TestGraphWithOptions:
 
     @staticmethod
     def test_non_string_option_key():
-        with pytest.raises(TypeError, match="build_options keys and values must be strings"):
+        with pytest.raises(
+            TypeError, match="build_options keys and values must be strings"
+        ):
             GraphWithOptions(Graph("test_graph"), {1: "val"})
 
     @staticmethod
     def test_non_string_option_value():
-        with pytest.raises(TypeError, match="build_options keys and values must be strings"):
+        with pytest.raises(
+            TypeError, match="build_options keys and values must be strings"
+        ):
             GraphWithOptions(Graph("test_graph"), {"key": 1})
 
     @staticmethod
@@ -108,7 +110,9 @@ class TestModelBuffer:
     @staticmethod
     def test_direct_init_raises():
         """ModelBuffer 不能直接实例化"""
-        with pytest.raises(RuntimeError, match="ModelBuffer objects should not be created directly"):
+        with pytest.raises(
+            RuntimeError, match="ModelBuffer objects should not be created directly"
+        ):
             ModelBuffer()
 
     @staticmethod
@@ -156,12 +160,16 @@ class TestBuildInitialize:
 
     @staticmethod
     def test_invalid_option_key_type():
-        with pytest.raises(TypeError, match="global_options keys and values must be strings"):
+        with pytest.raises(
+            TypeError, match="global_options keys and values must be strings"
+        ):
             build_initialize({1: "v"})
 
     @staticmethod
     def test_invalid_option_value_type():
-        with pytest.raises(TypeError, match="global_options keys and values must be strings"):
+        with pytest.raises(
+            TypeError, match="global_options keys and values must be strings"
+        ):
             build_initialize({"k": 2})
 
 
@@ -185,12 +193,16 @@ class TestBuildModel:
 
     @staticmethod
     def test_invalid_option_key_type():
-        with pytest.raises(TypeError, match="build_options keys and values must be strings"):
+        with pytest.raises(
+            TypeError, match="build_options keys and values must be strings"
+        ):
             build_model(Graph("test_graph"), {1: "v"})
 
     @staticmethod
     def test_invalid_option_value_type():
-        with pytest.raises(TypeError, match="build_options keys and values must be strings"):
+        with pytest.raises(
+            TypeError, match="build_options keys and values must be strings"
+        ):
             build_model(Graph("test_graph"), {"k": 1})
 
 
@@ -237,7 +249,9 @@ class TestBundleBuildModel:
 
     @staticmethod
     def test_empty_list():
-        with pytest.raises(ValueError, match="graph_with_options size must be larger than 1"):
+        with pytest.raises(
+            ValueError, match="graph_with_options size must be larger than 1"
+        ):
             bundle_build_model([])
 
     @staticmethod
@@ -258,7 +272,9 @@ class TestBundleBuildModel:
 
     @staticmethod
     def test_invalid_options_size():
-        with pytest.raises(ValueError, match="graph_with_options size must be larger than 1"):
+        with pytest.raises(
+            ValueError, match="graph_with_options size must be larger than 1"
+        ):
             bundle_build_model(
                 [
                     GraphWithOptions(

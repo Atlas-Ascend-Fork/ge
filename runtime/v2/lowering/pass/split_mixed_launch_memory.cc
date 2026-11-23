@@ -14,6 +14,7 @@
 #include <map>
 #include "common/checker.h"
 #include "exe_graph/lowering/exe_graph_attrs.h"
+#include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/utils/fast_node_utils.h"
 #include "graph/utils/execute_graph_utils.h"
 #include "graph/utils/graph_dump_utils.h"
@@ -64,6 +65,19 @@ ge::graphStatus AddControlEdgeIfAbsent(ge::ExecuteGraph *const graph, ge::FastNo
                                        ge::FastNode *const dst_node) {
   if (!HasControlEdge(src_node, dst_node)) {
     GE_ASSERT_NOTNULL(graph->AddEdge(src_node, ge::kControlEdgeIndex, dst_node, ge::kControlEdgeIndex));
+  }
+  return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus InheritComputeNodeSource(const ge::OpDesc *source, ge::OpDesc *target) {
+  int64_t compute_node_index = 0;
+  if (ge::AttrUtils::GetInt(source, kComputeNodeIndex, compute_node_index)) {
+    GE_ASSERT_TRUE(ge::AttrUtils::SetInt(target, kComputeNodeIndex, compute_node_index));
+  }
+  if (source->HasAttr(attr::kSourceOp)) {
+    ge::AnyValue value;
+    GE_ASSERT_SUCCESS(source->GetAttr(attr::kSourceOp, value));
+    GE_ASSERT_SUCCESS(target->SetAttr(attr::kSourceOp, value));
   }
   return ge::GRAPH_SUCCESS;
 }
@@ -170,12 +184,8 @@ SplitCopyFlowLaunchNodes CreateSplitCopyFlowLaunchNodesFromCopyFlow(ge::ExecuteG
   GE_ASSERT_NOTNULL(prepare_op_desc);
   GE_ASSERT_TRUE(
       ge::AttrUtils::SetInt(prepare_op_desc, kernel::kCopyFlowCountAttr, static_cast<int64_t>(copy_flow_count)));
-  int64_t compute_node_index = 0;
-  const bool has_compute_node_index =
-      ge::AttrUtils::GetInt(copy_flow_node->GetOpDescBarePtr(), kComputeNodeIndex, compute_node_index);
-  if (has_compute_node_index) {
-    GE_ASSERT_TRUE(ge::AttrUtils::SetInt(prepare_op_desc, kComputeNodeIndex, compute_node_index));
-  }
+  const auto *const source = copy_flow_node->GetOpDescBarePtr();
+  GE_ASSERT_SUCCESS(InheritComputeNodeSource(source, prepare_op_desc.get()));
   GE_ASSERT_SUCCESS(AddPrepareCopyFlowResultInputDescFromCopyFlow(prepare_op_desc, copy_flow_node));
   auto prepare_node = graph->AddNode(prepare_op_desc);
   GE_ASSERT_NOTNULL(prepare_node);
@@ -184,9 +194,7 @@ SplitCopyFlowLaunchNodes CreateSplitCopyFlowLaunchNodesFromCopyFlow(ge::ExecuteG
   GE_ASSERT_NOTNULL(launch_op_desc);
   GE_ASSERT_TRUE(
       ge::AttrUtils::SetInt(launch_op_desc, kernel::kCopyFlowCountAttr, static_cast<int64_t>(copy_flow_count)));
-  if (has_compute_node_index) {
-    GE_ASSERT_TRUE(ge::AttrUtils::SetInt(launch_op_desc, kComputeNodeIndex, compute_node_index));
-  }
+  GE_ASSERT_SUCCESS(InheritComputeNodeSource(source, launch_op_desc.get()));
   GE_ASSERT_SUCCESS(AddLaunchCopyFlowH2DInputDescFromCopyFlow(launch_op_desc, copy_flow_node));
   auto launch_node = graph->AddNode(launch_op_desc);
   GE_ASSERT_NOTNULL(launch_node);
@@ -389,10 +397,7 @@ SplitDeviceCopyNodes CreateSplitDeviceCopyNodes(ge::ExecuteGraph *const graph, c
 
   auto launch_op_desc = ge::MakeShared<ge::OpDesc>(split_node_name + "_LaunchH2DCopy", "LaunchH2DCopy");
   GE_ASSERT_NOTNULL(launch_op_desc);
-  int64_t compute_node_index = 0;
-  if (ge::AttrUtils::GetInt(copy_node->GetOpDescBarePtr(), kComputeNodeIndex, compute_node_index)) {
-    GE_ASSERT_TRUE(ge::AttrUtils::SetInt(launch_op_desc, kComputeNodeIndex, compute_node_index));
-  }
+  GE_ASSERT_SUCCESS(InheritComputeNodeSource(copy_node->GetOpDescBarePtr(), launch_op_desc.get()));
   GE_ASSERT_SUCCESS(AddH2DCopyInputDesc(launch_op_desc, copy_node, output_index));
   auto launch_node = graph->AddNode(launch_op_desc);
   GE_ASSERT_NOTNULL(launch_node);

@@ -1002,7 +1002,7 @@ bool InnerSession::GetLoadFlag(uint32_t graph_id) const {
 }
 
 Status InnerSession::IsExecuteGraph(uint32_t graph_id, bool &is_execute_graph) const {
-  GE_ASSERT_NOTNULL(user_hybrid_graph_manager_);
-  return user_hybrid_graph_manager_->IsExecuteGraph(graph_id, is_execute_graph);
+  GE_ASSERT_NOTNULL(user_graphs_manager_);
+  return user_graphs_manager_->IsExecuteGraph(graph_id, is_execute_graph);
 }
 }  // namespace ge

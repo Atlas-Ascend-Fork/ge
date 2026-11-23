@@ -82,7 +82,9 @@ class TestGraphProcessPoint(unittest.TestCase):
         self.assertEqual(graph_pp2.name, "graphpp")
         graph_pp3 = df.GraphProcessPoint(framework, graph_file, name="graphpp")
         self.assertEqual(graph_pp3.name, "graphpp_1")
-        graph_pp3_fnode = graph_pp3.fnode(input_num=2, output_num=1, name="test_graphpp_fnode")
+        graph_pp3_fnode = graph_pp3.fnode(
+            input_num=2, output_num=1, name="test_graphpp_fnode"
+        )
         self.assertEqual(graph_pp3_fnode.input_num, 2)
         self.assertEqual(graph_pp3_fnode.output_num, 1)
 
@@ -377,7 +379,9 @@ class TestFlowNode(unittest.TestCase):
             input_indexes=[0, 1],
             output_indexes=[0],
         )
-        output0 = flow_node._build_flow_node(flow_data, flow_data, input_indexes=[0, 1], output_indexes=[0])
+        output0 = flow_node._build_flow_node(
+            flow_data, flow_data, input_indexes=[0, 1], output_indexes=[0]
+        )
         try:
             flow_node(flow_data, output0)
         except df.DfException as e:
@@ -395,7 +399,7 @@ class TestFlowGraph(unittest.TestCase):
             self.assertEqual(e.error_code, NOT_INIT)
         flow_options = {"ge.exec.deviceId": "0"}
         df.init(flow_options)
-        graph = df.FlowGraph([output])
+        df.FlowGraph([output])
         self.assertRaises(df.DfException, df.FlowGraph, [1])
         df.finalize()
 
@@ -422,7 +426,9 @@ class TestFlowGraph(unittest.TestCase):
         df.init(flow_options)
         graph = df.FlowGraph([output])
         flow_info = df.FlowInfo()
-        flow_info.flow_flags = df.FlowFlag.DATA_FLOW_FLAG_EOS | df.FlowFlag.DATA_FLOW_FLAG_SEG
+        flow_info.flow_flags = (
+            df.FlowFlag.DATA_FLOW_FLAG_EOS | df.FlowFlag.DATA_FLOW_FLAG_SEG
+        )
         user_data_str = "UserData123"
         user_data_array = bytearray(user_data_str, "utf-8")
         flow_info.set_user_data(user_data_array)
@@ -453,7 +459,9 @@ class TestFlowGraph(unittest.TestCase):
         self.assertEqual(ret, DATATYPE_INVALID)
         ret = graph.feed_data({}, flow_info, partial_inputs=True)
         self.assertEqual(ret, 0)
-        ret = graph.feed_data({data: df.Tensor([1]), data1: df.Tensor(["nice"])}, flow_info)
+        ret = graph.feed_data(
+            {data: df.Tensor([1]), data1: df.Tensor(["nice"])}, flow_info
+        )
         self.assertEqual(ret, 0)
         df.finalize()
 
@@ -465,7 +473,9 @@ class TestFlowGraph(unittest.TestCase):
         df.init(flow_options)
         graph = df.FlowGraph([output])
         flow_info = df.FlowInfo()
-        flow_info.flow_flags = df.FlowFlag.DATA_FLOW_FLAG_EOS | df.FlowFlag.DATA_FLOW_FLAG_SEG
+        flow_info.flow_flags = (
+            df.FlowFlag.DATA_FLOW_FLAG_EOS | df.FlowFlag.DATA_FLOW_FLAG_SEG
+        )
         user_data_str = "UserData123"
         user_data_array = bytearray(user_data_str, "utf-8")
         flow_info.set_user_data(user_data_array)
@@ -577,7 +587,9 @@ class TestTensor(unittest.TestCase):
         t = df.Tensor(t, tensor_desc=tensor_desc)
         self.assertEqual(t._tensor_desc, tensor_desc)
         a = np.array([[1, 0, 2, 4]], dtype=np.int32)
-        strided_array = np.lib.stride_tricks.as_strided(a, shape=(1, 2), strides=(16, 8))
+        strided_array = np.lib.stride_tricks.as_strided(
+            a, shape=(1, 2), strides=(16, 8)
+        )
         self.assertRaises(df.DfException, df.Tensor, strided_array)
         try:
             df.Tensor(strided_array)
@@ -599,13 +611,13 @@ class TestTensor(unittest.TestCase):
         t = df.Tensor([["aa", "aaaaaaaaaaaaaaa"], ["b", "555"]])
         self.assertEqual(t._tensor_desc._dtype, df_dt.DT_STRING)
         try:
-            a = t.numpy()
+            t.numpy()
         except df.DfException as e:
             self.assertEqual(e.error_code, PARAM_INVALID)
         t = df.Tensor(["nice"])
         self.assertEqual(t._tensor_desc._dtype, df_dt.DT_STRING)
         try:
-            a = t.numpy(True)
+            t.numpy(True)
         except df.DfException as e:
             self.assertEqual(e.error_code, PARAM_INVALID)
         # construct by dwrapper.TestTensor
@@ -613,7 +625,7 @@ class TestTensor(unittest.TestCase):
         ti = dwrapper.Tensor(tmp_value)
         t = df.Tensor(ti)
         # construct by df tensor
-        df_t = df.Tensor(t)
+        df.Tensor(t)
         # construct by numpy
         dt_np = df.Tensor(tmp_value)
         self.assertEqual(dt_np._tensor_desc._dtype, df_dt.DT_STRING)
@@ -621,7 +633,7 @@ class TestTensor(unittest.TestCase):
         ti = dwrapper.Tensor(tmp_value)
         t = df.Tensor(ti)
         # construct by df tensor
-        df_t = df.Tensor(t)
+        df.Tensor(t)
         # construct by numpy
         dt_np = df.Tensor(tmp_value)
         self.assertEqual(dt_np._tensor_desc._dtype, df_dt.DT_STRING)

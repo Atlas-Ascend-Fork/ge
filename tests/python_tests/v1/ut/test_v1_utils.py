@@ -16,9 +16,12 @@ import ctypes
 import unittest
 
 from llm_datadist_v1.utils.utils import (
+    check_dict,
+    check_inner,
     check_int32,
     check_int64,
     check_list_int32,
+    check_positive_or_set_default,
     check_uint8,
     check_uint16,
     check_uint32,
@@ -43,8 +46,32 @@ class TensorUt(unittest.TestCase):
         with self.assertRaises(ValueError):
             _ = check_uint32("cluster", -1)
         with self.assertRaises(ValueError):
-            _ = check_list_int32("cluster_ids", [0, 1, ctypes.c_uint64(2**64 - 1).value])
+            _ = check_list_int32(
+                "cluster_ids", [0, 1, ctypes.c_uint64(2**64 - 1).value]
+            )
         with self.assertRaises(ValueError):
             _ = check_uint16("cluster", -1)
         with self.assertRaises(ValueError):
             _ = check_uint8("cluster", -1)
+
+    def test_check_inner_type_error(self):
+        with self.assertRaises(TypeError):
+            check_inner("vals", [1, "not_int"], int)
+
+    def test_check_dict_key_type_error(self):
+        with self.assertRaises(TypeError):
+            check_dict("cfg", {1: "value"}, str, str)
+
+    def test_check_dict_value_type_error(self):
+        with self.assertRaises(TypeError):
+            check_dict("cfg", {"key": 1}, str, str)
+
+    def test_check_dict_inner_type_error(self):
+        with self.assertRaises(TypeError):
+            check_dict("cfg", {"key": [1, "not_int"]}, str, list, int)
+
+    def test_check_positive_or_set_default(self):
+        self.assertEqual(check_positive_or_set_default("offset", None, 7), 7)
+        self.assertEqual(check_positive_or_set_default("offset", 3), 3)
+        with self.assertRaises(ValueError):
+            check_positive_or_set_default("offset", -1)

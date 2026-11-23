@@ -41,7 +41,9 @@ class GeUtils:
         dims_num = len(flat_dims)
         shape_num = len(shape_ranks)
         dims_arr = (ctypes.c_int64 * dims_num)(*flat_dims) if dims_num > 0 else None
-        shape_ranks_arr = (ctypes.c_size_t * shape_num)(*shape_ranks) if shape_num > 0 else None
+        shape_ranks_arr = (
+            (ctypes.c_size_t * shape_num)(*shape_ranks) if shape_num > 0 else None
+        )
         ret = ge_utils_lib.GeApiWrapper_GeUtils_InferShape(
             graph._handle, dims_arr, dims_num, shape_ranks_arr, shape_num
         )
@@ -69,7 +71,11 @@ class GeUtils:
         try:
             if ret != 0:
                 raise RuntimeError("Failed to check node support on AICore")
-            reason = ctypes.string_at(unsupported_reason).decode("utf-8") if unsupported_reason else ""
+            reason = (
+                ctypes.string_at(unsupported_reason).decode("utf-8")
+                if unsupported_reason
+                else ""
+            )
             return bool(is_supported.value), reason
         finally:
             if unsupported_reason:

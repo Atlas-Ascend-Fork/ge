@@ -63,7 +63,7 @@ class AssignFuncOutputNotContinuous:
 class TestDataflowFlowFunc(unittest.TestCase):
     def test_create_ws(self):
         ws_dir = "./py_assign_ws"
-        func_pp = df.FuncProcessPoint(py_func=AssignFunc, workspace_dir=ws_dir)
+        df.FuncProcessPoint(py_func=AssignFunc, workspace_dir=ws_dir)
         self.assertTrue(os.path.exists(ws_dir))
         self.assertTrue(os.path.exists(os.path.join(ws_dir, "CMakeLists.txt")))
         self.assertTrue(os.path.exists(os.path.join(ws_dir, "func_assign_func.json")))
@@ -140,8 +140,12 @@ class TestFlowFunc(unittest.TestCase):
         self.assertEqual(context.set_output(0, out, cfg), ff.FLOW_FUNC_SUCCESS)
 
         cfg.set_data_pos([(0, 0), (1, 2)])
-        self.assertEqual(context.set_multi_outputs(0, [msg1, out], cfg), ff.FLOW_FUNC_SUCCESS)
-        self.assertRaises(TypeError, context.set_multi_outputs, 0, [msg1, out, cfg], cfg)
+        self.assertEqual(
+            context.set_multi_outputs(0, [msg1, out], cfg), ff.FLOW_FUNC_SUCCESS
+        )
+        self.assertRaises(
+            TypeError, context.set_multi_outputs, 0, [msg1, out, cfg], cfg
+        )
 
     def test_raise_and_get_exception(self):
         wrapper_context = fw.MetaRunContext()

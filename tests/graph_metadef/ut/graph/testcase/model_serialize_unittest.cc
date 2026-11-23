@@ -1855,6 +1855,44 @@ TEST(UTEST_ge_model_serialize, IncCov_SeparateModelDefEmptyWeight) {
   EXPECT_TRUE(imp.SeparateModelDef(buffer, "test_path", model_def));
 }
 
+TEST(UTEST_ge_model_serialize, UnserializeModelRejectsDuplicateGraphName) {
+  proto::ModelDef model_proto;
+  model_proto.set_name("dup_graph_model");
+  auto *graph_def1 = model_proto.add_graph();
+  graph_def1->set_name("same_graph");
+  auto *graph_def2 = model_proto.add_graph();
+  graph_def2->set_name("same_graph");
+  Model model;
+  ModelSerializeImp imp;
+  EXPECT_FALSE(imp.UnserializeModel(model, model_proto, false));
+}
+
+TEST(UTEST_ge_model_serialize, UnserializeModelMultiThreadRejectsDuplicateGraphName) {
+  proto::ModelDef model_proto;
+  model_proto.set_name("dup_graph_model_mt");
+  auto *graph_def1 = model_proto.add_graph();
+  graph_def1->set_name("same_graph");
+  auto *graph_def2 = model_proto.add_graph();
+  graph_def2->set_name("same_graph");
+  Model model;
+  ModelSerializeImp imp;
+  EXPECT_FALSE(imp.UnserializeModel(model, model_proto, true));
+}
+
+TEST(UTEST_ge_model_serialize, UnserializeModelOkWithUniqueGraphNames) {
+  proto::ModelDef model_proto;
+  model_proto.set_name("unique_graph_model");
+  auto *graph_def1 = model_proto.add_graph();
+  graph_def1->set_name("graph_main");
+  auto *graph_def2 = model_proto.add_graph();
+  graph_def2->set_name("graph_sub");
+  Model model;
+  ModelSerializeImp imp;
+  EXPECT_TRUE(imp.UnserializeModel(model, model_proto, false));
+  EXPECT_NE(model.GetGraph(), nullptr);
+  EXPECT_EQ(model.GetGraph()->GetName(), "graph_main");
+}
+
 TEST(UTEST_ge_model_serialize, RebuildOwnershipRejectsSelfReference) {
   ModelSerializeImp imp;
   auto root = std::make_shared<ComputeGraph>("root_graph");

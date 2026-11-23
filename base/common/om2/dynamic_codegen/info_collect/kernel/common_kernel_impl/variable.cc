@@ -25,6 +25,7 @@ class SplitVariableKernelCodeBuilder final : public KernelCodeBuilder {
                                                {"var_id", Om2ValueType::kCStringPtr},
                                                {"allocator", Om2ValueType::kGertAllocatorPtr}},
                                               info));
+    RequestInputBinding(context, 0U, ChainBindingKind::kRtSession, ChainBindingPhase::kLoad, info);
     return SetOutputPortNames(context, {"shape", "tensor_data"}, info);
   }
 };

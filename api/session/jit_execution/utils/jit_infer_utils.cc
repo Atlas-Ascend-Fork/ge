@@ -193,7 +193,7 @@ void ClassifyPullable(const NodePtr &node, PullableCategories &categories) {
   // 优先级2: 没注册回调（无compute且无infer）
   const bool has_compute = (SymbolicKernelFactory::GetInstance().Create(op_desc->GetType()) != nullptr);
   const auto infer_funcs = gert::OpImplInferSymbolShapeRegistry::GetInstance().GetOpImpl(op_desc->GetType().c_str());
-  const bool has_infer = (infer_funcs != nullptr && infer_funcs->infer_symbol_shape != nullptr);
+  const bool has_infer = (infer_funcs != nullptr);
   if (!has_compute && !has_infer) {
     categories.no_callback.insert(node);
     return;

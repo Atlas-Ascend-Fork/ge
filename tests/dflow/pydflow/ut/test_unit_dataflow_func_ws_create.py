@@ -26,7 +26,9 @@ class TestDataflowFuncWsCreate(unittest.TestCase):
         clz_name = "Assign"
         with patch(
             "argparse.ArgumentParser.parse_args",
-            return_value=argparse.Namespace(clz_name=clz_name, workspace=ws_dir, functions=functions),
+            return_value=argparse.Namespace(
+                clz_name=clz_name, workspace=ws_dir, functions=functions
+            ),
         ):
             with patch("builtins.input", return_value="y"):
                 main()
@@ -41,7 +43,9 @@ class TestDataflowFuncWsCreate(unittest.TestCase):
         clz_name = "Assign"
         with patch(
             "argparse.ArgumentParser.parse_args",
-            return_value=argparse.Namespace(clz_name=clz_name, workspace=ws_dir, functions=functions),
+            return_value=argparse.Namespace(
+                clz_name=clz_name, workspace=ws_dir, functions=functions
+            ),
         ):
             with patch("builtins.input", return_value="n"):
                 main()
@@ -53,7 +57,9 @@ class TestDataflowFuncWsCreate(unittest.TestCase):
         clz_name = "Assign"
         with patch(
             "argparse.ArgumentParser.parse_args",
-            return_value=argparse.Namespace(clz_name=clz_name, workspace=ws_dir, functions=functions),
+            return_value=argparse.Namespace(
+                clz_name=clz_name, workspace=ws_dir, functions=functions
+            ),
         ):
             with patch("builtins.input", return_value="y"):
                 self.assertRaises(ValueError, main)
@@ -63,7 +69,9 @@ class TestDataflowFuncWsCreate(unittest.TestCase):
         ws_dir = "./test_assign_ws"
         with patch(
             "argparse.ArgumentParser.parse_args",
-            return_value=argparse.Namespace(workspace=ws_dir, functions=functions, clz_name=""),
+            return_value=argparse.Namespace(
+                workspace=ws_dir, functions=functions, clz_name=""
+            ),
         ):
             with patch("builtins.input", return_value="y"):
                 main()
@@ -76,7 +84,9 @@ class TestDataflowFuncWsCreate(unittest.TestCase):
         clz_name = "Assign"
         with patch(
             "argparse.ArgumentParser.parse_args",
-            return_value=argparse.Namespace(clz_name=clz_name, workspace=ws_dir, functions=functions),
+            return_value=argparse.Namespace(
+                clz_name=clz_name, workspace=ws_dir, functions=functions
+            ),
         ):
             with patch("builtins.input", return_value="y"):
                 self.assertRaises(ValueError, main)
@@ -89,7 +99,9 @@ class TestDataflowFuncWsCreate(unittest.TestCase):
         clz_name = "Assign"
         with patch(
             "argparse.ArgumentParser.parse_args",
-            return_value=argparse.Namespace(clz_name=clz_name, workspace=ws_dir, functions=functions),
+            return_value=argparse.Namespace(
+                clz_name=clz_name, workspace=ws_dir, functions=functions
+            ),
         ):
             with patch("builtins.input", return_value="y"):
                 self.assertRaises(ValueError, main)
@@ -102,7 +114,9 @@ class TestDataflowFuncWsCreate(unittest.TestCase):
         clz_name = "Assign"
         with patch(
             "argparse.ArgumentParser.parse_args",
-            return_value=argparse.Namespace(clz_name=clz_name, workspace=ws_dir, functions=functions),
+            return_value=argparse.Namespace(
+                clz_name=clz_name, workspace=ws_dir, functions=functions
+            ),
         ):
             with patch("builtins.input", return_value="y"):
                 self.assertRaises(ValueError, main)

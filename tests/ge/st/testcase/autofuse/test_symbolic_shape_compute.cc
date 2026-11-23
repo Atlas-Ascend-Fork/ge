@@ -5020,6 +5020,155 @@ TEST_F(SymbolicShapeComputeST, test_binary_symbolic_kernels) {
   EXPECT_EQ(result_value, expected_values);
 }
 
+TEST_F(SymbolicShapeComputeST, test_mod_and_bitwise_xor_symbolic_values) {
+  auto lhs = builder_->CreateConst(std::vector<int32_t>{7, 8, 9, 10}, std::vector<int64_t>{2, 2});
+  auto rhs = builder_->CreateConst(std::vector<int32_t>{3, 3}, std::vector<int64_t>{1, 2});
+  auto mod = es::Mod(lhs, rhs);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(mod, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  auto mod_node = cg->FindFirstNodeMatchType("Mod");
+  ASSERT_NE(mod_node, nullptr);
+  auto mod_attr = mod_node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(mod_attr, nullptr);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues(mod_attr->symbolic_tensor),
+            std::vector<Expression>({Symbol(1), Symbol(2), Symbol(0), Symbol(1)}));
+
+  builder_ = std::make_unique<ge::es::EsGraphBuilder>("Hello");
+  lhs = builder_->CreateConst(std::vector<int32_t>{-1, 7, 8, 9}, std::vector<int64_t>{2, 2});
+  rhs = builder_->CreateConst(std::vector<int32_t>{1, 3}, std::vector<int64_t>{1, 2});
+  auto bitwise_xor = es::BitwiseXor(lhs, rhs);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(bitwise_xor, 0), 0);
+  graph = builder_->BuildAndReset();
+  cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  auto xor_node = cg->FindFirstNodeMatchType("BitwiseXor");
+  ASSERT_NE(xor_node, nullptr);
+  auto xor_attr = xor_node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(xor_attr, nullptr);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues(xor_attr->symbolic_tensor),
+            std::vector<Expression>({Symbol(-2), Symbol(4), Symbol(9), Symbol(10)}));
+}
+
+/**
+ * 用例描述：验证 BitwiseXor 对符号操作数的零恒等、布尔取反以及不支持表达式的降级。
+ * 预置条件：
+ *   1. 两个 Data 输入使用静态 Shape，直接注入整数、符号及布尔表达式 SymbolicValue。
+ * 测试步骤：
+ *   1. 构造 BitwiseXor 图并执行符号推导。
+ *   2. 分别覆盖零在左右输入、布尔表达式在左右输入，以及两个非常量整数符号输入。
+ *   3. 检查输出 SymbolicValue。
+ * 预期结果：
+ *   1. 与 0 异或保留另一操作数，布尔表达式与 1 异或生成 Not 表达式。
+ *   2. 不支持的符号组合不生成 SymbolicValue，整体推导成功。
+ */
+TEST_F(SymbolicShapeComputeST, test_bitwise_xor_symbolic_identity_bool_and_unsupported) {
+  auto run_case = [this](const std::vector<Expression> &x1_values, const std::vector<Expression> &x2_values,
+                         const std::vector<Expression> &expected_values) {
+    builder_ = std::make_unique<ge::es::EsGraphBuilder>("Hello");
+    auto x1 = builder_->CreateInput(0, "x1");
+    auto x2 = builder_->CreateInput(1, "x2");
+    auto bitwise_xor = es::BitwiseXor(x1, x2);
+    ASSERT_EQ(es::EsGraphBuilder::SetOutput(bitwise_xor, 0), 0);
+    auto graph = builder_->BuildAndReset();
+    auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+    ASSERT_NE(cg, nullptr);
+
+    const auto dim = static_cast<int64_t>(x1_values.size());
+    const GeShape shape({dim});
+    for (size_t i = 0U; i < 2U; ++i) {
+      auto data_node = cg->FindNode(i == 0U ? "x1" : "x2");
+      ASSERT_NE(data_node, nullptr);
+      auto op_desc = data_node->GetOpDesc();
+      for (size_t desc_index = 0U; desc_index < op_desc->GetInputsSize(); ++desc_index) {
+        op_desc->MutableInputDesc(desc_index)->SetShape(shape);
+        op_desc->MutableInputDesc(desc_index)->SetOriginShape(shape);
+        op_desc->MutableInputDesc(desc_index)->SetDataType(DT_INT32);
+      }
+      for (size_t desc_index = 0U; desc_index < op_desc->GetOutputsSize(); ++desc_index) {
+        op_desc->MutableOutputDesc(desc_index)->SetShape(shape);
+        op_desc->MutableOutputDesc(desc_index)->SetOriginShape(shape);
+        op_desc->MutableOutputDesc(desc_index)->SetDataType(DT_INT32);
+      }
+      auto attr = op_desc->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+      ASSERT_NE(attr, nullptr);
+      attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol(dim)}));
+      SymbolicInferUtil::SetSymbolicValues(attr->symbolic_tensor, i == 0U ? x1_values : x2_values);
+    }
+
+    SymbolicShapeInference ssi;
+    ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+    auto xor_node = cg->FindFirstNodeMatchType("BitwiseXor");
+    ASSERT_NE(xor_node, nullptr);
+    auto attr = xor_node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+    ASSERT_NE(attr, nullptr);
+    if (expected_values.empty()) {
+      EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
+    } else {
+      EXPECT_EQ(SymbolicInferUtil::GetSymbolicValues(attr->symbolic_tensor), expected_values);
+    }
+  };
+
+  const auto predicate = sym::Lt(Symbol("a"), Symbol("b"));
+  run_case({Symbol(0), predicate, Symbol("z")}, {Symbol("y"), Symbol(1), Symbol(0)},
+           {Symbol("y"), sym::Not(predicate), Symbol("z")});
+  run_case({Symbol(1)}, {predicate}, {sym::Not(predicate)});
+  run_case({Symbol("x")}, {Symbol("y")}, {});
+}
+
+/**
+ * 用例描述：验证 BitwiseXor 广播结果超过值符号化上限时安全降级。
+ * 预置条件：
+ *   1. 两个 Data 输入 Shape 分别为 [1,400] 和 [400,1]，均注入 400 个 SymbolicValue。
+ * 测试步骤：
+ *   1. 构造 BitwiseXor 图，使广播输出 Shape 为 [400,400]。
+ *   2. 执行符号推导并检查输出 SymbolicValue。
+ * 预期结果：
+ *   1. 整体符号推导成功，不物化超限输出值。
+ */
+TEST_F(SymbolicShapeComputeST, test_bitwise_xor_broadcast_output_over_limit_degrades) {
+  auto x1 = builder_->CreateInput(0, "x1");
+  auto x2 = builder_->CreateInput(1, "x2");
+  auto bitwise_xor = es::BitwiseXor(x1, x2);
+  ASSERT_EQ(es::EsGraphBuilder::SetOutput(bitwise_xor, 0), 0);
+  auto graph = builder_->BuildAndReset();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+
+  const std::vector<std::vector<int64_t>> dims = {{1, 400}, {400, 1}};
+  for (size_t i = 0U; i < dims.size(); ++i) {
+    auto data_node = cg->FindNode(i == 0U ? "x1" : "x2");
+    ASSERT_NE(data_node, nullptr);
+    auto op_desc = data_node->GetOpDesc();
+    for (size_t desc_index = 0U; desc_index < op_desc->GetInputsSize(); ++desc_index) {
+      op_desc->MutableInputDesc(desc_index)->SetShape(GeShape(dims[i]));
+      op_desc->MutableInputDesc(desc_index)->SetOriginShape(GeShape(dims[i]));
+      op_desc->MutableInputDesc(desc_index)->SetDataType(DT_INT32);
+    }
+    for (size_t desc_index = 0U; desc_index < op_desc->GetOutputsSize(); ++desc_index) {
+      op_desc->MutableOutputDesc(desc_index)->SetShape(GeShape(dims[i]));
+      op_desc->MutableOutputDesc(desc_index)->SetOriginShape(GeShape(dims[i]));
+      op_desc->MutableOutputDesc(desc_index)->SetDataType(DT_INT32);
+    }
+    auto attr = op_desc->MutableOutputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+    ASSERT_NE(attr, nullptr);
+    attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol(dims[i][0]), Symbol(dims[i][1])}));
+    SymbolicInferUtil::SetSymbolicValues(attr->symbolic_tensor, std::vector<Expression>(400, Symbol(1)));
+  }
+
+  SymbolicShapeInference ssi;
+  ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+  auto xor_node = cg->FindFirstNodeMatchType("BitwiseXor");
+  ASSERT_NE(xor_node, nullptr);
+  auto attr = xor_node->GetOpDesc()->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  EXPECT_EQ(attr->symbolic_tensor.GetValueCount(), 0U);
+}
+
 TEST_F(SymbolicShapeComputeST, test_logical_not_symbolic_kernel) {
   auto input = builder_->CreateConst(std::vector<int32_t>{1, 0, 0, 1}, std::vector<int64_t>{2, 2});
   ASSERT_NE(input.GetCTensorHolder(), nullptr);

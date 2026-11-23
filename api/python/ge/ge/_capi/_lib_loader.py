@@ -18,7 +18,9 @@ import os
 from typing import Optional
 
 
-def load_lib_from_path(lib_name: str, lib_dir: str, mode: Optional[int] = None) -> ctypes.CDLL:
+def load_lib_from_path(
+    lib_name: str, lib_dir: str, mode: Optional[int] = None
+) -> ctypes.CDLL:
     """Load library from file system with fallback search paths.
 
     Args:
@@ -32,7 +34,11 @@ def load_lib_from_path(lib_name: str, lib_dir: str, mode: Optional[int] = None) 
     Raises:
         OSError: If library cannot be loaded from any candidate path.
     """
-    candidates = [lib_name] if os.path.isabs(lib_name) else [os.path.join(lib_dir, lib_name), lib_name]
+    candidates = (
+        [lib_name]
+        if os.path.isabs(lib_name)
+        else [os.path.join(lib_dir, lib_name), lib_name]
+    )
 
     errors = []
     for path in candidates:

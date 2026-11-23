@@ -434,11 +434,11 @@ graphStatus StageSplitter::RecordInputBindings(const StagePlan &plan) {
     GE_ASSERT_TRUE(used[input_class].insert(index).second,
                    "Duplicated input index %" PRId64 " for class %u in stage %s", index,
                    static_cast<uint32_t>(input_class), StageKindToString(item.second.stage));
-    // 加载输入只能在加载阶段物化为 ConstData，执行输入只能在执行阶段物化为 Data。
+    // 旧 ConstData 保留加载阶段约束。外部 Data 的来源由 codegen 收集器确定。
     if (input_class == StageInputClass::kLoad) {
       GE_ASSERT_TRUE(item.second.stage == StageKind::kInit, "Load input %s is declared in stage %s, only init is legal",
                      NodeName(*node).c_str(), StageKindToString(item.second.stage));
-    } else if (input_class == StageInputClass::kExecute) {
+    } else if (input_class == StageInputClass::kExecute && !defer_data_bindings_) {
       GE_ASSERT_TRUE(item.second.stage == StageKind::kMain,
                      "Execute input %s is declared in stage %s, only main is legal", NodeName(*node).c_str(),
                      StageKindToString(item.second.stage));
@@ -446,25 +446,22 @@ graphStatus StageSplitter::RecordInputBindings(const StagePlan &plan) {
     input_bindings_[item.second.stage][input_class].emplace_back(StageInputBinding{input_class, index, node});
   }
 
-  std::map<StageInputClass, std::set<int64_t>> user_indexes;
   for (auto &stage_item : input_bindings_) {
     for (auto &class_item : stage_item.second) {
       std::sort(class_item.second.begin(), class_item.second.end(),
                 [](const StageInputBinding &lhs, const StageInputBinding &rhs) { return lhs.index < rhs.index; });
-      if (class_item.first == StageInputClass::kFixed) {
-        continue;
-      }
-      for (const auto &binding : class_item.second) {
-        user_indexes[class_item.first].insert(binding.index);
-      }
     }
   }
-  // 加载输入、执行输入各自从 0 连续；用户槽与固定槽不共用编号空间。
-  for (const auto &item : user_indexes) {
-    const char *class_name = (item.first == StageInputClass::kLoad) ? "load" : "execute";
-    GE_ASSERT_TRUE(*item.second.begin() == 0, "%s input indexes must start from 0", class_name);
-    GE_ASSERT_TRUE(static_cast<size_t>(*item.second.rbegin()) + 1U == item.second.size(),
-                   "%s input indexes are not continuous", class_name);
+  if (!defer_data_bindings_) {
+    for (const auto &item : used) {
+      if (item.first == StageInputClass::kFixed) {
+        continue;
+      }
+      const char *class_name = (item.first == StageInputClass::kLoad) ? "load" : "execute";
+      GE_ASSERT_TRUE(*item.second.begin() == 0, "%s input indexes must start from 0", class_name);
+      GE_ASSERT_TRUE(static_cast<size_t>(*item.second.rbegin()) + 1U == item.second.size(),
+                     "%s input indexes are not continuous", class_name);
+    }
   }
   return GRAPH_SUCCESS;
 }

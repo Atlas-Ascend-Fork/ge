@@ -146,7 +146,9 @@ class LlmConfig(object):
                 self._options["ge.session_device_id"] = str(self.device_id)
             else:
                 self._options["ge.session_device_id"] = str(self.device_id[0])
-                self._options["ge.exec.deviceId"] = ";".join([str(dev) for dev in self.device_id])
+                self._options["ge.exec.deviceId"] = ";".join(
+                    [str(dev) for dev in self.device_id]
+                )
         if self.sync_kv_timeout is not None:
             self._options["llm.SyncKvCacheWaitTime"] = str(self.sync_kv_timeout)
         if self.deploy_res_path:
@@ -158,9 +160,13 @@ class LlmConfig(object):
         if self._host_mem_pool_cfg:
             self._options["llm.HostMemPoolConfig"] = str(self._host_mem_pool_cfg)
         if self._enable_cache_manager is not None:
-            self._options["llm.EnableCacheManager"] = "1" if self._enable_cache_manager else "0"
+            self._options["llm.EnableCacheManager"] = (
+                "1" if self._enable_cache_manager else "0"
+            )
         if self._enable_remote_cache_accessible is not None:
-            self._options["llm.EnableRemoteCacheAccessible"] = "1" if self._enable_remote_cache_accessible else "0"
+            self._options["llm.EnableRemoteCacheAccessible"] = (
+                "1" if self._enable_remote_cache_accessible else "0"
+            )
 
         # below is offline
         if self._cluster_info:
@@ -198,11 +204,18 @@ class LlmConfig(object):
         check_isinstance("device_id", device_id, [list, tuple, int])
         if check_type(device_id, list) or check_type(device_id, tuple):
             check_isinstance("device_id", device_id, [list, tuple], int)
-            [raise_if_false(dev_id >= 0, "device_id should be greater than or equal to zero.") for dev_id in device_id]
+            [
+                raise_if_false(
+                    dev_id >= 0, "device_id should be greater than or equal to zero."
+                )
+                for dev_id in device_id
+            ]
             [check_int32("device_id", dev_id) for dev_id in device_id]
         else:
             check_isinstance("device_id", device_id, int)
-            raise_if_false(device_id >= 0, "device_id should be greater than or equal to zero.")
+            raise_if_false(
+                device_id >= 0, "device_id should be greater than or equal to zero."
+            )
             check_int32("device_id", device_id)
         self._device_id = device_id
 
@@ -281,7 +294,9 @@ class LlmConfig(object):
         check_isinstance("sync_kv_timeout", sync_kv_timeout, [int, str])
         if check_type(sync_kv_timeout, str):
             raise_if_false(sync_kv_timeout.isdigit(), "sync_kv_timeout must be digit.")
-        raise_if_false(int(sync_kv_timeout) > 0, "sync_kv_timeout should be greater than zero.")
+        raise_if_false(
+            int(sync_kv_timeout) > 0, "sync_kv_timeout should be greater than zero."
+        )
         check_int32("sync_kv_timeout", int(sync_kv_timeout))
         self._sync_kv_timeout = sync_kv_timeout
 
@@ -296,7 +311,9 @@ class LlmConfig(object):
 
     @property
     def enable_cache_manager(self):
-        return False if self._enable_cache_manager is None else self._enable_cache_manager
+        return (
+            False if self._enable_cache_manager is None else self._enable_cache_manager
+        )
 
     @enable_cache_manager.setter
     def enable_cache_manager(self, enable_cache_manager: bool):
@@ -305,11 +322,17 @@ class LlmConfig(object):
 
     @property
     def enable_remote_cache_accessible(self):
-        return False if self._enable_remote_cache_accessible is None else self._enable_remote_cache_accessible
+        return (
+            False
+            if self._enable_remote_cache_accessible is None
+            else self._enable_remote_cache_accessible
+        )
 
     @enable_remote_cache_accessible.setter
     def enable_remote_cache_accessible(self, enable_remote_cache_accessible: bool):
-        check_isinstance("enable_remote_cache_accessible", enable_remote_cache_accessible, [bool])
+        check_isinstance(
+            "enable_remote_cache_accessible", enable_remote_cache_accessible, [bool]
+        )
         self._enable_remote_cache_accessible = enable_remote_cache_accessible
 
     @property

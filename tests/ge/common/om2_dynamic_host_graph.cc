@@ -9,18 +9,19 @@
  */
 
 #include "om2_dynamic_host_graph.h"
-#include "securec.h"
 #include "common/memory/tensor_trans_utils.h"
 #include "common/om2/dynamic_codegen/info_collect/kernel_code_builder.h"
 #include "common/om2/dynamic_codegen/info_collect/kernel/common_collector_utils.h"
 #include "exe_graph/lowering/exe_graph_attrs.h"
 #include "exe_graph/runtime/kernel_context.h"
+#include "exe_graph/runtime/extended_kernel_context.h"
 #include "exe_graph/runtime/runtime_tensor.h"
 #include "ge/ge_api_error_codes.h"
 #include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/utils/attr_utils.h"
 #include "graph/utils/execute_graph_utils.h"
+#include "graph/utils/tensor_utils.h"
 #include "register/kernel_registry.h"
 
 namespace gert {
@@ -82,13 +83,35 @@ ge::graphStatus Om2ExternalGeneratorFailingAffine(KernelContext *context) {
 }
 REGISTER_KERNEL(Om2ExternalGeneratorFailingAffine).RunFunc(Om2ExternalGeneratorFailingAffine);
 
+// The same test kernel can consume metadata produced by either compilation path.
+ge::graphStatus Om2ExternalGeneratorSourceAffine(KernelContext *context) {
+  const auto *extended = reinterpret_cast<const ExtendedKernelContext *>(context);
+  const auto *info = extended->GetComputeNodeInfo();
+  if (info == nullptr || info->GetNodeName() == nullptr || info->GetNodeType() == nullptr ||
+      std::string(info->GetNodeName()) != "matmul_source" || std::string(info->GetNodeType()) != "MatMul" ||
+      info->GetInputsNum() != 2U || info->GetOutputsNum() != 2U || info->GetIrInputsNum() != 1U ||
+      info->GetIrOutputsNum() != 0U || info->GetInputInstanceInfo(0U)->GetInstanceStart() != 0U ||
+      info->GetInputInstanceInfo(0U)->GetInstanceNum() != 2U) {
+    return ge::GRAPH_PARAM_INVALID;
+  }
+  const auto *attrs = info->GetAttrs();
+  const auto *axis = attrs->GetInt(0U);
+  const auto *axes = attrs->GetListInt(1U);
+  if (axis == nullptr || *axis != -7 || axes == nullptr || axes->GetSize() != 0U) {
+    return ge::GRAPH_PARAM_INVALID;
+  }
+  return Om2ExternalGeneratorAffine(context);
+}
+REGISTER_KERNEL(Om2ExternalGeneratorSourceAffine).RunFunc(Om2ExternalGeneratorSourceAffine);
+
 class AffineCollector final : public om2::KernelCodeBuilder {
  public:
   ge::graphStatus Collect(const om2::KernelCollectContext &context, om2::KernelProgramInfo &info) override {
     if (context.input_chain_indices.size() != 3U || !context.output_chain_indices.empty()) {
       return ge::GRAPH_PARAM_INVALID;
     }
-    auto status = om2::InitKernelProgramInfo(context, om2::OutputCreatePolicy::kGraphBound, false, info);
+    const bool requires_source = context.node.GetType() == "Om2ExternalGeneratorSourceAffine";
+    auto status = om2::InitKernelProgramInfo(context, om2::OutputCreatePolicy::kGraphBound, requires_source, info);
     if (status != ge::GRAPH_SUCCESS) {
       return status;
     }
@@ -104,6 +127,7 @@ class AffineCollector final : public om2::KernelCodeBuilder {
   }
 };
 REGISTER_KERNEL_CODE_BUILDER("Om2ExternalGeneratorAffine", AffineCollector);
+REGISTER_KERNEL_CODE_BUILDER("Om2ExternalGeneratorSourceAffine", AffineCollector);
 REGISTER_KERNEL_CODE_BUILDER("Om2ExternalGeneratorFailingAffine", AffineCollector);
 
 ge::FastNode *AddNode(ge::ExecuteGraph &graph, const char *name, const char *type,
@@ -124,48 +148,38 @@ ge::FastNode *AddNode(ge::ExecuteGraph &graph, const char *name, const char *typ
 
 namespace {
 bool SetTensorInput(ge::FastNode &node, const int64_t index) {
-  return ge::AttrUtils::SetInt(node.GetOpDescPtr(), attr::kIndex, index) &&
-         ge::AttrUtils::SetStr(node.GetOpDescPtr(), attr::kInputKind, attr::kInputKindTensor);
+  return ge::AttrUtils::SetInt(node.GetOpDescPtr(), attr::kIndex, index);
 }
 
-bool SetEmbeddedAffineWeight(ge::ExecuteGraph &graph, ge::FastNode *parameters) {
-  const std::vector<float> storage{1234.0F, 2.0F, -3.0F, -5678.0F};
-  std::vector<uint8_t> bytes(storage.size() * sizeof(float));
-  if (memcpy_s(bytes.data(), bytes.size(), storage.data(), bytes.size()) != EOK) {
+bool BindAffineParametersAtLoad(ge::FastNode &parameters) {
+  const auto desc = parameters.GetOpDescPtr();
+  auto output_desc = desc->GetOutputDesc(0U);
+  // Use the same descriptor metadata as a Const emitted by GE lowering.
+  if (!ge::AttrUtils::SetInt(output_desc, "om2_weight_index", 0)) {
     return false;
   }
-  const ge::GeTensorDesc byte_desc(ge::GeShape({static_cast<int64_t>(bytes.size())}), ge::FORMAT_ND, ge::DT_UINT8);
+  ge::TensorUtils::SetDataOffset(output_desc, sizeof(float));
   Tensor tensor({{2}, {2}}, {ge::FORMAT_ND, ge::FORMAT_ND, {}}, kOnHost, ge::DT_FLOAT, nullptr);
-  if (!ge::AttrUtils::SetStr(parameters->GetOpDescPtr(), attr::kStage, attr::kStageInit) ||
-      !ge::AttrUtils::SetZeroCopyBytes(
-          parameters->GetOpDescBarePtr(), kConstValue,
-          ge::Buffer::CopyFrom(reinterpret_cast<const uint8_t *>(&tensor), sizeof(tensor))) ||
-      !ge::AttrUtils::SetListStr(graph, attr::kWeightIds, {"coefficients"}) ||
-      !ge::AttrUtils::SetStr(graph, "gert.weight.coefficients.mode", "embedded") ||
-      !ge::AttrUtils::SetStr(graph, "gert.weight.coefficients.placement", "host") ||
-      !ge::AttrUtils::SetInt(graph, "gert.weight.coefficients.size", bytes.size()) ||
-      !ge::AttrUtils::SetTensor(graph, "gert.weight.coefficients.content", ge::GeTensor(byte_desc, bytes)) ||
-      !ge::AttrUtils::SetStr(parameters->GetOpDescPtr(), attr::kNodeWeightId, "coefficients") ||
-      !ge::AttrUtils::SetInt(parameters->GetOpDescPtr(), "gert.weight.offset", sizeof(float)) ||
-      !ge::AttrUtils::SetInt(parameters->GetOpDescPtr(), "gert.weight.length", 2U * sizeof(float))) {
-    return false;
-  }
-  return true;
+  tensor.SetSize(2U * sizeof(float));
+  return desc->UpdateOutputDesc(0U, output_desc) == ge::GRAPH_SUCCESS &&
+         ge::AttrUtils::SetStr(desc, attr::kStage, attr::kStageInit) &&
+         ge::AttrUtils::SetZeroCopyBytes(
+             parameters.GetOpDescBarePtr(), kConstValue,
+             ge::Buffer::CopyFrom(reinterpret_cast<const uint8_t *>(&tensor), sizeof(tensor)));
 }
 
 bool SetAffineGraphIo(ge::ExecuteGraph &graph, const std::vector<ge::GeTensor> &input_descs,
-                      const std::vector<std::string> &input_names, const ge::GeTensorDesc &output_desc,
-                      ge::FastNode *output) {
+                      ge::GeTensorDesc output_desc, ge::FastNode *output) {
+  output_desc.SetName("result");
   return ge::AttrUtils::SetListTensor(graph, attr::kModelInputs, input_descs) &&
-         ge::AttrUtils::SetListStr(graph, attr::kModelInputNames, input_names) &&
          ge::AttrUtils::SetListTensor(graph, attr::kModelOutputs, {ge::GeTensor(output_desc)}) &&
-         ge::AttrUtils::SetListStr(graph, attr::kModelOutputNames, {"result"}) &&
          ge::ExecuteGraphUtils::SetGraphOutputs(&graph, {{output, 0}}) == ge::GRAPH_SUCCESS;
 }
 }  // namespace
 
-std::shared_ptr<ge::ExecuteGraph> AffineGraph(const bool embedded_weight, const bool fail_run) {
-  auto graph = std::make_shared<ge::ExecuteGraph>(embedded_weight ? "external_weighted_affine" : "external_affine");
+std::shared_ptr<ge::ExecuteGraph> AffineGraph(const bool load_bound_parameters, const bool fail_run) {
+  auto graph =
+      std::make_shared<ge::ExecuteGraph>(load_bound_parameters ? "external_load_bound_affine" : "external_affine");
   ge::GeTensorDesc dynamic_desc(ge::GeShape({-1}), ge::FORMAT_ND, ge::DT_FLOAT);
   // Keep shape dynamic while supplying the supported no-tiling memory bound.
   // Packaging records its maximum byte size; each Run still supplies its actual shape.
@@ -175,7 +189,7 @@ std::shared_ptr<ge::ExecuteGraph> AffineGraph(const bool embedded_weight, const 
   }
   const ge::GeTensorDesc parameters_desc(ge::GeShape({2}), ge::FORMAT_ND, ge::DT_FLOAT);
   auto *input = AddNode(*graph, "input", "Data", {}, {dynamic_desc});
-  auto *parameters = AddNode(*graph, "parameters", embedded_weight ? "Const" : "Data", {}, {parameters_desc});
+  auto *parameters = AddNode(*graph, "parameters", load_bound_parameters ? "Const" : "Data", {}, {parameters_desc});
   auto *output = AddNode(*graph, "output", "OutputData", {}, {dynamic_desc});
   auto *affine =
       AddNode(*graph, "affine", fail_run ? "Om2ExternalGeneratorFailingAffine" : "Om2ExternalGeneratorAffine",
@@ -187,9 +201,9 @@ std::shared_ptr<ge::ExecuteGraph> AffineGraph(const bool embedded_weight, const 
     return nullptr;
   }
   std::vector<ge::GeTensor> input_descs{ge::GeTensor(dynamic_desc)};
-  std::vector<std::string> input_names{"input"};
-  if (embedded_weight) {
-    if (!SetEmbeddedAffineWeight(*graph, parameters)) {
+  input_descs.front().MutableTensorDesc().SetName("input");
+  if (load_bound_parameters) {
+    if (!BindAffineParametersAtLoad(*parameters)) {
       return nullptr;
     }
   } else {
@@ -197,11 +211,10 @@ std::shared_ptr<ge::ExecuteGraph> AffineGraph(const bool embedded_weight, const 
       return nullptr;
     }
     input_descs.emplace_back(parameters_desc);
-    input_names.emplace_back("parameters");
+    input_descs.back().MutableTensorDesc().SetName("parameters");
   }
   if (graph->AddEdge(input, 0, affine, 0) == nullptr || graph->AddEdge(parameters, 0, affine, 1) == nullptr ||
-      graph->AddEdge(output, 0, affine, 2) == nullptr ||
-      !SetAffineGraphIo(*graph, input_descs, input_names, dynamic_desc, output)) {
+      graph->AddEdge(output, 0, affine, 2) == nullptr || !SetAffineGraphIo(*graph, input_descs, dynamic_desc, output)) {
     return nullptr;
   }
   return graph;

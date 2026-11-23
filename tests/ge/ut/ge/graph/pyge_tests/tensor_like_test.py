@@ -68,10 +68,14 @@ class TestTensorLike:
         ):
             _flatten_and_infer_shape([[1, 2], [3]])
 
-        with pytest.raises(TypeError, match="Value must be int/float or nested lists of int|float"):
+        with pytest.raises(
+            TypeError, match="Value must be int/float or nested lists of int|float"
+        ):
             _flatten_and_infer_shape(["1"])
 
-        with pytest.raises(TypeError, match="Value must be int/float or nested lists of int|float"):
+        with pytest.raises(
+            TypeError, match="Value must be int/float or nested lists of int|float"
+        ):
             _flatten_and_infer_shape([[]])
 
     @staticmethod
@@ -118,10 +122,14 @@ class TestTensorLike:
 
     def test_convert_invalid_type_raises_type_error(self, builder):
         """验证非数值或非数值列表会触发 TypeError"""
-        with pytest.raises(TypeError, match="Value must be int/float or nested lists of int|float"):
+        with pytest.raises(
+            TypeError, match="Value must be int/float or nested lists of int|float"
+        ):
             convert_to_tensor_holder("invalid", builder)
 
-        with pytest.raises(TypeError, match="Value must be int/float or nested lists of int|float"):
+        with pytest.raises(
+            TypeError, match="Value must be int/float or nested lists of int|float"
+        ):
             convert_to_tensor_holder(["invalid"], builder)
 
     @staticmethod

@@ -91,7 +91,9 @@ class TestTensorHolder:
         with pytest.raises(TypeError, match="All shape dimensions must be integers"):
             tensor_holder.set_shape([1, "invalid", 3])
 
-    @pytest.mark.skipif(not is_generated_lib_available(), reason="Generated library not available")
+    @pytest.mark.skipif(
+        not is_generated_lib_available(), reason="Generated library not available"
+    )
     def test_operator_overloading(self, builder):
         """测试操作符重载（需要生成的操作符库）"""
         tensor1 = builder.create_const_float(2.0)
@@ -114,7 +116,7 @@ class TestTensorHolder:
 
         # 测试操作符重载错误
         with pytest.raises(RuntimeError, match="not available"):
-            var = tensor_holder + tensor2
+            tensor_holder + tensor2
 
     @pytest.mark.parametrize(
         "data_type",
@@ -146,7 +148,9 @@ class TestTensorHolder:
         result = tensor_holder.set_format(format)
         assert isinstance(result, TensorHolder)
 
-    @pytest.mark.parametrize("shape", [[], [1], [1, 2], [1, 2, 3], [1, 2, 3, 4], [224, 224, 3]])
+    @pytest.mark.parametrize(
+        "shape", [[], [1], [1, 2], [1, 2, 3], [1, 2, 3, 4], [224, 224, 3]]
+    )
     def test_set_different_shapes(self, tensor_holder, shape):
         """测试设置不同形状"""
         result = tensor_holder.set_shape(shape)
@@ -181,7 +185,7 @@ class TestTensorHolder:
         assert producer_node.name == tensor.name
 
         # 验证Node对象不拥有所有权（快照模式）
-        assert producer_node._owns_handle == False
+        assert producer_node._owns_handle is False
 
         # 验证Node对象有基本属性和方法
         assert hasattr(producer_node, "name")
@@ -215,7 +219,9 @@ class TestTensorHolder:
         builder2 = GraphBuilder("test_graph2")
         tensor1 = builder1.create_const_float(1.0)
         tensor2 = builder2.create_const_float(2.0)
-        with pytest.raises(ValueError, match="Cannot perform add: tensors from different GraphBuilders"):
+        with pytest.raises(
+            ValueError, match="Cannot perform add: tensors from different GraphBuilders"
+        ):
             tensor1 + tensor2
 
     def test_arithmetic_operations_with_mocked_lib(self, builder, monkeypatch):

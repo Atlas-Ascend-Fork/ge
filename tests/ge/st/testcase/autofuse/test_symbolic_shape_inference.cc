@@ -8131,6 +8131,51 @@ TEST_F(SymbolicShapeInferenceST, InferShapeForFloorMod) {
   EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({s2, s1, s0, s0}));
 }
 
+/**
+ * 用例描述：验证 Mod 和 BitwiseXor 的符号 Shape 推导支持与算子原型一致的整数广播场景。
+ * 预置条件：
+ *   1. 使用 GE 符号 Shape 推导和 Eager Style 算子原型。
+ *   2. 两个输入 Shape 分别为 [s2, s1] 和 [s1]，输入 dtype 使用整数类型。
+ * 测试步骤：
+ *   1. 分别构造 Mod 和 BitwiseXor 图并设置图输出。
+ *   2. 执行 GE 符号 Shape 推导。
+ *   3. 检查两个算子的输出符号 Shape。
+ * 预期结果：
+ *   1. 两个算子均能完成符号 Shape 推导。
+ *   2. 输出 Shape 均为 [s2, s1]，与算子广播语义一致。
+ */
+TEST_F(SymbolicShapeInferenceST, InferShapeForModAndBitwiseXor) {
+  auto run_broadcast_case = [this](const std::string &op_type) {
+    builder_ = std::make_unique<ge::es::EsGraphBuilder>("Hello");
+    const auto data0_name = "data0_" + op_type;
+    const auto data1_name = "data1_" + op_type;
+    auto data0 = builder_->CreateInput(0, data0_name.c_str());
+    auto data1 = builder_->CreateInput(1, data1_name.c_str());
+    data0.SetOriginSymbolShape(std::vector<const char *>({"s2", "s1"}));
+    data1.SetOriginSymbolShape(std::vector<const char *>({"s1"}));
+    ASSERT_NE(data0.GetCTensorHolder(), nullptr);
+    ASSERT_NE(data1.GetCTensorHolder(), nullptr);
+
+    auto output = op_type == "Mod" ? es::Mod(data0, data1) : es::BitwiseXor(data0, data1);
+    ASSERT_EQ(es::EsGraphBuilder::SetOutput(output, 0), 0);
+    auto graph = builder_->BuildAndReset();
+    auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+    ASSERT_NE(cg, nullptr);
+    SymbolicShapeInference ssi;
+    ASSERT_EQ(ssi.Infer(cg), ge::SUCCESS);
+    auto node = cg->FindFirstNodeMatchType(op_type);
+    ASSERT_NE(node, nullptr);
+    auto op_desc = node->GetOpDesc();
+    ASSERT_NE(op_desc, nullptr);
+    auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+    ASSERT_NE(attr, nullptr);
+    EXPECT_EQ(attr->symbolic_tensor.GetOriginSymbolShape(), gert::SymbolShape({ge::Symbol("s2"), ge::Symbol("s1")}));
+  };
+
+  run_broadcast_case("Mod");
+  run_broadcast_case("BitwiseXor");
+}
+
 TEST_F(SymbolicShapeInferenceST, InferShapeForLayerNormXBackpropV2) {
   auto data0 = builder_->CreateInput(0, "data0");
   auto data1 = builder_->CreateInput(1, "data1");

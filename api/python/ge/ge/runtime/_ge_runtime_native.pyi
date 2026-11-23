@@ -24,7 +24,6 @@ __all__: List[str] = [
     "TensorPlacement",
 ]
 
-
 class TensorPlacement:
     """Placement enum for runtime Tensor data.
 
@@ -37,7 +36,6 @@ class TensorPlacement:
     FOLLOWING: "TensorPlacement"
     ON_DEVICE_P2P: "TensorPlacement"
     END: "TensorPlacement"
-
 
 class Shape:
     """Runtime shape represented by dimension values.
@@ -90,7 +88,6 @@ class Shape:
         """Set this shape to scalar by clearing all dimensions."""
         ...
 
-
 class StorageShape:
     """Origin and runtime shapes for Tensor metadata.
 
@@ -126,7 +123,6 @@ class StorageShape:
         """Replace the runtime/storage shape with ``shape``."""
         ...
 
-
 class TensorDesc:
     """Owning shape and data type metadata used by custom op inference."""
 
@@ -157,7 +153,6 @@ class TensorDesc:
     def data_type(self, value: DataType) -> None:
         """Set the tensor data type."""
         ...
-
 
 class ExpandDimsType:
     """Expand-dimension rule.
@@ -199,7 +194,6 @@ class ExpandDimsType:
     def set_expand_index(self, index: int) -> None:
         """Mark ``index`` as an inserted dimension."""
         ...
-
 
 class StorageFormat:
     """Origin and runtime formats for Tensor metadata.
@@ -249,7 +243,6 @@ class StorageFormat:
     def set_expand_dims_type(self, value: ExpandDimsType) -> None:
         """Set the expand-dimension rule."""
         ...
-
 
 class Tensor:
     """Runtime tensor metadata.

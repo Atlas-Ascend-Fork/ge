@@ -19,14 +19,17 @@ class ExecuteGraph;
 }  // namespace ge
 
 namespace gert {
+struct GertModelDescInfo;
+ge::graphStatus NormalizeExecuteGraphConstants(ge::ExecuteGraph &graph);
+
 // 为没有经过 GE lowering 的执行图生成 codegen 所需的元信息并挂到图属性上。
 // GE 路径在 lowering 阶段由 ExeGraphSerializer 完成同样的工作；外部执行图没有那个上下文，
 // 元信息改由内部图属性推导：
 //   - 模型 IO 描述   <- gert.model.*  (GertModelDescInfo)
-//   - ComputeNodeInfo <- gert.source.* (GertSourceInfo -> GertComputeNodeDef)
+//   - ComputeNodeInfo <- 节点的 gert.source_op
 //   - KernelExtendInfo / 字符串池 <- 节点自身的名称与类型
 // 不创建临时 Node/ComputeGraph，也不修改图的拓扑。重复调用是幂等的。
-VISIBILITY_EXPORT ge::graphStatus PrepareExecuteGraphMetadata(ge::ExecuteGraph &graph);
+VISIBILITY_EXPORT ge::graphStatus PrepareExecuteGraphMetadata(ge::ExecuteGraph &graph, const GertModelDescInfo &info);
 }  // namespace gert
 
 #endif  // AIR_CXX_RUNTIME_V2_LOWERING_GERT_METADATA_PREPARER_H_

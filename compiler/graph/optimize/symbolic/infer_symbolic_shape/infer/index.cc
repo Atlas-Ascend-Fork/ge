@@ -9,7 +9,7 @@
  */
 
 #include "graph/compute_graph.h"
-#include "exe_graph/runtime/infer_symbol_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "common/checker.h"
 #include "common/framework_types_internal.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
@@ -53,7 +53,7 @@ bool AreIndicesContiguous(const std::vector<Expression> &sizes_value) {
   return true;
 }
 
-graphStatus CollectIndicesShapes(const gert::InferSymbolShapeContext *context, size_t x_dim_num,
+graphStatus CollectIndicesShapes(const gert::InferSymbolContext *context, size_t x_dim_num,
                                  const std::vector<Expression> &sizes_value,
                                  std::vector<gert::SymbolShape> &indices_shape_list) {
   int64_t indexed_sizes_num = sizes_value.size();
@@ -82,7 +82,7 @@ graphStatus CollectIndicesShapes(const gert::InferSymbolShapeContext *context, s
   return GRAPH_SUCCESS;
 }
 
-graphStatus HandleNoIndicesCase(gert::InferSymbolShapeContext *context, const gert::SymbolShape &x_shape) {
+graphStatus HandleNoIndicesCase(gert::InferSymbolContext *context, const gert::SymbolShape &x_shape) {
   auto output_shape = context->GetOutputSymbolShape(IDX_Y);
   GE_ASSERT_NOTNULL(output_shape);
   *output_shape = x_shape;
@@ -110,7 +110,7 @@ bool IsIndexedDimension(const std::vector<Expression> &sizes_value, size_t i) {
   return sizes_value[i].GetConstValue(size_val) && size_val == 1;
 }
 
-graphStatus ComputeOutputShape(gert::InferSymbolShapeContext *context, const gert::SymbolShape &x_shape,
+graphStatus ComputeOutputShape(gert::InferSymbolContext *context, const gert::SymbolShape &x_shape,
                                const std::vector<Expression> &sizes_value,
                                const std::vector<Expression> &broadcast_dims) {
   auto output_shape = context->GetOutputSymbolShape(IDX_Y);
@@ -174,7 +174,7 @@ graphStatus ComputeOutputShape(gert::InferSymbolShapeContext *context, const ger
  *      举例：输入x_shape=(2,3,4,5)，sizes=(1,0,1,0)，indices_shape=(2,3)和(3,)，
  *            广播后=(2,3)，输出=(2,3,3,5)
  */
-graphStatus InferShape4Index(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4Index(gert::InferSymbolContext *context) {
   GELOGD("index symbol infershape is begin");
 
   // Get input x shape
@@ -227,7 +227,7 @@ graphStatus InferShape4Index(gert::InferSymbolShapeContext *context) {
  * 【推导逻辑】combine 为 false 时输出 Shape 继承 indices Shape；combine 为 true 时输出为元素总数的一维 Shape。
  * 【举例】indices=[B,S]、combine=false 时 index=[B,S]；indices=[B,S]、combine=true 时 index=[B*S]。
  */
-graphStatus InferShape4LinearIndex(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4LinearIndex(gert::InferSymbolContext *context) {
   const auto indices_shape = context->GetInputSymbolShape(0);
   GE_UNSUPPORTED_IF_NULL(indices_shape);
   const auto attrs = context->GetAttrs();
@@ -275,7 +275,7 @@ bool AreIndexedDimsContiguous(const T *mask, size_t rank) {
 // Collects the shapes of the index tensors bound to the masked axes. The
 // number of dynamic index inputs must exactly match the number of indexed
 // axes; has_index is false when the mask selects no axis at all.
-graphStatus CollectIndexedDims(const gert::InferSymbolShapeContext *context,
+graphStatus CollectIndexedDims(const gert::InferSymbolContext *context,
                                const gert::TypedContinuousVector<int64_t> *mask, const size_t rank,
                                std::vector<std::vector<Expression>> &index_dims, bool &has_index) {
   has_index = false;
@@ -299,7 +299,7 @@ graphStatus CollectIndexedDims(const gert::InferSymbolShapeContext *context,
 // Assembles the output shape: the broadcast index dims replace the indexed
 // axes as one contiguous block when the indexed axes are adjacent; otherwise
 // they lead the shape and the non-indexed axes keep their input dims.
-graphStatus BuildIndexedOutputShape(gert::InferSymbolShapeContext *context, const gert::SymbolShape *x_shape,
+graphStatus BuildIndexedOutputShape(gert::InferSymbolContext *context, const gert::SymbolShape *x_shape,
                                     const gert::TypedContinuousVector<int64_t> *mask, const size_t rank,
                                     const std::vector<Expression> &broadcast_dims) {
   auto *output_shape = context->GetOutputSymbolShape(0U);
@@ -330,7 +330,7 @@ graphStatus BuildIndexedOutputShape(gert::InferSymbolShapeContext *context, cons
   return GRAPH_SUCCESS;
 }
 
-graphStatus InferShape4IndexByTensor(gert::InferSymbolShapeContext *context) {
+graphStatus InferShape4IndexByTensor(gert::InferSymbolContext *context) {
   const auto *x_shape = context->GetInputSymbolShape(0U);
   GE_UNSUPPORTED_IF_NULL(x_shape);
   const auto *attrs = context->GetAttrs();

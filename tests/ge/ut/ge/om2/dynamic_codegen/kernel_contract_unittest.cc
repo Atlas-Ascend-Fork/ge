@@ -13,6 +13,9 @@
 #include "engine/aicore/launch_kernel/ai_core_launch_kernel.h"
 #include "common/om2/dynamic_codegen/info_collect/kernel_code_builder.h"
 #include "exe_graph/lowering/exe_graph_attrs.h"
+#include "exe_graph/runtime/gert_tensor_data.h"
+#include "exe_graph/runtime/storage_shape.h"
+#include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/fast_graph/execute_graph.h"
 #include "graph/utils/attr_utils.h"
 #include "graph/debug/ge_attr_define.h"
@@ -56,6 +59,51 @@ TEST_F(Om2KernelContractUT, SymbolInferShapeUsesTensorInputsInsteadOfOrdinarySha
   KernelCollectContext malformed(*node, too_short, outputs);
   KernelProgramInfo invalid;
   EXPECT_NE(builder->Collect(malformed, invalid), ge::GRAPH_SUCCESS);
+}
+
+TEST_F(Om2KernelContractUT, RequestsResourcesAtTheDeclaredPortAndPhase) {
+  struct ResourcePort {
+    const char *kernel;
+    size_t inputs;
+    size_t outputs;
+    size_t port;
+    ChainBindingKind resource;
+    ChainBindingPhase phase;
+  };
+  const ResourcePort cases[]{
+      {"SelectL1Allocator", 4, 1, 1, ChainBindingKind::kExternalAllocator, ChainBindingPhase::kLoad},
+      {"GetOrCreateWeightMem", 3, 1, 1, ChainBindingKind::kOuterWeightMem, ChainBindingPhase::kLoad},
+      {"GetSessionId", 1, 1, 0, ChainBindingKind::kRtSession, ChainBindingPhase::kLoad},
+      {"SplitVariable", 3, 2, 0, ChainBindingKind::kRtSession, ChainBindingPhase::kLoad},
+      {"GetSpaceRegistry", 2, 1, 0, ChainBindingKind::kModelDesc, ChainBindingPhase::kLoad},
+      {"GetSpaceRegistries", 1, 1, 0, ChainBindingKind::kModelDesc, ChainBindingPhase::kLoad},
+      {"GetFileConstantWeightDir", 1, 1, 0, ChainBindingKind::kModelDesc, ChainBindingPhase::kLoad},
+      {"SplitRtStreams", 2, 2, 0, ChainBindingKind::kStream, ChainBindingPhase::kLoad},
+      {"CreateNotifies", 2, 2, 0, ChainBindingKind::kNotifies, ChainBindingPhase::kRun},
+  };
+  for (const auto &item : cases) {
+    SCOPED_TRACE(item.kernel);
+    auto *node = Node(item.kernel);
+    ASSERT_NE(node, nullptr);
+    auto builder = KernelCodeBuilderFactory::GetInstance().Create(item.kernel);
+    ASSERT_NE(builder, nullptr);
+    std::vector<uint32_t> inputs(item.inputs), outputs(item.outputs);
+    std::iota(inputs.begin(), inputs.end(), 10U);
+    std::iota(outputs.begin(), outputs.end(), 20U);
+    KernelProgramInfo info;
+    ASSERT_EQ(builder->Collect(KernelCollectContext(*node, inputs, outputs), info), ge::GRAPH_SUCCESS);
+    size_t requests = 0U;
+    for (const auto &binding : info.chain_updates) {
+      if (binding.source_kind == ChainSourceKind::kInputBindingRequest) {
+        ++requests;
+        EXPECT_EQ(binding.input_port, static_cast<int64_t>(item.port));
+        EXPECT_EQ(binding.chain_index, inputs[item.port]);
+        EXPECT_EQ(binding.binding_kind, item.resource);
+        EXPECT_EQ(binding.binding_phase, item.phase);
+      }
+    }
+    EXPECT_EQ(requests, 1U);
+  }
 }
 
 TEST_F(Om2KernelContractUT, AicpuCcLaunchPreservesHandleAndStreamPortsAndRejectsMissingPort) {
@@ -163,6 +211,56 @@ TEST_F(Om2KernelContractUT, AicoreLaunchSeparatesAddressesShapesAndMixTail) {
   // Ordinary launch accepts the partial tail left by the lowering fallback.
   ASSERT_EQ(ordinary->Collect(context, fallback), ge::GRAPH_SUCCESS);
   EXPECT_EQ(fallback.inputs.back().semantic_name, "notify_0");
+}
+
+TEST_F(Om2KernelContractUT, LaunchV2VariantsValidateOptionalAddressAndShapeConstantSizes) {
+  constexpr size_t prefix = static_cast<size_t>(kernel::InputCommon::kNum);
+  constexpr size_t io_index = static_cast<size_t>(kernel::InputCommon::kIoNum);
+  constexpr size_t io_count = 2U;
+  std::vector<uint32_t> inputs(prefix + 2U * io_count + 4U);
+  std::iota(inputs.begin(), inputs.end(), 100U);
+  std::vector<Chain> values(inputs.size());
+  values[io_index].GetValue<size_t>() = io_count;
+  const std::vector<uint32_t> outputs;
+  for (const char *type : {"LaunchKernelV2", "LaunchMixKernelV2"}) {
+    auto op_desc = std::make_shared<ge::OpDesc>(type, type);
+    for (size_t i = 0U; i < inputs.size(); ++i) {
+      ASSERT_EQ(op_desc->AddInputDesc(ge::GeTensorDesc()), ge::GRAPH_SUCCESS);
+    }
+    auto *node = graph_.AddNode(op_desc);
+    ASSERT_NE(node, nullptr);
+    ASSERT_TRUE(ge::AttrUtils::SetInt(node->GetOpDescBarePtr(), kComputeNodeIndex, 0));
+    for (size_t i = 0U; i < inputs.size(); ++i) {
+      ASSERT_EQ(node->GetOpDescBarePtr()->AddInputDesc(ge::GeTensorDesc()), ge::GRAPH_SUCCESS);
+    }
+    auto builder = KernelCodeBuilderFactory::GetInstance().Create(type);
+    ASSERT_NE(builder, nullptr);
+    std::vector<Chain> output_values;
+    KernelCollectContext context(*node, inputs, outputs, values, output_values);
+    for (const size_t port : {prefix, prefix + 1U, prefix + 2U, prefix + 3U}) {
+      auto const_desc = std::make_shared<ge::OpDesc>((std::string("const_") + std::to_string(port)), "Const");
+      ASSERT_EQ(const_desc->AddOutputDesc(ge::GeTensorDesc()), ge::GRAPH_SUCCESS);
+      auto *constant = graph_.AddNode(const_desc);
+      ASSERT_NE(constant, nullptr);
+      const bool is_address = port < prefix + io_count;
+      const auto valid_size = is_address ? sizeof(gert::GertTensorData) : sizeof(gert::StorageShape);
+      const std::vector<uint8_t> bytes(valid_size, 0U);
+      ASSERT_TRUE(ge::AttrUtils::SetZeroCopyBytes(constant->GetOpDescBarePtr(), kConstValue,
+                                                  ge::Buffer::CopyFrom(bytes.data(), bytes.size())));
+      ASSERT_NE(graph_.AddEdge(constant, 0, node, static_cast<int32_t>(port)), nullptr);
+    }
+    KernelProgramInfo info;
+    ASSERT_EQ(builder->Collect(context, info), ge::GRAPH_SUCCESS);
+    const size_t bad_port = prefix + io_count;
+    const auto *bad_edge = node->GetInDataEdgeByIndex(static_cast<int32_t>(bad_port));
+    ASSERT_NE(bad_edge, nullptr);
+    auto *bad_constant = bad_edge->src;
+    ASSERT_NE(bad_constant, nullptr);
+    const std::vector<uint8_t> invalid_bytes(16U, 0U);
+    ASSERT_TRUE(ge::AttrUtils::SetZeroCopyBytes(bad_constant->GetOpDescBarePtr(), kConstValue,
+                                                ge::Buffer::CopyFrom(invalid_bytes.data(), invalid_bytes.size())));
+    EXPECT_NE(builder->Collect(context, info), ge::GRAPH_SUCCESS);
+  }
 }
 }  // namespace
 }  // namespace om2

@@ -44,13 +44,18 @@ graphStatus CheckCastInputs(const gert::InferSymbolComputeContext *context) {
            context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
-  const formats::CastArgs cast_args{nullptr, 0U, input_desc->GetDataType(), dst_type};
-  if (!formats::IsTransDataTypeSupport(cast_args)) {
-    GELOGW("Cast symbolic compute unsupported, data type transfer from %s to %s is not supported, node %s[%s].",
-           TypeUtils::DataTypeToSerialString(cast_args.src_data_type).c_str(),
-           TypeUtils::DataTypeToSerialString(cast_args.dst_data_type).c_str(), context->GetNodeName(),
-           context->GetNodeType());
-    return UNSUPPORTED;
+  const auto src_type = input_desc->GetDataType();
+  // Symbolic computation forwards expressions without performing a real dtype conversion.
+  // BOOL conversions therefore do not need a firmware conversion-table entry.
+  if ((src_type != DT_BOOL) && (dst_type != DT_BOOL)) {
+    const formats::CastArgs cast_args{nullptr, 0U, src_type, dst_type};
+    if (!formats::IsTransDataTypeSupport(cast_args)) {
+      GELOGW("Cast symbolic compute unsupported, data type transfer from %s to %s is not supported, node %s[%s].",
+             TypeUtils::DataTypeToSerialString(cast_args.src_data_type).c_str(),
+             TypeUtils::DataTypeToSerialString(cast_args.dst_data_type).c_str(), context->GetNodeName(),
+             context->GetNodeType());
+      return UNSUPPORTED;
+    }
   }
   return GRAPH_SUCCESS;
 }
@@ -82,7 +87,8 @@ graphStatus SetCastOutput(gert::InferSymbolComputeContext *context, const gert::
  * 【算子功能】将输入张量转换为目标dtype，张量元素数量和Shape保持不变。
  * 【推导逻辑】读取输入和输出描述并校验格式、dtype转换组合；输出Shape复制输入Shape，随后逐元素复制
  *          输入SymbolicValue，不改变表达式的元素顺序和数量。
- * 【算子约束】输入输出格式必须一致，且dtype转换必须属于框架支持的转换类型。
+ * 【算子约束】输入输出格式必须一致；非 BOOL 场景下 dtype 转换必须属于框架支持的转换类型，
+ *          BOOL 输入/输出不做转换表校验。
  * 【举例】输入Shape=[2,3]、输入value=[x0,x1,...,x5]，执行INT32到FLOAT转换后，
  *          输出Shape仍为[2,3]，输出value仍为[x0,x1,...,x5]。
  */

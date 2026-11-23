@@ -47,7 +47,9 @@ def convert_to_tensor_holder(
     if isinstance(value, list):
         return _convert_list_to_tensor_holder(value, owner_builder)
 
-    raise TypeError("Value must be TensorHolder or int|float or nested lists of int|float or None")
+    raise TypeError(
+        "Value must be TensorHolder or int|float or nested lists of int|float or None"
+    )
 
 
 def resolve_builder(
@@ -76,7 +78,9 @@ def resolve_builder(
         if isinstance(value, TensorHolder):
             return value.get_owner_builder()
 
-    raise ValueError("Please ensure at least one input tensor or an explicit owner_builder is provided when supported")
+    raise ValueError(
+        "Please ensure at least one input tensor or an explicit owner_builder is provided when supported"
+    )
 
 
 def _flatten_and_infer_shape(
@@ -111,7 +115,9 @@ def _flatten_and_infer_shape(
         for elem in current[1:]:
             sub_flat, sub_shape = _recurse(elem)
             if sub_shape != inner_shape:
-                raise ValueError("Irregular nested list: all sub-lists must have the same shape")
+                raise ValueError(
+                    "Irregular nested list: all sub-lists must have the same shape"
+                )
             flat_acc.extend(sub_flat)
 
         return flat_acc, [len(current)] + inner_shape
@@ -144,7 +150,9 @@ def _unflatten(value: List["Number"], shape: List[int]) -> List["TensorLike"]:
         total_size *= dim
 
     if len(value) != total_size:
-        raise ValueError(f"Length of list {len(value)} does not match shape {total_size}")
+        raise ValueError(
+            f"Length of list {len(value)} does not match shape {total_size}"
+        )
 
     # recurse
     def _recurse(flat_values, shape):
@@ -167,7 +175,9 @@ def _unflatten(value: List["Number"], shape: List[int]) -> List["TensorLike"]:
     return _recurse(value, shape)
 
 
-def _convert_scalar_to_tensor_holder(value: "Number", owner_builder: "GraphBuilder") -> "TensorHolder":
+def _convert_scalar_to_tensor_holder(
+    value: "Number", owner_builder: "GraphBuilder"
+) -> "TensorHolder":
     """
     Convert scalar to TensorHolder object.
 
@@ -190,7 +200,9 @@ def _convert_scalar_to_tensor_holder(value: "Number", owner_builder: "GraphBuild
     raise TypeError("Value must be a number")
 
 
-def _convert_list_to_tensor_holder(value: List[Any], owner_builder: "GraphBuilder") -> "TensorHolder":
+def _convert_list_to_tensor_holder(
+    value: List[Any], owner_builder: "GraphBuilder"
+) -> "TensorHolder":
     """
     Convert list to TensorHolder object.
 

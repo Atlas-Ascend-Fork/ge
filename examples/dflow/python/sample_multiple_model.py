@@ -20,7 +20,9 @@ class SimpleNet(nn.Module):
     def __init__(self):
         super(SimpleNet, self).__init__()
         self.conv_relu = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=3, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(
+                in_channels=3, out_channels=3, kernel_size=3, stride=1, padding=1
+            ),
             nn.ReLU(),
         )
 

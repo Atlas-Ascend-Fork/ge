@@ -1177,10 +1177,14 @@ graphStatus LowerGather(const NodePtr &node) {
                                      negative_index_support);
     (void)loop::Store(node->GetOutDataAnchor(0), loop_var).Realize();
   } else if (input_nums == gather_data_num_three) {  // lowering for GatherV2
-    auto node_axis = node->GetInDataAnchor(2)->GetPeerOutAnchor();
+    auto in_axis_anchor = node->GetInDataAnchor(2);
+    LOWERING_WARN_RECORD_REASON(in_axis_anchor != nullptr, node, "Axis input anchor is nullptr");
+    auto node_axis = in_axis_anchor->GetPeerOutAnchor();
+    LOWERING_WARN_RECORD_REASON((node_axis != nullptr) && (node_axis->GetOwnerNode() != nullptr) &&
+                                    (node_axis->GetOwnerNode()->GetOpDesc() != nullptr),
+                                node, "Axis peer node is nullptr");
     auto node_type = node_axis->GetOwnerNode()->GetOpDesc()->GetType();
-    LOWERING_WARN_RECORD_REASON(((node_axis != nullptr) && (OpTypeUtils::IsConstNode(node_type))), node,
-                                "Axis is not a CONSTANT input");
+    LOWERING_WARN_RECORD_REASON(OpTypeUtils::IsConstNode(node_type), node, "Axis is not a CONSTANT input");
 
     vector<int64_t> axis = {};
     LOWERING_WARN_RECORD_REASON(AutofuseUtils::GetListIntByInputOrAttr(node, axis, "axis", "axis") == GRAPH_SUCCESS,

@@ -12,7 +12,9 @@
 
 import unittest
 
+from llm_datadist_v1 import DataType
 from llm_datadist_v1.llm_utils import (
+    CacheDescParser,
     layer_range_to_tensor_indices,
     parse_listen_ip_info,
 )
@@ -37,3 +39,11 @@ class LlmUtilsSt(unittest.TestCase):
         result = parse_listen_ip_info(listen_ip_info)
         self.assertEqual(result[0], "22")
         self.assertEqual(result[1], 33)
+
+    def test_parse_by_options_infer_seq_len_dim(self):
+        options = {
+            "llm.RefInputShapes": "2,-1,128",
+            "llm.RefInputDtypes": str(DataType.DT_FLOAT16.value),
+        }
+        cache_desc = CacheDescParser.parse_by_options(options)
+        self.assertEqual(cache_desc.seq_len_dim_index, 1)

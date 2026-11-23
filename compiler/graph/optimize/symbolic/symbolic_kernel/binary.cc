@@ -18,7 +18,7 @@
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "graph/optimize/symbolic/symbol_compute_context.h"
 #include "graph/optimize/symbolic/symbolic_kernel_factory.h"
-#include "graph/symbolizer/symbol_operator.h"
+#include "graph/symbolizer/symbolic.h"
 
 namespace ge {
 namespace {
@@ -37,7 +37,13 @@ bool CalcBroadcastShape(const std::vector<int64_t> &x1_dims, const std::vector<i
     if (x1_dim != x2_dim && x1_dim != 1L && x2_dim != 1L) {
       return false;
     }
-    out_dims[i] = std::max(x1_dim, x2_dim);
+    if (x1_dim == x2_dim || x1_dim == 1L) {
+      out_dims[i] = x2_dim;
+    } else if (x2_dim == 1L) {
+      out_dims[i] = x1_dim;
+    } else {
+      return false;
+    }
   }
   return true;
 }
@@ -110,6 +116,18 @@ graphStatus PrepareBroadcastValues(const gert::InferSymbolComputeContext *contex
   if (!CalcBroadcastShape(x1_dims, x2_dims, out_dims)) {
     GELOGW("Binary symbolic kernel unsupported: input shapes cannot broadcast, node %s[%s].", context->GetNodeName(),
            context->GetNodeType());
+    return UNSUPPORTED;
+  }
+  int64_t output_size = 1L;
+  for (const auto dim : out_dims) {
+    if (dim < 0L || (dim != 0L && output_size > INT64_MAX / dim)) {
+      return UNSUPPORTED;
+    }
+    output_size *= dim;
+  }
+  if (output_size > kMaxSymbolizeValueElemNum) {
+    GELOGW("Binary symbolic kernel unsupported: broadcast output size[%ld] exceeds limit[%ld], node %s[%s].",
+           output_size, kMaxSymbolizeValueElemNum, context->GetNodeName(), context->GetNodeType());
     return UNSUPPORTED;
   }
   if (!BroadcastValue(x1_value, x1_dims, out_dims, x1_broadcast) ||
@@ -212,6 +230,75 @@ graphStatus RealDivSymbolicKernelCompute(gert::InferSymbolComputeContext *contex
       });
 }
 
+graphStatus ModSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  GE_ASSERT_NOTNULL(context);
+  return BinarySymbolicKernelCompute(
+      context, [](const Expression &dividend, const Expression &divisor, Expression &out) -> graphStatus {
+        int64_t const_value = 0L;
+        if (dividend.IsConstExpr()) {
+          if (dividend.GetExprType() != ExprType::kExprConstantInteger || !dividend.GetConstValue(const_value) ||
+              const_value < 0L) {
+            return UNSUPPORTED;
+          }
+        } else if (!EXPECT_SYMBOL_GE(dividend, kSymbolZero)) {
+          return UNSUPPORTED;
+        }
+        if (divisor.IsConstExpr()) {
+          if (divisor.GetExprType() != ExprType::kExprConstantInteger || !divisor.GetConstValue(const_value) ||
+              const_value <= 0L) {
+            return UNSUPPORTED;
+          }
+        } else if (!EXPECT_SYMBOL_GT(divisor, kSymbolZero)) {
+          return UNSUPPORTED;
+        }
+        out = sym::Mod(dividend, divisor).Simplify();
+        return out.IsValid() ? SUCCESS : UNSUPPORTED;
+      });
+}
+
+bool TryGetIntegerConstant(const Expression &expr, int64_t &value) {
+  return expr.IsConstExpr() && expr.GetExprType() == ExprType::kExprConstantInteger && expr.GetConstValue(value);
+}
+
+graphStatus BitwiseXorSymbolicKernelCompute(gert::InferSymbolComputeContext *context) {
+  GE_ASSERT_NOTNULL(context);
+  return BinarySymbolicKernelCompute(
+      context, [](const Expression &x1, const Expression &x2, Expression &out) -> graphStatus {
+        int64_t x1_value = 0L;
+        int64_t x2_value = 0L;
+        const bool x1_is_integer_const = TryGetIntegerConstant(x1, x1_value);
+        const bool x2_is_integer_const = TryGetIntegerConstant(x2, x2_value);
+
+        // The operator is integer-valued. Preserve the exact integer identity law even when
+        // the other operand is a symbolic expression.
+        if (x1_is_integer_const && x1_value == 0L) {
+          out = x2;
+          return SUCCESS;
+        }
+        if (x2_is_integer_const && x2_value == 0L) {
+          out = x1;
+          return SUCCESS;
+        }
+        if (x1_is_integer_const && x2_is_integer_const) {
+          out = Symbol(static_cast<int64_t>(static_cast<uint64_t>(x1_value) ^ static_cast<uint64_t>(x2_value)));
+          return SUCCESS;
+        }
+
+        // ONNX bool-Xor is lowered through Cast and BitwiseXor. The Cast is intentionally
+        // transparent during symbolic computation, so use expression type to retain bool
+        // semantics instead of relying on the lost tensor dtype.
+        if (x1.IsBooleanExpr() && x2_is_integer_const && (x2_value == 0L || x2_value == 1L)) {
+          out = x2_value == 0L ? x1 : sym::Not(x1);
+          return SUCCESS;
+        }
+        if (x2.IsBooleanExpr() && x1_is_integer_const && (x1_value == 0L || x1_value == 1L)) {
+          out = x1_value == 0L ? x2 : sym::Not(x2);
+          return SUCCESS;
+        }
+        return UNSUPPORTED;
+      });
+}
+
 Expression ToLogicalPredicate(const Expression &value) {
   return value.IsBooleanExpr() ? value : sym::Ne(value, Symbol(0));
 }
@@ -258,6 +345,8 @@ REGISTER_BINARY_KERNEL(LogicalAnd, sym::LogicalAnd({ToLogicalPredicate(x1), ToLo
 REGISTER_BINARY_KERNEL(LogicalOr, sym::LogicalOr({ToLogicalPredicate(x1), ToLogicalPredicate(x2)}));
 REGISTER_SYMBOLIC_KERNEL(LogicalNot, LogicalNotSymbolicKernelCompute);
 REGISTER_SYMBOLIC_KERNEL(RealDiv, RealDivSymbolicKernelCompute);
+REGISTER_SYMBOLIC_KERNEL(Mod, ModSymbolicKernelCompute);
+REGISTER_SYMBOLIC_KERNEL(BitwiseXor, BitwiseXorSymbolicKernelCompute);
 
 #undef REGISTER_BINARY_KERNEL
 }  // namespace

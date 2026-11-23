@@ -38,7 +38,9 @@ class ClusterConfig:
             for logical_device_id in logical_device_id_to_device_id.keys():
                 if logical_device_id in logical_device_id_to_rank_id:
                     rank_id = logical_device_id_to_rank_id[logical_device_id]
-                    log.info(f"append rank_id = {rank_id}, logical_device_id = {logical_device_id}")
+                    log.info(
+                        f"append rank_id = {rank_id}, logical_device_id = {logical_device_id}"
+                    )
                     local_rank_ids.append(rank_id)
         rank_id_to_device_id: Dict[int, int] = {}
         for logical_device_id, rank_id in logical_device_id_to_rank_id.items():
@@ -63,10 +65,14 @@ class ClusterConfig:
         logical_device_id_to_rank_id = {}
         if "ge.exec.deviceId" in engine_options and "ge.exec.rankId" in engine_options:
             rank_ids = [int(engine_options["ge.exec.rankId"])]
-            log.info(f"both ge.exec.rankId and ge.exec.deviceId are defined, rank_id = {rank_ids[0]}")
+            log.info(
+                f"both ge.exec.rankId and ge.exec.deviceId are defined, rank_id = {rank_ids[0]}"
+            )
         else:
             rank_ids = [i for i in range(len(cluster_info["logic_device_id"]))]
-        for rank_id, logical_device_id in zip(rank_ids, cluster_info["logic_device_id"]):
+        for rank_id, logical_device_id in zip(
+            rank_ids, cluster_info["logic_device_id"]
+        ):
             logical_device_id_to_rank_id[logical_device_id] = rank_id
         return logical_device_id_to_rank_id
 
@@ -87,7 +93,9 @@ class ClusterConfig:
                     continue
                 for item_idx, item in enumerate(cluster_node["item_list"]):
                     device_id = int(item["item_id"])
-                    logical_device_id = ":".join([str(custer_idx), str(node_idx), str(item_idx), "0"])
+                    logical_device_id = ":".join(
+                        [str(custer_idx), str(node_idx), str(item_idx), "0"]
+                    )
                     logical_device_id_to_device_id[logical_device_id] = device_id
         return logical_device_id_to_device_id
 
@@ -98,7 +106,9 @@ class EngineConfig:
         self.cluster_config = cluster_config
 
     @classmethod
-    def from_engine_options(cls, is_prompt: bool, engine_options: Dict[str, str]) -> "EngineConfig":
+    def from_engine_options(
+        cls, is_prompt: bool, engine_options: Dict[str, str]
+    ) -> "EngineConfig":
         cluster_config = ClusterConfig.from_engine_options(engine_options)
         return cls(is_prompt, cluster_config)
 
@@ -150,11 +160,15 @@ class EngineConfig:
         }
         if deploy_res_path is not None:
             check_isinstance("llm.deployResPath", deploy_res_path, str)
-            numa_config["cluster"][0]["cluster_nodes"][0]["deploy_res_path"] = deploy_res_path
+            numa_config["cluster"][0]["cluster_nodes"][0]["deploy_res_path"] = (
+                deploy_res_path
+            )
         return json.dumps(numa_config)
 
     @staticmethod
-    def gen_cluster_info_if_not_exist(cluster_id: int, role: LLMRole, engine_options: Dict[str, str]) -> None:
+    def gen_cluster_info_if_not_exist(
+        cluster_id: int, role: LLMRole, engine_options: Dict[str, str]
+    ) -> None:
         if "llm.ClusterInfo" in engine_options:
             return
         device_num = len(engine_options["ge.exec.deviceId"].split(";"))
@@ -181,7 +195,9 @@ class EngineConfig:
                     len(ip_and_port) == 2,
                     f'llm.listenIpInfo "{ip_and_port}" is invalid, format should be "ip:port"',
                 )
-                cluster_info["listen_ip_info"].append({"ip": ip_and_port[0], "port": int(ip_and_port[1])})
+                cluster_info["listen_ip_info"].append(
+                    {"ip": ip_and_port[0], "port": int(ip_and_port[1])}
+                )
         llm_config = LlmConfig()
         llm_config.cluster_info = json.dumps(cluster_info)
         converted_options = llm_config.gen_options()

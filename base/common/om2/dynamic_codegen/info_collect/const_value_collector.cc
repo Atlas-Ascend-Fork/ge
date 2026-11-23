@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <new>
 #include <unordered_map>
@@ -37,11 +38,13 @@
 #include "framework/common/debug/ge_log.h"
 #include "graph/buffer.h"
 #include "graph/debug/ge_attr_define.h"
+#include "graph/fast_graph/gert_graph_attributes.h"
 #include "graph/utils/attr_utils.h"
 #include "graph/utils/math_util.h"
 #include "graph/utils/tensor_utils.h"
 #include "exe_graph/runtime/runtime_tensor.h"
 #include "kernel/tensor_attr.h"
+#include "ge/ge_ir_build.h"
 
 namespace gert {
 namespace om2 {
@@ -228,6 +231,56 @@ ge::graphStatus ParseString(const ge::FastNode &node, const ge::Buffer &buffer, 
     return ge::GRAPH_PARAM_INVALID;
   }
   value.string_value.assign(reinterpret_cast<const char *>(begin), buffer.size() - 1U);
+  return ge::GRAPH_SUCCESS;
+}
+
+bool IsCustomKernel(const ge::FastNode *node) {
+  if (node == nullptr || node->GetOpDescBarePtr() == nullptr) {
+    return false;
+  }
+  std::string kernel_name;
+  return ge::AttrUtils::GetStr(node->GetOpDescBarePtr(), gert::attr::kCustomKernelName, kernel_name) &&
+         !kernel_name.empty();
+}
+
+bool HasCustomDataUser(const ge::FastNode &node) {
+  for (const auto &output_edges : node.GetAllOutDataEdgesRef()) {
+    for (const auto *const edge : output_edges) {
+      if (edge != nullptr && IsCustomKernel(edge->dst)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+ge::graphStatus ParseModelBufferDataConst(const ge::FastNode &node, const ge::Buffer &buffer,
+                                          CustomConstRestoreDescriptor &descriptor, const uint32_t chain_index) {
+  if (buffer.size() != sizeof(ge::ModelBufferData *)) {
+    GELOGE(ge::GRAPH_PARAM_INVALID, "Custom ModelBufferData Const %s has invalid handle size %zu", node.GetNamePtr(),
+           buffer.size());
+    return ge::GRAPH_PARAM_INVALID;
+  }
+  ge::ModelBufferData *model_buffer = nullptr;
+  GE_ASSERT_EOK(memcpy_s(&model_buffer, sizeof(model_buffer), buffer.data(), sizeof(model_buffer)));
+  if (model_buffer == nullptr || model_buffer->length > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+    GELOGE(ge::GRAPH_PARAM_INVALID, "Custom ModelBufferData Const %s has invalid buffer metadata", node.GetNamePtr());
+    return ge::GRAPH_PARAM_INVALID;
+  }
+  const size_t length = static_cast<size_t>(model_buffer->length);
+  const uint8_t *const data = model_buffer->data.get();
+  if (length != 0U && data == nullptr) {
+    GELOGE(ge::GRAPH_PARAM_INVALID, "Custom ModelBufferData Const %s has a null buffer with size %zu",
+           node.GetNamePtr(), length);
+    return ge::GRAPH_PARAM_INVALID;
+  }
+  descriptor.chain_index = chain_index;
+  descriptor.producer_name = node.GetNamePtr();
+  descriptor.initializer = "model_buffer_data";
+  descriptor.payload_is_string = false;
+  if (length != 0U) {
+    descriptor.payload.assign(data, data + length);
+  }
   return ge::GRAPH_SUCCESS;
 }
 
@@ -1212,7 +1265,11 @@ ge::graphStatus RecordConstantInputTypes(const ProgramBlock &block, const std::v
       return ge::GRAPH_PARAM_INVALID;
     }
     if (chains[chain_index].binding_phase != ChainBindingPhase::kLoad) {
-      expected_types[chain_index] = normalized_type;
+      const auto existing = expected_types.find(chain_index);
+      if (existing == expected_types.end() || existing->second == Om2ValueType::kVoidPtr ||
+          value_type == Om2ValueType::kGertStorageShapePtr) {
+        expected_types[chain_index] = value_type == Om2ValueType::kGertShapePtr ? normalized_type : value_type;
+      }
     }
     return ge::GRAPH_SUCCESS;
   };
@@ -1320,6 +1377,12 @@ ge::graphStatus ConstValueCollector::Collect(const ge::ExecuteGraph &execute_gra
       if (compile_time_const_chains.count(chain_index) != 0U) {
         continue;
       }
+      if (node->GetAllOutDataEdgesSize() == 0U) {
+        // Custom kernels can retain the original Const after replacing its data edges with a decoder.
+        // StageSplitter may add a control edge to the stage tail, but that edge does not read
+        // the Const payload and therefore needs no serialized value.
+        continue;
+      }
       // FxRT's shared BuildTensorAttr Const is consumed only by BuildTensor/BuildRefTensor
       // compile-time contracts.  Older installed collector bundles may not expose the
       // restore-index hint, so recognize this fixed skeleton producer explicitly while
@@ -1342,6 +1405,19 @@ ge::graphStatus ConstValueCollector::Collect(const ge::ExecuteGraph &execute_gra
     const_info.chain_index = chain_index;
     const_info.producer_name = node->GetNamePtr();
     const std::string producer_name = node->GetNamePtr();
+    bool is_string = false;
+    (void)ge::AttrUtils::GetBool(node->GetOpDescBarePtr(), "is_string", is_string);
+    if (!is_string && HasCustomDataUser(*node)) {
+      GE_ASSERT_TRUE(expected_iter->second == Om2ValueType::kBytePtr,
+                     "Custom ModelBufferData Const %s has unexpected OM2 type %s", node->GetNamePtr(),
+                     GetValueTypeName(expected_iter->second));
+      ge::Buffer buffer;
+      GE_ASSERT_TRUE(ge::AttrUtils::GetZeroCopyBytes(node->GetOpDescBarePtr(), kConstValue, buffer));
+      CustomConstRestoreDescriptor descriptor;
+      GE_ASSERT_GRAPH_SUCCESS(ParseModelBufferDataConst(*node, buffer, descriptor, chain_index));
+      program_info.custom_const_chains.emplace_back(std::move(descriptor));
+      continue;
+    }
     // FxRT stores the serialized AiCore OpDef as a byte payload and supplies its size
     // through a separate Const. Some runtime consumers declare the pointer as void *,
     // which otherwise makes the generic process-local pointer path reject the payload.
@@ -1365,11 +1441,12 @@ ge::graphStatus ConstValueCollector::Collect(const ge::ExecuteGraph &execute_gra
       // buffer.size() == sizeof(void *), so a mis-typed Const fails loudly.
       ge::Buffer buffer;
       GE_ASSERT_TRUE(ge::AttrUtils::GetZeroCopyBytes(node->GetOpDescBarePtr(), kConstValue, buffer));
-      if ((producer_name.rfind("const_storage_shape_", 0U) == 0U) && (buffer.size() == sizeof(gert::StorageShape))) {
+      if ((value_type == Om2ValueType::kGertStorageShapePtr || producer_name.rfind("const_storage_shape_", 0U) == 0U) &&
+          buffer.size() == sizeof(gert::StorageShape)) {
         CustomConstRestoreDescriptor descriptor;
         GE_ASSERT_GRAPH_SUCCESS(ParseStorageShapeConst(*node, buffer, descriptor, chain_index));
         program_info.custom_const_chains.emplace_back(std::move(descriptor));
-      } else if (((producer_name.rfind("const_gtd_", 0U) == 0U) ||
+      } else if ((value_type == Om2ValueType::kGertTensorDataPtr || (producer_name.rfind("const_gtd_", 0U) == 0U) ||
                   (producer_name.rfind("const_shape_gtd_host_", 0U) == 0U)) &&
                  (buffer.size() == sizeof(gert::GertTensorData))) {
         CustomConstRestoreDescriptor descriptor;

@@ -41,10 +41,9 @@
 #include "api/aclgrph/option_utils.h"
 #include "common/context/local_context.h"
 #include "stub/gert_runtime_stub.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
+#include "register/op_impl_registry.h"
 
-namespace gert {
-class InferSymbolContext;
-}
 namespace ge {
 
 namespace {
@@ -52,16 +51,34 @@ size_t g_custom_symbol_call_count = 0U;
 
 UINT32 InferCustomSymbol(gert::InferSymbolContext *context) {
   ++g_custom_symbol_call_count;
-  auto *symbol_compute_context = reinterpret_cast<gert::InferSymbolComputeContext *>(context);
-  auto output = symbol_compute_context->GetOutputSymbolTensor(0U);
+  auto output = context->GetOutputSymbolTensor(0U);
   if (output == nullptr) {
     return ge::GRAPH_FAILED;
   }
   gert::SymbolShape output_shape;
-  output_shape.AppendDim(Symbol(42));
+  const auto input_shape = context->GetInputSymbolShape(0U);
+  output_shape.AppendDim(input_shape == nullptr ? Symbol(42) : input_shape->GetDim(0U) + Symbol(1));
   output->SetOriginSymbolShape(output_shape);
+  output->SetValueCount(1U).SetValue(0U, Symbol("custom_value"));
   return ge::GRAPH_SUCCESS;
 }
+
+UINT32 InferCustomSymbolNotChanged(gert::InferSymbolContext *context) {
+  const auto ret = InferCustomSymbol(context);
+  return ret == GRAPH_SUCCESS ? GRAPH_NOT_CHANGED : ret;
+}
+
+UINT32 InferBuiltinSymbolShape(gert::InferSymbolContext *context) {
+  const auto input = context->GetInputSymbolShape(0U);
+  const auto output = context->GetOutputSymbolShape(0U);
+  if (input == nullptr || input->GetDimNum() != 1U || output == nullptr) {
+    return GRAPH_FAILED;
+  }
+  output->SetDimNum(1U).SetDim(0U, input->GetDim(0U) + Symbol(2));
+  return GRAPH_SUCCESS;
+}
+
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BuiltinSymbolShapeForContextTest).InferSymbolShape(InferBuiltinSymbolShape);
 }  // namespace
 
 bool EnableSliceSchedule() {  // 桩函数
@@ -6030,10 +6047,8 @@ TEST_F(SymbolicShapeInferenceUT, InferCustomSymbolCallback) {
   ASSERT_NE(registry, nullptr);
   auto funcs = registry->CreateOrGetOpImpl("CustomSymbolInferOp");
   ASSERT_NE(funcs, nullptr);
-  using InferSymbolFunc = UINT32 (*)(gert::InferSymbolContext *);
-  const auto infer_symbol = static_cast<InferSymbolFunc>(InferCustomSymbol);
-  (void)memcpy_s(reinterpret_cast<uint8_t *>(funcs->reserved_) + sizeof(uint64_t), sizeof(infer_symbol), &infer_symbol,
-                 sizeof(infer_symbol));
+  funcs->infer_symbol = InferCustomSymbol;
+  ASSERT_EQ(funcs->infer_symbol, InferCustomSymbol);
 
   auto graph = std::make_shared<ComputeGraph>("CustomSymbolInferGraph");
   auto op_desc = std::make_shared<OpDesc>("custom_symbol", "CustomSymbolInferOp");
@@ -6041,6 +6056,9 @@ TEST_F(SymbolicShapeInferenceUT, InferCustomSymbolCallback) {
   tensor_desc.SetOriginShape(GeShape({-1}));
   ASSERT_EQ(op_desc->AddInputDesc(tensor_desc), GRAPH_SUCCESS);
   ASSERT_EQ(op_desc->AddOutputDesc(tensor_desc), GRAPH_SUCCESS);
+  auto input_attr = op_desc->MutableInputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(input_attr, nullptr);
+  input_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol("custom_input")}));
   auto node = graph->AddNode(op_desc);
   ASSERT_NE(node, nullptr);
 
@@ -6049,6 +6067,111 @@ TEST_F(SymbolicShapeInferenceUT, InferCustomSymbolCallback) {
   const auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
   ASSERT_NE(attr, nullptr);
   const auto dims = SymbolicInferUtil::GetSymbolDims(attr->symbolic_tensor.GetOriginSymbolShape());
-  ASSERT_EQ(dims, (std::vector<Expression>{Symbol(42)}));
+  ASSERT_EQ(dims, (std::vector<Expression>{Symbol("custom_input") + Symbol(1)}));
+  EXPECT_TRUE(attr->symbolic_tensor.HasValue());
+  ASSERT_EQ(attr->symbolic_tensor.GetValueCount(), 1U);
+  EXPECT_EQ(attr->symbolic_tensor.GetValue(0U), Symbol("custom_value"));
+}
+
+TEST_F(SymbolicShapeInferenceUT, InferCustomSymbolNotChangedFallsBackToStaticShape) {
+  g_custom_symbol_call_count = 0U;
+  auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+  ASSERT_NE(registry, nullptr);
+  auto funcs = registry->CreateOrGetOpImpl("CustomSymbolNotChangedOp");
+  ASSERT_NE(funcs, nullptr);
+  funcs->infer_symbol = InferCustomSymbolNotChanged;
+  ASSERT_EQ(funcs->infer_symbol, InferCustomSymbolNotChanged);
+
+  auto graph = std::make_shared<ComputeGraph>("CustomSymbolNotChangedGraph");
+  auto op_desc = std::make_shared<OpDesc>("custom_symbol", "CustomSymbolNotChangedOp");
+  GeTensorDesc tensor_desc(GeShape({7}), FORMAT_ND, DT_FLOAT);
+  tensor_desc.SetOriginShape(GeShape({7}));
+  ASSERT_EQ(op_desc->AddOutputDesc(tensor_desc), GRAPH_SUCCESS);
+  ASSERT_NE(graph->AddNode(op_desc), nullptr);
+
+  ASSERT_EQ(SymbolicShapeInference().Infer(graph), SUCCESS);
+  EXPECT_EQ(g_custom_symbol_call_count, 1U);
+  const auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  const auto &output = attr->symbolic_tensor;
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(output.GetOriginSymbolShape()), (std::vector<Expression>{Symbol(7)}));
+  EXPECT_FALSE(output.HasValue());
+}
+
+TEST_F(SymbolicShapeInferenceUT, InferCustomSymbolNotChangedWithoutFallbackDiscardsOutput) {
+  g_custom_symbol_call_count = 0U;
+  auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+  ASSERT_NE(registry, nullptr);
+  auto funcs = registry->CreateOrGetOpImpl("CustomSymbolNotChangedDynamicOp");
+  ASSERT_NE(funcs, nullptr);
+  funcs->infer_symbol = InferCustomSymbolNotChanged;
+  ASSERT_EQ(funcs->infer_symbol, InferCustomSymbolNotChanged);
+
+  auto graph = std::make_shared<ComputeGraph>("CustomSymbolNotChangedDynamicGraph");
+  auto op_desc = std::make_shared<OpDesc>("custom_symbol", "CustomSymbolNotChangedDynamicOp");
+  GeTensorDesc tensor_desc(GeShape({-1}), FORMAT_ND, DT_FLOAT);
+  tensor_desc.SetOriginShape(GeShape({-1}));
+  ASSERT_EQ(op_desc->AddOutputDesc(tensor_desc), GRAPH_SUCCESS);
+  ASSERT_NE(graph->AddNode(op_desc), nullptr);
+
+  ASSERT_EQ(SymbolicShapeInference().Infer(graph), SUCCESS);
+  EXPECT_EQ(g_custom_symbol_call_count, 1U);
+  EXPECT_EQ(op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>(), nullptr);
+}
+
+TEST_F(SymbolicShapeInferenceUT, InferCustomSymbolRegisteredInSo) {
+  auto registry = gert::SpaceRegistryFaker().Build();
+  ASSERT_NE(registry, nullptr);
+  const auto funcs = registry->GetOpImpl("CustomSymbolFromSo");
+  ASSERT_NE(funcs, nullptr);
+  ASSERT_NE(funcs->infer_symbol, nullptr);
+  auto &defaults = gert::DefaultOpImplSpaceRegistryV2::GetInstance();
+  const auto previous = defaults.GetSpaceRegistry();
+  GE_MAKE_GUARD(restore_registry, [&]() { defaults.SetSpaceRegistry(previous); });
+  ASSERT_EQ(defaults.SetSpaceRegistry(registry), GRAPH_SUCCESS);
+
+  auto graph = std::make_shared<ComputeGraph>("CustomSymbolFromSoGraph");
+  auto op_desc = std::make_shared<OpDesc>("custom_symbol", "CustomSymbolFromSo");
+  GeTensorDesc tensor_desc(GeShape({-1}), FORMAT_ND, DT_FLOAT);
+  tensor_desc.SetOriginShape(GeShape({-1}));
+  ASSERT_EQ(op_desc->AddInputDesc(tensor_desc), GRAPH_SUCCESS);
+  ASSERT_EQ(op_desc->AddOutputDesc(tensor_desc), GRAPH_SUCCESS);
+  auto input_attr = op_desc->MutableInputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(input_attr, nullptr);
+  const auto input_dim = Symbol("custom_so_input");
+  input_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({input_dim}));
+  ASSERT_NE(graph->AddNode(op_desc), nullptr);
+
+  ASSERT_EQ(SymbolicShapeInference().Infer(graph), SUCCESS);
+  const auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  const auto &output = attr->symbolic_tensor;
+  ASSERT_EQ(output.GetOriginSymbolShape().GetDimNum(), 1U);
+  EXPECT_EQ(output.GetOriginSymbolShape().GetDim(0U), input_dim + Symbol(1));
+  EXPECT_TRUE(output.HasValue());
+  ASSERT_EQ(output.GetValueCount(), 1U);
+  EXPECT_EQ(output.GetValue(0U), input_dim);
+}
+
+TEST_F(SymbolicShapeInferenceUT, InferBuiltinShapeWithPublishedContext) {
+  auto graph = std::make_shared<ComputeGraph>("BuiltinSymbolShapeGraph");
+  auto op_desc = std::make_shared<OpDesc>("builtin_shape", "BuiltinSymbolShapeForContextTest");
+  GeTensorDesc tensor_desc(GeShape({-1}), FORMAT_ND, DT_FLOAT);
+  tensor_desc.SetOriginShape(GeShape({-1}));
+  ASSERT_EQ(op_desc->AddInputDesc(tensor_desc), GRAPH_SUCCESS);
+  ASSERT_EQ(op_desc->AddOutputDesc(tensor_desc), GRAPH_SUCCESS);
+  auto input_attr = op_desc->MutableInputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(input_attr, nullptr);
+  const auto input_dim = Symbol("builtin_shape_input");
+  input_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({input_dim}));
+  ASSERT_NE(graph->AddNode(op_desc), nullptr);
+
+  ASSERT_EQ(SymbolicShapeInference().Infer(graph), SUCCESS);
+  const auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  const auto &output = attr->symbolic_tensor;
+  ASSERT_EQ(output.GetOriginSymbolShape().GetDimNum(), 1U);
+  EXPECT_EQ(output.GetOriginSymbolShape().GetDim(0U), input_dim + Symbol(2));
+  EXPECT_FALSE(output.HasValue());
 }
 }  // namespace ge

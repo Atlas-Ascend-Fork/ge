@@ -3505,4 +3505,20 @@ TEST_F(UtestOperater, IncCov_OperatorGetType_NullImpl) {
   AscendString type;
   EXPECT_NE(op.GetOpType(type), GRAPH_SUCCESS);
 }
+
+TEST_F(UtestOperater, IncCov_OperatorGetSubgraphNames_NullImpl) {
+  ge::Operator null_op("test_op_null_subgraph", "Test");
+  null_op.operator_impl_ = nullptr;
+  EXPECT_TRUE(null_op.GetSubgraphNames().empty());
+  std::vector<AscendString> names;
+  EXPECT_EQ(null_op.GetSubgraphNames(names), GRAPH_FAILED);
+  EXPECT_TRUE(names.empty());
+
+  ge::Operator valid_op("test_op_valid_subgraph", "Test");
+  valid_op.SubgraphRegister("branch_a", false);
+  EXPECT_EQ(valid_op.GetSubgraphNames().size(), 1UL);
+  EXPECT_EQ(valid_op.GetSubgraphNames(names), GRAPH_SUCCESS);
+  ASSERT_EQ(names.size(), 1UL);
+  EXPECT_STREQ(names[0].GetString(), "branch_a");
+}
 }  // namespace ge
