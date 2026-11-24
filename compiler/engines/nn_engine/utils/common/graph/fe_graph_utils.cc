@@ -242,16 +242,21 @@ bool FeGraphUtils::CheckRelatedEdgesOriginShape(const std::unordered_set<ge::Ref
   int init_flag = 0;
   vector<int64_t> ref_origin_shape_dims;
   for (const auto &cell : reflections) {
+    const string input_output = cell.in_out == ge::NODE_IN ? STR_INPUT_LOWERCASE : STR_OUTPUT_LOWERCASE;
     ge::NodePtr node_ptr = cell.node;
-    FE_CHECK_NOTNULL(node_ptr);
-    ge::OpDescPtr op_desc_ptr = node_ptr->GetOpDesc();
-    FE_CHECK_NOTNULL(op_desc_ptr);
+    ge::OpDescPtr op_desc_ptr = (node_ptr == nullptr) ? nullptr : node_ptr->GetOpDesc();
+    FE_CHECK(op_desc_ptr == nullptr,
+             FE_LOGW("Relations: the %s %d cell of %s has a nullptr node or op_desc, origin shape is not equal.",
+                     input_output.c_str(), cell.in_out_idx, cell.node_name.c_str()),
+             return false);
     auto owner_graph = node_ptr->GetOwnerComputeGraph();
-    FE_CHECK_NOTNULL(owner_graph);
+    FE_CHECK(owner_graph == nullptr,
+             FE_LOGW("Relations: the %s %d cell of %s has a nullptr owner graph, origin shape is not equal.",
+                     input_output.c_str(), cell.in_out_idx, cell.node_name.c_str()),
+             return false);
     string graph_name = owner_graph->GetName();
     string node_name = node_ptr->GetName();
 
-    string input_output = cell.in_out == ge::NODE_IN ? STR_INPUT_LOWERCASE : STR_OUTPUT_LOWERCASE;
     FE_LOGD("Relations context: the %s %d of Graph[%s]Op[%s].", input_output.c_str(), cell.in_out_idx,
             graph_name.c_str(), node_name.c_str());
 

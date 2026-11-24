@@ -311,7 +311,8 @@ add_executable(ut_fe_shape_common
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/heavy_format_propagation/ut_heavy_format_propagation_fzg.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/heavy_format_propagation/ut_heavy_format_propagation_graph_constructor.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/heavy_format_propagation/ut_heavy_format_propagation_ts_op.cc
-    # common (9 files)
+    # common (10 files)
+    ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/common/graph/fe_graph_utils_unittest.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/common/dump_util_utest.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/common/math_util_unittest.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/common/fe_fp16_utest.cc

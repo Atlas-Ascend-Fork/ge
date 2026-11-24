@@ -354,9 +354,13 @@ Status SetInputOutputOffsetPass::SetOutputOffset(const NodePtr &node,
 }
 
 bool SetInputOutputOffsetPass::CheckBufferFusion(const NodePtr &node) const {
-  for (auto &in_node : node->GetInDataNodes()) {
+  for (const auto &in_node : node->GetInDataNodes()) {
+    if ((in_node == nullptr) || (in_node->GetOpDesc() == nullptr)) {
+      GELOGW("[Check][BufferFusion] in_node or its op_desc of node:%s is nullptr, buffer fusion is not supported.",
+             node->GetName().c_str());
+      return false;
+    }
     auto op_desc = in_node->GetOpDesc();
-    GE_CHECK_NOTNULL(op_desc);
     if (!op_desc->HasAttr(ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION)) {
       GELOGI("The node: %s not have ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION.", node->GetName().c_str());
       return false;
