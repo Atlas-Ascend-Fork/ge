@@ -158,6 +158,47 @@ Atlas training products
 
 **Effective level**: Global/session
 
+## ge.modelFormat
+
+**Extended parameter for debugging features. It is not supported yet for use in production environments and will be released as a formal feature in a later version.**
+
+Specifies the path used for model execution, and is used to select the OM or OM2 execution path.
+
+**Parameter values:**
+
+- 0: (Default value) Executes based on the OM path.
+- 7: Executes based on the OM2 path.
+
+**Configuration example:**
+
+```c++
+{"ge.modelFormat", "7"};
+```
+
+**Usage constraint:**
+
+When the value of `ge.modelFormat` is 7, it cannot be configured together with the following configuration items:
+
+1. [ge.inputHintShape](dynamic_shape.md#geinputhintshape)
+2. [ge.inputHintValue](dynamic_shape.md#geinputhintvalue)
+3. [ac_parallel_enable](dynamic_shape.md#ac_parallel_enable)
+4. [ge.tiling_schedule_optimize](performance_tuning.md#getiling_schedule_optimize)
+5. [ge.compile.h2dOverlappedWithCompute](operator_and_graph_compilation.md#gecompileh2doverlappedwithcompute)
+6. [ge.exec.static_model_ops_lower_limit](dynamic_shape.md#geexecstatic_model_ops_lower_limit)
+7. [op_name_map](../aclgrphBuildModel_config_params/basic_functions.md#op_name_map)
+8. [ge.quant_dumpable](../aclgrphBuildModel_config_params/precision_comparison.md#quant_dumpable)
+9. [ge.build_inner_model](../aclgrphBuildModel_config_params/experimental_parameters.md#build_inner_model)
+10. [ge.exec.dataInputsShapeRange](deprecated_config_for_future_versions.md#geexecdatainputsshaperange)
+11. [ge.shape_generalized_build_mode](deprecated_config_for_future_versions.md#geshape_generalized_build_mode)
+12. [ge.host_env_os](../aclgrphBuildInitialize_config_params/basic_functions.md#option_host_env_os)
+13. [ge.host_env_cpu](../aclgrphBuildInitialize_config_params/basic_functions.md#option_host_env_cpu)
+14. [ge.virtual_type](../aclgrphBuildInitialize_config_params/basic_functions.md#virtual_type)
+15. [ge.exec.tuneDeviceIds](../aclgrphBuildInitialize_config_params/experimental_parameters.md#tune_device_ids)
+
+**Required/Optional**: Optional
+
+**Effective level**: Global/session/graph
+
 ## ge.oo.constantFolding
 
 **Extended parameter for debugging features. It is not supported yet for production environments and will be released as a formal feature in a later version.**
