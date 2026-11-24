@@ -739,7 +739,6 @@ Status FlowModelSender::BuildUpdateDeployPlanRequest(const DeployState &deploy_s
 bool FlowModelSender::CacheLocalModel(const DeployPlan::SubmodelInfo &submodel) {
   int32_t local_node_id = ResourceManager::GetInstance().GetLocalNodeId();
   if (submodel.device_info.GetNodeId() == local_node_id) {
-    GE_CHECK_NOTNULL(submodel.model);
     // saved model path is empty for cache from old version
     if (!submodel.model->GetSavedModelPath().empty()) {
       return true;

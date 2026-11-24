@@ -78,6 +78,7 @@ struct KernelBoxMeta {
     LoopOp::StrictTopoExecute(var.Op().get(), [this, &seen_nodes](const LoopOp *op) -> graphStatus {
       if (op->Type() == "ops.Load") {
         const auto load = dynamic_cast<const LoadOp *>(op);
+        GE_ASSERT_NOTNULL(load);
         extra->concrete_edges.insert(load->Edge());
         extra->used_ascend_buffers.insert(load->Buffer());
         extra->num_loads++;
