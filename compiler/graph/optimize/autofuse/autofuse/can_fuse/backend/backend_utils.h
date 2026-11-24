@@ -743,6 +743,8 @@ class BackendUtils {
                                          std::vector<ViewOpAttrInfo> &attr_infos,
                                          const bool is_condition_with_node_type = true);
 
+  static Status CollectInputLoadViewInfos(const NodePtr &node, int32_t index, std::vector<ViewOpAttrInfo> &attr_infos);
+
   /**
    * 该函数用于判断指定节点的前置节点的输入是否为纯粹的load操作。
    *
