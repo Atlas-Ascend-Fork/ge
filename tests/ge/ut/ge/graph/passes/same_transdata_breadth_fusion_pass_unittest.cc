@@ -530,11 +530,13 @@ TEST_F(UtestGraphPassesSameTransdataBreadthFusionPass, RecomputeCompareInfoForSu
   const auto root_cast = OP_CFG(CAST).TensorDesc(FORMAT_NCHW, DT_FLOAT, {2, 16, 2, 2});
   DEF_GRAPH(cache_path_sub) {
     CHAIN(NODE("cache_path_sub_data", sub_data)
+              ->EDGE(0, 0)
               ->NODE("cache_path_trans_x", sub_trans)
               ->NODE("cache_path_use_x", RELU)
               ->EDGE(0, 0)
               ->NODE("cache_path_sub_output", NETOUTPUT));
     CHAIN(NODE("cache_path_sub_data", sub_data)
+              ->EDGE(0, 0)
               ->NODE("cache_path_trans_y", sub_trans)
               ->NODE("cache_path_use_y", RELU)
               ->EDGE(0, 1)
@@ -542,11 +544,13 @@ TEST_F(UtestGraphPassesSameTransdataBreadthFusionPass, RecomputeCompareInfoForSu
   };
   DEF_GRAPH(cache_path_root) {
     CHAIN(NODE("cache_path_root_data", DATA)
+              ->EDGE(0, 0)
               ->NODE("cache_path_cast", root_cast)
               ->NODE("cache_path_call", PARTITIONEDCALL, cache_path_sub)
               ->EDGE(0, 0)
               ->NODE("cache_path_root_output", NETOUTPUT));
     CHAIN(NODE("cache_path_root_data", DATA)
+              ->EDGE(0, 0)
               ->NODE("cache_path_trans_z", TRANSDATA)
               ->EDGE(0, 1)
               ->NODE("cache_path_root_output", NETOUTPUT));
@@ -572,12 +576,19 @@ TEST_F(UtestGraphPassesSameTransdataBreadthFusionPass, RecomputeCompareInfoForSu
   ASSERT_TRUE(AttrUtils::SetStr(trans_z->GetOpDesc(), ATTR_NAME_STREAM_LABEL, "cache_path_other_stream"));
   ASSERT_EQ(GraphUtils::AddEdge(identity->GetOutControlAnchor(), cast->GetInControlAnchor()), GRAPH_SUCCESS);
 
+  const auto subgraph = graph->GetSubgraph("cache_path_sub");
+  ASSERT_NE(subgraph, nullptr);
+  const auto root_head = graph->FindNode("cache_path_root_data");
+  const auto sub_head = subgraph->FindNode("cache_path_sub_data");
+  ASSERT_NE(root_head, nullptr);
+  ASSERT_NE(sub_head, nullptr);
+  ASSERT_EQ(root_head->GetOutDataAnchor(0)->GetPeerInDataAnchorsPtr().size(), 2U);
+  ASSERT_EQ(sub_head->GetOutDataAnchor(0)->GetPeerInDataAnchorsPtr().size(), 2U);
+
   // X is compared with Z at the root head. Only the root path to X includes the Identity dependency.
   // At the subgraph head the direct paths to X and Y are equivalent and should fuse.
   SameTransdataBreadthFusionPass pass;
   ASSERT_EQ(pass.Run(graph), GRAPH_SUCCESS);
-  const auto subgraph = graph->GetSubgraph("cache_path_sub");
-  ASSERT_NE(subgraph, nullptr);
   const auto use_x = subgraph->FindNode("cache_path_use_x");
   const auto use_y = subgraph->FindNode("cache_path_use_y");
   ASSERT_NE(use_x, nullptr);
