@@ -342,7 +342,7 @@ Status FileConstantUtils::GetFilePath(const OpDescPtr &op_desc,
     return SUCCESS;
   }
   const std::string *file_id_ptr = AttrUtils::GetStr(op_desc, ATTR_NAME_FILE_CONSTANT_ID);
-  GE_CHK_BOOL_RET_STATUS(file_id_ptr != nullptr, FAILED, "Failed to get filed id from attr");
+  GE_CHK_BOOL_RET_STATUS(file_id_ptr != nullptr, FAILED, "Failed to get file id from attr");
   GE_CHK_BOOL_RET_STATUS(!file_id_ptr->empty(), FAILED, "The file path and file id are empty.");
   const auto it = file_id_to_path_map.find(*file_id_ptr);
   if (it == file_id_to_path_map.end()) {
