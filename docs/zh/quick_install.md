@@ -126,11 +126,11 @@ docker run --name cann_container \
 
     1. **安装驱动与固件（可选，仅运行[样例](../../examples/README.md)依赖）**
 
-        驱动与固件是运行态依赖，若仅编译源码，可以不安装。使用`npu-smi info`检查是否有NPU相关信息，若没有，请参考《[CANN快速安装](https://www.hiascend.com/cann/download)》完成驱动与固件安装。
+        驱动与固件是运行态依赖，若仅编译源码，可以不安装。使用`npu-smi info`检查是否有NPU相关信息，若没有，请参考《[CANN软件安装](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)》中“准备软件包”和“安装NPU驱动和固件”章节完成驱动与固件安装。
 
    2. **安装CANN包**
 
-         请单击[下载链接](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/software/master)获取最新时间版本，并根据产品型号和环境架构下载对应包。安装命令如下，更多指导请参考《[CANN软件安装](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)》。
+         请单击[下载链接](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/software/master/)，选择最新时间版本，并根据产品型号和环境架构下载对应包。安装命令如下，更多指导参考《[CANN软件安装](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)》。
 
          - 安装CANN Toolkit开发套件包。
 
@@ -184,4 +184,4 @@ docker run --name cann_container \
 
 - **场景2：体验已发布版本能力或基于已发布版本进行开发**
 
-    如果您想体验**官网正式发布的CANN包**能力，请访问[CANN官网下载中心](https://www.hiascend.com/cann/download)，选择对应版本CANN软件包（仅支持CANN 8.5.0及后续版本）进行安装。
+    如果您想体验**官网正式发布的CANN包**能力，请访问[CANN官网下载中心](https://www.hiascend.com/cann/download)，选择发布版本（仅支持CANN 8.5.0及后续版本）、产品型号和环境架构，参考《[CANN快速安装](https://www.hiascend.com/cann/download)》完成安装。

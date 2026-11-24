@@ -128,13 +128,13 @@ For developers who do not depend on Ascend devices, if you want to quickly set u
 
 - **Scenario 1: Experience master version capabilities or develop based on master version**
 
-    1. **Install Drivers and Firmware (Optional, only required for running [samples](../../examples/README.md))**
+    1. **Install Drivers and Firmware (Optional, only required for running [samples](../../examples/README_en.md))**
 
-        Drivers and firmware are runtime dependencies. If only compiling source code, you don't need to install them. Use `npu-smi info` to check if there is NPU-related information. If not, please refer to [CANN Quick Installation](https://www.hiascend.com/cann/download) to complete driver and firmware installation.
+        Drivers and firmware are runtime dependencies. If only compiling source code, you don't need to install them. Use `npu-smi info` to check if there is NPU-related information. If not, please refer to the "Preparing Software Packages" and "Installing NPU Driver and Firmware" sections in the [CANN Software Installation](https://www.hiascend.com/en/document/redirect/CannCommunityInstWizard) to complete driver and firmware installation.
 
     2. **Install CANN Package**
 
-         Please click [download link](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/software/master) to get the latest timestamp version, and download the corresponding package according to product model and environment architecture. Installation commands are as follows, for more guidance please refer to [CANN Software Installation](https://www.hiascend.com/en/document/redirect/CannCommunityInstWizard).
+         Please click [download link](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/software/master/) to select the latest timestamp version, and download the corresponding package according to product model and environment architecture. Installation commands are as follows, for more guidance please refer to the [CANN Software Installation](https://www.hiascend.com/en/document/redirect/CannCommunityInstWizard).
 
          - Install CANN Toolkit development suite package.
 
@@ -149,7 +149,7 @@ For developers who do not depend on Ascend devices, if you want to quickly set u
             - `${arch}`: Represents CPU architecture, such as `aarch64`, `x86_64`.
             - `${install_path}`: Represents the specified installation path, needs to be installed in the same path as Toolkit package, root user defaults to `/usr/local/Ascend` directory.
 
-         - Install CANN ops operator package (optional, only required for running [samples](../../examples/README.md)).
+         - Install CANN ops operator package (optional, only required for running [samples](../../examples/README_en.md)).
 
             ```bash
             # Ensure the installation package has executable permissions
@@ -160,7 +160,7 @@ For developers who do not depend on Ascend devices, if you want to quickly set u
 
             Where `${soc_name}` represents NPU model name.
 
-         - Install runtime dependencies (optional, only required for running [samples](../../examples/README.md)).
+         - Install runtime dependencies (optional, only required for running [samples](../../examples/README_en.md)).
 
             ```bash
             pip3 install attrs cython numpy decorator sympy cffi pyyaml pathlib2 psutil protobuf==3.20.0 scipy requests absl-py
@@ -188,4 +188,4 @@ For developers who do not depend on Ascend devices, if you want to quickly set u
 
 - **Scenario 2: Experience released version capabilities or develop based on released version**
 
-    If you want to experience **officially released CANN package** capabilities, please visit [CANN Official Download Center](https://www.hiascend.com/cann/download), select the corresponding version of CANN software package (only supports CANN 8.5.0 and later versions) for installation.
+    If you want to experience **officially released CANN package** capabilities, please visit [CANN Official Download Center](https://www.hiascend.com/en-sg/cann/download), select the release version (only CANN 8.5.0 and later versions are supported), product model, and environment architecture, and refer to [CANN Quick Installation](https://www.hiascend.com/en-sg/cann/download) to complete the installation.
