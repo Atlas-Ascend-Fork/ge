@@ -474,15 +474,15 @@ Status DynamicShapePartitioner::Partition() {
                       GetRootGraph()->GetName().c_str());
 
     auto status = PartitionImpl();
-    GELOGD("%s", DebugString().c_str());
     if (status != SUCCESS) {
       REPORT_INNER_ERR_MSG("E19999", "Call partition impl failed in dynamic shape partition, graph:%s",
                            GetRootGraph()->GetName().c_str());
-      GELOGE(status, "[Call][PartitionImpl] Failed dynamic shape partition graph:%s, ret:%s",
-             GetRootGraph()->GetName().c_str(), DebugString().c_str());
+      GELOGE(status, "[Call][PartitionImpl] Failed dynamic shape partition graph:%s, ret:%u",
+             GetRootGraph()->GetName().c_str(), status);
       ClearResource();
       return status;
     }
+    GELOGD("%s", DebugString().c_str());
     GELOGD("Finish dynamic shape partition graph %s.", GetRootGraph()->GetName().c_str());
     ClearResource();
   }
@@ -672,16 +672,12 @@ Status DynamicShapePartitioner::InitClusters() {
       auto &control_node = control_nodes_[group_index];
       control_node.emplace_back(node);
     }
-  }
-  // 先完成所有节点的 cluster 分配，再统一连边。拓扑序不保证父节点一定排在子节点之前
-  // （例如被 GetInEdgeSize 豁免的流控回边），逐个节点查找父 cluster 会拿到空指针。
-  for (const auto &node : graph->GetDirectNode()) {
-    const auto &cluster = GetCluster(node);
-    GE_ASSERT_NOTNULL(cluster, "[Get][Cluster] node:%s has no cluster.", node->GetNamePtr());
+
+    // Every incoming dependency must have an initialized cluster before it is linked.
     for (const auto &parent : node->GetInAllNodes()) {
       const auto &parent_cluster = GetCluster(parent);
-      GE_ASSERT_NOTNULL(parent_cluster, "[Check][ClusterInput] node:%s parent:%s has no cluster.", node->GetNamePtr(),
-                        parent->GetNamePtr());
+      GE_ASSERT_NOTNULL(parent_cluster, "[Check][ClusterInput] graph:%s node:%s parent:%s has no cluster.",
+                        graph->GetName().c_str(), node->GetNamePtr(), parent->GetNamePtr());
       cluster->AddInput(parent_cluster);
     }
   }
@@ -710,10 +706,6 @@ Status DynamicShapePartitioner::MergeClustersUnknownShape() {
       continue;
     }
     for (const auto &base_in_cluster : cluster->Inputs()) {
-      if (base_in_cluster == nullptr) {
-        GELOGW("[Check][ClusterInput] cluster:%zu has null input cluster, skip.", cluster->Id());
-        continue;
-      }
       const auto &in_cluster = std::dynamic_pointer_cast<DynamicShapeCluster>(base_in_cluster->shared_from_this());
       GE_ASSERT_NOTNULL(in_cluster, "[Check][ClusterInput] failed.");
       if (!in_cluster->IsUnknownShape()) {
