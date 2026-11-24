@@ -254,8 +254,9 @@ ge::Status LinkManager::GetUnLinkResult(int64_t left_timeout, std::vector<ge::St
 
 ge::Status LinkManager::LinkClusters(const std::vector<ClusterInfo> &clusters, std::vector<ge::Status> &rets,
                                      const int32_t timeout) {
+  auto link_timeout = timeout < 0 ? kDefaultTimeout : timeout;
   std::unique_lock<std::timed_mutex> lock(link_mtx_, std::defer_lock);
-  if (!lock.try_lock_for(std::chrono::microseconds(timeout))) {
+  if (!lock.try_lock_for(std::chrono::milliseconds(link_timeout))) {
     LLMEVENT("Link is currently processing. Try again later.");
     return ge::LLM_PROCESSING_LINK;
   }
@@ -265,7 +266,6 @@ ge::Status LinkManager::LinkClusters(const std::vector<ClusterInfo> &clusters, s
   const auto prepare_input_end = std::chrono::steady_clock::now();
   auto cost_in_us = std::chrono::duration_cast<std::chrono::microseconds>(prepare_input_end - link_start);
   LLMEVENT("[LlmPerf] prepare link input tensor end, elapsed_us = %ld", cost_in_us.count());
-  auto link_timeout = timeout < 0 ? kDefaultTimeout : timeout;
   link_timeout = need_extra_host_timeout_ ? (link_timeout + kHostExtraTimeout) : link_timeout;
   auto transaction_id = link_transaction_id_;
   ret = LinkOrUnlinkAsync(link_timeout, true);
@@ -302,8 +302,9 @@ ge::Status LinkManager::LinkClusters(const std::vector<ClusterInfo> &clusters, s
 
 ge::Status LinkManager::UnlinkClusters(const std::vector<ClusterInfo> &clusters, const LinkOperator operator_type,
                                        std::vector<ge::Status> &rets, const int32_t timeout, bool force_flag) {
+  auto unlink_timeout = timeout < 0 ? kDefaultTimeout : timeout;
   std::unique_lock<std::timed_mutex> lock(link_mtx_, std::defer_lock);
-  if (!lock.try_lock_for(std::chrono::microseconds(timeout))) {
+  if (!lock.try_lock_for(std::chrono::milliseconds(unlink_timeout))) {
     LLMEVENT("Link is currently processing. Try again later.");
     return ge::LLM_PROCESSING_LINK;
   }
@@ -313,7 +314,6 @@ ge::Status LinkManager::UnlinkClusters(const std::vector<ClusterInfo> &clusters,
   const auto prepare_input_end = std::chrono::steady_clock::now();
   auto cost_in_us = std::chrono::duration_cast<std::chrono::microseconds>(prepare_input_end - unlink_start);
   LLMEVENT("[LlmPerf] prepare unlink input tensor end, elapsed_us = %ld", cost_in_us.count());
-  auto unlink_timeout = timeout < 0 ? kDefaultTimeout : timeout;
   unlink_timeout = need_extra_host_timeout_ ? (unlink_timeout + kHostExtraTimeout) : unlink_timeout;
 
   auto transaction_id = unlink_transaction_id_;
