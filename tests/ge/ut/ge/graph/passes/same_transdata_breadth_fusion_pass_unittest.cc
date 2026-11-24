@@ -526,7 +526,9 @@ static void CreateGraph(ComputeGraphPtr &graph) {
 
 TEST_F(UtestGraphPassesSameTransdataBreadthFusionPass, RecomputeCompareInfoForSubgraphHead) {
   const auto sub_data = OP_CFG(DATA).ParentNodeIndex(0).TensorDesc(FORMAT_NCHW, DT_FLOAT16, {2, 16, 2, 2});
-  const auto sub_trans = OP_CFG(TRANSDATA).TensorDesc(FORMAT_NCHW, DT_FLOAT16, {2, 16, 2, 2});
+  // TransData is not registered in OpDescCfgRepo, so the descriptor counts must be set explicitly;
+  // otherwise the node is built without descriptors and receives default ND/DT_FLOAT ones when edges are added.
+  const auto sub_trans = OP_CFG(TRANSDATA).InCnt(1).OutCnt(1).TensorDesc(FORMAT_NCHW, DT_FLOAT16, {2, 16, 2, 2});
   const auto root_cast = OP_CFG(CAST).TensorDesc(FORMAT_NCHW, DT_FLOAT, {2, 16, 2, 2});
   DEF_GRAPH(cache_path_sub) {
     CHAIN(NODE("cache_path_sub_data", sub_data)
@@ -584,6 +586,13 @@ TEST_F(UtestGraphPassesSameTransdataBreadthFusionPass, RecomputeCompareInfoForSu
   ASSERT_NE(sub_head, nullptr);
   ASSERT_EQ(root_head->GetOutDataAnchor(0)->GetPeerInDataAnchorsPtr().size(), 2U);
   ASSERT_EQ(sub_head->GetOutDataAnchor(0)->GetPeerInDataAnchorsPtr().size(), 2U);
+  // The subgraph Data output is FP16. The kernel stub accepts Y only from this side, not when it
+  // has to be moved in front of the root Cast whose input is FP32.
+  for (const auto &name : {"cache_path_trans_x", "cache_path_trans_y"}) {
+    const auto trans = subgraph->FindNode(name);
+    ASSERT_NE(trans, nullptr);
+    ASSERT_EQ(trans->GetOpDesc()->GetInputDesc(0U).GetDataType(), DT_FLOAT16);
+  }
 
   // X is compared with Z at the root head. Only the root path to X includes the Identity dependency.
   // At the subgraph head the direct paths to X and Y are equivalent and should fuse.
