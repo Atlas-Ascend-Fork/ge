@@ -673,16 +673,20 @@ Status DynamicShapePartitioner::InitClusters() {
       control_node.emplace_back(node);
     }
 
-    // Every incoming dependency must have an initialized cluster before it is linked.
-    for (const auto &parent : node->GetInAllNodes()) {
-      const auto &parent_cluster = GetCluster(parent);
-      GE_ASSERT_NOTNULL(parent_cluster, "[Check][ClusterInput] graph:%s node:%s parent:%s has no cluster.",
-                        graph->GetName().c_str(), node->GetNamePtr(), parent->GetNamePtr());
-      cluster->AddInput(parent_cluster);
-    }
+    GE_CHK_STATUS_RET(LinkClusterInputs(node, *cluster));
   }
   for (const auto &node : graph->GetDirectNode()) {
     GELOGD("Make cluster for node %s : %s.", node->GetNamePtr(), GetCluster(node)->DebugString().c_str());
+  }
+  return SUCCESS;
+}
+
+Status DynamicShapePartitioner::LinkClusterInputs(const NodePtr &node, BaseCluster &cluster) {
+  for (const auto &parent : node->GetInAllNodes()) {
+    const auto &parent_cluster = GetCluster(parent);
+    GE_ASSERT_NOTNULL(parent_cluster, "[Check][ClusterInput] graph:%s node:%s parent:%s has no cluster.",
+                      GetRootGraph()->GetName().c_str(), node->GetNamePtr(), parent->GetNamePtr());
+    cluster.AddInput(parent_cluster);
   }
   return SUCCESS;
 }

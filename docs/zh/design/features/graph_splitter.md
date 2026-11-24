@@ -169,8 +169,6 @@ InitClusters → MergeClusters → ProcessUniqueClusters
 
 `compiler/graph/partition/dynamic_shape_partition.h` 中的 `DynamicShapePartitioner` 是图拆分的核心策略实现，负责将计算图按动态/静态 Shape 划分为不同子图。
 
-`InitClusters()` 按节点顺序逐个建簇并连接入边。待连边的父节点必须已有 cluster；如果没有，拆分返回错误并记录图名和节点名，不跳过依赖。循环的显式数据回边应在拆分前由控制流 pass 处理。
-
 #### 5.2.1 节点分类规则
 
 `MarkUnknownShapeNodes()` 方法按以下规则判断节点是否属于动态 Shape：

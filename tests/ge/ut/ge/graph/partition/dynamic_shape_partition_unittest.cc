@@ -1914,4 +1914,18 @@ TEST_F(UtestDynamicShapePartition, Partition_WithDynamicShapeAndTilingSink) {
   DynamicShapePartitioner partitioner(graph);
   EXPECT_EQ(partitioner.Partition(), SUCCESS);
 }
+
+TEST_F(UtestDynamicShapePartition, LinkClusterInputsFailsWhenParentClusterIsMissing) {
+  auto graph = std::make_shared<ComputeGraph>("missing_parent_cluster");
+  const auto data = NodeBuilder("data", DATA).AddOutputDesc().Build(graph);
+  const auto relu = NodeBuilder("relu", RELU).AddInputDesc().AddOutputDesc().Build(graph);
+  ASSERT_NE(data, nullptr);
+  ASSERT_NE(relu, nullptr);
+  ASSERT_EQ(GraphUtils::AddEdge(data->GetOutDataAnchor(0), relu->GetInDataAnchor(0)), GRAPH_SUCCESS);
+
+  DynamicShapePartitioner partitioner(graph);
+  DynamicShapeCluster relu_cluster(0U, 0, relu, &partitioner);
+  EXPECT_NE(partitioner.LinkClusterInputs(relu, relu_cluster), SUCCESS);
+  EXPECT_TRUE(relu_cluster.Inputs().empty());
+}
 }  // namespace ge

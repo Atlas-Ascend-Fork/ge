@@ -384,8 +384,6 @@ flowchart TD
 
 **DynamicShapePartition**：动态 Shape 分区（`partition/dynamic_shape_partition.cc`）将图分为"已知 Shape"和"未知 Shape"的子图。未知 Shape 的子图需要特殊的运行时调度（设备侧 Shape 计算）。
 
-正常编译先在 `OptimizeStage1` 中处理循环的数据回边，再进行动态 Shape 分区。建簇时若入边对应的父 cluster 尚未创建，分区返回失败，不继续合并或构建子图。
-
 **两级分区（Composite + Atomic）**：
 - `kCompositeEnginePartitioning`：先按组合引擎（如 FE 融合引擎）分区
 - `kAtomicEnginePartitioning`：再按原子引擎分区
