@@ -437,8 +437,8 @@ Status AtomicMemoryAssigner::GetWorkspaceCleanMemInfos(const NodePtr &node, Atom
       if (has_tvm_workspace_mem_type_attr && (index < tvm_workspace_types.size())) {
         // 这两种类型不分配内存
         if ((tvm_workspace_types.at(index) == RT_MEM_TYPE_L1) || (tvm_workspace_types.at(index) == kRtMemoryUB)) {
-          GELOGI("[AtomicClean]tvm_workspace_types[%lld]: %lld, not assign memory, node: %s(%s), clean_mem_info: %s",
-                 index, tvm_workspace_types.at(index), node->GetNamePtr(), node->GetTypePtr());
+          GELOGI("[AtomicClean]tvm_workspace_types[%lld]: %lld, not assign memory, node: %s(%s)", index,
+                 tvm_workspace_types.at(index), node->GetNamePtr(), node->GetTypePtr());
           continue;
         }
       }
@@ -448,8 +448,8 @@ Status AtomicMemoryAssigner::GetWorkspaceCleanMemInfos(const NodePtr &node, Atom
                         node->GetNamePtr(), node->GetTypePtr(), index);
       // ascend c算子的workspace 默认-1，要跳过
       if (workspace_size.at(index) < 0) {
-        GELOGI("[AtomicClean]workspace_size[%lld]: %lld < 0, node: %s(%s), clean_mem_info: %s", index,
-               workspace_size.at(index), node->GetNamePtr(), node->GetTypePtr());
+        GELOGI("[AtomicClean]workspace_size[%lld]: %lld < 0, node: %s(%s)", index, workspace_size.at(index),
+               node->GetNamePtr(), node->GetTypePtr());
         continue;
       }
       // 获取内存类型

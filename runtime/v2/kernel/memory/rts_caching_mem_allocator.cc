@@ -49,7 +49,7 @@ PageSpan *RtsCachingMemAllocator::FetchNewSpan(ge::Allocator &allocator, const M
     return ScalableAllocator::FetchNewSpan(allocator, size, page_len);
   }
   if (IsThresholdExceeded(huge_page_mem_size)) {
-    LOG_BY_TYPE(GeLogLevel::kInfo, "OccupiedSize:%llu add size:%llu exceed total_threshold:%llu.",
+    LOG_BY_TYPE(GeLogLevel::kInfo, "OccupiedSize:%llu bytes add size:%llu bytes exceed total_threshold:%llu bytes.",
                 device_allocator_.GetOccupiedSize(), huge_page_mem_size, config_.page_mem_size_total_threshold);
 
     // has freed memory, return nullptr and try recycle
@@ -95,7 +95,7 @@ ge::MemBlock *RtsCachingMemAllocator::AllocateWithTryRecycle(size_t size) {
 }
 
 ge::MemBlock *RtsCachingMemAllocator::Malloc(size_t size) {
-  GELOGI("Malloc size:%zu.", size);
+  GELOGI("Malloc size:%zu bytes.", size);
   return AllocateWithTryRecycle(size);
 }
 

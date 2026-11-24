@@ -154,7 +154,7 @@ bool CanBlockLifeReuse(const BlockMemAssigner *const mem_assigner, const MemoryB
     return false;
   }
   if (in_block.IsBlockTypeConflict(out_block)) {
-    GELOGD("block type conflict, in_block: %s(%s), out_block: %s.", GetName(in_block).c_str(),
+    GELOGD("block type conflict, in_block: %s(%s), out_block: %s(%s).", GetName(in_block).c_str(),
            in_block.BlockTypeStr().c_str(), GetName(out_block).c_str(), out_block.BlockTypeStr().c_str());
     return false;
   }

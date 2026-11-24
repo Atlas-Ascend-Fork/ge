@@ -51,7 +51,7 @@ ge::MemBlock *ExternalAllocator::MallocAdvise(size_t size, void *addr) {
     GELOGE(ge::FAILED, "Failed to malloc advise memory by external allocator, size: %zu", size);
     return nullptr;
   }
-  GELOGD("Malloc advise memory by external allocator success, block:%p, size: %zu", block, size);
+  GELOGD("Malloc advise memory by external allocator success, block:%p, size: %zu bytes", block, size);
 
   auto mem_block = new (external_mem_block_.Alloc())
       ExternalMemBlock(*this, allocator_desc_.get_addr_from_block_func(block), size, block);
