@@ -963,4 +963,14 @@ TEST_F(ModelCacheTest, ReadCacheConfig_EmptyFile) {
   }
   RemoveCacheConfig();
 }
+
+TEST_F(ModelCacheTest, compare_var_desc_null_var_manager) {
+  const uint64_t session_id = 9120384756ULL;
+  VarDescCache var_descs;
+  GeTensorDesc tensor_desc(GeShape({16}), FORMAT_ND, DT_FLOAT);
+  var_descs.var_desc_map["some_var"] = tensor_desc;
+  VarManagerPool::Instance().var_manager_map_[session_id] = nullptr;
+  EXPECT_FALSE(ModelCache::CompareVarDesc(session_id, var_descs));
+  VarManagerPool::Instance().var_manager_map_.erase(session_id);
+}
 }  // namespace ge

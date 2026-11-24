@@ -1804,8 +1804,11 @@ Status TensorFlowModelParser::RunScopeFusionPass(const vector<string> &scope_pas
 
 bool TensorFlowModelParser::MaybeFusionOp(shared_ptr<ge::ScopeGraph> &scope_graph,
                                           const domi::tensorflow::NodeDef *node_def) {
-  GE_CHECK_NOTNULL(scope_graph);
-  GE_CHECK_NOTNULL(node_def);
+  if (scope_graph == nullptr || node_def == nullptr) {
+    REPORT_INNER_ERR_MSG("E19999", "Param scope_graph or node_def is nullptr, check invalid");
+    GELOGE(FAILED, "[Check][Param] scope_graph or node_def is nullptr, not a fusion op.");
+    return false;
+  }
   // If it is a fusion operator, put nodedef in the fusion_op_nodedef_map_
   ge::ScopeFusionOpInfo info;
   std::vector<ge::ScopeFusionOpInfo> info_list;
@@ -1859,7 +1862,11 @@ bool TensorFlowModelParser::IsFusionOpChild(const string &node_name, ge::ScopeFu
 
 bool TensorFlowModelParser::FusionOpChildIgnore(const shared_ptr<ge::ScopeGraph> &scope_graph,
                                                 const ge::ScopeFusionOpInfo &info) {
-  GE_CHECK_NOTNULL(scope_graph);
+  if (scope_graph == nullptr) {
+    REPORT_INNER_ERR_MSG("E19999", "Param scope_graph is nullptr, check invalid");
+    GELOGE(FAILED, "[Check][Param] scope_graph is nullptr, fusion op child not ignored.");
+    return false;
+  }
   bool ignore = false;
   if (info.scope_pass) {
     // Scope fusion strategy

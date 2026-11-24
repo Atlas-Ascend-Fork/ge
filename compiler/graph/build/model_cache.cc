@@ -304,8 +304,12 @@ bool ModelCache::CompareVarDesc(uint64_t session_id, const VarDescCache &var_des
     const auto &var_name = var_desc_it.first;
     const auto &var_desc = var_desc_it.second;
     GeTensorDesc current_tensor_desc;
-    GE_CHECK_NOTNULL(VarManager::Instance(session_id));
-    if (VarManager::Instance(session_id)->GetCurVarDesc(var_name, current_tensor_desc) != SUCCESS) {
+    auto var_manager = VarManager::Instance(session_id);
+    if (var_manager == nullptr) {
+      GELOGE(FAILED, "The var manager of session_id[%lu] is null, cannot load from cache.", session_id);
+      return false;
+    }
+    if (var_manager->GetCurVarDesc(var_name, current_tensor_desc) != SUCCESS) {
       GELOGI("The var[%s] does not exist in var manager, cannot load from cache.", var_name.c_str());
       return false;
     }
