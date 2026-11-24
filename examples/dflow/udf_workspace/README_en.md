@@ -28,7 +28,7 @@
    * Proc contains user-defined computation processing logic. UDF framework will call this function after receiving input data
 
 3. UDF registration, implemented through REGISTER_FLOW_FUNC macro to map class declaration to user-defined UDF function name, and register to UDF framework. For example:
-   EGISTER_FLOW_FUNC("call_nn", CallNnFlowFunc);
+   REGISTER_FLOW_FUNC("call_nn", CallNnFlowFunc);
 
    call_nn: User-defined UDF function name
 
@@ -54,8 +54,7 @@ After UDF function development is completed, you can use the following compilati
 
 ```bash
 source {HOME}/Ascend/cann/set_env.sh #{HOME} is the CANN software package installation directory, please replace according to the actual installation path
-# T
-ache 01_udf_add as an example
+# Take 01_udf_add as an example
 cd 01_udf_add
 mkdir build
 cd build
