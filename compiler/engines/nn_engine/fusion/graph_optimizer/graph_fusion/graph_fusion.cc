@@ -844,7 +844,8 @@ Status GraphFusion::RunGraphFusionPassByType(const string &stage, ge::ComputeGra
 
 void AdjustRunCountAfterPass(ge::ComputeGraph &graph, const FusionPassOrRule &pass_or_rule, int64_t &run_count) {
   int64_t run_count_attr = 0;
-  (void)ge::AttrUtils::GetInt(graph, "run_count", run_count_attr);
+  FE_LOGW_IF(!ge::AttrUtils::GetInt(graph, "run_count", run_count_attr),
+             "The attr[run_count] of graph[%s] does not exist, use the default value[0].", graph.GetName().c_str());
   run_count++;
   if (run_count_attr < run_count) {
     FE_LOGI("pass:%s, run_count is not equal. run_count:%ld, cur_count:%ld", pass_or_rule.name.c_str(), run_count_attr,
@@ -1175,8 +1176,10 @@ Status GraphFusion::RunOnePassFusion(ge::ComputeGraph &graph, const FusionPassOr
       context.SetPassName(ge_pass->first.c_str());
       ret = ge_pass->second()->Run(ge_graph, context);
       if (ret != SUCCESS) {
-        int64_t run_count_attr;
-        (void)ge::AttrUtils::GetInt(graph, "run_count", run_count_attr);
+        int64_t run_count_attr = 0;
+        FE_LOGW_IF(!ge::AttrUtils::GetInt(graph, "run_count", run_count_attr),
+                   "The attr[run_count] of graph[%s] does not exist, use the default value[0].",
+                   graph.GetName().c_str());
         (void)ge::AttrUtils::SetInt(graph, "run_count", ++run_count_attr);
       }
     } else {
@@ -1191,8 +1194,9 @@ Status GraphFusion::RunOnePassFusion(ge::ComputeGraph &graph, const FusionPassOr
       ret = pattern_fusion_base_pass_ptr->Run(graph, this->ops_kernel_info_store_ptr_);
     }
   } else {
-    int64_t run_count_attr;
-    (void)ge::AttrUtils::GetInt(graph, "run_count", run_count_attr);
+    int64_t run_count_attr = 0;
+    FE_LOGW_IF(!ge::AttrUtils::GetInt(graph, "run_count", run_count_attr),
+               "The attr[run_count] of graph[%s] does not exist, use the default value[0].", graph.GetName().c_str());
     (void)ge::AttrUtils::SetInt(graph, "run_count", ++run_count_attr);
   }
   if (ret != SUCCESS && ret != NOT_CHANGED && ret != ge::NOT_CHANGED && ret != GRAPH_FUSION_CYCLE) {
@@ -1328,18 +1332,20 @@ uint32_t GraphFusion::JudgeQuantMode(const ge::ComputeGraph &graph) const {
              return PARAM_INVALID);
 
     // translate deq_scale_tensor to scale_deq[32:63], N[24:31], offset_w[16:23]
-    std::uint8_t *data = const_cast<uint8_t *>(deq_scale_tensor->GetData().data());
-    uint64_t *deq_scale_data = reinterpret_cast<uint64_t *>(data);
-    FE_CHECK(deq_scale_data == nullptr, REPORT_FE_ERROR("[GraphOpt][FusionQuantOp] deqScaleData is nullptr"),
-             return PARAM_INVALID);
     const ge::GeShape &deq_scale_shape = deq_scale_tensor->GetTensorDesc().GetShape();
     if (deq_scale_shape.GetDimNum() != 1) {
       REPORT_FE_ERROR("[GraphOpt][FusionQuantOp] deqScale shape error, shape is %zu.", deq_scale_shape.GetDimNum());
       return PARAM_INVALID;
     }
+    int64_t deq_co = deq_scale_shape.GetDim(0);
+    const ge::TensorData &deq_data = deq_scale_tensor->GetData();
+    FE_CHECK(deq_co < 0 || static_cast<size_t>(deq_co) > deq_data.size() / sizeof(uint64_t),
+             REPORT_FE_ERROR("[GraphOpt][FusionQuantOp] deqScale data size[%zu] is smaller than dim[%ld].",
+                             deq_data.size(), deq_co),
+             return PARAM_INVALID);
+    const uint64_t *deq_scale_data = reinterpret_cast<const uint64_t *>(deq_data.data());
     // set default value
     (void)ge::AttrUtils::SetStr(node->GetOpDesc(), STR_QUANT_MODE, STR_QUANT_HIGH_PRECISION);
-    int64_t deq_co = deq_scale_shape.GetDim(0);
     for (int64_t i = 0; i < deq_co; i++) {
       int8_t deq_n = GET_DEQUANT_N(deq_scale_data[i]);
       FE_LOGD("deq_scale N value[%ld] is %d.", i, deq_n);

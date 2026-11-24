@@ -244,8 +244,9 @@ void ConcatTileFusionPass::SortContinuityTileNodes(std::vector<ge::NodePtr> &til
     FE_CHECK(tile_node->GetOutDataAnchor(0) == nullptr, REPORT_FE_ERROR("tile_node->GetOutDataAnchor(0) is nullptr."),
              return);
     auto peer_in_anchors = tile_node->GetOutDataAnchor(0)->GetPeerInDataAnchors();
-    if (peer_in_anchors.size() > 1) {
-      FE_LOGW("Node[%s, %s] with multi outputs.", tile_node->GetNamePtr(), tile_node->GetTypePtr());
+    if (peer_in_anchors.size() != 1) {
+      FE_LOGW("Node[%s, %s] with %zu peer in anchors, couldn't be supported.", tile_node->GetNamePtr(),
+              tile_node->GetTypePtr(), peer_in_anchors.size());
       continue;
     }
     int32_t indx = peer_in_anchors.at(0)->GetIdx();
@@ -316,8 +317,8 @@ Status ConcatTileFusionPass::RemoveConcatEdges(const ge::NodePtr &concat_node, v
     FE_CHECK(input_nodes[i]->GetOutDataAnchor(0) == nullptr, FE_LOGW("Tile node's output is null."), return FAILED);
     auto peer_in_anchors = input_nodes[i]->GetOutDataAnchor(0)->GetPeerInDataAnchors();
     // can't support tile multi output
-    if (peer_in_anchors.size() > 1) {
-      FE_LOGW("ConcatTileFusionPass can't support tile multi output.");
+    if (peer_in_anchors.size() != 1) {
+      FE_LOGW("ConcatTileFusionPass can't support tile with %zu output peer anchors.", peer_in_anchors.size());
       return FAILED;
     }
     int32_t indx = peer_in_anchors.at(0)->GetIdx();
@@ -335,6 +336,11 @@ Status ConcatTileFusionPass::UpdateConcatTileTensor(ge::OpDescPtr &new_concat_op
                                                     ge::GeTensorDesc &tile_input_output_tensor) const {
   std::vector<int64_t> data_shape = tile_input_output_tensor.GetShape().GetDims();
   std::vector<int64_t> ori_data_shape = tile_input_output_tensor.GetOriginShape().GetDims();
+  FE_CHECK(concat_dim_ < 0 || static_cast<size_t>(concat_dim_) >= data_shape.size() ||
+               static_cast<size_t>(concat_dim_) >= ori_data_shape.size(),
+           REPORT_FE_ERROR("concat_dim[%d] is out of range of data shape[%zu] and origin shape[%zu].", concat_dim_,
+                           data_shape.size(), ori_data_shape.size()),
+           return FAILED);
   data_shape[concat_dim_] = concat_shape;
   ori_data_shape[concat_dim_] = concat_ori_shape;
   tile_input_output_tensor.SetShape(ge::GeShape(data_shape));
@@ -346,6 +352,11 @@ Status ConcatTileFusionPass::UpdateConcatTileTensor(ge::OpDescPtr &new_concat_op
   FE_CHECK(tile_output_tensor == nullptr, REPORT_FE_ERROR("tile_output_tensor is nullptr."), return FAILED);
   std::vector<int64_t> tile_shape = tile_output_tensor->GetShape().GetDims();
   std::vector<int64_t> tile_ori_shape = tile_output_tensor->GetOriginShape().GetDims();
+  FE_CHECK(concat_dim_ < 0 || static_cast<size_t>(concat_dim_) >= tile_shape.size() ||
+               static_cast<size_t>(concat_dim_) >= tile_ori_shape.size(),
+           REPORT_FE_ERROR("concat_dim[%d] is out of range of tile node[%s] shape[%zu] and origin shape[%zu].",
+                           concat_dim_, tile_node->GetNamePtr(), tile_shape.size(), tile_ori_shape.size()),
+           return FAILED);
   tile_shape[concat_dim_] = concat_shape;
   tile_ori_shape[concat_dim_] = concat_ori_shape;
 
@@ -368,8 +379,11 @@ Status ConcatTileFusionPass::GetConcatValueByConcatdim(const vector<ge::NodePtr>
     FE_CHECK((data_shape.size() < 1 || ori_data_shape.size() < 1), FE_LOGE("Tile inputs tensor is not complete."),
              return FAILED);
     size_t shape_len = data_shape.size();
-    if (static_cast<int32_t>(shape_len) <= concat_dim_) {
-      FE_LOGW("The data_shape dim[%d] is larger than data_shape size[%lu], couldn't support", concat_dim_, shape_len);
+    size_t ori_shape_len = ori_data_shape.size();
+    if (concat_dim_ < 0 || static_cast<int32_t>(shape_len) <= concat_dim_ ||
+        static_cast<int32_t>(ori_shape_len) <= concat_dim_) {
+      FE_LOGW("The concat dim[%d] is out of range, data_shape size[%zu], origin shape size[%zu], couldn't support",
+              concat_dim_, shape_len, ori_shape_len);
       return FAILED;
     }
     concat_shape_dim += data_shape[concat_dim_];
@@ -388,6 +402,7 @@ Status ConcatTileFusionPass::InsertConcatOp(ge::OpDescPtr &new_concat_op_desc, c
   // Create new concat node
   int64_t concat_shape_dim = 0;
   int64_t concat_ori_shape_dim = 0;
+  FE_CHECK(inputs.empty(), REPORT_FE_ERROR("The inputs of the new concat node is empty."), return FAILED);
   if (new_concat_op_desc->GetType() == CONCAT || new_concat_op_desc->GetType() == CONCATD) {
     FE_CHECK(AddConcatDim(new_concat_op_desc) != SUCCESS, FE_LOGE("Failed to add concat_dim."), return FAILED);
   }
@@ -477,6 +492,8 @@ Status ConcatTileFusionPass::DoTileFusion(const ge::NodePtr &concat_node, ge::Co
     FE_CHECK(tile_node->GetOutDataAnchor(0) == nullptr, REPORT_FE_ERROR("tile_node->GetOutDataAnchor(0) is nullptr."),
              return FAILED);
     auto peer_in_anchors = tile_node->GetOutDataAnchor(0)->GetPeerInDataAnchors();
+    FE_CHECK(peer_in_anchors.empty(),
+             REPORT_FE_ERROR("tile_node[%s] has no peer in data anchor.", tile_node->GetNamePtr()), return FAILED);
     int32_t indx = peer_in_anchors.at(0)->GetIdx();
 
     FE_CHECK(RemoveTileEdge(tile_inputs, sorted_tile_node, concat_node) != SUCCESS,
@@ -614,8 +631,10 @@ Status ConcatTileFusionPass::ReplaceConcatNodeAddOutputs(
     concat_node_peer_input_anchors.emplace_back(concat_peer_in_anchor);
   }
   int64_t concat_input_num = 0;
-  (void)ge::AttrUtils::GetInt(replace_concat_node, "N", concat_input_num);
-  FE_LOGD("The current input_size is[%lld], anchor count is [%zu].", concat_input_num,
+
+  FE_CHECK(!ge::AttrUtils::GetInt(replace_concat_node, "N", concat_input_num),
+           REPORT_FE_ERROR("Failed to get attr N of node[%s].", replace_concat_node->GetNamePtr()), return FAILED);
+  FE_LOGD("The current input_size is[%lld], anchors count is [%zu].", concat_input_num,
           concat_node_peer_output_anchors.size());
   if (concat_input_num == 1) {
     FE_LOGD("Starting to fuse node->output.");
@@ -623,6 +642,9 @@ Status ConcatTileFusionPass::ReplaceConcatNodeAddOutputs(
     if (static_cast<size_t>(concat_input_num) < concat_node_peer_output_anchors.size()) {
       idx = 1;
     }
+    FE_CHECK(concat_node_peer_output_anchors.empty(),
+             REPORT_FE_ERROR("The peer output anchors of concat node [%s] is empty.", concat_node->GetNamePtr()),
+             return FAILED);
     for (size_t i = 0; i < concat_node_peer_input_anchors.size(); i++) {
       FE_CHECK(ge::GraphUtils::AddEdge(concat_node_peer_output_anchors[idx], concat_node_peer_input_anchors[i]) ==
                    ge::FAILED,
@@ -753,7 +775,10 @@ Status ConcatTileFusionPass::ParseConcatNode(const ge::NodePtr &concat_node) {
     }
     FE_LOGD("Concat node's concat dim is [%d].", concat_dim_);
   } else {
-    ge::AttrUtils::GetInt(concat_node->GetOpDesc(), "concat_dim", concat_dim_);
+    FE_CHECK(
+        !ge::AttrUtils::GetInt(concat_node->GetOpDesc(), "concat_dim", concat_dim_),
+        FE_LOGW("Node[%s, %s] has no valid concat_dim attr.", concat_node->GetNamePtr(), concat_node->GetTypePtr()),
+        return NOT_CHANGED);
     FE_CHECK(concat_node->GetOpDesc()->MutableOutputDesc(0) == nullptr,
              REPORT_FE_ERROR("concat_node->GetOpDesc()->MutableOutputDesc(0) is nullptr."), return NOT_CHANGED);
     int32_t shape_len = static_cast<int32_t>(concat_node->GetOpDesc()->MutableOutputDesc(0)->GetShape().GetDimNum());
@@ -830,6 +855,9 @@ Status ConcatTileFusionPass::DoFusion(ge::NodePtr &concat_node, ge::ComputeGraph
 Status ConcatTileFusionPass::Fusion(ge::ComputeGraph &graph, Mapping &mapping, vector<ge::NodePtr> &fusion_nodes) {
   (void)fusion_nodes;
   FE_LOGD("Start to ConcatTileFusionPass.");
+  // Reset the state of the previous matched concat node to avoid using residual concat_dim info.
+  concat_dim_ = -1;
+  concat_dim_input_node_ = nullptr;
   ge::NodePtr concat_node = GetNodeFromMapping(kPatternConcat, mapping);
   FE_CHECK(concat_node == nullptr, FE_LOGW("[GraphOpt][ConcatTileFusion] Concat node is nullptr."), return NOT_CHANGED);
   FE_LOGD("The concat node [%s, %s].", concat_node->GetNamePtr(), concat_node->GetTypePtr());

@@ -923,4 +923,111 @@ TEST_F(STEST_split_conv_concat_fusion_pass, concat_input_data_type_float) {
   DumpGraph(graph, GRAPH_NAME);
 }
 
+TEST_F(STEST_split_conv_concat_fusion_pass, check_output_single_ref_node_without_input) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  GeTensorDesc tensor_desc(ge::GeShape({1, 32, 14, 14}), ge::FORMAT_NCHW, ge::DT_FLOAT16);
+  OpDescPtr dequant = std::make_shared<OpDesc>("dequant", DEQUANT);
+  dequant->AddOutputDesc(tensor_desc);
+  OpDescPtr concat = std::make_shared<OpDesc>("concat", CONCATD);
+  concat->AddInputDesc(tensor_desc);
+  concat->AddOutputDesc(tensor_desc);
+  NodePtr dequant_node = graph->AddNode(dequant);
+  NodePtr concat_node = graph->AddNode(concat);
+  ge::GraphUtils::AddEdge(dequant_node->GetOutDataAnchor(0), concat_node->GetInDataAnchor(0));
+  SplitConvConcatFusionPass pass;
+  EXPECT_EQ(NOT_CHANGED, pass.CheckOutputSingleRef(concat_node));
+}
+
+TEST_F(STEST_split_conv_concat_fusion_pass, check_output_single_ref_plain_input_node) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  GeTensorDesc tensor_desc(ge::GeShape({1, 32, 14, 14}), ge::FORMAT_NCHW, ge::DT_FLOAT16);
+  OpDescPtr plain = std::make_shared<OpDesc>("plain", "Other");
+  plain->AddInputDesc(tensor_desc);
+  plain->AddOutputDesc(tensor_desc);
+  OpDescPtr concat = std::make_shared<OpDesc>("concat", CONCATD);
+  concat->AddInputDesc(tensor_desc);
+  concat->AddOutputDesc(tensor_desc);
+  NodePtr plain_node = graph->AddNode(plain);
+  NodePtr concat_node = graph->AddNode(concat);
+  ge::GraphUtils::AddEdge(plain_node->GetOutDataAnchor(0), concat_node->GetInDataAnchor(0));
+  SplitConvConcatFusionPass pass;
+  EXPECT_EQ(NOT_CHANGED, pass.CheckOutputSingleRef(concat_node));
+}
+
+TEST_F(STEST_split_conv_concat_fusion_pass, check_output_single_ref_dequant_without_input) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  GeTensorDesc tensor_desc(ge::GeShape({1, 32, 14, 14}), ge::FORMAT_NCHW, ge::DT_FLOAT16);
+  OpDescPtr dequant = std::make_shared<OpDesc>("dequant", DEQUANT);
+  dequant->AddOutputDesc(tensor_desc);
+  OpDescPtr relu = std::make_shared<OpDesc>("relu", RELU);
+  relu->AddInputDesc(tensor_desc);
+  relu->AddOutputDesc(tensor_desc);
+  OpDescPtr concat = std::make_shared<OpDesc>("concat", CONCATD);
+  concat->AddInputDesc(tensor_desc);
+  concat->AddOutputDesc(tensor_desc);
+  NodePtr dequant_node = graph->AddNode(dequant);
+  NodePtr relu_node = graph->AddNode(relu);
+  NodePtr concat_node = graph->AddNode(concat);
+  ge::GraphUtils::AddEdge(dequant_node->GetOutDataAnchor(0), relu_node->GetInDataAnchor(0));
+  ge::GraphUtils::AddEdge(relu_node->GetOutDataAnchor(0), concat_node->GetInDataAnchor(0));
+  SplitConvConcatFusionPass pass;
+  EXPECT_EQ(NOT_CHANGED, pass.CheckOutputSingleRef(concat_node));
+}
+
+TEST_F(STEST_split_conv_concat_fusion_pass, check_output_single_ref_conv_dequant_relu) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  GeTensorDesc tensor_desc(ge::GeShape({1, 32, 14, 14}), ge::FORMAT_NCHW, ge::DT_FLOAT16);
+  OpDescPtr conv = std::make_shared<OpDesc>("conv", CONV2D);
+  conv->AddInputDesc(tensor_desc);
+  conv->AddOutputDesc(tensor_desc);
+  OpDescPtr dequant = std::make_shared<OpDesc>("dequant", DEQUANT);
+  dequant->AddInputDesc(tensor_desc);
+  dequant->AddOutputDesc(tensor_desc);
+  OpDescPtr relu = std::make_shared<OpDesc>("relu", RELU);
+  relu->AddInputDesc(tensor_desc);
+  relu->AddOutputDesc(tensor_desc);
+  OpDescPtr concat = std::make_shared<OpDesc>("concat", CONCATD);
+  concat->AddInputDesc(tensor_desc);
+  concat->AddOutputDesc(tensor_desc);
+  NodePtr conv_node = graph->AddNode(conv);
+  NodePtr dequant_node = graph->AddNode(dequant);
+  NodePtr relu_node = graph->AddNode(relu);
+  NodePtr concat_node = graph->AddNode(concat);
+  ge::GraphUtils::AddEdge(conv_node->GetOutDataAnchor(0), dequant_node->GetInDataAnchor(0));
+  ge::GraphUtils::AddEdge(dequant_node->GetOutDataAnchor(0), relu_node->GetInDataAnchor(0));
+  ge::GraphUtils::AddEdge(relu_node->GetOutDataAnchor(0), concat_node->GetInDataAnchor(0));
+  SplitConvConcatFusionPass pass;
+  EXPECT_EQ(SUCCESS, pass.CheckOutputSingleRef(concat_node));
+}
+
+TEST_F(STEST_split_conv_concat_fusion_pass, check_output_single_ref_pre_pre_multi_output) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  GeTensorDesc tensor_desc(ge::GeShape({1, 32, 14, 14}), ge::FORMAT_NCHW, ge::DT_FLOAT16);
+  OpDescPtr conv = std::make_shared<OpDesc>("conv", CONV2D);
+  conv->AddInputDesc(tensor_desc);
+  conv->AddOutputDesc(tensor_desc);
+  OpDescPtr dequant = std::make_shared<OpDesc>("dequant", DEQUANT);
+  dequant->AddInputDesc(tensor_desc);
+  dequant->AddOutputDesc(tensor_desc);
+  OpDescPtr relu = std::make_shared<OpDesc>("relu", RELU);
+  relu->AddInputDesc(tensor_desc);
+  relu->AddOutputDesc(tensor_desc);
+  OpDescPtr other = std::make_shared<OpDesc>("other", "Other");
+  other->AddInputDesc(tensor_desc);
+  OpDescPtr concat = std::make_shared<OpDesc>("concat", CONCATD);
+  concat->AddInputDesc(tensor_desc);
+  concat->AddOutputDesc(tensor_desc);
+  NodePtr conv_node = graph->AddNode(conv);
+  NodePtr dequant_node = graph->AddNode(dequant);
+  NodePtr relu_node = graph->AddNode(relu);
+  NodePtr other_node = graph->AddNode(other);
+  NodePtr concat_node = graph->AddNode(concat);
+  ge::GraphUtils::AddEdge(conv_node->GetOutDataAnchor(0), dequant_node->GetInDataAnchor(0));
+  ge::GraphUtils::AddEdge(conv_node->GetOutDataAnchor(0), other_node->GetInDataAnchor(0));
+  ge::GraphUtils::AddEdge(dequant_node->GetOutDataAnchor(0), relu_node->GetInDataAnchor(0));
+  ge::GraphUtils::AddEdge(relu_node->GetOutDataAnchor(0), concat_node->GetInDataAnchor(0));
+  SplitConvConcatFusionPass pass;
+  EXPECT_EQ(NOT_CHANGED, pass.CheckOutputSingleRef(concat_node));
+}
+
 }  // namespace fe

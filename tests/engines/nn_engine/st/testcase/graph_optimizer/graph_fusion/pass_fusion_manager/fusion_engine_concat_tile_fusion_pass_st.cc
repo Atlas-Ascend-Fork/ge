@@ -684,4 +684,156 @@ TEST_F(fusion_concat_tile_fusion_cast_st, concat_tile_Failed01) {
   DumpGraph(graph, "test");
 }
 
+TEST_F(fusion_concat_tile_fusion_cast_st, parse_concat_node_without_concat_dim_attr) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  OpDescPtr concat = std::make_shared<OpDesc>("concat", "ConcatD");
+  GeShape shape({2});
+  GeTensorDesc tensor_desc(shape, ge::FORMAT_NCHW, ge::DT_FLOAT);
+  tensor_desc.SetOriginShape(shape);
+  concat->AddInputDesc(tensor_desc);
+  concat->AddOutputDesc(tensor_desc);
+  NodePtr concat_node = graph->AddNode(concat);
+  ConcatTileFusionPass pass;
+  EXPECT_EQ(fe::NOT_CHANGED, pass.ParseConcatNode(concat_node));
+}
+
+TEST_F(fusion_concat_tile_fusion_cast_st, update_concat_tile_tensor_invalid_input_shape) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  OpDescPtr tile = std::make_shared<OpDesc>("tile", TILED);
+  GeShape shape({1, 2, 3, 4});
+  GeTensorDesc tensor_desc(shape, ge::FORMAT_NCHW, ge::DT_FLOAT);
+  tensor_desc.SetOriginShape(shape);
+  tile->AddOutputDesc(tensor_desc);
+  NodePtr tile_node = graph->AddNode(tile);
+  OpDescPtr new_concat = std::make_shared<OpDesc>("new_concat", CONCATV2);
+  ConcatTileFusionPass pass;
+  pass.concat_dim_ = 4;
+  GeTensorDesc input_output_tensor = tile_node->GetOpDesc()->GetOutputDesc(0);
+  EXPECT_EQ(fe::FAILED, pass.UpdateConcatTileTensor(new_concat, tile_node, 4, 4, input_output_tensor));
+}
+
+TEST_F(fusion_concat_tile_fusion_cast_st, update_concat_tile_tensor_invalid_tile_shape) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  OpDescPtr tile = std::make_shared<OpDesc>("tile", TILED);
+  GeShape data_shape({1, 2, 3, 4});
+  GeTensorDesc input_output_tensor(data_shape, ge::FORMAT_NCHW, ge::DT_FLOAT);
+  input_output_tensor.SetOriginShape(data_shape);
+  GeShape tile_shape({1, 2});
+  GeTensorDesc tile_tensor_desc(tile_shape, ge::FORMAT_NCHW, ge::DT_FLOAT);
+  tile->AddOutputDesc(tile_tensor_desc);
+  NodePtr tile_node = graph->AddNode(tile);
+  OpDescPtr new_concat = std::make_shared<OpDesc>("new_concat", CONCATV2);
+  ConcatTileFusionPass pass;
+  pass.concat_dim_ = 2;
+  EXPECT_EQ(fe::FAILED, pass.UpdateConcatTileTensor(new_concat, tile_node, 4, 4, input_output_tensor));
+}
+
+TEST_F(fusion_concat_tile_fusion_cast_st, get_concat_value_by_concatdim_shape_out_of_range) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  OpDescPtr tile = std::make_shared<OpDesc>("tile", TILED);
+  GeShape data_shape({1, 2, 3, 4});
+  GeShape ori_shape({1, 2});
+  GeTensorDesc tensor_desc(data_shape, ge::FORMAT_NCHW, ge::DT_FLOAT);
+  tensor_desc.SetOriginShape(ori_shape);
+  tile->AddOutputDesc(tensor_desc);
+  NodePtr tile_node = graph->AddNode(tile);
+  OpDescPtr new_concat = std::make_shared<OpDesc>("new_concat", CONCATV2);
+  ConcatTileFusionPass pass;
+  vector<ge::NodePtr> inputs = {tile_node};
+  int64_t concat_shape_dim = 0;
+  int64_t concat_ori_shape_dim = 0;
+  pass.concat_dim_ = 3;
+  EXPECT_EQ(fe::FAILED, pass.GetConcatValueByConcatdim(inputs, concat_shape_dim, concat_ori_shape_dim, new_concat));
+  pass.concat_dim_ = -1;
+  EXPECT_EQ(fe::FAILED, pass.GetConcatValueByConcatdim(inputs, concat_shape_dim, concat_ori_shape_dim, new_concat));
+}
+
+TEST_F(fusion_concat_tile_fusion_cast_st, insert_concat_op_with_empty_inputs) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  OpDescPtr tile = std::make_shared<OpDesc>("tile", TILED);
+  GeShape shape({1, 2});
+  GeTensorDesc tensor_desc(shape, ge::FORMAT_NCHW, ge::DT_FLOAT);
+  tile->AddInputDesc(tensor_desc);
+  tile->AddOutputDesc(tensor_desc);
+  NodePtr tile_node = graph->AddNode(tile);
+  OpDescPtr new_concat = std::make_shared<OpDesc>("new_concat", CONCATV2);
+  ConcatTileFusionPass pass;
+  vector<ge::NodePtr> inputs;
+  EXPECT_EQ(fe::FAILED, pass.InsertConcatOp(new_concat, inputs, tile_node));
+}
+
+TEST_F(fusion_concat_tile_fusion_cast_st, do_tile_fusion_tile_without_peer) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  OpDescPtr tile = std::make_shared<OpDesc>("tile", TILED);
+  GeShape shape({1, 2});
+  GeTensorDesc tensor_desc(shape, ge::FORMAT_NCHW, ge::DT_FLOAT);
+  tile->AddInputDesc(tensor_desc);
+  tile->AddOutputDesc(tensor_desc);
+  NodePtr tile_node = graph->AddNode(tile);
+  OpDescPtr concat = std::make_shared<OpDesc>("concat", CONCATV2);
+  concat->AddInputDesc(tensor_desc);
+  concat->AddOutputDesc(tensor_desc);
+  NodePtr concat_node = graph->AddNode(concat);
+  OpDescPtr replace_concat = std::make_shared<OpDesc>("replace", CONCATV2);
+  std::vector<std::vector<ge::NodePtr>> sorted_nodes = {{tile_node}};
+  std::vector<std::pair<int32_t, ge::NodePtr>> concat_node_peer_output_nodes;
+  ConcatTileFusionPass pass;
+  EXPECT_EQ(fe::FAILED,
+            pass.DoTileFusion(concat_node, *graph, replace_concat, sorted_nodes, concat_node_peer_output_nodes));
+}
+
+TEST_F(fusion_concat_tile_fusion_cast_st, remove_concat_edges_without_peer) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  OpDescPtr tile = std::make_shared<OpDesc>("tile", TILED);
+  GeShape shape({1, 2});
+  GeTensorDesc tensor_desc(shape, ge::FORMAT_NCHW, ge::DT_FLOAT);
+  tile->AddInputDesc(tensor_desc);
+  tile->AddOutputDesc(tensor_desc);
+  NodePtr tile_node = graph->AddNode(tile);
+  OpDescPtr concat = std::make_shared<OpDesc>("concat", CONCATV2);
+  concat->AddInputDesc(tensor_desc);
+  concat->AddOutputDesc(tensor_desc);
+  NodePtr concat_node = graph->AddNode(concat);
+  vector<ge::NodePtr> input_nodes = {tile_node};
+  ConcatTileFusionPass pass;
+  EXPECT_EQ(fe::FAILED, pass.RemoveConcatEdges(concat_node, input_nodes));
+}
+
+TEST_F(fusion_concat_tile_fusion_cast_st, sort_continuity_tile_nodes_without_peer) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  OpDescPtr tile = std::make_shared<OpDesc>("tile", TILED);
+  GeShape shape({1, 2});
+  GeTensorDesc tensor_desc(shape, ge::FORMAT_NCHW, ge::DT_FLOAT);
+  tile->AddInputDesc(tensor_desc);
+  tile->AddOutputDesc(tensor_desc);
+  NodePtr tile_node = graph->AddNode(tile);
+  std::vector<ge::NodePtr> tile_nodes = {tile_node};
+  std::vector<std::vector<ge::NodePtr>> sorted_nodes;
+  ConcatTileFusionPass pass;
+  pass.SortContinuityTileNodes(tile_nodes, sorted_nodes);
+  EXPECT_TRUE(sorted_nodes.empty());
+}
+
+TEST_F(fusion_concat_tile_fusion_cast_st, replace_concat_node_add_outputs_invalid_attr) {
+  ComputeGraphPtr graph = std::make_shared<ComputeGraph>(GRAPH_NAME);
+  OpDescPtr concat = std::make_shared<OpDesc>("concat", CONCATV2);
+  GeShape shape({1, 2});
+  GeTensorDesc tensor_desc(shape, ge::FORMAT_NCHW, ge::DT_FLOAT);
+  concat->AddInputDesc(tensor_desc);
+  concat->AddOutputDesc(tensor_desc);
+  NodePtr concat_node = graph->AddNode(concat);
+  OpDescPtr replace_concat = std::make_shared<OpDesc>("replace", CONCATV2);
+  ConcatTileFusionPass pass;
+  bool is_only_op = false;
+  std::vector<ge::OutDataAnchorPtr> concat_node_peer_output_anchors;
+  std::vector<ge::InDataAnchorPtr> concat_node_peer_input_anchors;
+  EXPECT_EQ(fe::FAILED,
+            pass.ReplaceConcatNodeAddOutputs(replace_concat, concat_node, is_only_op, concat_node_peer_output_anchors,
+                                             concat_node_peer_input_anchors));
+  (void)ge::AttrUtils::SetInt(replace_concat, "N", 1);
+  EXPECT_EQ(fe::FAILED,
+            pass.ReplaceConcatNodeAddOutputs(replace_concat, concat_node, is_only_op, concat_node_peer_output_anchors,
+                                             concat_node_peer_input_anchors));
+}
+
 }  // namespace fe

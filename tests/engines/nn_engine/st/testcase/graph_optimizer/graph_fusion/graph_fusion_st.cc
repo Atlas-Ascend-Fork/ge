@@ -354,9 +354,8 @@ TEST_F(GRAPH_FUSION_ST, converage_07) {
   ge::OpDescPtr data = std::make_shared<ge::OpDesc>("data", DATA);
   ge::GeTensorPtr const_out_tenosr = nullptr;
   const_out_tenosr = std::make_shared<ge::GeTensor>(tensor_desc);
-  vector<uint64_t> scale_data;
-  scale_data.emplace_back(0xFF0120312);
-  const_out_tenosr->SetData(reinterpret_cast<uint8_t *>(scale_data.data()), sizeof(uint64_t));
+  vector<uint64_t> scale_data(static_cast<size_t>(tensor_desc.GetShape().GetDim(0)), 0xFF0120312);
+  const_out_tenosr->SetData(reinterpret_cast<uint8_t *>(scale_data.data()), scale_data.size() * sizeof(uint64_t));
   ge::OpDescPtr const_op_desc = ge::OpDescUtils::CreateConstOp(const_out_tenosr);
   ge::OpDescPtr dequant = std::make_shared<ge::OpDesc>("dequant", ASCEND_DEQUANT);
   ge::OpDescPtr other = std::make_shared<ge::OpDesc>("other", "Other");
@@ -574,9 +573,8 @@ TEST_F(GRAPH_FUSION_ST, converage_18) {
   ge::OpDescPtr data = std::make_shared<ge::OpDesc>("data", DATA);
   ge::GeTensorPtr const_out_tenosr = nullptr;
   const_out_tenosr = std::make_shared<ge::GeTensor>(tensor_desc);
-  vector<uint64_t> scale_data;
-  scale_data.emplace_back(0xFF0120312);
-  const_out_tenosr->SetData(reinterpret_cast<uint8_t *>(scale_data.data()), sizeof(uint64_t));
+  vector<uint64_t> scale_data(static_cast<size_t>(tensor_desc.GetShape().GetDim(0)), 0xFF0120312);
+  const_out_tenosr->SetData(reinterpret_cast<uint8_t *>(scale_data.data()), scale_data.size() * sizeof(uint64_t));
   ge::OpDescPtr const_op_desc = ge::OpDescUtils::CreateConstOp(const_out_tenosr);
   ge::OpDescPtr dequant = std::make_shared<ge::OpDesc>("dequant", ASCEND_DEQUANT);
   ge::OpDescPtr other = std::make_shared<ge::OpDesc>("other", "Other");
@@ -686,4 +684,39 @@ TEST_F(GRAPH_FUSION_ST, GetNextInAnchorsOfSubNetOutput_NoParentNodeIndex) {
   Status ret = FeGraphUtils::GetNextInAnchorsOfSubNetOutput(netoutput_node, 0, next_in_data_anchors);
   EXPECT_EQ(ret, FAILED);
 }
+
+TEST_F(GRAPH_FUSION_ST, judge_quant_mode_invalid_deq_scale_size) {
+  RegisterPassFunc(CreateFunc);
+  EXPECT_EQ(SUCCESS, fusion_priority_mgr_->SortGraphFusion());
+  ge::ComputeGraphPtr graph = std::make_shared<ge::ComputeGraph>("test");
+  ge::GeTensorDesc tensor_desc(ge::GeShape({10}), ge::FORMAT_NCHW, ge::DT_FLOAT);
+  ge::OpDescPtr data = std::make_shared<ge::OpDesc>("data", DATA);
+  ge::GeTensorPtr const_out_tenosr = nullptr;
+  const_out_tenosr = std::make_shared<ge::GeTensor>(tensor_desc);
+  vector<uint64_t> scale_data(1, 0xFF0120312);
+  const_out_tenosr->SetData(reinterpret_cast<uint8_t *>(scale_data.data()), sizeof(uint64_t));
+  ge::OpDescPtr const_op_desc = ge::OpDescUtils::CreateConstOp(const_out_tenosr);
+  ge::OpDescPtr dequant = std::make_shared<ge::OpDesc>("dequant", ASCEND_DEQUANT);
+  ge::OpDescPtr other = std::make_shared<ge::OpDesc>("other", "Other");
+
+  data->AddOutputDesc(tensor_desc);
+  dequant->AddInputDesc(tensor_desc);
+  dequant->AddInputDesc(tensor_desc);
+  dequant->AddOutputDesc(tensor_desc);
+  other->AddInputDesc(tensor_desc);
+
+  auto data_node = graph->AddNode(data);
+  auto const_node = graph->AddNode(const_op_desc);
+  auto dequant_node = graph->AddNode(dequant);
+  auto other_node = graph->AddNode(other);
+
+  ge::OpDescUtils::SetWeights(dequant_node->GetOpDesc(), const_out_tenosr);
+  ASSERT_EQ(ge::GraphUtils::AddEdge(data_node->GetOutDataAnchor(0), dequant_node->GetInDataAnchor(0)), SUCCESS);
+  ASSERT_EQ(ge::GraphUtils::AddEdge(const_node->GetOutDataAnchor(0), dequant_node->GetInDataAnchor(1)), SUCCESS);
+  ASSERT_EQ(ge::GraphUtils::AddEdge(dequant_node->GetOutDataAnchor(0), other_node->GetInDataAnchor(0)), SUCCESS);
+  PlatformUtils::Instance().pm_item_vec_[static_cast<size_t>(PlatformUtils::PlatformInfoItem::IsaArchVersion)] =
+      static_cast<int64_t>(ISAArchVersion::EN_ISA_ARCH_V200);
+  EXPECT_EQ(PARAM_INVALID, graph_fusion_->JudgeQuantMode(*graph));
+}
+
 }  // namespace fe
