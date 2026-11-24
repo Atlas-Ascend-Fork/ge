@@ -726,7 +726,7 @@ Status SingleOpParser::ParseSingleOpList(const std::string &file, std::vector<Si
     int32_t compile_flag = 0;
     for (const Json &single_op_json : single_op_list_json) {
       const std::string dump_info = single_op_json.dump(kDumpJsonIndent);
-      GELOGI("Parsing op[%d], jsonStr: %s", index, dump_info.c_str());
+      GELOGD("Parsing op[%d], jsonStr: %s", index, dump_info.c_str());
       SingleOpDesc single_op_desc;
       from_json(single_op_json, single_op_desc);
       GELOGD("Compile flag is: %d.", single_op_desc.compile_flag);
@@ -751,7 +751,7 @@ Status SingleOpParser::ParseSingleOpList(const std::string &file, std::vector<Si
       param.compile_flag = compile_flag;
 
       (void)op_list.emplace_back(param);
-      GELOGI("Parse the index[%d] of op[%s] success", index, single_op_desc.op.c_str());
+      GELOGD("Parse the index[%d] of op[%s] success", index, single_op_desc.op.c_str());
       index += 1;
     }
   } catch (const nlohmann::json::exception &e) {

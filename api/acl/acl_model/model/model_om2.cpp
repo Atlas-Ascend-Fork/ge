@@ -574,8 +574,8 @@ static aclError GetDimsRange(const aclmdlDesc *const modelDesc, const TensorType
     for (size_t i = 0U; i < staticDimSize; ++i) {
       dimsRange->range[i][MIN] = staticDims[i];
       dimsRange->range[i][MAX] = staticDims[i];
-      ACL_LOG_INFO("set range[%zu][%zu] to [%ld] and range[%zu][%zu] to [%ld] success.", i, MIN,
-                   dimsRange->range[i][MIN], i, MAX, dimsRange->range[i][MAX]);
+      ACL_LOG_DEBUG("set range[%zu][%zu] to [%ld] and range[%zu][%zu] to [%ld] success.", i, MIN,
+                    dimsRange->range[i][MIN], i, MAX, dimsRange->range[i][MAX]);
     }
   } else {
     if (dynamicDimSize != tensorDesc.dims.size()) {
@@ -590,8 +590,8 @@ static aclError GetDimsRange(const aclmdlDesc *const modelDesc, const TensorType
     for (size_t i = 0U; i < dynamicDimSize; ++i) {
       dimsRange->range[i][MIN] = shapeRanges[i].first;
       dimsRange->range[i][MAX] = shapeRanges[i].second;
-      ACL_LOG_INFO("set range[%zu][%zu] to [%ld] and range[%zu][%zu] to [%ld] success.", i, MIN,
-                   dimsRange->range[i][MIN], i, MAX, dimsRange->range[i][MAX]);
+      ACL_LOG_DEBUG("set range[%zu][%zu] to [%ld] and range[%zu][%zu] to [%ld] success.", i, MIN,
+                    dimsRange->range[i][MIN], i, MAX, dimsRange->range[i][MAX]);
     }
   }
 

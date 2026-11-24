@@ -132,7 +132,7 @@ static aclError UpdateTensorAttrs(std::vector<aclTensorDesc> &tensorDescs,
   for (size_t i = 0U; i < tensorSupportAttrs.size(); ++i) {
     ge::GeAttrValue::LIST_NAMED_ATTRS tensorAttrs;
     (void)ge::AttrUtils::GetListNamedAttrs(tensorSupportAttrs[i], "tensor", tensorAttrs);
-    ACL_LOG_INFO("the number of dynamicInput is %zu, index is %zu", tensorAttrs.size(), i);
+    ACL_LOG_DEBUG("the number of dynamicInput is %zu, index is %zu", tensorAttrs.size(), i);
     tensorNum += tensorAttrs.size();
   }
   ACL_LOG_INFO("tensorSupportAttrs size is %zu, tensorDesc size is %zu", tensorNum, tensorDescs.size());
