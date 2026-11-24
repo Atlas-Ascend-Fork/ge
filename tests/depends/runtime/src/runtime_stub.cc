@@ -1905,6 +1905,224 @@ rtError_t rtMemQueueQuery(int32_t devId, rtMemQueueQueryCmd_t cmd, const void *i
   return RT_ERROR_NONE;
 }
 
+// 真身 libruntime.so 导出、而本打桩库此前缺失的 rt/rts 符号补全。
+// UT/ST 进程经 Python fusion pass 机制按绝对路径加载真身 CANN 组件(如 libascend_dump.so)时,
+// 该组件带 BIND_NOW 标志, 其 DT_NEEDED 的 libruntime.so 会按 SONAME 复用已先加载的本打桩库;
+// 只要缺少任一被引用符号, 加载期重定位即报 symbol lookup error(如 rtsGetThreadLastTaskId)并崩溃。
+// 这些桩用于满足加载期符号解析; 为防运行期被真实组件调用时读到未初始化值, getter 类桩在返回
+// 成功前均写出参确定初值(0/nullptr, 设备数按兄弟打桩库约定写 1), rtFree 与 rtMalloc 的 new[] 配对。
+rtError_t rtBinaryGetFunctionByName(const rtBinHandle binHandle, const char *kernelName, rtFuncHandle *funcHandle) {
+  if (funcHandle != nullptr) {
+    *funcHandle = nullptr;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtCtxGetCurrent(void **currentCtx) {
+  if (currentCtx != nullptr) {
+    *currentCtx = nullptr;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtCtxSetCurrent(void *currentCtx) {
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtDebugGetStalledCore(rtDbgCoreInfo_t *const coreInfo) {
+  if (coreInfo != nullptr) {
+    (void)memset_s(coreInfo, sizeof(rtDbgCoreInfo_t), 0, sizeof(rtDbgCoreInfo_t));
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtDebugReadAICore(rtDebugMemoryParam_t *const param) {
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtDebugSetDumpMode(const uint64_t mode) {
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtDeviceGetCcMode(int32_t *ccMode) {
+  if (ccMode != nullptr) {
+    *ccMode = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtFree(void *devPtr) {
+  delete[] static_cast<uint8_t *>(devPtr);
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtFunctionGetMetaInfo(const rtFuncHandle funcHandle, const rtFunctionMetaType type, void *data,
+                                const uint32_t length) {
+  if ((data != nullptr) && (length > 0)) {
+    (void)memset_s(data, length, 0, length);
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtFunctionGetMetaInfoSize(const rtFuncHandle funcHandle, const rtFunctionMetaType type, size_t *size) {
+  if (size != nullptr) {
+    *size = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtGetBinBuffer(const rtBinHandle binHandle, const rtBinBufferType_t type, void **bin, uint32_t *binSize) {
+  if (bin != nullptr) {
+    *bin = nullptr;
+  }
+  if (binSize != nullptr) {
+    *binSize = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtGetDeviceCount(int32_t *cnt) {
+  if (cnt != nullptr) {
+    *cnt = 1;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtGetDeviceIDs(uint32_t *devices, uint32_t len) {
+  if ((devices != nullptr) && (len > 0)) {
+    (void)memset_s(devices, len * sizeof(uint32_t), 0, len * sizeof(uint32_t));
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtGetDeviceStatus(const int32_t devId, rtDevStatus_t *const status) {
+  if (status != nullptr) {
+    (void)memset_s(status, sizeof(rtDevStatus_t), 0, sizeof(rtDevStatus_t));
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtGetExceptionRegInfo(const rtExceptionInfo_t *const exceptionInfo,
+                                rtExceptionErrRegInfo_t **exceptionErrRegInfo, uint32_t *num) {
+  if (exceptionErrRegInfo != nullptr) {
+    *exceptionErrRegInfo = nullptr;
+  }
+  if (num != nullptr) {
+    *num = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtGetOpExecuteTimeoutV2(uint32_t *const timeout) {
+  if (timeout != nullptr) {
+    *timeout = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtGetRunMode(int32_t *runMode) {
+  if (runMode != nullptr) {
+    *runMode = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtGetStackBuffer(void **buffer, uint64_t *size) {
+  if (buffer != nullptr) {
+    *buffer = nullptr;
+  }
+  if (size != nullptr) {
+    *size = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtGetStreamId(rtStream_t stm, int32_t *streamId) {
+  if (streamId != nullptr) {
+    *streamId = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtMemGetInfoByType(const int32_t devId, const rtMemType_t type, void *const info) {
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtRegDeviceStateCallbackEx(const char_t *regName, rtDeviceStateCallback callback, const int32_t notifyPos) {
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtRegisterParseDfxInfoFunc(void *func) {
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtSetKernelDfxInfoCallback(void *callback) {
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtSetOpExecuteTimeOutWithMs(uint32_t timeout) {
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtSnapShotCallbackRegister(int32_t stage, void *callback, void *args) {
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtStreamGetCaptureInfo(rtStream_t stm, int32_t *const status, rtModel_t *captureMdl) {
+  if (status != nullptr) {
+    *status = 0;
+  }
+  if (captureMdl != nullptr) {
+    *captureMdl = nullptr;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtStreamGetCqid(const rtStream_t stm, uint32_t *cqId, uint32_t *logicCqId) {
+  if (cqId != nullptr) {
+    *cqId = 0;
+  }
+  if (logicCqId != nullptr) {
+    *logicCqId = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtStreamGetFlags(const rtStream_t stm, uint32_t *flags) {
+  if (flags != nullptr) {
+    *flags = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtStreamGetSqid(const rtStream_t stm, uint32_t *sqId) {
+  if (sqId != nullptr) {
+    *sqId = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtsBinaryGetDevAddress(const rtBinHandle binHandle, void **bin, uint32_t *binSize) {
+  if (bin != nullptr) {
+    *bin = nullptr;
+  }
+  if (binSize != nullptr) {
+    *binSize = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtsGetThreadLastTaskId(uint32_t *taskId) {
+  if (taskId != nullptr) {
+    *taskId = 0;
+  }
+  return RT_ERROR_NONE;
+}
+
+rtError_t rtsLaunchHostFunc(rtStream_t stm, const rtCallback_t callBackFunc, void *const fnData) {
+  return RT_ERROR_NONE;
+}
+
 #ifdef __cplusplus
 }
 #endif
