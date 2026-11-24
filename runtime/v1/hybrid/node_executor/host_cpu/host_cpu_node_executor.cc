@@ -58,11 +58,11 @@ Status HostAicpuNodeTask::UpdateArgs(TaskContext &context) {
                                    &io_addrs[0UL], sizeof(uint64_t) * io_addrs.size());
   if (cpy_ret != EOK) {
     REPORT_INNER_ERR_MSG("E19999",
-                         "Node[%s(%s)] memcpy io addr to AicpuParamHead failed,"
+                         "Node[%s(%s)] memcpy io addr to AicpuParamHead failed, "
                          "ret=%d, args_size=%u, io nums=%zu.",
                          node_name_.c_str(), node_type_.c_str(), cpy_ret, args_size_, io_addrs.size());
     GELOGE(INTERNAL_ERROR,
-           "[Update][IoAddr]Node[%s(%s)] memcpy io addr to AicpuParamHead failed,"
+           "[Update][IoAddr]Node[%s(%s)] memcpy io addr to AicpuParamHead failed, "
            "ret=%d, args_size=%u, io nums=%zu.",
            node_name_.c_str(), node_type_.c_str(), cpy_ret, args_size_, io_addrs.size());
     return INTERNAL_ERROR;

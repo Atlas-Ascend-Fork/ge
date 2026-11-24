@@ -441,7 +441,7 @@ Status DSATaskInfo::GetTaskArgsRefreshInfos(std::vector<TaskArgsRefreshInfo> &in
 
 Status DSATaskInfo::GetTaskIowPaRemapInfos(std::vector<IowPaRemapInfo> &infos) {
   if (!support_refresh_) {  // uce remap需求匹配的drv版本已支持dsa刷新
-    GELOGW("Dsa task no support get task remap info.");
+    GELOGW("Dsa task does not support getting task remap info.");
     return SUCCESS;
   }
 

@@ -42,7 +42,7 @@ Status MemcpyAddrAsyncTaskInfo::ParseTaskRunParam(const domi::TaskDef &task_def,
   pls_ = (rtGetTsMemType(MEM_REQUEST_FEATURE_DEFAULT, args_size_ + kAlignment) & RT_MEMORY_TS) != 0
              ? ArgsPlacement::kArgsPlacementTs
              : ArgsPlacement::kArgsPlacementHbm;
-  GELOGI("size: %zu (with extra %zu alignment addend), placement: %d, dst_max: %" PRIu64 ", count: %" PRIu64
+  GELOGI("size: %zu bytes (with extra %zu alignment addend), placement: %d, dst_max: %" PRIu64 ", count: %" PRIu64
          ", kind: %d",
          args_size_, kAlignment, static_cast<int32_t>(pls_), dst_max_, count_, static_cast<int32_t>(kind_));
 
@@ -138,14 +138,24 @@ Status MemcpyAddrAsyncTaskInfo::GetTaskArgsRefreshInfos(std::vector<TaskArgsRefr
 
 Status MemcpyAddrAsyncTaskInfo::Distribute() {
   GE_ASSERT_NOTNULL(op_desc_);
-  GELOGI("MemcpyAddrAsyncTaskInfo Distribute Start, op %s, dst_max:%" PRIu64 ", count:%" PRIu64 ", kind:%u",
+  GELOGI("MemcpyAddrAsyncTaskInfo Distribute Start, op %s, dst_max:%" PRIu64
+         " bytes"
+         ", count:%" PRIu64 ", kind:%u",
          op_desc_->GetName().c_str(), dst_max_, count_, kind_);
   SetTaskTag(op_desc_->GetName().c_str());
 
   const auto rt_ret = rtMemcpyAsyncPtr(ValueToPtr(device_args_aligned_), dst_max_, count_, kind_, stream_, qosCfg_);
   if (rt_ret != RT_ERROR_NONE) {
-    REPORT_INNER_ERR_MSG("E19999", "Call rtMemcpyAsyncWithCfg failed, size:%" PRIu64 ",ret:%d", dst_max_, rt_ret);
-    GELOGE(RT_FAILED, "[Call][rtMemcpyAsyncWithCfg] failed, size:%" PRIu64 ", ret:%d", dst_max_, rt_ret);
+    REPORT_INNER_ERR_MSG("E19999",
+                         "Call rtMemcpyAsyncWithCfg failed, size:%" PRIu64
+                         " bytes"
+                         ",ret:%d",
+                         dst_max_, rt_ret);
+    GELOGE(RT_FAILED,
+           "[Call][rtMemcpyAsyncWithCfg] failed, size:%" PRIu64
+           " bytes"
+           ", ret:%d",
+           dst_max_, rt_ret);
     return RT_ERROR_TO_GE_STATUS(rt_ret);
   }
   GE_CHK_ACL_RET(aclrtMemcpy(host_args_aligned_, args_size_, ValueToPtr(device_args_aligned_), args_size_,
@@ -165,8 +175,9 @@ Status MemcpyAddrAsyncTaskInfo::Distribute() {
     GE_ASSERT_SUCCESS(ArgsFormatDesc::GetArgSize(op_desc_, iter, host_addr));
   }
 
-  GELOGI("MemcpyAddrAsyncTaskInfo Distribute Success, op %s, dst_max:%" PRIu64 ", count:%" PRIu64
-         ", kind:%u, stream: %p.",
+  GELOGI("MemcpyAddrAsyncTaskInfo Distribute Success, op %s, dst_max:%" PRIu64
+         " bytes"
+         ", count:%" PRIu64 ", kind:%u, stream: %p.",
          op_desc_->GetNamePtr(), dst_max_, count_, kind_, stream_);
 
   is_support_redistribute_ = true;

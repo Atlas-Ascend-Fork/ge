@@ -35,7 +35,8 @@ class HybridDavinciModel::Impl {
                                                 kParallelModeSingleStream};
     std::string parallel_mode;
     (void)GetContext().GetOption(OPTION_EXEC_DYNAMIC_GRAPH_PARALLEL_MODE, parallel_mode);
-    GE_CHK_BOOL_RET_STATUS(kValidValues.count(parallel_mode) > 0, PARAM_INVALID, "Option %s is invalid, value = [%s]",
+    GE_CHK_BOOL_RET_STATUS(kValidValues.count(parallel_mode) > 0, PARAM_INVALID,
+                           "Option %s is invalid, value = [%s], valid values: [0, 1, 2] or empty",
                            OPTION_EXEC_DYNAMIC_GRAPH_PARALLEL_MODE, parallel_mode.c_str());
     use_default_stream_ = (parallel_mode == kParallelModeSingleStream);
     GELOGI("Option %s = [%s]", OPTION_EXEC_DYNAMIC_GRAPH_PARALLEL_MODE, parallel_mode.c_str());

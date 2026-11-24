@@ -103,7 +103,7 @@ static void SetDumpDataForWorkspace(const ge::OpDescInfo &op_desc_info, toolkit:
         continue;
       }
       toolkit::dump::Workspace space;
-      GELOGI("workspace_info add to dump_data");
+      GELOGD("workspace_info add to dump_data");
       space.set_size(static_cast<uint64_t>(op_desc_info.workspace_bytes[i]));
       space.set_type(toolkit::dump::Workspace::LOG);
       dump_data.mutable_space()->Add(std::move(space));
@@ -228,7 +228,7 @@ Status PrepareInputTensor(const OpDescPtr &op, const ExtraOpInfo &extra_op_info,
     tensor_info.argsOffSet = static_cast<uint32_t>(args_offset);
     (void)tensor_infos.emplace_back(tensor_info);
 
-    GELOGI("input[%u] addr %p, size %zu, argsOffSet %lu", i, extra_op_info.input_addrs[idx], tensor_size, args_offset);
+    GELOGD("input[%u] addr %p, size %zu, argsOffSet %lu", i, extra_op_info.input_addrs[idx], tensor_size, args_offset);
   }
   return ge::SUCCESS;
 }
@@ -277,7 +277,7 @@ Status PrepareOutputTensor(const OpDescPtr &op, const ExtraOpInfo &extra_op_info
     tensor_info.addrType = Adx::AddressType::TRADITIONAL;
     tensor_info.argsOffSet = static_cast<uint32_t>(args_offset);
     (void)tensor_infos.emplace_back(tensor_info);
-    GELOGI("output[%u] addr %p, size %ld, argsOffSet %lu", i, extra_op_info.output_addrs[i], tensor_size, args_offset);
+    GELOGD("output[%u] addr %p, size %ld, argsOffSet %lu", i, extra_op_info.output_addrs[i], tensor_size, args_offset);
   }
   return ge::SUCCESS;
 }
@@ -526,7 +526,7 @@ void ExceptionDumper::LogExceptionArgs(const OpDescInfo &op_desc_info) const {
     GEEVENT("[AIC_INFO] %s, addr:%p", op_desc_info.args_before_execute.c_str(), op_desc_info.args);
   }
   if (op_desc_info.is_host_args) {
-    GELOGI("Args is host, skip log args");
+    GELOGI("Args are on host, skip logging args");
     return;
   }
   uint8_t *host_addr = nullptr;
@@ -667,7 +667,7 @@ Status ExceptionDumper::DumpNodeInfo(const OpDescInfo &op_desc_info, const std::
   GE_CHECK_LE(proto_size, static_cast<uint64_t>(std::numeric_limits<int32_t>::max()));
   const bool ret = dump_data.SerializeToArray(proto_msg.get(), static_cast<int32_t>(proto_size));
   if ((!ret) || (proto_size == 0U)) {
-    REPORT_INNER_ERR_MSG("E19999", "Serialize proto to std::string fail.");
+    REPORT_INNER_ERR_MSG("E19999", "Serialize proto to std::string failed.");
     GELOGE(PARAM_INVALID, "[Dump][Exception] Dump data proto serialize failed");
     return PARAM_INVALID;
   }
@@ -801,7 +801,7 @@ Status ExceptionDumper::DumpExceptionInput(const OpDescInfo &op_desc_info, const
     } else {
       ret = DumpDevMem(dump_file.data(), addr, size);
     }
-    GE_CHK_STATUS_RET(ret, "[Dump][Input][%zu] failed, op[%s].", op_desc_info.op_name.c_str(), i);
+    GE_CHK_STATUS_RET(ret, "[Dump][Input][%zu] failed, op[%s].", i, op_desc_info.op_name.c_str());
   }
   return SUCCESS;
 }
@@ -830,7 +830,7 @@ Status ExceptionDumper::DumpExceptionOutput(const OpDescInfo &op_desc_info, cons
     } else {
       ret = DumpDevMem(dump_file.data(), addr, size);
     }
-    GE_CHK_STATUS_RET(ret, "[Dump][output][%zu] failed, op[%s].", op_desc_info.op_name.c_str(), i);
+    GE_CHK_STATUS_RET(ret, "[Dump][output][%zu] failed, op[%s].", i, op_desc_info.op_name.c_str());
   }
   return SUCCESS;
 }
@@ -857,7 +857,7 @@ Status ExceptionDumper::DumpExceptionWorkspace(const OpDescInfo &op_desc_info, c
     } else {
       ret = DumpDevMem(dump_file.data(), addr, size);
     }
-    GE_CHK_STATUS_RET(ret, "[Dump][Workspace][%zu] failed, op[%s].", op_desc_info.op_name.c_str(), i);
+    GE_CHK_STATUS_RET(ret, "[Dump][Workspace][%zu] failed, op[%s].", i, op_desc_info.op_name.c_str());
   }
   return SUCCESS;
 }

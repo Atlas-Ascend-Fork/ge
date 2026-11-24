@@ -723,7 +723,7 @@ class DavinciModel {
     bool is_update_dump_op_range = true;
     if (task_type == ModelTaskType::MODEL_TASK_FFTS_PLUS) {
       is_update_dump_op_range = false;
-      GELOGW("op[%s] task type[%d] no support dump with opname range", op_name.c_str(),
+      GELOGW("op[%s] task type[%d] does not support dump with opname range", op_name.c_str(),
              static_cast<int32_t>(task_type));
     }
     return GetDumpProperties().SetDumpFsmState(dump_model_name_, om_name_, op_name, dump_fsm_state_, dump_op_in_range_,

@@ -149,7 +149,7 @@ Status TBEKernelHandle::GetAddrAndPrefCnt(const OpDescPtr &op_desc, const std::s
     }
     for (uint8_t i = 0U; i < kernel_info.functionInfoNum; ++i) {
       addr_and_pref_cnt.emplace_back(kernel_info.functionInfo[i].pcAddr, kernel_info.functionInfo[i].prefetchCnt);
-      GELOGI("Get [%u] addr 0x%" PRIx64 ", pref_cnt %u for kernel_name %s.", i,
+      GELOGD("Get [%u] addr 0x%" PRIx64 ", pref_cnt %u for kernel_name %s.", i,
              PtrToValue(kernel_info.functionInfo[i].pcAddr), kernel_info.functionInfo[i].prefetchCnt,
              kernel_name.c_str());
     }
@@ -299,7 +299,7 @@ Status TBEKernelHandle::FunctionRegister(const OpDescPtr &op_desc, const std::st
   for (uint8_t i = 0U; i < kernel_info.functionInfoNum; ++i) {
     addr_and_pref_cnt_[kernel_name].emplace_back(kernel_info.functionInfo[i].pcAddr,
                                                  kernel_info.functionInfo[i].prefetchCnt);
-    GELOGI("Get [%u] addr 0x%" PRIx64 ", pref_cnt %u for kernel_name %s.", i,
+    GELOGD("Get [%u] addr 0x%" PRIx64 ", pref_cnt %u for kernel_name %s.", i,
            PtrToValue(kernel_info.functionInfo[i].pcAddr), kernel_info.functionInfo[i].prefetchCnt,
            kernel_name.c_str());
   }

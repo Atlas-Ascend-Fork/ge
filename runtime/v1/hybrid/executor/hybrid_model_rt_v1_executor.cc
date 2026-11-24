@@ -130,8 +130,8 @@ Status HybridModelRtV1Executor::ExecuteForSingleOp(const HybridModelExecutor::Ex
 
   // When dump on, must wait for the callback function to finish executing.
   if (context_.IsDumpEnabled()) {
-    GE_CHK_STATUS_RET(context_.callback_manager->Destroy(), "[Destroy][Callback] for failed.");
-    GE_CHK_STATUS_RET(context_.callback_manager->Init(), "[Init][Callback] for failed.");
+    GE_CHK_STATUS_RET(context_.callback_manager->Destroy(), "[Destroy][Callback] failed.");
+    GE_CHK_STATUS_RET(context_.callback_manager->Init(), "[Init][Callback] failed.");
   }
   executor_.Reset();
   return SUCCESS;
@@ -200,7 +200,7 @@ Status HybridModelRtV1Executor::Execute(const std::vector<gert::Tensor> &inputs,
     GeTensor ge_tensor;
     GE_ASSERT_SUCCESS(TensorValue2GeTensor(std::move(args.outputs[out_index]), tensor_desc, ge_tensor));
     GE_ASSERT_SUCCESS(TensorTransUtils::GeTensor2GertTensor(ge_tensor, outputs[out_index]));
-    GELOGD("Set output[%d], tensor size = %zu, shape = [%s]", out_index, gert_tensor.GetSize(),
+    GELOGD("Set output[%d], tensor size = %zu bytes, shape = [%s]", out_index, gert_tensor.GetSize(),
            formats::GertShapeToString(gert_tensor.GetStorageShape()).c_str());
     ++out_index;
   }
@@ -376,16 +376,16 @@ Status HybridModelRtV1Executor::CheckInputShapeByShapeRange(const GraphItem *con
     GE_CHECK_NOTNULL(args_tensor_desc);
     const GeShape &shape = args_tensor_desc->GetShape();
     if (shape.IsUnknownShape()) {
-      REPORT_INNER_ERR_MSG("E19999", "[%s] Input desc shape [%zu] designed by user must be static.",
-                           graph_item->GetName().c_str(), i);
-      GELOGE(INTERNAL_ERROR, "[Check][Param] [%s] Input desc shape [%zu] designed by user must be static.",
-             graph_item->GetName().c_str(), i);
+      REPORT_INNER_ERR_MSG("E19999", "[%s] Input desc shape [%zu] designed by user must be static, shape:%s.",
+                           graph_item->GetName().c_str(), i, shape.ToString().c_str());
+      GELOGE(INTERNAL_ERROR, "[Check][Param] [%s] Input desc shape [%zu] designed by user must be static, shape:%s.",
+             graph_item->GetName().c_str(), i, shape.ToString().c_str());
       return INTERNAL_ERROR;
     }
 
     if (TensorUtils::CheckShapeByShapeRange(shape, shape_range) != SUCCESS) {
-      GELOGE(PARAM_INVALID, "[Check][InputShape] [%s] check input [%zu] shape failed by shape range.",
-             graph_item->GetName().c_str(), i);
+      GELOGE(PARAM_INVALID, "[Check][InputShape] [%s] check input [%zu] shape failed by shape range, shape:%s.",
+             graph_item->GetName().c_str(), i, shape.ToString().c_str());
       return PARAM_INVALID;
     }
   }

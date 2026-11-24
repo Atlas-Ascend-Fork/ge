@@ -528,4 +528,14 @@ TEST_F(UTEST_dump_properties, check_dump_path_access_fail) {
   MmpaStub::GetInstance().Reset();
   (void)rmdir(test_dir.c_str());
 }
+
+TEST_F(UTEST_dump_properties, check_SetDumpFsmState_size_mismatch) {
+  DumpProperties dp;
+  const std::string model = "mismatch_model";
+  const std::vector<std::pair<std::string, std::string>> op_ranges = {{"b", "d"}, {"c", "e"}};
+  dp.SetOpDumpRange(model, op_ranges);
+  std::vector<DumpProcState> dump_fsm_state = {DumpProcState::kInit};
+  std::unordered_set<std::string> dump_op_in_range;
+  EXPECT_EQ(dp.SetDumpFsmState(model, "", "a", dump_fsm_state, dump_op_in_range), ge::FAILED);
+}
 }  // namespace ge

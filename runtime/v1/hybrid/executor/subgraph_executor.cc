@@ -115,7 +115,7 @@ Status SubgraphExecutor::ExecuteAsyncForKnownShape(const std::vector<TensorValue
   if (graph_item_->GetAllNodes().size() != 1U) {
     REPORT_INNER_ERR_MSG("E19999", "[%s] Invalid known shape subgraph. node size = %zu", graph_item_->GetName().c_str(),
                          graph_item_->GetAllNodes().size());
-    GELOGE(INTERNAL_ERROR, "[Check][Size][%s] Invalid known shape subgraph. node size = %zu",
+    GELOGE(INTERNAL_ERROR, "[Check][Size][%s] Invalid known shape subgraph. node size = %zu, expected node size = 1",
            graph_item_->GetName().c_str(), graph_item_->GetAllNodes().size());
     return INTERNAL_ERROR;
   }
@@ -132,7 +132,7 @@ Status SubgraphExecutor::ExecuteAsyncForKnownShape(const std::vector<TensorValue
                         "[Call][ExecuteAsync] [%s] Failed to execute node [%s(%s)] for known subgraph.",
                         graph_item_->GetName().c_str(), node_state->GetName().c_str(), node_state->GetType().c_str());
 
-  GELOGD("[%s] Done execute non-dynamic subgraph successfully.", graph_item_->GetName().c_str());
+  GELOGD("[%s] Done executing non-dynamic subgraph successfully.", graph_item_->GetName().c_str());
   return SUCCESS;
 }
 
@@ -562,9 +562,9 @@ Status SubgraphExecutor::GetOutputs(std::vector<TensorValue> &outputs, std::vect
                     "[Invoke][GetOutputDescList][%s] Failed to get output tensor desc.",
                     graph_item_->GetName().c_str());
   if (outputs.size() != output_desc.size()) {
-    GELOGE(INTERNAL_ERROR, "[Check][Size]Number of outputs(%zu) mismatch number of output_desc(%zu).", outputs.size(),
-           output_desc.size());
-    REPORT_INNER_ERR_MSG("E19999", "Number of outputs(%zu) mismatch number of output_desc(%zu).", outputs.size(),
+    GELOGE(INTERNAL_ERROR, "[Check][Size]Number of outputs(%zu) mismatches the number of output_desc(%zu).",
+           outputs.size(), output_desc.size());
+    REPORT_INNER_ERR_MSG("E19999", "Number of outputs(%zu) mismatches the number of output_desc(%zu).", outputs.size(),
                          output_desc.size());
     return INTERNAL_ERROR;
   }

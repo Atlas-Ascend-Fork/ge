@@ -74,8 +74,8 @@ Status ExecutorUtils::UpdateHostMemInputArgs(const std::vector<DataBuffer> &inpu
   if ((host_mem_data_offset + kMaxHostMemInputLen) > io_size) {
     GELOGE(PARAM_INVALID,
            "[Check] memory reserved for host memory input is not enough, offset = %zu,"
-           " io_addrs_size = %zu",
-           host_mem_data_offset, io_size);
+           " io_addrs_size = %zu, required = %zu",
+           host_mem_data_offset, io_size, host_mem_data_offset + kMaxHostMemInputLen);
     return PARAM_INVALID;
   }
   const size_t align_bytes = op_task.GetInputAddrAlignBytes();
@@ -151,8 +151,8 @@ Status ExecutorUtils::UpdateHostMemInputArgs(const hybrid::TaskContext &context,
   if ((host_mem_input_data_offset_in_args + kMaxHostMemInputLen) > io_addrs_size) {
     GELOGE(PARAM_INVALID,
            "[Check] memory reserved for host memory input is not enough, offset = %zu,"
-           " io_addrs_size = %zu",
-           host_mem_input_data_offset_in_args, io_addrs_size);
+           " io_addrs_size = %zu, required = %zu",
+           host_mem_input_data_offset_in_args, io_addrs_size, host_mem_input_data_offset_in_args + kMaxHostMemInputLen);
     return PARAM_INVALID;
   }
   size_t host_mem_input_data_offset = host_mem_input_data_offset_in_args;

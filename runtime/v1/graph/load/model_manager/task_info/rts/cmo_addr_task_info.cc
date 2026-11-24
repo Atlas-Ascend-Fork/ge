@@ -75,7 +75,10 @@ Status CmoAddrTaskInfo::ParseTaskRunParam(const domi::TaskDef &task_def, Davinci
   const uint32_t args_mem_type = rtGetTsMemType(MEM_REQUEST_FEATURE_DEFAULT, static_cast<uint32_t>(args_size_));
   args_placement_ =
       ((args_mem_type & RT_MEMORY_TS) == 0U) ? ArgsPlacement::kArgsPlacementHbm : ArgsPlacement::kArgsPlacementTs;
-  GELOGI("args mem type:%u, args size:%" PRIu64 ", args placement:%d", args_mem_type, args_size_, args_placement_);
+  GELOGI("args mem type:%u, args size:%" PRIu64
+         " bytes"
+         ", args placement:%d",
+         args_mem_type, args_size_, args_placement_);
   task_run_param.args_descs.push_back({static_cast<int64_t>(args_size_), args_placement_});
   GELOGI("CmoAddrTaskInfo::ParseTaskRunParam success, op: %s", op_desc_->GetNamePtr());
   return SUCCESS;

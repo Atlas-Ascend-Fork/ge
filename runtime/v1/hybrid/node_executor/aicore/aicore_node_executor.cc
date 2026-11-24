@@ -89,7 +89,7 @@ Status AiCoreNodeTask::ExecuteAsync(TaskContext &context, const std::function<vo
   }
 
   if (aicpu_exec_) {
-    GELOGI("Node[%s] can't Partially supported task executing tiling, switch to aicpu execution.",
+    GELOGI("Node[%s] does not support tiling execution for partially supported task, switch to aicpu execution.",
            context.GetNodeName());
     return aicpu_task_->ExecuteAsync(context, done_callback);
   }
@@ -171,7 +171,7 @@ Status AiCoreNodeTask::SelectBin(TaskContext &task_context, const GraphExecution
   std::vector<domi::TaskDef> task_defs;
   const auto cci = bin_selector_->SelectBin(task_context.GetNodeItem().node, ctx->ge_context, task_defs);
   if (cci == nullptr) {
-    GELOGD("Cannot find any support cache_item. Try turn to other executor.");
+    GELOGD("Cannot find any supported cache_item. Try to switch to other executor.");
     if (aicpu_task_ != nullptr) {
       GELOGI("Node %s will switch to aicpu execution.", task_context.GetNodeName());
       aicpu_exec_ = true;
@@ -298,7 +298,7 @@ Status AiCoreNodeTask::CheckOverflow(TaskContext &context) const {
       uint32_t acl_stream_id = 0U;
       (void)aclrtGetThreadLastTaskIdAndStreamId(context.MutableTaskId(), &acl_stream_id);
       (void)aclrtStreamGetId(context.GetStream(), reinterpret_cast<int32_t *>(context.MutableStreamId()));
-      GELOGW("Dynamic shape op %s is over flow", context.GetNodeName());
+      GELOGW("Dynamic shape op %s is overflow", context.GetNodeName());
       return SUCCESS;
     } else if (rt_ret == ACL_ERROR_RT_STREAM_SYNC_TIMEOUT) {
       GELOGE(rt_ret, "[Invoke][aclrtSynchronizeStreamWithTimeout] failed, ret:%d.", rt_ret);

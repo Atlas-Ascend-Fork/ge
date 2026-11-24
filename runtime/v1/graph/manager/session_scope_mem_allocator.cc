@@ -41,11 +41,11 @@ uint8_t *SessionScopeMemAllocator::Malloc(size_t size, const uint64_t session_id
   if (memory_allocator_ == nullptr) {
     return nullptr;
   }
-  GELOGI("Start malloc memory, size:%zu, session id:%" PRIu64 " device id:%u", size, session_id, device_id);
+  GELOGI("Start malloc memory, size:%zu bytes, session id:%" PRIu64 " device id:%u", size, session_id, device_id);
   const std::string purpose = "Memory for session scope";
   const auto ptr = memory_allocator_->MallocMemory(purpose, size, device_id);
   if (ptr == nullptr) {
-    GELOGE(FAILED, "Malloc failed, no enough memory for size:%zu, session_id:%" PRIu64 " device_id:%u", size,
+    GELOGE(FAILED, "Malloc failed, not enough memory for size:%zu bytes, session_id:%" PRIu64 " device_id:%u", size,
            session_id, device_id);
     return nullptr;
   }
@@ -64,7 +64,7 @@ Status SessionScopeMemAllocator::Free(const uint64_t session_id, const uint32_t 
     return PARAM_INVALID;
   }
   for (const auto &mem_info : it->second) {
-    GELOGI("Free memory size:%zu.", mem_info.GetSize());
+    GELOGD("Free memory size:%zu bytes.", mem_info.GetSize());
   }
   (void)allocated_memory_.erase(it);
   return SUCCESS;

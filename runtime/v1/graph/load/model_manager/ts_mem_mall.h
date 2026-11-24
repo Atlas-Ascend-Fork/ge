@@ -56,7 +56,7 @@ class TsMemMall {
     }
     const uint64_t bytes = (size + kTsMemAlignMask) & static_cast<uint64_t>(~kTsMemAlignMask);
     if (bytes > kMaxTsMemBlock) {
-      GELOGW("Acquire TS memory may not physical continuity, size: %" PRIu64, bytes);
+      GELOGW("Acquire TS memory may not be physically continuous, size: %" PRIu64, bytes);
     }
 
     const std::lock_guard<std::mutex> lock(mem_mutex_);

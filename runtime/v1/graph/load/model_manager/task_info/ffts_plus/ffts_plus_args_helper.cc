@@ -270,7 +270,8 @@ Status FftsPlusArgsHelper::GenAicpuRefreshInfos(const std::vector<TaskArgsRefres
 
 Status FftsPlusArgsHelper::UpdateAicpuAddrs(const std::vector<uint64_t> &io_addrs, const size_t start_idx) {
   if (start_idx + args_relevent_offsets_.size() != io_addrs.size()) {
-    GELOGE(FAILED, "Aicpu ioaddr size mismatch.");
+    GELOGE(FAILED, "Aicpu ioaddr size mismatch, start_idx:%zu, offsets size:%zu, io_addrs size:%zu, expected:%zu.",
+           start_idx, args_relevent_offsets_.size(), io_addrs.size(), start_idx + args_relevent_offsets_.size());
     return FAILED;
   }
   for (size_t idx = 0UL; idx < args_relevent_offsets_.size(); ++idx) {

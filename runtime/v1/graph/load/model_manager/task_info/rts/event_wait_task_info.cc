@@ -53,7 +53,7 @@ Status EventWaitTaskInfo::Distribute() {
   aclError rt_ret = aclrtStreamWaitEvent(stream_, event_);
   if (rt_ret != ACL_SUCCESS) {
     REPORT_INNER_ERR_MSG("E19999", "Call aclrtStreamWaitEvent failed, ret:%d", rt_ret);
-    GELOGE(RT_FAILED, "[Call][AclrtStreamWaitEvent] failed, ret:%d", rt_ret);
+    GELOGE(RT_FAILED, "[Call][aclrtStreamWaitEvent] failed, ret:%d", rt_ret);
     return RT_ERROR_TO_GE_STATUS(rt_ret);
   }
 

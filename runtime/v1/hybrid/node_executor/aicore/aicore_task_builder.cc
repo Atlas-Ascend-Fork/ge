@@ -102,10 +102,10 @@ Status AiCoreTaskBuilder::BuildTask() {
   GE_CHK_STATUS_RET(LoadAtomicWorkspace(), "[LoadAtomicWorkSpace]failed for [%s(%s)].", op_desc_->GetName().c_str(),
                     op_desc_->GetType().c_str());
   if (aicore_task_defs_.size() > kNumTaskWithAtomicAddrCleanTask) {
-    GELOGE(INTERNAL_ERROR, "[Check][Size][%s(%s)] At most %zu task was supported, but got %zu",
+    GELOGE(INTERNAL_ERROR, "[Check][Size][%s(%s)] At most %zu tasks are supported, but got %zu",
            op_desc_->GetName().c_str(), op_desc_->GetType().c_str(), kNumTaskWithAtomicAddrCleanTask,
            aicore_task_defs_.size());
-    REPORT_INNER_ERR_MSG("E19999", "[%s(%s)] At most %zu task was supported, but got %zu, check invalid.",
+    REPORT_INNER_ERR_MSG("E19999", "[%s(%s)] At most %zu tasks are supported, but got %zu, check invalid.",
                          op_desc_->GetName().c_str(), op_desc_->GetType().c_str(), kNumTaskWithAtomicAddrCleanTask,
                          aicore_task_defs_.size());
     return INTERNAL_ERROR;

@@ -162,7 +162,7 @@ Status ZeroCopyOffset::SetInputOutsideAddrs(const int64_t output_offset, const u
         std::map<uintptr_t, std::vector<uintptr_t>> addr_mapping{{virtual_addr, {}}};
         outside_addrs_.emplace_back(std::move(addr_mapping));
         (void)real_virtual_addrs.insert(virtual_addr);
-        GELOGI("[ZCPY] virtual_addr 0x%" PRIx64 " has been fusion to virtual_addr 0x%" PRIx64, addr_val, virtual_addr);
+        GELOGI("[ZCPY] virtual_addr 0x%" PRIx64 " has been fused to virtual_addr 0x%" PRIx64, addr_val, virtual_addr);
       }
     }
   }
@@ -194,7 +194,7 @@ Status ZeroCopyOffset::SetOutputOutsideAddrs(const int64_t input_offset, const b
         std::map<uintptr_t, std::vector<uintptr_t>> addr_mapping{{virtual_addr, {}}};
         outside_addrs_.emplace_back(std::move(addr_mapping));
         tensor_addrs.emplace_back(virtual_addr);
-        GELOGI("[ZCPY] virtual_addr 0x%" PRIx64 " has been fusion to virtual_addr 0x%" PRIx64, addr_val, virtual_addr);
+        GELOGI("[ZCPY] virtual_addr 0x%" PRIx64 " has been fused to virtual_addr 0x%" PRIx64, addr_val, virtual_addr);
       }
     }
   }

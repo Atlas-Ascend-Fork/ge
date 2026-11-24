@@ -37,8 +37,8 @@ void GetL0TensorSize(const ge::OpDescPtr &op_desc, std::vector<uint64_t> &tensor
     const auto data_type = input_desc->GetDataType();
     int64_t tensor_size = ge::GetSizeInBytes(shape_size, data_type);
     if (tensor_size < 0) {
-      GELOGW("Op [%s] input [%zu] tensor size [%" PRId64 "] is invalid, set 0 to skip dump.", op_desc->GetNamePtr(), i,
-             tensor_size);
+      GELOGW("Op [%s] input [%zu] tensor size [%" PRId64 " bytes] is invalid, should be >= 0, set 0 to skip dump.",
+             op_desc->GetNamePtr(), i, tensor_size);
       tensor_size = 0;
     }
     tensor_size_list[cur_idx++] = static_cast<uint64_t>(tensor_size);
@@ -50,8 +50,8 @@ void GetL0TensorSize(const ge::OpDescPtr &op_desc, std::vector<uint64_t> &tensor
     const auto data_type = output_desc->GetDataType();
     int64_t tensor_size = ge::GetSizeInBytes(shape_size, data_type);
     if (tensor_size < 0) {
-      GELOGW("Op [%s] output [%zu] tensor size [%" PRId64 "] is invalid, set 0 to skip dump.", op_desc->GetNamePtr(), i,
-             tensor_size);
+      GELOGW("Op [%s] output [%zu] tensor size [%" PRId64 " bytes] is invalid, should be >= 0, set 0 to skip dump.",
+             op_desc->GetNamePtr(), i, tensor_size);
       tensor_size = 0;
     }
     tensor_size_list[cur_idx++] = static_cast<uint64_t>(tensor_size);

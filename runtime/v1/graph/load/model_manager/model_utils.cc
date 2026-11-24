@@ -64,7 +64,10 @@ Status GetMaxVarMemSize(const RuntimeParam &runtime_param, uint64_t &max_var_mem
   max_var_mem_size = static_cast<uint64_t>(var_manager->GetVarMemSize(RT_MEMORY_HBM)) +
                      static_cast<uint64_t>(var_manager->GetVarConstPlaceHolderMemSize(RT_MEMORY_HBM));
   max_var_mem_size = (max_var_mem_size == 0LU) ? static_cast<uint64_t>(runtime_param.var_size) : max_var_mem_size;
-  GELOGI("GetMaxVarMemSize max_var_mem_size = %" PRIu64 ".", max_var_mem_size);
+  GELOGI("GetMaxVarMemSize max_var_mem_size = %" PRIu64
+         " bytes"
+         ".",
+         max_var_mem_size);
   return SUCCESS;
 }
 
@@ -74,7 +77,7 @@ size_t GetVarConstPlaceHolderMemSize(const RuntimeParam &runtime_param) {
   if (var_manager != nullptr) {
     var_cph_mem_size = static_cast<size_t>(var_manager->GetVarConstPlaceHolderMemSize(RT_MEMORY_HBM));
   }
-  GELOGI("GetVarConstPlaceHolderMemSize var_cph_mem_size = %zu.", var_cph_mem_size);
+  GELOGI("GetVarConstPlaceHolderMemSize var_cph_mem_size = %zu bytes.", var_cph_mem_size);
   return var_cph_mem_size;
 }
 
@@ -1229,7 +1232,7 @@ Status ModelUtils::CalculateHcclGroupOrderedEventNum(const GeModelPtr &ge_model,
                                     !hccl_group_id_list.empty());
     if (has_gropu_id_list) {
       for (const auto &group_id : hccl_group_id_list) {
-        GELOGI("Get op:%s attribute(hccl_group_id_list) group id:%s", op_desc->GetName().c_str(), group_id.c_str());
+        GELOGD("Get op:%s attribute(hccl_group_id_list) group id:%s", op_desc->GetName().c_str(), group_id.c_str());
         hccl_group_id_set.insert(group_id);
       }
     }

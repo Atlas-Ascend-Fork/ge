@@ -391,7 +391,7 @@ void HcclTaskInfo::HcclWatcherModeProcess(const ModelTaskType task_type) {
   }
 
   if (davinci_model_->OpNoNeedDumpOnWatcherModel(hccl_op_desc_->GetName())) {
-    GELOGW("Set hccl op in DUMP_LAYER_OP_MODEL is not supported", hccl_op_desc_->GetName().c_str());
+    GELOGW("Set hccl op %s in DUMP_LAYER_OP_MODEL is not supported", hccl_op_desc_->GetName().c_str());
   }
   return;
 }
@@ -600,8 +600,9 @@ Status HcclTaskInfo::SetAddrs(const std::shared_ptr<OpDesc> &op_desc,
                               std::vector<GETaskKernelHcclInfo> &kernel_hccl_infos) {
   GE_CHECK_NOTNULL(op_desc);
   GE_CHK_STATUS_RET(HcomOmeUtil::CheckKernelHcclInfo(op_desc, kernel_hccl_infos),
-                    "[Check][Param] HcomOmeUtil:: the number of GETaskKernelHcclInfo is invalid, node:%s(%s).",
-                    op_desc->GetName().c_str(), op_desc->GetType().c_str());
+                    "[Check][Param] HcomOmeUtil:: the number of GETaskKernelHcclInfo is invalid, "
+                    "current size:%zu, node:%s(%s).",
+                    kernel_hccl_infos.size(), op_desc->GetName().c_str(), op_desc->GetType().c_str());
   GELOGI("Set hccl task input output address, node[%s], type[%s] kernel_hccl_infos.size[%zu].",
          op_desc->GetName().c_str(), op_desc->GetType().c_str(), kernel_hccl_infos.size());
   if (op_desc->GetType() == HVDWAIT) {
@@ -716,7 +717,7 @@ Status HcclTaskInfo::SetWorkspace(const std::shared_ptr<OpDesc> &op_desc,
   const auto workspace_bytes = op_desc->GetWorkspaceBytes();
   if (!workspace_bytes.empty()) {
     const uint64_t workspace_mem_size_tmp = static_cast<uint64_t>(workspace_bytes[0U]);
-    GELOGI("hccl need workSpaceMemSize=%" PRIu64, workspace_mem_size_tmp);
+    GELOGI("hccl need workSpaceMemSize=%" PRIu64 " bytes", workspace_mem_size_tmp);
     if (workspace_mem_size_tmp != 0U) {
       workspace_mem_size = workspace_mem_size_tmp;
       if (IsFeatureBaseRefreshable(davinci_model_)) {

@@ -310,9 +310,9 @@ Status CachingAllocator::TryExtendCache(const size_t size, const uint32_t device
       return ge::FAILED;
     }
     // try to free caches and malloc again when malloc memory failed
-    GELOGE(MEMALLOC_FAILED,
-           "Failed to apply for memory. We will try to free memory from memory pool, the above error log can be "
-           "ignored. Try to free cached memory...");
+    GELOGW(
+        "Failed to apply for memory. We will try to free memory from memory pool, the above error log can be "
+        "ignored. Try to free cached memory...");
     memory_addr = memory_allocator_->MallocMemory(purpose, memory_size, device_id);
     if (memory_addr == nullptr) {
       GELOGE(ge::FAILED, "[Malloc][Memory] failed, no enough memory for size = %zu, device_id = %u", memory_size,

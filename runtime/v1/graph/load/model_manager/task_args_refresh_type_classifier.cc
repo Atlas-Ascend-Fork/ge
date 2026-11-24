@@ -145,8 +145,8 @@ class FixedAddrInferrer {
         const auto task_indexes = task_node_map_.FindTasksByNodeId(peer.node_id);
         if (task_indexes.empty()) {
           GELOGE(FAILED,
-                 "The fixed addr from task %zu %s %d not satisfied with peer node %s(%s) id %lld, because the peer "
-                 "node does have a task",
+                 "The fixed addr from task %zu %s %d is not satisfied with peer node %s(%s) id %lld, because the peer "
+                 "node does not have a task",
                  fixed_addr.task_index, TaskArgsRefreshTypeClassifier::GetIndexTypeStr(fixed_addr.iow_index_type),
                  fixed_addr.iow_index, peer.node->GetName().c_str(), peer.node->GetType().c_str(),
                  peer.node->GetOpDesc()->GetId());
@@ -160,7 +160,7 @@ class FixedAddrInferrer {
               TaskArgsRefreshTypeClassifier::TaskFixedAddr{task_index, peer.iow_index, peer.iow_index_type};
           GE_ASSERT_SUCCESS(UpdateRefreshType(new_fa, task_indexes_to_refresh_type[new_fa.task_index]));
           fixed_addrs[i].push_back(new_fa);
-          GELOGD("Task index %zu %s %lld is inferred as fixed addr, the same with task %zu %s %lld", task_index,
+          GELOGD("Task index %zu %s %lld is inferred as fixed addr, the same as task %zu %s %lld", task_index,
                  TaskArgsRefreshTypeClassifier::GetIndexTypeStr(peer.iow_index_type), peer.iow_index,
                  fixed_addr.task_index, TaskArgsRefreshTypeClassifier::GetIndexTypeStr(fixed_addr.iow_index_type),
                  fixed_addr.iow_index);
@@ -261,7 +261,7 @@ class FixedAddrInferrer {
         // workspace不存在对端的说法，不需要考虑查找对端的事情
         break;
       default:
-        GELOGE(INTERNAL_ERROR, "Unexpected iow type %d when find peers for fixed addr",
+        GELOGE(INTERNAL_ERROR, "Unexpected iow type %d when finding peers for fixed addr",
                static_cast<int32_t>(addr_desc.iow_index_type));
         return FAILED;
     }

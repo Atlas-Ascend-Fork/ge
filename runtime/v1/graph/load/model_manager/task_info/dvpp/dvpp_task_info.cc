@@ -29,7 +29,8 @@ Status DvppTaskInfo::Init(const domi::TaskDef &task_def, DavinciModel *const dav
   const OpDescPtr op_desc = davinci_model->GetOpByIndex(dvpp_task.op_index());
   if (op_desc == nullptr) {
     REPORT_INNER_ERR_MSG("E19999", "Can't get op_desc from davinci_model by index:%u", dvpp_task.op_index());
-    GELOGE(INTERNAL_ERROR, "[Get][Op] Task op index:%u out of range!", dvpp_task.op_index());
+    GELOGE(INTERNAL_ERROR, "[Get][Op] Task op index:%u is out of range, no op found in model op list!",
+           dvpp_task.op_index());
     return INTERNAL_ERROR;
   }
 
@@ -37,7 +38,8 @@ Status DvppTaskInfo::Init(const domi::TaskDef &task_def, DavinciModel *const dav
   if ((ops_kernel_store_ == nullptr) && (OpsKernelExecutorManager::GetInstance().GetExecutor(
                                              op_desc->GetOpKernelLibName(), ops_kernel_store_) != SUCCESS)) {
     REPORT_INNER_ERR_MSG("E19999", "Can't get op_desc from davinci_model by index:%u", dvpp_task.op_index());
-    GELOGE(INTERNAL_ERROR, "[Get][Op] Task op index:%u out of range!", dvpp_task.op_index());
+    GELOGE(INTERNAL_ERROR, "[Get][Op] Task op index:%u is out of range, no op found in model op list!",
+           dvpp_task.op_index());
     return INTERNAL_ERROR;
   }
   const RuntimeParam &rts_param = davinci_model->GetRuntimeParam();

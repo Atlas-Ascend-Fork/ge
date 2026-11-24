@@ -72,12 +72,15 @@ Status NodeDoneCallback::PrepareConstInputs(const NodeItem &node_item) const {
                             "[Get][TensorSize] In Bytes failed");
     if (output_tensor->GetSize() < static_cast<size_t>(tensor_size)) {
       GELOGE(INTERNAL_ERROR,
-             "[Check][Size] [%s(%s)] Tensor size is not enough. output index = %d, required size = %ld, tensor = %s.",
+             "[Check][Size] [%s(%s)] Tensor size is not enough. output index = %d, required size = %ld bytes, tensor = "
+             "%s.",
              node_item.NodeName().c_str(), node_item.NodeType().c_str(), output_idx, tensor_size,
              output_tensor->DebugString().c_str());
       REPORT_INNER_ERR_MSG("E19999",
                            "[%s(%s)] Tensor size is not enough. output index = %d, required size = "
-                           "%" PRId64 ", tensor = %s.",
+                           "%" PRId64
+                           " bytes"
+                           ", tensor = %s.",
                            node_item.NodeName().c_str(), node_item.NodeType().c_str(), output_idx, tensor_size,
                            output_tensor->DebugString().c_str());
       return INTERNAL_ERROR;
@@ -86,7 +89,7 @@ Status NodeDoneCallback::PrepareConstInputs(const NodeItem &node_item) const {
       (void)ge_tensor->SetData(static_cast<const uint8_t *>(output_tensor->GetData()), tensor_size);
     } else {
       std::vector<uint8_t> host_buffer(static_cast<size_t>(tensor_size));
-      GELOGD("[%s] To cache output[%d] to host, size = %zu", node_item.NodeName().c_str(), output_idx,
+      GELOGD("[%s] To cache output[%d] to host, size = %zu bytes", node_item.NodeName().c_str(), output_idx,
              output_tensor->GetSize());
       if (tensor_size > 0) {
         GE_CHK_ACL_RET(aclrtMemcpy(host_buffer.data(), static_cast<uint64_t>(tensor_size), output_tensor->GetData(),
@@ -339,7 +342,7 @@ Status ExecutionEngine::ValidateInputTensors(const NodeState &node_state, const 
   (void)node_state;
   for (int32_t i = 0; i < task_context.NumInputs(); ++i) {
     if (task_context.SkipSufficiencyOfInputCheck(i)) {
-      GELOGD("[%s] Skipping input which no need to check, index:%d.", task_context.GetNodeName(), i);
+      GELOGD("[%s] Skipping input which does not need to be checked, index:%d.", task_context.GetNodeName(), i);
       continue;
     }
     const auto &input_tensor = task_context.GetInput(i);
@@ -367,13 +370,14 @@ Status ExecutionEngine::ValidateInputTensors(const NodeState &node_state, const 
     const auto size_diff = expected_size - static_cast<int64_t>(input_tensor->GetSize());
     if (size_diff > 0) {
       if (size_diff <= kMaxPaddings) {
-        GELOGW("[%s] Input[%d]: tensor size mismatches. expected: %ld, but given %zu", task_context.GetNodeName(), i,
-               expected_size, input_tensor->GetSize());
+        GELOGW("[%s] Input[%d]: tensor size mismatches. expected: %ld bytes, but given %zu bytes",
+               task_context.GetNodeName(), i, expected_size, input_tensor->GetSize());
       } else {
-        GELOGE(INTERNAL_ERROR,
-               "[Check][Size] for [%s(%s)] Input[%d]: tensor size mismatches. expected: %ld, but given %zu.",
-               task_context.GetNodeName(), task_context.GetNodeItem().NodeType().c_str(), i, expected_size,
-               input_tensor->GetSize());
+        GELOGE(
+            INTERNAL_ERROR,
+            "[Check][Size] for [%s(%s)] Input[%d]: tensor size mismatches. expected: %ld bytes, but given %zu bytes.",
+            task_context.GetNodeName(), task_context.GetNodeItem().NodeType().c_str(), i, expected_size,
+            input_tensor->GetSize());
         REPORT_INNER_ERR_MSG("E19999",
                              "[%s(%s)] Input[%d]: tensor size mismatches. expected: "
                              "%" PRId64 ", but given %zu.",

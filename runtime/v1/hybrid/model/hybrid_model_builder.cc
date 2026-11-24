@@ -183,7 +183,8 @@ Status HybridModelBuilder::InitNodeBinMode() {
       return FAILED;
     }
     if (node_bin_mode >= fuzz_compile::kNodeBinModeEnd) {
-      GELOGE(ACL_ERROR_GE_PARAM_INVALID, "Invalid node bin mode %s", node_bin_mode_str.c_str());
+      GELOGE(ACL_ERROR_GE_PARAM_INVALID, "Invalid node bin mode %s, valid range is [0, %d)", node_bin_mode_str.c_str(),
+             static_cast<int32_t>(fuzz_compile::kNodeBinModeEnd));
       // report error
       return FAILED;
     }
@@ -872,7 +873,7 @@ Status HybridModelBuilder::UnfoldSubgraph(const ComputeGraphPtr &root_graph, con
                                           ComputeGraph &sub_graph, const uint32_t depth) {
   if (depth >= kHybridSubgraphRecursion) {
     GELOGE(FAILED, "[Invoke][Unfold]Recursion depth exceeds limit: %u > max: %u", depth, kHybridSubgraphRecursion);
-    REPORT_INNER_ERR_MSG("E19999", "[Unfold]There are too much recursion:%u > max:%u", depth, kHybridSubgraphRecursion);
+    REPORT_INNER_ERR_MSG("E19999", "[Unfold]There is too much recursion:%u > max:%u", depth, kHybridSubgraphRecursion);
     return FAILED;
   }
   const auto &parent_node = sub_graph.GetParentNodeBarePtr();
@@ -1130,7 +1131,8 @@ Status HybridModelBuilder::VarNodeToTensor(const NodePtr &var_node, std::unique_
   GE_CHECK_GE(var_size, 0);
   tensor = MakeUnique<TensorValue>(dev_mem, static_cast<size_t>(var_size));
   GE_CHECK_NOTNULL(tensor);
-  GELOGI("Get var memory addr %p for node %s, size = %ld, mem_type=%u", dev_mem, var_name.c_str(), var_size, mem_type);
+  GELOGI("Get var memory addr %p for node %s, size = %ld bytes, mem_type=%u", dev_mem, var_name.c_str(), var_size,
+         mem_type);
   return SUCCESS;
 }
 
@@ -1571,7 +1573,7 @@ Status HybridModelBuilder::IndexTaskDefs(const ComputeGraphPtr &sub_graph, const
   const auto &tasks = ge_model->GetModelTaskDefPtr()->task();
   for (int32_t i = 0; i < tasks.size(); ++i) {
     const domi::TaskDef &task_def = tasks[i];
-    GELOGI("Task id = %d, task type = %d", i, task_def.type());
+    GELOGD("Task id = %d, task type = %d", i, task_def.type());
     const auto task_type = static_cast<ModelTaskType>(task_def.type());
     uint32_t op_index = std::numeric_limits<uint32_t>::max();
     if (task_type == ModelTaskType::MODEL_TASK_KERNEL) {
@@ -1709,9 +1711,9 @@ Status HybridModelBuilder::GetPeerNodeAcrossSubGraphs(const NodePtr &data_node, 
   GE_CHECK_NOTNULL(wrapped_node_in_anchor);
   const auto &src_out_anchor = wrapped_node_in_anchor->GetPeerOutAnchor();
   if ((src_out_anchor == nullptr) || (src_out_anchor->GetOwnerNode() == nullptr)) {
-    REPORT_INNER_ERR_MSG("E19999", "Parent node of node:%s(%s) do not have peer anchor.", data_node->GetName().c_str(),
-                         data_node->GetType().c_str());
-    GELOGE(INTERNAL_ERROR, "[Check][Param] Parent node of node:%s(%s) do not have peer anchor.",
+    REPORT_INNER_ERR_MSG("E19999", "Parent node of node:%s(%s) does not have peer anchor.",
+                         data_node->GetName().c_str(), data_node->GetType().c_str());
+    GELOGE(INTERNAL_ERROR, "[Check][Param] Parent node of node:%s(%s) does not have peer anchor.",
            data_node->GetName().c_str(), data_node->GetType().c_str());
     return INTERNAL_ERROR;
   }
@@ -1882,7 +1884,7 @@ Status HybridModelBuilder::InitModelMem() {
   hybrid_model_.global_step_ = TensorBuffer::Create(mem_allocator, sizeof(int64_t));
   GE_CHECK_NOTNULL(hybrid_model_.global_step_);
 
-  GELOGI("[Init] Variable max size attr do not set, var mem auto malloc.");
+  GELOGI("[Init] Variable max size attr is not set, variable memory will be allocated automatically.");
   runtime_param_.var_base = 0;
   const auto page_size = VarManager::IsVariableUse1gHugePage() ? kDrv1GPageSize : kDrvPageSize;
   auto allocator = SessionMemAllocator<ExpandableActiveMemoryAllocator>::Instance().GetMemAllocator(

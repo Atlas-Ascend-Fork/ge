@@ -183,7 +183,7 @@ Status CheckHostPlacementZeroCopyMemory(const bool is_input, const uint32_t io_i
                             std::vector<const char_t *>({reason.c_str()}));
   GELOGE(ACL_ERROR_GE_PARAM_INVALID,
          "[Check][Param] %s[%u] placement is host when ge.exec.reuseZeroCopyMemory=1, "
-         "no enough memory for zero copy, mem_size:%zu while required total_size:%" PRIu64 ".",
+         "not enough memory for zero copy, mem_size:%zu while required total_size:%" PRIu64 ".",
          is_input ? "input " : "output ", io_idx, mem_base_size, total_mem_size);
   return ACL_ERROR_GE_PARAM_INVALID;
 }
@@ -610,15 +610,15 @@ Status DavinciModel::InitWeightMem(const uintptr_t mem_ptr, const uintptr_t weig
       weights_mem_base_ = static_cast<uintptr_t>(
           PtrToValue(ModelManager::MallocWeightsMem(GetWeightsMemId(), device_id_, weights_size)));
       if (weights_mem_base_ == 0U) {
-        REPORT_INNER_ERR_MSG("E19999", "MallocWeightsMem fail, weights_size:%zu, model_id:%u, check invalid",
+        REPORT_INNER_ERR_MSG("E19999", "MallocWeightsMem fail, weights_size:%zu bytes, model_id:%u, check invalid",
                              weights_size, model_id_);
-        GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION, "[Alloc][Memory] for weight failed. size:%zu, model_id:%u", weights_size,
-               model_id_);
+        GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION, "[Alloc][Memory] for weight failed. size:%zu bytes, model_id:%u",
+               weights_size, model_id_);
         return ACL_ERROR_GE_MEMORY_ALLOCATION;
       }
       is_inner_weight_base_ = true;
     }
-    GELOGI("[IMAS]InitWeightMem graph_%u MallocMemory type[W] memaddr[0x%" PRIx64 "] mem_size[%zu]",
+    GELOGI("[IMAS]InitWeightMem graph_%u MallocMemory type[W] memaddr[0x%" PRIx64 "] mem_size[%zu bytes]",
            runtime_param_.graph_id, weights_mem_base_, weights_size);
     GE_CHK_ACL_RET(aclrtMemcpy(ValueToPtr(weights_mem_base_), weights_size, ge_model_->GetWeightData(), weights_size,
                                ACL_MEMCPY_HOST_TO_DEVICE));
@@ -674,7 +674,8 @@ Status DavinciModel::InitFeatureMapAndP2PMem(const uintptr_t mem_ptr, const size
 
   if (ModelUtils::IsReuseZeroCopyMemory()) {
     data_size = static_cast<size_t>(non_zero_copy_memory_size);
-    GELOGI("Model %u need %zu/%zu for feature-map without zero-copyable memory", model_id_, data_size, TotalMemSize());
+    GELOGI("Model %u need %zu/%zu bytes for feature-map without zero-copyable memory", model_id_, data_size,
+           TotalMemSize());
   }
 
   if ((mem_ptr != 0U) && (mem_size + fixed_mem_size_ < required_minimum_size)) {
@@ -703,24 +704,27 @@ Status DavinciModel::InitFeatureMapAndP2PMem(const uintptr_t mem_ptr, const size
       is_inner_mem_base_ = true;
 
       if (mem_base_ == 0U) {
-        REPORT_INNER_ERR_MSG("E19999",
-                             "MallocFeatureMapMem fail, data_size:%zu, fixed data size%zu, model_id:%u, check invalid",
-                             data_size, fixed_mem_size_, model_id_);
+        REPORT_INNER_ERR_MSG(
+            "E19999", "MallocFeatureMapMem fail, data_size:%zu, fixed data size: %zu, model_id:%u, check invalid",
+            data_size, fixed_mem_size_, model_id_);
         GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION,
-               "[Alloc][Memory] for feature map failed. size:%zu, fixed size:%zu, model_id:%u", data_size,
+               "[Alloc][Memory] for feature map failed. size:%zu bytes, fixed size:%zu bytes, model_id:%u", data_size,
                fixed_mem_size_, model_id_);
         return ACL_ERROR_GE_MEMORY_ALLOCATION;
       }
     }
-    GEEVENT("[IMAS]InitFeatureMapAndP2PMem graph_%u MallocMemory type[F] memaddr[0x%" PRIx64 "] mem_size[%zu]Bytes",
+    GEEVENT("[IMAS]InitFeatureMapAndP2PMem graph_%u MallocMemory type[F] memaddr[0x%" PRIx64
+            "] mem_size[%zu bytes]Bytes",
             runtime_param_.graph_id, mem_base_, data_size);
 
     mem_base_size_ = data_size;
   } else if (mem_base_ != 0U && runtime_param_.fixed_mem_base != 0) {  // refresh fm设置，fix fm设置，使用分段
     size_t used_mem_size = 0U;
     GE_ASSERT_SUCCESS(UpdateHbmFmMemBases(mem_base_, mem_size, used_mem_size, true));
-    GELOGI("Update feature memory base success, model_id:%u, mem_base:%#lx, mem_size:%zu, used_mem_size:%zu", model_id_,
-           mem_base_, mem_size, used_mem_size);
+    GELOGI(
+        "Update feature memory base success, model_id:%u, mem_base:%#lx, mem_size:%zu bytes, used_mem_size:%zu "
+        "bytes",
+        model_id_, mem_base_, mem_size, used_mem_size);
 
     io_mem_base_ = (io_mem_base_ < (mem_base_ + mem_size)) ? (mem_base_ + mem_size) : io_mem_base_;
 
@@ -898,8 +902,8 @@ Status DavinciModel::InitCopyHostInputInfos() {
       continue;
     }
     auto &copy_info = copy_host_input_infos_.at(index);
-    GE_ASSERT(len >= copy_info.tensor_size, "host input index:%u, tensor size:%" PRIu64 ", len:%" PRIu64, index,
-              copy_info.tensor_size, len);
+    GE_ASSERT(len >= copy_info.tensor_size, "host input index:%u, tensor size:%" PRIu64 ", len:%" PRIu64 " bytes",
+              index, copy_info.tensor_size, len);
     copy_info.host_addr = ValueToPtr(host_addr);
     copy_info.device_addr = device_addr;
     // 更新io 段的基地址
@@ -907,7 +911,7 @@ Status DavinciModel::InitCopyHostInputInfos() {
     uint32_t allcation_id = input_index_to_allocation_ids_[index];
     allocation_ids_to_active_base_addr_[allcation_id] = copy_info.device_addr;
     GELOGI("[ActiveMemBase], host input index:%u, model_id:%u, id:%zu, active mem base:0x%" PRIx64
-           ", host mem base:0x%" PRIx64 ", len:%" PRIu64,
+           ", host mem base:0x%" PRIx64 ", len:%" PRIu64 " bytes",
            index, model_id_, allcation_id, allocation_ids_to_active_base_addr_[allcation_id], host_addr,
            copy_info.tensor_size);
 
@@ -1789,7 +1793,7 @@ Status DavinciModel::ProcessFileConstantNode(const NodePtr &node, const ModelPar
   }
 
   const int64_t alloc_size = std::max(v_output_size[0], std::max(weights_size, static_cast<int64_t>(length)));
-  GELOGD("FileConstant weight size is:%" PRId64 " output size:%zu alloc_size:%" PRId64 "",
+  GELOGD("FileConstant weight size is:%" PRId64 " output size:%zu bytes alloc_size:%" PRId64 "",
          std::max(weights_size, static_cast<int64_t>(length)), v_output_size[0], alloc_size);
   node_to_offset_and_size[node] = std::make_pair(offset, alloc_size);
 
@@ -1833,7 +1837,10 @@ Status DavinciModel::AllocateCombinedWeightMemory(const std::string &combined_we
   ifs.seekg(0, std::ios::beg);
   real_dev_addr = MallocFileConstantMem(static_cast<size_t>(file_size));
   if (real_dev_addr == nullptr) {
-    REPORT_INNER_ERR_MSG("E19999", "MallocFileConstantMem fail, weights_size:%" PRId64 ", model_id:%u, check invalid",
+    REPORT_INNER_ERR_MSG("E19999",
+                         "MallocFileConstantMem fail, weights_size:%" PRId64
+                         " bytes"
+                         ", model_id:%u, check invalid",
                          file_size, model_id_);
     GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION, "[Alloc][Memory] for weight failed. size:%" PRId64 ", model_id:%u",
            file_size, model_id_);
@@ -1853,7 +1860,7 @@ Status DavinciModel::AllocateCombinedWeightMemory(const std::string &combined_we
     GE_CHK_STATUS(mem_instance.FreeMemory(const_cast<void *>(real_dev_addr), device_id_),
                   "Failed to free memory after copy failure");
     dev_mem_statistic_.alloc_size -= file_size;  // 从统计中移除
-    GELOGE(ret, "copy weight from file[%s] to addr[%p] failed, file size[%" PRId64 "]", real_path.c_str(),
+    GELOGE(ret, "copy weight from file[%s] to addr[%p] failed, file size[%" PRId64 " bytes]", real_path.c_str(),
            real_dev_addr, file_size);
     return ret;
   }
@@ -1898,7 +1905,7 @@ Status DavinciModel::HandleCombinedWeights(const std::map<NodePtr, std::pair<siz
                                            const std::string &combined_weight_file) {
   GELOGI("Handle combined weights in file[%s].", combined_weight_file.c_str());
   if (node_to_offset_and_size.empty()) {
-    GELOGI("There is no node need alloc memory.");
+    GELOGI("There is no node that needs to allocate memory.");
     return SUCCESS;
   }
 
@@ -1980,7 +1987,10 @@ Status DavinciModel::HandleIndividualWeights(
     const uintptr_t real_dev_addr =
         static_cast<uintptr_t>(PtrToValue(MallocFileConstantMem(static_cast<size_t>(alloc_size))));
     if (real_dev_addr == 0U) {
-      REPORT_INNER_ERR_MSG("E19999", "MallocFileConstantMem fail, weights_size:%" PRId64 ", model_id:%u, check invalid",
+      REPORT_INNER_ERR_MSG("E19999",
+                           "MallocFileConstantMem fail, weights_size:%" PRId64
+                           " bytes"
+                           ", model_id:%u, check invalid",
                            alloc_size, model_id_);
       GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION, "[Alloc][Memory] for weight failed. size:%" PRId64 ", model_id:%u",
              alloc_size, model_id_);
@@ -2075,8 +2085,9 @@ Status DavinciModel::GetUserDeviceMemForFileConstant(const OpDescPtr &op_desc, s
   }
   user_mem = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(user_device_mem->device_mem) + offset);
   GELOGI(
-      "FileConstant node %s found user device memory (addr: %p, size: %zu). file name: %s, offset: %zu, length: %zu,"
-      " weight size: %zu",
+      "FileConstant node %s found user device memory (addr: %p, size: %zu bytes). file name: %s, offset: %zu, length: "
+      "%zu bytes,"
+      " weight size: %zu bytes",
       op_desc->GetNamePtr(), user_mem, user_device_mem->mem_size, file_constant_file_name.c_str(), offset, length,
       weights_size);
   return SUCCESS;
@@ -2363,8 +2374,8 @@ Status DavinciModel::InitInputZeroCopy(const OpDescPtr &op_desc, const uint32_t 
       (output_offset_list.size() != virtual_addr_list.size())) {
     REPORT_INNER_ERR_MSG(
         "E19999",
-        "Check data fail in op:%s(%s), output_desc size:%zu output addr size:%zu output offset size:%zu "
-        "not equal or has empty, model_id:%u",
+        "Check data failed in op:%s(%s), output_desc size:%zu output addr size:%zu output offset size:%zu "
+        "not equal or is empty, model_id:%u",
         op_desc->GetName().c_str(), op_desc->GetType().c_str(), output_size_list.size(), virtual_addr_list.size(),
         output_offset_list.size(), model_id_);
     GELOGE(PARAM_INVALID,
@@ -2612,7 +2623,8 @@ Status DavinciModel::AllocateSingleInputMem(const std::pair<const uint32_t, OpDe
                                   0UL,
                                   0UL};
   mem_allocation.tensor_size = tensor_size;
-  GELOGI("[mem allocation][input] model_id %u, input_index %u, op_name %s op_type %s, %s, tensor_size %" PRIu64,
+  GELOGI("[mem allocation][input] model_id %u, input_index %u, op_name %s op_type %s, %s, tensor_size %" PRIu64
+         " bytes",
          model_id_, input_index, item.second->GetName().c_str(), item.second->GetType().c_str(),
          mem_allocation.ToString().c_str(), tensor_size);
   logical_mem_allocations_.emplace_back(mem_allocation);
@@ -2874,7 +2886,7 @@ void DavinciModel::InitModelInputsMergeCopyHostMem() {
   for (auto idx : zero_copy_input_indexes_) {
     const auto id = input_index_to_allocation_ids_[idx];
     if (static_cast<size_t>(id) >= logical_mem_allocations_.size()) {
-      GELOGW("[InputMergeCopy] allocation id %u out of range, logical_mem_allocations size %zu, skip.", id,
+      GELOGW("[InputMergeCopy] allocation id %u out of range, logical_mem_allocations size %zu bytes, skip.", id,
              logical_mem_allocations_.size());
       continue;
     }
@@ -2888,8 +2900,10 @@ void DavinciModel::InitModelInputsMergeCopyHostMem() {
     const auto mem_size = logical_mem_allocations_[id].data_size;
     const auto logical_addr = logical_mem_allocations_[id].logical_addr;
     input_index_and_logical_addr.emplace_back(std::make_pair(idx, logical_addr));
-    GELOGI("[InputMergeCopy]input index %u, logic addr %" PRIu64 ", mem size %" PRIu64 ", tensor size %" PRIu64, idx,
-           logical_addr, mem_size, input_size);
+    GELOGI("[InputMergeCopy]input index %u, logic addr %" PRIu64 ", mem size %" PRIu64
+           " bytes"
+           ", tensor size %" PRIu64 " bytes",
+           idx, logical_addr, mem_size, input_size);
   }
 
   if (input_index_and_logical_addr.size() <= 1U) {
@@ -2914,13 +2928,17 @@ void DavinciModel::InitModelInputsMergeCopyHostMem() {
   const aclError rt_ret = ge::AclrtMallocHost(&host_mem, input_merge_copy_mem_size_, GE_MODULE_NAME_U16);
   if (rt_ret != ACL_SUCCESS) {
     input_merge_copy_mem_base_.reset();
-    GELOGW("[InputMergeCopy][aclrtMallocHost] host buffer alloc failed, size:%" PRIu64 ", ret:%d",
+    GELOGW("[InputMergeCopy][aclrtMallocHost] host buffer alloc failed, size:%" PRIu64
+           " bytes"
+           ", ret:%d",
            input_merge_copy_mem_size_, static_cast<int32_t>(rt_ret));
     return;
   }
   if (host_mem == nullptr) {
     input_merge_copy_mem_base_.reset();
-    GELOGW("[InputMergeCopy][aclrtMallocHost] host buffer is nullptr, size:%" PRIu64 ", ret:%d",
+    GELOGW("[InputMergeCopy][aclrtMallocHost] host buffer is nullptr, size:%" PRIu64
+           " bytes"
+           ", ret:%d",
            input_merge_copy_mem_size_, static_cast<int32_t>(rt_ret));
     return;
   }
@@ -2941,7 +2959,7 @@ void DavinciModel::InitModelInputsMergeCopyHostMem() {
     input_index_to_merge_copy_offset_[iter.first] = iter.second - first_input.second;
   }
 
-  GELOGI("[InputMergeCopy]host base: %p, first input index: %u, fusion input num: %zu, size:%" PRIu64,
+  GELOGI("[InputMergeCopy]host base: %p, first input index: %u, fusion input num: %zu, size:%" PRIu64 " bytes",
          input_merge_copy_mem_base_.get(), fisrt_input_index_of_merge_copy_, input_index_to_merge_copy_offset_.size(),
          input_merge_copy_mem_size_);
   return;
@@ -2998,7 +3016,7 @@ Status DavinciModel::InitNetOutput(const ComputeGraphPtr &graph, const NodePtr &
   const std::vector<int64_t> input_offset_list = op_desc->GetInputOffset();
   GE_IF_BOOL_EXEC(input_offset_list.size() != virtual_addr_list.size(),
                   REPORT_INNER_ERR_MSG("E19999",
-                                       "Check data fail in op:%s(%s), input addr size:%zu "
+                                       "Check data failed in op:%s(%s), input addr size:%zu "
                                        "input offset size:%zu not equal, model_id:%u",
                                        op_desc->GetName().c_str(), op_desc->GetType().c_str(), virtual_addr_list.size(),
                                        input_offset_list.size(), model_id_);
@@ -3014,8 +3032,8 @@ Status DavinciModel::InitNetOutput(const ComputeGraphPtr &graph, const NodePtr &
   }
   if (input_size_list.empty() || (input_size_list.size() != virtual_addr_list.size())) {
     REPORT_INNER_ERR_MSG("E19999",
-                         "Check data fail in op:%s(%s), input_desc size:%zu input addr size:%zu "
-                         "not equal or has empty, model_id:%u",
+                         "Check data failed in op:%s(%s), input_desc size:%zu input addr size:%zu "
+                         "not equal or is empty, model_id:%u",
                          op_desc->GetName().c_str(), op_desc->GetType().c_str(), input_size_list.size(),
                          virtual_addr_list.size(), model_id_);
     GELOGE(PARAM_INVALID, "[Check][Param] NetOutput[%s] init failed: Input size is %zu, Input addr is %zu",
@@ -3127,8 +3145,8 @@ Status DavinciModel::GetDynamicDimsNodeInfo(const NodePtr &node) {
     const auto input_size = ModelUtils::GetInputSize(node->GetOpDesc());
     if (input_addr.empty() || input_size.empty() || (input_addr.size() != input_size.size())) {
       REPORT_INNER_ERR_MSG("E19999",
-                           "input addr size:%zu or input size:%zu in op:%s(%s) has empty, model_id:%u "
-                           "check invalid",
+                           "input addr size:%zu or input size:%zu in op:%s(%s) is empty, model_id:%u "
+                           " check invalid",
                            input_addr.size(), input_size.size(), node->GetName().c_str(), node->GetType().c_str(),
                            model_id_);
       GELOGE(PARAM_INVALID, "[Check][Param] input addr size:%zu or input size:%zu in op:%s(%s) is empty, model_id:%u",
@@ -3147,8 +3165,10 @@ Status DavinciModel::GetDynamicDimsNodeInfo(const NodePtr &node) {
     netoutput_last_input_addr_ = ValueToPtr(input_addr[get_dynamic_dims_index]);
     netoutput_last_input_size_ = input_size[get_dynamic_dims_index];
     shape_of_cur_dynamic_dims_ = static_cast<size_t>(input_desc->GetShape().GetDims().at(0U));
-    GELOGD("Shape of cur dynamic dims are %zu, size is %" PRId64 ", addr is %p.", shape_of_cur_dynamic_dims_,
-           netoutput_last_input_size_, netoutput_last_input_addr_);
+    GELOGD("Shape of cur dynamic dims are %zu, size is %" PRId64
+           " bytes"
+           ", addr is %p.",
+           shape_of_cur_dynamic_dims_, netoutput_last_input_size_, netoutput_last_input_addr_);
   }
   return SUCCESS;
 }
@@ -3210,7 +3230,7 @@ Status DavinciModel::GetRealOutputSizeOfCase(const ComputeGraphPtr &graph, const
           if (batch_index >= all_gears_info_.size()) {
             REPORT_INNER_ERR_MSG("E19999",
                                  "Batch_index:%zu in op:%s(%s) > all_gears_info.size:%zu, model_id:%u, "
-                                 "check invalid",
+                                 " check invalid",
                                  batch_index, op_desc->GetName().c_str(), op_desc->GetType().c_str(),
                                  all_gears_info_.size(), model_id_);
             GELOGE(PARAM_INVALID, "[Check][Param] Batch_index:%zu in op:%s(%s) > all_gears_info.size:%zu, model_id:%u.",
@@ -3231,7 +3251,9 @@ Status DavinciModel::GetRealOutputSizeOfCase(const ComputeGraphPtr &graph, const
             return FAILED;
           }
           gear_and_real_out_size_info[all_gears_info_[batch_index]] = data_size;
-          GELOGD("Get real gear index is: %zu, gear info is %s, size is %" PRId64 ", tensor size is %" PRId64,
+          GELOGD("Get real gear index is: %zu, gear info is %s, size is %" PRId64
+                 " bytes"
+                 ", tensor size is %" PRId64 " bytes",
                  batch_index, ToString(all_gears_info_[batch_index]).c_str(), input_size_list[input_index], data_size);
         }
         break;
@@ -3449,7 +3471,7 @@ Status DavinciModel::SetQueIds(const std::vector<QueueAttrs> &input_queue_attrs,
                                const std::vector<QueueAttrs> &output_queue_attrs) {
   if (input_queue_attrs.empty() && output_queue_attrs.empty()) {
     REPORT_INNER_ERR_MSG("E19999",
-                         "Param input_queue_attrs.size:%zu and output_queue_attrs.size:%zu is empty,"
+                         "Param input_queue_attrs.size:%zu and output_queue_attrs.size:%zu are empty,"
                          "model_id:%u, check invalid",
                          input_queue_attrs.size(), output_queue_attrs.size(), model_id_);
     GELOGE(ACL_ERROR_GE_EXEC_MODEL_QUEUE_ID_INVALID, "[Check][Param] Param is empty, model_id:%u", model_id_);
@@ -3557,7 +3579,7 @@ Status DavinciModel::LoadWithQueue() {
   if ((!use_control_output_queue_) && (output_queue_attrs_.size() != output_data_info_.size())) {
     REPORT_INNER_ERR_MSG("E19999",
                          "Param output_queue_attrs_.size:%zu != output_data_info_.size:%zu, model_id:%u,"
-                         "check invalid",
+                         " check invalid",
                          output_queue_attrs_.size(), output_data_info_.size(), model_id_);
     GELOGE(ACL_ERROR_GE_EXEC_MODEL_QUEUE_ID_INVALID,
            "[Check][Param] Output queue ids do not match model: output_queue=%zu output_data=%zu, model_id:%u",
@@ -3689,7 +3711,7 @@ Status DavinciModel::GetZcpyReplaceAddrsMap(const std::map<uint32_t, ZeroCopyOff
         for (size_t i = 0U; i < virtual_args.second.size(); ++i) {
           const uintptr_t virtual_addr = virtual_args.second[i];
           replace_addrs_map[data_idx].emplace_back(virtual_addr);
-          GELOGI("Index[%zu] addr %p will be replaced", data_idx, ValueToPtr(virtual_addr));
+          GELOGD("Index[%zu] addr %p will be replaced", data_idx, ValueToPtr(virtual_addr));
         }
       }
     }
@@ -3763,7 +3785,7 @@ Status DavinciModel::BindInputQueue() {
     (void)unique_inputs.emplace(queue_id);
 
     if (it->second.GetDataInfo().empty()) {
-      GELOGE(INTERNAL_ERROR, "[Check][Param] the %zu input_queue not set data_info.", i);
+      GELOGE(INTERNAL_ERROR, "[Check][Param] the %zu input_queue does not have data_info set.", i);
       return INTERNAL_ERROR;
     }
     const uint32_t data_size = static_cast<uint32_t>(it->second.GetDataInfo().at(0U).first);
@@ -4074,7 +4096,7 @@ Status DavinciModel::CpuPostProcess() {
       GELOGI("CpuPostProcess: output[%zu] support no tiling", i);
       stage = ProcessStage::kPostDynamic;
     } else if (copy_only_addrs_.Count(data_addr) != 0) {
-      GELOGI("CpuPostProcess: output[%zu] need to non zero copy", i);
+      GELOGI("CpuPostProcess: output[%zu] needs non zero copy", i);
       stage = ProcessStage::kPostStatic;
     } else {
       GELOGI("CpuPostProcess: output[%zu] support zero copy, do nothing", i);
@@ -4201,10 +4223,10 @@ Status DavinciModel::CpuStaticInputShapeValidate() {
                              "[Check][Param] Index:%zu can't find in input_data_info_ size:%zu in model_id:%u", i,
                              input_data_info_.size(), model_id_);
       GE_CHK_BOOL_RET_STATUS((static_cast<uint64_t>(iter->first) < input_mbuf_list_.size()), INTERNAL_ERROR,
-                             "[Check][Param] Data index:%u should in range of mbuf size:%zu", iter->first,
+                             "[Check][Param] Data index:%u should be in range of mbuf size:%zu", iter->first,
                              input_mbuf_list_.size());
       GE_CHK_BOOL_RET_STATUS((static_cast<uint64_t>(iter->first) < input_fusion_offsets_.size()), INTERNAL_ERROR,
-                             "[Check][Param] Data index:%u should in range of input_fusion_offsets_ size:%zu",
+                             "[Check][Param] Data index:%u should in range of input_fusion_offsets_ size:%zu bytes",
                              iter->first, input_fusion_offsets_.size());
       mbuf_list.emplace_back(input_mbuf_list_.at(static_cast<size_t>(iter->first)));
       const int32_t input_fusion_offset = input_fusion_offsets_.at(static_cast<size_t>(iter->first));
@@ -4295,7 +4317,7 @@ void DavinciModel::GetUserDesignateShapeOrder(std::vector<std::string> &user_inp
 ///
 Status DavinciModel::InitAippInfo(const uint32_t index, const OpDescPtr &op_desc) {
   if (!op_desc->HasAttr(ATTR_NAME_AIPP)) {
-    GELOGW("There is not AIPP related with index %u", index);
+    GELOGW("There is no AIPP related to index %u", index);
     return SUCCESS;
   }
 
@@ -4326,7 +4348,7 @@ Status DavinciModel::InitAippInfo(const uint32_t index, const OpDescPtr &op_desc
 Status DavinciModel::GetAippInfo(const uint32_t index, AippConfigInfo &aipp_info) const {
   const auto it = aipp_info_list_.find(index);
   if (it == aipp_info_list_.end()) {
-    GELOGW("there is not AIPP related with index %u", index);
+    GELOGW("there is no AIPP related to index %u", index);
     return ACL_ERROR_GE_AIPP_NOT_EXIST;
   }
 
@@ -4352,10 +4374,14 @@ Status DavinciModel::InitAippType(const uint32_t index, const OpDescPtr &op_desc
   } else if (data_mode == "dynamic_aipp_conf") {
     aipp_type = InputAippType::DYNAMIC_AIPP_NODE;
   } else {
-    REPORT_INNER_ERR_MSG("E19999", "Attr:%s data_mode:%s in op:%s(%s), model_id:%u, check invalid",
+    REPORT_INNER_ERR_MSG("E19999",
+                         "Attr:%s data_mode:%s in op:%s(%s), model_id:%u, valid modes: "
+                         "static_aipp/dynamic_aipp/dynamic_aipp_conf, check invalid",
                          ATTR_DATA_RELATED_AIPP_MODE.c_str(), data_mode.c_str(), op_desc->GetName().c_str(),
                          op_desc->GetType().c_str(), model_id_);
-    GELOGE(ACL_ERROR_GE_AIPP_MODE_INVALID, "[Get][Attr] %s data_mode:%s in op:%s(%s), model_id:%u, check invalid",
+    GELOGE(ACL_ERROR_GE_AIPP_MODE_INVALID,
+           "[Get][Attr] %s data_mode:%s in op:%s(%s), model_id:%u, valid modes: "
+           "static_aipp/dynamic_aipp/dynamic_aipp_conf, check invalid",
            ATTR_DATA_RELATED_AIPP_MODE.c_str(), data_mode.c_str(), op_desc->GetName().c_str(),
            op_desc->GetType().c_str(), model_id_);
     return ACL_ERROR_GE_AIPP_MODE_INVALID;
@@ -4414,7 +4440,7 @@ void DavinciModel::GetCurrentShape(std::vector<int64_t> &batch_info, int32_t &dy
     GELOGD("User does not set dynamic size");
   }
   for (size_t i = 0U; i < batch_size_.size(); ++i) {
-    GELOGI("Start to get current shape");
+    GELOGD("Start to get current shape");
     batch_info.emplace_back(batch_size_[i]);
   }
 
@@ -4729,7 +4755,7 @@ Status DavinciModel::CopyInputData(const InputData &input_data) {
       GE_CHK_STATUS_RET_NOLOG(CopyInputForNoTiling(input_data, data_idx, mem_addr));
     }
 
-    GELOGI(
+    GELOGD(
         "CopyPlainData memcpy graph_%u type[F] input[%s] rank[%u] dst[%p] src[%p] "
         "mem_size[%" PRIu64 "] datasize[%" PRIu64 "]",
         runtime_param_.graph_id, data_info.second.GetOpName().c_str(), data_idx, mem_addr, data_buf.data, data_size,
@@ -4795,7 +4821,7 @@ Status DavinciModel::CollectMergeInputData(const std::vector<DataBuffer> &blobs,
 
     // copy input to host buffer, h2h
     const auto host_offset = merge_copy_offset->second;
-    GELOGI("[InputMergeCopy] Copy2H graph_%u type[F] input[%s] index[%zu] offset[%" PRIu64 "] src[%p] mem_size[%" PRIu64
+    GELOGD("[InputMergeCopy] Copy2H graph_%u type[F] input[%s] index[%zu] offset[%" PRIu64 "] src[%p] mem_size[%" PRIu64
            "] datasize[%" PRIu64 "]",
            runtime_param_.graph_id, data_info.second.GetOpName().c_str(), data_idx, host_offset, data_buf.data,
            data_size, data_buf.length);
@@ -4836,7 +4862,7 @@ Status DavinciModel::CopyInputDataWithMergeH2D(const InputData &input_data) {
   if (collect.has_merge_input) {
     GE_CHECK_NOTNULL(collect.input_merge_copy_device_addr,
                      "invalid input_merge_copy_device_addr value, input_merge_copy_device_addr is nullptr");
-    GELOGI("[InputMergeCopy]CopyPlainData graph_%u type[F] dst[%p] src[%p] mem_size[%" PRIu64 "].",
+    GELOGD("[InputMergeCopy]CopyPlainData graph_%u type[F] dst[%p] src[%p] mem_size[%" PRIu64 "].",
            runtime_param_.graph_id, collect.input_merge_copy_device_addr, input_merge_copy_mem_base_.get(),
            input_merge_copy_mem_size_);
     legacy_merge_range_count = 1U;
@@ -5454,7 +5480,7 @@ Status DavinciModel::CopyOutputDataLegacy(const OutputData &output_data) {
     if (output_idx >= blobs.size()) {
       REPORT_INNER_ERR_MSG("E19999",
                            "index:%u in output_data_info_ >= output_data.blobs.size:%zu, model_id:%u, "
-                           "check invalid",
+                           " check invalid",
                            output.first, blobs.size(), model_id_);
       GELOGE(FAILED, "[Check][Param] index:%u in output_data_info_ >= output_data.blobs.size:%zu, model_id:%u",
              output.first, blobs.size(), model_id_);
@@ -5862,8 +5888,9 @@ void DavinciModel::Run() {
       if (rt_model_stream_ != nullptr) {
         GELOGW("model stream is null");
       }
-      if (args_manager_.UpdateForExecute(ret_up, rt_model_stream_) != SUCCESS) {
-        GELOGE(FAILED, "UpdateForExecute, model_id:%u.", model_id_);
+      const Status update_ret = args_manager_.UpdateForExecute(ret_up, rt_model_stream_);
+      if (update_ret != SUCCESS) {
+        GELOGE(update_ret, "UpdateForExecute failed, model_id:%u.", model_id_);
         OnComputeDoneWithResultCallback(args, 0U, INTERNAL_ERROR, outputs);
         return;
       }
@@ -6025,7 +6052,8 @@ void DavinciModel::UnbindTaskSinkStream() {
     for (const auto &iter : stream_to_first_task_id_) {
       // unbind rt_model_handle and streams
       auto stream_id = iter.first;
-      GE_LOGE_IF(static_cast<size_t>(stream_id) >= stream_list_.size(), "stream id %zu is invalid", stream_id);
+      GE_LOGE_IF(static_cast<size_t>(stream_id) >= stream_list_.size(),
+                 "stream id %zu is invalid, valid range [0, %zu)", stream_id, stream_list_.size());
       GE_LOGW_IF(aclmdlRIUnbindStream(rt_model_handle_, stream_list_[stream_id]) != ACL_SUCCESS,
                  "Unbind stream from model failed! Index: %zu", stream_id);
     }
@@ -6829,7 +6857,7 @@ void DavinciModel::SetZeroCopyAddr(const OpDescPtr &op_desc, const std::vector<u
 ///
 bool DavinciModel::CheckUserAndModelSize(const int64_t size, const int64_t op_size, const char *model_io_type) const {
   if (is_dynamic_) {  // dynamic is max size.
-    GELOGI("No need to check user input and model size.", model_io_type);
+    GELOGI("No need to check user input and model size, model_io_type: %s.", model_io_type);
     return true;
   }
 
@@ -7184,7 +7212,7 @@ Status DavinciModel::ConstructZeroCopyIoActiveBaseAddrs(
                                    buffer_length),
                           "io index:%u, dst host addr:%p, dst len:%" PRIu64
                           ", "
-                          "src host addr:%p, src len:%" PRIu64,
+                          "src host addr:%p, src len:%" PRIu64 " bytes",
                           io_idx, copy_host_input_infos_[io_idx].host_addr, copy_host_input_infos_[io_idx].tensor_size,
                           data, buffer_length);
         ret_up = std::max(ret_up, static_cast<uint32_t>(ModelArgsManager::KUpdateHostInput));
@@ -7274,7 +7302,7 @@ Status DavinciModel::ConstructZeroCopyIoActiveBaseAddrs(
                                    buffer_length),
                           "io index:%u, dst host addr:%p, dst len:%" PRIu64
                           ", "
-                          "src host addr:%p, src len:%" PRIu64,
+                          "src host addr:%p, src len:%" PRIu64 " bytes",
                           io_idx, copy_host_input_infos_[io_idx].host_addr, copy_host_input_infos_[io_idx].tensor_size,
                           data, buffer_length);
         ret_up = std::max(ret_up, static_cast<uint32_t>(ModelArgsManager::KUpdateHostInput));
@@ -7868,7 +7896,7 @@ Status DavinciModel::InitStreamSwitch(const OpDescPtr &op_desc) {
   if (active_stream_list.size() != kTrueBranchStreamCount) {
     REPORT_INNER_ERR_MSG("E19999",
                          "[Check][Param] Attr: active_stream_list.size:%zu in op:%s(%s) != 1, model_id:%u, "
-                         "check invalid",
+                         " check invalid",
                          active_stream_list.size(), op_desc->GetName().c_str(), op_desc->GetType().c_str(), model_id_);
     GELOGE(INTERNAL_ERROR, "[Check][Param] Attr: active_stream_list.size:%zu in op:%s(%s) != 1, model_id:%u",
            active_stream_list.size(), op_desc->GetName().c_str(), op_desc->GetType().c_str(), model_id_);
@@ -8366,7 +8394,7 @@ uint8_t *DavinciModel::MallocFeatureMapMem(const size_t data_size) {
     if (static_cast<size_t>(mem_allocator->MemorySize()) < data_size - fixed_mem_size_) {
       REPORT_INNER_ERR_MSG("E19999",
                            "Malloc feature map memory fail. malloced_memory_size[%" PRId64
-                           "] < mem_size[%zu],"
+                           "] < mem_size[%zu bytes],"
                            " device_id[%u]",
                            mem_allocator->MemorySize(), data_size, GetDeviceId());
       GELOGE(ge::INTERNAL_ERROR,
@@ -8461,8 +8489,9 @@ void *DavinciModel::MallocDynamicMemory(const size_t size, const rtMemType_t mem
   }
 
   auto ptr = allocator->Malloc(kMallocPurpose, size);
-  GE_ASSERT_NOTNULL(ptr, "malloc failed, size: %zu, mem_type: %u", size, mem_type);
-  GELOGI("malloc success, ptr: %p, size: %zu, mem_type: %u, block_size: %zu", ptr, size, mem_type, block_size);
+  GE_ASSERT_NOTNULL(ptr, "malloc failed, size: %zu bytes, mem_type: %u", size, mem_type);
+  GELOGI("malloc success, ptr: %p, size: %zu bytes, mem_type: %u, block_size: %zu bytes", ptr, size, mem_type,
+         block_size);
   return ptr;
 }
 
@@ -8530,7 +8559,7 @@ void DavinciModel::FreeWeightsMem() {
 
 void DavinciModel::FreeFileConstantMem() {
   if (runtime_param_.fileconstant_addr_mapping.size() == 0UL) {
-    GELOGI("Need not to free fileconstant memory.");
+    GELOGI("No need to free fileconstant memory.");
     return;
   }
 
@@ -8778,8 +8807,8 @@ Status DavinciModel::GetTotalMemSizeExcludeZeroCopy(int64_t &total_useful_size) 
                          runtime_param_.mem_size, runtime_param_.zero_copy_size);
     GELOGE(FAILED,
            "[Check][TotalMemSizeExcludeZeroCopy] failed, total mem size[%" PRIu64
-           "] is less than "
-           "zero copy size[%" PRId64 "]",
+           " bytes] is less than "
+           "zero copy size[%" PRId64 " bytes]",
            runtime_param_.mem_size, runtime_param_.zero_copy_size);
     return FAILED;
   }
@@ -8970,8 +8999,9 @@ Status DavinciModel::GetCurDynamicDims(const std::vector<std::vector<int64_t>> &
                              " is not in the dynamic dimension list configured by dynamic_dims";
   REPORT_PREDEFINED_ERR_MSG("E13025", std::vector<const char_t *>({"reason"}),
                             std::vector<const char_t *>({reason.c_str()}));
-  GELOGE(INTERNAL_ERROR, "[Check][Param] Cur dynamic dims are %s, does not exist in options.",
-         ToString(cur_dynamic_dims).c_str());
+  GELOGE(INTERNAL_ERROR,
+         "[Check][Param] Cur dynamic dims are %s, does not exist in options, valid dynamic dims count:%zu.",
+         ToString(cur_dynamic_dims).c_str(), run_context_.dynamic_shape_dims.size());
   return INTERNAL_ERROR;
 }
 
@@ -9070,7 +9100,7 @@ Status DavinciModel::InitQueueDataNodes(const std::vector<NodePtr> &queue_data_n
   }
 
   if (queue_data_nodes.size() > 1U) {
-    GELOGE(UNSUPPORTED, "Only supported single QueueData, actual number = %zu", queue_data_nodes.size());
+    GELOGE(UNSUPPORTED, "Only single QueueData is supported, actual number = %zu", queue_data_nodes.size());
     return UNSUPPORTED;
   }
 
@@ -9162,7 +9192,7 @@ Status DavinciModel::CpuInputCopyProcess() {
     }
 
     if (static_cast<uint64_t>(iter->first) >= input_mbuf_list_.size()) {
-      GELOGE(FAILED, "[Check][Param] Data index:%u should in range of mbuf size:%zu", iter->first,
+      GELOGE(FAILED, "[Check][Param] Data index:%u should be in range of mbuf size:%zu", iter->first,
              input_mbuf_list_.size());
       return INTERNAL_ERROR;
     }
@@ -9339,7 +9369,7 @@ uint32_t DavinciModel::GetStreamFlagById(uint32_t stream_id) const {
   } else if (stream_flag_list_.size() > stream_id) {
     return stream_flag_list_[stream_id];
   } else {
-    GELOGE(INTERNAL_ERROR, "Invalid stream id %u.", stream_id);
+    GELOGE(INTERNAL_ERROR, "Invalid stream id %u, valid range [0, %zu).", stream_id, stream_flag_list_.size());
     return 0U;
   }
 }
@@ -9763,13 +9793,13 @@ Status DavinciModel::GenHostInputIndexes(const std::map<uint32_t, OpDescPtr> &in
 void DavinciModel::CollectOwnedStreams(std::vector<aclrtStream> &streams) const {
   for (const auto &s : stream_list_) {
     if (s != nullptr) {
-      GELOGI("Collect stream_list_: %p", s);
+      GELOGD("Collect stream_list_: %p", s);
       streams.push_back(s);
     }
   }
   for (const auto &s : all_hccl_stream_list_) {
     if (s != nullptr) {
-      GELOGI("Collect all_hccl_stream_list_: %p", s);
+      GELOGD("Collect all_hccl_stream_list_: %p", s);
       streams.push_back(s);
     }
   }
@@ -9807,7 +9837,7 @@ Status DavinciModel::SetStreamPriority(const uint32_t priority) {
     return SUCCESS;
   }
   for (size_t i = 0; i < streams.size(); ++i) {
-    GELOGI("[SetStreamPriority] Setting priority=%u on stream[%zu/%zu] stream=%p", priority, i + 1, streams.size(),
+    GELOGD("[SetStreamPriority] Setting priority=%u on stream[%zu/%zu] stream=%p", priority, i + 1, streams.size(),
            streams[i]);
     aclrtStreamAttrValue attr_value = {};
     attr_value.streamPriority = priority;

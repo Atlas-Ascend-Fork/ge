@@ -154,7 +154,7 @@ void DumpOp::DumpWorkspace(toolkit::aicpu::dump::Task &task) {
   for (size_t i = 0UL; i < space_addrs_.size(); ++i) {
     const uint64_t addr = static_cast<uint64_t>(space_addrs_[i].first);
     const uint64_t size = static_cast<uint64_t>(space_addrs_[i].second);
-    GELOGI("workspace_info: %p %zu", addr, size);
+    GELOGD("workspace_info: %p %zu", addr, size);
     toolkit::aicpu::dump::Workspace space;
     space.set_type(toolkit::aicpu::dump::Workspace::LOG);
     space.set_data_addr(addr);
@@ -215,7 +215,8 @@ Status DumpOp::DumpOutput(toolkit::aicpu::dump::Task &task, const OpDescPtr &op_
       return ACL_ERROR_GE_INTERNAL_ERROR;
     }
 
-    GELOGI("[Dumper] Node [%s] output[%zu] size %ld addr is %p.", op_desc->GetName().c_str(), i, output_size, addrs[i]);
+    GELOGD("[Dumper] Node [%s] output[%zu] size %ld bytes addr is %p.", op_desc->GetName().c_str(), i, output_size,
+           addrs[i]);
     output.set_size(static_cast<uint64_t>(output_size));
     output.set_address(static_cast<uint64_t>(addrs[i]));
     output.set_offset(std::numeric_limits<uint64_t>::max());
@@ -235,7 +236,7 @@ Status DumpOp::DumpInput(toolkit::aicpu::dump::Task &task, const OpDescPtr &op_d
   for (size_t i = 0UL; i < op_desc->GetAllInputsSize(); i++) {
     const std::string op_name = op_desc->GetName();
     const std::string op_type = op_desc->GetType();
-    GELOGI("[Dumper] Node name %s, node type %s input_descs idx %zu", op_name.c_str(), op_type.c_str(), i);
+    GELOGD("[Dumper] Node name %s, node type %s input_descs idx %zu", op_name.c_str(), op_type.c_str(), i);
     if (IsInBlacklist(op_name, op_type, i, true)) {
       continue;
     }
@@ -269,7 +270,8 @@ Status DumpOp::DumpInput(toolkit::aicpu::dump::Task &task, const OpDescPtr &op_d
       return ACL_ERROR_GE_INTERNAL_ERROR;
     }
 
-    GELOGI("[Dumper] Node [%s] input[%zu] size %ld addr is %p.", op_desc->GetName().c_str(), i, input_size, addrs[i]);
+    GELOGD("[Dumper] Node [%s] input[%zu] size %ld bytes addr is %p.", op_desc->GetName().c_str(), i, input_size,
+           addrs[i]);
     input.set_size(static_cast<uint64_t>(input_size));
     input.set_address(static_cast<uint64_t>(addrs[i]));
     input.set_offset(std::numeric_limits<uint64_t>::max());
@@ -584,7 +586,7 @@ Status DumpOp::GenerateFftsDump(const DumpProperties &dump_properties, void *&lo
                                 void *&unload_dump_info, uint32_t &unload_dump_len, const bool is_single_op_dump) {
   int32_t device_id = 0;
   GE_CHK_ACL_RET(aclrtGetDevice(&device_id));
-  GE_RETURN_WITH_LOG_IF_TRUE(device_id < 0, "Check device_id %d failed", device_id);
+  GE_RETURN_WITH_LOG_IF_TRUE(device_id < 0, "Check device_id %d failed, valid range: >= 0", device_id);
   dump_properties_ = dump_properties;
 
   const auto dump_path = dump_properties_.GetDumpPath() + std::to_string(device_id) + "/";
@@ -624,7 +626,8 @@ Status DumpOp::GenerateFftsDump(const DumpProperties &dump_properties, void *&lo
 
   load_dump_info = proto_dev_mem_;
   load_dump_len = static_cast<uint32_t>(proto_size);
-  GE_CHK_BOOL_RET_STATUS((load_dump_len == proto_size), FAILED, "load_dump_len != proto_size");
+  GE_CHK_BOOL_RET_STATUS((load_dump_len == proto_size), FAILED, "load_dump_len %u != proto_size %zu", load_dump_len,
+                         proto_size);
 
   GE_ASSERT_SUCCESS(BuildUnLoadFftsDumpInfo(unload_dump_info, unload_dump_len));
   ffts_sub_op_list_.clear();
@@ -666,7 +669,8 @@ Status DumpOp::BuildUnLoadFftsDumpInfo(void *&unload_dump_info, uint32_t &unload
 
   unload_dump_info = dev_mem_unload_;
   unload_dump_len = static_cast<uint32_t>(proto_size);
-  GE_CHK_BOOL_RET_STATUS((unload_dump_len == proto_size), FAILED, "unload_dump_len != proto_size");
+  GE_CHK_BOOL_RET_STATUS((unload_dump_len == proto_size), FAILED, "unload_dump_len %u != proto_size %zu",
+                         unload_dump_len, proto_size);
   return SUCCESS;
 }
 
@@ -682,8 +686,8 @@ Status DumpOp::LaunchDumpOp(const bool is_single_op_dump, bool need_device_args)
     return RT_ERROR_TO_GE_STATUS(rt_ret);
   }
   if (device_id < 0) {
-    GELOGE(ACL_ERROR_GE_INTERNAL_ERROR, "[Check][DeviceId]Failed, device_id %d", device_id);
-    REPORT_INNER_ERR_MSG("E19999", "Check device_id %d failed.", device_id);
+    GELOGE(ACL_ERROR_GE_INTERNAL_ERROR, "[Check][DeviceId]Failed, device_id %d, valid range: >= 0", device_id);
+    REPORT_INNER_ERR_MSG("E19999", "Check device_id %d failed, valid range: >= 0", device_id);
     return ACL_ERROR_GE_INTERNAL_ERROR;
   }
   const auto dump_path = dump_properties_.GetDumpPath() + std::to_string(device_id) + "/";

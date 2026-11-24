@@ -210,11 +210,11 @@ Status RdmaNodeTask::GetOffsetTensor(const TaskContext &context, const RuntimeIn
   if ((tensor_size / static_cast<size_t>(GetSizeByDataType(in_data_type))) != row_num) {
     REPORT_INNER_ERR_MSG("E19999",
                          "num of offset and remote addr mismatch, check invalid. "
-                         "offset size=%zu, remote_addr size=%zu, dtype=%s",
+                         "offset size=%zu bytes, remote_addr size=%zu, dtype=%s",
                          tensor_size, row_num, TypeUtils::DataTypeToSerialString(in_data_type).c_str());
     GELOGE(PARAM_INVALID,
            "[Check][Size]num of offset and remote addr mismatch, "
-           "offset size=%zu, remote_addr size=%zu, dtype=%s",
+           "offset size=%zu bytes, remote_addr size=%zu, dtype=%s",
            tensor_size, row_num, TypeUtils::DataTypeToSerialString(in_data_type).c_str());
     return PARAM_INVALID;
   }
@@ -327,7 +327,7 @@ Status RdmaNodeTask::ExtractTensor(const TaskContext &context,
     GE_CHECK_NOTNULL(NpuMemoryAllocator::GetAllocator());
     attr.SetMemType(MemStorageType::RDMA_HBM);
     for (int32_t i = 0; i < context.NumOutputs(); ++i) {
-      GELOGD("Allocate rdma memory for node %s, size: %zu", context.GetNodeName(), remote_size);
+      GELOGD("Allocate rdma memory for node %s, size: %zu bytes", context.GetNodeName(), remote_size);
       auto tensor_buffer = TensorBuffer::Create(NpuMemoryAllocator::GetAllocator(), remote_size, &attr);
       GE_CHK_STATUS_RET(context.SetOutput(i, TensorValue(std::shared_ptr<TensorBuffer>(tensor_buffer.release()))));
     }

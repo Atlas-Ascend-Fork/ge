@@ -112,7 +112,7 @@ ge::Status GetMemCheckStartSize(const ge::OpDescPtr &op_desc, const int64_t orig
            ori_param_size, op_desc->GetNamePtr());
   } else {
     ori_param_size = ((origin_tiling_data_size + sizeof(int64_t) - 1UL) / sizeof(int64_t)) * sizeof(int64_t);
-    GELOGI("Current tiling data size: %zu, set ori_param_size to %lld by aligned by %zu, op_name: %s",
+    GELOGI("Current tiling data size: %zu, set ori_param_size to %lld aligned by %zu, op_name: %s",
            origin_tiling_data_size, ori_param_size, sizeof(int64_t), op_desc->GetNamePtr());
   }
   memcheck_start_size = ori_param_size - origin_tiling_data_size;
@@ -136,13 +136,13 @@ void FormatArgsException(uint64_t *host_addr, const std::vector<int64_t> &args_s
   uint64_t *addr = host_addr;
   for (size_t index = 0UL; index < args_size.size(); index++) {
     *addr = static_cast<uint64_t>(args_size[index]);
-    GELOGI("[TilingAppendDfxInfo] size idx[%zu], val[%llu], atomic index[%llu]", index, *addr, atomic_index);
+    GELOGD("[TilingAppendDfxInfo] size idx[%zu], val[%llu], atomic index[%llu]", index, *addr, atomic_index);
     addr++;
   }
 
   for (size_t index = 0UL; index < shape_size.size(); index++) {
     *addr = static_cast<uint64_t>(shape_size[index]);
-    GELOGI("[TilingAppendDfxInfo] shape idx[%zu], val[%llu], atomic index[%llu]", args_size.size() + index, *addr,
+    GELOGD("[TilingAppendDfxInfo] shape idx[%zu], val[%llu], atomic index[%llu]", args_size.size() + index, *addr,
            atomic_index);
     addr++;
   }
@@ -167,7 +167,7 @@ ge::Status UpdateDfxArgsAndShapeSize(const ge::OpDescPtr &op_desc,
       GE_ASSERT_NOTNULL(tensor);
       int64_t tensor_size = 0;
       GE_ASSERT_SUCCESS(ge::TensorUtils::GetSize(*tensor, tensor_size));
-      GELOGI("Update input tensor size, node[%s], index:%zu, args index: %zu, io index: %zu, tensor size: %lld",
+      GELOGD("Update input tensor size, node[%s], index:%zu, args index: %zu, io index: %zu, tensor size: %lld",
              op_desc->GetNamePtr(), i, args_index, io_index, tensor_size);
       args_size_vec[args_index] = tensor_size;
       // shape
@@ -176,7 +176,7 @@ ge::Status UpdateDfxArgsAndShapeSize(const ge::OpDescPtr &op_desc,
       const auto tensor = op_desc->GetOutputDesc(static_cast<uint32_t>(io_index));
       int64_t tensor_size = 0L;
       GE_ASSERT_SUCCESS(ge::TensorUtils::GetSize(tensor, tensor_size));
-      GELOGI("Update output tensor size, node[%s], index:%zu, args index: %zu, io index: %zu, tensor size: %lld",
+      GELOGD("Update output tensor size, node[%s], index:%zu, args index: %zu, io index: %zu, tensor size: %lld",
              op_desc->GetNamePtr(), i, args_index, io_index, tensor_size);
       args_size_vec[args_index] = tensor_size;
       // shape
@@ -204,7 +204,7 @@ ge::Status AppendMemCheckDfxInfo(const ge::OpDescPtr &op_desc, const int64_t til
 
   // append size
   for (size_t i = 0U; i < args_size_vec.size(); i++) {
-    GELOGI("[TilingAppendDfxInfo] size idx[%zu], val[%lld]", i, args_size_vec[i]);
+    GELOGD("[TilingAppendDfxInfo] size idx[%zu], val[%lld]", i, args_size_vec[i]);
   }
   GE_ASSERT_SUCCESS(memcheck_data->Append(args_size_vec.data(), args_size_vec.size()));
   GELOGI("Op name[%s] memcheck info size: %lld, start size: %lld", op_desc->GetNamePtr(), memcheck_data->GetDataSize(),
@@ -358,7 +358,7 @@ aclrtBinHandle KernelTaskInfo::GetBinHandle(const domi::TaskDef &task_def) const
     const auto bin_name = kernel_handles_manager->GenerateKey(register_info);
     return kernel_handles_manager->GetOrRegisterKernel(register_info, bin_name);
   }
-  GELOGW("[%s][%s] task type: %u, kernel type: %u is not supported bin handle.", op_desc_->GetNamePtr(),
+  GELOGW("[%s][%s] task type: %u, kernel type: %u does not support bin handle.", op_desc_->GetNamePtr(),
          op_desc_->GetTypePtr(), task_type_, kernel_type_);
   return nullptr;
 }
@@ -698,8 +698,8 @@ Status KernelTaskInfo::UpdateRunInfoByTilingResult(const optiling::utils::OpRunI
   const auto workspaces = run_info->GetAllWorkspaces();
   op_desc_->SetWorkspaceBytes(workspaces);
   GELOGI("Update run info of %s, block dim: %u, tiling key: %" PRIu64
-         ", clear atomic: %d, workspace size: %zu, "
-         "local memory size: %u.",
+         ", clear atomic: %d, workspace size: %zu bytes, "
+         "local memory size: %u bytes.",
          op_desc_->GetName().c_str(), block_dim_, tiling_key_, static_cast<int32_t>(clear_atomic_), workspaces.size(),
          local_memory_size_);
 
@@ -1077,7 +1077,7 @@ Status KernelTaskInfo::AssembleShapeInfoAddrs(const std::vector<ArgDesc> &dynami
 
 Status KernelTaskInfo::GetTilingSinkAtomicIndex(bool &is_args_exception_enable, uint64_t &atomic_index) {
   if (Adx::AdumpGetDumpSwitch(Adx::DumpType::ARGS_EXCEPTION) == 0) {
-    GELOGI("args exception is not enable");
+    GELOGI("args exception is not enabled");
     return SUCCESS;
   }
 
@@ -2069,7 +2069,8 @@ Status KernelTaskInfo::InitAICPUCustomTask(const OpDescPtr &op_desc, const domi:
   if (op_attr_size == 0U) {
     REPORT_INNER_ERR_MSG("E19999", "Attr:%s in op:%s(%s) size is 0, check invalid", ATTR_NAME_OPATTR.c_str(),
                          op_desc->GetName().c_str(), op_desc->GetType().c_str());
-    GELOGE(PARAM_INVALID, "[Check][Param] param op_attr_size is out of range, op:%s", op_desc->GetName().c_str());
+    GELOGE(PARAM_INVALID, "[Check][Param] param op_attr_size is 0, should be greater than 0, op:%s",
+           op_desc->GetName().c_str());
     return PARAM_INVALID;
   }
 

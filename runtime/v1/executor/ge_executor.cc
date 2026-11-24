@@ -219,7 +219,9 @@ bool IsDynmaicDimsSizeMatchModel(const std::vector<uint64_t> &cur_dynamic_dims,
     }
   }
   if (!find_match) {
-    GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[Check][Param] choose dynamic dims cannot match the gear of model.");
+    GELOGE(ACL_ERROR_GE_PARAM_INVALID,
+           "[Check][Param] choose dynamic dims [%s] cannot match the gear of model, gear count:%zu.",
+           ge::ToString(cur_dynamic_dims).c_str(), batch_info.size());
   }
   return find_match;
 }
@@ -363,7 +365,7 @@ Status GeExecutor::Initialize() {
   rtProfCtrlHandle const callback = &ge::ProfCtrlHandle;
   const int32_t ret = MsprofRegisterCallback(GE, callback);
   if (ret != MSPROF_ERROR_NONE) {
-    GELOGE(FAILED, "register func failed");
+    GELOGE(FAILED, "register func failed, ret:%d", ret);
     return FAILED;
   }
 
@@ -613,11 +615,10 @@ Status GeExecutor::GetCurDynamicDims(const uint32_t model_id, const std::vector<
     }
   }
   if (dynamic_dims.size() != all_data_dims.size()) {
-    REPORT_INNER_ERR_MSG("E19999",
-                         "Dynamic input size [%" PRIu64 "] is not equal with all data dims size [%" PRIu64 "]!",
+    REPORT_INNER_ERR_MSG("E19999", "Dynamic input size [%" PRIu64 "] is not equal to all data dims size [%" PRIu64 "]!",
                          static_cast<uint64_t>(dynamic_dims.size()), static_cast<uint64_t>(all_data_dims.size()));
     GELOGE(ACL_ERROR_GE_DYNAMIC_INPUT_LENGTH_INVALID,
-           "[Check][Param] Dynamic input size [%" PRIu64 "] is not equal with all data dims size [%" PRIu64 "]!",
+           "[Check][Param] Dynamic input size [%" PRIu64 "] is not equal to all data dims size [%" PRIu64 "]!",
            dynamic_dims.size(), all_data_dims.size());
     return ACL_ERROR_GE_DYNAMIC_INPUT_LENGTH_INVALID;
   }
@@ -672,9 +673,11 @@ Status GeExecutor::SetDynamicAippData(const uint32_t model_id, void *const dynam
   const uint64_t batch_num = aipp_batch_para.size();
   constexpr uint64_t real_aippParms_size = sizeof(kAippDynamicPara) - sizeof(kAippDynamicBatchPara);
   const uint64_t struct_len = (batch_num * sizeof(kAippDynamicBatchPara)) + real_aippParms_size;
-  GELOGI("Get acl input dynamic aipp data, model_id is %u, length is %" PRIu64 ", batch num is %" PRIu64
+  GELOGI("Get acl input dynamic aipp data, model_id is %u, length is %" PRIu64
+         " bytes"
+         ", batch num is %" PRIu64
          ", "
-         "struct_len is %" PRIu64,
+         "struct_len is %" PRIu64 " bytes",
          model_id, length, batch_num, struct_len);
   if (struct_len > length) {
     REPORT_INNER_ERR_MSG("E19999", "input dynamic aipp param len:%" PRIu64 " is larger than aipp_data size:%" PRIu64 "",
@@ -891,7 +894,7 @@ Status GeExecutor::GetAIPPInfo(const uint32_t model_id, const uint32_t index, Ai
   }
   const auto ret = GraphExecutor::GetAippInfo(model_id, index, aipp_info);
   if (ret != SUCCESS) {
-    GELOGW("GetAIPPInfo is not success.");
+    GELOGW("GetAIPPInfo is not successful.");
     return ret;
   }
   GELOGI("GetAIPPInfo succ.");
@@ -907,7 +910,7 @@ Status GeExecutor::GetAippType(const uint32_t model_id, const uint32_t index, In
   }
   const auto ret = GraphExecutor::GetAippType(model_id, index, type, aipp_index);
   if (ret != SUCCESS) {
-    GELOGW("Get aipp type is not success.");
+    GELOGW("Get aipp type is not successful.");
     return ret;
   }
   GELOGI("Get aipp type success.");
@@ -1224,7 +1227,7 @@ Status GeExecutor::GetMemAndWeightSize(const std::string &path, size_t &mem_size
   Status ret = GraphLoader::LoadDataFromFile(path, 0, model);
   if ((ret != SUCCESS) || (model.model_data == nullptr)) {
     REPORT_INNER_ERR_MSG("E19999", "load data from file failed, ret = %u", ret);
-    GELOGE(ret, "[Load][Data] from file failed. ret = %u", ret);
+    GELOGE(ret, "[Load][Data] from file failed, path:%s, ret = %u", path.c_str(), ret);
     return ret;
   }
 

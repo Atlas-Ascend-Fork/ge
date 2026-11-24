@@ -67,9 +67,9 @@ Status RdmaRemoteRegister(const std::vector<HostVarInfo> &var_info, rtMemType_t 
   const auto hcom_remote_mem_register =
       reinterpret_cast<HcclResult (*)(const MemRegisterAddr *, uint32_t)>(mmDlsym(handle, "HcomRegRemoteAccessMem"));
   if (hcom_remote_mem_register == nullptr) {
-    REPORT_INNER_ERR_MSG("E19999", "Symbol HcomRegRemoteAccessMem can't find in %s, check invalid",
+    REPORT_INNER_ERR_MSG("E19999", "Symbol HcomRegRemoteAccessMem can't be found in %s, check invalid",
                          canonical_path.c_str());
-    GELOGE(FAILED, "[Check][Param] Symbol HcomRegRemoteAccessMem can't find in %s", canonical_path.c_str());
+    GELOGE(FAILED, "[Check][Param] Symbol HcomRegRemoteAccessMem can't be found in %s", canonical_path.c_str());
     return FAILED;
   }
 
@@ -92,7 +92,10 @@ Status MallocSharedMemory(const TensorInfo &tensor_info, uint64_t &dev_addr, uin
   GE_CHK_STATUS_RET(TensorUtilsEx::GetTensorMemorySizeInBytesWithAutoPadding(tensor_desc, calculate_size),
                     "[Calculate][SharedMemory] failed, op name:%s", tensor_info.var_name.c_str());
   memory_size = static_cast<uint64_t>(calculate_size);
-  GELOGI("[Calculate][SharedMemory] size is:%" PRIu64 " for op name:%s", memory_size, tensor_info.var_name.c_str());
+  GELOGI("[Calculate][SharedMemory] size is:%" PRIu64
+         " bytes"
+         " for op name:%s",
+         memory_size, tensor_info.var_name.c_str());
   SharedMemInfo mem_info(tensor_info.var_name, memory_size);
   const Status ret = HostMemManager::Instance().MallocHostSharedMemory(mem_info);
   if (ret != SUCCESS) {

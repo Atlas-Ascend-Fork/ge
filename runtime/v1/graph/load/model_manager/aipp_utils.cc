@@ -149,7 +149,7 @@ Status AippUtils::SetAippInfoAndTypeFromOpDesc(const std::map<std::string, uint3
     data_mode = *data_mode_ptr;
   }
   if ((!get_attr_aipp) && (!get_attr_mode)) {
-    GELOGD("There is not AIPP related with op:%s, index:%u.", op_desc->GetName().c_str(), index);
+    GELOGD("There is no AIPP related to op:%s, index:%u.", op_desc->GetName().c_str(), index);
     return SUCCESS;
   }
   if ((!get_attr_aipp) || (!get_attr_mode)) {
@@ -209,10 +209,13 @@ Status AippUtils::SetAippTypeImpl(const std::map<std::string, uint32_t> &data_in
   } else if (data_mode == kDataModeDynamicConf) {
     aipp_type = DYNAMIC_AIPP_NODE;
   } else {
-    REPORT_INNER_ERR_MSG("E19999", "Get invalid mode:%s, op:%s, type:%s.", data_mode.c_str(),
-                         op_desc->GetName().c_str(), op_desc->GetType().c_str());
-    GELOGE(INTERNAL_ERROR, "[Get][Attr]Get invalid mode:%s, op:%s, type:%s.", data_mode.c_str(),
-           op_desc->GetName().c_str(), op_desc->GetType().c_str());
+    REPORT_INNER_ERR_MSG("E19999",
+                         "Get invalid mode:%s, valid modes: static_aipp/dynamic_aipp/dynamic_aipp_conf, "
+                         "op:%s, type:%s.",
+                         data_mode.c_str(), op_desc->GetName().c_str(), op_desc->GetType().c_str());
+    GELOGE(INTERNAL_ERROR,
+           "[Get][Attr]Get invalid mode:%s, valid modes: static_aipp/dynamic_aipp/dynamic_aipp_conf, op:%s, type:%s.",
+           data_mode.c_str(), op_desc->GetName().c_str(), op_desc->GetType().c_str());
     return INTERNAL_ERROR;
   }
 
@@ -247,7 +250,7 @@ Status AippUtils::GetAippInfo(const std::map<uint32_t, AippConfigInfo> &aipp_inf
                               AippConfigInfo &aipp_info) {
   const auto it = aipp_infos.find(index);
   if (it == aipp_infos.end()) {
-    GELOGD("There is not AIPP related info with index:%u", index);
+    GELOGD("There is no AIPP related info with index:%u", index);
     return ACL_ERROR_GE_AIPP_NOT_EXIST;
   }
   aipp_info = it->second;
@@ -258,7 +261,7 @@ Status AippUtils::GetAippType(const std::map<uint32_t, std::pair<InputAippType, 
                               const uint32_t index, InputAippType &aipp_type, size_t &aipp_data_index) {
   const auto it = aipp_types.find(index);
   if (it == aipp_types.end()) {
-    GELOGD("There is not AIPP related type with index:%u, return default value.", index);
+    GELOGD("There is no AIPP related type with index:%u, return default value.", index);
     aipp_type = DATA_WITHOUT_AIPP;
     aipp_data_index = kInvalidIdx;
     return SUCCESS;
@@ -308,7 +311,7 @@ Status AippUtils::SetAippInputOutputInfoFromOpDesc(
     const OpDescPtr &op_desc, const uint32_t index, std::map<uint32_t, OriginInputInfo> &orig_input_info_map,
     std::map<uint32_t, std::pair<std::vector<InputOutputDims>, std::vector<InputOutputDims>>> &aipp_dims_info) {
   if ((!op_desc->HasAttr(ATTR_NAME_AIPP_INPUTS)) || (!op_desc->HasAttr(ATTR_NAME_AIPP_OUTPUTS))) {
-    GELOGI("there is not AIPP related with index %u, node: %s.", index, op_desc->GetName().c_str());
+    GELOGI("there is no AIPP related to index %u, node: %s.", index, op_desc->GetName().c_str());
     return SUCCESS;
   }
 

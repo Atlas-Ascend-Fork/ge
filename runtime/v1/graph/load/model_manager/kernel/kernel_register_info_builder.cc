@@ -37,7 +37,7 @@ Status GetBinaryMagic(const OpDescPtr &op_desc, bool is_atomic_node, int32_t &bi
   std::string magic_value;
   (void)AttrUtils::GetStr(op_desc, tvm_magic_attr, magic_value);
   auto iter = binary_magics.find(magic_value);
-  GE_ASSERT_TRUE(iter != binary_magics.end(), "[%s][%s] magic value: %s get from attr %s is invalid.",
+  GE_ASSERT_TRUE(iter != binary_magics.end(), "[%s][%s] magic value: %s got from attr %s is invalid.",
                  op_desc->GetNamePtr(), op_desc->GetTypePtr(), magic_value.c_str(), tvm_magic_attr.c_str());
   binary_magic = iter->second;
   return SUCCESS;

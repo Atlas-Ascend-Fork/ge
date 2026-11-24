@@ -57,7 +57,7 @@ Status ArgsIoAddrsUpdater::Init(std::vector<MemAllocation> &logical_mem_allocati
     MemAllocationAndOffset id_and_offset = {id, (addr - logical_mem_allocations[id].logical_addr),
                                             logical_mem_allocations[id_addr_matched].type};
     v_mem_allocation_id_and_offset_.emplace_back(id_and_offset);
-    GELOGI("[Args][Init] op_name:%s, op_type:%s, logical_addr[%zu]:0x%" PRIx64
+    GELOGD("[Args][Init] op_name:%s, op_type:%s, logical_addr[%zu]:0x%" PRIx64
            ", id:%zu, "
            "offset:0x%" PRIx64 ", refreshable:%hhu.",
            op_info_.op_name.c_str(), op_info_.op_type.c_str(), io_index, addr, id_and_offset.id, id_and_offset.offset,
@@ -78,7 +78,7 @@ Status ArgsIoAddrsUpdater::SetArgIoAddrs(const std::vector<uint64_t> &active_mem
     GE_ASSERT_TRUE(item.id < active_mem_base_addr.size());
     host_args_tmp[io_index] = active_mem_base_addr[item.id] + item.offset;
 
-    GELOGI("[Args][Updater] op_name:%s, op_type:%s, active_addr[%zu]:0x%" PRIx64
+    GELOGD("[Args][Updater] op_name:%s, op_type:%s, active_addr[%zu]:0x%" PRIx64
            ", id:%zu, "
            "offset:0x%" PRIx64 ", active_base:0x%" PRIx64,
            op_info_.op_name.c_str(), op_info_.op_type.c_str(), io_index, host_args_tmp[io_index], item.id, item.offset,

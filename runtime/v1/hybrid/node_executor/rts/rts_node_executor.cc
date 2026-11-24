@@ -50,7 +50,7 @@ Status IdentityNodeTask::DoCopyTensor(const TaskContext &context, const int32_t 
   GE_CHK_GRAPH_STATUS_RET(TensorUtils::GetTensorSizeInBytes(*input_desc, copy_size));
   // copy_size would not be negative since GetTensorSizeInBytes returned successfully.
   if (copy_size != 0) {
-    GELOGD("[%s] index = %d, copy size = %ld", context.GetNodeName(), index, copy_size);
+    GELOGD("[%s] index = %d, copy size = %ld bytes", context.GetNodeName(), index, copy_size);
     const auto input = context.MutableInput(index);
     const auto output = context.MutableOutput(index);
     GE_CHECK_NOTNULL(input);

@@ -66,7 +66,7 @@ Status MemcpyAsyncTaskInfo::Init(const domi::TaskDef &task_def, DavinciModel *co
                                     (sizeof(void *) * 2U), 0U, {});
 
     GELOGI("MemcpyAsyncTaskInfo Init Success, op name %s, src:%p, dst:%p, args_placement:%d, max:%" PRIu64
-           ", count:%" PRIu64 ".logic stream id: %u, stream: %p.",
+           ", count:%" PRIu64 ", logic stream id: %u, stream: %p.",
            op_desc->GetName().c_str(), src_, dst_, static_cast<int32_t>(args_placement), dst_max_, count_,
            task_def.stream_id(), stream_);
     return SUCCESS;

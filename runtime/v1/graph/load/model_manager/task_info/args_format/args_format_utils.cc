@@ -42,7 +42,7 @@ Status ArgsFormatUtils::GetHcomHiddenInputs(const OpDescPtr &op_desc, const Davi
     GE_ASSERT_TRUE(stream_ids.size() == 1U, "Currently only support one attached stream id but got %zu, node %s",
                    stream_ids.size(), op_desc->GetName().c_str());
     const size_t stream_id = static_cast<size_t>(stream_ids[0U]);
-    GE_ASSERT(stream_id < stream_list.size(), "attached stream_id [%zu]is invalid.", stream_id);
+    GE_ASSERT(stream_id < stream_list.size(), "attached stream_id [%zu] is invalid.", stream_id);
     rt_resource_list->push_back(stream_list[stream_id]);
     GE_ASSERT_TRUE(op_desc->SetExtAttr(kHcomHiddenInputs, rt_resource_list));
     int64_t stream_type = kDefaultStream;
@@ -162,7 +162,7 @@ Status ArgsFormatUtils::SinkTilingContext(const NodePtr &node, DavinciModel &dav
           .TiledHolder(context_host_begin, context_dev_begin, aligned_tiling_context_size + compute_node_info_size)
           .Build(node, tiling_context_holder);
   if (ret != ge::SUCCESS) {
-    GELOGE(FAILED, "Failed to build device tiling context.");
+    GELOGE(ret, "Failed to build device tiling context for node %s.", node->GetNamePtr());
     return FAILED;
   }
 

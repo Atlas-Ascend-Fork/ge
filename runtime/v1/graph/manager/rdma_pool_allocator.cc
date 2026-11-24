@@ -86,7 +86,7 @@ void RdmaPoolAllocator::Finalize() {
 
 Status RdmaPoolAllocator::InitMemory(const size_t mem_size) {
   const auto device_id = GetContext().DeviceId();
-  GELOGD("Init Rdma Memory with size [%zu] for devid:[%u].", mem_size, device_id);
+  GELOGD("Init Rdma Memory with size [%zu bytes] for devid:[%u].", mem_size, device_id);
   const std::string purpose = "Memory for rdma pool";
   const std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (rdma_base_addr_ != nullptr) {
@@ -102,15 +102,15 @@ Status RdmaPoolAllocator::InitMemory(const size_t mem_size) {
   GE_CHECK_NOTNULL(memory_allocator_);
   rdma_base_addr_ = memory_allocator_->MallocMemory(purpose, mem_size, device_id);
   if (rdma_base_addr_ == nullptr) {
-    GELOGE(GE_GRAPH_MALLOC_FAILED, "[Malloc][Memory] failed, size:%zu, device_id:%u", mem_size, device_id);
+    GELOGE(GE_GRAPH_MALLOC_FAILED, "[Malloc][Memory] failed, size:%zu bytes, device_id:%u", mem_size, device_id);
     return GE_GRAPH_MALLOC_FAILED;
   }
   rdma_mem_size_ = mem_size;
   // Init with a base block.
   auto *const base_block = new (std::nothrow) Block(device_id, mem_size, rdma_base_addr_);
   if (base_block == nullptr) {
-    REPORT_INNER_ERR_MSG("E19999", "New Block failed, size:%zu, device_id:%u", mem_size, device_id);
-    GELOGE(GE_GRAPH_MALLOC_FAILED, "[New][Block] failed, size:%zu, device_id:%u", mem_size, device_id);
+    REPORT_INNER_ERR_MSG("E19999", "New Block failed, size:%zu bytes, device_id:%u", mem_size, device_id);
+    GELOGE(GE_GRAPH_MALLOC_FAILED, "[New][Block] failed, size:%zu bytes, device_id:%u", mem_size, device_id);
     if (memory_allocator_->FreeMemory(rdma_base_addr_) != SUCCESS) {
       GELOGW("Free rdma pool memory failed when new block failed, device_id:%u", device_id);
     }
@@ -123,7 +123,7 @@ Status RdmaPoolAllocator::InitMemory(const size_t mem_size) {
 }
 
 uint8_t *RdmaPoolAllocator::Malloc(const size_t size, const uint32_t device_id) {
-  GELOGI("start to malloc rdma memory size:%zu, device id = %u.", size, device_id);
+  GELOGI("start to malloc rdma memory size:%zu bytes, device id = %u.", size, device_id);
   const auto aligned_size = GetAlignedBlockSize(size);
   Block key(device_id, aligned_size, nullptr);
   const std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -140,7 +140,7 @@ uint8_t *RdmaPoolAllocator::Malloc(const size_t size, const uint32_t device_id) 
     (void)allocated_blocks_.emplace(block->ptr, block);
 
     if (ShouldSplit(*block, aligned_size)) {
-      GELOGD("Block will be split block size = %zu, aligned_size:%zu.", block->size, aligned_size);
+      GELOGD("Block will be split block size = %zu, aligned_size:%zu bytes.", block->size, aligned_size);
       auto *const new_block = new (std::nothrow)
           Block(device_id, block->size - aligned_size, nullptr, PtrAdd(block->ptr, block->size, aligned_size));
       if (new_block == nullptr) {
@@ -156,7 +156,7 @@ uint8_t *RdmaPoolAllocator::Malloc(const size_t size, const uint32_t device_id) 
       block->size = aligned_size;
       (void)block_bin_.insert(new_block);
     }
-    GELOGD("Find block size = %zu", block->size);
+    GELOGD("Find block size = %zu bytes", block->size);
     return block->ptr;
   }
   GELOGW("Memory block not found.");

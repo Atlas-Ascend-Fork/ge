@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <unistd.h>
 #include "macro_utils/dt_public_scope.h"
 #include "ge/ge_api.h"
 #include "graph/compute_graph.h"
@@ -39,5 +40,33 @@ TEST_F(STEST_exception_dumper, dump_exception_constructor) {
   ExceptionDumper exception_dumper1{false};
   EXPECT_EQ(exception_dumper1.is_registered_, false);
   EXPECT_EQ(gert::GlobalDumper::GetInstance()->GetInnerExceptionDumpers().count(&exception_dumper1), 0);
+}
+
+TEST_F(STEST_exception_dumper, log_exception_args_on_host) {
+  OpDescInfo op_desc_info;
+  op_desc_info.op_name = "test_op";
+  op_desc_info.op_type = "test_type";
+  op_desc_info.is_host_args = true;
+  ExceptionDumper exception_dumper;
+  exception_dumper.LogExceptionArgs(op_desc_info);
+}
+
+TEST_F(STEST_exception_dumper, dump_exception_workspace_with_addr) {
+  ge::DumpProperties dump_properties;
+  dump_properties.AddPropertyValue("ALL_MODEL_NEED_DUMP_AND_IT_IS_NOT_A_MODEL_NAME", {"test"});
+  dump_properties.SetDumpMode("all");
+  std::vector<uint8_t> workspace_stub(8U);
+  OpDescInfo op_desc_info;
+  op_desc_info.op_name = "Save";
+  op_desc_info.op_type = "Save";
+  op_desc_info.space_addrs = {workspace_stub.data()};
+  op_desc_info.workspace_bytes = {8};
+  ExceptionDumper exception_dumper;
+  const std::string dump_path = "./st_dump_ws/";
+  ASSERT_TRUE(ge::CreateDirectory(dump_path) == 0);
+  const std::string dump_file = dump_path + "dumpfile";
+  (void)exception_dumper.DumpExceptionWorkspace(op_desc_info, dump_file, false, dump_properties);
+  (void)remove(dump_file.c_str());
+  (void)rmdir(dump_path.c_str());
 }
 }  // namespace ge

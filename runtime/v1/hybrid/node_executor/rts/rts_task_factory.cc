@@ -30,7 +30,7 @@ void RtsTaskFactory::RegisterCreator(const std::string &task_type, const RtsTask
 
   const std::map<std::string, RtsTaskCreatorFun>::const_iterator it = creators_.find(task_type);
   if (it != creators_.cend()) {
-    GELOGW("Task %s creator already exist", task_type.c_str());
+    GELOGW("Task %s creator already exists", task_type.c_str());
     return;
   }
 

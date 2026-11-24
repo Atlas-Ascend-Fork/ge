@@ -358,7 +358,10 @@ Status DumpManager::SetNormalDumpConf(const DumpConfig &dump_config, DumpPropert
     dump_properties.SetDumpOpSwitch(dump_op_switch);
     if ((dump_op_switch == kDumpoff) && (dump_config.dump_list.empty())) {
       (void)infer_dump_properties_map_.emplace(kInferSessionId, dump_properties);
-      GELOGE(PARAM_INVALID, "[Check][DumpList]Invalid, dump_op_switch is %s", dump_op_switch.c_str());
+      GELOGE(PARAM_INVALID,
+             "[Check][DumpList]Invalid, dump_op_switch is %s, dump_list should not be empty when "
+             "dump_op_switch is off",
+             dump_op_switch.c_str());
       (void)REPORT_PREDEFINED_ERR_MSG("E10001", std::vector<const char *>({"parameter", "value", "reason"}),
                                       std::vector<const char *>({"dump_list", "", "Dump list is empty."}));
       return PARAM_INVALID;
@@ -428,7 +431,7 @@ Status DumpManager::SetDumpConf(const DumpConfig &dump_config) {
   DumpProperties dump_properties;
   if (!NeedDoDump(dump_config, dump_properties)) {
     diagnoseSwitch::DisableDumper();
-    GELOGD("No need do dump process.");
+    GELOGD("No need to do the dump process.");
     return SUCCESS;
   }
   const bool is_acl_open_before = if_acl_dump_set_;

@@ -33,7 +33,7 @@ class RtV2SimpleExecutor : public RtV2ExecutorInterface {
 
   ge::Status Execute(const ModelExecuteArg &arg, Tensor **inputs, size_t input_num, Tensor **outputs, size_t output_num,
                      const RunConfig &config) override {
-    GE_ASSERT(loaded_, "Executor for model %s has not been load", name_.c_str());
+    GE_ASSERT(loaded_, "Executor for model %s has not been loaded", name_.c_str());
     for (size_t i = 0U; i < config.iterations_per_loop; ++i) {
       if (config.profiler_collector != nullptr) {
         GE_ASSERT_SUCCESS(config.profiler_collector->RecordStart(arg.stream));

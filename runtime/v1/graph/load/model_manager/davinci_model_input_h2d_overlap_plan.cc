@@ -265,7 +265,13 @@ bool CheckPlannedInputSize(const uint32_t model_id, const uint64_t user_size, co
     REPORT_PREDEFINED_ERR_MSG("E13025", std::vector<const char_t *>({"reason"}),
                               std::vector<const char_t *>({reason.c_str()}));
     GELOGE(PARAM_INVALID,
-           "[Check][Param] %s size:%" PRId64 " from user add align:%" PRId64 " < op_size:%" PRId64 " in model:%u",
+           "[Check][Param] %s size:%" PRId64
+           " bytes"
+           " from user add align:%" PRId64
+           " bytes"
+           " < op_size:%" PRId64
+           " bytes"
+           " in model:%u",
            K_INPUT, input_size, kDataMemAlignSizeCompare, op_size, model_id);
     return false;
   }

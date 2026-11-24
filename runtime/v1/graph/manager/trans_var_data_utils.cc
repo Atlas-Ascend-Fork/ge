@@ -61,7 +61,7 @@ class RtContextSwitchGuard {
       }
       if (last_ != nullptr) {
         const auto ret = aclrtSetCurrentContext(last_);
-        GELOGD("Recovery last context %p result %d.", last_, ret);
+        GELOGD("Recover last context %p result %d.", last_, ret);
       }
     } catch (...) {
       // no processing
@@ -95,7 +95,7 @@ int64_t CalcVarSizeInBytes(const GeTensorDesc &desc) {
 
 Status CopyVarToDevice(const NodePtr &var, const formats::TransResult &trans_result, void *const var_addr) {
   GE_CHECK_NOTNULL(var);
-  GELOGD("Copy var %s from host to device, size %zu", var->GetName().c_str(), trans_result.length);
+  GELOGD("Copy var %s from host to device, size %zu bytes", var->GetName().c_str(), trans_result.length);
   const auto ret = aclrtMemcpy(var_addr, trans_result.length, PtrToPtr<uint8_t, void>(trans_result.data.get()),
                                trans_result.length, ACL_MEMCPY_HOST_TO_DEVICE);
   if (ret != ACL_SUCCESS) {
@@ -137,9 +137,15 @@ Status CopyVarFromDevice(const uint64_t session_id, const NodePtr &var, std::uni
 
   std::unique_ptr<uint8_t[]> var_host = MakeUnique<uint8_t[]>(static_cast<size_t>(var_size_bytes));
   if (var_host == nullptr) {
-    REPORT_INNER_ERR_MSG("E19999", "New host memory failed, size:%" PRId64 ", op:%s(%s), session_id:%" PRIu64 "",
+    REPORT_INNER_ERR_MSG("E19999",
+                         "New host memory failed, size:%" PRId64
+                         " bytes"
+                         ", op:%s(%s), session_id:%" PRIu64 "",
                          var_size_bytes, var->GetName().c_str(), var->GetType().c_str(), session_id);
-    GELOGE(OUT_OF_MEMORY, "[New][Memory] for rt-host failed, size:%" PRId64 ", op:%s(%s), session_id:%" PRIu64,
+    GELOGE(OUT_OF_MEMORY,
+           "[New][Memory] for rt-host failed, size:%" PRId64
+           " bytes"
+           ", op:%s(%s), session_id:%" PRIu64,
            var_size_bytes, var->GetName().c_str(), var->GetType().c_str(), session_id);
     return OUT_OF_MEMORY;
   }
@@ -149,14 +155,19 @@ Status CopyVarFromDevice(const uint64_t session_id, const NodePtr &var, std::uni
                   PtrToPtr<uint8_t, void>(var_addr), static_cast<uint64_t>(var_size_bytes), ACL_MEMCPY_DEVICE_TO_HOST);
   if (rt_rslt != ACL_SUCCESS) {
     REPORT_INNER_ERR_MSG("E19999",
-                         "Call aclrtMemcpy failed, size:%" PRId64 ", op:%s(%s), session_id:%" PRIu64 ", ret:%d",
+                         "Call aclrtMemcpy failed, size:%" PRId64
+                         " bytes"
+                         ", op:%s(%s), session_id:%" PRIu64 ", ret:%d",
                          var_size_bytes, var->GetName().c_str(), var->GetType().c_str(), session_id, rt_rslt);
-    GELOGE(RT_FAILED, "[Call][aclrtMemcpy] failed, size:%" PRId64 ", op:%s(%s), session_id:%" PRIu64 ", ret:%d",
+    GELOGE(RT_FAILED,
+           "[Call][aclrtMemcpy] failed, size:%" PRId64
+           " bytes"
+           ", op:%s(%s), session_id:%" PRIu64 ", ret:%d",
            var_size_bytes, var->GetName().c_str(), var->GetType().c_str(), session_id, rt_rslt);
     return RT_FAILED;
   }
 
-  GELOGD("Copy var %s from device to host, size %" PRId64, var->GetName().c_str(), var_size_bytes);
+  GELOGD("Copy var %s from device to host, size %" PRId64 " bytes", var->GetName().c_str(), var_size_bytes);
   var_data.swap(var_host);
 
   GELOGI("var_logic:%p, var_addr:%p", var_logic, var_addr);
@@ -234,7 +245,7 @@ Status TransVarOnHost(uint8_t *const var_data, const VarTransRoad &trans_road, f
       const int64_t src_data_size = (input_shape.GetShapeSize() == 0) ? 1 : input_shape.GetShapeSize();
       const auto src_data_type = trans_info.input.GetDataType();
       const auto dst_data_type = trans_info.output.GetDataType();
-      GELOGD("Trans data type from %s to %s, input shape %s, data size %" PRId64,
+      GELOGD("Trans data type from %s to %s, input shape %s, data size %" PRId64 " bytes",
              TypeUtils::DataTypeToSerialString(src_data_type).c_str(),
              TypeUtils::DataTypeToSerialString(dst_data_type).c_str(), ToString(input_shape.GetDims()).c_str(),
              src_data_size);
@@ -249,7 +260,9 @@ Status TransVarOnHost(uint8_t *const var_data, const VarTransRoad &trans_road, f
                              ToString(input_shape.GetDims()).c_str(), src_data_size, ret);
         GELOGE(INTERNAL_ERROR,
                "[Trans][DataType] from %s to %s failed, input shape %s, "
-               "data size %" PRId64 ", error code %u",
+               "data size %" PRId64
+               " bytes"
+               ", error code %u",
                TypeUtils::DataTypeToSerialString(src_data_type).c_str(),
                TypeUtils::DataTypeToSerialString(dst_data_type).c_str(), ToString(input_shape.GetDims()).c_str(),
                src_data_size, ret);

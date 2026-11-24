@@ -110,7 +110,7 @@ NpuMemoryAllocator *NpuMemoryAllocator::GetAllocator() {
     auto allocator = MakeUnique<NpuMemoryAllocator>(device_id, nullptr);
     if (allocator == nullptr) {
       REPORT_INNER_ERR_MSG("E19999", "New default NpuMemoryAllocator fail, device_id: %d.", device_id);
-      GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION, "New default NpuMemoryAllocator fail, device_id,: %d.", device_id);
+      GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION, "New default NpuMemoryAllocator fail, device_id: %d.", device_id);
       return nullptr;
     }
     default_allocators_[static_cast<size_t>(device_id)] = std::move(allocator);
@@ -327,7 +327,7 @@ NpuMemoryAllocator *NpuMemoryAllocator::GetAllocator(const uint32_t device_id, c
     auto allocator = MakeUnique<NpuMemoryAllocator>(device_id, stream);
     if ((allocator == nullptr) || (allocator->InitCachingllocator() != SUCCESS)) {
       REPORT_INNER_ERR_MSG("E19999", "New NpuMemoryAllocator fail, device_id: %u, stream: %p.", device_id, stream);
-      GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION, "New NpuMemoryAllocator fail, device_id,: %u, stream: %p.", device_id,
+      GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION, "New NpuMemoryAllocator fail, device_id: %u, stream: %p.", device_id,
              stream);
       return nullptr;
     }

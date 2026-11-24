@@ -53,7 +53,8 @@ const std::map<ProfCommandHandleType, std::string> kProfCommandTypeMap{
 
 bool IsProfConfigValid(const uint32_t deviceid_list[], const uint32_t device_nums) {
   if ((device_nums == 0U) || (device_nums > kMaxDevNum)) {
-    GELOGE(PARAM_INVALID, "[Check][DeviceNums]Invalid, device nums: %u", device_nums);
+    GELOGE(PARAM_INVALID, "[Check][DeviceNums]Invalid, device nums: %u, should be in range [1, %u]", device_nums,
+           kMaxDevNum);
     REPORT_INNER_ERR_MSG("E19999", "DeviceNums %u check invalid", device_nums);
     return false;
   }
@@ -77,7 +78,7 @@ bool IsProfConfigValid(const uint32_t deviceid_list[], const uint32_t device_num
   for (uint32_t i = 0U; i < device_nums; ++i) {
     const uint32_t dev_id = deviceid_list[i];
     if (!record.insert(dev_id).second) {
-      GELOGE(PARAM_INVALID, "[Check][DeviceId]Device id %u is duplicatedly set", dev_id);
+      GELOGE(PARAM_INVALID, "[Check][DeviceId]Device id %u is set repeatedly", dev_id);
       REPORT_INNER_ERR_MSG("E19999", "Device id %u is not unique and is set repeatedly", dev_id);
       return false;
     }
@@ -176,7 +177,7 @@ rtError_t ExecuteCommand(const ProfCommandHandleType type, const MsprofCommandHa
     if (prof_params.size() > kDeviceListIndex) {
       GELOGI("Profiling device nums:%s, deviceId:%s", prof_params[0U].c_str(), prof_params[kDeviceListIndex].c_str());
     } else {
-      GELOGW("Profiling input param[size=%zu] may invalid", prof_params.size());
+      GELOGW("Profiling input param[size=%zu] may be invalid", prof_params.size());
     }
   }
 

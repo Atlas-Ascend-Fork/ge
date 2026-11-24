@@ -95,7 +95,8 @@ Status RefInputTask::RefOneByOne(const TaskContext &context) const {
       }
       if (static_cast<size_t>(expected_size) > output->GetSize()) {
         GELOGE(GRAPH_PARAM_INVALID,
-               "[Check][Size] %s(%s) index[%d] mem size out of range! Expected size: %ld, but given input size: %ld.",
+               "[Check][Size] %s(%s) index[%d] mem size out of range! Expected size: %ld bytes, but given input size: "
+               "%ld bytes.",
                node_name_.c_str(), node_type_.c_str(), out_index, expected_size, output->GetSize());
 
         std::string reason = "The memory " + std::to_string(expected_size) + " required by the output " +
@@ -174,16 +175,16 @@ Status DependInputShapeTask::CopyDataToOutput(const size_t output_num, std::vect
     if (tensor_data_out.GetSize() > tensor_value_out->GetSize()) {
       REPORT_INNER_ERR_MSG("E19999",
                            "node:%s type:%s [%" PRIu64
-                           "]th compute data size=%zu, but context data size=%zu."
+                           "]th compute data size=%zu, but context data size=%zu. "
                            "check invalid",
                            node_->GetName().c_str(), node_type.c_str(), static_cast<uint64_t>(i),
                            tensor_data_out.GetSize(), tensor_value_out->GetSize());
-      GELOGE(INTERNAL_ERROR, "[Check][Size]node:%s type:%s [%lu]th compute data size=%zu, but context data size=%zu.",
+      GELOGE(INTERNAL_ERROR, "[Check][Size]node:%s type:%s [%lu]th compute data size=%zu, but context data size=%zu. ",
              node_->GetName().c_str(), node_type.c_str(), i, tensor_data_out.GetSize(), tensor_value_out->GetSize());
       return INTERNAL_ERROR;
     }
 
-    GELOGI("node:%s type:%s [%lu]th output data=%p, out size=%zu, data size=%zu.", node_->GetName().c_str(),
+    GELOGI("node:%s type:%s [%lu]th output data=%p, out size=%zu bytes, data size=%zu bytes.", node_->GetName().c_str(),
            node_type.c_str(), i, tensor_value_out->GetData(), tensor_value_out->GetSize(), tensor_data_out.GetSize());
 
     if (tensor_data_out.GetSize() > 0UL) {
@@ -191,8 +192,8 @@ Status DependInputShapeTask::CopyDataToOutput(const size_t output_num, std::vect
                                       tensor_data_out.GetData(), tensor_data_out.GetSize(),
                                       ACL_MEMCPY_HOST_TO_BUF_TO_DEVICE, context.GetStream()));
     }
-    GELOGI("node:%s type:%s [%lu]th set data success, data size=%zu.", node_->GetName().c_str(), node_type.c_str(), i,
-           tensor_data_out.GetSize());
+    GELOGI("node:%s type:%s [%lu]th set data success, data size=%zu bytes.", node_->GetName().c_str(),
+           node_type.c_str(), i, tensor_data_out.GetSize());
   }
   return SUCCESS;
 }
@@ -219,10 +220,10 @@ Status DependInputShapeTask::Execute(const TaskContext &context) const {
   const auto output_num = static_cast<uint32_t>(context.NumOutputs());
   if (static_cast<size_t>(output_num) != outputs.size()) {
     REPORT_INNER_ERR_MSG("E19999",
-                         "node %s type %s has %u output,"
+                         "node %s type %s has %u output, "
                          "but kernel compute only has %zu output. check invalid",
                          node_->GetName().c_str(), node_type.c_str(), output_num, outputs.size());
-    GELOGE(INTERNAL_ERROR, "[Check][Size]node %s type %s has %u output, but kernel compute only has %zu output.",
+    GELOGE(INTERNAL_ERROR, "[Check][Size]node %s type %s has %u output,  but kernel compute only has %zu output.",
            node_->GetName().c_str(), node_type.c_str(), output_num, outputs.size());
     return INTERNAL_ERROR;
   }

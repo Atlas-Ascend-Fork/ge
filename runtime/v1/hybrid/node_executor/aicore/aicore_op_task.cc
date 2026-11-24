@@ -350,7 +350,9 @@ Status AiCoreOpTask::AddCompileCacheItem(const KernelLaunchBinType bin_type, con
 Status AiCoreOpTask::ValidateTaskDef(const domi::TaskDef &task_def) {
   const auto task_type = static_cast<ModelTaskType>(task_def.type());
   if ((task_type != ModelTaskType::MODEL_TASK_KERNEL) && (task_type != ModelTaskType::MODEL_TASK_ALL_KERNEL)) {
-    GELOGE(INTERNAL_ERROR, "[Check][TaskType]Invalid task type (%d) in AiCore CreateTask.",
+    GELOGE(INTERNAL_ERROR,
+           "[Check][TaskType]Invalid task type (%d) in AiCore CreateTask, "
+           "only MODEL_TASK_KERNEL and MODEL_TASK_ALL_KERNEL are supported.",
            static_cast<int32_t>(task_type));
     return INTERNAL_ERROR;
   }
@@ -358,9 +360,11 @@ Status AiCoreOpTask::ValidateTaskDef(const domi::TaskDef &task_def) {
                                                                         : task_def.kernel_with_handle().context();
   const auto kernel_type = static_cast<ccKernelType>(context.kernel_type());
   if (kernel_type != ccKernelType::TE) {
-    GELOGE(INTERNAL_ERROR, "[Check][TaskType]Invalid kernel type(%d) in AiCore TaskDef.",
+    GELOGE(INTERNAL_ERROR,
+           "[Check][TaskType]Invalid kernel type(%d) in AiCore TaskDef, only ccKernelType::TE is supported.",
            static_cast<int32_t>(kernel_type));
-    REPORT_INNER_ERR_MSG("E19999", "Invalid kernel type(%d) in AiCore TaskDef.", static_cast<int32_t>(kernel_type));
+    REPORT_INNER_ERR_MSG("E19999", "Invalid kernel type(%d) in AiCore TaskDef, only ccKernelType::TE is supported.",
+                         static_cast<int32_t>(kernel_type));
     return INTERNAL_ERROR;
   }
 
@@ -522,7 +526,7 @@ Status AiCoreOpTask::UpdateArgBase(const TaskContext &task_context, uint32_t &in
     const auto output = task_context.GetOutput(i);
     GE_CHECK_NOTNULL(output);
     if (find(output_indices_to_skip_.begin(), output_indices_to_skip_.end(), i) != output_indices_to_skip_.end()) {
-      GELOGD("Node:%s output[%d] is an optional, the address don't need to be saved.", task_context.GetNodeName(), i);
+      GELOGD("Node:%s output[%d] is an optional, the address doesn't need to be saved.", task_context.GetNodeName(), i);
       continue;
     }
     arg_base_[index] = PtrToValue(output->GetData());
@@ -664,10 +668,10 @@ Status AiCoreOpTask::InitTilingInfo(const OpDesc &op_desc, bool is_updating) {
   (void)AttrUtils::GetInt(op_desc, GetKeyForOpParamSize(), max_size);
   GELOGD("Got op param size by key: %s, ret = %ld", GetKeyForOpParamSize().c_str(), max_size);
   if (max_size < 0) {
-    GELOGE(PARAM_INVALID, "[Check][Size][%s(%s)] Invalid op_param_size: %ld.", op_desc.GetName().c_str(),
-           op_desc.GetType().c_str(), max_size);
-    REPORT_INNER_ERR_MSG("E19999", "[%s(%s)] Invalid op_param_size: %" PRId64 ".", op_desc.GetName().c_str(),
-                         op_desc.GetType().c_str(), max_size);
+    GELOGE(PARAM_INVALID, "[Check][Size][%s(%s)] Invalid op_param_size: %ld, it should not be less than 0.",
+           op_desc.GetName().c_str(), op_desc.GetType().c_str(), max_size);
+    REPORT_INNER_ERR_MSG("E19999", "[%s(%s)] Invalid op_param_size: %" PRId64 ", it should not be less than 0.",
+                         op_desc.GetName().c_str(), op_desc.GetType().c_str(), max_size);
     return PARAM_INVALID;
   }
   args_ex_.argsSize -= max_tiling_size_;
@@ -739,9 +743,9 @@ Status AtomicAddrCleanOpTask::InitAtomicAddrCleanIndices(const OpDesc &op_desc) 
   std::map<std::string, std::map<int64_t, int64_t>> workspace_info;  // op_name, ws_index, ws_offset
   workspace_info = op_desc.TryGetExtAttr(EXT_ATTR_ATOMIC_WORKSPACE_INFO, workspace_info);
   if (atomic_output_indices.empty() && workspace_info.empty()) {
-    GELOGE(INTERNAL_ERROR, "[Check][Size] [%s(%s)] Get %s and get %s failed. check invalid", op_desc.GetName().c_str(),
+    GELOGE(INTERNAL_ERROR, "[Check][Size] [%s(%s)] Get %s and get %s failed, check invalid", op_desc.GetName().c_str(),
            op_desc.GetType().c_str(), ATOMIC_ATTR_OUTPUT_INDEX.c_str(), EXT_ATTR_ATOMIC_WORKSPACE_INFO.c_str());
-    REPORT_INNER_ERR_MSG("E19999", "[%s(%s)] Get %s and get %s failed. check invalid", op_desc.GetName().c_str(),
+    REPORT_INNER_ERR_MSG("E19999", "[%s(%s)] Get %s and get %s failed, check invalid", op_desc.GetName().c_str(),
                          op_desc.GetType().c_str(), ATOMIC_ATTR_OUTPUT_INDEX.c_str(),
                          EXT_ATTR_ATOMIC_WORKSPACE_INFO.c_str());
     return INTERNAL_ERROR;
@@ -775,9 +779,9 @@ Status AtomicAddrCleanOpTask::InitAtomicAddrCleanIndices(const OpDesc &op_desc) 
   if (arg_count > max_arg_count_) {
     GELOGE(INTERNAL_ERROR,
            "[Check][arg_count][%s] Invalid arg memory, max arg count = %u,"
-           "but expect = %zu",
+           "but expected = %zu",
            GetName().c_str(), max_arg_count_, arg_count);
-    REPORT_INNER_ERR_MSG("E19999", "[%s] Invalid arg memory, max arg count = %u, but expect = %zu", GetName().c_str(),
+    REPORT_INNER_ERR_MSG("E19999", "[%s] Invalid arg memory, max arg count = %u, but expected = %zu", GetName().c_str(),
                          max_arg_count_, arg_count);
     return INTERNAL_ERROR;
   }

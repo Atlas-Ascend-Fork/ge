@@ -83,12 +83,12 @@ Status HybridModelExecutor::PrepareDynamicInput(HybridModelExecutor::ExecuteArgs
           (shape.GetDim(k) < range[k].first) || ((range[k].second >= 0) && (shape.GetDim(k) > range[k].second));
       if (is_out_of_range) {
         GELOGE(PARAM_INVALID,
-               "[Check][Range]Dim out of range, shape idx = %zu, dim idx = %zu,"
+               "[Check][Range]Dim out of range, shape idx = %zu, dim idx = %zu, "
                "dim = %ld, range = [%ld, %ld], model_id = %u.",
                input_index, k, shape.GetDim(k), range[k].first, range[k].second, model_id_);
         REPORT_INNER_ERR_MSG("E19999",
                              "Dim out of range, shape idx = %zu, dim idx = %zu, dim = %" PRId64
-                             ","
+                             ", "
                              "range = [%" PRId64 ", %" PRId64 "], model_id = %u.",
                              input_index, k, shape.GetDim(k), range[k].first, range[k].second, model_id_);
         return PARAM_INVALID;
@@ -103,7 +103,7 @@ Status HybridModelExecutor::PrepareDynamicInput(HybridModelExecutor::ExecuteArgs
     tensor_size = static_cast<int64_t>(data_buf.length);
   } else {
     GE_CHK_GRAPH_STATUS_RET(TensorUtilsEx::GetTensorMemorySizeInBytesWithAutoPadding(*tensor_desc, tensor_size),
-                            "[Invoke][GetTensorMemorySizeInBytesWithAutoPadding]Failed to calc tensor size,"
+                            "[Invoke][GetTensorMemorySizeInBytesWithAutoPadding]Failed to calc tensor size, "
                             "index = %zu, shape = [%s], model_id = %u.",
                             input_index, tensor_desc->GetShape().ToString().c_str(), model_id_);
   }
@@ -475,7 +475,7 @@ Status HybridModelExecutor::ExecuteWithStreamAsync(const std::vector<GeTensor> &
   (void)inputs;
   (void)outputs;
   (void)stream;
-  GELOGE(ge::GRAPH_FAILED, "ExecuteWithStreamAsync only support dynamic model with rt2 executor currently!");
+  GELOGE(ge::GRAPH_FAILED, "ExecuteWithStreamAsync only supports dynamic model with rt2 executor currently!");
   return ge::FAILED;
 }
 
@@ -484,7 +484,7 @@ Status HybridModelExecutor::ExecuteWithStreamAsync(const std::vector<gert::Tenso
   (void)inputs;
   (void)outputs;
   (void)stream;
-  GELOGE(ge::GRAPH_FAILED, "ExecuteWithStreamAsync only support dynamic model with rt2 executor currently!");
+  GELOGE(ge::GRAPH_FAILED, "ExecuteWithStreamAsync only supports dynamic model with rt2 executor currently!");
   return ge::FAILED;
 }
 

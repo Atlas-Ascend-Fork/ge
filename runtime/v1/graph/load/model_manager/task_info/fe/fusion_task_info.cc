@@ -113,11 +113,11 @@ ge::Status GetMemCheckStartSize(const ge::OpDescPtr &op_desc, const int64_t orig
   if (ori_param_size > 0LL) {
     // tik场景下TilingAppendMem添加的数据需要从偏移为ori_param_size的地址开始添加，此处需要将DataSize设置成ori_param_size
     GE_ASSERT_TRUE(origin_tiling_data_size <= ori_param_size);
-    GELOGI("Current tiling data size: %zu, set ori_para_size to %lld by attr, op_name: %s", origin_tiling_data_size,
-           ori_param_size, op_desc->GetNamePtr());
+    GELOGI("Current tiling data size: %zu bytes, set ori_para_size to %lld by attr, op_name: %s",
+           origin_tiling_data_size, ori_param_size, op_desc->GetNamePtr());
   } else {
     ori_param_size = ((origin_tiling_data_size + sizeof(int64_t) - 1UL) / sizeof(int64_t)) * sizeof(int64_t);
-    GELOGI("Current tiling data size: %zu, set ori_param_size to %lld by aligned by %zu, op_name: %s",
+    GELOGI("Current tiling data size: %zu, set ori_param_size to %lld aligned by %zu, op_name: %s",
            origin_tiling_data_size, ori_param_size, sizeof(int64_t), op_desc->GetNamePtr());
   }
   memcheck_start_size = ori_param_size - origin_tiling_data_size;
@@ -141,13 +141,13 @@ void FormatArgsException(uint64_t *host_addr, const std::vector<int64_t> &args_s
   uint64_t *addr = host_addr;
   for (size_t index = 0UL; index < args_size.size(); index++) {
     *addr = static_cast<uint64_t>(args_size[index]);
-    GELOGI("[TilingAppendDfxInfo] size idx[%zu], val[%llu], atomic index[%llu]", index, *addr, atomic_index);
+    GELOGD("[TilingAppendDfxInfo] size idx[%zu], val[%llu], atomic index[%llu]", index, *addr, atomic_index);
     addr++;
   }
 
   for (size_t index = 0UL; index < shape_size.size(); index++) {
     *addr = static_cast<uint64_t>(shape_size[index]);
-    GELOGI("[TilingAppendDfxInfo] shape idx[%zu], val[%llu], atomic index[%llu]", args_size.size() + index, *addr,
+    GELOGD("[TilingAppendDfxInfo] shape idx[%zu], val[%llu], atomic index[%llu]", args_size.size() + index, *addr,
            atomic_index);
     addr++;
   }
@@ -172,7 +172,7 @@ ge::Status UpdateDfxArgsAndShapeSize(const ge::OpDescPtr &op_desc,
       GE_ASSERT_NOTNULL(tensor);
       int64_t tensor_size = 0;
       GE_ASSERT_SUCCESS(ge::TensorUtils::GetSize(*tensor, tensor_size));
-      GELOGI("Update input tensor size, node[%s], index:%zu, args index: %zu, io index: %zu, tensor size: %lld",
+      GELOGD("Update input tensor size, node[%s], index:%zu, args index: %zu, io index: %zu, tensor size: %lld bytes",
              op_desc->GetNamePtr(), i, args_index, io_index, tensor_size);
       args_size_vec[args_index] = tensor_size;
       // shape
@@ -181,7 +181,7 @@ ge::Status UpdateDfxArgsAndShapeSize(const ge::OpDescPtr &op_desc,
       const auto tensor = op_desc->GetOutputDesc(static_cast<uint32_t>(io_index));
       int64_t tensor_size = 0L;
       GE_ASSERT_SUCCESS(ge::TensorUtils::GetSize(tensor, tensor_size));
-      GELOGI("Update output tensor size, node[%s], index:%zu, args index: %zu, io index: %zu, tensor size: %lld",
+      GELOGD("Update output tensor size, node[%s], index:%zu, args index: %zu, io index: %zu, tensor size: %lld bytes",
              op_desc->GetNamePtr(), i, args_index, io_index, tensor_size);
       args_size_vec[args_index] = tensor_size;
       // shape
@@ -200,7 +200,7 @@ ge::Status AppendMemCheckDfxInfo(const ge::OpDescPtr &op_desc, const int64_t til
   }
 
   const auto memcheck_info_capcity = ge::RoundUp(static_cast<uint64_t>(max_size), sizeof(uintptr_t));
-  GELOGI("Get memcheck info capacity: %zu, op_name: %s", memcheck_info_capcity, op_desc->GetNamePtr());
+  GELOGI("Get memcheck info capacity: %zu bytes, op_name: %s", memcheck_info_capcity, op_desc->GetNamePtr());
   const auto memcheck_data_holder = gert::TilingData::CreateCap(memcheck_info_capcity);
   auto memcheck_data = reinterpret_cast<gert::TilingData *>(memcheck_data_holder.get());
   int64_t memcheck_start_size = 0L;
@@ -209,11 +209,11 @@ ge::Status AppendMemCheckDfxInfo(const ge::OpDescPtr &op_desc, const int64_t til
 
   // append size
   for (size_t i = 0U; i < args_size_vec.size(); i++) {
-    GELOGI("[TilingAppendDfxInfo] size idx[%zu], val[%lld]", i, args_size_vec[i]);
+    GELOGD("[TilingAppendDfxInfo] size idx[%zu], val[%lld]", i, args_size_vec[i]);
   }
   GE_ASSERT_SUCCESS(memcheck_data->Append(args_size_vec.data(), args_size_vec.size()));
-  GELOGI("Op name[%s] memcheck info size: %lld, start size: %lld", op_desc->GetNamePtr(), memcheck_data->GetDataSize(),
-         memcheck_start_size);
+  GELOGI("Op name[%s] memcheck info size: %lld bytes, start size: %lld bytes", op_desc->GetNamePtr(),
+         memcheck_data->GetDataSize(), memcheck_start_size);
   dfx_info = std::string(reinterpret_cast<ge::char_t *>(memcheck_data->GetData()), memcheck_data->GetDataSize());
   return ge::SUCCESS;
 }
@@ -331,7 +331,7 @@ Status FusionTaskInfo::ParseTaskRunParam(const domi::TaskDef &task_def, DavinciM
 
   GE_ASSERT_TRUE(!task_def.fusion_task().args_format().empty());
   GE_ASSERT_SUCCESS(ArgsFormatDesc::Parse(op_desc_, task_def.fusion_task().args_format(), args_format_info_.arg_descs),
-                    "Aicore formatted args [%s] parsed failed.", task_def.fusion_task().args_format().c_str());
+                    "Aicore formatted args [%s] parse failed.", task_def.fusion_task().args_format().c_str());
   GE_ASSERT_SUCCESS(ParseArgsFormat(args_format_info_));
   args_size_ = GetArgsSizeByFormat(args_format_info_);
 
@@ -339,7 +339,7 @@ Status FusionTaskInfo::ParseTaskRunParam(const domi::TaskDef &task_def, DavinciM
     const domi::FusionSubTaskDef &task = fusion_sub_task_info.task();
     switch (fusion_sub_task_info.type()) {
       case domi::FusionSubTaskInfo::AICORE: {
-        GELOGI("Fusion task support sub aicore task kernel.");
+        GELOGI("Fusion task supports sub aicore task kernel.");
         const auto &aicore_task = task.aicore_fusion_task_info();
         is_all_kernel_ = aicore_task.is_all_kernel();
         domi::KernelContext context = aicore_task.context();
@@ -348,11 +348,11 @@ Status FusionTaskInfo::ParseTaskRunParam(const domi::TaskDef &task_def, DavinciM
         break;
       }
       case domi::FusionSubTaskInfo::AICPU: {
-        GELOGW("Fusion task no support sub aicpu kernel. ");
+        GELOGW("Fusion task does not support sub aicpu kernel. ");
         break;
       }
       case domi::FusionSubTaskInfo::CCU: {
-        GELOGI("Fusion task support sub ccu task kernel.");
+        GELOGI("Fusion task supports sub ccu task kernel.");
         break;
       }
       default:
@@ -379,7 +379,7 @@ Status FusionTaskInfo::ParseTaskRunParam(const domi::TaskDef &task_def, DavinciM
        args_placement_});
 
   GELOGI(
-      "Get args size[%u] of op[%s], is fm refresh[%d], task_type: %d, placement: %d, "
+      "Get args size[%u bytes] of op[%s], is fm refresh[%d], task_type: %d, placement: %d, "
       "args format: %s, is all kernel: %d.",
       args_size_, op_desc_->GetName().c_str(), static_cast<int32_t>(davinci_model->IsFeatureBaseRefreshable()),
       static_cast<int32_t>(task_type_), args_placement_, task_def.fusion_task().args_format().c_str(), is_all_kernel_);
@@ -768,7 +768,7 @@ Status FusionTaskInfo::CopyTilingDataIfNeeded() {
   GE_CHK_ACL_RET(aclrtMemcpy(tiling_data_addr_, tiling_data_size_, tiling_data_host_.data(), tiling_data_host_.size(),
                              ACL_MEMCPY_HOST_TO_DEVICE));
 
-  GELOGI("Success to update tiling data to io_addr of %s, device addr: %p, size: %zu, host tiling data addr: %p",
+  GELOGI("Success to update tiling data to io_addr of %s, device addr: %p, size: %zu bytes, host tiling data addr: %p",
          op_desc_->GetNamePtr(), tiling_data_addr_, tiling_data_host_.size(), tiling_data_host_.data());
 
   return SUCCESS;
@@ -829,7 +829,7 @@ Status FusionTaskInfo::InitKernel(const domi::TaskDef &task_def, const PisToArgs
         break;
       }
       case domi::FusionSubTaskInfo::AICPU: {
-        GELOGW("Fusion task no support sub aicpu kernel. ");
+        GELOGW("Fusion task does not support sub aicpu kernel. ");
         break;
       }
       case domi::FusionSubTaskInfo::CCU: {

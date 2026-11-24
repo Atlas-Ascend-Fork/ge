@@ -76,7 +76,7 @@ Status NodeState::AwaitDependShapes(const GraphExecutionContext &context) const 
 
   PROFILING_SCOPE_CONST(GetProfilingIndex(), profiling::kInferShapeWaitDependShape);
   for (auto &src_node : node_item_.dependents_for_shape_inference) {
-    GELOGI("[%s] Start to wait for data dependent node: %s", node_item_.NodeName().c_str(),
+    GELOGD("[%s] Start to wait for data dependent node: %s", node_item_.NodeName().c_str(),
            src_node->GetName().c_str());
     RECORD_SHAPE_INFERENCE_EVENT(&context, node_item_.NodeName().c_str(), "[AwaitNodeDone] [%s] Start",
                                  src_node->GetName().c_str());
@@ -84,7 +84,7 @@ Status NodeState::AwaitDependShapes(const GraphExecutionContext &context) const 
                           src_node->GetName().c_str());
     RECORD_SHAPE_INFERENCE_EVENT(&context, node_item_.NodeName().c_str(), "[AwaitNodeDone] [%s] End",
                                  src_node->GetName().c_str());
-    GELOGI("[%s] Done waiting node.", src_node->GetName().c_str());
+    GELOGD("[%s] Done waiting node.", src_node->GetName().c_str());
   }
   return SUCCESS;
 }

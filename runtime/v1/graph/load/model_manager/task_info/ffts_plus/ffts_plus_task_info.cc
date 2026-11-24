@@ -183,7 +183,7 @@ Status FftsPlusTaskInfo::InitShapeInfosArgs(const domi::FftsPlusCtxDef &ctx_def)
       }
       shape_info[0UL] = static_cast<int64_t>(shape_info.size() * sizeof(uintptr_t));
       for (size_t idx = 0UL; idx < shape_info.size(); idx++) {
-        GELOGI("Node [%s] idx[%zu] shape info[%" PRId64 "]", op_desc->GetNamePtr(), idx, shape_info[idx]);
+        GELOGD("Node [%s] idx[%zu] shape info[%" PRId64 "]", op_desc->GetNamePtr(), idx, shape_info[idx]);
       }
       holder.shape_infos.push_back(shape_info);
     }
@@ -198,7 +198,7 @@ Status FftsPlusTaskInfo::InitShapeInfosArgs(const domi::FftsPlusCtxDef &ctx_def)
       }
       shape_info[0UL] = static_cast<int64_t>(shape_info.size() * sizeof(uintptr_t));
       for (size_t idx = 0UL; idx < shape_info.size(); idx++) {
-        GELOGI("Node [%s] idx[%zu] shape info[%" PRId64 "]", op_desc->GetNamePtr(), idx, shape_info[idx]);
+        GELOGD("Node [%s] idx[%zu] shape info[%" PRId64 "]", op_desc->GetNamePtr(), idx, shape_info[idx]);
       }
       holder.shape_infos.push_back(shape_info);
     }
@@ -496,7 +496,7 @@ bool FftsPlusTaskInfo::OpNeedDump(const OpDescPtr &op_desc) const {
 
 void FftsPlusTaskInfo::PostProcess(const domi::TaskDef &task_def) {
   if (davinci_model_->OpNeedSetDumpFlagOnWatcherModel(op_desc_->GetName())) {
-    GELOGW("fftsplus task no support dump watcher mode.");
+    GELOGW("fftsplus task does not support dump watcher mode.");
   }
 
   const domi::FftsPlusTaskDef &ffts_plus_task_def = task_def.ffts_plus_task();
