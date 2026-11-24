@@ -27,7 +27,6 @@
 #include "framework/common/output_type_map.h"
 #include "framework/common/util.h"
 #include "graph/ge_context.h"
-#include "common/checker.h"
 #include "graph/compute_graph.h"
 #include "register/op_tiling/op_tiling_constants.h"
 #include "graph/utils/type_utils.h"

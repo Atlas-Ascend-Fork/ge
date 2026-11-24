@@ -17,7 +17,6 @@
 #include "api/aclgrph/attr_options/attr_options.h"
 #include "graph/debug/ge_attr_define.h"
 #include "framework/common/util.h"
-#include "base/err_msg.h"
 
 namespace ge {
 graphStatus WeightCompressFunc(const ComputeGraphPtr &graph, const std::string &cfg_path) {

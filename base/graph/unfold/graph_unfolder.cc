@@ -20,7 +20,6 @@
 #include "graph/utils/op_type_utils.h"
 #include "graph/op_so_bin.h"
 #include "base/err_msg.h"
-#include "graph/utils/graph_utils.h"
 
 namespace gert {
 namespace {

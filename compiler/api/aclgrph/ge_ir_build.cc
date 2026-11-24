@@ -61,7 +61,6 @@
 #include "graph/manager/session_id_manager.h"
 #include "graph/manager/util/rt_context_util.h"
 #include "analyzer/analyzer.h"
-#include "graph/utils/type_utils.h"
 #include "graph/fusion/pass/pass_plugin_loader.h"
 #include "common/python_runtime/ge_python_runtime_manager.h"
 #include "runtime/custom_op/custom_op_loader.h"

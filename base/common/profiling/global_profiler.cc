@@ -22,7 +22,6 @@
 #include "graph_metadef/common/ge_common/util.h"
 #include "graph_metadef/graph/utils/file_utils.h"
 #include "utils/extern_math_util.h"
-#include "framework/runtime/device_memory_recorder.h"
 #include "graph/compute_graph.h"
 #include "aprof_pub.h"
 #include "graph/debug/ge_attr_define.h"
