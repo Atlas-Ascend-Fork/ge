@@ -35,7 +35,7 @@ static Status ReadGEPListFromFile(const std::string &gep_list_file, GuardedExecu
   try {
     from_json(json_obj, gep_info_list);
   } catch (const nlohmann::json::exception &e) {
-    GELOGE(FAILED, "Failed to read gep_list file[%s], err msg: %s", gep_list_file.c_str());
+    GELOGE(FAILED, "Failed to read gep_list file[%s], err msg: %s", gep_list_file.c_str(), e.what());
     return FAILED;
   }
   if (gep_info_list.gep_list.empty()) {
