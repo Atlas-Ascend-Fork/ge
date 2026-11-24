@@ -673,6 +673,27 @@ TEST_F(UTEST_ACL_Model, aclmdlGetDesc_Ok_GetDescFromOm2) {
   acl::AclResourceManagerOm2::GetInstance().DeleteOm2Executor(modelId);
 }
 
+TEST_F(UTEST_ACL_Model, aclmdlGetDesc_Om2_GetOpAttrFailed_ReturnsError) {
+  // Fixed id far from the auto-generator range (starts at max/2U) to avoid shifting subsequent OM2 model ids
+  uint32_t modelId = std::numeric_limits<uint32_t>::max() - 1U;
+  auto om2_executor = std::unique_ptr<gert::Om2ModelExecutor>(new (std::nothrow) gert::Om2ModelExecutor);
+  ASSERT_NE(om2_executor, nullptr);
+  acl::AclResourceManagerOm2::GetInstance().AddOm2ExecutorWithModelId(modelId, std::move(om2_executor));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), GetModelDescInfo(A<const std::vector<gert::GertTensorDesc> *&>(),
+                                                                    A<const std::vector<gert::GertTensorDesc> *&>(), _))
+      .WillRepeatedly(Invoke(GetOm2ModelDescInfo_Invoke));
+  EXPECT_CALL(MockFunctionTest::aclStubInstance(), GetOm2OpAttr(_)).WillOnce(Return(ge::FAILED));
+
+  aclmdlDesc *desc = aclmdlCreateDesc();
+  ASSERT_NE(desc, nullptr);
+
+  aclError ret = aclmdlGetDesc(desc, modelId);
+  EXPECT_NE(ret, ACL_SUCCESS);
+
+  EXPECT_EQ(aclmdlDestroyDesc(desc), ACL_SUCCESS);
+  acl::AclResourceManagerOm2::GetInstance().DeleteOm2Executor(modelId);
+}
+
 TEST_F(UTEST_ACL_Model, aclmdlGetDesc) {
   aclError ret = aclmdlGetDesc(nullptr, 1);
   EXPECT_NE(ret, ACL_SUCCESS);

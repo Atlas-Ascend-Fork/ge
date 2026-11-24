@@ -164,6 +164,8 @@ GEPass::Run(names_to_passes) {
 
 优化 Pass 可能修改图结构（添加/删除节点），导致后续节点看到的图已经不同于之前。`BaseNodePass` 的 `AddRePassNode` 和 `AddImmediateRePassNode` 方法让 Pass 可以声明"这个新节点需要被其他 Pass 再处理一遍"，`GEPass` 框架负责处理这些 repass 请求。其中"立即重遍"（ImmediateRePass）能力使得某些修改可以立即被当前轮次中的后续 Pass 看到，避免了多轮迭代的性能开销。
 
+内置 Host `FloorDiv` 常量求值须保留浮点向下取整与整数原宽度语义；整数商无法表示时跳过折叠。具体规则见[常量折叠计算引擎](../../features/constant_folding.md#451-ge-内置-host-kernel)。
+
 ### 2.2 优化 Pass 的组织
 
 GE 的优化 Pass 分多个批次执行，分布在不同阶段。核心的 Pass 包括：
@@ -320,7 +322,7 @@ Python 层会自动创建 ES `GraphBuilder`、图输入、图输出和 pattern c
 多个 pattern；旧的显式 `patterns(self)` 仍兼容，但不能和 `@pattern` 方法混用。
 这层封装只改变 Python 侧易用性，不改变 C++ pass 执行流程和匹配语义。
 
-面向开发者的机制说明和开发步骤见 [融合 Pattern Pass 机制](../../features/fusion_pattern_pass.md)。
+实例化 Pass 前，`FusionPassExecutor` 按来源选择开关判断方式：内置融合 Pass 检查编译级别，自定义 Pass 由 `PassOptionUtils::IsPassEnable` 按运行时开关和注册默认值判定。优先级和开发步骤见[融合 Pattern Pass 机制](../../features/fusion_pattern_pass.md)。
 
 为了降低自定义 `FusionBasePass` 的接入成本，`ge/fusion/graph_fuse_inspector_utils.h` 增加了 `GraphFuseInspectorUtils` 对外工具类。它将原来分散在 `ComputeGraph::IsSupportFuse`、`FusionUtils::WillCauseCycleIfFuse`、`FusionUtils::UpdateToCycleDetector` 与融合统计逻辑中的关键步骤收敛成两个开放能力：
 

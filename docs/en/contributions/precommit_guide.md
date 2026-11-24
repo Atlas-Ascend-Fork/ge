@@ -49,8 +49,8 @@ pre-commit install
 Step 4: Verify installation (optional)
 
 ```bash
-# Test hook (won't actually commit)
-git commit --allow-empty -m "test pre-commit"
+# Verify hooks (does not create a commit)
+pre-commit run --all-files
 ```
 
 Subsequently, code formatting processing and OAT checks will be automatically performed before committing code.

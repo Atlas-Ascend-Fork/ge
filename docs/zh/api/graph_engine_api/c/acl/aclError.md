@@ -215,7 +215,7 @@ typedef int aclError;
 | #define  ACL_ERROR_RT_SUSPECT_REMOTE_ERROR  507057 | 多进程、多Device场景下，对端Device内存可能出现故障，或者当前Device内存访问越界。 | 用户需排查对端Device进程的错误信息或当前Device的内存访问情况。 |
 | #define  ACL_ERROR_RT_DRV_INTERNAL_ERROR  507899 | Driver模块内部错误。 | 您可以获取日志后单击[Link](https://www.hiascend.com/support)联系技术支持。 |
 | #define  ACL_ERROR_RT_AICPU_INTERNAL_ERROR  507900 | AI CPU模块内部错误。 | 您可以获取日志后单击[Link](https://www.hiascend.com/support)联系技术支持。 |
-| #define  ACL_ERROR_RT_SOCKET_CLOSE  507901 | 内部HDC（Host Device Communication）会话链接断开。 | 您可以获取日志后单击[Link](https://www.hiascend.com/support)联系技术支持。 |
+| #define  ACL_ERROR_RT_SOCKET_CLOSE  507901 | 内部HDC（Host Device Communication）会话连接断开。 | 您可以获取日志后单击[Link](https://www.hiascend.com/support)联系技术支持。 |
 | #define  ACL_ERROR_RT_AICPU_INFO_LOAD_RSP_ERR  507902 | AI CPU调度处理失败。 | 您可以获取日志后单击[Link](https://www.hiascend.com/support)联系技术支持。 |
 | #define  ACL_ERROR_RT_STREAM_CAPTURE_INVALIDATED  507903 | 模型捕获异常。 | 您可以获取日志后单击[Link](https://www.hiascend.com/support)联系技术支持。 |
 | #define ACL_ERROR_RT_COMM_OP_RETRY_FAIL  507904 | 通信算子重执行失败 | 您可以获取日志后单击[Link](https://www.hiascend.com/support)联系技术支持。 |

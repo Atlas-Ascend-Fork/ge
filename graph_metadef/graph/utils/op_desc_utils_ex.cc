@@ -216,11 +216,12 @@ graphStatus OpDescUtilsEx::CallInferFunc(const OpDescPtr &op_desc, Operator &op)
       if (enable_fast_ignore_infer_error) {
         ret = (ret == GRAPH_SUCCESS) ? GRAPH_SUCCESS : GRAPH_PARAM_INVALID;
       } else if (ret != GRAPH_SUCCESS) {
-        REPORT_INNER_ERR_MSG(
-            "EZ9999",
-            "Call InferShapeAndType for node:%s(%s) failed. You can ignore this validation by exporting "
-            "IGNORE_INFER_ERROR=1 if necessary, but it is highly recommended to fix this problem.",
-            op_desc->GetNamePtr(), op_desc->GetTypePtr());
+        std::string reason = std::string("Call InferShapeAndType for node:") + op_desc->GetNamePtr() + "(" +
+                             op_desc->GetTypePtr() +
+                             ") failed. You can ignore this validation by exporting IGNORE_INFER_ERROR=1 if "
+                             "necessary, but it is highly recommended to fix this problem.";
+        REPORT_PREDEFINED_ERR_MSG("E10055", std::vector<const char *>({"reason"}),
+                                  std::vector<const char *>({reason.c_str()}));
       }
     }
   }

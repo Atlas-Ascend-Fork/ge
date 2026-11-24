@@ -16,6 +16,7 @@
 #include "common/checker.h"
 #include "common/util/trace_manager/trace_manager.h"
 #include "common/compile_profiling/ge_trace_wrapper.h"
+#include "graph/ge_local_context.h"
 #include "graph/utils/graph_utils_ex.h"
 #include "graph/utils/node_utils.h"
 #include "register/custom_pass_helper.h"
@@ -31,6 +32,40 @@ Status MergeFinalStatus(Status final_status, Status cur_pass_status) {
     return final_status;
   }
   return cur_pass_status == NOT_CHANGED ? final_status : cur_pass_status;
+}
+
+bool ShouldRunBuiltinFusionPass(const std::map<std::string, bool> &file_switches, const std::string &pass_name,
+                                PassSwitch default_switch) {
+  // The working option table stores explicit on/off and the registered optimization-level value under the same key.
+  std::string option_value;
+  const auto option_status = GetThreadLocalContext().GetOo().GetValue(pass_name, option_value);
+  if ((option_status == GRAPH_SUCCESS) && ((option_value == "on") || (option_value == "off"))) {
+    if (option_value == "off") {
+      GELOGI("[PassSwitch] Pass [%s] is disabled by graph option (--optimization_switch).", pass_name.c_str());
+    }
+    return option_value == "on";
+  }
+
+  if ((option_status != GRAPH_SUCCESS) || ((!option_value.empty()) && (option_value != "true"))) {
+    GELOGI("[PassSwitch] Pass [%s] is disabled by optimization level.", pass_name.c_str());
+    return false;
+  }
+
+  static const std::string kPassSwitchAll = "ALL";
+  auto entry = file_switches.find(pass_name);
+  if (entry == file_switches.cend()) {
+    entry = file_switches.find(kPassSwitchAll);
+  }
+  if (entry != file_switches.cend()) {
+    if (!entry->second) {
+      GELOGI("[PassSwitch] Pass [%s] is disabled by fusion switch file.", pass_name.c_str());
+    }
+    return entry->second;
+  }
+  if (default_switch == PassSwitch::kOff) {
+    GELOGI("[PassSwitch] Pass [%s] is disabled by registration default (DefaultSwitch kOff).", pass_name.c_str());
+  }
+  return default_switch == PassSwitch::kOn;
 }
 }  // namespace
 
@@ -120,7 +155,11 @@ Status FusionPassExecutor::InitPassesIfNeed(CustomPassStage stage) {
   std::vector<std::pair<int32_t, FusionPassRegistrationData>> keyed_pass_regs;
   for (const auto &pass_reg : pass_creators) {
     const std::string pass_name = pass_reg.GetPassName().GetString();
-    if (!PassOptionUtils::IsPassEnable(pass_name_to_switches_, pass_name, pass_reg.GetDefaultSwitch())) {
+    const bool is_builtin_pass = PassRegistry::GetInstance().IsBuiltinFusionPass(pass_name);
+    const bool should_run =
+        is_builtin_pass ? ShouldRunBuiltinFusionPass(pass_name_to_switches_, pass_name, pass_reg.GetDefaultSwitch())
+                        : PassOptionUtils::IsPassEnable(pass_name_to_switches_, pass_name, pass_reg.GetDefaultSwitch());
+    if (!should_run) {
       GELOGI("[FusionPass][SKIP] Pass [%s] is disabled.", pass_reg.ToString().GetString());
       continue;
     }

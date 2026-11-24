@@ -162,6 +162,8 @@ GEPass::Run(names_to_passes) {
 
 Optimization Pass may modify graph structure (add/delete nodes), causing subsequent nodes to see a graph different from before. `BaseNodePass`'s `AddRePassNode` and `AddImmediateRePassNode` methods allow Pass to declare "this new node needs to be processed again by other Passes", and `GEPass` framework is responsible for handling these repass requests. The "immediate re-traversal" (ImmediateRePass) capability enables certain modifications to be immediately seen by subsequent Passes in the current round, avoiding performance overhead of multiple rounds of iteration.
 
+Host `FloorDiv` preserves the input precision and skips folding if the integer quotient is unrepresentable. See the [built-in Host Kernel](../../features/constant_folding.md#451-ge-built-in-host-kernel) section.
+
 ### 2.2 Organization of Optimization Passes
 
 GE's optimization Passes execute in multiple batches, distributed at different stages. Core Passes include:
@@ -317,7 +319,7 @@ Python `PatternFusionPass` besides adapter protocol also provides a layer of exp
 Python layer will automatically create ES `GraphBuilder`, graph input, graph output and pattern capture, finally still return original `Pattern` / `Graph` objects to C++ bridge. Multiple `@pattern` methods will be synthesized into multiple patterns returned by legacy `patterns(self)`; old explicit `patterns(self)` is still compatible, but cannot be mixed with `@pattern` methods.
 This layer of encapsulation only changes Python-side usability, does not change C++ pass execution flow and matching semantics.
 
-For mechanism explanation and development steps for developers, see [Fusion Pattern Pass Mechanism](../../features/fusion_pattern_pass.md).
+Before creating a pass, `FusionPassExecutor` checks its origin. Built-in fusion passes are checked against the optimization level. For custom passes, `PassOptionUtils::IsPassEnable` uses runtime switches and registration defaults. See [Fusion Pattern Pass Mechanism](../../features/fusion_pattern_pass.md) for switch precedence and development steps.
 
 To lower custom `FusionBasePass` integration cost, `ge/fusion/graph_fuse_inspector_utils.h` adds `GraphFuseInspectorUtils` public utility class. It converges key steps originally scattered in `ComputeGraph::IsSupportFuse`, `FusionUtils::WillCauseCycleIfFuse`, `FusionUtils::UpdateToCycleDetector` and fusion statistics logic into three open capabilities:
 

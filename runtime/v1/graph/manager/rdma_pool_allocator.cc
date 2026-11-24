@@ -87,13 +87,13 @@ void RdmaPoolAllocator::Finalize() {
 Status RdmaPoolAllocator::InitMemory(const size_t mem_size) {
   const auto device_id = GetContext().DeviceId();
   GELOGD("Init Rdma Memory with size [%zu] for devid:[%u].", mem_size, device_id);
+  const std::string purpose = "Memory for rdma pool";
+  const std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (rdma_base_addr_ != nullptr) {
     REPORT_INNER_ERR_MSG("E19999", "Param rdma_base_addr_ is not nullptr, devid:%u, check invalid", device_id);
     GELOGE(GE_MULTI_INIT, "[Check][Param] Rdma pool has been malloced, devid:%u", device_id);
     return GE_MULTI_INIT;
   }
-  const std::string purpose = "Memory for rdma pool";
-  const std::lock_guard<std::recursive_mutex> lock(mutex_);
   const int32_t dev_id = static_cast<int32_t>(device_id);
   GE_CHK_ACL_RET(aclrtSetDevice(dev_id));
   // DeviceReset before memory finished!
@@ -111,6 +111,11 @@ Status RdmaPoolAllocator::InitMemory(const size_t mem_size) {
   if (base_block == nullptr) {
     REPORT_INNER_ERR_MSG("E19999", "New Block failed, size:%zu, device_id:%u", mem_size, device_id);
     GELOGE(GE_GRAPH_MALLOC_FAILED, "[New][Block] failed, size:%zu, device_id:%u", mem_size, device_id);
+    if (memory_allocator_->FreeMemory(rdma_base_addr_) != SUCCESS) {
+      GELOGW("Free rdma pool memory failed when new block failed, device_id:%u", device_id);
+    }
+    rdma_base_addr_ = nullptr;
+    rdma_mem_size_ = 0U;
     return GE_GRAPH_MALLOC_FAILED;
   }
   (void)block_bin_.insert(base_block);

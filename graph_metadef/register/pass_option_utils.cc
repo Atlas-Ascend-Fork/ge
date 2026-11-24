@@ -9,30 +9,63 @@
  */
 
 #include "register/pass_option_utils.h"
+#include <cstdint>
+#include <vector>
 #include "register/optimization_option_registry.h"
 #include "ge_common/debug/ge_log.h"
-#include "common/checker.h"
 #include "graph/ge_local_context.h"
 
 namespace ge {
-graphStatus PassOptionUtils::CheckIsPassEnabled(const std::string &pass_name, bool &is_enabled) {
-  // 查看是否通过optimization_swtich配置过pass开关，配置过的话working_opt_names_to_value_中有pass_name这个option，且值为"on"或"off"
-  const auto res = CheckIsPassEnabledByOption(pass_name, is_enabled);
-  if (res == GRAPH_SUCCESS) {
-    return GRAPH_SUCCESS;
+namespace {
+enum class PassSwitchDecision : uint8_t {
+  kUnspecified,
+  kEnabled,
+  kDisabled,
+};
+
+PassSwitchDecision FindOptimizationSwitchOverride(const std::string &pass_name) {
+  std::string opt_value;
+  if (GetThreadLocalContext().GetOo().GetValue(pass_name, opt_value) != GRAPH_SUCCESS) {
+    return PassSwitchDecision::kUnspecified;
   }
-  GELOGD("The pass [%s] is not enabled by graph options", pass_name.c_str());
-  /**
-   * 原有逻辑分几种情况：
-   * 1.PassOptionRegistry::pass_names_to_options_中没有pass关联的option，即pass未被注册，返回非零错误码
-   * 2.PassOptionRegistry::pass_names_to_options_中有pass关联的option，但是其关联的option都没有注册，返回非零错误码
-   * 3.PassOptionRegistry::pass_names_to_options_中有pass关联的option且有关联的option注册，根据passname到其关联的option中获取开关选项值，
-   *  1) 若为空或者"true"，则is_enabled返回true（需要注册关联的option在注册时设置了该级别的默认值）
-   *  2) 若为"false"，则is_enabled返回false
-   */
+  if (opt_value == "on") {
+    return PassSwitchDecision::kEnabled;
+  }
+  if (opt_value == "off") {
+    return PassSwitchDecision::kDisabled;
+  }
+  return PassSwitchDecision::kUnspecified;
+}
+
+PassSwitchDecision FindFusionSwitchFileOverride(const std::map<std::string, bool> &file_switches,
+                                                const std::string &pass_name) {
+  static const std::string kPassSwitchAll = "ALL";
+  auto entry = file_switches.find(pass_name);
+  if (entry == file_switches.cend()) {
+    entry = file_switches.find(kPassSwitchAll);
+  }
+  if (entry == file_switches.cend()) {
+    return PassSwitchDecision::kUnspecified;
+  }
+  if (!entry->second) {
+    GELOGI("[PassSwitch] Pass [%s] is disabled by fusion switch file: entry [%s] is off.", pass_name.c_str(),
+           entry->first.c_str());
+    return PassSwitchDecision::kDisabled;
+  }
+  return PassSwitchDecision::kEnabled;
+}
+
+bool IsEnabledByRegistrationDefault(const std::string &pass_name, PassSwitch default_switch) {
+  if (default_switch == PassSwitch::kOff) {
+    GELOGI("[PassSwitch] Pass [%s] is disabled by registration default (DefaultSwitch kOff).", pass_name.c_str());
+  }
+  return default_switch == PassSwitch::kOn;
+}
+
+graphStatus ResolveRegisteredPassSwitch(const std::string &pass_name, bool &is_enabled) {
   std::vector<std::string> opt_names;
   const auto ret = PassOptionRegistry::GetInstance().FindOptionNamesByPassName(pass_name, opt_names);
-  if (ret != SUCCESS) {
+  if (ret != GRAPH_SUCCESS) {
     // 若Pass未被注册，返回非零错误码，由调用方判断如何处理
     GELOGI("The pass [%s] is not registered", pass_name.c_str());
     return ret;
@@ -56,71 +89,58 @@ graphStatus PassOptionUtils::CheckIsPassEnabled(const std::string &pass_name, bo
 
   is_enabled = false;
   const auto &oo = GetThreadLocalContext().GetOo();
+  // 有值的二级选项优先于一级选项；空串和 "true" 表示开启。
   for (auto it = opt_infos.crbegin(); it != opt_infos.crend(); ++it) {
     const auto opt = *it;
     std::string opt_value;
-    if (oo.GetValue(opt->name, opt_value) == GRAPH_SUCCESS) {
-      if (opt_value.empty() || (opt_value == "true")) {
-        GELOGD("the pass [%s] is enabled, option [%s] is [%s]", pass_name.c_str(), opt->name.c_str(),
-               opt_value.c_str());
-        is_enabled = true;
-        return GRAPH_SUCCESS;
-      } else {
-        GELOGD("the pass [%s] is disabled, option [%s] is [%s]", pass_name.c_str(), opt->name.c_str(),
-               opt_value.c_str());
-        return GRAPH_SUCCESS;
-      }
+    if (oo.GetValue(opt->name, opt_value) != GRAPH_SUCCESS) {
+      continue;
     }
+    is_enabled = opt_value.empty() || (opt_value == "true");
+    GELOGD("The pass [%s] is %s, option [%s] is [%s]", pass_name.c_str(), is_enabled ? "enabled" : "disabled",
+           opt->name.c_str(), opt_value.c_str());
+    return GRAPH_SUCCESS;
   }
   // OoTable中没有配置该Pass的开关选项，说明不使能
   GELOGD("the pass [%s] is disabled, option is not in working option table", pass_name.c_str());
   return GRAPH_SUCCESS;
 }
 
+}  // namespace
+
+graphStatus PassOptionUtils::CheckIsPassEnabled(const std::string &pass_name, bool &is_enabled) {
+  const auto override = FindOptimizationSwitchOverride(pass_name);
+  if (override != PassSwitchDecision::kUnspecified) {
+    is_enabled = (override == PassSwitchDecision::kEnabled);
+    return GRAPH_SUCCESS;
+  }
+  return ResolveRegisteredPassSwitch(pass_name, is_enabled);
+}
+
 graphStatus PassOptionUtils::CheckIsPassEnabledByOption(const std::string &pass_name, bool &is_enabled) {
-  std::string opt_value;
-  const auto res = GetThreadLocalContext().GetOo().GetValue(pass_name, opt_value);
-  if (res != SUCCESS) {
+  const auto override = FindOptimizationSwitchOverride(pass_name);
+  if (override == PassSwitchDecision::kUnspecified) {
     return GRAPH_FAILED;
   }
 
-  if (opt_value == "on" || opt_value == "off") {
-    GELOGD("The pass [%s] is configured by graph options, switch is [%s]", pass_name.c_str(), opt_value.c_str());
-    is_enabled = (opt_value == "on");
-    return GRAPH_SUCCESS;
-  }
-
-  return GRAPH_FAILED;
+  is_enabled = (override == PassSwitchDecision::kEnabled);
+  GELOGD("The pass [%s] is configured by graph options, switch is [%s]", pass_name.c_str(), is_enabled ? "on" : "off");
+  return GRAPH_SUCCESS;
 }
 
 bool PassOptionUtils::IsPassEnable(const std::map<std::string, bool> &pass_name_2_switches,
                                    const std::string &pass_name, PassSwitch default_switch) {
-  static const std::string kPassSwitchAll = "ALL";
-  bool is_enable_by_option = false;
-  if (CheckIsPassEnabledByOption(pass_name, is_enable_by_option) == SUCCESS) {
-    if (!is_enable_by_option) {
+  const auto optimization_override = FindOptimizationSwitchOverride(pass_name);
+  if (optimization_override != PassSwitchDecision::kUnspecified) {
+    if (optimization_override == PassSwitchDecision::kDisabled) {
       GELOGI("[PassSwitch] Pass [%s] is disabled by graph option (--optimization_switch).", pass_name.c_str());
     }
-    return is_enable_by_option;
+    return optimization_override == PassSwitchDecision::kEnabled;
   }
-  const auto iter = pass_name_2_switches.find(pass_name);
-  if (iter != pass_name_2_switches.cend()) {
-    if (!iter->second) {
-      GELOGI("[PassSwitch] Pass [%s] is disabled by fusion switch file: entry [%s] is off.", pass_name.c_str(),
-             pass_name.c_str());
-    }
-    return iter->second;
+  const auto file_override = FindFusionSwitchFileOverride(pass_name_2_switches, pass_name);
+  if (file_override != PassSwitchDecision::kUnspecified) {
+    return file_override == PassSwitchDecision::kEnabled;
   }
-  const auto all_iter = pass_name_2_switches.find(kPassSwitchAll);
-  if (all_iter != pass_name_2_switches.end()) {
-    if (!all_iter->second) {
-      GELOGI("[PassSwitch] Pass [%s] is disabled by fusion switch file: entry [ALL] is off.", pass_name.c_str());
-    }
-    return all_iter->second;
-  }
-  if (default_switch == PassSwitch::kOff) {
-    GELOGI("[PassSwitch] Pass [%s] is disabled by registration default (DefaultSwitch kOff).", pass_name.c_str());
-  }
-  return default_switch == PassSwitch::kOn;
+  return IsEnabledByRegistrationDefault(pass_name, default_switch);
 }
 }  // namespace ge

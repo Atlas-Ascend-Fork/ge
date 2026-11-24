@@ -259,11 +259,10 @@ class DavinciModel {
   /// @brief NnExecute
   /// @param [in] stream   execute stream
   /// @param [in] async_mode  is asynchronize mode.
-  /// @param [in] input_data  model input data
+  /// @param [in] input_data  model input data, blobs may be adjusted during execution
   /// @param [out] output_data  model output data
-  Status NnExecute(aclrtStream const stream, const bool async_mode, const InputData &input_data,
-                   OutputData &output_data, const std::vector<GeTensor> &input_tensor,
-                   const std::vector<GeTensor> &output_tensor);
+  Status NnExecute(aclrtStream const stream, const bool async_mode, InputData &input_data, OutputData &output_data,
+                   const std::vector<GeTensor> &input_tensor, const std::vector<GeTensor> &output_tensor);
 
   /// @ingroup ge
   /// @brief NnExecute

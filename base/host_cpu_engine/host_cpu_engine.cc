@@ -204,9 +204,12 @@ bool HostCpuEngine::IsOutputDtypeSupported(const ConstOpDescPtr &op_desc) {
     GELOGW("[Check][Param] op_desc is null, treat output dtype as unsupported.");
     return false;
   }
-  for (const auto &out_desc : op_desc->GetAllOutputsDesc()) {
-    if (kHostCpuOutputDtypeWhiteList.count(out_desc.GetDataType()) == 0U) {
-      GELOGW("data type %s is not supported.", TypeUtils::DataTypeToSerialString(out_desc.GetDataType()).c_str());
+  for (const auto &out_desc : op_desc->GetAllOutputsDescPtr()) {
+    if (out_desc == nullptr) {
+      return false;
+    }
+    if (kHostCpuOutputDtypeWhiteList.count(out_desc->GetDataType()) == 0U) {
+      GELOGW("data type %s is not supported.", TypeUtils::DataTypeToSerialString(out_desc->GetDataType()).c_str());
       return false;
     }
   }

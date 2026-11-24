@@ -17,6 +17,7 @@ using Status = uint32_t;
 #define GE_API_TYPES_DEF
 
 #include "common/python_runtime/ge_python_runtime_manager.h"
+#include "ge/ge_api_error_codes.h"
 
 // 桩版 libge_common.so 不承载 Python 运行时，仅为让依赖桩库的形态通过装载期符号解析。
 // EnsureReady 返回 FAILED：桩形态无解释器可附着，明确失败优于假装就绪。

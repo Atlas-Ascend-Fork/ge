@@ -83,6 +83,22 @@ def full_markdown_report_name(run_date):
     return markdown_report_name(run_date)
 
 
+def validate_report_name(name):
+    """Validate a caller-supplied Markdown report filename.
+
+    Only a plain ``.md`` filename is accepted; directory components are
+    rejected so callers cannot escape the requested ``--out`` directory.
+    """
+    value = str(name or "")
+    if not value or value in (".", ".."):
+        raise ValueError("报告文件名不能为空")
+    if "/" in value or "\\" in value or "\x00" in value:
+        raise ValueError("报告文件名不能包含目录分隔符")
+    if not value.endswith(".md"):
+        raise ValueError("报告文件名必须以 .md 结尾")
+    return value
+
+
 def report_url(run_date, suffix=DEFAULT_REPORT_SUFFIX):
     """Return the public OBS URL embedded in issue-tracking JSON."""
     run_date = validate_run_date(run_date)
@@ -138,9 +154,11 @@ def optional_delivery_names(run_date):
     return {"excel": excel_report_name(run_date)}
 
 
-def delivery_names(run_date, include_excel=True):
+def delivery_names(run_date, include_excel=True, report_name=None):
     """All dated delivery artifacts; Excel is optional by default."""
     names = required_delivery_names(run_date)
+    if report_name:
+        names["full_markdown"] = validate_report_name(report_name)
     if include_excel:
         names.update(optional_delivery_names(run_date))
     return names
@@ -166,10 +184,12 @@ def run_date_from_manifest(workdir, now=None):
     return current_run_date(now)
 
 
-def verify_delivery(workdir, run_date=None, include_excel=False):
+def verify_delivery(workdir, run_date=None, include_excel=False, report_name=None):
     """Return missing required/optional delivery filenames."""
     resolved = (
         validate_run_date(run_date) if run_date else run_date_from_manifest(workdir)
     )
-    names = delivery_names(resolved, include_excel=include_excel)
+    names = delivery_names(
+        resolved, include_excel=include_excel, report_name=report_name
+    )
     return [name for name in names.values() if not (Path(workdir) / name).is_file()]

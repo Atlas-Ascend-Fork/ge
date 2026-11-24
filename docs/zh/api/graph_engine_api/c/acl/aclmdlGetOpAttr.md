@@ -41,7 +41,7 @@ const char *aclmdlGetOpAttr(aclmdlDesc *modelDesc, const char *opName, const cha
 | --- | --- | --- |
 | modelDesc | 输入 | aclmdlDesc类型的指针。<br>需提前调用[aclmdlCreateDesc](aclmdlCreateDesc.md)接口创建aclmdlDesc类型的数据，再调用[aclmdlGetDesc](aclmdlGetDesc.md)接口根据模型ID获取到对应的aclmdlDesc类型的数据。 |
 | opName | 输入 | 算子名称的指针。 |
-| attr | 输入 | 算子属性的指针。<br>当前仅支持_datadump_original_op_names属性，用于记录某个算子是由哪些算子融合得到的。通过本接口获取到的_datadump_original_op_names属性值格式为[opName1_len]opName1…..[opNameN_len]opNameN，opNameN_len表示算子名称字符串的长度。<br>_datadump_original_op_names属性值示例如下，表示某个融合算子由scale2c_branch2c、bn2c_branch2c、res2c_branch2c、res2c、res2c_relu这五个算子融合而成的，算子名称字符串的长度分别为16、13、14、5、10：<br>[16]scale2c_branch2c[13]bn2c_branch2c[14]res2c_branch2c[5]res2c[10]res2c_relu |
+| attr | 输入 | 算子属性的指针。<br>当前仅支持_datadump_original_op_names属性，用于记录某个算子是由哪些算子融合得到的。通过本接口获取到的_datadump_original_op_names属性值格式为[opName1_len]opName1…..[opNameN_len]opNameN，opNameN_len表示算子名称字符串的长度。<br>_datadump_original_op_names属性值示例如下，表示某个融合算子由scale2c_branch2c、bn2c_branch2c、res2c_branch2c、res2c、res2c_relu这五个算子融合而成，算子名称字符串的长度分别为16、13、14、5、10：<br>[16]scale2c_branch2c[13]bn2c_branch2c[14]res2c_branch2c[5]res2c[10]res2c_relu |
 
 ## 返回值说明
 

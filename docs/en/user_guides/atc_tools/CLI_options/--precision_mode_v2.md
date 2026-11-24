@@ -114,7 +114,7 @@ Replace $\{INSTALL\_DIR\} in the preceding path with the file storage path after
     Ascend 950PR&950DT products
 
 <!-- end id5 -->
-- This parameter defaults to performance first, which may cause precision overflow issues during subsequent inference. If a precision issue occurs during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in *[Application Development](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md)* to locate the issue.
+- This parameter defaults to performance first, which may cause precision overflow issues during subsequent inference. If a precision issue occurs during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in *[Application Development](https://gitcode.com/cann/docs/blob/master/docs/en/app-dev/c/00_acl_cpp_dev.md)* to locate the issue.
 - If you focus on precision issues, you can change it to another value, such as **origin.**
 
 ## Recommended Configuration and Benefits

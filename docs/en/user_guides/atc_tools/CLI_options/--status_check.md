@@ -65,4 +65,4 @@ atc --status_check=1 ...
 
 ## Constraints
 
-Using the [--status\_check](--status_check.md) parameter only adds overflow detection logic to the operator \*.cce file generated after model compilation. To view which operators overflow, the **aclInit** API provided during model inference must be used, and the "dump\_debug" switch must be enabled in the JSON configuration file passed to this API. For details about the API, see the "Initialization and Deinitialization \> aclInit" section in *[Runtime API](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md)*.
+Using the [--status\_check](--status_check.md) parameter only adds overflow detection logic to the operator \*.cce file generated after model compilation. To view which operators overflow, the **aclInit** API provided during model inference must be used, and the "dump\_debug" switch must be enabled in the JSON configuration file passed to this API. For details about the API, see the "Initialization and Deinitialization \> aclInit" section in *[Runtime API](https://gitcode.com/cann/runtime/blob/master/docs/en/api_ref/README.md)*.

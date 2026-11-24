@@ -29,7 +29,7 @@
 
 根据om或om2模型文件获取模型执行时所需的权值内存大小、工作内存大小。
 
-当由用户管理内存时，为确保内存不浪费，在申请工作内存、权值内存前，需要调用本接口查询模型运行时所需工作内存、权值内存的大小。如果模型输入数据的Shape不确定，则不能调用本命接口查询内存大小，在加载模型时，就无法由用户管理内存，因此需选择由系统管理内存的模型加载接口（例如，[aclmdlLoadFromFile](aclmdlLoadFromFile.md)、[aclmdlLoadFromMem](aclmdlLoadFromMem.md)）。
+当由用户管理内存时，为确保内存不浪费，在申请工作内存、权值内存前，需要调用本接口查询模型运行时所需工作内存、权值内存的大小。如果模型输入数据的Shape不确定，则不能调用本接口查询内存大小，在加载模型时，就无法由用户管理内存，因此需选择由系统管理内存的模型加载接口（例如，[aclmdlLoadFromFile](aclmdlLoadFromFile.md)、[aclmdlLoadFromMem](aclmdlLoadFromMem.md)）。
 
 ## 函数原型
 

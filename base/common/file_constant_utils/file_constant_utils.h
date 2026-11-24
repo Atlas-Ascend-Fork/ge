@@ -11,6 +11,8 @@
 #ifndef INC_FRAMEWORK_COMMON_FILE_CONSTANT_UTILS_H
 #define INC_FRAMEWORK_COMMON_FILE_CONSTANT_UTILS_H
 
+#include <cstdint>
+#include <fstream>
 #include <map>
 #include <string>
 #include <vector>

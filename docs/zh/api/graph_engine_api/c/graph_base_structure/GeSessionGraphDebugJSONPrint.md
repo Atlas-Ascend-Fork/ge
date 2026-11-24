@@ -40,7 +40,7 @@ ge::Status GeSessionGraphDebugJSONPrint(ge::Session &session, uint32_t graph_id,
 | session | 输入 | 加载图的Session实例。 |
 | graph_id | 输入 | 要导出的图id。 |
 | flags | 输入 | 预留，当前固定配置为0。 |
-| json_result | 输出 | JSON格式字符，图中任务信息。 |
+| json_result | 输出 | JSON格式字符串，图中任务信息。 |
 
 ## 返回值说明
 

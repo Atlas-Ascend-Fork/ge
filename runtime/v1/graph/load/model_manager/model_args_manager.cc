@@ -383,21 +383,33 @@ Status ModelArgsManager::PaRemapped(const uint64_t va, const uint64_t new_pa, co
 Status ModelArgsManager::CalculateUpdateModelParamTiling(uint32_t active_base_len, uint32_t index_len,
                                                          uint32_t &block_dim,
                                                          UpdateModelParamTilingData &tiling) const {
+  // 防止 kUBLen - active_base_len * kBufferNum 无符号下溢，超大模型需报错而非带错误 tiling 启动 kernel
+  GE_ASSERT_TRUE(active_base_len * kBufferNum < kUBLen, "active_base_len:%u exceeds UB capacity, kUBLen:%u",
+                 active_base_len, kUBLen);
   GE_ASSERT_TRUE(CalculateBlockDim(index_len, block_dim) == SUCCESS, "CalculateBlockDim failed.");
   tiling.totalActiveBaseTblCnt = AlignUp(active_base_len, kAlign32B) / sizeof(uint32_t);
   uint32_t total_cnt = index_len / sizeof(uint32_t);
   uint32_t total_buffer_len = kUBLen - active_base_len * kBufferNum;
   /* 每一轮最多计算的uint32_t数据个数 */
   uint32_t max_tile_cnt = AlignDown(total_buffer_len / kBufferFactor, kAlign256B);  // 每轮计算256字节 即64个uint32_t
+  GE_ASSERT_TRUE(max_tile_cnt > 0U, "active_base_len:%u is too large, max_tile_cnt is 0", active_base_len);
 
   tiling.blockCnt = AlignUp(MathCeil(total_cnt, block_dim), kAlign256B);
   block_dim = MathCeil(total_cnt, tiling.blockCnt);
 
   uint32_t last_block_cnt_ori = total_cnt - tiling.blockCnt * (block_dim - 1);
   uint32_t last_block_cnt = AlignUp(total_cnt - tiling.blockCnt * (block_dim - 1), kAlign256B);
-  tiling.tileNum = static_cast<uint16_t>(MathCeil(tiling.blockCnt, max_tile_cnt));
+  const uint32_t tile_num = MathCeil(tiling.blockCnt, max_tile_cnt);
+  GE_ASSERT_TRUE(tile_num <= std::numeric_limits<uint16_t>::max(),
+                 "tile_num:%u exceeds uint16 max, active_base_len:%u, index_len:%u", tile_num, active_base_len,
+                 index_len);
+  tiling.tileNum = static_cast<uint16_t>(tile_num);
   tiling.tileCnt = AlignUp(MathCeil(tiling.blockCnt, tiling.tileNum), kAlign256B);
-  tiling.lastTileNum = static_cast<uint16_t>(MathCeil(last_block_cnt, tiling.tileCnt));
+  const uint32_t last_tile_num = MathCeil(last_block_cnt, tiling.tileCnt);
+  GE_ASSERT_TRUE(last_tile_num <= std::numeric_limits<uint16_t>::max(),
+                 "last_tile_num:%u exceeds uint16 max, active_base_len:%u, index_len:%u", last_tile_num,
+                 active_base_len, index_len);
+  tiling.lastTileNum = static_cast<uint16_t>(last_tile_num);
 
   tiling.tailCnt = tiling.blockCnt - tiling.tileCnt * (tiling.tileNum - 1U);
   tiling.lastTailCnt = last_block_cnt - tiling.tileCnt * (tiling.lastTileNum - 1U);

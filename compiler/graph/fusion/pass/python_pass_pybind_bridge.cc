@@ -33,6 +33,7 @@
 #include "common/ge_common/debug/ge_log.h"
 #include "common/python_runtime/ge_python_runtime_manager.h"
 #include "graph/ascend_string.h"
+#include "graph/def_types.h"
 #include "python_pass_adapter.h"
 
 #undef PYBIND11_CHECK_PYTHON_VERSION
@@ -631,7 +632,7 @@ class PythonFusionPassPybindBridge {
                holder->instance_id.c_str());
         return FAILED;
       }
-      *matcher_config = reinterpret_cast<void *>(config_handle);
+      *matcher_config = ValueToPtr(static_cast<uint64_t>(config_handle));
       return SUCCESS;
     } catch (const py::error_already_set &err) {
       GELOGE(FAILED, "Get python pass matcher config failed, instance id[%s]: %s", holder->instance_id.c_str(),

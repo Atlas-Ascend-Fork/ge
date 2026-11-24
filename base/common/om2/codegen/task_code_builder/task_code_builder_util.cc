@@ -502,8 +502,8 @@ OpArgDesc TaskCodeBuilderUtil::ConvertAddrDesc(const AddrSemantic &addr) {
 // 完整镜像 davinci_model.cc:GetProfilingTaskType() 的逻辑，返回 MsprofGeTaskType（aprof_pub.h）的 uint32_t 值
 uint32_t TaskCodeBuilderUtil::ConvertToProfilingTaskType(const OpDescPtr &op_desc, const domi::TaskDef &task_def) {
   // 第1层: op_desc 属性 ATTR_NAME_CUBE_VECTOR_CORE_TYPE == "AIV"
-  std::string core_type;
-  if (AttrUtils::GetStr(op_desc, ATTR_NAME_CUBE_VECTOR_CORE_TYPE, core_type) && core_type == kTaskTypeAiv) {
+  const std::string *const core_type = AttrUtils::GetStr(op_desc, ATTR_NAME_CUBE_VECTOR_CORE_TYPE);
+  if ((core_type != nullptr) && (*core_type == kTaskTypeAiv)) {
     return MSPROF_GE_TASK_TYPE_AIV;
   }
 

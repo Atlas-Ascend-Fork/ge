@@ -581,6 +581,25 @@ TEST_F(ScaleAllocatorTest, should_not_recyle_occupied_spans) {
   span1->Free();
 }
 
+TEST_F(ScaleAllocatorTest, RecycleRemovesInvalidQuickLutEntriesAndRecyclesValidLayer) {
+  auto *scalable = caching_allocator->GetScalableAllocator();
+  auto *span = scalable->Alloc(*caching_allocator, pageSize);
+  ASSERT_NE(span, nullptr);
+  span->Free();
+  ASSERT_EQ(scalable->GetIdleSpanCount(), 1U);
+  ASSERT_GT(scalable->span_layers_.size(), 1U);
+  ASSERT_EQ(scalable->span_layers_[0], nullptr);
+  auto &layer_ids = scalable->span_layer_lut_->span_layer_ids_;
+  layer_ids.insert(0U);
+  layer_ids.insert(static_cast<SpanLayerId>(scalable->span_layers_.size()));
+
+  scalable->Recycle();
+
+  EXPECT_TRUE(layer_ids.empty());
+  EXPECT_EQ(scalable->GetIdleSpanCount(), 0U);
+  EXPECT_EQ(scalable->GetIdleMemSize(), 0U);
+}
+
 TEST_F(ScaleAllocatorTest, should_not_recyle_splited_spans) {
   auto span1 = caching_allocator->GetScalableAllocator()->Alloc(*caching_allocator, 2 * pageSize);
   span1->Free();

@@ -56,7 +56,7 @@ class GraphLoader {
   static Status LoadModelWithoutQ(uint32_t &model_id, const GeRootModelPtr &root_model);
 
   static Status ExecuteModel(const uint32_t model_id, aclrtStream const stream, const bool async_mode,
-                             const InputData &input_data, const std::vector<GeTensorDesc> &input_desc,
+                             InputData &input_data, const std::vector<GeTensorDesc> &input_desc,
                              OutputData &output_data, std::vector<GeTensorDesc> &output_desc);
 
   static Status LoadModelOnline(uint32_t &model_id, const GeRootModelPtr &ge_root_model, const GraphNodePtr &graph_node,

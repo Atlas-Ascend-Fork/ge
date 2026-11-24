@@ -250,9 +250,9 @@ class PassFallbackHeadersTest(unittest.TestCase):
 
             # The public API is supplied by the installed toolkit in production.
             # Only its Status typedef is needed to compile this private header.
-            public = root / "cann/include/ge"
+            public = root / "cann/include/ge_common"
             public.mkdir(parents=True)
-            (public / "ge_api_error_codes.h").write_text(
+            (public / "ge_common_api_types.h").write_text(
                 "namespace ge { using Status = unsigned int; }\n"
             )
             probe = root / "probe.cc"
@@ -522,7 +522,7 @@ class CommonLinkInterfaceTest(unittest.TestCase):
                 """cmake_minimum_required(VERSION 3.16)
 project(ge_common_interface LANGUAGES CXX)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-foreach(dep ge_intf_pub msprof_headers runtime_headers static_mmpa graph ge_common_base
+foreach(dep ge_intf_pub msprof_headers runtime_headers static_mmpa graph register ge_common_base
             ascend_protobuf c_sec error_manager unified_dlog platform json air_headers ge_metadef_headers)
     add_library(${dep} INTERFACE)
 endforeach()

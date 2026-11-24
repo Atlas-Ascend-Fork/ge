@@ -122,8 +122,7 @@ void ResetMockPythonCustomOpBridgeState() {}
 
 void ShutdownMockPythonCustomOpBridge() {}
 
-Status CollectMockPythonCustomOpDeploymentArtifacts(const PythonCustomOpDeploymentArtifactSink *sink, void *user_data) {
-  (void)user_data;
+Status CollectMockPythonCustomOpDeploymentArtifacts(const PythonCustomOpDeploymentArtifactSink *sink) {
   ++g_mock_python_custom_op_bridge_load_state.collect_artifact_count;
   return ((sink == nullptr) || (sink->on_artifact == nullptr)) ? FAILED : SUCCESS;
 }

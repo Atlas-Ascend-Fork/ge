@@ -59,11 +59,11 @@ std::vector<const FastNode *> StagePlan::GetNodesOfStage(StageKind stage) const 
 graphStatus StageAnalyzer::ReadStageAttribute(const FastNode &node, StageKind &stage) {
   const auto desc = node.GetOpDescPtr();
   GE_ASSERT_NOTNULL(desc);
-  std::string value;
-  if (!AttrUtils::GetStr(desc, gert::attr::kStage, value)) {
+  const auto *value = AttrUtils::GetStr(desc, gert::attr::kStage);
+  if (value == nullptr) {
     return GRAPH_FAILED;
   }
-  GE_ASSERT_TRUE(ParseStageKind(value, stage), "Invalid %s value %s on node %s", gert::attr::kStage, value.c_str(),
+  GE_ASSERT_TRUE(ParseStageKind(*value, stage), "Invalid %s value %s on node %s", gert::attr::kStage, value->c_str(),
                  NodeName(node).c_str());
   return GRAPH_SUCCESS;
 }

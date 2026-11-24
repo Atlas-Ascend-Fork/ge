@@ -198,7 +198,10 @@ class BuildCCArgsBinHandleKernelCodeBuilder final : public KernelCodeBuilder {
       GE_ASSERT_TRUE(binary->GetBinDataSize() > 0U);
       binary_key_ = GetKernelBinaryKey(binary->GetBinData(), binary->GetBinDataSize());
     }
-    (void)ge::AttrUtils::GetStr(op_desc, "ops_json_path", json_path_);
+    const auto *const json_path = ge::AttrUtils::GetStr(op_desc, "ops_json_path");
+    if (json_path != nullptr) {
+      json_path_ = *json_path;
+    }
     return ge::GRAPH_SUCCESS;
   }
 
@@ -299,7 +302,10 @@ class BuildTfArgsBinHandleKernelCodeBuilder final : public KernelCodeBuilder {
     GE_ASSERT_NOTNULL(op_desc);
     GE_ASSERT_NOTNULL(node_type);
     output_chain_index_ = context.output_chain_indices[0U];
-    (void)ge::AttrUtils::GetStr(op_desc, "ops_json_path", json_path_);
+    const auto *const json_path = ge::AttrUtils::GetStr(op_desc, "ops_json_path");
+    if (json_path != nullptr) {
+      json_path_ = *json_path;
+    }
     return ge::GRAPH_SUCCESS;
   }
 

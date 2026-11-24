@@ -9,6 +9,7 @@
  */
 
 #include "pass_registry.h"
+#include "common/plugin/ops_deliverables_manager.h"
 #include "framework/common/debug/ge_log.h"
 #include "graph/option/optimization_option_info.h"
 #include "optimization_option_registry.h"
@@ -74,6 +75,8 @@ void PassRegistry::RegisterFusionPass(FusionPassRegistrationData &reg_data) {
     GELOGI("Fusion Pass has already registered, detail:[%s]", iter->second.ToString().GetString());
   } else {
     name_2_fusion_pass_regs_.emplace(pass_name, reg_data);
+    const auto origin = ScopedOppLibraryLoad::IsBuiltin() ? FusionPassOrigin::kBuiltin : FusionPassOrigin::kExternal;
+    pass_name_to_origins_.emplace(pass_name, origin);
     RegisterPassOption(pass_name);
     GELOGI("Fusion Pass registered success, detail:[%s]", reg_data.ToString().GetString());
   }
@@ -108,7 +111,10 @@ bool PassRegistry::RegisterPythonPass(const PythonPassDescriptor &pass_desc,
 
   FusionPassRegistrationData reg_data(pass_desc.pass_name.c_str());
   reg_data.Stage(pass_desc.stage).CreatePassFn(create_fusion_pass_fn);
-  RegisterFusionPass(reg_data);
+  {
+    const ScopedOppLibraryLoad load_scope(ScopedOppLibraryLoad::Origin::kExternal);
+    RegisterFusionPass(reg_data);
+  }
   descriptor_key_2_python_pass_descs_.emplace(pass_desc.descriptor_key, pass_desc);
   pass_name_2_python_pass_create_contexts_.emplace(pass_desc.pass_name, pass_desc.ToCreateContext());
   GELOGI("Python pass descriptor registered success, pass name[%s], descriptor key[%s].", pass_desc.pass_name.c_str(),
@@ -125,6 +131,11 @@ std::vector<FusionPassRegistrationData> PassRegistry::GetFusionPassRegDataByStag
     }
   }
   return fusion_passes;
+}
+
+bool PassRegistry::IsBuiltinFusionPass(const std::string &pass_name) const {
+  const auto iter = pass_name_to_origins_.find(pass_name);
+  return (iter != pass_name_to_origins_.cend()) && (iter->second == FusionPassOrigin::kBuiltin);
 }
 
 bool PassRegistry::GetPythonPassDescriptor(const std::string &descriptor_key, PythonPassDescriptor &pass_desc) const {
@@ -165,6 +176,7 @@ FusionBasePass *PassRegistry::CreatePass(const FusionPassRegistrationData &reg_d
 void PassRegistry::ClearPythonPasses() {
   for (const auto &item : descriptor_key_2_python_pass_descs_) {
     (void)name_2_fusion_pass_regs_.erase(item.second.pass_name);
+    (void)pass_name_to_origins_.erase(item.second.pass_name);
     (void)pass_name_2_python_pass_create_contexts_.erase(item.second.pass_name);
   }
   descriptor_key_2_python_pass_descs_.clear();

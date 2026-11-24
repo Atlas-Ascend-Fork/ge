@@ -348,6 +348,23 @@ TEST_F(GraphBuildingFacadeTest, ExecuteGraphDumpRendersReadableSnapshot) {
   EXPECT_NE(std::string::npos, readable.str().find("return (%edump_out")) << readable.str();
 }
 
+// 计算图 dump 三格式（kOnnx/kTxt/kReadable）走 ConvertComputeGraphToProto 链路均输出成功。
+TEST_F(GraphBuildingFacadeTest, ComputeGraphDumpAllFormatsSucceeds) {
+  Graph graph("cdump_sem");
+  auto producer = graph.AddNodeByOp(MakeFacadeOp("cdump_out", "PlainOp", {"out"}, {}));
+  auto consumer = graph.AddNodeByOp(MakeFacadeOp("cdump_in", "PlainOp", {"out"}, {"in"}));
+  ASSERT_EQ(GRAPH_SUCCESS, graph.AddDataEdge(producer, 0, consumer, 0));
+  ASSERT_TRUE(graph.IsValid());
+
+  const std::vector<Graph::DumpFormat> formats = {Graph::DumpFormat::kOnnx, Graph::DumpFormat::kTxt,
+                                                  Graph::DumpFormat::kReadable};
+  for (const auto format : formats) {
+    std::stringstream ss;
+    EXPECT_EQ(GRAPH_SUCCESS, graph.Dump(format, ss)) << "format " << static_cast<uint32_t>(format);
+    EXPECT_FALSE(ss.str().empty()) << "format " << static_cast<uint32_t>(format);
+  }
+}
+
 // 执行图 DumpToFile：DUMP_GRAPH_PATH 指定目录后 readable 落盘成功；未知格式与计算图口径一致
 // （不落盘、返回成功）。
 TEST_F(GraphBuildingFacadeTest, ExecuteGraphDumpToFileWritesSnapshot) {

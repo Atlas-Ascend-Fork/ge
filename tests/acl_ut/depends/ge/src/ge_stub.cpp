@@ -458,6 +458,11 @@ Status aclStub::GetOpAttr(uint32_t model_id, const std::string &op_name, const s
   return SUCCESS;
 }
 
+ge::Status aclStub::GetOm2OpAttr(std::map<std::string, std::map<std::string, std::string>> &op_attr_map) {
+  (void)op_attr_map;
+  return SUCCESS;
+}
+
 graphStatus aclStub::GetName(AscendString &name) {
   return 0;
 }
@@ -2220,8 +2225,7 @@ ge::graphStatus Om2ModelExecutor::GetUserDesignateShapeOrder(
 }
 
 ge::Status Om2ModelExecutor::GetOpAttr(std::map<std::string, std::map<std::string, std::string>> &op_attr_map) const {
-  (void)op_attr_map;
-  return ge::SUCCESS;
+  return MockFunctionTest::aclStubInstance().GetOm2OpAttr(op_attr_map);
 }
 
 ge::Status Om2ModelExecutor::GetOpDescInfo(uint32_t device_id, uint32_t stream_id, uint32_t task_id,

@@ -35,6 +35,7 @@ set(GRAPH_BASE_SOURCE_LIST
     "hcom/hcom_topo_info.cc"
     "common/large_bm.cc"
     "common/hyper_status.cc"
+    "common/ge_types.cc"
     "detail/attributes_holder.cc"
     "utils/anchor_utils.cc"
     "utils/enum_attr_utils.cc"

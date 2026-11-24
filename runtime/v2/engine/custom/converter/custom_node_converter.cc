@@ -29,6 +29,7 @@
 #include "register/core_num_utils.h"
 #include "platform/platform_info.h"
 #include "acl/acl_rt.h"
+#include "framework/common/host_cpu_fusion_attr.h"
 
 #include <cstdint>
 
@@ -92,21 +93,23 @@ bg::ValueHolderPtr FindCustomExecutorFunc(const ge::NodePtr &node, const LowerIn
   return lower_input.global_data->GetOrCreateUniqueValueHolder(node->GetType() + "_FindCustomOp_", builder)[0];
 }
 
-bg::ValueHolderPtr FindHostCpuCustomExecutorFunc(const ge::NodePtr &node, const LowerInput &lower_input) {
-  auto builder = [&node, &lower_input]() -> std::vector<bg::ValueHolderPtr> {
-    return bg::FrameSelector::OnInitRoot([&node, &lower_input]() -> std::vector<bg::ValueHolderPtr> {
+bg::ValueHolderPtr FindHostCpuCustomExecutorFunc(const ge::NodePtr &node, const LowerInput &lower_input,
+                                                 const char *kernel_type) {
+  auto builder = [&node, &lower_input, kernel_type]() -> std::vector<bg::ValueHolderPtr> {
+    return bg::FrameSelector::OnInitRoot([&node, &lower_input, kernel_type]() -> std::vector<bg::ValueHolderPtr> {
       auto node_type = bg::ValueHolder::CreateConst(node->GetTypePtr(), node->GetType().size() + 1, true);
       ge::CustomOpRegistry *custom_op_registry = lower_input.global_data->GetCustomOpRegistry().get();
       auto registry_holder = bg::ValueHolder::CreateConst(&custom_op_registry, sizeof(custom_op_registry));
-      return {bg::ValueHolder::CreateSingleDataOutput("FindHostCpuCustomOp", {node_type, registry_holder})};
+      return {bg::ValueHolder::CreateSingleDataOutput(kernel_type, {node_type, registry_holder})};
     });
   };
-  return lower_input.global_data->GetOrCreateUniqueValueHolder(node->GetType() + "_FindHostCpuCustomOp_", builder)[0];
+  return lower_input.global_data->GetOrCreateUniqueValueHolder(node->GetType() + "_" + kernel_type + "_", builder)[0];
 }
 
 ge::graphStatus BuildInputTensors(const ge::NodePtr &node, const LowerInput &lower_input,
                                   std::vector<bg::ValueHolderPtr> &input_tensor_holders,
-                                  std::vector<bg::ValueHolderPtr> &input_addr_holders, const bool host_lowering) {
+                                  std::vector<bg::ValueHolderPtr> &input_addr_holders, const bool host_lowering,
+                                  const bool borrow_host_inputs = false) {
   const ge::OpDescPtr op_desc = node->GetOpDesc();
   gert::DataDependentInterpreter ddi(op_desc, lower_input.global_data->GetSpaceRegistriesV2());
   size_t instance_index = 0U;
@@ -124,12 +127,19 @@ ge::graphStatus BuildInputTensors(const ge::NodePtr &node, const LowerInput &low
                       peer_node->GetTypePtr());
     const int32_t input_placement =
         host_lowering ? kOnHost : (NeedHostInput(op_desc, instance_index, ddi) ? kOnHost : kOnDeviceHbm);
-    const OutputLowerResult *result = lower_result->GetOutputTensorResult(
-        *lower_input.global_data, out_data_anchor->GetIdx(), {input_placement, node->GetOpDesc()->GetStreamId()});
+    const TargetAddrDesc target = {input_placement, node->GetOpDesc()->GetStreamId()};
+    const OutputLowerResult *result =
+        borrow_host_inputs
+            ? lower_result->GetOutputResult(*lower_input.global_data, out_data_anchor->GetIdx(), target, false)
+            : lower_result->GetOutputTensorResult(*lower_input.global_data, out_data_anchor->GetIdx(), target);
     GE_ASSERT_NOTNULL(result, "Lowering result of node [%s, %s] output[%d] is nullptr.", peer_node->GetNamePtr(),
                       peer_node->GetTypePtr(), out_data_anchor->GetIdx());
     GE_ASSERT_NOTNULL(result->shape);
-    input_tensor_holders.emplace_back(result->shape);
+    auto tensor = borrow_host_inputs ? bg::BuildRefTensor(peer_node->shared_from_this(), out_data_anchor->GetIdx(),
+                                                          kOnHost, result->shape, result->address)
+                                     : result->shape;
+    GE_ASSERT_NOTNULL(tensor);
+    input_tensor_holders.emplace_back(tensor);
     input_addr_holders.emplace_back(result->address);
     ++instance_index;
   }
@@ -305,33 +315,49 @@ REGISTER_NODE_CONVERTER_PLACEMENT(ge::kCustomOpKernelLibName.c_str(), kOnDeviceH
 
 LowerResult LoweringHostCustomNode(const ge::NodePtr &node, const LowerInput &lower_input) {
   LOWER_REQUIRE_HYPER_SUCCESS(CheckLowerInput(lower_input));
-  std::vector<bg::ValueHolderPtr> input_holders;
-  std::vector<bg::ValueHolderPtr> input_addr_holders;
-  LOWER_REQUIRE_SUCCESS(BuildInputTensors(node, lower_input, input_holders, input_addr_holders, true));
-  // Allocate
-  auto allocator_holder = lower_input.global_data->GetOrCreateAllocator({kOnHost, AllocatorUsage::kAllocNodeOutput});
-  // Create op executeFunc
-  auto custom_executor_func = FindHostCpuCustomExecutorFunc(node, lower_input);
-  input_holders.emplace_back(allocator_holder);
-  input_holders.emplace_back(custom_executor_func);
-  // Check inference_rule
   const auto op_desc = node->GetOpDesc();
   LOWER_REQUIRE_NOTNULL(op_desc);
+  const bool need_infer_shape = NeedCustomOpInferShape(node, *lower_input.global_data);
+  bool generated_fusion = false;
+  (void)ge::AttrUtils::GetBool(op_desc, ge::kFusedHostCpuGenerated, generated_fusion);
+  const bool combine_split = generated_fusion && !need_infer_shape;
+  std::vector<bg::ValueHolderPtr> input_holders;
+  std::vector<bg::ValueHolderPtr> input_addr_holders;
+  // Generated outputs never alias inputs. The address guarders below keep borrowed inputs alive.
+  LOWER_REQUIRE_SUCCESS(BuildInputTensors(node, lower_input, input_holders, input_addr_holders, true, combine_split));
+  // Allocate
+  auto allocator_holder = lower_input.global_data->GetOrCreateAllocator({kOnHost, AllocatorUsage::kAllocNodeOutput});
+  // Check inference_rule
   std::string kernel_type = "ExecuteHostCustomOp";
-  if (NeedCustomOpInferShape(node, *lower_input.global_data)) {
+  auto custom_executor_func = FindHostCpuCustomExecutorFunc(
+      node, lower_input, combine_split ? "FindHostCpuFusedCustomOp" : "FindHostCpuCustomOp");
+  input_holders.emplace_back(allocator_holder);
+  input_holders.emplace_back(custom_executor_func);
+  if (need_infer_shape) {
     kernel_type = "ExecuteHostCustomOpWithInferShape";
     std::vector<bg::ValueHolderPtr> infer_output_shapes =
         bg::InferCustomOpShape(node, lower_input.input_shapes, *lower_input.global_data);
     input_holders.insert(input_holders.end(), infer_output_shapes.begin(), infer_output_shapes.end());
   }
-  std::vector<bg::ValueHolderPtr> output_tensor_holders =
-      bg::ValueHolder::CreateDataOutput(kernel_type.c_str(), input_holders, node->GetAllOutDataAnchorsSize());
+  const size_t output_num = node->GetAllOutDataAnchorsSize();
+  std::vector<bg::ValueHolderPtr> output_tensor_holders;
+  std::vector<bg::DevMemValueHolderPtr> combined_outputs;
+  if (combine_split) {
+    combined_outputs = bg::DevMemValueHolder::CreateDataOutput("ExecuteHostCustomOpAndSplit", input_holders,
+                                                               output_num * 2U, op_desc->GetStreamId());
+    CONVERTER_CHECK_HOLDERS_ALL_OK(combined_outputs, output_num * 2U);
+    output_tensor_holders.assign(combined_outputs.begin(), combined_outputs.begin() + output_num);
+  } else {
+    output_tensor_holders = bg::ValueHolder::CreateDataOutput(kernel_type.c_str(), input_holders, output_num);
+  }
   std::vector<bg::ValueHolderPtr> output_shapes;
   std::vector<bg::DevMemValueHolderPtr> output_addrs;
   for (size_t i = 0UL; i < node->GetAllOutDataAnchorsSize(); i++) {
-    auto split_outputs = bg::DevMemValueHolder::CreateDataOutput(
-        kernel::kSplitDataTensor, {output_tensor_holders[i], allocator_holder},
-        static_cast<size_t>(kernel::SplitTensorOutputs::kNum), op_desc->GetStreamId());
+    auto split_outputs =
+        combine_split ? std::vector<bg::DevMemValueHolderPtr>{combined_outputs[i], combined_outputs[output_num + i]}
+                      : bg::DevMemValueHolder::CreateDataOutput(
+                            kernel::kSplitDataTensor, {output_tensor_holders[i], allocator_holder},
+                            static_cast<size_t>(kernel::SplitTensorOutputs::kNum), op_desc->GetStreamId());
     CONVERTER_CHECK_HOLDERS_ALL_OK(split_outputs, static_cast<size_t>(kernel::SplitTensorOutputs::kNum));
     auto output_addr = split_outputs[static_cast<size_t>(kernel::SplitTensorOutputs::kTensorData)];
     output_addr->SetPlacement(kOnHost);

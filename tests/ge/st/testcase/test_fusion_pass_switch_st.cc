@@ -115,6 +115,7 @@ class TransDataRemovePass : public PatternFusionPass {
 
 void ResetPassRegistry() {
   PassRegistry::GetInstance().name_2_fusion_pass_regs_.clear();
+  PassRegistry::GetInstance().pass_name_to_origins_.clear();
   PassRegistry::GetInstance().descriptor_key_2_python_pass_descs_.clear();
   PassRegistry::GetInstance().pass_name_2_python_pass_create_contexts_.clear();
 }

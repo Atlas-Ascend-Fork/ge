@@ -24,7 +24,7 @@ ge::graphStatus GetPlatformInfos(fe::PlatFormInfos &platform_info, fe::OptionalI
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | platform_info | 输出 | 用于存储平台硬件信息，包含SoC版本、芯片规格等。 |
-| optional_infos | 输出 | 用户存储可选补充信息。 |
+| optional_infos | 输出 | 用于存储可选补充信息。 |
 
 ## 返回值说明
 

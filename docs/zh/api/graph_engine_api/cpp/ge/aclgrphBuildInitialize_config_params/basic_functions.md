@@ -47,7 +47,7 @@ cluster\_config.json配置示例如下：
 }
 ```
 
-参数说明解释如下：
+参数说明如下：
 
 - RankTable：配置的核心，定义了参与计算的节点和rank信息。
   - status：必选，rank table可用标识。

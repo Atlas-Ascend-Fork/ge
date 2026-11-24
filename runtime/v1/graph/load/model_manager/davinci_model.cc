@@ -4801,7 +4801,7 @@ Status DavinciModel::CollectMergeInputData(const std::vector<DataBuffer> &blobs,
            data_size, data_buf.length);
     const auto mem_ret =
         GeMemcpy(input_merge_copy_mem_base_.get() + host_offset, input_merge_copy_mem_size_ - host_offset,
-                 reinterpret_cast<uint8_t *>(data_buf.data), data_buf.length);
+                 static_cast<uint8_t *>(data_buf.data), data_buf.length);
     GE_CHK_BOOL_RET_STATUS(mem_ret == SUCCESS, FAILED,
                            "memcpy fail, graph %u, index %zu, data len:%" PRIu64 ", buffer size:%" PRIu64
                            ", offset:%" PRIu64,
@@ -8133,10 +8133,10 @@ Status DavinciModel::NnExecute(aclrtStream const stream, const bool async_mode,
 /// @brief ACL case, do not start  new thread, return execute result.
 /// @param [in] stream   execute model stream.
 /// @param [in] async_mode  is asynchronize mode.
-/// @param [in] input_data  model input data.
+/// @param [in] input_data  model input data, blobs may be adjusted during execution.
 /// @param [out] output_data  model output data.
 ///
-Status DavinciModel::NnExecute(aclrtStream const stream, const bool async_mode, const InputData &input_data,
+Status DavinciModel::NnExecute(aclrtStream const stream, const bool async_mode, InputData &input_data,
                                OutputData &output_data, const std::vector<GeTensor> &input_tensor,
                                const std::vector<GeTensor> &output_tensor) {
   InitModelExecuteProf();
@@ -8154,22 +8154,21 @@ Status DavinciModel::NnExecute(aclrtStream const stream, const bool async_mode, 
   const bool is_prof_enabled = gert::GlobalProfilingWrapper::GetInstance()->IsEnabled(gert::ProfilingType::kTaskTime);
   GE_IF_BOOL_EXEC(is_prof_enabled, SetProfileTime(ModelProcStage::MODEL_PRE_PROC_START));
   GetStageTimestampStart(kCopyMdlData);
-  InputData &mutable_input_data = const_cast<InputData &>(input_data);
   const bool dynamic_shape_data = is_online_infer_dynamic_ && (!is_getnext_sink_dynamic_);
-  const size_t input_blobs_size_before = mutable_input_data.blobs.size();
-  const auto pop_multi_batch_data_buffer = [&mutable_input_data, dynamic_shape_data, input_blobs_size_before]() {
+  const size_t input_blobs_size_before = input_data.blobs.size();
+  const auto pop_multi_batch_data_buffer = [&input_data, dynamic_shape_data, input_blobs_size_before]() {
     // 仅当PrepareModelData构造了整图分档的额外blob时才弹出，失败发生在构造前时不误弹用户输入
-    if (dynamic_shape_data && (mutable_input_data.blobs.size() > input_blobs_size_before)) {
-      mutable_input_data.blobs.pop_back();
+    if (dynamic_shape_data && (input_data.blobs.size() > input_blobs_size_before)) {
+      input_data.blobs.pop_back();
     }
   };
-  Status ret = PrepareModelData(mutable_input_data, output_data, input_tensor, output_tensor);
+  Status ret = PrepareModelData(input_data, output_data, input_tensor, output_tensor);
   if (ret != SUCCESS) {
     GELOGE(ret, "[Prepare][ModelData] failed. model id: %u", model_id_);
     pop_multi_batch_data_buffer();
     return ret;
   }
-  ret = CopyLegacyInputData(mutable_input_data, input_tensor);
+  ret = CopyLegacyInputData(input_data, input_tensor);
   if (ret != SUCCESS) {
     GELOGE(ret, "[Copy][ModelData] failed. model id: %u", model_id_);
     pop_multi_batch_data_buffer();

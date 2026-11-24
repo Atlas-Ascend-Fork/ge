@@ -10,16 +10,29 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <string>
 #include <vector>
 
+#include "common/bg_test.h"
+#include "common/share_graph.h"
+#include "engine/custom/converter/custom_node_converter.h"
+#include "engine/gelocal/inputs_converter.h"
+#include "ge/ut/ge/runtime/fast_v2/common/const_data_helper.h"
+#include "lowering/placement/placed_lowering_result.h"
+#include "common/helper/custom_op_registry_builder.h"
+#include "common/helper/custom_op_so_loader.h"
+#include "faker/kernel_run_context_facker.h"
 #include "framework/common/host_cpu_fusion_attr.h"
+#include "graph/custom_op.h"
 #include "graph/op_so_bin.h"
 #include "graph/partition/optimizer/host_cpu_fusion_codegen.h"
 #include "graph/partition/optimizer/host_cpu_fusion_pass.h"
 #include "graph/utils/attr_utils.h"
 #include "graph/utils/graph_utils.h"
+#include "kernel/memory/host_mem_allocator.h"
+#include "register/kernel_registry.h"
 
 namespace ge {
 namespace {
@@ -46,8 +59,7 @@ std::string GetToolkitOpp(const std::string &home) {
 }
 
 NodePtr MakeNode(const ComputeGraphPtr &graph, const std::string &name, const std::string &type, const size_t inputs,
-                 const size_t outputs) {
-  const GeTensorDesc desc(GeShape({2, 3}), FORMAT_ND, DT_INT64);
+                 const size_t outputs, const GeTensorDesc &desc = GeTensorDesc(GeShape({2, 3}), FORMAT_ND, DT_INT64)) {
   auto op_desc = std::make_shared<OpDesc>(name, type);
   for (size_t i = 0U; i < inputs; ++i) {
     EXPECT_EQ(op_desc->AddInputDesc("input" + std::to_string(i), desc), GRAPH_SUCCESS);
@@ -173,8 +185,8 @@ TEST(HostCpuFusionCodegenST, GeneratesAndCompilesCurrentCustomOp) {
   ASSERT_EQ(HostCpuFusionCodegen().Generate(region, result), SUCCESS);
   EXPECT_EQ(result.register_name, "FusedHostCpu_st_codegen_chain");
   EXPECT_NE(result.source.find("internal_tensor_0"), std::string::npos);
-  EXPECT_NE(result.source.find("std::array<const gert::Tensor *, 1U>"), std::string::npos);
-  EXPECT_NE(result.source.find("std::array<gert::Tensor *, 2U>"), std::string::npos);
+  EXPECT_NE(result.source.find("std::array<TensorView, 1U>"), std::string::npos);
+  EXPECT_NE(result.source.find("std::array<TensorView, 2U>"), std::string::npos);
   EXPECT_NE(result.source.find("REG_OP_BACKEND"), std::string::npos);
   EXPECT_NE(result.source.find("GetRegisteredCustomOpCreatorAbiVersion"), std::string::npos);
 
@@ -194,6 +206,181 @@ TEST(HostCpuFusionCodegenST, GeneratesAndCompilesCurrentCustomOp) {
 #else
   GTEST_SKIP() << "HostCPU fusion JIT uses Linux memfd.";
 #endif
+}
+
+// 用例描述：验证融合标量 Add/Mul 的生成产物可通过 RT2 Kernel 执行。
+// 预置条件：Toolkit 支持 HostCPU CustomOp JIT。
+// 测试步骤：生成并加载 SO，查找融合算子，分两轮执行并读取拆分后的输出。
+// 预期结果：两个 Host 输出分别等于 Add 和 Mul 的计算结果。
+TEST(HostCpuFusionCodegenST, ExecutesGeneratedScalarChainAndSplitsOutputs) {
+#if defined(__linux__)
+  const auto toolkit_home = GetToolkitHome();
+  EnvGuard home("ASCEND_HOME_PATH", toolkit_home.c_str());
+  EnvGuard opp("ASCEND_OPP_PATH", "");
+  const auto graph = std::make_shared<ComputeGraph>("host_cpu_scalar_st");
+  const GeTensorDesc scalar(GeShape({1}), FORMAT_ND, DT_INT64);
+  const auto data = MakeNode(graph, "data", "Data", 0U, 1U, scalar);
+  const auto add = MakeNode(graph, "add", "Add", 2U, 1U, scalar);
+  const auto mul = MakeNode(graph, "mul", "Mul", 2U, 1U, scalar);
+  const auto output = MakeNode(graph, "output", "NetOutput", 2U, 0U, scalar);
+  Connect(data, 0U, add, 0U);
+  Connect(data, 0U, add, 1U);
+  Connect(add, 0U, mul, 0U);
+  Connect(data, 0U, mul, 1U);
+  Connect(add, 0U, output, 0U);
+  Connect(mul, 0U, output, 1U);
+  HostCpuFusionRegion region;
+  region.chain_id = "st_scalar_chain";
+  region.nodes = {add, mul};
+  region.external_inputs = {data->GetOutDataAnchor(0)};
+  region.external_outputs = {{add->GetOutDataAnchor(0), {output->GetInDataAnchor(0)}},
+                             {mul->GetOutDataAnchor(0), {output->GetInDataAnchor(1)}}};
+  HostCpuFusionCodegenResult result;
+  ASSERT_EQ(HostCpuFusionCodegen().Generate(region, result), SUCCESS);
+  std::vector<uint8_t> so_data;
+  // Probe the Toolkit with a minimal source so a failure compiling the generated code still fails the test.
+  HostCpuFusionCompiler compiler;
+  const auto probe = compiler.Compile("extern \"C\" int HostCpuScalarStToolkitProbe() { return 0; }", so_data);
+  if (probe == UNSUPPORTED) {
+    GTEST_SKIP() << "HostCPU fusion JIT is unavailable in this Toolkit.";
+  }
+  ASSERT_EQ(probe, SUCCESS);
+  ASSERT_EQ(compiler.Compile(result.source, so_data), SUCCESS);
+  auto bin_data = std::make_unique<char_t[]>(so_data.size());
+  std::copy(so_data.begin(), so_data.end(), bin_data.get());
+  auto bin = std::make_shared<OpSoBin>("lib" + result.register_name + ".so", kFusedHostCpuSoVendor, std::move(bin_data),
+                                       static_cast<uint32_t>(so_data.size()), SoBinType::kCustomOp);
+  std::vector<CustomOpSoHandlePtr> handles;
+  ASSERT_EQ(CustomOpSoLoader::GetInstance().DlopenCustomOpSoBins({bin}, handles), SUCCESS);
+  auto registry = std::make_shared<CustomOpRegistry>();
+  ASSERT_EQ(CustomOpRegistryBuilder::AddCreatorsFromSoHandles(handles, registry), SUCCESS);
+
+  auto lookup = gert::BuildKernelRunContext(2U, 1U);
+  lookup.value_holder[0].Set(const_cast<char *>(result.register_name.c_str()), nullptr);
+  lookup.value_holder[1].Set(registry.get(), nullptr);
+  const auto *find = gert::KernelRegistry::GetInstance().FindKernelFuncs("FindHostCpuFusedCustomOp");
+  ASSERT_NE(find, nullptr);
+  ASSERT_EQ(find->run_func(lookup), GRAPH_SUCCESS);
+  auto *host_op = lookup.GetContext<gert::KernelContext>()->GetOutput(0U)->GetValue<HostCpuExecuteOp *>();
+  ASSERT_NE(host_op, nullptr);
+
+  int64_t value = 0;
+  gert::Tensor input({{1}, {1}}, {FORMAT_ND, FORMAT_ND, {}}, gert::kOnHost, DT_INT64, &value);
+  input.MutableTensorData().SetSize(sizeof(value));
+  gert::memory::HostMemAllocator l1_allocator;
+  gert::memory::HostGertMemAllocator allocator(&l1_allocator);
+  auto run = gert::KernelRunContextFaker()
+                 .KernelIONum(3U, 4U)
+                 .NodeIoNum(1U, 2U)
+                 .IrInstanceNum({1U})
+                 .NodeType(result.register_name)
+                 .NodeInputTd(0, DT_INT64, FORMAT_ND, FORMAT_ND)
+                 .NodeOutputTd(0, DT_INT64, FORMAT_ND, FORMAT_ND)
+                 .NodeOutputTd(1, DT_INT64, FORMAT_ND, FORMAT_ND)
+                 .Inputs({&input, &allocator, host_op})
+                 .Build();
+  auto *context = run.GetContext<gert::KernelContext>();
+  const auto *execute = gert::KernelRegistry::GetInstance().FindKernelFuncs("ExecuteHostCustomOpAndSplit");
+  ASSERT_NE(execute, nullptr);
+  ASSERT_EQ(execute->outputs_creator(nullptr, context), GRAPH_SUCCESS);
+  for (const int64_t input_value : {3, 7}) {
+    value = input_value;
+    ASSERT_EQ(execute->run_func(context), GRAPH_SUCCESS);
+    const int64_t expected[] = {2 * value, 2 * value * value};
+    for (size_t i = 0U; i < 2U; ++i) {
+      const auto *data_output = context->GetOutputPointer<gert::GertTensorData>(2U + i);
+      ASSERT_NE(data_output, nullptr);
+      ASSERT_NE(data_output->GetAddr(), nullptr);
+      EXPECT_EQ(data_output->GetPlacement(), gert::kOnHost);
+      EXPECT_EQ(data_output->GetSize(), sizeof(int64_t));
+      EXPECT_EQ(*static_cast<const int64_t *>(data_output->GetAddr()), expected[i]);
+    }
+  }
+#else
+  GTEST_SKIP() << "HostCPU fusion JIT uses Linux memfd.";
+#endif
+}
+
+// 用例描述：验证 GatherV2 标量分支及 batch_dims 回退生成可编译源码。
+// 预置条件：三节点 Gather/Add/Mul 分支图。
+// 测试步骤：生成源码，检查绑定与回退，然后使用 Toolkit 编译。
+// 预期结果：输出提交完整且生成 SO 成功。
+TEST(HostCpuFusionCodegenST, GeneratesScalarGatherAndBranchedArithmetic) {
+  auto graph = std::make_shared<ComputeGraph>("scalar_branch");
+  const GeTensorDesc scalar(GeShape(), FORMAT_ND, DT_INT64);
+  const GeTensorDesc scalar_index(GeShape(), FORMAT_ND, DT_INT32);
+  const GeTensorDesc vector(GeShape({3}), FORMAT_ND, DT_INT64);
+  const auto params = MakeNode(graph, "params", "Data", 0U, 1U, vector);
+  const auto indices = MakeNode(graph, "indices", "Data", 0U, 1U, scalar_index);
+  const auto axis = MakeNode(graph, "axis", "Data", 0U, 1U, scalar);
+  const auto operand = MakeNode(graph, "operand", "Data", 0U, 1U, scalar);
+  const auto gather = MakeNode(graph, "gather", "GatherV2", 3U, 1U, scalar);
+  const auto add = MakeNode(graph, "add", "Add", 2U, 1U, scalar);
+  const auto mul = MakeNode(graph, "mul", "Mul", 2U, 1U, scalar);
+  const auto output = MakeNode(graph, "output", "NetOutput", 2U, 0U, scalar);
+  ASSERT_EQ(gather->GetOpDesc()->UpdateInputDesc(0U, vector), GRAPH_SUCCESS);
+  ASSERT_EQ(gather->GetOpDesc()->UpdateInputDesc(1U, scalar_index), GRAPH_SUCCESS);
+  ASSERT_TRUE(AttrUtils::SetInt(gather->GetOpDesc(), "batch_dims", 0));
+  Connect(params, 0U, gather, 0U);
+  Connect(indices, 0U, gather, 1U);
+  Connect(axis, 0U, gather, 2U);
+  Connect(gather, 0U, add, 0U);
+  Connect(operand, 0U, add, 1U);
+  Connect(gather, 0U, mul, 0U);
+  Connect(operand, 0U, mul, 1U);
+  Connect(add, 0U, output, 0U);
+  Connect(mul, 0U, output, 1U);
+
+  HostCpuFusionRegion region;
+  region.chain_id = "scalar_branch";
+  region.nodes = {gather, add, mul};
+  region.external_inputs = {params->GetOutDataAnchor(0), indices->GetOutDataAnchor(0), axis->GetOutDataAnchor(0),
+                            operand->GetOutDataAnchor(0)};
+  region.external_outputs = {{add->GetOutDataAnchor(0), {output->GetInDataAnchor(0)}},
+                             {mul->GetOutDataAnchor(0), {output->GetInDataAnchor(1)}}};
+  HostCpuFusionCodegenResult result;
+  ASSERT_EQ(HostCpuFusionCodegen().Generate(region, result), SUCCESS);
+  EXPECT_NE(result.source.find("TryScalarGather<int64_t, int32_t, int64_t>(TensorView(external_input_0)"),
+            std::string::npos);
+  EXPECT_NE(result.source.find("__builtin_add_overflow(scalar_value_0, scalar_input_3, &scalar_value_1)"),
+            std::string::npos);
+  EXPECT_NE(result.source.find("__builtin_mul_overflow(scalar_value_0, scalar_input_3, &scalar_value_2)"),
+            std::string::npos);
+  EXPECT_NE(result.source.find("std::memcpy(external_output_0->GetAddr(), &scalar_value_1"), std::string::npos);
+  EXPECT_NE(result.source.find("std::memcpy(external_output_1->GetAddr(), &scalar_value_2"), std::string::npos);
+
+  const auto toolkit_home = GetToolkitHome();
+  EnvGuard home("ASCEND_HOME_PATH", toolkit_home.c_str());
+  EnvGuard opp("ASCEND_OPP_PATH", "");
+  std::vector<uint8_t> so_data;
+  HostCpuFusionCompiler compiler;
+  if (compiler.Compile("extern \"C\" int FusionCoverageProbe() { return 0; }", so_data) == SUCCESS) {
+    ASSERT_EQ(compiler.Compile(result.source, so_data), SUCCESS);
+    const auto first_so = so_data;
+    ASSERT_EQ(compiler.Compile(result.source, so_data), SUCCESS);
+    EXPECT_EQ(so_data, first_so);
+  }
+  ASSERT_TRUE(AttrUtils::SetInt(gather->GetOpDesc(), "batch_dims", 1));
+  ASSERT_EQ(HostCpuFusionCodegen().Generate(region, result), SUCCESS);
+  EXPECT_EQ(result.source.find("TryScalarGather<int64_t, int32_t, int64_t>"), std::string::npos);
+  EXPECT_NE(result.source.find("LocalKernelContext<3U, 1U> kernel_context_0"), std::string::npos);
+}
+
+// 用例描述：验证大尺寸内部张量使用堆缓冲。
+// 预置条件：中间张量超过 64 KiB。
+// 测试步骤：生成融合源码并检查内部缓冲分配及大小。
+// 预期结果：选择堆缓冲并为内部张量保留足够空间。
+TEST(HostCpuFusionCodegenST, SelectsHeapStorageForLargeInternalTensor) {
+  auto graph = std::make_shared<ComputeGraph>("large_internal_tensor");
+  const auto region = MakeRegion(graph);
+  const GeTensorDesc large_desc(GeShape({8193}), FORMAT_ND, DT_INT64);
+  ASSERT_EQ(region.nodes[0]->GetOpDesc()->UpdateOutputDesc(0U, large_desc), GRAPH_SUCCESS);
+  ASSERT_EQ(region.nodes[1]->GetOpDesc()->UpdateInputDesc(0U, large_desc), GRAPH_SUCCESS);
+
+  HostCpuFusionCodegenResult result;
+  ASSERT_EQ(HostCpuFusionCodegen().Generate(region, result), SUCCESS);
+  EXPECT_NE(result.source.find("std::unique_ptr<unsigned char[]> internal_storage("), std::string::npos);
+  EXPECT_NE(result.source.find("internal_storage_data + 0U, 65544U"), std::string::npos);
 }
 
 TEST(HostCpuFusionCodegenST, ExercisesCodegenRejectionAndNameBoundaries) {
@@ -314,3 +501,63 @@ TEST(HostCpuFusionCodegenST, CommitsHostCpuFusionPassWithEmbeddedCustomOpSo) {
 }
 
 }  // namespace ge
+
+namespace gert {
+using namespace ge;
+using namespace bg;
+namespace {
+void LowerDataNodes(const ge::ComputeGraphPtr &graph, const LoweringGlobalData &global_data,
+                    std::vector<bg::ValueHolderPtr> &shapes, std::vector<bg::DevMemValueHolderPtr> &addrs) {
+  LowerInput data_input = {{}, {}, &const_cast<LoweringGlobalData &>(global_data)};
+  for (const auto &name : {"data0", "data1", "data2"}) {
+    auto data_ret = LoweringDataNode(graph->FindNode(name), data_input);
+    ASSERT_TRUE(data_ret.result.IsSuccess());
+    shapes.emplace_back(data_ret.out_shapes[0]);
+    addrs.emplace_back(data_ret.out_addrs[0]);
+    graph->FindNode(name)->GetOpDesc()->SetExtAttr(
+        "_lowering_result", gert::PlacedLoweringResult(graph->FindNode(name), std::move(data_ret)));
+  }
+}
+
+}  // namespace
+class HostCpuFusionConverterST : public bg::BgTestAutoCreate3StageFrame {};
+
+// 用例描述：验证生成融合节点经 Host converter 生成合并执行节点。
+// 预置条件：融合标记已设置，输入节点完成 lowering。
+// 测试步骤：LoweringHostCustomNode 并检查 shape、地址及释放依赖。
+// 预期结果：Host 输出由 ExecuteHostCustomOpAndSplit 提供且带释放 guard。
+TEST_F(HostCpuFusionConverterST, fused_host_cpu_custom_op_converts_to_combined_execution) {
+  auto graph = ShareGraph::BuildCustomOpGraph();
+  auto custom_op = graph->FindNode("custom_op");
+  ASSERT_TRUE(AttrUtils::SetBool(custom_op->GetOpDesc(), ge::kFusedHostCpuGenerated, true));
+  auto root_model = GeModelBuilder(graph).BuildGeRootModel();
+  auto global_data = GlobalDataFaker(root_model).Build();
+  global_data.SetExternalAllocator(nullptr, ExecuteGraphType::kInit);
+  global_data.SetExternalAllocator(nullptr, ExecuteGraphType::kMain);
+  bg::LowerConstDataNode(global_data);
+  std::vector<bg::ValueHolderPtr> shapes;
+  std::vector<bg::DevMemValueHolderPtr> addrs;
+  LowerDataNodes(graph, global_data, shapes, addrs);
+
+  const auto ret = LoweringHostCustomNode(custom_op, {shapes, addrs, &global_data});
+  ASSERT_TRUE(ret.result.IsSuccess());
+  ASSERT_EQ(ret.out_shapes.size(), 1U);
+  ASSERT_EQ(ret.out_addrs.size(), 1U);
+  EXPECT_EQ(ret.out_addrs[0]->GetPlacement(), kOnHost);
+  EXPECT_EQ(ret.out_shapes[0]->GetOutIndex(), 0);
+  EXPECT_EQ(ret.out_addrs[0]->GetOutIndex(), 1);
+  ASSERT_NE(ret.out_addrs[0]->GetGuarder(), nullptr);
+
+  auto frame = bg::ValueHolder::PopGraphFrame();
+  ASSERT_NE(frame, nullptr);
+  auto *exe_graph = frame->GetExecuteGraph().get();
+  ASSERT_NE(exe_graph, nullptr);
+  auto *execute_node = ExecuteGraphUtils::FindFirstNodeMatchType(exe_graph, "ExecuteHostCustomOpAndSplit");
+  ASSERT_NE(execute_node, nullptr);
+  EXPECT_EQ(ret.out_shapes[0]->GetFastNode(), execute_node);
+  EXPECT_EQ(ret.out_addrs[0]->GetFastNode(), execute_node);
+  EXPECT_NE(ExecuteGraphUtils::FindFirstNodeMatchType(init_frame_->GetExecuteGraph().get(), "FindHostCpuFusedCustomOp"),
+            nullptr);
+}
+
+}  // namespace gert

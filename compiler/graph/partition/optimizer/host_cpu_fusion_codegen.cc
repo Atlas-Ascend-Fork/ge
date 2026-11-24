@@ -15,9 +15,12 @@
 #include <cstdlib>
 #include <iomanip>
 #include <limits>
+#include <map>
+#include <mutex>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #if defined(__linux__)
 #include <fcntl.h>
@@ -47,6 +50,40 @@ constexpr int kOctalEscapeWidth = 3;
 constexpr int kExecDupFailureExitCode = 126;
 constexpr int kExecFailureExitCode = 127;
 #endif
+
+// 进程级 HostCPU 融合 JIT 编译缓存：生成源码由链指纹（MakeChainId）确定性派生，同进程内
+// 重复编译相同融合链（多会话、重复加载图、同构子图）时直接复用编译产物，跳过 g++ 调用。
+// 仅缓存通过 ELF 校验的成功结果；条目数设上限，避免长生命周期进程无界增长。
+class HostCpuFusionSoCache {
+ public:
+  static HostCpuFusionSoCache &GetInstance() {
+    static HostCpuFusionSoCache instance;
+    return instance;
+  }
+
+  bool Get(const std::vector<std::string> &key, std::vector<uint8_t> &so_data) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = cache_.find(key);
+    if (it == cache_.end()) {
+      return false;
+    }
+    so_data = it->second;
+    return true;
+  }
+
+  void Put(const std::vector<std::string> &key, const std::vector<uint8_t> &so_data) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (so_data.empty() || (cache_.size() >= kMaxCacheEntries)) {
+      return;
+    }
+    (void)cache_.emplace(key, so_data);
+  }
+
+ private:
+  static constexpr size_t kMaxCacheEntries = 64U;
+  std::mutex mutex_;
+  std::map<std::vector<std::string>, std::vector<uint8_t>> cache_;
+};
 
 std::string IntExpression(const int64_t value);
 
@@ -84,6 +121,53 @@ std::string EscapeCppString(const std::string &value) {
     }
   }
   return os.str();
+}
+
+bool IsSingleElementShape(const GeShape &shape) {
+  return !shape.IsUnknownShape() && (shape.IsScalar() || (shape.GetShapeSize() == 1));
+}
+
+bool IsScalarBinary(const NodePtr &node) {
+  const auto op_desc = node->GetOpDesc();
+  bool eligible = ((node->GetType() == "Add") || (node->GetType() == "Mul")) &&
+                  (node->GetAllInDataAnchorsSize() == 2U) && (node->GetAllOutDataAnchorsSize() == 1U);
+  const auto dtype = op_desc->GetOutputDesc(0U).GetDataType();
+  eligible = eligible && ((dtype == DT_INT32) || (dtype == DT_INT64));
+  if (eligible) {
+    for (const auto &desc : {op_desc->GetInputDesc(0U), op_desc->GetInputDesc(1U), op_desc->GetOutputDesc(0U)}) {
+      eligible = eligible && IsSingleElementShape(desc.GetShape()) && (desc.GetDataType() == dtype) &&
+                 (desc.GetFormat() == FORMAT_ND);
+    }
+  }
+  return eligible;
+}
+
+bool IsScalarGather(const NodePtr &node) {
+  const auto op_desc = node->GetOpDesc();
+  const auto dtype = op_desc->GetOutputDesc(0U).GetDataType();
+  bool eligible = (node->GetType() == "GatherV2") && (node->GetAllInDataAnchorsSize() == 3U) &&
+                  (node->GetAllOutDataAnchorsSize() == 1U);
+  int64_t batch_dims = 0;
+  if (eligible && op_desc->HasAttr("batch_dims")) {
+    eligible = AttrUtils::GetInt(op_desc, "batch_dims", batch_dims) && (batch_dims == 0);
+  }
+  if (eligible) {
+    const auto &params = op_desc->GetInputDesc(0U);
+    const auto &indices = op_desc->GetInputDesc(1U);
+    const auto &axis = op_desc->GetInputDesc(2U);
+    const auto &output = op_desc->GetOutputDesc(0U);
+    eligible = ((dtype == DT_INT32) || (dtype == DT_INT64)) && (params.GetDataType() == dtype) &&
+               !params.GetShape().IsUnknownShape() && (params.GetShape().GetDimNum() == 1U) &&
+               IsSingleElementShape(indices.GetShape()) && (indices.GetShape().GetDimNum() <= 1U) &&
+               IsSingleElementShape(axis.GetShape()) && (axis.GetShape().GetDimNum() <= 1U) &&
+               (output.GetShape() == indices.GetShape());
+    for (const auto &desc : {params, indices, axis, output}) {
+      eligible = eligible && (desc.GetFormat() == FORMAT_ND);
+    }
+    eligible = eligible && ((indices.GetDataType() == DT_INT32) || (indices.GetDataType() == DT_INT64)) &&
+               ((axis.GetDataType() == DT_INT32) || (axis.GetDataType() == DT_INT64));
+  }
+  return eligible;
 }
 
 Status GetTensorSize(const GeTensorDesc &desc, size_t &size) {
@@ -254,12 +338,13 @@ bool HasHeader(const std::vector<std::string> &include_paths, const std::string 
 
 bool CheckRequiredHeaders(const std::vector<std::string> &include_paths) {
   // Keep this list aligned with the headers emitted below.  The generated SO only
-  // uses the public HostCpuExecuteOp/KernelContext ABI; requiring the legacy
+  // uses HostCpuExecuteOp/KernelContext and the matching Toolkit allocator ABI; requiring the legacy
   // CpuKernel registration headers made JIT depend on headers it never included.
   static const std::vector<std::string> kRequiredHeaders = {
       "exe_graph/runtime/compute_node_info.h", "exe_graph/runtime/gert_tensor_data.h",
       "exe_graph/runtime/kernel_context.h",    "exe_graph/runtime/kernel_run_context.h",
-      "exe_graph/runtime/runtime_tensor.h",    "graph/custom_op.h"};
+      "exe_graph/runtime/runtime_tensor.h",    "graph/custom_op.h",
+      "exe_graph/runtime/gert_mem_allocator.h"};
   for (const auto &header : kRequiredHeaders) {
     if (!HasHeader(include_paths, header)) {
       GELOGW("HostCPU fusion JIT header %s was not found, include_paths=%s.", header.c_str(),
@@ -458,6 +543,7 @@ Status HostCpuFusionCodegen::Generate(const HostCpuFusionRegion &region, HostCpu
        << "#include <string>\n#include <vector>\n"
        << "#include \"exe_graph/runtime/compute_node_info.h\"\n"
        << "#include \"exe_graph/runtime/gert_tensor_data.h\"\n"
+       << "#include \"exe_graph/runtime/gert_mem_allocator.h\"\n"
        << "#include \"exe_graph/runtime/kernel_context.h\"\n"
        << "#include \"exe_graph/runtime/kernel_run_context.h\"\n"
        << "#include \"exe_graph/runtime/runtime_tensor.h\"\n"
@@ -465,15 +551,108 @@ Status HostCpuFusionCodegen::Generate(const HostCpuFusionRegion &region, HostCpu
        << "namespace {\n"
        << "using HostKernelFunc = ge::graphStatus (*)(gert::KernelContext *);\n"
        << "using HostKernelFinder = HostKernelFunc (*)(std::string);\n\n"
+       << "gert::Tensor *PrepareFusedOutput(gert::Tensor *output, gert::GertAllocator *allocator,\n"
+       << "                                const gert::StorageShape &shape, const gert::StorageFormat &format,\n"
+       << "                                ge::DataType dtype, size_t bytes) {\n"
+       << "  if (output == nullptr || allocator == nullptr || allocator->GetPlacement() != gert::kOnHost) { return "
+          "nullptr; }\n"
+       << "  output->MutableStorageShape() = shape.GetStorageShape();\n"
+       << "  output->MutableOriginShape() = shape.GetOriginShape();\n"
+       << "  output->SetStorageFormat(format.GetStorageFormat());\n"
+       << "  output->SetOriginFormat(format.GetOriginFormat());\n"
+       << "  output->SetDataType(dtype);\n"
+       << "  auto &data = output->MutableTensorData();\n"
+       << "  if (bytes == 0U) {\n"
+       << "    if (data.SetAddr(nullptr, nullptr) != ge::GRAPH_SUCCESS) { return nullptr; }\n"
+       << "    data.SetSize(0U);\n"
+       << "    data.SetPlacement(gert::kOnHost);\n"
+       << "  } else if (data.GetSize() < bytes) {\n"
+       << "    auto allocated = allocator->MallocTensorDataFromL1(bytes);\n"
+       << "    if (allocated.GetAddr() == nullptr || allocated.GetSize() < bytes ||\n"
+       << "        data.ShareFrom(allocated) != ge::GRAPH_SUCCESS) { return nullptr; }\n"
+       << "  } else if (data.GetPlacement() != gert::kOnHost) {\n"
+       << "    return nullptr;\n"
+       << "  }\n"
+       << "  return output;\n"
+       << "}\n"
+       << "\n"
+       << "struct TensorView {\n"
+       << "  TensorView(const gert::Tensor *tensor)\n"
+       << "      : shape(const_cast<gert::StorageShape *>(&tensor->GetShape())),\n"
+       << "        addr(const_cast<void *>(tensor->GetAddr())), size(tensor->GetSize()),\n"
+       << "        placement(tensor->GetPlacement() == gert::kFollowing ? gert::kOnHost : tensor->GetPlacement()) {}\n"
+       << "  TensorView(gert::StorageShape &storage_shape, void *data, size_t bytes)\n"
+       << "      : shape(&storage_shape), addr(data), size(bytes), placement(gert::kOnHost) {}\n"
+       << "  gert::StorageShape *shape;\n"
+       << "  void *addr;\n"
+       << "  size_t size;\n"
+       << "  gert::TensorPlacement placement;\n"
+       << "};\n\n"
+       << "template <typename T, bool Multiply>\n"
+       << "bool TryScalarBinary(const TensorView &left, const TensorView &right, const TensorView &output) {\n"
+       << "  if (left.addr == nullptr || right.addr == nullptr || output.addr == nullptr ||\n"
+       << "      left.placement != gert::kOnHost || right.placement != gert::kOnHost ||\n"
+       << "      output.placement != gert::kOnHost ||\n"
+       << "      left.size < sizeof(T) || right.size < sizeof(T) || output.size < sizeof(T) ||\n"
+       << "      left.shape->GetStorageShape().GetShapeSize() != 1 ||\n"
+       << "      right.shape->GetStorageShape().GetShapeSize() != 1 ||\n"
+       << "      output.shape->GetStorageShape().GetShapeSize() != 1) { return false; }\n"
+       << "  T lhs, rhs, result;\n"
+       << "  std::memcpy(&lhs, left.addr, sizeof(T));\n"
+       << "  std::memcpy(&rhs, right.addr, sizeof(T));\n"
+       << "  const bool overflow = Multiply ? __builtin_mul_overflow(lhs, rhs, &result) :\n"
+       << "                                   __builtin_add_overflow(lhs, rhs, &result);\n"
+       << "  if (overflow) { return false; }\n"
+       << "  std::memcpy(output.addr, &result, sizeof(T));\n"
+       << "  return true;\n"
+       << "}\n"
+       << "\n"
+       << "template <typename T>\n"
+       << "bool ReadScalarValue(const TensorView &input, T &value) {\n"
+       << "  if (input.addr == nullptr || input.placement != gert::kOnHost || input.size < sizeof(T) ||\n"
+       << "      input.shape->GetStorageShape().GetShapeSize() != 1) { return false; }\n"
+       << "  std::memcpy(&value, input.addr, sizeof(T));\n"
+       << "  return true;\n"
+       << "}\n"
+       << "\n"
+       << "template <typename T, typename Index, typename Axis>\n"
+       << "bool TryScalarGather(const TensorView &params, const TensorView &indices,\n"
+       << "                     const TensorView &axis, const TensorView &output) {\n"
+       << "  if (params.addr == nullptr || indices.addr == nullptr || axis.addr == nullptr || output.addr == nullptr "
+          "||\n"
+       << "      params.placement != gert::kOnHost || indices.placement != gert::kOnHost ||\n"
+       << "      axis.placement != gert::kOnHost || output.placement != gert::kOnHost ||\n"
+       << "      params.shape->GetStorageShape().GetDimNum() != 1U ||\n"
+       << "      indices.shape->GetStorageShape().GetShapeSize() != 1 ||\n"
+       << "      indices.shape->GetStorageShape().GetDimNum() > 1U ||\n"
+       << "      axis.shape->GetStorageShape().GetShapeSize() != 1 ||\n"
+       << "      axis.shape->GetStorageShape().GetDimNum() > 1U ||\n"
+       << "      output.shape->GetStorageShape() != indices.shape->GetStorageShape() ||\n"
+       << "      indices.size < sizeof(Index) || axis.size < sizeof(Axis) || output.size < sizeof(T)) { return false; "
+          "}\n"
+       << "  const int64_t count = params.shape->GetStorageShape().GetDim(0U);\n"
+       << "  Index index;\n"
+       << "  Axis dim;\n"
+       << "  std::memcpy(&index, indices.addr, sizeof(Index));\n"
+       << "  std::memcpy(&dim, axis.addr, sizeof(Axis));\n"
+       << "  // Negative indices/axes and all unsupported cases retain the original kernel semantics.\n"
+       << "  if (dim != 0 || index < 0 || index >= count || count < 0 ||\n"
+       << "      static_cast<uint64_t>(count) > params.size / sizeof(T)) { return false; }\n"
+       << "  std::memcpy(output.addr, static_cast<const unsigned char *>(params.addr) +\n"
+       << "              static_cast<size_t>(index) * sizeof(T), sizeof(T));\n"
+       << "  return true;\n"
+       << "}\n"
+       << "\n"
        << "template <size_t InputNum, size_t OutputNum>\n"
        << "class LocalKernelContext final {\n public:\n"
        << "  static constexpr size_t kValueNum = InputNum * 2U + 1U + OutputNum * 2U;\n"
        << "  static constexpr size_t kStorageSize = sizeof(KernelRunContext) +\n"
        << "      (kValueNum - 1U) * sizeof(AsyncAnyValue *);\n"
        << "  LocalKernelContext(const gert::ComputeNodeInfo *node_info,\n"
-       << "                     const std::array<const gert::Tensor *, InputNum> &inputs,\n"
-       << "                     const std::array<gert::Tensor *, OutputNum> &outputs, HostKernelFunc func)\n"
-       << "      : input_tensor_data_{}, output_tensor_data_{}, values_{}, storage_{} {\n"
+       << "                     const std::array<TensorView, InputNum> &inputs,\n"
+       << "                     const std::array<TensorView, OutputNum> &outputs, HostKernelFunc func)\n"
+       << "      : input_tensor_data_{}, output_tensor_data_{} {\n"
+       << "    // Every run-context field and value slot is assigned below; avoid clearing them twice.\n"
        << "    auto *run = reinterpret_cast<KernelRunContext *>(storage_.data());\n"
        << "    constexpr size_t input_num = InputNum;\n"
        << "    constexpr size_t output_num = OutputNum;\n"
@@ -482,22 +661,18 @@ Status HostCpuFusionCodegen::Generate(const HostCpuFusionRegion &region, HostCpu
        << "    run->compute_node_info = node_info;\n"
        << "    run->kernel_extend_info = nullptr;\n"
        << "    for (size_t i = 0U; i < input_num; ++i) {\n"
-       << "      const auto *tensor = inputs[i];\n"
-       << "      const auto placement = (tensor->GetPlacement() == gert::kFollowing) ? gert::kOnHost :\n"
-       << "                             tensor->GetPlacement();\n"
-       << "      input_tensor_data_[i].MutableTensorData() =\n"
-       << "          gert::TensorData(const_cast<void *>(tensor->GetAddr()), nullptr, tensor->GetSize(), placement);\n"
+       << "      (void)input_tensor_data_[i].MutableTensorData().SetAddr(inputs[i].addr, nullptr);\n"
+       << "      input_tensor_data_[i].SetSize(inputs[i].size);\n"
+       << "      input_tensor_data_[i].SetPlacement(inputs[i].placement);\n"
        << "    }\n"
        << "    for (size_t i = 0U; i < output_num; ++i) {\n"
-       << "      auto *tensor = outputs[i];\n"
-       << "      const auto placement = (tensor->GetPlacement() == gert::kFollowing) ? gert::kOnHost :\n"
-       << "                             tensor->GetPlacement();\n"
-       << "      output_tensor_data_[i].MutableTensorData() =\n"
-       << "          gert::TensorData(tensor->GetAddr(), nullptr, tensor->GetSize(), placement);\n"
+       << "      (void)output_tensor_data_[i].MutableTensorData().SetAddr(outputs[i].addr, nullptr);\n"
+       << "      output_tensor_data_[i].SetSize(outputs[i].size);\n"
+       << "      output_tensor_data_[i].SetPlacement(outputs[i].placement);\n"
        << "    }\n"
        << "    for (size_t i = 0U; i < input_num; ++i) {\n"
        << "      run->values[i] = &values_[i];\n"
-       << "      values_[i].data.pointer = const_cast<gert::StorageShape *>(&inputs[i]->GetShape());\n"
+       << "      values_[i].data.pointer = inputs[i].shape;\n"
        << "      values_[i].deleter = nullptr;\n"
        << "      run->values[input_num + i] = &values_[input_num + i];\n"
        << "      values_[input_num + i].data.pointer = &input_tensor_data_[i];\n"
@@ -510,7 +685,7 @@ Status HostCpuFusionCodegen::Generate(const HostCpuFusionRegion &region, HostCpu
        << "    const size_t output_start = input_num * 2U + 1U;\n"
        << "    for (size_t i = 0U; i < output_num; ++i) {\n"
        << "      run->values[output_start + i] = &values_[output_start + i];\n"
-       << "      values_[output_start + i].data.pointer = &outputs[i]->GetShape();\n"
+       << "      values_[output_start + i].data.pointer = outputs[i].shape;\n"
        << "      values_[output_start + i].deleter = nullptr;\n"
        << "      run->values[output_start + output_num + i] = &values_[output_start + output_num + i];\n"
        << "      values_[output_start + output_num + i].data.pointer = &output_tensor_data_[i];\n"
@@ -588,9 +763,7 @@ Status HostCpuFusionCodegen::Generate(const HostCpuFusionRegion &region, HostCpu
        << "    return GRAPH_SUCCESS;\n"
        << "  }\n"
        << "  graphStatus Execute(gert::HostCpuOpExecutionContext *ctx) override {\n"
-       << "    if (ctx == nullptr) { return GRAPH_FAILED; }\n"
-       << "    HostKernelFinder finder = GetHostKernelFinder();\n"
-       << "    if (finder == nullptr) { return GRAPH_FAILED; }\n";
+       << "    if (ctx == nullptr) { return GRAPH_FAILED; }\n";
 
   for (size_t type_index = 0U; type_index < kernel_types.size(); ++type_index) {
     code << "    HostKernelFunc cached_kernel_" << type_index << " = nullptr;\n";
@@ -608,15 +781,107 @@ Status HostCpuFusionCodegen::Generate(const HostCpuFusionRegion &region, HostCpu
       GELOGW("HostCPU fusion external output shape is unknown: chain[%s], output[%zu].", region.chain_id.c_str(), i);
       return UNSUPPORTED;
     }
-    code << "    gert::Tensor *external_output_" << i << " = ctx->MallocOutputTensor(" << i << "U, "
-         << shape_expression(desc.GetShape()) << ", " << format_expression(desc) << ", static_cast<ge::DataType>("
-         << static_cast<int32_t>(desc.GetDataType()) << "));\n"
+    size_t output_size = 0U;
+    if (GetTensorSize(desc, output_size) != SUCCESS) {
+      return UNSUPPORTED;
+    }
+    // Generated outputs never alias inputs; the generic API checks the IR prototype every run.
+    code << "    gert::Tensor *external_output_" << i
+         << " = PrepareFusedOutput(const_cast<gert::Tensor *>(ctx->GetOutputTensor(" << i
+         << "U)), reinterpret_cast<gert::KernelContext *>(ctx)->GetInputValue<gert::GertAllocator *>("
+         << region.external_inputs.size() << "U), " << shape_expression(desc.GetShape()) << ", "
+         << format_expression(desc) << ", static_cast<ge::DataType>(" << static_cast<int32_t>(desc.GetDataType())
+         << "), " << output_size << "U);\n"
          << "    if (external_output_" << i << " == nullptr) { return GRAPH_FAILED; }\n";
+  }
+
+  // A pure integer region can compute into local values and commit once. On failure,
+  // no external output has been written, so the original per-node path remains valid.
+  const auto region_dtype = region.nodes.front()->GetOpDesc()->GetOutputDesc(0U).GetDataType();
+  bool scalar_region = IsScalarGather(region.nodes.front());
+  for (size_t i = 1U; i < region.nodes.size(); ++i) {
+    scalar_region = scalar_region && IsScalarBinary(region.nodes[i]) &&
+                    (region.nodes[i]->GetOpDesc()->GetOutputDesc(0U).GetDataType() == region_dtype);
+  }
+  std::ostringstream scalar_code;
+  const auto cpp_type = region_dtype == DT_INT32 ? "int32_t" : "int64_t";
+  std::unordered_map<const OutDataAnchor *, std::string> scalar_values;
+  for (size_t i = 1U; scalar_region && (i < region.nodes.size()); ++i) {
+    for (const auto &anchor : region.nodes[i]->GetAllInDataAnchorsPtr()) {
+      const auto peer = anchor == nullptr ? nullptr : anchor->GetPeerOutAnchor();
+      const auto input = input_indexes.find(peer.get());
+      if ((input != input_indexes.end()) && (scalar_values.count(peer.get()) == 0U)) {
+        const auto name = "scalar_input_" + std::to_string(input->second);
+        scalar_values.emplace(peer.get(), name);
+        scalar_code << "      " << cpp_type << " " << name << ";\n"
+                    << "      if (!ReadScalarValue(TensorView(external_input_" << input->second << "), " << name
+                    << ")) { return false; }\n";
+      }
+    }
+  }
+  for (size_t i = 0U; scalar_region && (i < region.nodes.size()); ++i) {
+    const auto &node = region.nodes[i];
+    const auto name = "scalar_value_" + std::to_string(i);
+    scalar_code << "      " << cpp_type << " " << name << ";\n";
+    if (i == 0U) {
+      std::vector<size_t> inputs;
+      for (const auto &anchor : node->GetAllInDataAnchorsPtr()) {
+        const auto peer = anchor == nullptr ? nullptr : anchor->GetPeerOutAnchor();
+        const auto input = input_indexes.find(peer.get());
+        if (input == input_indexes.end()) {
+          scalar_region = false;
+          break;
+        }
+        inputs.emplace_back(input->second);
+      }
+      if (!scalar_region) {
+        break;
+      }
+      scalar_code << "      auto scalar_shape = " << shape_expression(node->GetOpDesc()->GetOutputDesc(0U).GetShape())
+                  << ";\n"
+                  << "      if (!TryScalarGather<" << cpp_type << ", "
+                  << (node->GetOpDesc()->GetInputDesc(1U).GetDataType() == DT_INT32 ? "int32_t" : "int64_t") << ", "
+                  << (node->GetOpDesc()->GetInputDesc(2U).GetDataType() == DT_INT32 ? "int32_t" : "int64_t")
+                  << ">(TensorView(external_input_" << inputs[0] << "), TensorView(external_input_" << inputs[1]
+                  << "), TensorView(external_input_" << inputs[2] << "), TensorView(scalar_shape, &" << name
+                  << ", sizeof(" << name << ")))) { return false; }\n";
+    } else {
+      std::vector<std::string> inputs;
+      for (const auto &anchor : node->GetAllInDataAnchorsPtr()) {
+        const auto peer = anchor == nullptr ? nullptr : anchor->GetPeerOutAnchor();
+        const auto input = scalar_values.find(peer.get());
+        if (input == scalar_values.end()) {
+          scalar_region = false;
+          break;
+        }
+        inputs.emplace_back(input->second);
+      }
+      if (!scalar_region) {
+        break;
+      }
+      scalar_code << "      if (__builtin_" << (node->GetType() == "Mul" ? "mul" : "add") << "_overflow(" << inputs[0]
+                  << ", " << inputs[1] << ", &" << name << ")) { return false; }\n";
+    }
+    scalar_values.emplace(node->GetOutDataAnchor(0).get(), name);
+  }
+  for (size_t i = 0U; scalar_region && (i < region.external_outputs.size()); ++i) {
+    const auto value = scalar_values.find(region.external_outputs[i].source.get());
+    scalar_region = value != scalar_values.end();
+    if (scalar_region) {
+      scalar_code << "      std::memcpy(external_output_" << i << "->GetAddr(), &" << value->second << ", sizeof("
+                  << cpp_type << "));\n";
+    }
+  }
+  if (scalar_region) {
+    code << "    if ([&]() -> bool {\n"
+         << scalar_code.str() << "      return true;\n"
+         << "    }()) { return GRAPH_SUCCESS; }\n";
   }
 
   struct InternalBuffer {
     OutDataAnchorPtr anchor;
     size_t offset;
+    size_t size;
   };
   std::vector<InternalBuffer> internal_buffers;
   std::unordered_map<const OutDataAnchor *, size_t> internal_indexes;
@@ -650,32 +915,33 @@ Status HostCpuFusionCodegen::Generate(const HostCpuFusionRegion &region, HostCpu
       }
       const size_t internal_index = internal_buffers.size();
       internal_indexes.emplace(anchor.get(), internal_index);
-      internal_buffers.push_back({anchor, internal_storage_size});
+      internal_buffers.push_back({anchor, internal_storage_size, tensor_size});
       internal_storage_size += allocation_size;
     }
   }
 
-  // All intermediate tensors live for one Execute call.  A single max-aligned
-  // arena preserves their independent addresses while replacing hundreds of
-  // allocator calls for wide fusion regions with one allocation.  Using
-  // max_align_t as the vector element type also makes the alignment guarantee
-  // explicit (vector<uint8_t> only guarantees byte alignment).
-  code << "    constexpr size_t kInternalStorageAlignment = alignof(std::max_align_t);\n"
-       << "    const size_t internal_storage_words = (" << std::max<size_t>(internal_storage_size, 1U)
-       << "U / kInternalStorageAlignment) + ((" << std::max<size_t>(internal_storage_size, 1U)
-       << "U % kInternalStorageAlignment) == 0U ? 0U : 1U);\n"
-       << "    std::vector<std::max_align_t> internal_storage(internal_storage_words);\n"
-       << "    auto *internal_storage_data = reinterpret_cast<uint8_t *>(internal_storage.data());\n";
+  // Each producer writes its buffer before consumers read it, so no zero-fill is needed.
+  // Bound the stack arena by bytes: small individual outputs do not bound a whole region.
+  constexpr size_t kMaxInternalStackBytes = 64U * 1024U;
+  if (internal_storage_size <= kMaxInternalStackBytes) {
+    code << "    alignas(std::max_align_t) std::array<unsigned char, " << std::max<size_t>(internal_storage_size, 1U)
+         << "U> internal_storage;\n"
+         << "    auto *internal_storage_data = internal_storage.data();\n";
+  } else {
+    code << "    std::unique_ptr<unsigned char[]> internal_storage(new (std::nothrow) unsigned char["
+         << internal_storage_size << "U]);\n"
+         << "    if (internal_storage == nullptr) { return GRAPH_FAILED; }\n"
+         << "    auto *internal_storage_data = internal_storage.get();\n";
+  }
   for (size_t internal_index = 0U; internal_index < internal_buffers.size(); ++internal_index) {
     const auto &buffer = internal_buffers[internal_index];
     const auto *owner = buffer.anchor->GetOwnerNodeBarePtr();
     const auto &desc = owner->GetOpDesc()->GetOutputDesc(static_cast<uint32_t>(buffer.anchor->GetIdx()));
-    code << "    gert::Tensor internal_tensor_" << internal_index << "(" << shape_expression(desc.GetShape()) << ", "
-         << format_expression(desc) << ", gert::kOnHost, static_cast<ge::DataType>("
-         << static_cast<int32_t>(desc.GetDataType()) << "), internal_storage_data + " << buffer.offset << "U);\n";
+    code << "    auto internal_shape_" << internal_index << " = " << shape_expression(desc.GetShape()) << ";\n"
+         << "    TensorView internal_tensor_" << internal_index << "(internal_shape_" << internal_index
+         << ", internal_storage_data + " << buffer.offset << "U, " << buffer.size << "U);\n";
   }
 
-  std::vector<bool> kernel_type_seen(kernel_types.size(), false);
   gert::bg::BufferPool node_info_pool;
   for (size_t node_index = 0U; node_index < region.nodes.size(); ++node_index) {
     const auto &node = region.nodes[node_index];
@@ -694,31 +960,30 @@ Status HostCpuFusionCodegen::Generate(const HostCpuFusionRegion &region, HostCpu
              region.chain_id.c_str(), node->GetNamePtr());
       return PARAM_INVALID;
     }
+    std::ostringstream fallback;
+    fallback << "      static const gert::ComputeNodeInfo *const compute_node_info_" << node_index
+             << " = []() -> const gert::ComputeNodeInfo * {\n"
+             << "      alignas(gert::ComputeNodeInfo) static const std::array<uint8_t, " << node_info_size
+             << "U> node_info = []() {\n"
+             << "        alignas(gert::ComputeNodeInfo) std::array<uint8_t, " << node_info_size
+             << "U> info = " << emit_bytes(node_info.get(), node_info_size) << ";\n"
+             << "        auto *compute_node_info = reinterpret_cast<gert::ComputeNodeInfo *>(info.data());\n"
+             << "        compute_node_info->SetNodeName(\"" << EscapeString(node->GetName()) << "\");\n"
+             << "        compute_node_info->SetNodeType(\"" << EscapeString(node->GetType()) << "\");\n"
+             << "        return info;\n"
+             << "      }();\n"
+             << "      return reinterpret_cast<const gert::ComputeNodeInfo *>(node_info.data());\n"
+             << "      }();\n";
+    fallback << "      if (cached_kernel_" << kernel_type_iter->second << " == nullptr) {\n"
+             << "        cached_kernel_" << kernel_type_iter->second << " = GetHostKernel_" << kernel_type_iter->second
+             << "(GetHostKernelFinder());\n"
+             << "        if (cached_kernel_" << kernel_type_iter->second << " == nullptr) { return GRAPH_FAILED; }\n"
+             << "      }\n"
+             << "      HostKernelFunc kernel_" << node_index << " = cached_kernel_" << kernel_type_iter->second
+             << ";\n";
     code << "    {\n"
-         << "      static const gert::ComputeNodeInfo *const compute_node_info_" << node_index
-         << " = []() -> const gert::ComputeNodeInfo * {\n"
-         << "      alignas(gert::ComputeNodeInfo) static const std::array<uint8_t, " << node_info_size
-         << "U> node_info = []() {\n"
-         << "        alignas(gert::ComputeNodeInfo) std::array<uint8_t, " << node_info_size
-         << "U> info = " << emit_bytes(node_info.get(), node_info_size) << ";\n"
-         << "        auto *compute_node_info = reinterpret_cast<gert::ComputeNodeInfo *>(info.data());\n"
-         << "        compute_node_info->SetNodeName(\"" << EscapeString(node->GetName()) << "\");\n"
-         << "        compute_node_info->SetNodeType(\"" << EscapeString(node->GetType()) << "\");\n"
-         << "        return info;\n"
-         << "      }();\n"
-         << "      return reinterpret_cast<const gert::ComputeNodeInfo *>(node_info.data());\n"
-         << "      }();\n"
-         << "      ";
-    if (!kernel_type_seen[kernel_type_iter->second]) {
-      code << "cached_kernel_" << kernel_type_iter->second << " = GetHostKernel_" << kernel_type_iter->second
-           << "(finder);\n"
-           << "      if (cached_kernel_" << kernel_type_iter->second << " == nullptr) { return GRAPH_FAILED; }\n"
-           << "      ";
-      kernel_type_seen[kernel_type_iter->second] = true;
-    }
-    code << "HostKernelFunc kernel_" << node_index << " = cached_kernel_" << kernel_type_iter->second << ";\n"
-         << "      const std::array<const gert::Tensor *, " << node->GetAllInDataAnchorsSize() << "U> node_inputs_"
-         << node_index << "{{";
+         << "      const std::array<TensorView, " << node->GetAllInDataAnchorsSize() << "U> node_inputs_" << node_index
+         << "{{";
 
     const auto in_anchors = node->GetAllInDataAnchorsPtr();
     for (size_t input_index = 0U; input_index < in_anchors.size(); ++input_index) {
@@ -748,10 +1013,10 @@ Status HostCpuFusionCodegen::Generate(const HostCpuFusionRegion &region, HostCpu
                region.chain_id.c_str(), node->GetNamePtr(), input_index);
         return PARAM_INVALID;
       }
-      code << "&internal_tensor_" << internal_iter->second;
+      code << "internal_tensor_" << internal_iter->second;
     }
     code << "}};\n"
-         << "      const std::array<gert::Tensor *, " << node->GetAllOutDataAnchors().size() << "U> node_outputs_"
+         << "      const std::array<TensorView, " << node->GetAllOutDataAnchors().size() << "U> node_outputs_"
          << node_index << "{{";
 
     const auto out_anchors = node->GetAllOutDataAnchors();
@@ -775,16 +1040,36 @@ Status HostCpuFusionCodegen::Generate(const HostCpuFusionRegion &region, HostCpu
                  region.chain_id.c_str(), node->GetNamePtr(), output_index);
           return PARAM_INVALID;
         }
-        code << "&internal_tensor_" << internal_iter->second;
+        code << "internal_tensor_" << internal_iter->second;
       }
     }
-    code << "}};\n"
-         << "      LocalKernelContext<" << in_anchors.size() << "U, " << out_anchors.size() << "U> kernel_context_"
-         << node_index << "(compute_node_info_" << node_index << ", node_inputs_" << node_index << ", node_outputs_"
-         << node_index << ", kernel_" << node_index << ");\n"
+    code << "}};\n";
+    const bool inline_scalar = IsScalarBinary(node);
+    const auto dtype = op_desc->GetOutputDesc(0U).GetDataType();
+    if (inline_scalar) {
+      code << "      if (!TryScalarBinary<" << (dtype == DT_INT32 ? "int32_t" : "int64_t") << ", "
+           << (node->GetType() == "Mul" ? "true" : "false") << ">(node_inputs_" << node_index << "[0], node_inputs_"
+           << node_index << "[1], node_outputs_" << node_index << "[0])) {\n";
+    }
+    const bool inline_gather = IsScalarGather(node);
+    if (inline_gather) {
+      const auto &indices = op_desc->GetInputDesc(1U);
+      const auto &axis = op_desc->GetInputDesc(2U);
+      code << "      if (!TryScalarGather<" << (dtype == DT_INT32 ? "int32_t" : "int64_t") << ", "
+           << (indices.GetDataType() == DT_INT32 ? "int32_t" : "int64_t") << ", "
+           << (axis.GetDataType() == DT_INT32 ? "int32_t" : "int64_t") << ">(node_inputs_" << node_index
+           << "[0], node_inputs_" << node_index << "[1], node_inputs_" << node_index << "[2], node_outputs_"
+           << node_index << "[0])) {\n";
+    }
+    code << fallback.str() << "      LocalKernelContext<" << in_anchors.size() << "U, " << out_anchors.size()
+         << "U> kernel_context_" << node_index << "(compute_node_info_" << node_index << ", node_inputs_" << node_index
+         << ", node_outputs_" << node_index << ", kernel_" << node_index << ");\n"
          << "      if (kernel_" << node_index << "(kernel_context_" << node_index
-         << ".Get()) != GRAPH_SUCCESS) { return GRAPH_FAILED; }\n"
-         << "    }\n";
+         << ".Get()) != GRAPH_SUCCESS) { return GRAPH_FAILED; }\n";
+    if (inline_scalar || inline_gather) {
+      code << "      }\n";
+    }
+    code << "    }\n";
   }
 
   code << "    return GRAPH_SUCCESS;\n"
@@ -856,6 +1141,15 @@ Status HostCpuFusionCompiler::Compile(const std::string &source, std::vector<uin
   if (!CheckRequiredHeaders(include_paths)) {
     return UNSUPPORTED;
   }
+  // Source alone is insufficient for cross compilation or a different toolkit installation.
+  std::vector<std::string> cache_key{source, target_cpu, compiler_name};
+  cache_key.insert(cache_key.end(), include_paths.cbegin(), include_paths.cend());
+  if (HostCpuFusionSoCache::GetInstance().Get(cache_key, so_data) && IsExpectedElf(so_data, target_cpu)) {
+    GELOGI("HostCPU fusion JIT cache hit: target_cpu[%s], source_size[%zu], so_size[%zu].", target_cpu.c_str(),
+           source.size(), so_data.size());
+    return SUCCESS;
+  }
+  so_data.clear();
 
   // 存放Generate()生成的C++源码
   const int source_fd = CreateMemFd("host_cpu_fusion_source");
@@ -988,6 +1282,7 @@ Status HostCpuFusionCompiler::Compile(const std::string &source, std::vector<uin
       so_data.clear();
       break;
     }
+    HostCpuFusionSoCache::GetInstance().Put(cache_key, so_data);
     status = SUCCESS;
   } while (false);
   (void)close(diagnostics_fd);

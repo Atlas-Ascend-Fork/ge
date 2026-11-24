@@ -16,6 +16,11 @@
 #include "ge/fusion/pass/fusion_pass_reg.h"
 namespace ge {
 namespace fusion {
+enum class FusionPassOrigin : uint8_t {
+  kExternal = 0U,
+  kBuiltin = 1U,
+};
+
 enum class PythonPassKind : uint32_t {
   kFusionBase = 0U,
   kPatternFusion = 1U,
@@ -99,6 +104,8 @@ class PassRegistry {
 
   std::vector<FusionPassRegistrationData> GetFusionPassRegDataByStage(CustomPassStage stage) const;
 
+  bool IsBuiltinFusionPass(const std::string &pass_name) const;
+
   bool GetPythonPassDescriptor(const std::string &descriptor_key, PythonPassDescriptor &pass_desc) const;
 
   bool ResolveCurrentPythonPassDescriptor(PythonPassDescriptor &pass_desc) const;
@@ -111,6 +118,7 @@ class PassRegistry {
   PassRegistry();
   bool GetPythonPassCreateContext(const std::string &pass_name, PythonPassCreateContext &create_context) const;
   std::map<std::string, FusionPassRegistrationData> name_2_fusion_pass_regs_;
+  std::map<std::string, FusionPassOrigin> pass_name_to_origins_;
   std::map<std::string, PythonPassDescriptor> descriptor_key_2_python_pass_descs_;
   std::map<std::string, PythonPassCreateContext> pass_name_2_python_pass_create_contexts_;
 };

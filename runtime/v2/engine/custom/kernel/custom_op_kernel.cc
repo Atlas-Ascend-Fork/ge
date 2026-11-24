@@ -27,6 +27,7 @@
 #include "runtime/v2/engine/custom/kernel/eager_args_handler.h"
 #include "runtime/v2/engine/custom/kernel/rt2_attached_stream_collection.h"
 #include "framework/runtime/custom_op_context_info.h"
+#include "core/utils/rt2_tensor_utils.h"
 
 namespace gert {
 namespace kernel {
@@ -122,6 +123,16 @@ ge::graphStatus FindHostCpuCustomOpFunc(KernelContext *context) {
   auto chain = context->GetOutput(0);
   GE_ASSERT_NOTNULL(chain);
   chain->Set(custom_op_ptr, nullptr);
+  return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus FindHostCpuFusedCustomOpFunc(KernelContext *context) {
+  GE_ASSERT_SUCCESS(FindHostCpuCustomOpFunc(context));
+  auto *chain = context->GetOutput(0U);
+  GE_ASSERT_NOTNULL(chain);
+  auto *host_op = ge::CustomOpCast<ge::HostCpuExecuteOp>(chain->GetValue<ge::BaseCustomOp *>());
+  GE_ASSERT_NOTNULL(host_op, "Generated HostCPU fusion does not implement HostCpuExecuteOp");
+  chain->Set(host_op, nullptr);
   return ge::GRAPH_SUCCESS;
 }
 
@@ -325,6 +336,42 @@ ge::graphStatus ExecuteHostCustomOpFunc(KernelContext *context) {
   return ExecuteHostCustomOpImpl(context);
 }
 
+static ge::graphStatus CreateHostCustomOpAndSplitOutputs(const ge::FastNode *node, KernelContext *context) {
+  const auto *extended_context = reinterpret_cast<const ExtendedKernelContext *>(context);
+  const size_t output_num = extended_context->GetComputeNodeOutputNum();
+  GE_ASSERT_EQ(context->GetOutputNum(), output_num * 2U);
+  GE_ASSERT_SUCCESS(CreateHostCustomOpOutputs(node, context));
+  for (size_t i = 0U; i < output_num; ++i) {
+    auto *chain = context->GetOutput(output_num + i);
+    GE_ASSERT_NOTNULL(chain);
+    auto *data = new (std::nothrow) GertTensorData();
+    GE_ASSERT_NOTNULL(data);
+    chain->SetWithDefaultDeleter(data);
+  }
+  return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus ExecuteHostCustomOpAndSplitFunc(KernelContext *context) {
+  auto *host_context = reinterpret_cast<HostCpuOpExecutionContext *>(context);
+  const size_t output_num = host_context->GetComputeNodeOutputNum();
+  GE_ASSERT_EQ(context->GetOutputNum(), output_num * 2U);
+  auto *allocator = context->GetInputValue<GertAllocator *>(host_context->GetComputeNodeInputNum());
+  GE_ASSERT_NOTNULL(allocator);
+  auto *host_op = context->GetInputValue<ge::HostCpuExecuteOp *>(host_context->GetComputeNodeInputNum() +
+                                                                 static_cast<size_t>(HostCustomOpInput::kFunc));
+  GE_ASSERT_NOTNULL(host_op);
+  GE_ASSERT_SUCCESS(host_op->Execute(host_context));
+  for (size_t i = 0U; i < output_num; ++i) {
+    const auto *tensor = host_context->GetOutputTensor(i);
+    auto *data = context->GetOutputPointer<GertTensorData>(output_num + i);
+    GE_ASSERT_NOTNULL(tensor);
+    GE_ASSERT_NOTNULL(data);
+    // Keep the owning/shared output contract of SplitDataTensor and its FreeMemory guarder.
+    GE_ASSERT_SUCCESS(TensorUtils::ShareTensorToGtd(*tensor, *allocator, *data));
+  }
+  return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus ExecuteHostCustomOpWithInferShapeFunc(KernelContext *context) {
   auto *host_context = reinterpret_cast<HostCpuOpExecutionContext *>(context);
   GE_ASSERT_NOTNULL(host_context);
@@ -468,10 +515,17 @@ REGISTER_KERNEL(FreeCustomOpWorkspaces)
 REGISTER_KERNEL(FreeArgsGuarder).RunFunc(FreeArgsGuarderFunc).ConcurrentCriticalSectionKey(kKernelUseMemory);
 
 REGISTER_KERNEL(FindHostCpuCustomOp).RunFunc(FindHostCpuCustomOpFunc);
+REGISTER_KERNEL(FindHostCpuFusedCustomOp).RunFunc(FindHostCpuFusedCustomOpFunc);
 REGISTER_KERNEL(FindCustomShapeInferOp).RunFunc(FindCustomShapeInferOpFunc);
 REGISTER_KERNEL(ExecuteHostCustomOp)
     .OutputsCreator(CreateHostCustomOpOutputs)
     .RunFunc(ExecuteHostCustomOpFunc)
+    .TracePrinter(HostCustomOpExecuteKernelTrace)
+    .ProfilingInfoFiller(HostCustomOpProfilingDataFill)
+    .ConcurrentCriticalSectionKey(kKernelUseMemory);
+REGISTER_KERNEL(ExecuteHostCustomOpAndSplit)
+    .OutputsCreator(CreateHostCustomOpAndSplitOutputs)
+    .RunFunc(ExecuteHostCustomOpAndSplitFunc)
     .TracePrinter(HostCustomOpExecuteKernelTrace)
     .ProfilingInfoFiller(HostCustomOpProfilingDataFill)
     .ConcurrentCriticalSectionKey(kKernelUseMemory);

@@ -40,8 +40,7 @@ enum class GraphStage : int64_t { GRAPH_STAGE_FUZZ = 0, GRAPH_STAGE_RESERVED };
 
 constexpr const char_t *const kGraphDumpStage = "DumpStage";
 
-const std::map<std::string, std::string> kFwkTypeToStr = {
-    {"0", "Caffe"}, {"1", "MindSpore"}, {"3", "TensorFlow"}, {"4", "Android_NN"}, {"5", "Onnx"}};
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::map<std::string, std::string> kFwkTypeToStr;
 
 enum OpEngineType {
   ENGINE_SYS = 0,  // default engine
@@ -71,52 +70,52 @@ constexpr const char_t *GE_OPTION_EXEC_PLACEMENT = "ge.exec.placement";
 
 // profiling data
 
-const std::string kTaskTypeAicore = "AI_CORE";
-const std::string kTaskTypeAiv = "AIV";
-const std::string kTaskTypeMixAic = "MIX_AIC";
-const std::string kTaskTypeMixAiv = "MIX_AIV";
-const std::string kTaskTypeAicpu = "AI_CPU";
-const std::string kTaskTypeDsa = "DSA";
-const std::string kTaskTypeWriteBackData = "WRITE_BACK";
-const std::string kTaskTypeInvalidData = "INVALID";
-const std::string kTaskTypeInvalid = "TASK_TYPE_INVALID";
-const std::string kTaskTypeFftsPlus = "FFTS_PLUS";
-const std::string kEngineNameVectorCore = "VectorEngine";
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kTaskTypeAicore;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kTaskTypeAiv;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kTaskTypeMixAic;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kTaskTypeMixAiv;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kTaskTypeAicpu;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kTaskTypeDsa;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kTaskTypeWriteBackData;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kTaskTypeInvalidData;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kTaskTypeInvalid;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kTaskTypeFftsPlus;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kEngineNameVectorCore;
 
-const std::string kEngineNameHccl = "ops_kernel_info_hccl";
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kEngineNameHccl;
 // HCCL引擎（DNNEngine）注册名，HCCL自定义算子需落到该引擎以复用独立流等流分配特性
 constexpr const char_t *const kEngineNameDnnHccl = "DNN_HCCL";
-const std::string kEngineNameRts = "DNN_VM_RTS_OP_STORE";
-const std::string kEngineNameHostCpu = "DNN_VM_HOST_CPU_OP_STORE";
-const std::string kEngineNameGeLocal = "DNN_VM_GE_LOCAL_OP_STORE";
-const std::string kEngineNameCustom = "DNN_VM_CUSTOM";
-const std::string kCustomOpKernelLibName = "DNN_VM_CUSTOM_OP_STORE";
-const std::string kCustomGraphOptimizer = "custom_graph_optimizer";
-const std::string kEngineNameAiCpu = "aicpu_ascend_kernel";
-const std::string kEngineNameAiCpuTf = "aicpu_tf_kernel";
-const std::string kEngineNameAiCore = "AIcoreEngine";
-const std::string kEngineNameDvpp = "dvpp_ops_kernel";
-const std::string kEngineNameDsa = "DSAEngine";
-const std::string kAtomicOpType = "DynamicAtomicAddrClean";
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kEngineNameRts;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kEngineNameHostCpu;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kEngineNameGeLocal;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kEngineNameCustom;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kCustomOpKernelLibName;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kCustomGraphOptimizer;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kEngineNameAiCpu;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kEngineNameAiCpuTf;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kEngineNameAiCore;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kEngineNameDvpp;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kEngineNameDsa;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kAtomicOpType;
 constexpr const char_t *const kAICpuKernelLibName = "aicpu_kernel_lib_name";
 constexpr const char_t *const kPartiallySupported = "partially_supported";
 
 // runtime2.0 lowering func
-const std::string kAttrLowingFunc = "_ge_attr_lowering_func";
-const std::string kFFTSAiCoreLowerFunc = "ffts_ai_core_lower_func";
-const std::string kFFTSGraphLowerFunc = "ffts_graph_lower_func";
-const std::string kFFTSStaticGraphLowerFunc = "ffts_static_graph_lower_func";
-const std::string kFFTSMixL2LowerFunc = "ffts_mix_l2_lower_func";
-const std::string kHostCpuCustomOpLowerFunc = "host_cpu_custom_op_lower_func";
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kAttrLowingFunc;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kFFTSAiCoreLowerFunc;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kFFTSGraphLowerFunc;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kFFTSStaticGraphLowerFunc;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kFFTSMixL2LowerFunc;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kHostCpuCustomOpLowerFunc;
 // runtime2.0 calculate func
-const std::string kAttrCalcArgsSizeFunc = "_ge_attr_calculate_func";
-const std::string kFFTSMixL2CalcFunc = "ffts_mix_l2_calc_func";
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kAttrCalcArgsSizeFunc;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kFFTSMixL2CalcFunc;
 
-const std::string kInputTensorIndexs = "input_tensor_indexs";
-const std::string kOutputTensorIndexs = "output_tensor_indexs";
-const std::string kShapeTypeStatic = "static";
-const std::string kShapeTypeDynamic = "dynamic";
-const std::string kAtomicPrefix = "_atomic";
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kInputTensorIndexs;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kOutputTensorIndexs;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kShapeTypeStatic;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kShapeTypeDynamic;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kAtomicPrefix;
 
 constexpr uint64_t kInferSessionId = 0U;
 constexpr uint64_t kReleaseFlag = 1U;
@@ -131,15 +130,15 @@ constexpr const char_t *const kIsCopyOuputAddr = "1";
 constexpr size_t kMaxHostMemInputLen = 128U;  // 64 aligned
 
 // memory policy
-const std::string kBalanceMode = "BalanceMode";
-const std::string kMemoryPriority = "MemoryPriority";
-const std::set<std::string> kValidValues = {"", kBalanceMode, kMemoryPriority};
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kBalanceMode;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kMemoryPriority;
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::set<std::string> kValidValues;
 
-const uint32_t kManualThread = 0U;
-const uint32_t kAutoThread = 1U;
+constexpr uint32_t kManualThread = 0U;
+constexpr uint32_t kAutoThread = 1U;
 
 // model deploy mode
-const std::string kModelDeployModeSpmd = "SPMD";
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string kModelDeployModeSpmd;
 
 // dsa
 constexpr size_t kDSASetInputAddr = 0U;
@@ -452,7 +451,7 @@ struct OpDescInfoId {
     context_id = context;
     thread_id = thread;
   }
-  // for exception dump(one process may has multi thread for mutli device ids)
+  // for exception dump(one process may have multi thread for multi device ids)
   OpDescInfoId(const uint32_t task, const uint32_t stream, const int32_t dev_id)
       : task_id(task), stream_id(stream), context_id(UINT32_MAX), thread_id(UINT32_MAX), device_id(dev_id) {}
   OpDescInfoId(const uint32_t task, const uint32_t stream, const uint32_t context, const uint32_t thread,
@@ -592,9 +591,8 @@ constexpr const char_t *const OPTION_EXEC_FORMAT_MODEL = "ge.exec.formatMode";
 constexpr const char_t *const OPTION_BUILD_GRAPH_MODE = "ge.buildGraphMode";
 
 // Configure Attribute Compression flag(true or false, default true for backward compatibility)
-const std::string ENABLE_ATTR_COMPRESSION = "ge.enableAttrCompression";
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::string ENABLE_ATTR_COMPRESSION;
 
-const std::set<std::string> ir_builder_suppported_options_inner = {
-    EVALUATE_GRAPH_RESOURCE_MODE, RESOURCE_CONFIG_PATH, RECOMPUTE, OPTION_TOPOSORTING_MODE, GRAPH_SLICE_MODE};
+GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY extern const std::set<std::string> ir_builder_suppported_options_inner;
 }  // namespace ge
 #endif  // INC_COMMON_GE_TYPES_H_

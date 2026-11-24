@@ -36,7 +36,7 @@
 ## 函数原型
 
 ```c
-aclError aclmdlQueryExeOMDesc(const char *fileName, [aclmdlExeOMDesc](aclmdlExeOMDesc.md) *mdlPartitionSize)
+aclError aclmdlQueryExeOMDesc(const char *fileName, aclmdlExeOMDesc *mdlPartitionSize)
 ```
 
 ## 参数说明

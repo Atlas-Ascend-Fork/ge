@@ -216,7 +216,7 @@ ZPOS64_T ZCALLBACK MemTell64FileFunc(voidpf opaque, voidpf stream) {
   return mem_file->position;
 }
 
-long ZCALLBACK MemSeek64FileFunc(voidpf opaque, voidpf stream, ZPOS64_T offset, int32_t origin) {
+long ZCALLBACK MemSeek64FileFunc(const voidpf opaque, voidpf stream, ZPOS64_T offset, int32_t origin) {
   const auto mem_file = static_cast<MemoryFile *>(stream);
   (void)opaque;
   if (mem_file == nullptr) {
@@ -231,7 +231,7 @@ long ZCALLBACK MemSeek64FileFunc(voidpf opaque, voidpf stream, ZPOS64_T offset, 
   return ret;
 }
 
-int32_t ZCALLBACK MemCloseFileFunc(voidpf opaque, voidpf stream) {
+int32_t ZCALLBACK MemCloseFileFunc(const voidpf opaque, voidpf stream) {
   const auto mem_file = static_cast<MemoryFile *>(stream);
   (void)opaque;
   if (mem_file == nullptr) {
@@ -244,7 +244,7 @@ int32_t ZCALLBACK MemCloseFileFunc(voidpf opaque, voidpf stream) {
   return kMemZipOk;
 }
 
-int32_t ZCALLBACK MemErrorFileFunc(voidpf opaque, voidpf stream) {
+int32_t ZCALLBACK MemErrorFileFunc(const voidpf opaque, voidpf stream) {
   const auto mem_file = static_cast<MemoryFile *>(stream);
   (void)opaque;
   if (mem_file == nullptr) {

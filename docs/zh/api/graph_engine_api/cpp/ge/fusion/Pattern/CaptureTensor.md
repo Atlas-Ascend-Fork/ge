@@ -13,7 +13,7 @@
 
 捕获Pattern中一个Tensor，从而在[MatchResult](../MatchResult/MatchResult.md)中可以按序获取。
 
-捕获Node的output，用于后续在MatchResult中通过捕获时的索引，快速获取到Node output，用户可以从Match Result中拿到Tensor描述做校验。
+捕获Node的output，用于后续在MatchResult中通过捕获时的索引，快速获取到Node output，用户可以从MatchResult中拿到Tensor描述做校验。
 
 ## 函数原型
 

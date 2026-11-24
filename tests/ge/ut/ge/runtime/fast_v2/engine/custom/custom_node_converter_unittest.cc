@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 #include "engine/custom/converter/custom_node_converter.h"
 #include "engine/node_converter_utils.h"
+#include "framework/common/host_cpu_fusion_attr.h"
 #include "common/share_graph.h"
 #include "common/summary_checker.h"
 #include "ge/ut/ge/runtime/fast_v2/common/const_data_helper.h"
@@ -235,6 +236,40 @@ TEST_F(CustomNodeConverterUT, host_cpu_custom_op_convert_test) {
   ASSERT_NE(ge::ExecuteGraphUtils::FindFirstNodeMatchType(exe_graph, "ExecuteHostCustomOp"), nullptr);
   ASSERT_EQ(ge::ExecuteGraphUtils::FindFirstNodeMatchType(exe_graph, "ExecuteCustomOp"), nullptr);
   ASSERT_NE(ge::ExecuteGraphUtils::FindFirstNodeMatchType(init_frame_->GetExecuteGraph().get(), "FindHostCpuCustomOp"),
+            nullptr);
+}
+
+TEST_F(CustomNodeConverterUT, fused_host_cpu_custom_op_converts_to_combined_execution) {
+  auto graph = ShareGraph::BuildCustomOpGraph();
+  auto custom_op = graph->FindNode("custom_op");
+  ASSERT_TRUE(AttrUtils::SetBool(custom_op->GetOpDesc(), ge::kFusedHostCpuGenerated, true));
+  auto root_model = GeModelBuilder(graph).BuildGeRootModel();
+  auto global_data = GlobalDataFaker(root_model).Build();
+  global_data.SetExternalAllocator(nullptr, ExecuteGraphType::kInit);
+  global_data.SetExternalAllocator(nullptr, ExecuteGraphType::kMain);
+  bg::LowerConstDataNode(global_data);
+  std::vector<bg::ValueHolderPtr> shapes;
+  std::vector<bg::DevMemValueHolderPtr> addrs;
+  LowerDataNodes(graph, global_data, shapes, addrs);
+
+  const auto ret = LoweringHostCustomNode(custom_op, {shapes, addrs, &global_data});
+  ASSERT_TRUE(ret.result.IsSuccess());
+  ASSERT_EQ(ret.out_shapes.size(), 1U);
+  ASSERT_EQ(ret.out_addrs.size(), 1U);
+  EXPECT_EQ(ret.out_addrs[0]->GetPlacement(), kOnHost);
+  EXPECT_EQ(ret.out_shapes[0]->GetOutIndex(), 0);
+  EXPECT_EQ(ret.out_addrs[0]->GetOutIndex(), 1);
+  ASSERT_NE(ret.out_addrs[0]->GetGuarder(), nullptr);
+
+  auto frame = bg::ValueHolder::PopGraphFrame();
+  ASSERT_NE(frame, nullptr);
+  auto *exe_graph = frame->GetExecuteGraph().get();
+  ASSERT_NE(exe_graph, nullptr);
+  auto *execute_node = ExecuteGraphUtils::FindFirstNodeMatchType(exe_graph, "ExecuteHostCustomOpAndSplit");
+  ASSERT_NE(execute_node, nullptr);
+  EXPECT_EQ(ret.out_shapes[0]->GetFastNode(), execute_node);
+  EXPECT_EQ(ret.out_addrs[0]->GetFastNode(), execute_node);
+  EXPECT_NE(ExecuteGraphUtils::FindFirstNodeMatchType(init_frame_->GetExecuteGraph().get(), "FindHostCpuFusedCustomOp"),
             nullptr);
 }
 

@@ -11,7 +11,7 @@
 
 ## 功能说明
 
-编译时框架有[内存复用优化技术](https://www.hiascend.com/developer/techArticles/202407005-1?envFlag=1)。该接口描述所需workspace大小，框架将该信息记录在模型内，返回在该workspace在模型内整块逻辑内存的偏移量。与真实的物理地址概念不同，通常称之为逻辑地址。
+编译时框架有[内存复用优化技术](https://www.hiascend.com/developer/techArticles/202407005-1?envFlag=1)。该接口描述所需workspace大小，框架将该信息记录在模型内，返回该workspace在模型内整块逻辑内存的偏移量。与真实的物理地址概念不同，通常称之为逻辑地址。
 
 ## 函数原型
 

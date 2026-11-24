@@ -388,7 +388,7 @@ om/om2模型加载后是否保留计算图及其预缓存信息，只支持输�
 
 - 0：默认值，保留计算图及其预缓存信息。
 - 1：不保留计算图及其预缓存信息。设置为1时，模型加载成功后会释放计算图及其预缓存信息，用于节省内存，但预缓存信息被释放，会影响Profiling数据采集以及异常场景下的算子信息获取，因此：
-    - Profiling数据采集场景下，需在模型加载前调用aclprofStart接口打开Profling开关，否则Profiling功能不可用。
+    - Profiling数据采集场景下，需在模型加载前调用aclprofStart接口打开Profiling开关，否则Profiling功能不可用。
     - 异常场景下，调用[aclmdlCreateAndGetOpDesc](aclmdlCreateAndGetOpDesc.md)接口获取算子描述信息时会失败。
 
 ## ACL\_MDL\_SCH\_MODE\_INT32取值说明

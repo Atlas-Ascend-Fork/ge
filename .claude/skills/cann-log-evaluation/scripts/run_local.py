@@ -104,6 +104,13 @@ def run(cmd, stream=False, heartbeat=None, prefix=""):
     return p.returncode
 
 
+def report_name_arg(value):
+    try:
+        return report_artifacts.validate_report_name(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def main():
     run_started = time.monotonic()
     run_started_wall = datetime.now().astimezone()
@@ -120,6 +127,12 @@ def main():
         "--out",
         default=os.path.join(SKILL_ROOT, "output"),
         help="输出目录，默认 skill 的 output/ 目录",
+    )
+    ap.add_argument(
+        "--report-name",
+        type=report_name_arg,
+        default=None,
+        help="Markdown 报告文件名，默认 cann-log-evaluation-report-<date>.md",
     )
     ap.add_argument("--name", default="input", help="本次评测名称")
     ap.add_argument(
@@ -791,6 +804,8 @@ def main():
     ]
     if args.excel:
         report_cmd.append("--excel")
+    if args.report_name:
+        report_cmd += ["--report-name", args.report_name]
     report_errors = run(report_cmd) != 0
     if args.daily:
         report_errors += (
@@ -807,15 +822,19 @@ def main():
 
     # Excel 是可选附件：缺 openpyxl 时 generate_all_reports 只告警，不能因此
     # 判定整轮交付失败，所以这里只校验必需产物。
-    missing = report_artifacts.verify_delivery(out, run_date)
+    missing = report_artifacts.verify_delivery(
+        out, run_date, report_name=args.report_name
+    )
     if missing:
         write_timing("report_failed")
         print("[error] 交付物缺失: %s" % ", ".join(missing), file=sys.stderr)
         sys.exit(1)
 
-    print(f"\n[完成] 报告已生成到: {out}")
+    report_name = args.report_name or report_artifacts.markdown_report_name(run_date)
+    report_path = os.path.join(out, report_name)
+    print(f"\n[完成] 报告已生成到: {report_path}")
     for key, name in report_artifacts.delivery_names(
-        run_date, include_excel=args.excel
+        run_date, include_excel=args.excel, report_name=args.report_name
     ).items():
         if not os.path.isfile(os.path.join(out, name)):
             continue

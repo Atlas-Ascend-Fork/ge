@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-调用[aclCreateTensorDesc](aclCreateTensorDesc.md)接口创建tensor描述信息后，可通过aclSetTensorDynamicInput接口设置多个动态输入的分组标识，例如某个算子包括动态输入为x、必选输入y，其中动态输入有多个，调用aclSetTensorDynamicInput将**dynamicInputName**设置为x，接口内部根据**dynamicInputName**索引到对应的多个动态输入，达到分组的目的**。**
+调用[aclCreateTensorDesc](aclCreateTensorDesc.md)接口创建tensor描述信息后，可通过aclSetTensorDynamicInput接口设置多个动态输入的分组标识，例如某个算子包括动态输入x、必选输入y，其中动态输入有多个，调用aclSetTensorDynamicInput将**dynamicInputName**设置为x，接口内部根据**dynamicInputName**索引到对应的多个动态输入，达到分组的目的**。**
 
 ## 函数原型
 

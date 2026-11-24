@@ -123,7 +123,10 @@ pip install -r cann-log-evaluation/requirements.txt
    ```
 
    `--input` 指向被评测目录，`--name` 为本次评测名称（会作为报告中的仓库名），
-   输出默认写入 skill 的 `output/` 目录。
+   输出默认写入 skill 的 `output/` 目录。如需固定报告文件名，可加
+   `--report-name {pr}_log_check_summary.md`，例如配合
+   `--out ./operators/pr-{pr}` 输出到
+   `./operators/pr-{pr}/{pr}_log_check_summary.md`。
 
 4. 在 `output/` 中查看日志质量评分：
 

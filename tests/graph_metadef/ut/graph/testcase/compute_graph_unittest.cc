@@ -2403,6 +2403,22 @@ TEST_F(UtestComputeGraph, CreateShapeEnvAttrWithArgs) {
   ASSERT_NE(graph->GetAttrsGroup<ShapeEnvAttr>(), nullptr);
 }
 
+TEST_F(UtestComputeGraph, AddInOutForNetOutputRejectsNullSourceWithoutDroppingOutput) {
+  auto builder = ut::GraphBuilder("graph");
+  const auto source = builder.AddNode("source", DATA, 0, 1);
+  auto graph = builder.GetGraph();
+  auto output_desc = std::make_shared<OpDesc>("netoutput", NETOUTPUT);
+  const std::vector<bool> input_const{true, false};
+  output_desc->SetIsInputConst(input_const);
+  std::vector<ComputeGraphImpl::RetvalInfo> outputs{{nullptr, 0, -1}, {source, 0, -1}};
+
+  EXPECT_EQ(graph->impl_->AddInOutForNetOutputOp(output_desc, outputs), PARAM_INVALID);
+  ASSERT_EQ(outputs.size(), 2U);
+  EXPECT_EQ(outputs[0].output_node, nullptr);
+  EXPECT_EQ(outputs[1].output_node, source);
+  EXPECT_EQ(output_desc->GetIsInputConst(), input_const);
+}
+
 TEST_F(UtestComputeGraph, SetGraphOutNodesInfo_RepeatSet_UpdateDataEdge) {
   auto builder = ut::GraphBuilder("graph");
   const auto &node1 = builder.AddNode("node1", "node1", 1, 1);

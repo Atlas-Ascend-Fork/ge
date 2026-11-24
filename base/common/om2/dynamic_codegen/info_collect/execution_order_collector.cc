@@ -34,7 +34,7 @@ class ReadyNodes {
  public:
   explicit ReadyNodes(const ExecutionOrderPolicy policy) : policy_(policy) {}
 
-  void Push(ge::FastNode *const node) {
+  void Push(const ge::FastNode *const node) {
     if (policy_ == ExecutionOrderPolicy::kFifo) {
       fifo_.push(node);
       return;
@@ -49,7 +49,7 @@ class ReadyNodes {
     return policy_ == ExecutionOrderPolicy::kFifo ? fifo_.empty() : priority_nodes_.empty();
   }
 
-  ge::FastNode *Pop() {
+  const ge::FastNode *Pop() {
     if (policy_ == ExecutionOrderPolicy::kFifo) {
       auto *const node = fifo_.front();
       fifo_.pop();
@@ -67,7 +67,7 @@ class ReadyNodes {
  private:
   struct PriorityNode {
     int64_t priority;
-    ge::FastNode *node;
+    const ge::FastNode *node;
   };
 
   static bool IsLess(const PriorityNode &lhs, const PriorityNode &rhs) {
@@ -105,11 +105,11 @@ class ReadyNodes {
   }
 
   ExecutionOrderPolicy policy_;
-  std::queue<ge::FastNode *> fifo_;
+  std::queue<const ge::FastNode *> fifo_;
   std::vector<PriorityNode> priority_nodes_;
 };
 
-void VisitNode(ge::FastNode *const node, std::unordered_map<ge::FastNode *, size_t> &indegrees,
+void VisitNode(const ge::FastNode *const node, std::unordered_map<const ge::FastNode *, size_t> &indegrees,
                ReadyNodes &ready_nodes) {
   auto &indegree = indegrees[node];
   --indegree;
@@ -119,17 +119,17 @@ void VisitNode(ge::FastNode *const node, std::unordered_map<ge::FastNode *, size
 }
 }  // namespace
 
-ge::graphStatus ExecutionOrderCollector::Collect(ge::ExecuteGraph &execute_graph,
+ge::graphStatus ExecutionOrderCollector::Collect(const ge::ExecuteGraph &execute_graph,
                                                  const std::vector<VirtualDependency> &virtual_dependencies,
                                                  ExecutionOrderPolicy policy,
-                                                 std::vector<ge::FastNode *> &ordered_nodes) const {
+                                                 std::vector<const ge::FastNode *> &ordered_nodes) const {
   ordered_nodes.clear();
   ReadyNodes ready_nodes(policy);
-  std::unordered_map<ge::FastNode *, size_t> indegrees;
-  std::unordered_map<ge::FastNode *, std::vector<ge::FastNode *>> virtual_out_nodes;
-  std::unordered_map<ge::FastNode *, size_t> virtual_in_degrees;
+  std::unordered_map<const ge::FastNode *, size_t> indegrees;
+  std::unordered_map<const ge::FastNode *, std::vector<const ge::FastNode *>> virtual_out_nodes;
+  std::unordered_map<const ge::FastNode *, size_t> virtual_in_degrees;
   const auto direct_nodes = execute_graph.GetDirectNode();
-  std::unordered_set<ge::FastNode *> order_nodes;
+  std::unordered_set<const ge::FastNode *> order_nodes;
   for (auto *const node : direct_nodes) {
     GE_ASSERT_NOTNULL(node);
     if ((policy == ExecutionOrderPolicy::kFifo) || IsRuntimeOrderNode(*node)) {

@@ -6,7 +6,7 @@
 
 ## 功能说明
 
-Python自定义算子的声明式kernel启动参数回调。将实现类通过[register_op_impl](register_op_impl.md)注册并提供可调用的`declare_launch_args`方法后，GE根据Ascend IR算子原型组装输入、输出和属性参数，并在编译阶段调用该方法。回调通过[get_declare_launch_args_ctx](get_declare_launch_args_ctx.md)创建`AnnotatedKernelArgs`、申请workspace，并提交`AnnotatedKernelLaunchInfo`。
+Python自定义算子的声明式kernel启动参数回调。实现类通过[register_op_impl](register_op_impl.md)注册并提供可调用的`declare_launch_args`方法后，GE根据Ascend IR算子原型组装输入、输出和属性参数，并在编译阶段调用该方法。回调通过[get_declare_launch_args_ctx](get_declare_launch_args_ctx.md)创建`AnnotatedKernelArgs`、申请workspace，并提交`AnnotatedKernelLaunchInfo`。
 
 ## 函数原型
 

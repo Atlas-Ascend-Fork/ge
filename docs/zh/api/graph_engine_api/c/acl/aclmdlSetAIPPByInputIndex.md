@@ -56,7 +56,7 @@ aclError aclmdlSetAIPPByInputIndex(uint32_t modelId, aclmdlDataset *dataset, siz
 
 多Batch场景下，根据每个Batch的配置计算出动态AIPP后输出图片的宽、高，经过动态AIPP后每个Batch的输出图片宽、高必须是一致的。计算输出图片宽、高的计算公式如下表所示。
 
-抠图或者缩放或者padding之后，对图片宽、高的校验规则如下，其中，aippOutputW、aippOutputH分别表示AIPP输出图片的宽、高，其它参数是[aclmdlSetAIPPSrcImageSize](aclmdlSetAIPPSrcImageSize.md)、[aclmdlSetAIPPScfParams](aclmdlSetAIPPScfParams.md)、[aclmdlSetAIPPCropParams](aclmdlSetAIPPCropParams.md)、[aclmdlSetAIPPPaddingParams](aclmdlSetAIPPPaddingParams.md)接口的入参。
+抠图或者缩放或者padding之后，对图片宽、高的校验规则如下，其中，aippOutputW、aippOutputH分别表示AIPP输出图片的宽、高，其他参数是[aclmdlSetAIPPSrcImageSize](aclmdlSetAIPPSrcImageSize.md)、[aclmdlSetAIPPScfParams](aclmdlSetAIPPScfParams.md)、[aclmdlSetAIPPCropParams](aclmdlSetAIPPCropParams.md)、[aclmdlSetAIPPPaddingParams](aclmdlSetAIPPPaddingParams.md)接口的入参。
 
 **表 1**  输出图片宽、高计算公式
 

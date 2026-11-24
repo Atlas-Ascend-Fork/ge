@@ -21,39 +21,37 @@
     EsTensorHolder CreateScalar(int64_t value)
     ```
 
--   创建int32类型的标量常量
+- 创建int32类型的标量常量
 
-    ```
+    ```c++
     EsTensorHolder CreateScalar(int32_t value)
     ```
 
--   创建uint64类型的标量常量
+- 创建uint64类型的标量常量
 
-    ```
+    ```c++
     EsTensorHolder CreateScalar(uint64_t value)
     ```
 
--   创建uint32类型的标量常量
+- 创建uint32类型的标量常量
 
-    ```
+    ```c++
     EsTensorHolder CreateScalar(uint32_t value)
     ```
 
--   创建float类型的标量常量
+- 创建float类型的标量常量
 
-    ```
+    ```c++
     EsTensorHolder CreateScalar(float value)
     ```
 
 ## 参数说明
-
 
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | value | 输入 | 标量值。 |
 
 ## 返回值说明
-
 
 | 参数名 | 类型 | 说明 |
 | --- | --- | --- |

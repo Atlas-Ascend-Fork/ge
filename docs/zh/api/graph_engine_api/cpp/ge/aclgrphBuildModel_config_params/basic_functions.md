@@ -131,7 +131,7 @@ aipp_op {
 
 Caffe网络中具有相同类型名但计算功能不同的层，比如DetectionOutput层，需要使用算子映射指明为FSRDetectionOutput、SSDDetectionOutput等检测算子类型，否则生成离线模型会执行失败。
 
-该参数仅适用与Caffe框架。
+该参数仅适用于Caffe框架。
 
 路径和文件名：支持大小写字母（a-z，A-Z）、数字（0-9）、下划线（\_）、中划线（-）、句点（.）、中文字符。
 

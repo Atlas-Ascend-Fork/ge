@@ -33,14 +33,20 @@ constexpr size_t NCHW_H_AXIS = 2U;
 constexpr size_t NCHW_W_AXIS = 3U;
 
 bool Nc1hwc02NchwAreSymmetry(const ge::NodePtr &src_node, const ge::NodePtr &dst_node) {
-  const auto &src_in_desc = src_node->GetOpDesc()->MutableInputDesc(0);
-  const auto &src_out_desc = src_node->GetOpDesc()->MutableOutputDesc(0);
-  const auto &dst_in_desc = dst_node->GetOpDesc()->MutableInputDesc(0);
-  const auto &dst_out_desc = dst_node->GetOpDesc()->MutableOutputDesc(0);
-  GE_CHECK_NOTNULL(src_in_desc);
-  GE_CHECK_NOTNULL(src_out_desc);
-  GE_CHECK_NOTNULL(dst_in_desc);
-  GE_CHECK_NOTNULL(dst_out_desc);
+  GE_ASSERT_NOTNULL(src_node);
+  GE_ASSERT_NOTNULL(dst_node);
+  const auto src_desc = src_node->GetOpDescBarePtr();
+  const auto dst_desc = dst_node->GetOpDescBarePtr();
+  GE_ASSERT_NOTNULL(src_desc);
+  GE_ASSERT_NOTNULL(dst_desc);
+  const auto src_in_desc = src_desc->GetInputDescPtr(0);
+  const auto src_out_desc = src_desc->GetOutputDescPtr(0);
+  const auto dst_in_desc = dst_desc->GetInputDescPtr(0);
+  const auto dst_out_desc = dst_desc->GetOutputDescPtr(0);
+  GE_ASSERT_NOTNULL(src_in_desc);
+  GE_ASSERT_NOTNULL(src_out_desc);
+  GE_ASSERT_NOTNULL(dst_in_desc);
+  GE_ASSERT_NOTNULL(dst_out_desc);
 
   // check MCHW src_out_dims dst_in_dims shape H*W same
   const auto &src_out_dims = src_out_desc->GetShape().GetDims();
@@ -120,7 +126,14 @@ Status TransOpSymmetryEliminationPass::Run(NodePtr &node) {
 
 bool TransOpSymmetryEliminationPass::CheckCanBeEliminated(const ge::NodePtr &src_node,
                                                           const InDataAnchorPtr &dst_in_anchor) {
-  auto dst_node = dst_in_anchor->GetOwnerNode();
+  GE_ASSERT_NOTNULL(src_node);
+  GE_ASSERT_NOTNULL(dst_in_anchor);
+  const auto dst_node = dst_in_anchor->GetOwnerNode();
+  GE_ASSERT_NOTNULL(dst_node);
+  const auto src_desc = src_node->GetOpDesc();
+  const auto dst_desc = dst_node->GetOpDesc();
+  GE_ASSERT_NOTNULL(src_desc);
+  GE_ASSERT_NOTNULL(dst_desc);
   if (!AreNodeTypeSymmetry(src_node, dst_node)) {
     return false;
   }
@@ -130,34 +143,28 @@ bool TransOpSymmetryEliminationPass::CheckCanBeEliminated(const ge::NodePtr &src
            dst_node->GetType().c_str(), dst_in_anchor->GetIdx());
     return false;
   }
-  if (src_node->GetType() == ge::RESHAPE) {
-    GE_CHECK_NOTNULL(src_node->GetOpDesc());
-    auto unknown_dims_num = GetUnknownDimsNum(src_node->GetOpDesc()->GetInputDesc(0));
-    if (unknown_dims_num != 0 && (unknown_dims_num == UNKNOWN_DIM_NUM || unknown_dims_num > 1)) {
-      GELOGD(
-          "Pre node %s is reshape op which input is dynamic shape and has more than one unknown dimension. "
-          "Ignore pass.",
-          src_node->GetName().c_str());
+  const auto src_in_desc = src_desc->GetInputDescPtr(0);
+  GE_ASSERT_NOTNULL(src_in_desc);
+  GE_ASSERT_NOTNULL(src_desc->GetOutputDescPtr(0));
+  const auto &src_type = src_node->GetType();
+  if (src_type == ge::RESHAPE || src_type == ge::TRANSDATA) {
+    const auto unknown_dims_num = GetUnknownDimsNum(*src_in_desc);
+    if (unknown_dims_num == UNKNOWN_DIM_NUM || (src_type == ge::RESHAPE && unknown_dims_num > 1)) {
+      GELOGD("Skip symmetry elimination for node %s (%s) with unknown input dimensions (%d).", src_node->GetNamePtr(),
+             src_node->GetTypePtr(), unknown_dims_num);
       return false;
     }
-  } else if (src_node->GetType() == ge::TRANSPOSED) {
+  } else if (src_type == ge::TRANSPOSED) {
     if (!JudgeTransposeDBack2Raw(src_node, dst_node)) {
       GELOGD("Two Transpose op src node %s dst node %s will change the raw data. Ignore pass.",
              src_node->GetName().c_str(), dst_node->GetName().c_str());
       return false;
     }
-  } else if (src_node->GetType() == ge::TRANSDATA) {
-    auto unknown_dims_num = GetUnknownDimsNum(src_node->GetOpDesc()->GetInputDesc(0));
-    if (unknown_dims_num == UNKNOWN_DIM_NUM) {
-      GELOGD("Pre node %s is transdata op which input is dynamic shape and all dimension are unknown(-2). Ignore pass.",
-             src_node->GetName().c_str());
-      return false;
-    }
-  } else if ((src_node->GetType() == ge::SQUEEZEV2) || (src_node->GetType() == ge::UNSQUEEZEV2)) {
+  } else if ((src_type == ge::SQUEEZEV2) || (src_type == ge::UNSQUEEZEV2)) {
     std::vector<int32_t> src_axis;
     std::vector<int32_t> dst_axis;
-    (void)AttrUtils::GetListInt(src_node->GetOpDesc(), ATTR_NAME_AXIS, src_axis);
-    (void)AttrUtils::GetListInt(dst_node->GetOpDesc(), ATTR_NAME_AXIS, dst_axis);
+    (void)AttrUtils::GetListInt(src_desc, ATTR_NAME_AXIS, src_axis);
+    (void)AttrUtils::GetListInt(dst_desc, ATTR_NAME_AXIS, dst_axis);
 
     if (src_axis != dst_axis) {
       GELOGD("Src node %s axis not equal with dst node %s. Ignore pass.", src_node->GetName().c_str(),
@@ -169,14 +176,20 @@ bool TransOpSymmetryEliminationPass::CheckCanBeEliminated(const ge::NodePtr &src
 }
 
 bool TransOpSymmetryEliminationPass::DescAreSymmetry(const NodePtr &src_node, const NodePtr &dst_node) {
-  const auto &src_input_desc = src_node->GetOpDesc()->MutableInputDesc(0);
-  const auto &src_output_desc = src_node->GetOpDesc()->MutableOutputDesc(0);
-  const auto &dst_input_desc = dst_node->GetOpDesc()->MutableInputDesc(0);
-  const auto &dst_output_desc = dst_node->GetOpDesc()->MutableOutputDesc(0);
-  GE_CHECK_NOTNULL(src_input_desc);
-  GE_CHECK_NOTNULL(src_output_desc);
-  GE_CHECK_NOTNULL(dst_input_desc);
-  GE_CHECK_NOTNULL(dst_output_desc);
+  GE_ASSERT_NOTNULL(src_node);
+  GE_ASSERT_NOTNULL(dst_node);
+  const auto src_desc = src_node->GetOpDescBarePtr();
+  const auto dst_desc = dst_node->GetOpDescBarePtr();
+  GE_ASSERT_NOTNULL(src_desc);
+  GE_ASSERT_NOTNULL(dst_desc);
+  const auto src_input_desc = src_desc->GetInputDescPtr(0);
+  const auto src_output_desc = src_desc->GetOutputDescPtr(0);
+  const auto dst_input_desc = dst_desc->GetInputDescPtr(0);
+  const auto dst_output_desc = dst_desc->GetOutputDescPtr(0);
+  GE_ASSERT_NOTNULL(src_input_desc);
+  GE_ASSERT_NOTNULL(src_output_desc);
+  GE_ASSERT_NOTNULL(dst_input_desc);
+  GE_ASSERT_NOTNULL(dst_output_desc);
   const auto &src_input_dtype = src_input_desc->GetDataType();
   const auto &src_input_format = src_input_desc->GetFormat();
   const auto &src_input_origin_format = src_input_desc->GetOriginFormat();
@@ -229,14 +242,20 @@ bool TransOpSymmetryEliminationPass::DescAreSymmetry(const NodePtr &src_node, co
 }
 
 bool TransOpSymmetryEliminationPass::IsTransdataMemLayoutSymmetry(const NodePtr &src_node, const NodePtr &dst_node) {
-  auto src_in_desc = src_node->GetOpDesc()->GetInputDescPtr(0);
-  auto src_out_desc = src_node->GetOpDesc()->GetOutputDescPtr(0);
-  auto dst_in_desc = dst_node->GetOpDesc()->GetInputDescPtr(0);
-  auto dst_out_desc = dst_node->GetOpDesc()->GetOutputDescPtr(0);
-  GE_CHECK_NOTNULL(src_in_desc);
-  GE_CHECK_NOTNULL(src_out_desc);
-  GE_CHECK_NOTNULL(dst_in_desc);
-  GE_CHECK_NOTNULL(dst_out_desc);
+  GE_ASSERT_NOTNULL(src_node);
+  GE_ASSERT_NOTNULL(dst_node);
+  const auto src_desc = src_node->GetOpDescBarePtr();
+  const auto dst_desc = dst_node->GetOpDescBarePtr();
+  GE_ASSERT_NOTNULL(src_desc);
+  GE_ASSERT_NOTNULL(dst_desc);
+  const auto src_in_desc = src_desc->GetInputDescPtr(0);
+  const auto src_out_desc = src_desc->GetOutputDescPtr(0);
+  const auto dst_in_desc = dst_desc->GetInputDescPtr(0);
+  const auto dst_out_desc = dst_desc->GetOutputDescPtr(0);
+  GE_ASSERT_NOTNULL(src_in_desc);
+  GE_ASSERT_NOTNULL(src_out_desc);
+  GE_ASSERT_NOTNULL(dst_in_desc);
+  GE_ASSERT_NOTNULL(dst_out_desc);
 
   const bool is_format_dt_shapesize_continuously =
       ((src_in_desc->GetFormat() == dst_out_desc->GetFormat()) &&

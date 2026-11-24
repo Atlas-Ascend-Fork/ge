@@ -76,8 +76,8 @@ const std::string kMatMulSubgraphName = "matmul_subgraph";
 const std::string kConvSubgraphName = "conv_subgraph";
 const std::string kMatMulNodeType = "MatMulV3";
 const std::string kMatMulBatchMatmulNodeType = "BatchMatMulV3";
-const std::string kConv2DNodeType = "Conv2DV2";
-const std::string kExtendConv2DNodeType = "ExtendConv2D";
+const std::string kActConv2DNodeType = "ActConv2DV2";
+const std::string kActExtendConv2DNodeType = "ActExtendConv2D";
 constexpr int32_t kSocVersionLen = 50;
 
 gert::KernelContextHolder BuildTilingParseContextHolder(
@@ -121,6 +121,7 @@ ge::graphStatus ConvertFromContextToRunInfo(gert::KernelContext *kernel_context,
   run_info.SetAicpuBlockDim(tiling_context->GetAicpuBlockDim());
   run_info.SetClearAtomic(tiling_context->NeedAtomic());
   auto tiling_data = tiling_context->GetRawTilingData();
+  GE_ASSERT_NOTNULL(tiling_data);
   run_info.AddTilingData(reinterpret_cast<ge::char_t *>(tiling_data->GetData()), tiling_data->GetDataSize());
   auto ws = kernel_context->GetOutputPointer<gert::ContinuousVector>(gert::TilingContext::kOutputWorkspace);
   GE_ASSERT_NOTNULL(ws);
@@ -806,6 +807,7 @@ static ge::graphStatus HandleCubeTilingCallback(gert::KernelContext *kernel_cont
   run_info.SetAicpuBlockDim(tiling_context->GetAicpuBlockDim());
   run_info.SetClearAtomic(tiling_context->NeedAtomic());
   auto tiling_data = tiling_context->GetRawTilingData();
+  GE_ASSERT_NOTNULL(tiling_data);
   run_info.AddTilingData(reinterpret_cast<ge::char_t *>(tiling_data->GetData()), tiling_data->GetDataSize());
   return ge::GRAPH_SUCCESS;
 }
@@ -863,7 +865,7 @@ ge::graphStatus AutofuseNodeWithMatmulTiling(const ge::Operator &op, const fe::P
 
 ge::graphStatus AutofuseNodeWithConvTiling(const ge::Operator &op, const fe::PlatFormInfos &ge_platform_infos,
                                            OpRunInfoV2 &run_info, ge::ConstNodePtr node) {
-  // CV 融合二次 tiling：先跑子图中的 Conv2DV2/ExtendConv2D tiling，再跑 Autofuse tiling。
+  // CV 融合二次 tiling：先跑子图中的 ActConv2DV2/ActExtendConv2D tiling，再跑 Autofuse tiling。
   ge::Operator conv_op = ge::OpDescUtils::CreateOperatorFromNode(node);
   auto op_desc = ge::OpDescUtils::GetOpDescFromOperator(conv_op);
   const auto &space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry(
@@ -917,8 +919,8 @@ ge::graphStatus AicoreRtParseAndTiling(const ge::Operator &op, const fe::PlatFor
     if (conv_subgraph != nullptr) {
       GELOGI("Get autofuse conv node: %s", op_desc->GetName().c_str());
       for (auto &node : conv_subgraph->GetAllNodes()) {
-        // ExtendConv2D 与 Conv2DV2 共用 CV 融合二次 tiling 路径。
-        if (node->GetType() == kConv2DNodeType.c_str() || node->GetType() == kExtendConv2DNodeType.c_str()) {
+        // ActExtendConv2D 与 ActConv2DV2 共用 CV 融合二次 tiling 路径。
+        if (node->GetType() == kActConv2DNodeType.c_str() || node->GetType() == kActExtendConv2DNodeType.c_str()) {
           GE_ASSERT_GRAPH_SUCCESS(AutofuseNodeWithConvTiling(op, ge_platform_infos, run_info, node));
           return ge::GRAPH_SUCCESS;
         }

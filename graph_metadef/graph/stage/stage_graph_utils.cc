@@ -29,7 +29,7 @@ constexpr size_t kMaxTreeDepth = 1024U;
 constexpr char_t const *kRefFromNode = "RefFromNode";
 constexpr char_t const *kRefFromIndex = "RefFromIndex";
 
-void CollectTree(ExecuteGraph &graph, std::vector<ExecuteGraph *> &result, size_t depth) {
+void CollectTree(const ExecuteGraph &graph, std::vector<ExecuteGraph *> &result, size_t depth) {
   if (depth > kMaxTreeDepth) {
     GELOGE(GRAPH_FAILED, "[GertGraph][Subgraph] Subgraph nesting exceeds %zu levels at graph %s", kMaxTreeDepth,
            graph.GetName().c_str());
@@ -75,7 +75,7 @@ std::string InstanceNameOf(const FastNode &node, size_t index) {
 
 }  // namespace
 
-std::vector<ExecuteGraph *> CollectSubgraphTree(ExecuteGraph &root) {
+std::vector<ExecuteGraph *> CollectSubgraphTree(const ExecuteGraph &root) {
   std::vector<ExecuteGraph *> result;
   CollectTree(root, result, 0U);
   return result;
@@ -99,7 +99,7 @@ graphStatus ValidateRefEndpoints(const ExecuteGraph &root) {
   // 运行期按整棵树的名称表解析 RefFrom（EquivalentDataEdges::ConstructRefOutputEquivalent
   // 用 GetNodeMapFromAllNodes），因此校验也必须跨图建表，否则会误拒合法的跨阶段引用；
   // 反过来，跨图重名会让运行期静默取到其中一个，必须在这里拒绝。
-  std::vector<FastNode *> all_nodes = const_cast<ExecuteGraph &>(root).GetAllNodes();
+  std::vector<FastNode *> all_nodes = root.GetAllNodes();
   std::unordered_map<std::string, FastNode *> nodes_by_name;
   for (auto *node : all_nodes) {
     GE_ASSERT_NOTNULL(node);
@@ -116,23 +116,23 @@ graphStatus ValidateRefEndpoints(const ExecuteGraph &root) {
     for (size_t i = 0U; i < desc->GetOutputsSize(); ++i) {
       const auto out_desc = desc->GetOutputDescPtr(static_cast<uint32_t>(i));
       GE_ASSERT_NOTNULL(out_desc);
-      std::string src_name;
-      if (!AttrUtils::GetStr(out_desc, kRefFromNode, src_name)) {
+      const auto *src_name = AttrUtils::GetStr(out_desc, kRefFromNode);
+      if (src_name == nullptr) {
         continue;
       }
       // 打了引用名就必须有配套索引，缺一项即无法确定端点。
       int64_t src_index = 0;
       GE_ASSERT_TRUE(AttrUtils::GetInt(out_desc, kRefFromIndex, src_index),
                      "Output %zu of node %s declares %s %s without %s", i, desc->GetName().c_str(), kRefFromNode,
-                     src_name.c_str(), kRefFromIndex);
-      const auto src_it = nodes_by_name.find(src_name);
+                     src_name->c_str(), kRefFromIndex);
+      const auto src_it = nodes_by_name.find(*src_name);
       GE_ASSERT_TRUE(src_it != nodes_by_name.end(), "Output %zu of node %s refers to node %s which does not exist", i,
-                     desc->GetName().c_str(), src_name.c_str());
+                     desc->GetName().c_str(), src_name->c_str());
       const auto src_desc = src_it->second->GetOpDescPtr();
       GE_ASSERT_NOTNULL(src_desc);
       GE_ASSERT_TRUE((src_index >= 0) && (static_cast<size_t>(src_index) < src_desc->GetOutputsSize()),
                      "Output %zu of node %s refers to output %" PRId64 " of node %s which only has %zu outputs", i,
-                     desc->GetName().c_str(), src_index, src_name.c_str(), src_desc->GetOutputsSize());
+                     desc->GetName().c_str(), src_index, src_name->c_str(), src_desc->GetOutputsSize());
       // 自引用会形成零长度依赖，等价端点无法收敛。
       GE_ASSERT_TRUE((src_it->second != node) || (src_index != static_cast<int64_t>(i)),
                      "Output %zu of node %s refers to itself", i, desc->GetName().c_str());
@@ -141,10 +141,10 @@ graphStatus ValidateRefEndpoints(const ExecuteGraph &root) {
   return GRAPH_SUCCESS;
 }
 
-graphStatus ResetDerivedSymbols(const ExecuteGraph &root) {
+graphStatus ResetDerivedSymbols(ExecuteGraph &root) {
   GE_ASSERT_TRUE(root.GetParentNodeBarePtr() == nullptr, "Symbol reset requires a root graph");
-  std::vector<ExecuteGraph *> tree{const_cast<ExecuteGraph *>(&root)};
-  for (auto *sub : CollectSubgraphTree(const_cast<ExecuteGraph &>(root))) {
+  std::vector<ExecuteGraph *> tree{&root};
+  for (auto *sub : CollectSubgraphTree(root)) {
     tree.emplace_back(sub);
   }
   for (auto *graph : tree) {

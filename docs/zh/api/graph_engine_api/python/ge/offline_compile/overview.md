@@ -2,7 +2,7 @@
 
 offline\_compile模块用于离线图编译。
 
-离线图编译操作调用示例：
+离线图编译调用示例：
 
 ```python
 from ge.graph import Graph

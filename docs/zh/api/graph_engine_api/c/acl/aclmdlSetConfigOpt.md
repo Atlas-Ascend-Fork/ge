@@ -50,7 +50,7 @@ aclError aclmdlSetConfigOpt(aclmdlConfigHandle *handle, aclmdlConfigAttr attr, c
 | handle | 输出 | 模型加载的配置对象的指针。类型定义请参见[aclmdlConfigHandle](aclmdlConfigHandle.md)。<br>需提前调用[aclmdlCreateConfigHandle](aclmdlCreateConfigHandle.md)接口创建该对象。 |
 | attr | 输入 | 指定需设置的属性。类型定义请参见[aclmdlConfigAttr](aclmdlConfigAttr.md)。 |
 | attrValue | 输入 | 指向属性值的指针，attr对应的属性取值。<br>如果属性值本身是指针，则传入该指针的地址。 |
-| valueSize | 输入 | attrValue部分的数据长度。<br>用户可使用C/C++标准库的函数sizeof(*attrValue)查询数据长度。 |
+| valueSize | 输入 | attrValue的数据长度。<br>用户可使用C/C++标准库的函数sizeof(*attrValue)查询数据长度。 |
 
 ## 返回值说明
 

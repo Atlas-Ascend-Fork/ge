@@ -11,8 +11,6 @@
 #ifndef GE_GRAPH_LOAD_NEW_MODEL_MANAGER_TASK_INFO_FUSION_TASK_INFO_H_
 #define GE_GRAPH_LOAD_NEW_MODEL_MANAGER_TASK_INFO_FUSION_TASK_INFO_H_
 
-#include <utility>
-
 #include "graph/load/model_manager/task_info/args_io_addrs_updater.h"
 #include "graph/args_format_desc.h"
 #include "graph/op_desc.h"
@@ -46,6 +44,7 @@ class FusionTaskInfo : public TaskInfo {
               const PisToPersistentWorkspace &persistent_workspace = {},
               const IowAddrs &iow_addrs = {{}, {}, {}}) override;
   Status Distribute() override;
+  Status Release() override;
   Status GetTaskArgsRefreshInfos(std::vector<TaskArgsRefreshInfo> &infos) override;
 
   uint32_t GetTaskID() const override {
@@ -139,7 +138,13 @@ class FusionTaskInfo : public TaskInfo {
   rtFunsionTaskInfo_t rt_fusion_task_{};
   rtFusionArgsEx_t rt_args_ex_{};
   std::vector<void *> hcom_context_addrs_;
-  std::vector<std::pair<void *, void *>> mc2_ccu_resources_;
+  struct Mc2CcuResource {
+    void *context{nullptr};
+    aclrtStream stream{nullptr};
+    aclrtNotify start{nullptr};
+    aclrtNotify done{nullptr};
+  };
+  std::vector<Mc2CcuResource> mc2_ccu_resources_;
 
   rtLaunchConfig_t rt_launch_config_{};
   std::vector<rtLaunchAttribute_t> launch_attr_list_;

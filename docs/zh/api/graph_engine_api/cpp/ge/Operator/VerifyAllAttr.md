@@ -11,7 +11,7 @@
 
 ## 功能说明
 
-根据disableCommonVerifier值，校验Operator中的属性是否有效，校验Operator的输入输出是否有效。
+根据`disable_common_verifier`值，校验Operator中的属性是否有效，校验Operator的输入输出是否有效。
 
 ## 函数原型
 

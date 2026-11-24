@@ -61,7 +61,7 @@ std::atomic<bool> g_split_impl_source_seen{false};
 // 分文件原型场景的入口在文件尾部定义（与 artifact fixture 放在一起），此处先声明。
 bool InSplitProtoScenario();
 Status RegisterSplitProtoImpl(const PythonCustomOpRegistrar &registrar);
-Status CollectSplitProtoArtifacts(const PythonCustomOpDeploymentArtifactSink *sink, void *user_data);
+Status CollectSplitProtoArtifacts(const PythonCustomOpDeploymentArtifactSink *sink);
 Status RestoreSplitProtoScope(uint64_t scope_id, const PythonCustomOpEmbeddedSourceView *sources, size_t source_count,
                               const PythonCustomOpScopedDescriptorSink *sink, void *user_data);
 Status CollectSplitProtoOpTypes(const PythonCustomOpStringSink *sink, void *user_data);
@@ -257,13 +257,13 @@ void ShutdownBridge() {}
 // 只需保证 collect_deployment_artifacts 存在、可调用且返回零个 artifact。
 // 分文件原型场景（split_proto_impl）交出 proto.py / impl.py 两个 artifact，
 // 用于驱动保存侧「原型 artifact 必须一并进 OM」的整条链路。
-Status CollectDeploymentArtifacts(const PythonCustomOpDeploymentArtifactSink *sink, void *user_data) {
+Status CollectDeploymentArtifacts(const PythonCustomOpDeploymentArtifactSink *sink) {
   ++g_collect_artifact_count;
   if ((sink == nullptr) || (sink->on_artifact == nullptr)) {
     return static_cast<Status>(GRAPH_FAILED);
   }
   if (InSplitProtoScenario()) {
-    return CollectSplitProtoArtifacts(sink, user_data);
+    return CollectSplitProtoArtifacts(sink);
   }
   return static_cast<Status>(GRAPH_SUCCESS);
 }
@@ -425,7 +425,7 @@ bool InSplitProtoScenario() {
   return (scenario != nullptr) && (std::strcmp(scenario, kSplitProtoScenario) == 0);
 }
 
-Status CollectSplitProtoArtifacts(const PythonCustomOpDeploymentArtifactSink *sink, void *user_data) {
+Status CollectSplitProtoArtifacts(const PythonCustomOpDeploymentArtifactSink *sink) {
   std::vector<SplitArtifactFixture> fixtures;
   BuildSplitArtifactFixtures(fixtures);
   for (const auto &fixture : fixtures) {
@@ -439,7 +439,7 @@ Status CollectSplitProtoArtifacts(const PythonCustomOpDeploymentArtifactSink *si
                                                        fixture.descriptors.size(),
                                                        3U,
                                                        11U};
-    if (!sink->on_artifact(user_data, &view)) {
+    if (!sink->on_artifact(&view)) {
       return static_cast<Status>(GRAPH_FAILED);
     }
   }

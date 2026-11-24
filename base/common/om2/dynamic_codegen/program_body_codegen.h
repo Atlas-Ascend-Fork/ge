@@ -11,6 +11,7 @@
 #ifndef AIR_CXX_BASE_COMMON_OM2_DYNAMIC_CODEGEN_PROGRAM_BODY_CODEGEN_H_
 #define AIR_CXX_BASE_COMMON_OM2_DYNAMIC_CODEGEN_PROGRAM_BODY_CODEGEN_H_
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>

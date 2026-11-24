@@ -66,17 +66,17 @@ HcclResult HcclDllHcomMgr::HcomGetCommHandleByGroupFunc(const std::string &group
   return get_comm_func(group.c_str(), &comm);
 }
 
-HcclResult HcclDllHcomMgr::CcuKernelLaunchFunc(void *comm, void *context) {
-  GELOGI("[GE_MC2_CCU] mc2_client launch wrapper enter, comm[%p], context[%p].", comm, context);
-  if (comm == nullptr || context == nullptr) {
-    GELOGE(FAILED, "mc2_client CCU comm or context is null.");
+HcclResult HcclDllHcomMgr::CcuKernelLaunchFunc(void *stream, void *context) {
+  GELOGI("[GE_MC2_CCU] mc2_client launch wrapper enter, stream[%p], context[%p].", stream, context);
+  if (stream == nullptr || context == nullptr) {
+    GELOGE(FAILED, "mc2_client CCU stream or context is null.");
     return HCCL_E_PTR;
   }
   static std::mutex load_mutex;
   std::unique_lock<std::mutex> lock(load_mutex);
   if (mc2_ccu_kernel_launch_func_ == nullptr) {
     if (mc2_dll_handle_ == nullptr) {
-      GELOGI("[GE_MC2_CCU] loading libmc2_client.so for CcuKernelLaunch.");
+      GELOGI("[GE_MC2_CCU] loading libmc2_client.so for Mc2CcKernelLaunch.");
       mc2_dll_handle_ = dlopen("libmc2_client.so", RTLD_NOW | RTLD_LOCAL);
       if (mc2_dll_handle_ == nullptr) {
         GELOGE(FAILED, "Failed to load libmc2_client.so: %s.", dlerror());
@@ -85,20 +85,21 @@ HcclResult HcclDllHcomMgr::CcuKernelLaunchFunc(void *comm, void *context) {
     }
     // Match opbase's stable return-value ABI without depending on the CCU internal headers.
     mc2_ccu_kernel_launch_func_ =
-        reinterpret_cast<uint32_t (*)(void *, void *)>(dlsym(mc2_dll_handle_, "CcuKernelLaunch"));
+        reinterpret_cast<uint32_t (*)(void *, void *, uint32_t)>(dlsym(mc2_dll_handle_, "Mc2CcKernelLaunch"));
     if (mc2_ccu_kernel_launch_func_ == nullptr) {
-      GELOGE(FAILED, "Failed to load mc2_client CcuKernelLaunch: %s.", dlerror());
+      GELOGE(FAILED, "Failed to load mc2_client Mc2CcKernelLaunch: %s.", dlerror());
       return HCCL_E_INTERNAL;
     }
-    GELOGI("[GE_MC2_CCU] resolved CcuKernelLaunch from libmc2_client.so, handle[%p].", mc2_dll_handle_);
+    GELOGI("[GE_MC2_CCU] resolved Mc2CcKernelLaunch from libmc2_client.so, handle[%p].", mc2_dll_handle_);
   }
   const auto launch_func = mc2_ccu_kernel_launch_func_;
   lock.unlock();
-  GELOGI("[GE_MC2_CCU] calling mc2_client CcuKernelLaunch, comm[%p], context[%p].", comm, context);
-  const uint32_t ret = launch_func(comm, context);
-  GELOGI("[GE_MC2_CCU] mc2_client CcuKernelLaunch returned, ret[%u], comm[%p], context[%p].", ret, comm, context);
+  GELOGI("[GE_MC2_CCU] calling mc2_client Mc2CcKernelLaunch, stream[%p], context[%p].", stream, context);
+  // Temporary for bring-up: mc2_client only checks the size lower bound and copies sizeof(OpResCtx).
+  const uint32_t ret = launch_func(stream, context, UINT32_MAX);
+  GELOGI("[GE_MC2_CCU] mc2_client Mc2CcKernelLaunch returned, ret[%u], stream[%p], context[%p].", ret, stream, context);
   if (ret != 0U) {
-    GELOGE(FAILED, "mc2_client CcuKernelLaunch failed, ret[%u], comm[%p], context[%p].", ret, comm, context);
+    GELOGE(FAILED, "mc2_client Mc2CcKernelLaunch failed, ret[%u], stream[%p], context[%p].", ret, stream, context);
     return HCCL_E_INTERNAL;
   }
   return HCCL_SUCCESS;

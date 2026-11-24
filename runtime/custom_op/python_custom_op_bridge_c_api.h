@@ -14,7 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "ge/ge_api_types.h"
+#include "ge_common/ge_common_api_types.h"
 #include "runtime/custom_op/python_custom_op_bridge_types.h"
 
 namespace ge {
@@ -67,7 +67,7 @@ struct PythonCustomOpDeploymentArtifactView {
 };
 
 struct PythonCustomOpDeploymentArtifactSink {
-  bool (*on_artifact)(void *user_data, const PythonCustomOpDeploymentArtifactView *view);
+  bool (*on_artifact)(const PythonCustomOpDeploymentArtifactView *view);
 };
 
 // 恢复侧（PYTHON_CUSTOM_OPS 分区）一段 embedded source 的内存视图。
@@ -115,7 +115,7 @@ struct PythonCustomOpBridgeApi {
   void (*shutdown_bridge)();
   // 本特性新增：拉取编译期已冻结的 Python 部署 artifact。
   // 追加在结构体末尾，因此必须先校验 abi_version 再访问。
-  Status (*collect_deployment_artifacts)(const PythonCustomOpDeploymentArtifactSink *sink, void *user_data);
+  Status (*collect_deployment_artifacts)(const PythonCustomOpDeploymentArtifactSink *sink);
   // 模型 scope 恢复能力（设计文档「加载侧分层与 hook 解耦」节）：同样追加在函数表末尾。
   // ABI 版本保持 2——ABI 2 尚未商发（已商发版本为 ABI 1），现存的 ABI 2 bridge SO 仅为
   // 开发/测试环境内与加载侧头文件同批构建的产物，本特性新增的槽位并入 2 而不递增版本号；

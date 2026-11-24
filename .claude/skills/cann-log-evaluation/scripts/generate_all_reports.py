@@ -42,7 +42,7 @@ def run_tool(name, *args):
         raise RuntimeError("%s 执行失败，退出码 %d" % (name, result.returncode))
 
 
-def generate_all(workdir, run_date=None, excel=False):
+def generate_all(workdir, run_date=None, excel=False, report_name=None):
     """Generate required Markdown/JSON artifacts and the optional Excel file.
 
     Returns (run_date, paths, warnings). ``warnings`` reports optional artifacts
@@ -55,6 +55,8 @@ def generate_all(workdir, run_date=None, excel=False):
         else report_artifacts.run_date_from_manifest(workdir)
     )
     required = report_artifacts.required_delivery_names(resolved_date)
+    if report_name:
+        required["full_markdown"] = report_artifacts.validate_report_name(report_name)
     paths = {key: workdir / name for key, name in required.items()}
 
     run_tool("gen_md_report.py", "--workdir", workdir, "--out", paths["full_markdown"])
@@ -101,8 +103,14 @@ def main(argv=None):
     parser.add_argument(
         "--excel", action="store_true", help="同时生成可选 Excel 报告（需要 openpyxl）"
     )
+    parser.add_argument(
+        "--report-name",
+        help="Markdown 报告文件名；默认 cann-log-evaluation-report-<date>.md",
+    )
     args = parser.parse_args(argv)
-    run_date, paths, warnings = generate_all(args.workdir, args.date, excel=args.excel)
+    run_date, paths, warnings = generate_all(
+        args.workdir, args.date, excel=args.excel, report_name=args.report_name
+    )
     for warning in warnings:
         print("[warn] %s" % warning)
     print("[ok] %s 交付物已生成" % run_date)

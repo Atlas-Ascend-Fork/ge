@@ -6116,6 +6116,58 @@ class Mc2LaunchRuntimeStub : public RuntimeStub {
 };
 }  // namespace
 
+namespace {
+class Mc2SyncAclStub : public AclRuntimeStub {
+ public:
+  aclError aclmdlRIBindStream(aclmdlRI, aclrtStream stream, uint32_t flags) override {
+    EXPECT_EQ(flags, ACL_MODEL_STREAM_FLAG_HEAD);
+    bound_streams.push_back(stream);
+    return ACL_SUCCESS;
+  }
+  aclError aclmdlRIUnbindStream(aclmdlRI, aclrtStream stream) override {
+    unbound_streams.push_back(stream);
+    return ACL_SUCCESS;
+  }
+  aclError aclrtSynchronizeStream(aclrtStream) override {
+    return ACL_SUCCESS;
+  }
+  aclError aclrtCreateNotify(aclrtNotify *notify, uint64_t flag) override {
+    ++create_count;
+    return AclRuntimeStub::aclrtCreateNotify(notify, flag);
+  }
+  aclError aclrtDestroyNotify(aclrtNotify notify) override {
+    ++destroy_count;
+    return AclRuntimeStub::aclrtDestroyNotify(notify);
+  }
+  aclError aclrtRecordNotify(aclrtNotify notify, aclrtStream stream) override {
+    ++last_task_id;
+    if (on_sync) {
+      on_sync(false, notify, stream);
+    }
+    return ACL_SUCCESS;
+  }
+  aclError aclrtWaitAndResetNotify(aclrtNotify notify, aclrtStream stream, uint32_t timeout) override {
+    ++last_task_id;
+    EXPECT_EQ(timeout, UINT32_MAX);
+    if (on_sync) {
+      on_sync(true, notify, stream);
+    }
+    return ACL_SUCCESS;
+  }
+  aclError aclrtGetThreadLastTaskId(uint32_t *task_id) override {
+    *task_id = last_task_id;
+    return ACL_SUCCESS;
+  }
+
+  std::vector<aclrtStream> bound_streams;
+  std::vector<aclrtStream> unbound_streams;
+  std::function<void(bool, aclrtNotify, aclrtStream)> on_sync;
+  size_t create_count = 0U;
+  size_t destroy_count = 0U;
+  uint32_t last_task_id = 0U;
+};
+}  // namespace
+
 class UtestMc2FusionTaskInfo : public UtestKernelTaskInfo {
  protected:
   UtestMc2FusionTaskInfo() : saved_hccl_mgr_(HcclDllHcomMgr::GetInstance()) {}
@@ -6129,6 +6181,12 @@ class UtestMc2FusionTaskInfo : public UtestKernelTaskInfo {
   }
 
   void SetUpEnvironment() {
+    saved_acl_ = AclRuntimeStub::GetInstance();
+    AclRuntimeStub::Install(&acl_);
+    model_.rt_model_handle_ = reinterpret_cast<rtModel_t>(&model_handle_);
+    model_.stream_list_ = {&stream_, &ccu_stream_};
+    model_.stream_to_first_task_id_ = {{0U, 0U}, {1U, 1U}};
+    ASSERT_EQ(model_.BindModelStream(), SUCCESS);
     saved_hidden_funcs_ = HiddenInputsFuncRegistry::GetInstance().type_to_funcs_;
     saved_runtime_ = RuntimeStub::fake_instance_;
     saved_dump_flags_ = gert::GlobalDumper::GetInstance()->enable_flags_;
@@ -6151,9 +6209,10 @@ class UtestMc2FusionTaskInfo : public UtestKernelTaskInfo {
       *comm = &comm_;
       return query_result_;
     };
-    mgr.mc2_ccu_kernel_launch_func_ = [this](void *comm, void *context) -> uint32_t {
+    mgr.mc2_ccu_kernel_launch_func_ = [this](void *stream, void *context, uint32_t size) -> uint32_t {
       runtime_.calls.emplace_back("ccu");
-      EXPECT_EQ(comm, &comm_);
+      EXPECT_EQ(stream, task_.mc2_ccu_resources_[0].stream);
+      EXPECT_EQ(size, UINT32_MAX);
       EXPECT_EQ(context, &contexts_[1]);
       return ccu_result_;
     };
@@ -6166,6 +6225,9 @@ class UtestMc2FusionTaskInfo : public UtestKernelTaskInfo {
   void SetUpOpAndArgs() {
     task_.davinci_model_ = &model_;
     task_.op_desc_ = CreateOpDesc("mc2_ut", "AllGatherCustomV3", 0, 0);
+    ASSERT_TRUE(
+        AttrUtils::SetListNamedAttrs(task_.op_desc_, ATTR_NAME_ATTACHED_STREAM_INFO_LIST, std::vector<NamedAttrs>(1)));
+    task_.op_desc_->SetAttachedStreamIds({1});
     ASSERT_TRUE(AttrUtils::SetStr(task_.op_desc_, "group_0", "first_group"));
     ASSERT_TRUE(AttrUtils::SetStr(task_.op_desc_, "group_1", "second_group"));
     // A non-string group attribute must not shift the context index.
@@ -6202,6 +6264,13 @@ class UtestMc2FusionTaskInfo : public UtestKernelTaskInfo {
   }
 
   void TearDown() override {
+    EXPECT_EQ(task_.Release(), SUCCESS);
+    model_.UnbindTaskSinkStream();
+    model_.stream_list_.clear();
+    model_.stream_to_first_task_id_.clear();
+    model_.is_stream_list_bind_ = false;
+    model_.rt_model_handle_ = nullptr;
+    AclRuntimeStub::Install(saved_acl_);
     HcclDllHcomMgr::GetInstance() = saved_hccl_mgr_;
     HiddenInputsFuncRegistry::GetInstance().type_to_funcs_ = saved_hidden_funcs_;
     RuntimeStub::Install(saved_runtime_);
@@ -6226,6 +6295,10 @@ class UtestMc2FusionTaskInfo : public UtestKernelTaskInfo {
   RuntimeStub *saved_runtime_ = nullptr;
   uint64_t saved_dump_flags_ = 0U;
   Mc2LaunchRuntimeStub runtime_;
+  Mc2SyncAclStub acl_;
+  AclRuntimeStub *saved_acl_ = nullptr;
+  uint64_t model_handle_ = 0U;
+  uint64_t ccu_stream_ = 0U;
   DavinciModel model_{0, nullptr};
   FusionTaskInfo task_;
   domi::TaskDef task_def_;
@@ -6243,10 +6316,13 @@ class UtestMc2FusionTaskInfo : public UtestKernelTaskInfo {
 
 TEST_F(UtestMc2FusionTaskInfo, Version101UsesMatchingHiddenContextAndSkipsLegacyTask) {
   SetTilingVersion(101U, {6U, 6U});
+  // CloneOpDesc serializes and deserializes OpDef, as the graph loading path does.
+  task_.op_desc_ = OpDescUtils::CloneOpDesc(task_.op_desc_);
+  ASSERT_NE(task_.op_desc_, nullptr);
+  ASSERT_EQ(task_.op_desc_->GetAttachedStreamIds(), (std::vector<int64_t>{1}));
   ASSERT_EQ(task_.InitKernel(task_def_, args_), SUCCESS);
   ASSERT_EQ(task_.mc2_ccu_resources_.size(), 1U);
-  EXPECT_EQ(task_.mc2_ccu_resources_[0].first, &comm_);
-  EXPECT_EQ(task_.mc2_ccu_resources_[0].second, &contexts_[1]);
+  EXPECT_EQ(task_.mc2_ccu_resources_[0].context, &contexts_[1]);
   ASSERT_EQ(task_.hcom_context_addrs_.size(), 2U);
   ASSERT_EQ(task_.io_addrs_.size(), 1U);
   EXPECT_EQ(task_.io_addrs_[0], PtrToValue(&contexts_[0]));
@@ -6254,7 +6330,7 @@ TEST_F(UtestMc2FusionTaskInfo, Version101UsesMatchingHiddenContextAndSkipsLegacy
   EXPECT_EQ(task_.op_desc_->TryGetExtAttr<size_t>("_ut_hidden_calls", 0U), 1U);
   ASSERT_EQ(task_.rt_fusion_task_.subTaskNum, 1U);
   EXPECT_EQ(task_.rt_fusion_task_.subTask[0].type, RT_FUSION_AICORE);
-  EXPECT_EQ(query_calls_, 1U);
+  EXPECT_EQ(query_calls_, 0U);
   EXPECT_EQ(legacy_calls_, 0U);
 }
 
@@ -6267,6 +6343,70 @@ TEST_F(UtestMc2FusionTaskInfo, Version100RetainsLegacyFusionTask) {
   ASSERT_EQ(task_.rt_fusion_task_.subTaskNum, 2U);
   EXPECT_EQ(task_.rt_fusion_task_.subTask[0].type, RT_FUSION_CCU);
   EXPECT_EQ(task_.rt_fusion_task_.subTask[1].type, RT_FUSION_AICORE);
+}
+
+TEST_F(UtestMc2FusionTaskInfo, CcuAndNotifyTasksAreRecordedOnModelStreams) {
+  ASSERT_EQ(task_.InitKernel(task_def_, args_), SUCCESS);
+  const auto &resource = task_.mc2_ccu_resources_[0];
+  EXPECT_EQ(resource.stream, model_.GetStreamList()[1]);
+  EXPECT_EQ(acl_.bound_streams, (std::vector<aclrtStream>{task_.stream_, resource.stream}));
+  EXPECT_NE(resource.stream, task_.stream_);
+  EXPECT_TRUE(model_.GetLoopActiveStreams().empty());
+  EXPECT_EQ(acl_.create_count, 2U);
+  EXPECT_NE(resource.start, resource.done);
+  acl_.on_sync = [this, &resource](bool wait, aclrtNotify notify, aclrtStream stream) {
+    const bool start = notify == resource.start;
+    EXPECT_TRUE(start || notify == resource.done);
+    EXPECT_EQ(stream, (start == wait) ? resource.stream : task_.stream_);
+    runtime_.calls.emplace_back(start ? (wait ? "start.wait-reset" : "start.record")
+                                      : (wait ? "done.wait-reset" : "done.record"));
+  };
+  ASSERT_EQ(task_.Distribute(), SUCCESS);
+  EXPECT_EQ(runtime_.calls, (std::vector<std::string>{"start.record", "start.wait-reset", "ccu", "done.record",
+                                                      "aicore", "done.wait-reset"}));
+  EXPECT_EQ(acl_.create_count, 2U);
+  EXPECT_EQ(task_.GetTaskID(), 3U);
+  EXPECT_EQ(acl_.last_task_id, 4U);
+  ASSERT_EQ(task_.Release(), SUCCESS);
+  EXPECT_EQ(acl_.destroy_count, 2U);
+  EXPECT_TRUE(acl_.unbound_streams.empty());
+  EXPECT_EQ(task_.Release(), SUCCESS);
+  EXPECT_EQ(acl_.destroy_count, 2U);
+  model_.UnbindTaskSinkStream();
+  EXPECT_EQ(acl_.unbound_streams, (std::vector<aclrtStream>{task_.stream_, resource.stream}));
+}
+
+TEST_F(UtestMc2FusionTaskInfo, AttachedCcuStreamIsReusedAndUnboundByModel) {
+  ASSERT_EQ(task_.InitKernel(task_def_, args_), SUCCESS);
+  FusionTaskInfo second;
+  second.davinci_model_ = &model_;
+  second.stream_ = task_.stream_;
+  second.op_desc_ = task_.op_desc_;
+  second.tiling_data_host_ = task_.tiling_data_host_;
+  second.args_format_info_ = task_.args_format_info_;
+  second.args_size_ = task_.args_size_;
+  ASSERT_EQ(second.InitKernel(task_def_, args_), SUCCESS);
+  EXPECT_EQ(second.mc2_ccu_resources_[0].stream, task_.mc2_ccu_resources_[0].stream);
+  EXPECT_EQ(acl_.bound_streams.size(), 2U);
+  EXPECT_TRUE(model_.GetLoopActiveStreams().empty());
+  ASSERT_EQ(second.Release(), SUCCESS);
+  EXPECT_TRUE(acl_.unbound_streams.empty());
+  ASSERT_EQ(task_.Release(), SUCCESS);
+  EXPECT_TRUE(acl_.unbound_streams.empty());
+  model_.UnbindTaskSinkStream();
+  EXPECT_EQ(acl_.unbound_streams.size(), 2U);
+}
+
+TEST_F(UtestMc2FusionTaskInfo, InvalidAttachedStreamIsRejectedBeforeLaunch) {
+  for (const auto &ids : std::vector<std::vector<int64_t>>{{}, {-1}, {2}, {0}}) {
+    ASSERT_TRUE(AttrUtils::SetListNamedAttrs(task_.op_desc_, ATTR_NAME_ATTACHED_STREAM_INFO_LIST,
+                                             std::vector<NamedAttrs>(ids.size())));
+    task_.op_desc_->SetAttachedStreamIds(ids);
+    ASSERT_EQ(task_.op_desc_->GetAttachedStreamIds(), ids);
+    EXPECT_NE(task_.InitKernel(task_def_, args_), SUCCESS);
+    EXPECT_TRUE(task_.mc2_ccu_resources_.empty());
+  }
+  EXPECT_TRUE(runtime_.calls.empty());
 }
 
 TEST_F(UtestMc2FusionTaskInfo, Version101WithAicpuEngineRetainsLegacyFusionTask) {
@@ -6306,7 +6446,7 @@ TEST_F(UtestMc2FusionTaskInfo, InvalidCommTilingOffsetRetainsLegacyFusionTask) {
   EXPECT_EQ(legacy_calls_, 1U);
 }
 
-TEST_F(UtestMc2FusionTaskInfo, MissingGroupContextFailsBeforeCommLookup) {
+TEST_F(UtestMc2FusionTaskInfo, MissingGroupContextFailsBeforeStreamCreation) {
   task_.op_desc_->SetExtAttr("_ut_mc2_contexts", std::vector<void *>{&contexts_[0]});
   EXPECT_NE(task_.InitKernel(task_def_, args_), SUCCESS);
   EXPECT_TRUE(task_.mc2_ccu_resources_.empty());
@@ -6314,30 +6454,11 @@ TEST_F(UtestMc2FusionTaskInfo, MissingGroupContextFailsBeforeCommLookup) {
   EXPECT_EQ(legacy_calls_, 0U);
 }
 
-TEST_F(UtestMc2FusionTaskInfo, NullGroupContextFailsBeforeCommLookup) {
+TEST_F(UtestMc2FusionTaskInfo, NullGroupContextFailsBeforeStreamCreation) {
   task_.op_desc_->SetExtAttr("_ut_mc2_contexts", std::vector<void *>{&contexts_[0], nullptr});
   EXPECT_NE(task_.InitKernel(task_def_, args_), SUCCESS);
   EXPECT_TRUE(task_.mc2_ccu_resources_.empty());
   EXPECT_EQ(query_calls_, 0U);
-}
-
-TEST_F(UtestMc2FusionTaskInfo, CommLookupFailureDoesNotFallBackToLegacy) {
-  query_result_ = HCCL_E_NOT_FOUND;
-  EXPECT_NE(task_.InitKernel(task_def_, args_), SUCCESS);
-  EXPECT_TRUE(task_.mc2_ccu_resources_.empty());
-  EXPECT_EQ(query_calls_, 1U);
-  EXPECT_EQ(legacy_calls_, 0U);
-}
-
-TEST_F(UtestMc2FusionTaskInfo, NullCommHandleIsRejectedBeforeLaunch) {
-  HcclDllHcomMgr::GetInstance().hcom_get_comm_handle_func_ = [](const char *, void **comm) {
-    *comm = nullptr;
-    return HCCL_SUCCESS;
-  };
-  EXPECT_NE(task_.InitKernel(task_def_, args_), SUCCESS);
-  EXPECT_TRUE(task_.mc2_ccu_resources_.empty());
-  EXPECT_EQ(legacy_calls_, 0U);
-  EXPECT_TRUE(runtime_.calls.empty());
 }
 
 TEST_F(UtestMc2FusionTaskInfo, InvalidArgsStopBeforePreparingCcuTask) {
@@ -6417,17 +6538,19 @@ TEST_F(UtestMc2FusionTaskInfo, DynamicLibrariesAreResolvedOnceAcrossRepeatedLaun
   EXPECT_EQ(comm, &comm_);
   EXPECT_EQ(libraries.open_calls, 2U);
   EXPECT_EQ(libraries.symbol_calls, 2U);
-  EXPECT_EQ(libraries.groups, (std::vector<std::string>{"second_group", "second_group"}));
+  EXPECT_EQ(libraries.groups, (std::vector<std::string>{"second_group"}));
   ASSERT_EQ(libraries.launches.size(), 2U);
-  EXPECT_EQ(libraries.launches[0], std::make_pair(static_cast<void *>(&comm_), static_cast<void *>(&contexts_[1])));
+  EXPECT_EQ(libraries.launches[0],
+            std::make_pair(task_.mc2_ccu_resources_[0].stream, static_cast<void *>(&contexts_[1])));
   EXPECT_EQ(libraries.launches[1], libraries.launches[0]);
   EXPECT_EQ(runtime_.calls, (std::vector<std::string>{"ccu", "aicore", "ccu", "aicore"}));
 }
 
-TEST_F(UtestMc2FusionTaskInfo, MissingHcommLibraryStopsBeforeContextLaunch) {
+TEST_F(UtestMc2FusionTaskInfo, MissingHcommLibraryIsReported) {
   Mc2LibraryStub libraries;
   libraries.missing_library = "libhcomm.so";
-  EXPECT_NE(task_.InitKernel(task_def_, args_), SUCCESS);
+  void *comm = nullptr;
+  EXPECT_EQ(HcclDllHcomMgr::GetInstance().HcomGetCommHandleByGroupFunc("second_group", comm), HCCL_E_INTERNAL);
   EXPECT_TRUE(task_.mc2_ccu_resources_.empty());
   EXPECT_TRUE(libraries.groups.empty());
   EXPECT_EQ(libraries.open_calls, 1U);
@@ -6457,13 +6580,13 @@ TEST_F(UtestMc2FusionTaskInfo, MissingMc2LibraryStopsBeforeAicoreLaunch) {
   EXPECT_NE(task_.Distribute(), SUCCESS);
   EXPECT_TRUE(libraries.launches.empty());
   EXPECT_TRUE(runtime_.calls.empty());
-  EXPECT_EQ(libraries.open_calls, 2U);
-  EXPECT_EQ(libraries.symbol_calls, 1U);
+  EXPECT_EQ(libraries.open_calls, 1U);
+  EXPECT_EQ(libraries.symbol_calls, 0U);
 }
 
 TEST_F(UtestMc2FusionTaskInfo, MissingLaunchSymbolReusesLibraryWhenRetried) {
   Mc2LibraryStub libraries;
-  libraries.missing_symbol = "CcuKernelLaunch";
+  libraries.missing_symbol = "Mc2CcKernelLaunch";
   auto &mgr = HcclDllHcomMgr::GetInstance();
   EXPECT_EQ(mgr.CcuKernelLaunchFunc(&comm_, &contexts_[1]), HCCL_E_INTERNAL);
   EXPECT_TRUE(libraries.launches.empty());
@@ -6480,10 +6603,16 @@ TEST_F(UtestMc2FusionTaskInfo, DefaultLaunchConfigAndMultipleCcuGroupsPreserveOr
   rtLaunchAttribute_t ignored{};
   ignored.id = RT_LAUNCH_ATTRIBUTE_DUMPFLAG;
   task_.launch_attr_list_.push_back(ignored);
-  task_.mc2_ccu_resources_.emplace_back(&comm_, &contexts_[0]);
+  task_.mc2_ccu_resources_.push_back({&contexts_[0]});
+  auto &second = task_.mc2_ccu_resources_.back();
+  second.stream = task_.mc2_ccu_resources_[0].stream;
+  ASSERT_EQ(aclrtCreateNotify(&second.start, ACL_NOTIFY_DEFAULT), ACL_SUCCESS);
+  ASSERT_EQ(aclrtCreateNotify(&second.done, ACL_NOTIFY_DEFAULT), ACL_SUCCESS);
   size_t index = 0U;
-  HcclDllHcomMgr::GetInstance().mc2_ccu_kernel_launch_func_ = [this, &index](void *comm, void *context) -> uint32_t {
-    EXPECT_EQ(comm, &comm_);
+  HcclDllHcomMgr::GetInstance().mc2_ccu_kernel_launch_func_ = [this, &index](void *stream, void *context,
+                                                                             uint32_t size) -> uint32_t {
+    EXPECT_EQ(stream, task_.mc2_ccu_resources_[0].stream);
+    EXPECT_EQ(size, UINT32_MAX);
     EXPECT_EQ(context, &contexts_[index == 0U ? 1U : 0U]);
     ++index;
     runtime_.calls.emplace_back("ccu");

@@ -22,7 +22,7 @@ class HcclDllHcomMgr {
   static HcclDllHcomMgr &GetInstance();
   HcclResult HcomGetCcuTaskInfoFunc(const std::string &group, void *tilingData, void *ccuTaskGroup);
   HcclResult HcomGetCommHandleByGroupFunc(const std::string &group, void *&comm);
-  HcclResult CcuKernelLaunchFunc(void *comm, void *context);
+  HcclResult CcuKernelLaunchFunc(void *stream, void *context);
 
  private:
   HcclDllHcomMgr();
@@ -33,7 +33,7 @@ class HcclDllHcomMgr {
   void *hcomm_dll_handle_{nullptr};
   std::function<HcclResult(const char *, void **)> hcom_get_comm_handle_func_{nullptr};
   void *mc2_dll_handle_{nullptr};
-  std::function<uint32_t(void *, void *)> mc2_ccu_kernel_launch_func_{nullptr};
+  std::function<uint32_t(void *, void *, uint32_t)> mc2_ccu_kernel_launch_func_{nullptr};
 };
 
 }  // namespace ge

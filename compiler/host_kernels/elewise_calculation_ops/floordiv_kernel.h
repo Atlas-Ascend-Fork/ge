@@ -25,7 +25,7 @@ class FloorDivKernel : public Kernel {
   Status FloorDivCheck(const OpDescPtr &op_desc_ptr, const std::vector<ConstGeTensorPtr> &input) const;
   void ShapeCal(const std::vector<ConstGeTensorPtr> &input, GeTensorPtr output_ptr) const;
   template <typename T>
-  T DivCal(const T &x_i, const T &y_i);
+  Status DivCal(const T &x_i, const T &y_i, T &result);
 
   template <typename T>
   bool ZeroCheck(const T &element, DataType data_type) const;

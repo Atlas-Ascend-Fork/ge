@@ -320,7 +320,7 @@ class PythonCustomOpBridgeLoader {
   // view 中的指针只在 sink 回调期间有效，因此必须在此完成拷贝。
   Status CollectDeploymentArtifactsFromBridge() {
     static constexpr PythonCustomOpDeploymentArtifactSink kSink = {&IngestDeploymentArtifactFromBridge};
-    const auto ret = api_->collect_deployment_artifacts(&kSink, nullptr);
+    const auto ret = api_->collect_deployment_artifacts(&kSink);
     if (ret != SUCCESS) {
       GELOGE(ret, "[Collect][PythonCustomOpDeploymentArtifacts] failed with bridge library[%s].", loaded_path_.c_str());
       return ret;
@@ -330,9 +330,7 @@ class PythonCustomOpBridgeLoader {
     return SUCCESS;
   }
 
-  static bool IngestDeploymentArtifactFromBridge(void *user_data, const PythonCustomOpDeploymentArtifactView *view) {
-    // user_data 恒为 nullptr：ingest 目标是单例成员 map，不随调用方变化
-    (void)user_data;
+  static bool IngestDeploymentArtifactFromBridge(const PythonCustomOpDeploymentArtifactView *view) {
     if (view == nullptr) {
       return false;
     }

@@ -99,7 +99,20 @@ begin, end, strides input datatypes are consistent, all use TIndex symbol, its d
 REG_OP(StridedSlice)
     .INPUT(x, "T")
     .INPUT(begin, "TIndex")
-    .INPUT(end, "TIndex")##### 1.1.1 Usage of ListTensorType
+    .INPUT(end, "TIndex")
+    .INPUT(strides, "TIndex")
+    .ATTR(begin_mask, Int, 0)
+    .ATTR(end_mask, Int, 0)
+    .ATTR(ellipsis_mask, Int, 0)
+    .ATTR(new_axis_mask, Int, 0)
+    .ATTR(shrink_axis_mask, Int, 0)
+    .DATATYPE(T, TensorType::BasicType())
+    .DATATYPE(TIndex, TensorType::IndexNumberType())
+    .OUTPUT(y, "T")
+    .OP_END_FACTORY_REG(StridedSlice)
+```
+
+##### 1.1.1 Usage of ListTensorType
 
 ListTensorType can also be used to describe the value range corresponding to a symbol, in this case the input/output corresponding to this symbol should be dynamic. And it means the instance datatype value range of this dynamic input/output is the same, but datatypes don't have to be the same. For example IdentityN.
 
@@ -267,8 +280,26 @@ For example: Input x is a 4-dimensional Tensor, input shape is [4, 5, 6, 7]. Out
 
 Then y_shape's first axis value, minimum is 0, maximum is value count in input x (i.e., x_shape_size, product of x shape each axis).
 
-InferShapeRange implementation is:```c++
-  // If input x's max range unknown, then output y's shape max range also unknown
+InferShapeRange implementation is:
+
+```c++
+ge::graphStatus InferShapeRangeWhere(gert::InferShapeRangeContext *context) {
+  // Get the shape ranges of the input and output
+  auto x_shape_range = context->GetInputShapeRange(0U);
+  auto output_shape_range = context->GetOutputShapeRange(0U);
+  OPS_CHECK_NULL_WITH_CONTEXT(context, x_shape_range);
+  OPS_CHECK_NULL_WITH_CONTEXT(context, output_shape_range);
+
+  // Get the max shape of the input x shape range
+  auto x_max_shape = x_shape_range->GetMax();
+  // Get the rank of the input x
+  auto x_shape_dimnum = x_max_shape->GetDimNum();
+  int64_t output_shape_max = 1;
+  // The rank of the output y is 2
+  size_t output_shape_dim_num = 2U;
+
+  for (size_t i = 0U; i < x_shape_dimnum; i++) {
+    // If input x's max range unknown, then output y's shape max range also unknown
   if (x_max_shape->GetDim(i) < 0) {
     output_shape_max = -1;
     break;

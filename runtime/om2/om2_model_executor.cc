@@ -347,6 +347,7 @@ ge::Status FindInternalWeightBuf(const gert::GertModelData &om2_data,
     return ge::SUCCESS;
   }
   GE_ASSERT_TRUE(!internal_file_name.empty(), "[OM2][Check] INTERNAL const is missing file_name in constants config.");
+  GE_ASSERT_NOTNULL(om2_data.constants, "[om2] constants is null");
   const auto &constants_data = om2_data.constants->constants_data;
   const auto data_it =
       std::find_if(constants_data.begin(), constants_data.end(),
@@ -484,6 +485,8 @@ class Om2ModelExecutor::Impl {
     GE_ASSERT_NOTNULL(unit.model_meta, "[OM2] model_meta is null");
     GE_ASSERT_NOTNULL(unit.runtime, "[OM2] program_body is null");
     GE_ASSERT_NOTNULL(unit.constants_config, "[OM2] constants_config is null");
+    GE_ASSERT_NOTNULL(om2_data.kernels, "[om2] kernels is null");
+    GE_ASSERT_NOTNULL(om2_data.custom_ops, "[om2] custom_ops is null");
     GE_ASSERT_SUCCESS(LoadModelMetaFromStruct(*unit.model_meta));
     has_model_ = true;
 

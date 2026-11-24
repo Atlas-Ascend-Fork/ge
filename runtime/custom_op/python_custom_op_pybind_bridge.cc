@@ -345,7 +345,7 @@ class PythonCustomOpPybindBridge {
 
   // 拉取编译期已冻结的 Python 部署 artifact。view 中的指针借用 storage 持有的存储，
   // 因此 sink 必须在本次回调内完成深拷贝，不得跨迭代保存。
-  Status CollectDeploymentArtifacts(const PythonCustomOpDeploymentArtifactSink &sink, void *user_data) {
+  Status CollectDeploymentArtifacts(const PythonCustomOpDeploymentArtifactSink &sink) {
     if (sink.on_artifact == nullptr) {
       GELOGE(FAILED, "Python custom op deployment artifact sink callback is null.");
       return FAILED;
@@ -384,7 +384,7 @@ class PythonCustomOpPybindBridge {
         return FAILED;
       }
       auto view = storage.BuildView();
-      if (!sink.on_artifact(user_data, &view)) {
+      if (!sink.on_artifact(&view)) {
         GELOGE(FAILED, "Consume python custom op deployment artifact[%s] failed.", storage.artifact_id.c_str());
         return FAILED;
       }
@@ -1376,12 +1376,11 @@ VISIBILITY_HIDDEN void ShutdownPythonCustomOpBridge() {
   PythonCustomOpPybindBridge::GetInstance().Shutdown();
 }
 
-VISIBILITY_HIDDEN Status CollectPythonCustomOpDeploymentArtifacts(const PythonCustomOpDeploymentArtifactSink *sink,
-                                                                  void *user_data) {
+VISIBILITY_HIDDEN Status CollectPythonCustomOpDeploymentArtifacts(const PythonCustomOpDeploymentArtifactSink *sink) {
   if (sink == nullptr) {
     return FAILED;
   }
-  return PythonCustomOpPybindBridge::GetInstance().CollectDeploymentArtifacts(*sink, user_data);
+  return PythonCustomOpPybindBridge::GetInstance().CollectDeploymentArtifacts(*sink);
 }
 
 // 模型 scope 会话的 C ABI 入口。函数名带 Bridge 前缀：loader SO（python_custom_op_bridge_loader.cc）

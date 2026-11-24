@@ -1022,7 +1022,7 @@ Status ProcessNetoutputNodeFp16Nc1hwc0DynShape(GeTensorDesc &src_desc, GeTensorD
 }
 
 bool NeedUpdateDtByOutputTypeParm(const OpDescPtr &netout_desc, const uint32_t &index, ge::DataType &dt) {
-  GE_CHECK_NOTNULL(netout_desc);
+  GE_ASSERT_NOTNULL(netout_desc);
   std::vector<std::string> output_dt_str;
   if (ge::AttrUtils::GetListStr(netout_desc, ATTR_ATC_USER_DEFINE_DATATYPE, output_dt_str)) {
     for (auto dt_str : output_dt_str) {
@@ -1041,7 +1041,7 @@ bool NeedUpdateDtByOutputTypeParm(const OpDescPtr &netout_desc, const uint32_t &
 }
 
 bool NeedUpdateFormatByOutputTypeParm(const OpDescPtr &netout_desc, const uint32_t &index) {
-  GE_CHECK_NOTNULL(netout_desc);
+  GE_ASSERT_NOTNULL(netout_desc);
   std::vector<std::string> output_format_str;
   if (ge::AttrUtils::GetListStr(netout_desc, ATTR_ATC_USER_DEFINE_FORMAT, output_format_str)) {
     for (auto format_str : output_format_str) {
@@ -1169,10 +1169,11 @@ Status UpdateDynamicInputShapeRange(const int64_t index,
 
   if (current_shape_range_vec.size() != origin_shape.GetDimNum()) {
     auto iter = graph_option.find(OPTION_EXEC_DATA_INPUTS_SHAPE_RANGE);
+    const std::string shape_range_value = (iter != graph_option.end()) ? iter->second : "";
     REPORT_PREDEFINED_ERR_MSG(
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
         std::vector<const char *>(
-            {"dynamic_inputs_shape_range", iter->second.c_str(),
+            {"dynamic_inputs_shape_range", shape_range_value.c_str(),
              "The origin shape size does not match the current dynamic input shape range size."}));
     GELOGE(PARAM_INVALID,
            "[Check][Param] For node %s. Given shape_range dim num is %zu, current dim num is %zu, "
