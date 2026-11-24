@@ -251,7 +251,7 @@ inline Status FromDtypeToOtherDtype(const NodePtr &node, DataType s_dtype, DataT
     GE_ASSERT_NOTNULL(output_tensor_desc);
     if (output_tensor_desc->GetDataType() == s_dtype) {
       output_tensor_desc->SetDataType(d_dtype);
-      GELOGI("node: %s(%s) output_idx(%d) dtype change from %s to DT_FLOAT.", node->GetName().c_str(),
+      GELOGI("node: %s(%s) output_idx(%d) dtype change from %s to %s.", node->GetName().c_str(),
              node->GetType().c_str(), i, TypeUtils::DataTypeToSerialString(s_dtype).c_str(),
              TypeUtils::DataTypeToSerialString(output_tensor_desc->GetDataType()).c_str());
     }
