@@ -196,15 +196,15 @@ bool SymbolicInferUtil::IsSupportCondNode(const ge::NodePtr &node) {
 NodePtr SymbolicInferUtil::GetCondInput(const NodePtr &node) {
   GE_WARN_ASSERT(IsSupportCondNode(node));
   auto cond_input = NodeUtils::GetInDataNodeByIndex(*node, 0);
-  GELOGD("Get cond node[%s] input[%s] success.", node->GetNamePtr(), cond_input->GetNamePtr());
   GE_WARN_ASSERT(cond_input != nullptr);
+  GELOGD("Get cond node[%s] input[%s] success.", node->GetNamePtr(), cond_input->GetNamePtr());
   // 如果node节点的输入时cast，size，stringlength需要再往上找
   const std::set<string> vaild_types = {"Cast", "Size", "StringLength"};
   if (vaild_types.find(cond_input->GetType()) != vaild_types.end()) {
     cond_input = NodeUtils::GetInDataNodeByIndex(*cond_input, 0);
+    GE_ASSERT_NOTNULL(cond_input);
     GELOGD("Cond node[%s] input is cast/size/stringlength, get input[%s] success.", node->GetNamePtr(),
            cond_input->GetNamePtr());
-    GE_ASSERT_NOTNULL(cond_input);
   }
   // 如果不是data节点, 直接返回
   if (!OpTypeUtils::IsDataNode(cond_input->GetType())) {
