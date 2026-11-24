@@ -329,7 +329,8 @@ graphStatus InferDataType(gert::InferDataTypeContext *ctx) {
 
 Online compilation callback, called during GE/ATC compilation phase.
 
-```cppgraphStatus Compile(gert::OpCompileContext *ctx) override;
+```cpp
+graphStatus Compile(gert::OpCompileContext *ctx) override;
 ```
 
 **OpCompileContext API:**

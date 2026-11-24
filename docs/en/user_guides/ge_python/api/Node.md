@@ -97,7 +97,6 @@ def update_input_desc(self, index: int, tensor_desc: TensorDesc) -> None
 
 ```python
 def get_output_desc(self, index: int) -> TensorDesc
-```def get_output_desc(self, index: int) -> TensorDesc
 ```
 
 ```python
