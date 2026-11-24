@@ -26,6 +26,7 @@
 #include "graph/utils/op_desc_utils_ex.h"
 #include "graph/utils/tensor_utils.h"
 #include "graph/utils/node_utils.h"
+#include "graph/utils/type_utils_inner.h"
 #include "register/pass_option_utils.h"
 
 namespace ge {
@@ -379,7 +380,8 @@ bool PassUtils::GetPerm(const NodePtr &node, const uint32_t kTransposeInputPerm,
     }
     return true;
   }
-  GELOGW("The data type of perm should be DT_INT32 or DT_INT64");
+  GELOGW("The data type of perm of node %s is %s, should be DT_INT32 or DT_INT64", node->GetNamePtr(),
+         TypeUtilsInner::DataTypeToSerialString(tensor_desc.GetDataType()).c_str());
   return false;
 }
 

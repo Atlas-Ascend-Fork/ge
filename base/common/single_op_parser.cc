@@ -644,7 +644,7 @@ Status SingleOpParser::SetShapeRange(const std::string &op_name, const SingleOpT
           std::vector<const char *>({op_name.c_str(), "shape range size",
                                      std::to_string(tensor_desc.dim_ranges.size()).c_str(),
                                      "The tensor has dynamic dimensions, but the shape range is not empty"}));
-      GELOGE(PARAM_INVALID, "[Set][ShapeRange]Shape range is not needed while the rank the shape is unknown.");
+      GELOGE(PARAM_INVALID, "[Set][ShapeRange]Shape range is not needed while the rank of the shape is unknown.");
       return PARAM_INVALID;
     }
 

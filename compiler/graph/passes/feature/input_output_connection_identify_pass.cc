@@ -82,7 +82,7 @@ Status InputOutputConnectionIdentifyPass::Run(ComputeGraphPtr graph) {
     return status;
   }
 
-  GELOGD("Success to identify nodes that connect to input and output.");
+  GELOGD("Successfully identified nodes that connect to input and output.");
   return SUCCESS;
 }
 

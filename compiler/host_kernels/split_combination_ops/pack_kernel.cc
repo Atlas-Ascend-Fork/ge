@@ -93,7 +93,7 @@ Status PackKernel::ValidateKernelParams(const ge::OpDescPtr &op_desc_ptr,
 
   Status validate_ret = ValidateInputs(op_desc_ptr, input);
   if (validate_ret != SUCCESS) {
-    GELOGW("Validate inputs failed.Ignore pack kernel.");
+    GELOGW("Validate inputs failed. Ignore pack kernel.");
     return NOT_CHANGED;
   }
   return SUCCESS;
@@ -131,12 +131,12 @@ Status PackKernel::ValidateInputs(const ge::OpDescPtr &op_desc_ptr,
       }
       num *= dim;
       if (num > kShapeItemNumMAX) {
-        GELOGW("Shape overflow, the total count should be less than %ld!", kShapeItemNumMAX);
+        GELOGW("Shape overflow, total count %ld exceeds max %ld.", num, kShapeItemNumMAX);
         return NOT_CHANGED;
       }
     }
     if (!formats::IsShapeEqual(shape, dst_shape)) {
-      GELOGW("Shape of input %ld is not equal with input 0.", i);
+      GELOGW("Shape of input %ld is not equal to input 0.", i);
       return NOT_CHANGED;
     }
 
@@ -196,7 +196,7 @@ Status PackKernel::CopyOutputData(const GeShape &final_shape, const std::vector<
   auto output_size = final_shape.GetShapeSize();
   std::shared_ptr<uint8_t> buf(new (std::nothrow) uint8_t[output_size * data_size], std::default_delete<uint8_t[]>());
   if (buf == nullptr) {
-    GELOGW("malloc buf is null.Ignore pack kernel.");
+    GELOGW("malloc buf is null. Ignore pack kernel.");
     return NOT_CHANGED;
   }
 

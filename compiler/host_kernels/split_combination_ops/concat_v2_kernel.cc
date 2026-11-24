@@ -36,7 +36,7 @@ void GetOutputData(std::vector<T> &y_data, int64_t loop, size_t input_size,
       auto buffer = input.at(k)->GetData();
       const T *datak = reinterpret_cast<const T *>(buffer.data());
       if (datak == nullptr || buffer.size() == 0) {
-        GELOGW("input[%zu] is with no data", k);
+        GELOGW("input[%zu] has no data", k);
         continue;
       }
       int64_t gapk = datak_shape.GetShapeSize() / loop;  // [2,3] is 6/loop
@@ -114,7 +114,7 @@ Status ConcatV2Kernel::ConcatV2PreCompute(const std::vector<ConstGeTensorPtr> &i
   size_t input_size = input.size();
   // N + 1 is greater than or equal to 3
   if (input_size < kConcatV2InputNum) {
-    GELOGI("The number of input for ConcatV2 must not be less than %zu.", kConcatV2InputNum);
+    GELOGI("The number of input for ConcatV2 must not be less than %zu, but is %zu.", kConcatV2InputNum, input_size);
     return NOT_CHANGED;
   }
   bool has_empty_tensor = false;
@@ -125,7 +125,7 @@ Status ConcatV2Kernel::ConcatV2PreCompute(const std::vector<ConstGeTensorPtr> &i
       return NOT_CHANGED;
     }
     if (input.at(i)->GetData().size() == 0) {
-      GELOGW("input[%zu] is with no data.", i);
+      GELOGW("input[%zu] has no data.", i);
       has_empty_tensor = true;
       continue;
     }

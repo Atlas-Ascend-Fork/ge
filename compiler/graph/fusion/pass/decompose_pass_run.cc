@@ -96,7 +96,7 @@ Status RunDecomposePass(GraphPtr &graph, CustomPassContext &pass_context, const 
     GE_ASSERT_TRUE(it_fusion_info != fusion_info_map.end());
     it_fusion_info->second.first++;
     if (!meet_requirements(g_node)) {
-      GELOGD("Node [%s][%s] does not match requires", node->GetNamePtr(), node->GetTypePtr());
+      GELOGD("Node [%s][%s] does not match the requirements", node->GetNamePtr(), node->GetTypePtr());
       continue;
     }
 

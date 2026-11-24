@@ -111,15 +111,16 @@ Status OverflowCheckSub(T const &x, T const &y, DataType const &type) {
   return SUCCESS;
 }
 
-#define DEFINE_FUNC_WITH_STATUS_BY_TYPE(TYPE)                                         \
-  std::function<TYPE(TYPE const &, TYPE const &, DataType &, Status &)> func_##TYPE = \
-      [](TYPE const &a, TYPE const &b, DataType &type, Status &ret) -> TYPE {         \
-    ret = OverflowCheckMul(a, b, type);                                               \
-    if (ret != SUCCESS) {                                                             \
-      GELOGE(PARAM_INVALID, "Result of mul is overflow.");                            \
-      return static_cast<TYPE>(0);                                                    \
-    }                                                                                 \
-    return static_cast<TYPE>(a) * static_cast<TYPE>(b);                               \
+#define DEFINE_FUNC_WITH_STATUS_BY_TYPE(TYPE)                                                            \
+  std::function<TYPE(TYPE const &, TYPE const &, DataType &, Status &)> func_##TYPE =                    \
+      [](TYPE const &a, TYPE const &b, DataType &type, Status &ret) -> TYPE {                            \
+    ret = OverflowCheckMul(a, b, type);                                                                  \
+    if (ret != SUCCESS) {                                                                                \
+      GELOGE(PARAM_INVALID, "Result of mul is overflow, a: %g, b: %g, type: %s", static_cast<double>(a), \
+             static_cast<double>(b), TypeUtils::DataTypeToSerialString(type).c_str());                   \
+      return static_cast<TYPE>(0);                                                                       \
+    }                                                                                                    \
+    return static_cast<TYPE>(a) * static_cast<TYPE>(b);                                                  \
   }
 
 #define SET_BCAST_COMPUTE_CASE(DTYPE, TYPE)                              \
@@ -177,7 +178,10 @@ Status ComplexCompute(const OpDescPtr op_desc_ptr, const std::vector<ConstGeTens
         (OverflowCheckMul<InT>(x_index_real, y_index_imaginary, data_type) != SUCCESS) ||
         (OverflowCheckMul<InT>(x_index_imaginary, y_index_real, data_type) != SUCCESS) ||
         (OverflowCheckMul<InT>(x_index_imaginary, y_index_imaginary, data_type) != SUCCESS)) {
-      GELOGE(PARAM_INVALID, "Result of mul is overflow.");
+      GELOGE(PARAM_INVALID, "Result of mul is overflow, x real:%g, x imag:%g, y real:%g, y imag:%g, type: %s",
+             static_cast<double>(x_index_real), static_cast<double>(x_index_imaginary),
+             static_cast<double>(y_index_real), static_cast<double>(y_index_imaginary),
+             TypeUtils::DataTypeToSerialString(data_type).c_str());
       return PARAM_INVALID;
     }
     auto xr_yr = x_index_real * y_index_real;
@@ -186,7 +190,9 @@ Status ComplexCompute(const OpDescPtr op_desc_ptr, const std::vector<ConstGeTens
     auto xi_yr = x_index_imaginary * y_index_real;
     if ((OverflowCheckSub<InT>(xr_yr, xi_yi, data_type) != SUCCESS) ||
         (OverflowCheckAdd<InT>(xr_yi, xi_yr, data_type) != SUCCESS)) {
-      GELOGE(PARAM_INVALID, "Result of mul is overflow.");
+      GELOGE(PARAM_INVALID, "Result of mul is overflow, xr_yr:%g, xi_yi:%g, xr_yi:%g, xi_yr:%g, type: %s",
+             static_cast<double>(xr_yr), static_cast<double>(xi_yi), static_cast<double>(xr_yi),
+             static_cast<double>(xi_yr), TypeUtils::DataTypeToSerialString(data_type).c_str());
       return PARAM_INVALID;
     }
     buf[i * kComplexWidth] = xr_yr - xi_yi;          // complex real part
@@ -288,7 +294,7 @@ Status MulKernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<ConstGe
 Status MulKernel::MulCheck(const std::vector<ConstGeTensorPtr> &input) const {
   // check input number
   if (input.size() != static_cast<size_t>(MUL_INPUT_NUM)) {
-    GELOGI("The number of input for Mul must be %u.", MUL_INPUT_NUM);
+    GELOGI("The number of input for Mul must be %u, but is %zu.", MUL_INPUT_NUM, input.size());
     return NOT_CHANGED;
   }
 

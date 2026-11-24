@@ -213,7 +213,7 @@ Status RelinkSubgraphIO(const InnerSubgraphBoundary &subgraph, const std::map<in
     if (OpTypeUtils::IsDataNode(r_output_owner_node->GetTypePtr())) {
       int64_t input_index = -1;
       (void)AttrUtils::GetInt(r_output_owner_node->GetOpDesc(), ATTR_NAME_INDEX, input_index);
-      GE_ASSERT_TRUE(input_index != -1, "Invalid input node of replacement graph which without index attr");
+      GE_ASSERT_TRUE(input_index != -1, "Invalid input node of replacement graph which is without index attr");
       auto input_producer_out_anchor = subgraph.GetInputProducerOutAnchor(input_index);
       GE_ASSERT_NOTNULL(input_producer_out_anchor, "Failed to get input producer by input index: %ld", input_index);
       auto peer_in_anchors = t_output_data_anchor->GetPeerInDataAnchors();

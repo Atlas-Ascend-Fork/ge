@@ -41,28 +41,34 @@ void SetLogSwitch() {
 
 CmpStatus ParamCheck(const char *input, const char *indexes, const char *cmpData, const CompressConfig &param) {
   if (input == nullptr || indexes == nullptr || cmpData == nullptr) {
-    LogFatal("there is null pointer in parameters");
+    LogFatal("there is null pointer in parameters: input is "
+             << (input == nullptr ? "null" : "valid") << ", indexes is " << (indexes == nullptr ? "null" : "valid")
+             << ", cmpData is " << (cmpData == nullptr ? "null" : "valid"));
     return RET_ERROR;
   }
 
   if ((param.maxRatio != MAX_RATIO_8X) && (param.maxRatio != MAX_RATIO_4X)) {
-    LogFatal("maxRatio: " << param.maxRatio << " is invalid");
+    LogFatal("maxRatio: " << param.maxRatio << " is invalid, expected MAX_RATIO_8X(" << MAX_RATIO_8X
+                          << ") or MAX_RATIO_4X(" << MAX_RATIO_4X << ")");
     return RET_ERROR;
   }
 
   if (param.fractalSize == 0 || param.inputSize % param.fractalSize != 0) {
-    LogFatal("fractal size is invalid" << " fractal size is: " << param.fractalSize
-                                       << "input size is: " << param.inputSize);
+    LogFatal("fractal size is invalid, fractal size is: " << param.fractalSize << ", input size is: " << param.inputSize
+                                                          << ", expected: fractalSize is not 0 and "
+                                                          << "inputSize % fractalSize == 0");
     return RET_ERROR;
   }
 
   if ((((param.fractalSize) % FILE_LEN_RATIO) != 0) || (param.fractalSize > MAX_FILE_INPUT_LEN)) {
-    LogFatal("inputLen: " << param.inputSize << " is invalid");
+    LogFatal("fractalSize: " << param.fractalSize << " is invalid, expected: multiple of " << FILE_LEN_RATIO
+                             << " and not greater than " << MAX_FILE_INPUT_LEN);
     return RET_ERROR;
   }
 
   if ((param.compressType != amctcmp::LOW_SPARSE) && (param.compressType != amctcmp::HIGH_SPARSE)) {
-    LogFatal("compressType: " << param.compressType << " is invalid");
+    LogFatal("compressType: " << param.compressType << " is invalid, expected LOW_SPARSE(" << amctcmp::LOW_SPARSE
+                              << ") or HIGH_SPARSE(" << amctcmp::HIGH_SPARSE << ")");
     return RET_ERROR;
   }
   Log("current compress typeId: " << param.compressType);
@@ -92,7 +98,9 @@ CmpStatus CompressWeights(char *input, const CompressConfig &compressConfig, cha
 
   amctcmp::CompressMode mode = GetMode(compressConfig);
   if (mode == amctcmp::MODE_INVALID) {
-    LogFatal("Invalid Mode");
+    LogFatal("Invalid Mode: " << mode << ", engineNum: " << compressConfig.engineNum
+                              << ", channel: " << compressConfig.channel
+                              << ", expected: engineNum=4 and channel=2, or engineNum=1 and channel=4");
     return RET_ERROR;
   }
 

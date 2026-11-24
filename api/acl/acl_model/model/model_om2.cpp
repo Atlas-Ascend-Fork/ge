@@ -340,7 +340,10 @@ aclError FillModelDescFromTensorDescs(aclmdlDesc *modelDesc, const std::vector<g
                                       const std::vector<gert::GertTensorDesc> &outputDescV2) {
   // Check size consistency
   if ((inputDescV2.size() < inputDesc.size()) || (outputDescV2.size() < outputDesc.size())) {
-    ACL_LOG_CALL_ERROR("[Get][ModelDescInfo]description v2 size less than description v1 size");
+    ACL_LOG_CALL_ERROR(
+        "[Get][ModelDescInfo]description v2 size less than description v1 size, input v2 size[%zu], input v1 "
+        "size[%zu], output v2 size[%zu], output v1 size[%zu]",
+        inputDescV2.size(), inputDesc.size(), outputDescV2.size(), outputDesc.size());
     return ACL_ERROR_FAILURE;
   }
 
@@ -517,7 +520,13 @@ static aclError CheckOm2UserLoadConfigOptValid(const aclmdlConfigHandle *handle)
   ACL_REQUIRES_NOT_NULL(handle);
   for (const aclmdlConfigAttr &attr : handle->attrState) {
     if (kOm2SupportedLoadConfigOpts.find(attr) == kOm2SupportedLoadConfigOpts.end()) {
-      ACL_LOG_ERROR("[Check][ConfigOpt]config opt [%d] is not supported in om2", static_cast<int>(attr));
+      ACL_LOG_ERROR(
+          "[Check][ConfigOpt]config opt [%d] is not supported in om2, supported opts: ACL_MDL_PRIORITY_INT32, "
+          "ACL_MDL_LOAD_TYPE_SIZET, ACL_MDL_PATH_PTR, ACL_MDL_MEM_ADDR_PTR, ACL_MDL_MEM_SIZET, "
+          "ACL_MDL_WEIGHT_ADDR_PTR, ACL_MDL_WEIGHT_SIZET, ACL_MDL_WORKSPACE_ADDR_PTR, ACL_MDL_WORKSPACE_SIZET, "
+          "ACL_MDL_WEIGHT_PATH_PTR, ACL_MDL_WITHOUT_GRAPH_INT32, ACL_MDL_WORKSPACE_MEM_OPTIMIZE, "
+          "ACL_MDL_SCH_MODE_INT32",
+          static_cast<int>(attr));
       return ACL_ERROR_INVALID_PARAM;
     }
   }
@@ -545,7 +554,7 @@ static aclError GetDimsRange(const aclmdlDesc *const modelDesc, const TensorType
   const size_t descSize = desc.size();
   if (idx >= descSize) {
     ACL_LOG_INNER_ERROR(
-        "[Check][Params]GetDimsRange failed, index[%zu] can not greater than or equal to tensor "
+        "[Check][Params]GetDimsRange failed, index[%zu] can not be greater than or equal to tensor "
         "size[%zu]",
         idx, descSize);
     return ACL_ERROR_INVALID_PARAM;
@@ -557,7 +566,7 @@ static aclError GetDimsRange(const aclmdlDesc *const modelDesc, const TensorType
   constexpr size_t MIN = 0U;
   constexpr size_t MAX = 1U;
   if (dynamicDimSize > static_cast<size_t>(ACL_MAX_DIM_CNT)) {
-    ACL_LOG_INNER_ERROR("[Check][dynamicDimSize]GetDimsRange failed, dim size[%zu] can not larger than max[%d]",
+    ACL_LOG_INNER_ERROR("[Check][dynamicDimSize]GetDimsRange failed, dim size[%zu] can not be larger than max[%d]",
                         dynamicDimSize, ACL_MAX_DIM_CNT);
     return ACL_ERROR_INTERNAL_ERROR;
   }
@@ -565,7 +574,7 @@ static aclError GetDimsRange(const aclmdlDesc *const modelDesc, const TensorType
     const auto &staticDims = tensorDesc.dims;
     const size_t staticDimSize = staticDims.size();
     if (staticDimSize > static_cast<size_t>(ACL_MAX_DIM_CNT)) {
-      ACL_LOG_INNER_ERROR("[Check][staticDimSize]GetDimsRange failed, dim size[%zu] can not larger than max[%d]",
+      ACL_LOG_INNER_ERROR("[Check][staticDimSize]GetDimsRange failed, dim size[%zu] can not be larger than max[%d]",
                           staticDimSize, ACL_MAX_DIM_CNT);
       return ACL_ERROR_INTERNAL_ERROR;
     }
@@ -603,7 +612,7 @@ static const char *aclmdlGetNameByIndex(const std::vector<aclmdlTensorDesc> &des
     ACL_LOG_ERROR("[Check][index]get name by index failed, index[%zu] is larger than or equal to desc size[%zu]", idx,
                   desc.size());
     const std::string errMsg =
-        acl::AclErrorLogManager::FormatStr("cannot larger than or equal to desc size[%zu]", desc.size());
+        acl::AclErrorLogManager::FormatStr("cannot be larger than or equal to desc size[%zu]", desc.size());
     acl::AclErrorLogManager::ReportInputError(
         acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
         std::vector<const char *>({"index", std::to_string(idx).c_str(), errMsg.c_str()}));
@@ -908,7 +917,7 @@ aclError aclmdlGetDescFromFileImplOm2(aclmdlDesc *modelDesc, const char *modelPa
 
 aclError aclmdlGetDescFromMemImplOm2(aclmdlDesc *modelDesc, const void *model, size_t modelSize) {
   ACL_PROFILING_REG(acl::AclProfType::AclmdlGetDesc);
-  ACL_LOG_INFO("[OM2] start to execute aclmdlGetDescFromMem, modelSize[%zu]", modelSize);
+  ACL_LOG_INFO("[OM2] start to execute aclmdlGetDescFromMem, modelSize[%zu] bytes", modelSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelDesc);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(model);
   ACL_REQUIRES_POSITIVE_WITH_INPUT_REPORT(modelSize);
@@ -922,7 +931,7 @@ aclError aclmdlGetDescFromMemImplOm2(aclmdlDesc *modelDesc, const void *model, s
   // Populate desc from OM2 data
   ACL_REQUIRES_OK(PopulateDescFromOm2Data(modelDesc, om2Data));
 
-  ACL_LOG_INFO("[OM2] successfully execute aclmdlGetDescFromMem, modelSize[%zu]", modelSize);
+  ACL_LOG_INFO("[OM2] successfully execute aclmdlGetDescFromMem, modelSize[%zu] bytes", modelSize);
   return ACL_SUCCESS;
 }
 
@@ -1071,8 +1080,10 @@ aclError InitOm2BundleFromData(const std::shared_ptr<const uint8_t> &model, cons
     return ACL_GET_ERRCODE_GE(static_cast<int32_t>(query_ret));
   }
   if (var_weight_ptr != nullptr && var_weight_size < required_var_size) {
-    ACL_LOG_ERROR("[OM2][Bundle] varWeightPtr/varWeightSize invalid, required var size[%zu], actual size[%zu]",
-                  required_var_size, var_weight_size);
+    ACL_LOG_ERROR(
+        "[OM2][Bundle] varWeightPtr/varWeightSize invalid, required var size[%zu] bytes, actual size[%zu] "
+        "bytes",
+        required_var_size, var_weight_size);
     const std::string errMsg =
         acl::AclErrorLogManager::FormatStr("it cannot be smaller than model required size %zu", required_var_size);
     acl::AclErrorLogManager::ReportInputError(
@@ -1195,7 +1206,7 @@ aclError aclmdlBundleLoadFromFileImplOm2(const char *modelPath, uint32_t *bundle
 
 aclError aclmdlBundleLoadFromMemImplOm2(const void *model, size_t modelSize, uint32_t *bundleId) {
   ACL_PROFILING_REG(acl::AclProfType::AclmdlBundleLoadFromMem);
-  ACL_LOG_INFO("[OM2] start to execute aclmdlBundleLoadFromMem, modelSize[%zu]", modelSize);
+  ACL_LOG_INFO("[OM2] start to execute aclmdlBundleLoadFromMem, modelSize[%zu] bytes", modelSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(model);
   ACL_REQUIRES_POSITIVE_WITH_INPUT_REPORT(modelSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(bundleId);
@@ -1231,7 +1242,7 @@ aclError aclmdlLoadFromFileImplOm2(const char *modelPath, uint32_t *modelId) {
 aclError aclmdlLoadFromFileWithMemImplOm2(const char *modelPath, uint32_t *modelId, void *workPtr, size_t workSize,
                                           void *weightPtr, size_t weightSize) {
   ACL_PROFILING_REG(acl::AclProfType::AclmdlLoadFromFileWithMem);
-  ACL_LOG_INFO("[OM2] start to execute aclmdlLoadFromFileWithMem, workSize[%zu], weightSize[%zu]", workSize,
+  ACL_LOG_INFO("[OM2] start to execute aclmdlLoadFromFileWithMem, workSize[%zu] bytes, weightSize[%zu] bytes", workSize,
                weightSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelPath);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelId);
@@ -1250,7 +1261,7 @@ aclError aclmdlLoadFromFileWithMemImplOm2(const char *modelPath, uint32_t *model
 
 aclError aclmdlLoadFromMemImplOm2(const void *model, size_t modelSize, uint32_t *modelId) {
   ACL_PROFILING_REG(acl::AclProfType::AclmdlLoadFromMem);
-  ACL_LOG_INFO("[OM2] start to execute aclmdlLoadFromMem, modelSize[%zu]", modelSize);
+  ACL_LOG_INFO("[OM2] start to execute aclmdlLoadFromMem, modelSize[%zu] bytes", modelSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(model);
   ACL_REQUIRES_POSITIVE_WITH_INPUT_REPORT(modelSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelId);
@@ -1314,7 +1325,7 @@ aclError aclmdlBundleQueryInfoFromFileImplOm2(const char *fileName, aclmdlBundle
 }
 
 aclError aclmdlBundleQueryInfoFromMemImplOm2(const void *model, size_t modelSize, aclmdlBundleQueryInfo *queryInfo) {
-  ACL_LOG_INFO("[OM2] start to execute aclmdlBundleQueryInfoFromMem, modelSize[%zu]", modelSize);
+  ACL_LOG_INFO("[OM2] start to execute aclmdlBundleQueryInfoFromMem, modelSize[%zu] bytes", modelSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(model);
   ACL_REQUIRES_POSITIVE_WITH_INPUT_REPORT(modelSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(queryInfo);
@@ -1330,7 +1341,7 @@ aclError aclmdlBundleQueryInfoFromMemImplOm2(const void *model, size_t modelSize
     queryInfo->subModelInfos.push_back({work_size, weight_size, 0U, 0U});
   }
   queryInfo->varSize = var_size;
-  ACL_LOG_INFO("[OM2] aclmdlBundleQueryInfoFromMem success, model num[%zu], var size[%zu]", model_sizes.size(),
+  ACL_LOG_INFO("[OM2] aclmdlBundleQueryInfoFromMem success, model num[%zu], var size[%zu] bytes", model_sizes.size(),
                var_size);
   return ACL_SUCCESS;
 }
@@ -1367,7 +1378,7 @@ aclError aclmdlBundleInitFromFileImplOm2(const char *modelPath, void *varWeightP
                                          uint32_t *bundleId) {
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelPath);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(bundleId);
-  ACL_LOG_INFO("[OM2] start to execute aclmdlBundleInitFromFile, modelPath[%s], varWeightSize[%zu]", modelPath,
+  ACL_LOG_INFO("[OM2] start to execute aclmdlBundleInitFromFile, modelPath[%s], varWeightSize[%zu] bytes", modelPath,
                varWeightSize);
   ge::ModelData model_data;
   const ge::Status load_ret = gert::LoadOm2DataFromFile(modelPath, model_data);
@@ -1388,8 +1399,8 @@ aclError aclmdlBundleInitFromFileImplOm2(const char *modelPath, void *varWeightP
 
 aclError aclmdlBundleInitFromMemImplOm2(const void *model, size_t modelSize, void *varWeightPtr, size_t varWeightSize,
                                         uint32_t *bundleId) {
-  ACL_LOG_INFO("[OM2] start to execute aclmdlBundleInitFromMem, modelSize[%zu], varWeightSize[%zu]", modelSize,
-               varWeightSize);
+  ACL_LOG_INFO("[OM2] start to execute aclmdlBundleInitFromMem, modelSize[%zu] bytes, varWeightSize[%zu] bytes",
+               modelSize, varWeightSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(model);
   ACL_REQUIRES_POSITIVE_WITH_INPUT_REPORT(modelSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(bundleId);
@@ -2336,7 +2347,9 @@ aclError aclmdlGetInputDynamicDimsImplOm2(const aclmdlDesc *modelDesc, size_t in
     for (size_t j = 0U; j < allRawDims.size(); ++j) {
       if (allRawDims[j] < 0) {
         if (begIndex >= modelDesc->dynamicDims[i].size()) {
-          ACL_LOG_INNER_ERROR("[Check][begIndex]User input data index[%zu] shape size overflow", index);
+          ACL_LOG_INNER_ERROR(
+              "[Check][begIndex]User input data index[%zu] begIndex[%zu] exceeds dynamic dims size[%zu]", index,
+              begIndex, modelDesc->dynamicDims[i].size());
           return ACL_ERROR_INVALID_PARAM;
         }
         dims[i].dims[j] = static_cast<int64_t>(modelDesc->dynamicDims[i][begIndex]);
@@ -2393,12 +2406,14 @@ aclError aclmdlLoadWithConfigImplOm2(const aclmdlConfigHandle *handle, uint32_t 
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(handle);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelId);
   if (!acl::CheckMdlConfigHandle(handle)) {
-    ACL_LOG_ERROR("[Check][ConfigHandle]model config is invalid because some params may not be set or invalid");
+    ACL_LOG_ERROR(
+        "[Check][ConfigHandle]model config is invalid because some params may not be set or invalid, mdlLoadType[%zu]",
+        handle->mdlLoadType);
     return ACL_ERROR_INVALID_PARAM;
   }
   auto &file_constant_mems = handle->fileConstantMem;
   for (const auto &file_constant_mem : file_constant_mems) {
-    ACL_LOG_INFO("file constant name[%s], device memory address[%p], device memory size[%zu]",
+    ACL_LOG_INFO("file constant name[%s], device memory address[%p], device memory size[%zu] bytes",
                  file_constant_mem.file_name.c_str(), file_constant_mem.device_mem, file_constant_mem.mem_size);
   }
   switch (static_cast<int32_t>(handle->mdlLoadType)) {

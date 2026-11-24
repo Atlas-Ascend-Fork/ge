@@ -241,7 +241,7 @@ static aclError GetAndCheckAippOutputShapeOm2(const std::shared_ptr<gert::Om2Mod
     return ACL_ERROR_INVALID_PARAM;
   }
   if (idx >= input_desc->size()) {
-    ACL_LOG_INNER_ERROR("[Check][Params]index[%u] cannot greater than or equal to tensor size[%zu]", idx,
+    ACL_LOG_INNER_ERROR("[Check][Params]index[%u] cannot be greater than or equal to tensor size[%zu]", idx,
                         input_desc->size());
     return ACL_ERROR_INVALID_PARAM;
   }
@@ -651,7 +651,7 @@ aclError aclmdlSetAIPPDtcPixelMinImplOm2(aclmdlAIPP *aippParmsSet, float dtcPixe
   aippParmsSet->aippBatchPara[batchIndex].dtcPixelMinChn2 = acl::Fp16Type(dtcPixelMinChn2).GetVal();
   aippParmsSet->aippBatchPara[batchIndex].dtcPixelMinChn3 = acl::Fp16Type(dtcPixelMinChn3).GetVal();
   ACL_LOG_INFO(
-      "successfully execute aclmdlSetAIPPDtcPixelMin, input dtcPixelMinChn0:%f,"
+      "successfully execute aclmdlSetAIPPDtcPixelMin, input dtcPixelMinChn0:%f, "
       "the dtcPixelMinChn0:%u of batchIndex:%lu",
       static_cast<float64_t>(dtcPixelMinChn0),
       static_cast<uint32_t>(aippParmsSet->aippBatchPara[batchIndex].dtcPixelMinChn0), batchIndex);
@@ -819,7 +819,10 @@ aclError aclmdlSetInputAIPPImplOm2(uint32_t modelId, aclmdlDataset *dataset, siz
 
   auto mdlRet = CheckAippDataIndexOm2(executor, modelId, index);
   if (mdlRet != ACL_SUCCESS) {
-    ACL_LOG_ERROR("[Check][AippData]Dynamic AIPP data index %zu is invalid, parameters verification failed", index);
+    ACL_LOG_ERROR(
+        "[Check][AippData]Dynamic AIPP data index[%zu] is invalid, modelId[%u], it is not the dynamic aipp "
+        "data index of the model, parameters verification failed",
+        index, modelId);
     const std::string errMsg = acl::AclErrorLogManager::FormatStr("index %zu is invalid", index);
     acl::AclErrorLogManager::ReportInputError(acl::INVALID_AIPP_MSG, std::vector<const char *>({"param", "reason"}),
                                               std::vector<const char *>({"Dynamic AIPP data index", errMsg.c_str()}));
@@ -828,7 +831,10 @@ aclError aclmdlSetInputAIPPImplOm2(uint32_t modelId, aclmdlDataset *dataset, siz
 
   mdlRet = GetAndCheckAippParamsOm2(executor, modelId, index, aippParmsSet);
   if (mdlRet != ACL_SUCCESS) {
-    ACL_LOG_ERROR("[Check][AippParams]Dynamic AIPP parameters are invalid, parameters verification failed");
+    ACL_LOG_ERROR(
+        "[Check][AippParams]Dynamic AIPP parameters are invalid, modelId[%u], index[%zu], ret[%d], "
+        "parameters verification failed",
+        modelId, index, mdlRet);
     acl::AclErrorLogManager::ReportInputError(
         acl::INVALID_AIPP_MSG, std::vector<const char *>({"param", "reason"}),
         std::vector<const char *>({"parameters", "parameters verification failed"}));

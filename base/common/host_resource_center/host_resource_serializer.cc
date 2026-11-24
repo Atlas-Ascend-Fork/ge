@@ -237,7 +237,8 @@ graphStatus HostResourceSerializer::SerializeTilingData(const HostResourceCenter
   }
 
   tiling_head->data_len -= static_cast<uint32_t>(remaining_size);
-  GELOGI("SerializeTilingData successfully, total size:[%zu], data_len:[%u].", total_size, tiling_head->data_len);
+  GELOGI("SerializeTilingData successfully, total size:[%zu bytes], data_len:[%u bytes].", total_size,
+         tiling_head->data_len);
   return GRAPH_SUCCESS;
 }
 
@@ -326,7 +327,10 @@ graphStatus HostResourceSerializer::DeSerializeTilingData(const HostResourceCent
         break;
       }
       default:
-        GELOGE(FAILED, "Serialized tiling data_type [%d] is invalid.", static_cast<int32_t>(serialize_type));
+        GELOGE(FAILED,
+               "Serialized tiling data_type [%d] is invalid, expected type in [kOpRunInfoStruct(0), "
+               "kTilingData(1), kTilingIds(2)].",
+               static_cast<int32_t>(serialize_type));
         return FAILED;
     }
     pos += len;

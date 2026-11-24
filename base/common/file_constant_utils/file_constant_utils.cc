@@ -301,7 +301,7 @@ Status FileConstantUtils::CopyOneWeightFromFileWithFilehandler(const void *const
   // 与前序实现保持一致: 无论清零是否成功都按实际读入量回填剩余空间
   const Status clear_ret = ClearWeightTail(curr_dev_ptr, used_memory, total_size, file_path, mem_loc);
   left_size -= used_memory;
-  GELOGI("used memory is %zu.", used_memory);
+  GELOGI("used memory is %zu bytes.", used_memory);
   return clear_ret;
 }
 
@@ -476,7 +476,8 @@ Status FileConstantUtils::ConvertFileConstToConst(const NodePtr &node) {
   const size_t offset = fileconstant_info.weight_offset;
   const size_t length = fileconstant_info.weight_length;
   const size_t file_length = (length == 0U ? static_cast<size_t>(weight_size) : length);
-  GE_CHK_STATUS_RET(CheckUint64AddOverflow(offset, file_length), "offset add length overflow uint64");
+  GE_CHK_STATUS_RET(CheckUint64AddOverflow(offset, file_length),
+                    "offset(%zu) add length(%zu) overflow uint64, valid range: sum <= UINT64_MAX", offset, file_length);
   const auto bin_buff = MakeUnique<char_t[]>(file_length);
   GE_CHECK_NOTNULL(bin_buff);
   GE_CHK_STATUS_RET(ReadExternalWeightFromFile(file_path, offset, file_length, bin_buff.get()),

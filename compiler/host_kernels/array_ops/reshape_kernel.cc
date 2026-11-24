@@ -34,8 +34,11 @@ Status ReshapeKernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vector
     return PARAM_INVALID;
   }
   if ((input.size() != kReshapeInputSize) || (op_desc_ptr->GetOutputsSize() != kReshapeOutputSize)) {
-    GELOGW("Unexpected Reshape node, node input size: %zu, node output size: %zu, node name: %s", input.size(),
-           op_desc_ptr->GetOutputsSize(), op_desc_ptr->GetName().c_str());
+    GELOGW(
+        "Unexpected Reshape node, node input size: %zu(expect %zu), node output size: %zu(expect %zu), "
+        "node name: %s",
+        input.size(), kReshapeInputSize, op_desc_ptr->GetOutputsSize(), kReshapeOutputSize,
+        op_desc_ptr->GetName().c_str());
     return NOT_CHANGED;
   }
   auto input_tensor_desc = op_desc_ptr->GetInputDescPtr(kReshapeDataIndex);
@@ -56,7 +59,8 @@ Status ReshapeKernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vector
   }
 
   // print output tensor information, and will be deleted
-  GELOGI("Reshape op %s output tensor data size is %zu.", op_desc_ptr->GetName().c_str(), output_ptr->GetData().size());
+  GELOGI("Reshape op %s output tensor data size is %zu bytes.", op_desc_ptr->GetName().c_str(),
+         output_ptr->GetData().size());
   size_t data_dim_size = output_ptr->GetTensorDesc().GetShape().GetDims().size();
   GELOGI("Reshape op %s output tensor dim size is %zu.", op_desc_ptr->GetName().c_str(), data_dim_size);
 

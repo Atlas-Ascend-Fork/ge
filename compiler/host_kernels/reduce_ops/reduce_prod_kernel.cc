@@ -54,13 +54,14 @@ Status ReduceProdKernel::ReduceProdCheck(const ge::OpDescPtr &op_desc_ptr,
   GE_CHECK_NOTNULL(data_tensor);
   GE_CHECK_NOTNULL(axis_tensor);
   if (axis_tensor->GetTensorDesc().GetShape().GetDimNum() > kReduceProdMaxAxisRank) {
-    GELOGW("Axis must be at most rank 1, node: %s", op_desc_ptr->GetName().c_str());
+    GELOGW("Axis rank %zu must be at most 1, node: %s", axis_tensor->GetTensorDesc().GetShape().GetDimNum(),
+           op_desc_ptr->GetName().c_str());
     return PARAM_INVALID;
   }
 
   DataType data_type = data_tensor->GetTensorDesc().GetDataType();
   if (kReduceProdSupportedType.find(data_type) == kReduceProdSupportedType.end()) {
-    GELOGW("ReduceProdKernel data type %s is not supported, node name: %s",
+    GELOGW("ReduceProdKernel data type %s is not supported, supported types: DT_INT32, node name: %s",
            TypeUtils::DataTypeToSerialString(data_type).c_str(), op_desc_ptr->GetName().c_str());
     return PARAM_INVALID;
   }
@@ -189,7 +190,7 @@ Status ReduceProdKernel::ComputeNoAxis(const ge::OpDescPtr &op_desc_ptr, const s
   }
   DataType data_type = data_tensor->GetTensorDesc().GetDataType();
   if (kReduceProdSupportedType.find(data_type) == kReduceProdSupportedType.end()) {
-    GELOGW("ReduceProdKernel data type %s is not supported, node name: %s",
+    GELOGW("ReduceProdKernel data type %s is not supported, supported types: DT_INT32, node name: %s",
            TypeUtils::DataTypeToSerialString(data_type).c_str(), op_desc_ptr->GetName().c_str());
     return PARAM_INVALID;
   }

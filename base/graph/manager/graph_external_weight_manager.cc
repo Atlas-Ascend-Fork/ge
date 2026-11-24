@@ -53,7 +53,7 @@ void ExternalWeightManager::Finalize() noexcept {
   const std::string tmp_weight_dir = FileConstantUtils::GetTmpWeightDir(mmGetPid(), session_id_);
   if (mmAccess(tmp_weight_dir.c_str()) == EN_OK) {
     (void)mmRmdir(tmp_weight_dir.c_str());
-    GELOGI("Success to remove dir:%s", tmp_weight_dir.c_str());
+    GELOGI("Successfully removed dir: %s", tmp_weight_dir.c_str());
   }
 }
 

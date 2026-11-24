@@ -179,11 +179,11 @@ Status ParallelGroupPass::ProcessGroupNodeInSwitch(
 
     if (merge_nodes.empty() || (!group_nodes.empty() && stream_labels.size() > 1)) {
       GELOGE(FAILED,
-             "[Process][Node]Cannot find merge node or exist switch nestification, switch node:%s,"
+             "[Process][Node]Cannot find merge node or switch nodes are nested, switch node:%s,"
              "merge_vec size:%zu, stream_labels size:%zu, graph:%s.",
              node->GetName().c_str(), merge_nodes.size(), stream_labels.size(), graph->GetName().c_str());
       REPORT_INNER_ERR_MSG("E19999",
-                           "Cannot find merge node or exist switch nest, switch node:%s,"
+                           "Cannot find merge node or switch nodes are nested, switch node:%s,"
                            "merge_vec size: %zu, stream_labels size: %zu, graph:%s.",
                            node->GetName().c_str(), merge_nodes.size(), stream_labels.size(), graph->GetName().c_str());
       return FAILED;

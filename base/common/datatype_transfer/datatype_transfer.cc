@@ -163,7 +163,7 @@ Status DataTypeTransfer::TransDataType(const CastArgs &args, TransResult &result
 
   const std::shared_ptr<uint8_t> dst(new (std::nothrow) uint8_t[total_size], std::default_delete<uint8_t[]>());
   if (dst == nullptr) {
-    GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION, "[Allocate][DSTMemory]Failed, memory for dst buf %zu, data size %zu",
+    GELOGE(ACL_ERROR_GE_MEMORY_ALLOCATION, "[Allocate][DSTMemory]Failed, memory for dst buf %zu bytes, data size %zu",
            total_size, args.src_data_size);
     REPORT_INNER_ERR_MSG("E19999", "Failed to allocate memory for dst buf %zu, data size %zu", total_size,
                          args.src_data_size);
@@ -204,7 +204,7 @@ Status TransTensorDataType(const CastArgs &args, TransResult &result) {
   if ((args.data == nullptr) && (args.src_data_size != 0UL)) {
     GELOGE(ACL_ERROR_GE_PARAM_INVALID,
            "[Check][Param]Failed, input data is null "
-           "or data size not equal to 0, src_data_size %ld",
+           "or data size not equal to 0, src_data_size %zu",
            args.src_data_size);
     return ACL_ERROR_GE_PARAM_INVALID;
   }

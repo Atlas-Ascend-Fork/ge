@@ -131,7 +131,7 @@ bool NeedUpdateOutputFp16Nc1hwc0(const OpDescPtr &op_desc, const uint32_t &src_i
 
 Status NetOutputPass::SetUserDefDTypeAndFormatFromAtcParams(const NodePtr &output_node) const {
   if (output_node == nullptr) {
-    GELOGI("[NETOUTPUT PASS] The graph no need netoutput node!");
+    GELOGI("[NETOUTPUT PASS] The graph does not need a netoutput node!");
     return SUCCESS;
   }
   auto output_type = GetLocalOmgContext().output_type;

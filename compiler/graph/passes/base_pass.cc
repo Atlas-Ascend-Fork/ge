@@ -105,13 +105,13 @@ bool IsNodeReadyToQueue(const NodePtr &node, GEPass::GraphLevelState &graph_stat
   }
 
   if (graph_state.nodes_suspend.count(node.get()) > 0U) {
-    GELOGD("The node %s has been added to suspend-iteration nodes list, the iteration of it will be suspend.",
+    GELOGD("The node %s has been added to suspend-iteration nodes list, the iteration of it will be suspended.",
            node->GetName().c_str());
     return false;
   }
 
   if (!IsAllInNodeReady(node, graph_state.nodes_seen, graph_state.nodes_suspend)) {
-    GELOGD("The node %s's inputs node is not ready, the iteration of it will be suspend.", node->GetName().c_str());
+    GELOGD("The node %s's inputs node is not ready, the iteration of it will be suspended.", node->GetName().c_str());
     return false;
   }
   return true;
@@ -125,7 +125,7 @@ void AddNextIterNodes(const NodePtr &cur_node, OrderedNodeSet &out_nodes_before_
     }
     if (out_nodes_before_pass.erase(node) == 0) {
       // after pass node, new output node come up
-      GELOGD("New output node %s come up after pass %s.", node->GetName().c_str(), cur_node->GetName().c_str());
+      GELOGD("New output node %s comes up after pass %s.", node->GetName().c_str(), cur_node->GetName().c_str());
     }
 
     // all in_node seen && all in_node not suspend
@@ -207,7 +207,7 @@ void PushToRePassIfSeen(const NodePtr &node, const std::pair<std::string, BaseNo
       }
       GELOGD("Node %s has been added to repass queue, no need to add again.", node_to_re_pass->GetName().c_str());
     } else {
-      GELOGD("The node %s are not all seen, don't set repass this time", node_to_re_pass->GetName().c_str());
+      GELOGD("The node %s is not all seen, don't set repass this time", node_to_re_pass->GetName().c_str());
     }
   }
 }
@@ -419,7 +419,7 @@ Status GEPass::RunPassesOneGraph(const NamesToPass &names_to_passes) {
         return ret;
       }
       if (graph_state.nodes.empty()) {
-        GELOGE(INTERNAL_ERROR, "There are some suspended nodes leaked and no pass resume them.");
+        GELOGE(INTERNAL_ERROR, "There are some suspended nodes leaked and no pass resumes them.");
         return INTERNAL_ERROR;
       }
     }
@@ -479,7 +479,8 @@ Status GEPass::RunPassesGraphRepass(const NamesToPass &names_to_passes, GraphLev
            (graph_state.passed_node_size < graph_state.max_pass_node_size));
 
   if (graph_state.passed_node_size >= graph_state.max_pass_node_size) {
-    GELOGW("pass nodes size should not come to %ld", graph_state.passed_node_size);
+    GELOGW("pass nodes size %lu exceeds max pass node size %lu", graph_state.passed_node_size,
+           graph_state.max_pass_node_size);
   }
   GELOGD("All passes runs end");
   return SUCCESS;

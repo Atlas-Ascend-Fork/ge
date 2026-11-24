@@ -93,7 +93,7 @@ Status GraphOptimize::OptimizeSubGraph(ComputeGraphPtr &compute_graph, const std
     AddNodeInputProperty(compute_graph);
 
     if (compute_graph->GetDirectNode().empty()) {
-      GELOGW("[OptimizeSubGraph] compute_graph do not has any node.");
+      GELOGW("[OptimizeSubGraph] compute_graph does not have any node.");
       return SUCCESS;
     }
 
@@ -401,7 +401,10 @@ Status GraphOptimize::SetOptions(const ge::GraphManagerOptions &options) {
   if (options.framework_type >= static_cast<int32_t>(domi::FrameworkType::FRAMEWORK_RESERVED)) {
     REPORT_PREDEFINED_ERR_MSG("E10041", std::vector<const char_t *>({"parameter"}),
                               std::vector<const char_t *>({"options.framework_type"}));
-    GELOGE(GE_GRAPH_OPTIONS_INVALID, "Optimize Type %d invalid.", options.framework_type);
+    GELOGE(GE_GRAPH_OPTIONS_INVALID,
+           "Config options.framework_type %d is invalid, expected value in [0, %d) "
+           "(less than FRAMEWORK_RESERVED).",
+           options.framework_type, static_cast<int32_t>(domi::FrameworkType::FRAMEWORK_RESERVED));
     return GE_GRAPH_OPTIONS_INVALID;
   }
   optimize_type_ = static_cast<domi::FrameworkType>(options.framework_type);

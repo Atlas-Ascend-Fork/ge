@@ -1053,7 +1053,10 @@ ge::graphStatus FftsRtParseAndTiling(const ge::Operator &op, const fe::PlatFormI
   GE_CHECK_NOTNULL(slice_info_ptr);
   if (slice_info_ptr->slice_instance_num != slice_info_ptr->input_tensor_slice.size() ||
       slice_info_ptr->slice_instance_num != slice_info_ptr->output_tensor_slice.size()) {
-    REPORT_INNER_ERR_MSG("E19999", "Slice num not equal.");
+    REPORT_INNER_ERR_MSG("E19999",
+                         "Slice num not equal, slice_instance_num:%u, input_slice_num:%zu, output_slice_num:%zu",
+                         slice_info_ptr->slice_instance_num, slice_info_ptr->input_tensor_slice.size(),
+                         slice_info_ptr->output_tensor_slice.size());
     return ge::GRAPH_FAILED;
   }
   vector<int64_t> ori_shape;  // save original shape

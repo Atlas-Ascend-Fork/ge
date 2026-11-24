@@ -206,7 +206,7 @@ EsCTensor *EsCreateEsCTensorFromFile(const char *data_file_path, const int64_t *
   const size_t act_file_len = ifs.tellg();
   ifs.clear();
   // 校验文件长度大于0
-  GE_ASSERT_TRUE(act_file_len > 0U, "File length should be greater than 0, path: %s.", data_file_path);
+  GE_ASSERT_TRUE(act_file_len > 0U, "File length %zu is not greater than 0, path: %s.", act_file_len, data_file_path);
   int64_t total_elements = 1;  // dims为空代表标量，默认值使用1
   // 如果dim非空，校验文件长度是否足够
   if (dim != nullptr) {
@@ -288,7 +288,7 @@ EsCTensorHolder *EsCreateVariable(EsCGraphBuilder *graph, int32_t index, const c
   auto av_index = ge::AttrValue();
   auto index_value = static_cast<int64_t>(index);
   (void)av_index.SetAttrValue(index_value);
-  GE_ASSERT_NOTNULL(graph->GetGraph(), "Graph has been build and reset, cannot create variable");
+  GE_ASSERT_NOTNULL(graph->GetGraph(), "Graph has been built and reset, cannot create variable");
   auto node =
       ge::es::CompliantNodeBuilder(graph->GetGraph())
           .OpType("Variable")
@@ -327,7 +327,7 @@ uint32_t EsSetFormat(EsCTensorHolder *tensor, C_Format format) {
   uint32_t EsSet##type##AttrForGraph(EsCGraphBuilder *graph, const char *attr_name, value_type value) { \
     GE_ASSERT_NOTNULL(graph);                                                                           \
     auto ge_graph = graph->GetGraph();                                                                  \
-    GE_ASSERT_NOTNULL(ge_graph, "Graph has been build and reset, cannot set attr for graph");           \
+    GE_ASSERT_NOTNULL(ge_graph, "Graph has been built and reset, cannot set attr for graph");           \
     GE_ASSERT_TRUE(ge_graph->IsValid(), "You cannot set attr for empty graph, add some node firstly");  \
     ge::AttrValue av;                                                                                   \
     GE_ASSERT_GRAPH_SUCCESS(av.SetAttrValue(value_expr));                                               \

@@ -37,7 +37,7 @@ Status EngineManager::RegisterEngine(const std::string &engine_name, DNNEnginePt
   }
 
   if (engine_map_->find(engine_name) != engine_map_->cend()) {
-    GELOGW("engine %s already exist.", engine_name.c_str());
+    GELOGW("engine %s already exists.", engine_name.c_str());
     return FAILED;
   }
   engine_map_->emplace(engine_name, engine_ptr);
@@ -64,7 +64,7 @@ void RegisterAiCoreEngine() {
   DNNEnginePtr aicore_engine_ptr = MakeShared<AICoreDNNEngine>(attr_aicore);
   if (aicore_engine_ptr == nullptr) {
     GELOGE(ge::FAILED, "[Register][AiCoreEngine] failed, as malloc shared_ptr failed.");
-    REPORT_INNER_ERR_MSG("E19999", "RegisterAiCoreEngine failed for new DNNEnginePtr failed.");
+    REPORT_INNER_ERR_MSG("E19999", "RegisterAiCoreEngine failed because creating DNNEnginePtr failed.");
     return;
   }
   if (EngineManager::RegisterEngine(ai_core, aicore_engine_ptr) != SUCCESS) {
@@ -81,7 +81,7 @@ void RegisterVectorEngine() {
   DNNEnginePtr vectorcore_engine_ptr = MakeShared<VectorCoreDNNEngine>(attr_vector_core);
   if (vectorcore_engine_ptr == nullptr) {
     GELOGE(ge::FAILED, "[Register][VectorEngine] failed, as malloc shared_ptr failed.");
-    REPORT_INNER_ERR_MSG("E19999", "RegisterVectorEngine failed for new DNNEnginePtr failed.");
+    REPORT_INNER_ERR_MSG("E19999", "RegisterVectorEngine failed because creating DNNEnginePtr failed.");
     return;
   }
   if (EngineManager::RegisterEngine(vector_core, vectorcore_engine_ptr) != SUCCESS) {
@@ -99,7 +99,7 @@ void RegisterDsaEngine() {
   DNNEnginePtr dsa_engine_ptr = MakeShared<VectorCoreDNNEngine>(attr_dsa);
   if (dsa_engine_ptr == nullptr) {
     GELOGE(ge::FAILED, "[Register][DSAEngine] failed, as malloc shared_ptr failed.");
-    REPORT_INNER_ERR_MSG("E19999", "RegisterDSAEngine failed for new DNNEnginePtr failed.");
+    REPORT_INNER_ERR_MSG("E19999", "RegisterDSAEngine failed because creating DNNEnginePtr failed.");
     return;
   }
   if (EngineManager::RegisterEngine(dsa, dsa_engine_ptr) != SUCCESS) {
@@ -118,7 +118,7 @@ void RegisterDvppEngine() {
   const DNNEnginePtr vm_engine_ptr = MakeShared<DvppDNNEngine>(attr_dvpp);
   if (vm_engine_ptr == nullptr) {
     GELOGE(ge::FAILED, "[Register][DvppEngine] failed, as malloc shared_ptr failed.");
-    REPORT_INNER_ERR_MSG("E19999", "RegisterDvppEngine failed for new DNNEnginePtr failed.");
+    REPORT_INNER_ERR_MSG("E19999", "RegisterDvppEngine failed because creating DNNEnginePtr failed.");
     return;
   }
   if (EngineManager::RegisterEngine(vm_dvpp, vm_engine_ptr) != SUCCESS) {
@@ -137,7 +137,7 @@ void RegisterAiCpuEngine() {
   DNNEnginePtr vm_engine_ptr = MakeShared<AICpuDNNEngine>(attr_aicpu);
   if (vm_engine_ptr == nullptr) {
     GELOGE(ge::FAILED, "[Register][AiCpuEngine] failed, as malloc shared_ptr failed.");
-    REPORT_INNER_ERR_MSG("E19999", "RegisterAiCpuEngine failed for new DNNEnginePtr failed.");
+    REPORT_INNER_ERR_MSG("E19999", "RegisterAiCpuEngine failed because creating DNNEnginePtr failed.");
     return;
   }
   if (EngineManager::RegisterEngine(vm_aicpu, vm_engine_ptr) != SUCCESS) {
@@ -154,8 +154,8 @@ void RegisterAiCpuTFEngine() {
       vm_aicpu_tf, mem_type_aicpu_tf, PriorityEnum::COST_4, DEVICE, FORMAT_RESERVED, FORMAT_RESERVED, true};
   DNNEnginePtr vm_engine_ptr = MakeShared<AICpuTFDNNEngine>(attr_aicpu_tf);
   if (vm_engine_ptr == nullptr) {
-    GELOGE(ge::FAILED, "[Register][AiCpuTFEngine]make vm_engine_ptr failed");
-    REPORT_INNER_ERR_MSG("E19999", "RegisterAiCpuTFEngine failed for new DNNEnginePtr failed.");
+    GELOGE(ge::FAILED, "[Register][AiCpuTFEngine] make vm_engine_ptr failed");
+    REPORT_INNER_ERR_MSG("E19999", "RegisterAiCpuTFEngine failed because creating DNNEnginePtr failed.");
     return;
   }
   if (EngineManager::RegisterEngine(vm_aicpu_tf, vm_engine_ptr) != SUCCESS) {
@@ -177,7 +177,8 @@ void RegisterAICpuAscendFftsPlusEngine() {
   DNNEnginePtr aicpu_ascend_ffts_plus_engine = MakeShared<AICpuAscendFftsPlusDNNEngine>(attr_aicpu_ascend_ffts_plus);
   if (aicpu_ascend_ffts_plus_engine == nullptr) {
     GELOGE(ge::FAILED, "[Register][AiCpuAscendFftsPlusDNNEngine] failed, as malloc shared_ptr failed");
-    REPORT_INNER_ERR_MSG("E19999", "Register AiCpuAscendFftsPlusDNNEngine failed for new DNNEnginePtr failed.");
+    REPORT_INNER_ERR_MSG("E19999",
+                         "Register AiCpuAscendFftsPlusDNNEngine failed because creating DNNEnginePtr failed.");
     return;
   }
   if (EngineManager::RegisterEngine(vm_aicpu_ascend_ffts_plus, aicpu_ascend_ffts_plus_engine) != SUCCESS) {

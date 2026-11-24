@@ -99,9 +99,9 @@ Status HcclMemcpyPass::Run(ge::ComputeGraphPtr graph) {
   for (const auto &node : graph->GetDirectNode()) {
     auto op_desc = node->GetOpDesc();
     if (op_desc == nullptr) {
-      REPORT_INNER_ERR_MSG("E19999", "Node with nullptr op_desc exist in Param graph:%s, check invalid",
+      REPORT_INNER_ERR_MSG("E19999", "Node with nullptr op_desc exists in Param graph:%s, check invalid",
                            graph->GetName().c_str());
-      GELOGE(INTERNAL_ERROR, "[Get][OpDesc] failed, Node with nullptr op_desc exist in Param graph:%s.",
+      GELOGE(INTERNAL_ERROR, "[Get][OpDesc] failed, Node with nullptr op_desc exists in Param graph:%s.",
              graph->GetName().c_str());
       return INTERNAL_ERROR;
     }

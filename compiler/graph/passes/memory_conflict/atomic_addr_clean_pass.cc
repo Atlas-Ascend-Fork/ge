@@ -63,7 +63,7 @@ Status AtomicAddrCleanPass::Run(ComputeGraphPtr graph) {
   bool is_unknown_graph = graph->GetGraphUnknownFlag();
   if (is_unknown_graph) {
     IsNeedCallCompileForUnknownGraph(atomic_node_vec);
-    GELOGD("Graph[%s] is unknown graph, only know nodes will call fe interface to compile op.",
+    GELOGD("Graph[%s] is unknown graph, only known nodes will call fe interface to compile op.",
            graph->GetName().c_str());
     GE_CHK_STATUS_RET(CallCompileOp(atomic_node_vec));
     return SUCCESS;
@@ -244,7 +244,7 @@ Status AtomicAddrCleanPass::HandleNormalGraph(ComputeGraphPtr &graph,
   }
 
   GE_CHK_STATUS_RET(LinkToHcomPeerInNode(clean_addr_node),
-                    "[Link][ControlAnchor] failed link atomic node:%s to Hcom peer in node.",
+                    "[Link][ControlAnchor] failed to link atomic node:%s to Hcom peer in node.",
                     clean_addr_node->GetName().c_str());
   return LinkToPotentialPrecedenceNode(graph, clean_addr_node, dispersed_atomic_nodes);
 }
@@ -340,7 +340,7 @@ Status AtomicAddrCleanPass::HandleDispersedAtomicNodes(ComputeGraphPtr &graph,
       dispersed_atomic_nodes.emplace_back(node);
 
       GE_CHK_STATUS_RET(LinkToHcomPeerInNode(dispersed_clean_addr_node),
-                        "[Link][ControlAnchor] failed link atomic node:%s to Hcom peer in node.",
+                        "[Link][ControlAnchor] failed to link atomic node:%s to Hcom peer in node.",
                         dispersed_clean_addr_node->GetName().c_str());
     } else {
       common_atomic_nodes.emplace_back(node);

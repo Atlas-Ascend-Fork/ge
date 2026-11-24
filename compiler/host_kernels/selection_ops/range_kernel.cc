@@ -151,15 +151,17 @@ template <typename T>
 Status RangeKernel::GetRange(const T start, const T limit, const T delta, GeTensorPtr &output) const {
   // check whether start, limit, delta is valid
   if (IsZero(delta)) {
-    GELOGE(PARAM_INVALID, "Requires delta != 0");
+    GELOGE(PARAM_INVALID, "delta(%g) is zero, requires delta != 0", static_cast<double>(delta));
     return PARAM_INVALID;
   }
   if (start > limit && delta > 0) {
-    GELOGE(PARAM_INVALID, "Requires start <= limit when delta > 0");
+    GELOGE(PARAM_INVALID, "start(%g) > limit(%g) while delta(%g) > 0, requires start <= limit",
+           static_cast<double>(start), static_cast<double>(limit), static_cast<double>(delta));
     return PARAM_INVALID;
   }
   if (start < limit && delta < 0) {
-    GELOGE(PARAM_INVALID, "Requires start >= limit when delta < 0");
+    GELOGE(PARAM_INVALID, "start(%g) < limit(%g) while delta(%g) < 0, requires start >= limit",
+           static_cast<double>(start), static_cast<double>(limit), static_cast<double>(delta));
     return PARAM_INVALID;
   }
 

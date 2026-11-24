@@ -156,7 +156,8 @@ class PythonFusionPassBridgeLoader {
     if (TryLoadPrebuiltBridge(runtime_key, loader_library_path, deps) || TryLoadFallbackBridge(runtime_key, deps)) {
       return SUCCESS;
     }
-    GELOGE(FAILED, "Load python pass bridge library failed.");
+    GELOGE(FAILED, "Load python pass bridge library failed, python runtime[%s], loader library path[%s].",
+           runtime_key.ToString().c_str(), loader_library_path.c_str());
     return FAILED;
   }
 

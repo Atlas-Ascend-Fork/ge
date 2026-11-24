@@ -39,8 +39,11 @@ Status EmptyKernel::EmptyCheck(const OpDescPtr &op_desc_ptr, const std::vector<C
   bool size_check = ((op_desc_ptr->GetAllInputsSize() != kEmptyInputsSize) || (input.size() != kEmptyInputsSize) ||
                      (op_desc_ptr->GetAllOutputsDescSize() != kEmptyOutputsSize));
   if (size_check) {
-    GELOGW("Input/Output size error. InDesc size:%zu, OutDesc size:%zu, in size:%zu ", op_desc_ptr->GetAllInputsSize(),
-           op_desc_ptr->GetAllOutputsDescSize(), input.size());
+    GELOGW(
+        "Input/Output size error. InDesc size:%zu(expect %zu), OutDesc size:%zu(expect %zu), "
+        "in size:%zu(expect %zu)",
+        op_desc_ptr->GetAllInputsSize(), kEmptyInputsSize, op_desc_ptr->GetAllOutputsDescSize(), kEmptyOutputsSize,
+        input.size(), kEmptyInputsSize);
     return PARAM_INVALID;
   }
 
@@ -76,7 +79,8 @@ Status EmptyKernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<Const
   } else if (shape_type == DT_INT64) {
     ret = KernelUtils::CalcDims<int64_t>(shape, shape_vec, total_data_size);
   } else {
-    GELOGW("shape type must be DT_INT32 or DT_INT64.");
+    GELOGW("shape type must be DT_INT32 or DT_INT64, but is %s.",
+           TypeUtils::DataTypeToSerialString(shape_type).c_str());
     return NOT_CHANGED;
   }
 
@@ -114,7 +118,10 @@ Status EmptyKernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<Const
     CASE(DT_DOUBLE, double);
 #undef CASE
     default:
-      GELOGW("invalid data type: %s", TypeUtils::DataTypeToSerialString(data_type).c_str());
+      GELOGW(
+          "invalid data type: %s, only support DT_FLOAT/DT_FLOAT16/DT_INT8/DT_INT16/DT_UINT8/DT_UINT16/DT_INT32/"
+          "DT_INT64/DT_UINT32/DT_UINT64/DT_BOOL/DT_DOUBLE",
+          TypeUtils::DataTypeToSerialString(data_type).c_str());
       return NOT_CHANGED;
   }
 

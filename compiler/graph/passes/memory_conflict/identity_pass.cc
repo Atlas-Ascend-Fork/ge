@@ -38,7 +38,7 @@ bool IsIdentityUsefulForVarCache(const NodePtr &node) {
     }
     for (const auto &out_assign_node : out_assign_nodes) {
       if (out_data_node_all_in_nodes.find(out_assign_node.get()) != out_data_node_all_in_nodes.end()) {
-        GELOGI("Node [%s %s]'s out ctrl assign node [%s %s] is also a input of it's data consumer node [%s %s]",
+        GELOGI("Node [%s %s]'s out ctrl assign node [%s %s] is also an input of its data consumer node [%s %s]",
                node->GetName().c_str(), node->GetType().c_str(), out_assign_node->GetName().c_str(),
                out_assign_node->GetType().c_str(), out_data_node->GetName().c_str(), out_data_node->GetType().c_str());
         return true;
@@ -164,13 +164,13 @@ Status IdentityPass::SafelyRemoveIdentity(NodePtr &node, const std::vector<int32
         // `change ctrl out trigger from read_var to it's out data node` is a dangerous move
         // we use `filter` to reduce risk of topo-loop
         GE_ASSERT_SUCCESS(GraphUtils::CopyOutCtrlEdges(node, out_data_node, node_filter));
-        GELOGI("Node [%s %s]'s out ctrl relation is copied to it's data consumer node [%s %s]", node->GetName().c_str(),
+        GELOGI("Node [%s %s]'s out ctrl relation is copied to its data consumer node [%s %s]", node->GetName().c_str(),
                node->GetType().c_str(), out_data_node->GetName().c_str(), out_data_node->GetType().c_str());
       } else {
         // try to `change ctrl in dependency from read_var to it's out data node` for `write first and then read` if
         // needed
         GE_ASSERT_SUCCESS(GraphUtils::CopyInCtrlEdges(node, out_data_node));
-        GELOGI("Node [%s %s]'s in ctrl relation is copied to it's data consumer node [%s %s]", node->GetName().c_str(),
+        GELOGI("Node [%s %s]'s in ctrl relation is copied to its data consumer node [%s %s]", node->GetName().c_str(),
                node->GetType().c_str(), out_data_node->GetName().c_str(), out_data_node->GetType().c_str());
       }
     }

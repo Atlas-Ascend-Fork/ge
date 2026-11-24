@@ -294,7 +294,8 @@ ge::Status GraphUnfolder::UnfoldSubgraph(const ge::ComputeGraphPtr &root_graph,
                                          const uint32_t depth) {
   if (depth >= kHybridSubgraphRecursion) {
     GELOGE(ge::FAILED, "[Invoke][Unfold]There are too many recursions:%u > max:%u", depth, kHybridSubgraphRecursion);
-    REPORT_INNER_ERR_MSG("E19999", "[Unfold]There are too much recursion:%u > max:%u", depth, kHybridSubgraphRecursion);
+    REPORT_INNER_ERR_MSG("E19999", "[Unfold]There are too many recursions:%u > max:%u", depth,
+                         kHybridSubgraphRecursion);
     return ge::FAILED;
   }
   GE_ASSERT_NOTNULL(root_graph);

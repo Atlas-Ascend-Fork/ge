@@ -38,7 +38,7 @@ Status RankKernel::Compute(const NodePtr &node, std::vector<GeTensorPtr> &v_outp
   GE_CHECK_NOTNULL(op_desc);
   const size_t input_node_size = op_desc->GetInputsSize();
   if (input_node_size != kRankInputSize) {
-    GELOGW("input node size must be %zu", kRankInputSize);
+    GELOGW("input node size must be %zu, but is %zu", kRankInputSize, input_node_size);
     return NOT_CHANGED;
   }
 

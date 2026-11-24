@@ -71,15 +71,16 @@ Status OverflowCheck(T const &x, T const &y, DataType &data_type) {
   return SUCCESS;
 }
 
-#define DEFINE_FUNC_WITH_STATUS_BY_TYPE(TYPE)                                         \
-  std::function<TYPE(TYPE const &, TYPE const &, DataType &, Status &)> func_##TYPE = \
-      [](TYPE const &x, TYPE const &y, DataType &type, Status &ret) -> TYPE {         \
-    ret = OverflowCheck<TYPE>(x, y, type);                                            \
-    if (ret != SUCCESS) {                                                             \
-      GELOGE(PARAM_INVALID, "Result of sub overflows.");                              \
-      return static_cast<TYPE>(0);                                                    \
-    }                                                                                 \
-    return static_cast<TYPE>(x) - static_cast<TYPE>(y);                               \
+#define DEFINE_FUNC_WITH_STATUS_BY_TYPE(TYPE)                                                          \
+  std::function<TYPE(TYPE const &, TYPE const &, DataType &, Status &)> func_##TYPE =                  \
+      [](TYPE const &x, TYPE const &y, DataType &type, Status &ret) -> TYPE {                          \
+    ret = OverflowCheck<TYPE>(x, y, type);                                                             \
+    if (ret != SUCCESS) {                                                                              \
+      GELOGE(PARAM_INVALID, "Result of sub overflows, x: %g, y: %g, type: %s", static_cast<double>(x), \
+             static_cast<double>(y), TypeUtils::DataTypeToSerialString(type).c_str());                 \
+      return static_cast<TYPE>(0);                                                                     \
+    }                                                                                                  \
+    return static_cast<TYPE>(x) - static_cast<TYPE>(y);                                                \
   }
 
 #define SET_BCAST_COMPUTE_CASE(DTYPE, TYPE)                              \
@@ -110,7 +111,8 @@ Status SubKernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vector<ge:
   GE_CHECK_NOTNULL(op_desc_ptr);
   // check how many inputs
   if ((input.size() != kSubInputSize) || (op_desc_ptr->GetOutputsSize() != kSubOutputSize)) {
-    GELOGW("The number of input for sub must be %zu.", kSubInputSize);
+    GELOGW("Input size must be %zu but is %zu, output size must be %zu but is %zu.", kSubInputSize, input.size(),
+           kSubOutputSize, op_desc_ptr->GetOutputsSize());
     return NOT_CHANGED;
   }
 

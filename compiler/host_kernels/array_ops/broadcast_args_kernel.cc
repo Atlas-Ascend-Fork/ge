@@ -36,7 +36,7 @@ Status BroadcastArgsKernel::Compute(const OpDescPtr op_desc_ptr, const std::vect
   if (size_check) {
     GELOGW(
         "input/output size error. InDesc size:%zu,"
-        "OutDesc size:%zu, in size:%zu ",
+        " OutDesc size:%zu, in size:%zu ",
         op_desc_ptr->GetAllInputsSize(), op_desc_ptr->GetAllOutputsDescSize(), input.size());
     return NOT_CHANGED;
   }

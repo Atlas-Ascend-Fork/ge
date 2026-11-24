@@ -156,7 +156,8 @@ Status SwapSpacePass::GetAllSwapCandidates(const ComputeGraphPtr &graph,
     }
     REQUIRE_NOT_NULL(node, "[SWAP][Get] invalid swap_space_nodes option %s, which %s does not exist in graph %s",
                      swap_space_nodes.c_str(), node_name.c_str(), graph->GetName().c_str());
-    REQUIRE_SUCCESS(CheckNodeCouldSwap(node), "[SWAP][Check]Node %s need assign special memory, which cannot swap out",
+    REQUIRE_SUCCESS(CheckNodeCouldSwap(node),
+                    "[SWAP][Check] Node %s needs to be assigned special memory, which cannot be swapped out",
                     node_name.c_str());
     int input_index = 0;
     REQUIRE_SUCCESS(ConvertToInt32(StringUtils::Trim(node_and_input_index.back()), input_index),
@@ -228,10 +229,10 @@ Status SwapSpacePass::CheckNodeCouldSwap(const NodePtr &node) {
   GE_CHECK_NOTNULL(op_desc);
   bool is_continuous = false;
   (void)ge::AttrUtils::GetBool(op_desc, ATTR_NAME_CONTINUOUS_INPUT, is_continuous);
-  REQUIRE(!is_continuous, "[SWAP][CHECK] node %s 's input need to be continuous, which cannot swap",
+  REQUIRE(!is_continuous, "[SWAP][CHECK] node %s's input needs to be continuous, which cannot be swapped out",
           op_desc->GetName().c_str());
   (void)ge::AttrUtils::GetBool(op_desc, ATTR_NAME_NOPADDING_CONTINUOUS_INPUT, is_continuous);
-  REQUIRE(!is_continuous, "[SWAP][CHECK] node %s 's input need to be continuous, which cannot swap",
+  REQUIRE(!is_continuous, "[SWAP][CHECK] node %s's input needs to be continuous, which cannot be swapped out",
           op_desc->GetName().c_str());
   return SUCCESS;
 }

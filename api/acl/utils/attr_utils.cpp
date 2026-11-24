@@ -271,7 +271,7 @@ bool CheckValRange(const std::vector<std::vector<T>> &valueRange, const std::vec
   for (size_t i = 0U; i < valueRange.size(); ++i) {
     // 2 is range size
     if (valueRange[i].size() != 2U) {
-      ACL_LOG_WARN("range size must be 2");
+      ACL_LOG_WARN("range size must be 2, current range size = %zu", valueRange[i].size());
       return false;
     }
     if ((valueRange[i][0U] > data[i]) || (valueRange[i][1U] < data[i])) {

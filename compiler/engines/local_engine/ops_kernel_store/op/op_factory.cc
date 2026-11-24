@@ -41,7 +41,7 @@ void OpFactory::RegisterCreator(const std::string &type, const OP_CREATOR_FUNC &
 
   const std::map<std::string, OP_CREATOR_FUNC>::const_iterator iter = op_creator_map_.find(type);
   if (iter != op_creator_map_.end()) {
-    GELOGW("%s creator already exist", type.c_str());
+    GELOGW("%s creator already exists.", type.c_str());
     return;
   }
 

@@ -58,7 +58,8 @@ void ProfilingProperties::SetExecuteProfiling(const std::map<std::string, std::s
     } else if (iter->second == kProfilingExecuteOff) {
       is_execute_profiling_ = false;
     } else {
-      GELOGW("Set execute profiling failed, set value[%s]", iter->second.c_str());
+      GELOGW("Set execute profiling failed, set value[%s], expected [%s or %s]", iter->second.c_str(),
+             kProfilingExecuteOn.c_str(), kProfilingExecuteOff.c_str());
     }
   }
 }

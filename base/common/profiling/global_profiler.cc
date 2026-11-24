@@ -504,7 +504,7 @@ ge::Status GlobalProfilingWrapper::ReportTaskMemoryInfo(const std::string &model
     memory_info_data->totalReserveMemory = record_memory_info.total_reserve_memory;
     GELOGD(
         "[ReportTaskMemoryInfo]Report memory info: node_id: %llu, "
-        "addr: %llu, size: %lld, total allocate size: %llu, total reserve size: %lld "
+        "addr: %llu, size: %lld bytes, total allocate size: %llu bytes, total reserve size: %lld bytes "
         "time stamp: %llu",
         memory_info_data->nodeId, memory_info_data->addr, memory_info_data->size, memory_info_data->totalAllocateMemory,
         memory_info_data->totalReserveMemory, task_memory_info.timeStamp);
@@ -734,7 +734,7 @@ ge::Status GlobalProfilingWrapper::ReportStaticOpMemInfo(const ge::ComputeGraphP
   mem_info->dynOpName = (is_dyn_op ? 0U : GetHashID(dyn_op_name));
   mem_info->graphId = graph->GetGraphID();
 
-  GELOGD("graph: %s, op: %s %lu, size: %lu, life_start: %lu, life_end: %lu, dynOpName: %s %lu",
+  GELOGD("graph: %s, op: %s %lu, size: %lu bytes, life_start: %lu, life_end: %lu, dynOpName: %s %lu",
          graph->GetName().c_str(), op_name.c_str(), mem_info->opName, mem_info->size, life_start, life_end,
          dyn_op_name.c_str(), mem_info->dynOpName);
 

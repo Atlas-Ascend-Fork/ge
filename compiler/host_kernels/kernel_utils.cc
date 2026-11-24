@@ -39,7 +39,7 @@ Status KernelUtils::ConstructTensorDescWithData(const GeTensorDesc &out_desc, co
     for (size_t i = 0U; i < dim_size; i++) {
       if (data[i] >= INT_MAX) {
         REPORT_INNER_ERR_MSG("E19999", "Param data:%s will overflow after multi", ToString(data).c_str());
-        GELOGE(PARAM_INVALID, "[Check][Param] int32 overflow, data[%zu]:%ld", i, data[i]);
+        GELOGE(PARAM_INVALID, "[Check][Param] int32 overflow, data[%zu]:%ld, valid range: < %d", i, data[i], INT_MAX);
         return PARAM_INVALID;
       }
       buf[i] = static_cast<int32_t>(data[i]);
@@ -90,7 +90,7 @@ Status KernelUtils::ConstructTensorDescWithData(const GeTensorDesc &out_desc, co
 
 Status KernelUtils::CheckDimensionNodeInfo(const NodePtr &node_ptr) {
   if (node_ptr == nullptr) {
-    GELOGE(FAILED, "parameter is null.");
+    GELOGE(FAILED, "param node_ptr is null.");
     return FAILED;
   }
   auto input_nodes = node_ptr->GetInDataNodes();
@@ -139,7 +139,7 @@ Status KernelUtils::CheckDimensionNodeInfo(const NodePtr &node_ptr) {
 
 bool KernelUtils::CheckFormatSupported(const NodePtr &node_ptr) {
   if (node_ptr == nullptr) {
-    GELOGE(FAILED, "parameter is null.");
+    GELOGE(FAILED, "param node_ptr is null.");
     return false;
   }
   const OpDescPtr op_desc = node_ptr->GetOpDesc();
@@ -151,7 +151,8 @@ bool KernelUtils::CheckFormatSupported(const NodePtr &node_ptr) {
   GE_CHECK_NOTNULL_EXEC(input_desc, return false);
   const Format fmt = input_desc->GetFormat();
   if ((fmt == FORMAT_NC1HWC0) || (fmt == FORMAT_FRACTAL_Z)) {
-    GELOGW("invalid format, fmt: %s", TypeUtils::FormatToSerialString(fmt).c_str());
+    GELOGW("invalid format, fmt: %s, NC1HWC0 and FRACTAL_Z are not supported",
+           TypeUtils::FormatToSerialString(fmt).c_str());
     return false;
   }
 
@@ -160,7 +161,7 @@ bool KernelUtils::CheckFormatSupported(const NodePtr &node_ptr) {
 
 bool KernelUtils::CheckSizeForTransOp(const ge::ConstGeTensorPtr &const_weight_ptr, const ge::OpDescPtr &op_desc_ptr) {
   if ((const_weight_ptr == nullptr) || (op_desc_ptr == nullptr)) {
-    GELOGE(FAILED, "parameter invalid");
+    GELOGE(FAILED, "param const_weight_ptr or op_desc_ptr is null");
     return false;
   }
   const auto data_size = const_weight_ptr->GetData().GetSize();
@@ -183,13 +184,13 @@ bool KernelUtils::CheckSizeForTransOp(const ge::ConstGeTensorPtr &const_weight_p
   if (shape_size != 0) {
     // Standard tensor
     if ((data_size != static_cast<size_t>(cal_size)) || (data_size == 0U)) {
-      GELOGW("Const input data size is not equal with tensor desc shape");
+      GELOGW("Const input data size:%zu is not equal to tensor desc size:%ld", data_size, cal_size);
       return false;
     }
   } else if (data_shape.GetDimNum() != 0U) {
     // Empty tensor, has zero in shape vector
     if (data_size != 0U) {
-      GELOGW("Const input data size is not equal with tensor desc shape");
+      GELOGW("Const input data size:%zu is not equal to tensor desc size:0", data_size);
       return false;
     }
   } else {
@@ -197,7 +198,7 @@ bool KernelUtils::CheckSizeForTransOp(const ge::ConstGeTensorPtr &const_weight_p
     // 子字节类型（如 DT_INT4）按位宽 CeilDiv 得到单元素 packed 字节数
     const int64_t expect_scalar_size = ge::GetSizeInBytes(1, data_type);
     if ((expect_scalar_size <= 0) || (data_size != static_cast<size_t>(expect_scalar_size))) {
-      GELOGW("Const input data size is not equal with tensor desc shape");
+      GELOGW("Const input data size:%zu is not equal to tensor desc size:%ld", data_size, expect_scalar_size);
       return false;
     }
   }
@@ -209,7 +210,7 @@ bool KernelUtils::IsUnknownShape(const ge::GeShape &shape) {
   const std::vector<int64_t> dims = shape.GetDims();
   for (const auto dim : dims) {
     if (dim < 0) {
-      GELOGW("Shape kernel recognize unknown shape. Ignore shape kernel.");
+      GELOGW("Shape kernel recognizes unknown shape. Ignore shape kernel.");
       return true;
     }
   }

@@ -171,7 +171,7 @@ OpDescPtr HcclContinuousMemcpyPass::CreateIdentityOpDesc(const OutDataAnchorPtr 
   OpDescPtr pre_op_desc = pre_node->GetOpDesc();
   if (pre_op_desc == nullptr) {
     REPORT_INNER_ERR_MSG("E19999", "OpDesc in node is nullptr, check invalid");
-    GELOGE(INTERNAL_ERROR, "[Get][OpDesc] failed, OpDesc of pre node is invalid.");
+    GELOGE(INTERNAL_ERROR, "[Get][OpDesc] failed, OpDesc of pre node:%s is invalid.", pre_node->GetName().c_str());
     return nullptr;
   }
 

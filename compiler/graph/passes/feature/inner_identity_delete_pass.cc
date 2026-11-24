@@ -249,7 +249,7 @@ Status InnerIdentityDeletePass::Run(ComputeGraphPtr graph) {
   if (connectivity_ == nullptr) {
     connectivity_ = ComGraphMakeUnique<ConnectionMatrix>(graph);
     if (connectivity_ == nullptr) {
-      GELOGW("Make shared failed");
+      GELOGW("Create ConnectionMatrix for graph %s failed", graph->GetName().c_str());
       return FAILED;
     }
 

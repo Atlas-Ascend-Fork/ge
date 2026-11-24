@@ -37,7 +37,7 @@ std::vector<OpDescPtr> GeIrCollector::CollectAndCreateAllOps() {
 
     auto op_desc = OpDescUtils::GetOpDescFromOperator(op);
     if (op_desc == nullptr) {
-      std::cout << "Failed to get op desc for operator %s" << op_type.GetString() << std::endl;
+      std::cout << "Failed to get op desc for operator " << op_type.GetString() << std::endl;
       continue;
     }
     op.BreakConnect();

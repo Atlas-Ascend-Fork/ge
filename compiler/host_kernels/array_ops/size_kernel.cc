@@ -26,7 +26,7 @@ REGISTER_COMPUTE_NODE_KERNEL(SIZE, SizeKernel);
 Status SizeKernel::Compute(const NodePtr &node, std::vector<GeTensorPtr> &v_output) const {
   GELOGD("SizeKernel in");
   if (node == nullptr) {
-    GELOGE(FAILED, "parameter is null.");
+    GELOGE(FAILED, "param node is null.");
     return FAILED;
   }
   const OpDescPtr op_desc = node->GetOpDesc();
@@ -38,7 +38,8 @@ Status SizeKernel::Compute(const NodePtr &node, std::vector<GeTensorPtr> &v_outp
   const bool size_check =
       ((op_desc->GetInputsSize() != kSizeInputSize) || (op_desc->GetOutputsSize() != kSizeOutputSize));
   if (size_check) {
-    GELOGW("SizeKernel input size check fail, GetInputsSize:%zu", op_desc->GetInputsSize());
+    GELOGW("SizeKernel input size check fail, inputs:%zu(expect %zu), outputs:%zu(expect %zu)",
+           op_desc->GetInputsSize(), kSizeInputSize, op_desc->GetOutputsSize(), kSizeOutputSize);
     return NOT_CHANGED;
   }
 
@@ -51,7 +52,9 @@ Status SizeKernel::Compute(const NodePtr &node, std::vector<GeTensorPtr> &v_outp
   // Calculate the number of elements of the sensor
   for (const int64_t dim : op_desc->GetInputDesc(0U).GetShape().GetDims()) {
     if (CheckInt64MulOverflow(size, dim) != SUCCESS) {
-      GELOGE(INTERNAL_ERROR, "int64 overflow!");
+      GELOGE(INTERNAL_ERROR, "int64 overflow, size:%lld * dim:%lld exceeds int64 range [%lld, %lld]",
+             static_cast<long long>(size), static_cast<long long>(dim), static_cast<long long>(INT64_MIN),
+             static_cast<long long>(INT64_MAX));
       return INTERNAL_ERROR;
     }
     size *= dim;

@@ -49,7 +49,8 @@ Status GeLocalOpsKernelBuilderCalcOpParam::CheckDimAttrValid(const std::vector<i
     num_list_product *= num_list[i];
   }
 
-  GE_ASSERT_TRUE(num_list_product == anchors_size, "num_list product not equal to node count [%u].", anchors_size);
+  GE_ASSERT_TRUE(num_list_product == anchors_size, "num_list product[%u] not equal to node count[%u].",
+                 num_list_product, anchors_size);
 
   return SUCCESS;
 }
@@ -132,9 +133,9 @@ Status GeLocalOpsKernelBuilderCalcOpParam::CheckPhonyConcatInputIs32Align(const 
   GE_ASSERT_SUCCESS(TensorUtils::CalcTensorMemSize(tensor_desc->GetShape(), tensor_desc->GetFormat(),
                                                    tensor_desc->GetDataType(), tensor_size),
                     "PhonyConcat node[%s] get input tensor size failed.", op_desc->GetName().c_str());
-  GE_ASSERT_TRUE(tensor_size > 0, "PhonyConcat node[%s] get input tensor size failed, ret[%d].",
+  GE_ASSERT_TRUE(tensor_size > 0, "Failed to get input tensor size of PhonyConcat node[%s], ret[%ld].",
                  op_desc->GetName().c_str(), tensor_size);
-  GE_ASSERT_TRUE(tensor_size % kAlignNum == 0, "PhonyConcat node[%s]'s input tensor size[%d], not 32 align.",
+  GE_ASSERT_TRUE(tensor_size % kAlignNum == 0, "PhonyConcat node[%s]'s input tensor size[%ld] is not 32-byte aligned.",
                  op_desc->GetName().c_str(), tensor_size);
 
   return SUCCESS;
@@ -211,7 +212,7 @@ graphStatus GeLocalOpsKernelBuilderCalcOpParam::CalcPhonyConcatNodeOffset(const 
   bool has_fusion_offset = false;
   GE_ASSERT_SUCCESS(HasBufferFusionOffset(node, has_fusion_offset));
   if (has_fusion_offset) {
-    GELOGI("The node: %s have already written ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION.", node.GetName().c_str());
+    GELOGI("The node: %s has already written ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION.", node.GetName().c_str());
     return SUCCESS;
   }
 
@@ -234,7 +235,10 @@ graphStatus GeLocalOpsKernelBuilderCalcOpParam::CalcPhonyConcatNodeOffset(const 
   AttrUtils::GetBool(node_op_desc, kKeepInputOffset, keep_input_offset);
 
   GE_ASSERT_SUCCESS(CheckDimAttrValid(concat_dim_list, concat_num_list, node.GetAllInDataAnchorsSize()),
-                    "PhonyConcat node[%s] attr invalid.", node.GetName().c_str());
+                    "PhonyConcat node[%s] attr concat_dim or N invalid, concat_dim_list size[%zu], "
+                    "concat_num_list size[%zu], in node count[%u].",
+                    node.GetName().c_str(), concat_dim_list.size(), concat_num_list.size(),
+                    node.GetAllInDataAnchorsSize());
 
   uint32_t node_idx = 0;
   for (auto &in_data_anchor : node.GetAllInDataAnchors()) {
@@ -252,8 +256,10 @@ graphStatus GeLocalOpsKernelBuilderCalcOpParam::CalcPhonyConcatNodeOffset(const 
     if (keep_input_offset) {
       ge::GeTensorDescPtr tensor_desc = peer_op_desc->MutableOutputDesc(out_anchor_idx);
       GE_ASSERT_SUCCESS(CheckDimAttrMatchTensor(concat_dim_list, tensor_desc),
-                        "PhonyConcat node[%s] attr does not match [%d]th in node shape.", node.GetName().c_str(),
-                        in_data_anchor->GetIdx());
+                        "PhonyConcat node[%s] attr concat_dim does not match [%d]th in node shape, "
+                        "dim_list size[%zu], input shape[%s].",
+                        node.GetName().c_str(), in_data_anchor->GetIdx(), concat_dim_list.size(),
+                        tensor_desc->GetShape().ToString().c_str());
 
       mem_offset = GetConcatOffset(tensor_desc, node_idx, concat_dim_list, concat_num_list);
     }
@@ -322,7 +328,10 @@ graphStatus GeLocalOpsKernelBuilderCalcOpParam::CalcPhonySplitNodeOffset(const N
   AttrUtils::GetBool(node_op_desc, kKeepOutputOffset, keep_output_offset);
 
   GE_ASSERT_SUCCESS(CheckDimAttrValid(split_dim_list, split_num_list, node.GetAllOutDataAnchorsSize()),
-                    "PhonySplit node[%s] attr invalid.", node.GetName().c_str());
+                    "PhonySplit node[%s] attr split_dim or num_split invalid, split_dim_list size[%zu], "
+                    "split_num_list size[%zu], out node count[%u].",
+                    node.GetName().c_str(), split_dim_list.size(), split_num_list.size(),
+                    node.GetAllOutDataAnchorsSize());
 
   uint32_t node_idx = 0;
   for (auto &out_data_anchor : node.GetAllOutDataAnchors()) {
@@ -341,8 +350,10 @@ graphStatus GeLocalOpsKernelBuilderCalcOpParam::CalcPhonySplitNodeOffset(const N
       if (keep_output_offset) {
         ge::GeTensorDescPtr tensor_desc = peer_op_desc->MutableInputDesc(in_anchor_idx);
         GE_ASSERT_SUCCESS(CheckDimAttrMatchTensor(split_dim_list, tensor_desc),
-                          "PhonySplit node[%s] attr does not match [%d]th out node shape.", node.GetName().c_str(),
-                          out_data_anchor->GetIdx());
+                          "PhonySplit node[%s] attr split_dim does not match [%d]th out node shape, "
+                          "dim_list size[%zu], output shape[%s].",
+                          node.GetName().c_str(), out_data_anchor->GetIdx(), split_dim_list.size(),
+                          tensor_desc->GetShape().ToString().c_str());
 
         mem_offset = GetSplitOffset(tensor_desc, node_idx, split_dim_list, split_num_list);
       }
