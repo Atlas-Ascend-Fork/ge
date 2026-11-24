@@ -97,7 +97,9 @@ Exports graph to string.
 def save_to_air(self, file_path: str) -> None
 ```
 
-Saves graph as AIR format file.### `load_from_air`
+Saves graph as AIR format file.
+
+### `load_from_air`
 
 ```python
 def load_from_air(self, file_path: str) -> None
