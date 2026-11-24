@@ -44,8 +44,8 @@ class Node:
 
     def __del__(self) -> None:
         """Clean up resources."""
-        if self._owns_handle:
-            graph_lib.GeApiWrapper_GNode_DestroyGNode(self._handle)
+        if getattr(self, "_owns_handle", False):
+            graph_lib.GeApiWrapper_GNode_DestroyGNode(getattr(self, "_handle", None))
             self._handle = None
 
     def __copy__(self) -> None:
