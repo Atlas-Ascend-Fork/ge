@@ -94,9 +94,11 @@ graphStatus ConcatSliceSimplificationPass::HandleSlice(const NodePtr &node) {
   // replace node
   const auto &[src_node, src_node_out_anchor] =
       NodeUtils::GetInDataNodeAndAnchorByIndex(*concat_node, static_cast<int32_t>(input_index));
+  GE_WARN_ASSERT(src_node != nullptr);
+  GE_WARN_ASSERT(src_node_out_anchor != nullptr);
+  GE_WARN_ASSERT(src_node->GetOpDesc() != nullptr);
   GELOGD("found single source input, index = %zu, src_node = %s(%s)", input_index, src_node->GetNamePtr(),
          src_node->GetTypePtr());
-  GE_ASSERT_NOTNULL(src_node);
   const std::string new_name = node->GetName() + "_by_ConcatSliceSimplificationPass";
   auto new_slice_node = AddNewSliceNode(node->GetOwnerComputeGraph(), new_name, offsets, sizes);
   GE_ASSERT_NOTNULL(new_slice_node);

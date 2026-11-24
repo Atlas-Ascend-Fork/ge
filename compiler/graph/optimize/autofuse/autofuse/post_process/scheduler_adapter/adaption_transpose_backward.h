@@ -397,7 +397,7 @@ inline Status TransposePlaceUpdateForDtype(AscGraph &asc_graph) {
     AscTensorAttr *output_attr;
     GE_ASSERT_SUCCESS(asc_adapt::GetOutputTensorAttr(node, output_attr));
     if (asc_adapt::CheckTransposeDtype(output_attr->dtype)) {
-      GELOGI("node %s %s is with supported dtype in graph.", node->GetName().c_str(), node->GetType().c_str(),
+      GELOGI("node %s %s is with supported dtype in graph %s.", node->GetName().c_str(), node->GetType().c_str(),
              asc_graph.GetName().c_str());
       return SUCCESS;
     }

@@ -27,7 +27,7 @@
 namespace ge {
 namespace {
 bool HasOneNonDataNode(const ComputeGraphPtr &graph) {
-  GE_CHECK_NOTNULL(graph);
+  GE_ASSERT_NOTNULL(graph);
   int32_t non_data_nums = 0;
   for (const auto &node : graph->GetDirectNode()) {
     if ((node->GetType() != parser::DATA) && (node->GetType() != parser::NETOUTPUT)) {
@@ -109,9 +109,9 @@ Status ParserUtils::ExpandNodeToSubgraph(const Graph &subgraph, const NodePtr &n
   for (size_t index = 0; index < out_node_index.size(); index++) {
     NodePtr out_node = out_node_index[index].first;
     int32_t out_index = out_node_index[index].second;
+    GE_ASSERT_NOTNULL(out_node);
     GELOGD("Begin to handle output node: %s[%d] with index:%zu", out_node->GetName().c_str(), out_index, index);
     std::string key = GenOutputKey({node->GetName(), index});
-    GE_ASSERT_NOTNULL(out_node);
     output_mapping[key] = std::make_pair(out_node->GetName(), out_index);
   }
   return SUCCESS;
