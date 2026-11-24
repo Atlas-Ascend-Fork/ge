@@ -539,7 +539,7 @@ string GraphConstructor::GetInputString(const ge::NodePtr &node) {
 
 Status GraphConstructor::DumpGraph(const ge::ComputeGraphPtr &graph) {
   if (graph == nullptr) {
-    FE_LOGE("graph %s is nullptr.", graph->GetName().c_str());
+    FE_LOGE("graph is nullptr.");
     return FAILED;
   }
 
