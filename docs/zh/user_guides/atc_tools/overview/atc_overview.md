@@ -6,11 +6,10 @@
 
 ### ATC简介
 
-昇腾张量编译器（Ascend Tensor Compiler，简称ATC）是异构计算架构CANN体系下的模型转换工具，它可以将开源框架的网络模型以及Ascend IR定义的单算子描述文件（JSON格式）转换为AI处理器支持的.om或.om2格式离线模型。其功能架构如[图1](#fig1)所示。
+昇腾张量编译器（Ascend Tensor Compiler，简称ATC）是异构计算架构CANN体系下的模型转换工具，它可以将开源框架的网络模型以及Ascend IR定义的单算子描述文件（JSON格式）转换为AI处理器支持的.om或.om2格式离线模型。其功能架构如下图所示。
 
 模型转换过程中，ATC会进行算子调度优化、权重数据重排、内存使用优化等具体操作，对原始的深度学习模型进行进一步的调优，从而满足部署场景下的高性能需求，使其能够高效执行在AI处理器上。
 
-**图 1**  ATC工具功能架构<a id="fig1"></a>
 ![图示](../figures/atc_tool_func_architecture.png "ATC工具功能架构")
 
 其中：
@@ -52,9 +51,8 @@
 
     由于数据只能线性存储，因此这四个维度有对应的顺序。不同深度学习框架会按照不同的顺序存储特征图数据，比如Caffe，排列顺序为\[Batch, Channels, Height, Width\]，即NCHW；TensorFlow中，排列顺序为\[Batch, Height, Width, Channels\]，即NHWC。
 
-    如[图2](#fig2)所示，以一张格式为RGB的图片为例，NCHW中，C排列在外层，每个通道内，像素紧挨在一起，实际存储的是“RRRRRRGGGGGGBBBBBB”，即同一通道的所有像素值顺序存储在一起；而NHWC中C排列在最内层，每个通道内，像素间隔挨在一起，实际存储的则是“RGBRGBRGBRGBRGBRGB”，即多个通道的同一位置的像素值顺序存储在一起。
+    如下图所示，以一张格式为RGB的图片为例，NCHW中，C排列在外层，每个通道内，像素紧挨在一起，实际存储的是“RRRRRRGGGGGGBBBBBB”，即同一通道的所有像素值顺序存储在一起；而NHWC中C排列在最内层，每个通道内，像素间隔挨在一起，实际存储的则是“RGBRGBRGBRGBRGBRGB”，即多个通道的同一位置的像素值顺序存储在一起。
 
-    **图 2**  NCHW和NHWC<a id="fig2"></a>
     ![](../figures/nchw_and_nhwc.png "NCHW和NHWC")
 
 - **NC1HWC0**
@@ -67,8 +65,7 @@
 
     NHWC/NCHW -\> NC1HWC0的转换过程为：将数据在C维度进行分割，变成C1份NHWC0/NC0HW，再将C1份NHWC0/NC0HW在内存中连续排列成NC1HWC0，其格式转换示意图如下图所示。
 
-    **图 3**  NC1HWC0<a id="fig3"></a>
-    ![](../figures/nc1hwc0.png "NC1HWC0")
+    ![格式转换图示](../figures/nc1hwc0.png "NC1HWC0")
 
   - NHWC -\> NC1HWC0的转换公式如下：
 
@@ -124,9 +121,8 @@ ATC工具运行前需要准备环境和模型，本节给出ATC工具的运行�
 
 ### 运行流程
 
-运行流程如[图1](#fig3)所示。
+运行流程如下图所示：
 
-**图 1**  运行流程<a id="fig3"></a>
 ![](../figures/runtime_flow.png "运行流程")
 
 1. 使用ATC工具之前，请先在开发环境安装CANN软件包，获取相关路径下的ATC工具，然后设置环境变量，详细说明请参见[准备环境](environment_setup.md)。
@@ -147,7 +143,6 @@ ATC工具运行前需要准备环境和模型，本节给出ATC工具的运行�
 
 - AI Core算子模型转换交互流程
 
-    **图 2**  AI Core算子模型转换交互流程
     ![](../figures/ai_core_op_model_conv_flow.png "AI-Core算子模型转换交互流程")
 
     1. 调用框架Parser功能，将主流框架的模型格式转换成CANN模型格式。
@@ -167,7 +162,6 @@ ATC工具运行前需要准备环境和模型，本节给出ATC工具的运行�
     **IPV350不支持AI CPU相关特性。**
     <!-- end id2 -->
 
-    **图 3**  AI CPU算子模型转换交互流程
     ![](../figures/ai_cpu_op_model_conv_flow.png "AI-CPU算子模型转换交互流程")
 
     1. 调用框架Parser功能，将主流框架的模型格式转换成CANN模型格式。

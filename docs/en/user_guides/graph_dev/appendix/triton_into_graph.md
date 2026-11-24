@@ -304,7 +304,7 @@ g++ -std=c++14 -shared $SOURCE_FILES -o outputs/libcustom_ops.so -fPIC ${TF_CFLA
     ```
     <!-- end id1 -->
 
-    For details about the aclrtBinaryLoadFromFile, aclrtBinaryGetFunction, and aclrtLaunchKernelWithHostArgs APIs, see "Kernel Loading and Execution" in *[Runtime APIs](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md)*.
+    For details about the aclrtBinaryLoadFromFile, aclrtBinaryGetFunction, and aclrtLaunchKernelWithHostArgs APIs, see "Kernel Loading and Execution" in *[Runtime APIs](https://gitcode.com/cann/runtime/blob/master/docs/en/api_ref/README.md)*.
 
     For details about the GetAddr, GetShape, GetSize, GetDataType, GetFormat, and GetShapeSize APIs, see *[Basic Data Structures and APIs](https://gitcode.com/cann/metadef/blob/master/docs/en/api/README.md)*.
 

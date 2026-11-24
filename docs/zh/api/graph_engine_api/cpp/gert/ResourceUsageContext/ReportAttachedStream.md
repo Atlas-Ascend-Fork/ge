@@ -52,7 +52,7 @@ ge::graphStatus DeclareResourceUsage(gert::ResourceUsageContext &ctx) override {
         ge::AscendString("my_op_aux_2"),
         ge::AscendString("my_op_aux_3")};
   } else {
-    // 申报运行期将请求的全部 key：固定辅流 + 按 shape 分桶的辅流
+    // 上报运行期将请求的全部key：固定辅流 + 按 shape分桶的辅流
     const std::vector<ge::AscendString> keys{
         ge::AscendString("my_op_aux_fixed"),
         ge::AscendString(("my_op_aux_" + std::to_string(dim)).c_str())};

@@ -13,7 +13,7 @@
 
 添加一个声明式kernel launch。接口提取[`AnnotatedKernelArgs`](../AnnotatedKernelArgs/overview.md)的参数，并记录kernel名称、二进制、block dim和逻辑stream ID。
 
-第二个原型在添加launch的同时返回其`AnnotatedLaunchToken`，并可声明依赖的前置launch token，用于表达多次launch之间的先后关系。依赖关系通过`AnnotatedLaunchToken`表达：每个经第二个原型成功提交的launch获得一个token，后续launch可引用这些token作为前驱。
+第二个原型在添加launch的同时返回其`AnnotatedLaunchToken`，并可声明依赖的前驱launch token，用于表达多次launch之间的先后关系。依赖关系通过`AnnotatedLaunchToken`表达：每个经第二个原型成功提交的launch获得一个token，后续launch可引用这些token作为前驱。
 
 <!-- npu="x90,9030" id1 -->
 端侧场景：要求恰好调用一次。

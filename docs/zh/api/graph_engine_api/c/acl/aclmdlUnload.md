@@ -45,4 +45,4 @@ aclError aclmdlUnload(uint32_t modelId)
 
 ## 返回值说明
 
-返回0表示成功，返回其他值表示失败，请参见[aclError](aclError.md)。
+返回0表示成功，返回其它值表示失败，请参见[aclError](aclError.md)。

@@ -45,6 +45,7 @@ aclmdlBatch类型的定义如下：
 
 ```c
 const int ACL_MAX_BATCH_NUM = 128;
+typedef struct aclmdBatch {
     size_t batchCount; /** 模型中支持的batch分档数 */
     uint64_t batch[ACL_MAX_BATCH_NUM]; /** 模型中支持的具体分档 */
 } aclmdlBatch;

@@ -325,7 +325,7 @@ For passes registered at after InferShape and later stages, as mentioned above "
 
 This utility will synchronize the shape/dtype/format from the original graph inputs to the corresponding Data nodes in the replacement graph based on subgraph boundaries, and perform full graph derivation. Just call it in `Replacement` after building the replacement graph, no need to derive node by node yourself.
 
-On the Python side, the same capability can be called via `ge.passes.infer_shape` ([API doc](../../../zh/api/graph_engine_api/python/ge/passes/infer_shape.md)), with the `source` parameter accepting `MatchResult`, `Node`, or `SubgraphBoundary` respectively; on call failure, must not proceed with replacement.
+On the Python side, the same capability can be called via `ge.passes.infer_shape` ([API doc](../../../en/api/graph_engine_api/python/ge/passes/infer_shape.md)), with the `source` parameter accepting `MatchResult`, `Node`, or `SubgraphBoundary` respectively; on call failure, must not proceed with replacement.
 
 ## 8. Pass Default Switch State (PassSwitch)
 

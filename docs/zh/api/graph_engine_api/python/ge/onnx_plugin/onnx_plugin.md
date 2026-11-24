@@ -25,7 +25,7 @@ onnx_plugin(*, source: str, domain: str, opsets: Collection[int], target: str) -
 
 ## 返回值说明
 
-返回`OnnxPlugin`descriptor对象。
+返回`OnnxPlugin` descriptor对象。
 
 ## 约束说明
 

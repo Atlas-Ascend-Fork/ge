@@ -5,7 +5,7 @@ Profiling数据类型配置文件，头文件位于CANN软件安装后文件存�
 ```c++
 enum ProfDataTypeConfig {
   kProfTaskTime,          = 0x0002,      // 采集算子下发耗时、算子执行耗时数据以及算子基本信息数据，提供更全面的性能分析数据
-  kProfAiCoreMetrics,     = 0x0004,      // AICore数据
+  kProfAiCoreMetrics,     = 0x0004,      // AI Core数据
   kProfAicpu,             = 0x0008,      // AI CPU数据，当前版本暂不支持
   kProfL2cache,            = 0x0010,      // L2 Cache采样数据
   kProfHccl,              = 0x0020,      // 集合通信数据

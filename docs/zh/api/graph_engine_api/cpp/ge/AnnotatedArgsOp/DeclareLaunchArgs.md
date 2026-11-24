@@ -80,4 +80,5 @@ class MyAnnotatedOp : public ge::AnnotatedArgsOp {
   }
 };
 ```
+
 上述示例使用`ctx.GetStreamId()`保证launch与节点主stream一致，并将参数构建器以`std::move`交给`AddLaunch`。

@@ -131,7 +131,7 @@ typedef struct aclskAggressiveOptStrategies {
 | `UBUF_LOCK_IGNORE_KERNEL` | `ubufLockIgnoreKernel` | 默认不配置。`ubufLockIgnoreKernel`设置Kernel函数名匹配表达式数组，匹配规则参见[Kernel函数名匹配规则](#kernel函数名匹配规则)；`ubufLockIgnoreKernelCnt`设置数组元素数量。匹配的MIX Kernel不依赖UB Buffer的加锁、解锁机制保证数据访问顺序，SuperKernel据此优化融合策略。该选项在Atlas A2系列产品和Atlas A3系列产品上不生效。 |
 | `AUTO_OP_PARALLEL` | `autoOpParallel.enableAutoOpParallel` | `0`（默认值）：关闭。<br>`1`：开启多流融合场景中的Cube/Vector算子自动并行排布，SuperKernel在保持算子依赖关系的前提下调整算子排布。 |
 | `EARLY_START` | `earlyStart.enableEarlyStart` | `0`（默认值）：关闭。<br>`1`：开启，SuperKernel根据随子Kernel二进制携带的Early-Start能力信息进行调度优化。 |
-| `AGGRESSIVE_OPT_STRATEGIES` | `aggressiveOpts` | `eventBreakerBypass`：预留字段。<br>`taskBreakerBypass`：<br>• `0`（默认值）：遇到非AICore Task时断开SuperKernel融合。<br>• `1`：融合范围内遇到非AICore Task，且对应流范围内没有其他AICore算子时，不断开融合范围，仅将该非AICore Task从融合范围中排除。<br>`valueBreakerBypass`为比特位组合，用于控制ValueWait节点的融合策略：<br>• `bit0`（值为`1`）：已配对且通过死锁检测的ValueWait节点参与融合。<br>• `bit1`（值为`2`）：未配对的ValueWait节点参与融合。<br>取值实例：<br>• `0`（默认值）：ValueWait节点不参与融合。<br>• `1`：仅允许已配对的ValueWait节点参与融合。<br>• `2`：仅允许未配对的ValueWait节点参与融合。<br>• `3`：同时允许已配对和未配对的ValueWait节点参与融合。<br>说明：一个ValueWait节点仅支持与一个ValueWrite节点配对。 |
+| `AGGRESSIVE_OPT_STRATEGIES` | `aggressiveOpts` | `eventBreakerBypass`：预留字段。<br>`taskBreakerBypass`：<br>• `0`（默认值）：遇到非AI Core Task时断开SuperKernel融合。<br>• `1`：融合范围内遇到非AI Core Task，且对应流范围内没有其他AI Core算子时，不断开融合范围，仅将该非AI Core Task从融合范围中排除。<br>`valueBreakerBypass`为比特位组合，用于控制ValueWait节点的融合策略：<br>• `bit0`（值为`1`）：已配对且通过死锁检测的ValueWait节点参与融合。<br>• `bit1`（值为`2`）：未配对的ValueWait节点参与融合。<br>取值示例：<br>• `0`（默认值）：ValueWait节点不参与融合。<br>• `1`：仅允许已配对的ValueWait节点参与融合。<br>• `2`：仅允许未配对的ValueWait节点参与融合。<br>• `3`：同时允许已配对和未配对的ValueWait节点参与融合。<br>说明：一个ValueWait节点仅支持与一个ValueWrite节点配对。 |
 
 ### 调试选项
 

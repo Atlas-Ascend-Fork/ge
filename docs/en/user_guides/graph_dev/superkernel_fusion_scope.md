@@ -173,7 +173,7 @@ By calling the [aclskScopeBegin](../../api/graph_engine_api/c/super_kernel/aclsk
     }
     ```
 
-    For details about the preceding ACL APIs, see [Runtime APIs](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md).
+    For details about the preceding ACL APIs, see [Runtime APIs](https://gitcode.com/cann/runtime/blob/master/docs/en/api_ref/README.md).
 
 - **Example of key steps for marking an operator as not fused into SuperKernel**
 
@@ -217,4 +217,4 @@ By calling the [aclskScopeBegin](../../api/graph_engine_api/c/super_kernel/aclsk
     }
     ```
 
-    For details about the preceding ACL APIs, see [Runtime APIs](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md).
+    For details about the preceding ACL APIs, see [Runtime APIs](https://gitcode.com/cann/runtime/blob/master/docs/en/api_ref/README.md).

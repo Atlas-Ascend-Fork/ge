@@ -54,7 +54,7 @@ export DUMP_GRAPH_LEVEL=1   #控制dump图的个数
 | 30 | ge_proto_xxxx_OptimizeQuantGraph_FeGraphFusionAfter.txt | FE | 图优化阶段的量化流程结束后的图结构 | - |
 | 31 | ge_proto_xxxx_OptimizeOriginalGraph_FeGraphFusionAfter.txt | FE | 图融合流程结束后的图结构 | - |
 | 32 | ge_proto_xxxx_OptimizeOriginalGraph_FeTopoSortingAfter.txt | FE | 图融合后进行拓扑排序，排查融合后是否成环的图结构 | - |
-| 33 | ge_proto_xxxx_OptimizeOriginalGraph_DSAFeOpJudgeAfter.txt | FE | 经过动态shape分析后的格式DataType和Format选择的图 | - |
+| 33 | ge_proto_xxxx_OptimizeOriginalGraph_DSAFeOpJudgeAfter.txt | FE | 经过动态shape分析后的DataType和Format选择的图 | - |
 | 34 | ge_proto_xxxx_HcclBeforeOptimizeOriginalGraph.txt | HCCL | HCCL原图优化之前的图 | - |
 | 35 | ge_proto_xxxx_HcclAfterOptimizeOriginalGraph.txt | HCCL | HCCL原图优化之后的图 | - |
 | 36 | ge_proto_xxxx_RunCustomPassAfterBuiltinFusionPass.txt | GE | 内部Pass之后用户自定义Pass的出口图 | 白名单 |

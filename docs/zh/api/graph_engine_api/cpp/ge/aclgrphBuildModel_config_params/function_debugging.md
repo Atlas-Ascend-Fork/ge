@@ -51,13 +51,13 @@
 **参数取值：**
 
 - 0：（默认值）不开启算子debug功能，在当前执行路径**不生成**算子编译目录kernel\_meta。
-- 1：开启算子debug功能，在当前执行路径生成kernel\_meta文件夹，并在该文件夹下**生成**\*.o（算子二进制文件）、\*.json文件（算子描述文件）和TBE指令映射文件（算子cce文件\*.cce和python-cce映射文件\*\_loc.json），用于后续分析AICore Error问题。
+- 1：开启算子debug功能，在当前执行路径生成kernel\_meta文件夹，并在该文件夹下**生成**\*.o（算子二进制文件）、\*.json文件（算子描述文件）和TBE指令映射文件（算子cce文件\*.cce和python-cce映射文件\*\_loc.json），用于后续分析AI Core Error问题。
 
     <!-- npu="950" id1 -->
     Ascend 950PR&950DT系列产品不会生成TBE指令映射文件。
     <!-- end id1 -->
 
-- 2：开启算子debug功能，在当前执行路径生成kernel\_meta文件夹，并在该文件夹下**生成**\*.o（算子二进制文件）、\*.json文件（算子描述文件）和TBE指令映射文件（算子cce文件\*.cce和python-cce映射文件\*\_loc.json），用于后续分析AICore Error问题，同时设置为2，还会关闭编译优化开关、开启ccec调试功能（ccec编译器选项设置为-O0-g）。
+- 2：开启算子debug功能，在当前执行路径生成kernel\_meta文件夹，并在该文件夹下**生成**\*.o（算子二进制文件）、\*.json文件（算子描述文件）和TBE指令映射文件（算子cce文件\*.cce和python-cce映射文件\*\_loc.json），用于后续分析AI Core Error问题，同时设置为2，还会关闭编译优化开关、开启ccec调试功能（ccec编译器选项设置为-O0-g）。
 
     <!-- npu="950" id2 -->
     Ascend 950PR&950DT系列产品不会生成TBE指令映射文件。
@@ -200,7 +200,7 @@ op_debug_list=GatherV2,opType::ReduceSum
 >   message:link error ld.lld: error: InputSection too large for range extension thunk ./kernel_meta_xxxxx.o
 >    ```
 >
->- ccec编译器选项ccec\_O0和oom不能同时开启，可能会导致AICore Error报错，报错信息示例如下：
+>- ccec编译器选项ccec\_O0和oom不能同时开启，可能会导致AI Core Error报错，报错信息示例如下：
 >
 >   ```text
 >   ...there is an aivec error exception, core id is 49, error code = 0x4 ...

@@ -100,4 +100,4 @@ Currently, the model compilation and model file saving APIs can be called consec
 
     For subsequent inference, use the API for loading a model **from memory**, for example, aclmdlLoadFromMem, and then use aclmdlExecute to perform inference.
 
-For details about the APIs, see the "Model Inference" section in [Application Development](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md).
+For details about the APIs, see the "Model Inference" section in [Application Development](https://gitcode.com/cann/docs/blob/master/docs/en/app-dev/c/00_acl_cpp_dev.md).

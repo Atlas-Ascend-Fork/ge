@@ -21,14 +21,13 @@
     std::unique_ptr<Graph> BuildAndReset() const
     ```
 
--   根据输出张量列表构建计算图
+- 根据输出张量列表构建计算图
 
-    ```
+    ```c++
     std::unique_ptr<Graph> BuildAndReset(const std::vector<EsTensorHolder> &outputs)
     ```
 
 ## 参数说明
-
 
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
@@ -36,10 +35,9 @@
 
 ## 返回值说明
 
-
 | 参数名 | 类型 | 说明 |
 | --- | --- | --- |
-| - | std::unique_ptr<Graph> | 返回构建的图智能指针，失败时返回nullptr。调用后图构建器将不再可用。 |
+| - | std::unique_ptr\<Graph> | 返回构建的图智能指针，失败时返回nullptr。调用后图构建器将不再可用。 |
 
 ## 约束说明
 
@@ -47,7 +45,7 @@
 
 ## 调用示例
 
--   构建计算图
+- 构建计算图
 
     ```c++
     // 1. 创建图构建器（EsGraphBuilder）
@@ -62,7 +60,7 @@
     std::unique_ptr<ge::Graph> graph = builder.BuildAndReset();
     ```
 
--   根据输出张量列表构建计算图
+- 根据输出张量列表构建计算图
 
     ```
     // 1. 创建图构建器（EsGraphBuilder）

@@ -82,7 +82,7 @@ The bridge library and native module are produced at build time and organized un
 
 ## 5. Interface Description
 
-For the complete interface description, see the onnx_plugin API reference (`docs/zh/api/graph_engine_api/python/ge/onnx_plugin/onnx_plugin.md`); this section only lists design-level key points.
+For the complete interface description, see the onnx_plugin API reference (`docs/en/api/graph_engine_api/python/ge/onnx_plugin/onnx_plugin.md`); this section only lists design-level key points.
 
 ### 5.1 onnx_plugin() Descriptor Factory
 

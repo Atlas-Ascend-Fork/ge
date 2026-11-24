@@ -105,10 +105,7 @@ For example:
 
 In the above configuration, all input dimensions are completely determined at compile time, and the model is compiled in static shape mode.
 
-Configuration items involved:
-
-* **`--input_shape`**
-  [https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0016.html](https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0016.html)
+Configuration items involved: [--input_shape](./atc_tools/CLI_options/--input_shape.md).
 
 ---
 
@@ -171,13 +168,10 @@ This configuration means that during model execution, only the following input s
 
 #### Dynamic Multi-Gear Related Configuration Items
 
-* **Dynamic batch (`--dynamic_batch_size`)**
-  [https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0018.html](https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0018.html)
+* **Dynamic batch ([--dynamic_batch_size](./atc_tools/CLI_options/--dynamic_batch_size.md))**
 
-* **Dynamic image size (`--dynamic_image_size`)**
-  [https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0019.html](https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0019.html)
+* **Dynamic image size ([--dynamic_image_size](./atc_tools/CLI_options/--dynamic_image_size.md))**
 
-* **Arbitrary dimension dynamic (`--dynamic_dims`)**
-  [https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0020.html](https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0020.html)
+* **Arbitrary dimension dynamic ([--dynamic_dims](./atc_tools/CLI_options/--dynamic_dims.md))**
 
 Among them, the configuration capability of `--dynamic_dims` can cover both dynamic batch and dynamic image size, but the configuration is relatively more complex.

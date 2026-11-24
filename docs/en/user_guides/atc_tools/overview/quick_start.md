@@ -15,7 +15,7 @@ This chapter uses model conversion under each framework as an example to demonst
 > - If the development environment architecture is Arm (aarch64) and model conversion takes a long time, see [Model Conversion Takes a Long Time When the Development Environment Architecture Is Arm (aarch64)](../FAQ/arm_aarch64_conversion_slow.md) for a solution.
 >   <!-- end id1 -->
 > - If the user sets the network model precision parameter [--precision\_mode](../CLI_options/--precision_mode.md) or [--precision\_mode\_v2](../CLI_options/--precision_mode_v2.md) during model conversion:
->   - By default, both parameters prioritize performance, which may cause precision overflow during subsequent inference. If a precision issue occurs during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in *[Application Development](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md)* for troubleshooting.
+>   - By default, both parameters prioritize performance, which may cause precision overflow during subsequent inference. If a precision issue occurs during inference, see "Model Inference \> Precision/Performance Optimization \> Suggestions for Improving Model Inference Precision" in *[Application Development](https://gitcode.com/cann/docs/blob/master/docs/en/app-dev/c/00_acl_cpp_dev.md)* for troubleshooting.
 >   - If the user focuses on precision issues, other values can be set, for example, set --precision\_mode to must\_keep\_origin\_dtype or set --precision\_mode\_v2 to origin.
 
 ## Converting a TensorFlow Network Model from an Open-Source Framework into an Offline Model

@@ -30,7 +30,7 @@ Node可以包括多个属性，初次设置值后，算子属性值的类型固�
 - Tensor列表：std::vector<Tensor\>
 - OpBytes：字节数组，vector<uint8\_t\>
 - AttrValue类型
-- 整型二维列表类型：std::vector<std::vector<int64\_t\>
+- 整型二维列表类型：std::vector<std::vector<int64\_t\>\>
 - DataType列表类型：vector\<ge::DataType\>
 - DataType类型：DataType
 

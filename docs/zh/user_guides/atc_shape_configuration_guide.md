@@ -105,10 +105,7 @@
 
 上述配置中，所有输入维度在编译期已完全确定，模型以静态 shape 方式进行编译。
 
-涉及的配置项：
-
-* **`--input_shape`**
-  [https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0016.html](https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0016.html)
+涉及的配置项：[--input_shape](./atc_tools/CLI_options/--input_shape.md)
 
 ---
 
@@ -171,13 +168,10 @@ $ atc \
 
 #### 动态多档位相关配置项
 
-* **动态 batch（`--dynamic_batch_size`）**
-  [https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0018.html](https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0018.html)
+* **动态 batch（[--dynamic_batch_size](./atc_tools/CLI_options/--dynamic_batch_size.md)）**
 
-* **动态 image size（`--dynamic_image_size`）**
-  [https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0019.html](https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0019.html)
+* **动态 image size（[--dynamic_image_size](./atc_tools/CLI_options/--dynamic_image_size.md)）**
 
-* **任意维度动态（`--dynamic_dims`）**
-  [https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0020.html](https://www.hiascend.com/document/detail/zh/canncommercial/850/devaids/atctool/atlasatcparam_16_0020.html)
+* **任意维度动态（[--dynamic_dims](./atc_tools/CLI_options/--dynamic_dims.md)）**
 
 其中，`--dynamic_dims` 的配置能力可以覆盖动态 batch 与动态 image size，但配置相对更为复杂。

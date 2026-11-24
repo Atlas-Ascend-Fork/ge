@@ -32,4 +32,4 @@ InferShapeFuncRegister构造函数返回InferShapeFuncRegister类型的对象。
 
 ## 约束说明
 
-算子infershape函数注册接口，此接口被其他头文件引用，一般不用由算子开发者直接调用。
+算子infershape函数注册接口，此接口被其他头文件引用，一般不由算子开发者直接调用。

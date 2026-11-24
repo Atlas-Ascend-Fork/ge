@@ -11,7 +11,7 @@
 
 ## 功能说明
 
-为某个输出Tensor申请Hsot内存，同时初始化输出Tensor的基本信息。
+为某个输出Tensor申请Host内存，同时初始化输出Tensor的基本信息。
 
 该输出Tensor的内存由Context构造方管理。接口调用者不需要主动释放。
 

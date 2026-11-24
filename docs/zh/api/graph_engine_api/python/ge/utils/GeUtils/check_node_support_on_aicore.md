@@ -23,7 +23,7 @@ check_node_support_on_aicore(node: Node) -> Tuple[bool, str]
 ## 返回值说明
 
 - \(Tuple\[bool, str\]\) 返回\(is\_supported, unsupported\_reason\)元组。
-- is\_supported为True表示是否支持在AI Core上执行，False表示不支持。
+- is\_supported为True表示支持在AI Core上执行，False表示不支持。
 - unsupported\_reason为不支持的具体原因。
 
 ## 约束说明
