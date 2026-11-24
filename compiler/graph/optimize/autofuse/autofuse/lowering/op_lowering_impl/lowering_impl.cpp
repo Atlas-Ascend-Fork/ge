@@ -828,7 +828,11 @@ graphStatus NormalizeSoftmaxV2Info(const NodePtr &node, SoftmaxV2Info &info) {
     LOWERING_WARN_RECORD_REASON((axis >= 0) && (static_cast<size_t>(axis) < input_shape.size()), node,
                                 "SoftmaxV2 axis %ld is out of range for rank %zu", axis, input_shape.size());
     LOWERING_WARN_RECORD_REASON(normalized_axes.insert(axis).second, node, "SoftmaxV2 axis %ld is duplicated", axis);
-    info.reduce_axes.emplace_back(axis);
+    // A reduction over a singleton axis is the identity. Do not emit a Reduce
+    // whose only reduction axis can later be removed by invalid-axis cleanup.
+    if (SymbolicUtils::StaticCheckEq(input_shape[static_cast<size_t>(axis)], Symbol(1)) != TriBool::kTrue) {
+      info.reduce_axes.emplace_back(axis);
+    }
   }
 
   const auto input_dtype = input_desc->GetDataType();
