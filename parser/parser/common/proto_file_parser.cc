@@ -89,6 +89,10 @@ bool GetIdentifier(const std::string &line, int &identifier) {
       break;
     }
     if (line[i] >= kMinNum && line[i] <= kMaxNum) {
+      // 必须在乘法之前判断，否则 identifier*10 可能先溢出再校验（有符号溢出 UB）
+      if (identifier > (kMaxIdentifier / kDecimalMulti)) {
+        return false;
+      }
       identifier = identifier * kDecimalMulti + static_cast<int>(line[i]) - static_cast<int>(kMinNum);
     }
     if (identifier > kMaxIdentifier || identifier < 0) {

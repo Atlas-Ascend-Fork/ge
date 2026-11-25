@@ -35,6 +35,7 @@ set(PARSER_UT_FILES
     "parser_ut_utils.cc"
     "testcase/common/acl_graph_parser_unittest.cc"
     "testcase/onnx_parser_testcase/onnx_parser_unittest.cc"
+    "testcase/onnx_parser_testcase/onnx_constant_parser_unittest.cc"
     "testcase/caffe_parser_testcase/caffe_parser_unittest.cc"
     "testcase/onnx_parser_testcase/message2operator_unittest.cc"
     "testcase/tensorflow_parser_testcase/tensorflow_parser_unittest.cc"

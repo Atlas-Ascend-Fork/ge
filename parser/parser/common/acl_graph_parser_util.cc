@@ -881,9 +881,10 @@ FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY bool ReadProtoFromBinaryFile(co
 }
 
 FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY bool ReadProtoFromArray(const void *data, int size, Message *proto) {
-  if ((proto == nullptr) || (data == nullptr) || (size == 0)) {
-    REPORT_INNER_ERR_MSG("E19999", "param proto or data is nullptr or size is 0, check invalid");
-    GELOGE(FAILED, "[Check][Param]incorrect parameter. proto is nullptr || data is nullptr || size is 0");
+  // 上游 uint32_t -> int 的隐式转换可能得到负值，必须按 <= 0 拦截
+  if ((proto == nullptr) || (data == nullptr) || (size <= 0)) {
+    REPORT_INNER_ERR_MSG("E19999", "param proto or data is nullptr or size is not positive, check invalid");
+    GELOGE(FAILED, "[Check][Param]incorrect parameter. proto is nullptr || data is nullptr || size is %d", size);
     return false;
   }
   return proto->ParseFromArray(data, size);
@@ -938,9 +939,10 @@ FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY bool ReadProtoFromText(const ch
 
 FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY bool ReadProtoFromMem(const char *data, int size,
                                                                        google::protobuf::Message *message) {
-  if ((data == nullptr) || (message == nullptr)) {
-    REPORT_INNER_ERR_MSG("E19999", "param data or message is nullptr,check invalid");
-    GELOGE(FAILED, "[Check][Param] incorrect parameter. data is nullptr || message is nullptr");
+  // size 由上游 uint32_t 显式转换而来，可能已截断为负值；负值转 size_t 会抛出 length_error
+  if ((data == nullptr) || (message == nullptr) || (size <= 0)) {
+    REPORT_INNER_ERR_MSG("E19999", "param data or message is nullptr or size is not positive, check invalid");
+    GELOGE(FAILED, "[Check][Param] incorrect parameter. data is nullptr || message is nullptr || size is %d", size);
     return false;
   }
   std::string str(data, static_cast<size_t>(size));

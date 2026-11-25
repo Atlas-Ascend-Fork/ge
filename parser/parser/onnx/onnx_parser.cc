@@ -13,6 +13,7 @@
 #include <iostream>
 #include <queue>
 #include <mutex>
+#include <limits>
 #include "common/convert/message2operator.h"
 #include "common/convert/pb2json.h"
 #include "common/util.h"
@@ -159,6 +160,14 @@ graphStatus aclgrphParseONNXFromMem(const char *buffer, size_t size,
     return ge::FAILED;
   }
 
+  // 下游 ReadProtoFromArray 的形参是 int，超过 INT32_MAX 会让长度截断成负值
+  if (size > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    REPORT_INNER_ERR_MSG("E19999", "model size:%zu exceeds the max supported size %d.", size,
+                         std::numeric_limits<int32_t>::max());
+    GELOGE(ge::FAILED, "[Check][Param] model size:%zu exceeds the max supported size %d.", size,
+           std::numeric_limits<int32_t>::max());
+    return ge::FAILED;
+  }
   // parse caffe model_file to GE graph
   ge::graphStatus ret = model_parser->ParseFromMemory(buffer, static_cast<uint32_t>(size), graph);
   if (ret != ge::SUCCESS) {
@@ -770,6 +779,7 @@ Status OnnxModelParser::ParseOpParam(const ge::onnx::NodeProto *node_proto, ge::
     }
     std::shared_ptr<ge::OnnxCustomParserAdapter> onnx_custom_op_parser =
         std::dynamic_pointer_cast<ge::OnnxCustomParserAdapter>(op_parser);
+    GE_CHECK_NOTNULL(onnx_custom_op_parser);
     status = onnx_custom_op_parser->ParseParams(op_src, op);
     op_src.BreakConnect();
   }
@@ -948,6 +958,26 @@ namespace {
 // 子图递归深度上限。与 OnnxUtils::DecodeGraph 处理同一棵 ONNX GraphProto 树时的
 // 约定（graph_metadef/graph/utils/ge_ir_utils.cc:25，kMaxRecursiveDepth = 10）保持一致。
 constexpr int32_t kMaxSubgraphDepth = 10;
+
+// external data 的 location 只允许模型目录内的相对路径，拒绝绝对路径与 ".." 回退，避免路径穿越
+bool IsExternalDataLocationSafe(const std::string &location) {
+  if (location.empty() || (location.front() == '/') || (location.front() == '\\')) {
+    return false;
+  }
+  size_t begin = 0U;
+  while (begin <= location.size()) {
+    const size_t end = location.find_first_of("/\\", begin);
+    const std::string segment = location.substr(begin, (end == std::string::npos) ? std::string::npos : (end - begin));
+    if (segment == "..") {
+      return false;
+    }
+    if (end == std::string::npos) {
+      break;
+    }
+    begin = end + 1U;
+  }
+  return true;
+}
 // 递归处理一张 GraphProto 及其内嵌子图（If/While/Case 等分支）的外置权重路径。
 // 仅 ONNX 规范允许子图 initializer/Constant 也使用 external data，根图之外同样需要绝对化。
 Status SetExternalPathForGraph(ge::onnx::GraphProto &onnx_graph, const std::string &dir, int32_t depth) {
@@ -969,6 +999,11 @@ Status SetExternalPathForGraph(ge::onnx::GraphProto &onnx_graph, const std::stri
         continue;
       }
       const std::string &file_name = string_proto->value();
+      if (!IsExternalDataLocationSafe(file_name)) {
+        REPORT_INNER_ERR_MSG("E19999", "external data location[%s] is out of the model dir.", file_name.c_str());
+        GELOGE(PARAM_INVALID, "[Check][Param] external data location[%s] is out of the model dir.", file_name.c_str());
+        return PARAM_INVALID;
+      }
       const std::string new_file = dir + MMPA_PATH_SEPARATOR_STR + file_name;
       GELOGD("[%s] is external data. concat dir[%s] and file_name[%s], new_file[%s]",
              initializer_tensor->name().c_str(), dir.c_str(), file_name.c_str(), new_file.c_str());
@@ -998,6 +1033,12 @@ Status SetExternalPathForGraph(ge::onnx::GraphProto &onnx_graph, const std::stri
             continue;
           }
           const std::string &file_name = string_proto->value();
+          if (!IsExternalDataLocationSafe(file_name)) {
+            REPORT_INNER_ERR_MSG("E19999", "external data location[%s] is out of the model dir.", file_name.c_str());
+            GELOGE(PARAM_INVALID, "[Check][Param] external data location[%s] is out of the model dir.",
+                   file_name.c_str());
+            return PARAM_INVALID;
+          }
           const std::string new_file = dir + MMPA_PATH_SEPARATOR_STR + file_name;
           GELOGD("[%s] is external data. concat dir[%s] and file_name[%s], new_file[%s]", node_proto->name().c_str(),
                  dir.c_str(), file_name.c_str(), new_file.c_str());

@@ -35,6 +35,7 @@ set(PARSER_ST_FILES
     "testcase/test_caffe_parser.cc"
     "testcase/test_tensorflow_parser.cc"
     "testcase/test_func2graph.cc"
+    "testcase/test_pb2json.cc"
     "${PARSER_DIR}/parser/caffe/caffe_parser.cc"
     "${PARSER_DIR}/parser/func_to_graph/func2graph.cc"
 )

@@ -187,6 +187,11 @@ class OnnxPluginBridge {
       const auto source_handle = PtrToValue(&operator_src);
       const py::object replacement = bridge_module_.attr("call_decompose")(origin, source_handle);
       const auto graph_handle = py::cast<uint64_t>(replacement.attr("_handle").attr("value"));
+      if (graph_handle == 0U) {
+        REPORT_INNER_ERR_MSG("E19999", "Python ONNX plugin decompose returned a null graph handle.");
+        GELOGE(PARAM_INVALID, "Python ONNX plugin decompose returned a null graph handle.");
+        return PARAM_INVALID;
+      }
       // restore the borrowed Graph address held by the python wrapper
       const auto *replacement_graph = PtrToPtr<void, const Graph>(ValueToPtr(graph_handle));
       return subgraph.CopyFrom(*replacement_graph) == GRAPH_SUCCESS ? SUCCESS : FAILED;

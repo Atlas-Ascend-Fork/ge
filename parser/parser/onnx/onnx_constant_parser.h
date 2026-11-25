@@ -26,8 +26,8 @@ class PARSER_FUNC_VISIBILITY OnnxConstantParser : public OnnxOpParser {
   static Status ParseConstFromInput(const ge::onnx::NodeProto *op_src, ge::Operator &op_def);
   static Status ParseConvertTensor(const ge::onnx::TensorProto &tensor_proto, ge::Tensor &tensor);
   static Status ParseConvertData(const ge::onnx::TensorProto &tensor_proto, ge::Tensor &tensor, int count);
-  static void ParseConvertDataElements(const ge::onnx::TensorProto &tensor_proto, ge::Tensor &tensor, int count,
-                                       int64_t data_type);
+  static Status ParseConvertDataElements(const ge::onnx::TensorProto &tensor_proto, ge::Tensor &tensor, int count,
+                                         int64_t data_type);
   static Status ParseConvertDataType(const ge::onnx::TensorProto &tensor_proto, ge::Tensor &tensor);
 
   template <typename T>

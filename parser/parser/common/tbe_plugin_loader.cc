@@ -70,6 +70,8 @@ Status TBEPluginLoader::ClearHandles_() {
 
   if (handle_reg_ != nullptr) {
     close_func(handle_reg_);
+    // 关闭后必须置空，否则 Init/Finalize 循环下会对已关闭句柄二次 dlclose
+    handle_reg_ = nullptr;
   }
   return ret;
 }
@@ -125,7 +127,8 @@ Status TBEPluginLoader::GetOppPath(std::string &opp_path) {
   GELOGI("Enter get opp path schedule");
   const char_t *path_env = nullptr;
   MM_SYS_GET_ENV(MM_ENV_ASCEND_OPP_PATH, path_env);
-  if (path_env != nullptr) {
+  // 环境变量"存在但为空串"时 getenv 返回非空指针，opp_path 为空会让后面的 back() 越界
+  if ((path_env != nullptr) && (path_env[0] != '\0')) {
     opp_path = path_env;
     std::string file_path = parser::RealPath(opp_path.c_str());
     if (file_path.empty()) {

@@ -43,6 +43,61 @@
 
 namespace ge {
 const std::regex kSafePathRegex(R"(^(?!.*\.{2})[A-Za-z0-9./+\-_]+$)");
+
+namespace {
+// op 名、arg/attr 名、string 默认值均来自模型 pb，会被拼进待编译的 C++ 源码。
+// 字符串字面量位置必须转义，标识符位置必须过白名单，否则模型可注入任意代码。
+const std::regex kCppIdentifierRegex(R"(^[A-Za-z_][A-Za-z0-9_]*$)");
+
+std::string EscapeForCppStringLiteral(const std::string &value) {
+  std::string escaped;
+  escaped.reserve(value.size());
+  for (const char c : value) {
+    const unsigned char byte = static_cast<unsigned char>(c);
+    switch (c) {
+      case '\\':
+        escaped.append("\\\\");
+        break;
+      case '"':
+        escaped.append("\\\"");
+        break;
+      case '\n':
+        escaped.append("\\n");
+        break;
+      case '\r':
+        escaped.append("\\r");
+        break;
+      case '\t':
+        escaped.append("\\t");
+        break;
+      default:
+        if ((byte < 0x20U) || (byte == 0x7FU)) {
+          // 固定三位八进制转义，避免被后续字符吞并
+          escaped.push_back('\\');
+          escaped.push_back(static_cast<char>('0' + ((byte >> 6U) & 0x7U)));
+          escaped.push_back(static_cast<char>('0' + ((byte >> 3U) & 0x7U)));
+          escaped.push_back(static_cast<char>('0' + (byte & 0x7U)));
+        } else {
+          escaped.push_back(c);
+        }
+    }
+  }
+  return escaped;
+}
+
+bool IsValidCppIdentifier(const std::string &name) {
+  return std::regex_match(name, kCppIdentifierRegex);
+}
+
+// AutoMappingFnDynamic 的 key 存在 std::map 中按字典序迭代；动态参数可能有多个，
+// 用固定宽度序号保证迭代顺序与 OpDef 中 arg 的声明顺序一致。
+std::string FormatDynamicKey(const char *prefix, uint32_t index) {
+  const std::string index_str = std::to_string(index);
+  const std::string padded((index_str.size() < 4U) ? (4U - index_str.size()) : 0U, '0');
+  return std::string(prefix) + padded + index_str;
+}
+}  // namespace
+
 std::string TfDTypeToGeSymbol(domi::tensorflow::DataType dt) {
   auto it = TF_DATATYPE_TO_GE_SYMBOL_MAP.find(dt);
   return (it != TF_DATATYPE_TO_GE_SYMBOL_MAP.end()) ? it->second : "";
@@ -81,9 +136,23 @@ std::string FormatListValue(const ascend_private::protobuf::RepeatedPtrField<std
   for (const auto &val : list_vals) {
     if (i > 0) oss << ", ";
     if (type == "string") {
-      oss << "\"" << val << "\"";
+      oss << "\"" << EscapeForCppStringLiteral(val) << "\"";
     }
     i++;
+  }
+  oss << "}";
+  return oss.str();
+}
+
+// bool 单独重载：通用模板里用三元判断会把 T=float 的实例化变成浮点比较（-Wfloat-equal）
+std::string FormatListValue(const google::protobuf::RepeatedField<bool> &list_vals, const std::string &type) {
+  std::ostringstream oss;
+  oss << "{";
+  for (int i = 0; i < list_vals.size(); ++i) {
+    if (i > 0) oss << ", ";
+    if (type == "bool") {
+      oss << (list_vals.Get(i) ? "true" : "false");
+    }
   }
   oss << "}";
   return oss.str();
@@ -111,7 +180,7 @@ std::string GetAttrDefaultValue(const domi::tensorflow::AttrValue &default_val, 
     return default_val.b() ? "true" : "false";
   }
   if (attr_type == "string") {
-    return "\"" + default_val.s() + "\"";
+    return "\"" + EscapeForCppStringLiteral(default_val.s()) + "\"";
   }
   if (attr_type == "type") {
     auto dt = static_cast<domi::tensorflow::DataType>(default_val.type());
@@ -234,6 +303,25 @@ bool HasArgDefaultValue(const domi::tensorflow::OpDef::ArgDef &arg,
   }
   return false;
 }
+// op 类型名与 arg/attr 名会作为 C++ 标识符写入生成代码，必须做白名单校验
+Status CheckOpDefNamesSafe(const domi::tensorflow::OpDef &opdef) {
+  GE_ASSERT_TRUE(IsValidCppIdentifier(opdef.name()), "Invalid op type name for generated code: %s",
+                 opdef.name().c_str());
+  for (const auto &arg : opdef.input_arg()) {
+    GE_ASSERT_TRUE(arg.name().empty() || IsValidCppIdentifier(arg.name()),
+                   "Invalid input arg name for generated code: %s, op: %s", arg.name().c_str(), opdef.name().c_str());
+  }
+  for (const auto &arg : opdef.output_arg()) {
+    GE_ASSERT_TRUE(arg.name().empty() || IsValidCppIdentifier(arg.name()),
+                   "Invalid output arg name for generated code: %s, op: %s", arg.name().c_str(), opdef.name().c_str());
+  }
+  for (const auto &attr : opdef.attr()) {
+    GE_ASSERT_TRUE(attr.name().empty() || IsValidCppIdentifier(attr.name()),
+                   "Invalid attr name for generated code: %s, op: %s", attr.name().c_str(), opdef.name().c_str());
+  }
+  return SUCCESS;
+}
+
 void ProcessArg(std::string &reg_op, const std::string &indent, const domi::tensorflow::OpDef::ArgDef &arg,
                 const std::unordered_map<std::string, const domi::tensorflow::OpDef::AttrDef *> &attr_map,
                 bool is_input) {
@@ -314,6 +402,7 @@ int32_t RemoveDirectories(const std::string &path) {
 }
 
 Status TensorFlowCustomOpParser::ConstructRegOpString(const domi::tensorflow::OpDef &opdef, std::string &reg_op) {
+  GE_ASSERT_SUCCESS(CheckOpDefNamesSafe(opdef));
   const std::string &op_type = opdef.name();
   reg_op.reserve(reg_op.size() + 2048);
   std::ostringstream oss_header;
@@ -351,6 +440,7 @@ Status TensorFlowCustomOpParser::ConstructRegOpString(const domi::tensorflow::Op
 Status TensorFlowCustomOpParser::ConstructRegCustomOpString(const domi::tensorflow::OpDef &opdef,
                                                             const domi::tensorflow::NodeDef &node_def,
                                                             std::string &reg_op_custom_string) {
+  GE_ASSERT_SUCCESS(CheckOpDefNamesSafe(opdef));
   bool has_dynamic = false;
   for (const auto &input_arg : opdef.input_arg()) {
     if (IsListArg(input_arg)) {
@@ -358,6 +448,9 @@ Status TensorFlowCustomOpParser::ConstructRegCustomOpString(const domi::tensorfl
       break;
     }
   }
+  // 动态输入/输出可能不止一个，AutoMappingFnDynamic 的 map key 必须逐个区分，否则后者覆盖前者
+  uint32_t dynamic_in_index = 0U;
+  uint32_t dynamic_out_index = 0U;
   std::string parse_fn = "AutoMappingByOpFn";
   if (has_dynamic) {
     std::string fn = opdef.name();
@@ -374,11 +467,12 @@ Status TensorFlowCustomOpParser::ConstructRegCustomOpString(const domi::tensorfl
       if (list_attr.empty()) continue;
       std::string line;
       line.reserve(128);
-      line.append("value[\"in")
+      line.append("value[\"")
+          .append(FormatDynamicKey("in", dynamic_in_index++))
           .append("\"] = pair<string, string>(\"")
-          .append(tensor_name)
+          .append(EscapeForCppStringLiteral(tensor_name))
           .append("\", \"")
-          .append(list_attr)
+          .append(EscapeForCppStringLiteral(list_attr))
           .append("\");");
       AppendLine(reg_op_custom_string, "  ", line);
     }
@@ -391,11 +485,12 @@ Status TensorFlowCustomOpParser::ConstructRegCustomOpString(const domi::tensorfl
       if (list_attr.empty()) continue;
       std::string line;
       line.reserve(128);
-      line.append("value[\"out")
+      line.append("value[\"")
+          .append(FormatDynamicKey("out", dynamic_out_index++))
           .append("\"] = pair<string, string>(\"")
-          .append(tensor_name)
+          .append(EscapeForCppStringLiteral(tensor_name))
           .append("\", \"")
-          .append(list_attr)
+          .append(EscapeForCppStringLiteral(list_attr))
           .append("\");");
       AppendLine(reg_op_custom_string, "  ", line);
     }
@@ -403,9 +498,9 @@ Status TensorFlowCustomOpParser::ConstructRegCustomOpString(const domi::tensorfl
     AppendLine(reg_op_custom_string, "  ", "return SUCCESS;");
     reg_op_custom_string.append("}\n");
   }
-  reg_op_custom_string.append("REGISTER_CUSTOM_OP(\"").append(node_def.op()).append("\")\n");
+  reg_op_custom_string.append("REGISTER_CUSTOM_OP(\"").append(EscapeForCppStringLiteral(node_def.op())).append("\")\n");
   AppendLine(reg_op_custom_string, "    ", ".FrameworkType(TENSORFLOW)");
-  reg_op_custom_string.append("    .OriginOpType(\"").append(node_def.op()).append("\")\n");
+  reg_op_custom_string.append("    .OriginOpType(\"").append(EscapeForCppStringLiteral(node_def.op())).append("\")\n");
   if (has_dynamic) {
     reg_op_custom_string.append("    .ParseParamsFn(").append(parse_fn).append(")\n");
   } else {
@@ -420,6 +515,7 @@ Status GetCompilePath(std::string &include_path, std::string &register_path) {
   MM_SYS_GET_ENV(MM_ENV_ASCEND_HOME_PATH, path_env);
   GE_ASSERT_TRUE(path_env != nullptr, "[Call][MM_SYS_GET_ENV] Failed to get env ASCEND_HOME_PATH.");
   std::string home_path = path_env;
+  GE_ASSERT_TRUE(!home_path.empty(), "[Check][Env] ASCEND_HOME_PATH is empty, please export it first.");
   if (home_path.back() != '/') {
     home_path += '/';
   }
@@ -442,7 +538,7 @@ Status TensorFlowCustomOpParser::CompileCustomOpFiles(const std::string &custom_
                                                       const std::string &output_so_path) {
   std::string incloud_path;
   std::string register_path;
-  GetCompilePath(incloud_path, register_path);
+  GE_ASSERT_SUCCESS(GetCompilePath(incloud_path, register_path));
   GELOGI("Header file search directory: %s", register_path.c_str());
   std::string command = "g++ -O2 -fstack-protector-all -shared -fPIC -Wl,-z,now -Wl,-z,noexecstack -s -o " +
                         output_so_path + " -D_GLIBCXX_USE_CXX11_ABI=0 -Dgoogle=ascend_private -I " + incloud_path +
@@ -481,13 +577,23 @@ Status TensorFlowCustomOpParser::RegisteredTfaOps() {
     }
     ge::AscendString om_op_type;
     (void)reg_data.GetOmOptype(om_op_type);
-    const char *om = om_op_type.GetString();
+    const char *om = (om_op_type.GetString() != nullptr) ? om_op_type.GetString() : "";
     if (registered_set.find(om) == registered_set.end()) {
       GELOGD("Skip: om_op_type not in CustomOpFactory registered set: %s", om);
       continue;
     }
-    (void)OpRegistrationTbe::Instance()->Finalize(reg_data, true, true);
-    (void)domi::OpRegistry::Instance()->Register(reg_data, true);
+    // Finalize 在"解析函数已注册"的复用场景会返回 false（见 OpRegistrationTbe::RegisterParser），只告警；
+    // Register 返回 false 说明注册数据缺失，必须上报，避免算子静默未注册。
+    if (!OpRegistrationTbe::Instance()->Finalize(reg_data, true, true)) {
+      // false 既可能是"已注册"的复用场景，也可能是 OpParserFactory 为空等真实失败，留错误码便于区分
+      REPORT_INNER_ERR_MSG("E19999", "Finalize returned false for op type %s.", om);
+      GELOGW("[Check][CustomOp] Finalize returned false for op type %s, it may have been registered.", om);
+    }
+    if (!domi::OpRegistry::Instance()->Register(reg_data, true)) {
+      REPORT_INNER_ERR_MSG("E19999", "Register custom op %s failed.", om);
+      GELOGE(FAILED, "[Register][CustomOp] Failed to register custom op %s.", om);
+      return FAILED;
+    }
   }
   return SUCCESS;
 }
@@ -526,10 +632,11 @@ namespace ge {
     domi::tensorflow::OpDef opdef;
     GE_ASSERT_TRUE(opdef.ParseFromString(opdef_blob));
     std::string reg_op_string;
-    ConstructRegOpString(opdef, reg_op_string);
+    // 名字白名单校验失败必须整体失败：否则该算子会被静默漏掉，错误推迟到后续 AddNode 才暴露
+    GE_ASSERT_SUCCESS(ConstructRegOpString(opdef, reg_op_string));
     op_ss += reg_op_string;
     std::string reg_op_custom_string;
-    ConstructRegCustomOpString(opdef, *node_def, reg_op_custom_string);
+    GE_ASSERT_SUCCESS(ConstructRegCustomOpString(opdef, *node_def, reg_op_custom_string));
     GELOGD("Generated REGISTER_CUSTOM_OP:\n%s", reg_op_custom_string.c_str());
     custom_ss += reg_op_custom_string;
   }
@@ -547,12 +654,20 @@ Status TensorFlowCustomOpParser::WriteTextFile(const std::string &file_path, con
   }
   reg_op_file << content;
   reg_op_file.close();
+  if (reg_op_file.fail()) {
+    GELOGE(FAILED, "Failed to write file %s", file_path.c_str());
+    return FAILED;
+  }
   std::ifstream read_file(file_path);
-  if (read_file.is_open()) {
-    std::string file_content((std::istreambuf_iterator<char>(read_file)), std::istreambuf_iterator<char>());
-    read_file.close();
-  } else {
+  if (!read_file.is_open()) {
     GELOGE(FAILED, "Failed to read file %s for check", file_path.c_str());
+    return FAILED;
+  }
+  std::string file_content((std::istreambuf_iterator<char>(read_file)), std::istreambuf_iterator<char>());
+  read_file.close();
+  if (file_content != content) {
+    GELOGE(FAILED, "Content check failed for file %s, expect %zu bytes, actual %zu bytes", file_path.c_str(),
+           content.size(), file_content.size());
     return FAILED;
   }
   return SUCCESS;
@@ -585,6 +700,22 @@ Status TensorFlowCustomOpParser::DeleteTmpDirectoryContents(const std::string &o
   return SUCCESS;
 }
 
+namespace {
+// 无论 ParseCustomOp 从哪一步提前返回，都必须清理自定义算子临时目录
+class TmpDirCleaner {
+ public:
+  explicit TmpDirCleaner(const std::string &out_dir) : out_dir_(out_dir) {}
+  ~TmpDirCleaner() {
+    (void)TensorFlowCustomOpParser::DeleteTmpDirectoryContents(out_dir_);
+  }
+  TmpDirCleaner(const TmpDirCleaner &) = delete;
+  TmpDirCleaner &operator=(const TmpDirCleaner &) = delete;
+
+ private:
+  std::string out_dir_;
+};
+}  // namespace
+
 Status TensorFlowCustomOpParser::ParseCustomOp(
     const std::unordered_map<std::string, const domi::tensorflow::NodeDef *> &custom_nodes_map) {
   if (custom_nodes_map.empty()) {
@@ -599,11 +730,11 @@ Status TensorFlowCustomOpParser::ParseCustomOp(
   const std::string cc_path = out_dir + "/op_custom.cc";
   const std::string so_path = out_dir + "/lib_op_custom.so";
   GE_ASSERT_TRUE((ge::CreateDir(out_dir) == EOK), "Create direct failed, path: %s.", out_dir.c_str());
+  const TmpDirCleaner tmp_dir_cleaner(out_dir);
   GE_ASSERT_SUCCESS(WriteTextFile(header_path, all_reg_op_strings));
   GE_ASSERT_SUCCESS(WriteWrapperCc(cc_path));
   GE_ASSERT_SUCCESS(CompileCustomOpFiles(cc_path, so_path));
   GE_ASSERT_SUCCESS(LoadCustomOpsLibrary(so_path));
-  GE_ASSERT_SUCCESS(DeleteTmpDirectoryContents(out_dir));
   return SUCCESS;
 }
 }  // namespace ge

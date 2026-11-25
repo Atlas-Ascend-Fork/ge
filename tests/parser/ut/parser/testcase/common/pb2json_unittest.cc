@@ -695,4 +695,51 @@ TEST_F(UtestPb2Json, TypeBytes2String_offset_converts) {
   EXPECT_EQ(result[0], 'A');
   EXPECT_EQ(result[1], 'B');
 }
+
+// 覆盖率补充用例：IncCov_DictInitMalformedValues
+// 目的：覆盖 attr value 结构异常时按空值处理的分支，验证不再因 const 版 operator[] 而断言退出。
+// 说明：仅通过公开接口构造边界输入，不改动被测逻辑。
+TEST_F(UtestPb2Json, IncCov_DictInitMalformedValues) {
+  std::vector<std::string> idx2name;
+  std::vector<std::string> idx2value;
+  std::vector<bool> use_string_val;
+
+  Json json;
+  json["attr"] = Json::array();
+
+  Json item1;
+  item1["key"] = "attr_name_enum";
+  item1["value"] = "not_an_object";
+  json["attr"].push_back(item1);
+
+  Json item2;
+  item2["key"] = "attrs_use_string_value";
+  item2["value"] = 123;
+  json["attr"].push_back(item2);
+
+  Json item3;
+  item3["key"] = "attr_value_enum";
+  item3["value"]["list"] = "not_an_object";
+  json["attr"].push_back(item3);
+
+  Json item4;
+  item4["key"] = "attrs_use_string_value";
+  item4["value"]["list"] = 5;
+  json["attr"].push_back(item4);
+
+  Json item5;
+  item5["key"] = "attr_name_enum";
+  item5["value"]["list"]["s"] = 7;
+  json["attr"].push_back(item5);
+
+  Json item6;
+  item6["key"] = "attrs_use_string_value";
+  item6["value"]["list"]["b"] = 7;
+  json["attr"].push_back(item6);
+
+  EXPECT_EQ(Pb2Json::DictInit(json, idx2name, idx2value, use_string_val), 0);
+  EXPECT_TRUE(idx2name.empty());
+  EXPECT_TRUE(use_string_val.empty());
+}
+
 }  // namespace ge
