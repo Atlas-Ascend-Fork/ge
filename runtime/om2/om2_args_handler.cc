@@ -10,10 +10,24 @@
 
 #include "om2_args_handler.h"
 
+#include <limits>
 #include <new>
 
 #include "ge_common/debug/ge_log.h"
 #include "securec.h"
+
+namespace {
+constexpr size_t kArgsAddressAlign = 8UL;
+
+bool AlignArgsSizeTo8Byte(const size_t size, size_t &aligned_size) {
+  constexpr size_t mask = kArgsAddressAlign - 1UL;
+  if (size > (std::numeric_limits<size_t>::max() - mask)) {
+    return false;
+  }
+  aligned_size = (size + mask) & ~mask;
+  return true;
+}
+}  // namespace
 
 namespace ge {
 const gert::KernelArgs *Om2ArgsHandler::MallocReadOnlyDevArgs(void *host_args, size_t args_size) {
@@ -22,12 +36,21 @@ const gert::KernelArgs *Om2ArgsHandler::MallocReadOnlyDevArgs(void *host_args, s
            args_size);
     return nullptr;
   }
+
+  // aclrtLaunchKernelV2 要求 args 地址8字节对齐
+  size_t alloc_size = 0UL;
+  if (!AlignArgsSizeTo8Byte(args_size, alloc_size)) {
+    GELOGE(ACL_ERROR_GE_PARAM_INVALID, "[OM2][ArgsHandler] args size overflow, args_size=%zu.", args_size);
+    return nullptr;
+  }
+
   void *host_addr = nullptr;
   void *device_addr = nullptr;
-  const auto ret = allocate_args_buffer_(args_table_, static_cast<uint64_t>(args_size), &host_addr, &device_addr);
+  const auto ret = allocate_args_buffer_(args_table_, static_cast<uint64_t>(alloc_size), &host_addr, &device_addr);
   if (ret != ACL_SUCCESS) {
-    GELOGE(ACL_ERROR_GE_INTERNAL_ERROR, "[OM2][ArgsHandler] allocate args buffer failed, ret=%d, size=%zu.", ret,
-           args_size);
+    GELOGE(ACL_ERROR_GE_INTERNAL_ERROR,
+           "[OM2][ArgsHandler] allocate args buffer failed, ret=%d, size=%zu, alloc_size=%zu.", ret, args_size,
+           alloc_size);
     return nullptr;
   }
   if ((host_addr == nullptr) || (device_addr == nullptr)) {

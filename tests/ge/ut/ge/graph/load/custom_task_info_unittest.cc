@@ -1235,6 +1235,38 @@ TEST_F(UtestCustomTaskInfoE2E, AllocateArgsBuffer_MallocReadOnlyDevArgsE2E) {
   model.runtime_param_.mem_base = 0U;
 }
 
+TEST_F(UtestCustomTaskInfoE2E, MallocReadOnlyDevArgs_ShouldRequestAlignedSize_WhenArgsSizeUnaligned) {
+  DavinciModel model(0, nullptr);
+  const auto op_desc = CreateOpDesc("malloc_align_test", "MallocAlignTest", 1, 1);
+  SetUpMinimalDavinciModel(model, op_desc);
+
+  CustomTaskInfo task_info;
+  task_info.davinci_model_ = &model;
+  task_info.is_args_refreshable_ = true;
+  task_info.args_placement_ = ArgsPlacement::kArgsPlacementHbm;
+  uint8_t host_args[12] = {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U};
+
+  const gert::KernelArgs *first = task_info.MallocReadOnlyDevArgsImpl(host_args, sizeof(host_args));
+  ASSERT_NE(first, nullptr);
+  EXPECT_EQ(first->args_size, sizeof(host_args));
+
+  const auto &alloc_results = task_info.GetArgsAllocationResults();
+  ASSERT_EQ(alloc_results.size(), 1U);
+  EXPECT_EQ(alloc_results[0].size, 16U);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(alloc_results[0].host_addr) % 8U, 0U);
+
+  const auto &pool = model.args_manager_.extra_args_pools_[0];
+  EXPECT_EQ(pool.allocated_offset, 16U);
+
+  const gert::KernelArgs *second = task_info.MallocReadOnlyDevArgsImpl(host_args, sizeof(host_args));
+  ASSERT_NE(second, nullptr);
+  EXPECT_EQ(second->args_size, sizeof(host_args));
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(second->args_data) - reinterpret_cast<uintptr_t>(first->args_data), 16U);
+  EXPECT_EQ(pool.allocated_offset, 32U);
+
+  model.runtime_param_.mem_base = 0U;
+}
+
 TEST_F(UtestCustomTaskInfoE2E, IntegrateCustomOpArgs_RequiresFullModelInit) {
   // IntegrateCustomOpArgs requires a fully-initialized ModelArgsManager
   // (task_list_ptr_, model_args_, update_policies_to_model_data_, etc.)
