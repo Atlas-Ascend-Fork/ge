@@ -445,3 +445,87 @@ TEST_F(UTEST_fusion_engine_graph_replace_unittest, replace_update_specattr) {
 
   EXPECT_EQ("All_Cast_t", sl);
 }
+
+TEST_F(UTEST_fusion_engine_graph_replace_unittest, check_shape_null_input) {
+  shared_ptr<FEOpsKernelInfoStore> ops_kernel_info_store_ptr = std::make_shared<FEOpsKernelInfoStore>(fe::AI_CORE_NAME);
+  GraphReplace graph_replace(ops_kernel_info_store_ptr);
+  auto null_out = std::make_shared<ge::OutDataAnchor>(nullptr, 0);
+  auto null_in = std::make_shared<ge::InDataAnchor>(nullptr, 0);
+  EXPECT_FALSE(graph_replace.CheckShape(nullptr, null_in));
+  EXPECT_FALSE(graph_replace.CheckShape(null_out, nullptr));
+  EXPECT_FALSE(graph_replace.CheckShape(null_out, null_in));
+}
+
+TEST_F(UTEST_fusion_engine_graph_replace_unittest, check_shape_null_opdesc) {
+  shared_ptr<FEOpsKernelInfoStore> ops_kernel_info_store_ptr = std::make_shared<FEOpsKernelInfoStore>(fe::AI_CORE_NAME);
+  GraphReplace graph_replace(ops_kernel_info_store_ptr);
+  auto null_node = std::make_shared<ge::Node>();
+  auto out = std::make_shared<ge::OutDataAnchor>(null_node, 0);
+  auto in = std::make_shared<ge::InDataAnchor>(null_node, 0);
+  EXPECT_FALSE(graph_replace.CheckShape(out, in));
+}
+
+TEST_F(UTEST_fusion_engine_graph_replace_unittest, check_shape_desc_and_dims) {
+  shared_ptr<FEOpsKernelInfoStore> ops_kernel_info_store_ptr = std::make_shared<FEOpsKernelInfoStore>(fe::AI_CORE_NAME);
+  GraphReplace graph_replace(ops_kernel_info_store_ptr);
+  ComputeGraphPtr graph = CreateGraph();
+  auto data1 = graph->FindNode("data1");
+  auto square_1 = graph->FindNode("square_1");
+  ASSERT_NE(data1, nullptr);
+  ASSERT_NE(square_1, nullptr);
+  auto in0 = square_1->GetInDataAnchor(0);
+  auto bad_out = std::make_shared<ge::OutDataAnchor>(data1, 99);
+  EXPECT_FALSE(graph_replace.CheckShape(bad_out, in0));
+
+  auto out0 = data1->GetOutDataAnchor(0);
+  ge::GeTensorDesc out_desc_unequal(ge::GeShape({3, 5}), ge::FORMAT_ND, ge::DT_FLOAT);
+  ge::GeTensorDesc in_desc(ge::GeShape({2, 4}), ge::FORMAT_ND, ge::DT_FLOAT);
+  (void)data1->GetOpDesc()->UpdateOutputDesc(0, out_desc_unequal);
+  (void)square_1->GetOpDesc()->UpdateInputDesc(0, in_desc);
+  EXPECT_FALSE(graph_replace.CheckShape(out0, in0));
+
+  (void)data1->GetOpDesc()->UpdateOutputDesc(0, in_desc);
+  EXPECT_TRUE(graph_replace.CheckShape(out0, in0));
+}
+
+TEST_F(UTEST_fusion_engine_graph_replace_unittest, check_data_type_null_input) {
+  shared_ptr<FEOpsKernelInfoStore> ops_kernel_info_store_ptr = std::make_shared<FEOpsKernelInfoStore>(fe::AI_CORE_NAME);
+  GraphReplace graph_replace(ops_kernel_info_store_ptr);
+  auto null_out = std::make_shared<ge::OutDataAnchor>(nullptr, 0);
+  auto null_in = std::make_shared<ge::InDataAnchor>(nullptr, 0);
+  EXPECT_FALSE(graph_replace.CheckDataType(nullptr, null_in));
+  EXPECT_FALSE(graph_replace.CheckDataType(null_out, nullptr));
+  EXPECT_FALSE(graph_replace.CheckDataType(null_out, null_in));
+}
+
+TEST_F(UTEST_fusion_engine_graph_replace_unittest, check_data_type_null_opdesc) {
+  shared_ptr<FEOpsKernelInfoStore> ops_kernel_info_store_ptr = std::make_shared<FEOpsKernelInfoStore>(fe::AI_CORE_NAME);
+  GraphReplace graph_replace(ops_kernel_info_store_ptr);
+  auto null_node = std::make_shared<ge::Node>();
+  auto out = std::make_shared<ge::OutDataAnchor>(null_node, 0);
+  auto in = std::make_shared<ge::InDataAnchor>(null_node, 0);
+  EXPECT_FALSE(graph_replace.CheckDataType(out, in));
+}
+
+TEST_F(UTEST_fusion_engine_graph_replace_unittest, check_data_type_desc_and_dtype) {
+  shared_ptr<FEOpsKernelInfoStore> ops_kernel_info_store_ptr = std::make_shared<FEOpsKernelInfoStore>(fe::AI_CORE_NAME);
+  GraphReplace graph_replace(ops_kernel_info_store_ptr);
+  ComputeGraphPtr graph = CreateGraph();
+  auto data1 = graph->FindNode("data1");
+  auto square_1 = graph->FindNode("square_1");
+  ASSERT_NE(data1, nullptr);
+  ASSERT_NE(square_1, nullptr);
+  auto in0 = square_1->GetInDataAnchor(0);
+  auto bad_out = std::make_shared<ge::OutDataAnchor>(data1, 99);
+  EXPECT_FALSE(graph_replace.CheckDataType(bad_out, in0));
+
+  auto out0 = data1->GetOutDataAnchor(0);
+  ge::GeTensorDesc out_desc_unequal(ge::GeShape({2, 4}), ge::FORMAT_ND, ge::DT_INT32);
+  ge::GeTensorDesc in_desc(ge::GeShape({2, 4}), ge::FORMAT_ND, ge::DT_FLOAT);
+  (void)data1->GetOpDesc()->UpdateOutputDesc(0, out_desc_unequal);
+  (void)square_1->GetOpDesc()->UpdateInputDesc(0, in_desc);
+  EXPECT_FALSE(graph_replace.CheckDataType(out0, in0));
+
+  (void)data1->GetOpDesc()->UpdateOutputDesc(0, in_desc);
+  EXPECT_TRUE(graph_replace.CheckDataType(out0, in0));
+}
