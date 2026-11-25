@@ -118,14 +118,17 @@ graphStatus ValidateCustomOpParams(const AscendString &op_type, const OpBackend 
 }
 
 bool IsCommonCapability(const CustomOpCapability capability) {
-  return (capability == CustomOpCapability::kShapeInfer) || (capability == CustomOpCapability::kInferMeta) ||
-         (capability == CustomOpCapability::kPortable) || (capability == CustomOpCapability::kCompilable);
+  return (capability == CustomOpCapability::kShapeInfer) || (capability == CustomOpCapability::kSymbolicInfer) ||
+         (capability == CustomOpCapability::kInferMeta) || (capability == CustomOpCapability::kPortable) ||
+         (capability == CustomOpCapability::kCompilable);
 }
 
 bool HasCommonCapability(const BaseCustomOp *op, const CustomOpCapability capability) {
   switch (capability) {
     case CustomOpCapability::kShapeInfer:
       return CustomOpCast<ShapeInferOp>(op) != nullptr;
+    case CustomOpCapability::kSymbolicInfer:
+      return CustomOpCast<SymbolicInferOp>(op) != nullptr;
     case CustomOpCapability::kInferMeta:
       return CustomOpCast<CustomOpInferMetaProvider>(op) != nullptr;
     case CustomOpCapability::kPortable:

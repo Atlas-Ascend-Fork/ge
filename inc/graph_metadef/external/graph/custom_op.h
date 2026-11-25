@@ -20,6 +20,7 @@
 #include "exe_graph/runtime/host_cpu_op_execution_context.h"
 #include "exe_graph/runtime/infer_datatype_context.h"
 #include "exe_graph/runtime/infer_shape_context.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
 #include "exe_graph/runtime/op_compile_context.h"
 #include "exe_graph/runtime/resource_usage_context.h"
 #include "exe_graph/runtime/update_args_context.h"
@@ -55,8 +56,8 @@ enum class OpEngine : uint32_t {
 
 /**
  * 自定义算子能力接口的公共基类。
- * 用户可按需组合继承 CompilableOp、EagerExecuteOp、ShapeInferOp，
- * 以声明算子支持的构图编译、Eager 执行和推理能力。
+ * 用户可按需组合继承 CompilableOp、EagerExecuteOp、ShapeInferOp、SymbolicInferOp，
+ * 以声明算子支持的构图编译、Eager 执行、推理和符号化推导能力。
  */
 class BaseCustomOp {
  public:
@@ -200,6 +201,21 @@ class ShapeInferOp : virtual public BaseCustomOp {
    * @return 状态码
    */
   virtual graphStatus InferDataType(gert::InferDataTypeContext *ctx) = 0;
+};
+
+/**
+ * 自定义算子的符号化推导能力接口。
+ * 实现该接口的算子会在编译期符号化推导阶段被回调，推导优先级高于字段注册方式。
+ */
+class SymbolicInferOp : virtual public BaseCustomOp {
+ public:
+  ~SymbolicInferOp() override = default;
+  /**
+   * 符号化推导函数，用于根据输入符号 Shape 和符号值推导输出
+   * @param ctx 符号化推导上下文，可通过上下文读取输入符号并设置输出符号
+   * @return GRAPH_SUCCESS 表示推导成功；GRAPH_NOT_CHANGED 表示本次不提供符号信息；其他值表示推导失败
+   */
+  virtual graphStatus InferSymbol(gert::InferSymbolContext *ctx) = 0;
 };
 
 using BaseOpCreator = std::function<std::unique_ptr<BaseCustomOp>()>;

@@ -24,6 +24,7 @@ enum class CustomOpCapability : uint32_t {
   kInferMeta = 1U << 6U,
   kHostCpuExecute = 1U << 7U,
   kResourceReporting = 1U << 8U,
+  kSymbolicInfer = 1U << 9U,
 };
 
 using CustomOpCapabilityMask = uint32_t;
