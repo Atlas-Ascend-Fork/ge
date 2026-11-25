@@ -35,7 +35,7 @@ Status UselessControlOutRemovePass::Run(NodePtr &node) {
     } else {
       auto out_ctrl_anchor = node->GetOutControlAnchor();
       if (out_ctrl_anchor != nullptr && (out_ctrl_anchor->GetPeerAnchorsSize() > 0UL)) {
-        GELOGI("Node: %s unlink all out control edge.", node->GetName().c_str());
+        GELOGI("Node: %s unlinks all out control edges.", node->GetName().c_str());
         out_ctrl_anchor->UnlinkAll();
       }
     }

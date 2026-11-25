@@ -272,7 +272,7 @@ Status SwitchToStreamSwitchPass::BypassSwitchNode(const NodePtr &switch_node, Ou
       peer_cond_anchor = peer_out_anchor;
       if (FindSwitchCondInput(peer_cond_anchor) != SUCCESS) {
         REPORT_INNER_ERR_MSG("E19999", "Find switch cond input failed.");
-        GELOGE(FAILED, "Find switch cond input failed.");
+        GELOGE(FAILED, "[Find][CondInput] for switch_node %s failed.", switch_node->GetName().c_str());
       }
     }
   }

@@ -58,7 +58,7 @@ class LabelMakerFactory {
   void RegisterCreator(const std::string &node_type, const LabelCreatorFun func) {
     auto it = creator_map_.find(node_type);
     if (it != creator_map_.end()) {
-      GELOGD("LabelMarkFactory::RegisterCreator: %s creator already exist", node_type.c_str());
+      GELOGD("LabelMarkFactory::RegisterCreator: %s creator already exists", node_type.c_str());
       return;
     }
 

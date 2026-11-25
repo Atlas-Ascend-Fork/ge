@@ -86,7 +86,7 @@ Status FlowCtrlPass::Run(ComputeGraphPtr compute_graph) {
     auto ret =
         GraphUtils::AddEdge(active_node->GetOutControlAnchor(), assign_add_node_in_fpbp_loop_->GetInControlAnchor());
     if (ret != GRAPH_SUCCESS) {
-      GELOGW("add control edge between iter_loop_node:%s and fpbp_loop_node:%s fail, may cause block",
+      GELOGW("Add control edge between iter_loop_node:%s and fpbp_loop_node:%s failed, may cause block",
              active_node->GetName().c_str(), assign_add_node_in_fpbp_loop_->GetName().c_str());
     }
   }
@@ -214,7 +214,7 @@ NodePtr FlowCtrlPass::AddVariableNode(ComputeGraphPtr &compute_graph, const std:
                   DOMI_LOGE("[Check][Param] compute_graph is nullptr"); return nullptr);
   NodePtr exist_node = compute_graph->FindNode(name);
   if (exist_node != nullptr) {
-    GELOGD("Node %s already exist, no need add.", name.c_str());
+    GELOGD("Node %s already exists, no need to add.", name.c_str());
     return exist_node;
   }
   // fetch and set tensor desc

@@ -107,7 +107,7 @@ bool MergePass::IsNeedChangeIndexToConstant(const NodePtr &node) const {
   for (const auto &peer_in_anchor : out_anchor->GetPeerInDataAnchors()) {
     if (peer_in_anchor != nullptr && peer_in_anchor->GetOwnerNode() != nullptr) {
       GELOGI(
-          "[%s] MergePass, value_index link to other node, "
+          "[%s] MergePass, value_index links to other node, "
           "change it to be Constant.",
           node->GetName().c_str());
       return true;

@@ -77,7 +77,9 @@ Status CondPass::Run(NodePtr &node) {
         REPORT_INNER_ERR_MSG("E19999", "data_type:%d of index:%d input tensor in op:%s(%s) check invalid",
                              cond_tensor.GetDataType(), cond_in_anchor->GetIdx(), op_desc->GetName().c_str(),
                              op_desc->GetType().c_str());
-        GELOGE(FAILED, "[Check][Param] data_type:%d of index:%d input tensor in op:%s(%s) is invalid",
+        GELOGE(FAILED,
+               "[Check][Param] data_type:%d of index:%d input tensor in op:%s(%s) is invalid, valid data types are "
+               "[DT_STRING, DT_BOOL, DT_FLOAT, DT_DOUBLE, DT_UINT8, DT_INT16, DT_INT8, DT_INT64, DT_INT32].",
                cond_tensor.GetDataType(), cond_in_anchor->GetIdx(), op_desc->GetName().c_str(),
                op_desc->GetType().c_str());
         return FAILED;

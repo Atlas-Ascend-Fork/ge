@@ -229,7 +229,7 @@ graphStatus GraphLint::VerifyRwConflictPerOutAnchor(const OutDataAnchorPtr &out_
         REPORT_INNER_ERR_MSG(
             "W18888",
             "There is no control relation between write node[%s] and other write node[%s]. Please check "
-            "graph make it valid, sometimes it may cause problem (precision problem).",
+            "the graph and make it valid; sometimes it may cause problems (e.g. precision problems).",
             write_node->GetNamePtr(), other_write_node->GetNamePtr());
         return GRAPH_FAILED;
       }
@@ -243,7 +243,7 @@ graphStatus GraphLint::VerifyRwConflictPerOutAnchor(const OutDataAnchorPtr &out_
                other_read_node->GetNamePtr());
         REPORT_INNER_ERR_MSG("W18888",
                              "There is no control relation between write node[%s] and read node[%s]. Please check "
-                             "graph make it valid, sometimes it may cause problem (precision problem).",
+                             "the graph and make it valid; sometimes it may cause problems (e.g. precision problems).",
                              write_node->GetNamePtr(), other_read_node->GetNamePtr());
         return GRAPH_FAILED;
       }

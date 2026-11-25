@@ -1104,12 +1104,12 @@ Status HostCpuFusionCodegen::Generate(const HostCpuFusionRegion &region, HostCpu
   result.register_name = register_name;
   result.source = code.str();
   if (result.source.size() > kMaxGeneratedSourceSize) {
-    GELOGW("HostCPU fusion generated source is too large: chain[%s], source_size[%zu], limit[%zu].",
+    GELOGW("HostCPU fusion generated source is too large: chain[%s], source_size[%zu bytes], limit[%zu bytes].",
            region.chain_id.c_str(), result.source.size(), kMaxGeneratedSourceSize);
     result = {};
     return UNSUPPORTED;
   }
-  GELOGD("Generated HostCPU custom-op source: chain=%s, op_type=%s, source_size=%zu.", region.chain_id.c_str(),
+  GELOGD("Generated HostCPU custom-op source: chain=%s, op_type=%s, source_size=%zu bytes.", region.chain_id.c_str(),
          register_name.c_str(), result.source.size());
   return SUCCESS;
 }
@@ -1129,14 +1129,15 @@ Status HostCpuFusionCompiler::Compile(const std::string &source, std::vector<uin
 
   // 校验源码
   if (source.empty() || (source.size() > kMaxGeneratedSourceSize)) {
-    GELOGW("Invalid HostCPU fusion JIT source: source_size[%zu], limit[%zu].", source.size(), kMaxGeneratedSourceSize);
+    GELOGW("Invalid HostCPU fusion JIT source: source_size[%zu bytes], limit[%zu bytes].", source.size(),
+           kMaxGeneratedSourceSize);
     return UNSUPPORTED;
   }
   if (include_paths.empty()) {
     GELOGW("HostCPU fusion JIT include path is empty, check ASCEND_OPP_PATH or ASCEND_HOME_PATH.");
     return UNSUPPORTED;
   }
-  GELOGD("Compile HostCPU fusion source: compiler=%s, target_cpu=%s, source_size=%zu, include_paths=%s.",
+  GELOGD("Compile HostCPU fusion source: compiler=%s, target_cpu=%s, source_size=%zu bytes, include_paths=%s.",
          compiler_name.c_str(), target_cpu.c_str(), source.size(), JoinPaths(include_paths).c_str());
   if (!CheckRequiredHeaders(include_paths)) {
     return UNSUPPORTED;
@@ -1178,7 +1179,8 @@ Status HostCpuFusionCompiler::Compile(const std::string &source, std::vector<uin
   do {
     // 把源码写入source_fd
     if (!WriteAll(source_fd, source.data(), source.size())) {
-      GELOGE(FAILED, "Failed to write HostCPU fusion source memfd: errno[%d], source_size[%zu].", errno, source.size());
+      GELOGE(FAILED, "Failed to write HostCPU fusion source memfd: errno[%d], source_size[%zu bytes].", errno,
+             source.size());
       break;
     }
 
@@ -1255,7 +1257,7 @@ Status HostCpuFusionCompiler::Compile(const std::string &source, std::vector<uin
     // 检查.so大小 0 < so_size <= 10 MB 空文件、超过 10 MB 或 lseek失败
     const off_t so_size = lseek(so_fd, 0, SEEK_END);
     if ((so_size <= 0) || (static_cast<uint64_t>(so_size) > kMaxGeneratedSoSize) || (lseek(so_fd, 0, SEEK_SET) < 0)) {
-      GELOGW("Invalid HostCPU fusion compiler output: so_size[%lld], limit[%zu], errno[%d].",
+      GELOGW("Invalid HostCPU fusion compiler output: so_size[%lld bytes], limit[%zu bytes], errno[%d].",
              static_cast<long long>(so_size), kMaxGeneratedSoSize, errno);
       break;
     }
@@ -1268,8 +1270,8 @@ Status HostCpuFusionCompiler::Compile(const std::string &source, std::vector<uin
       }
       if (read_size <= 0) {
         GELOGE(FAILED,
-               "Failed to read HostCPU fusion compiler output: offset[%zu], so_size[%zu], read_size[%zd], "
-               "errno[%d].",
+               "Failed to read HostCPU fusion compiler output: offset[%zu bytes], so_size[%zu bytes], "
+               "read_size[%zd bytes], errno[%d].",
                offset, so_data.size(), read_size, errno);
         so_data.clear();
         break;
@@ -1277,8 +1279,8 @@ Status HostCpuFusionCompiler::Compile(const std::string &source, std::vector<uin
       offset += static_cast<size_t>(read_size);
     }
     if (!IsExpectedElf(so_data, target_cpu)) {
-      GELOGW("HostCPU fusion compiler output is not an expected ELF: target_cpu[%s], so_size[%zu].", target_cpu.c_str(),
-             so_data.size());
+      GELOGW("HostCPU fusion compiler output is not an expected ELF: target_cpu[%s], so_size[%zu bytes].",
+             target_cpu.c_str(), so_data.size());
       so_data.clear();
       break;
     }

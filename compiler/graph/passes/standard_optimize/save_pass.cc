@@ -57,7 +57,7 @@ Status SavePass::Run(ge::ComputeGraphPtr graph) {
   // add output nodes for save
   std::vector<std::pair<NodePtr, int32_t>> out_nodes_info{};
   for (size_t i = 0; i < front_nodes.size(); i++) {
-    GELOGI("graph add out_node %s:%d", front_nodes[i]->GetName().c_str(), out_index[i]);
+    GELOGD("graph add out_node %s:%d", front_nodes[i]->GetName().c_str(), out_index[i]);
     out_nodes_info.emplace_back(std::pair<NodePtr, int32_t>(front_nodes[i], out_index[i]));
   }
   graph->AppendGraphOutNodesInfo(out_nodes_info);

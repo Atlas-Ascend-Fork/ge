@@ -36,7 +36,7 @@ Status PartitionedCallOpLabelMaker::Run(uint32_t &label_index) {
   if (sub_graph_name.empty()) {
     REPORT_INNER_ERR_MSG("E19999", "Node:%s(%s) subgraph_index:%d name is empty, check invalid",
                          call_desc->GetName().c_str(), call_desc->GetType().c_str(), kSubGraphIndex);
-    GELOGE(INTERNAL_ERROR, "[Check][Param] Node:%s has no subgraph name.", sub_graph_name.c_str());
+    GELOGE(INTERNAL_ERROR, "[Check][Param] Node:%s has no subgraph name.", call_desc->GetName().c_str());
     return FAILED;
   }
 

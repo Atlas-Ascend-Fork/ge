@@ -147,7 +147,7 @@ Status GetDataDimN(const ge::NodePtr &data_node, ge::Format format, int64_t &bat
                                                        to_string(shape.size()).c_str(), reason.c_str()}));
   GELOGE(PARAM_INVALID,
          "[Check][Param] The shape size of this node [%s] "
-         "which linked dynamic aipp must be in range[3, 4], but is %zu",
+         "which is linked to dynamic aipp must be in range[3, 4], but is %zu",
          data_node->GetName().c_str(), shape.size());
   return PARAM_INVALID;
 }
@@ -416,7 +416,7 @@ Status AippOp::FindDataNodeInSubgraph(const ComputeGraphPtr &graph, uint32_t in_
       if (next_node->GetType() != PARTITIONEDCALL) {
         continue;
       }
-      GELOGD("partitioned_call: %s find in the function of FindDataNodeInSubgraph.", next_node->GetName().c_str());
+      GELOGD("partitioned_call: %s is found in the function of FindDataNodeInSubgraph.", next_node->GetName().c_str());
       const auto &src_root_compute_graph = GraphUtils::FindRootGraph(next_node->GetOwnerComputeGraph());
       for (const auto &cur_sub_graph : src_root_compute_graph->GetAllSubgraphs()) {
         if (cur_sub_graph->GetParentNode()->GetName() != next_node->GetName()) {
@@ -440,7 +440,7 @@ Status AippOp::FindInSubGraph(const std::shared_ptr<Node> &node,
     if (next_node->GetType() != PARTITIONEDCALL) {
       continue;
     }
-    GELOGD("partitioned_call: %s find in FindInSubGraph.", next_node->GetName().c_str());
+    GELOGD("partitioned_call: %s is found in FindInSubGraph.", next_node->GetName().c_str());
     const auto &src_root_compute_graph = GraphUtils::FindRootGraph(next_node->GetOwnerComputeGraph());
     for (const auto &cur_sub_graph : src_root_compute_graph->GetAllSubgraphs()) {
       uint32_t recursion_depth = 0U;
@@ -586,7 +586,7 @@ Status AippOp::ConvertRelatedInputNameToRank() {
   }
   if (!convert_flag) {
     std::string error_msg = "related_input_name " + related_input_name +
-                            "convert rank failed, Please ensure it is"
+                            " convert rank failed, Please ensure it is"
                             " caffe scene or related_input_name in aipp config is the top name of data node";
     GELOGE(PARAM_INVALID, "[Check][InputParam]%s", error_msg.c_str());
     REPORT_PREDEFINED_ERR_MSG("E10052", std::vector<const char_t *>({"reason"}),
@@ -858,7 +858,12 @@ void AippOp::SetInputFormat(nlohmann::json &cfg_json) const {
   if (iter != kInputFormatMap.cend()) {
     cfg_json["input_format"] = iter->second;
   } else {
-    GELOGW("Input format of config param in aipp node is invalid.");
+    GELOGW(
+        "Input format of config param in aipp node is invalid, actual input_format: %s, expected one of "
+        "[YUV420SP_U8, XRGB8888_U8, RGB888_U8, YUV400_U8, NC1HWC0DI_FP16, NC1HWC0DI_S8, ARGB8888_U8, YUYV_U8, "
+        "YUV422SP_U8, AYUV444_U8, RAW10, RAW12, RAW16, RAW24, RGB16, RGB20, RGB24, RGB8_IR, RGB16_IR, "
+        "RGB24_IR].",
+        domi::AippOpParams::InputFormat_Name(input_format).c_str());
   }
 }
 
@@ -868,7 +873,10 @@ void AippOp::SetAippMode(nlohmann::json &cfg_json) const {
   if (iter != kAippModeMap.cend()) {
     cfg_json["aipp_mode"] = iter->second;
   } else {
-    GELOGW("Aipp mode of config param in aipp node is invalid.");
+    GELOGW(
+        "Aipp mode of config param in aipp node is invalid, actual aipp_mode: %s, "
+        "expected one of [static, dynamic].",
+        domi::AippOpParams::AippMode_Name(aipp_mode).c_str());
   }
 }
 

@@ -141,7 +141,8 @@ Status ControlTriggerPass::FindSwitchNode(const NodePtr &node, NodePtr &switch_n
       case kNotControlOp:
         break;
       default:
-        GELOGE(FAILED, "[Check][Param] invalid node type");
+        GELOGE(FAILED, "[Check][Param] Node %s has invalid type %s.", tmp_node->GetName().c_str(),
+               tmp_node->GetType().c_str());
         return FAILED;
     }
 

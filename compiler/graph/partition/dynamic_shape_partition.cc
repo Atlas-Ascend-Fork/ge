@@ -619,10 +619,10 @@ Status DynamicShapePartitioner::MarkUnknownShapeNodes() {
                       "[Call][CollectSpreadUnknownShapeNodes] for node:%s failed.", node->GetName().c_str());
   }
   for (const auto &unknown_shape_node : unknown_shape_nodes_) {
-    GELOGI("Collect unknown shape node:%s.", unknown_shape_node->GetNamePtr());
+    GELOGD("Collect unknown shape node:%s.", unknown_shape_node->GetNamePtr());
   }
   for (const auto &unknown_shape_no_tiling_node : unknown_shape_no_tiling_nodes_) {
-    GELOGI("Collect unknown shape no tiling node:%s.", unknown_shape_no_tiling_node->GetNamePtr());
+    GELOGD("Collect unknown shape no tiling node:%s.", unknown_shape_no_tiling_node->GetNamePtr());
   }
   if (!unknown_shape_nodes_.empty() && !unknown_shape_no_tiling_nodes_.empty()) {
     GELOGW("Graph cannot support no tiling, cause [%zu] no tiling nodes and [%zu] unknown shape nodes coexist.",
@@ -753,7 +753,7 @@ Status DynamicShapePartitioner::MergeClustersInputData() {
 }
 
 Status DynamicShapePartitioner::TryMergeClusters(const ClusterFilter &cluster_filter) {
-  GE_CHECK_NOTNULL(cluster_filter, "cluster filter cannot be nullptr");
+  GE_CHECK_NOTNULL(cluster_filter, " cluster filter cannot be nullptr");
   // Merge known shape clusters
   for (const auto &cluster : GetOrderedClusters()) {
     if (cluster->IsIndependent()) {
@@ -840,7 +840,7 @@ Status DynamicShapePartitioner::MergeRefVariableCluster() {
   };
   const auto unique_cluster = GetUniqueClusters(filter);
   for (size_t i = 0UL; i < unique_cluster.size(); i++) {
-    GELOGI("Variable cluster: %zu should merge with its input", i);
+    GELOGD("Variable cluster: %zu should merge with its input", i);
     auto cluster = unique_cluster[i];
     GE_ASSERT_NOTNULL(cluster);
     auto in_cluster = *(cluster->Inputs().begin());

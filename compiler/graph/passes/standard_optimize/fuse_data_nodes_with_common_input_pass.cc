@@ -90,7 +90,7 @@ Status FuseDataNodesWithCommonInputPass::FuseDataNodes(
         auto first_node = need_fuse_data_nodes.at(0);
         for (size_t i = 1; i < need_fuse_data_nodes.size(); ++i) {
           auto node = need_fuse_data_nodes.at(i);
-          GELOGI("Replace redundant data node %s by %s exist in graph: %s.", node->GetName().c_str(),
+          GELOGD("Replace redundant data node %s by %s exist in graph: %s.", node->GetName().c_str(),
                  first_node->GetName().c_str(), subgraph->GetName().c_str());
           // the data node which can be fused has none input(both data and control in)
           if (GraphUtils::MoveOutCtrlEdges(node, first_node) != SUCCESS) {

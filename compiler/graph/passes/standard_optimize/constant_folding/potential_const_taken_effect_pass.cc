@@ -42,8 +42,8 @@ Status PotentialConstTakenEffectPass::OnFinishGraph(ComputeGraphPtr &root_graph,
     vector<GeTensorPtr> potential_weights;
     bool has_weight = AttrUtils::MutableListTensor(op_desc, ATTR_NAME_POTENTIAL_WEIGHT, potential_weights);
     if (!has_weight || potential_weights.empty()) {
-      GELOGW("Potential const node %s(%s) has no weight, cannot fold. May cause fail later.", node->GetName().c_str(),
-             node->GetType().c_str());
+      GELOGW("Potential const node %s(%s) has no weight, cannot fold. May cause failure later.",
+             node->GetName().c_str(), node->GetType().c_str());
       if (!ConstantUtils::UnMarkPotentialConst(op_desc)) {
         // not a complete potential const, maybe attrs is removed by mistake, here just rm attrs;
         (void)op_desc->DelAttr(ATTR_NAME_POTENTIAL_CONST);

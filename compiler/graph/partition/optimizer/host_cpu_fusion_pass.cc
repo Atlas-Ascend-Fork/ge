@@ -749,7 +749,7 @@ NodePtr CreateFusedNode(const ComputeGraphPtr &graph, const PreparedFusionRegion
            op_desc->GetName().c_str());
     return nullptr;
   }
-  GELOGD("HostCPU fusion adds custom-op node[%s]: chain[%s], so_size=%zu, inputs=%zu, outputs=%zu.",
+  GELOGD("HostCPU fusion adds custom-op node[%s]: chain[%s], so_size=%zu bytes, inputs=%zu, outputs=%zu.",
          fused_node->GetNamePtr(), prepared.region.chain_id.c_str(), prepared.codegen.so_data.size(),
          prepared.region.external_inputs.size(), prepared.region.external_outputs.size());
   return fused_node;
@@ -839,8 +839,10 @@ struct FusionCustomOpArtifacts {
 OpSoBinPtr CreateFusionCustomOpSoBin(const PreparedFusionRegion &prepared) {
   const auto &so_data = prepared.codegen.so_data;
   if (so_data.empty() || (so_data.size() > std::numeric_limits<uint32_t>::max())) {
-    GELOGE(PARAM_INVALID, "Invalid generated HostCPU custom-op SO size[%zu], op_type[%s].", so_data.size(),
-           prepared.codegen.register_name.c_str());
+    GELOGE(PARAM_INVALID,
+           "Invalid generated HostCPU custom-op SO size[%zu bytes], op_type[%s], valid range is (0, 4294967295] "
+           "bytes.",
+           so_data.size(), prepared.codegen.register_name.c_str());
     return nullptr;
   }
   auto data = std::make_unique<char_t[]>(so_data.size());

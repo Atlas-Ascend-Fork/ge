@@ -49,7 +49,7 @@ Status DynamicDataFlowPartitionerPass::GetDataFlowOpMapping(const ge::ComputeGra
     int64_t handle;
     if (AttrUtils::GetInt(node->GetOpDesc(), ATTR_NAME_DATA_FLOW_HANDLE, handle)) {
       (void)data_flow_ops_[handle].insert(node);
-      GELOGD("Get data flow node %s, handle %ld is success.", node->GetName().c_str(), handle);
+      GELOGD("Get data flow node %s, handle %ld succeeded.", node->GetName().c_str(), handle);
     }
   }
   return SUCCESS;

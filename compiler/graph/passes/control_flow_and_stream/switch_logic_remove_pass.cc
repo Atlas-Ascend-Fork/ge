@@ -96,7 +96,7 @@ Status SwitchLogicRemovePass::Run(NodePtr &node) {
       if (pred_node_and_out != pred_node_next_switch) {
         continue;
       }
-      GELOGI("The switch nodes cascaded %s and %s have the same pred node %s, the %s can be remove",
+      GELOGI("The switch nodes cascaded %s and %s have the same pred node %s, the %s can be removed",
              node->GetName().c_str(), dst_node->GetName().c_str(), pred_node_and_out.first->GetName().c_str(),
              dst_node->GetName().c_str());
       ret = RemoveSwitchNodeLogically(i, dst_node);

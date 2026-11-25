@@ -55,7 +55,7 @@ Status DimensionAdjustPass::Run(ge::NodePtr &node) {
     return INTERNAL_ERROR;
   }
   if (is_unknown) {
-    GELOGI("Current node %s, type %s is unknown shape which should be skip.", node->GetName().c_str(),
+    GELOGI("Current node %s, type %s is unknown shape which should be skipped.", node->GetName().c_str(),
            node->GetType().c_str());
     return SUCCESS;
   }

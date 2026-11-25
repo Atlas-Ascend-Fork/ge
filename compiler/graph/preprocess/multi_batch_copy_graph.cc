@@ -68,7 +68,7 @@ inline bool IsGetNextType(const NodePtr &node) {
 // +-----------+
 void GetDynamicShapeByGraph(const ComputeGraphPtr &graph, const NodePtr &node, std::set<size_t> &dynamic_output_index,
                             std::vector<std::string> &dynamic_output_dims) {
-  GELOGD("Try get dynamic shape info, Graph: %s, Node: %s", graph->GetName().c_str(), node->GetName().c_str());
+  GELOGD("Try to get dynamic shape info, Graph: %s, Node: %s", graph->GetName().c_str(), node->GetName().c_str());
   const auto &func_desc = node->GetOpDesc();
   if (!func_desc->HasAttr(ATTR_NAME_BATCH_NUM)) {
     GELOGD("Graph: %s Not multi-batch, Node: %s", graph->GetName().c_str(), node->GetName().c_str());
@@ -90,9 +90,9 @@ void GetDynamicShapeByGraph(const ComputeGraphPtr &graph, const NodePtr &node, s
 
       const auto &out_node = subgraph->FindFirstNodeMatchType(NETOUTPUT);
       if (out_node == nullptr) {
-        REPORT_INNER_ERR_MSG("E19999", "No netoutput node exist in subgraph:%s, check invalid",
+        REPORT_INNER_ERR_MSG("E19999", "No netoutput node exists in subgraph:%s, check invalid",
                              subgraph->GetName().c_str());
-        GELOGE(GE_GRAPH_GRAPH_NODE_NULL, "[Check][Param] No netoutput node exist in subgraph:%s",
+        GELOGE(GE_GRAPH_GRAPH_NODE_NULL, "[Check][Param] No netoutput node exists in subgraph:%s",
                subgraph->GetName().c_str());
         dynamic_output_dims.clear();
         return;
@@ -131,10 +131,10 @@ void GetDynamicShapeByGraph(const ComputeGraphPtr &graph, const NodePtr &node, s
 void GetDirectOutputShape(const ComputeGraphPtr &graph, const NodePtr &node,
                           const std::set<size_t> &dynamic_output_index, std::vector<std::string> &dynamic_output_dims) {
   if (!GetLocalOmgContext().dynamic_node_type.empty()) {
-    GELOGD("No need to get directly shape info of %s when train.", node->GetName().c_str());
+    GELOGD("No need to get directly shape info of %s when training.", node->GetName().c_str());
     return;
   }
-  GELOGD("Try get directly shape info, Graph: %s, Node: %s", graph->GetName().c_str(), node->GetName().c_str());
+  GELOGD("Try to get shape info directly, Graph: %s, Node: %s", graph->GetName().c_str(), node->GetName().c_str());
   const auto &netoutput_desc = node->GetOpDesc();
   const auto &inputnode_to_netoutput = node->GetInDataNodes();
   for (size_t i = 0; i < inputnode_to_netoutput.size(); ++i) {

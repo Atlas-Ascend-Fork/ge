@@ -417,7 +417,7 @@ Status ge::EnginePartitioner::MergeSubGraph(ge::ComputeGraphPtr &output_merged_c
   GE_ASSERT_NOTNULL(original_compute_graph, "[Check][Param] original_compute_graph is nullptr.");
   if ((graph_2_graph_partition_info_.find(original_compute_graph) == graph_2_graph_partition_info_.end()) ||
       (graph_2_subgraph_list_.find(original_compute_graph) == graph_2_subgraph_list_.end())) {
-    GELOGW("[GraphPartition]: compute_graph has not found, just return original.");
+    GELOGW("[GraphPartition]: compute_graph was not found, just return original.");
     output_merged_compute_graph = original_compute_graph;
     return SUCCESS;
   }
@@ -425,7 +425,8 @@ Status ge::EnginePartitioner::MergeSubGraph(ge::ComputeGraphPtr &output_merged_c
   const auto &sub_graph_list = graph_2_subgraph_list_[original_compute_graph];
 
   GE_ASSERT_TRUE(graph_info.mode_ == Mode::kMerging,
-                 "[Check][Param] Cannot call merging in partition mode, as mode != %d", Mode::kMerging);
+                 "[Check][Param] Cannot call merging in partition mode, current mode:%d, expected mode:%d",
+                 static_cast<int32_t>(graph_info.mode_), static_cast<int32_t>(Mode::kMerging));
   GELOGD("Graph merge starts.");
   ComputeGraphPtr new_sub_graph = MakeShared<ComputeGraph>(original_compute_graph->GetName());
   GE_CHECK_NOTNULL(new_sub_graph);
@@ -653,7 +654,7 @@ graphStatus ge::EnginePartitioner::AddPlaceHolderEndInSrcDstGraph(const AnchorPt
   GE_ASSERT_GRAPH_SUCCESS(SetEndOpAttr(dst_node, new_end_node->GetOpDesc()), "[Set][EndOpAttr] failed, op name[%s].",
                           new_end_node->GetName().c_str());
   GE_ASSERT_GRAPH_SUCCESS(new_end_node->SetOwnerComputeGraph(end_graph),
-                          "[Set][OwnerComputeAttrUtilsGraph] %s for node:%s failed", end_graph->GetName().c_str(),
+                          "[Set][OwnerComputeGraph] %s for node:%s failed", end_graph->GetName().c_str(),
                           new_end_node->GetName().c_str());
   AnchorPtr end_dst_anchor = GetEndInAnchor(out_anchor, new_end_node);
   GE_ASSERT_NOTNULL(end_dst_anchor);
@@ -851,7 +852,7 @@ Status ge::EnginePartitioner::Initialize(const ge::ComputeGraphPtr &compute_grap
         DNNEngineManager::GetExcludeEngines(exclude_engines);
         OpInfo op_info;
         GE_CHK_STATUS_RET(engine_placer_.SelectEngine(node, exclude_engines, is_check_support_success, op_info),
-                          "[Check][Param] node[%s] does not owner engine!", node->GetName().c_str());
+                          "[Check][Param] node[%s] does not own an engine!", node->GetName().c_str());
         nodes_to_op_infos.emplace(node, op_info);
       }
       GE_ASSERT_TRUE(node_engine_map.count(node) > 0, "Failed to find node:%s(%s) in node engine map, mode:%d",
@@ -1110,7 +1111,7 @@ void ge::EnginePartitioner::MarkClusters() {
   for (size_t child_cluster = 0; child_cluster < cluster_size; child_cluster++) {
     auto found_child_cluster = graph_info_.clusters_[child_cluster];
     if (found_child_cluster == nullptr) {
-      GELOGW("cannot found child_cluster is %zu", child_cluster);
+      GELOGW("cannot find child_cluster %zu", child_cluster);
       continue;
     }
     auto copy_parents_clusters = found_child_cluster->in_clu_;
@@ -1146,7 +1147,7 @@ Status ge::EnginePartitioner::SplitNodeInputs(const NodePtr &node, const NodePtr
       const auto iter = graph_info_.corresponding_node_in_partitions_.find(peer_out_anchor->GetOwnerNode()->GetName());
       GE_CHK_BOOL_RET_STATUS(iter != graph_info_.corresponding_node_in_partitions_.cend(), FAILED,
                              "[Check][Param] node[%s]id[%ld]'s parent_node[%s]id[%ld]"
-                             "should make corresponding in advance",
+                             " should make corresponding in advance",
                              node->GetOpDesc()->GetName().c_str(), node->GetOpDesc()->GetId(),
                              peer_out_anchor->GetOwnerNode()->GetOpDesc()->GetName().c_str(),
                              peer_out_anchor->GetOwnerNode()->GetOpDesc()->GetId());
@@ -1370,8 +1371,8 @@ Status ge::EnginePartitioner::AddPlaceHolderEnd(const AnchorPtr &out_anchor, con
   const auto &node_in_partitions = graph_info_.corresponding_node_in_partitions_;
   const auto &src_anchor = node_in_partitions.at(src_node->GetName())->GetOutAnchor(AnchorUtils::GetIdx(out_anchor));
   const auto &dst_anchor = node_in_partitions.at(dst_node->GetName())->GetInAnchor(AnchorUtils::GetIdx(in_anchor));
-  GE_CHECK_NOTNULL(src_anchor, "src_anchor(index:%d) is nullptr", AnchorUtils::GetIdx(out_anchor));
-  GE_CHECK_NOTNULL(dst_anchor, "dst_anchor(index:%d) is nullptr", AnchorUtils::GetIdx(in_anchor));
+  GE_CHECK_NOTNULL(src_anchor, ": src_anchor(index:%d) is nullptr", AnchorUtils::GetIdx(out_anchor));
+  GE_CHECK_NOTNULL(dst_anchor, ": dst_anchor(index:%d) is nullptr", AnchorUtils::GetIdx(in_anchor));
   // anchors in subGraph
   const ComputeGraphPtr &src_subgraph = src_anchor->GetOwnerNode()->GetOwnerComputeGraph();
   const ComputeGraphPtr &dst_subgraph = dst_anchor->GetOwnerNode()->GetOwnerComputeGraph();

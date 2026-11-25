@@ -103,7 +103,7 @@ Status CondRemovePass::GetCaseChosenBranch(const NodePtr &node, const uint32_t c
   if (subgraph_names_size == 0) {
     REPORT_INNER_ERR_MSG("E19999", "subgraph size of op:%s(%s) is 0, check invalid", node->GetName().c_str(),
                          node->GetType().c_str());
-    GELOGE(FAILED, "[Check][Param] Node %s has none subgraph.", node->GetName().c_str());
+    GELOGE(FAILED, "[Check][Param] Node %s has no subgraph.", node->GetName().c_str());
     return ge::FAILED;
   }
   // If cond index is over the maimum subgraph number, choose the last subgraph
@@ -130,7 +130,7 @@ Status CondRemovePass::GetIfChosenBranch(const NodePtr &node, const uint32_t con
   if (subgraph_names_size == 0) {
     REPORT_INNER_ERR_MSG("E19999", "subgraph size of op:%s(%s) is 0, check invalid", node->GetName().c_str(),
                          node->GetType().c_str());
-    GELOGE(FAILED, "[Check][Param] Node %s has none subgraph.", node->GetName().c_str());
+    GELOGE(FAILED, "[Check][Param] Node %s has no subgraph.", node->GetName().c_str());
     return ge::FAILED;
   }
   // If cond is false, else branch
