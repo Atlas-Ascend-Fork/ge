@@ -185,7 +185,7 @@ void DataDumper::SetWorkSpaceAddr(const std::shared_ptr<OpDesc> &op_desc, const 
   for (size_t i = 0U; i < op_list_.size(); ++i) {
     if (op_list_[i].op->GetId() == op_desc->GetId()) {
       for (size_t j = 0U; j < space_addr.size(); ++j) {
-        GELOGI("workspace_info[%zu] addr[0x%llx]", j, space_addr[j]);
+        GELOGD("workspace_info[%zu] addr[0x%llx]", j, space_addr[j]);
         op_list_[i].space_addr.emplace_back(space_addr[j]);
       }
     }
@@ -197,7 +197,7 @@ void DataDumper::SetWorkSpaceAddrForPrint(const std::shared_ptr<OpDesc> &op_desc
   for (size_t i = 0U; i < op_print_list_.size(); ++i) {
     if (op_print_list_[i].op->GetId() == op_desc->GetId()) {
       for (size_t j = 0U; j < space_addr.size(); ++j) {
-        GELOGI("workspace_info[%zu] addr[0x%llx]", j, space_addr[j]);
+        GELOGD("workspace_info[%zu] addr[0x%llx]", j, space_addr[j]);
         op_print_list_[i].space_addr.emplace_back(space_addr[j]);
       }
       if (IsDumpOpWithAdump()) {
@@ -313,7 +313,7 @@ void DataDumper::SaveDumpTask(const OpDescInfoId &id, const std::shared_ptr<OpDe
 
     int64_t data_size = 0;
     if (AttrUtils::GetInt(input_tensor, ATTR_NAME_INPUT_ORIGIN_SIZE, data_size)) {
-      GELOGI("Get aipp data size according to attr is %" PRId64, data_size);
+      GELOGI("Get aipp data size according to attr is %" PRId64 " bytes", data_size);
     } else {
       if (TensorUtils::GetTensorSizeInBytes(*input_tensor, data_size) != SUCCESS) {
         GELOGE(PARAM_INVALID, "[Get][InputSize] failed in %s, index:%u", op_desc->GetName().c_str(),
@@ -424,10 +424,13 @@ Status DataDumper::GenerateOutput(toolkit::aicpu::dump::Output &output,
   int64_t output_size = 0;
   if (TensorUtils::GetTensorSizeInBytes(*tensor_descs.at(index), output_size) != SUCCESS) {
     REPORT_INNER_ERR_MSG("E19999", "Get tensor size fail");
-    GELOGE(PARAM_INVALID, "[Get][OutputSize] failed");
+    GELOGE(PARAM_INVALID, "[Get][OutputSize] failed, tensor index:%zu", index);
     return PARAM_INVALID;
   }
-  GELOGD("Get output size in dump is %" PRId64 ".", output_size);
+  GELOGD("Get output size in dump is %" PRId64
+         " bytes"
+         ".",
+         output_size);
   std::string origin_name;
   bool no_tiling_mem_type = false;
   int32_t origin_output_index = -1;
@@ -615,7 +618,7 @@ Status DataDumper::DumpOutputWithTask(const InnerDumpInfo &inner_dump_info, tool
   for (size_t i = 0U; i < output_descs.size(); ++i) {
     toolkit::aicpu::dump::Output output;
     const auto &output_desc = *output_descs.at(i);
-    GELOGI("[Dumper] Model name %s, Node name %s, Node type %s, output index %zu.", model_name.c_str(),
+    GELOGD("[Dumper] Model name %s, Node name %s, Node type %s, output index %zu.", model_name.c_str(),
            inner_dump_info.op->GetName().c_str(), inner_dump_info.op->GetType().c_str(), i);
     if (IsInOutputOpBlacklist(inner_dump_info.op, i)) {
       continue;
@@ -631,13 +634,13 @@ Status DataDumper::DumpOutputWithTask(const InnerDumpInfo &inner_dump_info, tool
       REPORT_INNER_ERR_MSG(
           "E19999",
           "The number of output does not match in op:%s(%s). The size[%zu] of output which is "
-          "no need to dump should not greater than the size[%zu] of output descs minus the size[%zu] of "
+          "no need to dump should not be greater than the size[%zu] of output descs minus the size[%zu] of "
           "output which is need to dump.",
           inner_dump_info.op->GetName().c_str(), inner_dump_info.op->GetType().c_str(), no_need_dump_output_num,
           output_descs.size(), output_addrs.size());
       GELOGE(PARAM_INVALID,
              "[Check][Param] The number of output does not match in op:%s(%s). The size[%zu] of output "
-             "which is no need to dump should not greater than the size[%zu] of output descs minus the size[%zu] "
+             "which is no need to dump should not be greater than the size[%zu] of output descs minus the size[%zu] "
              "of output which is need to dump.",
              inner_dump_info.op->GetName().c_str(), inner_dump_info.op->GetType().c_str(), no_need_dump_output_num,
              output_descs.size(), output_addrs.size());
@@ -660,7 +663,7 @@ Status DataDumper::DumpOutputWithTask(const InnerDumpInfo &inner_dump_info, tool
         GELOGE(PARAM_INVALID, "[Get][OutputSize] failed in %s, index:%zu", inner_dump_info.op->GetName().c_str(), i);
         return PARAM_INVALID;
       }
-      GELOGI("Get output size of l1_fusion_dump is %" PRId64, output_size);
+      GELOGI("Get output size of l1_fusion_dump is %" PRId64 " bytes", output_size);
       need_generate_op_buffer_ = true;
     } else {
       const auto input_size = inner_dump_info.op->GetInputsSize();
@@ -785,15 +788,15 @@ Status DataDumper::GenerateInput(toolkit::aicpu::dump::Input &input,
   }
   int64_t input_size = 0;
   if (AttrUtils::GetInt(*tensor_descs.at(index), ATTR_NAME_INPUT_ORIGIN_SIZE, input_size)) {
-    GELOGI("Get aipp input size according to attr is %" PRId64, input_size);
+    GELOGI("Get aipp input size according to attr is %" PRId64 " bytes", input_size);
   } else {
     if (TensorUtils::GetTensorSizeInBytes(*tensor_descs.at(index), input_size) != SUCCESS) {
       REPORT_INNER_ERR_MSG("E19999", "Get tensor size fail");
-      GELOGE(PARAM_INVALID, "[Get][TensorSize] failed");
+      GELOGE(PARAM_INVALID, "[Get][TensorSize] failed, tensor index:%zu", index);
       return PARAM_INVALID;
     }
   }
-  GELOGD("Get input size in dump is %" PRId64, input_size);
+  GELOGD("Get input size in dump is %" PRId64 " bytes", input_size);
   input.set_size(static_cast<uint64_t>(input_size));
   input.set_address(static_cast<uint64_t>(addr));
   input.set_offset(offset);
@@ -891,7 +894,7 @@ Status DataDumper::DumpInput(const InnerDumpInfo &inner_dump_info, toolkit::aicp
   for (size_t i = 0U; i < input_descs.size(); ++i) {
     toolkit::aicpu::dump::Input input;
     std::string node_name_index;
-    GELOGI("[Dumper] Model name %s, Node name %s, Node type %s, input index %zu.", model_name.c_str(),
+    GELOGD("[Dumper] Model name %s, Node name %s, Node type %s, input index %zu.", model_name.c_str(),
            inner_dump_info.op->GetName().c_str(), inner_dump_info.op->GetType().c_str(), i);
     if (IsInInputOpBlacklist(inner_dump_info.op, i)) {
       continue;
@@ -910,7 +913,7 @@ Status DataDumper::DumpInput(const InnerDumpInfo &inner_dump_info, toolkit::aicp
       GELOGI("[L1Fusion] DumpInput[%s] input[%zu] is l1 addr", inner_dump_info.op->GetName().c_str(), i);
       int64_t input_size = 0;
       if (AttrUtils::GetInt(*input_descs.at(i), ATTR_NAME_INPUT_ORIGIN_SIZE, input_size)) {
-        GELOGI("Get aipp input size according to attr is %" PRId64, input_size);
+        GELOGI("Get aipp input size according to attr is %" PRId64 " bytes", input_size);
       } else {
         if (TensorUtils::GetTensorSizeInBytes(*input_descs.at(i), input_size) != SUCCESS) {
           REPORT_INNER_ERR_MSG("E19999", "Get input tensor size fail in op:%s(%s), index:%zu",
@@ -920,7 +923,7 @@ Status DataDumper::DumpInput(const InnerDumpInfo &inner_dump_info, toolkit::aicp
           return PARAM_INVALID;
         }
       }
-      GELOGI("Get input size of l1_fusion_dump is %" PRId64, input_size);
+      GELOGI("Get input size of l1_fusion_dump is %" PRId64 " bytes", input_size);
       need_generate_op_buffer_ = true;
     } else {
       uint64_t cur_offset = i;
@@ -996,7 +999,7 @@ Status DataDumper::ExecuteLoadDumpInfo(const toolkit::aicpu::dump::OpMappingInfo
   const bool ret = op_mapping_info.SerializeToString(&proto_str);
   if ((!ret) || (proto_size == 0U)) {
     REPORT_INNER_ERR_MSG("E19999", "Serialize proto to std::string fail");
-    GELOGE(PARAM_INVALID, "[Call][SerializeToString] failed, proto size %zu.", proto_size);
+    GELOGE(PARAM_INVALID, "[Call][SerializeToString] failed, proto size %zu bytes.", proto_size);
     return PARAM_INVALID;
   }
 
@@ -1007,23 +1010,23 @@ Status DataDumper::ExecuteLoadDumpInfo(const toolkit::aicpu::dump::OpMappingInfo
 
   aclError rt_ret = ge::AclrtMalloc(&dev_mem_load_, proto_size, RT_MEMORY_HBM, GE_MODULE_NAME_U16);
   if (rt_ret != ACL_SUCCESS) {
-    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMalloc failed, size:%zu, ret:%d", proto_size, rt_ret);
-    GELOGE(RT_FAILED, "[Call][aclrtMalloc] failed, size:%zu, ret:%d", proto_size, rt_ret);
+    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMalloc failed, size:%zu bytes, ret:%d", proto_size, rt_ret);
+    GELOGE(RT_FAILED, "[Call][aclrtMalloc] failed, size:%zu bytes, ret:%d", proto_size, rt_ret);
     return RT_ERROR_TO_GE_STATUS(rt_ret);
   }
   GE_PRINT_DYNAMIC_MEMORY(aclrtMalloc, "load dump information.", proto_size);
 
   rt_ret = aclrtMemcpy(dev_mem_load_, proto_size, proto_str.c_str(), proto_size, ACL_MEMCPY_HOST_TO_DEVICE);
   if (rt_ret != ACL_SUCCESS) {
-    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMemcpy failed, size:%zu, ret:%d", proto_size, rt_ret);
-    GELOGE(RT_FAILED, "[Call][aclrtMemcpy] failed, size:%zu, ret:%d", proto_size, rt_ret);
+    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMemcpy failed, size:%zu bytes, ret:%d", proto_size, rt_ret);
+    GELOGE(RT_FAILED, "[Call][aclrtMemcpy] failed, size:%zu bytes, ret:%d", proto_size, rt_ret);
     return RT_ERROR_TO_GE_STATUS(rt_ret);
   }
 
   rt_ret = rtDatadumpInfoLoad(dev_mem_load_, static_cast<uint32_t>(proto_size));
   if (rt_ret != RT_ERROR_NONE) {
-    REPORT_INNER_ERR_MSG("E19999", "Call rtDatadumpInfoLoad failed, length:%zu, ret:%d", proto_size, rt_ret);
-    GELOGE(RT_FAILED, "[Call][RtDatadumpInfoLoad] failed, length:%zu, ret:%d", proto_size, rt_ret);
+    REPORT_INNER_ERR_MSG("E19999", "Call rtDatadumpInfoLoad failed, length:%zu bytes, ret:%d", proto_size, rt_ret);
+    GELOGE(RT_FAILED, "[Call][RtDatadumpInfoLoad] failed, length:%zu bytes, ret:%d", proto_size, rt_ret);
     return RT_ERROR_TO_GE_STATUS(rt_ret);
   }
 
@@ -1049,16 +1052,16 @@ Status DataDumper::ExecuteUnLoadDumpInfo(const toolkit::aicpu::dump::OpMappingIn
 
   aclError rt_ret = ge::AclrtMalloc(&dev_mem_unload_, proto_size, RT_MEMORY_HBM, GE_MODULE_NAME_U16);
   if (rt_ret != ACL_SUCCESS) {
-    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMalloc failed, size:%zu, ret:%d", proto_size, rt_ret);
-    GELOGE(RT_FAILED, "[Call][aclrtMalloc] failed, size:%zu, ret:%d", proto_size, rt_ret);
+    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMalloc failed, size:%zu bytes, ret:%d", proto_size, rt_ret);
+    GELOGE(RT_FAILED, "[Call][aclrtMalloc] failed, size:%zu bytes, ret:%d", proto_size, rt_ret);
     return RT_ERROR_TO_GE_STATUS(rt_ret);
   }
   GE_PRINT_DYNAMIC_MEMORY(aclrtMalloc, "unload dump information.", proto_size);
 
   rt_ret = aclrtMemcpy(dev_mem_unload_, proto_size, proto_str.c_str(), proto_size, ACL_MEMCPY_HOST_TO_DEVICE);
   if (rt_ret != ACL_SUCCESS) {
-    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMemcpy failed, size:%zu, ret:%d", proto_size, rt_ret);
-    GELOGE(RT_FAILED, "[Call][aclrtMemcpy] failed, size:%zu, ret:%d", proto_size, rt_ret);
+    REPORT_INNER_ERR_MSG("E19999", "Call aclrtMemcpy failed, size:%zu bytes, ret:%d", proto_size, rt_ret);
+    GELOGE(RT_FAILED, "[Call][aclrtMemcpy] failed, size:%zu bytes, ret:%d", proto_size, rt_ret);
     return RT_ERROR_TO_GE_STATUS(rt_ret);
   }
 
@@ -1552,7 +1555,7 @@ void DataDumper::DumpWorkspace(const InnerDumpInfo &inner_dump_info, toolkit::ai
         toolkit::aicpu::dump::Workspace space;
         space.set_type(toolkit::aicpu::dump::Workspace::LOG);
         space.set_size(static_cast<uint64_t>(v_workspace_size[i]));
-        GELOGI("workspace_info addr_size is: %zu %" PRIu64, inner_dump_info.space_addr.size(),
+        GELOGD("workspace_info addr_size is: %zu %" PRIu64, inner_dump_info.space_addr.size(),
                inner_dump_info.space_addr[i]);
         space.set_data_addr(inner_dump_info.space_addr[i]);
         task.mutable_space()->Add(std::move(space));
@@ -1578,7 +1581,7 @@ Status DataDumper::BuildTaskInfoForDumpOutput(toolkit::aicpu::dump::OpMappingInf
       task_watcher.set_task_id(iter.task_id);
       task_watcher.set_stream_id(iter.stream_id);
       string watcher_op_name = iter.op_desc->GetName() + "_To_" + op_desc->GetName();
-      GELOGI("WatcherOpName %s stream_id %u task_id %u.", watcher_op_name.c_str(), iter.stream_id, iter.task_id);
+      GELOGD("WatcherOpName %s stream_id %u task_id %u.", watcher_op_name.c_str(), iter.stream_id, iter.task_id);
       task_watcher.mutable_op()->set_op_name(watcher_op_name);
       op_mapping_info.mutable_task()->Add(std::move(task_watcher));
     }
@@ -1653,7 +1656,7 @@ void DataDumper::InitAicpuDumpTask(const InnerDumpInfo &dump_info, toolkit::aicp
 Status DataDumper::BuildTaskInfo(toolkit::aicpu::dump::OpMappingInfo &op_mapping_info) {
   for (const auto &op_iter : op_list_) {
     const auto &op_desc = op_iter.op;
-    GELOGI("Op %s add task to op_mapping_info, stream_id: %u, task_id:%u.", op_desc->GetName().c_str(),
+    GELOGD("Op %s add task to op_mapping_info, stream_id: %u, task_id:%u.", op_desc->GetName().c_str(),
            op_iter.stream_id, op_iter.task_id);
     toolkit::aicpu::dump::Task task;
     InitAicpuDumpTask(op_iter, task);
@@ -1699,7 +1702,7 @@ Status DataDumper::BuildTaskInfoForPrint(toolkit::aicpu::dump::OpMappingInfo &op
     InitAicpuDumpTask(op_iter, task);
 
     const std::vector<int64_t> v_workspace_size = op_desc->GetWorkspaceBytes();
-    GELOGI("dump op[%s] workspace for print in static model scenario", op_desc->GetName().c_str());
+    GELOGD("dump op[%s] workspace for print in static model scenario", op_desc->GetName().c_str());
     int64_t buffer_size = 0;
     const std::string kOpDfxBufferSize = "_op_dfx_buffer_size";
     if (ge::AttrUtils::GetInt(op_desc, kOpDfxBufferSize, buffer_size) && buffer_size > 0) {

@@ -178,7 +178,7 @@ Status TaskContext::AllocateWorkspaces() {
     if (workspace == nullptr) {
       REPORT_INNER_ERR_MSG("E19999", "node:%s(%s) Allocate workspace failed, size: %" PRId64 "",
                            node_item_->NodeName().c_str(), node_item_->NodeType().c_str(), work_size);
-      GELOGE(ACL_ERROR_GE_DEVICE_MEMORY_OPERATE_FAILED, "[Allocate][workspace] failed for node:%s(%s), size: %ld",
+      GELOGE(ACL_ERROR_GE_DEVICE_MEMORY_OPERATE_FAILED, "[Allocate][workspace] failed for node:%s(%s), size: %ld bytes",
              node_item_->NodeName().c_str(), node_item_->NodeType().c_str(), work_size);
       return ACL_ERROR_GE_DEVICE_MEMORY_OPERATE_FAILED;
     }
@@ -235,7 +235,7 @@ Status TaskContext::AllocateTensor(const GeTensorDesc &tensor_desc_in, TensorVal
   if (buffer_tensor == nullptr) {
     REPORT_INNER_ERR_MSG("E19999", "tensor:%s Allocate tensor failed, size: %" PRId64 "",
                          tensor_desc_in.GetName().c_str(), size_out);
-    GELOGE(ACL_ERROR_GE_DEVICE_MEMORY_OPERATE_FAILED, "[Allocate][workspace] failed for tensor:%s, size: %ld",
+    GELOGE(ACL_ERROR_GE_DEVICE_MEMORY_OPERATE_FAILED, "[Allocate][workspace] failed for tensor:%s, size: %ld bytes",
            tensor_desc_in.GetName().c_str(), size_out);
     return ACL_ERROR_GE_DEVICE_MEMORY_OPERATE_FAILED;
   }
@@ -250,8 +250,8 @@ bool TaskContext::HasAllocated(const int32_t idx) const {
   }
   for (const auto &pair : node_item_->reuse_outputs) {
     if ((pair.second == idx) && (outputs_start_[pair.first].GetData() != nullptr)) {
-      GELOGD("[%s] reuse output [%d] with output [%d], but [%d] has allocated, so reuse it.", GetNodeName(), pair.first,
-             idx, pair.first);
+      GELOGD("[%s] reuse output [%d] with output [%d], but [%d] has been allocated, so reuse it.", GetNodeName(),
+             pair.first, idx, pair.first);
       outputs_start_[idx] = outputs_start_[pair.first];
       return true;
     }
@@ -280,7 +280,8 @@ Status TaskContext::AllocateOutput(const int32_t idx, const GeTensorDesc &tensor
     const auto allocated_size = static_cast<int64_t>(task_tensor_out.GetSize());
     if (expected_size > allocated_size) {
       GELOGE(GRAPH_PARAM_INVALID,
-             "[Check][Size] %s(%s) index[%d] mem size out of range! Expected size: %ld, but given input size: %ld.",
+             "[Check][Size] %s(%s) index[%d] mem size out of range! Expected size: %ld bytes, but given input size: "
+             "%ld bytes.",
              node_item_->NodeName().c_str(), node_item_->NodeType().c_str(), idx, expected_size, allocated_size);
 
       std::string reason = "The memory " + std::to_string(expected_size) + " required by the output " +

@@ -299,7 +299,9 @@ _lib_loader.py
 - **es module** - Provides functional (Eager-Style) graph building approach
 - **graph module** - Graph foundation module
 - es module finally builds `Graph` object from graph module through `GraphBuilder.build_and_reset()` method
-- es module uses graph module's type definitions (`DataType`, `Format`) during building process## Usage Examples
+- es module uses graph module's type definitions (`DataType`, `Format`) during building process
+
+## Usage Examples
 
 Refer to [Python API graph building sample using es](../../../../../examples/es/transformer/python/src/make_transformer_graph.py)
 

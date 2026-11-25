@@ -28,6 +28,7 @@
 #include "register/node_converter_registry.h"
 #include "exe_graph/lowering/lowering_global_data.h"
 #include "graph/passes/memory_optimize/concat_notask_pass.h"
+#include "graph/passes/memory_conflict/set_input_output_offset_pass.h"
 #include "ge_running_env/op_reg.h"
 #include "common/opskernel/ops_kernel_info_types.h"
 
@@ -2478,5 +2479,34 @@ TEST_F(ConcatNotaskPassTest, dynamic_graph_with_concat_in_static_subgraph_succes
   bool notask = false;
   (void)ge::AttrUtils::GetBool(concat_then_desc, ge::ATTR_NAME_NOTASK, notask);
   EXPECT_TRUE(notask == true);
+}
+
+TEST_F(ConcatNotaskPassTest, set_output_offset_skip_buffer_fusion_with_null_in_node) {
+  auto compute_graph = std::make_shared<ComputeGraph>("set_output_offset_null_in_node");
+  GeTensorDesc desc;
+  OpDescPtr phony_desc = std::make_shared<OpDesc>("phonyconcat", CONCAT);
+  phony_desc->AddInputDesc(desc);
+  phony_desc->AddOutputDesc(desc);
+  phony_desc->SetOutputOffset({0});
+  (void)ge::AttrUtils::SetBool(phony_desc, ge::ATTR_NAME_NOTASK, true);
+  (void)ge::AttrUtils::SetListInt(phony_desc, ge::ATTR_NAME_NODE_CONNECT_OUTPUT, {0});
+
+  OpDescPtr net_desc = std::make_shared<OpDesc>("Netoutput", NETOUTPUT);
+  net_desc->AddInputDesc(desc);
+
+  NodePtr phony_node = compute_graph->AddNode(phony_desc);
+  NodePtr net_node = compute_graph->AddNode(net_desc);
+  ASSERT_NE(phony_node, nullptr);
+  ASSERT_NE(net_node, nullptr);
+  (void)GraphUtils::AddEdge(phony_node->GetOutDataAnchor(0), net_node->GetInDataAnchor(0));
+
+  // Input anchor whose peer has no owner node, so that CheckBufferFusion gets a nullptr input node.
+  OutDataAnchorPtr null_owner_anchor = std::make_shared<OutDataAnchor>(nullptr, 0);
+  ASSERT_EQ(phony_node->GetInDataAnchor(0)->LinkFrom(null_owner_anchor), GRAPH_SUCCESS);
+
+  SetInputOutputOffsetPass pass;
+  EXPECT_EQ(pass.Run(compute_graph), SUCCESS);
+  EXPECT_FALSE(net_desc->HasAttr(ge::ATTR_ZERO_COPY_BASIC_OFFSET));
+  phony_node->GetInDataAnchor(0)->UnlinkAll();
 }
 }  // namespace ge

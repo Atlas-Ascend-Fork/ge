@@ -517,7 +517,7 @@ ge::graphStatus AddEdgeAndUpdatePeerDesc(Graph &graph, GNode &src_node, int32_t 
   TensorDesc dst_tensor_desc;
   if (dst_node.GetInputDesc(dst_port_index, dst_tensor_desc) == GRAPH_FAILED) {
     GE_ASSERT_GRAPH_SUCCESS(dst_node.UpdateInputDesc(dst_port_index, dst_tensor_desc),
-                            "Update InputDesc of index %s using default TensorDesc failed", dst_port_index);
+                            "Update InputDesc of index %d using default TensorDesc failed", dst_port_index);
   }
   return ge::GRAPH_SUCCESS;
 }

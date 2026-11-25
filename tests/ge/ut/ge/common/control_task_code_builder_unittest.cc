@@ -44,8 +44,8 @@ GeModelPtr CreateGeModelWithControlTasks() {
   auto ge_root_model = builder.BuildGeRootModel();
   GE_ASSERT_TRUE(ge_root_model != nullptr, "[UT] ge_root_model is null");
   auto ge_model = MakeShared<GeModel>();
-  ge_model->SetGraph(graph);
   GE_ASSERT_TRUE(ge_model != nullptr, "[UT] ge_model is null");
+  ge_model->SetGraph(graph);
   auto compute_graph = ge_model->GetGraph();
   GE_ASSERT_TRUE(compute_graph != nullptr, "[UT] compute_graph is null");
   compute_graph->SetGraphUnknownFlag(false);

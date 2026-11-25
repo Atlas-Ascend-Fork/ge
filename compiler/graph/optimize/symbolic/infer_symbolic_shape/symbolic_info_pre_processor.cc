@@ -36,7 +36,7 @@ Status SymbolicInfoPreProcessor::Run(const ComputeGraphPtr &graph, const std::ve
    */
 
   if (!EnableSliceSchedule()) {
-    GELOGI("Slice schedule is not enabled, skip symbolic optimization.", graph->GetName().c_str());
+    GELOGI("Graph[%s] slice schedule is not enabled, skip symbolic optimization.", graph->GetName().c_str());
     GE_ASSERT_SUCCESS(gert::GraphUnfolder::UnfoldAllPartitioncallInPlace(graph));
     GE_DUMP(graph, "Autofuser_AfterSymbolicInferPreProcess");
     return SUCCESS;

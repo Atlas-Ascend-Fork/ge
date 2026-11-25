@@ -175,7 +175,7 @@ Status DNNEngineManager::Initialize(const std::map<std::string, std::string> &op
   // Engines initialize
   for (auto iter = engines_map_.cbegin(); iter != engines_map_.cend(); ++iter) {
     if (iter->second == nullptr) {
-      GELOGI("Engine: %s point to nullptr", (iter->first).c_str());
+      GELOGI("Engine: %s points to nullptr", (iter->first).c_str());
       continue;
     }
 
@@ -641,7 +641,7 @@ std::string DNNEngineManager::GetCompositeEngine(const ComputeGraphPtr &subgraph
     }
   }
   if (assigned_node_num == 0) {
-    GELOGD("all nodes in subgraph %s belongs to ge_local engine", subgraph->GetName().c_str());
+    GELOGD("all nodes in subgraph %s belong to ge_local engine", subgraph->GetName().c_str());
     return "";
   }
   if (!node_diff_composite_engine_flag && (node_composite_engine_name != kInvalidCompositeEngineName) &&
@@ -828,7 +828,7 @@ Status DNNEngineManager::ParserEngineMessage(const json engines_json, const std:
         engine_conf_ptr->scheduler_id = scheduler_mark;
         std::map<std::string, EngineConfPtr>::const_iterator it = engines.find(engine_id);
         if (it != engines.cend()) {
-          GELOGE(FAILED, "[Check][Param]There are the same engine %s message in the json file", engine_id.c_str());
+          GELOGE(FAILED, "[Check][Param]There is the same engine %s message in the json file", engine_id.c_str());
           REPORT_INNER_ERR_MSG("E19999", "There are the same engine %s message in the json file", engine_id.c_str());
           return FAILED;
         }

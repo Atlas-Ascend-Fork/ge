@@ -41,8 +41,11 @@ Status UnsqueezeKernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vect
   bool is_check_failed = ((op_desc_ptr->GetInputsSize() != kSqueezeInputSize) ||
                           (op_desc_ptr->GetOutputsSize() != kSqueezeOutputSize) || (input.size() != kSqueezeInputSize));
   if (is_check_failed) {
-    GELOGW("Size check fail, node[%s] inputs size:%zu, outputs size:%zu, input size:%zu",
-           op_desc_ptr->GetName().c_str(), op_desc_ptr->GetInputsSize(), op_desc_ptr->GetOutputsSize(), input.size());
+    GELOGW(
+        "Size check fail, node[%s] inputs size:%zu(expect %zu), outputs size:%zu(expect %zu), "
+        "input size:%zu(expect %zu)",
+        op_desc_ptr->GetName().c_str(), op_desc_ptr->GetInputsSize(), kSqueezeInputSize, op_desc_ptr->GetOutputsSize(),
+        kSqueezeOutputSize, input.size(), kSqueezeInputSize);
     return NOT_CHANGED;
   }
 

@@ -364,3 +364,32 @@ Different graph traversal modes that can be selected when compiling operators in
 **Required/Optional**: Optional
 
 **Effective level**: Global/session/graph
+
+## ge.vectorcoreNum
+
+Used to configure the Vector Core count for operator build.
+
+Used together with [ge.aicoreNum](#geaicorenum): ge.aicoreNum supports the paired format "AI Core count|Vector Core count". When ge.aicoreNum is configured with a single value only (or the right side of the paired format is empty or 0), GE automatically derives this parameter based on the Cube:Vector ratio of the AI processor and writes it back to options. When this parameter is explicitly configured, the explicit value takes precedence, and ge.aicoreNum no longer triggers derivation and overwriting.
+
+**Parameter values:**
+
+- Positive integer n: 1 to the maximum number of Vector Cores contained in the AI processor (the value of `vector_core_cnt` in the `${INSTALL_DIR}/<arch>-linux/data/platform_config/xxx.ini` file).
+- 0 or empty: indicates that the parameter is not configured, and the default `vector_core_cnt` takes effect.
+
+**Usage constraints:**
+
+- Only non-negative decimal digit strings are supported. Leading zeros, spaces, plus or minus signs, decimal points, and the like are not supported. If the format is invalid, E10001 is reported.
+- The explicitly configured value takes precedence over the value derived from ge.aicoreNum: the single-value format of ge.aicoreNum (including "6|" and "6|0") no longer triggers derivation and overwriting; when the right side of the paired format of ge.aicoreNum is empty or 0, the explicit value of this parameter is retained.
+- When the Vector count in the paired format of ge.aicoreNum and this parameter are both configured as positive integers and are not equal, E10001 (PARAM_INVALID) is reported.
+- Automatic derivation is performed only when the Cube:Vector ratio of the AI processor is 1:1 or 1:2. When the ratio is 1:1, the derived value equals the AI Core count; when the ratio is 1:2, the derived value is twice the AI Core count. If the ratio is not supported, the AI processor has no independent Vector Core, or the AI Core count exceeds the Cube Core count, no derivation is performed and only a warning message is printed.
+- Priority of the core count taking effect: operator-level attribute `_op_vectorcore_num` > this parameter > default `vector_core_cnt`.
+
+**Configuration example:**
+
+```c++
+{"ge.vectorcoreNum", "12"};
+```
+
+**Required/Optional**: Optional
+
+**Effective level**: Global/session

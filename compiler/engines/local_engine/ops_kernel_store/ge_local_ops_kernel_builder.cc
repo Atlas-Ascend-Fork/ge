@@ -83,7 +83,7 @@ graphStatus GeLocalOpsKernelBuilder::CalcMemSizeByNodeType(OpDescPtr &op_desc, G
   if ((data_type == DT_STRING) && ((node_type == kConstantOpType) || (node_type == kConstOpType))) {
     return OpUtils::GetConstantStrMemSize(op_desc, output_mem_size);
   } else if ((node_type == kFileConstantOpType) && AttrUtils::GetInt(op_desc, ATTR_NAME_LENGTH, output_mem_size)) {
-    GELOGD("node: %s get length attr success. node type is FileConstant and data type is DT_STRING, size: %lld",
+    GELOGD("node: %s get length attr success. node type is FileConstant and data type is DT_STRING, size: %lld bytes",
            op_desc->GetNamePtr(), output_mem_size);
     return GRAPH_SUCCESS;
   }
@@ -165,9 +165,11 @@ Status GeLocalOpsKernelBuilder::CalcOpRunningParam(Node &node) {
     graphStatus graph_status = TensorUtils::GetSize(output_tensor, mem_size);
     // If mem size has been set, no need reset.
     if ((graph_status == GRAPH_SUCCESS) && (mem_size > 0) && (data_type != DT_STRING)) {
-      GELOGD("Op[%s:%s] out[%zu] mem size has been set, no need calc again, format=%s, data_type=%s, mem_size=%ld.",
-             node_name.c_str(), node_type.c_str(), i, TypeUtils::FormatToSerialString(format).c_str(),
-             TypeUtils::DataTypeToSerialString(data_type).c_str(), mem_size);
+      GELOGD(
+          "Op[%s:%s] out[%zu] mem size has been set, no need calc again, format=%s, data_type=%s, "
+          "mem_size=%ld bytes.",
+          node_name.c_str(), node_type.c_str(), i, TypeUtils::FormatToSerialString(format).c_str(),
+          TypeUtils::DataTypeToSerialString(data_type).c_str(), mem_size);
       continue;
     }
 
@@ -186,18 +188,18 @@ Status GeLocalOpsKernelBuilder::CalcOpRunningParam(Node &node) {
     if (output_mem_size < 0) {
       REPORT_INNER_ERR_MSG("E19999",
                            "Calc op[%s:%s] out[%zu] mem size is negative(not supported),"
-                           " format=%s, data_type=%s, mem_size=%ld.",
+                           " format=%s, data_type=%s, mem_size=%ld bytes.",
                            node_name.c_str(), node_type.c_str(), i, TypeUtils::FormatToSerialString(format).c_str(),
                            TypeUtils::DataTypeToSerialString(data_type).c_str(), output_mem_size);
       GELOGE(FAILED,
              "[Calc][MemSize] op[%s:%s] out[%zu] mem size is negative(not supported),"
-             " format=%s, data_type=%s, mem_size=%ld.",
+             " format=%s, data_type=%s, mem_size=%ld bytes.",
              node_name.c_str(), node_type.c_str(), i, TypeUtils::FormatToSerialString(format).c_str(),
              TypeUtils::DataTypeToSerialString(data_type).c_str(), output_mem_size);
       return FAILED;
     }
-    GELOGD("Calc op[%s:%s] out[%zu] mem size is %ld, format=%s, data_type=%s.", node_name.c_str(), node_type.c_str(), i,
-           output_mem_size, TypeUtils::FormatToSerialString(format).c_str(),
+    GELOGD("Calc op[%s:%s] out[%zu] mem size is %ld bytes, format=%s, data_type=%s.", node_name.c_str(),
+           node_type.c_str(), i, output_mem_size, TypeUtils::FormatToSerialString(format).c_str(),
            TypeUtils::DataTypeToSerialString(data_type).c_str());
 
     TensorUtils::SetSize(output_tensor, output_mem_size);

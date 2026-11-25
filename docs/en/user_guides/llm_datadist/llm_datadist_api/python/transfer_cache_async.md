@@ -43,6 +43,7 @@ transfer_cache_async(src_cache: KvCache,
 ## Examples
 
 ```python
+from typing import Optional
 from llm_datadist import *
 ...
 class LayerSynchronizerImpl(LayerSynchronizer):
@@ -53,7 +54,7 @@ num_layers = 40
 dst_cluster_id = 2
 # need to register decoder kv addr here.
 decoder_addrs = ...
-assert(len(decoder_addrs) = 2*num_layers)
+assert len(decoder_addrs) == 2 * num_layers
 transfer_config = TransferConfig(dst_cluster_id, decoder_addrs, range(0, num_layers), 0)
 cache_task = kv_cache_manager.transfer_cache_async(kv_cache, LayerSynchronizerImpl(), [transfer_config])
 cache_task.synchronize()

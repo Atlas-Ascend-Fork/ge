@@ -168,7 +168,7 @@ ge::graphStatus GetMemCheckStartSize(const ge::OpDescPtr &op_desc, const int64_t
            ori_param_size, op_desc->GetNamePtr());
   } else {
     ori_param_size = ((origin_tiling_data_size + sizeof(int64_t) - 1UL) / sizeof(int64_t)) * sizeof(int64_t);
-    GELOGI("Current tiling data size: %zu, set ori_param_size to %lld by aligned by %zu, op_name: %s",
+    GELOGI("Current tiling data size: %zu, set ori_param_size to %lld aligned by %zu, op_name: %s",
            origin_tiling_data_size, ori_param_size, sizeof(int64_t), op_desc->GetNamePtr());
   }
   memcheck_start_size = ori_param_size - origin_tiling_data_size;

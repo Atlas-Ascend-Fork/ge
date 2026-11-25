@@ -44,8 +44,8 @@ Status TaskNodeMap::AddRelation(size_t task_index, int64_t node_id) {
     return PARAM_INVALID;
   }
   if (task_index >= task_indexes_to_node_.size()) {
-    GELOGE(PARAM_INVALID, "Failed to add relation between task %zu and node %lld(%s), task index out of range",
-           task_index, node_id, iter->second->GetName().c_str());
+    GELOGE(PARAM_INVALID, "Failed to add relation between task %zu and node %lld(%s), task index out of range [0, %zu)",
+           task_index, node_id, iter->second->GetName().c_str(), task_indexes_to_node_.size());
     return PARAM_INVALID;
   }
   node_ids_to_task_indexes_[node_id].emplace_back(task_index);

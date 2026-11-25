@@ -4,6 +4,12 @@
 
 Shape and TensorDesc reject dimensions outside signed int64 before constructing ctypes buffers. Construction, set_shape and set_origin_shape share this validation. Existing dynamic dimension markers and representable values remain unchanged.
 
+## Root Cause and Fix
+
+_normalize_dims only checks the Python int type, while ctypes.c_int64 accepts large integers and truncates them to 64 bits.
+
+The shared dimension normalization adds signed 64-bit range validation, covering the construction of Shape/TensorDesc and the two shape setters.
+
 ## Validation and limits
 
 The regression exercises actual Shape and TensorDesc code with actual ctypes buffers and enum classes. The graph C API is replaced at its boundary; no large tensor is allocated.

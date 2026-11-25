@@ -154,7 +154,7 @@ Status MaximumKernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<Con
 Status MaximumKernel::MaximumCheck(const std::vector<ConstGeTensorPtr> &input) const {
   // check input number
   if (input.size() != kMaximumInputNum) {
-    GELOGI("The number of input for Maximum must be %zu.", kMaximumInputNum);
+    GELOGI("The number of input for Maximum must be %zu, but is %zu.", kMaximumInputNum, input.size());
     return NOT_CHANGED;
   }
   ConstGeTensorPtr input_x1 = input.at(kMaximumFirstInput);

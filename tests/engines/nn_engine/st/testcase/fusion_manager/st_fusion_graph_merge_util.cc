@@ -215,3 +215,176 @@ TEST_F(fusion_graph_merge_util_st, calc_single_op_pass_strided_outsize) {
   (void)ge::AttrUtils::GetInt(src_node->GetOpDesc()->MutableOutputDesc(0), "_special_output_size", tensor_size);
   EXPECT_EQ(tensor_size, 18496);
 }
+
+TEST_F(fusion_graph_merge_util_st, set_multi_kernel_output_offsets_invalid_index_with_fus_attr) {
+  std::vector<int64_t> buffer_fusion_output_offset = {1};
+  std::vector<int64_t> save_pre_output_offset;
+  auto graph_common = std::make_shared<GraphComm>("engineName");
+  graph_common->Initialize();
+  auto fusion_graph_merge_ptr = std::make_shared<FusionGraphMerge>(SCOPE_ID_ATTR, graph_common);
+  ge::OpDescPtr op_desc_src = std::make_shared<OpDesc>("sourceNode", "Conv");
+  ge::OpDescPtr op_desc_fus = std::make_shared<OpDesc>("fusionNode", "Conv2D");
+  ge::GeTensorDesc tensor_desc = ge::GeTensorDesc(ge::GeShape({4, 4}), FORMAT_ND, DT_FLOAT16);
+  op_desc_src->AddOutputDesc(tensor_desc);
+  std::vector<int64_t> source_output_offset = {7};
+  ge::AttrUtils::SetListInt(op_desc_src, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, source_output_offset);
+  ge::AttrUtils::SetListInt(op_desc_fus, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, buffer_fusion_output_offset);
+
+  fusion_graph_merge_ptr->SetMultiKernelOutPutOffsets(op_desc_src, 2, op_desc_fus, save_pre_output_offset);
+
+  (void)ge::AttrUtils::GetListInt(op_desc_fus, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION,
+                                  buffer_fusion_output_offset);
+  ASSERT_EQ(buffer_fusion_output_offset.size(), 2U);
+  EXPECT_EQ(buffer_fusion_output_offset[1], 0);
+}
+
+TEST_F(fusion_graph_merge_util_st, set_multi_kernel_output_offsets_invalid_index_without_fus_attr) {
+  std::vector<int64_t> save_pre_output_offset;
+  auto graph_common = std::make_shared<GraphComm>("engineName");
+  graph_common->Initialize();
+  auto fusion_graph_merge_ptr = std::make_shared<FusionGraphMerge>(SCOPE_ID_ATTR, graph_common);
+  ge::OpDescPtr op_desc_src = std::make_shared<OpDesc>("sourceNode", "Conv");
+  ge::OpDescPtr op_desc_fus = std::make_shared<OpDesc>("fusionNode", "Conv2D");
+  ge::GeTensorDesc tensor_desc = ge::GeTensorDesc(ge::GeShape({4, 4}), FORMAT_ND, DT_FLOAT16);
+  op_desc_src->AddOutputDesc(tensor_desc);
+  std::vector<int64_t> source_output_offset = {7};
+  ge::AttrUtils::SetListInt(op_desc_src, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, source_output_offset);
+
+  fusion_graph_merge_ptr->SetMultiKernelOutPutOffsets(op_desc_src, 2, op_desc_fus, save_pre_output_offset);
+
+  std::vector<int64_t> fusion_output_offset;
+  ASSERT_TRUE(
+      ge::AttrUtils::GetListInt(op_desc_fus, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, fusion_output_offset));
+  ASSERT_EQ(fusion_output_offset.size(), 1U);
+  EXPECT_EQ(fusion_output_offset[0], 0);
+}
+
+TEST_F(fusion_graph_merge_util_st, calc_pass_strided_outsize_skip_out_of_range_index) {
+  auto graph_common = std::make_shared<GraphComm>("engineName");
+  graph_common->Initialize();
+  auto fusion_graph_merge_ptr = std::make_shared<FusionGraphMerge>(SCOPE_ID_ATTR, graph_common);
+  ge::ComputeGraphPtr graph = std::make_shared<ge::ComputeGraph>("test_graph");
+  vector<pair<uint32_t, ge::NodePtr>> src_op_out_index_in_fus_op;
+  ge::OpDescPtr op_desc_src = make_shared<OpDesc>("sourceNode", "Conv");
+  ge::GeTensorDesc tensor_desc_src = ge::GeTensorDesc(ge::GeShape({1, 32, 17, 17}), FORMAT_NCHW, DT_FLOAT16);
+  op_desc_src->AddOutputDesc(tensor_desc_src);
+  ge::NodePtr src_node = graph->AddNode(op_desc_src);
+  ToOpStructPtr optimize_info = std::make_shared<ToOpStruct_t>();
+  optimize_info->slice_output_shape = {{1, 32, 17, 17}};
+  SetStridedInfoToNode(op_desc_src, optimize_info, kConcatCOptimizeInfoPtr, kConcatCOptimizeInfoStr);
+  ge::OpDescPtr op_desc_fus = make_shared<OpDesc>("fusionNode", "Conv2D");
+  op_desc_fus->AddOutputDesc(tensor_desc_src);
+  op_desc_fus->AddOutputDesc(tensor_desc_src);
+  ge::NodePtr dst_node = graph->AddNode(op_desc_fus);
+  std::vector<ge::NodePtr> nodevec = {src_node};
+  src_op_out_index_in_fus_op.push_back(std::make_pair(0, src_node));
+
+  fusion_graph_merge_ptr->CalcPassStridedOutSize(dst_node, nodevec, src_op_out_index_in_fus_op);
+
+  int64_t tensor_size0 = 0;
+  int64_t tensor_size1 = 0;
+  EXPECT_TRUE(ge::AttrUtils::GetInt(dst_node->GetOpDesc()->MutableOutputDesc(0), "_special_output_size", tensor_size0));
+  EXPECT_FALSE(
+      ge::AttrUtils::GetInt(dst_node->GetOpDesc()->MutableOutputDesc(1), "_special_output_size", tensor_size1));
+  EXPECT_EQ(tensor_size0, 18496);
+}
+
+TEST_F(fusion_graph_merge_util_st, set_multi_kernel_output_offsets_valid_index_with_fus_attr) {
+  std::vector<int64_t> buffer_fusion_output_offset = {1};
+  std::vector<int64_t> save_pre_output_offset;
+  auto graph_common = std::make_shared<GraphComm>("engineName");
+  graph_common->Initialize();
+  auto fusion_graph_merge_ptr = std::make_shared<FusionGraphMerge>(SCOPE_ID_ATTR, graph_common);
+  ge::OpDescPtr op_desc_src = std::make_shared<OpDesc>("sourceNode", "Conv");
+  ge::OpDescPtr op_desc_fus = std::make_shared<OpDesc>("fusionNode", "Conv2D");
+  ge::GeTensorDesc tensor_desc = ge::GeTensorDesc(ge::GeShape({4, 4}), FORMAT_ND, DT_FLOAT16);
+  op_desc_src->AddOutputDesc(tensor_desc);
+  std::vector<int64_t> source_output_offset = {7};
+  ge::AttrUtils::SetListInt(op_desc_src, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, source_output_offset);
+  ge::AttrUtils::SetListInt(op_desc_fus, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, buffer_fusion_output_offset);
+
+  fusion_graph_merge_ptr->SetMultiKernelOutPutOffsets(op_desc_src, 0, op_desc_fus, save_pre_output_offset);
+
+  (void)ge::AttrUtils::GetListInt(op_desc_fus, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION,
+                                  buffer_fusion_output_offset);
+  ASSERT_EQ(buffer_fusion_output_offset.size(), 2U);
+  EXPECT_EQ(buffer_fusion_output_offset[1], 7);
+}
+
+TEST_F(fusion_graph_merge_util_st, set_multi_kernel_output_offsets_valid_index_without_fus_attr) {
+  std::vector<int64_t> save_pre_output_offset;
+  auto graph_common = std::make_shared<GraphComm>("engineName");
+  graph_common->Initialize();
+  auto fusion_graph_merge_ptr = std::make_shared<FusionGraphMerge>(SCOPE_ID_ATTR, graph_common);
+  ge::OpDescPtr op_desc_src = std::make_shared<OpDesc>("sourceNode", "Conv");
+  ge::OpDescPtr op_desc_fus = std::make_shared<OpDesc>("fusionNode", "Conv2D");
+  ge::GeTensorDesc tensor_desc = ge::GeTensorDesc(ge::GeShape({4, 4}), FORMAT_ND, DT_FLOAT16);
+  op_desc_src->AddOutputDesc(tensor_desc);
+  std::vector<int64_t> source_output_offset = {7};
+  ge::AttrUtils::SetListInt(op_desc_src, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, source_output_offset);
+
+  fusion_graph_merge_ptr->SetMultiKernelOutPutOffsets(op_desc_src, 0, op_desc_fus, save_pre_output_offset);
+
+  std::vector<int64_t> fusion_output_offset;
+  ASSERT_TRUE(
+      ge::AttrUtils::GetListInt(op_desc_fus, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, fusion_output_offset));
+  ASSERT_EQ(fusion_output_offset.size(), 1U);
+  EXPECT_EQ(fusion_output_offset[0], 7);
+}
+
+TEST_F(fusion_graph_merge_util_st, calc_strided_write_out_size) {
+  auto graph_common = std::make_shared<GraphComm>("engineName");
+  graph_common->Initialize();
+  auto fusion_graph_merge_ptr = std::make_shared<FusionGraphMerge>(SCOPE_ID_ATTR, graph_common);
+  ge::ComputeGraphPtr graph = std::make_shared<ge::ComputeGraph>("test_graph");
+  ge::GeTensorDesc strided_desc(ge::GeShape({1, 32, 4, 4, 16}), ge::FORMAT_NC1HWC0, ge::DT_FLOAT16);
+  ge::OpDescPtr strided_write = std::make_shared<OpDesc>("stridedWrite", "StridedWrite");
+  strided_write->AddInputDesc(strided_desc);
+  strided_write->AddOutputDesc(strided_desc);
+  (void)ge::AttrUtils::SetInt(strided_write, "stride", 1);
+  ge::NodePtr strided_node = graph->AddNode(strided_write);
+  ge::OpDescPtr fus_op = std::make_shared<OpDesc>("fusionNode", "Conv2D");
+  fus_op->AddOutputDesc(strided_desc);
+  ge::NodePtr fus_node = graph->AddNode(fus_op);
+  std::vector<ge::NodePtr> nodelist = {strided_node};
+  std::vector<std::pair<uint32_t, ge::NodePtr>> src_op_out_index_in_fus_op;
+  std::map<std::string, std::string> options;
+  options.insert(std::pair<std::string, std::string>("ge.buildMode", "tuning"));
+  options.insert(std::pair<std::string, std::string>("ge.buildStep", "after_ub_match"));
+  ge::GetThreadLocalContext().SetGlobalOption(options);
+
+  EXPECT_EQ(fe::SUCCESS,
+            fusion_graph_merge_ptr->CalcStridedWriteOutSize(fus_node, nodelist, src_op_out_index_in_fus_op));
+
+  int64_t special_output_size = 0;
+  EXPECT_TRUE(ge::AttrUtils::GetInt(fus_op->MutableOutputDesc(0), "_special_output_size", special_output_size));
+  EXPECT_EQ(special_output_size, 16384);
+}
+
+TEST_F(fusion_graph_merge_util_st, calc_strided_read_in_size) {
+  auto graph_common = std::make_shared<GraphComm>("engineName");
+  graph_common->Initialize();
+  auto fusion_graph_merge_ptr = std::make_shared<FusionGraphMerge>(SCOPE_ID_ATTR, graph_common);
+  ge::ComputeGraphPtr graph = std::make_shared<ge::ComputeGraph>("test_graph");
+  ge::GeTensorDesc strided_desc(ge::GeShape({1, 32, 4, 4, 16}), ge::FORMAT_NC1HWC0, ge::DT_FLOAT16);
+  ge::OpDescPtr strided_read = std::make_shared<OpDesc>("stridedRead", "StridedRead");
+  strided_read->AddInputDesc(strided_desc);
+  strided_read->AddOutputDesc(strided_desc);
+  (void)ge::AttrUtils::SetInt(strided_read, "stride", 1);
+  ge::NodePtr strided_node = graph->AddNode(strided_read);
+  ge::OpDescPtr fus_op = std::make_shared<OpDesc>("fusionNode", "Conv2D");
+  fus_op->AddInputDesc(strided_desc);
+  fus_op->AddOutputDesc(strided_desc);
+  ge::NodePtr fus_node = graph->AddNode(fus_op);
+  std::vector<ge::NodePtr> nodelist = {strided_node};
+  std::map<std::string, std::string> options;
+  options.insert(std::pair<std::string, std::string>("ge.buildMode", "tuning"));
+  options.insert(std::pair<std::string, std::string>("ge.buildStep", "after_ub_match"));
+  ge::GetThreadLocalContext().SetGlobalOption(options);
+
+  EXPECT_EQ(fe::SUCCESS, fusion_graph_merge_ptr->CalcStridedReadInSize(fus_node, nodelist));
+
+  int64_t special_input_size = 0;
+  EXPECT_TRUE(ge::AttrUtils::GetInt(fus_op->MutableInputDesc(0), "_special_input_size", special_input_size));
+  EXPECT_EQ(special_input_size, 16384);
+}

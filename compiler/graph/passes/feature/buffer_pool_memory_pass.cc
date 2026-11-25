@@ -120,12 +120,12 @@ Status BufferPoolMemoryPass::CheckBufferPoolSize(int64_t total_size, int64_t poo
   if (calc_total_size[pool_id] > buffer_pool_size) {
     GELOGE(INTERNAL_ERROR,
            "[Check][Size]The memory required at the same time is greater than buffer pool size, "
-           "pool id:%" PRId64 ", pool size:%" PRId64 ", required size:%" PRId64 ".",
+           "pool id:%" PRId64 ", pool size:%" PRId64 " bytes, required size:%" PRId64 " bytes.",
            pool_id, buffer_pool_size, calc_total_size[pool_id]);
     REPORT_INNER_ERR_MSG("E19999",
                          "The memory required at the same time is greater than buffer pool size, pool id:%" PRId64
                          ","
-                         " pool size:%" PRId64 ", required size:%" PRId64 ".",
+                         " pool size:%" PRId64 " bytes, required size:%" PRId64 " bytes.",
                          pool_id, buffer_pool_size, calc_total_size[pool_id]);
     return INTERNAL_ERROR;
   }
@@ -160,10 +160,17 @@ Status BufferPoolMemoryPass::TryToFixNodeOrder(NodePtr &pre_node, NodePtr &curr_
     // The topo order is correct to ensure node dependency,
     // there is no need to add control edges.
     if (pre_op_desc->GetId() > cur_op_desc->GetId()) {
-      GELOGE(INTERNAL_ERROR, "[Check][Dependency]Invalid dependency, pre node:%s, curr node:%s.",
-             pre_node->GetName().c_str(), curr_node->GetName().c_str());
-      REPORT_INNER_ERR_MSG("E19999", "Invalid dependency, pre node:%s, curr node:%s.", pre_node->GetName().c_str(),
-                           curr_node->GetName().c_str());
+      GELOGE(INTERNAL_ERROR,
+             "[Check][Dependency]Invalid dependency, pre node:%s(id:%" PRId64 "), curr node:%s(id:%" PRId64
+             "), "
+             "expect pre id <= curr id.",
+             pre_node->GetName().c_str(), pre_op_desc->GetId(), curr_node->GetName().c_str(), cur_op_desc->GetId());
+      REPORT_INNER_ERR_MSG("E19999",
+                           "Invalid dependency, pre node:%s(id:%" PRId64 "), curr node:%s(id:%" PRId64
+                           "), "
+                           "expect pre id <= curr id.",
+                           pre_node->GetName().c_str(), pre_op_desc->GetId(), curr_node->GetName().c_str(),
+                           cur_op_desc->GetId());
       return INTERNAL_ERROR;
     }
     GELOGI(
@@ -278,11 +285,11 @@ Status BufferPoolMemoryPass::SetBufferPoolSize(const std::string &batch_label, i
   if (iter != buffer_pool_size_[batch_label].end() && iter->second != size) {
     GELOGE(PARAM_INVALID,
            "[Check][BufferPoolSize]Get different size with the same id, "
-           "id:%" PRId64 ", original size:%" PRId64 ", this size:%" PRId64 ".",
+           "id:%" PRId64 ", original size:%" PRId64 " bytes, this size:%" PRId64 " bytes.",
            id, iter->second, size);
     REPORT_INNER_ERR_MSG("E19999",
                          "Get different size with the same id, "
-                         "id:%" PRId64 ", original size:%" PRId64 ", this size:%" PRId64 ".",
+                         "id:%" PRId64 ", original size:%" PRId64 " bytes, this size:%" PRId64 " bytes.",
                          id, iter->second, size);
     return PARAM_INVALID;
   }
@@ -316,8 +323,9 @@ Status BufferPoolMemoryPass::AllocateSpaceInBatch(const std::map<int64_t, std::v
     BufferPool buffer_pool(pool_id, buffer_pool_size, buffer_node_to_calc);
     Status ret = AllocateSpaceInBufferPool(buffer_pool, calc_node_in_pool.second);
     if (ret != SUCCESS) {
-      GELOGE(ret, "[Alloc][InBufferPool]Pool id:%" PRId64 ", pool size:%" PRId64 ".", pool_id, buffer_pool_size);
-      REPORT_INNER_ERR_MSG("E19999", "Failed to allocate space in buffer pool, id:%" PRId64 ", pool size:%" PRId64 ".",
+      GELOGE(ret, "[Alloc][InBufferPool]Pool id:%" PRId64 ", pool size:%" PRId64 " bytes.", pool_id, buffer_pool_size);
+      REPORT_INNER_ERR_MSG("E19999",
+                           "Failed to allocate space in buffer pool, id:%" PRId64 ", pool size:%" PRId64 " bytes.",
                            pool_id, buffer_pool_size);
       return ret;
     }

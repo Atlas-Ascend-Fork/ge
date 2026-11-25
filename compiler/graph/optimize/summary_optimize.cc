@@ -45,7 +45,7 @@ Status GraphOptimize::HandleSummaryOp(const ComputeGraphPtr &compute_graph) {
   for (auto &node_ptr : compute_graph->GetAllNodes()) {
     GE_CHECK_NOTNULL(node_ptr);
     OpDescPtr op = node_ptr->GetOpDesc();
-    GE_IF_BOOL_EXEC(op == nullptr, GELOGW("op is nullptr!"); continue);
+    GE_IF_BOOL_EXEC(op == nullptr, GELOGW("Op of node %s is nullptr, skip it.", node_ptr->GetName().c_str()); continue);
 
     if (op->GetType() == kSummary) {
       compute_graph->SetSummaryFlag(true);

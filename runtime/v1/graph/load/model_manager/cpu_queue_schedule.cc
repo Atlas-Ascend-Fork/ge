@@ -76,7 +76,7 @@ Status CpuTaskModelDequeue::Distribute() {
   if ((args_ == nullptr) || (args_size_ == 0U) || (stream_ == nullptr)) {
     REPORT_INNER_ERR_MSG("E19999",
                          "Param args_ is nullptr or args_size_:%u is 0 or stream_ is nullptr,"
-                         "check invalid",
+                         " check invalid",
                          args_size_);
     GELOGE(FAILED, "[Check][Param] Task not initialized, distribute failed, size:%u", args_size_);
     return FAILED;
@@ -107,7 +107,7 @@ Status CpuTaskZeroCopy::InitAddrs(std::vector<uintptr_t> &mbuf_list,
           const bool dest_is_tiling = outside_addrs_is_tiling_map[virtual_addr];
           const int32_t fusion_offset = cpy_args.fusion_offsets.at(data_idx);
           GELOGI(
-              "Init addr, index:[%zu], cpy_type:[%d], is notiling:[%d], dest is tiling[%d], fusion offset = %d, "
+              "Init addr, index:[%zu], cpy_type:[%d], is no tiling:[%d], dest is tiling[%d], fusion offset = %d, "
               "addr[%p] will be replaced.",
               data_idx, static_cast<int32_t>(cpy_args.cpy_type), static_cast<int32_t>(is_no_tiling),
               static_cast<int32_t>(dest_is_tiling), fusion_offset, reinterpret_cast<void *>(virtual_addr));
@@ -248,7 +248,7 @@ Status CpuTaskZeroCopy::Distribute() {
   if ((args_ == nullptr) || (args_size_ == 0U) || (stream_ == nullptr)) {
     REPORT_INNER_ERR_MSG("E19999",
                          "Param args_ is nullptr or args_size_:%u is 0 or stream_ is nullptr,"
-                         "check invalid",
+                         " check invalid",
                          args_size_);
     GELOGE(FAILED, "[Check][Param] Task not initialized, distribute failed, size:%u", args_size_);
     return FAILED;
@@ -305,8 +305,8 @@ Status CpuTaskProcessOutput::Init(const uintptr_t addr, const uint32_t size, con
       tensor_desc.original_shape[i + 1UL] = output_desc->shape_info.dims[i];
     }
     tensor_desc.data_size = static_cast<uint64_t>(size);
-    GELOGD("Tensordesc type = %d, shape = original shape = %s, data size = %u", static_cast<int32_t>(tensor_desc.dtype),
-           ToString(output_desc->shape_info.dims).c_str(), size);
+    GELOGD("Tensordesc type = %d, shape = original shape = %s, data size = %u bytes",
+           static_cast<int32_t>(tensor_desc.dtype), ToString(output_desc->shape_info.dims).c_str(), size);
     GE_CHK_ACL_RET(aclrtMemcpy(ValueToPtr(PtrToValue(args_) + sizeof(ProcessOutputInfo)),
                                (static_cast<uint64_t>(args_size_) - static_cast<uint64_t>(sizeof(ProcessOutputInfo))),
                                &tensor_desc, static_cast<uint64_t>(sizeof(RuntimeTensorDesc)),
@@ -333,7 +333,7 @@ Status CpuTaskProcessOutput::Distribute() {
   if ((args_ == nullptr) || (args_size_ == 0U) || (stream_ == nullptr)) {
     REPORT_INNER_ERR_MSG("E19999",
                          "Param args_ is nullptr or args_size_:%u is 0 or stream_ is nullptr,"
-                         "check invalid",
+                         " check invalid",
                          args_size_);
     GELOGE(FAILED, "[Check][Param] Task not initialized, distribute failed, size:%u", args_size_);
     return FAILED;
@@ -390,7 +390,7 @@ Status CpuTaskModelEnqueue::Distribute() {
   if ((args_ == nullptr) || (args_size_ == 0U) || (stream_ == nullptr)) {
     REPORT_INNER_ERR_MSG("E19999",
                          "Param args_ is nullptr or args_size_ is 0 or stream_ is nullptr, arg_size:%u,"
-                         "check invalid",
+                         " check invalid",
                          args_size_);
     GELOGE(FAILED, "[Check][Param] Task not initialized, distribute failed, size:%u", args_size_);
     return FAILED;
@@ -506,7 +506,7 @@ Status CpuTaskWaitEndGraph::Distribute() {
   if ((args_ == nullptr) || (args_size_ == 0U) || (stream_ == nullptr)) {
     REPORT_INNER_ERR_MSG("E19999",
                          "Param args_ is nullptr or args_size_:%u is 0 or stream_ is nullptr,"
-                         "check invalid",
+                         " check invalid",
                          args_size_);
     GELOGE(FAILED, "[Check][Param] Task not initialized, distribute failed, size:%u", args_size_);
     return FAILED;
@@ -544,7 +544,7 @@ Status CpuTaskModelReportStatus::Distribute() {
   if ((args_ == nullptr) || (args_size_ == 0U) || (stream_ == nullptr)) {
     REPORT_INNER_ERR_MSG("E19999",
                          "Param args_ is nullptr or args_size_:%u is 0 or stream_ is nullptr,"
-                         "check invalid",
+                         " check invalid",
                          args_size_);
     GELOGE(FAILED, "[Check][Param] Task not initialized, distribute failed, size:%u", args_size_);
     return FAILED;
@@ -581,7 +581,7 @@ Status CpuTaskModelRepeat::Distribute() {
   if ((args_ == nullptr) || (args_size_ == 0U) || (stream_ == nullptr)) {
     REPORT_INNER_ERR_MSG("E19999",
                          "Param args_ is nullptr or args_size_:%u is 0 or stream_ is nullptr,"
-                         "check invalid",
+                         " check invalid",
                          args_size_);
     GELOGE(FAILED, "[Check][Param] Task not initialized, distribute failed, size:%u", args_size_);
     return FAILED;
@@ -770,7 +770,7 @@ Status CpuTaskProcessInputsMemCopy::Distribute() {
   if ((args_ == nullptr) || (args_size_ == 0U) || (stream_ == nullptr)) {
     REPORT_INNER_ERR_MSG("E19999",
                          "Param args_ is nullptr or args_size_:%u is 0 or stream_ is nullptr,"
-                         "check invalid",
+                         " check invalid",
                          args_size_);
     GELOGE(FAILED, "[Check][Param] Task not initialized, distribute failed, size:%u", args_size_);
     return FAILED;
@@ -829,7 +829,7 @@ Status CpuTaskProcessInputsShapeCheck::Distribute() {
   if ((args_ == nullptr) || (args_size_ == 0U) || (stream_ == nullptr)) {
     REPORT_INNER_ERR_MSG("E19999",
                          "Param args_ is nullptr or args_size_:%u is 0 or stream_ is nullptr,"
-                         "check invalid",
+                         " check invalid",
                          args_size_);
     GELOGE(FAILED, "[Check][Param] Task not initialized, distribute failed, size:%u", args_size_);
     return FAILED;

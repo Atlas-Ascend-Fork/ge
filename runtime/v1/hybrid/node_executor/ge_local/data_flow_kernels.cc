@@ -47,7 +47,7 @@ Status DataFlowStack::Compute(TaskContext &context, const int64_t handle) {
     const auto size_tensor_value = context.MutableInput(0);
     GE_CHECK_NOTNULL(size_tensor_value);
     if (size_tensor_value->GetSize() < sizeof(int32_t)) {
-      GELOGE(PARAM_INVALID, "[Check][Size]Stack %s max_size memory size:%zu, expect at least %zu.",
+      GELOGE(PARAM_INVALID, "[Check][Size]Stack %s max_size memory size:%zu bytes, expect at least %zu.",
              context.GetNodeName(), size_tensor_value->GetSize(), sizeof(int32_t));
       return PARAM_INVALID;
     }

@@ -19,7 +19,7 @@ Status ContinuousOutputAndContinuousInputChecker(CheckFuncContext &context) {
   bool has_conflict = false;
   GE_ASSERT_SUCCESS(MemLayoutConflictUtil::IsContinuousOutAndInConflict(context, has_conflict));
   if (!has_conflict) {
-    GELOGI("[MemConflict] [%s, %s] not conflict", CheckerLog::ToStr(context.type_a[context.type_a_index]).c_str(),
+    GELOGI("[MemConflict] [%s, %s] have no conflict", CheckerLog::ToStr(context.type_a[context.type_a_index]).c_str(),
            CheckerLog::ToStr(context.type_b[context.type_b_index]).c_str());
     return SUCCESS;
   }

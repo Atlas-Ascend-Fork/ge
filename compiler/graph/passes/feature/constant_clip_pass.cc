@@ -104,7 +104,7 @@ Status ConstantClipPass::Run(NodePtr &node) {
     if (!is_infinite) {
       return SUCCESS;
     }
-    GELOGW("find cast op %s, src_dt %s, dst_dt %s need to be clipped, it may be lower accuracy",
+    GELOGW("find cast op %s, src_dt %s, dst_dt %s need to be clipped, it may result in lower accuracy",
            node->GetName().c_str(), TypeUtils::DataTypeToSerialString(in_dt).c_str(),
            TypeUtils::DataTypeToSerialString(out_dt).c_str());
     GE_ASSERT_SUCCESS(InsertClipByValueBetweenCastAndConst(node));

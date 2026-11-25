@@ -27,7 +27,8 @@ Status LabelSetTaskInfo::Init(const domi::TaskDef &task_def, DavinciModel *const
   const OpDescPtr op_desc = davinci_model->GetOpByIndex(label_set.op_index());
   if (op_desc == nullptr) {
     REPORT_INNER_ERR_MSG("E19999", "Can't get op_desc from davinci_model by index:%u", label_set.op_index());
-    GELOGE(INTERNAL_ERROR, "[Get][Op] Task op index:%u out of range!", label_set.op_index());
+    GELOGE(INTERNAL_ERROR, "[Get][Op] Task op index:%u is out of range, no op found in model op list!",
+           label_set.op_index());
     return INTERNAL_ERROR;
   }
 

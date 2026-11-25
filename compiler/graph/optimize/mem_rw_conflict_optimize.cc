@@ -706,7 +706,7 @@ Status RemoveNoUseIdentity(const NodePtr &node) {
   if (conflict_result != ConflictResult::DO_NOTHING) {
     return SUCCESS;
   }
-  GELOGI("No need insert Identity. Node %s need to remove.", node->GetName().c_str());
+  GELOGI("No need to insert Identity. Node %s needs to be removed.", node->GetName().c_str());
   auto ret = GraphUtils::IsolateNode(node, {0});
   if (ret != SUCCESS) {
     REPORT_INNER_ERR_MSG("E19999", "Isolate Node:%s failed", node->GetName().c_str());

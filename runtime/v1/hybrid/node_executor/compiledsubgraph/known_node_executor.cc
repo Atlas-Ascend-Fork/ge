@@ -110,12 +110,12 @@ Status KnownNodeTask::Init(TaskContext &context) {
                         "[Allocate][Workspace] failed for %s(%s).", context.GetNodeName(),
                         context.GetNodeItem().NodeType().c_str());
       RECORD_EXECUTION_EVENT(context.GetExecutionContext(), context.GetNodeName(),
-                             "[KnownNodeTask_AllocateWorkspace] End, size %ld", mem_info.memory_size);
+                             "[KnownNodeTask_AllocateWorkspace] End, size %ld bytes", mem_info.memory_size);
       hbm_fm_mem_bases.push_back(PtrToPtr<void, uint8_t>(buffer));
     }
     // update mem base
     davinci_model_->UpdateHbmFmMemBases(hbm_fm_mem_bases);
-    GELOGI("KnownNodeTask::Init mem base is %lx, size %ld.", davinci_model_->GetRuntimeParam().mem_base,
+    GELOGI("KnownNodeTask::Init mem base is %lx, size %ld bytes.", davinci_model_->GetRuntimeParam().mem_base,
            total_useful_size);
   }
   if (!davinci_model_->GetRuntimeParam().memory_infos.empty()) {
@@ -153,7 +153,7 @@ Status KnownNodeTask::InitDavinciModel(const HybridModel &model, const TensorBuf
     weight = weight_buffer->GetData();
     weight_size = weight_buffer->GetSize();
   }
-  GELOGD("Start to init davinci model, weight size = %zu", weight_size);
+  GELOGD("Start to init davinci model, weight size = %zu bytes", weight_size);
   GE_CHK_STATUS_RET(DoInitDavinciModel(PtrToValue(weight), weight_size),
                     "[Init][DavinciModel] Failed to init davinci model.");
   GELOGD("[Init][DavinciModel] success");

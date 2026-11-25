@@ -26,7 +26,7 @@ GlobalDumper *GlobalDumper::GetInstance() {
 void GlobalDumper::OnGlobalDumperSwitch(void *ins, uint64_t enable_flags) {
   auto ess = static_cast<GlobalDumper *>(ins);
   if (ess == nullptr) {
-    GELOGW("The instance is nullptr when switch dumper, ignore the event");
+    GELOGW("The instance is nullptr when switching the dumper, ignore the event");
     return;
   }
   ess->SetEnableFlags(enable_flags);

@@ -818,4 +818,13 @@ TEST_F(UTEST_dump_manager, ConcurrentAddRemoveDumpProperties_InitUninitCalledOnc
   }
   EXPECT_EQ(DumpStub::GetInstance().GetAdxUninitCallCount(), 1);
 }
+
+// dump_status is on, dump_op_switch is off and dump_list is empty
+TEST_F(UTEST_dump_manager, dump_status_on_switch_off_without_dump_list) {
+  DumpConfig dump_config;
+  dump_config.dump_status = "on";
+  dump_config.dump_op_switch = "off";
+  auto ret = DumpManager::GetInstance().SetDumpConf(dump_config);
+  EXPECT_EQ(ret, ge::PARAM_INVALID);
+}
 }  // namespace ge

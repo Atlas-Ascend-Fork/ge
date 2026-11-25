@@ -28,7 +28,6 @@
 #include "graph/utils/tensor_utils.h"
 #include "graph/utils/graph_utils.h"
 #include "graph/utils/node_utils_ex.h"
-#include "graph/utils/node_utils_ex.h"
 #include "graph/utils/math_util.h"
 #include "graph_metadef/graph/debug/ge_util.h"
 #include "graph/debug/ge_op_types.h"
@@ -835,6 +834,39 @@ static ge::graphStatus HandleAutofuseTilingCallback(gert::KernelContext *kernel_
   return ge::GRAPH_SUCCESS;
 }
 
+// Generated CV code owns the task ratio. Never change the shared platform when
+// adapting a node's Cube and Vector budgets to that ratio.
+static ge::graphStatus GetAutofuseCvPlatform(const ge::Operator &op, const fe::PlatFormInfos &platform_infos,
+                                             fe::PlatFormInfos &cv_platform, uint32_t &task_ratio) {
+  const auto op_desc = ge::OpDescUtils::GetOpDescFromOperator(op);
+  GE_ASSERT_NOTNULL(op_desc);
+  auto handle = DlopenAutofuseSo(op_desc);
+  GE_ASSERT_NOTNULL(handle);
+  GE_MAKE_GUARD(close_handle, [&handle]() { (void)mmDlclose(handle); });
+  using GetCvCoreLimits = bool (*)(uint32_t *, uint32_t *, uint32_t *);
+  const auto get_limits = reinterpret_cast<GetCvCoreLimits>(mmDlsym(handle, "GetCvCoreLimits"));
+  if (get_limits == nullptr) {
+    // Existing compiled kernels predate the CV resource-budget interface.
+    cv_platform = platform_infos;
+    task_ratio = 2U;
+    return ge::GRAPH_SUCCESS;
+  }
+  const auto buffer = const_cast<fe::PlatFormInfos &>(platform_infos).SaveToBuffer();
+  GE_ASSERT_TRUE(cv_platform.LoadFromBuffer(buffer.data(), buffer.size()));
+  uint32_t aic_num = cv_platform.GetCoreNumByType("AiCore");
+  uint32_t aiv_num = cv_platform.GetCoreNumByType("VectorCore");
+  GE_ASSERT_TRUE(get_limits(&aic_num, &aiv_num, &task_ratio));
+  GE_ASSERT_TRUE(task_ratio == 1U || task_ratio == 2U);
+  std::map<std::string, std::string> soc_info;
+  GE_ASSERT_TRUE(cv_platform.GetPlatformResWithLock("SoCInfo", soc_info));
+  soc_info["ai_core_cnt"] = std::to_string(aic_num);
+  soc_info["cube_core_cnt"] = std::to_string(aic_num);
+  soc_info["vector_core_cnt"] = std::to_string(aiv_num);
+  cv_platform.SetPlatformResWithLock("SoCInfo", soc_info);
+  cv_platform.SetCoreNum(aic_num);
+  return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AutofuseNodeWithMatmulTiling(const ge::Operator &op, const fe::PlatFormInfos &ge_platform_infos,
                                              OpRunInfoV2 &run_info, ge::ConstNodePtr node) {
   ge::Operator matmul_op = ge::OpDescUtils::CreateOperatorFromNode(node);
@@ -843,19 +875,23 @@ ge::graphStatus AutofuseNodeWithMatmulTiling(const ge::Operator &op, const fe::P
   const auto &space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry(
       static_cast<gert::OppImplVersionTag>(op_desc->GetOppImplVersion()));
   GE_ASSERT_NOTNULL(space_registry);
+  fe::PlatFormInfos cv_platform;
+  uint32_t task_ratio = 0U;
+  GE_ASSERT_GRAPH_SUCCESS(GetAutofuseCvPlatform(op, ge_platform_infos, cv_platform, task_ratio));
   size_t wk_size = 0U;
   uint32_t aic_num = 0U;
   uint32_t aiv_num = 0U;
   const auto callback1 = [&run_info, &wk_size, &aic_num](gert::KernelContext *kernel_context) -> ge::graphStatus {
     return HandleCubeTilingCallback(kernel_context, run_info, wk_size, aic_num);
   };
-  (void)RtParseAndTiling(matmul_op, kCompileInfoTmpName.c_str(), ge_platform_infos, callback1, space_registry);
+  GE_ASSERT_GRAPH_SUCCESS(
+      RtParseAndTiling(matmul_op, kCompileInfoTmpName.c_str(), cv_platform, callback1, space_registry));
   const auto callback2 = [&run_info, &wk_size, &aiv_num,
                           &op_desc](gert::KernelContext *kernel_context) -> ge::graphStatus {
     return HandleAutofuseTilingCallback(kernel_context, run_info, wk_size, aiv_num, op_desc);
   };
-  (void)AutofuseNodeTiling(op, ge_platform_infos, callback2, true);
-  const uint32_t new_block_dim = aic_num * 2 < aiv_num ? (aiv_num + 1) / 2 : aic_num;
+  GE_ASSERT_GRAPH_SUCCESS(AutofuseNodeTiling(op, cv_platform, callback2, true));
+  const uint32_t new_block_dim = std::max(aic_num, aiv_num / task_ratio + (aiv_num % task_ratio != 0U));
   GELOGI("Get autofuse matmul op(%s) tiling key: %llu aic_num: %u, aiv_num: %u, fuse_op_block_dim: %u",
          op_desc->GetName().c_str(), run_info.GetTilingKey(), aic_num, aiv_num, new_block_dim);
   GE_ASSERT_TRUE(new_block_dim > 0U);
@@ -871,19 +907,23 @@ ge::graphStatus AutofuseNodeWithConvTiling(const ge::Operator &op, const fe::Pla
   const auto &space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry(
       static_cast<gert::OppImplVersionTag>(op_desc->GetOppImplVersion()));
   GE_ASSERT_NOTNULL(space_registry);
+  fe::PlatFormInfos cv_platform;
+  uint32_t task_ratio = 0U;
+  GE_ASSERT_GRAPH_SUCCESS(GetAutofuseCvPlatform(op, ge_platform_infos, cv_platform, task_ratio));
   size_t wk_size = 0U;
   uint32_t aic_num = 0U;
   uint32_t aiv_num = 0U;
   const auto callback1 = [&run_info, &wk_size, &aic_num](gert::KernelContext *kernel_context) -> ge::graphStatus {
     return HandleCubeTilingCallback(kernel_context, run_info, wk_size, aic_num);
   };
-  (void)RtParseAndTiling(conv_op, kCompileInfoTmpName.c_str(), ge_platform_infos, callback1, space_registry);
+  GE_ASSERT_GRAPH_SUCCESS(
+      RtParseAndTiling(conv_op, kCompileInfoTmpName.c_str(), cv_platform, callback1, space_registry));
   const auto callback2 = [&run_info, &wk_size, &aiv_num,
                           &op_desc](gert::KernelContext *kernel_context) -> ge::graphStatus {
     return HandleAutofuseTilingCallback(kernel_context, run_info, wk_size, aiv_num, op_desc);
   };
-  (void)AutofuseNodeTiling(op, ge_platform_infos, callback2, true);
-  const uint32_t new_block_dim = aic_num * 2 < aiv_num ? (aiv_num + 1) / 2 : aic_num;
+  GE_ASSERT_GRAPH_SUCCESS(AutofuseNodeTiling(op, cv_platform, callback2, true));
+  const uint32_t new_block_dim = std::max(aic_num, aiv_num / task_ratio + (aiv_num % task_ratio != 0U));
   GELOGI("Get autofuse conv op(%s) tiling key: %llu aic_num: %u, aiv_num: %u, fuse_op_block_dim: %u",
          op_desc->GetName().c_str(), run_info.GetTilingKey(), aic_num, aiv_num, new_block_dim);
   GE_ASSERT_TRUE(new_block_dim > 0U);
@@ -1012,7 +1052,10 @@ ge::graphStatus FftsRtParseAndTiling(const ge::Operator &op, const fe::PlatFormI
   GE_CHECK_NOTNULL(slice_info_ptr);
   if (slice_info_ptr->slice_instance_num != slice_info_ptr->input_tensor_slice.size() ||
       slice_info_ptr->slice_instance_num != slice_info_ptr->output_tensor_slice.size()) {
-    REPORT_INNER_ERR_MSG("E19999", "Slice num not equal.");
+    REPORT_INNER_ERR_MSG("E19999",
+                         "Slice num not equal, slice_instance_num:%u, input_slice_num:%zu, output_slice_num:%zu",
+                         slice_info_ptr->slice_instance_num, slice_info_ptr->input_tensor_slice.size(),
+                         slice_info_ptr->output_tensor_slice.size());
     return ge::GRAPH_FAILED;
   }
   vector<int64_t> ori_shape;  // save original shape

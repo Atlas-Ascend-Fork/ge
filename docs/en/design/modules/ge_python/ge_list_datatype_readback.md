@@ -4,6 +4,12 @@
 
 LIST_DATA_TYPE values are converted from native enum numbers to Python DataType values. The returned list can be passed back to set_list_data_type. Ordinary int, float and bool getters are unchanged. Native arrays are released even if enum conversion fails.
 
+## Root Cause and Fix
+
+The shared list getter does not restore native enum numbers to Python DataType values based on VT_LIST_DATA_TYPE, while the scalar getter already performs this conversion.
+
+Each item is converted to DataType only in the LIST_DATA_TYPE branch, and native arrays are still released in finally.
+
 ## Validation and limits
 
 The regression uses the actual attribute getter/setter implementation, actual enum classes and ctypes buffers. The graph C API is replaced at its boundary.

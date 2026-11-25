@@ -42,7 +42,8 @@ bool IsFlattenV2ParamsValid(const OpDescPtr &op_desc_ptr) {
   size_t input_size = op_desc_ptr->GetInputsSize();
   size_t output_size = op_desc_ptr->GetOutputsSize();
   if (input_size != kValidSize || output_size != kValidSize) {
-    GELOGE(PARAM_INVALID, "input_size or output_size is invalid");
+    GELOGE(PARAM_INVALID, "input_size %zu or output_size %zu is invalid, both must be %zu.", input_size, output_size,
+           kValidSize);
     return false;
   }
 
@@ -101,7 +102,7 @@ Status FlattenV2Kernel::Compute(const NodePtr &node_ptr) const {
   ge::OpDescPtr op_desc_ptr = node_ptr->GetOpDesc();
   GE_CHECK_NOTNULL(op_desc_ptr);
   if (!IsFlattenV2ParamsValid(op_desc_ptr)) {
-    GELOGW("Params are invalid");
+    GELOGW("FlattenV2 params invalid, node: %s", node_ptr->GetName().c_str());
     return NOT_CHANGED;
   }
   GELOGD("FlattenV2 dimension kernel success.");
@@ -113,7 +114,7 @@ Status FlattenV2Kernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vect
   GELOGD("FlattenV2 folding kernel in.");
   GE_CHECK_NOTNULL(op_desc_ptr);
   if (!IsFlattenV2ParamsValid(op_desc_ptr)) {
-    GELOGW("Params are invalid");
+    GELOGW("FlattenV2 params invalid, node: %s", op_desc_ptr->GetName().c_str());
     return NOT_CHANGED;
   }
 
@@ -125,7 +126,7 @@ Status FlattenV2Kernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vect
     GELOGW("Failed to fold node %s, out of memory", op_desc_ptr->GetName().c_str());
     return NOT_CHANGED;
   }
-  GELOGI("FlattenV2 op %s output tensor data size is %zu", op_desc_ptr->GetName().c_str(),
+  GELOGI("FlattenV2 op %s output tensor data size is %zu bytes", op_desc_ptr->GetName().c_str(),
          output_ptr->GetData().size());
 
   size_t data_dim_size = output_ptr->GetTensorDesc().GetShape().GetDims().size();

@@ -209,7 +209,7 @@ aclTensorDesc *aclCreateTensorDescImplOm2(aclDataType dataType, int numDims, con
     ACL_LOG_ERROR("[Check][NumDims]numDims[%d] is smaller than 0", numDims);
     acl::AclErrorLogManager::ReportInputError(
         acl::INVALID_PARAM_MSG, std::vector<const char *>({"param", "value", "reason"}),
-        std::vector<const char *>({"numDims", std::to_string(numDims).c_str(), "can't smaller than 0"}));
+        std::vector<const char *>({"numDims", std::to_string(numDims).c_str(), "can't be smaller than 0"}));
     return nullptr;
   }
   if ((numDims > 0) && (dims == nullptr)) {
@@ -287,7 +287,7 @@ size_t aclGetTensorDescElementCountImplOm2(const aclTensorDesc *desc) {
   size_t elementCount = 1U;
   for (const int64_t dim : desc->dims) {
     if (dim < 0) {  // dim cannot be less than 0
-      ACL_LOG_INNER_ERROR("[Check][Dim]invalid dim value %ld", dim);
+      ACL_LOG_INNER_ERROR("[Check][Dim]invalid dim value %ld, it should be greater than or equal to 0", dim);
       return 0U;
     }
     const aclError ret = acl::CheckSizeTMultiOverflow(elementCount, static_cast<size_t>(dim), elementCount);
@@ -511,7 +511,8 @@ aclError aclSetTensorConstImplOm2(aclTensorDesc *desc, void *dataBuffer, size_t 
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(desc);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(dataBuffer);
   if (length == 0U) {
-    ACL_LOG_ERROR("[Check][Length]The length of const dataBuffer is invalid. size = %zu", length);
+    ACL_LOG_ERROR("[Check][Length]The length of const dataBuffer is invalid. size = %zu, it should be greater than 0",
+                  length);
     acl::AclErrorLogManager::ReportInputError(acl::INVALID_NULL_POINTER_MSG, std::vector<const char *>({"param"}),
                                               std::vector<const char *>({"desc"}));
     return ACL_ERROR_INVALID_PARAM;

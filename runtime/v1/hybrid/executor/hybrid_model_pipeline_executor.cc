@@ -110,7 +110,9 @@ Status StageExecutor::Start(const std::vector<TensorValue> &inputs, const std::v
     GE_CHK_BOOL_RET_SPECIAL_STATUS(task_info.is_eos, END_OF_SEQUENCE, "[Executor: %d] receive end task", id_);
     GELOGD("[Executor: %d] Got task, stage = %d, iteration = %ld", id_, task_info.stage, task_info.iteration);
     if (task_info.iteration >= pipe_config_->iteration_end) {
-      GELOGE(INTERNAL_ERROR, "[Check][Range][Executor: %d] Unexpected iteration: %ld.", id_, task_info.iteration);
+      GELOGE(INTERNAL_ERROR,
+             "[Check][Range][Executor: %d] Unexpected iteration: %ld, should be less than iteration_end:%ld.", id_,
+             task_info.iteration, pipe_config_->iteration_end);
       REPORT_INNER_ERR_MSG("E19999", "[Executor: %d] Unexpected iteration: %" PRId64 ".", id_, task_info.iteration);
       return INTERNAL_ERROR;
     }
@@ -438,8 +440,8 @@ Status HybridModelPipelineExecutor::Execute(ExecuteArgs &args) {
   iteration_ = config_.iteration_end;
 
   if (has_error) {
-    GELOGE(FAILED, "[Check][Error]Error occurred while execution.");
-    REPORT_INNER_ERR_MSG("E19999", "Error occurred while execution.");
+    GELOGE(FAILED, "[Check][Error]Error occurred while execution, loop count:%d.", loop_count);
+    REPORT_INNER_ERR_MSG("E19999", "Error occurred while execution, loop count:%d.", loop_count);
     return FAILED;
   }
 

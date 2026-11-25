@@ -92,7 +92,8 @@ Status TransposeKernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<C
   auto output_size = input_perm_shape.GetShapeSize();
   uint32_t data_size = GetSizeByDataType(data_dtype);
   if (static_cast<size_t>(output_size * data_size) != tensor_perm_ptr->GetData().size()) {
-    GELOGW("TransposeKernel input perm shape size and data size do not match.");
+    GELOGW("TransposeKernel input perm shape size %ld * data size %u does not match data size %zu.", output_size,
+           data_size, tensor_perm_ptr->GetData().size());
     return NOT_CHANGED;
   }
 
@@ -126,7 +127,8 @@ Status TransposeKernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<C
     return NOT_CHANGED;
   }
   if (!KernelUtils::CheckSizeForTransOp(const_weight_ptr, op_desc_ptr)) {
-    GELOGW("CheckSize failed, input size is not equal to weight size");
+    GELOGW("CheckSize failed, input size %ld is not equal to weight size %zu, op name: %s",
+           op_desc_in.GetShape().GetShapeSize(), const_weight_ptr->GetData().size(), op_desc_ptr->GetName().c_str());
     return NOT_CHANGED;
   }
   const uint8_t *src_data = const_weight_ptr->GetData().data();

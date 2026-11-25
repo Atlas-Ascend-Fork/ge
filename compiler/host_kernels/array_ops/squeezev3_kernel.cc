@@ -27,7 +27,7 @@ constexpr size_t kSqueezeInputSizeWithAxes = 2UL;
 namespace ge {
 Status SqueezeV3Kernel::Compute(const NodePtr &node_ptr) const {
   if (node_ptr == nullptr) {
-    GELOGE(PARAM_INVALID, "parameter is nullptr");
+    GELOGE(PARAM_INVALID, "param node_ptr is nullptr");
     return PARAM_INVALID;
   }
   if (!KernelUtils::CheckFormatSupported(node_ptr)) {
@@ -54,8 +54,11 @@ Status SqueezeV3Kernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vect
 
   if (((input.size() != kSqueezeInputSize) && (input.size() != kSqueezeInputSizeWithAxes)) ||
       (op_desc_ptr->GetOutputsSize() != kSqueezeOutputSize)) {
-    GELOGW("Unexpected SqueezeV3 node, node input size: %zu, node output size: %zu, node name: %s", input.size(),
-           op_desc_ptr->GetOutputsSize(), op_name.c_str());
+    GELOGW(
+        "Unexpected SqueezeV3 node, node input size: %zu(expect %zu or %zu), node output size: %zu(expect %zu), "
+        "node name: %s",
+        input.size(), kSqueezeInputSize, kSqueezeInputSizeWithAxes, op_desc_ptr->GetOutputsSize(), kSqueezeOutputSize,
+        op_name.c_str());
     return NOT_CHANGED;
   }
 

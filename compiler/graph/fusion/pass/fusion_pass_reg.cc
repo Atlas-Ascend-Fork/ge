@@ -28,8 +28,11 @@ class FusionPassRegistrationDataImpl {
 
   void Stage(CustomPassStage stage) {
     if (stage == CustomPassStage::kAfterAssignLogicStream || stage >= CustomPassStage::kInvalid) {
-      GELOGE(PARAM_INVALID, "Fusion Pass[%s] register stage[%s] which is invalid.", pass_name_.GetString(),
-             CustomPassStageToString(stage).c_str());
+      GELOGE(PARAM_INVALID,
+             "Fusion Pass[%s] registers stage[%s] which is invalid, valid stages are "
+             "[kBeforeInferShape, kAfterInferShape, kAfterBuiltinFusionPass, kAfterOriginGraphOptimize, "
+             "kCompatibleInherited].",
+             pass_name_.GetString(), CustomPassStageToString(stage).c_str());
     }
     stage_ = stage;
   }

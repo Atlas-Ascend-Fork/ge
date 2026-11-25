@@ -76,7 +76,7 @@ class SubgraphBoundaryImpl {
   Status AddInput(int64_t index, SubgraphInput &&input) {
     const auto iter = idx_2_subgraph_input_.find(index);
     if (iter != idx_2_subgraph_input_.cend()) {
-      GELOGE(FAILED, "Input %ld has already added.", index);
+      GELOGE(FAILED, "Input %ld has already been added.", index);
       return FAILED;
     }
     idx_2_subgraph_input_[index] = std::move(input);
@@ -86,7 +86,7 @@ class SubgraphBoundaryImpl {
   Status AddOutput(int64_t index, SubgraphOutput &&output) {
     const auto iter = idx_2_subgraph_output_.find(index);
     if (iter != idx_2_subgraph_output_.cend()) {
-      GELOGE(FAILED, "Output %ld has already added.", index);
+      GELOGE(FAILED, "Output %ld has already been added.", index);
       return FAILED;
     }
     idx_2_subgraph_output_[index] = std::move(output);

@@ -73,7 +73,7 @@ Status RecomputePass::Run(ComputeGraphPtr graph) {
       GE_CHK_STATUS_RET(GetGraphAvailableMemory(graph, free_graph_size), "Get graph available size failed");
       const auto net_output = *(graph->GetDirectNode().end() - 1);  // get netoutput node, set attr
       GE_CHECK_NOTNULL(net_output);
-      GELOGI("Set free graph size:%lu to node:%s", free_graph_size, net_output->GetNamePtr());
+      GELOGI("Set free graph size:%lu bytes to node:%s", free_graph_size, net_output->GetNamePtr());
       (void)AttrUtils::SetInt(net_output->GetOpDescBarePtr(), kGraphFreeMem, free_graph_size);
     }
     GELOGD("In aoe tuning, tuning path:%s", tuning_path.c_str());
@@ -391,7 +391,7 @@ Status RecomputeRewriting::DfsRecomputeNodes(const NodePtr &node, NodeInEdges &n
   std::vector<NodePtr> backward_node_in_nodes;
   FindAndSortBackwardNodes(backward_nodes.front(), backward_node_in_nodes);
   if (backward_node_in_nodes.empty()) {
-    GELOGW("node:%s not include backward node input", backward_nodes.front()->GetName().c_str());
+    GELOGW("node:%s does not include backward node input", backward_nodes.front()->GetName().c_str());
     is_need_replace_bp_edges = false;
     return SUCCESS;
   }

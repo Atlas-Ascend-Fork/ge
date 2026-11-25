@@ -147,7 +147,7 @@ Status InnerIdentityDeletePass::DeleteInnerIdentity(const NodePtr &node) {
   // 如果topo排序方式是稳定拓扑序，则可以删除
   if (IsStableRDFS()) {
     GELOGI(
-        "identity %s 's input has multi output, and it self has one output, topo sort mode is StableRDFS, can be "
+        "identity %s 's input has multi output, and itself has one output, topo sort mode is StableRDFS, can be "
         "deleted",
         node->GetNamePtr());
     return IsolateAndDeleteIdentityNode(node);
@@ -166,7 +166,7 @@ Status InnerIdentityDeletePass::DeleteInnerIdentity(const NodePtr &node) {
   if (identity_peer_out_anchor->GetPeerInDataNodesSize() == 1U) {
     // 场景二：identity输入节点A是单引用，且identity输出是单引用，则可以删除
     if (node->GetOutDataNodesSize() == 1U) {
-      GELOGI("identity %s 's input has only one output, and it self has only one output, can be deleted",
+      GELOGI("identity %s 's input has only one output, and itself has only one output, can be deleted",
              node->GetNamePtr());
       return IsolateAndDeleteIdentityNode(node);
     }
@@ -184,7 +184,7 @@ Status InnerIdentityDeletePass::DeleteInnerIdentity(const NodePtr &node) {
     }
     if (is_other_all_out_depend_ref) {
       GELOGI(
-          "identity %s 's input has only one output, and it self has multi output, all out node except ref depend ref, "
+          "identity %s 's input has only one output, and itself has multi output, all out node except ref depend ref, "
           "can be deleted",
           node->GetNamePtr());
       return IsolateAndDeleteIdentityNode(node);
@@ -205,7 +205,7 @@ Status InnerIdentityDeletePass::DeleteInnerIdentity(const NodePtr &node) {
       }
       if (is_ref_depend_other_all_node) {
         GELOGI(
-            "identity %s 's input has multi output, and it self has one output, ref depend other all A's out node, can "
+            "identity %s 's input has multi output, and itself has one output, ref depend other all A's out node, can "
             "be deleted",
             node->GetNamePtr());
         return IsolateAndDeleteIdentityNode(node);
@@ -234,7 +234,7 @@ Status InnerIdentityDeletePass::DeleteInnerIdentity(const NodePtr &node) {
       }
       if (can_delete) {
         GELOGI(
-            "identity %s 's input has multi output, and it self has multi output, ref depend other all A's out node, "
+            "identity %s 's input has multi output, and itself has multi output, ref depend other all A's out node, "
             "other all identity's out node depend ref, can be deleted",
             node->GetNamePtr());
         return IsolateAndDeleteIdentityNode(node);
@@ -249,7 +249,7 @@ Status InnerIdentityDeletePass::Run(ComputeGraphPtr graph) {
   if (connectivity_ == nullptr) {
     connectivity_ = ComGraphMakeUnique<ConnectionMatrix>(graph);
     if (connectivity_ == nullptr) {
-      GELOGW("Make shared failed");
+      GELOGW("Create ConnectionMatrix for graph %s failed", graph->GetName().c_str());
       return FAILED;
     }
 

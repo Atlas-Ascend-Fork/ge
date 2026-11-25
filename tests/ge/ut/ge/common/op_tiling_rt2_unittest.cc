@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "mockcpp/mockcpp.hpp"
 #include "graph/ge_context.h"
 #include "graph/ge_local_context.h"
 #include "graph/ge_tensor.h"
@@ -84,6 +85,7 @@ class RegisterOpTilingRT2UT : public testing::Test {
     ge::GetThreadLocalContext().SetGlobalOption({});
     ge::AclRuntimeStub::SetErrorResultApiName("");
     ge::AclRuntimeStub::Reset();
+    ge::MmpaStub::GetInstance().Reset();
   }
   std::shared_ptr<ge::AclRuntimeStub> acl_runtime_stub_;
 };
@@ -646,6 +648,192 @@ TEST_F(RegisterOpTilingRT2UT, AutofuseNodeWithMatmulTilingUseVecFuncSuccess) {
   auto workspace = run_info.GetAllWorkspaces();
   EXPECT_EQ(run_info.GetWorkspaceNum(), 1);
   EXPECT_EQ(workspace[0], 2560);
+}
+
+namespace {
+struct CvBudgetParseData {
+  uint32_t aic_num;
+  uint32_t aiv_num;
+};
+thread_local CvBudgetParseData expected_cv_budget{0U, 0U};
+
+using CvSocInfo = std::map<std::string, std::string>;
+thread_local std::map<const fe::PlatFormInfos *, CvSocInfo> cv_soc_infos;
+thread_local CvSocInfo cv_saved_soc_info;
+
+// Model per-platform resources locally; the shared platform stub returns fixed core counts.
+class ScopedCvPlatformMock {
+ public:
+  ScopedCvPlatformMock() {
+    cv_soc_infos.clear();
+    MOCKER_CPP(&fe::PlatFormInfos::GetCoreNumByType)
+        .stubs()
+        .will(invoke(+[](fe::PlatFormInfos *platform, const std::string &type) -> uint32_t {
+          return std::stoul(cv_soc_infos[platform].at(type == "AiCore" ? "cube_core_cnt" : "vector_core_cnt"));
+        }));
+    MOCKER_CPP(&fe::PlatFormInfos::SetPlatformResWithLock)
+        .stubs()
+        .will(invoke(+[](fe::PlatFormInfos *platform, const std::string &label, CvSocInfo &info) {
+          EXPECT_EQ(label, "SoCInfo");
+          cv_soc_infos[platform] = info;
+        }));
+    using GetResources = bool (fe::PlatFormInfos::*)(const std::string &, CvSocInfo &);
+    MOCKER_CPP(static_cast<GetResources>(&fe::PlatFormInfos::GetPlatformResWithLock))
+        .stubs()
+        .will(invoke(+[](fe::PlatFormInfos *platform, const std::string &label, CvSocInfo &info) {
+          EXPECT_EQ(label, "SoCInfo");
+          info = cv_soc_infos[platform];
+          return true;
+        }));
+    MOCKER_CPP(&fe::PlatFormInfos::SaveToBuffer).stubs().will(invoke(+[](fe::PlatFormInfos *platform) {
+      cv_saved_soc_info = cv_soc_infos[platform];
+      return std::string("cv_soc_info");
+    }));
+    MOCKER_CPP(&fe::PlatFormInfos::LoadFromBuffer)
+        .stubs()
+        .will(invoke(+[](fe::PlatFormInfos *platform, const char *buffer, size_t size) {
+          EXPECT_EQ(std::string(buffer, size), "cv_soc_info");
+          cv_soc_infos[platform] = cv_saved_soc_info;
+          return true;
+        }));
+  }
+
+  ~ScopedCvPlatformMock() {
+    GlobalMockObject::reset();
+    cv_soc_infos.clear();
+    cv_saved_soc_info.clear();
+  }
+};
+
+template <uint32_t Ratio>
+bool GetCvCoreLimitsForTest(uint32_t *aic_num, uint32_t *aiv_num, uint32_t *ratio) {
+  const auto groups = std::min(*aic_num, *aiv_num / Ratio);
+  if (groups == 0U) {
+    return false;
+  }
+  *aic_num = groups;
+  *aiv_num = groups * Ratio;
+  *ratio = Ratio;
+  return true;
+}
+
+ge::graphStatus ParseCvBudgetForTest(gert::KernelContext *context) {
+  auto platform = context->GetInputValue<fe::PlatFormInfos *>(0U);
+  auto data = new CvBudgetParseData{platform->GetCoreNumByType("AiCore"), platform->GetCoreNumByType("VectorCore")};
+  EXPECT_EQ(data->aic_num, expected_cv_budget.aic_num);
+  EXPECT_EQ(data->aiv_num, expected_cv_budget.aiv_num);
+  context->GetOutput(0U)->SetWithDefaultDeleter(data);
+  return ge::GRAPH_SUCCESS;
+}
+
+uint32_t TilingVecWithCvBudgetForTest(gert::KernelContext *context) {
+  const auto count = context->GetInputValue<size_t>(0U);
+  const auto data = context->GetInputValue<CvBudgetParseData *>(count + 1U);
+  auto tiling_context = reinterpret_cast<gert::TilingContext *>(context);
+  tiling_context->SetBlockDim(data->aiv_num);
+  *tiling_context->GetWorkspaceSizes(1U) = 2048U;
+  return ge::GRAPH_SUCCESS;
+}
+
+class MockMmpaForCvCoreBudget : public ge::MmpaStubApiGe {
+ public:
+  explicit MockMmpaForCvCoreBudget(uint32_t ratio) : ratio_(ratio) {}
+  void *DlSym(void *handle, const char *name) override {
+    const std::string symbol(name);
+    if (symbol == "GetCvCoreLimits") {
+      if (ratio_ == 1U) {
+        return reinterpret_cast<void *>(&GetCvCoreLimitsForTest<1U>);
+      }
+      if (ratio_ == 3U) {
+        return reinterpret_cast<void *>(&GetCvCoreLimitsForTest<3U>);
+      }
+      return reinterpret_cast<void *>(&GetCvCoreLimitsForTest<2U>);
+    }
+    if (symbol == "TilingParse") {
+      return reinterpret_cast<void *>(&ParseCvBudgetForTest);
+    }
+    if (symbol == "TilingFuncVec") {
+      return reinterpret_cast<void *>(&TilingVecWithCvBudgetForTest);
+    }
+    return MmpaStubApiGe::DlSym(handle, name);
+  }
+
+ private:
+  uint32_t ratio_;
+};
+}  // namespace
+
+TEST_F(RegisterOpTilingRT2UT, AutofuseMatmulCoreBudgetUsesPrivatePlatform) {
+  ScopedCvPlatformMock platform_mock;
+  auto op_impl_guard = RegisterCubeTiling("MatMulV3");
+  auto impl = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->CreateOrGetOpImpl("MatMulV3");
+  impl->tiling_parse = [](gert::KernelContext *context) {
+    auto platform = context->GetInputValue<fe::PlatFormInfos *>(1U);
+    EXPECT_EQ(platform->GetCoreNumByType("AiCore"), expected_cv_budget.aic_num);
+    EXPECT_EQ(platform->GetCoreNumByType("VectorCore"), expected_cv_budget.aiv_num);
+    return ge::GRAPH_SUCCESS;
+  };
+  impl->tiling = [](gert::TilingContext *context) {
+    const auto status = CubeTilingForAutofuse(context);
+    context->SetBlockDim(expected_cv_budget.aic_num);
+    return status;
+  };
+  for (const uint32_t ratio : {1U, 2U}) {
+    ge::MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpaForCvCoreBudget>(ratio));
+    for (const auto &budget : std::vector<std::pair<uint32_t, uint32_t>>{{5U, 7U}, {5U, 10U}, {11U, 17U}}) {
+      auto graph = ShareGraph::AutoFuseNodeGraph();
+      const auto node = graph->FindNode("fused_graph");
+      const auto desc = node->GetOpDesc();
+      ASSERT_TRUE(ge::AttrUtils::SetStr(desc, "bin_file_path",
+                                        std::string(CMAKE_BINARY_DIR) + "/tests/depends/op_stub/libautofuse_stub.so"));
+      const auto cube_graph = BuildCubeSubgraph("matmul_subgraph", "MatMulV3");
+      desc->SetExtAttr("matmul_subgraph", cube_graph);
+      fe::PlatFormInfos platform;
+      ASSERT_TRUE(platform.Init());
+      std::map<std::string, std::string> soc_info{{"ai_core_cnt", std::to_string(budget.first)},
+                                                  {"cube_core_cnt", std::to_string(budget.first)},
+                                                  {"vector_core_cnt", std::to_string(budget.second)}};
+      platform.SetPlatformResWithLock("SoCInfo", soc_info);
+      platform.SetCoreNumByCoreType("AiCore");
+      CvSocInfo before;
+      ASSERT_TRUE(platform.GetPlatformResWithLock("SoCInfo", before));
+      utils::OpRunInfo run_info;
+      auto op = ge::OpDescUtils::CreateOperatorFromNode(node);
+      const auto groups = std::min(budget.first, budget.second / ratio);
+      expected_cv_budget = {groups, groups * ratio};
+      ASSERT_EQ(AutofuseNodeWithMatmulTiling(op, platform, run_info, cube_graph->FindNode("MatMulV3")),
+                ge::GRAPH_SUCCESS);
+      EXPECT_EQ(run_info.GetBlockDim(), groups);
+      EXPECT_EQ(run_info.GetTilingKey(), 321U);
+      CvSocInfo after;
+      ASSERT_TRUE(platform.GetPlatformResWithLock("SoCInfo", after));
+      EXPECT_EQ(before, after);
+    }
+  }
+}
+
+TEST_F(RegisterOpTilingRT2UT, AutofuseMatmulRejectsInvalidCoreBudgetOrRatio) {
+  ScopedCvPlatformMock platform_mock;
+  auto op_impl_guard = RegisterCubeTiling("MatMulV3");
+  for (const uint32_t ratio : {2U, 3U}) {
+    ge::MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpaForCvCoreBudget>(ratio));
+    auto graph = ShareGraph::AutoFuseNodeGraph();
+    const auto node = graph->FindNode("fused_graph");
+    const auto desc = node->GetOpDesc();
+    ASSERT_TRUE(ge::AttrUtils::SetStr(desc, "bin_file_path",
+                                      std::string(CMAKE_BINARY_DIR) + "/tests/depends/op_stub/libautofuse_stub.so"));
+    const auto cube_graph = BuildCubeSubgraph("matmul_subgraph", "MatMulV3");
+    desc->SetExtAttr("matmul_subgraph", cube_graph);
+    fe::PlatFormInfos platform;
+    ASSERT_TRUE(platform.Init());
+    std::map<std::string, std::string> soc_info{
+        {"ai_core_cnt", "1"}, {"cube_core_cnt", "1"}, {"vector_core_cnt", ratio == 2U ? "1" : "6"}};
+    platform.SetPlatformResWithLock("SoCInfo", soc_info);
+    auto op = ge::OpDescUtils::CreateOperatorFromNode(node);
+    utils::OpRunInfo run_info;
+    EXPECT_NE(AutofuseNodeWithMatmulTiling(op, platform, run_info, cube_graph->FindNode("MatMulV3")),
+              ge::GRAPH_SUCCESS);
+  }
 }
 
 TEST_F(RegisterOpTilingRT2UT, AutofuseNodeWithConvTilingUseVecFuncSuccess) {

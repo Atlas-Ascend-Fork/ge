@@ -21,7 +21,7 @@ void *HostMemAllocator::Malloc(const std::shared_ptr<AlignedPtr> &aligned_ptr, c
     }
     return nullptr;
   }
-  GELOGD("allocate existed host memory succ, size=%zu", size);
+  GELOGD("allocate existed host memory successfully, size=%zu", size);
   allocated_blocks_[aligned_ptr->Get()] = {size, aligned_ptr};
   return aligned_ptr->MutableGet();
 }
@@ -36,7 +36,7 @@ void *HostMemAllocator::Malloc(const size_t size) {
     return nullptr;
   }
   allocated_blocks_[aligned_ptr->Get()] = {size, aligned_ptr};
-  GELOGD("allocate host memory succ, size=%zu", size);
+  GELOGD("allocate host memory successfully, size=%zu", size);
   return aligned_ptr->MutableGet();
 }
 

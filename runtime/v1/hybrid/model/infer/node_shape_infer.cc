@@ -116,7 +116,7 @@ Status NodeShapeInfer::CalcOutputTensorSizes(const bool fallback_with_range) con
              output_index);
       return status_result;
     }
-    GELOGD("[%s] Tensor size of output %zu = %ld", NodeName().c_str(), output_index, tensor_size);
+    GELOGD("[%s] Tensor size of output %zu = %ld bytes", NodeName().c_str(), output_index, tensor_size);
     (void)TensorUtils::SetSize(*tensor_desc, tensor_size);
   }
   return SUCCESS;

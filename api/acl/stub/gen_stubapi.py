@@ -157,13 +157,13 @@ def generate_function(header_files, inc_dir):
             continue
         content.append("// stub for {}\n".format(header[len(inc_dir) :]))
         functions = collect_functions(header)
-        print("inc file:{}, functions numbers:{}".format(header, len(functions)))
+        print("inc file:{}, number of functions:{}".format(header, len(functions)))
         total += len(functions)
         for func in functions:
             content.append("{}\n".format(implement_function(func)))
             content.append("\n")
     print("implement content build success")
-    print("total functions number is {}".format(total))
+    print("total number of functions is {}".format(total))
     return content
 
 

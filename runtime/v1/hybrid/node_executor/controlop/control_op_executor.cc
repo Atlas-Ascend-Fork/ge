@@ -310,7 +310,7 @@ Status WhileOpNodeTask::ExecuteCond(const TaskContext &task_context, bool &is_co
 
   if ((cond_outputs.size() != kCondOutputSize) || (cond_output_desc_list.size() != kCondOutputSize)) {
     REPORT_INNER_ERR_MSG("E19999",
-                         "[%s(%s)] Number of cond outputs(%zu) or size of cond output desc(%zu)"
+                         "[%s(%s)] Number of cond outputs(%zu) or size of cond output desc(%zu) "
                          "not equal %zu, check invalid",
                          task_context.GetNodeName(), task_context.GetNodeItem().NodeType().c_str(), cond_outputs.size(),
                          cond_output_desc_list.size(), kCondOutputSize);

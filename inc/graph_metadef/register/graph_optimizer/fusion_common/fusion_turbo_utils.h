@@ -17,7 +17,7 @@
 #define FUSION_TURBO_NOTNULL(val, ret)                 \
   do {                                                 \
     if ((val) == nullptr) {                            \
-      GELOGD("Parameter[%s] must not be null.", #val); \
+      GELOGW("Parameter[%s] must not be null.", #val); \
       return ret;                                      \
     }                                                  \
   } while (0)

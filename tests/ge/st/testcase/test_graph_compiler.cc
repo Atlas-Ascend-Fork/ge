@@ -91,6 +91,7 @@
 #include "common/mem_conflict_share_graph.h"
 #include "graph/optimize/autofuse/autofuse_optimize.h"
 #include "graph/manager/graph_var_manager.h"
+#include "graph/build/model_cache.h"
 #include "common/opskernel/ops_kernel_info_types.h"
 #include "depends/ascendcl/src/ascendcl_stub.h"
 
@@ -2397,6 +2398,16 @@ TEST_F(GraphCompilerTest, SetAllowMultiGraphParallelCompileTrue_Check_CloseVaria
   EXPECT_EQ(graph->TopologicalSorting(), SUCCESS);  // topo success, no cycle
   session_0_var_manager->Destroy();
   VarManagerPool::Instance().RemoveVarManager(0);
+}
+
+TEST_F(GraphCompilerTest, compare_var_desc_null_var_manager) {
+  const uint64_t session_id = 9120384756ULL;
+  VarDescCache var_descs;
+  GeTensorDesc tensor_desc(GeShape({16}), FORMAT_ND, DT_FLOAT);
+  var_descs.var_desc_map["some_var"] = tensor_desc;
+  VarManagerPool::Instance().var_manager_map_[session_id] = nullptr;
+  EXPECT_FALSE(ModelCache::CompareVarDesc(session_id, var_descs));
+  VarManagerPool::Instance().var_manager_map_.erase(session_id);
 }
 
 // merge为动态，会被识别为no tiling节点，走静态图

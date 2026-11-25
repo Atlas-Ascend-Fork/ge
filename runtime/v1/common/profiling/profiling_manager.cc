@@ -86,7 +86,7 @@ Status ProfilingManager::CheckInitForSubscribe(const uint64_t module, const uint
 Status ProfilingManager::ProfModelUnsubscribe(const uint32_t device, const uint32_t model_id) {
   const std::lock_guard<std::mutex> lock(mutex_);
   if (!ProfilingProperties::Instance().ProfilingSubscribeOn()) {
-    GELOGW("The profiler has not been subscribed, you do not need to channel the subscription.");
+    GELOGW("The profiler has not been subscribed, you do not need to cancel the subscription.");
     return SUCCESS;
   }
 
@@ -166,7 +166,7 @@ Status ProfilingManager::ProfParseDeviceId(const std::map<std::string, std::stri
       device_list.push_back(dev_id);
     }
   } else {
-    GELOGE(FAILED, "[Parse][DeviceId]Config para not contain device id list");
+    GELOGE(FAILED, "[Parse][DeviceId]Config para does not contain device id list");
     REPORT_INNER_ERR_MSG("E19999", "Parse device id failed, config parameter does not contain device id list");
     return FAILED;
   }
@@ -183,7 +183,7 @@ Status ProfilingManager::ProfParseParam(const std::map<std::string, std::string>
   // device num
   const auto iter = config_para.find(kConfigNumsdev);
   if (iter == config_para.end()) {
-    GELOGE(FAILED, "[Parse][Param]Config para not contain device num");
+    GELOGE(FAILED, "[Parse][Param]Config para does not contain device num");
     REPORT_INNER_ERR_MSG("E19999", "Parse param failed, config parameter does not contain device num");
     return FAILED;
   }

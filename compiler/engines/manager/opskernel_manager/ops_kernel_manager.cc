@@ -162,7 +162,7 @@ Status OpsKernelManager::CheckPluginPtr() const {
 
 Status OpsKernelManager::InitOpKernelInfoStores(const std::map<std::string, std::string> &options) {
   FuncPerfScope func_perf_scope("OpsKernelManager", __FUNCTION__);
-  GELOGI("The number of OpKernelInfoStoreObjs are %lu.", ops_kernel_store_.size());
+  GELOGI("The number of OpKernelInfoStoreObjs is %lu.", ops_kernel_store_.size());
   for (const auto &it : ops_kernel_store_) {
     GELOGI("OpKernelInfoStore name: %s.", (it.first).c_str());
     const uint64_t start = ge::GetCurrentTimestamp();
@@ -247,7 +247,7 @@ Status OpsKernelManager::InitGraphOptimizers(const std::map<std::string, std::st
     }
     GELOGI("Init graph optimizers option %s: %s", option.first.c_str(), option.second.c_str());
   }
-  GELOGI("The number of GraphOptimizerObjs are %zu.", graph_optimizers_.size());
+  GELOGI("The number of GraphOptimizerObjs is %zu.", graph_optimizers_.size());
 
   for (const auto &it : graph_optimizers_) {
     GELOGI("GraphOptimizer name: %s.", (it.first).c_str());
@@ -427,7 +427,7 @@ void OpsKernelManager::InitGraphOptimizerPriority() {
       atomic_graph_optimizers_by_priority_.emplace_back(*name_to_optimizer_pair);
       priority_seq << optimizer_name.c_str() << ' ';
     } else {
-      GELOGW("Unknown optimizer %s show up in priority config file. Please check.", optimizer_name.c_str());
+      GELOGW("Unknown optimizer %s shows up in priority config file. Please check.", optimizer_name.c_str());
     }
   }
   GELOGI("Atomic graph Optimizers priority initialized. The sequence will follow : %s.", priority_seq.str().c_str());

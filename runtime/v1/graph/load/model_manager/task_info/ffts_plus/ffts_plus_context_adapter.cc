@@ -59,7 +59,8 @@ Status FftsPlusContextAdapter::ParseCtxByType(rtFftsPlusContextType_t ctx_type, 
     com_ctx->contextType = ctx_type;
     return iter->second(task_def, com_ctx);
   } else {
-    GELOGE(FAILED, "Context type:[%d] is unsupported.", static_cast<int32_t>(ctx_type));
+    GELOGE(FAILED, "Context type:[%d] is unsupported, no parser registered for this context type.",
+           static_cast<int32_t>(ctx_type));
     return FAILED;
   }
 }
@@ -490,8 +491,10 @@ Status FftsPlusContextAdapter::ParseCondSwitchCtx(const domi::FftsPlusCtxDef &ta
   ctx->aten = static_cast<uint8_t>(ctx_def.aten() & k1BitMask);
 
   if (ctx_def.condition() == RT_COND_TYPE_MAX) {
-    REPORT_INNER_ERR_MSG("E19999", "Unsupported cond type %u", ctx_def.condition());
-    GELOGE(FAILED, "[Check][CtxType] Unsupported cond type %u", ctx_def.condition());
+    REPORT_INNER_ERR_MSG("E19999", "Unsupported cond type %u, valid range is [0, %u)", ctx_def.condition(),
+                         RT_COND_TYPE_MAX);
+    GELOGE(FAILED, "[Check][CtxType] Unsupported cond type %u, valid range is [0, %u)", ctx_def.condition(),
+           RT_COND_TYPE_MAX);
     return FAILED;
   }
   ctx->condition = static_cast<rtFftsPlusCondType_t>(ctx_def.condition());

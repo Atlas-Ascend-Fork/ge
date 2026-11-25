@@ -98,7 +98,7 @@ Status ShapeInferenceEngine::PropagateOutputs(const NodeItem *const node_item, c
       auto &dst_node_item = dst_input_index_and_node.second;
       GE_CHECK_NOTNULL(dst_node_item);
       GE_CHK_STATUS_RET(subgraph_context_->SetInput(*dst_node_item, dst_input_idx, *tensor),
-                        "[Invoke][SetInput] failed for node[%s] propagate input value to node[%s].",
+                        "[Invoke][SetInput] failed for node[%s] to propagate input value to node[%s].",
                         node_item->NodeName().c_str(), dst_node_item->NodeName().c_str());
 
       if (node_item->is_output_shape_static) {

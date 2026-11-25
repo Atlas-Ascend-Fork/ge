@@ -354,7 +354,8 @@ static aclError RuntimeV2ModelLoadFromFileWithMem(const char_t *const modelPath,
   ACL_LOG_INFO("call ge interface gert::LoadDataFromFile");
   ret = gert::LoadDataFromFile(modelPath, modelData);
   if (ret != ge::GRAPH_SUCCESS) {
-    ACL_LOG_CALL_ERROR("[Load][Model]failed to load model from file by runtime2.0, ge errorCode is %u", ret);
+    ACL_LOG_CALL_ERROR("[Load][Model]failed to load model from file[%s] by runtime2.0, ge errorCode is %u", modelPath,
+                       ret);
     return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
   }
   std::shared_ptr<void> dataAuto;
@@ -400,8 +401,8 @@ static aclError ModelLoadFromMemWithMem(const void *const model, const size_t mo
 
   *modelId = id;
   ACL_LOG_INFO(
-      "successfully execute ModelLoadFromMemWithMem, modelSize[%zu], workSize[%zu], "
-      "weightSize[%zu], modelId[%u]",
+      "successfully execute ModelLoadFromMemWithMem, modelSize[%zu] bytes, workSize[%zu] bytes, "
+      "weightSize[%zu] bytes, modelId[%u]",
       modelSize, loadArgs.mem_size, loadArgs.weight_size, *modelId);
   return ACL_SUCCESS;
 }
@@ -430,21 +431,25 @@ static aclError GetBundleNumAndOffset(const void *const model, const size_t mode
   }
   const auto *fileHeader = ge::PtrToPtr<void, ge::ModelFileHeader>(model);
   if (fileHeader->modeltype != ge::MODEL_TYPE_BUNDLE_MODEL) {
-    ACL_LOG_ERROR("this is not bundle om, please check");
+    ACL_LOG_ERROR(
+        "[Check][Model]model is not bundle om, model addr[%p], modelSize[%zu] bytes, please check the model "
+        "file or memory input",
+        model, modelSize);
     return ACL_ERROR_INVALID_PARAM;
   }
   currentOffset += sizeof(ge::ModelFileHeader);
   const auto *partitionTable =
       ge::PtrToPtr<void, ge::ModelPartitionTable>(ge::ValueToPtr(ge::PtrToValue(model) + currentOffset));
   const size_t partitionTableSize = ge::SizeOfModelPartitionTable(*partitionTable);
-  ACL_LOG_INFO("get offset %zu, partitionTableSize %zu", currentOffset, partitionTableSize);
+  ACL_LOG_INFO("get offset %zu bytes, partitionTableSize %zu bytes", currentOffset, partitionTableSize);
   ACL_REQUIRES_OK(acl::CheckSizeTAddOverflow(currentOffset, partitionTableSize, currentOffset));
   ACL_REQUIRES_LE(currentOffset, modelSize);
   for (size_t i = 0; i < partitionTable->num; ++i) {
-    ACL_LOG_INFO("get %zu om offset %zu, size %zu", i, currentOffset, partitionTable->partition[i].mem_size);
+    ACL_LOG_INFO("get %zu om offset %zu bytes, size %zu bytes", i, currentOffset,
+                 partitionTable->partition[i].mem_size);
     if (partitionTable->partition[i].type == ge::BUNDLE_MODEL_VAR_INFO) {
       varSize = *ge::PtrToPtr<void, int64_t>(ge::ValueToPtr(ge::PtrToValue(model) + currentOffset));
-      ACL_LOG_INFO("get var size %zu", varSize);
+      ACL_LOG_INFO("get var size %zu bytes", varSize);
     }
     if (partitionTable->partition[i].type == ge::BUNDLE_MODEL_INFO) {
       subModelOffsetAndSize.emplace_back(currentOffset, partitionTable->partition[i].mem_size);
@@ -513,8 +518,10 @@ static aclError RuntimeV2ModelLoadFromMemWithMem(const void *const model, const 
                                                  const char_t *const weightPath, const int32_t priority,
                                                  std::vector<ge::FileConstantMem> file_constant_mems = {},
                                                  const std::shared_ptr<gert::RtSession> &rtSessionExternal = nullptr) {
-  ACL_LOG_INFO("start to execute RuntimeV2ModelLoadFromMemWithMem, modelSize[%zu], priority[%d], weightSize[%zu]",
-               modelSize, priority, weightSize);
+  ACL_LOG_INFO(
+      "start to execute RuntimeV2ModelLoadFromMemWithMem, modelSize[%zu] bytes, priority[%d], weightSize[%zu] "
+      "bytes",
+      modelSize, priority, weightSize);
   ACL_CHECK_WITH_INNER_MESSAGE_AND_RETURN(modelSize != 0U, ACL_ERROR_INVALID_PARAM,
                                           "[Check][ModelSize]modelSize[%zu] is invalid, should not be zero", modelSize);
   // 1. config model data
@@ -531,8 +538,10 @@ static aclError RuntimeV2ModelLoadFromMemWithMem(const void *const model, const 
   // 2. get executorV2
   ACL_REQUIRES_OK(RuntimeV2ModelLoadCommon(modelData, modelId, weightPtr, weightSize, std::move(file_constant_mems),
                                            rtSessionExternal));
-  ACL_LOG_INFO("successfully execute RuntimeV2ModelLoadFromMemWithMem, modelSize[%zu], modelId[%u], weightSize[%zu]",
-               modelSize, *modelId, weightSize);
+  ACL_LOG_INFO(
+      "successfully execute RuntimeV2ModelLoadFromMemWithMem, modelSize[%zu] bytes, modelId[%u], weightSize[%zu] "
+      "bytes",
+      modelSize, *modelId, weightSize);
   return ACL_SUCCESS;
 }
 
@@ -581,7 +590,7 @@ static aclError ModelLoadFromMemWithQ(const void *const model, const size_t mode
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(model);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelId);
   ACL_LOG_INFO(
-      "start to execute ModelLoadFromMemWithQ, modelSize[%zu], inputQNum[%zu], outputQNum[%zu], "
+      "start to execute ModelLoadFromMemWithQ, modelSize[%zu] bytes, inputQNum[%zu], outputQNum[%zu], "
       "priority[%d]",
       modelSize, args.input_queue_ids.size(), args.output_queue_ids.size(), priority);
 
@@ -605,7 +614,7 @@ static aclError ModelLoadFromMemWithQ(const void *const model, const size_t mode
     ACL_LOG_INFO("Load weight path is [%s]", data.weight_path.c_str());
   }
 
-  ACL_LOG_INFO("call ge interface executor.LoadModelWithQ, modelSize[%zu]", modelSize);
+  ACL_LOG_INFO("call ge interface executor.LoadModelWithQ, modelSize[%zu] bytes", modelSize);
   const ge::Status ret = executor.LoadModelWithQ(id, data, args);
   if (ret != ge::SUCCESS) {
     ACL_LOG_CALL_ERROR("[Load][WithQ]load model with Q, ge result[%u], failed", ret);
@@ -614,7 +623,7 @@ static aclError ModelLoadFromMemWithQ(const void *const model, const size_t mode
 
   *modelId = id;
   ACL_LOG_INFO(
-      "successfully execute ModelLoadFromMemWithQ, modelSize[%zu], inputQNum[%zu], outputQNum[%zu], "
+      "successfully execute ModelLoadFromMemWithQ, modelSize[%zu] bytes, inputQNum[%zu], outputQNum[%zu], "
       "modelId[%u]",
       modelSize, args.input_queue_ids.size(), args.output_queue_ids.size(), *modelId);
 
@@ -849,7 +858,7 @@ static aclError RuntimeV2ModelExecute(const uint32_t modelId, const aclmdlDatase
         dataBuffer->length = memSize;
         ACL_LOG_DEBUG(
             "ModelExecute, assign acl-malloced output addr to user-defined buffer, addr:[%p], "
-            "len:[%lu]",
+            "len:[%lu] bytes",
             dataBuffer->data, dataBuffer->length);
       }
     }
@@ -913,7 +922,7 @@ static aclError RuntimeV2ModelExecute(const uint32_t modelId, const aclmdlDatase
                                            outputSize, ACL_MEMCPY_DEVICE_TO_DEVICE),
                                aclrtMemcpy);
       dataBuffer->length = outputSize;
-      ACL_LOG_DEBUG("ModelExecute, assign acl-malloced output addr to user-defined buffer, addr:[%p], len:[%lu]",
+      ACL_LOG_DEBUG("ModelExecute, assign acl-malloced output addr to user-defined buffer, addr:[%p], len:[%lu] bytes",
                     dataBuffer->data, dataBuffer->length);
     }
   }
@@ -1010,7 +1019,7 @@ static aclError ModelExecute(const uint32_t modelId, const aclmdlDataset *const 
         outputData.blobs[idx].length = outputSize;
         ACL_LOG_DEBUG(
             "ModelExecute, assign acl-malloced output addr to user-defined buffer, addr:[%p], "
-            "len:[%lu]",
+            "len:[%lu] bytes",
             dataBuffer->data, dataBuffer->length);
       }
     }
@@ -1063,7 +1072,7 @@ static aclError ModelExecute(const uint32_t modelId, const aclmdlDataset *const 
       dataBuffer->length = outputSize;
       ACL_LOG_DEBUG(
           "ModelExecute, assign acl-malloced output addr to user-defined buffer, addr:[%p], "
-          "len:[%lu]",
+          "len:[%lu] bytes",
           dataBuffer->data, dataBuffer->length);
     }
   }
@@ -1110,7 +1119,7 @@ static void GetTensorInfo(std::vector<aclmdlTensorDesc> &inputDesc, const gert::
 static aclError RuntimeV2GetDesc(aclmdlDesc *const modelDesc, const uint32_t modelId) {
   const auto executor = acl::AclResourceManager::GetInstance().GetExecutor(modelId);
   if (executor == nullptr) {
-    ACL_LOG_ERROR("input modelId[%u] is invalid while get executor", modelId);
+    ACL_LOG_ERROR("input modelId[%u] is invalid while getting executor", modelId);
     return static_cast<aclError>(ACL_ERROR_GE_EXEC_MODEL_ID_INVALID);
   }
   const auto &geModelDesc = executor->GetModelDesc();
@@ -1172,7 +1181,10 @@ aclError aclmdlGetDescImpl(aclmdlDesc *modelDesc, uint32_t modelId) {
   }
 
   if ((inputDescV2.size() < inputDesc.size()) || (outputDescV2.size() < outputDesc.size())) {
-    ACL_LOG_CALL_ERROR("[Get][ModelDescInfo]description v2 size less than description v1 size, model id[%u]", modelId);
+    ACL_LOG_CALL_ERROR(
+        "[Get][ModelDescInfo]description v2 size less than description v1 size, input v2 size[%zu], input v1 "
+        "size[%zu], output v2 size[%zu], output v1 size[%zu], model id[%u]",
+        inputDescV2.size(), inputDesc.size(), outputDescV2.size(), outputDesc.size(), modelId);
     return ACL_ERROR_FAILURE;
   }
 
@@ -1267,7 +1279,7 @@ static aclError GetDescFromMem(const ge::ModelData &modelData, const ge::GeExecu
   ge::ModelInOutInfo info;
   const auto ret = executor.GetModelDescInfoFromMem(modelData, info);
   if (ret != ge::SUCCESS) {
-    ACL_LOG_CALL_ERROR("GetModelDescInfoFromMem failed");
+    ACL_LOG_CALL_ERROR("GetModelDescInfoFromMem failed, ge result[%u]", ret);
     return ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret));
   }
   GetModelTensorDesc(info, modelDesc, true);
@@ -1546,7 +1558,7 @@ aclError aclmdlLoadFromFileImpl(const char *modelPath, uint32_t *modelId) {
     ret = acl::ModelLoadFromFileWithMem(modelPath, modelId, loadArgs, 0);
   }
   if (ret != ACL_SUCCESS) {
-    ACL_LOG_ERROR("Load model from file failed!");
+    ACL_LOG_ERROR("Load model from file[%s] failed, errorCode[%d]", modelPath, ret);
     return ret;
   }
   ACL_LOG_INFO("successfully execute aclmdlLoadFromFile");
@@ -1615,7 +1627,8 @@ aclError aclmdlBundleGetModelIdImpl(uint32_t bundleId, size_t index, uint32_t *m
   ACL_REQUIRES_OK(acl::AclResourceManager::GetInstance().GetBundleInfo(bundleId, bundleInfos));
   if (bundleInfos.isInit) {
     ACL_LOG_ERROR(
-        "aclmdlBundleGetModelId is supported only aclmdlBundleLoadFromFile or aclmdlBundleLoadFromMem is executed");
+        "aclmdlBundleGetModelId is supported only when aclmdlBundleLoadFromFile or aclmdlBundleLoadFromMem is "
+        "executed");
     return ACL_ERROR_API_NOT_SUPPORT;
   }
   if (index >= bundleInfos.loadedSubModelId.size()) {
@@ -1790,8 +1803,10 @@ aclError aclmdlBundleUnloadModelImpl(uint32_t bundleId, uint32_t modelId) {
 aclError aclmdlLoadFromMemWithMemImpl(const void *model, size_t modelSize, uint32_t *modelId, void *workPtr,
                                       size_t workSize, void *weightPtr, size_t weightSize) {
   ACL_PROFILING_REG(acl::AclProfType::AclmdlLoadFromMemWithMem);
-  ACL_LOG_INFO("start to execute aclmdlLoadFromMemWithMem, modelSize[%zu], workSize[%zu], weightSize[%zu]", modelSize,
-               workSize, weightSize);
+  ACL_LOG_INFO(
+      "start to execute aclmdlLoadFromMemWithMem, modelSize[%zu] bytes, workSize[%zu] bytes, weightSize[%zu] "
+      "bytes",
+      modelSize, workSize, weightSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(model);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(modelId);
 
@@ -1807,8 +1822,10 @@ aclError aclmdlLoadFromMemWithMemImpl(const void *model, size_t modelSize, uint3
   if (ret != ACL_SUCCESS) {
     return ret;
   }
-  ACL_LOG_INFO("successfully execute aclmdlLoadFromMemWithMem, modelSize[%zu], workSize[%zu], weightSize[%zu]",
-               modelSize, workSize, weightSize);
+  ACL_LOG_INFO(
+      "successfully execute aclmdlLoadFromMemWithMem, modelSize[%zu] bytes, workSize[%zu] bytes, "
+      "weightSize[%zu] bytes",
+      modelSize, workSize, weightSize);
   return ACL_SUCCESS;
 }
 
@@ -1836,8 +1853,8 @@ aclError aclmdlLoadFromMemWithQImpl(const void *model, size_t modelSize, uint32_
   if (aclmdlCheckQueueParam(inputQ, inputQNum, outputQ, outputQNum) != ACL_SUCCESS) {
     return ACL_ERROR_INVALID_PARAM;
   }
-  ACL_LOG_INFO("start to execute aclmdlLoadFromMemWithQ, modelSize[%zu], inputQNum[%zu], outputQNum[%zu]", modelSize,
-               inputQNum, outputQNum);
+  ACL_LOG_INFO("start to execute aclmdlLoadFromMemWithQ, modelSize[%zu] bytes, inputQNum[%zu], outputQNum[%zu]",
+               modelSize, inputQNum, outputQNum);
   std::vector<uint32_t> inputQVec(inputQ, inputQ + inputQNum);
   std::vector<uint32_t> outputQVec(outputQ, outputQ + outputQNum);
   ge::ModelQueueArg args{std::move(inputQVec), std::move(outputQVec), {}, false};
@@ -1845,7 +1862,7 @@ aclError aclmdlLoadFromMemWithQImpl(const void *model, size_t modelSize, uint32_
   if (ret != ACL_SUCCESS) {
     return ret;
   }
-  ACL_LOG_INFO("successfully execute aclmdlLoadFromMemWithQ, modelSize[%zu], inputQNum[%zu], outputQNum[%zu]",
+  ACL_LOG_INFO("successfully execute aclmdlLoadFromMemWithQ, modelSize[%zu] bytes, inputQNum[%zu], outputQNum[%zu]",
                modelSize, inputQNum, outputQNum);
   return ACL_SUCCESS;
 }
@@ -2052,7 +2069,7 @@ aclError aclmdlQueryWorkspaceSizeImpl(const char *fileName, size_t memOptimizeMo
 
 aclError aclmdlQuerySizeFromMemImpl(const void *model, size_t modelSize, size_t *workSize, size_t *weightSize) {
   ACL_PROFILING_REG(acl::AclProfType::AclmdlQuerySizeFromMem);
-  ACL_LOG_INFO("start to execute ACL_QueryModelSizeFromMem, modelSize[%zu]", modelSize);
+  ACL_LOG_INFO("start to execute ACL_QueryModelSizeFromMem, modelSize[%zu] bytes", modelSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(model);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(workSize);
   ACL_REQUIRES_NOT_NULL_WITH_INPUT_REPORT(weightSize);
@@ -2076,8 +2093,8 @@ aclError aclmdlQuerySizeFromMemImpl(const void *model, size_t modelSize, size_t 
 aclError aclmdlQueryWorkspaceSizeFromMemImpl(const void *model, size_t modelSize, size_t memOptimizeMode,
                                              size_t *workSize) {
   ACL_PROFILING_REG(acl::AclProfType::AclmdlQueryWorkspaceSizeFromMem);
-  ACL_LOG_INFO("start to execute aclmdlQueryWorkspaceSizeFromMem, modelSize[%zu], memOptimizeMode[%zu]", modelSize,
-               memOptimizeMode);
+  ACL_LOG_INFO("start to execute aclmdlQueryWorkspaceSizeFromMem, modelSize[%zu] bytes, memOptimizeMode[%zu]",
+               modelSize, memOptimizeMode);
   (void)model;
   (void)workSize;
   ACL_LOG_INFO("aclmdlQueryWorkspaceSizeFromMem is not supported by OM model.");
@@ -2263,7 +2280,8 @@ aclError aclmdlGetCurOutputDimsImpl(const aclmdlDesc *modelDesc, size_t index, a
   aclError aclRet;
   const size_t shapeSize = geShapeInfo.size();
   if ((dynamicType != static_cast<int32_t>(ge::DYNAMIC_DIMS)) && (shapeSize > 2U)) {
-    ACL_LOG_INNER_ERROR("[Check][dynamicType]shapeSize[%zu] is invalid, modelId[%u]", shapeSize, modelId);
+    ACL_LOG_INNER_ERROR("[Check][shapeSize]shapeSize[%zu] is invalid, it should not be larger than 2, modelId[%u]",
+                        shapeSize, modelId);
     return ACL_ERROR_GE_FAILURE;
   }
   if (shapeSize == 0U) {
@@ -2510,13 +2528,15 @@ aclError aclmdlLoadWithConfigImpl(const aclmdlConfigHandle *handle, uint32_t *mo
     return ACL_ERROR_FEATURE_UNSUPPORTED;
   }
   if (!acl::CheckMdlConfigHandle(handle)) {
-    ACL_LOG_ERROR("[Check][ConfigHandle]model config is invalid because some params may not be set or invalid");
+    ACL_LOG_ERROR(
+        "[Check][ConfigHandle]model config is invalid because some params may not be set or invalid, mdlLoadType[%zu]",
+        handle->mdlLoadType);
     return ACL_ERROR_INVALID_PARAM;
   }
   acl::UpdateGraphOptions(OPTION_EXEC_REUSE_ZERO_COPY_MEMORY, std::to_string(handle->reuseZeroCopy));
   auto &file_constant_mems = handle->fileConstantMem;
   for (const auto &file_constant_mem : file_constant_mems) {
-    ACL_LOG_INFO("file constant name[%s], device memory address[%p], device memory size[%zu]",
+    ACL_LOG_INFO("file constant name[%s], device memory address[%p], device memory size[%zu] bytes",
                  file_constant_mem.file_name.c_str(), file_constant_mem.device_mem, file_constant_mem.mem_size);
   }
   switch (static_cast<int32_t>(handle->mdlLoadType)) {
@@ -2544,7 +2564,7 @@ aclError aclRecoverAllHcclTasksImpl(int32_t deviceId) {
   ge::GeExecutor executor;
   const ge::Status ret = executor.RecoverAllModel(deviceId);
   ACL_CHECK_WITH_MESSAGE_AND_RETURN(ret == ge::SUCCESS, ACL_GET_ERRCODE_GE(static_cast<int32_t>(ret)),
-                                    "call RecoverAllModel fail in deviceid %d", deviceId);
+                                    "call RecoverAllModel failed in deviceid[%d], ge result[%u]", deviceId, ret);
   ACL_LOG_INFO("end to execute aclRecoverAllHcclTasks in device %d", deviceId);
   return ACL_SUCCESS;
 }

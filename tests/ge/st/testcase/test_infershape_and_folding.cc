@@ -34,6 +34,7 @@
 #include "ge_graph_dsl/assert/graph_assert.h"
 #include "graph/utils/graph_utils.h"
 #include "graph/utils/graph_utils_ex.h"
+#include "compiler/graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "ge_running_env/tensor_utils.h"
 #include "common/ge_types.h"
 #include "graph/load/model_manager/task_info/aicpu/kernel_ex_task_info.h"
@@ -1163,4 +1164,29 @@ TEST_F(InferAndFoldingTest, test_operator_get_subgraph_names_null_impl) {
   EXPECT_EQ(valid_op.GetSubgraphNames(subgraph_names), GRAPH_SUCCESS);
   ASSERT_EQ(subgraph_names.size(), 1UL);
   EXPECT_STREQ(subgraph_names[0].GetString(), "then_branch");
+}
+
+TEST_F(InferAndFoldingTest, test_symbolic_get_cond_input_cast_and_null_guard) {
+  auto st_graph = std::make_shared<ComputeGraph>("st_symbolic_cond_input");
+  auto case_desc = std::make_shared<OpDesc>("case_op", "Case");
+  ASSERT_EQ(case_desc->AddInputDesc(GeTensorDesc()), GRAPH_SUCCESS);
+  ASSERT_EQ(case_desc->AddOutputDesc(GeTensorDesc()), GRAPH_SUCCESS);
+  auto case_node = st_graph->AddNode(case_desc);
+  ASSERT_NE(case_node, nullptr);
+  EXPECT_EQ(SymbolicInferUtil::GetCondInput(case_node), nullptr);
+
+  auto size_desc = std::make_shared<OpDesc>("size_op", "Size");
+  ASSERT_EQ(size_desc->AddInputDesc(GeTensorDesc()), GRAPH_SUCCESS);
+  ASSERT_EQ(size_desc->AddOutputDesc(GeTensorDesc()), GRAPH_SUCCESS);
+  auto size_node = st_graph->AddNode(size_desc);
+  ASSERT_NE(size_node, nullptr);
+  ASSERT_EQ(GraphUtils::AddEdge(size_node->GetOutDataAnchor(0), case_node->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  EXPECT_EQ(SymbolicInferUtil::GetCondInput(case_node), nullptr);
+
+  auto src_desc = std::make_shared<OpDesc>("src_const", "Const");
+  ASSERT_EQ(src_desc->AddOutputDesc(GeTensorDesc()), GRAPH_SUCCESS);
+  auto src_node = st_graph->AddNode(src_desc);
+  ASSERT_NE(src_node, nullptr);
+  ASSERT_EQ(GraphUtils::AddEdge(src_node->GetOutDataAnchor(0), size_node->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  EXPECT_EQ(SymbolicInferUtil::GetCondInput(case_node), src_node);
 }

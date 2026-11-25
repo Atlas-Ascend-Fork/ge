@@ -44,7 +44,8 @@ Status ConcatOffsetKernel::Compute(const OpDescPtr op_desc_ptr, const std::vecto
   int32_t concat_dim = *(const_cast<int32_t *>(reinterpret_cast<const int32_t *>(input_0->GetData().data())));
   // validate inputs
   if ((static_cast<int32_t>(input.size()) != (N + kNumOne)) || (input.size() <= kConcatOffsetInputIndexOne)) {
-    GELOGW("The number of input for concat offset must be equal to %d, and must be more than one", (N + kNumOne));
+    GELOGW("The number of input for concat offset must be equal to %d, and must be more than one, but is %zu.",
+           (N + kNumOne), input.size());
     return NOT_CHANGED;
   }
 
@@ -52,13 +53,13 @@ Status ConcatOffsetKernel::Compute(const OpDescPtr op_desc_ptr, const std::vecto
   GeShape output_shape = input[kConcatOffsetInputIndexOne]->GetTensorDesc().GetShape();
   int64_t output_size = output_shape.GetShapeSize();
   if (concat_dim >= output_size) {
-    GELOGW("Concat dim is bigger than the size of output_shape.");
+    GELOGW("Concat dim %d is bigger than the size of output_shape %ld.", concat_dim, output_size);
     return NOT_CHANGED;
   }
   GELOGI("Output shape size is %ld. ", output_size);
   int32_t offset = 0;
   if (output_size < 0) {
-    GELOGE(FAILED, "Index is negative.");
+    GELOGE(FAILED, "Output shape size %ld is negative.", output_size);
     return FAILED;
   }
   unique_ptr<int32_t[]> buf(new (std::nothrow) int32_t[output_size]());

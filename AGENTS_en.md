@@ -65,6 +65,11 @@ bash build.sh --output_path=<PATH>  # Set custom output path
 rm -rf build_ut/ build_st/ output/ build/ build_out/ cov/ build_cmake_gcov/
 ```
 
+## ACL Interface Development
+
+**Use Skill**: `acl-mdl-api-creator`
+**Applicable Scenarios**: Adding public API interfaces of acl_mdl.h / acl_base_mdl.h, including model loading, execution, query, and Desc/Dataset/Config operations.
+
 ## Feature Development and New Features
 >
 > **Trigger Words**: Add new feature/requirement/capability, develop new feature/requirement/capability, implement feature/requirement/capability
@@ -118,6 +123,12 @@ rm -rf build_ut/ build_st/ output/ build/ build_out/ cov/ build_cmake_gcov/
 
 **gitcode pr/issue/ci operations**
 @.claude/skills/default-skills/SKILL.md
+
+### OM2 C ABI Compatibility
+
+**Trigger Words**: `$om2-abi-compat`, OM2 SO and Executor C ABI, `om2_model_api.h`, APIs or callbacks exported by `GertModel*`, data structures crossing this boundary, OM2 on-disk format and `manifest.json`, `om2_feature_list.h`, OM2 feature list.
+
+**Use Skill**: When any of the above trigger conditions is met, read and follow `.claude/skills/om2-abi-compat/SKILL.md`.
 
 ### Code Review Checklist
 >

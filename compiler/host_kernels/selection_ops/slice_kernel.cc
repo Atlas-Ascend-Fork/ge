@@ -101,7 +101,7 @@ Status SliceKernel::Compute(const OpDescPtr attr, const std::vector<ConstGeTenso
   }
   // check input size
   if (input.size() != kSliceInputSize) {
-    GELOGW("The number of input for slice must be %zu.", kSliceInputSize);
+    GELOGW("The number of input for slice must be %zu, but is %zu.", kSliceInputSize, input.size());
     return NOT_CHANGED;
   }
   Status ret = CheckInputDatatypeSupported(input);
@@ -167,7 +167,7 @@ Status SliceKernel::CheckInputDatatypeSupported(const std::vector<ConstGeTensorP
   // check supported data type in input_x
   auto data_type = x_tensor->GetTensorDesc().GetDataType();
   if (kSupportedDataTypeToLength.count(data_type) == 0) {
-    GELOGW("input_x data_type is [%s], does not supported!", TypeUtils::DataTypeToSerialString(data_type).c_str());
+    GELOGW("input_x data_type is [%s], which is not supported!", TypeUtils::DataTypeToSerialString(data_type).c_str());
     return NOT_CHANGED;
   }
   uint32_t type_size = 0;

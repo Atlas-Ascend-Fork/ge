@@ -275,8 +275,6 @@ inline bool IsConv2DSingleRef(const ge::NodePtr &node) {
 
 Status SplitConvConcatFusionPass::CheckOutputSingleRef(ge::NodePtr &concat_node) {
   std::vector<std::string> op_type_before = {LEAKYRELU, RELU, DEQUANT};
-  ge::NodePtr pre_node = nullptr;
-  ge::NodePtr pre_pre_node = nullptr;
   size_t count_output_single = 0;
   for (auto &node : concat_node->GetInDataNodes()) {
     // meet Conv2D, return
@@ -287,7 +285,12 @@ Status SplitConvConcatFusionPass::CheckOutputSingleRef(ge::NodePtr &concat_node)
     if (node->GetOutDataNodes().size() != 1) {
       return NOT_CHANGED;
     }
+    ge::NodePtr pre_node = nullptr;
     if (std::find(op_type_before.begin(), op_type_before.end(), node->GetType()) != op_type_before.end()) {
+      if (node->GetInDataNodes().empty()) {
+        FE_LOGW("Node[%s, %s] has no input node.", node->GetName().c_str(), node->GetType().c_str());
+        return NOT_CHANGED;
+      }
       pre_node = node->GetInDataNodes().at(0);
       if (IsConv2DSingleRef(pre_node)) {
         count_output_single++;
@@ -297,15 +300,20 @@ Status SplitConvConcatFusionPass::CheckOutputSingleRef(ge::NodePtr &concat_node)
         return NOT_CHANGED;
       }
     }
-    if (pre_node->GetType() == DEQUANT) {
-      pre_pre_node = pre_node->GetInDataNodes().at(0);
-      if (IsConv2DSingleRef(pre_pre_node)) {
-        count_output_single++;
-        continue;
-      }
-      if (pre_pre_node->GetOutDataNodes().size() != 1) {
-        return NOT_CHANGED;
-      }
+    if (pre_node == nullptr || pre_node->GetType() != DEQUANT) {
+      continue;
+    }
+    if (pre_node->GetInDataNodes().empty()) {
+      FE_LOGW("Dequant node[%s] has no input node.", pre_node->GetName().c_str());
+      return NOT_CHANGED;
+    }
+    ge::NodePtr pre_pre_node = pre_node->GetInDataNodes().at(0);
+    if (IsConv2DSingleRef(pre_pre_node)) {
+      count_output_single++;
+      continue;
+    }
+    if (pre_pre_node->GetOutDataNodes().size() != 1) {
+      return NOT_CHANGED;
     }
   }
   if (count_output_single != concat_node->GetInDataNodes().size()) {
@@ -320,6 +328,9 @@ Status SplitConvConcatFusionPass::FusionSplit(vector<ge::NodePtr> &vector_quant,
                                               ge::NodePtr &split_node) {
   if (!vector_quant.empty()) {
     ge::OpDescPtr new_move_quant = ge::AttrUtils::CopyOpDesc(vector_quant[0]->GetOpDesc());
+    FE_CHECK(new_move_quant == nullptr,
+             FE_LOGE("Failed to copy the op desc of quant node [%s].", vector_quant[0]->GetName().c_str()),
+             return FAILED);
     auto quant_data_type = vector_quant[0]->GetOpDesc()->GetOutputDesc(0).GetDataType();
     new_move_quant->SetName(new_move_quant->GetName() + "_move");
     ge::NodePtr new_move_quant_node = graph.AddNode(new_move_quant);
@@ -416,6 +427,9 @@ Status SplitConvConcatFusionPass::FusionConcat(vector<ge::NodePtr> &vector_dequa
 
       if (concat_next_node->GetType() == QUANT) {
         ge::OpDescPtr move_quant = ge::AttrUtils::CopyOpDesc(concat_next_node->GetOpDesc());
+        FE_CHECK(move_quant == nullptr,
+                 FE_LOGE("Failed to copy the op desc of quant node [%s].", concat_next_node->GetName().c_str()),
+                 return FAILED);
         move_quant->SetName(move_quant->GetName() + "_" + std::to_string(i));
         ge::NodePtr move_quant_node = graph.AddNode(move_quant);
         FE_CHECK_NOTNULL(move_quant_node);
@@ -437,6 +451,9 @@ Status SplitConvConcatFusionPass::FusionConcat(vector<ge::NodePtr> &vector_dequa
       if ((concat_next_node->GetType() == LEAKYRELU) || (concat_next_node->GetType() == RELU) ||
           (concat_next_node->GetType() == QUANT)) {
         ge::OpDescPtr move_relu = ge::AttrUtils::CopyOpDesc(concat_next_node->GetOpDesc());
+        FE_CHECK(move_relu == nullptr,
+                 FE_LOGE("Failed to copy the op desc of relu node [%s].", concat_next_node->GetName().c_str()),
+                 return FAILED);
         move_relu->SetName(move_relu->GetName() + "_" + std::to_string(i));
         ge::NodePtr move_relu_node = graph.AddNode(move_relu);
         FE_CHECK_NOTNULL(move_relu_node);

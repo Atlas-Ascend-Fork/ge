@@ -51,7 +51,7 @@ Status GatherV2Kernel::ProcessAxis0(ConstGeTensorPtr tensor_x, GeTensorPtr outpu
     T *data_ptr_y_tmp = data_ptr_y + i * ystride_[kGatherV2InputIndexZero];
     size_t size = sizeof(T) * xstride_[kGatherV2InputIndexZero];
     if (data_ptr_y_tmp - data_ptr_y < 0) {
-      GELOGE(PARAM_INVALID, "ptr_y - ptr_y_tmp less than zero");
+      GELOGE(PARAM_INVALID, "ptr diff %td is negative, index i:%ld", data_ptr_y_tmp - data_ptr_y, i);
       return PARAM_INVALID;
     }
     size_t offset_size = (data_ptr_y_tmp - data_ptr_y) * sizeof(T);
@@ -80,7 +80,7 @@ Status GatherV2Kernel::ProcessAxis1(ConstGeTensorPtr tensor_x, GeTensorPtr outpu
       T *data_ptr_y_tmp = data_ptr_y_i + j * ystride_[kGatherV2InputIndexOne];
       size_t size = sizeof(T) * xstride_[kGatherV2InputIndexOne];
       if (data_ptr_y_tmp - data_ptr_y < 0) {
-        GELOGE(PARAM_INVALID, "ptr_y - ptr_y_tmp less than zero");
+        GELOGE(PARAM_INVALID, "ptr diff %td is negative, index j:%ld", data_ptr_y_tmp - data_ptr_y, j);
         return PARAM_INVALID;
       }
       size_t offset_size = (data_ptr_y_tmp - data_ptr_y) * sizeof(T);
@@ -113,7 +113,7 @@ Status GatherV2Kernel::ProcessAxis2(ConstGeTensorPtr tensor_x, GeTensorPtr outpu
         T *data_ptr_y_tmp = data_ptr_y_j + m * ystride_[kGatherV2InputIndexTwo];
         size_t size = sizeof(T) * xstride_[kGatherV2InputIndexTwo];
         if (data_ptr_y_tmp - data_ptr_y < 0) {
-          GELOGE(PARAM_INVALID, "ptr_y - ptr_y_tmp less than zero");
+          GELOGE(PARAM_INVALID, "ptr diff %td is negative, index m:%ld", data_ptr_y_tmp - data_ptr_y, m);
           return PARAM_INVALID;
         }
         size_t offset_size = (data_ptr_y_tmp - data_ptr_y) * sizeof(T);
@@ -150,14 +150,14 @@ Status GatherV2Kernel::ProcessAxis3(ConstGeTensorPtr tensor_x, GeTensorPtr outpu
           T *data_ptr_y_tmp = data_ptr_y_m + n * ystride_[kGatherV2InputIndexThree];
           size_t size = sizeof(T) * xstride_[kGatherV2InputIndexThree];
           if (data_ptr_y_tmp - data_ptr_y < 0) {
-            GELOGE(PARAM_INVALID, "ptr_y - ptr_y_tmp less than zero");
+            GELOGE(PARAM_INVALID, "ptr diff %td is negative, index n:%ld", data_ptr_y_tmp - data_ptr_y, n);
             return PARAM_INVALID;
           }
           size_t offset_size = (data_ptr_y_tmp - data_ptr_y) * sizeof(T);
           auto ret_mem = memcpy_s(reinterpret_cast<void *>(data_ptr_y_tmp), output_size - offset_size,
                                   reinterpret_cast<void *>(data_ptr_x_tmp), size);
           if (ret_mem != 0) {
-            GELOGE(MEMALLOC_FAILED, "memcpy failed!");
+            GELOGE(MEMALLOC_FAILED, "memcpy failed, dst offset: %zu, size: %zu", offset_size, size);
             return MEMALLOC_FAILED;
           }
         }
@@ -184,7 +184,8 @@ Status GatherV2Kernel::GenData(const int64_t data_num, ConstGeTensorPtr tensor_x
   }
   GE_IF_BOOL_EXEC(output->SetData(reinterpret_cast<uint8_t *>(buf.get()), static_cast<size_t>(data_num * sizeof(T))) !=
                       GRAPH_SUCCESS,
-                  GELOGE(INTERNAL_ERROR, "set data failed");
+                  GELOGE(INTERNAL_ERROR, "SetData failed, output size: %zu, data_num: %ld",
+                         static_cast<size_t>(data_num * sizeof(T)), data_num);
                   return INTERNAL_ERROR);
 
   Status ret = SUCCESS;
@@ -371,7 +372,7 @@ Status GatherV2Kernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<Co
   GELOGI("Enter GatherV2Kernel Process.");
   Status ret = Check(op_desc_ptr, input, v_output);
   if (ret != SUCCESS) {
-    GELOGW("param check failed");
+    GELOGW("param check failed, ret: %s", GET_ERRORNO_STR(ret).c_str());
     return NOT_CHANGED;
   }
   GELOGI("GatherV2Kernel[%s] start Process", op_desc_ptr->GetName().c_str());

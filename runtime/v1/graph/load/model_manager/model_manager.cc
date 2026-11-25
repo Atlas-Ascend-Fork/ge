@@ -142,7 +142,8 @@ Status CreateHbmManager(void *block, gert::TensorOperateType operate_type, void 
   auto mem_block = reinterpret_cast<ge::MemBlock *>(block);
   GE_ASSERT((operate_type == gert::kGetTensorAddress || operate_type == gert::kFreeTensor ||
              operate_type == gert::kPlusShareCount),
-            "Unexpected operate type %d", static_cast<int32_t>(operate_type));
+            "Unexpected operate type %d, expect kGetTensorAddress/kFreeTensor/kPlusShareCount",
+            static_cast<int32_t>(operate_type));
   if (operate_type == gert::kGetTensorAddress) {
     GE_ASSERT_NOTNULL(out);
     *out = mem_block->GetAddr();
@@ -380,8 +381,9 @@ Status ModelManager::EnsureTensorInfo(const GraphId &graph_id, const GraphNodePt
   GE_ASSERT_SUCCESS(SetNetOutputTensorInfo(graph_id, graph_node));
   info.ret_tensor_size = graph_node->GetTensorSize();
   info.ge_tensor_descs = graph_node->GetGeTensorDescPtr();
-  GE_ASSERT((info.ret_tensor_size.size() == info.ge_tensor_descs.size()), "tensor info invalid, graph_id:%u.",
-            graph_id);
+  GE_ASSERT((info.ret_tensor_size.size() == info.ge_tensor_descs.size()),
+            "tensor info invalid, graph_id:%u, ret_tensor_size size:%zu, ge_tensor_descs size:%zu.", graph_id,
+            info.ret_tensor_size.size(), info.ge_tensor_descs.size());
   GE_ASSERT_SUCCESS(GetOutputAllocator(model_id, stream, info.allocator_ptr));
   return SUCCESS;
 }
@@ -418,7 +420,9 @@ Status ModelManager::MallocOutputsMemory(const GraphId &graph_id, const GraphNod
       continue;
     }
     GE_ASSERT_SUCCESS(EnsureInfo());
-    GE_ASSERT((info.ret_tensor_size.size() == outputs.size()), "tensor info invalid, graph_id:%u.", graph_id);
+    GE_ASSERT((info.ret_tensor_size.size() == outputs.size()),
+              "tensor info invalid, graph_id:%u, ret_tensor_size size:%zu, outputs size:%zu.", graph_id,
+              info.ret_tensor_size.size(), outputs.size());
 
     if (outputs[i].GetFormat().GetOriginFormat() == FORMAT_RESERVED) {
       CreateGertTensor(info.ge_tensor_descs[i], outputs[i]);
@@ -466,7 +470,9 @@ Status ModelManager::MallocOutputsMemory(const GraphId &graph_id, const GraphNod
     }
     GE_ASSERT_SUCCESS(EnsureInfo());
 
-    GE_ASSERT((info.ret_tensor_size.size() == outputs.size()), "tensor info invalid, graph_id:%u.", graph_id);
+    GE_ASSERT((info.ret_tensor_size.size() == outputs.size()),
+              "tensor info invalid, graph_id:%u, ret_tensor_size size:%zu, outputs size:%zu.", graph_id,
+              info.ret_tensor_size.size(), outputs.size());
     ge::MemBlock *mem_block = nullptr;
     GE_ASSERT_SUCCESS(MallocOutputMemBlock(graph_id, info.allocator_ptr, info.ret_tensor_size[i], mem_block));
     GE_ASSERT_SUCCESS(BindOutputMemBlock(info.ret_tensor_size[i], mem_block, outputs[i]));
@@ -836,9 +842,9 @@ Status ModelManager::LoadModelOnline(uint32_t &model_id, const GeRootModelPtr &g
   param.weight_base = reinterpret_cast<uintptr_t>(const_mem.first);
   param.weight_size = const_mem.second;
   GELOGI(
-      "param init: mem_base:[0x%llx], mem_size[%zu], weight_base:[0x%llx], weight_size[%zu],"
-      " fixed_feature_memory[0x%llx], fixed_mem_size[%zu], p2p_fixed_feature_memory[0x%llx],"
-      " p2p_fixed_mem_size[%zu].",
+      "param init: mem_base:[0x%llx], mem_size[%zu bytes], weight_base:[0x%llx], weight_size[%zu bytes],"
+      " fixed_feature_memory[0x%llx], fixed_mem_size[%zu bytes], p2p_fixed_feature_memory[0x%llx],"
+      " p2p_fixed_mem_size[%zu bytes].",
       param.mem_base, param.mem_size, param.weight_base, param.weight_size, param.fixed_mem_base, param.fixed_mem_size,
       param.p2p_fixed_mem_base, param.p2p_fixed_mem_size);
   davinci_model->SetNoFrozenInputIndexes(graph_node->GetFrozenInputIndex());
@@ -1266,7 +1272,7 @@ Status ModelManager::HandleDumpCommand(const Command &cmd_info) {
                          cmd_info.cmd_params.size());
     GELOGE(PARAM_INVALID,
            "[Check][Param] When the cmd_type is 'dump', "
-           "the size:%zu of cmd_params must be a even number.",
+           "the size:%zu of cmd_params must be an even number.",
            cmd_info.cmd_params.size());
     return PARAM_INVALID;
   }
@@ -1643,8 +1649,9 @@ Status ModelManager::LoadModelWithQueueParam(uint32_t &model_id, const GeRootMod
                                              const ModelQueueParam &model_queue_param, const int32_t priority,
                                              const bool need_update_session_id) {
   if (IsNeedHybridLoad(*root_model)) {
-    REPORT_INNER_ERR_MSG("E19999", "Dynamic shaped graphs are not currently supported by LoadModelWithQ");
-    GELOGE(UNSUPPORTED, "Dynamic shaped graphs are not currently supported by LoadModelWithQ, model_id: %u", model_id);
+    REPORT_INNER_ERR_MSG("E19999", "Dynamic shaped graphs are not currently supported by LoadModelWithQueueParam");
+    GELOGE(UNSUPPORTED, "Dynamic shaped graphs are not currently supported by LoadModelWithQueueParam, model_id: %u",
+           model_id);
     return UNSUPPORTED;
   }
   const auto &root_graph = root_model->GetRootGraph();
@@ -1731,8 +1738,9 @@ void ModelManager::SetDumpProperties(const std::shared_ptr<DavinciModel> &davinc
 Status ModelManager::LoadModelWithoutQ(uint32_t &model_id, const GeRootModelPtr &root_model, const int32_t priority) {
   GE_CHECK_NOTNULL(root_model);
   if (IsNeedHybridLoad(*root_model)) {
-    REPORT_INNER_ERR_MSG("E19999", "Dynamic shaped graphs are not currently supported by LoadModelWithQ");
-    GELOGE(UNSUPPORTED, "Dynamic shaped graphs are not currently supported by LoadModelWithQ, model_id: %u", model_id);
+    REPORT_INNER_ERR_MSG("E19999", "Dynamic shaped graphs are not currently supported by LoadModelWithoutQ");
+    GELOGE(UNSUPPORTED, "Dynamic shaped graphs are not currently supported by LoadModelWithoutQ, model_id: %u",
+           model_id);
     return UNSUPPORTED;
   }
   const auto &root_graph = root_model->GetRootGraph();
@@ -1821,8 +1829,8 @@ Status ModelManager::UpdateFeatureMemoryBase(const uint32_t model_id, const uint
 
   size_t used_size = 0U;
   GE_ASSERT_SUCCESS(davinci_model->UpdateHbmFmMemBases(mem_base, size, used_size));
-  GELOGI("Update feature memory base success, model_id:%u, mem_base:%#lx, mem_size:%zu, used_mem_size:%zu", model_id,
-         mem_base, size, used_size);
+  GELOGI("Update feature memory base success, model_id:%u, mem_base:%#lx, mem_size:%zu bytes, used_mem_size:%zu bytes",
+         model_id, mem_base, size, used_size);
   return SUCCESS;
 }
 
@@ -1836,7 +1844,10 @@ Status ModelManager::PaRemapped(const uint32_t model_id, const uint64_t va, cons
   const auto &davinci_model = GetModel(model_id);
   GE_ASSERT_NOTNULL(davinci_model);
 
-  GELOGI("PaRemap start model_id:%u va:%" PRIu64 ", new_pa:%" PRIu64 ", len:%" PRIu64 ".", model_id, va, new_pa, len);
+  GELOGI("PaRemap start model_id:%u va:%" PRIu64 ", new_pa:%" PRIu64 ", len:%" PRIu64
+         " bytes"
+         ".",
+         model_id, va, new_pa, len);
   return davinci_model->PaRemapped(va, new_pa, len, cross_ranges);
 }
 
@@ -2667,7 +2678,7 @@ Status ModelManager::LaunchKernelCheckAicpuOp(const std::vector<std::string> &ai
                             ACL_MEMCPY_DEVICE_TO_HOST));
       const std::string kernel_type = (aicpu_info.kernelsType == TF_KERNEL) ? "TF_KERNEL" : "CPU_KERNEL";
       fail_reason += "op_type: " + std::string(op_name.data()) + " kernel_type: " + kernel_type +
-                     " ret code:" + std::to_string(res_ret_code_list.at(i)) + "<0: op_type, 1: format, 2: datatype>\n";
+                     " ret code:" + std::to_string(res_ret_code_list.at(i)) + "<0: op_type, 1: format, 2: datatype>; ";
     }
     fail_reason += "not support.";
     REPORT_INNER_ERR_MSG("E19999", "Check aicpu op_type failed, details:%s", fail_reason.c_str());
@@ -3067,7 +3078,7 @@ Status ModelManager::InitOpMasterDeviceSo(const uint32_t &model_id, const GeRoot
       GELOGI("[OpMasterDevice][Custom] Save so [%s].", so_name.c_str());
     } else {
       cust_op_master_so_names_to_unique_name_.emplace(so_name, iter->second);
-      GELOGI("[OpMasterDevice][Custom] The so [%s] will be replaced by [%s] as th same content.", so_name.c_str(),
+      GELOGI("[OpMasterDevice][Custom] The so [%s] will be replaced by [%s] as the same content.", so_name.c_str(),
              iter->second.c_str());
     }
   }

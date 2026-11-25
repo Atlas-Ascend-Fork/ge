@@ -27,7 +27,7 @@ std::string GetCurrentTimeStr() {
   const std::time_t now = std::time(nullptr);
   const std::tm *const ptm = std::localtime(&now);
   if (ptm == nullptr) {
-    GELOGE(ge::FAILED, "localtime failed, return empty time string");
+    GELOGW("localtime failed, return empty time string");
     return "";
   }
 

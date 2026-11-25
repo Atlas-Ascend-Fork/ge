@@ -25,14 +25,23 @@ const size_t kAxesSize = 2UL;
 Status CheckAxisSize(const std::vector<std::vector<int64_t>> &axes, const OpDescPtr &op_desc) {
   for (const auto &axis : axes) {
     if (axis.size() != kAxesSize) {
-      GELOGE(FAILED, "attr [axes] is invalid, axis is %zu in axes ", axis.size());
+      GELOGE(FAILED, "attr [axes] is invalid, axis size is %zu in axes, expect %zu", axis.size(), kAxesSize);
       return FAILED;
     }
 
+    if (axis[0U] >= static_cast<int64_t>(op_desc->GetInputsSize())) {
+      GELOGE(FAILED, "attr [axes] is invalid, axis[0] is %ld, expect axis[0] < %zu", axis[0U],
+             op_desc->GetInputsSize());
+      return FAILED;
+    }
     const auto &input_desc = op_desc->MutableInputDesc(static_cast<uint32_t>(axis[0U]));
-    if ((axis[0U] >= static_cast<int64_t>(op_desc->GetInputsSize())) ||
-        (axis[1U] >= static_cast<int64_t>(input_desc->MutableShape().GetDimNum()))) {
-      GELOGE(FAILED, "attr [axes] is invalid, axis[0] is %ld, axis[1] is %ld", axis[0U], axis[1U]);
+    if (input_desc == nullptr) {
+      GELOGE(FAILED, "attr [axes] is invalid, input desc of index %ld is null", axis[0U]);
+      return FAILED;
+    }
+    const int64_t dim_num = static_cast<int64_t>(input_desc->MutableShape().GetDimNum());
+    if (axis[1U] >= dim_num) {
+      GELOGE(FAILED, "attr [axes] is invalid, axis[1] is %ld, expect axis[1] < %ld", axis[1U], dim_num);
       return FAILED;
     }
   }
@@ -52,8 +61,8 @@ Status GatherShapesKernel::Compute(const NodePtr &node, std::vector<GeTensorPtr>
   const bool is_size_valid =
       ((op_desc->GetInputsSize() == kInvalidInputSize) || (op_desc->GetOutputsSize() != kOutputSize) || axes.empty());
   if (is_size_valid) {
-    GELOGE(FAILED, "Size check fail, inputs size:%zu, outputs size:%zu, attr size:%zu", op_desc->GetInputsSize(),
-           op_desc->GetOutputsSize(), axes.size());
+    GELOGE(FAILED, "Size check fail, inputs size:%zu(expect not %zu), outputs size:%zu(expect %zu), attr size:%zu",
+           op_desc->GetInputsSize(), kInvalidInputSize, op_desc->GetOutputsSize(), kOutputSize, axes.size());
     return FAILED;
   }
 

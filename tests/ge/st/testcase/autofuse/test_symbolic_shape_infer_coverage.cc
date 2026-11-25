@@ -18,6 +18,7 @@
 #include "exe_graph/lowering/kernel_run_context_builder.h"
 #include "exe_graph/runtime/infer_symbol_context.h"
 #include "graph/compute_graph.h"
+#include "graph/utils/graph_utils.h"
 #include "graph/optimize/symbolic/infer_symbolic_shape/symbolic_infer_util.h"
 #include "register/op_impl_registry.h"
 #include "faker/space_registry_faker.h"
@@ -326,6 +327,34 @@ TEST_F(SymbolicShapeInferCoverageST, MoeFinalizeRoutingBasicPaths) {
       .Outputs(1U);
   context = optional.Build();
   ASSERT_EQ(infer(context), GRAPH_SUCCESS);
+}
+
+TEST_F(SymbolicShapeInferCoverageST, GetCondInputNullAndCastUpstreamPaths) {
+  auto graph = ComGraphMakeShared<ComputeGraph>("cond_input_cov_graph");
+  ASSERT_NE(graph, nullptr);
+  const auto add_single_io_node = [&graph](const char *name, const char *type) -> NodePtr {
+    auto op_desc = ComGraphMakeShared<OpDesc>(name, type);
+    if (op_desc == nullptr) {
+      return nullptr;
+    }
+    (void)op_desc->AddInputDesc(GeTensorDesc());
+    (void)op_desc->AddOutputDesc(GeTensorDesc());
+    return graph->AddNode(op_desc);
+  };
+
+  auto if_node = add_single_io_node("if_node", "If");
+  ASSERT_NE(if_node, nullptr);
+  EXPECT_EQ(SymbolicInferUtil::GetCondInput(if_node), nullptr);
+
+  auto cast_node = add_single_io_node("cast_node", "Cast");
+  ASSERT_NE(cast_node, nullptr);
+  ASSERT_EQ(GraphUtils::AddEdge(cast_node->GetOutDataAnchor(0), if_node->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  EXPECT_EQ(SymbolicInferUtil::GetCondInput(if_node), nullptr);
+
+  auto data_node = add_single_io_node("cond_data", "Data");
+  ASSERT_NE(data_node, nullptr);
+  ASSERT_EQ(GraphUtils::AddEdge(data_node->GetOutDataAnchor(0), cast_node->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  EXPECT_EQ(SymbolicInferUtil::GetCondInput(if_node), data_node);
 }
 
 }  // namespace

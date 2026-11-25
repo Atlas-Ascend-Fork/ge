@@ -1392,7 +1392,7 @@ Status FftsPlusProtoTransfer::InitAicpuIoAddrs(const OpDescPtr &op_desc, const u
   const uint64_t *const thread_offset = PtrToPtr<void, uint64_t>(ValueToPtr(io_addr));
   for (size_t i = 0UL; i < io_addrs.size(); ++i) {
     const uint64_t step = thread_offset[i];
-    GELOGI("Node[%s] type[%s] index[%zu], input addr=%" PRIx64 ", thread_offset:[%" PRIu64 "]", op_desc->GetNamePtr(),
+    GELOGD("Node[%s] type[%s] index[%zu], input addr=%" PRIx64 ", thread_offset:[%" PRIu64 "]", op_desc->GetNamePtr(),
            op_desc->GetTypePtr(), i, io_addrs[i], step);
     io_addrs[i] += step;
     GE_CHK_STATUS_RET(
@@ -1583,7 +1583,8 @@ Status FftsPlusProtoTransfer::GetAndCheckDsaAddr(
   std::vector<uint64_t> iow_addrs;
   iow_addrs = ModelUtils::GetInputDataAddrsValue(runtime_param_, op_desc, iow_mem_types);
   if (iow_addrs.size() < kDSAInputAddrSize) {
-    GELOGE(INTERNAL_ERROR, "Node %s input addr size %zu is wrong", op_desc->GetName().c_str(), iow_addrs.size());
+    GELOGE(INTERNAL_ERROR, "Node %s input addr size %zu is wrong, should be at least %zu", op_desc->GetName().c_str(),
+           iow_addrs.size(), kDSAInputAddrSize);
     return INTERNAL_ERROR;
   }
   GE_ASSERT_EQ(iow_mem_types.size(), iow_addrs.size());
@@ -1595,7 +1596,8 @@ Status FftsPlusProtoTransfer::GetAndCheckDsaAddr(
 
   iow_addrs = ModelUtils::GetOutputDataAddrsValue(runtime_param_, op_desc, iow_mem_types);
   if (iow_addrs.size() != kDSAOutputAddrSize) {
-    GELOGE(INTERNAL_ERROR, "Node %s output addr size %zu is wrong", op_desc->GetName().c_str(), iow_addrs.size());
+    GELOGE(INTERNAL_ERROR, "Node %s output addr size %zu is wrong, should be %zu", op_desc->GetName().c_str(),
+           iow_addrs.size(), kDSAOutputAddrSize);
     return INTERNAL_ERROR;
   }
   GE_ASSERT_EQ(iow_mem_types.size(), iow_addrs.size());
@@ -1670,7 +1672,7 @@ Status FftsPlusProtoTransfer::AssembleDsaWorkSpaceByInput(const OpDescPtr &op_de
     const std::string &input1 = ctx_def.args().input1_value_or_addr();
     auto mem_ret = memcpy_s(&input_data[0U], sizeof(uint64_t), input1.c_str(), input1.size());
     if (mem_ret != EOK) {
-      GELOGE(INTERNAL_ERROR, "dsa input data memcpy failed.");
+      GELOGE(INTERNAL_ERROR, "dsa input data memcpy failed, ret:%d, size:%zu.", mem_ret, input1.size());
       return INTERNAL_ERROR;
     }
     if ((input_data_addrs.size() == kDSAStateInputAddrSize) ||
@@ -1678,7 +1680,7 @@ Status FftsPlusProtoTransfer::AssembleDsaWorkSpaceByInput(const OpDescPtr &op_de
       const std::string &input2 = ctx_def.args().input2_value_or_addr();
       mem_ret = memcpy_s(&input_data[1U], sizeof(uint64_t), input2.c_str(), input2.size());
       if (mem_ret != EOK) {
-        GELOGE(INTERNAL_ERROR, "dsa input data memcpy failed.");
+        GELOGE(INTERNAL_ERROR, "dsa input data memcpy failed, ret:%d, size:%zu.", mem_ret, input2.size());
         return INTERNAL_ERROR;
       }
     }

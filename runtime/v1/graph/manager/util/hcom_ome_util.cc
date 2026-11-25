@@ -102,12 +102,15 @@ Status HcomOmeUtil::GetHcclDataType(const ge::ConstOpDescPtr &op_desc,
     if (iter == kConstOpHcclDataType.end()) {
       REPORT_INNER_ERR_MSG("E19999",
                            "Attr:%s in op:%s(%s), value data_type:%s, does not support in kConstOpHcclDataType now, "
-                           "check invalid",
+                           "supported types: [DT_FLOAT/DT_FLOAT16/DT_DOUBLE/DT_BOOL/DT_INT8-64/DT_UINT8-64/DT_BF16/"
+                           "DT_HIFLOAT8/DT_FLOAT8_E5M2/DT_FLOAT8_E4M3FN], check invalid",
                            HCOM_ATTR_DATA_TYPE.c_str(), op_desc->GetName().c_str(), op_desc->GetType().c_str(),
                            ge::TypeUtils::DataTypeToSerialString(src_data_type).c_str());
       GELOGE(PARAM_INVALID,
              "[Check][Param] Attr:%s in op:%s(%s), value data_type:%s, "
-             "does not support in kConstOpHcclDataType now",
+             "does not support in kConstOpHcclDataType now, supported types: "
+             "[DT_FLOAT/DT_FLOAT16/DT_DOUBLE/DT_BOOL/DT_INT8-64/DT_UINT8-64/DT_BF16/DT_HIFLOAT8/DT_FLOAT8_E5M2/"
+             "DT_FLOAT8_E4M3FN]",
              HCOM_ATTR_DATA_TYPE.c_str(), op_desc->GetName().c_str(), op_desc->GetType().c_str(),
              ge::TypeUtils::DataTypeToSerialString(src_data_type).c_str());
       return PARAM_INVALID;
@@ -163,7 +166,7 @@ Status HcomOmeUtil::GetHcomP2pCount(const ge::GeTensorDesc &tensor_desc, const H
                       "[Check][Param] Total size:%lld is beyond the INT64_MAX", total_size);
     total_size += block_size;
   } else {
-    GELOGE(FAILED, "Unsupported operation type = %d.", p2p_type);
+    GELOGE(FAILED, "Unsupported operation type = %d, should be HCOM_OP_TYPE_SEND or HCOM_OP_TYPE_RECV.", p2p_type);
     return PARAM_INVALID;
   }
   GE_CHK_BOOL_RET_STATUS(size != 0, PARAM_INVALID, "[Check][Param] size is zero.");
@@ -376,10 +379,12 @@ Status HcomOmeUtil::GetHcclOperationType(const ge::ConstOpDescPtr &op_desc, Hccl
     } else {
       REPORT_INNER_ERR_MSG("E19999",
                            "Attr:%s in Op:%s(%s), hcom_op_type value:%s is not supported now, "
-                           "check invalid",
+                           "which should be one of [min, max, prod, sum], check invalid",
                            HCOM_ATTR_REDUCE_TYPE.c_str(), op_desc->GetName().c_str(), op_desc->GetType().c_str(),
                            hcom_op_type.c_str());
-      GELOGE(PARAM_INVALID, "[Check][Param] Attr:%s in Op:%s(%s), hcom_op_type value:%s is not supported now",
+      GELOGE(PARAM_INVALID,
+             "[Check][Param] Attr:%s in Op:%s(%s), hcom_op_type value:%s is not supported now, "
+             "which should be one of [min, max, prod, sum]",
              HCOM_ATTR_REDUCE_TYPE.c_str(), op_desc->GetName().c_str(), op_desc->GetType().c_str(),
              hcom_op_type.c_str());
       return PARAM_INVALID;
@@ -400,12 +405,14 @@ Status HcomOmeUtil::GetHcclOperationType(const ge::ConstOpDescPtr &op_desc, Hccl
       REPORT_INNER_ERR_MSG("E19999",
                            "Attr:%s in Op:%s(%s), horovod_op_type value:%" PRId64
                            " is not supported now, "
-                           "check invalid",
+                           "which should be one of [HOROVOD_REDUCE_SUM/MIN/MAX/PROD], check invalid",
                            ATTR_HOROVOD_ATTR_REDUCE_TYPE.c_str(), op_desc->GetName().c_str(),
                            op_desc->GetType().c_str(), horovod_op_type);
       GELOGE(PARAM_INVALID,
              "[Check][Param] Attr:%s in Op:%s(%s), "
-             "horovod_op_type value:%" PRId64 " is not supported now",
+             "horovod_op_type value:%" PRId64
+             " is not supported now, "
+             "which should be one of [HOROVOD_REDUCE_SUM/MIN/MAX/PROD]",
              ATTR_HOROVOD_ATTR_REDUCE_TYPE.c_str(), op_desc->GetName().c_str(), op_desc->GetType().c_str(),
              horovod_op_type);
       return PARAM_INVALID;
@@ -564,8 +571,9 @@ Status HcomOmeUtil::GetHorovodInputs(const ge::ConstOpDescPtr &op_desc,
   }
 
   if (CheckKernelHcclInfo(op_desc, kernel_hccl_infos) != SUCCESS) {
-    GELOGE(PARAM_INVALID, "[Check][KernelHcclInfo] Node:%s Optype:%s the number of GETaskKernelHcclInfo is invalid.",
-           op_desc->GetName().c_str(), op_desc->GetType().c_str());
+    GELOGE(PARAM_INVALID,
+           "[Check][KernelHcclInfo] Node:%s Optype:%s the number of GETaskKernelHcclInfo is invalid, current size:%zu.",
+           op_desc->GetName().c_str(), op_desc->GetType().c_str(), kernel_hccl_infos.size());
     return PARAM_INVALID;
   }
 

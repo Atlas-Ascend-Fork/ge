@@ -688,9 +688,9 @@ aclError aclopInferShapeImpl(const char *opType, int numInputs, aclTensorDesc *i
       ACL_DELETE_ARRAY_AND_SET_NULL(constData);
       return ret;
     }
-    ACL_LOG_INFO("opDesc.GetInputNameByIndex, index = %d", i);
+    ACL_LOG_DEBUG("opDesc.GetInputNameByIndex, index = %d", i);
     const std::string inferOpName = opDesc->GetInputNameByIndex(static_cast<uint32_t>(i));
-    ACL_LOG_INFO("opDesc.GetInputNameByIndex, inferOpName = %s", inferOpName.c_str());
+    ACL_LOG_DEBUG("opDesc.GetInputNameByIndex, inferOpName = %s", inferOpName.c_str());
     (void)inferOp.SetInput(inferOpName.c_str(), constOp, "y");
   }
   ACL_LOG_INFO("create constData success");

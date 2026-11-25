@@ -98,7 +98,8 @@ Status PermuteKernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<Con
     return NOT_CHANGED;
   }
   if (!KernelUtils::CheckSizeForTransOp(const_weight_ptr, op_desc_ptr)) {
-    GELOGW("CheckSize failed, input size is not equal to weight size");
+    GELOGW("CheckSize failed, input size %ld is not equal to weight size %zu", op_desc_in.GetShape().GetShapeSize(),
+           const_weight_ptr->GetData().size());
     return NOT_CHANGED;
   }
   const uint8_t *src_data = const_weight_ptr->GetData().data();

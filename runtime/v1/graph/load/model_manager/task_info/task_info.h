@@ -417,7 +417,7 @@ class TaskInfo {
   virtual Status UpdateHostArgs(const std::vector<uint64_t> &active_mem_base_addr,
                                 const std::vector<HostArg> &host_args) {
     if (host_args.size() != 1UL) {
-      GELOGE(FAILED, "[Update][HostArgs]args does not support, host args size is %zu.", host_args.size());
+      GELOGE(FAILED, "[Update][HostArgs]Only one host arg is supported, but host args size is %zu.", host_args.size());
       return FAILED;
     }
     auto &arg = host_args.at(0);

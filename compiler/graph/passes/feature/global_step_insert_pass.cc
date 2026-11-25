@@ -82,7 +82,7 @@ Status GlobalStepInsertPass::Run(ComputeGraphPtr compute_graph) {
 
   NodePtr exist_node = compute_graph->FindNode(NODE_NAME_GLOBAL_STEP);
   if (exist_node != nullptr) {
-    GELOGD("Node %s already exist, no need add.", NODE_NAME_GLOBAL_STEP.c_str());
+    GELOGD("Node %s already exists, no need to add.", NODE_NAME_GLOBAL_STEP.c_str());
     return SUCCESS;
   }
   // set global step tensor desc

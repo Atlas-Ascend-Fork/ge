@@ -69,7 +69,7 @@ Status GetBaseOffset(const Node *node, int64_t &base_offset) {
   GE_ASSERT_SUCCESS(NodeCheckerUtils::GetOutputOffset(node->GetOpDescBarePtr(), 0, offset));
   int64_t continuous_offset = 0;
   // 首个out_anchor如果空悬，获得continuous_offset为0也符合预期
-  GE_ASSERT_SUCCESS(GetInputOffsetForContinuous(first_out_anchor, continuous_offset), "node: %s, out_index: %s",
+  GE_ASSERT_SUCCESS(GetInputOffsetForContinuous(first_out_anchor, continuous_offset), "node: %s, out_index: %d",
                     NodeCheckerUtils::NodeName(node).c_str(), 0);
   GE_ASSERT_TRUE(offset >= continuous_offset, "offset: %" PRId64 ", continuous_offset: %" PRId64 "", offset,
                  continuous_offset);

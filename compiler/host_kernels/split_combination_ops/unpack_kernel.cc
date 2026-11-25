@@ -39,7 +39,7 @@ Status CalcUpack(const int32_t num, const DataType data_type, const T *value, st
       v_output.push_back(output_ptr);
     }
   } else {
-    GELOGW("num <= 0 is not supported.");
+    GELOGW("num %d is invalid, must be greater than 0.", num);
     return NOT_CHANGED;
   }
   return SUCCESS;

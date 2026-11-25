@@ -40,7 +40,8 @@ ge::graphStatus AssignWeightMemory(KernelContext *context) {
   auto device_gtd =
       context->GetOutputPointer<GertTensorData>(static_cast<size_t>(AssignWeightMemoryOutputs::kTensorData));
   if (tensor == nullptr || assigner == nullptr || device_gtd == nullptr) {
-    GELOGE(ge::GRAPH_FAILED, "input or output is invalid.");
+    GELOGE(ge::GRAPH_FAILED, "Invalid input, tensor:%p, assigner:%p, output tensor data:%p.",
+           static_cast<const void *>(tensor), static_cast<const void *>(assigner), static_cast<void *>(device_gtd));
     return ge::GRAPH_FAILED;
   }
   void *device_addr = assigner->Assign(tensor->GetSize(), ge::PtrToValue(tensor->GetAddr()));
@@ -85,7 +86,7 @@ ge::graphStatus GetOrCreateWeightMem(KernelContext *context) {
   GE_ASSERT_NOTNULL(gert_allocator);
   if ((appointed_weight->weight_ptr == nullptr) || (appointed_weight->weight_size < required_size)) {
     // if given weight size is null or small than required, then malloc by self
-    GELOGI("appointed weight info is invalid, given_size[%zu], required_size[%zu], need to alloc inner.",
+    GELOGI("appointed weight info is invalid, given_size[%zu bytes], required_size[%zu bytes], need to alloc inner.",
            appointed_weight->weight_size, required_size);
     auto block = gert_allocator->Malloc(required_size);
     KERNEL_CHECK_NOTNULL(block);

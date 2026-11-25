@@ -56,7 +56,8 @@ static aclError ParseBatchInfoInline(aclmdlDesc *const modelDesc, const int32_t 
     // dynamic batch, size is 1
     for (size_t i = 0U; i < batchInfo.size(); ++i) {
       if (batchInfo[i].size() != DYNAMIC_BATCH_SIZE) {
-        ACL_LOG_INNER_ERROR("[Check][Size]get dynamic model info invalid, model id[%u]", modelId);
+        ACL_LOG_INNER_ERROR("[Check][Size]get dynamic model info invalid, model id[%u], size is %zu, expect %zu",
+                            modelId, batchInfo[i].size(), DYNAMIC_BATCH_SIZE);
         modelDesc->dynamicBatch.clear();
         return ACL_ERROR_GE_FAILURE;
       }
@@ -66,7 +67,8 @@ static aclError ParseBatchInfoInline(aclmdlDesc *const modelDesc, const int32_t 
     // dynamic hw, size is 2
     for (size_t i = 0U; i < batchInfo.size(); ++i) {
       if (batchInfo[i].size() != DYNAMIC_HW_SIZE) {
-        ACL_LOG_INNER_ERROR("[Check][Size]get dynamic model info invalid, model id[%u]", modelId);
+        ACL_LOG_INNER_ERROR("[Check][Size]get dynamic model info invalid, model id[%u], size is %zu, expect %zu",
+                            modelId, batchInfo[i].size(), DYNAMIC_HW_SIZE);
         modelDesc->dynamicHW.clear();
         return ACL_ERROR_GE_FAILURE;
       }
@@ -263,7 +265,11 @@ ACL_FUNC_VISIBILITY aclError GetCurGearIndex(const aclmdlDesc *const modelDesc, 
         }
       }
     } else {
-      ACL_LOG_INNER_ERROR("[Check][dynamicType]dynamicType[%d] is invalid", dynamicType);
+      ACL_LOG_INNER_ERROR(
+          "[Check][dynamicType]dynamicType[%d] is invalid, it should be DYNAMIC_BATCH(%d), DYNAMIC_HW(%d) or "
+          "DYNAMIC_DIMS(%d)",
+          dynamicType, static_cast<int32_t>(ge::DYNAMIC_BATCH), static_cast<int32_t>(ge::DYNAMIC_IMAGE),
+          static_cast<int32_t>(ge::DYNAMIC_DIMS));
     }
   }
   return ACL_ERROR_FAILURE;
@@ -442,7 +448,7 @@ ACL_FUNC_VISIBILITY aclError GetDims(const aclmdlDesc *const modelDesc, const Te
   const size_t descSize = desc.size();
   if (idx >= descSize) {
     ACL_LOG_INNER_ERROR(
-        "[Check][Params]GetDims failed, index[%zu] cannot greater than or equal to tensor "
+        "[Check][Params]GetDims failed, index[%zu] cannot be greater than or equal to tensor "
         "size[%zu]",
         idx, descSize);
     return ACL_ERROR_INVALID_PARAM;
@@ -460,13 +466,15 @@ ACL_FUNC_VISIBILITY aclError GetDims(const aclmdlDesc *const modelDesc, const Te
   } else if (dimsType == DimsType::DIMS_TYPE_V2) {
     tensorDims = tensorDesc.dimsV2;
   } else {
-    ACL_LOG_INNER_ERROR("[Check][dimsType]dims type[%d] is invalid", static_cast<int32_t>(dimsType));
+    ACL_LOG_INNER_ERROR("[Check][dimsType]dims type[%d] is invalid, it should be DIMS_TYPE_V1(%d) or DIMS_TYPE_V2(%d)",
+                        static_cast<int32_t>(dimsType), static_cast<int32_t>(DimsType::DIMS_TYPE_V1),
+                        static_cast<int32_t>(DimsType::DIMS_TYPE_V2));
     return ACL_ERROR_FAILURE;
   }
 
   const size_t dimSize = tensorDims.size();
   if (dimSize > static_cast<size_t>(ACL_MAX_DIM_CNT)) {
-    ACL_LOG_INNER_ERROR("[Check][dimSize]get dims failed, dims count[%zu] cannot larger than max[%d]", dims->dimCount,
+    ACL_LOG_INNER_ERROR("[Check][dimSize]get dims failed, dims count[%zu] cannot be larger than max[%d]", dimSize,
                         ACL_MAX_DIM_CNT);
     return ACL_ERROR_STORAGE_OVER_LIMIT;
   }

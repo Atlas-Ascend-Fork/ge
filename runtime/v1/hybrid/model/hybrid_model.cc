@@ -71,7 +71,7 @@ Status HybridModel::Init(const bool is_single_op) {
   if (execute_by_rt_v2_) {
     // 这里赋值是为了HybridModelAsyncExecutor中CheckBlockingOp
     root_graph_ = ge_root_model_->GetRootGraph();
-    GELOGI("Succeed init hybrid model %u that will be executed by runtime v2", model_id_);
+    GELOGI("Succeed to init hybrid model %u that will be executed by runtime v2", model_id_);
     return SUCCESS;
   }
   if (!GetContext().GetHostExecFlag()) {
@@ -144,11 +144,11 @@ GeModelPtr HybridModel::GetGeModel(const NodePtr &node) const {
   const auto it = known_shape_sub_models_.find(node);
   if (it == known_shape_sub_models_.end()) {
     GELOGE(INTERNAL_ERROR,
-           "[Check][Param:node][%s(%s)] Failed to get GeModel for subgraph node,"
+           "[Check][Param:node][%s(%s)] Failed to get GeModel for subgraph node, "
            "because node not in known_shape_sub_models_.",
            node->GetName().c_str(), node->GetType().c_str());
     REPORT_INNER_ERR_MSG("E19999",
-                         "%s(%s) Failed to get GeModel for subgraph node,"
+                         "%s(%s) Failed to get GeModel for subgraph node, "
                          "because node not in known_shape_sub_models_.",
                          node->GetName().c_str(), node->GetType().c_str());
     return nullptr;

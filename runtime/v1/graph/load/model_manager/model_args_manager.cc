@@ -328,7 +328,7 @@ Status ModelArgsManager::PaRemapped(const uint64_t va, const uint64_t new_pa, co
         GELOGI("Iow no support remap, active mem base:[0x%" PRIx64 "], len:[0x%" PRIx64
                "], task info:[%s], "
                "va:[0x%" PRIx64 "], va len:[0x%" PRIx64
-               "],"
+               "], "
                "overlap_range start:[0x%" PRIx64 "], overlap_range end:[0x%" PRIx64 "]",
                last_bases_[id], id_to_len_[id], it->ToString().c_str(), va, len,
                last_bases_[id] + tensor_and_va_offset_overlap_range.first,
@@ -794,7 +794,7 @@ Status ModelArgsManager::PrintKernelLaunchArgsDfxInfo(aclrtStream const stm) {
                     ValueToPtr(kernel_launch_args_ptr_->tiling_addr), sizeof(UpdateModelParamTilingData),
                     ACL_MEMCPY_DEVICE_TO_HOST);
   GELOGI(
-      "Print device Tiling Data. tiling.totalActivateBaseTblCnt: %u, tiling.blockCnt:%u, tiling.tileCnt: %u , "
+      "Print device Tiling Data. tiling.totalActiveBaseTblCnt: %u, tiling.blockCnt:%u, tiling.tileCnt: %u , "
       "tiling.tileNum: %u, "
       "tiling.tailCnt: %u, tiling.lastTileNum: %u, tiling.lastTailCnt: %u, block dim is %u.",
       update_model_param_tiling_data_temp.totalActiveBaseTblCnt, update_model_param_tiling_data_temp.blockCnt,
@@ -842,11 +842,11 @@ Status ModelArgsManager::PrintKernelLaunchArgsDfxInfo(aclrtStream const stm) {
          kernel_launch_args_ptr_->workspace_addr, kernel_launch_args_ptr_->tiling_addr);
 
   for (size_t j = 0; j < model_args_len_[0] / sizeof(uint64_t); j++) {
-    GELOGI("Print model args host table, model args index is:%d, model args host tensor data addr is:0x%" PRIx64
-           ","
+    GELOGI("Print model args host table, model args index is:%zu, model args host tensor data addr is:0x%" PRIx64
+           ", "
            "model device_args_addr is 0x%" PRIx64 ".",
            j, *(reinterpret_cast<uint64_t *>(static_cast<void *>(model_args_[0].model_args_host_addr.get())) + j),
-           model_args_[0].model_args_host_addr.get() + j * sizeof(uint64_t));
+           PtrToValue(model_args_[0].model_args_host_addr.get() + j * sizeof(uint64_t)));
     if (model_args_device_addrs[j] !=
         *(reinterpret_cast<uint64_t *>(static_cast<void *>(model_args_[0].model_args_host_addr.get())) + j)) {
       GELOGI("Print different args. Index: %" PRId64 ", device addr is: %" PRId64 ", host addr is: %" PRId64, j,
@@ -1727,7 +1727,7 @@ ModelArgsManager::UpdatePolicy ModelArgsManager::CalcUpdatePolicy(const vector<u
     return kInitOneTime;
   }
   if (SECUREC_UNLIKELY(last_bases_.size() != active_mem_base_addr.size())) {
-    GELOGE(INTERNAL_ERROR, "Failed to calc update policy, last base num %zu not equal with current %zu",
+    GELOGE(INTERNAL_ERROR, "Failed to calc update policy, last base num %zu not equal to current %zu",
            last_bases_.size(), active_mem_base_addr.size());
     return kUpdatePolicyEnd;
   }
@@ -1737,7 +1737,7 @@ ModelArgsManager::UpdatePolicy ModelArgsManager::CalcUpdatePolicy(const vector<u
   if (SECUREC_UNLIKELY(fm_size + fm_start_id > active_mem_base_addr.size())) {
     GELOGE(INTERNAL_ERROR,
            "Failed to calc update policy, fm_size %zu sub fm_start_id %u "
-           "should less than %zu",
+           "should be less than %zu",
            fm_size, fm_start_id, active_mem_base_addr.size());
     return kUpdatePolicyEnd;
   }

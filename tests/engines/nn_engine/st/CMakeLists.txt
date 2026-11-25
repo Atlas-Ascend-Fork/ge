@@ -82,6 +82,7 @@ target_compile_options(fe_st_common PUBLIC
     -D__OPTIMIZER_KT_TEST__
     -DDAVINCI_CLOUD
     -Dgoogle=ascend_private
+    -fno-access-control
     -fPIC
 )
 

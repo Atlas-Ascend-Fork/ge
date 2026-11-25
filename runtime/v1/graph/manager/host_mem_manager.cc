@@ -24,7 +24,7 @@
 namespace ge {
 Status SharedMemAllocator::Allocate(SharedMemInfo &mem_info) {
   const auto device_id = GetContext().DeviceId();
-  GELOGD("SharedMemAllocator::Malloc host mem size= %zu for devid:[%u].", mem_info.mem_size, device_id);
+  GELOGD("SharedMemAllocator::Malloc host mem size= %zu bytes for devid:[%u].", mem_info.mem_size, device_id);
 
   const int32_t dev_id = static_cast<int32_t>(device_id);
   GE_CHK_ACL_RET(aclrtSetDevice(dev_id));

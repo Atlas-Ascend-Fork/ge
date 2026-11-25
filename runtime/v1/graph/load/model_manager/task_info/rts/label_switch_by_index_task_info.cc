@@ -78,7 +78,7 @@ Status LabelSwitchByIndexTaskInfo::Init(const domi::TaskDef &task_def, DavinciMo
 
   GE_ASSERT_RT_OK(aclrtCreateLabelList(label_used.data(), label_used.size(), &args_));
   GELOGI("LabelSwitchByIndexTaskInfo %s Init success, branch max: %u, logic stream id: %u, stream: %p.",
-         op_desc->GetNamePtr(), task_def.stream_id(), stream_);
+         op_desc->GetNamePtr(), branch_max_, task_def.stream_id(), stream_);
   return SUCCESS;
 }
 

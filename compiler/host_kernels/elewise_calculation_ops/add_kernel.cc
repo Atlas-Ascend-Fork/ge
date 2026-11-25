@@ -127,7 +127,11 @@ Status AddKernel::ComputeComplex(const OpDescPtr &op_desc_ptr, const std::vector
     auto y_index_imaginary = x2_data[(y_indexes[i] * kComplexWidth) + 1U];
     if ((OverflowCheck<InT>(x_index_real, y_index_real, data_type) != SUCCESS) ||
         (OverflowCheck<InT>(x_index_imaginary, y_index_imaginary, data_type) != SUCCESS)) {
-      GELOGE(PARAM_INVALID, "Result of add is overflow.");
+      GELOGE(PARAM_INVALID,
+             "Add result overflow: x real(%g) + y real(%g) or x imag(%g) + y imag(%g) exceeds type range, data_type:%s",
+             static_cast<double>(x_index_real), static_cast<double>(y_index_real),
+             static_cast<double>(x_index_imaginary), static_cast<double>(y_index_imaginary),
+             TypeUtils::DataTypeToSerialString(data_type).c_str());
       return PARAM_INVALID;
     }
     buf[i * kComplexWidth] = x_index_real + y_index_real;                    // complex real part
@@ -177,7 +181,9 @@ Status AddKernel::BCastAdd(const OpDescPtr &op_desc_ptr, const std::vector<Const
     auto x_index = *(x1_data + x_indexes[i]);
     auto y_index = *(x2_data + y_indexes[i]);
     if (OverflowCheck<InT>(x_index, y_index, data_type) != SUCCESS) {
-      GELOGE(PARAM_INVALID, "Result of add is overflow.");
+      GELOGE(PARAM_INVALID, "Add result overflow: x(%g) + y(%g) exceeds type range, data_type:%s",
+             static_cast<double>(x_index), static_cast<double>(y_index),
+             TypeUtils::DataTypeToSerialString(data_type).c_str());
       return PARAM_INVALID;
     }
     *(buf.get() + i) = x_index + y_index;
@@ -204,7 +210,8 @@ Status AddKernel::AddCheck(const OpDescPtr &op_desc_ptr, const std::vector<Const
   }
   // check how many inputs
   if ((input.size() != kAddInputSize) || (op_desc_ptr->GetOutputsSize() != kAddOutputSize)) {
-    GELOGW("The number of input for add must be %zu, output number must be %zu.", kAddInputSize, kAddOutputSize);
+    GELOGW("Input size is %zu, expect %zu; output size is %zu, expect %zu.", input.size(), kAddInputSize,
+           op_desc_ptr->GetOutputsSize(), kAddOutputSize);
     return PARAM_INVALID;
   }
   // input vector elements must not be null

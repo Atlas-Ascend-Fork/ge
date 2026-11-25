@@ -1265,6 +1265,9 @@ TEST_F(UtestGraph, GetName) {
   AscendString name;
   auto ret = graph.GetName(name);
   EXPECT_EQ(ret, GRAPH_FAILED);
+
+  const auto &graph_name = graph.GetName();
+  EXPECT_EQ(graph_name, std::string());
 }
 
 TEST_F(UtestGraph, RecoverGraphOperators) {

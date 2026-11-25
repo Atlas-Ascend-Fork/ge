@@ -124,8 +124,10 @@ uint8_t *ActiveMemoryAllocator::MallocMemory(const std::string &purpose, Logical
     GELOGI("%s", logical_memory.ToString().c_str());
   }
 
-  GELOGI("ActiveMemoryAllocator::MallocMemory device_id = %u, size = %" PRIu64 " used_count = %zu.", device_id,
-         memory_size, used_count_);
+  GELOGI("ActiveMemoryAllocator::MallocMemory device_id = %u, size = %" PRIu64
+         " bytes"
+         " used_count = %zu.",
+         device_id, memory_size, used_count_);
   return all_success ? logical_memorys[0].active_addr : nullptr;
 }
 
@@ -257,7 +259,8 @@ void ActiveMemoryAllocator::MallocActiveMemorys(const std::string &purpose, Logi
   if (used_size > peak_size_) {
     peak_size_ = used_size;
   }
-  GELOGI("Total active memory alloc_size:%zu, used_size:%zu, peak_size:%zu", total_size, used_size, peak_size_);
+  GELOGI("Total active memory alloc_size:%zu bytes, used_size:%zu bytes, peak_size:%zu bytes", total_size, used_size,
+         peak_size_);
 }
 
 bool ActiveMemoryAllocator::IsSupportExpandableMemoryFull() {
@@ -277,8 +280,8 @@ Status ActiveMemoryAllocator::MallocPhysicalMemory(const std::string &purpose,
     GE_ASSERT_SUCCESS(ret, "ret = %u.", ret);
     malloced_size += addr.second;
   }
-  GELOGI("ActiveMemoryAllocator::MallocPhysicalMemory memory_size:%zu device_id = %u memory_type = %u", malloced_size,
-         device_id_, memory_type_);
+  GELOGI("ActiveMemoryAllocator::MallocPhysicalMemory memory_size:%zu bytes device_id = %u memory_type = %u",
+         malloced_size, device_id_, memory_type_);
   return SUCCESS;
 }
 
@@ -289,7 +292,7 @@ void ActiveMemoryAllocator::Recycle(const std::vector<std::pair<uint8_t *, size_
     (void)expandable_memory_allocator_.GetPyhsicalMemoryAllocator().FreePhysicalMemory(addr.first, addr.second);
     freed_size += addr.second;
   }
-  GELOGI("ActiveMemoryAllocator::Recycle memory_size:%zu device_id = %u memory_type = %u", freed_size, device_id_,
+  GELOGI("ActiveMemoryAllocator::Recycle memory_size:%zu bytes device_id = %u memory_type = %u", freed_size, device_id_,
          memory_type_);
 }
 
@@ -316,8 +319,8 @@ uint8_t *ExpandableActiveMemoryAllocator::MallocMemory(const std::string &purpos
     used_memory_size_ = std::max(used_memory_size_, static_cast<size_t>(memory_size));
   }
   GELOGI(
-      "[%s] Total[virtual_memory_addr:%p virtual_memory_size:%zu, used_memory_size:%zu],"
-      " current[memory_addr:%p memory_size:%lld incremental:%d]",
+      "[%s] Total[virtual_memory_addr:%p virtual_memory_size:%zu bytes, used_memory_size:%zu],"
+      " current[memory_addr:%p memory_size:%lld bytes incremental:%d]",
       purpose.c_str(), virtual_active_addr_, virtual_memory_size_, used_memory_size_, memory_addr, memory_size,
       static_cast<int32_t>(incremental));
   return memory_addr;
@@ -380,10 +383,10 @@ Status ExpandableActiveMemoryAllocator::MallocPhysicalMemoryAndMap(const std::st
 
 MemBlock *FixedBaseExpandableAllocator::Malloc(size_t size) {
   const auto ptr = ex_active_allocator_.MallocMemory(kFixedBasePurpose, static_cast<int64_t>(size), false);
-  GE_ASSERT_NOTNULL(ptr, "malloc failed, [%s], size: %zu", kFixedBasePurpose.c_str(), size);
+  GE_ASSERT_NOTNULL(ptr, "malloc failed, [%s], size: %zu bytes", kFixedBasePurpose.c_str(), size);
   auto block = new (std::nothrow) MemBlock(*this, ptr, size);
   GE_ASSERT_NOTNULL(block);
-  GELOGI("[%s] malloc, block: %p, addr: %p, size: %zu", kFixedBasePurpose.c_str(), block, ptr, size);
+  GELOGI("[%s] malloc, block: %p, addr: %p, size: %zu bytes", kFixedBasePurpose.c_str(), block, ptr, size);
   return block;
 }
 
@@ -391,8 +394,8 @@ MemBlock *FixedBaseExpandableAllocator::Malloc(size_t size) {
 void FixedBaseExpandableAllocator::Free(MemBlock *mem_block) {
   if (mem_block != nullptr) {
     (void)ex_active_allocator_.FreeMemory();
-    GELOGI("[%s] free, block: %p, addr: %p, size: %zu", kFixedBasePurpose.c_str(), mem_block, mem_block->GetAddr(),
-           mem_block->GetSize());
+    GELOGI("[%s] free, block: %p, addr: %p, size: %zu bytes", kFixedBasePurpose.c_str(), mem_block,
+           mem_block->GetAddr(), mem_block->GetSize());
     delete mem_block;
   }
 }
@@ -455,7 +458,7 @@ void ExpandableActiveMemoryAllocatorImp::ReleaseVirtualMemory() noexcept {
   if (virtual_memory_addr_base_ != nullptr) {
     (void)FreePhysicalMemory(virtual_memory_addr_base_, virtual_memory_size_);
     (void)physical_memory_allocator_->Finalize(virtual_memory_addr_base_, virtual_memory_size_);
-    GEEVENT("virtual_active_addr_base:%p virtual_memory_size:%zu device_id:%u.", virtual_memory_addr_base_,
+    GEEVENT("virtual_active_addr_base:%p virtual_memory_size:%zu bytes device_id:%u.", virtual_memory_addr_base_,
             virtual_memory_size_, device_id_);
     virtual_memory_size_ = 0U;
     virtual_memory_addr_base_ = nullptr;
@@ -492,8 +495,8 @@ Status ExpandableActiveMemoryAllocatorImp::GetIndex(const uint8_t *const virtual
   const size_t physical_memorys_counts = physical_memorys_.size();
   if ((index_end >= physical_memorys_counts) && (physical_memorys_counts > 0U)) {
     if ((offset_begin + virtual_memory_size) > (physical_memorys_counts << page_size_bits_)) {
-      GELOGE(FAILED, "virtual_memory_addr:%p virtual_memory_size:%zu is invalid.", virtual_memory_addr,
-             virtual_memory_size);
+      GELOGE(FAILED, "virtual_memory_addr:%p virtual_memory_size:%zu is invalid, offset_begin:%zu, capacity:%zu.",
+             virtual_memory_addr, virtual_memory_size, offset_begin, physical_memorys_counts << page_size_bits_);
       return FAILED;
     }
     index_end = physical_memorys_counts - 1U;
@@ -679,7 +682,8 @@ size_t ExpandableActiveMemoryAllocatorImp::RecyclePhysicalMemory(size_t new_va_c
     }
   }
   GELOGI(
-      "Current physical_memory_size:%zu theory_size:%zu page_size:%zu reach theory rate:%.2f%s recycle:%d "
+      "Current physical_memory_size:%zu bytes theory_size:%zu bytes page_size:%zu bytes reach theory rate:%.2f%s "
+      "recycle:%d "
       "new_va_count:%zu recycle_count:%zu",
       physical_memory_size_, theory_size_, page_size_,
       (kRatioBase * static_cast<float>(theory_min_size_)) / static_cast<float>(physical_memory_size_ + page_size_), "%",
@@ -841,7 +845,7 @@ Status ExpandableActiveMemoryAllocatorImp::FreePhysicalMemory(uint8_t *const vir
   }
   if (release) {
     (void)physical_memory_allocator_->ReleaseMemAddress(virtual_memory_addr, pa_list_size * page_size_);
-    GEEVENT("virtual_memory_addr:%p virtual_memory_size:%zu device_id:%u", virtual_memory_addr,
+    GEEVENT("virtual_memory_addr:%p virtual_memory_size:%zu bytes device_id:%u", virtual_memory_addr,
             pa_list.size() * page_size_, device_id_);
   }
   return SUCCESS;
@@ -1073,8 +1077,10 @@ Status PhysicalMemoryAllocator::Finalize(uint8_t *const va, size_t size) {
     }
 
     if ((physical_memory.ref_count != 0U) || (!physical_memory.map_addrs.empty())) {
-      GELOGE(FAILED, "PhysicalMemoryAllocator pa_index:%zu ref_count:%zu.", physical_memory.index,
-             physical_memory.ref_count);
+      GELOGE(FAILED,
+             "PhysicalMemoryAllocator finalize failed, physical memory is still in use or mapped, "
+             "pa_index:%zu ref_count:%zu.",
+             physical_memory.index, physical_memory.ref_count);
       continue;
     }
 

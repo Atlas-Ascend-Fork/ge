@@ -776,14 +776,26 @@ void FusionGraphMerge::SetMultiKernelOutPutOffsets(const ge::OpDescPtr &src_op, 
 
   if (!buffer_fusion_output_offset.empty()) {
     if (ge::AttrUtils::GetListInt(src_op, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, output_offset_temp)) {
-      buffer_fusion_output_offset.push_back(output_offset_temp[src_out_idx]);
+      if (src_out_idx < output_offset_temp.size()) {
+        buffer_fusion_output_offset.push_back(output_offset_temp[src_out_idx]);
+      } else {
+        FE_LOGW("Output index[%zu] is out of range of node[%s]'s output offsets, size[%zu].", src_out_idx,
+                src_op->GetNamePtr(), output_offset_temp.size());
+        buffer_fusion_output_offset.push_back(0);
+      }
     } else {
       buffer_fusion_output_offset.push_back(0);
     }
     (void)ge::AttrUtils::SetListInt(fus_op, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, buffer_fusion_output_offset);
   } else {
     if (ge::AttrUtils::GetListInt(src_op, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, output_offset_temp)) {
-      save_pre_output_offset.push_back(output_offset_temp[src_out_idx]);
+      if (src_out_idx < output_offset_temp.size()) {
+        save_pre_output_offset.push_back(output_offset_temp[src_out_idx]);
+      } else {
+        FE_LOGW("Output index[%zu] is out of range of node[%s]'s output offsets, size[%zu].", src_out_idx,
+                src_op->GetNamePtr(), output_offset_temp.size());
+        save_pre_output_offset.push_back(0);
+      }
       (void)ge::AttrUtils::SetListInt(fus_op, ge::ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, save_pre_output_offset);
     } else {
       save_pre_output_offset.push_back(0);
@@ -1572,9 +1584,11 @@ void FusionGraphMerge::CalcPassStridedOutSize(
   auto fus_opdesc = fus_node_ptr->GetOpDesc();
 
   for (uint32_t i = 0; i < fus_opdesc->GetAllOutputsDescSize(); i++) {
+    if (i >= src_op_out_index_in_fus_op.size()) {
+      continue;
+    }
     if (std::find(fus_nodelist.begin(), fus_nodelist.end(), src_op_out_index_in_fus_op[i].second) !=
-            fus_nodelist.end() &&
-        i < src_op_out_index_in_fus_op.size()) {
+        fus_nodelist.end()) {
       ge::OpDescPtr op_desc = src_op_out_index_in_fus_op[i].second->GetOpDesc();
       GetL2ToOpStructFromJson(op_desc, optimize_info);
       if (optimize_info == nullptr) {
@@ -1698,10 +1712,13 @@ Status FusionGraphMerge::CalcStridedWriteOutSize(
     return FAILED;
   }
 
-  int64_t tensor_size;
+  int64_t tensor_size = 0;
   auto tensor_desc = strided_node->GetOpDesc()->GetOutputDesc(0);
   int32_t output_real_calc_flag = 1;
-  (void)TensorComputeUtil::CalcTensorSize(tensor_desc, tensor_size, output_real_calc_flag);
+  FE_CHECK(TensorComputeUtil::CalcTensorSize(tensor_desc, tensor_size, output_real_calc_flag) != SUCCESS,
+           REPORT_FE_ERROR("[SubGraphOpt][Merge][Stride] Failed to calculate tensor size of strided write node [%s].",
+                           strided_node->GetName().c_str()),
+           return FAILED);
   int64_t real_out_size = (batch_size + (n_batch - 1) * batch_stride) * (tensor_size / (n_batch * batch_size));
   auto fus_opdesc = fus_node_ptr->GetOpDesc();
   (void)ge::AttrUtils::SetInt(fus_opdesc->MutableOutputDesc(0), ge::ATTR_NAME_SPECIAL_OUTPUT_SIZE, real_out_size);
@@ -1743,10 +1760,13 @@ Status FusionGraphMerge::CalcStridedReadInSize(const ge::NodePtr &fus_node_ptr,
     return FAILED;
   }
 
-  int64_t tensor_size;
+  int64_t tensor_size = 0;
   auto tensor_desc = strided_node->GetOpDesc()->GetInputDesc(0);
   int32_t output_real_calc_flag = 1;
-  (void)TensorComputeUtil::CalcTensorSize(tensor_desc, tensor_size, output_real_calc_flag);
+  FE_CHECK(TensorComputeUtil::CalcTensorSize(tensor_desc, tensor_size, output_real_calc_flag) != SUCCESS,
+           REPORT_FE_ERROR("[SubGraphOpt][Merge][Stride] Failed to calculate tensor size of strided read node [%s].",
+                           strided_node->GetName().c_str()),
+           return FAILED);
   int64_t real_in_size = (batch_size + (n_batch - 1) * batch_stride) * (tensor_size / (n_batch * batch_size));
   auto fus_opdesc = fus_node_ptr->GetOpDesc();
   (void)ge::AttrUtils::SetInt(fus_opdesc->MutableInputDesc(0), ge::ATTR_NAME_SPECIAL_INPUT_SIZE, real_in_size);

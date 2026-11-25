@@ -52,8 +52,11 @@ Status ExpanddimsKernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vec
     return PARAM_INVALID;
   }
   if ((input.size() != kExpandDimsInputNum) || (op_desc_ptr->GetOutputsSize() != kExpandDimsOutputDescNum)) {
-    GELOGW("Unexpected ExpandDims node, node input size: %zu, node output size: %zu, node name: %s", input.size(),
-           op_desc_ptr->GetOutputsSize(), op_desc_ptr->GetName().c_str());
+    GELOGW(
+        "Unexpected ExpandDims node, node input size: %zu(expect %zu), node output size: %zu(expect %zu), "
+        "node name: %s",
+        input.size(), kExpandDimsInputNum, op_desc_ptr->GetOutputsSize(), kExpandDimsOutputDescNum,
+        op_desc_ptr->GetName().c_str());
     return NOT_CHANGED;
   }
 
@@ -65,7 +68,7 @@ Status ExpanddimsKernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vec
   }
 
   // print output tensor information, and will be deleted
-  GELOGI("Expanddims op %s output tensor data size is %zu.", op_desc_ptr->GetName().c_str(),
+  GELOGI("Expanddims op %s output tensor data size is %zu bytes.", op_desc_ptr->GetName().c_str(),
          output_ptr->GetData().size());
   size_t data_dim_size = output_ptr->GetTensorDesc().GetShape().GetDims().size();
   GELOGI("Expanddims op %s output tensor dim size is %zu.", op_desc_ptr->GetName().c_str(), data_dim_size);

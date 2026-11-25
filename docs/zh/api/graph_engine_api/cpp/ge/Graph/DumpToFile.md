@@ -26,7 +26,7 @@ graphStatus DumpToFile(DumpFormat format, const AscendString &suffix) const
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | format | 输入 | dump文件的格式，有onnx、txt等。DumpFormat枚举请参见[DumpFormat](../DumpFormat.md)。 |
-| suffix | 输入 | 文件名称的前缀，比如ge_proto_xxxx_GraphPreRunBegin.txt中的GraphPreRunBegin为前缀 |
+| suffix | 输入 | 文件名后缀，添加在文件名末尾（扩展名前），例如 `ge_proto_xxxx_GraphPreRunBegin.txt` 中的 `GraphPreRunBegin`。 |
 
 ## 返回值说明
 

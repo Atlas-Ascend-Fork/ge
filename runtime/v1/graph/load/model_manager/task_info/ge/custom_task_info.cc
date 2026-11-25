@@ -903,7 +903,7 @@ const gert::KernelArgs *CustomTaskInfo::MallocReadOnlyDevArgsImpl(void *host_arg
     args_allocation_results_.push_back(result);
 
     GELOGI(
-        "MallocReadOnlyDevArgsImpl: reserved path, task_id=%u, args_size=%zu, "
+        "MallocReadOnlyDevArgsImpl: reserved path, task_id=%u, args_size=%zu bytes, "
         "host_addr=%p, device_addr=0x%" PRIx64 ", is_from_reserved=%d, pool_index=%u",
         task_id_, args_size, result.host_addr, result.device_addr, result.is_from_reserved, result.extra_pool_index);
 
@@ -922,8 +922,8 @@ const gert::KernelArgs *CustomTaskInfo::MallocReadOnlyDevArgsImpl(void *host_arg
   device_args.placement = gert::Placement::kPlacementDevice;
   kernel_args_device_deque_.push_back(device_args);
 
-  GELOGI("MallocReadOnlyDevArgsImpl: dynamic path, task_id=%u, args_size=%zu, device_addr=%p", task_id_, args_size,
-         device_ptr);
+  GELOGI("MallocReadOnlyDevArgsImpl: dynamic path, task_id=%u, args_size=%zu bytes, device_addr=%p", task_id_,
+         args_size, device_ptr);
 
   return &kernel_args_device_deque_.back();
 }
@@ -999,7 +999,7 @@ Status CustomTaskInfo::UpdateHostArgs(void *base_addr, size_t mem_size) {
     if (tensor != nullptr) {
       tensor->MutableTensorData().SetAddr(reinterpret_cast<void *>(new_addr), nullptr);
       const bool is_input = io_index < input_count_;
-      GELOGI(
+      GELOGD(
           "UpdateHostArgs: op_name=%s, io_index=%zu, %s[%zu], "
           "allocation_id=%" PRIu64 ", offset=%" PRIu64 ", new_addr=0x%" PRIx64,
           op_desc_->GetName().c_str(), io_index, is_input ? "input" : "output",
@@ -1012,7 +1012,7 @@ Status CustomTaskInfo::UpdateHostArgs(void *base_addr, size_t mem_size) {
   auto *ctx = reinterpret_cast<gert::UpdateArgsContext *>(eager_context_holder_.context_);
   graphStatus ret = args_update_op_->UpdateHostArgs(ctx);
   if (ret != GRAPH_SUCCESS) {
-    GELOGE(FAILED, "Operator UpdateHostArgs failed, task_id=%u", task_id_);
+    GELOGE(ret, "Operator UpdateHostArgs failed, task_id=%u", task_id_);
     return FAILED;
   }
 

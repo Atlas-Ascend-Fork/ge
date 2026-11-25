@@ -251,4 +251,27 @@ TEST_F(CompiledModelCacheUT, check_save_execution_point_no_update_ep) {
       std::make_unique<ExecutionPoint>(user_graph_id, sliced_graph, nullptr, graph_options);
   EXPECT_EQ(ep_util.SaveExecutionPoint(cache_dir_, user_graph_key, exec_point_ptr), ge::SUCCESS);
 }
+
+/*
+ * The gep_list field in the gep_list.json is not an array, the deserialization will throw
+ * a json exception and RestoreExecutionPoint should return FAILED.
+ */
+TEST_F(CompiledModelCacheUT, check_restore_execution_point_gep_list_type_error) {
+  constexpr int64_t slice_graph_id = 1;
+  const std::string root_dir = cache_dir_ + "/";
+  const std::string slice_graph_sub_dir =
+      root_dir + kSlicingHierarchySubDirName + "/" + user_graph_key_ + "/" + std::to_string(slice_graph_id);
+  GenDirectory(slice_graph_sub_dir);
+  const std::string gep_list_file_path = slice_graph_sub_dir + "/" + kGEPListJsonFileName;
+  std::ofstream out_file(gep_list_file_path);
+  out_file << "{\"" << kGuardedExecutionPointListKeyName << "\": \"not_an_array\"}";
+  out_file.close();
+
+  ExecutionPointUtil ep_util;
+  const SliceGraphInfo slice_graph_info{slice_graph_id, 1u};
+  std::map<std::string, std::string> ep_options;
+  std::unique_ptr<ExecutionPoint> exec_point_ptr;
+  EXPECT_EQ(ep_util.RestoreExecutionPoint(root_dir, user_graph_key_, slice_graph_info, ep_options, exec_point_ptr),
+            ge::FAILED);
+}
 }  // namespace ge

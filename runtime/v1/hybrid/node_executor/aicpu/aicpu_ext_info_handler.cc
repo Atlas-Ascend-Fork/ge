@@ -96,12 +96,12 @@ Status AicpuExtInfoHandler::Parse(const std::string &ext_info) {
   }
 
   GE_IF_BOOL_EXEC(offset != ext_info_len_, REPORT_INNER_ERR_MSG("E19999",
-                                                                "Node[%s] ext_info format error, parse not reach end,"
+                                                                "Node[%s] ext_info format error,  parse not reach end, "
                                                                 "offset=%zu, ext_info_len=%zu.",
                                                                 node_name_.c_str(), offset, ext_info_len_);
                   GELOGE(ACL_ERROR_GE_PARAM_INVALID,
-                         "[Check][Size]Node[%s] ext_info format error,"
-                         "parse not reach end, offset=%zu, ext_info_len=%zu.",
+                         "[Check][Size]Node[%s] ext_info format error, "
+                         "parse not reach end,  offset=%zu, ext_info_len=%zu.",
                          node_name_.c_str(), offset, ext_info_len_);
                   return ACL_ERROR_GE_PARAM_INVALID;);
   GELOGI("Node[%s] parse ext info end.", node_name_.c_str());

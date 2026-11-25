@@ -402,6 +402,12 @@ graphStatus Graph::LoadFromMem(const uint8_t *data, const size_t len) {
 }
 
 GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY const std::string &Graph::GetName() const {
+  if (impl_ == nullptr) {
+    REPORT_INNER_ERR_MSG("E18888", "impl is nullptr, check invalid.");
+    GELOGE(GRAPH_FAILED, "[Check][Param] impl is nullptr.");
+    static const std::string kEmptyName;
+    return kEmptyName;
+  }
   return impl_->GetName();
 }
 

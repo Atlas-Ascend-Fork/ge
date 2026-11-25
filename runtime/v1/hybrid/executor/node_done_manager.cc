@@ -41,7 +41,7 @@ bool NodeDoneManager::Cond::Await() {
         continue;
       } else {
         GELOGE(INTERNAL_ERROR, "[Invoke][wait_for]Wait timed out.");
-        REPORT_INNER_ERR_MSG("E19999", "wait timed out[%d].", kDefaultWaitTimeoutInSec);
+        REPORT_INNER_ERR_MSG("E19999", "wait timed out, timeout = %ds.", kDefaultWaitTimeoutInSec);
         return false;
       }
     }

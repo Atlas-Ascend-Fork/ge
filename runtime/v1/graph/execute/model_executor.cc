@@ -494,7 +494,7 @@ Status ModelExecutor::MallocByDiffAllocator(const uint64_t session_id, const acl
     GE_ASSERT_NOTNULL(block, "malloc %zu bytes failed using external allocator", fixed_feature_mem->GetSize());
     addr = block->GetAddr();
     GE_ASSERT_NOTNULL(addr, "malloc %zu bytes failed using external allocator", fixed_feature_mem->GetSize());
-    GELOGI("malloc %zu bytes success using external allocator", addr, fixed_feature_mem->GetSize());
+    GELOGI("malloc %zu bytes success using external allocator, addr: %p", fixed_feature_mem->GetSize(), addr);
     (void)ge_root_model->MutableFixedFeatureMemory().insert(
         {rt_mem_type, {rt_mem_type, addr, fixed_feature_mem->GetSize(), false, true, false, 0, block}});
     return SUCCESS;
@@ -702,8 +702,8 @@ Status ModelExecutor::GetMemoryInfo(size_t &free) {
 
   const size_t limited_max_size = static_cast<size_t>(static_cast<float64_t>(total_mem) * kMaxMemorySizeRatio);
   free = ((free_mem + limited_max_size) > total_mem) ? (free_mem + limited_max_size - total_mem) : 0U;
-  GELOGI("GetMemoryInfo free[%zu], total[%zu], limited_max_size[%zu], return free[%zu]", free_mem, total_mem,
-         limited_max_size, free);
+  GELOGI("GetMemoryInfo free[%zu bytes], total[%zu bytes], limited_max_size[%zu bytes], return free[%zu bytes]",
+         free_mem, total_mem, limited_max_size, free);
   return SUCCESS;
 }
 
@@ -725,9 +725,11 @@ Status ModelExecutor::GetMemorySizeAfterReuse(const std::vector<GeModelPtr> &ge_
     int64_t non_zero_copy_mem_size = memory_size;
     if (is_reuse_zero_copy_memory) {
       if (memory_size < zero_copy_size) {
-        REPORT_INNER_ERR_MSG("E19999", "total mem size[%" PRId64 "] is less than zero copy size[%" PRId64 "] ",
+        REPORT_INNER_ERR_MSG("E19999",
+                             "total mem size[%" PRId64 " bytes] is less than zero copy size[%" PRId64 " bytes] ",
                              memory_size, zero_copy_size);
-        GELOGE(FAILED, "[Check] failed, total mem size[%" PRId64 "] is less than zero copy size[%" PRId64 "]",
+        GELOGE(FAILED,
+               "[Check] failed, total mem size[%" PRId64 " bytes] is less than zero copy size[%" PRId64 " bytes]",
                memory_size, zero_copy_size);
         return FAILED;
       }
@@ -742,9 +744,10 @@ Status ModelExecutor::GetMemorySizeAfterReuse(const std::vector<GeModelPtr> &ge_
                       total_weight_size, weight_size);
     total_non_zero_copy_mem_size += non_zero_copy_mem_size;
     total_weight_size += weight_size;
-    GELOGI("Graph[%u] non_zero_copy_mem_size[%" PRId64 "], memory_size[%" PRId64 "], zero_copy_size[%" PRId64
+    GELOGI("Graph[%u] non_zero_copy_mem_size[%" PRId64 " bytes], memory_size[%" PRId64
+           " bytes], zero_copy_size[%" PRId64
            "], "
-           "is_reuse_zero_copy_memory[%d], weight_size[%" PRId64 "], Device[%u]",
+           "is_reuse_zero_copy_memory[%d], weight_size[%" PRId64 " bytes], Device[%u]",
            graph_node->GetGraphId(), non_zero_copy_mem_size, memory_size, zero_copy_size,
            static_cast<int32_t>(is_reuse_zero_copy_memory), weight_size, GetContext().DeviceId());
   }
@@ -758,9 +761,9 @@ Status ModelExecutor::GetMemorySizeAfterReuse(const std::vector<GeModelPtr> &ge_
                     total_weight_size, total_non_zero_copy_mem_size);
   sum_size = total_weight_size + (reuse ? 0 : total_non_zero_copy_mem_size - malloced_feature_mem_size);
 
-  GELOGI("Graph[%u] reuse[%d], total_non_zero_copy_mem_size[%" PRId64 "], malloced_feature_mem_size[%" PRId64
+  GELOGI("Graph[%u] reuse[%d], total_non_zero_copy_mem_size[%" PRId64 " bytes], malloced_feature_mem_size[%" PRId64
          "], "
-         "sum_size[%" PRId64 "], total_weight_size[%" PRId64 "], Device[%u]",
+         "sum_size[%" PRId64 " bytes], total_weight_size[%" PRId64 " bytes], Device[%u]",
          graph_node->GetGraphId(), static_cast<int32_t>(reuse), total_non_zero_copy_mem_size, malloced_feature_mem_size,
          sum_size, total_weight_size, GetContext().DeviceId());
   return SUCCESS;
@@ -841,14 +844,14 @@ Status ModelExecutor::CheckFreeMemory(const GeRootModelPtr &ge_root_model, const
     GE_ASSERT_TRUE(var_size >= 0LL,
                    "var mem size[%" PRId64
                    "] "
-                   "should be larger than var malloc size[%" PRId64 "], check invalid",
+                   "should be larger than var malloc size[%" PRId64 " bytes], check invalid",
                    var_total_size, var_malloc_size);
     GE_ASSERT_SUCCESS(CheckInt64AddOverflow(var_size, sum_size),
                       "var_size[%" PRId64 "] and sum_size[%" PRId64 "] will overflow after add", var_size, sum_size);
     sum_size += var_size;
     GELOGI("Graph[%u] need memory_size[%" PRId64
            "], "
-           "weight_size[%" PRId64 "], var_size[%" PRId64 "], Device[%u] free_memory_size[%zu]",
+           "weight_size[%" PRId64 " bytes], var_size[%" PRId64 " bytes], Device[%u] free_memory_size[%zu bytes]",
            graph_node->GetGraphId(), memory_size, weight_size, var_size, GetContext().DeviceId(), free_memory);
   }
 
@@ -1018,7 +1021,7 @@ Status ModelExecutor::CheckAndReleaseEvent(const GeRootModelPtr &ge_root_model, 
   const std::lock_guard<std::mutex> lk(mutex_);
   for (const auto &it : graph_nodes_) {
     if ((it.second == nullptr) || (!it.second->GetLoadFlag())) {  // not loaded,no need unload
-      GELOGI("Check and release event resource, graph[%u] has not been loaded.", it.first);
+      GELOGD("Check and release event resource, graph[%u] has not been loaded.", it.first);
       continue;
     }
 
@@ -1060,7 +1063,7 @@ Status ModelExecutor::PaRemapped(const GraphNodePtr &graph_node, const uint64_t 
   GE_ASSERT_NOTNULL(ge_root_model);
   const auto model_id = ge_root_model->GetModelId();
   if (model_id == INVALID_MODEL_ID) {
-    GELOGW("[GraphExecutor] model do not load, graphId=%u.", graph_node->GetGraphId());
+    GELOGW("[GraphExecutor] model is not loaded, graphId=%u.", graph_node->GetGraphId());
     return PARAM_INVALID;
   }
   return ModelManager::GetInstance().PaRemapped(model_id, va, new_pa, len, cross_ranges);

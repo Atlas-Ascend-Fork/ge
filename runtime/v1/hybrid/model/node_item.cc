@@ -284,7 +284,7 @@ Status NodeItem::InitInputsAndOutputs() {
         if ((parent_node != nullptr) && (AttrUtils::GetInt(parent_node->GetOpDesc(), ::ge::ATTR_STAGE_LEVEL, group))) {
           GELOGD("[%s] Got stage level from parent node = %d", op_desc->GetName().c_str(), group);
         } else {
-          GELOGD("[%s] Node do not set stage level", op_desc->GetName().c_str());
+          GELOGD("[%s] Node does not set stage level", op_desc->GetName().c_str());
         }
       }
     }

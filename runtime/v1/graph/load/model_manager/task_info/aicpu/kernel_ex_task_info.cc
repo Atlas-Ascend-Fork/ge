@@ -50,7 +50,7 @@ Status KernelExTaskInfo::InitTaskExtInfo(const std::string &ext_info, const OpDe
   bool all_shape = false;
   (void)AttrUtils::GetBool(op_desc, kAttrAicpuAllshape, all_shape);
   if (all_shape) {
-    GELOGD("Aicpu all_shape kernel need to update io shape.");
+    GELOGD("Aicpu all_shape kernel needs to update io shape.");
     for (uint32_t i = 0U; i < num_inputs; i++) {
       const auto input_desc = op_desc->MutableInputDesc(i);
       GE_CHECK_NOTNULL(input_desc);
@@ -82,7 +82,7 @@ Status KernelExTaskInfo::InitTaskExtInfo(const std::string &ext_info, const OpDe
   GE_ASSERT_NOTNULL(ext_info_addr_);
   GE_CHK_ACL_RET(aclrtMemcpy(ext_info_addr_, ext_handle.GetExtInfoLen(), ext_handle.GetExtInfo(),
                              ext_handle.GetExtInfoLen(), memcpy_kind_));
-  GELOGD("Op %s use %s mem %p for ext info with flag %d", op_desc->GetName().c_str(),
+  GELOGD("Op %s uses %s mem %p for ext info with flag %d", op_desc->GetName().c_str(),
          mem_type_ == RT_MEMORY_HOST_SVM ? "host" : "device", ext_info_addr_, deploy_type_flag_);
   return SUCCESS;
 }
@@ -91,7 +91,7 @@ Status KernelExTaskInfo::InitKernelBufferAddr() {
   kernel_buf_size_ = static_cast<uint32_t>(sizeof(STR_FWK_OP_KERNEL));
   kernel_buf_ = davinci_model_->MallocDynamicMemory(kernel_buf_size_, mem_type_);
   GE_ASSERT_NOTNULL(kernel_buf_);
-  GELOGD("Op %s use %s mem %p for kernel_buf with flag %d", op_desc_->GetName().c_str(),
+  GELOGD("Op %s uses %s mem %p for kernel_buf with flag %d", op_desc_->GetName().c_str(),
          mem_type_ == RT_MEMORY_HOST_SVM ? "host" : "device", kernel_buf_, deploy_type_flag_);
   return SUCCESS;
 }
@@ -132,7 +132,7 @@ Status KernelExTaskInfo::InitInputOutputAddr(const PisToArgs &args, const IowAdd
 Status KernelExTaskInfo::AssembleKernelBuffer(const STR_FWK_OP_KERNEL *const fwk_op_kernel) const {
   GE_CHK_ACL_RET(aclrtMemcpy(kernel_buf_, kernel_buf_size_, PtrToPtr<STR_FWK_OP_KERNEL, void>(fwk_op_kernel),
                              kernel_buf_size_, memcpy_kind_));
-  GELOGD("Op %s use %s mem %p for kernel_buf with flag %d", op_desc_->GetName().c_str(),
+  GELOGD("Op %s uses %s mem %p for kernel_buf with flag %d", op_desc_->GetName().c_str(),
          mem_type_ == RT_MEMORY_HOST_SVM ? "host" : "device", kernel_buf_, deploy_type_flag_);
   return SUCCESS;
 }
@@ -299,7 +299,7 @@ Status KernelExTaskInfo::ParseTaskRunParam(const domi::TaskDef &task_def, Davinc
   const OpDescPtr op_desc = davinci_model->GetOpByIndex(op_index);
   if (op_desc == nullptr) {
     REPORT_INNER_ERR_MSG("E19999", "Can't get op_desc from davinci_model by index:%u", op_index);
-    GELOGE(INTERNAL_ERROR, "[Get][Op] By Index, index:%u is out of range!", op_index);
+    GELOGE(INTERNAL_ERROR, "[Get][Op] By Index, index:%u is out of range, no op found in model op list!", op_index);
     return INTERNAL_ERROR;
   }
   const RuntimeParam &rts_param = davinci_model->GetRuntimeParam();
@@ -395,7 +395,7 @@ Status KernelExTaskInfo::AssembleWorkSpaceAddr(const domi::KernelExDef &kernel_d
                              kernel_def.task_info().size(), memcpy_kind_));
   workspace_data_addrs_.emplace_back(workspace_base_addr);
 
-  GELOGI("Op %s use %s mem %p for workspace_base_addr with flag %d", op_desc->GetName().c_str(),
+  GELOGI("Op %s uses %s mem %p for workspace_base_addr with flag %d", op_desc->GetName().c_str(),
          mem_type_ == RT_MEMORY_HOST_SVM ? "host" : "device", workspace_base_addr, deploy_type_flag_);
 
   return SUCCESS;

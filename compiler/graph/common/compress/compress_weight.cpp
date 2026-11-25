@@ -59,7 +59,7 @@ CmpStatus RearrangeConv2d(const char *const input, char *const weightRe, size_t 
                           CompressParametersConv2d &compressParameters) {
   if (compressTilingK <= 0 || compressTilingN <= 0) {
     LogFatal("compressTiling is invalid: compressTilingK(" << compressTilingK << ") compressTilingN(" << compressTilingN
-                                                           << ")");
+                                                           << "), compressTilingK and compressTilingN must be > 0");
     return RET_ERROR;
   }
 
@@ -122,9 +122,9 @@ CmpStatus CompressConv2d(CompressOpConfig *const param, char *const weightRe,
   }
   size_t indexSize = param->compressConfig.inputSize / param->compressConfig.fractalSize * INDEX_SIZE_COMPACT_MODE;
   std::unique_ptr<char[]> compIdxBuffer(new (std::nothrow) char[indexSize]());
-  CHECK_NOTNULLPTR(compIdxBuffer.get(), "compIdxBuffer is null pointers.", return RET_ERROR);
+  CHECK_NOTNULLPTR(compIdxBuffer.get(), "compIdxBuffer is a null pointer.", return RET_ERROR);
   std::unique_ptr<char[]> compDataBuffer(new (std::nothrow) char[param->compressConfig.inputSize]());
-  CHECK_NOTNULLPTR(compDataBuffer.get(), "compDataBuffer is null pointers.", return RET_ERROR);
+  CHECK_NOTNULLPTR(compDataBuffer.get(), "compDataBuffer is a null pointer.", return RET_ERROR);
   size_t compressedLength = 0;
   param->compressConfig.init_offset = compressParameters.totalCompressedLength;
   if (compressParameters.dataBase + param->compressConfig.inputSize > compressParameters.weightSizeTotal) {
@@ -209,23 +209,23 @@ CmpStatus CompressWeightConv2d(char *const weightRe, char *const zipBuffer, char
 
 bool SetCompressParametersConv2dConv2d(CompressParametersConv2d &compressParameters, CompressOpConfig *const param) {
   if (param->compressTilingK <= 0) {
-    LogFatal("CompressTilingK in parameter must > 0.");
+    LogFatal("CompressTilingK(" << param->compressTilingK << ") in parameter must > 0.");
     return false;
   }
   if (param->compressTilingN <= 0) {
-    LogFatal("CompressTilingN in parameter must > 0.");
+    LogFatal("CompressTilingN(" << param->compressTilingN << ") in parameter must > 0.");
     return false;
   }
   for (auto v : param->wShape) {
     if (v <= 0) {
-      LogFatal("Dim of weight must > 0.");
+      LogFatal("Dim of weight(" << v << ") must > 0.");
       return false;
     }
   }
   size_t compressWeightSize = compressParameters.weightK * compressParameters.weightN * compressParameters.weightCo0 *
                               compressParameters.weightCo1;
   if (compressWeightSize <= 0) {
-    LogFatal("compressWeightSize must > 0.");
+    LogFatal("compressWeightSize(" << compressWeightSize << ") must > 0.");
     return false;
   }
   compressParameters.weightSizeTotal = param->compressConfig.inputSize;
@@ -259,18 +259,21 @@ bool SetCompressParametersConv2dConv2d(CompressParametersConv2d &compressParamet
 CmpStatus CompressWeightsConv2D(const char *const input, char *const zipBuffer, char *const infoBuffer,
                                 CompressOpConfig *const param) {
   if (input == nullptr || zipBuffer == nullptr || infoBuffer == nullptr || param == nullptr) {
-    LogFatal("The input parameters contain null pointers.");
+    LogFatal("The input parameters contain null pointers: input is "
+             << (input == nullptr ? "null" : "valid") << ", zipBuffer is " << (zipBuffer == nullptr ? "null" : "valid")
+             << ", infoBuffer is " << (infoBuffer == nullptr ? "null" : "valid") << ", param is "
+             << (param == nullptr ? "null" : "valid"));
     return RET_ERROR;
   }
   if (param->compressConfig.inputSize <= 0) {
-    LogFatal("inputSize in CompressConfig is invalid: " << param->compressConfig.inputSize);
+    LogFatal("inputSize in CompressConfig is invalid: " << param->compressConfig.inputSize << ", must be > 0");
     return RET_ERROR;
   }
 
   LogCompressOpConfig(param);
 
   std::unique_ptr<char[]> weightRe(new (std::nothrow) char[param->compressConfig.inputSize]());
-  CHECK_NOTNULLPTR(weightRe.get(), "weightRe is null pointers.", return RET_ERROR);
+  CHECK_NOTNULLPTR(weightRe.get(), "weightRe is a null pointer.", return RET_ERROR);
   CompressParametersConv2d compressParameters;
   if (!SetCompressParametersConv2dConv2d(compressParameters, param)) {
     return RET_ERROR;
@@ -305,7 +308,7 @@ CmpStatus SparseWeightsConv2D(const char *const input, size_t weight_size) {
 
   if (weight_size % K0N0_PRODUCT != ZERO_REMAINDER) {
     // n0 * k0
-    LogFatal("Invalid weight_size, which is not n0*k0 aligned!");
+    LogFatal("Invalid weight_size(" << weight_size << "), which is not n0*k0 aligned!");
     return RET_ERROR;
   }
 
@@ -319,7 +322,8 @@ CmpStatus SparseWeightsConv2D(const char *const input, size_t weight_size) {
     }
 
     if (nonzeroNum > NONZERO_THRESHOLD) {
-      LogFatal("Weight sparse is not satisfied! Over 2 nonzero elements in 4 elements.");
+      LogFatal("Weight sparse is not satisfied! Over 2 nonzero elements in 4 elements, nonzeroNum("
+               << nonzeroNum << ") exceeds threshold " << NONZERO_THRESHOLD << ".");
       return RET_ERROR;
     }
   }

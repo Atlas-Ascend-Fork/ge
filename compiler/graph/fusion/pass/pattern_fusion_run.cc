@@ -38,7 +38,8 @@ Status RunPatternFusion(GraphPtr &graph, CustomPassContext &pass_context,
     while (match_result = matcher.MatchNext(), match_result != nullptr) {
       match_times++;
       if (!meet_requirements(match_result)) {
-        GELOGD("Match result[%s] is not meet requirements, skip replace.", match_result->ToAscendString().GetString());
+        GELOGD("Match result[%s] does not meet requirements, skip replacement.",
+               match_result->ToAscendString().GetString());
         continue;
       }
       AscendString can_fuse_reason;

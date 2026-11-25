@@ -252,7 +252,7 @@ aclError SetMdlLoadWeightSize(aclmdlConfigHandle *const handle, const void *cons
   const size_t weightSize = *static_cast<const size_t *>(attrValue);
   handle->weightSize = weightSize;
   (void)handle->attrState.insert(ACL_MDL_WEIGHT_SIZET);
-  ACL_LOG_INFO("successfully execute SetMdlLoadWeightSize to set weightSize[%zu]", weightSize);
+  ACL_LOG_INFO("successfully execute SetMdlLoadWeightSize to set weightSize[%zu] bytes", weightSize);
   return ACL_SUCCESS;
 }
 
@@ -261,7 +261,7 @@ aclError SetMdlLoadWorkspaceSize(aclmdlConfigHandle *const handle, const void *c
   const size_t workSize = *static_cast<const size_t *>(attrValue);
   handle->workSize = workSize;
   (void)handle->attrState.insert(ACL_MDL_WORKSPACE_SIZET);
-  ACL_LOG_INFO("successfully execute SetMdlLoadWorkspaceSize to set workSize[%zu]", workSize);
+  ACL_LOG_INFO("successfully execute SetMdlLoadWorkspaceSize to set workSize[%zu] bytes", workSize);
   return ACL_SUCCESS;
 }
 
@@ -494,7 +494,7 @@ aclError aclmdlSetExternalWeightAddressImplOm2(aclmdlConfigHandle *handle, const
 
   ge::FileConstantMem fileConstnatMem{.file_name = weightFileName, .device_mem = devPtr, .mem_size = size};
   handle->fileConstantMem.emplace_back(std::move(fileConstnatMem));
-  ACL_LOG_INFO("successfully to execute aclmdlSetExternalWeightAddress, weightFileName[%s], devPtr[%p], size[%zu]",
+  ACL_LOG_INFO("successfully execute aclmdlSetExternalWeightAddress, weightFileName[%s], devPtr[%p], size[%zu] bytes",
                weightFileName, devPtr, size);
   return ACL_SUCCESS;
 }

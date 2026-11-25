@@ -85,7 +85,7 @@ Status ValidatePattern(const ComputeGraphPtr &pattern_graph) {
     GE_ASSERT_TRUE(!IsDynamicIONode(node, invalid_reason), invalid_reason.str().c_str());
   }
   GE_ASSERT_SUCCESS(pattern_graph->TopologicalSorting(),
-                    "Failed to topo sort on pattern[%s],please check if there is cycle in pattern graph.",
+                    "Failed to topo sort on pattern[%s], please check if there is a cycle in the pattern graph.",
                     pattern_graph->GetName().c_str());
   return SUCCESS;
 }

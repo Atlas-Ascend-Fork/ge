@@ -33,7 +33,8 @@ Status ShapeKernel::Compute(const NodePtr &node, std::vector<GeTensorPtr> &v_out
   const bool size_check =
       ((op_desc->GetInputsSize() != kShapeInputSize) || (op_desc->GetOutputsSize() != kShapeOutputSize));
   if (size_check) {
-    GELOGW("Size check fail, inputs size:%zu, outputs size:%zu", op_desc->GetInputsSize(), op_desc->GetOutputsSize());
+    GELOGW("Size check fail, inputs size:%zu(expect %zu), outputs size:%zu(expect %zu)", op_desc->GetInputsSize(),
+           kShapeInputSize, op_desc->GetOutputsSize(), kShapeOutputSize);
     return NOT_CHANGED;
   }
   const auto &input_desc = op_desc->MutableInputDesc(0U);

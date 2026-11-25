@@ -33,7 +33,7 @@ bool IsContinuosInputNodeConnectContinuousOutNode(CheckFuncContext &context) {
   if ((continuous_out.node_->GetInDataAnchor(0) != nullptr)) {
     if (continuous_out.node_->GetInDataAnchor(0)->GetPeerOutAnchor() == continuous_in.node_->GetOutDataAnchor(0)) {
       GELOGI(
-          "[MemConflict] node(%s) that require continuous input are directly connected to node((%s)) that require"
+          "[MemConflict] node(%s) that requires continuous input is directly connected to node(%s) that requires"
           " continuous output, skip.",
           continuous_in.ToString().c_str(), continuous_out.ToString().c_str());
       return true;

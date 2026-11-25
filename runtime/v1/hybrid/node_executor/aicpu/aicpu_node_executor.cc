@@ -409,7 +409,7 @@ Status AicpuNodeTaskBase::CheckOverflow(TaskContext &context) const {
       uint32_t acl_stream_id = 0U;
       (void)aclrtGetThreadLastTaskIdAndStreamId(context.MutableTaskId(), &acl_stream_id);
       (void)aclrtStreamGetId(context.GetStream(), reinterpret_cast<int32_t *>(context.MutableStreamId()));
-      GELOGW("TaskBase Dynamic shape op %s is over flow", context.GetNodeName());
+      GELOGW("TaskBase Dynamic shape op %s is overflow", context.GetNodeName());
       return SUCCESS;
     }
     if (rt_ret != ACL_SUCCESS) {
@@ -518,7 +518,7 @@ Status AicpuTfNodeTask::AssembleWorkSpaceAddr(const domi::KernelExDef &kernel_ex
                     node_name_.c_str(), node_type_.c_str(), kernel_workspace_size);
   GE_CHK_ACL_RET(aclrtMemcpy(kernel_workspace_->GetData(), kernel_workspace_size, kernel_ex_def.task_info().data(),
                              kernel_workspace_size, memcpy_kind_));
-  GELOGI("op %s use %s mem %p for workspace with flag %d", node_name_.c_str(),
+  GELOGI("op %s uses %s mem %p for workspace with flag %d", node_name_.c_str(),
          deploy_type_flag_ == RT_KERNEL_HOST_ONLY ? "host" : "device", kernel_workspace_->GetData(), deploy_type_flag_);
   return SUCCESS;
 }
@@ -529,7 +529,7 @@ Status AicpuTfNodeTask::AssembleKernelBuffer(STR_FWK_OP_KERNEL *fwk_op_kernel) {
                     node_type_.c_str(), sizeof(STR_FWK_OP_KERNEL));
   GE_CHK_ACL_RET(aclrtMemcpy(kernel_buf_->GetData(), sizeof(STR_FWK_OP_KERNEL), fwk_op_kernel,
                              sizeof(STR_FWK_OP_KERNEL), memcpy_kind_));
-  GELOGI("op %s use %s mem %p for kernel buffer with flag %d", node_name_.c_str(),
+  GELOGI("op %s uses %s mem %p for kernel buffer with flag %d", node_name_.c_str(),
          deploy_type_flag_ == RT_KERNEL_HOST_ONLY ? "host" : "device", kernel_buf_->GetData(), deploy_type_flag_);
   return SUCCESS;
 }
@@ -1075,11 +1075,11 @@ Status AicpuNodeTask::SetMemCopyTask(const domi::TaskDef &task_def) {
                                    &copy_io_addr_[0U], sizeof(uint64_t) * memcpy_io_num);
   if (cpy_ret != EOK) {
     REPORT_INNER_ERR_MSG("E19999",
-                         "Node[%s(%s)] memcpy io addr to AicpuParamHead failed,"
+                         "Node[%s(%s)] memcpy io addr to AicpuParamHead failed, "
                          "ret = %d, args_size = %u, io nums = %u.",
                          node_name_.c_str(), node_type_.c_str(), cpy_ret, memcpy_args_size_, memcpy_io_num);
     GELOGE(INTERNAL_ERROR,
-           "[Update][IoAddr] Node[%s(%s)] memcpy io addr to AicpuParamHead failed,"
+           "[Update][IoAddr] Node[%s(%s)] memcpy io addr to AicpuParamHead failed, "
            "ret = %d, args_size = %u, io nums = %u.",
            node_name_.c_str(), node_type_.c_str(), cpy_ret, memcpy_args_size_, memcpy_io_num);
     return INTERNAL_ERROR;
@@ -1337,7 +1337,7 @@ Status AicpuNodeTask::CheckOverflow(TaskContext &context) const {
       uint32_t acl_stream_id = 0U;
       (void)aclrtGetThreadLastTaskIdAndStreamId(context.MutableTaskId(), &acl_stream_id);
       (void)aclrtStreamGetId(context.GetStream(), reinterpret_cast<int32_t *>(context.MutableStreamId()));
-      GELOGW("Dynamic shape op %s is over flow", context.GetNodeName());
+      GELOGW("Dynamic shape op %s is overflow", context.GetNodeName());
       return SUCCESS;
     }
     if (rt_ret == ACL_ERROR_RT_STREAM_SYNC_TIMEOUT) {
@@ -1421,11 +1421,11 @@ Status AiCpuNodeExecutor::LoadTask(const HybridModel &model, const NodePtr &node
     aicpu_task = MakeShared<AicpuNodeTask>(node_item, task_def);
   } else {
     GELOGE(UNSUPPORTED,
-           "[Check][Type] Node[%s(%s)] task type = %u is not supported by aicpu node executor,"
+           "[Check][Type] Node[%s(%s)] task type = %u is not supported by aicpu node executor, "
            "ModelTaskType::MODEL_TASK_KERNEL_EX or ModelTaskType::MODEL_TASK_KERNEL is supported.",
            node->GetName().c_str(), node->GetType().c_str(), task_def.type());
     REPORT_INNER_ERR_MSG("E19999",
-                         "Node[%s(%s)] task type = %u is not supported by aicpu node executor,"
+                         "Node[%s(%s)] task type = %u is not supported by aicpu node executor, "
                          "ModelTaskType::MODEL_TASK_KERNEL_EX or ModelTaskType::MODEL_TASK_KERNEL is supported.",
                          node->GetName().c_str(), node->GetType().c_str(), task_def.type());
     return UNSUPPORTED;

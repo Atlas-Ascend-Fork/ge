@@ -109,7 +109,7 @@ Status RsqrtKernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<Const
 
   // check input size
   if (input.size() != kRsqrtInputSize) {
-    GELOGW("The number of input for rsqrt must be %zu.", kRsqrtInputSize);
+    GELOGW("The number of input for rsqrt must be %zu, but is %zu.", kRsqrtInputSize, input.size());
     return NOT_CHANGED;
   }
 

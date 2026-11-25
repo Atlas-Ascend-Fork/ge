@@ -24,7 +24,7 @@ REGISTER_COMPUTE_NODE_KERNEL(SHAPEN, ShapeNKernel);
 Status ShapeNKernel::Compute(const NodePtr &node, std::vector<GeTensorPtr> &v_output) const {
   GELOGD("ShapeN kernel in");
   if (node == nullptr) {
-    GELOGE(FAILED, "parameter is null.");
+    GELOGE(FAILED, "param node is null.");
     return FAILED;
   }
   const OpDescPtr op_desc = node->GetOpDesc();

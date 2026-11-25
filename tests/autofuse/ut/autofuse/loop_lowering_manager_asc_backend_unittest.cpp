@@ -1033,6 +1033,49 @@ TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2MultiAxes) {
   EXPECT_NE(readable.find("repeats = [2, 3, 1]"), std::string::npos);
 }
 
+TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2SingletonReductionAxis) {
+  auto data = es_graph_->CreateInput(0, "data0", nullptr);
+  data.SetSymbolShape({"2", "4", "1"});
+  auto softmax = es::SoftmaxV2(data, {-1});
+  softmax.SetSymbolShape({"2", "4", "1"});
+  es_graph_->SetOutput(softmax, 0);
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("SoftmaxV2_0");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  auto kernel = loop::GetKernelBox(node->GetOutDataAnchor(0));
+  auto asc_graph = kernel.Realize<loop::AscOverrides>("graph");
+  ASSERT_NE(asc_graph, nullptr);
+  const auto readable = ReadableAscGraph(asc_graph->Graph());
+  EXPECT_EQ(readable.find("ascir.Max("), std::string::npos);
+  EXPECT_EQ(readable.find("ascir.Sum("), std::string::npos);
+  EXPECT_NE(readable.find("ascir.Sub("), std::string::npos);
+  EXPECT_NE(readable.find("ascir.TrueDiv("), std::string::npos);
+}
+
+TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2MixedSingletonAxes) {
+  auto data = es_graph_->CreateInput(0, "data0", nullptr);
+  data.SetSymbolShape({"2", "4", "1"});
+  auto softmax = es::SoftmaxV2(data, {-1, 1});
+  softmax.SetSymbolShape({"2", "4", "1"});
+  es_graph_->SetOutput(softmax, 0);
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  auto node = cg->FindNode("SoftmaxV2_0");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  auto kernel = loop::GetKernelBox(node->GetOutDataAnchor(0));
+  auto asc_graph = kernel.Realize<loop::AscOverrides>("graph");
+  ASSERT_NE(asc_graph, nullptr);
+  const auto readable = ReadableAscGraph(asc_graph->Graph());
+  EXPECT_NE(readable.find("ascir.Max(Max_0"), std::string::npos);
+  EXPECT_EQ(readable.find("ascir.Max(Max_1"), std::string::npos);
+  EXPECT_NE(readable.find("ascir.Sum(Sum_0"), std::string::npos);
+  EXPECT_EQ(readable.find("ascir.Sum(Sum_1"), std::string::npos);
+  EXPECT_NE(readable.find("repeats = [2, 1, 1]"), std::string::npos);
+}
+
 TEST_F(LoopLoweringToAscBackendUT, LoweringSoftmaxV2HalfToFloat) {
   [this]() {
     auto data = es_graph_->CreateInput(0, "data0", nullptr);

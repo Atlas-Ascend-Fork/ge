@@ -115,7 +115,8 @@ int32_t MemoryDumper::OpenFile(const std::string &filename) {
       path_split_pos != -1, const std::string prefix_path = filename.substr(0U, static_cast<size_t>(path_split_pos));
       const std::string last_path = filename.substr(static_cast<size_t>(path_split_pos), filename.size() - 1U);
       if (prefix_path.length() >= static_cast<size_t>(MMPA_MAX_PATH)) {
-        GELOGE(FAILED, "Prefix path is too long!");
+        GELOGE(FAILED, "Prefix path %s is too long, length is %zu, max is %d.", prefix_path.c_str(),
+               prefix_path.length(), static_cast<int32_t>(MMPA_MAX_PATH));
         return kInvalidFd;
       } if (mmRealPath(prefix_path.c_str(), &tmp_path[0], MMPA_MAX_PATH) != EN_OK) {
         char_t err_buf[kMaxErrorStringLength + 1U] = {};
@@ -125,7 +126,8 @@ int32_t MemoryDumper::OpenFile(const std::string &filename) {
       } real_path = std::string(tmp_path) + last_path;)
   GE_IF_BOOL_EXEC((path_split_pos == -1) || (path_split_pos == 0),
                   if (filename.size() >= static_cast<size_t>(MMPA_MAX_PATH)) {
-                    GELOGE(FAILED, "Prefix path is too long!");
+                    GELOGE(FAILED, "Filename %s is too long, length is %zu, max is %d.", filename.c_str(),
+                           filename.size(), static_cast<int32_t>(MMPA_MAX_PATH));
                     return kInvalidFd;
                   }
 

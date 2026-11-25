@@ -253,7 +253,7 @@ Status SetInputOutputOffsetPass::SetOutputOffsetForConcat(const NodePtr &node) c
 
 Status SetInputOutputOffsetPass::SetOutputOffsetForHcom(const NodePtr &node,
                                                         const std::vector<int32_t> &connect_output) const {
-  GELOGI("Start SetOutputOffsetForHcom, %s connect with %zu output.", node->GetName().c_str(), connect_output.size());
+  GELOGI("Start SetOutputOffsetForHcom, %s connects with %zu outputs.", node->GetName().c_str(), connect_output.size());
   std::vector<int64_t> output_offset_of_node;
   output_offset_of_node = node->GetOpDesc()->GetOutputOffset();
   int32_t connect_output_index = connect_output.at(0);
@@ -274,7 +274,7 @@ Status SetInputOutputOffsetPass::SetOutputOffsetForHcom(const NodePtr &node,
     }
   }
   if (net_output == nullptr) {
-    GELOGI("node[%s] output[%d] not connect netoutput", node->GetNamePtr(), connect_output_index);
+    GELOGI("node[%s] output[%d] is not connected to netoutput.", node->GetNamePtr(), connect_output_index);
     return SUCCESS;
   }
   auto out_op_desc = net_output->GetOpDesc();
@@ -354,11 +354,15 @@ Status SetInputOutputOffsetPass::SetOutputOffset(const NodePtr &node,
 }
 
 bool SetInputOutputOffsetPass::CheckBufferFusion(const NodePtr &node) const {
-  for (auto &in_node : node->GetInDataNodes()) {
+  for (const auto &in_node : node->GetInDataNodes()) {
+    if ((in_node == nullptr) || (in_node->GetOpDesc() == nullptr)) {
+      GELOGW("[Check][BufferFusion] in_node or its op_desc of node:%s is nullptr, buffer fusion is not supported.",
+             node->GetName().c_str());
+      return false;
+    }
     auto op_desc = in_node->GetOpDesc();
-    GE_CHECK_NOTNULL(op_desc);
     if (!op_desc->HasAttr(ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION)) {
-      GELOGI("The node: %s not have ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION.", node->GetName().c_str());
+      GELOGI("The node: %s does not have ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION.", node->GetName().c_str());
       return false;
     }
   }

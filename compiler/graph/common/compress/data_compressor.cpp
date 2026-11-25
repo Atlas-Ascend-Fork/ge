@@ -449,7 +449,7 @@ CmpStatus DataCompressor::CompressFile(const char *inputData, size_t inputLen, c
   }
 
   if (tmpBufferLen < outputLen) {
-    LogFatal("Compress data length is out of buffer size, compress failed.");
+    LogFatal("Compress data length " << outputLen << " is out of buffer size " << tmpBufferLen << ", compress failed.");
     return RET_ERROR;
   }
 

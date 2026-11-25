@@ -342,11 +342,11 @@ Status AiCpuResources::BuildModelConfigTask(const AiCpuModelConfig &config, std:
 }
 
 Status AiCpuResources::SetModelConfig(const AiCpuModelConfig &config) const {
-  GELOGD("Start to model config");
+  GELOGD("Start to set model config");
   std::vector<uint8_t> task_args;
   GE_CHK_STATUS_RET(BuildModelConfigTask(config, task_args), "Failed to init task args");
   GE_CHK_STATUS_RET(ExecuteKernel(kKernelNameModelConfig, task_args), "Failed to launch kernel");
-  GELOGD("Model config successfully");
+  GELOGD("Set model config successfully");
   return SUCCESS;
 }
 
@@ -370,7 +370,7 @@ bool AiCpuResources::GetStaticModelShapeConfigRet() const {
 Status AiCpuResources::SetStaticModelShapeConfig(const AiCpuModelShapeConfig &config,
                                                  const std::vector<InputOutputDescInfo> &input_desc_list) {
   const std::function<bool(std::vector<int64_t>)> is_static_shape = [](const std::vector<int64_t> &dims) -> bool {
-    GELOGI("Input shape is %s", ToString(dims).c_str());
+    GELOGD("Input shape is %s", ToString(dims).c_str());
     return std::all_of(dims.begin(), dims.end(), [](int64_t dim) -> bool { return dim >= 0; });
   };
   static_model_shape_config_result_ = false;

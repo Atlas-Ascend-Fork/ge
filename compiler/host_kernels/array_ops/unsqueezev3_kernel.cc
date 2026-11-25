@@ -52,8 +52,11 @@ Status UnsqueezeV3Kernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::ve
       ((op_desc_ptr->GetInputsSize() != kUnsqueezeInputSize) ||
        (op_desc_ptr->GetOutputsSize() != kUnsqueezeOutputSize) || (input.size() != kUnsqueezeInputSize));
   if (is_size_invalid) {
-    GELOGW("Size check fail, node[%s] inputs size:%zu, outputs size:%zu, input size:%zu", op_name.c_str(),
-           op_desc_ptr->GetInputsSize(), op_desc_ptr->GetOutputsSize(), input.size());
+    GELOGW(
+        "Size check fail, node[%s] inputs size:%zu(expect %zu), outputs size:%zu(expect %zu), "
+        "input size:%zu(expect %zu)",
+        op_name.c_str(), op_desc_ptr->GetInputsSize(), kUnsqueezeInputSize, op_desc_ptr->GetOutputsSize(),
+        kUnsqueezeOutputSize, input.size(), kUnsqueezeInputSize);
     return NOT_CHANGED;
   }
 

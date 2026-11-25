@@ -133,6 +133,57 @@ std::shared_ptr<AscGraph> CreateDirectExplicitBroadcastAscGraph(const std::strin
   return std::make_shared<AscGraph>(graph);
 }
 
+std::shared_ptr<AscGraph> CreateSharedBroadcastInputGraph(size_t first_axis, size_t second_axis,
+                                                          bool indirect = false) {
+  const std::string name = "shared_broadcast";
+  AscGraph graph(name.c_str());
+  const auto axes = CreateAscAxes(graph);
+  ascir_op::Load direct_load("direct_load");
+  if (indirect) {
+    ascir_op::Data direct("direct_data", graph);
+    SetAscOpAttrs(direct, axes, axes.repeats, axes.strides);
+    direct_load.x = direct.y;
+    SetAscOpAttrs(direct_load, axes, axes.repeats, axes.strides);
+  }
+  ascir_op::Data data("shared_data", graph);
+  SetAscOpAttrs(data, axes, axes.repeats, axes.strides);
+  ascir_op::Load first("first_load");
+  ascir_op::Load second("second_load");
+  auto connect_load = [&](ascir_op::Load &load, size_t axis) {
+    load.x = data.y;
+    auto repeats = axes.repeats;
+    auto strides = axes.strides;
+    // An axis outside the graph rank represents a plain Load.
+    if (axis < axes.ids.size()) {
+      repeats[axis] = Symbol(1);
+      strides[axis] = Symbol(0);
+    }
+    SetAscOpAttrs(load, axes, repeats, strides);
+  };
+  connect_load(first, first_axis);
+  connect_load(second, second_axis);
+  ascir_op::Add add("add");
+  add.x1 = first.y;
+  add.x2 = second.y;
+  SetAscOpAttrs(add, axes, axes.repeats, axes.strides);
+  ascir_op::Store store("store");
+  if (indirect) {
+    ascir_op::Add direct_add("direct_add");
+    direct_add.x1 = direct_load.y;
+    direct_add.x2 = add.y;
+    SetAscOpAttrs(direct_add, axes, axes.repeats, axes.strides);
+    store.x = direct_add.y;
+  } else {
+    store.x = add.y;
+  }
+  SetAscOpAttrs(store, axes, axes.repeats, axes.strides);
+  ascir_op::Output output("output");
+  output.x = store.y;
+  SetAscOpAttrs(output, axes, axes.repeats, axes.strides);
+  SetAscGraphOutput(graph, "output");
+  return std::make_shared<AscGraph>(graph);
+}
+
 std::shared_ptr<AscGraph> CreateViewOnlyAscGraph(const std::string &name) {
   AscGraph graph(name.c_str());
   const auto axes = CreateAscAxes(graph);
@@ -360,6 +411,43 @@ TEST_F(CubeFusionStrategyUT, RejectsDirectExplicitBatchBroadcastFusion) {
   EXPECT_FALSE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
 }
 
+TEST_F(CubeFusionStrategyUT, RejectsBatchBroadcastOnSharedCubeInputInEitherOrder) {
+  for (const bool batch_first : {true, false}) {
+    SCOPED_TRACE(batch_first);
+    auto pair = CreateCubePair();
+    auto attr = GetOrCreateAutoFuseAttrs(pair.pointwise->GetOpDesc());
+    ASSERT_NE(attr, nullptr);
+    attr->SetAscGraph(CreateSharedBroadcastInputGraph(batch_first ? 0U : 2U, batch_first ? 2U : 0U),
+                      loop::FuseType::kPointwise);
+    std::vector<ViewOpAttrInfo> views;
+    ASSERT_EQ(BackendUtils::CollectInputLoadViewInfos(pair.pointwise, 0, views), SUCCESS);
+    ASSERT_EQ(views.size(), 2U);
+    EXPECT_FALSE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
+  }
+}
+
+TEST_F(CubeFusionStrategyUT, CollectsExplicitBroadcastAcrossFusedBackend) {
+  const auto outer = std::make_shared<ComputeGraph>("outer");
+  const auto subgraph = std::make_shared<ComputeGraph>("fused");
+  const auto fused = AddOuterNode(outer, "fused", kFusedAscBackendType, 1, 1);
+  const auto data = AddOuterNode(subgraph, "data", kDataType, 0, 1);
+  const auto inner = AddOuterNode(subgraph, "inner", kAscBackendType, 1, 1);
+  ASSERT_NE(subgraph->AddInputNode(data), nullptr);
+  ASSERT_EQ(GraphUtils::AddEdge(data->GetOutDataAnchor(0), inner->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  const auto inner_attr = GetOrCreateAutoFuseAttrs(inner->GetOpDesc());
+  ASSERT_NE(inner_attr, nullptr);
+  inner_attr->SetAscGraph(CreateDirectExplicitBroadcastAscGraph("batch_broadcast", true, false, false),
+                          loop::FuseType::kPointwise);
+  const auto fused_attr = GetOrCreateAutoFuseAttrs(fused->GetOpDesc());
+  ASSERT_NE(fused_attr, nullptr);
+  fused_attr->SetFuseComputeGraph(subgraph);
+  std::vector<ViewOpAttrInfo> views;
+  ASSERT_EQ(BackendUtils::CollectInputLoadViewInfos(fused, 0, views), SUCCESS);
+  ASSERT_EQ(views.size(), 1U);
+  ASSERT_EQ(views.front().broadcast_info.size(), 1U);
+  EXPECT_EQ(views.front().broadcast_info.front(), 0);
+}
+
 TEST_F(CubeFusionStrategyUT, AllowsDirectInnerNBroadcastFusion) {
   auto pair = CreateCubePair(PointwiseGraphType::kDirectInnerNBroadcast);
   EXPECT_TRUE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
@@ -388,6 +476,50 @@ TEST_F(CubeFusionStrategyUT, RejectsIndirectBatchBroadcastFusion) {
 TEST_F(CubeFusionStrategyUT, AllowsIndirectInnerBroadcastFusion) {
   auto pair = CreateCubePair(PointwiseGraphType::kIndirectInnerBroadcast);
   EXPECT_TRUE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
+}
+
+TEST_F(CubeFusionStrategyUT, RejectsBatchBroadcastOnSharedIndirectInputInEitherOrder) {
+  for (const bool batch_first : {true, false}) {
+    SCOPED_TRACE(batch_first);
+    auto pair = CreateCubePair(PointwiseGraphType::kIndirectBatchBroadcast);
+    auto attr = GetOrCreateAutoFuseAttrs(pair.pointwise->GetOpDesc());
+    ASSERT_NE(attr, nullptr);
+    attr->SetAscGraph(CreateSharedBroadcastInputGraph(batch_first ? 0U : 2U, batch_first ? 2U : 0U, true),
+                      loop::FuseType::kPointwise);
+    EXPECT_FALSE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
+  }
+}
+
+TEST_F(CubeFusionStrategyUT, AllowsSharedIndirectPlainLoadsAndInnerBroadcasts) {
+  // The graph axes are batch, M, N; 3 denotes a plain Load.
+  for (const auto &axes : std::vector<std::pair<size_t, size_t>>{{3U, 3U}, {1U, 2U}, {2U, 1U}, {3U, 2U}, {2U, 3U}}) {
+    SCOPED_TRACE(::testing::Message() << axes.first << "," << axes.second);
+    auto pair = CreateCubePair(PointwiseGraphType::kIndirectInnerBroadcast);
+    auto attr = GetOrCreateAutoFuseAttrs(pair.pointwise->GetOpDesc());
+    ASSERT_NE(attr, nullptr);
+    attr->SetAscGraph(CreateSharedBroadcastInputGraph(axes.first, axes.second, true), loop::FuseType::kPointwise);
+    EXPECT_TRUE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
+  }
+}
+
+TEST_F(CubeFusionStrategyUT, RejectsIndirectInputWhenLoadViewQueryFails) {
+  auto pair = CreateCubePair(PointwiseGraphType::kIndirectInnerBroadcast);
+  auto asc_graph = CreateSharedBroadcastInputGraph(1U, 2U, true);
+  auto data = asc_graph->FindNode("shared_data");
+  ASSERT_NE(data, nullptr);
+  auto output = data->GetOutDataAnchor(0);
+  ASSERT_NE(output, nullptr);
+  for (const auto &name : {"first_load", "second_load"}) {
+    auto load = asc_graph->FindNode(name);
+    ASSERT_NE(load, nullptr);
+    ASSERT_EQ(GraphUtils::RemoveEdge(output, load->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  }
+  auto attr = GetOrCreateAutoFuseAttrs(pair.pointwise->GetOpDesc());
+  ASSERT_NE(attr, nullptr);
+  attr->SetAscGraph(asc_graph, loop::FuseType::kPointwise);
+  std::vector<ViewOpAttrInfo> views;
+  ASSERT_NE(BackendUtils::CollectInputLoadViewInfos(pair.pointwise, 1, views), SUCCESS);
+  EXPECT_FALSE(CubeFusionStrategy().CanFuse(pair.cube, pair.pointwise));
 }
 
 TEST_F(CubeFusionStrategyUT, RejectsViewOnlyPointwiseFusion) {

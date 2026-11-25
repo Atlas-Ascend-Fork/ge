@@ -152,7 +152,7 @@ struct EsCGraphBuilder::EsCGraphBuilderImpl {
 
   bool IsGraphValid() const {
     if (!graph_input_indexes_.empty()) {
-      GE_ASSERT_TRUE(*graph_input_indexes_.begin() == 0, "Invalid graph, graph input index must starts with 0");
+      GE_ASSERT_TRUE(*graph_input_indexes_.begin() == 0, "Invalid graph, graph input index must start with 0");
       if (static_cast<size_t>(*graph_input_indexes_.rbegin()) + 1U != graph_input_indexes_.size()) {
         std::stringstream ss;
         ss << "Invalid graph, graph input indexes are not continuous: ";
@@ -170,7 +170,7 @@ struct EsCGraphBuilder::EsCGraphBuilderImpl {
     }
 
     if (!output_indexes_to_tensor_.empty()) {
-      GE_ASSERT_TRUE(output_indexes_to_tensor_.begin()->first == 0, "Invalid graph, output index must starts with 0");
+      GE_ASSERT_TRUE(output_indexes_to_tensor_.begin()->first == 0, "Invalid graph, output index must start with 0");
       if (static_cast<size_t>(output_indexes_to_tensor_.rbegin()->first) + 1U != output_indexes_to_tensor_.size()) {
         std::stringstream ss;
         ss << "Invalid graph, output indexes are not continuous: ";
@@ -232,7 +232,7 @@ struct EsCGraphBuilder::EsCGraphBuilderImpl {
 
   ge::Status GetAddGraphInputNode(ge::GNode &node, int32_t index, const ge::char_t *name, const ge::char_t *type,
                                   C_DataType data_type, C_Format format, const int64_t *dims, int64_t dim_num) {
-    GE_ASSERT_NOTNULL(graph_, "Graph has been build and reset, cannot add graph input");
+    GE_ASSERT_NOTNULL(graph_, "Graph has been built and reset, cannot add graph input");
     GE_ASSERT_TRUE(index >= 0, "Invalid input index %d, must be non-negative", index);
     if (kind_ == C_GRAPH_EXECUTE) {
       GE_ASSERT_TRUE(gert::IsTypeGraphInput(type == nullptr ? "Data" : type),

@@ -73,7 +73,7 @@ class GE_OBJECT_VISIBILITY KernelFactory {
   void RegisterCreator(const std::string &type, const KERNEL_CREATOR_FUN &fun) {
     const std::map<std::string, KERNEL_CREATOR_FUN>::iterator &iter = creator_map_.find(type);
     if (iter != creator_map_.end()) {
-      GELOGD("KernelFactory::RegisterCreator: %s creator already exist", type.c_str());
+      GELOGD("KernelFactory::RegisterCreator: %s creator already exists", type.c_str());
       return;
     }
 

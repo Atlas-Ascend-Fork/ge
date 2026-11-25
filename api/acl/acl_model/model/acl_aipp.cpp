@@ -240,9 +240,9 @@ static aclError GetAndCheckAippParams(const uint32_t modelId, const aclmdlDesc &
     const uint64_t maxSrcImageSize = static_cast<uint64_t>(aippParams.max_src_image_size);
     // check max_src_image_size
     const uint64_t size = acl::GetSrcImageSize(aippParmsSet);
-    ACL_LOG_INFO("Input SrcImageSize = %lu", size);
+    ACL_LOG_INFO("Input SrcImageSize = %lu bytes", size);
     if (size > maxSrcImageSize) {
-      ACL_LOG_ERROR("[Check][Size]the dynamic aipp size[%lu] is bigger than max_src_image_size[%lu]", size,
+      ACL_LOG_ERROR("[Check][Size]the dynamic aipp size[%lu bytes] is bigger than max_src_image_size[%lu bytes]", size,
                     maxSrcImageSize);
       const std::string errMsg =
           acl::AclErrorLogManager::FormatStr("bigger than max_src_image_size[%lu]", maxSrcImageSize);

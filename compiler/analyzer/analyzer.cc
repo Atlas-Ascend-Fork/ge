@@ -184,7 +184,7 @@ void Analyzer::ClearHistoryFile() const {
 
 ge::Status Analyzer::CreateAnalyzerFile() {
   if (is_json_file_create_) {
-    GELOGD("analyzer file has been created!No necessary to create again!");
+    GELOGD("analyzer file has been created! No need to create again!");
     return SUCCESS;
   }
   GELOGD("start to create analyzer file!");

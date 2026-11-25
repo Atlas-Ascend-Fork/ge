@@ -113,5 +113,25 @@ TEST_F(SinkWeightUT, CreateWeightMemTest) {
   ASSERT_NE(real_device_mem->GetAddr(), device_mem);
   free(device_mem);
 }
+
+// 校验指定weight内存为空或小于所需大小时，自行申请内存场景
+TEST_F(SinkWeightUT, GetWeightMemAppointedWeightInvalidTest) {
+  gert::memory::CachingMemAllocator caching_mem_allocator(0);
+  memory::SingleStreamL2Allocator single_stream_allocator(&caching_mem_allocator);
+
+  size_t model_weight_size = 100;
+  OuterWeightMem mem_info = {nullptr, 50};
+  auto context_holder1 = KernelRunContextFaker()
+                             .KernelIONum(static_cast<size_t>(GetOrCreateWeightInputs::kNum),
+                                          static_cast<size_t>(GetOrCreateWeightOutputs::kNum))
+                             .Inputs({(void *)model_weight_size, &mem_info, &single_stream_allocator})
+                             .Build();
+  auto valid_context = context_holder1.GetContext<KernelContext>();
+  ASSERT_EQ(registry.FindKernelFuncs("GetOrCreateWeightMem")->outputs_creator(nullptr, valid_context),
+            ge::GRAPH_SUCCESS);
+  ASSERT_EQ(registry.FindKernelFuncs("GetOrCreateWeightMem")->run_func(valid_context), ge::SUCCESS);
+  auto real_device_mem = valid_context->GetOutputPointer<GertTensorData>(0);
+  ASSERT_NE(real_device_mem->GetAddr(), nullptr);
+}
 }  // namespace kernel
 }  // namespace gert

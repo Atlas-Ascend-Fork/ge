@@ -27,7 +27,7 @@ FftsMemAllocator::~FftsMemAllocator() {
 }
 
 FftsMemBlock *FftsMemAllocator::Malloc(size_t size) {
-  LOG_BY_TYPE(GeLogLevel::kInfo, "Malloc size:%zu.", size);
+  LOG_BY_TYPE(GeLogLevel::kInfo, "Malloc size:%zu bytes.", size);
   return static_cast<FftsMemBlock *>(Alloc(*this, size));
 }
 
@@ -35,15 +35,16 @@ BlockAddr FftsMemAllocator::DevAlloc(const MemSize size) {
   auto allocate_size = size * window_size_;
   auto block = device_allocator_.Alloc(allocate_size);
   LOG_BY_TYPE(GeLogLevel::kInfo,
-              "Block alloc from level_1 allocator addr:%p size:%zu allocate_size:%lu window_size:%u.", block, size,
-              allocate_size, window_size_);
+              "Block alloc from level_1 allocator addr:%p size:%zu bytes allocate_size:%lu bytes window_size:%u.",
+              block, size, allocate_size, window_size_);
   return block;
 }
 
 PageSpan *FftsMemAllocator::BlockAlloc(ge::Allocator &allocator, const BlockAddr block_addr, const MemAddr addr,
                                        const size_t size) {
   (void)allocator;
-  LOG_BY_TYPE(GeLogLevel::kInfo, "FftsMemBlock mem_addr:%p block_size:%lu window_size:%u.", addr, size, window_size_);
+  LOG_BY_TYPE(GeLogLevel::kInfo, "FftsMemBlock mem_addr:%p block_size:%lu bytes window_size:%u.", addr, size,
+              window_size_);
   auto span = new (ffts_mem_block_allocator_.Alloc()) FftsMemBlock{*this, *this, block_addr, addr, size, window_size_};
   return span;
 }

@@ -77,7 +77,7 @@ Status DumpProperties::CheckDumpStep(const std::string &dump_step) const {
                                      "The number of collection ranges cannot exceed 100."}));
       GELOGE(PARAM_INVALID,
              "[Check][Param] get dump_step value:%s, "
-             "dump_step only support dump <= 100 sets of data.",
+             "dump_step only supports dumping <= 100 sets of data.",
              dump_step.c_str());
       ret = PARAM_INVALID;
       break;
@@ -120,7 +120,7 @@ Status DumpProperties::CheckDumpMode(const std::string &dump_mode) const {
         std::vector<const char *>({ge::GetContext().GetReadableName("ge.exec.dumpMode").c_str(), dump_mode.c_str(),
                                    "The dump mode must be selected from [input, output, all]."}));
     GELOGE(PARAM_INVALID,
-           "[Check][Param] the dump_debug_mode:%s, is not supported,"
+           "[Check][Param] the dump_debug_mode:%s, is not supported, "
            "should be one of the following:[input, output, all].",
            dump_mode.c_str());
     return PARAM_INVALID;
@@ -137,7 +137,7 @@ Status DumpProperties::CheckDumpPathValid(const std::string &input) const {
         "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
         std::vector<const char *>(
             {ge::GetContext().GetReadableName("ge.exec.dumpPath").c_str(), input.c_str(), reason.c_str()}));
-    GELOGE(PARAM_INVALID, "[Check][Param] the path:%s, is not directory.", input.c_str());
+    GELOGE(PARAM_INVALID, "[Check][Param] the path:%s is not a directory.", input.c_str());
     return PARAM_INVALID;
   }
   std::array<char_t, MMPA_MAX_PATH> trusted_path = {};
@@ -291,7 +291,7 @@ void DumpProperties::SetDumpList(const std::string &layers) {
 // The following is the new dump scenario of the fusion operator
 void DumpProperties::AddPropertyValue(const std::string &model, const std::set<std::string> &layers) {
   for (const std::string &layer : layers) {
-    GELOGI("This model %s config to dump layer %s", model.c_str(), layer.c_str());
+    GELOGI("Model %s is configured to dump layer %s", model.c_str(), layer.c_str());
   }
 
   GELOGD("Layers are set to model %s.", model.c_str());
@@ -678,8 +678,13 @@ Status DumpProperties::SetDumpDebugOptions() {
       (void)REPORT_PREDEFINED_ERR_MSG(
           "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
           std::vector<const char *>({ge::GetContext().GetReadableName("ge.exec.dumpDebugMode").c_str(),
-                                     dump_debug_mode.c_str(), "The current value is not within the valid range."}));
-      GELOGE(PARAM_INVALID, "[Set][DumpDebugOptions] failed, ge.exec.dumpDebugMode is invalid.");
+                                     dump_debug_mode.c_str(),
+                                     "The current value is not within the valid range "
+                                     "[aicore_overflow, atomic_overflow, all]."}));
+      GELOGE(PARAM_INVALID,
+             "[Set][DumpDebugOptions] failed, ge.exec.dumpDebugMode:%s is invalid, should be one of "
+             "[aicore_overflow, atomic_overflow, all].",
+             dump_debug_mode.c_str());
       return PARAM_INVALID;
     }
     diagnoseSwitch::EnableOverflowDump();
@@ -790,7 +795,7 @@ Status DumpProperties::SetDumpFsmState(const std::string &model, const std::stri
 
   const auto range_iter = model_dump_op_ranges_map_.find(model_name);
   if (range_iter->second.size() != dump_fsm_state.size()) {
-    GELOGE(FAILED, "Model name[%s], opname range size[%u], dump fsm state size[%u] is not equal.", model_name.c_str(),
+    GELOGE(FAILED, "Model name[%s], opname range size[%zu], dump fsm state size[%zu] is not equal.", model_name.c_str(),
            range_iter->second.size(), dump_fsm_state.size());
     return FAILED;
   }

@@ -35,7 +35,7 @@ Status ShapeUtils::CopyShapeAndTensorSize(const GeTensorDesc &from, GeTensorDesc
       return FAILED;
     }
   }
-  GELOGD("Update input Shape: [%s] and OriginalShape: [%s], size = %ld", shape.ToString().c_str(),
+  GELOGD("Update input Shape: [%s] and OriginalShape: [%s], size = %ld bytes", shape.ToString().c_str(),
          origin_shape.ToString().c_str(), tensor_size);
 
   TensorUtils::SetSize(to, tensor_size);

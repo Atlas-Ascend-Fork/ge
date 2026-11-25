@@ -32,7 +32,7 @@ namespace ge {
 Status FillKernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vector<ge::ConstGeTensorPtr> &input,
                            std::vector<ge::GeTensorPtr> &v_output) {
   if (input.size() != kFillInputSize) {
-    GELOGW("fill input size must be %d", kFillInputSize);
+    GELOGW("fill input size must be %d, but got %zu", kFillInputSize, input.size());
     return NOT_CHANGED;
   }
   if (op_desc_ptr == nullptr) {
@@ -76,7 +76,8 @@ Status FillKernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vector<ge
   } else if (dim_type == DT_INT64) {
     ret = KernelUtils::CalcDims<int64_t>(dims, vec_dim, fill_size);
   } else {
-    GELOGE(PARAM_INVALID, "dim type must be DT_INT32 or DT_INT64.");
+    GELOGE(PARAM_INVALID, "dim type %s must be DT_INT32 or DT_INT64.",
+           TypeUtils::DataTypeToSerialString(dim_type).c_str());
     return PARAM_INVALID;
   }
   if (ret != SUCCESS) {
@@ -106,7 +107,10 @@ Status FillKernel::Compute(const ge::OpDescPtr op_desc_ptr, const std::vector<ge
     CASE(DT_DOUBLE, double);
 #undef CASE
     default:
-      GELOGW("invalid data type: %s", TypeUtils::DataTypeToSerialString(data_type).c_str());
+      GELOGW(
+          "invalid data type: %s, only support DT_FLOAT/DT_FLOAT16/DT_INT8/DT_INT16/DT_UINT8/DT_UINT16/DT_INT32/"
+          "DT_INT64/DT_UINT32/DT_UINT64/DT_BOOL/DT_DOUBLE",
+          TypeUtils::DataTypeToSerialString(data_type).c_str());
       return NOT_CHANGED;
   }
   if (ret != SUCCESS) {

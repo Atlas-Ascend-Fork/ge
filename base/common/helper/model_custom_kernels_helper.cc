@@ -27,7 +27,6 @@
 #include "graph/custom_op/artifact_provider.h"
 #include "graph/custom_op/cast.h"
 #include "graph/custom_op/framework_hosted_op.h"
-#include "graph/custom_op_registry.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/custom_op/model_scope.h"
 #include "graph/custom_op/op_proto_ledger.h"

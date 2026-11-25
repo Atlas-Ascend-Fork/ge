@@ -331,3 +331,79 @@ TEST_F(UTEST_graph_passes_set_input_output_offset_pass, run_with_connect_output_
   SetInputOutputOffsetPass pass3;
   EXPECT_EQ(pass3.Run(graph), ge::SUCCESS);
 }
+
+namespace {
+/*
+ *              Add
+ *               |
+ *          Phonyconcat
+ *               |
+ *           Netoutput
+ *
+ * build_buffer_fusion_graph: whether the input of Phonyconcat carries
+ * ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION.
+ */
+ge::NodePtr BuildBufferFusionGraph(const ComputeGraphPtr &graph, bool build_buffer_fusion_graph) {
+  GeTensorDesc desc;
+  OpDescPtr op_desc_data = MakeShared<OpDesc>("Add", ADD);
+  op_desc_data->AddOutputDesc(desc);
+  op_desc_data->SetOutputOffset({0});
+  if (build_buffer_fusion_graph) {
+    AttrUtils::SetListInt(op_desc_data, ATTR_NAME_OUTPUT_OFFSET_FOR_BUFFER_FUSION, {0});
+  }
+
+  OpDescPtr op_desc_phony = MakeShared<OpDesc>("Phonyconcat", CONCAT);
+  op_desc_phony->AddInputDesc(desc);
+  op_desc_phony->AddOutputDesc(desc);
+  op_desc_phony->SetOutputOffset({0});
+  AttrUtils::SetBool(op_desc_phony, ATTR_NAME_NOTASK, true);
+  vector<int> connect_output = {0};
+  AttrUtils::SetListInt(op_desc_phony, ATTR_NAME_NODE_CONNECT_OUTPUT, connect_output);
+
+  OpDescPtr op_desc_net = MakeShared<OpDesc>("Netoutput", NETOUTPUT);
+  op_desc_net->AddInputDesc(desc);
+
+  NodePtr data_node = graph->AddNode(op_desc_data);
+  NodePtr phony_node = graph->AddNode(op_desc_phony);
+  NodePtr net_node = graph->AddNode(op_desc_net);
+  GraphUtils::AddEdge(data_node->GetOutDataAnchor(0), phony_node->GetInDataAnchor(0));
+  GraphUtils::AddEdge(phony_node->GetOutDataAnchor(0), net_node->GetInDataAnchor(0));
+  return net_node;
+}
+}  // namespace
+
+TEST_F(UTEST_graph_passes_set_input_output_offset_pass, CheckBufferFusionWithFusionAttrSetZeroCopyOffset) {
+  ge::ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test");
+  NodePtr net_node = BuildBufferFusionGraph(graph, true);
+  graph->TopologicalSorting();
+  SetInputOutputOffsetPass pass;
+  EXPECT_EQ(pass.Run(graph), ge::SUCCESS);
+  EXPECT_TRUE(net_node->GetOpDesc()->HasAttr(ATTR_ZERO_COPY_BASIC_OFFSET));
+}
+
+TEST_F(UTEST_graph_passes_set_input_output_offset_pass, CheckBufferFusionWithoutFusionAttrSkipZeroCopyOffset) {
+  ge::ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test");
+  NodePtr net_node = BuildBufferFusionGraph(graph, false);
+  graph->TopologicalSorting();
+  SetInputOutputOffsetPass pass;
+  EXPECT_EQ(pass.Run(graph), ge::SUCCESS);
+  EXPECT_FALSE(net_node->GetOpDesc()->HasAttr(ATTR_ZERO_COPY_BASIC_OFFSET));
+  EXPECT_FALSE(net_node->GetOpDesc()->HasAttr(ATTR_ZERO_COPY_RELATIVE_OFFSET));
+}
+
+TEST_F(UTEST_graph_passes_set_input_output_offset_pass, CheckBufferFusionWithNullInNodeSkipZeroCopyOffset) {
+  ge::ComputeGraphPtr graph = std::make_shared<ComputeGraph>("test");
+  NodePtr net_node = BuildBufferFusionGraph(graph, true);
+  auto phony_node = graph->FindNode("Phonyconcat");
+  ASSERT_NE(phony_node, nullptr);
+  auto in_anchor = phony_node->GetInDataAnchor(0);
+  ASSERT_NE(in_anchor, nullptr);
+  ASSERT_EQ(GraphUtils::RemoveEdge(in_anchor->GetPeerOutAnchor(), in_anchor), GRAPH_SUCCESS);
+  OutDataAnchorPtr null_owner_anchor = std::make_shared<OutDataAnchor>(nullptr, 0);
+  ASSERT_EQ(in_anchor->LinkFrom(null_owner_anchor), GRAPH_SUCCESS);
+  SetInputOutputOffsetPass pass;
+  EXPECT_EQ(pass.Run(graph), ge::SUCCESS);
+  EXPECT_FALSE(net_node->GetOpDesc()->HasAttr(ATTR_ZERO_COPY_BASIC_OFFSET));
+  EXPECT_FALSE(net_node->GetOpDesc()->HasAttr(ATTR_ZERO_COPY_RELATIVE_OFFSET));
+  in_anchor->UnlinkAll();
+}

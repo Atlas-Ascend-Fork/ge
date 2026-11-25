@@ -80,7 +80,7 @@ Status StridedSliceKernel::Compute(const ge::OpDescPtr attr, const std::vector<g
   GELOGD("StridedSliceKernel in");
   // 1.Check input and attrs
   if (CheckAndGetAttr(attr) != SUCCESS) {
-    GELOGW("Check and get attrs failed.Ignore kernel");
+    GELOGW("Check and get attrs failed. Ignore kernel");
     return NOT_CHANGED;
   }
   if (CheckInputParam(input) != SUCCESS) {
@@ -93,7 +93,7 @@ Status StridedSliceKernel::Compute(const ge::OpDescPtr attr, const std::vector<g
   std::vector<int64_t> output_dims;
   std::vector<int64_t> stride_vec;
   if (InitParamWithAttrs(input, input_dims, begin_vec, output_dims, stride_vec) != SUCCESS) {
-    GELOGW("Init param with mask attrs failed.Ignore kernel.");
+    GELOGW("Init param with mask attrs failed. Ignore kernel.");
     return NOT_CHANGED;
   }
 
@@ -152,7 +152,8 @@ Status StridedSliceKernel::CheckAndGetAttr(const OpDescPtr &attr) {
 }
 Status StridedSliceKernel::CheckInputParam(const std::vector<ConstGeTensorPtr> &input) {
   if (input.size() != kStridedSliceInputSize) {
-    GELOGE(PARAM_INVALID, "The number of input for strided slice must be %zu.", kStridedSliceInputSize);
+    GELOGE(PARAM_INVALID, "The number of input for strided slice must be %zu, but is %zu.", kStridedSliceInputSize,
+           input.size());
     return PARAM_INVALID;
   }
 
@@ -196,7 +197,7 @@ Status StridedSliceKernel::CheckInputParam(const std::vector<ConstGeTensorPtr> &
   }
   // check dim size
   if (!((begin_data_size == end_data_size) && (end_data_size == stride_data_size))) {
-    GELOGW("The sizes of begin, end and stride is not supported.");
+    GELOGW("The sizes of begin, end and stride are not supported.");
     return PARAM_INVALID;
   }
   return SUCCESS;

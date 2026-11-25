@@ -541,18 +541,18 @@ class TestPass : public fe::PatternFusionBasePass {
 
     CheckGraphCycle(graph);
     ge::NodePtr cast_Node0 = GetNodeFromMapping(kPatternCast0, mapping);
+    UT_CHECK(cast_Node0 == nullptr, GELOGD("cast_Node0 is null,fusion failed."), return NOT_CHANGED);
     CheckOpSupported(cast_Node0);
     CheckOpSupported(cast_Node0->GetOpDesc());
     CheckAccuracySupported(cast_Node0);
 
-    UT_CHECK(cast_Node0 == nullptr, GELOGD("cast_Node0 is null,fusion failed."), return NOT_CHANGED);
     ge::OpDescPtr cast_desc0 = cast_Node0->GetOpDesc();
     UT_CHECK(cast_desc0 == nullptr, GELOGD("cast_Node0's Desc is null,fusion failed."), return NOT_CHANGED);
 
     ge::NodePtr relu_Node = GetNodeFromMapping(kPatternRelu, mapping);
     UT_CHECK(relu_Node == nullptr, GELOGD("relu_Node is null,fusion failed."), return NOT_CHANGED);
     ge::OpDescPtr relu_desc = relu_Node->GetOpDesc();
-    UT_CHECK(cast_desc0 == nullptr, GELOGD("relu_Node's Desc is null,fusion failed."), return NOT_CHANGED);
+    UT_CHECK(relu_desc == nullptr, GELOGD("relu_Node's Desc is null,fusion failed."), return NOT_CHANGED);
 
     auto relu_input = relu_desc->MutableInputDesc(0);
     UT_CHECK_NOTNULL(relu_input);
@@ -569,7 +569,7 @@ class TestPass : public fe::PatternFusionBasePass {
     ge::NodePtr cast_Node1 = GetNodeFromMapping(kPatternCast1, mapping);
     UT_CHECK(cast_Node1 == nullptr, GELOGD("cast_Node1 is null,fusion failed."), return NOT_CHANGED);
     ge::OpDescPtr cast_desc1 = cast_Node1->GetOpDesc();
-    UT_CHECK(cast_desc0 == nullptr, GELOGD("cast_Node1's Desc is null,fusion failed."), return NOT_CHANGED);
+    UT_CHECK(cast_desc1 == nullptr, GELOGD("cast_Node1's Desc is null,fusion failed."), return NOT_CHANGED);
 
     auto cast0_input = cast_desc0->MutableInputDesc(0);
     UT_CHECK_NOTNULL(cast0_input);

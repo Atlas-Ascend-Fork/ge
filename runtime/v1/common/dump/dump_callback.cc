@@ -21,6 +21,13 @@ using namespace nlohmann;
 
 namespace ge {
 
+namespace {
+bool IsDumpSceneException(const std::string &dump_scene) {
+  return (dump_scene == GE_DUMP_LITE_EXCEPTION) || (dump_scene == GE_DUMP_EXCEPTION_AIC_ERR_BRIEF) ||
+         (dump_scene == GE_DUMP_EXCEPTION_AIC_ERR_NORM) || (dump_scene == GE_DUMP_EXCEPTION_AIC_ERR_DETAIL);
+}
+}  // namespace
+
 std::string GetCfgStrByKey(const nlohmann::json &js, const std::string &key) {
   return js.at(key).get<std::string>();
 }
@@ -284,7 +291,7 @@ bool DumpConfigValidator::ValidateIpAddress(const std::string &ipAddress) {
     GELOGI("ip address[%s] is valid in dump_path field.", ipAddress.c_str());
     return true;
   } catch (...) {
-    GELOGD("ip address[%s] cannot convert to digital in dump_path field", ipAddress.c_str());
+    GELOGD("ip address[%s] cannot be converted to digits in dump_path field", ipAddress.c_str());
     return false;
   }
 }
@@ -399,15 +406,15 @@ bool DumpConfigValidator::CheckDumpOpNameRange(const std::vector<ModelDumpConfig
     if (!dumpConfig.dump_op_ranges.empty()) {
       if (dumpLevel != GE_DUMP_LEVEL_OP) {
         GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
-               "[Check][DumpOpNameRange]dump level only support op when op name range is enable.");
-        REPORT_INNER_ERR_MSG("E19999", "dump level only support op when op name range is enable.");
+               "[Check][DumpOpNameRange]dump level only supports op when op name range is enabled.");
+        REPORT_INNER_ERR_MSG("E19999", "dump level only supports op when op name range is enabled.");
         return false;
       }
 
       if (dumpConfig.model_name.empty()) {
         GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
-               "[Check][DumpOpNameRange]model name cannot be empty when op name range is enable.");
-        REPORT_INNER_ERR_MSG("E19999", "model name cannot be empty when op name range is enable.");
+               "[Check][DumpOpNameRange]model name cannot be empty when op name range is enabled.");
+        REPORT_INNER_ERR_MSG("E19999", "model name cannot be empty when op name range is enabled.");
         return false;
       }
 
@@ -444,8 +451,14 @@ bool DumpConfigValidator::IsDumpPathValid(const std::string &dumpPath) {
   }
 
   if (!IsValidDirStr(dumpPath)) {
-    GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpPath]dump_path[%s] contains invalid characters", dumpPath.c_str());
-    REPORT_INNER_ERR_MSG("E19999", "dump_path[%s] contains invalid characters", dumpPath.c_str());
+    GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
+           "[Check][DumpPath]dump_path[%s] contains invalid characters, "
+           "only letters, digits and characters in '-=[];\\,./!@#$%%^&*()_+{}:?' are allowed",
+           dumpPath.c_str());
+    REPORT_INNER_ERR_MSG("E19999",
+                         "dump_path[%s] contains invalid characters, "
+                         "only letters, digits and characters in '-=[];\\,./!@#$%%^&*()_+{}:?' are allowed",
+                         dumpPath.c_str());
     return false;
   }
 
@@ -459,9 +472,14 @@ bool DumpConfigValidator::IsValidDirStr(const std::string &dumpPath) {
   for (size_t i = 0U; i < len; ++i) {
     const char c = dumpPath[i];
     if (!std::islower(c) && !std::isupper(c) && !std::isdigit(c) && (pathWhiteList.find(c) == std::string::npos)) {
-      GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpPath]invalid dump_path [%s] in dump config at %zu",
+      GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
+             "[Check][DumpPath]invalid dump_path [%s] in dump config at %zu, "
+             "only letters, digits and characters in '-=[];\\,./!@#$%%^&*()_+{}:?' are allowed",
              dumpPath.c_str(), i);
-      REPORT_INNER_ERR_MSG("E19999", "invalid dump_path [%s] in dump config at %zu", dumpPath.c_str(), i);
+      REPORT_INNER_ERR_MSG("E19999",
+                           "invalid dump_path [%s] in dump config at %zu, "
+                           "only letters, digits and characters in '-=[];\\,./!@#$%%^&*()_+{}:?' are allowed",
+                           dumpPath.c_str(), i);
       return false;
     }
   }
@@ -492,8 +510,9 @@ bool DumpConfigValidator::DumpDebugCheck(const nlohmann::json &jsDumpConfig) {
     std::vector<ModelDumpConfig> dumpList;
     dumpList = jsDumpConfig[GE_DUMP_LIST].get<std::vector<ModelDumpConfig>>();
     if (!dumpList.empty()) {
-      GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpDebug]nonsupport dump model when open dump overflow detection");
-      REPORT_INNER_ERR_MSG("E19999", "nonsupport dump model when open dump overflow detection");
+      GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
+             "[Check][DumpDebug]dump model is not supported when dump overflow detection is enabled");
+      REPORT_INNER_ERR_MSG("E19999", "dump model is not supported when dump overflow detection is enabled");
       return false;
     }
   }
@@ -519,8 +538,8 @@ bool DumpConfigValidator::DumpStatsCheck(const nlohmann::json &jsDumpConfig) {
     }
 
     if (dumpData != "stats") {
-      GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpStats]nonsupport to enable dump_stats when dump_data is tensor.");
-      REPORT_INNER_ERR_MSG("E19999", "nonsupport to enable dump_stats when dump_data is tensor.");
+      GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Check][DumpStats]dump_stats is not supported when dump_data is tensor.");
+      REPORT_INNER_ERR_MSG("E19999", "dump_stats is not supported when dump_data is tensor.");
       return false;
     }
   }
@@ -569,9 +588,15 @@ void DumpConfigValidator::ParseBasicConfigurations(const nlohmann::json &dumpJso
 Status HandleDumpExceptionConfig(DumpConfig &dumpCfg) {
   GELOGI("start to execute HandleDumpExceptionConfig");
 
-  if (geDumpSceneExceptions.find(dumpCfg.dump_exception) == geDumpSceneExceptions.end()) {
-    GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Handle][DumpException]Invalid dump_scene: %s", dumpCfg.dump_exception.c_str());
-    REPORT_INNER_ERR_MSG("E19999", "Invalid dump_scene: %s", dumpCfg.dump_exception.c_str());
+  if (!IsDumpSceneException(dumpCfg.dump_exception)) {
+    GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
+           "[Handle][DumpException]Invalid dump_scene: %s. "
+           "Supported: lite_exception/aic_err_brief_dump/aic_err_norm_dump/aic_err_detail_dump/watcher",
+           dumpCfg.dump_exception.c_str());
+    REPORT_INNER_ERR_MSG("E19999",
+                         "Invalid dump_scene: %s. Supported: lite_exception/aic_err_brief_dump/aic_err_norm_dump/"
+                         "aic_err_detail_dump/watcher",
+                         dumpCfg.dump_exception.c_str());
     return FAILED;
   }
 
@@ -612,12 +637,16 @@ bool DumpConfigValidator::CheckDumpSceneSwitch(const nlohmann::json &jsDumpConfi
     return true;
   }
   dumpScene = jsDumpConfig[GE_DUMP_SCENE].get<std::string>();
-  if ((geDumpSceneExceptions.find(dumpScene) == geDumpSceneExceptions.end()) && (dumpScene != GE_DUMP_SCENE_WATCHER)) {
+  if (!IsDumpSceneException(dumpScene) && (dumpScene != GE_DUMP_SCENE_WATCHER)) {
     GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
            "[Check][DumpScene]Invalid value of dump_scene[%s]. Supported: "
            "lite_exception/aic_err_brief_dump/aic_err_norm_dump/aic_err_detail_dump/watcher",
            dumpScene.c_str());
-    REPORT_INNER_ERR_MSG("E19999", "Invalid value of dump_scene[%s].", dumpScene.c_str());
+    REPORT_INNER_ERR_MSG(
+        "E19999",
+        "Invalid value of dump_scene[%s]. Supported: lite_exception/aic_err_brief_dump/aic_err_norm_dump/"
+        "aic_err_detail_dump/watcher",
+        dumpScene.c_str());
     return false;
   }
 
@@ -904,7 +933,7 @@ Status DumpCallbackManager::HandleEnableDump(const char *dumpData, int32_t size)
 
     Status result = SUCCESS;
 
-    if (geDumpSceneExceptions.find(dumpConfig.dump_exception) != geDumpSceneExceptions.end()) {
+    if (IsDumpSceneException(dumpConfig.dump_exception)) {
       result = HandleDumpExceptionConfig(dumpConfig);
     } else if (dumpConfig.dump_debug == GE_DUMP_STATUS_ON) {
       result = HandleDumpDebugConfig(dumpConfig);

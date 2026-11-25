@@ -296,9 +296,9 @@ Status SubgraphPass::WhileBodySubgraph(const ComputeGraphPtr &graph, const NodeP
       if (output_node == nullptr) {
         output_node = n;
       } else {
-        REPORT_INNER_ERR_MSG("E19999", "While_body graph:%s exists multi NetOutput nodes, check invalid",
+        REPORT_INNER_ERR_MSG("E19999", "While_body graph:%s has multiple NetOutput nodes, check invalid",
                              while_body->GetName().c_str());
-        GELOGE(FAILED, "[Check][Param] while_body %s exists multi NetOutput nodes.", while_body->GetName().c_str());
+        GELOGE(FAILED, "[Check][Param] while_body %s has multiple NetOutput nodes.", while_body->GetName().c_str());
         return FAILED;
       }
     }

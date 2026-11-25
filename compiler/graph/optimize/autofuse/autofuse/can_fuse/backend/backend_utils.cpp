@@ -2890,6 +2890,37 @@ bool BackendUtils::IsNodeAllInputsAreSimplestLoad(const NodePtr &node) {
   return false;
 }
 
+Status BackendUtils::CollectInputLoadViewInfos(const NodePtr &node, int32_t index,
+                                               std::vector<ViewOpAttrInfo> &attr_infos) {
+  GE_ASSERT_NOTNULL(node);
+  ComputeGraphPtr graph;
+  GE_ASSERT_SUCCESS(GetNodeFusedGraph(node, graph));
+  const auto inputs = graph->GetInputNodes();
+  GE_ASSERT_TRUE(index >= 0 && static_cast<size_t>(index) < inputs.size());
+  const auto data = inputs.at(index);
+  GE_ASSERT_NOTNULL(data);
+  const auto output = data->GetOutDataAnchor(0);
+  GE_ASSERT_NOTNULL(output);
+  const auto peers = output->GetPeerInDataAnchorsPtr();
+  GE_ASSERT_TRUE(!peers.empty());
+  for (const auto &peer : peers) {
+    GE_ASSERT_NOTNULL(peer);
+    const auto child = peer->GetOwnerNode();
+    GE_ASSERT_NOTNULL(child);
+    if (node->GetType() == kFusedAscBackendType) {
+      GE_ASSERT_SUCCESS(CollectInputLoadViewInfos(child, peer->GetIdx(), attr_infos));
+      continue;
+    }
+    GE_ASSERT_TRUE(child->GetType() == kLoadType);
+    // GeFallback may materialize a Broadcast after the Load. Recover its axes
+    // from the Load metadata and the graph axes for every access to this input.
+    ViewOpAttrInfo info;
+    GE_ASSERT_SUCCESS(FusedBackSteppingViewOp(data.get(), child.get(), info, true));
+    attr_infos.emplace_back(std::move(info));
+  }
+  return SUCCESS;
+}
+
 bool BackendUtils::CurNodeInputIsSimplestLoad(const NodePtr &node, const int32_t index,
                                               std::vector<ViewOpAttrInfo> &attr_infos,
                                               bool is_condition_with_node_type) {

@@ -364,7 +364,8 @@ bool TransNodeMerging::CheckTwoTransOpDescMergable(const ge::NodePtr &src_node, 
 
   ge::OpDescPtr src_op_desc = src_node->GetOpDesc();
   ge::OpDescPtr dst_op_desc = dst_node->GetOpDesc();
-  FE_CHECK(src_op_desc == nullptr, FE_LOGD("Source op desc is null."), return false);
+  FE_CHECK(src_op_desc == nullptr || dst_op_desc == nullptr, FE_LOGD("Source op desc or dst op desc is null."),
+           return false);
   bool unsupport_merge =
       (src_op_desc->GetType() == RESHAPE && dst_op_desc->GetType() == RESHAPE) &&
       (UnknownShapeUtils::IsUnknownShapeOp(*src_op_desc) || UnknownShapeUtils::IsUnknownShapeOp(*dst_op_desc));

@@ -29,7 +29,7 @@ Status CastKernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<ConstG
                            std::vector<GeTensorPtr> &v_output) {
   GELOGD("CastKernel begin");
   if (input.size() != kCastInputSize) {
-    GELOGE(PARAM_INVALID, "The number of input for cast must be %zu.", kCastInputSize);
+    GELOGE(PARAM_INVALID, "The number of input for cast must be %zu, but is %zu.", kCastInputSize, input.size());
     return PARAM_INVALID;
   }
   ConstGeTensorPtr const_weight_ptr = input[0];
@@ -86,7 +86,8 @@ Status CastKernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<ConstG
     return NOT_CHANGED;
   }
   if (!KernelUtils::CheckSizeForTransOp(const_weight_ptr, op_desc_ptr)) {
-    GELOGE(FAILED, "CheckSize failed, input size is not equal to weight size");
+    GELOGE(FAILED, "CheckSize failed, node %s input size %ld is not equal to weight size %zu",
+           op_desc_ptr->GetName().c_str(), src_data_size, const_weight_ptr->GetData().size());
     return NOT_CHANGED;
   }
   if (formats::TransTensorDataType(cast_args, trans_result) != SUCCESS) {

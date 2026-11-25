@@ -24,8 +24,8 @@ class SinkWeightAssigner {
   void *Assign(const size_t &size, const size_t &offset) {
     size_t end_offset = 0;
     if (ge::AddOverflow(size, offset, end_offset) || (end_offset > total_mem_size_)) {
-      GELOGE(ge::GRAPH_FAILED, "Inputs invalid. size[%zu] + offset[%zu] > total_mem_size[%zu]", size, offset,
-             total_mem_size_);
+      GELOGE(ge::GRAPH_FAILED, "Inputs invalid. size[%zu bytes] + offset[%zu bytes] > total_mem_size[%zu bytes]", size,
+             offset, total_mem_size_);
       return nullptr;
     }
     return ge::ValueToPtr(ge::PtrToValue(base_addr_) + offset);
