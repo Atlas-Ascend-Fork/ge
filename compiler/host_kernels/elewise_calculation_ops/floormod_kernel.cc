@@ -29,16 +29,17 @@ const size_t kFloorModFirstOutput = 0;
 const size_t kFloorModInputNum = 2;
 const std::set<DataType> kFloorModSupportedType = {DT_INT32};
 
-// func FloorDiv is compute floor(x/y); quotient is integer
+// The divisor is nonzero. Avoid forming an unrepresentable quotient for min / -1.
 template <typename T>
-T FloorDiv(T const &x, T const &y) {
-  if ((x < static_cast<T>(0)) != (y < static_cast<T>(0))) {
-    T abs_x = std::abs(x);
-    T abs_y = std::abs(y);
-    return static_cast<int32_t>((1 - abs_x) / abs_y - 1);
-  } else {
-    return x / y;
+T FloorMod(T const &x, T const &y) {
+  if (y == static_cast<T>(-1)) {
+    return 0;
   }
+  T remainder = x % y;
+  if (remainder != 0 && ((remainder < 0) != (y < 0))) {
+    remainder += y;
+  }
+  return remainder;
 }
 
 template <typename T>
@@ -64,7 +65,7 @@ Status CheckYIsZero(T const &y, DataType const &type) {
     if (ret != SUCCESS) {                                                             \
       return static_cast<TYPE>(0);                                                    \
     }                                                                                 \
-    return (a - b * FloorDiv(a, b));                                                  \
+    return FloorMod(a, b);                                                            \
   }
 
 #define SET_BCAST_COMPUTE_CASE(DTYPE, TYPE)                           \

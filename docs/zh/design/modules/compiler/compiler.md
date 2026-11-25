@@ -166,6 +166,12 @@ GEPass::Run(names_to_passes) {
 
 内置 Host `FloorDiv` 常量求值须保留浮点向下取整与整数原宽度语义；整数商无法表示时跳过折叠。具体规则见[常量折叠计算引擎](../../features/constant_folding.md#451-ge-内置-host-kernel)。
 
+内置 Host `FloorMod` 常量求值保留零余数及除数符号规则，覆盖完整 `DT_INT32` 数值范围；详见[常量折叠计算引擎](../../features/constant_folding.md#451-ge-内置-host-kernel)。
+
+内置 Host `ReduceProd` 在多轴输入时跳过常量折叠，避免非等价地只规约首轴；详见[常量折叠计算引擎](../../features/constant_folding.md#451-ge-内置-host-kernel)。
+
+内置 Host `Cast` 常量求值对有限 FP16→INT32 使用向零截断，不沿用通用半精度类的最近偶数舍入；详见[常量折叠计算引擎](../../features/constant_folding.md#451-ge-内置-host-kernel)。
+
 ### 2.2 优化 Pass 的组织
 
 GE 的优化 Pass 分多个批次执行，分布在不同阶段。核心的 Pass 包括：

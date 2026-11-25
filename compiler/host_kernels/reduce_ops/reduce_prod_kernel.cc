@@ -59,6 +59,12 @@ Status ReduceProdKernel::ReduceProdCheck(const ge::OpDescPtr &op_desc_ptr,
     return PARAM_INVALID;
   }
 
+  const auto &axis_shape = axis_tensor->GetTensorDesc().GetShape();
+  if (axis_shape.GetDimNum() == 1 && axis_shape.GetDim(0) > 1) {
+    GELOGI("ReduceProd Host kernel only supports a single reduction axis.");
+    return PARAM_INVALID;
+  }
+
   DataType data_type = data_tensor->GetTensorDesc().GetDataType();
   if (kReduceProdSupportedType.find(data_type) == kReduceProdSupportedType.end()) {
     GELOGW("ReduceProdKernel data type %s is not supported, supported types: DT_INT32, node name: %s",
@@ -72,7 +78,7 @@ Status ReduceProdKernel::ReduceProdCheck(const ge::OpDescPtr &op_desc_ptr,
 Status ReduceProdKernel::AxisCal(const std::vector<ge::ConstGeTensorPtr> &input) {
   ConstGeTensorPtr data_tensor = input.at(kReduceProdDataIndex);
   ConstGeTensorPtr axis_tensor = input.at(kReduceProdAxisIndex);
-  // support: compute for the first element of axis.
+  // ReduceProdCheck has limited nonempty axes to a single element.
   std::vector<int64_t> data_dims = data_tensor->GetTensorDesc().GetShape().GetDims();
   size_t data_dim_size = data_dims.size();
   int32_t *axis = const_cast<int32_t *>(reinterpret_cast<const int32_t *>(axis_tensor->GetData().GetData()));
