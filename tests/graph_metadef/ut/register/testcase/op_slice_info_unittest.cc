@@ -795,3 +795,165 @@ TEST_F(UtestOpSliceInfo, OpCalcInfo_del_axis_split_map_empty) {
   info.DelAxisSplitMapBaseAxis(del_axis);
   EXPECT_EQ(info.GetAxisSplitMaps().size(), 0U);
 }
+
+// ======================== Uninitialized Access Safety ========================
+
+TEST_F(UtestOpSliceInfo, InputSplitInfo_uninitialized_access_safe) {
+  InputSplitInfo info;
+  EXPECT_EQ(info.GetIndex(), 0U);
+  EXPECT_TRUE(info.GetAxis().empty());
+  EXPECT_TRUE(info.GetHeadOverLap().empty());
+  EXPECT_TRUE(info.GetTailOverLap().empty());
+
+  size_t idx = 1U;
+  std::vector<int64_t> axis = {0};
+  info.SetIndex(idx);
+  info.SetAxis(axis);
+  info.SetHeadOverLap(axis);
+  info.SetTailOverLap(axis);
+}
+
+TEST_F(UtestOpSliceInfo, OutputSplitInfo_uninitialized_access_safe) {
+  OutputSplitInfo info;
+  EXPECT_EQ(info.GetIndex(), 0U);
+  EXPECT_TRUE(info.GetAxis().empty());
+
+  size_t idx = 1U;
+  std::vector<int64_t> axis = {0};
+  info.SetIndex(idx);
+  info.SetAxis(axis);
+}
+
+TEST_F(UtestOpSliceInfo, InputReduceInfo_uninitialized_access_safe) {
+  InputReduceInfo info;
+  EXPECT_EQ(info.GetIndex(), 0U);
+  EXPECT_TRUE(info.GetAxis().empty());
+
+  size_t idx = 1U;
+  std::vector<int64_t> axis = {0};
+  info.SetIndex(idx);
+  info.SetAxis(axis);
+}
+
+TEST_F(UtestOpSliceInfo, OutputReduceInfo_uninitialized_access_safe) {
+  OutputReduceInfo info;
+  EXPECT_EQ(info.GetIndex(), 0U);
+  EXPECT_EQ(info.GetReduceType(), REDUCE_MEAN);
+  EXPECT_FALSE(info.GetIsAtomic());
+
+  size_t idx = 1U;
+  info.SetIndex(idx);
+  info.SetReduceType(REDUCE_ADD);
+  info.SetIsAtomic(true);
+}
+
+TEST_F(UtestOpSliceInfo, AxisSplitMap_uninitialized_access_safe) {
+  AxisSplitMap map;
+  EXPECT_TRUE(map.GetInputSplitInfos().empty());
+  EXPECT_TRUE(map.GetOutputSplitInfos().empty());
+  EXPECT_TRUE(map.GetInputSplitInfoVec().empty());
+  EXPECT_TRUE(map.GetOutputSplitInfoVec().empty());
+
+  InputSplitInfo input_info;
+  map.AddInputSplitInfo(input_info);
+  std::vector<InputSplitInfo> input_vec = {input_info};
+  map.SetInputSplitInfos(input_vec);
+  std::vector<InputSplitInfoPtr> input_ptr_vec;
+  map.SetInputSplitInfos(input_ptr_vec);
+  OutputSplitInfo output_info;
+  map.AddOutputSplitInfo(output_info);
+  std::vector<OutputSplitInfo> output_vec = {output_info};
+  map.SetOutputSplitInfos(output_vec);
+  std::vector<OutputSplitInfoPtr> output_ptr_vec;
+  map.SetOutputSplitInfos(output_ptr_vec);
+}
+
+TEST_F(UtestOpSliceInfo, AxisSplitMap_vec_skip_null_element) {
+  AxisSplitMap map;
+  map.Initialize();
+
+  std::vector<InputSplitInfoPtr> input_vec = {nullptr};
+  map.SetInputSplitInfos(input_vec);
+  EXPECT_TRUE(map.GetInputSplitInfoVec().empty());
+
+  std::vector<OutputSplitInfoPtr> output_vec = {nullptr};
+  map.SetOutputSplitInfos(output_vec);
+  EXPECT_TRUE(map.GetOutputSplitInfoVec().empty());
+}
+
+TEST_F(UtestOpSliceInfo, AxisReduceMap_uninitialized_access_safe) {
+  AxisReduceMap map;
+  EXPECT_TRUE(map.GetInputReduceInfos().empty());
+  EXPECT_TRUE(map.GetOutputReduceInfos().empty());
+  EXPECT_TRUE(map.GetInputReduceInfoVec().empty());
+  EXPECT_TRUE(map.GetOutputReduceInfoVec().empty());
+
+  InputReduceInfo input_info;
+  map.AddInputReduceInfo(input_info);
+  std::vector<InputReduceInfo> input_vec = {input_info};
+  map.SetInputReduceInfos(input_vec);
+  std::vector<InputReduceInfoPtr> input_ptr_vec;
+  map.SetInputReduceInfos(input_ptr_vec);
+  OutputReduceInfo output_info;
+  map.AddOutputReduceInfo(output_info);
+  std::vector<OutputReduceInfo> output_vec = {output_info};
+  map.SetOutputReduceInfos(output_vec);
+  std::vector<OutputReduceInfoPtr> output_ptr_vec;
+  map.SetOutputReduceInfos(output_ptr_vec);
+}
+
+TEST_F(UtestOpSliceInfo, AxisReduceMap_vec_skip_null_element) {
+  AxisReduceMap map;
+  map.Initialize();
+
+  std::vector<InputReduceInfoPtr> input_vec = {nullptr};
+  map.SetInputReduceInfos(input_vec);
+  EXPECT_TRUE(map.GetInputReduceInfoVec().empty());
+
+  std::vector<OutputReduceInfoPtr> output_vec = {nullptr};
+  map.SetOutputReduceInfos(output_vec);
+  EXPECT_TRUE(map.GetOutputReduceInfoVec().empty());
+}
+
+TEST_F(UtestOpSliceInfo, OpCalcInfo_uninitialized_access_safe) {
+  OpCalcInfo info;
+  EXPECT_TRUE(info.GetAxisSplitMaps().empty());
+  EXPECT_TRUE(info.GetAxisReduceMaps().empty());
+  EXPECT_TRUE(info.GetAxisSplitMapVec().empty());
+  EXPECT_TRUE(info.GetAxisReduceMapVec().empty());
+  EXPECT_EQ(info.GetL1FusionEnable(), L1FUSION_DISABLE);
+  EXPECT_EQ(info.GetMinTbeL1Space(), 0);
+
+  AxisSplitMap split_map;
+  info.AddAxisSplitMap(split_map);
+  std::vector<AxisSplitMap> split_vec = {split_map};
+  info.SetAxisSplitMaps(split_vec);
+  std::vector<AxisSplitMapPtr> split_ptr_vec;
+  info.SetAxisSplitMaps(split_ptr_vec);
+  AxisReduceMap reduce_map;
+  info.AddAxisReduceMap(reduce_map);
+  std::vector<AxisReduceMap> reduce_vec = {reduce_map};
+  info.SetAxisReduceMaps(reduce_vec);
+  std::vector<AxisReduceMapPtr> reduce_ptr_vec;
+  info.SetAxisReduceMaps(reduce_ptr_vec);
+  info.SetL1FusionEnable(L1FUSION_BASIC);
+  info.SetMinTbeL1Space(1024);
+  std::vector<int64_t> del_axis = {0};
+  info.DelAxisSplitMapBaseAxis(del_axis);
+}
+
+TEST_F(UtestOpSliceInfo, OpCalcInfo_vec_skip_null_element) {
+  OpCalcInfo info;
+  info.Initialize();
+
+  std::vector<AxisSplitMapPtr> split_vec = {nullptr};
+  info.SetAxisSplitMaps(split_vec);
+  EXPECT_TRUE(info.GetAxisSplitMapVec().empty());
+
+  std::vector<AxisReduceMapPtr> reduce_vec = {nullptr};
+  info.SetAxisReduceMaps(reduce_vec);
+  EXPECT_TRUE(info.GetAxisReduceMapVec().empty());
+
+  std::vector<int64_t> del_axis = {0};
+  info.DelAxisSplitMapBaseAxis(del_axis);
+}

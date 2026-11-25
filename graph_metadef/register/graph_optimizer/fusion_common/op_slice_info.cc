@@ -87,34 +87,58 @@ bool InputSplitInfo::Initialize() {
 }
 
 size_t InputSplitInfo::GetIndex() const {
+  if (split_impl_ == nullptr) {
+    return 0;
+  }
   return split_impl_->GetIndex();
 }
 
 std::vector<int64_t> InputSplitInfo::GetAxis() const {
+  if (split_impl_ == nullptr) {
+    return {};
+  }
   return split_impl_->GetAxis();
 }
 
 std::vector<int64_t> InputSplitInfo::GetHeadOverLap() const {
+  if (split_impl_ == nullptr) {
+    return {};
+  }
   return split_impl_->GetHeadOverLap();
 }
 
 std::vector<int64_t> InputSplitInfo::GetTailOverLap() const {
+  if (split_impl_ == nullptr) {
+    return {};
+  }
   return split_impl_->GetTailOverLap();
 }
 
 void InputSplitInfo::SetIndex(const size_t &idx) {
+  if (split_impl_ == nullptr) {
+    return;
+  }
   split_impl_->SetIndex(idx);
 }
 
 void InputSplitInfo::SetAxis(std::vector<int64_t> &axis) {
+  if (split_impl_ == nullptr) {
+    return;
+  }
   split_impl_->SetAxis(axis);
 }
 
 void InputSplitInfo::SetHeadOverLap(std::vector<int64_t> &head_over_lap) {
+  if (split_impl_ == nullptr) {
+    return;
+  }
   split_impl_->SetHeadOverLap(head_over_lap);
 }
 
 void InputSplitInfo::SetTailOverLap(std::vector<int64_t> &tail_over_lap) {
+  if (split_impl_ == nullptr) {
+    return;
+  }
   split_impl_->SetTailOverLap(tail_over_lap);
 }
 
@@ -167,18 +191,30 @@ bool OutputSplitInfo::Initialize() {
 }
 
 size_t OutputSplitInfo::GetIndex() const {
+  if (split_impl_ == nullptr) {
+    return 0;
+  }
   return split_impl_->GetIndex();
 }
 
 std::vector<int64_t> OutputSplitInfo::GetAxis() const {
+  if (split_impl_ == nullptr) {
+    return {};
+  }
   return split_impl_->GetAxis();
 }
 
 void OutputSplitInfo::SetIndex(const size_t &idx) {
+  if (split_impl_ == nullptr) {
+    return;
+  }
   split_impl_->SetIndex(idx);
 }
 
 void OutputSplitInfo::SetAxis(std::vector<int64_t> &axis) {
+  if (split_impl_ == nullptr) {
+    return;
+  }
   split_impl_->SetAxis(axis);
 }
 
@@ -231,18 +267,30 @@ InputReduceInfo &InputReduceInfo::operator=(const InputReduceInfo &input_reduce_
 }
 
 size_t InputReduceInfo::GetIndex() const {
+  if (reduce_impl_ == nullptr) {
+    return 0;
+  }
   return reduce_impl_->GetIndex();
 }
 
 std::vector<int64_t> InputReduceInfo::GetAxis() const {
+  if (reduce_impl_ == nullptr) {
+    return {};
+  }
   return reduce_impl_->GetAxis();
 }
 
 void InputReduceInfo::SetIndex(const size_t &idx) {
+  if (reduce_impl_ == nullptr) {
+    return;
+  }
   reduce_impl_->SetIndex(idx);
 }
 
 void InputReduceInfo::SetAxis(std::vector<int64_t> &axis) {
+  if (reduce_impl_ == nullptr) {
+    return;
+  }
   reduce_impl_->SetAxis(axis);
 }
 
@@ -302,26 +350,44 @@ bool OutputReduceInfo::Initialize() {
 }
 
 size_t OutputReduceInfo::GetIndex() const {
+  if (reduce_impl_ == nullptr) {
+    return 0;
+  }
   return reduce_impl_->GetIndex();
 }
 
 OpReduceType OutputReduceInfo::GetReduceType() const {
+  if (reduce_impl_ == nullptr) {
+    return REDUCE_MEAN;
+  }
   return reduce_impl_->GetReduceType();
 }
 
 bool OutputReduceInfo::GetIsAtomic() const {
+  if (reduce_impl_ == nullptr) {
+    return false;
+  }
   return reduce_impl_->GetIsAtomic();
 }
 
 void OutputReduceInfo::SetIndex(const size_t &idx) {
+  if (reduce_impl_ == nullptr) {
+    return;
+  }
   reduce_impl_->SetIndex(idx);
 }
 
 void OutputReduceInfo::SetReduceType(const OpReduceType &reduce_type) {
+  if (reduce_impl_ == nullptr) {
+    return;
+  }
   reduce_impl_->SetReduceType(reduce_type);
 }
 
 void OutputReduceInfo::SetIsAtomic(const bool &is_atomic) {
+  if (reduce_impl_ == nullptr) {
+    return;
+  }
   reduce_impl_->SetIsAtomic(is_atomic);
 }
 
@@ -420,50 +486,86 @@ bool AxisSplitMap::Initialize() {
 }
 
 std::vector<InputSplitInfoPtr> AxisSplitMap::GetInputSplitInfos() const {
+  if (aixs_split_impl_ == nullptr) {
+    return {};
+  }
   return aixs_split_impl_->GetInputSplitInfos();
 }
 
 std::vector<InputSplitInfo> AxisSplitMap::GetInputSplitInfoVec() const {
   std::vector<InputSplitInfo> ret;
+  if (aixs_split_impl_ == nullptr) {
+    return ret;
+  }
   for (InputSplitInfoPtr info_ptr : aixs_split_impl_->GetInputSplitInfos()) {
+    if (info_ptr == nullptr) {
+      continue;
+    }
     ret.push_back(*info_ptr);
   }
   return ret;
 }
 
 std::vector<OutputSplitInfoPtr> AxisSplitMap::GetOutputSplitInfos() const {
+  if (aixs_split_impl_ == nullptr) {
+    return {};
+  }
   return aixs_split_impl_->GetOutputSplitInfos();
 }
 
 std::vector<OutputSplitInfo> AxisSplitMap::GetOutputSplitInfoVec() const {
   std::vector<OutputSplitInfo> ret;
+  if (aixs_split_impl_ == nullptr) {
+    return ret;
+  }
   for (OutputSplitInfoPtr info_ptr : aixs_split_impl_->GetOutputSplitInfos()) {
+    if (info_ptr == nullptr) {
+      continue;
+    }
     ret.push_back(*info_ptr);
   }
   return ret;
 }
 
 void AxisSplitMap::AddInputSplitInfo(InputSplitInfo &input_split_info) {
+  if (aixs_split_impl_ == nullptr) {
+    return;
+  }
   aixs_split_impl_->AddInputSplitInfo(input_split_info);
 }
 
 void AxisSplitMap::SetInputSplitInfos(std::vector<InputSplitInfo> &input_split_vec) {
+  if (aixs_split_impl_ == nullptr) {
+    return;
+  }
   aixs_split_impl_->SetInputSplitInfos(input_split_vec);
 }
 
 void AxisSplitMap::SetInputSplitInfos(std::vector<InputSplitInfoPtr> &input_split_vec) {
+  if (aixs_split_impl_ == nullptr) {
+    return;
+  }
   aixs_split_impl_->SetInputSplitInfos(input_split_vec);
 }
 
 void AxisSplitMap::AddOutputSplitInfo(OutputSplitInfo &output_split_info) {
+  if (aixs_split_impl_ == nullptr) {
+    return;
+  }
   aixs_split_impl_->AddOutputSplitInfo(output_split_info);
 }
 
 void AxisSplitMap::SetOutputSplitInfos(std::vector<OutputSplitInfo> &output_split_vec) {
+  if (aixs_split_impl_ == nullptr) {
+    return;
+  }
   aixs_split_impl_->SetOutputSplitInfos(output_split_vec);
 }
 
 void AxisSplitMap::SetOutputSplitInfos(std::vector<OutputSplitInfoPtr> &output_split_vec) {
+  if (aixs_split_impl_ == nullptr) {
+    return;
+  }
   aixs_split_impl_->SetOutputSplitInfos(output_split_vec);
 }
 
@@ -563,50 +665,86 @@ bool AxisReduceMap::Initialize() {
 }
 
 std::vector<InputReduceInfoPtr> AxisReduceMap::GetInputReduceInfos() const {
+  if (aixs_reduce_impl_ == nullptr) {
+    return {};
+  }
   return aixs_reduce_impl_->GetInputReduceInfos();
 }
 
 std::vector<InputReduceInfo> AxisReduceMap::GetInputReduceInfoVec() const {
   std::vector<InputReduceInfo> ret;
+  if (aixs_reduce_impl_ == nullptr) {
+    return ret;
+  }
   for (InputReduceInfoPtr info_ptr : aixs_reduce_impl_->GetInputReduceInfos()) {
+    if (info_ptr == nullptr) {
+      continue;
+    }
     ret.push_back(*info_ptr);
   }
   return ret;
 }
 
 std::vector<OutputReduceInfoPtr> AxisReduceMap::GetOutputReduceInfos() const {
+  if (aixs_reduce_impl_ == nullptr) {
+    return {};
+  }
   return aixs_reduce_impl_->GetOutputReduceInfos();
 }
 
 std::vector<OutputReduceInfo> AxisReduceMap::GetOutputReduceInfoVec() const {
   std::vector<OutputReduceInfo> ret;
+  if (aixs_reduce_impl_ == nullptr) {
+    return ret;
+  }
   for (OutputReduceInfoPtr info_ptr : aixs_reduce_impl_->GetOutputReduceInfos()) {
+    if (info_ptr == nullptr) {
+      continue;
+    }
     ret.push_back(*info_ptr);
   }
   return ret;
 }
 
 void AxisReduceMap::AddInputReduceInfo(InputReduceInfo &input_reduce_info) {
+  if (aixs_reduce_impl_ == nullptr) {
+    return;
+  }
   aixs_reduce_impl_->AddInputReduceInfo(input_reduce_info);
 }
 
 void AxisReduceMap::SetInputReduceInfos(std::vector<InputReduceInfo> &input_reduce_vec) {
+  if (aixs_reduce_impl_ == nullptr) {
+    return;
+  }
   aixs_reduce_impl_->SetInputReduceInfos(input_reduce_vec);
 }
 
 void AxisReduceMap::SetInputReduceInfos(std::vector<InputReduceInfoPtr> &input_reduce_vec) {
+  if (aixs_reduce_impl_ == nullptr) {
+    return;
+  }
   aixs_reduce_impl_->SetInputReduceInfos(input_reduce_vec);
 }
 
 void AxisReduceMap::AddOutputReduceInfo(OutputReduceInfo &output_reduce_info) {
+  if (aixs_reduce_impl_ == nullptr) {
+    return;
+  }
   aixs_reduce_impl_->AddOutputReduceInfo(output_reduce_info);
 }
 
 void AxisReduceMap::SetOutputReduceInfos(std::vector<OutputReduceInfo> &output_reduce_vec) {
+  if (aixs_reduce_impl_ == nullptr) {
+    return;
+  }
   aixs_reduce_impl_->SetOutputReduceInfos(output_reduce_vec);
 }
 
 void AxisReduceMap::SetOutputReduceInfos(std::vector<OutputReduceInfoPtr> &output_reduce_vec) {
+  if (aixs_reduce_impl_ == nullptr) {
+    return;
+  }
   aixs_reduce_impl_->SetOutputReduceInfos(output_reduce_vec);
 }
 
@@ -674,8 +812,11 @@ class OpCalcInfoImpl {
   void DelAxisSplitMapBaseAxis(std::vector<int64_t> &axis) {
     AxisSplitMapPtr temp_axis_split_map;
     for (AxisSplitMapPtr axis_split : axis_split_vec_) {
+      if (axis_split == nullptr) {
+        continue;
+      }
       for (InputSplitInfoPtr input_split : axis_split->GetInputSplitInfos()) {
-        if (input_split->GetAxis() == axis) {
+        if (input_split != nullptr && input_split->GetAxis() == axis) {
           temp_axis_split_map = axis_split;
         }
       }
@@ -715,16 +856,28 @@ bool OpCalcInfo::Initialize() {
 }
 
 std::vector<AxisSplitMapPtr> OpCalcInfo::GetAxisSplitMaps() const {
+  if (op_calc_info_impl_ == nullptr) {
+    return {};
+  }
   return op_calc_info_impl_->GetAxisSplitMaps();
 }
 
 std::vector<AxisReduceMapPtr> OpCalcInfo::GetAxisReduceMaps() const {
+  if (op_calc_info_impl_ == nullptr) {
+    return {};
+  }
   return op_calc_info_impl_->GetAxisReduceMaps();
 }
 
 std::vector<AxisSplitMap> OpCalcInfo::GetAxisSplitMapVec() const {
   std::vector<AxisSplitMap> ret;
+  if (op_calc_info_impl_ == nullptr) {
+    return ret;
+  }
   for (AxisSplitMapPtr map_ptr : op_calc_info_impl_->GetAxisSplitMaps()) {
+    if (map_ptr == nullptr) {
+      continue;
+    }
     ret.push_back(*map_ptr);
   }
   return ret;
@@ -732,53 +885,92 @@ std::vector<AxisSplitMap> OpCalcInfo::GetAxisSplitMapVec() const {
 
 std::vector<AxisReduceMap> OpCalcInfo::GetAxisReduceMapVec() const {
   std::vector<AxisReduceMap> ret;
+  if (op_calc_info_impl_ == nullptr) {
+    return ret;
+  }
   for (AxisReduceMapPtr map_ptr : op_calc_info_impl_->GetAxisReduceMaps()) {
+    if (map_ptr == nullptr) {
+      continue;
+    }
     ret.push_back(*map_ptr);
   }
   return ret;
 }
 
 OpL1FusionType OpCalcInfo::GetL1FusionEnable() const {
+  if (op_calc_info_impl_ == nullptr) {
+    return L1FUSION_DISABLE;
+  }
   return op_calc_info_impl_->GetL1FusionEnable();
 }
 
 int64_t OpCalcInfo::GetMinTbeL1Space() const {
+  if (op_calc_info_impl_ == nullptr) {
+    return 0;
+  }
   return op_calc_info_impl_->GetMinTbeL1Space();
 }
 
 void OpCalcInfo::AddAxisSplitMap(AxisSplitMap &axis_split_map) {
+  if (op_calc_info_impl_ == nullptr) {
+    return;
+  }
   op_calc_info_impl_->AddAxisSplitMap(axis_split_map);
 }
 
 void OpCalcInfo::SetAxisSplitMaps(std::vector<AxisSplitMap> &axis_split_vec) {
+  if (op_calc_info_impl_ == nullptr) {
+    return;
+  }
   op_calc_info_impl_->SetAxisSplitMaps(axis_split_vec);
 }
 
 void OpCalcInfo::SetAxisSplitMaps(std::vector<AxisSplitMapPtr> &axis_split_vec) {
+  if (op_calc_info_impl_ == nullptr) {
+    return;
+  }
   op_calc_info_impl_->SetAxisSplitMaps(axis_split_vec);
 }
 
 void OpCalcInfo::AddAxisReduceMap(AxisReduceMap &axis_reduce_map) {
+  if (op_calc_info_impl_ == nullptr) {
+    return;
+  }
   op_calc_info_impl_->AddAxisReduceMap(axis_reduce_map);
 }
 
 void OpCalcInfo::SetAxisReduceMaps(std::vector<AxisReduceMap> &axis_reduce_vec) {
+  if (op_calc_info_impl_ == nullptr) {
+    return;
+  }
   op_calc_info_impl_->SetAxisReduceMaps(axis_reduce_vec);
 }
 
 void OpCalcInfo::SetAxisReduceMaps(std::vector<AxisReduceMapPtr> &axis_reduce_vec) {
+  if (op_calc_info_impl_ == nullptr) {
+    return;
+  }
   op_calc_info_impl_->SetAxisReduceMaps(axis_reduce_vec);
 }
 
 void OpCalcInfo::SetL1FusionEnable(const OpL1FusionType &l1_fusion_enable) {
+  if (op_calc_info_impl_ == nullptr) {
+    return;
+  }
   op_calc_info_impl_->SetL1FusionEnable(l1_fusion_enable);
 }
 
 void OpCalcInfo::SetMinTbeL1Space(const int64_t &min_tbe_l1_space) {
+  if (op_calc_info_impl_ == nullptr) {
+    return;
+  }
   op_calc_info_impl_->SetMinTbeL1Space(min_tbe_l1_space);
 }
 
 void OpCalcInfo::DelAxisSplitMapBaseAxis(std::vector<int64_t> &axis) {
+  if (op_calc_info_impl_ == nullptr) {
+    return;
+  }
   op_calc_info_impl_->DelAxisSplitMapBaseAxis(axis);
 }
 
