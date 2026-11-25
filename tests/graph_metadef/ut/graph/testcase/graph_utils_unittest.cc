@@ -6491,4 +6491,48 @@ TEST_F(UtestGraphUtils, CovInheritOriginalAttr) {
   (void)AttrUtils::GetStr(dst_graph, "test_attr", val);
   EXPECT_EQ(val, "test_value");
 }
+
+TEST_F(UtestGraphUtils, CovGenDumpTxtFileNameUserPathBlockedByFile) {
+  ut::GraphBuilder builder = ut::GraphBuilder("dump_user_path");
+  auto data = builder.AddNode("data", DATA, 0, 1);
+  auto graph = builder.GetGraph();
+  const std::string blocker = "./test_dump_dir_blocker_for_ut";
+  system(("touch " + blocker).c_str());
+  std::string real_path;
+  const auto ret = GraphUtils::GenDumpTxtFileName(graph, "suffix", blocker + "/ge.pb", real_path);
+  EXPECT_EQ(ret, GRAPH_FAILED);
+  system(("rm -f " + blocker).c_str());
+}
+
+TEST_F(UtestGraphUtils, CovDumpGrphToOnnxInvalidPath) {
+  ut::GraphBuilder builder = ut::GraphBuilder("dump_invalid_path");
+  auto data = builder.AddNode("data", DATA, 0, 1);
+  auto relu = builder.AddNode("relu", "Relu", 1, 1);
+  auto netoutput = builder.AddNode("netoutput", NETOUTPUT, 1, 0);
+  builder.AddDataEdge(data, 0, relu, 0);
+  builder.AddDataEdge(relu, 0, netoutput, 0);
+  auto graph = builder.GetGraph();
+  GraphUtils::DumpGrphToOnnx(*graph, "/nonexistent_dump_dir_for_ut/sub", "suffix");
+  SUCCEED();
+}
+
+TEST_F(UtestGraphUtils, CovWriteReadableDumpToTextFileWriteFail) {
+  std::stringstream readable_ss;
+  readable_ss << "readable dump";
+  GraphUtils::WriteReadableDumpToTextFile(readable_ss, "/dev/full");
+  SUCCEED();
+}
+
+TEST_F(UtestGraphUtils, CovAddDataNodeParentNodeWithoutInputMapping) {
+  CompleteGraphBuilder complete_builder("test_sub_graph");
+  graphStatus err = GRAPH_SUCCESS;
+  std::string msg;
+  auto builder = ut::GraphBuilder("parent");
+  auto parent_node = builder.AddNode("parent", PARTITIONEDCALL, 1, 1);
+  complete_builder.owner_graph_ = builder.GetGraph();
+  complete_builder.SetParentNode(parent_node);
+  const auto data_node = complete_builder.AddDataNode(0U, err, msg);
+  EXPECT_EQ(err, GRAPH_SUCCESS);
+  EXPECT_NE(data_node, nullptr);
+}
 }  // namespace ge

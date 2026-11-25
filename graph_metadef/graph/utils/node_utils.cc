@@ -625,12 +625,18 @@ bool NodeUtils::IsSubgraphInput(const NodePtr &node) {
 }
 
 bool NodeUtils::IsSubgraphInput(const Node *const node) {
-  if ((node == nullptr) || (node->GetOpDescBarePtr() == nullptr) ||
-      (node->GetOwnerComputeGraphBarePtr()->GetParentNodeBarePtr() == nullptr)) {
+  if ((node == nullptr) || (node->GetOpDescBarePtr() == nullptr)) {
     return false;
   }
-
-  const auto parent_op_desc = node->GetOwnerComputeGraphBarePtr()->GetParentNodeBarePtr()->GetOpDescBarePtr();
+  const auto owner_graph = node->GetOwnerComputeGraph();
+  if (owner_graph == nullptr) {
+    return false;
+  }
+  const auto parent_node = owner_graph->GetParentNode();
+  if (parent_node == nullptr) {
+    return false;
+  }
+  const auto parent_op_desc = parent_node->GetOpDesc();
   if (parent_op_desc == nullptr) {
     return false;
   }
@@ -639,13 +645,12 @@ bool NodeUtils::IsSubgraphInput(const Node *const node) {
   // dynamic shape known graph with functional subgraph maybe true
   bool is_forced_unknown = false;
   if (AttrUtils::GetBool(parent_op_desc, ATTR_NAME_IS_UNKNOWN_SHAPE, is_forced_unknown) && is_forced_unknown) {
-    if (node->GetOwnerComputeGraphBarePtr()->GetParentGraphBarePtr()->GetGraphUnknownFlag()) {
+    const auto parent_graph = owner_graph->GetParentGraph();
+    if ((parent_graph != nullptr) && parent_graph->GetGraphUnknownFlag()) {
       return false;
     } else {
-      if (node->GetOwnerComputeGraphBarePtr()
-              ->GetParentNodeBarePtr()
-              ->GetOwnerComputeGraphBarePtr()
-              ->GetParentNodeBarePtr() == nullptr) {
+      const auto parent_owner_graph = parent_node->GetOwnerComputeGraph();
+      if ((parent_owner_graph == nullptr) || (parent_owner_graph->GetParentNode() == nullptr)) {
         return false;
       }
     }
@@ -658,22 +663,30 @@ bool NodeUtils::IsSubgraphInput(const Node *const node) {
 /// @param [in] node
 /// @return bool
 bool NodeUtils::IsSubgraphOutput(const NodePtr &node) {
-  if ((node == nullptr) || (node->GetOpDesc() == nullptr) ||
-      (node->GetOwnerComputeGraph()->GetParentNode() == nullptr) || (node->GetType() != NETOUTPUT)) {
+  if ((node == nullptr) || (node->GetOpDesc() == nullptr) || (node->GetType() != NETOUTPUT)) {
     return false;
   }
-
-  const auto parent_op_desc = node->GetOwnerComputeGraph()->GetParentNode()->GetOpDesc();
+  const auto owner_graph = node->GetOwnerComputeGraph();
+  if (owner_graph == nullptr) {
+    return false;
+  }
+  const auto parent_node = owner_graph->GetParentNode();
+  if (parent_node == nullptr) {
+    return false;
+  }
+  const auto parent_op_desc = parent_node->GetOpDesc();
   if (parent_op_desc == nullptr) {
     return false;
   }
 
   bool is_forced_unknown = false;
   if (AttrUtils::GetBool(parent_op_desc, ATTR_NAME_IS_UNKNOWN_SHAPE, is_forced_unknown) && is_forced_unknown) {
-    if (node->GetOwnerComputeGraph()->GetParentGraph()->GetGraphUnknownFlag()) {
+    const auto parent_graph = owner_graph->GetParentGraph();
+    if ((parent_graph != nullptr) && parent_graph->GetGraphUnknownFlag()) {
       return false;
     } else {
-      if (node->GetOwnerComputeGraph()->GetParentNode()->GetOwnerComputeGraph()->GetParentNode() == nullptr) {
+      const auto parent_owner_graph = parent_node->GetOwnerComputeGraph();
+      if ((parent_owner_graph == nullptr) || (parent_owner_graph->GetParentNode() == nullptr)) {
         return false;
       }
     }
@@ -860,7 +873,11 @@ bool NodeUtils::IsWhileVaryingInput(const ge::NodePtr &node) {
     return false;  // not input_node for subgraph
   }
 
-  const Node *parent_node = node->GetOwnerComputeGraph()->GetParentNodeBarePtr();
+  const auto owner_graph = node->GetOwnerComputeGraph();
+  if (owner_graph == nullptr) {
+    return false;
+  }
+  const auto parent_node = owner_graph->GetParentNode();
   if (parent_node == nullptr) {
     return false;  // root graph
   }
@@ -978,6 +995,10 @@ std::vector<NodePtr> NodeUtils::GetSubgraphDataNodesByIndex(const Node &node, co
     return in_data_node_vec;
   }
   const auto compute_graph = FindRootGraph(node);
+  if (compute_graph == nullptr) {
+    GELOGW("[Check][Param] root graph of node %s is null.", node.GetNamePtr());
+    return in_data_node_vec;
+  }
   for (const std::string &instance_name : subgraph_names) {
     const auto subgraph = compute_graph->GetSubgraph(instance_name);
     if (subgraph == nullptr) {
@@ -1009,6 +1030,10 @@ std::vector<NodePtr> NodeUtils::GetSubgraphOutputNodes(const Node &node) {
     return out_data_node_vec;
   }
   const auto compute_graph = FindRootGraph(node);
+  if (compute_graph == nullptr) {
+    GELOGW("[Check][Param] root graph of node %s is null.", node.GetNamePtr());
+    return out_data_node_vec;
+  }
   for (const std::string &instance_name : subgraph_names) {
     const auto subgraph = compute_graph->GetSubgraph(instance_name);
     if (subgraph == nullptr) {

@@ -1524,4 +1524,27 @@ TEST_F(UtestNodeUtils, IncCov_GetOutControlNodes) {
   auto result = NodeUtils::GetOutControlNodes(*src, filter);
   EXPECT_EQ(result.size(), 2U);
 }
+
+TEST_F(UtestNodeUtils, IncCovSubgraphQueryWithNodeWithoutGraph) {
+  auto op_desc = std::make_shared<OpDesc>("partitioned_call", PARTITIONEDCALL);
+  op_desc->AddSubgraphName("sub");
+  op_desc->SetSubgraphInstanceName(0, "sub_graph");
+  const auto node = NodeUtils::CreatNodeWithoutGraph(op_desc);
+  ASSERT_NE(node, nullptr);
+  EXPECT_EQ(NodeUtils::GetSubgraphDataNodesByIndex(*node, 0).size(), 0U);
+  EXPECT_EQ(NodeUtils::GetSubgraphOutputNodes(*node).size(), 0U);
+  EXPECT_FALSE(NodeUtils::IsSubgraphInput(node));
+}
+
+TEST_F(UtestNodeUtils, IncCovSubgraphQueryNullOwnerGraph) {
+  auto netoutput_desc = std::make_shared<OpDesc>("netoutput", NETOUTPUT);
+  const auto netoutput = NodeUtils::CreatNodeWithoutGraph(netoutput_desc);
+  ASSERT_NE(netoutput, nullptr);
+  EXPECT_FALSE(NodeUtils::IsSubgraphOutput(netoutput));
+
+  auto data_desc = std::make_shared<OpDesc>("data", DATA);
+  const auto data = NodeUtils::CreatNodeWithoutGraph(data_desc);
+  ASSERT_NE(data, nullptr);
+  EXPECT_FALSE(NodeUtils::IsWhileVaryingInput(data));
+}
 }  // namespace ge

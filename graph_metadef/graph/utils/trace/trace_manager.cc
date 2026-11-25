@@ -114,16 +114,39 @@ std::unique_ptr<TraceFileHolder> OpenOrCreateFile(const std::string &file_path) 
     return nullptr;
   }
 
-  char_t real_path[MMPA_MAX_PATH] = {};
-  if (mmRealPath(file_path.c_str(), &real_path[0], MMPA_MAX_PATH) != EN_OK) {
-    GELOGI("[trace] Create new trace file %s", file_path.c_str());
+  const auto sep = file_path.rfind(MMPA_PATH_SEPARATOR_STR);
+  if (sep == std::string::npos) {
+    GELOGE(PATH_INVALID, "[trace] Trace file path %s has no directory.", file_path.c_str());
+    return nullptr;
+  }
+  const std::string dir_path = file_path.substr(0UL, sep + 1UL);
+  const std::string file_name = file_path.substr(sep + 1UL);
+  if (file_name.empty()) {
+    GELOGE(PATH_INVALID, "[trace] Trace file path %s has no file name.", file_path.c_str());
+    return nullptr;
+  }
+
+  char_t real_dir[MMPA_MAX_PATH] = {};
+  if (mmRealPath(dir_path.c_str(), &(real_dir[0]), MMPA_MAX_PATH) != EN_OK) {
+    GELOGE(PATH_INVALID, "[trace] Trace dir %s is invalid, reason:%s.", dir_path.c_str(), strerror(errno));
+    return nullptr;
+  }
+  std::string real_path = real_dir;
+  if ((!real_path.empty()) && (real_path.back() != MMPA_PATH_SEPARATOR_STR[0])) {
+    real_path.append(MMPA_PATH_SEPARATOR_STR);
+  }
+  real_path.append(file_name);
+  if (real_path.length() >= static_cast<size_t>(MMPA_MAX_PATH)) {
+    GELOGE(PATH_INVALID, "[trace] Trace file path %s exceed max length %u", real_path.c_str(),
+           static_cast<uint32_t>(MMPA_MAX_PATH));
+    return nullptr;
   }
 
   const static auto kFlag = static_cast<int32_t>(static_cast<uint32_t>(M_WRONLY) | static_cast<uint32_t>(M_CREAT) |
                                                  static_cast<uint32_t>(M_APPEND));
   const static auto kMode = static_cast<mmMode_t>(static_cast<uint32_t>(M_IRUSR) | static_cast<uint32_t>(M_IWUSR));
 
-  return ComGraphMakeUnique<TraceFileHolder>(mmOpen2(&real_path[0], kFlag, kMode));
+  return ComGraphMakeUnique<TraceFileHolder>(mmOpen2(real_path.c_str(), kFlag, kMode));
 }
 
 void TraceManager::SaveTraceBufferToFile(const ReadyPart ready_part) {

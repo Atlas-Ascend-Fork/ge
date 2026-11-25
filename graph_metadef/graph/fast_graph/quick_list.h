@@ -174,12 +174,13 @@ class QuickList {
     if (this == &list) {
       return;
     }
-    clear();
+    init();
     iterator iter = list.begin();
     while (iter != list.end()) {
       auto element = *iter;
-      iter = erase(iter);
-      push_back(element);
+      const auto mode = element->mode;
+      iter = list.erase(iter);
+      push_back(element, mode);
     }
   }
 
@@ -192,8 +193,9 @@ class QuickList {
     iterator iter = list.begin();
     while (iter != list.end()) {
       auto element = *iter;
-      iter = erase(iter);
-      push_back(element);
+      const auto mode = element->mode;
+      iter = list.erase(iter);
+      push_back(element, mode);
     }
     return *this;
   }

@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <functional>
 #include "graph/ge_local_context.h"
 #include "graph/ge_context.h"
 
@@ -26,6 +27,7 @@
 #include "graph/utils/transformer_utils.h"
 #include "graph/utils/node_utils.h"
 #include "graph/utils/graph_utils_ex.h"
+#include "graph/utils/graph_utils.h"
 #include "graph/attribute_group/attr_group_shape_env.h"
 
 ge::ComputeGraphPtr GeApiWrapper_MakeComputeGraphPtr(const char *graph_name);
@@ -2911,5 +2913,56 @@ TEST_F(UtestComputeGraph, IncCov_AddNodeFront_WithDataNodeFirst) {
   new_op->AddOutputDesc(GeTensorDesc());
   auto node = graph->AddNodeFront(new_op);
   EXPECT_NE(node, nullptr);
+}
+
+TEST_F(UtestComputeGraph, IncCovReorderEventNodesWithoutControlPeers) {
+  auto builder = ut::GraphBuilder("graph");
+  builder.AddNode("recv", RECV, 0, 1);
+  builder.AddNode("recv_notify", RECV_NOTIFY, 0, 1);
+  builder.AddNode("send", SEND, 1, 0);
+  builder.AddNode("send_notify", SEND_NOTIFY, 1, 0);
+  auto graph = builder.GetGraph();
+  EXPECT_EQ(graph->ReorderEventNodes(), GRAPH_SUCCESS);
+}
+
+TEST_F(UtestComputeGraph, IncCovTopologicalSortingEmptyComparator) {
+  auto builder = ut::GraphBuilder("graph");
+  builder.AddNode("node1", "Relu", 0, 0);
+  builder.AddNode("node2", "Relu", 0, 0);
+  auto graph = builder.GetGraph();
+  const std::function<bool(const NodePtr &, const NodePtr &)> comp;
+  graph->TopologicalSorting(comp);
+  SUCCEED();
+}
+
+TEST_F(UtestComputeGraph, IncCovCollectOutputNodeNullItem) {
+  auto builder = ut::GraphBuilder("graph");
+  auto data = builder.AddNode("data", DATA, 0, 1);
+  auto relu = builder.AddNode("relu", "Relu", 1, 1);
+  auto netoutput = builder.AddNode("netoutput", NETOUTPUT, 1, 0);
+  builder.AddDataEdge(data, 0, relu, 0);
+  builder.AddDataEdge(relu, 0, netoutput, 0);
+  auto graph = builder.GetGraph();
+  std::vector<std::pair<NodePtr, int32_t>> out_nodes_info;
+  out_nodes_info.emplace_back(nullptr, 0);
+  (void)graph->SetGraphOutNodesInfo(out_nodes_info);
+  SUCCEED();
+}
+
+TEST_F(UtestComputeGraph, IncCovRdfsSkipsForeignNodeIdOutOfRange) {
+  auto builder = ut::GraphBuilder("graph");
+  auto data = builder.AddNode("data", DATA, 0, 1);
+  auto relu = builder.AddNode("relu", "Relu", 1, 1);
+  builder.AddDataEdge(data, 0, relu, 0);
+  auto graph = builder.GetGraph();
+
+  auto foreign_builder = ut::GraphBuilder("foreign");
+  auto foreign = foreign_builder.AddNode("foreign", "Relu", 0, 1);
+  foreign->GetOpDesc()->SetId(1000);
+  EXPECT_EQ(GraphUtils::RemoveEdge(data->GetOutDataAnchor(0), relu->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  EXPECT_EQ(GraphUtils::AddEdge(foreign->GetOutDataAnchor(0), relu->GetInDataAnchor(0)), GRAPH_SUCCESS);
+
+  EXPECT_EQ(graph->TopologicalSorting(TopoSortingMode::kRDFS), GRAPH_SUCCESS);
+  EXPECT_EQ(graph->TopologicalSorting(TopoSortingMode::kStableRDFS), GRAPH_SUCCESS);
 }
 }  // namespace ge

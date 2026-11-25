@@ -864,10 +864,31 @@ graphStatus GetDumpRealPath(const int64_t file_index, const std::string &suffix,
     }
   }
 
-  char_t real_path[MMPA_MAX_PATH] = {};
-  auto const ret = mmRealPath(relative_path.c_str(), &(real_path[0]), MMPA_MAX_PATH);
-  if (ret != EN_OK) {
-    GELOGD("[Get][RealPath]file does not exist, it will be created. ret:%d", ret);
+  const auto sep = relative_path.rfind(MMPA_PATH_SEPARATOR_STR);
+  if (sep == std::string::npos) {
+    GELOGW("[DumpGraph][Check] invalid dump file path:%s", relative_path.c_str());
+    return GRAPH_FAILED;
+  }
+  const std::string dir_path = relative_path.substr(0UL, sep + 1UL);
+  const std::string file_name = relative_path.substr(sep + 1UL);
+  if (file_name.empty()) {
+    GELOGW("[DumpGraph][Check] invalid dump file name, path:%s", relative_path.c_str());
+    return GRAPH_FAILED;
+  }
+
+  char_t real_dir[MMPA_MAX_PATH] = {};
+  if (mmRealPath(dir_path.c_str(), &(real_dir[0]), MMPA_MAX_PATH) != EN_OK) {
+    GELOGW("[DumpGraph][RealPath] resolve dump graph dir %s failed.", dir_path.c_str());
+    return GRAPH_FAILED;
+  }
+  std::string real_path = real_dir;
+  if ((!real_path.empty()) && (real_path.back() != MMPA_PATH_SEPARATOR_STR[0])) {
+    real_path.append(MMPA_PATH_SEPARATOR_STR);
+  }
+  real_path.append(file_name);
+  if (real_path.length() >= static_cast<size_t>(MMPA_MAX_PATH)) {
+    GELOGW("[DumpGraph][Check] dump file path %s is too long, max length:%d.", real_path.c_str(), MMPA_MAX_PATH);
+    return GRAPH_FAILED;
   }
 
   real_path_name = real_path;
@@ -1365,13 +1386,19 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY void GraphUtils::WriteReadableDum
     GELOGE(GRAPH_FAILED, "[Open][File] failed for %s, reason:%s", real_path, strerror(errno));
     return;
   }
-  const uint32_t len = static_cast<uint32_t>(readable_ss.str().length());
-  // Write data to file
-  const mmSsize_t mmpa_ret = mmWrite(fd, const_cast<char_t *>(readable_ss.str().c_str()), len);
-  if ((mmpa_ret == EN_ERROR) || (mmpa_ret == EN_INVALID_PARAM)) {
-    REPORT_INNER_ERR_MSG("E18888", "open file:%s failed, errormessage:%s", real_path, strerror(errno));
-    GELOGE(GRAPH_FAILED, "[Write][File] failed for %s, reason:%s", real_path, strerror(errno));
-    return;
+  const std::string readable_str = readable_ss.str();
+  const char_t *const data = readable_str.c_str();
+  const uint32_t len = static_cast<uint32_t>(readable_str.length());
+  uint32_t written = 0U;
+  while (written < len) {
+    const mmSsize_t mmpa_ret = mmWrite(fd, const_cast<char_t *>(data + written), len - written);
+    if (mmpa_ret <= 0) {
+      REPORT_INNER_ERR_MSG("E18888", "write file:%s failed, errormessage:%s", real_path, strerror(errno));
+      GELOGE(GRAPH_FAILED, "[Write][File] failed for %s, reason:%s", real_path, strerror(errno));
+      (void)mmClose(fd);
+      return;
+    }
+    written += static_cast<uint32_t>(mmpa_ret);
   }
   GE_CHK_BOOL_EXEC(mmClose(fd) == 0,
                    REPORT_INNER_ERR_MSG("E18888", "close FileOutputStream failed, reason:%s.", strerror(errno));
@@ -1489,24 +1516,27 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY void GraphUtils::DumpGrphToOnnx(c
     proto_file = proto_file + ".pbtxt";
     GELOGW("[Check][Param] File name is too long, file:%s", proto_file.c_str());
   }
-  const std::string full_proto_file = path + "/" + proto_file;
-  const auto real_path = ComGraphMakeUnique<char_t[]>(static_cast<size_t>(MMPA_MAX_PATH));
-  if (real_path == nullptr) {
-    GELOGE(GRAPH_FAILED, "[New][RealPath] failed.");
+  std::string dir_path = path;
+  if ((!dir_path.empty()) && (dir_path.back() != MMPA_PATH_SEPARATOR_STR[0])) {
+    dir_path.append(MMPA_PATH_SEPARATOR_STR);
+  }
+  char_t real_dir[MMPA_MAX_PATH] = {};
+  if (mmRealPath(dir_path.c_str(), &(real_dir[0]), MMPA_MAX_PATH) != EN_OK) {
+    GELOGE(GRAPH_FAILED, "[Get][RealPath] dump path %s is invalid.", path.c_str());
     return;
   }
-  /// Returning nullptr means 3 case as follows:
-  /// a.path is PATH_MAX chars or more
-  /// b.the file does not exist
-  /// c.the path has no permissions
-  /// Distinguish between last the two cases in the function WriteProtoToTextFile call open()
-  if (mmRealPath(full_proto_file.c_str(), real_path.get(), MMPA_MAX_PATH) != EN_OK) {
-    // Case a has been checked above
-    GELOGI("File %s does not exist, it will be created, realpath info[%s].", full_proto_file.c_str(), strerror(errno));
+  std::string real_path = real_dir;
+  if ((!real_path.empty()) && (real_path.back() != MMPA_PATH_SEPARATOR_STR[0])) {
+    real_path.append(MMPA_PATH_SEPARATOR_STR);
+  }
+  real_path.append(proto_file);
+  if (real_path.length() >= static_cast<size_t>(MMPA_MAX_PATH)) {
+    GELOGE(GRAPH_FAILED, "[Check][Param] dump file path %s is too long.", real_path.c_str());
+    return;
   }
 
   // 3. Serialize to file in current path
-  GraphUtils::WriteProtoToTextFile(model_proto, real_path.get());
+  GraphUtils::WriteProtoToTextFile(model_proto, real_path.c_str());
 }
 
 GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY void GraphUtils::DumpGEGraphToReadable(
@@ -4496,15 +4526,20 @@ NodePtr CompleteGraphBuilder::AddDataNode(const uint32_t index, graphStatus &err
       error_msg = "AddDataNode failed: set attr ATTR_NAME_PARENT_NODE_INDEX for " + data_name + " failed.";
       return nullptr;
     }
-  }
-  if (parent_node_ != nullptr) {
-    // op_desc should not be null
-    const auto &parent_desc = parent_node_->GetOpDesc()->GetInputDesc(index_iter->second);
-    if ((op_desc->UpdateInputDesc(0U, parent_desc) != GRAPH_SUCCESS) ||
-        (op_desc->UpdateOutputDesc(0U, parent_desc) != GRAPH_SUCCESS)) {
-      error_code = GRAPH_FAILED;
-      error_msg = "AddDataNode failed: update tensor_desc for " + data_name + " failed.";
-      return nullptr;
+    if (parent_node_ != nullptr) {
+      const auto parent_op_desc = parent_node_->GetOpDesc();
+      if (parent_op_desc == nullptr) {
+        error_code = GRAPH_FAILED;
+        error_msg = "AddDataNode failed: parent node op_desc is null, data_name: " + data_name + ".";
+        return nullptr;
+      }
+      const auto &parent_desc = parent_op_desc->GetInputDesc(index_iter->second);
+      if ((op_desc->UpdateInputDesc(0U, parent_desc) != GRAPH_SUCCESS) ||
+          (op_desc->UpdateOutputDesc(0U, parent_desc) != GRAPH_SUCCESS)) {
+        error_code = GRAPH_FAILED;
+        error_msg = "AddDataNode failed: update tensor_desc for " + data_name + " failed.";
+        return nullptr;
+      }
     }
   }
 
@@ -4753,7 +4788,7 @@ void CompleteGraphBuilder::PostProcess(graphStatus &error_code, std::string &err
       }
       for (const auto &subgraph : subgraphs) {
         subgraph->SetParentNode(node);
-        subgraph->SetParentGraph(subgraph);
+        subgraph->SetParentGraph(owner_graph_);
       }
     }
   }
@@ -5124,17 +5159,20 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY graphStatus GraphUtils::GenDumpOn
     dump_file_name = dump_file_name.substr(0U, kNameMax - 7U) + ".pbtxt";
     GELOGW("[Check][Param] File name is too long!, file:%s", dump_file_name.c_str());
   }
-  std::string proto_file = stream_file_name.str() + dump_file_name;
-
-  char_t real_path[MMPA_MAX_PATH] = {};
-  /// Returning nullptr means 3 case as follows:
-  /// a.path is MMPA_MAX_PATH chars or more
-  /// b.the file does not exist
-  /// c.the path has no permissions
-  /// Distinguish between last the two cases in the function WriteProtoToTextFile call open()
-  auto const ret = mmRealPath(proto_file.c_str(), &(real_path[0]), MMPA_MAX_PATH);
-  if (ret != EN_OK) {
-    GELOGD("[Get][RealPath]file does not exist, it will be created. ret:%d", ret);
+  const std::string dir_path = stream_file_name.str();
+  char_t real_dir[MMPA_MAX_PATH] = {};
+  if (mmRealPath(dir_path.c_str(), &(real_dir[0]), MMPA_MAX_PATH) != EN_OK) {
+    GELOGW("[DumpGraph][RealPath] resolve dump graph dir %s failed.", dir_path.c_str());
+    return FAILED;
+  }
+  std::string real_path = real_dir;
+  if ((!real_path.empty()) && (real_path.back() != MMPA_PATH_SEPARATOR_STR[0])) {
+    real_path.append(MMPA_PATH_SEPARATOR_STR);
+  }
+  real_path.append(dump_file_name);
+  if (real_path.length() >= static_cast<size_t>(MMPA_MAX_PATH)) {
+    GELOGW("[DumpGraph][Check] dump file path %s is too long, max length:%d.", real_path.c_str(), MMPA_MAX_PATH);
+    return FAILED;
   }
   real_path_name = real_path;
   return SUCCESS;

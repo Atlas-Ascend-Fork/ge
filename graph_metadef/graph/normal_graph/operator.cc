@@ -570,6 +570,8 @@ graphStatus Operator::GetName(AscendString &name) const {
   if (operator_impl_ != nullptr) {
     const std::string op_name = operator_impl_->GetName();
     name = op_name.c_str();
+  } else {
+    name = "";
   }
   return GRAPH_SUCCESS;
 }
@@ -888,6 +890,9 @@ graphStatus Operator::UpdateDynamicInputDesc(const std::string &name, uint32_t i
 graphStatus Operator::UpdateDynamicInputDesc(const char_t *name, uint32_t index, const TensorDesc &tensor_desc) {
   GE_CHK_BOOL_EXEC(name != nullptr, REPORT_INNER_ERR_MSG("E18888", "param name is nullptr, check invalid");
                    return GRAPH_FAILED, "[Check][Param] Operator name is nullptr.");
+  GE_CHK_BOOL_EXEC(operator_impl_ != nullptr,
+                   REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
+                   return GRAPH_FAILED, "[Check][Param] Operator impl is nullptr.");
   const std::string op_name = name;
   return operator_impl_->UpdateInputDesc(op_name + std::to_string(index),
                                          TensorAdapter::TensorDesc2GeTensorDesc(tensor_desc));
@@ -1314,7 +1319,8 @@ void Operator::RequiredAttrRegister(const char_t *name) {
 }
 
 void Operator::RequiredAttrWithTypeRegister(const char_t *name, const char_t *type) {
-  if ((name == nullptr) || (operator_impl_ == nullptr) || (operator_impl_->GetOpDescImpl() == nullptr)) {
+  if ((name == nullptr) || (type == nullptr) || (operator_impl_ == nullptr) ||
+      (operator_impl_->GetOpDescImpl() == nullptr)) {
     REPORT_INNER_ERR_MSG("E18888", "param is nullptr, check invalid");
     GELOGE(GRAPH_FAILED, "[Check][Param] param is nullptr.");
     return;
@@ -1516,7 +1522,7 @@ void Operator::AttrRegister(const std::string &name, const std::string &attr_val
 }
 
 void Operator::AttrRegister(const std::string &name, const std::vector<std::string> &attr_value) {
-  std::vector<AscendString> attr_values;
+  std::vector<AscendString> attr_values(attr_value.size());
   (void)std::transform(attr_value.begin(), attr_value.end(), attr_values.begin(),
                        [](const std::string &val) { return AscendString(val.c_str()); });
   AttrRegister(name.c_str(), attr_values);
@@ -2458,6 +2464,9 @@ Operator &Operator::SetAttr(const std::string &name, ge::AttrValue &&attr_value)
   GE_CHK_BOOL_EXEC(operator_impl_ != nullptr,
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid.");
                    return *this, "[Check][Param] Operator impl is nullptr.");
+  GE_CHK_BOOL_EXEC(attr_value.impl != nullptr,
+                   REPORT_INNER_ERR_MSG("E18888", "attr_value.impl is nullptr, check invalid.");
+                   return *this, "[Check][Param] Attr value impl is nullptr.");
   (void)operator_impl_->SetAttr(name, std::move(attr_value.impl->geAttrValue_));
   return *this;
 }
@@ -2468,6 +2477,9 @@ Operator &Operator::SetAttr(const char_t *name, ge::AttrValue &&attr_value) {
   GE_CHK_BOOL_EXEC(operator_impl_ != nullptr,
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid.");
                    return *this, "[Check][Param] Operator impl is nullptr.");
+  GE_CHK_BOOL_EXEC(attr_value.impl != nullptr,
+                   REPORT_INNER_ERR_MSG("E18888", "attr_value.impl is nullptr, check invalid.");
+                   return *this, "[Check][Param] Attr value impl is nullptr.");
   const std::string op_name = name;
   (void)operator_impl_->SetAttr(op_name, std::move(attr_value.impl->geAttrValue_));
   return *this;
@@ -2479,6 +2491,9 @@ Operator &Operator::SetAttr(const char_t *name, const ge::AttrValue &attr_value)
   GE_CHK_BOOL_EXEC(operator_impl_ != nullptr,
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid.");
                    return *this, "[Check][Param] Operator impl is nullptr.");
+  GE_CHK_BOOL_EXEC(attr_value.impl != nullptr,
+                   REPORT_INNER_ERR_MSG("E18888", "attr_value.impl is nullptr, check invalid.");
+                   return *this, "[Check][Param] Attr value impl is nullptr.");
   const std::string op_name = name;
   if (attr_value.impl->geAttrValue_.IsEmpty()) {
     GELOGI("Param value is empty with key of the attr:%s, skip set it.", name);

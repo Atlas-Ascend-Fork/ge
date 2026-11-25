@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <utility>
 #include "fast_graph/quick_list.h"
 
 namespace ge {
@@ -234,6 +235,63 @@ TEST_F(UtestQuickList, TestErase) {
       delete list[i];
     }
   }
+}
+
+TEST_F(UtestQuickList, IncCovMoveConstructor) {
+  QuickList<int32_t> src;
+  ListElement<int32_t> element1;
+  ListElement<int32_t> element2;
+  element1.data = 1;
+  element2.data = 2;
+  src.push_back(&element1, ListMode::kWorkMode);
+  src.push_back(&element2, ListMode::kFreeMode);
+
+  QuickList<int32_t> dst(std::move(src));
+  EXPECT_EQ(dst.size(), 2U);
+  EXPECT_TRUE(src.empty());
+
+  auto iter = dst.begin();
+  ASSERT_NE(iter, dst.end());
+  EXPECT_EQ((*iter)->data, 1);
+  EXPECT_EQ((*iter)->owner, &dst);
+  EXPECT_EQ((*iter)->mode, ListMode::kWorkMode);
+  ++iter;
+  EXPECT_EQ((*iter)->data, 2);
+  EXPECT_EQ((*iter)->owner, &dst);
+  EXPECT_EQ((*iter)->mode, ListMode::kFreeMode);
+  ++iter;
+  EXPECT_EQ(iter, dst.end());
+}
+
+TEST_F(UtestQuickList, IncCovMoveAssignment) {
+  QuickList<int32_t> dst;
+  ListElement<int32_t> old_element;
+  old_element.data = 0;
+  dst.push_back(&old_element, ListMode::kWorkMode);
+
+  QuickList<int32_t> src;
+  ListElement<int32_t> element1;
+  ListElement<int32_t> element2;
+  element1.data = 1;
+  element2.data = 2;
+  src.push_back(&element1, ListMode::kWorkMode);
+  src.push_back(&element2, ListMode::kFreeMode);
+
+  dst = std::move(src);
+  EXPECT_EQ(dst.size(), 2U);
+  EXPECT_TRUE(src.empty());
+  auto iter = dst.begin();
+  ASSERT_NE(iter, dst.end());
+  EXPECT_EQ((*iter)->data, 1);
+  EXPECT_EQ((*iter)->owner, &dst);
+
+  QuickList<int32_t> &dst_ref = dst;
+  dst = std::move(dst_ref);
+  EXPECT_EQ(dst.size(), 2U);
+
+  QuickList<int32_t> empty;
+  dst = std::move(empty);
+  EXPECT_TRUE(dst.empty());
 }
 
 }  // namespace ge
