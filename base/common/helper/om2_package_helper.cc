@@ -390,8 +390,8 @@ static Status CollectAippMetas(const ComputeGraphPtr &graph, gert::GertModelData
 
 Status CollectSerializableCustomOps(const std::set<std::string> &used_custom_op_types,
                                     std::vector<std::pair<std::string, PortableOp *>> &serializable_ops) {
-  // PortableOp 与非 PortableOp 自定义算子可混合使用：仅 PortableOp 需要携带序列化数据，
-  // 非 PortableOp 算子的 kernel 由算子so自行管理，无需序列化数据。
+  // OM2 离线打包要求全部 custom store 自定义算子实现 PortableOp（非 Portable 形态已由
+  // CheckCustomNodeCapabilities 在构建期拦截）；此处判空保留为防御，仅 PortableOp 携带序列化数据。
   serializable_ops.reserve(used_custom_op_types.size());
   for (const auto &op_type_str : used_custom_op_types) {
     auto serializable_op = CustomOpFactory::GetCustomOpCommonCapability<PortableOp>(AscendString(op_type_str.c_str()));
@@ -992,7 +992,7 @@ Status Om2PackageHelper::BuildManifest(gert::GertModelData &model_data, const Ge
 
 namespace {
 // OM2 构建期拦截暂不支持的 Custom Op 能力（Python 离线序列化、AnnotatedArgs 声明式模式、
-// eager 辅流申报、HCCL Custom 路由）。只读扫描节点与模型属性，
+// 未实现 PortableOp、eager 辅流申报、HCCL Custom 路由）。只读扫描节点与模型属性，
 // 不重跑用户资源申报回调，不试执行 Execute 探测能力。
 Status CheckCustomNodeCapabilities(const OpDescPtr &op_desc, std::vector<std::string> &custom_node_names) {
   // 仅检查最终路由到 custom store 的节点
@@ -1026,6 +1026,15 @@ Status CheckCustomNodeCapabilities(const OpDescPtr &op_desc, std::vector<std::st
   GE_CHK_BOOL_EXEC(dynamic_cast<const CustomOpCapabilityProvider *>(runtime_impl) == nullptr, return UNSUPPORTED,
                    "[OM2][CapabilityCheck] python custom op offline restore and execute is not supported, "
                    "node:%s, op_type:%s.",
+                   op_desc->GetNamePtr(), op_desc->GetTypePtr());
+  // OM2 离线打包要求自定义算子实现 PortableOp：生成 SO 的自定义算子辅助代码按 has_custom_kernel
+  // （custom_ops binaries 非空）门控发射，而 binaries 仅收录 PortableOp 算子。非 Portable 算子无法
+  // 序列化，纯非 Portable 模型（含 Callback 地址刷新形态）的生成代码会引用未发射符号、SO 编译因
+  // 未声明字符失败，故在构建期拦截为明确报错。与 CollectSerializableCustomOps 同一查询口径
+  // （单参重载扫全部注册优先级），保证"通过门禁即可被收集序列化"。
+  GE_CHK_BOOL_EXEC(CustomOpFactory::GetCustomOpCommonCapability<PortableOp>(op_type) != nullptr, return UNSUPPORTED,
+                   "[OM2][CapabilityCheck] custom op must implement PortableOp to be serialized into om2 "
+                   "custom op binaries, node:%s, op_type:%s.",
                    op_desc->GetNamePtr(), op_desc->GetTypePtr());
   return SUCCESS;
 }
