@@ -143,7 +143,8 @@ class ShapeEnvAttr : public AttrGroupsBase {
                        (shape_env_setting_.dynamic_mode < DynamicMode::kEnd),
                    "Invalid dynamic mode: %d, create symbol failed", shape_env_setting_.dynamic_mode);
     if (shape_env_setting_.specialize_zero_one && ((hint_int64 == 0) || (hint_int64 == 1))) {
-      GELOGI("Create symbol %d in specialize_zero_one mode, source: %s", hint_int64, source->GetSourceStr().c_str());
+      GELOGI("Create symbol %" PRId64 " in specialize_zero_one mode, source: %s", hint_int64,
+             source->GetSourceStr().c_str());
       return Symbol(hint_int64);
     }
     if (shape_env_setting_.dynamic_mode != DynamicMode::kDynamic) {
@@ -154,9 +155,9 @@ class ShapeEnvAttr : public AttrGroupsBase {
         return Symbol(iter->second.front().Str().get());
       }
     }
+    GE_ASSERT_TRUE(unique_sym_id_ < std::numeric_limits<uint64_t>::max(),
+                   "unique_sym_id_ is %" PRIu64 ". will reach the maximum value of uint64.", unique_sym_id_);
     auto global_index = unique_sym_id_++;
-    GE_ASSERT_TRUE(global_index < std::numeric_limits<uint64_t>::max(),
-                   "unique_sym_id_ is " PRIu64 ". will reach the maximum value of uint64.", unique_sym_id_);
     source->SetGlobalIndex(global_index);
     const std::string sym_name = "s" + std::to_string(global_index);
     auto sym = Symbol(sym_name.c_str());
