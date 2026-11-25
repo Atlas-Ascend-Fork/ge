@@ -13,7 +13,6 @@
 
 #include <cstdint>
 #include <string>
-#include <set>
 #include <vector>
 #include "framework/common/ge_types.h"
 #include "nlohmann/json.hpp"
@@ -66,13 +65,6 @@ const std::string GE_DUMP_EXCEPTION_AIC_ERR_BRIEF = "aic_err_brief_dump";    // 
 const std::string GE_DUMP_EXCEPTION_AIC_ERR_NORM = "aic_err_norm_dump";      // l1 exception dump
 const std::string GE_DUMP_EXCEPTION_AIC_ERR_DETAIL = "aic_err_detail_dump";  // npu coredump
 const std::string GE_DUMP_SCENE_WATCHER = "watcher";
-
-const std::set<std::string> geDumpSceneExceptions = {
-    GE_DUMP_LITE_EXCEPTION,
-    GE_DUMP_EXCEPTION_AIC_ERR_BRIEF,
-    GE_DUMP_EXCEPTION_AIC_ERR_NORM,
-    GE_DUMP_EXCEPTION_AIC_ERR_DETAIL,
-};
 
 const std::string GE_DUMP_MODE_DEFAULT = "output";
 const std::string GE_DUMP_STATUS_DEFAULT = "on";
