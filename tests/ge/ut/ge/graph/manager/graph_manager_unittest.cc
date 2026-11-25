@@ -3109,7 +3109,7 @@ TEST_F(UtestGraphManagerTest, CompileGraph_Error_StateInvalid) {
   gert::GertRuntimeStub stub;
   EXPECT_NE(graph_manager.CompileGraph(graph_id, session_id, {}), SUCCESS);
   auto log_check = stub.GetSlogStub().FindLog(
-      DLOG_ERROR, "need to re-build, you should remove it from GE first, then AddGraph again and re-compile it");
+      DLOG_ERROR, "needs to be re-built, you should remove it from GE first, then AddGraph again and re-compile it");
   EXPECT_NE(log_check, -1);
 }
 
