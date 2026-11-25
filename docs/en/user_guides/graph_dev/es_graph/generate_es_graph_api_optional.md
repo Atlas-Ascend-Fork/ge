@@ -95,7 +95,7 @@ The content in this section is optional. The specific usage scenarios are as fol
 
     > [!NOTE]
     >
-    >Because ES graph APIs are generated based on operator IR prototypes, some operator IRs cannot express all information (for example, Conv-type operators) or contain redundant information (for example, the IdentityN operator). Therefore, it is recommended that you encapsulate ES APIs by yourself. In this scenario, you can customize ES APIs. For details, see [Custom ES API](../../../../../examples/custom_es_api/README.md).
+    >Because ES graph APIs are generated based on operator IR prototypes, some operator IRs cannot express all information (for example, Conv-type operators) or contain redundant information (for example, the IdentityN operator). Therefore, it is recommended that you encapsulate ES APIs by yourself. In this scenario, you can customize ES APIs. For details, see [Custom ES API](../../../../../examples/custom_es_api/README_en.md).
 
 The following is a complete CMake file example. Replace the CANN software package installation path /usr/local/Ascend/ with the actual path. For more CMake examples, see [CMake Examples](../appendix/cmake_examples.md).
 

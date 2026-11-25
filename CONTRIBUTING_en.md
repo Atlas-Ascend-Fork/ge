@@ -23,7 +23,7 @@ In addition, developers need to pay attention to the following points when prepa
    - Interface naming standards
    - Configuration parameter naming standards
    - Code flow standards
-5. When submitting a Pull Request, if there are multiple invalid commits, we recommend performing a rebase operation before submitting the Pull Request to merge multiple commits into one to maintain code simplicity and readability. Please refer to [git rebase](https://git-scm.com/docs/git-rebase). Also, commit messages need to comply with the project's code standards and clearly describe the intent and content of this change. The format is: <type>: <brief description>. For example:
+5. When submitting a Pull Request, if there are multiple invalid commits, we recommend performing a rebase operation before submitting the Pull Request to merge multiple commits into one to maintain code simplicity and readability. Please refer to [git rebase](https://git-scm.com/docs/git-rebase). Also, commit messages need to comply with the project's code standards and clearly describe the intent and content of this change. The format is: \<type>: \<brief description>. For example:
 
 | Type     | Description                       | Example                         |
 | -------- | --------------------------------- | ------------------------------- |
@@ -74,6 +74,7 @@ Before submitting a Pull Request, verify each of the following items. Passing th
   - See the [pre-commit usage guide](docs/en/contributions/precommit_guide.md) for details.
 - All new files must contain a complete CANN OSL license header. Refer to the root [OAT.xml](OAT.xml) and existing source files for the year and format. The header must include the complete license text, not only the Copyright line:
   - `.cpp`/`.h`:
+
     ```cpp
     /**
      * Copyright (c) <year> Huawei Technologies Co., Ltd.
@@ -85,7 +86,9 @@ Before submitting a Pull Request, verify each of the following items. Passing th
      * See LICENSE in the root of the software repository for the full text of the License.
      */
     ```
+
   - `.sh`:
+
     ```bash
     #!/bin/bash
     # -----------------------------------------------------------------------------------------------------------
@@ -98,7 +101,9 @@ Before submitting a Pull Request, verify each of the following items. Passing th
     # See LICENSE in the root of the software repository for the full text of the License.
     # -----------------------------------------------------------------------------------------------------------
     ```
+
   - `.py`:
+
     ```python
     #!/usr/bin/env python3
     # -*- coding: utf-8 -*-
@@ -112,6 +117,7 @@ Before submitting a Pull Request, verify each of the following items. Passing th
     # See LICENSE in the root of the software repository for the full text of the License.
     # -----------------------------------------------------------------------------------------------------------
     ```
+
 - Shell scripts should use `set -e` according to their error-handling requirements. If a script needs to continue after a command fails or returns no matches, it must handle the return value explicitly and document the exception in the script.
 - Check the return value of `cd`: `cd path || { echo "error"; exit 1; }`
 - Keep function bodies no longer than 50 lines (oversized functions may be rejected by CI).
@@ -120,14 +126,18 @@ Before submitting a Pull Request, verify each of the following items. Passing th
 ### Submission Requirements
 
 - If the branch contains multiple invalid commits, we recommend squashing them before submitting the PR to keep the commit history concise:
+
   ```bash
   git rebase -i upstream/develop   # change extra `pick` entries to `s` (squash)
   ```
+
 - The PR target repository and branch must be the `develop` branch of the [cann/ge](https://gitcode.com/cann/ge) repository.
 - Rebase onto the latest `develop` branch:
+
   ```bash
   git fetch upstream develop && git rebase upstream/develop
   ```
+
 - Commit message format: `<type>: <description>` (for example, `feat: add xxx` or `fix: fix xxx`).
 
 ### Documentation
@@ -140,7 +150,7 @@ Before submitting a Pull Request, verify each of the following items. Passing th
 After submitting a PR, post `compile` in the PR comment area (`/compile` is also supported) to trigger the CI pipeline. If the PR is updated and the pipeline needs to be run again, post the comment again. The triggered pipeline runs the following checks, with the corresponding local verification methods:
 
 | CI check | Purpose | Local verification |
-|---|---|---|
+| --- | --- | --- |
 | `codecheck_precommit` | Code formatting compliance (pre-commit hooks) | `pre-commit run` |
 | `codecheck_dt` | DT test case specification checks | See the [DT test development guide](docs/en/contributions/dev_test_guide/) |
 | `clang-format` | C++ code formatting | `clang-format -i <file>` |
@@ -183,7 +193,7 @@ Applicable to new features, new interfaces, changes to code flows, performance o
 #### Code Directory Guide
 
 | Directory | Responsibility |
-|---|---|
+| --- | --- |
 | `compiler/graph/passes/` | Graph optimization passes (fusion, constant folding, format inference) |
 | `compiler/graph/build/` | Compilation and build (memory allocation, stream allocation, task generation) |
 | `compiler/graph/partition/` | Graph partitioning (dynamic/static separation, engine partitioning) |
@@ -197,7 +207,7 @@ Applicable to new features, new interfaces, changes to code flows, performance o
 #### Contribution Scenario Constraints
 
 | Change scenario | Required constraints | Reference |
-|---|---|---|
+| --- | --- | --- |
 | Modify graph optimization passes | Graph-equivalent transformations, control-edge handling, and node-name constraints | Rules 4, 7, and 8 in `docs/en/contributions/coding_red_lines.md` |
 | Modify memory allocation | Memory reuse constraints and safe destruction across shared objects | `docs/en/design/constraints/memory-constraints.md` |
 | Modify runtime execution | RT2 dynamic-shape constraints and the hybrid execution flow | `docs/en/design/constraints/rt2_runtime.md` |
@@ -209,7 +219,7 @@ Applicable to new features, new interfaces, changes to code flows, performance o
 #### Test Requirements
 
 | Change type | Minimum test requirements |
-|---|---|
+| --- | --- |
 | New pass | UT + ST; UT coverage > 90% and ST coverage > 80% |
 | Runtime change | UT + ST + regression tests |
 | ACL API change | UT + API interface test verification |

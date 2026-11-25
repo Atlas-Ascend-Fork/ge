@@ -22,7 +22,7 @@ python/
 
 ### 3.1. Prepare CANN Package
 
-- Please refer to [Environment Preparation](../../../../docs/zh/quick_install.md) "Method 3: Manual installation of software packages > Scenario 1: Experience master version capabilities or develop based on master version", install the latest `toolkit` and `ops` packages.
+- Please refer to [Environment Preparation](../../../../docs/en/quick_install.md) "Method 3: Manual installation of software packages > Scenario 1: Experience master version capabilities or develop based on master version", install the latest `toolkit` and `ops` packages.
 - Set environment variables (assuming the package is installed at /usr/local/Ascend/)
 
 ```bash

@@ -92,7 +92,7 @@ This sample uses Static Shape online compilation and configures the multi-stream
 | `MainStream:N` | Uses the main-stream algorithm, where serial operators run on the main stream and other parallelizable operators are distributed across other streams |
 | Not configured | Disables automatic multi-stream parallelism and serves as the default performance baseline |
 
-`N` is a positive integer in the range `[1, 64]`. Performance may degrade if the configured stream count exceeds the available compute resources. For details, see the [`ge.autoMultistreamParallelMode` parameter description](../../docs/zh/api/graph_engine_api/cpp/ge/options_params/experimental_parameters.md#geautomultistreamparallelmode).
+`N` is a positive integer in the range `[1, 64]`. Performance may degrade if the configured stream count exceeds the available compute resources. For details, see the [`ge.autoMultistreamParallelMode` parameter description](../../docs/en/api/graph_engine_api/cpp/ge/options_params/experimental_parameters.md#geautomultistreamparallelmode).
 
 ### Command-line Argument
 

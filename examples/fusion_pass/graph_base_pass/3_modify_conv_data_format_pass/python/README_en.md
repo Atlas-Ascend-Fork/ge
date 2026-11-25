@@ -27,7 +27,7 @@ python/
 
 ## Prerequisites
 
-- Completed CANN environment variable setup via `source ${ASCEND_PATH}/set_env.sh`. For more guidance, refer to [C++ Example README](../cpp/README.md) environment variable configuration step
+- Completed CANN environment variable setup via `source ${ASCEND_PATH}/set_env.sh`. For more guidance, refer to [C++ Example README](../cpp/README_en.md) environment variable configuration step
 - Can import GE Python package (contains `ge.graph`, `ge.passes` and pass loading chain)
 
 Python pass runtime loads precompiled binary components based on `pybind11`. CANN package prioritizes providing artifacts matching current Python version; if no matching artifact, automatically enters fallback compilation flow. Fallback compilation requires `pybind11` installed in current Python environment.
@@ -40,7 +40,7 @@ Python pass runtime loads precompiled binary components based on `pybind11`. CAN
     export ASCEND_GE_PY_PASS_PATH=$PWD/python/src/python_modify_conv_data_format_pass.py
     ```
 
-2. Refer to [C++ Example README](../cpp/README.md) program execution chapter for validation.
+2. Refer to [C++ Example README](../cpp/README_en.md) program execution chapter for validation.
 
 ## Expected Result
 

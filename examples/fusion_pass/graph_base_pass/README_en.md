@@ -4,14 +4,14 @@ This directory provides examples for implementing custom fusion passes by inheri
 
 | Example | Example Link |
 |---------|--------------|
-| MatMul+Add fused to GEMM custom pass example | [README](1_fuse_matmul_add_pass/README.md) |
-| Move ReLU after Concat before Concat custom pass example | [README](2_move_relu_before_concat_pass/cpp/README.md) |
-| Move ReLU after Concat before Concat custom pass example (Python version) | [README](2_move_relu_before_concat_pass/python/README.md) |
-| Modify Conv operator data format custom pass example | [README](3_modify_conv_data_format_pass/cpp/README.md) |
-| Modify Conv operator data format custom pass example (Python version) | [README](3_modify_conv_data_format_pass/python/README.md) |
+| MatMul+Add fused to GEMM custom pass example | [README](1_fuse_matmul_add_pass/README_en.md) |
+| Move ReLU after Concat before Concat custom pass example | [README](2_move_relu_before_concat_pass/cpp/README_en.md) |
+| Move ReLU after Concat before Concat custom pass example (Python version) | [README](2_move_relu_before_concat_pass/python/README_en.md) |
+| Modify Conv operator data format custom pass example | [README](3_modify_conv_data_format_pass/cpp/README_en.md) |
+| Modify Conv operator data format custom pass example (Python version) | [README](3_modify_conv_data_format_pass/python/README_en.md) |
 | MMOE network MatMul fusion (Pack+BatchMatMulV2+Split) custom pass example | [README](4_mmoe_bmm_split_pass/cpp/README_en.md) |
 | MMOE network first-layer MatMul fusion (Concat+MatMul+SplitV) custom pass example | [README](5_mmoe_matmul_pass/cpp/README_en.md) |
-| Custom pass example for Data+Transpose fusion (NCHW→NHWC) and ExtendConv2D+Transpose fusion | [README](6_transpose_fusion_pass/cpp/README.md) |
+| Custom pass example for Data+Transpose fusion (NCHW→NHWC) and ExtendConv2D+Transpose fusion | [README](6_transpose_fusion_pass/cpp/README_en.md) |
 | Custom pass example for Conv2D/Conv2DV2+Concat zero-copy marking (Concat without task) | [README](7_conv_concat_notask_pass/cpp/README_en.md) |
 
 ## Development Guide
@@ -19,5 +19,5 @@ This directory provides examples for implementing custom fusion passes by inheri
 If developing pattern-based fusion passes, recommended reading:
 
 - [Fusion Pattern Pass Mechanism](../../../docs/en/design/features/fusion_pattern_pass.md)
-- [Python Fusion Pass Development Guide](../python_fusion_pass_development_guide.md)
-- [C++ Fusion Pass Development Guide](../cpp_fusion_pass_development_guide.md)
+- [Python Fusion Pass Development Guide](../python_fusion_pass_development_guide_en.md)
+- [C++ Fusion Pass Development Guide](../cpp_fusion_pass_development_guide_en.md)

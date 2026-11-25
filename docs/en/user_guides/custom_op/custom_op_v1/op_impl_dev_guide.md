@@ -16,12 +16,12 @@ In runtime2, the IR implementation for first and second type operators needs to 
 
 Based on the differences in shape inference and dispatch logic, operators are divided into four categories.
 
-| Classification | Characteristics                                                         | Optional Deliverable Requirements                            |
-| ---- | ------------------------------------------------------------ |------------------------------------|
-| Type 1 | Output shape can be inferred from input shape.                           | 1.InferShpeRange(as needed)               |
+| Classification | Characteristics | Optional Deliverable Requirements |
+| ---- | ------------------------------------------------------------ | ------------------------------------ |
+| Type 1 | Output shape can be inferred from input shape. | 1.InferShpeRange(as needed) |
 | Type 2 | Output shape depends on input tensor value. Like Reshape operator, which depends on shape input value to infer output shape. This type is also called value-dependent operator. | 1.InferShpeRange(as needed)<br />2.Declare data dependency |
 | Type 3 | Cannot infer output shape at compile time, only can infer output shape range. Output shape is obtained after execution. Like Where operator.<br />During dispatch, need to allocate maximum output memory according to output shape range, so InferShpeRange is mandatory deliverable | 1.InferShpeRange<br />2.Declare data dependency(as needed) |
-| Type 4 | Cannot infer shape. Also don't know output shape range. Like aicpu fusion operators, some resource operators. These operators usually call tf native operator implementations, so no IR deliverables needed. | NA                                 |
+| Type 4 | Cannot infer shape. Also don't know output shape range. Like aicpu fusion operators, some resource operators. These operators usually call tf native operator implementations, so no IR deliverables needed. | NA |
 
 ## Registration
 
@@ -61,8 +61,6 @@ The string "T" after x1, x2, y represents the datatype type of this input/output
 1. Add operator's two inputs must have the same datatype
 2. Add operator's output type is consistent with input type
 
-
-
 Sometimes operators have certain requirements for input/output datatypes, for example Add operator only supports calculation on real numbers, but doesn't support complex resource-type data like DT_RESOURCE, at this time can use `DATATYPE` to limit the range of type T:
 
 ```c++
@@ -74,14 +72,10 @@ REG_OP(Add)
     .OP_END_FACTORY_REG(Add)
 ```
 
-
-
 When input is DYNAMIC_INPUT, two possibilities will occur:
 
 * All datatype types are consistent after this DYNAMIC_INPUT instantiation[^1]
 * After this DYNAMIC_INPUT instantiation, there is no datatype constraint relationship between inputs
-
-
 
 DATATYPE macro used with T syntax, represents the valid range of this datatype, its datatype can only be TensorType or ListTensorType. If T syntax is used but DATATYPE not defined, then only datatype mapping is done, abandoning datatype verification.
 
@@ -322,8 +316,8 @@ return ge::GRAPH_SUCCESS;
 
 ### 2. Framework Automatic Inference Mechanism
 
-- If operator input has shape range, substitute shape range's min/max values, call static infer func. Compare output shape axis by axis, if dim different, represent as dynamic axis. Output shape derived from min/max inference serves as output shape range's min/max.
-- If operator input doesn't have shape range, only has dynamic axis information. Skip shape range inference.
+* If operator input has shape range, substitute shape range's min/max values, call static infer func. Compare output shape axis by axis, if dim different, represent as dynamic axis. Output shape derived from min/max inference serves as output shape range's min/max.
+* If operator input doesn't have shape range, only has dynamic axis information. Skip shape range inference.
 
 ## Implement Tiling
 
@@ -392,7 +386,7 @@ ge::graphStatus TilingPrepareForTransdata(TilingParseContext *context) {
     GELOGE(ge::PARAM_INVALID, "Failed to find ub_size in json %s", json_str);
     return ge::PARAM_INVALID;
   }
-	// More parsing logic...
+ // More parsing logic...
 
   return ge::GRAPH_SUCCESS;
 }
@@ -511,8 +505,6 @@ ge::graphStatus ExampleAppendTilingData(TilingContext *context) {
 }
 ```
 
-
-
 > **WARNING**: Fixed data structure, Append two operation methods are mutually exclusive, in one Tiling function, only can choose one way to write TilingData. During one Tiling process, simultaneously calling context->GetTilingData\<Foo>() and context->GetRawTilingData() two interfaces basically means bug produced.
 >
 > Fixed data structure, Append two operation methods mutual exclusion reason is tiling-data-size calculation, when calling context->GetTilingData\<Foo>(), framework will automatically set tiling-data-size to sizeof(Foo), while calling context->GetRawTilingData(), framework considers in Append mode, won't modify tiling-data-size, but does tiling-data-size accumulation action at each Append. Imagine a scenario: first call GetRawTilingData, and fill in an int64 data, at this time tiling-data-size becomes 8, then call context->GetTilingData\<int32_t>(), at this time tiling-data-size will be changed to sizeof(int32_t), first step Append's int64 data is overwritten
@@ -520,6 +512,7 @@ ge::graphStatus ExampleAppendTilingData(TilingContext *context) {
 ## Get Attributes
 
 During InferShape, Tiling, can get operator IR attribute values through context instance, so-called IR attributes refer to attributes defined during IR registration, take `TransData` operator as example:
+
 ```c++
 REG_OP(TransData)
     .INPUT(src, TensorType::BasicType())
@@ -616,9 +609,9 @@ REG_OP(DynamicRNNV3)
     .OPTIONAL_INPUT(real_mask, TensorType({DT_FLOAT16, DT_FLOAT}))
     .OPTIONAL_INPUT(project, TensorType({DT_FLOAT16, DT_FLOAT}))
     .OUTPUT(y, TensorType({DT_FLOAT16, DT_FLOAT}))
-		// Omit some OUTPUT definitions
+    // Omit some OUTPUT definitions
     .ATTR(cell_type, String, "LSTM")
-		// Omit some attribute definitions
+    // Omit some attribute definitions
     .OP_END_FACTORY_REG(DynamicRNNV3)
 ```
 

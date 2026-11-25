@@ -19,20 +19,20 @@ gen_esb 所需环境变量列表：
 ### 本程序支持两种生成模式
 
 1. 代码生成模式
-  生成 ES 图构建器的 C、C++、Python 代码，包括：
+   生成 ES 图构建器的 C、C++、Python 代码，包括：
 
-- 所有支持的算子(ops)的C接口
-- 所有支持的算子的C++接口
-- 所有支持的算子的Python接口
-- 聚合头文件，方便用户一次性包含所有算子
-- 聚合Python文件，方便用户一次性导入所有算子
+   - 所有支持的算子(ops)的C接口
+   - 所有支持的算子的C++接口
+   - 所有支持的算子的Python接口
+   - 聚合头文件，方便用户一次性包含所有算子
+   - 聚合Python文件，方便用户一次性导入所有算子
 
 2. 历史原型库生成模式
-  生成历史原型结构化数据，包括：
+   生成历史原型结构化数据，包括：
 
-- 版本索引
-- 版本元信息
-- 该版本的算子原型数据
+   - 版本索引
+   - 版本元信息
+   - 该版本的算子原型数据
 
 ## 使用方法
 
@@ -91,8 +91,8 @@ gen_esb --es_mode=extract_history --release_version=VER [--output_dir=DIR] [--re
 #### 历史原型库生成模式输出
 
 - index.json：版本索引
-- registry/<ver>/metadata.json：版本元信息
-- registry/<ver>/operators.json：该版本算子原型数据
+- registry/\<ver>/metadata.json：版本元信息
+- registry/\<ver>/operators.json：该版本算子原型数据
 
 ## 使用示例
 

@@ -76,7 +76,7 @@ This code does three things:
 2. `meet_requirements` checks if the matched constant is really 0.
 3. `replacement` returns the 0th external input, equivalent to deleting the matched `Add`.
 
-A complete runnable example is available at [AddZeroPass Python Example](pattern_base_pass/4_add_zero_pass/python/README.md).
+A complete runnable example is available at [AddZeroPass Python Example](pattern_base_pass/4_add_zero_pass/python/README_en.md).
 
 ## 3. Steps to Write a PatternFusionPass
 
@@ -261,7 +261,7 @@ Common uses:
 - Read original node attributes to pass to new nodes in replacement.
 - Print matched location to confirm pass hits expected nodes.
 
-Refer to [capture tensor Python example](pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/python/README.md).
+Refer to [capture tensor Python example](pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/python/README_en.md).
 
 ## 6. More Strict Matching: PatternMatcherConfig
 
@@ -289,7 +289,7 @@ class PythonAddZeroConstValueMatchPass(PatternFusionPass):
 
 This is shorter, but Const value matching is strict, without floating-point tolerance or cross-dtype normalization. If judgment needs tolerance or more complex logic, put it in `meet_requirements` for reliability.
 
-Refer to [PatternMatcherConfig Python example](pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/python/README.md).
+Refer to [PatternMatcherConfig Python example](pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/python/README_en.md).
 
 ## 7. Writing DecomposePass
 
@@ -317,7 +317,7 @@ class PythonMyDecomposePass(DecomposePass):
 
 `op_types` determines which types of nodes GE will pass to this pass. `meet_requirements` then determines which of these nodes really need replacement.
 
-Complete example see [DecomposePass Python example](pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/python/README.md).
+Complete example see [DecomposePass Python example](pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/python/README_en.md).
 
 ## 8. Running Python pass
 
@@ -399,8 +399,8 @@ When using `pyatc`, can also add `--log=debug`.
 ## 10. Recommended Reading Order
 
 1. [Fusion Pattern Pass Mechanism](../../docs/en/design/features/fusion_pattern_pass.md)
-2. [AddZeroPass Python example](pattern_base_pass/4_add_zero_pass/python/README.md)
-3. [MatMul+Add Python example](pattern_base_pass/1_fuse_matmul_add_pass/python/README.md)
-4. [capture tensor Python example](pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/python/README.md)
-5. [PatternMatcherConfig Python example](pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/python/README.md)
-6. [DecomposePass Python example](pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/python/README.md)
+2. [AddZeroPass Python example](pattern_base_pass/4_add_zero_pass/python/README_en.md)
+3. [MatMul+Add Python example](pattern_base_pass/1_fuse_matmul_add_pass/python/README_en.md)
+4. [capture tensor Python example](pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/python/README_en.md)
+5. [PatternMatcherConfig Python example](pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/python/README_en.md)
+6. [DecomposePass Python example](pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/python/README_en.md)

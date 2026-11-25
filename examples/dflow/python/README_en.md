@@ -45,7 +45,7 @@
 
 ## Running Samples
 
-The numa_config.json file configures device resource information required by dflow. You can use the script in the tools directory to auto-generate a single-node configuration. For custom configuration, refer to [numa_config Field Description and Samples](../../../docs/zh/user_guides/dflow/dflow_dev/python/appendices.md#numa_configjson配置):
+The numa_config.json file configures device resource information required by dflow. You can use the script in the tools directory to auto-generate a single-node configuration. For custom configuration, refer to [numa_config Field Description and Samples](../../../docs/en/user_guides/dflow/dflow_dev/python/appendices.md#numa_configjson-configuration):
 
 ```bash
 # Generate single-node numa_config.json (auto-detects chip type and device count, uses all devices by default)

@@ -26,7 +26,7 @@ To quickly experience GE's working methods and basic development process, refer 
 
 ## Documentation
 
-To learn how to use GE for model compilation and execution, refer to the Graph Mode Development Guide, technical articles, and other content:  [GE Reference Materials](docs/README.md)
+To learn how to use GE for model compilation and execution, refer to the Graph Mode Development Guide, technical articles, and other content:  [GE Reference Materials](docs/README_en.md)
 
 To gain a deep understanding of GE's internal design, architecture mechanisms, and development processes, refer to the following documentation:
 

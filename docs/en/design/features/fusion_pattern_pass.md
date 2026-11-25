@@ -36,8 +36,8 @@ Python and C++ implementations differ, but the underlying mechanism is the same:
 
 Development Guides:
 
-- [Python Fusion Pass Development Guide](../../../../examples/fusion_pass/python_fusion_pass_development_guide.md)
-- [C++ Fusion Pass Development Guide](../../../../examples/fusion_pass/cpp_fusion_pass_development_guide.md)
+- [Python Fusion Pass Development Guide](../../../../examples/fusion_pass/python_fusion_pass_development_guide_en.md)
+- [C++ Fusion Pass Development Guide](../../../../examples/fusion_pass/cpp_fusion_pass_development_guide_en.md)
 
 
 ## 2. How a PatternFusionPass Executes
@@ -205,8 +205,8 @@ Typical uses:
 
 Reference samples:
 
-- [C++ capture tensor sample](../../../../examples/fusion_pass/pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/cpp/README.md)
-- [Python capture tensor sample](../../../../examples/fusion_pass/pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/python/README.md)
+- [C++ capture tensor sample](../../../../examples/fusion_pass/pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/cpp/README_en.md)
+- [Python capture tensor sample](../../../../examples/fusion_pass/pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/python/README_en.md)
 
 ### 4.2 PatternMatcherConfig
 
@@ -228,8 +228,8 @@ If judgment logic is simple, strict and stable, can put into matcher configurati
 
 Reference samples:
 
-- [C++ PatternMatcherConfig sample](../../../../examples/fusion_pass/pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/cpp/README.md)
-- [Python PatternMatcherConfig sample](../../../../examples/fusion_pass/pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/python/README.md)
+- [C++ PatternMatcherConfig sample](../../../../examples/fusion_pass/pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/cpp/README_en.md)
+- [Python PatternMatcherConfig sample](../../../../examples/fusion_pass/pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/python/README_en.md)
 
 ## 5. How to Understand DecomposePass
 
@@ -258,8 +258,8 @@ Find nodes by op type -> MeetRequirements judge if this node needs split -> Repl
 
 Reference samples:
 
-- [C++ DecomposePass sample](../../../../examples/fusion_pass/pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/cpp/README.md)
-- [Python DecomposePass sample](../../../../examples/fusion_pass/pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/python/README.md)
+- [C++ DecomposePass sample](../../../../examples/fusion_pass/pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/cpp/README_en.md)
+- [Python DecomposePass sample](../../../../examples/fusion_pass/pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/python/README_en.md)
 
 ## 6. V2 Version and CustomPassContext
 

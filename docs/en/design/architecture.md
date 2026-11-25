@@ -196,7 +196,7 @@ GE supports extending compilation capabilities through plugins, including **Asce
 Refer to the following resources for detailed development guides:
 
 - AscendC custom operator graph entry: Search "Operator Graph Entry (GE) Development" on [Documentation Portal](https://www.hiascend.com/en/document)
-- Custom pass development: [Custom Fusion Pass](../../../examples/fusion_pass/README.md)
+- Custom pass development: [Custom Fusion Pass](../../../examples/fusion_pass/README_en.md)
 
 ## Project Structure
 

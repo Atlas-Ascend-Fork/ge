@@ -119,7 +119,7 @@ flowchart TB
 
 Both ES and Operator series interfaces produce `ge::Graph`; users can freely choose by scenario or mix them: during ES graph building, `EsTensorHolder::GetProducer` can retrieve the `GNode` and switch to the nodes-and-edges separated manner to continue modifying the graph.
 
-Multi-language samples cover control edges, control operators, dynamic inputs/outputs, optional inputs, common/private attributes, operator overloading, Transformer, collective communication (HCCL), and other scenarios; see [examples/es](../../../../examples/es/README.md). For samples of custom-generating ES APIs for your own operators, see [examples/custom_es_api](../../../../examples/custom_es_api/README.md).
+Multi-language samples cover control edges, control operators, dynamic inputs/outputs, optional inputs, common/private attributes, operator overloading, Transformer, collective communication (HCCL), and other scenarios; see [examples/es](../../../../examples/es/README_en.md). For samples of custom-generating ES APIs for your own operators, see [examples/custom_es_api](../../../../examples/custom_es_api/README_en.md).
 
 ---
 

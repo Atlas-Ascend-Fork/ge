@@ -24,7 +24,7 @@ python/
 
 ## Prerequisites
 
-- Completed CANN environment variable setup via `source ${ASCEND_PATH}/set_env.sh`. For more guidance, refer to [C++ Example README](../cpp/README.md) environment variable configuration step
+- Completed CANN environment variable setup via `source ${ASCEND_PATH}/set_env.sh`. For more guidance, refer to [C++ Example README](../cpp/README_en.md) environment variable configuration step
 - Python environment can import ES API (`ConcatV2`, `Relu`): prefers built-in plugins `ge.es.math`/`ge.es.nn` from run package/ops package; falls back to `ge.es.all` (generated via "ES API Missing Handling (Optional)" below) if missing
 - Can import GE Python package (contains `ge.graph`, `ge.passes` and pass loading chain)
 

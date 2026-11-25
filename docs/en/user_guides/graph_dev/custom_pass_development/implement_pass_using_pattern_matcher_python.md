@@ -234,12 +234,12 @@ The two scenarios are similar in usage, but differ in the granularity of the mat
 
 ## Development Example
 
-This section uses the removal of the Add\(x, 0\) structure as an example (using the @pattern decorator) to describe in detail how to modify a Graph through a custom fusion Pass in Python. For the complete example code, see [AddZeroPass Python example](../../../../../examples/fusion_pass/pattern_base_pass/4_add_zero_pass/python/README.md). The source repository also provides examples for the following scenarios for your reference:
+This section uses the removal of the Add\(x, 0\) structure as an example (using the @pattern decorator) to describe in detail how to modify a Graph through a custom fusion Pass in Python. For the complete example code, see [AddZeroPass Python example](../../../../../examples/fusion_pass/pattern_base_pass/4_add_zero_pass/python/README_en.md). The source repository also provides examples for the following scenarios for your reference:
 
-- [MatMul+Add Python example](../../../../../examples/fusion_pass/pattern_base_pass/1_fuse_matmul_add_pass/python/README.md)
-- [capture tensor Python example](../../../../../examples/fusion_pass/pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/python/README.md)
-- [PatternMatcherConfig Python example](../../../../../examples/fusion_pass/pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/python/README.md)
-- [DecomposePass Python example](../../../../../examples/fusion_pass/pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/python/README.md)
+- [MatMul+Add Python example](../../../../../examples/fusion_pass/pattern_base_pass/1_fuse_matmul_add_pass/python/README_en.md)
+- [capture tensor Python example](../../../../../examples/fusion_pass/pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/python/README_en.md)
+- [PatternMatcherConfig Python example](../../../../../examples/fusion_pass/pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/python/README_en.md)
+- [DecomposePass Python example](../../../../../examples/fusion_pass/pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/python/README_en.md)
 
 The graph structures before and after the modification are as follows:
 
@@ -356,7 +356,7 @@ After the custom Pass is implemented, this section describes how to load the Pyt
 
         For details about how to use pyatc, see [Pyatc Interface](../../../api/graph_engine_api/python/ge/pyatc/pyatc_interface.md).
 
-    - Online compilation: Refer to the [Sample Program Execution](../../../../../examples/fusion_pass/pattern_base_pass/4_add_zero_pass/cpp/README.md) section and use the torch\_forward.py script to perform online inference.
+    - Online compilation: Refer to the [Sample Program Execution](../../../../../examples/fusion_pass/pattern_base_pass/4_add_zero_pass/cpp/README_en.md) section and use the torch\_forward.py script to perform online inference.
 
 ## Result Verification
 

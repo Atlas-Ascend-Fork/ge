@@ -130,7 +130,7 @@ export ASCEND_CUSTOM_OPP_PATH="$(pwd)/build:$ASCEND_CUSTOM_OPP_PATH"
 # Run your graph building/execution program
 ```
 
-> Complete runnable code see [`examples/custom_op/ascendc_add_custom/`](../../../../../examples/custom_op/ascendc_add_custom/README.md).
+> Complete runnable code see [`examples/custom_op/ascendc_add_custom/`](../../../../../examples/custom_op/ascendc_add_custom/README_en.md).
 
 ---
 
@@ -140,11 +140,11 @@ export ASCEND_CUSTOM_OPP_PATH="$(pwd)/build:$ASCEND_CUSTOM_OPP_PATH"
 
 | Scenario | Recommended Interface Combination | Typical Chain | Reference Example |
 |------|-------------|---------|---------|
-| Dynamic graph online execution | `EagerExecuteOp` + `ShapeInferOp`(optional) | Graph building → Direct execution | [ascendc_add_custom](../../../../../examples/custom_op/ascendc_add_custom/README.md) |
+| Dynamic graph online execution | `EagerExecuteOp` + `ShapeInferOp`(optional) | Graph building → Direct execution | [ascendc_add_custom](../../../../../examples/custom_op/ascendc_add_custom/README_en.md) |
 | Online compilation + Online execution | `EagerExecuteOp` + `CompilableOp` + `ShapeInferOp`(optional) | Graph building → Compile → Execution | — |
-| Offline OM model sink | `EagerExecuteOp` + `CompilableOp` + `ShapeInferOp` + `PortableOp` | AIR → ATC → OM → ACL | [compilable_add_custom](../../../../../examples/custom_op/compilable_add_custom/README.md) |
-| Data dependent shape | `EagerExecuteOp` + `ShapeInferOp` | Graph building → Execution + shape buffer writeback | [data_dependent_shape_custom](../../../../../examples/custom_op/data_dependent_shape_custom/README.md) |
-| Value dependent shape | `EagerExecuteOp` + `ShapeInferOp` | Graph building → runtime InferShape re-inference + output shape pre-fill | [value_dependent_shape_custom](../../../../../examples/custom_op/value_dependent_shape_custom/README.md) |
+| Offline OM model sink | `EagerExecuteOp` + `CompilableOp` + `ShapeInferOp` + `PortableOp` | AIR → ATC → OM → ACL | [compilable_add_custom](../../../../../examples/custom_op/compilable_add_custom/README_en.md) |
+| Data dependent shape | `EagerExecuteOp` + `ShapeInferOp` | Graph building → Execution + shape buffer writeback | [data_dependent_shape_custom](../../../../../examples/custom_op/data_dependent_shape_custom/README_en.md) |
+| Value dependent shape | `EagerExecuteOp` + `ShapeInferOp` | Graph building → runtime InferShape re-inference + output shape pre-fill | [value_dependent_shape_custom](../../../../../examples/custom_op/value_dependent_shape_custom/README_en.md) |
 
 > Note: Operators that do not implement `PortableOp` can also be used to generate offline OM (implementation SO is packaged with the model). However, their kernel binary and other data are not saved or restored with OM, need self-management.
 
@@ -208,7 +208,7 @@ Execute    → Allocate output by upper bound + allocate shape buffer
 - After kernel execution need to self-synchronize stream and read back shape buffer
 - Shape buffer format: `[ndim, d0, d1, ...]` (uint64_t array)
 
-> Complete code see [`examples/custom_op/data_dependent_shape_custom/`](../../../../../examples/custom_op/data_dependent_shape_custom/README.md).
+> Complete code see [`examples/custom_op/data_dependent_shape_custom/`](../../../../../examples/custom_op/data_dependent_shape_custom/README_en.md).
 
 ### 4.6 Scenario E: Value Dependent Shape (Value Dependent Operator)
 
@@ -230,7 +230,7 @@ Execute → Take the pre-filled shape → validate consistency with input shapes
 - Different from type-3 operators: call `MallocOutputTensor` with exact shape, no upper bound allocation, no shape buffer, no post-execution synchronization
 - If the value-dependent input is a compile-time constant, the exact shape is derived at compile time (degenerates to static shape)
 
-> Complete code see [`examples/custom_op/value_dependent_shape_custom/`](../../../../../examples/custom_op/value_dependent_shape_custom/README.md) (based on ConcatV2, aligned with the production operator ops-math ConcatV2).
+> Complete code see [`examples/custom_op/value_dependent_shape_custom/`](../../../../../examples/custom_op/value_dependent_shape_custom/README_en.md) (based on ConcatV2, aligned with the production operator ops-math ConcatV2).
 
 ---
 
@@ -440,7 +440,7 @@ def convert_my_op(x, y, meta_outputs=None):
     return torchair.ge.custom_op("AddCustom", inputs={"x": x, "y": y}, outputs=["z"])
 ```
 
-> Complete code see [`examples/custom_op/ascendc_add_custom/`](../../../../../examples/custom_op/ascendc_add_custom/README.md).
+> Complete code see [`examples/custom_op/ascendc_add_custom/`](../../../../../examples/custom_op/ascendc_add_custom/README_en.md).
 
 ### 6.3 TensorFlow Graph Entry
 
@@ -463,7 +463,7 @@ TensorFlow Side                    GE Side
 
 **Difference from GE Native Graph Building**: In TensorFlow scenario, `REG_AUTO_MAPPING_OP` can auto generate GE operator prototype from TF operator prototype (inputs, outputs, attributes), developer doesn't need to additionally write `REG_OP` definition. This further lowers TensorFlow custom operator access burden.
 
-> Complete code see [`examples/custom_op/triton_add_custom/`](../../../../../examples/custom_op/triton_add_custom/README.md).
+> Complete code see [`examples/custom_op/triton_add_custom/`](../../../../../examples/custom_op/triton_add_custom/README_en.md).
 
 ### 6.4 ONNX Graph Entry
 

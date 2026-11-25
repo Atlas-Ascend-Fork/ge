@@ -120,7 +120,7 @@ When using additional compilation parameters or load configuration items, first 
 | Asynchronous execution `aclmdlExecuteAsync` | Reuse the original stream, execution, and synchronization process |
 | Configured loading `aclmdlLoadWithConfig` | Update the model path or memory data, and verify [Load Configuration Items Supported by OM2](#load-configuration-items) |
 
-You can experience OM2 based on the [ResNet-50 image classification sample](../../../../../examples/acl/1_sample_resnet50_imagenet_classification/README.md):
+You can experience OM2 based on the [ResNet-50 image classification sample](../../../../../examples/acl/1_sample_resnet50_imagenet_classification/README_en.md):
 
 1. Prepare the environment, model, and test image according to the sample.
 2. Add `--mode=7` to the model conversion command in the sample to generate `model/resnet50.om2`.

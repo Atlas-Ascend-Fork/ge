@@ -33,7 +33,7 @@ This section describes the detailed development process for integrating Triton c
 - **CANN Software Package Installation**: See [Environment Setup](../overview/environment_setup.md) to install the CANN software package and set environment variables.
 - **Triton-Ascend Installation**: See the [Triton-Ascend Installation Guide](https://gitcode.com/Ascend/triton-ascend/blob/master/docs/sources/getting-started/installation.md) for installation.
 
-For a detailed sample, click [Triton Custom Operator Integration Sample](../../../../../examples/custom_op/triton_add_custom/README.md).
+For a detailed sample, click [Triton Custom Operator Integration Sample](../../../../../examples/custom_op/triton_add_custom/README_en.md).
 
 ### Generating the npubin File
 
