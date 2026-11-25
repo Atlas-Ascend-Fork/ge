@@ -12,7 +12,7 @@
 set -e
 date +"build begin: %Y-%m-%d %H:%M:%S"
 
-BASEPATH=$(cd "$(dirname $0)"; pwd)
+BASEPATH=$(cd "$(dirname "$0")" && pwd) || exit 1
 OUTPUT_PATH="${BASEPATH}/output"
 BUILD_RELATIVE_PATH="build"
 BUILD_PATH="${BASEPATH}/${BUILD_RELATIVE_PATH}/"
@@ -222,11 +222,11 @@ checkopts() {
         shift
         ;;
       --cann_3rd_lib_path)
-        CANN_3RD_LIB_PATH="$(realpath $2)"
+        CANN_3RD_LIB_PATH="$(realpath "$2")"
         shift 2
         ;;
       --output_path)
-        OUTPUT_PATH="$(realpath $2)"
+        OUTPUT_PATH="$(realpath "$2")"
         shift 2
         ;;
       --build-type)
@@ -252,7 +252,7 @@ checkopts() {
         shift
         ;;
       --sign-script)
-        CUSTOM_SIGN_SCRIPT="$(realpath $2)"
+        CUSTOM_SIGN_SCRIPT="$(realpath "$2")"
         shift 2
         ;;
       --version)
@@ -260,7 +260,7 @@ checkopts() {
         shift 2
         ;;
       --rule_launch)
-        RULE_LAUNCH_ARG="-D RULE_LAUNCH=$2"
+        RULE_LAUNCH_ARG="$2"
         shift 2
         ;;
       -f)
@@ -398,14 +398,14 @@ move_pkg() {
   if [ -f "${OUTPUT_PATH}/${pkg_name}" ]; then
     mv "${OUTPUT_PATH}/${pkg_name}" "${BUILD_OUT_PATH}/"
   else
-    mv ${OUTPUT_PATH}/cann-${component}*.run "${BUILD_OUT_PATH}/${pkg_name}"
+    mv "${OUTPUT_PATH}"/cann-"${component}"*.run "${BUILD_OUT_PATH}/${pkg_name}"
   fi
 }
 
 copy_pkg() {
   local component="$1"
   if [ "${ENABLE_BUILD_DEVICE}" = "ON" ]; then
-    mv ${OUTPUT_PATH}/cann-${component}_*.run ${BUILD_OUT_PATH}/
+    mv "${OUTPUT_PATH}"/cann-"${component}"_*.run "${BUILD_OUT_PATH}/"
   elif [ -z "${CMAKE_TOOLCHAIN_FILE}" ]; then
     if [ -f "/etc/lsb-release" ]; then
       ubuntu_version=$(grep -E '^DISTRIB_RELEASE=' /etc/lsb-release | cut -d'=' -f2 | xargs)
@@ -421,10 +421,8 @@ copy_pkg() {
 }
 
 execute_command() {
-  local cmd=$1
-  eval ${cmd}
-  if [ 0 -ne $? ]; then
-    echo "Failed command: ${cmd}"
+  if ! "$@"; then
+    echo "Failed command: $*"
     exit 1
   fi
 }
@@ -438,7 +436,7 @@ build_pkg() {
   done
 
   if [ "${PACKAGE_TYPE}" = "run" ]; then
-    ls -l ${BUILD_OUT_PATH}/cann-*.run && echo "GE package success!"
+    ls -l "${BUILD_OUT_PATH}"/cann-*.run && echo "GE package success!"
   else
     echo "GE package success!"
   fi
@@ -449,35 +447,40 @@ build_single_pkg() {
   local component_build_path="${BUILD_PATH}/${component}"
   mk_dir "${component_build_path}"
   echo "===== Build GE package: ${component} (pid $$) ====="
-  cd "${component_build_path}"
-  execute_command "cmake -D BUILD_OPEN_PROJECT=True \
-        -D ENABLE_OPEN_SRC=True \
-        -D ENABLE_ASAN=${ENABLE_ASAN} \
-        -D ENABLE_TSAN=${ENABLE_TSAN} \
-        -D ENABLE_GCOV=${ENABLE_GCOV} \
-        -D BUILD_METADEF=${BUILD_METADEF} \
-        -D CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
-        -D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
-        -D CMAKE_INSTALL_PREFIX=${OUTPUT_PATH} \
-        -D ASCEND_INSTALL_PATH=${ASCEND_INSTALL_PATH} \
-        -D CANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH} \
-        -D HI_PYTHON=${PYTHON_PATH} \
-        -D FORCE_REBUILD_CANN_3RD=False \
-        -D CANN_PACKAGES=${component} \
-        -D CMAKE_FIND_DEBUG_MODE=OFF \
-        -D ENABLE_SIGN=${ENABLE_SIGN} \
-        -D CUSTOM_SIGN_SCRIPT=${CUSTOM_SIGN_SCRIPT} \
-        -D PACKAGE_TYPE=${PACKAGE_TYPE} \
-        -D ENABLE_BUILD_DEVICE=${ENABLE_BUILD_DEVICE} \
-        ${USE_CXX11_ABI:+-D USE_CXX11_ABI=${USE_CXX11_ABI}} \
-        -D LLVM_PATH=${LLVM_PATH} \
-        -D CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE} \
-        -D ENABLE_MOD_EXT=${ENABLE_MOD_EXT} \
-        ${RULE_LAUNCH_ARG} \
-        ${BASEPATH}"
-
-  execute_command "make ${component} ${VERBOSE} -j${THREAD_NUM}"
-  execute_command "cpack"
+  cd "${component_build_path}" || return 1
+  local cmake_args=(
+    "-DBUILD_OPEN_PROJECT=True"
+    "-DENABLE_OPEN_SRC=True"
+    "-DENABLE_ASAN=${ENABLE_ASAN}"
+    "-DENABLE_TSAN=${ENABLE_TSAN}"
+    "-DENABLE_GCOV=${ENABLE_GCOV}"
+    "-DBUILD_METADEF=${BUILD_METADEF}"
+    "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+    "-DCMAKE_INSTALL_PREFIX=${OUTPUT_PATH}"
+    "-DASCEND_INSTALL_PATH=${ASCEND_INSTALL_PATH}"
+    "-DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}"
+    "-DHI_PYTHON=${PYTHON_PATH}"
+    "-DFORCE_REBUILD_CANN_3RD=False"
+    "-DCANN_PACKAGES=${component}"
+    "-DCMAKE_FIND_DEBUG_MODE=OFF"
+    "-DENABLE_SIGN=${ENABLE_SIGN}"
+    "-DCUSTOM_SIGN_SCRIPT=${CUSTOM_SIGN_SCRIPT}"
+    "-DPACKAGE_TYPE=${PACKAGE_TYPE}"
+    "-DENABLE_BUILD_DEVICE=${ENABLE_BUILD_DEVICE}"
+    "-DLLVM_PATH=${LLVM_PATH}"
+    "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
+    "-DENABLE_MOD_EXT=${ENABLE_MOD_EXT}"
+  )
+  if [ -n "${USE_CXX11_ABI}" ]; then
+    cmake_args+=("-DUSE_CXX11_ABI=${USE_CXX11_ABI}")
+  fi
+  if [ -n "${RULE_LAUNCH_ARG}" ]; then
+    cmake_args+=("-DRULE_LAUNCH=${RULE_LAUNCH_ARG}")
+  fi
+  execute_command cmake "${cmake_args[@]}" "${BASEPATH}"
+  execute_command make "${component}" ${VERBOSE:+"${VERBOSE}"} "-j${THREAD_NUM}"
+  execute_command cpack
     if [ "${PACKAGE_TYPE}" = "run" ]; then
     copy_pkg "${component}"
   fi
@@ -485,7 +488,7 @@ build_single_pkg() {
 }
 
 main() {
-  cd "${BASEPATH}"
+  cd "${BASEPATH}" || exit 1
   checkopts "$@"
 
   # check if changed files only contain docs/, examples/ or README.md
@@ -499,9 +502,9 @@ main() {
   g++ -v
 
   echo "---------------- Build GE package ----------------"
-  mk_dir ${OUTPUT_PATH}
-  mk_dir ${BUILD_OUT_PATH}
-  mk_dir ${OUTPUT_PATH}/package
+  mk_dir "${OUTPUT_PATH}"
+  mk_dir "${BUILD_OUT_PATH}"
+  mk_dir "${OUTPUT_PATH}/package"
   build_pkg || { echo "GE build failed."; exit 1; }
   echo "---------------- GE build finished ----------------"
   date +"build end: %Y-%m-%d %H:%M:%S"
