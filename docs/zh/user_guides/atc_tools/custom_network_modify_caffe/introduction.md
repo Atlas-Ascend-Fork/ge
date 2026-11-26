@@ -11,9 +11,6 @@ Atlas A3系列产品不支持Caffe框架：Caffe框架在该产品形态已不�
 <!-- npu="910b" id3 -->
 Atlas A2系列产品不支持Caffe框架：Caffe框架在该产品形态已不演进，不保证功能可用。
 <!-- end id3 -->
-<!-- npu="IPV350" id4 -->
-IPV350：不支持Caffe框架：Caffe框架在该产品形态已不演进，不保证功能可用。
-<!-- end id4 -->
 <!-- @ref: ge/res/docs/zh/user_guides/atc_tools/custom_network_modify_caffe/introduction_res.md#id1 -->
 
 网络的算子可以分为如下几类：

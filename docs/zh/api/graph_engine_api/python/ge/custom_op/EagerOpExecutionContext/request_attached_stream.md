@@ -22,7 +22,7 @@ request_attached_stream(key: str, flags: int = 0) -> Optional[int]
 | 参数名 | 输入/输出 | 描述 |
 | :--- | :--- | :--- |
 | key | 输入 | 辅流复用key，类型为`str`，不能为空字符串。 |
-| flags | 输入 | 流创建标志，类型为`int`，默认`0`。传入`RT_STREAM_*`宏对应的整数值，多个标志可按位或组合。取值以所安装CANN版本的`rt_external_stream.h`为准，可参考[Runtime源码中的标志定义](https://gitcode.com/cann/runtime/blob/master/pkg_inc/runtime/rt_external_stream.h#L22-L43)。仅首次创建辅流时生效，复用已有辅流时忽略。 |
+| flags | 输入 | 流创建标志，类型为`int`，默认`0`。传入`RT_STREAM_*`宏对应的整数值，多个标志可按位或组合。取值以所安装CANN版本的`rt_external_stream.h`为准，可参考[Runtime源码中的标志定义](https://gitcode.com/cann/runtime/blob/9.3.0/pkg_inc/runtime/rt_external_stream.h#L22-L43)。仅首次创建辅流时生效，复用已有辅流时忽略。 |
 
 ## 返回值说明
 

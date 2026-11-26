@@ -171,7 +171,7 @@ Atlas A2系列产品
     }
     ```
 
-    上述acl接口详细说明请参见《[Runtime运行时API](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md)》。
+    上述acl接口详细说明请参见《[Runtime运行时API](https://gitcode.com/cann/runtime/blob/9.3.0/docs/zh/api_ref/README.md)》。
 
 - **标定算子不融合到SuperKernel的关键步骤示例**
 
@@ -215,4 +215,4 @@ Atlas A2系列产品
     }
     ```
 
-    上述acl接口详细说明请参见《[Runtime运行时API](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md)》。
+    上述acl接口详细说明请参见《[Runtime运行时API](https://gitcode.com/cann/runtime/blob/9.3.0/docs/zh/api_ref/README.md)》。

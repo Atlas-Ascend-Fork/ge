@@ -20,9 +20,6 @@
 <!-- npu="910" id9 -->
 - Atlas训练系列产品：不支持
 <!-- end id9 -->
-<!-- npu="IPV350" id10 -->
-- IPV350：不支持
-<!-- end id10 -->
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/c/specialization/aclmdlRISpecOptimize_res.md#id1 -->
 
 ## 头文件
@@ -47,7 +44,7 @@ aclError aclmdlRISpecOptimize(aclmdlRI modelRI, aclmdlRISpecOptions *options)
 
 | 参数名 | 输入/输出 | 描述 |
 | :--- | :---: | :--- |
-| modelRI | 输入 | 待常量化的模型句柄，不能为空。可通过[aclmdlRICaptureEnd](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/15_model_running_instance_management.md#aclmdlRICaptureEnd)获取。本接口直接更新该模型，不创建新模型。 |
+| modelRI | 输入 | 待常量化的模型句柄，不能为空。可通过[aclmdlRICaptureEnd](https://gitcode.com/cann/runtime/blob/9.3.0/docs/zh/api_ref/15_model_running_instance_management.md#aclmdlRICaptureEnd)获取。本接口直接更新该模型，不创建新模型。 |
 | options | 输入 | 常量化编译配置。传入nullptr时，不追加用户编译选项，不启用SuperKernel编译，按串行方式编译。各成员的配置要求请参见[表2](#table-aclmdl-ri-spec-options)。 |
 
 ### aclmdlRISpecOptions
@@ -97,13 +94,13 @@ aclError aclmdlRISpecOptimize(aclmdlRI modelRI, aclmdlRISpecOptions *options)
 - Kernel须具有可用的常量化资源标识和参数信息，并能获取编译所需的参数值。不满足条件的Kernel保留原函数；单个Kernel的常量化编译失败时，记录告警并继续处理其他Kernel。
 - 常量化编译成功的Kernel仅替换任务的函数句柄，保留原任务的其他下发参数。后续运行模型时，参与常量化的值须保持不变。
 - 编译产物加载失败或找不到对应Kernel入口时，返回相应错误码，此时尚未修改模型。任务替换、模型更新或资源托管失败时，返回相应错误码，模型可能已被修改，且不进行回滚。调用失败时，可查看ERROR级别日志，定位失败阶段及相关模型或任务。
-- 调用方取得模型句柄后，无论优化是否成功，均须在不再使用模型时调用[aclmdlRIDestroy](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/15_model_running_instance_management.md#aclmdlRIDestroy)。优化成功后，常量化编译生成的Kernel资源随模型销毁自动释放。
+- 调用方取得模型句柄后，无论优化是否成功，均须在不再使用模型时调用[aclmdlRIDestroy](https://gitcode.com/cann/runtime/blob/9.3.0/docs/zh/api_ref/15_model_running_instance_management.md#aclmdlRIDestroy)。优化成功后，常量化编译生成的Kernel资源随模型销毁自动释放。
 
 ## 调用示例
 
 以下片段演示捕获两次`AddCustom`调用，并通过`aclmdlRISpecOptimize`对捕获的模型进行常量化编译。
 
-调用前需完成[aclInit](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/02_initialization_and_deinitialization.md#aclInit)、[aclrtSetDevice](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/04_device_management.md#aclrtSetDevice)、[aclrtCreateStream](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/06_stream_management.md#aclrtCreateStream)，创建x、y、t、z对应的Tensor并准备输入数据。
+调用前需完成[aclInit](https://gitcode.com/cann/runtime/blob/9.3.0/docs/zh/api_ref/02_initialization_and_deinitialization.md#aclInit)、[aclrtSetDevice](https://gitcode.com/cann/runtime/blob/9.3.0/docs/zh/api_ref/04_device_management.md#aclrtSetDevice)、[aclrtCreateStream](https://gitcode.com/cann/runtime/blob/9.3.0/docs/zh/api_ref/06_stream_management.md#aclrtCreateStream)，创建x、y、t、z对应的Tensor并准备输入数据。
 
 workspace1、workspace2和modelRI为输出参数。调用方负责失败时的捕获清理和资源释放，并保证Tensor关联的内存及workspace在模型销毁前保持有效。
 
