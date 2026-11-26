@@ -10,6 +10,8 @@
 
 #include "parser/tensorflow/tensorflow_parser_internal.h"
 #include <algorithm>
+#include <atomic>
+#include <limits>
 #include <fstream>
 #include <iostream>
 #include <regex>
@@ -233,6 +235,12 @@ namespace ge {
 namespace {
 const int kTransposeInputIdx = 0;
 const uint32_t kThreadNum = 16;
+// 格式推断沿 output_map 递归，需限制深度，避免超长节点链打爆线程栈
+const uint32_t kMaxFormatInferRecursionDepth = 1000U;
+// 子图按任务队列展开且无环检测，用嵌套深度上限拦住自引用函数导致的无限展开
+const uint32_t kMaxSubgraphNestingDepth = 128U;
+// 节点输出锚点索引的合理上限，用于拦截畸形 pb 中的超大索引（正常算子远小于该值）
+const int32_t kMaxOutputAnchorIndex = 100000;
 const size_t kInputNumUint = 2;
 const int kInputNumInt = 2;
 const int32_t kControlSlot = -1;
@@ -257,6 +265,20 @@ struct ParseArg {
 
 Status GenSubgraphParseTasks(const ge::ComputeGraphPtr &parent_graph, std::deque<ParseArg> &args) {
   GELOGI("Gen subgraph parse tasks start.");
+  GE_CHECK_NOTNULL(parent_graph);
+  // function 自引用/环形引用会让任务队列无限增长，这里用嵌套深度上限兜底
+  uint32_t nesting_depth = 0U;
+  for (const ge::ComputeGraph *graph = parent_graph->GetParentGraphBarePtr(); graph != nullptr;
+       graph = graph->GetParentGraphBarePtr()) {
+    ++nesting_depth;
+  }
+  if (nesting_depth >= kMaxSubgraphNestingDepth) {
+    REPORT_INNER_ERR_MSG("E19999", "The nesting depth of graph:%s reaches the limit %u.",
+                         parent_graph->GetName().c_str(), kMaxSubgraphNestingDepth);
+    GELOGE(FAILED, "The subgraph nesting depth of graph %s exceeds the limit %u, maybe a circular function reference.",
+           parent_graph->GetName().c_str(), kMaxSubgraphNestingDepth);
+    return FAILED;
+  }
   for (auto &node : parent_graph->GetDirectNode()) {
     auto op_desc = node->GetOpDesc();
     GE_CHECK_NOTNULL(op_desc);
@@ -267,10 +289,10 @@ Status GenSubgraphParseTasks(const ge::ComputeGraphPtr &parent_graph, std::deque
         GELOGW("The subgraph index %u of node %s is empty", i, node->GetName().c_str());
         continue;
       }
-      static uint64_t index = 0;
+      static std::atomic<uint64_t> index(0);
       // A function may be referenced multiple times in TF, change the graph name to ensure it is unique in GE
-      auto unique_name = node->GetName() + std::to_string(i) + subgraph_iname + std::to_string(index);
-      ++index;
+      const uint64_t unique_index = index.fetch_add(1U, std::memory_order_relaxed);
+      auto unique_name = node->GetName() + std::to_string(i) + subgraph_iname + std::to_string(unique_index);
       auto subgraph = ge::parser::MakeShared<ge::ComputeGraph>(unique_name);
       if (subgraph == nullptr) {
         REPORT_INNER_ERR_MSG("E19999", "New ComputeGraph failed when create subgraph:%s", subgraph_iname.c_str());
@@ -1253,6 +1275,13 @@ Status TensorFlowModelParser::ParseFromMemory(const char *data, uint32_t size, g
   // Store objects parsed from pb files
   domi::tensorflow::GraphDef OriDef;
 
+  // uint32_t 装不下大于 2GiB 的缓冲区长度，static_cast<int> 会得到负值破坏解析长度语义
+  if (size > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
+    REPORT_INNER_ERR_MSG("E19999", "The model buffer size %u exceeds the max supported size %d.", size,
+                         std::numeric_limits<int32_t>::max());
+    GELOGE(PARAM_INVALID, "The model buffer size %u is too large to parse.", size);
+    return PARAM_INVALID;
+  }
   bool read = ge::parser::ReadProtoFromArray(data, static_cast<int>(size), &OriDef);
   if (!read) {
     REPORT_INNER_ERR_MSG("E19999", "read graph proto from binary failed");
@@ -1698,6 +1727,14 @@ Status TensorFlowModelParser::GetOpNodeOutputMap(const domi::tensorflow::GraphDe
 Status TensorFlowModelParser::GeStoi(const string &input_node_name, const string &index_str, int32_t *index) {
   try {
     int32_t tmp_index = static_cast<int32_t>(std::stoi(index_str.c_str(), nullptr, 10));
+    if ((tmp_index < 0) || (tmp_index > kMaxOutputAnchorIndex)) {
+      REPORT_PREDEFINED_ERR_MSG(
+          "E10013", std::vector<const char *>({"parameter", "value"}),
+          std::vector<const char *>({("input_node_name(" + input_node_name + ")").c_str(), index_str.c_str()}));
+      GELOGE(INTERNAL_ERROR, "stl[stoi] input_node_name[%s] indexstr[%s] is out of range!", input_node_name.c_str(),
+             index_str.c_str());
+      return INTERNAL_ERROR;
+    }
     *index = tmp_index;
   } catch (std::invalid_argument &) {
     REPORT_PREDEFINED_ERR_MSG(
@@ -1821,10 +1858,32 @@ bool TensorFlowModelParser::MaybeFusionOp(shared_ptr<ge::ScopeGraph> &scope_grap
           fusion_op_nodedef_map_[info_list[i].fusion_node_name].push_back(node_def);
           if (info_list[i].fusion_op_type == "Dropout" &&
               (node_def->op() == "Add" || node_def->op() == "RandomUniform")) {
-            fusion_op_nodedef_map_[info_list[i].fusion_node_name].push_back(nodedef_map_[node_def->input(0)]);
+            if (node_def->input_size() < 1) {
+              GELOGW("Dropout child node %s has no input, skip adding its first input node.", node_def->name().c_str());
+            } else {
+              // 用 decltype 声明迭代器：GE_IF_BOOL_EXEC 是宏，模板实参里的逗号会被当成宏参数分隔符
+              const decltype(nodedef_map_)::const_iterator input_iter = nodedef_map_.find(node_def->input(0));
+              if ((input_iter == nodedef_map_.end()) || (input_iter->second == nullptr)) {
+                GELOGW("Input node %s of dropout child node %s can't be found, skip.", node_def->input(0).c_str(),
+                       node_def->name().c_str());
+              } else {
+                fusion_op_nodedef_map_[info_list[i].fusion_node_name].push_back(input_iter->second);
+              }
+            }
           }
           if (info_list[i].fusion_op_type == "LayerNorm" && node_def->op() == "Mean") {
-            fusion_op_nodedef_map_[info_list[i].fusion_node_name].push_back(nodedef_map_[node_def->input(1)]);
+            if (node_def->input_size() < 2) {
+              GELOGW("LayerNorm child node %s has less than 2 inputs, skip adding its second input node.",
+                     node_def->name().c_str());
+            } else {
+              const decltype(nodedef_map_)::const_iterator input_iter = nodedef_map_.find(node_def->input(1));
+              if ((input_iter == nodedef_map_.end()) || (input_iter->second == nullptr)) {
+                GELOGW("Input node %s of LayerNorm child node %s can't be found, skip.", node_def->input(1).c_str(),
+                       node_def->name().c_str());
+              } else {
+                fusion_op_nodedef_map_[info_list[i].fusion_node_name].push_back(input_iter->second);
+              }
+            }
           }
           fusion_op_policy_[info_list[i].fusion_node_name] = info_list[i].scope_pass;
           fusion_op_children_[node_def->name()] = info_list[i];
@@ -1906,7 +1965,12 @@ Status TensorFlowModelParser::GetOutPutIndex(shared_ptr<ge::ScopeGraph> &scope_g
 }
 
 bool TensorFlowModelParser::ConstOpNeedUpdate(const string &op_name) {
-  if (nodedef_map_[op_name]->op() != TENSORFLOWF_NODE_OP_CONST) {
+  const std::unordered_map<string, const NodeDef *>::const_iterator node_iter = nodedef_map_.find(op_name);
+  if ((node_iter == nodedef_map_.end()) || (node_iter->second == nullptr)) {
+    GELOGW("node %s can't be found in nodedef_map_, skip const node check.", op_name.c_str());
+    return false;
+  }
+  if (node_iter->second->op() != TENSORFLOWF_NODE_OP_CONST) {
     // Normal op need to update
     return true;
   } else {
@@ -2215,8 +2279,17 @@ Status TensorFlowModelParser::NormalizeInputOrOutputMap(
 
 void TensorFlowModelParser::DeleteFuisonNodeDef() {
   for (auto &fusion_nodedef : fusion_nodedef_list) {
+    if (fusion_nodedef == nullptr) {
+      continue;
+    }
+    // 释放后必须把 nodedef_map_ 中指向它的条目一并删掉，否则留下悬垂指针
+    const std::unordered_map<string, const NodeDef *>::iterator iter = nodedef_map_.find(fusion_nodedef->name());
+    if ((iter != nodedef_map_.end()) && (iter->second == fusion_nodedef)) {
+      (void)nodedef_map_.erase(iter);
+    }
     GE_DELETE_NEW_SINGLE(fusion_nodedef);
   }
+  fusion_nodedef_list.clear();
 }
 
 void TensorFlowModelParser::SaveEdgesControlInfo(const string &node_name, const bool control) {
@@ -2799,6 +2872,12 @@ Status TensorFlowModelParser::GraphDefOptimizeDestroyTemporaryVariable(
   if (nodeCurrent->op() != ge::parser::DESTROYTEMPORARYVARIABLE) {
     return SUCCESS;
   }
+  if (nodeCurrent->input_size() < 1) {
+    REPORT_INNER_ERR_MSG("E19999", "Node:%s of DestroyTemporaryVariable has no input, check invalid",
+                         nodeCurrent->name().c_str());
+    GELOGE(FAILED, "DestroyTemporaryVariable node [%s] has no input.", nodeCurrent->name().c_str());
+    return FAILED;
+  }
 
   GELOGI("Optimize DestroyTemporaryVariable, node name is [%s].", nodeCurrent->name().c_str());
   bool clearInputFlag = false;
@@ -3023,8 +3102,14 @@ domiTensorFormat_t TensorFlowModelParser::InferInputFormats() {
 }
 
 Status TensorFlowModelParser::GetNodeFormat(const NodeDef *node, TfTranspose pred_transpose, domiTensorFormat_t &format,
-                                            set<const NodeDef *> &visited_node) {
+                                            set<const NodeDef *> &visited_node, uint32_t depth) {
   GE_CHECK_NOTNULL(node);
+  // visited_node 只防环不防深度，超长节点链会耗尽线程栈
+  if (depth > kMaxFormatInferRecursionDepth) {
+    GELOGW("The recursion depth of format inference exceeds %u, node name:%s.", kMaxFormatInferRecursionDepth,
+           node->name().c_str());
+    return FAILED;
+  }
   // Avoid repeated visits.
   GE_IF_BOOL_EXEC(visited_node.find(node) != visited_node.end(), return SUCCESS);
   visited_node.emplace(node);
@@ -3072,7 +3157,7 @@ Status TensorFlowModelParser::GetNodeFormat(const NodeDef *node, TfTranspose pre
     const NodeDef *output_node = node_iter->second;
     GE_CHECK_NOTNULL(output_node);
     domiTensorFormat_t output_format = DOMI_TENSOR_RESERVED;
-    GE_RETURN_IF_ERROR(GetNodeFormat(output_node, transpose, output_format, visited_node));
+    GE_RETURN_IF_ERROR(GetNodeFormat(output_node, transpose, output_format, visited_node, depth + 1U));
 
     GE_IF_BOOL_EXEC(output_format != DOMI_TENSOR_RESERVED && inferred_format != DOMI_TENSOR_RESERVED &&
                         output_format != inferred_format,
@@ -3384,6 +3469,7 @@ Status TensorFlowModelParser::FusionNodeParseParams(shared_ptr<OpParser> &op_par
     }
     shared_ptr<TensorFlowFusionCustomParserAdapter> tf_custom_fusion_op_paser =
         std::dynamic_pointer_cast<TensorFlowFusionCustomParserAdapter>(tensorflow_fusion_op_parser);
+    GE_CHECK_NOTNULL(tf_custom_fusion_op_paser);
     status = tf_custom_fusion_op_paser->ParseParams(op_src_vec, node);
     if (status != SUCCESS) {
       GELOGE(status, "Parse params for fusionop node %s failed", node_def->name().c_str());
@@ -3632,10 +3718,8 @@ void TensorFlowModelParser::RemoveInputAttr(domi::tensorflow::NodeDef *node_def,
       // 2.1 remove the input attr
       if (!tmp_attr->empty() && (attr_it != tmp_attr->end())) {
         attr_it = tmp_attr->erase(attr_it);
-      } else {
-        ++attr_it;
       }
-    } else {
+    } else if (attr_it != tmp_attr->end()) {
       ++attr_it;
     }
   }

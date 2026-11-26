@@ -1048,12 +1048,23 @@ bool GraphReplace::CheckShapeAndTypeContinuous(const map<FusionRuleAnchorPtr, se
   return true;
 }
 bool GraphReplace::CheckShape(ge::OutDataAnchorPtr out_anchor, ge::InDataAnchorPtr peer_in_anchor) const {
-  FE_CHECK_NOTNULL(out_anchor);
-  FE_CHECK_NOTNULL(peer_in_anchor);
+  if (out_anchor == nullptr || peer_in_anchor == nullptr) {
+    REPORT_FE_ERROR("[GraphOpt][RunFusionRule][ChkShp] out_anchor or peer_in_anchor is null");
+    return false;
+  }
   auto peer_node = peer_in_anchor->GetOwnerNode();
   auto node = out_anchor->GetOwnerNode();
+  if (node == nullptr || peer_node == nullptr) {
+    REPORT_FE_ERROR("[GraphOpt][RunFusionRule][ChkShp] owner node of anchor is null");
+    return false;
+  }
   auto opdesc = node->GetOpDesc();
   auto peer_opdesc = peer_node->GetOpDesc();
+  if (opdesc == nullptr || peer_opdesc == nullptr) {
+    REPORT_FE_ERROR("[GraphOpt][RunFusionRule][ChkShp] node [%s] or peer node [%s] opdesc is null",
+                    node->GetName().c_str(), peer_node->GetName().c_str());
+    return false;
+  }
   auto output_desc_ptr = opdesc->MutableOutputDesc(out_anchor->GetIdx());
   auto input_desc_ptr = peer_opdesc->MutableInputDesc(peer_in_anchor->GetIdx());
   if (output_desc_ptr == nullptr || input_desc_ptr == nullptr) {
@@ -1071,11 +1082,23 @@ bool GraphReplace::CheckShape(ge::OutDataAnchorPtr out_anchor, ge::InDataAnchorP
   return true;
 }
 bool GraphReplace::CheckDataType(ge::OutDataAnchorPtr out_anchor, ge::InDataAnchorPtr peer_in_anchor) const {
-  FE_CHECK_NOTNULL(out_anchor);
+  if (out_anchor == nullptr || peer_in_anchor == nullptr) {
+    REPORT_FE_ERROR("[GraphOpt][RunFusionRule][ChkDatatype] out_anchor or peer_in_anchor is null");
+    return false;
+  }
   auto peer_node = peer_in_anchor->GetOwnerNode();
   auto node = out_anchor->GetOwnerNode();
+  if (node == nullptr || peer_node == nullptr) {
+    REPORT_FE_ERROR("[GraphOpt][RunFusionRule][ChkDatatype] owner node of anchor is null");
+    return false;
+  }
   auto opdesc = node->GetOpDesc();
   auto peer_opdesc = peer_node->GetOpDesc();
+  if (opdesc == nullptr || peer_opdesc == nullptr) {
+    REPORT_FE_ERROR("[GraphOpt][RunFusionRule][ChkDatatype] node [%s] or peer node [%s] opdesc is null",
+                    node->GetName().c_str(), peer_node->GetName().c_str());
+    return false;
+  }
   ge::ConstGeTensorDescPtr output_desc_ptr = opdesc->GetOutputDescPtr(out_anchor->GetIdx());
   ge::ConstGeTensorDescPtr input_desc_ptr = peer_opdesc->GetInputDescPtr(peer_in_anchor->GetIdx());
   if (output_desc_ptr == nullptr || input_desc_ptr == nullptr) {

@@ -6,7 +6,7 @@
 
 Plugin files are placed under the path specified by the environment variable `ASCEND_CUSTOM_OPP_PATH`, and are automatically discovered and registered by the parser during the initialization phase. This environment variable supports multiple paths separated by `:`. Each path can be a single `.py` file or a directory. In directory mode, only the direct `.py` files and subpackages within it are loaded, and files or directories whose names start with `_` are skipped. The same origin type (`domain::opset::operator type`, for example `ai.onnx::11::Elu`) can be provided by only one plugin. When a C++ plugin conflicts with a Python plugin, the C++ plugin is retained. When Python plugins conflict with each other, parser initialization fails.
 
-For a complete runnable plugin example, see [ONNX Plugin Example](../../../../../../../examples/onnx_plugin/README.md).
+For a complete runnable plugin example, see [ONNX Plugin Example](../../../../../../../examples/onnx_plugin/README_en.md).
 
 The module members are as follows:
 

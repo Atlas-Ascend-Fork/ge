@@ -503,7 +503,7 @@ class PARSER_FUNC_VISIBILITY TensorFlowModelParser : public domi::ModelParser {
 
    */
   Status GetNodeFormat(const NodeDef *node, TfTranspose pred_transpose, domiTensorFormat_t &format,
-                       set<const NodeDef *> &visited_node);
+                       set<const NodeDef *> &visited_node, uint32_t depth = 0U);
 
   /**
    * @ingroup domi_omg

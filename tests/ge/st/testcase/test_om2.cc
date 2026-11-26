@@ -64,6 +64,7 @@
 #include "framework/common/taskdown_common.h"
 #include "ge_runtime_stub/include/faker/custom_taskdef_faker.h"
 #include "ge_runtime_stub/include/faker/hccl_taskdef_faker.h"
+#include "stub/gert_runtime_stub.h"
 
 #include "graph/custom_op_factory.h"
 #include "graph/custom_op.h"
@@ -1942,6 +1943,20 @@ class TestCapabilityProviderCustomOp : public EagerExecuteOp, public CustomOpCap
 
   graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
     return SUCCESS;
+  }
+};
+
+// 非 Portable 拦截对照：仅实现 EagerExecuteOp + ArgsUpdater、不继承 PortableOp（kernel 由算子 so
+// 自管形态），无法序列化进 custom_ops binaries。OM2 离线打包要求全部 custom store 自定义算子
+// 实现 PortableOp，须在构建期被 CapabilityCheck 拒绝（Callback 与 kNone 模式同判）
+class TestNonPortableCustomOp : public EagerExecuteOp, public ArgsUpdater {
+ public:
+  graphStatus Execute(gert::EagerOpExecutionContext *ctx) override {
+    return SUCCESS;
+  }
+
+  graphStatus UpdateHostArgs(gert::UpdateArgsContext *ctx) override {
+    return GRAPH_SUCCESS;
   }
 };
 
@@ -5495,6 +5510,35 @@ TEST_F(Om2St, BuildOm2ModelData_EagerCustomOpStreamDeclared_Rejected) {
   (void)AttrUtils::SetInt(model, ATTR_MODEL_EAGER_CUSTOM_OP_STREAM_NUM, 2);
   gert::GertModelData data;
   EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), UNSUPPORTED);
+  CustomOpFactory::RemoveCustomOps({kOpType});
+}
+
+/**
+ * 用例描述：自定义算子未实现 PortableOp 时，打包在 CapabilityCheck 被拒绝（Callback 模式代表场景）。
+ * 预置条件：注册非 PortableOp 的自定义算子，构建 kUpdateCallback 自定义算子模型。
+ * 测试步骤：调用 BuildOm2ModelData 走完整打包链路。
+ * 预期结果：返回 UNSUPPORTED，报错日志命中 PortableOp 能力校验特征（先于 binaries 构建与 codegen，不进入 g++ 编译）。
+ */
+TEST_F(Om2St, BuildOm2ModelData_CallbackNonPortableOp_Rejected) {
+  // OM2 离线打包要求全部 custom store 自定义算子实现 PortableOp：非 Portable 算子无法序列化进
+  // binaries，纯非 Portable 模型（含 Callback 地址刷新形态）的自定义算子辅助代码（按 has_custom_kernel
+  // 门控）缺失，生成 SO 会因未声明符号编译失败，故在构建期拦截为明确报错
+  const AscendString kOpType("TestNonPortableCustomOp");
+  ASSERT_EQ(CustomOpFactory::RegisterCustomOpCreator(
+                kOpType, []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<TestNonPortableCustomOp>(); }),
+            GRAPH_SUCCESS);
+  auto root = CreateGeRootModelWithCustomOp("TestNonPortableCustomOp");
+  ASSERT_NE(root, nullptr);
+  const auto op_desc = FindCustomOpDesc(root, "TestNonPortableCustomOp");
+  ASSERT_NE(op_desc, nullptr);
+  (void)AttrUtils::SetInt(op_desc, ATTR_NAME_CUSTOM_TASK_ARGS_MODE,
+                          static_cast<int64_t>(CustomTaskArgsMode::kUpdateCallback));
+  const auto model = root->GetSubgraphInstanceNameToModel().begin()->second;
+  gert::GertModelData data;
+  gert::GertRuntimeStub stub;
+  EXPECT_EQ(Om2PackageHelper().BuildOm2ModelData(model, data, root), UNSUPPORTED);
+  // 按日志特征区分拒绝原因：该报错仅由 PortableOp 能力校验产生
+  EXPECT_NE(stub.GetSlogStub().FindLog(DLOG_ERROR, "must implement PortableOp"), -1);
   CustomOpFactory::RemoveCustomOps({kOpType});
 }
 

@@ -74,6 +74,7 @@
   - 详见 [pre-commit 使用指南](docs/zh/contributions/precommit_guide.md)
 - 所有新增文件包含完整的 CANN OSL 版权头，年份和格式参考仓库根目录 [OAT.xml](OAT.xml) 及现有源文件。版权头必须包含完整的许可证说明，不能只保留 Copyright 行：
   - `.cpp`/`.h`：
+
     ```cpp
     /**
      * Copyright (c) <year> Huawei Technologies Co., Ltd.
@@ -85,7 +86,9 @@
      * See LICENSE in the root of the software repository for the full text of the License.
      */
     ```
+
   - `.sh`：
+
     ```bash
     #!/bin/bash
     # -----------------------------------------------------------------------------------------------------------
@@ -98,7 +101,9 @@
     # See LICENSE in the root of the software repository for the full text of the License.
     # -----------------------------------------------------------------------------------------------------------
     ```
+
   - `.py`：
+
     ```python
     #!/usr/bin/env python3
     # -*- coding: utf-8 -*-
@@ -112,6 +117,7 @@
     # See LICENSE in the root of the software repository for the full text of the License.
     # -----------------------------------------------------------------------------------------------------------
     ```
+
 - Shell 脚本应根据错误处理需求使用 `set -e`；如果脚本需要允许命令失败或无匹配结果继续执行，应显式处理返回值，并在脚本中说明例外原因。
 - `cd` 命令检查返回值：`cd path || { echo "error"; exit 1; }`
 - 函数体不超过 50 行（超大函数会被 CI 拦截）
@@ -120,14 +126,18 @@
 ### 提交规范
 
 - 如果分支包含多个无效 commit，建议在提交 PR 前通过 rebase 进行 squash，以保持提交历史简洁：
+
   ```bash
   git rebase -i upstream/develop   # 多余的 pick → s (squash)
   ```
+
 - PR 的目标仓库和目标分支：提交到 [cann/ge](https://gitcode.com/cann/ge) 仓库的 `develop` 分支。
 - 基于最新 develop 分支：
+
   ```bash
   git fetch upstream develop && git rebase upstream/develop
   ```
+
 - commit message 格式：`<type>: <描述>`（如 `feat: add xxx`, `fix: fix xxx`）
 
 ### 文档
@@ -140,7 +150,7 @@
 提交 PR 后，需要在 PR 评论区发送 `compile`（也支持 `/compile`）触发 CI 流水线；PR 更新后如需重新执行流水线，请再次发送该评论。流水线触发后会运行以下检查项及其本地验证方式：
 
 | CI 检查项 | 作用 | 本地验证 |
-|---|---|---|
+| --- | --- | --- |
 | `codecheck_precommit` | 代码格式合规（pre-commit hooks） | `pre-commit run` |
 | `codecheck_dt` | DT 测试用例规范检查 | 参考 [DT 用例开发指导](docs/zh/contributions/dev_test_guide/) |
 | `clang-format` | C++ 代码格式化 | `clang-format -i <file>` |
@@ -183,7 +193,7 @@ GE 的贡献按复杂度分为三级，请根据您的贡献类型选择对应�
 #### 代码目录导航
 
 | 目录 | 职责 |
-|---|---|
+| --- | --- |
 | `compiler/graph/passes/` | 图优化 pass（融合、常量折叠、格式推导） |
 | `compiler/graph/build/` | 编译构建（内存分配、流分配、task 生成） |
 | `compiler/graph/partition/` | 图拆分（动静分离、引擎分区） |
@@ -197,7 +207,7 @@ GE 的贡献按复杂度分为三级，请根据您的贡献类型选择对应�
 #### 贡献场景约束速查
 
 | 改动场景 | 必须遵守的约束 | 参考文档 |
-|---|---|---|
+| --- | --- | --- |
 | 改图优化 pass | 图等价变换、控制边处理、节点名约束 | `docs/zh/contributions/coding_red_lines.md` 规则 4、7、8 |
 | 改内存分配 | 内存复用约束、跨 so 析构安全 | `docs/zh/design/constraints/memory-constraints.md` |
 | 改 runtime 执行 | RT2 动态 shape 约束、hybrid 执行流程 | `docs/zh/design/constraints/rt2_runtime.md` |
@@ -209,7 +219,7 @@ GE 的贡献按复杂度分为三级，请根据您的贡献类型选择对应�
 #### 测试要求
 
 | 改动类型 | 最低测试要求 |
-|---|---|
+| --- | --- |
 | 新增 pass | UT + ST；UT 覆盖率 > 90%，ST 覆盖率 > 80% |
 | 改 runtime | UT + ST + 回归测试 |
 | 改 ACL API | UT + API 接口用例验证 |

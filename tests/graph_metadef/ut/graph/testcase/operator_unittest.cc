@@ -21,6 +21,7 @@
 #include "graph/type/tensor_type_impl.h"
 #include "graph_builder_utils.h"
 #include <string.h>
+#include <utility>
 #include "graph/utils/tensor_utils.h"
 #include "graph/normal_graph/compute_graph_impl.h"
 #include "graph/utils/graph_utils.h"
@@ -3520,5 +3521,41 @@ TEST_F(UtestOperater, IncCov_OperatorGetSubgraphNames_NullImpl) {
   EXPECT_EQ(valid_op.GetSubgraphNames(names), GRAPH_SUCCESS);
   ASSERT_EQ(names.size(), 1UL);
   EXPECT_STREQ(names[0].GetString(), "branch_a");
+}
+
+TEST_F(UtestOperater, IncCov_OperatorGetName_NullImplClearsOldValue) {
+  ge::Operator op("test_op_clear_name", "Test");
+  op.operator_impl_ = nullptr;
+  AscendString name("old_name");
+  EXPECT_EQ(op.GetName(name), GRAPH_SUCCESS);
+  EXPECT_EQ(name.GetLength(), 0UL);
+}
+
+TEST_F(UtestOperater, IncCov_RequiredAttrWithTypeRegister_NullType) {
+  ge::Operator op("test_op_null_type", "Test");
+  op.RequiredAttrWithTypeRegister("attr", nullptr);
+  SUCCEED();
+}
+
+TEST_F(UtestOperater, IncCov_UpdateDynamicInputDesc_NullImpl) {
+  ge::Operator op("test_op_dyn_input", "Test");
+  op.operator_impl_ = nullptr;
+  const TensorDesc desc;
+  EXPECT_EQ(op.UpdateDynamicInputDesc("input", 0U, desc), GRAPH_FAILED);
+}
+
+TEST_F(UtestOperater, IncCov_SetAttr_NullAttrValueImpl) {
+  ge::Operator op("test_op_null_attr_value", "Test");
+  AttrValue value1;
+  value1.impl = nullptr;
+  EXPECT_EQ(&op.SetAttr(std::string("attr1"), std::move(value1)), &op);
+
+  AttrValue value2;
+  value2.impl = nullptr;
+  EXPECT_EQ(&op.SetAttr("attr2", std::move(value2)), &op);
+
+  AttrValue value3;
+  value3.impl = nullptr;
+  EXPECT_EQ(&op.SetAttr("attr3", value3), &op);
 }
 }  // namespace ge

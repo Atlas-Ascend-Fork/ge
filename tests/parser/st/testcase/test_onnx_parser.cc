@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 #include <cstdlib>
+#include <map>
+#include <limits>
 #include <dlfcn.h>
 #include <iostream>
 #include <string>
@@ -27,6 +29,7 @@
 #include "depends/ops_stub/ops_stub.h"
 #include "framework/omg/parser/parser_factory.h"
 #include "parser/onnx/onnx_util.h"
+#include "parser/onnx/onnx_constant_parser.h"
 #include "graph/ge_local_context.h"
 #include "common/ge_common/ge_types.h"
 #include "parser/onnx/onnx_parser_internal.h"
@@ -575,4 +578,68 @@ TEST_F(STestOnnxParser, onnx_python_plugin_bridge_parse_without_explicit_load) {
   unsetenv("ASCEND_CUSTOM_OPP_PATH");
   unsetenv("PYTHONPATH");
 }
+
+// 覆盖率补充用例：IncCov_OnnxConstantRawDataTooSmall
+// 目的：覆盖 raw_data 字节数小于 shape 所需时的拒绝分支。
+// 说明：仅通过公开接口构造边界输入，不改动被测逻辑。
+TEST_F(STestOnnxParser, IncCov_OnnxConstantRawDataTooSmall) {
+  OnnxConstantParser constant_parser;
+  ge::onnx::TensorProto tensor_proto;
+  tensor_proto.set_data_type(1);
+  tensor_proto.add_dims(4);
+  tensor_proto.set_raw_data(std::string(4U, '\0'));
+  ge::Tensor tensor;
+  (void)constant_parser.ParseConvertDataType(tensor_proto, tensor);
+  EXPECT_EQ(constant_parser.ParseConvertTensor(tensor_proto, tensor), FAILED);
+}
+
+// 覆盖率补充用例：IncCov_OnnxConstantInt32DataPath
+// 目的：覆盖 int32_data 元素解析路径。
+// 说明：仅通过公开接口构造边界输入，不改动被测逻辑。
+TEST_F(STestOnnxParser, IncCov_OnnxConstantInt32DataPath) {
+  OnnxConstantParser constant_parser;
+  ge::onnx::TensorProto tensor_proto;
+  tensor_proto.set_data_type(OnnxDataType::INT32);
+  tensor_proto.add_dims(2);
+  tensor_proto.add_int32_data(1);
+  tensor_proto.add_int32_data(2);
+  ge::Tensor tensor;
+  EXPECT_EQ(constant_parser.ParseConvertDataType(tensor_proto, tensor), SUCCESS);
+  EXPECT_EQ(constant_parser.ParseConvertTensor(tensor_proto, tensor), SUCCESS);
+}
+
+// 覆盖率补充用例：raw_data 比 shape 所需更大时仅告警并继续。
+TEST_F(STestOnnxParser, IncCov_OnnxConstantRawDataLarger) {
+  OnnxConstantParser constant_parser;
+  ge::onnx::TensorProto tensor_proto;
+  tensor_proto.set_data_type(1);
+  tensor_proto.add_dims(1);
+  tensor_proto.set_raw_data(std::string(64U, '\0'));
+  ge::Tensor tensor;
+  (void)constant_parser.ParseConvertDataType(tensor_proto, tensor);
+  EXPECT_EQ(constant_parser.ParseConvertTensor(tensor_proto, tensor), SUCCESS);
+}
+
+// 覆盖率补充用例：维度乘积超过 INT32_MAX 时拒绝。
+TEST_F(STestOnnxParser, IncCov_OnnxConstantDimOverflow) {
+  OnnxConstantParser constant_parser;
+  ge::onnx::TensorProto tensor_proto;
+  tensor_proto.set_data_type(1);
+  tensor_proto.add_dims(65536);
+  tensor_proto.add_dims(65536);
+  ge::Tensor tensor;
+  (void)constant_parser.ParseConvertDataType(tensor_proto, tensor);
+  EXPECT_EQ(constant_parser.ParseConvertTensor(tensor_proto, tensor), FAILED);
+}
+
+// 覆盖率补充用例：ONNX 内存模型长度超过 int32 上限时拒绝，避免长度截断。
+TEST_F(STestOnnxParser, IncCov_OnnxParseFromMemSizeTooLarge) {
+  char buffer[4] = {0};
+  std::map<AscendString, AscendString> parser_params;
+  ge::Graph graph("inc_cov_onnx_mem_graph");
+  const size_t too_large = static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1U;
+  const graphStatus ret = aclgrphParseONNXFromMem(buffer, too_large, parser_params, graph);
+  EXPECT_NE(ret, ge::SUCCESS);
+}
+
 }  // namespace ge

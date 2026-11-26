@@ -171,12 +171,13 @@ Status CollectNodeFuncs(vector<ge::NodePtr> &nodes, FunctionDefLibrary *library)
     string funcdefStr;
     ge::Buffer funcDefBytes;
 
-    GE_IF_BOOL_EXEC(
-        AttrUtils::GetBytes(opDef, ge::ATTR_NAME_FRAMEWORK_FUNC_DEF, funcDefBytes), FunctionDefLibrary funcLib;
-        GE_CHECK_NOTNULL(funcDefBytes.GetData());
-        string str(PtrToPtr<uint8_t, char_t>(funcDefBytes.GetData()), funcDefBytes.GetSize());
-        GELOGI("FUNCDEF: Get function -> %s.", str.c_str()); GE_IF_BOOL_EXEC(
-            funcLib.ParseFromArray(funcDefBytes.GetData(), funcDefBytes.GetSize()), library->MergeFrom(funcLib)));
+    GE_IF_BOOL_EXEC(AttrUtils::GetBytes(opDef, ge::ATTR_NAME_FRAMEWORK_FUNC_DEF, funcDefBytes),
+                    FunctionDefLibrary funcLib;
+                    GE_CHECK_NOTNULL(funcDefBytes.GetData());
+                    string str(PtrToPtr<uint8_t, char_t>(funcDefBytes.GetData()), funcDefBytes.GetSize());
+                    GELOGD("FUNCDEF: node %s get function def, size: %zu bytes.", node->GetName().c_str(), str.size());
+                    GE_IF_BOOL_EXEC(funcLib.ParseFromArray(funcDefBytes.GetData(), funcDefBytes.GetSize()),
+                                    library->MergeFrom(funcLib)));
   }
   return SUCCESS;
 }

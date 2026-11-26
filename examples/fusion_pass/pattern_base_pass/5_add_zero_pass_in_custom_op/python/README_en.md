@@ -23,7 +23,7 @@ python/
 
 ## Prerequisites
 
-- CANN environment variables configured via `source ${ASCEND_PATH}/set_env.sh`, see [C++ sample README](../cpp/README.md) environment configuration steps
+- CANN environment variables configured via `source ${ASCEND_PATH}/set_env.sh`, see [C++ sample README](../cpp/README_en.md) environment configuration steps
 - CANN software package installation per [Environment preparation](../../../../../docs/en/build.md#1-environment-preparation)
 - Graph compilation flow Python dependencies installed: `attrs`, `decorator`, `sympy`, `numpy`, `psutil`, `scipy`
 
@@ -38,7 +38,7 @@ However, run package doesn't include this sample's `AddCustom` Python ES API, ne
 
 ## Preparation
 
-Before writing Python pass for custom operators, need to complete custom operator project creation, operator implementation, operator package compilation deployment and operator adaptation development, refer to [C++ sample README](../cpp/README.md) preparation section.
+Before writing Python pass for custom operators, need to complete custom operator project creation, operator implementation, operator package compilation deployment and operator adaptation development, refer to [C++ sample README](../cpp/README_en.md) preparation section.
 
 ## Usage
 
@@ -76,7 +76,7 @@ Before writing Python pass for custom operators, need to complete custom operato
    export ASCEND_GE_PY_PASS_PATH=$(pwd)/src/python_addcustom_zero_pass.py
    ```
 
-5. Follow [C++ sample README](../cpp/README.md) verification section for verification.
+5. Follow [C++ sample README](../cpp/README_en.md) verification section for verification.
 
 6. Notes:
 

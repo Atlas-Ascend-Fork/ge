@@ -761,7 +761,7 @@ EsCTensorHolder *EsConcatD(EsCTensorHolder ** x, int64_t x_num, int64_t concat_d
 }
 ```
 
-The registered approach currently cannot be implemented due to inter-component coordination limitations. You can use [custom ES implementation](../../../../../../examples/custom_es_api/README.md).
+The registered approach currently cannot be implemented due to inter-component coordination limitations. You can use [custom ES implementation](../../../../../../examples/custom_es_api/README_en.md).
 
 #### Control Subgraph
 

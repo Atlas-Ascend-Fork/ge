@@ -421,6 +421,12 @@ Each Kernel registers to `KernelFactory` through `REGISTER_COMPUTE_NODE_KERNEL` 
 
 For floating-point inputs, `FloorDiv` computes `floor(x / y)`. For integers it uses the quotient and remainder at the original input width and subtracts one from the quotient if the signs differ and the remainder is nonzero. Dividing the minimum signed integer by -1 returns `NOT_CHANGED` without producing an output. The existing fallback for zero or near-zero divisors still applies.
 
+The built-in `FloorMod` supports `DT_INT32`. An exact multiple produces zero. Every other remainder has the sign of the divisor. The kernel computes the integer remainder and adjusts its sign without taking an absolute value or multiplying the quotient. The remainder of `INT32_MIN` divided by -1 is zero. Zero divisors return `NOT_CHANGED`, including in broadcast inputs.
+
+The built-in `ReduceProd` folds a specified reduction axis only when there is exactly one axis. A valid multi-axis request returns `NOT_CHANGED` so a subsequent execution path can reduce over all requested axes. An empty axis tensor preserves the input. Omitting the axis input computes the product of all elements.
+
+The built-in Host `Cast` truncates finite FP16 values toward zero when converting to INT32, matching FP32-to-INT32 conversion. Rounding in the general-purpose `fp16_t` class is unchanged. For infinities and NaNs the conversion retains the result of `fp16_t::ToInt32()`.
+
 #### 4.5.2 AICPU Host CPU Engine
 
 As GE built-in Kernel supplement, through AICPU engine execute operators. `HostCpuEngine` implementation located at `base/host_cpu_engine/` (`host_cpu_engine.h`), runtime path `runtime/v2/engine/aicpu/kernel/aicpu_resource_manager.cc` also references this SO.

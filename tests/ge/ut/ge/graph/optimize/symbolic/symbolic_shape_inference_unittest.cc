@@ -43,11 +43,13 @@
 #include "stub/gert_runtime_stub.h"
 #include "exe_graph/runtime/infer_symbol_context.h"
 #include "register/op_impl_registry.h"
+#include "graph/custom_op_factory.h"
 
 namespace ge {
 
 namespace {
 size_t g_custom_symbol_call_count = 0U;
+size_t g_host_compute_call_count = 0U;
 
 UINT32 InferCustomSymbol(gert::InferSymbolContext *context) {
   ++g_custom_symbol_call_count;
@@ -68,6 +70,11 @@ UINT32 InferCustomSymbolNotChanged(gert::InferSymbolContext *context) {
   return ret == GRAPH_SUCCESS ? GRAPH_NOT_CHANGED : ret;
 }
 
+UINT32 InferCustomSymbolFailed(gert::InferSymbolContext *context) {
+  ++g_custom_symbol_call_count;
+  return GRAPH_FAILED;
+}
+
 UINT32 InferBuiltinSymbolShape(gert::InferSymbolContext *context) {
   const auto input = context->GetInputSymbolShape(0U);
   const auto output = context->GetOutputSymbolShape(0U);
@@ -78,7 +85,23 @@ UINT32 InferBuiltinSymbolShape(gert::InferSymbolContext *context) {
   return GRAPH_SUCCESS;
 }
 
+UINT32 ComputeHostSymbol(gert::InferSymbolComputeContext *context) {
+  (void)context;
+  ++g_host_compute_call_count;
+  return GRAPH_SUCCESS;
+}
+
 IMPL_OP_INFER_SYMBOL_SHAPE_INNER(BuiltinSymbolShapeForContextTest).InferSymbolShape(InferBuiltinSymbolShape);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(CustomSymbolNotChangedWithBuiltinOp).InferSymbolShape(InferBuiltinSymbolShape);
+REGISTER_SYMBOLIC_KERNEL(CustomSymbolicInferCapabilityOp, ComputeHostSymbol);
+REGISTER_SYMBOLIC_KERNEL(CustomSymbolNotChangedWithBuiltinOp, ComputeHostSymbol);
+
+class TestSymbolicInferOp final : public SymbolicInferOp {
+ public:
+  graphStatus InferSymbol(gert::InferSymbolContext *context) override {
+    return InferCustomSymbol(context);
+  }
+};
 }  // namespace
 
 bool EnableSliceSchedule() {  // 桩函数
@@ -6173,5 +6196,83 @@ TEST_F(SymbolicShapeInferenceUT, InferBuiltinShapeWithPublishedContext) {
   ASSERT_EQ(output.GetOriginSymbolShape().GetDimNum(), 1U);
   EXPECT_EQ(output.GetOriginSymbolShape().GetDim(0U), input_dim + Symbol(2));
   EXPECT_FALSE(output.HasValue());
+}
+TEST_F(SymbolicShapeInferenceUT, InferSymbolicInferOpPrecedesOtherCallbacks) {
+  const AscendString op_type("CustomSymbolicInferCapabilityOp");
+  ASSERT_EQ(CustomOpFactory::RegisterCustomOpCreator(
+                op_type, []() -> std::unique_ptr<BaseCustomOp> { return ge::MakeUnique<TestSymbolicInferOp>(); }),
+            GRAPH_SUCCESS);
+  GE_MAKE_GUARD(remove_custom_op, [&]() { CustomOpFactory::RemoveCustomOps({op_type}); });
+  g_custom_symbol_call_count = 0U;
+  g_host_compute_call_count = 0U;
+  auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+  ASSERT_NE(registry, nullptr);
+  auto funcs = registry->CreateOrGetOpImpl(op_type.GetString());
+  ASSERT_NE(funcs, nullptr);
+  funcs->infer_symbol = InferCustomSymbolNotChanged;
+
+  auto graph = std::make_shared<ComputeGraph>("CustomSymbolicInferCapabilityGraph");
+  auto op_desc = std::make_shared<OpDesc>("custom_symbolic_infer", op_type.GetString());
+  GeTensorDesc tensor_desc(GeShape({-1}), FORMAT_ND, DT_FLOAT);
+  tensor_desc.SetOriginShape(GeShape({-1}));
+  ASSERT_EQ(op_desc->AddInputDesc(tensor_desc), GRAPH_SUCCESS);
+  ASSERT_EQ(op_desc->AddOutputDesc(tensor_desc), GRAPH_SUCCESS);
+  auto input_attr = op_desc->MutableInputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(input_attr, nullptr);
+  input_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol("capability_input")}));
+  ASSERT_NE(graph->AddNode(op_desc), nullptr);
+
+  ASSERT_EQ(SymbolicShapeInference().Infer(graph), SUCCESS);
+  EXPECT_EQ(g_custom_symbol_call_count, 1U);
+  EXPECT_EQ(g_host_compute_call_count, 0U);
+  const auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  const auto dims = SymbolicInferUtil::GetSymbolDims(attr->symbolic_tensor.GetOriginSymbolShape());
+  EXPECT_EQ(dims, (std::vector<Expression>{Symbol("capability_input") + Symbol(1)}));
+}
+
+TEST_F(SymbolicShapeInferenceUT, InferCustomSymbolNotChangedSkipsBuiltin) {
+  g_custom_symbol_call_count = 0U;
+  g_host_compute_call_count = 0U;
+  auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+  ASSERT_NE(registry, nullptr);
+  auto funcs = registry->CreateOrGetOpImpl("CustomSymbolNotChangedWithBuiltinOp");
+  ASSERT_NE(funcs, nullptr);
+  funcs->infer_symbol = InferCustomSymbolNotChanged;
+
+  auto graph = std::make_shared<ComputeGraph>("CustomSymbolNotChangedWithBuiltinGraph");
+  auto op_desc = std::make_shared<OpDesc>("custom_symbol", "CustomSymbolNotChangedWithBuiltinOp");
+  GeTensorDesc tensor_desc(GeShape({7}), FORMAT_ND, DT_FLOAT);
+  tensor_desc.SetOriginShape(GeShape({7}));
+  ASSERT_EQ(op_desc->AddOutputDesc(tensor_desc), GRAPH_SUCCESS);
+  ASSERT_NE(graph->AddNode(op_desc), nullptr);
+
+  ASSERT_EQ(SymbolicShapeInference().Infer(graph), SUCCESS);
+  EXPECT_EQ(g_custom_symbol_call_count, 1U);
+  EXPECT_EQ(g_host_compute_call_count, 0U);
+  const auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(attr->symbolic_tensor.GetOriginSymbolShape()),
+            (std::vector<Expression>{Symbol(7)}));
+  EXPECT_FALSE(attr->symbolic_tensor.HasValue());
+}
+TEST_F(SymbolicShapeInferenceUT, InferCustomSymbolFailedDiscardsOutput) {
+  g_custom_symbol_call_count = 0U;
+  auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+  ASSERT_NE(registry, nullptr);
+  auto funcs = registry->CreateOrGetOpImpl("CustomSymbolFailedOp");
+  ASSERT_NE(funcs, nullptr);
+  funcs->infer_symbol = InferCustomSymbolFailed;
+
+  auto graph = std::make_shared<ComputeGraph>("CustomSymbolFailedGraph");
+  auto op_desc = std::make_shared<OpDesc>("custom_symbol", "CustomSymbolFailedOp");
+  GeTensorDesc tensor_desc(GeShape({7}), FORMAT_ND, DT_FLOAT);
+  tensor_desc.SetOriginShape(GeShape({7}));
+  ASSERT_EQ(op_desc->AddOutputDesc(tensor_desc), GRAPH_SUCCESS);
+  ASSERT_NE(graph->AddNode(op_desc), nullptr);
+
+  EXPECT_EQ(SymbolicShapeInference().Infer(graph), ge::PARAM_INVALID);
+  EXPECT_EQ(g_custom_symbol_call_count, 1U);
+  EXPECT_EQ(op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>(), nullptr);
 }
 }  // namespace ge

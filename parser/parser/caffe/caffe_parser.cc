@@ -478,6 +478,8 @@ Status CaffeModelParser::ReadModelWithoutWarning(const char *model_path, google:
   }
 
   if (ReadCaffeModelFromText(model_path, message) != SUCCESS) {
+    // 失败路径同样要恢复进程 stderr，否则 copy_fd 关闭后 stderr 永久指向 /dev/null
+    (void)mmDup2(copy_fd, STDERR_FILENO);
     (void)mmClose(fd);
     (void)mmClose(copy_fd);
     GELOGE(FAILED, "[Read][CaffeModel] From Text %s failed.", model_path);
@@ -775,6 +777,7 @@ Status CaffeModelParser::ParseOpParam(const domi::caffe::LayerParameter &layer, 
     // The custom op defined by customer deals with parse params separately
     std::shared_ptr<ge::CaffeCustomParserAdapter> caffe_custom_op_parser =
         std::dynamic_pointer_cast<ge::CaffeCustomParserAdapter>(op_parser);
+    GE_CHECK_NOTNULL(caffe_custom_op_parser);
     vector<ge::Operator> custom_operator;
     status = GetCustomOp(layer, custom_operator);
     if (status != SUCCESS || custom_operator.empty()) {
@@ -1247,6 +1250,8 @@ Status CaffeModelParser::ParseFromMemory(const char *data, uint32_t size, ge::Co
   GE_CHK_BOOL_RET_STATUS(data != nullptr, FAILED, "[Check][Param]model data  is nullptr.");
   GE_CHK_BOOL_RET_STATUS(graph != nullptr, FAILED, "[Check][Param]graph is nullptr.");
 
+  // 清理上一模型解析残留的 layer->param 共享映射，避免跨模型权重错配
+  params_share_map.clear();
   domi::caffe::NetParameter proto_message;
 
   // Get Caffe network model information
@@ -1461,6 +1466,8 @@ Status CaffeModelParser::Parse(const char *model_path, ge::ComputeGraphPtr &grap
   GELOGI("Caffe Parse model file [%s]", model_path);
 
   PreChecker::Instance().Clear();
+  // 清理上一模型解析残留的 layer->param 共享映射，避免跨模型权重错配
+  params_share_map.clear();
 
   domi::caffe::NetParameter proto_message;
 

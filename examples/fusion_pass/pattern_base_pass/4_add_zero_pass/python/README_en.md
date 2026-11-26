@@ -17,7 +17,7 @@ The two samples have different purposes:
   - Better suited as matcher_config example than fully equivalent version of C++ sample
 
 - `python_add_zero_pass.py`
-  - Main logic aligned with [C++ pass sample](../cpp/README.md)
+  - Main logic aligned with [C++ pass sample](../cpp/README_en.md)
   - `@pattern` method uses Python expression to describe `Data + Const` topology, e.g., `return inputs[0] + 0`
   - Multi-input pattern can explicitly declare input count via `x, y, z = inputs[:3]`
   - Multi-pattern pass can declare multiple `@pattern` methods; legacy `patterns(self)` returning multiple `Pattern` / `Graph` still compatible
@@ -54,7 +54,7 @@ python/
 
 ## Prerequisites
 
-- CANN environment variables configured via `source ${ASCEND_PATH}/set_env.sh`, see [C++ sample README](../cpp/README.md) environment configuration steps
+- CANN environment variables configured via `source ${ASCEND_PATH}/set_env.sh`, see [C++ sample README](../cpp/README_en.md) environment configuration steps
 - CANN software package installation per [Environment preparation](../../../../../docs/en/build.md#1-environment-preparation)
 - Graph compilation flow Python dependencies installed: `attrs`, `decorator`, `sympy`, `numpy`, `psutil`, `scipy`
 
@@ -75,7 +75,7 @@ Python pass runtime loads `pybind11`-based precompiled binary components. CANN p
    export ASCEND_GE_PY_PASS_PATH=$(pwd)/src/python_add_zero_pass.py
    ```
 
-2. Follow [C++ sample README](../cpp/README.md) program execution section for verification.
+2. Follow [C++ sample README](../cpp/README_en.md) program execution section for verification.
    For offline scenarios, replace `atc` command in C++ README with `pyatc`; both have identical command-line parameters, `pyatc` runs in current Python interpreter process.
 
 3. Notes:

@@ -22,7 +22,7 @@ python/
 
 ## Prerequisites
 
-- CANN environment variables configured via `source ${ASCEND_PATH}/set_env.sh`, see [C++ sample README](../cpp/README.md) environment configuration steps
+- CANN environment variables configured via `source ${ASCEND_PATH}/set_env.sh`, see [C++ sample README](../cpp/README_en.md) environment configuration steps
 - GE Python package importable (includes `ge.passes` and pass loading chain)
 
 run package includes GE Python runtime `ge_py` wheel, no need to install separate `ge_py-*.whl`.
@@ -39,7 +39,7 @@ Commands below default to execution in `2_fuse_matmul_add_pass_with_capture_tens
    export ASCEND_GE_PY_PASS_PATH=$PWD/src/python_fuse_matmul_add_pass.py
    ```
 
-2. Follow [C++ sample README](../cpp/README.md) program execution section for verification.
+2. Follow [C++ sample README](../cpp/README_en.md) program execution section for verification.
 
 3. Notes:
 

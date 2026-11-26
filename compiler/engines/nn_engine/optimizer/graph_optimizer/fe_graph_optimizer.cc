@@ -1616,11 +1616,10 @@ Status FEGraphOptimizer::OptimizeFusedGraph(ge::ComputeGraph &graph) {
   ge::TraceOwnerGuard guard_compile(FE_MODULE_NAME, kStageCompile, graph.GetName());
   ret = SubGraphCompile(graph, op_compiler, buffer_fusion_ptr);
   // count match & effect times
-  buffer_fusion_info_collecter_lock_.lock();
+  std::lock_guard<std::mutex> lock_guard(buffer_fusion_info_collecter_lock_);
   if (buffer_fusion_info_collecter_ptr_ == nullptr) {
     FE_MAKE_SHARED(buffer_fusion_info_collecter_ptr_ = std::make_shared<BufferFusionInfoCollecter>(), return FAILED);
   }
-  buffer_fusion_info_collecter_lock_.unlock();
   buffer_fusion_info_collecter_ptr_->CountBufferFusionTimes(graph);
   if (ret != SUCCESS) {
     return FAILED;

@@ -137,6 +137,19 @@ Status OnnxConstantParser::ParseConvertData(const ge::onnx::TensorProto &tensor_
     if (data_type == OnnxDataType::STRING) {
       tensor.SetData(tensor_proto.raw_data().c_str());
     } else {
+      const int64_t expected_size =
+          ge::GetSizeInBytes(static_cast<int64_t>(count), tensor.GetTensorDesc().GetDataType());
+      if ((expected_size > 0) && (tensor_proto.raw_data().size() < static_cast<size_t>(expected_size))) {
+        REPORT_INNER_ERR_MSG("E19999", "raw_data size:%zu is less than the size required by shape:%" PRId64 ".",
+                             tensor_proto.raw_data().size(), expected_size);
+        GELOGE(domi::PARAM_INVALID, "[Check][Param] raw_data size:%zu is less than required:%" PRId64 ".",
+               tensor_proto.raw_data().size(), expected_size);
+        return FAILED;
+      }
+      if ((expected_size > 0) && (tensor_proto.raw_data().size() > static_cast<size_t>(expected_size))) {
+        GELOGW("raw_data size:%zu is larger than the size required by shape:%" PRId64 ", use as is.",
+               tensor_proto.raw_data().size(), expected_size);
+      }
       tensor.SetData(PtrToPtr<const char_t, const uint8_t>(tensor_proto.raw_data().c_str()),
                      tensor_proto.raw_data().size());
     }
@@ -145,12 +158,12 @@ Status OnnxConstantParser::ParseConvertData(const ge::onnx::TensorProto &tensor_
   }
 
   // find _data() elements
-  ParseConvertDataElements(tensor_proto, tensor, count, data_type);
-  return SUCCESS;
+  return ParseConvertDataElements(tensor_proto, tensor, count, data_type);
 }
 
-void OnnxConstantParser::ParseConvertDataElements(const ge::onnx::TensorProto &tensor_proto, ge::Tensor &tensor,
-                                                  int count, int64_t data_type) {
+Status OnnxConstantParser::ParseConvertDataElements(const ge::onnx::TensorProto &tensor_proto, ge::Tensor &tensor,
+                                                    int count, int64_t data_type) {
+  Status status = SUCCESS;
   switch (data_type) {
     // for int32, uint8, int8, uint16, int16, bool, and float16 values
     case OnnxDataType::INT32:
@@ -161,11 +174,11 @@ void OnnxConstantParser::ParseConvertDataElements(const ge::onnx::TensorProto &t
     case OnnxDataType::BOOL:
     case OnnxDataType::FLOAT16:
     case OnnxDataType::BFLOAT16:
-      (void)SetTensorData(tensor_proto.int32_data_size(), tensor_proto.int32_data(), count, tensor);
+      status = SetTensorData(tensor_proto.int32_data_size(), tensor_proto.int32_data(), count, tensor);
       break;
     // for int64 values
     case OnnxDataType::INT64:
-      (void)SetTensorData(tensor_proto.int64_data_size(), tensor_proto.int64_data(), count, tensor);
+      status = SetTensorData(tensor_proto.int64_data_size(), tensor_proto.int64_data(), count, tensor);
       break;
     // for string values
     case OnnxDataType::STRING: {
@@ -178,24 +191,24 @@ void OnnxConstantParser::ParseConvertDataElements(const ge::onnx::TensorProto &t
     }
     // for float and complex64 values
     case OnnxDataType::FLOAT:
-      (void)SetTensorData(tensor_proto.float_data_size(), tensor_proto.float_data(), count, tensor);
+      status = SetTensorData(tensor_proto.float_data_size(), tensor_proto.float_data(), count, tensor);
       break;
     case OnnxDataType::COMPLEX64:
-      (void)SetTensorData(tensor_proto.float_data_size(), tensor_proto.float_data(), tensor_proto.float_data_size(),
-                          tensor);
+      status = SetTensorData(tensor_proto.float_data_size(), tensor_proto.float_data(), tensor_proto.float_data_size(),
+                             tensor);
       break;
     // for double and complex128 values
     case OnnxDataType::DOUBLE:
-      (void)SetTensorData(tensor_proto.double_data_size(), tensor_proto.double_data(), count, tensor);
+      status = SetTensorData(tensor_proto.double_data_size(), tensor_proto.double_data(), count, tensor);
       break;
     case OnnxDataType::COMPLEX128:
-      (void)SetTensorData(tensor_proto.double_data_size(), tensor_proto.double_data(), tensor_proto.double_data_size(),
-                          tensor);
+      status = SetTensorData(tensor_proto.double_data_size(), tensor_proto.double_data(),
+                             tensor_proto.double_data_size(), tensor);
       break;
     // for uint64 and uint32 values
     case OnnxDataType::UINT64:
     case OnnxDataType::UINT32:
-      (void)SetTensorData(tensor_proto.uint64_data_size(), tensor_proto.uint64_data(), count, tensor);
+      status = SetTensorData(tensor_proto.uint64_data_size(), tensor_proto.uint64_data(), count, tensor);
       break;
     // for int4 values (packed: 8 int4 per int32, little-endian, lower index in lower nibble).
     // int32_data stores packed int4 values; direct byte copy since GE DT_INT4 is also packed.
@@ -213,6 +226,7 @@ void OnnxConstantParser::ParseConvertDataElements(const ge::onnx::TensorProto &t
     default:
       break;
   }
+  return status;
 }
 
 Status OnnxConstantParser::ParseConvertTensor(const ge::onnx::TensorProto &tensor_proto, ge::Tensor &tensor) {
@@ -223,9 +237,10 @@ Status OnnxConstantParser::ParseConvertTensor(const ge::onnx::TensorProto &tenso
     tmp_shape.push_back(tensor_proto.dims(i));
     int64_t dim = tmp_shape[i];
     // support weights shape [0],have no weights
-    if (dim < 0 || (count != 0 && (dim >= INT64_MAX / count))) {
-      REPORT_INNER_ERR_MSG("E19999", "Dim size is invalid, dim is less than zero or dim size exceeds INT64_MAX.");
-      GELOGE(FAILED, "[Check][Param] Dim size is invalid, dim is less than zero or dim size exceeds INT64_MAX.");
+    // count 为 int32，上界必须按 INT32_MAX 判断；按 INT64_MAX 判会让乘积窄化后静默截断
+    if (dim < 0 || (count != 0 && (dim > static_cast<int64_t>(INT32_MAX) / count))) {
+      REPORT_INNER_ERR_MSG("E19999", "Dim size is invalid, dim is less than zero or dim size exceeds INT32_MAX.");
+      GELOGE(FAILED, "[Check][Param] Dim size is invalid, dim is less than zero or dim size exceeds INT32_MAX.");
       return FAILED;
     }
     count *= dim;

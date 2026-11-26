@@ -4,5 +4,5 @@ This directory provides GE offline graph compilation and execution samples, incl
 
 | Sample | Sample Link |
 |--------|-------------|
-| GE Python Offline Graph Compilation and Execution Sample | [Python Sample](python/README.md) |
-| GE C++ Offline Graph Compilation and Execution Sample | [C++ Sample](cpp/README.md) |
+| GE Python Offline Graph Compilation and Execution Sample | [Python Sample](python/README_en.md) |
+| GE C++ Offline Graph Compilation and Execution Sample | [C++ Sample](cpp/README_en.md) |

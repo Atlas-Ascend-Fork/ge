@@ -46,6 +46,11 @@ struct CustomOpCapabilityTrait<ShapeInferOp> {
 };
 
 template <>
+struct CustomOpCapabilityTrait<SymbolicInferOp> {
+  static constexpr CustomOpCapability kCapability = CustomOpCapability::kSymbolicInfer;
+};
+
+template <>
 struct CustomOpCapabilityTrait<CustomOpInferMetaProvider> {
   static constexpr CustomOpCapability kCapability = CustomOpCapability::kInferMeta;
 };

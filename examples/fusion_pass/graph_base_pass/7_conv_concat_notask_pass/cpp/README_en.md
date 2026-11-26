@@ -55,7 +55,7 @@ Matching conditions:
 
 - Compiler: GCC >= 7.3.x
 - Python and dependencies: python>=3.9, onnx
-- The [environment preparation](../../../../../docs/zh/build.md) has been completed.
+- The [environment preparation](../../../../../docs/en/build.md) has been completed.
 
 ## Build
 

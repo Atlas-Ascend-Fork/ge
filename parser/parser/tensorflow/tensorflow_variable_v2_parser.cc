@@ -15,6 +15,7 @@
 #include "graph/op_desc.h"
 #include "graph/utils/attr_utils.h"
 #include "graph/utils/tensor_utils.h"
+#include "graph/utils/type_utils.h"
 #include "parser/common/op_def/variable_operator.h"
 #include "parser/common/op_parser_factory.h"
 #include "parser/tensorflow/tensorflow_op_parser.h"
@@ -167,7 +168,16 @@ static Status InitOutTensor(const vector<int64_t> &shape, int64_t data_type, ge:
 
   out_tensor_desc.SetShape(ge::GeShape(shape));
   int64_t size = out_tensor_desc.GetShape().GetShapeSize();
-  size *= sizeof(float);
+  if (size < 0) {
+    // 动态/未知维时 GetShapeSize 返回 -1，不能直接乘元素字节数（否则 SetSize 得到负值）
+    size = 0;
+  } else {
+    uint32_t type_size = 0U;
+    GE_CHK_BOOL_RET_STATUS(ge::TypeUtils::GetDataTypeLength(out_tensor_desc.GetDataType(), type_size), PARAM_INVALID,
+                           "Can't get data type length of type:%d.",
+                           static_cast<int32_t>(out_tensor_desc.GetDataType()));
+    size *= static_cast<int64_t>(type_size);
+  }
   ge::TensorUtils::SetSize(out_tensor_desc, size);
   return SUCCESS;
 }
@@ -186,7 +196,11 @@ static Status ParseVarShape(const domi::tensorflow::NodeDef *node, VariableOpera
   }
 
   ge::GeTensorDesc infer_shape_domi_desc;
+  GE_CHK_BOOL_RET_STATUS(attr_value.has_list(), PARAM_INVALID, "Attr:%s of node:%s is not list, check invalid",
+                         ATTR_NAME_OUTPUT_TENSOR_DESC.c_str(), node_src_name.c_str());
   domi::tensorflow::AttrValue_ListValue attr_list = attr_value.list();
+  GE_CHK_BOOL_RET_STATUS(attr_list.func_size() > 0, PARAM_INVALID, "Attr:%s of node:%s is empty, check invalid",
+                         ATTR_NAME_OUTPUT_TENSOR_DESC.c_str(), node_src_name.c_str());
   int32_t tf_datatype = 0;
   GE_CHK_BOOL_RET_STATUS(TensorFlowUtil::ParseFromAttrValueList(infer_shape_domi_desc, attr_list, 0, tf_datatype),
                          PARAM_INVALID, "parse domi_desc failed.");

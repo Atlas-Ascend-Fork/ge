@@ -413,6 +413,12 @@ ConstantFoldingPass / DimensionComputePass
 
 内置 `FloorDiv` 的浮点输入按 `floor(x / y)` 求值；整数使用原类型的商和余数，异号且有余数时将商减一，不经浮点转换或窄化。对于整数最小值除以 `-1` 的不可表示结果，返回 `NOT_CHANGED` 且不发布输出；原有零/近零除数回退规则保持不变。
 
+内置 `FloorMod` 当前支持 `DT_INT32`。余数为零时保持零；其余余数与除数同号。实现先取整数余数再按符号调整，避免绝对值及商乘积溢出；`INT32_MIN` 对 `-1` 的余数为零。零除数仍返回 `NOT_CHANGED`，广播规则保持不变。
+
+内置 `ReduceProd` 仅对单个非空轴执行指定轴规约。合法多轴输入返回 `NOT_CHANGED`，不生成只规约首轴的错误常量；空轴保持输入，无轴输入沿用全元素乘积路径。多轴实际执行留给支持该语义的后续路径。
+
+内置 Host `Cast` 的有限 FP16→INT32 转换向零截断，与 FP32→INT32 保持一致。该规则限定在数据类型转换入口，不改变通用 `fp16_t` 的最近偶数舍入；Inf/NaN 沿用已有 `fp16_t::ToInt32()` 转换结果。
+
 #### 4.5.2 AICPU Host CPU 引擎
 
 作为 GE 内置 Kernel 的补充，通过 AICPU 引擎执行算子。`HostCpuEngine` 实现位于 `base/host_cpu_engine/`（`host_cpu_engine.h`），运行时路径 `runtime/v2/engine/aicpu/kernel/aicpu_resource_manager.cc` 也引用了该 SO。

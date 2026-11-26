@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <cstdlib>
 #include <memory>
 #include <fstream>
 #include <vector>
@@ -116,5 +117,15 @@ TEST_F(UtestTraceManager, CovNextFileName) {
   EXPECT_FALSE(name1.empty());
   const auto name2 = instance.NextFileName();
   EXPECT_NE(name1, name2);
+}
+
+TEST_F(UtestTraceManager, CovOpenTraceFileWithInvalidDir) {
+  auto &instance = TraceManager::GetInstance();
+  instance.trace_save_file_path_ = "./test_trace_invalid_dir/";
+  instance.current_saving_file_name_.clear();
+  instance.part1_ready_nums_ = kTraceSaveTriggerNum;
+  instance.SaveTraceBufferToFile(ReadyPart::A);
+  EXPECT_EQ(instance.part1_ready_nums_, 0U);
+  system("rm -rf ./test_trace_invalid_dir");
 }
 }  // namespace ge

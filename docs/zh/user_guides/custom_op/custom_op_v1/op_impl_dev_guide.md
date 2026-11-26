@@ -1,5 +1,7 @@
 # GE IR实现教程
+
 GE IR（Intermediate Representation）用于从用户模型表达翻译到可执行代码，也是对一个算子计算语义的规格描述。本文将对GE IR的定义及相关的开发工作做介绍。
+
 ## 实现IR的交付件
 
 在runtime2下，第一、第二类算子的IR实现需要包含如下几部分：
@@ -14,12 +16,12 @@ GE IR（Intermediate Representation）用于从用户模型表达翻译到可执
 
 根据算子在shape推导和下发逻辑的区分，将算子分为四类。
 
-| 分类 | 特点                                                         | 可选交付件要求                            |
-| ---- | ------------------------------------------------------------ |------------------------------------|
-| 一类 | 根据输入shape可以推导出输出shape。                           | 1.InferShpeRange(按需)               |
+| 分类 | 特点 | 可选交付件要求 |
+| ---- | ------------------------------------------------------------ | ------------------------------------ |
+| 一类 | 根据输入shape可以推导出输出shape。 | 1.InferShpeRange(按需) |
 | 二类 | 依赖输入tensor value才能推导出输出shape。 如Reshape算子，依赖shape输入的value推导输出shape。此类又称为值依赖算子。 | 1.InferShpeRange(按需)<br />2.声明数据依赖 |
 | 三类 | 编译时无法推导输出shape，只能推导输出shape range。执行完才能得出输出shape。 如Where算子。<br />在下发时需要按照输出shape range来申请最大输出内存，因此InferShpeRange是必选交付件 | 1.InferShpeRange<br />2.声明数据依赖（按需） |
-| 四类 | 无法推导出shape。也不知道输出shape range。如 aicpu融合算子、某些资源类算子。此类算子通常调用tf原生算子实现，因此无IR交付件需要。 | NA                                 |
+| 四类 | 无法推导出shape。也不知道输出shape range。如 aicpu融合算子、某些资源类算子。此类算子通常调用tf原生算子实现，因此无IR交付件需要。 | NA |
 
 ## 注册
 
@@ -59,8 +61,6 @@ REG_OP(Add)
 1. Add算子的两个输入必须拥有相同的数据类型
 2. Add算子的输出与输入的类型一致
 
-
-
 有时算子对输入输出的数据类型有一定的要求，例如Add算子仅支持对实数做计算，而不支持DT_RESOURCE等复杂的资源类数据，此时可以使用`DATATYPE`来限制类型T的范围：
 
 ```c++
@@ -72,14 +72,10 @@ REG_OP(Add)
     .OP_END_FACTORY_REG(Add)
 ```
 
-
-
 当输入为DYNAMIC_INPUT时，会出现两种可能：
 
 * 该DYNAMIC_INPUT实例化[^1]后所有输入的datatype类型一致
 * 该DYNAMIC_INPUT实例化后的输入中，互相之间没有datatype的约束关系
-
-
 
 DATATYPE宏配合T语法使用，表示该数据类型的有效范围，其数据类型只能为TensorType或ListTensorType。若使用了T语法，但未定义DATATYPE，则表示只做数据类型映射，放弃数据类型校验。
 
@@ -320,8 +316,8 @@ ge::graphStatus InferShapeRangeWhere(gert::InferShapeRangeContext *context) {
 
 ### 2.框架自动推导机制
 
-- 若算子输入上有shape range，代入shape range的min/max值，调用静态infer func。对推导出的output shape逐个轴比对，若dim不同，表示为动态轴。min/max推导得出的输出shape的作为输出shape range的min/max。
-- 若算子输入不带shape range，只有动态轴的信息。跳过shape range推导。
+* 若算子输入上有shape range，代入shape range的min/max值，调用静态infer func。对推导出的output shape逐个轴比对，若dim不同，表示为动态轴。min/max推导得出的输出shape的作为输出shape range的min/max。
+* 若算子输入不带shape range，只有动态轴的信息。跳过shape range推导。
 
 ## 实现 Tiling
 
@@ -390,13 +386,13 @@ ge::graphStatus TilingPrepareForTransdata(TilingParseContext *context) {
     GELOGE(ge::PARAM_INVALID, "Failed to find ub_size in json %s", json_str);
     return ge::PARAM_INVALID;
   }
-	// 更多的解析逻辑。。。
+ // 更多的解析逻辑。。。
 
   return ge::GRAPH_SUCCESS;
 }
 ```
 
-###  实现 Tiling 函数
+### 实现 Tiling 函数
 
 Tiling函数的参数是`TilingContext`，此类继承自`ExtendedKernelContext`，因此该context从`ExtendedKernelContext`继承了如下能力：
 
@@ -510,15 +506,14 @@ ge::graphStatus ExampleAppendTilingData(TilingContext *context) {
 }
 ```
 
-
-
-> **WARNING**：固定数据结构、Append两种操作方式是互斥的，在一个Tiling函数中，只可以选择其中一种方式写入TilingData。在一次Tiling的过程中，同时调用了context->GetTilingData<Foo>()和context->GetRawTilingData()两种接口基本上意味着产生了bug。
+> **WARNING**：固定数据结构、Append两种操作方式是互斥的，在一个Tiling函数中，只可以选择其中一种方式写入TilingData。在一次Tiling的过程中，同时调用了context->GetTilingData\<Foo>()和context->GetRawTilingData()两种接口基本上意味着产生了bug。
 >
-> 固定数据结构、Append两种操作方式互斥的原因在于tiling-data-size的计算，在调用context->GetTilingData<Foo>()时，框架会自动将tiling-data-size设置为sizeof(Foo)，而调用context->GetRawTilingData()时，框架认为处于Append模式，不会修改tiling-data-size，而是在每次Append时，做tiling-data-size的累加动作。假想一种场景：先调用GetRawTilingData，并填入一个int64数据，此时tiling-data-size变成8，此时再调用context->GetTilingData<int32_t>()，此时tiling-data-size将被改为sizeof(int32_t)，第一步Append的int64的数据被覆盖
+> 固定数据结构、Append两种操作方式互斥的原因在于tiling-data-size的计算，在调用context->GetTilingData\<Foo>()时，框架会自动将tiling-data-size设置为sizeof(Foo)，而调用context->GetRawTilingData()时，框架认为处于Append模式，不会修改tiling-data-size，而是在每次Append时，做tiling-data-size的累加动作。假想一种场景：先调用GetRawTilingData，并填入一个int64数据，此时tiling-data-size变成8，此时再调用context->GetTilingData\<int32_t>()，此时tiling-data-size将被改为sizeof(int32_t)，第一步Append的int64的数据被覆盖
 
 ## 获取属性
 
 在InferShape、Tiling时，可以通过context实例获取算子IR属性值，所谓IR属性，是指在IR注册时定义的属性，以`TransData`算子为例：
+
 ```c++
 REG_OP(TransData)
     .INPUT(src, TensorType::BasicType())
@@ -615,9 +610,9 @@ REG_OP(DynamicRNNV3)
     .OPTIONAL_INPUT(real_mask, TensorType({DT_FLOAT16, DT_FLOAT}))
     .OPTIONAL_INPUT(project, TensorType({DT_FLOAT16, DT_FLOAT}))
     .OUTPUT(y, TensorType({DT_FLOAT16, DT_FLOAT}))
-		// 省略一些OUTPUT定义
+    // 省略一些OUTPUT定义
     .ATTR(cell_type, String, "LSTM")
-		// 省略一些属性定义
+    // 省略一些属性定义
     .OP_END_FACTORY_REG(DynamicRNNV3)
 ```
 

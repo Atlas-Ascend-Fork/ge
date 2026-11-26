@@ -40,10 +40,11 @@ class CustomOpFactory {
 
   template <typename T>
   static T *GetCustomOpCommonCapability(const AscendString &op_type) {
-    static_assert(std::is_same<T, ShapeInferOp>::value || std::is_same<T, CustomOpInferMetaProvider>::value ||
-                      std::is_same<T, PortableOp>::value || std::is_same<T, CompilableOp>::value,
-                  "GetCustomOpCommonCapability only supports ShapeInferOp, CustomOpInferMetaProvider, PortableOp "
-                  "and CompilableOp");
+    static_assert(std::is_same<T, ShapeInferOp>::value || std::is_same<T, SymbolicInferOp>::value ||
+                      std::is_same<T, CustomOpInferMetaProvider>::value || std::is_same<T, PortableOp>::value ||
+                      std::is_same<T, CompilableOp>::value,
+                  "GetCustomOpCommonCapability only supports ShapeInferOp, SymbolicInferOp, CustomOpInferMetaProvider, "
+                  "PortableOp and CompilableOp");
     auto *const custom_op =
         GetGlobalRegistry().GetCustomOpCommonCapability(op_type, CustomOpCapabilityTrait<T>::kCapability);
     return CustomOpCast<T>(custom_op);
@@ -51,10 +52,11 @@ class CustomOpFactory {
 
   template <typename T>
   static T *GetCustomOpCommonCapability(const AscendString &op_type, OpRegistrationPriority priority) {
-    static_assert(std::is_same<T, ShapeInferOp>::value || std::is_same<T, CustomOpInferMetaProvider>::value ||
-                      std::is_same<T, PortableOp>::value || std::is_same<T, CompilableOp>::value,
-                  "GetCustomOpCommonCapability only supports ShapeInferOp, CustomOpInferMetaProvider, PortableOp "
-                  "and CompilableOp");
+    static_assert(std::is_same<T, ShapeInferOp>::value || std::is_same<T, SymbolicInferOp>::value ||
+                      std::is_same<T, CustomOpInferMetaProvider>::value || std::is_same<T, PortableOp>::value ||
+                      std::is_same<T, CompilableOp>::value,
+                  "GetCustomOpCommonCapability only supports ShapeInferOp, SymbolicInferOp, CustomOpInferMetaProvider, "
+                  "PortableOp and CompilableOp");
     auto *const custom_op =
         GetGlobalRegistry().GetCustomOpCommonCapability(op_type, CustomOpCapabilityTrait<T>::kCapability, priority);
     return CustomOpCast<T>(custom_op);

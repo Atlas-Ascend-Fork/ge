@@ -4,7 +4,7 @@ This guide is for developers who want to write GE fusion passes in C++. It is re
 
 C++ passes are delivered as dynamic libraries. Developers implement a pass class, register it with GE, and compile it into a `.so`. When GE compiles a model, it loads the `.so` and executes the pass at a specified stage.
 
-If you are still exploring patterns, it is recommended to use the [Python Fusion Pass Development Guide](python_fusion_pass_development_guide.md) for quick validation; migrate to C++ once the pattern is stable.
+If you are still exploring patterns, it is recommended to use the [Python Fusion Pass Development Guide](python_fusion_pass_development_guide_en.md) for quick validation; migrate to C++ once the pattern is stable.
 
 ## 1. Which Pass to Choose
 
@@ -95,7 +95,7 @@ class AddZeroPass : public PatternFusionPass {
 REG_FUSION_PASS(AddZeroPass).Stage(CustomPassStage::kBeforeInferShape);
 ```
 
-A complete runnable example is available at [AddZeroPass C++ Example](pattern_base_pass/4_add_zero_pass/cpp/README.md).
+A complete runnable example is available at [AddZeroPass C++ Example](pattern_base_pass/4_add_zero_pass/cpp/README_en.md).
 
 ## 3. Patterns: Define What to Find
 
@@ -215,7 +215,7 @@ if (match_result->GetCapturedTensor(0, matmul_output) != GRAPH_SUCCESS) {
 }
 ```
 
-Refer to [capture tensor C++ example](pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/cpp/README.md).
+Refer to [capture tensor C++ example](pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/cpp/README_en.md).
 
 ## 7. PatternMatcherConfig: Put Simple Conditions in Matcher
 
@@ -241,7 +241,7 @@ Common configurations:
 
 If judgment requires floating-point tolerance, dtype normalization, or more complex logic, it is still recommended to put it in `MeetRequirements()`.
 
-Refer to [PatternMatcherConfig C++ example](pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/cpp/README.md).
+Refer to [PatternMatcherConfig C++ example](pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/cpp/README_en.md).
 
 ## 8. Register Execution Stage
 
@@ -332,7 +332,7 @@ REG_DECOMPOSE_PASS(MyDecomposePass, {"Conv2D"}).Stage(CustomPassStage::kAfterInf
 
 The second parameter of `REG_DECOMPOSE_PASS` is the list of operator types to match. GE will pass real nodes of these types to the pass, then `MeetRequirements()` makes further judgment.
 
-Complete example see [DecomposePass C++ example](pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/cpp/README.md).
+Complete example see [DecomposePass C++ example](pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/cpp/README_en.md).
 
 ## 11. Compilation and Running
 
@@ -403,8 +403,8 @@ When using `atc`, can add `--log=debug`.
 ## 13. Recommended Reading Order
 
 1. [Fusion Pattern Pass Mechanism](../../docs/en/design/features/fusion_pattern_pass.md)
-2. [AddZeroPass C++ example](pattern_base_pass/4_add_zero_pass/cpp/README.md)
-3. [MatMul+Add C++ example](pattern_base_pass/1_fuse_matmul_add_pass/cpp/README.md)
-4. [capture tensor C++ example](pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/cpp/README.md)
-5. [PatternMatcherConfig C++ example](pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/cpp/README.md)
-6. [DecomposePass C++ example](pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/cpp/README.md)
+2. [AddZeroPass C++ example](pattern_base_pass/4_add_zero_pass/cpp/README_en.md)
+3. [MatMul+Add C++ example](pattern_base_pass/1_fuse_matmul_add_pass/cpp/README_en.md)
+4. [capture tensor C++ example](pattern_base_pass/2_fuse_matmul_add_pass_with_capture_tensor/cpp/README_en.md)
+5. [PatternMatcherConfig C++ example](pattern_base_pass/3_fuse_matmul_add_pass_with_pattern_matcher_config/cpp/README_en.md)
+6. [DecomposePass C++ example](pattern_base_pass/6_decompose_grouped_conv_to_splited_pass/cpp/README_en.md)

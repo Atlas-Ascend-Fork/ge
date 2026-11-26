@@ -322,11 +322,6 @@ AutoMappingFnDynamic(const google::protobuf::Message *op_src, ge::Operator &op,
 
   GELOGI("op[%s] call auto mapping function success.", op_desc->GetName().c_str());
 
-  if (dynamic_name_attr_value.size() > 2U) {  // attr value size should be less than 2
-    GE_LOGE("attr set size [%zu] should be less than 2.", dynamic_name_attr_value.size());
-    return FAILED;
-  }
-
   // add dynamic input and output
   const domi::tensorflow::NodeDef *const node =
       ge::PtrToPtr<const google::protobuf::Message, const domi::tensorflow::NodeDef>(op_src);
@@ -352,12 +347,13 @@ AutoMappingFnDynamic(const google::protobuf::Message *op_src, ge::Operator &op,
 
     GELOGI("In NodeDef %s dynamic attr [%s] exists: %d.", node->name().c_str(), attr_name.c_str(), dynamic_tensor_num);
 
-    if (flag == "in") {
+    // 动态输入/输出可能有多个（key 形如 in0000 / out0000），按前缀区分方向
+    if (flag.compare(0U, 2U, "in") == 0) {
       const bool is_pushback = (in_pos == -1);
       (void)op_desc->AddDynamicInputDesc(dynamic_name, static_cast<uint32_t>(dynamic_tensor_num), is_pushback);
       (void)ge::AttrUtils::SetInt(op_desc, DYNAMIC_INPUT_TD_NUM(dynamic_name), dynamic_tensor_num);
       GELOGI("In NodeDef %s add dynamic input[%d]", node->name().c_str(), dynamic_tensor_num);
-    } else if (flag == "out") {
+    } else if (flag.compare(0U, 3U, "out") == 0) {
       const bool is_pushback = (out_pos == -1);
       (void)op_desc->AddDynamicOutputDesc(dynamic_name, static_cast<uint32_t>(dynamic_tensor_num), is_pushback);
       (void)ge::AttrUtils::SetInt(op_desc, DYNAMIC_OUTPUT_TD_NUM(dynamic_name), dynamic_tensor_num);

@@ -164,6 +164,12 @@ Optimization Pass may modify graph structure (add/delete nodes), causing subsequ
 
 Host `FloorDiv` preserves the input precision and skips folding if the integer quotient is unrepresentable. See the [built-in Host Kernel](../../features/constant_folding.md#451-ge-built-in-host-kernel) section.
 
+Host `FloorMod` preserves zero remainders and the sign of the divisor across the full `DT_INT32` range. See the [built-in Host Kernel](../../features/constant_folding.md#451-ge-built-in-host-kernel) section.
+
+Host `ReduceProd` skips folding multi-axis inputs to preserve the full reduction. See the [built-in Host Kernel](../../features/constant_folding.md#451-ge-built-in-host-kernel) section.
+
+Host `Cast` truncates finite FP16 values toward zero for INT32 outputs. See the [built-in Host Kernel](../../features/constant_folding.md#451-ge-built-in-host-kernel) section.
+
 ### 2.2 Organization of Optimization Passes
 
 GE's optimization Passes execute in multiple batches, distributed at different stages. Core Passes include:

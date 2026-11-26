@@ -226,4 +226,4 @@ After compilation is complete, users can perform developer testing.
 
   When executing, you need to replace the software package name in the above command with the actual custom `cann-<component>_<version>` software package name.
 
-After installation is complete, you can refer to [Sample Execution](../../examples/README.md) to run samples.
+After installation is complete, you can refer to [Sample Execution](../../examples/README_en.md) to run samples.

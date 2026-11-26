@@ -619,6 +619,7 @@ Status GraphManager::Finalize() {
     // unload model
     auto ge_root_model = graph_node->GetGeRootModel();
     if (CheckModelLoad(ge_root_model, graph_node->GetLoadFlag())) {
+      GetThreadLocalContext().SetGraphOption(graph_node->GetOptions());
       const bool is_execute_graph = GraphUtilsEx::IsExecuteGraph(*graph_node->GetGraph());
       Status ret = UnloadModel(ge_root_model, iter->first, is_execute_graph);
       if (ret != SUCCESS) {

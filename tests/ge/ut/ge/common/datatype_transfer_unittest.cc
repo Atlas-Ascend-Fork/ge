@@ -10,7 +10,9 @@
 
 #include <gtest/gtest.h>
 #include <climits>
+#include <vector>
 
+#include "securec.h"
 #include "common/datatype_transfer/datatype_transfer.h"
 #include "common/fp16_t/fp16_t.h"
 #include "common/math/hif8_t.h"
@@ -446,6 +448,75 @@ TEST_F(UtestDataTypeTransfer, TransDataType_OverflowSrcSize_CovEnhance) {
   TransResult result;
   DataTypeTransfer transfer;
   EXPECT_EQ(transfer.TransDataType(args, result), ACL_ERROR_GE_PARAM_INVALID);
+}
+TEST_F(UtestDataTypeTransfer, Fp16Int32CastTruncatesFractions) {
+  const std::vector<uint16_t> bits = {0x3f00, 0xbf00, 0x3800, 0xb800, 0x3a00, 0xba00, 0x4100, 0xc100,
+                                      0x4200, 0x0000, 0x8000, 0x0001, 0x8001, 0x7bff, 0xfbff};
+  const std::vector<int32_t> expected = {1, -1, 0, 0, 0, 0, 2, -2, 3, 0, 0, 0, 0, 65504, -65504};
+  TransResult result;
+  CastArgs args{reinterpret_cast<const uint8_t *>(bits.data()), bits.size(), DT_FLOAT16, DT_INT32};
+  ASSERT_EQ(TransTensorDataType(args, result), SUCCESS);
+  ASSERT_EQ(result.length, expected.size() * sizeof(int32_t));
+  for (size_t i = 0; i < expected.size(); ++i) {
+    int32_t value;
+    ASSERT_EQ(memcpy_s(&value, sizeof(value), result.data.get() + i * sizeof(value), sizeof(value)), EOK);
+    EXPECT_EQ(value, expected[i]) << "encoding " << bits[i];
+  }
+}
+
+TEST_F(UtestDataTypeTransfer, Fp16Int32CastAllFiniteEncodings) {
+  std::vector<uint16_t> bits;
+  std::vector<float> values;
+  for (uint32_t code = 0; code <= UINT16_MAX; ++code) {
+    if ((code & 0x7c00U) != 0x7c00U) {
+      bits.push_back(static_cast<uint16_t>(code));
+      values.push_back(fp16_t(static_cast<uint16_t>(code)).ToFloat());
+    }
+  }
+  TransResult half_result;
+  TransResult float_result;
+  ASSERT_EQ(TransTensorDataType({reinterpret_cast<const uint8_t *>(bits.data()), bits.size(), DT_FLOAT16, DT_INT32},
+                                half_result),
+            SUCCESS);
+  ASSERT_EQ(TransTensorDataType({reinterpret_cast<const uint8_t *>(values.data()), values.size(), DT_FLOAT, DT_INT32},
+                                float_result),
+            SUCCESS);
+  ASSERT_EQ(half_result.length, bits.size() * sizeof(int32_t));
+  ASSERT_EQ(float_result.length, half_result.length);
+  size_t mismatches = 0;
+  for (size_t i = 0; i < bits.size(); ++i) {
+    int32_t half_value;
+    int32_t float_value;
+    ASSERT_EQ(
+        memcpy_s(&half_value, sizeof(half_value), half_result.data.get() + i * sizeof(half_value), sizeof(half_value)),
+        EOK);
+    ASSERT_EQ(memcpy_s(&float_value, sizeof(float_value), float_result.data.get() + i * sizeof(float_value),
+                       sizeof(float_value)),
+              EOK);
+    mismatches += half_value != float_value;
+  }
+  EXPECT_EQ(mismatches, 0U);
+}
+
+TEST_F(UtestDataTypeTransfer, Fp16Int32CastPreservesNonfinitePolicy) {
+  std::vector<uint16_t> bits;
+  for (uint32_t code = 0; code <= UINT16_MAX; ++code) {
+    if ((code & 0x7c00U) == 0x7c00U) {
+      bits.push_back(static_cast<uint16_t>(code));
+    }
+  }
+  TransResult result;
+  ASSERT_EQ(
+      TransTensorDataType({reinterpret_cast<const uint8_t *>(bits.data()), bits.size(), DT_FLOAT16, DT_INT32}, result),
+      SUCCESS);
+  ASSERT_EQ(result.length, bits.size() * sizeof(int32_t));
+  for (size_t i = 0; i < bits.size(); ++i) {
+    int32_t value;
+    ASSERT_EQ(memcpy_s(&value, sizeof(value), result.data.get() + i * sizeof(value), sizeof(value)), EOK);
+    EXPECT_EQ(value, fp16_t(bits[i]).ToInt32());
+  }
+  EXPECT_EQ(fp16_t(static_cast<uint16_t>(0x3f00)).ToInt32(), 2);
+  EXPECT_EQ(fp16_t(static_cast<uint16_t>(0xbf00)).ToInt32(), -2);
 }
 }  // namespace formats
 }  // namespace ge

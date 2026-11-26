@@ -27,6 +27,7 @@
 #include "parser/common/tbe_plugin_loader.h"
 #include "parser/common/parser_fp16_t.h"
 #include "parser/common/pre_checker.h"
+#include "proto/tensorflow/node_def.pb.h"
 
 #include <dlfcn.h>
 using namespace domi;
@@ -847,4 +848,14 @@ TEST_F(UtestAclGraphParser, test_acl_graph_parser_util_input_fp16_nodes_not_data
   auto ret = acl_graph_parse_util.ParseParamsAfterGraph(graph, parser_params);
   EXPECT_EQ(ret, PARAM_INVALID);
 }
+
+// 覆盖率补充用例：IncCov_ReadProtoFromArrayNegativeSize
+// 目的：覆盖反序列化长度为负时的参数校验分支。
+// 说明：仅通过公开接口构造边界输入，不改动被测逻辑。
+TEST_F(UtestAclGraphParser, IncCov_ReadProtoFromArrayNegativeSize) {
+  domi::tensorflow::NodeDef node_def;
+  const char data[4] = {0};
+  EXPECT_FALSE(parser::ReadProtoFromArray(data, -1, &node_def));
+}
+
 }  // namespace ge

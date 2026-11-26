@@ -70,12 +70,18 @@ struct NodeStatus {
 
 void InitNodeStatus(const ConstComputeGraphPtr &compute_graph, std::vector<NodeStatus> &nodes_info) {
   nodes_info.clear();
-  nodes_info.resize(compute_graph->GetDirectNodesSize());
+  const auto nodes = compute_graph->GetDirectNode();
+  nodes_info.resize(nodes.size());
   int64_t index = 0;
-  for (const auto &node : compute_graph->GetDirectNode()) {
+  for (const auto &node : nodes) {
     nodes_info[index].size = 0;
     nodes_info[index].status = WalkStatus::kNotWalked;
-    node->GetOpDesc()->SetId(index);
+    const auto op_desc = node->GetOpDesc();
+    if (op_desc == nullptr) {
+      GELOGW("[Check][Param] op_desc of node %s is null.", node->GetNamePtr());
+    } else {
+      op_desc->SetId(index);
+    }
     index++;
   }
 }
@@ -85,7 +91,12 @@ int64_t GetNodeOutputRealSize(const NodePtr &node, std::vector<NodeStatus> &node
   if ((node == nullptr) || (node->GetOpDesc() == nullptr)) {
     return total_size;
   }
-  NodeStatus &reverse_dfs_node_info = nodes_info[static_cast<size_t>(node->GetOpDesc()->GetId())];
+  const int64_t node_id = node->GetOpDesc()->GetId();
+  if ((node_id < 0) || (static_cast<size_t>(node_id) >= nodes_info.size())) {
+    GELOGW("[Check][Param] node %s id %s is out of range.", node->GetNamePtr(), std::to_string(node_id).c_str());
+    return total_size;
+  }
+  NodeStatus &reverse_dfs_node_info = nodes_info[static_cast<size_t>(node_id)];
   total_size = reverse_dfs_node_info.size;
   if (total_size != 0) {
     return total_size;
@@ -1457,21 +1468,35 @@ graphStatus ComputeGraphImpl::ReorderEventNodes(const ConstComputeGraphPtr &comp
   std::list<NodePtr> &node_list = nodes_;
   for (const auto &node : GetDirectNode(compute_graph)) {
     if ((strcmp(node->GetTypePtr(), RECV) == 0) || (strcmp(node->GetTypePtr(), RECV_NOTIFY) == 0)) {
+      const auto out_control_nodes = node->GetOutControlNodes();
+      if (out_control_nodes.empty()) {
+        GELOGW("[Reorder][EventNodes] node %s has no out control node, skip reorder.", node->GetName().c_str());
+        continue;
+      }
       const auto iter = find(node_list.cbegin(), node_list.cend(), node);
       if (iter != node_list.cend()) {
         (void)node_list.erase(iter);
       }
 
-      const auto dst_iter = find(node_list.cbegin(), node_list.cend(), node->GetOutControlNodes().at(0UL));
+      const auto dst_iter = find(node_list.cbegin(), node_list.cend(), out_control_nodes.at(0UL));
       (void)node_list.insert(dst_iter, node);
     }
     if ((strcmp(node->GetTypePtr(), SEND) == 0) || (strcmp(node->GetTypePtr(), SEND_NOTIFY) == 0)) {
+      const auto in_control_nodes = node->GetInControlNodes();
+      if (in_control_nodes.empty()) {
+        GELOGW("[Reorder][EventNodes] node %s has no in control node, skip reorder.", node->GetName().c_str());
+        continue;
+      }
+      auto src_iter = find(node_list.cbegin(), node_list.cend(), in_control_nodes.at(0UL));
+      if (src_iter == node_list.cend()) {
+        GELOGW("[Reorder][EventNodes] node %s in control node not found, skip reorder.", node->GetName().c_str());
+        continue;
+      }
       const auto iter = find(node_list.cbegin(), node_list.cend(), node);
       if (iter != node_list.cend()) {
         (void)node_list.erase(iter);
       }
 
-      auto src_iter = find(node_list.cbegin(), node_list.cend(), node->GetInControlNodes().at(0UL));
       (void)node_list.insert(++src_iter, node);
     }
   }
@@ -1577,14 +1602,27 @@ graphStatus ComputeGraphImpl::StableRDFSTopologicalSorting(std::vector<NodePtr> 
     GE_CHECK_NOTNULL(node->GetOpDesc());
     GE_CHECK_NOTNULL(node->GetOpDescBarePtr());
     // id作为索引前面的init初始化保证了一定是有效的, walked的节点不入栈
-    if (nodes_info[node->GetOpDesc()->GetId()].status == WalkStatus::kWalked) {
+    const int64_t node_id = node->GetOpDesc()->GetId();
+    if ((node_id < 0) || (static_cast<size_t>(node_id) >= nodes_info.size())) {
+      GELOGW("[Check][Param] node id %s is out of range, skip it.", std::to_string(node_id).c_str());
+      continue;
+    }
+    if (nodes_info[static_cast<size_t>(node_id)].status == WalkStatus::kWalked) {
       continue;
     }
     // 按照原有的nodes的topo顺序来入栈
     std::vector<Node *> stack = {node.get()};
     while (!stack.empty()) {
       const auto current = stack.back();
-      NodeStatus &reverse_dfs_node_info = nodes_info[current->GetOpDesc()->GetId()];
+      const auto current_op_desc = current->GetOpDescBarePtr();
+      GE_CHECK_NOTNULL(current_op_desc);
+      const int64_t current_id = current_op_desc->GetId();
+      if ((current_id < 0) || (static_cast<size_t>(current_id) >= nodes_info.size())) {
+        GELOGW("[Check][Param] node id %s is out of range, skip it.", std::to_string(current_id).c_str());
+        stack.pop_back();
+        continue;
+      }
+      NodeStatus &reverse_dfs_node_info = nodes_info[static_cast<size_t>(current_id)];
       if (reverse_dfs_node_info.status == WalkStatus::kNotWalked) {
         reverse_dfs_node_info.status = WalkStatus::kWalking;
         // 获取输入节点，反向遍历
@@ -1595,7 +1633,14 @@ graphStatus ComputeGraphImpl::StableRDFSTopologicalSorting(std::vector<NodePtr> 
         std::vector<Node *> in_nodes_has_not_been_walked;
         in_nodes_has_not_been_walked.reserve(in_all_nodes.size());
         for (const auto in_node : in_all_nodes) {
-          if (nodes_info[in_node->GetOpDesc()->GetId()].status == WalkStatus::kNotWalked) {
+          const auto in_op_desc = in_node->GetOpDescBarePtr();
+          GE_CHECK_NOTNULL(in_op_desc);
+          const int64_t in_id = in_op_desc->GetId();
+          if ((in_id < 0) || (static_cast<size_t>(in_id) >= nodes_info.size())) {
+            GELOGW("[Check][Param] node id %s is out of range, skip it.", std::to_string(in_id).c_str());
+            continue;
+          }
+          if (nodes_info[static_cast<size_t>(in_id)].status == WalkStatus::kNotWalked) {
             in_nodes_has_not_been_walked.push_back(in_node);
           }
         }
@@ -1639,7 +1684,15 @@ graphStatus ComputeGraphImpl::RDFSTopologicalSorting(std::vector<NodePtr> &node_
     std::vector<NodePtr> stack = {node};
     while (!stack.empty()) {
       const auto current = stack.back();
-      NodeStatus &reverse_dfs_node_info = nodes_info[current->GetOpDesc()->GetId()];
+      const auto current_op_desc = current->GetOpDescBarePtr();
+      GE_CHECK_NOTNULL(current_op_desc);
+      const int64_t current_id = current_op_desc->GetId();
+      if ((current_id < 0) || (static_cast<size_t>(current_id) >= nodes_info.size())) {
+        GELOGW("[Check][Param] node id %s is out of range, skip it.", std::to_string(current_id).c_str());
+        stack.pop_back();
+        continue;
+      }
+      NodeStatus &reverse_dfs_node_info = nodes_info[static_cast<size_t>(current_id)];
       if (reverse_dfs_node_info.status == WalkStatus::kNotWalked) {
         reverse_dfs_node_info.status = WalkStatus::kWalking;
 
@@ -1788,6 +1841,10 @@ graphStatus ComputeGraphImpl::CollectOutputNode(const ComputeGraphPtr &compute_g
   }
 
   for (auto &ele : GetGraphOutNodesInfo()) {
+    if (ele.first == nullptr) {
+      GELOGW("[Check][Param] user set out node is null, skip it.");
+      continue;
+    }
     const auto iter = targets_.find(ele.first);
     if (iter != targets_.end()) {
       GELOGI("User set out node [%s] is found in user def targets, out node is prior!", ele.first->GetName().c_str());
@@ -1915,11 +1972,15 @@ graphStatus ComputeGraphImpl::AddDataEdgesForNetOutput(
   }
 
   // 对于其他多连的数据输入，断开连边
-  for (int32_t i = net_input_index; i < static_cast<int32_t>(net_out_node->GetInDataNodesSize()); i++) {
-    auto peer_out_anchor = net_out_node->GetInDataAnchor(i)->GetPeerOutAnchor();
+  for (int32_t i = net_input_index; i < static_cast<int32_t>(net_out_node->GetAllInDataAnchorsSize()); i++) {
+    const auto in_data_anchor = net_out_node->GetInDataAnchor(i);
+    if (in_data_anchor == nullptr) {
+      continue;
+    }
+    auto peer_out_anchor = in_data_anchor->GetPeerOutAnchor();
     if (peer_out_anchor != nullptr) {
       GELOGI("Netoutput node input index %d has been linked, unlink it.", i);
-      GE_ASSERT_SUCCESS(GraphUtils::RemoveEdge(peer_out_anchor, net_out_node->GetInDataAnchor(i)),
+      GE_ASSERT_SUCCESS(GraphUtils::RemoveEdge(peer_out_anchor, in_data_anchor),
                         "[Remove][Edge] failed, netoutput %s input index %d.", net_out_node->GetName().c_str(), i);
     }
   }
@@ -2266,6 +2327,11 @@ graphStatus ComputeGraphImpl::CollectBreadthOutNode(const NodePtr &node, std::ma
 }
 
 void ComputeGraphImpl::TopologicalSorting(const std::function<bool(const NodePtr &, const NodePtr &)> comp) {
+  if (!comp) {
+    REPORT_INNER_ERR_MSG("E18888", "topological sorting comparator is empty, check invalid.");
+    GELOGE(GRAPH_FAILED, "[Check][Param] Topological sorting comparator is empty.");
+    return;
+  }
   nodes_.sort(std::move(comp));
   int64_t num = 0;
   for (const NodePtr &node : nodes_) {

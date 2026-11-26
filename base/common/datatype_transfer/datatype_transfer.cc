@@ -82,6 +82,17 @@ Status TransDataSrc2Dst(const CastArgs &args, uint8_t *const dst_raw, const size
   return SUCCESS;
 }
 
+template <>
+Status TransDataSrc2Dst<fp16_t, int32_t>(const CastArgs &args, uint8_t *const dst_raw, const size_t data_size) {
+  const auto *src = reinterpret_cast<const fp16_t *>(args.data);
+  auto *dst = reinterpret_cast<int32_t *>(dst_raw);
+  for (size_t idx = 0U; idx != data_size; idx++) {
+    // Finite half values fit int32_t; retain the existing nonfinite conversion policy.
+    dst[idx] = Fp16IsInvalid(src[idx].val) ? src[idx].ToInt32() : static_cast<int32_t>(src[idx].ToFloat());
+  }
+  return SUCCESS;
+}
+
 template <typename SrcT>
 Status TransDataSrc2Fp16(const CastArgs &args, uint8_t *const dst, const size_t data_size) {
   fp16_t src_data;

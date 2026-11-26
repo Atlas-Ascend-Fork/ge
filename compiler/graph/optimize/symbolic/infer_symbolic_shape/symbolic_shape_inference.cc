@@ -30,6 +30,7 @@
 #include "symbolic_shape_inference.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 #include "graph/symbolizer/guard_dfx_context.h"
+#include "graph/custom_op_factory.h"
 #include <algorithm>
 
 namespace ge {
@@ -441,19 +442,30 @@ Status DoComputeAndUpdate(const NodePtr &node) {
   return ge::GRAPH_SUCCESS;
 }
 
-Status DoCustomInferAndUpdate(const NodePtr &node) {
-  const auto op_desc = node->GetOpDesc();
-  GE_ASSERT_NOTNULL(op_desc);
+using CustomInferSymbolFunc = std::function<graphStatus(gert::InferSymbolContext *)>;
+
+CustomInferSymbolFunc FindCustomInferSymbolFunc(const OpDescPtr &op_desc) {
+  SymbolicInferOp *symbolic_infer_op = nullptr;
+  if (CustomOpFactory::IsExistOp(op_desc->GetTypePtr(), OpRegistrationPriority::kTop, OpEngine::kCustom)) {
+    symbolic_infer_op =
+        CustomOpFactory::GetCustomOpCommonCapability<SymbolicInferOp>(AscendString(op_desc->GetType().c_str()));
+  }
+  if (symbolic_infer_op != nullptr) {
+    return [symbolic_infer_op](gert::InferSymbolContext *ctx) { return symbolic_infer_op->InferSymbol(ctx); };
+  }
+
   const auto space_registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry(
       static_cast<gert::OppImplVersionTag>(op_desc->GetOppImplVersion()));
-  if (space_registry == nullptr) {
-    return UNSUPPORTED;
+  const auto functions = (space_registry == nullptr) ? nullptr : space_registry->GetOpImpl(op_desc->GetType().c_str());
+  if (functions == nullptr) {
+    return {};
   }
-  const auto functions = space_registry->GetOpImpl(op_desc->GetType().c_str());
-  if (functions == nullptr || functions->infer_symbol == nullptr) {
-    return UNSUPPORTED;
-  }
-  const auto infer_symbol = functions->infer_symbol;
+  return functions->infer_symbol;
+}
+
+Status DoCustomInferAndUpdate(const NodePtr &node, const CustomInferSymbolFunc &infer_symbol) {
+  const auto op_desc = node->GetOpDesc();
+  GE_ASSERT_NOTNULL(op_desc);
   std::vector<std::unique_ptr<gert::SymbolTensor>> inputs_holder;
   std::vector<std::unique_ptr<gert::SymbolTensor>> outputs_holder;
   inputs_holder.reserve(op_desc->GetAllInputsDescPtr().size());
@@ -464,20 +476,15 @@ Status DoCustomInferAndUpdate(const NodePtr &node) {
                                          .Inputs(GetVoidPtr<gert::SymbolTensor>(inputs_holder))
                                          .Outputs(GetVoidPtr<gert::SymbolTensor>(outputs_holder))
                                          .Build(op_desc);
-  if (kernel_context_holder.context_ == nullptr) {
-    GELOGE(ge::GRAPH_FAILED, "Build infer symbol context failed, node %s[%s].", op_desc->GetName().c_str(),
-           op_desc->GetType().c_str());
-    return ge::GRAPH_FAILED;
-  }
+  GE_ASSERT_NOTNULL(kernel_context_holder.context_, "Build infer symbol context failed, node %s[%s].",
+                    op_desc->GetName().c_str(), op_desc->GetType().c_str());
   auto infer_symbol_ctx = reinterpret_cast<gert::InferSymbolContext *>(kernel_context_holder.context_);
   const auto infer_ret = infer_symbol(infer_symbol_ctx);
   if (infer_ret == ge::GRAPH_NOT_CHANGED) {
     return ge::UNSUPPORTED;
   }
-  if (infer_ret != ge::GRAPH_SUCCESS) {
-    GELOGE(infer_ret, "Custom infer symbol failed, op_desc[%s], ret[%u]", op_desc->GetName().c_str(), infer_ret);
-    return infer_ret;
-  }
+  GE_ASSERT_GRAPH_SUCCESS(infer_ret, "Custom infer symbol failed, op_desc[%s][%s], ret[%u]", op_desc->GetNamePtr(),
+                          op_desc->GetTypePtr(), infer_ret);
   GE_ASSERT_GRAPH_SUCCESS(UpdateOpDescOutShape(op_desc, infer_symbol_ctx));
   GE_ASSERT_GRAPH_SUCCESS(PrintSymbolShapeInfo(op_desc, "After_Custom_Infer_Symbol"));
   return ge::GRAPH_SUCCESS;
@@ -658,25 +665,22 @@ Status InferOneNode(NodePtr &node) {
   GE_ASSERT_SUCCESS(RecoverOpDescIrDefinition(op_desc, op_desc->GetType()));
   GE_ASSERT_SUCCESS(PrintSymbolShapeInfo(op_desc, "Before_Infer_Symbol", false));
 
-  // 1. 优先自定义算子符号化推导
-  Status ret = DoCustomInferAndUpdate(node);
+  const auto infer_symbol = FindCustomInferSymbolFunc(op_desc);
+  Status ret;
+  if (infer_symbol) {
+    ret = DoCustomInferAndUpdate(node, infer_symbol);
+  } else {
+    // 无自定义推导时，依次尝试内置kernel和内置shape callback
+    ret = DoComputeAndUpdate(node);
+    if (ret == UNSUPPORTED) {
+      ret = DoInferShapeAndUpdate(node);
+    }
+  }
   if (ret != UNSUPPORTED) {
     return ret;
   }
 
-  // 2. 优先内置kernel计算推导
-  ret = DoComputeAndUpdate(node);
-  if (ret != UNSUPPORTED) {
-    return ret;
-  }
-
-  // 3. 其次shape callback推导
-  ret = DoInferShapeAndUpdate(node);
-  if (ret != UNSUPPORTED) {
-    return ret;
-  }
-
-  // 4. 最后静态shape推导
+  // 最后静态shape推导
   return UseStaticShapeIfWeCan(op_desc);
 }
 }  // namespace

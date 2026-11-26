@@ -19,20 +19,20 @@ Note: The above environment variables do not need to be configured separately an
 ### This program supports two generation modes
 
 1. Code generation mode
-  Generates ES graph builder C, C++, and Python code, including:
+   Generates ES graph builder C, C++, and Python code, including:
 
-- C interfaces for all supported operators (ops)
-- C++ interfaces for all supported operators
-- Python interfaces for all supported operators
-- Aggregated header file for users to include all operators at once
-- Aggregated Python file for users to import all operators at once
+   - C interfaces for all supported operators (ops)
+   - C++ interfaces for all supported operators
+   - Python interfaces for all supported operators
+   - Aggregated header file for users to include all operators at once
+   - Aggregated Python file for users to import all operators at once
 
 2. Historical prototype library generation mode
-  Generates historical prototype structured data, including:
+   Generates historical prototype structured data, including:
 
-- Version index
-- Version metadata
-- Operator prototype data for that version
+   - Version index
+   - Version metadata
+   - Operator prototype data for that version
 
 ## Usage Methods
 
@@ -91,8 +91,8 @@ Note: Because environment variables have already been configured in the [Prerequ
 #### Historical Prototype Library Generation Mode Output
 
 - index.json: Version index
-- registry/<ver>/metadata.json: Version metadata
-- registry/<ver>/operators.json: Operator prototype data for that version
+- registry/\<ver>/metadata.json: Version metadata
+- registry/\<ver>/operators.json: Operator prototype data for that version
 
 ## Usage Examples
 

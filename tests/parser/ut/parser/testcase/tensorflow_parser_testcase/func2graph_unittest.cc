@@ -169,9 +169,9 @@ TEST_F(UtestFuncToGraph, NameMapHelper_GetUniqueName) {
 
 TEST_F(UtestFuncToGraph, NameMapHelper_UniqueInputOrOutputName) {
   NameMapHelper helper;
-  EXPECT_EQ(helper.UniqueInputOrOutputName("TestName"), "TestName");
+  EXPECT_EQ(helper.UniqueInputOrOutputName("TestName"), "testname");
   EXPECT_EQ(helper.UniqueInputOrOutputName(""), "unknown");
-  EXPECT_EQ(helper.UniqueInputOrOutputName("test@name#"), "test@name#");
+  EXPECT_EQ(helper.UniqueInputOrOutputName("test@name#"), "test_name_");
 }
 
 TEST_F(UtestFuncToGraph, NameMapHelper_UniqueNodeName) {

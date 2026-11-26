@@ -39,7 +39,7 @@ Returns the original callback function. The decoration process does not change h
 
 ## Example
 
-The following example decomposes the **ThresholdedRelu** node into two operators, `Threshold` and `Mul` (for the complete sample, see [ONNX Plugin Sample](../../../../../../../../examples/onnx_plugin/README.md)):
+The following example decomposes the **ThresholdedRelu** node into two operators, `Threshold` and `Mul` (for the complete sample, see [ONNX Plugin Sample](../../../../../../../../examples/onnx_plugin/README_en.md)):
 
 ```python
 from ge.es import GraphBuilder

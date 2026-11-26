@@ -32,6 +32,8 @@
 
 #include "parser/tensorflow_parser.h"
 #include "parser/tensorflow/tensorflow_custom_op_parser.h"
+#include "parser/tensorflow/tensorflow_util.h"
+#include "parser/tensorflow/graph_to_function_def.h"
 #include "parser/tensorflow/tensorflow_constant_parser.h"
 #include "common/framework_types_internal.h"
 #include "parser/common/op_def/variable_operator.h"
@@ -5956,6 +5958,154 @@ TEST_F(STestTensorflowParser, RawTensorContentSkipsInvalidOrEmptyCopy) {
     EXPECT_EQ(weight->GetTensorDesc().GetShape().GetDims(), std::vector<int64_t>({count}));
     EXPECT_EQ(weight->GetData().GetSize(), 0U);
   }
+}
+
+// 覆盖率补充用例：IncCov_EscapeAndListTypeAttr
+// 目的：覆盖生成代码的字符串转义分支：引号、反斜杠、换行、制表等需要转义的字符，
+// 以及 list(bool) / list(string) 默认值的格式化。
+// 说明：仅通过公开接口构造边界输入，不改动被测逻辑。
+TEST_F(STestTensorflowCustomOpParser, IncCov_EscapeAndListTypeAttr) {
+  domi::tensorflow::OpDef op_def;
+  op_def.set_name("EscapeOp");
+  auto *attr_bool_list = op_def.add_attr();
+  attr_bool_list->set_name("flags");
+  attr_bool_list->set_type("list(bool)");
+  auto *bool_list = attr_bool_list->mutable_default_value()->mutable_list();
+  bool_list->add_b(true);
+  bool_list->add_b(false);
+  auto *attr_str_list = op_def.add_attr();
+  attr_str_list->set_name("names");
+  attr_str_list->set_type("list(string)");
+  auto *str_list = attr_str_list->mutable_default_value()->mutable_list();
+  str_list->add_s("a\"b");
+  str_list->add_s("c\\d");
+  str_list->add_s("e\nf\tg\rh");
+  str_list->add_s(std::string(1, '\x01'));
+  auto *attr_str = op_def.add_attr();
+  attr_str->set_name("tpl");
+  attr_str->set_type("string");
+  attr_str->mutable_default_value()->set_s("x\"y\\z\n");
+
+  std::string reg_op;
+  TensorFlowCustomOpParser parser;
+  EXPECT_EQ(parser.ConstructRegOpString(op_def, reg_op), SUCCESS);
+  EXPECT_NE(reg_op.find("\\\""), std::string::npos);
+  EXPECT_NE(reg_op.find("\\\\"), std::string::npos);
+}
+
+// 覆盖率补充用例：IncCov_DynamicOutputKeyEscaped
+// 目的：覆盖多组动态输出 key 的生成与转义（out0000 形式）。
+// 说明：仅通过公开接口构造边界输入，不改动被测逻辑。
+TEST_F(STestTensorflowCustomOpParser, IncCov_DynamicOutputKeyEscaped) {
+  domi::tensorflow::OpDef op_def;
+  op_def.set_name("DynOutOp");
+  auto *in_arg = op_def.add_input_arg();
+  in_arg->set_name("x");
+  in_arg->set_type_list_attr("TList");
+  auto *out_arg = op_def.add_output_arg();
+  out_arg->set_name("y");
+  out_arg->set_number_attr("M");
+  domi::tensorflow::NodeDef node_def;
+  node_def.set_name("dyn_out_node");
+  node_def.set_op("DynOutOp");
+  std::string reg_custom;
+  TensorFlowCustomOpParser parser;
+  EXPECT_EQ(parser.ConstructRegCustomOpString(op_def, node_def, reg_custom), SUCCESS);
+  EXPECT_NE(reg_custom.find("out0000"), std::string::npos);
+}
+
+// 覆盖率补充用例：IncCov_WriteTextFileWriteFail
+// 目的：覆盖写文件失败分支。
+// 说明：仅通过公开接口构造边界输入，不改动被测逻辑。
+TEST_F(STestTensorflowCustomOpParser, IncCov_WriteTextFileWriteFail) {
+  if (access("/dev/full", F_OK) != 0) {
+    GTEST_SKIP() << "/dev/full is not available";
+  }
+  TensorFlowCustomOpParser parser;
+  EXPECT_EQ(parser.WriteTextFile("/dev/full", "coverage"), FAILED);
+}
+
+// 覆盖率补充用例：IncCov_ParseFromAttrValueListErrorPaths
+// 目的：覆盖 tensor desc 属性解析的三种错误路径：serialize_datatype 缺失、枚举不受支持、serialize_shape 缺失。
+// 说明：仅通过公开接口构造边界输入，不改动被测逻辑。
+TEST_F(STestTensorflowParser, IncCov_ParseFromAttrValueListErrorPaths) {
+  ge::GeTensorDesc ge_desc;
+  int32_t tf_datatype = 0;
+  domi::tensorflow::AttrValue_ListValue no_datatype;
+  (void)no_datatype.add_func();
+  EXPECT_FALSE(TensorFlowUtil::ParseFromAttrValueList(ge_desc, no_datatype, 0, tf_datatype));
+
+  domi::tensorflow::AttrValue_ListValue bad_datatype;
+  domi::tensorflow::NameAttrList *func2 = bad_datatype.add_func();
+  (*func2->mutable_attr())["serialize_datatype"].set_i(-1);
+  EXPECT_FALSE(TensorFlowUtil::ParseFromAttrValueList(ge_desc, bad_datatype, 0, tf_datatype));
+
+  domi::tensorflow::AttrValue_ListValue no_shape;
+  domi::tensorflow::NameAttrList *func3 = no_shape.add_func();
+  (*func3->mutable_attr())["serialize_datatype"].set_i(domi::tensorflow::DT_FLOAT);
+  EXPECT_FALSE(TensorFlowUtil::ParseFromAttrValueList(ge_desc, no_shape, 0, tf_datatype));
+}
+
+// 覆盖率补充用例：IncCov_ParseFromMemorySizeTooLarge
+// 目的：覆盖内存模型长度超过 int32 上限的拒绝分支。
+// 说明：仅通过公开接口构造边界输入，不改动被测逻辑。
+TEST_F(STestTensorflowParser, IncCov_ParseFromMemorySizeTooLarge) {
+  TensorFlowModelParser parser;
+  ge::ComputeGraphPtr graph = ge::parser::MakeShared<ge::ComputeGraph>("inc_cov_st_mem_graph");
+  char buffer[4] = {0};
+  const uint32_t too_large = static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) + 1U;
+  EXPECT_EQ(parser.ParseFromMemory(buffer, too_large, graph), PARAM_INVALID);
+}
+
+// 覆盖率补充用例：IncCov_DavGraphToFunctionDefNetoutputWithoutInput
+// 目的：覆盖 NETOUTPUT 节点无入边时的防御分支。
+// 说明：仅通过公开接口构造边界输入，不改动被测逻辑。
+TEST_F(STestTensorflowParser, IncCov_DavGraphToFunctionDefNetoutputWithoutInput) {
+  ge::ComputeGraphPtr graph = ge::parser::MakeShared<ge::ComputeGraph>("inc_cov_st_func_graph");
+  ge::OpDescPtr op_desc = std::make_shared<ge::OpDesc>("netoutput", parser::NETOUTPUT);
+  (void)ge::AttrUtils::SetInt(op_desc, "T", 1);
+  (void)ge::AttrUtils::SetInt(op_desc, "ret_index", 0);
+  ge::NodePtr node = graph->AddNode(op_desc);
+  ASSERT_NE(node, nullptr);
+  domi::tensorflow::FunctionDef fdef;
+  EXPECT_NE(GraphToFunctionDef::DavGraphToFunctionDef(graph, "inc_cov_st_func", &fdef), domi::SUCCESS);
+}
+
+// 覆盖率补充用例：serialize_shape 存在但不是 list 时按空 shape 处理（不判失败）。
+TEST_F(STestTensorflowParser, IncCov_ParseFromAttrValueListShapeNotList) {
+  ge::GeTensorDesc ge_desc;
+  int32_t tf_datatype = 0;
+  domi::tensorflow::AttrValue_ListValue list_value;
+  domi::tensorflow::NameAttrList *func = list_value.add_func();
+  (*func->mutable_attr())["serialize_datatype"].set_i(domi::tensorflow::DT_FLOAT);
+  (*func->mutable_attr())["serialize_shape"].set_i(0);
+  EXPECT_TRUE(TensorFlowUtil::ParseFromAttrValueList(ge_desc, list_value, 0, tf_datatype));
+}
+
+// 覆盖率补充用例：反序列化长度为负时的参数校验分支。
+TEST_F(STestTensorflowParser, IncCov_ReadProtoNegativeSize) {
+  domi::tensorflow::NodeDef node_def;
+  const char data[4] = {0};
+  EXPECT_FALSE(parser::ReadProtoFromArray(data, -1, &node_def));
+  EXPECT_FALSE(parser::ReadProtoFromMem(data, -1, &node_def));
+}
+
+// 覆盖率补充用例：解析带 scope fusion 的模型，覆盖子图转 FunctionDef 的路径
+// （Tin/Tout 列表、ArgDef 名称归一化、重接入边等）。
+TEST_F(STestTensorflowParser, IncCov_OptimizerFmkFusionOp) {
+  std::string case_dir = __FILE__;
+  const std::size_t idx = case_dir.find_last_of("/");
+  case_dir = case_dir.substr(0, idx);
+  const std::string root_proto = case_dir + "/origin_models/getnext_dynamic_fusion.pbtxt";
+  domi::tensorflow::GraphDef graph_def;
+  ASSERT_TRUE(parser::ReadProtoFromText(root_proto.c_str(), &graph_def));
+
+  TensorFlowModelParser tensorflow_parser;
+  ge::ComputeGraphPtr root_graph = ge::parser::MakeShared<ge::ComputeGraph>("inc_cov_st_fusion_graph");
+  const Status ret =
+      tensorflow_parser.ParseProto(reinterpret_cast<google::protobuf::Message *>(&graph_def), root_graph);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(root_graph->GetDirectNode().size(), 3U);
 }
 
 }  // namespace ge

@@ -35,6 +35,11 @@
 #include "ge_local_context.h"
 #include "register/optimization_option_registry.h"
 #include "common/context/local_context.h"
+#include "common/plugin/ge_make_unique_util.h"
+#include "exe_graph/runtime/infer_symbol_context.h"
+#include "graph/custom_op_factory.h"
+#include "graph/optimize/symbolic/infer_symbolic_shape/op_impl_infer_symbol_shape.h"
+#include "graph/optimize/symbolic/symbolic_kernel_factory.h"
 
 namespace ge {
 using ge::es::EsTensorHolder;
@@ -12150,6 +12155,167 @@ TEST_F(SymbolicShapeInferenceST, InferShapeForTransposeFloatPermDegrade) {
   op_desc->MutableInputDesc(1)->SetDataType(DT_FLOAT);
   SymbolicShapeInference ssi2;
   ASSERT_EQ(ssi2.Infer(cg), GRAPH_SUCCESS);
+}
+
+namespace {
+size_t g_st_symbolic_infer_op_call_count = 0U;
+size_t g_st_registered_custom_symbol_call_count = 0U;
+size_t g_st_builtin_symbol_call_count = 0U;
+size_t g_st_host_compute_call_count = 0U;
+
+graphStatus InferStSymbolicInferOp(gert::InferSymbolContext *context) {
+  ++g_st_symbolic_infer_op_call_count;
+  const auto input_shape = context->GetInputSymbolShape(0U);
+  const auto output = context->GetOutputSymbolTensor(0U);
+  if (input_shape == nullptr || output == nullptr) {
+    return GRAPH_FAILED;
+  }
+  output->SetOriginSymbolShape(gert::SymbolShape({input_shape->GetDim(0U) + Symbol(1)}));
+  return GRAPH_SUCCESS;
+}
+
+graphStatus InferStRegisteredCustomSymbolNotChanged(gert::InferSymbolContext *context) {
+  (void)context;
+  ++g_st_registered_custom_symbol_call_count;
+  return GRAPH_NOT_CHANGED;
+}
+
+graphStatus InferStRegisteredCustomSymbolFailed(gert::InferSymbolContext *context) {
+  (void)context;
+  ++g_st_registered_custom_symbol_call_count;
+  return GRAPH_FAILED;
+}
+
+graphStatus InferStBuiltinSymbolShape(gert::InferSymbolContext *context) {
+  ++g_st_builtin_symbol_call_count;
+  const auto output = context->GetOutputSymbolShape(0U);
+  if (output == nullptr) {
+    return GRAPH_FAILED;
+  }
+  output->SetDimNum(1U).SetDim(0U, Symbol(99));
+  return GRAPH_SUCCESS;
+}
+
+graphStatus ComputeStHostSymbol(gert::InferSymbolComputeContext *context) {
+  (void)context;
+  ++g_st_host_compute_call_count;
+  return GRAPH_SUCCESS;
+}
+
+class StSymbolicInferOp final : public SymbolicInferOp {
+ public:
+  graphStatus InferSymbol(gert::InferSymbolContext *context) override {
+    return InferStSymbolicInferOp(context);
+  }
+};
+
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(StCustomSymbolicInferCapabilityOp).InferSymbolShape(InferStBuiltinSymbolShape);
+IMPL_OP_INFER_SYMBOL_SHAPE_INNER(StCustomSymbolNotChangedWithBuiltinOp).InferSymbolShape(InferStBuiltinSymbolShape);
+REGISTER_SYMBOLIC_KERNEL(StCustomSymbolicInferCapabilityOp, ComputeStHostSymbol);
+REGISTER_SYMBOLIC_KERNEL(StCustomSymbolNotChangedWithBuiltinOp, ComputeStHostSymbol);
+}  // namespace
+
+/**
+ * 用例描述：SymbolicInferOp 与字段注册、host 计算、内置符号推导同时存在时，优先调用 SymbolicInferOp。
+ * 预置条件：注册实现 SymbolicInferOp 的自定义算子，并为同一算子配置字段、host 计算和内置回调。
+ * 测试步骤：构造带符号输入的单节点图，执行符号化推导并检查各回调次数及输出符号 Shape。
+ * 预期结果：仅 SymbolicInferOp 被调用，输出维度为输入维度加一。
+ */
+TEST_F(SymbolicShapeInferenceST, InferSymbolicInferOpPrecedesOtherCallbacks) {
+  const AscendString op_type("StCustomSymbolicInferCapabilityOp");
+  ASSERT_EQ(CustomOpFactory::RegisterCustomOpCreator(
+                op_type, []() -> std::unique_ptr<BaseCustomOp> { return std::make_unique<StSymbolicInferOp>(); }),
+            GRAPH_SUCCESS);
+  GE_MAKE_GUARD(remove_custom_op, [&]() { CustomOpFactory::RemoveCustomOps({op_type}); });
+  g_st_symbolic_infer_op_call_count = 0U;
+  g_st_registered_custom_symbol_call_count = 0U;
+  g_st_builtin_symbol_call_count = 0U;
+  g_st_host_compute_call_count = 0U;
+  const auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+  ASSERT_NE(registry, nullptr);
+  const auto funcs = registry->CreateOrGetOpImpl(op_type.GetString());
+  ASSERT_NE(funcs, nullptr);
+  funcs->infer_symbol = InferStRegisteredCustomSymbolNotChanged;
+
+  const auto graph = std::make_shared<ComputeGraph>("StCustomSymbolicInferCapabilityGraph");
+  const auto op_desc = std::make_shared<OpDesc>("custom_symbolic_infer", op_type.GetString());
+  GeTensorDesc tensor_desc(GeShape({-1}), FORMAT_ND, DT_FLOAT);
+  tensor_desc.SetOriginShape(GeShape({-1}));
+  ASSERT_EQ(op_desc->AddInputDesc(tensor_desc), GRAPH_SUCCESS);
+  ASSERT_EQ(op_desc->AddOutputDesc(tensor_desc), GRAPH_SUCCESS);
+  const auto input_attr = op_desc->MutableInputDesc(0)->GetOrCreateAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(input_attr, nullptr);
+  input_attr->symbolic_tensor.SetOriginSymbolShape(gert::SymbolShape({Symbol("st_capability_input")}));
+  ASSERT_NE(graph->AddNode(op_desc), nullptr);
+
+  ASSERT_EQ(SymbolicShapeInference().Infer(graph), SUCCESS);
+  EXPECT_EQ(g_st_symbolic_infer_op_call_count, 1U);
+  EXPECT_EQ(g_st_registered_custom_symbol_call_count, 0U);
+  EXPECT_EQ(g_st_builtin_symbol_call_count, 0U);
+  EXPECT_EQ(g_st_host_compute_call_count, 0U);
+  const auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(attr->symbolic_tensor.GetOriginSymbolShape()),
+            (std::vector<Expression>{Symbol("st_capability_input") + Symbol(1)}));
+}
+
+/**
+ * 用例描述：字段注册的自定义符号推导返回 GRAPH_NOT_CHANGED 时，不回落 host 计算和内置推导。
+ * 预置条件：为同一算子注册返回 GRAPH_NOT_CHANGED 的字段回调、host 计算和内置符号推导回调。
+ * 测试步骤：构造输出静态 Shape 为 7 的单节点图，执行符号化推导。
+ * 预期结果：字段回调调用一次，host 计算和内置回调不执行，输出符号 Shape 使用静态值 7。
+ */
+TEST_F(SymbolicShapeInferenceST, InferCustomSymbolNotChangedSkipsBuiltin) {
+  g_st_registered_custom_symbol_call_count = 0U;
+  g_st_builtin_symbol_call_count = 0U;
+  g_st_host_compute_call_count = 0U;
+  const auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+  ASSERT_NE(registry, nullptr);
+  const auto funcs = registry->CreateOrGetOpImpl("StCustomSymbolNotChangedWithBuiltinOp");
+  ASSERT_NE(funcs, nullptr);
+  funcs->infer_symbol = InferStRegisteredCustomSymbolNotChanged;
+
+  const auto graph = std::make_shared<ComputeGraph>("StCustomSymbolNotChangedWithBuiltinGraph");
+  const auto op_desc = std::make_shared<OpDesc>("custom_symbol", "StCustomSymbolNotChangedWithBuiltinOp");
+  GeTensorDesc tensor_desc(GeShape({7}), FORMAT_ND, DT_FLOAT);
+  tensor_desc.SetOriginShape(GeShape({7}));
+  ASSERT_EQ(op_desc->AddOutputDesc(tensor_desc), GRAPH_SUCCESS);
+  ASSERT_NE(graph->AddNode(op_desc), nullptr);
+
+  ASSERT_EQ(SymbolicShapeInference().Infer(graph), SUCCESS);
+  EXPECT_EQ(g_st_registered_custom_symbol_call_count, 1U);
+  EXPECT_EQ(g_st_builtin_symbol_call_count, 0U);
+  EXPECT_EQ(g_st_host_compute_call_count, 0U);
+  const auto attr = op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>();
+  ASSERT_NE(attr, nullptr);
+  EXPECT_EQ(SymbolicInferUtil::GetSymbolDims(attr->symbolic_tensor.GetOriginSymbolShape()),
+            (std::vector<Expression>{Symbol(7)}));
+}
+
+/**
+ * 用例描述：字段注册的自定义符号推导返回错误时，终止推导且不保留输出符号信息。
+ * 预置条件：为自定义算子注册返回 GRAPH_FAILED 的字段回调。
+ * 测试步骤：构造单节点图并执行符号化推导，检查返回码、回调次数和输出属性。
+ * 预期结果：推导返回 PARAM_INVALID，字段回调调用一次，输出符号属性为空。
+ */
+TEST_F(SymbolicShapeInferenceST, InferCustomSymbolFailedDiscardsOutput) {
+  g_st_registered_custom_symbol_call_count = 0U;
+  const auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+  ASSERT_NE(registry, nullptr);
+  const auto funcs = registry->CreateOrGetOpImpl("StCustomSymbolFailedOp");
+  ASSERT_NE(funcs, nullptr);
+  funcs->infer_symbol = InferStRegisteredCustomSymbolFailed;
+
+  const auto graph = std::make_shared<ComputeGraph>("StCustomSymbolFailedGraph");
+  const auto op_desc = std::make_shared<OpDesc>("custom_symbol", "StCustomSymbolFailedOp");
+  GeTensorDesc tensor_desc(GeShape({7}), FORMAT_ND, DT_FLOAT);
+  tensor_desc.SetOriginShape(GeShape({7}));
+  ASSERT_EQ(op_desc->AddOutputDesc(tensor_desc), GRAPH_SUCCESS);
+  ASSERT_NE(graph->AddNode(op_desc), nullptr);
+
+  EXPECT_EQ(SymbolicShapeInference().Infer(graph), ge::PARAM_INVALID);
+  EXPECT_EQ(g_st_registered_custom_symbol_call_count, 1U);
+  EXPECT_EQ(op_desc->GetOutputDesc(0).GetAttrsGroup<SymbolicDescAttr>(), nullptr);
 }
 
 TEST_F(SymbolicShapeInferenceST, InferShapeForUnsortedSegmentMinFloatNumSegmentsDegrade) {

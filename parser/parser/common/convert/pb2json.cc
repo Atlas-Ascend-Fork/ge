@@ -268,6 +268,50 @@ void Pb2Json::RepeatedEnum2Json(const ProtobufEnumValueDescriptor *enum_value_de
   }
 }
 
+namespace {
+// attr 的 value 是 const 引用，const 版 operator[] 在 key 缺失时会断言/解引用 end()。
+// 这里统一先做结构校验，缺失或类型不符时按空值处理，避免畸形 attr 让进程 abort。
+void GetStringListFromAttrValue(const Json &value, std::vector<string> &out) {
+  out.clear();
+  if (!value.is_object()) {
+    return;
+  }
+  const Json::const_iterator list_iter = value.find("list");
+  if ((list_iter == value.end()) || (!list_iter->is_object())) {
+    return;
+  }
+  const Json::const_iterator s_iter = list_iter->find("s");
+  if ((s_iter == list_iter->end()) || (!s_iter->is_array())) {
+    return;
+  }
+  for (const auto &item : *s_iter) {
+    if (item.is_string()) {
+      out.emplace_back(item.get<string>());
+    }
+  }
+}
+
+void GetBoolListFromAttrValue(const Json &value, std::vector<bool> &out) {
+  out.clear();
+  if (!value.is_object()) {
+    return;
+  }
+  const Json::const_iterator list_iter = value.find("list");
+  if ((list_iter == value.end()) || (!list_iter->is_object())) {
+    return;
+  }
+  const Json::const_iterator b_iter = list_iter->find("b");
+  if ((b_iter == list_iter->end()) || (!b_iter->is_array())) {
+    return;
+  }
+  for (const auto &item : *b_iter) {
+    if (item.is_boolean()) {
+      out.emplace_back(item.get<bool>());
+    }
+  }
+}
+}  // namespace
+
 int Pb2Json::DictInit(Json &json, std::vector<string> &idx2name, std::vector<string> &idx2value,
                       std::vector<bool> &use_string_val) {
   if (json.find("attr") == json.end()) {
@@ -280,13 +324,18 @@ int Pb2Json::DictInit(Json &json, std::vector<string> &idx2name, std::vector<str
     const auto &value = (*it)["value"];
     bool obj_del = true;
     if (key == ATTR_MODEL_OM_COMPRESS_VERSION) {
-      om_compress_version = value["i"];
+      if (value.is_object()) {
+        const Json::const_iterator i_iter = value.find("i");
+        if ((i_iter != value.end()) && i_iter->is_number_integer()) {
+          om_compress_version = i_iter->get<int>();
+        }
+      }
     } else if (key == ATTR_MODEL_ATTR_NAME_ENUM) {
-      idx2name = value["list"]["s"].get<std::vector<string>>();
+      GetStringListFromAttrValue(value, idx2name);
     } else if (key == ATTR_MODEL_ATTR_VALUE_ENUM) {
-      idx2value = value["list"]["s"].get<std::vector<string>>();
+      GetStringListFromAttrValue(value, idx2value);
     } else if (key == ATTR_MODEL_ATTRS_USE_STRING_VALUE) {
-      use_string_val = value["list"]["b"].get<std::vector<bool>>();
+      GetBoolListFromAttrValue(value, use_string_val);
     } else {
       obj_del = false;
     }

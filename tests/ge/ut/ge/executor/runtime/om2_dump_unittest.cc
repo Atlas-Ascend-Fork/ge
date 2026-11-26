@@ -28,10 +28,13 @@
 #include "framework/runtime/om2_model_executor.h"
 #include "common/debug/ge_log.h"
 #include "mmpa/mmpa_api.h"
+#include "common/plugin/datatype_util.h"
 #include "depends/profiler/src/dump_stub.h"
 #include "depends/runtime/src/runtime_stub.h"
 #include "aprof_pub.h"
 #include "depends/profiler/src/profiling_test_util.h"
+#include "depends/runtime/src/runtime_stub.h"
+#include "depends/ascendcl/src/ascendcl_stub.h"
 
 using namespace testing;
 using namespace ge::dump;
@@ -1523,8 +1526,8 @@ TEST(DataDumpImplTest, UpdateStepIdAfterBuildCopiesStepTest) {
   ModelDumpInfo model_info{};
   model_info.model_id = 1U;
   model_info.device_id = 0U;
-  toolkit::aicpu::dump::OpMappingInfo op_mapping_info;
-  ASSERT_EQ(impl.BuildOpMappingBasicInfo(model_info, op_mapping_info), SUCCESS);
+  DumpTransportInfo dump_transport_info;
+  ASSERT_EQ(impl.BuildDumpTransportBasicInfo(model_info, dump_transport_info), SUCCESS);
   ASSERT_NE(impl.step_id_dev_addr_, nullptr);
 
   // 每次执行前刷新当前 step（从 0 开始），验证 step 值被正确传递
@@ -1547,10 +1550,10 @@ TEST(OverflowDumpImplTest, IsOpDebugEnabledDefaultTest) {
   EXPECT_FALSE(impl.IsOpDebugEnabled());
 }
 
-// dump proto 的 data_type 写 IR(proto) 枚举而非 ge::DataType 原值，
+// dump 载荷的 data_type 写 IR(proto) 枚举而非 ge::DataType 原值，
 // 两套枚举数值错位（DT_FLOAT: ge=0/proto=1, DT_BOOL: ge=12/proto=11），直接写 ge 枚举会导致
 // AICPU dump 解析侧 dtype 错位
-TEST(DumpOpProtoDtypeTest, BuildTaskInputsOutputsWriteIrDtype) {
+TEST(DumpOpTlvDtypeTest, BuildTaskInputsOutputsWriteIrDtype) {
   DumpOp dump_op;
   gert::Tensor tensor = {};
   tensor.SetSize(1024U);
@@ -1564,9 +1567,12 @@ TEST(DumpOpProtoDtypeTest, BuildTaskInputsOutputsWriteIrDtype) {
   task_desc.inputs = inputs;
   task_desc.input_num = 1U;
   ASSERT_EQ(dump_op.BuildTaskInputs(task_desc, "", ""), SUCCESS);
-  const auto &input_task = dump_op.GetOpMappingInfo().task(0);
-  ASSERT_EQ(input_task.input_size(), 1);
-  EXPECT_EQ(input_task.input(0).data_type(), 1);  // proto DT_FLOAT
+  const DumpTransTaskInfo *input_task = nullptr;
+  ASSERT_EQ(dump_op.GetDumpTransportInfo().GetTask(0U, input_task), DumpTransStatus::kOk);
+  ASSERT_EQ(input_task->GetInputCount(), 1U);
+  const DumpTransInputInfo *input = nullptr;
+  ASSERT_EQ(input_task->GetInput(0U, input), DumpTransStatus::kOk);
+  EXPECT_EQ(input->GetDataType(), DataTypeUtil::GetIrDataType(ge::DT_FLOAT));
 
   DumpOp output_op;
   gert::Tensor bool_tensor = {};
@@ -1580,13 +1586,16 @@ TEST(DumpOpProtoDtypeTest, BuildTaskInputsOutputsWriteIrDtype) {
   output_desc.outputs = outputs;
   output_desc.output_num = 1U;
   ASSERT_EQ(output_op.BuildTaskOutputs(output_desc, "", ""), SUCCESS);
-  const auto &output_task = output_op.GetOpMappingInfo().task(0);
-  ASSERT_EQ(output_task.output_size(), 1);
-  EXPECT_EQ(output_task.output(0).data_type(), 11);  // proto DT_BOOL
+  const DumpTransTaskInfo *output_task = nullptr;
+  ASSERT_EQ(output_op.GetDumpTransportInfo().GetTask(0U, output_task), DumpTransStatus::kOk);
+  ASSERT_EQ(output_task->GetOutputCount(), 1U);
+  const DumpTransOutputInfo *output = nullptr;
+  ASSERT_EQ(output_task->GetOutput(0U, output), DumpTransStatus::kOk);
+  EXPECT_EQ(output->GetDataType(), DataTypeUtil::GetIrDataType(ge::DT_BOOL));
 }
 
-// 未知 dtype 映射为 proto DT_UNDEFINED(0)，与 DataTypeUtil::GetIrDataType 的兜底行为一致
-TEST(DumpOpProtoDtypeTest, BuildTaskInputsUnknownDtypeMapsToUndefined) {
+// 未知 dtype 映射为 IR DT_UNDEFINED(0)，与 DataTypeUtil::GetIrDataType 的兜底行为一致
+TEST(DumpOpTlvDtypeTest, BuildTaskInputsUnknownDtypeMapsToUndefined) {
   DumpOp dump_op;
   gert::Tensor tensor = {};
   tensor.SetSize(4U);
@@ -1599,9 +1608,12 @@ TEST(DumpOpProtoDtypeTest, BuildTaskInputsUnknownDtypeMapsToUndefined) {
   task_desc.inputs = inputs;
   task_desc.input_num = 1U;
   ASSERT_EQ(dump_op.BuildTaskInputs(task_desc, "", ""), SUCCESS);
-  const auto &task = dump_op.GetOpMappingInfo().task(0);
-  ASSERT_EQ(task.input_size(), 1);
-  EXPECT_EQ(task.input(0).data_type(), 0);  // proto DT_UNDEFINED
+  const DumpTransTaskInfo *task = nullptr;
+  ASSERT_EQ(dump_op.GetDumpTransportInfo().GetTask(0U, task), DumpTransStatus::kOk);
+  ASSERT_EQ(task->GetInputCount(), 1U);
+  const DumpTransInputInfo *input = nullptr;
+  ASSERT_EQ(task->GetInput(0U, input), DumpTransStatus::kOk);
+  EXPECT_EQ(input->GetDataType(), 0);  // IR DT_UNDEFINED
 }
 
 // ProfilingConfig 测试类

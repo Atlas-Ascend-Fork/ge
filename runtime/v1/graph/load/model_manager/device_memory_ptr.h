@@ -22,9 +22,11 @@ class DeviceMemoryPtr {
     other.addr_ = 0UL;
   }
   DeviceMemoryPtr &operator=(DeviceMemoryPtr &&other) & noexcept {
-    Free();
-    addr_ = other.addr_;
-    other.addr_ = 0UL;
+    if (this != &other) {
+      Free();
+      addr_ = other.addr_;
+      other.addr_ = 0UL;
+    }
     return *this;
   }
   DeviceMemoryPtr(const DeviceMemoryPtr &) = delete;
@@ -38,6 +40,9 @@ class DeviceMemoryPtr {
     return addr_;
   }
   void Reset(uint64_t addr) {
+    if (addr_ == addr) {
+      return;
+    }
     Free();
     addr_ = addr;
   }

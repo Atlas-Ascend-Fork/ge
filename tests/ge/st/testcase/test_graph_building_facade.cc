@@ -15,6 +15,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <functional>
 #include "ge_running_env/op_reg.h"
 #include "es_graph_builder.h"
 #include "graph/graph.h"
@@ -26,6 +27,15 @@
 #include "graph/ge_attr_value.h"
 #include "graph/utils/op_desc_utils.h"
 #include "graph/utils/graph_utils_ex.h"
+#include "graph/utils/graph_utils.h"
+#include "graph/utils/node_utils.h"
+#include "graph/utils/file_utils.h"
+#include "graph/utils/attr_utils.h"
+#include "common/util/trace_manager/trace_manager.h"
+#include "graph/debug/ge_op_types.h"
+#include "graph/debug/ge_attr_define.h"
+#include "graph/ge_tensor.h"
+#include "graph_metadef/graph/fast_graph/quick_list.h"
 
 using namespace ge;
 namespace {
@@ -396,4 +406,234 @@ TEST_F(GraphBuildingFacadeTest, ExecuteGraphDumpSkipsRemovedSubgraphSlot) {
   EXPECT_EQ(GRAPH_SUCCESS, parent.Dump(Graph::DumpFormat::kReadable, removed));
   EXPECT_EQ(std::string::npos, removed.str().find("graph(\"edump_rm_branch\"")) << removed.str();
   EXPECT_EQ(std::string::npos, removed.str().find("edump_rm_inner")) << removed.str();
+}
+
+// 以下为覆盖率补充：覆盖图基础模块的异常/边界分支，不依赖执行设备。
+namespace {
+ComputeGraphPtr MakeIncCovStGraph(const std::string &name, bool with_netoutput) {
+  auto graph = std::make_shared<ComputeGraph>(name);
+  auto producer_desc = std::make_shared<OpDesc>("producer", "PlainOp");
+  producer_desc->AddOutputDesc(GeTensorDesc());
+  auto consumer_desc = std::make_shared<OpDesc>("consumer", "PlainOp");
+  consumer_desc->AddInputDesc(GeTensorDesc());
+  consumer_desc->AddOutputDesc(GeTensorDesc());
+  const auto producer = graph->AddNode(producer_desc);
+  const auto consumer = graph->AddNode(consumer_desc);
+  if ((producer == nullptr) || (consumer == nullptr)) {
+    return nullptr;
+  }
+  (void)GraphUtils::AddEdge(producer->GetOutDataAnchor(0), consumer->GetInDataAnchor(0));
+  if (with_netoutput) {
+    auto netoutput_desc = std::make_shared<OpDesc>("netoutput", NETOUTPUT);
+    netoutput_desc->AddInputDesc(GeTensorDesc());
+    const auto netoutput = graph->AddNode(netoutput_desc);
+    if (netoutput == nullptr) {
+      return nullptr;
+    }
+    (void)GraphUtils::AddEdge(consumer->GetOutDataAnchor(0), netoutput->GetInDataAnchor(0));
+  }
+  return graph;
+}
+}  // namespace
+
+TEST_F(GraphBuildingFacadeTest, IncCovStOperatorNullImplBranches) {
+  Operator op("inc_cov_st_op", "Test");
+  op.operator_impl_ = nullptr;
+  AscendString name("old_name");
+  EXPECT_EQ(op.GetName(name), GRAPH_SUCCESS);
+  EXPECT_EQ(name.GetLength(), 0UL);
+
+  op.RequiredAttrWithTypeRegister("attr", nullptr);
+  const TensorDesc tensor_desc;
+  EXPECT_EQ(op.UpdateDynamicInputDesc("input", 0U, tensor_desc), GRAPH_FAILED);
+
+  AttrValue attr_value;
+  attr_value.impl = nullptr;
+  (void)op.SetAttr("attr_value", std::move(attr_value));
+
+  AttrValue attr_value2;
+  attr_value2.impl = nullptr;
+  (void)op.SetAttr("attr_value2", std::move(attr_value2));
+
+  AttrValue attr_value3;
+  attr_value3.impl = nullptr;
+  (void)op.SetAttr("attr_value3", attr_value3);
+}
+
+TEST_F(GraphBuildingFacadeTest, IncCovStComputeGraphExceptionPaths) {
+  const auto graph = MakeIncCovStGraph("inc_cov_st_graph", true);
+  ASSERT_NE(graph, nullptr);
+
+  const std::function<bool(const NodePtr &, const NodePtr &)> empty_comp;
+  graph->TopologicalSorting(empty_comp);
+
+  std::vector<std::pair<NodePtr, int32_t>> out_nodes_info;
+  out_nodes_info.emplace_back(nullptr, 0);
+  (void)graph->SetGraphOutNodesInfo(out_nodes_info);
+
+  auto event_graph = std::make_shared<ComputeGraph>("inc_cov_st_event_graph");
+  auto recv_desc = std::make_shared<OpDesc>("recv", RECV);
+  recv_desc->AddOutputDesc(GeTensorDesc());
+  auto recv_notify_desc = std::make_shared<OpDesc>("recv_notify", RECV_NOTIFY);
+  recv_notify_desc->AddOutputDesc(GeTensorDesc());
+  auto send_desc = std::make_shared<OpDesc>("send", SEND);
+  send_desc->AddInputDesc(GeTensorDesc());
+  auto send_notify_desc = std::make_shared<OpDesc>("send_notify", SEND_NOTIFY);
+  send_notify_desc->AddInputDesc(GeTensorDesc());
+  (void)event_graph->AddNode(recv_desc);
+  (void)event_graph->AddNode(recv_notify_desc);
+  const auto send_node = event_graph->AddNode(send_desc);
+  (void)event_graph->AddNode(send_notify_desc);
+  EXPECT_EQ(event_graph->ReorderEventNodes(), GRAPH_SUCCESS);
+
+  auto foreign_event_graph = std::make_shared<ComputeGraph>("inc_cov_st_event_foreign");
+  auto foreign_event_desc = std::make_shared<OpDesc>("inc_cov_st_foreign_event", "PlainOp");
+  const auto foreign_event_node = foreign_event_graph->AddNode(foreign_event_desc);
+  ASSERT_NE(send_node, nullptr);
+  ASSERT_NE(foreign_event_node, nullptr);
+  EXPECT_EQ(GRAPH_SUCCESS,
+            GraphUtils::AddEdge(foreign_event_node->GetOutControlAnchor(), send_node->GetInControlAnchor()));
+  EXPECT_EQ(event_graph->ReorderEventNodes(), GRAPH_SUCCESS);
+}
+
+TEST_F(GraphBuildingFacadeTest, IncCovStRdfsForeignNodeIdOutOfRange) {
+  const auto graph = MakeIncCovStGraph("inc_cov_st_rdfs_graph", false);
+  ASSERT_NE(graph, nullptr);
+  const auto producer = graph->FindNode("producer");
+  const auto consumer = graph->FindNode("consumer");
+  ASSERT_NE(producer, nullptr);
+  ASSERT_NE(consumer, nullptr);
+
+  auto foreign_graph = std::make_shared<ComputeGraph>("inc_cov_st_foreign_graph");
+  auto foreign_desc = std::make_shared<OpDesc>("foreign", "PlainOp");
+  foreign_desc->AddOutputDesc(GeTensorDesc());
+  const auto foreign_node = foreign_graph->AddNode(foreign_desc);
+  ASSERT_NE(foreign_node, nullptr);
+  foreign_node->GetOpDesc()->SetId(1000);
+
+  ASSERT_EQ(GRAPH_SUCCESS, GraphUtils::RemoveEdge(producer->GetOutDataAnchor(0), consumer->GetInDataAnchor(0)));
+  ASSERT_EQ(GRAPH_SUCCESS, GraphUtils::AddEdge(foreign_node->GetOutDataAnchor(0), consumer->GetInDataAnchor(0)));
+
+  EXPECT_EQ(graph->TopologicalSorting(TopoSortingMode::kRDFS), GRAPH_SUCCESS);
+  EXPECT_EQ(graph->TopologicalSorting(TopoSortingMode::kStableRDFS), GRAPH_SUCCESS);
+}
+
+TEST_F(GraphBuildingFacadeTest, IncCovStNodeUtilsWithoutOwnerGraph) {
+  auto pc_desc = std::make_shared<OpDesc>("inc_cov_st_pc", PARTITIONEDCALL);
+  pc_desc->AddSubgraphName("sub");
+  pc_desc->SetSubgraphInstanceName(0, "sub_graph");
+  const auto pc = NodeUtils::CreatNodeWithoutGraph(pc_desc);
+  ASSERT_NE(pc, nullptr);
+  EXPECT_EQ(NodeUtils::GetSubgraphDataNodesByIndex(*pc, 0).size(), 0U);
+  EXPECT_EQ(NodeUtils::GetSubgraphOutputNodes(*pc).size(), 0U);
+  EXPECT_FALSE(NodeUtils::IsSubgraphInput(pc));
+
+  auto net_desc = std::make_shared<OpDesc>("inc_cov_st_net", NETOUTPUT);
+  const auto net = NodeUtils::CreatNodeWithoutGraph(net_desc);
+  ASSERT_NE(net, nullptr);
+  EXPECT_FALSE(NodeUtils::IsSubgraphOutput(net));
+
+  auto data_desc = std::make_shared<OpDesc>("inc_cov_st_data", DATA);
+  const auto node = NodeUtils::CreatNodeWithoutGraph(data_desc);
+  ASSERT_NE(node, nullptr);
+  EXPECT_FALSE(NodeUtils::IsWhileVaryingInput(node));
+}
+
+TEST_F(GraphBuildingFacadeTest, IncCovStQuickListMove) {
+  QuickList<int32_t> src;
+  ListElement<int32_t> element1;
+  ListElement<int32_t> element2;
+  element1.data = 1;
+  element2.data = 2;
+  src.push_back(&element1, ListMode::kWorkMode);
+  src.push_back(&element2, ListMode::kFreeMode);
+
+  QuickList<int32_t> dst(std::move(src));
+  EXPECT_EQ(dst.size(), 2U);
+  EXPECT_TRUE(src.empty());
+  auto iter = dst.begin();
+  ASSERT_NE(iter, dst.end());
+  EXPECT_EQ((*iter)->data, 1);
+  ++iter;
+  EXPECT_EQ((*iter)->data, 2);
+  ++iter;
+  EXPECT_EQ(iter, dst.end());
+}
+
+TEST_F(GraphBuildingFacadeTest, IncCovStDumpPathException) {
+  const auto graph = MakeIncCovStGraph("inc_cov_st_dump_graph", true);
+  ASSERT_NE(graph, nullptr);
+
+  const std::string nonexistent_dir = "./inc_cov_st_nonexistent_dir";
+  system(("rm -rf " + nonexistent_dir).c_str());
+  std::string real_path;
+  EXPECT_EQ(GraphUtils::GenDumpTxtFileName(graph, "suffix", nonexistent_dir + "/ge.pb", real_path), GRAPH_SUCCESS);
+  EXPECT_FALSE(real_path.empty());
+  system(("rm -rf " + nonexistent_dir).c_str());
+
+  GraphUtils::DumpGrphToOnnx(*graph, "/nonexistent_dump_dir_for_st/sub", "suffix");
+  std::stringstream readable_ss;
+  readable_ss << "inc cov st readable dump";
+  GraphUtils::WriteReadableDumpToTextFile(readable_ss, "/dev/full");
+}
+
+TEST_F(GraphBuildingFacadeTest, IncCovStNodeUtilsUnknownShape) {
+  auto root = std::make_shared<ComputeGraph>("inc_cov_st_root");
+  auto while_desc = std::make_shared<OpDesc>("inc_cov_st_while", WHILE);
+  while_desc->AddInputDesc(GeTensorDesc());
+  while_desc->AddOutputDesc(GeTensorDesc());
+  const auto while_node = root->AddNode(while_desc);
+  ASSERT_NE(while_node, nullptr);
+
+  auto sub = std::make_shared<ComputeGraph>("inc_cov_st_sub");
+  auto data_desc = std::make_shared<OpDesc>("inc_cov_st_data", DATA);
+  data_desc->AddOutputDesc(GeTensorDesc());
+  const auto data = sub->AddNode(data_desc);
+  ASSERT_NE(data, nullptr);
+  (void)AttrUtils::SetInt(data_desc, ATTR_NAME_PARENT_NODE_INDEX, 0);
+  auto net_desc = std::make_shared<OpDesc>("inc_cov_st_netoutput", NETOUTPUT);
+  net_desc->AddInputDesc(GeTensorDesc());
+  const auto netoutput = sub->AddNode(net_desc);
+  ASSERT_NE(netoutput, nullptr);
+  (void)AttrUtils::SetInt(net_desc->MutableInputDesc(0), ATTR_NAME_PARENT_NODE_INDEX, 0);
+  sub->SetParentNode(while_node);
+  sub->SetParentGraph(root);
+
+  (void)AttrUtils::SetBool(while_desc, ATTR_NAME_IS_UNKNOWN_SHAPE, true);
+  root->SetGraphUnknownFlag(true);
+  EXPECT_FALSE(NodeUtils::IsSubgraphInput(data));
+  EXPECT_FALSE(NodeUtils::IsSubgraphOutput(netoutput));
+
+  root->SetGraphUnknownFlag(false);
+  EXPECT_FALSE(NodeUtils::IsSubgraphInput(data));
+  EXPECT_FALSE(NodeUtils::IsSubgraphOutput(netoutput));
+
+  (void)AttrUtils::SetBool(while_desc, ATTR_NAME_IS_UNKNOWN_SHAPE, false);
+  EXPECT_TRUE(NodeUtils::IsSubgraphInput(data));
+  EXPECT_TRUE(NodeUtils::IsSubgraphOutput(netoutput));
+}
+
+TEST_F(GraphBuildingFacadeTest, IncCovStAddDataNodeMissingInputMapping) {
+  const auto owner = MakeIncCovStGraph("inc_cov_st_parent_graph", false);
+  ASSERT_NE(owner, nullptr);
+  const auto parent_node = owner->FindNode("consumer");
+  ASSERT_NE(parent_node, nullptr);
+  CompleteGraphBuilder builder("inc_cov_st_sub_graph");
+  builder.owner_graph_ = owner;
+  builder.SetParentNode(parent_node);
+  graphStatus err = GRAPH_SUCCESS;
+  std::string msg;
+  const auto data_node = builder.AddDataNode(0U, err, msg);
+  EXPECT_EQ(err, GRAPH_SUCCESS);
+  EXPECT_NE(data_node, nullptr);
+}
+
+TEST_F(GraphBuildingFacadeTest, IncCovStTraceOpenFileWithInvalidDir) {
+  auto &instance = TraceManager::GetInstance();
+  instance.trace_save_file_path_ = "./inc_cov_st_invalid_trace_dir/";
+  instance.current_saving_file_name_.clear();
+  instance.part1_ready_nums_ = kTraceSaveTriggerNum;
+  instance.SaveTraceBufferToFile(ReadyPart::A);
+  EXPECT_EQ(instance.part1_ready_nums_, 0U);
+  system("rm -rf ./inc_cov_st_invalid_trace_dir");
 }

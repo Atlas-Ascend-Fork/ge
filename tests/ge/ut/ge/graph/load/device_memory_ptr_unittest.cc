@@ -75,4 +75,19 @@ TEST_F(DeviceMemoryPtrUT, MoveAssignment_AutoFree) {
   mem = std::move(mem2);
   ASSERT_EQ(mem.Get(), ptr);
 }
+TEST_F(DeviceMemoryPtrUT, MoveAssignment_Self_KeepOwner) {
+  gert::GertRuntimeStub runtime_stub;
+  auto ptr = AllocDevice();
+  DeviceMemoryPtr mem(ptr);
+  DeviceMemoryPtr *self = &mem;
+  mem = std::move(*self);
+  ASSERT_EQ(mem.Get(), ptr);
+}
+TEST_F(DeviceMemoryPtrUT, Reset_SameAddr_KeepOwner) {
+  gert::GertRuntimeStub runtime_stub;
+  auto ptr = AllocDevice();
+  DeviceMemoryPtr mem(ptr);
+  mem.Reset(ptr);
+  ASSERT_EQ(mem.Get(), ptr);
+}
 }  // namespace ge

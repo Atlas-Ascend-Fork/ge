@@ -244,7 +244,7 @@ REG_DECOMPOSE_PASS(CustomOne2NPass, {"Conv2D"}).Stage(CustomPassStage::kAfterInf
 
 ## Development Example
 
-This section uses the fusion of the MatMul+Add structure into a GEMM custom pass as an example (corresponding to the fusion pass development in the general scenario described above) to detail how to modify a graph through a custom fusion pass. For details, see [Sample Source Code](../../../../../examples/fusion_pass/pattern_base_pass/1_fuse_matmul_add_pass/cpp/README.md). The sample repository also provides more samples. You can click [Fusion Pass Samples](../../../../../examples/fusion_pass/pattern_base_pass/README.md) to view them.
+This section uses the fusion of the MatMul+Add structure into a GEMM custom pass as an example (corresponding to the fusion pass development in the general scenario described above) to detail how to modify a graph through a custom fusion pass. For details, see [Sample Source Code](../../../../../examples/fusion_pass/pattern_base_pass/1_fuse_matmul_add_pass/cpp/README_en.md). The sample repository also provides more samples. You can click [Fusion Pass Samples](../../../../../examples/fusion_pass/pattern_base_pass/README_en.md) to view them.
 
 The graph structures before and after modification are as follows. In this example, the MatMul+Add structure on the left of the figure is identified and replaced with a single GEMM node on the right through the graph modification API:
 
@@ -313,7 +313,7 @@ The graph structures before and after modification are as follows. In this examp
 
 ## How to Use a Custom Pass
 
-After completing the custom pass described above, this section briefly describes how to compile the graph modification function into a dynamic library plugin so that the registered pass is invoked by the framework during the graph compilation phase. For detailed usage instructions, see [Sample Usage Guide](../../../../../examples/fusion_pass/pattern_base_pass/1_fuse_matmul_add_pass/cpp/README.md).
+After completing the custom pass described above, this section briefly describes how to compile the graph modification function into a dynamic library plugin so that the registered pass is invoked by the framework during the graph compilation phase. For detailed usage instructions, see [Sample Usage Guide](../../../../../examples/fusion_pass/pattern_base_pass/1_fuse_matmul_add_pass/cpp/README_en.md).
 
 1. Compile the graph modification function in [Development Example](#development-example) into a dynamic library file ending with ".so".
 2. After successful compilation, run the **make install** command to install the ".so" dynamic library file to the `${INSTALL_DIR}/opp/vendors/xxx/custom_fusion_passes/` directory. (Soft links are supported. The ".so" file must be readable by the executing user.)
@@ -334,7 +334,7 @@ After completing the custom pass described above, this section briefly describes
 
 ## Result Verification
 
-See [Sample Usage Guide](../../../../../examples/fusion_pass/pattern_base_pass/1_fuse_matmul_add_pass/cpp/README.md)\> Program Running \> to view the running result.
+See [Sample Usage Guide](../../../../../examples/fusion_pass/pattern_base_pass/1_fuse_matmul_add_pass/cpp/README_en.md)\> Program Running \> to view the running result.
 
 After the dump environment variable is set and the program execution is complete, graph files such as ge\_onnx\*.pbtxt are generated in the current path. You can obtain the following two graphs (taking the case where the specified Pass execution phase is before InferShape as an example) and then view them using visualization software such as Netron:
 

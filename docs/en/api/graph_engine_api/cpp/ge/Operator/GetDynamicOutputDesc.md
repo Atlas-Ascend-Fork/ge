@@ -30,7 +30,7 @@ TensorDesc GetDynamicOutputDesc(const char_t *name, uint32_t index) const
 | Name | Input/Output | Description |
 | --- | --- | --- |
 | name | Input | Name of the operator's dynamic output. |
-| index | Input | Number of the operator's dynamic output, starting from 1. |
+| index | Input | Index of the operator's dynamic output, starting from 0. |
 
 ## Return Value
 

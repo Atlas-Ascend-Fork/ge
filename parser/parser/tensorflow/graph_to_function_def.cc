@@ -24,6 +24,8 @@ limitations under the License.
  */
 
 #include "graph_to_function_def.h"
+#include <atomic>
+#include <cstdint>
 #include <iostream>
 #include "common/fmk_error_codes.h"
 #include "graph/debug/ge_attr_define.h"
@@ -43,8 +45,10 @@ constexpr char UNDERLINE = '_';
 }  // namespace
 namespace ge {
 using AttrValueMap = ::google::protobuf::Map<string, domi::tensorflow::AttrValue>;
-vector<domi::tensorflow::DataType> arg_datetypes_;
-vector<domi::tensorflow::DataType> result_datetypes_;
+// 解析上下文按线程隔离（ParserContext/PreChecker 均为 thread_local），这里同样用 thread_local
+// 避免多线程并发解析时 Tin/Tout 类型串台
+thread_local vector<domi::tensorflow::DataType> arg_datetypes_;
+thread_local vector<domi::tensorflow::DataType> result_datetypes_;
 
 string NameMapHelper::GetUniqueName(const string &name) {
   if (used_names_.insert(name).second) {
@@ -66,11 +70,11 @@ string NameMapHelper::UniqueInputOrOutputName(const string &name) {
   if (name.empty()) {
     normalized = UNKNOWN;
   }
-  for (auto ch : normalized) {
-    if (!isalnum(ch)) {
+  for (char &ch : normalized) {
+    if (isalnum(static_cast<unsigned char>(ch)) == 0) {
       ch = UNDERLINE;
-    } else if (isupper(ch)) {
-      ch = tolower(ch);
+    } else if (isupper(static_cast<unsigned char>(ch)) != 0) {
+      ch = static_cast<char>(tolower(static_cast<unsigned char>(ch)));
     }
   }
   // uniquify
@@ -107,7 +111,15 @@ domi::Status ComputeArgRange(const domi::tensorflow::NodeDef &node_def, const do
         REPORT_INNER_ERR_MSG("E19999", "Attr:number_attr does not exist in node:%s, check invalid",
                              node_def.name().c_str());
         return domi::INTERNAL_ERROR);
-    *num = attr_value.i();
+    const int64_t number = attr_value.i();
+    if ((number < 0) || (number > static_cast<int64_t>(INT32_MAX))) {
+      REPORT_INNER_ERR_MSG("E19999", "Attr:%s of node:%s value out of range, check invalid",
+                           arg_def.number_attr().c_str(), node_def.name().c_str());
+      GELOGE(PARAM_INVALID, "Attr:%s of node:%s value out of range.", arg_def.number_attr().c_str(),
+             node_def.name().c_str());
+      return PARAM_INVALID;
+    }
+    *num = static_cast<int>(number);
   } else if (!arg_def.type_list_attr().empty()) {
     domi::tensorflow::AttrValue attr_value;
     /// Get the attribute type_list_attr, if the attribute does not exist, return
@@ -140,8 +152,15 @@ domi::Status NameRangesHelper(const domi::tensorflow::NodeDef &node_def,
   int num = 0;
   for (const auto &arg : args) {
     GE_RETURN_IF_ERROR(ComputeArgRange(node_def, arg, &num));
-    (*result)[arg.name()] = std::make_pair(start, start + num);
-    start += num;
+    const int64_t range_end = static_cast<int64_t>(start) + static_cast<int64_t>(num);
+    if (range_end > static_cast<int64_t>(INT32_MAX)) {
+      REPORT_INNER_ERR_MSG("E19999", "Arg:%s range of node:%s overflows, check invalid", arg.name().c_str(),
+                           node_def.name().c_str());
+      GELOGE(PARAM_INVALID, "Arg:%s range of node:%s overflows.", arg.name().c_str(), node_def.name().c_str());
+      return PARAM_INVALID;
+    }
+    (*result)[arg.name()] = std::make_pair(start, static_cast<int>(range_end));
+    start = static_cast<int>(range_end);
   }
   return SUCCESS;
 }
@@ -340,7 +359,8 @@ domi::Status GraphToFunctionDef::RecordArg(ge::ComputeGraphPtr graph, const vect
       if (node->GetName() == anchor->GetOwnerNode()->GetName()) {
         ge::OutDataAnchorPtr out_archor_ptr = arg_node->GetOutDataAnchor(0);
         GE_CHECK_NOTNULL(out_archor_ptr);
-        ge::InDataAnchorPtr in_archor_ptr = node->GetInDataAnchor(anchor->GetPeerOutAnchor()->GetIdx());
+        // anchor 是目标节点的输入锚点，应取它自己的输入槽，而不是上游输出的索引
+        ge::InDataAnchorPtr in_archor_ptr = node->GetInDataAnchor(anchor->GetIdx());
         GE_CHECK_NOTNULL(in_archor_ptr);
         (void)ge::GraphUtils::RemoveEdge(in_archor_ptr->GetPeerOutAnchor(), in_archor_ptr);
         ge::graphStatus ret = ge::GraphUtils::AddEdge(out_archor_ptr, in_archor_ptr);
@@ -419,6 +439,12 @@ domi::Status GraphToFunctionDef::DavGraphToFunctionDef(ge::ComputeGraphPtr graph
       const string normalized = node_names.UniqueInputOrOutputName(node->GetName());
       argdef->set_name(normalized);
 
+      if (node->GetAllInDataAnchorsSize() == 0U) {
+        REPORT_INNER_ERR_MSG("E19999", "NETOUTPUT node:%s has no in data anchor, check invalid",
+                             node->GetName().c_str());
+        GELOGE(PARAM_INVALID, "NETOUTPUT node:%s has no in data anchor.", node->GetName().c_str());
+        return PARAM_INVALID;
+      }
       ge::OutDataAnchorPtr o_anchor = node->GetAllInDataAnchors().at(0)->GetPeerOutAnchor();
       GE_CHECK_NOTNULL(o_anchor);
       string n_name = o_anchor->GetOwnerNode()->GetName() + ":" + to_string(o_anchor->GetIdx());
@@ -527,9 +553,8 @@ domi::Status GraphToFunctionDef::BuildFunctionDef(ge::ComputeGraphPtr &graph, co
   GE_CHECK_NOTNULL(call_node_def);
   // Current date / time base on the current system
   string now_time = ge::parser::CurrentTimeInStr();
-  static int i = 0;
-  const string name = name_in + now_time + to_string(i);
-  i++;
+  static std::atomic<int32_t> index(0);
+  const string name = name_in + now_time + to_string(index.fetch_add(1));
   // set node_def
   call_node_def->set_op(name);
   call_node_def->set_name(name);
@@ -552,18 +577,16 @@ domi::Status GraphToFunctionDef::BuildFunctionDef(ge::ComputeGraphPtr &graph, co
   domi::tensorflow::AttrValue tout_value;
   // Add tin tout attribute
   domi::tensorflow::AttrValue::ListValue list;
-  for (auto type : arg_datetypes_) {
-    tin_value.mutable_list()->clear_type();
-    tin_value.mutable_list()->add_type(type);
-  }
   if (!arg_datetypes_.empty()) {
+    for (auto type : arg_datetypes_) {
+      tin_value.mutable_list()->add_type(type);
+    }
     GraphToFunctionDef::AddNodeAttr("Tin", tin_value, call_node_def);
   }
-  for (auto type : result_datetypes_) {
-    tout_value.mutable_list()->clear_type();
-    tout_value.mutable_list()->add_type(type);
-  }
   if (!result_datetypes_.empty()) {
+    for (auto type : result_datetypes_) {
+      tout_value.mutable_list()->add_type(type);
+    }
     GraphToFunctionDef::AddNodeAttr("Tout", tout_value, call_node_def);
   }
   // Convert DaVinci graph to functiondef

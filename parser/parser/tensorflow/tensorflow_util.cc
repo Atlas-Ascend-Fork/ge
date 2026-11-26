@@ -229,16 +229,42 @@ FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY bool TensorFlowUtil::ParseFromA
   ge_desc.SetFormat(ge::FORMAT_ND);
   ge_desc.SetOriginFormat(ge::FORMAT_ND);
 
-  tf_datatype = a_list.func(i).attr().at(SERIALIZE_DATATYPE).i();
+  const AttrValueMap &func_attr = a_list.func(i).attr();
+  const AttrValueMap::const_iterator datatype_iter = func_attr.find(SERIALIZE_DATATYPE);
+  if (datatype_iter == func_attr.end()) {
+    REPORT_INNER_ERR_MSG("E19999", "Attr:%s of tensor desc, func index:%d does not exist, check invalid",
+                         SERIALIZE_DATATYPE.c_str(), i);
+    GELOGE(PARAM_INVALID, "Attr:%s of tensor desc, func index:%d does not exist.", SERIALIZE_DATATYPE.c_str(), i);
+    return false;
+  }
+  tf_datatype = static_cast<int32_t>(datatype_iter->second.i());
   const ge::DataType type = domi::TensorAssign::ConvertTensorflowDataType(tf_datatype);
-  GE_CHK_BOOL_RET_STATUS(type != ge::DataType::DT_UNDEFINED, PARAM_INVALID,
-                         "In FrameworkOp translate datatype:%d failed, domi can't support.", tf_datatype);
+  // bool 返回函数里不能用 GE_CHK_BOOL_RET_STATUS：宏 return 的是 Status 枚举值（非 0），
+  // 隐式转 bool 恒为 true，会把"dtype 转换失败"伪装成成功。这里必须显式 return false。
+  if (type == ge::DataType::DT_UNDEFINED) {
+    REPORT_INNER_ERR_MSG("E19999", "In FrameworkOp translate datatype:%d failed, domi can't support.", tf_datatype);
+    GELOGE(PARAM_INVALID, "In FrameworkOp translate datatype:%d failed, domi can't support.", tf_datatype);
+    return false;
+  }
   ge_desc.SetDataType(type);
   ge_desc.SetOriginDataType(type);
-  int shape_dim_dim = a_list.func(i).attr().at(SERIALIZE_SHAPE).list().i_size();
+  const AttrValueMap::const_iterator shape_iter = func_attr.find(SERIALIZE_SHAPE);
+  if (shape_iter == func_attr.end()) {
+    REPORT_INNER_ERR_MSG("E19999", "Attr:%s of tensor desc, func index:%d does not exist, check invalid",
+                         SERIALIZE_SHAPE.c_str(), i);
+    GELOGE(PARAM_INVALID, "Attr:%s of tensor desc, func index:%d does not exist.", SERIALIZE_SHAPE.c_str(), i);
+    return false;
+  }
+  // 非 list 时 protobuf 的 list() 返回空列表，等价于空 shape，这是改动前就存在的合法路径，不能判失败
+  if (!shape_iter->second.has_list()) {
+    GELOGW("Attr:%s of tensor desc, func index:%d is not a list, treat it as an empty shape.", SERIALIZE_SHAPE.c_str(),
+           i);
+  }
+  const domi::tensorflow::AttrValue_ListValue &shape_list = shape_iter->second.list();
+  int shape_dim_dim = shape_list.i_size();
   std::vector<int64_t> data_dim;
   for (int j = 0; j < shape_dim_dim; j++) {
-    data_dim.push_back(a_list.func(i).attr().at(SERIALIZE_SHAPE).list().i(j));
+    data_dim.push_back(shape_list.i(j));
   }
   ge_desc.SetShape(ge::GeShape(data_dim));
   ge_desc.SetOriginShape(ge::GeShape(data_dim));

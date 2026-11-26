@@ -22,7 +22,7 @@ python/
 
 ## Prerequisites
 
-- CANN environment variables have been set via `source ${ASCEND_PATH}/set_env.sh`. For more details, refer to the environment variable configuration step in [C++ Sample README](../cpp/README.md)
+- CANN environment variables have been set via `source ${ASCEND_PATH}/set_env.sh`. For more details, refer to the environment variable configuration step in [C++ Sample README](../cpp/README_en.md)
 - CANN software package installation, refer to [Environment Preparation](../../../../../docs/en/build.md#1-environment-preparation)
 - Python dependencies for graph compilation installed: `attrs`, `decorator`, `sympy`, `numpy`, `psutil`, `scipy`
 
@@ -40,7 +40,7 @@ The following commands are executed in the `6_decompose_grouped_conv_to_splited_
    export ASCEND_GE_PY_PASS_PATH="$PWD/src/python_decompose_pass.py"
    ```
 
-2. Refer to the program execution section in [C++ Sample README](../cpp/README.md) for verification.
+2. Refer to the program execution section in [C++ Sample README](../cpp/README_en.md) for verification.
    For offline scenarios, replace the `atc` command in the C++ README with `pyatc`; both have identical command-line parameters, and `pyatc` runs within the current Python interpreter process.
 
 3. Notes:

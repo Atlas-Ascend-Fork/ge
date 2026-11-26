@@ -3793,19 +3793,22 @@ TEST_F(UtestRegister, new_optiling_py_interface_ok_with_output_tensor_and_null_o
   gert::DefaultOpImplSpaceRegistryV2::GetInstance().SetSpaceRegistry(nullptr);
 }
 
-TEST_F(UtestRegister, IncCov_AutoMappingFnDynamicSizeExceeded) {
+TEST_F(UtestRegister, IncCov_AutoMappingFnDynamicMultiEntries) {
   domi::tensorflow::GraphDef graph_def;
   GraphInit(graph_def);
   ge::Operator op_dst = ge::Operator("Add", "int");
   domi::tensorflow::NodeDef *node = graph_def.mutable_node(0);
 
+  // Multiple dynamic inputs/outputs are allowed now: the key is prefixed with in/out
+  // (generated code uses the in0000/out0000 form), and keys without that prefix stay no-op.
   map<std::string, std::pair<std::string, std::string>> name_attrs;
-  name_attrs.insert(make_pair(std::string("in"), make_pair(std::string("dyn1"), std::string("attr1"))));
-  name_attrs.insert(make_pair(std::string("out"), make_pair(std::string("dyn2"), std::string("attr2"))));
-  name_attrs.insert(make_pair(std::string("other"), make_pair(std::string("dyn3"), std::string("attr3"))));
+  name_attrs.insert(make_pair(std::string("in0000"), make_pair(std::string("dyn1"), std::string("attr1"))));
+  name_attrs.insert(make_pair(std::string("in0001"), make_pair(std::string("dyn2"), std::string("attr2"))));
+  name_attrs.insert(make_pair(std::string("out0000"), make_pair(std::string("dyn3"), std::string("attr3"))));
+  name_attrs.insert(make_pair(std::string("other"), make_pair(std::string("dyn4"), std::string("attr4"))));
 
   auto ret = AutoMappingFnDynamic(node, op_dst, name_attrs, 1, 1);
-  EXPECT_EQ(ret, domi::FAILED);
+  EXPECT_EQ(ret, domi::SUCCESS);
 }
 
 TEST_F(UtestRegister, IncCov_AutoMappingFunctionUnexpectedType) {

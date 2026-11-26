@@ -420,8 +420,8 @@ Status AtomicMemoryAssigner::GetWorkspaceCleanMemInfos(const NodePtr &node, Atom
 
   const auto workspace_size = node->GetOpDescBarePtr()->GetWorkspaceBytes();
   GE_ASSERT_TRUE(workspace_offsets.size() == workspace_size.size(),
-                 "node %s workspace_offsets.size[%zu] != workspace_size.size[%zu]", workspace_offsets.size(),
-                 workspace_size.size());
+                 "node %s workspace_offsets.size[%zu] != workspace_size.size[%zu]", node->GetNamePtr(),
+                 workspace_offsets.size(), workspace_size.size());
 
   std::vector<int64_t> tvm_workspace_types;
   const bool has_tvm_workspace_mem_type_attr =
