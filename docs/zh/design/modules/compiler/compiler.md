@@ -141,6 +141,8 @@ GE 支持一种特殊的 Build Mode（`BUILD_MODE_TUNING`），允许在编译�
 
 ## 2. 图级优化：Pass 体系
 
+内置 Host `StridedSlice` 的正步长常量求值在区间长度不能整除步长时保留最后一个有效元素，输出维度与实际切片元素数一致。
+
 ### 2.1 Pass 基础设施
 
 GE 的优化 Pass 分为两类：

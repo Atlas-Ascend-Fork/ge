@@ -265,6 +265,8 @@ REG_PASS_OPTION("ConstantFoldingPass").SWITCH_OPT(ge::OO_CONSTANT_FOLDING);
 
 This Pass controlled by `ge.oo.constantFolding` switch.
 
+For a nonempty normalized interval and a positive stride, the built-in Host `StridedSlice` rounds the output length up using the quotient and remainder. For example, slicing `[10, 11, 12, 13, 14]` with `0:5:2` returns `[10, 12, 14]` with shape `[3]`. The divisible interval `0:4:2` returns `[10, 12]`.
+
 #### 4.3.2 DimensionComputePass — Dimension Computation Folding
 
 File: `compiler/graph/passes/standard_optimize/constant_folding/dimension_compute_pass.h/cc`

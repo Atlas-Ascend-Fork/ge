@@ -139,6 +139,8 @@ This enables AOE (Ascend Optimization Engine) to inject its own tuning logic at 
 
 ## 2. Graph-Level Optimization: Pass System
 
+When folding a positive-stride `StridedSlice`, the built-in Host kernel includes the last selected element even when the stride does not divide the interval length. The output extent counts all selected elements.
+
 ### 2.1 Pass Infrastructure
 
 GE's optimization Passes fall into two categories:

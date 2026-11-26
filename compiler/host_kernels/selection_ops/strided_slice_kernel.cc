@@ -341,6 +341,7 @@ Status StridedSliceKernel::MaskCal(const size_t i, int64_t &begin_i, int64_t &en
 
 Status StridedSliceKernel::StrideCal(const int64_t x_dims_i, int64_t &begin_i, int64_t &end_i, int64_t &stride_i,
                                      int64_t &dim_final) {
+  const bool positive_stride = stride_i > 0;
   if (stride_i == 0) {
     stride_i = kDefaultStrideSize;
   } else if (stride_i < 0) {
@@ -355,7 +356,10 @@ Status StridedSliceKernel::StrideCal(const int64_t x_dims_i, int64_t &begin_i, i
     end_i = x_dims_i;
   }
 
-  if ((begin_i == 0) && (end_i == 0)) {
+  if (positive_stride && begin_i >= 0 && end_i > begin_i) {
+    const int64_t distance = end_i - begin_i;
+    dim_final = distance / stride_i + (distance % stride_i != 0 ? 1 : 0);
+  } else if ((begin_i == 0) && (end_i == 0)) {
     dim_final = x_dims_i;
   } else {
     dim_final = abs(end_i - begin_i) / stride_i;

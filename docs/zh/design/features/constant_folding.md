@@ -263,6 +263,8 @@ REG_PASS_OPTION("ConstantFoldingPass").SWITCH_OPT(ge::OO_CONSTANT_FOLDING);
 ```
 该 Pass 受 `ge.oo.constantFolding` 开关控制。
 
+内置 Host `StridedSlice` 对规范化后的正步长非空区间按 `ceil((end - begin) / stride)` 计算长度，使用商和余数实现。例如 `[10,11,12,13,14]` 的 `0:5:2` 返回 `[10,12,14]`、形状 `[3]`；`0:4:2` 仍为 `[10,12]`。该取整规则仅用于正步长非空区间。
+
 #### 4.3.2 DimensionComputePass — 维度计算折叠
 
 文件：`compiler/graph/passes/standard_optimize/constant_folding/dimension_compute_pass.h/cc`
