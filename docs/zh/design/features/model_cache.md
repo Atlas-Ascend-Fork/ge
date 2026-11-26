@@ -262,7 +262,7 @@ flowchart TD
 
 变量描述匹配成功后，执行模型加载：
 
-1. **反序列化**：`LoadToGeRootModel()` 从 `.om` 文件加载模型数据，通过 `ModelHelper::LoadRootModel()` 反序列化为 `GeRootModel`
+1. **反序列化**：`LoadToGeRootModel()` 从 `.om` 文件加载模型数据，通过 `ModelHelper::LoadRootModel()` 反序列化为 `GeRootModel`。在线缓存加载显式提供当前进程的全局自定义算子注册表作为备用；只有 OM 无自定义算子 SO、无非空 `PYTHON_CUSTOM_OPS` 和 `CUSTOM_OPS` 分区时才使用。内嵌实现仍由模型分区恢复，普通离线 OM 加载不使用此备用表。
 2. **外置权重处理**：`AssignConstantVarMem()` 设置外置权重路径，更新模型中常量节点的内存地址
 3. **更新 Session ID**：`UpdateGeModelSessionId()` 将模型中所有子图的 Session ID 更新为当前 Session 的 ID
 4. **更新 Session Graph ID**：`UpdateSessionGraphId()` 更新图的会话标识
