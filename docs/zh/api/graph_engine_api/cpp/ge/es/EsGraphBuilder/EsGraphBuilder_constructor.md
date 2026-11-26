@@ -25,7 +25,7 @@ EsGraphBuilder(const char *name, GraphKind kind) : graph_builder_(EsCreateGraphB
 | 参数名 | 输入/输出 | 说明 |
 | --- | --- | --- |
 | name | 输入 | 构建的图名称，如果为nullptr则使用默认名称"graph"。 |
-| kind | 输入 | 图后端类别，取值为[C\_GraphKind](https://gitcode.com/cann/metadef/blob/master/docs/zh/api/c_api/C_GraphKind.md)枚举（`ge::GraphKind`为其别名）：`C_GRAPH_COMPUTE`（计算图，取值为0）、`C_GRAPH_EXECUTE`（执行图，取值为1）。 |
+| kind | 输入 | 图后端类别，取值为[C\_GraphKind](https://gitcode.com/cann/metadef/blob/9.3.0-beta.2/docs/zh/api/c_api/C_GraphKind.md)枚举（`ge::GraphKind`为其别名）：`C_GRAPH_COMPUTE`（计算图，取值为0）、`C_GRAPH_EXECUTE`（执行图，取值为1）。 |
 
 ## 返回值说明
 

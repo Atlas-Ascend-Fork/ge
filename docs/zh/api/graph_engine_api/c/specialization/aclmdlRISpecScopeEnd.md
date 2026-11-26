@@ -20,9 +20,6 @@
 <!-- npu="910" id9 -->
 - Atlas训练系列产品：不支持
 <!-- end id9 -->
-<!-- npu="IPV350" id10 -->
-- IPV350：不支持
-<!-- end id10 -->
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/c/specialization/aclmdlRISpecScopeEnd_res.md#id1 -->
 
 ## 头文件
@@ -73,7 +70,7 @@ aclError aclmdlRISpecScopeEnd(aclrtStream stream)
 
 以下片段演示在第二次`AddCustom`调用后使用`aclmdlRISpecScopeEnd`标记常量化编译范围的终点。
 
-调用前需完成[aclInit](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/02_initialization_and_deinitialization.md#aclInit)、[aclrtSetDevice](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/04_device_management.md#aclrtSetDevice)、[aclrtCreateStream](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/06_stream_management.md#aclrtCreateStream)，创建x、y、t、z对应的Tensor并准备输入数据。
+调用前需完成[aclInit](https://gitcode.com/cann/runtime/blob/9.3.0-beta.2/docs/zh/api_ref/02_initialization_and_deinitialization.md#aclInit)、[aclrtSetDevice](https://gitcode.com/cann/runtime/blob/9.3.0-beta.2/docs/zh/api_ref/04_device_management.md#aclrtSetDevice)、[aclrtCreateStream](https://gitcode.com/cann/runtime/blob/9.3.0-beta.2/docs/zh/api_ref/06_stream_management.md#aclrtCreateStream)，创建x、y、t、z对应的Tensor并准备输入数据。
 
 workspace1、workspace2和modelRI为输出参数。调用方负责失败时的捕获清理和资源释放，并保证Tensor关联的内存及workspace在模型销毁前保持有效。
 

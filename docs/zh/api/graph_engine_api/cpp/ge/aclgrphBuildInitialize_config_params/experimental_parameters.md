@@ -50,9 +50,6 @@
 <!-- npu="910" id20 -->
 - Atlas训练系列产品：支持
 <!-- end id20 -->
-<!-- npu="IPV350" id21 -->
-- IPV350：不支持
-<!-- end id21 -->
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildInitialize_config_params/experimental_parameters_res.md#id1 -->
 
 ## OO\_CONSTANT\_FOLDING

@@ -88,9 +88,6 @@ cluster\_config.json配置示例如下：
 <!-- npu="910" id6 -->
 - Atlas训练系列产品：不支持
 <!-- end id6 -->
-<!-- npu="IPV350" id7 -->
-- IPV350：不支持
-<!-- end id7 -->
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildInitialize_config_params/basic_functions_res.md#id1 -->
 
 ## DETERMINISTIC
@@ -137,9 +134,6 @@ cluster\_config.json配置示例如下：
 <!-- npu="910" id13 -->
 - Atlas训练系列产品：支持
 <!-- end id13 -->
-<!-- npu="IPV350" id14 -->
-- IPV350：不支持
-<!-- end id14 -->
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildInitialize_config_params/basic_functions_res.md#id2 -->
 
 ## ENABLE\_SINGLE\_STREAM
@@ -188,9 +182,6 @@ cluster\_config.json配置示例如下：
 <!-- npu="910" id20 -->
 - Atlas训练系列产品：支持
 <!-- end id20 -->
-<!-- npu="IPV350" id21 -->
-- IPV350：不支持
-<!-- end id21 -->
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildInitialize_config_params/basic_functions_res.md#id3 -->
 
 ## HCCL\_SUB\_COMM\_CONFIG
@@ -254,9 +245,6 @@ sub\_comm\_config.json文件示例如下：
 <!-- npu="910" id27 -->
 - Atlas训练系列产品：不支持
 <!-- end id27 -->
-<!-- npu="IPV350" id28 -->
-- IPV350：不支持
-<!-- end id28 -->
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildInitialize_config_params/basic_functions_res.md#id4 -->
 
 ## OPTION\_HOST\_ENV\_OS
@@ -339,7 +327,7 @@ sub\_comm\_config.json文件示例如下：
 
 全量芯片支持。
 
-<!-- npu="950,A3,910b,910,310p,310b,IPV350" id44 -->
+<!-- npu="950,A3,910b,910,310p,310b" id44 -->
 ## VIRTUAL\_TYPE
 
 是否支持离线模型在昇腾虚拟化实例特性生成的虚拟设备上运行。此参数实际对应的options参数为`ge.virtual_type`。
@@ -394,8 +382,5 @@ sub\_comm\_config.json文件示例如下：
 <!-- npu="910" id42 -->
 - Atlas训练系列产品：支持
 <!-- end id42 -->
-<!-- npu="IPV350" id43 -->
-- IPV350：不支持
-<!-- end id43 -->
 
 <!-- end id44 -->

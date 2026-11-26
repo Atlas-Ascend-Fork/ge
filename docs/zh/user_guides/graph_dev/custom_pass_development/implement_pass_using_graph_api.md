@@ -37,7 +37,7 @@ REGISTER_CUSTOM_PASS("pass_name").CustomPassFn(CustomPassFunc).Stage(CustomPassS
 >
 >如果用户在改图过程中，需要替换成其他功能的算子，但是该算子CANN不支持，可以通过如下方式自定义该算子：
 >
->通过Ascend C自定义该算子，详情请参见《[Ascend C算子开发](https://gitcode.com/cann/asc-devkit/blob/master/docs/zh/guide/index.md)》。
+>通过Ascend C自定义该算子，详情请参见《[Ascend C算子开发](https://gitcode.com/cann/asc-devkit/blob/9.3.0-beta.2/docs/zh/guide/index.md)》。
 >
 >通过TBE自定义该算子，详情请参见《TBE&AI CPU算子开发》。
 >
@@ -45,7 +45,7 @@ REGISTER_CUSTOM_PASS("pass_name").CustomPassFn(CustomPassFunc).Stage(CustomPassS
 
 ## 开发示例
 
-此处以MatMul+Add结构融合为GEMM自定义Pass为例，详细介绍如何通过自定义Pass修改Graph，详细可以参见[样例源码](https://gitcode.com/cann/ge/blob/master/examples/fusion_pass/graph_base_pass/1_fuse_matmul_add_pass/src/fuse_matmul_add_pass.cpp)。
+此处以MatMul+Add结构融合为GEMM自定义Pass为例，详细介绍如何通过自定义Pass修改Graph，详细可以参见[样例源码](https://gitcode.com/cann/ge/blob/9.3.0-beta.2/examples/fusion_pass/graph_base_pass/1_fuse_matmul_add_pass/src/fuse_matmul_add_pass.cpp)。
 
 样例仓还提供了如下两个使用自定义Pass修改Graph的样例，用户可以单击对应链接进行查看：
 
@@ -268,7 +268,7 @@ REGISTER_CUSTOM_PASS("pass_name").CustomPassFn(CustomPassFunc).Stage(CustomPassS
 
 ## 如何使用自定义Pass
 
-完成上述自定义Pass后，本节简单介绍如何把改图函数编译成动态库插件方式，以便注册的Pass在图编译的最开始被框架调用。详细使用说明请参见[样例使用指导](https://gitcode.com/cann/ge/tree/master/examples/fusion_pass/graph_base_pass/1_fuse_matmul_add_pass)。
+完成上述自定义Pass后，本节简单介绍如何把改图函数编译成动态库插件方式，以便注册的Pass在图编译的最开始被框架调用。详细使用说明请参见[样例使用指导](https://gitcode.com/cann/ge/tree/9.3.0-beta.2/examples/fusion_pass/graph_base_pass/1_fuse_matmul_add_pass)。
 
 1. 把[开发示例](#开发示例)中的改图函数编译成仅以".so"结尾的动态库文件。
 2. 把上述".so"动态库文件复制到`${INSTALL_DIR}/opp/vendors/xxx/custom_fusion_passes/`目录下。（支持设置软链接的方式；".so"文件对执行用户，需要有可读权限）
@@ -289,7 +289,7 @@ REGISTER_CUSTOM_PASS("pass_name").CustomPassFn(CustomPassFunc).Stage(CustomPassS
 
 ## 结果验证
 
-请参见[样例使用指导](https://gitcode.com/cann/ge/tree/master/examples/fusion_pass/graph_base_pass/1_fuse_matmul_add_pass)\>程序运行\>检查执行结果。
+请参见[样例使用指导](https://gitcode.com/cann/ge/tree/9.3.0-beta.2/examples/fusion_pass/graph_base_pass/1_fuse_matmul_add_pass)\>程序运行\>检查执行结果。
 
 设置了dump环境变量后，程序执行完毕，会在当前路径生成ge\_onnx\*.pbtxt等图文件，用户可以获取如下两张图，随后使用Netron等可视化软件查看：
 

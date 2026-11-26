@@ -93,9 +93,6 @@ aipp_op {
 <!-- npu="910" id13 -->
 - Atlas训练系列产品：支持
 <!-- end id13 -->
-<!-- npu="IPV350" id14 -->
-- IPV350：不支持
-<!-- end id14 -->
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildModel_config_params/basic_functions_res.md#id2 -->
 
 ## OFFLINE\_MODE
@@ -172,9 +169,6 @@ OpA:Network1OpA
 <!-- npu="910" id6 -->
 - Atlas训练系列产品：支持
 <!-- end id6 -->
-<!-- npu="IPV350" id7 -->
-- IPV350：不支持
-<!-- end id7 -->
 
 ## OUTPUT\_TYPE
 
