@@ -56,7 +56,7 @@ Status CastReluCastFusionPass::Fusion(ge::ComputeGraph &graph, Mapping &mapping,
   ge::NodePtr relu_Node = GetNodeFromMapping(kPatternRelu, mapping);
   FE_CHECK(relu_Node == nullptr, REPORT_FE_ERROR("relu_Node is null, fusion failed."), return NOT_CHANGED);
   ge::OpDescPtr relu_desc = relu_Node->GetOpDesc();
-  FE_CHECK(cast_desc0 == nullptr, REPORT_FE_ERROR("relu_Node's Desc is null, fusion failed."), return NOT_CHANGED);
+  FE_CHECK(relu_desc == nullptr, REPORT_FE_ERROR("relu_Node's Desc is null, fusion failed."), return NOT_CHANGED);
 
   auto relu_input = relu_desc->MutableInputDesc(0);
   FE_CHECK_NOTNULL(relu_input);
@@ -73,7 +73,7 @@ Status CastReluCastFusionPass::Fusion(ge::ComputeGraph &graph, Mapping &mapping,
   ge::NodePtr cast_Node1 = GetNodeFromMapping(kPatternCast1, mapping);
   FE_CHECK(cast_Node1 == nullptr, REPORT_FE_ERROR("cast_Node1 is null, fusion failed."), return NOT_CHANGED);
   ge::OpDescPtr cast_desc1 = cast_Node1->GetOpDesc();
-  FE_CHECK(cast_desc0 == nullptr, REPORT_FE_ERROR("cast_node1's description is null, fusion failed."),
+  FE_CHECK(cast_desc1 == nullptr, REPORT_FE_ERROR("cast_node1's description is null, fusion failed."),
            return NOT_CHANGED);
 
   auto cast0_input = cast_desc0->MutableInputDesc(0);
