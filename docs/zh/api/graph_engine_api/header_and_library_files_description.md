@@ -70,6 +70,9 @@ GE图引擎接口头文件在如下目录：
 | exe_graph/runtime/eager_op_execution_context.h | Eager算子执行时的输入、输出、Stream和Workspace上下文。 | liblowering.so |
 | exe_graph/runtime/host_cpu_op_execution_context.h | Host CPU算子执行时的输入、输出和Host内存管理上下文。 | liblowering.so |
 | exe_graph/runtime/op_compile_context.h | 算子编译、Tiling和Shape推导上下文。 | liblowering.so |
+| exe_graph/runtime/infer_symbol_context.h | 自定义算子符号化推导上下文，读取输入符号Shape/Tensor并写出输出。 | Header-only上下文；主要消费库libge_compiler.so |
+| exe_graph/runtime/symbolic_types.h | 符号Shape与符号Tensor逐元素读写接口及值三态。 | Header-only数据类型；表达式实现由libaihac_symbolizer.so提供 |
+| graph/symbolizer/symbolic.h | Expression、Symbol、ge::sym运算及EXPECT/ASSERT符号校验宏。 | libaihac_symbolizer.so（外部算子SO为弱引用） |
 | exe_graph/runtime/task_def_builder.h | GenTask回调中构造与domi::TaskDef线格式逐字节兼容的任务描述并序列化为字节流。 | libregister.so |
 | graph/graph.h | GE Graph创建、增删节点、输入输出与图属性接口。 | libgraph.so |
 | graph/ct_infer_shape_range_context.h | 编译期Shape Range推导上下文。 | Header-only接口；主要消费库libgraph.so |

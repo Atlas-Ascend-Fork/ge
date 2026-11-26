@@ -409,10 +409,10 @@ Symbolic Shape inference introduces symbolic variables (such as `s0`, `s1`) and 
 
 | Type | Definition Location | Description |
 | ---- | -------------------- | ----------- |
-| `ge::Expression` / `ge::Symbol` | `graph/symbolizer/symbolic.h` | Symbolic expression, supports constants, variables, arithmetic operations |
-| `gert::SymbolShape` | `exe_graph/runtime/symbolic_shape.h` | Symbolic Shape composed of `Expression` vector |
-| `gert::SymbolTensor` | `exe_graph/runtime/symbolic_tensor.h` | Symbolic Tensor (Shape + symbolic data values) |
-| `InferSymbolShapeContext` | `exe_graph/runtime/infer_symbol_shape_context.h` | Symbolic inference context |
+| `ge::Expression` / `ge::Symbol` | `graph/symbolizer/symbolic.h` | Symbolic expressions supporting constants, variables, arithmetic, and logical operations |
+| `gert::SymbolShape` / `gert::SymbolTensor` | `exe_graph/runtime/symbolic_types.h` | Symbolic shape and a tensor carrying the shape plus optional symbolic values |
+| `gert::InferSymbolContext` | `exe_graph/runtime/infer_symbol_context.h` | Custom operator symbolic inference context |
+| `ge::SymbolicInferOp` | `graph/custom_op.h` | Language-independent custom operator symbolic inference capability interface |
 
 ### 7.3 Inference Flow
 
@@ -436,14 +436,68 @@ PostProcess(compute_graph)             // Post-processing wrapper
 > **Note**: The `SymbolicShapeInference` class (symbolic_shape_inference.h) has only one public method `Infer()`. `Simplify()` is a free function defined in an anonymous namespace (symbolic_shape_inference.cc), called internally by `Infer()` after inference completes (symbolic_shape_inference.cc), not an independent class method. `PreProcess()` and `PostProcess()` are wrapper functions of the `AutofuseOptimize` class, encapsulating preprocessing graph optimization and post-processing logic respectively.
 Before Autofuse lowering, constant symbolic Shapes are filled in for outputs that lack symbolic attributes and have fully static Shapes, covering cases where preceding stages insert or rewrite nodes without synchronizing symbolic attributes.
 
+Custom symbolic inference consists of existing and companion changes rather than features introduced entirely by `SymbolicInferOp`:
+
+| Component | Ownership and description |
+| --- | --- |
+| `IMPL_OP_INFERSYMBOL` and `OpImplFunctionsV2::infer_symbol` | Existing/companion metadef macro-based registration and function-table support |
+| `OpDef::SetInferSymbol` and `OP_ADD` transfer | Companion metadef OpDef registration chain, subject to the metadef version |
+| Field lookup, context construction, and successful output writeback | Existing GE field-based consumption chain |
+| `SymbolicInferOp` and capability detection | GE language-independent interface extension |
+| Inference tiers and `GRAPH_NOT_CHANGED` fallback | Current GE consumption-chain enhancements |
+
+Per-node inference follows these tiers:
+
+1. Custom `infer_symbol`: `SymbolicInferOp` takes precedence over `OpImplFunctionsV2::infer_symbol`.
+2. Host computation through `SymbolicKernelFactory`, attempted only when no custom inference is registered.
+3. Built-in `infer_symbol_shape`, attempted only when no custom inference is registered and host computation is unsupported.
+4. Static-shape constant materialization.
+
+If no custom implementation is registered, GE tries host computation and then built-in inference. `GRAPH_NOT_CHANGED` discards all writes and falls back directly to the static shape without trying host computation or built-in inference. Other nonzero returns stop compilation and log the node name and op type. Outputs are committed only for `GRAPH_SUCCESS`.
+
 ### 7.4 Operator Implementation Examples
 
-Symbolic inference uses `IMPL_OP_INFER_SYMBOL_SHAPE_INNER` macro for registration, and the implementation function receives `InferSymbolShapeContext`:
+Built-in operators use `IMPL_OP_INFER_SYMBOL_SHAPE_INNER`. The legacy `InferSymbolShapeContext` / `infer_symbol_shape_context.h` has been unified into the public `InferSymbolContext` / `infer_symbol_context.h`. The macro name is retained, but current built-in callbacks also use `InferSymbolContext`. A custom operator can select one of the following forms according to its deliverable:
+
+```cpp
+// Macro-based
+IMPL_OP_INFERSYMBOL(AddCustom).InferSymbol(InferSymbolAddCustom);
+
+// OpDef-based
+this->SetInferSymbol(InferSymbolAddCustom);
+
+// Language-independent
+class AddCustom : public SymbolicInferOp { /* ... */ };
+REG_AUTO_MAPPING_OP(AddCustom);
+```
+
+The callback receives `gert::InferSymbolContext`, which reads input symbolic shapes/tensors and attributes and writes outputs. Input symbols may be null. Return `GRAPH_NOT_CHANGED` when inference cannot continue, and explicitly write the output when passing a shape through:
+
+```cpp
+graphStatus InferSymbolAddCustom(gert::InferSymbolContext *ctx) {
+  const auto *x = ctx->GetInputSymbolShape(0);
+  auto *out = ctx->GetOutputSymbolShape(0);
+  if (x == nullptr || out == nullptr) {
+    return GRAPH_NOT_CHANGED;
+  }
+  out->SetDimNum(x->GetDimNum());
+  for (size_t i = 0; i < x->GetDimNum(); ++i) {
+    out->SetDim(i, x->GetDim(i));
+  }
+  return GRAPH_SUCCESS;
+}
+```
+
+`EXPECT_SYMBOL_*` selects hint-based branches and generates guards. `ASSERT_SYMBOL_*` returns `GRAPH_PARAM_INVALID` on failure. Declare data-dependent inputs through `InputsDataDependency` before reading their `SymbolTensor`. `HasValue()==false` means no value, while `HasValue()==true && GetValueCount()==0` means an explicitly empty value.
+
+Typical built-in implementations include:
 
 - **Slice**: Output dimension = `size[i]` or `input_shape[i] - offsets[i]`, offsets and size are read as symbolic data values
 - **LayerNorm**: Output 0 has same Shape as input; dimensions after begin_norm_axis for outputs 1 and 2 are set to Symbol(1)
 - **Pack**: Insert new dimension Symbol(num) at axis position
 - **Reshape**: Target Shape is read from input tensor's symbolic values, when dimension is -1, calculate expression through `in_size / out_size`
+
+A new operator SO may load successfully in an older environment with symbolic inference silently inactive, so fusion benefits are not guaranteed. A run-only environment never enters symbolic inference or calls symbolizer APIs. OM gains no symbolic fields or formats, and loading behavior of old and new OM files is unchanged.
 
 ### 7.5 Comparison with Regular InferShape
 
@@ -453,7 +507,7 @@ Symbolic inference uses `IMPL_OP_INFER_SYMBOL_SHAPE_INNER` macro for registratio
 | Inference timing | Compile-time / Runtime | Compile-time (autofuse stage) |
 | Dynamic Shape | Requires runtime re-inference | Compile-time completes structural inference |
 | Data value access | Specific data | Symbolic data values |
-| Context | InferShapeContext | InferSymbolShapeContext |
+| Context | InferShapeContext | InferSymbolContext |
 
 ### 7.6 Merge Key Optimization
 
@@ -514,7 +568,7 @@ atc --model=model.onnx --dump_mode=1 --json=output.json
 | `StorageShape` | `exe_graph/runtime/storage_shape.h` (external dependency) | Origin + Storage composite descriptor |
 | `InferShapeContext` | `exe_graph/runtime/infer_shape_context.h` (external dependency) | Context parameter for operator InferShape function |
 | `CtInferShapeContext` | `graph/ct_infer_shape_context.h` | Compile-time extended context, adds InferenceContext access |
-| `InferSymbolShapeContext` | `exe_graph/runtime/infer_symbol_shape_context.h` | Symbolic inference context |
+| `InferSymbolContext` | `exe_graph/runtime/infer_symbol_context.h` (external dependency) | Custom operator symbolic inference context |
 | `InferenceContext` | `graph/inference_context.h` | Compile-time resource association information (handle shape, marks, etc.) |
 | `ResourceContextMgr` | `graph/resource_context_mgr.h` | Resource context manager, tracks resource dependencies |
 | `ShapeInferenceRule` | `graph/utils/inference_rule.h` | Shape inference rule based on JSON/compiled binary |
@@ -562,5 +616,5 @@ atc --model=model.onnx --dump_mode=1 --json=output.json
 | ---- | ----------- |
 | `inc/graph_metadef/exe_graph/runtime/infer_shape_context.h` (external dependency, not in GE repository) | InferShapeContext interface definition |
 | `inc/graph_metadef/exe_graph/runtime/storage_shape.h` (external dependency, not in GE repository) | StorageShape type definition |
-| `inc/graph_metadef/exe_graph/runtime/infer_symbol_shape_context.h` | InferSymbolShapeContext interface definition |
-| `inc/graph_metadef/graph/symbolizer/symbolic.h` | Expression/Symbol symbolic expression |
+| `inc/graph_metadef/exe_graph/runtime/infer_symbol_context.h` (external dependency, not in GE repository) | InferSymbolContext interface definition |
+| `inc/graph_metadef/graph/symbolizer/symbolic.h` (external dependency, not in GE repository) | Expression/Symbol symbolic expression |

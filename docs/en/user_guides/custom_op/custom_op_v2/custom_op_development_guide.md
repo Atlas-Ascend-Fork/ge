@@ -32,6 +32,7 @@ BaseCustomOp (Common Base Class)
 ├── EagerExecuteOp    → Execute(ctx)          Runtime execution
 ├── ShapeInferOp      → InferShape(ctx)       Shape inference
 │                     → InferDataType(ctx)    DataType inference
+├── SymbolicInferOp   → InferSymbol(ctx)      Compile-time symbolic shape/value inference
 ├── CompilableOp      → Compile(ctx)          Online compilation
 ├── PortableOp        → Serialize(buf)        Serialize to OM
 │                     → Deserialize(buf)      Deserialize from OM
@@ -145,6 +146,7 @@ export ASCEND_CUSTOM_OPP_PATH="$(pwd)/build:$ASCEND_CUSTOM_OPP_PATH"
 | Offline OM model sink | `EagerExecuteOp` + `CompilableOp` + `ShapeInferOp` + `PortableOp` | AIR → ATC → OM → ACL | [compilable_add_custom](../../../../../examples/custom_op/compilable_add_custom/README_en.md) |
 | Data dependent shape | `EagerExecuteOp` + `ShapeInferOp` | Graph building → Execution + shape buffer writeback | [data_dependent_shape_custom](../../../../../examples/custom_op/data_dependent_shape_custom/README_en.md) |
 | Value dependent shape | `EagerExecuteOp` + `ShapeInferOp` | Graph building → runtime InferShape re-inference + output shape pre-fill | [value_dependent_shape_custom](../../../../../examples/custom_op/value_dependent_shape_custom/README_en.md) |
+| Dynamic shape + auto fusion | `SymbolicInferOp`(optional) | Compile-time symbolic propagation → fusion decisions | — |
 
 > Note: Operators that do not implement `PortableOp` can also be used to generate offline OM (implementation SO is packaged with the model). However, their kernel binary and other data are not saved or restored with OM, need self-management.
 
@@ -325,7 +327,100 @@ graphStatus InferDataType(gert::InferDataTypeContext *ctx) {
 }
 ```
 
-### 5.3 CompilableOp::Compile
+### 5.3 SymbolicInferOp::InferSymbol
+
+A compile-time callback for symbolic shapes and optional symbolic values, primarily used for auto fusion of dynamic-shape graphs. Unlike `ShapeInferOp::InferShape`, which produces concrete integer dimensions, this callback produces dimensions represented by `ge::Expression` constants, variables, or expressions. Symbols are consumed only during compilation for fusion decisions, loop-axis merging, memory optimization, and guard generation. They are not written to OM or used by a runtime symbolic path.
+
+#### Capability composition and version ownership
+
+The custom symbolic inference capability consists of existing and companion changes. They must not all be attributed to `SymbolicInferOp`:
+
+| Capability | Ownership and description |
+| --- | --- |
+| `IMPL_OP_INFERSYMBOL` and `OpImplFunctionsV2::infer_symbol` | Existing/companion metadef registration and function-table support |
+| `OpDef::SetInferSymbol` and `OP_ADD` transfer | Companion metadef OpDef registration chain, subject to the metadef version |
+| `InferSymbolContext`, `SymbolShape`, `SymbolTensor`, and `Expression` | Public types provided by metadef published headers |
+| GE querying `infer_symbol`, building the context, and writing successful outputs | Existing GE field-based consumption chain |
+| `SymbolicInferOp`, capability bit, inference priority, and fallback updates | GE language-independent interface and current consumption-chain enhancements |
+
+Select one registration style for a deliverable instead of mixing them:
+
+```cpp
+// Macro-based
+IMPL_OP_INFERSYMBOL(AddCustom).InferSymbol(InferSymbolAddCustom);
+
+// OpDef-based, called in the operator definition
+this->SetInferSymbol(InferSymbolAddCustom);
+
+// Language-independent: implement SymbolicInferOp and register the creator as usual
+class AddCustom : public SymbolicInferOp { /* ... */ };
+REG_AUTO_MAPPING_OP(AddCustom);
+```
+
+#### Common InferSymbolContext APIs
+
+| Method | Purpose |
+| --- | --- |
+| `GetInputSymbolShape(index)` | Gets a read-only input `SymbolShape` by flat index |
+| `GetOptionalInputSymbolShape(ir_index)` | Gets an optional input symbolic shape |
+| `GetDynamicInputSymbolShape(ir_index, relative_index)` | Gets the symbolic shape of a dynamic input instance |
+| `GetRequiredInputSymbolShape(ir_index)` | Gets a required input symbolic shape |
+| `GetInputSymbolTensor(index)` | Gets an input `SymbolTensor`, including symbolic values for data-dependent inputs; other lookup forms mirror the shape APIs |
+| `GetOutputSymbolShape(index)` | Gets a writable output `SymbolShape` |
+| `GetOutputSymbolTensor(index)` | Gets a writable output `SymbolTensor`; symbolic values are needed only for data-dependent outputs |
+
+Use `GetDimNum/GetDim` to read dimensions and `SetDimNum/SetDim/AppendDim` to write them. Use `SetDimNum(0)` for a scalar. A `SymbolTensor` distinguishes no value (`HasValue()==false`), an explicitly empty value (`HasValue()==true && GetValueCount()==0`), and one or more symbolic values.
+
+#### Inference priority and return semantics
+
+Custom `infer_symbol` is executed first when registered. If no custom inference is registered, GE tries host computation and then built-in `infer_symbol_shape`; all paths can finally fall back to the static shape. Within the custom tier, `SymbolicInferOp` takes precedence over macro-based/OpDef field registration.
+
+| Return value/scenario | Behavior |
+| --- | --- |
+| `GRAPH_SUCCESS` | Commits the outputs. Every output symbolic shape must be written; use `SetDimNum(0)` for a scalar |
+| No custom inference registered | Tries host computation and then built-in `infer_symbol_shape` |
+| `GRAPH_NOT_CHANGED` | Discards all writes and falls back directly to the static shape without trying host computation or built-in inference; does not mean output equals input |
+| Other nonzero values | Stops compilation and logs the node name and op type |
+| Unregistered and unable to use a static shape | Symbol propagation stops at this node without affecting existing compilation/execution correctness; downstream fusion loses symbolic information |
+
+`EXPECT_SYMBOL_*` selects branches using hints and generates guards. `ASSERT_SYMBOL_*` performs strong validation and returns `GRAPH_PARAM_INVALID` on failure. Declare data-dependent inputs through `InputsDataDependency` before reading their `SymbolTensor`. If a value cannot be constant-folded, return `GRAPH_NOT_CHANGED` or continue with symbolic expressions instead of forcing an integer conversion.
+
+#### Example
+
+```cpp
+class AddCustom : public SymbolicInferOp {
+ public:
+  graphStatus InferSymbol(gert::InferSymbolContext *ctx) override {
+    const auto *x = ctx->GetInputSymbolShape(0);
+    const auto *y = ctx->GetInputSymbolShape(1);
+    auto *out = ctx->GetOutputSymbolShape(0);
+    if (x == nullptr || y == nullptr || out == nullptr) {
+      return GRAPH_NOT_CHANGED;
+    }
+    if (x->GetDimNum() != y->GetDimNum()) {
+      return GRAPH_NOT_CHANGED;
+    }
+    out->SetDimNum(x->GetDimNum());
+    for (size_t i = 0; i < x->GetDimNum(); ++i) {
+      if (x->GetDim(i) != y->GetDim(i) && x->GetDim(i) != ge::Symbol(1) && y->GetDim(i) != ge::Symbol(1)) {
+        return GRAPH_NOT_CHANGED;
+      }
+      out->SetDim(i, x->GetDim(i) == ge::Symbol(1) ? y->GetDim(i) : x->GetDim(i));
+    }
+    return GRAPH_SUCCESS;
+  }
+};
+
+REG_AUTO_MAPPING_OP(AddCustom);
+```
+
+#### Cross-version behavior and deployment
+
+- A new operator SO must load successfully in an older environment. Symbolic registration or the capability may silently remain inactive, and symbolic propagation/fusion benefits are not guaranteed.
+- `Expression`, `Symbol`, and `ge::sym::*` APIs use weak undefined references. A run-only environment without compiler/symbolizer may load the operator SO but never calls these APIs at execution time.
+- No symbolic fields or formats are added to OM. Loading behavior of old and new OM files is unchanged by this interface.
+
+### 5.4 CompilableOp::Compile
 
 Online compilation callback, called during GE/ATC compilation phase.
 
@@ -365,7 +460,7 @@ graphStatus Compile(gert::OpCompileContext *ctx) {
 }
 ```
 
-### 5.4 PortableOp::Serialize / Deserialize
+### 5.5 PortableOp::Serialize / Deserialize
 
 Serialization/deserialization callback, used for OM model sink.
 
@@ -380,7 +475,7 @@ graphStatus Deserialize(const std::vector<uint8_t> &buffer) override;
 - Deserialize called during OM load execution phase, restores Compile product from buffer
 - Multi-binary scenario suggest serialization format: `[count][key_len][key][bin_len][bin]...`
 
-### 5.5 ArgsUpdater::UpdateHostArgs
+### 5.6 ArgsUpdater::UpdateHostArgs
 
 Callback when I/O address changes, used to refresh address references in kernel args.
 

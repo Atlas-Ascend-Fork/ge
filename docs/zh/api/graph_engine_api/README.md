@@ -838,6 +838,10 @@
       - [GetOutput](cpp/ge/fusion/SubgraphBoundary/GetOutput.md)
       - [GetAllOutputs](cpp/ge/fusion/SubgraphBoundary/GetAllOutputs.md)
 
+    - [SymbolicInferOp](cpp/ge/SymbolicInferOp/SymbolicInferOp.md)
+      - [简介](cpp/ge/SymbolicInferOp/overview.md)
+      - [InferSymbol](cpp/ge/SymbolicInferOp/InferSymbol.md)
+
     - [UpdateArgsContext](cpp/ge/UpdateArgsContext/UpdateArgsContext.md)
       - [简介](cpp/ge/UpdateArgsContext/overview.md)
       - [VerifyFuncRegister构造函数和析构函数](cpp/ge/UpdateArgsContext/GetKernelArgs.md)
