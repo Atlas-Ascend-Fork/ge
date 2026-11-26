@@ -46,10 +46,10 @@ void OperatorImpl::SetInputImpl(const std::string &dst_name, const ge::Operator 
       REPORT_INNER_ERR_MSG("E18888", "The source op is nullptr, check invalid.");
       return;
     }
-    GELOGE(ge::FAILED, "[Check][Param] The source operator[%s] must be single output operator",
-           src_oprt.operator_impl_->op_desc_->GetName().c_str());
-    REPORT_INNER_ERR_MSG("E18888", "The source operator[%s] must be single output operator",
-                         src_oprt.operator_impl_->op_desc_->GetName().c_str());
+    GELOGE(ge::FAILED, "[Check][Param] The source operator[%s] has %zu outputs, must be single output operator",
+           src_oprt.operator_impl_->op_desc_->GetName().c_str(), src_oprt.GetOutputsSize());
+    REPORT_INNER_ERR_MSG("E18888", "The source operator[%s] has %zu outputs, must be single output operator",
+                         src_oprt.operator_impl_->op_desc_->GetName().c_str(), src_oprt.GetOutputsSize());
     return;
   }
 

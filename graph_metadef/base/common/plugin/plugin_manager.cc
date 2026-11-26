@@ -447,7 +447,7 @@ bool PluginManager::CheckOppAndCompilerVersions(const std::string &opp_version, 
         return false;
       }
       if (!IsVersionWithInRequiredRange(effective_compiler_version, required_version)) {
-        GELOGW("compiler version:%s is not within required_opp_abi_version:%s", opp_version.c_str(),
+        GELOGW("compiler version:%s is not within required_opp_abi_version:%s", it.c_str(),
                TransRequiredOppAbiVersionToString(required_version).c_str());
         return false;
       }
@@ -762,9 +762,11 @@ Status PluginManager::LoadSoWithFlags(const std::string &path, const int32_t fla
   std::vector<std::string> path_vec;
   SplitPath(path, path_vec);
   for (const auto &single_path : path_vec) {
-    GE_IF_BOOL_EXEC(single_path.length() >= static_cast<ULONG>(MMPA_MAX_PATH),
-                    GELOGE(PARAM_INVALID, "The shared library file path is too long!");
-                    continue);
+    GE_IF_BOOL_EXEC(
+        single_path.length() >= static_cast<ULONG>(MMPA_MAX_PATH),
+        GELOGE(PARAM_INVALID, "The shared library file path is too long!(path:%s, length:%zu, max length:%d)",
+               single_path.c_str(), single_path.length(), MMPA_MAX_PATH);
+        continue);
     // load break when number of loaded so reach maximum
     if (num_of_loaded_so >= static_cast<uint32_t>(kMaxNumOfSo)) {
       GELOGW(
@@ -866,8 +868,8 @@ Status PluginManager::ValidateSo(const std::string &file_path, const int64_t siz
   // load continue if the total size of so reaches maximum when it is loaded
   if ((size_of_loaded_so + file_size) > kMaxSizeOfLoadedSo) {
     GELOGW(
-        "%s is skipped because the size of loaded share library reaches maximum if it is loaded! "
-        "(size: %ldB, size of loaded share library: %ldB, maximum: %dB)",
+        "%s is skipped because the size of loaded shared library reaches maximum if it is loaded! "
+        "(size: %ldB, size of loaded shared library: %ldB, maximum: %dB)",
         file_path.c_str(), file_size, size_of_loaded_so, kMaxSizeOfLoadedSo);
     return FAILED;
   }

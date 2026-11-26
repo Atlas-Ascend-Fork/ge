@@ -37,10 +37,10 @@ ge::OpDescPtr GetOpDescPtr(const EagerOpExecutionContext &ctx) {
   const auto node_type = ctx.GetNodeType();
   auto const node_op = ge::OperatorFactory::CreateOperator("_", node_type);
   if (node_op.IsEmpty()) {
-    GELOGW("get op from OperatorFactory fail. opType: %s", node_type);
+    GELOGW("Failed to get op from OperatorFactory. opType: %s", node_type);
     return nullptr;
   }
-  GELOGD("get op from OperatorFactory success. opType is %s", node_type);
+  GELOGD("Get op from OperatorFactory succeeded. opType is %s", node_type);
   auto op_desc = ge::OpDescUtils::GetOpDescFromOperator(node_op);
   return op_desc;
 }
@@ -93,7 +93,7 @@ Tensor *EagerOpExecutionContext::MallocOutputTensor(size_t index, const StorageS
   // 外部未申请输出内存, 内部申请并将内存共享给output_tensor
   auto new_tensor_data = gert_allocator->MallocTensorDataFromL1(aligned_tensor_size);
   GE_ASSERT_TRUE((new_tensor_data.GetAddr() != nullptr) && (new_tensor_data.GetSize() > 0U),
-                 "Malloc output tensor data failed, size: %zu", aligned_tensor_size);
+                 "Malloc output tensor data failed, size: %zu bytes", aligned_tensor_size);
   GE_ASSERT_SUCCESS(output_tensor->MutableTensorData().ShareFrom(new_tensor_data));
   return output_tensor;
 }

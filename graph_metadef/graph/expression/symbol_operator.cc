@@ -89,7 +89,7 @@ Expression Rational(int32_t num, int32_t den) {
 
 Expression Align(const Expression &arg, uint32_t alignment) {
   if (alignment == 0U) {
-    GELOGE(FAILED, "Alignment should be more than 0");
+    GELOGE(FAILED, "Alignment should be more than 0, but alignment is %u", alignment);
     return Expression(nullptr);
   }
   auto align = Symbol(alignment);
@@ -98,7 +98,7 @@ Expression Align(const Expression &arg, uint32_t alignment) {
 
 Expression AlignWithPositiveInteger(const Expression &arg, uint32_t alignment) {
   if (alignment == 0U) {
-    GELOGE(FAILED, "Alignment should be more than 0");
+    GELOGE(FAILED, "Alignment should be more than 0, but alignment is %u", alignment);
     return Expression(nullptr);
   }
   auto align = Symbol(alignment);

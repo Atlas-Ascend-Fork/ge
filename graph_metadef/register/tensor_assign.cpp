@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <cinttypes>
 #include <complex>
 #include <limits>
 #include <map>
@@ -371,7 +372,7 @@ void TensorAssign::SetWeightData(const tensorflow::DataType data_type, const int
   if (CheckStringVal(data_type)) {
     if (ge::TypeUtilsInner::CheckUint64MulOverflow(static_cast<uint64_t>(count),
                                                    static_cast<uint32_t>(sizeof(ge::StringHead)))) {
-      GELOGE(ge::FAILED, "count multiply StringHead is overflow uint64, count: %u", static_cast<uint64_t>(count));
+      GELOGE(ge::FAILED, "count multiply StringHead is overflow uint64, count: %" PRIu64, static_cast<uint64_t>(count));
       return;
     }
     std::string weight_content;
@@ -510,11 +511,12 @@ Status TensorAssign::SetGeTensor(const TensorProto &tensor, GeTensorPtr &weight)
         const int64_t dim = shape_vec[static_cast<size_t>(i)];
         // tensorflow support weights shape [0],have no weights
         if (dim < 0) {
-          GELOGE(FAILED, "Dim size invalid");
+          GELOGE(FAILED, "Dim size invalid, dim:%lld, valid range is [0, INT64_MAX]", static_cast<long long>(dim));
           return FAILED;
         }
         if ((count != 0) && (dim >= (std::numeric_limits<int64_t>::max() / count))) {
-          GELOGE(FAILED, "Dim size exceeds INT64_MAX");
+          GELOGE(FAILED, "Dim size exceeds INT64_MAX, dim:%lld, count:%lld", static_cast<long long>(dim),
+                 static_cast<long long>(count));
           return FAILED;
         }
         count *= dim;

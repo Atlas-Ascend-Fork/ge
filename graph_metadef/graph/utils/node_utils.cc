@@ -1453,7 +1453,7 @@ graphStatus NodeUtils::TryGetWeightByPlaceHolderNode(const NodePtr &node_ptr, Co
   NodePtr parent_node = nullptr;
   parent_node = op_desc->TryGetExtAttr("parentNode", parent_node);
   if (parent_node == nullptr) {
-    GELOGI("op [%s %s] get not any ext node attr", op_desc->GetType().c_str(), op_desc->GetName().c_str());
+    GELOGI("op [%s %s] has no ext node attr", op_desc->GetType().c_str(), op_desc->GetName().c_str());
     return GRAPH_SUCCESS;
   }
   const auto &parent_op_desc = parent_node->GetOpDesc();
@@ -1468,7 +1468,7 @@ graphStatus NodeUtils::TryGetWeightByPlaceHolderNode(const NodePtr &node_ptr, Co
   if (parent_op_desc->GetType() == DATA) {
     return TryGetWeightByDataNode(parent_node, ge_tensor);
   }
-  GELOGI("op [%s %s] get not any weight attr", op_desc->GetType().c_str(), op_desc->GetName().c_str());
+  GELOGI("op [%s %s] has no weight attr", op_desc->GetType().c_str(), op_desc->GetName().c_str());
   return GRAPH_SUCCESS;
 }
 
@@ -1496,7 +1496,7 @@ graphStatus NodeUtils::TryGetWeightByDataNode(const NodePtr &node_ptr, ConstGeTe
   NodePtr real_parent_node = nullptr;
   (void)NodeUtils::GetInNodeCrossPartionedCallNode(node_ptr, 0U, real_parent_node);
   if ((real_parent_node != nullptr) && (ConstantUtils::IsConstant(real_parent_node->GetOpDesc()))) {
-    GELOGI("Get in really parent node:[%s %s] for node:[%s %s]", real_parent_node->GetName().c_str(),
+    GELOGI("Get real parent node:[%s %s] for node:[%s %s]", real_parent_node->GetName().c_str(),
            real_parent_node->GetType().c_str(), op_desc->GetName().c_str(), op_desc->GetType().c_str());
     if (ConstantUtils::IsConstant(real_parent_node)) {
       if (ConstantUtils::GetWeight(real_parent_node->GetOpDesc(), 0U, ge_tensor)) {
@@ -1506,7 +1506,7 @@ graphStatus NodeUtils::TryGetWeightByDataNode(const NodePtr &node_ptr, ConstGeTe
       }
     }
   }
-  GELOGI("op [%s %s] get not any weight attr", op_desc->GetType().c_str(), op_desc->GetName().c_str());
+  GELOGI("op [%s %s] has no weight attr", op_desc->GetType().c_str(), op_desc->GetName().c_str());
   return GRAPH_SUCCESS;
 }
 bool NodeUtils::IsNameEqual(const NodePtr &node, const ge::char_t *const name) {

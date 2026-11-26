@@ -394,7 +394,9 @@ ge::graphStatus UpdateOpDescOutShapeRange(const ge::OpDescPtr &op_desc, gert::In
       GE_ASSERT_NOTNULL(min_shape);
       GE_ASSERT_NOTNULL(max_shape);
       GELOGD("min dim num:%zu, max dim num:%zu", min_shape->GetDimNum(), max_shape->GetDimNum());
-      GE_RETURN_WITH_LOG_IF_TRUE((min_shape->GetDimNum()) != (max_shape->GetDimNum()));
+      GE_RETURN_WITH_LOG_IF_TRUE((min_shape->GetDimNum()) != (max_shape->GetDimNum()),
+                                 "min dim num[%zu] is not equal to max dim num[%zu]", min_shape->GetDimNum(),
+                                 max_shape->GetDimNum());
       const auto ret = AddRange(shape_range, min_shape, max_shape);
       if (ret != ge::GRAPH_SUCCESS) {
         return ret;

@@ -57,11 +57,11 @@ Status DecomposeInputName(const std::string &input_name, std::string &node_name,
     GELOGE(PARAM_INVALID, "Peer out index [%s] is invalid.", parts[kPeerOutIndex].c_str());
     return PARAM_INVALID;
   } catch (...) {
-    GELOGE(PARAM_INVALID, "Peer out index [%s] is out of range.", parts[kPeerOutIndex].c_str());
+    GELOGE(PARAM_INVALID, "Peer out index [%s] is out of int32 range.", parts[kPeerOutIndex].c_str());
     return PARAM_INVALID;
   }
   if (index < 0) {
-    GELOGE(PARAM_INVALID, "Peer out index [%d] is invalid.", index);
+    GELOGE(PARAM_INVALID, "Peer out index [%d] is invalid, it should be a non-negative integer.", index);
     return PARAM_INVALID;
   }
   node_name = parts[kInputNodeName];

@@ -953,7 +953,8 @@ bool OnnxUtils::DecodeNodeLink(const std::vector<onnx::NodeProto> &node_proto_ve
 void OnnxUtils::DecodeAttribute(const ge::onnx::AttributeProto &attr_proto, std::vector<std::string> &strings) {
   if (attr_proto.type() != ge::onnx::AttributeProto_AttributeType_STRINGS) {
     REPORT_INNER_ERR_MSG("E18888", "Attribute %s called wrong decode attribute function.", attr_proto.name().c_str());
-    GELOGE(GRAPH_FAILED, "[Check][Param] Attribute %s call wrong decode attribute function", attr_proto.name().c_str());
+    GELOGE(GRAPH_FAILED, "[Check][Param] Attribute %s calls wrong decode attribute function",
+           attr_proto.name().c_str());
     return;
   }
   for (int32_t i = 0; i < attr_proto.strings_size(); i++) {
@@ -963,8 +964,9 @@ void OnnxUtils::DecodeAttribute(const ge::onnx::AttributeProto &attr_proto, std:
 
 void OnnxUtils::DecodeAttribute(const ge::onnx::AttributeProto &attr_proto, std::string &value) {
   if (attr_proto.type() != ge::onnx::AttributeProto_AttributeType_STRING) {
-    REPORT_INNER_ERR_MSG("E18888", "Attribute %s call wrong decode attribute function", attr_proto.name().c_str());
-    GELOGE(GRAPH_FAILED, "[Check][Param] Attribute %s call wrong decode attribute function", attr_proto.name().c_str());
+    REPORT_INNER_ERR_MSG("E18888", "Attribute %s calls wrong decode attribute function", attr_proto.name().c_str());
+    GELOGE(GRAPH_FAILED, "[Check][Param] Attribute %s calls wrong decode attribute function",
+           attr_proto.name().c_str());
     return;
   }
   value = attr_proto.s();
@@ -972,8 +974,9 @@ void OnnxUtils::DecodeAttribute(const ge::onnx::AttributeProto &attr_proto, std:
 
 void OnnxUtils::DecodeAttribute(const ge::onnx::AttributeProto &attr_proto, std::vector<int64_t> &ints) {
   if (attr_proto.type() != ge::onnx::AttributeProto_AttributeType_INTS) {
-    REPORT_INNER_ERR_MSG("E18888", "Attribute %s call wrong decode attribute function", attr_proto.name().c_str());
-    GELOGE(GRAPH_FAILED, "[Check][Param] Attribute %s call wrong decode attribute function", attr_proto.name().c_str());
+    REPORT_INNER_ERR_MSG("E18888", "Attribute %s calls wrong decode attribute function", attr_proto.name().c_str());
+    GELOGE(GRAPH_FAILED, "[Check][Param] Attribute %s calls wrong decode attribute function",
+           attr_proto.name().c_str());
     return;
   }
   for (int32_t i = 0; i < attr_proto.ints_size(); i++) {
@@ -983,8 +986,9 @@ void OnnxUtils::DecodeAttribute(const ge::onnx::AttributeProto &attr_proto, std:
 
 void OnnxUtils::DecodeAttribute(const ge::onnx::AttributeProto &attr_proto, int64_t &value) {
   if (attr_proto.type() != ge::onnx::AttributeProto_AttributeType_INT) {
-    REPORT_INNER_ERR_MSG("E18888", "Attribute %s call wrong decode attribute function", attr_proto.name().c_str());
-    GELOGE(GRAPH_FAILED, "[Check][Param] Attribute %s call wrong decode attribute function", attr_proto.name().c_str());
+    REPORT_INNER_ERR_MSG("E18888", "Attribute %s calls wrong decode attribute function", attr_proto.name().c_str());
+    GELOGE(GRAPH_FAILED, "[Check][Param] Attribute %s calls wrong decode attribute function",
+           attr_proto.name().c_str());
     return;
   }
   value = attr_proto.i();

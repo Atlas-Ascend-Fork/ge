@@ -91,7 +91,7 @@ static graphStatus PlaceholderParser(const OpDescPtr &op_desc, const std::string
   if (pattern_str == ".32b") {
     width = ArgsFormatWidth::BIT32;
   } else if (!pattern_str.empty()) {
-    GELOGE(PARAM_INVALID, "Args format [%s] matched failed, it may be unsupported.", pattern_str.c_str());
+    GELOGE(PARAM_INVALID, "Failed to match args format [%s], it may be unsupported.", pattern_str.c_str());
     return GRAPH_FAILED;
   }
   args_desc.push_back({type, static_cast<int32_t>(width), false, {0}});
@@ -181,8 +181,8 @@ static graphStatus InputCalcSize(const OpDescPtr &op_desc, const ArgDesc &arg_de
   size_t count = 0UL;
   if (arg_desc.ir_idx >= 0) {
     // 非通配符场景
-    GE_ASSERT((static_cast<size_t>(arg_desc.ir_idx) < ir_inputs.size()), "ir_index [%d] is out of range",
-              arg_desc.ir_idx);
+    GE_ASSERT((static_cast<size_t>(arg_desc.ir_idx) < ir_inputs.size()), "ir_index [%d] is out of range [0, %zu)",
+              arg_desc.ir_idx, ir_inputs.size());
     if (ir_inputs[arg_desc.ir_idx].second == IrInputType::kIrInputDynamic) {
       if (arg_desc.folded) {
         ++count;  // pointer to addr
@@ -422,7 +422,7 @@ static graphStatus InputDescCalcSize(const OpDescPtr &op_desc, const ArgDesc &ar
 static graphStatus OutputDescCalcSize(const OpDescPtr &op_desc, const ArgDesc &arg_desc, size_t &size) {
   const auto &ir_outputs = op_desc->GetIrOutputs();
   GE_ASSERT((arg_desc.ir_idx >= 0 && static_cast<size_t>(arg_desc.ir_idx) < ir_outputs.size()),
-            "ir_index [%d] is out of range", arg_desc.ir_idx);
+            "ir_index [%d] is out of range [0, %zu)", arg_desc.ir_idx, ir_outputs.size());
   auto ir_name = ir_outputs[static_cast<size_t>(arg_desc.ir_idx)].first;
 
   if (arg_desc.folded) {
@@ -786,7 +786,7 @@ static Status SknSerializer(std::stringstream &ss, const std::string &pattern, c
       break;
     }
   }
-  GE_ASSERT_TRUE(founded, "find %d no serialize func", tmp_arg_desc.addr_type);
+  GE_ASSERT_TRUE(founded, "No serialize func found for addr_type %d", tmp_arg_desc.addr_type);
   return GRAPH_SUCCESS;
 }
 
@@ -805,7 +805,7 @@ static graphStatus SknCalcSize(const OpDescPtr &op_desc, const ArgDesc &sk_arg_d
       break;
     }
   }
-  GE_ASSERT_TRUE(founded, "find %d no serialize func", tmp_arg_desc.addr_type);
+  GE_ASSERT_TRUE(founded, "No serialize func found for addr_type %d", tmp_arg_desc.addr_type);
   return GRAPH_SUCCESS;
 }
 

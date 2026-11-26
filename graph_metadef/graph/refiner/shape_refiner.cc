@@ -157,10 +157,10 @@ graphStatus UpdateParentNodeForWhile(const ConstNodePtr &node, std::vector<std::
                                      std::vector<std::vector<GeTensorDesc>> &ref_out_tensors) {
   GELOGD("Enter update parent node shape for class while op process");
   if (ref_data_tensors.size() != ref_out_tensors.size()) {
-    REPORT_INNER_ERR_MSG("E18888", "op:%s(%s) input number[%zu] and output number[%zu] is not same!",
+    REPORT_INNER_ERR_MSG("E18888", "op:%s(%s) input number[%zu] and output number[%zu] are not the same!",
                          node->GetName().c_str(), node->GetType().c_str(), ref_data_tensors.size(),
                          ref_out_tensors.size());
-    GELOGE(GRAPH_FAILED, "[Check][Param] while op [%s] input number[%zu] and output number[%zu] is not same!",
+    GELOGE(GRAPH_FAILED, "[Check][Param] while op [%s] input number[%zu] and output number[%zu] are not the same!",
            node->GetName().c_str(), ref_data_tensors.size(), ref_out_tensors.size());
     return GRAPH_FAILED;
   }
@@ -190,7 +190,7 @@ graphStatus UpdateParentNodeForWhile(const ConstNodePtr &node, std::vector<std::
       auto data_shape = tensor.MutableShape();
       // input is dynamic, here use dim_num
       if (data_shape.GetDims() != out_shape.GetDims()) {
-        GELOGI("After infer, While %s %zu output shape [%s] does not match with input shape [%s].Need infer again.",
+        GELOGI("After infer, While %s %zu output shape [%s] does not match with input shape [%s]. Need infer again.",
                node->GetName().c_str(), i, out_shape.ToString().c_str(), data_shape.ToString().c_str());
         if (data_shape.GetDimNum() != out_shape.GetDimNum()) {
           ref_out_tensor.SetUnknownDimNumShape();
@@ -250,12 +250,12 @@ graphStatus UpdateSubGraphDataNodes(const ConstNodePtr &node) {
       if (input_desc == nullptr) {
         REPORT_INNER_ERR_MSG("E18888",
                              "The ref index(%d) on the data %s on the sub graph %s "
-                             "parent node %s are incompatible, inputs num %u",
+                             "parent node %s is incompatible, inputs num %u",
                              ref_i, node_sub->GetName().c_str(), name.c_str(), node->GetName().c_str(),
                              node->GetAllInDataAnchorsSize());
         GE_LOGE(
             "[Call][MutableInputDesc] The ref index(%d) on the data %s on the sub graph %s "
-            "parent node %s are incompatible, inputs num %u",
+            "parent node %s is incompatible, inputs num %u",
             ref_i, node_sub->GetName().c_str(), name.c_str(), node->GetName().c_str(), node->GetAllInDataAnchorsSize());
         return GRAPH_FAILED;
       }
@@ -268,8 +268,8 @@ graphStatus UpdateSubGraphDataNodes(const ConstNodePtr &node) {
       if (is_infer_again) {
         input_desc = op_desc->MutableOutputDesc(static_cast<uint32_t>(ref_i));
         GE_CHECK_NOTNULL(input_desc,
-                         "The ref index(%d) on the data %s on the subgraph %s "
-                         "parent node %s are incompatible, outputs num %u.",
+                         ". The ref index(%d) on the data %s on the subgraph %s "
+                         "parent node %s is incompatible, outputs num %u.",
                          ref_i, node_sub->GetName().c_str(), name.c_str(), node->GetName().c_str(),
                          node->GetAllOutDataAnchorsSize());
         GELOGD("Update input desc of data %s on the sub graph %s of node %s,output idx: %d from [%s] to [%s]",
@@ -864,7 +864,7 @@ ShapeRefiner::InferShapeAndTypeForRunning(const NodePtr &node, Operator &op, con
     for (size_t i = 0UL; i < all_output_tensor.size(); ++i) {
       auto &output_tensor = all_output_tensor.at(i);
       if (output_tensor->GetDataType() != temp_dtype[i]) {
-        GELOGD("Op %s output %zu need reset dtype,original dtype is %s, new dtype is %s", node->GetName().c_str(), i,
+        GELOGD("Op %s output %zu needs dtype reset, original dtype is %s, new dtype is %s", node->GetName().c_str(), i,
                TypeUtils::DataTypeToSerialString(output_tensor->GetDataType()).c_str(),
                TypeUtils::DataTypeToSerialString(temp_dtype[i]).c_str());
         output_tensor->SetDataType(temp_dtype[i]);

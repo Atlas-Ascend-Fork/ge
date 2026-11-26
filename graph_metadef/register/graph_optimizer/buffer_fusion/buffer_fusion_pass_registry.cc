@@ -110,7 +110,9 @@ BufferFusionPassRegistrar::BufferFusionPassRegistrar(const BufferFusionPassType 
                                                      const std::string &pass_name,
                                                      BufferFusionPassBase *(*create_fun)(), PassAttr attr) {
   if ((pass_type < BUILT_IN_AI_CORE_BUFFER_FUSION_PASS) || (pass_type >= BUFFER_FUSION_PASS_TYPE_RESERVED)) {
-    GELOGE(ge::PARAM_INVALID, "[Check][Param:pass_type] value %d is not supported.", pass_type);
+    GELOGE(ge::PARAM_INVALID, "[Check][Param:pass_type] value %d is not supported, valid range is [%d, %d).", pass_type,
+           static_cast<int32_t>(BUILT_IN_AI_CORE_BUFFER_FUSION_PASS),
+           static_cast<int32_t>(BUFFER_FUSION_PASS_TYPE_RESERVED));
     return;
   }
 

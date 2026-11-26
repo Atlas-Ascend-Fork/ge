@@ -281,8 +281,8 @@ graphStatus TypeUtilsInner::SplitFormatFromStr(const std::string &str, std::stri
       GELOGE(GRAPH_FAILED, "[Check][Param] sub_format: %s is invalid.", sub_format_str.c_str());
       return GRAPH_FAILED;
     } catch (std::out_of_range &) {
-      REPORT_INNER_ERR_MSG("E18888", "sub_format: %s is out of range.", sub_format_str.c_str());
-      GELOGE(GRAPH_FAILED, "[Check][Param] sub_format: %s is out of range.", sub_format_str.c_str());
+      REPORT_INNER_ERR_MSG("E18888", "sub_format: %s is out of int32 range.", sub_format_str.c_str());
+      GELOGE(GRAPH_FAILED, "[Check][Param] sub_format: %s is out of int32 range.", sub_format_str.c_str());
       return GRAPH_FAILED;
     } catch (...) {
       REPORT_INNER_ERR_MSG("E18888", "sub_format: %s cannot change to int.", sub_format_str.c_str());

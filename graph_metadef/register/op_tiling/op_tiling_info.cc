@@ -112,7 +112,9 @@ class OpRunInfoImpl {
     GELOGD("When max size is %lu, set a new offset [%lu] to replace the original offset [%lu].", max_size_, offset,
            offset_);
     if (offset >= std::numeric_limits<uint64_t>::max() - sizeof(uint64_t)) {
-      GELOGE(ge::GRAPH_FAILED, "Offset overflow.");
+      GELOGE(ge::GRAPH_FAILED, "Offset overflow, offset=%llu, max allowed offset=%llu.",
+             static_cast<unsigned long long>(offset),
+             static_cast<unsigned long long>(std::numeric_limits<uint64_t>::max() - sizeof(uint64_t)));
       return false;
     }
     uint64_t new_offset = (offset + sizeof(uint64_t) - 1U) / sizeof(uint64_t);

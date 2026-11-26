@@ -76,7 +76,8 @@ bool AppendAttrTensor(const ge::AnyValue &attr, std::vector<std::vector<uint8_t>
       const auto *value = attr.Get<ge::GeTensor>();
       GE_ASSERT_NOTNULL(value);
       if (value->GetTensorDesc().GetShape().GetShapeSize() < 0) {
-        GELOGE(ge::PARAM_INVALID, "Failed to append tensor attr, shape size less than 0");
+        GELOGE(ge::PARAM_INVALID, "Failed to append tensor attr, shape size %lld is less than 0",
+               static_cast<long long>(value->GetTensorDesc().GetShape().GetShapeSize()));
         return false;
       }
       return AppendTensorBytes(*value, GetGeTensorSize(*value), attrs);

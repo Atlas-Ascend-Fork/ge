@@ -2087,4 +2087,59 @@ TEST_F(RegisterOpTilingUT, IncCov_OpAtomicCalculateV2_EmptyFuncInfo) {
   EXPECT_EQ(ret, ge::GRAPH_FAILED);
   func_map.erase(OP_TYPE_DYNAMIC_ATOMIC_ADDR_CLEAN);
 }
+
+TEST_F(RegisterOpTilingUT, IncCov_OpParaCalculateV2_NullOpDesc) {
+  const Operator op;
+  OpRunInfoV2 run_info;
+  EXPECT_EQ(OpParaCalculateV2(op, run_info), ge::GRAPH_FAILED);
+}
+
+TEST_F(RegisterOpTilingUT, IncCov_OpParaCalculateV2_TilingFuncNotFound) {
+  auto root_builder = ut::GraphBuilder("root");
+  const auto &node = root_builder.AddNode("not_reg", "NeverRegisteredType", 1, 1);
+  const Operator op = OpDescUtils::CreateOperatorFromNode(node);
+  OpRunInfoV2 run_info;
+  EXPECT_EQ(OpParaCalculateV2(op, run_info), ge::GRAPH_FAILED);
+}
+
+TEST_F(RegisterOpTilingUT, IncCov_OpFftsPlusCalculate_SliceNumNotEqual) {
+  auto root_builder = ut::GraphBuilder("root");
+  const auto &node = root_builder.AddNode("relu", "ReluV2", 1, 1);
+  const auto &op_desc = node->GetOpDesc();
+  const Operator op = OpDescUtils::CreateOperatorFromNode(node);
+
+  const ThreadSliceMapDyPtr slice_info_ptr = std::make_shared<ThreadSliceMapDy>();
+  slice_info_ptr->slice_instance_num = 2U;
+  (void)op_desc->SetExtAttr(ffts::kAttrSgtStructInfoDy, slice_info_ptr);
+  std::vector<OpRunInfoV2> op_run_info;
+  EXPECT_EQ(OpFftsPlusCalculate(op, op_run_info), ge::GRAPH_FAILED);
+}
+
+TEST_F(RegisterOpTilingUT, IncCov_OpFftsPlusCalculate_EmptySliceInfo) {
+  auto root_builder = ut::GraphBuilder("root");
+  const auto &node = root_builder.AddNode("relu", "ReluV2", 1, 1);
+  const auto &op_desc = node->GetOpDesc();
+  const Operator op = OpDescUtils::CreateOperatorFromNode(node);
+
+  const ThreadSliceMapDyPtr slice_info_ptr = std::make_shared<ThreadSliceMapDy>();
+  slice_info_ptr->slice_instance_num = 0U;
+  (void)op_desc->SetExtAttr(ffts::kAttrSgtStructInfoDy, slice_info_ptr);
+  std::vector<OpRunInfoV2> op_run_info;
+  EXPECT_EQ(OpFftsPlusCalculate(op, op_run_info), ge::GRAPH_FAILED);
+}
+
+TEST_F(RegisterOpTilingUT, IncCov_UpDateNodeShapeBack_NullSliceInfo) {
+  const OpDescPtr op_desc = std::make_shared<OpDesc>("relu", "ReluV2");
+  vector<int64_t> ori_shape;
+  EXPECT_EQ(UpDateNodeShapeBack(op_desc, nullptr, ori_shape), ge::GRAPH_FAILED);
+}
+
+TEST_F(RegisterOpTilingUT, IncCov_UpDateNodeShapeBack_SizeMismatch) {
+  const OpDescPtr op_desc = std::make_shared<OpDesc>("relu", "ReluV2");
+  const ThreadSliceMapDyPtr slice_info_ptr = std::make_shared<ThreadSliceMapDy>();
+  slice_info_ptr->input_tensor_indexes.push_back(0U);
+  slice_info_ptr->output_tensor_indexes.push_back(0U);
+  vector<int64_t> ori_shape;
+  EXPECT_EQ(UpDateNodeShapeBack(op_desc, slice_info_ptr, ori_shape), ge::GRAPH_FAILED);
+}
 }  // namespace optiling

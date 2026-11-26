@@ -530,9 +530,9 @@ GraphUtils::InsertNodeAfter(const OutDataAnchorPtr &src, const std::vector<InDat
   const auto src_node = src->GetOwnerNodeBarePtr();
   GE_CHECK_NOTNULL(src_node);
   if (src_node->GetOwnerComputeGraph() != insert_node->GetOwnerComputeGraph()) {
-    REPORT_INNER_ERR_MSG("E18888", "src:%s and insert_node:%s does not exist in the same graph.",
+    REPORT_INNER_ERR_MSG("E18888", "src:%s and insert_node:%s do not exist in the same graph.",
                          src_node->GetName().c_str(), insert_node->GetName().c_str());
-    GELOGE(GRAPH_FAILED, "[Check][Param] src:%s and insert_node:%s does not exist in the same graph.",
+    GELOGE(GRAPH_FAILED, "[Check][Param] src:%s and insert_node:%s do not exist in the same graph.",
            src_node->GetName().c_str(), insert_node->GetName().c_str());
     return GRAPH_FAILED;
   }
@@ -559,9 +559,9 @@ GraphUtils::InsertNodeAfter(const OutDataAnchorPtr &src, const std::vector<InDat
     GELOGI("Insert node %s between %s->%s.", insert_node->GetName().c_str(), src_node->GetName().c_str(),
            dst_node->GetName().c_str());
     if (src_node->GetOwnerComputeGraph() != dst_node->GetOwnerComputeGraph()) {
-      REPORT_INNER_ERR_MSG("E18888", "src:%s and dst:%s does not exist in the same graph.", src_node->GetName().c_str(),
+      REPORT_INNER_ERR_MSG("E18888", "src:%s and dst:%s do not exist in the same graph.", src_node->GetName().c_str(),
                            dst_node->GetName().c_str());
-      GELOGE(GRAPH_FAILED, "[Check][Param] src:%s and dst:%s does not exist in the same graph.",
+      GELOGE(GRAPH_FAILED, "[Check][Param] src:%s and dst:%s do not exist in the same graph.",
              src_node->GetName().c_str(), dst_node->GetName().c_str());
       return GRAPH_FAILED;
     }
@@ -619,7 +619,7 @@ graphStatus GraphUtils::InsertNodeBefore(const InDataAnchorPtr &dst, const NodeP
   const auto dst_node = dst->GetOwnerNodeBarePtr();
   GE_CHECK_NOTNULL(dst_node);
   if (dst_node->GetOwnerComputeGraph() != insert_node->GetOwnerComputeGraph()) {
-    GELOGE(GRAPH_FAILED, "[INSERT][NODE] dst:%s and insert_node:%s does not exist in the same graph.",
+    GELOGE(GRAPH_FAILED, "[INSERT][NODE] dst:%s and insert_node:%s do not exist in the same graph.",
            dst_node->GetName().c_str(), insert_node->GetName().c_str());
     return GRAPH_FAILED;
   }
@@ -1034,7 +1034,7 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY bool GraphUtils::NoNeedDumpGraphB
   }
 
   if ((suffix.empty() || (!IsStrNotNum(suffix)))) {
-    GELOGW("suffix %s is empty or is number, no need dump", suffix.c_str());
+    GELOGW("suffix %s is empty or is a number, no need to dump", suffix.c_str());
     return true;
   }
 
@@ -1169,7 +1169,7 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY bool GraphUtils::LoadGEGraph(cons
   GE_ASSERT_SUCCESS(model.Load(model_def), "[Get][Model] failed from ModelDef:%s", file);
   GE_CHK_BOOL_EXEC(model.GetGraph() != nullptr,
                    REPORT_INNER_ERR_MSG("E18888", "Get compute graph is nullptr, model file:%s.", file);
-                   return false, "[Get][ComputerGraph] is nullptr");
+                   return false, "[Get][ComputeGraph] is nullptr");
   compute_graph = *model.GetGraph();
   return true;
 }
@@ -1185,18 +1185,18 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY bool GraphUtils::LoadGEGraph(cons
   GE_ASSERT_SUCCESS(model.Load(model_def), "[Get][Model] failed from ModelDef:%s", file);
   GE_CHK_BOOL_EXEC(model.GetGraph() != nullptr,
                    REPORT_INNER_ERR_MSG("E18888", "Get compute graph is nullptr, model file:%s.", file);
-                   return false, "[Get][ComputerGraph] is nullptr");
+                   return false, "[Get][ComputeGraph] is nullptr");
   compute_graph = model.GetGraph();
   for (const auto &node : compute_graph->GetDirectNode()) {
     if (node == nullptr) {
       REPORT_INNER_ERR_MSG("E18888", "ModelDef %s has nullptr node.", file);
-      GELOGE(GRAPH_FAILED, "[Get][Node]Nullptr node in graph:%s, model:%s", compute_graph->GetName().c_str(), file);
+      GELOGE(GRAPH_FAILED, "[Get][Node] Nullptr node in graph:%s, model:%s", compute_graph->GetName().c_str(), file);
       return false;
     }
-    GELOGI("Node %s set owner graph", node->GetName().c_str());
+    GELOGD("Node %s set owner graph", node->GetName().c_str());
     if (node->SetOwnerComputeGraph(compute_graph) != GRAPH_SUCCESS) {
       REPORT_INNER_ERR_MSG("E18888", "SetOwnerComputeGraph failed for node:%s", node->GetName().c_str());
-      GELOGE(GRAPH_FAILED, "[Invoke][SetGraph]Node %s set owner graph failed", node->GetName().c_str());
+      GELOGE(GRAPH_FAILED, "[Invoke][SetGraph] Node %s set owner graph failed", node->GetName().c_str());
       return false;
     }
   }
@@ -1352,9 +1352,8 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY void GraphUtils::WriteProtoToText
       max_dump_file_size = std::strtol(opt.c_str(), nullptr, kBaseOfIntegerValue);
     }
     if ((max_dump_file_size != 0) && (fileSize != -1) && (fileSize > max_dump_file_size)) {
-      GELOGW("[WriteProto][Check] dump_graph_num exceeds max_dump_file_num, dump_graph_num=%" PRId64
-             ","
-             " max_dump_file_num=%" PRId64,
+      GELOGW("[WriteProto][Check] file_size exceeds max_dump_file_size, file_size=%" PRId64
+             " bytes, max_dump_file_size=%" PRId64 " bytes",
              fileSize, max_dump_file_size);
       GE_IF_BOOL_EXEC(remove(real_path) != 0, GELOGW("[WriteProto][RemovePath] Remove path %s failed", real_path));
       GE_CHK_BOOL_EXEC(fclose(file) == 0,
@@ -1511,10 +1510,12 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY void GraphUtils::DumpGrphToOnnx(c
   stream_file_name << "_graph_" << compute_graph.GetGraphID();
   stream_file_name << "_" << GetSanitizedName(suffix) << ".pbtxt";
   std::string proto_file = stream_file_name.str();
-  if ((proto_file.length()) >= kNameMax) {
+  const size_t origin_file_name_len = proto_file.length();
+  if (origin_file_name_len >= kNameMax) {
     proto_file = proto_file.substr(0U, kNameMax - 7U);
     proto_file = proto_file + ".pbtxt";
-    GELOGW("[Check][Param] File name is too long, file:%s", proto_file.c_str());
+    GELOGW("[Check][Param] File name is too long, file:%s, length:%zu, max length:%zu", proto_file.c_str(),
+           origin_file_name_len, kNameMax);
   }
   std::string dir_path = path;
   if ((!dir_path.empty()) && (dir_path.back() != MMPA_PATH_SEPARATOR_STR[0])) {
@@ -2201,7 +2202,7 @@ bool CheckAndInsertGraph(const NodePtr &node, std::set<ComputeGraph *> &owner_gr
       GE_ASSERT_EQ(owner_graph.size(), 1U);
       *graph_has_inserted_to_set = *(owner_graph.begin());
       if (owner_graph.find(graph) == owner_graph.end()) {
-        GELOGE(GRAPH_FAILED, "Node %s has diff owner graph %s with before nodes's graph %s", node->GetNamePtr(),
+        GELOGE(GRAPH_FAILED, "Node %s has diff owner graph %s with previous nodes' graph %s", node->GetNamePtr(),
                graph->GetName().c_str(), (*graph_has_inserted_to_set)->GetName().c_str());
         return false;
       }
@@ -2764,7 +2765,7 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY graphStatus GraphUtils::CopyCompu
 
   if (depth >= kCopyGraphMaxRecursionDepth) {
     REPORT_INNER_ERR_MSG("E18888", "param depth:%d >= %d(allow max subgraphs)", depth, kCopyGraphMaxRecursionDepth);
-    GELOGE(GRAPH_FAILED, "[Check][Param]exist too much subgraphs:%d > %d(allow max subgraphs)", depth,
+    GELOGE(GRAPH_FAILED, "[Check][Param] exist too many subgraphs:%d >= %d(allow max subgraphs)", depth,
            kCopyGraphMaxRecursionDepth);
     return GRAPH_FAILED;
   }
@@ -2773,7 +2774,8 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY graphStatus GraphUtils::CopyCompu
   graphStatus ret = CopyOpAndSubgraph(src_compute_graph, node_filter, graph_filter, attr_filter, dst_compute_graph,
                                       node_old_2_new, op_desc_old_2_new, all_new_nodes, depth);
   if (ret != GRAPH_SUCCESS) {
-    GELOGE(GRAPH_FAILED, "[Copy][OpAndSubGraph] failed.");
+    GELOGE(GRAPH_FAILED, "[Copy][OpAndSubGraph] failed, ret:%d, graph:%s", static_cast<int32_t>(ret),
+           src_compute_graph->GetName().c_str());
     return GRAPH_FAILED;
   }
 
@@ -2781,8 +2783,10 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY graphStatus GraphUtils::CopyCompu
     if ((node_filter != nullptr) && (!node_filter(*n))) {
       continue;
     }
-    if (RelinkGraphEdges(n, "", all_new_nodes) != GRAPH_SUCCESS) {
-      GELOGE(GRAPH_FAILED, "[Relink][Edges] failed.");
+    const auto relink_ret = RelinkGraphEdges(n, "", all_new_nodes);
+    if (relink_ret != GRAPH_SUCCESS) {
+      GELOGE(GRAPH_FAILED, "[Relink][Edges] failed, ret:%d, node:%s", static_cast<int32_t>(relink_ret),
+             n->GetName().c_str());
       return GRAPH_FAILED;
     }
   }
@@ -3139,7 +3143,7 @@ graphStatus GraphUtils::HandleOutAnchorMapping(const NodePtr &node, SymbolToAnch
     GE_ASSERT_GRAPH_SUCCESS(CheckIsRefFromOther(out_data_anchor, refed_node, is_ref_from_other));
     NodeIndexIO exist_ref_data_info(refed_node, 0U, kOut);
     if (is_ref_from_other && (anchor_to_symbol.find(exist_ref_data_info.ToString()) != anchor_to_symbol.end())) {
-      GELOGD("Node %s output:%d is ref form node: %s.", node->GetName().c_str(), out_data_anchor->GetIdx(),
+      GELOGD("Node %s output:%d is ref from node: %s.", node->GetName().c_str(), out_data_anchor->GetIdx(),
              exist_ref_data_info.ToString().c_str());
       GE_ASSERT_GRAPH_SUCCESS(
           UpdateRefMapping(cur_node_info, exist_ref_data_info, symbol_to_anchors, anchor_to_symbol));
@@ -3157,9 +3161,10 @@ graphStatus GraphUtils::HandleOutAnchorMapping(const NodePtr &node, SymbolToAnch
     } else {
       if (reuse_input_flag) {
         GELOGW(
-            "[GetRefMapping][Check] Invalid reuse_input attr on output %d of node %s, please check attr reuse_input "
-            "and reuse_input_index",
-            out_data_anchor->GetIdx(), node->GetName().c_str());
+            "[GetRefMapping][Check] Invalid reuse_input attr on output %d of node %s, "
+            "reuse_input_index:%d, valid range is [0, %zu), please check attr reuse_input and reuse_input_index",
+            out_data_anchor->GetIdx(), node->GetName().c_str(), reuse_in_index,
+            static_cast<size_t>(node->GetAllInDataAnchorsSize()));
       }
       const std::string &symbol = cur_node_info.ToString();
       GELOGD("Add anchor %s, symbol %s.", cur_node_info.ToString().c_str(), symbol.c_str());
@@ -3343,7 +3348,7 @@ graphStatus GraphUtils::UnionSymbolMapping(const NodeIndexIO &exist_node_info1, 
     iter->second = symbol;
   }
 
-  GELOGI("Union symbol %s and %s succ.", symbol.c_str(), min_symbol.c_str());
+  GELOGI("Union symbol %s and %s succeeded.", symbol.c_str(), min_symbol.c_str());
   (void)symbol_to_anchors.erase(min_iter);
   return GRAPH_SUCCESS;
 }
@@ -3884,7 +3889,7 @@ graphStatus GraphUtils::UnfoldGraph(const ComputeGraphPtr &graph, const ComputeG
                                     int32_t depth) {
   if (depth >= kCopyGraphMaxRecursionDepth) {
     REPORT_INNER_ERR_MSG("E18888", "param depth:%d >= %d(allow max subgraphs)", depth, kCopyGraphMaxRecursionDepth);
-    GELOGE(GRAPH_FAILED, "[Check][Param]exist too much subgraphs:%d > %d(allow max subgraphs)", depth,
+    GELOGE(GRAPH_FAILED, "[Check][Param] exist too many subgraphs:%d >= %d(allow max subgraphs)", depth,
            kCopyGraphMaxRecursionDepth);
     return GRAPH_FAILED;
   }
@@ -5006,7 +5011,7 @@ GE_FUNC_DEV_VISIBILITY GE_FUNC_HOST_VISIBILITY graphStatus GraphUtils::GetSuppor
   constexpr size_t kInplaceAbilitySize = 2U;
   for (auto &inplace_index : output_inplace_index_list) {
     if (inplace_index.size() != kInplaceAbilitySize) {
-      GELOGW("The size %u of inplace index is invalid, must be equal to 2.", inplace_index.size());
+      GELOGW("The size %zu of inplace index is invalid, must be equal to 2.", inplace_index.size());
       return GRAPH_FAILED;
     }
     GE_ASSERT_TRUE(ge::IntegerChecker<int32_t>::Compat(inplace_index[0]));

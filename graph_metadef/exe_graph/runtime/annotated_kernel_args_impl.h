@@ -36,10 +36,10 @@ struct AnnotatedKernelArgsImpl {
 inline ge::graphStatus ExtractArgsData(const AnnotatedKernelArgsImpl *const args_impl, std::vector<uint8_t> &args_data,
                                        std::vector<ge::ArgDesc> &arg_descs) {
   GE_ASSERT_NOTNULL(args_impl);
-  GE_ASSERT_SUCCESS(args_impl->status, "Annotated kernel args is invalid.");
-  GE_ASSERT_TRUE(!args_impl->args.empty(), "Annotated kernel args is empty.");
+  GE_ASSERT_SUCCESS(args_impl->status, "Annotated kernel args are invalid.");
+  GE_ASSERT_TRUE(!args_impl->args.empty(), "Annotated kernel args are empty.");
   GE_ASSERT_TRUE(args_impl->arg_descs.size() <= (std::numeric_limits<size_t>::max() / kKernelArgSlotSize),
-                 "Annotated kernel arg desc size %zu overflow.", args_impl->arg_descs.size());
+                 "Annotated kernel arg desc size %zu overflows.", args_impl->arg_descs.size());
   GE_ASSERT_TRUE(args_impl->args.size() == (args_impl->arg_descs.size() * kKernelArgSlotSize),
                  "Annotated kernel args size %zu does not match arg desc size %zu.", args_impl->args.size(),
                  args_impl->arg_descs.size());

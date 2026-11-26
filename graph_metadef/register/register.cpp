@@ -219,7 +219,7 @@ Status GetDynamicAttrNum(const std::shared_ptr<ge::OpDesc> &op_desc,
              op_desc->GetName().c_str());
       continue;
     }
-    GELOGI("In Op %s dynamic attr [%s] exists, tensor num: %u.", op_desc->GetName().c_str(), attr_name.c_str(),
+    GELOGD("In Op %s dynamic attr [%s] exists, tensor num: %u.", op_desc->GetName().c_str(), attr_name.c_str(),
            dynamic_tensor_num);
     port_dynamic_info[dynamic_name_attr.port_name] = DynamicInfo(dynamic_name_attr.type, 0U, dynamic_tensor_num);
   }
@@ -248,7 +248,7 @@ Status UpdateDynamicInputOutPutIndex(const std::shared_ptr<ge::OpDesc> &op_desc,
         continue;
       }
       input_increment += (tensor_num > 0U) ? (tensor_num - 1U) : 0U;
-      GELOGI("Dynamic input name[%s] insert index: %u, tensor num: %u, op proto index: %u", input_name.c_str(),
+      GELOGD("Dynamic input name[%s] insert index: %u, tensor num: %u, op proto index: %u", input_name.c_str(),
              port_dynamic_info[input_name].GetInsetIndex(), tensor_num, input_index);
     }
     input_index++;
@@ -266,7 +266,7 @@ Status UpdateDynamicInputOutPutIndex(const std::shared_ptr<ge::OpDesc> &op_desc,
         continue;
       }
       out_increment += (tensor_num > 0U) ? (tensor_num - 1U) : 0U;
-      GELOGI("Dynamic output name[%s] insert index: %u, tensor num: %u, op proto index: %u", output_name.c_str(),
+      GELOGD("Dynamic output name[%s] insert index: %u, tensor num: %u, op proto index: %u", output_name.c_str(),
              port_dynamic_info[output_name].GetInsetIndex(), tensor_num, output_index);
     }
     output_index++;
@@ -345,7 +345,7 @@ AutoMappingFnDynamic(const google::protobuf::Message *op_src, ge::Operator &op,
       continue;
     }
 
-    GELOGI("In NodeDef %s dynamic attr [%s] exists: %d.", node->name().c_str(), attr_name.c_str(), dynamic_tensor_num);
+    GELOGD("In NodeDef %s dynamic attr [%s] exists: %d.", node->name().c_str(), attr_name.c_str(), dynamic_tensor_num);
 
     // 动态输入/输出可能有多个（key 形如 in0000 / out0000），按前缀区分方向
     if (flag.compare(0U, 2U, "in") == 0) {
@@ -411,7 +411,8 @@ FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY Status AutoMappingByOpFnDynamic
       (void)ge::AttrUtils::SetInt(op_desc_dst, DYNAMIC_OUTPUT_TD_NUM(port_name), static_cast<int64_t>(tensor_num));
       GELOGI("Op[%s] add dynamic output[%u]", op_desc_dst->GetName().c_str(), tensor_num);
     } else {
-      GELOGW("Do not add input or output desc with dynamic type :[%d].", static_cast<int32_t>(dynamic_type));
+      GELOGW("Do not add input or output desc with dynamic type :[%d], valid types are kInput(%d)/kOutput(%d).",
+             static_cast<int32_t>(dynamic_type), static_cast<int32_t>(kInput), static_cast<int32_t>(kOutput));
       continue;
     }
   }
@@ -469,8 +470,8 @@ FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY Status AutoMappingByOpFn(const 
   for (const auto &subgraph_name_index : subgraph_name_indexs) {
     const auto ret = op_desc_dst->AddSubgraphName(subgraph_name_index.first);
     if (ret != ge::GRAPH_SUCCESS) {
-      GELOGW("[AutoMappingFn][Check] %s subgraph of node %s, type %s already exist.", subgraph_name_index.first.c_str(),
-             op_desc_dst->GetName().c_str(), op_desc_dst->GetType().c_str());
+      GELOGW("[AutoMappingFn][Check] %s subgraph of node %s, type %s already exists.",
+             subgraph_name_index.first.c_str(), op_desc_dst->GetName().c_str(), op_desc_dst->GetType().c_str());
     }
   }
 
@@ -519,7 +520,7 @@ namespace {
 std::vector<std::shared_ptr<ge::Node>> FindNodesByType(const ge::ComputeGraphPtr &graph, const std::string &type) {
   std::vector<std::shared_ptr<ge::Node>> nodes;
   for (const auto &node : graph->GetDirectNode()) {
-    GELOGI("Find node %s, node type is %s.", type.c_str(), node->GetOpDesc()->GetType().c_str());
+    GELOGD("Find node %s, node type is %s.", type.c_str(), node->GetOpDesc()->GetType().c_str());
     if (node->GetOpDesc()->GetType() == type) {
       nodes.push_back(node);
       continue;
@@ -560,7 +561,7 @@ static Status AutoMappingSubgraphOutput(
       return FAILED;
     }
 
-    GELOGI("Generate subgraph output map for subgraph %s, index %ld, parent node index %d", graph->GetName().c_str(),
+    GELOGD("Generate subgraph output map for subgraph %s, index %ld, parent node index %d", graph->GetName().c_str(),
            index, parent_index);
     if (parent_index == -1) {
       continue;
@@ -590,7 +591,7 @@ FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY static Status AutoMappingSubgra
       GELOGE(FAILED, "[Get][Attr:index]data_index:%zu, op_name:%s", i, nodes[i]->GetOpDesc()->GetName().c_str());
       return FAILED;
     }
-    GELOGI("Get index %d from data[%zu]", index, i);
+    GELOGD("Get index %d from data[%zu]", index, i);
     const auto ret = input(index, parent_index);
     if (ret != SUCCESS) {
       GELOGE(FAILED, "[Get][ParentIndex:input]data index %zu, error code %u", i, ret);

@@ -750,7 +750,7 @@ graphStatus Tensor::SetData(const std::vector<AscendString> &datas) {
     std::vector<std::string> tensor_data;
     for (auto &data : datas) {
       if (data.GetString() == nullptr) {
-        REPORT_INNER_ERR_MSG("E18888", "Data is nullptr. check invalid");
+        REPORT_INNER_ERR_MSG("E18888", "Data is nullptr, please check the input.");
         GELOGE(GRAPH_FAILED, "[Check][Param] Data is nullptr.");
         return GRAPH_FAILED;
       }

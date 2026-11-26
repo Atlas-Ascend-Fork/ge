@@ -58,7 +58,7 @@ Status GraphFusionPassBase::Run(ge::ComputeGraph &graph) {
   NodeMapInfoPtr node_map_info = nullptr;
   if (GraphPassUtil::GetOpTypeMapToGraph(node_map_info, graph) == SUCCESS) {
     if (node_map_info->run_count == std::numeric_limits<int64_t>::max()) {
-      GELOGE(ge::FAILED, "Run count is overflow.");
+      GELOGE(ge::FAILED, "Run count has overflowed.");
       return FAILED;
     }
     node_map_info->run_count++;

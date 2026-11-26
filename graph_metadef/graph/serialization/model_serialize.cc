@@ -67,7 +67,7 @@ ge::Status CreateExternalWeightPath(const std::string &model_path, const std::st
   const bool weight_dir_exist = (mmAccess(dir_path.c_str()) == EN_OK);
   if ((!dir_path.empty()) && (!weight_dir_exist)) {
     const std::lock_guard<std::mutex> lock(dir_mutex);
-    GE_ASSERT_TRUE((ge::CreateDir(dir_path) == EOK), "Create direct failed, path: %s.", dir_path.c_str());
+    GE_ASSERT_TRUE((ge::CreateDir(dir_path) == EOK), "Create directory failed, path: %s.", dir_path.c_str());
   }
   return ge::SUCCESS;
 }
@@ -79,7 +79,7 @@ ge::Buffer AllocBufferByModelDef(const ge::proto::ModelDef &model_def) {
   Buffer buffer(model_def.ByteSize());
 #endif
   GE_ASSERT_TRUE(buffer.GetSize() != 0UL, "get size failed");
-  GE_ASSERT_TRUE((buffer.GetData() != nullptr), "get size failed");
+  GE_ASSERT_TRUE((buffer.GetData() != nullptr), "buffer data is nullptr");
   return buffer;
 }
 }  // namespace
@@ -817,11 +817,11 @@ Status ModelSerializeImp::ParallelUnserializeGraph(
   auto func = [&graphs_proto, &path, &ret, &graphs, &doing_num]() {
     int32_t cur_num = doing_num.fetch_add(1);
     while ((cur_num < graphs_proto.size()) && (ret == ge::SUCCESS)) {
-      GELOGD("Unserialize graph, id: %ld, graph_name: %s", cur_num, graphs_proto[cur_num].name().c_str());
+      GELOGD("Unserialize graph, id: %d, graph_name: %s", cur_num, graphs_proto[cur_num].name().c_str());
       ge::ModelSerializeImp impl;
       impl.SetAirModelPath(path);
       if (!impl.UnserializeGraph(graphs[graphs_proto[cur_num].name()], graphs_proto[cur_num])) {
-        GELOGE(ge::FAILED, "Unserialize graph: %ld failed, graph_name: %s", cur_num,
+        GELOGE(ge::FAILED, "Unserialize graph: %d failed, graph_name: %s", cur_num,
                graphs_proto[cur_num].name().c_str());
         ret = ge::PARAM_INVALID;
         return;
@@ -856,11 +856,11 @@ Status ModelSerializeImp::UnserializeGraph(std::map<std::string, ComputeGraphPtr
   GELOGI("Start to unserialize graph, graph num[%d]", graphs_proto.size());
   // 初始化子图表
   for (int32_t idx = 0; idx < graphs_proto.size(); ++idx) {
-    GELOGD("Unserialize graph, id: %ld, graph_name: %s", idx, graphs_proto[idx].name().c_str());
+    GELOGD("Unserialize graph, id: %d, graph_name: %s", idx, graphs_proto[idx].name().c_str());
     ge::ModelSerializeImp impl;
     impl.SetAirModelPath(air_path_);
     GE_ASSERT_TRUE(impl.UnserializeGraph(graphs[graphs_proto[idx].name()], graphs_proto[idx]),
-                   "Unserialize graph: %ld failed, graph_name: %s", idx, graphs_proto[idx].name().c_str());
+                   "Unserialize graph: %d failed, graph_name: %s", idx, graphs_proto[idx].name().c_str());
   }
   return SUCCESS;
 }
@@ -986,8 +986,8 @@ static bool ReadProtoFromBinaryFile(const uint8_t *const data, const size_t len,
   // 2048M -1
   coded_stream.SetTotalBytesLimit(INT32_MAX);
   if (!proto->ParseFromCodedStream(&coded_stream)) {
-    REPORT_INNER_ERR_MSG("E18888", "Read proto from BinaryFile failed, len %zu", len);
-    GELOGE(GRAPH_FAILED, "[Read][Proto] from BinaryFile failed, len %zu", len);
+    REPORT_INNER_ERR_MSG("E18888", "Read proto from binary data failed, len %zu", len);
+    GELOGE(GRAPH_FAILED, "[Read][Proto] from binary data failed, len %zu", len);
     return false;
   }
 
@@ -1166,7 +1166,8 @@ Status ModelSerialize::SerializeModel(const Model &model, const bool not_dump_al
 bool ModelSerializeImp::LoadWeightFromFile(const std::string &file_path, const int64_t &length,
                                            std::string &weight) const {
   if (length <= 0L) {
-    GELOGE(GRAPH_FAILED, "Value length is less than 0.");
+    GELOGE(GRAPH_FAILED, "Value length %lld is invalid, valid range is greater than 0.",
+           static_cast<long long>(length));
     return false;
   }
   auto bin_data = std::unique_ptr<char_t[]>(new (std::nothrow) char_t[length]);
@@ -1185,7 +1186,7 @@ bool ModelSerializeImp::LoadWeightFromFile(const std::string &file_path, const i
   }
   size_t data_len = static_cast<size_t>(length);
   if (GetBinFromFile(weight_path, static_cast<char_t *>(bin_data.get()), data_len) != GRAPH_SUCCESS) {
-    GELOGE(GRAPH_FAILED, "Get bin from file failed.");
+    GELOGE(GRAPH_FAILED, "Get bin from file %s failed.", weight_path.c_str());
     return false;
   }
   weight = std::string(bin_data.get(), length);
@@ -1236,7 +1237,7 @@ bool ModelSerialize::UnserializeModel(const uint8_t *const data, const size_t le
 
   auto &model_proto = *model_proto_ptr;
   if (!ReadProtoFromBinaryFile(data, len, &model_proto)) {
-    GELOGE(GRAPH_FAILED, "[Read][Proto] from binaryfile failed.");
+    GELOGE(GRAPH_FAILED, "[Read][Proto] from binary data failed.");
     return false;
   }
   ModelSerializeImp model_imp;

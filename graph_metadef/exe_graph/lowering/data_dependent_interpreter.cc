@@ -237,7 +237,7 @@ const OpImplKernelRegistry::OpImplFunctionsV2 *DataDependentInterpreter::GetOpIm
   GE_ASSERT_TRUE(space_registries_v2_.size() > static_cast<size_t>(op_desc_->GetOppImplVersion()));
   auto space_registry_v2 = space_registries_v2_[static_cast<size_t>(op_desc_->GetOppImplVersion())];
   if (space_registry_v2 == nullptr) {
-    GELOGW("Attention: default registry does not exist. Tiling will be executed failed");
+    GELOGW("Attention: default registry does not exist. Tiling will fail");
     return nullptr;
   }
   return space_registry_v2->GetOpImpl(type.c_str());

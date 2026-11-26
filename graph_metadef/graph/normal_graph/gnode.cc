@@ -363,7 +363,7 @@ graphStatus GNode::GetOutputDesc(const int32_t index, TensorDesc &tensor_desc) c
 graphStatus GNode::UpdateOutputDesc(const int32_t index, const TensorDesc &tensor_desc) {
   if (index < 0) {
     REPORT_INNER_ERR_MSG("E18888", "index:%d cannot be less than zero.", index);
-    GELOGE(GRAPH_PARAM_INVALID, "[Check][Param] Gnode: index[%d] cannot be less than zero.", index);
+    GELOGE(GRAPH_PARAM_INVALID, "[Check][Param] GNode: index[%d] cannot be less than zero.", index);
     return GRAPH_PARAM_INVALID;
   }
 

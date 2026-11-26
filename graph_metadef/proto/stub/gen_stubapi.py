@@ -486,7 +486,7 @@ class H2CC(object):
         line = re.sub(r"\s*=\s+0", "", line)
         line = re.sub(r"\s*=\s+.*,", ",", line)
         line = re.sub(r"\s*=\s+.*\)", ")", line)
-        logging.info("x[%s]\nline[%s]", x, line)
+        logging.info("x[%s], line[%s]", x, line)
         # if the function is long, void ABC::foo()
         # breaks into two lines void ABC::\n foo()
         rep_fmt = "%s%s::{}%s" % (self.stack_class[-1], x, r"\1(")

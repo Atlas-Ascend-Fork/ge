@@ -163,7 +163,7 @@ static graphStatus CalcTensorElementCnt(const std::vector<int64_t> &dims, const 
       element_cnt = kElementCntUnknownShape;
       return GRAPH_SUCCESS;
     } else if (dim == 0) {
-      GELOGI("No need calc element count, as dims[%zu]=%" PRId64 ", format=%d(%s).", i, dim, format,
+      GELOGI("No need to calc element count, as dims[%zu]=%" PRId64 ", format=%d(%s).", i, dim, format,
              format_str.c_str());
       element_cnt = 0;
       return GRAPH_SUCCESS;

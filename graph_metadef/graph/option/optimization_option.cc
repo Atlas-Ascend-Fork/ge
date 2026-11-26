@@ -141,7 +141,7 @@ graphStatus OptimizationOption::SetPassSwitch(const std::string &pass_switch_str
     size_t pos = token.find(':');
     // 1. 格式错误处理，记录Warning日志
     if (pos == std::string::npos) {
-      GELOGW("[Oo][SetPassSwitch] Invalid token format: %s", token.c_str());
+      GELOGW("[Oo][SetPassSwitch] Invalid token format: %s, expected format is <pass_name>:<on|off>", token.c_str());
       continue;
     }
 
@@ -149,13 +149,14 @@ graphStatus OptimizationOption::SetPassSwitch(const std::string &pass_switch_str
     std::string pass_name = token.substr(0, pos);
     std::string pass_switch = token.substr(pos + 1);
     if (pass_name.empty() || (pass_switch != "on" && pass_switch != "off")) {
-      GELOGW("[Oo][SetPassSwitch] Invalid key or value in token: %s", token.c_str());
+      GELOGW("[Oo][SetPassSwitch] Invalid key or value in token: %s, expected format is <pass_name>:<on|off>",
+             token.c_str());
       continue;
     }
 
     // 3. 黑名单检查：不能配置ge option，记录Warning日志
     if (forbidden_option_set.find(pass_name) != forbidden_option_set.end()) {
-      GELOGW("[Oo][SetPassSwitch] [%s] is one of ge option names, cannot configured here", pass_name.c_str());
+      GELOGW("[Oo][SetPassSwitch] [%s] is one of ge option names, cannot be configured here", pass_name.c_str());
       continue;
     }
 
@@ -166,7 +167,7 @@ graphStatus OptimizationOption::SetPassSwitch(const std::string &pass_switch_str
     }
 
     working_opt_names_to_value_[pass_name] = pass_switch;
-    GELOGD("[Oo][SetPassSwitch]the switch of pass [%s] is [%s]", pass_name.c_str(), pass_switch.c_str());
+    GELOGD("[Oo][SetPassSwitch] the switch of pass [%s] is [%s]", pass_name.c_str(), pass_switch.c_str());
   }
 
   return GRAPH_SUCCESS;

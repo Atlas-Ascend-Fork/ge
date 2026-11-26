@@ -36,7 +36,7 @@ ge::graphStatus ResourceUsageContext::ReportAttachedStream(const std::vector<ge:
   }
   const int64_t collector_index = additional_input_start + static_cast<int64_t>(ResourceUsageInput::kCollector);
   if (collector_index < 0) {
-    GELOGE(ge::GRAPH_FAILED, "Resource usage context collector index %ld overflow.", collector_index);
+    GELOGE(ge::GRAPH_FAILED, "Resource usage context collector index %ld overflows.", collector_index);
     return ge::GRAPH_FAILED;
   }
   auto *collector = GetInputValue<ResourceUsageCollector *>(static_cast<size_t>(collector_index));

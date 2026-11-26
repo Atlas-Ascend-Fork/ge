@@ -426,7 +426,8 @@ extern "C" int32_t AscendCPyInterfaceGeneralized(const char *optype, const char 
 
 extern "C" int32_t AscendCPyInterfaceGetTilingDefInfo(const char *optype, char *result_info, size_t result_info_len) {
   if ((optype == nullptr) || (result_info == nullptr)) {
-    GELOGE(ge::GRAPH_FAILED, "optype/result_info is null, %s, %s", optype, result_info);
+    GELOGE(ge::GRAPH_FAILED, "optype/result_info is null, optype:%s, result_info:%s",
+           (optype == nullptr) ? "(null)" : optype, (result_info == nullptr) ? "(null)" : result_info);
     return 0;
   }
   ge::AscendString op_type_str = optype;
@@ -471,9 +472,12 @@ extern "C" int32_t AscendCPyInterfaceOpReplay(const char *optype, const char *so
   if ((optype == nullptr) || (soc_version == nullptr) || (tiling_data == nullptr) || (kernel_name == nullptr) ||
       (entry_file == nullptr) || (output_kernel_file == nullptr)) {
     GELOGE(ge::GRAPH_FAILED,
-           "optype/soc_version/tiling_data/kernel_name/entry_file/output_kernel_file is null, "
-           "%s, %s, %s, %s, %s, %s",
-           optype, soc_version, tiling_data, kernel_name, entry_file, output_kernel_file);
+           "AscendCPyInterfaceOpReplay failed, null argument exists, "
+           "optype:%s, soc_version:%s, tiling_data:%s, kernel_name:%s, entry_file:%s, output_kernel_file:%s",
+           (optype == nullptr) ? "(null)" : optype, (soc_version == nullptr) ? "(null)" : soc_version,
+           (tiling_data == nullptr) ? "(null)" : tiling_data, (kernel_name == nullptr) ? "(null)" : kernel_name,
+           (entry_file == nullptr) ? "(null)" : entry_file,
+           (output_kernel_file == nullptr) ? "(null)" : output_kernel_file);
     return 0;
   }
   constexpr int32_t CORE_TYPE_BOTH = 0;
