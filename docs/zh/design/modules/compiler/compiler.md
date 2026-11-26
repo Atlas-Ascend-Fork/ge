@@ -613,6 +613,8 @@ BuildModel:
 
 GE 的 Shape 优化将动态 shape 尽可能转化为静态 shape：
 
+内置 Host `ShapeN` 按各输入的逻辑形状 `OriginShape` 生成形状向量，与 `Shape` 保持一致；存储格式扩维不能改变该向量的长度或内容，未知逻辑形状不能作为已知常量折叠。
+
 **常量折叠与 InferShape 协同**：Shape 推导和常量折叠交替进行，直至收敛。例如，Shape → Gather(indices=[1,0,2,3]) → Reshape 这条链，如果 Data 的 shape 是 [3,4,5,6]，先做 Shape 推导得出 Reshape 输出为动态，再做常量折叠消除 Shape 和 Gather，最后再推导一次 Reshape 的输出——此时 Reshape 的 shape 输入已经是 const [4,3,5,6]，输出变为静态。
 
 **While 循环的 Shape 推导**：对 While 算子的 body 子图多次推导，将上一次推导的输出 Shape 作为下一次的输入，直到两次结果一致。这种不动点迭代策略尽可能推导出更多静态信息。

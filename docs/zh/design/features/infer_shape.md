@@ -78,6 +78,8 @@ Storage 由 GE 编译器根据算子能力、格式亲和性、全图数据流�
 | Tiling 计算 | StorageShape | 硬件分块策略基于实际存储布局 |
 | atc dump infershape json | OriginShape | 面向用户的离线分析工具 |
 
+内置 Host `ShapeN` 与 `Shape` 一样，对每个输入返回 `OriginShape`。例如 NCHW 逻辑形状 `[1,3,2,3]`、NC1HWC0 存储形状 `[1,1,2,3,16]` 的输入，结果为长度 4 的向量 `[1,3,2,3]`。旧描述符未设置 OriginShape 时沿用其 Shape。已知描述中出现动态维度时跳过折叠。
+
 ### 2.4 API 层面的统一封装
 
 在 GE 的类型系统中，`Shape` 是纯数据结构，不绑定语义——它可以承载 OriginShape 也可以承载 StorageShape，取决于由哪个接口返回。

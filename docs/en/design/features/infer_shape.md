@@ -78,6 +78,8 @@ The same logic also exists in the runtime's `TransformOutputShape()`: the operat
 | Tiling calculation                        | StorageShape    | Hardware blocking strategy is based on actual storage layout |
 | atc dump infershape json                  | OriginShape     | Offline analysis tool for users |
 
+The built-in Host `ShapeN` returns the logical dimensions of each input. An NCHW tensor with logical shape `[1, 3, 2, 3]` and NC1HWC0 storage shape `[1, 1, 2, 3, 16]` produces the four-element vector `[1, 3, 2, 3]`. For older descriptors without an initialized `OriginShape`, it uses the existing `Shape`. Unknown dimensions prevent folding.
+
 ### 2.4 Unified Encapsulation at API Level
 
 In the GE type system, `Shape` is a pure data structure without bound semantics—it can carry either OriginShape or StorageShape, depending on which interface returns it.

@@ -178,3 +178,55 @@ TEST_F(UtestGraphPassesFoldingKernelShapeNkernel, ShapeN2In1Out) {
   Status status = kernel_->Compute(node_, outputs);
   EXPECT_EQ(NOT_CHANGED, status);
 }
+
+namespace {
+template <typename T>
+void CheckShapeNOriginShape(DataType output_type) {
+  const vector<int64_t> origin_shape = {1, 3, 2, 3};
+  auto graph = std::make_shared<ComputeGraph>("shape_n_origin");
+  auto op = std::make_shared<OpDesc>("shape_n", SHAPEN);
+  for (const bool blocked : {false, true}) {
+    GeTensorDesc input(GeShape(blocked ? vector<int64_t>({1, 1, 2, 3, 16}) : origin_shape),
+                       blocked ? FORMAT_NC1HWC0 : FORMAT_NCHW, DT_FLOAT16);
+    input.SetOriginShape(GeShape(origin_shape));
+    input.SetOriginFormat(FORMAT_NCHW);
+    ASSERT_EQ(op->AddInputDesc(input), GRAPH_SUCCESS);
+    ASSERT_EQ(op->AddOutputDesc(GeTensorDesc(GeShape({4}), FORMAT_ND, output_type)), GRAPH_SUCCESS);
+  }
+  ShapeNKernel kernel;
+  vector<GeTensorPtr> outputs;
+  ASSERT_EQ(kernel.Compute(graph->AddNode(op), outputs), SUCCESS);
+  ASSERT_EQ(outputs.size(), 2U);
+  for (const auto &output : outputs) {
+    EXPECT_EQ(output->GetTensorDesc().GetDataType(), output_type);
+    EXPECT_EQ(output->GetTensorDesc().GetShape().GetDims(), vector<int64_t>({4}));
+    ASSERT_EQ(output->GetData().size(), 4U * sizeof(T));
+    const auto *data = reinterpret_cast<const T *>(output->GetData().data());
+    EXPECT_EQ(vector<T>(data, data + 4), vector<T>({1, 3, 2, 3}));
+  }
+}
+}  // namespace
+
+TEST(UtestShapeNOriginShape, Int32) {
+  CheckShapeNOriginShape<int32_t>(DT_INT32);
+}
+
+TEST(UtestShapeNOriginShape, Int64) {
+  CheckShapeNOriginShape<int64_t>(DT_INT64);
+}
+
+TEST(UtestShapeNOriginShape, UnknownOriginShapeSkipsFolding) {
+  for (const auto &dims : {vector<int64_t>({1, -1, 2, 3}), vector<int64_t>({-2})}) {
+    auto graph = std::make_shared<ComputeGraph>("shape_n_unknown_origin");
+    auto op = std::make_shared<OpDesc>("shape_n", SHAPEN);
+    GeTensorDesc input(GeShape({1, 1, 2, 3, 16}), FORMAT_NC1HWC0, DT_FLOAT16);
+    input.SetOriginShape(GeShape(dims));
+    input.SetOriginFormat(FORMAT_NCHW);
+    ASSERT_EQ(op->AddInputDesc(input), GRAPH_SUCCESS);
+    ASSERT_EQ(op->AddOutputDesc(GeTensorDesc(GeShape({4}), FORMAT_ND, DT_INT32)), GRAPH_SUCCESS);
+    ShapeNKernel kernel;
+    vector<GeTensorPtr> outputs;
+    EXPECT_EQ(kernel.Compute(graph->AddNode(op), outputs), NOT_CHANGED);
+    EXPECT_TRUE(outputs.empty());
+  }
+}
