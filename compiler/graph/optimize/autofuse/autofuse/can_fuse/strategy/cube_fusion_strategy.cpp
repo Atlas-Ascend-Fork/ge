@@ -57,8 +57,8 @@ bool IsIndirectLinksWithoutBatchBroadcast(const NodePtr &node1, const NodePtr &n
            index);
     if (direct_links_node2_indices.find(index) == direct_links_node2_indices.end()) {
       std::vector<ViewOpAttrInfo> attr_infos;
-      if (!BackendUtils::CurNodeInputIsSimplestLoad(node2, index, attr_infos, false) &&
-          HasBatchBroadcast(axis_size, attr_infos, node2)) {
+      GE_ASSERT_SUCCESS(BackendUtils::CollectInputLoadViewInfos(node2, index, attr_infos));
+      if (HasBatchBroadcast(axis_size, attr_infos, node2)) {
         GELOGI(
             "node1 %s(%s) and node2 %s(%s) cannot fuse, the reason is[%s] [node1 is Cube, node2 is Pointwise but "
             "node2 has batch axis broadcast].",
@@ -81,9 +81,7 @@ bool IsDirectLinksWithInnerBroadcast(const NodePtr &node1, const NodePtr &node2,
   auto axis_size = static_cast<int32_t>(temp_graph_attr.axis.size());
   for (const auto &link : direct_links) {
     std::vector<ViewOpAttrInfo> attr_infos;
-    // 第4参传false：跳过显式Broadcast节点检查（GeFallback在can_fuse前已将broadcast编码展开为
-    // 显式Broadcast节点挂在Load后），与间接路径检查同构，通过Load输出属性与图轴反推view信息
-    (void)BackendUtils::CurNodeInputIsSimplestLoad(node2, link.second, attr_infos, false);
+    GE_ASSERT_SUCCESS(BackendUtils::CollectInputLoadViewInfos(node2, link.second, attr_infos));
     bool has_view = false;
     bool only_inner_broadcast = true;
     for (const auto &attr_info : attr_infos) {
