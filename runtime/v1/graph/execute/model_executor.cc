@@ -155,7 +155,7 @@ Status ModelExecutor::LoadGraph(const GeRootModelPtr &ge_root_model, const Graph
     if (check_ret != SUCCESS) {
       GELOGW("[LoadGraph] Failed to check unknown shape, skip static model validation.");
     } else if (!is_dynamic_shape) {
-      GELOGW("[LoadGraph] OM2 online model only supports dynamic shape models.");
+      GELOGE(GE_GRAPH_UNSUPPORTED, "[LoadGraph] OM2 online model only supports dynamic shape models.");
       return GE_GRAPH_UNSUPPORTED;
     }
     return LoadOm2Graph(ge_root_model, graph_node, stream, external_allocators);
@@ -178,7 +178,7 @@ Status ModelExecutor::UnloadGraph(const GeRootModelPtr &ge_root_model, const uin
 Status ModelExecutor::UnloadGraph(const GeRootModelPtr &ge_root_model, const uint32_t graph_id,
                                   const bool is_execute_graph) {
   GE_CHECK_NOTNULL(ge_root_model);
-  const bool is_om2_online = IsOm2OnlineMode(is_execute_graph);
+  const bool is_om2_online = IsOm2OnlineMode(is_execute_graph) || (ge_root_model->GetOm2ModelData() != nullptr);
   if (is_om2_online) {
     bool is_dynamic_shape = true;
     const Status check_ret = ge_root_model->CheckIsUnknownShape(is_dynamic_shape);

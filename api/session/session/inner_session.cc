@@ -238,7 +238,6 @@ Status InnerSession::Finalize() {
     return SUCCESS;
   }
   UpdateGlobalSessionContext();
-  GetThreadLocalContext().SetGraphOption({});
   if (user_hybrid_graph_manager_ != nullptr) {
     user_hybrid_graph_manager_->Finalize();
   }
@@ -250,6 +249,7 @@ Status InnerSession::Finalize() {
     run_graph_modes_.clear();
   }
   Status ret = InnerFinalize();
+  GetThreadLocalContext().SetGraphOption({});
   if (ret != SUCCESS) {
     // Subsequent code execution is required, so no return is required
     GELOGE(ret, "[Finalize][GraphManager] failed, InnerSession:%" PRIu64 ".", session_id_);

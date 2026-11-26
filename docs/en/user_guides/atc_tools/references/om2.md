@@ -36,7 +36,7 @@ The usage process is: **compile to generate `.om2` → load the model through ac
 
 ### Preparing the Environment
 
-- Install a CANN software package that supports OM2 and set the environment variables. For details, see [Environment Preparation](../../../quick_install.md#1-environment-preparation).
+- See [Environment Preparation](../overview/environment_setup.md).
 - Prepare a convertible original model (ONNX is used as an example below) and inference input data. For a complete application, see the image classification sample in [Migration from OM and Sample Experience](#migration-from-om-and-sample-experience).
 - **The target operating system and CPU architecture of the model dynamic library must be consistent with the operating environment of the executor**. By default, it is generated according to the compilation environment. For example, a model natively compiled in a Linux/x86_64 environment cannot be directly executed in a Linux/aarch64 environment. For cross-compilation instructions, see [Target Environment](#target-environment).
 

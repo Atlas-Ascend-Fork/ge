@@ -28,6 +28,7 @@
 #include "common/path_utils.h"
 #include "framework/common/helper/om2_package_helper.h"
 #include "graph/execute/model_executor.h"
+#include "runtime/om2/om2_model_manager.h"
 #include "graph/ge_local_context.h"
 #include "graph/manager/graph_manager.h"
 #include "graph/manager/graph_manager_utils.h"
@@ -277,6 +278,60 @@ TEST_F(Om2OnlineModelExecutorTest, LoadAndUnload_Success) {
 
   EXPECT_EQ(model_executor.LoadGraph(ge_root_model, graph_node), SUCCESS);
   EXPECT_EQ(model_executor.UnloadGraph(ge_root_model, graph_id), SUCCESS);
+  EXPECT_EQ(model_executor.Finalize(), SUCCESS);
+}
+
+/**
+ * 用例描述：AddGraph 与 LoadGraph 均传入 ge.modelFormat=7 且不调用 RemoveGraph 时，
+ *           Finalize 逐图清理仍走 OM2 卸载
+ * 预置条件：
+ *   1. GraphNode 的 Options 已带 ge.modelFormat=7（模拟 AddGraph 设置）
+ *   2. GeRootModel 已携带 GertModelData
+ * 测试步骤：
+ *   1. LoadGraph 再次传入 ge.modelFormat=7（退出时 option_recover_guard 会从图选项删除该键）
+ *   2. 清空全局图选项，模拟 InnerSession::Finalize 中 UpdateGlobalSessionContext 后不含该键
+ *   3. 不调用 RemoveGraph，直接调用 GraphManager::Finalize
+ * 预期结果：
+ *   1. LoadGraph 后图选项不再包含 ge.modelFormat
+ *   2. Finalize 依据 GertModelData 走 OM2 卸载，OM2 模型被清理
+ */
+TEST_F(Om2OnlineModelExecutorTest, Finalize_Om2OptionErasedByLoadGraph_UsesOm2Unload) {
+  GraphOptionsGuard guard;
+
+  ModelExecutor model_executor;
+  ASSERT_EQ(model_executor.Initialize({}, 0), SUCCESS);
+  GraphManager graph_manager;
+  ASSERT_EQ(graph_manager.Initialize({}, &model_executor), SUCCESS);
+
+  const GraphId graph_id = 5002U;
+  auto compute_graph = std::make_shared<ComputeGraph>("om2_finalize_graph");
+  compute_graph->SetGraphUnknownFlag(true);
+  GeRootModelPtr ge_root_model = std::make_shared<GeRootModel>();
+  ASSERT_EQ(ge_root_model->Initialize(compute_graph), SUCCESS);
+
+  GeModelPtr ge_model = std::make_shared<GeModel>();
+  ge_model->SetGraph(compute_graph);
+  ge_root_model->SetSubgraphInstanceNameToModel(compute_graph->GetName(), ge_model);
+  ge_root_model->SetOm2ModelData(std::make_shared<gert::GertModelData>(MakeOm2ModelDataWithFakeSo(fake_so_path_)));
+
+  GraphNodePtr graph_node = std::make_shared<ge::GraphNode>(graph_id);
+  graph_node->SetGeRootModel(ge_root_model);
+  graph_node->SetGraph(std::make_shared<ge::Graph>(GraphUtilsEx::CreateGraphFromComputeGraph(compute_graph)));
+  graph_node->SetOptions({{"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2)}});
+  graph_manager.AddGraphNode(graph_id, graph_node);
+
+  const std::map<AscendString, AscendString> load_options = {
+      {"ge.modelFormat", std::to_string(MODEL_FORMAT_OM2).c_str()}};
+  ASSERT_EQ(graph_manager.LoadGraph(graph_id, load_options, nullptr), SUCCESS);
+  ASSERT_TRUE(graph_node->GetLoadFlag());
+  const auto model_id = ge_root_model->GetModelId();
+  ASSERT_NE(model_id, INVALID_MODEL_ID);
+  ASSERT_NE(Om2ModelManager::GetInstance().GetModelExecutor(model_id), nullptr);
+  EXPECT_EQ(graph_node->GetOptions().count("ge.modelFormat"), 0U);
+
+  GetThreadLocalContext().SetGraphOption({});
+  EXPECT_EQ(graph_manager.Finalize(), SUCCESS);
+  EXPECT_EQ(Om2ModelManager::GetInstance().GetModelExecutor(model_id), nullptr);
   EXPECT_EQ(model_executor.Finalize(), SUCCESS);
 }
 

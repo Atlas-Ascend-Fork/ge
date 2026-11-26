@@ -21,6 +21,13 @@ using namespace nlohmann;
 
 namespace ge {
 
+namespace {
+bool IsDumpSceneException(const std::string &dump_scene) {
+  return (dump_scene == GE_DUMP_LITE_EXCEPTION) || (dump_scene == GE_DUMP_EXCEPTION_AIC_ERR_BRIEF) ||
+         (dump_scene == GE_DUMP_EXCEPTION_AIC_ERR_NORM) || (dump_scene == GE_DUMP_EXCEPTION_AIC_ERR_DETAIL);
+}
+}  // namespace
+
 std::string GetCfgStrByKey(const nlohmann::json &js, const std::string &key) {
   return js.at(key).get<std::string>();
 }
@@ -569,7 +576,7 @@ void DumpConfigValidator::ParseBasicConfigurations(const nlohmann::json &dumpJso
 Status HandleDumpExceptionConfig(DumpConfig &dumpCfg) {
   GELOGI("start to execute HandleDumpExceptionConfig");
 
-  if (geDumpSceneExceptions.find(dumpCfg.dump_exception) == geDumpSceneExceptions.end()) {
+  if (!IsDumpSceneException(dumpCfg.dump_exception)) {
     GELOGE(ACL_GE_INVALID_DUMP_CONFIG, "[Handle][DumpException]Invalid dump_scene: %s", dumpCfg.dump_exception.c_str());
     REPORT_INNER_ERR_MSG("E19999", "Invalid dump_scene: %s", dumpCfg.dump_exception.c_str());
     return FAILED;
@@ -612,7 +619,7 @@ bool DumpConfigValidator::CheckDumpSceneSwitch(const nlohmann::json &jsDumpConfi
     return true;
   }
   dumpScene = jsDumpConfig[GE_DUMP_SCENE].get<std::string>();
-  if ((geDumpSceneExceptions.find(dumpScene) == geDumpSceneExceptions.end()) && (dumpScene != GE_DUMP_SCENE_WATCHER)) {
+  if (!IsDumpSceneException(dumpScene) && (dumpScene != GE_DUMP_SCENE_WATCHER)) {
     GELOGE(ACL_GE_INVALID_DUMP_CONFIG,
            "[Check][DumpScene]Invalid value of dump_scene[%s]. Supported: "
            "lite_exception/aic_err_brief_dump/aic_err_norm_dump/aic_err_detail_dump/watcher",
@@ -904,7 +911,7 @@ Status DumpCallbackManager::HandleEnableDump(const char *dumpData, int32_t size)
 
     Status result = SUCCESS;
 
-    if (geDumpSceneExceptions.find(dumpConfig.dump_exception) != geDumpSceneExceptions.end()) {
+    if (IsDumpSceneException(dumpConfig.dump_exception)) {
       result = HandleDumpExceptionConfig(dumpConfig);
     } else if (dumpConfig.dump_debug == GE_DUMP_STATUS_ON) {
       result = HandleDumpDebugConfig(dumpConfig);

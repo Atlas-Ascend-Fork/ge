@@ -43,14 +43,6 @@ enum class ProfCommandHandleType : uint32_t {
   kProfCommandHandleModelUnsubscribe
 };
 
-const std::map<ProfCommandHandleType, std::string> kProfCommandTypeMap{
-    {ProfCommandHandleType::kProfCommandHandleInit, kProfilingInit},
-    {ProfCommandHandleType::kProfCommandHandleStart, kProfilingStart},
-    {ProfCommandHandleType::kProfCommandHandleStop, kProfilingStop},
-    {ProfCommandHandleType::kProfCommandHandleFinalize, kProfilingFinalize},
-    {ProfCommandHandleType::kProfCommandHandleModelSubscribe, kProfilingModelSubscribe},
-    {ProfCommandHandleType::kProfCommandHandleModelUnsubscribe, kProfilingModelUnsubscribe}};
-
 bool IsProfConfigValid(const uint32_t deviceid_list[], const uint32_t device_nums) {
   if ((device_nums == 0U) || (device_nums > kMaxDevNum)) {
     GELOGE(PARAM_INVALID, "[Check][DeviceNums]Invalid, device nums: %u", device_nums);
@@ -156,21 +148,40 @@ void SubscribeInfoToParam(const ProfCommandHandleType type, const MsprofCommandH
 
 rtError_t ExecuteCommand(const ProfCommandHandleType type, const MsprofCommandHandle &prof_command_handle,
                          const std::vector<std::string> &prof_params) {
-  const auto it = kProfCommandTypeMap.find(type);
-  if (it == kProfCommandTypeMap.end()) {
-    GELOGE(PARAM_INVALID, "[Check][Param]The prof command type is invalid.");
-    return RT_ERROR;
+  const std::string *command_type = nullptr;
+  switch (type) {
+    case ProfCommandHandleType::kProfCommandHandleInit:
+      command_type = &kProfilingInit;
+      break;
+    case ProfCommandHandleType::kProfCommandHandleStart:
+      command_type = &kProfilingStart;
+      break;
+    case ProfCommandHandleType::kProfCommandHandleStop:
+      command_type = &kProfilingStop;
+      break;
+    case ProfCommandHandleType::kProfCommandHandleFinalize:
+      command_type = &kProfilingFinalize;
+      break;
+    case ProfCommandHandleType::kProfCommandHandleModelSubscribe:
+      command_type = &kProfilingModelSubscribe;
+      break;
+    case ProfCommandHandleType::kProfCommandHandleModelUnsubscribe:
+      command_type = &kProfilingModelUnsubscribe;
+      break;
+    default:
+      GELOGE(PARAM_INVALID, "[Check][Param]The prof command type is invalid.");
+      return RT_ERROR;
   }
 
   Command command;
-  command.cmd_type = it->second;
+  command.cmd_type = *command_type;
   command.cmd_params = prof_params;
   command.cache_flag = prof_command_handle.cacheFlag;
 
   if (type != ProfCommandHandleType::kProfCommandHandleFinalize) {
     command.module_index = prof_command_handle.profSwitch;
   }
-  GELOGI("Command Type: %s, data type config: 0x%" PRIx64, it->second.c_str(), command.module_index);
+  GELOGI("Command Type: %s, data type config: 0x%" PRIx64, command_type->c_str(), command.module_index);
   if ((type == ProfCommandHandleType::kProfCommandHandleStart) ||
       (type == ProfCommandHandleType::kProfCommandHandleStop)) {
     if (prof_params.size() > kDeviceListIndex) {
@@ -182,10 +193,10 @@ rtError_t ExecuteCommand(const ProfCommandHandleType type, const MsprofCommandHa
 
   const Status ret = ModelManager::GetInstance().HandleCommand(command);
   if (ret != SUCCESS) {
-    GELOGE(ret, "[Handle][Command]Handle profiling command failed, command type %s, error_code %u", it->second.c_str(),
-           ret);
+    GELOGE(ret, "[Handle][Command]Handle profiling command failed, command type %s, error_code %u",
+           command_type->c_str(), ret);
     REPORT_INNER_ERR_MSG("E19999", "Handle profiling command failed, command type %s, error_code %u",
-                         it->second.c_str(), ret);
+                         command_type->c_str(), ret);
     return RT_ERROR;
   }
 
