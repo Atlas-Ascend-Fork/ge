@@ -11,6 +11,9 @@
 #ifndef BUILT_IN_LLM_COMMON_HCCL_SO_MANAGER_H
 #define BUILT_IN_LLM_COMMON_HCCL_SO_MANAGER_H
 
+#include <cstdint>
+#include <functional>
+#include <string>
 #include <unordered_map>
 #include "hccl/base.h"
 
@@ -50,20 +53,30 @@ using HcclUnregisterGlobalMemoryFunc = HcclResult (*)(void *addr);
 
 class HcclSoManager {
  public:
+  struct SoLoader {
+    std::function<void *(const char *file, int mode)> open;
+    std::function<void *(void *handle, const char *name)> symbol;
+    std::function<const char *()> error;
+    std::function<int(void *handle)> close;
+  };
+
   static HcclSoManager *GetInstance();
   ~HcclSoManager();
   int32_t LoadSo();
   int32_t UnloadSo();
   void *GetFunc(const std::string &name) const;
+  void SetLoader(SoLoader loader);
+  static SoLoader DefaultLoader();
   HcclSoManager(const HcclSoManager &) = delete;
   HcclSoManager(const HcclSoManager &&) = delete;
   HcclSoManager &operator=(const HcclSoManager &) = delete;
   HcclSoManager &operator=(const HcclSoManager &&) = delete;
 
  private:
-  HcclSoManager() = default;
+  HcclSoManager();
   std::unordered_map<std::string, void *> func_map_;
   void *so_handle_ = nullptr;
+  SoLoader loader_;
 };
 }  // namespace FlowFunc
 

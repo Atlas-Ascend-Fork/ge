@@ -10,6 +10,7 @@
 
 #include "llm_common/hccl_so_manager.h"
 #include <dlfcn.h>
+#include <utility>
 #include <vector>
 #include "common/udf_log.h"
 #include "flow_func/flow_func_log.h"
@@ -17,6 +18,21 @@
 namespace FlowFunc {
 namespace {
 constexpr const char *kHcclSoName = "libhccd.so";
+}
+
+HcclSoManager::HcclSoManager() : loader_(DefaultLoader()) {}
+
+HcclSoManager::SoLoader HcclSoManager::DefaultLoader() {
+  return SoLoader{
+      static_cast<void *(*)(const char *, int)>(::dlopen),
+      static_cast<void *(*)(void *, const char *)>(::dlsym),
+      static_cast<char *(*)()>(::dlerror),
+      static_cast<int (*)(void *)>(::dlclose),
+  };
+}
+
+void HcclSoManager::SetLoader(SoLoader loader) {
+  loader_ = std::move(loader);
 }
 
 HcclSoManager *HcclSoManager::GetInstance() {
@@ -29,9 +45,11 @@ int32_t HcclSoManager::LoadSo() {
     UDF_LOG_INFO("Hccl so:%s has already been loaded.", kHcclSoName);
     return FLOW_FUNC_SUCCESS;
   }
-  so_handle_ = dlopen(kHcclSoName, RTLD_LAZY);
+  so_handle_ = loader_.open(kHcclSoName, RTLD_LAZY);
   if (so_handle_ == nullptr) {
-    UDF_LOG_ERROR("Fail to load hccl so:%s, error:%s.", kHcclSoName, dlerror());
+    const char *const error_msg = loader_.error();
+    UDF_LOG_ERROR("Fail to load hccl so:%s, error:%s.", kHcclSoName,
+                  error_msg != nullptr ? error_msg : "unknown error");
     return FLOW_FUNC_FAILED;
   }
   const std::vector<const char *> k_func_names = {kHcclRawAcceptFuncName,
@@ -50,10 +68,12 @@ int32_t HcclSoManager::LoadSo() {
                                                   kHcclRegisterGlobalMemoryFuncName,
                                                   kHcclUnregisterGlobalMemoryFuncName};
   for (auto iter = k_func_names.begin(); iter != k_func_names.end(); ++iter) {
-    void *func = dlsym(so_handle_, *iter);
+    void *func = loader_.symbol(so_handle_, *iter);
     if (func == nullptr) {
-      UDF_LOG_ERROR("Fail to get function:%s from hccl so:%s, error:%s.", *iter, kHcclSoName, dlerror());
-      func_map_.clear();
+      const char *const error_msg = loader_.error();
+      UDF_LOG_ERROR("Fail to get function:%s from hccl so:%s, error:%s.", *iter, kHcclSoName,
+                    error_msg != nullptr ? error_msg : "unknown error");
+      (void)UnloadSo();
       return FLOW_FUNC_FAILED;
     }
     UDF_LOG_INFO("Success to get function:%s from hccl so:%s.", *iter, kHcclSoName);
@@ -66,7 +86,7 @@ int32_t HcclSoManager::LoadSo() {
 int32_t HcclSoManager::UnloadSo() {
   func_map_.clear();
   if (so_handle_ != nullptr) {
-    (void)dlclose(so_handle_);
+    (void)loader_.close(so_handle_);
     so_handle_ = nullptr;
     UDF_LOG_INFO("Success to unload hccl so:%s.", kHcclSoName);
   }

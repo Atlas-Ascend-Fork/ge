@@ -8,6 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <queue>
+#include <string>
+#include <utility>
+#include <vector>
 #include "ascend_hal.h"
 #include "gtest/gtest.h"
 #include "mockcpp/mockcpp.hpp"
@@ -3330,5 +3334,148 @@ TEST_F(LlmServiceFlowFuncSTest, test_receive_with_cacheid_push_kv_success) {
   UDF_LOG_INFO("get %p value", ptr);
   EXPECT_EQ(*ptr, 2);
   EXPECT_EQ(DeallocateCache(run_context, out_msg, llm_service_flow_func, cache_id), FsmStatus::kFsmSuccess);
+}
+
+struct FakeSoLoaderState {
+  std::queue<void *> open_results;
+  std::queue<void *> symbol_results;
+  std::queue<const char *> error_results;
+  void *default_symbol = nullptr;
+  int open_calls = 0;
+  int symbol_calls = 0;
+  int error_calls = 0;
+  int close_calls = 0;
+  std::vector<void *> closed_handles;
+
+  HcclSoManager::SoLoader MakeLoader() {
+    return HcclSoManager::SoLoader{
+        [this](const char *, int) -> void * {
+          ++open_calls;
+          if (open_results.empty()) {
+            return nullptr;
+          }
+          void *const result = open_results.front();
+          open_results.pop();
+          return result;
+        },
+        [this](void *, const char *) -> void * {
+          ++symbol_calls;
+          if (symbol_results.empty()) {
+            return default_symbol;
+          }
+          void *const result = symbol_results.front();
+          symbol_results.pop();
+          return result;
+        },
+        [this]() -> const char * {
+          ++error_calls;
+          if (error_results.empty()) {
+            return nullptr;
+          }
+          const char *const result = error_results.front();
+          error_results.pop();
+          return result;
+        },
+        [this](void *handle) -> int {
+          ++close_calls;
+          closed_handles.push_back(handle);
+          return 0;
+        },
+    };
+  }
+};
+
+class HcclSoManagerSTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    dlog_setlevel(UDF, DLOG_INFO, 1);
+    manager_.SetLoader(fake_loader_.MakeLoader());
+  }
+
+  void TearDown() override {
+    (void)manager_.UnloadSo();
+    manager_.SetLoader(HcclSoManager::DefaultLoader());
+    GlobalMockObject::verify();
+  }
+
+  HcclSoManager manager_;
+  FakeSoLoaderState fake_loader_;
+  int handle_ = 0;
+  int function_ = 0;
+};
+
+/**
+ * 用例描述：通信库打开失败后可以重试，并在成功后缓存完整函数表。
+ * 预置条件：模拟两次 dlopen 失败（错误信息分别非空和为空），随后加载成功。
+ * 测试步骤：连续加载三次，检查失败状态、成功后的函数查询及重复加载，最后卸载两次。
+ * 预期结果：失败不会残留函数，成功后无需重复打开库，句柄只释放一次。
+ */
+TEST_F(HcclSoManagerSTest, open_failure_allows_retry_and_successful_load_is_cached) {
+  void *const handle = &handle_;
+  void *const function = &function_;
+  fake_loader_.open_results.push(nullptr);
+  fake_loader_.open_results.push(nullptr);
+  fake_loader_.open_results.push(handle);
+  fake_loader_.error_results.push("cannot open communication library");
+  fake_loader_.error_results.push(nullptr);
+  fake_loader_.default_symbol = function;
+
+  EXPECT_EQ(manager_.LoadSo(), FLOW_FUNC_FAILED);
+  EXPECT_EQ(manager_.GetFunc(kHcclRawAcceptFuncName), nullptr);
+  EXPECT_EQ(manager_.LoadSo(), FLOW_FUNC_FAILED);
+  EXPECT_EQ(manager_.GetFunc(kHcclRawAcceptFuncName), nullptr);
+  ASSERT_EQ(manager_.LoadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_.GetFunc(kHcclRawAcceptFuncName), function);
+  EXPECT_EQ(manager_.GetFunc(kHcclUnregisterGlobalMemoryFuncName), function);
+  EXPECT_EQ(manager_.LoadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_.UnloadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_.GetFunc(kHcclRawAcceptFuncName), nullptr);
+  EXPECT_EQ(manager_.UnloadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(fake_loader_.open_calls, 3);
+  EXPECT_EQ(fake_loader_.error_calls, 2);
+  EXPECT_EQ(fake_loader_.symbol_calls, 15);
+  EXPECT_EQ(fake_loader_.close_calls, 1);
+  ASSERT_EQ(fake_loader_.closed_handles.size(), 1U);
+  EXPECT_EQ(fake_loader_.closed_handles[0], handle);
+}
+
+/**
+ * 用例描述：必需符号缺失时回滚通信库加载状态，后续可以重新加载成功。
+ * 预置条件：模拟两次部分符号解析失败（错误信息分别非空和为空），随后全部符号可用。
+ * 测试步骤：检查两次失败后的函数表，再重新加载、查询首尾函数、重复加载并卸载。
+ * 预期结果：每次失败均清空已解析函数并释放句柄，重试重新打开库且成功后只卸载一次。
+ */
+TEST_F(HcclSoManagerSTest, missing_symbol_rolls_back_partial_load_and_allows_recovery) {
+  void *const handle = &handle_;
+  void *const function = &function_;
+  fake_loader_.open_results.push(handle);
+  fake_loader_.open_results.push(handle);
+  fake_loader_.open_results.push(handle);
+  fake_loader_.symbol_results.push(function);
+  fake_loader_.symbol_results.push(nullptr);
+  fake_loader_.symbol_results.push(function);
+  fake_loader_.symbol_results.push(nullptr);
+  fake_loader_.error_results.push("required communication symbol missing");
+  fake_loader_.error_results.push(nullptr);
+  fake_loader_.default_symbol = function;
+
+  EXPECT_EQ(manager_.LoadSo(), FLOW_FUNC_FAILED);
+  EXPECT_EQ(manager_.GetFunc(kHcclRawAcceptFuncName), nullptr);
+  EXPECT_EQ(manager_.LoadSo(), FLOW_FUNC_FAILED);
+  EXPECT_EQ(manager_.GetFunc(kHcclRawAcceptFuncName), nullptr);
+  ASSERT_EQ(manager_.LoadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_.GetFunc(kHcclRawAcceptFuncName), function);
+  EXPECT_EQ(manager_.GetFunc(kHcclUnregisterGlobalMemoryFuncName), function);
+  EXPECT_EQ(manager_.LoadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_.UnloadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_.GetFunc(kHcclRawAcceptFuncName), nullptr);
+  EXPECT_EQ(fake_loader_.open_calls, 3);
+  EXPECT_EQ(fake_loader_.error_calls, 2);
+  EXPECT_EQ(fake_loader_.symbol_calls, 19);
+  EXPECT_EQ(fake_loader_.close_calls, 3);
+  ASSERT_EQ(fake_loader_.closed_handles.size(), 3U);
+  EXPECT_EQ(fake_loader_.closed_handles[0], handle);
+  EXPECT_EQ(fake_loader_.closed_handles[1], handle);
+  EXPECT_EQ(fake_loader_.closed_handles[2], handle);
 }
 }  // namespace FlowFunc

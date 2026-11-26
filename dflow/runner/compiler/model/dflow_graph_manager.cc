@@ -108,7 +108,7 @@ Status DflowGraphManager::CompileGraph(uint32_t graph_id, const std::vector<GeTe
     GELOGE(ACL_ERROR_GE_EXEC_NOT_INIT, "[Build][Graph] DflowGraphManager not initialized.");
     return ACL_ERROR_GE_EXEC_NOT_INIT;
   }
-  GELOGD("Start compile graph in dflow graph manager, graph_id=%u.");
+  GELOGD("Start compile graph in dflow graph manager, graph_id=%u.", graph_id);
   {
     std::lock_guard<std::mutex> lock(model_mutex_);
     if (flow_model_map_.find(graph_id) != flow_model_map_.end()) {
