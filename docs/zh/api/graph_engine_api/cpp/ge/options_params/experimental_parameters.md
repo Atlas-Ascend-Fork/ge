@@ -175,7 +175,7 @@ Atlas训练系列产品
 
 **必选/可选**：可选
 
-**生效级别**：全局/session/graph
+**生效级别**：graph
 
 ## ge.oo.constantFolding
 

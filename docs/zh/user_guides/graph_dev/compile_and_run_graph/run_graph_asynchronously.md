@@ -10,7 +10,7 @@
 
 在OM2场景下：
 
-- 如果传入的是计算图，需要配置`ge.modelFormat = "7"`，使用OM2执行路径。
+- 如果传入的是计算图，需要在调用`AddGraph`时通过`options`参数配置`ge.modelFormat = "7"`，使用OM2执行路径。
 - 如果传入的是执行图，则直接使用OM2执行路径。
 
 具体配置方法请参考[experimental_parameters](../../../api/graph_engine_api/cpp/ge/options_params/experimental_parameters.md)。
@@ -52,12 +52,6 @@
     ```
 
     可以通过config配置传入GE运行的初始化信息，配置参数ge.exec.deviceId和ge.graphRunMode，分别用于指定GE实例运行设备，图执行模式（在线推理请配置为0，训练请配置为1）。更多配置请参考[options参数说明](../../../api/graph_engine_api/cpp/ge/options_params/options_parameters_description.md)。
-
-    OM2场景下，如果传入的是计算图，需要在调用`GEInitializeV2`时配置`ge.modelFormat`为`"7"`，使用OM2执行路径。配置代码如下：
-
-    ```c++
-    std::map<AscendString, AscendString> config = {{"ge.modelFormat", "7"}};
-    ```
 
     > [!NOTE]说明
     >
@@ -127,8 +121,10 @@
     // 准备将要添加到Session的Graph ID，并创建空的Graph对象
     uint32_t conv_graph_id = 0;
     ge::Graph conv_graph;
+    // OM2场景下，如果传入的是计算图，需要在AddGraph时通过options参数配置ge.modelFormat为"7"，使用OM2执行路径
+    std::map<AscendString, AscendString> graph_options = {{"ge.modelFormat", "7"}};
     // 将Graph添加到Session
-    Status ret = session->AddGraph(conv_graph_id, conv_graph);
+    Status ret = session->AddGraph(conv_graph_id, conv_graph, graph_options);
     if(ret != SUCCESS) {
       // ...
       // ...
