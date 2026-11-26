@@ -42,7 +42,7 @@ uint32_t KernelBinManager::GetBinSectionSize() const {
     size += static_cast<uint32_t>(sizeof(Tlv)) + static_cast<uint32_t>(sizeof(KernelInfo)) + charLen;
     const uint32_t div_value = (kernelbin.kernel_info.kernel_size - 1U) / MEM_ALIGN_SIZE + 1U;
     if (div_value > (UINT32_MAX / MEM_ALIGN_SIZE)) {
-      GELOGW("[Mobile] div_value is overflow(>UINT32_MAX), failed.");
+      GELOGW("[Mobile] div_value[%u] exceeds max[%u], failed.", div_value, UINT32_MAX / MEM_ALIGN_SIZE);
       return UINT32_MAX;
     }
     kernel_binary_total_size += div_value * MEM_ALIGN_SIZE;

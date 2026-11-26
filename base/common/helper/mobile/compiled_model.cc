@@ -171,7 +171,7 @@ ge::ComputeGraphPtr ConvertComputeGraphToMobile(const ge::ComputeGraphPtr &ori_c
     // FileConstant is weight too: its output offset is a var-memory logic address (128GB base),
     // counting it into memory_size would corrupt the featuremap size, so skip it as well.
     if (ge::OpTypeUtils::IsConstNode(node->GetType()) || (node->GetType() == "FileConstant")) {
-      GELOGI("[Mobile] skip const node name: %s, type: %s", node->GetName().c_str(), node->GetType().c_str());
+      GELOGD("[Mobile] skip const node name: %s, type: %s", node->GetName().c_str(), node->GetType().c_str());
       continue;
     }
     GE_ASSERT_NOTNULL(node->GetOpDesc(), "[Mobile] node->GetOpDesc() is nullptr.");
@@ -262,7 +262,7 @@ ge::ComputeGraphPtr ConvertComputeGraphToMobile(const ge::ComputeGraphPtr &ori_c
     }
   }
   memory_size -= input_output_size;
-  GELOGI("[Mobile] final memory_size: %d, input_output_size: %d", memory_size, input_output_size);
+  GELOGI("[Mobile] final memory_size: %ld bytes, input_output_size: %ld bytes", memory_size, input_output_size);
 
   // add main graph
   ge::ComputeGraphPtr mobile_main_graph = std::make_shared<ge::ComputeGraph>(main_graph_name);
@@ -293,7 +293,8 @@ ge::ComputeGraphPtr ConvertComputeGraphToMobile(const ge::ComputeGraphPtr &ori_c
   for (uint32_t i = 0; i < netoutput_op_desc->GetInputsSize(); i++) {
     (void)graph_op_desc->AddOutputDesc(netoutput_op_desc->GetInputDesc(i));
     if (netoutput_op_desc->GetOutputsSize() < netoutput_op_desc->GetInputsSize()) {
-      GELOGI("[Mobile] netoutput op output size is smaller than input size, use input desc as output desc");
+      GELOGI("[Mobile] netoutput op output size: %zu is smaller than input size: %zu, use input desc as output desc",
+             netoutput_op_desc->GetOutputsSize(), netoutput_op_desc->GetInputsSize());
       (void)netoutput_op_desc->AddOutputDesc(netoutput_op_desc->GetInputDesc(i));
     }
   }
@@ -338,7 +339,7 @@ Status CompiledModel::GetCompiledTargetsBuffer(std::vector<ge::BaseBuffer> &all_
     GE_ASSERT_TRUE(compiled_targets_[i]->UpdateModelModelTaskDef(mobile_model_def_) == ge::SUCCESS,
                    "[Mobile] update model task def failed.");
     const size_t task_size = compiled_targets_[i]->GetSize();
-    GELOGI("[Mobile] task size: %u", task_size);
+    GELOGI("[Mobile] task size: %zu bytes", task_size);
     compiled_targets_buffer_.emplace_back();
     compiled_targets_buffer_.back().resize(task_size);
     ge::BaseBuffer buffer(compiled_targets_buffer_.back().data(), task_size);

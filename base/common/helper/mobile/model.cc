@@ -430,7 +430,7 @@ ge::Status MobileModel::ConvertToMobileModelDef(const ge::proto::ModelDef &model
   // map<string, AttrDef> attr
   GELOGI("[Mobile] attr map: ");
   for (const auto &attr : model_def.attr()) {
-    GELOGI("[Mobile]    attr name: %s", attr.first.c_str());
+    GELOGD("[Mobile]    attr name: %s", attr.first.c_str());
     ge::mobile::proto::AttrDef mobile_attr_def;
     GE_ASSERT_TRUE(ConvertToMobileAttrDef(attr.second, mobile_attr_def) == ge::SUCCESS,
                    "[Mobile] convert to mobile attr def failed.");

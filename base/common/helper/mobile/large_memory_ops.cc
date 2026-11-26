@@ -32,9 +32,9 @@ bool LoopBlockOps(const size_t total_size, const BlockOpsFuncType &block_ops_fun
     if ((block_count == block_count_max - static_cast<size_t>(1)) && (rest_size > static_cast<size_t>(0))) {
       block_size = rest_size;
     }
-    GELOGI("[Mobile] src offset: %d block_size: %d", src_offset, block_size);
+    GELOGD("[Mobile] src offset: %zu block_size: %zu", src_offset, block_size);
     if (!block_ops_func(src_offset, block_size)) {
-      GELOGE(ge::FAILED, "[Mobile] block ops func failed, src offset: %d, block size: %d.", src_offset, block_size);
+      GELOGE(ge::FAILED, "[Mobile] block ops func failed, src offset: %zu, block size: %zu.", src_offset, block_size);
       return false;
     }
     src_offset += block_size;
@@ -48,14 +48,14 @@ namespace ge {
 
 bool LargeMemoryOps::Copy(void *dst_buffer, const size_t dst_size, const void *src_buffer, const size_t src_size) {
   if (dst_size < src_size) {
-    GELOGE(ge::FAILED, "[Mobile] dst_size < src_size failed, dst size: %d, src size: %d.", dst_size, src_size);
+    GELOGE(ge::FAILED, "[Mobile] dst_size < src_size failed, dst size: %zu, src size: %zu.", dst_size, src_size);
     return false;
   }
   auto memcpy_func = [&dst_buffer, &dst_size, &src_buffer](const size_t src_offset, const size_t block_size) {
     void *dst_buffer_start_addr = static_cast<uint8_t *>(dst_buffer) + src_offset;
     const size_t dst_rest_size = dst_size - src_offset;
     if (dst_rest_size < block_size) {
-      GELOGE(ge::FAILED, "[Mobile] dst_rest_size < block_size failed, dst rest size: %d, block size: %d.",
+      GELOGE(ge::FAILED, "[Mobile] dst_rest_size < block_size failed, dst rest size: %zu, block size: %zu.",
              dst_rest_size, block_size);
       return false;
     }

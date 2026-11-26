@@ -202,7 +202,8 @@ class OmFileSaveHelper {
   void AddPartition(const ModelPartition &partition) {
     context_.partition_datas.push_back(partition);
     if (context_.model_data_len > (UINT64_MAX - partition.size)) {
-      GELOGW("[Mobile] overflow failed.");
+      GELOGW("[Mobile] overflow failed, model_data_len: %llu bytes, partition size: %u bytes.", context_.model_data_len,
+             partition.size);
       return;
     }
     context_.model_data_len += partition.size;
@@ -225,7 +226,7 @@ class OmFileSaveHelper {
     for (uint64_t i = 0; i < partition_size; i++) {
       ModelPartition partition = context_.partition_datas[i];
       if (mem_offset > UINT32_MAX) {
-        GELOGE(ge::FAILED, "[Mobile] mem_offset is larger than UINT32_MAX");
+        GELOGE(ge::FAILED, "[Mobile] mem_offset[%llu bytes] is larger than UINT32_MAX.", mem_offset);
         return nullptr;
       }
       partition_table->partition[i] = {partition.type, static_cast<uint32_t>(mem_offset), partition.size};
@@ -326,7 +327,7 @@ ge::Status CopyDataToBuffer(std::uint8_t *out_buffer_ptr, const size_t out_buffe
 
 ge::Status SetModelHeader(std::uint8_t *base_ptr, size_t total_size, size_t &offset,
                           const ModelFileHeader &model_header) {
-  GELOGI("[Mobile] SetModelHeader, base_ptr: %p total_size: %d offset: %d model_header size: %d",
+  GELOGI("[Mobile] SetModelHeader, base_ptr: %p total_size: %zu bytes offset: %zu bytes model_header size: %zu bytes",
          static_cast<void *>(base_ptr), total_size, offset, sizeof(model_header));
   const ge::Status ret = CopyDataToBuffer(base_ptr, total_size, offset, &model_header, sizeof(model_header));
   GE_ASSERT_TRUE(ret == ge::SUCCESS, "[Mobile] copy failed.");
@@ -337,8 +338,10 @@ ge::Status SetModelPartitionTable(const ModelPartitionTable *partition_table, st
                                   size_t &offset) {
   GE_ASSERT_NOTNULL(partition_table, "[Mobile] partition table is nullptr.");
   const uint64_t table_len = SizeOfModelPartitionTable(*partition_table);
-  GELOGI("[Mobile] SetModelPartitionTable, base_ptr: %p total_size: %d offset: %d partition_table size: %d",
-         static_cast<void *>(base_ptr), total_size, offset, table_len);
+  GELOGI(
+      "[Mobile] SetModelPartitionTable, base_ptr: %p total_size: %zu bytes offset: %zu bytes"
+      " partition_table size: %llu bytes",
+      static_cast<void *>(base_ptr), total_size, offset, table_len);
   const ge::Status ret =
       CopyDataToBuffer(base_ptr, total_size, offset, static_cast<const void *>(partition_table), table_len);
   GE_ASSERT_TRUE(ret == ge::SUCCESS, "[Mobile] copy failed.");
@@ -353,13 +356,16 @@ ge::Status SetModelPartionData(OmFileSaveHelper &om_file_save_helper, uint8_t *b
       continue;
     }
     if (offset >= total_size || (total_size - offset < static_cast<size_t>(partition_datas[i].size))) {
-      GELOGE(ge::FAILED, "[Mobile] save buffer error: type: %u, size: %u, offset: %u, total_size: %u.",
+      GELOGE(ge::FAILED,
+             "[Mobile] save buffer error: type: %u, size: %u bytes, offset: %u bytes, total_size: %u bytes.",
              partition_datas[i].type, static_cast<uint32_t>(partition_datas[i].size), static_cast<uint32_t>(offset),
              static_cast<uint32_t>(total_size));
       return ge::FAILED;
     }
-    GELOGI("[Mobile] SetModelPartionData, base_ptr: %p total_size: %d offset: %d partition_data size: %d",
-           static_cast<void *>(base_ptr), total_size, offset, partition_datas[i].size);
+    GELOGI(
+        "[Mobile] SetModelPartionData, base_ptr: %p total_size: %zu bytes offset: %zu bytes"
+        " partition_data size: %u bytes",
+        static_cast<void *>(base_ptr), total_size, offset, partition_datas[i].size);
     const ge::Status ret = CopyDataToBuffer(base_ptr, total_size, offset,
                                             reinterpret_cast<void *>(partition_datas[i].data), partition_datas[i].size);
     GE_ASSERT_TRUE(ret == ge::SUCCESS, "[Mobile] copy failed.");
@@ -377,7 +383,9 @@ ge::Status SetCompiledPartionData(uint8_t *base_ptr, size_t total_size,
       continue;
     }
     if ((offset >= total_size) || (total_size - offset < compiled_buffer_size)) {
-      GELOGE(ge::FAILED, "[Mobile] save buffer error: buffer size: %zu, offset: %zu, total_size: %zu.",
+      GELOGE(ge::FAILED,
+             "[Mobile] save buffer error: buffer size: %zu bytes, offset: %zu bytes,"
+             " total_size: %zu bytes.",
              compiled_buffer_size, offset, total_size);
       return ge::FAILED;
     }
@@ -464,7 +472,7 @@ Status ModelBufferSaver::SaveCompiledModelToBuffer(const ge::GeModelPtr &ge_mode
 
   const ModelFileHeader &model_header = om_file_save_helper.GetModelFileHeader();
   const size_t total_size = sizeof(ModelFileHeader) + model_header.length;
-  GELOGI("[Mobile] total_size: %d", total_size);
+  GELOGI("[Mobile] total_size: %zu bytes", total_size);
   compiled_model_buffer_.resize(total_size);
   dst_buffer.SetData(compiled_model_buffer_.data());
   dst_buffer.SetSize(total_size);

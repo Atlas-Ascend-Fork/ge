@@ -37,6 +37,8 @@
 
 #include "common/file_constant_utils/file_constant_utils.h"
 #include "common/helper/mobile/compiled_model.h"
+#include "common/helper/mobile/kernelbin_info.h"
+#include "common/helper/mobile/large_memory_ops.h"
 #include "graph/manager/graph_var_manager.h"
 #include "graph/utils/file_utils.h"
 #include "proto/task_mobile.pb.h"
@@ -1910,5 +1912,19 @@ TEST_F(UtestMobileModelHelper, SaveToOmModelWithVarAddrOutputKeepsMemorySizeNonN
   ASSERT_TRUE(FindGraphOpIntAttr(model_def, "input_output_size", input_output_size));
   EXPECT_EQ(input_output_size, 1024);
   EXPECT_EQ(memory_size, 256);
+}
+
+TEST_F(UtestMobileModelHelper, CopyRejectsDstBufferSmallerThanSrc) {
+  uint8_t dst[4] = {0};
+  const uint8_t src[8] = {0};
+  EXPECT_FALSE(LargeMemoryOps::Copy(dst, sizeof(dst), src, sizeof(src)));
+}
+
+TEST_F(UtestMobileModelHelper, GetBinSectionSizeReturnsMaxWhenKernelSizeOverflows) {
+  mobile::KernelBin kernel_bin;
+  kernel_bin.kernel_info.kernel_size = UINT32_MAX;
+  mobile::KernelBinManager manager;
+  manager.AddKernelBin(kernel_bin);
+  EXPECT_EQ(manager.GetBinSectionSize(), UINT32_MAX);
 }
 }  // namespace ge

@@ -143,12 +143,13 @@ uint64_t ConstructSecondaryAddrContext(std::vector<uint8_t> &flowtable, const st
         (static_cast<uint64_t>(shape_info.dim_num) <= UINT64_MAX / PER_U64_BYTES) &&
             (PER_U64_BYTES <= UINT64_MAX - (static_cast<uint64_t>(shape_info.dim_num) * PER_U64_BYTES)) &&
             (real_size <= UINT64_MAX - (PER_U64_BYTES + (static_cast<uint64_t>(shape_info.dim_num) * PER_U64_BYTES))),
-        "[Mobile] overflow, failed.");
+        "[Mobile] real_size[%llu] plus dim_num[%llu] * PER_U64_BYTES is overflow, failed.", real_size,
+        static_cast<uint64_t>(shape_info.dim_num));
     real_size += PER_U64_BYTES + static_cast<uint64_t>(shape_info.dim_num) * PER_U64_BYTES;
   }
   // ptr
   real_size += static_cast<uint64_t>(shape_infos.size()) * PER_U64_BYTES;
-  GELOGI("[Mobile] real size: %d", real_size);
+  GELOGI("[Mobile] real size: %llu bytes", real_size);
 
   std::vector<uint64_t> tlv(real_size / PER_U64_BYTES);
   uint64_t tlv_index = 0;
@@ -157,7 +158,7 @@ uint64_t ConstructSecondaryAddrContext(std::vector<uint8_t> &flowtable, const st
   for (const auto &shape_info : shape_infos) {
     if (static_cast<uint64_t>(shape_info.dim_num) > (UINT64_MAX / PER_U64_BYTES) ||
         (static_cast<uint64_t>(shape_info.dim_num) * PER_U64_BYTES) > (UINT64_MAX - PER_U64_BYTES)) {
-      GELOGE(ge::FAILED, "[Mobile] cal overflow, failed.");
+      GELOGE(ge::FAILED, "[Mobile] cal overflow, dim_num: %llu, failed.", static_cast<uint64_t>(shape_info.dim_num));
       return 0;
     }
     tlv[tlv_index] += PER_U64_BYTES + static_cast<uint64_t>(shape_info.dim_num) * PER_U64_BYTES;
@@ -174,7 +175,7 @@ uint64_t ConstructSecondaryAddrContext(std::vector<uint8_t> &flowtable, const st
     for (const auto &s : shape_infos[i].dims) {
       tlv[tlv_index++] = static_cast<uint64_t>(s);
     }
-    GELOGI("[Mobile] tlv_index after shape index: %d , tlv_index: %d", i, tlv_index);
+    GELOGD("[Mobile] tlv_index after shape index: %d , tlv_index: %d", i, tlv_index);
   }
   // ptr
   for (size_t i = 0; i < shape_infos.size(); i++) {
@@ -194,7 +195,7 @@ uint64_t ConstructSecondaryAddrContext(std::vector<uint8_t> &flowtable, const st
     }
     // add 2G
     tlv[tlv_index++] = static_cast<uint64_t>(0x80000000U) | offset;
-    GELOGI("[Mobile] tlv_index after ptr index: %d , tlv_index: %d", i, tlv_index);
+    GELOGD("[Mobile] tlv_index after ptr index: %d , tlv_index: %d", i, tlv_index);
   }
   const uint8_t *tlv_data = reinterpret_cast<uint8_t *>(tlv.data());
   (void)flowtable.insert(flowtable.end(), tlv_data, &tlv_data[real_size]);
@@ -208,13 +209,13 @@ ge::Status GetDynamicInputsInfo(const ge::NodePtr &node, std::vector<int64_t> &i
   (void)ge::AttrUtils::GetListListInt(node->GetOpDesc(), dynamic_inputs_indexes_str, dynamic_inputs_indexes);
   input_offset = node->GetOpDesc()->GetInputOffset();
   for (const auto &i_offset : input_offset) {
-    GELOGI("[Mobile] input offset: %d ", i_offset);
+    GELOGD("[Mobile] input offset: %d ", i_offset);
   }
   GELOGI("[Mobile] dynamic inputs group count: %d ", dynamic_inputs_indexes.size());
   for (size_t i = 0; i < dynamic_inputs_indexes.size(); i++) {
-    GELOGI("[Mobile] dynamic inputs group: %d", i);
+    GELOGD("[Mobile] dynamic inputs group: %zu", i);
     for (const auto &d : dynamic_inputs_indexes[i]) {
-      GELOGI("[Mobile] input indexes: %d ", d);
+      GELOGD("[Mobile] input indexes: %d ", d);
     }
     std::vector<ShapeInfo> shape_infos;
     for (const auto &d : dynamic_inputs_indexes[i]) {
@@ -233,9 +234,9 @@ ge::Status GetDynamicInputsInfo(const ge::NodePtr &node, std::vector<int64_t> &i
     dynamic_inputs_shape.push_back(shape_infos);
   }
   for (size_t i = 0; i < dynamic_inputs_shape.size(); i++) {
-    GELOGI("[Mobile] dynamic inputs group: %d", i);
+    GELOGD("[Mobile] dynamic inputs group: %zu", i);
     for (const auto &s : dynamic_inputs_shape[i]) {
-      GELOGI("[Mobile] %s", s.ToString().c_str());
+      GELOGD("[Mobile] %s", s.ToString().c_str());
     }
   }
   return ge::SUCCESS;
@@ -248,19 +249,21 @@ ge::Status GetDynamicOutputsInfo(const ge::NodePtr &node, std::vector<int64_t> &
   (void)ge::AttrUtils::GetListListInt(node->GetOpDesc(), dynamic_outputs_indexes_str, dynamic_outputs_indexes);
   output_offset = node->GetOpDesc()->GetOutputOffset();
   for (const auto &o_offset : output_offset) {
-    GELOGI("[Mobile] output offset: %d ", o_offset);
+    GELOGD("[Mobile] output offset: %d ", o_offset);
   }
   GELOGI("[Mobile] dynamic outputs group count: %d", dynamic_outputs_indexes.size());
   for (size_t i = 0; i < dynamic_outputs_indexes.size(); i++) {
-    GELOGI("[Mobile] dynamic outputs group: %d", i);
+    GELOGD("[Mobile] dynamic outputs group: %zu", i);
     for (const auto &d : dynamic_outputs_indexes[i]) {
-      GELOGI("[Mobile] output indexes: %d ", d);
+      GELOGD("[Mobile] output indexes: %d ", d);
     }
     std::vector<ShapeInfo> shape_infos;
     for (const auto &d : dynamic_outputs_indexes[i]) {
       if (static_cast<size_t>(d) >= node->GetOpDesc()->GetOutputsSize() ||
           static_cast<size_t>(d) >= output_offset.size()) {
-        GELOGE(ge::FAILED, "[Mobile] dynamic outputs index: %d is invalid, return", d);
+        GELOGE(ge::FAILED,
+               "[Mobile] dynamic outputs index: %lld is invalid, outputs size: %zu, offset size: %zu, return", d,
+               node->GetOpDesc()->GetOutputsSize(), output_offset.size());
         return ge::FAILED;
       }
       ShapeInfo shape_info;
@@ -273,9 +276,9 @@ ge::Status GetDynamicOutputsInfo(const ge::NodePtr &node, std::vector<int64_t> &
     dynamic_outputs_shape.push_back(shape_infos);
   }
   for (size_t i = 0; i < dynamic_outputs_shape.size(); i++) {
-    GELOGI("[Mobile] dynamic outputs group: %d", i);
+    GELOGD("[Mobile] dynamic outputs group: %zu", i);
     for (const auto &s : dynamic_outputs_shape[i]) {
-      GELOGI("[Mobile] %s", s.ToString().c_str());
+      GELOGD("[Mobile] %s", s.ToString().c_str());
     }
   }
   return ge::SUCCESS;
@@ -336,7 +339,7 @@ ge::Status ParseArgsFormat(const std::string &args_format,
       GELOGW("[Mobile] arg format is empty, break.");
       break;
     }
-    GELOGI("[Mobile] arg_format string is: %s", arg_format.c_str());
+    GELOGD("[Mobile] arg_format string is: %s", arg_format.c_str());
     if (arg_format.find("desc") != std::string::npos) {
       std::regex pattern_with_shape_info("([a-z])_desc([0-9]+)(\\*?)");
       std::smatch sm_with_shape_info;
@@ -354,7 +357,8 @@ ge::Status ParseArgsFormat(const std::string &args_format,
       } else if (sm_with_shape_info[1] == "o") {
         group_index = output_group_index++;
       } else {
-        GELOGE(ge::FAILED, "[Mobile] sm_with_shape_info[1] is not supported, failed.");
+        GELOGE(ge::FAILED, "[Mobile] io type: %s is not supported, valid values are i/o, failed.",
+               sm_with_shape_info[1].str().c_str());
         return ge::FAILED;
       }
       arg_infos_with_shape_info.push_back(KernelArgInfoWithShapeInfo(sm_with_shape_info[1], "desc", group_index, add));
@@ -365,7 +369,7 @@ ge::Status ParseArgsFormat(const std::string &args_format,
     s_start = sm.suffix().first;
   }
   for (const auto &i : arg_infos_with_shape_info) {
-    GELOGI("[Mobile] %s", i.ToString().c_str());
+    GELOGD("[Mobile] %s", i.ToString().c_str());
   }
   return ge::SUCCESS;
 }
@@ -391,7 +395,7 @@ ge::Status SetArgInfosArgsIndex(std::vector<KernelArgInfoWithShapeInfo> &arg_inf
                      dynamic_outputs_shape.size());
       dynamic_inout_shape = &(dynamic_outputs_shape[static_cast<size_t>(group_index)]);
     } else {
-      GELOGE(ge::FAILED, "[Mobile] unknown io type: %s.", io_type.c_str());
+      GELOGE(ge::FAILED, "[Mobile] unknown io type: %s, valid values are i/o.", io_type.c_str());
       return ge::FAILED;
     }
     GE_ASSERT_NOTNULL(dynamic_inout_shape, "[Mobile] dynamic inout shape is nullptr.");
@@ -407,7 +411,8 @@ ge::Status SetArgInfosArgsIndex(std::vector<KernelArgInfoWithShapeInfo> &arg_inf
 ge::Status FindArgInfosWithShapeInfoIndex(int32_t i, std::vector<KernelArgInfoWithShapeInfo> &arg_infos_with_shape_info,
                                           int32_t &arg_infos_with_shape_info_index) {
   if (arg_infos_with_shape_info.size() > INT32_MAX) {
-    GELOGE(ge::FAILED, "[Mobile] overflow, failed.");
+    GELOGE(ge::FAILED, "[Mobile] arg_infos_with_shape_info size[%zu] exceeds INT32_MAX, failed.",
+           arg_infos_with_shape_info.size());
     return ge::FAILED;
   }
   for (int32_t j = 0; j < static_cast<int32_t>(arg_infos_with_shape_info.size()); j++) {
@@ -437,19 +442,19 @@ ge::Status SetArgsAndFlowTable(const domi::KernelDef &kernel, ge::mobile::proto:
     GE_ASSERT_TRUE(FindArgInfosWithShapeInfoIndex(static_cast<int32_t>(i), arg_infos_with_shape_info,
                                                   arg_infos_with_shape_info_index) == ge::SUCCESS,
                    "[Mobile] find arg infos with shape info index failed.");
-    GELOGI("[Mobile] args index: %d, value: 0x%llx, arg_infos_with_shape_info_index: %d", i, *args_data,
+    GELOGD("[Mobile] args index: %d, value: 0x%llx, arg_infos_with_shape_info_index: %d", i, *args_data,
            arg_infos_with_shape_info_index);
     if ((arg_infos_with_shape_info_index != -1) &&
         (arg_infos_with_shape_info[static_cast<uint64_t>(arg_infos_with_shape_info_index)].format == "desc")) {
-      GELOGI("[Mobile] modify for secondary addr args.");
-      GELOGI("[Mobile] arg_infos_with_shape_info: %s",
+      GELOGD("[Mobile] modify for secondary addr args.");
+      GELOGD("[Mobile] arg_infos_with_shape_info: %s",
              arg_infos_with_shape_info[static_cast<uint64_t>(arg_infos_with_shape_info_index)].ToString().c_str());
       is_flowtable = true;
       const auto io_type = arg_infos_with_shape_info[static_cast<uint64_t>(arg_infos_with_shape_info_index)].type;
       const int32_t group_index =
           arg_infos_with_shape_info[static_cast<uint64_t>(arg_infos_with_shape_info_index)].group_index;
       if ((group_index_pre == group_index) && (io_type_pre == io_type)) {
-        GELOGI("[Mobile] in same group, group_index_pre: %d, group_index: %d, io_type_pre: %s, io_type: %s.",
+        GELOGD("[Mobile] in same group, group_index_pre: %d, group_index: %d, io_type_pre: %s, io_type: %s.",
                group_index_pre, group_index, io_type_pre.c_str(), io_type.c_str());
         args_data++;
         continue;
@@ -457,13 +462,13 @@ ge::Status SetArgsAndFlowTable(const domi::KernelDef &kernel, ge::mobile::proto:
       const uint64_t real_size = ConstructSecondaryAddrContext(
           flowtable, dynamic_inputsoutputs_shapeinfo.GetShapeInfo(io_type, static_cast<uint64_t>(group_index)),
           var_addr_to_file_offset, weight_addr);
-      GELOGI("[Mobile] real_size: %d", real_size);
+      GELOGD("[Mobile] real_size: %llu", real_size);
       args[args_index_new++] = 0x6B6B6B6B00000000UL | offset;
       offset += real_size;
       group_index_pre = group_index;
       io_type_pre = io_type;
     } else {
-      GELOGI("[Mobile] copy for direct addr args.");
+      GELOGD("[Mobile] copy for direct addr args.");
       args[args_index_new++] = *args_data;
     }
     args_data++;
@@ -491,7 +496,7 @@ ge::Status ConvertKernelDef(const ge::GeModelPtr &ge_model, const domi::KernelDe
     if (!StubFuncMatchNodeName(kernel.stub_func(), node_name)) {
       continue;
     }
-    GELOGI("[Mobile] process node: %s dynamic inputs and outputs.", node_name.c_str());
+    GELOGD("[Mobile] process node: %s dynamic inputs and outputs.", node_name.c_str());
     std::vector<int64_t> input_offset;
     GE_ASSERT_TRUE(GetDynamicInputsInfo(node, input_offset, dynamic_inputs_shape) == ge::SUCCESS,
                    "[Mobile] get dynamic inputs info failed.");
@@ -533,7 +538,7 @@ ge::Status ConvertTaskDef(const ge::GeModelPtr &ge_model, const std::shared_ptr<
     mobile_task->set_id(task.id());
     mobile_task->set_type(static_cast<uint32_t>(RT_MODEL_TASK_KERNEL));
     mobile_task->set_stream_id(task.stream_id());
-    GELOGI("[Mobile] stream_id: %d", static_cast<int32_t>(task.stream_id()));
+    GELOGD("[Mobile] stream_id: %d", static_cast<int32_t>(task.stream_id()));
     mobile_task->set_event_id(task.event_id());
 
     // KernelDef
@@ -549,7 +554,7 @@ ge::Status ConvertTaskDef(const ge::GeModelPtr &ge_model, const std::shared_ptr<
     auto *mobile_kernel_context = mobile_kernel->mutable_context();
     mobile_kernel_context->set_kernel_type(static_cast<uint32_t>(ASCENDC_AI_CORE));
     mobile_kernel_context->set_kernel_func_id(kernel_context.kernel_func_id());
-    GELOGI("[Mobile] kernel_func_id: %d", static_cast<int32_t>(kernel_context.kernel_func_id()));
+    GELOGD("[Mobile] kernel_func_id: %d", static_cast<int32_t>(kernel_context.kernel_func_id()));
     mobile_kernel_context->set_is_flowtable(is_flowtable);
     mobile_kernel_context->set_args_offset(kernel_context.args_offset());
     mobile_kernel_context->set_args_count(mobile_kernel->args_size() / static_cast<uint32_t>(PER_ARG_BYTES));
@@ -557,7 +562,7 @@ ge::Status ConvertTaskDef(const ge::GeModelPtr &ge_model, const std::shared_ptr<
     // set args offset use args_count
     std::vector<char> args_offset(mobile_kernel_context->args_count() * sizeof(uint16_t), static_cast<char>(0));
     mobile_kernel_context->set_args_offset(args_offset.data(), args_offset.size());
-    GELOGI("[Mobile] mobile args_count: %d", mobile_kernel_context->args_count());
+    GELOGD("[Mobile] mobile args_count: %d", mobile_kernel_context->args_count());
   }
   return ge::SUCCESS;
 }
@@ -574,7 +579,8 @@ ge::Status AddCompatibleInfoToCompiledTarget(ge::CompiledTargetPtr &compiled_tar
 
   ge::SectionHolder compatible_info_section;
   compatible_info_section.type = static_cast<uint32_t>(ge::SectionType::SECTION_TYPE_COMPATIBLEV2);
-  GE_ASSERT_TRUE(compatible_info_size <= UINT32_MAX, "[Mobile] overflow, failed.");
+  GE_ASSERT_TRUE(compatible_info_size <= UINT32_MAX, "[Mobile] compatible_info_size[%zu] exceeds UINT32_MAX, failed.",
+                 compatible_info_size);
   compatible_info_section.size = static_cast<uint32_t>(compatible_info_size);
   compatible_info_section.data = std::move(compatible_info_data);
   compiled_target->AddSection(compatible_info_section);
@@ -596,28 +602,29 @@ ge::Status AddKernelBinToManager(const ge::GeModelPtr &ge_model, ge::mobile::Ker
       kernel_name = *kernel_name_ptr;
     }
     const std::string &node_name = node->GetName();
-    GELOGI("[Mobile] node name: %s, kernel name: %s", node_name.c_str(), kernel_name.c_str());
+    GELOGD("[Mobile] node name: %s, kernel name: %s", node_name.c_str(), kernel_name.c_str());
     auto kernel_bin = tbe_kernel_store.FindKernel(kernel_name);
     if (kernel_bin == nullptr) {
       GELOGI("[Mobile] kernel bin not found.");
       continue;
     }
-    GELOGI("[Mobile] kernel bin data size: %d", kernel_bin->GetBinDataSize());
+    GELOGD("[Mobile] kernel bin data size: %d", kernel_bin->GetBinDataSize());
     if (added_kernels.count(kernel_name) == 0U) {
-      GELOGI("[Mobile] add kernel bin for kernel name: %s", kernel_name.c_str());
+      GELOGD("[Mobile] add kernel bin for kernel name: %s", kernel_name.c_str());
       ge::mobile::KernelBin mobile_kernel_bin;
       mobile_kernel_bin.kernel_info.func_mode = 0U;
       mobile_kernel_bin.kernel_info.magic = MOBILE_RT_DEV_BINARY_MAGIC_ELF;
-      GE_ASSERT_TRUE(kernel_bin->GetBinDataSize() <= UINT32_MAX, "[Mobile] overflow, failed.");
+      GE_ASSERT_TRUE(kernel_bin->GetBinDataSize() <= UINT32_MAX,
+                     "[Mobile] kernel bin data size[%zu] exceeds UINT32_MAX, failed.", kernel_bin->GetBinDataSize());
       mobile_kernel_bin.kernel_info.kernel_size = static_cast<uint32_t>(kernel_bin->GetBinDataSize());
       mobile_kernel_bin.kernel_info.kernel_offset = 0U;
       mobile_kernel_bin.stub_func = kernel_bin->GetBinData();
       mobile_kernel_bin.stub_name = kernel_name;
-      GELOGI("[Mobile] stub_name: %s", kernel_name.c_str());
+      GELOGD("[Mobile] stub_name: %s", kernel_name.c_str());
       kernelbin_manager.AddKernelBin(mobile_kernel_bin);
       (void)added_kernels.insert(kernel_name);
     } else {
-      GELOGI("[Mobile] kernel bin already added, skip. kernel name: %s", kernel_name.c_str());
+      GELOGD("[Mobile] kernel bin already added, skip. kernel name: %s", kernel_name.c_str());
     }
     // replace task->kernel->stub_func -> kernel_name
     for (int i = 0; i < mobile_model_task_def->task_size(); i++) {
@@ -627,10 +634,10 @@ ge::Status AddKernelBinToManager(const ge::GeModelPtr &ge_model, ge::mobile::Ker
       GELOGD("[Mobile] replace kernel stub func %s with %s, node_name %s, matched: %d", stub.c_str(),
              kernel_name.c_str(), node_name.c_str(), static_cast<int32_t>(matched));
       if (matched) {
-        GELOGI("[Mobile] replace kernel stub func %s with %s", stub.c_str(), kernel_name.c_str());
+        GELOGD("[Mobile] replace kernel stub func %s with %s", stub.c_str(), kernel_name.c_str());
         task->mutable_kernel()->set_stub_func(kernel_name);
       } else {
-        GELOGI("[Mobile] can not find node name: %s in stub_func: %s", node_name.c_str(), stub.c_str());
+        GELOGD("[Mobile] can not find node name: %s in stub_func: %s", node_name.c_str(), stub.c_str());
       }
     }
   }
@@ -649,7 +656,8 @@ ge::Status AddKernelBinToCompiledTarget(ge::mobile::KernelBinManager &kernelbin_
 
   ge::SectionHolder kernelbins_section;
   kernelbins_section.type = static_cast<uint32_t>(ge::SectionType::SECTION_TYPE_BIN);
-  GE_ASSERT_TRUE(kernelbin_section_size <= UINT32_MAX, "[Mobile] overflow, failed.");
+  GE_ASSERT_TRUE(kernelbin_section_size <= UINT32_MAX,
+                 "[Mobile] kernelbin_section_size[%zu] exceeds UINT32_MAX, failed.", kernelbin_section_size);
   kernelbins_section.size = static_cast<uint32_t>(kernelbin_section_size);
   kernelbins_section.data = std::move(kernelbin_section_data);
   compiled_target->AddSection(kernelbins_section);
@@ -735,7 +743,7 @@ ge::Status RemapVarAddrArgsToWeightAddr(std::shared_ptr<ge::mobile::proto::Model
       continue;
     }
     GE_ASSERT_TRUE((kernel->args_size() % static_cast<uint32_t>(PER_ARG_BYTES)) == 0U,
-                   "[Mobile] kernel %s args size %u is not %d bytes aligned.", kernel->stub_func().c_str(),
+                   "[Mobile] kernel %s args size %u bytes is not %d bytes aligned.", kernel->stub_func().c_str(),
                    kernel->args_size(), PER_ARG_BYTES);
     const uint32_t args_count = kernel->args_size() / static_cast<uint32_t>(PER_ARG_BYTES);
     // args 内容按 8 字节解析
@@ -922,15 +930,16 @@ ge::Status ReorderWeights(const ge::ComputeGraphPtr &graph, const std::set<std::
     GE_ASSERT_TRUE(uw.old_file_offset + uw.weight_length <= weight_file_size,
                    "[Mobile] weight old_offset %llu + length %llu exceeds weight file %s size %llu.",
                    uw.old_file_offset, uw.weight_length, weight_file_path.c_str(), weight_file_size);
-    GE_ASSERT_TRUE(uw.new_file_offset + uw.weight_length <= reordered_weight_data.size(),
-                   "[Mobile] weight new_offset %llu + length %llu exceeds reordered buffer size %zu.",
-                   uw.new_file_offset, uw.weight_length, reordered_weight_data.size());
+    GE_ASSERT_TRUE(
+        uw.new_file_offset + uw.weight_length <= reordered_weight_data.size(),
+        "[Mobile] weight new_offset %llu bytes + length %llu bytes exceeds reordered buffer size: %zu bytes.",
+        uw.new_file_offset, uw.weight_length, reordered_weight_data.size());
     if (uw.weight_length > 0UL) {
       ifs.seekg(static_cast<std::streamoff>(uw.old_file_offset), std::ios::beg);
-      GE_ASSERT_TRUE(ifs.good(), "[Mobile] seek weight file %s to offset %llu failed.", weight_file_path.c_str(),
+      GE_ASSERT_TRUE(ifs.good(), "[Mobile] seek weight file %s to offset %llu bytes failed.", weight_file_path.c_str(),
                      uw.old_file_offset);
       ifs.read(reordered_weight_data.data() + uw.new_file_offset, static_cast<std::streamsize>(uw.weight_length));
-      GE_ASSERT_TRUE(ifs.good(), "[Mobile] read weight %llu bytes from %s offset %llu failed.", uw.weight_length,
+      GE_ASSERT_TRUE(ifs.good(), "[Mobile] read weight %llu bytes from %s offset %llu bytes failed.", uw.weight_length,
                      weight_file_path.c_str(), uw.old_file_offset);
     }
   }
@@ -972,12 +981,12 @@ ge::CompiledTargetPtr ConstructCompiledTarget(const ge::GeModelPtr &ge_model,
 
   const auto &model_task_def_attr = model_task_def->attr();
   for (const auto &it : model_task_def_attr) {
-    GELOGI("[Mobile] attr %s : %s ", it.first.c_str(), it.second.c_str());
+    GELOGD("[Mobile] attr %s : %s ", it.first.c_str(), it.second.c_str());
     (void)mobile_model_task_def->mutable_attr()->insert({it.first, it.second});
   }
 
   mobile_model_task_def->set_memory_size(model_task_def->memory_size());
-  GELOGI("[Mobile] model task def memory size: %d", mobile_model_task_def->memory_size());
+  GELOGI("[Mobile] model task def memory size: %llu bytes", mobile_model_task_def->memory_size());
   GELOGI("[Mobile] stream num(ori): %d", static_cast<int32_t>(model_task_def->stream_num()));
   mobile_model_task_def->set_stream_num(1);
   GELOGI("[Mobile] stream num: %d", static_cast<int32_t>(mobile_model_task_def->stream_num()));
