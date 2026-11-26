@@ -8,7 +8,7 @@
 
 指定包含GE编译选项的JSON文件路径。ATC工具会解析该JSON文件中的"compile options"字段，并将其转换为GE编译所需的具体参数。
 
-适用场景：当用户使用[options参数](../../../api/graph_engine_api/cpp/ge/options_params/overall_constraints.md)进行了在线或者离线推理，并希望将这些配置同步应用于ATC工具的离线推理流程，则可通过指定此JSON文件实现配置复用，确保两端推理行为一致。
+适用场景：当用户使用《[GE图引擎API](https://gitcode.com/cann/ge/blob/master/docs/zh/api/graph_engine_api/README.md)》中的[options参数](../../../api/graph_engine_api/cpp/ge/options_params/overall_constraints.md)进行了在线推理，并希望将这些配置同步应用于ATC工具的离线推理流程，则可通过指定此JSON文件实现配置复用，确保两端推理行为一致。
 
 ## 关联参数
 

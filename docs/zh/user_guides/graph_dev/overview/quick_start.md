@@ -243,7 +243,7 @@ GE的C++图引擎接口提供了两种构图方式：
 
 5. 后续操作。
 
-    转换成\*.om离线模型后，可以调用模型加载接口加载转换好的\*.om离线模型，再调用模型执行接口进行推理。详细的模型加载与推理的方法可参见《[应用开发)](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md)》中的“模型推理”。
+    转换成\*.om离线模型后，可以调用模型加载接口加载转换好的\*.om离线模型，再调用模型执行接口进行推理。详细的模型加载与推理的方法可参见《[应用开发](https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/c/00_acl_cpp_dev.md)》中的“模型推理”。
 
 ### 代码解析
 

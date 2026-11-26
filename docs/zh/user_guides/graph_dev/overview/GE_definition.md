@@ -28,6 +28,9 @@ GE作为专门面向图模式的AI编译器，通过计算图优化、多流并�
 
 GE面向不同的用户场景，提供了不同的对接方案，便于用户更加便捷地使用GE图引擎能力。
 
+> [!NOTE]说明
+> 本文档涉及到的接口或参数，若在文档内无法检索到，请查阅《[GE图引擎API](https://gitcode.com/cann/ge/blob/master/docs/zh/api/graph_engine_api/README.md)》、《[基础数据结构和接口](https://gitcode.com/cann/metadef/blob/master/docs/zh/api/README.md)》、《[Runtime运行时API](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md)》。
+
 - **onnx/pb等模型图模式执行**
 
     GE提供ATC命令行工具或者C++语言的Parser接口，支持将PyTorch和TensorFlow等框架导出的模型（\*.onnx/\*.pb/\*.air格式）转换为适配AI处理器的离线模型（\*.om格式），并基于图模式执行。详情请参见：

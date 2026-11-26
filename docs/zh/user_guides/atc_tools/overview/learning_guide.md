@@ -7,6 +7,8 @@
 
 熟悉Linux基本命令，对机器学习、深度学习有一定了解的人员，可以更好地理解本文档。
 
+本文档涉及到的接口或参数，若在文档内无法检索到，请查阅《[GE图引擎API](https://gitcode.com/cann/ge/blob/master/docs/zh/api/graph_engine_api/README.md)》或《[Runtime运行时API](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md)》。
+
 ## 针对新手
 
 | [ATC简介](atc_overview.md) | [快速入门](quick_start.md) | [初级功能](../basic_feature/basic_features.md) |

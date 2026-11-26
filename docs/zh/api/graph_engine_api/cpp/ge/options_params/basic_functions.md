@@ -271,7 +271,7 @@ N表示该台Server上的可用AI处理器个数。
 
 指定编译优化模型的AI处理器型号。
 
-取值查询方法请参见[--soc_version](../../../../../user_guides/atc_tools/CLI_options/--soc_version.md)。
+取值查询方法请参见《[ATC离线模型编译工具](https://gitcode.com/cann/ge/blob/master/docs/zh/user_guides/atc_tools/README.md)》中的`--soc_version`。
 
 **必选/可选**：可选
 
