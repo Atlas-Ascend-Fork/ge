@@ -468,7 +468,11 @@ int64_t SwitchToStreamSwitchPass::GetGroupId(const NodePtr &node) const {
     return 0;
   }
   auto key_index = hccl_group_id.find_last_of('_');
-  auto key_num = hccl_group_id.substr(key_index + 1, hccl_group_id.length() - key_index);
+  if ((key_index == std::string::npos) || (key_index + 1U == hccl_group_id.length())) {
+    GELOGW("Node %s, hccl group id %s is invalid, group id set to 0.", node->GetName().c_str(), hccl_group_id.c_str());
+    return 0;
+  }
+  auto key_num = hccl_group_id.substr(key_index + 1);
   GELOGI("Node:%s, hccl_group_id=%s, key_num=%s", node->GetName().c_str(), hccl_group_id.c_str(), key_num.c_str());
   int64_t num = atoi(key_num.c_str());
   if (num == 0) {

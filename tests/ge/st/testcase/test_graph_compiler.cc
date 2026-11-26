@@ -6444,6 +6444,70 @@ TEST_F(GraphCompilerTest, test_link_allreduce_to_output) {
 }
 
 /*
+ *                data1
+ *                  |
+ *            allreduce_1 (fused)
+ *                  |
+ *                relu2         data2
+ *                  \           /
+ *                  switch1
+ *                  /       \
+ *              relu4         relu5
+ *                  \       /
+ *                  merge1
+ */
+/**
+ * 用例描述：tailing优化开关开启时，Switch节点携带合法的hccl_group_id（"xxx_<非0数字>"格式），
+ *           SwitchToStreamSwitchPass按'_'后缀数字解析group id，图编译成功
+ * 预置条件：
+ *   1. 图中包含HCOMALLREDUCE融合节点，节点名含"_数字"后缀，HcclGroupPass将其名称
+ *      作为ATTR_NAME_HCCL_FUSED_GROUP标记到下游Switch节点
+ *   2. 开启ge.exec.isTailingOptimization=1
+ * 测试步骤：
+ *   1. 构造如上图所示计算图
+ *   2. Session AddGraph后执行BuildGraph
+ *   3. 针对PreRunAfterBuild阶段dump的图做校验
+ * 预期结果：
+ *   1. BuildGraph返回SUCCESS
+ *   2. Switch节点被替换为StreamSwitch节点，且StreamSwitch节点携带ATTR_NAME_HCCL_FUSED_GROUP属性，
+ *      属性值为融合节点名"allreduce_1"
+ */
+TEST_F(GraphCompilerTest, test_switch_to_stream_switch_valid_hccl_group_id) {
+  DEF_GRAPH(root_graph) {
+    auto data2 = OP_CFG(DATA).Attr("index", 1).TensorDesc(FORMAT_ND, DT_BOOL).Build("data2");
+    auto allreduce_1 = OP_CFG(HCOMALLREDUCE).Attr(ATTR_NAME_HCCL_FUSED_FLAG, true).Build("allreduce_1");
+    CHAIN(NODE("data1", DATA)
+              ->NODE(allreduce_1)
+              ->NODE("relu2", RELU)
+              ->EDGE(0, 0)
+              ->NODE("switch1", SWITCH)
+              ->EDGE(0, 0)
+              ->NODE("relu4", RELU)
+              ->EDGE(0, 0)
+              ->NODE("merge1", MERGE));
+    CHAIN(NODE(data2)->EDGE(0, 1)->NODE("switch1")->EDGE(1, 0)->NODE("relu5", RELU)->EDGE(0, 1)->NODE("merge1"));
+  };
+
+  auto graph = ToGeGraph(root_graph);
+  map<AscendString, AscendString> options;
+  options.emplace(AscendString(ge::OPTION_EXEC_ENABLE_TAILING_OPTIMIZATION), AscendString("1"));
+  Session session(options);
+  session.AddGraph(1, graph, options);
+
+  std::vector<InputTensorInfo> inputs;
+  auto ret = session.BuildGraph(1, inputs);
+  EXPECT_EQ(ret, SUCCESS);
+
+  CHECK_GRAPH(PreRunAfterBuild) {
+    auto stream_switch = graph->FindFirstNodeMatchType(STREAMSWITCH);
+    ASSERT_NE(stream_switch, nullptr);
+    std::string hccl_group_id;
+    ASSERT_TRUE(AttrUtils::GetStr(stream_switch->GetOpDesc(), ATTR_NAME_HCCL_FUSED_GROUP, hccl_group_id));
+    EXPECT_EQ(hccl_group_id, "allreduce_1");
+  };
+}
+
+/*
  *                 data1
  *                /     \
  *      allreduce1.......allreduce2

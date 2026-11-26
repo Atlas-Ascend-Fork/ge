@@ -89,6 +89,14 @@ TEST_F(UtestSwitch2StreamSwitchPass, GetGroupIdSuccess) {
   ret = switch2StrPass.GetGroupId(node);
   EXPECT_EQ(ret, 0);
 
+  AttrUtils::SetStr(node->GetOpDesc(), ATTR_NAME_HCCL_FUSED_GROUP, "123");
+  ret = switch2StrPass.GetGroupId(node);
+  EXPECT_EQ(ret, 0);
+
+  AttrUtils::SetStr(node->GetOpDesc(), ATTR_NAME_HCCL_FUSED_GROUP, "abc_");
+  ret = switch2StrPass.GetGroupId(node);
+  EXPECT_EQ(ret, 0);
+
   AttrUtils::SetStr(node->GetOpDesc(), ATTR_NAME_HCCL_FUSED_GROUP, "_123");
   ret = switch2StrPass.GetGroupId(node);
   EXPECT_EQ(ret, 123);
