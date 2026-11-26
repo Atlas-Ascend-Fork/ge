@@ -55,8 +55,8 @@ def main(unused_argv):
         ac_golden = sess.run(ac_z, feed_dict={x: x_data, y: y_data})
 
     # 通过np.allclose函数比较TensorFlow和Ascend C的输出是否一致
-    np.array(tf_golden).astype(dtype_params)
-    np.array(ac_golden).astype(dtype_params)
+    tf_golden = np.array(tf_golden).astype(dtype_params)
+    ac_golden = np.array(ac_golden).astype(dtype_params)
 
     cmp_result = np.allclose(tf_golden, ac_golden, atol=ATOL, rtol=RTOL)
     if cmp_result:
