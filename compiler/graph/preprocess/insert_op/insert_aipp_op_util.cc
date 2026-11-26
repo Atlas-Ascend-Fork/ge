@@ -150,7 +150,7 @@ Status InsertAippOpUtil::CheckInputNamePositionNotRepeat() const {
         std::string error_msg =
             "Cannot both set related_input_name and related_input_rank. Please ensure param is the same as the first "
             "aipp config(related_input_name)";
-        GELOGE(PARAM_INVALID, "[Check][InputParam]%s", error_msg.c_str());
+        GELOGE(PARAM_INVALID, "[Check][InputParam] %s", error_msg.c_str());
         REPORT_PREDEFINED_ERR_MSG("E10052", std::vector<const char_t *>({"reason"}),
                                   std::vector<const char_t *>({error_msg.c_str()}));
         return PARAM_INVALID;
@@ -159,7 +159,7 @@ Status InsertAippOpUtil::CheckInputNamePositionNotRepeat() const {
         std::string error_msg =
             "Cannot insert aipp to the same position! Please ensure related_input_name"
             " param is different in different aipp config";
-        GELOGE(PARAM_INVALID, "[Check][InputParam]%s", error_msg.c_str());
+        GELOGE(PARAM_INVALID, "[Check][InputParam] %s", error_msg.c_str());
         REPORT_PREDEFINED_ERR_MSG("E10052", std::vector<const char_t *>({"reason"}),
                                   std::vector<const char_t *>({error_msg.c_str()}));
         return PARAM_INVALID;
@@ -182,7 +182,7 @@ Status InsertAippOpUtil::CheckInputRankPositionNoRepeat() const {
         std::string error_msg =
             "Cannot both set related_input_rank and related_input_name!"
             " Please ensure param is the same with the first aipp config(related_input_rank)";
-        GELOGE(PARAM_INVALID, "[Check][InputParam]%s", error_msg.c_str());
+        GELOGE(PARAM_INVALID, "[Check][InputParam] %s", error_msg.c_str());
         REPORT_PREDEFINED_ERR_MSG("E10052", std::vector<const char_t *>({"reason"}),
                                   std::vector<const char_t *>({error_msg.c_str()}));
         return PARAM_INVALID;
@@ -191,7 +191,7 @@ Status InsertAippOpUtil::CheckInputRankPositionNoRepeat() const {
         std::string error_msg =
             "Cannot insert aipp to the same position! Please ensure related_input_rank"
             " param is different in different aipp config";
-        GELOGE(PARAM_INVALID, "[Check][InputParam]%s", error_msg.c_str());
+        GELOGE(PARAM_INVALID, "[Check][InputParam] %s", error_msg.c_str());
         REPORT_PREDEFINED_ERR_MSG("E10052", std::vector<const char_t *>({"reason"}),
                                   std::vector<const char_t *>({error_msg.c_str()}));
         return PARAM_INVALID;
@@ -261,15 +261,30 @@ Status InsertAippOpUtil::CheckGraph(const ComputeGraphPtr &graph) const {
 
           if (aippMode == domi::AippOpParams::static_) {
             GE_CHK_LOG_AND_ERRORMSG(aippParams->input_format() == currAippParam->input_format(), PARAM_INVALID,
-                                    "The input_format of all aipp_ops after one Data should be the same");
+                                    ("The input_format of all aipp_ops after one Data should be the same, curr:" +
+                                     std::to_string(aippParams->input_format()) +
+                                     ", other:" + std::to_string(currAippParam->input_format()))
+                                        .c_str());
             GE_CHK_LOG_AND_ERRORMSG(aippParams->src_image_size_w() == currAippParam->src_image_size_w(), PARAM_INVALID,
-                                    "The src_image_size_w of all aipp_ops after one Data should be the same");
+                                    ("The src_image_size_w of all aipp_ops after one Data should be the same, "
+                                     "curr:" +
+                                     std::to_string(aippParams->src_image_size_w()) +
+                                     ", other:" + std::to_string(currAippParam->src_image_size_w()))
+                                        .c_str());
             GE_CHK_LOG_AND_ERRORMSG(aippParams->src_image_size_h() == currAippParam->src_image_size_h(), PARAM_INVALID,
-                                    "The src_image_size_h of all aipp_ops after one Data should be the same");
+                                    ("The src_image_size_h of all aipp_ops after one Data should be the same, "
+                                     "curr:" +
+                                     std::to_string(aippParams->src_image_size_h()) +
+                                     ", other:" + std::to_string(currAippParam->src_image_size_h()))
+                                        .c_str());
           } else {
             GE_CHK_LOG_AND_ERRORMSG(aippParams->max_src_image_size() == currAippParam->max_src_image_size(),
                                     PARAM_INVALID,
-                                    "The max_src_image_size of all aipp_ops after one Data should be the same");
+                                    ("The max_src_image_size of all aipp_ops after one Data should be the same, "
+                                     "curr:" +
+                                     std::to_string(aippParams->max_src_image_size()) +
+                                     ", other:" + std::to_string(currAippParam->max_src_image_size()))
+                                        .c_str());
           }
         });
   }
@@ -449,12 +464,12 @@ Status InsertAippOpUtil::UpdatePrevNodeByAipp(const NodePtr &node) const {
            aipp_op_desc->GetType().c_str());
     return FAILED;
   }
-  GELOGI("Get input size [%ld] from aipp [%s].", size, aipp_op_desc->GetName().c_str());
+  GELOGI("Get input size [%ld bytes] from aipp [%s].", size, aipp_op_desc->GetName().c_str());
   if (size == 0) {
     REPORT_INNER_ERR_MSG("E19999", "Tensor size of op:%s(%s) is 0, input_index:0, check invalid",
                          aipp_op_desc->GetName().c_str(), aipp_op_desc->GetType().c_str());
-    GELOGE(FAILED, "[Check][Param] Tensor size of op:%s(%s) is 0, input_index:0", aipp_op_desc->GetName().c_str(),
-           aipp_op_desc->GetType().c_str());
+    GELOGE(FAILED, "[Check][Param] Tensor size of op:%s(%s) is 0, input_index:0, expected size > 0",
+           aipp_op_desc->GetName().c_str(), aipp_op_desc->GetType().c_str());
     return FAILED;
   }
   (void)AttrUtils::SetInt(aipp_input, ATTR_NAME_INPUT_ORIGIN_SIZE, size);
@@ -578,7 +593,7 @@ Status InsertAippOpUtil::GetAllAipps(const NodePtr &data_node, const NodePtr &no
   GE_CHECK_NOTNULL(node);
   const OpDescPtr op = node->GetOpDesc();
   GE_CHECK_NOTNULL(op);
-  GELOGI("Get all aipp node from this node %s.", op->GetName().c_str());
+  GELOGI("Get all aipp nodes from this node %s.", op->GetName().c_str());
   if (op->GetType() == AIPP) {
     aipps.emplace_back(node);
   } else if (op->GetType() == CASE) {
@@ -634,7 +649,7 @@ Status InsertAippOpUtil::RecordAIPPInfoToData(const ComputeGraphPtr &graph) cons
     GE_CHECK_NOTNULL(data_op_desc);
     std::set<NodePtr> aipps_or_switchs_or_case = it.second;
     if (aipps_or_switchs_or_case.size() != 1) {
-      GELOGW("The number of successors switch or aipp of data is more than 1");
+      GELOGW("The number of successor switch or aipp nodes of the Data node is more than 1.");
       continue;
     }
 
@@ -741,7 +756,7 @@ Status InsertAippOpUtil::SetModelInputDims(NodePtr &data_node, NodePtr &aipp_nod
         }
       }
     }
-    GELOGD("After set N or H/W to -1, the model input dims: %s.", ToString(model_input_dims).c_str());
+    GELOGD("After setting N or H/W to -1, the model input dims: %s.", ToString(model_input_dims).c_str());
     if (!AttrUtils::SetListInt(data_opdesc, ATTR_NAME_INPUT_DIMS, model_input_dims)) {
       REPORT_INNER_ERR_MSG("E19999", "Set Attr:%s on op:%s(%s) failed", ATTR_NAME_INPUT_DIMS.c_str(),
                            data_opdesc->GetName().c_str(), data_opdesc->GetType().c_str());

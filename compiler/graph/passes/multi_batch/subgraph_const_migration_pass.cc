@@ -193,7 +193,7 @@ Status SubgraphConstMigrationPass::ClassifyGraphNodes(const ComputeGraphPtr &gra
         GetPeerNameList(node, peer_name_list);
         if (peer_name_list.empty()) {
           if (node->GetOutDataNodes().empty()) {
-            GELOGI("%s, Const: %s, no data output", subgraph->GetName().c_str(), node->GetName().c_str());
+            GELOGD("%s, Const: %s, no data output", subgraph->GetName().c_str(), node->GetName().c_str());
             const auto in_all_nodes = node->GetInAllNodes();
             if (in_all_nodes.empty() || std::all_of(in_all_nodes.begin(), in_all_nodes.end(),
                                                     [](const NodePtr &n) { return n->GetType() == DATA; })) {
@@ -234,7 +234,7 @@ void SubgraphConstMigrationPass::GetPeerNameList(const NodePtr &node, std::set<s
     std::string node_full_name = peer_node->GetName();
     size_t pos = node_full_name.find(kMbatchNodeNameMark);
     if (pos == std::string::npos) {
-      GELOGI("Cannot find: %s of multi-batch in node: %s", kMbatchNodeNameMark.c_str(), node_full_name.c_str());
+      GELOGD("Cannot find: %s of multi-batch in node: %s", kMbatchNodeNameMark.c_str(), node_full_name.c_str());
       continue;
     }
 
@@ -416,7 +416,7 @@ Status SubgraphConstMigrationPass::DetachParallelNode(const ComputeGraphPtr &gra
     GE_CHK_GRAPH_STATUS_RET(GraphUtils::RemoveEdge(out_anchor, in_anchor), "[Remove][Edge] between %s and %s failed",
                             out_anchor->GetOwnerNode()->GetName().c_str(), const_node->GetName().c_str());
     const auto owner_node = out_anchor->GetOwnerNode();
-    GELOGI("Remove Edge: %s %s", owner_node->GetName().c_str(), const_node->GetName().c_str());
+    GELOGD("Remove Edge: %s %s", owner_node->GetName().c_str(), const_node->GetName().c_str());
     if (owner_node->GetInAllNodes().empty() && owner_node->GetOutAllNodes().empty() && owner_node != data_node) {
       GE_CHK_GRAPH_STATUS_RET(GraphUtils::RemoveNodeWithoutRelink(graph, owner_node),
                               "[Remove][Node] without relink failed, node:%s", owner_node->GetName().c_str());
@@ -430,12 +430,12 @@ Status SubgraphConstMigrationPass::DetachParallelNode(const ComputeGraphPtr &gra
     GE_CHK_GRAPH_STATUS_RET(GraphUtils::RemoveEdge(ctrl_anchor, ctrl_in_anchor),
                             "[Remove][ControlEdge] between %s and %s failed", const_node->GetName().c_str(),
                             ctrl_in_anchor->GetOwnerNode()->GetName().c_str());
-    GELOGI("Remove Edge: %s %s", const_node->GetName().c_str(), ctrl_in_anchor->GetOwnerNode()->GetName().c_str());
+    GELOGD("Remove Edge: %s %s", const_node->GetName().c_str(), ctrl_in_anchor->GetOwnerNode()->GetName().c_str());
 
     GE_CHK_GRAPH_STATUS_RET(GraphUtils::AddEdge(data_node->GetOutControlAnchor(), ctrl_in_anchor),
                             "[Add][ControlEdge] between %s and %s failed", data_node->GetName().c_str(),
                             ctrl_in_anchor->GetOwnerNode()->GetName().c_str());
-    GELOGI("Add Edge: %s %s", data_node->GetName().c_str(), ctrl_in_anchor->GetOwnerNode()->GetName().c_str());
+    GELOGD("Add Edge: %s %s", data_node->GetName().c_str(), ctrl_in_anchor->GetOwnerNode()->GetName().c_str());
   }
 
   // Break Move and follow, Link Data and follow.
@@ -446,12 +446,12 @@ Status SubgraphConstMigrationPass::DetachParallelNode(const ComputeGraphPtr &gra
     GE_CHK_GRAPH_STATUS_RET(GraphUtils::RemoveEdge(out_anchor, data_in_anchor),
                             "[Remove][Edge] between %s and %s failed", const_node->GetName().c_str(),
                             data_in_anchor->GetOwnerNode()->GetName().c_str());
-    GELOGI("Remove Edge: %s %s", const_node->GetName().c_str(), data_in_anchor->GetOwnerNode()->GetName().c_str());
+    GELOGD("Remove Edge: %s %s", const_node->GetName().c_str(), data_in_anchor->GetOwnerNode()->GetName().c_str());
 
     GE_CHK_GRAPH_STATUS_RET(GraphUtils::AddEdge(data_node->GetOutDataAnchor(kZeroIndex), data_in_anchor),
                             "[Add][Edge] between %s and %s failed", data_node->GetName().c_str(),
                             data_in_anchor->GetOwnerNode()->GetName().c_str());
-    GELOGI("Add Edge: %s %s", data_node->GetName().c_str(), data_in_anchor->GetOwnerNode()->GetName().c_str());
+    GELOGD("Add Edge: %s %s", data_node->GetName().c_str(), data_in_anchor->GetOwnerNode()->GetName().c_str());
   }
 
   // Update Data op DataType.

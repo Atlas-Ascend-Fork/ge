@@ -352,19 +352,20 @@ bool HostcpuEngineUpdatePass::CheckInputForHostExec(const NodePtr &node, const s
 bool HostcpuEngineUpdatePass::CheckAndMarkHostExec(const NodePtr &node, NodeEngineMap &node_atomic_engine_map,
                                                    NodeEngineMap &node_composite_engine_map) {
   if (IsExecOnHost(node)) {
-    GELOGD("[HostcpuEngineUpdatePass]: node[%s] execute on host", node->GetName().c_str());
+    GELOGD("[HostcpuEngineUpdatePass]: node[%s] executes on host", node->GetName().c_str());
     return true;
   }
   auto op_desc = node->GetOpDesc();
   for (size_t i = 0U; i < op_desc->GetOutputsSize(); ++i) {
     if (!CheckOutputForHostExec(node, i)) {
-      GELOGD("[HostcpuEngineUpdatePass]: node[%s] outIdx[%zu] not execute on host", op_desc->GetName().c_str(), i);
+      GELOGD("[HostcpuEngineUpdatePass]: node[%s] outIdx[%zu] does not execute on host", op_desc->GetName().c_str(), i);
       return false;
     }
   }
   for (size_t i = 0U; i < op_desc->GetAllInputsSize(); ++i) {
     if (!CheckInputForHostExec(node, i)) {
-      GELOGD("[HostcpuEngineUpdatePass]: node[%s] inputIdx[%zu] not execute on host", op_desc->GetName().c_str(), i);
+      GELOGD("[HostcpuEngineUpdatePass]: node[%s] inputIdx[%zu] does not execute on host", op_desc->GetName().c_str(),
+             i);
       return false;
     }
   }
@@ -401,7 +402,7 @@ Status HostcpuEngineUpdatePass::FindHostDataOfSubgraph(const ComputeGraphPtr &gr
         if (host_exe_ops_.count(node) > 0U) {
           continue;
         }
-        GELOGD("[HostcpuEngineUpdatePass]: graph[%s] input[%s] is get host data[%s] cross subgraph",
+        GELOGD("[HostcpuEngineUpdatePass]: graph[%s] input[%s] is getting host data[%s] across subgraph",
                graph->GetName().c_str(), node->GetName().c_str(), in_node->GetName().c_str());
         q.emplace_back(node);
         host_exe_ops_.insert(node);
@@ -422,7 +423,7 @@ Status HostcpuEngineUpdatePass::FindHostDataOfPartitionCall(const ComputeGraphPt
       }
       if ((in_node != nullptr) && IsExecOnHost(in_node)) {
         if (host_exe_ops_.count(node) == 0U) {
-          GELOGD("[HostcpuEngineUpdatePass]: graph[%s] input[%s] is get host data[%s] cross partitioncall",
+          GELOGD("[HostcpuEngineUpdatePass]: graph[%s] input[%s] is getting host data[%s] across partitioncall",
                  graph->GetName().c_str(), node->GetName().c_str(), in_node->GetName().c_str());
           q.emplace_back(node);
           host_exe_ops_.insert(node);
@@ -478,7 +479,7 @@ Status HostcpuEngineUpdatePass::FindAndMarkHostCpuNode(std::deque<NodePtr> &q, N
       for (auto output_node : output_nodes) {
         GE_ASSERT_NOTNULL(output_node);
         if (host_exe_ops_.count(output_node) == 0U) {
-          GELOGD("[HostcpuEngineUpdatePass]: top_node[%s], output_node[%s], output_nodes size is %d",
+          GELOGD("[HostcpuEngineUpdatePass]: top_node[%s], output_node[%s], output_nodes size is %zu",
                  top->GetName().c_str(), output_node->GetName().c_str(), output_nodes.size());
           q.emplace_back(output_node);
         }
@@ -642,7 +643,7 @@ Status HostcpuEngineUpdatePass::Run(const ComputeGraphPtr &graph, NodeEngineMap 
   GELOGI("[HostcpuEngineUpdatePass]: graph[%s] optimize start.", graph->GetName().c_str());
   GE_MAKE_GUARD(clear_node_map, [this]() { ClearNodeMapSource(); });
   GE_ASSERT_SUCCESS(UpdateHostcpuEngine(graph, node_atomic_engine_map, node_composite_engine_map));
-  GELOGI("[HostcpuEngineUpdatePass]: graph[%s] optimize succ, host ops size=%u.", graph->GetName().c_str(),
+  GELOGI("[HostcpuEngineUpdatePass]: graph[%s] optimize succ, host ops size=%zu.", graph->GetName().c_str(),
          host_exe_ops_.size());
   return SUCCESS;
 }

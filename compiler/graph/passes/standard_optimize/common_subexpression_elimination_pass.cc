@@ -153,7 +153,7 @@ Status CommonSubexpressionEliminationPass::Run(ComputeGraphPtr graph) {
     }
 
     if (node->GetAllOutDataAnchorsSize() != iter->second->GetAllOutDataAnchorsSize()) {
-      GELOGW("The node %s and %s have the same CSE key, but different output anchor count, skip to fusion them",
+      GELOGW("The node %s and %s have the same CSE key, but different output anchor count, skip fusing them",
              iter->second->GetName().c_str(), node->GetName().c_str());
       continue;
     }

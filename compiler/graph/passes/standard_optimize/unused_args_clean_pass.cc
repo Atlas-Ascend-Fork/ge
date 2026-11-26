@@ -17,7 +17,7 @@ namespace ge {
 Status UnusedArgsCleanPass::Run(ComputeGraphPtr graph) {
   GE_CHECK_NOTNULL(graph);
   if (graph->GetParentGraph() != nullptr) {
-    GELOGD("Subgraph %s skip the UnusedArgsCleanPass", graph->GetName().c_str());
+    GELOGD("Subgraph %s skips the UnusedArgsCleanPass", graph->GetName().c_str());
     return SUCCESS;
   }
   GELOGD("Begin to run Unused args clean on graph: %s", graph->GetName().c_str());

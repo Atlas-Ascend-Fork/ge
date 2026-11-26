@@ -71,8 +71,8 @@ Status VariablePrepareOpPass::DealVariableNode(NodePtr &var_node) {
       for (auto output_index : ref_output_indexes) {
         Status ret = DealWritableNode(dst_node, input_index, output_index, var_node);
         if (ret != SUCCESS) {
-          GELOGE(FAILED, "[Deal][WritableNode] [%s] failed, input index:%d, output index:%d var:%s.",
-                 dst_node->GetName().c_str(), output_index, input_index, var_node->GetName().c_str());
+          GELOGE(FAILED, "[Deal][WritableNode] [%s] failed, input index:%d, output index:%d, var:%s.",
+                 dst_node->GetName().c_str(), input_index, output_index, var_node->GetName().c_str());
           return FAILED;
         }
       }
@@ -350,13 +350,13 @@ Status VariablePrepareOpPass::AddControlEdge(const ge::NodePtr &node, const ge::
 
       std::string ori_type;
       if (GetOriginalType(peer_node, ori_type) != SUCCESS) {
-        GELOGE(FAILED, "[Get][OriginalType] failed.");
+        GELOGE(FAILED, "[Get][OriginalType] failed, node:%s", peer_node->GetName().c_str());
         return FAILED;
       }
       if (kMergeOpTypes.count(ori_type) > 0U) {
         NodePtr identity_node = nullptr;
         if (InsertIdentityNode(node, out_anchor, peer_node, peer_in_anchor, identity_node) != SUCCESS) {
-          GELOGE(FAILED, "[Insert][Identity] between node:%s and it's peer node:%s failed", node->GetName().c_str(),
+          GELOGE(FAILED, "[Insert][Identity] between node:%s and its peer node:%s failed", node->GetName().c_str(),
                  peer_node->GetName().c_str());
           return FAILED;
         }
@@ -396,7 +396,7 @@ ge::NodePtr VariablePrepareOpPass::CreateRefIdentity(const std::string &ref_iden
   OpDescPtr ref_identity_op_desc = MakeShared<OpDesc>(ref_identity_name.c_str(), REFIDENTITY);
   if (ref_identity_op_desc == nullptr) {
     REPORT_INNER_ERR_MSG("E19999", "New OpDesc failed.");
-    GELOGE(FAILED, "[New][OpDesc] failed");
+    GELOGE(FAILED, "[New][OpDesc] failed, name:%s", ref_identity_name.c_str());
     return nullptr;
   }
 
@@ -425,7 +425,7 @@ ge::NodePtr VariablePrepareOpPass::CreateVariableRef(const std::string &variable
   OpDescPtr var_ref_op_desc = MakeShared<OpDesc>(variable_ref_name.c_str(), var_op_desc->GetType());
   if (var_ref_op_desc == nullptr) {
     REPORT_INNER_ERR_MSG("E19999", "New OpDesc failed");
-    GELOGE(FAILED, "New OpDesc failed");
+    GELOGE(FAILED, "[New][OpDesc] failed, name:%s", variable_ref_name.c_str());
     return nullptr;
   }
 

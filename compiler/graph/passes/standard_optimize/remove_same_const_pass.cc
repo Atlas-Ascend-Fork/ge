@@ -193,7 +193,7 @@ Status FilterSameKeyNodesByGeTensor(const std::map<std::string, std::vector<Node
 
 Status ReplaceConstNode(const ComputeGraphPtr &graph, const NodePtr &node, const NodePtr &to_be_removed_node) {
   if (to_be_removed_node->GetAllOutDataAnchorsSize() != node->GetAllOutDataAnchorsSize()) {
-    GELOGW("The const node %s and %s have the same CSE key, but different output anchor count, skip to fusion them",
+    GELOGW("The const node %s and %s have the same CSE key, but different output anchor count, skip fusing them",
            node->GetName().c_str(), to_be_removed_node->GetName().c_str());
     return SUCCESS;
   }
@@ -270,7 +270,7 @@ Status RemoveSameConstPass::Run(ComputeGraphPtr graph) {
       continue;
     }
     if (is_unknown) {
-      GELOGI("Current node %s, type %s is unknown shape which should be skip.", node->GetName().c_str(),
+      GELOGI("Current node %s, type %s is unknown shape which should be skipped.", node->GetName().c_str(),
              node->GetType().c_str());
       continue;
     }

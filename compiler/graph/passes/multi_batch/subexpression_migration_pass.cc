@@ -531,12 +531,12 @@ Status SubexpressionMigrationPass::DetachParallelNode(const std::map<uint32_t, N
       GE_CHK_GRAPH_STATUS_RET(GraphUtils::RemoveEdge(out_anchor, in_anchor), "[Remove][Edge] between %s and %s failed",
                               detach->GetName().c_str(), in_anchor->GetOwnerNode()->GetName().c_str());
       const auto &owner_node = in_anchor->GetOwnerNode();
-      GELOGI("Remove Edge: %s %s", detach->GetName().c_str(), owner_node->GetName().c_str());
+      GELOGD("Remove Edge: %s %s", detach->GetName().c_str(), owner_node->GetName().c_str());
 
       const auto &data_out_anchor = data_node->GetOutDataAnchor(kDataOutIndex);
       GE_CHK_GRAPH_STATUS_RET(GraphUtils::AddEdge(data_out_anchor, in_anchor), "[Add][Edge] between %s and %s failed",
                               data_node->GetName().c_str(), owner_node->GetName().c_str());
-      GELOGI("Add Edge: %s %s", data_node->GetName().c_str(), owner_node->GetName().c_str());
+      GELOGD("Add Edge: %s %s", data_node->GetName().c_str(), owner_node->GetName().c_str());
     }
   }
 
@@ -576,7 +576,7 @@ Status SubexpressionMigrationPass::AttachParallelNode(const ComputeGraphPtr &gra
                             "[Add][Edge] between %s and %s failed", out_anchor->GetOwnerNode()->GetName().c_str(),
                             attach->GetName().c_str());
     const auto &owner_node = out_anchor->GetOwnerNode();
-    GELOGI("Add Edge: %s %s", owner_node->GetName().c_str(), attach->GetName().c_str());
+    GELOGD("Add Edge: %s %s", owner_node->GetName().c_str(), attach->GetName().c_str());
   }
 
   for (uint32_t i = 0; i < attach->GetAllOutDataAnchorsSize(); ++i) {
@@ -600,12 +600,12 @@ Status SubexpressionMigrationPass::AttachParallelNode(const ComputeGraphPtr &gra
       GE_CHK_GRAPH_STATUS_RET(GraphUtils::RemoveEdge(out_anchor, in_anchor), "[Remove][Edge] between %s and %s failed",
                               out_anchor->GetOwnerNode()->GetName().c_str(), func_node->GetName().c_str());
       const auto &owner_node = out_anchor->GetOwnerNode();
-      GELOGI("Remove Edge: %s %s", owner_node->GetName().c_str(), func_node->GetName().c_str());
+      GELOGD("Remove Edge: %s %s", owner_node->GetName().c_str(), func_node->GetName().c_str());
     }
     GE_CHK_GRAPH_STATUS_RET(GraphUtils::AddEdge(attach->GetOutDataAnchor(i), in_anchor),
                             "[Add][Edge] between %s and %s failed", attach->GetName().c_str(),
                             func_node->GetName().c_str());
-    GELOGI("Add Edge: %s %s", attach->GetName().c_str(), func_node->GetName().c_str());
+    GELOGD("Add Edge: %s %s", attach->GetName().c_str(), func_node->GetName().c_str());
   }
 
   (void)graph->AddNode(attach);
@@ -673,7 +673,7 @@ Status SubexpressionMigrationPass::MoveNodeToParent(const ComputeGraphPtr &graph
 
     GE_CHK_GRAPH_STATUS_RET(subgraph->RemoveNode(move_node), "[Remove][Node] %s from graph:%s failed",
                             move_node->GetName().c_str(), graph->GetName().c_str());
-    GELOGI("Remove Node: %s %s", subgraph->GetName().c_str(), move_node->GetName().c_str());
+    GELOGD("Remove Node: %s %s", subgraph->GetName().c_str(), move_node->GetName().c_str());
   }
 
   if (AttachParallelNode(graph, func_node, move_node, inputs, outputs) != SUCCESS) {

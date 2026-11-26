@@ -313,7 +313,7 @@ Status FoldingPass::AddConstNode(const NodePtr &node, IndexsToAnchors indexes_to
         return INTERNAL_ERROR;
       }
     }
-    GELOGD("Add control edge when insert dynamic const, from node %s to const node %s, with stream label:%s.",
+    GELOGD("Add control edge when inserting dynamic const, from node %s to const node %s, with stream label:%s.",
            node->GetName().c_str(), const_node->GetName().c_str(), stream_label.c_str());
   }
 

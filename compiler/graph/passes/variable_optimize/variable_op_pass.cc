@@ -285,7 +285,7 @@ Status VariableOpPass::DealFusion(const SameVarPtr &same_vars) const {
       } else {
         GELOGD(
             "The trans node %s type %s connecting with var-ref %s has only"
-            " one output data nodes, isolate and remove it.",
+            " one output data node, isolate and remove it.",
             trans_node->GetName().c_str(), trans_node->GetType().c_str(), ref_node->GetName().c_str());
         if (GraphUtils::IsolateNode(trans_node, {0}) != SUCCESS) {
           REPORT_INNER_ERR_MSG("E19999", "Isolate node:%s(%s) failed", trans_node->GetName().c_str(),
@@ -683,10 +683,10 @@ Status VariableOpPass::RenewVarDesc(const ge::ComputeGraphPtr &graph) const {
       auto var_manager = ge::VarManager::Instance(graph->GetSessionID());
       GE_CHECK_NOTNULL(var_manager);
       if (!var_manager->IsVarExist(node->GetName())) {
-        GELOGD("var manager does not exist var node[%s]", node->GetName().c_str());
+        GELOGD("var node[%s] does not exist in var manager", node->GetName().c_str());
         continue;
       }
-      GELOGD("var manager exist var node[%s], graph name[%s]", node->GetName().c_str(), graph->GetName().c_str());
+      GELOGD("var node[%s] exists in var manager, graph name[%s]", node->GetName().c_str(), graph->GetName().c_str());
       GE_CHECK_NOTNULL(node->GetOpDesc());
       ret = var_manager->RenewCurVarDesc(node->GetName(), node->GetOpDesc());
       if (ret != SUCCESS) {
@@ -719,10 +719,10 @@ Status VariableOpPass::RenewVarDesc(uint64_t session_id, const NodePtr &node, co
   }
   GE_ASSERT_NOTNULL(ge::VarManager::Instance(session_id));
   if (!ge::VarManager::Instance(session_id)->IsVarExist(node->GetName())) {
-    GELOGD("var manager does not exist var node[%s]", node->GetName().c_str());
+    GELOGD("var node[%s] does not exist in var manager", node->GetName().c_str());
     return SUCCESS;
   }
-  GELOGD("var manager exist var node[%s]", node->GetName().c_str());
+  GELOGD("var node[%s] exists in var manager", node->GetName().c_str());
   GE_CHECK_NOTNULL(node->GetOpDesc());
   Status ret = ge::VarManager::Instance(session_id)->RenewCurVarDesc(node->GetName(), node->GetOpDesc());
   if (ret != SUCCESS) {

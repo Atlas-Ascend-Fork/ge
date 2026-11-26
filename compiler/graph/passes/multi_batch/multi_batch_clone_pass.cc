@@ -90,7 +90,7 @@ Status MultiBatchClonePass::Run(ComputeGraphPtr graph) {
     return PARAM_INVALID;
   }
   if (batch_shapes_.empty()) {
-    GELOGD("There is no multi-batch options, no need clone multi-batch graph");
+    GELOGD("There are no multi-batch options, no need to clone the multi-batch graph");
     return SUCCESS;
   }
   if (multibatch::CheckNegativeCountOfOptions(batch_shapes_) != SUCCESS) {
@@ -346,7 +346,7 @@ Status MultiBatchClonePass::InitParamsOfGetNext(const NodePtr &node) {
       NodePtr next_node = peer_in_control_anchor->GetOwnerNode();
       if (next_node->GetType() == CONSTANTOP) {
         out_control_nodes_.insert(next_node);
-        GELOGD("Control edge: %s connect with %s.", node->GetName().c_str(), next_node->GetName().c_str());
+        GELOGD("Control edge: %s connects with %s.", node->GetName().c_str(), next_node->GetName().c_str());
       }
     }
   }
@@ -383,7 +383,7 @@ Status MultiBatchClonePass::GetInputAndOutputNum(uint32_t &input_num, uint32_t &
 /// @return 0: SUCCESS / others: FAILED
 ///
 Status MultiBatchClonePass::CreateRootGraph(const ComputeGraphPtr &graph) {
-  GELOGD("Start create root graph of %s.", graph->GetName().c_str());
+  GELOGD("Start creating root graph of %s.", graph->GetName().c_str());
   uint32_t input_num = 0;
   uint32_t output_num = 0;
   if (GetInputAndOutputNum(input_num, output_num) != SUCCESS) {
@@ -703,7 +703,7 @@ Status MultiBatchClonePass::CreateGetDynamicDimsNode(const ComputeGraphPtr &grap
 
 Status MultiBatchClonePass::AddAttrForGetDynamicDims(const NodePtr &shape_node) const {
   if (!getnext_sink_dynamic_dims_) {
-    GELOGD("No need to add attr when not insert get dynamic dims node.");
+    GELOGD("No need to add attr when the get dynamic dims node is not inserted.");
     return SUCCESS;
   }
   GELOGD("Add attr for %s, type is %s", shape_node->GetName().c_str(), shape_node->GetType().c_str());
@@ -1177,8 +1177,10 @@ Status MultiBatchClonePass::SetMaxShapeToData(const NodePtr &node, size_t out_an
       if (INT64_MAX / dim < size) {
         REPORT_INNER_ERR_MSG("E19999", "The shape %s size will overflow after multi",
                              ToString(data_to_dynamic_info_.at(data_name).at(i)).c_str());
-        GELOGE(PARAM_INVALID, "[Check][Param] The shape %s size overflow",
-               ToString(data_to_dynamic_info_.at(data_name).at(i)).c_str());
+        GELOGE(PARAM_INVALID,
+               "[Check][Param] The shape %s size will overflow, the max allowed size is %lld, current size is %lld",
+               ToString(data_to_dynamic_info_.at(data_name).at(i)).c_str(), static_cast<long long>(INT64_MAX),
+               static_cast<long long>(size));
         return PARAM_INVALID;
       }
       size *= dim;
@@ -1248,7 +1250,7 @@ Status MultiBatchClonePass::SetShapeToData(const std::vector<int64_t> &shapes, c
 }
 
 Status MultiBatchClonePass::UpdateShapeOfShapeNode(const NodePtr &node, size_t out_anchor_index) const {
-  GELOGD("Start update output shape of shape node insert by adapter, which is the %zu out of %s.", out_anchor_index,
+  GELOGD("Start update output shape of shape node inserted by adapter, which is the %zu out of %s.", out_anchor_index,
          node->GetName().c_str());
   auto data_shape = NodeUtils::GetOutputDesc(*node, out_anchor_index).GetShape();
   size_t shape_index = out_anchor_index + (node->GetAllOutDataAnchors().size() / kDivisionConst);
@@ -1333,7 +1335,7 @@ Status MultiBatchClonePass::CreateOriGraph(const ComputeGraphPtr &graph) {
     GELOGD("No need to change original graph without getnext node.");
     return SUCCESS;
   }
-  GELOGD("Start change original graph: %s when exist getnext node.", graph->GetName().c_str());
+  GELOGD("Start change original graph: %s when a getnext node exists.", graph->GetName().c_str());
   size_t data_index = all_data_nodes_.size() - kNumOfGetnextNode;
   for (const auto &node : graph->GetDirectNode()) {
     if (IsGetNextType(node)) {
@@ -1417,7 +1419,7 @@ NodePtr MultiBatchClonePass::CreateDataNode(const ComputeGraphPtr &graph, const 
   }
   NodePtr data_node = graph->AddNode(op_desc);
   GE_ASSERT_NOTNULL(data_node);
-  GELOGD("Success create %s node.", data_node->GetName().c_str());
+  GELOGD("Successfully created %s node.", data_node->GetName().c_str());
   return data_node;
 }
 

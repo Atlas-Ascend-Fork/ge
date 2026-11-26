@@ -103,7 +103,8 @@ Status SubgraphMultiDimsClonePass::MergeDataDynDims() {
     GE_CHECK_NOTNULL(tensor_desc);
     const auto &shape = tensor_desc->GetShape();
     if (shape.GetDimNum() == 0U) {
-      GELOGE(PARAM_INVALID, "Invalid input shape for data node[%s]", node->GetName().c_str());
+      GELOGE(PARAM_INVALID, "Invalid input shape for data node[%s], dim num:%zu, expected greater than 0",
+             node->GetName().c_str(), shape.GetDimNum());
       return FAILED;
     }
     GELOGI("dims.size: %zu, shape.size: %zu.", dims.size(), shape.GetDimNum());
@@ -136,7 +137,7 @@ Status SubgraphMultiDimsClonePass::CreateOriGraph(const ComputeGraphPtr &subgrap
                     subgraph->GetName().c_str());
   GE_CHK_STATUS_RET(CreateIndexConstNode(subgraph), "[Create][IndexConstNode] failed, graph:%s",
                     subgraph->GetName().c_str());
-  GE_CHK_STATUS_RET(CreateMapIndexNode(subgraph), "[Create][GetShapeNode] for graph:%s failed",
+  GE_CHK_STATUS_RET(CreateMapIndexNode(subgraph), "[Create][MapIndexNode] for graph:%s failed",
                     subgraph->GetName().c_str());
   GE_CHK_STATUS_RET(CreateCaseNode(subgraph), "[Create][CaseNode] for graph:%s failed", subgraph->GetName().c_str());
   GE_CHK_STATUS_RET(CreateInputNode(subgraph), "[Create][InputNode] for graph:%s failed", subgraph->GetName().c_str());

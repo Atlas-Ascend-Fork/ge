@@ -69,7 +69,7 @@ bool ParseDynamicSize(std::string dynamic_size, std::vector<std::vector<int64_t>
 
 Status DistinguishGetNextAndData(const ComputeGraphPtr &graph, std::vector<NodePtr> &data_nodes,
                                  std::vector<NodePtr> &getnext_nosink_nodes, std::vector<NodePtr> &getnext_sink_nodes) {
-  GELOGD("Start distinguish getnext and data node.");
+  GELOGD("Start to distinguish between getnext and data nodes.");
   for (NodePtr &input_node : graph->GetDirectNode()) {
     GE_CHECK_NOTNULL(input_node);
     OpDescPtr op_desc = input_node->GetOpDesc();
@@ -116,7 +116,7 @@ Status CheckNodeSize(const ComputeGraphPtr &graph, const std::vector<NodePtr> &d
 }
 
 Status CheckSequenceOfData(const ComputeGraphPtr &graph, const std::vector<NodePtr> &data_nodes) {
-  GELOGD("Start check input sequence from data nodes and input shape.");
+  GELOGD("Start to check input sequence from data nodes and input shape.");
   GE_ASSERT_SUCCESS(CheckNodeSize(graph, data_nodes));
   for (size_t i = 0; i < data_nodes.size(); ++i) {
     auto data_node = data_nodes.at(i);
@@ -273,7 +273,7 @@ Status UpdateNameOfGetnext(const ComputeGraphPtr &graph, const std::vector<NodeP
         "E10001", std::vector<const char *>({"value", "parameter", "reason"}),
         std::vector<const char *>({std::to_string(data_count).c_str(), "input_shape", reason.c_str()}));
     GELOGE(PARAM_INVALID,
-           "[Check][Param]Output desc count of %s is %zu, "
+           "[Check][Param] Output desc count of %s is %zu, "
            "should be equal to count of input shape:%zu, graph:%s",
            op_desc->GetName().c_str(), data_count, GetLocalOmgContext().user_input_dims.size(),
            graph->GetName().c_str());
@@ -490,7 +490,7 @@ Status CheckNegativeCountOfOptions(const std::vector<std::vector<int64_t>> &shap
             "E10001", std::vector<const char *>({"parameter", "value", "reason"}),
             std::vector<const char *>({"dynamic_dims's per dims count", std::to_string(shapes.at(i).size()).c_str(),
                                        "dynamic_dims's per dims count should be equal to input_shape's dim size."}));
-        GELOGE(PARAM_INVALID, "[Check][Param] gear num of dynamic_dims is %zu should be equal to num:%zu from option",
+        GELOGE(PARAM_INVALID, "[Check][Param] gear num of dynamic_dims is %zu, should be equal to num:%zu from option",
                shapes.at(i).size(), negative_count);
         return PARAM_INVALID;
       }
@@ -617,7 +617,7 @@ Status CheckDynamicParams(const std::vector<std::vector<int64_t>> &shapes) {
         std::vector<const char *>({std::to_string(shapes.size()).c_str(), std::to_string(kMinShapesCount).c_str()}));
     GELOGE(PARAM_INVALID,
            "[Check][Param] Input parameter[--dynamic_batch_size, --dynamic_image_size or --dynamic_dims]'s "
-           "value size [%zu] should not less than [%d].",
+           "value size [%zu] should not be less than [%d].",
            shapes.size(), kMinShapesCount);
     return PARAM_INVALID;
   }
@@ -648,7 +648,7 @@ Status CheckDynamicParams(const std::vector<std::vector<int64_t>> &shapes) {
     REPORT_PREDEFINED_ERR_MSG("E10039", std::vector<const char *>({}), std::vector<const char *>({}));
     GELOGE(PARAM_INVALID,
            "[Check][Param] Input parameter[--dynamic_batch_size, "
-           "--dynamic_image_size or --dynamic_dims] exist duplicate shapes.");
+           "--dynamic_image_size or --dynamic_dims] contains duplicate shapes.");
     return PARAM_INVALID;
   }
   return SUCCESS;
@@ -765,7 +765,7 @@ bool CheckDynamicImageSizeShape(const std::vector<int64_t> &shape, const std::st
     std::string reason = "When --dynamic_image_size is set, the input format only supports NCHW or NHWC.";
     REPORT_PREDEFINED_ERR_MSG("E10003", std::vector<const char *>({"parameter", "value", "reason"}),
                               std::vector<const char *>({"input_format", input_format.c_str(), reason.c_str()}));
-    GELOGE(ge::PARAM_INVALID, "when set --dynamic_image_size, input format only support NCHW and NHWC.");
+    GELOGE(ge::PARAM_INVALID, "when set --dynamic_image_size, input format only supports NCHW and NHWC.");
   }
 
   if (height == kDynmaicDims && width == kDynmaicDims &&
@@ -800,7 +800,8 @@ Status ParseInputShapes(const std::string &input_shapes,
     std::vector<int64_t> shape_values;
     for (auto &shape_value_str : shape_value_strs) {
       if (shape_value_str.find('.') != std::string::npos) {
-        GELOGE(INTERNAL_ERROR, "unsupported float config value.");
+        GELOGE(INTERNAL_ERROR, "shape value [%s] is unsupported, float config value is not allowed.",
+               shape_value_str.c_str());
         return INTERNAL_ERROR;
       }
       int64_t result = 0;
@@ -912,7 +913,7 @@ Status ParseDynamicDims(const std::string &dynamic_dims, DimsVector &dynamic_dim
     GE_CHK_BOOL_RET_STATUS(
         one_dim_set.size() == static_cast<size_t>(dynamic_dim_num), FAILED,
         "dynamic_dims: %s invalid. reason: Each gear setting needs to be consistent with the number of -1 in the "
-        "inputshape.",
+        "input shape.",
         dynamic_dims.c_str());
 
     std::vector<int64_t> digit_vec;
@@ -945,7 +946,9 @@ Status ParseDynamicShapes(const std::string &input_shapes,
     std::vector<int64_t> shape_values;
     for (auto &shape_value_str : shape_value_strs) {
       // stoul: The method may throw an exception: invalid_argument/out_of_range
-      GE_CHK_BOOL_RET_STATUS(shape_value_str.find('.') == std::string::npos, FAILED, "unsupported float config value.");
+      GE_CHK_BOOL_RET_STATUS(shape_value_str.find('.') == std::string::npos, FAILED,
+                             "shape value [%s] is unsupported, float config value is not allowed.",
+                             shape_value_str.c_str());
       int64_t result = std::strtol(shape_value_str.c_str(), nullptr, kDecimal);
       GE_CHK_BOOL_RET_STATUS(shape_value_str == std::to_string(result), FAILED,
                              "value %s is invalid, should be int, such as 0, 1, 2.", shape_value_str.c_str());

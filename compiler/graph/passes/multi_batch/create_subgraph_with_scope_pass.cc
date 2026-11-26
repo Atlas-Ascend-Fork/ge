@@ -43,7 +43,7 @@ Status CheckSameDims(const vector<vector<int64_t>> &param) {
   const size_t first_dim = param[0].size();
   for (const auto &item : param) {
     if (item.size() != first_dim) {
-      GELOGE(FAILED, "Check 2D array dimensions failed");
+      GELOGE(FAILED, "Check 2D array dimensions failed, current dim size is %zu, expected %zu", item.size(), first_dim);
       return FAILED;
     }
   }
@@ -92,7 +92,7 @@ Status SetTensorShapeRange(const NodePtr &node) {
     auto output_desc = op_desc->MutableOutputDesc(i);
     GE_CHECK_NOTNULL(output_desc);
     ge::TensorUtils::SetSize(*output_desc, 0);
-    GELOGI("Node[%s] output[%zu] tensor setsize 0", node->GetName().c_str(), i);
+    GELOGI("Node[%s] output[%zu] tensor set size 0", node->GetName().c_str(), i);
   }
   return SUCCESS;
 }
@@ -252,7 +252,8 @@ Status CreateSubGraphWithScopePass::CollectDynamicNodes(const ComputeGraphPtr &g
   std::string dynamic_node_type;
   (void)GetContext().GetOption(DYNAMIC_NODE_TYPE, dynamic_node_type);
   GE_CHK_BOOL_RET_STATUS((dynamic_node_type == "0" || dynamic_node_type == "1"), FAILED,
-                         "Node type value should be 0 or 1.");
+                         "Config [%s] is invalid, current value is [%s], expected 0 or 1.", DYNAMIC_NODE_TYPE.c_str(),
+                         dynamic_node_type.c_str());
   std::function<bool(const NodePtr &)> is_get_next_type = [](const NodePtr &node) {
     const auto &op_desc = node->GetOpDesc();
     std::string original_type;
@@ -482,7 +483,9 @@ Status CreateSubGraphWithScopePass::ParseSubGraphMultiAttrs(const NodePtr &node,
     std::vector<std::string> tensor_shape = ge::StringUtils::Split(it, ':');
     const int32_t kDefaultShapePairSize = 2;
     GE_RT_PARAM_INVALID_WITH_LOG_IF_TRUE(tensor_shape.size() != kDefaultShapePairSize,
-                                         "parse tensor_shape failed, shape is [%s]", it.c_str());
+                                         "parse tensor_shape failed, shape is [%s], expected format "
+                                         "index:dim0,dim1,... (2 fields separated by ':')",
+                                         it.c_str());
     int64_t index = std::strtol(tensor_shape[0U].c_str(), nullptr, kDecimal);  // decimal
     GE_RT_PARAM_INVALID_WITH_LOG_IF_TRUE(index >= static_cast<int64_t>(op_desc->GetAllInputsSize()),
                                          "Invalid input shape for node[%s], input size[%zu], index[%ld]",
@@ -782,7 +785,8 @@ Status CreateSubGraphWithScopePass::CopyPartitionedCallAttrToData(const ComputeG
     int32_t parent_index = -1;
     if (!AttrUtils::GetInt(op_desc, ATTR_NAME_PARENT_NODE_INDEX, parent_index) || parent_index < 0) {
       REPORT_INNER_ERR_MSG("E19999", "Invalid parent index for data node[%s].", node->GetName().c_str());
-      GELOGE(PARAM_INVALID, "Invalid parent index for data node[%s].", node->GetName().c_str());
+      GELOGE(PARAM_INVALID, "Invalid parent index[%d] for data node[%s], expect >=0.", parent_index,
+             node->GetName().c_str());
       return PARAM_INVALID;
     }
     const std::map<int64_t, std::vector<int64_t>>::const_iterator &shape = input_shape->second.find(parent_index);
@@ -897,7 +901,7 @@ Status CreateSubGraphWithScopePass::MergeInputAnchors(const ComputeGraphPtr &sub
       scope_data_node_exist = true;
       data_desc = data_node->GetOpDesc();
       GE_CHECK_NOTNULL(data_desc);
-      GELOGI("Scope data node [%s] exist.", data_node->GetName().c_str());
+      GELOGI("Scope data node [%s] exists.", data_node->GetName().c_str());
     } else {
       data_desc = MakeShared<OpDesc>(
           subgraph->GetName() + peer_node->GetName() + "_data_" + std::to_string(parent_index), DATA);
@@ -920,8 +924,8 @@ Status CreateSubGraphWithScopePass::MergeInputAnchors(const ComputeGraphPtr &sub
       const int32_t peer_anchor_idx = peer_anchor->GetIdx();
       GE_RETURN_WITH_LOG_IF_TRUE(peer_anchor_idx < 0, "Value of peer_anchor_idx[%d] is less than 0.", peer_anchor_idx);
       GE_RETURN_WITH_LOG_IF_TRUE(max_shape.size() <= static_cast<size_t>(peer_anchor_idx),
-                                 "Value of max_op_shape[%s] invalid, peer anchor index[%d]", max_op_shape.c_str(),
-                                 peer_anchor_idx);
+                                 "Value of max_op_shape[%s] invalid, peer anchor index[%d], valid range [0, %zu).",
+                                 max_op_shape.c_str(), peer_anchor_idx, max_shape.size());
       (void)AttrUtils::SetStr(data_desc, ATTR_NAME_OP_MAX_SHAPE, max_shape[peer_anchor_idx]);
       GELOGI("Node[%s] max_op_shape:[%s], max_shape[%d]:[%s]", node->GetName().c_str(), max_op_shape.c_str(),
              peer_anchor_idx, max_shape[peer_anchor_idx].c_str());
@@ -973,7 +977,7 @@ Status CreateSubGraphWithScopePass::SetDataDynDimsInfo(const NodePtr &node, cons
   const std::map<NodePtr, std::map<int64_t, std::vector<int64_t>>>::const_iterator &input_shape =
       node_to_input_shape_.find(node);
   if (input_shape == node_to_input_shape_.cend()) {
-    GELOGI("No node exist in node_to_input_shape_");
+    GELOGI("No node exists in node_to_input_shape_.");
     return SUCCESS;
   }
   const std::map<int64_t, std::vector<int64_t>>::const_iterator &shape = input_shape->second.find(input_index);

@@ -50,7 +50,7 @@ Status EndOfSequenceAddControlPass::Run(ComputeGraphPtr graph) {
 
   // Insert control edge
   for (const auto &node : target_nodes) {
-    GELOGI("Add ctrl edge between %s and %s", end_of_sequence->GetName().c_str(), node->GetName().c_str());
+    GELOGD("Add ctrl edge between %s and %s", end_of_sequence->GetName().c_str(), node->GetName().c_str());
     if (GraphUtils::AddEdge(end_of_sequence->GetOutControlAnchor(), node->GetInControlAnchor()) != GRAPH_SUCCESS) {
       REPORT_INNER_ERR_MSG("E19999", "Add ctrl edge between %s and %s failed", end_of_sequence->GetName().c_str(),
                            node->GetName().c_str());

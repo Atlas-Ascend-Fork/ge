@@ -593,7 +593,7 @@ Status BaseCluster::BuildPartitionSubgraph() {
                             subgraph_->GetName().c_str(), data_op->GetName().c_str());
     for (const auto &node_anchor : data_to_node_inputs_[parent_node_index]) {
       GE_CHK_GRAPH_STATUS_RET(GraphUtils::AddEdge(data_node->GetOutDataAnchor(0), node_anchor),
-                              "[Call][AddEdge] Failed add data input edge to %s:%d",
+                              "[Call][AddEdge] Failed to add data input edge to %s:%d",
                               node_anchor->GetOwnerNode()->GetName().c_str(), node_anchor->GetIdx());
     }
     parent_node_index++;
@@ -611,7 +611,7 @@ Status BaseCluster::BuildPartitionSubgraph() {
                             net_output_op->GetName().c_str());
   }
   auto net_output_node = subgraph_->AddNode(net_output_op);
-  GE_ASSERT_NOTNULL(net_output_node, "[Call][AddNode] Failed add netoutput node:%s to subgraph:%s.",
+  GE_ASSERT_NOTNULL(net_output_node, "[Call][AddNode] Failed to add netoutput node:%s to subgraph:%s.",
                     net_output_op->GetName().c_str(), subgraph_->GetName().c_str());
   GE_CHK_GRAPH_STATUS_RET(net_output_node->SetOwnerComputeGraph(subgraph_),
                           "[Set][OwnerGraph] %s of netoutput node:%s failed.", subgraph_->GetName().c_str(),

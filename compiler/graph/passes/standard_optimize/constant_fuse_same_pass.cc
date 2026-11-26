@@ -176,7 +176,7 @@ Status ConstantFuseSamePass::FuseConstNodes(ComputeGraphPtr &graph,
     for (size_t i = 1; i < len; ++i) {
       auto node = nodes.at(i);
 
-      GELOGI("Replace redundant const node %s by %s", node->GetName().c_str(), first_node->GetName().c_str());
+      GELOGD("Replace redundant const node %s by %s", node->GetName().c_str(), first_node->GetName().c_str());
       // the const node which can be fused has none input(both data and control in)
       if (GraphUtils::MoveOutCtrlEdges(node, first_node) != SUCCESS) {
         return FAILED;

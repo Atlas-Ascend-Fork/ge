@@ -35,10 +35,11 @@ Status CaseOpLabelMaker::Run(uint32_t &label_index) {
 
   const auto graph_names = case_desc->GetSubgraphInstanceNames();
   if (graph_names.empty() || graph_names.size() > kMaxCaseBranch) {
-    REPORT_INNER_ERR_MSG("E19999", "Node:%s(%s) subgraph size: %zu, check invalid", case_desc->GetName().c_str(),
-                         case_desc->GetType().c_str(), graph_names.size());
-    GELOGE(INTERNAL_ERROR, "[Check][Param] Node: %s has invalid subgraph, graph size: %zu.",
-           case_desc->GetName().c_str(), graph_names.size());
+    REPORT_INNER_ERR_MSG("E19999", "Node:%s(%s) subgraph size: %zu, should be in [%u, %u], check invalid",
+                         case_desc->GetName().c_str(), case_desc->GetType().c_str(), graph_names.size(), kMinCaseBranch,
+                         kMaxCaseBranch);
+    GELOGE(INTERNAL_ERROR, "[Check][Param] Node: %s has invalid subgraph, graph size: %zu, should be in [%u, %u].",
+           case_desc->GetName().c_str(), graph_names.size(), kMinCaseBranch, kMaxCaseBranch);
     return FAILED;
   }
 
@@ -62,7 +63,7 @@ Status CaseOpLabelMaker::Run(uint32_t &label_index) {
         parent_node_->GetName() + "/StreamActive_" + std::to_string(index);  // rtStreamActive
     NodePtr stream_active = AddStreamActive(graph, stream_active_name);
     if (stream_active == nullptr) {
-      REPORT_INNER_ERR_MSG("E19999", "Add StreamActive node in graph:%s fail", graph->GetName().c_str());
+      REPORT_INNER_ERR_MSG("E19999", "Failed to add StreamActive node in graph:%s", graph->GetName().c_str());
       GELOGE(INTERNAL_ERROR, "[Add][StreamActive] in Subgraph: %s failed.", graph->GetName().c_str());
       return FAILED;
     }
@@ -71,7 +72,7 @@ Status CaseOpLabelMaker::Run(uint32_t &label_index) {
     std::string label_set_name = parent_node_->GetName() + "/LabelSet_" + std::to_string(index);  // rtLabelSet
     NodePtr label = AddLabelSetEnter(graph, label_set_name, curr_label_index, stream_active);
     if (label == nullptr) {
-      REPORT_INNER_ERR_MSG("E19999", "Add LabelSetEnter node in graph:%s fail", graph->GetName().c_str());
+      REPORT_INNER_ERR_MSG("E19999", "Failed to add LabelSetEnter node in graph:%s", graph->GetName().c_str());
       GELOGE(INTERNAL_ERROR, "[Call][AddLabelSetEnter] Subgraph: %s add label set failed.", graph->GetName().c_str());
       return FAILED;
     }
@@ -85,7 +86,7 @@ Status CaseOpLabelMaker::Run(uint32_t &label_index) {
       // middle node, add goto node to tail.
       std::string label_goto_name = parent_node_->GetName() + "/LabelGoto_" + std::to_string(index);  // rtLabelGoto
       if (AddLabelGotoLeave(graph, label_goto_name, last_label_index) == nullptr) {
-        REPORT_INNER_ERR_MSG("E19999", "Add LabelGotoLeave node in graph:%s fail", graph->GetName().c_str());
+        REPORT_INNER_ERR_MSG("E19999", "Failed to add LabelGotoLeave node in graph:%s", graph->GetName().c_str());
         GELOGE(INTERNAL_ERROR, "[Call][AddLabelGotoLeave] Subgraph: %s add label goto failed.",
                graph->GetName().c_str());
         return FAILED;
@@ -94,7 +95,7 @@ Status CaseOpLabelMaker::Run(uint32_t &label_index) {
       // last node, add label node to tail.
       std::string last_label_name = parent_node_->GetName() + "/LabelSet_Last";  // rtLabelSet
       if (AddLabelSetLeave(graph, last_label_name, last_label_index) == nullptr) {
-        REPORT_INNER_ERR_MSG("E19999", "Add LabelSetLeave node in graph:%s fail", graph->GetName().c_str());
+        REPORT_INNER_ERR_MSG("E19999", "Failed to add LabelSetLeave node in graph:%s", graph->GetName().c_str());
         GELOGE(INTERNAL_ERROR, "[Call][AddLabelSetLeave] Subgraph: %s add label set failed.", graph->GetName().c_str());
         return FAILED;
       }

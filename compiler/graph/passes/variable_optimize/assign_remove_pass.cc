@@ -109,9 +109,9 @@ Status AssignRemovePass::OptimizedAssignNode(NodePtr &assign_node) {
       GE_ASSERT_SUCCESS(NodeUtils::AppendInputAnchor(ref_peer_anchor->GetOwnerNode(), 1U));
     }
     if (ref_input->UpdateInputDesc(0U, value_input->GetOutputDesc(value_peer_anchor->GetIdx())) != GRAPH_SUCCESS) {
-      REPORT_INNER_ERR_MSG("E19999", "Input index %d of node:%s(%s), update it's peer op input:0 desc failed",
+      REPORT_INNER_ERR_MSG("E19999", "Input index %d of node:%s(%s), update its peer op input:0 desc failed",
                            kAssignRefInputIndex, assign_node->GetName().c_str(), assign_node->GetType().c_str());
-      GELOGE(FAILED, "[Update][InputDesc] Input index %d of node:%s(%s), update it's peer op input:0 desc failed",
+      GELOGE(FAILED, "[Update][InputDesc] Input index %d of node:%s(%s), update its peer op input:0 desc failed",
              kAssignRefInputIndex, assign_node->GetName().c_str(), assign_node->GetType().c_str());
       return FAILED;
     }

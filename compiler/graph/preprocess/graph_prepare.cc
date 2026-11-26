@@ -391,13 +391,17 @@ Status TransferShape2NC1HWC0(Format src_format, const std::vector<int64_t> &src_
   if (src_format == FORMAT_NCHW) {
     formats::FormatTransferNchwNc1hwc0 transfer;
     if (transfer.TransShape(src_format, src_shape, dt, dst_format, dst_shape) != SUCCESS) {
-      GELOGE(INTERNAL_ERROR, "[Trans][Shape] failed");
+      GELOGE(INTERNAL_ERROR, "[Trans][Shape] failed, src_format:%s, src_shape:%s, dst_format:%s.",
+             TypeUtils::FormatToSerialString(src_format).c_str(), ToString(src_shape).c_str(),
+             TypeUtils::FormatToSerialString(dst_format).c_str());
       return FAILED;
     }
   } else if (src_format == FORMAT_NHWC) {
     formats::FormatTransferNhwcNc1hwc0 transfer;
     if (transfer.TransShape(src_format, src_shape, dt, dst_format, dst_shape) != SUCCESS) {
-      GELOGE(INTERNAL_ERROR, "[Trans][Shape] failed");
+      GELOGE(INTERNAL_ERROR, "[Trans][Shape] failed, src_format:%s, src_shape:%s, dst_format:%s.",
+             TypeUtils::FormatToSerialString(src_format).c_str(), ToString(src_shape).c_str(),
+             TypeUtils::FormatToSerialString(dst_format).c_str());
       return FAILED;
     }
   }
@@ -453,7 +457,9 @@ Status ModifyFormatAndShapeForSingleTensor(const GeTensorDescPtr &input_output) 
   ge::DataType dt = input_output->GetDataType();
   std::vector<int64_t> dst_shape_dims;
   if (TransferShape2NC1HWC0(old_format, old_shape, dt, FORMAT_NC1HWC0, dst_shape_dims) != SUCCESS) {
-    GELOGE(INTERNAL_ERROR, "[Trans][Shape] to NC1HWC0 failed");
+    GELOGE(INTERNAL_ERROR, "[Trans][Shape] to NC1HWC0 failed, src_format:%s, src_shape:%s, data_type:%s.",
+           TypeUtils::FormatToSerialString(old_format).c_str(), ToString(old_shape).c_str(),
+           TypeUtils::DataTypeToSerialString(dt).c_str());
     return FAILED;
   }
   input_output->SetFormat(FORMAT_NC1HWC0);
@@ -558,7 +564,7 @@ graphStatus TransferStorageShapeRangeAccordingFormat(const OpDescPtr &op_desc, c
   is_success = range_transfer.GetRangeAccordingToFormat(range_and_format_info);
   GE_ASSERT_TRUE(is_success);
   GELOGI(
-      "Transform range, node:%s, index:%d, origin range:%s, expend range:%s, origin_format:%s, storage range:%s, "
+      "Transform range, node:%s, index:%d, origin range:%s, expand range:%s, origin_format:%s, storage range:%s, "
       "storage format:%s.",
       op_desc->GetName().c_str(), idx_2_tensor_desc.first, formats::RangeToString(origin_range).c_str(),
       formats::RangeToString(expand_range).c_str(), ge::TypeUtils::FormatToSerialString(origin_format).c_str(),
@@ -909,7 +915,7 @@ Status ProcessDataNodeDynShape(const NodePtr &data_node) {
     return FAILED;
   }
   if (is_dynamic_batch && ProcessMbatchScene(mbatch_case_node, dt_set, index) != SUCCESS) {
-    GELOGE(INTERNAL_ERROR, "[Process][MbatchScene] failed");
+    GELOGE(INTERNAL_ERROR, "[Process][MbatchScene] failed, op:%s, index:%d", op_desc->GetName().c_str(), index);
     return FAILED;
   }
 
@@ -1105,7 +1111,7 @@ Status ProcessNetoutputNodeDynShape(const NodePtr &node) {
 
       GeTensorDesc old_desc(old_shape, old_format, old_dtype);
       if (ProcessNetoutputNodeFp16Nc1hwc0DynShape(old_desc, net_output_input_desc, src_node) != SUCCESS) {
-        GELOGE(INTERNAL_ERROR, "[Process][NetOutput] fp16 nc1hwc0 failed.");
+        GELOGE(INTERNAL_ERROR, "[Process][NetOutput] fp16 nc1hwc0 failed, op:%s", src_node->GetName().c_str());
         return FAILED;
       }
     }
@@ -1917,7 +1923,7 @@ Status GraphPrepare::UpdateDataByStorageFormat(const NodePtr &data_node) const {
     const std::string io_type = (to_update_tensor_desc.io_type == IO::kInput) ? "input" : "output";
     int64_t tensor_size;
     TensorUtils::GetSize(*idx_2_tensor_desc.second, tensor_size);
-    GELOGI("[UpdateStorageFormat]Modify node %s[%s] %s %u %s[%s] -> %s[%s] success, tensor size %ld",
+    GELOGI("[UpdateStorageFormat]Modify node %s[%s] %s %u %s[%s] -> %s[%s] success, tensor size %ld bytes",
            to_update_tensor_desc.op_desc->GetName().c_str(), to_update_tensor_desc.op_desc->GetType().c_str(),
            io_type.c_str(), to_update_tensor_desc.index, ge::TypeUtils::FormatToSerialString(origin_format).c_str(),
            origin_shape.ToString().c_str(), ge::TypeUtils::FormatToSerialString(storage_format).c_str(),
@@ -2293,7 +2299,7 @@ Status GraphPrepare::VerifyConstOp(const NodePtr &node) const {
   const auto dim_num = ge_tensor_desc.GetShape().GetDims().size();
   const auto data_size = ge_tensor_ptr->GetData().GetSize();
   const auto shape_size = ge_tensor_desc.GetShape().GetShapeSize();
-  GELOGI("Const real value Size:%zu, op_desc Shape Size:%ld, data_type:%s.", data_size, shape_size,
+  GELOGI("Const real value size:%zu bytes, op_desc shape size:%ld elements, data_type:%s.", data_size, shape_size,
          TypeUtils::DataTypeToSerialString(data_type).c_str());
   return CheckTensorIsValid(node, shape_size, data_size, dim_num, data_type);
 }
@@ -2307,7 +2313,7 @@ bool GraphPrepare::IsDynamicDims(const NodePtr &input_node) const {
   }
   if (!all_is_positive && !options_.input_shape.empty() && !options_.dynamic_dims.empty() &&
       options_.dynamic_node_type != kInvalidDynaimcDimsType) {
-    GELOGI("No need to check and update desc info, the dims of %s is %s.", input_node->GetName().c_str(),
+    GELOGI("No need to check and update desc info, the dims of %s are %s.", input_node->GetName().c_str(),
            ToString(dims).c_str());
     return true;
   }
@@ -2345,9 +2351,9 @@ Status GraphPrepare::CheckUserInput(const std::vector<GeTensor> &user_input) {
       data_num++;
       int64_t index = 0;
       if (!(AttrUtils::GetInt(op, ATTR_NAME_INDEX, index))) {
-        REPORT_INNER_ERR_MSG("E19999", "Get Attr:%s of op:%s(%s) failed", ATTR_NAME_WEIGHTS.c_str(),
+        REPORT_INNER_ERR_MSG("E19999", "Get Attr:%s of op:%s(%s) failed", ATTR_NAME_INDEX.c_str(),
                              op->GetName().c_str(), op->GetType().c_str());
-        GELOGE(GE_GRAPH_INIT_FAILED, "[Get][Attr] %s of op:%s(%s) failed", ATTR_NAME_WEIGHTS.c_str(),
+        GELOGE(GE_GRAPH_INIT_FAILED, "[Get][Attr] %s of op:%s(%s) failed", ATTR_NAME_INDEX.c_str(),
                op->GetName().c_str(), op->GetType().c_str());
         return GE_GRAPH_INIT_FAILED;
       }
@@ -2533,7 +2539,7 @@ Status GraphPrepare::PrepareOptimize() {
       GE_CHK_STATUS_RET(graph_pass.AddPass("PrepareOptimize::RecomputePass", new (std::nothrow) RecomputePass));
     }
   } catch (std::bad_alloc &e) {
-    REPORT_INNER_ERR_MSG("E19999", "bad memory allocation occur when add Pass");
+    REPORT_INNER_ERR_MSG("E19999", "bad memory allocation occurs when adding Pass");
     GELOGE(INTERNAL_ERROR, "[Add][Pass] failed, bad memory allocation occurs.");
     return INTERNAL_ERROR;
   }
@@ -2623,7 +2629,7 @@ Status GraphPrepare::ProcessNetOutput() const {
     graph_passes_before_infershape.AddPass("ProcessNetOutput::InnerIdentityAddPass",
                                            new (std::nothrow) InnerIdentityAddPass);
   } catch (std::bad_alloc &) {
-    REPORT_INNER_ERR_MSG("E19999", "bad memory allocation occur when add Pass");
+    REPORT_INNER_ERR_MSG("E19999", "bad memory allocation occurs when adding Pass");
     GELOGE(INTERNAL_ERROR, "[Add][Pass] failed, bad memory allocation occurs.");
     return INTERNAL_ERROR;
   }
