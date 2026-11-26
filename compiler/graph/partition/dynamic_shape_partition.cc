@@ -474,15 +474,15 @@ Status DynamicShapePartitioner::Partition() {
                       GetRootGraph()->GetName().c_str());
 
     auto status = PartitionImpl();
-    GELOGD("%s", DebugString().c_str());
     if (status != SUCCESS) {
       REPORT_INNER_ERR_MSG("E19999", "Call partition impl failed in dynamic shape partition, graph:%s",
                            GetRootGraph()->GetName().c_str());
-      GELOGE(status, "[Call][PartitionImpl] Failed dynamic shape partition graph:%s, ret:%s",
-             GetRootGraph()->GetName().c_str(), DebugString().c_str());
+      GELOGE(status, "[Call][PartitionImpl] Failed dynamic shape partition graph:%s, ret:%u",
+             GetRootGraph()->GetName().c_str(), status);
       ClearResource();
       return status;
     }
+    GELOGD("%s", DebugString().c_str());
     GELOGD("Finish dynamic shape partition graph %s.", GetRootGraph()->GetName().c_str());
     ClearResource();
   }
@@ -673,13 +673,20 @@ Status DynamicShapePartitioner::InitClusters() {
       control_node.emplace_back(node);
     }
 
-    // Already sorted topologically, so access to the parent cluster is safe
-    for (const auto &parent : node->GetInAllNodes()) {
-      cluster->AddInput(GetCluster(parent));
-    }
+    GE_CHK_STATUS_RET(LinkClusterInputs(node, *cluster));
   }
   for (const auto &node : graph->GetDirectNode()) {
     GELOGD("Make cluster for node %s : %s.", node->GetNamePtr(), GetCluster(node)->DebugString().c_str());
+  }
+  return SUCCESS;
+}
+
+Status DynamicShapePartitioner::LinkClusterInputs(const NodePtr &node, BaseCluster &cluster) {
+  for (const auto &parent : node->GetInAllNodes()) {
+    const auto &parent_cluster = GetCluster(parent);
+    GE_ASSERT_NOTNULL(parent_cluster, "[Check][ClusterInput] graph:%s node:%s parent:%s has no cluster.",
+                      GetRootGraph()->GetName().c_str(), node->GetNamePtr(), parent->GetNamePtr());
+    cluster.AddInput(parent_cluster);
   }
   return SUCCESS;
 }

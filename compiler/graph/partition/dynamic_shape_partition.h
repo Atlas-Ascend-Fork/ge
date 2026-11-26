@@ -51,6 +51,7 @@ class DynamicShapePartitioner : public BasePartitioner {
   // Corresponding relationship between cluster type and node:
   // DATA:DATA, UNKNOWN_SHAPE:unknowshape, KNOWN_SHAPE:knowshape, NETOUTPUT:NETOUTPUT
   Status InitClusters() override;
+  Status LinkClusterInputs(const NodePtr &node, BaseCluster &cluster);
   // Merge clusters according to the following rules:
   // 1) Iterate through the UNKNOWN_SHAPE clusters, if the input is UNKNOWN_SHAPE,
   //    merge all the clusters in the path(s) between the two clusters
