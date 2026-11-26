@@ -320,28 +320,55 @@ Status Scope::Init(const char_t *name, const char_t *sub_type, Scope *father_sco
 Scope::~Scope() = default;
 
 const std::string &Scope::Name() const {
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    static std::string name;
+    return name;
+  }
   return impl_->Name();
 }
 
 Status Scope::Name(AscendString &name) const {
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    return ge::PARAM_INVALID;
+  }
   name = AscendString(impl_->Name().c_str());
   return SUCCESS;
 }
 
 const std::string &Scope::SubType() const {
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    static std::string sub_type;
+    return sub_type;
+  }
   return impl_->SubType();
 }
 
 Status Scope::SubType(AscendString &sub_type) const {
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    return ge::PARAM_INVALID;
+  }
   sub_type = AscendString(impl_->SubType().c_str());
   return SUCCESS;
 }
 
 const std::unordered_map<std::string, ge::OperatorPtr> &Scope::AllNodesMap() const {
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    static std::unordered_map<std::string, ge::OperatorPtr> nodes_map;
+    return nodes_map;
+  }
   return impl_->AllNodesMap();
 }
 
 Status Scope::AllNodesMap(std::unordered_map<AscendString, ge::OperatorPtr> &node_map) const {
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    return ge::PARAM_INVALID;
+  }
   const std::unordered_map<std::string, ge::OperatorPtr> nodes = impl_->AllNodesMap();
   for (auto &node : nodes) {
     const AscendString tmp(node.first.c_str());
@@ -351,6 +378,10 @@ Status Scope::AllNodesMap(std::unordered_map<AscendString, ge::OperatorPtr> &nod
 }
 
 Scope *Scope::GetSubScope(const std::string &scope_name) const {
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    return nullptr;
+  }
   return impl_->GetSubScope(scope_name);
 }
 
@@ -359,23 +390,44 @@ Scope *Scope::GetSubScope(const char_t *scope_name) const {
   if (scope_name != nullptr) {
     str_scope_name = scope_name;
   }
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    return nullptr;
+  }
   return impl_->GetSubScope(str_scope_name);
 }
 
 const std::string Scope::LastName() const {
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    return "";
+  }
   return impl_->LastName();
 }
 
 Status Scope::LastName(AscendString &name) const {
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    return ge::PARAM_INVALID;
+  }
   name = AscendString(impl_->LastName().c_str());
   return SUCCESS;
 }
 
 const Scope *Scope::GetFatherScope() const {
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    return nullptr;
+  }
   return impl_->GetFatherScope();
 }
 
 const std::vector<Scope *> &Scope::GetAllSubScopes() const {
+  if (impl_ == nullptr) {
+    GELOGE(ge::MEMALLOC_FAILED, "Scope is not properly initialized.");
+    static std::vector<Scope *> all_sub_scopes;
+    return all_sub_scopes;
+  }
   return impl_->GetAllSubScopes();
 }
 

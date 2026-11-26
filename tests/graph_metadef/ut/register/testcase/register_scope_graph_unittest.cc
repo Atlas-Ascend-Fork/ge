@@ -15,6 +15,7 @@
 #include "register/scope/scope_graph_impl.h"
 #include "register/scope/scope_pass_impl.h"
 #include "register/scope/scope_pass_registry_impl.h"
+#include "common/ge_common/error_codes_define.h"
 
 using namespace ge;
 class UtestScopeGraph : public testing::Test {
@@ -835,4 +836,45 @@ TEST_F(UtestScopeGraph, IncCov_GetNodesMapNonEmpty) {
   ret = scope_graph->GetNodesMap(nodes_map);
   EXPECT_EQ(ret, SUCCESS);
   EXPECT_EQ(nodes_map.empty(), false);
+}
+
+TEST_F(UtestScopeGraph, IncCov_Scope_NullImplMethods) {
+  Scope scope;
+  scope.impl_.reset();
+
+  const std::string &name = scope.Name();
+  EXPECT_EQ(name, "");
+
+  AscendString ascend_name;
+  Status ret = scope.Name(ascend_name);
+  EXPECT_EQ(ret, ge::PARAM_INVALID);
+
+  const std::string &sub_type = scope.SubType();
+  EXPECT_EQ(sub_type, "");
+
+  AscendString ascend_sub_type;
+  ret = scope.SubType(ascend_sub_type);
+  EXPECT_EQ(ret, ge::PARAM_INVALID);
+
+  const std::unordered_map<std::string, ge::OperatorPtr> &nodes_map = scope.AllNodesMap();
+  EXPECT_EQ(nodes_map.empty(), true);
+
+  std::unordered_map<AscendString, ge::OperatorPtr> ascend_nodes_map;
+  ret = scope.AllNodesMap(ascend_nodes_map);
+  EXPECT_EQ(ret, ge::PARAM_INVALID);
+  EXPECT_EQ(ascend_nodes_map.empty(), true);
+
+  EXPECT_EQ(scope.GetSubScope(std::string("sub")), nullptr);
+  EXPECT_EQ(scope.GetSubScope("sub"), nullptr);
+
+  EXPECT_EQ(scope.LastName(), "");
+
+  AscendString ascend_last_name;
+  ret = scope.LastName(ascend_last_name);
+  EXPECT_EQ(ret, ge::PARAM_INVALID);
+
+  EXPECT_EQ(scope.GetFatherScope(), nullptr);
+
+  const std::vector<Scope *> &sub_scopes = scope.GetAllSubScopes();
+  EXPECT_EQ(sub_scopes.empty(), true);
 }
