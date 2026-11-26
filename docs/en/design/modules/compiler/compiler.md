@@ -187,6 +187,8 @@ GE's optimization Passes execute in multiple batches, distributed at different s
 | 3. Control Flow Transform | SwitchToStreamSwitchPass, MergeToStreamMergePass, AttachStreamLabelPass | Control flow → Stream control |
 | 3. Dynamic Batching | MultiBatchPass, SubgraphMultiDimsPass | Multi-dimension dynamic inference |
 
+During constant folding, the built-in Host `GatherV2` keeps a one-element index axis while copying the selected data. It removes that axis after the copy for a scalar index.
+
 **OptimizeStage2** (Post-merge optimization):
 
 Stage2 Passes process the merged whole graph, at this time subgraph boundaries have been eliminated:

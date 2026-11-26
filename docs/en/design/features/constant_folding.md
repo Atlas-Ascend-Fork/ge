@@ -41,6 +41,8 @@ atc --model=model.onnx --output=model --framework=5 \
 
 Typical benefit scenario: Model contains large amount of auxiliary computations for dynamic Shape inference (like Shape→Gather→Concat→Reshape chain). These can completely pre-compute in static Shape scenario. Constant folding can eliminate them all.
 
+The built-in Host `GatherV2` removes the indexed axis for a scalar index. For example, gathering column 1 from `[[10, 11], [20, 21]]` returns `[11, 21]` with shape `[2]`. A vector index `[1]` selects the same values with shape `[2, 1]`.
+
 ### 2.2 IR Build Scenario (aclgrphBuildModel)
 
 When using ACL Graph Builder API to build models, control through `aclgrphBuildInitialize` or `aclgrphBuildModel` configuration parameters:

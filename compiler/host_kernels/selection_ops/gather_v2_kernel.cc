@@ -382,6 +382,11 @@ Status GatherV2Kernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<Co
 
   auto x_shape = tensor0->GetTensorDesc().GetShape();
   auto indices_shape = tensor1->GetTensorDesc().GetShape();
+  const bool scalar_indices = indices_shape.GetDimNum() == 0;
+  // Use a one-element view for index counting, strides and data copying.
+  if (scalar_indices) {
+    indices_shape = GeShape({1});
+  }
 
   auto axis_data_type = tensor2->GetTensorDesc().GetDataType();
   int64_t axis = axis_data_type == DT_INT32
@@ -447,6 +452,11 @@ Status GatherV2Kernel::Compute(const OpDescPtr op_desc_ptr, const std::vector<Co
   if (ret != SUCCESS) {
     GELOGE(ret, "GenData failed, data_type: %s", TypeUtils::DataTypeToSerialString(x_data_type).c_str());
     return ret;
+  }
+
+  if (scalar_indices) {
+    y_shape.erase(y_shape.begin() + axis);
+    output_ptr->MutableTensorDesc().SetShape(GeShape(y_shape));
   }
 
   GELOGI("GatherV2Kernel Process Success.");

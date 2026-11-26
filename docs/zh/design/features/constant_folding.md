@@ -41,6 +41,8 @@ atc --model=model.onnx --output=model --framework=5 \
 
 典型收益场景：模型中包含大量用于动态 Shape 推断的辅助计算（如 Shape→Gather→Concat→Reshape 链路），这些在静态 Shape 场景下完全可以预计算，常量折叠能将其全部消除。
 
+内置 Host `GatherV2` 的标量索引会移除输出中的索引轴，但仍需选取该索引对应的数据。例如 `[[10,11],[20,21]]` 沿轴 1 取标量索引 1，输出形状为 `[2]`、值为 `[11,21]`；索引改为向量 `[1]` 时，值相同而形状为 `[2,1]`。
+
 ### 2.2 IR 编译场景（aclgrphBuildModel）
 
 使用 ACL Graph Builder API 构建模型时，通过 `aclgrphBuildInitialize` 或 `aclgrphBuildModel` 的配置参数控制：

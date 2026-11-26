@@ -189,6 +189,8 @@ GE 的优化 Pass 分多个批次执行，分布在不同阶段。核心的 Pass
 | 3. 控制流转换 | SwitchToStreamSwitchPass, MergeToStreamMergePass, AttachStreamLabelPass | 控制流→流控制 |
 | 3. 动态批处理 | MultiBatchPass, SubgraphMultiDimsPass | 多维度动态推理 |
 
+内置 Host `GatherV2` 在常量折叠的数据拷贝阶段保留长度为 1 的标量索引轴，计算完成后再移除该轴；输出降秩不能导致拷贝循环跳过。
+
 **OptimizeStage2**（合并后优化）：
 
 Stage2 的 Pass 处理的是合并后的整图，此时子图边界已消除：
