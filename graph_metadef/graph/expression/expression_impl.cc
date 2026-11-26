@@ -86,30 +86,6 @@ SymEngine::integer_class ComputeExprGCD(const SymEngineExprPtr &expr) {
   return ComputeGCD(coeff_vec);
 }
 
-SymEngine::map_basic_basic CreateMulDict(const SymEngine::vec_basic &args,
-                                         SymEngine::RCP<const SymEngine::Number> &coeff) {
-  SymEngine::map_basic_basic dict;
-  for (const auto &arg : args) {
-    GELOGD("arg [%s] type %s", sym_str(arg).c_str(), type_code_name(arg->get_type_code()).c_str());
-    auto it = dict.find(arg);
-    if (it != dict.end()) {
-      dict[arg] = add(it->second, SymEngine::one);
-    } else {
-      if (IsNegative(arg)) {
-        coeff = SymEngine::minus_one;
-      }
-      if (SymEngine::is_a<SymEngine::Integer>(*arg)) {
-        auto in = SymEngine::rcp_static_cast<const SymEngine::Integer>(arg);
-        if (in->is_one() || in->is_minus_one()) {
-          continue;
-        }
-      }
-      dict[arg] = SymEngine::one;
-    }
-  }
-  return dict;
-}
-
 std::vector<SymEngineExprPtr> TrDivision(const SymEngineExprPtr &lhs, const SymEngineExprPtr &rhs) {
   std::vector<SymEngineExprPtr> vec;
   if (SymEngine::is_a<SymEngine::Mul>(*lhs) && SymEngine::is_a<SymEngine::Mul>(*rhs)) {
@@ -141,30 +117,7 @@ SymEngineExprPtr DivByFactor(const SymEngineExprPtr &x, const SymEngine::integer
     SymEngine::mp_divexact(result, x_val, factor);
     return SymEngine::integer(result);
   } else if (SymEngine::is_a<SymEngine::Mul>(*x)) {
-    const auto &args = x->get_args();
-    GE_ASSERT_TRUE(!args.empty());
-    SymEngine::integer_class total_coeff(1);
-    SymEngine::vec_basic remaining_args;
-    for (const auto &arg : args) {
-      if (SymEngine::is_a<SymEngine::Integer>(*arg)) {
-        total_coeff *= SymEngine::rcp_static_cast<const SymEngine::Integer>(arg)->as_integer_class();
-      } else {
-        remaining_args.push_back(arg);
-      }
-    }
-
-    SymEngine::integer_class new_coeff;
-    SymEngine::mp_divexact(new_coeff, total_coeff, factor);
-    SymEngine::vec_basic new_args;
-    GELOGD("total_coeff=%lu, factor=%lu, new_coeff=%lu", SymEngine::mp_get_ui(total_coeff),
-           SymEngine::mp_get_ui(factor), SymEngine::mp_get_ui(new_coeff));
-    if (new_coeff != 1) {
-      new_args.push_back(SymEngine::integer(new_coeff));
-    }
-    new_args.insert(new_args.end(), remaining_args.begin(), remaining_args.end());
-    SymEngine::RCP<const SymEngine::Number> coeff = SymEngine::one;
-    auto dict = CreateMulDict(new_args, coeff);
-    return SymEngine::Mul::from_dict(coeff, std::move(dict));
+    return SymEngine::div(x, SymEngine::integer(factor));
   } else {
     GELOGW("unsupported type %s", type_code_name(x->get_type_code()).c_str());
     return x;

@@ -1559,6 +1559,25 @@ TEST_F(UtestExpression, CanonicalizeBoolExpr) {
   check_sym(sym::Eq(sym::Add(Symbol(42), sym::Mul(r0, Symbol(2))), Symbol(4096)), "ExpectEq(2027, r0)");
 }
 
+TEST_F(UtestExpression, CanonicalizeBoolExprPreservesPositiveProductGuard) {
+  ShapeEnvAttr shape_env;
+  SetCurShapeEnvContext(&shape_env);
+  const auto s103 = shape_env.CreateSymbol(50, MakeShared<GraphInputShapeSourceStub>(0, 0));
+  const auto s105 = shape_env.CreateSymbol(50, MakeShared<GraphInputShapeSourceStub>(1, 0));
+  const auto s109 = shape_env.CreateSymbol(5, MakeShared<GraphInputShapeSourceStub>(2, 0));
+  const auto expr = sym::Eq(Symbol(160) * s105, Symbol(32) * s103 * s109);
+
+  bool original_hint = false;
+  ASSERT_TRUE(expr.GetHint(original_hint));
+  ASSERT_TRUE(original_hint);
+
+  const auto canonical = ShapeEnvAttr::CanonicalizeBoolExpr(expr);
+  bool canonical_hint = false;
+  EXPECT_TRUE(canonical.GetHint(canonical_hint)) << canonical.Str().get();
+  EXPECT_TRUE(canonical_hint) << canonical.Str().get();
+  SetCurShapeEnvContext(nullptr);
+}
+
 TEST_F(UtestExpression, EvaluateAsBoolBasic) {
   // s0>0 -> 2*s0 > s0 return true
 
