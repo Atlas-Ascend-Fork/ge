@@ -610,6 +610,8 @@ BuildModel:
 
 Cache key is graph's hash — through `ComputeHashForConstNodes` calculate SHA256 hash for constant nodes, as part of cache key.
 
+On an online compilation cache hit, if the cached OM contains neither embedded custom operator implementations nor serialized custom operator state, the root model uses the current process's global custom operator registry, as it does after a fresh compilation. Models with embedded C++ or Python implementations retain the registry restored from their own partitions. Ordinary offline OM loading is unchanged.
+
 ## 8. Shape Optimization
 
 GE's Shape optimization converts dynamic shape to static shape as much as possible:

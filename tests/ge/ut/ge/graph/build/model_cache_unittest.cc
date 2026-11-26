@@ -12,6 +12,7 @@
 #include <fstream>
 #include "mmpa/mmpa_api.h"
 #include "graph/build/model_cache.h"
+#include "graph/custom_op_factory.h"
 #include "ge_graph_dsl/graph_dsl.h"
 #include "graph/ge_local_context.h"
 #include "graph/build/memory/var_mem_assign_util.h"
@@ -439,6 +440,10 @@ TEST_F(ModelCacheTest, save_and_load_ge_root_model) {
     ret = model_cache_for_load.TryLoadModelFromCache(graph, load_model);
     EXPECT_EQ(ret, SUCCESS);
     ASSERT_NE(load_model, nullptr);
+    const auto global_registry = CustomOpFactory::GetGlobalRegistryPtr();
+    ASSERT_NE(global_registry, nullptr);
+    // This cache has no embedded custom op implementation; the cache loader must supply the process registry.
+    EXPECT_EQ(load_model->GetCustomOpRegistry(), global_registry);
   }
 }
 

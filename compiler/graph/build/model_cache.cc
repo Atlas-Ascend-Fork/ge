@@ -20,6 +20,7 @@
 #include "common/helper/model_parser_base.h"
 #include "common/compile_profiling/ge_call_wrapper.h"
 #include "framework/common/helper/model_helper.h"
+#include "graph/custom_op_factory.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/error_codes.h"
 #include "graph/ge_local_context.h"
@@ -439,7 +440,8 @@ Status ModelCache::LoadToGeRootModel(const std::string &model_path, GeRootModelP
   });
 
   ModelHelper model_helper;
-  GE_CHK_STATUS_RET(model_helper.LoadRootModel(model), "[Load][RootModel] failed.");
+  GE_CHK_STATUS_RET(model_helper.LoadRootModel(model, CustomOpFactory::GetGlobalRegistryPtr()),
+                    "[Load][RootModel] failed.");
   ge_root_model = model_helper.GetGeRootModel();
   GE_CHECK_NOTNULL(ge_root_model);
   GE_CHECK_NOTNULL(ge_root_model->GetRootGraph());

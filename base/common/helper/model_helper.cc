@@ -1507,6 +1507,10 @@ Status ModelHelper::CheckIfWeightPathValid(const ge::ComputeGraphPtr &graph, con
 }
 
 Status ModelHelper::LoadRootModel(const ge::ModelData &model_data) {
+  return LoadRootModel(model_data, nullptr);
+}
+
+Status ModelHelper::LoadRootModel(const ge::ModelData &model_data, const CustomOpRegistryPtr &fallback_registry) {
   if (is_assign_model_) {
     GELOGE(ACL_ERROR_GE_EXEC_LOAD_MODEL_REPEATED, "[Load][RootModel]Model helper has already loaded!");
     return ACL_ERROR_GE_EXEC_LOAD_MODEL_REPEATED;
@@ -1540,7 +1544,7 @@ Status ModelHelper::LoadRootModel(const ge::ModelData &model_data) {
   // Encrypt model need to del temp model/no encrypt model don't need to del model
   model_data_addr = nullptr;
 
-  GE_ASSERT_SUCCESS(GenerateGeRootModel(om_load_helper, model_data));
+  GE_ASSERT_SUCCESS(GenerateGeRootModel(om_load_helper, model_data, fallback_registry));
   std::string file_constant_weight_dir;
   GE_ASSERT_SUCCESS(CheckIfWeightPathValid(root_model_->GetRootGraph(), model_data));
   GE_ASSERT_SUCCESS(FileConstantUtils::GetExternalWeightDir(model_data, file_constant_weight_dir));
@@ -1608,7 +1612,8 @@ Status ModelHelper::GenerateGeModel(const OmFileLoadHelper &om_load_helper, GeMo
   return SUCCESS;
 }
 
-Status ModelHelper::GenerateGeRootModel(const OmFileLoadHelper &om_load_helper, const ModelData &model_data) {
+Status ModelHelper::GenerateGeRootModel(const OmFileLoadHelper &om_load_helper, const ModelData &model_data,
+                                        const CustomOpRegistryPtr &fallback_registry) {
   GELOGD("Begin to generate ge root model");
   root_model_ = MakeShared<GeRootModel>();
   GE_CHECK_NOTNULL(root_model_);
@@ -1619,7 +1624,8 @@ Status ModelHelper::GenerateGeRootModel(const OmFileLoadHelper &om_load_helper, 
     GE_CHECK_NOTNULL(model_);
     GE_ASSERT_SUCCESS(root_model_->Initialize(model_->GetGraph()));
     root_model_->SetModelName(model_->GetName());
-    GE_CHK_STATUS_RET(LoadCustomOpRegistry(om_load_helper, root_model_), "[Generate][LoadCustomOpRegistry]Failed");
+    GE_CHK_STATUS_RET(LoadCustomOpRegistry(om_load_helper, root_model_, fallback_registry),
+                      "[Generate][LoadCustomOpRegistry]Failed");
     GE_CHK_STATUS_RET(LoadTilingData(om_load_helper, root_model_), "[Generate][LoadTilingData]Failed");
     root_model_->SetSubgraphInstanceNameToModel(model_->GetGraph()->GetName(), model_);
     return SUCCESS;
@@ -1632,7 +1638,8 @@ Status ModelHelper::GenerateGeRootModel(const OmFileLoadHelper &om_load_helper, 
       GE_ASSERT_SUCCESS(root_model_->Initialize(cur_model->GetGraph()));
       root_model_->SetModelName(cur_model->GetName());
       model_ = cur_model;
-      GE_CHK_STATUS_RET(LoadCustomOpRegistry(om_load_helper, root_model_), "[Generate][LoadCustomOpRegistry]Failed");
+      GE_CHK_STATUS_RET(LoadCustomOpRegistry(om_load_helper, root_model_, fallback_registry),
+                        "[Generate][LoadCustomOpRegistry]Failed");
       GE_CHK_STATUS_RET(LoadTilingData(om_load_helper, root_model_), "[Generate][LoadTilingData]Failed");
       if (IsPartitionedGraph(cur_model)) {
         if (!gert::GraphUnfolder::IsGraphNeedUnfold(cur_model->GetGraph())) {
