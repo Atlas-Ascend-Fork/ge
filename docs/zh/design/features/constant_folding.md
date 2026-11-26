@@ -411,6 +411,8 @@ ConstantFoldingPass / DimensionComputePass
 | 数据流 | `host_kernels/data_flow_ops/` | DynamicStitch |
 | 自定义 | `host_kernels/custom_ops/` | ReFormat, SsdPriorBox |
 
+内置 Host `DynamicStitch` 的输出形状为 `[max(indices) + 1] + data.shape[indices.rank:]`，每个索引搬运整个后缀对应的数据片。例如两个 `[1,2,2]` 数据输入按索引 `[0]`、`[1]` 拼接时，输出为 `[2,2,2]`，保留全部 8 个元素；后缀含零维时保留空张量的形状和数据类型，跳过输出数据缓冲区的申请。
+
 每个 Kernel 通过 `REGISTER_COMPUTE_NODE_KERNEL` 宏注册到 `KernelFactory`，运行时按算子类型查找。
 
 内置 `FloorDiv` 的浮点输入按 `floor(x / y)` 求值；整数使用原类型的商和余数，异号且有余数时将商减一，不经浮点转换或窄化。对于整数最小值除以 `-1` 的不可表示结果，返回 `NOT_CHANGED` 且不发布输出；原有零/近零除数回退规则保持不变。

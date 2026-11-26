@@ -205,6 +205,8 @@ Stage2 Passes process the merged whole graph, at this time subgraph boundaries h
 - **ParallelGroupPass**: Parallel group processing
 - **ConcatNotaskPass**: Concat no-task optimization
 
+When folding `DynamicStitch`, the built-in Host kernel preserves every dimension following the index dimensions. The copy length is the product of all dimensions in each slice. For an empty slice, the kernel sets only the output descriptor.
+
 ### 2.3 Necessity of Two-Stage Optimization
 
 Engine partitioning changes the graph's topology structure, this is the core reason requiring two-stage optimization.

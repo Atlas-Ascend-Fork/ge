@@ -419,6 +419,8 @@ Registered Host Kernel distributed by category:
 | Data flow | `host_kernels/data_flow_ops/` | DynamicStitch |
 | Custom | `host_kernels/custom_ops/` | ReFormat, SsdPriorBox |
 
+The built-in Host `DynamicStitch` returns shape `[max(indices) + 1] + data.shape[indices.rank:]`. Each index places one complete slice. Two inputs of shape `[1, 2, 2]` stitched at indices `[0]` and `[1]` produce shape `[2, 2, 2]` with all eight values. If a suffix dimension is zero, the empty output retains its shape and data type without allocating a data buffer.
+
 Each Kernel registers to `KernelFactory` through `REGISTER_COMPUTE_NODE_KERNEL` macro, runtime lookup by operator type.
 
 For floating-point inputs, `FloorDiv` computes `floor(x / y)`. For integers it uses the quotient and remainder at the original input width and subtracts one from the quotient if the signs differ and the remainder is nonzero. Dividing the minimum signed integer by -1 returns `NOT_CHANGED` without producing an output. The existing fallback for zero or near-zero divisors still applies.

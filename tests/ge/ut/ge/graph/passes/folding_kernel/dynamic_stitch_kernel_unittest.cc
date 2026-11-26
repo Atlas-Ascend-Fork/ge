@@ -27,6 +27,8 @@
 #include "host_kernels/kernel_factory.h"
 #include "macro_utils/dt_public_unscope.h"
 
+#include <limits>
+
 using namespace testing;
 using namespace ge;
 
@@ -362,4 +364,80 @@ TEST_F(UtestGraphPassesFoldingKernelDynamicStitchKernel, NullInputTensor) {
   shared_ptr<Kernel> kernel = KernelFactory::Instance().Create(DYNAMICSTITCH);
   Status status = kernel->Compute(op_desc_ptr, input, outputs);
   EXPECT_NE(ge::SUCCESS, status);
+}
+
+namespace {
+void CheckStitchSlices(const vector<int64_t> &index_shape, const vector<int64_t> &data_shape,
+                       const vector<vector<int32_t>> &indices, const vector<vector<int32_t>> &data,
+                       const vector<int64_t> &output_shape, const vector<int32_t> &expected, Status status = SUCCESS,
+                       const vector<int64_t> *last_data_shape = nullptr) {
+  auto op = std::make_shared<OpDesc>("stitch", DYNAMICSTITCH);
+  ASSERT_TRUE(AttrUtils::SetInt(op, ATTR_NAME_N, 2));
+  vector<ConstGeTensorPtr> inputs;
+  for (const auto &values : indices) {
+    inputs.push_back(std::make_shared<GeTensor>(GeTensorDesc(GeShape(index_shape), FORMAT_ND, DT_INT32),
+                                                reinterpret_cast<const uint8_t *>(values.data()),
+                                                values.size() * sizeof(int32_t)));
+  }
+  for (const auto &values : data) {
+    inputs.push_back(std::make_shared<GeTensor>(
+        GeTensorDesc(GeShape(last_data_shape != nullptr && &values == &data.back() ? *last_data_shape : data_shape),
+                     FORMAT_ND, DT_INT32),
+        reinterpret_cast<const uint8_t *>(values.data()), values.size() * sizeof(int32_t)));
+  }
+  for (const auto &input : inputs) {
+    ASSERT_EQ(op->AddInputDesc(input->GetTensorDesc()), GRAPH_SUCCESS);
+  }
+  ASSERT_EQ(op->AddOutputDesc(GeTensorDesc(GeShape(output_shape), FORMAT_ND, DT_INT32)), GRAPH_SUCCESS);
+  DynamicStitchKernel kernel;
+  vector<GeTensorPtr> outputs;
+  ASSERT_EQ(kernel.Compute(op, inputs, outputs), status);
+  if (status != SUCCESS) {
+    EXPECT_TRUE(outputs.empty());
+    return;
+  }
+  ASSERT_EQ(outputs.size(), 1U);
+  EXPECT_EQ(outputs[0]->GetTensorDesc().GetShape().GetDims(), output_shape);
+  EXPECT_EQ(outputs[0]->GetTensorDesc().GetDataType(), DT_INT32);
+  ASSERT_EQ(outputs[0]->GetData().size(), expected.size() * sizeof(int32_t));
+  if (!expected.empty()) {
+    const auto *values = reinterpret_cast<const int32_t *>(outputs[0]->GetData().data());
+    EXPECT_EQ(vector<int32_t>(values, values + expected.size()), expected);
+  }
+}
+}  // namespace
+
+TEST_F(UtestGraphPassesFoldingKernelDynamicStitchKernel, FlatSlices) {
+  CheckStitchSlices({1}, {1, 4}, {{0}, {1}}, {{10, 11, 12, 13}, {20, 21, 22, 23}}, {2, 4},
+                    {10, 11, 12, 13, 20, 21, 22, 23});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelDynamicStitchKernel, MatrixSlices) {
+  CheckStitchSlices({1}, {1, 2, 2}, {{0}, {1}}, {{10, 11, 12, 13}, {20, 21, 22, 23}}, {2, 2, 2},
+                    {10, 11, 12, 13, 20, 21, 22, 23});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelDynamicStitchKernel, ScalarIndexMatrixSlices) {
+  CheckStitchSlices({}, {2, 2}, {{0}, {1}}, {{10, 11, 12, 13}, {20, 21, 22, 23}}, {2, 2, 2},
+                    {10, 11, 12, 13, 20, 21, 22, 23});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelDynamicStitchKernel, MultiDimIndicesMatrixSlices) {
+  CheckStitchSlices({1, 2}, {1, 2, 2, 2}, {{2, 0}, {3, 1}},
+                    {{20, 21, 22, 23, 0, 1, 2, 3}, {30, 31, 32, 33, 10, 11, 12, 13}}, {4, 2, 2},
+                    {0, 1, 2, 3, 10, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32, 33});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelDynamicStitchKernel, EmptySuffix) {
+  CheckStitchSlices({1}, {1, 0, 2}, {{0}, {1}}, {{}, {}}, {2, 0, 2}, {});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelDynamicStitchKernel, ValidateSlices) {
+  const vector<int64_t> different_suffix = {1, 4};
+  CheckStitchSlices({1}, {1, 2, 2}, {{0}, {1}}, {{1, 2, 3, 4}, {5, 6, 7, 8}}, {}, {}, NOT_CHANGED, &different_suffix);
+  CheckStitchSlices({1}, {1, 2}, {{0}, {1}}, {{1, 2}, {3}}, {}, {}, NOT_CHANGED);
+  CheckStitchSlices({1}, {}, {{0}, {1}}, {{1}, {2}}, {}, {}, NOT_CHANGED);
+  CheckStitchSlices({1}, {1, std::numeric_limits<int64_t>::max(), 2}, {{0}, {1}}, {{}, {}}, {}, {}, NOT_CHANGED);
+  CheckStitchSlices({1}, {1, 1}, {{0}, {-1}}, {{1}, {2}}, {}, {}, NOT_CHANGED);
+  CheckStitchSlices({1}, {1, 2, 2}, {{0}, {0}}, {{1, 2, 3, 4}, {5, 6, 7, 8}}, {1, 2, 2}, {5, 6, 7, 8});
 }
