@@ -757,6 +757,7 @@ Status JitExecutor::CompileAndLoad(const std::vector<gert::Tensor> &inputs, Guar
     // todo 编译失败的时候，需要处理死锁问题
     compiled_ge_graph_id_.emplace_back(instance_id);
     GE_ASSERT_TRUE(gep->SetCompiled(instance_id, gep->GetGraph()));
+    GE_ASSERT_TRUE(gep->Match(inputs), "Guard self-check failed before loading model, instance id: %u", instance_id);
     GE_ASSERT_SUCCESS(ApplyFixedFeatureMemory(instance_id));
     GE_ASSERT_SUCCESS(compile_context_.Load(instance_id, load_options, stream));
   } else {
