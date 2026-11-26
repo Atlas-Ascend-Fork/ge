@@ -240,7 +240,9 @@ std::shared_ptr<gert::Allocators> AclResourceManager::GetAllocators(const aclrtS
     return iter->second;
   }
   // Try using exist or create external allocator.
-  std::shared_ptr<gert::Allocators> externalAllocators = UpdateExternalAllocators(stream);
+  // The stream has been normalized to the default stream above; external allocator lookup
+  // must use the same key so that a nullptr stream shares the default stream's allocator.
+  std::shared_ptr<gert::Allocators> externalAllocators = UpdateExternalAllocators(cacheKey);
   if (externalAllocators != nullptr) {
     return externalAllocators;
   }
