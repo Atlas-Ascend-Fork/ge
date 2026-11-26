@@ -43,6 +43,17 @@ bool IsLowPrecisionDataType(DataType dtype) {
   return dtype == DT_FLOAT16 || dtype == DT_BF16;
 }
 
+DataType GetMaterializedDtype(const GeTensorDescPtr &tensor_desc) {
+  if (tensor_desc == nullptr || !AttrUtils::HasAttr(*tensor_desc, kMaterializedDtypeAttr)) {
+    return DT_UNDEFINED;
+  }
+  int64_t materialized_dtype = 0;
+  if (!AttrUtils::GetInt(*tensor_desc, kMaterializedDtypeAttr, materialized_dtype)) {
+    return DT_UNDEFINED;
+  }
+  return static_cast<DataType>(materialized_dtype);
+}
+
 bool IsHighPrecisionDataType(DataType dtype) {
   return dtype == DT_FLOAT;
 }
@@ -108,18 +119,17 @@ Status IsNeedInsertCastBeforeOther(const AscGraph &asc_graph, const NodePtr &oth
   for (auto idx = 0U; idx < peer_out_nodes.size(); idx++) {
     auto peer_out_node = peer_out_nodes[idx];
     GE_ASSERT_SUCCESS(asc_adapt::GetOutputTensorDesc(peer_out_node, peer_output_tensor_desc));
-    if (peer_out_node->GetType() == kCastType || peer_out_node->GetType() == kLoadType ||
-        peer_out_node->GetType() == kGatherType ||
-        (precision_nodes != nullptr && precision_nodes->count(peer_out_node.get()) == 0U)) {
-      if (IsLowPrecisionDataType(peer_output_tensor_desc->GetDataType())) {
-        need_insert = true;
-        input_idxs.push_back(idx);
-        GELOGD("node %s(%s) in graph %s, has node %s(%s)(dtype %s) in front of it, need to insert cast",
-               other_node->GetNamePtr(), other_node->GetTypePtr(), asc_graph.GetName().c_str(),
-               peer_out_node->GetNamePtr(), peer_out_node->GetTypePtr(),
-               TypeUtils::DataTypeToSerialString(peer_output_tensor_desc->GetDataType()).c_str());
-      };
-    }
+    if ((peer_out_node->GetType() == kCastType || peer_out_node->GetType() == kLoadType ||
+         peer_out_node->GetType() == kGatherType || GetMaterializedDtype(peer_output_tensor_desc) != DT_UNDEFINED ||
+         (precision_nodes != nullptr && precision_nodes->count(peer_out_node.get()) == 0U)) &&
+        IsLowPrecisionDataType(peer_output_tensor_desc->GetDataType())) {
+      need_insert = true;
+      input_idxs.push_back(idx);
+      GELOGD("node %s(%s) in graph %s, has node %s(%s)(dtype %s) in front of it, need to insert cast",
+             other_node->GetNamePtr(), other_node->GetTypePtr(), asc_graph.GetName().c_str(),
+             peer_out_node->GetNamePtr(), peer_out_node->GetTypePtr(),
+             TypeUtils::DataTypeToSerialString(peer_output_tensor_desc->GetDataType()).c_str());
+    };
   }
   return SUCCESS;
 }
@@ -362,13 +372,16 @@ Status CastNodeProc(AscGraph &asc_graph, const NodePtr &node, bool preserve_cont
   GE_ASSERT_SUCCESS(asc_adapt::GetOutputTensorDesc(node, output_tensor_desc));
   const auto peer_output_dtype = peer_output_tensor_desc->GetDataType();
   const auto output_dtype = output_tensor_desc->GetDataType();
+  const auto materialized_dtype = GetMaterializedDtype(output_tensor_desc);
+  const bool preserve_boundary = materialized_dtype == output_dtype;
   // Keep controlled CV casts as ordering boundaries, including data-to-control edges.
   const bool keep_control_cast =
       preserve_control_edges && (!node->GetInControlAnchor()->GetPeerAnchorsPtr().empty() ||
                                  !node->GetOutControlAnchor()->GetPeerAnchorsPtr().empty() ||
                                  !node->GetOutDataAnchor(0)->GetPeerInControlAnchors().empty());
   // 判断是否需要删除节点
-  if (!keep_control_cast && ShouldDeleteCastNode(node, peer_in_nodes, peer_out_node, peer_output_dtype, output_dtype)) {
+  if (!preserve_boundary && !keep_control_cast &&
+      ShouldDeleteCastNode(node, peer_in_nodes, peer_out_node, peer_output_dtype, output_dtype)) {
     GE_ASSERT_SUCCESS(asc_adapt::DelNode(asc_graph, node));
     return SUCCESS;
   }
@@ -388,7 +401,7 @@ Status CastNodeProc(AscGraph &asc_graph, const NodePtr &node, bool preserve_cont
   }
 
   // 判断是否需要修改节点数据类型
-  if (ShouldChangeDataType(node, peer_in_nodes, peer_output_dtype, output_dtype)) {
+  if (!preserve_boundary && ShouldChangeDataType(node, peer_in_nodes, peer_output_dtype, output_dtype)) {
     output_tensor_desc->SetDataType(DT_FLOAT);
     GELOGI("Node %s(%s) changed dtype from %s to %s.", node->GetName().c_str(), node->GetType().c_str(),
            TypeUtils::DataTypeToSerialString(output_dtype).c_str(),
@@ -441,6 +454,24 @@ Status CheckNodeDtype(const NodePtr &node) {
            "Node %s(%s) with dtype(%s) is not supported. Do not configure it in autofuse_enhance_precision_blacklist",
            node->GetName().c_str(), node->GetType().c_str(), TypeUtils::DataTypeToSerialString(output_dtype).c_str());
     return FAILED;
+  }
+  return SUCCESS;
+}
+
+Status PromoteOutputDtypeToFp32(const NodePtr &node) {
+  const auto op_desc = node->GetOpDesc();
+  GE_ASSERT_NOTNULL(op_desc);
+  for (auto output_index = 0U; output_index < op_desc->GetAllOutputsDescSize(); ++output_index) {
+    const auto output_desc = op_desc->MutableOutputDesc(output_index);
+    GE_ASSERT_NOTNULL(output_desc);
+    const auto materialized_dtype = GetMaterializedDtype(output_desc);
+    // 被融合消除的物化边界仍要求该输出保持原dtype，不参与精度提升。
+    if (IsLowPrecisionDataType(materialized_dtype)) {
+      continue;
+    }
+    if (IsLowPrecisionDataType(output_desc->GetDataType())) {
+      output_desc->SetDataType(DT_FLOAT);
+    }
   }
   return SUCCESS;
 }
@@ -612,8 +643,7 @@ Status ImprovePrecision(AscGraph &asc_graph, [[maybe_unused]] const NodePtr &asc
     GE_ASSERT_SUCCESS(IsNeedInsertCastBeforeOther(asc_graph, node, is_need_insert_cast, input_idxs, precision_nodes));
     bool is_increase_precision = true;
     GE_ASSERT_SUCCESS(InsertCastBeforeNode(asc_graph, node, is_need_insert_cast, is_increase_precision, input_idxs));
-    GE_ASSERT_SUCCESS(asc_adapt::FromDtypeToOtherDtype(node, DT_BF16, DT_FLOAT));
-    GE_ASSERT_SUCCESS(asc_adapt::FromDtypeToOtherDtype(node, DT_FLOAT16, DT_FLOAT));
+    GE_ASSERT_SUCCESS(PromoteOutputDtypeToFp32(node));
   }
   for (const auto &node : type_to_nodes[kStoreType]) {
     bool is_need_insert_cast = false;

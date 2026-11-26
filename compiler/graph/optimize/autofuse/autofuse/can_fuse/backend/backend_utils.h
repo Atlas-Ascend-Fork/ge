@@ -35,6 +35,7 @@ using af::GetOrCreateAutoFuseAttrs;
 
 const std::string kLoadType = "Load";
 const std::string kStoreType = "Store";
+const std::string kMaterializedDtypeAttr = "_af_materialized_dtype";
 const std::string kDataType = "Data";
 const std::string kScalarType = "Scalar";
 const std::string kCastType = "Cast";
