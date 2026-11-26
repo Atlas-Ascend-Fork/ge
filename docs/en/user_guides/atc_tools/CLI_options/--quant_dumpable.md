@@ -14,10 +14,6 @@ When locating precision issues by referring to the "Model Inference \> Precision
 
 To address this issue, the --quant\_dumpable parameter is introduced. After this parameter is configured, the inputs and outputs of quantization operators are not fused, and a transdata operator is inserted to restore the format of the original model, so that the dump data of quantization operators can be collected.
 
-## Related Parameters
-
-When the value of [--mode](--mode.md) is 7, this parameter is not supported.
-
 ## Parameter Values
 
 - 0: (Default value) During graph compilation, the input and output of quantization operators may be optimized, in which case the dump data of quantization operators cannot be obtained.

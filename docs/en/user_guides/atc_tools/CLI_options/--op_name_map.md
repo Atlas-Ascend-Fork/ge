@@ -40,7 +40,6 @@ This parameter applies only to the Caffe framework.
 ## Related Parameters
 
 - This parameter is supported only when [--framework](--framework.md) is set to 0. When [--framework](--framework.md) is set to 1 and the network model is a MindSpore framework model, setting this parameter does not take effect, but the model conversion succeeds.
-- When [--mode](--mode.md) is set to 7, this parameter is not supported.
 
 ## Parameter Values
 

@@ -20,7 +20,7 @@ Used to configure the save file path and file name of the pre-check result.
 
 ## Related Parameters
 
-[--mode](--mode.md): When --mode=0 and graph parsing fails, or when --mode=3 and only pre-check is performed, this parameter specifies the path for saving the pre-check result file. When --mode=7, this parameter is not supported.
+[--mode](--mode.md): When --mode=0 or --mode=7 and graph parsing fails, or when --mode=3 and only pre-check is performed, this parameter specifies the path for saving the pre-check result file.
 
 ## Parameter Values
 
