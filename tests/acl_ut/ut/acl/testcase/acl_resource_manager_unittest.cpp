@@ -352,7 +352,7 @@ TEST(UTEST_ACL_Resource_Manager, MatchModelDynamicTest) {
   aclopDestroyAttr(opAttr);
 }
 
-TEST(UTEST_ACL_Resource_Manager, MatchModelSetCompileFlagTest) {
+static void RegisterCastModelForSetCompileFlagTest(AclOpResourceManager &instance) {
   SetCastHasTruncateAttr(false);
   OpModelDef modelDef;
   modelDef.opType = "Cast";
@@ -365,10 +365,13 @@ TEST(UTEST_ACL_Resource_Manager, MatchModelSetCompileFlagTest) {
   aclSetTensorShapeRange(&modelDef.inputDescArr[0], 2, range);
   modelDef.opAttr.SetAttr<string>("testAttr", "attrValue");
   modelDef.opAttr.SetAttr<string>("truncate", "1");
-
-  auto &instance = AclOpResourceManager::GetInstance();
   bool isDeduplicate = false;
   EXPECT_EQ(instance.RegisterModel(std::move(modelDef), instance.opModels_, true, isDeduplicate), ACL_SUCCESS);
+}
+
+TEST(UTEST_ACL_Resource_Manager, MatchModelSetCompileFlagTest) {
+  auto &instance = AclOpResourceManager::GetInstance();
+  RegisterCastModelForSetCompileFlagTest(instance);
 
   AclOp aclOp;
   aclopAttr *opAttr = aclopCreateAttr();
@@ -385,7 +388,6 @@ TEST(UTEST_ACL_Resource_Manager, MatchModelSetCompileFlagTest) {
   OpModel opModel;
   bool isDynamic;
   aclOp.opType = "Cast";
-  aclOp.numInputs = 1;
   aclOp.numInputs = 2;
   aclOp.numOutputs = 1;
   aclOp.opAttr = opAttr;
