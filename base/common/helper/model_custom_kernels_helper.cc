@@ -532,8 +532,8 @@ Status ModelHelper::LoadCustomOps(const OmFileLoadHelper &om_load_helper, const 
   return SUCCESS;
 }
 
-Status ModelHelper::LoadCustomOpRegistry(const OmFileLoadHelper &om_load_helper,
-                                         const GeRootModelPtr &ge_root_model) const {
+Status ModelHelper::LoadCustomOpRegistry(const OmFileLoadHelper &om_load_helper, const GeRootModelPtr &ge_root_model,
+                                         const CustomOpRegistryPtr &fallback_registry) const {
   GE_ASSERT_NOTNULL(ge_root_model);
   static std::mutex offline_custom_op_registry_load_mutex;
   // 先声明锁，确保注册阶段异常返回时 registry 在解锁前析构。
@@ -546,8 +546,13 @@ Status ModelHelper::LoadCustomOpRegistry(const OmFileLoadHelper &om_load_helper,
   if (custom_op_so_bins.empty() && !has_python_partition) {
     GE_ASSERT_TRUE(!HasNonEmptyCustomOpsPartition(om_load_helper),
                    "[CUSTOM OP] custom ops partition exists but no custom op so is loaded.");
-    ge_root_model->SetCustomOpRegistry(registry);
-    GELOGI("[CUSTOM OP] no custom op so loaded, set empty model custom op registry.");
+    if (fallback_registry != nullptr) {
+      ge_root_model->SetCustomOpRegistry(fallback_registry);
+      GELOGI("[CUSTOM OP] no embedded custom op implementation, use the supplied fallback registry.");
+    } else {
+      ge_root_model->SetCustomOpRegistry(registry);
+      GELOGI("[CUSTOM OP] no custom op so loaded, set empty model custom op registry.");
+    }
     return SUCCESS;
   }
 

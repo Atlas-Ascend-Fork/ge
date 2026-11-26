@@ -262,7 +262,7 @@ After successful matching, `RefreshVariableDesc()` refreshes the variable transf
 
 After successful variable description matching, model loading proceeds:
 
-1. **Deserialization**: `LoadToGeRootModel()` loads model data from `.om` file and deserializes into `GeRootModel` via `ModelHelper::LoadRootModel()`
+1. **Deserialization**: `LoadToGeRootModel()` reads the cached `.om` file and deserializes it into a `GeRootModel` through `ModelHelper::LoadRootModel()`. The online cache loader explicitly supplies the current process's global custom operator registry as a fallback. The fallback is used only when the OM contains no custom operator SO and neither `PYTHON_CUSTOM_OPS` nor `CUSTOM_OPS` is non-empty. Embedded implementations are still restored from the model, and ordinary offline OM loading does not use this fallback.
 2. **External Weight Processing**: `AssignConstantVarMem()` sets external weight paths and updates memory addresses of constant nodes in the model
 3. **Update Session ID**: `UpdateGeModelSessionId()` updates Session ID of all subgraphs in the model to the current Session's ID
 4. **Update Session Graph ID**: `UpdateSessionGraphId()` updates the graph's session identifier

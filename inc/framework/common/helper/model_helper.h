@@ -55,6 +55,8 @@ class GE_FUNC_VISIBILITY ModelHelper : public ModelSaveHelper {
 
   Status LoadModel(const ge::ModelData &model_data);
   Status LoadRootModel(const ge::ModelData &model_data);
+  // Use the fallback only when the model carries no custom op implementation or serialized custom op data.
+  Status LoadRootModel(const ge::ModelData &model_data, const CustomOpRegistryPtr &fallback_registry);
   static Status GetModelFileHead(const ge::ModelData &model_data, const ModelFileHeader *&file_header);
   static Status SetModelToGeModel(const GeModelPtr &ge_model, const GeModelPtr &first_ge_model, Model &model);
   static Status SaveBundleModelBufferToMem(const std::vector<ModelBufferData> &model_buffers, uint64_t var_size,
@@ -230,7 +232,8 @@ class GE_FUNC_VISIBILITY ModelHelper : public ModelSaveHelper {
 
   Status SetModelAttributes(const GeModelPtr &ge_model) const;
 
-  Status GenerateGeRootModel(const OmFileLoadHelper &om_load_helper, const ModelData &model_data);
+  Status GenerateGeRootModel(const OmFileLoadHelper &om_load_helper, const ModelData &model_data,
+                             const CustomOpRegistryPtr &fallback_registry);
 
   Status CheckIfWeightPathValid(const ge::ComputeGraphPtr &graph, const ge::ModelData &model_data) const;
   Status LoadModelData(const OmFileLoadHelper &om_load_helper, const GeModelPtr &cur_model,
@@ -242,7 +245,8 @@ class GE_FUNC_VISIBILITY ModelHelper : public ModelSaveHelper {
                             const size_t mode_index) const;
   Status LoadCustAICPUKernelStore(const OmFileLoadHelper &om_load_helper, const GeModelPtr &cur_model,
                                   const size_t mode_index) const;
-  Status LoadCustomOpRegistry(const OmFileLoadHelper &om_load_helper, const GeRootModelPtr &ge_root_model) const;
+  Status LoadCustomOpRegistry(const OmFileLoadHelper &om_load_helper, const GeRootModelPtr &ge_root_model,
+                              const CustomOpRegistryPtr &fallback_registry = nullptr) const;
 
   Status SaveModelDef(shared_ptr<OmFileSaveHelper> &om_file_save_helper, const GeModelPtr &ge_model,
                       Buffer &model_buffer, const size_t model_index = 0U) const;
