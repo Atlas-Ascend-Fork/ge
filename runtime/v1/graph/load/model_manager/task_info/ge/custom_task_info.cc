@@ -56,6 +56,7 @@ const ge::char_t *const kDumpInput = "input";
 constexpr uint32_t kAddressLen = static_cast<uint32_t>(sizeof(uint64_t));
 constexpr size_t kCustomOpArgsReserved = 16UL;
 constexpr size_t kCustomOpArgsFieldSize = sizeof(void *);
+constexpr size_t kArgsAddressAlign = 8UL;
 constexpr const char_t *kDefaultCustomKernelMagic = "RT_DEV_BINARY_MAGIC_ELF_AIVEC";
 // CustomDataBlock 在 device 缓冲内的对齐粒度。取 512B 与 DavinciModel::MallocDynamicMemory 的分配粒度
 // （kAlignSize = 512）保持一致，使「一次分配 + 一次 H2D」后每个 blob 的 device 地址对齐语义与
@@ -64,6 +65,15 @@ constexpr size_t kCustomDataAlignSize = 512UL;
 
 inline size_t AlignUpCustomDataSize(const size_t size) {
   return ((size + kCustomDataAlignSize - 1UL) / kCustomDataAlignSize) * kCustomDataAlignSize;
+}
+
+bool AlignArgsSizeTo8Byte(const size_t size, size_t &aligned_size) {
+  constexpr size_t mask = kArgsAddressAlign - 1UL;
+  if (size > (std::numeric_limits<size_t>::max() - mask)) {
+    return false;
+  }
+  aligned_size = (size + mask) & ~mask;
+  return true;
 }
 
 bool IsInputDescValid(const ge::GeTensorDesc &input_desc, size_t &invalid_index_num) {
@@ -882,9 +892,13 @@ const gert::KernelArgs *CustomTaskInfo::MallocReadOnlyDevArgsImpl(void *host_arg
   GE_ASSERT_TRUE(host_args != nullptr && args_size != 0U && davinci_model_ != nullptr);
 
   if (is_args_refreshable_) {
+    // aclrtLaunchKernelV2 要求 args 地址 8 字节对齐
+    size_t alloc_size = 0UL;
+    GE_ASSERT_TRUE(AlignArgsSizeTo8Byte(args_size, alloc_size));
+
     // 使用预留段分配，支持地址刷新
     ArgsAllocationResult result;
-    GE_ASSERT_SUCCESS(davinci_model_->AllocateArgsBuffer(args_size, args_placement_, result));
+    GE_ASSERT_SUCCESS(davinci_model_->AllocateArgsBuffer(alloc_size, args_placement_, result));
 
     GE_ASSERT_EOK(memcpy_s(result.host_addr, args_size, host_args, args_size));
 

@@ -137,6 +137,7 @@ set(DISTINCT_GRAPH_LOAD_TEST_FILES
     "executor/om2_kernel_handles_unittest.cc"
     "executor/om2_rt_var_manager_unittest.cc"
     "executor/om2_model_manager_unittest.cc"
+    "executor/om2_args_handler_unittest.cc"
     "executor/file_const_loader_unittest.cc"
     "executor/executor_utils_unittest.cc"
     "executor/runtime/om2_without_graph_dump_unittest.cc"
