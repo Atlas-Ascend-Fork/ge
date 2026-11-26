@@ -1183,7 +1183,7 @@ TEST(FuzzyBuildSTest, DynamicShapeAccurateBuildReuseFuzzyCacheNoMatchSt) {
   std::string strategy;
   task->kernel = "te_Activation_success";
   res = te::fusion::TeFusionManager::GetInstance()->BuildTbeOp(task, strategy);
-  printf("End of BuildTbeOp!!!!!\r\n", opName.c_str());
+  printf("End of BuildTbeOp[%s]!!!!!\r\n", opName.c_str());
   // no resuse cache, continue to accurate build
   EXPECT_EQ(res, OP_BUILD_SUCC);
   // check task SUCC
@@ -1250,7 +1250,7 @@ TEST(FuzzyBuildSTest, DynamicShapeAccurateBuildReuseFuzzyCacheConditionDynamicFa
   std::string strategy;
   task->kernel = "te_Activation_success";
   res = te::fusion::TeFusionManager::GetInstance()->BuildTbeOp(task, strategy);
-  printf("End of BuildTbeOp!!!!!\r\n", opName.c_str());
+  printf("End of BuildTbeOp[%s]!!!!!\r\n", opName.c_str());
   // no resuse cache, continue to accurate build
   EXPECT_EQ(res, OP_BUILD_SUCC);
 }
