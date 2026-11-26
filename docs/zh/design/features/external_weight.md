@@ -36,10 +36,15 @@ sequenceDiagram
 ```
 
 **文件存储**：
-- **模式 1**：每个权重独立文件 `weight_<sha256>`，多线程写入（8线程），`flock(LOCK_EX)` 保护 meta.json 并发编译
-- **模式 2**：所有权重合并到一个文件，512 字节对齐（DMA 要求），通过 offset 定位，meta.json 记录 hash→file/offset 映射
+- **模式 1**：每个权重独立文件 `weight_<sha256>`，多线程写入（8线程）。批内同 hash 先校验长度与内容；已有同名文件仅字节一致时复用，同 hash 异内容报错不覆盖；新文件先写同目录临时文件（`.tmp_fcst_publish_*`）确认关闭后 `link` 无覆盖安装。模式 1 不读写 meta 两张表。
+- **模式 2**：所有权重合并到一个文件，512 字节对齐（DMA 要求），通过 offset 定位。旧 JSON 双表（`hash_to_weight_file`/`hash_to_weight_offset`）仅作为每个 hash 最近一次合并位置的提示：仅当路径一致、offset 对齐、区间完整落在当前文件内且分块读回字节与本批 tensor 一致时才复用；新数据从原 EOF 的下一个 512 对齐位置追加（残尾场景从对齐边界追加）；追加或索引发布失败时回退 truncate 到原 EOF，回退失败时遗留尾部不被索引引用，下次候选仍须验证。同目录内两种模式互不借用物理记录。
+  实现上，`SaveWeightToOneFileWithReuse` 编排目标文件命名、`ResolveCombinedWeightReuse` 复用判定和 `AppendCombinedWeights` 追加写入。
+- **索引发布**：meta.json 经同目录临时文件写入、确认关闭后 `rename` 原子替换；目录并发由稳定锁文件 `meta.lock`（`flock LOCK_EX`）约束，而非锁在会被原子替换的 meta.json inode 上。
+- **改图顺序**：先落盘并校验全部节点位置（局部位置表是写入 FileConstant 属性的唯一来源），索引提交成功后才应用节点属性转换并清除内嵌权重；磁盘失败不清空图中权重，hash 无位置时报错而非抛异常。
 
 **路径管理**：编译期写入 `tmp_weight_<pid>_<sid>/` → OM 输出时 `ChangeFilePath` 迁移到 `OM同目录/weight/` → `RefreshRelativePath` 将 location 刷新为仅文件名
+
+OM1 Bundle 保存先收集所有子模型的权重迁移记录，再按源路径去重迁移，避免前一个子模型提前移走共享权重。子模型的 `location` 被改写时，即使没有 SO 需要打包，也必须重新序列化；只有路径不变且无需打包 SO 时，才复用原模型字节。
 
 **逆向转换**（`compiler/graph/preprocess/graph_prepare.cc`）：`ConvertFileConstToConst` 读文件 → 创建 GeTensor → 节点类型改回 Const，用于 ONNX 导入等场景。
 
@@ -133,7 +138,7 @@ std::unique_ptr<void, std::function<void(void*)>> external_weight_combined_mem_a
 - **分片**：`SaveSlicedFileConstantInfo / TryGetSlicedFileConstantInfo` 支持大模型分片
 - **生命周期**：Session 析构时 `RemoveManager → Finalize` 自动清理临时权重目录
 
-`FileConstantMeta` 持久化为 meta.json：
+`FileConstantMeta` 持久化为 meta.json（同目录 `meta.lock` 为并发锁）：
 ```json
 { "hash_to_weight_file": {"sha256...": "/path/weight_sha256..."}, "hash_to_weight_offset": {"sha256...": 0} }
 ```
@@ -150,8 +155,8 @@ std::unique_ptr<void, std::function<void(void*)>> external_weight_combined_mem_a
 | Compiler | `compiler/graph/preprocess/graph_prepare.cc` | Prepare 阶段 FileConstant→Const 逆向转换 |
 | Compiler | `compiler/graph/build/graph_compile_summary_impl.cc` | `SetExternalWeightPaths` 编译摘要 |
 | Compiler | `compiler/api/generator/ge_generator.cc` | OM 输出时权重文件路径迁移 |
-| Base | `base/common/file_constant_utils/file_constant_utils.cc` | 核心工具类：转换、读写、路径管理 |
-| Base | `base/graph/manager/graph_external_weight_manager.cc` | Session 级权重管理器 |
+| Base | `base/common/file_constant_utils/file_constant_utils.cc` | 核心工具类：转换、读写、路径管理、模式隔离 |
+| Base | `base/graph/manager/graph_external_weight_manager.cc` | Session 级权重管理器（路径快照按值返回） |
 | RT V1 | `runtime/v1/graph/load/model_manager/davinci_model.cc` | PreProcessFileConstants 内存预分配全套逻辑 |
 | RT V1 | `runtime/v1/graph/load/model_manager/davinci_model.h` | FileConstant 相关数据结构 |
 | RT V2 | `runtime/v2/kernel/ge_local_kernel/file_constant_kernel.cc` | FileConstantKernel / FileConstantUserMemKernel |

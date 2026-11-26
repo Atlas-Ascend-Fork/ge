@@ -11,6 +11,7 @@
 #ifndef INC_FRAMEWORK_COMMON_HELPER_MODEL_HELPER_H_
 #define INC_FRAMEWORK_COMMON_HELPER_MODEL_HELPER_H_
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -135,6 +136,9 @@ class GE_FUNC_VISIBILITY ModelHelper : public ModelSaveHelper {
 
   Status PackSoToModelData(const ModelData &model_data, const std::string &output_file, ModelBufferData &model_buffer,
                            const bool save_to_file = true);
+  // Bundle save collects relocations for all submodels before moving any source file.
+  Status PackSoToModelDataForBundle(const ModelData &model_data, const std::string &output_file,
+                                    ModelBufferData &model_buffer, std::map<std::string, std::string> &relocations);
   bool IsSoStore() const {
     return is_so_store_;
   }
@@ -192,6 +196,9 @@ class GE_FUNC_VISIBILITY ModelHelper : public ModelSaveHelper {
   bool is_so_store_ = false;
 
  private:
+  Status PackSoToModelDataImpl(const ModelData &model_data, const std::string &output_file,
+                               ModelBufferData &model_buffer, bool save_to_file,
+                               std::map<std::string, std::string> *bundle_relocations);
   static Status RecordOffsetsRefreshInfo(const ComputeGraphPtr &graph,
                                          const std::map<int64_t, NodePtr> &unrefreshed_offsets,
                                          NodeRefreshInfo &inputs_need_refresh, NodeRefreshInfo &outputs_need_refresh);

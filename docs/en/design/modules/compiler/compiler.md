@@ -634,6 +634,7 @@ The built-in Host `ShapeN` uses the logical dimensions of each input. Extra stor
 
 - **Weight Merging**: Merge scattered weight data into continuous memory region, making load phase more efficient
 - **Const Deduplication**: Through binary comparison discover Const nodes with same weight, let them share memory
+- **OM1 Bundle external weights**: Saving gathers submodel references before moving shared files. See [External Weights](../../features/external_weight.md).
 
 ## 10. Compiler Design Characteristics
 

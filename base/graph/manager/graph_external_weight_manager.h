@@ -52,7 +52,9 @@ class ExternalWeightManager {
 
   void SetWeightPath(const std::string &weight_path);
 
-  const std::string &GetWeightPath();
+  /// @brief get weight path by value, the snapshot is taken under internal mutex
+  /// @return weight path copy
+  std::string GetWeightPath();
 
   FileConstantMeta &MutableMetaFile() {
     return meta_file_;
