@@ -1,6 +1,6 @@
 # ES Graph Composition Samples
 
-This directory provides various samples related to ACL interfaces, including:
+This directory provides various samples related to the ACL interfaces, including:
 
 | Sample | Sample Link |
 |--------|-------------|

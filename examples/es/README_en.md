@@ -1,4 +1,4 @@
-# ES Graph construction Samples
+# ES Graph Construction Samples
 
 This directory provides various samples related to ES graph construction, including both C++ and Python implementations:
 

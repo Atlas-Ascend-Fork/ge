@@ -41,7 +41,7 @@ To be constructed.
       export ASCEND_DEVICE_ID=0
       # Enable auto-fusion. --autofuse_enable_pass indicates additional fusion capabilities you want to enable, currently supports reduce, concat, slice, split, gather, transpose
       export AUTOFUSE_FLAGS="--enable_autofuse=true;--autofuse_enable_pass=reduce,concat,slice,split,gather,transpose;"
-    It is generally recommended to only enable reduce and concat for the first test. Other data movement operators depend on the chip architecture and network structure to decide whether to enable them.
+    It is generally recommended to enable only reduce and concat for the first test. Other data movement operators depend on the chip architecture and network structure to decide whether to enable them.
 
    ```
 

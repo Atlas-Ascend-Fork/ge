@@ -24,7 +24,7 @@ Generate ES_API code via gen_esb executable program (refer to [gen_esb_readme.md
 Write custom API code by referring to the code generated in step one. The following are code samples:
 
 - Sample 1. Legality Completion Conv2D <a id="sample1"></a> <br>
-  Conv2D type operators need to set Format themselves, you can add logic to ensure operator validity
+  Conv2D type operators need to set Format themselves, you can add logic to ensure operator validity.
   - [my_Conv2D_c.h](./custom/my_Conv2D_c.h)
   - [my_Conv2D.h](./custom/my_Conv2D.h)
   - [my_Conv2D.cpp](./custom/my_Conv2D.cpp)

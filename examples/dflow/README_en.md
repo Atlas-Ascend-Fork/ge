@@ -1,6 +1,6 @@
 # Dflow Samples
 
-This directory provides DataFlow related samples, including both C++ and Python implementations:
+This directory provides DataFlow-related samples, including both C++ and Python implementations:
 
 | Sample | Sample Link |
 |--------|-------------|

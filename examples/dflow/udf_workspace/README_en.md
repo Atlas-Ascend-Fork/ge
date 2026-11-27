@@ -50,7 +50,7 @@
 
 ## Compilation Guide
 
-After UDF function development is completed, you can use the following compilation instructions to check whether CMakeLists file and cpp source code have any issues.
+After UDF function development is completed, you can use the following compilation instructions to check whether the CMakeLists file and cpp source code have any issues.
 
 ```bash
 source {HOME}/Ascend/cann/set_env.sh #{HOME} is the CANN software package installation directory, please replace according to the actual installation path
