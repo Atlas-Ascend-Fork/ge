@@ -149,9 +149,6 @@ The following is an example of the content of the extended operator mapping conf
 OpA:Network1OpA
 ```
 
-**Usage constraints:**
-When the value of [OFFLINE_MODE](basic_functions.md#offline_mode) is 7, configuring this parameter is not supported.
-
 **Applicable products:**
 
 <!-- @ref: ge/res/docs/en/api/graph_engine_api/cpp/ge/aclgrphBuildModel_config_params/basic_functions_res.md#id1 -->

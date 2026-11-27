@@ -58,7 +58,8 @@ REG_OP(xxx)
 | .OP_END_FACTORY_REG(x) | 与REG_OP配对，结束算子原型定义。<br>算子类型（x）与REG_OP(x)中的类型相同。 | - |
 
 > [!NOTE]说明
->OpReg类中的OpReg &N\(\)接口的功能是为了用户进行算子注册的时候，使用.\*\*的方式调用OpReg类的接口，例如.INPUT\(x, type\)、.OUTPUT\(x, type\)，无其他含义。
+> - OpReg类中的OpReg &N\(\)接口的功能是为了用户进行算子注册的时候，使用.\*\*的方式调用OpReg类的接口，例如.INPUT\(x, type\)、.OUTPUT\(x, type\)，无其他含义。
+> - `TensorType类说明`请参见《[基础数据结构和接口](https://gitcode.com/cann/metadef/blob/master/docs/zh/api/README.md)》。
 
 ## 返回值说明
 

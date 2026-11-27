@@ -342,8 +342,8 @@ graphStatus OpDescImpl::AddInputDescMiddle(const std::string &name, const uint32
     std::string input_name = name + std::to_string(i);
     GE_CHK_BOOL_EXEC(
         (input_name_idx_.find(input_name) == input_name_idx_.end()),
-        REPORT_INNER_ERR_MSG("E18888", "Add input tensor_desc is existed. name[%s]", input_name.c_str());
-        GELOGE(ge::FAILED, "[Check][Param] Add input tensor_desc is existed. name[%s]", input_name.c_str());
+        REPORT_INNER_ERR_MSG("E18888", "Add input tensor_desc already exists. name[%s]", input_name.c_str());
+        GELOGE(ge::FAILED, "[Check][Param] Add input tensor_desc already exists. name[%s]", input_name.c_str());
         return GRAPH_FAILED);
 
     const std::shared_ptr<GeTensorDesc> in_desc = ComGraphMakeShared<GeTensorDesc>(GeTensorDesc());
@@ -381,10 +381,10 @@ graphStatus OpDescImpl::AddOutputDescMiddle(const std::string &name, const uint3
   std::map<std::string, uint32_t> dynamic_names_indexes;
   for (uint32_t i = 0U; i < num; i++) {
     std::string output_name = name + std::to_string(i);
-    GE_CHK_BOOL_EXEC((output_name_idx_.find(output_name) == output_name_idx_.end()),
-                     REPORT_INNER_ERR_MSG("E18888", "Add output tensor_desc is existed. name[%s]", output_name.c_str());
-                     return GRAPH_FAILED, "[Check][Param] Add output tensor_desc is existed. name[%s]",
-                            output_name.c_str());
+    GE_CHK_BOOL_EXEC(
+        (output_name_idx_.find(output_name) == output_name_idx_.end()),
+        REPORT_INNER_ERR_MSG("E18888", "Add output tensor_desc already exists. name[%s]", output_name.c_str());
+        return GRAPH_FAILED, "[Check][Param] Add output tensor_desc already exists. name[%s]", output_name.c_str());
 
     const std::shared_ptr<GeTensorDesc> out_desc = ComGraphMakeShared<GeTensorDesc>(GeTensorDesc());
     if (out_desc == nullptr) {
@@ -420,10 +420,10 @@ graphStatus OpDescImpl::AddInputDescForward(const std::string &name, const uint3
   std::map<std::string, uint32_t> dynamic_input_name_indexes;
   for (uint32_t i = 0U; i < num; i++) {
     std::string input_name = name + std::to_string(i);
-    GE_CHK_BOOL_EXEC((input_name_idx_.find(input_name) == input_name_idx_.end()),
-                     REPORT_INNER_ERR_MSG("E18888", "Add input tensor_desc is existed. name[%s]", input_name.c_str());
-                     return GRAPH_FAILED, "[Check][Param] Add input tensor_desc is existed. name[%s]",
-                            input_name.c_str());
+    GE_CHK_BOOL_EXEC(
+        (input_name_idx_.find(input_name) == input_name_idx_.end()),
+        REPORT_INNER_ERR_MSG("E18888", "Add input tensor_desc already exists. name[%s]", input_name.c_str());
+        return GRAPH_FAILED, "[Check][Param] Add input tensor_desc already exists. name[%s]", input_name.c_str());
 
     const std::shared_ptr<GeTensorDesc> in_desc = ComGraphMakeShared<GeTensorDesc>(GeTensorDesc());
     if (in_desc == nullptr) {
@@ -446,10 +446,10 @@ graphStatus OpDescImpl::AddOutputDescForward(const std::string &name, const uint
   for (uint32_t i = 0U; i < num; i++) {
     const auto index = i;
     std::string output_name = name + std::to_string(index);
-    GE_CHK_BOOL_EXEC((output_name_idx_.find(output_name) == output_name_idx_.end()),
-                     REPORT_INNER_ERR_MSG("E18888", "Add output tensor_desc is existed. name[%s]", output_name.c_str());
-                     return GRAPH_FAILED, "[Check][Param] Add output tensor_desc is existed. name[%s]",
-                            output_name.c_str());
+    GE_CHK_BOOL_EXEC(
+        (output_name_idx_.find(output_name) == output_name_idx_.end()),
+        REPORT_INNER_ERR_MSG("E18888", "Add output tensor_desc already exists. name[%s]", output_name.c_str());
+        return GRAPH_FAILED, "[Check][Param] Add output tensor_desc already exists. name[%s]", output_name.c_str());
 
     const std::shared_ptr<GeTensorDesc> in_desc = ComGraphMakeShared<GeTensorDesc>(GeTensorDesc());
     if (in_desc == nullptr) {
@@ -693,7 +693,7 @@ OpDesc::Vistor<GeTensorDesc> OpDescImpl::GetAllInputsDesc(const ConstOpDescPtr &
     if (it->IsValid() == GRAPH_SUCCESS) {
       temp.push_back(*it);
     } else {
-      GELOGW("[Get][InputDesc] This input_desc is invalid, it won't be return");
+      GELOGW("[Get][InputDesc] This input_desc is invalid, it won't be returned");
       continue;
     }
   }
@@ -706,7 +706,7 @@ OpDesc::Vistor<GeTensorDescPtr> OpDescImpl::GetAllInputsDescPtr(const ConstOpDes
     if (it->IsValid() == GRAPH_SUCCESS) {
       temp.push_back(it);
     } else {
-      GELOGD("[Get][InputDesc] This input_desc is invalid, it won't be return");
+      GELOGD("[Get][InputDesc] This input_desc is invalid, it won't be returned");
       continue;
     }
   }
@@ -735,8 +735,8 @@ graphStatus OpDescImpl::AddOutputDesc(const ge::GeTensorDesc &output_desc) {
 
 graphStatus OpDescImpl::AddOutputDesc(const std::string &name, const ge::GeTensorDesc &output_desc) {
   GE_CHK_BOOL_EXEC((output_name_idx_.find(name) == output_name_idx_.end()),
-                   REPORT_INNER_ERR_MSG("E18888", "Add output tensor_Desc is existed. name[%s]", name.c_str());
-                   return GRAPH_FAILED, "[Check][Param] Add output tensor_Desc is existed. name[%s]", name.c_str());
+                   REPORT_INNER_ERR_MSG("E18888", "Add output tensor_Desc already exists. name[%s]", name.c_str());
+                   return GRAPH_FAILED, "[Check][Param] Add output tensor_Desc already exists. name[%s]", name.c_str());
   const int32_t index = static_cast<int32_t>(outputs_desc_.size());
 
   const std::shared_ptr<GeTensorDesc> tensor = ComGraphMakeShared<GeTensorDesc>(output_desc);
@@ -1104,7 +1104,7 @@ graphStatus OpDescImpl::DefaultInferFormat(const ConstOpDescPtr &op_desc) const 
     }
   }
   // Refresh all input output format
-  GELOGD("Default infer format.node[%s], first none ND format is:%d", GetName().c_str(), first_none_nd_format);
+  GELOGD("Default infer format.node[%s], first non-ND format is:%d", GetName().c_str(), first_none_nd_format);
 
   for (const auto &input_desc : input_descs) {
     const Format origin_format = input_desc->GetOriginFormat();
@@ -1150,7 +1150,9 @@ graphStatus OpDescImpl::GetDynamicInputIndexesByName(const std::string &name, st
     if (it_find != input_name_idx_.end()) {
       if (previous_value != UINT32_MAX && it_find->second != previous_value + 1U) {
         // 如果当前的 value 不是前一个 value 加一，返回 GRAPH_FAILED
-        GELOGE(GRAPH_FAILED, "The dynamic input index is not continuous.");
+        GELOGE(GRAPH_FAILED,
+               "The dynamic input index is not continuous, input name:%s, current index:%u, previous index:%u.",
+               name.c_str(), it_find->second, previous_value);
         return GRAPH_FAILED;
       }
       indexes.emplace_back(it_find->second);
@@ -1207,7 +1209,9 @@ graphStatus OpDescImpl::GetDynamicOutputIndexesByName(const std::string &name, s
     const auto it_find = output_name_idx_.find(name + std::to_string(i));
     if (it_find != output_name_idx_.end()) {
       if (previous_value != UINT32_MAX && it_find->second != previous_value + 1U) {
-        GELOGE(GRAPH_FAILED, "The dynamic output index is not continuous.");
+        GELOGE(GRAPH_FAILED,
+               "The dynamic output index is not continuous, output name:%s, current index:%u, previous index:%u.",
+               name.c_str(), it_find->second, previous_value);
         return GRAPH_FAILED;
       }
       indexes.emplace_back(it_find->second);

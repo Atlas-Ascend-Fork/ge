@@ -12,7 +12,9 @@
 #include "ge_graph_dsl/graph_dsl.h"
 #include "es_ge_test_ops.h"
 #include "graph/utils/graph_utils_ex.h"
+#define private public
 #include "jit_execution/jit_executor.h"
+#undef private public
 #include <vector>
 #include "jit_share_graph.h"
 #include "common/model/external_allocator_manager.h"
@@ -28,6 +30,8 @@
 #include "common/mem_conflict_share_graph.h"
 #include "common/memory/tensor_trans_utils.h"
 #include "error_codes/rt_error_codes.h"
+#include "graph/optimize/symbolic/shape_env_guarder.h"
+#include "compiler/graph/optimize/symbolic/infer_symbolic_shape/symbolic_shape_symbolizer.h"
 
 using namespace testing;
 using namespace ge;
@@ -762,6 +766,57 @@ TEST_F(JitExecutorUT, run_success_when_input_graph_contain_two_reshape_one_const
 //  EXPECT_EQ(jit_executor->Finalize(), SUCCESS);
 //  EXPECT_EQ(inner_session.Finalize(), SUCCESS);
 //}
+
+TEST_F(JitExecutorUT, compile_and_load_rejects_invalid_guard_before_loading) {
+  ModelExecutor model_executor;
+  model_executor.Initialize({}, 0);
+  GraphManager graph_manager;
+  EXPECT_EQ(graph_manager.Initialize({}, &model_executor), SUCCESS);
+  UserGraphExecutionQueue task_queue;
+  const uint32_t user_graph_id = 0U;
+  auto graph = JitShareGraph::AllNormalNodes();
+  auto compute_graph = GraphUtilsEx::GetComputeGraph(*graph.get());
+  auto attr = compute_graph->GetOrCreateAttrsGroup<ShapeEnvAttr>();
+  ASSERT_NE(attr, nullptr);
+  ShapeEnvGuarder guard(attr);
+  const auto symbol = attr->CreateSymbol(3, MakeShared<InputShapeSource>(0, 0));
+  ASSERT_EQ(attr->AppendSymbolCheckInfo(sym::Eq(symbol, symbol + Symbol(1)), __FILE__, __LINE__), GRAPH_SUCCESS);
+  GuardCodegen codegen;
+  ASSERT_EQ(codegen.GuardFuncCodegenAndCompile(compute_graph), ge::GRAPH_SUCCESS);
+
+  ExecutionOrder order({user_graph_id, compute_graph});
+  CompileContext compile_context(graph_manager);
+  CompiledModelCache cmc(user_graph_id, compile_context, graph_manager);
+  std::mutex tmp_mutex;
+  auto jit_executor = JitExecutor::Create(graph_manager, task_queue, order, compile_context, cmc, tmp_mutex);
+  ASSERT_NE(jit_executor, nullptr);
+
+  std::vector<int64_t> shape_dim = {3, 2, 9};
+  TensorDesc td(Shape(shape_dim), FORMAT_NCHW, DT_FLOAT);
+  td.SetOriginShape(Shape(shape_dim));
+  Tensor tensor(td);
+  std::vector<Tensor> inputs{tensor};
+  std::vector<gert::Tensor> gert_inputs;
+  TensorTransUtils::Tensors2GertTensors(inputs, gert_inputs);
+  std::vector<GeTensor> ge_inputs;
+  ASSERT_EQ(TensorTransUtils::GertTensors2GeTensors(gert_inputs, ge_inputs), SUCCESS);
+  ExecutionPoint *ep = nullptr;
+  ASSERT_EQ(order.FirstPoint(ge_inputs, ep), SUCCESS);
+  ASSERT_NE(ep, nullptr);
+  auto gep = ep->FindOrCreateGuarded(gert_inputs);
+  ASSERT_NE(gep, nullptr);
+  auto stream = gert_stub_.GetAclRuntimeStub().GetAllRtStreams().at(0);
+  uint32_t instance_id = 0U;
+  // 避免符号化重建 ShapeEnvAttr，保留上述错误 Guard 以覆盖编译后自检。
+  mmSetEnv("AUTOFUSE_FLAGS", "--enable_autofuse=false", 1);
+  const Status ret = jit_executor->CompileAndLoad(gert_inputs, gep, instance_id, stream, {}, 0);
+  unsetenv("AUTOFUSE_FLAGS");
+  EXPECT_NE(ret, SUCCESS);
+  EXPECT_FALSE(gep->Match(gert_inputs));
+
+  EXPECT_EQ(jit_executor->Finalize(), SUCCESS);
+  EXPECT_EQ(graph_manager.Finalize(), SUCCESS);
+}
 
 TEST_F(JitExecutorUT, guard_hit_success_and_miss_success_when_input_graph_contain_add_node) {
   // 1 准备构造jit executor的入参

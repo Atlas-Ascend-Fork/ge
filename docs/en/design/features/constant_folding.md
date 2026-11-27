@@ -41,6 +41,8 @@ atc --model=model.onnx --output=model --framework=5 \
 
 Typical benefit scenario: Model contains large amount of auxiliary computations for dynamic Shape inference (like Shape→Gather→Concat→Reshape chain). These can completely pre-compute in static Shape scenario. Constant folding can eliminate them all.
 
+The built-in Host `GatherV2` removes the indexed axis for a scalar index. For example, gathering column 1 from `[[10, 11], [20, 21]]` returns `[11, 21]` with shape `[2]`. A vector index `[1]` selects the same values with shape `[2, 1]`.
+
 ### 2.2 IR Build Scenario (aclgrphBuildModel)
 
 When using ACL Graph Builder API to build models, control through `aclgrphBuildInitialize` or `aclgrphBuildModel` configuration parameters:
@@ -263,6 +265,8 @@ REG_PASS_OPTION("ConstantFoldingPass").SWITCH_OPT(ge::OO_CONSTANT_FOLDING);
 
 This Pass controlled by `ge.oo.constantFolding` switch.
 
+For a nonempty normalized interval and a positive stride, the built-in Host `StridedSlice` rounds the output length up using the quotient and remainder. For example, slicing `[10, 11, 12, 13, 14]` with `0:5:2` returns `[10, 12, 14]` with shape `[3]`. The divisible interval `0:4:2` returns `[10, 12]`.
+
 #### 4.3.2 DimensionComputePass — Dimension Computation Folding
 
 File: `compiler/graph/passes/standard_optimize/constant_folding/dimension_compute_pass.h/cc`
@@ -416,6 +420,8 @@ Registered Host Kernel distributed by category:
 | Reduction operations | `host_kernels/reduce_ops/` | ReduceProd |
 | Data flow | `host_kernels/data_flow_ops/` | DynamicStitch |
 | Custom | `host_kernels/custom_ops/` | ReFormat, SsdPriorBox |
+
+The built-in Host `DynamicStitch` returns shape `[max(indices) + 1] + data.shape[indices.rank:]`. Each index places one complete slice. Two inputs of shape `[1, 2, 2]` stitched at indices `[0]` and `[1]` produce shape `[2, 2, 2]` with all eight values. If a suffix dimension is zero, the empty output retains its shape and data type without allocating a data buffer.
 
 Each Kernel registers to `KernelFactory` through `REGISTER_COMPUTE_NODE_KERNEL` macro, runtime lookup by operator type.
 

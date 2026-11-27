@@ -133,8 +133,7 @@ Status RunAllocateStreamPass(const PassRegistrationData &reg_data, const GraphPt
 Status RunCustomPass(const PassRegistrationData &reg_data, GraphPtr &graph, CustomPassContext &custom_pass_context) {
   const auto custom_pass_fn = reg_data.GetCustomPassFn();
   if (custom_pass_fn == nullptr) {
-    GELOGW("[Check][Param] Failed to retrieve custom_pass_fn for custom pass %s failed",
-           reg_data.GetPassName().c_str());
+    GELOGW("[Check][Param] Failed to retrieve custom_pass_fn for custom pass %s", reg_data.GetPassName().c_str());
     return SUCCESS;
   }
   custom_pass_context.SetPassName(reg_data.GetPassName().c_str());
@@ -449,7 +448,7 @@ Status CustomPassHelper::Unload() {
   Status unload_status = ge::SUCCESS;
   for (auto &handle : handles_) {
     if (handle != nullptr && dlclose(handle) != 0) {
-      GELOGE(ge::FAILED, "[Unload][CustomPassLibs] Failed to unload custom pass lib: %s", dlerror());
+      GELOGE(ge::FAILED, "[Unload][CustomPassLibs] Failed to unload custom pass lib, reason: %s", dlerror());
       unload_status = ge::FAILED;
       continue;
     }

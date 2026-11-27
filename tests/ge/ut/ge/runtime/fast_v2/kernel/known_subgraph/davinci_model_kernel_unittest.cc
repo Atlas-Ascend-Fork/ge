@@ -371,11 +371,11 @@ TEST_F(DavinciModelUt, GetRunAddressMemoryBaseTypeInvalidFailed) {
   ASSERT_NE(ret, ge::SUCCESS);
 }
 
-TEST_F(DavinciModelUt, DavinciModelExecuteNullStreamFailed) {
+TEST_F(DavinciModelUt, DavinciModelExecuteNullStreamNotBlocked) {
   KernelContext *context = BuildContextForDavinciModelExecuteNullStream();
   kernel::PrintModelExecute(context);
   auto ret = registry.FindKernelFuncs("DavinciModelExecute")->run_func(context);
-  EXPECT_NE(ret, ge::SUCCESS);
+  EXPECT_EQ(ret, ge::SUCCESS);
 }
 
 TEST_F(DavinciModelUt, DavinciModelExecuteWithStream) {

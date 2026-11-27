@@ -131,7 +131,7 @@ SymDtype *IRDataTypeSymbolStore::GetOrCreateSymbol(const std::string &origin_sym
     }
   }
   auto sym = MakeShared<SymDtype>(sym_id);
-  GE_ASSERT_NOTNULL(sym, "Failed create symbol %s", sym_id.c_str());
+  GE_ASSERT_NOTNULL(sym, "Failed to create symbol %s", sym_id.c_str());
   syms_.emplace_back(sym);
   return syms_.back().get();
 }
@@ -164,7 +164,7 @@ SymDtype *IRDataTypeSymbolStore::DeclareSymbol(const std::string &sym_id, const 
 SymDtype *IRDataTypeSymbolStore::DeclareSymbol(const std::string &sym_id, const Promote &types) {
   std::vector<SymDtype *> syms;
   for (auto &id : types.Syms()) {
-    GE_ASSERT(id != sym_id, "Trying promote symbol %s with itself", sym_id.c_str());
+    GE_ASSERT(id != sym_id, "Trying to promote symbol %s with itself", sym_id.c_str());
     auto *sym = GetOrCreateSymbol(id);
     GE_ASSERT_NOTNULL(sym);
     syms.emplace_back(sym);

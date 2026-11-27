@@ -41,6 +41,8 @@ atc --model=model.onnx --output=model --framework=5 \
 
 典型收益场景：模型中包含大量用于动态 Shape 推断的辅助计算（如 Shape→Gather→Concat→Reshape 链路），这些在静态 Shape 场景下完全可以预计算，常量折叠能将其全部消除。
 
+内置 Host `GatherV2` 的标量索引会移除输出中的索引轴，但仍需选取该索引对应的数据。例如 `[[10,11],[20,21]]` 沿轴 1 取标量索引 1，输出形状为 `[2]`、值为 `[11,21]`；索引改为向量 `[1]` 时，值相同而形状为 `[2,1]`。
+
 ### 2.2 IR 编译场景（aclgrphBuildModel）
 
 使用 ACL Graph Builder API 构建模型时，通过 `aclgrphBuildInitialize` 或 `aclgrphBuildModel` 的配置参数控制：
@@ -261,6 +263,8 @@ REG_PASS_OPTION("ConstantFoldingPass").SWITCH_OPT(ge::OO_CONSTANT_FOLDING);
 ```
 该 Pass 受 `ge.oo.constantFolding` 开关控制。
 
+内置 Host `StridedSlice` 对规范化后的正步长非空区间按 `ceil((end - begin) / stride)` 计算长度，使用商和余数实现。例如 `[10,11,12,13,14]` 的 `0:5:2` 返回 `[10,12,14]`、形状 `[3]`；`0:4:2` 仍为 `[10,12]`。该取整规则仅用于正步长非空区间。
+
 #### 4.3.2 DimensionComputePass — 维度计算折叠
 
 文件：`compiler/graph/passes/standard_optimize/constant_folding/dimension_compute_pass.h/cc`
@@ -408,6 +412,8 @@ ConstantFoldingPass / DimensionComputePass
 | 规约操作 | `host_kernels/reduce_ops/` | ReduceProd |
 | 数据流 | `host_kernels/data_flow_ops/` | DynamicStitch |
 | 自定义 | `host_kernels/custom_ops/` | ReFormat, SsdPriorBox |
+
+内置 Host `DynamicStitch` 的输出形状为 `[max(indices) + 1] + data.shape[indices.rank:]`，每个索引搬运整个后缀对应的数据片。例如两个 `[1,2,2]` 数据输入按索引 `[0]`、`[1]` 拼接时，输出为 `[2,2,2]`，保留全部 8 个元素；后缀含零维时保留空张量的形状和数据类型，跳过输出数据缓冲区的申请。
 
 每个 Kernel 通过 `REGISTER_COMPUTE_NODE_KERNEL` 宏注册到 `KernelFactory`，运行时按算子类型查找。
 

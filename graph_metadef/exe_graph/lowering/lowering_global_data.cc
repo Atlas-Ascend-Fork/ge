@@ -58,7 +58,7 @@ bool CanUseInitAllocator(const bool always_external_allocator, const AllocatorDe
   if (IsPlacementSupportExternalAllocator(desc.placement) && IsUsageSupportExternalAllocator(desc.usage)) {
     return true;
   } else {
-    GELOGW("We don't support placement[%d] or usage[%d] current while always_external_allocator is true",
+    GELOGW("We don't support placement[%d] or usage[%d] currently while always_external_allocator is true",
            static_cast<int32_t>(desc.placement), static_cast<int32_t>(desc.usage));
     return false;
   }

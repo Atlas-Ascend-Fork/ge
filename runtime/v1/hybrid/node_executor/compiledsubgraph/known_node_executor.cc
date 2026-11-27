@@ -203,8 +203,8 @@ Status KnownNodeExecutor::SetDaviciModel(const HybridModel &model, const NodePtr
 }
 
 Status KnownNodeExecutor::LoadTask(const HybridModel &model, const NodePtr &node, shared_ptr<NodeTask> &task) const {
-  GELOGI("[%s] KnownNodeExecutor::LoadTask in.", node->GetName().c_str());
   GE_CHECK_NOTNULL(node);
+  GELOGI("[%s] KnownNodeExecutor::LoadTask in.", node->GetName().c_str());
 
   GeModelPtr ge_model;
   ComputeGraphPtr compute_graph;

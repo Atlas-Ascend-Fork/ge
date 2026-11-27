@@ -22,6 +22,8 @@
 #include "lowering/op_lowering_impl/lowering_impl.h"
 #include "fusion/autofuse_attrs.h"
 #include "can_fuse/fusion_strategy_solver.h"
+#include "can_fuse/backend/backend_utils.h"
+#include "post_process/scheduler_adapter/adaption_improve_precision.h"
 #include "utils/auto_fuse_config.h"
 #include "common/autofuse_backend_spec_api.h"
 #include "common/autofuse_platform_api.h"
@@ -1869,6 +1871,86 @@ TEST_F(LoopLoweringToAscBackendUT, LayerNormV3LoweringToAscBackend) {
   EXPECT_NE(readable.find("ascir.Sum"), string::npos);
   EXPECT_NE(readable.find("ascir.Rsqrt"), string::npos);
   EXPECT_NE(readable.find("ascir.Broadcast"), string::npos);
+}
+
+/**
+ * 用例描述：FP16 Add、LayerNormV3 与 Cast 融合后保留原物化边界。
+ * 预置条件：使能 LayerNorm lowering，构造 Add->LayerNormV3->Cast 静态图，输入及 Add/LayerNorm 输出为 FP16。
+ * 测试步骤：执行 lowering、AscBackend 转换、后端融合和精度提升，检查融合图及输出 dtype 属性。
+ * 预期结果：融合图包含 Mean/Rsqrt，至少两处被消除的 FP16 物化边界保留原 dtype，消费者按既有规则处理。
+ */
+TEST_F(LoopLoweringToAscBackendUT, AddLayerNormCastPreservesMaterializedFp16Boundaries) {
+  const auto origin = autofuse::AutoFuseConfig::LoweringConfig().experimental_lowering_reduce;
+  GE_MAKE_GUARD(
+      config, [origin]() { autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = origin; });
+  autofuse::AutoFuseConfig::MutableLoweringConfig().experimental_lowering_reduce = true;
+  auto x0 = es_graph_->CreateInput(0, "x0", nullptr);
+  auto x1 = es_graph_->CreateInput(1, "x1", nullptr);
+  auto gamma = es_graph_->CreateInput(2, "gamma", nullptr);
+  auto beta = es_graph_->CreateInput(3, "beta", nullptr);
+  x0.SetSymbolShape({"2", "3", "4"});
+  x1.SetSymbolShape({"2", "3", "4"});
+  gamma.SetSymbolShape({"3", "4"});
+  beta.SetSymbolShape({"3", "4"});
+  auto add = es::Add(x0, x1);
+  add.SetSymbolShape({"2", "3", "4"});
+  auto norm = es::LayerNormV3(add, gamma, beta, -2, -2, 0.001F);
+  norm.y.SetSymbolShape({"2", "3", "4"});
+  norm.mean.SetSymbolShape({"2", "1", "1"});
+  norm.rstd.SetSymbolShape({"2", "1", "1"});
+  auto cast = es::Cast(norm.y, DT_FLOAT);
+  cast.SetSymbolShape({"2", "3", "4"});
+  es_graph_->SetOutput(cast, 0);
+
+  auto graph = es_graph_->Build();
+  auto cg = GraphUtilsEx::GetComputeGraph(*graph);
+  ASSERT_NE(cg, nullptr);
+  for (const auto &name : {"x0", "x1", "gamma", "beta"}) {
+    const auto data = cg->FindNode(name);
+    ASSERT_NE(data, nullptr);
+    const auto desc = data->GetOpDesc()->MutableOutputDesc(0);
+    desc->SetDataType(DT_FLOAT16);
+    desc->SetOriginDataType(DT_FLOAT16);
+  }
+  const auto add_node = cg->FindFirstNodeMatchType("Add");
+  const auto norm_node = cg->FindFirstNodeMatchType("LayerNormV3");
+  ASSERT_NE(add_node, nullptr);
+  ASSERT_NE(norm_node, nullptr);
+  add_node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(DT_FLOAT16);
+  add_node->GetOpDesc()->MutableOutputDesc(0)->SetOriginDataType(DT_FLOAT16);
+  norm_node->GetOpDesc()->MutableOutputDesc(0)->SetDataType(DT_FLOAT16);
+  norm_node->GetOpDesc()->MutableOutputDesc(0)->SetOriginDataType(DT_FLOAT16);
+
+  ASSERT_EQ(LoweringManager::LoweringGraph(cg), GRAPH_SUCCESS);
+  ASSERT_EQ(LoweringManager::FusedLoopToAscBackendOp(cg), GRAPH_SUCCESS);
+  FusionStrategySolver solver;
+  ASSERT_EQ(solver.Fuse(cg), SUCCESS);
+  ASSERT_EQ(PrecisionImprover::ImprovePrecisionToFp32(cg), SUCCESS);
+
+  bool found_norm = false;
+  size_t materialized_count = 0U;
+  for (const auto &node : cg->GetDirectNode()) {
+    const auto attr = node->GetOpDesc()->GetAttrsGroup<AutoFuseAttrs>();
+    if (attr == nullptr || attr->GetAscGraph() == nullptr) {
+      continue;
+    }
+    const auto readable = ReadableAscGraph(*attr->GetAscGraph());
+    found_norm =
+        found_norm || (readable.find("ascir.Mean") != string::npos && readable.find("ascir.Rsqrt") != string::npos);
+    for (const auto &asc_node : attr->GetAscGraph()->GetAllNodes()) {
+      for (const auto &desc : asc_node->GetOpDesc()->GetAllOutputsDescPtr()) {
+        int64_t materialized_dtype = 0;
+        if (!AttrUtils::GetInt(*desc, kMaterializedDtypeAttr, materialized_dtype)) {
+          continue;
+        }
+        ++materialized_count;
+        EXPECT_EQ(materialized_dtype, DT_FLOAT16);
+        EXPECT_EQ(desc->GetDataType(), DT_FLOAT16);
+      }
+    }
+  }
+  EXPECT_TRUE(found_norm);
+  EXPECT_GE(materialized_count, 2U);
 }
 
 TEST_F(LoopLoweringToAscBackendUT, SimpleLayerNormBetaGammaBackpropV2) {

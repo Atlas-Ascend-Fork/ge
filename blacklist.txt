@@ -17,6 +17,7 @@ compiler/graph/optimize/autofuse/att/gen_model_info/api_perf_register/v2/ascendc
 compiler/graph/optimize/autofuse/att/gen_model_info/api_perf_register/v2/ascir_api_perf_v2.cpp
 compiler/graph/optimize/autofuse/autofuse_optimize.cc
 graph_metadef/register/op_tiling/op_tiling_py.cc
+graph_metadef/graph/fast_graph/fast_node.cc
 graph_metadef/graph/utils/graph_utils.cc
 graph_metadef/graph/normal_graph/graph.cc
 graph_metadef/base/common/plugin/plugin_manager.cc
@@ -47,6 +48,7 @@ graph_metadef/register/shape_inference.cc
 parser/parser/onnx/onnx_parser.cc
 parser/parser/tensorflow/tensorflow_parser.cc
 graph_metadef/register/graph_optimizer/fusion_common/op_slice_info.cc
+graph_metadef/register/scope/scope_graph.cc
 graph_metadef/register/register.cpp
 graph_metadef/third_party/transformer/src/transfer_shape_utils.cc
 graph_metadef/third_party/transformer/src/expand_dimension.cc

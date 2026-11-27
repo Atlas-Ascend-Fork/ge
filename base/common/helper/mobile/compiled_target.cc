@@ -64,7 +64,7 @@ void FillHead(Head *head, uint32_t total_len, uint32_t opt_num) {
   head->total_len = total_len;
   head->magic_num = NPU_COMPILED_MAGIC_NUM;
   head->optional_num = opt_num;
-  GELOGI("[Mobile] total len: %d", head->total_len);
+  GELOGI("[Mobile] total len: %u bytes", head->total_len);
 }
 
 }  // namespace
@@ -98,7 +98,7 @@ uint32_t CompiledTarget::SerializeModelTask(uint8_t *addr, uint32_t space_size, 
   GE_ASSERT_TRUE(sizeof(Tlv) <= UINT32_MAX, "[Mobile] overflow, failed.");
   const uint32_t len = size + static_cast<uint32_t>(sizeof(Tlv));
   if (len > space_size) {
-    GELOGE(ge::FAILED, "[Mobile] spaceSize[need :%d, real = %d] is not enough", len, space_size);
+    GELOGE(ge::FAILED, "[Mobile] spaceSize[need: %u bytes, real: %u bytes] is not enough", len, space_size);
     return 0;
   }
 
@@ -142,7 +142,8 @@ uint32_t CompiledTarget::Serialize(ge::BaseBuffer &buffer) {
       const auto ret = memcpy_s(&base_addr[offset], static_cast<size_t>(size - offset), section.data.get(),
                                 static_cast<size_t>(section.size));
       if (ret != EOK) {
-        GELOGE(ge::FAILED, "[Mobile] memcpy_s failed.");
+        GELOGE(ge::FAILED, "[Mobile] memcpy_s failed, dst size: %u, copy size: %u, ret: %d.", size - offset,
+               section.size, static_cast<int32_t>(ret));
         return ge::FAILED;
       }
       offset += section.size;
@@ -207,7 +208,7 @@ ge::Status CompiledTarget::UpdateModelModelTaskDef(ge::mobile::proto::ModelDef &
       if ((op.type() != "Data") && (op.type() != "NetOutput")) {
         continue;
       }
-      GELOGI("[Mobile] op name: %s type: %s", op.name().c_str(), op.type().c_str());
+      GELOGD("[Mobile] op name: %s type: %s", op.name().c_str(), op.type().c_str());
 #if GOOGLE_PROTOBUF_VERSION < 3013000
       GE_ASSERT_TRUE(op.ByteSize() <= UINT32_MAX, "[Mobile] overflow, failed.");
       const uint32_t buffer_size = static_cast<uint32_t>(op.ByteSize());
@@ -216,7 +217,7 @@ ge::Status CompiledTarget::UpdateModelModelTaskDef(ge::mobile::proto::ModelDef &
       uint32_t buffer_size = static_cast<uint32_t>(op.ByteSizeLong());
 #endif
       for (const auto &output_offset : op.output_i()) {
-        GELOGI("[Mobile]   output_offset: %d", output_offset);
+        GELOGD("[Mobile]   output_offset: %d", output_offset);
       }
 
       ge::Buffer buffer(static_cast<size_t>(buffer_size));
@@ -226,7 +227,7 @@ ge::Status CompiledTarget::UpdateModelModelTaskDef(ge::mobile::proto::ModelDef &
       output_stream.SetSerializationDeterministic(true);
       (void)op.SerializeToCodedStream(&output_stream);
       model_task_->add_op(reinterpret_cast<const void *>(buffer.GetData()), buffer.GetSize());
-      GELOGI("[Mobile] op buffer size: %d", buffer.GetSize());
+      GELOGD("[Mobile] op buffer size: %d", buffer.GetSize());
     }
     GELOGI("[Mobile] model task op size: %d", model_task_->op_size());
     break;

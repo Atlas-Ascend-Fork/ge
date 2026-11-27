@@ -378,7 +378,7 @@ graphStatus FftsGraphUtils::Calculate(const ComputeGraphPtr &graph, const CalcFu
                                       const uint32_t recursive_depth) {
   if (recursive_depth >= kMaxiumRecursionDepth) {
     REPORT_INNER_ERR_MSG("E18888", "param depth:%u >= %u(allow max subgraphs)", recursive_depth, kMaxiumRecursionDepth);
-    GELOGE(GRAPH_FAILED, "[Check][Param]exist too much subgraphs:%u > %u(allow max subgraphs)", recursive_depth,
+    GELOGE(GRAPH_FAILED, "[Check][Param] exist too many subgraphs:%u >= %u(allow max subgraphs)", recursive_depth,
            kMaxiumRecursionDepth);
     return GRAPH_FAILED;
   }
@@ -426,7 +426,7 @@ std::vector<uint32_t> FftsGraphUtils::Calculate(const NodePtr &node, const CalcF
   std::vector<ComputeGraphPtr> subgraphs;
   if (NodeUtils::GetDirectSubgraphs(node, subgraphs) != GRAPH_SUCCESS) {
     REPORT_INNER_ERR_MSG("E18888", "Get subgraphs failed");
-    GELOGE(GRAPH_FAILED, "[Get][Subgraphs] failed");
+    GELOGE(GRAPH_FAILED, "[Get][Subgraphs] failed, node:%s", (node == nullptr) ? "(null)" : node->GetName().c_str());
     return {};
   }
   std::vector<uint32_t> cur_node_value;
@@ -497,18 +497,25 @@ bool FftsGraphUtils::IsValueValid(const ComputeGraphPtr &graph, const std::vecto
   const auto is_node_value_match = [upper_limit](const std::pair<NodePtr, std::vector<uint32_t>> &pair_item) {
     return pair_item.second.size() != upper_limit.size();
   };
-  if (std::find_if(node_value.begin(), node_value.end(), is_node_value_match) != node_value.end()) {
-    REPORT_INNER_ERR_MSG("E18888", "Node value size does not match");
-    GELOGE(GRAPH_FAILED, "[Check][Param] Node value size does not match");
+  const auto node_value_iter = std::find_if(node_value.begin(), node_value.end(), is_node_value_match);
+  if (node_value_iter != node_value.end()) {
+    REPORT_INNER_ERR_MSG("E18888", "Node value size %zu does not match upper limit size %zu, node:%s",
+                         node_value_iter->second.size(), upper_limit.size(), node_value_iter->first->GetName().c_str());
+    GELOGE(GRAPH_FAILED, "[Check][Param] Node value size %zu does not match upper limit size %zu, node:%s",
+           node_value_iter->second.size(), upper_limit.size(), node_value_iter->first->GetName().c_str());
     return false;
   }
 
   const auto is_graph_value_match = [upper_limit](const std::pair<ComputeGraphPtr, std::vector<uint32_t>> &pair_item) {
     return pair_item.second.size() != upper_limit.size();
   };
-  if (std::find_if(graph_value.begin(), graph_value.end(), is_graph_value_match) != graph_value.end()) {
-    REPORT_INNER_ERR_MSG("E18888", "Graph value size does not match");
-    GELOGE(GRAPH_FAILED, "[Check][Param] Graph value size does not match");
+  const auto graph_value_iter = std::find_if(graph_value.begin(), graph_value.end(), is_graph_value_match);
+  if (graph_value_iter != graph_value.end()) {
+    REPORT_INNER_ERR_MSG("E18888", "Graph value size %zu does not match upper limit size %zu, graph:%s",
+                         graph_value_iter->second.size(), upper_limit.size(),
+                         graph_value_iter->first->GetName().c_str());
+    GELOGE(GRAPH_FAILED, "[Check][Param] Graph value size %zu does not match upper limit size %zu, graph:%s",
+           graph_value_iter->second.size(), upper_limit.size(), graph_value_iter->first->GetName().c_str());
     return false;
   }
 
@@ -522,7 +529,7 @@ graphStatus FftsGraphUtils::PartitionGraphWithLimit(const ComputeGraphPtr &graph
                                                     const uint32_t recursive_depth) {
   if (recursive_depth >= kMaxiumRecursionDepth) {
     REPORT_INNER_ERR_MSG("E18888", "param depth:%u >= %u(allow max subgraphs)", recursive_depth, kMaxiumRecursionDepth);
-    GELOGE(GRAPH_FAILED, "[Check][Param]exist too much subgraphs:%u > %u(allow max subgraphs)", recursive_depth,
+    GELOGE(GRAPH_FAILED, "[Check][Param] exist too many subgraphs:%u >= %u(allow max subgraphs)", recursive_depth,
            kMaxiumRecursionDepth);
     return GRAPH_FAILED;
   }

@@ -8,6 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <queue>
+#include <string>
+#include <utility>
+#include <vector>
 #include "ascend_hal.h"
 #include "gtest/gtest.h"
 #include "mockcpp/mockcpp.hpp"
@@ -4421,6 +4425,161 @@ TEST_F(LlmServiceFlowFuncUTest, get_entity_by_ip_locked_lookup) {
   EXPECT_TRUE(cleared_residual);
   EXPECT_EQ(LlmCommEntityMgr::GetInstance().GetEntityByIp(remote_hccl_addr.info.tcp.ipv4Addr), nullptr);
   LlmCommEntityMgr::GetInstance().ClearEntities();
+}
+
+struct FakeSoLoaderState {
+  std::queue<void *> open_results;
+  std::queue<void *> symbol_results;
+  std::queue<const char *> error_results;
+  void *default_symbol = nullptr;
+  int open_calls = 0;
+  int symbol_calls = 0;
+  int error_calls = 0;
+  int close_calls = 0;
+  std::vector<std::pair<std::string, int>> opened;
+  std::vector<void *> closed_handles;
+
+  HcclSoManager::SoLoader MakeLoader() {
+    return HcclSoManager::SoLoader{
+        [this](const char *file, int mode) -> void * {
+          ++open_calls;
+          opened.emplace_back(file != nullptr ? file : "", mode);
+          if (open_results.empty()) {
+            return nullptr;
+          }
+          void *const result = open_results.front();
+          open_results.pop();
+          return result;
+        },
+        [this](void *, const char *) -> void * {
+          ++symbol_calls;
+          if (symbol_results.empty()) {
+            return default_symbol;
+          }
+          void *const result = symbol_results.front();
+          symbol_results.pop();
+          return result;
+        },
+        [this]() -> const char * {
+          ++error_calls;
+          if (error_results.empty()) {
+            return nullptr;
+          }
+          const char *const result = error_results.front();
+          error_results.pop();
+          return result;
+        },
+        [this](void *handle) -> int {
+          ++close_calls;
+          closed_handles.push_back(handle);
+          return 0;
+        },
+    };
+  }
+};
+
+class HcclSoManagerUTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    (void)manager_->UnloadSo();
+    manager_->SetLoader(fake_loader_.MakeLoader());
+  }
+
+  void TearDown() override {
+    (void)manager_->UnloadSo();
+    manager_->SetLoader(HcclSoManager::DefaultLoader());
+    GlobalMockObject::verify();
+  }
+
+  HcclSoManager *const manager_ = HcclSoManager::GetInstance();
+  FakeSoLoaderState fake_loader_;
+  int handle_ = 0;
+  int symbol_ = 0;
+};
+
+TEST_F(HcclSoManagerUTest, open_failure_can_retry_and_cache_successful_load) {
+  void *const handle = &handle_;
+  void *const symbol = &symbol_;
+  fake_loader_.open_results.push(nullptr);
+  fake_loader_.open_results.push(handle);
+  fake_loader_.error_results.push("failed to open communication library");
+  fake_loader_.default_symbol = symbol;
+
+  EXPECT_EQ(manager_->LoadSo(), FLOW_FUNC_FAILED);
+  EXPECT_EQ(manager_->GetFunc(kHcclRawAcceptFuncName), nullptr);
+  ASSERT_EQ(manager_->LoadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_->GetFunc(kHcclRawAcceptFuncName), symbol);
+  EXPECT_EQ(manager_->GetFunc(kHcclUnregisterGlobalMemoryFuncName), symbol);
+  EXPECT_EQ(manager_->LoadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_->UnloadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_->GetFunc(kHcclRawAcceptFuncName), nullptr);
+  EXPECT_EQ(fake_loader_.open_calls, 2);
+  EXPECT_EQ(fake_loader_.error_calls, 1);
+  EXPECT_EQ(fake_loader_.symbol_calls, 15);
+  EXPECT_EQ(fake_loader_.close_calls, 1);
+  ASSERT_EQ(fake_loader_.opened.size(), 2U);
+  EXPECT_EQ(fake_loader_.opened[0].first, "libhccd.so");
+  EXPECT_EQ(fake_loader_.opened[0].second, RTLD_LAZY);
+  ASSERT_EQ(fake_loader_.closed_handles.size(), 1U);
+  EXPECT_EQ(fake_loader_.closed_handles[0], handle);
+}
+
+TEST_F(HcclSoManagerUTest, open_failure_without_error_text_remains_retryable) {
+  fake_loader_.open_results.push(nullptr);
+  fake_loader_.open_results.push(nullptr);
+  fake_loader_.error_results.push(nullptr);
+  fake_loader_.error_results.push(nullptr);
+
+  EXPECT_EQ(manager_->LoadSo(), FLOW_FUNC_FAILED);
+  EXPECT_EQ(manager_->LoadSo(), FLOW_FUNC_FAILED);
+  EXPECT_EQ(manager_->GetFunc(kHcclRawAcceptFuncName), nullptr);
+  EXPECT_EQ(fake_loader_.open_calls, 2);
+  EXPECT_EQ(fake_loader_.error_calls, 2);
+  EXPECT_EQ(fake_loader_.symbol_calls, 0);
+  EXPECT_EQ(fake_loader_.close_calls, 0);
+}
+
+TEST_F(HcclSoManagerUTest, partial_symbol_failure_rolls_back_and_reloads) {
+  void *const handle = &handle_;
+  void *const symbol = &symbol_;
+  fake_loader_.open_results.push(handle);
+  fake_loader_.open_results.push(handle);
+  fake_loader_.symbol_results.push(symbol);
+  fake_loader_.symbol_results.push(nullptr);
+  fake_loader_.error_results.push(nullptr);
+  fake_loader_.default_symbol = symbol;
+
+  EXPECT_EQ(manager_->LoadSo(), FLOW_FUNC_FAILED);
+  EXPECT_EQ(manager_->GetFunc(kHcclRawAcceptFuncName), nullptr);
+  ASSERT_EQ(manager_->LoadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_->GetFunc(kHcclRawAcceptFuncName), symbol);
+  EXPECT_EQ(manager_->GetFunc(kHcclUnregisterGlobalMemoryFuncName), symbol);
+  EXPECT_EQ(manager_->LoadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_->UnloadSo(), FLOW_FUNC_SUCCESS);
+  EXPECT_EQ(manager_->GetFunc(kHcclUnregisterGlobalMemoryFuncName), nullptr);
+  EXPECT_EQ(fake_loader_.open_calls, 2);
+  EXPECT_EQ(fake_loader_.symbol_calls, 17);
+  EXPECT_EQ(fake_loader_.error_calls, 1);
+  EXPECT_EQ(fake_loader_.close_calls, 2);
+  ASSERT_EQ(fake_loader_.closed_handles.size(), 2U);
+  EXPECT_EQ(fake_loader_.closed_handles[0], handle);
+  EXPECT_EQ(fake_loader_.closed_handles[1], handle);
+}
+
+TEST_F(HcclSoManagerUTest, missing_first_symbol_releases_library_handle) {
+  void *const handle = &handle_;
+  fake_loader_.open_results.push(handle);
+  fake_loader_.symbol_results.push(nullptr);
+  fake_loader_.error_results.push("missing required communication symbol");
+
+  EXPECT_EQ(manager_->LoadSo(), FLOW_FUNC_FAILED);
+  EXPECT_EQ(manager_->GetFunc(kHcclRawAcceptFuncName), nullptr);
+  EXPECT_EQ(fake_loader_.open_calls, 1);
+  EXPECT_EQ(fake_loader_.symbol_calls, 1);
+  EXPECT_EQ(fake_loader_.error_calls, 1);
+  EXPECT_EQ(fake_loader_.close_calls, 1);
+  ASSERT_EQ(fake_loader_.closed_handles.size(), 1U);
+  EXPECT_EQ(fake_loader_.closed_handles[0], handle);
 }
 
 }  // namespace FlowFunc

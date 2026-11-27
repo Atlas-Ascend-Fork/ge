@@ -40,7 +40,7 @@ FMK_FUNC_HOST_VISIBILITY FMK_FUNC_DEV_VISIBILITY GraphThreadPool::~GraphThreadPo
       try {
         thd.join();
       } catch (...) {
-        GELOGW("exception");
+        GELOGW("Failed to join thread, unknown exception occurred.");
       }
     }
   }

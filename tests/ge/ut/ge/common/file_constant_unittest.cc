@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <cstring>
 #include <memory>
 #include <fstream>
 #include <limits>
@@ -416,11 +417,11 @@ TEST_F(UtestFileConstantUtilTransfer, ConvertConstToFileConst_Ok_MultipleModelSa
   external_weight_manager->SetWeightPath("./om_temp/weight");
   auto &meta = external_weight_manager->MutableMetaFile();
   meta.hash_to_weight_file.clear();
-  // 第一次保存，没有权重
+  // 第一次保存，没有权重；模式 1 按隔离设计不读写 meta 两张表，size 保持 0
   auto graph_1 = build_graph();
   auto ret = FileConstantUtils::ConvertConstToFileConst(graph_1);
   EXPECT_EQ(ret, SUCCESS);
-  EXPECT_EQ(meta.hash_to_weight_file.size(), 1);
+  EXPECT_EQ(meta.hash_to_weight_file.size(), 0UL);
   (void)mmRmdir("./om_temp");
 
   // 第二次保存相同模型，meta中有权重信息，但是没有对应权重文件，重新落盘
@@ -1112,12 +1113,32 @@ TEST_F(UtestFileConstantUtilTransfer, SaveWeightToOneFile_AllExist_CovEnhance) {
   list.emplace_back(node, std::make_pair(tensor, "hash1"));
 
   FileConstantMeta meta;
+  // 旧记录仅指向另一个独立文件路径，不得作为合并位置复用，本批必须重新追加
   meta.hash_to_weight_file["hash1"] = "/tmp/weight1";
 
   std::string weight_dir = "./test_all_exist_dir";
   ASSERT_TRUE(CreateDirectory(weight_dir) == 0);
-  auto ret = FileConstantUtils::SaveWeightToOneFileWithReuse(list, weight_dir, meta);
+  std::map<std::string, FileConstantUtils::WeightLocation> locations;
+  FileConstantUtils::OneFileAppendContext append_ctx;
+  auto ret = FileConstantUtils::SaveWeightToOneFileWithReuse(list, weight_dir, meta, locations, append_ctx);
   EXPECT_EQ(ret, SUCCESS);
+  // 补强：目标合并文件存在且记录了本批 tensor 的字节与位置
+  const std::string combined_path = weight_dir + "/test_graph_weight_combined";
+  ASSERT_TRUE(locations.find("hash1") != locations.end());
+  EXPECT_EQ(locations["hash1"].path, combined_path);
+  const size_t offset = locations["hash1"].offset;
+  EXPECT_EQ(offset % 512UL, 0UL);
+  std::ifstream ifs(combined_path, std::ifstream::binary);
+  ASSERT_TRUE(ifs.is_open());
+  std::array<char, 4> read_back{};
+  ifs.seekg(static_cast<int64_t>(offset), std::ios::beg);
+  (void)ifs.read(read_back.data(), 4);
+  ASSERT_EQ(ifs.gcount(), 4);
+  EXPECT_EQ(memcmp(read_back.data(), data.data(), 4), 0);
+  ifs.close();
+  EXPECT_EQ(meta.hash_to_weight_file["hash1"], combined_path);
+  EXPECT_EQ(meta.hash_to_weight_offset["hash1"], offset);
+  (void)remove(combined_path.c_str());
   (void)mmRmdir(weight_dir.c_str());
 }
 
@@ -1133,7 +1154,9 @@ TEST_F(UtestFileConstantUtilTransfer, SaveWeightToOneFile_OpenFail_CovEnhance) {
 
   FileConstantMeta meta;
   std::string weight_dir = "/nonexistent_dir/no_such_path";
-  auto ret = FileConstantUtils::SaveWeightToOneFileWithReuse(list, weight_dir, meta);
+  std::map<std::string, FileConstantUtils::WeightLocation> locations;
+  FileConstantUtils::OneFileAppendContext append_ctx;
+  auto ret = FileConstantUtils::SaveWeightToOneFileWithReuse(list, weight_dir, meta, locations, append_ctx);
   EXPECT_EQ(ret, FAILED);
 }
 
@@ -1226,5 +1249,209 @@ TEST_F(UtestFileConstantUtilTransfer, ReadJsonFile_InvalidJson_CovEnhance) {
   (void)mmRmdir("./test_invalid_json");
   ExternalWeightManagerPool::Instance().Destroy();
 }
+namespace {
+// 构造带权重 hash 的 Const 节点图，用于逐模式验证 ConvertConstToFileConst
+ge::GeTensorPtr MakeWeightTensor(const std::vector<uint8_t> &value) {
+  ge::GeTensorPtr tensor = std::make_shared<GeTensor>();
+  std::vector<int64_t> shape{static_cast<int64_t>(value.size())};
+  tensor->MutableTensorDesc().SetShape(GeShape(shape));
+  tensor->MutableTensorDesc().SetDataType(DT_UINT8);
+  tensor->SetData(value);
+  return tensor;
+}
+
+void AddConstWithHash(ge::ut::GraphBuilder &builder, const std::string &name, const std::string &hash,
+                      const ge::GeTensorPtr &tensor) {
+  auto const_node = builder.AddNode(name, "Const", 0, 1);
+  ConstantUtils::SetWeight(const_node->GetOpDesc(), 0, tensor);
+  (void)AttrUtils::SetStr(const_node->GetOpDesc(), ATTR_NAME_WEIGHT_SHA256, hash);
+  auto netoutput = builder.AddNode(name + "_out", "NetOutPut", 1, 0);
+  builder.AddDataEdge(const_node, 0, netoutput, 0);
+}
+
+ge::FileConstantInfo GetFirstFileConstantInfo(const ComputeGraphPtr &graph) {
+  const auto &node = graph->FindFirstNodeMatchType(FILECONSTANT);
+  EXPECT_NE(node, nullptr);
+  return FileConstantUtils::GetFileConstantInfo(node->GetOpDesc());
+}
+
+// 读回文件区间字节与期望比较
+bool FileRangeEquals(const std::string &path, const size_t offset, const std::vector<uint8_t> &expected) {
+  std::ifstream ifs(path, std::ifstream::binary);
+  if (!ifs.is_open()) {
+    return false;
+  }
+  ifs.seekg(static_cast<int64_t>(offset), std::ios::beg);
+  std::vector<char> read_back(expected.size());
+  (void)ifs.read(read_back.data(), static_cast<std::streamsize>(expected.size()));
+  if (static_cast<size_t>(ifs.gcount()) != expected.size()) {
+    return false;
+  }
+  return memcmp(read_back.data(), expected.data(), expected.size()) == 0;
+}
+}  // namespace
+
+// 核心崩溃场景：同 Session 先模式 1 后模式 2 且 hash 完全重叠，旧实现直接 out_of_range 崩溃或错读独立文件
+TEST_F(UtestFileConstantUtilTransfer, ConvertConstToFileConst_MixedMode_1Then2_NoCrash) {
+  const std::string weight_dir = "./test_mixed_12/weight";
+  const auto &external_weight_manager = ExternalWeightManagerPool::Instance().GetManager(GetContext().SessionId());
+  ASSERT_NE(external_weight_manager, nullptr);
+  external_weight_manager->SetWeightPath(weight_dir);
+  const std::vector<uint8_t> value1{1, 2, 3, 4};
+  const std::vector<uint8_t> value2{5, 6, 7, 8};
+  const auto tensor1 = MakeWeightTensor(value1);
+  const auto tensor2 = MakeWeightTensor(value2);
+
+  // graph1：模式 1，独立文件
+  ge::ut::GraphBuilder builder1("graph1");
+  AddConstWithHash(builder1, "const1", "hash_m1", tensor1);
+  auto graph1 = builder1.GetGraph();
+  EXPECT_EQ(FileConstantUtils::ConvertConstToFileConst(graph1, false), SUCCESS);
+  auto info1 = GetFirstFileConstantInfo(graph1);
+  EXPECT_TRUE(info1.weight_path.find("weight_hash_m1") != std::string::npos);
+  EXPECT_EQ(info1.weight_offset, 0UL);
+  EXPECT_EQ(info1.weight_length, value1.size());
+
+  // graph2：模式 2，包含与 graph1 重叠的 hash 与新 hash
+  ge::ut::GraphBuilder builder2("graph2");
+  AddConstWithHash(builder2, "const2", "hash_m1", tensor1);
+  AddConstWithHash(builder2, "const3", "hash_m2", tensor2);
+  auto graph2 = builder2.GetGraph();
+  EXPECT_EQ(FileConstantUtils::ConvertConstToFileConst(graph2, true), SUCCESS);
+  const auto &fc2 = graph2->FindFirstNodeMatchType(FILECONSTANT);
+  ASSERT_NE(fc2, nullptr);
+  auto info2 = FileConstantUtils::GetFileConstantInfo(fc2->GetOpDesc());
+  // 模式 2 的 location 必须指向合并文件而非模式 1 的独立文件
+  EXPECT_TRUE(info2.weight_path.find("_weight_combined") != std::string::npos);
+  EXPECT_EQ(info2.weight_offset % 512UL, 0UL);
+  EXPECT_TRUE(FileRangeEquals(info2.weight_path, info2.weight_offset, value1));
+
+  // graph3：模式 2 复用已验证区间，不崩溃且字节正确（同名图共用同一合并文件）
+  ge::ut::GraphBuilder builder3("graph2");
+  AddConstWithHash(builder3, "const4", "hash_m1", tensor1);
+  auto graph3 = builder3.GetGraph();
+  EXPECT_EQ(FileConstantUtils::ConvertConstToFileConst(graph3, true), SUCCESS);
+  auto info3 = GetFirstFileConstantInfo(graph3);
+  EXPECT_EQ(info3.weight_offset, info2.weight_offset);
+  EXPECT_TRUE(FileRangeEquals(info3.weight_path, info3.weight_offset, value1));
+
+  // graph4：模式 2 追加新 hash，非零 offset 且字节正确（同名图继续追加）
+  const std::vector<uint8_t> value3{9, 10, 11, 12};
+  ge::ut::GraphBuilder builder4("graph2");
+  AddConstWithHash(builder4, "const5", "hash_m3", MakeWeightTensor(value3));
+  auto graph4 = builder4.GetGraph();
+  EXPECT_EQ(FileConstantUtils::ConvertConstToFileConst(graph4, true), SUCCESS);
+  auto info4 = GetFirstFileConstantInfo(graph4);
+  EXPECT_GE(info4.weight_offset, 512UL);
+  EXPECT_EQ(info4.weight_offset % 512UL, 0UL);
+  EXPECT_TRUE(FileRangeEquals(info4.weight_path, info4.weight_offset, value3));
+
+  (void)remove((weight_dir + "/meta.json").c_str());
+  (void)remove((weight_dir + "/meta.lock").c_str());
+  (void)remove((weight_dir + "/weight_hash_m1").c_str());
+  (void)remove((weight_dir + "/graph2_weight_combined").c_str());
+  (void)mmRmdir(weight_dir.c_str());
+  (void)mmRmdir("./test_mixed_12");
+}
+
+// 反向混用：先模式 2 后模式 1，模式 1 不依赖 meta 记录，直接落到独立文件
+TEST_F(UtestFileConstantUtilTransfer, ConvertConstToFileConst_MixedMode_2Then1) {
+  const std::string weight_dir = "./test_mixed_21/weight";
+  const auto &external_weight_manager = ExternalWeightManagerPool::Instance().GetManager(GetContext().SessionId());
+  ASSERT_NE(external_weight_manager, nullptr);
+  external_weight_manager->SetWeightPath(weight_dir);
+  const std::vector<uint8_t> value1{1, 2, 3, 4};
+  const auto tensor1 = MakeWeightTensor(value1);
+
+  ge::ut::GraphBuilder builder1("graph21");
+  AddConstWithHash(builder1, "const1", "hash_x", tensor1);
+  auto graph1 = builder1.GetGraph();
+  EXPECT_EQ(FileConstantUtils::ConvertConstToFileConst(graph1, true), SUCCESS);
+  auto info1 = GetFirstFileConstantInfo(graph1);
+  EXPECT_TRUE(info1.weight_path.find("_weight_combined") != std::string::npos);
+
+  ge::ut::GraphBuilder builder2("graph22");
+  AddConstWithHash(builder2, "const2", "hash_x", tensor1);
+  auto graph2 = builder2.GetGraph();
+  EXPECT_EQ(FileConstantUtils::ConvertConstToFileConst(graph2, false), SUCCESS);
+  auto info2 = GetFirstFileConstantInfo(graph2);
+  EXPECT_TRUE(info2.weight_path.find("weight_hash_x") != std::string::npos);
+  EXPECT_EQ(info2.weight_offset, 0UL);
+  EXPECT_TRUE(FileRangeEquals(info2.weight_path, 0UL, value1));
+
+  (void)remove((weight_dir + "/meta.json").c_str());
+  (void)remove((weight_dir + "/meta.lock").c_str());
+  (void)remove((weight_dir + "/weight_hash_x").c_str());
+  (void)remove((weight_dir + "/graph21_weight_combined").c_str());
+  (void)mmRmdir(weight_dir.c_str());
+  (void)mmRmdir("./test_mixed_21");
+}
+
+// 同批同 hash 不同内容必须报错，不得以 hash 字符串相等证明内容相同
+TEST_F(UtestFileConstantUtilTransfer, ConvertConstToFileConst_SameHashDifferentContent_Failed) {
+  const std::string weight_dir = "./test_same_hash_diff/weight";
+  const auto &external_weight_manager = ExternalWeightManagerPool::Instance().GetManager(GetContext().SessionId());
+  ASSERT_NE(external_weight_manager, nullptr);
+  external_weight_manager->SetWeightPath(weight_dir);
+
+  ge::ut::GraphBuilder builder("graph_diff");
+  AddConstWithHash(builder, "const1", "hash_same", MakeWeightTensor({1, 2, 3, 4}));
+  AddConstWithHash(builder, "const2", "hash_same", MakeWeightTensor({4, 3, 2, 1}));
+  auto graph = builder.GetGraph();
+  EXPECT_NE(FileConstantUtils::ConvertConstToFileConst(graph, false), SUCCESS);
+  EXPECT_NE(FileConstantUtils::ConvertConstToFileConst(graph, true), SUCCESS);
+  // 失败时图中权重不被破坏：节点仍是 Const 且权重字节保持
+  const auto &const_node = graph->FindFirstNodeMatchType("Const");
+  ASSERT_NE(const_node, nullptr);
+  const auto &weights = OpDescUtils::MutableWeights(const_node);
+  ASSERT_FALSE(weights.empty());
+  EXPECT_EQ(weights[0]->GetData().GetSize(), 4UL);
+
+  (void)remove((weight_dir + "/meta.lock").c_str());
+  (void)mmRmdir(weight_dir.c_str());
+  (void)mmRmdir("./test_same_hash_diff");
+}
+
+// 坏旧记录（指向别的文件/越界 offset）不作为复用依据，重新追加并验证字节
+TEST_F(UtestFileConstantUtilTransfer, ConvertConstToFileConst_CombinedBadRecord_AppendVerified) {
+  const std::string weight_dir = "./test_bad_record/weight";
+  const auto &external_weight_manager = ExternalWeightManagerPool::Instance().GetManager(GetContext().SessionId());
+  ASSERT_NE(external_weight_manager, nullptr);
+  external_weight_manager->SetWeightPath(weight_dir);
+  const std::vector<uint8_t> value1{1, 2, 3, 4};
+  const auto tensor1 = MakeWeightTensor(value1);
+
+  ge::ut::GraphBuilder builder1("graph_bad_1");
+  AddConstWithHash(builder1, "const1", "hash_b", tensor1);
+  auto graph1 = builder1.GetGraph();
+  EXPECT_EQ(FileConstantUtils::ConvertConstToFileConst(graph1, true), SUCCESS);
+
+  // 篡改 meta：offset 越界且路径指向不存在的文件
+  const std::string meta_path = weight_dir + "/meta.json";
+  {
+    std::ofstream ofs(meta_path, std::ios::trunc);
+    ASSERT_TRUE(ofs.is_open());
+    ofs << R"({"hash_to_weight_file": {"hash_b": "/nonexistent/other_file"},)"
+        << R"("hash_to_weight_offset": {"hash_b": 9999999}})";
+    ofs.close();
+  }
+
+  ge::ut::GraphBuilder builder2("graph_bad_1");
+  AddConstWithHash(builder2, "const2", "hash_b", tensor1);
+  auto graph2 = builder2.GetGraph();
+  EXPECT_EQ(FileConstantUtils::ConvertConstToFileConst(graph2, true), SUCCESS);
+  auto info2 = GetFirstFileConstantInfo(graph2);
+  EXPECT_TRUE(info2.weight_path.find("_weight_combined") != std::string::npos);
+  // 坏记录不复用：同名合并文件上重新追加，新区间 offset 非零且字节可验证
+  EXPECT_GE(info2.weight_offset, 512UL);
+  EXPECT_TRUE(FileRangeEquals(info2.weight_path, info2.weight_offset, value1));
+
+  (void)remove(meta_path.c_str());
+  (void)remove((weight_dir + "/meta.lock").c_str());
+  (void)remove((weight_dir + "/graph_bad_1_weight_combined").c_str());
+  (void)mmRmdir(weight_dir.c_str());
+  (void)mmRmdir("./test_bad_record");
+}
+
 }  // namespace fileconstant
 }  // namespace ge

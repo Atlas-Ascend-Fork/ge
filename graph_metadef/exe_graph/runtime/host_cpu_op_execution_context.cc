@@ -34,10 +34,10 @@ ge::OpDescPtr GetOpDescPtr(const HostCpuOpExecutionContext &ctx) {
   const auto node_type = ctx.GetNodeType();
   auto const node_op = ge::OperatorFactory::CreateOperator("_", node_type);
   if (node_op.IsEmpty()) {
-    GELOGW("get op from OperatorFactory fail. opType: %s", node_type);
+    GELOGW("Failed to get op from OperatorFactory. opType: %s", node_type);
     return nullptr;
   }
-  GELOGD("get op from OperatorFactory success. opType is %s", node_type);
+  GELOGD("Get op from OperatorFactory succeeded. opType is %s", node_type);
   auto op_desc = ge::OpDescUtils::GetOpDescFromOperator(node_op);
   return op_desc;
 }

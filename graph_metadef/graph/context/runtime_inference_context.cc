@@ -45,7 +45,7 @@ graphStatus RuntimeInferenceContext::GetTensor(const int64_t node_id, int32_t ou
   const std::lock_guard<std::mutex> lk(mu_);
   const auto iter = ge_tensors_.find(node_id);
   if (iter == ge_tensors_.end()) {
-    GELOGW("Node not register. Id = %" PRId64, node_id);
+    GELOGW("Node not registered. Id = %" PRId64, node_id);
     return INTERNAL_ERROR;
   }
 

@@ -1250,3 +1250,68 @@ TEST_F(UtestGraphPassesFoldingKernelGatherV2Kernel, UnsupportedDataType) {
   ge::Status status = kernel->Compute(op_desc_ptr, input, outputs);
   EXPECT_EQ(ge::NOT_CHANGED, status);
 }
+
+namespace {
+template <typename IndexType>
+void CheckScalarGather(const vector<int64_t> &input_shape, const vector<int32_t> &data, IndexType axis,
+                       DataType index_type, const vector<int64_t> &scalar_shape, const vector<int32_t> &expected) {
+  const IndexType index = 1;
+  for (const bool scalar : {false, true}) {
+    const vector<int64_t> index_shape = scalar ? vector<int64_t>() : vector<int64_t>({1});
+    auto expected_shape = scalar_shape;
+    if (!scalar) {
+      const auto normalized_axis = axis < 0 ? axis + static_cast<IndexType>(input_shape.size()) : axis;
+      expected_shape.insert(expected_shape.begin() + normalized_axis, 1);
+    }
+    vector<ConstGeTensorPtr> inputs = {
+        std::make_shared<GeTensor>(GeTensorDesc(GeShape(input_shape), FORMAT_ND, DT_INT32),
+                                   reinterpret_cast<const uint8_t *>(data.data()), data.size() * sizeof(int32_t)),
+        std::make_shared<GeTensor>(GeTensorDesc(GeShape(index_shape), FORMAT_ND, index_type),
+                                   reinterpret_cast<const uint8_t *>(&index), sizeof(index)),
+        std::make_shared<GeTensor>(GeTensorDesc(GeShape(), FORMAT_ND, index_type),
+                                   reinterpret_cast<const uint8_t *>(&axis), sizeof(axis))};
+    auto op = std::make_shared<OpDesc>("gather", GATHERV2);
+    for (const auto &input : inputs) {
+      ASSERT_EQ(op->AddInputDesc(input->GetTensorDesc()), GRAPH_SUCCESS);
+    }
+    ASSERT_EQ(op->AddOutputDesc(GeTensorDesc(GeShape(expected_shape), FORMAT_ND, DT_INT32)), GRAPH_SUCCESS);
+    GatherV2Kernel kernel;
+    vector<GeTensorPtr> outputs;
+    ASSERT_EQ(kernel.Compute(op, inputs, outputs), SUCCESS);
+    ASSERT_EQ(outputs.size(), 1U);
+    EXPECT_EQ(outputs[0]->GetTensorDesc().GetShape().GetDims(), expected_shape);
+    EXPECT_EQ(outputs[0]->GetTensorDesc().GetDataType(), DT_INT32);
+    ASSERT_EQ(outputs[0]->GetData().size(), expected.size() * sizeof(int32_t));
+    const auto *values = reinterpret_cast<const int32_t *>(outputs[0]->GetData().data());
+    EXPECT_EQ(vector<int32_t>(values, values + expected.size()), expected);
+  }
+}
+}  // namespace
+
+TEST_F(UtestGraphPassesFoldingKernelGatherV2Kernel, ScalarColumn) {
+  CheckScalarGather<int32_t>({2, 2}, {10, 11, 20, 21}, 1, DT_INT32, {2}, {11, 21});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelGatherV2Kernel, ScalarRow) {
+  CheckScalarGather<int32_t>({2, 2}, {10, 11, 20, 21}, 0, DT_INT32, {2}, {20, 21});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelGatherV2Kernel, ScalarOutput) {
+  CheckScalarGather<int32_t>({2}, {10, 11}, 0, DT_INT32, {}, {11});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelGatherV2Kernel, ScalarMiddleAxis) {
+  CheckScalarGather<int32_t>({2, 2, 2}, {10, 11, 12, 13, 20, 21, 22, 23}, 1, DT_INT32, {2, 2}, {12, 13, 22, 23});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelGatherV2Kernel, ScalarAxis2) {
+  CheckScalarGather<int32_t>({2, 2, 2}, {10, 11, 12, 13, 20, 21, 22, 23}, 2, DT_INT32, {2, 2}, {11, 13, 21, 23});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelGatherV2Kernel, ScalarAxis3) {
+  CheckScalarGather<int32_t>({1, 2, 2, 2}, {10, 11, 12, 13, 20, 21, 22, 23}, 3, DT_INT32, {1, 2, 2}, {11, 13, 21, 23});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelGatherV2Kernel, ScalarNegativeAxisInt64) {
+  CheckScalarGather<int64_t>({2, 2}, {10, 11, 20, 21}, -1, DT_INT64, {2}, {11, 21});
+}

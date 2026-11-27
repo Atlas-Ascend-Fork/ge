@@ -32,6 +32,7 @@ BaseCustomOp（公共基类）
 ├── EagerExecuteOp    → Execute(ctx)          运行时执行
 ├── ShapeInferOp      → InferShape(ctx)       Shape 推导
 │                     → InferDataType(ctx)    DataType 推导
+├── SymbolicInferOp   → InferSymbol(ctx)      编译期符号Shape/符号值推导
 ├── CompilableOp      → Compile(ctx)          在线编译
 ├── PortableOp        → Serialize(buf)        序列化到 OM
 │                     → Deserialize(buf)      从 OM 反序列化
@@ -151,6 +152,7 @@ export ASCEND_CUSTOM_OPP_PATH="$(pwd)/build:$ASCEND_CUSTOM_OPP_PATH"
 | 离线 OM 模型下沉 | `EagerExecuteOp` + `CompilableOp` + `ShapeInferOp` + `PortableOp` | AIR → ATC → OM → ACL | [compilable_add_custom](../../../../../examples/custom_op/compilable_add_custom/README.md) |
 | 数据依赖 shape | `EagerExecuteOp` + `ShapeInferOp` | 构图 → 执行 + shape buffer 回写 | [data_dependent_shape_custom](../../../../../examples/custom_op/data_dependent_shape_custom/README.md) |
 | 值依赖 shape | `EagerExecuteOp` + `ShapeInferOp` | 构图 → 运行期 InferShape 重推 + 输出 shape 预填 | [value_dependent_shape_custom](../../../../../examples/custom_op/value_dependent_shape_custom/README.md) |
+| 动态Shape+自动融合 | `SymbolicInferOp`(可选) | 编译期符号传播 → 融合决策 | — |
 
 > 说明：未实现 `PortableOp` 的算子同样可用于生成离线 OM（实现 SO 会随模型打包）。但是其 kernel bin 等数据不会随 OM 保存和恢复，需自行管理。
 
@@ -331,7 +333,100 @@ graphStatus InferDataType(gert::InferDataTypeContext *ctx) {
 }
 ```
 
-### 5.3 CompilableOp::Compile
+### 5.3 SymbolicInferOp::InferSymbol
+
+编译期符号Shape和可选符号值推导回调，主要用于动态Shape图的自动融合。它与`ShapeInferOp::InferShape`的区别是：后者推导具体整数维度，本接口推导由`ge::Expression`表示的常量、变量或表达式维度。符号信息只在编译期用于融合决策、循环轴合并、内存优化和guard生成，不进入OM或执行期符号化路径。
+
+#### 能力构成与版本归属
+
+符号化自定义算子能力由多个既有及配套改动共同组成，不能都视为`SymbolicInferOp`引入的新能力：
+
+| 能力 | 归属与说明 |
+|------|-----------|
+| `IMPL_OP_INFERSYMBOL`宏、`OpImplFunctionsV2::infer_symbol`字段 | metadef既有/配套注册与落表能力 |
+| `OpDef::SetInferSymbol`和`OP_ADD`转存 | metadef配套OpDef注册链，以对应metadef版本为准 |
+| `InferSymbolContext`、`SymbolShape`、`SymbolTensor`、`Expression` | metadef发布头提供的公开类型 |
+| GE查询`infer_symbol`、构造上下文并在成功时回写输出 | GE既有字段消费链 |
+| `SymbolicInferOp`、能力位、推导优先级和降级语义调整 | GE语言无关式接口及本期消费链增强 |
+
+三种注册方式最终进入同一条逐节点推导链，按需选择其一，不要在同一交付件中重复混用：
+
+```cpp
+// 宏式
+IMPL_OP_INFERSYMBOL(AddCustom).InferSymbol(InferSymbolAddCustom);
+
+// OpDef式：在算子定义中调用
+this->SetInferSymbol(InferSymbolAddCustom);
+
+// 语言无关式：继承SymbolicInferOp并实现InferSymbol，再按既有方式注册创建器
+class AddCustom : public SymbolicInferOp { /* ... */ };
+REG_AUTO_MAPPING_OP(AddCustom);
+```
+
+#### InferSymbolContext常用接口
+
+| 方法 | 用途 |
+|------|------|
+| `GetInputSymbolShape(index)` | 获取扁平索引对应的只读输入`SymbolShape` |
+| `GetOptionalInputSymbolShape(ir_index)` | 获取可选输入符号Shape |
+| `GetDynamicInputSymbolShape(ir_index, relative_index)` | 获取动态输入实例的符号Shape |
+| `GetRequiredInputSymbolShape(ir_index)` | 获取必选输入符号Shape |
+| `GetInputSymbolTensor(index)` | 获取输入`SymbolTensor`，数据依赖输入可读取符号值；其他定位方式与Shape相同 |
+| `GetOutputSymbolShape(index)` | 获取可写输出`SymbolShape` |
+| `GetOutputSymbolTensor(index)` | 获取可写输出`SymbolTensor`，仅数据依赖输出需要设置符号值 |
+
+`SymbolShape`通过`GetDimNum/GetDim`逐维读取，通过`SetDimNum/SetDim/AppendDim`写入；标量使用`SetDimNum(0)`。`SymbolTensor`的值语义区分：默认构造无值（`HasValue()==false`）、`SetValueCount(0)`显式空值（`HasValue()==true && GetValueCount()==0`）、以及一个或多个符号值。
+
+#### 推导优先级与返回语义
+
+存在自定义推导时优先执行自定义`infer_symbol`；未注册自定义推导时依次尝试host计算和内置`infer_symbol_shape`；最终均可降级静态Shape。自定义档内`SymbolicInferOp`优先于宏式/OpDef字段注册。
+
+| 返回值/场景 | 行为 |
+|------------|------|
+| `GRAPH_SUCCESS` | 采纳输出并回写；必须写入每个输出的符号Shape，标量用`SetDimNum(0)` |
+| 未注册自定义推导 | 依次尝试host计算和内置`infer_symbol_shape` |
+| `GRAPH_NOT_CHANGED` | 丢弃本次全部写入，直接降级静态Shape，不执行host计算或内置推导；不表示输出等于输入 |
+| 其他非零值 | 中断编译，错误日志包含节点名和op type |
+| 未注册且无法静态化 | 符号传播在该节点中断，不阻断已有编译/执行正确性，但下游无法利用该节点之后的符号信息进行融合 |
+
+`EXPECT_SYMBOL_*`用于基于hint选择分支并生成guard；`ASSERT_SYMBOL_*`用于强校验，失败返回`GRAPH_PARAM_INVALID`。数据依赖输入需先通过`InputsDataDependency`声明，再读取`SymbolTensor`；无法常量化时可返回`GRAPH_NOT_CHANGED`或继续使用符号表达式，禁止直接强转整数。
+
+#### 示例
+
+```cpp
+class AddCustom : public SymbolicInferOp {
+ public:
+  graphStatus InferSymbol(gert::InferSymbolContext *ctx) override {
+    const auto *x = ctx->GetInputSymbolShape(0);
+    const auto *y = ctx->GetInputSymbolShape(1);
+    auto *out = ctx->GetOutputSymbolShape(0);
+    if (x == nullptr || y == nullptr || out == nullptr) {
+      return GRAPH_NOT_CHANGED;
+    }
+    if (x->GetDimNum() != y->GetDimNum()) {
+      return GRAPH_NOT_CHANGED;
+    }
+    out->SetDimNum(x->GetDimNum());
+    for (size_t i = 0; i < x->GetDimNum(); ++i) {
+      if (x->GetDim(i) != y->GetDim(i) && x->GetDim(i) != ge::Symbol(1) && y->GetDim(i) != ge::Symbol(1)) {
+        return GRAPH_NOT_CHANGED;
+      }
+      out->SetDim(i, x->GetDim(i) == ge::Symbol(1) ? y->GetDim(i) : x->GetDim(i));
+    }
+    return GRAPH_SUCCESS;
+  }
+};
+
+REG_AUTO_MAPPING_OP(AddCustom);
+```
+
+#### 跨版本与部署
+
+- 新算子SO在老版本环境上必须能够加载，InferSymbol注册或能力可以静默不生效，不承诺符号传播和融合收益。
+- `Expression`、`Symbol`、`ge::sym::*`等symbolizer API采用弱未定义引用；仅含run包、没有compiler/symbolizer的执行机允许加载算子SO，但执行期不会调用这些API。
+- OM不新增符号化字段或格式；新旧OM的加载行为不因该接口变化。
+
+### 5.4 CompilableOp::Compile
 
 在线编译回调，在 GE/ATC 编译阶段被调用。
 
@@ -371,7 +466,7 @@ graphStatus Compile(gert::OpCompileContext *ctx) {
 }
 ```
 
-### 5.4 PortableOp::Serialize / Deserialize
+### 5.5 PortableOp::Serialize / Deserialize
 
 序列化/反序列化回调，用于 OM 模型下沉。
 
@@ -386,7 +481,7 @@ graphStatus Deserialize(const std::vector<uint8_t> &buffer) override;
 - Deserialize 在 OM 加载执行阶段被调用，从 buffer 恢复 Compile 产物
 - 多 binary 场景建议序列化格式：`[count][key_len][key][bin_len][bin]...`
 
-### 5.5 ArgsUpdater::UpdateHostArgs
+### 5.6 ArgsUpdater::UpdateHostArgs
 
 I/O 地址变化时的回调，用于刷新 kernel args 中的地址引用。
 

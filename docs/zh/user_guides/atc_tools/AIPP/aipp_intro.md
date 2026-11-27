@@ -30,7 +30,7 @@ AIPP根据配置方式不同，分为静态AIPP和动态AIPP；如果要将原�
 
 - 动态AIPP：模型转换时设置AIPP模式为动态，每次在执行推理前，根据需求动态修改AIPP参数值，然后在模型执行时可使用不同的AIPP参数。动态AIPP参数值会根据需求在不同的业务场景下选用合适的参数（如不同摄像头采用不同的归一化参数，输入图片格式需要兼容YUV420和RGB等）。
 
-    如果模型转换时设置了动态AIPP，则使用应用工程进行模型推理时，需要在acl提供的**aclmdlExecute**接口之前，调用**aclmdlSetInputAIPP**接口，设置模型推理的动态AIPP数据。接口详细说明请参见[模型执行](../../../api/graph_engine_api/c/acl/model_execute_APIs.md)。
+    如果模型转换时设置了动态AIPP，则使用应用工程进行模型推理时，需要在acl提供的**aclmdlExecute**接口之前，调用**aclmdlSetInputAIPP**接口，设置模型推理的动态AIPP数据。接口详细说明请参见《[GE图引擎API](https://gitcode.com/cann/ge/blob/master/docs/zh/api/graph_engine_api/README.md)》中的[模型执行](../../../api/graph_engine_api/c/acl/model_execute_APIs.md)章节。
 
     如果使用动态AIPP方式，多batch使用不同的参数，体现在动态参数结构体中，每个batch可以配置不同的crop等参数。关于动态参数结构体，请参见[动态AIPP的参数输入结构](aipp_config_example.md#动态aipp的参数输入结构)。
 

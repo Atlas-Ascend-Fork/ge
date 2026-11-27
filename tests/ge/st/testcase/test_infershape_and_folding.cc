@@ -22,6 +22,8 @@
 #include "graph/utils/node_adapter.h"
 #include "framework/common/framework_types_internal.h"
 #include "graph/utils/op_desc_utils.h"
+#include "graph/normal_graph/op_desc_impl.h"
+#include "graph/refiner/format_refiner.h"
 #include "graph/operator_reg.h"
 #include "graph/operator.h"
 #include "graph/operator_factory.h"
@@ -1189,4 +1191,27 @@ TEST_F(InferAndFoldingTest, test_symbolic_get_cond_input_cast_and_null_guard) {
   ASSERT_NE(src_node, nullptr);
   ASSERT_EQ(GraphUtils::AddEdge(src_node->GetOutDataAnchor(0), size_node->GetInDataAnchor(0)), GRAPH_SUCCESS);
   EXPECT_EQ(SymbolicInferUtil::GetCondInput(case_node), src_node);
+}
+
+TEST_F(InferAndFoldingTest, test_refresh_origin_format_of_anchor_skip_null_desc) {
+  auto graph = std::make_shared<ComputeGraph>("st_refresh_origin_format_anchor");
+  auto op_desc = std::make_shared<OpDesc>("conv1", "Conv2D");
+  GeTensorDesc in_desc(GeShape({1, 3, 224, 224}), FORMAT_NCHW, DT_FLOAT);
+  in_desc.SetOriginFormat(FORMAT_ND);
+  EXPECT_EQ(op_desc->AddInputDesc(in_desc), GRAPH_SUCCESS);
+
+  GeTensorDesc out_desc(GeShape({1, 16, 224, 224}), FORMAT_NHWC, DT_FLOAT);
+  out_desc.SetOriginFormat(FORMAT_RESERVED);
+  EXPECT_EQ(op_desc->AddOutputDesc(out_desc), GRAPH_SUCCESS);
+
+  auto valid_node = graph->AddNode(op_desc);
+  ASSERT_NE(valid_node, nullptr);
+
+  op_desc->impl_->outputs_desc_.push_back(nullptr);
+  auto null_op_node = std::make_shared<Node>(nullptr, nullptr);
+  FormatRefiner::RefreshOriginFormatOfAnchor({nullptr, null_op_node, valid_node});
+  op_desc->impl_->outputs_desc_.pop_back();
+
+  EXPECT_EQ(op_desc->GetInputDesc(0).GetOriginFormat(), FORMAT_NCHW);
+  EXPECT_EQ(op_desc->GetOutputDesc(0).GetOriginFormat(), FORMAT_NHWC);
 }

@@ -612,8 +612,10 @@ graphStatus OpDescUtils::SetNoneConstNodeWeights(ge::Node &node, const std::map<
     const auto idx = pair.first;
     // idx = in data anchor size is valid, it meant to add a new const node
     if ((idx < 0) || (static_cast<size_t>(idx) > node.GetAllInDataAnchorsSize())) {
-      REPORT_INNER_ERR_MSG("E18888", "Invalid map key: %d of node[%s].", idx, node.GetName().c_str());
-      GELOGE(GRAPH_PARAM_INVALID, "[Check][Param] Invalid map key: %d of node[%s].", idx, node.GetName().c_str());
+      REPORT_INNER_ERR_MSG("E18888", "Invalid map key: %d of node[%s], valid range is [0, %zu].", idx,
+                           node.GetName().c_str(), static_cast<size_t>(node.GetAllInDataAnchorsSize()));
+      GELOGE(GRAPH_PARAM_INVALID, "[Check][Param] Invalid map key: %d of node[%s], valid range is [0, %zu].", idx,
+             node.GetName().c_str(), static_cast<size_t>(node.GetAllInDataAnchorsSize()));
       return GRAPH_PARAM_INVALID;
     }
     const auto peer_node = NodeUtils::GetInDataNodeByIndex(node, idx);
@@ -782,7 +784,7 @@ OpDescPtr OpDescUtils::CreateConstOp(const GeTensorPtr &tensor_ptr, const bool c
                             const_opdesc->GetNamePtr());
   } else {
     GE_ASSERT_TRUE(AttrUtils::SetShareTensor(const_opdesc, ATTR_NAME_WEIGHTS, *tensor_ptr),
-                   "[Set][ShardTensor] failed for %s.", const_opdesc->GetNamePtr());
+                   "[Set][ShareTensor] failed for %s.", const_opdesc->GetNamePtr());
   }
   const_opdesc->SetType(CONSTANT);
   std::string op_name;
@@ -921,7 +923,7 @@ ge::graphStatus IrInputRequiredCall(const OpDescPtr &op_desc, size_t ir_index, s
         "current name %s",
         op_desc->GetName().c_str(), ir_name.c_str(), start_index, name.c_str());
     if (FindSubsequentMatches(valid_index_2_names, start_index + 1U, ir_name)) {
-      GELOGE(ge::FAILED, "Find another input name that match ir name. ir_index:%zu, ir_name:%s, inputs names:%s",
+      GELOGE(ge::FAILED, "Find another input name that matches ir name. ir_index:%zu, ir_name:%s, inputs names:%s",
              ir_index, ir_name.c_str(), InputsNamesStr(op_desc).c_str());
       return FAILED;
     }
@@ -990,7 +992,7 @@ ge::graphStatus GetOutputInstanceNum(const OpDescPtr &op_desc, size_t ir_index, 
                                      const std::map<uint32_t, std::string> &valid_index_2_names, size_t &instance_num) {
   GE_CHECK_NOTNULL(op_desc);
   if (valid_index_2_names.empty()) {
-    GELOGD("Node %s has not any outputs, just return", op_desc->GetName().c_str());
+    GELOGD("Node %s has no outputs, just return", op_desc->GetName().c_str());
     return ge::SUCCESS;
   }
   const auto &ir_outputs = op_desc->GetIrOutputs();
@@ -1016,7 +1018,7 @@ ge::graphStatus OpDescUtils::GetInstanceNum(const OpDescPtr &op_desc, size_t ir_
                                             size_t &instance_num) {
   GE_CHECK_NOTNULL(op_desc);
   if (valid_index_2_names.empty()) {
-    GELOGD("Node %s has not any inputs, just return", op_desc->GetName().c_str());
+    GELOGD("Node %s has no inputs, just return", op_desc->GetName().c_str());
     return ge::SUCCESS;
   }
   const auto &ir_inputs = op_desc->GetIrInputs();

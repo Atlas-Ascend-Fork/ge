@@ -255,14 +255,16 @@ Status QuantUtilImpl::GetCoValueByWeight(ge::NodePtr &cube_node, size_t idx, std
     }
     int64_t index_co = GetAxisIndexByFormat(filter_format, "C");
     if (index_co < 0) {
-      GELOGE(ge::FAILED, "[GraphOpt][AvgPolQntPcsFus][GetCoVal] Node[%s] index_co is negative, Check filter_format.",
-             cube_node->GetName().c_str());
+      GELOGE(ge::FAILED,
+             "[GraphOpt][AvgPolQntPcsFus][GetCoVal] Node[%s] index_co %lld is negative, valid range is [0, %zu), "
+             "Check filter_format.",
+             cube_node->GetName().c_str(), static_cast<long long>(index_co), filter_dims4_d.size());
       return FAILED;
     }
     if (index_co >= static_cast<int64_t>(filter_dims4_d.size())) {
       GELOGE(ge::FAILED,
-             "[GraphOpt][AvgPolQntPcsFus][GetCoVal] Node[%s] index_co is larger than the size of filter dims.",
-             cube_node->GetName().c_str());
+             "[GraphOpt][AvgPolQntPcsFus][GetCoVal] Node[%s] index_co %lld is larger than the size of filter dims %zu.",
+             cube_node->GetName().c_str(), static_cast<long long>(index_co), filter_dims4_d.size());
       return FAILED;
     }
     if (CheckInt64MulOverflow(filter_dims4_d[static_cast<size_t>(index_co)], groups) != SUCCESS) {
@@ -480,7 +482,7 @@ Status QuantUtilImpl::SetQuantScaleAndOffset(const ge::NodePtr &quant_node, cons
     return SUCCESS;
   }
   if (param.quant_offset == nullptr || param.quant_scale == nullptr) {
-    GELOGE(ge::FAILED, ,
+    GELOGE(ge::FAILED,
            "Invalid param! Quant_offset anchor and quant_scale anchor should not be nullptr, "
            "please check in detail.");
     return FAILED;
@@ -1078,7 +1080,7 @@ Status QuantUtilImpl::SetAttrForRequantHostCpuOp(ge::OpDescPtr &req_host_op_desc
 
   ge::GeShape req_scale_shape = req_scale_tensor->GetTensorDesc().GetShape();
   if (req_scale_shape.GetDimNum() != 1) {
-    GELOGE(ge::FAILED, "Req_scale_shape %zu is invalid.", req_scale_shape.GetDimNum());
+    GELOGE(ge::FAILED, "Req_scale_shape dim num %zu is invalid, expect 1.", req_scale_shape.GetDimNum());
     return FAILED;
   }
   (void)ge::AttrUtils::SetStr(req_host_op_desc, kAttrQuantMode, kQuantHighPrecision);

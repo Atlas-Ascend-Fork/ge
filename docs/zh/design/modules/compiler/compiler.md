@@ -141,6 +141,8 @@ GE 支持一种特殊的 Build Mode（`BUILD_MODE_TUNING`），允许在编译�
 
 ## 2. 图级优化：Pass 体系
 
+内置 Host `StridedSlice` 的正步长常量求值在区间长度不能整除步长时保留最后一个有效元素，输出维度与实际切片元素数一致。
+
 ### 2.1 Pass 基础设施
 
 GE 的优化 Pass 分为两类：
@@ -189,6 +191,8 @@ GE 的优化 Pass 分多个批次执行，分布在不同阶段。核心的 Pass
 | 3. 控制流转换 | SwitchToStreamSwitchPass, MergeToStreamMergePass, AttachStreamLabelPass | 控制流→流控制 |
 | 3. 动态批处理 | MultiBatchPass, SubgraphMultiDimsPass | 多维度动态推理 |
 
+内置 Host `GatherV2` 在常量折叠的数据拷贝阶段保留长度为 1 的标量索引轴，计算完成后再移除该轴；输出降秩不能导致拷贝循环跳过。
+
 **OptimizeStage2**（合并后优化）：
 
 Stage2 的 Pass 处理的是合并后的整图，此时子图边界已消除：
@@ -204,6 +208,8 @@ Stage2 的 Pass 处理的是合并后的整图，此时子图边界已消除：
 - **BufferPoolMemoryPass**：缓冲池内存优化
 - **ParallelGroupPass**：并行组处理
 - **ConcatNotaskPass**：Concat 无任务优化
+
+内置 Host `DynamicStitch` 常量求值须保留数据片的完整维度后缀，并按该后缀的元素总数搬运；空数据片仅设置输出描述。
 
 ### 2.3 两阶段优化的必要性
 
@@ -613,6 +619,8 @@ BuildModel:
 
 GE 的 Shape 优化将动态 shape 尽可能转化为静态 shape：
 
+内置 Host `ShapeN` 按各输入的逻辑形状 `OriginShape` 生成形状向量，与 `Shape` 保持一致；存储格式扩维不能改变该向量的长度或内容，未知逻辑形状不能作为已知常量折叠。
+
 **常量折叠与 InferShape 协同**：Shape 推导和常量折叠交替进行，直至收敛。例如，Shape → Gather(indices=[1,0,2,3]) → Reshape 这条链，如果 Data 的 shape 是 [3,4,5,6]，先做 Shape 推导得出 Reshape 输出为动态，再做常量折叠消除 Shape 和 Gather，最后再推导一次 Reshape 的输出——此时 Reshape 的 shape 输入已经是 const [4,3,5,6]，输出变为静态。
 
 **While 循环的 Shape 推导**：对 While 算子的 body 子图多次推导，将上一次推导的输出 Shape 作为下一次的输入，直到两次结果一致。这种不动点迭代策略尽可能推导出更多静态信息。
@@ -623,6 +631,7 @@ GE 的 Shape 优化将动态 shape 尽可能转化为静态 shape：
 
 - **权重合并**：将分散的权重数据合并为连续内存区域，使加载阶段更高效
 - **Const 去重**：通过二进制比对发现相同权重的 Const 节点，让它们共享内存
+- **OM1 Bundle 外置权重**：保存时汇总子模型的源文件引用后再迁移共享权重，详见[外置权重](../../features/external_weight.md)。
 
 ## 10. 编译器设计特点
 

@@ -39,7 +39,8 @@ FastTopoSortingMode GetTopoSortingStrategy() {
     } else if (topo_sorting_mode == kTopoSortingReverseDfs) {
       return FastTopoSortingMode::kRDFS;
     } else {
-      GELOGW("OPTION_TOPOSORTING_MODE = %s is invalid", topo_sorting_mode_str.c_str());
+      GELOGW("OPTION_TOPOSORTING_MODE = %s is invalid, valid values: 0(BFS), 1(DFS), 2(ReverseDFS)",
+             topo_sorting_mode_str.c_str());
     }
   }
   if (ge::GetContext().GetTrainGraphFlag()) {
@@ -394,7 +395,7 @@ FastEdge *ExecuteGraph::AddEdge(FastNode *const src, int32_t src_index, FastNode
   }
 
   if (!CheckNodeIsInGraph(src) || !CheckNodeIsInGraph(dst)) {
-    GELOGW("The src %s or dst %s not belong to graph.", src->GetNamePtr(), dst->GetNamePtr());
+    GELOGW("The src %s or dst %s does not belong to graph.", src->GetNamePtr(), dst->GetNamePtr());
   }
 
   return graph_shared_->AddEdge(src, src_index, dst, dst_index);

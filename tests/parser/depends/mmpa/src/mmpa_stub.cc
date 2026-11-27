@@ -246,7 +246,9 @@ INT32 mmGetErrorCode() {
 
 INT32 mmIsDir(const CHAR *fileName) {
   struct stat fileStat;
-  memset(&fileStat, sizeof(fileStat), 0);
+  if (memset_s(&fileStat, sizeof(fileStat), 0, sizeof(fileStat)) != EOK) {
+    return -1;
+  }
   int32_t ret = lstat(fileName, &fileStat);
   if (ret < 0) {
     return -1;

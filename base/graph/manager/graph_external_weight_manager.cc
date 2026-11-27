@@ -79,7 +79,7 @@ void ExternalWeightManager::SetWeightPath(const std::string &weight_path) {
   weight_path_ = weight_path;
 }
 
-const std::string &ExternalWeightManager::GetWeightPath() {
+std::string ExternalWeightManager::GetWeightPath() {
   const std::lock_guard<std::mutex> lock(mutex_);
   return weight_path_;
 }

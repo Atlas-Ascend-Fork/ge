@@ -14,8 +14,8 @@
 namespace ge {
 Status HcomTopoInfo::SetGroupTopoInfo(const char_t *group, const HcomTopoInfo::TopoInfo &info) {
   if (group == nullptr) {
-    REPORT_INNER_ERR_MSG("E18888", "Group key is nullptr,set failed.");
-    GELOGE(GRAPH_FAILED, "[Check][Param] Group key is nullptr,set failed.");
+    REPORT_INNER_ERR_MSG("E18888", "Group key is nullptr, set failed.");
+    GELOGE(GRAPH_FAILED, "[Check][Param] Group key is nullptr, set failed.");
     return GRAPH_FAILED;
   }
   {
@@ -42,8 +42,8 @@ Status HcomTopoInfo::GetGroupRankSize(const char_t *group, int64_t &rank_size) {
 
 Status HcomTopoInfo::SetGroupOrderedStream(const int32_t device_id, const char_t *group, void *stream) {
   if (group == nullptr) {
-    REPORT_INNER_ERR_MSG("E18888", "Group is nullptr,set failed.");
-    GELOGE(GRAPH_FAILED, "[Check][Param] group is nullptr,set failed.");
+    REPORT_INNER_ERR_MSG("E18888", "Group is nullptr, set failed.");
+    GELOGE(GRAPH_FAILED, "[Check][Param] group is nullptr, set failed.");
     return GRAPH_FAILED;
   }
   {

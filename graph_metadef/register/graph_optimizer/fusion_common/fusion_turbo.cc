@@ -549,7 +549,7 @@ ge::NodePtr FusionTurbo::InsertNodeBefore(const string &op_name, const string &o
       goto failed_process;
     }
   }
-  GELOGD("Succeed inserting %s before %s.", op_name.c_str(), base_node->GetName().c_str());
+  GELOGD("Successfully inserted %s before %s.", op_name.c_str(), base_node->GetName().c_str());
   return ret_node;
 
 failed_process:
@@ -617,7 +617,7 @@ ge::NodePtr FusionTurbo::InsertNodeAfter(const string &op_name, const string &op
       goto failed_process;
     }
   }
-  GELOGD("Succeed inserting %s after %s.", op_name.c_str(), base_node->GetName().c_str());
+  GELOGD("Successfully inserted %s after %s.", op_name.c_str(), base_node->GetName().c_str());
   return ret_node;
 failed_process:
   graph_->RemoveNode(ret_node);
@@ -686,6 +686,8 @@ Status FusionTurbo::LinkInput(Relations &input_relations, const ge::NodePtr &dst
     /* 2. Link anchors. */
     const auto dst_in_anchor = dst_node->GetInDataAnchor(static_cast<int32_t>(dst_in_index));
     if (ge::GraphUtils::AddEdge(out_anchor, dst_in_anchor) != ge::GRAPH_SUCCESS) {
+      GELOGE(FAILED, "[FusionTurbo][LinkInput]Failed to add edge between %d of %s and %u of %s", src_out_index,
+             src_node->GetName().c_str(), dst_in_index, dst_node->GetName().c_str());
       return FAILED;
     }
     GELOGD("Successfully link input %s %d ---> %s %d.", src_node->GetName().c_str(), src_out_index,

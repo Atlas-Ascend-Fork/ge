@@ -78,6 +78,8 @@ Storage 由 GE 编译器根据算子能力、格式亲和性、全图数据流�
 | Tiling 计算 | StorageShape | 硬件分块策略基于实际存储布局 |
 | atc dump infershape json | OriginShape | 面向用户的离线分析工具 |
 
+内置 Host `ShapeN` 与 `Shape` 一样，对每个输入返回 `OriginShape`。例如 NCHW 逻辑形状 `[1,3,2,3]`、NC1HWC0 存储形状 `[1,1,2,3,16]` 的输入，结果为长度 4 的向量 `[1,3,2,3]`。旧描述符未设置 OriginShape 时沿用其 Shape。已知描述中出现动态维度时跳过折叠。
+
 ### 2.4 API 层面的统一封装
 
 在 GE 的类型系统中，`Shape` 是纯数据结构，不绑定语义——它可以承载 OriginShape 也可以承载 StorageShape，取决于由哪个接口返回。
@@ -407,10 +409,10 @@ InferStorageShape()  分发入口
 
 | 类型 | 定义位置 | 说明 |
 |------|---------|------|
-| `ge::Expression` / `ge::Symbol` | `graph/symbolizer/symbolic.h` | 符号表达式，支持常量、变量、算术运算 |
-| `gert::SymbolShape` | `exe_graph/runtime/symbolic_shape.h` | 由 `Expression` 向量组成的符号化 Shape |
-| `gert::SymbolTensor` | `exe_graph/runtime/symbolic_tensor.h` | 符号化 Tensor（Shape + 符号化数据值） |
-| `InferSymbolShapeContext` | `exe_graph/runtime/infer_symbol_shape_context.h` | 符号化推导上下文 |
+| `ge::Expression` / `ge::Symbol` | `graph/symbolizer/symbolic.h` | 符号表达式，支持常量、变量、算术与逻辑运算 |
+| `gert::SymbolShape` / `gert::SymbolTensor` | `exe_graph/runtime/symbolic_types.h` | 符号化Shape，以及携带Shape和可选符号值的Tensor |
+| `gert::InferSymbolContext` | `exe_graph/runtime/infer_symbol_context.h` | 自定义算子符号化推导上下文 |
+| `ge::SymbolicInferOp` | `graph/custom_op.h` | 语言无关式自定义算子符号化推导能力接口 |
 
 ### 7.3 推导流程
 
@@ -432,16 +434,70 @@ PostProcess(compute_graph)             // 后处理 wrapper
 ```
 
 > **说明**：`SymbolicShapeInference` 类（symbolic_shape_inference.h）仅有一个公有方法 `Infer()`。`Simplify()` 是定义在匿名命名空间中的自由函数（symbolic_shape_inference.cc），由 `Infer()` 在推导结束后内部调用（symbolic_shape_inference.cc），并非独立的类方法。`PreProcess()` 和 `PostProcess()` 是 `AutofuseOptimize` 类的 wrapper 函数，分别封装了预处理图优化和后处理逻辑。
-Autofuse lowering 前会为缺少符号属性且 Shape 完全静态的输出补齐常量符号 Shape，兼容前序流程新插入或改写节点后符号属性未同步的场景。
+Autofuse lowering前会为缺少符号属性且Shape完全静态的输出补齐常量符号Shape，兼容前序流程新插入或改写节点后符号属性未同步的场景。
+
+自定义符号化能力由多个既有及配套部分构成，不能全部视为`SymbolicInferOp`引入：
+
+| 组成 | 归属与说明 |
+|------|-----------|
+| `IMPL_OP_INFERSYMBOL`、`OpImplFunctionsV2::infer_symbol` | metadef既有/配套宏式注册与落表 |
+| `OpDef::SetInferSymbol`、`OP_ADD`转存 | metadef配套OpDef注册链，以对应metadef版本为准 |
+| 字段查询、上下文构造、成功时输出回写 | GE既有字段消费链 |
+| `SymbolicInferOp`及能力检测 | GE语言无关式接口扩展 |
+| 推导档位与`GRAPH_NOT_CHANGED`降级 | GE本期消费链增强 |
+
+单节点推导档位为：
+
+1. 自定义`infer_symbol`：`SymbolicInferOp`优先于`OpImplFunctionsV2::infer_symbol`字段注册；
+2. host计算（`SymbolicKernelFactory`），仅未注册自定义推导时尝试；
+3. 内置`infer_symbol_shape`，仅未注册自定义推导且host计算不支持时尝试；
+4. 静态Shape常量化。
+
+未注册自定义时依次尝试host计算和内置推导；自定义回调返回`GRAPH_NOT_CHANGED`时丢弃本次全部写入并直接降级静态Shape，不执行host计算或内置推导；其他非零返回值中断编译，日志包含节点名和op type。仅`GRAPH_SUCCESS`时采纳并回写输出。
 
 ### 7.4 算子实现示例
 
-符号化推导使用 `IMPL_OP_INFER_SYMBOL_SHAPE_INNER` 宏注册，实现函数接收 `InferSymbolShapeContext`：
+内置算子使用`IMPL_OP_INFER_SYMBOL_SHAPE_INNER`注册。历史版本中的`InferSymbolShapeContext`/`infer_symbol_shape_context.h`已随公开类型统一迁移到`InferSymbolContext`/`infer_symbol_context.h`；宏名保留，但当前内置回调同样使用`InferSymbolContext`。自定义算子可按交付形态选择以下一种方式：
+
+```cpp
+// 宏式
+IMPL_OP_INFERSYMBOL(AddCustom).InferSymbol(InferSymbolAddCustom);
+
+// OpDef式
+this->SetInferSymbol(InferSymbolAddCustom);
+
+// 语言无关式
+class AddCustom : public SymbolicInferOp { /* ... */ };
+REG_AUTO_MAPPING_OP(AddCustom);
+```
+
+回调接收`gert::InferSymbolContext`，可读取输入符号Shape/Tensor和属性，并写出输出符号Shape/Tensor。输入符号可能为空，需判空并返回`GRAPH_NOT_CHANGED`；透传时必须显式写出输出：
+
+```cpp
+graphStatus InferSymbolAddCustom(gert::InferSymbolContext *ctx) {
+  const auto *x = ctx->GetInputSymbolShape(0);
+  auto *out = ctx->GetOutputSymbolShape(0);
+  if (x == nullptr || out == nullptr) {
+    return GRAPH_NOT_CHANGED;
+  }
+  out->SetDimNum(x->GetDimNum());
+  for (size_t i = 0; i < x->GetDimNum(); ++i) {
+    out->SetDim(i, x->GetDim(i));
+  }
+  return GRAPH_SUCCESS;
+}
+```
+
+`EXPECT_SYMBOL_*`用于hint分支判定并生成guard，`ASSERT_SYMBOL_*`失败返回`GRAPH_PARAM_INVALID`。数据依赖输入先经`InputsDataDependency`声明，再通过`SymbolTensor`读取符号值；`HasValue()==false`、`HasValue()==true && GetValueCount()==0`分别表示无值和显式空值。
+
+内置算子的典型实现包括：
 
 - **Slice**：输出维度 = `size[i]` 或 `input_shape[i] - offsets[i]`，offsets 和 size 作为符号化数据值读取
 - **LayerNorm**：输出 0 与输入同 Shape；输出 1、2 在 begin_norm_axis 之后维度置为 Symbol(1)
 - **Pack**：在 axis 位置插入新维度 Symbol(num)
 - **Reshape**：目标 Shape 从输入 tensor 的符号化值中读取，维度为 -1 时通过 `in_size / out_size` 计算表达式
+
+新算子SO在老版本环境上允许加载成功并静默不启用符号化能力，不承诺融合收益。仅含run包的执行机不进入符号化路径，也不调用symbolizer API。OM不新增符号化字段或格式，新旧OM加载行为保持不变。
 
 ### 7.5 与常规 InferShape 的对比
 
@@ -451,7 +507,7 @@ Autofuse lowering 前会为缺少符号属性且 Shape 完全静态的输出补�
 | 推导时机 | 编译期 / 运行期 | 编译期（autofuse 阶段） |
 | 动态 Shape | 需运行时重新推导 | 编译期完成结构化推导 |
 | 数据值访问 | 具体数据 | 符号化数据值 |
-| 上下文 | InferShapeContext | InferSymbolShapeContext |
+| 上下文 | InferShapeContext | InferSymbolContext |
 
 ### 7.6 Merge Key 优化
 
@@ -512,7 +568,7 @@ atc --model=model.onnx --dump_mode=1 --json=output.json
 | `StorageShape` | `exe_graph/runtime/storage_shape.h`（外部依赖） | Origin + Storage 的复合描述体 |
 | `InferShapeContext` | `exe_graph/runtime/infer_shape_context.h`（外部依赖） | 算子 InferShape 函数的上下文参数 |
 | `CtInferShapeContext` | `graph/ct_infer_shape_context.h` | 编译期扩展上下文，增加 InferenceContext 访问 |
-| `InferSymbolShapeContext` | `exe_graph/runtime/infer_symbol_shape_context.h` | 符号化推导上下文 |
+| `InferSymbolContext` | `exe_graph/runtime/infer_symbol_context.h`（外部依赖） | 自定义算子符号化推导上下文 |
 | `InferenceContext` | `graph/inference_context.h` | 编译期资源关联信息（handle shape、marks 等） |
 | `ResourceContextMgr` | `graph/resource_context_mgr.h` | 资源上下文管理器，追踪资源依赖关系 |
 | `ShapeInferenceRule` | `graph/utils/inference_rule.h` | 基于 JSON/编译二进制的 Shape 推导规则 |
@@ -560,5 +616,5 @@ atc --model=model.onnx --dump_mode=1 --json=output.json
 |------|------|
 | `inc/graph_metadef/exe_graph/runtime/infer_shape_context.h`（外部依赖，不在 GE 仓库内） | InferShapeContext 接口定义 |
 | `inc/graph_metadef/exe_graph/runtime/storage_shape.h`（外部依赖，不在 GE 仓库内） | StorageShape 类型定义 |
-| `inc/graph_metadef/exe_graph/runtime/infer_symbol_shape_context.h` | InferSymbolShapeContext 接口定义 |
-| `inc/graph_metadef/graph/symbolizer/symbolic.h` | Expression/Symbol 符号表达式 |
+| `inc/graph_metadef/exe_graph/runtime/infer_symbol_context.h`（外部依赖，不在GE仓库内） | InferSymbolContext接口定义 |
+| `inc/graph_metadef/graph/symbolizer/symbolic.h`（外部依赖，不在GE仓库内） | Expression/Symbol符号表达式 |

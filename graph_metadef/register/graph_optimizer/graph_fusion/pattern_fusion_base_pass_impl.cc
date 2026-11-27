@@ -188,7 +188,8 @@ bool PatternFusionBasePassImpl::MatchFromOutput(const ge::NodePtr output_node,
 
     // the sizes of candidate_nodes and candidate_op_descs should always keep the same
     if (cand.candidate_nodes.size() != cand.candidate_op_descs.size()) {
-      GELOGW("[Match][Output] candidate_nodes_num != candidate_op_descs_num, pattern matching failed.");
+      GELOGW("[Match][Output] candidate_nodes_num(%zu) != candidate_op_descs_num(%zu), pattern matching failed.",
+             cand.candidate_nodes.size(), cand.candidate_op_descs.size());
       return false;
     }
   }
@@ -326,7 +327,8 @@ void PatternFusionBasePassImpl::MatchFuzzyOutputs(const ge::NodePtr &node, const
       MatchOneOutputNode(peer_in_node, outputs_desc_pair.second, out_idx, usage_flags, cand);
     }
     if (out_idx > (std::numeric_limits<size_t>::max() - outputs_desc_pair.second.size())) {
-      GELOGE(ge::FAILED, "Out idx %zu is overflow.", out_idx);
+      GELOGE(ge::FAILED, "Out idx %zu has overflowed, the max allowed value is %zu.", out_idx,
+             std::numeric_limits<size_t>::max() - outputs_desc_pair.second.size());
       return;
     }
     out_idx += outputs_desc_pair.second.size();

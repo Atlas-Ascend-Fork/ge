@@ -759,4 +759,48 @@ TEST_F(AdaptionMatmulPrecisionTest, UncontrolledEpilogueCastStillUsesOrdinaryEli
   EXPECT_EQ(OutputDtype(promoted_input), DT_FLOAT);
   EXPECT_EQ(InputProducer(promoted_input, 0), mm);
 }
+
+TEST_F(AdaptionImprovePrecisionTest, MaterializedFp16OutputSkipsPromotionAndCastsConsumerOnce) {
+  ge::AscGraph add_graph("materialized_fp16_output");
+  const auto graph = CreatAddAscGraph(add_graph);
+  const auto add = graph->FindNode("add_4");
+  const auto store = graph->FindNode("x_out_5");
+  ASSERT_NE(add, nullptr);
+  ASSERT_NE(store, nullptr);
+  const auto consumer = AddPrecisionVectorNode(graph, "Abs", "consumer", add);
+  ASSERT_TRUE(AttrUtils::SetInt(*add->GetOpDesc()->MutableOutputDesc(0), kMaterializedDtypeAttr, DT_FLOAT16));
+  ASSERT_EQ(GraphUtils::RemoveEdge(add->GetOutDataAnchor(0), store->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  ASSERT_EQ(GraphUtils::AddEdge(consumer->GetOutDataAnchor(0), store->GetInDataAnchor(0)), GRAPH_SUCCESS);
+
+  ASSERT_EQ(PrecisionImprover::ImprovePrecisionToFp32(WrapPrecisionGraph(graph, false)), SUCCESS);
+
+  EXPECT_EQ(OutputDtype(add), DT_FLOAT16);
+  EXPECT_EQ(OutputDtype(consumer), DT_FLOAT);
+  const auto input_cast = InputProducer(consumer, 0);
+  ASSERT_NE(input_cast, nullptr);
+  EXPECT_EQ(input_cast->GetType(), kCastType);
+  EXPECT_EQ(OutputDtype(input_cast), DT_FLOAT);
+  EXPECT_EQ(InputProducer(input_cast, 0), add);
+}
+
+TEST_F(AdaptionImprovePrecisionTest, MaterializedBoundaryCastIsNotEliminated) {
+  ge::AscGraph add_graph("materialized_boundary_cast");
+  const auto graph = CreatAddAscGraph(add_graph);
+  const auto add = graph->FindNode("add_4");
+  const auto store = graph->FindNode("x_out_5");
+  ASSERT_NE(add, nullptr);
+  ASSERT_NE(store, nullptr);
+  const auto cast = AddPrecisionVectorNode(graph, "Cast", "boundary_cast", add);
+  cast->GetOpDesc()->MutableOutputDesc(0)->SetDataType(DT_FLOAT16);
+  ASSERT_TRUE(AttrUtils::SetInt(*cast->GetOpDesc()->MutableOutputDesc(0), kMaterializedDtypeAttr, DT_FLOAT16));
+  ASSERT_EQ(GraphUtils::RemoveEdge(add->GetOutDataAnchor(0), store->GetInDataAnchor(0)), GRAPH_SUCCESS);
+  ASSERT_EQ(GraphUtils::AddEdge(cast->GetOutDataAnchor(0), store->GetInDataAnchor(0)), GRAPH_SUCCESS);
+
+  ASSERT_EQ(PrecisionImprover::ImprovePrecisionToFp32(WrapPrecisionGraph(graph, false)), SUCCESS);
+
+  EXPECT_EQ(graph->FindNode("boundary_cast"), cast);
+  EXPECT_EQ(OutputDtype(cast), DT_FLOAT16);
+  EXPECT_EQ(InputProducer(store, 0), cast);
+  EXPECT_EQ(InputProducer(cast, 0), add);
+}
 }  // namespace ge

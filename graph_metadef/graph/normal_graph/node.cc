@@ -732,7 +732,7 @@ Node::Vistor<std::pair<NodePtr, OutDataAnchorPtr>> Node::NodeImpl::GetInDataNode
   std::vector<std::pair<NodePtr, OutDataAnchorPtr>> vec;
   for (const auto &p : in_data_anchors_) {
     if (p == nullptr) {
-      GELOGW("[Check][Param] In data anchor is nullptr, node=%s, type=%s", GetType().c_str(), GetName().c_str());
+      GELOGW("[Check][Param] In data anchor is nullptr, node=%s, type=%s", GetName().c_str(), GetType().c_str());
       continue;
     }
     auto anchor_ptr = p->GetPeerOutAnchor();

@@ -95,7 +95,7 @@ graph TB
     end
 
     subgraph "GE Infrastructure Layer (This Document Describes)"
-        INFRA["BaseCustomOp + EagerExecuteOp + ShapeInferOp<br/>+ CompilableOp + PortableOp + ArgsUpdater<br/>REG_OP / REG_AUTO_MAPPING_OP / OPP Package"]
+        INFRA["BaseCustomOp + EagerExecuteOp + ShapeInferOp + SymbolicInferOp<br/>+ CompilableOp + PortableOp + ArgsUpdater<br/>REG_OP / REG_AUTO_MAPPING_OP / OPP Package"]
     end
 ```
 
@@ -160,10 +160,11 @@ Other interface level differences:
 | Registration style | Chain function pointer | Virtual function inheritance + factory registration |
 | State management | Stateless function pointer | Stateful object (member variables) |
 | Shape inference | `InferShapeKernelFunc` function pointer | `ShapeInferOp::InferShape()` virtual method |
+| Symbolic shape inference | `infer_symbol` function pointer with macro-based/OpDef registration | `SymbolicInferOp::InferSymbol()` virtual method, taking precedence over field registration |
 | Shape range inference | `InferShapeRangeKernelFunc` independent registration | Reuse `InferShape` (-1 represents unknown dimension) |
 | DataType inference | `InferDataTypeKernelFunc` function pointer | `ShapeInferOp::InferDataType()` virtual method |
 | Format inference | `InferFormatKernelFunc` independent registration | Not supported temporarily, under design |
-| Data dependency declaration | Explicit `.InputsDataDependency({indices})` | Implicit (access through context) |
+| Data dependency declaration | Explicit `.InputsDataDependency({indices})` | `ShapeInferOp` can access input values through the context; symbolic values used by `InferSymbol` still require registration-based dependency declarations rather than implicit inference from the interface |
 | Private attribute | `.PrivateAttr(name, value)` | Not supported |
 | Tiling | Dedicated `.Tiling()` / `.TilingParse<>()` interface | Weakens tiling concept, handled by subclass autonomously |
 | Design target | AICore built-in operators (standard engine pipeline) | External custom operators (arbitrary kernel binary) |
@@ -298,6 +299,11 @@ classDiagram
         +InferDataType(InferDataTypeContext*) graphStatus
     }
 
+    class SymbolicInferOp {
+        <<interface>>
+        +InferSymbol(InferSymbolContext*) graphStatus
+    }
+
     class CompilableOp {
         <<interface>>
         +Compile(OpCompileContext*) graphStatus
@@ -316,6 +322,7 @@ classDiagram
 
     BaseCustomOp <|-- EagerExecuteOp
     BaseCustomOp <|-- ShapeInferOp
+    BaseCustomOp <|-- SymbolicInferOp
     BaseCustomOp <|-- CompilableOp
     BaseCustomOp <|-- PortableOp
     BaseCustomOp <|-- ArgsUpdater
@@ -326,6 +333,8 @@ classDiagram
 - **Capability Combination**: Developer inherits as needed, not forced to implement all interfaces. GE detects which capabilities operator has at runtime through `dynamic_cast`.
 - **Orthogonal Design**: Each interface corresponds to independent callback timing, no coupling between interfaces.
 - **Context Isolation**: Each callback receives dedicated Context object, only exposes information operator needs.
+
+**Symbolic inference extension**: `SymbolicInferOp` is the language-independent capability interface. GE detects implementations through `CustomOpCapabilityTrait<SymbolicInferOp>` and `CustomOpCast<SymbolicInferOp>`. The `IMPL_OP_INFERSYMBOL` macro, OpDef `SetInferSymbol`, and GE field-based consumption chain are existing/companion capabilities rather than features introduced entirely by this interface. Language-independent or field-based custom inference is executed first when registered. If no custom inference is registered, GE tries host computation and then built-in inference. The language-independent form takes precedence over field registration. `GRAPH_NOT_CHANGED` falls back directly to the static shape without trying host computation or built-in inference. A new operator SO may load successfully in an older environment with this capability silently inactive.
 
 **Capability Detection Mechanism:**
 

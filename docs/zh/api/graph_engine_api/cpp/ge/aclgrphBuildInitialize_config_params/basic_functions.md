@@ -327,7 +327,7 @@ sub\_comm\_config.json文件示例如下：
 
 **参数取值：**
 
-<soc\_version\>查询方法请参见[--soc_version](../../../../../user_guides/atc_tools/CLI_options/--soc_version.md)。
+<soc\_version\>查询方法请参见《[ATC离线模型编译工具](https://gitcode.com/cann/ge/blob/master/docs/zh/user_guides/atc_tools/README.md)》中的`--soc_version`。
 
 **配置示例：**
 

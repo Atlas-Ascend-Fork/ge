@@ -132,7 +132,7 @@ void ConnectionMatrixImpl::Update(const ComputeGraphPtr &graph, const vector<Nod
     return;
   }
   if (graph != shared_graph) {
-    GELOGW("Input graph %s is not the same one %s when contribute connection matrix.", graph->GetName().c_str(),
+    GELOGW("Input graph %s is not the same one as %s when contributing connection matrix.", graph->GetName().c_str(),
            shared_graph->GetName().c_str());
     return;
   }

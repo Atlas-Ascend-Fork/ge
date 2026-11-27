@@ -26,7 +26,7 @@ int32_t GetTimeoutValue(const std::string &timeout_option) {
     timeout_value = std::stoi(timeout_str);
   } catch (...) {
     timeout_value = -1;
-    GELOGW("option %s's value %s is invalid", timeout_option.c_str(), timeout_str.c_str());
+    GELOGW("option %s's value %s is invalid, expected an integer", timeout_option.c_str(), timeout_str.c_str());
   }
   return timeout_value;
 }
@@ -85,7 +85,7 @@ void GEThreadLocalContext::SetGraphOption(std::map<std::string, std::string> opt
 
 graphStatus GEThreadLocalContext::SetOptionNameMap(const std::string &option_name_map_json) {
   if (!option_name_map_.empty()) {
-    GELOGD("option name map has set, don't need reset");
+    GELOGD("option name map has been set, no need to reset");
     return ge::GRAPH_SUCCESS;
   }
   Json option_json;

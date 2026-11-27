@@ -21,6 +21,7 @@
 #include "rt_external_dqs.h"
 #include "rt_external_kernel.h"
 #include "rt_external_device.h"
+#include "runtime/base.h"
 
 extern std::string g_runtime_stub_mock;
 extern std::string g_runtime_stub_mock_v2;
@@ -2048,7 +2049,8 @@ rtError_t rtMemGetInfoByType(const int32_t devId, const rtMemType_t type, void *
   return RT_ERROR_NONE;
 }
 
-rtError_t rtRegDeviceStateCallbackEx(const char_t *regName, rtDeviceStateCallback callback, const int32_t notifyPos) {
+rtError_t rtRegDeviceStateCallbackEx(const char_t *regName, rtDeviceStateCallback callback,
+                                     const rtDevCallBackDir_t notifyPos) {
   return RT_ERROR_NONE;
 }
 

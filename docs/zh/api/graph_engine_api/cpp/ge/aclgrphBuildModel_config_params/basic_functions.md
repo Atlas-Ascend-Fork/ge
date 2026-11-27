@@ -147,9 +147,6 @@ Caffe网络中具有相同类型名但计算功能不同的层，比如Detection
 OpA:Network1OpA
 ```
 
-**使用约束：**
-[OFFLINE_MODE](basic_functions.md#offline_mode)取值为7时，不支持配置该参数。
-
 **产品支持情况：**
 
 <!-- @ref: ge/res/docs/zh/api/graph_engine_api/cpp/ge/aclgrphBuildModel_config_params/basic_functions_res.md#id1 -->

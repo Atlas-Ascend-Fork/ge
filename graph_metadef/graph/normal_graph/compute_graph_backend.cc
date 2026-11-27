@@ -208,7 +208,7 @@ graphStatus ComputeGraphBackend::AddOp(const ge::Operator &op) {
   (void)op.GetName(name);
   const auto ret = op_list_.emplace(std::pair<std::string, ge::Operator>(name.GetString(), op));
   if (!ret.second) {
-    GELOGW("[Check][Param] the op have added before, op name:%s.", name.GetString());
+    GELOGW("[Check][Param] the op has been added before, op name:%s.", name.GetString());
   }
   return GRAPH_SUCCESS;
 }

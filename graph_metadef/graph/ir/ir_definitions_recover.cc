@@ -343,16 +343,16 @@ graphStatus RecoverIrUtils::RecoverOpDescIrDefinition(const ge::OpDescPtr &desc,
   }
 
   // ir_attr_names
-  GE_ASSERT_GRAPH_SUCCESS(RecoverIrAttrNames(desc, ir_def), "%s %s recover ir attr names failed.", desc->GetNamePtr(),
-                          desc->GetTypePtr());
+  GE_ASSERT_GRAPH_SUCCESS(RecoverIrAttrNames(desc, ir_def), "%s %s failed to recover ir attr names.",
+                          desc->GetNamePtr(), desc->GetTypePtr());
   // ir input and output
-  GE_ASSERT_GRAPH_SUCCESS(RecoverIrInputAndOutput(desc, ir_def), "%s %s recover ir input and output failed.",
+  GE_ASSERT_GRAPH_SUCCESS(RecoverIrInputAndOutput(desc, ir_def), "%s %s failed to recover ir input and output.",
                           desc->GetNamePtr(), desc->GetTypePtr());
   // sym store
   desc->ShareDtypeSymbolsFrom(*ir_def.op_desc);
   // attr
   GE_ASSERT_GRAPH_SUCCESS(RecoverIrAttrDefaultValue(desc, op_type, ir_def),
-                          "%s %s recover ir attr default value failed.", desc->GetNamePtr(), desc->GetTypePtr());
+                          "%s %s failed to recover ir attr default value.", desc->GetNamePtr(), desc->GetTypePtr());
   return ge::GRAPH_SUCCESS;
 }
 
@@ -360,7 +360,7 @@ graphStatus RecoverIrUtils::RecoverIrInputAndOutput(const OpDescPtr &desc, IrDef
   const auto &ir_inputs_in_node = desc->GetIrInputs();
   const auto &ir_outputs_in_node = desc->GetIrOutputs();
   GE_ASSERT_GRAPH_SUCCESS(ValidateIrInputOutputOrderCompatibility(desc, ir_inputs_in_node, ir_outputs_in_node, ir_def),
-                          "%s %s validate ir input output order compatibility failed.", desc->GetNamePtr(),
+                          "%s %s failed to validate ir input output order compatibility.", desc->GetNamePtr(),
                           desc->GetTypePtr());
 
   // 处理输入：根据策略处理
@@ -462,7 +462,7 @@ bool CheckIrSpec(const ge::OpDescPtr &desc) {
   }
   size_t input_num = desc->GetInputsSize();
   size_t output_num = desc->GetOutputsSize();
-  GELOGD("Node:%s check input num is %d and ir input num is %d, output num is %d and ir output num is %d",
+  GELOGD("Node:%s check input num is %zu and ir input num is %zu, output num is %zu and ir output num is %zu",
          desc->GetName().c_str(), input_num, ir_def.inputs.size(), output_num, ir_def.outputs.size());
   if (((input_num != ir_def.inputs.size()) && !ir_input_include_dynamic) ||
       ((output_num != ir_def.outputs.size()) && !ir_output_include_dynamic)) {

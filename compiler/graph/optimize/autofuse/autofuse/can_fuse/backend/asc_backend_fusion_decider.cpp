@@ -27,6 +27,17 @@
 
 namespace ge {
 using namespace autofuse;
+bool HasLayerNormOrigin(const NodePtr &node) {
+  const auto attr = BackendUtils::GetNodeAutoFuseAttr(node);
+  GE_ASSERT_NOTNULL(attr);
+  const auto &origin_nodes = GetInterAttrs(attr).origin_nodes;
+  return std::any_of(origin_nodes.begin(), origin_nodes.end(), [](const af::Node *origin_node) {
+    return origin_node != nullptr &&
+           (origin_node->GetType() == "LayerNorm" || origin_node->GetType() == "LayerNormV3" ||
+            origin_node->GetType() == "AddLayerNorm");
+  });
+}
+
 // 子图融合流程缓存dump图和缓存当前正在融合的节点名字
 Status CacheGraphBeforeSubGraphMerge(const NodePtr &node1, const NodePtr &node2, const ComputeGraphPtr &origin_graph) {
   if (!IsLogEnable(GE_MODULE_NAME, DLOG_DEBUG)) {
@@ -595,6 +606,7 @@ Status AscBackendFusionDecider::LinkAscSubGraphNode(
     const NodePtr &node1, const NodePtr &node2, std::vector<ge::NodePtr> &outputs,
     const ComputeGraph::Vistor<NodePtr> &inputs, const NodeFuseInfo &node_fuse_info,
     std::vector<NodePtr> &del_data_nodes, std::vector<NodePtr> &del_output_and_store_nodes, bool is_reduction) const {
+  const bool preserve_materialized_dtype = HasLayerNormOrigin(node1) || HasLayerNormOrigin(node2);
   for (const auto &subgraph_link : node_fuse_info.GetNode1ToNode2LinkMap()) {
     // 把data的输出anchor和netoutput的peer out anchor replace
     GE_ASSERT_TRUE(static_cast<size_t>(subgraph_link.first) < outputs.size(), "size %zu VS size %zu",
@@ -617,6 +629,22 @@ Status AscBackendFusionDecider::LinkAscSubGraphNode(
     GE_ASSERT_NOTNULL(in_anchor_peer);
     auto store_peer_node = in_anchor_peer->GetOwnerNode();
     GE_ASSERT_NOTNULL(store_peer_node);
+    const auto store_output_desc = store_node->GetOpDesc()->GetOutputDescPtr(0);
+    GE_ASSERT_NOTNULL(store_output_desc);
+    const auto producer_output_desc = store_peer_node->GetOpDesc()->MutableOutputDesc(in_anchor_peer->GetIdx());
+    GE_ASSERT_NOTNULL(producer_output_desc);
+    // 仅Norm-like融合图保留原物化dtype，避免影响其它图的精度提升策略。
+    if (preserve_materialized_dtype) {
+      if (AttrUtils::HasAttr(*producer_output_desc, kMaterializedDtypeAttr)) {
+        int64_t materialized_dtype = 0;
+        GE_ASSERT_TRUE(AttrUtils::GetInt(*producer_output_desc, kMaterializedDtypeAttr, materialized_dtype));
+        GE_ASSERT_TRUE(materialized_dtype == static_cast<int64_t>(store_output_desc->GetDataType()),
+                       "Conflicting materialized dtypes on one producer output.");
+      } else {
+        GE_ASSERT_TRUE(AttrUtils::SetInt(*producer_output_desc, kMaterializedDtypeAttr,
+                                         static_cast<int64_t>(store_output_desc->GetDataType())));
+      }
+    }
     GE_ASSERT_SUCCESS(LinkDataNode(store_in_anchor, data_node, node_fuse_info.IsSingleReference(subgraph_link.first)));
     del_data_nodes.push_back(data_node);
     // 单输出才需要删除store

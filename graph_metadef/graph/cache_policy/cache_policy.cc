@@ -64,7 +64,7 @@ graphStatus CachePolicy::SetAgingPolicy(const AgingPolicyPtr ap) {
 CacheItemId CachePolicy::AddCache(const CacheDescPtr &cache_desc) {
   const CacheHashKey main_hash_key = cache_desc->GetCacheDescHash();
   if (!ap_->IsReadyToAddCache(main_hash_key, cache_desc)) {
-    GELOGI("Not met the add cache condition with has key:%lu.", main_hash_key);
+    GELOGI("Not met the add cache condition with hash key:%lu.", main_hash_key);
     return KInvalidCacheItemId;
   }
   const auto cache_item = compile_cache_state_.AddCache(main_hash_key, cache_desc);

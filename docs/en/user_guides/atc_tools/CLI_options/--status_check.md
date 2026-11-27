@@ -50,8 +50,6 @@ If the model computation precision is abnormal and is suspected to be caused by 
     }
     ```
 
-- When the value of [--mode](--mode.md) is 7, the overflow detection feature is not supported for configuration.
-
 ## Parameter Values
 
 - 0: (default) Overflow detection is disabled, and no overflow detection logic is inserted during operator compilation.

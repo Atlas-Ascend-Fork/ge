@@ -22,7 +22,7 @@
 
 - 单算子描述文件场景：
 
-    Ascend IR定义的单算子描述文件（JSON格式）通过ATC工具进行单算子编译后，转成适配AI处理器的单算子离线模型，然后上传到板端环境，通过**单算子模型加载接口加载单算子模型文件**用于验证单算子功能，详细流程请参见[单算子模型执行](../../../api/graph_engine_api/c/acl/single_operator_model_execute.md)。
+    Ascend IR定义的单算子描述文件（JSON格式）通过ATC工具进行单算子编译后，转成适配AI处理器的单算子离线模型，然后上传到板端环境，通过**单算子模型加载接口加载单算子模型文件**用于验证单算子功能，详细流程请参见《[GE图引擎API](https://gitcode.com/cann/ge/blob/master/docs/zh/api/graph_engine_api/README.md)》中的[单算子模型执行](../../../api/graph_engine_api/c/acl/single_operator_model_execute.md)章节。
 
     关于单算子描述文件的详细配置说明请参见[单算子模型转换](../sinlgeop_model_convert/sinlgeop_model_convert.md)章节。
 

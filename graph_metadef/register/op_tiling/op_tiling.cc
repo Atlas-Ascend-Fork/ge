@@ -261,7 +261,7 @@ void FeedTeOpConstTensor(const ge::Operator &op, const ge::OpDescPtr &op_desc,
   for (const std::string &depend : depend_names) {
     ge::Tensor data;
     const ge::graphStatus rc = op.GetInputConstData(depend.c_str(), data);
-    GELOGI("GetInputConstData: %s, %d", depend.c_str(), rc);
+    GELOGD("GetInputConstData: %s, %d", depend.c_str(), rc);
     if (rc != ge::GRAPH_SUCCESS) {
       continue;
     }
@@ -269,7 +269,7 @@ void FeedTeOpConstTensor(const ge::Operator &op, const ge::OpDescPtr &op_desc,
     const uint8_t *const pbuf = data.GetData();
     const size_t buflen = data.GetSize();
 
-    GELOGI("Const input tensor data: %s, %p %zu", depend.c_str(), pbuf, buflen);
+    GELOGD("Const input tensor data: %s, %p %zu", depend.c_str(), pbuf, buflen);
     (void)const_inputs.emplace(depend, TeConstTensorData{pbuf, buflen, data});
   }
 }
@@ -283,7 +283,8 @@ ge::graphStatus OpParaCalculate(const ge::Operator &op, OpRunInfo &run_info, con
 
   ge::OpDesc::Vistor<ge::GeTensorDescPtr> inputs = op_desc->GetAllInputsDescPtr();
   if (!FeedTeOpTensorArg(inputs, op_param.inputs, op_desc)) {
-    GE_LOGE("Do optiling, op_type: %s, op_name: %s", op_desc->GetType().c_str(), op_desc->GetName().c_str());
+    GE_LOGE("Failed to feed tensor args for optiling, op_type: %s, op_name: %s", op_desc->GetType().c_str(),
+            op_desc->GetName().c_str());
     return ge::GRAPH_FAILED;
   }
   ge::OpDesc::Vistor<ge::GeTensorDescPtr> outputs = op_desc->GetAllOutputsDescPtr();
@@ -593,8 +594,15 @@ extern "C" ge::graphStatus OpParaCalculateV2(const ge::Operator &op, OpRunInfoV2
   const ge::OpDescPtr op_desc = ge::OpDescUtils::GetOpDescFromOperator(op);
   OpTilingFuncInfo *op_func_info = GetOpTilingInfo(op_desc);
   if (op_func_info == nullptr) {
-    GE_LOGE("Optiling function not found.");
-    REPORT_INNER_ERR_MSG("EZ9999", "Optiling function not found.");
+    if (op_desc != nullptr) {
+      GE_LOGE("Optiling function not found. op_type[%s], op_name[%s].", op_desc->GetType().c_str(),
+              op_desc->GetName().c_str());
+      REPORT_INNER_ERR_MSG("EZ9999", "Optiling function not found. op_type[%s], op_name[%s].",
+                           op_desc->GetType().c_str(), op_desc->GetName().c_str());
+    } else {
+      GE_LOGE("Optiling function not found, op desc is nullptr.");
+      REPORT_INNER_ERR_MSG("EZ9999", "Optiling function not found, op desc is nullptr.");
+    }
     return ge::GRAPH_FAILED;
   }
   ge::graphStatus ret = ge::GRAPH_FAILED;
@@ -1020,7 +1028,8 @@ ge::graphStatus UpDateNodeShapeBySliceInfo(const ffts::ThreadSliceMapDyPtr slice
                                            const uint32_t thread_id, vector<int64_t> &ori_shape, bool &same_shape) {
   if ((thread_id >= slice_info_ptr->input_tensor_slice.size()) ||
       (thread_id >= slice_info_ptr->output_tensor_slice.size())) {
-    REPORT_INNER_ERR_MSG("E19999", "Update node shape thread id(%u) err.", thread_id);
+    REPORT_INNER_ERR_MSG("E19999", "Update node shape thread id(%u) err, valid range is [0, %zu).", thread_id,
+                         slice_info_ptr->input_tensor_slice.size());
     return ge::GRAPH_FAILED;
   }
   ge::GeTensorDescPtr tensor_ptr = nullptr;
@@ -1063,9 +1072,15 @@ ge::graphStatus UpDateNodeShapeBySliceInfo(const ffts::ThreadSliceMapDyPtr slice
 
 ge::graphStatus UpDateNodeShapeBack(const ge::OpDescPtr op_desc, const ffts::ThreadSliceMapDyPtr slice_info_ptr,
                                     vector<int64_t> &ori_shape) {
-  if (slice_info_ptr == nullptr || ori_shape.size() != (slice_info_ptr->input_tensor_indexes.size() +
-                                                        slice_info_ptr->output_tensor_indexes.size())) {
-    REPORT_INNER_ERR_MSG("E19999", "Update back node shape size err.");
+  if (slice_info_ptr == nullptr) {
+    REPORT_INNER_ERR_MSG("E19999", "Update back node shape size err, slice info is nullptr.");
+    return ge::GRAPH_FAILED;
+  }
+  if (ori_shape.size() !=
+      (slice_info_ptr->input_tensor_indexes.size() + slice_info_ptr->output_tensor_indexes.size())) {
+    REPORT_INNER_ERR_MSG("E19999", "Update back node shape size err, ori shape size=%zu, expected size=%zu.",
+                         ori_shape.size(),
+                         slice_info_ptr->input_tensor_indexes.size() + slice_info_ptr->output_tensor_indexes.size());
     return ge::GRAPH_FAILED;
   }
   size_t idx = 0;
@@ -1097,7 +1112,10 @@ extern "C" ge::graphStatus OpFftsPlusCalculate(const ge::Operator &op, std::vect
   GE_CHECK_NOTNULL(slice_info_ptr);
   if (slice_info_ptr->slice_instance_num != slice_info_ptr->input_tensor_slice.size() ||
       slice_info_ptr->slice_instance_num != slice_info_ptr->output_tensor_slice.size()) {
-    REPORT_INNER_ERR_MSG("E19999", "Slice num not equal.");
+    REPORT_INNER_ERR_MSG("E19999",
+                         "Slice num not equal, slice_instance_num=%u, input slice size=%zu, output slice size=%zu.",
+                         slice_info_ptr->slice_instance_num, slice_info_ptr->input_tensor_slice.size(),
+                         slice_info_ptr->output_tensor_slice.size());
     return ge::GRAPH_FAILED;
   }
   vector<int64_t> ori_shape;  // save original shape

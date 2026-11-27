@@ -391,25 +391,33 @@ graphStatus FormatRefiner::ForwardInferProcess(std::deque<ge::NodePtr> &nodes, c
 
 void FormatRefiner::RefreshOriginFormatOfAnchor(const std::vector<ge::NodePtr> &anchor_points) {
   for (const auto &node : anchor_points) {
+    if ((node == nullptr) || (node->GetOpDesc() == nullptr)) {
+      continue;
+    }
     for (const auto &input_desc : node->GetOpDesc()->GetAllInputsDescPtr()) {
-      // single op support private format set, its origin format should not be override
+      if (input_desc == nullptr) {
+        continue;
+      }
       const auto ori_format = input_desc->GetOriginFormat();
       const auto format = input_desc->GetFormat();
       if (TypeUtilsInner::IsInternalFormat(format)) {
         continue;
       }
-      if ((input_desc != nullptr) && ((ori_format == FORMAT_ND) || (ori_format == FORMAT_RESERVED))) {
-        input_desc->SetOriginFormat(input_desc->GetFormat());
+      if ((ori_format == FORMAT_ND) || (ori_format == FORMAT_RESERVED)) {
+        input_desc->SetOriginFormat(format);
       }
     }
     for (const auto &output_desc : node->GetOpDesc()->GetAllOutputsDescPtr()) {
+      if (output_desc == nullptr) {
+        continue;
+      }
       const auto ori_format = output_desc->GetOriginFormat();
       const auto format = output_desc->GetFormat();
       if (TypeUtilsInner::IsInternalFormat(format)) {
         continue;
       }
-      if ((output_desc != nullptr) && ((ori_format == FORMAT_ND) || (ori_format == FORMAT_RESERVED))) {
-        output_desc->SetOriginFormat(output_desc->GetFormat());
+      if ((ori_format == FORMAT_ND) || (ori_format == FORMAT_RESERVED)) {
+        output_desc->SetOriginFormat(format);
       }
     }
   }
@@ -419,7 +427,7 @@ graphStatus FormatRefiner::DataNodeFormatProcess(const ComputeGraphPtr &graph,
                                                  const std::vector<ge::NodePtr> &anchor_data_nodes,
                                                  const ge::Format data_format) {
   if (!(IsGraphInferred(graph) && (!TypeUtilsInner::IsInternalFormat(data_format)) && (data_format != FORMAT_ND))) {
-    GELOGI("no necessary to do DataNodeFormatProcess. is_graph_inferred:%d, data_format:%s",
+    GELOGI("Skip DataNodeFormatProcess. is_graph_inferred:%d, data_format:%s",
            static_cast<int32_t>(IsGraphInferred(graph)), TypeUtils::FormatToSerialString(data_format).c_str());
     return GRAPH_SUCCESS;
   }

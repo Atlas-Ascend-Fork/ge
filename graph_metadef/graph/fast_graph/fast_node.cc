@@ -104,8 +104,7 @@ const char *FastNode::GetTypePtr() const {
 
 bool FastNode::operator==(const FastNode &r_node) const {
   return (IsEqual(name_, r_node.name_, "node.name") && IsEqual(node_token_, r_node.node_token_, "node.token") &&
-          IsEqual(opdesc_, r_node.opdesc_, "node.opdesc_") && IsEqual(opdesc_, r_node.opdesc_, "node.opdesc_") &&
-          IsEqual(self_ptr_, r_node.self_ptr_, "node.self_ptr_") &&
+          IsEqual(opdesc_, r_node.opdesc_, "node.opdesc_") && IsEqual(self_ptr_, r_node.self_ptr_, "node.self_ptr_") &&
           IsEqual(data_in_num_, r_node.data_in_num_, "node.data_in_num_") &&
           IsEqual(data_out_num_, r_node.data_out_num_, "node.data_out_num_") &&
           IsEqual(in_data_edges_, r_node.in_data_edges_, "node.in_data_edges_") &&
@@ -113,7 +112,7 @@ bool FastNode::operator==(const FastNode &r_node) const {
           IsEqual(in_control_edges_, r_node.in_control_edges_, "node.in_control_edges_") &&
           IsEqual(out_control_edges_, r_node.out_control_edges_, "node.out_control_edges_") &&
           IsEqual(in_data_edges_count_, r_node.in_data_edges_count_, "node.in_data_edges_count_") &&
-          IsEqual(in_control_edge_count_, in_control_edge_count_, "node.in_control_edge_count_") &&
+          IsEqual(in_control_edge_count_, r_node.in_control_edge_count_, "node.in_control_edge_count_") &&
           IsEqual(*extend_info_, *(r_node.extend_info_), "node.extend_info_") &&
           IsEqual(out_data_edges_info_.total_num, r_node.out_data_edges_info_.total_num,
                   "node.out_data_edges_info_.total_num"));
@@ -249,8 +248,10 @@ graphStatus FastNode::EraseEdge(const FastEdge *const edge, DirectionType type) 
 graphStatus FastNode::CheckAllInputParamter(DirectionType type, int32_t io_idx, int32_t cur_array_index,
                                             int32_t replace_array_index) const {
   if (io_idx < -1) {
-    REPORT_INNER_ERR_MSG("E18888", "The idx[%d] exceed the max capacity of in_edges.", io_idx);
-    GELOGE(GRAPH_FAILED, "[Check][Param] The idx[%d] exceed the max capacity of in_edges.", io_idx);
+    REPORT_INNER_ERR_MSG("E18888", "The idx[%d] exceeds the max capacity of in_edges, the idx must be no less than -1.",
+                         io_idx);
+    GELOGE(GRAPH_FAILED,
+           "[Check][Param] The idx[%d] exceeds the max capacity of in_edges, the idx must be no less than -1.", io_idx);
     return GRAPH_FAILED;
   }
 
@@ -265,8 +266,8 @@ graphStatus FastNode::CheckAllInputParamter(DirectionType type, int32_t io_idx, 
     }
 
     if (io_size <= static_cast<size_t>(io_idx)) {
-      REPORT_INNER_ERR_MSG("E18888", "The idx [%d] exceed the max capacity [%zu] of in_edges.", io_idx, io_size);
-      GELOGE(GRAPH_FAILED, "[Check][Param] The idx [%d] exceed the max capacity [%zu] of in_edges.", io_idx, io_size);
+      REPORT_INNER_ERR_MSG("E18888", "The idx [%d] exceeds the max capacity [%zu] of in_edges.", io_idx, io_size);
+      GELOGE(GRAPH_FAILED, "[Check][Param] The idx [%d] exceeds the max capacity [%zu] of in_edges.", io_idx, io_size);
       return GRAPH_FAILED;
     }
   }

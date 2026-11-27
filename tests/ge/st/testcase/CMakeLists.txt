@@ -388,6 +388,7 @@ add_executable(graph_engine_compile_test
         "${AIR_CODE_DIR}/tests/ge/st/testcase/test_input_h2d_overlap_compile.cc"
         "${AIR_CODE_DIR}/tests/ge/st/testcase/test_optimization_option.cc"
         "${AIR_CODE_DIR}/tests/ge/st/testcase/test_deterministic_fusion.cc"
+        "${AIR_CODE_DIR}/tests/ge/st/testcase/test_graph_metadef.cc"
         "${AIR_CODE_DIR}/tests/ge/st/testcase/dump/static_shape/static_shape_dump_test.cc"
         "${AIR_CODE_DIR}/tests/ge/ut/ge/graph/optimize/graph_lint_unittest.cc"
         "${AIR_CODE_DIR}/tests/ge/st/testcase/common_setup.cc"

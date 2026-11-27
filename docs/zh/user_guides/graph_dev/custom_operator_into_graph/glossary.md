@@ -11,6 +11,7 @@
 | BaseCustomOp | 自定义算子实现类的公共基类。 |
 | EagerExecuteOp | 提供Execute（运行时执行）回调的能力接口。 |
 | ShapeInferOp | 提供InferShape/InferDataType（编译期推导）回调的能力接口。 |
+| SymbolicInferOp | 提供InferSymbol（编译期符号Shape/符号值推导）回调的语言无关式能力接口。 |
 | CompilableOp | 提供Compile（在线编译）回调的能力接口。 |
 | PortableOp | 提供Serialize/Deserialize（OM序列化/反序列化）回调的能力接口。 |
 | ArgsUpdater | 提供UpdateHostArgs（I/O地址刷新）回调的能力接口。 |

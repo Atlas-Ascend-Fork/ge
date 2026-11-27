@@ -71,7 +71,8 @@ TilingContextBuilder &TilingContextBuilder::Workspace(ContinuousVector *workspac
 TilingContextBuilder &TilingContextBuilder::SetSpaceRegistryV2(const OpImplSpaceRegistryV2Ptr &space_registry,
                                                                OppImplVersionTag version_tag) {
   if (version_tag >= OppImplVersionTag::kVersionEnd) {
-    GELOGE(ge::PARAM_INVALID, "version_tag %d is invalid", static_cast<int>(version_tag));
+    GELOGE(ge::PARAM_INVALID, "version_tag %d is invalid, valid range is [0, %d)", static_cast<int>(version_tag),
+           static_cast<int>(OppImplVersionTag::kVersionEnd));
     return *this;
   }
   space_registries_v2_[static_cast<size_t>(version_tag)] = space_registry;
@@ -180,12 +181,12 @@ KernelContextHolder TilingContextBuilder::Build(const ge::Operator &op, ge::grap
   std::vector<void *> context_inputs;
   auto build_ret = BuildRTInputTensors(op);
   if (build_ret != ge::GRAPH_SUCCESS) {
-    GELOGE(ge::GRAPH_PARAM_INVALID, "Fail to BuildRTInputTensors.");
+    GELOGE(ge::GRAPH_PARAM_INVALID, "Failed to BuildRTInputTensors.");
     return holder;
   }
   build_ret = BuildRTOutputShapes(op);
   if (build_ret != ge::GRAPH_SUCCESS) {
-    GELOGE(ge::GRAPH_PARAM_INVALID, "Fail to BuildRTOutputShapes.");
+    GELOGE(ge::GRAPH_PARAM_INVALID, "Failed to BuildRTOutputShapes.");
     return holder;
   }
   for (const auto &input_holder : rt_tensor_holders_) {

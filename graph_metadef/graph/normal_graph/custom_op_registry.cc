@@ -166,8 +166,10 @@ graphStatus ParseCustomKernelItem(const uint8_t *data, const size_t len, const s
   const size_t bin_len = static_cast<size_t>(header->bin_len);
   if ((name_len > (std::numeric_limits<size_t>::max() - header_size)) ||
       (bin_len > (std::numeric_limits<size_t>::max() - header_size - name_len))) {
-    GELOGE(GRAPH_FAILED, "[CUSTOM OP] Invalid kernel entry size at offset %zu, name len %zu, bin len %zu", offset,
-           name_len, bin_len);
+    GELOGE(GRAPH_FAILED,
+           "[CUSTOM OP] Invalid kernel entry size at offset %zu, name len %zu, bin len %zu, name len plus bin len must "
+           "not exceed %zu",
+           offset, name_len, bin_len, std::numeric_limits<size_t>::max() - header_size);
     return GRAPH_FAILED;
   }
 
@@ -328,7 +330,7 @@ graphStatus CustomOpRegistry::RegisterCreator(const AscendString &op_type, OpBac
       if (engine_iter != priority_iter->second.cend()) {
         const auto backend_iter = engine_iter->second.find(backend);
         if (backend_iter != engine_iter->second.cend()) {
-          GELOGW("[CUSTOM OP] custom op creator for %s:%s:%s:%s already exist.", op_type.GetString(),
+          GELOGW("[CUSTOM OP] custom op creator for %s:%s:%s:%s already exists.", op_type.GetString(),
                  OpEngineToString(engine), OpBackendToString(backend), OpPriorityToString(priority));
           return GRAPH_FAILED;
         }

@@ -32,7 +32,7 @@ void AttrGroupSerializerRegistry::RegisterAttrGroupSerialize(const AttrGroupSeri
            HashedPointer<void>(obj_type).ToString().c_str());
     return;
   }
-  GELOGD("Serializer %s for type %s register successfully", typeid(*ptr).name(),
+  GELOGD("Serializer %s for type %s registered successfully", typeid(*ptr).name(),
          HashedPointer<void>(obj_type).ToString().c_str());
   serializer_builder_map_[obj_type] = builder;
   deserializer_builder_map_[proto_type] = std::make_pair(builder, obj_type);

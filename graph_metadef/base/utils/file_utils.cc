@@ -35,7 +35,7 @@ std::string RealPath(const char_t *path) {
     return "";
   }
   GE_ASSERT_TRUE((strnlen(path, static_cast<size_t>(MMPA_MAX_PATH)) < static_cast<size_t>(MMPA_MAX_PATH)),
-                 "[Check][Param]Path[%s] len is too long, it must be less than %d", path, MMPA_MAX_PATH);
+                 "[Check][Param] Path[%s] len is too long, it must be less than %d", path, MMPA_MAX_PATH);
 
   // Nullptr is returned when the path does not exist or there is no permission
   // Return absolute path when path is accessible
@@ -69,7 +69,7 @@ std::string GetSanitizedName(const std::string &input) {
       sanitized += c;
     }
   }
-  GELOGD("Get regulated name[%s] from [%s]success", sanitized.c_str(), input.c_str());
+  GELOGD("Get regulated name[%s] from [%s] success", sanitized.c_str(), input.c_str());
   return sanitized;
 }
 
@@ -87,7 +87,7 @@ static inline int32_t CheckAndMkdir(const char_t *tmp_dir_path, mmMode_t mode) {
                                       std::vector<const char_t *>({"filepath", tmp_dir_path, reason.c_str()}));
       GELOGW(
           "[Util][mkdir] Create directory %s failed, reason:%s. Make sure the "
-          "directory exists and writable.",
+          "directory exists and is writable.",
           tmp_dir_path, strerror(errno));
       return ret;
     }
@@ -167,7 +167,7 @@ std::unique_ptr<char_t[]> GetBinDataFromFile(const std::string &path, uint32_t &
   (void)ifs.seekg(0, std::ifstream::beg);
   auto bin_data = std::unique_ptr<char_t[]>(new (std::nothrow) char_t[len]);
   if (bin_data == nullptr) {
-    GELOGE(FAILED, "[Allocate][Mem]Allocate mem failed");
+    GELOGE(FAILED, "[Allocate][Mem] Allocate mem failed");
     ifs.close();
     return nullptr;
   }
@@ -313,7 +313,7 @@ graphStatus SaveBinToFile(const char *const data, size_t length, const std::stri
     ret = GRAPH_FAILED;
   }
   if (mmClose(fd) != 0) {  // mmClose:0 success
-    GELOGE(GRAPH_FAILED, "Close file failed.");
+    GELOGE(GRAPH_FAILED, "Close file failed, path: %s.", real_path.c_str());
     return GRAPH_FAILED;
   }
   return ret;

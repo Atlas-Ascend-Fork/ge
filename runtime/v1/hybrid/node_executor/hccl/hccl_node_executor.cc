@@ -611,8 +611,8 @@ Status HcclNodeExecutor::PrepareTask(NodeTask &task, TaskContext &context) const
 
 Status HcclNodeExecutor::LoadTask(const HybridModel &model, const NodePtr &node, shared_ptr<NodeTask> &task) const {
   (void)model;
-  GELOGI("[%s] HcclNodeExecutor::LoadTask in.", node->GetName().c_str());
   GE_CHECK_NOTNULL(node);
+  GELOGI("[%s] HcclNodeExecutor::LoadTask in.", node->GetName().c_str());
   if ((kRdmaReadTypes.count(node->GetType()) != 0UL) || (kRdmaWriteTypes.count(node->GetType()) != 0UL)) {
     task = MakeShared<RdmaNodeTask>();
   } else if (kAllToAllTypes.count(node->GetType()) != 0UL) {

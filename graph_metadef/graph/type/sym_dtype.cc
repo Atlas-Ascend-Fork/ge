@@ -20,14 +20,15 @@ namespace ge {
 
 namespace {
 graphStatus GetDtypeFromAttr(const OpDesc &op, const std::string &attr, DataType &dtype) {
-  GELOGI("Trying get dtype from attr %s of op %s", attr.c_str(), op.GetName().c_str());
+  GELOGI("Trying to get dtype from attr %s of op %s", attr.c_str(), op.GetName().c_str());
   if (AttrUtils::GetDataType(op, attr, dtype)) {
     return GRAPH_SUCCESS;
   }
   int32_t numeric_dtype = -1;
   if (AttrUtils::GetInt(op, attr, numeric_dtype)) {
-    GE_WARN_ASSERT(numeric_dtype >= 0 && numeric_dtype < DT_MAX, "Invalid numeric dtype %d for sym %s of op %s",
-                   numeric_dtype, attr.c_str(), op.GetName().c_str());
+    GE_WARN_ASSERT(numeric_dtype >= 0 && numeric_dtype < DT_MAX,
+                   "Invalid numeric dtype %d for sym %s of op %s, valid range is [0, %d)", numeric_dtype, attr.c_str(),
+                   op.GetName().c_str(), static_cast<int32_t>(DT_MAX));
     dtype = static_cast<DataType>(numeric_dtype);
     return GRAPH_SUCCESS;
   }
@@ -36,15 +37,16 @@ graphStatus GetDtypeFromAttr(const OpDesc &op, const std::string &attr, DataType
 }
 
 graphStatus GetListDtypeFromAttr(const OpDesc &op, const std::string &attr, std::vector<DataType> &dtypes) {
-  GELOGI("Trying get list-dtype from attr %s of op %s", attr.c_str(), op.GetName().c_str());
+  GELOGI("Trying to get list-dtype from attr %s of op %s", attr.c_str(), op.GetName().c_str());
   if (AttrUtils::GetListDataType(op, attr, dtypes)) {
     return GRAPH_SUCCESS;
   }
   std::vector<int32_t> numeric_dtypes;
   if (AttrUtils::GetListInt(op, attr, numeric_dtypes)) {
     for (auto &numeric_dtype : numeric_dtypes) {
-      GE_WARN_ASSERT(numeric_dtype >= 0 && numeric_dtype < DT_MAX, "Invalid numeric dtype %d for sym %s of op %s",
-                     numeric_dtype, attr.c_str(), op.GetName().c_str());
+      GE_WARN_ASSERT(numeric_dtype >= 0 && numeric_dtype < DT_MAX,
+                     "Invalid numeric dtype %d for sym %s of op %s, valid range is [0, %d)", numeric_dtype,
+                     attr.c_str(), op.GetName().c_str(), static_cast<int32_t>(DT_MAX));
       dtypes.push_back(static_cast<DataType>(numeric_dtype));
     }
     return GRAPH_SUCCESS;
@@ -77,8 +79,10 @@ const char *ToString(const IrInputType &type) {
 }
 
 graphStatus PromoteDtype(const DataType &left, const DataType &right, DataType &promoted_dtype) {
-  GE_WARN_ASSERT(left >= 0 && left < DT_MAX, "Invalid left dtype %d", left);
-  GE_WARN_ASSERT(right >= 0 && right < DT_MAX, "Invalid right dtype %d", right);
+  GE_WARN_ASSERT(left >= 0 && left < DT_MAX, "Invalid left dtype %d, valid range is [0, %d)",
+                 static_cast<int32_t>(left), static_cast<int32_t>(DT_MAX));
+  GE_WARN_ASSERT(right >= 0 && right < DT_MAX, "Invalid right dtype %d, valid range is [0, %d)",
+                 static_cast<int32_t>(right), static_cast<int32_t>(DT_MAX));
 
   promoted_dtype = opcommon::PromoteType(left, right);
   GELOGD("Promoted dtype %s from %s and %s", TypeUtils::DataTypeToSerialString(promoted_dtype).c_str(),
@@ -87,7 +91,7 @@ graphStatus PromoteDtype(const DataType &left, const DataType &right, DataType &
 }
 
 graphStatus PromoteDtype(const TypeOrTypes &left, const TypeOrTypes &right, TypeOrTypes &promoted_dtype) {
-  GE_WARN_ASSERT(left.IsListType() == right.IsListType(), "Trying promote %s with %s", left.DebugString().c_str(),
+  GE_WARN_ASSERT(left.IsListType() == right.IsListType(), "Trying to promote %s with %s", left.DebugString().c_str(),
                  right.DebugString().c_str());
   if (left.IsListType()) {
     std::vector<DataType> left_dtypes;
@@ -96,8 +100,8 @@ graphStatus PromoteDtype(const TypeOrTypes &left, const TypeOrTypes &right, Type
     GE_WARN_ASSERT_GRAPH_SUCCESS(left.GetTypes(left_dtypes));
     GE_WARN_ASSERT_GRAPH_SUCCESS(right.GetTypes(right_dtypes));
 
-    GE_WARN_ASSERT(left_dtypes.size() == right_dtypes.size(), "Trying promote %s with %s", left.DebugString().c_str(),
-                   right.DebugString().c_str());
+    GE_WARN_ASSERT(left_dtypes.size() == right_dtypes.size(), "Trying to promote %s with %s",
+                   left.DebugString().c_str(), right.DebugString().c_str());
 
     std::vector<DataType> data_types;
     data_types.resize(left_dtypes.size());
@@ -257,7 +261,7 @@ ExpressionType SymDtype::Type() const {
 }
 
 graphStatus SymDtype::Eval(const OpDesc &op, TypeOrTypes &type_or_types) const {
-  GE_WARN_ASSERT(!is_legacy_, "Trying eval legacy sym dtype %s", id_.c_str());
+  GE_WARN_ASSERT(!is_legacy_, "Trying to eval legacy sym dtype %s", id_.c_str());
   if (expression_ != nullptr) {
     GELOGI("Eval sym dtype %s from expression of op %s", id_.c_str(), op.GetType().c_str());
     return expression_->Eval(op, type_or_types);
@@ -297,7 +301,7 @@ graphStatus SymDtype::Eval(const OpDesc &op, DataType &dtype) const {
 
   std::map<size_t, std::pair<size_t, size_t>> ir_input_2_range;
   GE_WARN_ASSERT_GRAPH_SUCCESS(GetIrInputRawDescRange(const_cast<OpDesc *>(&op)->shared_from_this(), ir_input_2_range));
-  GE_WARN_ASSERT(ir_input_2_range.size() == op.GetIrInputsSize(), "Failed get input instance info of %s %s",
+  GE_WARN_ASSERT(ir_input_2_range.size() == op.GetIrInputsSize(), "Failed to get input instance info of %s %s",
                  op.GetName().c_str(), op.GetType().c_str());
 
   std::set<DataType> infered_dtypes;
@@ -346,7 +350,7 @@ graphStatus SymDtype::Eval(const OpDesc &op, std::vector<DataType> &dtypes) cons
 
   std::map<size_t, std::pair<size_t, size_t>> ir_input_2_range;
   GE_WARN_ASSERT_GRAPH_SUCCESS(GetIrInputRawDescRange(const_cast<OpDesc *>(&op)->shared_from_this(), ir_input_2_range));
-  GE_WARN_ASSERT(ir_input_2_range.size() == op.GetIrInputsSize(), "Failed get input instance info of %s %s",
+  GE_WARN_ASSERT(ir_input_2_range.size() == op.GetIrInputsSize(), "Failed to get input instance info of %s %s",
                  op.GetName().c_str(), op.GetType().c_str());
 
   for (auto &backend : ir_inputs_) {
@@ -374,7 +378,9 @@ graphStatus SymDtype::Eval(const OpDesc &op, std::vector<DataType> &dtypes) cons
       GE_WARN_ASSERT(input_dtypes.size() == dtypes.size(), "Infer dtype size mismatch %zu vs. %zu", input_dtypes.size(),
                      dtypes.size());
       for (size_t i = 0U; i < input_dtypes.size(); i++) {
-        GE_WARN_ASSERT(input_dtypes[i] == dtypes[i], "Sym list-dtype mismatch");
+        GE_WARN_ASSERT(input_dtypes[i] == dtypes[i],
+                       "Sym list-dtype mismatch at index %zu, input dtype %d, expected %d", i,
+                       static_cast<int32_t>(input_dtypes[i]), static_cast<int32_t>(dtypes[i]));
       }
     }
   }

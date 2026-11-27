@@ -186,6 +186,10 @@ class FileConstantUtils {
   static Status ChangeFilePath(const ComputeGraphPtr &main_graph, const ComputeGraphPtr &fallback_graph,
                                const std::string &om_path);
 
+  // Rewrite locations and collect the relocation plan without moving source files.
+  static Status CollectFilePathChange(const ComputeGraphPtr &compute_graph, const std::string &om_path,
+                                      std::map<std::string, std::string> &old_file_to_new_file);
+
   /// @brief move external weight files according to path mapping
   /// @param [in] old_file_to_new_file
   /// @return Status
@@ -214,43 +218,66 @@ class FileConstantUtils {
  private:
   friend class ExternalWeightManager;
 
+  /// @brief append state of one combined weight file, used to rollback on later failures
+  struct OneFileAppendContext {
+    bool appended = false;      // whether this batch appended new bytes
+    size_t original_eof = 0UL;  // file size before this batch appended
+    std::string weight_path;    // the combined file this batch wrote to
+  };
+
+  /// @brief resolved location of one unique weight hash within this batch
+  struct WeightLocation {
+    std::string path;
+    size_t offset = 0UL;
+  };
+
   /// @brief convert const to fileconstant
   /// @param [in] const_to_weight_hash_list
-  /// @param [in] external_weight_dir
-  /// @param [in] graph_name
-  /// @param [in] meta
+  /// @param [in] weight_dir
+  /// @param [in,out] meta used as hint of last combined location of each hash, updated on success
   /// @param [in] all_in_one
+  /// @param [in,out] append_ctx records append state for rollback of combined mode
   /// @return Status
   static Status ConvertToFileConstants(const ConstNodeWeightHashList &const_to_weight_hash_list,
-                                       const std::string &weight_dir, FileConstantMeta &meta,
-                                       const bool all_in_one = false);
-  /// @brief save all const weight to file with multi threads
+                                       const std::string &weight_dir, FileConstantMeta &meta, const bool all_in_one,
+                                       OneFileAppendContext &append_ctx);
+  /// @brief save all const weight to separate files with multi threads, mode 1 only,
+  ///        never reads or writes the meta maps
   /// @param [in] const_to_weight_hash_list
-  /// @param [in] external_weight_dir
-  /// @param [in] meta
+  /// @param [in] weight_dir
+  /// @param [out] locations resolved weight locations of this batch, only source of node attrs
   /// @return Status
   static Status SaveWeightToFileWithReuse(const ConstNodeWeightHashList &const_to_weight_hash_list,
-                                          const std::string &weight_dir, FileConstantMeta &meta);
-  /// @brief save all const weight to one file
+                                          const std::string &weight_dir,
+                                          std::map<std::string, WeightLocation> &locations);
+  /// @brief save all const weight to one combined file, mode 2 only, reuses a recorded interval
+  ///        only when path/alignment/range/bytes all verify
   /// @param [in] const_to_weight_hash_list
-  /// @param [in] external_weight_dir
-  /// @param [in] graph_name
-  /// @param [in] meta
+  /// @param [in] weight_dir
+  /// @param [in,out] meta hint of last combined location of each hash, updated on success
+  /// @param [out] locations resolved weight locations of this batch, only source of node attrs
+  /// @param [in,out] append_ctx records append state for rollback
   /// @return Status
   static Status SaveWeightToOneFileWithReuse(const ConstNodeWeightHashList &const_to_weight_hash_list,
-                                             const std::string &weight_dir, FileConstantMeta &meta);
-  /// @brief save weights and update metadata
+                                             const std::string &weight_dir, FileConstantMeta &meta,
+                                             std::map<std::string, WeightLocation> &locations,
+                                             OneFileAppendContext &append_ctx);
+  static Status ResolveCombinedWeightReuse(const std::string &weight_path,
+                                           const std::map<std::string, GeTensorPtr> &candidates,
+                                           const FileConstantMeta &meta,
+                                           std::map<std::string, WeightLocation> &locations,
+                                           std::map<std::string, GeTensorPtr> &to_append);
+  static Status AlignCombinedWeightEof(std::ofstream &ofs, const OneFileAppendContext &append_ctx, size_t &offset);
+  static Status AppendCombinedWeights(const std::map<std::string, GeTensorPtr> &to_append,
+                                      std::map<std::string, WeightLocation> &locations,
+                                      OneFileAppendContext &append_ctx);
+
+  /// @brief collect unique weight candidates of this batch, same hash with different bytes fails
   /// @param [in] const_to_weight_hash_list
-  /// @param [in,out] meta
-  /// @param [in,out] ofs
-  /// @param [in] weight_path
-  /// @param [in,out] offset
-  /// @param [out] new_weights_written
-  /// @param [out] reused_weights_count
+  /// @param [out] candidates hash -> first tensor of this hash
   /// @return Status
-  static Status SaveWeightsAndMetadata(const ConstNodeWeightHashList &const_to_weight_hash_list, FileConstantMeta &meta,
-                                       std::ofstream &ofs, const std::string &weight_path, size_t &offset,
-                                       size_t &new_weights_written, size_t &reused_weights_count);
+  static Status CollectUniqueWeightCandidates(const ConstNodeWeightHashList &const_to_weight_hash_list,
+                                              std::map<std::string, GeTensorPtr> &candidates);
 
   /// @brief write weight data with padding to align 512 bytes
   /// @param [in,out] ofs

@@ -316,7 +316,9 @@ ge::graphStatus DavinciModelUpdateArgs(KernelContext *context) {
       context->MutableInputPointer<ge::DavinciModel>(static_cast<int32_t>(InputsCommon::kDavinciModel));
   GE_CHECK_NOTNULL(davinci_model);
   auto stream = context->GetInputValue<void *>(static_cast<int32_t>(ModelExecute::kStream));
-  GE_CHECK_NOTNULL(stream);
+  if (stream == nullptr) {
+    GELOGW("[DavinciModel] stream is nullptr, it will be treated as default stream when updating model args.");
+  }
   davinci_model->SetAsyncMode(true);
   auto ret = davinci_model->InitModelStream(stream);
   if (ret != ge::SUCCESS) {
@@ -415,7 +417,9 @@ ge::graphStatus DavinciModelExecute(KernelContext *context) {
       context->MutableInputPointer<ge::DavinciModel>(static_cast<int32_t>(InputsCommon::kDavinciModel));
   GE_CHECK_NOTNULL(davinci_model);
   auto stream = context->GetInputValue<void *>(static_cast<int32_t>(ModelExecute::kStream));
-  GE_CHECK_NOTNULL(stream);
+  if (stream == nullptr) {
+    GELOGW("[DavinciModel] stream is nullptr, it will be treated as default stream when executing model.");
+  }
 
   ret = aclmdlRIExecuteAsync(davinci_model->GetRtModelHandle(), stream);
   if (ret != RT_ERROR_NONE) {

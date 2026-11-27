@@ -939,7 +939,7 @@ graphStatus Operator::InferShapeAndType() {
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return GRAPH_FAILED, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return GRAPH_FAILED, "[Get][OpDescImpl] is nullptr.");
 
   return OpDescUtilsEx::CallInferFunc(operator_impl_->GetOpDescImpl(), *this);
@@ -950,7 +950,7 @@ graphStatus Operator::VerifyAllAttr(bool disable_common_verifier) {
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return GRAPH_FAILED, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return GRAPH_FAILED, "[Get][OpDescImpl] is nullptr.");
 
   if ((!disable_common_verifier) && (static_cast<graphStatus>(Operator::VerifyAll()) == GRAPH_FAILED)) {
@@ -1002,7 +1002,7 @@ const std::map<std::string, std::string> Operator::GetAllAttrNamesAndTypes() con
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return attr_types, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return attr_types, "[Get][OpDescImpl] is nullptr.");
   const std::map<std::string, AnyValue> attr_map = operator_impl_->GetOpDescImpl()->GetAllAttrs();
   for (const auto &iter : attr_map) {
@@ -1019,7 +1019,7 @@ graphStatus Operator::GetAllAttrNamesAndTypes(std::map<AscendString, AscendStrin
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return GRAPH_FAILED, "[Check][Param] Operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return GRAPH_FAILED, "[Get][OpDescImpl] is nullptr.");
   const std::map<std::string, AnyValue> attr_map = operator_impl_->GetOpDescImpl()->GetAllAttrs();
 
@@ -1072,7 +1072,7 @@ void Operator::InputRegister(const char_t *name) {
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return, "[Get][OpDescImpl] is nullptr.");
   (void)operator_impl_->GetOpDescImpl()->AddInputDesc(name, GeTensorDesc());
   operator_impl_->GetOpDescImpl()->AppendIrInput(name, kIrInputRequired);
@@ -1101,7 +1101,7 @@ void Operator::OptionalInputRegister(const char_t *name) {
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return, "[Get][OpDescImpl] is nullptr.");
   // [No need to verify return value]
   (void)operator_impl_->GetOpDescImpl()->AddOptionalInputDesc(name,
@@ -1123,7 +1123,7 @@ void Operator::InferFuncRegister(const std::function<graphStatus(Operator &)> &f
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return, "[Get][OpDescImpl] is nullptr.");
   // [No need to verify return value]
   (void)operator_impl_->GetOpDescImpl()->AddInferFunc(func);
@@ -1134,7 +1134,7 @@ void Operator::InferFormatFuncRegister(const std::function<graphStatus(Operator 
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return, "[Get][OpDescImpl] is nullptr.");
   // [No need to verify return value]
   (void)operator_impl_->GetOpDescImpl()->AddInferFormatFunc(func);
@@ -1145,7 +1145,7 @@ void Operator::VerifierFuncRegister(const std::function<graphStatus(Operator &)>
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return, "[Get][OpDescImpl] is nullptr.");
   // [No need to verify return value]
   (void)operator_impl_->GetOpDescImpl()->AddVerifierFunc(func);
@@ -1165,7 +1165,7 @@ void Operator::OutputRegister(const char_t *name) {
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return, "[Get][OpDescImpl] is nullptr.");
   // [No need to verify return value]
   (void)operator_impl_->GetOpDescImpl()->AddOutputDesc(name, GeTensorDesc());
@@ -1195,7 +1195,7 @@ void Operator::DynamicInputRegister(const char_t *name, const uint32_t num, bool
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return, "[Get][OpDescImpl] is nullptr.");
   GE_CHK_BOOL_EXEC(AttrUtils::SetInt(operator_impl_->GetOpDescImpl(), DYNAMIC_INPUT_TD_NUM(std::string(name)),
                                      static_cast<int64_t>(num)),
@@ -1222,7 +1222,7 @@ void Operator::DynamicInputRegisterByIndex(const char_t *name, const uint32_t nu
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return, "[Get][OpDescImpl] is nullptr.");
   (void)(operator_impl_->GetOpDescImpl()->AddDynamicInputDescByIndex(name, num, index));
 }
@@ -1238,7 +1238,7 @@ int32_t Operator::GetDynamicInputNum(const char_t *name) const {
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return 0, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return 0, "[Get][OpDescImpl] is nullptr.");
   const std::string op_name = name;
   int32_t num = 0;
@@ -1263,7 +1263,7 @@ void Operator::DynamicOutputRegister(const char_t *name, const uint32_t num, boo
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return, "[Get][OpDescImpl] is nullptr.");
   GE_CHK_BOOL_EXEC(AttrUtils::SetInt(operator_impl_->GetOpDescImpl(), DYNAMIC_OUTPUT_TD_NUM(std::string(name)),
                                      static_cast<int64_t>(num)),
@@ -1287,7 +1287,7 @@ int32_t Operator::GetDynamicOutputNum(const char_t *name) const {
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return 0, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return 0, "[Get][OpDescImpl] is nullptr.");
   const std::string op_name = name;
   int32_t num = 0;
@@ -1312,7 +1312,7 @@ void Operator::RequiredAttrRegister(const char_t *name) {
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return, "[Get][OpDescImpl] is nullptr.");
   (void)(operator_impl_->GetOpDescImpl()->AddRequiredAttr(name));
   operator_impl_->GetOpDescImpl()->AppendIrAttrName(name);
@@ -1364,7 +1364,7 @@ graphStatus Operator::VerifyAll() {
                    REPORT_INNER_ERR_MSG("E18888", "operator_impl_ is nullptr, check invalid");
                    return GRAPH_FAILED, "[Check][Param] operator impl is nullptr.");
   GE_CHK_BOOL_EXEC(operator_impl_->GetOpDescImpl() != nullptr,
-                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as return nullptr.");
+                   REPORT_INNER_ERR_MSG("E18888", "GetOpDescImpl failed, as it returns nullptr.");
                    return GRAPH_FAILED, "[Get][OpDescImpl] is nullptr.");
 
   // Check all inputs defined
@@ -1374,9 +1374,10 @@ graphStatus Operator::VerifyAll() {
     const std::vector<int64_t> &ishape = operator_impl_->GetOpDescImpl()->GetInputDesc(iname).GetShape().GetDims();
     for (const int64_t &dim : ishape) {
       GE_CHK_BOOL_RET_STATUS(dim > 0, GRAPH_FAILED,
-                             "[Check][Param] operator input %s shape contains negative or zero dimension, "
-                             "node:%s, index:%d.",
-                             iname.c_str(), operator_impl_->GetOpDescImpl()->GetName().c_str(),
+                             "[Check][Param] operator input %s shape contains negative or zero dimension, dim:%lld, "
+                             "node:%s, index:%d, dim must be greater than 0.",
+                             iname.c_str(), static_cast<long long>(dim),
+                             operator_impl_->GetOpDescImpl()->GetName().c_str(),
                              operator_impl_->GetOpDescImpl()->GetInputIndexByName(iname));
     }
   }
@@ -3170,7 +3171,7 @@ ComputeGraphPtr GraphUtilsEx::CreateGraphFromOperator(const std::string &name,
   auto graph_builder_impl = GraphBuilderImpl(name);
   ComputeGraphPtr compute_graph = graph_builder_impl.BuildGraph(inputs);
   GE_CHK_BOOL_EXEC(compute_graph != nullptr, REPORT_INNER_ERR_MSG("E18888", "BuildGraph failed, as return nullptr.");
-                   return compute_graph, "[Build][Graph] Computer graph is nullptr");
+                   return compute_graph, "[Build][Graph] Compute graph is nullptr");
   compute_graph->SetAllNodesInfo(graph_builder_impl.GetAllNodesInfo());
   if (HasSameNameNode(compute_graph)) {
     GELOGW("[CreateGraph][Check] Nodes with same name exist in one compute graph is not allowed, graph_name: %s",

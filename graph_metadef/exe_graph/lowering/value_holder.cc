@@ -324,7 +324,7 @@ ge::FastNode *ValueHolder::CreateNode(const char *node_type, const std::vector<V
   if (frame == nullptr) {
     GE_LOGE(
         "The current frame does not exist, "
-        "the function ValueHolder::PushGraphFrame should be called before construct the graph");
+        "the function ValueHolder::PushGraphFrame should be called before constructing the graph");
     return nullptr;
   }
   auto node = ValueHolder::AddNode(node_type, inputs.size(), out_count, *frame);
@@ -454,7 +454,7 @@ GraphFrame *ValueHolder::PushGraphFrame() {
   if (!graph_frames.empty()) {
     GELOGE(ge::INTERNAL_ERROR,
            "Failed to push root graph frame, if you want to push a non-root graph frame, specify which ValueHolder the "
-           "graph frame belongs and the ir name.");
+           "graph frame belongs to and the ir name.");
     return nullptr;
   }
   auto graph = ge::MakeShared<ge::ExecuteGraph>("ROOT");

@@ -118,6 +118,7 @@ acl自动识别om和om2，无需在应用中增加格式判断，也无需先解
 | 异步执行`aclmdlExecuteAsync` | 沿用原有流、执行与同步流程 |
 | 配置加载`aclmdlLoadWithConfig` | 更新模型路径或内存数据，并核对[OM2支持的加载配置项](#加载配置项) |
 
+<!-- npu="950,A3,910b,910,310p,310b,IPV350" id1 -->
 可基于[ResNet-50图片分类样例](../../../../../examples/acl/1_sample_resnet50_imagenet_classification/README.md)体验OM2：
 
 1. 按样例准备环境、模型和测试图片。
@@ -126,6 +127,7 @@ acl自动识别om和om2，无需在应用中增加格式判断，也无需先解
 4. 按原样例完成图片预处理、编译和运行，检查`SAMPLE PASSED`及分类结果。
 
 除模型转换参数和加载路径外，沿用样例的其他步骤。
+<!-- end id1 -->
 
 ## 编译期交付件：OM2模型包
 
@@ -177,7 +179,7 @@ atc --mode=7 --model=./model/resnet50.onnx --framework=5 \
 
 **IR/ES构图入口**
 
-IR/ES构图入口目前仅支持通过`OPTION_BUILD_CONFIG`配置模型动态库的编译命令，不支持`HOST_ENV_OS`、`HOST_ENV_CPU`。其用法与ATC的`--build_config`相同，通过make命令模板配置`CXX`、`CXXFLAGS`、`CPPFLAGS`、`LDFLAGS`和`LDLIBS`，无需指定Makefile路径。
+IR/ES构图入口目前仅支持通过[OPTION_BUILD_CONFIG](../../../api/graph_engine_api/cpp/ge/aclgrphBuildModel_config_params/operator_and_graph_compilation.md#option_build_config)配置模型动态库的编译命令，不支持[OPTION_HOST_ENV_OS](../../../api/graph_engine_api/cpp/ge/aclgrphBuildInitialize_config_params/basic_functions.md#option_host_env_os)、[OPTION_HOST_ENV_CPU](../../../api/graph_engine_api/cpp/ge/aclgrphBuildInitialize_config_params/basic_functions.md#option_host_env_cpu)。其用法与ATC的`--build_config`相同，通过make命令模板配置`CXX`、`CXXFLAGS`、`CPPFLAGS`、`LDFLAGS`和`LDLIBS`，无需指定Makefile路径。
 
 以下片段展示如何指定aarch64交叉编译器：
 

@@ -38,11 +38,12 @@ Status ShapeNKernel::Compute(const NodePtr &node, std::vector<GeTensorPtr> &v_ou
   for (size_t i = 0U; i < op_desc->GetAllInputsSize(); i++) {
     const auto &input_desc = op_desc->MutableInputDesc(static_cast<uint32_t>(i));
     GE_CHECK_NOTNULL(input_desc);
-    if (KernelUtils::IsUnknownShape(input_desc->GetShape())) {
+    const auto &shape = input_desc->IsOriginShapeInitialized() ? input_desc->GetOriginShape() : input_desc->GetShape();
+    if (KernelUtils::IsUnknownShape(input_desc->GetShape()) || KernelUtils::IsUnknownShape(shape)) {
       GELOGW("Input %zu shape is unknown, ignore shape_n kernel.", i);
       return NOT_CHANGED;
     }
-    const std::vector<int64_t> dims = input_desc->GetShape().GetDims();
+    const std::vector<int64_t> dims = shape.GetDims();
     const Status ret =
         KernelUtils::ConstructTensorDescWithData(op_desc->GetOutputDesc(static_cast<uint32_t>(i)), dims, v_output);
     if (ret != SUCCESS) {

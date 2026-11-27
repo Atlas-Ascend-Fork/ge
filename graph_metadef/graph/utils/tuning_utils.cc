@@ -140,7 +140,7 @@ graphStatus TuningUtils::ConvertConstToWeightAttr(const ComputeGraphPtr &exe_gra
       GELOGE(FAILED, "[Set][Tensor] to node[%s] failed", op_desc->GetName().c_str());
       return FAILED;
     }
-    GELOGI("Set tensor to node[%s].", op_desc->GetName().c_str());
+    GELOGD("Set tensor to node[%s].", op_desc->GetName().c_str());
   }
   return SUCCESS;
 }
@@ -676,9 +676,9 @@ graphStatus TuningUtils::LinkEnd2NetOutput(NodePtr &end_node, NodePtr &out_node)
       return FAILED;
     }
   } else {
-    REPORT_INNER_ERR_MSG("E18888", "TUU: node_name:%s, graph_name:%s handled failed", end_node->GetName().c_str(),
+    REPORT_INNER_ERR_MSG("E18888", "TUU: node_name:%s, graph_name:%s handle failed", end_node->GetName().c_str(),
                          end_node->GetOwnerComputeGraph()->GetName().c_str());
-    GELOGE(FAILED, "[Handle][Node] TUU: node_name:%s, graph_name:%s handled failed", end_node->GetName().c_str(),
+    GELOGE(FAILED, "[Handle][Node] TUU: node_name:%s, graph_name:%s handle failed", end_node->GetName().c_str(),
            end_node->GetOwnerComputeGraph()->GetName().c_str());
     return FAILED;
   }
@@ -736,7 +736,9 @@ graphStatus TuningUtils::ConvertFileToGraph(const std::map<int64_t, std::string>
   std::vector<ComputeGraphPtr> root_graphs;
   std::map<std::string, std::vector<ComputeGraphPtr>> name_to_subgraphs;
   if (LoadGraphFromFile(options, root_graphs, name_to_subgraphs) != GRAPH_SUCCESS) {
-    GELOGE(GRAPH_FAILED, "Load graph from file according to options failed");
+    const std::string file_path = options.empty() ? "" : options.begin()->second;
+    GELOGE(GRAPH_FAILED, "Load graph from file %s according to options failed, file count:%zu", file_path.c_str(),
+           options.size());
     return GRAPH_FAILED;
   }
 
@@ -1093,7 +1095,7 @@ graphStatus TuningUtils::PreProcessNode(const NodePtr &node) {
   }
   // strep 0: recovery ir
   if (op_desc->GetIrInputs().empty() && op_desc->GetIrOutputs().empty() && (op_desc->GetAllOutputsDescSize() != 0U)) {
-    GE_ASSERT_GRAPH_SUCCESS(RecoverIrUtils::RecoverOpDescIrDefinition(op_desc), "Failed recover ir def for %s %s",
+    GE_ASSERT_GRAPH_SUCCESS(RecoverIrUtils::RecoverOpDescIrDefinition(op_desc), "Failed to recover ir def for %s %s",
                             op_desc->GetNamePtr(), op_desc->GetTypePtr());
     GELOGI("Node %s %s recover ir def successfully", node->GetNamePtr(), node->GetTypePtr());
   }

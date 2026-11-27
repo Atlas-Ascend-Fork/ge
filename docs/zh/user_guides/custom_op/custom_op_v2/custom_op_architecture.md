@@ -95,7 +95,7 @@ graph TB
     end
 
     subgraph "GE 基础设施层（本文档描述）"
-        INFRA["BaseCustomOp + EagerExecuteOp + ShapeInferOp<br/>+ CompilableOp + PortableOp + ArgsUpdater<br/>REG_OP / REG_AUTO_MAPPING_OP / OPP 包"]
+        INFRA["BaseCustomOp + EagerExecuteOp + ShapeInferOp + SymbolicInferOp<br/>+ CompilableOp + PortableOp + ArgsUpdater<br/>REG_OP / REG_AUTO_MAPPING_OP / OPP包"]
     end
 
     DEV_AC --> SDK_AC
@@ -168,10 +168,11 @@ IMPL_OP(MyOp)
 | 注册风格 | 链式函数指针 | 虚函数继承 + 工厂注册 |
 | 状态管理 | 无状态函数指针 | 有状态对象（成员变量） |
 | Shape 推导 | `InferShapeKernelFunc` 函数指针 | `ShapeInferOp::InferShape()` 虚方法 |
+| 符号化Shape推导 | `infer_symbol`函数指针，支持宏式/OpDef式注册 | `SymbolicInferOp::InferSymbol()`虚方法，优先于字段注册 |
 | Shape 范围推导 | `InferShapeRangeKernelFunc` 独立注册 | 复用 `InferShape`（-1 表示 unknown 维） |
 | DataType 推导 | `InferDataTypeKernelFunc` 函数指针 | `ShapeInferOp::InferDataType()` 虚方法 |
 | 格式推导 | `InferFormatKernelFunc` 独立注册 | 暂时不支持，设计中 |
-| 数据依赖声明 | 显式 `.InputsDataDependency({indices})` | 隐式（通过 context 访问） |
+| 数据依赖声明 | 显式`.InputsDataDependency({indices})` | `ShapeInferOp`可通过context访问输入值；`InferSymbol`的符号值仍需按注册关系声明，不能仅凭接口隐式推断 |
 | 私有属性 | `.PrivateAttr(name, value)` | 不支持 |
 | Tiling | 专用 `.Tiling()` / `.TilingParse<>()` 接口 | 弱化tiling的概念，由子类自主处理 |
 | 设计面向 | AICore 内置算子（标准引擎流水线） | 外部自定义算子（任意 kernel binary） |
@@ -307,6 +308,11 @@ classDiagram
         +InferDataType(InferDataTypeContext*) graphStatus
     }
 
+    class SymbolicInferOp {
+        <<interface>>
+        +InferSymbol(InferSymbolContext*) graphStatus
+    }
+
     class CompilableOp {
         <<interface>>
         +Compile(OpCompileContext*) graphStatus
@@ -325,6 +331,7 @@ classDiagram
 
     BaseCustomOp <|-- EagerExecuteOp
     BaseCustomOp <|-- ShapeInferOp
+    BaseCustomOp <|-- SymbolicInferOp
     BaseCustomOp <|-- CompilableOp
     BaseCustomOp <|-- PortableOp
     BaseCustomOp <|-- ArgsUpdater
@@ -335,6 +342,8 @@ classDiagram
 - **能力组合**：开发者按需继承，不强制实现所有接口。GE 通过 `dynamic_cast` 在运行时检测算子具备哪些能力。
 - **正交设计**：每个接口对应独立的回调时机，接口之间无耦合。
 - **Context 隔离**：每个回调接收专用的 Context 对象，只暴露算子需要的信息。
+
+**符号化推导扩展**：`SymbolicInferOp`是语言无关式能力接口，框架通过`CustomOpCapabilityTrait<SymbolicInferOp>`和`CustomOpCast<SymbolicInferOp>`检测实现。宏式`IMPL_OP_INFERSYMBOL`、OpDef`SetInferSymbol`及GE字段消费链属于既有/配套能力，并非全部由该接口引入。存在语言无关式或字段自定义推导时优先执行自定义；未注册自定义时依次尝试host计算和内置推导；语言无关式优先于字段注册。自定义回调返回`GRAPH_NOT_CHANGED`时直接降级静态Shape，不执行host计算或内置推导。新算子SO在老版本环境上允许加载成功并静默不启用该能力。
 
 **能力检测机制：**
 

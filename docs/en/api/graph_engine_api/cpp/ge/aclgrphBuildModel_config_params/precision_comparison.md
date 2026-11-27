@@ -21,9 +21,6 @@ To address this, the **QUANT\_DUMPABLE** parameter is introduced. After this par
 {ge::ir_option::QUANT_DUMPABLE, "1"}
 ```
 
-**Usage constraints:**
-When [OFFLINE_MODE](basic_functions.md#offline_mode) is set to 7, this parameter cannot be configured.
-
 **Applicable Products:**
 
 Supported on all chips.

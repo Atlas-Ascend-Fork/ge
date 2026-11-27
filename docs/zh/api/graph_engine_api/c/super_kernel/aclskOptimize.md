@@ -47,7 +47,7 @@ aclError aclskOptimize(aclmdlRI model, aclskOptions *options)
 
 | 参数名 | 输入/输出 | 描述 |
 | --- | --- | --- |
-| model | 输入 | 模型运行实例。类型定义请参见[aclmdlRI](https://gitcode.com/cann/runtime/blob/9.2.0/docs/zh/api_ref/25-05_Typedefs.md#aclmdlRI)。接口调用成功后，更新为优化后的模型运行实例。 |
+| model | 输入 | 模型运行实例。类型定义请参见《[Runtime运行时API](https://gitcode.com/cann/runtime/blob/master/docs/zh/api_ref/README.md)》中的`aclmdlRI`。接口调用成功后，更新为优化后的模型运行实例。 |
 | options | 输入 | SuperKernel优化选项。传入nullptr时使用默认配置。配置方法参见[选项说明](#选项说明)。 |
 
 ## 返回值说明

@@ -263,7 +263,7 @@ void ModelRelationBuilder::GetFlowAttr(const std::string &queue_name, const GeTe
 
   const auto graph = node.GetOwnerComputeGraph();
   if (GetFlowAttr(graph.get(), queue_name, depth, enqueue_policy)) {
-    GELOGD("[%s] Got flow attr from graph flow attr", queue_name.c_str(), enqueue_policy.c_str());
+    GELOGD("[%s] Got flow attr from graph flow attr, enqueue_policy[%s]", queue_name.c_str(), enqueue_policy.c_str());
     return;
   }
 

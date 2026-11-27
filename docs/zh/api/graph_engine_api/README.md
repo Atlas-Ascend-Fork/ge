@@ -1,6 +1,7 @@
 # GE图引擎API
 
 - [头文件和库文件说明](header_and_library_files_description.md)
+- [接口使用向导](./api_user_guide.md)
 - [C++语言接口](cpp/cpp_language_interface.md)
   - [aclgrph接口](cpp/ge/aclgrph_interface.md)
     - [aclgrphBuildInitialize](cpp/ge/aclgrphBuildInitialize.md)
@@ -836,6 +837,10 @@
       - [GetAllInputs](cpp/ge/fusion/SubgraphBoundary/GetAllInputs.md)
       - [GetOutput](cpp/ge/fusion/SubgraphBoundary/GetOutput.md)
       - [GetAllOutputs](cpp/ge/fusion/SubgraphBoundary/GetAllOutputs.md)
+
+    - [SymbolicInferOp](cpp/ge/SymbolicInferOp/SymbolicInferOp.md)
+      - [简介](cpp/ge/SymbolicInferOp/overview.md)
+      - [InferSymbol](cpp/ge/SymbolicInferOp/InferSymbol.md)
 
     - [UpdateArgsContext](cpp/ge/UpdateArgsContext/UpdateArgsContext.md)
       - [简介](cpp/ge/UpdateArgsContext/overview.md)

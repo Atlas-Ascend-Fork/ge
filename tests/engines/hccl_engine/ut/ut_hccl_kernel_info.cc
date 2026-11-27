@@ -192,21 +192,48 @@ ge::graphStatus OffloadGetOption1(ge::GEThreadLocalContext *that, const std::str
   return ge::GRAPH_SUCCESS;
 }
 
-TEST_F(HcomKernelInfoTest, ut_LoadTask) {
-  s8 *sendbuf = (s8 *)sal_malloc(10 * sizeof(s8));
-  sal_memset(sendbuf, 10 * sizeof(s8), 0, 10 * sizeof(s8));
-  s8 *recv = (s8 *)sal_malloc(10 * sizeof(s8));
-  sal_memset(recv, 10 * sizeof(s8), 0, 10 * sizeof(s8));
+struct UtLoadTaskRunner {
+  s8 *sendbuf = nullptr, *recv = nullptr;
+  void *dumpbuf = nullptr, *privateDefPtr = nullptr, *privateDefPtr1 = nullptr;
+  void *privateDefPtr_broadcast = nullptr, *privateDefPtr_allreduce = nullptr;
+  void *privateDefPtr_allgather = nullptr, *privateDefPtr_reducescatter = nullptr;
+  vector<void *> globalWorkSpaceAddr;
+  const char *file_name_t = "./ut_LoadTask.json";
+  HcomOpsKernelInfoStore hcomKernelInfo;
+  ge::GETaskInfo task;
+  ge::GETaskKernelHcclInfo hcclInfo;
+  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf{};
+  DeviceMem workSpaceMem{};
+  rtStream_t stream = nullptr;
+  size_t tensorInfoSize = 0U;
+  u64 memSize = HCCL_WORKSPACE_MEM_32_KB;
+  u32 taskID = 0U;
+  ge::Status ret = ge::SUCCESS;
+  aclError rt_ret = RT_ERROR_NONE;
 
-  void *dumpbuf;
+  bool InitEnv();
+  bool InitTaskDef();
+  bool StepCommon();
+  bool StepBroadcast();
+  bool StepAllReduce();
+  bool StepAllGather();
+  bool StepAllGatherV();
+  bool StepReduceScatter();
+  bool StepReduceScatterV();
+  bool StepSendAndReceive();
+  bool StepReduceAndCleanup();
+};
+
+bool UtLoadTaskRunner::InitEnv() {
+  sendbuf = static_cast<s8 *>(sal_malloc(10 * sizeof(s8)));
+  sal_memset(sendbuf, 10 * sizeof(s8), 0, 10 * sizeof(s8));
+  recv = static_cast<s8 *>(sal_malloc(10 * sizeof(s8)));
+  sal_memset(recv, 10 * sizeof(s8), 0, 10 * sizeof(s8));
   dumpbuf = sal_malloc(10 * sizeof(s8));
   sal_memset(dumpbuf, 10 * sizeof(s8), 0, 10 * sizeof(s8));
-std:
-  vector<void *> globalWorkSpaceAddr;
   globalWorkSpaceAddr.push_back(dumpbuf);
 
   nlohmann::json rank_table = rank_table_910_1server_1rank;
-  char file_name_t[] = "./ut_LoadTask.json";
   std::ofstream outfile(file_name_t, std::ios::out | std::ios::trunc | std::ios::binary);
 
   if (outfile.is_open()) {
@@ -229,17 +256,13 @@ std:
   u32 rankIds = 0;
   ret1 = HcomCreateGroup(groupName.c_str(), rankNum1, &rankIds);
   EXPECT_EQ(ret1, HCCL_SUCCESS);
-  rtStream_t stream;
-  ge::Status ret;
-  HcomOpsKernelInfoStore hcomKernelInfo;
-
-  aclError rt_ret = aclrtCreateStreamWithConfig(&stream, 5, 0);
+  rt_ret = aclrtCreateStreamWithConfig(&stream, 5, 0);
   EXPECT_EQ(rt_ret, RT_ERROR_NONE);
+  return rt_ret == RT_ERROR_NONE;
+}
 
-  ge::GETaskInfo task;
-  ge::GETaskKernelHcclInfo hcclInfo;
+bool UtLoadTaskRunner::InitTaskDef() {
   task.kernelHcclInfo.push_back(hcclInfo);
-  HCCL_KERNEL_INFO_PRIVATE_DEF privateDefBuf;
   strcpy_s((char *)privateDefBuf.group, 128, "HCOM_GROUP");
   privateDefBuf.nodeNameHash = 123456;
   privateDefBuf.graphId = 1;
@@ -259,8 +282,8 @@ std:
 
   std::int64_t offset[privateDefBuf.tensorNum] = {33280, 33792, 34304};
   std::int64_t size[privateDefBuf.tensorNum] = {400, 40, 80};
-  size_t tensorInfoSize = sizeof(hcclKernelInfoPrivateDef) + privateDefBuf.tensorNum * sizeof(int64_t) * 2;
-  void *privateDefPtr = sal_malloc(tensorInfoSize);
+  tensorInfoSize = sizeof(hcclKernelInfoPrivateDef) + privateDefBuf.tensorNum * sizeof(int64_t) * 2;
+  privateDefPtr = sal_malloc(tensorInfoSize);
   memset(privateDefPtr, 0, tensorInfoSize);
   memcpy(privateDefPtr, (void *)&privateDefBuf.group[0], sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF));
   memcpy(reinterpret_cast<int64_t *>(reinterpret_cast<char *>(privateDefPtr) + sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF)),
@@ -281,10 +304,14 @@ std:
   task.kernelHcclInfo[0].global_workspace_addr = globalWorkSpaceAddr;
   task.needRefresh = false;
 
-  u64 memSize = HCCL_WORKSPACE_MEM_32_KB;
-  DeviceMem workSpaceMem = DeviceMem::alloc(memSize);
+  memSize = HCCL_WORKSPACE_MEM_32_KB;
+  workSpaceMem = DeviceMem::alloc(memSize);
   task.kernelHcclInfo[0].workSpaceAddr = workSpaceMem.ptr();
   task.kernelHcclInfo[0].workSpaceMemSize = workSpaceMem.size();
+  return task.privateDef != nullptr;
+}
+
+bool UtLoadTaskRunner::StepCommon() {
   // -------------------common test----------------
   MOCKER(HcomBroadcast).expects(atMost(6)).will(returnValue(HCCL_SUCCESS));
 
@@ -299,8 +326,6 @@ std:
   // type 非HCCL fail
 
   MOCKER_CPP(&ge::GEThreadLocalContext::GetOption).stubs().will(invoke(FakeGetOption));
-
-  u32 taskID = 0;
 
   task.type = 0;
   task.id = taskID++;
@@ -334,12 +359,15 @@ std:
   EXPECT_EQ(ret, ge::INTERNAL_ERROR);
   task.kernelHcclInfo[0].workSpaceMemSize = workSpaceMem.size();
   GlobalMockObject::verify();
+  return true;
+}
 
+bool UtLoadTaskRunner::StepBroadcast() {
   // -------------------HcomBroadcast test----------------
   tensorInfoSize = sizeof(hcclKernelInfoPrivateDef);
   privateDefBuf.originalGraphShapeType = ORIGINAL_GRAPH_UNKNOWNSHAPE_TYPE;
   privateDefBuf.tensorNum = 0;
-  void *privateDefPtr_broadcast = sal_malloc(tensorInfoSize);
+  privateDefPtr_broadcast = sal_malloc(tensorInfoSize);
   memset(privateDefPtr_broadcast, 0, tensorInfoSize);
   memcpy(privateDefPtr_broadcast, (void *)&privateDefBuf.group[0], sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF));
 
@@ -368,12 +396,15 @@ std:
   ret = hcomKernelInfo.LoadTask(task);
   EXPECT_EQ(ret, ge::SUCCESS);
   GlobalMockObject::verify();
+  return true;
+}
 
+bool UtLoadTaskRunner::StepAllReduce() {
   // -------------------HcomAllReduce test----------------
   tensorInfoSize = sizeof(hcclKernelInfoPrivateDef);
   privateDefBuf.originalGraphShapeType = ORIGINAL_GRAPH_UNKNOWNSHAPE_TYPE;
   privateDefBuf.tensorNum = 0;
-  void *privateDefPtr_allreduce = sal_malloc(tensorInfoSize);
+  privateDefPtr_allreduce = sal_malloc(tensorInfoSize);
   memset(privateDefPtr_allreduce, 0, tensorInfoSize);
   memcpy(privateDefPtr_allreduce, (void *)&privateDefBuf.group[0], sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF));
 
@@ -408,12 +439,15 @@ std:
   ret = hcomKernelInfo.LoadTask(task);
   EXPECT_EQ(ret, ge::SUCCESS);
   GlobalMockObject::verify();
+  return true;
+}
 
+bool UtLoadTaskRunner::StepAllGather() {
   // -------------------HcomAllGather test----------------
   tensorInfoSize = sizeof(hcclKernelInfoPrivateDef);
   privateDefBuf.originalGraphShapeType = ORIGINAL_GRAPH_UNKNOWNSHAPE_TYPE;
   privateDefBuf.tensorNum = 0;
-  void *privateDefPtr_allgather = sal_malloc(tensorInfoSize);
+  privateDefPtr_allgather = sal_malloc(tensorInfoSize);
   memset(privateDefPtr_allgather, 0, tensorInfoSize);
   memcpy(privateDefPtr_allgather, (void *)&privateDefBuf.group[0], sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF));
 
@@ -441,7 +475,10 @@ std:
   ret = hcomKernelInfo.LoadTask(task);
   EXPECT_EQ(ret, ge::SUCCESS);
   GlobalMockObject::verify();
+  return true;
+}
 
+bool UtLoadTaskRunner::StepAllGatherV() {
   // -------------------HcomAllGatherV test----------------
   u64 countAllgatherv = 10;
   memSize = 2 * countAllgatherv * sizeof(int32_t);
@@ -452,7 +489,6 @@ std:
   privateDefBuf.nodeNameHash = 1234567890;
   privateDefBuf.graphId = 1;
   privateDefBuf.destRank = 1;
-  privateDefBuf.originalGraphShapeType = 0;
   privateDefBuf.originalGraphShapeType = ORIGINAL_GRAPH_KNOWNSHAPE_TYPE;
 
   HCCL_ALLGATHERV_KERNEL_INFO_PRIVATE_DEF allgathervPrivateDefBuf(privateDefBuf);
@@ -493,12 +529,15 @@ std:
   ret = hcomKernelInfo.LoadTask(newTask);
   EXPECT_EQ(ret, ge::SUCCESS);
   GlobalMockObject::verify();
+  return true;
+}
 
+bool UtLoadTaskRunner::StepReduceScatter() {
   // -------------------HcomReduceScatter test----------------
   tensorInfoSize = sizeof(hcclKernelInfoPrivateDef);
   privateDefBuf.originalGraphShapeType = ORIGINAL_GRAPH_UNKNOWNSHAPE_TYPE;
   privateDefBuf.tensorNum = 0;
-  void *privateDefPtr_reducescatter = sal_malloc(tensorInfoSize);
+  privateDefPtr_reducescatter = sal_malloc(tensorInfoSize);
   memset(privateDefPtr_reducescatter, 0, tensorInfoSize);
   memcpy(privateDefPtr_reducescatter, (void *)&privateDefBuf.group[0], sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF));
 
@@ -533,18 +572,20 @@ std:
   ret = hcomKernelInfo.LoadTask(task);
   EXPECT_EQ(ret, ge::SUCCESS);
   GlobalMockObject::verify();
+  return true;
+}
 
+bool UtLoadTaskRunner::StepReduceScatterV() {
   // -------------------HcomReduceScatterV test----------------
   u64 countReduceScatterV = 10;
   memSize = 2 * countReduceScatterV * sizeof(int32_t);
 
-  paramDevMem = DeviceMem::alloc(memSize);
+  DeviceMem paramDevMem = DeviceMem::alloc(memSize);
 
   strcpy_s((char *)privateDefBuf.group, 128, "hccl_world_group");
   privateDefBuf.nodeNameHash = 1234567890;
   privateDefBuf.graphId = 1;
   privateDefBuf.destRank = 1;
-  privateDefBuf.originalGraphShapeType = 0;
   privateDefBuf.originalGraphShapeType = ORIGINAL_GRAPH_KNOWNSHAPE_TYPE;
 
   HCCL_REDUCESCATTERV_KERNEL_INFO_PRIVATE_DEF reducescattervPrivateDefBuf(privateDefBuf);
@@ -588,13 +629,16 @@ std:
   ret = hcomKernelInfo.LoadTask(newTask_rs);
   EXPECT_EQ(ret, ge::SUCCESS);
   GlobalMockObject::verify();
+  return true;
+}
 
+bool UtLoadTaskRunner::StepSendAndReceive() {
   // -------------------HcomSend test----------------
 
   tensorInfoSize = sizeof(hcclKernelInfoPrivateDef);
   privateDefBuf.originalGraphShapeType = ORIGINAL_GRAPH_UNKNOWNSHAPE_TYPE;
   privateDefBuf.tensorNum = 0;
-  void *privateDefPtr1 = sal_malloc(tensorInfoSize);
+  privateDefPtr1 = sal_malloc(tensorInfoSize);
   memset(privateDefPtr1, 0, tensorInfoSize);
   memcpy(privateDefPtr1, (void *)&privateDefBuf.group[0], sizeof(HCCL_KERNEL_INFO_PRIVATE_DEF));
 
@@ -637,7 +681,10 @@ std:
   EXPECT_EQ(ret, ge::SUCCESS);
   MOCKER_CPP(&ge::GEThreadLocalContext::GetOption).stubs().will(invoke(OffloadGetOption1));
   GlobalMockObject::verify();
+  return true;
+}
 
+bool UtLoadTaskRunner::StepReduceAndCleanup() {
   // -------------------HcomReduce test----------------
   task.kernelHcclInfo[0].hccl_type = HCCL_KERNEL_OP_TYPE_REDUCE;
   MOCKER(HcomReduce).expects(atMost(3)).will(returnValue(HCCL_E_PARA)).then(returnValue(HCCL_SUCCESS));
@@ -681,6 +728,15 @@ std:
   HcomDestroy();
   EXPECT_EQ(rt_ret, RT_ERROR_NONE);
   remove(file_name_t);
+  return rt_ret == RT_ERROR_NONE;
+}
+
+TEST_F(HcomKernelInfoTest, ut_LoadTask) {
+  UtLoadTaskRunner runner;
+  ASSERT_TRUE(runner.InitEnv() && runner.InitTaskDef());
+  ASSERT_TRUE(runner.StepCommon() && runner.StepBroadcast() && runner.StepAllReduce());
+  ASSERT_TRUE(runner.StepAllGather() && runner.StepAllGatherV() && runner.StepReduceScatter());
+  ASSERT_TRUE(runner.StepReduceScatterV() && runner.StepSendAndReceive() && runner.StepReduceAndCleanup());
 }
 
 TEST_F(HcomKernelInfoTest, ut_LoadTask_comm) {
@@ -1243,7 +1299,17 @@ TEST_F(HcomKernelInfoTest, ut_GetHcomOutCCLbufferSize) {
     EXPECT_NE(ptr, nullptr); \
   } while (0)
 
-TEST_F(HcomKernelInfoTest, ut_hcom_alltoallv_loadtask) {
+struct UtAlltoAllvTaskRunner {
+  u32 rankSize = 0U, rankID = 0U;
+  u64 count = 10U, memSize = 0U;
+  HostMem inputHostMem{}, comparaMem{};
+  DeviceMem inputDevMem{}, outputDevMem{};
+  const char *file_name_t = "./ut_hcom_alltoallv_loadtask.json";
+  bool PrepareBuffers();
+  bool ExecuteAlltoAllvLoad();
+};
+
+bool UtAlltoAllvTaskRunner::PrepareBuffers() {
   nlohmann::json rank_table = {{"status", "completed"},
                                {"deploy_mode", "lab"},
                                {"group_count", "1"},
@@ -1264,7 +1330,6 @@ TEST_F(HcomKernelInfoTest, ut_hcom_alltoallv_loadtask) {
                                        {"devices", {{{"device_id", "0"}, {"device_ip", "192.168.1.120"}}}}}}},
                                 }}}};
 
-  char file_name_t[] = "./ut_hcom_alltoallv_loadtask.json";
   std::ofstream outfile(file_name_t, std::ios::out | std::ios::trunc | std::ios::binary);
 
   if (outfile.is_open()) {
@@ -1274,28 +1339,27 @@ TEST_F(HcomKernelInfoTest, ut_hcom_alltoallv_loadtask) {
     HCCL_ERROR("open %s failed", file_name_t);
   }
 
-  u32 rankSize = 0;
   CHK_BBIT_RET(HcomGetRankSize(HCCL_WORLD_GROUP, &rankSize));
-  u32 rankID = 0;
   CHK_BBIT_RET(HcomGetRankId(HCCL_WORLD_GROUP, &rankID));
 
-  u64 count = 10;
-  u64 memSize = rankSize * count * sizeof(int32_t);
-  HostMem inputHostMem = HostMem::alloc(memSize);
+  memSize = rankSize * count * sizeof(int32_t);
+  inputHostMem = HostMem::alloc(memSize);
   CHK_UT_PTR_NULL(inputHostMem.ptr());
-  HostMem comparaMem = HostMem::alloc(memSize);
+  comparaMem = HostMem::alloc(memSize);
   for (u32 i = 0; i < count * rankSize; i++) {
     *(reinterpret_cast<int32_t *>(inputHostMem.ptr()) + i) = i / count;
     *(reinterpret_cast<int32_t *>(comparaMem.ptr()) + i) = rankID;
   }
-  DeviceMem inputDevMem = DeviceMem::alloc(memSize);
+  inputDevMem = DeviceMem::alloc(memSize);
   CHK_UT_PTR_NULL(inputDevMem.ptr());
   CHK_BBIT_RET(hrtMemSyncCopy(inputDevMem.ptr(), memSize, inputHostMem.ptr(), memSize,
                               HcclRtMemcpyKind::HCCL_RT_MEMCPY_KIND_HOST_TO_DEVICE));
 
-  DeviceMem outputDevMem = DeviceMem::alloc(memSize);
-  CHK_UT_PTR_NULL(outputDevMem.ptr());
+  outputDevMem = DeviceMem::alloc(memSize);
+  return outputDevMem.ptr() != nullptr;
+}
 
+bool UtAlltoAllvTaskRunner::ExecuteAlltoAllvLoad() {
   vector<u64> sendRecvCounts(rankSize, count);
   vector<u64> sendRecvDispls(rankSize, 0);
   for (u32 index = 0; index < sendRecvDispls.size(); index++) {
@@ -1310,7 +1374,6 @@ TEST_F(HcomKernelInfoTest, ut_hcom_alltoallv_loadtask) {
   privateDefBuf.nodeNameHash = 1234567890;
   privateDefBuf.graphId = 1;
   privateDefBuf.destRank = 1;
-  privateDefBuf.originalGraphShapeType = 0;
   privateDefBuf.originalGraphShapeType = ORIGINAL_GRAPH_UNKNOWNSHAPE_TYPE;
   privateDefBuf.aivCoreLimit = 48;
 
@@ -1350,6 +1413,12 @@ TEST_F(HcomKernelInfoTest, ut_hcom_alltoallv_loadtask) {
   infoStore.LoadTask(task);
   remove(file_name_t);
   GlobalMockObject::verify();
+  return true;
+}
+
+TEST_F(HcomKernelInfoTest, ut_hcom_alltoallv_loadtask) {
+  UtAlltoAllvTaskRunner runner;
+  ASSERT_TRUE(runner.PrepareBuffers() && runner.ExecuteAlltoAllvLoad());
 }
 
 TEST_F(HcomKernelInfoTest, ut_hcom_alltoall_loadtask) {
@@ -2738,7 +2807,6 @@ TEST_F(HcomKernelInfoTest, Ut_GetAlltoAllVCParams_When_AllParamsValid_Expect_Cor
   privateDefBuf.nodeNameHash = 1234567890;
   privateDefBuf.graphId = 1;
   privateDefBuf.destRank = 1;
-  privateDefBuf.originalGraphShapeType = 0;
   privateDefBuf.originalGraphShapeType = ORIGINAL_GRAPH_UNKNOWNSHAPE_TYPE;
   privateDefBuf.aivCoreLimit = 48;
 

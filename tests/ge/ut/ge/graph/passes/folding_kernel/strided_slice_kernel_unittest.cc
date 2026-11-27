@@ -615,7 +615,12 @@ TEST_F(UtestGraphPassesFoldingKernelStridedSliceKernel, CovSuccessInt64Stride) {
   vector<GeTensorPtr> outputs;
 
   shared_ptr<Kernel> kernel = KernelFactory::Instance().Create(STRIDEDSLICE);
-  EXPECT_EQ(kernel->Compute(op_desc_ptr, input, outputs), ge::SUCCESS);
+  ASSERT_EQ(kernel->Compute(op_desc_ptr, input, outputs), ge::SUCCESS);
+  ASSERT_EQ(outputs.size(), 1U);
+  EXPECT_EQ(outputs[0]->GetTensorDesc().GetShape().GetDims(), vector<int64_t>({2, 2}));
+  ASSERT_EQ(outputs[0]->GetData().size(), 4U * sizeof(int32_t));
+  const auto *values = reinterpret_cast<const int32_t *>(outputs[0]->GetData().data());
+  EXPECT_EQ(vector<int32_t>(values, values + 4), vector<int32_t>({1, 2, 4, 5}));
 }
 
 TEST_F(UtestGraphPassesFoldingKernelStridedSliceKernel, CovSuccessInt32Stride) {
@@ -654,7 +659,12 @@ TEST_F(UtestGraphPassesFoldingKernelStridedSliceKernel, CovSuccessInt32Stride) {
   vector<GeTensorPtr> outputs;
 
   shared_ptr<Kernel> kernel = KernelFactory::Instance().Create(STRIDEDSLICE);
-  EXPECT_EQ(kernel->Compute(op_desc_ptr, input, outputs), ge::SUCCESS);
+  ASSERT_EQ(kernel->Compute(op_desc_ptr, input, outputs), ge::SUCCESS);
+  ASSERT_EQ(outputs.size(), 1U);
+  EXPECT_EQ(outputs[0]->GetTensorDesc().GetShape().GetDims(), vector<int64_t>({2, 2}));
+  ASSERT_EQ(outputs[0]->GetData().size(), 4U * sizeof(int32_t));
+  const auto *values = reinterpret_cast<const int32_t *>(outputs[0]->GetData().data());
+  EXPECT_EQ(vector<int32_t>(values, values + 4), vector<int32_t>({1, 2, 4, 5}));
 }
 
 TEST_F(UtestGraphPassesFoldingKernelStridedSliceKernel, CovNullOpDesc) {
@@ -1094,4 +1104,63 @@ TEST_F(UtestGraphPassesFoldingKernelStridedSliceKernel, MissingMaskAttr) {
   shared_ptr<Kernel> kernel = KernelFactory::Instance().Create(STRIDEDSLICE);
   Status status = kernel->Compute(op_desc_ptr, input, outputs);
   EXPECT_EQ(NOT_CHANGED, status);
+}
+
+namespace {
+template <typename IndexType>
+void CheckPositiveStrideSlice(const vector<int64_t> &shape, const vector<int32_t> &data, const vector<IndexType> &begin,
+                              const vector<IndexType> &end, const vector<IndexType> &strides, DataType index_type,
+                              const vector<int64_t> &output_shape, const vector<int32_t> &expected) {
+  auto op = std::make_shared<OpDesc>("slice", STRIDEDSLICE);
+  for (const auto &name : {STRIDE_SLICE_ATTR_BEGIN_MASK, STRIDE_SLICE_ATTR_END_MASK, STRIDE_SLICE_ATTR_ELLIPSIS_MASK,
+                           STRIDE_SLICE_ATTR_NEW_AXIS_MASK, STRIDE_SLICE_ATTR_SHRINK_AXIS_MASK}) {
+    ASSERT_TRUE(AttrUtils::SetInt(op, name, 0));
+  }
+  vector<ConstGeTensorPtr> inputs = {std::make_shared<GeTensor>(GeTensorDesc(GeShape(shape), FORMAT_ND, DT_INT32),
+                                                                reinterpret_cast<const uint8_t *>(data.data()),
+                                                                data.size() * sizeof(int32_t))};
+  for (const auto &values : {begin, end, strides}) {
+    inputs.push_back(std::make_shared<GeTensor>(
+        GeTensorDesc(GeShape({static_cast<int64_t>(values.size())}), FORMAT_ND, index_type),
+        reinterpret_cast<const uint8_t *>(values.data()), values.size() * sizeof(IndexType)));
+  }
+  for (const auto &input : inputs) {
+    ASSERT_EQ(op->AddInputDesc(input->GetTensorDesc()), GRAPH_SUCCESS);
+  }
+  ASSERT_EQ(op->AddOutputDesc(GeTensorDesc(GeShape(output_shape), FORMAT_ND, DT_INT32)), GRAPH_SUCCESS);
+  StridedSliceKernel kernel;
+  vector<GeTensorPtr> outputs;
+  ASSERT_EQ(kernel.Compute(op, inputs, outputs), SUCCESS);
+  ASSERT_EQ(outputs.size(), 1U);
+  EXPECT_EQ(outputs[0]->GetTensorDesc().GetShape().GetDims(), output_shape);
+  EXPECT_EQ(outputs[0]->GetTensorDesc().GetDataType(), DT_INT32);
+  ASSERT_EQ(outputs[0]->GetData().size(), expected.size() * sizeof(int32_t));
+  const auto *values = reinterpret_cast<const int32_t *>(outputs[0]->GetData().data());
+  EXPECT_EQ(vector<int32_t>(values, values + expected.size()), expected);
+}
+}  // namespace
+
+TEST_F(UtestGraphPassesFoldingKernelStridedSliceKernel, PositiveStrideDivisible) {
+  CheckPositiveStrideSlice<int32_t>({5}, {10, 11, 12, 13, 14}, {0}, {4}, {2}, DT_INT32, {2}, {10, 12});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelStridedSliceKernel, PositiveStrideRemainder) {
+  CheckPositiveStrideSlice<int32_t>({5}, {10, 11, 12, 13, 14}, {0}, {5}, {2}, DT_INT32, {3}, {10, 12, 14});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelStridedSliceKernel, PositiveStrideOffsetInt64) {
+  CheckPositiveStrideSlice<int64_t>({5}, {10, 11, 12, 13, 14}, {1}, {5}, {3}, DT_INT64, {2}, {11, 14});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelStridedSliceKernel, PositiveStrideShortInterval) {
+  CheckPositiveStrideSlice<int32_t>({5}, {10, 11, 12, 13, 14}, {1}, {2}, {3}, DT_INT32, {1}, {11});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelStridedSliceKernel, PositiveStrideNormalizedBounds) {
+  CheckPositiveStrideSlice<int32_t>({5}, {10, 11, 12, 13, 14}, {-5}, {-1}, {3}, DT_INT32, {2}, {10, 13});
+}
+
+TEST_F(UtestGraphPassesFoldingKernelStridedSliceKernel, PositiveStrideTwoDimensions) {
+  CheckPositiveStrideSlice<int32_t>({3, 5}, {10, 11, 12, 13, 14, 20, 21, 22, 23, 24, 30, 31, 32, 33, 34}, {0, 0},
+                                    {3, 5}, {2, 2}, DT_INT32, {2, 3}, {10, 12, 14, 30, 32, 34});
 }

@@ -36,10 +36,14 @@ sequenceDiagram
 ```
 
 **File Storage**:
-- **Mode 1**: Each weight as a separate file `weight_<sha256>`, multi-threaded write (8 threads), `flock(LOCK_EX)` protects meta.json for concurrent compilation
-- **Mode 2**: All weights combined into one file, 512-byte aligned (DMA requirement), located by offset, meta.json records hash→file/offset mapping
+- **Mode 1**: Each weight is stored in a separate `weight_<sha256>` file. An existing file is reused only if its bytes match. This mode does not use the combined-file index.
+- **Mode 2**: Weights are stored in a combined file at 512-byte-aligned offsets. An index entry is only a reuse hint: it must refer to the current combined file, and the recorded range must be aligned, in bounds, and byte-for-byte identical to the tensor. Weights that cannot be reused are appended at aligned offsets.
+  `SaveWeightToOneFileWithReuse` coordinates target file naming, reuse checks in `ResolveCombinedWeightReuse`, and writes in `AppendCombinedWeights`. `AlignCombinedWeightEof` pads the end of the file to the next 512-byte boundary when needed.
+- **Index locking**: Concurrent compilation in the same directory is serialized with `flock(LOCK_EX)` on `meta.lock`, not on `meta.json`, which is replaced atomically.
 
-**Path Management**: Compilation writes to `tmp_weight_<pid>_<sid>/` → OM output uses `ChangeFilePath` to migrate to `OM_directory/weight/` → `RefreshRelativePath` updates location to filename only
+**Path Management**: Compilation writes to `tmp_weight_<pid>_<sid>/` → OM output uses `ChangeFilePath` to migrate to `OM_directory/weight/` → `RefreshRelativePath` updates location to filename only.
+
+OM1 Bundle saving collects the weight relocation plan for all submodels before moving files. Each source is moved once, so earlier submodels cannot remove a file still needed by a later submodel. If a submodel's `location` changes, it is reserialized even when there is no operator SO to pack. The original bytes are reused only if the paths are unchanged and no SO needs packing.
 
 **Reverse Conversion** (`compiler/graph/preprocess/graph_prepare.cc`): `ConvertFileConstToConst` reads file → creates GeTensor → changes node type back to Const, used for ONNX import and similar scenarios.
 

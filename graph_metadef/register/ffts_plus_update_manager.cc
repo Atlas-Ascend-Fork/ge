@@ -36,7 +36,7 @@ void FftsPlusUpdateManager::RegisterCreator(const std::string &core_type, const 
 
   const auto it = creators_.find(core_type);
   if (it != creators_.end()) {
-    GELOGW("Creator already exist for core type: %s", core_type.c_str());
+    GELOGW("Creator already exists for core type: %s", core_type.c_str());
     return;
   }
 

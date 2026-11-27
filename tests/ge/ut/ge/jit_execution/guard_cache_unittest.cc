@@ -195,6 +195,40 @@ TEST_F(GuardCacheUT, load_guard_check_func) {
   dlog_setlevel(0, 3, 0);
 }
 
+TEST_F(GuardCacheUT, CanonicalizedFalseGuardCausesRepeatedGepCreation) {
+  GuardCodegen codegen;
+  auto ge_graph = std::unique_ptr<Graph>(static_cast<Graph *>(static_cast<void *>(EsBuildGraphAndReset(graph_))));
+  auto compute_graph = GraphUtilsEx::GetComputeGraph(*ge_graph);
+  auto attr = compute_graph->GetOrCreateAttrsGroup<ShapeEnvAttr>();
+  ASSERT_NE(attr, nullptr);
+  ShapeEnvGuarder guard(attr);
+  const auto s103 = attr->CreateSymbol(50, MakeShared<InputShapeSource>(0, 0));
+  const auto s105 = attr->CreateSymbol(50, MakeShared<InputShapeSource>(1, 0));
+  const auto s109 = attr->CreateSymbol(5, MakeShared<InputShapeSource>(2, 0));
+  ASSERT_TRUE(EXPECT_SYMBOL_EQ(Symbol(160) * s105, Symbol(32) * s103 * s109));
+  ASSERT_EQ(codegen.GuardFuncCodegenAndCompile(compute_graph), ge::GRAPH_SUCCESS);
+
+  std::vector<gert::Tensor> inputs;
+  inputs.emplace_back(make_tensor({50}));
+  inputs.emplace_back(make_tensor({50}));
+  inputs.emplace_back(make_tensor({5}));
+  GuardCheckCache cache(10, nullptr);
+  auto *first = cache.FindOrCreateGuarded(inputs);
+  ASSERT_NE(first, nullptr);
+  ASSERT_TRUE(first->SetCompiled(0, compute_graph));
+
+  uint32_t next_graph_id = 0;
+  for (size_t i = 0; i < 2; ++i) {
+    auto *gep = cache.FindOrCreateGuarded(inputs);
+    ASSERT_NE(gep, nullptr);
+    EXPECT_EQ(gep, first) << "Guard should hit after " << (i + 2) << " executions with identical inputs";
+    if (gep != first) {
+      ASSERT_TRUE(gep->SetCompiled(++next_graph_id, compute_graph));
+    }
+  }
+  EXPECT_EQ(next_graph_id, 0U) << "Identical inputs should not create new GEPs";
+}
+
 TEST_F(GuardCacheUT, check_priority_feat) {
   dlog_setlevel(0, 1, 0);
   graph1_ = EsCreateGraphBuilder("Hello");

@@ -689,7 +689,7 @@ ge::graphStatus ParseOutput(const nlohmann::json &output, ge::IrOutputType outpu
 void ParseTopoInfo(const ascend_nlohmann::json &extra_info, ge::OpDescPtr &op_desc, const std::string &group_attr) {
   std::string group;
   if (!ge::AttrUtils::GetStr(op_desc, group_attr, group) || group.empty()) {
-    GELOGW("hcom_topo_info need bind valid %s, which is needed to set on op %s %s", group_attr.c_str(),
+    GELOGW("hcom_topo_info needs to bind a valid %s, which needs to be set on op %s %s", group_attr.c_str(),
            op_desc->GetNamePtr(), op_desc->GetTypePtr());
     return;
   }
@@ -855,7 +855,8 @@ std::string DumpTilingData(gert::TilingData *tiling_data) {
     return output;
   }
   if (tiling_data->GetDataSize() >= std::numeric_limits<size_t>::max() / kSize) {
-    GELOGE(ge::GRAPH_FAILED, "Tiling data size overflow.");
+    GELOGE(ge::GRAPH_FAILED, "Tiling data size overflow, size=%zu, max allowed size=%zu.", tiling_data->GetDataSize(),
+           std::numeric_limits<size_t>::max() / kSize);
     return output;
   }
   output.reserve(tiling_data->GetDataSize() * kSize);
@@ -974,7 +975,7 @@ std::string GetRawErrorMessage() {
     ret_json["error_messages"] = error_messages_json;
     return ret_json.dump();
   } catch (const nlohmann::json::exception &e) {
-    GELOGE(ge::GRAPH_FAILED, "get failed when call json api, reason: %s", e.what());
+    GELOGE(ge::GRAPH_FAILED, "Failed to get value when calling the JSON API, reason: %s.", e.what());
     return "";
   }
 }
@@ -1641,7 +1642,7 @@ int TbeOpTilingPyInterfaceEx4Inner(const char *const optype, const char *const c
     last_op_tiling_perf = -1;
   }
 
-  GELOGI("Op tiling v4 succeed. op_type:%s", optype);
+  GELOGI("Op tiling v4 succeeded. op_type:%s", optype);
   (void)DumpRunInfoV2(run_info, run_info_json, run_info_len);
   return 1;
 }
@@ -1666,7 +1667,8 @@ gert::KernelContextHolder BuildTilingParseContextHolder(ge::OpDescPtr &op_desc, 
 gert::KernelContextHolder BuildTilingContext(ContextComponent &context_com, gert::KernelContext *tiling_parse_context,
                                              fe::PlatFormInfos &platform_infos) {
   if (context_com.storage_shapes.size() >= std::numeric_limits<size_t>::max() - kTilingCtxFixedInputSize) {
-    GELOGE(ge::GRAPH_FAILED, "Context storage size overflow.");
+    GELOGE(ge::GRAPH_FAILED, "Context storage size overflow, size=%zu, max allowed size=%zu.",
+           context_com.storage_shapes.size(), std::numeric_limits<size_t>::max() - kTilingCtxFixedInputSize);
     return gert::KernelContextHolder();
   }
   std::vector<void *> tiling_context_inputs(context_com.storage_shapes.size() + kTilingCtxFixedInputSize, nullptr);

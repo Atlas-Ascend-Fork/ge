@@ -139,6 +139,8 @@ This enables AOE (Ascend Optimization Engine) to inject its own tuning logic at 
 
 ## 2. Graph-Level Optimization: Pass System
 
+When folding a positive-stride `StridedSlice`, the built-in Host kernel includes the last selected element even when the stride does not divide the interval length. The output extent counts all selected elements.
+
 ### 2.1 Pass Infrastructure
 
 GE's optimization Passes fall into two categories:
@@ -187,6 +189,8 @@ GE's optimization Passes execute in multiple batches, distributed at different s
 | 3. Control Flow Transform | SwitchToStreamSwitchPass, MergeToStreamMergePass, AttachStreamLabelPass | Control flow → Stream control |
 | 3. Dynamic Batching | MultiBatchPass, SubgraphMultiDimsPass | Multi-dimension dynamic inference |
 
+During constant folding, the built-in Host `GatherV2` keeps a one-element index axis while copying the selected data. It removes that axis after the copy for a scalar index.
+
 **OptimizeStage2** (Post-merge optimization):
 
 Stage2 Passes process the merged whole graph, at this time subgraph boundaries have been eliminated:
@@ -202,6 +206,8 @@ Stage2 Passes process the merged whole graph, at this time subgraph boundaries h
 - **BufferPoolMemoryPass**: Buffer pool memory optimization
 - **ParallelGroupPass**: Parallel group processing
 - **ConcatNotaskPass**: Concat no-task optimization
+
+When folding `DynamicStitch`, the built-in Host kernel preserves every dimension following the index dimensions. The copy length is the product of all dimensions in each slice. For an empty slice, the kernel sets only the output descriptor.
 
 ### 2.3 Necessity of Two-Stage Optimization
 
@@ -616,6 +622,8 @@ On an online compilation cache hit, if the cached OM contains neither embedded c
 
 GE's Shape optimization converts dynamic shape to static shape as much as possible:
 
+The built-in Host `ShapeN` uses the logical dimensions of each input. Extra storage dimensions from a blocked format do not appear in the shape vector. An unknown logical shape prevents constant folding.
+
 **Constant Folding and InferShape Collaboration**: Shape inference and constant folding alternate until convergence. For example, Shape → Gather(indices=[1,0,2,3]) → Reshape chain, if Data's shape is [3,4,5,6], first do Shape inference to derive Reshape output as dynamic, then do constant folding to eliminate Shape and Gather, finally do inference again for Reshape's output — at this time Reshape's shape input is already const [4,3,5,6], output becomes static.
 
 **While Loop Shape Inference**: For While operator's body subgraph multiple inference iterations, use previous inference's output Shape as next input, until two results are consistent. This fixed-point iteration strategy infers as much static information as possible.
@@ -626,6 +634,7 @@ GE's Shape optimization converts dynamic shape to static shape as much as possib
 
 - **Weight Merging**: Merge scattered weight data into continuous memory region, making load phase more efficient
 - **Const Deduplication**: Through binary comparison discover Const nodes with same weight, let them share memory
+- **OM1 Bundle external weights**: Saving gathers submodel references before moving shared files. See [External Weights](../../features/external_weight.md).
 
 ## 10. Compiler Design Characteristics
 

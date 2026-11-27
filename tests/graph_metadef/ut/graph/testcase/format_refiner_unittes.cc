@@ -15,6 +15,7 @@
 #include "graph_builder_utils.h"
 #include "graph/debug/ge_attr_define.h"
 #include "graph/utils/op_desc_utils.h"
+#include "graph/normal_graph/op_desc_impl.h"
 #include "graph/refiner/format_refiner.h"
 #include "graph/ref_relation.h"
 
@@ -1477,5 +1478,59 @@ TEST_F(UTEST_FormatRefiner, IncCov_InferOrigineFormat_BiasAddOutputNot5D) {
   SetFirstInferFlag(graph, false);
   EXPECT_EQ(FormatRefiner::InferOrigineFormat(graph), GRAPH_SUCCESS);
   SetFirstInferFlag(graph, true);
+}
+
+TEST_F(UTEST_FormatRefiner, IncCov_RefreshOriginFormatOfAnchor_NullNodeAndOpDesc) {
+  auto builder = ut::GraphBuilder("g_refresh_null_node");
+  auto conv1 = builder.AddNode("conv1", "Conv2D", 2, 2);
+  auto in0 = conv1->GetOpDesc()->GetInputDesc(0);
+  in0.SetFormat(FORMAT_NCHW);
+  in0.SetOriginFormat(FORMAT_ND);
+  EXPECT_EQ(conv1->GetOpDesc()->UpdateInputDesc(0, in0), GRAPH_SUCCESS);
+
+  auto in1 = conv1->GetOpDesc()->GetInputDesc(1);
+  in1.SetFormat(FORMAT_HWCN);
+  in1.SetOriginFormat(FORMAT_RESERVED);
+  EXPECT_EQ(conv1->GetOpDesc()->UpdateInputDesc(1, in1), GRAPH_SUCCESS);
+
+  auto out0 = conv1->GetOpDesc()->GetOutputDesc(0);
+  out0.SetFormat(FORMAT_NC1HWC0);
+  out0.SetOriginFormat(FORMAT_ND);
+  EXPECT_EQ(conv1->GetOpDesc()->UpdateOutputDesc(0, out0), GRAPH_SUCCESS);
+
+  auto out1 = conv1->GetOpDesc()->GetOutputDesc(1);
+  out1.SetFormat(FORMAT_NHWC);
+  out1.SetOriginFormat(FORMAT_ND);
+  EXPECT_EQ(conv1->GetOpDesc()->UpdateOutputDesc(1, out1), GRAPH_SUCCESS);
+
+  auto null_op_node = std::make_shared<Node>(nullptr, nullptr);
+  std::vector<NodePtr> anchors = {nullptr, null_op_node, conv1};
+  FormatRefiner::RefreshOriginFormatOfAnchor(anchors);
+
+  EXPECT_EQ(conv1->GetOpDesc()->GetInputDesc(0).GetOriginFormat(), FORMAT_NCHW);
+  EXPECT_EQ(conv1->GetOpDesc()->GetInputDesc(1).GetOriginFormat(), FORMAT_HWCN);
+  EXPECT_EQ(conv1->GetOpDesc()->GetOutputDesc(0).GetOriginFormat(), FORMAT_ND);
+  EXPECT_EQ(conv1->GetOpDesc()->GetOutputDesc(1).GetOriginFormat(), FORMAT_NHWC);
+}
+
+TEST_F(UTEST_FormatRefiner, IncCov_RefreshOriginFormatOfAnchor_NullOutputDesc) {
+  auto builder = ut::GraphBuilder("g_refresh_null_output_desc");
+  auto conv1 = builder.AddNode("conv1", "Conv2D", 1, 1);
+  auto in0 = conv1->GetOpDesc()->GetInputDesc(0);
+  in0.SetFormat(FORMAT_NCHW);
+  in0.SetOriginFormat(FORMAT_ND);
+  EXPECT_EQ(conv1->GetOpDesc()->UpdateInputDesc(0, in0), GRAPH_SUCCESS);
+
+  auto out0 = conv1->GetOpDesc()->GetOutputDesc(0);
+  out0.SetFormat(FORMAT_NHWC);
+  out0.SetOriginFormat(FORMAT_RESERVED);
+  EXPECT_EQ(conv1->GetOpDesc()->UpdateOutputDesc(0, out0), GRAPH_SUCCESS);
+
+  conv1->GetOpDesc()->impl_->outputs_desc_.push_back(nullptr);
+  FormatRefiner::RefreshOriginFormatOfAnchor({conv1});
+  conv1->GetOpDesc()->impl_->outputs_desc_.pop_back();
+
+  EXPECT_EQ(conv1->GetOpDesc()->GetInputDesc(0).GetOriginFormat(), FORMAT_NCHW);
+  EXPECT_EQ(conv1->GetOpDesc()->GetOutputDesc(0).GetOriginFormat(), FORMAT_NHWC);
 }
 }  // namespace ge
