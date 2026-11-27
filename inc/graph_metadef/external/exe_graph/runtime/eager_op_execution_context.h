@@ -17,11 +17,13 @@
 #include "exe_graph/runtime/kernel_args.h"
 #include "graph/ascend_string.h"
 
+#ifndef GE_CONTEXT_API_IMPORT
 #if defined(GE_API_EXPORTS)
 #define GE_CONTEXT_API_IMPORT
 #else
 #define GE_CONTEXT_API_IMPORT __attribute__((weak))
 #endif
+#endif  // ifndef GE_CONTEXT_API_IMPORT
 
 namespace gert {
 using rtStream = void *;
@@ -32,7 +34,7 @@ class EagerOpExecutionContext : public ExtendedKernelContext {
    * 获取所属的执行流
    * @return
    */
-  rtStream GetStream() const;
+  GE_CONTEXT_API_IMPORT rtStream GetStream() const;
 
   /**
    * 根据输入index，获取输入tensor指针
@@ -84,7 +86,8 @@ class EagerOpExecutionContext : public ExtendedKernelContext {
    * @return Tensor指针，异常时返回空指针
    * 生命周期: 该输出tensor的内存由context构造方管理。接口调用者不需要主动释放
    */
-  Tensor *MallocOutputTensor(size_t index, const StorageShape &shape, const StorageFormat &format, ge::DataType dtype);
+  GE_CONTEXT_API_IMPORT Tensor *MallocOutputTensor(size_t index, const StorageShape &shape, const StorageFormat &format,
+                                                   ge::DataType dtype);
 
   /**
    * 指定某输出的内存地址引用自某个输入
@@ -92,7 +95,7 @@ class EagerOpExecutionContext : public ExtendedKernelContext {
    * @param input_index 输入索引
    * @return output_index对应的输出Tensor指针
    */
-  Tensor *MakeOutputRefInput(size_t output_index, size_t input_index) const;
+  GE_CONTEXT_API_IMPORT Tensor *MakeOutputRefInput(size_t output_index, size_t input_index) const;
 
   /**
    * 分配workspace内存，placement为device
@@ -100,7 +103,7 @@ class EagerOpExecutionContext : public ExtendedKernelContext {
    * @return 地址指针，异常时返回空指针
    * 生命周期：内存由context构造方管理，接口调用者不需要主动释放
    */
-  void *MallocWorkSpace(size_t size);
+  GE_CONTEXT_API_IMPORT void *MallocWorkSpace(size_t size);
 
   /**
    * 获取index指定的输出Tensor指针
@@ -127,7 +130,7 @@ class EagerOpExecutionContext : public ExtendedKernelContext {
    * @return 只读 KernelArgs 指针，args_data 字段为设备侧 args 地址，
    *         失败返回 nullptr。
    */
-  const KernelArgs *MallocReadOnlyDevArgs(void *host_args, size_t args_size) const;
+  GE_CONTEXT_API_IMPORT const KernelArgs *MallocReadOnlyDevArgs(void *host_args, size_t args_size) const;
 
   /**
    * 按 key 获取 eager 自定义算子使用的辅流。
@@ -190,6 +193,5 @@ class EagerOpExecutionContext : public ExtendedKernelContext {
 static_assert(std::is_standard_layout<EagerOpExecutionContext>::value,
               "The class EagerOpExecutionContext must be a POD");
 }  // namespace gert
-#undef GE_CONTEXT_API_IMPORT
 
 #endif  // METADEF_CXX_INC_EXE_GRAPH_RUNTIME_EAGER_OP_EXECUTION_CONTEXT_H_

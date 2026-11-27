@@ -21,6 +21,14 @@
 #include "graph/error_codes.h"
 #include "graph/tensor.h"
 
+#ifndef GE_CONTEXT_API_IMPORT
+#if defined(GE_API_EXPORTS)
+#define GE_CONTEXT_API_IMPORT
+#else
+#define GE_CONTEXT_API_IMPORT __attribute__((weak))
+#endif
+#endif  // ifndef GE_CONTEXT_API_IMPORT
+
 namespace gert {
 /**
  * 资源申报上下文，供 ResourceUsageReporter::DeclareResourceUsage 在编译期使用。
@@ -38,7 +46,7 @@ class ResourceUsageContext : public ExtendedKernelContext {
    * @return GRAPH_SUCCESS 表示上报成功，否则返回错误码
    * @since 9.3.0(2026-09)
    */
-  ge::graphStatus ReportAttachedStream(const std::vector<ge::AscendString> &keys);
+  GE_CONTEXT_API_IMPORT ge::graphStatus ReportAttachedStream(const std::vector<ge::AscendString> &keys);
 
   /**
    * 根据输入 index 获取输入 Tensor 指针，可读取编译期静态 shape、format、dtype。

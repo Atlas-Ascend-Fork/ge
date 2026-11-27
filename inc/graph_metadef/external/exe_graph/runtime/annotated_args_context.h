@@ -22,6 +22,14 @@
 #include "graph/tensor.h"
 #include "graph/ascend_string.h"
 
+#ifndef GE_CONTEXT_API_IMPORT
+#if defined(GE_API_EXPORTS)
+#define GE_CONTEXT_API_IMPORT
+#else
+#define GE_CONTEXT_API_IMPORT __attribute__((weak))
+#endif
+#endif  // ifndef GE_CONTEXT_API_IMPORT
+
 namespace ge {
 struct ArgDesc;
 }
@@ -98,7 +106,7 @@ class AnnotatedKernelArgs {
    * 构造一个空的参数构建器。
    * @since 9.2.0(2026-07)
    */
-  AnnotatedKernelArgs();
+  GE_CONTEXT_API_IMPORT AnnotatedKernelArgs();
 
   /**
    * 变参构造函数，按参数顺序依次追加所有参数。
@@ -121,14 +129,14 @@ class AnnotatedKernelArgs {
    * @param other 源对象
    * @since 9.2.0(2026-07)
    */
-  AnnotatedKernelArgs(const AnnotatedKernelArgs &other);
+  GE_CONTEXT_API_IMPORT AnnotatedKernelArgs(const AnnotatedKernelArgs &other);
 
   /**
    * 移动构造函数。移动后原对象不可再用。
    * @param other 源对象
    * @since 9.2.0(2026-07)
    */
-  AnnotatedKernelArgs(AnnotatedKernelArgs &&other) noexcept;
+  GE_CONTEXT_API_IMPORT AnnotatedKernelArgs(AnnotatedKernelArgs &&other) noexcept;
 
   /**
    * 拷贝赋值运算符。
@@ -136,7 +144,7 @@ class AnnotatedKernelArgs {
    * @return *this
    * @since 9.2.0(2026-07)
    */
-  AnnotatedKernelArgs &operator=(const AnnotatedKernelArgs &other);
+  GE_CONTEXT_API_IMPORT AnnotatedKernelArgs &operator=(const AnnotatedKernelArgs &other);
 
   /**
    * 移动赋值运算符。移动后原对象不可再用。
@@ -144,13 +152,13 @@ class AnnotatedKernelArgs {
    * @return *this
    * @since 9.2.0(2026-07)
    */
-  AnnotatedKernelArgs &operator=(AnnotatedKernelArgs &&other) noexcept;
+  GE_CONTEXT_API_IMPORT AnnotatedKernelArgs &operator=(AnnotatedKernelArgs &&other) noexcept;
 
   /**
    * 析构函数。
    * @since 9.2.0(2026-07)
    */
-  ~AnnotatedKernelArgs();
+  GE_CONTEXT_API_IMPORT ~AnnotatedKernelArgs();
 
   /**
    * 追加一个逻辑输入地址参数。
@@ -158,7 +166,7 @@ class AnnotatedKernelArgs {
    * @return GRAPH_SUCCESS 表示追加成功，否则返回错误码
    * @since 9.2.0(2026-07)
    */
-  ge::graphStatus AppendArg(const InputAddr &addr);
+  GE_CONTEXT_API_IMPORT ge::graphStatus AppendArg(const InputAddr &addr);
 
   /**
    * 追加一个逻辑输出地址参数。
@@ -166,7 +174,7 @@ class AnnotatedKernelArgs {
    * @return GRAPH_SUCCESS 表示追加成功，否则返回错误码
    * @since 9.2.0(2026-07)
    */
-  ge::graphStatus AppendArg(const OutputAddr &addr);
+  GE_CONTEXT_API_IMPORT ge::graphStatus AppendArg(const OutputAddr &addr);
 
   /**
    * 追加一个逻辑 workspace 地址参数。
@@ -174,7 +182,7 @@ class AnnotatedKernelArgs {
    * @return GRAPH_SUCCESS 表示追加成功，否则返回错误码
    * @since 9.2.0(2026-07)
    */
-  ge::graphStatus AppendArg(const WorkspaceAddr &addr);
+  GE_CONTEXT_API_IMPORT ge::graphStatus AppendArg(const WorkspaceAddr &addr);
 
   /**
    * 追加一个标量参数（uint64_t），用于 kernel 需要的常量参数。
@@ -182,7 +190,7 @@ class AnnotatedKernelArgs {
    * @return GRAPH_SUCCESS 表示追加成功，否则返回错误码
    * @since 9.2.0(2026-07)
    */
-  ge::graphStatus AppendArg(uint64_t value);
+  GE_CONTEXT_API_IMPORT ge::graphStatus AppendArg(uint64_t value);
 
   /**
    * 追加一个变长自定义数据参数。
@@ -190,7 +198,7 @@ class AnnotatedKernelArgs {
    * @return GRAPH_SUCCESS 表示追加成功，否则返回错误码；一旦失败，后续 ExtractArgsData 也会失败
    * @since 9.3.0(2026-10)
    */
-  ge::graphStatus AppendArg(const CustomDataBlock &data);
+  GE_CONTEXT_API_IMPORT ge::graphStatus AppendArg(const CustomDataBlock &data);
 
   /**
    * 提取 kernel launch 参数数据。
@@ -199,7 +207,8 @@ class AnnotatedKernelArgs {
    * @return GRAPH_SUCCESS 表示提取成功，否则返回错误码
    * @since 9.2.0(2026-07)
    */
-  ge::graphStatus ExtractArgsData(std::vector<uint8_t> &args_data, std::vector<ge::ArgDesc> &arg_descs) const;
+  GE_CONTEXT_API_IMPORT ge::graphStatus ExtractArgsData(std::vector<uint8_t> &args_data,
+                                                        std::vector<ge::ArgDesc> &arg_descs) const;
 
  private:
   friend class AnnotatedArgsContext;
@@ -232,14 +241,14 @@ class AnnotatedArgsContext : public ExtendedKernelContext {
    * @return WorkspaceAddr 描述符，包含序号和逻辑 Workspace 偏移；失败时 addr 为空
    * @since 9.2.0(2026-07)
    */
-  WorkspaceAddr MallocWorkSpace(size_t size);
+  GE_CONTEXT_API_IMPORT WorkspaceAddr MallocWorkSpace(size_t size);
 
   /**
    * 获取当前上下文所属的逻辑 stream ID。
    * @return 上下文所属的逻辑 stream ID；异常时返回 UINT32_MAX。
    * @since 9.2.0(2026-07)
    */
-  uint32_t GetStreamId() const;
+  GE_CONTEXT_API_IMPORT uint32_t GetStreamId() const;
 
   /**
    * 添加一个 kernel launch 任务。
@@ -249,7 +258,8 @@ class AnnotatedArgsContext : public ExtendedKernelContext {
    * @return GRAPH_SUCCESS 表示添加成功，否则返回错误码
    * @since 9.2.0(2026-07)
    */
-  ge::graphStatus AddLaunch(const AnnotatedKernelLaunchInfo &launch_info, AnnotatedKernelArgs &&args);
+  GE_CONTEXT_API_IMPORT ge::graphStatus AddLaunch(const AnnotatedKernelLaunchInfo &launch_info,
+                                                  AnnotatedKernelArgs &&args);
 
   /**
    * 添加一个 kernel launch 任务并返回其 token，可同时指定依赖的前驱 launch token。
@@ -262,8 +272,9 @@ class AnnotatedArgsContext : public ExtendedKernelContext {
    *         失败时返回 UINT32_MAX
    * @since 9.3.0(2026-09)
    */
-  AnnotatedLaunchToken AddLaunch(const AnnotatedKernelLaunchInfo &launch_info, AnnotatedKernelArgs &&args,
-                                 const std::vector<AnnotatedLaunchToken> &predecessors);
+  GE_CONTEXT_API_IMPORT AnnotatedLaunchToken AddLaunch(const AnnotatedKernelLaunchInfo &launch_info,
+                                                       AnnotatedKernelArgs &&args,
+                                                       const std::vector<AnnotatedLaunchToken> &predecessors);
 
   /**
    * 由声明式算子在编译期调用申请一条辅流。
@@ -272,7 +283,7 @@ class AnnotatedArgsContext : public ExtendedKernelContext {
    * @return 辅流逻辑 ID；异常时返回 UINT32_MAX。
    * @since 9.3.0(2026-09)
    */
-  uint32_t RequestAttachedStream(const ge::AscendString &key);
+  GE_CONTEXT_API_IMPORT uint32_t RequestAttachedStream(const ge::AscendString &key);
 
   /**
    * 根据输入 index 获取输入 Tensor 指针。

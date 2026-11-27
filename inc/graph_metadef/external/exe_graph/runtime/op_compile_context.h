@@ -16,11 +16,13 @@
 #include "graph/tensor.h"
 #include "platform/platform_infos_def.h"
 
+#ifndef GE_CONTEXT_API_IMPORT
 #if defined(GE_API_EXPORTS)
 #define GE_CONTEXT_API_IMPORT
 #else
 #define GE_CONTEXT_API_IMPORT __attribute__((weak))
 #endif
+#endif  // ifndef GE_CONTEXT_API_IMPORT
 
 namespace gert {
 
@@ -31,21 +33,21 @@ class OpCompileContext : public ExtendedKernelContext {
    * @param index 输入 index
    * @return 输入 tensor 指针，异常时返回空指针
    */
-  const Tensor *GetInputTensor(size_t index) const;
+  GE_CONTEXT_API_IMPORT const Tensor *GetInputTensor(size_t index) const;
 
   /**
    * 基于算子 IR 原型定义，获取 `REQUIRED_INPUT` 类型的输入 tensor 指针
    * @param ir_index IR 原型定义中的 index
    * @return 输入 tensor 指针，异常时返回空指针
    */
-  const Tensor *GetRequiredInputTensor(size_t ir_index) const;
+  GE_CONTEXT_API_IMPORT const Tensor *GetRequiredInputTensor(size_t ir_index) const;
 
   /**
    * 基于算子 IR 原型定义，获取 `OPTIONAL_INPUT` 类型的输入 tensor 指针
    * @param ir_index IR 原型定义中的 index
    * @return 输入 tensor 指针，异常时返回空指针
    */
-  const Tensor *GetOptionalInputTensor(size_t ir_index) const;
+  GE_CONTEXT_API_IMPORT const Tensor *GetOptionalInputTensor(size_t ir_index) const;
 
   /**
    * 基于算子 IR 原型定义，获取 `DYNAMIC_INPUT` 类型的输入 tensor 指针
@@ -53,21 +55,21 @@ class OpCompileContext : public ExtendedKernelContext {
    * @param relative_index 该输入实例化后的相对 index
    * @return 输入 tensor 指针，异常时返回空指针
    */
-  const Tensor *GetDynamicInputTensor(size_t ir_index, size_t relative_index) const;
+  GE_CONTEXT_API_IMPORT const Tensor *GetDynamicInputTensor(size_t ir_index, size_t relative_index) const;
 
   /**
    * 根据输出 index，获取输出 tensor 指针。
    * @param index 输出 index
    * @return 输出 tensor 指针，异常时返回空指针
    */
-  const Tensor *GetOutputTensor(size_t index) const;
+  GE_CONTEXT_API_IMPORT const Tensor *GetOutputTensor(size_t index) const;
 
   /**
    * 基于算子 IR 原型定义，获取 `REQUIRED_OUTPUT` 类型的输出 tensor 指针
    * @param ir_index IR 原型定义中的 index
    * @return 输出 tensor 指针，异常时返回空指针
    */
-  const Tensor *GetRequiredOutputTensor(size_t ir_index) const;
+  GE_CONTEXT_API_IMPORT const Tensor *GetRequiredOutputTensor(size_t ir_index) const;
 
   /**
    * 基于算子 IR 原型定义，获取 `DYNAMIC_OUTPUT` 类型的输出 tensor 指针
@@ -75,7 +77,7 @@ class OpCompileContext : public ExtendedKernelContext {
    * @param relative_index 该输出实例化后的相对 index
    * @return 输出 tensor 指针，异常时返回空指针
    */
-  const Tensor *GetDynamicOutputTensor(size_t ir_index, size_t relative_index) const;
+  GE_CONTEXT_API_IMPORT const Tensor *GetDynamicOutputTensor(size_t ir_index, size_t relative_index) const;
 
   /**
    * 获取编译期图上下文中的 option 配置
@@ -91,7 +93,8 @@ class OpCompileContext : public ExtendedKernelContext {
    * @param optional_infos 输出可选信息
    * @return 状态码
    */
-  ge::graphStatus GetPlatformInfos(fe::PlatFormInfos &platform_info, fe::OptionalInfos &optional_infos) const;
+  GE_CONTEXT_API_IMPORT ge::graphStatus GetPlatformInfos(fe::PlatFormInfos &platform_info,
+                                                         fe::OptionalInfos &optional_infos) const;
 
   /**
    * 查询GE与自定义算子之间的编译期上下文参数取值。
@@ -110,6 +113,5 @@ class OpCompileContext : public ExtendedKernelContext {
 };
 
 }  // namespace gert
-#undef GE_CONTEXT_API_IMPORT
 
 #endif  // CANN_GRAPH_ENGINE_OP_COMPILE_CONTEXT_H

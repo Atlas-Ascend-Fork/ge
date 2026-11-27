@@ -14,6 +14,14 @@
 #include "exe_graph/runtime/eager_op_execution_context.h"
 #include "exe_graph/runtime/kernel_args.h"
 
+#ifndef GE_CONTEXT_API_IMPORT
+#if defined(GE_API_EXPORTS)
+#define GE_CONTEXT_API_IMPORT
+#else
+#define GE_CONTEXT_API_IMPORT __attribute__((weak))
+#endif
+#endif  // ifndef GE_CONTEXT_API_IMPORT
+
 namespace gert {
 class UpdateArgsContext : public EagerOpExecutionContext {
  public:
@@ -25,7 +33,7 @@ class UpdateArgsContext : public EagerOpExecutionContext {
    *               对应 index 0，后续依次递增）。
    * @return 只读 KernelArgs 指针，失败返回 nullptr。
    */
-  const KernelArgs *GetKernelArgs(Placement placement, size_t index) const;
+  GE_CONTEXT_API_IMPORT const KernelArgs *GetKernelArgs(Placement placement, size_t index) const;
 };
 
 static_assert(std::is_standard_layout<UpdateArgsContext>::value, "UpdateArgsContext must be standard layout");
