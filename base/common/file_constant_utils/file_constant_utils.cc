@@ -10,7 +10,10 @@
 
 #include "common/file_constant_utils/file_constant_utils.h"
 #include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <algorithm>
+#include <atomic>
 #include <iomanip>
 #include <fstream>
 #include <memory>
@@ -53,6 +56,12 @@ const std::string kAttrDtype = "dtype";
 const std::string kAttrShape = "shape";
 constexpr int32_t kIndentationLen = 4;
 constexpr int64_t kDefaultThreadNum = 8;
+// 合并权重文件的 512 字节对齐粒度（DMA 要求），写入与旧区间复用校验共用
+constexpr size_t kCombinedWeightAlign = 512UL;
+// 同目录 staging 文件前缀：仅本流程拥有，可作为失败清理依据；
+// 不得以该前缀或 tmp_weight_ 前缀推断文件是否受编译目录管理
+const std::string kStagingFilePrefix = ".tmp_fcst_publish_";
+const std::string kMetaLockFileName = "meta.lock";
 
 Status ReadJsonFile(const std::string &file_path, nlohmann::json &json_obj) {
   std::ifstream file_stream(file_path);
@@ -78,6 +87,103 @@ Status WriteJsonFile(const std::string &file_path, const nlohmann::json &json_ob
   }
   GE_CHK_BOOL_RET_STATUS(out_stream.good(), FAILED, "Failed to write json file[%s]", file_path.c_str());
   return SUCCESS;
+}
+
+// 索引文件发布：先写同目录临时文件并确认关闭，再 rename 原子替换，避免读方看到半截 json
+Status WriteJsonFileAtomic(const std::string &file_path, const nlohmann::json &json_obj) {
+  const auto pos = file_path.find_last_of('/');
+  const std::string dir = (pos == std::string::npos) ? std::string(".") : file_path.substr(0UL, pos);
+  static std::atomic<uint64_t> staging_seq{0UL};
+  const std::string staging_path =
+      dir + "/" + kStagingFilePrefix + std::to_string(mmGetPid()) + "_" + std::to_string(staging_seq.fetch_add(1UL));
+  const ScopeGuard staging_guard([&staging_path]() { (void)remove(staging_path.c_str()); });
+  GE_CHK_STATUS_RET(WriteJsonFile(staging_path, json_obj), "Failed to write staging json file[%s]",
+                    staging_path.c_str());
+  GE_CHK_BOOL_RET_STATUS(std::rename(staging_path.c_str(), file_path.c_str()) == 0, FAILED,
+                         "Failed to rename staging json[%s] to[%s]", staging_path.c_str(), file_path.c_str());
+  return SUCCESS;
+}
+
+// 带重试的 flock：信号（如 SIGCHLD/SIGALRM）会中断 flock 并返回 EINTR，须重试而非报错
+Status FlockRetry(const int32_t fd, const int operation) {
+  while (flock(fd, operation) != 0) {
+    if (errno != EINTR) {
+      GELOGE(FAILED, "flock failed, errno=%d:%s", errno, strerror(errno));
+      return FAILED;
+    }
+  }
+  return SUCCESS;
+}
+
+// 校验合并文件区间 [offset, offset + size) 与内存字节一致，分块读回，每个唯一 hash 只调用一次
+bool FileRangeEqualsData(const std::string &file_path, const size_t offset, const uint8_t *const data,
+                         const size_t size) {
+  if ((data == nullptr) && (size > 0UL)) {
+    return false;
+  }
+  std::ifstream ifs(file_path, std::ifstream::binary);
+  if (!ifs.is_open()) {
+    return false;
+  }
+  ifs.seekg(static_cast<int64_t>(offset), std::ifstream::beg);
+  if (ifs.fail()) {
+    return false;
+  }
+  size_t compared = 0UL;
+  const auto buf = MakeUnique<char[]>(static_cast<size_t>(kBlockSize));
+  while (compared < size) {
+    const size_t once = std::min<size_t>(static_cast<size_t>(kBlockSize), size - compared);
+    (void)ifs.read(buf.get(), static_cast<std::streamsize>(once));
+    const auto read_len = ifs.gcount();
+    if ((read_len <= 0) || (static_cast<size_t>(read_len) != once)) {
+      return false;
+    }
+    if (memcmp(buf.get(), data + compared, once) != 0) {
+      return false;
+    }
+    compared += once;
+  }
+  return true;
+}
+
+// 目标路径是否为已存在的常规文件；符号链接等非常规文件返回 false 并由调用方报冲突
+bool IsExistingRegularFile(const std::string &path) {
+  struct stat path_stat{};
+  if (lstat(path.c_str(), &path_stat) != 0) {
+    return false;
+  }
+  return S_ISREG(path_stat.st_mode) != 0;
+}
+
+// 合并文件追加失败时回退到原始 EOF；回退失败时明确报错，遗留尾部不被索引引用，下次候选仍须验证
+Status RollbackCombinedFileAppend(const std::string &weight_path, const size_t original_eof) {
+  if (truncate(weight_path.c_str(), static_cast<off_t>(original_eof)) != 0) {
+    GELOGE(FAILED,
+           "Rollback append of combined file[%s] to offset[%zu] failed, tail bytes are left but not "
+           "referenced by index, next append must verify and align again",
+           weight_path.c_str(), original_eof);
+    REPORT_INNER_ERR_MSG("E19999", "Rollback append of combined file[%s] failed", weight_path.c_str());
+    return FAILED;
+  }
+  GELOGI("Rollback append of combined file[%s] to offset[%zu] success", weight_path.c_str(), original_eof);
+  return SUCCESS;
+}
+
+size_t GetFileSizeOrZero(const std::string &path) {
+  struct stat path_stat{};
+  if (stat(path.c_str(), &path_stat) != 0) {
+    return 0UL;
+  }
+  return static_cast<size_t>(path_stat.st_size);
+}
+
+bool SameWeightBytes(const GeTensorPtr &lhs, const GeTensorPtr &rhs) {
+  const auto &lhs_buffer = lhs->GetData();
+  const auto &rhs_buffer = rhs->GetData();
+  const size_t lhs_size = lhs_buffer.GetSize();
+  const size_t rhs_size = rhs_buffer.GetSize();
+  return (lhs_size == rhs_size) &&
+         ((lhs_size == 0UL) || (memcmp(lhs_buffer.GetData(), rhs_buffer.GetData(), lhs_size) == 0));
 }
 
 void SortConstNodeWeightHashList(ConstNodeWeightHashList &const_to_weight_hash_list) {
@@ -535,38 +641,71 @@ ConstNodeWeightHashList FileConstantUtils::GetAllConstNodesAndWeightHash(const C
   return const_to_weight_hash_list;
 }
 
+// 模式 1（独立文件）：不读写 meta 两张表，直接从当前目录派生 weight_<hash>；
+// 批内同 hash 先校验内容一致；已有同名文件仅字节匹配时复用；新文件写同目录临时文件
+// 确认关闭后无覆盖安装，避免覆盖既有不同内容的权重
 Status FileConstantUtils::SaveWeightToFileWithReuse(const ConstNodeWeightHashList &const_to_weight_hash_list,
-                                                    const std::string &weight_dir, FileConstantMeta &meta) {
+                                                    const std::string &weight_dir,
+                                                    std::map<std::string, WeightLocation> &locations) {
   errno = 0;
   const char_t *value = nullptr;
   MM_SYS_GET_ENV(MM_ENV_MAX_COMPILE_CORE_NUMBER, value);
   const int64_t thread_num =
       ((value != nullptr) && (value[0U] != '\0')) ? std::strtol(value, nullptr, 10) : kDefaultThreadNum;
   GE_ASSERT_TRUE(errno == 0, "strtol failed, value: %s", value);
-  GELOGI("Start to save weight to file, thread num[%ld]", thread_num);
+  GELOGI("Start to save weight to separate files, thread num[%ld]", thread_num);
+  std::map<std::string, GeTensorPtr> candidates;
+  GE_CHK_STATUS_RET(CollectUniqueWeightCandidates(const_to_weight_hash_list, candidates),
+                    "Failed to collect unique weight candidates");
   ThreadPool thread_pool("ge_savweigh", static_cast<uint32_t>(thread_num), false);
   std::vector<std::future<Status>> fut_rets;
-  for (const auto &const_and_weight_hash : const_to_weight_hash_list) {
-    const auto &const_name = const_and_weight_hash.first->GetName();
-    const auto &weight_hash = const_and_weight_hash.second.second;
+  static std::atomic<uint64_t> staging_seq{0UL};
+  for (const auto &hash_and_tensor : candidates) {
+    const auto &weight_hash = hash_and_tensor.first;
+    const auto &weight = hash_and_tensor.second;
     const std::string file_name = "weight_" + weight_hash;
     std::string weight_path;
     GetValidFullPath(weight_dir, file_name, weight_path);
-    const bool weight_file_exist = (mmAccess(weight_path.c_str()) == EN_OK);
-    if ((meta.hash_to_weight_file.count(weight_hash) > 0U) && weight_file_exist) {
-      GELOGI("Reuse existing weight file: [%s]. No need to save again.", weight_path.c_str());
-      continue;
-    }
-
-    const auto &weight = const_and_weight_hash.second.first;
     const auto &data = weight->GetData().GetData();
     const auto size = weight->GetData().GetSize();
-    meta.hash_to_weight_file[weight_hash] = weight_path;
     const auto &error_manager_context = error_message::GetErrMgrContext();
-    auto fut = thread_pool.commit([const_name, weight_path, data, size, error_manager_context]() -> Status {
+    auto fut = thread_pool.commit([weight_hash, weight_path, data, size, error_manager_context]() -> Status {
       error_message::SetErrMgrContext(error_manager_context);
-      GE_ASSERT_SUCCESS(FileSaver::SaveToFile(weight_path, data, size),
-                        "Failed to save weight to file, node[%s], weight size:%zu", const_name.c_str(), size);
+      if (IsExistingRegularFile(weight_path)) {
+        // 已有同名文件仅在字节相同时复用，内容不同报错且不覆盖
+        GE_CHK_BOOL_RET_STATUS(FileRangeEqualsData(weight_path, 0UL, data, size), FAILED,
+                               "Existing weight file[%s] has different bytes with hash[%s], refuse to overwrite",
+                               weight_path.c_str(), weight_hash.c_str());
+        GELOGI("Reuse existing weight file: [%s] with identical bytes.", weight_path.c_str());
+        return SUCCESS;
+      }
+      if (mmAccess(weight_path.c_str()) == EN_OK) {
+        GELOGE(FAILED, "Target weight path[%s] already exists but is not a regular file", weight_path.c_str());
+        REPORT_INNER_ERR_MSG("E19999", "Target weight path[%s] is not a regular file", weight_path.c_str());
+        return FAILED;
+      }
+      const auto pos = weight_path.find_last_of('/');
+      const std::string dir = (pos == std::string::npos) ? std::string(".") : weight_path.substr(0UL, pos);
+      const std::string staging_path = dir + "/" + kStagingFilePrefix + std::to_string(mmGetPid()) + "_" +
+                                       std::to_string(staging_seq.fetch_add(1UL));
+      const ScopeGuard staging_guard([&staging_path]() { (void)remove(staging_path.c_str()); });
+      std::ofstream ofs(staging_path, std::ios::binary | std::ios::trunc);
+      GE_CHK_BOOL_RET_STATUS(ofs.is_open(), FAILED, "Failed to create staging weight file[%s]", staging_path.c_str());
+      (void)ofs.write(reinterpret_cast<const char *>(data), static_cast<std::streamsize>(size));
+      GE_CHK_BOOL_RET_STATUS(ofs.good(), FAILED, "Failed to write staging weight file[%s]", staging_path.c_str());
+      ofs.flush();
+      ofs.close();
+      GE_CHK_BOOL_RET_STATUS(!ofs.fail() && !ofs.bad(), FAILED, "Failed to close staging weight file[%s]",
+                             staging_path.c_str());
+      // 同目录临时文件无覆盖安装；并发同名时回到字节比较，仅字节相同才复用
+      if (link(staging_path.c_str(), weight_path.c_str()) != 0) {
+        GE_CHK_BOOL_RET_STATUS(errno == EEXIST, FAILED, "Failed to install weight file[%s] from staging[%s]",
+                               weight_path.c_str(), staging_path.c_str());
+        GE_CHK_BOOL_RET_STATUS(FileRangeEqualsData(weight_path, 0UL, data, size), FAILED,
+                               "Concurrent weight file[%s] has different bytes with hash[%s], refuse to overwrite",
+                               weight_path.c_str(), weight_hash.c_str());
+        GELOGI("Concurrent published weight file[%s] has identical bytes, reuse it.", weight_path.c_str());
+      }
       return SUCCESS;
     });
     (void)fut_rets.emplace_back(std::move(fut));
@@ -574,32 +713,39 @@ Status FileConstantUtils::SaveWeightToFileWithReuse(const ConstNodeWeightHashLis
   for (auto &fut : fut_rets) {
     GE_CHK_STATUS_RET(fut.get(), "Failed to save weight to file");
   }
+  for (const auto &hash_and_tensor : candidates) {
+    std::string weight_path;
+    GetValidFullPath(weight_dir, "weight_" + hash_and_tensor.first, weight_path);
+    locations[hash_and_tensor.first] = WeightLocation{weight_path, 0UL};
+  }
   return SUCCESS;
 }
 
-// 使用流式写入避免全部权重加载到内存，支持大模型场景
-Status FileConstantUtils::SaveWeightToOneFileWithReuse(const ConstNodeWeightHashList &const_to_weight_hash_list,
-                                                       const std::string &weight_dir, FileConstantMeta &meta) {
-  // 预检查：计算需要写入的新权重数量
-  size_t new_weights_count = 0;
-  ComputeGraphPtr root_graph = nullptr;
+Status FileConstantUtils::CollectUniqueWeightCandidates(const ConstNodeWeightHashList &const_to_weight_hash_list,
+                                                        std::map<std::string, GeTensorPtr> &candidates) {
   for (const auto &const_and_weight_hash : const_to_weight_hash_list) {
     const auto &weight_hash = const_and_weight_hash.second.second;
-    if (root_graph == nullptr && const_and_weight_hash.first != nullptr) {
+    const auto &weight = const_and_weight_hash.second.first;
+    GE_CHECK_NOTNULL(weight);
+    const auto iter = candidates.find(weight_hash);
+    if (iter != candidates.end()) {
+      // 相同 hash 的不同 tensor 先比长度和内容，不以 hash 字符串相等证明内容相同
+      GE_CHK_BOOL_RET_STATUS(SameWeightBytes(iter->second, weight), FAILED,
+                             "Same hash[%s] maps to different weight bytes in one batch", weight_hash.c_str());
+      continue;
+    }
+    (void)candidates.emplace(weight_hash, weight);
+  }
+  return SUCCESS;
+}
+
+static std::string GetCombinedWeightFileName(const ConstNodeWeightHashList &const_to_weight_hash_list) {
+  ComputeGraphPtr root_graph = nullptr;
+  for (const auto &const_and_weight_hash : const_to_weight_hash_list) {
+    if ((root_graph == nullptr) && (const_and_weight_hash.first != nullptr)) {
       root_graph = NodeUtils::FindRootGraph(*const_and_weight_hash.first);
     }
-    if (meta.hash_to_weight_file.find(weight_hash) == meta.hash_to_weight_file.end()) {
-      ++new_weights_count;
-    }
   }
-
-  if (new_weights_count == 0) {
-    GELOGI("All %zu weights already exist in meta, skip writing", const_to_weight_hash_list.size());
-    return SUCCESS;
-  }
-
-  GELOGI("Converting %zu const nodes to file constants (all-in-one mode), %zu are new weights",
-         const_to_weight_hash_list.size(), new_weights_count);
 
   std::string model_file_name_prefix;
   std::string graph_name;
@@ -613,59 +759,145 @@ Status FileConstantUtils::SaveWeightToOneFileWithReuse(const ConstNodeWeightHash
   if (pos != std::string::npos) {
     om_name = om_name.substr(0, pos);
   }
-  const std::string weight_file_name =
-      om_name.empty() ? (graph_name.empty() ? "weight_combined" : (graph_name + "_weight_combined"))
-                      : (om_name + "_weight_combined");
-  std::string weight_path;
-  GetValidFullPath(weight_dir, weight_file_name, weight_path);
+  return om_name.empty() ? (graph_name.empty() ? "weight_combined" : (graph_name + "_weight_combined"))
+                         : (om_name + "_weight_combined");
+}
 
-  std::ofstream ofs(weight_path, std::ios::binary | std::ios::app | std::ios::out);
-  if (!ofs.is_open()) {
-    GELOGE(FAILED, "Failed to open weight file for writing: %s", weight_path.c_str());
-    return FAILED;
+Status FileConstantUtils::ResolveCombinedWeightReuse(const std::string &weight_path,
+                                                     const std::map<std::string, GeTensorPtr> &candidates,
+                                                     const FileConstantMeta &meta,
+                                                     std::map<std::string, WeightLocation> &locations,
+                                                     std::map<std::string, GeTensorPtr> &to_append) {
+  const size_t file_size = GetFileSizeOrZero(weight_path);
+  const bool combined_file_exist = (file_size > 0UL);
+  std::string real_combined_path;
+  if (combined_file_exist) {
+    real_combined_path = RealPath(weight_path.c_str());
+    GE_CHK_BOOL_RET_STATUS(!real_combined_path.empty(), FAILED, "Failed to get real path of %s", weight_path.c_str());
   }
 
-  (void)ofs.seekp(0, std::ios::end);
-  size_t offset = static_cast<size_t>(ofs.tellp());
-
-  size_t new_weights_written = 0;
-  size_t reused_weights_count = 0;
-  GE_CHK_STATUS_RET(SaveWeightsAndMetadata(const_to_weight_hash_list, meta, ofs, weight_path, offset,
-                                           new_weights_written, reused_weights_count));
-  ofs.close();
-  GELOGI("Successfully saved %zu new weights to single file (reused: %zu), total file offset: %zu bytes",
-         new_weights_written, reused_weights_count, offset);
+  // 逐 hash 决定复用或追加，每个唯一 hash 的旧区间字节最多验证一次
+  for (const auto &hash_and_tensor : candidates) {
+    const auto &weight_hash = hash_and_tensor.first;
+    const auto &weight = hash_and_tensor.second;
+    const auto size = weight->GetData().GetSize();
+    bool reused = false;
+    const auto offset_iter = meta.hash_to_weight_offset.find(weight_hash);
+    const auto file_iter = meta.hash_to_weight_file.find(weight_hash);
+    if (combined_file_exist && (offset_iter != meta.hash_to_weight_offset.end()) &&
+        (file_iter != meta.hash_to_weight_file.end())) {
+      const size_t old_offset = offset_iter->second;
+      const std::string &old_path = file_iter->second;
+      const std::string real_old_path = RealPath(old_path.c_str());
+      const bool offset_ok = ((old_offset % kCombinedWeightAlign) == 0UL) &&
+                             (old_offset <= (std::numeric_limits<size_t>::max() - size)) &&
+                             ((old_offset + size) <= file_size);
+      if (!real_old_path.empty() && (real_old_path == real_combined_path) && offset_ok &&
+          FileRangeEqualsData(weight_path, old_offset, weight->GetData().data(), size)) {
+        locations[weight_hash] = WeightLocation{weight_path, old_offset};
+        reused = true;
+        GELOGI("Reuse combined weight hash[%s] at verified offset[%zu]", weight_hash.c_str(), old_offset);
+      } else if (!real_old_path.empty() && (real_old_path == real_combined_path) && offset_ok) {
+        GELOGW("Recorded interval of hash[%s] in combined file[%s] does not match tensor bytes, append again",
+               weight_hash.c_str(), weight_path.c_str());
+      }
+    }
+    if (!reused) {
+      (void)to_append.emplace(weight_hash, weight);
+    }
+  }
 
   return SUCCESS;
 }
 
-Status FileConstantUtils::SaveWeightsAndMetadata(const ConstNodeWeightHashList &const_to_weight_hash_list,
-                                                 FileConstantMeta &meta, std::ofstream &ofs,
-                                                 const std::string &weight_path, size_t &offset,
-                                                 size_t &new_weights_written, size_t &reused_weights_count) {
-  new_weights_written = 0UL;
-  reused_weights_count = 0UL;
-  for (const auto &const_and_weight_hash : const_to_weight_hash_list) {
-    const auto &weight = const_and_weight_hash.second.first;
-    const auto &weight_hash = const_and_weight_hash.second.second;
-
-    if (meta.hash_to_weight_file.find(weight_hash) != meta.hash_to_weight_file.end()) {
-      ++reused_weights_count;
-      continue;
+Status FileConstantUtils::AlignCombinedWeightEof(std::ofstream &ofs, const OneFileAppendContext &append_ctx,
+                                                 size_t &offset) {
+  offset = MemSizeAlign(append_ctx.original_eof, static_cast<uint32_t>(kCombinedWeightAlign));
+  if (offset > append_ctx.original_eof) {
+    static const std::string kAlignZeros(kCombinedWeightAlign, '\0');
+    const size_t gap = offset - append_ctx.original_eof;
+    (void)ofs.write(kAlignZeros.data(), static_cast<std::streamsize>(gap));
+    if (!ofs.good()) {
+      (void)ofs.close();
+      const Status rollback_ret = RollbackCombinedFileAppend(append_ctx.weight_path, append_ctx.original_eof);
+      GE_CHK_BOOL_RET_STATUS(rollback_ret == SUCCESS, FAILED, "Append failed and rollback also failed");
+      GELOGE(FAILED, "Failed to align combined file[%s] to offset[%zu]", append_ctx.weight_path.c_str(), offset);
+      return FAILED;
     }
-
-    const uint8_t *weight_data_ptr = weight->GetData().data();
-    const size_t size = weight->GetData().size();
-
-    // 记录元数据
-    meta.hash_to_weight_file[weight_hash] = weight_path;
-    meta.hash_to_weight_offset[weight_hash] = offset;
-
-    // 写入权重数据和填充
-    GE_CHK_STATUS_RET(WriteWeightWithPadding(ofs, weight_data_ptr, size, offset));
-
-    ++new_weights_written;
   }
+  return SUCCESS;
+}
+
+Status FileConstantUtils::AppendCombinedWeights(const std::map<std::string, GeTensorPtr> &to_append,
+                                                std::map<std::string, WeightLocation> &locations,
+                                                OneFileAppendContext &append_ctx) {
+  const auto &weight_path = append_ctx.weight_path;
+  std::ofstream ofs(weight_path, std::ios::binary | std::ios::app | std::ios::out);
+  GE_CHK_BOOL_RET_STATUS(ofs.is_open(), FAILED, "Failed to open weight file for writing: %s", weight_path.c_str());
+  (void)ofs.seekp(0, std::ios::end);
+  const std::streamoff current_eof = ofs.tellp();
+  GE_CHK_BOOL_RET_STATUS(!ofs.fail() && (current_eof >= 0), FAILED, "Failed to get current eof of weight file: %s",
+                         weight_path.c_str());
+  append_ctx.original_eof = static_cast<size_t>(current_eof);
+  size_t offset = 0UL;
+  GE_CHK_STATUS_RET_NOLOG(AlignCombinedWeightEof(ofs, append_ctx, offset));
+  for (const auto &hash_and_tensor : to_append) {
+    const auto &weight_hash = hash_and_tensor.first;
+    const auto &data = hash_and_tensor.second->GetData();
+    const size_t start_offset = offset;
+    if (WriteWeightWithPadding(ofs, data.data(), data.size(), offset) != SUCCESS) {
+      (void)ofs.close();
+      const Status rollback_ret = RollbackCombinedFileAppend(weight_path, append_ctx.original_eof);
+      GE_CHK_BOOL_RET_STATUS(rollback_ret == SUCCESS, FAILED, "Append failed and rollback also failed");
+      GELOGE(FAILED, "Failed to write weight[%s] to combined file[%s]", weight_hash.c_str(), weight_path.c_str());
+      return FAILED;
+    }
+    locations[weight_hash] = WeightLocation{weight_path, start_offset};
+  }
+  ofs.flush();
+  if (!ofs.good()) {
+    (void)ofs.close();
+    const Status rollback_ret = RollbackCombinedFileAppend(weight_path, append_ctx.original_eof);
+    GE_CHK_BOOL_RET_STATUS(rollback_ret == SUCCESS, FAILED, "Flush failed and rollback also failed");
+    return FAILED;
+  }
+  ofs.close();
+  GE_CHK_BOOL_RET_STATUS(!ofs.fail() && !ofs.bad(), FAILED, "Failed to close combined weight file[%s]",
+                         weight_path.c_str());
+  append_ctx.appended = true;
+  return SUCCESS;
+}
+
+Status FileConstantUtils::SaveWeightToOneFileWithReuse(const ConstNodeWeightHashList &const_to_weight_hash_list,
+                                                       const std::string &weight_dir, FileConstantMeta &meta,
+                                                       std::map<std::string, WeightLocation> &locations,
+                                                       OneFileAppendContext &append_ctx) {
+  append_ctx = {};
+  const auto weight_file_name = GetCombinedWeightFileName(const_to_weight_hash_list);
+  GE_CHK_BOOL_RET_STATUS(weight_file_name.find('/') == std::string::npos, FAILED,
+                         "Combined weight file name[%s] must not contain path separator", weight_file_name.c_str());
+  auto &weight_path = append_ctx.weight_path;
+  GetValidFullPath(weight_dir, weight_file_name, weight_path);
+
+  std::map<std::string, GeTensorPtr> candidates;
+  GE_CHK_STATUS_RET(CollectUniqueWeightCandidates(const_to_weight_hash_list, candidates),
+                    "Failed to collect unique weight candidates");
+  std::map<std::string, GeTensorPtr> to_append;
+  GE_CHK_STATUS_RET_NOLOG(ResolveCombinedWeightReuse(weight_path, candidates, meta, locations, to_append));
+  const size_t reused_count = candidates.size() - to_append.size();
+  GELOGI("Converting %zu const nodes (%zu unique hashes) to file constants (all-in-one mode), reused: %zu, new: %zu",
+         const_to_weight_hash_list.size(), candidates.size(), reused_count, to_append.size());
+  if (!to_append.empty()) {
+    GE_CHK_STATUS_RET_NOLOG(AppendCombinedWeights(to_append, locations, append_ctx));
+  }
+
+  // 复用区间的 hash 同步刷新提示表，保持最近一次合并位置语义
+  for (const auto &hash_and_location : locations) {
+    meta.hash_to_weight_file[hash_and_location.first] = weight_path;
+    meta.hash_to_weight_offset[hash_and_location.first] = hash_and_location.second.offset;
+  }
+  GELOGI("Saved %zu new weights to single file (reused: %zu), file size: %zu bytes", to_append.size(), reused_count,
+         GetFileSizeOrZero(weight_path));
   return SUCCESS;
 }
 
@@ -679,17 +911,16 @@ Status FileConstantUtils::WriteWeightWithPadding(std::ofstream &ofs, const uint8
   }
 
   // 写入填充数据以对齐512字节边界
-  constexpr uint aligns = 512;
-  const size_t padding = MemSizeAlign(size, aligns) - size;
+  const size_t padding = MemSizeAlign(size, static_cast<uint32_t>(kCombinedWeightAlign)) - size;
   if (padding > 0) {
-    static constexpr std::array<char, 512> zeros = {'\0'};  // 预分配512字节的零值缓冲区
-    const size_t padding_blocks = padding / aligns;
-    const size_t padding_remainder = padding % aligns;
+    static constexpr std::array<char, kCombinedWeightAlign> zeros = {};  // 预分配对齐粒度的零值缓冲区
+    const size_t padding_blocks = padding / kCombinedWeightAlign;
+    const size_t padding_remainder = padding % kCombinedWeightAlign;
 
     // 批量写入512字节块
     size_t i = 0;
     while (i < padding_blocks) {
-      (void)ofs.write(zeros.data(), static_cast<std::streamsize>(aligns));
+      (void)ofs.write(zeros.data(), static_cast<std::streamsize>(kCombinedWeightAlign));
       ++i;
     }
     // 写入剩余字节
@@ -712,37 +943,57 @@ Status FileConstantUtils::WriteWeightWithPadding(std::ofstream &ofs, const uint8
   return SUCCESS;
 }
 
+// 位置表是写入 FileConstant 属性的唯一来源：先落盘并校验所有位置，全部成功后才应用节点转换，
+// 避免磁盘失败后图中权重被清空；hash 无位置时报错而非抛异常
 Status FileConstantUtils::ConvertToFileConstants(const ConstNodeWeightHashList &const_to_weight_hash_list,
                                                  const std::string &weight_dir, FileConstantMeta &meta,
-                                                 const bool all_in_one) {
+                                                 const bool all_in_one, OneFileAppendContext &append_ctx) {
+  std::map<std::string, WeightLocation> locations;
   if (all_in_one) {
-    GE_CHK_STATUS_RET(SaveWeightToOneFileWithReuse(const_to_weight_hash_list, weight_dir, meta),
+    GE_CHK_STATUS_RET(SaveWeightToOneFileWithReuse(const_to_weight_hash_list, weight_dir, meta, locations, append_ctx),
                       "Failed to save weight to one file");
   } else {
-    GE_CHK_STATUS_RET(SaveWeightToFileWithReuse(const_to_weight_hash_list, weight_dir, meta),
+    GE_CHK_STATUS_RET(SaveWeightToFileWithReuse(const_to_weight_hash_list, weight_dir, locations),
                       "Failed to save weight to file");
   }
+  // 在任何 ClearData 前准备并校验全部节点转换参数（包括记录全部长度）
+  struct NodeConversion {
+    NodePtr node;
+    const WeightLocation *location;
+    int64_t length;
+  };
+  std::vector<NodeConversion> conversions;
+  conversions.reserve(const_to_weight_hash_list.size());
   for (const auto &const_and_weight_hash : const_to_weight_hash_list) {
     const auto &const_node = const_and_weight_hash.first;
-    auto const_op = const_node->GetOpDesc();
     const auto &weight = const_and_weight_hash.second.first;
-    const auto weight_length = weight->GetData().GetSize();
     const auto &weight_hash = const_and_weight_hash.second.second;
+    const auto location_iter = locations.find(weight_hash);
+    GE_CHK_BOOL_RET_STATUS(location_iter != locations.end(), FAILED,
+                           "No resolved location for weight hash[%s], node[%s]", weight_hash.c_str(),
+                           (const_node == nullptr) ? "" : const_node->GetName().c_str());
+    (void)conversions.emplace_back(
+        NodeConversion{const_node, &location_iter->second, static_cast<int64_t>(weight->GetData().GetSize())});
+  }
+  // 落盘已成功，应用节点属性与类型，再清除内嵌权重
+  for (size_t i = 0UL; i < conversions.size(); ++i) {
+    const auto &conversion = conversions[i];
+    const auto &weight_hash = const_to_weight_hash_list[i].second.second;
+    const auto &const_node = conversion.node;
+    auto const_op = const_node->GetOpDesc();
     const std::string new_name = const_node->GetName() + "_" + weight_hash;
     const_op->SetName(new_name);
-    weight->ClearData();
+    const_to_weight_hash_list[i].second.first->ClearData();
     OpDescUtilsEx::SetType(const_op, FILECONSTANT);
     (void)const_op->DelAttr(ATTR_NAME_WEIGHTS);
+    SetFileConstantPath(const_op, conversion.location->path, static_cast<int64_t>(conversion.location->offset),
+                        conversion.length);
     const auto &output_desc = const_op->GetOutputDesc(0U);
-    const auto &weight_path = meta.hash_to_weight_file.at(weight_hash);
-    const int64_t offset =
-        all_in_one ? static_cast<int64_t>(meta.hash_to_weight_offset.at(weight_hash)) : kDefaultOffset;
-    SetFileConstantPath(const_op, weight_path, offset, static_cast<int64_t>(weight_length));
     (void)AttrUtils::SetDataType(const_op, kAttrDtype, output_desc.GetDataType());
     (void)AttrUtils::SetListInt(const_op, kAttrShape, output_desc.GetShape().GetDims());
     (void)AttrUtils::SetListInt(const_op, "original_shape", output_desc.GetOriginShape().GetDims());
-    GELOGI("Convert node:%s from const to file constant success, save path[%s], offset[%d]",
-           const_node->GetName().c_str(), weight_path.c_str(), offset);
+    GELOGI("Convert node:%s from const to file constant success, save path[%s], offset[%zu]", new_name.c_str(),
+           conversion.location->path.c_str(), conversion.location->offset);
   }
   return SUCCESS;
 }
@@ -755,12 +1006,16 @@ Status FileConstantUtils::ConvertConstToFileConst(const ComputeGraphPtr &compute
   }
   const auto &external_weight_manager = ExternalWeightManagerPool::Instance().GetManager(GetContext().SessionId());
   GE_CHECK_NOTNULL(external_weight_manager);
-  const std::string &file_const_dir = external_weight_manager->GetWeightPath();
+  // 在 mutex 内按值取得路径快照，后续目录规范化、索引与临时文件都从该快照推导
+  const std::string file_const_dir = external_weight_manager->GetWeightPath();
   GE_CHK_BOOL_RET_STATUS(!file_const_dir.empty(), FAILED, "file constant dir is empty.");
   GE_CHK_STATUS_RET(external_weight_manager->CreateWeightPath(), "Failed to create directory:%s.",
                     file_const_dir.c_str());
   std::string meta_path;
   GetValidFullPath(file_const_dir, kMetaFileName, meta_path);
+  // 锁定独立的稳定锁文件而非 meta.json inode：meta.json 发布时会被原子替换，锁在其 inode 上无法约束后来者
+  std::string lock_path;
+  GetValidFullPath(file_const_dir, kMetaLockFileName, lock_path);
   int32_t fd = -1;
   bool is_file_locked = false;
   const ScopeGuard fd_guard([&fd, &is_file_locked]() {
@@ -772,25 +1027,39 @@ Status FileConstantUtils::ConvertConstToFileConst(const ComputeGraphPtr &compute
       fd = -1;
     }
   });
-  const bool meta_file_exist = (mmAccess(meta_path.c_str()) == EN_OK);
   constexpr int32_t flags = M_RDWR | M_CREAT;
   constexpr MODE mode = static_cast<MODE>(M_UMASK_USRREAD | M_UMASK_USRWRITE);
-  fd = mmOpen2(meta_path.c_str(), flags, mode);
-  GE_CHK_BOOL_RET_STATUS(fd != -1, FAILED, "open file[%s] failed, error=%d, error msg=%s.", meta_path.c_str(),
+  fd = mmOpen2(lock_path.c_str(), flags, mode);
+  GE_CHK_BOOL_RET_STATUS(fd >= 0, FAILED, "open lock file[%s] failed, error=%d, error msg=%s.", lock_path.c_str(),
                          mmGetErrorCode(), GetErrorNumStr(mmGetErrorCode()).c_str());
-  const int32_t file_lock_ret = flock(fd, LOCK_EX);
-  GE_CHK_BOOL_RET_STATUS(file_lock_ret == 0, FAILED, "lock file[%s] failed, ret=%d", meta_path.c_str(), file_lock_ret);
+  GE_CHK_STATUS_RET(FlockRetry(fd, LOCK_EX), "lock file[%s] failed", lock_path.c_str());
   is_file_locked = true;
-  auto &meta = external_weight_manager->MutableMetaFile();
-  if (meta_file_exist) {
+  // 使用局部 meta 副本，失败时不污染 Session 内共享状态；磁盘提交成功后才写回
+  FileConstantMeta meta;
+  if (mmAccess(meta_path.c_str()) == EN_OK) {
     nlohmann::json meta_json;
     GE_CHK_STATUS_RET(ReadJsonFile(meta_path, meta_json), "read meta json failed.");
     meta = meta_json.get<FileConstantMeta>();
+  } else {
+    meta = external_weight_manager->MutableMetaFile();
   }
 
-  GE_CHK_STATUS_RET_NOLOG(ConvertToFileConstants(const_to_weight_hash_list, file_const_dir, meta, all_in_one));
+  OneFileAppendContext append_ctx;
+  GE_CHK_STATUS_RET_NOLOG(
+      ConvertToFileConstants(const_to_weight_hash_list, file_const_dir, meta, all_in_one, append_ctx));
+  // 索引经同目录临时文件写入、关闭后原子替换；发布失败时回退本批追加的合并文件尾部
   const nlohmann::json out_json(meta);
-  GE_CHK_STATUS_RET(WriteJsonFile(meta_path, out_json), "save file constant meta failed.");
+  if (WriteJsonFileAtomic(meta_path, out_json) != SUCCESS) {
+    GELOGE(FAILED, "save file constant meta failed.");
+    if (append_ctx.appended) {
+      GE_CHK_BOOL_RET_STATUS(RollbackCombinedFileAppend(append_ctx.weight_path, append_ctx.original_eof) == SUCCESS,
+                             FAILED,
+                             "Publish meta json failed and rollback combined file also failed, tail bytes "
+                             "are left but not referenced by index");
+    }
+    return FAILED;
+  }
+  external_weight_manager->MutableMetaFile() = meta;
   return SUCCESS;
 }
 
@@ -807,7 +1076,7 @@ Status FileConstantUtils::ConvertConstToFileConst(const NodePtr &node) {
   const auto size = tensor->GetData().GetSize();
   const auto &external_weight_manager = ExternalWeightManagerPool::Instance().GetManager(GetContext().SessionId());
   GE_CHECK_NOTNULL(external_weight_manager);
-  const std::string &weight_dir = external_weight_manager->GetWeightPath();
+  const std::string weight_dir = external_weight_manager->GetWeightPath();
   GE_CHK_STATUS_RET(external_weight_manager->CreateWeightPath(), "Failed to create directory:%s.", weight_dir.c_str());
   std::string weight_path;
   GetValidFullPath(weight_dir, GetRegulatedName(node->GetName()), weight_path);
@@ -902,6 +1171,12 @@ Status FileConstantUtils::ChangeFilePathAttr(const ComputeGraphPtr &compute_grap
     }
   }
   return SUCCESS;
+}
+
+Status FileConstantUtils::CollectFilePathChange(const ComputeGraphPtr &compute_graph, const std::string &om_path,
+                                                std::map<std::string, std::string> &old_file_to_new_file) {
+  GE_ASSERT_NOTNULL(compute_graph);
+  return ChangeFilePathAttr(compute_graph, om_path, old_file_to_new_file);
 }
 
 Status FileConstantUtils::MoveExternalWeightFiles(const std::map<std::string, std::string> &old_file_to_new_file) {

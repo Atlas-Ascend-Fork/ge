@@ -19,6 +19,7 @@
 #include <vector>
 #include "graph/utils/graph_utils_ex.h"
 #include "common/helper/file_saver.h"
+#include "common/file_constant_utils/file_constant_utils.h"
 #include "common/model/ge_model.h"
 #include "common/model/ge_root_model.h"
 #include "graph_metadef/common/plugin/plugin_manager.h"
@@ -1762,6 +1763,7 @@ graphStatus aclgrphBundleSaveModelImpl(const std::string &output_file, const Mod
   size_t sub_model_num = model_header->model_num;
 
   std::vector<ModelBufferData> repacked_buffers;
+  std::map<std::string, std::string> weight_relocations;
   std::map<std::string, std::pair<int64_t, GeTensorDesc>> var_name_to_verify_info;
   std::string output_file_name = output_file + ".om";
   GE_ASSERT_TRUE(model.length >= (sizeof(ModelFileHeader) + sizeof(ModelPartitionTable)),
@@ -1810,7 +1812,10 @@ graphStatus aclgrphBundleSaveModelImpl(const std::string &output_file, const Mod
       model_helper.GetGeRootModel()->GetRootGraph();
       GELOGD("Load root model successfully.");
       ModelBufferData cur_buf;
-      GE_ASSERT_SUCCESS(model_helper.PackSoToModelData(sub_model_data, output_file + ".om", cur_buf, false));
+      std::map<std::string, std::string> sub_model_relocations;
+      GE_ASSERT_SUCCESS(
+          model_helper.PackSoToModelDataForBundle(sub_model_data, output_file + ".om", cur_buf, sub_model_relocations));
+      weight_relocations.insert(sub_model_relocations.begin(), sub_model_relocations.end());
       repacked_buffers.emplace_back(cur_buf);
       if (model_helper.IsSoStore()) {
         output_file_name = ModelHelper::GetOutputFileName();
@@ -1822,6 +1827,9 @@ graphStatus aclgrphBundleSaveModelImpl(const std::string &output_file, const Mod
                  sub_model_num);
   GE_ASSERT_TRUE(repacked_buffers.size() == sub_model_num, "repacked num %zu should be equal to %zu",
                  repacked_buffers.size(), sub_model_num);
+
+  // Keep shared source files available until every submodel has been repacked.
+  GE_ASSERT_SUCCESS(FileConstantUtils::MoveExternalWeightFiles(weight_relocations));
 
   // bundle save
   ModelFileHeader *bundle_header = const_cast<ModelFileHeader *>(model_header);

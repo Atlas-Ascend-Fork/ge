@@ -2122,16 +2122,35 @@ void ModelHelper::SetRepackSoFlag(const bool val) {
 
 Status ModelHelper::PackSoToModelData(const ModelData &model_data, const std::string &output_file,
                                       ModelBufferData &model_buffer, const bool save_to_file) {
+  return PackSoToModelDataImpl(model_data, output_file, model_buffer, save_to_file, nullptr);
+}
+
+Status ModelHelper::PackSoToModelDataForBundle(const ModelData &model_data, const std::string &output_file,
+                                               ModelBufferData &model_buffer,
+                                               std::map<std::string, std::string> &relocations) {
+  return PackSoToModelDataImpl(model_data, output_file, model_buffer, false, &relocations);
+}
+
+Status ModelHelper::PackSoToModelDataImpl(const ModelData &model_data, const std::string &output_file,
+                                          ModelBufferData &model_buffer, const bool save_to_file,
+                                          std::map<std::string, std::string> *bundle_relocations) {
   GE_ASSERT_NOTNULL(root_model_);
   const auto &compute_graph = root_model_->GetRootGraph();
   GE_CHECK_NOTNULL(compute_graph);
-  GE_CHK_STATUS_RET(FileConstantUtils::ChangeFilePath(compute_graph, output_file),
-                    "Failed to change file path, graph name:%s", compute_graph->GetName().c_str());
+  if (bundle_relocations == nullptr) {
+    GE_CHK_STATUS_RET(FileConstantUtils::ChangeFilePath(compute_graph, output_file),
+                      "Failed to change file path, graph name:%s", compute_graph->GetName().c_str());
+  } else {
+    GE_CHK_STATUS_RET(FileConstantUtils::CollectFilePathChange(compute_graph, output_file, *bundle_relocations),
+                      "Failed to collect file path changes, graph name:%s", compute_graph->GetName().c_str());
+  }
   save_to_file_ = save_to_file;
   is_offline_ = true;
   GE_ASSERT_SUCCESS(root_model_->CheckAndSetNeedSoInOM(), "Check so in om failed, model id:%u.",
                     root_model_->GetModelId());
-  if (root_model_->GetSoInOmFlag() == 0U) {
+  // A Bundle submodel with rewritten locations must serialize the graph even if it has no SO to pack.
+  const bool location_changed = (bundle_relocations != nullptr) && !bundle_relocations->empty();
+  if ((root_model_->GetSoInOmFlag() == 0U) && !location_changed) {
     if (save_to_file) {
       const Status ret =
           FileSaver::SaveToFile(output_file, static_cast<void *>(model_data.model_data), model_data.model_len);
