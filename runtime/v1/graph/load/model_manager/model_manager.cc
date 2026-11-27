@@ -2318,26 +2318,33 @@ Status ModelManager::LaunchKernelBuiltinAicpuSo(const std::string &kernel_name, 
   }
 
   aclrtStream stream = nullptr;
+  const std::function<void()> stream_callback = [&stream]() -> void {
+    if (stream != nullptr) {
+      GE_CHK_RT(aclrtDestroyStream(stream));
+    }
+  };
+  GE_MAKE_GUARD(stream_release, stream_callback);
+
   void *d_aicpu_data = nullptr;
   void *d_so_name = nullptr;
-  const std::function<void()> callback = [&stream, &d_aicpu_data, &d_so_name]() -> void {
+  const std::function<void()> buf_callback = [&d_aicpu_data, &d_so_name]() -> void {
     if (d_aicpu_data != nullptr) {
       GE_CHK_RT(aclrtFree(d_aicpu_data));
     }
     if (d_so_name != nullptr) {
       GE_CHK_RT(aclrtFree(d_so_name));
     }
-    if (stream != nullptr) {
-      GE_CHK_RT(aclrtDestroyStream(stream));
-    }
   };
-  GE_MAKE_GUARD(release, callback);
 
-  std::vector<LoadSoFromBufArgs> v_builtin_so;
+  GE_CHK_RT(aclrtCreateStream(&stream));
+
   for (auto &it_so : working_builtin_aicpu_so) {
     const void *const aicpu_data = it_so.second.kernel_ptr->GetBinData();
     const size_t aicpu_data_len = it_so.second.kernel_ptr->GetBinDataSize();
     const std::string &so_name = it_so.first;
+
+    GE_MAKE_GUARD(buf_release, buf_callback);
+
     if (kernel_name == kLoadBuiltinSo) {
       GE_CHK_ACL_RET(ge::AclrtMalloc(&d_aicpu_data, aicpu_data_len, RT_MEMORY_HBM, GE_MODULE_NAME_U16));
       GE_CHK_ACL_RET(aclrtMemcpy(d_aicpu_data, aicpu_data_len, aicpu_data, aicpu_data_len, ACL_MEMCPY_HOST_TO_DEVICE));
@@ -2350,7 +2357,6 @@ Status ModelManager::LaunchKernelBuiltinAicpuSo(const std::string &kernel_name, 
     GE_ASSERT_EOK(strcpy_s(aicpu_so_buf.so_name, sizeof(aicpu_so_buf.so_name), kLibAicpuExtendKernelsSo.c_str()));
     GE_ASSERT_EOK(strcpy_s(aicpu_so_buf.kernel_name, sizeof(aicpu_so_buf.kernel_name), kernel_name.c_str()));
 
-    GE_CHK_RT(aclrtCreateStream(&stream));
     rtAicpuArgsEx_t args_info = {};
     args_info.args = static_cast<void *>(&aicpu_so_buf);
     args_info.argsSize = static_cast<uint32_t>(sizeof(LoadSoFromBufArgs));
