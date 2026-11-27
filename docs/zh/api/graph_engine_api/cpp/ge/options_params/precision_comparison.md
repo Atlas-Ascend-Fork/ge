@@ -48,13 +48,7 @@
   - 针对动态shape网络，仅“ge.exec.enable\_exception\_dump”生效。
   - 针对静态shape网络，“ge.exec.enable\_exception\_dump”与“ge.exec.enableDump/ge.exec.enableDumpDebug（二选一）”都生效。
 <!-- npu="950,A3,910b,910,310p" id6 -->
-- OM2 模型场景下启用dump功能时，需确保驱动软件包满足以下最低版本要求：
-  <!-- npu="A3,910b,910,310p" id7 -->
-  - Atlas A2系列产品/Atlas A3系列产品/Atlas推理系列产品/Atlas训练系列产品：驱动版本不低于9.2.0.2.215
-  <!-- end id7 -->
-  <!-- npu="950" id8 -->
-  - Ascend 950PR&950DT系列产品：驱动版本不低于9.2.0.200.217
-  <!-- end id8 -->
+- OM2 模型场景下启用dump功能时，需确保驱动软件包版本不低于Ascend HDK 26.3.0。
 <!-- end id6 -->
 
 ## ge.exec.enableDumpDebug
@@ -80,15 +74,9 @@
 - 若“ge.exec.enableDump/ge.exec.enableDumpDebug（二选一）”参数配置为“1”，同时“ge.exec.enable\_exception\_dump”配置为“1”（即开启普通ExceptionDump），此时：
   - 针对动态shape网络，仅“ge.exec.enable\_exception\_dump”生效。
   - 针对静态shape网络，“ge.exec.enable\_exception\_dump”与“ge.exec.enableDump/ge.exec.enableDumpDebug（二选一）”都生效。
-<!-- npu="950,A3,910b,910,310p" id9 -->
-- OM2 模型场景下启用溢出检测功能时，需确保驱动软件包满足以下最低版本要求：
-  <!-- npu="A3,910b,910,310p" id10 -->
-  - Atlas A2系列产品/Atlas A3系列产品/Atlas推理系列产品/Atlas训练系列产品：驱动版本不低于9.2.0.2.215
-  <!-- end id10 -->
-  <!-- npu="950" id11 -->
-  - Ascend 950PR&950DT系列产品：驱动版本不低于9.2.0.200.217
-  <!-- end id11 -->
-<!-- end id9 -->
+<!-- npu="950,A3,910b,910,310p" id7 -->
+- OM2 模型场景下启用溢出检测功能时，需确保驱动软件包版本不低于Ascend HDK 26.3.0。
+<!-- end id7 -->
 
 ## ge.exec.dumpData
 

@@ -203,3 +203,9 @@ auto ret = ge::aclgrphBuildModel(graph, build_options, model);
 ### 加载配置项
 
 加载配置项对OM2的支持情况见[aclmdlConfigAttr](../../../api/graph_engine_api/c/acl/aclmdlConfigAttr.md)，配置接口用法见[aclmdlSetConfigOpt](../../../api/graph_engine_api/c/acl/aclmdlSetConfigOpt.md)和[aclmdlLoadWithConfig](../../../api/graph_engine_api/c/acl/aclmdlLoadWithConfig.md)。加载时检查到配置了不支持的项，会返回`ACL_ERROR_INVALID_PARAM`。
+
+### 精度调试工具
+
+<!-- npu="950,A3,910b,910,310p" id2 -->
+OM2 模型场景下启用dump、溢出检测功能时，需确保驱动软件包版本不低于Ascend HDK 26.3.0。
+<!-- end id2 -->
