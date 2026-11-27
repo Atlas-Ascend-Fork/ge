@@ -153,6 +153,7 @@ TEST_F(FormatDtypeSelectorManagerSTest, init_format_success) {
   OpDescPtr opdesc_ptr = std::make_shared<OpDesc>("test", "KernelFormatOp1");
   OpKernelInfoPtr op_kernel_info_ptr =
       OpsKernelManager::Instance(AI_CORE_NAME).GetOpKernelInfoByOpType("tbe-builtin", opdesc_ptr->GetType());
+  ASSERT_NE(op_kernel_info_ptr, nullptr);
   EXPECT_EQ(OP_PATTERN_OP_KERNEL, op_kernel_info_ptr->GetOpPattern());
   vector<InputOrOutputInfoPtr> inputs = op_kernel_info_ptr->GetAllInputInfo();
   vector<InputOrOutputInfoPtr> outputs = op_kernel_info_ptr->GetAllOutputInfo();
@@ -164,11 +165,13 @@ TEST_F(FormatDtypeSelectorManagerSTest, init_format_success) {
   opdesc_ptr = std::make_shared<OpDesc>("test", "KernelFormatOp2");
   op_kernel_info_ptr =
       OpsKernelManager::Instance(AI_CORE_NAME).GetOpKernelInfoByOpType("tbe-builtin", opdesc_ptr->GetType());
+  ASSERT_NE(op_kernel_info_ptr, nullptr);
   EXPECT_EQ(OP_PATTERN_OP_KERNEL, op_kernel_info_ptr->GetOpPattern());
 
   opdesc_ptr = std::make_shared<OpDesc>("test", "FormatAgnosticOp");
   op_kernel_info_ptr =
       OpsKernelManager::Instance(AI_CORE_NAME).GetOpKernelInfoByOpType("tbe-builtin", opdesc_ptr->GetType());
+  ASSERT_NE(op_kernel_info_ptr, nullptr);
   EXPECT_EQ(OP_PATTERN_FORMAT_AGNOSTIC, op_kernel_info_ptr->GetOpPattern());
   inputs = op_kernel_info_ptr->GetAllInputInfo();
   outputs = op_kernel_info_ptr->GetAllOutputInfo();
@@ -177,13 +180,16 @@ TEST_F(FormatDtypeSelectorManagerSTest, init_format_success) {
   int format_size = 35;
   EXPECT_EQ(format_size - 1, inputs[0]->GetFormat().size());
   EXPECT_EQ(format_size - 1, outputs[0]->GetFormat().size());
+}
 
-  opdesc_ptr = std::make_shared<OpDesc>("test", "BroadcastOp");
-  op_kernel_info_ptr =
+TEST_F(FormatDtypeSelectorManagerSTest, init_format_success_broadcast_reduce) {
+  OpDescPtr opdesc_ptr = std::make_shared<OpDesc>("test", "BroadcastOp");
+  OpKernelInfoPtr op_kernel_info_ptr =
       OpsKernelManager::Instance(AI_CORE_NAME).GetOpKernelInfoByOpType("tbe-builtin", opdesc_ptr->GetType());
+  ASSERT_NE(op_kernel_info_ptr, nullptr);
   EXPECT_EQ(OP_PATTERN_BROADCAST, op_kernel_info_ptr->GetOpPattern());
-  inputs = op_kernel_info_ptr->GetAllInputInfo();
-  outputs = op_kernel_info_ptr->GetAllOutputInfo();
+  vector<InputOrOutputInfoPtr> inputs = op_kernel_info_ptr->GetAllInputInfo();
+  vector<InputOrOutputInfoPtr> outputs = op_kernel_info_ptr->GetAllOutputInfo();
   EXPECT_EQ(0, inputs[0]->GetFormat().size());
   EXPECT_EQ(0, outputs[0]->GetFormat().size());
   EXPECT_EQ(3, inputs[0]->GetDataType().size());
@@ -192,6 +198,7 @@ TEST_F(FormatDtypeSelectorManagerSTest, init_format_success) {
   opdesc_ptr = std::make_shared<OpDesc>("test", "ReduceOp");
   op_kernel_info_ptr =
       OpsKernelManager::Instance(AI_CORE_NAME).GetOpKernelInfoByOpType("tbe-builtin", opdesc_ptr->GetType());
+  ASSERT_NE(op_kernel_info_ptr, nullptr);
   EXPECT_EQ(OP_PATTERN_REDUCE, op_kernel_info_ptr->GetOpPattern());
   inputs = op_kernel_info_ptr->GetAllInputInfo();
   outputs = op_kernel_info_ptr->GetAllOutputInfo();
@@ -205,6 +212,7 @@ TEST_F(FormatDtypeSelectorManagerSTest, init_customize_format_success) {
   OpDescPtr op_desc_ptr = std::make_shared<OpDesc>("test", "DynamicFormatOpWithFormat");
   OpKernelInfoPtr op_kernel_info_ptr =
       OpsKernelManager::Instance(AI_CORE_NAME).GetOpKernelInfoByOpType("tbe-builtin", op_desc_ptr->GetType());
+  ASSERT_NE(op_kernel_info_ptr, nullptr);
   EXPECT_EQ(OP_PATTERN_OP_CUSTOMIZE, op_kernel_info_ptr->GetOpPattern());
   vector<InputOrOutputInfoPtr> inputs = op_kernel_info_ptr->GetAllInputInfo();
   vector<InputOrOutputInfoPtr> outputs = op_kernel_info_ptr->GetAllOutputInfo();
@@ -216,6 +224,7 @@ TEST_F(FormatDtypeSelectorManagerSTest, init_customize_format_success) {
   op_desc_ptr = std::make_shared<OpDesc>("test", "DynamicFormatOpWithoutFormat");
   op_kernel_info_ptr =
       OpsKernelManager::Instance(AI_CORE_NAME).GetOpKernelInfoByOpType("tbe-builtin", op_desc_ptr->GetType());
+  ASSERT_NE(op_kernel_info_ptr, nullptr);
   EXPECT_EQ(OP_PATTERN_OP_CUSTOMIZE, op_kernel_info_ptr->GetOpPattern());
   inputs = op_kernel_info_ptr->GetAllInputInfo();
   outputs = op_kernel_info_ptr->GetAllOutputInfo();

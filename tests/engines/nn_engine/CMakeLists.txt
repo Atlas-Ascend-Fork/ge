@@ -71,6 +71,7 @@ set(FE_SRC_CC_LIST
         ${FE_ROOT_PATH}/utils/common/fe_gentask_utils.cc
         ${FE_ROOT_PATH}/utils/common/platform_utils.cc
         ${FE_ROOT_PATH}/utils/common/configuration.cc
+        ${FE_ROOT_PATH}/utils/common/ops_deliverable_config_manager.cc
         ${FE_ROOT_PATH}/utils/common/fe_context_utils.cc
         ${FE_ROOT_PATH}/utils/common/fe_fp16_t.cc
         ${FE_ROOT_PATH}/utils/common/fe_type_utils.cc

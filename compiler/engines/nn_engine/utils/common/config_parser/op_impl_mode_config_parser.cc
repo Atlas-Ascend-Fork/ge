@@ -19,6 +19,7 @@
 #include "common/fe_type_utils.h"
 #include "common/platform_utils.h"
 #include "common/fe_report_error.h"
+#include "common/ops_deliverable_config_manager.h"
 #include "ge/ge_api_types.h"
 #include "graph/ge_context.h"
 
@@ -63,6 +64,20 @@ const std::set<std::string> kAllowHF32ValidValues = {kAllowHF32ModeValue_EnableH
 // 历史默认 allow_hf32=10: matmul(bit0):false=FP32, conv(bit1):true=HF32
 const std::string kAllowHF32DefaultForTrue = kAllowHF32ModeValue_EnableHF32;
 const std::string kAllowHF32DefaultForFalse = kAllowHF32ModeValue_EnableFP32;
+
+// 目录路径拼文件名，兼容目录尾是否带 '/'
+std::string JoinDirFile(const std::string &dir_path, const std::string &file_name) {
+  if (dir_path.empty() || dir_path.back() == '/') {
+    return dir_path + file_name;
+  }
+  return dir_path + "/" + file_name;
+}
+
+// allow_hf32 新方案的 ini 文件名特征：ops_allow_hf32_ 前缀 + .ini 后缀
+bool IsAllowHF32NewFile(const std::string &name) {
+  return !name.empty() && name.find(kAllowHF32NewFilePrefix) == 0 && name.size() > strlen(kConfigFileSuffix) &&
+         name.compare(name.size() - strlen(kConfigFileSuffix), strlen(kConfigFileSuffix), kConfigFileSuffix) == 0;
+}
 }  // namespace
 OpImplModeConfigParser::OpImplModeConfigParser(const std::string &ascend_opp_path)
     : BaseConfigParser(), ascend_opp_path_(ascend_opp_path) {}
@@ -275,14 +290,59 @@ Status OpImplModeConfigParser::InitOpPrecisionModeByPrecisionMode(const std::str
   return SUCCESS;
 }
 
+// 算子交付件配置（op-impl-mode）生效时取配置的 impl_mode 目录列表，否则回退原内置相对路径
+std::vector<std::string> OpImplModeConfigParser::GetImplModeDirPaths() const {
+  auto &config_manager = OpsDeliverableConfigManager::Instance();
+  if (config_manager.Initialize()) {
+    const auto paths = config_manager.GetOpImplModePaths();
+    if (!paths.empty()) {
+      FE_LOGD("Impl mode config dirs are replaced by ops deliverables config, dir count [%zu].", paths.size());
+      return paths;
+    }
+  }
+  return {ascend_opp_path_ + kOpImplModeRelativePath};
+}
+
+// 按文件名在各 impl_mode 目录中查找，返回首个命中的 real path
+bool OpImplModeConfigParser::FindImplModeFile(const std::string &file_name, std::string &real_file_path) const {
+  for (const auto &dir_path : GetImplModeDirPaths()) {
+    const std::string file_path = JoinDirFile(dir_path, file_name);
+    const std::string real_path = GetRealPath(file_path);
+    if (!real_path.empty()) {
+      real_file_path = real_path;
+      return true;
+    }
+  }
+  return false;
+}
+
+// 收集所有 impl_mode 目录下的 ops_allow_hf32_*.ini 文件
+void OpImplModeConfigParser::CollectAllowHF32NewFiles(std::vector<std::string> &files) const {
+  for (const auto &dir_path : GetImplModeDirPaths()) {
+    DIR *dir = opendir(dir_path.c_str());
+    if (dir == nullptr) {
+      FE_LOGD("[AllowHF32] Config directory [%s] does not exist.", dir_path.c_str());
+      continue;
+    }
+    struct dirent *entry = nullptr;
+    while ((entry = readdir(dir)) != nullptr) {
+      const std::string name(entry->d_name);
+      if (IsAllowHF32NewFile(name)) {
+        files.emplace_back(JoinDirFile(dir_path, name));
+      }
+    }
+    closedir(dir);
+  }
+}
+
 Status OpImplModeConfigParser::InitOpPrecisionModeByImplModeAll(const std::string &op_select_impl_mode_all) {
-  std::string file_path = ascend_opp_path_ + kOpImplModeRelativePath + op_select_impl_mode_all + kConfigFileSuffix;
-  std::string real_file_path = GetRealPath(file_path);
-  if (real_file_path.empty()) {
+  const std::string file_name = op_select_impl_mode_all + kConfigFileSuffix;
+  std::string real_file_path;
+  if (!FindImplModeFile(file_name, real_file_path)) {
     FE_LOGW(
         "[%s] Preset file [%s] does not exist. A5 no longer provides built-in %s preset ini. "
         "Consider migrating to --op_precision_mode.",
-        op_select_impl_mode_all.c_str(), file_path.c_str(), op_select_impl_mode_all.c_str());
+        op_select_impl_mode_all.c_str(), file_name.c_str(), op_select_impl_mode_all.c_str());
     return SUCCESS;
   }
   Status ret = GetOpPrecisonModeStrFromConfigFile(real_file_path);
@@ -307,13 +367,13 @@ Status OpImplModeConfigParser::InitOpPrecisionModeByImplMode(const std::string &
       op_type_select_impl_mode_map_.insert(std::make_pair(op_type, op_select_impl_mode));
     }
   } else {
-    string file_path = ascend_opp_path_ + kOpImplModeRelativePath + op_select_impl_mode + kConfigFileSuffix;
-    std::string real_file_path = GetRealPath(file_path);
-    if (real_file_path.empty()) {
+    const std::string file_name = op_select_impl_mode + kConfigFileSuffix;
+    std::string real_file_path;
+    if (!FindImplModeFile(file_name, real_file_path)) {
       FE_LOGW(
           "[%s] Preset file [%s] does not exist. A5 no longer provides built-in %s preset ini. "
           "Consider migrating to --op_precision_mode.",
-          op_select_impl_mode.c_str(), file_path.c_str(), op_select_impl_mode.c_str());
+          op_select_impl_mode.c_str(), file_name.c_str(), op_select_impl_mode.c_str());
       return SUCCESS;
     }
     Status status = GetOpPrecisonModeStrFromConfigFile(real_file_path);
@@ -330,32 +390,17 @@ Status OpImplModeConfigParser::InitOpPrecisionModeByImplMode(const std::string &
 // ----- allow_hf32 新方案：扫描 impl_mode 目录下 ops_allow_hf32_*.ini -----
 
 bool OpImplModeConfigParser::HasNewAllowHF32Files() const {
-  std::string dir_path = ascend_opp_path_ + kOpImplModeRelativePath;
-  DIR *dir = opendir(dir_path.c_str());
-  if (dir == nullptr) {
-    FE_LOGD("[AllowHF32] Config directory [%s] does not exist.", dir_path.c_str());
-    return false;
-  }
-  bool found = false;
-  struct dirent *entry = nullptr;
-  while ((entry = readdir(dir)) != nullptr) {
-    std::string name(entry->d_name);
-    if (name.size() > 0 && name.find(kAllowHF32NewFilePrefix) == 0 && name.size() > strlen(kConfigFileSuffix) &&
-        name.compare(name.size() - strlen(kConfigFileSuffix), strlen(kConfigFileSuffix), kConfigFileSuffix) == 0) {
-      found = true;
-      break;
-    }
-  }
-  closedir(dir);
-  FE_LOGD("[AllowHF32] New %s*.ini files %s.", kAllowHF32NewFilePrefix, found ? "found" : "not found");
-  return found;
+  std::vector<std::string> files;
+  CollectAllowHF32NewFiles(files);
+  FE_LOGD("[AllowHF32] New %s*.ini files %s.", kAllowHF32NewFilePrefix, files.empty() ? "not found" : "found");
+  return !files.empty();
 }
 
 Status OpImplModeConfigParser::InitAllowHF32NewFiles(const std::string &allow_hf32) {
-  std::string dir_path = ascend_opp_path_ + kOpImplModeRelativePath;
-  DIR *dir = opendir(dir_path.c_str());
-  if (dir == nullptr) {
-    FE_LOGI("[AllowHF32] Config directory [%s] does not exist, no allow_hf32 ops configured.", dir_path.c_str());
+  std::vector<std::string> files;
+  CollectAllowHF32NewFiles(files);
+  if (files.empty()) {
+    FE_LOGI("[AllowHF32] No %s*.ini files found in impl mode config dirs.", kAllowHF32NewFilePrefix);
     return SUCCESS;
   }
 
@@ -366,21 +411,11 @@ Status OpImplModeConfigParser::InitAllowHF32NewFiles(const std::string &allow_hf
   bool explicit_override = (explicit_true || explicit_false);
   std::string override_value = explicit_true ? kAllowHF32DefaultForTrue : kAllowHF32DefaultForFalse;
 
-  struct dirent *entry = nullptr;
-  bool any_file_found = false;
-  while ((entry = readdir(dir)) != nullptr) {
-    std::string name(entry->d_name);
-    if (name.size() > 0 && name.find(kAllowHF32NewFilePrefix) == 0 && name.size() > strlen(kConfigFileSuffix) &&
-        name.compare(name.size() - strlen(kConfigFileSuffix), strlen(kConfigFileSuffix), kConfigFileSuffix) == 0) {
-      any_file_found = true;
-      std::string file_path = dir_path + name;
-      if (ParseAllowHF32IniFile(file_path) != SUCCESS) {
-        closedir(dir);
-        return FAILED;
-      }
+  for (const auto &file_path : files) {
+    if (ParseAllowHF32IniFile(file_path) != SUCCESS) {
+      return FAILED;
     }
   }
-  closedir(dir);
 
   if (explicit_override) {
     for (auto &pair : op_type_select_impl_mode_map_) {
@@ -388,10 +423,6 @@ Status OpImplModeConfigParser::InitAllowHF32NewFiles(const std::string &allow_hf
       FE_LOGD("[AllowHF32] Explicit %s: override OpType[%s] to %s.", allow_hf32.c_str(), pair.first.c_str(),
               override_value.c_str());
     }
-  }
-
-  if (!any_file_found) {
-    FE_LOGW("[AllowHF32] No %s*.ini files found in [%s].", kAllowHF32NewFilePrefix, dir_path.c_str());
   }
   return SUCCESS;
 }
@@ -403,10 +434,10 @@ Status OpImplModeConfigParser::InitAllowHF32LegacyFiles(const std::string &allow
     return FAILED;
   }
   std::string allow_hf32_mode = iter->second;
-  std::string file_path = ascend_opp_path_ + kOpImplModeRelativePath + allow_hf32_mode + kConfigFileSuffix;
-  std::string real_file_path = GetRealPath(file_path);
-  if (real_file_path.empty()) {
-    FE_LOGW("Allow hf32 legacy file [%s] does not exist.", file_path.c_str());
+  const std::string file_name = allow_hf32_mode + kConfigFileSuffix;
+  std::string real_file_path;
+  if (!FindImplModeFile(file_name, real_file_path)) {
+    FE_LOGW("Allow hf32 legacy file [%s] does not exist.", file_name.c_str());
     return SUCCESS;
   }
   Status status = GetOpPrecisonModeStrFromConfigFile(real_file_path);

@@ -210,6 +210,7 @@ add_executable(st_fe_fusion
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_manager/st_fusion_manager.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_manager/st_platform_utils.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_manager/st_configuration.cc
+    ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_manager/st_ops_deliverable_config.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_manager/st_fusion_graph_merge_util.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_manager/st_graph_comm.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_manager/st_op_info_common.cc

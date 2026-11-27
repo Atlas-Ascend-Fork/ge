@@ -25,6 +25,7 @@
 #include "register/optimization_option_registry.h"
 #include "common/config_parser/op_cust_dtypes_config_parser.h"
 #include "common/config_parser/op_impl_mode_config_parser.h"
+#include "common/ops_deliverable_config_manager.h"
 #include "common/config_parser/modify_mixlist_config_parser.h"
 #include "common/config_parser/op_debug_config_parser.h"
 #include "mmpa/mmpa_api.h"
@@ -1046,7 +1047,19 @@ Status Configuration::AssembleEachOpsStoreInfo(string &op_store_name, std::vecto
   FE_LOGD("The configuration file path of op store[%s] is %s.", op_store_name.c_str(), str_cfg_file_path.c_str());
   FE_LOGD("The implementation path of op store[%s] is %s.", op_store_name.c_str(), str_op_imply_file_path.c_str());
 
-  if (impl == EN_IMPL_HW_TBE && GetRealPath(str_cfg_file_path).empty()) {
+  auto &deliverable_config = OpsDeliverableConfigManager::Instance();
+  const bool has_deliverable_config = deliverable_config.Initialize();
+  const std::vector<std::string> ops_info_paths =
+      has_deliverable_config ? deliverable_config.GetOpsInfoPaths() : std::vector<std::string>{};
+  // 算子信息库（ops-info）配置生效时，信息库路径来自配置的 json 文件列表，与 fe.ini 拼出的 cfg 目录可能不同；
+  // 此时不能再拿原 cfg 目录做存在性校验（定制交付件下该目录可能不存在），改为在下方校验配置路径本身
+  // 判定须与消费端 SubOpInfoStore::GetDeliverableOpsInfoJsonFiles 完全一致：严格 op_impl_type == EN_IMPL_HW_TBE、
+  // 非 custom store 且 store name 为 built-in（tbe-builtin）；用 GetMainImplType 的结果（impl）会多覆盖带高位
+  // 标志的复合值，导致「跳过原校验但配置不生效」
+  const bool has_ops_info_config = !ops_store_info.is_custom_store && ops_store_info.op_impl_type == EN_IMPL_HW_TBE &&
+                                   ops_store_info.fe_ops_store_name == "tbe-builtin" && !ops_info_paths.empty();
+
+  if (impl == EN_IMPL_HW_TBE && !has_ops_info_config && GetRealPath(str_cfg_file_path).empty()) {
     const std::map<string, string> error_key_map = {
         {EM_VALUE, ascend_ops_path_},
         {EM_ENV, ASCEND_OPP_PATH},
@@ -1069,6 +1082,37 @@ Status Configuration::AssembleEachOpsStoreInfo(string &op_store_name, std::vecto
 
   ops_store_info.cfg_file_path = str_cfg_file_path;
   ops_store_info.op_impl_file_path = str_op_imply_file_path;
+  // 交付件配置生效时，替代 fe.ini 的两个路径都必须校验（配置路径与原 fe.ini 路径可能完全不同）：
+  //   1) ops-info：配置里的每条信息库 json 必须是真实文件（cfg_file_path 的替代来源）
+  //   2) opsrc  ：配置根拼出的 <opsrc>/impl 必须存在（op_impl_file_path 的替代来源，拼接结果此前未校验）
+  // custom store 走自身路径，不受影响（!is_custom_store 隔离）；未配置或解析失败时保持 fe.ini 原值。
+  // 判据与上方 has_ops_info_config 保持一致：仅 built-in（tbe-builtin）信息库允许被交付件配置替换。
+  if (!ops_store_info.is_custom_store && ops_store_info.op_impl_type == EN_IMPL_HW_TBE &&
+      ops_store_info.fe_ops_store_name == "tbe-builtin" && has_deliverable_config) {
+    for (const auto &json_path : ops_info_paths) {
+      if (GetRealPath(json_path).empty()) {
+        REPORT_FE_ERROR(
+            "[GraphOpt][Init][AssemEachOpsStoreInfo] Ops-info deliverable json [%s] of op store[%s] "
+            "does not exist.",
+            json_path.c_str(), op_store_name.c_str());
+        return OPSTORE_EMPTY;
+      }
+    }
+    std::string op_src_root;
+    if (deliverable_config.GetOpSrcRoot(op_src_root)) {
+      const std::string deliverable_impl_path = op_src_root + "/impl";
+      if (GetRealPath(deliverable_impl_path).empty()) {
+        REPORT_FE_ERROR(
+            "[GraphOpt][Init][AssemEachOpsStoreInfo] Opsrc deliverable impl path [%s] of op store[%s] "
+            "does not exist.",
+            deliverable_impl_path.c_str(), op_store_name.c_str());
+        return OPSTORE_EMPTY;
+      }
+      ops_store_info.op_impl_file_path = deliverable_impl_path;
+      FE_LOGD("Op store[%s] op impl path is replaced by opsrc deliverable config: [%s].", op_store_name.c_str(),
+              ops_store_info.op_impl_file_path.c_str());
+    }
+  }
 
   string str_need_pre_compile = op_store_vector.at(IDX_NEED_PRECOMPILE);
   string str_need_compile = op_store_vector.at(IDX_NEED_COMPILE);

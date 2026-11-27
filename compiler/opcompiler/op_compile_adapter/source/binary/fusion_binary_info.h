@@ -62,6 +62,9 @@ class BinaryInfoBase {
                                const std::unordered_map<std::string, std::string> &simpleKeyInfoMap);
   bool GetBinaryInfoConfigPath(const std::string &binaryConfigPath, std::string &configRealPath,
                                const bool &isSuperKernel, const std::string &path) const;
+  // 分包级配置目录（.../config/<soc>/<prefix>）下直接读取索引 json，不再拼接 soc 与分包
+  bool GetBinaryInfoConfigPathInPrefixDir(const std::string &prefixDir, std::string &configRealPath,
+                                          const bool &isSuperKernel) const;
   bool ReadOpBinaryInfoConfig(const std::string &binaryInfoConfigPath, nlohmann::json &binaryInfoConfig) const;
   bool GenerateBinaryInfo(nlohmann::json &binaryInfoConfig);
   bool ProcessSingleOpBinaryInfo(const std::string &opType, const nlohmann::json &iterJsonValue);

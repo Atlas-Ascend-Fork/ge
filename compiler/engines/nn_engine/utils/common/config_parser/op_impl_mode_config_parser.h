@@ -12,6 +12,8 @@
 #define AIR_COMPILER_GRAPHCOMPILER_ENGINES_NNENG_UTILS_COMMON_OP_IMPL_MODE_CONFIG_PARSER_
 
 #include <mutex>
+#include <string>
+#include <vector>
 #include "common/base_config_parser.h"
 #include "register/graph_optimizer/graph_optimize_register_error_codes.h"
 
@@ -54,6 +56,13 @@ class OpImplModeConfigParser : public BaseConfigParser {
   Status ParseAllowHF32IniFile(const std::string &file_path);
   Status ParseAllowHF32IniFileContent(const std::string &file_path, std::ifstream &ifs);
   bool HasNewAllowHF32Files() const;
+
+  // 算子交付件配置（op-impl-mode）生效时取配置的 impl_mode 目录列表，否则回退原内置相对路径
+  std::vector<std::string> GetImplModeDirPaths() const;
+  // 按文件名在各 impl_mode 目录中查找，返回首个命中的 real path
+  bool FindImplModeFile(const std::string &file_name, std::string &real_file_path) const;
+  // 收集所有 impl_mode 目录下的 ops_allow_hf32_*.ini 文件
+  void CollectAllowHF32NewFiles(std::vector<std::string> &files) const;
 
   std::string ascend_opp_path_;
   std::string op_precision_mode_;

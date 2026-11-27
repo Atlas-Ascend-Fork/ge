@@ -20,6 +20,7 @@
 #include "common/common_utils.h"
 #include "common/te_config_info.h"
 #include "common/te_file_utils.h"
+#include "common/ops_deliverable_config_manager.h"
 
 namespace te {
 namespace fusion {
@@ -448,8 +449,43 @@ void BinaryInfoBase::GetAllOpsPathNamePrefix(const std::string &binaryConfigJson
   std::sort(binaryConfigPathPrefix.begin(), binaryConfigPathPrefix.end(), compareStrings);
 }
 
+bool BinaryInfoBase::GetBinaryInfoConfigPathInPrefixDir(const std::string &prefixDir, std::string &configRealPath,
+                                                        const bool &isSuperKernel) const {
+  const std::string binaryInfoJsonPath = isSuperKernel ? RELOCATABLE_KERNEL_INFO_CONFIG_JSON : BINARY_INFO_CONFIG_JSON;
+  std::string binaryInfoConfigPath = prefixDir;
+  if (!binaryInfoConfigPath.empty() && binaryInfoConfigPath.back() != '/') {
+    binaryInfoConfigPath += "/";
+  }
+  binaryInfoConfigPath += binaryInfoJsonPath;
+  configRealPath = RealPath(binaryInfoConfigPath);
+  if (configRealPath.empty()) {
+    TE_WARNLOG("binary_info_config.json file[%s] does not exist", binaryInfoConfigPath.c_str());
+    return false;
+  }
+  return true;
+}
+
 bool BinaryInfoBase::ParseBinaryInfoFile(const string &binaryConfigPath, const bool &isSuperKernel) {
   TE_INFOLOG("start to ParseBinaryInfoFile.");
+  // 算子交付件配置场景：路径已配置到分包级（.../config/<soc>/<prefix>），
+  // 索引 json 就在该目录下，不再拼接 soc 版本，也不再扫描分包子目录
+  if (!fe::OpsDeliverableConfigManager::ExtractOpsPathNamePrefix(binaryConfigPath).empty()) {
+    std::string binaryInfoConfigPath;
+    if (!GetBinaryInfoConfigPathInPrefixDir(binaryConfigPath, binaryInfoConfigPath, isSuperKernel)) {
+      TE_WARNLOG("binary_info_config.json file does not exist.");
+      return false;
+    }
+    nlohmann::json binaryInfoConfig;
+    if (!ReadOpBinaryInfoConfig(binaryInfoConfigPath, binaryInfoConfig)) {
+      TE_WARNLOG("Failed to read binary_info_config.json");
+      return false;
+    }
+    if (!GenerateBinaryInfo(binaryInfoConfig)) {
+      TE_WARNLOG("GenerateBinaryInfo failed");
+      return false;
+    }
+    return true;
+  }
   std::vector<std::string> binaryConfigPathPrefix = {""};
   std::string shortSocVersion = TeConfigInfo::Instance().GetShortSocVersion();
   std::transform(shortSocVersion.begin(), shortSocVersion.end(), shortSocVersion.begin(), ::tolower);

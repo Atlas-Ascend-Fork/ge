@@ -21,6 +21,7 @@
 #include "exe_graph/lowering/data_dependent_interpreter.h"
 #include "common/configuration.h"
 #include "common/aicore_util_constants.h"
+#include "common/ops_deliverable_config_manager.h"
 
 namespace fe {
 namespace {
@@ -126,8 +127,14 @@ Status GetSoPath(const ge::Node &node, std::string &so_path) {
         }
       }
     } else {
-      std::string so_name = "libtiling_device_" + ops_path_name_prefix + ".so";
-      so_path = opp_path + "/built-in/op_impl/ai_core/tbe/op_tiling_device/lib/" + so_name;
+      auto &config_manager = OpsDeliverableConfigManager::Instance();
+      if (config_manager.Initialize() && config_manager.SelectTilingDevicePath(ops_path_name_prefix, so_path)) {
+        FE_LOGD("Node[%s, %s] tiling device so path is from ops deliverables config: [%s].", op_desc->GetNamePtr(),
+                op_desc->GetTypePtr(), so_path.c_str());
+      } else {
+        std::string so_name = "libtiling_device_" + ops_path_name_prefix + ".so";
+        so_path = opp_path + "/built-in/op_impl/ai_core/tbe/op_tiling_device/lib/" + so_name;
+      }
     }
   }
   std::ifstream fin(so_path);

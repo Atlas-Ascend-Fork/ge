@@ -35,8 +35,11 @@ int main(int argc, char **argv) {
   options.emplace(ge::SOC_VERSION, "Ascend910B1");
   EXPECT_EQ(fe::InitPlatformInfo("Ascend910B1"), 0);
   EXPECT_EQ(Initialize(options), fe::SUCCESS);
+  // 不在此处提前 Restore：RUN_ALL_TESTS 期间必须保持 stub 环境（原因见 st/testcase/main.cc 注释），
+  // 否则真实 ASCEND_OPP_PATH 下的 conf/ops_deliverables.json 会劫持测试注册的假信息库，
+  // 导致 GetOpKernelInfoByOpType 返回空指针崩溃；guard 析构（RUN_ALL_TESTS 之后）自动恢复。
+  int ret = RUN_ALL_TESTS();
   cann_guard.Restore();
   opp_guard.Restore();
-  int ret = RUN_ALL_TESTS();
   return ret;
 }

@@ -35,6 +35,7 @@ add_executable(ffts_st
         ${FE_ROOT_PATH}/utils/common/config_parser/modify_mixlist_config_parser.cc
         ${FE_ROOT_PATH}/utils/common/fe_context_utils.cc
         ${FE_ROOT_PATH}/utils/common/configuration.cc
+        ${FE_ROOT_PATH}/utils/common/ops_deliverable_config_manager.cc
         ${FE_ROOT_PATH}/utils/common/fe_graph_common.cc
         ${FE_ROOT_PATH}/utils/common/graph_comm_impl.cc
         ${FE_ROOT_PATH}/utils/common/aicore_util_attr_define.cc

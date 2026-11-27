@@ -24,8 +24,13 @@ int main(int argc, char **argv) {
   fe::InitPlatformInfo("Ascend910B1");
   testing::InitGoogleTest(&argc, argv);
   EXPECT_EQ(fe::InitPlatformInfo("Ascend910B1"), 0);
+  // 不在此处提前 Restore：RUN_ALL_TESTS 期间必须保持 stub 环境。
+  // 若提前恢复为 shell 的真实 ASCEND_OPP_PATH，真实 opp 包下存在 conf/ops_deliverables.json 时，
+  // OpsDeliverableConfigManager 会劫持各测试 fixture 注册的假信息库（加载真实 ops-info json），
+  // 导致规则解析 INVALID_RULE / ILLEGAL_RULE 断言失败、GetOpKernelInfoByOpType 返回空指针崩溃。
+  // guard 析构（RUN_ALL_TESTS 之后）自动恢复原环境变量。
+  int ret = RUN_ALL_TESTS();
   cann_guard.Restore();
   opp_guard.Restore();
-  int ret = RUN_ALL_TESTS();
   return ret;
 }

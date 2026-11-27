@@ -17,12 +17,29 @@
 #include "common/string_utils.h"
 #include "common/fe_type_utils.h"
 #include "common/configuration.h"
+#include "common/ops_deliverable_config_manager.h"
 #include "ops_store/ops_kernel_utils.h"
 #include "ops_store/ops_kernel_error_codes.h"
 #include "ops_store/ops_kernel_constants.h"
 #include "graph/custom_op_factory.h"
 
 namespace fe {
+namespace {
+// ai_core built-in 信息库的 store name（与 fe.ini 的 op.store.tbe-builtin 一致）
+constexpr char kStrBuiltinTbeStoreName[] = "tbe-builtin";
+
+// 先读全量（legacy），再读分包：与目录扫描的加载顺序保持一致。
+// 注意保持严格弱序：a、b 同属 legacy（或同不属）时按长度比较，否则 legacy 在前
+bool CompareOpsInfoJsonOrder(const std::string &a, const std::string &b) {
+  const bool a_is_legacy = a.find("legacy") != std::string::npos;
+  const bool b_is_legacy = b.find("legacy") != std::string::npos;
+  if (a_is_legacy != b_is_legacy) {
+    return a_is_legacy;
+  }
+  return a.length() < b.length();
+}
+}  // namespace
+
 SubOpInfoStore::SubOpInfoStore(const FEOpsStoreInfo &ops_store_info)
     : init_flag_(false), ops_store_info_(ops_store_info) {}
 SubOpInfoStore::~SubOpInfoStore() {}
@@ -45,9 +62,13 @@ Status SubOpInfoStore::Initialize(const std::string &engine_name) {
 
   std::string cfg_real_path = GetRealPath(ops_store_info_.cfg_file_path);
   if (cfg_real_path.empty()) {
-    FE_LOGW("The configuration file [%s] for the operational information library [%s] does not exist.",
-            ops_store_info_.cfg_file_path.c_str(), ops_store_info_.fe_ops_store_name.c_str());
-    return OP_STORE_CFG_FILE_NOT_EXIST;
+    // deliverable 配置生效时，built-in 信息库直接按配置的 json 文件加载，不要求原配置目录存在
+    std::vector<std::string> deliverable_json_files;
+    if (!GetDeliverableOpsInfoJsonFiles(deliverable_json_files)) {
+      FE_LOGW("The configuration file [%s] for the operational information library [%s] does not exist.",
+              ops_store_info_.cfg_file_path.c_str(), ops_store_info_.fe_ops_store_name.c_str());
+      return OP_STORE_CFG_FILE_NOT_EXIST;
+    }
   }
 
   FE_LOGD("Initialize %s SubOpsStore.", ops_store_info_.fe_ops_store_name.c_str());
@@ -85,7 +106,47 @@ void SubOpInfoStore::SplitOpStoreJson(const std::string &json_file_path, std::st
   FE_LOGD("ops_path_name_prefix is [%s]", ops_path_name_prefix.c_str());
 }
 
+bool SubOpInfoStore::GetDeliverableOpsInfoJsonFiles(std::vector<std::string> &json_files) const {
+  // 仅替换 ai_core built-in 信息库（tbe-builtin，EN_IMPL_HW_TBE）；自定义信息库及其他 built-in store 不动。
+  // 判据需同时收紧到 store name：UT 及插件可能注册同为 EN_IMPL_HW_TBE 的非 built-in store
+  // （如 UT 的 "tbe-custom"），若仅按 impl_type 判断会被 deliverable 配置劫持而跳过自身配置目录。
+  if (ops_store_info_.is_custom_store || ops_store_info_.op_impl_type != EN_IMPL_HW_TBE ||
+      ops_store_info_.fe_ops_store_name != kStrBuiltinTbeStoreName) {
+    return false;
+  }
+  auto &config_manager = OpsDeliverableConfigManager::Instance();
+  // 无配置或解析失败：保持原目录扫描逻辑（Initialize 幂等，直接返回加载结果）
+  if (!config_manager.Initialize()) {
+    return false;
+  }
+  json_files = config_manager.GetOpsInfoPaths();
+  if (json_files.empty()) {
+    return false;
+  }
+  FE_LOGI("Op info lib [%s] loads %zu json file(s) from ops deliverables config instead of scanning [%s].",
+          ops_store_info_.fe_ops_store_name.c_str(), json_files.size(), ops_store_info_.cfg_file_path.c_str());
+  return true;
+}
+
 Status SubOpInfoStore::LoadOpInfo(const string &real_path) {
+  // 算子交付件配置生效时，built-in 信息库直接按配置的 json 文件列表加载（配置 paths 具体到 json 文件名）
+  // 与目录扫描分支保持一致：先用 CompareOpsInfoJsonOrder 排序（legacy 全量在前、分包在后），再正向遍历加载；
+  // LoadOpJsonFile 对同一 op_type 是后加载覆盖先加载，因此分包 json 后加载、优先级更高
+  std::vector<std::string> deliverable_json_files;
+  if (GetDeliverableOpsInfoJsonFiles(deliverable_json_files)) {
+    if (deliverable_json_files.size() > 1) {
+      FE_LOGD("Begin to sort the deliverable files of op info json.");
+      std::sort(deliverable_json_files.begin(), deliverable_json_files.end(), CompareOpsInfoJsonOrder);
+    }
+    for (const auto &json_file : deliverable_json_files) {
+      if (LoadOpJsonFile(json_file) != SUCCESS) {
+        REPORT_FE_ERROR("[GraphOpt][Init][LoadOpInfo] Failed to load deliverable JSON file [%s].", json_file.c_str());
+        return FAILED;
+      }
+    }
+    return SUCCESS;
+  }
+
   vector<string> ops_cfg_files;
   DIR *dir;
   struct dirent *dirp = nullptr;
@@ -110,16 +171,9 @@ Status SubOpInfoStore::LoadOpInfo(const string &real_path) {
     return SUCCESS;
   }
 
-  auto CompareByLength = [](const std::string &a, const std::string &b) {
-    // 先读全量，再读分包
-    if (a.find("legacy") != std::string::npos) return true;
-    if (b.find("legacy") != std::string::npos) return false;
-    return a.length() < b.length();
-  };
-
   if (ops_cfg_files.size() > 1) {
     FE_LOGD("Begin to sort the files of op info json.");
-    std::sort(ops_cfg_files.begin(), ops_cfg_files.end(), CompareByLength);
+    std::sort(ops_cfg_files.begin(), ops_cfg_files.end(), CompareOpsInfoJsonOrder);
   }
   for (std::string json_file_path : ops_cfg_files) {
     if (LoadOpJsonFile(json_file_path) != SUCCESS) {

@@ -28,6 +28,7 @@
 #include "inc/te_fusion_check.h"
 #include "inc/te_fusion_util_constants.h"
 #include "base/err_msg.h"
+#include "common/ops_deliverable_config_manager.h"
 
 namespace te {
 namespace fusion {
@@ -423,22 +424,48 @@ void AssembleJsonPath(const std::string &opsPathNamePrefix, std::string &jsonFil
   const size_t NUM_2 = 2;
   TE_DBGLOG("Before revert opsPathNamePrefix is %s, jsonFilePath is %s, binFilePath is %s", opsPathNamePrefix.c_str(),
             jsonFilePath.c_str(), binFilePath.c_str());
-  if (opsPathNamePrefix == "") {
-    TE_DBGLOG("After revert opsPathNamePrefix is %s, jsonFilePath is %s, binFilePath is %s", opsPathNamePrefix.c_str(),
-              jsonFilePath.c_str(), binFilePath.c_str());
-    jsonFilePath = jsonFilePath + binFilePath;
-    return;
-  }
+  std::vector<std::string> tokens;
   std::stringstream ss(binFilePath);
   std::string token;
-  std::vector<std::string> tokens;
-
   while (std::getline(ss, token, '/')) {
     if (!token.empty()) {
       tokens.emplace_back(token);
     }
   }
 
+  const std::string rootPrefix = fe::OpsDeliverableConfigManager::ExtractOpsPathNamePrefix(jsonFilePath);
+  const bool isFusionOpsRoot = fe::OpsDeliverableConfigManager::IsFusionOpsDir(jsonFilePath);
+  if ((!rootPrefix.empty() || isFusionOpsRoot) && tokens.size() >= NUM_2) {
+    // 索引里的 jsonPath 相对标准 kernel 根，而根目录（分包级 .../<soc>/<prefix>/ 或融合产物级
+    // .../<soc>/fusion_ops/）已含其中的 <soc> 与 <prefix>/fusion_ops 层：前导段与根目录已有
+    // 路径段重复则剥掉（IsPathMatchSoc 按段归一化比较），最多剥 2 段且不剥到文件名段。
+    // <op_dir> 等真实目录层不在根目录中，一律保留；首段即不匹配（如索引与配置 soc 不同源）
+    // 则整条不剥，与短路径保守边界一致。
+    size_t skip = 0;
+    if (fe::OpsDeliverableConfigManager::IsPathMatchSoc(jsonFilePath, tokens[0])) {
+      skip = 1;  // 首段是根目录已含的 <soc> / <prefix> / fusion_ops 段，剥掉
+      if (tokens.size() > NUM_2 && fe::OpsDeliverableConfigManager::IsPathMatchSoc(jsonFilePath, tokens[1])) {
+        skip = NUM_2;  // 第二段同样是根目录已含的重复段，一并剥掉
+      }
+    }
+    std::string trimmedBase = jsonFilePath;
+    while (!trimmedBase.empty() && trimmedBase.back() == '/') {
+      trimmedBase.pop_back();
+    }
+    std::string tailPath;
+    for (size_t i = skip; i < tokens.size(); i++) {
+      tailPath += "/" + tokens[i];
+    }
+    jsonFilePath = trimmedBase + tailPath;
+    TE_DBGLOG("Assemble json path on ops prefix dir %s, binFilePath is %s", jsonFilePath.c_str(), binFilePath.c_str());
+    return;
+  }
+  if (opsPathNamePrefix == "") {
+    TE_DBGLOG("After revert opsPathNamePrefix is %s, jsonFilePath is %s, binFilePath is %s", opsPathNamePrefix.c_str(),
+              jsonFilePath.c_str(), binFilePath.c_str());
+    jsonFilePath = jsonFilePath + binFilePath;
+    return;
+  }
   if (tokens.size() < NUM_2) {
     return;
   }

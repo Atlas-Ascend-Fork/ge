@@ -183,15 +183,16 @@ add_test(NAME ut_fe_graph_optimizer COMMAND ut_fe_graph_optimizer --gtest_output
 set_tests_properties(ut_fe_graph_optimizer PROPERTIES LABELS "ut;fe;ut_fe_graph_optimizer" ENVIRONMENT "AIR_CODE_DIR=${CMAKE_SOURCE_DIR}")
 
 # ============================================================================
-# Executable 2: ut_fe_fusion (33 test files)
+# Executable 2: ut_fe_fusion (34 test files)
 # fusion_manager + fusion_rule + ub_fusion + format_selector
 # ============================================================================
 add_executable(ut_fe_fusion
     ${CMAKE_CURRENT_LIST_DIR}/testcase/main_common.cc
-    # fusion_manager (9 files)
+    # fusion_manager (10 files)
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_configuration.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_configuration_2.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_platform_utils.cc
+    ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_ops_deliverable_config_manager.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_fusion_graph_merge_util.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_fusion_manager.cc
     ${CMAKE_CURRENT_LIST_DIR}/testcase/fusion_engine/fusion_manager/ut_graph_comm.cc

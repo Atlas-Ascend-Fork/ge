@@ -102,6 +102,9 @@ class BinaryManager {
                                          const bool &isRangeLimited, const bool &toDynamicRank,
                                          const bool &isRangeAgnostic);
   void GetBinaryPath(const OpBuildTaskPtr &opTask, bool isOm, bool isKernelOrModel, std::string &binaryPath) const;
+  // 算子交付件配置生效时，按节点的分包前缀取 kernel / config 目录（配置路径已到分包级）
+  bool GetBinaryPathByPrefix(const OpBuildTaskPtr &opTask, bool isKernelOrModel, std::string &binaryPath) const;
+  static std::string GetTaskOpsPathNamePrefix(const OpBuildTaskPtr &opTask);
   static bool CheckIsFuzzyBuild(const OpBuildTaskPtr &opTask);
   static bool CheckMatchInBinListByKey(const OpBuildTaskPtr &opTask, const std::string &key,
                                        const std::string &keyValue, json &binListJson);
@@ -133,8 +136,12 @@ class BinaryManager {
                            const bool isOm);
   void GetBuiltinBinaryPath(const std::map<std::string, std::string> &options, const std::string &parentPath,
                             const std::string &shortSocVersion, bool isOm);
+  bool AssembleBuiltinBinaryPathByConfig(const std::map<std::string, std::string> &options,
+                                         const std::string &shortSocVersion);
   void GetBinaryOppPath(const std::map<std::string, std::string> &options);
   void ParseAllBinaryInfoConfigPath();
+  // 算子交付件配置生效时，按分包前缀解析普通（false）/ super kernel（true）索引
+  void ParsePrefixBinaryInfoByConfig(const bool isSuperKernel);
   void GetAllBinaryVersionInfo(bool isOm);
   bool GetBinaryFileName(const OpBuildTaskPtr &opTask, std::string &binaryFileRealPath, bool hasOmKeyId,
                          bool isOm) const;
@@ -176,6 +183,17 @@ class BinaryManager {
   std::map<int64_t, std::string> relocatableBinaryConfigPathMap_;
   std::map<uint64_t, BinaryInfoBasePtr> binaryInfoPtrMap_{};
   std::map<uint64_t, BinaryInfoBasePtr> relocatableBinaryInfoPtrMap_{};
+  // 算子交付件配置（opkernel / opkernel-config）生效时，按分包前缀索引的路径与索引，
+  // key 为分包前缀（ops_nn 等），主包用空串；binaryConfigPathByPrefix_ 同时作为
+  // 非 kernel 查询路径（GetBinaryPath）与索引解析入口（ParsePrefixBinaryInfoByConfig）
+  std::map<std::string, std::string> binaryOppKernelPathByPrefix_;
+  std::map<std::string, std::string> binaryConfigPathByPrefix_;
+  std::map<std::string, BinaryInfoBasePtr> binaryInfoPtrMapByPrefix_;
+  std::map<std::string, BinaryInfoBasePtr> relocatableBinaryInfoPtrMapByPrefix_;
+  // 融合任务不单独存路径：config 索引按 ops_legacy 分包查 binaryConfigPathByPrefix_，
+  // kernel 产物目录在同分包的 kernel 路径上把末段派生为 fusion_ops（GetBinaryPathByPrefix）。
+  bool deliverableOpKernelLoaded_ = false;
+  int64_t deliverableImplType_ = -1;
   bool builtInOppLatestFlag_ = false;
   bool initFlag_ = false;
   // op json file path -> json map

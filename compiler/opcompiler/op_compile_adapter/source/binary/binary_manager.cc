@@ -27,6 +27,7 @@
 #include "binary/generate_simple_key.h"
 #include "binary/fusion_binary_info.h"
 #include "binary/shape_generalization.h"
+#include "common/ops_deliverable_config_manager.h"
 
 namespace te {
 namespace fusion {
@@ -45,6 +46,36 @@ constexpr const char *BINARY_OM_KEY_ID = "omKeyId";
 constexpr const char *BINARY_CONFIG_MIDDLE_PAHT = "ai_core/tbe/kernel/config/";
 constexpr const char *AI_CORE_TYPE = "ai_core";
 constexpr const char *TRUE = "true";
+// 融合算子（opNodes.size() > 1）的 config 索引 fusion_ops.json 固定归属 ops_legacy 分包；
+// GetBinaryFileName 与 GetBinaryPathByPrefix 共用此常量，
+// 避免「写死前缀」与「节点属性前缀」两个数据源分叉
+constexpr const char *FUSION_OPS_LEGACY_PREFIX = "ops_legacy";
+// 融合算子 kernel 产物目录名（与融合索引 json 同名，语义不同故单独定义）
+constexpr const char *FUSION_OPS_KERNEL_DIR_NAME = "fusion_ops";
+
+// 保证目录以 '/' 结尾，便于后续直接拼接文件名
+std::string EnsureDirTail(const std::string &path) {
+  if (path.empty() || path.back() == '/') {
+    return path;
+  }
+  return path + "/";
+}
+
+// 由 ops_legacy 分包级 kernel 目录派生融合算子产物目录：把末段 ops_legacy 直接换成 fusion_ops，
+// 其余层级（含 <soc>）原样保留。例：/xxx/kernel/ascend950/ops_legacy/ -> /xxx/kernel/ascend950/fusion_ops/
+// 配置侧不区分 fusion_ops 与 legacy，索引 fusion_ops.json 仍在 ops_legacy 分包下；
+// 末段不是 ops_legacy 时返回空串，由调用方回退原 prefix 查询，保持原行为不回归。
+std::string DeriveFusionOpsKernelPath(const std::string &legacyKernelPath) {
+  std::string trimmed = legacyKernelPath;
+  while (!trimmed.empty() && trimmed.back() == '/') {
+    trimmed.pop_back();
+  }
+  const size_t lastSlash = trimmed.rfind('/');
+  if (lastSlash == std::string::npos || trimmed.substr(lastSlash + 1) != FUSION_OPS_LEGACY_PREFIX) {
+    return "";
+  }
+  return trimmed.substr(0, lastSlash + 1) + FUSION_OPS_KERNEL_DIR_NAME + "/";
+}
 }  // namespace
 
 BinaryManager &BinaryManager::Instance() {
@@ -77,6 +108,12 @@ void BinaryManager::Finalize() {
   relocatableBinaryConfigPathMap_.clear();
   binaryInfoPtrMap_.clear();
   relocatableBinaryInfoPtrMap_.clear();
+  binaryOppKernelPathByPrefix_.clear();
+  binaryConfigPathByPrefix_.clear();
+  binaryInfoPtrMapByPrefix_.clear();
+  relocatableBinaryInfoPtrMapByPrefix_.clear();
+  deliverableOpKernelLoaded_ = false;
+  deliverableImplType_ = -1;
   opFileJsonMap_.clear();
   opBinaryJsonMap_.clear();
 }
@@ -205,15 +242,137 @@ void BinaryManager::GetBinaryOppPath(const std::map<std::string, std::string> &o
   GetCustomBinaryPath(options, oppParentPath, false);
 
   std::string oppLatestPath = RealPath(TeConfigInfo::Instance().GetEnvHomePath() + OPP_LATEST_PATH);
-  if (!oppLatestPath.empty()) {
+  const bool isOppLatestValid = !oppLatestPath.empty();
+  if (isOppLatestValid) {
     TE_INFOLOGF("ASCEND_HOME_PATH/opp_latest is valid, ready to get binary info from this directory[%s]",
                 oppLatestPath.c_str());
     oppParentPath = std::move(oppLatestPath);
     SetBuiltInOppLatestFlag(true);
   }
+  // om 场景（离线模型）不使用算子交付件配置，保持原逻辑
   GetBuiltinBinaryPath(options, oppParentPath, shortSocVersion, true);
-  GetBuiltinBinaryPath(options, oppParentPath, shortSocVersion, false);
+  // opp_latest 是旧版本场景，存在时直接走原逻辑，不再查询交付件配置
+  if (isOppLatestValid || !AssembleBuiltinBinaryPathByConfig(options, shortSocVersion)) {
+    GetBuiltinBinaryPath(options, oppParentPath, shortSocVersion, false);
+  }
   ParseAllBinaryInfoConfigPath();
+}
+
+bool BinaryManager::AssembleBuiltinBinaryPathByConfig(const std::map<std::string, std::string> &options,
+                                                      const std::string &shortSocVersion) {
+  auto &configManager = fe::OpsDeliverableConfigManager::Instance();
+  if (!configManager.Initialize()) {
+    TE_DBGLOG("Ops deliverable config is not loaded, use legacy built-in binary path.");
+    return false;
+  }
+  // kernel 与 kernel/config 是并列的两条配置，均配置到分包级目录，按分包前缀索引
+  std::vector<std::string> kernelPaths;
+  std::vector<std::string> configPaths;
+  const bool hasKernelPaths = configManager.SelectOpKernelPaths(shortSocVersion, true, kernelPaths);
+  const bool hasConfigPaths = configManager.SelectOpKernelPaths(shortSocVersion, false, configPaths);
+  if (!hasKernelPaths || !hasConfigPaths) {
+    TE_DBGLOGF("Opkernel config is incomplete by soc[%s], use legacy built-in binary path.", shortSocVersion.c_str());
+    return false;
+  }
+  // implType 仍取自 op.binary.builtin 的配置项，与内置包保持一致
+  const auto iter = options.find(OP_BUILTIN_BINARY_KEY);
+  if (iter == options.end() || iter->second.empty()) {
+    TE_WARNLOGF("Not found builtin binary key: %s in options.", OP_BUILTIN_BINARY_KEY);
+    return false;
+  }
+  const size_t pos = iter->second.find('|');
+  if (pos == std::string::npos) {
+    TE_WARNLOGF("Config format is wrong");
+    return false;
+  }
+  int64_t implType = 0;
+  std::istringstream(iter->second.substr(0, pos)) >> implType;
+  for (const auto &kernelPath : kernelPaths) {
+    const std::string prefix = fe::OpsDeliverableConfigManager::ExtractOpsPathNamePrefix(kernelPath);
+    if (prefix.empty()) {
+      TE_WARNLOGF(
+          "Ignore opkernel path [%s]: ops deliverable config only supports subpackage-level dirs whose "
+          "last segment starts with 'ops_' (main-package / soc-level / fusion_ops dirs are not supported).",
+          kernelPath.c_str());
+      continue;
+    }
+    binaryOppKernelPathByPrefix_[prefix] = EnsureDirTail(kernelPath);
+  }
+  for (const auto &configPath : configPaths) {
+    const std::string prefix = fe::OpsDeliverableConfigManager::ExtractOpsPathNamePrefix(configPath);
+    if (prefix.empty()) {
+      TE_WARNLOGF(
+          "Ignore opkernel-config path [%s]: ops deliverable config only supports subpackage-level dirs whose "
+          "last segment starts with 'ops_' (main-package / soc-level / fusion_ops dirs are not supported).",
+          configPath.c_str());
+      continue;
+    }
+    binaryConfigPathByPrefix_[prefix] = EnsureDirTail(configPath);
+  }
+  if (binaryOppKernelPathByPrefix_.empty() || binaryConfigPathByPrefix_.empty()) {
+    TE_WARNLOGF(
+        "No valid subpackage-level opkernel/opkernel-config path by soc[%s], "
+        "use legacy built-in binary path.",
+        shortSocVersion.c_str());
+    return false;
+  }
+
+  deliverableImplType_ = implType;
+  deliverableOpKernelLoaded_ = true;
+  TE_INFOLOGF("Get builtin binary path from ops deliverable config. kernel num[%zu], config num[%zu]",
+              kernelPaths.size(), configPaths.size());
+  return true;
+}
+
+std::string BinaryManager::GetTaskOpsPathNamePrefix(const OpBuildTaskPtr &opTask) {
+  std::string prefix;
+  for (const auto &currentNode : opTask->opNodes) {
+    TE_FUSION_CHECK(currentNode == nullptr, continue);
+    (void)ge::AttrUtils::GetStr(currentNode->GetOpDesc(), OPS_PATH_NAME_PREFIX, prefix);
+    if (!prefix.empty()) {
+      return prefix;
+    }
+  }
+  return prefix;
+}
+
+bool BinaryManager::GetBinaryPathByPrefix(const OpBuildTaskPtr &opTask, bool isKernelOrModel,
+                                          std::string &binaryPath) const {
+  if (!deliverableOpKernelLoaded_) {
+    return false;
+  }
+  // 融合任务（node > 1）：config 索引 fusion_ops.json 归属 ops_legacy 分包（与 GetBinaryFileName 同源），
+  // kernel 产物目录由该分包的 kernel 路径派生（末段 ops_legacy -> fusion_ops）。
+  // 配置不区分 fusion_ops 与 legacy，仅在取 kernel 路径时判断融合任务并派生；
+  // ops_legacy 分包缺配或派生失败时回退原 prefix 查询，保持原行为不回归。
+  if (opTask->opNodes.size() > 1) {
+    const auto &fusionPathMap = isKernelOrModel ? binaryOppKernelPathByPrefix_ : binaryConfigPathByPrefix_;
+    const auto fusionIter = fusionPathMap.find(FUSION_OPS_LEGACY_PREFIX);
+    if (fusionIter != fusionPathMap.end() && !fusionIter->second.empty()) {
+      const std::string fusionPath =
+          isKernelOrModel ? DeriveFusionOpsKernelPath(fusionIter->second) : fusionIter->second;
+      if (!fusionPath.empty()) {
+        binaryPath = fusionPath;
+        TE_DBGLOGF("Get fusion binary path[%s] by isKernelOrModel[%d] from ops deliverable config.", binaryPath.c_str(),
+                   isKernelOrModel);
+        return true;
+      }
+    }
+    TE_DBGLOGF(
+        "Ops deliverable config has no fusion binary path of prefix[%s], isKernelOrModel[%d], "
+        "fallback to prefix.",
+        FUSION_OPS_LEGACY_PREFIX, isKernelOrModel);
+  }
+  const std::string prefix = GetTaskOpsPathNamePrefix(opTask);
+  const auto &pathMap = isKernelOrModel ? binaryOppKernelPathByPrefix_ : binaryConfigPathByPrefix_;
+  const auto iter = pathMap.find(prefix);
+  if (iter == pathMap.end() || iter->second.empty()) {
+    TE_DBGLOGF("Ops deliverable config has no binary path of prefix[%s].", prefix.c_str());
+    return false;
+  }
+  binaryPath = iter->second;
+  TE_DBGLOGF("Get binary path[%s] by prefix[%s] from ops deliverable config.", binaryPath.c_str(), prefix.c_str());
+  return true;
 }
 
 void BinaryManager::SetBuiltInOppLatestFlag(bool isOppLatest) {
@@ -250,6 +409,23 @@ void BinaryManager::ParseAllBinaryInfoConfigPath() {
     }
     relocatableBinaryInfoPtrMap_.emplace(opConfigPath.first, relocatableBinaryInfo);
   }
+  // 算子交付件配置：每个分包前缀一份索引（路径已到分包级，内部不再拼 soc 与分包）
+  ParsePrefixBinaryInfoByConfig(false);
+  ParsePrefixBinaryInfoByConfig(true);
+}
+
+void BinaryManager::ParsePrefixBinaryInfoByConfig(const bool isSuperKernel) {
+  auto &infoMap = isSuperKernel ? relocatableBinaryInfoPtrMapByPrefix_ : binaryInfoPtrMapByPrefix_;
+  for (const auto &prefixConfigPath : binaryConfigPathByPrefix_) {
+    BinaryInfoBasePtr binaryInfo = nullptr;
+    TE_FUSION_MAKE_SHARED(binaryInfo = std::make_shared<BinaryInfoBase>(), return);
+    if (!binaryInfo->ParseBinaryInfoFile(prefixConfigPath.second, isSuperKernel)) {
+      TE_WARNLOG("Cannot ParseBinaryInfoFile file_path is [%s]. isSuperKernel[%d]", prefixConfigPath.second.c_str(),
+                 isSuperKernel);
+      continue;
+    }
+    infoMap.emplace(prefixConfigPath.first, binaryInfo);
+  }
 }
 
 bool BinaryManager::JudgeBinKernelInstalled(bool isOm, int64_t implType) const {
@@ -264,6 +440,14 @@ bool BinaryManager::JudgeBinKernelInstalled(bool isOm, int64_t implType) const {
 }
 
 void BinaryManager::GetAllBinaryVersionInfo(bool isOm) {
+  // 算子交付件配置生效时，opkernel 已配置即视为可用，不再依赖 kernel 根下的 version.info
+  if (!isOm && deliverableOpKernelLoaded_ && deliverableImplType_ >= 0) {
+    binAdkVersionMap_[deliverableImplType_] = "";
+    binOppVersionMap_[deliverableImplType_] = "";
+    TE_INFOLOGF("Opkernel is configured by ops deliverable config, skip version.info check. implType[%ld]",
+                deliverableImplType_);
+    return;
+  }
   std::map<int64_t, std::string> &pathMap = isOm ? binaryOmModelPath_ : binaryOppKernelPath_;
   std::map<int64_t, std::string>::const_iterator it = pathMap.cbegin();
   for (; it != pathMap.cend(); ++it) {
@@ -364,9 +548,15 @@ bool BinaryManager::GetBinaryFileName(const OpBuildTaskPtr &opTask, std::string 
   if (opTask->opNodes.size() == 1) {
     (void)ge::AttrUtils::GetStr(opTask->opNodes[0]->GetOpDesc(), OPS_PATH_NAME_PREFIX, opsPathNamePrefix);
   } else {
-    opsPathNamePrefix = "ops_legacy";
+    // 融合索引 fusion_ops.json 归属 ops_legacy 分包，与 GetBinaryPathByPrefix 的融合分支同源
+    opsPathNamePrefix = FUSION_OPS_LEGACY_PREFIX;
   }
-  if (opsPathNamePrefix != "") {
+  // config 目录配置到分包级时（算子交付件配置场景）已包含分包层级，不再拼接分包名。
+  // 融合算子的 config 索引仍在 ops_legacy 分包下（只有 kernel 产物目录由它派生为 fusion_ops），
+  // 故 filePath 末段与 opsPathNamePrefix 一致，无需额外识别 fusion_ops 目录。
+  const std::string filePathPrefix = fe::OpsDeliverableConfigManager::ExtractOpsPathNamePrefix(filePath);
+  const bool isPrefixLevelDir = !opsPathNamePrefix.empty() && filePathPrefix == opsPathNamePrefix;
+  if (opsPathNamePrefix != "" && !isPrefixLevelDir) {
     binaryFile = filePath + opsPathNamePrefix + "/" + binaryFileName + ".json";
   } else {
     binaryFile = filePath + binaryFileName + ".json";
@@ -375,7 +565,7 @@ bool BinaryManager::GetBinaryFileName(const OpBuildTaskPtr &opTask, std::string 
   if (binaryFileRealPath.empty()) {
     TE_DBGLOG("Node(%s) binary file(%s) does not exist, try to find the binary file which assembly by opFile",
               GetTaskNodeName(opTask).c_str(), binaryFile.c_str());
-    if (opsPathNamePrefix != "") {
+    if (opsPathNamePrefix != "" && !isPrefixLevelDir) {
       binaryFile = filePath + opsPathNamePrefix + "/" + binaryFileNameByOpFile + ".json";
     } else {
       binaryFile = filePath + binaryFileNameByOpFile + ".json";
@@ -1383,20 +1573,31 @@ bool BinaryManager::MatchSimplifiedKey(const OpBuildTaskPtr &opTask, string &jso
   int skpSubId = -1;
   bool isSuperKernel = ge::AttrUtils::GetInt(opNode->GetOpDesc(), ASCENDC_SPK_SUB_ID, skpSubId) && (skpSubId != -1);
   TE_INFOLOG("Node[%s] super_kernel_sub_flag is %d", opNode->GetName().c_str(), isSuperKernel);
-  auto iter = binaryInfoPtrMap_.find(implType);
-  if (isSuperKernel) {
-    iter = relocatableBinaryInfoPtrMap_.find(implType);
-    if (iter == relocatableBinaryInfoPtrMap_.end()) {
-      TE_WARNLOG("Node[%s] binaryInfo is null, whose imply_type is %lu.", opNode->GetName().c_str(), implType);
-      return false;
-    }
-  } else {
-    if (iter == binaryInfoPtrMap_.end()) {
-      TE_WARNLOG("Node[%s] binaryInfo is null, whose imply_type is %lu.", opNode->GetName().c_str(), implType);
-      return false;
+  BinaryInfoBasePtr binaryInfoPtr = nullptr;
+  // 算子交付件配置生效时，索引按分包前缀组织；未命中（含未配置）回退 implType 索引
+  if (deliverableOpKernelLoaded_) {
+    const auto &prefixInfoMap = isSuperKernel ? relocatableBinaryInfoPtrMapByPrefix_ : binaryInfoPtrMapByPrefix_;
+    const auto prefixIter = prefixInfoMap.find(GetTaskOpsPathNamePrefix(opTask));
+    if (prefixIter != prefixInfoMap.end()) {
+      binaryInfoPtr = prefixIter->second;
     }
   }
-  BinaryInfoBasePtr binaryInfoPtr = iter->second;
+  if (binaryInfoPtr == nullptr) {
+    auto iter = binaryInfoPtrMap_.find(implType);
+    if (isSuperKernel) {
+      iter = relocatableBinaryInfoPtrMap_.find(implType);
+      if (iter == relocatableBinaryInfoPtrMap_.end()) {
+        TE_WARNLOG("Node[%s] binaryInfo is null, whose imply_type is %lu.", opNode->GetName().c_str(), implType);
+        return false;
+      }
+    } else {
+      if (iter == binaryInfoPtrMap_.end()) {
+        TE_WARNLOG("Node[%s] binaryInfo is null, whose imply_type is %lu.", opNode->GetName().c_str(), implType);
+        return false;
+      }
+    }
+    binaryInfoPtr = iter->second;
+  }
   return GenerateAndMatchSimpleKey(opNode, opInfo, binaryInfoPtr, isSuperKernel, jsonFilePath);
 }
 
@@ -1773,6 +1974,10 @@ void BinaryManager::SetBinaryReuseAttr(const OpBuildTaskPtr &opTask) const {
 void BinaryManager::GetBinaryPath(const OpBuildTaskPtr &opTask, bool isOm, bool isKernelOrModel,
                                   std::string &binaryPath) const {
   TE_DBGLOG("isOm %d, isKernelOrModel %d", isOm, isKernelOrModel);
+  // 算子交付件配置生效时优先按分包前缀取路径（om 场景不生效，走原逻辑）
+  if (!isOm && GetBinaryPathByPrefix(opTask, isKernelOrModel, binaryPath)) {
+    return;
+  }
   auto path = &binaryOppPath_;
   if (isOm) {
     if (isKernelOrModel) {

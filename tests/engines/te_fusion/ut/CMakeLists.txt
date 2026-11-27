@@ -45,6 +45,7 @@ add_executable(tefusion_ut
  	${CMAKE_CURRENT_LIST_DIR}/testcase/op_compile_adapter/testcase/te_fusion_build_file_ut.cc
  	${CMAKE_CURRENT_LIST_DIR}/testcase/op_compile_adapter/testcase/te_fusion_py_obj_ut.cc
  	${CMAKE_CURRENT_LIST_DIR}/testcase/op_compile_adapter/testcase/te_fusion_binary_ut.cc
+	${CMAKE_CURRENT_LIST_DIR}/testcase/op_compile_adapter/testcase/te_ops_deliverable_binary_ut.cc
  	${CMAKE_CURRENT_LIST_DIR}/testcase/op_compile_adapter/testcase/te_fusion_dfx_ut.cc)
 
 target_include_directories(tefusion_ut PRIVATE

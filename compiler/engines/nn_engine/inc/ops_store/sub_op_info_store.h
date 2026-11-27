@@ -73,6 +73,13 @@ class SubOpInfoStore {
    * information to this sub store;
    */
   Status LoadOpInfo(const std::string &real_path);
+
+  /*
+   * @brief : 若当前 store 是 ai_core built-in 信息库且算子交付件配置
+   * （ops_deliverables.json 的 ops-info 条目）生效，返回配置的 json 文件
+   * 列表（配置 paths 具体到 json 文件名）；否则返回 false 走目录扫描原逻辑。
+   */
+  bool GetDeliverableOpsInfoJsonFiles(std::vector<std::string> &json_files) const;
 };
 using SubOpInfoStorePtr = std::shared_ptr<SubOpInfoStore>;
 }  // namespace fe
