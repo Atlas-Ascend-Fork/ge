@@ -40,7 +40,7 @@ usage() {
   echo "Options:"
   echo "    -h, --help        Print usage"
   echo "    -v, --verbose     Show detailed build commands during the build process"
-  echo "    -j<N>             Set the number of threads used for building GE, default is 8"
+  echo "    -j<N>             Set the number of threads used for building GE, default is the number of logical processors in /proc/cpuinfo"
   echo "    --ge_compiler   Build ge-compiler package with kernel bin"
   echo "    --ge_executor   Build ge-executor package with kernel bin"
   echo "    --dflow         Build dflow-executor package with kernel bin"

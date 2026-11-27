@@ -37,7 +37,7 @@ bash build.sh --dflow          # Build dflow package
 ### Build Options
 
 ```bash
-bash build.sh -j16                  # 16 parallel threads (default: 8)
+bash build.sh -j16                  # 16 parallel threads (defaults to the number of logical processors in /proc/cpuinfo)
 bash build.sh --build-type=Debug    # Debug build (default: Release)
 bash build.sh --verbose             # Verbose output
 bash build.sh --asan                # Enable AddressSanitizer
