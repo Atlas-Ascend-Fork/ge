@@ -34,7 +34,7 @@ class AssignFunc:
         for msg in input_flow_msgs:
             if run_context.set_output(0, msg) != ff.FLOW_FUNC_SUCCESS:
                 logger.error("set output failed")
-            return ff.FLOW_FUNC_FAILED
+                return ff.FLOW_FUNC_FAILED
         return ff.FLOW_FUNC_SUCCESS
 
 
