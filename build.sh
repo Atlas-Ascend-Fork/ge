@@ -481,8 +481,8 @@ build_single_pkg() {
   execute_command cmake "${cmake_args[@]}" "${BASEPATH}"
   execute_command make "${component}" ${VERBOSE:+"${VERBOSE}"} "-j${THREAD_NUM}"
   execute_command cpack
-    if [ "${PACKAGE_TYPE}" = "run" ]; then
-    copy_pkg "${component}"
+  if [ "${PACKAGE_TYPE}" = "run" ]; then
+    copy_pkg "${component}" || return 1
   fi
   echo "===== GE package success: ${component} ====="
 }
