@@ -332,13 +332,8 @@ check_changed_files() {
     # remove leading/trailing spaces and quotes
     file=$(echo "$file" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//')
 
-    # check if file is README.md (case insensitive)
-    if echo "$file" | grep -qi "^README\.md$"; then
-      continue
-    fi
-
-    # check if file is CONTRIBUTING.md (case insensitive)
-    if echo "$file" | grep -qi "^CONTRIBUTING\.md$"; then
+    # Root project guides and their English translations are documentation-only.
+    if echo "$file" | grep -Eqi '^(README|CONTRIBUTING|AGENTS)(_en)?\.md$'; then
       continue
     fi
 
@@ -367,18 +362,13 @@ check_changed_files() {
       continue
     fi
 
-    # check if file is AGENTS.md (case insensitive)
-    if echo "$file" | grep -qi "^AGENTS\.md$"; then
-      continue
-    fi
-
     # if any file doesn't match the above patterns, don't skip build
     skip_build=false
     break
   done
 
   if [ "$skip_build" = true ]; then
-    echo "[INFO] Changed files only contain docs/, examples/, .gitcode/, .claude/, .opencode/, README.md, CONTRIBUTING.md or AGENTS.md, skipping build."
+    echo "[INFO] Changed files only contain docs/, examples/, .gitcode/, .claude/, .opencode/, root README, CONTRIBUTING or AGENTS guides, skipping build."
     echo "[INFO] Changed files: $changed_files"
     return 0
   fi
