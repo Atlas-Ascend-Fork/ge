@@ -84,3 +84,16 @@ class TensorUt(unittest.TestCase):
         tensor = Tensor(arr1)
         with self.assertRaises(RuntimeError):
             tensor.numpy(False)
+
+    def test_half_tensor_numpy_shape_and_copy(self):
+        arr1 = np.array([[1.0, 2.0], [3.0, 4.0]], np.float16)
+        for dtype in (DataType.DT_FLOAT16, DataType.DT_BF16):
+            tensor = Tensor(arr1, TensorDesc(dtype, [2, 2]))
+            view = tensor.numpy()
+            self.assertEqual(tuple(view.shape), (2, 2))
+            copied = tensor.numpy(copy=True)
+            self.assertEqual(tuple(copied.shape), (2, 2))
+        fp16 = Tensor(arr1, TensorDesc(DataType.DT_FLOAT16, [2, 2]))
+        view = fp16.numpy()
+        copied = fp16.numpy(copy=True)
+        self.assertFalse(np.shares_memory(view, copied))

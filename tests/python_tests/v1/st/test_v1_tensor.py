@@ -14,7 +14,7 @@
 import unittest
 
 import numpy as np
-from llm_datadist_v1 import Tensor
+from llm_datadist_v1 import DataType, Tensor, TensorDesc
 
 
 class TensorSt(unittest.TestCase):
@@ -35,3 +35,12 @@ class TensorSt(unittest.TestCase):
         tensor = Tensor(arr1)
         with self.assertRaises(RuntimeError):
             tensor.numpy(False)
+
+    def test_half_tensor_numpy_shape_and_copy(self):
+        arr1 = np.array([[1.0, 2.0], [3.0, 4.0]], np.float16)
+        for dtype in (DataType.DT_FLOAT16, DataType.DT_BF16):
+            tensor = Tensor(arr1, TensorDesc(dtype, [2, 2]))
+            self.assertEqual(tuple(tensor.numpy().shape), (2, 2))
+            self.assertEqual(tuple(tensor.numpy(copy=True).shape), (2, 2))
+        fp16 = Tensor(arr1, TensorDesc(DataType.DT_FLOAT16, [2, 2]))
+        self.assertFalse(np.shares_memory(fp16.numpy(), fp16.numpy(copy=True)))

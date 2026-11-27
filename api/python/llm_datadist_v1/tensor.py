@@ -160,10 +160,14 @@ class Tensor(object):
         handle_llm_status(ret, "Tensor.numpy", "Failed to get tensor buffer")
         if self._tensor_desc.dtype == data_type.DataType.DT_BF16:
             np_array = np.frombuffer(tensor, dtype=np.uint16)
-            return (np_array.astype(np.uint32) << 16).view(np.float32)
+            ret = (np_array.astype(np.uint32) << 16).view(np.float32)
+            ret = ret.reshape(self._tensor_desc.shape)
+            return np.array(ret, copy=True) if copy else ret
         elif self._tensor_desc.dtype == data_type.DataType.DT_FLOAT16:
             np_array = np.frombuffer(tensor, dtype=np.uint16)
-            return np_array.view(np.float16)
+            ret = np_array.view(np.float16)
+            ret = ret.reshape(self._tensor_desc.shape)
+            return np.array(ret, copy=True) if copy else ret
         if copy:
             ret = np.array(tensor, copy=True)
         else:
