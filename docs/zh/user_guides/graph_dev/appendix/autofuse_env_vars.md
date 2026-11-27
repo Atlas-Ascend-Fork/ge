@@ -226,6 +226,7 @@ PGO调优是通过预上板采样，选取表现相对更好的Tiling以提升�
 - 图上包含V1版本控制算子（如："Switch","StreamSwitch","Merge","StreamMerge","Enter","Exit","LoopCond","NextIteration"）。
 - 开启数据预处理下沉场景。
 - 开启AOE调优的场景。
+- 子图的输入输出内存占用超过设备内存阈值的场景。
 
 #### --max\_fusion\_size
 
