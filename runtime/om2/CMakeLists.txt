@@ -24,7 +24,7 @@ add_library(om2_executor SHARED
         # 此处仅添加执行时依赖的源文件
 )
 
-# AIPP still includes codegen types containing task.pb.h; OM2 Dump supports both protobuf and TLV payload formats.
+# AIPP still includes codegen types containing task.pb.h.
 add_dependencies(om2_executor graphengine_protos)
 
 target_compile_definitions(om2_executor PRIVATE
@@ -51,7 +51,7 @@ target_include_directories(om2_executor PRIVATE
 )
 
 # libom2_executor.so 不再链接 ascend_protobuf / ascend_dump（含 adump_headers）：
-# - dump 相关 protobuf（op_mapping/dump_task）与 adump API 已全部随 dump/ 源码归入 libom2_dump.so；
+# - dump 与 adump API 已全部随 dump/ 源码归入 libom2_dump.so；
 # - executor 仅经 inc/ 头文件传递性包含生成的 *.pb.h，故只需 protobuf 头文件路径
 #   （ascend_protobuf_shared_headers，INTERFACE，不产生 libascend_protobuf.so 的 DT_NEEDED），
 #   以及 graphengine_protos 的生成目录与构建顺序依赖；
@@ -144,7 +144,7 @@ target_link_libraries(om2_dump PRIVATE
         runtime
         json
         minizip_static
-        ascend_protobuf
+        ascend_protobuf_shared_headers
         ascend_dump
         acl_rt
         $<$<NOT:$<STREQUAL:${TARGET_SYSTEM_NAME},Android>>:-lrt>

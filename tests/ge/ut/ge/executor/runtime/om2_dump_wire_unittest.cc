@@ -303,7 +303,6 @@ void ExpectWireModelConsistent(const toolkit::aicpu::dump::OpMappingInfo &proto_
 class Om2DumpWireTest : public Test {
  protected:
   void SetUp() override {
-    setenv("OM2_DUMP_DATA_VERSION", "1", 1);
     DumpConfig::Instance().Reset();
     ProfilingConfig::Instance().Disable();
     memory = std::make_shared<DumpWireMemoryStub>();
@@ -344,7 +343,6 @@ class Om2DumpWireTest : public Test {
     RuntimeStub::Reset();
     DumpConfig::Instance().Reset();
     ProfilingConfig::Instance().Disable();
-    unsetenv("OM2_DUMP_DATA_VERSION");
   }
   void Configure(const std::string &mode = "all", const std::string &data = "tensor") {
     const std::string config = "{\"dump\":{\"dump_path\":\"/tmp/om2_wire\",\"dump_mode\":\"" + mode +
@@ -417,39 +415,6 @@ class Om2DumpWireTest : public Test {
     task.workspace_addrs = addresses;
     task.workspace_sizes = sizes;
     task.workspace_num = 2U;
-  }
-  // 交叉比对用例复用：同一输入分别走 proto 与 TLV 生产路径再解析回对象；版本号在构造 impl 时读取，
-  // 故两个 impl 均在本函数内 setenv 之后构造，以 unique_ptr 交回调用方（用例内显式 Clear 校验归还）
-  void BuildBothPayloadVariants(std::unique_ptr<DataDumpImpl> &proto_impl, std::unique_ptr<DataDumpImpl> &tlv_impl,
-                                toolkit::aicpu::dump::OpMappingInfo &proto_info, DumpTransportInfo &tlv_info) {
-    setenv("OM2_DUMP_DATA_VERSION", "0", 1);
-    proto_impl = std::make_unique<DataDumpImpl>();
-    ASSERT_TRUE(proto_impl->IsProtoVer());
-    ASSERT_EQ(proto_impl->SaveTask(task, ModelTaskType::MODEL_TASK_KERNEL, nullptr, true), SUCCESS);
-    proto_impl->SetOpDebugInfo(20U, 21U, reinterpret_cast<void *>(kDevOpDebugAddr));
-    ASSERT_EQ(proto_impl->BuildAndLoadOpMappingInfo(model), SUCCESS);
-    setenv("OM2_DUMP_DATA_VERSION", "1", 1);
-    tlv_impl = std::make_unique<DataDumpImpl>();
-    ASSERT_FALSE(tlv_impl->IsProtoVer());
-    ASSERT_EQ(tlv_impl->SaveTask(task, ModelTaskType::MODEL_TASK_KERNEL, nullptr, true), SUCCESS);
-    tlv_impl->SetOpDebugInfo(20U, 21U, reinterpret_cast<void *>(kDevOpDebugAddr));
-    ASSERT_EQ(tlv_impl->BuildAndLoadDumpTransportInfo(model), SUCCESS);
-    ASSERT_EQ(runtime->models.size(), 2U);
-    const auto &proto_bytes = runtime->models[0].bytes;
-    ASSERT_TRUE(proto_info.ParseFromArray(proto_bytes.data(), static_cast<int>(proto_bytes.size())));
-    const auto &tlv_bytes = runtime->models[1].bytes;
-    ASSERT_EQ(tlv_info.Deserialize(tlv_bytes.data(), tlv_bytes.size()), DumpTransStatus::kOk);
-  }
-  // 普通任务 + OpDebug 特殊任务，两种格式的 task 数量与内容应一致
-  void ExpectTasksWireConsistent(const toolkit::aicpu::dump::OpMappingInfo &proto_info,
-                                 const DumpTransportInfo &tlv_info) {
-    ASSERT_EQ(static_cast<size_t>(proto_info.task_size()), tlv_info.GetTaskCount());
-    ASSERT_EQ(tlv_info.GetTaskCount(), 2U);
-    for (size_t i = 0U; i < tlv_info.GetTaskCount(); ++i) {
-      const DumpTransTaskInfo *read = nullptr;
-      ASSERT_EQ(tlv_info.GetTask(i, read), DumpTransStatus::kOk);
-      ExpectWireTaskConsistent(proto_info.task(static_cast<int>(i)), *read);
-    }
   }
   std::shared_ptr<DumpWireMemoryStub> memory;
   std::shared_ptr<DumpWireRuntimeStub> runtime;
@@ -779,158 +744,21 @@ TEST_F(Om2DumpWireTest, CustomDump_ShouldRetainBothBuffers_WhenKernelLaunchFails
   EXPECT_TRUE(memory->live.empty());
 }
 
-// 场景：OM2_DUMP_DATA_VERSION 未设置 / 置 1 / 置非法值。依次得到 protobuf(0)、TLV(1)、非法值回落 protobuf(0)。
-TEST(DumpDataVersionTest, DumpDataVersion_ShouldFollowEnvVar_WhenEnvVarSet) {
-  unsetenv("OM2_DUMP_DATA_VERSION");
-  EXPECT_EQ(GetDumpDataVersionFromEnv(), GE_DUMP_DATA_VERSION_PROTO);
-  setenv("OM2_DUMP_DATA_VERSION", "1", 1);
-  EXPECT_EQ(GetDumpDataVersionFromEnv(), GE_DUMP_DATA_VERSION_TLV);
-  setenv("OM2_DUMP_DATA_VERSION", "0", 1);
-  EXPECT_EQ(GetDumpDataVersionFromEnv(), GE_DUMP_DATA_VERSION_PROTO);
-  setenv("OM2_DUMP_DATA_VERSION", "bad", 1);
-  EXPECT_EQ(GetDumpDataVersionFromEnv(), GE_DUMP_DATA_VERSION_PROTO);
-  unsetenv("OM2_DUMP_DATA_VERSION");
-}
-
-// 场景：版本环境变量置 0 走 protobuf 分支。模型级下发改产 OpMappingInfo，捕获的载荷可被 ParseFromString 解析。
-TEST_F(Om2DumpWireTest, ModelDump_ShouldBuildProtoPayload_WhenVersionEnvIsProto) {
-  setenv("OM2_DUMP_DATA_VERSION", "0", 1);
-  Configure();
-  DataDumpImpl impl;
-  EXPECT_TRUE(impl.IsProtoVer());
-  ASSERT_EQ(impl.SaveTask(task, ModelTaskType::MODEL_TASK_KERNEL, nullptr, false), SUCCESS);
-  ASSERT_EQ(impl.BuildAndLoadOpMappingInfo(model), SUCCESS);
-  ASSERT_FALSE(runtime->models.empty());
-  const auto &submission = runtime->models.back();
-  EXPECT_EQ(memory->live.count(const_cast<uint8_t *>(submission.payload)), 1U);
-  toolkit::aicpu::dump::OpMappingInfo info;
-  ASSERT_TRUE(info.ParseFromArray(submission.bytes.data(), static_cast<int>(submission.bytes.size())));
-  EXPECT_EQ(info.model_id(), 42U);
-  EXPECT_EQ(info.model_name(), "test_model");
-  EXPECT_EQ(info.dump_path(), DumpConfig::Instance().GetDumpPath() + "3/");
-  EXPECT_EQ(info.dump_step(), "1|3-5");
-  EXPECT_EQ(info.flag(), 1U);
-  EXPECT_EQ(info.dump_data(), toolkit::aicpu::dump::DumpData::TENSOR_DUMP_DATA);
-  ASSERT_EQ(info.task_size(), 1);
-  const auto &read = info.task(0);
-  EXPECT_EQ(read.task_id(), 7U);
-  EXPECT_EQ(read.stream_id(), 8U);
-  EXPECT_EQ(read.context_id(), 9U);
-  EXPECT_EQ(read.thread_id(), 10U);
-  EXPECT_EQ(read.op().op_name(), "layer1");
-  EXPECT_EQ(read.op().op_type(), "Custom");
-  ASSERT_EQ(read.input_size(), 1);
-  EXPECT_EQ(read.input(0).address(), kDevInputAddr);
-  EXPECT_EQ(read.input(0).size(), 128U);
-  // 与 CheckTensor 同理：载荷写 IR(proto) 枚举，proto DT_FLOAT=1 而 ge::DT_FLOAT=0
-  EXPECT_EQ(read.input(0).data_type(), DataTypeUtil::GetIrDataType(DT_FLOAT));
-  EXPECT_EQ(read.input(0).format(), FORMAT_ND);
-  EXPECT_EQ(read.input(0).addr_type(), toolkit::aicpu::dump::AddressType::TRADITIONAL_ADDR);
-  ASSERT_EQ(read.input(0).shape().dim_size(), 2);
-  EXPECT_EQ(read.input(0).shape().dim(0), 2U);
-  EXPECT_EQ(read.input(0).shape().dim(1), UINT64_MAX);
-  ASSERT_EQ(read.output_size(), 1);
-  EXPECT_EQ(read.output(0).address(), kDevOutputAddr);
-  EXPECT_EQ(read.output(0).size(), 128U);
-  EXPECT_EQ(read.space_size(), 0);
-}
-
-// 场景：版本环境变量置 0。custom 前/后处理与 ModelDumpManager 的三处分派全部走 protobuf 分支。
-TEST_F(Om2DumpWireTest, CustomDump_ShouldUseProtoPath_WhenVersionEnvIsProto) {
-  setenv("OM2_DUMP_DATA_VERSION", "0", 1);
-  Configure();
-  task.task_type = static_cast<uint32_t>(ModelTaskType::MODEL_TASK_CUSTOM_KERNEL);
-  {
-    ModelDumpManager manager(42U);
-    ASSERT_EQ(manager.SetModelDumpInfo(model), SUCCESS);
-    ASSERT_EQ(manager.PreprocessOm2TaskInfo(task), SUCCESS);
-    ASSERT_EQ(manager.PostprocessOm2TaskInfo(task), SUCCESS);
-    ASSERT_EQ(runtime->custom.size(), 2U);
-    toolkit::aicpu::dump::OpMappingInfo input_info;
-    const auto &input_bytes = runtime->custom[0].bytes;
-    ASSERT_TRUE(input_info.ParseFromArray(input_bytes.data(), static_cast<int>(input_bytes.size())));
-    EXPECT_EQ(input_info.model_id(), 42U);
-    ASSERT_EQ(input_info.task_size(), 1);
-    EXPECT_EQ(input_info.task(0).input_size(), 1);
-    EXPECT_EQ(input_info.task(0).output_size(), 0);
-    EXPECT_EQ(input_info.task(0).input(0).address(), kDevTensorAddr);
-    toolkit::aicpu::dump::OpMappingInfo output_info;
-    const auto &output_bytes = runtime->custom[1].bytes;
-    ASSERT_TRUE(output_info.ParseFromArray(output_bytes.data(), static_cast<int>(output_bytes.size())));
-    ASSERT_EQ(output_info.task_size(), 1);
-    EXPECT_EQ(output_info.task(0).input_size(), 0);
-    EXPECT_EQ(output_info.task(0).output_size(), 1);
-    EXPECT_EQ(output_info.task(0).output(0).address(), kDevTensorAddr);
-  }
-  EXPECT_TRUE(memory->live.empty());
-
-  task.task_type = static_cast<uint32_t>(ModelTaskType::MODEL_TASK_KERNEL);
-  {
-    ModelDumpManager manager(42U);
-    ASSERT_EQ(manager.SetModelDumpInfo(model), SUCCESS);
-    ASSERT_EQ(manager.PostprocessOm2TaskInfo(task), SUCCESS);
-    ASSERT_EQ(manager.DispatchDumpInfo(), SUCCESS);
-    ASSERT_FALSE(runtime->models.empty());
-    const auto &submission = runtime->models.back();
-    toolkit::aicpu::dump::OpMappingInfo info;
-    ASSERT_TRUE(info.ParseFromArray(submission.bytes.data(), static_cast<int>(submission.bytes.size())));
-    ASSERT_EQ(info.task_size(), 1);
-    EXPECT_EQ(info.task(0).op().op_name(), "layer1");
-  }
-  EXPECT_TRUE(memory->live.empty());
-}
-
-// 场景：同一输入分别走 protobuf 与 TLV 生产路径下发：解码后逐字段交叉比对（5 个 oneof/explicit 字段
-// presence 严格对齐），并校验两个 impl 的 step_id 计数器设备内存相互独立（各自分配 8 字节、初值 0、
-// 地址不同）。两种载荷的体积大小关系与 golden 长度由文末 Om2DumpWireBbitTest 的 4 个真机用例断言
-TEST_F(Om2DumpWireTest, DumpPayload_ShouldKeepProtoTlvFieldEquivalentAndStepIdIndependent_WhenSameInput) {
-  Configure();
-  const uint64_t addresses[] = {kDevWsAddr0, kDevWsAddr1};
-  const uint64_t sizes[] = {32U, 64U};
-  SetupTwoWorkspaces(addresses, sizes);
-  model.loop_cond_addr = kDevLoopCondAddr;
-  model.iterations_per_loop_addr = kDevIterationsAddr;
-  std::unique_ptr<DataDumpImpl> proto_impl;
-  std::unique_ptr<DataDumpImpl> tlv_impl;
-  toolkit::aicpu::dump::OpMappingInfo proto_info;
-  DumpTransportInfo tlv_info;
-  BuildBothPayloadVariants(proto_impl, tlv_impl, proto_info, tlv_info);
-  // helper 内断言失败会提前返回，这里挡住后续对 runtime->models / impl 的解引用
-  ASSERT_EQ(runtime->models.size(), 2U);
-  ExpectWireModelConsistent(proto_info, tlv_info.GetModel());
-  ExpectTasksWireConsistent(proto_info, tlv_info);
-  // step_id_addr 指向各自 impl 独立分配的设备内存，地址必然不同，只比较存活性和初始值
-  ASSERT_TRUE(proto_info.has_step_id_addr());
-  const auto proto_step = reinterpret_cast<const uint64_t *>(static_cast<uintptr_t>(proto_info.step_id_addr()));
-  EXPECT_EQ(memory->live.at(const_cast<uint64_t *>(proto_step)), sizeof(uint64_t));
-  EXPECT_EQ(*proto_step, 0U);
-  ASSERT_TRUE(tlv_info.GetModel().HasStepIdAddr());
-  const uint64_t tlv_step = tlv_info.GetModel().GetStepIdAddr();
-  const auto tlv_step_ptr = reinterpret_cast<const uint64_t *>(static_cast<uintptr_t>(tlv_step));
-  EXPECT_EQ(memory->live.at(const_cast<uint64_t *>(tlv_step_ptr)), sizeof(uint64_t));
-  EXPECT_EQ(*tlv_step_ptr, 0U);
-  EXPECT_NE(proto_info.step_id_addr(), tlv_step);
-  proto_impl->Clear();
-  tlv_impl->Clear();
-  EXPECT_TRUE(memory->live.empty());
-}
-
-// 场景：model_name=nullptr 的防御分支——生产路径两条分支都按空串写入：pb set_model_name("") 与
-// TLV explicit SetModelName("") 对称上线，解码后 presence 一致（两侧 Has 均 true）且值为空串
+// 场景：model_name=nullptr 的防御分支——生产者按空串写入，TLV explicit SetModelName("") 仍上线：
+// 解码后 HasModelName 为 true 且值为空串
 TEST_F(Om2DumpWireTest, ModelDump_ShouldTreatNullModelNameAsEmpty_WhenNamePtrIsNull) {
   Configure();
   model.model_name = nullptr;
-  std::unique_ptr<DataDumpImpl> proto_impl;
-  std::unique_ptr<DataDumpImpl> tlv_impl;
-  toolkit::aicpu::dump::OpMappingInfo proto_info;
-  DumpTransportInfo tlv_info;
-  BuildBothPayloadVariants(proto_impl, tlv_impl, proto_info, tlv_info);
-  EXPECT_TRUE(proto_info.has_model_name());
-  EXPECT_EQ(proto_info.model_name(), "");
-  EXPECT_TRUE(tlv_info.GetModel().HasModelName());
-  EXPECT_EQ(tlv_info.GetModel().GetModelName(), "");
-  proto_impl->Clear();
-  tlv_impl->Clear();
+  DataDumpImpl impl;
+  ASSERT_EQ(impl.SaveTask(task, ModelTaskType::MODEL_TASK_KERNEL, nullptr, false), SUCCESS);
+  ASSERT_EQ(impl.BuildAndLoadDumpTransportInfo(model), SUCCESS);
+  ASSERT_EQ(runtime->models.size(), 1U);
+  DumpTransportInfo info;
+  const auto &bytes = runtime->models[0].bytes;
+  ASSERT_EQ(info.Deserialize(bytes.data(), bytes.size()), DumpTransStatus::kOk);
+  ASSERT_TRUE(info.GetModel().HasModelName());
+  EXPECT_EQ(info.GetModel().GetModelName(), "");
+  impl.Clear();
   EXPECT_TRUE(memory->live.empty());
 }
 
