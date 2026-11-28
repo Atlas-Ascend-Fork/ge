@@ -199,7 +199,7 @@ inline Status GetNodeFallbackInfo(AscGraph &asc_graph, const NodePtr &node, Tens
   current_node_attr.sched_axis = temp_graph_attr.sched_axis;
   current_node_attr.axis = temp_graph_attr.axis;
   current_node_attr.repeats = temp_graph_attr.repeats;
-  current_node_attr.strides = temp_graph_attr.repeats;
+  current_node_attr.strides = temp_graph_attr.strides;
   return SUCCESS;
 }
 
