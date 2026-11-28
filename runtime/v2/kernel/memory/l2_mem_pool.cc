@@ -100,7 +100,7 @@ ge::MemBlock *L2MemPool::MoveL2ToL1(ge::MemBlock *block) {
 BlockAddr MultiStreamL1Allocator::Alloc(const MemSize size) {
   auto block = l1_allocator_->Malloc(size);
   if ((block == nullptr) && (all_l2_mem_pool_ != nullptr) && !is_rt2_multi_thread_) {
-    GELOGI("malloc memory not success, try to free l2 mem pool and malloc again");
+    GELOGI("Try to free l2 mem pool and malloc again");
     for (size_t i = 0U; i < all_l2_mem_pool_->GetSize(); ++i) {
       auto l2_mem_pool = all_l2_mem_pool_->MutableData()[i];
       GE_ASSERT_NOTNULL(l2_mem_pool);
@@ -117,7 +117,7 @@ BlockAddr MultiStreamL1Allocator::Alloc(const MemSize size) {
                     "Failed to expand memory for l2 allocator, stream %p, size %zu, is enable rt2 multi thread: %zu",
                     l2_stream_, size, static_cast<size_t>(is_rt2_multi_thread_));
   GE_ASSERT_NOTNULL(block->GetAddr());
-  GELOGI("[MEM]Expand memory pool at stream %p, address %p, size %zu, block %p. allocator addr %p", l2_stream_,
+  GELOGI("[MEM]Expand memory pool at stream %p, address %p, size %zu bytes, block %p. allocator addr %p", l2_stream_,
          block->GetAddr(), size, block, l1_allocator_);
   return block;
 }

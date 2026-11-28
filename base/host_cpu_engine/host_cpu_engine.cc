@@ -299,7 +299,9 @@ Status HostCpuEngine::Run(const NodePtr &node, HostCpuOp &kernel, const std::vec
 void *HostCpuEngine::DlopenLib(const std::string &lib_path, bool global) const {
   GELOGI("To invoke dlopen on lib: %s", lib_path.c_str());
   // RTLD_LOCAL is the default when RTLD_GLOBAL is absent.
-  uint32_t open_flag = static_cast<uint32_t>(MMPA_RTLD_NOW);
+  // RTLD_NODELETE keeps the lib resident after dlclose, avoiding core dump caused by unloading a lib
+  // whose static objects or registered callbacks are still referenced.
+  uint32_t open_flag = static_cast<uint32_t>(MMPA_RTLD_NOW) | static_cast<uint32_t>(MMPA_RTLD_NODELETE);
   if (global) {
     open_flag |= static_cast<uint32_t>(MMPA_RTLD_GLOBAL);
   }
@@ -338,6 +340,7 @@ Status HostCpuEngine::LoadLib(const std::string &lib_path, bool invoke_init) {
     return INTERNAL_ERROR;
   }
   if (invoke_init && InvokeLibInitialize(handle, lib_path) != SUCCESS) {
+    (void)mmDlclose(handle);
     return INTERNAL_ERROR;
   }
   GELOGI("Lib: %s has been opened", lib_path.c_str());

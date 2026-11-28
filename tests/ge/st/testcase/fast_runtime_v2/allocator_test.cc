@@ -32,11 +32,18 @@
 #include "graph/ge_local_context.h"
 #include "macro_utils/dt_public_scope.h"
 #include "kernel/memory/caching_mem_allocator.h"
+#include "kernel/memory/single_stream_l2_allocator.h"
+#include "kernel/memory/multi_stream_l2_allocator.h"
+#include "kernel/memory/sink_weight_assigner.h"
 #include "kernel/common_kernel_impl/tiling.h"
+#include "register/kernel_registry.h"
+#include "faker/kernel_run_context_facker.h"
+#include "exe_graph/runtime/continuous_vector.h"
 
 using namespace ge;
 namespace gert {
 namespace {
+KernelRegistry &registry = KernelRegistry::GetInstance();
 UINT32 FakeTilingWithBigWorkspace(gert::KernelContext *context) {
   const auto input_num = context->GetInputNum();
   GE_ASSERT(input_num > 2);
@@ -236,6 +243,186 @@ TEST_F(Runtime2AllocatorSystemTest, test_alloc_total_exceed_thresold) {
   span2->Free();
   span1->Free();
   ASSERT_EQ(ge::GRAPH_SUCCESS, allocator.Finalize());
+}
+
+/**
+ * 用例描述：校验GetAllocator入参placement/usage越界时返回空指针
+ *
+ * 预置条件：无
+ *
+ * 测试步骤：
+ * 1. 构造Allocators，分别传入越界的placement与usage调用GetAllocator
+ *
+ * 预期结果：
+ * 1. 越界场景返回nullptr
+ */
+TEST_F(Runtime2AllocatorSystemTest, test_get_allocator_with_unsupported_placement) {
+  std::unique_ptr<Allocators> allocators = std::make_unique<Allocators>();
+  ASSERT_EQ(allocators->GetAllocator(kTensorPlacementEnd, 0U), nullptr);
+  ASSERT_EQ(allocators->GetAllocator(kOnDeviceHbm, 999U), nullptr);
+}
+
+/**
+ * 用例描述：校验GetExternalL1Allocator入参placement越界时执行失败
+ *
+ * 预置条件：无
+ *
+ * 测试步骤：
+ * 1. 构造kernel运行上下文，placement输入传入kTensorPlacementEnd，执行GetExternalL1Allocator
+ *
+ * 预期结果：
+ * 1. 返回GRAPH_FAILED
+ */
+TEST_F(Runtime2AllocatorSystemTest, test_get_external_l1_allocator_with_invalid_placement) {
+  auto funcs = registry.FindKernelFuncs("GetExternalL1Allocator");
+  ASSERT_NE(funcs, nullptr);
+  auto context_holder = KernelRunContextFaker()
+                            .KernelIONum(2, 1)
+                            .Inputs({reinterpret_cast<void *>(kTensorPlacementEnd), reinterpret_cast<void *>(0)})
+                            .Build();
+  auto context = context_holder.GetContext<KernelContext>();
+  ASSERT_EQ(funcs->run_func(context), ge::GRAPH_FAILED);
+}
+
+/**
+ * 用例描述：校验AssignWeightMemory输入指针全空时执行失败
+ *
+ * 预置条件：无
+ *
+ * 测试步骤：
+ * 1. 构造kernel运行上下文，三个输入均为nullptr，执行AssignWeightMemory
+ *
+ * 预期结果：
+ * 1. 返回GRAPH_FAILED
+ */
+TEST_F(Runtime2AllocatorSystemTest, test_assign_weight_memory_inputs_addr_invalid) {
+  ASSERT_NE(registry.FindKernelFuncs("AssignWeightMemory")->run_func, nullptr);
+  auto context_holder = KernelRunContextFaker()
+                            .KernelIONum(static_cast<size_t>(kernel::AssignWeightMemoryInputs::kNum),
+                                         static_cast<size_t>(kernel::AssignWeightMemoryOutputs::kNum))
+                            .Inputs({nullptr, nullptr, nullptr})
+                            .Build();
+  auto context = context_holder.GetContext<KernelContext>();
+  ASSERT_EQ(registry.FindKernelFuncs("AssignWeightMemory")->run_func(context), ge::GRAPH_FAILED);
+}
+
+/**
+ * 用例描述：校验MultiStreamL2Allocator BirthRecycle入参为空时执行失败
+ *
+ * 预置条件：无
+ *
+ * 测试步骤：
+ * 1. 构造MultiStreamL2Allocator，调用BirthRecycle传入nullptr
+ *
+ * 预期结果：
+ * 1. 返回GRAPH_FAILED
+ */
+TEST_F(Runtime2AllocatorSystemTest, test_multi_stream_l2_birth_recycle_null_block) {
+  std::shared_ptr<ge::Allocator> device_allocator(AllocatorFactory::Create(kOnDeviceHbm).release());
+  ASSERT_NE(device_allocator, nullptr);
+  memory::MultiStreamL2Allocator multi_stream_allocator(device_allocator.get());
+  ASSERT_EQ(multi_stream_allocator.BirthRecycle(nullptr), ge::GRAPH_FAILED);
+}
+
+/**
+ * 用例描述：校验AllocBatchHbm输入sizes数量超过输出容量时执行失败
+ *
+ * 预置条件：无
+ *
+ * 测试步骤：
+ * 1. 构造sizes数量为kMaxWorkspaceCount+1的输入，输出由outputs_creator创建（容量kMaxWorkspaceCount）
+ *
+ * 预期结果：
+ * 1. 返回GRAPH_FAILED
+ */
+TEST_F(Runtime2AllocatorSystemTest, test_alloc_batch_hbm_size_exceed_capacity) {
+  memory::CachingMemAllocator allocator(0U, RT_MEMORY_HBM);
+  memory::SingleStreamL2Allocator single_stream_l2_allocator(&allocator);
+  constexpr size_t kExceedCount = 17U;  // kMaxWorkspaceCount(16) + 1
+  auto sizes_buf = ContinuousVector::Create<size_t>(kExceedCount);
+  ASSERT_NE(sizes_buf, nullptr);
+  auto sizes_vec = reinterpret_cast<TypedContinuousVector<size_t> *>(sizes_buf.get());
+  ASSERT_EQ(sizes_vec->SetSize(kExceedCount), ge::GRAPH_SUCCESS);
+  auto context_holder =
+      KernelRunContextFaker().KernelIONum(2, 1).Inputs({&single_stream_l2_allocator, sizes_vec}).Build();
+  auto context = context_holder.GetContext<KernelContext>();
+  ASSERT_EQ(registry.FindKernelFuncs("AllocBatchHbm")->outputs_creator(nullptr, context), ge::GRAPH_SUCCESS);
+  ASSERT_EQ(registry.FindKernelFuncs("AllocBatchHbm")->run_func(context), ge::GRAPH_FAILED);
+}
+
+/**
+ * 用例描述：校验AllocBatchHbm正常分配场景
+ *
+ * 预置条件：无
+ *
+ * 测试步骤：
+ * 1. 构造2个size的输入，经AllocBatchHbm分配内存
+ *
+ * 预期结果：
+ * 1. 返回GRAPH_SUCCESS
+ */
+TEST_F(Runtime2AllocatorSystemTest, test_alloc_batch_hbm_malloc_success) {
+  memory::CachingMemAllocator allocator(0U, RT_MEMORY_HBM);
+  memory::SingleStreamL2Allocator single_stream_l2_allocator(&allocator);
+  constexpr size_t kAllocCount = 2U;
+  auto sizes_buf = ContinuousVector::Create<size_t>(kAllocCount);
+  ASSERT_NE(sizes_buf, nullptr);
+  auto sizes_vec = reinterpret_cast<TypedContinuousVector<size_t> *>(sizes_buf.get());
+  ASSERT_EQ(sizes_vec->SetSize(kAllocCount), ge::GRAPH_SUCCESS);
+  auto sizes_data = sizes_vec->MutableData();
+  sizes_data[0] = 1024U;
+  sizes_data[1] = 2048U;
+  auto context_holder =
+      KernelRunContextFaker().KernelIONum(2, 1).Inputs({&single_stream_l2_allocator, sizes_vec}).Build();
+  auto context = context_holder.GetContext<KernelContext>();
+  ASSERT_EQ(registry.FindKernelFuncs("AllocBatchHbm")->outputs_creator(nullptr, context), ge::GRAPH_SUCCESS);
+  ASSERT_EQ(registry.FindKernelFuncs("AllocBatchHbm")->run_func(context), ge::GRAPH_SUCCESS);
+  context_holder.FreeAll();
+  ASSERT_EQ(allocator.Finalize(), ge::GRAPH_SUCCESS);
+}
+
+/**
+ * 用例描述：校验AllocBatchHbm内存申请失败场景
+ *
+ * 预置条件：
+ * 1. mock rtMallocPhysical始终失败
+ *
+ * 测试步骤：
+ * 1. 构造1个size的输入，经AllocBatchHbm分配内存
+ *
+ * 预期结果：
+ * 1. 返回GRAPH_FAILED
+ */
+TEST_F(Runtime2AllocatorSystemTest, test_alloc_batch_hbm_malloc_fail) {
+  struct MockRuntime : RuntimeStub {
+    rtError_t rtMallocPhysical(rtDrvMemHandle *handle, size_t size, rtDrvMemProp_t *prop, uint64_t flags) {
+      (void)handle;
+      (void)size;
+      (void)prop;
+      (void)flags;
+      return -1;
+    }
+  };
+  auto mock_runtime = std::make_shared<MockRuntime>();
+  ge::RuntimeStub::SetInstance(mock_runtime);
+  std::map<std::string, std::string> graph_options;
+  graph_options[ge::STATIC_MEMORY_POLICY] = "3";
+  ge::GetThreadLocalContext().SetGraphOption(graph_options);
+  auto caching_allocator = memory::CachingMemAllocator::GetAllocator();
+  memory::SingleStreamL2Allocator single_stream_l2_allocator(caching_allocator.get());
+  constexpr size_t kAllocCount = 1U;
+  auto sizes_buf = ContinuousVector::Create<size_t>(kAllocCount);
+  ASSERT_NE(sizes_buf, nullptr);
+  auto sizes_vec = reinterpret_cast<TypedContinuousVector<size_t> *>(sizes_buf.get());
+  ASSERT_EQ(sizes_vec->SetSize(kAllocCount), ge::GRAPH_SUCCESS);
+  sizes_vec->MutableData()[0] = 1024U;
+  auto context_holder =
+      KernelRunContextFaker().KernelIONum(2, 1).Inputs({&single_stream_l2_allocator, sizes_vec}).Build();
+  auto context = context_holder.GetContext<KernelContext>();
+  ASSERT_EQ(registry.FindKernelFuncs("AllocBatchHbm")->outputs_creator(nullptr, context), ge::GRAPH_SUCCESS);
+  ASSERT_EQ(registry.FindKernelFuncs("AllocBatchHbm")->run_func(context), ge::GRAPH_FAILED);
+  caching_allocator.reset(nullptr);
+  ge::RuntimeStub::Reset();
 }
 
 TEST_F(Runtime2AllocatorSystemTest, test_set_memory_pool_threshold) {

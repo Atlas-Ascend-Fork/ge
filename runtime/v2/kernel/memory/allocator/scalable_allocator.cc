@@ -201,9 +201,11 @@ PageSpan *ScalableAllocator::FetchNewVaSpan(ge::Allocator &allocator, const MemS
     }
     spans.push_back(span);
   }
+  if (!spans.empty()) {
+    LOG_BY_TYPE(GeLogLevel::kInfo, "Free %zu unused blocks, device_id:%u size:%llu alloc_size:%zu.", spans.size(),
+                device_allocator_.GetDeviceId(), size, alloc_size);
+  }
   for (auto s : spans) {
-    LOG_BY_TYPE(GeLogLevel::kInfo, "Free using block device_id:%u size:%llu alloc_size:%zu mem_addr:%p.",
-                device_allocator_.GetDeviceId(), size, s->GetSize(), s->GetAddr());
     FreeSpanEx(s);
   }
 

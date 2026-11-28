@@ -19,7 +19,11 @@ ge::Allocator *Allocators::GetAllocator(const TensorPlacement &placement, const 
   if ((placement < kTensorPlacementEnd) && (usage < static_cast<size_t>(AllocatorUsage::kEnd))) {
     return allocators[static_cast<size_t>(placement)][usage].get();
   } else {
-    GELOGE(ge::FAILED, "unsupported placement %d or unsupported usage %zu", placement, usage);
+    GELOGE(ge::FAILED,
+           "Unsupported placement %d or unsupported usage %zu, only support placement[%d~%zu) "
+           "usage[%d~%zu)",
+           placement, usage, static_cast<int32_t>(kOnDeviceHbm), static_cast<size_t>(kTensorPlacementEnd), 0,
+           static_cast<size_t>(AllocatorUsage::kEnd));
     return nullptr;
   }
 }

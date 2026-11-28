@@ -102,7 +102,8 @@ ge::graphStatus GetExternalL1Allocator(KernelContext *context) {
   GE_ASSERT_NOTNULL(out_allocator);
   auto placement = context->GetInputValue<TensorPlacement>(static_cast<size_t>(GetAllocatorInputs::kPlacement));
   if (placement >= kTensorPlacementEnd) {
-    GELOGE(ge::PARAM_INVALID, "Invalid placement or memory type, placement: %zu", static_cast<size_t>(placement));
+    GELOGE(ge::PARAM_INVALID, "Invalid placement or memory type, placement: %zu, should be less than %zu",
+           static_cast<size_t>(placement), static_cast<size_t>(kTensorPlacementEnd));
     return ge::GRAPH_FAILED;
   }
   auto external_allocator =
@@ -380,9 +381,9 @@ ge::graphStatus AllocHbmMem(KernelContext *context) {
     }
     auto gert_mem_block = reinterpret_cast<memory::MultiStreamMemBlock *>(gert_allocator->Malloc(tensor_size));
     KERNEL_CHECK((gert_mem_block != nullptr) && (gert_mem_block->GetAddr() != nullptr),
-                 "malloc failed, stream %" PRId64 ", tensor size=%zu, index=%zu", stream_id, tensor_size, i);
+                 "malloc failed, stream %" PRId64 ", tensor size=%zu bytes, index=%zu", stream_id, tensor_size, i);
     *gert_tensor_data = TensorUtils::ToGertTensorData(gert_mem_block, placement, stream_id);
-    KERNEL_TRACE(TRACE_STR_ALLOC_MEM ", tensor size %zu, index %zu", stream_id, gert_mem_block,
+    KERNEL_TRACE(TRACE_STR_ALLOC_MEM ", tensor size %zu bytes, index %zu", stream_id, gert_mem_block,
                  gert_mem_block->GetAddr(), gert_mem_block->GetSize(), tensor_size, i);
   }
   return ge::GRAPH_SUCCESS;
@@ -448,7 +449,8 @@ ge::graphStatus FreeTensorMemory(KernelContext *context) {
   if (tensor == nullptr) {
     return ge::GRAPH_FAILED;
   }
-  KERNEL_TRACE(TRACE_STR_FREE_MEM ", tensor %p", static_cast<int64_t>(-1), tensor->GetTensorData().GetAddr(), tensor);
+  KERNEL_TRACE(TRACE_STR_FREE_MEM ", tensor %p", static_cast<int64_t>(-1), tensor->GetTensorData().GetAddr(),
+               static_cast<const void *>(tensor));
   return tensor->MutableTensorData().Free();
 }
 
@@ -469,7 +471,7 @@ ge::graphStatus AllocBatchHbm(KernelContext *context) {
   KERNEL_CHECK_NOTNULL(sizes);
   KERNEL_CHECK_NOTNULL(addrs);
   if (sizes->GetSize() > addrs->GetCapacity()) {
-    GELOGE(ge::GRAPH_FAILED, "[AllocBatchHbm] The alloc count %zu more than output capacity %zu", sizes->GetSize(),
+    GELOGE(ge::GRAPH_FAILED, "[AllocBatchHbm] The alloc count %zu is more than output capacity %zu", sizes->GetSize(),
            addrs->GetCapacity());
     return ge::GRAPH_FAILED;
   }
@@ -490,7 +492,7 @@ ge::graphStatus AllocBatchHbm(KernelContext *context) {
     auto mem_block = reinterpret_cast<memory::MultiStreamMemBlock *>(gert_allocator->Malloc(sizes_data[i]));
     if (mem_block == nullptr) {
       addrs->SetSize(i);
-      GELOGE(ge::GRAPH_FAILED, "Get nullptr %s", mem_block);
+      GELOGE(ge::GRAPH_FAILED, "Failed to malloc mem block, tensor size=%zu bytes, index=%zu", sizes_data[i], i);
       return ge::GRAPH_FAILED;
     }
     *(addrs_data[i]) = TensorUtils::ToGertTensorData(mem_block, placement, stream_id);
@@ -498,7 +500,7 @@ ge::graphStatus AllocBatchHbm(KernelContext *context) {
       addrs->SetSize(i + 1U);
       GE_ASSERT_SUCCESS(addrs_data[i]->Free());
       addrs->SetSize(i);
-      GELOGE(ge::GRAPH_FAILED, "malloc failed, tensor size=%zu, index=%zu", sizes_data[i], i);
+      GELOGE(ge::GRAPH_FAILED, "malloc failed, tensor size=%zu bytes, index=%zu", sizes_data[i], i);
       return ge::GRAPH_FAILED;
     }
     KERNEL_TRACE(TRACE_STR_ALLOC_MEM ", index %zu", gert_allocator->GetStreamId(), mem_block, addrs_data[i]->GetAddr(),
@@ -857,7 +859,7 @@ ge::graphStatus AllocFixedFeatureMemory(KernelContext *context) {
                tensor_size);
   auto td = TensorUtils::ToTensorData(mem_block, mem_block->GetSize(), kOnDeviceHbm);
   GE_ASSERT_SUCCESS(TensorUtils::ShareTdToGtd(td, *l2_allocator, *gert_tensor_data));
-  KERNEL_TRACE("[MEM] alloc fixed_feature_memory, block: %p, addr: %p, size %zu", mem_block, mem_block->GetAddr(),
+  KERNEL_TRACE("[MEM] alloc fixed_feature_memory, block: %p, addr: %p, size %zu bytes", mem_block, mem_block->GetAddr(),
                tensor_size);
   return ge::GRAPH_SUCCESS;
 }

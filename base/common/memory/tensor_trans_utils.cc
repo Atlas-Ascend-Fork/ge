@@ -367,7 +367,7 @@ Status TensorTransUtils::TransTensorToGertTensor(const Tensor &tensor, gert::Ten
   GE_ASSERT_TRUE(tensor_desc.GetPlacement() <= Placement::kPlacementEnd);
   rt_tensor.SetPlacement(kPlacementToRtPlacement[tensor_desc.GetPlacement()]);
 
-  GELOGD("Transed ge_tensor %s to rt_tensor %s",
+  GELOGD("Transformed ge_tensor %s to rt_tensor %s",
          GeTensorDescToString(TensorAdapter::TensorDesc2GeTensorDesc(tensor_desc)).c_str(),
          RtTensorDescToString(rt_tensor).c_str());
   return SUCCESS;
@@ -404,7 +404,7 @@ GeTensor TensorTransUtils::TransRtTensorToGeTensor(const gert::Tensor &input) {
   tensor_desc.SetOriginDataType(input.GetDataType());
   GE_ASSERT_TRUE(input.GetPlacement() <= gert::TensorPlacement::kTensorPlacementEnd);
   tensor_desc.SetPlacement(kRtPlacementToPlacement[input.GetPlacement()]);
-  GELOGD("Transed rt_tensor %s to ge_tensor %s", RtTensorDescToString(input).c_str(),
+  GELOGD("Transformed rt_tensor %s to ge_tensor %s", RtTensorDescToString(input).c_str(),
          GeTensorDescToString(tensor_desc).c_str());
   return GeTensor(tensor_desc);
 }
@@ -428,7 +428,7 @@ Status TensorTransUtils::TransRtTensorToGeTensor(const gert::Tensor &src, GeTens
   tensor_desc.SetOriginDataType(src.GetDataType());
   GE_ASSERT_TRUE(src.GetPlacement() <= gert::TensorPlacement::kTensorPlacementEnd);
   tensor_desc.SetPlacement(kRtPlacementToPlacement[src.GetPlacement()]);
-  GELOGD("Transed rt_tensor %s to ge_tensor %s", RtTensorDescToString(src).c_str(),
+  GELOGD("Transformed rt_tensor %s to ge_tensor %s", RtTensorDescToString(src).c_str(),
          GeTensorDescToString(tensor_desc).c_str());
   return SUCCESS;
 }
@@ -438,7 +438,7 @@ Status TensorTransUtils::TransRtTensorToTensor(const std::vector<gert::Tensor> &
   dsts.resize(srcs.size());
   for (size_t i = 0U; i < srcs.size(); ++i) {
     auto &rt_tensor = srcs[i];
-    GELOGD("Transed rt_tensor %s to ge_tensor", RtTensorDescToString(rt_tensor).c_str());
+    GELOGD("Transformed rt_tensor %s to ge_tensor", RtTensorDescToString(rt_tensor).c_str());
     auto shape = ContructGeShapeFromRtShape(rt_tensor.GetShape().GetStorageShape());
     auto ge_tensor = TransRtTensorToGeTensor(rt_tensor);
     if (with_value) {

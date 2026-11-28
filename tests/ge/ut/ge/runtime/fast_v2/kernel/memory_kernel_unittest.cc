@@ -1163,6 +1163,12 @@ TEST_F(MemoryKernelUT, CreateAllocator_GetALlocatorIsNullWhenNotSet) {
   std::unique_ptr<Allocators> allocators = std::make_unique<Allocators>();
   ASSERT_EQ(allocators->GetAllocator(kOnDeviceHbm, 0), nullptr);
 }
+// 校验GetAllocator入参placement/usage越界场景
+TEST_F(MemoryKernelUT, CreateAllocator_GetALlocatorIsNullWhenUnsupported) {
+  std::unique_ptr<Allocators> allocators = std::make_unique<Allocators>();
+  ASSERT_EQ(allocators->GetAllocator(kTensorPlacementEnd, 0), nullptr);
+  ASSERT_EQ(allocators->GetAllocator(kOnDeviceHbm, 999U), nullptr);
+}
 TEST_F(MemoryKernelUT, SelectL1Allocator_SelectInner_HostInnerNotNull) {
   std::unique_ptr<Allocators> allocators = std::make_unique<Allocators>();
   if (allocators == nullptr) {

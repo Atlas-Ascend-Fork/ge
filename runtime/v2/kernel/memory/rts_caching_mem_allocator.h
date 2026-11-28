@@ -33,13 +33,13 @@ class FirstLevelPool : public DeviceMemAllocator {
     if (addr != nullptr) {
       GE_PRINT_DYNAMIC_MEMORY(rtMalloc, purpose_.c_str(), size);
     }
-    GELOGI("Malloc from level_1 allocator addr:%p size:%lu.", addr, size);
+    GELOGI("Malloc from level_1 allocator addr:%p size:%lu bytes.", addr, size);
     return addr;
   }
   bool Free(ge::MemBlock *const addr) override {
     auto block = addr;
     if (block != nullptr) {
-      GELOGI("Free to level_1 allocator addr:%p size:%lu.", block, block->GetSize());
+      GELOGI("Free to level_1 allocator addr:%p size:%lu bytes.", block, block->GetSize());
       block->Free();
     }
     return true;
